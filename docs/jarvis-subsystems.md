@@ -16,7 +16,7 @@ deep doc lives.
 | [Unattended runs](#unattended-runs-the-driver) | arming, relaunch on a usage cap, AFK and overnight shifts | off | `/afk-shift`, `/overnight-shift` |
 | [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup, reads only |
 | [Escalation channel](#escalation-channel) | a scoped grant for a sandboxed worker | **off** (no lane writes to it) | a sandboxed worker lane |
-| [Statusline](#statusline) | session context in the terminal | opt-in | `scripts/lib/wire-statusline.sh` |
+| [Statusline](#statusline) | session context in the terminal | opt-in | `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` |
 
 > **Default posture: every optional lane is OFF until you configure it.** The
 > root `CLAUDE.md` delegation rules skip a lane that is absent. Enable only the
@@ -141,8 +141,10 @@ period. The default renderer is **claude-hud**
 vendored bash bar in **`scripts/statusline/`** is the rollback fallback.
 
 **Use it.** Wire it into `~/.claude/settings.json` with
-**`scripts/lib/wire-statusline.sh`**. To roll back, run
-**`scripts/lib/unwire-statusline.sh`**. It repoints `.statusLine` to the bash
+**`bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>`**.
+To roll back, run
+**`bash scripts/lib/unwire-statusline.sh <settings-json-path> <himmel-path>`**.
+It repoints `.statusLine` to the bash
 wrapper `scripts/where-are-we/statusline.sh`, which composes the vendored
 `scripts/statusline/` bar with a where-are-we ledger line. See
 **[../scripts/statusline/README.md](../scripts/statusline/README.md)** for the
