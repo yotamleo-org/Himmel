@@ -1713,7 +1713,7 @@ check "dependabot-go: a repeat of the same row is a no-op" "$(dg_rows)" "dependa
 printf '{"kind":"judge-go","ts":"t","branch":"other","head":"%s","status":"ok","source":"judge:j1","pr":3862}\n' "$DGH" >> "$DGL"
 CR_LEDGER="$DGL" bash "$LA" dependabot-go --branch other --head "$DGH" --source judge:j1 --pr 3862 2>/dev/null
 check "dependabot-go: a row of another kind at that head does not suppress it" "$(dg_rows)" "dependabot/pip/x,$DGH,ok,judge:j1,3861|other,$DGH,ok,judge:j1,3862"
-for bad in "--head abc123 --source judge:j1 --pr 3861" "--head $DGH --source j1 --pr 3861" "--head $DGH --source judge:j1 --pr 0" "--head $DGH --source judge:j1" "--source judge:j1 --pr 3861"; do
+for bad in "--head abc123 --source judge:j1 --pr 3861" "--head 9D87A2790A6B7D12146A113A17AD8A612446FBA1 --source judge:j1 --pr 3861""--head $DGH --source j1 --pr 3861" "--head $DGH --source judge:j1 --pr 0" "--head $DGH --source judge:j1" "--source judge:j1 --pr 3861"; do
   # shellcheck disable=SC2086  # the word split of $bad into flags is the point
   CR_LEDGER="$tmp/dg-bad.jsonl" bash "$LA" dependabot-go --branch b $bad 2>/dev/null
   check "dependabot-go: [$bad] is refused" "$?" "2"

@@ -498,9 +498,9 @@ if [ "$kind" = "dependabot-go" ]; then
   for _dg in "branch:$branch" "head:$head" "source:$source" "pr:$pr"; do
     [ -n "${_dg#*:}" ] || { echo "ledger-append.sh: dependabot-go requires --${_dg%%:*}" >&2; exit 2; }
   done
-  expr "$head" : '^[0-9a-f]\{40\}$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --head must be a full 40-hex sha (got '$head')" >&2; exit 2; }
-  expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --pr must be a positive integer (got '$pr')" >&2; exit 2; }
-  expr "$source" : '^judge:[A-Za-z0-9._-][A-Za-z0-9._-]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --source must be judge:<qid> (got '$source')" >&2; exit 2; }
+  LC_ALL=C expr "$head" : '^[0-9a-f]\{40\}$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --head must be a full 40-hex sha (got '$head')" >&2; exit 2; }
+  LC_ALL=C expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --pr must be a positive integer (got '$pr')" >&2; exit 2; }
+  LC_ALL=C expr "$source" : '^judge:[A-Za-z0-9._-][A-Za-z0-9._-]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --source must be judge:<qid> (got '$source')" >&2; exit 2; }
 fi
 
 # attempt: one row per invocation ATTEMPT (primary + each

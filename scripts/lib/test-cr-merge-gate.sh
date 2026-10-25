@@ -954,6 +954,7 @@ GH_STUB_BRANCH_RC=1 rgj J8-release-judge-go-failed-branch-read-holds 1 --release
 DG_BRANCH=dependabot/pip/marketplace/plugins/obsidian-triage/tools/numpy-2.5.4
 DG_ROW=${JG_ROW/\"kind\":\"judge-go\"/\"kind\":\"dependabot-go\"}
 DG_ROW=${DG_ROW/$JG_BRANCH/$DG_BRANCH}
+DG_ROW=${DG_ROW/\"source\"/\"pr\":42,\"source\"}
 export GH_STUB_BRANCH=$DG_BRANCH GH_STUB_AUTHOR=app/dependabot
 led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
 rgj D1-merge-dependabot-go-stands-in 0
@@ -972,6 +973,10 @@ led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
 GH_STUB_BRANCH_RC=1 rgj D8-dependabot-go-failed-read-holds 1
 led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/dependabot-go/judge-go}"
 rgj D9-merge-judge-go-row-still-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"pr\":42/\"pr\":43}"
+rgj D10-dependabot-go-other-pr-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"pr\":42,/}"
+rgj D11-dependabot-go-no-pr-holds 1
 export GH_STUB_BRANCH=$JG_BRANCH; unset GH_STUB_AUTHOR
 # J7 — an inherited _CRG_RELEASE=1 never loosens the merge gate: cr_merge_gate pins it.
 led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"

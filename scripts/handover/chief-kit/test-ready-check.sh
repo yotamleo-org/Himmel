@@ -2202,7 +2202,7 @@ DEP_COMMITS='[{"messageHeadline":"chore(deps): [HIMMEL-7588] Bump numpy in /mark
 # shellcheck disable=SC2016  # the backticks are Dependabot's literal body text
 DEP_BODY='Bumps [numpy](https://github.com/numpy/numpy) from 2.5.3 to 2.5.4.\n\nDependabot will resolve any conflicts with this PR as long as you dont alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n'
 seed_dependabot_go() {
-    printf '{"kind":"dependabot-go","ts":"2026-10-25T00:00:00Z","branch":"%s","head":"%s","status":"ok","source":"judge:q1/verdict","pr":77}\n' "${1:-$DEP_BRANCH}" "${2:-$SHA}" > "$LEDGER"
+    printf '{"kind":"dependabot-go","ts":"2026-10-25T00:00:00Z","branch":"%s","head":"%s","status":"ok","source":"judge:q1/verdict","pr":%s}\n' "${1:-$DEP_BRANCH}" "${2:-$SHA}" "${3:-77}" > "$LEDGER"
 }
 # The PR files sit under a marketplace plugin, so check 9 reads git: run from the
 # bare-origin CLONE with a real PR head (the plugin version is left alone).
@@ -2232,6 +2232,9 @@ contains "dependabot: a dependabot-go row for another head fails row 4" "$out" "
 dep_fixture; seed_dependabot_go "some/other-branch"
 rc=0; out="$(run)" || rc=$?
 contains "dependabot: a dependabot-go row for another branch fails row 4" "$out" "[FAIL] 4."
+dep_fixture; seed_dependabot_go "$DEP_BRANCH" "$SHA" 78
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a dependabot-go row for another PR fails row 4" "$out" "[FAIL] 4."
 
 # one non-manifest file and the generated coverage is refused
 dep_fixture; STUB_FILES="$DEP_FILES

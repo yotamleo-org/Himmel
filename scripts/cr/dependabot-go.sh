@@ -88,5 +88,5 @@ why=$(go_trust_verdict "$ROOT" "$QID" "$SHA" "$ANCHOR" "$PR") || refuse "judge $
 now=$("$GH" pr view "$PR" --json headRefOid 2>/dev/null | jq -r '.headRefOid // empty' 2>/dev/null) || now=""  # swallow-ok: empty fails the equality below
 [ "$now" = "$SHA" ] || refuse "PR #$PR's head moved to '${now:-unknown}' while its files were read"
 
-bash "$HERE/ledger-append.sh" dependabot-go --branch "$BRANCH" --head "$SHA" --source "judge:$QID" --pr "$PR" >/dev/null || exit 2
+env -u CR_LEDGER bash "$HERE/ledger-append.sh" dependabot-go --branch "$BRANCH" --head "$SHA" --source "judge:$QID" --pr "$PR" >/dev/null || exit 2
 echo "dependabot-go: recorded PR #$PR at $SHA (judge:$QID)"

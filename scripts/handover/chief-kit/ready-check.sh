@@ -362,11 +362,12 @@ else
         # malformed line rather than aborting the whole read (a plain `jq -s`
         # slurp would die on the first bad line in a 7000+ line ledger).
         ledger_branch=$(printf '%s' "$snapshot" | jq -r '.[0].headRefName // empty' 2>/dev/null)
-        n=$(jq -R -r --arg h "$SHA" --arg b "$ledger_branch" '
+        n=$(jq -R -r --arg h "$SHA" --arg b "$ledger_branch" --arg p "$PR" '
             fromjson? | select(.head == $h and .status == "ok") |
             select((.kind == "avail" and (.model | type) == "string" and .model != ""
                     and .model != "claude" and .model != "claude-floor" and .model != "codex-adv")
-                or ((.kind == "evidence" or .kind == "judge-go" or .kind == "dependabot-go") and $b != "" and .branch == $b)) |
+                or ((.kind == "evidence" or .kind == "judge-go" or .kind == "dependabot-go") and $b != "" and .branch == $b
+                    and (.kind != "dependabot-go" or (.pr | tostring) == $p))) |
             .head' "$ledger" 2>/dev/null | wc -l | tr -d ' ')
         if [ "${n:-0}" -ge 1 ]; then
             echo "[PASS] 4. CR ledger: $n row(s) for $SHA with status=ok"

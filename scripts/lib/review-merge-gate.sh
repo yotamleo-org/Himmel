@@ -177,7 +177,7 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # `degraded<TAB><why>` line when the ledger cannot be read. After the slug
 # lines, one `@judge-go<TAB>branch<TAB>source` line per status-ok judge-go row at
 # exactly <head> (review-round.sh judge-go writes it, after the round cap), and
-# one `@dependabot-go<TAB>branch<TAB>source` line per status-ok dependabot-go row
+# one `@dependabot-go<TAB>branch<TAB>source<TAB>pr` line per status-ok dependabot-go row
 # at exactly <head> (scripts/cr/dependabot-go.sh writes it).
 #   pass           an avail ok row, and no open crit/imp finding of its own
 #   findings-open  open finding(s), whatever the avail rows say; detail = their ids
@@ -286,7 +286,7 @@ for (const o of recs) {
     if (o.kind === "judge-go" && o.status === "ok" && o.head === e.RG_HEAD && str(o.branch) && str(o.source))
         out.push(["@judge-go", str(o.branch), str(o.source)].map((s) => s.replace(/[\t\n]/g, " ")).join("\t"));
     if (o.kind === "dependabot-go" && o.status === "ok" && o.head === e.RG_HEAD && str(o.branch) && str(o.source))
-        out.push(["@dependabot-go", str(o.branch), str(o.source)].map((s) => s.replace(/[\t\n]/g, " ")).join("\t"));
+        out.push(["@dependabot-go", str(o.branch), str(o.source), Number.isInteger(o.pr) ? String(o.pr) : ""].map((s) => s.replace(/[\t\n]/g, " ")).join("\t"));
 }
 process.stdout.write(out.length ? out.join("\n") + "\n" : "");
 '
@@ -398,20 +398,20 @@ _crg_judge_source() {
 
 # _crg_dependabot_source <owner> <name> <pr> <states> — the `source` of a
 # dependabot-go row at the head (an `@dependabot-go` line of _crg_critic_states
-# output) whose branch is the PR's head branch, when the PR's author is
+# output) whose branch is the PR's head branch and whose pr is <pr>, when the PR's author is
 # app/dependabot; or nothing: no such row, a human author, or a PR that cannot
 # be read (a failed read never fails open).
 _crg_dependabot_source() {
-    local owner="$1" name="$2" num="$3" states="$4" rows pr pr_branch pr_author br src
-    rows=$(printf '%s\n' "$states" | awk -F'\t' '$1 == "@dependabot-go" { print $2 "\t" $3 }')
+    local owner="$1" name="$2" num="$3" states="$4" rows pr pr_branch pr_author br src row_pr
+    rows=$(printf '%s\n' "$states" | awk -F'\t' '$1 == "@dependabot-go" { print $2 "\t" $3 "\t" $4 }')
     [ -n "$rows" ] || return 0
     pr=$(gh pr view "$num" --repo "$owner/$name" --json headRefName,author 2>/dev/null </dev/null) || return 0
     pr_author=$(printf '%s' "$pr" | jq -r '.author.login // empty' 2>/dev/null) || return 0
     [ "$pr_author" = app/dependabot ] || return 0
     pr_branch=$(printf '%s' "$pr" | jq -r '.headRefName // empty' 2>/dev/null) || return 0
     [ -n "$pr_branch" ] || return 0
-    while IFS=$'\t' read -r br src; do
-        [ "$br" = "$pr_branch" ] && { printf '%s' "$src"; return 0; }
+    while IFS=$'\t' read -r br src row_pr; do
+        [ "$br" = "$pr_branch" ] && [ "$row_pr" = "$num" ] && { printf '%s' "$src"; return 0; }
     done <<<"$rows"
     return 0
 }
