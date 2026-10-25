@@ -1629,6 +1629,11 @@ check "60b successor doc carries the predecessor's focus-version: line" \
     "$(grep -Fxc 'focus-version: v9.9.9' "$doc60bB" 2>/dev/null)" "1"
 check "60b successor doc carries the predecessor's focus-plan: line" \
     "$(grep -Fxc "focus-plan: $focusplan60b" "$doc60bB" 2>/dev/null)" "1"
+sed -i 's/^focus-version: .*/focus-version: auto/' "$doc60bA"  # gnu-ok: Linux-only kit
+rm -f "$doc60bB"
+console next --bucket boarddst --doc "$doc60bA" >/dev/null 2>&1
+check "60b successor doc carries focus-version: auto" \
+    "$(grep -Fxc 'focus-version: auto' "$doc60bB" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc60bA" "$token60b" >/dev/null 2>&1
 
 # --- 61: the console parent defaults to Opus, not Fable

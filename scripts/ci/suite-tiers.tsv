@@ -943,7 +943,6 @@ scripts/observability/test-install-stack.sh	local	behaviour suite, 0 catches in 
 scripts/observability/test-ledger-prune.sh	pr	static-gate
 scripts/observability/test-ledgers-registry.sh	pr	catch:2851
 scripts/observability/test-promtool-validation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/observability/test-restart-stack.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-suite-flake-summary.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-tool-call-census.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/openrouter/test-free-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window

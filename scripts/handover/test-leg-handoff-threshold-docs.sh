@@ -67,7 +67,7 @@ lacks "brief template drops the 65 % rule"  "$BRIEF"   '65 ?%'
 lacks "brief template drops the 75 % fill rule" "$BRIEF" '75 ?% fill'
 lacks "brief template carries no 60 % fill"  "$BRIEF"   '60 ?% fill'
 # shellcheck disable=SC2016
-has  "calibration states the 75 % ceiling rule (HIMMEL-4710)" "$CALIB" 'Leg checkpoint or handover is at 75% of the leg'"'"'s `--autocompact` ceiling'
+has  "calibration states the 75 % ceiling rule (HIMMEL-4710)" "$CALIB" 'Worker checkpoint or handover is at 75% of the worker'"'"'s `--autocompact` ceiling'
 lacks "calibration drops the 75 % leg rule"  "$CALIB"   'Leg handover is at 75% context fill'
 has   "preface names close-wrapped-leg.sh as the session end (HIMMEL-2414)" "$PREFACE" "the chief's \`close-wrapped-leg.sh\` ends the session"
 lacks "preface does not tell a leg to exit its own session (HIMMEL-2414)" "$PREFACE" 'closable-window banner, and \*\*exit\*\*'

@@ -1,6 +1,6 @@
 # config-ui
 
-`himmelctl ui` serves the config console on `127.0.0.1` (Bun, loopback only,
+`himmelctl ui` serves the config UI on `127.0.0.1` (Bun, loopback only,
 per-launch token). Operator-only: it refuses to start inside a Claude session.
 
 ## The config feed
@@ -79,7 +79,7 @@ Monitoring URLs are loopback-only (`HIMMEL_PROMETHEUS_URL`, default
 `GET /api/tool-health` is token-gated and GET-only. It reads the registered
 `eval-runs` and `leg-failures` ledgers: the server, not the browser, rolls up
 calls, failures, error rates and count-weighted known recovery outcomes.
-Filter by model, launch lane, leg-vs-console role and 7/30 UTC calendar days.
+Filter by model, launch lane, worker-vs-chief role and 7/30 UTC calendar days.
 The tool table includes daily trends, top failure classes and links to the
 session view with tool-call ids. Deny-hook rates use Bash calls as their
 explicit denominator. The comparison table shows calls per 100 calls,
