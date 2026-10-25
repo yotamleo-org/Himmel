@@ -225,8 +225,27 @@ def parse_doc(leg, tz):
         if rest.startswith(("bus-adopt:", "bus #", "SUCCESSION accepted:")):
             word = "SUCCESSION" if rest.startswith("SUCCESSION") else "script"
         bullets.append({"dt": dt, "word": word, "text": c.group(1) if c else rest, "chief": bool(c),
-                        "bus": rest.startswith("bus #")})
+                        "bus": rest.startswith("bus #"), "hm": clock(line)})
     return bullets
+
+
+def clock(line):
+    """A bullet's HH:MM as minutes past midnight, or None."""
+    b = BULLET.match(line)
+    return int(b.group(1)) * 60 + int(b.group(2)) if b else None
+
+
+def events(worker, chief):
+    """One intervention logged in both docs lands within minutes in each: pair those, count the rest."""
+    left = [t for t in worker if t is not None]
+    n = len(worker)
+    for t in chief:
+        hit = next((w for w in left if t is not None and min(abs(t - w), 1440 - abs(t - w)) <= 5), None)
+        if hit is None:
+            n += 1
+        else:
+            left.remove(hit)
+    return n
 
 
 def minutes(a, b):
@@ -383,15 +402,15 @@ def score(leg, ctx):
     asks = sum(1 for b in worker if b["word"] == "FINDING")
     resolved = sum(1 for b in worker if b["word"] == "RESOLVED")
     relays = [b for b in chief_entries if "SUCCESSION relay" in b["text"]]
-    nudges = sum(1 for b in chief_entries if b not in relays and NUDGE.search(b["text"]))
-    expands = sum(1 for b in chief_entries if b not in relays and not NUDGE.search(b["text"]) and EXPAND.search(b["text"]))
-    rulings = max(resolved, len(chief_entries) - len(relays) - nudges - expands)
+    nudge_at = [b["hm"] for b in chief_entries if b not in relays and NUDGE.search(b["text"])]
+    expand_at = [b["hm"] for b in chief_entries
+                 if b not in relays and not NUDGE.search(b["text"]) and EXPAND.search(b["text"])]
+    rulings = max(resolved, len(chief_entries) - len(relays) - len(nudge_at) - len(expand_at))
     label = re.compile(r"\b%s\b" % re.escape(leg["label"]))
     stem = os.path.splitext(os.path.basename(leg["doc"]))[0]
     chief_lines = [ln for ln in ctx["chief_text"].splitlines() if label.search(ln)] if ctx["chief_text"] else []
-    # one intervention may be logged in both docs, so take the larger count, never the sum
-    nudges = max(nudges, sum(1 for ln in chief_lines if NUDGE.search(ln)))
-    expands = max(expands, sum(1 for ln in chief_lines if not NUDGE.search(ln) and EXPAND.search(ln)))
+    nudges = events(nudge_at, [clock(ln) for ln in chief_lines if NUDGE.search(ln)])
+    expands = events(expand_at, [clock(ln) for ln in chief_lines if not NUDGE.search(ln) and EXPAND.search(ln)])
     if ctx["chief_text"]:
         v["interventions"] = asks + nudges + expands + max(0, rulings - asks)
         f["interventions"] = str(v["interventions"])
@@ -421,7 +440,8 @@ def score(leg, ctx):
     via = [w for w, hit in (("inbox", chief_entries), ("bus", [b for b in worker if b["bus"]])) if hit]
     f["delivery"] = "+".join(via) or "message"
     blocked = sum(1 for b in worker if b["word"] in ("BLOCKED", "HALTED", "PARKED-BANK"))
-    prompt = max(sum(1 for b in worker if PROMPT.search(b["text"])), sum(1 for ln in chief_lines if PROMPT.search(ln)))
+    prompt = events([b["hm"] for b in worker if PROMPT.search(b["text"])],
+                    [clock(ln) for ln in chief_lines if PROMPT.search(ln)])
     stalls = ["blocked %d" % blocked] if blocked else []
     if ctx["chief_text"]:
         idle = sum(1 for ln in ctx["chief_text"].splitlines() if "slug=" in ln and stem in ln and IDLE.search(ln))
@@ -450,7 +470,8 @@ def score(leg, ctx):
         if not all(costs):
             f["cost"] = na("no leg-burn line")
         else:
-            v["cost"] = sum(float(c.group(1)) for c in costs) / len(merged)
+            v["costs"] = [float(c.group(1)) for c in costs]
+            v["cost"] = sum(v["costs"]) / len(merged)
             f["cost"] = "%.1fk" % v["cost"]
     return q, f, v
 
@@ -462,8 +483,11 @@ def lane_rows(scored):
     out = []
 
     def total(vals):
-        vals = [x for x in vals if x is not None]
-        return num(sum(vals)) if vals else "n/a"
+        known = [x for x in vals if x is not None]
+        if not known:
+            return "n/a"
+        gap = len(vals) - len(known)
+        return num(sum(known)) + (" (n/a %d)" % gap if gap else "")
 
     def count(flags):
         return "n/a" if None in flags else str(sum(1 for x in flags if x))
@@ -475,11 +499,11 @@ def lane_rows(scored):
     for lane in sorted(lanes):
         vs = lanes[lane]
         j = [v.get("judge") for v in vs]
-        cost = [v.get("cost") for v in vs if v.get("cost") is not None]
+        cost = [c for v in vs for c in v.get("costs", [])]
         out.append([lane, str(len(vs)), count([v.get("merged") for v in vs]),
                     count([v.get("in_flight") for v in vs]),
-                    total([x[0] for x in j if x]), total([x[1] for x in j if x]),
-                    total([x[2] for x in j if x]), total([x[3] for x in j if x]),
+                    total([x and x[0] for x in j]), total([x and x[1] for x in j]),
+                    total([x and x[2] for x in j]), total([x and x[3] for x in j]),
                     total([v.get("cr") for v in vs]), median([v.get("rounds") for v in vs]),
                     median([v.get("live") for v in vs], "m"), median([v.get("ready") for v in vs], "m"),
                     total([v.get("interventions") for v in vs]), median([v.get("interventions") for v in vs]),

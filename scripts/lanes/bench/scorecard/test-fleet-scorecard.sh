@@ -53,6 +53,8 @@ check "(a) planted leg judge cell shows NO-GO=1 with its blocker and major" \
 check "(a) planted leg shows interventions=2" "$(cell "$OUT" "Fleet management" N9001 6)" "2"
 check "(a) planted leg breakdown asks/rulings/nudges/expansions" \
     "$(cell "$OUT" "Fleet management" N9001 7)" "1/1/1/0"
+check "(a) a nudge only in the worker doc and another only in the chief doc count twice" \
+    "$(cell "$OUT" "Fleet management" N9003 7)" "1/1/2/0"
 check "(a) a console GO record is not a judge verdict" "$(cell "$OUT" "Output quality" N9003 7)" "GO 1, NO-GO 0"
 
 # --- (b) both halves print for every leg; a missing source is n/a with its
@@ -93,11 +95,12 @@ check "(b) without --prs the lane merged and in-flight totals are n/a" \
 check "(b) a missing denial log is n/a with its reason" \
     "$(cell "$NOPRS" "Fleet management" N9001 11)" "n/a (no denial log: $FX/absent-denials.jsonl)"
 
-# --- (c) per-lane totals and medians
+# --- (c) per-lane totals and medians; a total that skips an n/a worker says so,
+# and the cost median runs over merged PRs (N9002 merged two), not workers
 check "(c) claudex lane row" "$(printf '%s\n' "$OUT" | grep '^| claudex |')" \
-    "| claudex | 2 | 2 | 0 | 2 | 1 | 1 | 1 | 2 | 1.5 | 7.5m | 80m | 2 | 1 | 2 | 1000.0k |"
+    "| claudex | 2 | 2 | 0 | 2 | 1 | 1 | 1 | 2 | 1.5 | 7.5m | 80m | 2 | 1 | 2 | 800.0k |"
 check "(c) native lane row" "$(printf '%s\n' "$OUT" | grep '^| native |')" \
-    "| native | 2 | 1 | 1 | 1 | 0 | 0 | 0 | 2 | 2 | 3.5m | 90m | 1 | 0.5 | 1 | 1600.0k |"
+    "| native | 2 | 1 | 1 | 1 (n/a 1) | 0 (n/a 1) | 0 (n/a 1) | 0 (n/a 1) | 2 (n/a 1) | 2 | 3.5m | 90m | 3 | 1.5 | 1 | 1600.0k |"
 SINCE=$(run --since 2026-10-25T16:05:00Z 2>/dev/null)
 check "(c) --since keeps only legs launched at or after it" "$(rows "$SINCE" "Fleet management")" "1"
 
