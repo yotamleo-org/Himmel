@@ -2621,7 +2621,15 @@ EOF" \
     "printf 'a%ln' PATH; bash scripts/handover/console-kit/append-results.sh \$D 'scripts/cr/*'" \
     "cat ?(scripts/cr/write-verdicts.sh)" \
     'path=(/tmp/p7130); bash scripts/handover/console-kit/append-results.sh $D "scripts/cr/*"' \
-    'for path in /tmp/p7130; do bash scripts/handover/console-kit/append-results.sh $D "scripts/cr/*"; done'; do
+    'for path in /tmp/p7130; do bash scripts/handover/console-kit/append-results.sh $D "scripts/cr/*"; done' \
+    "x='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; echo \${!x}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; s=hi; echo \${s:y}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; s=hi; echo \${s:0:y}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; a[y]=1" \
+    "for x in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${!x}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s: y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do a[y]=1; done"; do
     run "7130 class1 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
 run "7130 class1 [a quoted message with parentheses] -> allow" 0 \

@@ -2488,8 +2488,9 @@ fi
 # (scripts/lib/bash-ast.sh, pinned with this hook); a parse failure, a
 # position it cannot read, a wrapper, an interpreter or any other program
 # keeps the text scan below, so this only lifts a deny raised on data.
-# Arithmetic, [[ ]], ${x@P} and a subscripted expansion can run a
-# substitution the model does not list; a for/select loop variable is an
+# Arithmetic, [[ ]], ${x@P}, a subscripted expansion, an indirect ${!x}, a
+# ${x:offset} and a NAME[sub]= assignment can run a substitution the model
+# does not list (bash evaluates another variable's value as a subscript); a for/select loop variable is an
 # assignment it does not list either (only an upper-case name or a zsh name
 # tied to one, like path, can be a dangerous one), and neither is a printf
 # %n conversion, which assigns the
@@ -2541,6 +2542,10 @@ ast_data_only() {
     case "$cmd" in *'*('* | *'?('* | *'+('* | *'@('* | *'!('* | *'${('* | *'${~'* | *'$~'*) return 1 ;; esac
     [[ "$cmd" =~ [^[:space:]\;\&\|\<\>\(]\([^\)]*\)([[:space:]\;\&\|\<\>]|$) ]] && return 1
     [[ "$cmd" =~ \$\{[^}]*\[ ]] && return 1
+    # shellcheck disable=SC2016 # literal pattern, never expanded
+    case "$cmd" in *'${!'*) return 1 ;; esac
+    [[ "$cmd" =~ \$\{[[:alnum:]_@*#]+:[^-=+?] ]] && return 1
+    [[ "$cmd" =~ [[:alnum:]_]\[.*\]\+?= ]] && return 1
     [[ "${cmd//$'\\\n'/}" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+([[:alnum:]_]*[[:upper:]]|(path|cdpath|fpath|manpath|module_path)([^[:alnum:]_]|$)) ]] && return 1
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
     # shellcheck source=../lib/bash-ast.sh
