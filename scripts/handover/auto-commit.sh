@@ -157,8 +157,8 @@ To use auto-commit:
      loads it).
   3. Re-run.
 
-For context on the deferred-branching design, see the handover root
-resolver and its parent epic.
+For context on the deferred-branching design, see
+scripts/lib/handover-path.sh (the handover root resolver).
 EOF
     exit 3
 fi
