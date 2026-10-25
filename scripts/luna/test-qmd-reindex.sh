@@ -732,7 +732,8 @@ reset_state
 touch "$STATE/incomplete"
 rc=0; out=$(QMD_REINDEX_EMBED_MAX_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
 assert_rc "seconds override rc 5" 5 "$rc"
-assert_contains "seconds override stops after one session" "cause: session cap reached (1 of 4 sessions, 0s of 0s" "$out"
+assert_contains "seconds override stops after one session" "cause: session cap reached (1 of 4 sessions," "$out"
+assert_contains "seconds override names the 0s limit" "s of 0s used)" "$out"
 reset_state
 touch "$STATE/incomplete"
 rc=0; out=$(QMD_REINDEX_EMBED_MAX_SESSIONS=abc bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
