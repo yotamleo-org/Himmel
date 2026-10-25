@@ -318,6 +318,72 @@ run "tampered worktree console-wait.sh -> deny" 2 "$(payload "$CW" "$WT")" "$HR"
 need_in_err "deny names console-wait.sh" "scripts/handover/console-kit/console-wait.sh"
 g -C "$WT" checkout -q -- scripts/handover/console-kit/console-wait.sh
 
+# ---- the chief-kit layout: console-kit/ a tracked symlink to chief-kit/ ----
+# After the directory move every kit writer lives in chief-kit/, and the old
+# console-kit/ spelling reaches it through the symlink. Both spellings get one
+# verdict, from the bytes under chief-kit/; a worktree still on the old layout
+# is checked against the anchor's chief-kit/ copy.
+ORIGIN2="$TMP/origin2"
+PRIMARY2="$TMP/himmel2"
+WT2="$TMP/wt2"
+WT2OLD="$TMP/wt2old"
+cp -R "$ORIGIN" "$ORIGIN2"
+rm -rf "$ORIGIN2/.git"
+g init -q "$ORIGIN2"
+g -C "$ORIGIN2" add -A
+g -C "$ORIGIN2" commit -qm base
+old_layout="$(g -C "$ORIGIN2" rev-parse HEAD)"
+g -C "$ORIGIN2" mv scripts/handover/console-kit scripts/handover/chief-kit
+ln -s chief-kit "$ORIGIN2/scripts/handover/console-kit"
+g -C "$ORIGIN2" add -A
+g -C "$ORIGIN2" commit -qm move
+g clone -q "$ORIGIN2" "$PRIMARY2"
+g -C "$PRIMARY2" worktree add -q -b feat/y "$WT2" refs/remotes/origin/main
+g -C "$PRIMARY2" worktree add -q -b feat/old "$WT2OLD" "$old_layout"
+HR2="HIMMEL_REPO=$PRIMARY2"
+for kit in console-kit chief-kit; do
+    for s in go write-verdict console-wait himmel-gate; do
+        run "chief-kit layout, clean tree, bash scripts/handover/$kit/$s.sh -> allow" 0 \
+            "$(payload "bash scripts/handover/$kit/$s.sh" "$WT2")" "$HR2"
+    done
+    run "chief-kit layout, anchor's dispatcher via $kit -> allow" 0 \
+        "$(payload "bash \"\$HIMMEL_REPO/scripts/handover/$kit/himmel-gate.sh\" orphan-check 12" "$WT2")" "$HR2"
+done
+echo ': edited' >>"$WT2/scripts/handover/chief-kit/go.sh"
+run "chief-kit layout, edited go.sh via console-kit -> deny" 2 "$(payload "bash scripts/handover/console-kit/go.sh" "$WT2")" "$HR2"
+run "chief-kit layout, edited go.sh via chief-kit -> deny" 2 "$(payload "bash scripts/handover/chief-kit/go.sh" "$WT2")" "$HR2"
+g -C "$WT2" checkout -q -- scripts/handover/chief-kit/go.sh
+echo ': edited' >>"$WT2/scripts/handover/chief-kit/write-verdict.sh"
+run "chief-kit layout, edited write-verdict.sh via console-kit -> deny" 2 "$(payload "bash scripts/handover/console-kit/write-verdict.sh" "$WT2")" "$HR2"
+run "chief-kit layout, edited write-verdict.sh via chief-kit -> deny" 2 "$(payload "bash scripts/handover/chief-kit/write-verdict.sh" "$WT2")" "$HR2"
+g -C "$WT2" checkout -q -- scripts/handover/chief-kit/write-verdict.sh
+# A console-kit symlink pointing anywhere but chief-kit is refused, even when
+# the bytes it reaches match.
+cp -R "$WT2/scripts/handover/chief-kit" "$WT2/scripts/handover/kit-copy"
+rm "$WT2/scripts/handover/console-kit"
+ln -s kit-copy "$WT2/scripts/handover/console-kit"
+run "console-kit symlink to another dir, go.sh via console-kit -> deny" 2 "$(payload "bash scripts/handover/console-kit/go.sh" "$WT2")" "$HR2"
+run "console-kit symlink to another dir, go.sh via chief-kit -> deny" 2 "$(payload "bash scripts/handover/chief-kit/go.sh" "$WT2")" "$HR2"
+rm "$WT2/scripts/handover/console-kit"
+rm -rf "$WT2/scripts/handover/kit-copy"
+ln -s chief-kit "$WT2/scripts/handover/console-kit"
+run "console-kit symlink restored, go.sh -> allow" 0 "$(payload "bash scripts/handover/console-kit/go.sh" "$WT2")" "$HR2"
+# A worktree still on the old layout: its console-kit/ bytes are checked
+# against the anchor's chief-kit/ bytes.
+run "old-layout worktree, clean go.sh, chief-kit anchor -> allow" 0 "$(payload "bash scripts/handover/console-kit/go.sh" "$WT2OLD")" "$HR2"
+echo ': edited' >>"$WT2OLD/scripts/handover/console-kit/go.sh"
+run "old-layout worktree, edited go.sh, chief-kit anchor -> deny" 2 "$(payload "bash scripts/handover/console-kit/go.sh" "$WT2OLD")" "$HR2"
+g -C "$WT2OLD" checkout -q -- scripts/handover/console-kit/go.sh
+# Old layout with an untracked chief-kit/ beside it: the chief-kit spelling
+# would run bytes the console-kit check never hashed.
+cp -R "$WT2OLD/scripts/handover/console-kit" "$WT2OLD/scripts/handover/chief-kit"
+echo ': edited' >>"$WT2OLD/scripts/handover/chief-kit/go.sh"
+run "old layout plus a chief-kit dir, go.sh via chief-kit -> deny" 2 "$(payload "bash scripts/handover/chief-kit/go.sh" "$WT2OLD")" "$HR2"
+run "old layout plus a chief-kit dir, go.sh via console-kit -> deny" 2 "$(payload "bash scripts/handover/console-kit/go.sh" "$WT2OLD")" "$HR2"
+rm -rf "$WT2OLD/scripts/handover/chief-kit"
+# The old-layout anchor (the first fixture) never runs a chief-kit spelling.
+run "old-layout anchor, go.sh via chief-kit -> deny" 2 "$(payload "bash scripts/handover/chief-kit/go.sh" "$WT")" "$HR"
+
 # ---- console-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
 # The documented anchored spelling for merge-on-green.sh, gate-
 # allowed at scripts/lanes/plugin-profiles.json:7 and .claude/settings.json,
@@ -2548,6 +2614,19 @@ for f in "$FX_CMDPOS"/*.cmd; do
     esac
     run "6015: [$name]" "$want" "$(payload "$(cat "$f")" "$WT")" "$HR"
     g -C "$WT" checkout -q -- .
+done
+# The dispatcher shapes again on the chief-kit layout, in both spellings.
+for f in "$FX_CMDPOS"/*-gate-*.cmd; do
+    name="${f##*/}"
+    case "$name" in allow-*) want=0 ;; *) want=2 ;; esac
+    for kit in console-kit chief-kit; do
+        case "$name" in
+        deny-gate-relative-dirty.cmd) echo changed >>"$WT2/scripts/handover/chief-kit/himmel-gate.sh" ;;
+        esac
+        fx_cmd="$(cat "$f")"
+        run "6015 chief-kit layout via $kit: [$name]" "$want" "$(payload "${fx_cmd//console-kit/$kit}" "$WT2")" "$HR2"
+        g -C "$WT2" checkout -q -- .
+    done
 done
 
 # ---- the shared command-position corpus, from the unrelated non-himmel repo ---

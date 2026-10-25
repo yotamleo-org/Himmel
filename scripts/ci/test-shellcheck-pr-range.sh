@@ -91,6 +91,11 @@ verdict rename_lib FILES scripts/lib/check-ci-watch.sh scripts/lib/gh-ci-cache-v
 reset; git mv scripts/zzj scripts/zzk; commit_case rename_dir
 verdict rename_dir FILES scripts/zzk/zzjlib.sh scripts/zzj-consumer.sh scripts/zzj-glob.sh
 
+# rename_dir_symlink: the same rename with a symlink left at the old directory path
+# still selects the consumers that name the old directory
+reset; git mv scripts/zzj scripts/zzk; ln -s zzk scripts/zzj; commit_case rename_dir_symlink
+verdict rename_dir_symlink FILES scripts/zzk/zzjlib.sh scripts/zzj-consumer.sh scripts/zzj-glob.sh
+
 # rename_rc: moving the root rc away changes lint config
 reset; mkdir -p docs; git mv .shellcheckrc docs/shellcheckrc.bak; commit_case rename_rc
 verdict rename_rc ALL

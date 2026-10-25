@@ -36,10 +36,13 @@ ledger-append.sh orphan-check.sh panel-first-pass.sh pr-check-context.sh
 pr-check-env.sh review-round.sh write-verdicts.sh'
 HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
 scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh
-scripts/handover/console-kit/console-wait.sh'
+scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/go.sh
+scripts/handover/chief-kit/himmel-gate.sh scripts/handover/chief-kit/write-verdict.sh
+scripts/handover/chief-kit/console-wait.sh'
 PR_READERS=' grep egrep fgrep cat head tail wc ls cut tr uniq nl jq '
 PR_GIT_UNSAFE=0 PR_TOKFAIL=0 PR_GIT_EXEC=0
 GATE_REL=scripts/handover/console-kit/himmel-gate.sh
+GATE_REL_NEW=scripts/handover/chief-kit/himmel-gate.sh
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
 _c_unquote() { local LC_ALL=C; REPLY=${1//[\'\"\\]/}; }
 _c_join_continuations() { local LC_ALL=C; REPLY=${1//$'\\\n'/}; }
@@ -81,6 +84,10 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/write-verdict*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/console-wait*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/go*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/himmel-gate*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/console-wait*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"
 }
@@ -314,9 +321,11 @@ cmdpos_git() {
     return "$rc"
 }
 cmdpos_clean() { # true when no segment of $cmd executes a script but the dispatcher
-    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw hit
+    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw hit gold=0 gnew=0
     # shellcheck disable=SC2016 # the literal anchored spellings, never expanded
     local s1="\"\$HIMMEL_REPO/$GATE_REL\"" s2="\"\${HIMMEL_REPO}/$GATE_REL\""
+    # shellcheck disable=SC2016 # as above
+    local s3="\"\$HIMMEL_REPO/$GATE_REL_NEW\"" s4="\"\${HIMMEL_REPO}/$GATE_REL_NEW\""
     st_tokenize "$cmd" || return 1
     [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
     k=0
@@ -347,7 +356,11 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                     [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
                     [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 110 ] || return 1
                     # shellcheck disable=SC2016 # literal text, never expanded
-                    case "${ST_W[j]}" in '$HIMMEL_REPO/'"$GATE_REL" | '${HIMMEL_REPO}/'"$GATE_REL") ;; *) return 1 ;; esac
+                    case "${ST_W[j]}" in
+                        '$HIMMEL_REPO/'"$GATE_REL" | '${HIMMEL_REPO}/'"$GATE_REL") gold=1 ;;
+                        '$HIMMEL_REPO/'"$GATE_REL_NEW" | '${HIMMEL_REPO}/'"$GATE_REL_NEW") gnew=1 ;;
+                        *) return 1 ;;
+                    esac
                     # A pipe only after a lone --help: an fd dup (1>&2, 1>&-)
                     # hides the pipe from the dispatcher's own check.
                     if [ "${ST_SEP[sg]}" = '|' ]; then
@@ -377,17 +390,21 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
         case "${ST_SEP[k]}" in '' | '&&' | '|') ;; *) return 1 ;; esac
         k=$((k + 1))
     done
-    # Every dispatcher word is one of the two raw spellings above (a `"$"`
+    # Every dispatcher word is one of the raw spellings above (a `"$"`
     # or quoted-away `$` reads the same once tokenized), the command names
     # HIMMEL_REPO nowhere else, and this hook's own value is an anchor that
-    # carries the dispatcher.
-    case "${HIMMEL_REPO:-}" in /*) [ -f "$HIMMEL_REPO/$GATE_REL" ] || return 1 ;; *) return 1 ;; esac
+    # carries the dispatcher under each kit spelling used.
+    case "${HIMMEL_REPO:-}" in /*) ;; *) return 1 ;; esac
+    [ "$gold" = 0 ] || [ -f "$HIMMEL_REPO/$GATE_REL" ] || return 1
+    [ "$gnew" = 0 ] || [ -f "$HIMMEL_REPO/$GATE_REL_NEW" ] || return 1
     raw=$cmd
     k=0
     while :; do
         case "$raw" in
             *"$s1"*) raw=${raw/"$s1"/ } ;;
             *"$s2"*) raw=${raw/"$s2"/ } ;;
+            *"$s3"*) raw=${raw/"$s3"/ } ;;
+            *"$s4"*) raw=${raw/"$s4"/ } ;;
             *) break ;;
         esac
         k=$((k + 1))

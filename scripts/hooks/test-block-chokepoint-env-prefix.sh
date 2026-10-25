@@ -2505,6 +2505,7 @@ assert_allow "7009 evidence heredoc, line-start read beside a glob scripts/ path
 assert_allow "7009 evidence heredoc, verb line after a glob mention" "$(j "$EVH"$'\n'"- checked scripts/hooks/*.sh"$'\n'"export the notes."$'\n'"EOF2")"
 assert_allow "7009 evidence heredoc then the literal write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"$WV")"
 assert_allow "7009 the literal write-verdict.sh call alone" "$(j "$WV")"
+assert_allow "7009 evidence heredoc then write-verdict.sh through chief-kit" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"${WV/console-kit/chief-kit}")"
 assert_deny "7009 control: a registered chokepoint env prefix beside the evidence heredoc" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN")"
 assert_deny "7009 control: a verb line AFTER the heredoc closes still denies" "$(j "$EVH"$'\n'"prose"$'\n'"EOF2"$'\n'"read scripts/hooks/*.sh")"
 assert_deny "7009 control: an evidence file that is then run still denies" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash $EV")"

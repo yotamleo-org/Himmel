@@ -307,7 +307,7 @@ strip_evidence_heredocs() {
     case "$text" in *"<<'"*) ;; *) return 0 ;; esac
     case "$text" in */tmp/claude-*) ;; *) return 0 ;; esac
     open_re="^cat[[:blank:]]+>[[:blank:]]*(/tmp/claude-[0-9]+/[A-Za-z0-9_./+-]+\\.(md|txt))[[:blank:]]+<<[[:blank:]]*'([A-Za-z0-9_]+)'[[:blank:]]*\$"
-    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[A-Za-z0-9_./+-]*scripts/handover/console-kit/write-verdict\\.sh([[:blank:]]+[A-Za-z0-9_./=:+-]+)*[[:blank:]]*\$"
+    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[A-Za-z0-9_./+-]*scripts/handover/(console|chief)-kit/write-verdict\\.sh([[:blank:]]+[A-Za-z0-9_./=:+-]+)*[[:blank:]]*\$"
     while IFS= read -r line || [ -n "$line" ]; do
         lines[n]=$line; n=$((n + 1))
     done <<<"$text"

@@ -182,6 +182,7 @@ is_handoff_script_call() {
     case "$rest" in ''|[[:space:]]*) ;; *) return 1 ;; esac
     case "$word" in
         scripts/handover/console-kit/append-results.sh|*/scripts/handover/console-kit/append-results.sh) ;;
+        scripts/handover/chief-kit/append-results.sh|*/scripts/handover/chief-kit/append-results.sh) ;;
         scripts/handover/wrap-subtree-check.sh|*/scripts/handover/wrap-subtree-check.sh) ;;
         scripts/context-fill.sh|*/scripts/context-fill.sh) ;;
         scripts/handover/queue-lock.sh|*/scripts/handover/queue-lock.sh)

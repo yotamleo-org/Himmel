@@ -932,7 +932,8 @@
       "title": "console-kit script rolls its own lock/flock instead of the shared lock helper",
       "source": "ledger",
       "globs": [
-        "scripts/handover/console-kit/*.sh"
+        "scripts/handover/console-kit/*.sh",
+        "scripts/handover/chief-kit/*.sh"
       ],
       "detector": {
         "type": "added-line-regex",

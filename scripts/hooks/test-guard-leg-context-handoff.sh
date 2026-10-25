@@ -225,6 +225,10 @@ check "append-results.sh -> allow" allow \
     "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")"
 check "absolute append-results.sh -> allow" allow \
     "$(bash_call "bash /x/himmel/scripts/handover/console-kit/append-results.sh $DOC \"WRAPPED — done\"")"
+check "append-results.sh through chief-kit -> allow" allow \
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC 'BLOCKED — context 90 %'")"
+check "absolute append-results.sh through chief-kit -> allow" allow \
+    "$(bash_call "bash /x/himmel/scripts/handover/chief-kit/append-results.sh $DOC \"WRAPPED — done\"")"
 check "queue-lock.sh release -> allow" allow "$(bash_call "bash scripts/handover/queue-lock.sh release $DOC tok")"
 check "wrap-subtree-check.sh -> allow" allow "$(bash_call 'bash scripts/handover/wrap-subtree-check.sh')"
 check "context-fill.sh probe -> allow" allow "$(bash_call 'bash scripts/context-fill.sh --percent')"

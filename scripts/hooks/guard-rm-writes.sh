@@ -388,7 +388,7 @@ EOF
             *HIMMEL_RELEASE_MANAGER*) deny "marker-override" "command names HIMMEL_RELEASE_MANAGER" ;;
             *leg-pr-open*) deny "pr-open" "leg-pr-open" ;;
             *merge-on-green*) deny "merge" "merge-on-green" ;;
-            *console-kit/go.sh*) deny "go" "console-kit/go.sh" ;;
+            *console-kit/go.sh* | *chief-kit/go.sh*) deny "go" "console-kit/go.sh" ;;
             *inbox-send*) deny "inbox-send" "inbox-send" ;;
             *leg-jira-status*) deny "jira-write" "leg-jira-status" ;;
         esac
