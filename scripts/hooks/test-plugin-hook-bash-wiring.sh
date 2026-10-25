@@ -181,5 +181,21 @@ else
     bad "positive control: wired block-docker-privesc expected refusal, got exit $guard_rc: $(cat "$ERR")"
 fi
 
+# A chief session needs both console guards: a missing script must block, not pass.
+for guard in guard-console-dispatch guard-console-foreground; do
+    MISSING_COMMAND="$(jq -r --arg g "$guard.sh" '.hooks.PreToolUse[] | .hooks[] | select(.command | contains($g)) | .command' "$HOOKS_JSON")"
+    printf '%s' "$PAYLOAD" | env \
+        CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \
+        CLAUDE_PROJECT_DIR="$T/empty-project" \
+        HIMMEL_CONSOLE=1 \
+        bash -c "$MISSING_COMMAND" >/dev/null 2>"$ERR"
+    missing_rc=$?
+    if [ "$missing_rc" -eq 2 ] && grep -q 'failing closed' "$ERR"; then
+        ok "$guard: a missing script blocks (exit 2) in a chief session"
+    else
+        bad "$guard: a missing script expected exit 2 'failing closed' in a chief session, got exit $missing_rc: $(cat "$ERR")"
+    fi
+done
+
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

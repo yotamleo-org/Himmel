@@ -80,7 +80,7 @@ A merged PR is proof-first only when it has both halves; each half is shown on i
 
 ## Regenerate
 
-A new planted-bug row comes from the [planted-bug eval](../../scripts/eval/review-panel/README.md); a new proof-first row from `python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record`; test-first sessions are written as agent sessions end. Then run steps 2 and 3 with --until and --as-of moved past the new row.
+A new planted-bug row comes from the [planted-bug eval](../../scripts/eval/review-panel/README.md); a new proof-first row from `python3 scripts/eval/worker-digest/pdd_share.py --limit 120 --record`; test-first sessions are written as agent sessions end. Then run steps 2 and 3 with --until and --as-of moved past the new row.
 
 1. `bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 -name '*.jsonl' -newermt <first-day> ! -newermt <day-after-last-day>) > cache-probe.txt` (the transcripts modified from the sample's first day to its last)
 2. `python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --cache-scope 'the sessions of this project modified from 2026-10-22 to 2026-10-25' --until 2026-10-25T00:00:00Z --as-of 2026-10-25`
