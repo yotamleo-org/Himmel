@@ -201,6 +201,11 @@ check    "9: CHIEF_FILL_HANDOVER_PCT overrides (50 % under 60 is OK, rc 0)" "$rc
 fx_run env CHIEF_FILL_HANDOVER_PCT=abc
 check    "9: a bad CHIEF_FILL_HANDOVER_PCT falls back to 45 (rc 3)" "$rc" 3
 contains "9: and says so on stderr" "$err" "ignoring CHIEF_FILL_HANDOVER_PCT=abc"
+fx_run env CHIEF_FILL_HANDOVER_PCT=101
+check    "9: a CHIEF_FILL_HANDOVER_PCT above 100 falls back to 45 (rc 3)" "$rc" 3
+contains "9: and says so on stderr (above 100)" "$err" "ignoring CHIEF_FILL_HANDOVER_PCT=101"
+fx_run env CHIEF_FILL_HANDOVER_PCT=100
+check    "9: CHIEF_FILL_HANDOVER_PCT=100 is accepted (50 % under 100 is OK, rc 0)" "$rc" 0
 fx_fill 80 4000
 fx_run env
 check    "9: a stale snapshot is an estimate, the fill rule is skipped (rc 0)" "$rc" 0
