@@ -420,8 +420,8 @@ async function createAccount(f) {
   if (!same) { setupMsgs.account = "the two passwords differ"; return paint(); }
   const { ok, j } = await post("/api/setup/account", { user, password });
   setupMsgs.account = ok ? "login created" : (j.error || "failed");
-  if (ok && setup) setup.account = { status: j.status, user: j.user, create: "terminal" };
   paint();
+  if (ok) loadSetup();
 }
 document.addEventListener("submit", (e) => {
   const a = e.target.closest && e.target.closest("[data-account-form]");
