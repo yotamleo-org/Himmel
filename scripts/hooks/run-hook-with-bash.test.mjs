@@ -475,10 +475,11 @@ test('a member killed for its bound takes its whole process group with it', { sk
       assert.match(result.stderr, /SKIP orphan\.sh/);
       pid = Number(readFileSync(pidFile, 'utf8'));
       // a reaped-late zombie is dead too: only a live process state counts
-      const alive = () => /^[^Z]/.test(spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout.trim());
+      const alive = (p) => /^[^Z]/.test(spawnSync('ps', ['-o', 'stat=', '-p', String(p)], { encoding: 'utf8' }).stdout.trim());
+      assert.equal(alive(process.pid), true, 'the liveness probe must see this test process alive');
       const until = Date.now() + 3000;
-      while (alive() && Date.now() < until) spawnSync('sleep', ['0.1']);
-      assert.equal(alive(), false, 'the killed member left its child running');
+      while (alive(pid) && Date.now() < until) spawnSync('sleep', ['0.1']);
+      assert.equal(alive(pid), false, 'the killed member left its child running');
     } finally {
       if (pid) try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
     }
