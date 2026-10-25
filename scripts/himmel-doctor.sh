@@ -3409,8 +3409,8 @@ check_c74_config_split() {
     elif [ ! -e "$conf" ]; then
         emit INFO C74-himmel-conf "no $conf (this install has not migrated its behaviour keys out of .env)" \
             "optional: $migrate --dry-run, then without --dry-run (docs/internals/config-layers.md)"
-    elif [ ! -r "$conf" ]; then
-        emit WARN C74-himmel-conf "$conf is not readable" "fix its permissions"
+    elif [ ! -f "$conf" ] || [ ! -r "$conf" ]; then
+        emit WARN C74-himmel-conf "$conf is not a readable file" "fix its permissions, or replace it with a KEY=value file"
     else
         bad="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*(#|$)/ { next } !/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ { print NR; exit }' "$conf")"
         if [ -n "$bad" ]; then

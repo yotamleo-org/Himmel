@@ -7214,6 +7214,12 @@ c74_reset
 ln -s "$c74_t/no-such-vault/himmel.conf" "$c74_conf"
 out="$(c74_run)"
 if grepq "$out" -F 'WARN C74-himmel-conf'; then pass "C74 dangling himmel.conf link -> WARN"; else fail "C74 dangling -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: a directory at the himmel.conf path -> WARN, never OK =="
+c74_reset
+mkdir -p "$c74_conf"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-himmel-conf' && ! grepq "$out" -F 'OK   C74-himmel-conf'; then pass "C74 himmel.conf is a directory -> WARN"; else fail "C74 conf dir -> $(printf '%s' "$out" | head -4)"; fi
+rmdir "$c74_conf"
 echo "== C74-config-split: a policy key still in .env, no policy file -> WARN naming the key =="
 c74_reset
 printf 'ARMAUTOMERGE=1\n' > "$c74_t/env"
