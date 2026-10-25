@@ -7240,6 +7240,12 @@ echo "== C74-config-split: no policy file and no policy key in .env -> INFO =="
 c74_reset
 out="$(c74_run)"
 if grepq "$out" -F 'INFO C74-policy' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no policy file, nothing relies on it -> INFO"; else fail "C74 no policy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: an unreadable .env path -> WARN unchecked, never OK or safe defaults =="
+c74_reset
+mkdir -p "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'not checked' && ! grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'safe default'; then pass "C74 unreadable .env -> WARN unchecked"; else fail "C74 unreadable env -> $(printf '%s' "$out" | head -4)"; fi
+rmdir "$c74_t/env"
 rm -rf "$c74_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

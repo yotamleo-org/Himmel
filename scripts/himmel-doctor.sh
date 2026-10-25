@@ -3398,7 +3398,7 @@ check_c73_bun_compiled() {
 # classes come from _himmel_key_class; .env is read for key NAMES only and no
 # value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (the .env to list).
 check_c74_config_split() {
-    local dir conf pol envfile bad names key held miss="" cfg="" present=""
+    local dir conf pol envfile bad names key held miss="" cfg="" present="" envbad=""
     local migrate="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
     dir="$(_himmel_config_dir)"; conf="$dir/himmel.conf"; pol="$dir/config.json"
     envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
@@ -3421,8 +3421,12 @@ check_c74_config_split() {
         fi
     fi
 
-    if [ ! -f "$envfile" ] || [ ! -r "$envfile" ]; then
-        emit OK C74-env-keys "no readable .env to check"
+    if [ ! -e "$envfile" ]; then
+        emit OK C74-env-keys "no .env to check"
+    elif [ ! -f "$envfile" ] || [ ! -r "$envfile" ]; then
+        envbad=1
+        emit WARN C74-env-keys "$envfile exists but is not a readable file, so its keys were not checked (load_policy refuses an unreadable .env)" \
+            "fix its permissions, then re-run the doctor"
     else
         names="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
             i = index($0, "="); if (i == 0) next
@@ -3444,7 +3448,10 @@ check_c74_config_split() {
     fi
 
     if [ ! -e "$pol" ]; then
-        if [ -n "$present" ]; then
+        if [ -n "$envbad" ]; then
+            emit INFO C74-policy "no $pol, and .env is unreadable so the gate keys it carries were not checked" \
+                "fix the .env permissions, then re-run the doctor"
+        elif [ -n "$present" ]; then
             emit WARN C74-policy "$pol is missing but .env still carries gate keys: ${present# } (gates read them with a DEPRECATED notice)" \
                 "the operator moves them at their own prompt: $migrate --dry-run prints the command"
         else
@@ -3465,6 +3472,9 @@ $key="*) ;; *) miss="$miss $key" ;; esac
         if [ -n "$miss" ]; then
             emit WARN C74-policy "$pol does not hold gate keys that .env still carries: ${miss# }" \
                 "the operator adds them under .policy at their own prompt: $migrate --dry-run prints the command"
+        elif [ -n "$envbad" ]; then
+            emit INFO C74-policy "$pol is parseable; .env is unreadable so its gate keys were not compared" \
+                "fix the .env permissions, then re-run the doctor"
         else
             emit OK C74-policy "$pol is parseable and holds every gate key .env carries"
         fi
