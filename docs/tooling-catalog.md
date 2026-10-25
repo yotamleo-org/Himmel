@@ -445,7 +445,7 @@ Astra surfaces (`~/.codex/config.toml`, `scripts/cr/critics.json`) are already a
 
 ### himmel (local directory marketplace)
 
-**Source:** `<himmel-path>/marketplace/` (typically `C:\Users\<user>\Documents\github\himmel\marketplace\`)
+**Source:** `<himmel-path>/marketplace/`
 **Registered via:** `extraKnownMarketplaces.himmel` in `~/.claude/settings.json`
 **Plugins:**
 
