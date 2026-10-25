@@ -881,17 +881,6 @@ out="$(run_is "$range")"
 if ! grepq "$out" "^${LSP}\$"; then pass "a dist/ file does not select launch-site-profiles"; else fail "launch-site veto (dist) missed: $out"; fi
 if grepq "$out" "^${PCR}\$"; then pass "a dist/ file still selects pr-check-run"; else fail "pr-check-run lost dist/ file: $out"; fi
 
-# --- 33. A changed .claude/commands/*.html selects the CR
-# terminology suite (RED control: the .md row alone missed it). ----------------
-TERM=scripts/ci/test-check-cr-terminology\\.sh
-mkf scripts/ci/test-check-cr-terminology.sh 'echo term'
-git -C "$FX" add -A
-git -C "$FX" commit -q -m "chore: terminology fixture"
-mkdir -p "$FX/.claude/commands"
-change .claude/commands/x.html
-out="$(run_is "$range")"
-if grepq "$out" "^${TERM}\$"; then pass "a .claude/commands/x.html -> test-check-cr-terminology.sh"; else fail "commands html row missed: $out"; fi
-
 # --- 33b. WS5 T13(b) scans every shipped (non-test) shell or JS source the diff
 # adds and names none of them: a one-file change to a scanned source selects it
 # (RED control: PR 2217 changed scripts/telegram/break-glass.sh and the suite

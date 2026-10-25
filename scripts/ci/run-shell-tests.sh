@@ -116,6 +116,12 @@
 #   SUITE_RUN_BUDGET   whole-run wall-clock cap, seconds (default 7200); the
 #                      runner stops BETWEEN suites once it is spent and names
 #                      what did not run, instead of running until morning
+#   SUITE_JOBS         suites run at once (default 1; on a GitHub Actions
+#                      runner the CPU count, capped at 4, except on Windows).
+#                      Each suite keeps its own log, rc, cap and retry; its
+#                      output prints as one block when it finishes
+#   SUITE_PARALLEL_DENY the list of suites that run alone (default
+#                      scripts/ci/parallel-deny.txt beside this runner)
 #   SUITE_LOCK         0 disables the machine lock entirely
 #   SUITE_LOCK_DIR     override the lock path (tests use their own sandbox);
 #                      by default the path is keyed by SCAN ROOT, so a scoped
@@ -3354,7 +3360,7 @@ fi
 # --------------------------------------------------------------------------
 suites_file=$(mktemp)
 suites_raw=$(mktemp)
-trap 'rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
+trap '[ "${suite_jobs:-1}" -le 1 ] || ! declare -F _lanes_stop >/dev/null || _lanes_stop; rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; [ -z "${live_lane_roots:-}" ] || rm -rf $live_lane_roots; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
 
 # Check EVERY discovery stage so a partial-output-then-fail can't mask an
 # incomplete scan (ran>0 with the guard below passing → green on a scan that
@@ -4299,6 +4305,68 @@ if [ "$list_only" -eq 0 ]; then
     exit 2
   fi
 fi
+
+# In-shard parallelism: up to suite_jobs suites at once, each in its own lane
+# with its own live-state sentinels. SUITE_JOBS wins; otherwise a CI runner
+# (GITHUB_ACTIONS=true) uses its CPU count, capped at 4, and every other caller
+# stays serial: on a workstation the machine semaphore budgets one slot per
+# runner, and a nested runner inside a suite must not multiply its parent.
+# Windows stays serial too: MSYS forks are the bottleneck there already.
+if [ -n "${SUITE_JOBS:-}" ]; then
+  suite_jobs=$(_suite_num SUITE_JOBS "$SUITE_JOBS" 1)
+elif [ "${GITHUB_ACTIONS:-}" = true ] && [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] && ! proc_tree_is_windows; then
+  suite_jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null) || suite_jobs=1  # swallow-ok: an unknown CPU count runs serial
+  suite_jobs=$(_suite_num "the CPU count" "$suite_jobs" 1)
+  [ "$suite_jobs" -le 4 ] || suite_jobs=4
+else
+  suite_jobs=1
+fi
+# Suites that must run alone (fixed ports, shared global state): one glob per
+# line, matched against "/<resolved suite path>" (suite_key), then a reason. Unreadable list in a
+# parallel run: fall back to serial rather than guess which suites are safe.
+parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
+parallel_deny=""
+if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
+  if [ -r "$parallel_deny_file" ]; then
+    while read -r _pd_glob _pd_reason; do
+      case "$_pd_glob" in ''|'#'*) continue ;; esac
+      parallel_deny="${parallel_deny}${_pd_glob}
+"
+    done < "$parallel_deny_file"
+  else
+    printf 'WARN: parallel deny-list %s is unreadable — running suites one at a time\n' "$parallel_deny_file" >&2
+    suite_jobs=1
+  fi
+fi
+_suite_parallel_denied() {
+  local _p
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    # shellcheck disable=SC2254  # the list entries are patterns
+    case "/$1" in $_p) return 0 ;; esac
+  done <<< "$parallel_deny"
+  return 1
+}
+# Lane 0 reuses live_root; every other lane gets its own sentinel root.
+lane_root=() lane_pid=() lane_out=()
+live_lane_roots=""
+if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
+  lane_root[0]="$live_root"
+  _lane_main_root="$live_root"
+  for (( _li = 1; _li < suite_jobs; _li++ )); do
+    # prim-ok: anchored at literal /tmp like live_root above; swallow-ok: an empty root aborts the run below
+    live_root=$(mktemp -d "/tmp/himmel-live-sentinel.XXXXXX" 2>/dev/null) || live_root=""
+    [ -z "$live_root" ] || live_lane_roots="$live_lane_roots $live_root"
+    if [ -z "$live_root" ] || ! _live_reset; then
+      live_root="$_lane_main_root"
+      echo "run-shell-tests.sh: could not create the live-state sentinels for a parallel lane — refusing to run suites against the caller's live state" >&2
+      exit 2
+    fi
+    lane_root[_li]="$live_root"
+  done
+  live_root="$_lane_main_root"
+  printf 'parallel: up to %s suites at once (SUITE_JOBS), deny-list %s\n' "$suite_jobs" "$parallel_deny_file"
+fi
 # FAIL_LOG_DIR/.run-complete marks a loop that ran to its end (pass
 # or fail); a killed run never writes it, so a consumer can tell a partial log
 # set from a complete one. Cleared first so a stale one cannot vouch for this run.
@@ -4311,102 +4379,8 @@ if [ -n "${FAIL_LOG_DIR:-}" ] && [ "${RST_SENTINEL_DIR:-}" != "$FAIL_LOG_DIR" ];
   export RST_SENTINEL_DIR="$FAIL_LOG_DIR"
   rm -f "$FAIL_LOG_DIR/.run-complete"
 fi
-while IFS= read -r suite <&3; do
-  [ -n "$suite" ] || continue
-
-  # Two derived paths, for two different jobs:
-  #   relpath    — scan-root-relative, the CURSOR's spelling (see the budget
-  #                block below). Keeps the caller's spelling on purpose.
-  #   suite_key  — the same suite under the RESOLVED scan root. This is what
-  #                every suite table matches against, so a verdict depends on
-  #                neither the scan root's depth nor how it was spelled
-  #                (symlink, junction, absolute, "./", trailing slash).
-  relpath="${suite#"${scan}"/}"
-  suite_key="${scan_resolved}/${relpath}"
-  # The manifest's spelling: repo-relative, as impacted-selection.sh prints.
-  if [ -n "$manifest_path" ]; then
-    mf_rel="${suite_key#"$manifest_root"/}"
-    _mf_seen="${_mf_seen}${mf_rel}
-"
-  fi
-
-  # Every skip filter, in one call. SKIP_LIST -> docs-only ->
-  # tier -> conditional -> capability, in that precedence, with the reason the
-  # chain chose. The --shard pre-pass above walks the same function, so the
-  # run list the loop produces and the run list the bin-pack partitioned are
-  # the same list by construction rather than by two chains staying in step.
-  if suite_filter_reason "$relpath" "$suite_key"; then
-    skip=$((skip + 1))
-    printf '[SKIP] %s — %s\n' "$suite" "$_filter_reason"
-    manifest_add "skip ${mf_rel:-}"
-    continue
-  fi
-
-  # Shard filter — LAST, after every
-  # filter above, so the split is over the FINAL run list. Splitting raw
-  # discovery instead would let a host's SKIP_LIST/tier/capability skips fall
-  # unevenly across shards, so one runner carries the corpus while five idle.
-  #
-  # The decision itself was made before the loop started: $shard_assignment
-  # holds this shard's bin from the duration bin-pack, or $shard_binpack is 0
-  # and the v1 round-robin still applies. Both are an EXACT partition — their
-  # union is the unsharded run list and they are pairwise disjoint. Anything
-  # weaker drops suites off the gate while all n shards report green, the
-  # false-green class reached through the parallelism instead of
-  # through discovery.
-  #
-  # $run_index counts run-ELIGIBLE suites and advances for EVERY one of them,
-  # whether or not this shard claims it. It is what the round-robin fallback
-  # divides, and what the empty-shard refusal below reports as the size of the
-  # run list, so it advances on both paths.
-  if [ "$shard_total" -gt 0 ]; then
-    if [ "$shard_binpack" -eq 1 ]; then
-      # Membership by newline-delimited containment: no fork per suite, and no
-      # separator a path could contain (discovery is newline-delimited, so a
-      # path with a newline in it never reached this list).
-      case "$shard_assignment" in
-        *"${_shard_nl}${suite}${_shard_nl}"*) _shard_mine=1 ;;
-        *)                                    _shard_mine=0 ;;
-      esac
-    else
-      _shard_mine=$(( run_index % shard_total == shard_offset ))
-    fi
-    run_index=$((run_index + 1))
-    [ "$_shard_mine" -eq 1 ] || continue
-    shard_assigned=$((shard_assigned + 1))
-  fi
-
-  if [ "$list_only" -eq 1 ]; then
-    printf '[RUN ] %s\n' "$suite"
-    continue
-  fi
-
-  if [ "$stopped" -eq 1 ]; then
-    stopped_suites="${stopped_suites}  ${suite}
-"
-    manifest_add "unrun ${mf_rel:-}"
-    continue
-  fi
-
-  # Whole-run budget, checked BETWEEN suites so a cap can never truncate a
-  # suite mid-assertion. Everything still on the list is named as unrun —
-  # stopping quietly here would be the same false green the discovery guards
-  # above exist to prevent.
-  if [ "$budget_expired" -eq 1 ] || \
-     [ $(( SECONDS - run_start )) -ge "$SUITE_RUN_BUDGET" ]; then
-    if [ "$budget_expired" -eq 0 ]; then
-      budget_expired=1
-      # The first suite the budget kept from running: the next run resumes
-      # HERE. Scan-root-relative so the spelling of the scan
-      # root cannot invalidate the cursor.
-      rotate_next="$relpath"
-    fi
-    unrun_suites="${unrun_suites}  ${suite}
-"
-    manifest_add "unrun ${mf_rel:-}"
-    continue
-  fi
-
+# _suite_attempts — run the current suite, retrying a failed attempt 1 once.
+_suite_attempts() {
   # Attempt 1 is the normal run; a failed attempt 1 jumps back here
   # once, for attempt 2. The body is not re-indented, to keep this diff reviewable.
   _attempt=1
@@ -4462,6 +4436,8 @@ while IFS= read -r suite <&3; do
     # reach real operator state (restart-bridge.sh) REFUSES when the suite
     # forgot to sandbox its root, instead of trusting it.
     export HIMMEL_TEST_FIXTURE=1
+    # A runner a suite starts runs its own fixtures one at a time.
+    unset SUITE_JOBS
     # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
@@ -4553,8 +4529,12 @@ LIVEMSGS
   fi
   break
   done
+  suite_end=$SECONDS
+}
 
-  dur=$(( SECONDS - start ))
+# _suite_account — count, report and clean up the suite _suite_attempts ran.
+_suite_account() {
+  dur=$(( suite_end - start ))
   # A retry that exits 0 through the suite's own SKIP path ran none of the
   # assertions that failed the first time, so it is no evidence of a flake: the
   # suite stays FAIL with the first attempt's status.
@@ -4686,7 +4666,226 @@ ${suite_key#"$tier_repo_root"/}
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
   [ "$rc" -eq 0 ] || [ "$_quar" -eq 1 ] || [ "$stop_on_fail" != 1 ] || stopped=1
+}
+
+# _lane_worker_stop — inside a lane: end the suite's and the watchdog's
+# process groups, which a TERM to the lane itself does not reach.
+# shellcheck disable=SC2317,SC2329  # invoked from the lane's TERM trap
+_lane_worker_stop() {
+  local _g _n=0 _alive
+  for _g in ${watch_pid:-} ${suite_pid:-}; do kill -TERM -"$_g" 2>/dev/null; done
+  while [ "$_n" -lt 30 ]; do
+    _alive=0
+    for _g in ${watch_pid:-} ${suite_pid:-}; do proc_tree_group_alive "$_g" && _alive=1; done
+    [ "$_alive" -eq 1 ] || break
+    sleep 0.1
+    _n=$((_n + 1))
+  done
+  for _g in ${watch_pid:-} ${suite_pid:-}; do kill -KILL -"$_g" 2>/dev/null; done
+  [ -z "${suite_tmp:-}" ] || rm -rf "$suite_tmp" 2>/dev/null
+  [ -z "${log:-}" ] || rm -f "$log" "$log.rc"
+}
+# _lane_launch <lane> — run the current suite's attempts in the background in
+# that lane. Its output is held in a private directory and printed when the
+# parent reaps it, so a suite's lines stay together; its result comes back as
+# a sourced file there.
+_lane_launch() {
+  local _i="$1"
+  # prim-ok: anchored at literal /tmp like the suite temp roots
+  lane_out[_i]=$(mktemp -d "/tmp/himmel-lane.XXXXXX") || { echo "run-shell-tests.sh: mktemp failed for a parallel lane" >&2; _lanes_stop; exit 2; }
+  ( trap '_lane_worker_stop; exit 143' TERM
+    live_root="${lane_root[_i]}"
+    _w_t0=$timed_out
+    _suite_attempts
+    { for _v in rc capped _attempt first_rc first_capped first_log log start suite_end suite_timeout \
+                suite relpath suite_key mf_rel; do
+        printf '%s=%q\n' "$_v" "${!_v:-}"
+      done
+      printf '_w_timed_out=%s\n' "$((timed_out - _w_t0))"
+    } > "${lane_out[_i]}/res" ) > "${lane_out[_i]}/out" 2> "${lane_out[_i]}/err" &
+  lane_pid[_i]=$!
+}
+# _lane_reap <lane> — collect a finished lane: print its output, restore its
+# result, account for it. A worker that left no result exits the run with 2.
+_lane_reap() {
+  local _i="$1" _res="${lane_out[$1]}/res"
+  # The loop's own suite variables belong to the suite about to launch.
+  local _s="$suite" _r="$relpath" _k="$suite_key" _m="${mf_rel:-}"
+  wait "${lane_pid[_i]}" 2>/dev/null
+  lane_pid[_i]=""
+  cat "${lane_out[_i]}/out"
+  cat "${lane_out[_i]}/err" >&2
+  if [ ! -s "$_res" ]; then
+    rm -rf "${lane_out[_i]}"
+    echo "run-shell-tests.sh: a parallel suite worker ended without a result — refusing to run more suites" >&2
+    _lanes_stop
+    exit 2
+  fi
+  _w_timed_out=0
+  # shellcheck disable=SC1090  # written by _lane_launch above
+  . "$_res"
+  rm -rf "${lane_out[_i]}"
+  timed_out=$((timed_out + _w_timed_out))
+  _suite_account
+  suite="$_s" relpath="$_r" suite_key="$_k" mf_rel="$_m"
+}
+# _lane_free — reap every finished lane, then set lane_free to an idle one;
+# bash reaps a background child itself, so a kill -0 that fails means it is
+# done. Reaping all of them first accounts every finished suite before the
+# caller's stop check.
+_lane_free() {
+  local _i
+  while :; do
+    for (( _i = 0; _i < suite_jobs; _i++ )); do
+      [ -n "${lane_pid[_i]:-}" ] || continue
+      kill -0 "${lane_pid[_i]}" 2>/dev/null || _lane_reap "$_i"
+    done
+    for (( _i = 0; _i < suite_jobs; _i++ )); do
+      if [ -z "${lane_pid[_i]:-}" ]; then lane_free=$_i; return 0; fi
+    done
+    sleep 0.2
+  done
+}
+_lanes_drain() {
+  local _i
+  for (( _i = 0; _i < suite_jobs; _i++ )); do
+    [ -n "${lane_pid[_i]:-}" ] || continue
+    while kill -0 "${lane_pid[_i]}" 2>/dev/null; do sleep 0.2; done
+    _lane_reap "$_i"
+  done
+}
+# _lanes_stop — terminate every running lane, for an exit mid-run. Each lane
+# ends its own suite's process groups on TERM (_lane_worker_stop).
+_lanes_stop() {
+  local _i
+  for (( _i = 0; _i < suite_jobs; _i++ )); do
+    [ -z "${lane_pid[_i]:-}" ] || kill -TERM "${lane_pid[_i]}" 2>/dev/null
+  done
+  for (( _i = 0; _i < suite_jobs; _i++ )); do
+    [ -n "${lane_pid[_i]:-}" ] || continue
+    wait "${lane_pid[_i]}" 2>/dev/null
+    rm -rf "${lane_out[_i]}"
+    lane_pid[_i]=""
+  done
+}
+
+while IFS= read -r suite <&3; do
+  [ -n "$suite" ] || continue
+
+  # Two derived paths, for two different jobs:
+  #   relpath    — scan-root-relative, the CURSOR's spelling (see the budget
+  #                block below). Keeps the caller's spelling on purpose.
+  #   suite_key  — the same suite under the RESOLVED scan root. This is what
+  #                every suite table matches against, so a verdict depends on
+  #                neither the scan root's depth nor how it was spelled
+  #                (symlink, junction, absolute, "./", trailing slash).
+  relpath="${suite#"${scan}"/}"
+  suite_key="${scan_resolved}/${relpath}"
+  # The manifest's spelling: repo-relative, as impacted-selection.sh prints.
+  if [ -n "$manifest_path" ]; then
+    mf_rel="${suite_key#"$manifest_root"/}"
+    _mf_seen="${_mf_seen}${mf_rel}
+"
+  fi
+
+  # Every skip filter, in one call. SKIP_LIST -> docs-only ->
+  # tier -> conditional -> capability, in that precedence, with the reason the
+  # chain chose. The --shard pre-pass above walks the same function, so the
+  # run list the loop produces and the run list the bin-pack partitioned are
+  # the same list by construction rather than by two chains staying in step.
+  if suite_filter_reason "$relpath" "$suite_key"; then
+    skip=$((skip + 1))
+    printf '[SKIP] %s — %s\n' "$suite" "$_filter_reason"
+    manifest_add "skip ${mf_rel:-}"
+    continue
+  fi
+
+  # Shard filter — LAST, after every
+  # filter above, so the split is over the FINAL run list. Splitting raw
+  # discovery instead would let a host's SKIP_LIST/tier/capability skips fall
+  # unevenly across shards, so one runner carries the corpus while five idle.
+  #
+  # The decision itself was made before the loop started: $shard_assignment
+  # holds this shard's bin from the duration bin-pack, or $shard_binpack is 0
+  # and the v1 round-robin still applies. Both are an EXACT partition — their
+  # union is the unsharded run list and they are pairwise disjoint. Anything
+  # weaker drops suites off the gate while all n shards report green, the
+  # false-green class reached through the parallelism instead of
+  # through discovery.
+  #
+  # $run_index counts run-ELIGIBLE suites and advances for EVERY one of them,
+  # whether or not this shard claims it. It is what the round-robin fallback
+  # divides, and what the empty-shard refusal below reports as the size of the
+  # run list, so it advances on both paths.
+  if [ "$shard_total" -gt 0 ]; then
+    if [ "$shard_binpack" -eq 1 ]; then
+      # Membership by newline-delimited containment: no fork per suite, and no
+      # separator a path could contain (discovery is newline-delimited, so a
+      # path with a newline in it never reached this list).
+      case "$shard_assignment" in
+        *"${_shard_nl}${suite}${_shard_nl}"*) _shard_mine=1 ;;
+        *)                                    _shard_mine=0 ;;
+      esac
+    else
+      _shard_mine=$(( run_index % shard_total == shard_offset ))
+    fi
+    run_index=$((run_index + 1))
+    [ "$_shard_mine" -eq 1 ] || continue
+    shard_assigned=$((shard_assigned + 1))
+  fi
+
+  if [ "$list_only" -eq 1 ]; then
+    printf '[RUN ] %s\n' "$suite"
+    continue
+  fi
+
+  # A parallel run waits for room first (every lane for a deny-listed suite,
+  # one lane otherwise), so the stop and budget checks below also see the
+  # suites that finished and the time that passed during the wait.
+  suite_alone=0
+  if [ "$suite_jobs" -gt 1 ]; then
+    if _suite_parallel_denied "$suite_key"; then
+      suite_alone=1
+      _lanes_drain
+    else
+      _lane_free
+    fi
+  fi
+
+  if [ "$stopped" -eq 1 ]; then
+    stopped_suites="${stopped_suites}  ${suite}
+"
+    manifest_add "unrun ${mf_rel:-}"
+    continue
+  fi
+
+  # Whole-run budget, checked BETWEEN suites so a cap can never truncate a
+  # suite mid-assertion. Everything still on the list is named as unrun —
+  # stopping quietly here would be the same false green the discovery guards
+  # above exist to prevent.
+  if [ "$budget_expired" -eq 1 ] || \
+     [ $(( SECONDS - run_start )) -ge "$SUITE_RUN_BUDGET" ]; then
+    if [ "$budget_expired" -eq 0 ]; then
+      budget_expired=1
+      # The first suite the budget kept from running: the next run resumes
+      # HERE. Scan-root-relative so the spelling of the scan
+      # root cannot invalidate the cursor.
+      rotate_next="$relpath"
+    fi
+    unrun_suites="${unrun_suites}  ${suite}
+"
+    manifest_add "unrun ${mf_rel:-}"
+    continue
+  fi
+
+  if [ "$suite_jobs" -le 1 ] || [ "$suite_alone" -eq 1 ]; then
+    _suite_attempts
+    _suite_account
+  else
+    _lane_launch "$lane_free"
+  fi
 done 3< "$suites_file"
+[ "$suite_jobs" -le 1 ] || _lanes_drain
 
 if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
   mkdir -p "$FAIL_LOG_DIR" && : > "$FAIL_LOG_DIR/.run-complete"

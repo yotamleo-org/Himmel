@@ -153,6 +153,7 @@ scripts/ci/test-run-shell-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-impacted.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-live-state.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-manifest.sh	pr	static-gate
+scripts/ci/test-run-shell-tests-parallel.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-guards.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation.sh	pr	trust-path
@@ -262,6 +263,7 @@ scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-second-model-review-page.sh	pr	static-gate
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/docs/test-troubleshooting-page.sh	pr	static-gate
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
 scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
@@ -292,6 +294,8 @@ scripts/eval/test-cache-probe.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/eval/test-ci-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-console-load-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-context-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/test-deferred-outcome.sh	local	behaviour suite, new HIMMEL-7517
+scripts/eval/test-escapes.sh	local	behaviour suite, new HIMMEL-7517
 scripts/eval/test-eval-feedback.sh	local	behaviour suite, new HIMMEL-6942
 scripts/eval/test-eval-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled HIMMEL-6716
@@ -318,7 +322,7 @@ scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
 scripts/graphify/test-leg-graph-rationale.sh	pr	guard
 scripts/graphify/test-leg-graph.sh	pr	guard
-scripts/graphify/test-no-windows-indexed.sh	pr	guard
+scripts/graphify/test-no-windows-indexed.sh	local	one-time Windows-drop check, run by hand
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard

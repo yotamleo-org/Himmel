@@ -199,8 +199,16 @@ template_version: 3
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
 
-> **Do not:** <the specific things THIS leg must not touch — adjacent files
-> another leg owns, protocols that are out of scope, a script another leg
+> **Writes:** <exactly the files and directories THIS worker edits, on this one
+> line (HIMMEL-7469), as paths only, no prose. The chief's collision check
+> holds every path on this line and cleans nothing off it; without it, it falls
+> back to the "writes confined to" clause and ignores a path inside a backticked
+> or flagged grep/find, an "Impacted suites" list, a "Trust path" note and a
+> "SINGLE-WRITER" note that names another holder. Name a file you only read
+> nowhere on it.>
+
+> **Do not:** <the specific things THIS worker must not touch — adjacent files
+> another worker owns, protocols that are out of scope, a script another worker
 > owns, a probe that may be run only once.>
 
 > **Pre-granted follow-ups (optional)** (HIMMEL-7091): a ruling
