@@ -269,7 +269,8 @@ python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/
 [ "$rc" = 0 ] && pass "a lane-worker leg with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
 # A non-native leg with no model key takes the lane's model: no native model argument in the launcher, the lane model in the brief header.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-nomodel.json"
-python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --console BZ --bucket "$WORK/b20" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-nomodel.err"
+python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --console BZ --bucket "$WORK/b20" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-nomodel.err"; rc=$?
+[ "$rc" = 0 ] && [ -s "$WORK/b20/launch-N901.sh" ] && [ -n "$(find "$WORK/b20" -name 'HIMMEL-9001-N901-*.md')" ] && pass "a claudex leg with no model key generates its brief and launcher (rc 0)" || fail "claudex no-model rc=$rc: $(cat "$WORK/lane-nomodel.err")"
 # claudex is a live lane: nothing the generator writes or prints calls it dormant.
 lacks "a claudex leg's brief carries no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$(find "$WORK/b20" -name 'HIMMEL-9001-N901-*.md' | head -n 1)")" "dormant"
 lacks "a claudex leg's launcher carries no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$WORK/b20/launch-N901.sh")" "dormant"
