@@ -426,8 +426,8 @@ _crf_main() {
         else
             sel=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
             info=""
-            [ -z "$sel" ] || info=$(gh pr list --head "$sel" --state open ${nwo:+--repo "$nwo"} --json number,headRefOid \
-                -q '.[0] | select(. != null) | "\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
+            [ -z "$sel" ] || info=$(gh pr list --head "$sel" --state open ${nwo:+--repo "$nwo"} --json number,headRefOid,isCrossRepository \
+                -q '[.[] | select(.isCrossRepository | not)] | .[0] | select(. != null) | "\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
         fi
         [ -n "$info" ] || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
         [ -n "$pr" ] || pr=${info%% *}
