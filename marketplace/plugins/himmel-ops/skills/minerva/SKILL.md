@@ -274,8 +274,8 @@ if `autonomous`, proceed.
 ## Terminal
 
 You now hold a critic-hardened, approved implementation plan. What happens next
-depends on the **`execute` leg** of the initiative grammar (HIMMEL-444). Read the
-active legs (transport wrapper → the shared resolver; fail-open). Re-resolve the
+depends on the **`execute` step** of the initiative grammar (HIMMEL-444). Read the
+active steps (transport wrapper → the shared resolver; fail-open). Re-resolve the
 scripts dir (this runs in a separate shell from the Mode section — same resolver,
 byte-identical):
 

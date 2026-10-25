@@ -334,9 +334,9 @@ complete (no changes made)" without touching the `at` queue) and is the safe
 way to see what an arm will actually run. Because the fired session has no
 TTY/stdin, any permission-gated action it hits resolves as a silent DENY at
 rc=0 after a ~3s stdin watchdog rather than hanging. Pass `--automerge` if
-the arm must push a ticket sequence through green PRs unattended (it sets
+the arm must push a dependency chain through green PRs unattended (it sets
 `ARMAUTOMERGE=1` + `CR_MERGE_GATE_OK=1` on the launched session); without it
-the script only WARNs and the ticket sequence stops at the first green PR. `.env`'s
+the script only WARNs and the dependency chain stops at the first green PR. `.env`'s
 `ARMAUTOMERGE` is only the **default** used when `--automerge` was not passed
 on this invocation; an explicit flag always wins over it.
 
@@ -456,7 +456,7 @@ documented at the top of [`.env.example`](../../.env.example):
 | `JIRA_EMAIL` | Atlassian account email. | The address you sign into Jira with. |
 | `JIRA_API_TOKEN` | Jira / Confluence CLI auth token. | id.atlassian.com/manage-profile/security/api-tokens |
 | `JIRA_PROJECT_KEY` | Default project for `jira` ops. | Your Jira project key (e.g. `ACME`). |
-| `JIRA_CLOUD_ID` | Atlassian tenant cloud id (REST / MCP). | Atlassian admin console, or the `getAccessibleAtlassianResources` API. |
+| `JIRA_CLOUD_ID` | Atlassian tenant cloud id (REST / MCP). | Atlassian admin console, or the <!-- old-term-ok: Atlassian product name -->  `getAccessibleAtlassianResources` API. |
 | `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` launcher of the GLM lane, which is dormant (HIMMEL-1967; the lane registry offers it only when `GLM_LANE_OK` is set) (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
 
 #### Jira Sector (optional)
@@ -493,7 +493,7 @@ code change.
 | `CLAUDE_LANE_AUTO_RESEED` | Optional opt-out for the lane launchers' config auto-refresh. By default `claude-codex` (and the dormant `claude-glm`) re-seeds its isolated config dir when your `~/.claude` settings or plugin registry changed, so lane workers pick up plugin-profile changes automatically. Set `0` to restore the once-only seed (first launch + explicit `--reseed`) if the auto-refresh ever blocks a launch in your setup. | Leave unset (default on). **Not** bridged from `.env` — set it in the launching shell. Only relevant if you use the offload lanes. |
 | `HIMMEL_INITIATIVE` | Drive-to-ship auto-ship steps (opt-in, default OFF). | Uncomment one line in `.env` (auto-ship step grammar documented inline in `.env.example`); read from `.env` by the SessionStart hook. |
 | `PERPLEXITY_API_KEY` | Perplexity Sonar — `/research`, `/research-deep`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | Perplexity API settings. Optional (blank = feature off). |
-| `XAI_API_KEY` | xAI Grok — `/x-read`, `/x-pulse`, `/youtube`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | xAI API console. Optional. |
+| `XAI_API_KEY` | xAI Grok — `/x-read`, `/x-pulse`, `/youtube`. **Provisional — pending operator sign-off** (2026-07-29, no active subscription — see `docs/tooling-catalog.md`). | xAI API console. Optional. <!-- old-term-ok: xAI product name --> |
 
 ### OLLAMA_NO_CLOUD (optional — ollama zero-egress defense-in-depth pin)
 
@@ -543,7 +543,7 @@ Source of truth: [`docs/setup/global-claude-md.md`](global-claude-md.md) and [`d
 `~/.claude/settings.json`'s `model` key sets the station-wide default **model**.
 Write it bare: `"model": "claude-fable-5-1"`, never `"claude-fable-5-1[1m]"`.
 Say why precisely, because the measurements below do not support the stronger
-claim: a suffix there is a station-wide default nobody chose per worker session, and it is
+claim: a suffix there is a station-wide default nobody chose per worker, and it is
 not even a reliable one. Fable, the very family in the example, silently
 strips `[1m]`, so that exact string set nothing at all; and dropping the suffix
 did **not** move plain launches off a 1M window. So write it bare as
@@ -552,7 +552,7 @@ mode) and set the mode where it is actually observable, at arming.
 
 Context mode is an **arming-time** choice instead: `--context 1m|standard` on
 `scripts/handover/arm-resume.sh` (7th positional on `headed-arm.sh`), defaulting
-to `standard` for every arm, supervisor session or not; a supervisor session (armed
+to `standard` for every arm, chief or not; a chief (armed
 through `chief.sh`, which has no `--context` flag of its own) can still
 opt into `1m` via `CONSOLE_CONTEXT=1m` in the launching shell. The measured
 behaviour of both levers (which model ids accept the suffix, what a plain launch
@@ -833,7 +833,7 @@ for something never turned on:
 | `cadence-armed` | whether the configured cadence schedules are actually registered with the OS scheduler |
 | `luna-sources` | each configured fetch-health source, via `fetch-health.py --probe <source>` |
 | `phi-coherence` | a `.salus` marker under the vault vs. its listing in `phi-roots` — reports `degraded` on a mismatch, **never red** |
-| `engine-allowlist` | armed cadence legs' required engines against `cadence-approve-engines.sh --print-engine-list` |
+| `engine-allowlist` | armed cadence jobs' required engines against `cadence-approve-engines.sh --print-engine-list` |
 | `bridge-health` | `access.json` + a live `getMe` call + exactly one `getUpdates` consumer (it counts `poller.ts` command lines anchored to THIS checkout, so a supervisor plus its poller child is one consumer, not two). Linux/macOS prefer `systemctl --user show telegram-bridge.service` and walk its MainPID's children (`pgrep -f <poller path>` when no unit exists). Any other platform reports `degraded` naming process identity as unverified, never a silent pass |
 | `bridge-persistence` | whether bridge persistence will actually survive a restart |
 
@@ -1369,7 +1369,7 @@ machine.** Both stay on for design work: `context7` serves current library
 docs, and `agent-native-dispatch` is the hosted Builder.io MCP server
 (`https://dispatch.agent-native.com/mcp`) that `builder-visual@himmel`
 registers when the `design` profile enables it. Until each is authenticated, a
-design worker session cannot answer the OAuth prompt and looks hung. To log in,
+design worker cannot answer the OAuth prompt and looks hung. To log in,
 make sure the plugin is enabled, start an interactive `claude` session, run
 `/mcp`, pick each server and choose Authenticate. `himmel-doctor` check
 `C72-design-mcp-auth` warns when either login is missing (it reads the local
@@ -1416,7 +1416,7 @@ or verified, or a bulk `lean`/`full` had any write refused (floor) or failed;
 | `claude-obsidian@himmel` | The `obsidian-vault` MCP used by the obsidian-second-brain skill and `/obsidian-health` — disabling the plugin is what disables that MCP | `plugin-profile.sh enable claude-obsidian` |
 | `luna-correlate@himmel` | Cross-vault correlation over luna (`HIMMEL_MCP_LUNA_CORRELATE` workflows) | `plugin-profile.sh enable luna-correlate` |
 | `obsidian-triage@himmel` | `/luna-ingest` and the luna clip pipeline. The pipeline itself does NOT need it enabled here — see the cadence exception below | `plugin-profile.sh enable obsidian-triage` |
-| `telegram-himmel@himmel` | The `telegram` MCP behind `/telegram-clip` and the Telegram connector legs — disabling the plugin is what disables that MCP | `plugin-profile.sh enable telegram-himmel` |
+| `telegram-himmel@himmel` | The `telegram` MCP behind `/telegram-clip` and the Telegram connector parts — disabling the plugin is what disables that MCP | `plugin-profile.sh enable telegram-himmel` |
 | `codex@openai-codex` | The codex worker lanes resolve its cached companion by glob — needs the plugin INSTALLED, never enabled | `plugin-profile.sh enable codex` |
 
 An on-demand enable is a LIVE toggle only: an opt-in reconcile
@@ -1446,7 +1446,7 @@ them.
 `--settings` is the highest non-managed precedence layer, so it wins over a
 `settings.local.json` disable and keeps the cadence live even while the
 machine's own profile leaves `obsidian-triage` on the on-demand tier,
-disabled. This is the pattern for any future unattended leg that depends on
+disabled. This is the pattern for any future unattended job that depends on
 an on-demand plugin: force-enable it per run via its own settings fragment,
 never by flipping the machine's live profile.
 
@@ -1699,7 +1699,7 @@ reports live in the state repo. The installer no longer provisions it
 
 ### graphify — optional knowledge-graph CLI + MCP server
 
-graphify powers the structure/architecture leg of the retrieval routing
+graphify powers the structure/architecture half of the retrieval routing
 (qmd finds content, **graphify explains structure**; see `CLAUDE.md`). Opt-in;
 install via setup:
 

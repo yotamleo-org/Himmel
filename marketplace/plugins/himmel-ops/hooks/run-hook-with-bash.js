@@ -584,8 +584,11 @@ function chainRefusal(members) {
   return null;
 }
 
+// On POSIX each member leads its own process group, so a member killed for
+// its bound takes its children (a jq it waits on) with it.
 function spawnMember(bash, member, input, bound) {
-  return spawnSync(bash, [member], {
+  const group = process.platform !== 'win32';
+  const result = spawnSync(bash, [member], {
     input,
     env: process.env,
     encoding: 'utf8',
@@ -593,7 +596,12 @@ function spawnMember(bash, member, input, bound) {
     killSignal: 'SIGKILL',
     maxBuffer: MEMBER_MAX_BUFFER,
     windowsHide: true,   // HIMMEL-2043: no console flash per hook call
+    detached: group,
   });
+  if (group && result.pid && result.error && (result.error.code === 'ETIMEDOUT' || result.error.code === 'ENOBUFS')) {
+    try { process.kill(-result.pid, 'SIGKILL'); } catch (_e) { /* the group already ended */ }
+  }
+  return result;
 }
 
 // Advisory: a lifecycle member that hung, flooded, or failed to start is

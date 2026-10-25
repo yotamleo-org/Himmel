@@ -153,6 +153,7 @@ scripts/ci/test-run-shell-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-impacted.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-live-state.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-manifest.sh	pr	static-gate
+scripts/ci/test-run-shell-tests-parallel.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-guards.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation.sh	pr	trust-path
@@ -318,7 +319,7 @@ scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
 scripts/graphify/test-leg-graph-rationale.sh	pr	guard
 scripts/graphify/test-leg-graph.sh	pr	guard
-scripts/graphify/test-no-windows-indexed.sh	pr	guard
+scripts/graphify/test-no-windows-indexed.sh	local	one-time Windows-drop check, run by hand
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard
@@ -944,7 +945,6 @@ scripts/observability/test-install-stack.sh	local	behaviour suite, 0 catches in 
 scripts/observability/test-ledger-prune.sh	pr	static-gate
 scripts/observability/test-ledgers-registry.sh	pr	catch:2851
 scripts/observability/test-promtool-validation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/observability/test-restart-stack.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-suite-flake-summary.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-tool-call-census.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/openrouter/test-free-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window
