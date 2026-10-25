@@ -13,7 +13,14 @@ ok(){ echo "ok - $1"; }
 bad(){ echo "FAIL - $1"; fails=$((fails+1)); }
 check(){ [ "$2" = "$3" ] && ok "$1" || bad "$1: [$2]!=[$3]"; }
 has(){ grep -q -F -- "$2" "$3" && ok "$1" || { bad "$1: no [$2] in"; sed 's/^/    /' "$3"; }; }
-lacks(){ grep -q -F -- "$2" "$3" && { bad "$1: unexpected [$2] in"; sed 's/^/    /' "$3"; } || ok "$1"; }
+lacks(){
+  grep -q -F -- "$2" "$3"
+  case $? in
+    0) bad "$1: unexpected [$2] in"; sed 's/^/    /' "$3" ;;
+    1) ok "$1" ;;
+    *) bad "$1: cannot read $3" ;;
+  esac
+}
 run(){ python3 -I "$tool" "$@" >"$td/out" 2>"$td/err"; echo $?; }
 
 # --- the rules file: at least 10 rules, each with a source and a quote ---
@@ -97,6 +104,10 @@ has "whole-file mode reviews a page renamed out of the archive" "docs/moved.md:2
 } >"$td/nested.diff"
 run check --diff "$td/nested.diff" >/dev/null
 lacks "a shorter fence inside a longer one does not close it" "R09" "$td/out"
+printf 'The GLM lane.\n' >"$repo/docs/np.md"
+git -C "$repo" add . && git -C "$repo" commit -q -m seven && git -C "$repo" config diff.noprefix true
+(cd "$repo" && python3 -I "$tool" check --range HEAD~1..HEAD) >"$td/out" 2>&1
+has "a range diff is read the same under diff.noprefix" "docs/np.md:1: R04" "$td/out"
 
 # --- learn step: candidate until one confirmation ---
 cp "$here/rules.tsv" "$td/rules.tsv"
@@ -121,6 +132,8 @@ rc=$(run learn --rules "$td/rules.tsv" --pattern '(' --rule 'r' --source 's' --q
 check "learn with a broken pattern is refused" "$rc" 2
 rc=$(run learn --rules "$td/rules.tsv" --pattern 'a	b' --rule 'r' --source 's' --quote 'q')
 check "learn with a tab in a field is refused" "$rc" 2
+rc=$(run learn --rules "$td/rules.tsv" --pattern 'x' --rule 'r' --source 's' --quote "$(printf 'a\rb')")
+check "learn with a carriage return in a field is refused" "$rc" 2
 rc=$(run confirm --rules "$td/rules.tsv" R999 --by x)
 check "confirm of an unknown id is refused" "$rc" 2
 rc=$(run confirm --rules "$td/rules.tsv" R01 --by x)

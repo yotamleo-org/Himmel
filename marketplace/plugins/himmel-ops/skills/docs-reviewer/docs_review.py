@@ -174,22 +174,35 @@ def review(pages, rules, bodies):
     return findings, checks
 
 
+def pr_head(pr):
+    head = subprocess.run(["gh", "pr", "view", str(pr), "--json", "headRefOid", "--jq", ".headRefOid"],
+                          capture_output=True, text=True).stdout.strip()
+    if not head:
+        die(f"cannot read the head of PR {pr}")
+    return head
+
+
+def one_line(value):
+    """No tab and no line break of any kind load_rules would split on."""
+    return "\t" not in value and value.splitlines() in ([], [value])
+
+
 def cmd_check(args):
     rules = load_rules(args.rules)
     head = None
     if args.pr:
+        head = pr_head(args.pr)
         diff = subprocess.run(["gh", "pr", "diff", str(args.pr)], capture_output=True, text=True)
         if diff.returncode != 0:
             die(f"gh pr diff {args.pr} failed: {diff.stderr.strip()}")
         text = diff.stdout
-        head = subprocess.run(["gh", "pr", "view", str(args.pr), "--json", "headRefOid", "--jq", ".headRefOid"],
-                              capture_output=True, text=True).stdout.strip()
-        if not head:
-            die(f"cannot read the head of PR {args.pr}")
+        if pr_head(args.pr) != head:
+            die(f"PR {args.pr} moved while its diff was read; run it again")
         if subprocess.run(["git", "cat-file", "-e", head], capture_output=True).returncode != 0:
             git("fetch", "-q", "origin", f"pull/{args.pr}/head")
     elif args.range:
-        text = git("diff", "--no-color", "--no-ext-diff", args.range)
+        text = git("diff", "--no-color", "--no-ext-diff", "--no-relative",
+                   "--src-prefix=a/", "--dst-prefix=b/", args.range)
         head = args.range.split("..")[-1].lstrip(".") or "HEAD"
     else:
         try:
@@ -235,8 +248,8 @@ def cmd_learn(args):
         except re.error as exc:
             die(f"broken pattern {args.pattern!r}: {exc}")
     values = [args.pattern or "", args.rule, args.date, args.source, args.quote]
-    if any("\t" in v or "\n" in v for v in values):
-        die("a field holds a tab or a newline")
+    if not all(one_line(v) for v in values):
+        die("a field holds a tab or a line break")
     if not all(v.strip() for v in [args.rule, args.source, args.quote]):
         die("--rule, --source and --quote must not be empty")
     nums = [int(r["id"][1:]) for r in rules if re.fullmatch(r"R\d+", r["id"])]
@@ -254,7 +267,7 @@ def cmd_confirm(args):
         die(f"no rule {args.id}")
     if match[0]["state"] != "candidate":
         die(f"{args.id} is {match[0]['state']}, not a candidate")
-    if "\t" in args.by or "\n" in args.by or not args.by.strip():
+    if not one_line(args.by) or not args.by.strip():
         die("--by must be one non-empty line")
     match[0]["state"] = "active"
     match[0]["source"] += f"; confirmed {datetime.date.today().isoformat()} by {args.by}"
