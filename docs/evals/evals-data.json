@@ -688,7 +688,7 @@
     "sessions": 489,
     "warm": 474,
     "cold": 15,
-    "command": "bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 -name '*.jsonl' -newermt <first-day>) > cache-probe.txt",
+    "command": "bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 -name '*.jsonl' -newermt <first-day> ! -newermt <day-after-last-day>) > cache-probe.txt",
     "scope": "the sessions of this project modified from 2026-10-22 to 2026-10-25",
     "as_of": "2026-10-25"
   }

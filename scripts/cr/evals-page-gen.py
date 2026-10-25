@@ -47,7 +47,7 @@ Z95 = 1.959964
 BAR = 20
 MIN_RULED = 30
 CACHE_CMD = ("bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 "
-             "-name '*.jsonl' -newermt <first-day>) > cache-probe.txt")
+             "-name '*.jsonl' -newermt <first-day> ! -newermt <day-after-last-day>) > cache-probe.txt")
 RENDER_CMD = "python3 scripts/cr/evals-page-gen.py render"
 PDD_METHOD = "[proof-first share](../../scripts/eval/README.md)"
 TF_METHOD = "[test-first record](../../scripts/eval/README.md)"
@@ -334,7 +334,7 @@ def render(d):
         "Method: [prompt cache](prompt-cache.md)." % (
             c["read_ratio_pct"], stamp(c["as_of"], c["tokens"], "tokens" + sess + scope)),
         "", "Regenerate, in order:", "",
-        "1. `%s` (the transcripts modified since the sample's first day)" % c["command"],
+        "1. `%s` (the transcripts modified from the sample's first day to its last)" % c["command"],
         "2. `%s`" % r["command"], "3. `%s`" % RENDER_CMD, "",
     ]
     return "\n".join(out)

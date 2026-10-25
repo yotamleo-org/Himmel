@@ -60,6 +60,6 @@ Regenerate: `python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record` 
 
 Regenerate, in order:
 
-1. `bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 -name '*.jsonl' -newermt <first-day>) > cache-probe.txt` (the transcripts modified since the sample's first day)
+1. `bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/projects/<project-dir> -maxdepth 1 -name '*.jsonl' -newermt <first-day> ! -newermt <day-after-last-day>) > cache-probe.txt` (the transcripts modified from the sample's first day to its last)
 2. `python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt --cache-scope 'the sessions of this project modified from 2026-10-22 to 2026-10-25' --until 2026-10-25T00:00:00Z --as-of 2026-10-25`
 3. `python3 scripts/cr/evals-page-gen.py render`

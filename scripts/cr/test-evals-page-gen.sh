@@ -170,6 +170,7 @@ has "render: pdd regenerate moves the cut past the new row" "$(cat "$R")" "with 
 has "render: interval printed" "$(cat "$R")" "77.8 to 94.2"
 has "render: date and n under a figure" "$(cat "$R")" "as of 2026-10-25, n = 60"
 has "render: cache regenerate saves the probe output" "$(cat "$R")" "1. \`bash scripts/eval/cache-probe.sh first-turn"
+has "render: cache regenerate bounds the sample on both ends" "$(cat "$R")" "-newermt <first-day> ! -newermt <day-after-last-day>"
 has "render: cache regenerate then feeds the data step" "$(cat "$R")" "2. \`python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe.txt"
 has "render: cache regenerate ends with the render step" "$(cat "$R")" "3. \`python3 scripts/cr/evals-page-gen.py render\`"
 has "render: cache figure says cache reads, not tokens omitted from a request" "$(cat "$R")" "were cache reads"
@@ -230,8 +231,12 @@ has "label: a slug that never names a model stays bare" "$(cat "$TMP/bare.md")" 
 # write() replaces the output path, never writes through a symlink.
 printf 'keep\n' > "$TMP/target.md"
 ln -s "$TMP/target.md" "$TMP/link.md"
-python3 -I "$GEN" render --data "$OUT" --out "$TMP/link.md" > /dev/null 2>&1
+python3 -I "$GEN" render --data "$OUT" --out "$TMP/link.md" > /dev/null 2>&1; rc=$?
+eq "write: rendering over a symlinked output succeeds" "$rc" "0"
 eq "write: a symlinked output leaves the link target untouched" "$(cat "$TMP/target.md")" "keep"
+if [ -L "$TMP/link.md" ]; then kind="symlink"; else kind="file"; fi
+eq "write: the symlink is replaced by a regular file" "$kind" "file"
+has "write: the replacement holds the page" "$(cat "$TMP/link.md")" "## How to read these numbers"
 
 # Refusals.
 python3 -I "$GEN" data --ledger "$TMP/missing.jsonl" --eval-runs "$E" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
