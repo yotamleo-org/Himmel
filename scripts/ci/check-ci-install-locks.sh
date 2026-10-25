@@ -153,7 +153,7 @@ while IFS=$'\t' read -r file line mark seg; do
     err "$rel: claude installed from the unpinned claude.ai installer; use pin_fetch with the pinned sha256: $seg"
   elif [[ "$seg" =~ $claude_dl_re ]]; then
     if [[ "$seg" =~ ^pin_fetch[[:space:]] ]] && [[ "$seg" == *CLAUDE_LINUX_X64_SHA256* ]]; then
-      claude_verified=1
+      [ "$file" = "$GH/workflows/ci.yml" ] && claude_verified=1
     else
       err "$rel: native claude binary downloaded without a sha256-verified pin_fetch: $seg"
     fi

@@ -127,6 +127,11 @@ t=$(live claude-installsh); printf '        run: curl -fsSL https://claude.ai/in
 expect "claude.ai/install.sh piped to a shell" 1 "$t"
 t=$(live claude-noshal); sed -i.bak 's/^CLAUDE_LINUX_X64_SHA256=.*$/CLAUDE_LINUX_X64_SHA256="abc"/' "$t/scripts/machine-setup/installer-pins.sh"
 expect "installer-pins.sh claude sha256 is not 64 hex" 1 "$t"
+t=$(live claude-otherfile)
+printf 'jobs:\n  x:\n    steps:\n      - run: |\n' > "$t/.github/workflows/other.yml"
+grep 'pin_fetch "https://downloads.claude.ai/claude-code-releases' "$t/.github/workflows/ci.yml" >> "$t/.github/workflows/other.yml"
+sed -i.bak '/pin_fetch "https:\/\/downloads.claude.ai\/claude-code-releases/d' "$t/.github/workflows/ci.yml"
+expect "ci.yml no longer installs claude though another workflow does" 1 "$t"
 
 # The pins equal the real release manifest (fixture: downloads.claude.ai
 # claude-code-releases/2.1.310/manifest.json, fetched verbatim 2026-10-25).
