@@ -121,6 +121,12 @@ for ok in "CONSULT design :: q :: read: x" "SUCCESSION accepted: a replaces b" "
     check "7: non-status bullet '${ok%% *}' still appends" "$rc" 0
 done
 
+# bash 3.2 (macOS) matches a [A-Z] range by locale collation, so it takes lowercase
+# letters; bash 5 defaults to ASCII ranges, so the row switches that off.
+printf 'shopt -u globasciiranges 2>/dev/null\n' > "$tmp/collate.env"
+rc=0; LC_ALL=en_US.UTF-8 BASH_ENV="$tmp/collate.env" bash "$SCRIPT" "$d7" "Released the lock" >/dev/null 2>&1 || rc=$?
+check "7: a collating locale does not read a capitalised word as a coined marker" "$rc" 0
+
 # --- 8. the refusal is leg-doc only; a console doc takes any bullet ---
 # A leg doc carries its brief's "RETASK token" line; a console doc (name ends
 # -console.md) and a doc with no leg brief accept the bullets console-template.md

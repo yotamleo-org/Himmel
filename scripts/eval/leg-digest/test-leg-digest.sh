@@ -158,7 +158,7 @@ check "a zsh nomatch is error/Bash:zsh-nomatch, not no-match" '[ "$(berow error/
 check "a missing path is error/Bash:no-such-file in both spellings" '[ "$(berow error/Bash:no-such-file | jq -c .tool_call_ids)" = "[\"toolu_f1\",\"toolu_f2\"]" ]'
 check "a context-guard refusal is its own denied/ class, three spellings" '[ "$(berow denied/guard-leg-context-handoff | jq -c .tool_call_ids)" = "[\"toolu_c1\",\"toolu_c2\",\"toolu_c3\"]" ]'
 check "an unknown hook is still denied/other" '[ "$(berow denied/other | jq -c .tool_call_ids)" = "[\"toolu_c4\"]" ]'
-check "every sub-class key passes the router alphabet" 'jq -r ".failures[].class" "$TMP/be.json" | grep -Ev "^(denied|suite|blocked|error|run_error|traj)/[A-Za-z0-9._:+-]{1,80}$" | wc -l | grep -qx 0'
+check "every sub-class key passes the router alphabet" 'jq -r ".failures[].class" "$TMP/be.json" | grep -Ev "^(denied|suite|blocked|error|run_error|traj)/[A-Za-z0-9._:+-]{1,80}$" | wc -l | tr -d " " | grep -qx 0'
 
 echo "10. by-design exit codes come from the registry, not the failure count (HIMMEL-4853)"
 # fixtures/exit-codes.jsonl: 14 non-zero Bash results. Before the registry all 14 were failures (12 error + 2 suite).
