@@ -22,7 +22,10 @@
 #
 # Busy: fail loud with rc 75 (EX_TEMPFAIL), naming each holder and the retry
 # shape. SUITE_LOCK_WAIT=<seconds> (the knob run-shell-tests.sh already reads)
-# waits for a slot instead.
+# waits for a slot instead. HIMMEL_SUITE_SLOT_DETAIL optionally records holder
+# detail (controls stripped, at most 200 characters). A busy report marks slots
+# older than HIMMEL_SUITE_SLOT_CAP seconds (default 1200) and best-effort logs
+# each slot/pid/started holder once in the semaphore directory's long-held.log.
 #
 # Re-entrancy: the holder exports HIMMEL_SUITE_SLOT_HELD=<slot path>. It is
 # honoured only when that slot's recorded owner (pid AND identity) is a live
@@ -99,11 +102,11 @@ _suite_sem_is_ancestor() {
     return 1
 }
 
-# _suite_sem_read_owner <slot> -- sets SO_PID SO_ID SO_LABEL SO_STARTED;
+# _suite_sem_read_owner <slot> -- sets SO_PID SO_ID SO_LABEL SO_STARTED SO_DETAIL;
 # returns 1 when the slot has no owner file yet.
 _suite_sem_read_owner() {
     local line
-    SO_PID=''; SO_ID=''; SO_LABEL=''; SO_STARTED=''
+    SO_PID=''; SO_ID=''; SO_LABEL=''; SO_STARTED=''; SO_DETAIL=''
     [ -f "$1/owner" ] || return 1
     while IFS= read -r line; do
         case "$line" in
@@ -111,6 +114,7 @@ _suite_sem_read_owner() {
             identity=*) SO_ID=${line#identity=} ;;
             label=*)   SO_LABEL=${line#label=} ;;
             started=*) SO_STARTED=${line#started=} ;;
+            detail=*)  SO_DETAIL=${line#detail=} ;;
         esac
     done <"$1/owner"
     return 0
@@ -216,11 +220,14 @@ _suite_sem_held_ok() {
 
 # _suite_sem_try <slot> <label> -- take <slot>; 0 on success.
 _suite_sem_try() {
-    local slot="$1" label="$2" id
+    local slot="$1" label="$2" id detail
     mkdir "$slot" 2>/dev/null || return 1
     id=$(proc_tree_process_identity "$$") || id=''
-    if ! { printf 'pid=%s\nidentity=%s\nlabel=%s\nstarted=%s\n' \
-        "$$" "$id" "$label" "$(date +%s)" >"$slot/owner.tmp" \
+    detail=$(printf '%s' "${HIMMEL_SUITE_SLOT_DETAIL:-}" | LC_ALL=C tr -d '[:cntrl:]')
+    detail=${detail:0:200}
+    [ -z "$detail" ] || detail="detail=$detail"$'\n'
+    if ! { printf 'pid=%s\nidentity=%s\nlabel=%s\nstarted=%s\n%s' \
+        "$$" "$id" "$label" "$(date +%s)" "$detail" >"$slot/owner.tmp" \
         && mv "$slot/owner.tmp" "$slot/owner"; }; then
         # rmdir first: BSD rm -rf cannot remove a mode-000 dir (it will not
         # open it to empty it), but an empty one goes with a plain rmdir.
@@ -233,16 +240,39 @@ _suite_sem_try() {
     return 0
 }
 
+# _suite_sem_log_long_held <dir> <slot-number> <epoch> <age> -- best-effort,
+# once per slot, pid and started epoch; detail remains the last, free-text field.
+_suite_sem_log_long_held() {
+    local log="$1/long-held.log" slot="slot-$2" now="$3" age="$4"
+    if grep -qE "^[0-9]+ $slot pid=$SO_PID label=.* age=[0-9]+s started=$SO_STARTED detail=" "$log" 2>/dev/null; then
+        return 0
+    fi
+    { printf '%s %s pid=%s label=%s age=%s started=%s detail=%s\n' \
+        "$now" "$slot" "$SO_PID" "$SO_LABEL" "$age" "$SO_STARTED" "$SO_DETAIL" >>"$log"; } 2>/dev/null || true
+    return 0
+}
+
 # _suite_sem_busy_report <dir> <n> <retry-hint>
 _suite_sem_busy_report() {
-    local dir="$1" n="$2" hint="$3" i=1 now age
+    local dir="$1" n="$2" hint="$3" i=1 now age cap suffix
     now=$(date +%s)
+    cap=$(_suite_sem_uint "${HIMMEL_SUITE_SLOT_CAP:-}" 1200)
     {
         printf 'ERR suite-semaphore: all %s suite slot(s) on this machine are busy.\n' "$n"
         while [ "$i" -le "$n" ]; do
             if _suite_sem_read_owner "$dir/slot-$i"; then
-                case "$SO_STARTED" in ''|*[!0-9]*) age='?' ;; *) age="$((now - SO_STARTED))s" ;; esac
-                printf '  slot-%s: pid %s, label %s, age %s\n' "$i" "$SO_PID" "${SO_LABEL:-?}" "$age"
+                suffix=''
+                case "$SO_STARTED" in
+                    ''|*[!0-9]*) age='?' ;;
+                    *)
+                        age="$((now - SO_STARTED))s"
+                        if [ "$((now - SO_STARTED))" -gt "$cap" ]; then
+                            suffix=" HELD PAST CAP detail=$SO_DETAIL"
+                            _suite_sem_log_long_held "$dir" "$i" "$now" "$age"
+                        fi
+                        ;;
+                esac
+                printf '  slot-%s: pid %s, label %s, age %s%s\n' "$i" "$SO_PID" "${SO_LABEL:-?}" "$age" "$suffix"
             else
                 printf '  slot-%s: being taken (no owner record yet)\n' "$i"
             fi

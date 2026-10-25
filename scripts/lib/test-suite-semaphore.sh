@@ -437,6 +437,118 @@ else
     fail "TTL-overlap documentation row: expected both SUITE_LOCK_TTL (scan lock) and HIMMEL_SUITE_SLOT_TTL (semaphore) to still exist as distinct env knobs"
 fi
 
+# --- 19: holder detail is optional, single-line, bounded, and read back. ---
+new_sem
+mkdir -p "$SEM"
+(
+    . "$REPO_ROOT/scripts/lib/suite-semaphore.sh"
+    # shellcheck disable=SC2030  # detail is intentionally local to this holder
+    HIMMEL_SUITE_SLOT_DETAIL=$'leg=N3665\n range=base..head\tsuites=3\r\033\177'
+    _suite_sem_try "$SEM/slot-1" suite
+    cp "$SEM/slot-1/owner" "$SCRATCH/detail.owner"
+    _suite_sem_read_owner "$SEM/slot-1"
+    printf '%s\n' "${SO_DETAIL:-}" >"$SCRATCH/detail.read"
+    suite_sem_release
+    unset HIMMEL_SUITE_SLOT_DETAIL
+    _suite_sem_try "$SEM/slot-1" suite
+    cp "$SEM/slot-1/owner" "$SCRATCH/no-detail.owner"
+    _suite_sem_read_owner "$SEM/slot-1"
+    printf '%s' "${SO_DETAIL:-}" >"$SCRATCH/no-detail.read"
+    suite_sem_release
+    printf -v HIMMEL_SUITE_SLOT_DETAIL '%0205d' 0
+    export HIMMEL_SUITE_SLOT_DETAIL
+    _suite_sem_try "$SEM/slot-1" suite
+    cp "$SEM/slot-1/owner" "$SCRATCH/bounded-detail.owner"
+    suite_sem_release
+)
+if [ "$(grep -c '^detail=' "$SCRATCH/detail.owner")" = "1" ] \
+    && grep -qxF 'detail=leg=N3665 range=base..headsuites=3' "$SCRATCH/detail.owner" \
+    && grep -qxF 'leg=N3665 range=base..headsuites=3' "$SCRATCH/detail.read"; then
+    pass "holder detail strips controls, records one line and reads it back"
+else
+    fail "holder detail was missing, unsanitised, duplicated or not read back"
+fi
+if ! grep -q '^detail=' "$SCRATCH/no-detail.owner" && [ ! -s "$SCRATCH/no-detail.read" ]; then
+    pass "unset holder detail is omitted and does not retain a previous owner's detail"
+else
+    fail "unset holder detail left a detail field or retained a previous owner's detail"
+fi
+BOUNDED_DETAIL=$(sed -n 's/^detail=//p' "$SCRATCH/bounded-detail.owner")
+printf -v EXPECTED_DETAIL '%0200d' 0
+if [ "$BOUNDED_DETAIL" = "$EXPECTED_DETAIL" ]; then
+    pass "holder detail is cut at 200 characters"
+else
+    fail "holder detail -- expected 200 characters, got ${#BOUNDED_DETAIL}"
+fi
+
+# --- 20: busy reports mark and log the same live holder once past the cap. ---
+. "$REPO_ROOT/scripts/lib/suite-semaphore.sh"
+new_sem
+mkdir -p "$SEM/slot-1"
+CAP_STARTED=$(( $(date +%s) - 10 ))
+CAP_ID=$(proc_tree_process_identity "$$")
+printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\ndetail=leg=N3665 range=base..head suites=3\n' \
+    "$$" "$CAP_ID" "$CAP_STARTED" >"$SEM/slot-1/owner"
+ERR=$(qr "$SEM" HIMMEL_SUITE_SLOTS=1 HIMMEL_SUITE_SLOT_CAP=1 -- true 2>&1 >/dev/null); RC=$?
+if [ "$RC" = "75" ] \
+    && grep -qE "slot-1: pid $$, label suite, age [0-9]+s.*HELD PAST CAP.*leg=N3665 range=base\.\.head suites=3" <<<"$ERR" \
+    && [ -f "$SEM/long-held.log" ] && [ "$(wc -l <"$SEM/long-held.log")" -eq 1 ] \
+    && grep -qE "^[0-9]+ slot-1 pid=$$ label=suite age=[0-9]+s started=$CAP_STARTED detail=leg=N3665 range=base\.\.head suites=3$" "$SEM/long-held.log"; then
+    pass "busy acquire returns 75, marks the live holder past cap and logs its detail"
+else
+    fail "past-cap holder -- expected rc 75, marked report and one log row, got rc=$RC: $ERR"
+fi
+ERR=$(qr "$SEM" HIMMEL_SUITE_SLOTS=1 HIMMEL_SUITE_SLOT_CAP=1 -- true 2>&1 >/dev/null); RC=$?
+if [ "$RC" = "75" ] && [ -f "$SEM/long-held.log" ] \
+    && [ "$(wc -l <"$SEM/long-held.log")" -eq 1 ]; then
+    pass "a repeated busy acquire does not log the same slot, pid and start twice"
+else
+    fail "repeated busy acquire duplicated or omitted the past-cap holder log (rc=$RC)"
+fi
+CAP_STARTED=$((CAP_STARTED - 1))
+printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\ndetail=leg=N3665 range=base..head suites=3\n' \
+    "$$" "$CAP_ID" "$CAP_STARTED" >"$SEM/slot-1/owner"
+qr "$SEM" HIMMEL_SUITE_SLOTS=1 HIMMEL_SUITE_SLOT_CAP=1 -- true >/dev/null 2>&1; RC=$?
+if [ "$RC" = "75" ] && [ -f "$SEM/long-held.log" ] \
+    && [ "$(wc -l <"$SEM/long-held.log")" -eq 2 ]; then
+    pass "the same slot and pid with a different start gets a new log row"
+else
+    fail "past-cap dedupe incorrectly suppressed a different holder start (rc=$RC)"
+fi
+
+# --- 21: below-cap and invalid-cap controls never report a long-held slot. ---
+for CAP_VALUE in 1200 '' 0 00 bad -1; do
+    new_sem
+    mkdir -p "$SEM/slot-1"
+    printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\n' \
+        "$$" "$CAP_ID" "$CAP_STARTED" >"$SEM/slot-1/owner"
+    ERR=$(qr "$SEM" HIMMEL_SUITE_SLOTS=1 "HIMMEL_SUITE_SLOT_CAP=$CAP_VALUE" -- true 2>&1 >/dev/null); RC=$?
+    if [ "$RC" = "75" ] && ! grep -q 'HELD PAST CAP' <<<"$ERR" && [ ! -e "$SEM/long-held.log" ]; then
+        pass "holder below cap is not marked or logged (cap=[$CAP_VALUE])"
+    else
+        fail "holder below/default cap was marked or logged (cap=[$CAP_VALUE], rc=$RC): $ERR"
+    fi
+done
+
+# --- 22: an unwritable long-held log is best-effort, including under -e/-u. ---
+new_sem
+mkdir -p "$SEM/slot-1" "$SEM/long-held.log"
+printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\n' \
+    "$$" "$CAP_ID" "$CAP_STARTED" >"$SEM/slot-1/owner"
+# shellcheck disable=SC2016  # $1 and the trap expand in the child shell
+ERR=$(env -u HIMMEL_SUITE_SLOT_HELD -u SUITE_LOCK_WAIT \
+    HIMMEL_SUITE_SEMAPHORE_DIR="$SEM" HIMMEL_SUITE_SLOTS=1 HIMMEL_SUITE_SLOT_CAP=1 \
+    bash -eu -c '. "$1"; trap '\''printf "ERR trap\\n" >&2'\'' ERR; suite_sem_acquire suite retry' \
+    _ "$REPO_ROOT/scripts/lib/suite-semaphore.sh" 2>&1); RC=$?
+if [ "$RC" = "75" ] && grep -q 'HELD PAST CAP' <<<"$ERR" \
+    && [ "$(grep -c '^ERR suite-semaphore:' <<<"$ERR")" = "1" ] \
+    && [ "$(grep -c '^ERR trap$' <<<"$ERR")" = "1" ] \
+    && ! grep -qiE 'directory|permission denied' <<<"$ERR"; then
+    pass "unwritable log preserves busy rc 75 without an extra error or ERR trap"
+else
+    fail "unwritable log changed the busy result or leaked an error (rc=$RC): $ERR"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
     echo "OK: all $CASES cases passed"
     exit 0
