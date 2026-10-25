@@ -202,6 +202,16 @@
     gl1.querySelector('.gctl').hidden = false;
     btn.addEventListener('click', function () { if (playing) { stopPlay(); return; } btn.setAttribute('aria-pressed', 'true'); btn.textContent = '■ Stop'; play(); });
   }
+
+  /* a link to a step (#gn-build) opens that step */
+  function fromHash() {
+    var id = decodeURIComponent(location.hash.slice(1));
+    if (!/^gn-/.test(id) || !document.getElementById(id) || (current && current.id === id)) return;
+    if (current) back();
+    open(id);
+  }
+  window.addEventListener('hashchange', fromHash);
+  fromHash();
 })();
 
 (function theme() {
