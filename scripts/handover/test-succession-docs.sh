@@ -394,6 +394,16 @@ contains 'ACTION ZERO step 9: the succession wake is informational' "$step9" 'in
 contains 'waiter section: the succession wake is informational' "$waiter_doc" 'informational'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'waiter section: the relay-on-live wake carries the RELAYED line' "$(flat "$waiter_doc")" '`RELAYED <n> of <m>`'
+# a relay that failed or did not resolve is relayed by hand before the predecessor wraps
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'Handing over step 4: FAILED-INBOX and UNRESOLVED are relayed by hand too' "$(flat "$step4")" '`FAILED-INBOX` and `UNRESOLVED` too'
+before 'Handing over step 5: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$step5")" 'Relay any worker it names as not relayed' 'wrap with'
+succ_start="$(flat "$(cat "$DOCS/handover/chief-sections/successor-start.md")")"
+contains 'successor-start: n below m means LIVE names the workers not relayed' "$succ_start" 'If n is below m'
+contains 'successor-start: a predecessor already gone leaves the token chain to the successor' "$succ_start" 'send each the token-chain form yourself'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-console Handing over: a FAILED-INBOX line needs a hand relay' "$(flat "$running")" 'So does a `FAILED-INBOX` line'
+before 'running-a-console Handing over: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$running")" 'Relay each worker it names as not relayed' 'Wrap only with no subagent'
 
 # --- 9. ACTION ZERO is one batched turn --------------------------------------
 step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CONSOLE")"

@@ -117,7 +117,7 @@ def load(path):
         elif ts and (t == "user" or (t == "attachment" and (d.get("attachment") or {}).get("type")
                                                   in ("queued_command", "hook_additional_context"))):
             att = d.get("attachment") or {}
-            body = json.dumps(d.get("message", "") if t == "user" else att.get("prompt", att.get("content", "")))
+            body = json.dumps(d.get("message", "") if t == "user" else (att.get("prompt") or att.get("content", "")))
             if "SUCCESSION" in body:
                 deliveries.append((ts, body))
         elif t == "assistant" and ts and not d.get("isSidechain"):

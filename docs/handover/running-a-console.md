@@ -523,7 +523,8 @@ notice record prints only `BUS-RELAY-FAIL`: that worker already has its inbox re
 worker in the fleet manifest but missing from Live state prints `NOT-IN-LIVE-STATE` when
 its record fails, when the chief has no bus identity, when it is a claudex worker, or
 when its session does not resolve: relay it by hand if it is live. `SKIPPED`, `UNRESOLVED` and
-`UNRESOLVED-LANE` lines sent nothing: each needs a relay by hand. `BUS-RELAY <label> ok` means the bus stored the record, not that the
+`UNRESOLVED-LANE` lines sent nothing: each needs a relay by hand. So does a `FAILED-INBOX` line (its claudex inbox send
+failed). `BUS-RELAY <label> ok` means the bus stored the record, not that the
 worker saw it: delivery needs the worker's `HIMMEL_BUS_NAME` hooks, so the
 successor's `WAKE succession partial` is the backstop for one that never quotes back. The worker
 session's quote-back is the `SUCCESSION accepted` Results bullet in its own doc (the successor's
@@ -544,7 +545,8 @@ worker's token, is valid) or the worker has rotated.
 once your `RELAYED` line arrives (naming the workers you could not relay, and
 why: ACTION ZERO step 9), and it is the only evidence the arm actually fired
 and the successor completed ACTION ZERO; releasing on the `touch` alone leaves
-an unattended fleet if the launch failed. A relay delivered is enough: a worker
+an unattended fleet if the launch failed. Relay each worker it names as not relayed by
+hand before you wrap. A relay delivered is enough: a worker
 drains it at its next tool round whether you are live or gone (S1), so you wrap
 without waiting for the quote-backs; workers that did not quote back are named
 on the successor's informational `WAKE succession partial`.

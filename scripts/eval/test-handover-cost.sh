@@ -96,6 +96,12 @@ WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSIO
 check "the bus relay run exits 0" '[ "$busrc" = 0 ]'
 check "the bus relay record is a leg (legs=2, leg=3/750)" 'row "$TMP/bus.out" | grep -q " leg=3/750 legs=2 "'
 
+echo "3f. an attachment with an empty prompt is read by its content"
+if ! { mkdir "$TMP/busp" && cp "$TMP/bus"/*.jsonl "$TMP/busp/" && sed 's/"hook_additional_context", /"hook_additional_context", "prompt": "", /' "$TMP/bus/leg-bus.jsonl" >"$TMP/busp/leg-bus.jsonl" && grep -q '"prompt": ""' "$TMP/busp/leg-bus.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/busp" --legs-after 2026-10-19T09:30:00Z >"$TMP/busp.out" 2>&1; busprc=$?
+check "the empty-prompt run exits 0" '[ "$busprc" = 0 ]'
+check "the empty-prompt bus record is a leg (legs=2, leg=3/750)" 'row "$TMP/busp.out" | grep -q " leg=3/750 legs=2 "'
+
 echo "3d. mechanical columns"
 if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed -e 's/bash action-zero.sh --acquire/bash append-results.sh d x/' -e 's/ListAgents check/will run append-results.sh later/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1; mrc2=$?

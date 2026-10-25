@@ -232,8 +232,7 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    `{{FILL_SIGNAL}}`.
 2. `next` seeds `## Live state` into the successor doc. Fill in the HANDOFF by hand:
    head, rulings made today, what wrapped. **The HANDOFF wins over this file's
-   Results tail.** Once the successor validated, `<your inbox>.handover` mutes
-   your waiter for `CONSOLE_WAIT_HANDOVER_MIN` (default 60); `rm` it to end the mute early.
+   Results tail.** The waiter mutes while you hand over: `chief-sections/waiter.md`.
 3. `touch` the signal path from step 1 and hand your live workers to the successor.
 4. **Re-brief every live worker before you release, never by hand.** On
    `WAKE relay-on-live` (set by `next` for a bus chief) or by running
@@ -241,13 +240,13 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    worker, an inbox relay plus a bus notice each claudex one. A failed or absent
    record prints `SENDMESSAGE` (successor, worker's token) for a Live-state
    worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
-   Never re-run it (it resends inbox relays). It carries no fresh token:
-   native and claudex workers are not rotated on a bus succession. Then send
-   the successor `RELAYED <n> of <m>`.
+   `FAILED-INBOX` and `UNRESOLVED` too. Never re-run it (it resends inbox
+   relays). It carries no fresh token: native and claudex workers are not
+   rotated on a bus succession. Then send the successor `RELAYED <n> of <m>`.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any workers that
-   did not quote back, and why. Then wrap with
-   **one** command, which writes `WRAPPED` and releases the lock:
+   did not quote back, and why. Relay any worker it names as not relayed, then
+   wrap with **one** command, which writes `WRAPPED` and releases the lock:
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
    It refuses (exit 4) while any subagent of yours, a judge subagent above all, is
    running: wait, persist the verdict with `write-verdict.sh`, re-run.
