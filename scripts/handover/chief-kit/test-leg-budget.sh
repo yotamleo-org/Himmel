@@ -21,8 +21,8 @@ trap 'rm -rf "$tmp"' EXIT
 fails=0
 unset WORKER_COST_SOFT_K WORKER_COST_HARD_K CONTEXT_FILL_TRANSCRIPT
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
-contains() { printf '%s' "$2" | grep -qF -e "$3" && echo "ok - $1" || { echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)); }; }
-lacks()    { printf '%s' "$2" | grep -qF -e "$3" && { echo "FAIL - $1: output unexpectedly contains [$3]"; fails=$((fails+1)); } || echo "ok - $1"; }
+contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
+lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: output unexpectedly contains [$3]"; fails=$((fails+1)) ;; *) echo "ok - $1" ;; esac; }
 
 # row <message id> <cache_read> [cache_create] [output] - one assistant API-call row.
 # cost-eq = input*1 + cache_read*0.1 + cache_create*1.25 + output*5.
