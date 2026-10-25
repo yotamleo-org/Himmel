@@ -17,6 +17,7 @@
 #   test-adopt.sh ran 969s on green main run 40030573258 (shard 3); HIMMEL-7300 split it
 #   into test-adopt.sh and test-adopt-features.sh, the 969s shared in proportion to their
 #   local times (479s / 427s) as 512 / 457.
+#   test-run-shell-tests-parallel.sh (64) is a local measurement (HIMMEL-7483).
 # The quarantined suites (SKIP_LIST, HIMMEL-3196) have no row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -182,6 +183,7 @@ scripts/ci/test-run-shell-tests-flake.sh	12
 scripts/ci/test-run-shell-tests-impacted.sh	8
 scripts/ci/test-run-shell-tests-live-state.sh	3
 scripts/ci/test-run-shell-tests-manifest.sh	6
+scripts/ci/test-run-shell-tests-parallel.sh	64
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	102
 scripts/ci/test-run-shell-tests-rotation-guards.sh	115
 scripts/ci/test-run-shell-tests-rotation.sh	112
@@ -313,6 +315,8 @@ scripts/eval/test-cache-probe.sh	0
 scripts/eval/test-ci-metrics.sh	0
 scripts/eval/test-console-load-inventory.sh	0
 scripts/eval/test-context-replay.sh	0
+scripts/eval/test-deferred-outcome.sh	0
+scripts/eval/test-escapes.sh	0
 scripts/eval/test-eval-feedback.sh	1
 scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8

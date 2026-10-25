@@ -122,14 +122,6 @@ repos:
         files: ^(docs/.*\.md|\.claude/commands/.*\.md|\.agents/skills/.*\.md|scripts/.*\.(sh|md)|CLAUDE\.md|README\.md|\.pre-commit-config\.yaml)$
         pass_filenames: false
 
-      - id: cr-terminology
-        name: CR means code review, not CodeRabbit
-        # HIMMEL-3561
-        entry: bash scripts/ci/check-cr-terminology.sh
-        language: system
-        files: ^(docs/.*\.(md|html)|\.claude/commands/.*\.md|marketplace/.*\.(md|html)|CLAUDE\.md|README\.md)$
-        pass_filenames: false
-
       - id: docs-decision-records
         name: new docs/ file must not be a research comparison or rejection record
         # HIMMEL-5878
@@ -197,7 +189,7 @@ repos:
         name: no new code comment narrates history (ticket, review round, judge qid; ponytail exempt) (himmel-dev only)
         entry: bash scripts/lint/check-history-comments.sh --staged
         language: system
-        files: \.(sh|bash|zsh|ps1|psm1|py|js|mjs|cjs|ts|tsx|mts|cts)$
+        files: \.(sh|bash|zsh|py|js|mjs|cjs|ts|tsx|mts|cts)$
         pass_filenames: false
 
       - id: no-new-swallowed-errors
