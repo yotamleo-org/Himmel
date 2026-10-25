@@ -101,5 +101,18 @@ eq "ledger row: refusals exclude ci-wait" \
   "$(python3 -I -c 'import json,sys; m=json.loads(open(sys.argv[1]).readline())["metrics"]; print([m["refusals"], m["ci_wait"], m["hook_unclear"], m["hook_refusals"]])' "$L4")" \
   "[$NROWS, 1, $NUNC, $NROWS]"
 
+L5="$TMP/runs5.jsonl"
+python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-08T00:00:00Z --days 7 --projects "$FIX/proj" --docs "$FIX/docs" \
+  --record --eval-ledger "$L5" --md "$TMP/out5.md" >/dev/null 2>&1
+eq "tool calls: record run exits 0" "$?" "0"
+eq "ledger row: tool calls include success, failure and refusals, not the old result" \
+  "$(python3 -I -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"].get("tool_calls"))' "$L5")" "5"
+L6="$TMP/runs6.jsonl"
+python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-08T00:00:00Z --days 7 --projects "$FIX/proj2" --docs "$FIX/docs" \
+  --record --eval-ledger "$L6" --md "$TMP/out6.md" >/dev/null 2>&1
+eq "future-window tool calls: record run exits 0" "$?" "0"
+eq "ledger row: tool calls exclude results after --now across transcripts" \
+  "$(python3 -I -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"].get("tool_calls"))' "$L6")" "4"
+
 echo "friction: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
