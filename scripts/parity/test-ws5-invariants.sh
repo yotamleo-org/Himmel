@@ -829,7 +829,7 @@ mkdir -p "$T15_CONTROL/scripts/fixtures"
 : > "$T15_CONTROL/scripts/stray.ps1"
 : > "$T15_CONTROL/scripts/fixtures/kept.cmd"
 env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE git -C "$T15_CONTROL" init -q
-env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE git -C "$T15_CONTROL" add -A
+env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE git -C "$T15_CONTROL" add -f -- scripts/stray.ps1 scripts/fixtures/kept.cmd || { echo "test-ws5-invariants.sh: staging the T15 control failed" >&2; exit 2; }
 t15_control="$(t15_strays "$T15_CONTROL")"
 if [ "$t15_control" = "scripts/stray.ps1" ]; then
     echo "PASS T15 control: a planted stray .ps1 is reported and a fixtures/ .cmd is not."
