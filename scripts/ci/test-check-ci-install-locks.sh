@@ -168,6 +168,33 @@ t=$(live claude-step-opts-before); cp "$FIX/claude-install-step.yml.txt" "$t/.gi
 # shellcheck disable=SC2016
 sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude"|sudo install -v -m 0755 "$RUNNER_TEMP/claude"|' "$t/.github/workflows/other.yml"
 expect "options before the operands are accepted" 0 "$t"
+t=$(live claude-step-opts-allowed); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude"|sudo install -D -v -o root -g root --mode=0755 -- "$RUNNER_TEMP/claude"|' "$t/.github/workflows/other.yml"
+expect "every allowed option form is accepted" 0 "$t"
+# A target-directory option makes the last operand a source, not the target: GNU
+# install then installs the verified file into the directory and the last operand
+# too. Only the allowlisted options may precede the operands.
+t=$(live claude-step-cluster-t); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install -Dt /usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "a cluster ending in t names a target directory" 1 "$t"
+t=$(live claude-step-target-eq); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install --target=/usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "an abbreviated --target= names a target directory" 1 "$t"
+t=$(live claude-step-ta); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install --ta /usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "an abbreviated --ta names a target directory" 1 "$t"
+t=$(live claude-step-no-t); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install --no-t "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "an abbreviated --no-t is not an allowed option" 1 "$t"
+t=$(live claude-step-backup-t); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install --backup=numbered -Dt /usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "--backup with a t cluster is rejected" 1 "$t"
 t=$(live claude-step-noinstall); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
 sed -i.bak '/sudo install -m 0755/d' "$t/.github/workflows/other.yml"
 expect "the step after pin_fetch is not an install at all" 1 "$t"

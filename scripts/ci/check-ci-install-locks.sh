@@ -131,18 +131,28 @@ claude_verified=0
 pend_dest=""; pend_rel=""; pend_file=""
 # installs_verified <segment> <verified file>: the segment is `[sudo] install
 # [options] <source>... <target>`, options only before the operands, and the
-# verified file is the last source (the operand just before the target).
+# verified file is the last source (the operand just before the target). Only
+# the options the install step uses are allowed (-m/--mode, -D, -v, -o, -g, --):
+# anything else, such as a -t/-T cluster or an abbreviated --target, can move
+# the target and is refused.
 installs_verified() {
   local -a tok pos=()
-  local i=0 n
+  local i=0 n mode_re name_re
+  mode_re='^([0-7]{3,4}|[ugoa]*[-+=][rwxXst]+(,[ugoa]*[-+=][rwxXst]+)*)$'
+  name_re='^[A-Za-z0-9_][A-Za-z0-9_.-]*$'
   read -ra tok <<< "$1"
   [ "${tok[0]:-}" = sudo ] && i=1
   [ "${tok[$i]:-}" = install ] || return 1
   i=$((i + 1)); n=${#tok[@]}
   while [ "$i" -lt "$n" ] && [[ "${tok[$i]}" == -* ]]; do
     case "${tok[$i]}" in
-      -t*|--target-directory*|-T|--no-target-directory) return 1 ;;
-      -m|-o|-g|--mode|--owner|--group) i=$((i + 1)) ;;
+      --) i=$((i + 1)); break ;;
+      -D|-v) ;;
+      --mode=*) [[ "${tok[$i]#--mode=}" =~ $mode_re ]] || return 1 ;;
+      -m?*) [[ "${tok[$i]#-m}" =~ $mode_re ]] || return 1 ;;
+      -m) i=$((i + 1)); [[ "${tok[$i]:-}" =~ $mode_re ]] || return 1 ;;
+      -o|-g) i=$((i + 1)); [[ "${tok[$i]:-}" =~ $name_re ]] || return 1 ;;
+      *) return 1 ;;
     esac
     i=$((i + 1))
   done
