@@ -190,6 +190,9 @@ export HIMMEL_DOCTOR_VERDICT_CACHE="$FAKEROOT/no-such-verdict-cache"
 # Same for C73-bun-compiled: never scan the operator's real ~/.local/bin; an
 # absent dir is an OK skip, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_BUN_SCAN_DIRS="$FAKEROOT/no-such-bin"
+# Same for C74-config-split: never list the operator's real .env key names; an
+# absent file is an OK skip, dedicated cases plant a fixture .env.
+export HIMMEL_DOCTOR_ENV_FILE="$FAKEROOT/no-such-env"
 # Same for C49-qmd-embed-model: never read the operator's real
 # qmd index; an absent index makes C48 silent, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_QMD_INDEX="$FAKEROOT/no-such-index.sqlite"
@@ -7174,5 +7177,63 @@ if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/links/stal
 out="$(c73_run "$c73_t/no-such-dir")"
 if grepq "$out" -F 'OK   C73-bun-compiled'; then pass "C73 absent scan dir -> OK"; else fail "C73 absent -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c73_t"
+
+# --- C74-config-split: himmel.conf, config keys left in .env, the policy file ---
+# Reads KEY NAMES only (never values); HIMMEL_DOCTOR_ENV_FILE is the .env seam.
+# Fixture values are planted dummies.
+c74_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c74.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c74_t/home/.himmel" "$c74_t/claude"
+c74_pol="$c74_t/home/.himmel/config.json"
+c74_conf="$c74_t/home/.himmel/himmel.conf"
+c74_run() { PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c74_t/claude" HOME="$c74_t/home" HIMMEL_DOCTOR_ENV_FILE="$c74_t/env" bash "$DOC" --no-color --only C74 2>&1; }
+c74_reset() { rm -f "$c74_t/env" "$c74_conf" "$c74_conf.local" "$c74_pol"; }
+echo "== C74-config-split: a config-class key still in .env -> WARN naming the key, never the value =="
+c74_reset
+printf 'JIRA_EMAIL=planted-dummy-value-74\nOPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'JIRA_EMAIL' && grepq "$out" -F 'migrate-env-config.sh' && ! grepq "$out" -F 'OPERATOR_SCRATCH_NOTE' && ! grepq "$out" -F 'planted-'; then pass "C74 config key in .env -> WARN naming JIRA_EMAIL only, no values"; else fail "C74 env key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: migrated (secrets-only .env, himmel.conf, policy file) -> OK =="
+c74_reset
+printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
+printf 'JIRA_EMAIL=moved@example.invalid\n' > "$c74_conf"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}' > "$c74_pol"
+out="$(c74_run)"
+if grepq "$out" -F 'OK   C74-himmel-conf' && grepq "$out" -F 'OK   C74-env-keys' && grepq "$out" -F 'OK   C74-policy' && ! grepq "$out" -E '(WARN|INFO) C74'; then pass "C74 migrated station -> three OK rows"; else fail "C74 migrated -> $(printf '%s' "$out" | head -6)"; fi
+echo "== C74-config-split: himmel.conf absent on a never-migrated install -> INFO =="
+c74_reset
+printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'INFO C74-himmel-conf' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no himmel.conf, nothing to migrate -> INFO only"; else fail "C74 absent conf -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: himmel.conf with a line that is not KEY=value -> WARN =="
+c74_reset
+printf 'HANDOVER_DIR=/x\nthis line is not a setting\n' > "$c74_conf"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-himmel-conf' && grepq "$out" -F 'line 2'; then pass "C74 unparseable himmel.conf -> WARN naming the line"; else fail "C74 bad conf -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: himmel.conf as a dangling link -> WARN =="
+c74_reset
+ln -s "$c74_t/no-such-vault/himmel.conf" "$c74_conf"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-himmel-conf'; then pass "C74 dangling himmel.conf link -> WARN"; else fail "C74 dangling -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: a policy key still in .env, no policy file -> WARN naming the key =="
+c74_reset
+printf 'ARMAUTOMERGE=1\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-policy' && grepq "$out" -F 'ARMAUTOMERGE' && grepq "$out" -F 'config.json'; then pass "C74 policy key in .env without config.json -> WARN"; else fail "C74 env policy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: a policy key in .env missing from .policy -> WARN naming only it =="
+c74_reset
+printf 'ARMAUTOMERGE=1\nCR_FLOOR_FALLBACK=claude-only\n' > "$c74_t/env"
+printf '{"policy":{"CR_FLOOR_FALLBACK":"claude-only"}}' > "$c74_pol"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-policy' && grepq "$out" -F 'ARMAUTOMERGE' && ! grepq "$out" -F 'CR_FLOOR_FALLBACK'; then pass "C74 only the unmoved policy key is named"; else fail "C74 partial policy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: the policy file is not valid JSON -> WARN =="
+c74_reset
+printf '{not json' > "$c74_pol"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-policy' && grepq "$out" -F 'fails closed'; then pass "C74 unparseable policy file -> WARN (gates fail closed)"; else fail "C74 bad json -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: no policy file and no policy key in .env -> INFO =="
+c74_reset
+out="$(c74_run)"
+if grepq "$out" -F 'INFO C74-policy' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no policy file, nothing relies on it -> INFO"; else fail "C74 no policy -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c74_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
