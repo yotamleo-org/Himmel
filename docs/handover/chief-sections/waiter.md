@@ -29,7 +29,10 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     successor=<session>`, then `relay-batch.sh`'s SENDMESSAGE lines and its
     closing `RELAYED <n> of <m>` line, once the successor's lock is held fresh;
     send each SENDMESSAGE line first (n counts them), then the `RELAYED` line to
-    the successor. Once the successor validated, `<your inbox>.handover` mutes
+    the successor, naming every worker still unrelayed. A batch that fails or
+    times out wakes `relay-failed rc=<n>` with its partial output and no
+    `RELAYED` line, and is never re-run. On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line,
+    then send `RELAYED <n> of <m>` yourself (n the delivered lines). Once the successor validated, `<your inbox>.handover` mutes
     your waiter for `CHIEF_WAIT_HANDOVER_MIN` (default 60); `rm` it to end the
     mute early. It runs `tick.sh` every
     180 s and wakes only when two consecutive samples differ from the action

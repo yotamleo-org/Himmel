@@ -532,7 +532,11 @@ waiter tallies it); it sends a `SendMessage` only on a timeout or a decline. Tha
 relay: never re-run it (a retry resends the claudex inbox relays). It never carries a fresh
 token, and a relay with none is complete (the worker keeps its own): native and claudex
 workers are not rotated on a bus succession. It prints `RELAYED <n> of <m>` last, and n
-counts its `SENDMESSAGE` lines: send those relays first, then that line to the successor.
+counts its `SENDMESSAGE` lines: send those relays first, then that line to the successor,
+naming every worker still unrelayed (n alone does not say which). A batch that fails or
+times out (`WAKE relay-on-live ... relay-failed rc=<n>`) prints its partial output and no
+`RELAYED` line. On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line,
+then send `RELAYED <n> of <m>` yourself, n the delivered lines.
 The quote-backs are the successor's to tally; you do not wait for them.
 A successor that arrives after you have left can prove itself only with the
 two-token chain form; a worker that cannot verify that is stranded (it keeps

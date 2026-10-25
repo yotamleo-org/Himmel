@@ -16,9 +16,9 @@ the relays below follow in the very next turn.
    and run the printed bullet command; on `WAKE succession partial <k/n> silent
    <T> min` name the workers still out. Neither wake resends LIVE. Then
    `TaskStop` the waiter and re-arm it without `--succession`.
-   If n is below m, LIVE names the workers not relayed (`FAILED-INBOX`,
-   `UNRESOLVED`, `NOT-IN-LIVE-STATE`); the predecessor relays each by hand
-   before it wraps. If it is already gone, send each the token-chain form yourself.
+   n counts only the batch's own deliveries, so n below m names nobody: LIVE
+   repeats the workers the predecessor's `RELAYED` message names as still unrelayed;
+   the predecessor relays each by hand before it wraps. If it is already gone, send each the token-chain form yourself.
    **Then close the predecessor's window.** Once its doc's lock is
    free and its last Results bullet reads `WRAPPED`, run
    `bash scripts/handover/chief-kit/close-wrapped-leg.sh --console <predecessor doc>`

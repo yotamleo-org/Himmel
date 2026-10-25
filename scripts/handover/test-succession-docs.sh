@@ -399,8 +399,17 @@ contains 'waiter section: the relay-on-live wake carries the RELAYED line' "$(fl
 contains 'Handing over step 4: FAILED-INBOX and UNRESOLVED are relayed by hand too' "$(flat "$step4")" '`FAILED-INBOX` and `UNRESOLVED` too'
 before 'Handing over step 5: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$step5")" 'Relay any worker it names as not relayed' 'wrap with'
 succ_start="$(flat "$(cat "$DOCS/handover/chief-sections/successor-start.md")")"
-contains 'successor-start: n below m means LIVE names the workers not relayed' "$succ_start" 'If n is below m'
+contains 'successor-start: n below m alone names no worker' "$succ_start" 'n below m names nobody'
+contains 'successor-start: LIVE repeats the workers the RELAYED message names as unrelayed' "$succ_start" 'names as still unrelayed'
 contains 'successor-start: a predecessor already gone leaves the token chain to the successor' "$succ_start" 'send each the token-chain form yourself'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'Handing over step 4: the RELAYED message names each worker still unrelayed' "$(flat "$step4")" '`RELAYED <n> of <m>` naming any still unrelayed'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'Handing over step 4: on relay-failed each undelivered worker gets a hand relay' "$(flat "$step4")" 'on `relay-failed`, any undelivered'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'waiter section: on relay-failed every worker with no delivery line gets a hand relay' "$(flat "$waiter_doc")" 'On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-console Handing over: on relay-failed every worker with no delivery line gets a hand relay' "$(flat "$running")" 'On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'running-a-console Handing over: a FAILED-INBOX line needs a hand relay' "$(flat "$running")" 'So does a `FAILED-INBOX` line'
 before 'running-a-console Handing over: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$running")" 'Relay each worker it names as not relayed' 'Wrap only with no subagent'
