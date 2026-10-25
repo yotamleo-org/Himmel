@@ -224,5 +224,6 @@ py_rc=$?
 [ "$py_rc" -eq 0 ] || { echo "ledger-prune.sh: filter step failed (rc=$py_rc) — ledger left untouched, backup is intact" >&2; exit 1; }
 
 if [ "$dry_run" -eq 0 ]; then
+  # prim-ok: the filtered inode carries the source ledger's exact mode; atomic_write would replace it with mode 0600.
   mv "$tmp" "$ledger" || { echo "ledger-prune.sh: replacing $ledger failed — backup is at $backup, filtered rows are at $tmp" >&2; exit 1; }
 fi

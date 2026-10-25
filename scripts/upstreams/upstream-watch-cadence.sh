@@ -65,6 +65,8 @@ SCHTASKS_BIN="${UPSTREAMWATCH_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${UPSTREAMWATCH_CRONTAB:-crontab}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 4
 
 # Cross-platform user-home resolution: prefer USERPROFILE via
 # cygpath on Windows Git-Bash (MSYS $HOME can differ from where ~/.claude
@@ -501,14 +503,16 @@ cmd_arm() {
             rm -f "$bat_tmp" "$vbs_tmp"; exit 4
         fi
     done
-    if ! mv -f "$vbs_tmp" "$vbs_file"; then
+    if ! atomic_write "$vbs_file" < "$vbs_tmp"; then
         echo "ERR upstream-watch-cadence: failed to publish shim to $vbs_file" >&2
         rm -f "$bat_tmp" "$vbs_tmp"; exit 4
     fi
-    if ! mv -f "$bat_tmp" "$bat_file"; then
+    if ! atomic_write "$bat_file" < "$bat_tmp"; then
         echo "ERR upstream-watch-cadence: failed to publish runner to $bat_file" >&2
-        rm -f "$bat_tmp"; exit 4
+        rm -f "$bat_tmp" "$vbs_tmp"; exit 4
     fi
+
+    rm -f "$bat_tmp" "$vbs_tmp"
 
     local err_file
     err_file=$(mktemp -t upstream-watch-cadence.err.XXXXXX)
@@ -842,6 +846,7 @@ cron_arm() {
         rm -f "$tmp_runner"
         exit 4
     fi
+    # prim-ok: the staged runner is already executable; atomic_write would remove its execute bits before cron can fire it.
     if ! mv -f "$tmp_runner" "$runner"; then
         echo "ERR upstream-watch-cadence: failed to publish runner to $runner" >&2
         rm -f "$tmp_runner"
