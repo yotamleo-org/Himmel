@@ -8,6 +8,8 @@ Why
 Main CI runs only on a cron or a dispatch, so most merge-bases have no run of their own. The covering-run fallback (HIMMEL-5124) then picks the next completed run, and that run is usually the one that carries the fix. The polarity rule cannot express "red at the merge-base, fixed later".
 Agent detail
 - Repro (2026-10-13): HIMMEL-5449 (#2495, 915c81d1) fixed git-env-scrub red from the srt-poc files of #2473. PRs 2486, 2488, 2491, 2493, 2496 and 2498 each got "REFUSE: git-env-scrub (base: success - not inherited, the PR's own red) - base verdict from the next completed covering main run at 915c81d1 (range 65506b96..915c81d1)".
+- Console P ruled a manual class exception (MF-1, in the P console doc). The conditions: the reds are only git-env-scrub, the shell-unit aggregate or T18 shards; every failing case is one of the srt-poc findings; the diff touches no srt-poc or git-env-scrub file; and git-env-scrub must be green at the new head.
+- Fix options: (a) when the cover range contains a commit that touches the failing case's files, judge the base from that commit's parent, or reproduce the failing case locally at the merge-base (a git-env-scrub --tree run is cheap and deterministic); (b) accept a local reproduction file (--base-cases-local) produced by running the failing suite at the merge-base in a scratch worktree.
 - RED rows first: the 2026-10-13 shape (cover holds the fix, the PR's red case is reproducible at the merge-base) must ALLOW. A PR whose own diff causes the case must still REFUSE.
 
 ## What to deliver
@@ -19,6 +21,8 @@ Make the change this ticket asks for, in this repository. It is checked by these
 The checks it must pass include:
 
 - `scripts/handover/test-merge-forward-check.sh`: fixed cover, no local reproduction: REFUSE as before (cannot tell inherited from the PR's own)
+- `scripts/handover/test-merge-forward-check.sh`: fixed cover + the case reproduced failing at the merge-base: ALLOW, says so
+- `scripts/handover/test-merge-forward-check.sh`: fixed cover, the PR's case did NOT fail at the merge-base (its own diff caused it): REFUSE
 - `scripts/handover/test-merge-forward-check.sh`: fixed cover, reproduced case belongs to another job: REFUSE
 - `scripts/handover/test-merge-forward-check.sh`: fixed cover, empty local reproduction: REFUSE
 - `scripts/handover/test-merge-forward-check.sh`: fixed cover, two reds, only one reproduced at the merge-base: REFUSE
@@ -35,6 +39,7 @@ The checks it must pass include:
 - `scripts/handover/test-merge-forward-check.sh`: cited local log does not exist: usage, never ALLOW
 - `scripts/handover/test-merge-forward-check.sh`: cited local log is empty: usage, never ALLOW
 - `scripts/handover/test-merge-forward-check.sh`: local reproduction with a command header but no log header: usage, never ALLOW
+- `scripts/handover/test-merge-forward-check.sh`: CRLF local reproduction file: usage, never ALLOW (fail closed)
 - `scripts/handover/test-merge-forward-check.sh`: one job with two PR cases, only one reproduced at the merge-base: REFUSE
 
 Run the tests you touch before you finish. Report what you changed and what you checked.

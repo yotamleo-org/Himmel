@@ -18,5 +18,6 @@ Make the change this ticket asks for, in this repository. It is checked by these
 The checks it must pass include:
 
 - `scripts/test-claude-codex.sh`: classifier flag: OpenRouter-served alias refuses
+- `scripts/test-claude-codex.sh`: classifier flag: alias with no owned_by refuses (fail closed)
 
 Run the tests you touch before you finish. Report what you changed and what you checked.

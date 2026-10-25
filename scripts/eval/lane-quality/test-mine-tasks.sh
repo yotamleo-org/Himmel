@@ -80,6 +80,7 @@ printf -- '---\nkey: "HIMMEL-9001"\ntype: "Bug"\n---\n\n%s\n\n## Description\n\n
   '$ bash tests/test-greet.sh' 'FAIL greets by the name it is given' \
   'Traceback-like noise: exit code 1 from the suite.' 'Fix: greet.sh appends the name when one is given.' >"$TMP/mirror/HIMMEL-9001.md"
 printf 'Seen in /home/jane.doe/work and /Users/jdoe/src.\n' >>"$TMP/mirror/HIMMEL-9001.md"  # leak-allow: home-path redaction fixture
+printf 'Also: a run that fails to load the names file says so.\n' >>"$TMP/mirror/HIMMEL-9001.md"
 printf -- '---\nkey: "HIMMEL-9002"\ntype: "Task"\n---\n\n# HIMMEL-9002: keep the plain greeting covered\n\n## Description\n\nAdd a usage line.\n' >"$TMP/mirror/HIMMEL-9002.md"
 
 echo "1. candidates"
@@ -97,6 +98,7 @@ T1="$TMP/lq/tasks/real-himmel-9001-41"
 check "emit writes the task directory, the ticket text under fixture/" '[ ! -e "$T1/prompt.md" ] && [ -f "$T1/fixture/prompt.md" ] && [ -f "$T1/task.json" ] && [ -x "$T1/accept.sh" ]'
 check "the prompt carries the ticket text and the named checks" 'grep -q "greet ignores the name" "$T1/fixture/prompt.md" && grep -q "greets by the name it is given" "$T1/fixture/prompt.md" && grep -q "tests/test-greet.sh" "$T1/fixture/prompt.md"'
 check "the prompt carries no failure text" 'nogrep -qE "FAIL|Traceback|exit code" "$T1/fixture/prompt.md"'
+check "a requirement that names a failure stays in the prompt" 'grep -qF "fails to load the names file" "$T1/fixture/prompt.md"'
 check "a home path in the ticket text is redacted to a placeholder" 'grep -qF "/home/<user>/work and /Users/<user>/src" "$T1/fixture/prompt.md" && nogrep -qE "jane|jdoe" "$T1/fixture/prompt.md"'
 check "the prompt carries no fix" 'nogrep -q "LQ-FIX-MARKER" "$T1/fixture/prompt.md" && nogrep -qF "hello\${1" "$T1/fixture/prompt.md"'
 check "task.json records base, merge, set, source and why_hard" 'jq -e --arg b "$C1" --arg m "$C2" ".base_sha == \$b and .merge_sha == \$m and .set == \"capability\" and .source == \"bug\" and .ticket == \"HIMMEL-9001\" and .pr == 41 and (.why_hard | length > 0) and .scope == [\"lib/\", \"tests/\"]" "$T1/task.json" >/dev/null'
@@ -118,6 +120,16 @@ check "accept fails on the untouched base" '! bash "$T1/accept.sh" "$TMP/acc-bas
 check "accept passes on the merged fix" 'bash "$T1/accept.sh" "$TMP/acc-merge" x >"$TMP/acc-merge.log" 2>&1'
 printf '#!/usr/bin/env bash\nexit 0\n' >"$TMP/acc-noop/tests/test-greet.sh"
 check "an exit-0 test in the agent's tree does not pass acceptance" '! bash "$T1/accept.sh" "$TMP/acc-noop" x >/dev/null 2>&1'
+printf 'outside\n' >"$TMP/outside.txt"; mkdir -p "$TMP/outside-dir"
+tree acc-link "$C2"; ln -sf "$TMP/outside.txt" "$TMP/acc-link/tests/test-greet.sh"
+tree acc-dlink "$C2"; rm -r "$TMP/acc-dlink/tests"; ln -s "$TMP/outside-dir" "$TMP/acc-dlink/tests"
+bash "$T1/accept.sh" "$TMP/acc-link" x >/dev/null 2>&1; bash "$T1/accept.sh" "$TMP/acc-dlink" x >/dev/null 2>&1
+check "the hidden overlay replaces a symlink in the agent's tree, never writes through it" '[ "$(cat "$TMP/outside.txt")" = outside ] && [ -z "$(ls -A "$TMP/outside-dir")" ]'
+GP="$TMP/lq/tasks/git-probe"; mkdir -p "$GP/hidden/tests"
+printf '{"id": "git-probe", "tests": ["tests/test-git.sh"]}\n' >"$GP/task.json"
+printf '#!/usr/bin/env bash\ncase "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" in "$(pwd -P)"/*) exit 0 ;; esac\nexit 1\n' | gzip -n >"$GP/hidden/tests/test-git.sh.ref.gz"
+git -C "$TMP/src" worktree add -q --detach "$TMP/acc-wt" "$C2"
+check "acceptance over a linked worktree runs git in its own scratch repo" 'python3 "$MT" accept "$GP" "$TMP/acc-wt" >"$TMP/acc-wt.log" 2>&1'
 check "the hidden tests are kept out of the graphify index" 'grep -qxF "scripts/eval/lane-quality/tasks/*/hidden/" "$REAL_REPO/.graphifyignore"'
 
 echo "5. a real task runs in a fresh repo with no route to the fix"
@@ -215,6 +227,11 @@ check "the two calls show the arms in swapped order, recorded" 'jq -e "(.order =
 check "a judge that always picks A is a flip, reported with the position bias" 'jq -e ".flip == true" "$P" >/dev/null && grep -q "flips 1 of 1" "$TMP/pair.log" && grep -q "A chosen 2 of 2" "$TMP/pair.log"'
 bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model sonnet >"$TMP/pair-same.log" 2>&1; rc=$?
 check "judge-pair refuses a judge from either arm's model family" '[ "$rc" -eq 64 ]'
+mkdir -p "$TMP/out-c"; cp "$TMP/out-b/"*.cand.md "$TMP/out-c/"
+jq -c '.base_sha = "0000000"' "$TMP/out-b/runs.jsonl" >"$TMP/out-c/runs.jsonl"
+: >"$TMP/fake.log"
+bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-c" --judge-model opus >"$TMP/pair-base.log" 2>&1; rc=$?
+check "judge-pair pairs a run only with one on the same task, repeat, base and variant" '[ "$rc" -ne 0 ] && [ ! -s "$TMP/fake.log" ]'
 LQ_FAKE_PEEK="$TMP/src" LQ_FAKE_FIX_DIR="$TMP/fixsrc" bash "$RT" run --lane native --model claude-haiku-5-5 --effort high --no-judge \
   --tasks real-himmel-9001-41 --out "$TMP/out-peek" >/dev/null 2>&1
 check "a read of the source checkout by path is flagged as a peek" '[ "$(jq .peeked "$TMP/out-peek/runs.jsonl")" = true ]'

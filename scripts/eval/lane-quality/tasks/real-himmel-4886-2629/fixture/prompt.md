@@ -1,6 +1,6 @@
 # Evaluate the Claude Code sandbox (bwrap) for legs as defence in depth: hide ~/.config/himmel, verdicts/ read-only, unsandboxed fallback off (VM)
 
-(no description)
+From the #2031 failure audit. Enforced at open(2) for every Bash child, closing the script-file and option-parsing escape classes at once. Costs: tool compatibility (git, gh, node, sockets), go.sh/write-verdict.sh need unsandboxed paths, Codex/claudex need their own setup; hooks, MCP, at, systemd-run run outside. VM first.
 
 ## What to deliver
 

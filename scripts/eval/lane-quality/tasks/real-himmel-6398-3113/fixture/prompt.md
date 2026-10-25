@@ -14,6 +14,7 @@ Plan
 2. The brief header and the You are line use the lane's resolved model name (read the lanes.json default the same way headed-arm-leg.sh does) and the lane.
 3. RED rows in scripts/handover/console-kit/test-gen-briefs.sh: a claudex leg with no model gets a launcher with no claude-sonnet argument and a header naming the lane model; effort: high gets the export.
 DoD
+- The test-gen-briefs rows fail on main and pass on the branch.
 - A generated claudex launcher, launched unmodified, starts on the lane-default model at the requested effort (live proof: re-dispatch N2673 HIMMEL-6373 from it).
 Agent detail
 - Files: scripts/handover/console-kit/gen-briefs.py, scripts/handover/console-kit/test-gen-briefs.sh, plus the gen-briefs docstring.

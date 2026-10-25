@@ -5,6 +5,7 @@ scripts/cr/cr-scores.sh computes agreed% as agreed / total (~:315, :334). Findin
 Fix
 Count fixed as agreement in both the column and the drop-advice. fixed means the finding was accepted and acted on. First read how the ledger verdicts are tallied, and list every verdict value seen in the aggregator. If a separate fixed column is clearer than folding it in, say so. Either way, the drop-advice must not treat fixed as disagreement.
 Acceptance
+RED in scripts/cr/test-cr-scores.sh: a critic whose findings are all fixed gets no drop advice. This fails today. Existing cases stay green.
 
 ## What to deliver
 

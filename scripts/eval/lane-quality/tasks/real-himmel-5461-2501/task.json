@@ -6,7 +6,7 @@
   "base_sha": "e9005eca36db5f02a06bbf129ccd30abd2a8ceab",
   "set": "capability",
   "source": "bug",
-  "why_hard": "2 code file(s), 177 changed lines; the hidden scripts/handover/test-merge-forward-check.sh must go from failing at the base to passing, checked by 18 named check(s)",
+  "why_hard": "2 code file(s), 177 changed lines; the hidden scripts/handover/test-merge-forward-check.sh must go from failing at the base to passing, checked by 21 named check(s)",
   "tests": [
     "scripts/handover/test-merge-forward-check.sh"
   ],

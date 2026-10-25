@@ -36,7 +36,7 @@ SUBJECT = re.compile(r"^[a-z]+(\([^)]*\))?!?: \[([A-Z][A-Z0-9]*-\d+)\] .* \(#(\d
 TEST = re.compile(r"(^|/)test-[^/]*\.sh$")
 FIXTURE = re.compile(r"(^|/)fixtures/")
 EXCLUDE = re.compile(r"^(scripts/hooks/|\.github/|scripts/eval/lane-quality/)")
-FAILURE = re.compile(r"FAIL|Traceback|exit code|exit status|\brc[= ]\d|^\s*\$ ", re.I)
+FAILURE = re.compile(r"\bFAIL(ED)?\b|^\s*not ok\b|Traceback|\bexit (code|status) \d|\brc[= ]\d|^\s*\$ ")
 # a user's home directory name in ticket text, replaced by <user> in the prompt
 HOME_PATH = re.compile(r"(/home/|/Users/|[A-Za-z]:[\\/]Users[\\/])(?!\.)([^/\\\s]{2,})")
 ESCAPE = re.compile(r"\b(escape[sd]?|regression|post-merge|broke|broken)\b", re.I)
@@ -236,6 +236,17 @@ def cmd_emit(a):
     return rc
 
 
+def overlay_path(root, rel):
+    """root/rel with no symlink on the way: a link the agent left there is removed, never followed."""
+    cur = root
+    for part in rel.split("/"):
+        cur = os.path.join(cur, part)
+        if os.path.islink(cur):
+            os.unlink(cur)
+    os.makedirs(os.path.dirname(cur), exist_ok=True)
+    return cur
+
+
 def run_hidden(task_dir, tree, timeout):
     """Copy the tree, lay the hidden files over it, run each hidden test; (passed, total, lines)."""
     task = json.load(open(os.path.join(task_dir, "task.json"), encoding="utf-8"))
@@ -244,13 +255,16 @@ def run_hidden(task_dir, tree, timeout):
     try:
         dst = os.path.join(work, "t")
         shutil.copytree(tree, dst, symlinks=True)
+        if os.path.isfile(os.path.join(dst, ".git")):
+            # a linked worktree's .git points at the agent's repo: give the copy its own
+            os.unlink(os.path.join(dst, ".git"))
+            commit_tree(dst)
         hidden = os.path.join(task_dir, "hidden")
         for root, _, files in os.walk(hidden):
             for f in files:
                 src = os.path.join(root, f)
                 rel = os.path.relpath(src, hidden)[: -len(".ref.gz")]
-                os.makedirs(os.path.dirname(os.path.join(dst, rel)) or dst, exist_ok=True)
-                with gzip.open(src, "rb") as fi, open(os.path.join(dst, rel), "wb") as fo:
+                with gzip.open(src, "rb") as fi, open(overlay_path(dst, rel), "wb") as fo:
                     shutil.copyfileobj(fi, fo)
         env = {"HOME": home, "PATH": os.environ.get("PATH", "/usr/bin:/bin"), "TMPDIR": tempfile.gettempdir(),
                "LANG": "C.UTF-8", "GIT_AUTHOR_NAME": "lq", "GIT_AUTHOR_EMAIL": "lq@invalid",
@@ -284,6 +298,11 @@ def tree_repo(repo, sha, dest):
     os.makedirs(dest)
     arch = subprocess.run(["git", "-C", repo, "archive", sha], check=True, capture_output=True).stdout
     subprocess.run(["tar", "-x", "-C", dest], input=arch, check=True)
+    commit_tree(dest)
+
+
+def commit_tree(dest):
+    """dest's files as the only commit of a new repo in dest."""
     env = dict(os.environ, GIT_AUTHOR_DATE=DATE, GIT_COMMITTER_DATE=DATE)
     for args in (["init", "-q", "-b", "lq-task"], ["add", "-A"],
                  ["-c", "user.name=lane-quality", "-c", "user.email=lane-quality@invalid", "-c", "commit.gpgsign=false",

@@ -6,6 +6,7 @@ Items (all in scripts/handover/console-kit/fleet.mjs)
 1. Pid fallback still uses a finished background row. The pid selection ends with || agPid, which also applies to a finished bg row, contradicting the comment above it (a finished row's pid may be stale or reused). A reused pid can make a completed leg look alive and raise a false attention flag. Fix: take agPid only when !agBg || agRun.
 3. Launch logs are read only for their first 8192 bytes. A pid or session-log path appended after that prefix is never seen, so a reused or growing launch log can leave the row on an obsolete process. Fix: read the tail, or state the supported log format in the header comment and the docs.
 Acceptance
+Each fix has a fixture in test-fleet.sh that fails before the change.
 
 ## What to deliver
 

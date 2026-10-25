@@ -750,10 +750,11 @@ cmd_run() {
   done
   done
   echo "lane-quality: done, spent $SPENT USD (API-price equivalent); rows in $OUT/runs.jsonl"
-  # a sweep with any row lacking one of the four judge scores is not a baseline
-  if [ "$NO_JUDGE" -eq 1 ] || { [ -s "$OUT/runs.jsonl" ] && jq -se --arg r "$RUN_ID" '
-      map(select(.run_id == $r)) | any(.judge == null
-        or ([.judge.correctness, .judge.scope_discipline, .judge.test_quality, .judge.honesty] | any(type != "number")))' \
+  # a sweep with any row lacking one of the four judge scores (of either
+  # grading, under --judge-twice) is not a baseline
+  if [ "$NO_JUDGE" -eq 1 ] || { [ -s "$OUT/runs.jsonl" ] && jq -se --arg r "$RUN_ID" --argjson twice "$JUDGE_TWICE" '
+      def unscored: . == null or ([.correctness, .scope_discipline, .test_quality, .honesty] | any(type != "number"));
+      map(select(.run_id == $r)) | any((.judge | unscored) or ($twice == 1 and (.judge_b | unscored)))' \
       "$OUT/runs.jsonl" >/dev/null; }; then
     STATUS=partial
   fi
@@ -881,7 +882,9 @@ cmd_judge_pair() {
       '{key: $k, task: $task, order: [$f, $s], position_1: $p1, position_2: $p2, preferred_1: $m1, preferred_2: $m2,
         flip: ($m1 != $m2), preferred: (if $m1 == $m2 then $m1 else null end),
         judge_model: $jm, judge_effort: (if $je == "" then null else $je end)}' >>"$out"
-  done < <(jq -r '"\(.task)#\(.rep // 1)\t\(if (.rep // 1) > 1 then "\(.task).r\(.rep)" else .task end)\t\(.task)"' "${dirs[0]}/runs.jsonl")
+  done < <(jq -r --slurpfile c "${dirs[1]}/runs.jsonl" '
+    select(. as $b | any($c[]; .task == $b.task and (.rep // 1) == ($b.rep // 1) and .base_sha == $b.base_sha and .variant == $b.variant))
+    | "\(.task)#\(.rep // 1)\t\(if (.rep // 1) > 1 then "\(.task).r\(.rep)" else .task end)\t\(.task)"' "${dirs[0]}/runs.jsonl")
   [ -s "$out" ] || die "no pair judged (each run needs its stored <stem>.cand.md)"
   jq -rs --arg spent "$spent" '
     "judge-pair: \(length) pairs; agreeing: baseline \(map(select(.preferred == "baseline")) | length), candidate \(map(select(.preferred == "candidate")) | length), tie \(map(select(.preferred == "tie")) | length), both_bad \(map(select(.preferred == "both_bad")) | length)",

@@ -242,6 +242,10 @@ cat >"$TMP/pbin/claude" <<'FAKE'
 case " $* " in *" --json-schema "*)
   cat >/dev/null
   if [ -n "${LQ_FAKE_JUDGE_EMPTY:-}" ]; then echo '{"type":"result","is_error":false,"total_cost_usd":0.02,"structured_output":{"notes":"n"}}'; exit 0; fi
+  if [ -n "${LQ_FAKE_JUDGE2_FAIL:-}" ]; then
+    [ ! -f "$LQ_FAKE_JUDGE2_FAIL" ] || { echo '{"type":"result","is_error":false,"total_cost_usd":0.02,"structured_output":{"notes":"n"}}'; exit 0; }
+    : >"$LQ_FAKE_JUDGE2_FAIL"
+  fi
   echo '{"type":"result","is_error":false,"total_cost_usd":0.02,"structured_output":{"correctness":4,"scope_discipline":4,"test_quality":4,"honesty":4,"notes":"n"}}'
   exit 0 ;;
 esac
@@ -262,5 +266,7 @@ psweep() { # psweep <out> <args...>: one shell-red-green task on the fake agent;
 check "control: a judged sweep with every score present is ok" '[ "$(psweep p-ok)" = ok ]'
 check "a --no-judge sweep is written partial" '[ "$(psweep p-nojudge --no-judge)" = partial ]'
 check "a sweep whose judge returned no score is written partial" '[ "$(LQ_FAKE_JUDGE_EMPTY=1 psweep p-null)" = partial ]'
+check "control: a --judge-twice sweep with both gradings is ok" '[ "$(psweep p-twice --judge-twice)" = ok ]'
+check "a --judge-twice sweep whose second grading failed is written partial" '[ "$(LQ_FAKE_JUDGE2_FAIL="$TMP/judge2.seen" psweep p-twice-b --judge-twice)" = partial ] && jq -e ".judge.correctness == 4 and (.judge_b.correctness | type) != \"number\"" "$TMP/p-twice-b/runs.jsonl" >/dev/null'
 echo "test-trajectory: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
