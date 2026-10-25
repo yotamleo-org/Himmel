@@ -304,6 +304,11 @@ assert_eq "no API lane never invokes the runner" "0" "$(wc -l < "$RUNNER_LOG" | 
 reset_runner_log
 rc=0; out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_refresh both --vault "$VAULT" --dry-run 2>&1) || rc=$?
 assert_rc "dry-run without an API lane still rc 0" 0 "$rc"
+echo "TEST: an explicit --backend claude-cli runs without the API lane"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_refresh himmel --vault "$VAULT" --backend claude-cli 2>&1) || rc=$?
+assert_rc "explicit claude-cli rc 0" 0 "$rc"
+assert_contains "explicit claude-cli reaches the runner" "--backend claude-cli" "$(cat "$RUNNER_LOG")"
 
 # ============================================================================
 # Test 5: serial both -> order luna then himmel, canonical arg sets, hint, status

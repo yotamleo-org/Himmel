@@ -31,7 +31,8 @@
 #
 # Usage:
 #   bash scripts/graphify/graph-refresh.sh [luna|himmel|both] [--vault <path>]
-#                                          [--dry-run] [-h|--help]
+#                                          [--dry-run] [--backend claude-api|claude-cli]
+#                                          [-h|--help]
 #
 # Args/flags:
 #   luna|himmel|both   Which corpus(corpora) to refresh. Default: both.
@@ -41,6 +42,8 @@
 #                      the vault as its corpus.
 #   --dry-run          Print the exact refresh-graph-map.sh invocations (and the
 #                      cadence status probe plan) without running them.
+#   --backend <name>   claude-api (default) or claude-cli. claude-cli draws the
+#                      subscription and runs only when passed here.
 #   -h, --help         Show this help.
 #
 # Test seams (used by test-graph-refresh.sh):
@@ -522,7 +525,7 @@ DRY_RUN=0
 
 usage() {
     cat <<EOF
-usage: graph-refresh.sh [luna|himmel|both] [--vault <path>] [--dry-run] [-h|--help]
+usage: graph-refresh.sh [luna|himmel|both] [--vault <path>] [--dry-run] [--backend claude-api|claude-cli] [-h|--help]
 
 Operator one-shot graphify refresh for the luna and/or himmel corpora
 Fires refresh-graph-map.sh per corpus SERIALLY (luna then
@@ -536,6 +539,8 @@ Args/flags:
                      where BOTH curated MOCs are published.
   --dry-run          Print the exact refresh-graph-map.sh invocations without
                      running them.
+  --backend <name>   claude-api (default) or claude-cli. claude-cli draws the
+                     subscription and runs only when passed here.
   -h, --help         Show this help.
 
 Test seams:
@@ -550,6 +555,8 @@ while [ $# -gt 0 ]; do
         --vault)          VAULT="${2:?--vault requires a value}"; shift 2 ;;
         --vault=*)        VAULT="${1#--vault=}"; shift ;;
         --dry-run)        DRY_RUN=1; shift ;;
+        --backend)        BACKEND="${2:?--backend requires a value}"; shift 2 ;;
+        --backend=*)      BACKEND="${1#--backend=}"; shift ;;
         -h|--help)        usage; exit 0 ;;
         *) echo "ERR graph-refresh: unknown arg: $1" >&2; usage >&2; exit 1 ;;
     esac
