@@ -534,7 +534,8 @@ EOF
         --jq '.[] | [.filename, (.previous_filename // "")] | @tsv' 2>/dev/null) \
         || refuse files "cannot list PR #$tp_pr's changed files"
     listed=0
-    [ -n "$files" ] && listed=$(printf '%s\n' "$files" | wc -l | tr -d ' ')
+    # A type change (a file turned into a symlink) is two rows with one filename.
+    [ -n "$files" ] && listed=$(printf '%s\n' "$files" | cut -f1 | sort -u | wc -l | tr -d ' ')
     [ "$listed" -eq "$count" ] \
         || refuse files "listed $listed of PR #$tp_pr's $count changed files (the listing stops at 3000)"
     meta=$("$gh_bin" api "repos/$tp_nwo/pulls/$tp_pr" --jq "$pr_jq" 2>/dev/null) || meta=""
