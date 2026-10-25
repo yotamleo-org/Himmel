@@ -131,16 +131,19 @@ fi
 
 # Service identifiers migrate by name; credentials remain in the legacy file.
 rm -rf "$HOME/.himmel"
-identifiers='JIRA_BASE_URL JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
-TELEGRAM_GROUP_CHAT_ID GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
+identifiers='JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
+GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
 VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B'
 : > "$ENVF"
 for key in $identifiers; do
     printf '%s=dummy-identifier\n' "$key" >> "$ENVF"
 done
-printf 'JIRA_API_TOKEN=dummy-secret\n' >> "$ENVF"
+printf 'JIRA_API_TOKEN=dummy-secret\nJIRA_BASE_URL=https://dummy.example\nTELEGRAM_GROUP_CHAT_ID=dummy-chat\n' >> "$ENVF"
 before=$(cat "$ENVF")
 out=$(bash "$SCRIPT" --env "$ENVF" --dry-run 2>&1)
+rc=$?
+if [ "$rc" = 0 ]; then pass "identifier dry run exits 0"; else fail "identifier dry run exited $rc"; fi
+preview="$out"
 for key in $identifiers; do
     has "dry run names $key" "would move  $key" "$out"
 done
@@ -148,11 +151,20 @@ lacks "dry run never prints identifier values" "dummy-identifier" "$out"
 lacks "dry run never lists credentials" "JIRA_API_TOKEN" "$out"
 if [ -e "$HOME/.himmel" ]; then fail "identifier dry run wrote config"; else pass "identifier dry run writes nothing"; fi
 out=$(bash "$SCRIPT" --env "$ENVF" 2>&1)
+rc=$?
+if [ "$rc" = 0 ]; then pass "identifier migration exits 0"; else fail "identifier migration exited $rc"; fi
 conf=$(cat "$HOME/.himmel/himmel.conf" 2>/dev/null)
 for key in $identifiers; do
-    has "migration copies $key" "$key=dummy-identifier" "$conf"
+    if grep -qxF "$key=dummy-identifier" "$HOME/.himmel/himmel.conf"; then
+        pass "migration copies active $key assignment"
+    else
+        fail "migration did not copy an active $key assignment"
+    fi
 done
-lacks "identifier migration leaves credentials behind" "JIRA_API_TOKEN" "$conf"
+for key in JIRA_API_TOKEN JIRA_BASE_URL TELEGRAM_GROUP_CHAT_ID; do
+    lacks "dry run excludes $key" "$key" "$preview"
+    lacks "identifier migration leaves $key behind" "$key" "$conf"
+done
 lacks "migration never prints identifier values" "dummy-identifier" "$out"
 if [ "$before" = "$(cat "$ENVF")" ]; then pass "migration leaves legacy .env unchanged"; else fail "migration changed legacy .env"; fi
 

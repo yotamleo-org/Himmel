@@ -82,8 +82,8 @@ Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `TRACKER`.
 
 Non-secret Jira and service identifiers also belong in `himmel.conf`:
-`JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_PROJECTS`, `JIRA_PROJECT_KEY`,
-`JIRA_CLOUD_ID`, `TELEGRAM_GROUP_CHAT_ID`, `GCP_CI_PROJECT_ID`, `SNYK_ORG_ID`,
+`JIRA_EMAIL`, `JIRA_PROJECTS`, `JIRA_PROJECT_KEY`, `JIRA_CLOUD_ID`,
+`GCP_CI_PROJECT_ID`, `SNYK_ORG_ID`,
 `SNYK_ORG_SLUG`, `VERCEL_TEAM_ID`, `VERCEL_USER_ID`, `ANTHROPIC_API_ORG_ID_A`,
 `ANTHROPIC_API_ORG_ID_B`. Their meanings and defaults are unchanged;
 `.env.example` documents them. The Jira CLI reads its identifiers through
@@ -104,6 +104,8 @@ Everything else stays in `.env`. That includes keys whose secret-or-config
 class has not been decided yet: other account emails, chat IDs, cookie-file
 paths, service URLs and VM user names. Only the explicitly named identifiers
 above are config; tokens and all other unclassified keys remain secrets.
+A key that decides where a credential or message is sent (`JIRA_BASE_URL`,
+`TELEGRAM_GROUP_CHAT_ID`) stays secret while `himmel.conf` is unguarded.
 
 The registry is `_himmel_key_class` in `scripts/lib/load-dotenv.sh`. A key
 moves from secret to config only by editing that list in a reviewed PR.

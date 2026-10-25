@@ -39,12 +39,10 @@
 # HIMMEL_UPDATE_AUTOSTASH=1
 
 # Non-secret Jira and service identifiers (tokens stay in .env)
-# JIRA_BASE_URL=https://dummy.atlassian.net
 # JIRA_EMAIL=dummy@example.invalid
 # JIRA_PROJECTS=DUMMY
 # JIRA_PROJECT_KEY=DUMMY
 # JIRA_CLOUD_ID=dummy-cloud-id
-# TELEGRAM_GROUP_CHAT_ID=-1000000000000
 # GCP_CI_PROJECT_ID=dummy-project
 # SNYK_ORG_ID=dummy-org-id
 # SNYK_ORG_SLUG=dummy-org
