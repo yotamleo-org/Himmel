@@ -114,9 +114,12 @@ chmod +x "$GH_STUB"
 # at that head in <git-common-dir>/cr-critic-scores.jsonl. stamp_review writes
 # that row; run_sut stamps the current head unless REVIEW_ROW=0.
 LEDGER="$REPO/.git/cr-critic-scores.jsonl"
+LEDGER_ROWS=""
+reset_ledger() { LEDGER_ROWS=""; printf '' > "$LEDGER"; }
 stamp_review() {  # <head> [status]
-    printf '{"kind":"avail","ts":"2026-10-25T00:00:00Z","branch":"feat/himmel-3031-x","head":"%s","model":"codex","status":"%s","artifact":"diff","perspective":"off"}\n' \
-        "$1" "${2:-ok}" >> "$LEDGER"
+    LEDGER_ROWS="${LEDGER_ROWS}$(printf '{"kind":"avail","ts":"2026-10-25T00:00:00Z","branch":"feat/himmel-3031-x","head":"%s","model":"codex","status":"%s","artifact":"diff","perspective":"off"}' \
+        "$1" "${2:-ok}")"$'\n'
+    printf '%s' "$LEDGER_ROWS" > "$LEDGER"
 }
 
 run_sut() {  # args passed straight through to the SUT
@@ -413,7 +416,7 @@ assert_eq "WORKER_SESSION_JIRA_STATUS=0 makes no Jira call" "0" "$(wc -c < "$JIR
 echo "TEST: refuses to open a PR for a head with no pr-check record"
 : > "$ARGV_LOG"
 unset STUB_OPEN_PR 2>/dev/null || true
-: > "$LEDGER"
+reset_ledger
 head_r=$(git -C "$REPO" rev-parse HEAD)
 err_r=$(REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" 2>&1 >/dev/null); rc_r=$?
 assert_eq "unreviewed head refused (rc=1)" "1" "$rc_r"
@@ -452,7 +455,7 @@ assert_eq "cleared marker plus record opens (rc=0)" "0" "$rc_m2"
 
 echo "TEST: the gate is for opening; an existing PR's body update is not gated"
 : > "$ARGV_LOG"
-: > "$LEDGER"
+reset_ledger
 STUB_OPEN_PR=42 REVIEW_ROW=0 run_sut "$TITLE_FILE" "$BODY_FILE" >/dev/null 2>&1; rc_r4=$?
 assert_eq "update path without a record still exits 0" "0" "$rc_r4"
 contains "update path edits the PR" "$(cat "$ARGV_LOG")" "pr edit 42"
