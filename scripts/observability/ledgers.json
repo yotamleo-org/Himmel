@@ -278,6 +278,19 @@
       "grandfathered": false
     },
     {
+      "id": "user-reports",
+      "default_path": "~/.himmel/state/user-reports.jsonl",
+      "override_env": "HIMMEL_USER_REPORTS",
+      "writer": "scripts/report/himmel_report.py",
+      "readers": ["scripts/eval/friction/friction.py"],
+      "format": "jsonl",
+      "rotation": "none",
+      "retention": "unbounded",
+      "schema_version": 1,
+      "envelope": ["v", "ts", "host", "source", "kind"],
+      "grandfathered": false
+    },
+    {
       "id": "guest-exec",
       "default_path": "~/.himmel/vm/guest-exec.log",
       "override_env": "HIMMEL_GUEST_EXEC_LOG",

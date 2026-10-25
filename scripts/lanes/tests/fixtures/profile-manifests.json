@@ -149,7 +149,7 @@
       "lean-skills@himmel",
       "qmd@himmel"
     ],
-    "contextBudget": 35000
+    "contextBudget": 55000
   },
   "leg-bus": {
     "enabled": [
@@ -158,7 +158,7 @@
       "lean-skills@himmel",
       "qmd@himmel"
     ],
-    "contextBudget": 35000
+    "contextBudget": 53000
   },
   "leg-vm": {
     "enabled": [
@@ -242,7 +242,7 @@
       "himmel-ops@himmel",
       "qmd@himmel"
     ],
-    "contextBudget": 35000
+    "contextBudget": 55000
   },
   "release-manager": {
     "enabled": [

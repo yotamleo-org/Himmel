@@ -9,6 +9,7 @@ FRICTION="${FRICTION_PY:-$HERE/friction.py}"
 FIX="$HERE/fixtures"
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/friction-test.XXXXXX")" || { echo "test-friction: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$TMP"' EXIT
+export HIMMEL_USER_REPORTS="$TMP/no-user-reports.jsonl"
 
 PASS=0; FAIL=0
 pass() { PASS=$((PASS + 1)); echo "PASS $1"; }

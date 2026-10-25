@@ -2724,7 +2724,7 @@ check "28c record ends with an ISO-8601 UTC launch time" "$(printf '%s\n' "$rec2
 # No secrets: launch metadata only - never an env value.
 not_contains "28c record holds no env value (canary secret)" "$rec28" "hunter2-canary"
 not_contains "28c record holds no env value (canary key)" "$rec28" "sk-canary-not-real"
-check "28c record carries only the fixed launch-metadata keys" "$(printf '%s\n' "$rec28" | tr ' ' '\n' | sed 1d | cut -d= -f1 | paste -sd, -)" "profile,lane,model,role,session,launched"
+check "28c record carries only the fixed launch-metadata keys" "$(printf '%s\n' "$rec28" | tr ' ' '\n' | sed 1d | cut -d= -f1 | paste -sd, -)" "profile,lane,model,role,session,session_id,launched"
 
 d28b="$tmp/c28b"; mk_launch_stubs "$d28b" "HIMMEL-3270-N3-noprof"; mkdir -p "$tmp/repo28b"
 RUN_LEG_ARGS='--no-profile' run_leg "$d28b" "$tmp/repo28b" "HIMMEL-3270-N3-noprof" "claude-sonnet-5" >/dev/null 2>&1 || true
@@ -4474,6 +4474,10 @@ check "43b the doc body is untouched" "$(sed '1,/^---$/d' "$doc43" | sed '1,/^--
 check "43c the front matter still opens on line 1" "$(head -n 1 "$doc43")" "---"
 sid43_2="$(printf '%s' "$sids43" | grep -oE "$uuid_re" | tail -n 1)"
 contains "43d the second launch hands its own uuid to the shim" "$(cat "$tmp/c43-2/record" 2>/dev/null)" "WORKER_SESSION_ID=$sid43_2"
+rec43="$(ll_line HIMMEL-43-leg2)"
+contains "43d2 the launch record carries the minted session id beside profile and lane" "$rec43" " session_id=$sid43_2 "
+contains "43d3 the same record names the profile and lane" "$rec43" "headed-arm-leg: profile=leg-impl lane=native "
+check "43d4 the record still ends with the launch time" "$(printf '%s\n' "$rec43" | grep -Ec ' launched=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$')" "1"
 nodoc43="$tmp/HIMMEL-43-N44-nofm.md"
 printf '# no front matter\n> **Prior art:** none found (qmd -c jira-himmel "fixture")\n\n## Results\n- 10:00 LIVE x\n' > "$nodoc43"
 nodoc43_body="$(cat "$nodoc43")"
@@ -4483,6 +4487,7 @@ wait_record "$d43n" || true
 check "43e0 the no-front-matter launch reached the launcher" "$([ -s "$d43n/record" ] && echo yes)" "yes"
 not_contains "43e a doc without front matter gets no id, and an inherited one is scrubbed" "$(cat "$d43n/record" 2>/dev/null)" "WORKER_SESSION_ID="
 check "43f a doc without front matter is left byte-identical" "$(cat "$nodoc43")" "$nodoc43_body"
+not_contains "43f2 a launch that minted no id records none" "$(ll_line HIMMEL-43-nofm)" "session_id="
 shim43="$tmp/shim43-claude"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$@"\n' > "$shim43"; chmod 755 "$shim43"
 check "43g the shim passes WORKER_SESSION_ID as --session-id" \
