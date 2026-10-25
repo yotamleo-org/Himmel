@@ -66,6 +66,7 @@ echo 'echo verdict' >"$ORIGIN/scripts/handover/console-kit/write-verdict.sh"
 echo 'echo wait' >"$ORIGIN/scripts/handover/console-kit/console-wait.sh"
 echo ': go-gate' >"$ORIGIN/scripts/lib/go-gate.sh"
 echo ': handover-path' >"$ORIGIN/scripts/lib/handover-path.sh"
+echo 'echo bullet' >"$ORIGIN/scripts/handover/console-kit/append-results.sh"
 echo 'doc' >"$ORIGIN/docs/a.md"
 g -C "$ORIGIN" add -A
 g -C "$ORIGIN" commit -qm base
@@ -2612,10 +2613,18 @@ EOF" \
 import os; os.system('bash scripts/cr/write-verdicts.sh *')
 EOF" \
     'echo $D > scripts/cr/write-verdicts.sh' \
-    'echo [[ $D ]]; bash scripts/cr/write-verdicts.sh'; do
+    'echo [[ $D ]]; bash scripts/cr/write-verdicts.sh' \
+    'bash /tmp/e7130/scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    'bash ./scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    'cd /tmp/e7130 && bash scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh'; do
     run "7130 class1 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
-g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+run "7130 class1 [the anchor's bullet writer by absolute path] -> allow" 0 \
+    "$(payload "bash $PRIMARY/scripts/handover/console-kit/append-results.sh /tmp/d7130.md 'scripts/cr/*'" "$WT")" "$HR"
+echo changed >>"$WT/scripts/handover/console-kit/append-results.sh"
+run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
+    "$(payload "bash scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh" "$WT")" "$HR"
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/console-kit/append-results.sh
 
 # ---- the shared command-position corpus, from the unrelated non-himmel repo ---
 # A run of the script is refused there (wrong lane); a mention is not a run.

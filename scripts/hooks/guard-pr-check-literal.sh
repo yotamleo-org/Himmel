@@ -2493,7 +2493,9 @@ fi
 # assignment it does not list either (only an upper-case name can be a
 # dangerous one); a command or process substitution's output is re-split and
 # globbed; and a write to a file can hold text a later call runs. Each keeps
-# the text scan.
+# the text scan. The bullet writer is trusted only by the anchor's path, or
+# by the cwd-relative path with no cd and the cwd's copy byte-equal to the
+# anchor's: any other copy may run its arguments.
 # shellcheck disable=SC2016 # a jq program, never expanded by bash
 AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
@@ -2505,8 +2507,7 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
          elif ((.argv[0] // {t: "dyn"}) | lit and (.v | contains("/") | not)) | not then false
          elif .prog == "bash" or .prog == "sh" then
              (.argv[1] // null) as $a
-             | $a != null and ($a | lit) and ($a.v | startswith("-") | not)
-               and ($a.v | test("^(.*/)?scripts/handover/console-kit/append-results\\.sh$"))
+             | $a != null and ($a | lit) and ($a.v == $ar or $a.v == $rel)
          elif .prog == "printf" then
              (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not))
          elif .prog == "sort" then
@@ -2520,9 +2521,15 @@ AST_JQ='def lit: .t == "lit" and (.g | not);
              and all(.argv[3:][]; lit and (.v | startswith("-") | not))
          else .prog as $p | any("grep", "egrep", "fgrep", "cat", "head", "tail", "wc", "ls", "cut", "tr", "nl", "jq", "echo", "cd", "mkdir", "true", ":"; . == $p)
          end);
-if all(.[]; ok) then "data" else "legacy" end'
+if all(.[]; ok) | not then "legacy"
+elif any(.[]; (.prog == "bash" or .prog == "sh") and .argv[1].v == $rel) then
+    (if any(.[]; .prog == "cd") then "legacy" else "data-rel" end)
+else "data" end'
 ast_data_only() {
-    local lib pos verdict
+    local lib pos verdict here
+    local rel=scripts/handover/console-kit/append-results.sh anchor=${HIMMEL_REPO:-}
+    anchor=${anchor%/}
+    [ -n "$anchor" ] || return 1
     # shellcheck disable=SC2016 # literal patterns, never expanded
     case "$cmd" in *'@P'* | *'(('* | *'$['* | *'[['* | *'$('* | *'`'* | *'<('* | *'>('*) return 1 ;; esac
     [[ "$cmd" =~ \$\{[^}]*\[ ]] && return 1
@@ -2531,8 +2538,17 @@ ast_data_only() {
     # shellcheck source=../lib/bash-ast.sh
     { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || return 1
     pos=$(bash_ast_positions "$cmd" 2>/dev/null) || return 1 # swallow-ok: any failure keeps the text scan
-    verdict=$(printf '%s' "$pos" | jq -r "$AST_JQ" 2>/dev/null) || return 1 # swallow-ok: a jq failure keeps the text scan
-    [ "$verdict" = data ]
+    verdict=$(printf '%s' "$pos" | jq -r --arg ar "$anchor/$rel" --arg rel "$rel" "$AST_JQ" 2>/dev/null) || return 1 # swallow-ok: a jq failure keeps the text scan
+    case "$verdict" in
+    data) return 0 ;;
+    data-rel)
+        here=$(jq -r '. + "."' <<<"$cwd_json" 2>/dev/null) || return 1 # swallow-ok: an undecodable cwd keeps the text scan
+        here=${here%.}
+        case "$here" in /*) ;; *) return 1 ;; esac
+        cmp -s -- "$here/$rel" "$anchor/$rel"
+        ;;
+    *) return 1 ;;
+    esac
 }
 if ast_data_only; then
     [ "${edhook_pending:-0}" = 1 ] && edhook_deny
