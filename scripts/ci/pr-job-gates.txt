@@ -21,6 +21,8 @@
 benign          ^docs/
 benign          ^templates/
 benign          ^handovers/
+# archive/ holds retired features; no job executes or reads it.
+benign          ^archive/
 # Safe: no gated job executes or reads a .md file as an input (the audit in
 # test-pr-plan.sh follows only code and data extensions), and a docs-only PR
 # is the case this gate exists to make cheap. A .md that a suite reads would
@@ -82,7 +84,6 @@ benign          ^marketplace/plugins/qmd/\.mcp\.json$
 
 guardrail_matrices ^scripts/guardrails/
 guardrail_matrices ^scripts/hooks/check-guardrail-matrices\.sh$
-guardrail_matrices voice
 
 git_env_scrub   ^scripts/(handover|lanes|hooks|cr|lib)/
 git_env_scrub   scrub

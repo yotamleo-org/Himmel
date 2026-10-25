@@ -122,8 +122,6 @@ export function benchEnv(scratchDir, projectDir, pluginRoot) {
     UPDATE_CHECK_STATE_DIR: join(scratchDir, 'update-check'),
     // qmd-staleness-notice.sh: staleness-notice cache.
     QMD_STALENESS_CACHE_DIR: join(scratchDir, 'qmd-staleness'),
-    // speak-reply.sh: off unless explicitly 1, but be explicit.
-    VOICE_SPEAK: '0',
   };
 }
 

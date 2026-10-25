@@ -23,7 +23,7 @@
 {"id":"h023","query":"which orchestration shape should I use for a fan-out of workers","lex":"map-reduce-and-manage shapes","collections":["himmel"],"expect":["himmel/docs/orchestration-patterns.md"]}
 {"id":"h024","query":"which scheduled cadences exist and which are armed by hand","lex":"cadences registry armed wizard","collections":["himmel"],"expect":["himmel/docs/cadences.md"]}
 {"id":"h025","query":"which Jira projects exist and what are their conventions","lex":"Jira projects conventions","collections":["himmel"],"expect":["himmel/docs/jira-projects.md"]}
-{"id":"h026","query":"how do I make claude speak every reply aloud","lex":"voice speak every reply gate","collections":["himmel"],"expect":["himmel/docs/voice.md"]}
+{"id":"h026","query":"how do I send claude a voice note from telegram","lex":"telegram voice note transcription","collections":["himmel"],"expect":["himmel/scripts/telegram/README.md"]}
 {"id":"h027","query":"what web interfaces does himmel ship for configuration and the board","lex":"himmelctl ui config console board","collections":["himmel"],"expect":["himmel/docs/ui.md"]}
 {"id":"h028","query":"which launchers start the codex, openrouter and deepseek lanes","lex":"launchers claude-codex claude-openrouter","collections":["himmel"],"expect":["himmel/docs/launchers.md"]}
 {"id":"h029","query":"what is the quota gauge and the escalation channel","lex":"quota-gauge escalation channel","collections":["himmel"],"expect":["himmel/docs/jarvis-subsystems.md"]}
