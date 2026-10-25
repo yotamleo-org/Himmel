@@ -47,6 +47,12 @@ if [ -f "$TMP/darwin-profile" ] && grep -Fq '(deny network*)' "$TMP/darwin-profi
     && grep -Fq '(literal "/dev/null")' "$TMP/darwin-profile"; then
     ok 'Darwin emitted profile denies network and confines writable paths'
 else bad 'Darwin confinement profile not passed to sandbox-exec'; fi
+# Apple bash 3.2 puts here-document temp files in /tmp and ignores TMPDIR, so the
+# profile lets exactly those files through; any wider /tmp grant would be a hole.
+if grep -Fq '(allow file-write* (regex #"^/private/tmp/sh-thd[-._0-9A-Za-z]*$"))' "$TMP/darwin-profile" \
+    && ! grep -Eq '"/(private/)?tmp"' "$TMP/darwin-profile"; then
+    ok 'Darwin profile allows only bash 3.2 here-document temp files in /tmp'
+else bad 'Darwin profile misses the narrow here-document temp-file allow (or grants /tmp)'; fi
 if [ -f "$TMP/darwin-calls" ] && [ "$(wc -l < "$TMP/darwin-calls")" -eq 2 ]; then
     ok 'Darwin validates profile before payload launch'
 else bad 'Darwin profile preflight did not precede payload'; fi
@@ -91,6 +97,10 @@ if [ "$(uname -s)" = Darwin ]; then
     if [ "$RC" -ne 0 ] && [[ "$OUT" == *CONNECT_STARTED* ]] && [[ "$OUT" == *'Operation not permitted'* ]]; then
         ok 'Darwin denies host Unix socket connection'
     else bad "Darwin host socket permission: rc=$RC $OUT"; fi
+    OUT=$(bash "$RUNNER" -- /bin/bash -c 'cat <<<HEREDOC_OK' 2>&1); RC=$?
+    if [ "$RC" = 0 ] && [[ "$OUT" == *HEREDOC_OK* ]]; then
+        ok 'Darwin system bash can create a here-document inside the sandbox'
+    else bad "Darwin here-document temp file: rc=$RC $OUT"; fi
 else
     OUT=$(bash "$RUNNER" -- bash -c 'test ! -S "$1"' _ "$TMP/host.sock" 2>&1); RC=$?
     if [ "$RC" = 0 ]; then ok 'host Unix socket absent inside'; else bad "host Unix socket exposed: rc=$RC $OUT"; fi

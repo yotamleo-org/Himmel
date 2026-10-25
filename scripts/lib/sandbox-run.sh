@@ -102,12 +102,15 @@ if [ "$platform" = Darwin ]; then
     writable_root="$scratch_root/work"
     mkdir -p "$writable_root/home" "$writable_root/tmp" || exit 125
     profile="$scratch_root/profile.sb"
+    # Apple bash 3.2 writes here-document temp files to /tmp and ignores TMPDIR; the
+    # one regex allow below is exactly that name, nothing else under /tmp.
     cat > "$profile" <<'PROFILE'
 (version 1)
 (allow default)
 (deny network*)
 (deny file-write*)
 (allow file-write* (subpath (param "SCRATCH")) (literal "/dev/null"))
+(allow file-write* (regex #"^/private/tmp/sh-thd[-._0-9A-Za-z]*$"))
 PROFILE
     [ -s "$profile" ] || exit 125
     darwin_env=(/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin LANG=C.UTF-8
