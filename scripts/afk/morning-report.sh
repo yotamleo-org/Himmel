@@ -442,8 +442,8 @@ sec_review_rounds() {
     local out="" since body
     body=$'## Review rounds per merged PR\n\n'
     if [ -n "${REVIEW_ROUNDS_TXT:-}" ]; then
-        out="$(cat "$REVIEW_ROUNDS_TXT" 2>/dev/null)" || out=""
-        [ -f "$REVIEW_ROUNDS_TXT" ] || { printf '%s_review-rounds scan unavailable._' "$body"; return; }
+        out="$(cat "$REVIEW_ROUNDS_TXT" 2>/dev/null)" \
+            || { printf '%s_review-rounds scan unavailable._' "$body"; return; }
     else
         since="$(date -u -d '2 days ago' +%FT%TZ 2>/dev/null)" \
             || since="$(date -u -v-2d +%FT%TZ)"  # gnu-ok: BSD/macOS fallback

@@ -20,13 +20,13 @@
 # directory - POSIX bash 3.2+ plus jq and gh.
 #
 # Usage: review-rounds.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>] [--tsv]
+# --repo defaults to the repo of this checkout's own remote.
 # Seams: REVIEW_ROUNDS_GH (gh), REVIEW_ROUNDS_STATE_DIR (the counter dir).
 set -u
 
 usage() { echo "usage: review-rounds.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>] [--tsv]" >&2; }
 
-SINCE=""; UNTIL=""; TSV=0
-REPO="yotamleo/Himmel"  # env-literal-ok: the scorecard default, same as merged-count.sh
+SINCE=""; UNTIL=""; REPO=""; TSV=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --since) SINCE="${2:?--since needs a value}"; shift 2 ;;
@@ -68,8 +68,16 @@ fi
 RUN=$(tmpdir) || { echo "review-rounds: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$RUN"' EXIT
 
-"$GH" pr list -R "$REPO" --state merged --limit 1000 --json number,headRefName,mergedAt > "$RUN/prs.json" 2>/dev/null \
+SINCE_DAY=$(date -u -d "@$SINCE_EPOCH" +%F 2>/dev/null || date -u -r "$SINCE_EPOCH" +%F)  # gnu-ok: BSD/macOS fallback
+# no --repo: gh resolves the repo from this checkout's own remote
+set --; [ -z "$REPO" ] || set -- -R "$REPO"
+(cd "$HERE" && "$GH" pr list "$@" --state merged --limit 1000 --search "merged:>=$SINCE_DAY" --json number,headRefName,mergedAt) > "$RUN/prs.json" 2>/dev/null \
     || { echo "review-rounds: gh pr list failed" >&2; exit 1; }
+# a full page means PRs inside the window may be cut off: refuse rather than print a partial distribution
+if [ "$(jq 'length' "$RUN/prs.json" 2>/dev/null)" = "1000" ]; then
+    echo "review-rounds: gh returned the 1000-PR limit for merged:>=$SINCE_DAY - narrow --since" >&2
+    exit 1
+fi
 jq -r --argjson s "$SINCE_EPOCH" --argjson u "$UNTIL_EPOCH" '
   [.[] | . + {t: (.mergedAt | sub("\\.[0-9]+Z$"; "Z") | fromdateiso8601)}
        | select(.t >= $s and .t < $u)] | sort_by(.t)[]

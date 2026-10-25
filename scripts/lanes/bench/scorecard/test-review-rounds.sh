@@ -39,6 +39,11 @@ printf 'x\n' > "$STATE/feat/g.round"
 
 cat > "$RUN/gh" <<'EOF'
 #!/usr/bin/env bash
+printf '%s\n' "$*" >> "$REVIEW_ROUNDS_GH_LOG"
+if [ -n "${REVIEW_ROUNDS_GH_FULL:-}" ]; then
+    jq -n '[range(0;1000) | {number: ., headRefName: "x", mergedAt: "2026-10-25T08:00:00Z"}]'
+    exit 0
+fi
 cat <<'JSON'
 [
  {"number":11,"headRefName":"feat/a","mergedAt":"2026-10-24T08:00:00Z"},
@@ -54,7 +59,7 @@ JSON
 EOF
 chmod +x "$RUN/gh"
 
-export REVIEW_ROUNDS_GH="$RUN/gh" REVIEW_ROUNDS_STATE_DIR="$STATE"
+export REVIEW_ROUNDS_GH="$RUN/gh" REVIEW_ROUNDS_STATE_DIR="$STATE" REVIEW_ROUNDS_GH_LOG="$RUN/gh.log"
 
 out=$(bash "$SCRIPT" --tsv --since 2026-10-24T00:00:00Z --until 2026-10-26T00:00:00Z 2>/dev/null)
 check_eq "tsv: one row per merged PR in the window, rounds from the counter" \
@@ -80,6 +85,14 @@ check_eq "an empty window prints no day rows" "$(printf '%s\n' "$empty" | grep -
 
 bash "$SCRIPT" >/dev/null 2>&1
 check_eq "no --since is a usage error" "$?" "2"
+
+case "$(cat "$RUN/gh.log")" in
+    *'--search merged:>=2026-10-24'*) echo "ok - the merged-date filter is applied server-side" ;;
+    *) echo "FAIL - gh was not asked for merged:>=2026-10-24: $(head -1 "$RUN/gh.log")"; fails=$((fails + 1)) ;;
+esac
+
+REVIEW_ROUNDS_GH_FULL=1 bash "$SCRIPT" --since 2026-10-24T00:00:00Z >/dev/null 2>&1
+check_eq "a gh answer at the 1000 limit is exit 1, not a silently partial window" "$?" "1"
 
 REVIEW_ROUNDS_GH=/nonexistent bash "$SCRIPT" --since 2026-10-24T00:00:00Z >/dev/null 2>&1
 check_eq "a failing gh is exit 1, not an empty distribution" "$?" "1"
