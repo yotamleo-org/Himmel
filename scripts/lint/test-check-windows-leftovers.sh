@@ -52,6 +52,11 @@ printf 'see docs/voice.md\n' > "$tmp/repo/README.md"
 add_all
 expect 1 "T5 a live voice reference fails"
 
+fixture
+printf 'win\tx\tscripts/old.sh\n' > "$tmp/repo/scripts/lint/windows-leftovers-baseline.tsv"
+add_all
+expect 1 "T8 a non-numeric baseline count fails"
+
 rm -rf "$tmp/repo"
 mkdir -p "$tmp/repo/scripts/lint"
 printf 'win\t1\tscripts/old.sh\n' > "$tmp/repo/scripts/lint/windows-leftovers-baseline.tsv"

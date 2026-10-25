@@ -71,6 +71,9 @@ while IFS="$(printf '\t')" read -r class n path; do
   if [ -z "$allowed" ]; then
     echo "check-windows-leftovers: $class: $path has $n line(s) and no baseline row" >&2
     bad=1
+  elif ! [[ "$allowed" =~ ^[0-9]+$ ]]; then
+    echo "check-windows-leftovers: $class: $path has a non-numeric baseline count: $allowed" >&2
+    bad=1
   elif [ "$n" -gt "$allowed" ]; then
     echo "check-windows-leftovers: $class: $path grew from $allowed to $n line(s)" >&2
     bad=1
