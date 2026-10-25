@@ -64,14 +64,10 @@ Run these, in order, and write the result as the first bullet under
    token and a fresh one (the token chain always rotates).
    `worker-preface.md` (`worker-sections/succession.md`) is the authority.
    A worker's quote-back is its `SUCCESSION accepted` Results bullet. **Arm step 10's
-   waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**. Once the
-   predecessor reports `RELAYED <n> of <m>` (its relay batch delivered), send
-   **`{{LETTER}} LIVE`** to it, naming any worker it could not relay (`SKIPPED`,
-   `UNRESOLVED`). The quote-back tally is informational: on
-   `WAKE succession complete` or `WAKE succession partial` write any fresh nonce
-   into `## Live state` (`next` seeded the rest), name the workers still out (they
-   did not quote back) in a Results bullet, never resend LIVE, then re-arm
-   **without `--succession`**.
+   waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**. On the
+   predecessor's `RELAYED <n> of <m>` send it **`{{LETTER}} LIVE`**, naming workers
+   not relayed. `WAKE succession complete` or `WAKE succession partial` is
+   informational: write fresh nonces into `## Live state`, re-arm **without `--succession`**.
    Then close its window, re-ask judges: `chief-sections/successor-start.md`.
 10. **Start the event waiter now.** Run `console-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`**; the harness
@@ -246,14 +242,11 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    record prints `SENDMESSAGE` (successor, worker's token) for a Live-state
    worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
    Never re-run it (it resends inbox relays). It carries no fresh token:
-   native and claudex workers are not rotated on a bus succession. Once every
-   `SENDMESSAGE` relay is sent (n counts them), send the successor the
-   `RELAYED <n> of <m>` line relay-batch.sh prints last. The quote-backs are the
-   successor's to tally.
+   native and claudex workers are not rotated on a bus succession. Then send
+   the successor `RELAYED <n> of <m>`.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
-   the only confirmation that ACTION ZERO completed, and it follows your `RELAYED`
-   line, naming any workers that did not quote back or could not be relayed, and
-   why. Then wrap with
+   the only confirmation that ACTION ZERO completed, and it names any workers that
+   did not quote back, and why. Then wrap with
    **one** command, which writes `WRAPPED` and releases the lock:
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
    It refuses (exit 4) while any subagent of yours, a judge subagent above all, is
