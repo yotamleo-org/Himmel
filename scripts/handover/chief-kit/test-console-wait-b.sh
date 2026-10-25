@@ -633,7 +633,7 @@ reset_stub
 # shellcheck disable=SC2016  # the stub bodies expand when the stub runs
 printf '#!/usr/bin/env bash\nexit "$(cat "$STUB/rol.rc")"\n' > "$STUB/rol-lock.sh"
 # shellcheck disable=SC2016  # as above
-printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay to $3"\n' > "$STUB/rol-relay.sh"
+printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay to $3"\necho "RELAYED 1 of 1"\n' > "$STUB/rol-relay.sh"
 export CHIEF_WAIT_LOCK_STATUS="$STUB/rol-lock.sh" CHIEF_WAIT_RELAY="$STUB/rol-relay.sh" CHIEF_WAIT_SUCCESSION_SEC=1
 ROLD="$WORK/rol-console.md"; : > "$ROLD"
 echo 0 > "$STUB/rol.rc"
@@ -650,6 +650,8 @@ wait_exit "$WPID"
 check "(rol2) a held successor lock wakes once in handover mode, rc 0" "0" "$rc"
 check "(rol2) the wake names the successor" "WAKE relay-on-live successor=S2" "$(head -n1 "$WORK/rol2.out")"
 check "(rol2) the block carries the relay lines" "yes" "$(grep -q '^SENDMESSAGE to=N1' "$WORK/rol2.out" && echo yes)"
+check "(rol2) the RELAYED line comes right after the header, for the successor" "RELAYED 1 of 1" "$(sed -n 2p "$WORK/rol2.out")"
+check "(rol2) and it is printed once" "1" "$(grep -c '^RELAYED ' "$WORK/rol2.out")"
 check "(rol2) the marker is consumed" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
 check "(rol2) the exit reason is logged" "yes" "$(grep -q 'exit=wake-relay-on-live' "$I.wait" && echo yes)"
 

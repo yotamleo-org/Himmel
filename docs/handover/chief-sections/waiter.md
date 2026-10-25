@@ -20,13 +20,15 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     the usage read is broken: fix it, then restart the waiter; it wakes once per
     failure streak), or, on a successor's first arm only (ACTION ZERO step 9,
     `--succession <your session> [--silent-min T]`), `WAKE succession complete
-    <k/n>` plus the printed LIVE command when every inherited worker's `SUCCESSION
+    <k/n>` plus the printed LIVE bullet command when every inherited worker's `SUCCESSION
     accepted` bullet is in, or `WAKE succession partial <k/n> silent <T> min`
-    naming the workers still out. Each fires once; **re-arm without `--succession`**
+    naming the workers still out. Both are informational (LIVE went on the
+    predecessor's `RELAYED` line). Each fires once; **re-arm without `--succession`**
     (a re-arm that keeps it after a complete wake stays quiet). An outgoing
     chief started with `chief.sh next --relay-on-live` gets `WAKE relay-on-live
-    successor=<session>` plus `relay-batch.sh`'s SENDMESSAGE lines once the
-    successor's lock is held fresh; send each line. It runs `tick.sh` every
+    successor=<session>`, then `relay-batch.sh`'s `RELAYED <n> of <m>` line and
+    its SENDMESSAGE lines, once the successor's lock is held fresh; send each
+    line, and the `RELAYED` line to the successor. It runs `tick.sh` every
     180 s and wakes only when two consecutive samples differ from the action
     key you last saw: `workers=` (a worker FRESH → STALE / FREE / WRAPPED …),
     `livestate=` (DRIFT / MALFORMED), `prs=` (the repo's open-PR set — any

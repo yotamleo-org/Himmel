@@ -81,6 +81,21 @@ WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSIO
 check "the late attachment run exits 0" '[ "$qrc" = 0 ]'
 check "the late attachment relay is a leg (legs=2, leg=3/750)" 'row "$TMP/q.out" | grep -q " leg=3/750 legs=2 "'
 
+echo "3e. a himmel-bus relay record delivered as a hook's additional context"
+if ! { mkdir "$TMP/bus" && cp "$FX"/*.jsonl "$TMP/bus/"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+if ! python3 - "$TMP/bus" <<'PYEOF'
+import json, sys
+open(sys.argv[1] + "/leg-bus.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in [
+    {"type": "agent-name", "agentName": "HIMMEL-5-N5-leg-bus", "timestamp": "2026-10-19T10:05:00Z"},
+    {"type": "attachment", "timestamp": "2026-10-19T10:18:00Z", "attachment": {"type": "hook_additional_context", "content": ["bus #1 from HIMMEL-nextleg-2026-10-19A-roadmap-console: | SUCCESSION relay from HIMMEL-nextleg-2026-10-19A-roadmap-console"]}},
+    {"type": "assistant", "timestamp": "2026-10-19T10:18:10Z", "message": {"id": "mb1", "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "SUCCESSION accepted"}]}},
+]))
+PYEOF
+then echo "test-handover-cost: fixture modification failed" >&2; exit 1; fi
+WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/bus" --legs-after 2026-10-19T09:30:00Z >"$TMP/bus.out" 2>&1; busrc=$?
+check "the bus relay run exits 0" '[ "$busrc" = 0 ]'
+check "the bus relay record is a leg (legs=2, leg=3/750)" 'row "$TMP/bus.out" | grep -q " leg=3/750 legs=2 "'
+
 echo "3d. mechanical columns"
 if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed -e 's/bash action-zero.sh --acquire/bash append-results.sh d x/' -e 's/ListAgents check/will run append-results.sh later/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1; mrc2=$?
