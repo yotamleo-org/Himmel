@@ -1440,6 +1440,13 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
     def pr_badge(n, ci, d):
         return '<a class="pr ci-%s" href="https://github.com/%s/pull/%d">#%d · CI %s%s</a>' % (ci, esc(repo), n, n, ci, ' · draft' if d else '')
 
+    def row_worker(n):
+        w = workers.get(n)
+        if w is None or prs is None:
+            return w
+        live = {pn for pn, _, _ in prs.get(n, [])}
+        return dict(w, prs={pk: p for pk, p in w.get('prs', {}).items() if str(pk).isdigit() and int(pk) in live})
+
     def step(st):
         state = step_state(st)
         k = st.get('key', '')
@@ -1460,15 +1467,16 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
         else:
             parts.append('not in the Jira mirror')
         if n in workers:
-            parts.append(esc(worker_line(workers[n])))
+            parts.append(esc(worker_line(row_worker(n))))
         return '<li class="st-%s"><b>%s</b> %s %s <span class="own">%s</span></li>\n' % (
             esc(state), esc(state), key_html(n), esc(clip(mir[k]['title'], 100)) if k in mir else '', ' · '.join(parts))
     def step_row(k):
         if not KEY_RE.fullmatch(k):
             return None
-        w = workers.get(num(k))
+        w = row_worker(num(k))
         m = mir.get(k)
-        return [m['title'] if m else None, (m['sn'] or m['cat']) if m else None, [w.get('leg'), w.get('state'), open_worker_prs(w)] if w else None]
+        return [m['title'] if m else None, (m['sn'] or m['cat']) if m else None, [w.get('leg'), w.get('state'), open_worker_prs(w)] if w else None,
+                None if prs is None else sorted(prs.get(num(k), []))]
     chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
                         for ch in chains)
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]

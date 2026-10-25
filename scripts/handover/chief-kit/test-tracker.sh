@@ -1213,7 +1213,7 @@ printf '{"key":"HIMMEL-432","leg":"N77","state":"live","prs":{"600":{"head":"fed
 v7out="$W/vp-v7.html"
 v7render() {
     TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
-        --prs-file "$W/vp-prs7.json" --chains-file "$W/vp-chains7.json" --workers-dir "$W/wk7" --jira-base-url https://jira.example.test --out "$v7out" 2>&1
+        --prs-file "${V7PRS:-$W/vp-prs7.json}" --chains-file "$W/vp-chains7.json" --workers-dir "$W/wk7" --jira-base-url https://jira.example.test --out "$v7out" 2>&1
 }
 touch -d '2026-09-01 00:00:00 UTC' "$W/vp-chains7.json"
 v7render >/dev/null
@@ -1233,6 +1233,12 @@ contains 'the header names the age of an out-of-date focus-chains.json (HIMMEL-7
 touch "$W/vp-chains7.json"
 v7render >/dev/null
 not_contains 'a focus-chains.json newer than the Jira mirror adds no age note (HIMMEL-7621)' "$(cat "$v7out")" 'focus-chains.json last written'
+printf '{"key":"HIMMEL-432","leg":"N77","state":"live","prs":{"600":{"head":"fed1234beef","open":true},"650":{"head":"dead650beef","ci":"green","open":true}}}\n' > "$W/wk7/HIMMEL-432.json"
+v7render >/dev/null
+not_contains 'a worker-record PR the open-PR snapshot does not list is not shown on a chain row (HIMMEL-7621)' "$(li 'rowlive open pr')" '#650'
+contains 'a worker-record PR the open-PR snapshot lists stays on the chain row (HIMMEL-7621)' "$(li 'rowlive open pr')" 'worker N77 · live · #600 @fed1234'
+printf '{"key":"HIMMEL-432","leg":"N77","state":"live","prs":{"600":{"head":"fed1234beef","open":true}}}\n' > "$W/wk7/HIMMEL-432.json"
+contains 'the documented render command passes the worker records dir (HIMMEL-7621)' "$(grep -F 'tracker.py" --version' "$HERE/../../../docs/handover/chief-sections/board-tracker.md")" '--workers-dir'
 printf '%s\n' '---' 'key: "HIMMEL-433"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.4"]' 'type: "Task"' \
     '---' '# HIMMEL-433: rowlive other version' > "$vp/HIMMEL-433.md"
 cat > "$W/vp-chains7.json" <<'EOF'
@@ -1244,6 +1250,12 @@ printf '%s\n' '---' 'key: "HIMMEL-433"' 'updated: "2026-09-30T10:00:00.000+0000"
     '---' '# HIMMEL-433: rowlive other version renamed' > "$vp/HIMMEL-433.md"
 v7render >/dev/null
 if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a retitled chain step of another version moves the focus fingerprint (HIMMEL-7621)'; else fail 'a retitled chain step of another version left the focus fingerprint unchanged'; fi
+jq '. + [{"number":601,"title":"feat: [HIMMEL-433] other","headRefName":"feat/o","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]}]' "$W/vp-prs7.json" > "$W/vp-prs7-green.json"
+jq '.[1].statusCheckRollup = [{"status":"COMPLETED","conclusion":"FAILURE"}]' "$W/vp-prs7-green.json" > "$W/vp-prs7-red.json"
+V7PRS="$W/vp-prs7-green.json" v7render >/dev/null
+vfp7a="$(cat "$v7out.vfp" 2>/dev/null)"
+V7PRS="$W/vp-prs7-red.json" v7render >/dev/null
+if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a CI change on the open PR of a chain step of another version moves the focus fingerprint (HIMMEL-7621)'; else fail 'a CI change on the open PR of a chain step of another version left the focus fingerprint unchanged'; fi
 cat > "$W/vp-chains7.json" <<'EOF'
 [{"name":"c7621","steps":[{"key":"HIMMEL-432"},{"key":"HIMMEL-433"},{"key":"HIMMEL-999"}]}]
 EOF

@@ -80,7 +80,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     release state (`node <primary>/scripts/jira/dist/index.js versions` redirected to
     `<mirror-dir>.versions.tsv`, i.e. `~/.himmel/state/jira-mirror/HIMMEL.versions.tsv`),
     then render the current version with
-    `python3 "<kit>/tracker.py" --version <version> --priority-file <approved plan> --chains-file <handover bucket>/focus-chains.json --jira-base-url <site> --out <handover bucket>/roadmap-tracker.html --plan-dir <plan dir>`
+    `python3 "<kit>/tracker.py" --version <version> --priority-file <approved plan> --chains-file <handover bucket>/focus-chains.json --workers-dir ~/.himmel/state/workers --jira-base-url <site> --out <handover bucket>/roadmap-tracker.html --plan-dir <plan dir>`
     (`tracker.py --help` names every argument; `--out` and `--plan-dir` must be
     the paths the tick reads, because with `--plan-dir` the render also writes
     `<out>.fp`, the value `--emit-fp` prints, so the tick then reports `tracker=ok`).
