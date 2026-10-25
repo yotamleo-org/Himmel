@@ -93,8 +93,8 @@ check "1 the carry loop in console.sh was found" "$([ -n "$sh_fields" ] && echo 
 
 # --- 2: the round trip ------------------------------------------------------
 console new --bucket rtsrc >/dev/null 2>&1
-docA="$root/tester/rtsrc/DEMO-nextleg-${today}A-console.md"
-docB="$root/tester/rtdst/DEMO-nextleg-${today}B-console.md"
+docA="$root/tester/rtsrc/DEMO-nextleg-${today}A-chief.md"
+docB="$root/tester/rtdst/DEMO-nextleg-${today}B-chief.md"
 handoff="${docA%.md}-HANDOFF.md"
 # shellcheck disable=SC2016  # literal backticks, unexpanded on purpose
 fixture_live='legs: `N1:AP-N1-aaaa1111:lock-one:111` `N2:AP-N2-bbbb2222:lock-two:222`
