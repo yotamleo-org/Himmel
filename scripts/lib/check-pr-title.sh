@@ -70,7 +70,7 @@ if ! OUT=$(bash "$CHECK_MSG" ${ticket_args[@]+"${ticket_args[@]}"} "$TMP" 2>&1);
     echo "check-pr-title: PR title fails the conventional-commit + ticket gate:" >&2
     printf '%s\n' "$OUT" >&2
     echo "  Got title: ${TITLE}" >&2
-    echo "  Required shape: type(scope): [TICKET-ID] subject  (e.g. fix(x): [HIMMEL-1] foo)" >&2
+    echo "  Required shape: type(scope): [TICKET-ID] subject  (e.g. fix(x): [PROJ-123] foo)" >&2
     exit 1
 fi
 exit 0

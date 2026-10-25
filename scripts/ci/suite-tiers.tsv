@@ -218,6 +218,7 @@ scripts/cr/test-critic-panel-registry.sh	pr	static-gate
 scripts/cr/test-critic-panel-triviality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-critic-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-d1-verdict.sh	pr	trust-path
+scripts/cr/test-dependabot-go.sh	pr	trust-path
 scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-emit-gate-fail.sh	pr	trust-path
@@ -258,6 +259,7 @@ scripts/docs/test-check-doc-terms.sh	pr	static-gate
 scripts/docs/test-check-llms-links.sh	pr	static-gate
 scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
+scripts/docs/test-docs-current-version.sh	pr	static-gate
 scripts/docs/test-generate-credits.sh	pr	static-gate
 scripts/docs/test-install-profiles-page.sh	pr	static-gate
 scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
@@ -275,6 +277,7 @@ scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catc
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-mine-tasks.sh	local	behaviour suite, new, no audit-window history
 scripts/eval/lane-quality/test-trajectory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/lib/test-wilson.sh	pr	static-gate
 scripts/eval/worker-digest/test-failure-review.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-leg-digest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -825,6 +828,7 @@ scripts/lib/test-go-gate.sh	pr	guard
 scripts/lib/test-graphify-bin.sh	pr	guard
 scripts/lib/test-handover-path.sh	pr	trust-path
 scripts/lib/test-hermetic-path.sh	pr	trust-path
+scripts/lib/test-himmel-secrets.sh	pr	trust-path
 scripts/lib/test-host-caps.sh	pr	trust-path
 scripts/lib/test-impacted-suites-runner.sh	pr	trust-path
 scripts/lib/test-initiative-legs.sh	pr	trust-path

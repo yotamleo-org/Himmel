@@ -159,7 +159,7 @@ focus_owned() { # 0 when the FOCUS page is focus-refresh's: a version or `auto`,
     return 0
 }
 tracker_refresh() {
-    local url dir plan out tmo mir rc want durl furl out_done out_future split
+    local url dir plan out tmo mir pk rc want durl furl out_done out_future split
     url="$(sed -n 's/^tracker:[[:space:]]*//p' "$DOC" | head -n 1)"
     case "$url" in ''|none*) echo "tracker=skip"; return 0 ;; esac
     dir="${DOC%/*}"
@@ -171,11 +171,12 @@ tracker_refresh() {
     out_done="$dir/roadmap-tracker-done.html"
     out_future="$dir/roadmap-tracker-future.html"
     tmo="${WM_TRACKER_TIMEOUT:-120}"
-    mir="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/HIMMEL}"
+    pk="${JIRA_PROJECT_KEY:-HIMMEL}"
+    mir="${TICK_TRACKER_MIRROR_DIR:-$HOME/.himmel/state/jira-mirror/$pk}"
     mkdir -p "${mir%/*}" 2>/dev/null
-    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" mirror --root "$mir" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
+    JIRA_PROJECT_KEY="$pk" timeout -k 5 "$tmo" "${jira[@]}" mirror --root "$mir" >/dev/null 2>&1; rc=$?  # gnu-ok: Linux-only kit
     [ "$rc" -eq 0 ] || { echo "tracker=failed:mirror-rc$rc"; return 0; }
-    JIRA_PROJECT_KEY=HIMMEL timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+    JIRA_PROJECT_KEY="$pk" timeout -k 5 "$tmo" "${jira[@]}" versions > "$mir.versions.tsv.tmp.$$" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
     mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
     MIRROR_FRESH="$mir"

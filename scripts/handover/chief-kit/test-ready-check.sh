@@ -62,6 +62,8 @@ case "$args" in
         printf '%s' "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" ;;
     *"--json headRefName"*)
         printf '%s' "${STUB_PR_BRANCH-feat/himmel-100-thing}" ;;
+    *"--json author"*)
+        printf '%s\n' "${STUB_AUTHOR:-yotamleo}" ;;
     *"contents/scripts/ci/ci-trust-paths.txt"*)
         [ -z "${STUB_TRUST_LIST_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
         cat "$STUB_TRUST_LIST_FILE" ;;
@@ -213,7 +215,7 @@ run() {
         STUB_RENAMES="${STUB_RENAMES:-}" STUB_RENAMES_FAIL="${STUB_RENAMES_FAIL:-}" \
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" STUB_WF_PATCH_FILE="${STUB_WF_PATCH_FILE:-}" \
-        STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
+        STUB_AUTHOR="${STUB_AUTHOR:-}" STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
@@ -225,7 +227,7 @@ run() {
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_WF_PATCH_FILE STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_WF_PATCH_FILE STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH STUB_AUTHOR
     seed_ledger_ok
 }
 
@@ -2188,6 +2190,96 @@ notcontains "trust: unresolvable default branch never prints no" "$out" "TRUST-P
 reset_stubs
 rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
 notcontains "trust: --only 7 prints no TRUST-PATH line" "$out" "TRUST-PATH:"
+reset_stubs
+
+# --- Dependabot dependency-only PRs ------------------------
+# Fixture copied from the real PR 3861 (numpy 2.5.3 to 2.5.4, 9d87a279): author
+# app/dependabot, one file, Dependabot's own body with no Ticket coverage. The
+# commit subject carries the standing key the dependabot.yml prefix now writes.
+DEP_BRANCH="dependabot/pip/marketplace/plugins/obsidian-triage/tools/numpy-2.5.4"
+DEP_FILES="marketplace/plugins/obsidian-triage/tools/requirements-whisper.txt"
+DEP_COMMITS='[{"messageHeadline":"chore(deps): [HIMMEL-7588] Bump numpy in /marketplace/plugins/obsidian-triage/tools","messageBody":"Bumps [numpy](https://github.com/numpy/numpy) from 2.5.3 to 2.5.4.\n- [Release notes](https://github.com/numpy/numpy/releases)\n\nSigned-off-by: dependabot[bot] <support@github.com>"}]'
+# shellcheck disable=SC2016  # the backticks are Dependabot's literal body text
+DEP_BODY='Bumps [numpy](https://github.com/numpy/numpy) from 2.5.3 to 2.5.4.\n\nDependabot will resolve any conflicts with this PR as long as you dont alter it yourself. You can also trigger a rebase manually by commenting `@dependabot rebase`.\n'
+seed_dependabot_go() {
+    printf '{"kind":"dependabot-go","ts":"2026-10-25T00:00:00Z","branch":"%s","head":"%s","status":"ok","source":"judge:q1/verdict","pr":%s}\n' "${1:-$DEP_BRANCH}" "${2:-$SHA}" "${3:-77}" > "$LEDGER"
+}
+# The PR files sit under a marketplace plugin, so check 9 reads git: run from the
+# bare-origin CLONE with a real PR head (the plugin version is left alone).
+DEP_KEEP_SHA="$SHA"; DEP_KEEP_REPO="$REPO"; DEP_KEEP_LEDGER="$LEDGER"
+git -C "$WORK" push -q -f origin "$PR_UNBUMPED:refs/pull/$PR/head"
+SHA="$PR_UNBUMPED"; REPO="$CLONE"; LEDGER="$CLONE/.git/cr-critic-scores.jsonl"
+dep_fixture() {
+    reset_stubs
+    STUB_AUTHOR="app/dependabot" STUB_PR_BRANCH="$DEP_BRANCH" STUB_FILES="$DEP_FILES"
+    STUB_COMMITS="$DEP_COMMITS" STUB_BODY="$DEP_BODY"
+    seed_dependabot_go
+}
+
+dep_fixture
+rc=0; out="$(run)" || rc=$?
+check "dependabot: dependency-only PR exits 0" "$rc" "0"
+contains "dependabot: row 4 accepts the dependabot-go row" "$out" "[PASS] 4."
+contains "dependabot: row 6 passes on the standing key" "$out" "[PASS] 6."
+contains "dependabot: row 7 takes a generated Ticket coverage" "$out" "[PASS] 7. ticket coverage: generated"
+contains "dependabot: READY-CHECK PASS" "$out" "READY-CHECK PASS"
+notcontains "dependabot: no FAIL row" "$out" "[FAIL]"
+
+# a dependabot-go row for another head or another branch is no review
+dep_fixture; seed_dependabot_go "$DEP_BRANCH" deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a dependabot-go row for another head fails row 4" "$out" "[FAIL] 4."
+dep_fixture; seed_dependabot_go "some/other-branch"
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a dependabot-go row for another branch fails row 4" "$out" "[FAIL] 4."
+dep_fixture; seed_dependabot_go "$DEP_BRANCH" "$SHA" 78
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a dependabot-go row for another PR fails row 4" "$out" "[FAIL] 4."
+dep_fixture; seed_dependabot_go "$DEP_BRANCH" "$SHA" '"77"'
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a dependabot-go row with a string pr fails row 4" "$out" "[FAIL] 4."
+
+# one non-manifest file and the generated coverage is refused
+dep_fixture; STUB_FILES="$DEP_FILES
+scripts/x/run.sh"
+rc=0; out="$(run)" || rc=$?
+check "dependabot: a non-manifest file exits 1" "$rc" "1"
+contains "dependabot: a non-manifest file fails row 7" "$out" "[FAIL] 7."
+
+# a manifest outside the allowlist of file names (a workflow) is refused
+dep_fixture; STUB_FILES=".github/workflows/ci.yml"
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a workflow file fails row 7" "$out" "[FAIL] 7."
+
+# a rename out of a non-manifest into a manifest name is refused (the old name counts)
+dep_fixture; STUB_RENAMES="$DEP_FILES scripts/hooks/guard.sh"
+rc=0; out="$(run)" || rc=$?
+check "dependabot: a rename out of a non-manifest exits 1" "$rc" "1"
+contains "dependabot: a rename out of a non-manifest fails row 7" "$out" "[FAIL] 7."
+
+# an unreadable rename list is not a dependency-only PR
+dep_fixture; STUB_RENAMES_FAIL=1
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: an unreadable rename list fails row 7" "$out" "[FAIL] 7."
+
+# RED control: a human PR with the same files and no ticket ID still fails rows 6 and 7
+dep_fixture; STUB_AUTHOR="yotamleo"; STUB_COMMITS='[{"messageHeadline":"chore(deps): Bump numpy","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+check "dependabot control: human PR exits 1" "$rc" "1"
+contains "dependabot control: human PR fails row 6" "$out" "[FAIL] 6."
+contains "dependabot control: human PR fails row 7" "$out" "[FAIL] 7."
+
+# a Dependabot PR without the standing key still fails row 6 (3861 as it stands today)
+dep_fixture; STUB_COMMITS='[{"messageHeadline":"chore(deps): Bump numpy in /marketplace/plugins/obsidian-triage/tools","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: a subject without a key still fails row 6" "$out" "[FAIL] 6."
+
+# an existing Ticket coverage section is judged as written, not replaced
+dep_fixture; STUB_BODY='## Ticket coverage\n- bump numpy: deferred -> HIMMEL-51\n'
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: an own coverage section is still validated" "$out" "[FAIL] 7."
+unset STUB_AUTHOR STUB_PR_BRANCH STUB_FILES STUB_COMMITS STUB_BODY
+SHA="$DEP_KEEP_SHA"; REPO="$DEP_KEEP_REPO"; LEDGER="$DEP_KEEP_LEDGER"
 reset_stubs
 
 echo "---"

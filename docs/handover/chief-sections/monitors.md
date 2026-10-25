@@ -83,11 +83,16 @@ write them in the session scratchpad, not in the repo. The context-fill probe
 ordinary Bash call.
 
 **Handover budget.** `<kit>/console-budget.sh --title <your session name>` prints
-`budget turns=<n> cache_read=<M>M verdict=OK|HANDOVER` (exit 3 on HANDOVER, 2 when
-the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M cumulative
-cache-read (`CONSOLE_TURN_BUDGET`, `CONSOLE_CACHE_READ_BUDGET_M`), the same duty as
-the 45 % fill and 90k input triggers. The waiter runs it each successful sample (with `--doc`) and
-raises `WAKE handover-budget` once per streak; run it by hand in an ordinary Bash call.
+`budget turns=<n> cache_read=<M>M [fill=<n>%] verdict=OK|HANDOVER` (exit 3 on HANDOVER,
+2 when the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M
+cumulative cache-read (`CHIEF_TURN_BUDGET`, `CHIEF_CACHE_READ_BUDGET_M`), or a context
+fill of 45 % (`CHIEF_FILL_HANDOVER_PCT`; read from `context-fill.sh --percent`, so a
+stale, unknown or estimated fill adds no `fill=` and trips nothing), the same duty as the
+90k input trigger. The waiter runs it each successful sample (with `--doc`, also with
+`--legs-from`) and raises `WAKE handover-budget`; while the verdict stays `HANDOVER` it
+repeats as `WAKE handover-budget repeat ...` every `CHIEF_WAIT_BUDGET_REPEAT_MIN` minutes
+(default 30), so a wake absorbed mid-turn is not lost. When the doc's title resolves to no
+transcript the waiter says so once on stderr. Run it by hand in an ordinary Bash call.
 
 **Stuck PRs.** The tick's `prs=` field does not say why a PR is stuck. When a worker
 waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR

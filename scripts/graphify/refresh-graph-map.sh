@@ -917,6 +917,7 @@ _extraction_lock_takeover() {
 _extraction_lock_acquire() {
   local waited=0 missing_polls=0 held_at now age token judged_owner cur
   while :; do
+    # prim-ok: bounded stale takeover and exclusive owner publication require this directory protocol, not with_lock's PID file.
     if mkdir "$EXTRACTION_LOCK" 2>/dev/null; then
       token="$$-$RANDOM"
       if ( set -C; printf '%s\n' "$token" > "$EXTRACTION_LOCK/owner" ) 2>/dev/null; then
@@ -1068,6 +1069,7 @@ _promote_lock_takeover() {
 _promote_lock_acquire() {
   local waited=0 missing_polls=0 held_at now age token
   while :; do
+    # prim-ok: ast-update and semantic-update share this owner-token directory and stale-takeover protocol.
     if mkdir "$PROMOTE_LOCK" 2>/dev/null; then
       token="$$-$RANDOM"
       if ( set -C; printf '%s\n' "$token" > "$PROMOTE_LOCK/owner" ) 2>/dev/null; then
@@ -1456,6 +1458,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # already exists under the parent is ever deleted at startup; leftovers that
   # hold a graph.json are only NAMED on stderr so the operator can recover them.
   _report_leftover_scratches
+  # prim-ok: recovery scans and quarantine identify these corpus-named scratch directories; tmpdir's generic prefix would hide them.
   SCRATCH="$(mktemp -d "$SCRATCH_PARENT/graphify-refresh-$NAME-XXXXXX")" \
     || { echo "refresh-graph-map: cannot create a scratch workdir under $SCRATCH_PARENT" >&2; exit 1; }
   # Clean the owned subdir on ANY exit — a graphify/cluster-only failure (exit 2)

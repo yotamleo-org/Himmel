@@ -215,6 +215,7 @@ fi
 
 [ -f "$OUT_DIR/graph.json" ] || { echo "semantic-update: no $OUT_DIR/graph.json -- run the AST pass (ast-update.sh) first" >&2; exit 1; }
 
+# prim-ok: the corpus-named workdir identifies the isolated Claude shim and cleanup evidence; tmpdir cannot retain this prefix.
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/graphify-semantic-$NAME-XXXXXX")"
 PROMOTE_LOCK="$OUT_DIR/.promote.lock" PROMOTE_LOCK_HELD=0 PROMOTE_LOCK_TOKEN="$$-$RANDOM"
 cleanup() {
@@ -229,6 +230,7 @@ trap cleanup EXIT
 # acquired stamp). Bounded wait, then skip: the next run retries.
 acquire_promote_lock() {
   local waited=0
+  # prim-ok: interoperate with ast-update's owner-token directory and preserve bounded-wait exit 4; with_lock uses a different protocol.
   until mkdir "$PROMOTE_LOCK" 2>/dev/null; do
     if [ "$waited" -ge "${GRAPHIFY_SEMANTIC_LOCK_WAIT:-120}" ]; then
       echo "semantic-update: SKIPPED -- promote lock $PROMOTE_LOCK held by another graph refresh" >&2

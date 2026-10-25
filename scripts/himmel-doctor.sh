@@ -3480,6 +3480,65 @@ $key="*) ;; *) miss="$miss $key" ;; esac
     fi
 }
 
+# --- C75-keyring: the OS keyring and the layer serving each secret ---
+# Two rows: the keyring state scripts/lib/himmel-secrets sees (unlocked, locked,
+# absent, off, unsupported) and, for each secret-class key in
+# scripts/himmelctl/lib/secrets-manifest.json, the layer serving it. The resolver
+# runs with --no-dotenv and prints layers only; .env is read for key NAMES
+# only. No value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (shared with C74).
+check_c75_keyring() {
+    local hs="$SELF_DIR/lib/himmel-secrets" envfile state names="" key layer
+    local envnames="" dot="" kr=0 other=0 unset_n=0 status_out
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+    if [ ! -x "$hs" ]; then
+        emit WARN C75-keyring "$hs is missing or not executable" "restore it: git checkout -- scripts/lib/himmel-secrets"
+        return 0
+    fi
+    # shellcheck disable=SC2013 # a manifest name is one word
+    for key in $(sed -n 's/^ *"name": "\([A-Za-z_][A-Za-z0-9_]*\)".*/\1/p' "$SELF_DIR/himmelctl/lib/secrets-manifest.json"); do
+        [ "$(_himmel_key_class "$key")" = secret ] && names="$names $key"
+    done
+    # shellcheck disable=SC2086 # one word per key name
+    status_out="$("$hs" status --no-dotenv $names 2>/dev/null)"
+    state="$(printf '%s\n' "$status_out" | sed -n 's/^keyring: //p')"
+    case "$state" in
+        unlocked) emit OK C75-keyring "the OS keyring is unlocked and serves himmel secrets" ;;
+        locked) emit WARN C75-keyring "the OS keyring is locked, so himmel secrets fall back to .env" \
+            "unlock the wallet (log in to the desktop session), then re-run the doctor" ;;
+        unreachable) emit WARN C75-keyring "the OS keyring did not answer within 2 s, so himmel secrets fall back to .env" \
+            "check the Secret Service (busctl --user status org.freedesktop.secrets)" ;;
+        off) emit INFO C75-keyring "HIMMEL_SECRETS_KEYRING=off: the keyring is skipped" ;;
+        unsupported) emit INFO C75-keyring "no keyring backend on this platform yet; secrets come from .env" ;;
+        *) emit INFO C75-keyring "no keyring backend (secret-tool, busctl or timeout missing); secrets come from .env" \
+            "optional: install libsecret's secret-tool (Debian/Ubuntu: libsecret-tools) and a Secret Service such as gnome-keyring or KWallet" ;;
+    esac
+    if [ -f "$envfile" ] && [ -r "$envfile" ]; then
+        envnames=" $(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+            i = index($0, "="); if (i == 0) next
+            k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); print k
+        }' "$envfile" | tr '\n' ' ')"
+    fi
+    for key in $names; do
+        layer="$(printf '%s\n' "$status_out" | sed -n "s/^$key: //p")"
+        case "$layer" in
+            keyring|keyring-project) kr=$((kr + 1)) ;;
+            env|credentials) other=$((other + 1)) ;;
+            *) case "$envnames" in
+                   *" $key "*) dot="${dot:+$dot, }$key" ;;
+                   *) unset_n=$((unset_n + 1)) ;;
+               esac ;;
+        esac
+    done
+    if [ -n "$dot" ] && [ "$state" = unlocked ]; then
+        emit WARN C75-secrets "secrets still served from .env: $dot ($kr from the keyring, $other from the environment, $unset_n unset)" \
+            "the operator moves them at their own prompt: bash $hs import-env $envfile, then bash $hs status"
+    elif [ -n "$dot" ]; then
+        emit INFO C75-secrets "secrets served from .env: $dot ($unset_n unset); no unlocked keyring to move them to"
+    else
+        emit OK C75-secrets "no secret comes from .env ($kr from the keyring, $other from the environment, $unset_n unset)"
+    fi
+}
+
 # --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs the pin ---
 # `himmelctl update` once rolled the station's qmd fork back to the pin with
 # nothing reporting it. Three values must agree: the fork clone's build-success
@@ -4788,6 +4847,7 @@ run_heavy C71 check_c71_verdict_scratch C71-verdict-scratch
 run_check C72 check_c72_design_mcp_auth
 run_check C73 check_c73_bun_compiled
 run_check C74 check_c74_config_split
+run_check C75 check_c75_keyring
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

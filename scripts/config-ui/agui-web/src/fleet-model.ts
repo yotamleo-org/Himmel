@@ -5,7 +5,7 @@ export type Row = {
   lastEventAt: number | null; subagents: { total: number; running: number }; failures: number;
   parent: string | null; predecessor: string | null; agents: { name: string; role: string; state: string }[];
   usage: {
-    calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number;
+    calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number | null;
     resident: number | null; ceiling: number; ceilingFrom: "autocompact" | "window"; fill: number | null;
   } | null;
   cloud: { url: string | null; phase: "working" | "done" | "blocked" | "merged" | "closed" | "unknown" } | null;
