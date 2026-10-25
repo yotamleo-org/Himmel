@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/headed-arm-leg.sh - versioned LEG launcher
+# scripts/handover/console-kit/headed-arm-worker.sh - versioned LEG launcher
 # A thin wrapper around scripts/handover/headed-arm.sh that
 # pins every leg arm to the standard --autocompact 200000 ceiling - the window
 # itself measures 1M regardless (docs/internals/lane-calibration.md "What a
@@ -24,7 +24,7 @@
 # versioned script: WORKER_SESSION_REPO now maps onto headed-arm.sh's own
 # HEADED_ARM_REPO seam instead of a second, parallel repo-root variable.
 #
-# Usage: headed-arm-leg.sh [--dry-run] [--fleet <manifest>] <session-name> <handover-doc> \
+# Usage: headed-arm-worker.sh [--dry-run] [--fleet <manifest>] <session-name> <handover-doc> \
 #                           <signal-file> <deadline-epoch> <log> [model]
 # Run detached, same as headed-arm.sh itself:
 #   setsid nohup bash headed-arm-leg.sh ... >/dev/null 2>&1 &
@@ -229,7 +229,7 @@ HEADED_ARM_UNAME="${HEADED_ARM_UNAME:-$(uname -s 2>/dev/null)}"
 export HEADED_ARM_UNAME
 
 usage() {
-    echo "usage: headed-arm-leg.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--console <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
+    echo "usage: headed-arm-worker.sh [--dry-run] [--headless] [--fleet <manifest>] [--ignore-denials] [--no-prior-art-check] [--lane native|claudex|openrouter|deepseek] (--profile <name[,name...]> | --no-profile) [--relay] [--judge] [--consult] [--rm-release <R>] [--console <name>] [--context-guard compact|handoff|none] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model]" >&2
     echo "  --context-guard: turn the leg context guard on (default none = off); see docs/internals/leg-context-guard.md" >&2
 }
 

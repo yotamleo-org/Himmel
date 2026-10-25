@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-jira-status.sh - the ONE writer of a
+# scripts/handover/console-kit/worker-jira-status.sh - the ONE writer of a
 # ticket's Jira status and of its worker record. An event says only "look
 # again": the status written is derived from the ticket's present ship-flow
 # state (scripts/lib/ticket-status.sh, rules D0-D7), never from the event, so a
 # late or duplicate event re-derives the same answer and a re-push after IN CI
 # moves the ticket back.
 #
-# Usage: leg-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]
+# Usage: worker-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]
 #        leg-jira-status.sh <TICKET> <target-status> [--allow-back]
 #   --repo names the repository whose PRs and checks the derive reads (GH_REPO);
 #   without it gh reads the current checkout's.
@@ -30,7 +30,7 @@
 set -u
 
 usage() {
-    echo "usage: leg-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]" >&2
+    echo "usage: worker-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]" >&2
     echo "       leg-jira-status.sh <TICKET> <target-status> [--allow-back]" >&2
     exit 2
 }

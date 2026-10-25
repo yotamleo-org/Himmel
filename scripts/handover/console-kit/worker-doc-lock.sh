@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# leg-doc-lock.sh - Sourced, never run. One lock shared by every
+# worker-doc-lock.sh - Sourced, never run. One lock shared by every
 # script that writes a handover doc, so a rewrite never drops a concurrent
 # append:
 #   append-results.sh   appends a bullet (>>)

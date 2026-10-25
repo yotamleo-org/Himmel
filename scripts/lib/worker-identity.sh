@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# leg-identity.sh — the ONE derivation of a leg's identity.
+# worker-identity.sh — the ONE derivation of a leg's identity.
 #
 # A console files a leg's brief as a handover doc and launches the leg under a
 # session name (`claude -n <session>`). Every instrument that joins the two --

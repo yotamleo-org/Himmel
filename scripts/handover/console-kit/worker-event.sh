@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-event.sh - route one leg message to the
+# scripts/handover/console-kit/worker-event.sh - route one leg message to the
 # one-shot that handles it, or say ESCALATE. A script, never a model: the
 # console runs it once per leg message instead of spending the several
 # full-context turns the hand sequence takes.
 #
-# Usage: leg-event.sh --doc <console doc> --fleet <manifest> <message-file | ->
+# Usage: worker-event.sh --doc <console doc> --fleet <manifest> <message-file | ->
 #
 #   MERGED / WRAPPED  -> wrap-merged.sh --doc <doc> --fleet <manifest> <leg doc> [--pr <n>]
 #                        The leg doc is the manifest entry whose name carries the
@@ -46,7 +46,7 @@ if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$
 if [ -n "${LE_LIVE:-}" ]; then LIVE=("$LE_LIVE"); else LIVE=(bash "$HERE/live-state.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
 
-usage() { echo "usage: leg-event.sh --doc <console doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
+usage() { echo "usage: worker-event.sh --doc <console doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
 escalate() { echo "ESCALATE $1"; exit 10; }
 
 DOC=""; FLEET=""; MSG=""

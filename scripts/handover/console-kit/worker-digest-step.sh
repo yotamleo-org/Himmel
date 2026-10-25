@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-digest-step.sh - the wrap step of the
+# scripts/handover/console-kit/worker-digest-step.sh - the wrap step of the
 # failure loop: one leg session's P1 digest
 # (scripts/eval/leg-digest/leg-digest.ts) handed to the P2 ledger writer
 # (scripts/eval/leg-digest/leg_ledger.py record). Zero model calls.
@@ -54,7 +54,7 @@ PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 usage() {
-    echo "usage: leg-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>] [--pid <pid>] [--projects <dir>] [--console <name>]" >&2
+    echo "usage: worker-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>] [--pid <pid>] [--projects <dir>] [--console <name>]" >&2
     echo "       leg-digest-step.sh --doc <leg-doc> [--projects <dir>]" >&2
     exit 2
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# leg-pretrust.sh <lane> <dir>
+# worker-pretrust.sh <lane> <dir>
 #
 # Pre-accept Claude Code's folder-trust state for a leg's working directory so a
 # headed leg does not park at the "Is this a project you trust?" prompt (the
@@ -30,7 +30,7 @@ git_env_scrub   # an inherited GIT_DIR would make the worktree check read the wr
 
 lane="${1:-}"; dir="${2:-}"
 if [ -z "$lane" ] || [ -z "$dir" ]; then
-    echo "leg-pretrust: usage: leg-pretrust.sh <native|claudex|openrouter|deepseek> <dir>" >&2
+    echo "leg-pretrust: usage: worker-pretrust.sh <native|claudex|openrouter|deepseek> <dir>" >&2
     exit 2
 fi
 [ -d "$dir" ] || { echo "leg-pretrust: not a directory: $dir" >&2; exit 2; }

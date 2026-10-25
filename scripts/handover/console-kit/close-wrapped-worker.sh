@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/close-wrapped-leg.sh - console-run wrapped-leg
+# scripts/handover/console-kit/close-wrapped-worker.sh - console-run wrapped-leg
 # window close. A console's `kill <konsole pid>` is
 # classifier-denied [Interfere With Workloads] when typed as a bare literal -
 # this script wraps the same TERM under a literal the classifier allowlists,
@@ -7,7 +7,7 @@
 # doc is free AND its own last Results marker-bullet is WRAPPED. It never
 # kills a pid it cannot independently prove belongs to that leg.
 #
-# Usage: close-wrapped-leg.sh [--check] [--console | --fleet <manifest>] <leg-doc>
+# Usage: close-wrapped-worker.sh [--check] [--console | --fleet <manifest>] <leg-doc>
 #        close-wrapped-leg.sh [--check] --sweep --fleet <manifest>
 # --sweep runs this script on every doc in the fleet manifest and closes each one
 # that is finished (lock free, tail WRAPPED); an unfinished doc is skipped, a
@@ -102,7 +102,7 @@ TMP_REAP="${TMP_REAP_BIN:-$HERE/../../tmp-reap.sh}"
 LIVE_SUBAGENTS="${LIVE_SUBAGENTS_BIN:-$HERE/live-subagents.sh}"
 
 usage() {
-    echo "usage: close-wrapped-leg.sh [--check] [--console | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
+    echo "usage: close-wrapped-worker.sh [--check] [--console | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
 }
 
 FLEET_MANIFEST=""

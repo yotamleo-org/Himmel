@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/handover/console-kit/leg-transcripts.sh - sourced library: resolve a
+# scripts/handover/console-kit/worker-transcripts.sh - sourced library: resolve a
 # leg's transcript by its session names, shared by close-wrapped-leg.sh and the
 # leg-digest-step --doc fallback so both use one matcher.
 #

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# leg-graph.sh — run `graphify query|explain|path` from a leg worktree against the
+# worker-graph.sh — run `graphify query|explain|path` from a leg worktree against the
 # PRIMARY checkout's graphify-out/.
 #
 # WHY: graphify-out/ is gitignored, so a fresh worktree has no graph and a bare
@@ -7,7 +7,7 @@
 # GRAPHIFY_OUT env var, but a `VAR=` prefix typed in a leg drops to the
 # classifier; this wrapper sets it itself. Read-only: it never builds a graph.
 #
-# Usage: bash scripts/graphify/leg-graph.sh query|explain|path <graphify args...>
+# Usage: bash scripts/graphify/worker-graph.sh query|explain|path <graphify args...>
 #   A larger default --budget (graphify's own 2000 tokens truncates most
 #   answers) is added unless you pass --budget; a TRUNCATED answer gets a
 #   re-run line naming this wrapper on stderr.
@@ -33,7 +33,7 @@ bounded() { local secs="$1"; shift; ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$secs"
 sub="${1:-}"
 case "$sub" in
   query|explain|path) ;;
-  *) echo "usage: leg-graph.sh query|explain|path <graphify args...>" >&2; exit 2 ;;
+  *) echo "usage: worker-graph.sh query|explain|path <graphify args...>" >&2; exit 2 ;;
 esac
 
 common="$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || {
