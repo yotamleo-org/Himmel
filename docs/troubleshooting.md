@@ -27,7 +27,7 @@ starter install can show are in [Checking the install](#checking-the-install).
 
 | What you see | Why | The fix |
 | --- | --- | --- |
-| `WARN new-worktree: no 'origin' remote - branching from local '<branch>'` | The project has no `origin` remote, so the new worktree branches from your local main. | Nothing to do for a local project. Once you push it somewhere, `git remote add origin <url>` and later worktrees branch from `origin/main`. |
+| `WARN new-worktree: no 'origin' remote - branching from local '<branch>'` | The project has no `origin` remote, so the new worktree branches from your local main. | Nothing to do for a local project. Once the project has a remote that holds its main, run `git remote add origin <url>` and `git fetch origin`; later worktrees branch from `origin/main`. |
 | `WARN new-worktree: uniqueness-vs-merged-PR check skipped (forge unreachable)` | Before it creates a branch, `scripts/worktree.sh` checks that no merged pull request already used the name. It needs a GitHub `origin` and a signed-in `gh` for that, and found neither. | Nothing to do: the worktree was still created. The check runs again once the project has a GitHub remote and `gh auth status` shows you signed in. |
 
 ## Committing
