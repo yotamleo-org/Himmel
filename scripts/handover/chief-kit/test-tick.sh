@@ -3157,7 +3157,8 @@ rm -f "$f_dir/focus-state"
 f_out="$(f_tick)"
 not_contains 'no focus-state file leaves focus= off the line (HIMMEL-6829)' "$f_out" ' focus='
 not_contains 'no focus-state file leaves sdrift= off the line (HIMMEL-6829)' "$f_out" ' sdrift='
-if [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call (HIMMEL-6829)'; fi
+if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers (HIMMEL-6829)'
+elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call (HIMMEL-6829)'; fi
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'
