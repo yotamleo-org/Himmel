@@ -50,7 +50,7 @@ expect_fail() {
     local err rc
     err=$(bash "$GEN" --check --root "$2" 2>&1 >/dev/null)
     rc=$?
-    if [ "$rc" -eq 1 ] && printf '%s' "$err" | grep -qF -- "$3"; then
+    if [ "$rc" -eq 1 ] && [[ "$err" == *"$3"* ]]; then
         ok "$1"
     else
         bad "$1" "rc=$rc, wanted 1 with '$3'; got: $err"
