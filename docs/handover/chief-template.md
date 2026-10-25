@@ -80,8 +80,8 @@ Run these, in order, and write the result as the first bullet under
     first bullet; `cat "<inbox>.wait"` is its heartbeat. Wake keys, heartbeat
     states, fleet-manifest arming: `chief-sections/waiter.md`.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
-11. **Open your Telegram inbox.** The operator writes `/chief {{SESSION_NAME}} <text>` (or the older alias `/console`);
-    the bridge appends to your inbox file only if it already exists. The waiter
+11. **Open your Telegram inbox.** The operator writes `/chief {{SESSION_NAME}} <text>` (alias `/console`);
+    the bridge appends only to an existing inbox file. The waiter
     (step 10) creates it (`: >> "{{INBOX}}"`; `consoles/{{SESSION_NAME}}.md`).
     The waiter reads it through `inbox-follow.sh --once` with a persisted
     cursor, so a repeated line is a duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
