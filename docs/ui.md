@@ -63,6 +63,12 @@ confirm. The vault path must be a folder that exists. The forge is shown as dete
 `git config himmel.forge` in the terminal. The plugin set, Review by a second model and Auto-ship steps are
 linked to their Settings toggles, not repeated.
 
+The Setup page closes with a Verify step: a button runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
+checks; never `--fix`) and shows a fail, warn and ok count with one row per warning or failure, its remedy, and an
+Open in Settings link to that check's row. It takes a minute or two and stops at 200 seconds. The run publishes nothing
+(no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
+page only, so come back to Setup and press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
+
 The Roadmap and Kanban boards also write to Jira: dragging a card to another column
 transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
 through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card where it was.
@@ -78,6 +84,7 @@ This is the full set, each mapped to the code that handles it:
 | Dry-run a switch, then run it after confirm | `/api/preview`, `/api/run` | `previewRoute` and `runRoute` in `scripts/config-ui/server.ts` |
 | Save or remove a file-stored secret | `/api/setup/secret` | `secretWrite` in `scripts/config-ui/setup.ts` |
 | Create the UI login once (Account step) | `/api/setup/account` | `accountCreate` in `scripts/config-ui/setup.ts` |
+| Run the doctor's read-only checks (Verify step) | `/api/setup/verify` | `verifyDoctor` in `scripts/config-ui/setup.ts` |
 | Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
