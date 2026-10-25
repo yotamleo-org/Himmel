@@ -42,7 +42,7 @@ escape rate	escape_rate	scripts/eval/escapes.py	m["escape_rate"] =	first
 proof-first share (self-reported)	pdd.pct	scripts/eval/worker-digest/pdd_share.py	(("pdd",	first
 Wilson interval	ci_method	scripts/eval/worker-digest/pdd_share.py	ci_method="wilson"	any
 review precision	precision_pct	scripts/cr/evals-page-gen.py	"precision_pct": pct1(	first
-cache read share	read_ratio_pct	scripts/cr/evals-page-gen.py	"read_ratio_pct": float(	first
+cache read share	read_ratio_pct	scripts/cr/evals-page-gen.py	{"read_ratio_pct": ratio,	first
 EOF
 
 # misses <readme>: prints one line per number with no row (display name in cell 1, `key` in cell 2:
