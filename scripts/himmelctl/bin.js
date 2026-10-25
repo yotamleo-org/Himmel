@@ -2398,6 +2398,9 @@ function loadProfile(p) {
         profileError(p, `field 'cadences.${row.id}' is 'armed' but requires a vault (vault.mode is 'none')`);
       }
     }
+    // Only retired ids were named: drop the section so a legacy
+    // `luna.cadenceEnabled` answer still applies.
+    if (Object.keys(obj.cadences).length === 0) delete obj.cadences;
   }
   // `vm` is an OPTIONAL whole section (absent = never asked, the
   // resolver then reads ~/.himmel/config.json). When present it gets the

@@ -314,4 +314,35 @@ grepq "$outF" -F -- 'codex-sweep cadence arm' \
   && fail "case f: a dropped cadence must never be armed (got: $outF)"
 echo "ok: case f — a profile naming the retired codex-sweep / repo-sync rows loads, with each drop announced"
 
+# ═══════════════════════════════════════════════════════════════════════════
+# case g: a `cadences` section naming ONLY retired ids is dropped whole, so
+# the legacy luna.cadenceEnabled=true answer still arms pipeline.
+# ═══════════════════════════════════════════════════════════════════════════
+
+homeG="$work/homeG"; mkdir -p "$homeG"
+profileG="$work/profileG.json"
+cat > "$profileG" <<JSON
+{
+  "schemaVersion": 2, "profile": "operator", "devOverlay": false, "tier": "standard", "scope": "user",
+  "vault": { "mode": "default-template", "path": "$(winpath "$work/vaultG")" },
+  "handover": { "mode": "inline", "path": "" },
+  "pluginSet": "lean", "lanes": [], "lanesMeaningful": true, "alwaysOn": true,
+  "luna": { "cadenceEnabled": true, "phiDeclared": false },
+  "cadences": { "codex-sweep": "armed" }
+}
+JSON
+
+set +e
+outG=$(HOME="$homeG" USERPROFILE="$(winpath "$homeG")" HIMMELCTL_INTERACTIVE=0 \
+  HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/config-g.json")" \
+  HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-g")" \
+  HIMMELCTL_BIN_DIR="$(winpath "$work/bin-g")" \
+  "$node_bin" "$wizard" install --dry-run --from-profile "$(winpath "$profileG")" </dev/null 2>&1)
+rcG=$?
+set -e
+[ "$rcG" -eq 0 ] || fail "case g: a profile naming only retired cadences should load (got rc=$rcG): $outG"
+grepq "$outG" -F -- 'luna cadence — would arm via pipeline-cadence.sh' \
+  || fail "case g: with only retired ids dropped, luna.cadenceEnabled=true should still arm pipeline (got: $outG)"
+echo "ok: case g — a cadences section of only retired ids is dropped, so the legacy cadenceEnabled answer applies"
+
 echo "PASS"
