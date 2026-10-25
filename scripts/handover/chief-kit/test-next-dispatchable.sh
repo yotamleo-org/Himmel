@@ -107,6 +107,8 @@ top1="$(run --top 1 --legs-from "$WORK/fleet.json" | grep -vc '^#')"
 : > "$GH_FAIL"
 unk="$(run --legs-from "$WORK/fleet.json")"
 has "a failing gh is reported, not treated as no PRs" "$unk" "open PRs unknown"
+unk_rows="$(printf '%s\n' "$unk" | grep -vc '^#')"
+[ "$unk_rows" = 0 ] && pass "a failing gh lists no row: an unread PR list could hold any ticket's files" || fail "a failing gh still listed $unk_rows row(s)"
 rm -f "$GH_FAIL"
 
 nc="$(run --no-classify --legs-from "$WORK/fleet.json")"
@@ -831,6 +833,144 @@ f27="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" -
 lacks "held-paths: an explicit 'Writes: none named' leg is a real empty scope, not unknown" "$f27" "live legs unknown"
 lacks "held-paths: a path after 'replace grep -P in' is a write, not a read" "$f26" "HIMMEL-885	"
 
+
+# --- a disposition per open ticket, live blocker re-check, rename registry, per-PR file reads, narrow write scope ---
+DD="$HERE/fixtures/dispatch-disposition"
+export DD_DIR="$WORK/dd"; mkdir -p "$DD_DIR"
+MD="$WORK/jira-mirror-dd/HIMMEL"; mkdir -p "$MD"
+M_SAVE="$M"; M="$MD"
+mk HIMMEL-901 "To Do" Medium '[]' '["v1.0.1"]' '[]' "pre-rename path, the new spelling is held" "Edit scripts/handover/console-kit/dd-old.sh only." # old-term-ok: the pre-rename spelling is the input under test
+mk HIMMEL-902 "To Do" Medium '[]' '["v1.0.1"]' '[]' "stale pre-rename path nobody holds" "Edit scripts/handover/console-kit/dd-stale.sh only." # old-term-ok: the pre-rename spelling is the input under test
+mk HIMMEL-903 "To Do" Medium '[]' '["v1.0.1"]' '[]' "new path, the old spelling is held" "Edit scripts/handover/chief-kit/dd-newn.sh only."
+mk HIMMEL-904 "To Do" Medium '[]' '["v1.0.1"]' '["blocked by HIMMEL-910"]' "blocker is Done live, In Progress in the mirror" "Edit scripts/lib/dd-904.sh only."
+mk HIMMEL-905 "To Do" Medium '[]' '["v1.0.1"]' '["blocked by HIMMEL-911"]' "blocker is live" "Edit scripts/lib/dd-905.sh only."
+mk HIMMEL-906 "To Do" Medium '[]' '["v1.0.1"]' '[]' "classifier BLOCKED, blocker Done live" "Edit scripts/lib/dd-906.sh only."
+mk HIMMEL-907 "To Do" Medium '[]' '["v1.0.1"]' '[]' "classifier BLOCKED, blocker live" "Edit scripts/lib/dd-907.sh only."
+mk HIMMEL-910 "In Progress" Medium '["parked"]' '[]' '[]' "blocker, Done live" "Edit scripts/lib/dd-910.sh only."
+mk HIMMEL-911 "In Progress" Medium '["parked"]' '[]' '[]' "blocker, live" "Edit scripts/lib/dd-911.sh only."
+mk HIMMEL-920 "To Do" Medium '[]' '["v1.0.1"]' '[]' "dir mentioned: .github/workflows" "Edit .github/workflows/dd-a.yml only."
+mk HIMMEL-921 "To Do" Medium '[]' '["v1.0.1"]' '[]' "dir mentioned: scripts/ci" "Edit scripts/ci/dd-b.sh only."
+mk HIMMEL-922 "To Do" Medium '[]' '["v1.0.1"]' '[]' "dir mentioned: claude-hud" "Edit marketplace/plugins/claude-hud/dd-c.sh only."
+mk HIMMEL-923 "To Do" Medium '[]' '["v1.0.1"]' '[]' "dir mentioned: scripts/config-ui" "Edit scripts/config-ui/dd-d.sh only."
+mk HIMMEL-924 "To Do" Medium '[]' '["v1.0.1"]' '[]' "inside the writes-confined-to list" "Edit scripts/dd-in/dd-e.sh only."
+mk HIMMEL-925 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file on the writes-confined-to list" "Edit scripts/dd-own.sh only."
+mk HIMMEL-930 "To Do" Medium '[]' '["v1.0.1"]' '[]' "file of the PR before the unreadable one" "Edit scripts/lib/dd-pr1.sh only."
+mk HIMMEL-931 "To Do" Medium '[]' '["v1.0.1"]' '[]' "file of the PR after the unreadable one" "Edit scripts/lib/dd-pr3.sh only."
+mk HIMMEL-932 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the old name of a file a PR renames" "Edit scripts/lib/dd-old-name.sh only."
+mk HIMMEL-940 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "orphan in progress" "Edit scripts/lib/dd-940.sh only."
+mk HIMMEL-951 "To Do" Medium '["operator-decision"]' '["v1.0.1"]' '[]' "waits on an operator question" "Edit scripts/lib/dd-951.sh only."
+mk HIMMEL-960 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a directory with a held file in it" "Tidy the helpers under scripts/lib/dd-ov/."
+mk HIMMEL-961 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a hook ticket naming a directory with a held file in it" "Edit scripts/hooks/dd-hk.sh and tidy scripts/lib/dd-ov2/."
+mk HIMMEL-962 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a directory without its slash" "Tidy the helpers in scripts/lib."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror-dd/HIMMEL.versions.tsv"
+cat > "$WORK/gh-dd" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$DD_DIR/gh.args"
+if [ "$1" = api ]; then
+    for a in "$@"; do case "$a" in */pulls/*/files) p="$a" ;; esac; done
+    n="${p#*/pulls/}"; n="${n%/files}"
+    if [ -f "$DD_DIR/fail-$n" ]; then echo 'gh: HTTP 406: diff exceeded the maximum number of files (300)' >&2; exit 1; fi
+    cat "$DD_DIR/files-$n"; exit 0
+fi
+if [ "$1 $2" = "pr diff" ]; then  # the old read: a PR over 300 files fails
+    if [ -f "$DD_DIR/fail-$3" ]; then echo 'gh: HTTP 406: diff exceeded the maximum number of files (300)' >&2; exit 1; fi
+    cat "$DD_DIR/files-$3"; exit 0
+fi
+if [ "$2" = list ]; then
+    case "$*" in *merged*) ;; *headRefName*) cat "$DD_DIR/prs.tsv" ;; *) cut -f1 "$DD_DIR/prs.tsv" ;; esac
+fi
+EOF
+cat > "$WORK/classify-dd" <<'EOF'
+#!/usr/bin/env bash
+for k in "$@"; do
+    case "$k" in
+        HIMMEL-906) printf '%s\tBLOCKED\tscripts/lib/dd-906.sh is held (routed HIMMEL-912 in an earlier run)\n' "$k" ;;
+        HIMMEL-907) printf '%s\tBLOCKED\tscripts/lib/dd-907.sh is held (routed HIMMEL-913 in an earlier run)\n' "$k" ;;
+        HIMMEL-961) printf '%s\tBLOCKED\tscripts/lib/dd-ov2/ contains held scripts/lib/dd-ov2/y.sh (open PR 5001) — one writer per file\n' "$k" ;;
+        HIMMEL-960) printf '%s\tBLOCKED\tscripts/lib/dd-ov/ contains held scripts/lib/dd-ov/x.sh (open PR 5001) — one writer per file\n' "$k" ;;
+        *) printf '%s\tLOCAL-NATIVE\tstub\n' "$k" ;;
+    esac
+done
+EOF
+cat > "$WORK/jira-dd" <<'EOF'
+#!/usr/bin/env bash
+[ "$1" = get ] || exit 2
+st="$(awk -v k="$2" '$1 == k {sub(/^[^ ]+ /, ""); print}' "$DD_DIR/live.txt")"
+[ -n "$st" ] || exit 1
+printf '%s\tTask\t%s\tlive\n' "$2" "$st"
+EOF
+chmod +x "$WORK/gh-dd" "$WORK/classify-dd" "$WORK/jira-dd"
+printf 'HIMMEL-910 Done\nHIMMEL-911 In Progress\nHIMMEL-912 Done\nHIMMEL-913 In Progress\n' > "$DD_DIR/live.txt"
+printf '5001\tfix(x): [HIMMEL-9101] one\tfix/himmel-9101-one\n5002\tfix(x): [HIMMEL-9102] huge\tfix/himmel-9102-huge\n5003\tfix(x): [HIMMEL-9103] three\tfix/himmel-9103-three\n' > "$DD_DIR/prs.tsv"
+printf 'scripts/lib/dd-pr1.sh\nscripts/lib/dd-ov/x.sh\nscripts/lib/dd-ov2/y.sh\n' > "$DD_DIR/files-5001"
+printf 'scripts/lib/dd-huge.sh\n' > "$DD_DIR/files-5002"
+printf 'scripts/lib/dd-pr3.sh\nscripts/lib/dd-new-name.sh\nscripts/lib/dd-old-name.sh\n' > "$DD_DIR/files-5003"
+sed "s#@@FIXTURE@@#$DD#" "$DD/fleet.json" > "$WORK/dd-fleet.json"
+printf 'scripts/handover/chief-kit/dd-old.sh\nscripts/handover/console-kit/dd-newn.sh\n' > "$WORK/dd-held.txt"
+rundd() { NEXT_DISPATCH_MIRROR="$MD" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-dd" NEXT_DISPATCH_JIRA_CMD="$WORK/jira-dd" bash "$SUT" --top 50 --held "$WORK/dd-held.txt" --legs-from "$WORK/dd-fleet.json" "$@" 2>"$WORK/dd.err"; }
+dd_out="$(rundd --dispositions)"
+# (c) the rename registry
+has "dispositions: a pre-rename path collides with its new spelling, naming the holder" "$dd_out" "# disposition HIMMEL-901 collision scripts/handover/console-kit/dd-old.sh held by held list" # old-term-ok: the pre-rename spelling is the input under test
+has "dispositions: a new path collides with the old spelling held" "$dd_out" "# disposition HIMMEL-903 collision scripts/handover/chief-kit/dd-newn.sh held by held list"
+has "dispositions: a stale pre-rename path nobody holds is listed" "$dd_out" "LOCAL	HIMMEL-902"
+# (b) the live blocker re-check
+has "dispositions: a blocker Done in the live read does not drop the ticket" "$dd_out" "LOCAL	HIMMEL-904"
+has "dispositions: a live blocker stays dropped and is named" "$dd_out" "# disposition HIMMEL-905 blocker HIMMEL-911 (In Progress"
+lacks "dispositions: a classifier BLOCKED is never lifted, even when a key in its held path is Done live" "$dd_out" "LOCAL	HIMMEL-906"
+has "dispositions: a classifier BLOCKED on a held path keeps its reason" "$dd_out" "# disposition HIMMEL-906 classification BLOCKED: scripts/lib/dd-906.sh is held (routed HIMMEL-912"
+lacks "dispositions: a classifier BLOCKED whose key in the held path is live is not listed" "$dd_out" "LOCAL	HIMMEL-907"
+has "dispositions: a classifier BLOCKED names its blocker" "$dd_out" "# disposition HIMMEL-907 classification BLOCKED: scripts/lib/dd-907.sh is held (routed HIMMEL-913"
+# (f) the write scope is the list after 'writes confined to'
+has "scope: a directory a live brief mentions outside its list holds nothing (.github/workflows)" "$dd_out" "LOCAL	HIMMEL-920"
+has "scope: a mentioned scripts/ci holds nothing" "$dd_out" "LOCAL	HIMMEL-921"
+has "scope: a mentioned vendored plugin dir holds nothing" "$dd_out" "LOCAL	HIMMEL-922"
+has "scope: a mentioned single-writer dir holds nothing" "$dd_out" "LOCAL	HIMMEL-923"
+has "scope: a directory inside the list still holds its files" "$dd_out" "# disposition HIMMEL-924 collision "
+has "scope: a file on the list still holds" "$dd_out" "# disposition HIMMEL-925 collision "
+# (e) one unreadable PR marks only itself unknown
+has "prs: the PRs are read through the paginated files API" "$(cat "$DD_DIR/gh.args")" "api --paginate repos/yotamleo-org/Himmel/pulls/5001/files"
+has "prs: the files of the PR before the unreadable one are held" "$dd_out" "# disposition HIMMEL-930 collision scripts/lib/dd-pr1.sh held by open PR 5001"
+has "prs: the files of the PR after the unreadable one are held" "$dd_out" "# disposition HIMMEL-931 collision scripts/lib/dd-pr3.sh held by open PR 5003"
+has "prs: a renamed file's previous name is held" "$dd_out" "# disposition HIMMEL-932 collision scripts/lib/dd-old-name.sh held by open PR 5003"
+has "prs: the files read asks for previous_filename" "$(cat "$DD_DIR/gh.args")" "previous_filename"
+lacks "prs: no PR is unknown when every files read succeeds" "$dd_out" "open PR files unknown"
+has "dispositions: a directory ticket with a held file under it is dropped, naming the file and its holder" "$dd_out" "# disposition HIMMEL-960 classification BLOCKED: scripts/lib/dd-ov/ contains held scripts/lib/dd-ov/x.sh (open PR 5001)"
+lacks "dispositions: a directory ticket with a held file under it is never listed" "$dd_out" "LOCAL	HIMMEL-960"
+has "dispositions: a hook ticket naming a directory with a held file under it is dropped, naming the holder" "$dd_out" "# disposition HIMMEL-961 classification BLOCKED: scripts/lib/dd-ov2/ contains held scripts/lib/dd-ov2/y.sh (open PR 5001)"
+lacks "dispositions: a hook ticket naming a directory with a held file under it is never listed" "$dd_out" "LOCAL	HIMMEL-961"
+printf '%s\n' "$dd_out" | grep -Eq '^LOCAL.HIMMEL-962.*files=scripts/lib/$' && pass "files: a directory named without its slash keeps the slash" || fail "files: a directory named without its slash lost the slash"
+# one unreadable PR marks only itself unknown, and holds every To Do row meanwhile
+export DDU="$WORK/ddu"; mkdir -p "$DDU"
+cp "$DD_DIR/live.txt" "$DD_DIR/prs.tsv" "$DD_DIR/files-5001" "$DD_DIR/files-5003" "$DDU/"
+: > "$DDU/fail-5002"
+ddu_out="$(DD_DIR="$DDU" rundd --dispositions)" && pass "prs: the run with an unreadable PR exits 0" || fail "prs: the run with an unreadable PR failed"
+has "prs: the unreadable PR is named in the header" "$ddu_out" "open PR files unknown for PR 5002"
+lacks "prs: one unreadable PR does not mark every open PR unknown" "$ddu_out" "open PRs unknown"
+has "prs: the files of the PR before the unreadable one are still held" "$ddu_out" "# disposition HIMMEL-930 collision scripts/lib/dd-pr1.sh held by open PR 5001"
+has "prs: the files of the PR after the unreadable one are still held" "$ddu_out" "# disposition HIMMEL-931 collision scripts/lib/dd-pr3.sh held by open PR 5003"
+lacks "prs: RESUME rows are suppressed while a PR's files are unreadable" "$ddu_out" "RESUME	HIMMEL-940"
+lacks "prs: no To Do row is listed while a PR's files are unreadable" "$ddu_out" "LOCAL	HIMMEL-902"
+has "prs: a To Do row held for an unreadable PR says why" "$ddu_out" "# disposition HIMMEL-902 open PR files unknown (PR 5002)"
+# a PR the API cuts short at 3000 files is unknown, not a silent truncation
+export DD3K="$WORK/dd3k"; mkdir -p "$DD3K"
+cp "$DD_DIR/live.txt" "$DD3K/live.txt"
+printf '5101\tfix(x): [HIMMEL-9104] vast\tfix/himmel-9104-vast\n' > "$DD3K/prs.tsv"
+seq 1 3000 | sed 's#^#scripts/lib/dd-vast-#' > "$DD3K/files-5101"
+dd3k_out="$(DD_DIR="$DD3K" rundd --dispositions)" && pass "prs: the 3000-file run exits 0" || fail "prs: the 3000-file run failed"
+has "prs: a PR listing 3000 files is named unknown in the header" "$dd3k_out" "5101"
+lacks "prs: a PR listing 3000 files suppresses RESUME rows" "$dd3k_out" "RESUME	HIMMEL-940"
+# (d) a disposition for every open ticket of the version
+has "dispositions: a listed ticket says so" "$dd_out" "# disposition HIMMEL-902 listed LOCAL"
+has "dispositions: a leg-less In Progress ticket is a RESUME row while every PR is readable" "$dd_out" "RESUME	HIMMEL-940"
+has "dispositions: an in-progress ticket whose RESUME row is suppressed is still accounted for" "$ddu_out" "# disposition HIMMEL-940 unowned In Progress"
+has "dispositions: a label drop names the label" "$dd_out" "# disposition HIMMEL-951 label operator-decision"
+dd_n="$(printf '%s\n' "$dd_out" | grep -c '^# disposition ')"
+[ "$dd_n" = 21 ] && pass "dispositions: one line per open v1.0.1 ticket (21)" || fail "dispositions: $dd_n lines for 21 open v1.0.1 tickets"
+ddu_n="$(printf '%s\n' "$ddu_out" | grep -c '^# disposition ')"
+[ "$ddu_n" = 21 ] && pass "dispositions: an unreadable PR still leaves one line per ticket (21)" || fail "dispositions: $ddu_n lines with an unreadable PR, expected 21"
+dd_plain="$(rundd)"
+lacks "dispositions: a plain run prints none" "$dd_plain" "# disposition "
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

@@ -81,7 +81,7 @@ _forge_origin_host() {
     fi
     authority="${authority##*@}"   # drop userinfo
     authority="${authority%%:*}"   # drop :port
-    printf '%s' "${authority%.}"   # drop ONE terminal DNS dot (HIMMEL-3358): `github.com.` is github.com
+    printf '%s' "${authority%.}"   # drop ONE terminal DNS dot: `github.com.` is github.com
 }
 
 forge_detect() {

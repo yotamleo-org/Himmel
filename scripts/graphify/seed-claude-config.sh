@@ -5,6 +5,8 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$HERE/../lib/prim.sh" || exit 4
 CONFIG_DIR="${GRAPHIFY_CLAUDE_CONFIG_DIR:-${HOME}/.claude-graphify}"
 SOURCE_DIR="${GRAPHIFY_CLAUDE_SOURCE_CONFIG_DIR:-${HOME}/.claude}"
 PROFILE_RESOLVER="${GRAPHIFY_PLUGIN_PROFILES_BIN:-$REPO_ROOT/scripts/lanes/plugin-profiles.mjs}"
@@ -115,8 +117,9 @@ seed_config_dir() {
     || seed_fail "stage subscription credentials"
   chmod 600 "$CREDENTIALS_TMP" \
     || seed_fail "restrict staged subscription credentials"
-  mv -f "$CREDENTIALS_TMP" "$CONFIG_DIR/.credentials.json" \
+  atomic_write "$CONFIG_DIR/.credentials.json" < "$CREDENTIALS_TMP" \
     || seed_fail "replace subscription credentials"
+  rm -f "$CREDENTIALS_TMP"
   CREDENTIALS_TMP=""
   chmod 600 "$CONFIG_DIR/.credentials.json" \
     || seed_fail "restrict subscription credentials"
@@ -128,8 +131,9 @@ seed_config_dir() {
     || seed_fail "create a settings.json temp file"
   sanitize_settings "$SOURCE_DIR/settings.json" "$PROFILE_TMP" "$SETTINGS_TMP" \
     || seed_fail "sanitize settings.json and apply the bare plugin profile"
-  mv -f "$SETTINGS_TMP" "$CONFIG_DIR/settings.json" \
+  atomic_write "$CONFIG_DIR/settings.json" < "$SETTINGS_TMP" \
     || seed_fail "replace settings.json"
+  rm -f "$SETTINGS_TMP"
   SETTINGS_TMP=""
   rm -f "$PROFILE_TMP" || seed_fail "remove the temporary bare plugin profile"
   PROFILE_TMP=""
@@ -231,6 +235,7 @@ seed_lock_release() { # $1 = 1 to warn when our owned lock cannot be removed
 seed_with_lock() {
   local ticks=0 max_ticks=$(( SEED_LOCK_TIMEOUT * 2 )) mkdir_error="" stale
   while :; do
+    # prim-ok: seed timeout, age-based takeover and token-aware release use this directory; with_lock has no compatible stale-recovery API.
     if mkdir_error="$(mkdir "$LOCK" 2>&1)"; then
       printf '%s\n' "$SEED_LOCK_TOKEN" > "$LOCK/owner" \
         || { rm -rf "$LOCK"; seed_fail "record seed-lock ownership"; }

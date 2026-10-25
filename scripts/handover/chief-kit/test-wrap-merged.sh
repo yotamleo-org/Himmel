@@ -70,6 +70,7 @@ EOF
 cat > "$W/bin/jira" <<'EOF'
 #!/usr/bin/env bash
 echo "jira $*" >> "$WM_CALLS"
+echo "pk=${JIRA_PROJECT_KEY:-} $1" >> "$WM_CALLS.pk"
 [ "$1" != versions ] || { printf 'v1.0.1\tfalse\t2026-12-01\n'; exit 0; }
 [ "$1" != mirror ] || exit "${WM_MIRROR_RC:-0}"
 printf 'HIMMEL-5594\tTask\tIn Review\ttitle\n'
@@ -375,6 +376,21 @@ if command -v python3 >/dev/null 2>&1; then
     contains "23b: the mirror is still refreshed" "$calls" "jira mirror --root $TMIR"
     contains "23b: and handed to the focus refresh" "$calls" "focus --doc $CONSOLE --mirror-fresh $TMIR"
     unset TICK_TRACKER_MIRROR_DIR TRACKER_HANDOVERS_DIR
+
+    # 23c. the mirror dir and the Jira project key follow JIRA_PROJECT_KEY, HIMMEL only as the default
+    wm_pk() { # <key or empty> - one wrap on a focus-owned console, HOME under the sandbox
+        tracker_fixture 'https://claude.ai/artifact/x'
+        printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+        rm -f "$WM_CALLS.pk"
+        HOME="$W/pkhome" JIRA_PROJECT_KEY="$1" WM_FOCUS="$W/bin/focus-ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    }
+    wm_pk ACME
+    contains "23c: an adopted project mirrors into its own dir" "$calls" "jira mirror --root $W/pkhome/.himmel/state/jira-mirror/ACME"
+    contains "23c: and reads the mirror under its own project key" "$(cat "$WM_CALLS.pk")" "pk=ACME mirror"
+    contains "23c: and the versions under its own project key" "$(cat "$WM_CALLS.pk")" "pk=ACME versions"
+    wm_pk ""
+    contains "23c: an unset project key keeps the HIMMEL mirror dir" "$calls" "jira mirror --root $W/pkhome/.himmel/state/jira-mirror/HIMMEL"
+    contains "23c: and the HIMMEL project key" "$(cat "$WM_CALLS.pk")" "pk=HIMMEL mirror"
 else
     echo "skip - 15-18 tracker rows: no python3"
 fi

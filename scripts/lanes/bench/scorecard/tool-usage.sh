@@ -43,6 +43,8 @@ usage() { echo "usage: tool-usage.sh --since <ISO8601> [--until <ISO8601>] [--me
 
 SINCE=""; UNTIL=""
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../../lib/prim.sh
+. "$HERE/../../../lib/prim.sh" || exit 1
 MEMORY_TRAPS="$HERE/memory-traps.json"
 SKILL_CWD=""
 SKILL_CONFIG_DIR=""
@@ -64,7 +66,7 @@ done
 sc_roots_check tool-usage || exit 2
 RUN=""
 trap 'rm -rf "$RUN" "$SC_COV"' EXIT
-RUN=$(mktemp -d "${TMPDIR:-/tmp}/tool-usage.XXXXXX") || { echo "tool-usage: mktemp failed" >&2; exit 1; }
+RUN=$(tmpdir) || { echo "tool-usage: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as

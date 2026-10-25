@@ -174,7 +174,7 @@ esac
 stamp="$(date +%H:%M)"
 if [ -n "$token" ]; then
     if [ "$is_relay" -eq 1 ]; then
-        printf 'inbox-send: refusing --token from a console relay (HIMMEL-2975: only the console sends token-quoting messages)\n' >&2
+        printf 'inbox-send: refusing --token from a console relay (only the console sends token-quoting messages)\n' >&2
         exit 3
     fi
     if [ -z "$author" ]; then

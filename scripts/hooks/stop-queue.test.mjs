@@ -48,10 +48,14 @@ const pending = (dir) => {
   return existsSync(p) ? readdirSync(p).filter((f) => f.endsWith('.json')) : [];
 };
 
-// Whether a pid is still around. EPERM means it exists and belongs to someone
-// else — still alive. Mirrors pidAlive() in the module under test.
+// Whether a pid is still around. Signal 0 answers for a ZOMBIE too (the slot
+// stays allocated until the parent reaps it), so a killed grandchild of a
+// still-running parent would read as alive; the process state settles that. A
+// failed ps read proves nothing: only ESRCH from the signal means the pid is gone.
 const alive = (pid) => {
-  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+  try { process.kill(pid, 0); } catch (e) { return e.code === 'EPERM'; }
+  const st = (spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout ?? '').trim();
+  return !st.startsWith('Z');
 };
 
 // A tree teardown is not instantaneous — taskkill returns before the tree is
@@ -65,6 +69,27 @@ const reaped = async (pid, budgetMs = 5000) => {
 };
 
 // ------------------------------------------------------------------ paths
+
+test('the liveness probe sees this process alive and an unreaped zombie dead', async () => {
+  assert.equal(alive(process.pid), true, 'the liveness probe must see this test process alive');
+  // `sleep` (exec'd by sh) never waits on the child it was left holding, so that child stays a zombie once it exits;
+  // it outlives the exec by a beat so a shell that reaps its own jobs cannot reap it first
+  const holder = spawn('sh', ['-c', 'sleep 0.3 & echo $!; exec sleep 30'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const zombie = await new Promise((resolve) => {
+      holder.stdout.once('data', (d) => resolve(Number(String(d).trim())));
+    });
+    assert.ok(zombie > 0, `unusable zombie pid: ${zombie}`);
+    const until = Date.now() + 3000;
+    while (Date.now() < until && !/^Z/.test(spawnSync('ps', ['-o', 'stat=', '-p', String(zombie)], { encoding: 'utf8' }).stdout.trim())) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    process.kill(zombie, 0); // still allocated: signal 0 alone would call it alive
+    assert.equal(alive(zombie), false, 'a zombie is not alive');
+  } finally {
+    holder.kill('SIGKILL');
+  }
+});
 
 test('queueDir prefers the explicit override, else $HOME/.himmel/stop-queue', () => {
   assert.equal(queueDir({ HIMMEL_STOP_QUEUE_DIR: '/q' }), '/q');

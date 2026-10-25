@@ -30,7 +30,15 @@
 # CURRENT while the fork sits unrebased, laundering the signal.
 #
 # Usage:
-#   bash scripts/upstreams/apply-drift-bump.sh <name> <new-version> [--sha256 <hex>] [--dry-run]
+#   bash scripts/upstreams/apply-drift-bump.sh <name> <new-version> --published <ISO-8601> [--sha256 <hex>] [--dry-run]
+#
+# Release-age gate: the npm rows already refuse a release younger than 72 h
+# (minimumReleaseAge = 259200 s in bunfig.toml, min-release-age in .npmrc). A tag
+# bump gets the same buffer: the caller passes the publish time of <new-version>
+# (the Releases API `published_at`) and a tag younger than RELEASE_AGE_HOURS is
+# refused (rc=5), never bumped. This script is offline, so it cannot look the date
+# up; a bump without --published is refused too, else omitting the flag would
+# skip the gate. DRIFT_NOW is the clock seam, for tests only.
 #
 # Split pins: an entry may add `companion_pins`, a list of
 # {file, template} rows for literals that live elsewhere than `version_pin`
@@ -44,6 +52,8 @@
 #                     Same variable name check-plugin-drift.sh uses.
 #   DRIFT_REPO_ROOT   root that `version_pin.file` resolves against
 #                     (default: the repo this script lives in).
+#   DRIFT_NOW         ISO-8601 clock for the release-age gate (test seam only;
+#                     default: the real UTC time).
 #
 # Exit codes:
 #   0  bumped (or, with --dry-run, would bump)
@@ -52,6 +62,8 @@
 #   3  SKIP — entry is not auto-bumpable (no version_pin); handle it manually
 #   4  bump required but could NOT be applied safely (pin literal missing,
 #      ambiguous, or post-write verification failed) — both files left untouched
+#   5  release-age gate: --published missing, or <new-version> younger than 72 h
+#      — nothing written; retry once the tag has aged
 set -uo pipefail
 
 SELF_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
@@ -59,17 +71,21 @@ REPO_ROOT="${DRIFT_REPO_ROOT:-$(cd "$SELF_DIR/../.." && pwd)}"
 REGISTRY="${DRIFT_REGISTRY:-$REPO_ROOT/scripts/upstreams.json}"
 
 usage() {
-  echo "usage: apply-drift-bump.sh <name> <new-version> [--sha256 <hex>] [--dry-run]" >&2
+  echo "usage: apply-drift-bump.sh <name> <new-version> --published <ISO-8601> [--sha256 <hex>] [--dry-run]" >&2
   echo "  <name>         a tag_release/base entry in scripts/upstreams.json" >&2
   echo "  <new-version>  the upstream version to pin to (leading 'v' optional)" >&2
+  echo "  --published    when <new-version> was released (Releases API published_at);" >&2
+  echo "                 a tag younger than 72 h is refused" >&2
   echo "  exit: 0 bumped | 1 already current | 2 usage/registry | 3 SKIP not" >&2
-  echo "        auto-bumpable (no version_pin) | 4 bump failed, files restored" >&2
+  echo "        auto-bumpable (no version_pin) | 4 bump failed, files restored |" >&2
+  echo "        5 release younger than the 72 h buffer (or --published missing)" >&2
 }
 
 NAME=""
 NEW_VER=""
 DRY_RUN=0
 NEW_SHA=""
+PUBLISHED=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --dry-run) DRY_RUN=1 ;;
@@ -77,6 +93,11 @@ while [ $# -gt 0 ]; do
       shift
       [ $# -gt 0 ] || { echo "apply-drift-bump: --sha256 needs a value" >&2; usage; exit 2; }
       NEW_SHA="$1"
+      ;;
+    --published)
+      shift
+      [ $# -gt 0 ] || { echo "apply-drift-bump: --published needs a value" >&2; usage; exit 2; }
+      PUBLISHED="$1"
       ;;
     -h|--help) usage; exit 2 ;;
     -*) echo "apply-drift-bump: unknown flag '$1'" >&2; usage; exit 2 ;;
@@ -108,11 +129,14 @@ fi
 # any failure) lives in python: it is the only interpreter here that can re-parse
 # the JSON to PROVE the edit landed as intended, and reading/writing with
 # newline='' keeps CRLF/LF exactly as found (this repo is worked on from Windows).
-python3 - "$REGISTRY" "$REPO_ROOT" "$NAME" "$NEW_VER" "$DRY_RUN" "$NEW_SHA" <<'PY'
-import json, os, re, sys
+python3 - "$REGISTRY" "$REPO_ROOT" "$NAME" "$NEW_VER" "$DRY_RUN" "$NEW_SHA" "$PUBLISHED" <<'PY'
+import datetime, json, os, re, sys
 
-reg_path, repo_root, name, new_raw, dry, new_sha = sys.argv[1:7]
+reg_path, repo_root, name, new_raw, dry, new_sha, published = sys.argv[1:8]
 dry = dry == "1"
+
+# The same buffer the npm rows enforce (minimumReleaseAge = 259200 s = 72 h).
+RELEASE_AGE_HOURS = 72
 
 def die(code, msg):
     sys.stderr.write("apply-drift-bump: %s\n" % msg)
@@ -130,6 +154,17 @@ VER_RE = re.compile(r'^v?[0-9]+(\.[0-9]+)*([0-9A-Za-z.\-+]*)$')
 
 def norm(v):
     return v[1:] if v.startswith("v") else v
+
+def parse_utc(label, text):
+    # fromisoformat only takes a trailing Z from 3.11 on; an offset-less time has
+    # no zone to compare in, so it is refused rather than guessed.
+    try:
+        t = datetime.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        die(2, "%s %r is not an ISO-8601 timestamp" % (label, text))
+    if t.tzinfo is None or "T" not in text:
+        die(2, "%s %r needs a date, a time and a zone (e.g. 2026-10-22T12:00:00Z)" % (label, text))
+    return t.astimezone(datetime.timezone.utc)
 
 def numeric_key(v):
     # Compare only the leading dotted-numeric run; a trailing suffix
@@ -191,6 +226,20 @@ if not pin:
     sys.exit(3)
 if not isinstance(pin, dict) or not pin.get("file") or not pin.get("template"):
     die(2, "entry %r has a malformed version_pin (need {file, template})" % name)
+
+# --- release-age gate ---------------------------------------------------------
+# After SKIP / already-current / downgrade, so those verdicts are unchanged, and
+# before any pin is read or written.
+if not published:
+    die(5, "refusing to bump %s: pass --published <ISO-8601 release time of %s> "
+           "so the %d h release-age gate can run" % (name, new_ver, RELEASE_AGE_HOURS))
+pub_t = parse_utc("--published", published)
+now_env = os.environ.get("DRIFT_NOW", "")
+now_t = parse_utc("DRIFT_NOW", now_env) if now_env else datetime.datetime.now(datetime.timezone.utc)
+age_h = (now_t - pub_t).total_seconds() / 3600.0
+if age_h < RELEASE_AGE_HOURS:
+    die(5, "refusing to bump %s to %s: published %s, %.1f h old, inside the %d h "
+           "release-age buffer — retry after it has aged" % (name, new_ver, published, age_h, RELEASE_AGE_HOURS))
 
 pin_rel, template = pin["file"], pin["template"]
 n_ph = template.count("{version}")

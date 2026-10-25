@@ -38,7 +38,7 @@ record), with the shared path resolver in
 touchpoints (e.g. a lane's cap-guard) with no new fetch and no new poll, so there
 is no separate enable step: the ledger fills as those touchpoints run.
 
-**Name history.** Originally shipped as "headroom" (WS9). Renamed
+**Name history.** Originally shipped as "headroom". Renamed
 `headroom` → `quota-gauge` to free the "Headroom" name for an
 unrelated tool-adoption candidate.
 
@@ -117,7 +117,7 @@ status per lane (Codex / Hermes / armed slots), pending escalations, and
 quota/posture gauges, with live updates over SSE so the page refetches as
 state changes.
 
-**Status: shipped (WS8 Phase 1, read-only).** Lives at
+**Status: shipped (Phase 1, read-only).** Lives at
 **`scripts/fleet-control/`**. There is no dispatch or adjudication in the UI
 yet; the page's own banner says so: "Read-only Phase 1 pane. Dispatch
 and adjudication controls remain disabled until Phase 2." Fleet state also

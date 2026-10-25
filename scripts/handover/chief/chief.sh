@@ -702,8 +702,32 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CH
                 _auto_newest="$_auto_cand"
             fi
         done
+        # A newer nextleg doc of ANOTHER name (the live chain is roadmap-chief, the
+        # default name matches only a weeks-old bare -console doc) means the default
+        # name is the wrong chain: refuse and list, never take the old doc.
+        if [ "$NAME_GIVEN" -ne 1 ]; then
+            _auto_newer=""
+            for _auto_cand in "$root/$slug/"*/*"-nextleg-"*.md; do
+                [ -f "$_auto_cand" ] || continue
+                _auto_stem="$(basename "$_auto_cand" .md)"
+                case "$_auto_stem" in *HANDOFF*|*LINEAGE*) continue ;; esac
+                if [[ "$_auto_stem" =~ ^[A-Z0-9]+-nextleg-([0-9]{4}-[0-9]{2}-[0-9]{2})([A-Z]{1,2})-.+$ ]]; then
+                    _auto_key="${BASH_REMATCH[1]}-$(printf '%03d' "$(letter_value "${BASH_REMATCH[2]}")")"
+                else
+                    continue
+                fi
+                if [ -z "$_auto_newest_key" ] || [[ "$_auto_key" > "$_auto_newest_key" ]]; then
+                    _auto_newer="${_auto_newer}${_auto_key} ${_auto_cand}"$'\n'
+                fi
+            done
+            if [ -n "$_auto_newer" ]; then
+                err "the newest nextleg doc under $root/$slug is not named '$_auto_name' (or '$_auto_old'), so a bare next would take an older chain; pass --name or --doc. Newer candidates:"
+                printf '%s' "$_auto_newer" | sort -r | head -n 5 | sed 's/^[^ ]* /  /' >&2
+                exit 1
+            fi
+        fi
         [ -n "$_auto_newest" ] && DOC_ARG="$_auto_newest"
-        unset _auto_cand _auto_base _auto_stem _auto_prefix_part _auto_cdate _auto_cletter _auto_key _auto_newest _auto_newest_key
+        unset _auto_cand _auto_base _auto_stem _auto_prefix_part _auto_cdate _auto_cletter _auto_key _auto_newest _auto_newest_key _auto_newer
     fi
     unset _auto_name _auto_old
 fi

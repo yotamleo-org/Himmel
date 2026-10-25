@@ -156,7 +156,12 @@ station=""
 if [ -n "$pr" ]; then
     slog="${LE_STATION_LOG:-$HOME/.himmel/state/station-sync.out}"
     mkdir -p "$(dirname "$slog")" 2>/dev/null || true
-    setsid "${STATION[@]}" --pr "$pr" >>"$slog" 2>&1 </dev/null &
+    # setsid is util-linux: absent on macOS, where the sync stays in this process group
+    if command -v setsid >/dev/null 2>&1; then
+        setsid "${STATION[@]}" --pr "$pr" >>"$slog" 2>&1 </dev/null &
+    else
+        "${STATION[@]}" --pr "$pr" >>"$slog" 2>&1 </dev/null &
+    fi
     station=" station=pending log=$slog"
 fi
 # re-render the legs: line so a wrapped leg is dropped by the script, not by a console Edit turn

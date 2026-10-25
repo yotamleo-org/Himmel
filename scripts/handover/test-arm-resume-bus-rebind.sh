@@ -31,6 +31,8 @@ hasnt() { case "$3" in *"$2"*) fail "$1" "unexpected: $2" ;; *) ok "$1" ;; esac;
 
 # ---- A. helper -------------------------------------------------------------
 PROCD="$TMP/proc"
+# A host with no procfs (macOS) cannot report the helper's own start time: give it one between PSTART=1 and the default.
+[ -r /proc/self/stat ] || export ARM_RESUME_SELF_START=50000000000
 mkproc() { # mkproc <pid> <comm> <argv...>
     local pid="$1" comm="$2"; shift 2
     mkdir -p "$PROCD/$pid"
@@ -104,6 +106,22 @@ t1=$(date +%s)
 eq "A4 hung rebind: exits 0" 0 "$rc"
 if [ $((t1 - t0)) -le 10 ]; then ok "A4 hung rebind killed inside the bound ($((t1 - t0))s)"; else fail "A4 hung rebind not bounded" "$((t1 - t0))s"; fi
 has "A4 hung rebind: timeout WARN" "timed out" "$(cat "$TMP/log")"
+
+# A6: an ARM_RESUME_SELF_START inherited WITHOUT the ARM_RESUME_PROC seam is ignored (an `at` job inherits the submitting environment).
+# A real claude-named process older than the helper must still be skipped, though the leaked value says the helper started before it.
+if [ -r /proc/self/stat ]; then
+    cp "$(command -v bash)" "$TMP/claude"
+    "$TMP/claude" -c 'sleep 8; :' -n HIM-9 &
+    oldpid=$!
+    sleep 1
+    eq "A6 setup: the claude-named older process is live" claude "$(cat "/proc/$oldpid/comm" 2>/dev/null)"
+    mkbus ok; : > "$TMP/bus-calls"; : > "$TMP/log"
+    env -u ARM_RESUME_PROC ARM_RESUME_SELF_START=1 bash "$HELPER" HIM-9 "$TMP/bus" "$TMP/log" 2 5
+    eq "A6 inherited ARM_RESUME_SELF_START without the proc seam is ignored: the older session is not rebound" "" "$(cat "$TMP/bus-calls")"
+    pkill -P "$oldpid" 2>/dev/null; kill "$oldpid" 2>/dev/null; wait "$oldpid" 2>/dev/null
+else
+    echo "SKIP A6 inherited-start row (this host has no procfs)"
+fi
 
 # ---- B. emission -----------------------------------------------------------
 BIN="$TMP/bin"; mkdir -p "$BIN"

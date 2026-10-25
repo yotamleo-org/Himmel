@@ -84,6 +84,11 @@ mkdir -p "$STATE"
 #   fail-embed    the FIRST `qmd embed` exits nonzero
 #   fail-verify   the SECOND `qmd embed` (the completeness assert) exits nonzero
 #   incomplete    every `qmd embed` reports work remaining (never the all-clear)
+#   backlog       the first N `qmd embed` calls (N in the file) embed chunks, the
+#                 next reports the all-clear: a backlog larger than one session
+#   provider-503  every `qmd embed` logs failed attempts with HTTP 503 and
+#                 embeds nothing
+#   no-progress   every `qmd embed` ends having embedded 0 chunks, no error line
 #   tail-once     the first verify pass finds a small tail; the
 #                 retry pass reports the all-clear
 #   fail-cleanup  `qmd cleanup` exits nonzero
@@ -143,6 +148,23 @@ case "${1:-}" in
         fi
         if [ -e "$STATE/tail-once" ] && [ "$n" -eq 2 ]; then
             echo "Embedded 6 chunks from 2 documents in 2s"
+            exit 0
+        fi
+        if [ -e "$STATE/backlog" ] && [ "$n" -le "$(cat "$STATE/backlog")" ]; then
+            echo "Embedded 100 chunks from 20 documents in 5s"
+            exit 0
+        fi
+        if [ -e "$STATE/provider-503" ]; then
+            # The fork's per-attempt log line, then the real end-of-session text
+            # (src/cli/qmd.ts) of a session in which every chunk failed.
+            i=0
+            while [ "$i" -lt 3 ]; do echo "embed: request failed status=503 provider=DeepInfra" >&2; i=$((i+1)); done
+            echo "✓ Done! Embedded 0 chunks from 3 documents in 30m 0s"
+            echo "⚠ 30 chunks still failed after retries"
+            exit 0
+        fi
+        if [ -e "$STATE/no-progress" ]; then
+            echo "✓ Done! Embedded 0 chunks from 3 documents in 4s"
             exit 0
         fi
         if [ -e "$STATE/incomplete" ]; then
@@ -668,19 +690,80 @@ else
     fail "tail-once call sequence" "got: $got_calls"
 fi
 
-echo "TEST: a verify pass still finding work after the one retry stays rc 5 (bounded)"
+echo "TEST: a backlog larger than one session completes across sessions with no operator action"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+echo 3 > "$STATE/backlog"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "multi-session backlog rc 0" 0 "$rc"
+assert_contains "multi-session backlog reports success" "index refreshed, all content hashes embedded" "$out"
+got_calls=$(calls | tr '\n' ',')
+if [ "$got_calls" = "update,embed,embed,embed,embed,cleanup," ]; then
+    pass "a progressing backlog resumes at once: 3 working sessions then the all-clear"
+else
+    fail "multi-session backlog call sequence" "got: $got_calls"
+fi
+
+echo "TEST: a backlog that never drains stops at the session bound and names the session cap"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+touch "$STATE/incomplete" "$STATE/hash-count"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "persistent backlog rc 5" 5 "$rc"
+assert_not_contains "persistent backlog never claims success" "index refreshed, all content hashes embedded" "$out"
+assert_contains "rc 5 names the session cap with the counts" "cause: session cap reached (4 of 4 sessions" "$out"
+assert_contains "rc 5 prints the remaining hash count" "remaining: 33515 unique hashes" "$out"
+assert_contains "rc 5 says no provider error was seen" "last provider error: none" "$out"
+got_calls=$(calls | tr '\n' ',')
+if [ "$got_calls" = "update,embed,embed,embed,embed,update," ]; then
+    pass "the bound is 4 embed sessions, no cleanup, one recount for the remaining hashes"
+else
+    fail "persistent backlog call sequence" "got: $got_calls"
+fi
+
+echo "TEST: QMD_REINDEX_EMBED_MAX_SESSIONS and QMD_REINDEX_EMBED_MAX_SECS override the bounds"
 reset_state
 rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
 touch "$STATE/incomplete"
+rc=0; out=$(QMD_REINDEX_EMBED_MAX_SESSIONS=2 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "sessions override rc 5" 5 "$rc"
+assert_contains "sessions override is named in the cause" "cause: session cap reached (2 of 2 sessions" "$out"
+reset_state
+touch "$STATE/incomplete"
+rc=0; out=$(QMD_REINDEX_EMBED_MAX_SECS=0 bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "seconds override rc 5" 5 "$rc"
+assert_contains "seconds override stops after one session" "cause: session cap reached (1 of 4 sessions," "$out"
+assert_contains "seconds override names the 0s limit" "s of 0s used)" "$out"
+reset_state
+touch "$STATE/incomplete"
+rc=0; out=$(QMD_REINDEX_EMBED_MAX_SESSIONS=abc bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_contains "an invalid sessions value warns and uses 4" "ignoring invalid seconds value 'abc'; using 4" "$out"
+assert_contains "an invalid sessions value falls back to the default" "(4 of 4 sessions" "$out"
+
+echo "TEST: a pinned provider answering HTTP 503 on every attempt exits 5 naming provider errors and 503"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+touch "$STATE/provider-503"
 rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
-assert_rc "persistent tail rc 5" 5 "$rc"
-assert_not_contains "persistent tail never claims success" "index refreshed, all content hashes embedded" "$out"
+assert_rc "provider outage rc 5" 5 "$rc"
+assert_contains "rc 5 names provider errors" "cause: provider errors (HTTP 503)" "$out"
+assert_contains "rc 5 prints the last provider error" "last provider error: embed: request failed status=503 provider=DeepInfra" "$out"
+assert_not_contains "rc 5 does not blame the session cap" "cause: session cap" "$out"
 got_calls=$(calls | tr '\n' ',')
-if [ "$got_calls" = "update,embed,embed,embed," ]; then
-    pass "persistent tail embeds exactly 3 times and never runs cleanup"
+if [ "$got_calls" = "update,embed,embed,update," ]; then
+    pass "two sessions without progress stop the loop"
 else
-    fail "persistent tail call sequence" "got: $got_calls"
+    fail "provider outage call sequence" "got: $got_calls"
 fi
+
+echo "TEST: two sessions without progress and no error line exit 5 naming no progress"
+reset_state
+rm -rf "$HOME/.cache/qmd" 2>/dev/null || true
+touch "$STATE/no-progress"
+rc=0; out=$(bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+assert_rc "no progress rc 5" 5 "$rc"
+assert_contains "rc 5 names no progress" "cause: no progress" "$out"
+assert_contains "rc 5 says no provider error was seen" "last provider error: none" "$out"
 
 echo "TEST: a failing qmd cleanup exits 8, distinct from embed (4/5/6) failures"
 reset_state

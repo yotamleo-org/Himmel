@@ -19,7 +19,6 @@ Ledger: $HIMMEL_EVAL_RUNS_LEDGER, else ~/.himmel/eval-runs.jsonl.
 """
 import argparse
 import json
-import math
 import os
 import re
 import subprocess
@@ -29,6 +28,7 @@ from datetime import datetime
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
+from wilson import wilson  # noqa: E402
 
 PDD_SCHEMA = 1
 TICKET_RE = re.compile(r"\b(?:HIMMEL|LUNA)-\d+\b")
@@ -49,14 +49,6 @@ GREEN_RE = re.compile(r"\b(?:GREEN|[Gg]reen)\b")
 # GraphQL search by `merged:` date.
 POOL_EXTRA = 40
 CR_BLOCK = "<!-- This is an auto-generated comment"
-
-
-def wilson(k, n, z=1.959964):
-    p = k / n
-    den = 1 + z * z / n
-    mid = (p + z * z / (2 * n)) / den
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
-    return {"lo": round(max(0.0, mid - half), 4), "hi": round(min(1.0, mid + half), 4)}
 
 
 def parse_ts(s):

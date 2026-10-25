@@ -29,7 +29,7 @@
 #   3  no tickets matched (warn — operator can still proceed manually)
 set -euo pipefail
 
-PROJECT="${AFK_PROJECT:-${OVERNIGHT_PROJECT:-HIMMEL}}"
+PROJECT="${AFK_PROJECT:-${OVERNIGHT_PROJECT:-}}"
 STATUS="${AFK_STATUS:-${OVERNIGHT_STATUS:-To Do,In Progress}}"
 LIMIT="${AFK_LIMIT:-${OVERNIGHT_LIMIT:-5}}"
 PRIORITY="${AFK_PRIORITY:-${OVERNIGHT_PRIORITY:-key-desc}}"
@@ -44,7 +44,10 @@ Usage: build-plan.sh [--project KEY] [--status STATUS] [--limit N]
 Builds the dispatch plan for /afk-shift by querying jira.
 
 Optional:
-  --project KEY      Jira project key. Default $AFK_PROJECT or HIMMEL.
+  --project KEY      Jira project key. Default $AFK_PROJECT, else HIMMEL in
+                     the himmel clone, else the project's JIRA_PROJECT_KEY
+                     (env or its .env); an adopted project without one is
+                     refused (exit 1) rather than handed himmel's queue.
   --status STATUS    Comma-separated status filter passed to `jira list`.
                      Default: "To Do,In Progress".
   --limit N          Max tickets in the plan. Default 5.
@@ -57,7 +60,8 @@ Optional:
 
 Environment overrides:
   JIRA_CMD           Override the jira plugin command (default:
-                     `node $repo/scripts/jira/dist/index.js`). Tests
+                     `node $repo/scripts/jira/dist/index.js`, else the himmel
+                     clone's at $HIMMEL_REPO in an adopted project). Tests
                      override this to inject canned ticket output.
   AFK_PROJECT        Default project key.
   AFK_STATUS         Default status filter.
@@ -96,24 +100,54 @@ fi
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo_root=$(cd "$script_dir/../.." && pwd)
 
-# Resolve jira CLI. Default: node $repo/scripts/jira/dist/index.js.
-if [ -z "$JIRA_CMD" ]; then
-    if [ -f "$repo_root/scripts/jira/dist/index.js" ] && command -v node >/dev/null 2>&1; then
-        JIRA_CMD="node $repo_root/scripts/jira/dist/index.js"
+# The queue is the current project's (project-state.sh): HIMMEL in the himmel
+# clone, else the project's own JIRA_PROJECT_KEY.
+if [ -z "$PROJECT" ]; then
+    # shellcheck source=project-state.sh
+    . "$script_dir/project-state.sh"
+    if afk_legacy_paths; then
+        PROJECT=HIMMEL
     else
-        echo "ERR build-plan: jira CLI not found at $repo_root/scripts/jira/dist/index.js and JIRA_CMD not set" >&2
+        # Never load_dotenv here: it reads ~/.himmel/himmel.conf first, which on a
+        # himmel station names HIMMEL. The key comes from the process env or the
+        # project's own .env (this checkout's, then the primary checkout's).
+        PROJECT="${JIRA_PROJECT_KEY:-}"
+        env_dirs=$(git rev-parse --show-toplevel 2>/dev/null)
+        common=$(afk_git_common_dir 2>/dev/null) && case "$common" in */.git) env_dirs="$env_dirs
+${common%/.git}" ;; esac
+        while [ -z "$PROJECT" ] && IFS= read -r env_dir; do
+            [ -n "$env_dir" ] && [ -f "$env_dir/.env" ] || continue
+            PROJECT=$(sed -n -E "s/^(export[[:space:]]+)?JIRA_PROJECT_KEY=[\"']?([A-Za-z0-9_]*).*/\\2/p" "$env_dir/.env" | tail -n 1)
+        done <<< "$env_dirs"
+        if [ -z "$PROJECT" ]; then
+            echo "ERR build-plan: JIRA_PROJECT_KEY is unset for this project — set it (env or the project's .env) or pass --project" >&2
+            exit 1
+        fi
+    fi
+fi
+
+# Resolve jira CLI. Default: node $repo/scripts/jira/dist/index.js, run with a
+# quoted path so a checkout path with spaces stays one argument.
+jira_js=""
+if [ -z "$JIRA_CMD" ]; then
+    jira_js="$repo_root/scripts/jira/dist/index.js"
+    if [ ! -f "$jira_js" ] && [ -n "${HIMMEL_REPO:-}" ]; then jira_js="$HIMMEL_REPO/scripts/jira/dist/index.js"; fi
+    if [ ! -f "$jira_js" ] || ! command -v node >/dev/null 2>&1; then
+        echo "ERR build-plan: jira CLI not found at $jira_js and JIRA_CMD not set — build it: (cd ${jira_js%/dist/index.js} && npm install && npm run build)" >&2
         exit 2
     fi
 fi
+jira_run() { if [ -n "$jira_js" ]; then node "$jira_js" "$@"; else $JIRA_CMD "$@"; fi; }
 
 # where-are-we L3 push-side provisioning: each non-epic ticket's
 # subagent prompt is pre-loaded with that ticket's prior ledger slice. Both
 # seams are overridable for hermetic tests (mirrors JIRA_CMD).
 LEDGER="${WHERE_ARE_WE_LEDGER:-$repo_root/.where-are-we/ledger.jsonl}"
-PROVISION_CMD="${PROVISION_CMD:-node $repo_root/scripts/where-are-we/provision.mjs}"
+PROVISION_CMD="${PROVISION_CMD:-}"
+provision_run() { if [ -z "$PROVISION_CMD" ]; then node "$repo_root/scripts/where-are-we/provision.mjs" "$@"; else $PROVISION_CMD "$@"; fi; }
 
 # Query. The jira CLI emits TSV: KEY \t TYPE \t STATUS \t TITLE.
-if ! tickets_raw=$($JIRA_CMD list --project "$PROJECT" --status "$STATUS" --limit "$LIMIT" 2>/dev/null); then
+if ! tickets_raw=$(jira_run list --project "$PROJECT" --status "$STATUS" --limit "$LIMIT" 2>/dev/null); then
     echo "ERR build-plan: jira list failed for project=$PROJECT status='$STATUS' limit=$LIMIT" >&2
     exit 2
 fi
@@ -188,7 +222,7 @@ plan=$(
                 # ledger slice. Fail-open — no node/ledger/item → empty → block
                 # skipped → plan unchanged (the `2>/dev/null || true` + empty-test
                 # IS the guard; no separate node-presence check needed).
-                slice=$($PROVISION_CMD slice --ledger "$LEDGER" --for "$key" 2>/dev/null || true)
+                slice=$(provision_run slice --ledger "$LEDGER" --for "$key" 2>/dev/null || true)
                 if [ -n "$slice" ]; then
                     echo "   - prior ledger state:"
                     printf '%s\n' "$slice" | sed 's/^/     /'

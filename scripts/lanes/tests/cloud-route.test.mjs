@@ -284,7 +284,8 @@ esac`);
   const gh = stub(dir, 'gh', `
 if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
 if [ "$1 $2" = "pr list" ]; then echo 77; exit 0; fi
-if [ "$1 $2" = "pr diff" ]; then echo scripts/held/file.sh; exit 0; fi
+if [ "$1 $2" = "pr diff" ]; then echo 'HTTP 406: the diff exceeded the maximum number of files (300)' >&2; exit 1; fi
+if [ "$1 $2" = "api --paginate" ]; then echo scripts/held/file.sh; exit 0; fi
 exit 1`);
   return { dir, bucket, jira, gh };
 }
@@ -623,4 +624,79 @@ test('matrix: cloud-route routes from the matrix it is given, not from code', ()
 test('matrix: a matrix with no match rows has no run-time need', () => {
   const matrix = { rows: [{ id: 'note', state: 'does', evidence: 'x' }], max_asks: 3 };
   assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh. It reads the luna vault.' }), ctx({ matrix })).class, 'CLOUD-OK');
+});
+
+test('HIMMEL-7574: a ticket naming a directory with a held file under it is BLOCKED, naming the file and its holder', () => {
+  const dirTicket = tk({ description: 'Tidy the helpers under scripts/lanes/.' });
+  const v = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
+  assert.equal(v.class, 'BLOCKED');
+  assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh \(open PR 77\)/);
+  // the exact file a PR touches blocks, beside a directory the ticket names
+  const exact = classifyTicket(tk({ description: 'Tidy scripts/lanes/ and fix scripts/lanes/other.sh.' }), ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
+  assert.equal(exact.class, 'BLOCKED');
+  // a held directory (a live leg's tree) over a ticket's directory blocks too
+  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live leg' }] })).class, 'BLOCKED');
+  // nothing held under the directory: unchanged
+  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] })).class, 'CLOUD-OK');
+});
+
+test('a hook or trust-path ticket naming a directory with a held file under it is BLOCKED, not routed', () => {
+  const held = [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }];
+  for (const d of ['Fix scripts/hooks/guard.sh and tidy scripts/lanes/.', 'Fix scripts/ci/check.sh and tidy scripts/lanes/.']) {
+    const v = classifyTicket(tk({ description: d }), ctx({ held }));
+    assert.equal(v.class, 'BLOCKED', d);
+    assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh \(open PR 77\)/);
+  }
+});
+
+test('a directory named with trailing punctuation and no slash still collides with a held file under it', () => {
+  const held = [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }];
+  const v = classifyTicket(tk({ description: 'Tidy the helpers in scripts/lanes.' }), ctx({ held, tree: [...TREE, 'scripts/lanes/other.sh'] }));
+  assert.equal(v.class, 'BLOCKED');
+  assert.ok(v.files.includes('scripts/lanes/'));
+  assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh/);
+});
+
+test('a directory that only an open PR creates still collides, with or without the file tree', () => {
+  const held = [{ file: 'scripts/lanes/newdir/a.sh', why: 'open PR 77' }];
+  for (const c of [ctx({ held, tree: TREE }), ctx({ held })]) {
+    for (const d of ['Tidy the helpers in scripts/lanes/newdir.', 'Fix scripts/hooks/guard.sh and tidy scripts/lanes/newdir.', 'Fix scripts/ci/check.sh and tidy scripts/lanes/newdir.']) {
+      const v = classifyTicket(tk({ description: d }), c);
+      assert.equal(v.class, 'BLOCKED', d);
+      assert.match(v.reason, /scripts\/lanes\/newdir\/? contains held scripts\/lanes\/newdir\/a\.sh \(open PR 77\)/, d);
+    }
+  }
+});
+
+test('an unavailable held list BLOCKS a trust-path or run-time-need ticket, not only a plain one', () => {
+  for (const d of ['Edit scripts/ci/check.sh.', 'Edit scripts/lanes/example.sh. It reads the luna vault.']) {
+    const v = classifyTicket(tk({ description: d }), ctx({ heldUnknown: true, tree: TREE }));
+    assert.equal(v.class, 'BLOCKED', d);
+    assert.match(v.reason, /held-file list unavailable/);
+  }
+});
+
+test('CLI: open PR files come from the paginated API, so a PR gh pr diff refuses with 406 still holds its files', () => {
+  const { bucket, jira, gh } = setup();
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9004'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /HIMMEL-9004\s+BLOCKED\s.*scripts\/held\/file\.sh is held \(open PR 77\)/);
+  assert.doesNotMatch(r.stderr, /open-PR files unknown/);
+});
+
+test('CLI: a PR listing 3000 files is cut short by the API, so the held list is unknown and every ticket is BLOCKED', () => {
+  const { dir, bucket, jira } = setup();
+  const big = stub(dir, 'gh-big', `
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then echo 77; exit 0; fi
+if [ "$1 $2" = "api --paginate" ]; then i=0; while [ $i -lt 3000 ]; do echo "scripts/big/f$i.sh"; i=$((i+1)); done; exit 0; fi
+exit 1`);
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: big },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /HIMMEL-9001\s+BLOCKED\s.*held-file list unavailable/);
+  assert.match(r.stderr, /3000 files/);
 });

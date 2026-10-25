@@ -2667,6 +2667,45 @@ else
     FAILED=$((FAILED + 1))
 fi
 
+# 7530: the relief pass runs the command model under `timeout`, and the runner's
+# group kill of a timed-out hook must reach the model's jq. A plain `timeout`
+# moves itself and jq into a group of their own, which that kill misses.
+if command -v setsid >/dev/null 2>&1; then
+    STUCK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/choke-stuck.XXXXXX") || exit 1
+    mkdir -p "$STUCK_DIR/bin"
+    printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) echo $$ >"%s/jq.pid"; exec sleep 60 ;; esac\nexec %s "$@"\n' "$STUCK_DIR" "$(command -v jq)" >"$STUCK_DIR/bin/jq"
+    chmod +x "$STUCK_DIR/bin/jq"
+    # shellcheck disable=SC2016 # the guard reads the literal $n
+    j 'unset $n; ls scripts/hooks/*.sh' >"$STUCK_DIR/payload.json"
+    pid_up() { case "$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" in '' | Z*) return 1 ;; *) return 0 ;; esac; }
+    PATH="$STUCK_DIR/bin:$PATH" setsid bash "$HOOK" <"$STUCK_DIR/payload.json" >/dev/null 2>&1 &
+    STUCK_HOOK=$!
+    n=0
+    while [ ! -s "$STUCK_DIR/jq.pid" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    STUCK_JQ=$(cat "$STUCK_DIR/jq.pid" 2>/dev/null)
+    CASES=$((CASES + 1))
+    if [ -z "$STUCK_JQ" ] || ! pid_up "$STUCK_JQ" || ! pid_up "$$"; then
+        echo "FAIL 7530 the timed jq dies with the member -- control: the model's jq never ran, or ps cannot see a live process (jq='$STUCK_JQ')"
+        FAILED=$((FAILED + 1))
+    else
+        STUCK_PG=$(ps -o pgid= -p "$STUCK_HOOK" 2>/dev/null | tr -d ' ')
+        [ -z "$STUCK_PG" ] || kill -9 -- "-$STUCK_PG" 2>/dev/null
+        n=0
+        while pid_up "$STUCK_JQ" && [ "$n" -lt 20 ]; do sleep 0.1; n=$((n + 1)); done
+        if pid_up "$STUCK_JQ"; then
+            echo "FAIL 7530 the timed jq dies with the member -- the hook's group kill left the model's jq running"
+            FAILED=$((FAILED + 1))
+        else
+            echo "PASS 7530 the timed jq dies with the member"
+        fi
+    fi
+    [ -z "$STUCK_JQ" ] || kill -9 "$STUCK_JQ" 2>/dev/null
+    wait "$STUCK_HOOK" 2>/dev/null
+    rm -rf "$STUCK_DIR"
+else
+    echo "WARN 7530 timed-jq row skipped: no setsid(1)"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
     echo "OK: all $CASES cases passed"
     exit 0

@@ -249,37 +249,37 @@ Usage: queue-lock.sh acquire   <handover-path> [session-id]
        queue-lock.sh preflight <handover-path> [file...]
        queue-lock.sh self-heartbeat   (PostToolUse hook; reads hook JSON on stdin)
 
-preflight (HIMMEL-1336) is read-only: it prints `COLLISION file=<f> slug=<s>
+preflight is read-only: it prints `COLLISION file=<f> slug=<s>
 session=<id>` for each file you declare (or have changed) that another live
 held lock's checkout has also changed, and exits 20; 0 when clean.
 
-acquire prints "release-token: `<token>`" (backticked -- HIMMEL-2910) on
+acquire prints "release-token: `<token>`" (backticked) on
 success -- capture it and pass it to heartbeat/release (both refuse without
 it, and both accept the token with or without surrounding backticks). Lost
 the token to an
 autocompact? acquire also persisted it under
-<XDG_RUNTIME_DIR>/himmel-queue-lock/ (HIMMEL-2813), so a heartbeat/release
+<XDG_RUNTIME_DIR>/himmel-queue-lock/, so a heartbeat/release
 with NO token on argv reads it back and says so on stderr. Only when THAT
 is gone too: QUEUE_LOCK_FORCE_RELEASE=1 queue-lock.sh release <handover-path>
 
 release/heartbeat find the lock even when the cwd resolves a different
-handover root than the acquire did (HIMMEL-2861) -- they search the roots
+handover root than the acquire did -- they search the roots
 named by HANDOVER_DIR and ~/.claude/handover/registry.json for a lock
 owned by the given token, and WARN naming both roots. A release that finds
 no lock anywhere exits 3, not 0.
 
-status --sweep (HIMMEL-2369) enumerates every held lock under a handover
+status --sweep enumerates every held lock under a handover
 ROOT's .locks/queue/ in one shot, flagging any whose heartbeat exceeds
-QUEUE_LOCK_IDLE_WARN_SECONDS (default 2700s, HIMMEL-2381) as IDLE-HELD?.
+QUEUE_LOCK_IDLE_WARN_SECONDS (default 2700s) as IDLE-HELD?.
 Exit 20 if anything is flagged, 0 otherwise (including "no held locks").
-A lock past the TTL whose owner is provably dead (HIMMEL-5541: this host, a
+A lock past the TTL whose owner is provably dead (this host, a
 <host>-pid<N> token with no live pid N, no live claude process naming the doc)
 reads status=STALE-DEAD -- not a held lock for the console stop guard or the
 tick. `status --sweep --reap-dead [<root>]` releases ONLY those, logging each to
 <root>/.locks/queue/takeovers.log; a lock whose owner cannot be proven dead is
 never reaped, whatever its age.
 
-self-heartbeat (HIMMEL-2318) is the hook verb: it refreshes the heartbeat of
+self-heartbeat is the hook verb: it refreshes the heartbeat of
 the locks the calling session acquired (throttled by
 QUEUE_LOCK_SELF_HEARTBEAT_SECONDS, default 300), records the session's
 transcript as the lock's liveness marker, prints nothing and always exits 0.
@@ -830,7 +830,7 @@ EOF
     else
         return 1
     fi
-    echo "WARN queue-lock: the lock for this doc is keyed at $pick, not at its canonical key $_QL_LOCKDIR (a pre-HIMMEL-3290 mis-keyed lock) -- using it; nothing is moved" >&2
+    echo "WARN queue-lock: the lock for this doc is keyed at $pick, not at its canonical key $_QL_LOCKDIR (a mis-keyed lock) -- using it; nothing is moved" >&2
     printf '%s' "$pick"
 }
 
@@ -2346,7 +2346,7 @@ queue_lock_status() {
             echo "free"
             return 0
         fi
-        echo "WARN queue-lock: the lock for this doc is keyed at $legacy_lk, not at its canonical key $lockdir (a pre-HIMMEL-3290 mis-keyed lock) -- reporting it; nothing is moved" >&2
+        echo "WARN queue-lock: the lock for this doc is keyed at $legacy_lk, not at its canonical key $lockdir (a mis-keyed lock) -- reporting it; nothing is moved" >&2
         lockdir="$legacy_lk"
     elif ! _ql_lock_is_fresh "$lockdir"; then
         # A STALE canonical lock must not hide a FRESH legacy-keyed holder: the
@@ -2354,7 +2354,7 @@ queue_lock_status() {
         local legacy_fresh
         legacy_fresh=$(_ql_scan_pick "$ho" "$lockdir")
         if [ -n "$legacy_fresh" ] && _ql_lock_is_fresh "$legacy_fresh"; then
-            echo "WARN queue-lock: the canonical lock $lockdir is STALE but a FRESH lock for this doc is keyed at $legacy_fresh (a pre-HIMMEL-3290 mis-keyed lock) -- reporting it; nothing is moved" >&2
+            echo "WARN queue-lock: the canonical lock $lockdir is STALE but a FRESH lock for this doc is keyed at $legacy_fresh (a mis-keyed lock) -- reporting it; nothing is moved" >&2
             lockdir="$legacy_fresh"
         fi
     fi

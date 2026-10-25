@@ -812,8 +812,18 @@ check "39 that row stays dispatched" "dispatched" "$(jq -r '.status' "$LIVE_DIR/
 rm -f "$LIVE_DIR"/*.json
 kill "$LIVE39" "$WORKER39" 2>/dev/null; wait "$LIVE39" "$WORKER39" 2>/dev/null
 # dead = gone or a zombie (state Z: exited, not yet reaped).
-pid_state() { ps -o stat= -p "$1" 2>/dev/null | tr -d ' ' | cut -c1; }
+# An EMPTY ps read proves nothing, so it reads "?" (unknown, alive) while kill -0 still answers.
+pid_state() {
+  local s
+  s="$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ' | cut -c1)"
+  if [ -z "$s" ] && kill -0 "$1" 2>/dev/null; then s='?'; fi
+  printf '%s' "$s"
+}
 pid_dead() { case "$(pid_state "$1")" in ''|Z) echo dead ;; *) echo alive ;; esac; }
+NOPS="$W/nops"; mkdir -p "$NOPS"
+printf '#!/bin/sh\nexit 1\n' > "$NOPS/ps"; chmod +x "$NOPS/ps"
+check "40a the liveness probe sees this shell alive" "alive" "$(pid_dead "$$")"
+check "40b an empty ps read for a live pid is not a dead pid" "alive" "$(PATH="$NOPS:$PATH" pid_dead "$$")"
 # 41: the worker root dies on SIGTERM but a
 # descendant ignores it; a live descendant keeps the slot just like a live root.
 sleep 60 & LIVE41=$!

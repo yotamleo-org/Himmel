@@ -67,6 +67,11 @@ sleeper_alive() {
   case "$stat" in *Z*) return 1 ;; esac
   return 0
 }
+# the probe must see a live pid alive, with a real ps and with one that answers nothing
+NOPS="$W/nops"; mkdir -p "$NOPS"
+printf '#!/bin/sh\nexit 1\n' > "$NOPS/ps"; chmod +x "$NOPS/ps"
+check "sleeper_alive sees this shell alive" "alive" "$(sleeper_alive $$ && echo alive || echo dead)"
+check "sleeper_alive reads an empty ps answer for a live pid as alive" "alive" "$(PATH="$NOPS:$PATH" sleeper_alive $$ && echo alive || echo dead)"
 
 SLEEPER_PID=""
 spawn_sleeper() {

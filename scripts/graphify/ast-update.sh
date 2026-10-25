@@ -260,6 +260,7 @@ fi
 # "acquired" stamp -- neither is skipped).
 _lock_acquired=0
 for _lock_try in 1 2 3; do
+  # prim-ok: shared owner-token directory protocol with semantic refresh; with_lock would neither interoperate nor preserve skip-not-wait.
   if _lock_err=$(mkdir "$PROMOTE_LOCK" 2>&1 1>/dev/null); then
     _lock_acquired=1
     break
@@ -316,6 +317,7 @@ if [ "$_lock_acquired" -eq 0 ]; then
   # the same false verdict this probe exists to prevent, inverted. Same idiom
   # as the owner token below.
   _lock_probe="$PROMOTE_LOCK.probe.$$-$RANDOM"
+  # prim-ok: this probes directory writability, not lock ownership; with_lock cannot distinguish the filesystem failure.
   if mkdir "$_lock_probe" 2>/dev/null; then
     rmdir "$_lock_probe" 2>/dev/null || true
     echo "ast-update: structural refresh SKIPPED -- promote lock $PROMOTE_LOCK was contended and released repeatedly during acquire (the out dir is writable, so this is contention, not a filesystem failure); retried on this corpus's next scheduled structural run" >&2
@@ -374,7 +376,7 @@ if [ -f "$_pre_ast" ]; then
   # keep it under a name the next run does not delete.
   _kept="$OUT_DIR/graph.pre-ast.kept.json"
   if [ "$_graphify_rc" -eq 0 ] && [ -f "$OUT_DIR/graph.json" ] \
-     && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast"; then
+     && ! python3 "$(dirname "${BASH_SOURCE[0]}")/semantic-merge.py" restore --out "$OUT_DIR" --before "$_pre_ast" --root "$CORPUS_ROOT"; then
     mv -f "$_pre_ast" "$_kept" 2>/dev/null || _kept="$_pre_ast"
     echo "ast-update: FAILED -- graphify update succeeded but restoring the semantic nodes it dropped failed (see above); the graph may have lost semantic nodes. The pre-rebuild graph is kept at $_kept. Exiting 5" >&2
     exit 5

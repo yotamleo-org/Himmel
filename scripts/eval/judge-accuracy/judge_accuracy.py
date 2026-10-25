@@ -42,7 +42,6 @@ Stdlib only; no network.
 import argparse
 import fcntl
 import json
-import math
 import os
 import re
 import socket
@@ -52,6 +51,7 @@ from datetime import datetime, timedelta, timezone
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "..", "lib"))
 import eval_runs  # noqa: E402
+from wilson import wilson  # noqa: E402
 
 EVAL_ID = "judge-accuracy"
 SOURCE = "scripts/eval/judge-accuracy/judge_accuracy.py"
@@ -83,16 +83,6 @@ def when(s):
     except (AttributeError, ValueError):
         return None
     return d if d.tzinfo else d.replace(tzinfo=timezone.utc)
-
-
-def wilson(k, n, z=1.959964):
-    if not n:
-        return None
-    p = k / n
-    den = 1 + z * z / n
-    mid = (p + z * z / (2 * n)) / den
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
-    return {"lo": round(max(0.0, mid - half), 4), "hi": round(min(1.0, mid + half), 4)}
 
 
 def header(text, key):

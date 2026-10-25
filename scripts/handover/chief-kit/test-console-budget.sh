@@ -167,5 +167,48 @@ check    "7: sidechain and user rows are not turns" "$out" "budget turns=1 cache
 apos="$(awk '/<<.NODE.$/ {b=1; next} /^NODE$/ {b=0} b {n += gsub(/\047/, "&")} END {print n + 0}' "$SCRIPT")"
 check    "8: the node heredoc body has an even number of apostrophes" "$((apos % 2))" 0
 
+# --- 9. the context-fill rule --------------------------------------------------
+# fx-chief-trimmed.jsonl is the FX chief's own transcript (800d2790, 2026-10-25) cut
+# to its customTitle row and its last 50 usage rows: 50 turns, about 30M cache-read,
+# the session that ran to 59 % fill with no handover wake. The fill comes from the
+# HUD snapshot context-fill.sh --percent reads, keyed by sha256 of the transcript path.
+fx_src="$HERE/fixtures/fx-chief-trimmed.jsonl"
+fxd="$tmp/fx"; mkdir -p "$fxd/cfg/plugins/claude-hud/context-cache"
+cp "$fx_src" "$fxd/fx.jsonl"
+fxt="$(cd "$fxd" && pwd)/fx.jsonl"
+fx_key="$(printf '%s' "$fxt" | sha256sum | cut -d' ' -f1)"
+fx_fill() { # <pct> [age seconds] - a HUD snapshot for fx.jsonl at that fill
+    printf '{"used_percentage":%s,"remaining_percentage":%s,"context_window_size":1000000,"saved_at":%s000}' \
+        "$1" "$((100 - $1))" "$(( $(date +%s) - ${2:-0} ))" > "$fxd/cfg/plugins/claude-hud/context-cache/$fx_key.json"
+}
+fx_run() { rc=0; out="$(CLAUDE_CONFIG_DIR="$fxd/cfg" CONTEXT_FILL_TRANSCRIPT="$fxt" CHIEF_CACHE_READ_BUDGET_M=999 "$@" bash "$SCRIPT" 2>"$tmp/err")" || rc=$?; err="$(cat "$tmp/err")"; }
+fx_fill 50
+fx_run env
+check    "9: 50 % fill with turns and cache-read under budget rc 3" "$rc" 3
+contains "9: the line carries the fill" "$out" "fill=50%"
+contains "9: verdict HANDOVER" "$out" "verdict=HANDOVER"
+contains "9: turns stay under the turn budget" "$out" "turns=50 "
+fx_fill 44
+fx_run env
+check    "9: 44 % fill stays OK (rc 0)" "$rc" 0
+contains "9: the OK line carries the fill" "$out" "fill=44% verdict=OK"
+fx_fill 45
+fx_run env
+check    "9: 45 % is the threshold itself (rc 3)" "$rc" 3
+fx_fill 50
+fx_run env CHIEF_FILL_HANDOVER_PCT=60
+check    "9: CHIEF_FILL_HANDOVER_PCT overrides (50 % under 60 is OK, rc 0)" "$rc" 0
+fx_run env CHIEF_FILL_HANDOVER_PCT=abc
+check    "9: a bad CHIEF_FILL_HANDOVER_PCT falls back to 45 (rc 3)" "$rc" 3
+contains "9: and says so on stderr" "$err" "ignoring CHIEF_FILL_HANDOVER_PCT=abc"
+fx_fill 80 4000
+fx_run env
+check    "9: a stale snapshot is an estimate, the fill rule is skipped (rc 0)" "$rc" 0
+lacks    "9: and no fill is printed for it" "$out" "fill="
+rm -f "$fxd/cfg/plugins/claude-hud/context-cache/$fx_key.json"
+fx_run env
+check    "9: no snapshot at all keeps the turn and cache-read rules only (rc 0)" "$rc" 0
+check    "9: and prints the old line byte for byte" "$out" "budget turns=50 cache_read=31.5M verdict=OK"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1

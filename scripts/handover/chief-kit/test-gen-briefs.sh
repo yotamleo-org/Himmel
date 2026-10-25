@@ -117,6 +117,8 @@ has "the add line for a default leg carries --lane native" "$out" "fleet-manifes
 has "and so does the second leg's" "$out" "fleet-manifest.sh add $WORK/fleet.json $D2 --lane native"
 # The printed lines, run as printed from the repo root, build a manifest relay-batch resolves.
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
+# fleet-manifest.sh takes a util-linux flock (its PLATFORM GUARD): without one no manifest row is written, so the relay rows have nothing to read.
+if command -v flock >/dev/null 2>&1; then
 printf '%s\n' "$out" | grep '^bash scripts/handover/chief-kit/fleet-manifest.sh add ' > "$WORK/adds.txt"
 while IFS= read -r addline; do (cd "$REPO_ROOT" && eval "$addline" >/dev/null 2>&1); done < "$WORK/adds.txt"
 cp "$WORK/fleet.json" "$WORK/console.fleet.json" 2>/dev/null
@@ -130,6 +132,9 @@ rb="$(RELAY_BATCH_CENSUS="$WORK/census.sh" bash "$HERE/relay-batch.sh" "$WORK/co
 lacks "relay-batch on a gen-briefs-built manifest prints no UNRESOLVED-LANE" "$rb" "UNRESOLVED-LANE"
 has "relays the first leg" "$rb" "SENDMESSAGE to=HIMMEL-9001-N901-plain-fix-2026-10-08"
 has "and relays the second leg" "$rb" "SENDMESSAGE to=HIMMEL-9002-N902-hook-fix-2026-10-08"
+else
+  echo "SKIP relay-batch rows (no flock on this host, so fleet-manifest.sh writes no row)"
+fi
 # the sidecar Telegram /launch-leg checks is written with the launcher.
 side="$(cat "$WORK/fleet.launchers.sha256" 2>/dev/null)"
 # hashlib, not sha256sum: macOS ships shasum only.
@@ -264,7 +269,12 @@ python3 "$SUT" "$WORK/lane-ok.json" --base 4ccb59d --console BZ --bucket "$WORK/
 [ "$rc" = 0 ] && pass "a lane-worker leg with no handover-root path generates (rc 0)" || fail "lane worker clean rc=$rc: $(cat "$WORK/lane-ok.err")"
 # A non-native leg with no model key takes the lane's model: no native model argument in the launcher, the lane model in the brief header.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-nomodel.json"
-python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --console BZ --bucket "$WORK/b20" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
+python3 "$SUT" "$WORK/lane-nomodel.json" --base 4ccb59d --console BZ --bucket "$WORK/b20" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>"$WORK/lane-nomodel.err"; rc=$?
+[ "$rc" = 0 ] && [ -s "$WORK/b20/launch-N901.sh" ] && [ -n "$(find "$WORK/b20" -name 'HIMMEL-9001-N901-*.md')" ] && pass "a claudex leg with no model key generates its brief and launcher (rc 0)" || fail "claudex no-model rc=$rc: $(cat "$WORK/lane-nomodel.err")"
+# claudex is a live lane: nothing the generator writes or prints calls it dormant.
+lacks "a claudex leg's brief carries no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$(find "$WORK/b20" -name 'HIMMEL-9001-N901-*.md' | head -n 1)")" "dormant"
+lacks "a claudex leg's launcher carries no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$WORK/b20/launch-N901.sh")" "dormant"
+lacks "a claudex leg's generation prints no dormant text" "$(tr '[:upper:]' '[:lower:]' < "$WORK/lane-nomodel.err")" "dormant"
 lacks "a claudex leg with no model key passes no native model argument" "$(cat "$WORK/b20/launch-N901.sh")" "claude-sonnet-5-5"
 lacks "a claudex leg with no model key leaves the lane default to headed-arm-leg" "$(cat "$WORK/b20/launch-N901.sh")" "gpt-6.1-sol"
 has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMMEL-9001-N901-*.md)" "gpt-6.1-sol, claudex"
@@ -277,6 +287,7 @@ mkdir -p "$WORK/astra-arm"; grep -v '^resume_cwd:' "$(find "$WORK/b20a" -name 'H
 rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --lane claudex --profile leg-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
 [ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-worker.sh rc=$rc: $astra_out"
 has "and the named model reaches the leg as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
+lacks "and the claudex launch prints no dormant warning" "$(printf '%s' "$astra_out" | tr '[:upper:]' '[:lower:]')" "dormant"
 # An effort key exports WORKER_SESSION_EFFORT in the launcher.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["effort"]="high"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-effort.json"
 python3 "$SUT" "$WORK/lane-effort.json" --base 4ccb59d --console BZ --bucket "$WORK/b21" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
