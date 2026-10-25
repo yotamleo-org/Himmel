@@ -137,5 +137,10 @@ rc=0; out="$(bash "$SCRIPT" --from-line 'leg-burn: calls=0 cost-eq=1.0k profile=
 check    "8: zero calls, rc 2" "$rc" 2
 lacks    "8: zero calls never says OK" "$out" "verdict=OK"
 
+# --- 9. the stderr scratch file has an unpredictable name -------------------------
+src="$(cat "$SCRIPT")"
+lacks    "9: no pid-derived scratch file name" "$src" '.$$.err'
+contains "9: scratch file comes from mktemp" "$src" 'mktemp'
+
 echo
 [ "$fails" -eq 0 ] && echo "all leg-budget checks passed" || { echo "$fails check(s) FAILED"; exit 1; }

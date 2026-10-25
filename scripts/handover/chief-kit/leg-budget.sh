@@ -69,7 +69,7 @@ else
   fi
   [ -n "$target" ] || { echo "leg-budget: cannot resolve the worker session (set CONTEXT_FILL_TRANSCRIPT, --title, or CLAUDE_CODE_SESSION_ID)" >&2; exit 2; }
 
-  errf="${TMPDIR:-/tmp}/leg-budget.$$.err"
+  errf="$(mktemp "${TMPDIR:-/tmp}/leg-budget.XXXXXX")" || { echo "leg-budget: cannot create a scratch file" >&2; exit 2; }
   burn="$(bash "$HERE/../../lanes/leg-burn.sh" "$target" 2>"$errf")" || {
     echo "leg-budget: cannot measure $target: $(cat "$errf")" >&2
     rm -f "$errf"; exit 2
