@@ -81,7 +81,7 @@ cat > "$STUB/le.stdin"
 if [ -f "$STUB/le.rm" ]; then
     jq -c '.legs |= map(select(.label != "N1"))' "$4" > "$4.tmp" && mv "$4.tmp" "$4"
     rm -f "$STUB/tick.seq"
-    cp "$STUB/tick.after" "$STUB/tick.line"
+    cp "$STUB/tick.after" "$STUB/tick.line.new" && mv "$STUB/tick.line.new" "$STUB/tick.line"
 fi
 if [ -f "$STUB/le.echo" ]; then printf 'ESCALATE unfiled-residual: %s\n' "$(cat "$STUB/le.stdin")"
 else cat "$STUB/le.out"; fi
@@ -99,12 +99,15 @@ export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
-# tick_line <tails> [acts]: a tick line with that tails= (and acts=, when given).
-# Written to a side file and moved over tick.line: a sample never reads half a line.
-tick_line() {
+# tick_text <tails> [acts]: prints a tick line with that tails= (and acts=, when given).
+# It touches no stub file, so a sample never sees a line the test only means to queue.
+tick_text() {
     printf 'TICK 03:00 hb=1m legs=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=%s%s inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none\n' \
-        "$1" "${2:+ acts=$2}" > "$STUB/tick.line.new" && mv "$STUB/tick.line.new" "$STUB/tick.line"
+        "$1" "${2:+ acts=$2}"
 }
+# tick_line <tails> [acts]: the stub's standing line. Written to a side file and moved
+# over tick.line: a sample never reads half a line.
+tick_line() { tick_text "$@" > "$STUB/tick.line.new" && mv "$STUB/tick.line.new" "$STUB/tick.line"; }
 # tick_seq <tick line>...: the next samples serve these lines in order (one per
 # sample), the last one standing. The order is the test's, not a sleep's.
 tick_seq() {
@@ -112,8 +115,6 @@ tick_seq() {
     for l in "$@"; do printf '%s\n' "$l" >> "$STUB/tick.seq.new"; done
     mv "$STUB/tick.seq.new" "$STUB/tick.seq"
 }
-# tick_text <tails>: the tick line for that tails=, as text.
-tick_text() { tick_line "$1"; cat "$STUB/tick.line"; }
 reset_stub() { rm -f "$STUB"/le.* "$STUB/tick.seq"; tick_line "N1:LIVE"; printf 'PROCEED\n' > "$STUB/bank"; printf 'HANDLED wrap-merged N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"; }
 wait_hb() {
     n=0
@@ -267,7 +268,7 @@ fleet2 r0g
 tick_line "N1:LIVE,N2:LIVE"
 start "$I" "$WORK/r0g.out" --doc "$D" --legs-from "$M"
 wait_hb "$I" || fail "(r0g) no baseline heartbeat"
-tick_line "N2:BLOCKED"; cp "$STUB/tick.line" "$STUB/tick.after"; touch "$STUB/le.rm"
+tick_text "N2:BLOCKED" > "$STUB/tick.after"; touch "$STUB/le.rm"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
 tick_seq "$(tick_text "N1:WRAPPED,N2:BLOCKED")"
 wait_exit "$WPID"
