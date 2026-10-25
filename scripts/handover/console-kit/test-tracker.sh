@@ -962,7 +962,7 @@ printf '%s\n' '---' 'key: "HIMMEL-409"' 'statusCategory: "To Do"' 'status: "To D
 printf '%s\n' '' '## Description' '' 'Start after HIMMEL-409 merges.' >> "$vp/HIMMEL-410.md"
 printf '%s\n' 'priority: 400 | rest of v1.1.3 | 9999' > "$W/vp-plan.md"
 cat > "$W/vp-prs.json" <<'EOF'
-[{"number":500,"title":"feat: [HIMMEL-401] x","headRefName":"feat/himmel-401-x","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]},
+[{"number":500,"title":"feat: [HIMMEL-401] x","headRefName":"feat/himmel-401-x","headRefOid":"abc1234def5678","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"}]},
  {"number":501,"title":"fix: y","headRefName":"fix/himmel-403-y","isDraft":true,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"FAILURE"}]},
  {"number":503,"title":"feat: [HIMMEL-400] z","headRefName":"feat/z","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"SUCCESS"},{"status":"COMPLETED","conclusion":"ACTION_REQUIRED"}]},
  {"number":504,"title":"feat: [HIMMEL-410] w","headRefName":"feat/w","isDraft":false,"statusCheckRollup":[{"status":"COMPLETED","conclusion":"STARTUP_FAILURE"}]}]
@@ -1186,6 +1186,9 @@ contains 'the card badge reads the worker record CI (HIMMEL-7513)' "$(grep -F 'd
 printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"abc1234def5678","ci":"pending","red_latch":false,"open":true}}}\n' > "$wk/HIMMEL-401.json"
 v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
 contains 'a pending worker PR reads running over a green rollup (HIMMEL-7513)' "$(grep -F 'data-key="HIMMEL-401"' "$v4out")" '#500 · CI running'
+printf '{"key":"HIMMEL-401","leg":"N3096","state":"live","prs":{"500":{"head":"0ld0ld0ld","ci":"pending","red_latch":true,"open":true}}}\n' > "$wk/HIMMEL-401.json"
+V2PRS="$W/vp-prs-run.json" v2out="$v4out" V2CH="$W/vp-chains4.json" v2render >/dev/null
+contains 'a worker record at an older head keeps the rollup CI (HIMMEL-7513)' "$(grep -F 'data-key="HIMMEL-401"' "$v4out")" '#500 · CI running'
 
 printf '%s\n' "$fails failure(s)"
 [ "$fails" -eq 0 ]

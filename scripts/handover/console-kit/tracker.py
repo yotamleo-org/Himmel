@@ -1213,16 +1213,17 @@ def origin_repo():
 
 
 def open_prs(path, repo):
-    """{ticket number: [(pr, ci, draft)]} from a `gh pr list --json number,title,headRefName,isDraft,statusCheckRollup`
-    file, else one live gh read (TRACKER_GH is the test seam); None when gh cannot be read. A PR belongs to every key
-    its title or branch names; ci is running, red, cancelled, green or none."""
+    """{ticket number: [(pr, ci, draft, head)]} from a `gh pr list --json
+    number,title,headRefName,headRefOid,isDraft,statusCheckRollup` file, else one live gh read (TRACKER_GH is the test
+    seam); None when gh cannot be read. A PR belongs to every key its title or branch names; ci is running, red,
+    cancelled, green or none; head is '' when the file has no headRefOid."""
     try:
         if path:
             prs = json.load(open(path, encoding='utf-8'))
         else:
             prs = json.loads(subprocess.run(
                 [os.environ.get('TRACKER_GH', 'gh'), 'pr', 'list', '--repo', repo, '--state', 'open', '--limit', '300',
-                 '--json', 'number,title,headRefName,isDraft,statusCheckRollup'],
+                 '--json', 'number,title,headRefName,headRefOid,isDraft,statusCheckRollup'],
                 capture_output=True, text=True, timeout=60, check=True).stdout)
     except (OSError, ValueError, subprocess.SubprocessError):
         if path:
@@ -1242,7 +1243,7 @@ def open_prs(path, repo):
         else:
             ci = 'green' if all(b in ('SUCCESS', 'NEUTRAL', 'SKIPPED') for _, b in st) else 'red'
         for k in set(re.findall(r'HIMMEL-(\d+)', pr['title'] + ' ' + pr['headRefName'], re.I)):
-            out.setdefault(int(k), []).append((pr['number'], ci, bool(pr.get('isDraft'))))
+            out.setdefault(int(k), []).append((pr['number'], ci, bool(pr.get('isDraft')), str(pr.get('headRefOid') or '')))
     return out
 
 
@@ -1318,18 +1319,20 @@ def ci_column(jira, prs):
 
 
 def worker_ci(prs, workers):
-    """`prs` with each PR's ci read from its ticket's worker record where the record carries one: the record's
-    required-check CI is what Jira's status follows, so a red latch or red is red, pending is running, green and none
-    stay. A PR the record does not name, or names without ci, keeps the gh rollup's."""
+    """`prs` as (pr, ci, draft), each PR's ci read from its ticket's worker record where the record carries one for
+    the PR's current head: the record's required-check CI is what Jira's status follows, so a red latch or red is red,
+    pending is running, green and none stay. A PR the record does not name, names without ci or at another head (a
+    push since the record was written), keeps the gh rollup's."""
     if prs is None:
         return None
     out = {}
     for k, v in prs.items():
         rec = (workers.get(k) or {}).get('prs', {})
         row = []
-        for n, ci, d in v:
+        for n, ci, d, h in v:
             p = rec.get(str(n))
-            if isinstance(p, dict) and (p.get('red_latch') or p.get('ci') in ('red', 'pending', 'green', 'none')):
+            if (isinstance(p, dict) and h and p.get('head') == h
+                    and (p.get('red_latch') or p.get('ci') in ('red', 'pending', 'green', 'none'))):
                 ci = 'red' if p.get('red_latch') else {'pending': 'running'}.get(p['ci'], p['ci'])
             row.append((n, ci, d))
         out[k] = row
@@ -1527,7 +1530,7 @@ def main():
     ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining, --version)')
     ap.add_argument('--version', default=None, help='write the FOCUS page of one version to --out, then exit (HIMMEL-6769); with '
                                                      '--plan-dir it also writes <out>.fp, the value --emit-fp prints for tick')
-    ap.add_argument('--prs-file', default=None, help='--version: a `gh pr list --json number,title,headRefName,isDraft,'
+    ap.add_argument('--prs-file', default=None, help='--version: a `gh pr list --json number,title,headRefName,headRefOid,isDraft,'
                                                      'statusCheckRollup` file (default: one live gh read)')
     ap.add_argument('--workers-dir', default=None, help='--version: the worker records dir (HIMMEL-<n>.json, written by '
                                                          'ticket-status.sh); a card with a record shows its worker line')

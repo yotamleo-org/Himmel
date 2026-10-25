@@ -247,7 +247,7 @@ if [ "${moved:-0}" -gt 0 ]; then
     JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bounded 120 "${JIRA[@]}" mirror --root "$MIR" >/dev/null 2>&1 || failed mirror
 fi
 
-bounded 60 gh pr list --state open --limit 300 --json number,title,headRefName,isDraft,statusCheckRollup > "$stage/prs.json" 2>/dev/null || failed prs
+bounded 60 gh pr list --state open --limit 300 --json number,title,headRefName,headRefOid,isDraft,statusCheckRollup > "$stage/prs.json" 2>/dev/null || failed prs
 
 plan=$(sed -n 's/^focus-plan:[[:space:]]*//p' "$DOC" | head -n 1)
 case "$plan" in none*) plan="" ;; esac
