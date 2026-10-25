@@ -2230,7 +2230,7 @@ _jira_intake_to_current() {
             const dated = live.filter(v => v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
             const cur = dated.length ? dated[0][0] : live.length ? live[0][0] : "";
             const later = have.find(n => open.has(n) && n !== cur);
-            if (cur && later) process.stdout.write(cur + "\t" + later);
+            if (cur && later && !have.includes(cur)) process.stdout.write(cur + "\t" + later);
         } catch {}
     ' "$versions_out" 2>/dev/null)
     [ -n "$pick" ] || return 0

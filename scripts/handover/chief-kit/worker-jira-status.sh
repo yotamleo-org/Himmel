@@ -236,6 +236,7 @@ intake_to_current() {
     vers=$(ts_jira versions --project "${KEY%%-*}" 2>/dev/null) || return 0  # swallow-ok: an unread version list files no request
     cur=$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print ($3 == "" ? "9999-99-99" : $3) "\t" $1 }' | sort | head -n 1 | cut -f2)
     [ -n "$cur" ] || return 0
+    ! jq -e --arg c "$cur" '[.fields.fixVersions[]?.name] | index($c) != null' <<<"$json" >/dev/null 2>&1 || return 0
     from=$(jq -r '.fields.fixVersions[]?.name' <<<"$json" 2>/dev/null | while IFS= read -r n; do
         [ "$n" != "$cur" ] && printf '%s\n' "$vers" | awk -F'\t' -v n="$n" '$1 == n && $2 == "false" && $4 != "true" { f = 1 } END { exit !f }' && { printf '%s\n' "$n"; break; }
     done)

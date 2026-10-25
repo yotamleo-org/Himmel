@@ -3648,6 +3648,9 @@ assert_jira_log_lacks "7641: the merge still never edits the ticket's versions" 
 STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.3"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: a bare merge of a ticket already in the current version files nothing"
 assert_jira_log_lacks "7641: a current ticket files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.3"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket holding the current version as well files nothing"
+assert_jira_log_lacks "7641: a ticket that also holds the current version files no request" "release request"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: a bare merge of an unversioned ticket files nothing"
 assert_jira_log_lacks "7641: an unversioned ticket files no request" "release request"

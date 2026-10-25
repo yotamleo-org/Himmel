@@ -631,6 +631,9 @@ check "7641: an unversioned key files nothing" "$(intakes)" 0
 reset "To Do"; owned; vset '[{"name":"v1.1.2"}]'
 fn "$K" --event live
 check "7641: a released version is not a later one" "$(intakes)" 0
+reset "To Do"; owned; vset '[{"name":"v1.1.4"},{"name":"v1.1.3"}]'
+fn "$K" --event live
+check "7641: a key holding the current version as well files nothing" "$(intakes)" 0
 VERS=$(printf 'v1.1.3\tfalse\t2026-10-28\tfalse\nv1.1.0\tfalse\t2026-10-01\ttrue\n')
 reset "To Do"; owned; vset '[{"name":"v1.1.0"}]'
 fn "$K" --event live
