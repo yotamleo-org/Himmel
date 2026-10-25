@@ -1512,7 +1512,7 @@ fi
 # artifact, as claude-floor-review.sh does.
 if [ "$marker_lane" = "full" ]; then
     blast_verdict="error"
-    _blastdiff="$(mktemp 2>/dev/null || true)" # swallow-ok: an empty path keeps blast_verdict=error and gate 4f refuses (fail-closed)
+    _blastdiff="$(mktemp "${TMPDIR:-/tmp}/blast-diff.XXXXXX" 2>/dev/null || true)" # swallow-ok: an empty path keeps blast_verdict=error and gate 4f refuses (fail-closed)
     if [ -n "$_blastdiff" ] && git diff --name-only -z "$marker_base...$tip" > "$_blastdiff" 2>/dev/null; then
         blast_verdict=$(LEDGER="$ledger" BRANCH="$branch" DIFF="$_blastdiff" BLAST_GATE_SINCE="2026-10-26T00:00:00Z" node -e '
           const fs = require("fs"), e = process.env;
