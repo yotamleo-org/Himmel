@@ -277,8 +277,12 @@ Handle the exit code — do not paper over any of them:
 | 2 | usage / registry / **downgrade refused** | **abort the whole run** and report — a refused downgrade means the guard reported a version older than the pin, which is an upstream or registry problem, not something to work around |
 | 3 | SKIP — no `version_pin`, not auto-bumpable | report it, continue with the others; qmd is the standing example (its pin is a fork SHA, so bumping `synced_base` alone would mark the fork as rebased when it isn't) |
 | 4 | bump failed, both files restored | **abort** and report — the registry's `version_pin.template` no longer matches the file |
+| 5 | release-age gate — `--published` missing, or the target is younger than 72 h | skip it, note the date it ages in; a later night retries it |
 
-If every entry came back rc 1 or rc 3, nothing changed: report why, remove the
+`--published` is the release's Releases API `published_at`; for a bare tag with
+no release, use the tag's date (an annotated tag's tagger date, else its commit's committer date).
+
+If every entry came back rc 1, rc 3 or rc 5, nothing changed: report why, remove the
 worktree (`bash scripts/worktree.sh prune` or `git worktree remove`),
 and stop. **Do not open an empty PR.** With `--dry-run`, add `--dry-run` to each
 call and stop after this step.
