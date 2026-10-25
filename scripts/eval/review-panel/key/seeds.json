@@ -11,12 +11,14 @@
         }
       ],
       "kind": "seeded",
-      "pair": "failopen-a"
+      "pair": "failopen-a",
+      "split": "open"
     },
     "case-02": {
       "defects": [],
       "kind": "clean",
-      "pair": "toctou-b"
+      "pair": "toctou-b",
+      "split": "sealed"
     },
     "case-03": {
       "defects": [
@@ -28,17 +30,20 @@
         }
       ],
       "kind": "seeded",
-      "pair": "scope-b"
+      "pair": "scope-b",
+      "split": "sealed"
     },
     "case-04": {
       "defects": [],
       "kind": "clean",
-      "pair": "toctou-a"
+      "pair": "toctou-a",
+      "split": "open"
     },
     "case-05": {
       "defects": [],
       "kind": "clean",
-      "pair": "quoting-a"
+      "pair": "quoting-a",
+      "split": "open"
     },
     "case-06": {
       "defects": [
@@ -50,12 +55,14 @@
         }
       ],
       "kind": "seeded",
-      "pair": "quoting-b"
+      "pair": "quoting-b",
+      "split": "sealed"
     },
     "case-07": {
       "defects": [],
       "kind": "clean",
-      "pair": "vacuous-b"
+      "pair": "vacuous-b",
+      "split": "sealed"
     },
     "case-08": {
       "defects": [
@@ -67,17 +74,20 @@
         }
       ],
       "kind": "seeded",
-      "pair": "vacuous-b"
+      "pair": "vacuous-b",
+      "split": "sealed"
     },
     "case-09": {
       "defects": [],
       "kind": "clean",
-      "pair": "scope-b"
+      "pair": "scope-b",
+      "split": "sealed"
     },
     "case-10": {
       "defects": [],
       "kind": "clean",
-      "pair": "failopen-a"
+      "pair": "failopen-a",
+      "split": "open"
     },
     "case-11": {
       "defects": [
@@ -89,12 +99,14 @@
         }
       ],
       "kind": "seeded",
-      "pair": "failopen-b"
+      "pair": "failopen-b",
+      "split": "sealed"
     },
     "case-12": {
       "defects": [],
       "kind": "clean",
-      "pair": "logic-b"
+      "pair": "logic-b",
+      "split": "open"
     },
     "case-13": {
       "defects": [
@@ -106,7 +118,8 @@
         }
       ],
       "kind": "seeded",
-      "pair": "scope-a"
+      "pair": "scope-a",
+      "split": "open"
     },
     "case-14": {
       "defects": [
@@ -118,7 +131,8 @@
         }
       ],
       "kind": "seeded",
-      "pair": "toctou-b"
+      "pair": "toctou-b",
+      "split": "sealed"
     },
     "case-15": {
       "defects": [
@@ -130,17 +144,20 @@
         }
       ],
       "kind": "seeded",
-      "pair": "logic-a"
+      "pair": "logic-a",
+      "split": "sealed"
     },
     "case-16": {
       "defects": [],
       "kind": "clean",
-      "pair": "logic-a"
+      "pair": "logic-a",
+      "split": "sealed"
     },
     "case-17": {
       "defects": [],
       "kind": "clean",
-      "pair": "scope-a"
+      "pair": "scope-a",
+      "split": "open"
     },
     "case-18": {
       "defects": [
@@ -152,7 +169,8 @@
         }
       ],
       "kind": "seeded",
-      "pair": "logic-b"
+      "pair": "logic-b",
+      "split": "open"
     },
     "case-19": {
       "defects": [
@@ -164,12 +182,14 @@
         }
       ],
       "kind": "seeded",
-      "pair": "quoting-a"
+      "pair": "quoting-a",
+      "split": "open"
     },
     "case-20": {
       "defects": [],
       "kind": "clean",
-      "pair": "vacuous-a"
+      "pair": "vacuous-a",
+      "split": "open"
     },
     "case-21": {
       "defects": [
@@ -181,7 +201,8 @@
         }
       ],
       "kind": "seeded",
-      "pair": "toctou-a"
+      "pair": "toctou-a",
+      "split": "open"
     },
     "case-22": {
       "defects": [
@@ -193,17 +214,24 @@
         }
       ],
       "kind": "seeded",
-      "pair": "vacuous-a"
+      "pair": "vacuous-a",
+      "split": "open"
     },
     "case-23": {
       "defects": [],
       "kind": "clean",
-      "pair": "failopen-b"
+      "pair": "failopen-b",
+      "split": "sealed"
     },
     "case-24": {
       "defects": [],
       "kind": "clean",
-      "pair": "quoting-b"
+      "pair": "quoting-b",
+      "split": "sealed"
     }
+  },
+  "split": {
+    "method": "per defect class, random.Random(7519).choice('ab') over the class's pair prefixes in sorted order seals one of its two pairs; a pair's seeded and clean twins share it",
+    "seed": 7519
   }
 }

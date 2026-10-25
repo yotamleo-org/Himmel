@@ -33,7 +33,7 @@ import { readGate, writeGate } from "./review-gate";
 import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
-import { accountCreate, secretWrite, setupState, type SecretResult } from "./setup";
+import { accountCreate, secretWrite, setupState, verifyDoctor, type SecretResult } from "./setup";
 import { clearedCookie, createAuth, sessionCookie, writeLogin } from "./login";
 
 const LOOPBACK = "127.0.0.1";
@@ -58,6 +58,8 @@ const MAX_STDERR_LINE = 4096;
 export const IDLE_TIMEOUT_S = 255;
 const IDLE_MARGIN_S = 10;
 const PREVIEW_TTL_MS = 5 * 60 * 1000;
+// The Setup page's Verify step holds its request for the whole doctor run: under IDLE_TIMEOUT_S less IDLE_MARGIN_S.
+const VERIFY_TIMEOUT_MS = 200_000;
 export const REPROBE_BUDGET_MS = 60_000;
 const MAX_BODY = 16 * 1024;
 // GET /api/agui/<run>: poll the journal for appends every 500 ms;
@@ -190,7 +192,7 @@ type Env = Record<string, string | undefined>;
 // only; the CLI entry below never sets them.
 export type ServerOpts = {
   port?: number; token?: string; hostname?: string; env?: Env; onIdle?: () => void;
-  root?: string; projectRoot?: string; now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number;
+  root?: string; projectRoot?: string; now?: () => number; actionTimeoutMs?: number; reprobeBudgetMs?: number; feedWaitMs?: number; feedTimeoutMs?: number; verifyTimeoutMs?: number;
   backgroundFeed?: boolean; feedRefreshMs?: number; noIdle?: boolean;
   legsScript?: string; legsTimeoutMs?: number; fleetScript?: string; boardScript?: string; aguiPollMs?: number; aguiIdleMs?: number; aguiMaxMs?: number; aguiDist?: string; aguiWeb?: string;
 };
@@ -395,6 +397,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     } catch { audit = "failed"; }
     if (!res) return json({ error: "internal error", audit }, 500);
     return json(redactOut({ ...res.body, audit }), res.status);
+  }
+
+  // The Verify step: the station's doctor, read-only. A second click while a run is in flight shares it.
+  let verifying: Promise<Record<string, unknown>> | null = null;
+  function verifyRoute(): Promise<Response> {
+    verifying ??= verifyDoctor({ env, doctor: env.HIMMEL_REPORT_DOCTOR || join(stationRoot(root), "scripts", "himmel-doctor.sh"), cwd: root, timeoutMs: opts.verifyTimeoutMs ?? VERIFY_TIMEOUT_MS, redact: redactOut })
+      .finally(() => { verifying = null; });
+    return verifying.then((body) => json(body), () => json({ state: "error", error: "internal error" }, 500));
   }
 
   // The value (a secret, or the Account step's password) is in `b` only until the write returns: the audit line and the
@@ -611,7 +621,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
       // the fleet cap: HIMMEL_FLEET_CAP read from the launching shell and the station .env; a write replaces that one .env line.
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account") return new Response("not found", { status: 404 });
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account" && path !== "/api/setup/verify") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -633,6 +643,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
       if (path === "/api/setup/secret") return setupWriteRoute(() => secretWrite(b as Record<string, unknown>, { ...setupOpts, serviceMode: !!opts.noIdle, session }));
       if (path === "/api/setup/account") return setupWriteRoute(() => accountCreate(b as Record<string, unknown>, accountOpts));
+      if (path === "/api/setup/verify") return verifyRoute();
       if (path === "/api/preview") return previewRoute(b as Record<string, unknown>);
       let started = false;
       const res = await runRoute(b as Record<string, unknown>, () => { started = true; });

@@ -52,7 +52,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/leg-identity.sh
-. "$HERE/../../lib/leg-identity.sh"
+. "$HERE/../../lib/worker-identity.sh"
 
 usage() {
     printf 'usage: pr-stall.sh [--repo owner/name] [--manifest fleet.json] [--conflict-min N] [--noci-min N] [--slow-min M] [--idle-h H] [--notify]\n' >&2

@@ -503,6 +503,19 @@ FXL="$TMP/fx-ledger.jsonl"
 check "fixture ledger row: per-task CI and missing count" 'jq -e ".ci[\"a.judge_correctness\"] == {lo: 4, hi: 5} and .metrics[\"b.judge_missing\"] == 1 and .metrics.judge_missing == 1 and .reps == 3 and .n == 2" "$FXL" >/dev/null'
 check "fixture ledger cases are per-task means" '[ "$(jq -r ".cases.a.judge_correctness" "$FXL")" = 4.5 ]'
 
+# pass@k and pass^k by hand, k = 3 repeats: task p passes 2 of 3 -> pass@3 = 1,
+# pass^3 = 0; task q passes 3 of 3 -> 1 and 1. Six runs at $0.50, five accepted.
+FXK="$TMP/fxk"; mkdir -p "$FXK"
+{ for ok in true true false; do fxrow p 1 "$ok" 4; done; for ok in true true true; do fxrow q 1 "$ok" 4; done; } \
+  | jq -c '. + {cost_usd: 0.5}' >"$FXK/runs.jsonl"
+python3 "$HERE/../lib/eval_runs.py" lane-quality "$FXK" --run-id fxk --ledger "$TMP/fxk-ledger.jsonl" >/dev/null 2>&1
+check "pass@k from a fixture: k is the repeats, pass@3 = 1" 'jq -e ".metrics.pass_k == 3 and .metrics.pass_at_k == 1" "$TMP/fxk-ledger.jsonl" >/dev/null'
+check "pass^k from a fixture: one failed repeat drops a task to 0, so pass^3 = 0.5 below the 0.83 mean" 'jq -e ".metrics.pass_pow_k == 0.5 and .cases.p.pass_pow_k == 0 and .cases.q.pass_pow_k == 1" "$TMP/fxk-ledger.jsonl" >/dev/null'
+check "cost per accepted run: 3.00 over 5 accepted" 'jq -e ".metrics.cost_per_accepted == 0.6" "$TMP/fxk-ledger.jsonl" >/dev/null'
+check "the row keeps each repeat, so pass@k is recomputable once the run dir is gone" 'jq -e "(.meta.reps.p | length) == 3 and .meta.reps.p[2].accept_ok == false and .meta.reps.q[0].cost_usd == 0.5" "$TMP/fxk-ledger.jsonl" >/dev/null'
+bash "$RUN" table "$FXK" >"$TMP/table-fxk.md" 2>&1
+check "table reports k, pass@k, pass^k and cost per accepted run per task" 'grep -qF "| n | k |" "$TMP/table-fxk.md" && grep -qF "| pass@k | pass^k | \$/accepted |" "$TMP/table-fxk.md" && grep -qE "^\| native \| m \| p \| 3 \| 3 \|.*\| 1\.00 \| 0\.00 \| 0\.75 \|" "$TMP/table-fxk.md" && grep -qE "^\| native \| m \| q \| 3 \| 3 \|.*\| 1\.00 \| 1\.00 \| 0\.50 \|" "$TMP/table-fxk.md"'
+
 # Calibration math, by hand: correctness on accept-pass {4,5} vs accept-fail
 # {2,4} -> AUC 3.5/4 = 0.875; point-biserial r = 1.5 / sqrt(4.75) = 0.6882.
 bash "$RUN" calibration "$FX" --json --no-ledger >"$TMP/cal.json" 2>"$TMP/cal.err"

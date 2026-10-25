@@ -57,6 +57,7 @@ internals/prompt-cache.md
 internals/config-layers.md
 internals/mcp-servers.md
 internals/ponytail-convention.md
+internals/install-profile-files.md
 contributing.md
 security-review.md
 security/npm-policy.md
