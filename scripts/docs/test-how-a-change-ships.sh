@@ -169,7 +169,11 @@ if case == "reach":
             out.append("%s: a cited check under a human node needs its own reach" % where)
 
 if case == "select":
-    named = open(self_path, encoding="utf-8").read()
+    named = ""
+    for line in open(self_path, encoding="utf-8"):
+        if not line.startswith("#"):
+            break
+        named += line
     for b in sorted({os.path.basename(s["file"]) for _, _, s in sources()} | {"adopt.sh"}):
         if not re.search(r"(^|[\s/])%s(\s|$)" % re.escape(b), named, flags=re.M):
             out.append("cited file not named in the suite header: %s" % b)
@@ -221,12 +225,12 @@ if case == "page":
     for i in inputs:
         if norm(i["label"]) not in visible:
             out.append("input not on the page: %s" % i["label"])
-    drawn_nodes = {a.get("data-node") for t, a in p.attrs_seen if t == "a"}
+    drawn_nodes = {a.get("data-node") for t, a in p.attrs_seen if t == "a" and a.get("href") == "#%s" % a.get("data-node")}
     drawn_ids = {a.get("id") for _, a in p.attrs_seen}
     for n in nodes:
         nid = "gn-" + n["id"]
         if nid not in drawn_nodes:
-            out.append("node %s: not drawn in the graph (no data-node=%s)" % (n["id"], nid))
+            out.append("node %s: not drawn in the graph (no link to #%s with data-node=%s)" % (n["id"], nid, nid))
         tag, parts = p.by_id.get(nid, [None, []])
         if tag != "details":
             out.append("node %s: no <details id=%s>" % (n["id"], nid))
