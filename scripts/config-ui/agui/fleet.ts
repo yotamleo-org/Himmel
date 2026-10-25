@@ -32,7 +32,7 @@ import { cloudRoutes, consoleOf, GH_WAIT_MS, readCloudPrs, type CloudPhase, type
 import { createJournalMapper } from "./journal-mapper.ts";
 import { mergeJournalFiles, sessionFiles } from "./journal-merge.ts";
 import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, readCodexBank, W, type CodexBank, type CostRow, type EvalRow, type Lane, type LaneFrom } from "./lane.ts";
-import { busRootOf, resolveJournal } from "./sse.ts";
+import { busRootOf, registerConfigRoot, resolveJournal } from "./sse.ts";
 import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { loadPeers } from "../../../marketplace/plugins/himmel-bus/lib/identity.mjs";
 
@@ -348,6 +348,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       const env = (await readFile(join(opts.env.CLAUDE_SESSIONS_PROC || "/proc", c.pid, "environ"), "utf8")).split("\0");
       launch = Object.fromEntries(env.filter((v) => v.includes("=")).map((v) => { const i = v.indexOf("="); return [v.slice(0, i), v.slice(i + 1)]; }));
     } catch { /* unavailable launch record: use doc or manifest */ }
+    if (launch.CLAUDE_CONFIG_DIR) await registerConfigRoot(launch.CLAUDE_CONFIG_DIR);
     let rec: { sessionId?: unknown; status?: unknown; name?: unknown; startedAt?: unknown } = {};
     const configs = launch.CLAUDE_CONFIG_DIR ? [launch.CLAUDE_CONFIG_DIR] : [join(opts.home, ".claude"), join(opts.home, ".claude-codex")];
     for (const config of configs) {

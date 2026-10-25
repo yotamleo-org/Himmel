@@ -76,6 +76,8 @@ SCHTASKS_BIN="${DRIFTFIX_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${DRIFTFIX_CRONTAB:-crontab}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 4
 
 # Cross-platform user-home resolution: on Windows Git-Bash the MSYS
 # $HOME can differ from where ~/.claude actually lives, so prefer USERPROFILE.
@@ -733,16 +735,18 @@ cmd_arm() {
                 win_rollback_both; exit 4
             fi
         done
-        if ! mv -f "$vbs_tmp" "$vbs_file"; then
+        if ! atomic_write "$vbs_file" < "$vbs_tmp"; then
             echo "ERR drift-fix-cadence: failed to publish shim to $vbs_file" >&2
             rm -f "$bat_tmp" "$vbs_tmp"
             win_rollback_both; exit 4
         fi
-        if ! mv -f "$bat_tmp" "$bat_file"; then
+        if ! atomic_write "$bat_file" < "$bat_tmp"; then
             echo "ERR drift-fix-cadence: failed to publish runner to $bat_file" >&2
-            rm -f "$bat_tmp"
+            rm -f "$bat_tmp" "$vbs_tmp"
             win_rollback_both; exit 4
         fi
+
+        rm -f "$bat_tmp" "$vbs_tmp"
 
         err_file=$(mktemp -t drift-fix-cadence.err.XXXXXX)
         if ! schtasks_create_xml "$leg" "$time" "$bat_win" "$err_file"; then
@@ -1017,7 +1021,7 @@ cron_arm() {
     # already exist gets no snapshot — see the restore comment below for why
     # that is fine.
     local snap_dir
-    snap_dir=$(mktemp -d -t drift-fix-cadence.runner-snap.XXXXXX)
+    snap_dir=$(tmpdir)
 
     # restore_runner_snapshots — restore each pre-existing runner's CONTENT
     # from $snap_dir, never delete it (CR glm-3). A failed install leaves the

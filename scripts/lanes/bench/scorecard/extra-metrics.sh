@@ -41,13 +41,15 @@ done
 [ -n "$SINCE" ] || { usage; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../../lib/prim.sh
+. "$HERE/../../../lib/prim.sh" || exit 1
 # shellcheck source=lib/scorecard-lib.sh
 . "$HERE/lib/scorecard-lib.sh"
 sc_roots_check extra-metrics || exit 2
 RUN=""
 # trap first: a later mktemp failing must not leak what is already created
 trap 'rm -rf "$RUN" "$SC_COV"' EXIT
-RUN=$(mktemp -d "${TMPDIR:-/tmp}/extra-metrics.XXXXXX") || { echo "extra-metrics: mktemp failed" >&2; exit 1; }
+RUN=$(tmpdir) || { echo "extra-metrics: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as

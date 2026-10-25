@@ -345,13 +345,14 @@ selects, or probes either; an operator who wants them sets the registry's
 `optInEnv` directly rather than through himmelctl. This is a wizard/installer
 scoping decision, not a registry deletion: both rows stay fully live in
 `/lanes` and this table, on the operator's own explicit opt-in, "based on user
-requests" (the ruling's own words) — the same dormant shape every other row
-below already uses.
+requests" (the ruling's own words) — the same dormant shape the other dormant
+rows below use. `claudex` is the exception: a live implementation lane with no
+`dormant` entry and no opt-in.
 
 | Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota | Calibration status |
 |---|---|---|---|---|---|
 | `glm` — GLM lane (spawn-glm.ts) | impl | small-context discipline — chunk big plans | 1M | glm (flat-rate overflow, not per-token) | dormant (HIMMEL-1967) |
-| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | launcher default `high`; `xhigh` rare; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | calibrated |
+| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | model `gpt-6.1-sol`; launcher default `medium`; a chief-dispatched worker runs `xhigh` through its brief's `effort` key; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
 | `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default (ox-alpha stays reserved for `hermes-oneshot`/dispatch-trusted); not yet wired into the `/pr-check` gate |
 | `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
 | `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
@@ -875,6 +876,27 @@ GPT-6.1 Sol (`gpt-6.1-sol`) via the local CLIProxyAPI service — drawing on the
 usage budget** (`bank-preflight.sh` parks a claudex worker on
 `scripts/lanes/codex-bank-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
+
+**A live lane.** claudex is a live implementation lane in
+`scripts/lanes/lanes.json`: its row has no `dormant` entry, `/lanes` lists it
+without a DORMANT note, and no opt-in variable is needed to dispatch it. Two
+routes reach it:
+
+- **A worker** (`headed-arm-worker.sh --lane claudex`) runs `gpt-6.1-sol` by
+  default (a brief's `model` key overrides it). The launcher's own default
+  effort is `medium`; a chief-dispatched worker runs at `xhigh` through its
+  brief's `effort` key, which exports `WORKER_SESSION_EFFORT`.
+- **A one-off dispatch** (`dispatch-lane.sh --lane claudex`) is accepted once
+  the flow-runs ledger holds 5 consecutive verified passes on `claudex/`
+  branches (`readiness.passesRequired`). Until then the readiness gate refuses
+  it.
+
+`CLAUDEX_LANE_OK=1` is not a dispatch opt-in. Neither `scripts/claude-codex`
+nor `spawn-claudex.ts` sets it; only `headed-arm-worker.sh --lane claudex`
+exports it into the worker it launches. `usage-preflight.sh` reads it to label
+that worker's fleet line `claudex`, and `chief-context.sh` strips it before it
+arms a chief. One run still requires it: `scripts/eval/lane-quality/run.sh
+--lane claudex` exits 3 unless `CLAUDEX_LANE_OK=1` is on the command.
 
 **Default while the Claude weekly is scarce.** A well-specified, single-worker
 implementation brief is the claudex lane's home case precisely because it

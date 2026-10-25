@@ -116,7 +116,7 @@ function legsHtml(health) {
   let body;
   if (!health) body = nodata("loading");
   else if (l.state === "ok") {
-    body = l.legs.length ? l.legs.map((x) => `<div class="leg"><span class="mk">${esc(x.status)}</span><span class="doc" title="${esc(x.doc)}">${esc(String(x.doc).split("/").pop())}</span></div>`).join("") : `<div class="empty">The fleet manifest lists no worker sessions.</div>`;
+    body = l.legs.length ? l.legs.map((x) => `<div class="leg"><span class="mk">${esc(x.status)}</span><span class="doc" title="${esc(x.doc)}">${esc(String(x.doc).split("/").pop())}</span>${x.description ? `<span class="det">${esc(x.description)}</span>` : ""}</div>`).join("") : `<div class="empty">The fleet manifest lists no worker sessions.</div>`;
   } else body = nodata(l.state === "absent" ? `no fleet manifest (${l.reason || "none found"})` : l.reason || "legs view failed");
   return `<div class="card" id="legs"><h3>Worker sessions</h3>${body}</div>`;
 }

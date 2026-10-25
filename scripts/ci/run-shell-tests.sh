@@ -122,6 +122,9 @@
 #                      output prints as one block when it finishes
 #   SUITE_PARALLEL_DENY the list of suites that run alone (default
 #                      scripts/ci/parallel-deny.txt beside this runner)
+#   SUITE_LANE_WAIT    poll forces the parallel lanes to be reaped by polling,
+#                      as on bash older than 4.3 (the self-test uses it);
+#                      otherwise wait -n where bash has it
 #   SUITE_LOCK         0 disables the machine lock entirely
 #   SUITE_LOCK_DIR     override the lock path (tests use their own sandbox);
 #                      by default the path is keyed by SCAN ROOT, so a scoped
@@ -4330,7 +4333,7 @@ parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.t
 parallel_deny=""
 if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
   if [ -r "$parallel_deny_file" ]; then
-    while read -r _pd_glob _pd_reason; do
+    while read -r _pd_glob _pd_reason || [ -n "$_pd_glob" ]; do
       case "$_pd_glob" in ''|'#'*) continue ;; esac
       parallel_deny="${parallel_deny}${_pd_glob}
 "
@@ -4461,6 +4464,10 @@ _suite_attempts() {
     fi ) &
   watch_pid=$!
   set +m
+  # A lane tells its parent what to end if the lane is SIGKILLed, when no trap
+  # can run: both groups, the temp root and the attempt log, in one write.
+  [ -z "${_lane_live:-}" ] || printf 'suite_pid=%s watch_pid=%s suite_tmp=%q log=%q\n' \
+    "$suite_pid" "$watch_pid" "$suite_tmp" "$log" > "$_lane_live"
 
   wait "$suite_pid" 2>/dev/null
 
@@ -4695,15 +4702,20 @@ _lane_launch() {
   local _i="$1"
   # prim-ok: anchored at literal /tmp like the suite temp roots
   lane_out[_i]=$(mktemp -d "/tmp/himmel-lane.XXXXXX") || { echo "run-shell-tests.sh: mktemp failed for a parallel lane" >&2; _lanes_stop; exit 2; }
-  ( trap '_lane_worker_stop; exit 143' TERM
+  # A group id the lane inherited is not its own to signal: clear both first.
+  ( suite_pid='' watch_pid=''
+    trap '_lane_worker_stop; exit 143' TERM
     live_root="${lane_root[_i]}"
+    _lane_live="${lane_out[_i]}/live"
     _w_t0=$timed_out
     _suite_attempts
+    # The marker goes last: _lane_reap reads a result without it as none.
     { for _v in rc capped _attempt first_rc first_capped first_log log start suite_end suite_timeout \
                 suite relpath suite_key mf_rel; do
         printf '%s=%q\n' "$_v" "${!_v:-}"
       done
       printf '_w_timed_out=%s\n' "$((timed_out - _w_t0))"
+      printf '_res_complete=1\n'
     } > "${lane_out[_i]}/res" ) > "${lane_out[_i]}/out" 2> "${lane_out[_i]}/err" &
   lane_pid[_i]=$!
 }
@@ -4717,7 +4729,12 @@ _lane_reap() {
   lane_pid[_i]=""
   cat "${lane_out[_i]}/out"
   cat "${lane_out[_i]}/err" >&2
-  if [ ! -s "$_res" ]; then
+  if ! grep -qxF '_res_complete=1' "$_res" 2>/dev/null; then
+    # A SIGKILLed worker never ran _lane_worker_stop: end the groups and remove
+    # the paths it recorded in live, then the lane's directory.
+    if [ -s "${lane_out[_i]}/live" ]; then
+      ( . "${lane_out[_i]}/live"; _lane_worker_stop )
+    fi
     rm -rf "${lane_out[_i]}"
     echo "run-shell-tests.sh: a parallel suite worker ended without a result — refusing to run more suites" >&2
     _lanes_stop
@@ -4731,28 +4748,54 @@ _lane_reap() {
   _suite_account
   suite="$_s" relpath="$_r" suite_key="$_k" mf_rel="$_m"
 }
-# _lane_free — reap every finished lane, then set lane_free to an idle one;
-# bash reaps a background child itself, so a kill -0 that fails means it is
-# done. Reaping all of them first accounts every finished suite before the
-# caller's stop check.
+# Lanes are reaped with wait -n where bash has it (4.3+). bash older than that
+# (macOS ships 3.2), or SUITE_LANE_WAIT=poll, polls kill -0 every 0.2s instead.
+_lane_wait_n=0
+if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 3 ]; }; then
+  _lane_wait_n=1
+fi
+[ "${SUITE_LANE_WAIT:-}" != poll ] || _lane_wait_n=0
+# _lane_running <pid> — the lane is still running. With wait -n the answer
+# comes from bash's own job table: a pid that wait -n has reaped may already
+# belong to another process, which a kill -0 would take for the lane.
+_lane_running() {
+  if [ "$_lane_wait_n" -eq 1 ]; then
+    case " $(jobs -rp | tr '\n' ' ')" in *" $1 "*) return 0 ;; esac
+    return 1
+  fi
+  kill -0 "$1" 2>/dev/null
+}
+# _lane_wait_any — block until some lane may have finished. 127 means bash has
+# no child left to wait for; sleep then rather than spin.
+_lane_wait_any() {
+  if [ "$_lane_wait_n" -eq 1 ]; then
+    wait -n 2>/dev/null
+    [ "$?" -ne 127 ] || sleep 0.2
+  else
+    sleep 0.2
+  fi
+}
+# _lane_free — reap every finished lane, then set lane_free to an idle one.
+# Reaping all of them first accounts every finished suite before the caller's
+# stop check.
 _lane_free() {
   local _i
   while :; do
     for (( _i = 0; _i < suite_jobs; _i++ )); do
       [ -n "${lane_pid[_i]:-}" ] || continue
-      kill -0 "${lane_pid[_i]}" 2>/dev/null || _lane_reap "$_i"
+      _lane_running "${lane_pid[_i]}" || _lane_reap "$_i"
     done
     for (( _i = 0; _i < suite_jobs; _i++ )); do
       if [ -z "${lane_pid[_i]:-}" ]; then lane_free=$_i; return 0; fi
     done
-    sleep 0.2
+    _lane_wait_any
   done
 }
 _lanes_drain() {
   local _i
   for (( _i = 0; _i < suite_jobs; _i++ )); do
     [ -n "${lane_pid[_i]:-}" ] || continue
-    while kill -0 "${lane_pid[_i]}" 2>/dev/null; do sleep 0.2; done
+    while _lane_running "${lane_pid[_i]}"; do _lane_wait_any; done
     _lane_reap "$_i"
   done
 }

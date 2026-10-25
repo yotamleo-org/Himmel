@@ -341,9 +341,6 @@ bank-status.ts	usage-status.ts	identifier	old-to-new	V1	X
 clear-cr-marker.sh	clear-review-marker.sh	identifier	old-to-new	V2	X
 close-wrapped-leg.sh	close-wrapped-worker.sh	identifier	old-to-new	V4b	X
 codex-bank-probe.ts	codex-usage-probe.ts	identifier	old-to-new	V1	X
-console-context.sh	chief-context.sh	identifier	old-to-new	V5	X
-console-judge	judge	identifier	old-to-new	V5	X
-console-judge-ro	judge-ro	identifier	old-to-new	V5	X
 console-template.md	chief-template.md	identifier	old-to-new	T	X
 console.sh	chief.sh	identifier	old-to-new	V5	X
 cr-available.sh	coderabbit-available.sh	identifier	old-to-new	V2	X

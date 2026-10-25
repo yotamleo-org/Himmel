@@ -263,7 +263,7 @@ grepq "$outC" -F 'stuck-item' || fail "case c: the refusal should name stuck-ite
 if grepq "$outC" -F 'wire-item'; then
   fail "case c: the unwireable wire-item must NOT be listed as a fail-closed blocker (got: $outC)"
 fi
-grepq "$outC" -F 'HIMMEL-1172' || fail "case c: the refusal should mention HIMMEL-1172 (got: $outC)"
+grepq "$outC" -F 'per-item unwire extension' || fail "case c: the refusal should name the per-item unwire extension (got: $outC)"
 grepq "$outC" -i 'both scopes' || fail "case c: the refusal should explain the both-scopes risk (got: $outC)"
 # zero mutation: fail-closed returns BEFORE any state save or dispatch — the
 # seeded project state entry must survive UN-re-keyed (no 'user' target added).

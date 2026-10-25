@@ -124,7 +124,9 @@ if [ -n "$PROJECT" ]; then
     fi
 fi
 
-TMP_DIR=$(mktemp -d)
+# shellcheck source=../lib/prim.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" || exit 1
+TMP_DIR=$(tmpdir)
 LOCK=""
 # shellcheck disable=SC2329,SC2317
 cleanup() {
@@ -266,6 +268,7 @@ mkdir -p "$(dirname "$OUT")"
 # dir and let a later run reclaim a dead owner's lock.
 LOCK="$OUT.lock"
 lock_tries=0
+# prim-ok: preserve the 50-attempt directory-lock refusal and external recovery path; with_lock would block on a different record.
 until mkdir "$LOCK" 2>/dev/null; do
     lock_tries=$((lock_tries + 1))
     if [ "$lock_tries" -ge 50 ]; then

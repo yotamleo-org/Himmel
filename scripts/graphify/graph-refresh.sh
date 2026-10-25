@@ -66,6 +66,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HIMMEL_ROOT="$(cd "$HERE/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$HERE/../lib/prim.sh" || exit 2
 REFRESH_SCRIPT="${GRAPH_REFRESH_RUNNER:-$HIMMEL_ROOT/scripts/graphify/refresh-graph-map.sh}"
 CADENCE_SCRIPT="${GRAPH_REFRESH_CADENCE_SCRIPT:-$HIMMEL_ROOT/scripts/luna/graphmap-cadence.sh}"
 # ONE resolver for the out-of-corpus promote destination — see
@@ -263,10 +265,12 @@ _under_any_list() {
 _resolve_symlinks() {
     local p="$1" r
     if command -v realpath >/dev/null 2>&1; then
+        # prim-ok: preflight also resolves file paths; canon_path accepts existing directories only.
         r="$(realpath "$p" 2>/dev/null)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
+        # prim-ok: configured roots may not exist; preserve lenient resolution before the directory-only fallback.
         r="$(realpath -m "$p" 2>/dev/null)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
     fi
-    r="$(cd "$p" 2>/dev/null && pwd -P)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
+    r="$(canon_path "$p" 2>/dev/null)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
     return 1
 }
 
@@ -680,7 +684,7 @@ SKIPPED=0
 # Each runner's output is kept in a per-corpus log (printed on FAIL) so an
 # operator can see WHY a paid run failed. Outside the repo and the vault; the
 # directory persists on purpose -- the log is the evidence.
-LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/graph-refresh-logs.XXXXXX")" || { echo "ERR graph-refresh: could not create the per-corpus log directory" >&2; exit 2; }
+LOG_DIR="$(tmpdir)" || { echo "ERR graph-refresh: could not create the per-corpus log directory" >&2; exit 2; }
 FAILED_LEGS=()
 for c in "${CORPORA[@]}"; do
     resolve_corpus_args "$c"

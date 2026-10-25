@@ -27,6 +27,8 @@ die() { echo "usage-compute: $*" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$HERE/../lib/prim.sh" || exit 1
 BANK="$HERE/../lib/usage-attribution.sh"
 
 PROJECTS="${HOME}/.claude/projects"
@@ -99,7 +101,7 @@ elif [ -n "$TICKETS" ]; then
   SEL="$(jq -nc --arg l "$TICKETS" '{list: ($l | split(","))}')"
 fi
 
-WORK="$(mktemp -d "${TMPDIR:-/tmp}/usage-compute.XXXXXX")"
+WORK="$(tmpdir)"
 trap 'rm -rf "$WORK"' EXIT
 [ -n "$PROJECTS" ] || { PROJECTS="$WORK/noprojects"; mkdir "$PROJECTS"; }
 
@@ -108,6 +110,7 @@ trap 'rm -rf "$WORK"' EXIT
 if [ "$PRINT" != 1 ]; then
   mkdir -p "$STORE"
   LOCK="$STORE/.lock"; n=0
+  # prim-ok: readers share this directory lock; preserve the 300-second writer deadline instead of with_lock's blocking file protocol.
   until mkdir "$LOCK" 2>/dev/null; do
     n=$((n + 1)); [ "$n" -lt 600 ] || die "store locked: $LOCK (remove it if no run is active)"
     sleep 0.5

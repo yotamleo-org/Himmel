@@ -35,12 +35,27 @@ test("renderHealth escapes every feed, ledger, legs and alert string", () => {
   const f = feed(r(evil, "fail", { installed: { state: "present", detail: evil }, fix: { remedy: evil } }), r("job", "ok", { source: "cadence", id: `cadence:${evil}` }), r("q", "ok", { bundle: "search", id: evil }));
   const h = {
     bank: { state: "ok", row: { ts: evil, verdict: evil, five_hour: evil, seven_day: evil, age: evil, degraded: false } },
-    legs: { state: "ok", manifest: "m", legs: [{ doc: `/x/${evil}`, status: evil }] },
+    legs: { state: "ok", manifest: "m", legs: [{ doc: `/x/${evil}`, status: evil, description: evil }] },
     monitoring: { state: "ok", prometheus: { state: "ok", alerts: [{ alertname: evil, severity: evil, summary: evil }] }, exporter: { state: "absent" } },
   };
   const html = renderHealth(f, h);
   expect(html).not.toContain("<img");
   expect(html).toContain("&lt;img");
+  expect(html).toContain('&lt;img src=x onerror=alert(1)&gt;</span><span class="det">&lt;img src=x onerror=alert(1)&gt;</span>');
+});
+
+test("worker descriptions follow the doc name and legacy rows stay unchanged", () => {
+  const html = renderHealth(null, {
+    bank: { state: "absent" },
+    legs: { state: "ok", legs: [
+      { doc: "/x/worker.md", status: "LIVE", description: "Show worker descriptions" },
+      { doc: "/x/legacy.md", status: "WRAPPED" },
+      { doc: "/x/empty.md", status: "LIVE", description: "" },
+    ] },
+  });
+  expect(html).toContain('<span class="doc" title="/x/worker.md">worker.md</span><span class="det">Show worker descriptions</span>');
+  expect(html).toContain('<div class="leg"><span class="mk">WRAPPED</span><span class="doc" title="/x/legacy.md">legacy.md</span></div>');
+  expect(html).toContain('<div class="leg"><span class="mk">LIVE</span><span class="doc" title="/x/empty.md">empty.md</span></div>');
 });
 
 test("renderHealth with no feed and no health still renders all seven sections", () => {

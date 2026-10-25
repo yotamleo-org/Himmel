@@ -84,11 +84,11 @@ test("legs: absent with no manifest, ok with one (real fleet-manifest.sh and leg
   const s = boot();
   expect((await body(s.port)).legs.state).toBe("absent");
   const doc = join(s.root, "HIMMEL-1-N1-x-RESUME.md");
-  writeFileSync(doc, "## Results\n- 03:00 LIVE — x\n");
+  writeFileSync(doc, "---\ndescription: Show the worker descriptions\n---\n## Results\n- 03:00 LIVE — x\n");
   writeFileSync(join(s.root, "c.fleet.json"), JSON.stringify({ schema: 1, legs: [{ doc }] }));
   const l = (await body(s.port)).legs;
   expect(l.state).toBe("ok");
-  expect(l.legs).toEqual([{ doc, status: "LIVE" }]);
+  expect(l.legs).toEqual([{ doc, status: "LIVE", description: "Show the worker descriptions" }]);
 });
 
 test("legs: a HANDOVER_DIR that is not a directory is absent, not an error page", async () => {

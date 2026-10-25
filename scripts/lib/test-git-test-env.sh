@@ -136,8 +136,8 @@ echo "repair fixes the exact corrupt state from case 1:"
   warn=$(cat "$warnfile")
   if [ -n "$warn" ]; then ok "repair prints to stderr when it truncates"; else bad "repair prints to stderr when it truncates"; fi
   case "$warn" in
-    *HIMMEL-2231*) ok "repair's stderr line cites HIMMEL-2231" ;;
-    *) bad "repair's stderr line cites HIMMEL-2231 (got: $warn)" ;;
+    *"WARN: GIT_CONFIG block corrupt"*) ok "repair's stderr line is the corrupt-block WARN" ;;
+    *) bad "repair's stderr line is the corrupt-block WARN (got: $warn)" ;;
   esac
   if git init -q "$d/r" >/dev/null 2>&1; then
     ok "git init succeeds after repair"
@@ -357,8 +357,8 @@ echo "repair unsets a malformed (non-numeric) GIT_CONFIG_COUNT:"
   warn=$(cat "$warnfile")
   if [ -n "$warn" ]; then ok "malformed COUNT: repair prints to stderr"; else bad "malformed COUNT: repair prints to stderr"; fi
   case "$warn" in
-    *HIMMEL-2231*) ok "malformed COUNT: repair's stderr line cites HIMMEL-2231" ;;
-    *) bad "malformed COUNT: repair's stderr line cites HIMMEL-2231 (got: $warn)" ;;
+    *"WARN: GIT_CONFIG_COUNT is malformed"*) ok "malformed COUNT: repair's stderr line is the malformed-COUNT WARN" ;;
+    *) bad "malformed COUNT: repair's stderr line is the malformed-COUNT WARN (got: $warn)" ;;
   esac
   if [ -z "${GIT_CONFIG_COUNT+set}" ]; then
     ok "malformed COUNT: GIT_CONFIG_COUNT is unset after repair"

@@ -1,9 +1,11 @@
 // sse.ts — stream a Claude Code session journal as AG-UI events over SSE.
 //
 // resolveJournal(home, run): <run> must be a lowercase session UUID; it names
-// exactly one ~/.claude/projects/<slug>/<run>.jsonl whose realpath stays under
-// the realpath of ~/.claude/projects (a symlinked file or project directory
-// that leaves it does not count). The path is only ever joined from readdir
+// exactly one projects/<slug>/<run>.jsonl under ~/.claude, ~/.claude-codex, or
+// a config root discovered by the live census. Its realpath stays under that
+// projects directory's realpath (a symlinked file or project directory that
+// leaves it does not count). A custom root's projects directory must also stay
+// inside the real config directory. The path is only ever joined from readdir
 // names and the validated UUID.
 // journalStream re-checks the opened fd against that realpath, so a swap after the check is not served.
 //
@@ -22,7 +24,7 @@
 
 import { constants, existsSync } from "node:fs";
 import { open, readdir, realpath, stat, type FileHandle } from "node:fs/promises";
-import { isAbsolute, join, sep } from "node:path";
+import { isAbsolute, join, normalize, sep } from "node:path";
 import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { createJournalMapper } from "./journal-mapper.ts";
 import { laneOfJournal } from "./lane.ts";
@@ -33,15 +35,29 @@ export const RUN_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]
 const CHUNK = 256 * 1024;
 const HEARTBEAT_MS = 15_000;
 
+const extraRoots = new Set<string>();
+export async function registerConfigRoot(dir: string): Promise<void> {
+  if (!isAbsolute(dir) || dir.split(sep).includes("..") || normalize(dir) !== dir) return;
+  try {
+    const config = await realpath(dir), projects = await realpath(join(dir, "projects"));
+    if (!projects.startsWith(join(config, sep)) || !(await stat(projects)).isDirectory()) return;
+  } catch { return; }
+  extraRoots.add(dir);
+  if (extraRoots.size > 32) extraRoots.delete(extraRoots.values().next().value!);
+}
+export const configRoots = (): string[] => [...extraRoots];
+
 export type Resolved = { path: string } | { status: 400 | 404 | 409 };
 
 export async function resolveJournal(home: string, run: string): Promise<Resolved> {
   if (!RUN_ID.test(run)) return { status: 400 };
   const found: string[] = [];
-  for (const config of [".claude", ".claude-codex"]) {
+  const defaults = [join(home, ".claude"), join(home, ".claude-codex")];
+  for (const config of [...defaults, ...configRoots()]) {
     let root: string, slugs: string[];
     try {
-      root = await realpath(join(home, config, "projects"));
+      root = await realpath(join(config, "projects"));
+      if (!defaults.includes(config) && !root.startsWith(join(await realpath(config), sep))) continue;
       slugs = await readdir(root);
     } catch { continue; }
     for (const slug of slugs) {

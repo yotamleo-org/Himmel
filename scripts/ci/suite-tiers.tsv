@@ -275,6 +275,7 @@ scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catc
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-mine-tasks.sh	local	behaviour suite, new, no audit-window history
 scripts/eval/lane-quality/test-trajectory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/lib/test-wilson.sh	pr	static-gate
 scripts/eval/worker-digest/test-failure-review.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-leg-digest.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -824,6 +825,7 @@ scripts/lib/test-go-gate.sh	pr	guard
 scripts/lib/test-graphify-bin.sh	pr	guard
 scripts/lib/test-handover-path.sh	pr	trust-path
 scripts/lib/test-hermetic-path.sh	pr	trust-path
+scripts/lib/test-himmel-secrets.sh	pr	trust-path
 scripts/lib/test-host-caps.sh	pr	trust-path
 scripts/lib/test-impacted-suites-runner.sh	pr	trust-path
 scripts/lib/test-initiative-legs.sh	pr	trust-path

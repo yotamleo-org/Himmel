@@ -110,7 +110,7 @@ changelog (HIMMEL-7006) names the breaking change.
 | F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | V4b |
 | F7 | `leg-*.sh` helpers, `leg-digest*`, `close-wrapped-leg.sh`; profiles `leg-impl`, `leg-bus`, `leg-vm` | `worker-*`, `close-wrapped-worker.sh`; profiles `worker-impl`, `worker-bus`, `worker-vm` | V4b; V4a (profiles) |
 | F8 | `scripts/handover/console-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
-| F9 | `/console`, `console.sh`, `console-context.sh`; skill `himmel-ops:console`; agents `console-judge`, `console-judge-ro` | `/chief` canonical, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). `/supervisor-session` and `himmel-ops:supervisor-session` stay permanent aliases (OD-6) | V5 |
+| F9 | `/console`, `console.sh`; skill `himmel-ops:console` | `/chief` canonical, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). `/supervisor-session` and `himmel-ops:supervisor-session` stay permanent aliases (OD-6) | V5 |
 | F10 | `overnight-shift`, `overnight-mode.md`, `OVERNIGHT_*`, `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` | `afk-shift`, `afk-mode.md`, `AFK_*`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` | V3 |
 | F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids deferred until a new id name is ruled | — |
 | F13 | `class-sweep`, `missing-class-sweep` (the `SWEEP` ledger keyword is unchanged) | `variant-sweep`, `missing-variant-sweep` | V2 |
@@ -174,7 +174,7 @@ does not implement, push or merge.
 | Shape | What it is | Brief |
 |---|---|---|
 | judge **session** | a judge worker with its own worktree, queue lock and lifecycle; survives past one turn | [`handover/judge-brief-template.md`](handover/judge-brief-template.md), verdict per [`handover/verdict-template.md`](handover/verdict-template.md) |
-| judge **subagent** [judge call] | an in-process child (`.claude/agents/judge-ro.md`, or `judge.md`; old ids `console-judge-ro`, `console-judge`) for one question that fits in one dispatch | the dispatch prompt |
+| judge **subagent** [judge call] | an in-process child (`.claude/agents/judge-ro.md`, or `judge.md`) for one question that fits in one dispatch | the dispatch prompt |
 
 The chief template (`console-template.md`) records which shape asked each question as
 `grade: call|session`.
