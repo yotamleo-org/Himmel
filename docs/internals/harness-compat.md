@@ -907,8 +907,8 @@ minerva/stuck-playbook/vm cluster are a planned follow-up.
 
 Codex uses `.codex/agents/*.toml` (`name`, `description`,
 `developer_instructions`); Claude uses `.claude/agents/*.md` with frontmatter.
-himmel subagents don't auto-carry. The operator has hand-authored
-`.codex/agents/gemini-subagent.toml`. **Port selectively** if Codex-side
+himmel subagents don't auto-carry, and himmel ships no `.codex/agents/`
+files. **Port selectively** if Codex-side
 subagents are needed.
 
 ### 6. config.toml

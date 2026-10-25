@@ -498,7 +498,7 @@ executed.
 ### Is this station up to date?
 
 ```bash
-himmelctl --version         # himmel 0.3.0 + git describe string + commit
+himmelctl --version         # himmel <VERSION> + git describe string + commit
 himmelctl --version --all   # ... plus one line per updatable component
 bash scripts/himmel-update.sh --versions   # the same report, without himmelctl
 ```
@@ -659,8 +659,8 @@ echo 'export HIMMEL_RECONCILE_PLUGINS=1' >> ~/.bashrc   # or ~/.zshrc / your pro
 export HIMMEL_RECONCILE_PLUGINS=1                        # this shell, now
 ```
 
-Other lanes inherit this for free: GLM workers read the same
-`~/.claude/settings.json`. (The codex lane uses a different plugin model: its
+Other lanes inherit this for free: claudex workers seed their config from the
+same `~/.claude/settings.json`. (The codex lane uses a different plugin model: its
 leanness is governed by what `install-himmel-codex.sh` provisions, not an
 `enabledPlugins` map, and himmelctl's full-set enable stays a deliberate opt-in
 that `settings.local.json` protects.)
@@ -722,7 +722,7 @@ The paths it acts on are listed in
 
 It deliberately leaves the himmel clone, your `.env`, worktrees, handover state
 outside the bridge root, and non-himmel `settings.json` keys untouched. **hermes
-is not torn down**: it installs outside the repo (`%LOCALAPPDATA%\hermes` /
+is not torn down**: it installs outside the repo (`~/.hermes` or
 `$HERMES_HOME`); stop its gateway and remove that directory by hand if you are
 decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
 
@@ -743,8 +743,6 @@ decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
   pinned `@himmel` source **operator-present, in a fresh session**:
   `bash scripts/machine-setup/migrate-plugin-to-himmel.sh --apply <name@market> …`
   (it mutates `settings.json` via `claude plugin`, so it is an operator step).
-  Run it from a shell where the `claude` CLI is on `PATH`. On Windows that is
-  PowerShell, **not** a bare Git Bash (which exits `ERROR: claude CLI required
-  on PATH`). The external marketplace can silently re-appear later (its
+  Run it from a shell where the `claude` CLI is on `PATH`. The external marketplace can silently re-appear later (its
   `autoUpdate` re-adds it), so re-run the migrate whenever `--plugins-check`
   flags the shadow again.

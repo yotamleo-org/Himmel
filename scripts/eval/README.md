@@ -237,8 +237,9 @@ The fields:
 
 - **`red_before_green`:** true when a test run failed before the first
   implementation write and a test run passed after it. False when either run
-  is missing, or when there was a test run but no implementation write. Null
-  when there was neither a test run nor an implementation write.
+  is missing. Null when there was no implementation write, whatever test runs
+  there were: a session that writes no code has no test-first to score
+  (`trajectory_v` 2; v1 scored a test run without a write false).
 - **`denial_recovery`:** the fraction of denials recovered from. A denial is
   recovered when the next call issued after its result is not identical to the
   denied call, or when no call follows. Calls sent in parallel with the denied
@@ -392,3 +393,31 @@ the journals only. It refuses a journal whose cwd sits under a salus root (a
 `.salus` marker on an ancestor, or a root in `~/.config/claude-glm/phi-roots`
 or `egress-denylist`). Every ledger and the state directory take a flag, so a
 trial backfill can write to scratch copies.
+
+## pdd_share: the proof-first share of merged PRs
+
+`leg-digest/pdd_share.py` reads the last merged PRs and writes one eval-runs
+row, `eval: pdd-share`. It makes no model call. A PR is proof-first when both
+hold:
+
+1. its ticket (read from the Jira mirror) has a DoD section and a Proof
+   section, and was created before the PR's first commit. The mirror keeps no
+   description history, so the created time stands for when the sections
+   existed;
+2. its body names `RED` and then `GREEN`, the evidence words, in that order,
+   on one line or two. The CodeRabbit block is ignored.
+
+The row holds `pdd`, `ticket_first` (half 1 alone) and `red_green` (half 2
+alone), each as `.pct`, `.k` and `.n` with a 95 % Wilson range. A PR whose
+title names no ticket, whose ticket is not in the mirror, or that lists no
+commit is counted in `meta.skipped` and left out of n. A PR whose commit
+lookup failed is counted as `commits_unreadable` and makes the row `partial`.
+Below `--min-n` (50) readable PRs the row is `partial` and the exit code is 3.
+
+```bash
+python3 scripts/eval/leg-digest/pdd_share.py --limit 120            # print the row
+python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record   # append it to the eval-runs ledger
+```
+
+`--prs FILE` reads `gh pr list --json number,title,body,commits` output
+instead of asking gh; `--mirror DIR` and `--ledger P` point at scratch copies.

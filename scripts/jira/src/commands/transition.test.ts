@@ -149,6 +149,7 @@ describe('transition to Done respects the intake gate of a frozen version (HIMME
   });
 
   afterEach(() => {
+    process.exitCode = undefined;
     if (saved === undefined) delete process.env['HIMMEL_ADMISSIONS_LEDGER'];
     else process.env['HIMMEL_ADMISSIONS_LEDGER'] = saved;
     rmSync(dir, { recursive: true, force: true });
@@ -157,11 +158,21 @@ describe('transition to Done respects the intake gate of a frozen version (HIMME
   const ledger = (...rows: object[]) =>
     writeFileSync(process.env['HIMMEL_ADMISSIONS_LEDGER']!, rows.map((r) => JSON.stringify(r) + '\n').join(''));
 
-  it('does not stamp a frozen version on a ticket with no ruling, but still closes it', async () => {
+  it('stamps a frozen version on a ticket with no ledger row: a Done-fold, not a leak', async () => {
+    wire([], FROZEN);
+    await run('HIMMEL-1', 'Done');
+    expect(puts()).toHaveLength(1);
+    expect(process.exitCode).toBeUndefined();
+  });
+
+  it('a deferred ticket closes unstamped, fails loudly on stderr and exits 3', async () => {
+    ledger({ ts: 't', version: 'v1.1.3', key: 'HIMMEL-1', kind: 'deferral', actor: 'a' });
     wire([], FROZEN);
     await run('HIMMEL-1', 'Done');
     expect(puts()).toHaveLength(0);
     expect(mockRequest.mock.calls.some((c) => c[0] === 'POST')).toBe(true);
+    expect(vi.mocked(console.error).mock.calls.flat().join('\n')).toMatch(/^FAIL HIMMEL-1 closed with no fixVersion: .*deferral/m);
+    expect(process.exitCode).toBe(3);
   });
 
   it('stamps a frozen version on a ticket with an admission row', async () => {

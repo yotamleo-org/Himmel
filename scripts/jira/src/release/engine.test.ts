@@ -3,7 +3,7 @@ import { chmodSync, closeSync as closeFd, existsSync, mkdtempSync, mkdirSync, op
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
-  apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover,
+  apply, claim, declare, fold, freeze, leaseAcquire, reopen, leaseRelease, operatorDecision, request, rule, state, takeover, withdraw,
   JudgeReplyError, LIVE_LOOKUP_MS, readMirror, rmRun, type Ctx, type JiraPort, type Judge,
 } from './engine.js';
 import type { IssueSnap } from './types.js';
@@ -351,6 +351,22 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(out.phase).toBe('void');
     expect(jira.fv.get('K-2')).toBeUndefined();
     expect(claim(ctx(next)).map((x) => x.req)).toEqual([q.req]);
+  });
+
+  it('a requests chain that does not verify leaves no void row', async () => {
+    await setup();
+    const q = request(ctx(), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'console' });
+    claim(ctx(rmEnv));
+    const r = admit(q.req);
+    leaseRelease(ctx(rmEnv));
+    const next = { ...rmEnv, HIMMEL_RM_DOC: '/abs/b.md' };
+    leaseAcquire(ctx(next), { expectEpoch: 1, doc: '/abs/b.md', session: 'b' });
+    const reqs = join(ctx().dir, 'requests.jsonl');
+    writeFileSync(reqs, readFileSync(reqs, 'utf8').replaceAll('"why":"w"', '"why":"x"'));
+    const rulings = join(ctx().dir, 'rulings.jsonl');
+    const before = readFileSync(rulings, 'utf8');
+    await expect(apply(ctx(next), r.id)).rejects.toThrow(/requests.jsonl does not verify/);
+    expect(readFileSync(rulings, 'utf8')).toBe(before);
   });
 
   it('a tampered declaration makes the state UNKNOWN and refuses rulings', async () => {
@@ -760,5 +776,79 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     const doc = join(ctx().dir, 'elsewhere', 'run.md');
     expect(await rmRun(ctx(), admitAll, { doc })).toContainEqual(expect.stringMatching(/^RULING R-R1-0001 /));
     expect(readFileSync(doc, 'utf8')).toMatch(/^- RULING R-R1-0001 /m);
+  });
+});
+
+describe('release withdraw (HIMMEL-7434)', () => {
+  const ask = (key: string, verb: 'INTAKE' | 'REVERSION', from_v: string | null, to_v: string | null) =>
+    request(ctx(), { verb, key, from_v, to_v, why: 'found work', evidence: {}, from: 'console' });
+  const decide = (keys: string[], op: string, from_v: string | null, to_v: string | null) =>
+    operatorDecision(ctx(), { decision: '243', keys, op, from_v, to_v, verbatim: 'x' });
+
+  it('withdraws an open request with a reason, and claim skips it', async () => {
+    await setup();
+    const q = ask('K-2', 'INTAKE', null, 'v1');
+    expect(withdraw(ctx(), { req: q.req, reason: 'junk from a test run' }).state).toBe('withdrawn:console');
+    expect(claim(ctx(rmEnv))).toEqual([]);
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [] });
+  });
+
+  it('a withdrawn request does not swallow a fresh one for the same move', async () => {
+    await setup();
+    const q = ask('K-2', 'INTAKE', null, 'v1');
+    withdraw(ctx(), { req: q.req, reason: 'junk from a test run' });
+    expect(ask('K-2', 'INTAKE', null, 'v1').req).not.toBe(q.req);
+  });
+
+  it('--by needs a decision row covering the key', async () => {
+    await setup();
+    const q = ask('K-2', 'REVERSION', 'v1', null);
+    const other = decide(['K-9'], 'keep', 'v1', 'v1');
+    expect(() => withdraw(ctx(), { req: q.req, reason: 'stays', by: other.id })).toThrow(/does not cover K-2/);
+    expect(() => withdraw(ctx(), { req: q.req, reason: 'stays', by: 'O-R1-9999' })).toThrow(/no verified decision/);
+    const o = decide(['K-2'], 'remove', 'v1', null);
+    expect(withdraw(ctx(), { req: q.req, reason: 'already removed', by: o.id }).state).toBe(`withdrawn:${o.id}`);
+  });
+
+  it('refuses a ruled request, a missing reason, the release manager and a console leg', async () => {
+    await setup();
+    const q = ask('K-2', 'INTAKE', null, 'v1');
+    expect(() => withdraw(ctx(), { req: q.req, reason: ' ' })).toThrow(/--reason/);
+    expect(() => withdraw(ctx(rmEnv), { req: q.req, reason: 'x' })).toThrow(/refused/);
+    expect(() => withdraw(ctx({ HIMMEL_CONSOLE_LEG: '1' }), { req: q.req, reason: 'x' })).toThrow(/refused/);
+    claim(ctx(rmEnv));
+    await apply(ctx(rmEnv), admit(q.req).id);
+    expect(() => withdraw(ctx(), { req: q.req, reason: 'x' })).toThrow(/is ruled/);
+  });
+
+  it('an operator decision withdraws the open requests on its keys that contradict its placement', async () => {
+    await setup();
+    const out = ask('K-2', 'REVERSION', 'v1', null);
+    const agrees = ask('K-3', 'INTAKE', null, 'v1');
+    const elsewhere = ask('K-4', 'REVERSION', 'v1', null);
+    const o = decide(['K-2', 'K-3'], 'keep', 'v1', 'v1');
+    const claimed = claim(ctx(rmEnv)).map((r) => r.req);
+    expect(claimed).toEqual([agrees.req, elsewhere.req]);
+    expect(() => withdraw(ctx(), { req: out.req, reason: 'again' })).toThrow(new RegExp(`withdrawn:${o.id}`));
+  });
+
+  it('a requests chain that does not verify refuses the decision before its row is written', async () => {
+    await setup();
+    ask('K-2', 'REVERSION', 'v1', null);
+    const reqs = join(ctx().dir, 'requests.jsonl');
+    writeFileSync(reqs, readFileSync(reqs, 'utf8').replace('found work', 'found wark'));
+    const ops = join(ctx().dir, 'operator.jsonl');
+    const before = readFileSync(ops, 'utf8');
+    expect(() => decide(['K-2'], 'keep', 'v1', 'v1')).toThrow(/requests.jsonl does not verify/);
+    expect(readFileSync(ops, 'utf8')).toBe(before);
+  });
+
+  it('a decision on one version leaves a request that names only another version open', async () => {
+    await setup();
+    const other = ask('K-2', 'INTAKE', null, 'v2');
+    const same = ask('K-2', 'REVERSION', 'v1', 'v2');
+    const o = decide(['K-2'], 'remove', 'v1', null);
+    expect(claim(ctx(rmEnv)).map((r) => r.req)).toEqual([other.req]);
+    expect(() => withdraw(ctx(), { req: same.req, reason: 'again' })).toThrow(new RegExp(`withdrawn:${o.id}`));
   });
 });

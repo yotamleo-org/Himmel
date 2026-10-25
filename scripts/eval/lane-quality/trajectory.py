@@ -46,7 +46,7 @@ import sys
 
 FIELDS = ("red_before_green", "denial_recovery", "identical_denied_retries", "verify_before_claim")
 # Bumped when a field's definition changes, so an eval-runs series never mixes two meanings.
-TRAJECTORY_SCHEMA = 1
+TRAJECTORY_SCHEMA = 2
 
 # A hook or permission refusal: the tool never ran. A result that starts with
 # "Exit code" is a command that ran and failed, whatever its output says.
@@ -402,13 +402,13 @@ def score_calls(calls, texts, report=None):
             if t and ((passed and t[1]) or t[1] == "pass+fail"):
                 runs.append((c["pos"], t[0], passed, c["mid"]))
     writes = [(c["pos"], p, c["mid"]) for c in calls for p in [_written_path(c)] if p]
+    # ponytail: no code means no main-agent Write/Edit to an implementation path, so code written through Bash or
+    # delegated to a subagent drops out as null, read the Bash command and the subagent transcript to count it
     impl = [(pos, mid) for pos, p, mid in writes if is_impl_path(p)]
 
     # red_before_green
-    if not runs and not impl:
-        rbg = None
-    elif not impl:
-        rbg = False
+    if not impl:
+        rbg = None  # a session that writes no code has no test-first to score
     else:
         # A run sent in the write's own message may finish on either side of it.
         w, wm = impl[0]

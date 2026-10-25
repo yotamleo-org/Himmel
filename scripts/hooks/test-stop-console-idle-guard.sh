@@ -404,6 +404,31 @@ if is_block "$out"; then bad "(p) non-console stop with no waiter -> expected al
 
 QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" "$WORKER_SESSION_RELEASE_TOKEN" >/dev/null 2>&1
 
+# --- (x) the FLEET census must not depend on the hook's COLUMNS -------------
+# A console launched from a terminal passes COLUMNS to its Stop hook; plain
+# `ps -eo args` then truncates every argv to that width, the `-n HIMMEL-...`
+# name is cut off and the census reads native=0 with live workers.
+FAKE_CLAUDE="$TMP/claude"
+cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
+"$FAKE_CLAUDE" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-7430 </dev/null >/dev/null 2>&1 &
+FAKE_PID=$!
+sleep 1
+kill -0 "$FAKE_PID" 2>/dev/null || bad "(x) fixture worker did not start; the count below would not prove the fix"
+base_out="$(run_guard "$CHIEF_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD" COLUMNS=20)"
+pkill -P "$FAKE_PID" 2>/dev/null
+kill "$FAKE_PID" 2>/dev/null
+rm -f "$FAKE_CLAUDE" 2>/dev/null
+base_n="$(printf '%s\n' "$base_out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+cols_n="$(printf '%s\n' "$out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+if [ -z "$cols_n" ] || [ -z "$base_n" ]; then
+    bad "(x) no FLEET native= line in the reason: base=$base_out cols=$out"
+elif [ "$base_n" -ge 1 ] && [ "$cols_n" -ge "$base_n" ]; then
+    ok "(x) COLUMNS=20 in the hook env -> census counts the same live workers as without it (native=$cols_n vs $base_n)"
+else
+    bad "(x) COLUMNS=20 in the hook env -> census read native=$cols_n against native=$base_n without it"
+fi
+
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

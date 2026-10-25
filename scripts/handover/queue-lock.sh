@@ -943,7 +943,8 @@ _ql_owner_provably_dead() {
     stem="${doc##*/}"
     stem="${stem%.md}"
     [ -n "$stem" ] || return 1
-    procs=$(ps -eo pid=,args= 2>/dev/null) || return 1
+    # -ww: a COLUMNS in the environment would otherwise cut the doc name out of argv
+    procs=$(ps -ww -eo pid=,args= 2>/dev/null) || procs=$(ps -eo pid=,args= 2>/dev/null) || return 1
     [ -n "$procs" ] || return 1
     while IFS= read -r line; do
         line="${line#"${line%%[![:space:]]*}"}"
