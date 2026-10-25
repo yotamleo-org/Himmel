@@ -27,13 +27,10 @@ setup/install.md
 setup/new-machine.md
 daily-loop.md
 commands-catalog.md
-configuration.md
 cadences.md
 hermes-runbook.md
-luna/end-session-wiki.md
 handover/afk-mode.md
 handover/running-a-console.md
-architecture.md
 glossary.md
 internals/enforcement.md
 internals/stuck-playbook.md
