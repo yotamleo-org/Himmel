@@ -126,7 +126,7 @@ rm -rf "$SB"
 # The chosen model is the config's crystallize_model; the script's built-in default
 # must agree with it, so the hook (config -> env) and a bare backfill run price alike.
 CFG_MODEL="$(sed -n 's/.*"crystallize_model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SCRIPT_DIR/../../.claude/end-session-wiki.json")"
-SB="$(mktemp -d)" || exit 1
+SB="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-model.XXXXXX")" || exit 1
 NOTE="$SB/note.md"; TR="$SB/t.jsonl"; ARGVD="$SB/argv.txt"
 write_note "$NOTE"; printf '{}\n' > "$TR"
 env -u CRYSTALLIZE_MODEL CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success \
@@ -142,7 +142,7 @@ rm -rf "$SB"
 lane_refusal() { # <label> <env-assignments...>
     local label="$1"; shift
     local sb note tr mark err rc=0 before after
-    sb="$(mktemp -d)" || exit 1
+    sb="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-refusal.XXXXXX")" || exit 1
     note="$sb/note.md"; tr="$sb/t.jsonl"; mark="$sb/marker.txt"; err="$sb/stderr.txt"
     write_note "$note"; printf '{}\n' > "$tr"
     before="$( { sha256sum "$note" 2>/dev/null || shasum -a 256 "$note"; } | awk '{print $1}')"
@@ -262,7 +262,7 @@ if ! grep -qxF 'arg=--add-dir' "$ARGVD" 2>/dev/null && ! grep -qxF 'arg=--settin
 if grep -qxF 'HIMMEL_API_TOOLS=Read,Edit' "$LANED" 2>/dev/null; then pass "lane: tool grant is exactly Read,Edit"; else fail "lane: tool grant is not Read,Edit ($(cat "$LANED" 2>/dev/null))"; fi
 if grep -qxF 'HIMMEL_API_KIND=bulk' "$LANED" 2>/dev/null; then pass "lane: run kind is bulk"; else fail "lane: run kind is not bulk"; fi
 BUDGET="$(awk '/^arg=/{if (prev=="arg=--max-budget-usd") print substr($0,5); prev=$0}' "$ARGVD")"
-if printf '%s' "$BUDGET" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then pass "lane: bounded --max-budget-usd ($BUDGET)"; else fail "lane: no numeric --max-budget-usd"; fi
+if grep -Eq '^[0-9]+(\.[0-9]+)?$' <<< "$BUDGET"; then pass "lane: bounded --max-budget-usd ($BUDGET)"; else fail "lane: no numeric --max-budget-usd"; fi
 # acceptEdits must survive — it's what auto-approves the in-workspace note edit.
 if grep -qxF 'arg=acceptEdits' "$ARGVD" 2>/dev/null; then pass "workspace: --permission-mode acceptEdits passed"; else fail "workspace: acceptEdits not passed (out-of-workspace edit would prompt)"; fi
 rm -rf "$SB"
