@@ -44,7 +44,18 @@ def load_rules(path):
         cols = line.split("\t")
         if len(cols) != len(FIELDS):
             die(f"{path}:{n}: want {len(FIELDS)} tab-separated columns, got {len(cols)}")
-        rules.append(dict(zip(FIELDS, cols)))
+        rule = dict(zip(FIELDS, cols))
+        if rule["state"] not in ("active", "candidate"):
+            print(f"docs-review: {path}:{n}: {rule['id']} has unknown state {rule['state']!r}, skipped",
+                  file=sys.stderr)
+        if rule["kind"] == "pattern":
+            try:
+                re.compile(rule["pattern"])
+            except re.error as exc:
+                die(f"{path}:{n}: {rule['id']} has a broken pattern: {exc}")
+        elif rule["kind"] == "prose" and not rule["pattern"].isdigit():
+            die(f"{path}:{n}: {rule['id']} prose threshold must be a number, got {rule['pattern']!r}")
+        rules.append(rule)
     return rules
 
 
@@ -201,8 +212,10 @@ def cmd_check(args):
         if subprocess.run(["git", "cat-file", "-e", head], capture_output=True).returncode != 0:
             git("fetch", "-q", "origin", f"pull/{args.pr}/head")
     elif args.range:
+        if args.range.startswith("-"):
+            die(f"--range {args.range!r} starts with a dash; want A..B")
         text = git("diff", "--no-color", "--no-ext-diff", "--no-relative",
-                   "--src-prefix=a/", "--dst-prefix=b/", args.range)
+                   "--src-prefix=a/", "--dst-prefix=b/", "--end-of-options", args.range)
         head = args.range.split("..")[-1].lstrip(".") or "HEAD"
     else:
         try:
@@ -211,11 +224,13 @@ def cmd_check(args):
             die(f"cannot read diff {args.diff}: {exc}")
         if args.whole_file:
             die("--whole-file needs --pr or --range")
+    if not re.search(r"^(diff --git |\+\+\+ )", text, re.M):
+        die("no file header in the input; is it a unified diff?")
     pages = parse_diff(text)
     bodies = {}
     if head:
         for path in [p for p in pages if is_docs_page(p)]:
-            bodies[path] = list(enumerate(git("show", f"{head}:{path}").split("\n"), start=1))
+            bodies[path] = list(enumerate(git("show", "--end-of-options", f"{head}:{path}").split("\n"), start=1))
     if args.whole_file:
         pages.update(bodies)
     findings, checks = review(pages, rules, bodies)

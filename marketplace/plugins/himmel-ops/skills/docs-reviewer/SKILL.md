@@ -1,6 +1,6 @@
 ---
 name: docs-reviewer
-description: Review a docs PR or diff against the operator's own past docs remarks; record a new remark as a candidate rule.
+description: Use when a PR or diff changes a docs page - review it against the operator's past docs remarks; learn new ones.
 ---
 
 # docs-reviewer — review docs the way the operator does
@@ -31,7 +31,7 @@ python3 -I "$D/docs_review.py" check --diff change.diff        # or --diff - for
 | `path:line: R04 <rule> \| matched: GLM` | a pattern or prose rule broke on that line |
 | `CHECK path: R10 <rule>` | a judgement rule: read the page and decide |
 | `CANDIDATE R17 …` | a learned remark not yet confirmed; not enforced |
-| `docs-review: N finding(s) …` | the summary; exit 1 when N > 0, 2 on a usage error |
+| `docs-review: N finding(s) …` | the summary; exit 1 when N > 0, 2 on a usage error, input that is not a diff, or a broken rules file |
 
 Use `--whole-file` when the operator will read the whole page, which is the
 usual case for a docs PR: the remark on PR 3865 was about pages, not lines.

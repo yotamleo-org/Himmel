@@ -108,6 +108,30 @@ printf 'The GLM lane.\n' >"$repo/docs/np.md"
 git -C "$repo" add . && git -C "$repo" commit -q -m seven && git -C "$repo" config diff.noprefix true
 (cd "$repo" && python3 -I "$tool" check --range HEAD~1..HEAD) >"$td/out" 2>&1
 has "a range diff is read the same under diff.noprefix" "docs/np.md:1: R04" "$td/out"
+rc=$(cd "$repo" && python3 -I "$tool" check "--range=--output=$td/written" >/dev/null 2>&1; echo $?)
+check "a range starting with a dash is refused" "$rc" 2
+[ ! -e "$td/written" ] && ok "a dash range writes no file" || bad "a dash range wrote $td/written"
+
+# --- input that is not a diff, and a broken rules file, are usage errors ---
+printf 'not a diff\n' >"$td/prose.txt"
+rc=$(run check --diff "$td/prose.txt")
+check "input with no file header exits 2" "$rc" 2
+: >"$td/empty.diff"
+rc=$(run check --diff "$td/empty.diff")
+check "empty input exits 2" "$rc" 2
+head -1 "$here/rules.tsv" >"$td/bad.tsv"
+printf 'R01\tactive\tpattern\t(\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
+rc=$(run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff")
+check "a broken pattern in the rules file exits 2" "$rc" 2
+lacks "a broken pattern is no traceback" "Traceback" "$td/err"
+head -1 "$here/rules.tsv" >"$td/bad.tsv"
+printf 'R01\tactive\tprose\tmany\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
+rc=$(run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff")
+check "a non-numeric prose threshold exits 2" "$rc" 2
+head -1 "$here/rules.tsv" >"$td/bad.tsv"
+printf 'R01\tactiv\tpattern\tx\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
+run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff" >/dev/null
+has "an unknown rule state is warned about" "R01 has unknown state" "$td/err"
 
 # --- learn step: candidate until one confirmation ---
 cp "$here/rules.tsv" "$td/rules.tsv"
