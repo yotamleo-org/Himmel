@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # afk/project-state — which project a /afk-shift runs for, and where its state lives.
 #
-# The project is the primary checkout of the current directory (the parent of
-# git's common dir), so every worktree of one project shares one shift. Its key
-# is <basename slug>-<cksum of the primary checkout path>: two projects with the
-# same directory name still get two keys.
+# The project is the repository of the current directory, identified by git's
+# common dir, so every worktree of one project shares one shift. Its key is
+# <name slug>-<cksum of the common dir path>, the name being the checkout's
+# directory (or a --separate-git-dir's own name): two projects with the same
+# directory name still get two keys.
 #
 # The himmel clone (it carries scripts/adopt.sh, which adopt never copies into a
 # project) and a run outside any git repository keep the paths the shift always
@@ -21,33 +22,33 @@
 
 _AFK_STATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# afk_project_root — the primary checkout of the current directory.
-afk_project_root() {
+# afk_git_common_dir — the repository's common git dir, shared by every worktree.
+afk_git_common_dir() {
     local common
     common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || {
         echo "project-state: not inside a git repository" >&2
         return 2
     }
-    case "$common" in
-        */.git) (cd "$common/.." && pwd -P) ;;
-        # a --separate-git-dir repository: the git dir's parent is not the checkout
-        *)      (cd "$(git rev-parse --show-toplevel)" && pwd -P) ;;
-    esac
+    (cd "$common" && pwd -P)
 }
 
 # afk_legacy_paths — exit 0 where the shift keeps its original paths: the himmel
 # clone, or no project at all (outside a git repository).
 afk_legacy_paths() {
-    local root
-    root=$(afk_project_root 2>/dev/null) || return 0
-    [ -f "$root/scripts/adopt.sh" ]
+    local top
+    top=$(git rev-parse --show-toplevel 2>/dev/null) || return 0
+    [ -f "$top/scripts/adopt.sh" ]
 }
 
 afk_project_key() {
-    local root slug sum
-    root=$(afk_project_root) || return 2
-    slug=$(basename "$root" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
-    sum=$(printf '%s' "$root" | cksum | cut -d' ' -f1)
+    local common name slug sum
+    common=$(afk_git_common_dir) || return 2
+    case "$common" in
+        */.git) name=$(basename "$(dirname "$common")") ;;
+        *)      name=$(basename "$common" .git) ;;
+    esac
+    slug=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]' | sed -E 's/[^a-z0-9]+/-/g; s/^-+//; s/-+$//')
+    sum=$(printf '%s' "$common" | cksum | cut -d' ' -f1)
     printf '%s-%s\n' "${slug:-project}" "$sum"
 }
 

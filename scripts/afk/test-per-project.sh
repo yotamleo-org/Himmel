@@ -94,7 +94,12 @@ for p in sep1 sep2; do
 done
 key_s1=$(inproj "$TMP_ROOT/sep1" bash scripts/afk/project-state.sh key 2>&1)
 key_s2=$(inproj "$TMP_ROOT/sep2" bash scripts/afk/project-state.sh key 2>&1)
-if [[ "$key_s1" =~ ^sep1-[0-9]+$ ]] && [[ "$key_s2" =~ ^sep2-[0-9]+$ ]]; then pass "separate git dirs keep their own keys"; else fail "separate git dirs keep their own keys" "sep1=$key_s1 sep2=$key_s2"; fi
+if [[ "$key_s1" =~ ^sep1-[0-9]+$ ]] && [[ "$key_s2" =~ ^sep2-[0-9]+$ ]] && [ "$key_s1" != "$key_s2" ]; then pass "separate git dirs keep their own keys"; else fail "separate git dirs keep their own keys" "sep1=$key_s1 sep2=$key_s2"; fi
+git -C "$TMP_ROOT/sep1" -c user.name=t -c user.email=t@t commit -q --allow-empty -m init
+git -C "$TMP_ROOT/sep1" worktree add -q "$TMP_ROOT/sep1-wt" -b wt
+cp -R "$A/scripts" "$TMP_ROOT/sep1-wt/"
+key_s1wt=$(inproj "$TMP_ROOT/sep1-wt" bash scripts/afk/project-state.sh key 2>&1)
+if [ "$key_s1wt" = "$key_s1" ]; then pass "a separate-git-dir worktree shares its project's key"; else fail "a separate-git-dir worktree shares its project's key" "project=$key_s1 worktree=$key_s1wt"; fi
 
 echo "TEST: a stop in one adopted project does not halt the other"
 inproj "$A" bash scripts/afk/stop-marker.sh set >/dev/null 2>&1
