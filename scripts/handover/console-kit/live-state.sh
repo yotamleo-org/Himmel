@@ -186,7 +186,7 @@ fi
 # on the replaced doc. The awk below re-reads the whole doc under the lock. No
 # flock (rc 3) or a lock that cannot be taken (rc 1) rewrites unlocked, as before.
 # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
-. "$HERE/leg-doc-lock.sh"
+. "$HERE/worker-doc-lock.sh"
 doc_lock "$doc" live-state || true
 tmp="$(mktemp "$doc.XXXXXX")" || { echo "live-state: cannot create a temp file next to $doc" >&2; exit 1; }
 chmod --reference="$doc" "$tmp" 2>/dev/null  # gnu-ok: Linux-only kit; the rewrite keeps the doc mode

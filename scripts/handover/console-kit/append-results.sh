@@ -166,7 +166,7 @@ fi
 # never on the replaced one. A lock that cannot be taken (rc 1) or no flock
 # (rc 3) appends unlocked, as before: the bullet matters more than the race.
 # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
-. "$(dirname "${BASH_SOURCE[0]}")/leg-doc-lock.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/worker-doc-lock.sh"
 locked=0
 doc_lock "$DOC" append-results && locked=1
 
@@ -194,7 +194,7 @@ esac
 if [ -n "$event" ] && [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
     base="${DOC##*/}"
     if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
-        bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true
+        bash "$(dirname "${BASH_SOURCE[0]}")/worker-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true
     fi
 fi
 exit 0

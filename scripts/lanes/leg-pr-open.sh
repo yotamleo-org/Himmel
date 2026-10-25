@@ -279,7 +279,7 @@ if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
     # shellcheck disable=SC1091
     . "$HERE/../lib/ticket-status.sh"
     if jira_key=$(ticket_key_from_title "$title"); then
-        bash "${TICKET_STATUS_FUNNEL:-$HERE/../handover/console-kit/leg-jira-status.sh}" "$jira_key" \
+        bash "${TICKET_STATUS_FUNNEL:-$HERE/../handover/console-kit/worker-jira-status.sh}" "$jira_key" \
             --event pr-open --pr "$number" --head "$head_sha" >/dev/null || true
     fi
 fi

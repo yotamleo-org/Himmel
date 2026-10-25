@@ -441,7 +441,7 @@ def render_rm_launcher(l, ctx, doc):
         'mkdir -p "$W"',
         # The RM brief has no Prior art line, and headed-arm-leg.sh sets the RM env itself.
         'setsid nohup bash %s --profile release-manager --rm-release %s --no-prior-art-check --console %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: prints the console's launch line, nothing starts here
-            q(ctx['repo'] + '/scripts/handover/console-kit/headed-arm-leg.sh'), q(l['release']), q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
+            q(ctx['repo'] + '/scripts/handover/console-kit/headed-arm-worker.sh'), q(l['release']), q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,
@@ -473,7 +473,7 @@ def render_launcher(l, ctx, doc):
         'W=%s' % q(w),
         'mkdir -p "$W"',
         'setsid nohup bash %s%s --profile leg-impl --console %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (
-            q(ctx['repo'] + '/scripts/handover/console-kit/headed-arm-leg.sh'), lane_arg, q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
+            q(ctx['repo'] + '/scripts/handover/console-kit/headed-arm-worker.sh'), lane_arg, q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,

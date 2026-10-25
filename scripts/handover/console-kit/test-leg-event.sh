@@ -21,7 +21,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT="$HERE/leg-event.sh"
+SCRIPT="$HERE/worker-event.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/le-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$W"' EXIT

@@ -33,9 +33,9 @@ import sys
 
 SCRIPTS = [
     "wrap-merged.sh", "verdict-go.sh", "relay-batch.sh", "succession-tracker.sh",
-    "close-wrapped-leg.sh", "live-state.sh", "write-verdict.sh", "go.sh",
+    "close-wrapped-leg.sh", "close-wrapped-worker.sh", "live-state.sh", "write-verdict.sh", "go.sh",
     "fleet-manifest.sh", "append-results.sh", "board.mjs", "console-wait.sh",
-    "tick.sh", "headed-arm-leg.sh", "ready-check.sh", "merge-on-green.sh",
+    "tick.sh", "headed-arm-leg.sh", "headed-arm-worker.sh", "ready-check.sh", "merge-on-green.sh",
 ]
 
 TRIGGERS = [
@@ -52,13 +52,13 @@ TRIGGERS = [
 
 ACTIONS = [
     ("verdict-persist", r"write-verdict\.sh|verdict-go\.sh|\bgo\.sh\b"),
-    ("wrap-close", r"close-wrapped-leg\.sh|wrap-merged\.sh|fleet-manifest\.sh\s+\S*\s*(remove|rm)"),
+    ("wrap-close", r"close-wrapped-(?:leg|worker)\.sh|wrap-merged\.sh|fleet-manifest\.sh\s+\S*\s*(remove|rm)"),
     ("merge-ready-gate", r"ready-check\.sh|merge-on-green\.sh|check-ci\.sh|gh pr (view|checks)"),
     ("succession-bookkeeping", r"succession-tracker\.sh|live-state\.sh"),
     ("board-render", r"board\.mjs|fleet\.mjs"),
     ("jira-defer", r"jira/dist/index\.js"),
     ("ci-rerun", r"gh run (rerun|list|view)"),
-    ("dispatch-leg", r"headed-arm-leg\.sh|gen-briefs|brief-lint"),
+    ("dispatch-leg", r"headed-arm-(?:leg|worker)\.sh|gen-briefs|brief-lint"),
     ("tick-wait", r"console-wait\.sh|tick\.sh"),
     ("results-only", r"append-results\.sh"),
 ]
@@ -154,7 +154,7 @@ def parse(path):
                     for s in SCRIPTS:
                         if re.search(r"(?<![\w-])" + re.escape(s), cmd):
                             script_calls[s] += 1
-                    if "close-wrapped-leg.sh" in cmd and "wrap-merged.sh" not in cmd:
+                    if ("close-wrapped-leg.sh" in cmd or "close-wrapped-worker.sh" in cmd) and "wrap-merged.sh" not in cmd:
                         hand_wraps += 1
                 elif x["name"] == "SendMessage":
                     r["cmds"].append("SendMessage")

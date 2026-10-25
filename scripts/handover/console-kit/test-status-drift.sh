@@ -15,7 +15,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SUT="$HERE/leg-jira-status.sh"
+SUT="$HERE/worker-jira-status.sh"
 SWEEP="$HERE/status-sweep.sh"
 HOLD="$HERE/ticket-hold.sh"
 DRIFT="$HERE/status-drift.sh"

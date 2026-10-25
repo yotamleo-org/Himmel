@@ -1917,13 +1917,13 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc66A" "$token66a" >/dev/null 2>&1
 # new leak (headed-arm-leg.sh is read-only here; this is the
 # contract's "a test that fails when it gains a var the strip list does not
 # name").
-propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | grep -oE 'leg_propagate_env [A-Z_][A-Z0-9_]*' | awk '{print $2}' | sort -u)"
+propagated67="$(grep -v -E '^[[:space:]]*#' "$REPO_REAL/scripts/handover/console-kit/headed-arm-worker.sh" | grep -oE 'leg_propagate_env [A-Z_][A-Z0-9_]*' | awk '{print $2}' | sort -u)"
 strip_list67="$( ( . "$REPO_REAL/scripts/lib/chief-context.sh"; console_context_leg_env_unset_names ) | sort -u)"
 missing67="$(comm -23 <(printf '%s\n' "$propagated67") <(printf '%s\n' "$strip_list67"))"
 check "67 every leg_propagate_env name in headed-arm-leg.sh is in the strip list" "$missing67" ""
 # leg_propagate_env also sets each name's worker-session twin, so every twin
 # must be stripped too, and a launch-seam name's twin must be seam as well.
-twins67="$(sed -n '/^leg_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/console-kit/headed-arm-leg.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
+twins67="$(sed -n '/^leg_env_twin() {/,/^}/p' "$REPO_REAL/scripts/handover/console-kit/headed-arm-worker.sh" | sed -nE 's/^[[:space:]]*([A-Z_][A-Z0-9_]*)\) echo ([A-Z_][A-Z0-9_]*) ;;/\1 \2/p')"
 check "67 headed-arm-leg.sh has a twin table" "$([ -n "$twins67" ] && echo found)" "found"
 want67='HIMMEL_LEAN_LEG HIMMEL_LEAN_WORKER_SESSION
 HIMMEL_LEG_AUTOCOMPACT HIMMEL_WORKER_SESSION_AUTOCOMPACT

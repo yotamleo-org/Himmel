@@ -19,7 +19,7 @@
 # their own `coverage:` lines in the same shape.
 
 # shellcheck source=../../../../lib/leg-identity.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../../../lib/leg-identity.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../../../lib/worker-identity.sh"
 
 # The transcript roots, one per line; the FIRST is the one that must exist.
 #

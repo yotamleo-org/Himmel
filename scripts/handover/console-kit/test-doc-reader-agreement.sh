@@ -68,7 +68,7 @@ JOBS="${DRA_JOBS:-8}"
 # A parent-commit replay predates some readers; a reader the tree lacks is skipped
 # there, never counted as a disagreement (that would fail on every doc, proving nothing).
 ABSENT=""
-for r in board.mjs fleet.mjs close-wrapped-leg.sh; do [ -f "$CK/$r" ] || ABSENT="$ABSENT $r"; done
+for r in board.mjs fleet.mjs close-wrapped-worker.sh; do [ -f "$CK/$r" ] || ABSENT="$ABSENT $r"; done
 
 # ---- one reader over one doc (re-entered through xargs -P) ------------------
 # --one '<kind>TAB<doc>': prints `<kind>\t<doc basename>\t<value>` from that reader only
@@ -105,7 +105,7 @@ if [ "${1:-}" = --one ]; then
         printf 'shared-tail\t%s\t%s\n' "$base" "${v:-?}"
         ;;
     close-leg)
-        bash "$CK/close-wrapped-leg.sh" --check "$doc" >/dev/null 2>&1
+        bash "$CK/close-wrapped-worker.sh" --check "$doc" >/dev/null 2>&1
         rc=$?
         # rc 4 = tail is not WRAPPED; rc 5 = tail WRAPPED, then no live session matched
         # (the stubbed census has none); any other rc is a failure, never a tail verdict
@@ -272,7 +272,7 @@ for row in csv.reader(open(expect), delimiter="\t"):
             disagree(doc, "leg-tail-status", got, tail)
         got = read.get(("close-tail", doc), "<no output>")
         want = "WRAPPED" if tail == "WRAPPED" else "notwrapped"
-        if "close-wrapped-leg.sh" not in absent and got != want:
+        if "close-wrapped-worker.sh" not in absent and got != want:
             disagree(doc, "close-wrapped-leg", got, want)
         if "board.mjs" in absent:
             pass

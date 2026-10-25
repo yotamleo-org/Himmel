@@ -203,7 +203,7 @@ if [ -n "$doc" ]; then
     # session_ids: rewrite. Unlike those, a ruling is never mirrored unlocked:
     # no flock (rc 3) refuses, as before.
     # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
-    . "$HERE/leg-doc-lock.sh"
+    . "$HERE/worker-doc-lock.sh"
     lock_rc=0; doc_lock "$doc" inbox-send || lock_rc=$?
     if [ "$lock_rc" -ne 0 ]; then
         [ "$lock_rc" -eq 3 ] && printf 'inbox-send: cannot lock %s: flock not installed\n' "$doc" >&2

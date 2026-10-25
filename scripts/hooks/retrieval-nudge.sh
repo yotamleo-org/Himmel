@@ -52,7 +52,7 @@ case "$tool" in
         flat="$(printf '%s' "$cmd" | sed -E "s/'[^']*'/Q/g; s/\"([^\"\\\\]|\\\\.)*\"/Q/g" | tr ';|&' '\n')"
         while IFS= read -r seg; do
             seg="$(printf '%s' "$seg" | sed -E 's/^[[:space:]]+//; s/^([A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]+)+//; s/^((timeout[[:space:]]+[^[:space:]]+|rtk([[:space:]]+proxy)?|env|command|bash|sh)[[:space:]]+)+//')"
-            if printf '%s' "$seg" | grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)|(^|/)graphify[[:space:]]+(query|explain|path)([[:space:]]|$)|(^|/)leg-graph\.sh[[:space:]]+(query|explain|path)([[:space:]]|$)'; then
+            if printf '%s' "$seg" | grep -Eq '(^|/)qmd-bounded\.sh([[:space:]]|$)|^qmd[[:space:]]+(-[^[:space:]]+[[:space:]]+[^[:space:]]+[[:space:]]+)*(query|search|vsearch|get|multi-get)([[:space:]]|$)|(^|/)graphify[[:space:]]+(query|explain|path)([[:space:]]|$)|(^|/)(leg|worker)-graph\.sh[[:space:]]+(query|explain|path)([[:space:]]|$)'; then
                 kind=retrieval
                 break
             elif printf '%s' "$seg" | grep -Eq '^(grep[[:space:]]+(-[A-Za-z]*[rR][A-Za-z]*|--recursive)([[:space:]]|$)|rg([[:space:]]|$)|git[[:space:]]+grep([[:space:]]|$)|git[[:space:]]+log[[:space:]]+([^[:space:]]+[[:space:]]+)*-S)'; then
@@ -78,6 +78,6 @@ printf '%s\n' "$n" >"$DIR/$sid.n" 2>/dev/null || exit 0
 [ "$n" -ge "$THRESHOLD" ] || exit 0
 
 : >"$DIR/$sid.stop" 2>/dev/null || exit 0
-ctx="Retrieval nudge: $n search sweeps this session (grep/rg/git grep/find/Grep/Glob) and no qmd or graphify call. For structure or who-calls/who-imports questions try: bash scripts/graphify/leg-graph.sh explain \"<concept>\" (or query \"<question>\"). For history, decisions or cross-repo content try: bash scripts/lib/qmd-bounded.sh query -c NAME \"<question>\". An exact-symbol grep is still fine, and a miss from either tool is unproven: confirm with grep/git. This reminder appears once per session."
+ctx="Retrieval nudge: $n search sweeps this session (grep/rg/git grep/find/Grep/Glob) and no qmd or graphify call. For structure or who-calls/who-imports questions try: bash scripts/graphify/worker-graph.sh explain \"<concept>\" (or query \"<question>\"). For history, decisions or cross-repo content try: bash scripts/lib/qmd-bounded.sh query -c NAME \"<question>\". An exact-symbol grep is still fine, and a miss from either tool is unproven: confirm with grep/git. This reminder appears once per session."
 jq -nc --arg c "$ctx" '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:$c}}' 2>/dev/null
 exit 0

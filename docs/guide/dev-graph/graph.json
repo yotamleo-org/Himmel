@@ -170,10 +170,10 @@
       "lane": "console",
       "phase": "dispatch",
       "label": "Arm worker",
-      "summary": "headed-arm-leg.sh launches the worker in its own window",
+      "summary": "headed-arm-worker.sh launches the worker in its own window",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "file": "scripts/handover/console-kit/headed-arm-worker.sh",
           "anchor": "Exit 14 joins 2 usage, 10 fleet"
         }
       ],
@@ -214,10 +214,10 @@
       "lane": "leg",
       "phase": "dispatch",
       "label": "Ticket",
-      "summary": "Reads its ticket first. leg-jira-status.sh is the one writer of the ticket's Jira status: LIVE, the PR, CI, the merge and WRAPPED each make it re-derive the status from the PRs",
+      "summary": "Reads its ticket first. worker-jira-status.sh is the one writer of the ticket's Jira status: LIVE, the PR, CI, the merge and WRAPPED each make it re-derive the status from the PRs",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/leg-jira-status.sh",
+          "file": "scripts/handover/console-kit/worker-jira-status.sh",
           "anchor": "leg-jira-status.sh - the ONE writer of a"
         }
       ],
@@ -779,7 +779,7 @@
       "summary": "MERGED or WRAPPED goes to wrap-merged; anything else is ESCALATE",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/leg-event.sh",
+          "file": "scripts/handover/console-kit/worker-event.sh",
           "anchor": "route one leg message to the"
         }
       ],
@@ -827,7 +827,7 @@
           "anchor": "a leg's MERGED and"
         },
         {
-          "file": "scripts/handover/console-kit/close-wrapped-leg.sh",
+          "file": "scripts/handover/console-kit/close-wrapped-worker.sh",
           "anchor": "console-run wrapped-leg"
         }
       ],
@@ -893,7 +893,7 @@
       "condition": "bank PROCEED, fleet below cap, Tier line valid, no un-acked denial page",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "file": "scripts/handover/console-kit/headed-arm-worker.sh",
           "anchor": "Any other verdict (PROCEED, BANK-STALE, BANK-UNKNOWN) falls through."
         }
       ],
@@ -910,7 +910,7 @@
       "condition": "fleet-size cap reached",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "file": "scripts/handover/console-kit/headed-arm-worker.sh",
           "anchor": "refusing to launch $NAME - fleet-size cap reached"
         }
       ],
@@ -927,7 +927,7 @@
       "condition": "bank exhausted",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "file": "scripts/handover/console-kit/headed-arm-worker.sh",
           "anchor": "lane bank exhausted (park and retry later"
         }
       ],
@@ -944,7 +944,7 @@
       "condition": "an un-acked SHIP-STEP/PAUSE-RISK denial page; fixed by ack-denial.sh",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "file": "scripts/handover/console-kit/headed-arm-worker.sh",
           "anchor": "launch a leg even though it has an un-acked"
         }
       ],
@@ -961,7 +961,7 @@
       "condition": "an opus or fable leg without a Tier line",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/headed-arm-leg.sh",
+          "file": "scripts/handover/console-kit/headed-arm-worker.sh",
           "anchor": "has no '> **Tier:** $TIER_GATE — <category>: <reason>' line"
         }
       ],
@@ -1473,7 +1473,7 @@
       "condition": "MERGED or WRAPPED with a manifest label",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/leg-event.sh",
+          "file": "scripts/handover/console-kit/worker-event.sh",
           "anchor": "MERGED / WRAPPED  -> wrap-merged.sh"
         }
       ],
@@ -1490,7 +1490,7 @@
       "condition": "ESCALATE unfiled-residual",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/leg-event.sh",
+          "file": "scripts/handover/console-kit/worker-event.sh",
           "anchor": "A WRAPPED line that mentions deferred, follow-up or residual with"
         }
       ],
@@ -1506,7 +1506,7 @@
       "condition": "READY or FINDING: needs a judge or the console",
       "sources": [
         {
-          "file": "scripts/handover/console-kit/leg-event.sh",
+          "file": "scripts/handover/console-kit/worker-event.sh",
           "anchor": "or say ESCALATE"
         }
       ],

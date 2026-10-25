@@ -36,7 +36,7 @@ if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR
 # shellcheck source=../../lib/handover-path.sh
 . "$HERE/../../lib/handover-path.sh"
 # shellcheck source=../../lib/leg-identity.sh
-. "$HERE/../../lib/leg-identity.sh"
+. "$HERE/../../lib/worker-identity.sh"
 
 usage() {
     cat <<'USAGE'

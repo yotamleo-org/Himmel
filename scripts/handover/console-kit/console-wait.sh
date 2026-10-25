@@ -826,7 +826,7 @@ sweep_wake() {
 # marker and prints the wake (rc 0). The marker `<inbox>.wait.predecessor` (body:
 # `<state>:<doc>`) outlives the waiter, so a done predecessor is never asked twice.
 pred_file="$inbox.wait.predecessor"
-close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-leg.sh}"
+close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-worker.sh}"
 pred_hangs=0
 pred_hang_max="${CHIEF_WAIT_CLOSE_HANGS:-3}"
 case "$pred_hang_max" in ''|*[!0-9]*|0) pred_hang_max=3 ;; esac
@@ -870,7 +870,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
 r0_file="$inbox.wait.r0"
-leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/leg-event.sh}"
+leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
     local cands label marker ldoc bullet sum line stem out rc outf what pr seen=" "

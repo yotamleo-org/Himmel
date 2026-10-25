@@ -220,7 +220,7 @@ const isSearch = (n: string) => n === "Grep" || n === "Glob" || n === "WebSearch
 // A leg has no Grep/Glob tool and reads through Bash, so a Bash call whose first word is one of these counts too.
 // ponytail: first word only, `cd x && grep y` reads as neither; revisit if the baseline undershoots.
 const BASH_READ = /^(?:cat|head|tail|sed|less|bat)\b/;
-const BASH_SEARCH = /^(?:grep|egrep|rg|ugrep|find|ls|tree)\b|^git\s+(?:grep|ls-files)\b|^bash\s+scripts\/graphify\/leg-graph\.sh\b/;
+const BASH_SEARCH = /^(?:grep|egrep|rg|ugrep|find|ls|tree)\b|^git\s+(?:grep|ls-files)\b|^bash\s+scripts\/graphify\/(?:leg|worker)-graph\.sh\b/;
 function exploration(lines: string[]) {
   const w = (u: Record<string, unknown>) => ["input_tokens", "cache_creation_input_tokens", "output_tokens"]
     .reduce((s, k) => s + (typeof u[k] === "number" ? u[k] as number : 0), 0)
