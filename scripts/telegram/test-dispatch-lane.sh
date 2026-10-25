@@ -167,7 +167,7 @@ jq '(.lanes[] | select(.dormant) | .probe) = {"kind":"always"}' "$REAL_REG" > "$
 # failure. Capture the lookup's own exit status and treat a non-zero rc OR
 # empty stdout as a hard failure naming the cause, rather than silently
 # degrading into "every lane is probe-unavailable" (which would still
-# increment DORMANT_COUNT to 5 further down and report a false ok).
+# increment DORMANT_COUNT to 4 further down and report a false ok).
 PROBE_JSON="$(LANES_REGISTRY="$DORMANT_FIXTURE_REG" node "$SCRIPT_DIR/../lanes/resolve.mjs" --json)"
 PROBE_RC=$?
 PROBE_AVAILABLE_IDS=""

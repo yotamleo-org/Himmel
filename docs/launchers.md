@@ -49,9 +49,8 @@ reference: the `claude-codex` section of [tooling-catalog.md](tooling-catalog.md
 `scripts/lanes/lanes.json`: no opt-in variable is needed to dispatch it. A
 worker reaches it with `headed-arm-worker.sh --lane claudex`; a one-off
 dispatch with `dispatch-lane.sh --lane claudex`, which accepts the lane once 5
-consecutive verified passes exist in the flow-runs ledger. The launcher exports
-`CLAUDEX_LANE_OK=1` into its process as the marker that tells a claudex session
-from a native one. Lane routing, effort and the readiness gate:
+consecutive verified passes exist in the flow-runs ledger. Lane routing,
+effort, the readiness gate and the `CLAUDEX_LANE_OK` marker:
 [internals/lane-calibration.md](internals/lane-calibration.md#claudex-worker--implementor-default-operating-model).
 
 | Variable | Default | Effect |

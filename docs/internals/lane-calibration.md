@@ -891,9 +891,12 @@ routes reach it:
   branches (`readiness.passesRequired`). Until then the readiness gate refuses
   it.
 
-`CLAUDEX_LANE_OK=1` is the marker the launcher exports into every claudex
-process; `usage-preflight.sh`, `chief-context.sh` and the lane-quality runner
-read it to tell a claudex session from a native one. It is not an opt-in.
+`CLAUDEX_LANE_OK=1` is not a dispatch opt-in. Neither `scripts/claude-codex`
+nor `spawn-claudex.ts` sets it; only `headed-arm-worker.sh --lane claudex`
+exports it into the worker it launches. `usage-preflight.sh` reads it to label
+that worker's fleet line `claudex`, and `chief-context.sh` strips it before it
+arms a chief. One run still requires it: `scripts/eval/lane-quality/run.sh
+--lane claudex` exits 3 unless `CLAUDEX_LANE_OK=1` is on the command.
 
 **Default while the Claude weekly is scarce.** A well-specified, single-worker
 implementation brief is the claudex lane's home case precisely because it
