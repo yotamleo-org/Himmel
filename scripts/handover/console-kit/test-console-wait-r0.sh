@@ -18,6 +18,7 @@
 #   (r0g) two legs: N1's wrap and N2's change in one sample, then the manifest
 #         move N1's wrap made: N2's change still wakes
 #   (r0i) a window turning closable on the sample N1's wrap is absorbed still wakes
+#   (r0j) the heartbeat is refreshed before each leg-event call of a pass
 #   (hd)  holds=: a leg entering the set wakes once; ageing, a leg leaving and the set
 #         emptying do not wake
 #
@@ -52,7 +53,15 @@ STUB="$WORK/stub"
 mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
-cat "$STUB/tick.line"
+# tick.seq (see tick_seq): each sample pops its first line, the last one stands
+if [ -s "$STUB/tick.seq" ]; then
+    head -n 1 "$STUB/tick.seq"
+    if [ "$(wc -l < "$STUB/tick.seq")" -gt 1 ]; then
+        tail -n +2 "$STUB/tick.seq" > "$STUB/tick.seq.new" && mv "$STUB/tick.seq.new" "$STUB/tick.seq"
+    fi
+else
+    cat "$STUB/tick.line"
+fi
 EOF
 cat > "$STUB/bank.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -61,12 +70,17 @@ EOF
 # leg-event stub: records its args and stdin per call, prints le.out, exits le.rc.
 cat > "$STUB/leg-event.sh" <<'EOF'
 #!/usr/bin/env bash
-n=$(( $(cat "$STUB/le.calls" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$STUB/le.calls"
+n=$(( $(cat "$STUB/le.calls" 2>/dev/null || echo 0) + 1 ))
+# the waiter's heartbeat epoch as this call starts, then the call count
+sed -n 's/^hb=\([0-9]*\) .*/\1/p' "$HB_FILE" > "$STUB/le.hb.$n" 2>/dev/null
+echo "$n" > "$STUB/le.calls"
 printf '%s\n' "$*" > "$STUB/le.args"
 cat > "$STUB/le.stdin"
+[ -f "$STUB/le.sleep" ] && sleep "$(cat "$STUB/le.sleep")"
 # le.rm: act like wrap-merged, drop N1 from the manifest and from the tick line
 if [ -f "$STUB/le.rm" ]; then
     jq -c '.legs |= map(select(.label != "N1"))' "$4" > "$4.tmp" && mv "$4.tmp" "$4"
+    rm -f "$STUB/tick.seq"
     cp "$STUB/tick.after" "$STUB/tick.line"
 fi
 if [ -f "$STUB/le.echo" ]; then printf 'ESCALATE unfiled-residual: %s\n' "$(cat "$STUB/le.stdin")"
@@ -86,11 +100,21 @@ export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 
 # tick_line <tails> [acts]: a tick line with that tails= (and acts=, when given).
+# Written to a side file and moved over tick.line: a sample never reads half a line.
 tick_line() {
     printf 'TICK 03:00 hb=1m legs=N1:FRESH livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=%s%s inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none\n' \
-        "$1" "${2:+ acts=$2}" > "$STUB/tick.line"
+        "$1" "${2:+ acts=$2}" > "$STUB/tick.line.new" && mv "$STUB/tick.line.new" "$STUB/tick.line"
 }
-reset_stub() { rm -f "$STUB"/le.*; tick_line "N1:LIVE"; printf 'PROCEED\n' > "$STUB/bank"; printf 'HANDLED wrap-merged N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"; }
+# tick_seq <tick line>...: the next samples serve these lines in order (one per
+# sample), the last one standing. The order is the test's, not a sleep's.
+tick_seq() {
+    : > "$STUB/tick.seq.new"
+    for l in "$@"; do printf '%s\n' "$l" >> "$STUB/tick.seq.new"; done
+    mv "$STUB/tick.seq.new" "$STUB/tick.seq"
+}
+# tick_text <tails>: the tick line for that tails=, as text.
+tick_text() { tick_line "$1"; cat "$STUB/tick.line"; }
+reset_stub() { rm -f "$STUB"/le.* "$STUB/tick.seq"; tick_line "N1:LIVE"; printf 'PROCEED\n' > "$STUB/bank"; printf 'HANDLED wrap-merged N1\n' > "$STUB/le.out"; echo 0 > "$STUB/le.rc"; }
 wait_hb() {
     n=0
     while [ "$n" -lt 50 ]; do
@@ -114,6 +138,7 @@ fleet() {
     L="$WORK/$1/HIMMEL-1-N1-a.md"; printf '# leg\n\n## Results\n- 09:00 LIVE — started\n' > "$L"
     M="$WORK/$1/console.fleet.json"
     printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}]}\n' "$L" > "$M"
+    export HB_FILE="$I.wait"
 }
 start() { # <inbox> <outfile> [tick args...]
     local inbox="$1" out="$2"; shift 2
@@ -228,10 +253,8 @@ fleet2 r0f
 tick_line "N1:LIVE,N2:LIVE"
 start "$I" "$WORK/r0f.out" --doc "$D" --legs-from "$M"
 wait_hb "$I" || fail "(r0f) no baseline heartbeat"
-tick_line "N1:LIVE,N2:BLOCKED"
-sleep 1.3
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
-tick_line "N1:WRAPPED,N2:BLOCKED"
+tick_seq "$(tick_text "N1:LIVE,N2:BLOCKED")" "$(tick_text "N1:WRAPPED,N2:BLOCKED")"
 wait_exit "$WPID"
 check "(r0f) N2's change wakes (rc 0)" "0" "$rc"
 check "(r0f) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0f.out")"
@@ -246,7 +269,7 @@ start "$I" "$WORK/r0g.out" --doc "$D" --legs-from "$M"
 wait_hb "$I" || fail "(r0g) no baseline heartbeat"
 tick_line "N2:BLOCKED"; cp "$STUB/tick.line" "$STUB/tick.after"; touch "$STUB/le.rm"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
-tick_line "N1:WRAPPED,N2:BLOCKED"
+tick_seq "$(tick_text "N1:WRAPPED,N2:BLOCKED")"
 wait_exit "$WPID"
 check "(r0g) N2's change wakes (rc 0)" "0" "$rc"
 check "(r0g) as a tick wake on tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n 1 "$WORK/r0g.out")"
@@ -260,10 +283,29 @@ tick_line "N1:LIVE,N2:LIVE"
 start "$I" "$WORK/r0i.out" --doc "$D" --legs-from "$M"
 wait_hb "$I" || fail "(r0i) no baseline heartbeat"
 printf -- '- 11:00 WRAPPED — done\n' >> "$L"
-tick_line "N1:WRAPPED,N2:LIVE"; printf '%s closable=1\n' "$(cat "$STUB/tick.line")" > "$STUB/tick.line.new"; mv "$STUB/tick.line.new" "$STUB/tick.line"
+tick_seq "$(tick_text "N1:WRAPPED,N2:LIVE") closable=1"
 wait_exit "$WPID"
 check "(r0i) the closable rise wakes (rc 0)" "0" "$rc"
 check "(r0i) as a tick wake on closable" "WAKE tick changed=closable usage=PROCEED" "$(head -n 1 "$WORK/r0i.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (r0j) the heartbeat is refreshed before each leg-event call -------------
+# One pass over two wraps: each leg-event call is up to 95 s, so the heartbeat
+# the second call starts under must be newer than the first's.
+reset_stub
+fleet2 r0j
+echo 1.2 > "$STUB/le.sleep"
+tick_line "N1:LIVE,N2:LIVE"
+start "$I" "$WORK/r0j.out" --doc "$D" --legs-from "$M"
+wait_hb "$I" || fail "(r0j) no baseline heartbeat"
+printf -- '- 11:00 WRAPPED — done\n' >> "$L"; printf -- '- 11:00 WRAPPED — done\n' >> "$L2"
+tick_seq "$(tick_text "N1:WRAPPED,N2:WRAPPED")"
+n=0
+while [ "$n" -lt 80 ] && [ "$(cat "$STUB/le.calls" 2>/dev/null)" != 2 ]; do sleep 0.1; n=$((n + 1)); done
+check "(r0j) leg-event ran for both wraps" "2" "$(cat "$STUB/le.calls" 2>/dev/null)"
+hb1="$(cat "$STUB/le.hb.1" 2>/dev/null)"; hb2="$(cat "$STUB/le.hb.2" 2>/dev/null)"
+if [ -n "$hb1" ] && [ -n "$hb2" ] && [ "$hb2" -gt "$hb1" ]; then pass "(r0j) the second call starts under a newer heartbeat"
+else fail "(r0j) the second call starts under a newer heartbeat (want '$hb2' > '$hb1')"; fi
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (hd) holds= wakes when a leg ENTERS the set, once per hold --------------

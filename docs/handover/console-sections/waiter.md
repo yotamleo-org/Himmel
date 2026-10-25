@@ -58,7 +58,9 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     `cat "<inbox>.wait"` → `hb=<epoch> pid=<pid> key=<hash> tick=ok state=waiting`,
     rewritten every second between samples. `state=sampling` is a tick in
     progress: a sample (tick, then usage) can take about 4 min (twice the 120 s
-    timeout, plus a 5 s kill grace each), and a Telegram line waits for it. `state=exited exit=<reason>` is
+    timeout, plus a 5 s kill grace each), and a Telegram line waits for it. The
+    wrap relay refreshes the heartbeat before each `leg-event.sh` call (up to
+    95 s each), so a pass over several wraps never ages it past one call. `state=exited exit=<reason>` is
     a waiter that stopped (`wake-telegram`, `wake-tick`, `signal-TERM` …); a
     `state=waiting` or `state=sampling` heartbeat older than about 5 min is one
     that was SIGKILLed (untrappable). `tick=fail` means `tick.sh` exited
