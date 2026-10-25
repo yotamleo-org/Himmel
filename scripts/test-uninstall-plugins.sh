@@ -202,6 +202,7 @@ for spec in handover@himmel ops@himmel review@claude-plugins-official notes@obsi
     assert_has "P5 $spec uses user scope" "plugin uninstall $spec --scope user" "$calls"
 done
 assert_not_has "P5 no marketplace removals" 'plugin marketplace remove' "$calls"
+assert_not_has "P5 output carries no internal id" "HIMMEL-" "$out"
 assert_has "P5 skip names enumeration failure" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins' "$out"
 
 # P5b — RED: degraded enumeration plus a failed plugin never strands.
@@ -211,6 +212,7 @@ STUB_FAIL_IDS='handover@himmel'
 run_case
 assert_rc "P5b failed degraded run exits 1" 1 "$rc"
 assert_not_has "P5b no marketplace removals" 'plugin marketplace remove' "$calls"
+assert_not_has "P5b output carries no internal id" "HIMMEL-" "$out"
 assert_has "P5b skip names the cause" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins' "$out"
 
 # WHY: a separate process has no successful plugin phase evidence.

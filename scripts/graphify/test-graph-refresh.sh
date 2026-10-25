@@ -671,6 +671,7 @@ if [ -z "$region" ]; then
     fail "16f HOME identity-guard region not found in source (marker absent)"
 else
     assert_contains "16f HOME guard uses filesystem identity (_fs_id)" "_fs_id" "$region"
+    assert_not_contains "16f HOME guard region carries no internal id" "HIMMEL-1670" "$region"
     assert_not_contains "16f HOME guard dropped the lowercase-fold mechanism (_lc gone)" "_lc" "$region"
 fi
 
