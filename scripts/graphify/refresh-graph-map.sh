@@ -3015,8 +3015,10 @@ MERGEPLANEOF
   # the guard below counts the prior graph's nodes of them as an explained loss, not a shrink.
   _gone_sources="$PROMOTE_STAGE/.graphify_gone_sources"
   : > "$_gone_sources"
-  python3 "$HERE/semantic-merge.py" prune --root "$CORPUS_ROOT" --out "$PROMOTE_STAGE" >&2 \
-    || echo "refresh-graph-map: WARN could not prune the staged graph of untracked source files (reason above); the guard below judges it as it is" >&2
+  if ! python3 "$HERE/semantic-merge.py" prune --root "$CORPUS_ROOT" --out "$PROMOTE_STAGE" >&2; then
+    echo "refresh-graph-map: REFUSING to promote -- could not prune the staged graph of untracked source files (reason above); the existing graph at $OUT_DIR/graph.json was left in place" >&2
+    exit 2
+  fi
   python3 "$HERE/semantic-merge.py" untracked --root "$CORPUS_ROOT" --graph "$OUT_DIR/graph.json" > "$_gone_sources" 2>/dev/null || : > "$_gone_sources"
   if [ "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" -gt 0 ]; then
     _prior_version=""

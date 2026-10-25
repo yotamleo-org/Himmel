@@ -144,6 +144,8 @@ for d, ds, fs in os.walk(root):
         if f.endswith(".md"):
             rel = os.path.relpath(os.path.join(d, f), root).replace(os.sep, "/")
             nodes.append({"id": "sem-%s" % rel, "label": "sem %s" % rel, "source_file": rel})
+        if f == "code.py":
+            nodes += [{"id": "ast-%d" % i, "label": "fn%d" % i, "source_file": f, "_origin": "ast"} for i in range(30)]
 json.dump({"nodes": nodes, "links": []}, open(os.path.join(root, "graphify-out", "graph.json"), "w"))
 PY
 cp "$GL_REPORT" "$target/graphify-out/GRAPH_REPORT.md"
@@ -152,9 +154,10 @@ STUB
 chmod +x "$MGBIN/graphify"
 MAPS="$WS/maps"; mkdir -p "$MAPS"
 # guard_corpus <dir> <ast nodes> <semantic nodes of tracked.md> <semantic nodes of gone.md>
-# gone.md is in the semantic manifest and in no commit: the corpus deleted it.
+# gone.md is in the semantic manifest and in no commit: the corpus deleted it. code.py is tracked,
+# and the stub graphify re-extracts its 30 nodes, so losing them would be an unexplained loss.
 guard_corpus() {
-  git_repo "$1" tracked.md
+  git_repo "$1" tracked.md code.py
   mkdir -p "$1/graphify-out"
   python3 -I - "$1/graphify-out" "$2" "$3" "$4" <<'PY'
 import json, os, sys
@@ -181,6 +184,8 @@ out3=$(guard_run g3 "$C3" --merge-into-live); rc3=$?
   && pass "T3 the deleted file's nodes are gone from the promoted graph" || fail "T3 gone.md nodes remain"
 grep -q "gone.md.*60 -> 0" <<<"$out3" \
   && pass "T3 the log lists gone.md with its node count, 60 -> 0" || fail "T3 no per-file line for gone.md: $out3"
+[ "$(gcount "$C3/graphify-out/graph.json" "n.get('source_file')=='code.py'")" = "30" ] \
+  && pass "T3 the tracked code.py kept all 30 of its nodes" || fail "T3 code.py nodes were dropped: $out3"
 
 echo "T4: (c) an unexplained loss on a tracked file (an md-only promote over a graph with 60 of its nodes) is refused and names the file"
 C4="$WS/c4"; guard_corpus "$C4" 5 60 0
@@ -214,6 +219,22 @@ PY
 out6=$( PATH="$BIN:$PATH" bash "$AST" "$C6" 2>&1 ); rc6=$?
 python3 -I -c 'import json,sys; g=json.load(open(sys.argv[1])); sys.exit(0 if not any(e.get("source_file")==sys.argv[2] for e in g["links"]) else 1)' "$C6/graphify-out/graph.json" "$OLD" \
   && [ "$rc6" -eq 0 ] && pass "T6 no edge of the deleted file remains" || fail "T6 (rc=$rc6) an edge of the deleted file remains: $out6"
+
+echo "T7: a staged prune that fails refuses the promote instead of judging an unpruned graph"
+REAL_PY="$(command -v python3)"; export REAL_PY
+PYSHIM="$WS/py-shim"; mkdir -p "$PYSHIM"
+cat > "$PYSHIM/python3" <<'SHIM'
+#!/usr/bin/env bash
+[ "${2:-}" = prune ] && exit 1
+exec "$REAL_PY" "$@"
+SHIM
+chmod +x "$PYSHIM/python3"
+C7="$WS/c7"; guard_corpus "$C7" 30 1 60
+out7=$(PATH="$PYSHIM:$PATH" guard_run g7 "$C7" --merge-into-live); rc7=$?
+{ [ "$rc7" -ne 0 ] && grep -q "REFUSING.*could not prune" <<<"$out7"; } \
+  && pass "T7 the promote is refused and says the prune failed" || fail "T7 expected a refusal naming the failed prune (rc=$rc7): $out7"
+[ "$(gcount "$C7/graphify-out/graph.json" "True")" = "91" ] \
+  && pass "T7 the live graph was kept" || fail "T7 the live graph changed"
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi
 echo "ALL PASS"
