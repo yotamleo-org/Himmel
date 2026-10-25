@@ -441,6 +441,7 @@ fi
 new_sem
 mkdir -p "$SEM"
 (
+    set -e
     . "$REPO_ROOT/scripts/lib/suite-semaphore.sh"
     # shellcheck disable=SC2030  # detail is intentionally local to this holder
     HIMMEL_SUITE_SLOT_DETAIL=$'leg=N3665\n range=base..head\tsuites=3\r\033\177'
@@ -461,21 +462,24 @@ mkdir -p "$SEM"
     cp "$SEM/slot-1/owner" "$SCRATCH/bounded-detail.owner"
     suite_sem_release
 )
-if [ "$(grep -c '^detail=' "$SCRATCH/detail.owner")" = "1" ] \
+DETAIL_SETUP_RC=$?
+if [ "$DETAIL_SETUP_RC" = "0" ] \
+    && [ "$(grep -c '^detail=' "$SCRATCH/detail.owner")" = "1" ] \
     && grep -qxF 'detail=leg=N3665 range=base..headsuites=3' "$SCRATCH/detail.owner" \
     && grep -qxF 'leg=N3665 range=base..headsuites=3' "$SCRATCH/detail.read"; then
     pass "holder detail strips controls, records one line and reads it back"
 else
     fail "holder detail was missing, unsanitised, duplicated or not read back"
 fi
-if ! grep -q '^detail=' "$SCRATCH/no-detail.owner" && [ ! -s "$SCRATCH/no-detail.read" ]; then
+if [ "$DETAIL_SETUP_RC" = "0" ] && [ -f "$SCRATCH/no-detail.owner" ] \
+    && ! grep -q '^detail=' "$SCRATCH/no-detail.owner" && [ ! -s "$SCRATCH/no-detail.read" ]; then
     pass "unset holder detail is omitted and does not retain a previous owner's detail"
 else
     fail "unset holder detail left a detail field or retained a previous owner's detail"
 fi
 BOUNDED_DETAIL=$(sed -n 's/^detail=//p' "$SCRATCH/bounded-detail.owner")
 printf -v EXPECTED_DETAIL '%0200d' 0
-if [ "$BOUNDED_DETAIL" = "$EXPECTED_DETAIL" ]; then
+if [ "$DETAIL_SETUP_RC" = "0" ] && [ "$BOUNDED_DETAIL" = "$EXPECTED_DETAIL" ]; then
     pass "holder detail is cut at 200 characters"
 else
     fail "holder detail -- expected 200 characters, got ${#BOUNDED_DETAIL}"
@@ -537,8 +541,10 @@ for _reporter in 1 2; do
     REPORTERS="$REPORTERS $!"
     BG_PIDS="$BG_PIDS $!"
 done
-for REPORTER_PID in $REPORTERS; do wait "$REPORTER_PID"; done
-if [ -f "$SEM/long-held.log" ] && [ "$(wc -l <"$SEM/long-held.log")" -eq 1 ] \
+REPORTERS_OK=1
+for REPORTER_PID in $REPORTERS; do wait "$REPORTER_PID" || REPORTERS_OK=0; done
+if [ "$REPORTERS_OK" = "1" ] && [ -f "$SEM/long-held.log" ] \
+    && [ "$(wc -l <"$SEM/long-held.log")" -eq 1 ] \
     && [ ! -e "$SEM/slot-1/long-held.lock" ]; then
     pass "concurrent busy reporters append one holder row and leave no logging guard"
 else
