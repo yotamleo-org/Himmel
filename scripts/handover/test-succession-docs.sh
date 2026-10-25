@@ -439,7 +439,7 @@ absent 'template step 11: the Telegram verb is no longer /console' "$(cat "$CONS
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'running-a-console: the operator writes the Telegram verb /chief' "$(cat "$RUNNING")" '`/chief <session> <text>`'
 absent 'running-a-console: the Telegram verb is no longer /console' "$(cat "$RUNNING")" '`/console <session>'
-absent 'template: the start and handover commands are /chief new and /chief next' "$(cat "$CONSOLE")" '/console (new|next)( |`)'
+absent 'template: the start and handover commands are /chief new and /chief next --arm' "$(cat "$CONSOLE")" '/console (new|next --arm)( |`)'
 absent 'running-a-console: the start and handover commands are /chief new and /chief next' "$(cat "$RUNNING")" '/console (new|next)( |`)'
 
 if [ "$fails" -eq 0 ]; then

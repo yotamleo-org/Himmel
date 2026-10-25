@@ -50,7 +50,7 @@ Run these, in order, and write the result as the first bullet under
 
    `/chief new` acquires it and writes the real token above: adopt it, copy it
    into your first bullet, never acquire again (`Work is owned elsewhere`).
-   `/chief next` never acquires one, so the block reads `none yet` and the lock is `free`: acquire your own and record that token. Check with
+   `/console next` never acquires one, so the block reads `none yet` and the lock is `free`: acquire your own and record that token. Check with
    `HANDOVER_DIR="{{HANDOVER_ROOT}}" bash "{{REPO}}/scripts/handover/queue-lock.sh" status "<this file>"`;
    `held` with `none yet` means another chief runs on this doc: find it, never
    take it over.
