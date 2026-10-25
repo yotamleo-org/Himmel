@@ -195,7 +195,7 @@ jq -e --arg h "$HEAD1" '.pr == 42 and .head == $h and (.ts | type == "string") a
 # flock is util-linux: without it the release runs unlocked (no lock file by design), so the row has nothing to assert.
 if command -v flock >/dev/null 2>&1; then
 ls "$TMP/repo/.git"/cr-first-release.42.lock >/dev/null 2>&1 && ok "release: per-PR lock file in the git common dir" || bad "release: per-PR lock file in the git common dir"
-else ok "release: per-PR lock file in the git common dir (skipped: no flock on this host)"; fi
+else echo "SKIP release: per-PR lock file in the git common dir (no flock on this host)"; fi
 p1 release-clean
 # RL7 — a second call at the same head: no second pair (the timeline now shows the event).
 run RL7-second

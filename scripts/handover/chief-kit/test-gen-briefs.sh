@@ -133,7 +133,7 @@ lacks "relay-batch on a gen-briefs-built manifest prints no UNRESOLVED-LANE" "$r
 has "relays the first leg" "$rb" "SENDMESSAGE to=HIMMEL-9001-N901-plain-fix-2026-10-08"
 has "and relays the second leg" "$rb" "SENDMESSAGE to=HIMMEL-9002-N902-hook-fix-2026-10-08"
 else
-  pass "relay-batch rows skipped: no flock on this host, so fleet-manifest.sh writes no row"
+  echo "SKIP relay-batch rows (no flock on this host, so fleet-manifest.sh writes no row)"
 fi
 # the sidecar Telegram /launch-leg checks is written with the launcher.
 side="$(cat "$WORK/fleet.launchers.sha256" 2>/dev/null)"
