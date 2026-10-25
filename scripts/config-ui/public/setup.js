@@ -50,6 +50,32 @@ function commitRules(c, plans) {
     ${plans[rk] ? planHtml(rk, plans[rk]) : ""}`;
 }
 
+const PATH_LABEL = { "handover-root": "Handover root", "luna-vault": "luna vault path" };
+
+// Where handover state and the luna vault live, each change a dry run first; the forge is shown as detected; the
+// remaining choices are the Settings page's toggles, linked here rather than repeated.
+function setupChoices(c, plans) {
+  if (!c) return "";
+  const rows = c.paths.map((p) => {
+    const k = `setup|${p.target}`;
+    const shown = (plans[k] && plans[k].req && plans[k].req.value) || p.value || "";
+    return `<div class="srow"><span class="id">${esc(PATH_LABEL[p.target] || p.target)}</span>
+      <span class="det">${p.value ? `${esc(p.key)} · takes effect on the next Claude launch` : `not set · default: ${esc(p.fallback)}`}</span>
+      <form class="sform" data-path-form data-target="${esc(p.target)}" autocomplete="off">
+        <input type="text" data-path="${esc(p.target)}" value="${esc(shown)}" spellcheck="false" placeholder="/absolute/path" aria-label="${esc(PATH_LABEL[p.target] || p.target)}">
+        <button class="btn" type="submit">preview</button></form></div>
+      ${plans[k] ? planHtml(k, plans[k]) : ""}`;
+  }).join("");
+  const f = c.forge || {};
+  const forge = `<div class="srow"><span class="id">Forge</span>
+    <span class="det">${f.error ? esc(f.error) : `detected: ${esc(f.value)}`}</span>
+    <span class="ro">set <code>FORGE</code> or <code>git config himmel.forge</code> in the terminal</span></div>`;
+  return `<h3>Setup choices</h3>
+    <p class="sub">Each path is written to <code>~/.himmel/himmel.conf</code> by <code>himmelctl config set</code> after a dry run you confirm. A path is absolute, with no <code>.</code> or <code>..</code> part, quote, <code>#</code>, <code>$</code> or backslash.</p>
+    ${rows}${forge}
+    <p class="sub">Plugin set, Review by a second model and Auto-ship steps are toggles on <a href="#/config">the Settings page</a>.</p>`;
+}
+
 // The first-run Account step: the UI login the always-on UI asks for. The page creates it once; changing it is a terminal step.
 function account(a, msg) {
   if (!a) return "";
@@ -72,5 +98,6 @@ export function renderSetup(setup, plans, msgs) {
     <p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, <code>himmelctl install</code> asks for secrets in the terminal instead.</p>
     <h3>Secrets</h3>${setup.secrets.map((s) => secretRow(s, msgs[s.name])).join("")}
     ${coderabbit(setup.coderabbit)}
-    ${commitRules(setup.commit, plans)}`;
+    ${commitRules(setup.commit, plans)}
+    ${setupChoices(setup.choices, plans)}`;
 }
