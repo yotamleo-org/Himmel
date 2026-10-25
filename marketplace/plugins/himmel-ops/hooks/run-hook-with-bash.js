@@ -1171,12 +1171,19 @@ function unrollCommand(command) {
 }
 
 // The payload the guards see: a PreToolUse Bash call whose command unrolls
-// gets the unrolled command, every other payload is passed on unchanged.
+// gets the unrolled command, every other payload is passed on unchanged. A
+// throw is a failed unroll like any other: an uncaught one would exit 1, which
+// Claude Code treats as a non-blocking error and runs the call unguarded.
 function guardPayload(input, hookInput) {
   if (!hookInput || hookInput.hook_event_name !== 'PreToolUse' || hookInput.tool_name !== 'Bash') return input;
   const toolInput = hookInput.tool_input;
   if (!toolInput || typeof toolInput !== 'object') return input;
-  const unrolled = unrollCommand(toolInput.command);
+  let unrolled;
+  try {
+    unrolled = unrollCommand(toolInput.command);
+  } catch (_e) {
+    return input;
+  }
   if (unrolled === null) return input;
   return JSON.stringify({ ...hookInput, tool_input: { ...toolInput, command: unrolled } });
 }

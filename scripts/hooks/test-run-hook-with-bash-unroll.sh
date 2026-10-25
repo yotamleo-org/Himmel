@@ -34,10 +34,15 @@ fail() { echo "FAIL $1"; FAILED=$((FAILED + 1)); }
 
 SANDBOX=$(mktemp -d "${TMPDIR:-/tmp}/hook-unroll.XXXXXX") || { echo "FAIL fixture: mktemp"; exit 1; }
 trap 'rm -rf "$SANDBOX"' EXIT
-mkdir -p "$SANDBOX/home" "$SANDBOX/slow"
+mkdir -p "$SANDBOX/home" "$SANDBOX/slow" "$SANDBOX/broken"
 # A shfmt that takes a second per call: three calls overrun the unroll budget.
 printf '#!/bin/sh\nsleep 1\nexec %s "$@"\n' "$(command -v shfmt)" > "$SANDBOX/slow/shfmt"
 chmod +x "$SANDBOX/slow/shfmt"
+# A shfmt whose tree makes the unroller throw. Only the runner spells its
+# parse `--to-json -ln bash`; the guards' `-ln bash --to-json` gets the real one.
+printf '#!/bin/sh\nif [ "$1" = --to-json ]; then echo %s; exit 0; fi\nexec %s "$@"\n' \
+    "'{\"Stmts\":[null]}'" "$(command -v shfmt)" > "$SANDBOX/broken/shfmt"
+chmod +x "$SANDBOX/broken/shfmt"
 
 # unrolled <command> [ENV=val ...] -> GOT (the unrolled text, or NULL)
 unrolled() {
@@ -124,19 +129,19 @@ while IFS= read -r m; do MEMBERS+=("$ROOT/$m"); done < <(
         | grep -o -E 'scripts/hooks/[A-Za-z0-9_-]+\.sh' | awk '!seen[$0]++')
 [ "${#MEMBERS[@]}" -gt 0 ] || { echo "FAIL fixture: no Bash PreToolUse members in $SETTINGS"; exit 1; }
 
-# chain <command> -> RC and DECISION (deny when the chain exits 2 or says deny)
+# chain <command> [PATH] -> RC and DECISION (deny when the chain exits 2 or says deny)
 chain() {
     jq -n --arg c "$1" --arg cwd "$SANDBOX" \
         '{hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: {command: $c}, cwd: $cwd, session_id: "hook-unroll"}' \
         > "$SANDBOX/payload.json" || { echo "FAIL fixture: jq"; exit 1; }
-    OUT=$(env -i PATH="$PATH" HOME="$SANDBOX/home" TMPDIR="${TMPDIR:-/tmp}" CLAUDE_PROJECT_DIR="$ROOT" \
+    OUT=$(env -i PATH="${2:-$PATH}" HOME="$SANDBOX/home" TMPDIR="${TMPDIR:-/tmp}" CLAUDE_PROJECT_DIR="$ROOT" \
         node "$RUNNER" --chain "${MEMBERS[@]}" < "$SANDBOX/payload.json" 2>/dev/null)
     RC=$?
     DECISION=$(printf '%s' "$OUT" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)
     [ "$RC" = 2 ] && DECISION=deny
 }
-denied() {  # denied <label> <command>
-    chain "$2"
+denied() {  # denied <label> <command> [PATH]
+    chain "$2" "${3:-}"
     if [ "$DECISION" = deny ]; then pass "chain denies: $1"; else fail "chain denies: $1 - rc=$RC out=$OUT"; fi
 }
 allowed() {  # allowed <label> <command>
@@ -162,6 +167,8 @@ denied 'RED 12: a redirected loop' 'for x in foo; do ls ~/.local/state/himmel/$x
 denied 'RED 13: 17 items' 'for x in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 bus; do ls ~/.local/state/himmel/$x; done'
 denied 'RED 14: printf -v sets NAME by a computed name' "for x in foo; do printf -v \"\$(printf '\\170')\" bus; ls ~/.local/state/himmel/\$x; done"
 denied 'RED 15: a function named cat sets NAME' "cat() { printf -v \"\$(printf '\\170')\" bus; }; for x in foo; do cat; ls ~/.local/state/himmel/\$x; done"
+denied 'RED 16: the guards still run when the unroller throws' 'cat .env; for x in a; do cat $x; done' \
+    "$SANDBOX/broken:$PATH"
 
 echo
 if [ "$FAILED" -eq 0 ]; then
