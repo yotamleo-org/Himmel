@@ -408,7 +408,7 @@ def write_panel(path, text):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ledger")
     ap.add_argument("--changes")
     ap.add_argument("--out")

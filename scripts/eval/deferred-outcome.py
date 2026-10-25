@@ -108,7 +108,7 @@ def build(rows, mirror, until):
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--cr-ledger")
     ap.add_argument("--mirror", default=judge_accuracy.MIRROR)
     ap.add_argument("--until")

@@ -99,5 +99,11 @@ eq "no --verdicts: no judge numbers" "$(python3 -I -c 'import json, sys; print(s
 python3 -I "$EVAL" --prs "$TMP/no-prs.json" --cr-ledger "$TMP/cr.jsonl" --mirror "$TMP/mirror" >/dev/null 2>&1; rc=$?
 eq "a missing PR snapshot is refused" "$rc" "2"
 
+out="$(run --until 2026-10-18T23:59:59Z 2>/dev/null)"
+eq "--until: a PR merged after the cut is out of the sample" "$(pick merged)" "9"
+eq "--until: a revert merged after the cut is no signal" "$(pick signal.revert)" "1"
+eq "--until: a bug created after the cut is no signal" "$(pick signal.caused-by)" "0"
+case "$(python3 -I "$EVAL" --help 2>&1)" in *"Exit 0 done"*) pass "--help prints the whole usage text";; *) fail "--help prints the whole usage text";; esac
+
 echo "test-escapes: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

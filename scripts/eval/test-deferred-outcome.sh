@@ -82,5 +82,8 @@ eq "a missing Jira mirror is refused, never an all-unknown run" "$rc" "2"
 python3 -I "$EVAL" --cr-ledger "$TMP/no-cr.jsonl" --mirror "$TMP/mirror" >/dev/null 2>&1; rc=$?
 eq "a missing CR ledger is refused" "$rc" "2"
 
+eq "--until: a finding raised after the cut is out" "$(python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" --mirror "$TMP/mirror" --until 2026-10-09T00:00:00Z 2>/dev/null | python3 -I -c 'import json, sys; print(json.load(sys.stdin)["metrics"]["deferred"])')" "0"
+case "$(python3 -I "$EVAL" --help 2>&1)" in *"Exit 0 done"*) pass "--help prints the whole usage text";; *) fail "--help prints the whole usage text";; esac
+
 echo "test-deferred-outcome: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -16,9 +16,11 @@ finding, labelled as cr_ledger_eval.py labels it; keys critic.<critic>.*) and pe
 GO verdict record on the PR at its merged head and before its merge, console GOs left out; keys judge.<model>.*): prs, escapes, escapes_plausible
 and escape_rate.
 
-  escapes.py --prs FILE [--cr-ledger P] [--mirror DIR] [--verdicts DIR] [--record] [--ledger P]
+  escapes.py --prs FILE [--cr-ledger P] [--mirror DIR] [--verdicts DIR] [--until TS] [--record] [--ledger P]
 
 --prs is `gh pr list --state merged --limit 5000 --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit`.
+--until cuts the sample as of TS: PRs merged after it, Bugs created after it and CR-ledger rows after it
+are left out.
 Without --verdicts there are no judge numbers. Without --record the eval-runs row is printed, not appended.
 A PR merged recently has had less time to show an escape, so its rate reads low.
 Exit 0 done; 2 refused input. Stdlib only; no network, no model call.
@@ -110,7 +112,7 @@ def tally(m, ci, prefix, prs, sig):
         ci[prefix + "escape_rate"] = b
 
 
-def build(prs, rows, bugs, recs):
+def build(prs, rows, bugs, recs, until=None):
     merged, sig, count = signals(prs, bugs)
     m, ci = {"merged": len(merged)}, {}
     m["escapes"] = sum(1 for n in merged if any(lv == "S" for _, lv in sig.get(n, ())))
@@ -137,16 +139,17 @@ def build(prs, rows, bugs, recs):
                 per[j].append(n)
         for j in sorted(per):
             tally(m, ci, "judge." + j + ".", per[j], sig)
-    return eval_runs.make_row(EVAL_ID, SOURCE, {"escapes_v": 1, "judges": recs is not None}, m, n=len(merged),
+    return eval_runs.make_row(EVAL_ID, SOURCE, {"escapes_v": 1, "judges": recs is not None, "until": until}, m, n=len(merged),
                               ci=ci, ci_level=0.95 if ci else None, ci_method="wilson" if ci else None)
 
 
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--prs", required=True)
     ap.add_argument("--cr-ledger")
     ap.add_argument("--mirror", default=judge_accuracy.MIRROR)
     ap.add_argument("--verdicts")
+    ap.add_argument("--until")
     ap.add_argument("--record", action="store_true")
     ap.add_argument("--ledger")
     a = ap.parse_args(argv)
@@ -157,8 +160,12 @@ def main(argv=None):
     except ValueError as e:
         print("escapes: refused: %s" % e, file=sys.stderr)
         return 2
-    rows, _ = cr_ledger_eval.load(a.cr_ledger or cr_ledger_eval.default_ledger(), None)
-    row = build(prs, rows, bugs, recs)
+    rows, _ = cr_ledger_eval.load(a.cr_ledger or cr_ledger_eval.default_ledger(), a.until)
+    if a.until:
+        cut = judge_accuracy.when(a.until)
+        prs = [p for p in prs if p.get("mergedAt") and judge_accuracy.when(p["mergedAt"]) <= cut]
+        bugs = [b for b in bugs if not b["created"] or b["created"] <= cut]
+    row = build(prs, rows, bugs, recs, a.until)
     if a.record:
         eval_runs.append_safe(row, a.ledger, who=EVAL_ID)
     else:
