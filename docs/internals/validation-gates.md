@@ -233,10 +233,10 @@ artifacts. **Emission points:**
 This is the ONE added emission this page places: today `file-deferred-issues.sh`
 captures ONLY deferred low-severity findings; blocking Critical/High/Important
 automated review fails are NOT persisted (they block the marker and get fixed in place), so
-the corpus was missing the failures that matter. The lessons loop
-([lesson-audit.md](lesson-audit.md)) consumes these ("failed traces become the
-next test cases"); this page places the emission points, and the loop owns
-what is learned from them. No new storage system (YAGNI) — session
+the corpus was missing the failures that matter. Nothing reads these records
+yet: this page places only the emission points, and the lessons loop
+([lesson-audit.md](lesson-audit.md)) samples lesson files, not this corpus.
+No new storage system (YAGNI) — session
 dirs + issues are the corpus v1, with the one added write above.
 
 ## 7. CI promotion path
