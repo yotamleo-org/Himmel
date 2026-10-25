@@ -44,7 +44,7 @@ resolve_primary() {
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
 }
 
-# live_console <repo>: newest held *-console queue lock's session name ("" if none).
+# live_console <repo>: newest held *-chief / *-console queue lock's session name ("" if none).
 live_console() {
     local line slug age st best="" best_age=-1
     while IFS= read -r line; do
@@ -52,7 +52,7 @@ live_console() {
         slug="${line#slug=}"; slug="${slug%% *}"
         age="${line#*age=}"; age="${age%%s *}"
         st="${line##*status=}"
-        case "$slug" in *-console) ;; *) continue ;; esac
+        case "$slug" in *-console|*-chief) ;; *) continue ;; esac
         case "$st" in OK|'IDLE-HELD?') ;; *) continue ;; esac
         [[ "$age" =~ ^[0-9]+$ ]] || continue
         if [ "$best_age" -lt 0 ] || [ "$age" -lt "$best_age" ]; then best="${slug##*__}"; best_age="$age"; fi

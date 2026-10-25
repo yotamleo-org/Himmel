@@ -690,7 +690,7 @@ $_fleet_name"
   done <<FLEET_CANDIDATES
 $(printf '%s\n' "$_fc_raw" \
   | grep -E -- '-n[[:space:]]+(HIMMEL|LUNA)-' \
-  | grep -vE -- '-n[[:space:]]+(HIMMEL|LUNA)-[^[:space:]]*-console')
+  | grep -vE -- '-n[[:space:]]+(HIMMEL|LUNA)-[^[:space:]]*-(console|chief)')
 FLEET_CANDIDATES
   fleet_n=$_fc_n
   fleet_native=$_fc_native

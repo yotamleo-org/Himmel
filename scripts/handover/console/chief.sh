@@ -125,7 +125,9 @@ not ask before relaying. It sends nothing itself. A console with a bus identity
 (HIMMEL_BUS_NAME) gets the marker without the flag.
 --name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
-else "console".
+else "chief". A name must be "chief" or end in "-chief"; a pre-rename
+"console" / "*-console" name maps to its chief spelling, and every lookup
+still finds a predecessor doc that carries the console spelling.
 --date on next overrides the day used for the successor's own name and
 starts that day's succession at letter A; without --date the successor
 continues the predecessor's own bijective letter sequence (rolling past Z
@@ -253,9 +255,29 @@ render_template() {
 find_free_letter() {
     local l="A"
     while :; do
-        [ -e "$state_dir/${prefix}-nextleg-${date}${l}-${name}.md" ] || { printf '%s' "$l"; return 0; }
+        { [ -e "$state_dir/${prefix}-nextleg-${date}${l}-${name}.md" ] || [ -e "$state_dir/${prefix}-nextleg-${date}${l}-${old_name}.md" ]; } || { printf '%s' "$l"; return 0; }
         l="$(next_letter "$l")" || return 1
     done
+}
+
+# chief_name -- the chief spelling of a chain name: console to chief,
+# <x>-console to <x>-chief; any other name unchanged.
+chief_name() {
+    case "$1" in
+        console) printf 'chief' ;;
+        *-console) printf '%s-chief' "${1%-console}" ;;
+        *) printf '%s' "$1" ;;
+    esac
+}
+
+# console_name -- the pre-rename spelling of a chief chain name, which the
+# docs and inboxes of a chain armed before the rename still carry.
+console_name() {
+    case "$1" in
+        chief) printf 'console' ;;
+        *-chief) printf '%s-console' "${1%-chief}" ;;
+        *) printf '%s' "$1" ;;
+    esac
 }
 
 # Discovery metadata for /consoles. Best-effort; no Telegram message is sent
@@ -552,7 +574,7 @@ case "$CMD" in
     *) err "unknown command: $CMD"; usage >&2; exit 1 ;;
 esac
 
-NAME="console"
+NAME="chief"
 NAME_GIVEN=0
 ARM=0
 RELAY_ON_LIVE=0
@@ -657,14 +679,16 @@ repo="$(resolve_repo)"
 # $CHIEF_BUCKET/--prefix/--project pins the search on its own and skips
 # this block entirely, so explicit flags always still win.
 if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CHIEF_DOC:-}" ] && [ -z "$BUCKET" ] && [ -z "${CHIEF_BUCKET:-}" ] && [ -z "$PREFIX" ]; then
-    _auto_name="$(slugify "$NAME")"
+    _auto_name="$(chief_name "$(slugify "$NAME")")"
+    _auto_old="$(console_name "$_auto_name")"
     if [ -n "$_auto_name" ]; then
         _auto_newest="" _auto_newest_key=""
-        for _auto_cand in "$root/$slug/"*/*"-nextleg-"*"-${_auto_name}.md"; do
+        for _auto_cand in "$root/$slug/"*/*"-nextleg-"*"-${_auto_name}.md" "$root/$slug/"*/*"-nextleg-"*"-${_auto_old}.md"; do
             [ -f "$_auto_cand" ] || continue
             _auto_base="$(basename "$_auto_cand")"
             _auto_stem="${_auto_base%.md}"
             _auto_prefix_part="${_auto_stem%-"$_auto_name"}"
+            [ "$_auto_prefix_part" = "$_auto_stem" ] && _auto_prefix_part="${_auto_stem%-"$_auto_old"}"
             [ "$_auto_prefix_part" = "$_auto_stem" ] && continue
             if [[ "$_auto_prefix_part" =~ ^[A-Z0-9]+-nextleg-([0-9]{4}-[0-9]{2}-[0-9]{2})([A-Z]{1,2})$ ]]; then
                 _auto_cdate="${BASH_REMATCH[1]}"
@@ -681,7 +705,7 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CH
         [ -n "$_auto_newest" ] && DOC_ARG="$_auto_newest"
         unset _auto_cand _auto_base _auto_stem _auto_prefix_part _auto_cdate _auto_cletter _auto_key _auto_newest _auto_newest_key
     fi
-    unset _auto_name
+    unset _auto_name _auto_old
 fi
 
 # A `next` with no explicit
@@ -901,16 +925,20 @@ if [ -z "$name" ]; then
     err "--name resolved to an empty slug (got '$NAME')"
     exit 1
 fi
-# stop-console-idle-guard (*-console.lock), guard-console-dispatch
-# (*-console.md) and console-compact-reinject (-n name) all key on the -console
-# suffix, so a console armed without it silently loses them. The bare default
-# `console` already yields the `…A-console` doc.
+# stop-console-idle-guard (*-chief.lock), guard-console-dispatch
+# (*-chief.md) and console-compact-reinject (-n name) all key on the -chief
+# suffix, so a chief armed without it silently loses them. The bare default
+# `chief` already yields the `…A-chief` doc. A pre-rename console name maps
+# to its chief spelling; old_name keeps that spelling for the lookups that
+# must still find a live console-named chain.
+name="$(chief_name "$name")"
 case "$name" in
-    console|*-console) ;;
+    chief|*-chief) ;;
     *)
-        err "--name '$NAME' (slug '$name') must be 'console' or end in '-console' (the console guards key on that suffix)"
+        err "--name '$NAME' (slug '$name') must be 'chief' or end in '-chief' (the chief guards key on that suffix)"
         exit 1 ;;
 esac
+old_name="$(console_name "$name")"
 date="$(date +%F)"
 # successor_date: the day used for `next`'s SUCCESSOR name only.
 # Defaults to today; --date overrides it so a 23:5x console can pre-mint
@@ -1331,6 +1359,10 @@ cmd_new() {
     local letter="A" doc create_error claimed=0
     set -C
     while :; do
+        if [ -e "$state_dir/${prefix}-nextleg-${date}${letter}-${old_name}.md" ]; then
+            letter="$(next_letter "$letter")" || break
+            continue
+        fi
         doc="$state_dir/${prefix}-nextleg-${date}${letter}-${name}.md"
         if create_error="$( { : > "$doc"; } 2>&1 )"; then
             claimed=1
@@ -1458,11 +1490,12 @@ resolve_predecessor() {
     # LATER letter) break a plain name sort: rank candidates by letter_value,
     # never by string comparison.
     local cand best_cand="" best_val=0 base stem letter_part val
-    for cand in "$state_dir/${prefix}-nextleg-${date}"*"-${name}.md"; do
+    for cand in "$state_dir/${prefix}-nextleg-${date}"*"-${name}.md" "$state_dir/${prefix}-nextleg-${date}"*"-${old_name}.md"; do
         [ -f "$cand" ] || continue
         base="$(basename "$cand")"
         stem="${base%.md}"
         letter_part="${stem%-"$name"}"
+        [ "$letter_part" = "$stem" ] && letter_part="${stem%-"$old_name"}"
         [ "$letter_part" = "$stem" ] && continue
         letter_part="${letter_part#"${prefix}-nextleg-${date}"}"
         case "$letter_part" in
@@ -1487,11 +1520,12 @@ resolve_predecessor() {
     # one variable and leaving `$pattern` unquoted word-splits on IFS (a
     # space in the handover root, say) before globbing ever runs.
     local newest="" newest_key="" prefix_part cdate cletter key
-    for cand in "$state_dir/${prefix}-nextleg-"*"-${name}.md"; do
+    for cand in "$state_dir/${prefix}-nextleg-"*"-${name}.md" "$state_dir/${prefix}-nextleg-"*"-${old_name}.md"; do
         [ -f "$cand" ] || continue
         base="$(basename "$cand")"
         stem="${base%.md}"
         prefix_part="${stem%-"$name"}"
+        [ "$prefix_part" = "$stem" ] && prefix_part="${stem%-"$old_name"}"
         [ "$prefix_part" = "$stem" ] && continue
         if [[ "$prefix_part" =~ ^.*-nextleg-([0-9]{4}-[0-9]{2}-[0-9]{2})([A-Z]{1,2})$ ]]; then
             cdate="${BASH_REMATCH[1]}"
@@ -1841,8 +1875,9 @@ cmd_next() {
     predecessor_stem="${predecessor_base%.md}"
     CHIEF_BUS_PREDECESSOR="$predecessor_stem"
     predecessor_prefix_part="${predecessor_stem%-"$name"}"
+    [ "$predecessor_prefix_part" = "$predecessor_stem" ] && predecessor_prefix_part="${predecessor_stem%-"$old_name"}"
     if [ "$predecessor_prefix_part" = "$predecessor_stem" ]; then
-        err "cannot parse predecessor doc name '$predecessor_base' (expected suffix '-$name.md')"
+        err "cannot parse predecessor doc name '$predecessor_base' (expected suffix '-$name.md' or '-$old_name.md')"
         exit 1
     fi
     if [[ "$predecessor_prefix_part" =~ ^.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})$ ]]; then

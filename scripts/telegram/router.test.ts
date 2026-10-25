@@ -120,6 +120,13 @@ test("HIMMEL-5148: a mid-text, trailing, or other-bot /console stays chat", () =
   expect(classify("/consoles@otherbot", "mybot").kind).toBe("chat");
 });
 
+test("HIMMEL-7505: /chief and /chiefs route like /console and /consoles", () => {
+  expect(classify("/chief foo bar baz")).toEqual({ kind: "console", name: "foo", text: "bar baz" });
+  expect(classify("/Chief@mybot just text", "mybot")).toEqual({ kind: "console", name: "just", text: "text" });
+  expect(classify("/chiefs")).toEqual({ kind: "consoles" });
+  for (const t of ["/chiefx foo bar", "/chiefs foo", "please /chief foo bar"]) expect(classify(t).kind).toBe("chat");
+});
+
 // fleet verbs and /lockdown take the same case-insensitive verb and
 // `/cmd@<bot>` addressing as /console; the leg label stays exact.
 test("HIMMEL-5150: fleet verbs are case-insensitive and accept /cmd@<bot>", () => {

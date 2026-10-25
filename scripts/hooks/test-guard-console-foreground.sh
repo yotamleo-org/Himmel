@@ -17,6 +17,7 @@ fail=0
 # NUL-delimited argv fixtures for the session-name seam (scripts/lib/session-name.sh)
 printf 'claude\0-n\0N-console\0' > "$TMP/cmdline-console"
 printf 'claude\0-n\0N2262-HIMMEL-5821-leg\0' > "$TMP/cmdline-leg"
+printf 'claude\0-n\0N-roadmap-chief\0' > "$TMP/cmdline-chief"
 
 ok()  { echo "ok   $1"; pass=$((pass + 1)); }
 bad() { echo "FAIL $1"; fail=$((fail + 1)); }
@@ -77,6 +78,10 @@ out=$(printf '%s' "$payload_leg" | env HIMMEL_CONSOLE_DOC=/x/N-console.md CLAUDE
 expect "leg session name with inherited HIMMEL_CONSOLE_DOC, foreground ready-check.sh: allowed" 0 "$rc|$out"
 out=$(printf '%s' "$payload_leg" | env -u CLAUDE_PID HIMMEL_CONSOLE_DOC=/x/N-console.md CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
 expect "unresolvable session name: fails open" 0 "$rc|$out"
+# a session named *-chief is a chief exactly as a *-console one is
+payload_wrap=$(jq -nc --arg c "$K/wrap-merged.sh --pr 12" '{tool_name:"Bash",tool_input:{command:$c}}')
+out=$(printf '%s' "$payload_wrap" | env HIMMEL_CONSOLE_DOC=/x/N-roadmap-chief.md CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-chief" CHIEF_FG_LIST="$LIST" bash "$HOOK" 2>&1); rc=$?
+expect "chief-named session, foreground wrap-merged.sh: denied like a console" 2 "$rc|$out" "run_in_background"
 
 # --- the short scripts stay foreground
 for s in append-results.sh go.sh write-verdict.sh fleet-manifest.sh; do

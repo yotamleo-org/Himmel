@@ -136,25 +136,25 @@ token_of() {
 }
 
 # --- 1/2/3/4: new, placeholder cleanliness, lock lifecycle, idempotent bump
-docA="$root/tester/demorepo/DEMO-nextleg-${today}A-console.md"
-docB="$root/tester/demorepo/DEMO-nextleg-${today}B-console.md"
+docA="$root/tester/demorepo/DEMO-nextleg-${today}A-chief.md"
+docB="$root/tester/demorepo/DEMO-nextleg-${today}B-chief.md"
 
 out1="$(console new --bucket demorepo)"
 check "1 new writes the console doc" "$([ -f "$docA" ] && echo yes)" "yes"
-check "1 Telegram metadata records the console bucket" "$(grep -c '"bucket":"demorepo"' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.meta.json" 2>/dev/null || true)" "1"
+check "1 Telegram metadata records the console bucket" "$(grep -c '"bucket":"demorepo"' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.meta.json" 2>/dev/null || true)" "1"
 check "2 doc has no surviving placeholder" "$(grep -c '{{' "$docA" 2>/dev/null)" "0"
 # The step-10/11 commands carry the RESOLVED literal inbox path,
 # never a ${BRIDGE_ROOT:-...} expansion guard-pr-check-literal denies.
 check "2b doc has no BRIDGE_ROOT expansion" "$(grep -c 'BRIDGE_ROOT' "$docA" 2>/dev/null)" "0"
 # shellcheck disable=SC2016  # literal, unexpanded on purpose
 check "2b step-10/11 commands carry no \${ expansion" "$(grep -E 'console-wait.sh|`: >> ' "$docA" 2>/dev/null | grep -cF '${')" "0"
-check "2b doc names the BRIDGE_ROOT override inbox literally" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md" "$docA" 2>/dev/null)" "3"
-docInboxDefault="$root/tester/inboxdefault/DEMO-nextleg-${today}A-console.md"
+check "2b doc names the BRIDGE_ROOT override inbox literally" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md" "$docA" 2>/dev/null)" "3"
+docInboxDefault="$root/tester/inboxdefault/DEMO-nextleg-${today}A-chief.md"
 outInbox="$( unset BRIDGE_ROOT; HOME="$tmp/inboxhome" console new --bucket inboxdefault 2>&1 )"
 tokenInbox="$(token_of "$outInbox")"
 # Release now: a held lock's owner files carry the host name (case 8 leak scan).
 HANDOVER_DIR="$root" bash "$QL" release "$docInboxDefault" "$tokenInbox" >/dev/null 2>&1
-check "2c unset BRIDGE_ROOT renders the HOME default inbox literally" "$(grep -cF "$tmp/inboxhome/.claude/handover/bridge/consoles/DEMO-nextleg-${today}A-console.md" "$docInboxDefault" 2>/dev/null)" "3"
+check "2c unset BRIDGE_ROOT renders the HOME default inbox literally" "$(grep -cF "$tmp/inboxhome/.claude/handover/bridge/consoles/DEMO-nextleg-${today}A-chief.md" "$docInboxDefault" 2>/dev/null)" "3"
 
 check "3 new prints release-token" "$(printf '%s\n' "$out1" | grep -c '^release-token: ')" "1"
 token1="$(token_of "$out1")"
@@ -239,7 +239,7 @@ out3884="$(unset CHIEF_CONTEXT CONSOLE_CONTEXT; console next --bucket demorepo -
 check "3884 next defaults to --autocompact auto" \
     "$(printf '%s\n' "$out3884" | grep -c -- '--autocompact auto')" "1"
 check "3884 next records 1m default auto" \
-    "$(printf '%s\n' "$out3884" | grep -c -- "record-launch.sh DEMO-nextleg-${today}B-console 1m default auto")" "1"
+    "$(printf '%s\n' "$out3884" | grep -c -- "record-launch.sh DEMO-nextleg-${today}B-chief 1m default auto")" "1"
 for command3884 in new next; do
     out3884="$(CHIEF_CONTEXT=1m console "$command3884" --bucket demorepo --context standard --dry-run)"
     check "3884 $command3884 --context standard overrides env" \
@@ -281,9 +281,9 @@ check "5d env prefix precedes the claude binary" \
     "$(printf '%s\n' "$out5b" | grep -c -E '^(would-)?launch: cd [^;]* && \{ bash [^;]*record-launch.sh [^;]*; (if \[ -f [^;]*console-bus-exec.sh \]; then bash [^;]*console-bus-exec.sh [^;]* -- )?env( -u [A-Z_]+)+ CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 claude ')" "1"
 
 # --- 6: next writes the successor stub + predecessor HANDOFF ----------
-doc6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-console.md"
-doc6B="$root/tester/nextrepo/DEMO-nextleg-${today}B-console.md"
-handoff6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.md"
+doc6B="$root/tester/nextrepo/DEMO-nextleg-${today}B-chief.md"
+handoff6A="$root/tester/nextrepo/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 
 out6a="$(console new --bucket nextrepo)"
 token6a="$(token_of "$out6a")"
@@ -291,15 +291,15 @@ token6a="$(token_of "$out6a")"
 # (the stub PR set above is just #5); a WRAPPED leg naming a closed PR is not.
 printf '%s\n' '# leg' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-1-N9-wrapped.md"
 printf '%s\n' '# leg' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRAPPED — done' > "$root/tester/nextrepo/DEMO-2-N8-closed.md"
-printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-console.fleet.json"
+printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
 console next --bucket nextrepo >/dev/null
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
-check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-console.md.meta.json" 2>/dev/null || true)" "1"
+check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
 check "6 next writes predecessor HANDOFF" "$([ -f "$handoff6A" ] && echo yes)" "yes"
-check "6 successor stub names the predecessor" "$(grep -c "DEMO-nextleg-${today}A-console.md" "$doc6B")" "1"
+check "6 successor stub names the predecessor" "$(grep -c "DEMO-nextleg-${today}A-chief.md" "$doc6B")" "1"
 check "6 successor has no surviving placeholder" "$(grep -c '{{' "$doc6B" 2>/dev/null)" "0"
 check "6 successor has no BRIDGE_ROOT expansion" "$(grep -c 'BRIDGE_ROOT' "$doc6B" 2>/dev/null)" "0"
-check "6 successor names its inbox literally" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-console.md" "$doc6B" 2>/dev/null)" "3"
+check "6 successor names its inbox literally" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md" "$doc6B" 2>/dev/null)" "3"
 check "6 handoff has no surviving placeholder" "$(grep -c '{{' "$handoff6A" 2>/dev/null)" "0"
 # The mechanical fields are pre-filled by handoff-facts.sh (the
 # bank and PR commands are stubbed above), so the console writes only judgement
@@ -311,7 +311,7 @@ check "6 handoff carries a WRAPPED leg whose PR is still open (HIMMEL-5542)" "$(
 check "6 handoff omits a WRAPPED leg whose PR is closed (HIMMEL-5542)" "$(grep -c '^- PR #77' "$handoff6A")" "0"
 check "6 handoff section tells the successor to disposition before dispatch (HIMMEL-5542)" "$(grep -c '^## Wrapped with open PR' "$handoff6A")" "1"
 check "6 handoff leaves one judgement-notes block" "$(grep -c '^## Rulings and judgement notes' "$handoff6A")" "1"
-check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
+check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
 
 # --- 6c: the GENERATED stub and HANDOFF must not tell the
 # successor to mint and rotate a fresh nonce per leg -- leg-preface.md (the
@@ -334,24 +334,24 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc6A" "$token6a" >/dev/null 2>&1
 # predecessor's inbox; a plain `next` leaves none; the flag is next-only.
 out6da="$(console new --bucket reldemo)"
 token6da="$(token_of "$out6da")"
-doc6dA="$root/tester/reldemo/DEMO-nextleg-${today}A-console.md"
-doc6dB="$root/tester/reldemo/DEMO-nextleg-${today}B-console.md"
-mark6d="$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.relay-on-live"
+doc6dA="$root/tester/reldemo/DEMO-nextleg-${today}A-chief.md"
+doc6dB="$root/tester/reldemo/DEMO-nextleg-${today}B-chief.md"
+mark6d="$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.relay-on-live"
 console next --bucket reldemo >/dev/null
 check "6d plain next leaves no relay-on-live marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
-rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover"
 console next --bucket reldemo --relay-on-live >/dev/null
-check "6d next --relay-on-live writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
+check "6d next --relay-on-live writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
 check "6d next --relay-on-live writes the successor doc on line 2" "$(sed -n 2p "$mark6d" 2>/dev/null)" "$doc6dB"
 check "6d --relay-on-live is next-only" "$(console new --bucket reldemo2 --relay-on-live >/dev/null 2>&1; echo $?)" "1"
 # 6e: a console with a bus identity gets the marker without the flag, so its waiter runs
 # relay-batch.sh (bus record + SendMessage lines) instead of a hand relay that leaves the
 # legs with no bus edge to the successor.
-rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-console.md.handover" "$mark6d"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" "$mark6d"
 rc6e=0
-HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-console" console next --bucket reldemo >/dev/null || rc6e=$?
+HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-chief" console next --bucket reldemo >/dev/null || rc6e=$?
 check "6e bus-identified next succeeds" "$rc6e" "0"
-check "6e next from a bus-identified console writes the relay-on-live marker unasked" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-console"
+check "6e next from a bus-identified console writes the relay-on-live marker unasked" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
 HANDOVER_DIR="$root" bash "$QL" release "$doc6dA" "$token6da" >/dev/null 2>&1
 
 # --- 6b: --doc outside the successor's own state dir --------------------
@@ -360,10 +360,10 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc6dA" "$token6da" >/dev/null 2>&1
 # in the successor's state_dir.
 out6ba="$(console new --bucket outsidesrc)"
 token6ba="$(token_of "$out6ba")"
-doc6bSrc="$root/tester/outsidesrc/DEMO-nextleg-${today}A-console.md"
-handoff6bSrc="$root/tester/outsidesrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
-handoff6bWrong="$root/tester/outsidedst/DEMO-nextleg-${today}A-console-HANDOFF.md"
-doc6bDst="$root/tester/outsidedst/DEMO-nextleg-${today}B-console.md"
+doc6bSrc="$root/tester/outsidesrc/DEMO-nextleg-${today}A-chief.md"
+handoff6bSrc="$root/tester/outsidesrc/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+handoff6bWrong="$root/tester/outsidedst/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+doc6bDst="$root/tester/outsidedst/DEMO-nextleg-${today}B-chief.md"
 
 console next --bucket outsidedst --doc "$doc6bSrc" >/dev/null
 check "6b next --doc still writes the successor stub into its own state_dir" "$([ -f "$doc6bDst" ] && echo yes)" "yes"
@@ -381,8 +381,8 @@ check "6b successor reference resolves from the HANDOFF directory" "$([ -f "$suc
 HANDOVER_DIR="$root" bash "$QL" release "$doc6bSrc" "$token6ba" >/dev/null 2>&1
 
 # --- 7: next --arm with a stub arm target ------------------------------
-doc7A="$root/tester/armrepo/DEMO-nextleg-${today}A-console.md"
-session7B="DEMO-nextleg-${today}B-console"
+doc7A="$root/tester/armrepo/DEMO-nextleg-${today}A-chief.md"
+session7B="DEMO-nextleg-${today}B-chief"
 # Signal/log live under a chain-identity subdir ($slug-$bucket-$digest), not
 # $workdir directly -- bucket-only-differing chains
 # must not collide on the same signal/log path, and chains under
@@ -482,8 +482,8 @@ check "9 unresolvable root writes nothing" "$([ -e "$badroot" ] && echo yes || e
 # .locks/ is excluded from both snapshots: queue-lock.sh legitimately writes
 # there (outside any bucket) on every `new`, unrelated to --name handling.
 before10="$(find "$root" -type f -not -path "$root/.locks/*" | sort)"
-out10="$(console new --bucket namebucket --name '../evil-console')"
-docNameSlug="$root/tester/namebucket/DEMO-nextleg-${today}A-evil-console.md"
+out10="$(console new --bucket namebucket --name '../evil-chief')"
+docNameSlug="$root/tester/namebucket/DEMO-nextleg-${today}A-evil-chief.md"
 check "10 --name is slugified into the doc path" "$([ -f "$docNameSlug" ] && echo yes)" "yes"
 token10="$(token_of "$out10")"
 after10_outside="$(find "$root" -type f -not -path "$root/.locks/*" -not -path "$root/tester/namebucket/*" | sort)"
@@ -493,8 +493,8 @@ HANDOVER_DIR="$root" bash "$QL" release "$docNameSlug" "$token10" >/dev/null 2>&
 # --- 11: next --doc <A> twice never re-renders an existing successor ----
 out11a="$(console new --bucket dupenext)"
 token11a="$(token_of "$out11a")"
-doc11A="$root/tester/dupenext/DEMO-nextleg-${today}A-console.md"
-doc11B="$root/tester/dupenext/DEMO-nextleg-${today}B-console.md"
+doc11A="$root/tester/dupenext/DEMO-nextleg-${today}A-chief.md"
+doc11B="$root/tester/dupenext/DEMO-nextleg-${today}B-chief.md"
 
 console next --bucket dupenext --doc "$doc11A" >/dev/null
 check "11 first next --doc writes B" "$([ -f "$doc11B" ] && echo yes)" "yes"
@@ -507,27 +507,27 @@ check "11 second next --doc <same A> leaves B byte-identical" "$sum11B_before" "
 HANDOVER_DIR="$root" bash "$QL" release "$doc11A" "$token11a" >/dev/null 2>&1
 
 # --- 12: named chains can hand over -------------------------------------
-out12a="$(console new --bucket nightbucket --name night-console)"
+out12a="$(console new --bucket nightbucket --name night-chief)"
 token12a="$(token_of "$out12a")"
-doc12A="$root/tester/nightbucket/DEMO-nextleg-${today}A-night-console.md"
-check "12 new --name night-console writes A-night doc" "$([ -f "$doc12A" ] && echo yes)" "yes"
+doc12A="$root/tester/nightbucket/DEMO-nextleg-${today}A-night-chief.md"
+check "12 new --name night-chief writes A-night doc" "$([ -f "$doc12A" ] && echo yes)" "yes"
 
-console next --bucket nightbucket --name night-console >/dev/null
-doc12B="$root/tester/nightbucket/DEMO-nextleg-${today}B-night-console.md"
-check "12 next --name night-console writes B-night doc" "$([ -f "$doc12B" ] && echo yes)" "yes"
+console next --bucket nightbucket --name night-chief >/dev/null
+doc12B="$root/tester/nightbucket/DEMO-nextleg-${today}B-night-chief.md"
+check "12 next --name night-chief writes B-night doc" "$([ -f "$doc12B" ] && echo yes)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$doc12A" "$token12a" >/dev/null 2>&1
 
 # --- 12b: next --doc alone derives a non-default name from the basename -
-out12ba="$(console new --bucket nightsrc --name night-console)"
+out12ba="$(console new --bucket nightsrc --name night-chief)"
 token12ba="$(token_of "$out12ba")"
-doc12bA="$root/tester/nightsrc/DEMO-nextleg-${today}A-night-console.md"
+doc12bA="$root/tester/nightsrc/DEMO-nextleg-${today}A-night-chief.md"
 console next --bucket nightdst --doc "$doc12bA" >/dev/null
-doc12bB="$root/tester/nightdst/DEMO-nextleg-${today}B-night-console.md"
+doc12bB="$root/tester/nightdst/DEMO-nextleg-${today}B-night-chief.md"
 check "12b next --doc (no --name) derives the chain name from the doc basename" "$([ -f "$doc12bB" ] && echo yes)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$doc12bA" "$token12ba" >/dev/null 2>&1
 
 # --- 13: a failed queue-lock acquire aborts before the launch line -------
-lockfail_doc="$root/tester/lockfail/DEMO-nextleg-${today}A-console.md"
+lockfail_doc="$root/tester/lockfail/DEMO-nextleg-${today}A-chief.md"
 foreign_out="$(HANDOVER_DIR="$root" bash "$QL" acquire "$lockfail_doc" foreign-session)"
 foreign_token="$(token_of "$foreign_out")"
 rc13=0
@@ -563,10 +563,10 @@ root_sp="$tmp/adj sp"
 mkdir -p "$root_sp/tester/spacerepo"
 yesterday_epoch=$(( $(date +%s) - 86400 ))
 yesterday="$(date -u -d "@$yesterday_epoch" +%F 2>/dev/null || date -u -r "$yesterday_epoch" +%F 2>/dev/null)"
-predoc15="$root_sp/tester/spacerepo/DEMO-nextleg-${yesterday}A-console.md"
+predoc15="$root_sp/tester/spacerepo/DEMO-nextleg-${yesterday}A-chief.md"
 stub_doc predecessor > "$predoc15"
 console_root "$root_sp" next --bucket spacerepo >/dev/null 2>&1
-doc15B="$root_sp/tester/spacerepo/DEMO-nextleg-${today}B-console.md"
+doc15B="$root_sp/tester/spacerepo/DEMO-nextleg-${today}B-chief.md"
 check "15 fallback discovery survives a space in the handover root" "$([ -f "$doc15B" ] && echo yes)" "yes"
 
 # --- 16: new advances past an already-claimed letter --------------------
@@ -574,12 +574,12 @@ check "15 fallback discovery survives a space in the handover root" "$([ -f "$do
 # otherwise both pick the same free letter, and the second would truncate
 # the first's doc before either took its queue lock.
 mkdir -p "$root/tester/racetest"
-racetest_docA="$root/tester/racetest/DEMO-nextleg-${today}A-console.md"
+racetest_docA="$root/tester/racetest/DEMO-nextleg-${today}A-chief.md"
 printf 'pre-existing content that must survive\n' > "$racetest_docA"
 sum_racetestA_before="$(cksum < "$racetest_docA")"
 out16="$(console new --bucket racetest)"
 token16="$(token_of "$out16")"
-racetest_docB="$root/tester/racetest/DEMO-nextleg-${today}B-console.md"
+racetest_docB="$root/tester/racetest/DEMO-nextleg-${today}B-chief.md"
 check "16 new advances past an already-claimed letter" "$([ -f "$racetest_docB" ] && echo yes)" "yes"
 sum_racetestA_after="$(cksum < "$racetest_docA")"
 check "16 the already-claimed doc is left untouched" "$sum_racetestA_before" "$sum_racetestA_after"
@@ -591,11 +591,11 @@ HANDOVER_DIR="$root" bash "$QL" release "$racetest_docB" "$token16" >/dev/null 2
 # `new` rolls past Z instead of refusing there.
 mkdir -p "$root/tester/exhausted"
 for letter16 in {A..Z}; do
-    printf 'claimed\n' > "$root/tester/exhausted/DEMO-nextleg-${today}${letter16}-console.md"
+    printf 'claimed\n' > "$root/tester/exhausted/DEMO-nextleg-${today}${letter16}-chief.md"
 done
 for letter16a in {A..Z}; do
     for letter16b in {A..Z}; do
-        printf 'claimed\n' > "$root/tester/exhausted/DEMO-nextleg-${today}${letter16a}${letter16b}-console.md"
+        printf 'claimed\n' > "$root/tester/exhausted/DEMO-nextleg-${today}${letter16a}${letter16b}-chief.md"
     done
 done
 rc16b=0
@@ -604,13 +604,13 @@ check "16b all 702 letters (A-Z, AA-ZZ) claimed: exits 1" "$rc16b" "1"
 check "16b all 702 letters claimed: reports past-ZZ exhaustion" "$(printf '%s\n' "$out16b" | grep -c 'past ZZ')" "1"
 
 # A directory at candidate A is EISDIR, not an existing console document.
-blocked16A="$root/tester/createerror/DEMO-nextleg-${today}A-console.md"
+blocked16A="$root/tester/createerror/DEMO-nextleg-${today}A-chief.md"
 mkdir -p "$blocked16A"
 rc16c=0
 out16c="$(LC_ALL=C console new --bucket createerror 2>&1)" || rc16c=$?
 check "16c non-collision at A: exits 1" "$rc16c" "1"
 check "16c non-collision at A: reports the underlying error" "$(printf '%s\n' "$out16c" | grep -ci 'is a directory')" "1"
-check "16c non-collision at A: never tries B" "$([ -e "$root/tester/createerror/DEMO-nextleg-${today}B-console.md" ] && echo yes || echo no)" "no"
+check "16c non-collision at A: never tries B" "$([ -e "$root/tester/createerror/DEMO-nextleg-${today}B-chief.md" ] && echo yes || echo no)" "no"
 check "16c non-collision at A: does not report exhaustion" "$(printf '%s\n' "$out16c" | grep -c 'all 26 letters')" "0"
 
 # ENAMETOOLONG cannot be confused with any pre-existing candidate (even as root).
@@ -652,7 +652,7 @@ check "17b log path differs when only HANDOVER_DIR differs" "$([ -n "$log17c" ] 
 
 # --- 18: next --doc <missing predecessor> refuses rather than fabricate -
 before18="$(find "$root" -type f -not -path "$root/.locks/*" | sort)"
-missing_doc="$root/tester/missingrepo/DEMO-nextleg-${today}A-console.md"
+missing_doc="$root/tester/missingrepo/DEMO-nextleg-${today}A-chief.md"
 rc18=0
 console next --bucket missingrepo --doc "$missing_doc" >/dev/null 2>&1 || rc18=$?
 check "18 next --doc <missing predecessor> exits non-zero" "$([ "$rc18" -ne 0 ] && echo yes)" "yes"
@@ -664,13 +664,13 @@ check "18 next --doc <missing predecessor> writes nothing" "$before18" "$after18
 # successor happens to launch from).
 out19a="$(console new --bucket relsrc)"
 token19a="$(token_of "$out19a")"
-doc19A="$root/tester/relsrc/DEMO-nextleg-${today}A-console.md"
-handoff19A="$root/tester/relsrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
-doc19B="$root/tester/reldst/DEMO-nextleg-${today}B-console.md"
+doc19A="$root/tester/relsrc/DEMO-nextleg-${today}A-chief.md"
+handoff19A="$root/tester/relsrc/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+doc19B="$root/tester/reldst/DEMO-nextleg-${today}B-chief.md"
 # console() cd's into $fixture_repo before invoking console.sh, and
 # fixture_repo/root are both direct children of $tmp -- so this relative
 # path, taken from that cwd, resolves to the same file as doc19A.
-rel19_doc="../handovers/tester/relsrc/DEMO-nextleg-${today}A-console.md"
+rel19_doc="../handovers/tester/relsrc/DEMO-nextleg-${today}A-chief.md"
 console next --bucket reldst --doc "$rel19_doc" >/dev/null
 check "19 next --doc (relative) still writes the successor stub" "$([ -f "$doc19B" ] && echo yes)" "yes"
 check "19 next --doc (relative) writes the HANDOFF beside the predecessor" "$([ -f "$handoff19A" ] && echo yes)" "yes"
@@ -692,7 +692,7 @@ check "20 new --prefix '../OTHER' writes nothing" "$before20" "$after20"
 root_amp="$tmp/hand&over"
 mkdir -p "$root_amp"
 out21="$(console_root "$root_amp" new --bucket ampbucket)"
-doc21="$root_amp/tester/ampbucket/DEMO-nextleg-${today}A-console.md"
+doc21="$root_amp/tester/ampbucket/DEMO-nextleg-${today}A-chief.md"
 check "21 new with '&' in the handover root writes the doc" "$([ -f "$doc21" ] && echo yes)" "yes"
 check "21 doc has no surviving placeholder" "$(grep -c '{{' "$doc21" 2>/dev/null)" "0"
 check "21 doc contains the literal '&' path intact" "$([ "$(grep -cF "$root_amp" "$doc21")" -gt 0 ] && echo yes)" "yes"
@@ -715,17 +715,17 @@ check "22 JIRA_PROJECT_KEY='../OTHER' writes nothing" "$before22" "$after22"
 # render (and thereby clobber) the one shared HANDOFF.
 out23a="$(console new --bucket handoffracesrc)"
 token23a="$(token_of "$out23a")"
-doc23A="$root/tester/handoffracesrc/DEMO-nextleg-${today}A-console.md"
-handoff23A="$root/tester/handoffracesrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc23A="$root/tester/handoffracesrc/DEMO-nextleg-${today}A-chief.md"
+handoff23A="$root/tester/handoffracesrc/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 
 console next --bucket handoffracedst1 --doc "$doc23A" >/dev/null
-doc23B1="$root/tester/handoffracedst1/DEMO-nextleg-${today}B-console.md"
+doc23B1="$root/tester/handoffracedst1/DEMO-nextleg-${today}B-chief.md"
 check "23 first next writes its own successor" "$([ -f "$doc23B1" ] && echo yes)" "yes"
 check "23 first next creates the HANDOFF" "$([ -f "$handoff23A" ] && echo yes)" "yes"
 sum23_before="$(cksum < "$handoff23A")"
 
 console next --bucket handoffracedst2 --doc "$doc23A" >/dev/null
-doc23B2="$root/tester/handoffracedst2/DEMO-nextleg-${today}B-console.md"
+doc23B2="$root/tester/handoffracedst2/DEMO-nextleg-${today}B-chief.md"
 check "23 second next (different bucket, same predecessor) still writes its own successor" "$([ -f "$doc23B2" ] && echo yes)" "yes"
 sum23_after="$(cksum < "$handoff23A")"
 check "23 the shared HANDOFF is left byte-identical, not re-rendered" "$sum23_before" "$sum23_after"
@@ -736,7 +736,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc23A" "$token23a" >/dev/null 2>&1
 # ANY reason, not just a genuine collision.
 out24a="$(console new --bucket rodir)"
 token24a="$(token_of "$out24a")"
-doc24A="$root/tester/rodir/DEMO-nextleg-${today}A-console.md"
+doc24A="$root/tester/rodir/DEMO-nextleg-${today}A-chief.md"
 chmod 555 "$root/tester/rodir"
 if test_dir_unwritable "$root/tester/rodir" "24 non-writable predecessor dir"; then
     rc24=0
@@ -754,9 +754,9 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc24A" "$token24a" >/dev/null 2>&1
 # recovery works, not just that something got deleted.
 out25a="$(console new --bucket atomicsrc)"
 token25a="$(token_of "$out25a")"
-doc25A="$root/tester/atomicsrc/DEMO-nextleg-${today}A-console.md"
-doc25B="$root/tester/atomicdst/DEMO-nextleg-${today}B-console.md"
-handoff25A="$root/tester/atomicsrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc25A="$root/tester/atomicsrc/DEMO-nextleg-${today}A-chief.md"
+doc25B="$root/tester/atomicdst/DEMO-nextleg-${today}B-chief.md"
+handoff25A="$root/tester/atomicsrc/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 
 chmod 555 "$root/tester/atomicsrc"
 if test_dir_unwritable "$root/tester/atomicsrc" "25 HANDOFF-create abort / no stub / retry"; then
@@ -782,9 +782,9 @@ render_tpl_dir="$tmp/render-failure-templates"
 mkdir -p "$render_tpl_dir" "$root/tester/rendersrc"
 cp "$REPO_REAL/docs/handover/console-template.md" "$render_tpl_dir/console-template.md"
 printf '{{BROKEN_PLACEHOLDER}}\n' > "$render_tpl_dir/console-handoff-template.md"
-doc25bA="$root/tester/rendersrc/DEMO-nextleg-${today}A-console.md"
-doc25bB="$root/tester/renderdst/DEMO-nextleg-${today}B-console.md"
-handoff25bA="$root/tester/rendersrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc25bA="$root/tester/rendersrc/DEMO-nextleg-${today}A-chief.md"
+doc25bB="$root/tester/renderdst/DEMO-nextleg-${today}B-chief.md"
+handoff25bA="$root/tester/rendersrc/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 stub_doc predecessor > "$doc25bA"
 rc25c=0
 out25c="$(CHIEF_TEMPLATE_DIR="$render_tpl_dir" console next --bucket renderdst --doc "$doc25bA" 2>&1)" || rc25c=$?
@@ -830,7 +830,7 @@ out26="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PRO
     CHIEF_TEMPLATE_DIR="$stub_tpl_dir" CHIEF_HEADED_ARM="$tmp/stub-arm.sh" \
     CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work" \
     bash "$C" new --bucket tokenbucket --arm ) )"
-doc26="$root/tester/tokenbucket/DEMO-nextleg-${today}A-console.md"
+doc26="$root/tester/tokenbucket/DEMO-nextleg-${today}A-chief.md"
 token26_printed="$(token_of "$out26")"
 check "26 new --arm prints a release-token line" "$([ -n "$token26_printed" ] && echo yes)" "yes"
 check "26 doc has no surviving placeholder" "$(grep -c '{{' "$doc26" 2>/dev/null)" "0"
@@ -1269,7 +1269,7 @@ fi
 # instead of inheriting. CHIEF_MODEL is deliberately set to
 # a DIFFERENT value than --model on every invocation below, so a fallback
 # to the environment shows up as the wrong string landing in the doc.
-doc43A="$root/tester/modelbucket/DEMO-nextleg-${today}A-console.md"
+doc43A="$root/tester/modelbucket/DEMO-nextleg-${today}A-chief.md"
 out43a="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_MODEL=envdefault-model \
     bash "$C" new --bucket modelbucket --model custom-model-x ) )"
@@ -1285,7 +1285,7 @@ check "43 new's rendered handover line does not carry CHIEF_MODEL instead" "$(gr
 # resolved model is known -- under a CHIEF_MODEL that again differs, to
 # prove the successor's rendered doc carries the given --model forward
 # rather than re-deriving it from the environment.
-doc43B="$root/tester/modelbucket/DEMO-nextleg-${today}B-console.md"
+doc43B="$root/tester/modelbucket/DEMO-nextleg-${today}B-chief.md"
 ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     CHIEF_MODEL=envdefault-model \
     bash "$C" next --bucket modelbucket --model custom-model-x ) >/dev/null
@@ -1299,37 +1299,37 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc43A" "$token43a" >/dev/null 2>&1
 # base-26: Z -> AA (an explicit --date, even one matching the predecessor's
 # own date, always resets the chain to A instead -- see case 48).
 mkdir -p "$root/tester/rollz"
-docZ44="$root/tester/rollz/DEMO-nextleg-${today}Z-console.md"
+docZ44="$root/tester/rollz/DEMO-nextleg-${today}Z-chief.md"
 stub_doc stub > "$docZ44"
 out44="$(console next --bucket rollz --dry-run --doc "$docZ44")"
-check "44 next --dry-run rolls Z to AA" "$(printf '%s\n' "$out44" | grep -c "^would-doc: .*${today}AA-console.md$")" "1"
+check "44 next --dry-run rolls Z to AA" "$(printf '%s\n' "$out44" | grep -c "^would-doc: .*${today}AA-chief.md$")" "1"
 
 # --- 45: same-day rollover AZ -> BA ---------------------------------------
 mkdir -p "$root/tester/rollaz"
-docAZ45="$root/tester/rollaz/DEMO-nextleg-${today}AZ-console.md"
+docAZ45="$root/tester/rollaz/DEMO-nextleg-${today}AZ-chief.md"
 stub_doc stub > "$docAZ45"
 out45="$(console next --bucket rollaz --dry-run --doc "$docAZ45")"
-check "45 next --dry-run rolls AZ to BA" "$(printf '%s\n' "$out45" | grep -c "^would-doc: .*${today}BA-console.md$")" "1"
+check "45 next --dry-run rolls AZ to BA" "$(printf '%s\n' "$out45" | grep -c "^would-doc: .*${today}BA-chief.md$")" "1"
 
 # --- 46: the recovery regex accepts a two-letter doc name -----------------
 # --doc alone (no --name) must derive the chain name from a TWO-letter
 # basename just as it already does for a one-letter one (line ~262's regex
 # was [A-Z] only), and bump AA -> AB.
 mkdir -p "$root/tester/rollname"
-docAA46="$root/tester/rollname/DEMO-nextleg-${today}AA-mychain-console.md"
+docAA46="$root/tester/rollname/DEMO-nextleg-${today}AA-mychain-chief.md"
 stub_doc stub > "$docAA46"
 console next --bucket rollname --doc "$docAA46" >/dev/null
-docAB46="$root/tester/rollname/DEMO-nextleg-${today}AB-mychain-console.md"
+docAB46="$root/tester/rollname/DEMO-nextleg-${today}AB-mychain-chief.md"
 check "46 next --doc <two-letter> derives name and bumps to AB" "$([ -f "$docAB46" ] && echo yes)" "yes"
 
 # --- 47: new with 26 docs present picks AA instead of refusing -----------
 mkdir -p "$root/tester/rollnew"
 for letter47 in {A..Z}; do
-    printf 'claimed\n' > "$root/tester/rollnew/DEMO-nextleg-${today}${letter47}-console.md"
+    printf 'claimed\n' > "$root/tester/rollnew/DEMO-nextleg-${today}${letter47}-chief.md"
 done
 out47="$(console new --bucket rollnew)"
 token47="$(token_of "$out47")"
-docAA47="$root/tester/rollnew/DEMO-nextleg-${today}AA-console.md"
+docAA47="$root/tester/rollnew/DEMO-nextleg-${today}AA-chief.md"
 check "47 new with all 26 single letters claimed picks AA" "$([ -f "$docAA47" ] && echo yes)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$docAA47" "$token47" >/dev/null 2>&1
 
@@ -1340,12 +1340,12 @@ HANDOVER_DIR="$root" bash "$QL" release "$docAA47" "$token47" >/dev/null 2>&1
 # successor stub's own back-reference) still names the Z doc, even though
 # the letter resets rather than continuing the bijective sequence.
 mkdir -p "$root/tester/rolldate"
-docZ48="$root/tester/rolldate/DEMO-nextleg-${today}Z-console.md"
+docZ48="$root/tester/rolldate/DEMO-nextleg-${today}Z-chief.md"
 stub_doc stub > "$docZ48"
 tomorrow48="2026-09-14"
 out48="$(console next --bucket rolldate --dry-run --date "$tomorrow48" --doc "$docZ48")"
-check "48 --date mints tomorrow's A, not a same-day AA rollover" "$(printf '%s\n' "$out48" | grep -c "^would-doc: .*${tomorrow48}A-console.md$")" "1"
-check "48 --date dry-run still names the Z predecessor's HANDOFF" "$(printf '%s\n' "$out48" | grep -c "would-handoff: .*${today}Z-console-HANDOFF.md")" "1"
+check "48 --date mints tomorrow's A, not a same-day AA rollover" "$(printf '%s\n' "$out48" | grep -c "^would-doc: .*${tomorrow48}A-chief.md$")" "1"
+check "48 --date dry-run still names the Z predecessor's HANDOFF" "$(printf '%s\n' "$out48" | grep -c "would-handoff: .*${today}Z-chief-HANDOFF.md")" "1"
 
 # --- 49: --date malformed exits 2 with a usage line -----------------------
 rc49=0
@@ -1357,10 +1357,10 @@ check "49 --date malformed prints a usage line" "$(printf '%s\n' "$out49" | grep
 # "AA" < "B" as strings even though AA (27) is the LATER letter. Auto
 # discovery (no --doc) must pick AA over B as today's predecessor.
 mkdir -p "$root/tester/rollorder"
-printf 'stub\n' > "$root/tester/rollorder/DEMO-nextleg-${today}B-console.md"
-stub_doc stub > "$root/tester/rollorder/DEMO-nextleg-${today}AA-console.md"
+printf 'stub\n' > "$root/tester/rollorder/DEMO-nextleg-${today}B-chief.md"
+stub_doc stub > "$root/tester/rollorder/DEMO-nextleg-${today}AA-chief.md"
 out50="$(console next --bucket rollorder --dry-run)"
-check "50 auto-discovery treats AA as newer than B (numeric, not lexical)" "$(printf '%s\n' "$out50" | grep -c "^would-doc: .*${today}AB-console.md$")" "1"
+check "50 auto-discovery treats AA as newer than B (numeric, not lexical)" "$(printf '%s\n' "$out50" | grep -c "^would-doc: .*${today}AB-chief.md$")" "1"
 
 # --- 51-55: --date validates a real calendar date, and an explicitly ------
 # empty value is an ERROR, not a silent reset to today's own chain (a console
@@ -1368,7 +1368,7 @@ check "50 auto-discovery treats AA as newer than B (numeric, not lexical)" "$(pr
 # discovery so these exercise the date-validation branch alone, not "no
 # predecessor found".
 mkdir -p "$root/tester/dateval"
-docZval="$root/tester/dateval/DEMO-nextleg-${today}Z-console.md"
+docZval="$root/tester/dateval/DEMO-nextleg-${today}Z-chief.md"
 stub_doc stub > "$docZval"
 
 rc51=0
@@ -1392,14 +1392,14 @@ check "54 --date= exits 2" "$rc54" "2"
 check "54 --date= prints a usage line" "$(printf '%s\n' "$out54" | grep -c '^usage: chief.sh')" "1"
 
 out55="$(console next --bucket dateval --dry-run --date "2026-09-14" --doc "$docZval")"
-check "55 a real --date still mints the successor" "$(printf '%s\n' "$out55" | grep -c '^would-doc: .*2026-09-14A-console.md$')" "1"
+check "55 a real --date still mints the successor" "$(printf '%s\n' "$out55" | grep -c '^would-doc: .*2026-09-14A-chief.md$')" "1"
 
 # --- 56/57: CONSOLE_ROLE is
 # retired -- console is implicit, so do_arm never hands headed-arm.sh a
 # --role. Each stub records its FULL "$*" to a fixed path baked into the stub
 # itself (never a positional like $5), so an unexpected leading --role shows
 # up as a record line rather than a silently shifted field.
-doc56A="$root/tester/rolerepo/DEMO-nextleg-${today}A-console.md"
+doc56A="$root/tester/rolerepo/DEMO-nextleg-${today}A-chief.md"
 record56="$tmp/role-record-56"
 cat > "$tmp/stub-arm-role-56.sh" <<STUB
 #!/usr/bin/env bash
@@ -1419,7 +1419,7 @@ check "56 CONSOLE_ROLE=console (retired): the arm is launched --role console (HI
     "$(grep -c -- '--role console ' "$record56" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc56A" "$token56a" >/dev/null 2>&1
 
-doc57A="$root/tester/rolerepo2/DEMO-nextleg-${today}A-console.md"
+doc57A="$root/tester/rolerepo2/DEMO-nextleg-${today}A-chief.md"
 record57="$tmp/role-record-57"
 cat > "$tmp/stub-arm-role-57.sh" <<STUB
 #!/usr/bin/env bash
@@ -1441,7 +1441,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc57A" "$token57a" >/dev/null 2>&1
 # longer refuses the arm -- the retired variable is ignored, the stub IS
 # invoked and no --role reaches it. (Was 58/59: relay/bogus exited 2 before the
 # detached launch.)
-doc58A="$root/tester/rolerepo3/DEMO-nextleg-${today}A-console.md"
+doc58A="$root/tester/rolerepo3/DEMO-nextleg-${today}A-chief.md"
 record58="$tmp/role-record-58"
 cat > "$tmp/stub-arm-role-58.sh" <<STUB
 #!/usr/bin/env bash
@@ -1482,7 +1482,7 @@ out58n="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
 check "58b new --arm with an unresolvable console profile: exit 2" "$rc58n" "2"
 # The profile is resolved BEFORE the lock, so the refusal leaves no
 # doc and no held lock (the release token must not even have been printed).
-doc58nA="$root/tester/rolerepo4/DEMO-nextleg-${today}A-console.md"
+doc58nA="$root/tester/rolerepo4/DEMO-nextleg-${today}A-chief.md"
 check "58b new refusal: no doc left behind (HIMMEL-4058)" "$([ -e "$doc58nA" ] && echo 1 || echo 0)" "0"
 check "58b new refusal: no release-token printed (HIMMEL-4058)" "$(printf '%s\n' "$out58n" | grep -c 'release-token')" "0"
 check "58b new refusal: no queue lock held (HIMMEL-4058)" \
@@ -1497,8 +1497,8 @@ check "58b new --dry-run with an unresolvable console profile: exit 2" "$rc58d" 
 # on "successor doc already exists").
 out58x="$(console new --bucket rolerepo5)"
 token58x="$(token_of "$out58x")"
-doc58xA="$root/tester/rolerepo5/DEMO-nextleg-${today}A-console.md"
-doc58xB="$root/tester/rolerepo5/DEMO-nextleg-${today}B-console.md"
+doc58xA="$root/tester/rolerepo5/DEMO-nextleg-${today}A-chief.md"
+doc58xB="$root/tester/rolerepo5/DEMO-nextleg-${today}B-chief.md"
 rc58x=0
 ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO \
     HIMMEL_PROFILE_SETTINGS_DIR=/dev/null/no-such bash "$C" next --bucket rolerepo5 ) >/dev/null 2>&1 || rc58x=$?
@@ -1514,9 +1514,9 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc58xA" "$token58x" >/dev/null 2>&1
 # line (it refuses a listed leg with no nonce).
 out60a="$(console new --bucket livestatesrc)"
 token60a="$(token_of "$out60a")"
-doc60A="$root/tester/livestatesrc/DEMO-nextleg-${today}A-console.md"
-doc60B="$root/tester/livestatedst/DEMO-nextleg-${today}B-console.md"
-handoff60A="$root/tester/livestatesrc/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc60A="$root/tester/livestatesrc/DEMO-nextleg-${today}A-chief.md"
+doc60B="$root/tester/livestatedst/DEMO-nextleg-${today}B-chief.md"
+handoff60A="$root/tester/livestatesrc/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 
 # shellcheck disable=SC2016  # backtick leg span, literal fixture text
 fixture60_legs='legs: `N9:nonce-fixture-60:lock-fixture-60:42424`'
@@ -1586,9 +1586,9 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc60A" "$token60a" >/dev/null 2>&1
 # and a predecessor with no URL yields "none yet", not an empty value.
 out60b="$(console new --bucket boardsrc)"
 token60b="$(token_of "$out60b")"
-doc60bA="$root/tester/boardsrc/DEMO-nextleg-${today}A-console.md"
-doc60bB="$root/tester/boarddst/DEMO-nextleg-${today}B-console.md"
-doc60bC="$root/tester/boarddst2/DEMO-nextleg-${today}B-console.md"
+doc60bA="$root/tester/boardsrc/DEMO-nextleg-${today}A-chief.md"
+doc60bB="$root/tester/boarddst/DEMO-nextleg-${today}B-chief.md"
+doc60bC="$root/tester/boarddst2/DEMO-nextleg-${today}B-chief.md"
 url60b='https://claude.ai/artifact/fixture-3361-board'
 check "60b a fresh console's Live state starts the board: line at none yet" \
     "$(grep -c '^board: none yet' "$doc60bA" 2>/dev/null)" "1"
@@ -1700,7 +1700,7 @@ out61d="$( ( cd "$fixture_repo" && unset CHIEF_MODEL CONSOLE_MODEL && HANDOVER_D
     bash "$C" new --bucket modeldefault --arm --deadline-min 0 ) )"
 token61d="$(token_of "$out61d")"
 check "61 armed console without --model: the arm target received claude-opus-5-5" "$(cat "$record61" 2>/dev/null)" "claude-opus-5-5"
-HANDOVER_DIR="$root" bash "$QL" release "$root/tester/modeldefault/DEMO-nextleg-${today}A-console.md" "$token61d" >/dev/null 2>&1
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/modeldefault/DEMO-nextleg-${today}A-chief.md" "$token61d" >/dev/null 2>&1
 
 # --- 62: console.sh must not expand a possibly-EMPTY array bare.
 # Under `set -u` bash < 4.4 (macOS /bin/bash 3.2) treats `"${arr[@]}"` of an
@@ -1739,8 +1739,8 @@ run_launch_line() {
     ( cd "$tmp" && PATH="$stub63:$PATH" bash -c "$line" )
 }
 
-S63="DEMO-nextleg-${today}A-rec63a-console"
-out63a="$(console new --bucket rec63a --name rec63a-console)"
+S63="DEMO-nextleg-${today}A-rec63a-chief"
+out63a="$(console new --bucket rec63a --name rec63a-chief)"
 token63a="$(token_of "$out63a")"
 check "63a printing the launch line writes no row (a line nobody pastes is no console)" "$([ -e "$LL63/$S63.log" ] && echo present || echo absent)" "absent"
 rm -f "$tmp/claude-argv-63"
@@ -1758,9 +1758,9 @@ contains "$argv63a" "row-existed" "63a the row was already there when claude sta
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/rec63a/$S63.md" "$token63a" >/dev/null 2>&1
 
 # 63b. CHIEF_CONTEXT=1m is the one opt-in: the row says so, as the arm paths do.
-S63b="DEMO-nextleg-${today}A-rec63b-console"
+S63b="DEMO-nextleg-${today}A-rec63b-chief"
 out63b="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/defaultwork" \
-    CHIEF_CONTEXT=1m bash "$C" new --bucket rec63b --name rec63b-console ) )"
+    CHIEF_CONTEXT=1m bash "$C" new --bucket rec63b --name rec63b-chief ) )"
 token63b="$(token_of "$out63b")"
 run_launch_line "$out63b"
 check "63b CHIEF_CONTEXT=1m: the row is context=1m source=explicit autocompact=auto" \
@@ -1768,19 +1768,19 @@ check "63b CHIEF_CONTEXT=1m: the row is context=1m source=explicit autocompact=a
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/rec63b/$S63b.md" "$token63b" >/dev/null 2>&1
 
 # 63c. next records the SUCCESSOR's session (the console its line launches).
-out63c="$(console new --bucket rec63c --name rec63c-console)"
+out63c="$(console new --bucket rec63c --name rec63c-chief)"
 token63c="$(token_of "$out63c")"
-out63c2="$(console next --bucket rec63c --name rec63c-console)"
+out63c2="$(console next --bucket rec63c --name rec63c-chief)"
 run_launch_line "$out63c2"
-check "63c next: the successor's line writes a row for the successor session" "$(grep -c "^headed-arm: role=console session=DEMO-nextleg-${today}B-rec63c-console " "$LL63/DEMO-nextleg-${today}B-rec63c-console.log" 2>/dev/null || true)" "1"
-check "63c next: the predecessor's session got no row (its line was never run)" "$([ -e "$LL63/DEMO-nextleg-${today}A-rec63c-console.log" ] && echo present || echo absent)" "absent"
-HANDOVER_DIR="$root" bash "$QL" release "$root/tester/rec63c/DEMO-nextleg-${today}A-rec63c-console.md" "$token63c" >/dev/null 2>&1
+check "63c next: the successor's line writes a row for the successor session" "$(grep -c "^headed-arm: role=console session=DEMO-nextleg-${today}B-rec63c-chief " "$LL63/DEMO-nextleg-${today}B-rec63c-chief.log" 2>/dev/null || true)" "1"
+check "63c next: the predecessor's session got no row (its line was never run)" "$([ -e "$LL63/DEMO-nextleg-${today}A-rec63c-chief.log" ] && echo present || echo absent)" "absent"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/rec63c/DEMO-nextleg-${today}A-rec63c-chief.md" "$token63c" >/dev/null 2>&1
 
 # 63d. --dry-run shows the SAME command it would print, and running nothing
 # writes nothing.
-out63d="$(console new --bucket rec63d --name rec63d-console --dry-run)"
+out63d="$(console new --bucket rec63d --name rec63d-chief --dry-run)"
 check "63d --dry-run: would-launch names the recorder" "$(printf '%s\n' "$out63d" | grep -c '^would-launch: .*record-launch.sh ')" "1"
-check "63d --dry-run: writes no row" "$([ -e "$LL63/DEMO-nextleg-${today}A-rec63d-console.log" ] && echo present || echo absent)" "absent"
+check "63d --dry-run: writes no row" "$([ -e "$LL63/DEMO-nextleg-${today}A-rec63d-chief.log" ] && echo present || echo absent)" "absent"
 
 # 63e. a launch-record dir that cannot be written never stops the console: the
 # recorder warns and claude still starts.
@@ -1818,7 +1818,7 @@ printf 'HANDOVER_DIR=%s\nUSER_SLUG=ownslug\nJIRA_PROJECT_KEY=OWNKEY\n' "$own65/s
 foreign65="$tmp/foreign-repo-65"
 mkdir -p "$foreign65/nested"
 ( cd "$foreign65" && git init -q )
-out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CHIEF_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/console/chief.sh" new --name rec65-console --dry-run 2>&1)"
+out65="$(cd "$foreign65/nested" && env -u HANDOVER_DIR -u USER_SLUG -u JIRA_PROJECT_KEY CHIEF_WORK_DIR="$tmp/defaultwork65" bash "$own65/scripts/handover/console/chief.sh" new --name rec65-chief --dry-run 2>&1)"
 rc65=$?
 check "65 own-checkout .env resolves rc=0" "$rc65" "0"
 case "$out65" in
@@ -1841,7 +1841,7 @@ check "65 own-checkout's HANDOVER_DIR used, not the foreign CWD repo" "$contains
 # refuses that launch outright (see the RED excerpt in this ticket's PR).
 out66a="$(console new --bucket cleanenv66)"
 token66a="$(token_of "$out66a")"
-doc66A="$root/tester/cleanenv66/DEMO-nextleg-${today}A-console.md"
+doc66A="$root/tester/cleanenv66/DEMO-nextleg-${today}A-chief.md"
 
 cat > "$tmp/stub-arm-66.sh" <<STUB
 #!/usr/bin/env bash
@@ -1963,7 +1963,7 @@ check "67 armed child's own environment strips the old name HIMMEL_LEG_PROFILE (
 proj68="$tmp/Web Sites68"; mkdir -p "$proj68"
 out68="$(console new --project "$proj68" --dry-run 2>&1)"
 check "68 --project: bucket derived from the project dir" \
-    "$(printf '%s\n' "$out68" | grep -c "^would-doc: $root/tester/web-sites68/WEBSITES68-nextleg-${today}A-console.md\$")" "1"
+    "$(printf '%s\n' "$out68" | grep -c "^would-doc: $root/tester/web-sites68/WEBSITES68-nextleg-${today}A-chief.md\$")" "1"
 check "68 --project: himmel's JIRA_PROJECT_KEY is not the prefix" \
     "$(printf '%s\n' "$out68" | grep -c 'DEMO-nextleg')" "0"
 check "68 --project: dry-run names the project the session opens in" \
@@ -1993,7 +1993,7 @@ out68d="$( ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PR
 # exported HEADED_ARM_REPO=$proj68 here), GREEN after the fix.
 check "68d --project --arm does NOT export HEADED_ARM_REPO for the console" \
     "$(printf '%s\n' "$out68d" | grep -c "^stub-arm-68: HEADED_ARM_REPO=<unset>\$")" "1"
-doc68="$root/tester/web-sites68/WEBSITES68-nextleg-${today}A-console.md"
+doc68="$root/tester/web-sites68/WEBSITES68-nextleg-${today}A-chief.md"
 check "68d the doc records the project (not just the dry-run line)" \
     "$(grep -c "The project this console is FOR is \*\*\`$proj68\`\*\*" "$doc68" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc68" "$(token_of "$out68d")" >/dev/null 2>&1
@@ -2008,7 +2008,7 @@ cat > "$reg68" <<JSON
 JSON
 out68e="$( HANDOVER_REGISTRY="$reg68" console new --project "$regproj68" --dry-run 2>&1 )"
 check "68e a registered path resolves to its registry key + jira_project" \
-    "$(printf '%s\n' "$out68e" | grep -c "^would-doc: $root/tester/widgets68/WIDG68-nextleg-${today}A-console.md\$")" "1"
+    "$(printf '%s\n' "$out68e" | grep -c "^would-doc: $root/tester/widgets68/WIDG68-nextleg-${today}A-chief.md\$")" "1"
 
 collideproj68="$tmp/collideproj68"; mkdir -p "$collideproj68"
 cat > "$reg68" <<JSON
@@ -2067,12 +2067,12 @@ cat > "$reg69" <<JSON
 JSON
 out69a_new="$( HANDOVER_REGISTRY="$reg69" console new --project "$foreignproj69" )"
 token69a_new="$(token_of "$out69a_new")"
-doc69A="$root/tester/acme69/ACME69-nextleg-${today}A-console.md"
+doc69A="$root/tester/acme69/ACME69-nextleg-${today}A-chief.md"
 check "69 setup: predecessor doc written under the foreign project's registry bucket" "$([ -f "$doc69A" ] && echo yes)" "yes"
 
 out69a="$( HANDOVER_REGISTRY="$reg69" console next --doc "$doc69A" --dry-run )"
 check "69a next --doc with no --project derives the foreign bucket/prefix from the predecessor's recorded project" \
-    "$(printf '%s\n' "$out69a" | grep -c "^would-doc: $root/tester/acme69/ACME69-nextleg-${today}B-console.md\$")" "1"
+    "$(printf '%s\n' "$out69a" | grep -c "^would-doc: $root/tester/acme69/ACME69-nextleg-${today}B-chief.md\$")" "1"
 check "69a next --doc with no --project inherits the predecessor's recorded project" \
     "$(printf '%s\n' "$out69a" | grep -c "^would-project: $foreignproj69\$")" "1"
 
@@ -2082,7 +2082,7 @@ check "69a next --doc with no --project inherits the predecessor's recorded proj
 otherproj69="$tmp/Other Co 69"; mkdir -p "$otherproj69"
 out69b="$( HANDOVER_REGISTRY="$reg69" console next --doc "$doc69A" --project "$otherproj69" --bucket otherdst69 --prefix OTH69 --dry-run )"
 check "69b an explicit --project/--bucket/--prefix on next overrides the inherited project" \
-    "$(printf '%s\n' "$out69b" | grep -c "^would-doc: $root/tester/otherdst69/OTH69-nextleg-${today}B-console.md\$")" "1"
+    "$(printf '%s\n' "$out69b" | grep -c "^would-doc: $root/tester/otherdst69/OTH69-nextleg-${today}B-chief.md\$")" "1"
 check "69b overridden would-project reflects the explicit --project, not the inherited one" \
     "$(printf '%s\n' "$out69b" | grep -c "^would-project: $otherproj69\$")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc69A" "$token69a_new" >/dev/null 2>&1
@@ -2116,7 +2116,7 @@ printf '#!/usr/bin/env bash\necho ran > %q\nexit 0\n' "$tmp/evil70-sentinel" > "
 rc70b=0; out70b="$(console_from "$evil70" new --bucket c1evil 2>&1)" || rc70b=$?
 check "70b a real new from a foreign cwd shipping its own template succeeds" "$rc70b" "0"
 check "70b the foreign repo's queue-lock.sh is never executed" "$([ -e "$tmp/evil70-sentinel" ] && echo ran || echo clean)" "clean"
-doc70b="$root/tester/c1evil/DEMO-nextleg-${today}A-console.md"
+doc70b="$root/tester/c1evil/DEMO-nextleg-${today}A-chief.md"
 check "70b the doc is rendered from himmel's template, not the foreign one" "$(grep -c 'EVIL-TEMPLATE' "$doc70b" 2>/dev/null)" "0"
 check "70b the doc points at the himmel checkout" \
     "$(grep -c "^> \*\*\`$fixture_repo\`\*\*\. The project this console is FOR" "$doc70b" 2>/dev/null)" "1"
@@ -2166,7 +2166,7 @@ reg72="$tmp/registry-72.json"
 proj72="$tmp/Proj 72"; mkdir -p "$proj72"
 printf '{"repos":{}}\n' > "$reg72"
 out72="$( HANDOVER_REGISTRY="$reg72" console new --project "$proj72" 2>&1 )"
-doc72="$root/tester/proj-72/PROJ72-nextleg-${today}A-console.md"
+doc72="$root/tester/proj-72/PROJ72-nextleg-${today}A-chief.md"
 check "72 setup: a foreign chain doc records its project" "$(grep -c "The project this console is FOR is \*\*\`$proj72\`\*\*" "$doc72" 2>/dev/null)" "1"
 touch "$tmp/a-file-72"
 rc72p=0; HANDOVER_REGISTRY="$reg72" console new --project "$tmp/a-file-72" --dry-run >/dev/null 2>&1 || rc72p=$?
@@ -2200,13 +2200,13 @@ cat > "$reg73" <<JSON
 JSON
 out73_new="$( HANDOVER_REGISTRY="$reg73" console_root "$root73" new --project "$foreignproj73" )"
 token73_new="$(token_of "$out73_new")"
-doc73A="$root73/tester/acme73/ACME73-nextleg-${today}A-console.md"
+doc73A="$root73/tester/acme73/ACME73-nextleg-${today}A-chief.md"
 check "73 setup: predecessor doc written under the foreign project's registry bucket" "$([ -f "$doc73A" ] && echo yes)" "yes"
 HANDOVER_DIR="$root73" bash "$QL" release "$doc73A" "$token73_new" >/dev/null 2>&1
 
 out73="$( HANDOVER_REGISTRY="$reg73" console_root "$root73" next --dry-run )"
 check "73 a bare next with nothing pinning the search finds the foreign predecessor's would-doc" \
-    "$(printf '%s\n' "$out73" | grep -c "^would-doc: $root73/tester/acme73/ACME73-nextleg-${today}B-console.md\$")" "1"
+    "$(printf '%s\n' "$out73" | grep -c "^would-doc: $root73/tester/acme73/ACME73-nextleg-${today}B-chief.md\$")" "1"
 check "73 a bare next inherits the foreign predecessor's recorded project" \
     "$(printf '%s\n' "$out73" | grep -c "^would-project: $foreignproj73\$")" "1"
 
@@ -2220,7 +2220,7 @@ proj74="$tmp/Proj 74"; mkdir -p "$proj74"
 printf '{"repos":{}}\n' > "$reg74"
 out74_new="$( HANDOVER_REGISTRY="$reg74" console_root "$root74" new --project "$proj74" )"
 token74_new="$(token_of "$out74_new")"
-doc74A="$root74/tester/proj-74/PROJ74-nextleg-${today}A-console.md"
+doc74A="$root74/tester/proj-74/PROJ74-nextleg-${today}A-chief.md"
 check "74 setup: a foreign chain doc records its project" \
     "$(grep -c "The project this console is FOR is \*\*\`$proj74\`\*\*" "$doc74A" 2>/dev/null)" "1"
 HANDOVER_DIR="$root74" bash "$QL" release "$doc74A" "$token74_new" >/dev/null 2>&1
@@ -2268,9 +2268,9 @@ check "76 slug ignores an inherited GIT_DIR (checkout's forge login, not GIT_DIR
 # and the successor stub's ACTION ZERO step 10 names the carried manifest path.
 out77="$(console new --bucket fleet77src)"
 token77="$(token_of "$out77")"
-doc77A="$root/tester/fleet77src/DEMO-nextleg-${today}A-console.md"
-doc77B="$root/tester/fleet77dst/DEMO-nextleg-${today}B-console.md"
-doc77C="$root/tester/fleet77dst2/DEMO-nextleg-${today}B-console.md"
+doc77A="$root/tester/fleet77src/DEMO-nextleg-${today}A-chief.md"
+doc77B="$root/tester/fleet77dst/DEMO-nextleg-${today}B-chief.md"
+doc77C="$root/tester/fleet77dst2/DEMO-nextleg-${today}B-chief.md"
 man77A="${doc77A%.md}.fleet.json"
 man77B="${doc77B%.md}.fleet.json"
 man77C="${doc77C%.md}.fleet.json"
@@ -2286,17 +2286,17 @@ check "77 successor step 10 names the carried manifest path" "$(grep -Fc "$man77
 check "77 no unrendered {{FLEET_MANIFEST}} left in the successor doc" "$(grep -Fc '{{FLEET_MANIFEST' "$doc77B" 2>/dev/null)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc77A" "$token77" >/dev/null 2>&1
 
-# --- 78: a name without the -console suffix is refused, nothing armed
+# --- 78: a name without the -chief suffix is refused, nothing armed
 before78="$(find "$root" -type f -not -path "$root/.locks/*" | sort)"
 rc78n=0; out78n="$(console new --bucket nosuffix78 --name roadmap 2>&1)" || rc78n=$?
-check "78 new --name roadmap (no -console suffix) exits non-zero" "$([ "$rc78n" -ne 0 ] && echo yes)" "yes"
-check "78 new refusal names the suffix" "$(printf '%s\n' "$out78n" | grep -c -- '-console')" "1"
+check "78 new --name roadmap (no -chief suffix) exits non-zero" "$([ "$rc78n" -ne 0 ] && echo yes)" "yes"
+check "78 new refusal names the suffix" "$(printf '%s\n' "$out78n" | grep -c -- '-chief')" "1"
 rc78x=0; console next --bucket nosuffix78 --name roadmap >/dev/null 2>&1 || rc78x=$?
-check "78 next --name roadmap (no -console suffix) exits non-zero" "$([ "$rc78x" -ne 0 ] && echo yes)" "yes"
+check "78 next --name roadmap (no -chief suffix) exits non-zero" "$([ "$rc78x" -ne 0 ] && echo yes)" "yes"
 check "78 refusal writes nothing" "$(find "$root" -type f -not -path "$root/.locks/*" | sort)" "$before78"
-rc78ok=0; out78ok="$(console new --bucket nosuffix78 --name roadmap-console 2>&1)" || rc78ok=$?
-check "78 new --name roadmap-console is accepted" "$rc78ok" "0"
-HANDOVER_DIR="$root" bash "$QL" release "$root/tester/nosuffix78/DEMO-nextleg-${today}A-roadmap-console.md" "$(token_of "$out78ok")" >/dev/null 2>&1
+rc78ok=0; out78ok="$(console new --bucket nosuffix78 --name roadmap-chief 2>&1)" || rc78ok=$?
+check "78 new --name roadmap-chief is accepted" "$rc78ok" "0"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/nosuffix78/DEMO-nextleg-${today}A-roadmap-chief.md" "$(token_of "$out78ok")" >/dev/null 2>&1
 
 # --- 79: the console profile's himmel-bus opt-in registers the
 # armed console (--predecessor on next), exports only HIMMEL_BUS_NAME plus the
@@ -2329,10 +2329,10 @@ run79() { # <variant> <cmd> <bucket> [extra env...]
       HIMMEL_BUS_NAME=old-console HIMMEL_BUS_EXTRA=1 "$@" \
       CHIEF_BUS_CLI="$bus79/bus" CHIEF_BUS_PROFILES_MJS="$bus79/profiles-$variant.mjs" \
       CHIEF_HEADED_ARM="$bus79/arm.sh" CHIEF_ARM_FOREGROUND=1 CHIEF_WORK_DIR="$tmp/work79" \
-      bash "$C" "$cmd" --bucket "$bucket" --name bus79-console --arm --deadline-min 0 ) 2>&1
+      bash "$C" "$cmd" --bucket "$bucket" --name bus79-chief --arm --deadline-min 0 ) 2>&1
 }
 out79a="$(run79 in new bus79in)"
-session79a="DEMO-nextleg-${today}A-bus79-console"
+session79a="DEMO-nextleg-${today}A-bus79-chief"
 check "79 opted-in new: register --role console, no predecessor" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79a --role console"
 check "79 opted-in new: armed env carries only the registered name + the bind flag" \
     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
@@ -2340,7 +2340,7 @@ check "79 opted-in new: the launch log records the registration" \
     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as console\$")" "1"
 rm -f "$bus79/calls"
 out79b="$(run79 in next bus79in)"
-session79b="DEMO-nextleg-${today}B-bus79-console"
+session79b="DEMO-nextleg-${today}B-bus79-chief"
 check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a
 succeed $session79b"
 check "79 opted-in next: the launch log records the registration and the stamp" \
@@ -2349,7 +2349,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79b.md" "$
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79a.md" "$(token_of "$out79a")" >/dev/null 2>&1
 rm -f "$bus79/calls"
 out79c="$(run79 out new bus79out)"
-session79c="DEMO-nextleg-${today}A-bus79-console"
+session79c="DEMO-nextleg-${today}A-bus79-chief"
 check "79 opted-out: bus never called" "$([ -e "$bus79/calls" ] && echo called || echo none)" "none"
 check "79 opted-out: armed env carries no HIMMEL_BUS_* and no bind flag" \
     "$(cat "$tmp/work79"/*/launch-"$session79c".log 2>/dev/null | grep -c "^bus_name=<unset> extra=<unset> bind=<unset>\$")" "1"
@@ -2359,19 +2359,19 @@ out79d="$(run79 in new bus79fail BUS79_FAIL=1)"
 check "79 failed register: console still arms" "$(printf '%s\n' "$out79d" | grep -c '^armed: ')" "1"
 check "79 failed register: warned" "$(printf '%s\n' "$out79d" | grep -c 'WARN bus register failed')" "1"
 check "79 failed register: the warning lands in the launch log" \
-    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-console".log 2>/dev/null | grep -c 'WARN: bus register failed for .* launching unbound')" "1"
-HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79d")" >/dev/null 2>&1
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus register failed for .* launching unbound')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79fail/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79d")" >/dev/null 2>&1
 # a successor whose register works but whose stamp fails still arms, bound, and says so in the launch log
 rm -f "$bus79/calls"
 out79e="$(run79 in new bus79stamp)"
 out79f="$(run79 in next bus79stamp BUS79_FAIL=1 BUS79_FAIL_VERB=succeed)"
-session79f="DEMO-nextleg-${today}B-bus79-console"
+session79f="DEMO-nextleg-${today}B-bus79-chief"
 check "79 failed succeed: console still arms" "$(printf '%s\n' "$out79f" | grep -c '^armed: ')" "1"
 check "79 failed succeed: warned on stderr" "$(printf '%s\n' "$out79f" | grep -c 'WARN bus succeed failed')" "1"
 check "79 failed succeed: the warning lands in the launch log" \
     "$(cat "$tmp/work79"/*/launch-"$session79f".log 2>/dev/null | grep -c 'WARN: bus succeed failed for .* legs adopt only once')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/$session79f.md" "$(token_of "$out79f")" >/dev/null 2>&1
-HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79e")" >/dev/null 2>&1
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79e")" >/dev/null 2>&1
 # a profile probe that errors is not "opted out": the console arms unbound and the launch log says why
 rm -f "$bus79/calls"
 out79g="$(run79 broken new bus79probe)"
@@ -2379,8 +2379,8 @@ check "79 broken profile probe: console still arms" "$(printf '%s\n' "$out79g" |
 check "79 broken profile probe: bus never called" "$([ -e "$bus79/calls" ] && echo called || echo none)" "none"
 check "79 broken profile probe: warned on stderr" "$(printf '%s\n' "$out79g" | grep -c 'WARN bus profile probe failed')" "1"
 check "79 broken profile probe: the warning lands in the launch log" \
-    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-console".log 2>/dev/null | grep -c 'WARN: bus profile probe failed')" "1"
-HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79probe/DEMO-nextleg-${today}A-bus79-console.md" "$(token_of "$out79g")" >/dev/null 2>&1
+    "$(cat "$tmp/work79"/*/launch-"DEMO-nextleg-${today}A-bus79-chief".log 2>/dev/null | grep -c 'WARN: bus profile probe failed')" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79probe/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79g")" >/dev/null 2>&1
 
 # --- 80. wrap refuses while a non-harness process is alive -------------------
 # wrap-subtree-check.sh and live-subagents.sh are stubbed through their seams;
@@ -2565,15 +2565,15 @@ mk81() {
     {
         printf '# A — CONSOLE — successor to none (fill signal 70 %%)\n\n## Live state\n'
         [ "$pd" = "-" ] || printf 'decisions: %s\n' "$pd"
-    } > "$d/DEMO-nextleg-${today}A-console.md"
+    } > "$d/DEMO-nextleg-${today}A-chief.md"
     {
-        printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\n' "$today"
+        printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-chief.md (fill signal 70 %%)\n\n## Live state\n' "$today"
         [ "$od" = "-" ] || printf 'decisions: %s\n' "$od"
         printf '\n## Current direction\n\nIn work: the fixture.\n\n## Results\n'
         [ -z "$extra" ] || printf '%s\n' "$extra"
-    } > "$d/DEMO-nextleg-${today}B-console.md"
+    } > "$d/DEMO-nextleg-${today}B-chief.md"
 }
-run81() { rc81=0; out81="$(console next --bucket "$1" --doc "$root/tester/$1/DEMO-nextleg-${today}B-console.md" 2>&1)" || rc81=$?; }
+run81() { rc81=0; out81="$(console next --bucket "$1" --doc "$root/tester/$1/DEMO-nextleg-${today}B-chief.md" 2>&1)" || rc81=$?; }
 mk81 dec81a "rename ruling 00:05; keep N2" "rename ruling 00:05; keep N2"; run81 dec81a
 check "81 equal decisions line passes" "$rc81" "0"
 mk81 dec81b "rename ruling 00:05" "rename ruling 00:05; keep N2"; run81 dec81b
@@ -2581,11 +2581,11 @@ check "81 longer decisions line passes" "$rc81" "0"
 mk81 dec81c "rename ruling 00:05; keep N2" "keep N2"; run81 dec81c
 check "81 shorter decisions line refuses" "$rc81" "1"
 check "81 refusal quotes the predecessor's line" "$(printf '%s\n' "$out81" | grep -cF 'rename ruling 00:05; keep N2')" "1"
-check "81 refusal writes no HANDOFF" "$([ -f "$root/tester/dec81c/DEMO-nextleg-${today}B-console-HANDOFF.md" ] && echo yes || echo no)" "no"
+check "81 refusal writes no HANDOFF" "$([ -f "$root/tester/dec81c/DEMO-nextleg-${today}B-chief-HANDOFF.md" ] && echo yes || echo no)" "no"
 mk81 dec81d "rename ruling 00:05; keep N2" "keep N2" "- 10:00 FINDING — DECISIONS-DROP: rename ruling superseded by the 10:00 ruling"; run81 dec81d
 check "81 shorter line plus DECISIONS-DROP bullet passes" "$rc81" "0"
-mk81 dec81d2 "rename ruling 00:05; keep N2" "keep N2"; printf -- '- DECISIONS-DROP: not in Results\n' >> "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md"
-sed 's/^## Results$/## Other/' "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md" > "$root/tester/dec81d2.n" && mv "$root/tester/dec81d2.n" "$root/tester/dec81d2/DEMO-nextleg-${today}B-console.md" || { echo "FAIL: 81 fixture rewrite dec81d2"; exit 1; }; run81 dec81d2
+mk81 dec81d2 "rename ruling 00:05; keep N2" "keep N2"; printf -- '- DECISIONS-DROP: not in Results\n' >> "$root/tester/dec81d2/DEMO-nextleg-${today}B-chief.md"
+sed 's/^## Results$/## Other/' "$root/tester/dec81d2/DEMO-nextleg-${today}B-chief.md" > "$root/tester/dec81d2.n" && mv "$root/tester/dec81d2.n" "$root/tester/dec81d2/DEMO-nextleg-${today}B-chief.md" || { echo "FAIL: 81 fixture rewrite dec81d2"; exit 1; }; run81 dec81d2
 check "81 DECISIONS-DROP bullet outside Results does not exempt" "$rc81" "1"
 mk81 dec81d3 "rename ruling 00:05; keep N2" "keep N2" "- 10:00 FINDING — DECISIONS-DROP: <reason>"; run81 dec81d3
 check "81 DECISIONS-DROP with a placeholder reason does not exempt" "$rc81" "1"
@@ -2599,9 +2599,9 @@ mk81 dec81h "none" "-"; run81 dec81h
 check "81 predecessor with placeholder decisions passes" "$rc81" "0"
 mk81 dec81i "-" "-"; run81 dec81i
 check "81 predecessor without a decisions line passes" "$rc81" "0"
-mk81 dec81j "rename ruling 00:05" "-"; sed '1s/successor to .*/successor to none (fill signal 70 %)/' "$root/tester/dec81j/DEMO-nextleg-${today}B-console.md" > "$root/tester/dec81j.n" && mv "$root/tester/dec81j.n" "$root/tester/dec81j/DEMO-nextleg-${today}B-console.md" || { echo "FAIL: 81 fixture rewrite dec81j"; exit 1; }; run81 dec81j
+mk81 dec81j "rename ruling 00:05" "-"; sed '1s/successor to .*/successor to none (fill signal 70 %)/' "$root/tester/dec81j/DEMO-nextleg-${today}B-chief.md" > "$root/tester/dec81j.n" && mv "$root/tester/dec81j.n" "$root/tester/dec81j/DEMO-nextleg-${today}B-chief.md" || { echo "FAIL: 81 fixture rewrite dec81j"; exit 1; }; run81 dec81j
 check "81 doc with no predecessor passes" "$rc81" "0"
-mk81 dec81k "rename ruling 00:05" "-"; rm "$root/tester/dec81k/DEMO-nextleg-${today}A-console.md"; run81 dec81k
+mk81 dec81k "rename ruling 00:05" "-"; rm "$root/tester/dec81k/DEMO-nextleg-${today}A-chief.md"; run81 dec81k
 check "81 predecessor doc absent passes" "$rc81" "0"
 
 # --- 82: the rendered HANDOFF stays under the ~1.5k-token budget:
@@ -2609,8 +2609,8 @@ check "81 predecessor doc absent passes" "$rc81" "0"
 # Live state (rulings, tokens) is seeded into the successor doc whole.
 out82="$(console new --bucket cap82)"
 token82="$(token_of "$out82")"
-doc82A="$root/tester/cap82/DEMO-nextleg-${today}A-console.md"
-handoff82A="$root/tester/cap82/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc82A="$root/tester/cap82/DEMO-nextleg-${today}A-chief.md"
+handoff82A="$root/tester/cap82/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 # shellcheck disable=SC2016  # the loop is expanded by the generated stub
 printf '#!/usr/bin/env bash\nfor i in $(seq 1 300); do echo "#$i [DEMO-$i] a fixture pull request title long enough to bulk (feat/branch-$i)"; done\n' > "$tmp/facts-prs82.sh"
 legs82=""
@@ -2618,11 +2618,11 @@ for i in $(seq 1 30); do
     printf '%s\n' '# leg' '## Results' "- 10:00 LIVE — $(printf 'x%.0s' $(seq 1 180))" > "$root/tester/cap82/DEMO-leg82-N$i.md"
     legs82="$legs82${legs82:+,}{\"label\":\"N$i\",\"doc\":\"$root/tester/cap82/DEMO-leg82-N$i.md\"}"
 done
-printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-console.fleet.json"
+printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-chief.fleet.json"
 for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
 awk '/^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" console next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
-doc82B="$root/tester/cap82dst/DEMO-nextleg-${today}B-console.md"
+doc82B="$root/tester/cap82dst/DEMO-nextleg-${today}B-chief.md"
 check "82 HANDOFF is at most 6000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 6000 ] && echo yes || echo no)" "yes"
 check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff82A")" "1"
 check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$doc82B")" "1"
@@ -2637,8 +2637,8 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc82A" "$token82" >/dev/null 2>&1
 # byte count and a one-line note in the HANDOFF; the rulings are not trimmed.
 out83="$(console new --bucket cap83)"
 token83="$(token_of "$out83")"
-doc83A="$root/tester/cap83/DEMO-nextleg-${today}A-console.md"
-handoff83A="$root/tester/cap83/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc83A="$root/tester/cap83/DEMO-nextleg-${today}A-chief.md"
+handoff83A="$root/tester/cap83/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 HANDOFF_BUDGET_BYTES=1000 console next --bucket cap83dst --doc "$doc83A" >/dev/null 2>"$tmp/err83"
 check "83 stderr warns with the byte count" "$(grep -cE 'warning: HANDOFF over budget: [0-9]+ bytes \(limit 1000\)' "$tmp/err83")" "1"
 check "83 the HANDOFF carries the over-budget note" "$(grep -cE '^> HANDOFF over budget: [0-9]+ bytes \(limit 1000\); wrapped-PR list [0-9]+ bytes' "$handoff83A")" "1"
@@ -2649,8 +2649,8 @@ HANDOVER_DIR="$root" bash "$QL" release "$doc83A" "$token83" >/dev/null 2>&1
 # pointer falls back to a placeholder and the wrapped-PR section is still written.
 out84="$(console new --bucket cap84)"
 token84="$(token_of "$out84")"
-doc84A="$root/tester/cap84/DEMO-nextleg-${today}A-console.md"
-handoff84A="$root/tester/cap84/DEMO-nextleg-${today}A-console-HANDOFF.md"
+doc84A="$root/tester/cap84/DEMO-nextleg-${today}A-chief.md"
+handoff84A="$root/tester/cap84/DEMO-nextleg-${today}A-chief-HANDOFF.md"
 origin84="$(git -C "$fixture_repo" remote get-url origin)"
 git -C "$fixture_repo" remote remove origin
 rc84=0
@@ -2668,15 +2668,15 @@ mk85() { # <bucket>
     local b="$1" d="$root/tester/$1"
     console new --bucket "$b" >"$tmp/out85-$b"
     printf '%s\n' '# leg' '## Results' '- 10:00 READY 5 aaaa GREEN' '- 10:05 WRAPPED — done' > "$d/DEMO-85-N1.md"
-    printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$d/DEMO-85-N1.md" > "$d/DEMO-nextleg-${today}A-console.fleet.json"
+    printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$d/DEMO-85-N1.md" > "$d/DEMO-nextleg-${today}A-chief.fleet.json"
 }
 mk85 cap85x
 mk85 cap85y
-console next --bucket cap85xdst --doc "$root/tester/cap85x/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1
-size85="$(wc -c < "$root/tester/cap85x/DEMO-nextleg-${today}A-console-HANDOFF.md")"
-HANDOFF_BUDGET_BYTES=$((size85 - 1)) console next --bucket cap85ydst --doc "$root/tester/cap85y/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1
-handoff85y="$root/tester/cap85y/DEMO-nextleg-${today}A-console-HANDOFF.md"
-check "85 under budget: the first fixture keeps its open-PR facts inline" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$root/tester/cap85x/DEMO-nextleg-${today}A-console-HANDOFF.md")" "0"
+console next --bucket cap85xdst --doc "$root/tester/cap85x/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
+size85="$(wc -c < "$root/tester/cap85x/DEMO-nextleg-${today}A-chief-HANDOFF.md")"
+HANDOFF_BUDGET_BYTES=$((size85 - 1)) console next --bucket cap85ydst --doc "$root/tester/cap85y/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1
+handoff85y="$root/tester/cap85y/DEMO-nextleg-${today}A-chief-HANDOFF.md"
+check "85 under budget: the first fixture keeps its open-PR facts inline" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$root/tester/cap85x/DEMO-nextleg-${today}A-chief-HANDOFF.md")" "0"
 check "85 the wrapped-PR bytes tip the second fixture into the pointer pass" "$(grep -c 'over the HANDOFF size budget — run: gh pr list' "$handoff85y")" "1"
 check "85 the wrapped-PR entry is still listed" "$(grep -c '^- PR #5 (N1)' "$handoff85y")" "1"
 
@@ -2686,8 +2686,8 @@ check "85 the wrapped-PR entry is still listed" "$(grep -c '^- PR #5 (N1)' "$han
 # per-shift. Then the guard: an outgoing doc that lost its predecessor's
 # `priority:` line is refused like a lost `decisions:` line.
 out86="$(console new --bucket carrysrc)"
-doc86A="$root/tester/carrysrc/DEMO-nextleg-${today}A-console.md"
-doc86B="$root/tester/carrydst/DEMO-nextleg-${today}B-console.md"
+doc86A="$root/tester/carrysrc/DEMO-nextleg-${today}A-chief.md"
+doc86B="$root/tester/carrydst/DEMO-nextleg-${today}B-chief.md"
 pri86='priority: 6127 | 6137(K1) 6143(K7) | 6123 6125'
 dec86='decisions: OPERATOR 10-17 (BINDING): free slots fill only from the priority pool'
 epi86='epics: HIMMEL-6169=12'
@@ -2713,17 +2713,17 @@ check "86 successor doc has no unrendered {{...}} slot" \
 # Guard: A had priority:, outgoing B dropped it.
 mkdir -p "$root/tester/pri86"
 printf '# A — CONSOLE — successor to none (fill signal 70 %%)\n\n## Live state\n%s\n' "$pri86" \
-    > "$root/tester/pri86/DEMO-nextleg-${today}A-console.md"
-printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\nepics: none\n\n## Current direction\n\nIn work: the fixture.\n\n## Results\n' "$today" \
-    > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
-rc86=0; out86="$(console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" 2>&1)" || rc86=$?
+    > "$root/tester/pri86/DEMO-nextleg-${today}A-chief.md"
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-chief.md (fill signal 70 %%)\n\n## Live state\nepics: none\n\n## Current direction\n\nIn work: the fixture.\n\n## Results\n' "$today" \
+    > "$root/tester/pri86/DEMO-nextleg-${today}B-chief.md"
+rc86=0; out86="$(console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-chief.md" 2>&1)" || rc86=$?
 check "86 outgoing doc that lost the predecessor's priority: line refuses" "$rc86" "1"
 check "86 refusal quotes the predecessor's priority line" \
     "$(printf '%s\n' "$out86" | grep -cF '6137(K1) 6143(K7)')" "1"
 # A prune that closed every key leaves `priority: none`; a PRIORITY-PRUNE bullet accepts it.
-printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-console.md (fill signal 70 %%)\n\n## Live state\npriority: none\n\n## Current direction\n\nIn work: the fixture.\n\n## Results\n- 10:00 LIVE — PRIORITY-PRUNE: dropped 6127 6137 6143 6123 6125, all Done (operator OK)\n' "$today" \
-    > "$root/tester/pri86/DEMO-nextleg-${today}B-console.md"
-rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-console.md" >/dev/null 2>&1 || rc86=$?
+printf '# B — CONSOLE — successor to DEMO-nextleg-%sA-chief.md (fill signal 70 %%)\n\n## Live state\npriority: none\n\n## Current direction\n\nIn work: the fixture.\n\n## Results\n- 10:00 LIVE — PRIORITY-PRUNE: dropped 6127 6137 6143 6123 6125, all Done (operator OK)\n' "$today" \
+    > "$root/tester/pri86/DEMO-nextleg-${today}B-chief.md"
+rc86=0; console next --bucket pri86 --doc "$root/tester/pri86/DEMO-nextleg-${today}B-chief.md" >/dev/null 2>&1 || rc86=$?
 check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
 
 # --- 86b. next carries the predecessor's residual-must rulings -----------------
@@ -2732,8 +2732,8 @@ check "86 a PRIORITY-PRUNE bullet accepts an emptied priority: line" "$rc86" "0"
 # doc starts without the predecessor's Results, so the lines are copied across,
 # once each, without the bullet's `- HH:MM` prefix.
 console new --bucket rmsrc >/dev/null
-doc86bA="$root/tester/rmsrc/DEMO-nextleg-${today}A-console.md"
-doc86bB="$root/tester/rmdst/DEMO-nextleg-${today}B-console.md"
+doc86bA="$root/tester/rmsrc/DEMO-nextleg-${today}A-chief.md"
+doc86bB="$root/tester/rmdst/DEMO-nextleg-${today}B-chief.md"
 printf '%s\n' '- 07:12 residual-must HIMMEL-302 (security)' 'residual-must HIMMEL-303 (data loss)' \
     '- 07:40 residual-must HIMMEL-302 (security)' '- 08:01 LIVE — said residual-must HIMMEL-304 in prose' \
     'docs name a residual-must <KEY> line' >> "$doc86bA"
@@ -2805,7 +2805,7 @@ check "87b next with an oversize decisions: line succeeds" "$rc81" "0"
 spill87="$(ls "$root/tester/dec87s/specs/decisions/"console-decisions-*.md 2>/dev/null)"
 check "87b the oversize line is spilled to one bucket decisions file" "$(printf '%s\n' "$spill87" | grep -c 'console-decisions-[0-9-]*\.md$')" "1"
 check "87b the spill file holds the line byte for byte" "$(printf '%s\n' "$big87" | cmp - "$spill87" >/dev/null 2>&1 && echo same || echo differs)" "same"
-ptr87="$(grep -m 1 '^decisions:' "$root/tester/dec87s/DEMO-nextleg-${today}C-console.md" 2>/dev/null)"
+ptr87="$(grep -m 1 '^decisions:' "$root/tester/dec87s/DEMO-nextleg-${today}C-chief.md" 2>/dev/null)"
 check "87b the successor doc carries a pointer naming the spill file" "$(printf '%s\n' "$ptr87" | grep -cF "specs/decisions/$(basename "$spill87")")" "1"
 check "87b the pointer is one short line" "$([ -n "$ptr87" ] && [ "${#ptr87}" -lt 400 ] && echo short || echo long)" "short"
 mk81 dec87t "${big87#decisions: }" "${ptr87#decisions: }"
@@ -2817,7 +2817,7 @@ for i87 in $(seq 1 60); do big87u="$big87u ruling $i87 keeps the fleet at its ca
 mk81 dec87u "${big87u#decisions: }" "${big87u#decisions: }"; run81 dec87u
 check "87b next with an unnumbered oversize decisions: line succeeds" "$rc81" "0"
 spill87u="$(ls "$root/tester/dec87u/specs/decisions/"console-decisions-*.md 2>/dev/null)"
-ptr87u="$(grep -m 1 '^decisions:' "$root/tester/dec87u/DEMO-nextleg-${today}C-console.md" 2>/dev/null)"
+ptr87u="$(grep -m 1 '^decisions:' "$root/tester/dec87u/DEMO-nextleg-${today}C-chief.md" 2>/dev/null)"
 mk81 dec87v "${big87u#decisions: }" "${ptr87u#decisions: }"
 mkdir -p "$root/tester/dec87v/specs/decisions"; cp "$spill87u" "$root/tester/dec87v/specs/decisions/"; run81 dec87v
 check "87b an unnumbered spilled line is kept through the pointer" "$rc81" "0"
@@ -2849,7 +2849,7 @@ STUB
 chmod +x "$b88/bin/claude" "$b88/bus"
 print88() { # <in|out> <new|next> <bucket>
   ( cd "$fixture_repo" && HANDOVER_DIR="$root" USER_SLUG=tester JIRA_PROJECT_KEY=DEMO CHIEF_WORK_DIR="$tmp/work88" \
-      CHIEF_BUS_PROFILES_MJS="$bus79/profiles-$1.mjs" bash "$C" "$2" --bucket "$3" --name bus88-console ) 2>&1
+      CHIEF_BUS_PROFILES_MJS="$bus79/profiles-$1.mjs" bash "$C" "$2" --bucket "$3" --name bus88-chief ) 2>&1
 }
 paste88() { # <printed output> [extra env...]
   local line; line="$(printf '%s\n' "$1" | sed -n 's/^launch: //p')"; shift
@@ -2858,7 +2858,7 @@ paste88() { # <printed output> [extra env...]
       HIMMEL_BUS_NAME=old-console HIMMEL_BUS_EXTRA=1 "$@" bash -c "$line" ) >/dev/null 2>&1
 }
 pid88() { sed -n 's/^pid=\([0-9]*\) .*/\1/p' "$b88/seen" 2>/dev/null; }
-s88a="DEMO-nextleg-${today}A-bus88-console"
+s88a="DEMO-nextleg-${today}A-bus88-chief"
 out88a="$(print88 in new bus88in)"
 paste88 "$out88a"
 check "88 opted-in new: the pasted line registers the console, then binds the pid claude runs as" \
@@ -2866,7 +2866,7 @@ check "88 opted-in new: the pasted line registers the console, then binds the pi
 bind $s88a $(pid88)"
 check "88 opted-in new: claude gets HIMMEL_BUS_NAME and no other HIMMEL_BUS_*" \
     "$(sed 's/^pid=[0-9]* //' "$b88/seen" 2>/dev/null)" "bus_name=$s88a extra=<unset>"
-s88b="DEMO-nextleg-${today}B-bus88-console"
+s88b="DEMO-nextleg-${today}B-bus88-chief"
 out88b="$(print88 in next bus88in)"
 paste88 "$out88b"
 check "88 opted-in next: register carries --predecessor <outgoing session>" \
@@ -2920,8 +2920,8 @@ printf '#!/usr/bin/env bash\necho "OK   C29-child-session: none"\n' > "$tmp/az-d
 printf '#!/usr/bin/env bash\necho partial\nexit 3\n' > "$tmp/az-fail.sh"
 out90a="$(console new --bucket az90)"
 token90a="$(token_of "$out90a")"
-doc90A="$root/tester/az90/DEMO-nextleg-${today}A-console.md"
-doc90B="$root/tester/az90/DEMO-nextleg-${today}B-console.md"
+doc90A="$root/tester/az90/DEMO-nextleg-${today}A-chief.md"
+doc90B="$root/tester/az90/DEMO-nextleg-${today}B-chief.md"
 ACTION_ZERO_SCRIPT="$fixture_repo/scripts/handover/console-kit/action-zero.sh" ACTION_ZERO_BANK="$tmp/az-bank.sh" ACTION_ZERO_DOCTOR="$tmp/az-doctor.sh" \
     console next --bucket az90 >/dev/null
 block90="$(awk '/^### Pre-computed by chief.sh next/ {s = 1} s && /^## / {exit} s' "$doc90B")"
@@ -2943,8 +2943,8 @@ rc90=0
 ACTION_ZERO_SCRIPT="$tmp/az-fail.sh" console next --bucket az90fail >/dev/null 2>&1 || rc90=$?
 check "90 a failing action-zero does not stop next" "$rc90" "0"
 check "90 a failing action-zero marks the block unavailable" \
-    "$(grep -c '^unavailable (action-zero.sh exited 3): run it yourself$' "$root/tester/az90fail/DEMO-nextleg-${today}B-console.md")" "1"
-HANDOVER_DIR="$root" bash "$QL" release "$root/tester/az90fail/DEMO-nextleg-${today}A-console.md" "$token90c" >/dev/null 2>&1
+    "$(grep -c '^unavailable (action-zero.sh exited 3): run it yourself$' "$root/tester/az90fail/DEMO-nextleg-${today}B-chief.md")" "1"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/az90fail/DEMO-nextleg-${today}A-chief.md" "$token90c" >/dev/null 2>&1
 if [ -n "$_TIMEOUT_BIN" ]; then
     printf '#!/usr/bin/env bash\necho partial\nsleep 10\n' > "$tmp/az-hang.sh"
     out90d="$(console new --bucket az90hang)"
@@ -2952,8 +2952,8 @@ if [ -n "$_TIMEOUT_BIN" ]; then
     ACTION_ZERO_SCRIPT="$tmp/az-hang.sh" ACTION_ZERO_SECS=1 console next --bucket az90hang >/dev/null 2>&1 || rc90=$?
     check "90 a hung action-zero does not stop next" "$rc90" "0"
     check "90 a hung action-zero is cut at ACTION_ZERO_SECS and marked unavailable" \
-        "$(grep -c '^unavailable (action-zero.sh exited 124): run it yourself$' "$root/tester/az90hang/DEMO-nextleg-${today}B-console.md")" "1"
-    HANDOVER_DIR="$root" bash "$QL" release "$root/tester/az90hang/DEMO-nextleg-${today}A-console.md" "$(token_of "$out90d")" >/dev/null 2>&1
+        "$(grep -c '^unavailable (action-zero.sh exited 124): run it yourself$' "$root/tester/az90hang/DEMO-nextleg-${today}B-chief.md")" "1"
+    HANDOVER_DIR="$root" bash "$QL" release "$root/tester/az90hang/DEMO-nextleg-${today}A-chief.md" "$(token_of "$out90d")" >/dev/null 2>&1
 else
     echo "ok - SKIPPED: 90 hung action-zero: no timeout or gtimeout on this host"
 fi
@@ -2976,13 +2976,13 @@ mk91() {
         [ "$4" = ABSENT ] || printf '## Current direction\n\n%s\n\n' "$4"
         printf '## Results\n'
         [ "$3" = "-" ] || printf '%s\n' "$3"
-    } > "$d/DEMO-nextleg-${today}B-console.md"
+    } > "$d/DEMO-nextleg-${today}B-chief.md"
 }
-run91() { rc91=0; out91="$(console next --bucket "$1" --doc "$root/tester/$1/DEMO-nextleg-${today}B-console.md" 2>&1)" || rc91=$?; }
+run91() { rc91=0; out91="$(console next --bucket "$1" --doc "$root/tester/$1/DEMO-nextleg-${today}B-chief.md" 2>&1)" || rc91=$?; }
 mk91 rul91a "(46) other ruling" "$b91" "$dir91"; run91 rul91a
 check "91 a verbatim OPERATOR quote missing from decisions: refuses (exit 6)" "$rc91" "6"
 check "91 refusal names the missing ruling" "$(printf '%s\n' "$out91" | grep -cF "$q91")" "1"
-check "91 refusal writes no HANDOFF" "$([ -f "$root/tester/rul91a/DEMO-nextleg-${today}B-console-HANDOFF.md" ] && echo yes || echo no)" "no"
+check "91 refusal writes no HANDOFF" "$([ -f "$root/tester/rul91a/DEMO-nextleg-${today}B-chief-HANDOFF.md" ] && echo yes || echo no)" "no"
 mk91 rul91b "(46) $q91" "$b91" "$dir91"; run91 rul91b
 check "91 the quote on the decisions: line passes" "$rc91" "0"
 mk91 rul91c "specs/decisions/console-decisions-2026-10-19.md holds #46" "$b91" "$dir91"
@@ -2998,14 +2998,14 @@ check "91 a placeholder Current direction block refuses (exit 7)" "$rc91" "7"
 mk91 dir91c "(46) other ruling" "-" ABSENT; run91 dir91c
 check "91 a doc with no Current direction block refuses (exit 7)" "$rc91" "7"
 mk91 dir91d "(46) other ruling" "-" "$dir91"; printf '[{"name":"0 — CI blocker","steps":[]},{"name":"1 — audit tickets","steps":[]}]\n' > "$root/tester/dir91d/focus-chains.json"; run91 dir91d
-h91="$root/tester/dir91d/DEMO-nextleg-${today}B-console-HANDOFF.md"
+h91="$root/tester/dir91d/DEMO-nextleg-${today}B-chief-HANDOFF.md"
 check "91 a real block passes" "$rc91" "0"
 check "91 the HANDOFF carries the outgoing direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF "$dir91")" "1"
 check "91 the HANDOFF direction block lists the chain order from focus-chains.json" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF 'Chain order (focus-chains.json): 0 — CI blocker; 1 — audit tickets')" "1"
-check "91 the successor doc carries the direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/dir91d/DEMO-nextleg-${today}C-console.md" | grep -cF "$dir91")" "1"
+check "91 the successor doc carries the direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/dir91d/DEMO-nextleg-${today}C-chief.md" | grep -cF "$dir91")" "1"
 check "91 a fresh HANDOFF reports its facts-header placeholders" "$(printf '%s\n' "$out91" | grep -c 'HANDOFF still has template placeholders')" "1"
 mk91 hdr91 "(46) other ruling" "-" "$dir91"
-cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-console-HANDOFF.md" <<'HDR'
+cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-chief-HANDOFF.md" <<'HDR'
 # DF → DG handoff state
 
 > **This file wins over the DF Results tail**; use that tail
@@ -3017,7 +3017,7 @@ cat > "$root/tester/hdr91/DEMO-nextleg-${today}B-console-HANDOFF.md" <<'HDR'
 
 ## How DG starts
 
-Run ACTION ZERO from `HIMMEL-nextleg-2026-10-22DG-roadmap-console.md` unchanged; expect at the root sweep
+Run ACTION ZERO from `HIMMEL-nextleg-2026-10-22DG-roadmap-chief.md` unchanged; expect at the root sweep
 `<the locks the successor should find>`. Kit: `/example/himmel/scripts/handover/console-kit`.
 HDR
 run91 hdr91
@@ -3025,7 +3025,35 @@ check "91 an existing HANDOFF with a placeholder Operator line is reported" "$(p
 # shellcheck disable=SC2016  # the backticks are literal markdown code spans
 check "91 an existing HANDOFF with a placeholder root-sweep line is reported" "$(printf '%s\n' "$out91" | grep -cF '`<the locks the successor should find>`')" "1"
 mk91 hdr91b "(46) other ruling" "-" "$dir91"
-printf '%s\n' '**Operator:** at the station.' > "$root/tester/hdr91b/DEMO-nextleg-${today}B-console-HANDOFF.md"; run91 hdr91b
+printf '%s\n' '**Operator:** at the station.' > "$root/tester/hdr91b/DEMO-nextleg-${today}B-chief-HANDOFF.md"; run91 hdr91b
 check "91 a filled existing HANDOFF is not reported" "$(printf '%s\n' "$out91" | grep -c 'template placeholders')" "0"
+
+# --- 92: a chief is named *-chief; a live *-console predecessor still resolves
+out92="$(console new --bucket chief92)"
+token92="$(token_of "$out92")"
+doc92A="$root/tester/chief92/DEMO-nextleg-${today}A-chief.md"
+check "92 new names the chief doc *-chief" "$([ -f "$doc92A" ] && echo yes)" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$doc92A" "$token92" >/dev/null 2>&1
+mkdir -p "$root/tester/chief92b"
+stub_doc predecessor > "$root/tester/chief92b/DEMO-nextleg-${today}A-roadmap-console.md"
+console next --bucket chief92b --name roadmap-console >/dev/null 2>&1
+doc92bB="$root/tester/chief92b/DEMO-nextleg-${today}B-roadmap-chief.md"
+check "92 next from a console-named predecessor arms a chief-named successor" "$([ -f "$doc92bB" ] && echo yes)" "yes"
+check "92 the successor's inbox carries the chief name" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-roadmap-chief.md" "$doc92bB" 2>/dev/null)" "3"
+check "92 the console-named predecessor's inbox still gets the handover marker" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-roadmap-console.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-roadmap-chief"
+mkdir -p "$root/tester/chief92c"
+stub_doc predecessor > "$root/tester/chief92c/DEMO-nextleg-${today}A-console.md"
+console next --bucket chief92c >/dev/null 2>&1
+check "92 next with the default name finds a console-named predecessor" "$([ -f "$root/tester/chief92c/DEMO-nextleg-${today}B-chief.md" ] && echo yes)" "yes"
+mkdir -p "$root/tester/chief92d"
+stub_doc predecessor > "$root/tester/chief92d/DEMO-nextleg-${today}A-roadmap-console.md"
+console next --bucket chief92d --doc "$root/tester/chief92d/DEMO-nextleg-${today}A-roadmap-console.md" >/dev/null 2>&1
+check "92 next --doc on a console-named doc names the successor *-chief" "$([ -f "$root/tester/chief92d/DEMO-nextleg-${today}B-roadmap-chief.md" ] && echo yes)" "yes"
+mkdir -p "$root/tester/chief92e"
+: > "$root/tester/chief92e/DEMO-nextleg-${today}A-console.md"
+out92e="$(console new --bucket chief92e)"
+token92e="$(token_of "$out92e")"
+check "92 new skips a letter a console-named doc already holds" "$([ -f "$root/tester/chief92e/DEMO-nextleg-${today}B-chief.md" ] && echo yes)" "yes"
+HANDOVER_DIR="$root" bash "$QL" release "$root/tester/chief92e/DEMO-nextleg-${today}B-chief.md" "$token92e" >/dev/null 2>&1
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

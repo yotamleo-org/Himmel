@@ -34,7 +34,7 @@
 # fires on every compaction fleet-wide, and a leg or ad-hoc session dumping
 # a console's authority state would be the exact failure this hook exists to
 # prevent, not a feature. Detection: THE SESSION'S OWN `-n` NAME must be a
-# `*-console` name first — never a parent process, never inherited env — and
+# `*-chief` or `*-console` name first — never a parent process, never inherited env — and
 # only then is `HIMMEL_CONSOLE_DOC` trusted, and only when it names exactly
 # `<own name>.md` (`HIMMEL_CONSOLE_DOC`/`HIMMEL_CONSOLE_WORKDIR`
 # are ambient env — a console's own launch sets them on ITS process, but a
@@ -83,14 +83,14 @@ resolve_console_doc() {
     # ever trusts — resolved BEFORE looking at HIMMEL_CONSOLE_DOC, never
     # skipped by it. A leg or judge launched from a console's own Bash
     # subprocess can inherit that console's HIMMEL_CONSOLE_DOC/WORKDIR as
-    # ordinary ambient env; only a name that is itself `*-console` may ever
+    # ordinary ambient env; only a name that is itself `*-chief`/`*-console` may ever
     # cash that env var in.
     # shellcheck source=scripts/lib/session-name.sh
     . "$REPO/scripts/lib/session-name.sh" || return 1
     local name
     name="$(current_session_name)" || return 1
     case "$name" in
-        *-console) ;;
+        *-console|*-chief) ;;
         *) return 1 ;;
     esac
 

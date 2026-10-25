@@ -36,7 +36,7 @@
 // a call whose message streamed no text has none.
 // Agents: every TEXT_MESSAGE_START and TOOL_CALL_START carries
 // `agent`. The session's own agent is id "main", named by the latest
-// agent-name record (role from that name: -console, a leg's -N<digits>-, judge),
+// agent-name record (role from that name: -chief or -console, a leg's -N<digits>-, judge),
 // its model the latest assistant message.model. A sidechain record
 // (isSidechain + agentId, inline or fed from subagents/agent-<id>.jsonl) is a
 // subagent's: it is bound to the Agent call whose prompt equals its first
@@ -114,7 +114,7 @@ const busDeliveries = (text: string) => [...text.matchAll(BUS_HEADER)].map((m) =
 const LEDGER_CONFIRMED = /^ledger-append\.sh: (amended|appended finding|appended verdict amend for) (\S+) at ([0-9a-f]+)(?: -> (\{.*\}))?/gm;
 
 const roleOfName = (name: string): AgentRole =>
-  /-console$/.test(name) ? "console" : /judge/i.test(name) ? "judge" : /(^|-)N\d+(-|$)/.test(name) ? "leg" : "agent";
+  /-(console|chief)$/.test(name) ? "console" : /judge/i.test(name) ? "judge" : /(^|-)N\d+(-|$)/.test(name) ? "leg" : "agent";
 const roleOfKind = (kind: string): AgentRole => (/critic|review/i.test(kind) ? "critic" : /judge/i.test(kind) ? "judge" : "subagent");
 
 type Rec = Record<string, unknown>;
