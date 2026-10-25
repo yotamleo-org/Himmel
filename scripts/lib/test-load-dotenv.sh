@@ -70,9 +70,11 @@ while IFS="$(printf '\t')" read -r attrs val; do
     [ "$m" = 1 ] || continue
     case "$verb" in
         lookup) printf '%s' "$val"; exit 0 ;;
+        # As libsecret's secret-tool.c: the item lines and the secret go to
+        # stdout (g_print), the attribute lines to stderr (g_printerr).
         search)
             printf '[/stub]\nlabel = stub\nsecret = %s\n' "$val"
-            for p in $attrs; do printf 'attribute.%s = %s\n' "${p%%=*}" "${p#*=}"; done
+            for p in $attrs; do printf 'attribute.%s = %s\n' "${p%%=*}" "${p#*=}" >&2; done
             rc=0 ;;
     esac
 done <"$KSTUB_STORE"

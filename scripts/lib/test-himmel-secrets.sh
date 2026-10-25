@@ -36,6 +36,7 @@ q=""
 while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
 case "$verb" in
     store) IFS= read -r val || true; printf '%s\t%s\n' "${q# }" "$val" >>"$KSTUB_STORE"; exit 0 ;;
+    lookup) [ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1 ;;
 esac
 rc=1
 while IFS="$(printf '\t')" read -r attrs val; do
@@ -44,9 +45,11 @@ while IFS="$(printf '\t')" read -r attrs val; do
     [ "$m" = 1 ] || continue
     case "$verb" in
         lookup) printf '%s' "$val"; exit 0 ;;
+        # As libsecret's secret-tool.c: the item lines and the secret go to
+        # stdout (g_print), the attribute lines to stderr (g_printerr).
         search)
             printf '[/stub]\nlabel = stub\nsecret = %s\n' "$val"
-            for p in $attrs; do printf 'attribute.%s = %s\n' "${p%%=*}" "${p#*=}"; done
+            for p in $attrs; do printf 'attribute.%s = %s\n' "${p%%=*}" "${p#*=}" >&2; done
             rc=0 ;;
     esac
 done <"$KSTUB_STORE"
@@ -127,6 +130,12 @@ assert_eq "S6 export-env round-trips" "TEST_HS_A=fake-a|TEST_HS_B=\"fake-b\"" "$
 assert_eq "S6 export-env writes mode 600" "600" "$(stat -c %a "$TMP/out.env" 2>/dev/null || stat -f %Lp "$TMP/out.env")"
 got=$(cd "$REPO" && "$HS" export-env "$TMP/out.env" 2>/dev/null; echo "rc=$?")
 assert_eq "S6 export-env refuses an existing file" "rc=2" "$got"
+got=$(cd "$REPO" && export KSTUB_LOOKUP_FAIL=1 && "$HS" export-env "$TMP/out-miss.env" >/dev/null 2>"$TMP/s6.err"; echo "rc=$?")
+assert_eq "S6 export-env fails when a listed item cannot be read" "rc=2" "$got"
+assert_eq "S6 export-env names the unread items" "2" "$(grep -c '^skipped TEST_HS_. (lookup failed)' "$TMP/s6.err")"
+ln -s "$TMP/s6-target.env" "$TMP/out-link.env"
+got=$(cd "$REPO" && "$HS" export-env "$TMP/out-link.env" 2>/dev/null; echo "rc=$?")
+assert_eq "S6 export-env refuses a dangling symlink, creates no target" "rc=2|absent" "$got|$([ -e "$TMP/s6-target.env" ] && echo present || echo absent)"
 
 # S7: a locked keyring makes no lookup, and put changes nothing.
 kreset
