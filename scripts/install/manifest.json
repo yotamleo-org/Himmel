@@ -388,16 +388,6 @@
       "offboard": "advise"
     },
     {
-      "id": "codex-sweep-cadence",
-      "kind": "scheduler",
-      "scopes": ["user"],
-      "profiles": ["core", "all"],
-      "deps": [],
-      "probe": { "type": "cmd:cadence_armed", "resolver": "scripts/lib/cadence-format.sh", "envVar": "SWEEP_BAT_DIR", "defaultSubdir": ".claude/codex-sweep-cadence" },
-      "removable": "full-offboard-only",
-      "offboard": "advise"
-    },
-    {
       "id": "graphmap-cadence",
       "kind": "scheduler",
       "scopes": ["user"],
@@ -479,16 +469,6 @@
       "offboard": "advise"
     },
     {
-      "id": "cadence-runs-codex-sweep",
-      "kind": "scheduler",
-      "scopes": ["user"],
-      "profiles": ["core", "all"],
-      "deps": [],
-      "probe": {"type": "cadence-runs", "script": "scripts/cleanup/codex-sweep-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-CodexOrphanSweep", "intervalHours": 4}]},
-      "removable": "full-offboard-only",
-      "offboard": "advise"
-    },
-    {
       "id": "cadence-runs-drift-fix",
       "kind": "scheduler",
       "scopes": ["user"],
@@ -515,16 +495,6 @@
       "profiles": ["core", "all"],
       "deps": [],
       "probe": {"type": "cadence-runs", "script": "scripts/doctor-cadence.sh", "tasks": [{"task": "HIMMEL-Doctor", "intervalHours": 24}]},
-      "removable": "full-offboard-only",
-      "offboard": "advise"
-    },
-    {
-      "id": "cadence-runs-repo-sync",
-      "kind": "scheduler",
-      "scopes": ["user"],
-      "profiles": ["core", "all"],
-      "deps": [],
-      "probe": {"type": "cadence-runs", "script": "scripts/sync/repo-sync-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-RepoSync", "intervalHours": 24}]},
       "removable": "full-offboard-only",
       "offboard": "advise"
     },

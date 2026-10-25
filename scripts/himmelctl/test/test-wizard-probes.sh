@@ -106,7 +106,7 @@
 #   cmd:cadence_armed pipeline-cadence (full matrix: armed /
 #                  not-armed / resolver-missing / spawn-error / unexpected-rc,
 #                  the round-6 discipline applied from the start) plus
-#                  codex-sweep-cadence/graphmap-cadence envVar-wiring sanity.
+#                  graphmap-cadence envVar-wiring sanity.
 #   cmd:guardrail_block_status guardrail-block-global
 #                  project-mode (absent) / rotted node path, unparseable
 #                  output, nonzero exit (all degraded); plus
@@ -3296,30 +3296,10 @@ console.log(JSON.stringify(runProbe(item, ctx)));
   echo "ok: cmd:cadence_armed — an existing-but-unreadable dir reads degraded, distinguished from genuinely unarmed (absent)"
 fi
 
-# ── cmd:cadence_armed: envVar/defaultSubdir wiring sanity for the other two ──
-# cadences (codex-sweep-cadence, graphmap-cadence) — the full present/absent/
-# degraded matrix is pinned once above for the shared probe TYPE; this
-# confirms each item's OWN envVar override actually routes to ITS OWN dir,
-# not a shared/copy-pasted one.
-csc_armed_dir="$work/csc-armed-dir"; mkdir -p "$csc_armed_dir"
-cat > "$csc_armed_dir/codex-sweep.bat" <<'BAT'
-rem himmel-cadence-runner-format: 7
-BAT
-# codex-sweep only ever arms a.bat, and only on Windows
-# cadence_runner_stamp now reads only the CURRENT platform's runner
-# extension, so this fixture forces the Windows branch via the
-# CADENCE_RUNNER_PLATFORM_OS test seam to keep exercising the real
-# (Windows) codex-sweep path on a Linux CI host.
-outCSCp=$("$node_bin" -e "
-const { runProbe } = require('$probes_lib_w');
-const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
-const item = manifest.items.find((i) => i.id === 'codex-sweep-cadence');
-const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user',
-  env: Object.assign({}, process.env, { SWEEP_BAT_DIR: '$(winpath "$csc_armed_dir")', CADENCE_RUNNER_PLATFORM_OS: 'windows' }) };
-console.log(JSON.stringify(runProbe(item, ctx)));
-")
-echo "$outCSCp" | jq -e '.actual == "present"' >/dev/null || fail "cmd:cadence_armed (codex-sweep-cadence) present via SWEEP_BAT_DIR: (got: $outCSCp)"
-
+# ── cmd:cadence_armed: envVar/defaultSubdir wiring sanity for graphmap-cadence ──
+# the full present/absent/degraded matrix is pinned once above for the shared
+# probe TYPE; this confirms the item's OWN envVar override actually routes to
+# ITS OWN dir, not a shared/copy-pasted one.
 gc_armed_dir="$work/gc-armed-dir"; mkdir -p "$gc_armed_dir"
 cat > "$gc_armed_dir/graphmap-luna.sh" <<'SH'
 # himmel-cadence-runner-format: 7
@@ -3333,7 +3313,7 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outGCp" | jq -e '.actual == "present"' >/dev/null || fail "cmd:cadence_armed (graphmap-cadence) present via GRAPHMAP_BAT_DIR: (got: $outGCp)"
-echo "ok: cmd:cadence_armed envVar wiring — codex-sweep-cadence/graphmap-cadence each route to their OWN dir"
+echo "ok: cmd:cadence_armed envVar wiring — graphmap-cadence routes to its OWN dir"
 
 # ── cmd:guardrail_block_status (guardrail-block-global) — ──
 # guardrail-block.mjs grew a `status --json` verb enumerating
@@ -7163,16 +7143,6 @@ for cr_id in $cr_ids; do
   mkdir -p "$cr_root/$(dirname "$cr_script")"
   # shellcheck disable=SC2016  # the stub's own $CR_STATUS_FILE must stay literal
   printf '#!/usr/bin/env bash\n[ "$1" = status ] || exit 2\ncat "$CR_STATUS_FILE"\n' > "$cr_root/$cr_script"
-  case "$cr_id" in
-    codex-sweep|repo-sync)
-      is_win32 && continue
-      printf '#!/usr/bin/env bash\necho "ERR: Windows-only" >&2\nexit 2\n' > "$cr_root/$cr_script"
-      outCR=$(run_cr "$cr_id")
-      echo "$outCR" | jq -e '.actual == "absent" and .cleanAbsence == true and (.detail | contains("n/a on this platform"))' >/dev/null \
-        || fail "cadence-runs-$cr_id: a Windows-only row must read absent/cleanAbsence 'n/a on this platform' off Windows (got: $outCR)"
-      echo "ok: cadence-runs-$cr_id — Windows-only row reads n/a on this platform"
-      continue ;;
-  esac
   [ -f "$cr_fix/$cr_id.txt" ] || fail "cadence-runs-$cr_id: missing fixture $cr_fix/$cr_id.txt"
   for cr_v in healthy stale failing duplicate unarmed; do
     cr_variant "$cr_fix/$cr_id.txt" "$cr_v" > "$cr_cur"

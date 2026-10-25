@@ -383,10 +383,6 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/luna/pipeline-cadence.sh arm)`;
       }
-      if (item.id === 'codex-sweep-cadence') {
-        severity = 'n/a';
-        detail = `${probe.detail} — opt-in (bash scripts/cleanup/codex-sweep-cadence.sh arm)`;
-      }
       if (item.id === 'graphmap-cadence') {
         severity = 'n/a';
         detail = `${probe.detail} — opt-in (bash scripts/luna/graphmap-cadence.sh arm)`;

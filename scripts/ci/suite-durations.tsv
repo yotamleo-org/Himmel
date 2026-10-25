@@ -204,7 +204,6 @@ scripts/ci/test-vm-runner-probe-workflow.sh	1
 scripts/ci/test-workflow-red-issue.sh	1
 scripts/ci/test-workflow-red-workflow.sh	0
 scripts/cleanup/test-batch-runners.sh	1
-scripts/cleanup/test-codex-sweep-cadence.sh	0
 scripts/cleanup/test-reap-mcp-orphans.sh	1
 scripts/cleanup/test-steering-cull-cadence.sh	2
 scripts/cloud/test-check-env.sh	0
@@ -894,6 +893,7 @@ scripts/lint/test-check-rule-tags.sh	1
 scripts/lint/test-check-swallowed-errors.sh	1
 scripts/lint/test-flag-parity.sh	1
 scripts/lint/test-list-enforced-rules.sh	0
+scripts/lint/test-no-windows-branches.sh	1
 scripts/lint/test-shell-lint.sh	10
 scripts/lint/test-skill-lint.sh	2
 scripts/lint/test-vendored-domain-modeling.sh	0
@@ -992,7 +992,6 @@ scripts/statusline/test-hud-composer-parity.sh	9
 scripts/statusline/test-hud-render-parity.sh	0
 scripts/statusline/test-usage-cache-contract.sh	2
 scripts/statusline/test-usage-cache-producer.sh	5
-scripts/sync/test-repo-sync-cadence.sh	4
 scripts/telegram/test-auto-action.sh	2
 scripts/telegram/test-break-glass.sh	3
 scripts/telegram/test-dispatch-lane.sh	37

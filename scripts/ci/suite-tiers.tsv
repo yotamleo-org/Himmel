@@ -177,7 +177,6 @@ scripts/ci/test-workflow-red-issue.sh	pr	trust-path
 scripts/ci/test-workflow-red-workflow.sh	pr	trust-path
 scripts/claudex/test-probe-chunk.sh	local	new since the audit, behaviour suite
 scripts/cleanup/test-batch-runners.sh	local	behaviour suite, new HIMMEL-6865
-scripts/cleanup/test-codex-sweep-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cleanup/test-reap-mcp-orphans.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cleanup/test-steering-cull-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cloud/test-check-env.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -897,6 +896,7 @@ scripts/lint/test-check-rule-tags.sh	pr	catch:3125
 scripts/lint/test-check-swallowed-errors.sh	pr	catch:2919
 scripts/lint/test-flag-parity.sh	pr	static-gate
 scripts/lint/test-list-enforced-rules.sh	pr	static-gate
+scripts/lint/test-no-windows-branches.sh	pr	static-gate
 scripts/lint/test-shell-lint.sh	pr	static-gate
 scripts/lint/test-skill-lint.sh	pr	static-gate
 scripts/lint/test-vendored-domain-modeling.sh	pr	static-gate
@@ -998,7 +998,6 @@ scripts/statusline/test-hud-render-parity.sh	pr	static-gate
 scripts/statusline/test-usage-cache-contract.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/statusline/test-usage-cache-producer.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/statusline/test-usage-fetch-scheduled.sh	local	new since the audit, behaviour suite
-scripts/sync/test-repo-sync-cadence.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/telegram/test-auto-action.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/telegram/test-break-glass.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/telegram/test-dispatch-lane.sh	local	behaviour suite, 0 catches in the 400-PR audit window

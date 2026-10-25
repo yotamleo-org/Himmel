@@ -1962,13 +1962,11 @@ fs.writeFileSync(p, '{ this is not valid json');
 # luna.cadenceEnabled + bridge.enabled/installPersistence are all ON --
 # maximal surface for a leaked 'would arm'/'would install' preview line, so
 # a regression here has nowhere to hide. also names a
-# NON-pipeline unit (codex-sweep) as armed here -- codex-sweep's
-# `requires:'lane:codex'` is a consent surface, not a functional dependency
-# (see loadProfile's own comment), so naming it armed with an empty `lanes`
-# validates cleanly; that's what lets this fixture reach the config-load
-# failure with a requested non-pipeline unit still in play, to prove
-# buildSummary's configLoadFailed branch reports it honestly instead of
-# dropping it.
+# NON-pipeline unit (drift-fix, requires:'none') as armed here, so it
+# validates cleanly with vault=none; that's what lets this fixture reach the
+# config-load failure with a requested non-pipeline unit still in play, to
+# prove buildSummary's configLoadFailed branch reports it honestly instead
+# of dropping it.
 profileLF="$work/profileLF.json"
 cat > "$profileLF" <<JSON
 {
@@ -1979,7 +1977,7 @@ cat > "$profileLF" <<JSON
   "luna": { "cadenceEnabled": true, "phiDeclared": false },
   "secretsWalk": "run",
   "bridge": { "enabled": true, "envPath": "~/.claude/channels/telegram/.env", "whisperCli": "", "whisperModel": "ggml-small.bin", "installPersistence": true },
-  "cadences": { "codex-sweep": "armed" }
+  "cadences": { "drift-fix": "armed" }
 }
 JSON
 
@@ -2017,15 +2015,15 @@ grepq "$plannedBlockLFDry" -F -- 'secrets walk' \
   && fail "caseConfigLoadFailure: the planned: bucket must not mention the secrets walk at all (got planned block: $plannedBlockLFDry)"
 # before this fix, the configLoadFailed branch returned
 # only the two legacy luna-cadence/PHI lines and never reached the per-unit
-# loop, so a profile requesting a non-pipeline unit (codex-sweep here) lost
+# loop, so a profile requesting a non-pipeline unit (drift-fix here) lost
 # that row entirely -- neither reported nor claimed armed. It must now
 # appear under skipped: with an honest "requested but not armed" wording,
 # and must NEVER appear under installed:.
 skippedBlockLFDry=$(printf '%s' "$outLFDry" | sed -n '/^skipped:$/,/^$/p')
-grepq "$skippedBlockLFDry" -F -- 'codex orphan sweep cadence — requested but not armed' \
-  || fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: dry-run skipped: bucket should report the requested-but-not-armed codex-sweep row (got skipped block: $skippedBlockLFDry)"
-grepq "$outLFDry" -F -- 'would arm via codex-sweep-cadence.sh' \
-  && fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: the dry-run must never plan the codex-sweep arm on a config-load failure (got: $outLFDry)"
+grepq "$skippedBlockLFDry" -F -- 'upstream drift-fix cadence — requested but not armed' \
+  || fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: dry-run skipped: bucket should report the requested-but-not-armed drift-fix row (got skipped block: $skippedBlockLFDry)"
+grepq "$outLFDry" -F -- 'would arm via drift-fix-cadence.sh' \
+  && fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: the dry-run must never plan the drift-fix arm on a config-load failure (got: $outLFDry)"
 echo "ok: caseConfigLoadFailure dry-run names the load/parse failure and previews NO cadence/bridge actions as planned"
 
 # ── apply half (SAME malformed file) ────────────────────────────────────
@@ -2053,10 +2051,10 @@ grepq "$installedBlockLFApply" -F -- 'telegram bridge config' \
 # Fix 2 (apply half, same fixture): same honest skipped row, same
 # never-installed guarantee.
 skippedBlockLFApply=$(printf '%s' "$outLFApply" | sed -n '/^skipped:$/,/^$/p')
-grepq "$skippedBlockLFApply" -F -- 'codex orphan sweep cadence — requested but not armed' \
-  || fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: apply skipped: bucket should report the requested-but-not-armed codex-sweep row (got skipped block: $skippedBlockLFApply)"
-grepq "$installedBlockLFApply" -F -- 'codex-sweep' \
-  && fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: the apply run's installed: block must not mention codex-sweep at all (got installed block: $installedBlockLFApply)"
+grepq "$skippedBlockLFApply" -F -- 'upstream drift-fix cadence — requested but not armed' \
+  || fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: apply skipped: bucket should report the requested-but-not-armed drift-fix row (got skipped block: $skippedBlockLFApply)"
+grepq "$installedBlockLFApply" -F -- 'drift-fix' \
+  && fail "caseConfigLoadFailure [HIMMEL-2302 Fix 2]: the apply run's installed: block must not mention drift-fix at all (got installed block: $installedBlockLFApply)"
 echo "ok: caseConfigLoadFailure apply run also refuses (rc nonzero, no spawn, nothing claimed installed) -- agreeing with the dry-run half that nothing runs in this state"
 
 # ═══════════════════════════════════════════════════════════════════════════

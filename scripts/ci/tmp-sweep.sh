@@ -170,7 +170,6 @@ cfp-
 codex-bank-cache-cli-
 codex-bank-probe-ok-
 codex-bank-probe-to-
-codex-sweep-cadence.
 cr-available-test.
 cr-floor-
 cr-floored-repo-

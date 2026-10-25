@@ -148,7 +148,7 @@ export HIMMEL_DOCTOR_SYSTEMCTL="$HIMMEL_DOCTOR_SYSTEMCTL_BASE/no-systemctl"
 # the "no armed cadence runners" and "no false nudges" cases (added
 # the qmd seam).
 C8_EMPTY="$(mktemp -d)"
-export PIPELINE_BAT_DIR="$C8_EMPTY/pipeline" SWEEP_BAT_DIR="$C8_EMPTY/sweep" GRAPHMAP_BAT_DIR="$C8_EMPTY/graphmap" QMD_CADENCE_BAT_DIR="$C8_EMPTY/qmd"
+export PIPELINE_BAT_DIR="$C8_EMPTY/pipeline" GRAPHMAP_BAT_DIR="$C8_EMPTY/graphmap" QMD_CADENCE_BAT_DIR="$C8_EMPTY/qmd"
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
@@ -939,37 +939,17 @@ fi
 echo "== C8: no armed cadence runners -> OK C8-cadence =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C8-cadence: no armed cadence runners (skipped)'; then pass "C8 -> OK (no runners)"; else fail "C8 -> $(printf '%s' "$out" | grep C8)"; fi
-rm -rf "$t"
-
-echo "== C8: stale codex-sweep runner -> WARN + codex re-arm hint =="
-# sweep only ever arms a .bat, and only on Windows —
-# cadence_runner_stamp now reads only the CURRENT platform's runner extension,
-# so this fixture forces the Windows branch via the CADENCE_RUNNER_PLATFORM_OS
-# test seam to keep exercising the real (Windows) codex-sweep path.
-t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/sweep"; write_settings "$t/claude" "$WRAPPER"
-printf 'rem himmel-cadence-runner-format: %s\r\n' "$STALE_CADENCE_VER" > "$t/sweep/codex-sweep.bat"
-out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
-    DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
-    CADENCE_RUNNER_PLATFORM_OS=windows \
-    bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
-if grepq "$out" 'WARN C8-cadence: codex-sweep-cadence runners are stale' \
-    && grepq "$out" 'bash scripts/cleanup/codex-sweep-cadence.sh arm --force'; then
-    pass "C8 -> WARN (stale codex-sweep runner)"
-else
-    fail "C8 -> $(printf '%s' "$out" | grep C8)"
-fi
 rm -rf "$t"
 
 echo "== C8: stale graphmap runner -> WARN + graphmap re-arm hint =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/graphmap"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old graphmap\n' "$STALE_CADENCE_VER" > "$t/graphmap/graphmap-luna.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap" \
+    GRAPHMAP_BAT_DIR="$t/graphmap" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
 if grepq "$out" 'WARN C8-cadence: graphmap-cadence runners are stale' \
@@ -984,7 +964,7 @@ echo "== C8: stale qmd runner -> WARN + qmd re-arm hint =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/qmd"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old qmd\n' "$STALE_CADENCE_VER" > "$t/qmd/qmd-reindex.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     QMD_CADENCE_BAT_DIR="$t/qmd" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
@@ -1000,7 +980,7 @@ echo "== C8: stale upstream-watch runner -> WARN + upstream-watch re-arm hint ==
 t="$(mktemp -d)" || exit 1; mkdir -p "$t/claude" "$t/uw"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old upstream-watch\n' "$STALE_CADENCE_VER" > "$t/uw/upstream-watch.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     QMD_CADENCE_BAT_DIR="$t/qmd-empty" UPSTREAMWATCH_BAT_DIR="$t/uw" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
@@ -1016,7 +996,7 @@ echo "== C8: pipeline-only current runner -> OK, no false nudges =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/pipeline"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho current runner\n' "$CADENCE_VER" > "$t/pipeline/pipeline-harvest.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C8-cadence: pipeline-cadence runners current' \
@@ -2114,8 +2094,8 @@ rm -rf "$t"
 
 echo "== C24: expected task present on the live scheduler -> OK C24-cadence-registry =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe "$t/probe" "HIMMEL-CodexOrphanSweep"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
+fake_task_probe "$t/probe" "HIMMEL-Qmd-Reindex"
 out="$(PATH="$t/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C24-cadence-registry' && grepq "$out" -F 'expected cadence task(s) present' && ! grepq "$out" 'WARN C24-cadence-registry'; then
     pass "C24 -> OK (expected task present)"
@@ -2126,10 +2106,10 @@ rm -rf "$t"
 
 echo "== C24: expected task ABSENT from the live scheduler -> WARN C24-cadence-registry =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 fake_task_probe "$t/probe"
 out="$(PATH="$t/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'expected-but-absent cadence task(s): HIMMEL-CodexOrphanSweep'; then
+if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'expected-but-absent cadence task(s): HIMMEL-Qmd-Reindex'; then
     pass "C24 -> WARN (expected task absent)"
 else
     fail "C24 absent -> $(printf '%s' "$out" | grep C24)"
@@ -2138,7 +2118,7 @@ rm -rf "$t"
 
 echo "== C24: scheduler probe itself fails (access-denied/transient) -> INFO, not a false-mass-WARN (codex-1, CR round 3) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 if case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*) true ;; *) false ;; esac; then
     printf '#!/bin/sh\nexit 1\n' > "$t/probe/schtasks"; chmod +x "$t/probe/schtasks"
 else
@@ -2326,11 +2306,11 @@ rm -rf "$t"
 echo "== C24 (HIMMEL-2515): a NON-bridge task expected, systemctl reports enabled -> the systemd probe must NOT leak to other tasks (still WARN) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 no-leak: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 fake_task_probe --posix "$t/probe"
 fake_systemctl "$t/probe" enabled 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'HIMMEL-CodexOrphanSweep'; then
+if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'HIMMEL-Qmd-Reindex'; then
     pass "C24 -> WARN (a non-bridge task stays crontab-only, systemd probe did not leak)"
 else
     fail "C24 no-leak -> $(printf '%s' "$out" | grep C24)"
@@ -2455,12 +2435,12 @@ rm -rf "$t"
 echo "== C24 (HIMMEL-2515 CR round 4): mixed registry -- bridge armed via systemd + a crontab-ONLY sibling task, crontab NOT on PATH at all -> bridge PRESENT, sibling task INDETERMINATE (never joins the WARN, never silently dropped) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-nocron.XXXXXX")" || { fail "C24 nocron-mixed: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HimmelTelegramBridge","HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HimmelTelegramBridge","HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 fake_systemctl "$t/probe" enabled 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$NOGH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 # pre-fix, this INDETERMINATE line hardcoded the bridge's cause
 # (systemd bus unreachable) and remedy (check telegram-bridge.service) even
-# though HIMMEL-CodexOrphanSweep is a crontab-ONLY sibling -- crontab, not
+# though HIMMEL-Qmd-Reindex is a crontab-ONLY sibling -- crontab, not
 # systemd, is what's unreachable here. Assert the corrected per-task
 # attribution: names crontab, recommends `crontab -l`, and never sends this
 # sibling's operator to check the bridge's unit. Scoped to just this
@@ -2468,7 +2448,7 @@ out="$(PATH="$FAKEBIN:$t/probe:$NOGH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemct
 # file's pipefail note near grepq's definition) rather than the whole $out,
 # because C30 legitimately prints 'telegram-bridge.service' elsewhere in its
 # own unrelated MainPID remedy.
-c24_indet_ctx="$(grep -A1 -F 'UNDETERMINED enablement (crontab itself is unreachable, and these tasks have no other backend): HIMMEL-CodexOrphanSweep' <<< "$out")"
+c24_indet_ctx="$(grep -A1 -F 'UNDETERMINED enablement (crontab itself is unreachable, and these tasks have no other backend): HIMMEL-Qmd-Reindex' <<< "$out")"
 if ! grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" 'OK   C24-cadence-registry' && grepq "$out" 'INFO C24-cadence-registry' && [ -n "$c24_indet_ctx" ] && grepq "$c24_indet_ctx" -F 'crontab -l' && ! grepq "$c24_indet_ctx" 'telegram-bridge.service'; then
     pass "C24 -> bridge present via systemd, crontab-only sibling task INDETERMINATE naming CRONTAB (not systemd) as its cause, recommending crontab -l (not systemctl)"
 else

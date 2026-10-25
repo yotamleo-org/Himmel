@@ -22,7 +22,7 @@ function emit(k) {
 
 // config-feed.js is required by cmdReport right before buildFeed: the report starts here.
 function begin(feed) {
-  cadences = feed.CADENCES.filter((c) => !c.windowsOnly || process.platform === 'win32').map((c) => c.name);
+  cadences = feed.CADENCES.map((c) => c.name);
   steps = ['install items', 'doctor checks', ...cadences.map((c) => `${c} cadence`), 'plugin profile', 'lanes, initiative legs, flags and secrets'];
   emit(0);
 }

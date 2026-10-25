@@ -14,31 +14,11 @@
 #   b. `cadences` is AUTHORITATIVE over the legacy `luna.cadenceEnabled`
 #      boolean when both are present on the same profile: cadenceEnabled=true
 #      + cadences.pipeline='off' must NOT arm pipeline.
-#   c. interactive: the cadences menu offers codex-sweep ONLY when the codex
-#      lane was selected; it stays absent (never asked) otherwise.
-#   d/e (installer v1 spec-deviation fix): the cadences question is PER-ROW
-#      gated, not whole-question vault gated — offeredCadenceRows() filters
-#      each row by its own `requires` (vault vs lane:codex) independently, so
-#      the question itself sits outside askQuestions()'s vaultMode!=='none'
-#      gate. vault=none + the codex lane must still reach the question
-#      (offering ONLY codex-sweep, the one row that does not require a
-#      vault) — case c already covers the mirror case (vault!=='none'); d/e
-#      prove the vault=none side stays correctly gated in BOTH directions.
-#   d. vault=none + codex lane selected -> cadences IS asked, offering ONLY
-#      codex-sweep; arming it records `cadences: {"codex-sweep":"armed"}`,
-#      the other three registry ids stay genuinely absent from the object.
-#   e. vault=none + no codex lane -> zero rows are offered (no 'vault' row
-#      qualifies, no 'lane:codex' row qualifies) -> the question is NEVER
-#      asked and `cadences` is absent from the answers entirely (round-8:
-#      not-asked stays undefined, never a fabricated {}).
-#   f. 1 Fix 1 (documented consent asymmetry, end-to-
-#      end): --from-profile with vault=none + cadences.codex-sweep='armed'
-#      and codex ABSENT from lanes validates cleanly (naming codex-sweep in a
-#      hand-reviewed profile IS the consent — loadProfile does not gate
-#      requires:lane:codex on the lanes field, unlike requires:vault which it
-#      DOES enforce, see case f's sibling exit-2 coverage in
-#      test-wizard-questions.sh case6d) and actually spawns
-#      codex-sweep-cadence.sh arm.
+#   e. the cadences question is PER-ROW gated, not whole-question vault
+#      gated — offeredCadenceRows() filters each row by its own `requires`,
+#      so vault=none still asks it, offering only the requires:'none' rows;
+#      declining them records every offered row off, with the vault- and
+#      env-requiring rows genuinely absent.
 
 set -euo pipefail
 
@@ -256,139 +236,13 @@ echo "$outCfgB" | jq -e '.luna.cadence.enabled == false' >/dev/null \
 echo "ok: case b — a top-level cadences section is authoritative over the legacy luna.cadenceEnabled boolean"
 
 # ═══════════════════════════════════════════════════════════════════════════
-# case c (interactive): the cadences menu offers codex-sweep ONLY when the
-# codex lane was selected; it stays absent (never asked) otherwise.
-# ═══════════════════════════════════════════════════════════════════════════
-
-stubC="$work/stubC"; mkdir -p "$stubC"
-pathC=$(build_path "$stubC" bash jq python3 npm --)
-homeC="$work/homeC"; mkdir -p "$homeC"
-
-set +e
-outNoCodex=$(PATH="$pathC" HOME="$homeC" USERPROFILE="$(winpath "$homeC")" HIMMELCTL_CACHE_DIR="$(winpath "$homeC.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeC.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 \
-  "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-luna
-project
-default-template
-
-inline
-
-no
-INPUT
-); rcNoCodex=$?
-set -e
-[ "$rcNoCodex" -eq 0 ] || fail "case c(no codex): should succeed (got rc=$rcNoCodex): $outNoCodex"
-grepq "$outNoCodex" -F -- 'codex-sweep' \
-  && fail "case c(no codex): codex-sweep must NOT appear in the cadences menu when codex was not selected (got: $outNoCodex)"
-
-set +e
-outCodex=$(PATH="$pathC" HOME="$homeC" USERPROFILE="$(winpath "$homeC")" HIMMELCTL_CACHE_DIR="$(winpath "$homeC.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeC.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 \
-  "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-luna
-project
-default-template
-
-inline
-codex
-no
-INPUT
-); rcCodex=$?
-set -e
-[ "$rcCodex" -eq 0 ] || fail "case c(codex): should succeed (got rc=$rcCodex): $outCodex"
-grepq "$outCodex" -F -- 'codex-sweep' \
-  || fail "case c(codex): codex-sweep SHOULD appear in the cadences menu once codex is selected (got: $outCodex)"
-echo "ok: case c — codex-sweep is offered in the cadences menu only when the codex lane was selected, absent (never asked) otherwise"
-
-# ═══════════════════════════════════════════════════════════════════════════
-# case d (interactive, installer v1 spec-deviation fix): vault=none + the
-# codex lane selected -> the cadences question is STILL asked (per-row
-# gating, not whole-question vault gating), offering codex-sweep (requires
-# lane:codex) PLUS the three `requires:'none'` rows added by
-# (drift-fix/upstream-watch/repo-sync — never vault- or lane-gated); arming
-# codex-sweep records `cadences: {"codex-sweep":"armed", "drift-fix":"off",
-# "upstream-watch":"off", "repo-sync":"off"}` with pipeline/qmd/graphmap
-# (requires:'vault') and pull-cadence (requires:'env:...', unset here)
-# genuinely absent from the object.
-# ═══════════════════════════════════════════════════════════════════════════
-
-stubD="$work/stubD"; mkdir -p "$stubD"
-pathD=$(build_path "$stubD" bash jq python3 npm --)
-homeD="$work/homeD"; mkdir -p "$homeD"
-
-set +e
-outD=$(PATH="$pathD" HOME="$homeD" USERPROFILE="$(winpath "$homeD")" HIMMELCTL_CACHE_DIR="$(winpath "$homeD.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeD.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=win32 \
-  "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-custom
-project
-none
-inline
-codex
-no
-1
-no
-INPUT
-); rcD=$?
-set -e
-[ "$rcD" -eq 0 ] || fail "case d: vault=none + codex lane run should succeed (got rc=$rcD): $outD"
-grepq "$outD" -F -- '? cadences — recurring scheduled jobs to arm now [codex-sweep,drift-fix,upstream-watch,doctor,repo-sync|none] (default: none)' \
-  || fail "case d: vault=none + codex should still ask cadences, offering codex-sweep + the three requires:'none' rows (got: $outD)"
-grepq "$outD" -F -- '"codex-sweep": "armed"' \
-  || fail "case d: selecting codex-sweep should record it armed (got: $outD)"
-grepq "$outD" -F -- '"drift-fix": "off"' \
-  || fail "case d: drift-fix (requires:'none', declined) should record off (got: $outD)"
-grepq "$outD" -F -- '"upstream-watch": "off"' \
-  || fail "case d: upstream-watch (requires:'none', declined) should record off (got: $outD)"
-grepq "$outD" -F -- '"repo-sync": "off"' \
-  || fail "case d: repo-sync (requires:'none', declined) should record off (got: $outD)"
-grepq "$outD" -F -- '"pipeline":' \
-  && fail "case d: pipeline must stay genuinely absent from cadences (requires vault, not offered) (got: $outD)"
-grepq "$outD" -F -- '"qmd":' \
-  && fail "case d: qmd must stay genuinely absent from cadences (requires vault, not offered) (got: $outD)"
-grepq "$outD" -F -- '"graphmap":' \
-  && fail "case d: graphmap must stay genuinely absent from cadences (requires vault, not offered) (got: $outD)"
-grepq "$outD" -F -- '"pull-cadence":' \
-  && fail "case d: pull-cadence must stay genuinely absent from cadences (requires env:GOOGLE_HEALTH_REFRESH_TOKEN, unset here) (got: $outD)"
-echo "ok: case d — vault=none + codex lane still asks cadences, offering codex-sweep + the three requires:'none' rows; arming codex-sweep records the rest off, with the vault- and env-requiring rows genuinely absent"
-
-# case d2: the non-Windows twin of case d above, which pins
-# HIMMELCTL_CADENCE_PLATFORM=win32 (repo-sync is requires:'platform:windows').
-# Same vault=none + codex run on a linux host: repo-sync is genuinely absent.
-stubD2="$work/stubD2"; mkdir -p "$stubD2"
-pathD2=$(build_path "$stubD2" bash jq python3 npm --)
-homeD2="$work/homeD2"; mkdir -p "$homeD2"
-
-set +e
-outD2=$(PATH="$pathD2" HOME="$homeD2" USERPROFILE="$(winpath "$homeD2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeD2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeD2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=linux \
-  "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-custom
-project
-none
-inline
-codex
-no
-1
-no
-INPUT
-); rcD2=$?
-set -e
-[ "$rcD2" -eq 0 ] || fail "case d2: vault=none + codex lane run on linux should succeed (got rc=$rcD2): $outD2"
-grepq "$outD2" -F -- '? cadences — recurring scheduled jobs to arm now [codex-sweep,drift-fix,upstream-watch,doctor|none] (default: none)' \
-  || fail "case d2: on linux, vault=none + codex should offer codex-sweep + drift-fix + upstream-watch but NOT repo-sync (got: $outD2)"
-grepq "$outD2" -F -- '"codex-sweep": "armed"' \
-  || fail "case d2: selecting codex-sweep should record it armed (got: $outD2)"
-grepq "$outD2" -F -- 'repo-sync' \
-  && fail "case d2: repo-sync must be genuinely absent (menu and answers) on a linux host (got: $outD2)"
-echo "ok: case d2 — the linux twin of case d: repo-sync is genuinely absent, the rest of the menu is unchanged"
-
-# ═══════════════════════════════════════════════════════════════════════════
-# case e (interactive, installer v1 spec-deviation fix -- narrowed by
-# vault=none + NO codex lane -> the vault- and lane:codex-
-# gated rows (pipeline/qmd/graphmap/codex-sweep) still don't qualify, but the
-# three `requires:'none'` rows this ticket added (drift-fix/upstream-watch/
-# repo-sync) qualify UNCONDITIONALLY -- so the cadences question IS now
-# asked, offering exactly those three (pull-cadence still absent: its
+# case e (interactive, installer v1 spec-deviation fix): vault=none -> the
+# vault-gated rows (pipeline/qmd/graphmap) still don't qualify, but the
+# `requires:'none'` rows (drift-fix/upstream-watch/doctor) qualify
+# UNCONDITIONALLY -- so the cadences question IS asked, offering exactly
+# those (pull-cadence still absent: its
 # requires:'env:GOOGLE_HEALTH_REFRESH_TOKEN' is unset in this hermetic HOME).
-# Declining all three (Enter -> the starter preset's empty cadenceIds
+# Declining them all (Enter -> the starter preset's empty cadenceIds
 # default) records every offered row 'off', never a fabricated {} for an
 # UNoffered row.
 # ═══════════════════════════════════════════════════════════════════════════
@@ -398,7 +252,7 @@ pathE=$(build_path "$stubE" bash jq python3 npm --)
 homeE="$work/homeE"; mkdir -p "$homeE"
 
 set +e
-outE=$(PATH="$pathE" HOME="$homeE" USERPROFILE="$(winpath "$homeE")" HIMMELCTL_CACHE_DIR="$(winpath "$homeE.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeE.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM=win32 \
+outE=$(PATH="$pathE" HOME="$homeE" USERPROFILE="$(winpath "$homeE")" HIMMELCTL_CACHE_DIR="$(winpath "$homeE.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeE.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 \
   "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
 custom
 project
@@ -411,117 +265,17 @@ no
 INPUT
 ); rcE=$?
 set -e
-[ "$rcE" -eq 0 ] || fail "case e: vault=none without codex run should succeed (got rc=$rcE): $outE"
-grepq "$outE" -F -- '? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,doctor,repo-sync|none] (default: none)' \
-  || fail "case e: vault=none with no codex lane should still ask cadences, offering ONLY the three requires:'none' rows (got: $outE)"
+[ "$rcE" -eq 0 ] || fail "case e: vault=none run should succeed (got rc=$rcE): $outE"
+grepq "$outE" -F -- '? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,doctor|none] (default: none)' \
+  || fail "case e: vault=none should still ask cadences, offering ONLY the requires:'none' rows (got: $outE)"
 grepq "$outE" -F -- '"drift-fix": "off"' \
   || fail "case e: declining drift-fix (Enter, no recommended default) should record off (got: $outE)"
 grepq "$outE" -F -- '"upstream-watch": "off"' \
   || fail "case e: declining upstream-watch should record off (got: $outE)"
-grepq "$outE" -F -- '"repo-sync": "off"' \
-  || fail "case e: declining repo-sync should record off (got: $outE)"
-grepq "$outE" -F -- '"codex-sweep":' \
-  && fail "case e: codex-sweep must stay genuinely absent from cadences (requires lane:codex, not selected) (got: $outE)"
 grepq "$outE" -F -- '"pipeline":' \
   && fail "case e: pipeline must stay genuinely absent from cadences (requires vault, vault=none) (got: $outE)"
 grepq "$outE" -F -- '"pull-cadence":' \
   && fail "case e: pull-cadence must stay genuinely absent from cadences (requires env:GOOGLE_HEALTH_REFRESH_TOKEN, unset here) (got: $outE)"
-echo "ok: case e — vault=none without the codex lane still asks cadences (the three requires:'none' rows always qualify); declining them all records every offered row off, with the vault-/lane-/env-gated rows genuinely absent"
-
-# ═══════════════════════════════════════════════════════════════════════════
-# case e2 (also the linux twin of case e, which pins win32): platform eligibility. repo-sync carries
-# requires:'platform:windows' (schtasks only, no crontab arm path), so the
-# vault=none + no-codex menu of case e must offer it ONLY on a Windows host.
-# The host is a seam (HIMMELCTL_CADENCE_PLATFORM, process.platform vocabulary),
-# so all three platforms are proven from any CI OS. Controls: the two
-# `requires:'none'` rows (drift-fix/upstream-watch) are offered on all three,
-# and a pinned-Windows run records repo-sync as an honest 'off', while a
-# Linux/macOS run leaves it genuinely absent (never asked, never fabricated).
-# ═══════════════════════════════════════════════════════════════════════════
-
-for platE2 in linux darwin win32; do
-  stubE2="$work/stubE2-$platE2"; mkdir -p "$stubE2"
-  pathE2=$(build_path "$stubE2" bash jq python3 npm --)
-  homeE2="$work/homeE2-$platE2"; mkdir -p "$homeE2"
-  set +e
-  outE2=$(PATH="$pathE2" HOME="$homeE2" USERPROFILE="$(winpath "$homeE2")" HIMMELCTL_CACHE_DIR="$(winpath "$homeE2.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$homeE2.himmelctl-cache/luna-config.json")" HIMMELCTL_INTERACTIVE=1 HIMMELCTL_CADENCE_PLATFORM="$platE2" \
-    "$node_bin" "$wizard" install --dry-run 2>&1 <<INPUT
-custom
-project
-none
-inline
-
-no
-
-no
-INPUT
-  ); rcE2=$?
-  set -e
-  [ "$rcE2" -eq 0 ] || fail "case e2($platE2): run should succeed (got rc=$rcE2): $outE2"
-  if [ "$platE2" = "win32" ]; then
-    grepq "$outE2" -F -- '? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,doctor,repo-sync|none] (default: none)' \
-      || fail "case e2(win32): a Windows host must be offered repo-sync (got: $outE2)"
-    grepq "$outE2" -F -- '"repo-sync": "off"' \
-      || fail "case e2(win32): declining repo-sync should record off (got: $outE2)"
-  else
-    grepq "$outE2" -F -- '? cadences — recurring scheduled jobs to arm now [drift-fix,upstream-watch,doctor|none] (default: none)' \
-      || fail "case e2($platE2): a non-Windows host must NOT be offered repo-sync (got: $outE2)"
-    grepq "$outE2" -F -- 'repo-sync' \
-      && fail "case e2($platE2): repo-sync must be genuinely absent (menu and answers) on a non-Windows host (got: $outE2)"
-  fi
-  grepq "$outE2" -F -- '"drift-fix": "off"' \
-    || fail "case e2($platE2): drift-fix (requires:'none') must stay offered on every platform (got: $outE2)"
-  grepq "$outE2" -F -- '"upstream-watch": "off"' \
-    || fail "case e2($platE2): upstream-watch (requires:'none') must stay offered on every platform (got: $outE2)"
-done
-echo "ok: case e2 — repo-sync (requires:'platform:windows') is offered on a win32 host and genuinely absent on linux/darwin; the requires:'none' rows are offered on all three"
-
-# ═══════════════════════════════════════════════════════════════════════════
-# case f (1 Fix 1, documented consent asymmetry): a
-# --from-profile with vault=none + cadences.codex-sweep='armed' and codex
-# ABSENT from lanes must VALIDATE (not exit 2 — that's for requires:'vault'
-# rows only) and actually arm codex-sweep via its own script.
-# ═══════════════════════════════════════════════════════════════════════════
-
-stubF="$work/stubF"; mkdir -p "$stubF"
-pathF=$(build_path "$stubF" bash jq python3 npm --)
-make_git_stub "$stubF" "https://github.com/someone/other-repo.git"
-homeF="$work/homeF"; mkdir -p "$homeF"
-
-fixtureRepoF="$work/fixture-repo-f"; mkdir -p "$fixtureRepoF/scripts/cleanup"
-printf '#!/usr/bin/env bash\nexit 0\n' > "$fixtureRepoF/scripts/adopt.sh"
-chmod +x "$fixtureRepoF/scripts/adopt.sh"
-markerCodexF="$work/marker-codex-f.txt"
-cat > "$fixtureRepoF/scripts/cleanup/codex-sweep-cadence.sh" <<STUB
-#!/usr/bin/env bash
-printf '%s\n' "\$@" > "\$MARKER_CODEX_F"
-exit 0
-STUB
-chmod +x "$fixtureRepoF/scripts/cleanup/codex-sweep-cadence.sh"
-
-profileF="$work/profileF.json"
-cat > "$profileF" <<JSON
-{
-  "schemaVersion": 2, "profile": "custom", "devOverlay": false, "tier": "standard", "scope": "project",
-  "vault": { "mode": "none", "path": "" },
-  "handover": { "mode": "inline", "path": "" },
-  "pluginSet": "lean", "lanes": [], "lanesMeaningful": true, "alwaysOn": false,
-  "cadences": { "codex-sweep": "armed" }
-}
-JSON
-
-set +e
-outF=$(PATH="$pathF" HOME="$homeF" USERPROFILE="$(winpath "$homeF")" HIMMELCTL_INTERACTIVE=0 \
-  HIMMELCTL_REPO_ROOT="$(winpath "$fixtureRepoF")" \
-  HIMMELCTL_CACHE_DIR="$(winpath "$work/cache-f")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$work/cache-f")-luna-config.json" \
-  HIMMELCTL_BIN_DIR="$(winpath "$work/bin-f")" \
-  MARKER_CODEX_F="$(winpath "$markerCodexF")" \
-  "$node_bin" "$wizard" install --from-profile "$(winpath "$profileF")" </dev/null 2>&1)
-rcF=$?
-set -e
-[ "$rcF" -eq 0 ] || fail "case f: vault=none + cadences.codex-sweep=armed with no codex lane should validate and apply cleanly (got rc=$rcF): $outF"
-[ -f "$markerCodexF" ] || fail "case f: codex-sweep-cadence.sh should have been spawned with 'arm' despite codex being absent from lanes (marker missing)"
-grepq "$(cat "$markerCodexF")" -F -- 'arm' || fail "case f: codex-sweep spawn should carry the 'arm' subcommand (got: $(cat "$markerCodexF"))"
-echo "ok: case f — a hand-authored profile naming codex-sweep armed validates and arms it even with codex absent from lanes (the documented requires:lane:codex consent asymmetry)"
+echo "ok: case e — vault=none still asks cadences (the requires:'none' rows always qualify); declining them all records every offered row off, with the vault-/env-gated rows genuinely absent"
 
 echo "PASS"

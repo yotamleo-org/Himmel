@@ -442,12 +442,10 @@ xml_escape() {
 # The `encoding="UTF-16"` declaration on ASCII bytes is DELIBERATE and correct
 # here — do not "fix" it. It looks like a parse risk, but it is disproved by
 # production evidence, not
-# argument: `HIMMEL-CodexOrphanSweep` is armed and Ready on the operator's
-# machine right now, created by scripts/cleanup/codex-sweep-cadence.sh through
-# `schtasks /create /xml` with byte-identical output. Real schtasks accepts the
-# declaration without a BOM or a UTF-16LE re-encode. All three sibling emitters
-# (codex-sweep, graphmap, this one) share the convention, so "fixing" it would
-# break a working pattern in three places at once.
+# argument: real `schtasks /create /xml` accepts the declaration without a
+# BOM or a UTF-16LE re-encode. The sibling emitters (graphmap, this one) share
+# the convention, so "fixing" it would break a working pattern in both places
+# at once.
 #
 # The load-bearing constraint is the OTHER direction: the bytes must STAY
 # ASCII. cmd.exe's OEM codepage mojibakes non-ASCII, and a non-ASCII byte here
@@ -706,8 +704,7 @@ cmd_arm() {
 
         # Atomic runner publication: emit
         # to a staged temp BESIDE the final path (same dir -> same filesystem
-        # -> `mv` is an atomic rename, not a copy; mirrors codex-sweep's
-        # publish discipline). Redirecting straight onto the final path let a
+        # -> `mv` is an atomic rename, not a copy). Redirecting straight onto the final path let a
         # task firing concurrently with a re-arm read a half-written
         # .bat/.vbs; after the rename the final path only ever holds a
         # complete file (old or new). A non-regular final path is refused up

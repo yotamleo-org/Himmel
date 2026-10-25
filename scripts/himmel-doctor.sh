@@ -491,7 +491,7 @@ check_c8() {
     # key off resolve_user_home (USERPROFILE via cygpath before $HOME on
     # Windows Git-Bash), NOT $CLAUDE_DIR, so probe via the lib's
     # cadence_user_home rather than $HOME or $CLAUDE_DIR_R.
-    # PIPELINE_BAT_DIR/SWEEP_BAT_DIR/GRAPHMAP_BAT_DIR override those homes.
+    # PIPELINE_BAT_DIR/GRAPHMAP_BAT_DIR/... override those homes.
     local label bat_dir rearm ver saw_any=0 uh
     uh="$(cadence_user_home)"
     while IFS='|' read -r label bat_dir rearm; do
@@ -509,7 +509,6 @@ check_c8() {
         fi
     done <<EOF
 pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/luna/pipeline-cadence.sh arm --force
-codex-sweep-cadence|${SWEEP_BAT_DIR:-$uh/.claude/codex-sweep-cadence}|bash scripts/cleanup/codex-sweep-cadence.sh arm --force
 graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --force
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
@@ -1315,7 +1314,7 @@ check_c23() {
 }
 
 # --- C24: expected-but-absent cadence tasks (read-only advisory) ---
-# The cadence scripts (codex-sweep-cadence.sh, graphmap-cadence.sh, ...)
+# The cadence scripts (graphmap-cadence.sh, qmd-cadence.sh, ...)
 # self-register every task they arm into observability_registry_path()'s
 # .expected_tasks[] (and unregister it on disarm). An operator-armed cadence
 # that silently stops existing — deleted, never armed, wiped by the OS

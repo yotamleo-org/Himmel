@@ -704,23 +704,22 @@ if [ "$restarts21" -eq 2 ]; then echo "ok: mixed shapes -> exactly two restart c
 # an actual Windows host.
 
 # Case 5: no runners present anywhere → silent no-op (cadences not armed).
-out=$(PIPELINE_BAT_DIR="$tmp/cad-empty" SWEEP_BAT_DIR="$tmp/sweep-empty" \
+out=$(PIPELINE_BAT_DIR="$tmp/cad-empty" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 if [ -z "$out" ]; then echo "ok: cadence absent → silent"; else echo "FAIL: cadence absent not silent"; printf '%s\n' "$out"; fail=1; fi
 
-# Case 6: codex-sweep.bat stamped current, read under a forced-Windows
-# platform (codex-sweep only ever arms .bat, and only on Windows) → shared
-# probe returns its version.
-mkdir -p "$tmp/cad-codex-current"
+# Case 6: a .bat runner stamped current, read under a forced-Windows
+# platform → shared probe returns its version.
+mkdir -p "$tmp/cad-bat-current"
 printf 'rem himmel-cadence-runner-format: %s\r\n' "$CADENCE_RUNNER_FORMAT_VERSION" \
-  > "$tmp/cad-codex-current/codex-sweep.bat"
-ver=$(CADENCE_RUNNER_PLATFORM_OS=windows cadence_runner_stamp "$tmp/cad-codex-current")
-if [ "$ver" = "$CADENCE_RUNNER_FORMAT_VERSION" ]; then echo "ok: codex-sweep stamp probed (forced-Windows)"; else echo "FAIL: codex-sweep stamp probe got '$ver'"; fail=1; fi
+  > "$tmp/cad-bat-current/pipeline-harvest.bat"
+ver=$(CADENCE_RUNNER_PLATFORM_OS=windows cadence_runner_stamp "$tmp/cad-bat-current")
+if [ "$ver" = "$CADENCE_RUNNER_FORMAT_VERSION" ]; then echo "ok: .bat stamp probed (forced-Windows)"; else echo "FAIL: .bat stamp probe got '$ver'"; fail=1; fi
 
 # Case 6b: the SAME .bat-only fixture, read as Linux → the
 # dormant Windows twin is invisible to the Linux reader (reads as "not
 # armed" there) instead of pinning a false-stale floor.
-if ver=$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$tmp/cad-codex-current" 2>&1); then
+if ver=$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$tmp/cad-bat-current" 2>&1); then
   echo "FAIL: Linux-platform probe unexpectedly saw the dormant .bat twin (got '$ver')"; fail=1
 else
   echo "ok: Linux-platform probe ignores the dormant .bat twin (not armed)"
@@ -730,49 +729,26 @@ fi
 # STALE nudge with pipeline re-arm hint.
 mkdir -p "$tmp/cad-stale"
 printf '#!/bin/sh\necho old\n' > "$tmp/cad-stale/pipeline-harvest.sh"
-out=$(PIPELINE_BAT_DIR="$tmp/cad-stale" SWEEP_BAT_DIR="$tmp/sweep-empty" \
+out=$(PIPELINE_BAT_DIR="$tmp/cad-stale" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 check "stale pipeline cadence nudged (message)" "pipeline-cadence runners are STALE" "$out"
 check "stale pipeline cadence nudged (rearm hint)" "bash scripts/luna/pipeline-cadence.sh arm --force" "$out"
-
-# Case 8: codex-sweep is Windows-only by design — a
-# dormant stale .bat twin on a non-Windows platform must never surface the
-# arm --force recipe (arm always refuses there); an explicit n/a note fires
-# instead.
-mkdir -p "$tmp/cad-codex-stale"
-printf 'rem himmel-cadence-runner-format: %s\r\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" \
-  > "$tmp/cad-codex-stale/codex-sweep.bat"
-out=$(CADENCE_RUNNER_PLATFORM_OS=linux PIPELINE_BAT_DIR="$tmp/cad-empty" SWEEP_BAT_DIR="$tmp/cad-codex-stale" \
-  GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
-check "codex-sweep on non-Windows prints the Windows-only n/a note" "codex-sweep-cadence: Windows-only, n/a on this platform" "$out"
-if grepq "$out" -F 'scripts/cleanup/codex-sweep-cadence.sh arm --force'; then
-  echo "FAIL: codex-sweep arm --force recipe printed on non-Windows"; fail=1
-else
-  echo "ok: codex-sweep arm --force recipe never printed on non-Windows"
-fi
-
-# Case 8b: the SAME stale codex-sweep fixture under a forced-Windows
-# platform → the real recipe still fires (codex-sweep genuinely arms there).
-out=$(CADENCE_RUNNER_PLATFORM_OS=windows PIPELINE_BAT_DIR="$tmp/cad-empty" SWEEP_BAT_DIR="$tmp/cad-codex-stale" \
-  GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
-check "stale codex-sweep cadence nudged on Windows (message)" "codex-sweep-cadence runners are STALE" "$out"
-check "stale codex-sweep cadence nudged on Windows (rearm hint)" "bash scripts/cleanup/codex-sweep-cadence.sh arm --force" "$out"
 
 # Case 9: graphmap runner stamped stale → STALE nudge with graphmap re-arm hint.
 mkdir -p "$tmp/cad-graphmap-stale"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old\n' "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" \
   > "$tmp/cad-graphmap-stale/graphmap-himmel.sh"
-out=$(PIPELINE_BAT_DIR="$tmp/cad-empty" SWEEP_BAT_DIR="$tmp/sweep-empty" \
+out=$(PIPELINE_BAT_DIR="$tmp/cad-empty" \
   GRAPHMAP_BAT_DIR="$tmp/cad-graphmap-stale" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 check "stale graphmap cadence nudged (message)" "graphmap-cadence runners are STALE" "$out"
 check "stale graphmap cadence nudged (rearm hint)" "bash scripts/luna/graphmap-cadence.sh arm --force" "$out"
 
 # Case 10: pipeline-only runner stamped at the current version → no nudge and
-# empty codex/graphmap dirs do not false-positive.
+# empty graphmap dirs do not false-positive.
 mkdir -p "$tmp/cad-current"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho cur\n' "$CADENCE_RUNNER_FORMAT_VERSION" \
     > "$tmp/cad-current/pipeline-harvest.sh"
-out=$(PIPELINE_BAT_DIR="$tmp/cad-current" SWEEP_BAT_DIR="$tmp/sweep-empty" \
+out=$(PIPELINE_BAT_DIR="$tmp/cad-current" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 if [ -z "$out" ]; then echo "ok: current cadence → silent"; else echo "FAIL: current cadence wrongly nudged"; printf '%s\n' "$out"; fail=1; fi
 
@@ -780,7 +756,7 @@ if [ -z "$out" ]; then echo "ok: current cadence → silent"; else echo "FAIL: c
 # version 0 → treated as stale (nudge), never a crash under set -e.
 mkdir -p "$tmp/cad-malformed"
 printf '#!/bin/sh\n# himmel-cadence-runner-format:\necho bad\n' > "$tmp/cad-malformed/pipeline-harvest.sh"
-out=$(PIPELINE_BAT_DIR="$tmp/cad-malformed" SWEEP_BAT_DIR="$tmp/sweep-empty" \
+out=$(PIPELINE_BAT_DIR="$tmp/cad-malformed" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 check "malformed stamp → stale fallback (message)" "pipeline-cadence runners are STALE" "$out"
 check "malformed stamp → stale fallback (rearm hint)" "bash scripts/luna/pipeline-cadence.sh arm --force" "$out"
@@ -794,7 +770,7 @@ printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old\n' "$((CADENCE_R
   > "$tmp/cad-mixed/pipeline-health.sh"
 ver=$(cadence_runner_stamp "$tmp/cad-mixed")
 if [ "$ver" = "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" ]; then echo "ok: mixed versions → minimum wins"; else echo "FAIL: mixed-version probe got '$ver'"; fail=1; fi
-out=$(PIPELINE_BAT_DIR="$tmp/cad-mixed" SWEEP_BAT_DIR="$tmp/sweep-empty" \
+out=$(PIPELINE_BAT_DIR="$tmp/cad-mixed" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 check "mixed-version cadence nudged" "pipeline-cadence runners are STALE" "$out"
 
@@ -809,7 +785,7 @@ printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho cur\n' "$CADENCE_RUN
   > "$tmp/cad-platform-twin/pipeline-harvest.sh"
 ver=$(CADENCE_RUNNER_PLATFORM_OS=linux cadence_runner_stamp "$tmp/cad-platform-twin")
 if [ "$ver" = "$CADENCE_RUNNER_FORMAT_VERSION" ]; then echo "ok: Linux probe reads only the .sh twin (dormant .bat ignored)"; else echo "FAIL: Linux probe pinned by dormant .bat twin (got '$ver')"; fail=1; fi
-out=$(CADENCE_RUNNER_PLATFORM_OS=linux PIPELINE_BAT_DIR="$tmp/cad-platform-twin" SWEEP_BAT_DIR="$tmp/sweep-empty" \
+out=$(CADENCE_RUNNER_PLATFORM_OS=linux PIPELINE_BAT_DIR="$tmp/cad-platform-twin" \
   GRAPHMAP_BAT_DIR="$tmp/graphmap-empty" QMD_CADENCE_BAT_DIR="$tmp/qmd-empty" report_cadence_stale 2>&1)
 if [ -z "$out" ]; then echo "ok: pipeline platform-twin fixture → no STALE line on Linux"; else echo "FAIL: pipeline platform-twin fixture wrongly nudged on Linux"; printf '%s\n' "$out"; fail=1; fi
 

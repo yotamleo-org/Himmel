@@ -244,11 +244,9 @@ const CADENCE_TASK_GROUPS = {
   graphmap: { prefix: 'HIMMEL-GraphMap-' },
   qmd: { prefix: 'HIMMEL-Qmd-' },
   'drift-fix': ['HIMMEL-DriftFix'],
-  'codex-sweep': ['HIMMEL-CodexOrphanSweep'],
   ggs: ['HIMMEL-Graphify-GgsUpdate'],
-  'repo-sync': ['HIMMEL-RepoSync'],
 };
-// Known scheduled tasks that exist but are not covered by any of the 7
+// Known scheduled tasks that exist but are not covered by any of the
 // cadence ids above — surfaced in delta only (the
 // wizard's binary luna-cadence question cannot select/report these).
 const EXTRA_KNOWN_TASKS = ['HIMMEL-ForkResync', 'HIMMEL-BootPreflight', 'HimmelTelegramBridge'];
@@ -274,9 +272,9 @@ function isHimmelRelevantTask(name) {
 // Schema ruling (locked, console-approved): the v2
 // profile's `cadences` section carries ONLY ids from
 // scripts/himmelctl/lib/cadence-registry.json (pipeline|qmd|graphmap|
-// codex-sweep today, but read from the file — never hardcoded — since
+// and the rest, read from the file — never hardcoded — since
 // himmelctl's loadProfile validates a committed profile against that same
-// registry). Every other known/armed cadence (drift-fix, ggs, repo-sync, ...)
+// registry). Every other known/armed cadence (drift-fix, ggs, ...)
 // belongs in delta.cadences.nonRegistryCadences instead — the delta object
 // exists precisely for what the wizard cannot yet ask about.
 function readCadenceRegistryIds(repoRoot) {
@@ -929,7 +927,7 @@ function renderSummary(profile, delta) {
   lines.push(`  env keys beyond generated block: ${delta.envKeys.keysBeyondGeneratedBlock.length}`);
   lines.push(`  dormant lanes: ${delta.lanes.registryReadFailed ? 'unknown (registry read failed)' : delta.lanes.dormantLanes.length}`);
   lines.push(`  handover registry entries: ${delta.handover.registryEntryCount}`);
-  lines.push(`  extra armed scheduled tasks (outside the 7 cadence ids): ${delta.cadences.extraArmedTasks.join(', ') || '(none)'}`);
+  lines.push(`  extra armed scheduled tasks (outside the cadence ids): ${delta.cadences.extraArmedTasks.join(', ') || '(none)'}`);
   return lines.join('\n');
 }
 
