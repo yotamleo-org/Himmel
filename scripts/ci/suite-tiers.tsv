@@ -958,6 +958,7 @@ scripts/openrouter/test-free-watch.sh	local	behaviour suite, 0 catches in the 40
 scripts/afk/test-build-plan.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-dispatch-stop-poll.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-morning-report.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/afk/test-per-project.sh	local	behaviour suite, per-project afk-shift state
 scripts/afk/test-self-heal.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/afk/test-stop-marker.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/parity/test-guard-conformance.sh	pr	static-gate

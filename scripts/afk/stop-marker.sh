@@ -9,9 +9,11 @@
 # (calls TaskStop on in-flight subagents); this script handles the marker
 # lifecycle only.
 #
-# Marker path: ~/.claude/.overnight-stop (single file, no content needed —
-# existence is the signal). Stored under $HOME so it survives worktree
-# pruning + cd between repos.
+# Marker path: ~/.claude/.overnight-stop in the himmel clone,
+# ~/.claude/afk/<project key>/.overnight-stop in an adopted project
+# (project-state.sh), so a stop halts only its own project's shift. Single
+# file, no content needed — existence is the signal. Stored under $HOME so it
+# survives worktree pruning.
 #
 # Subcommands:
 #   set     Touch the marker. Idempotent (no-op if already set).
@@ -26,14 +28,16 @@
 #   3  filesystem error (can't create/remove)
 set -uo pipefail
 
-MARKER_DIR="${AFK_STOP_DIR:-${OVERNIGHT_STOP_DIR:-$HOME/.claude}}"
+# shellcheck source=project-state.sh
+. "$(dirname "${BASH_SOURCE[0]}")/project-state.sh"
+MARKER_DIR=$(afk_stop_dir) || exit 3
 MARKER_PATH="$MARKER_DIR/.overnight-stop"
 
 usage() {
     cat <<'EOF'
 Usage: stop-marker.sh <set|check|clear|status>
 
-Manages the ~/.claude/.overnight-stop marker file used by
+Manages the current project's .overnight-stop marker file used by
 /afk-shift's dispatch loop. When set, the dispatcher halts
 gracefully before the next subagent dispatch.
 
@@ -45,7 +49,8 @@ Subcommands:
 
 Environment:
   AFK_STOP_DIR          Override marker directory (old name OVERNIGHT_STOP_DIR).
-                        Default: $HOME/.claude.
+                        Default: $HOME/.claude in the himmel clone,
+                        $HOME/.claude/afk/<project key> in an adopted project.
 EOF
 }
 

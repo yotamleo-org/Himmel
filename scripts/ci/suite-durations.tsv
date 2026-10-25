@@ -953,6 +953,7 @@ scripts/openrouter/test-free-watch.sh	1
 scripts/afk/test-build-plan.sh	1
 scripts/afk/test-dispatch-stop-poll.sh	0
 scripts/afk/test-morning-report.sh	3
+scripts/afk/test-per-project.sh	1
 scripts/afk/test-self-heal.sh	6
 scripts/afk/test-stop-marker.sh	1
 scripts/parity/test-guard-conformance.sh	0

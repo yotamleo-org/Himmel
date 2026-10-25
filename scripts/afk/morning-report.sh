@@ -24,6 +24,8 @@
 #     resolver's fail-closed design. Fix HANDOVER_DIR or pass --out.
 #   - Mode A (inline)           → $repo/handovers/overnight-report-$(date -u +%F).md
 #     (created on demand via handover_root_ensure — this is a write op)
+#   - An adopted project writes under <root>/afk/<project key>/ in either mode
+#     (project-state.sh); the himmel clone keeps the paths above.
 #   - --out PATH overrides; --dry-run prints without touching files but
 #     previews the SAME resolution the real run would perform (broken
 #     HANDOVER_DIR still exits 2; Mode A previews <repo>/handovers/
@@ -44,6 +46,8 @@ if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
+# shellcheck source=project-state.sh
+. "$SCRIPT_DIR/project-state.sh"
 
 ROWS_FILE=""
 OUT_FILE=""
@@ -67,7 +71,8 @@ Optional:
   --rows FILE   Read rows from FILE instead of stdin.
   --out PATH    Output path. Default:
                 <handover-root>/overnight-report-YYYY-MM-DD.md, resolved
-                via handover_root_ensure (scripts/lib/handover-path.sh).
+                via handover_root_ensure (scripts/lib/handover-path.sh);
+                <handover-root>/afk/<project key>/ in an adopted project.
                 A broken HANDOVER_DIR fails closed (exit 2) — no fallback.
   --actions FILE  Standing operator actions appended verbatim as a
                 "## Standing operator actions" section. Default:
@@ -158,8 +163,10 @@ fi
 # the PURE resolver so "touch no files" stays true (no mkdir side effect).
 # Resolution failure fails CLOSED (exit 2) — never fall back to a guessed
 # path, matching the resolver's fail-closed design: the operator's single
-# morning entry point must not land in the wrong location.
+# morning entry point must not land in the wrong location. An adopted project's
+# report sits in its own afk/<project key>/ under the root (project-state.sh).
 if [ -z "$OUT_FILE" ]; then
+    report_sub=$(afk_report_subdir) || exit 2
     if [ "$DRY_RUN" -eq 1 ]; then
         # Preview the SAME resolution the real run would perform, minus the
         # mkdir — otherwise the dry run masks exactly the failures (or
@@ -173,15 +180,15 @@ if [ -z "$OUT_FILE" ]; then
                 echo "ERR morning-report: HANDOVER_DIR='$HANDOVER_DIR' is set but unusable — fix HANDOVER_DIR or pass --out" >&2
                 exit 2
             fi
-            OUT_FILE="$root/overnight-report-$(date -u +%F).md"
+            OUT_FILE="$root$report_sub/overnight-report-$(date -u +%F).md"
         elif repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
-            OUT_FILE="$repo_root/handovers/overnight-report-$(date -u +%F).md"
+            OUT_FILE="$repo_root/handovers$report_sub/overnight-report-$(date -u +%F).md"
         else
             OUT_FILE="<unresolved-handover-root>/overnight-report-$(date -u +%F).md"
             echo "WARN morning-report: output path unresolvable (HANDOVER_DIR unset, not in a git repo) — a real run would exit 2" >&2
         fi
     elif root=$(handover_root_ensure); then
-        OUT_FILE="$root/overnight-report-$(date -u +%F).md"
+        OUT_FILE="$root$report_sub/overnight-report-$(date -u +%F).md"
     elif [ -n "${HANDOVER_DIR:-}" ]; then
         echo "ERR morning-report: HANDOVER_DIR='$HANDOVER_DIR' is set but unusable — fix HANDOVER_DIR or pass --out" >&2
         exit 2

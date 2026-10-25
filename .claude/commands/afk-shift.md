@@ -10,16 +10,31 @@ dispatch step from `docs/handover/afk-mode.md`.
 
 ## Workflow
 
+**The shift belongs to the current project.** Its queue, plan, ledger, stop
+marker and morning report are keyed on the project's primary checkout
+(`scripts/afk/project-state.sh`), so two projects never share one shift. In the
+himmel clone every path below stays as written (`<state-dir>` is `/tmp`). An
+adopted project keeps them under `<handover-root>/afk/<project key>/`. Its lane
+router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO`.
+
+0. **Resolve the state dir** once and use the printed path as `<state-dir>`
+   below:
+
+   ```bash
+   bash scripts/afk/project-state.sh dir
+   ```
+
 1. **Build the plan.**
    Run the build-plan helper with `$ARGUMENTS` forwarded as-is:
 
    ```bash
-   bash scripts/afk/build-plan.sh $ARGUMENTS
+   bash scripts/afk/build-plan.sh $ARGUMENTS --out <state-dir>/overnight-plan.md
    ```
 
    Default flags (when arguments are empty):
    - `--limit 5`
-   - `--project HIMMEL`
+   - `--project`: HIMMEL in the himmel clone, else the project's
+     `JIRA_PROJECT_KEY` (an adopted project without one is refused, exit 1)
    - `--status 'To Do,In Progress'`
    - `--priority key-desc`
 
@@ -85,6 +100,9 @@ dispatch step from `docs/handover/afk-mode.md`.
    ```bash
    node scripts/lanes/fanout-plan.mjs /path/to/items.json
    ```
+
+   In an adopted project the router runs from the himmel clone:
+   `node "$HIMMEL_REPO/scripts/lanes/fanout-plan.mjs" /path/to/items.json`.
 
    - Exit 0 → the plan (JSON), one resolved `model` per ticket — pass it to
      the Agent tool's `model` param verbatim (never blank, never "inherit").
@@ -166,9 +184,9 @@ dispatch step from `docs/handover/afk-mode.md`.
 
       ```bash
       bash scripts/afk/self-heal.sh classify \
-        --rows-in /tmp/overnight-ledger.tsv \
-        --rows-out /tmp/overnight-rows.tsv \
-        --dispatch-out /tmp/overnight-fix-plan.tsv
+        --rows-in <state-dir>/overnight-ledger.tsv \
+        --rows-out <state-dir>/overnight-rows.tsv \
+        --dispatch-out <state-dir>/overnight-fix-plan.tsv
       ```
 
    c. **Dispatch fresh fix subagents** — for each row in the dispatch
@@ -198,17 +216,17 @@ dispatch step from `docs/handover/afk-mode.md`.
 
       ```bash
       bash scripts/afk/self-heal.sh reconcile \
-        --plan /tmp/overnight-fix-plan.tsv \
-        --fixed /tmp/overnight-fixed.tsv \
-        --rows-in /tmp/overnight-rows.tsv \
-        --rows-out /tmp/overnight-final.tsv
+        --plan <state-dir>/overnight-fix-plan.tsv \
+        --fixed <state-dir>/overnight-fixed.tsv \
+        --rows-in <state-dir>/overnight-rows.tsv \
+        --rows-out <state-dir>/overnight-final.tsv
       ```
 
    If the fanout produced no mechanical failures, the dispatch plan
-   (`/tmp/overnight-fix-plan.tsv`) is empty and `classify`'s `--rows-out`
-   (`/tmp/overnight-rows.tsv`) is ALREADY the final TSV — skip c/d entirely
+   (`<state-dir>/overnight-fix-plan.tsv`) is empty and `classify`'s `--rows-out`
+   (`<state-dir>/overnight-rows.tsv`) is ALREADY the final TSV — skip c/d entirely
    and feed THAT file to the report in step 6 (there is no
-   `/tmp/overnight-final.tsv` in this case, because reconcile never ran).
+   `<state-dir>/overnight-final.tsv` in this case, because reconcile never ran).
 
    e. **Emit structured status back to the ledger (HIMMEL-517, L3 push-side).**
       The parent session holds the structured signal the where-are-we ledger's
@@ -252,14 +270,15 @@ dispatch step from `docs/handover/afk-mode.md`.
 
    ```bash
    # mechanical failures were dispatched + reconciled (step 5d ran):
-   bash scripts/afk/morning-report.sh --rows /tmp/overnight-final.tsv
+   bash scripts/afk/morning-report.sh --rows <state-dir>/overnight-final.tsv
    # OR — no mechanical failures (steps 5c/5d skipped):
-   bash scripts/afk/morning-report.sh --rows /tmp/overnight-rows.tsv
+   bash scripts/afk/morning-report.sh --rows <state-dir>/overnight-rows.tsv
    ```
 
    The script writes a single artifact (decisions-needed grouped at top,
    per-ticket table ordered decisions-first) to
-   `<handover-root>/overnight-report-YYYY-MM-DD.md`, resolving the root
+   `<handover-root>/overnight-report-YYYY-MM-DD.md` (an adopted project:
+   `<handover-root>/afk/<project key>/overnight-report-YYYY-MM-DD.md`), resolving the root
    via `scripts/lib/handover-path.sh` (`handover_root_ensure` — a write
    op, so the Mode A inline dir is created on demand). A broken
    `HANDOVER_DIR` fails closed (exit 2 — fix it or pass `--out`); there
@@ -275,7 +294,9 @@ dispatch step from `docs/handover/afk-mode.md`.
    This post-fanout step is one of the seams the breadcrumb writer
    piggybacks (there is no per-worker dispatch runtime). Record where the run
    stopped so a crashed/interrupted resume reconstructs intent instead of
-   silently grounding in raw repo state:
+   silently grounding in raw repo state. In an adopted project, spell it
+   `bash "$HIMMEL_REPO/scripts/handover/breadcrumb.sh"`; the breadcrumb is keyed
+   on the project's own ticket:
 
    ```bash
    bash scripts/handover/breadcrumb.sh write \
@@ -298,7 +319,7 @@ dispatch step from `docs/handover/afk-mode.md`.
 | Flag | Default | Notes |
 |---|---|---|
 | `--limit N` | 5 | Positive integer; rejected otherwise. |
-| `--project KEY` | HIMMEL | Any Jira project key. |
+| `--project KEY` | HIMMEL in the himmel clone, else `JIRA_PROJECT_KEY` | Any Jira project key. |
 | `--status STATUS` | `To Do,In Progress` | Comma-separated list passed to `jira list`. |
 | `--priority ORDER` | `key-desc` | v1 supports `key-desc` (newest-first). Other values pass through for forward-compat with a future priority-aware jira CLI. |
 | `--out PATH` | _(none)_ | Write plan to a file in addition to stdout. |
