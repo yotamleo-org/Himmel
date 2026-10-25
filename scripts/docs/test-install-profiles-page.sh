@@ -203,7 +203,7 @@ else:
         print("the Change install profile section does not name the starter to luna move")
     if not re.search(r"test\s+VM", body, flags=re.I):
         print("the Change install profile section does not say the move ran on a test VM")
-' "$1"
+' "$1" || echo "could not check $1"
 }
 problems=$(move_problems "$PAGE")
 if [ -z "$problems" ]; then ok "MOVE: the Change install profile section states the starter to luna result"; else bad "MOVE: the Change install profile section states the starter to luna result" "$problems"; fi
