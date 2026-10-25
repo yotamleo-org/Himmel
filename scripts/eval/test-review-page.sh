@@ -62,6 +62,13 @@ rows.append(eval_runs.make_row("decision-158", "scripts/eval/decision-158-answer
                                run_id="d158-1", ci=d158_ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40,
                                meta={"notes": {"q3": "verdicts by one judge model"}}))
 rows[3]["ts"] = "2026-10-24T12:00:00Z"
+pdd = {"pdd.pct": 0.1083, "pdd.k": 13, "pdd.n": 120, "ticket_first.pct": 0.1917, "ticket_first.k": 23,
+       "ticket_first.n": 120, "red_green.pct": 0.5917, "red_green.k": 71, "red_green.n": 120}
+pdd_ci = {"pdd.pct": {"lo": 0.0644, "hi": 0.1766}, "ticket_first.pct": {"lo": 0.1313, "hi": 0.2712},
+          "red_green.pct": {"lo": 0.5022, "hi": 0.6754}}
+rows.append(eval_runs.make_row("pdd-share", "scripts/eval/leg-digest/pdd_share.py", {"pdd_v": 1, "prs": 120, "min_n": 50},
+                               pdd, n=120, run_id="pdd-1", ci=pdd_ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40))
+rows[4]["ts"] = "2026-10-24T23:52:30Z"
 with open(sys.argv[2], "w") as fh:
     for r in rows:
         fh.write(json.dumps(r) + "\n")
@@ -109,6 +116,12 @@ has "answers: a question with no earlier figure says so" "$out" "no earlier figu
 has "answers: a question with no data says not measured" "$out" "Is CodeRabbit right often enough to keep? Not measured yet"
 has "answers: the note rides along" "$out" "verdicts by one judge model"
 has "answers: the judge question counts merged PRs, not verdicts" "$out" "matter? 90 % (likely between 60 % and 98 %) of 10 merged PRs"
+
+has "proof first: says what counts as proof-first" "$out" "A merged PR counts as proof-first when"
+has "proof first: says why the number matters" "$out" "It matters because"
+has "proof first: the share as a count, a percentage and a range" "$out" "Proof first: 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %)"
+has "proof first: the ticket half on its own" "$out" "The ticket was written first: 23 of 120: 19 % (likely between 13 % and 27 %)"
+has "proof first: the RED-then-GREEN half on its own" "$out" "RED then GREEN named in the PR body: 71 of 120: 59 % (likely between 50 % and 68 %)"
 
 # CodeRabbit absent from the critic list: the page says it is not measured, never a silent gap.
 python3 -I - "$HERE/lib" "$TMP/codex-only.jsonl" <<'PY' || { echo "test-review-page: writing the codex-only ledger failed" >&2; exit 1; }
@@ -207,7 +220,7 @@ case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans 
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"; rc=$?
 eq "no ledger: exit 0" "$rc" "0"
-eq "no ledger: every section says there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "3"
+eq "no ledger: every section says there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "4"
 
 cp "$TMP/changes.jsonl" "$TMP/bad-changes.jsonl"
 printf '%s\n' '{"status":"measured"}' '{"status":"open","eval":"review-panel","metric":null}' '7' >> "$TMP/bad-changes.jsonl"

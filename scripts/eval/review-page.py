@@ -3,7 +3,8 @@
 
 Reads the eval-runs ledger (lib/eval_runs.py) and the eval-changes ledger (lib/eval_feedback.py) and
 writes one Markdown page in plain words: how often the critics catch planted bugs and are right
-(review-panel), how often the judges let a bug past a GO (judge-accuracy), the trend since the last
+(review-panel), how often the judges let a bug past a GO (judge-accuracy), the proof-first share of
+merged PRs (pdd-share), the trend since the last
 run of the same series, and each change the feedback step made with its re-measured result. The page
 carries no metric names: a number with no sentence here is not shown.
 
@@ -201,6 +202,23 @@ def judge_lines(cur, prev):
     return out
 
 
+def proof_lines(cur, prev):
+    m = cur["metrics"]
+    out = ["A merged PR counts as proof-first when two things hold: its ticket had a Definition of Done and a "
+           "Proof before the PR's first commit, and the PR body names RED (the new test failing) and then GREEN "
+           "(the same test passing). It matters because a check written down before the work, and seen failing "
+           "before the fix, is what shows the change does what the ticket asked: a test never seen failing may "
+           "test nothing.", "",
+           "Run of %s, the last %d merged PRs whose ticket could be read.%s" % (day(cur["ts"]), cur["n"] or 0,
+                                                                              level(cur)), ""]
+    for key, text, unit in (("pdd", "Proof first", " merged PRs"), ("ticket_first", "The ticket was written first", ""),
+                            ("red_green", "RED then GREEN named in the PR body", "")):
+        s = rate(cur, prev, key + ".pct")
+        if s and count(m, key + ".n"):
+            out.append("- %s: %d of %d%s%s." % (text, count(m, key + ".k"), count(m, key + ".n"), unit, s))
+    return out
+
+
 def change_lines(changes):
     changes = [c for c in changes if isinstance(c, dict)]
     opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")
@@ -258,6 +276,9 @@ def page(rows, changes):
     out += ["", "## The five open questions", ""]
     cur, _ = latest(rows, "decision-158")
     out += ["No run yet."] if cur is None else answer_lines(cur)
+    out += ["", "## Proof first", ""]
+    cur, prev = latest(rows, "pdd-share")
+    out += ["No run yet."] if cur is None else proof_lines(cur, prev)
     out += ["", "## What we changed, and whether it helped", ""]
     out += change_lines(changes) or ["No change yet."]
     return "\n".join(out) + "\n"
