@@ -39,6 +39,11 @@ note and the gate continues, it never waits; a reviewer set to `hard` holds the 
 (`CRITIC_TIMEOUT_SECS`, `CRITIC_PARALLEL`, `CRITIC_PANEL_TIERS`, `CR_PROFILE`, `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`) are shown with their current value and default, and are set in `.env` or the launching shell.
 
+The Setup page starts with an Account step. On a fresh install it creates the login the always-on UI asks
+for: a user name and a password of at least 8 characters, kept only as a hash. It does this once, from an
+ad-hoc `himmelctl ui` or the UI `himmelctl install` starts. The always-on service cannot create it, and a
+login that is already set changes only with `--set-login` in your own terminal.
+
 The Setup page also saves or removes a file-stored secret (a password field; the value goes to the
 secret store only and is never shown, logged or returned). The always-on service saves one only after
 you log in at `/login`; an ad-hoc `himmelctl ui` needs no login. Each secret form shows an example value under it (a shape, never a working value).
@@ -105,7 +110,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   to the docs site; then triage of failing items and the inventory of install
   items, doctor checks, scheduled jobs, lanes, flags and secrets by presence;
   Roadmap and Kanban only appear when the UI can read a tracker), `#/setup`
-  (which secrets are set, never their values; a file-stored secret can be saved or
+  (first the Account step, which creates the UI login once on a fresh install;
+  which secrets are set, never their values; a file-stored secret can be saved or
   removed here; the always-on service saves one only after you log in at `/login`
   (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login; plus the commit rules, tracker and ticket-id-required, each with a
   dry-run before it changes), `#/health` (one verdict:

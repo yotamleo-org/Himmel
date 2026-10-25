@@ -411,7 +411,21 @@ async function run(k) {
   paint();
   if (ok) { loadFeed(); if (currentPage.id === "setup") loadSetup(); }
 }
+// The password leaves its fields in this one request; both fields are cleared whatever the answer is.
+async function createAccount(f) {
+  const user = f.querySelector('[data-account="user"]').value;
+  const pw = f.querySelector('[data-account="password"]'), again = f.querySelector('[data-account="confirm"]');
+  const same = pw.value === again.value, password = pw.value;
+  pw.value = ""; again.value = "";
+  if (!same) { setupMsgs.account = "the two passwords differ"; return paint(); }
+  const { ok, j } = await post("/api/setup/account", { user, password });
+  setupMsgs.account = ok ? "login created" : (j.error || "failed");
+  if (ok && setup) setup.account = { status: j.status, user: j.user, create: "terminal" };
+  paint();
+}
 document.addEventListener("submit", (e) => {
+  const a = e.target.closest && e.target.closest("[data-account-form]");
+  if (a) { e.preventDefault(); return void createAccount(a); }
   const f = e.target.closest && e.target.closest("[data-setup-form]");
   if (!f) return;
   e.preventDefault();
