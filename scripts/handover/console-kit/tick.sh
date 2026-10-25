@@ -249,6 +249,15 @@ there. Absent when the CI_GO_GATE repository variable is off or unset, or nothin
 hard reviewer outage also prints one `ACTION cr-first ...` line per outage. Himmel's own repo
 only. console-wait.sh does not wake on it.
 
+dispatch=<run>:<leg>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]
+(HIMMEL-7479) is the in-flight workflow_dispatch runs on a leg's branch (a run a leg started by
+hand never shows on the PR page); ABSENT when none, `?` when the runs list is unreadable. One
+runs list per tick plus one jobs read per run, at most TICK_DISPATCH_MAX (5). late = past 80
+percent of the largest job timeout in the run's workflow file; idle = no job started or finished
+for TICK_DISPATCH_IDLE_MIN (30) min; orphan = no held leg on its ticket; stale-head = the open
+PR's head moved on (report-only). late, idle and orphan each print one `ACTION dispatch-stall`
+line; console-wait.sh keys on those runs only, so a healthy run's elapsed time never wakes it.
+
 denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK] (HIMMEL-3724) is classifier
 denials seen by scripts/hooks/log-classifier-denial.sh in a trailing window
 (TICK_DENIALS_WINDOW_MIN minutes, default 30), grouped by the hook's own
@@ -1419,6 +1428,73 @@ done <<< "$pr_out"
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
 [ -z "${pr_read_failed:-}" ] || { unowned_prs='?'; ext_prs='?'; }
 
+# dispatch=<run>:<leg>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
+# an in-flight workflow_dispatch run on a leg's branch (a run a leg started by hand never shows on
+# the PR page). One runs list per tick, then one jobs read per run (at most TICK_DISPATCH_MAX,
+# default 5). The timeout is the largest job-level timeout-minutes in the run's workflow file
+# (360, GitHub's own default, when it has none). late = past 80 % of it; idle = no job started
+# or finished for TICK_DISPATCH_IDLE_MIN (30) min; orphan = every leg on its ticket is no longer
+# held (WRAPPED or FREE); stale-head = its head is not the open PR's head (report-only). late, idle
+# and orphan each raise one ACTION dispatch-stall line, and console-wait.sh keys on them.
+# dispatch=? = the runs list is unreadable; a branch no leg or open PR owns is not listed.
+# ponytail: the leg is matched by the ticket key in the branch name, as unowned-prs= does; a
+# healthy macOS shard set runs ~60 min with no job change, so idle can fire on a run that is
+# merely long, upgrade = key it on a step-level read if that proves noisy.
+dispatch_summary=none
+dispatch_alerts=""
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+dispatch_runs="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} "$GH_READ_BIN" api 'repos/{owner}/{repo}/actions/runs?event=workflow_dispatch&status=in_progress&per_page=100' --jq '.workflow_runs[] | [.id, .path, .head_branch, .head_sha, .run_started_at] | @tsv' 2>/dev/null)" || dispatch_summary='?'  # swallow-ok: an unreadable runs list renders as dispatch=?
+if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
+    # oldest first: under the cap the longest-running (likeliest hung) runs are read, not the newest
+    dispatch_runs="$(printf '%s\n' "$dispatch_runs" | sort -t $'\t' -k5,5)"
+    dispatch_max="${TICK_DISPATCH_MAX:-5}"; case "$dispatch_max" in ''|*[!0-9]*) dispatch_max=5 ;; esac
+    dispatch_idle_min="${TICK_DISPATCH_IDLE_MIN:-30}"; case "$dispatch_idle_min" in ''|*[!0-9]*) dispatch_idle_min=30 ;; esac
+    dispatch_idle_s=$(( 10#$dispatch_idle_min * 60 ))
+    dispatch_n=0
+    dispatch_list=""
+    while IFS=$'\t' read -r d_run d_path d_branch d_sha d_started; do
+        case "$d_run" in ''|*[!0-9]*) continue ;; esac
+        [ "$dispatch_n" -lt "$dispatch_max" ] || break
+        d_key="$(ticket_key "$d_branch")"
+        d_label=""; d_held=0
+        if [ -n "$d_key" ]; then
+            while IFS='=' read -r dl_label dl_doc; do
+                [ -n "$dl_label" ] || continue
+                [ "$(ticket_key "${dl_doc##*/}")" = "$d_key" ] || continue
+                [ -n "$d_label" ] || d_label="$dl_label"
+                dl_lock="$(printf '%s' "$leg_candmap" | awk -F'\t' -v l="$dl_label" '$1 == l { print $2; exit }')"
+                case "$dl_lock" in FRESH|STALE|NOLOCK|UNVERIFIED) d_held=1; d_label="$dl_label" ;; esac
+            done <<< "$leg_docmap"
+        fi
+        d_pr_head=""
+        while IFS=$'\t' read -r _ dp_branch _ _ _ _ _ dp_head _; do
+            [ "$dp_branch" = "$d_branch" ] && { d_pr_head="$dp_head"; break; }
+        done <<< "$pr_out"
+        [ -n "$d_label" ] || [ -n "$d_pr_head" ] || continue
+        dispatch_n=$((dispatch_n + 1))
+        d_at="$(date -d "$d_started" +%s 2>/dev/null)" || d_at=""  # gnu-ok: Linux-only kit; swallow-ok: an unparsable start drops the run from the list
+        [ -n "$d_at" ] || continue
+        d_now="$(date +%s)"
+        d_el=$(( (d_now - d_at) / 60 ))
+        d_to="$(awk '/^    timeout-minutes:[[:space:]]*[0-9]+/ { n = $2 + 0; if (n > m) m = n } END { print m + 0 }' "$pr_repo/$d_path" 2>/dev/null)"  # swallow-ok: an unreadable workflow file falls back to the GitHub default below
+        case "$d_to" in ''|*[!0-9]*|0) d_to=360 ;; esac
+        d_jobs_row="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} "$GH_READ_BIN" api "repos/{owner}/{repo}/actions/runs/$d_run/jobs?per_page=100" --jq '[(.jobs | length), ([.jobs[] | select(.status == "completed")] | length), ([.jobs[] | .started_at, .completed_at] | map(select(. != null)) | max // "")] | @tsv' 2>/dev/null)" || d_jobs_row=""  # swallow-ok: an unreadable jobs read leaves the counts ? and skips the idle test
+        IFS=$'\t' read -r d_total d_done d_last <<< "$d_jobs_row"
+        d_flags=""; d_reasons=""
+        if [ $(( d_el * 100 )) -ge $(( d_to * 80 )) ]; then d_flags="$d_flags:late"; d_reasons="$d_reasons late"; fi
+        if [ -n "$d_last" ]; then
+            d_last_at="$(date -d "$d_last" +%s 2>/dev/null)" || d_last_at=""  # gnu-ok: Linux-only kit; swallow-ok: an unparsable job time skips the idle test
+            if [ -n "$d_last_at" ] && [ $(( d_now - d_last_at )) -ge "$dispatch_idle_s" ]; then d_flags="$d_flags:idle"; d_reasons="$d_reasons idle"; fi
+        fi
+        if [ -n "$d_label" ] && [ "$d_held" -eq 0 ]; then d_flags="$d_flags:orphan"; d_reasons="$d_reasons orphan"; fi
+        if [ -n "$d_pr_head" ] && [ "$d_pr_head" != "$d_sha" ]; then d_flags="$d_flags:stale-head"; fi
+        dispatch_list="$(csv_add "$dispatch_list" "$d_run:${d_label:-?}:$d_el/${d_to}m:${d_done:-?}/${d_total:-?}@${d_sha:0:7}$d_flags")"
+        [ -z "$d_reasons" ] || dispatch_alerts="${dispatch_alerts}ACTION dispatch-stall $d_run ${d_label:-?} (${d_branch}):$d_reasons -- gh run view $d_run; cancel it if hung, or tell the leg (console-sections/monitors.md)"$'\n'
+    done <<< "$dispatch_runs"
+    [ -z "$dispatch_list" ] || dispatch_summary="$dispatch_list"
+fi
+
 # the board fingerprint -- what console-board.html shows that the
 # console authors or a tick already reads: leg locks, leg tails, open PRs, and
 # the queue:, last GO:, epics: and decisions: lines. Not the doc mtime (every
@@ -2450,6 +2526,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'open PRs: %s\n' "$prs"
     printf 'unowned-prs: %s\n' "$unowned_prs"
     printf 'ext-prs: %s\n' "$ext_prs"
+    [ "$dispatch_summary" = none ] || printf 'dispatch: %s\n' "$dispatch_summary"
     printf 'subscription usage budget: %s\n' "$bank"
     printf 'fill: %s\n' "$fill"
     printf 'worker-session tails: %s\n' "$tails_summary"
@@ -2511,7 +2588,7 @@ else
     compact_field() {
         case "$1=$2" in
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
-            ext-prs=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
+            ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
             versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
         esac
@@ -2529,6 +2606,7 @@ else
     compact_field prs "$prs"
     compact_field unowned-prs "$unowned_prs"
     compact_field ext-prs "$ext_prs"
+    compact_field dispatch "$dispatch_summary"
     compact_field usage "$bank"
     compact_field fill "$fill"
     compact_field tails "$tails_summary"
@@ -2570,6 +2648,10 @@ else
         [ -n "$crfirst_line" ] || continue
         printf 'ACTION cr-first %s\n' "$crfirst_line"
     done <<< "$crfirst_alerts"
+    while IFS= read -r dispatch_line; do
+        [ -n "$dispatch_line" ] || continue
+        printf '%s\n' "$dispatch_line"
+    done <<< "$dispatch_alerts"
     while IFS= read -r ciguard_line; do
         [ -n "$ciguard_line" ] || continue
         printf 'ACTION ci-guardrail %s: hold new dispatches and find the run, cancel or rerun burst before GitHub throttles the org (console-sections/monitors.md)\n' "${ciguard_line#ALERT }"
