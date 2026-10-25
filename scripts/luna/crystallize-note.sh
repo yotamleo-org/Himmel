@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: API-lane launcher call; refuses unless HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT is A|B|auto, and the API-credit ledger meters it
 # crystallize-note.sh — upgrade a mechanical session note into an LLM synthesis.
 # Reads the session transcript + the just-written note and asks a
 # bounded `claude` run to rewrite the four body sections (Summary / Decisions /
