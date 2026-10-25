@@ -38,6 +38,11 @@ assert_eq_fp() {
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# himmel.conf (behaviour keys, HANDOVER_DIR included) is read from the config
+# dir; an empty one keeps every row off the operator's real ~/.himmel.
+mkdir -p "$TMP/himmel-config"
+export HIMMEL_CONFIG_DIR="$TMP/himmel-config"
+
 # Stub keyring. load_dotenv asks scripts/lib/himmel-secrets for secret-class
 # keys, so every row runs with a stub secret-tool and busctl first on PATH and
 # never reaches a real keyring. The stub store is one `attrs<TAB>value` line per
@@ -567,6 +572,18 @@ printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KS
 got=$( cd "$K8LIB" && unset TEST_KR_TOKEN && . load-dotenv.sh && load_dotenv --root "$REPO" TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
 assert_eq "K8 a slash-less source still reaches the resolver" "fake-keyring-value" "$got"
 fi
+
+# C1: HIMMEL_CONFIG_DIR redirects the himmel.conf read; with it unset the
+# default is $HOME/.himmel.
+mkdir -p "$TMP/c1-config"
+printf 'HANDOVER_DIR=/c1/from-conf\n' >"$TMP/c1-config/himmel.conf"
+rm -f "$REPO/.env"
+got=$( cd "$REPO" && unset HANDOVER_DIR && HIMMEL_CONFIG_DIR="$TMP/c1-config" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "C1 HIMMEL_CONFIG_DIR redirects the himmel.conf read" "/c1/from-conf" "$got"
+got=$( cd "$REPO" && unset HANDOVER_DIR && load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "C1 an empty config dir leaves HANDOVER_DIR unset" "<unset>" "$got"
+got=$( unset HIMMEL_CONFIG_DIR; _himmel_config_dir )
+assert_eq "C1 the default config dir is \$HOME/.himmel" "$HOME/.himmel" "$got"
 
 echo
 if [ "$FAILED" -eq 0 ]; then

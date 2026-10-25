@@ -61,6 +61,10 @@ trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 # the operator's real one.
 mkdir -p "$TMPDIR_ROOT/dotenv-cache"; : > "$TMPDIR_ROOT/dotenv-cache/.env"
 export HIMMELCTL_CACHE_DIR="$TMPDIR_ROOT/dotenv-cache"
+# himmel.conf (behaviour keys, HANDOVER_DIR included) lives outside .env; an
+# empty config dir keeps the unset-HANDOVER_DIR cases off the live vault.
+mkdir -p "$TMPDIR_ROOT/himmel-config"
+export HIMMEL_CONFIG_DIR="$TMPDIR_ROOT/himmel-config"
 
 HANDOVER_DIR="$TMPDIR_ROOT/handovers"
 mkdir -p "$HANDOVER_DIR"

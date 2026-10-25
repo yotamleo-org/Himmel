@@ -389,7 +389,7 @@ _himmel_key_class() {
 }
 
 _himmel_config_dir() {
-    printf '%s/.himmel' "$HOME"
+    printf '%s' "${HIMMEL_CONFIG_DIR:-$HOME/.himmel}"
 }
 
 # One stderr line naming the keys (never their values) still read from .env.
