@@ -367,7 +367,7 @@ fi
 # _baseline_growth — print each baseline row that grew past the base ref's version
 # without a reason (stdout); returns 1 if any did. [prim-*] growth prints a warning only.
 _baseline_growth() {
-    local ref rel old renames
+    local ref rel old new renames
     if [ "$STAGED" -eq 1 ]; then ref=HEAD; else ref="${CHANGED%%..*}"; fi
     [ -n "$ref" ] || ref=HEAD
     case "$BASELINE" in
@@ -375,12 +375,14 @@ _baseline_growth() {
         *) rel="$(git rev-parse --show-prefix)${BASELINE#./}" ;;
     esac
     old="$(git show "$ref:$rel" 2>/dev/null)" || old=""
+    new="$BASE_TEXT"
     if [ "$STAGED" -eq 1 ]; then
+        new="$(git show ":$rel" 2>/dev/null)" || new=""
         renames="$(git -c core.quotePath=false diff --cached --name-status -M --diff-filter=R)"
     else
         renames="$(git -c core.quotePath=false diff --name-status -M --diff-filter=R "$CHANGED" --)"
     fi
-    awk -v old="$old" -v ren="$renames" -v new="$BASE_TEXT" '
+    awk -v old="$old" -v ren="$renames" -v new="$new" '
     BEGIN {
         n = split(old, o, "\n")
         for (i = 1; i <= n; i++) { m = split(o[i], p, "\t"); if (m >= 3) before[p[1] SUBSEP p[2]] = p[3] + 0 }
