@@ -1483,7 +1483,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
         'chains': [[ch['name'], [[st.get('key', ''), '' if KEY_RE.fullmatch(st.get('key', '')) else st.get('label', ''), step_state(st),
                                   None if KEY_RE.fullmatch(st.get('key', '')) else st.get('pr'), None if KEY_RE.fullmatch(st.get('key', '')) else st.get('owner')]
                                  for st in ch['steps']]] for ch in chains],
-        'waiting': wait,
+        'waiting': [[k, sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))] for k in wait],
         'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
         'workers': [[k, r.get('leg'), r.get('state'), open_worker_prs(r)] for k, r in sorted(workers.items()) if k in opn]},
         sort_keys=True)

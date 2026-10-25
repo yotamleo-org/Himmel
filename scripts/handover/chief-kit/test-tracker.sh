@@ -1233,6 +1233,11 @@ contains 'the header names the age of an out-of-date focus-chains.json (HIMMEL-7
 touch "$W/vp-chains7.json"
 v7render >/dev/null
 not_contains 'a focus-chains.json newer than the Jira mirror adds no age note (HIMMEL-7621)' "$(cat "$v7out")" 'focus-chains.json last written'
+vfp7a="$(cat "$v7out.vfp" 2>/dev/null)"
+printf '%s\n' '---' 'key: "HIMMEL-431"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'labels: ["operator-present"]' 'type: "Task"' \
+    '---' '# HIMMEL-431: rowlive operator ask' > "$vp/HIMMEL-431.md"
+v7render >/dev/null
+if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a changed operator label moves the focus fingerprint (HIMMEL-7621)'; else fail 'a changed operator label left the focus fingerprint unchanged'; fi
 rm -f "$vp/HIMMEL-431.md"
 v7render >/dev/null
 contains 'Waiting on you says so when no ticket waits (HIMMEL-7621)' "$(grep -F 'data-section="waiting"' "$v7out")" 'nothing is waiting on you'
