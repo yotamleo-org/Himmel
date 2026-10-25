@@ -7,7 +7,7 @@
 # moves the ticket back.
 #
 # Usage: worker-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]
-#        leg-jira-status.sh <TICKET> <target-status> [--allow-back]
+#        worker-jira-status.sh <TICKET> <target-status> [--allow-back]
 #   --repo names the repository whose PRs and checks the derive reads (GH_REPO);
 #   without it gh reads the current checkout's.
 #   The second form is the legacy call: the target is a hint logged as
@@ -31,7 +31,7 @@ set -u
 
 usage() {
     echo "usage: worker-jira-status.sh <TICKET> --event <e> [--pr <n> --head <sha>] [--repo <owner/repo>] [--doc <path>] [--resume-brief <path>]" >&2
-    echo "       leg-jira-status.sh <TICKET> <target-status> [--allow-back]" >&2
+    echo "       worker-jira-status.sh <TICKET> <target-status> [--allow-back]" >&2
     exit 2
 }
 [ "$#" -ge 2 ] || usage

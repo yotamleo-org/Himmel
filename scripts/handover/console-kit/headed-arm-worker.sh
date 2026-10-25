@@ -27,7 +27,7 @@
 # Usage: headed-arm-worker.sh [--dry-run] [--fleet <manifest>] <session-name> <handover-doc> \
 #                           <signal-file> <deadline-epoch> <log> [model]
 # Run detached, same as headed-arm.sh itself:
-#   setsid nohup bash headed-arm-leg.sh ... >/dev/null 2>&1 &
+#   setsid nohup bash headed-arm-worker.sh ... >/dev/null 2>&1 &
 #
 # --dry-run: prints the argv this would hand to headed-arm.sh (name, doc,
 # signal, deadline, log, model, resolved context) plus the leg env this

@@ -8,7 +8,7 @@
 # kills a pid it cannot independently prove belongs to that leg.
 #
 # Usage: close-wrapped-worker.sh [--check] [--console | --fleet <manifest>] <leg-doc>
-#        close-wrapped-leg.sh [--check] --sweep --fleet <manifest>
+#        close-wrapped-worker.sh [--check] --sweep --fleet <manifest>
 # --sweep runs this script on every doc in the fleet manifest and closes each one
 # that is finished (lock free, tail WRAPPED); an unfinished doc is skipped, a
 # finished one that cannot be closed (no/ambiguous window, live subtree) is

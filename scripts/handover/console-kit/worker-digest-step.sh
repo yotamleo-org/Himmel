@@ -5,12 +5,12 @@
 # (scripts/eval/leg-digest/leg_ledger.py record). Zero model calls.
 #
 # Usage:
-#   leg-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>]
+#   worker-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>]
 #                      [--pid <pid>] [--projects <dir>] [--console <name>]
 #       The close mode, run by close-wrapped-leg.sh after the TERM. Waits,
 #       bounded, for <pid> to be gone and the journal and its subagent files to
 #       stop changing (spec 1.2); if they never settle the row is `partial`.
-#   leg-digest-step.sh --doc <leg-doc> [--projects <dir>]
+#   worker-digest-step.sh --doc <leg-doc> [--projects <dir>]
 #       For a leg not closed by close-wrapped-leg.sh. When the front matter
 #       carries `session_ids:` (headed-arm-leg.sh's record) each
 #       id is digested directly, one line each prefixed with its id (an id
@@ -55,7 +55,7 @@ UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 usage() {
     echo "usage: worker-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>] [--pid <pid>] [--projects <dir>] [--console <name>]" >&2
-    echo "       leg-digest-step.sh --doc <leg-doc> [--projects <dir>]" >&2
+    echo "       worker-digest-step.sh --doc <leg-doc> [--projects <dir>]" >&2
     exit 2
 }
 
