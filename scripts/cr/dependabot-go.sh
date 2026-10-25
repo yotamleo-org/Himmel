@@ -6,7 +6,7 @@
 #
 # Nobody checks a Dependabot branch out, so review-round.sh judge-go (which needs
 # the branch in the working tree and a spent round cap) cannot record it. This
-# appends one `dependabot-go` row to <git-common-dir>/cr-critic-scores.jsonl; the
+# has ledger-append.sh append one `dependabot-go` row to the CR ledger; the
 # merge gate (review-merge-gate.sh) and ready-check row 4 read it for that head
 # and that branch only. Refused, with the ledger untouched, unless ALL hold:
 #   1. the PR is open, its author is app/dependabot and its head is <head-sha>;
@@ -49,7 +49,6 @@ fi
 . "$ANCHOR/scripts/lib/git-clean.sh" 2>/dev/null && git_env_scrub
 common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || common=""  # swallow-ok: empty fails closed on the next line
 [ -n "$common" ] || { echo "dependabot-go: not in a git repo, so there is no CR ledger" >&2; exit 2; }
-LEDGER="$common/cr-critic-scores.jsonl"
 
 pr_json=$("$GH" pr view "$PR" --json author,headRefName,headRefOid,state,changedFiles 2>/dev/null) || refuse "cannot read PR #$PR"  # swallow-ok: rc is checked, an unreadable PR refuses
 author=$(printf '%s' "$pr_json" | jq -r '.author.login // empty' 2>/dev/null) || author=""  # swallow-ok: empty fails the author check
@@ -89,9 +88,5 @@ why=$(go_trust_verdict "$ROOT" "$QID" "$SHA" "$ANCHOR" "$PR") || refuse "judge $
 now=$("$GH" pr view "$PR" --json headRefOid 2>/dev/null | jq -r '.headRefOid // empty' 2>/dev/null) || now=""  # swallow-ok: empty fails the equality below
 [ "$now" = "$SHA" ] || refuse "PR #$PR's head moved to '${now:-unknown}' while its files were read"
 
-have=$(grep -F '"kind":"dependabot-go"' "$LEDGER" 2>/dev/null | grep -F "\"branch\":\"$BRANCH\",\"head\":\"$SHA\",\"status\":\"ok\",\"source\":\"judge:$QID\",\"pr\":$PR}" || true)  # swallow-ok: no matching row is grep rc 1, and an empty result means record it
-if [ -z "$have" ]; then
-    printf '{"kind":"dependabot-go","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"judge:%s","pr":%s}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$SHA" "$QID" "$PR" >> "$LEDGER" || exit 2
-fi
+bash "$HERE/ledger-append.sh" dependabot-go --branch "$BRANCH" --head "$SHA" --source "judge:$QID" --pr "$PR" >/dev/null || exit 2
 echo "dependabot-go: recorded PR #$PR at $SHA (judge:$QID)"

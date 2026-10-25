@@ -74,8 +74,8 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 _kf_default="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/known-findings.json"
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition" >&2; exit 2;;
+  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition|dependabot-go" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
@@ -488,6 +488,19 @@ if [ "$kind" = "disposition" ]; then
   done
   expr "$target_head" : '^[0-9a-f]\{40\}$' >/dev/null 2>&1 || { echo "ledger-append.sh: disposition --target-head must be a full 40-hex sha (got '$target_head')" >&2; exit 2; }
   expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: disposition --pr must be a positive integer (got '$pr')" >&2; exit 2; }
+fi
+
+# dependabot-go: dependabot-go.sh's row, the review a Dependabot dependency-only
+# PR gets from a signed judge GO at its head. The caller (dependabot-go.sh) has
+# already checked the author, the files and the GO; this writer only stamps and
+# appends, once per (branch, head, source, pr).
+if [ "$kind" = "dependabot-go" ]; then
+  for _dg in "branch:$branch" "head:$head" "source:$source" "pr:$pr"; do
+    [ -n "${_dg#*:}" ] || { echo "ledger-append.sh: dependabot-go requires --${_dg%%:*}" >&2; exit 2; }
+  done
+  expr "$head" : '^[0-9a-f]\{40\}$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --head must be a full 40-hex sha (got '$head')" >&2; exit 2; }
+  expr "$pr" : '^[1-9][0-9]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --pr must be a positive integer (got '$pr')" >&2; exit 2; }
+  expr "$source" : '^judge:[A-Za-z0-9._-][A-Za-z0-9._-]*$' >/dev/null 2>&1 || { echo "ledger-append.sh: dependabot-go --source must be judge:<qid> (got '$source')" >&2; exit 2; }
 fi
 
 # attempt: one row per invocation ATTEMPT (primary + each
@@ -1348,6 +1361,12 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
          reason:"disposition recorded by "+e.SOURCE,source:e.SOURCE,attest:e.ATTEST?e.ATTEST.split(","):[],
          pr:Number(e.PR),head:e.HEAD_,mac:e.MAC};
     dup=false;
+  } else if(e.KIND==="dependabot-go"){
+    // The row review-merge-gate.sh and ready-check.sh read for a Dependabot PR.
+    // A repeat of the same branch, head, source and PR is a no-op; a row of
+    // another kind or branch at that head never suppresses it.
+    rec={kind:"dependabot-go",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,status:"ok",source:e.SOURCE,pr:Number(e.PR)};
+    dup=parsed.some(o=>o.kind==="dependabot-go"&&o.branch===rec.branch&&o.head===rec.head&&o.status==="ok"&&o.source===rec.source&&o.pr===rec.pr);
   } else if(e.KIND==="delegation"){
     // One row per anchor->branch delegation event. NEVER
     // deduped, same posture as `attempt` - a repeat run at the same head
@@ -1418,7 +1437,7 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
   // turned on. Only the finding kind (the record gate 4 blocks on) refuses a
   // conflicting rewrite, above.
   if(dup){
-    process.stderr.write("ledger-append.sh: "+e.KIND+" record for "+e.MODEL+" at head "
+    process.stderr.write("ledger-append.sh: "+e.KIND+" record for "+(e.MODEL||e.SOURCE)+" at head "
       +String(e.HEAD_).slice(0,8)+" already exists - nothing written (dedup on head+model).\n");
     process.exit(0);
   }
