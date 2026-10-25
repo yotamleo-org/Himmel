@@ -172,6 +172,10 @@ echo "wiki=${CLAUDE_END_SESSION_WIKI:-unset}" >>"$LQ_FAKE_LOG.env"
 if [ -n "${LQ_FAKE_DOC:-}" ]; then
   bash "$LQ_FAKE_RUN" materialize doc-plus-code "$PWD" --reference >/dev/null
   [ "$LQ_FAKE_DOC" != noop ] || printf '#!/usr/bin/env bash\nexit 0\n' >lq-work/test-log-tail.sh
+  if [ "$LQ_FAKE_DOC" = helper ]; then
+    printf ':\n' >lq-work/lq-helper.sh
+    printf '#!/usr/bin/env bash\n. lq-work/lq-helper.sh || exit 1\nexit 0\n' >lq-work/test-log-tail.sh
+  fi
 fi
 [ -z "${LQ_FAKE_NOJSON:-}" ] || exit 124
 sid="sess-$$"
@@ -266,7 +270,7 @@ printf 'x\n' >"$TMP/src/x"; G add -A; G commit -qm 'chore: [HIMMEL-9005] x (#45)
 noop() { # noop <task> <agent test file>: fixture plus reference, then the agent test replaced by exit 0
   local wt="$TMP/noop-$1" fix
   git -C "$TMP/src" worktree add -q --detach "$wt" HEAD
-  fix="$(bash "$RUN" materialize "$1" "$wt")"
+  fix="$(bash "$RUN" materialize "$1" "$wt")"; echo "$fix" >"$TMP/noop-$1.fix"
   bash "$RUN" materialize "$1" "$wt" --reference >/dev/null
   bash "$HERE/tasks/$1/accept.sh" "$wt" "$fix" >"$TMP/noop-$1.ctl" 2>&1 && echo ctl-pass >"$TMP/noop-$1.ctl.rc"
   printf '#!/usr/bin/env bash\nexit 0\n' >"$wt/$2"
@@ -277,6 +281,11 @@ for pair in cr-fix:lq-work/test-cleanup-old.sh hook-refusal:lq-work/test-block-c
   noop "$t" "${pair#*:}"; rc=$?
   check "$t: control, the reference with its own test passes" '[ -f "$TMP/noop-$t.ctl.rc" ]'
   check "$t: an exit-0 own test fails acceptance" '[ "$rc" -ne 0 ] && grep -q "^FAIL own-test-catches" "$TMP/noop-$t.log"'
+  wt="$TMP/noop-$t"
+  printf ':\n' >"$wt/lq-work/lq-helper.sh"
+  printf '#!/usr/bin/env bash\n. lq-work/lq-helper.sh || exit 1\nexit 0\n' >"$wt/${pair#*:}"
+  bash "$HERE/tasks/$t/accept.sh" "$wt" "$(cat "$TMP/noop-$t.fix")" >"$TMP/helper-$t.log" 2>&1; rc=$?
+  check "$t: an own test that fails only for want of its helper fails acceptance" '[ "$rc" -ne 0 ] && grep -q "^FAIL own-test-catches" "$TMP/helper-$t.log"'
 done
 LQ_FAKE_DOC=ref bash "$RUN" run --lane native --model claude-haiku-5-5 --effort high --no-judge --tasks doc-plus-code \
   --base "$C1" --out "$TMP/out-doc" >/dev/null 2>&1
@@ -284,6 +293,9 @@ LQ_FAKE_DOC=noop bash "$RUN" run --lane native --model claude-haiku-5-5 --effort
   --base "$C1" --out "$TMP/out-docnoop" >/dev/null 2>&1
 check "doc-plus-code: control, the reference test catches the fixture" 'jq -e ".accept_ok == true and .own_test_catches_fixture == true" "$TMP/out-doc/runs.jsonl" >/dev/null'
 check "doc-plus-code: an exit-0 own test makes accept_ok false" 'jq -e ".accept_ok == false and .own_test_catches_fixture == false" "$TMP/out-docnoop/runs.jsonl" >/dev/null'
+LQ_FAKE_DOC=helper bash "$RUN" run --lane native --model claude-haiku-5-5 --effort high --no-judge --tasks doc-plus-code \
+  --base "$C1" --out "$TMP/out-dochelper" >/dev/null 2>&1
+check "doc-plus-code: an own test that fails only for want of its helper does not catch the fixture" 'jq -e ".own_test_catches_fixture == false" "$TMP/out-dochelper/runs.jsonl" >/dev/null'
 
 echo "test-mine-tasks: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

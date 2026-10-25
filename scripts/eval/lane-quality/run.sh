@@ -362,7 +362,12 @@ own_test_catches() {
   [ -n "$t" ] || { echo null; return 0; }
   [ -f "$2/$t" ] || { echo false; return 0; }
   mut="$(mktemp -d "${TMPDIR:-/tmp}/lq-own.XXXXXX")" || { echo false; return 0; }  # prim-ok: the judge scratch dir idiom above; run.sh does not source prim.sh
-  git -C "$2" archive "$3" lq-work | tar -x -C "$mut"
+  # the agent's files stay (a helper its test needs); every fixture file goes back to the fixture
+  cp -R "$2/lq-work" "$mut/"
+  if ! { git -C "$2" archive -o "$mut/fixture.tar" "$3" lq-work && tar -x -C "$mut" -f "$mut/fixture.tar"; }; then
+    rm -rf "$mut"; echo false; return 0
+  fi
+  rm -f "$mut/fixture.tar"
   cp "$2/$t" "$mut/$t"
   (cd "$mut" && bash "$HERE/../../api-lane/strip-env.sh" -- timeout "$TIMEOUT" bash "$t") >/dev/null 2>&1; rc=$?
   rm -rf "$mut"

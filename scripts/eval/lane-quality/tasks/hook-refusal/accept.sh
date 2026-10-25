@@ -33,8 +33,8 @@ accept_ok own-test-passes bash -c 'cd "$1" && bash lq-work/test-block-curl-pipe.
 # Test quality: the candidate's own test must FAIL against a hook that allows
 # everything (a test that cannot fail is not evidence).
 MUT="$(mktemp -d "${TMPDIR:-/tmp}/lq-mut.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }  # prim-ok: accept.sh is self-contained and does not source prim.sh
+cp -R "$WT/lq-work" "$MUT/" 2>/dev/null
 mkdir -p "$MUT/lq-work"
-cp "$WT/lq-work/test-block-curl-pipe.sh" "$MUT/lq-work/" 2>/dev/null
 printf '#!/usr/bin/env bash\ncat >/dev/null\nexit 0\n' > "$MUT/lq-work/block-curl-pipe.sh"
 accept_ok own-test-catches-allow-all bash -c 'cd "$1" && [ -f lq-work/test-block-curl-pipe.sh ] && ! bash lq-work/test-block-curl-pipe.sh' _ "$MUT"
 rm -rf "$MUT"
