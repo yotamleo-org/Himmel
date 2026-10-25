@@ -6,7 +6,7 @@
 > `{{REPO}}/docs/handover/console-sections/`. Session: **`{{SESSION_NAME}}`**.
 > Handover root: **`{{HANDOVER_ROOT}}`**; bucket **`{{BUCKET}}`** (at
 > `{{STATE_DIR}}`); you ship from and always run in
-> **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a <!-- old-term-ok: tick.sh, board.mjs and chief.sh parse this phrase -->
+> **`{{REPO}}`**. The project this console is FOR is **`{{PROJECT}}`**: dispatch a <!-- old-term-ok: parsed -->
 > worker into it with `WORKER_SESSION_REPO=<path>`. Handover at **{{FILL_PERCENT}} % context fill, 90 k input
 > tokens per turn, or 150 turns / 30 M cache-read**, whichever first. Report at MILESTONES only.
 
@@ -187,13 +187,12 @@ tag is `cut-tag.sh <version> <sha>` (`--dry-run` first): `console-sections/merge
 
 ## Wrapping a worker
 
-Per worker message, write its `MERGED` or `WRAPPED` message to a
-file and run
-`bash scripts/handover/console-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`:
-`HANDLED ...` is done, `ESCALATE <reason>` means by hand: on `WRAPPED`, confirm
+Write each worker's `MERGED` or `WRAPPED` message to a file and run
+`bash scripts/handover/console-kit/leg-event.sh --doc <chief doc> --fleet <manifest> <message-file>`:
+`HANDLED ...` is done, `ESCALATE <reason>` is by hand: on `WRAPPED`, confirm
 the lock is free at the ROOT sweep, then
 `bash scripts/handover/console-kit/close-wrapped-leg.sh <leg-doc>`. Never run the
-bare `clean.sh` sweep for one worker. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence, `digest=` line:
+bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>` or `run_in_background`. Hand sequence, `digest=`:
 `console-sections/wrapping.md`.
 
 ## Standing rules
