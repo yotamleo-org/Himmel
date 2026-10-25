@@ -165,7 +165,7 @@ awk '
 if [ -s "$step" ]; then pass "install step body extracted from ci.yml"; else fail "install step body not found in ci.yml"; fi
 sb="$tmp/stepbox"; mkdir -p "$sb/bin" "$sb/scripts/machine-setup" "$sb/tmp" "$sb/usr-local-bin"
 printf 'genuine claude bytes\n' > "$sb/genuine"; printf 'tampered claude bytes\n' > "$sb/tampered"
-gsha=$(sha256sum "$sb/genuine" | cut -d' ' -f1)
+gsha=$(sha256sum "$sb/genuine" 2>/dev/null || shasum -a 256 "$sb/genuine"); gsha=${gsha%% *}
 sed "s/^CLAUDE_LINUX_X64_SHA256=.*/CLAUDE_LINUX_X64_SHA256=\"$gsha\"/" "$REPO_ROOT/scripts/machine-setup/installer-pins.sh" > "$sb/scripts/machine-setup/installer-pins.sh"
 cat > "$sb/bin/curl" <<'EOF'
 #!/usr/bin/env bash
