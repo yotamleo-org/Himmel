@@ -119,10 +119,26 @@ check "(d) --out exits 0" "$RC" "0"
 check "(d) --out prints nothing to stdout" "$TOFILE" ""
 check "(d) --out writes the report" "$(grep -c '^| N9001 |' "$TMP/report.md" 2>/dev/null)" "2"
 check "(d) --out writes nothing else" "$(ls -A "$TMP")" "report.md"
-run --out "https://example.invalid/report.md" >/dev/null 2>&1; RC=$?
+ERR=$(cd "$TMP" && run --out "https://example.invalid/report.md" 2>&1 >/dev/null); RC=$?
 check "(d) an --out URL is refused (exit 2)" "$RC" "2"
-run --out "gs://bucket/report.md" >/dev/null 2>&1; RC=$?
+check "(d) an --out URL is refused by the scheme guard" \
+    "$ERR" "fleet-scorecard: --out is a local path, never a URL: https://example.invalid/report.md"
+ERR=$(cd "$TMP" && run --out "gs://bucket/report.md" 2>&1 >/dev/null); RC=$?
 check "(d) an --out bucket URI is refused (exit 2)" "$RC" "2"
+check "(d) an --out bucket URI is refused by the scheme guard" \
+    "$ERR" "fleet-scorecard: --out is a local path, never a URL: gs://bucket/report.md"
+check "(d) a refused --out writes nothing in the working dir" "$(ls -A "$TMP")" "report.md"
+
+# --- (b) continued: a source that cannot be read is n/a, never read as another
+mkdir -p "$TMP/m" "$TMP/mirror/HIMMEL-1.md"
+cp "$FX/FT-roadmap-chief.fleet.json" "$TMP/m/legs.json"
+OTHER=$(run --manifest "$TMP/m/legs.json" 2>/dev/null)
+check "(b) a manifest not named *.fleet.json is not read as its own chief doc" \
+    "$(printf '%s\n' "$OTHER" | grep '^- chief docs:')" "- chief docs: $FX/FT-roadmap-chief.md (missing: $TMP/m/legs.md)"
+BADMIRROR=$(run --mirror "$TMP/mirror" 2>/dev/null); RC=$?
+check "(b) an unreadable Jira mirror still exits 0" "$RC" "0"
+check "(b) an unreadable Jira mirror is n/a with its reason" \
+    "$(printf '%s\n' "$BADMIRROR" | grep '^- Jira mirror:')" "- Jira mirror: n/a (unreadable: $TMP/mirror)"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS test-fleet-scorecard.sh"; exit 0; fi

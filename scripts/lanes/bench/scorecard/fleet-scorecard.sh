@@ -547,7 +547,7 @@ def main():
     ctx["ledger"] = ledger
     ctx["ledger_rows"] = cr_ledger_eval.load(ledger, None)[0] if os.path.isfile(ledger) else None
     ctx["folded"] = cr_ledger_eval.fold(ctx["ledger_rows"]) if ctx["ledger_rows"] is not None else []
-    chief_docs = a.chief_doc or [re.sub(r"\.fleet\.json$", ".md", m) for m in a.manifest]
+    chief_docs = a.chief_doc or [re.sub(r"(\.fleet)?\.json$", "", m) + ".md" for m in a.manifest]
     found = [c for c in chief_docs if os.path.isfile(c)]
     ctx["chief_text"] = "\n".join(read(c) for c in found)
     ctx["denials_path"] = a.denials or os.path.expanduser("~/.himmel/state/classifier-denials.jsonl")
@@ -567,10 +567,13 @@ def main():
             else:
                 ctx["denials_bad"] += 1
     mirror = a.mirror or judge_accuracy.MIRROR
+    mirror_why = "absent"
     try:
         ctx["bugs"] = judge_accuracy.load_bugs(mirror)
     except ValueError:
         ctx["bugs"] = None
+    except OSError:
+        ctx["bugs"], mirror_why = None, "unreadable"
 
     scored = [(leg,) + score(leg, ctx) for leg in legs]
     lanes = {}
@@ -605,7 +608,7 @@ def main():
            "- denials: %s%s" % (ctx["denials_path"] if ctx["denials"] is not None else na("absent: " + ctx["denials_path"]),
                                 " (%d unreadable row%s)" % (ctx["denials_bad"], "" if ctx["denials_bad"] == 1 else "s")
                                 if ctx["denials_bad"] else ""),
-           "- Jira mirror: %s" % (mirror if ctx["bugs"] is not None else na("absent: " + mirror)), ""]
+           "- Jira mirror: %s" % (mirror if ctx["bugs"] is not None else na(mirror_why + ": " + mirror)), ""]
     report = "\n".join(out)
     if a.out:
         try:
