@@ -826,7 +826,7 @@ focus_rebuild() {
     local fstat pid
     [ -n "$console_doc" ] || return 0
     pid="$(cat "$focus_pid_file" 2>/dev/null)"  # swallow-ok: no pid file reads empty, so no refresh is running
-    case "$pid" in ''|*[!0-9]*) ;; *) kill -0 "$pid" 2>/dev/null && return 0 ;; esac
+    case "$pid" in ''|*[!0-9]*) ;; *) ps -p "$pid" -o args= 2>/dev/null | grep -qF -- "$focus_cmd" && return 0 ;; esac
     fstat="$(timeout -k 2 "$sweep_timeout" bash "$focus_cmd" --doc "$console_doc" --status 2>/dev/null 9>&-)" || fstat=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable focus state starts nothing
     case "$fstat" in focus=DIRTY:* | focus=FAILED:*) ;; *) return 0 ;; esac
     setsid bash "$focus_cmd" --doc "$console_doc" </dev/null >/dev/null 2>&1 9>&- &

@@ -215,7 +215,9 @@ unknown() { # <stage>
 
 # read_overflow_checks <pr> - rows-<pr>.tsv and prows-<pr>.tsv for a PR with more
 # check runs than one GraphQL page, read as the lib's live derive reads them: every
-# gh pr checks row and every page of the head's check runs.
+# gh pr checks row and every page of the head's check runs. gh pr checks reads the
+# PR's current head, so the head is read again after both reads: a push since the
+# snapshot returns 1 rather than mix two commits' checks.
 read_overflow_checks() {
     local head out
     head=$(jq -r --argjson n "$1" '.[] | select(.number == $n) | .headRefOid // empty' "$snap/prs.json") || return 1
@@ -224,7 +226,8 @@ read_overflow_checks() {
     jq -r '.[] | "\(.bucket)\t\(.name)"' <<<"$out" > "$snap/rows-$1.tsv" 2>/dev/null || return 1
     out=$(bounded 30 gh api "repos/{owner}/{repo}/commits/$head/check-runs?per_page=100" --paginate 2>/dev/null) || return 1 # swallow-ok: stderr only; a failed read returns 1 and the caller marks the sweep unknown
     jq -r '.check_runs[] | if .id == null then error("check-run with no id") else "\(if .status != "completed" then "pending" elif (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped") then "pass" elif .conclusion == "cancelled" then "cancel" else "fail" end)\t\(.name)\t\(.app.id // "")\t\(.started_at // "")\t\(.id)" end' \
-        <<<"$out" > "$snap/prows-$1.tsv" 2>/dev/null
+        <<<"$out" > "$snap/prows-$1.tsv" 2>/dev/null || return 1
+    [ "$(bounded 30 gh pr view "$1" --json headRefOid -q .headRefOid 2>/dev/null)" = "$head" ] # swallow-ok: an unreadable head is a mismatch, so the caller marks the sweep unknown
 }
 
 # --- the snapshot ---------------------------------------------------------------

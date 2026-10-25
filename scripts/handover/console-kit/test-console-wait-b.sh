@@ -809,6 +809,7 @@ check "(sw11) DIRTY with no readable age wakes" "WAKE focus DIRTY:unknown" "$(he
 launches() { grep -cx "focus --doc $SWDOC" "$STUB/focus.calls"; }
 fr_run() { # <inbox name> [--doc] - three seconds of waiting, about three ticks
     reset_stub; : > "$STUB/focus.calls"; I="$(new_inbox "$1")"; date +%s > "$I.wait.sweep"
+    [ -z "${FR_PID:-}" ] || printf '%s\n' "$FR_PID" > "$I.wait.focus-pid"
     if [ "${2:-}" = --doc ]; then
         timeout 3 bash "$WAIT" "$I" --doc "$SWDOC" --legs "N1.md" > "$WORK/$1.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
     else
@@ -838,6 +839,11 @@ check "(fr6) a refresh still running is left alone: one start over three ticks" 
 fpid="$(cat "$I.wait.focus-pid" 2>/dev/null)"
 [ -n "$fpid" ] && kill -- "-$fpid" 2>/dev/null
 rm -f "$STUB/focus.sleep"
+printf 'focus=DIRTY:0m\n' > "$STUB/focus.out"
+sleep 30 & stray=$!
+FR_PID=$stray fr_run fr7 --doc
+kill "$stray" 2>/dev/null
+check "(fr7) a pid file naming an unrelated process does not hold the refresh back" "yes" "$([ "$(launches)" -ge 1 ] && echo yes || echo no)"
 export WAIT_SWEEP_CMD="$STUB/sweep-off.sh" WAIT_FOCUS_CMD="$STUB/sweep-off.sh"
 unset WAIT_SWEEP_SEC
 

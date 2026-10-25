@@ -93,7 +93,9 @@ printf 'gh %s\n' "$*" >> "$STUB_LOG"
 printf '%s\n' "${GH_REPO:-}" >> "$FX/gh-repo.log"
 case "$1 $2" in
     "pr view")
-        if [ -e "$FX/view-$3.json" ]; then jq -r .title "$FX/view-$3.json"; else echo "no pull requests found" >&2; exit 1; fi ;;
+        if [ "$5" = headRefOid ]; then
+            if [ -e "$FX/head-$3" ]; then cat "$FX/head-$3"; else jq -r --argjson n "$3" '.[] | select(.number == $n) | .headRefOid' "$FX/pr-list.json"; fi
+        elif [ -e "$FX/view-$3.json" ]; then jq -r .title "$FX/view-$3.json"; else echo "no pull requests found" >&2; exit 1; fi ;;
     "pr list")
         [ -e "$FX/pr-list.fail" ] && { echo "HTTP 502" >&2; exit 1; }
         cat "$FX/pr-list.json" ;;
@@ -334,6 +336,12 @@ contains "2b: a PR whose check runs overflow one page is no unknown sweep" "$(ca
 check "2b: the snapshot reads the overflowing PR's checks with gh pr checks" "$(awk '/^gh pr checks 11 /{print "snapshot"; exit} /^get /{print "funnel"; exit}' "$STUB_LOG")" snapshot
 check "2b: and its check runs with the paginated REST read" "$(grep -c '^gh api repos/{owner}/{repo}/commits/ccc333/check-runs?per_page=100 --paginate' "$STUB_LOG")" 1
 check "2b: its red required check moves the ticket" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
+# A push between the snapshot and those reads leaves the sweep unknown, never another commit's checks.
+: > "$STUB_LOG"; printf 'ddd444\n' > "$FX/head-11"
+sweep
+contains "2b: a push during the overflow re-read is an unknown sweep" "$(cat "$tmp/sout")" "unknown (snapshot gh)"
+check "2b: and moves nothing" "$(grep -c '^transition' "$STUB_LOG")" 0
+rm -f "$FX/head-11" "$FX/contexts.more"
 
 # Lock-gone counting: D6 only after lock_seen plus two sweeps; a held lock resets.
 reset "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":false,"lock_gone_sweeps":0}'
