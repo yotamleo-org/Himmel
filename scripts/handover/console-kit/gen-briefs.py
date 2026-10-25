@@ -320,14 +320,17 @@ WRITE_PATH_RE = re.compile(r"(?<![\w./-])((?:scripts|docs|marketplace|plugins|te
 
 
 _SENT = r'(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)'
+_Q = r'''(?:'[^']*'|"[^"]*")'''
+_ARG = r'''[^\s`;,)'"]*[/.\d_-][^\s`;,)'"]*(?<![.])'''
 # the read-only text next-dispatchable.sh's clean_scope strips from an older scope line; the Writes line is read raw, so strip it here
 _READ_ONLY = [
     re.compile(r'(?i:(?:Do not|Never) (?:touch|edit|change))\b' + _SENT),
     re.compile(r'Impacted suites' + _SENT),
     re.compile(r'Trust path\s*\([^)]*\)'),
+    re.compile(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b'),
     re.compile(r'`(?:git grep|grep|rg|find|sed -n|cat)\b[^`]*`'),
     re.compile(r'\((?:git grep|grep|rg|find|cat)\b(?:(?!\b(?:fix|edit|update|change|write|add|patch|replace|rename)\b)[^)])*\)'),
-    re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+[^\s-][^\s]*)*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+\w+(?![\w.\/-]))?|[^\s`;,)]*[/.\d_-][^\s`;,)]*(?<![.])))+'),
+    re.compile(r'(?<![\w./-])(?:(?:git grep|grep|rg|find|cat)(?=(?:\s+(?:%s|(?!-)%s))*\s+-\w)|sed\s+-n)(?:\s+(?:-{1,2}\w[\w=.-]*(?:\s+\w+(?![\w./-]))?|%s|%s))+' % (_Q, _ARG, _Q, _ARG)),
 ]
 _SCOPE_END = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
 
@@ -339,6 +342,8 @@ def write_paths(scope):
     scope = scope[:end.start()] if end else scope
     for rx in _READ_ONLY:
         scope = rx.sub(lambda g: g.group(0) if re.search(r'\s-(?:delete|exec|execdir|ok)\b', g.group(0)) else ' ', scope)
+    # a single-writer note that names another holder (#n or Nnnn) is that holder's path, not this leg's
+    scope = re.sub(r'SINGLE-WRITER' + _SENT, lambda g: ' ' if re.search(r'#\d+|\bN\d{3,}\b', g.group(0)) else g.group(0), scope)
 
     def expand(g):  # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir
         parts = [p.strip() for p in g.group(2).split(',')]
