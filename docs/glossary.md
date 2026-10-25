@@ -530,3 +530,4 @@ wires no plugin-only guard except `block-docker-privesc`,
 
 <!-- HIMMEL-7241 throwaway ci:go live proof, head 1. DO NOT MERGE. -->
 <!-- HIMMEL-7241 throwaway ci:go live proof, head 2. DO NOT MERGE. -->
+<!-- HIMMEL-7241 throwaway ci:go live proof, head 3 (gate off). DO NOT MERGE. -->
