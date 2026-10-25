@@ -426,6 +426,7 @@ scripts/handover/chief-kit/test-succession-tracker.sh	0
 scripts/handover/chief-kit/test-tick-deadwin.sh	5
 scripts/handover/chief-kit/test-tick-holds.sh	3
 scripts/handover/chief-kit/test-tick-nolive.sh	9
+scripts/handover/chief-kit/test-tick-rmqueue.sh	9
 scripts/handover/chief-kit/test-tick.sh	128
 scripts/handover/chief-kit/test-tracker.sh	5
 scripts/handover/chief-kit/test-vault-status.sh	2

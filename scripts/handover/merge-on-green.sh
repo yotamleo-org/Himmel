@@ -2211,6 +2211,42 @@ _jira_fold_request() {
     fi
 }
 
+# _jira_intake_to_current <repo_root> <key> <issue json> <pr> <sha> — a merged ticket held in an unreleased version
+# later than the current one (earliest unreleased by date, archived never) gets an INTAKE request into the current
+# version, so worked tickets fold in without a hand edit. The CLI answers a key already queued with its open request,
+# so one key holds at most one. The outcome rides the audit line as intake=. Best-effort, never fails the merge.
+# ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a release
+# declares several versions.
+_jira_intake_to_current() {
+    local repo_root="$1" key="$2" json="$3" pr_num="$4" pr_sha="$5" versions_out pick cur from out rc=0 req
+    versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null) || return 0  # swallow-ok: an unread version list files no request
+    pick=$(printf '%s' "$json" | node -e '
+        try {
+            const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const have = ((d.fields && d.fields.fixVersions) || []).map(v => v.name);
+            const vs = process.argv[1].split("\n").filter(Boolean).map(l => l.split("\t"));
+            const open = new Set(vs.filter(v => v[1] === "false").map(v => v[0]));
+            const live = vs.filter(v => v[1] === "false" && v[3] !== "true");
+            const dated = live.filter(v => v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
+            const cur = dated.length ? dated[0][0] : live.length ? live[0][0] : "";
+            const later = have.find(n => open.has(n) && n !== cur);
+            if (cur && later) process.stdout.write(cur + "\t" + later);
+        } catch {}
+    ' "$versions_out" 2>/dev/null)
+    [ -n "$pick" ] || return 0
+    cur=${pick%%$'\t'*} from=${pick#*$'\t'}
+    out=$(cd "$repo_root" && node scripts/jira/dist/index.js release request "$cur" --verb INTAKE --key "$key" --from "$from" --to "$cur" \
+        --why "merged in PR #$pr_num @ ${pr_sha:0:12}: the ticket is worked, so it folds from $from into the current $cur" \
+        --evidence "{\"pr\":$pr_num,\"sha\":\"$pr_sha\"}" 2>&1) || rc=$?
+    req=$(printf '%s\n' "$out" | sed -n 's/^REQ //p' | head -n 1)
+    if [ "$rc" -eq 0 ] && [ -n "$req" ]; then
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT intake=$req"
+    else
+        echo "merge-on-green: WARN $key sits in $from, later than the current $cur; the INTAKE request was NOT filed (rc=$rc): ${out//$'\n'/ }" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT intake=failed"
+    fi
+}
+
 _jira_close_on_merge() {
     local nwo="$1" pr_num="$2" pr_sha="$3"
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
@@ -2293,6 +2329,7 @@ _jira_close_on_merge() {
 
     if ! _truthy "$opt_in"; then
         JIRA_AUTO_TRANSITION_RESULT="skip=partial key=$key status-unchanged"
+        _jira_intake_to_current "$repo_root" "$key" "$issue_type_json" "$pr_num" "$pr_sha"
         # A bare merge leaves the ticket open: say so, so a sliced ticket's next
         # slice is dispatched instead of sitting orphaned.
         local partial="PARTIAL $key: next slice not dispatched"

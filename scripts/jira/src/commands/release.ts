@@ -284,22 +284,29 @@ export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
     && !['ANTHROPIC_', 'CLAUDE_CODE_'].some((p) => k.toUpperCase().startsWith(p))));
 }
 
-// One bounded model call per batch: preflight first, the bare plugin profile, no tools, one turn, JSON envelope.
+// The call runs on the API lane (decision 288): the lane is on and the account auto-picked unless the caller says
+// otherwise, so an operator's HIMMEL_API_LANE=off still refuses; the launcher has no subscription fallback.
+export function apiLaneEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  return {
+    ...judgeEnv(env),
+    HIMMEL_API_LANE: env.HIMMEL_API_LANE ?? 'on',
+    HIMMEL_API_ACCOUNT: env.HIMMEL_API_ACCOUNT ?? 'auto',
+    HIMMEL_API_KIND: 'judge',
+    HIMMEL_API_CALL_TIMEOUT_S: '900',
+  };
+}
+
+// One bounded model call per batch through the API launcher: tool-free, one turn, JSON envelope, the prompt on stdin.
+// The launcher's own bank gate and credit ledger replace the subscription preflight.
 export const liveJudge: Judge = async (input) => {
-  const verdict = execFileSync('bash', [join(repoRoot, 'scripts', 'lib', 'bank-preflight.sh')], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] })
-    .trim().split('\n').pop();
-  if (verdict !== 'PROCEED') throw new Error(`rm-run: bank-preflight says ${verdict}; nothing ruled`);
   const skill = readFileSync(join(repoRoot, 'marketplace', 'plugins', 'himmel-ops', 'skills', 'release-manager', 'SKILL.md'), 'utf8');
-  // execFileSync throws on the resolver's fail-closed rc 2.
-  const settings = execFileSync('bash', [join(repoRoot, 'scripts', 'lanes', 'profile-settings.sh'), 'bare'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'inherit'] }).trim();
-  if (!settings) throw new Error('rm-run: profile-settings.sh bare printed no settings path; nothing ruled');
   // An empty cwd, so no project instructions load beside the skill.
   const cwd = mkdtempSync(join(tmpdir(), 'rm-run-judge-'));
   try {
-    const out = execFileSync('claude', [
-      '-p', '--settings', settings, '--model', 'opus', '--effort', 'high', '--output-format', 'json', '--permission-mode', 'plan',
-      '--tools', '', '--max-turns', '1', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
-    ], { input: judgePrompt(input, skill), cwd, env: judgeEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
+    const out = execFileSync('bash', [
+      join(repoRoot, 'scripts', 'api-lane', 'claude-api.sh'),
+      '-p', '--model', 'opus', '--effort', 'high', '--permission-mode', 'plan', '--max-budget-usd', '2', '--output-format', 'json',
+    ], { input: judgePrompt(input, skill), cwd, env: apiLaneEnv(process.env), encoding: 'utf8', maxBuffer: 64 * 1024 * 1024, timeout: 900_000, stdio: ['pipe', 'pipe', 'inherit'] });
     return parseDecisions(out);
   } finally {
     rmSync(cwd, { recursive: true, force: true });

@@ -11,7 +11,9 @@ release is declared (`jira release state <R>` prints a status other than
   prints `REQ <id>`; a duplicate of an open request returns the open one. Then
   `jira release rm-run <R>` rules every pending request and exits. It takes
   the lease, finishes any older ruling, claims, makes one bounded model call
-  (bank-preflight, then `claude -p` with no tools, one turn, JSON out), rules
+  (through `scripts/api-lane/claude-api.sh`, so it bills API credit and never the
+  subscription: lane on and account `auto` unless you set them, no tools, one
+  turn, JSON out, a refusal is final), rules
   and applies each request through the engine, releases the lease, and prints
   one line per request. An empty queue prints `RM-RUN <R>: nothing pending`
   and writes nothing.
@@ -47,6 +49,20 @@ release is declared (`jira release state <R>` prints a status other than
   (Highest or Blocker, a red main run, a regression of a merged PR) is placed
   in the current version under `O-<R>-emergency`, and repair starts at once.
   The next `rm-run` records its class and sector.
+- **Open requests are ruled without you.** The waiter's tick shows
+  `rm-queue=<n>,<oldest age>m` and, when the oldest open request is older than
+  `TICK_RMRUN_MIN` minutes (default 30), the lease is free and no run started in
+  the last `TICK_RMRUN_MIN_SECS` seconds (default 600), it launches one detached
+  `jira release rm-run <R>` for the `release:` line of the chief's doc
+  (`,run` on the field marks the launch; the log is `tick-rm-run.log` in the
+  tick state dir). A `?` is an unreadable state. An empty queue shows no field.
+- **A worked ticket folds into the current version on its own.** A merge
+  (`merge-on-green.sh`, any path that does not stamp the ticket) and a worker's LIVE
+  bullet (`worker-jira-status.sh`) file one INTAKE request to the current
+  version (the earliest unreleased, unarchived one) when the ticket still holds a
+  later unreleased version; the CLI dedups an open request, the LIVE path keeps
+  one stamp per key, and the merge prints `intake=<REQ>` (or `intake=failed`) on
+  its audit line. An unversioned or already-current ticket files nothing.
 - **Live state** carries `release: <R>` and the lease line. No release-manager
   session waits between batches: each `rm-run` takes the lease as its own run
   record under `release/<R>/rm-runs/` and releases it, and a held lease refuses
