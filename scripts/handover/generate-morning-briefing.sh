@@ -203,7 +203,7 @@ if [ -f "$SCRIPT_DIR/../lib/doc-freshness.sh" ]; then
     # shellcheck source=../lib/doc-freshness.sh
     # shellcheck disable=SC1091
     . "$SCRIPT_DIR/../lib/doc-freshness.sh"
-    if df_leg_active morning; then
+    if [ "$since_all" -eq 0 ] && df_leg_active morning; then
         docs_drift="$(df_detect "${SINCE_SHA}..HEAD" "" "$repo_root" 2>/dev/null || true)"
     fi
 fi
@@ -571,6 +571,8 @@ EOF_WIP
         if ! df_leg_active morning; then
             # shellcheck disable=SC2016  # backticks here are markdown literal, not subshell
             printf '_Doc-freshness off (set HIMMEL_DOC_FRESHNESS to include `morning`)._\n'
+        elif [ "$since_all" -eq 1 ]; then
+            printf '_Docs drift is not computed for a history shorter than 50 commits._\n'
         elif [ -n "$docs_drift" ]; then
             printf '%s\n' "$docs_drift" | awk -F'\t' 'NF>=2{printf "- %s → update %s\n", $1, $2}'
         else
@@ -580,14 +582,16 @@ EOF_WIP
 
     # Failure review --------------------------------------------
     # The digest the daily failure-review cadence wrote today; its headings drop
-    # one level so it nests under this section. Only where the cadence ships.
+    # one level so it nests under this section. Only where the cadence ships: the
+    # shared state dir may hold another project's digest.
     failure_review="${HIMMEL_FAILURE_REVIEW_DIR:-$HOME/.himmel/state/failure-review}/failure-review-$today.md"
-    if [ -f "$failure_review" ]; then
+    if [ -f "$SCRIPT_DIR/../eval/leg-digest/failure-review-cadence.sh" ]; then
         printf '\n## 🧯 Failure review\n\n'
-        sed -e '/^## Failure review$/d' -e 's/^### /#### /' "$failure_review" | sed '/./,$!d'
-    elif [ -f "$SCRIPT_DIR/../eval/leg-digest/failure-review-cadence.sh" ]; then
-        printf '\n## 🧯 Failure review\n\n'
-        printf '_No failure review digest for %s (scripts/eval/leg-digest/failure-review-cadence.sh)._\n' "$today"
+        if [ -f "$failure_review" ]; then
+            sed -e '/^## Failure review$/d' -e 's/^### /#### /' "$failure_review" | sed '/./,$!d'
+        else
+            printf '_No failure review digest for %s (scripts/eval/leg-digest/failure-review-cadence.sh)._\n' "$today"
+        fi
     fi
 
     # Prompt cache ------------------------------------------------------------

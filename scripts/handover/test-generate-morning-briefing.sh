@@ -585,6 +585,9 @@ fi
 git -C "$ADOPTED" -c user.email=t@test.com -c user.name=test commit -q --allow-empty -m "chore: first"
 git -C "$ADOPTED" -c user.email=t@test.com -c user.name=test commit -q --allow-empty -m "feat: second widget"
 OUT_AD="$TMP_ROOT/adopted-report.md"
+# Another project's digest in the shared state dir must not reach this report.
+mkdir -p "$HIMMEL_FAILURE_REVIEW_DIR"
+printf '## Failure review\n\n- failures: 9 rows\n' > "$HIMMEL_FAILURE_REVIEW_DIR/failure-review-$(date +%F).md"
 set +e
 ( cd "$ADOPTED"; env -u JIRA_PROJECT_KEY -u JIRA_CMD -u TRACKER GH_CMD="$FAKE_GH" \
     FAKE_GH_PR_JSON='[{"number":7,"title":"add widget","mergedAt":"2026-05-25T00:00:00Z"}]' \
@@ -597,6 +600,7 @@ file=$(cat "$OUT_AD" 2>/dev/null || true)
 assert_contains "adopted: merged PR row"       "#7"                 "$file"
 assert_contains "adopted: own commit listed"   "feat: second widget" "$file"
 assert_contains "adopted: open PR counted"     "**1** open PR(s)"   "$file"
+rm -rf "$HIMMEL_FAILURE_REVIEW_DIR"
 assert_contains "adopted: no tracker said so"  "No tracker configured" "$file"
 for bad in "jira unavailable" "HIMMEL" "/pr-check" "/clean" "Prompt cache" "Failure review"; do
     # An absent report must not pass the absence checks.
