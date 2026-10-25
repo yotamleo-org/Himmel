@@ -1,6 +1,6 @@
 ---
 description: Auto-dispatch N tickets from Jira as parallel subagents — emits plan + confirms before fanout.
-argument-hint: [--limit N] [--project HIMMEL|LUNA] [--status STATUS] [--priority ORDER]
+argument-hint: [--limit N] [--project KEY] [--status STATUS] [--priority ORDER]
 ---
 
 Pulls the top-N tickets from Jira matching the operator's filter, emits a

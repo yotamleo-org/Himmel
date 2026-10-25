@@ -31,7 +31,11 @@ set -uo pipefail
 
 # shellcheck source=project-state.sh
 . "$(dirname "${BASH_SOURCE[0]}")/project-state.sh"
-MARKER_DIR=$(afk_stop_dir) || exit 3
+MARKER_DIR=$(afk_stop_dir) || {
+    # An unresolvable project still honours the clone's global stop.
+    [ "${1:-}" = check ] && [ -f "$HOME/.claude/.overnight-stop" ] && exit 0
+    exit 3
+}
 MARKER_PATH="$MARKER_DIR/.overnight-stop"
 # The clone's global marker halts every adopted shift too (a /stop from the clone).
 GLOBAL_PATH=""

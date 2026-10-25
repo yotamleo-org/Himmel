@@ -129,6 +129,15 @@ if [ "$rc" -eq 1 ]; then pass "beta not stopped by alpha"; else fail "beta not s
 echo "TEST: a /stop from the himmel clone (the global marker) halts every adopted shift"
 mkdir -p "$FAKE_HOME/.claude"; : > "$FAKE_HOME/.claude/.overnight-stop"
 if inproj "$B" bash scripts/afk/stop-marker.sh check; then pass "beta halts on the global marker"; else fail "beta halts on the global marker"; fi
+# A git that cannot name the common dir leaves the project key unresolvable.
+FAIL_GIT="$TMP_ROOT/failgit"; mkdir -p "$FAIL_GIT"
+# shellcheck disable=SC2016
+printf '%s\n' '#!/usr/bin/env bash' \
+    'for a in "$@"; do [ "$a" = --git-common-dir ] && exit 128; done' \
+    "exec $(command -v git) \"\$@\"" > "$FAIL_GIT/git"
+chmod +x "$FAIL_GIT/git"
+rc=0; inproj "$B" env PATH="$FAIL_GIT:$PATH" bash scripts/afk/stop-marker.sh check 2>/dev/null || rc=$?
+if [ "$rc" -eq 0 ]; then pass "an unresolvable project still halts on the global marker"; else fail "an unresolvable project still halts on the global marker" "rc=$rc"; fi
 rm -f "$FAKE_HOME/.claude/.overnight-stop"
 
 echo "TEST: each adopted project writes its own morning report"
