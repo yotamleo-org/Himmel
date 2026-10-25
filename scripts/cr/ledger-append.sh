@@ -74,8 +74,8 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 _kf_default="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/known-findings.json"
 kind="${1:-}"; shift || true
 case "$kind" in
-  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|disposition) ;;
-  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|disposition" >&2; exit 2;;
+  finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition) ;;
+  *) echo "ledger-append.sh: kind must be finding|avail|usage|amend|attempt|delegation|score|ci-red-unlock|preflight|blast|disposition" >&2; exit 2;;
 esac
 
 branch="" caller_branch="" head="" model="" responding_model="" id="" severity="" file="" line="" verdict="" status="" artifact="diff" perspective="off"
@@ -456,6 +456,25 @@ if [ "$kind" = "preflight" ]; then
       *) echo "ledger-append.sh: --hit state must be fixed|checked|waived:<reason> (got '${_hs%%:*}'; a waived hit needs its reason)" >&2; exit 2;;
     esac
   done <<< "$hit_pairs"
+fi
+
+# blast: one row per blast-radius pass on a guard or gate diff (/pr-check step
+# 3.5), never deduped. --status ran (the default) records that the pass ran;
+# --status off is the audited opt-out and needs --reason. Gate 4f of
+# clear-review-marker.sh reads it.
+if [ "$kind" = "blast" ]; then
+  [ -n "$head" ] || { echo "ledger-append.sh: blast requires --head" >&2; exit 2; }
+  [ -n "$branch" ] || branch=$(git symbolic-ref --short -q HEAD 2>/dev/null || true) # swallow-ok: empty is refused on the next line
+  [ -n "$branch" ] || { echo "ledger-append.sh: blast needs --branch (no current branch to stamp: detached HEAD or not a repo) - NOTHING was written" >&2; exit 2; }
+  [ -n "$status" ] || status=ran
+  case "$status" in
+    ran) ;;
+    off) [ -n "$reason" ] || { echo "ledger-append.sh: blast --status off needs --reason <why the pass was skipped> - NOTHING was written" >&2; exit 2; } ;;
+    *) echo "ledger-append.sh: blast --status must be ran|off (got '$status')" >&2; exit 2;;
+  esac
+  if [ -n "$duration_secs" ] && ! [[ "$duration_secs" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+    echo "ledger-append.sh: blast --duration-secs must be a non-negative number (got '$duration_secs')" >&2; exit 2
+  fi
 fi
 
 # disposition: cr-disposition.sh record's signed row. It is an `amend` row
@@ -1307,6 +1326,12 @@ REASON="$reason" DETAIL="$detail" DEFERRED_TO="$deferred_to" FU_CLASS="$fu_class
     const n=(s)=>hits.filter(h=>h.state===s).length;
     rec={kind:"preflight",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,hits,hit_n:hits.length,fixed:n("fixed"),waived:n("waived"),checked:n("checked")};
     if(e.DURATION_SECS!=="") rec.duration_secs=Number(e.DURATION_SECS)||0;
+    dup=false;
+  } else if(e.KIND==="blast"){
+    // One row per blast-radius pass. NEVER deduped.
+    rec={kind:"blast",ts:e.TS,branch:e.BRANCH,head:e.HEAD_,status:e.STATUS};
+    if(e.DURATION_SECS!=="") rec.duration_secs=Number(e.DURATION_SECS)||0;
+    if(e.REASON) rec.reason=e.REASON;
     dup=false;
   } else if(e.KIND==="disposition"){
     // The amend row cr-disposition.sh check reads (set.disposition, keyed on

@@ -1087,6 +1087,75 @@ stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
 run_clear "$tmp" 0 "docs-audit lane with score rows and no preflight → exit 0"
 rm -rf "$tmp"
 
+# 4f. A lane=full marker whose diff touches a guard or gate file needs a
+# `blast` row (the blast-radius pass) stamped with the branch, at any head.
+# _bl_row <branch> <head> <status> [reason]
+_bl_row() { printf '{"kind":"blast","ts":"2026-11-01T10:30:00Z","branch":"%s","head":"%s","status":"%s"%s}' "$1" "$2" "$3" "${4:+,\"reason\":\"$4\"}"; }
+# guard_tip <tmp> <path> — commit <path> alone on feat/x, push it, and point
+# `sha` at the new tip so the marker binds a diff that touches <path>.
+guard_tip() {
+    mkdir -p "$1/$(dirname "$2")" && echo 'exit 0' > "$1/$2" \
+        && git -C "$1" add -- "$2" && git -C "$1" commit -q -m guard -- "$2" \
+        && git -C "$1" push -q origin feat/x >/dev/null 2>&1 \
+        && sha=$(git -C "$1" rev-parse --verify HEAD)
+}
+# blast_case <path> <lane> <first-score-ts> <ledger-extra...> — a fixture
+# whose tip changes <path>, with an avail-ok row, a preflight row before the
+# first score row, and the extra rows given.
+blast_case() {
+    local path="$1" lane="$2" score_ts="$3"; shift 3
+    make_repo || exit 1
+    guard_tip "$tmp" "$path" || { fail "guard_tip $path"; return 1; }
+    write_marker "$tmp" "$sha" "$lane"
+    write_ledger "$tmp" "$(_pf_row 2026-09-01T09:00:00Z "$sha")" "$(_pf_score "$score_ts" "$sha")" "$(avail_ok "${sha:0:8}")" "$@"
+    stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+}
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z
+run_clear "$tmp" 14 "guard diff, full lane, no blast row → exit 14"
+if marker_exists "$tmp"; then pass; else fail "no blast row: marker must REMAIN"; fi
+if grepq "$LAST_CLEAR_OUT" -F 'ledger-append.sh blast --head' && grepq "$LAST_CLEAR_OUT" -F 'reason=missing-blast-radius'; then pass; else fail "refusal must name the exact blast row command and reason=missing-blast-radius: $LAST_CLEAR_OUT"; fi
+rm -rf "$tmp"
+
+blast_case scripts/ci/check-x.sh full 2026-11-01T10:00:00Z
+run_clear "$tmp" 14 "gate-script diff (scripts/ci/check-*), no blast row → exit 14"
+rm -rf "$tmp"
+
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x deadbeef0 ran)"
+run_clear "$tmp" 0 "guard diff with a blast row at an earlier head → exit 0"
+rm -rf "$tmp"
+
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x deadbeef0 off 'rename only')"
+run_clear "$tmp" 0 "guard diff with an off row and a reason → exit 0"
+if grepq "$(cat "$tmp/.git/clear-cr-marker.log" 2>/dev/null)" -F 'blast=off reason=rename only'; then pass; else fail "an off-row clear must audit blast=off and its reason"; fi
+rm -rf "$tmp"
+
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/x deadbeef0 off)"
+run_clear "$tmp" 14 "an off row with no reason does not count → exit 14"
+rm -rf "$tmp"
+
+blast_case scripts/hooks/guard-x.sh full 2026-11-01T10:00:00Z "$(_bl_row feat/other deadbeef0 ran)"
+run_clear "$tmp" 14 "only another branch's blast row → exit 14"
+rm -rf "$tmp"
+
+blast_case scripts/hooks/test-x.sh full 2026-11-01T10:00:00Z
+run_clear "$tmp" 0 "diff changes only a hook test file → exit 0"
+rm -rf "$tmp"
+
+blast_case scripts/hooks/guard-x.sh docs-audit 2026-11-01T10:00:00Z
+run_clear "$tmp" 0 "docs-audit lane owes no blast row → exit 0"
+rm -rf "$tmp"
+
+blast_case scripts/hooks/guard-x.sh full 2026-10-01T10:00:00Z
+run_clear "$tmp" 0 "first score row predates the blast gate → exit 0"
+rm -rf "$tmp"
+
+make_repo || exit 1
+guard_tip "$tmp" scripts/hooks/guard-x.sh || fail "guard_tip scripts/hooks/guard-x.sh"
+write_marker "$tmp" "$sha"; write_ledger "$tmp" "$(avail_ok "${sha:0:8}")"
+stub_gh "$tmp" ""; stub_check_ci "$tmp" 0
+run_clear "$tmp" 0 "guard diff on a branch with no score row (no panel round) → exit 0"
+rm -rf "$tmp"
+
 # 4b. Empty ledger → no evidence /pr-check ever ran → refuse.
 make_repo || exit 1
 write_marker "$tmp" "$sha"; write_ledger "$tmp"
