@@ -4,7 +4,7 @@
 # decode_audio passes; unpinned, uv resolved 1.2.1 + av 19.0.1 and every reel
 # failed with "open() got an unexpected keyword argument 'metadata_errors'".
 # av 15.0.0 through 18.0.0 decode; 18.0.0 is the newest that does.
-# Direct pins: faster-whisper==1.2.1, av==18.0.0 (the rest is the hashed closure).
+# Direct pins: faster-whisper==1.2.1, av==19.0.2 (the rest is the hashed closure).
 # Regenerate: uv pip compile <a .in with those two pins> --python-version 3.12 --universal --generate-hashes -o requirements-whisper.txt
 # Bump the pair together, then prove it:
 #   uv run --python 3.12 --with-requirements tools/requirements-whisper.txt python tools/whisper-probe.py
@@ -12,7 +12,7 @@ anyio==4.15.1 \
     --hash=sha256:6152fdbbf9a77fdec97731721bebf7c4c44f7c29b424b0065826173efc7ed101 \
     --hash=sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94
     # via httpx
-av==18.0.0 \
+av==19.0.2 \
     --hash=sha256:0f65518a184613e41536f29e8758c8e3d8293e46bf5bef108f04f925bbfa3f44 \
     --hash=sha256:149289d40e732a6e49c9530bc245b49d9964cfd1c8c9e06778703b7d5bba6b25 \
     --hash=sha256:30404f53ca1ea7f350ac86ff22a2c04f903014758e9b33f398c5a62de34bd84f \
