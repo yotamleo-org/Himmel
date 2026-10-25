@@ -118,38 +118,50 @@ kreset
 (cd "$REPO" && printf 'fake-proj' | "$HS" put --project --stdin TEST_HS_P >/dev/null)
 assert_eq "S4 put --project stores a project override" "service=himmel key=TEST_HS_P project=$PROJ	fake-proj" "$(cat "$KSTUB_STORE")"
 
-# S5: import-env stores secret-class keys only and prints names, never values.
+# S5: import-env stores only the manifest's secret keys and prints names, never values.
 kreset
-printf 'TEST_HS_A=fake-first\nfake frag ment=fake-tail\n' >"$TMP/in-ml.env"
+printf 'FIRECRAWL_API_KEY=fake-first\nfake frag ment=fake-tail\n' >"$TMP/in-ml.env"
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in-ml.env" 2>&1)
 assert_eq "S5 import-env prints no fragment of a multi-line value" "0" "$(printf '%s' "$out" | grep -c 'fake\|frag')"
-assert_eq "S5 import-env names a line that is no key by its number" "1" "$(printf '%s' "$out" | grep -c '^skipped line 2 (not a key name)$')"
+assert_eq "S5 import-env names a line that is no known key by its number" "1" "$(printf '%s' "$out" | grep -c '^skipped line 2 (not a known secret key)$')"
+# shellcheck disable=SC2016 # a literal backtick-quoted value
+printf 'TELEGRAM_BOT_TOKEN=`-----BEGIN FAKE KEY-----\nfakeKeyBody\nabcDEF123==\n-----END FAKE KEY-----`\n' >"$TMP/in-pem-bt.env"
+printf 'TELEGRAM_BOT_TOKEN=-----BEGIN FAKE KEY-----\nfakeKeyBody\nabcDEF123==\n-----END FAKE KEY-----\n' >"$TMP/in-pem-uq.env"
+printf 'TELEGRAM_BOT_TOKEN="\\"-----BEGIN FAKE KEY-----\nfakeKeyBody\nabcDEF123==\n-----END FAKE KEY-----\\""\n' >"$TMP/in-pem-esc.env"
+for _s5_f in bt uq esc; do
+    kreset
+    out=$(cd "$REPO" && "$HS" import-env "$TMP/in-pem-$_s5_f.env" 2>&1)
+    assert_eq "S5 import-env ($_s5_f PEM) prints no PEM line" "0" "$(printf '%s' "$out" | grep -c 'abcDEF\|fakeKey')"
+    assert_eq "S5 import-env ($_s5_f PEM) names the base64 line by number only" "1" "$(printf '%s' "$out" | grep -c '^skipped line 3 (not a known secret key)$')"
+    assert_eq "S5 import-env ($_s5_f PEM) stores no PEM line as a key" "0" "$(grep -c 'key=abcDEF' "$KSTUB_STORE")"
+done
 kreset
-printf 'TEST_HS_A=fake-a\nTEST_HS_K="-----BEGIN FAKE KEY-----\nfakeKeyBody\nabcDEF123==\n-----END FAKE KEY-----"\n' >"$TMP/in-pem.env"
+printf 'FIRECRAWL_API_KEY=fake-a\nTEST_HS_K="-----BEGIN FAKE KEY-----\nfakeKeyBody\nabcDEF123==\n-----END FAKE KEY-----"\n' >"$TMP/in-pem.env"
 got=$(cd "$REPO" && "$HS" import-env "$TMP/in-pem.env" >"$TMP/s5pem.out" 2>&1; echo "rc=$?")
 assert_eq "S5 import-env refuses a file with a quoted value that does not close on its line" "rc=2" "$got"
 assert_eq "S5 import-env names only the opening line of an unclosed quote" "1" "$(grep -c 'line 2 opens a quoted value' "$TMP/s5pem.out")"
 assert_eq "S5 import-env prints no continuation line" "0" "$(grep -c 'abcDEF\|fakeKey\|FAKE' "$TMP/s5pem.out")"
 assert_eq "S5 import-env stores nothing from a refused file" "0" "$(grep -c . "$KSTUB_STORE")"
 kreset
-printf '# comment\nTEST_HS_A=fake-a\nHANDOVER_DIR=/c/h\nTEST_HS_E=\nTEST_HS_B = "fake-b" # gutter\n' >"$TMP/in.env"
+printf '# comment\nFIRECRAWL_API_KEY=fake-a\nHANDOVER_DIR=/c/h\nJIRA_API_TOKEN=\nTELEGRAM_BOT_TOKEN = "fake-b" # gutter\nJIRA_EMAIL=fake@example.invalid\nTEST_HS_U=fake-u\n' >"$TMP/in.env"
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in.env" 2>&1)
-assert_eq "S5 import-env prints names only" "0" "$(printf '%s' "$out" | grep -c 'fake-')"
-assert_eq "S5 import-env skips config keys" "1" "$(printf '%s' "$out" | grep -c 'skipped HANDOVER_DIR')"
-assert_eq "S5 import-env stores the secret keys" "2" "$(grep -c '^service=himmel key=TEST_HS_[AB] scope=user' "$KSTUB_STORE")"
-assert_eq "S5 import-env stores no config key" "0" "$(grep -c HANDOVER_DIR "$KSTUB_STORE")"
+assert_eq "S5 import-env prints names only" "0" "$(printf '%s' "$out" | grep -c 'fake')"
+assert_eq "S5 import-env skips a name the manifest does not list, by line number" "2" "$(printf '%s' "$out" | grep -c '^skipped line [37] (not a known secret key)$')"
+assert_eq "S5 import-env skips the manifest's config keys" "1" "$(printf '%s' "$out" | grep -c 'skipped JIRA_EMAIL (config key')"
+assert_eq "S5 import-env stores the secret keys" "2" "$(grep -c '^service=himmel key=\(FIRECRAWL_API_KEY\|TELEGRAM_BOT_TOKEN\) scope=user' "$KSTUB_STORE")"
+assert_eq "S5 import-env stores no other key" "2" "$(grep -c . "$KSTUB_STORE")"
 
 # S6: export-env writes a new 0600 file that round-trips, and refuses to
 # overwrite an existing one.
 out=$(cd "$REPO" && "$HS" export-env "$TMP/out.env" 2>&1)
 assert_eq "S6 export-env prints no value" "0" "$(printf '%s' "$out" | grep -c 'fake-')"
-assert_eq "S6 export-env round-trips" "TEST_HS_A=fake-a|TEST_HS_B=\"fake-b\"" "$(sort "$TMP/out.env" | tr '\n' '|' | sed 's/|$//')"
+assert_eq "S6 export-env round-trips" "FIRECRAWL_API_KEY=fake-a|TELEGRAM_BOT_TOKEN=\"fake-b\"" "$(sort "$TMP/out.env" | tr '\n' '|' | sed 's/|$//')"
 assert_eq "S6 export-env writes mode 600" "600" "$(stat -c %a "$TMP/out.env" 2>/dev/null || stat -f %Lp "$TMP/out.env")"
 got=$(cd "$REPO" && "$HS" export-env "$TMP/out.env" 2>/dev/null; echo "rc=$?")
 assert_eq "S6 export-env refuses an existing file" "rc=2" "$got"
 got=$(cd "$REPO" && export KSTUB_LOOKUP_FAIL=1 && "$HS" export-env "$TMP/out-miss.env" >/dev/null 2>"$TMP/s6.err"; echo "rc=$?")
 assert_eq "S6 export-env fails when a listed item cannot be read" "rc=2" "$got"
-assert_eq "S6 export-env names the unread items" "2" "$(grep -c '^skipped TEST_HS_. (lookup failed)' "$TMP/s6.err")"
+assert_eq "S6 export-env names the unread items" "2" "$(grep -c '^skipped [A-Z_]* (lookup failed)' "$TMP/s6.err")"
 ln -s "$TMP/s6-target.env" "$TMP/out-link.env"
 got=$(cd "$REPO" && "$HS" export-env "$TMP/out-link.env" 2>/dev/null; echo "rc=$?")
 assert_eq "S6 export-env refuses a dangling symlink, creates no target" "rc=2|absent" "$got|$([ -e "$TMP/s6-target.env" ] && echo present || echo absent)"
@@ -161,10 +173,12 @@ got=$(cd "$REPO" && export PATH="$SBIN:$PATH" && "$HS" export-env "$TMP/out-mode
 assert_eq "S6 export-env fails and removes a file whose mode is not 600" "rc=2|absent" "$got|$([ -e "$TMP/out-mode.env" ] && echo present || echo absent)"
 FBIN="$TMP/fdstat-bin"
 mkdir -p "$FBIN"
-printf '#!/bin/sh\ncase "$*" in */dev/fd/3*) echo 644; exit 0 ;; esac\nexec %s "$@"\n' "$(command -v stat)" >"$FBIN/stat"
+# The stub records how many bytes the open file held when its mode was checked.
+printf '#!/bin/sh\ncase "$*" in */dev/fd/3*) %s -L -c %%s /dev/fd/3 >>%s; echo 644; exit 0 ;; esac\nexec %s "$@"\n' \
+    "$(command -v stat)" "$TMP/fdstat.size" "$(command -v stat)" >"$FBIN/stat"
 chmod +x "$FBIN/stat"
 got=$(cd "$REPO" && export PATH="$FBIN:$PATH" && "$HS" export-env "$TMP/out-fdmode.env" >/dev/null 2>&1; echo "rc=$?")
-assert_eq "S6 export-env checks the mode on the open descriptor before writing" "rc=2|absent" "$got|$([ -e "$TMP/out-fdmode.env" ] && echo present || echo absent)"
+assert_eq "S6 export-env checks the mode on the open descriptor before writing" "rc=2|absent|0" "$got|$([ -e "$TMP/out-fdmode.env" ] && echo present || echo absent)|$(cat "$TMP/fdstat.size" 2>/dev/null)"
 got=$(cd "$REPO" && export KSTUB_SEARCH_FAIL=1 && "$HS" export-env "$TMP/out-sfail.env" >/dev/null 2>&1; echo "rc=$?")
 assert_eq "S6 export-env fails when the keyring listing fails, creates no file" "rc=2|absent" "$got|$([ -e "$TMP/out-sfail.env" ] && echo present || echo absent)"
 printf 'service=himmel key=TEST_HS_C scope=user\tfake-c #x\n' >>"$KSTUB_STORE"
