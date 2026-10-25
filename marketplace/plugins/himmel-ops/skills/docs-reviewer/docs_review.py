@@ -53,8 +53,8 @@ def load_rules(path):
                 re.compile(rule["pattern"])
             except re.error as exc:
                 die(f"{path}:{n}: {rule['id']} has a broken pattern: {exc}")
-        elif rule["kind"] == "prose" and not rule["pattern"].isdigit():
-            die(f"{path}:{n}: {rule['id']} prose threshold must be a number, got {rule['pattern']!r}")
+        elif rule["kind"] == "prose" and not re.fullmatch(r"[1-9][0-9]*", rule["pattern"]):
+            die(f"{path}:{n}: {rule['id']} prose threshold must be a positive number, got {rule['pattern']!r}")
         rules.append(rule)
     return rules
 

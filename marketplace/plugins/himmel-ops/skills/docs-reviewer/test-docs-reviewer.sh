@@ -133,6 +133,10 @@ printf 'R01\tactive\tprose\tmany\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
 rc=$(run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff")
 check "a non-numeric prose threshold exits 2" "$rc" 2
 head -1 "$here/rules.tsv" >"$td/bad.tsv"
+printf 'R01\tactive\tprose\t0\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
+rc=$(run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff")
+check "a zero prose threshold exits 2" "$rc" 2
+head -1 "$here/rules.tsv" >"$td/bad.tsv"
 printf 'R01\tactiv\tpattern\tx\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
 run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff" >/dev/null
 has "an unknown rule state is warned about" "R01 has unknown state" "$td/err"
