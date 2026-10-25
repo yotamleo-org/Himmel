@@ -203,7 +203,7 @@ if [ "$VER" = auto ]; then
     rs=$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bounded 60 "${JIRA[@]}" release state "$REL" --json 2>/dev/null) || rc=$?
     case "$rc" in 0 | 3) ;; *) rel_fail "release state $REL failed (rc$rc)" ;; esac
     # swallow-ok: unparseable output leaves VER empty and rel_fail names it
-    VER=$(printf '%s' "$rs" | python3 -I -c 'import json,sys; print(json.load(sys.stdin)["versions"][0])' 2>/dev/null)
+    VER=$(printf '%s' "$rs" | python3 -I -c 'import json,sys; v=json.load(sys.stdin)["versions"][0]; assert isinstance(v,str); print(v)' 2>/dev/null)
     [[ "$VER" =~ ^[A-Za-z0-9._-]+$ ]] || rel_fail "release $REL names no current version"
 fi
 

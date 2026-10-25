@@ -800,11 +800,12 @@ fr_auto "focus-version: auto" "release: R"
 rm -f "$FR/doc/focus-state"
 fr --status
 check "3d: --status of an auto doc is not skip" "$(frout)" "focus=DIRTY:unknown"
-for bad in read-fail empty no-release; do
+for bad in read-fail empty null-version no-release; do
     fr_auto "focus-version: auto" "release: R"
     case "$bad" in
         read-fail) echo 1 > "$FX/fr.release.rc" ;;
         empty) printf '{"release":"R","versions":[]}\n' > "$FX/fr.release" ;;
+        null-version) printf '{"release":"R","versions":[null]}\n' > "$FX/fr.release" ;;
         no-release) sed -i '/^release:/d' "$FR/doc/console.md" ;;  # gnu-ok: Linux-only kit
     esac
     echo "page-before" > "$PAGE"; : > "$FX/fr.log"
