@@ -124,7 +124,7 @@ claude_pipe_re='claude\.ai/install'
 # sha256 sits in the slot pin_fetch checks (the second argument). The ${...}
 # and $... below are workflow text, not shell.
 # shellcheck disable=SC2016
-claude_pin_re='^pin_fetch[[:space:]]+"[^"]*claude-code-releases/\$\{CLAUDE_VERSION\}/[^"]*"[[:space:]]+"\$CLAUDE_LINUX_X64_SHA256"[[:space:]]+("[^"]*")[[:space:]]*$'
+claude_pin_re='^pin_fetch[[:space:]]+"[^"]*claude-code-releases/\$\{CLAUDE_VERSION\}/[^"]*"[[:space:]]+"\$CLAUDE_LINUX_X64_SHA256"[[:space:]]+("\$RUNNER_TEMP/[A-Za-z0-9_.-]+")[[:space:]]*$'
 claude_verified=0
 # The command right after a verified pin_fetch must install the file it verified
 # (`install ... <dest> <target>`), else the checksum guards a file nothing uses.

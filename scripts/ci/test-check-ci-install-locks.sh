@@ -218,6 +218,12 @@ t=$(live claude-step-quoted-hash); cp "$FIX/claude-install-step.yml.txt" "$t/.gi
 # shellcheck disable=SC2016
 sed -i.bak "s|sudo install -m 0755 \"\\\$RUNNER_TEMP/claude\" /usr/local/bin/claude|sudo install -m 0755 \"\$RUNNER_TEMP/claude\" '/usr/local/bin/claude #' -t /tmp|" "$t/.github/workflows/other.yml"
 expect "a quoted ' #' does not end the target early" 1 "$t"
+# The pinned download destination is a plain $RUNNER_TEMP path: a destination with
+# a side effect would make the verified text and the installed file differ.
+t=$(live claude-step-dest-expands); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|"\$RUNNER_TEMP/claude"|"$RUNNER_TEMP/claude$((i++))"|g' "$t/.github/workflows/other.yml"
+expect "a pin_fetch destination with an expansion is refused" 1 "$t"
 t=$(live claude-step-noinstall); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
 sed -i.bak '/sudo install -m 0755/d' "$t/.github/workflows/other.yml"
 expect "the step after pin_fetch is not an install at all" 1 "$t"
