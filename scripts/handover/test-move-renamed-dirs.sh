@@ -38,7 +38,7 @@ repo="$tmp/repo"
 newrepo "$repo"
 for d in tools/oldkit tools/oldbox docs/old-notes tools/other; do mkdir -p "$repo/$d"; printf 'x\n' > "$repo/$d/f.sh"; done
 chmod +x "$repo/tools/oldkit/f.sh"
-mkdir -p "$repo/scripts/lib" "$repo/.claude" "$repo/docs/migration" "$repo/templates/luna-second-brain" "$repo/scripts/eval/lane-quality/tasks/t1"
+mkdir -p "$repo/scripts/lib" "$repo/.claude" "$repo/docs/migration" "$repo/templates/luna-second-brain" "$repo/scripts/eval/lane-quality/tasks/t1" "$repo/scripts/eval/graphify-ab"
 printf '%s\n' \
   'bash tools/oldkit/go.sh' \
   'run "$ROOT/tools/oldbox/x.sh"' \
@@ -59,6 +59,8 @@ printf 'tools/oldkit\n' > "$repo/docs/migration/renamed-identifiers.md"
 printf 'tools/oldkit\n' > "$repo/CHANGELOG.md"
 printf 'tools/oldkit\n' > "$repo/templates/luna-second-brain/t.sh"
 printf 'tools/oldkit\n' > "$repo/scripts/eval/lane-quality/tasks/t1/task.json"
+printf 'tools/oldkit\n' > "$repo/scripts/eval/graphify-ab/tasks.json"
+printf 'tools/oldkit\n' > "$repo/scripts/eval/graphify-ab/truth.py"
 printf '{"allow": ["Bash(bash tools/oldkit/go.sh)"]}\n' > "$repo/.claude/settings.json"
 ln -s tools/oldkit/f.sh "$repo/link"
 git -C "$repo" add -A
@@ -101,7 +103,7 @@ other slice tools/other
 identifier OLDKIT_X'
 eq "references move and look-alikes, marked and dual lines stay" "$want" "$(cat "$repo/ref.sh")"
 eq "a tab-keyed data file is rewritten" "$(printf 'docs/new-notes/a.md\t3')" "$(cat "$repo/durations.tsv")"
-for f in scripts/lib/rename-aliases.tsv docs/migration/renamed-identifiers.md CHANGELOG.md templates/luna-second-brain/t.sh scripts/eval/lane-quality/tasks/t1/task.json; do
+for f in scripts/lib/rename-aliases.tsv docs/migration/renamed-identifiers.md CHANGELOG.md templates/luna-second-brain/t.sh scripts/eval/lane-quality/tasks/t1/task.json scripts/eval/graphify-ab/tasks.json scripts/eval/graphify-ab/truth.py; do
   eq "$f keeps the old spelling" tools/oldkit "$(cat "$repo/$f")"
 done
 eq "settings keep the old spelling by default" '{"allow": ["Bash(bash tools/oldkit/go.sh)"]}' "$(cat "$repo/.claude/settings.json")"

@@ -59,9 +59,9 @@ def graphify_bin_suites(rev):
 
 
 def go_sh_scripts(rev):
-    return [p for p in grep_files(rev, "chief-kit/go.sh")
+    return [p for p in grep_files(rev, "console-kit/go.sh")
             if p.endswith(".sh") and not is_test(p) and not under_fixtures(p)
-            and p != "scripts/handover/chief-kit/go.sh"]
+            and p != "scripts/handover/console-kit/go.sh"]
 
 
 def trust_list_mentions(rev):

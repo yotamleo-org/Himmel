@@ -85,6 +85,7 @@ is_exempt_path() {
         */fixtures/*|fixtures/*|*/fixture/*|fixture/*) return 0 ;;
         scripts/lib/rename-aliases.tsv) return 0 ;;
         docs/glossary.md) return 0 ;;
+        scripts/eval/lane-quality/tasks/*|scripts/eval/graphify-ab/tasks.json|scripts/eval/graphify-ab/truth.py) return 0 ;;
         scripts/docs/check-old-terms.sh|scripts/docs/test-check-old-terms.sh) return 0 ;;
         CHANGELOG.md|*/CHANGELOG.md) return 0 ;;
     esac

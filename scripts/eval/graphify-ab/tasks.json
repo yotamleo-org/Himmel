@@ -16,7 +16,7 @@
     {
       "id": "t3-go-sh-callers",
       "truth": "go-sh-scripts",
-      "prompt": "List every tracked '.sh' file under scripts/ whose basename does NOT start with 'test-' and which is NOT under a directory named 'fixtures', and that mentions 'chief-kit/go.sh' (the console GO writer) anywhere in its text, comments included, other than chief-kit/go.sh itself. Give repo-relative paths. Read-only: do not modify anything."
+      "prompt": "List every tracked '.sh' file under scripts/ whose basename does NOT start with 'test-' and which is NOT under a directory named 'fixtures', and that mentions 'console-kit/go.sh' (the console GO writer) anywhere in its text, comments included, other than console-kit/go.sh itself. Give repo-relative paths. Read-only: do not modify anything."
     },
     {
       "id": "t4-trust-path-readers",

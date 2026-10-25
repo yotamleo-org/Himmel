@@ -20,9 +20,10 @@
 #       at a himmel worktree root: move, rewrite and stage. The registry itself,
 #       docs/migration/renamed-identifiers.md, CHANGELOG files and the vault
 #       template templates/luna-second-brain (its kit names are archive names in
-#       a vault, not this tree's directories) and the eval tasks under
+#       a vault, not this tree's directories), the eval tasks under
 #       scripts/eval/lane-quality/tasks (each runs on its own base commit's
-#       layout) keep the old spellings;
+#       layout) and the graphify-ab task set and truth (both read the tree at
+#       its tasks.json base_sha) keep the old spellings;
 #       .claude/settings.json does too unless --with-settings, and
 #       its pending count is printed.
 #   move-renamed-dirs.sh --slice <S> --handover-root <dir> [--check | --dry-run]
@@ -145,7 +146,8 @@ files() { # NUL-separated tracked text files naming an old spelling
   local pat=() old new kind rc
   while IFS=$'\t' read -r old new kind; do pat+=(-e "$old"); done < "$tmp/rows"
   git grep -lIzF "${pat[@]}" -- . ':!scripts/lib/rename-aliases.tsv' ':!docs/migration/renamed-identifiers.md' \
-    ':!CHANGELOG*' ':!**/CHANGELOG*' ':!templates/luna-second-brain' ':!scripts/eval/lane-quality/tasks' ':!.claude/settings.json'
+    ':!CHANGELOG*' ':!**/CHANGELOG*' ':!templates/luna-second-brain' ':!scripts/eval/lane-quality/tasks' \
+    ':!scripts/eval/graphify-ab/tasks.json' ':!scripts/eval/graphify-ab/truth.py' ':!.claude/settings.json'
   rc=$?
   [ "$rc" -le 1 ] || return 2
   [ "$with_settings" = 1 ] && [ -f .claude/settings.json ] && printf '.claude/settings.json\0'
