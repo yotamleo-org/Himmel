@@ -54,6 +54,17 @@ head -12 "$td/wall.diff" >"$td/short.diff"
 run check --diff "$td/short.diff" >/dev/null
 lacks "7 prose lines are not R09" "R09" "$td/out"
 
+# --- diff parsing: git-quoted paths, and an added line that starts with ++ ---
+{
+  printf 'diff --git "a/docs/\\303\\251.md" "b/docs/\\303\\251.md"\n'
+  printf '%s\n' '--- "a/docs/\303\251.md"' '+++ "b/docs/\303\251.md"' '@@ -0,0 +1 @@' '+The GLM lane.'
+} >"$td/quoted.diff"
+run check --diff "$td/quoted.diff" >/dev/null
+has "a git-quoted non-ASCII path is reviewed" "docs/é.md:1: R04" "$td/out"
+printf '%s\n' '--- a/docs/plus.md' '+++ b/docs/plus.md' '@@ -0,0 +1,2 @@' '+++ plus line' '+The GLM lane.' >"$td/plus.diff"
+run check --diff "$td/plus.diff" >/dev/null
+has "an added line starting with ++ is content, not a header" "docs/plus.md:2: R04" "$td/out"
+
 # --- whole-file mode reads the page at the range's head ---
 repo="$td/repo"
 git init -q "$repo" && git -C "$repo" config user.email t@t && git -C "$repo" config user.name t
@@ -66,6 +77,13 @@ git -C "$repo" commit -q -am two
 lacks "diff mode skips the unchanged GLM line" "docs/page.md:2: R04" "$td/out"
 (cd "$repo" && python3 -I "$tool" check --range HEAD~1..HEAD --whole-file) >"$td/out" 2>&1
 has "whole-file mode reports the unchanged GLM line" "docs/page.md:2: R04" "$td/out"
+{ printf '# Fence\n```bash\n'; i=1; while [ "$i" -le 5 ]; do printf 'echo before %s\n' "$i"; i=$((i + 1)); done; printf '```\n'; } >"$repo/docs/fence.md"
+git -C "$repo" add . && git -C "$repo" commit -q -m three
+{ printf '# Fence\n```bash\n'; i=1; while [ "$i" -le 5 ]; do printf 'echo before %s\n' "$i"; i=$((i + 1)); done
+  i=1; while [ "$i" -le 14 ]; do printf 'echo added %s\n' "$i"; i=$((i + 1)); done; printf '```\n'; } >"$repo/docs/fence.md"
+git -C "$repo" commit -q -am four
+(cd "$repo" && python3 -I "$tool" check --range HEAD~1..HEAD) >"$td/out" 2>&1
+lacks "code added inside a fence opened above the hunk is not prose" "R09" "$td/out"
 
 # --- learn step: candidate until one confirmation ---
 cp "$here/rules.tsv" "$td/rules.tsv"

@@ -22,7 +22,7 @@ DEFAULT_RULES = os.path.join(HERE, "rules.tsv")
 FIELDS = ["id", "state", "kind", "pattern", "rule", "date", "source", "quote"]
 EXEMPT = ("docs/archive/", "docs/release/")
 STRUCTURE = re.compile(r"^\s*([#|>*+<]|-|\d+[.)]\s|```|~~~)")
-HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+HUNK = re.compile(r"^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 
 def die(msg):
@@ -60,29 +60,50 @@ def git(*args):
     return out.stdout
 
 
+def diff_path(target):
+    """The new-side path of a `+++` header, or None for /dev/null.
+
+    Git quotes a path holding non-ASCII or special characters C-style:
+    `"b/docs/\\303\\251.md"`.
+    """
+    target = target.strip()
+    if len(target) > 1 and target.startswith('"') and target.endswith('"'):
+        raw = target[1:-1].encode("utf-8").decode("unicode_escape")
+        target = raw.encode("latin-1").decode("utf-8", "replace")
+    return target[2:] if target.startswith("b/") else None
+
+
 def parse_diff(text):
-    """Return {path: [(line_no, text), ...]} of the added lines."""
-    pages, path, line_no = {}, None, 0
-    for raw in text.splitlines():
+    """Return {path: [(line_no, text), ...]} of the added lines.
+
+    A hunk's line counts say where it ends, so an added line that itself
+    starts with `++ ` is content, not a file header.
+    """
+    pages, path, line_no, old_left, new_left = {}, None, 0, 0, 0
+    for raw in text.split("\n"):
+        if old_left > 0 or new_left > 0:
+            if raw.startswith("+"):
+                if path is not None:
+                    pages[path].append((line_no, raw[1:]))
+                line_no += 1
+                new_left -= 1
+            elif raw.startswith("-"):
+                old_left -= 1
+            elif not raw.startswith("\\"):
+                line_no += 1
+                old_left -= 1
+                new_left -= 1
+            continue
         if raw.startswith("+++ "):
-            target = raw[4:].strip()
-            path = target[2:] if target.startswith("b/") else None
+            path = diff_path(raw[4:])
             if path is not None:
                 pages.setdefault(path, [])
             continue
-        if raw.startswith(("--- ", "diff --git ")):
-            continue
         hunk = HUNK.match(raw)
         if hunk:
-            line_no = int(hunk.group(1))
-            continue
-        if path is None or not line_no:
-            continue
-        if raw.startswith("+"):
-            pages[path].append((line_no, raw[1:]))
-            line_no += 1
-        elif raw.startswith(" "):
-            line_no += 1
+            old_left = int(hunk.group(1) or 1)
+            line_no = int(hunk.group(2))
+            new_left = int(hunk.group(3) or 1)
     return pages
 
 
@@ -113,7 +134,10 @@ def prose_runs(lines, threshold):
         run.append(line_no)
 
 
-def review(pages, rules):
+def review(pages, rules, bodies):
+    """bodies holds each page at the head when the head is known; the prose
+    rule reads it so a fence opened above a hunk is seen, and reports only
+    runs that hold an added line. A bare --diff has no head: added lines only."""
     findings, checks = [], []
     active = [r for r in rules if r["state"] == "active"]
     for path in sorted(pages):
@@ -128,7 +152,10 @@ def review(pages, rules):
                     if m:
                         findings.append((path, line_no, rule, f"matched: {m.group(0).strip()}"))
             elif rule["kind"] == "prose" and path.endswith(".md"):
-                for first, last, count in prose_runs(lines, int(rule["pattern"])):
+                added = [n for n, _ in lines]
+                for first, last, count in prose_runs(bodies.get(path, lines), int(rule["pattern"])):
+                    if not any(first <= n <= last for n in added):
+                        continue
                     findings.append((path, first, rule, f"{count} prose lines ({first}-{last}) with no list, table or heading"))
             elif rule["kind"] == "judgement":
                 checks.append((path, rule))
@@ -144,13 +171,12 @@ def cmd_check(args):
         if diff.returncode != 0:
             die(f"gh pr diff {args.pr} failed: {diff.stderr.strip()}")
         text = diff.stdout
-        if args.whole_file:
-            head = subprocess.run(["gh", "pr", "view", str(args.pr), "--json", "headRefOid", "--jq", ".headRefOid"],
-                                  capture_output=True, text=True).stdout.strip()
-            if not head:
-                die(f"cannot read the head of PR {args.pr}")
-            if subprocess.run(["git", "cat-file", "-e", head], capture_output=True).returncode != 0:
-                git("fetch", "-q", "origin", f"pull/{args.pr}/head")
+        head = subprocess.run(["gh", "pr", "view", str(args.pr), "--json", "headRefOid", "--jq", ".headRefOid"],
+                              capture_output=True, text=True).stdout.strip()
+        if not head:
+            die(f"cannot read the head of PR {args.pr}")
+        if subprocess.run(["git", "cat-file", "-e", head], capture_output=True).returncode != 0:
+            git("fetch", "-q", "origin", f"pull/{args.pr}/head")
     elif args.range:
         text = git("diff", "--no-color", "--no-ext-diff", args.range)
         head = args.range.split("..")[-1].lstrip(".") or "HEAD"
@@ -162,11 +188,13 @@ def cmd_check(args):
         if args.whole_file:
             die("--whole-file needs --pr or --range")
     pages = parse_diff(text)
-    if args.whole_file:
+    bodies = {}
+    if head:
         for path in [p for p in pages if is_docs_page(p)]:
-            body = git("show", f"{head}:{path}")
-            pages[path] = list(enumerate(body.splitlines(), start=1))
-    findings, checks = review(pages, rules)
+            bodies[path] = list(enumerate(git("show", f"{head}:{path}").split("\n"), start=1))
+    if args.whole_file:
+        pages.update(bodies)
+    findings, checks = review(pages, rules, bodies)
     for path, line_no, rule, detail in findings:
         print(f"{path}:{line_no}: {rule['id']} {rule['rule']} | {detail}")
     for path, rule in checks:
