@@ -882,7 +882,6 @@ scripts/lint/test-check-history-comments.sh	1
 scripts/lint/test-check-mcp-sdk-v1.sh	0
 scripts/lint/test-check-rule-tags.sh	1
 scripts/lint/test-check-swallowed-errors.sh	1
-scripts/lint/test-check-windows-leftovers.sh	2
 scripts/lint/test-flag-parity.sh	1
 scripts/lint/test-list-enforced-rules.sh	0
 scripts/lint/test-shell-lint.sh	10

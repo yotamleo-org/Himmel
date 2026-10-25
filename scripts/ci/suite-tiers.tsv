@@ -886,7 +886,6 @@ scripts/lint/test-check-history-comments.sh	pr	static-gate
 scripts/lint/test-check-mcp-sdk-v1.sh	pr	static-gate
 scripts/lint/test-check-rule-tags.sh	pr	catch:3125
 scripts/lint/test-check-swallowed-errors.sh	pr	catch:2919
-scripts/lint/test-check-windows-leftovers.sh	pr	static-gate
 scripts/lint/test-flag-parity.sh	pr	static-gate
 scripts/lint/test-list-enforced-rules.sh	pr	static-gate
 scripts/lint/test-shell-lint.sh	pr	static-gate
