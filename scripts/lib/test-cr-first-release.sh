@@ -34,7 +34,14 @@ f() { [ -f "$S/$1" ] && cat "$S/$1" || echo "${2:-[]}"; }
 case "$A" in
   "variable get CI_GO_GATE"*) [ -f "$S/var" ] || { echo "could not find variable" >&2; exit 1; }; cat "$S/var"; exit 0 ;;
   *graphql*) f threads.json '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'; exit 0 ;;
-  *"-X DELETE "*"/labels/ci:go"*) [ -f "$S/delete-fail" ] && exit 1; exit 0 ;;
+  *"-X DELETE "*"/labels/ci:go"*)
+    [ -f "$S/delete-fail" ] && exit 1
+    if [ -f "$S/delete-real" ]; then
+      # GitHub: removing a label that is not on the PR is a 404 and leaves no timeline event
+      grep -q 'ci:go' "$S/labels.json" 2>/dev/null || { echo '{"message":"Label does not exist"}' >&2; exit 1; }
+      jq -c --arg t "${GH_STUB_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" '. + [{event:"unlabeled",label:{name:"ci:go"},created_at:$t}]' "$S/events.json" > "$S/events.tmp" && mv "$S/events.tmp" "$S/events.json"
+    fi
+    exit 0 ;;
   *"-X POST "*"/issues/"*"/labels"*)
     [ -f "$S/add-fail" ] && { echo "HTTP 502" >&2; exit 1; }
     [ -f "$S/add-fail-once" ] && { rm -f "$S/add-fail-once"; echo "HTTP 502" >&2; exit 1; }
@@ -49,7 +56,13 @@ case "$A" in
   "api repos/o/r/commits/"*"/check-runs"*) f checks.json '{"check_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/statuses"*) : > "$S/gate-began"; f statuses.json; exit 0 ;;
   "api repos/o/r/commits/"*) f commit.json '{}'; exit 0 ;;
-  "pr view"*) echo "42 0000000000000000000000000000000000000000"; exit 0 ;;
+  "pr view --"*) echo "argument required when using the --repo flag" >&2; exit 1 ;;
+  "pr view "*)
+    if [ -f "$S/pr-branch" ]; then
+      case "${A#pr view }" in "$(cat "$S/pr-branch")"|"$(cat "$S/pr-branch") "*) echo "42 $(cat "$S/pr-head")"; exit 0 ;; esac
+      echo "no pull requests found for branch" >&2; exit 1
+    fi
+    echo "42 0000000000000000000000000000000000000000"; exit 0 ;;
 esac
 echo '{}'
 EOF
@@ -454,6 +467,29 @@ has "$TMP/out-arg" '^CR-FIRST RELEASE ' "CLI: --repo o/r --pr --head runs agains
 # a named PR with no head reads that PR's head, not the current branch's PR.
 reset; echo on > "$S/var"; RC=0; bash "$SCRIPT_DIR/cr-first-release.sh" --repo o/r --pr 42 >"$TMP/out-arg" 2>&1 || RC=$?
 has "$S/calls.log" '^pr view 42 --repo o/r ' "CLI: --pr N with no head reads the head of PR N"
+
+# no --pr/--head: the PR is the caller's branch's. `gh pr view --repo` with no selector is an error
+# whatever the directory, so the entry names the branch it was run from.
+git -C "$TMP/repo" checkout -q -b feat-x 2>/dev/null
+mkdir -p "$TMP/other"; git -C "$TMP/other" init --quiet -b main >/dev/null 2>&1
+git -C "$TMP/other" remote add origin https://github.com/o/r.git
+reset; echo feat-x > "$S/pr-branch"; echo "$HEAD1" > "$S/pr-head"
+RC=0; (cd "$TMP/repo" && bash "$SCRIPT_DIR/cr-first-release.sh") >"$TMP/out-arg" 2>&1 || RC=$?
+has "$TMP/out-arg" '^CR-FIRST RELEASE ' "CLI: no --pr/--head resolves the PR from the caller's branch and releases"
+has "$S/calls.log" '^pr view feat-x --repo o/r ' "CLI: the lookup names the caller's branch"
+reset; echo feat-x > "$S/pr-branch"; echo "$HEAD1" > "$S/pr-head"
+RC=0; (cd "$TMP/other" && bash "$SCRIPT_DIR/cr-first-release.sh") >"$TMP/out-arg" 2>&1 || RC=$?
+has "$TMP/out-arg" '^CR-FIRST ERROR no pull request for the current branch' "CLI: a directory on another branch finds no PR"
+eq "$(posts)$(deletes)" 00 "CLI: a directory on another branch writes no label"
+
+# ── a first release: label add only, no unlabel event ────────────────────────
+# the remove is attempted every time; it leaves an `unlabeled` event only when ci:go was on the PR.
+reset; touch "$S/delete-real"; run first-release
+has "$TMP/out-first-release" '^CR-FIRST RELEASE ' "first release: releases with ci:go absent"
+eq "$(jq -r '[.[] | .event] | join(",")' "$S/events.json")" labeled "first release: timeline shows labeled only, no unlabeled"
+reset; touch "$S/delete-real"; echo '[{"name":"ci:go"}]' > "$S/labels.json"
+jq -nc --arg t "2026-10-23T09:00:00Z" '[{event:"labeled",label:{name:"ci:go"},created_at:$t}]' > "$S/events.json"; run re-release
+eq "$(jq -r '[.[] | .event] | join(",")' "$S/events.json")" labeled,unlabeled,labeled "re-release over a stale label: unlabeled then labeled"
 
 # ── the ledger CLI ───────────────────────────────────────────────────────────
 LCLI="$SCRIPT_DIR/../cr/cr-trigger-ledger.sh"
