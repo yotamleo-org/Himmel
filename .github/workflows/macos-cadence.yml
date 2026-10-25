@@ -93,16 +93,19 @@ jobs:
       # on a runner that lacks it every allow-row of those suites goes red. The
       # SAME release ci.yml puts on Linux (HIMMEL-6548), darwin_arm64 build,
       # sha256 from the release's own asset digest. Keep ver in lockstep with
-      # ci.yml and .github/ci-image/Dockerfile.
+      # ci.yml and .github/ci-image/Dockerfile. It goes to /usr/local/bin because
+      # scripts/lib/sandbox-run.sh runs the hooks under `env -i` with a fixed PATH
+      # (system dirs, /opt/homebrew/bin, /usr/local/bin): a directory added only
+      # through GITHUB_PATH never reaches the sandboxed hook.
       - name: Put pinned shfmt on PATH (bash-ast model rows)
         run: |
           ver=3.14.1
           sha=b7c872db63553ccffc7253aba3ed7d4885a27d83f1ba567b1138c6315a5847e5
-          mkdir -p "$RUNNER_TEMP/shfmt-bin"
-          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_darwin_arm64" -o "$RUNNER_TEMP/shfmt-bin/shfmt"
-          echo "${sha}  $RUNNER_TEMP/shfmt-bin/shfmt" | shasum -a 256 -c -
-          chmod 755 "$RUNNER_TEMP/shfmt-bin/shfmt"
-          echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
+          curl -sSfL "https://github.com/mvdan/sh/releases/download/v${ver}/shfmt_v${ver}_darwin_arm64" -o "$RUNNER_TEMP/shfmt"
+          echo "${sha}  $RUNNER_TEMP/shfmt" | shasum -a 256 -c -
+          sudo mkdir -p /usr/local/bin
+          sudo install -m 755 "$RUNNER_TEMP/shfmt" /usr/local/bin/shfmt
+          /usr/local/bin/shfmt --version
           echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
       # SUITE_TIER_MODE=all: the whole corpus, extended tier included -- the
       # coverage the nightly's macOS legs had.
