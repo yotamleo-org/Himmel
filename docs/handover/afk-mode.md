@@ -521,7 +521,8 @@ Non-obvious gotchas that surfaced during the proof-of-concept run; carry forward
 - **Lock target must be a FILE not a directory.** Pass a real file path to `lockfile.lock()`, e.g. `<tDir>/.lock`, touched into existence first (see the `// B2:` comment block in `scripts/himmel-run/src/run.ts`). `proper-lockfile` v4 then creates the lock artifact at `<target>.lock` (so `<tDir>/.lock.lock` here) as a sibling **directory**, not a file, as verified by the `mkdirSync(lockPath)` line in the `'recovers from stale lockfile'` test at `scripts/himmel-run/tests/lock.test.ts`. To clean a stale lock: `rm -rf <target>.lock` (or `rmdir <target>.lock` since the dir is empty in v4). POSIX `rm` without `-r` refuses directories; that is the failure mode if you treat the artifact as a file.
 - **`lastIndexOf('--')` not `indexOf('--')`** in arg parsers: the user can write `--` inside earlier flag values.
 - **Init flow must collect ALL required env vars upfront.** The reference run missed `JIRA_BASE_URL` and had to re-init. Enumerate from the runner config.
-- **Skill markdown body should be a single command line.** ALL retry/fallback/recovery logic lives in the runner; skills cannot enforce branching deterministically.- **`gh api graphql` uses `-F query=@file.gql`** (capital F), verified during the reference run's automated review.
+- **Skill markdown body should be a single command line.** ALL retry/fallback/recovery logic lives in the runner; skills cannot enforce branching deterministically.
+- **`gh api graphql` uses `-F query=@file.gql`** (capital F), verified during the reference run's automated review.
 - **Heavy automated review catches 30+ Critical/Important issues** on a fresh runner. Budget ~2 rounds of fix-then-review minimum.
 
 ## Reference run
