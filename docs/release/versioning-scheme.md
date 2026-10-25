@@ -8,7 +8,7 @@ How himmel releases are named in Jira (fix versions), tags and the tracker.
 |---|---|---|
 | patch (`v1.M.P`) | Fixes inside an already shipped minor. No new milestone scope. | `v1.1.1` fixes `v1.1.0` |
 | minor (`v1.M.0`) | A milestone: a named body of planned work that ships together. | `v1.2.0` |
-| major (`vN.0.0`) | A breaking change, or a new-platform line. | `v2.0.0` (the Windows line) |
+| major (`vN.0.0`) | A breaking change, or a new-platform line. | `v2.0.0` (a breaking change to the install contract) |
 
 A trailing letter (`v1.0.1b`) is the legacy form of the original v1.0.x plan
 and is not used for new versions.

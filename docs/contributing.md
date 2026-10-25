@@ -94,8 +94,6 @@ of truth. Highlights:
   `grep -rl mapfile scripts --include='*.sh'` instead of trusting a count here.
 - Some scripts use `realpath -m` with a `python3` fallback so macOS works
   without `coreutils`.
-- Windows operators run via Git Bash. `cygpath -m` normalizes paths when
-  needed.
 
 ## Enable the doc-guard gate
 
