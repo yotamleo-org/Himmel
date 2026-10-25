@@ -78,10 +78,10 @@ if [ "${1:-}" = --one ]; then
     case "$kind" in
     tick-console)
         out="$(bash "$CK/tick.sh" --doc "$doc" --token tok --legs "" --repo "$READERS" 2>/dev/null | tr ' ' '\n')"
-        ls_="$(printf '%s\n' "$out" | sed -n 's/^legset=//p' | head -1)"
+        ls_="$(printf '%s\n' "$out" | sed -n -E 's/^(workerset|legset)=//p' | head -1)"
         lv="$(printf '%s\n' "$out" | sed -n 's/^livestate=//p' | head -1)"
-        # the entry set: legset=unarmed where tick has that field, else the DRIFT labels
-        # (a tick that predates legset= names every entry without a live lock there)
+        # the entry set: workerset=unarmed (legset= in an older tick) where tick has that field, else the DRIFT labels
+        # (a tick that predates the field names every entry without a live lock there)
         unarmed=""; mal=""; drift=""
         case "$ls_" in STALE:*) unarmed="${ls_#STALE:}"; unarmed="${unarmed#unarmed=}"; unarmed="${unarmed%%;*}" ;; esac
         case "$lv" in *MALFORMED:*) mal="${lv#*MALFORMED:}"; mal="${mal%%;*}" ;; esac
