@@ -98,7 +98,7 @@ and falls through within 3 s, and a cron or systemd job without
 `$XDG_RUNTIME_DIR/bus`. `HIMMEL_SECRETS_KEYRING=off` skips the keyring.
 
 A secret key in a `.env` that git tracks is refused with one line naming the
-key; only the untracked, gitignored `.env` serves secrets.
+key; only an untracked `.env` serves secrets.
 
 Verbs: `get KEY…`, `exec --keys KEY[,KEY…] -- <command>` (runs the command
 with only those keys added to its env), `status [KEY…]` (the layer serving

@@ -7260,6 +7260,10 @@ c75_run() { env -u JIRA_API_TOKEN -u TELEGRAM_BOT_TOKEN -u CREDENTIALS_DIRECTORY
     HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" C75_STORE="$c75_t/store" C75_LOG="$c75_t/log" DBUS_SESSION_BUS_ADDRESS="unix:path=$c75_t/bus" \
     HIMMEL_SECRETS_KEYRING="${C75_KEYRING:-}" bash "$DOC" --no-color --only C75 2>&1; }
 c75_reset() { rm -f "$c75_t/env" "$c75_t/log"; : > "$c75_t/store"; }
+# The resolver reports no keyring backend on Darwin, so only the off case runs there.
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP C75 unlocked/locked cases: no keyring backend on Darwin"
+else
 echo "== C75-keyring: unlocked keyring, one secret still in .env -> WARN naming it, never a value =="
 c75_reset
 printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
@@ -7276,6 +7280,7 @@ echo "== C75-keyring: a locked keyring -> WARN, no lookup =="
 c75_reset
 out="$(C75_LOCKED=true c75_run)"
 if grepq "$out" -F 'WARN C75-keyring' && grepq "$out" -F 'locked' && [ ! -s "$c75_t/log" ]; then pass "C75 locked keyring -> WARN with no secret-tool call"; else fail "C75 locked -> $(printf '%s' "$out" | head -4)"; fi
+fi
 echo "== C75-keyring: HIMMEL_SECRETS_KEYRING=off -> INFO, no lookup, a .env secret is INFO =="
 c75_reset
 printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\n' > "$c75_t/env"
