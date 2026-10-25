@@ -221,8 +221,29 @@ crow() { python3 "$LIB" append --ledger "$1" --eval pc --run-id "$2" --source s 
 C="$TMP/pc.jsonl"
 crow "$C" k1 2.5
 crow "$C" k2 2.5
-out=$(python3 "$CMP" pc --ledger "$C" --thresholds "$TMP/paired-cost.json" 2>&1)
+out=$(python3 "$CMP" pc --ledger "$C" --thresholds "$TMP/paired-cost.json" 2>&1); rc=$?
 has "paired: a continuous metric with no spread states its floor is unestimated" "$out" "detection floor unestimated"
+eq "paired: an unchanged continuous metric exits 0" "$rc" "0"
+
+# pass@k at a different k is another quantity: "same" names the metric both rows must share.
+cat >"$TMP/same-th.json" <<'EOF'
+{"sk": {"pass_at_k": {"higher_is_better": true, "band": 0.15, "same": "pass_k"}, "acc": {"higher_is_better": true, "band": 0.1},
+        "_cases": {"pass_pow_k": {"higher_is_better": true, "same": "pass_k"}}}}
+EOF
+skrow() { python3 "$LIB" append --ledger "$1" --eval sk --run-id "$2" --source s --config-json '{}' \
+  --metrics-json "{\"acc\":0.9,\"pass_k\":$3,\"pass_at_k\":$4}" \
+  --cases-json "$(python3 -c 'import json,sys; print(json.dumps({"c%02d" % i: {"pass_pow_k": float(sys.argv[1])} for i in range(8)}))' "$4")" \
+  >/dev/null 2>&1 || fail "fixture row $2 not written"; }
+SK="$TMP/sk.jsonl"
+skrow "$SK" s1 3 1.0
+skrow "$SK" s2 1 0.5
+out=$(python3 "$CMP" sk --ledger "$SK" --thresholds "$TMP/same-th.json" 2>&1); rc=$?
+eq "same: pass@k at k=3 vs k=1 is not compared, so no regression (exit 0)" "$rc" "0"
+has "same: the line says why" "$out" "pass_k 3 vs 1: not comparable"
+has "same: the paired case metric is skipped the same way" "$out" "paired pass_pow_k: pass_k 3 vs 1: not comparable"
+skrow "$SK" s3 1 0.2
+out=$(python3 "$CMP" sk --ledger "$SK" --thresholds "$TMP/same-th.json" 2>&1); rc=$?
+eq "same: at the same k a pass@k drop still gates (exit 1)" "$rc" "1"
 
 # Headroom: a baseline at or above the ceiling says quality cannot show a gain.
 HR="$TMP/hr.jsonl"

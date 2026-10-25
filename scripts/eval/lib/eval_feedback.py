@@ -146,7 +146,7 @@ def keep_rule(c, series, base, new, after):
     upto = series[:series.index(base) + 1] if base in series else []
     train = [v for v in (value_of(tuning_metrics(r), c["metric"], None, per) for r in upto
                          if r["confighash"] == c["confighash"] and tuning_metrics(r)) if v is not None]
-    noise = round(max(train) - min(train), 6) if len(train) >= 2 else None
+    noise = max(train) - min(train) if len(train) >= 2 else None
     if test_before is None or test_after is None:
         reason = "test half unmeasured"
     elif gain(c["value"], after, c["better"]) <= min_gain:
@@ -162,7 +162,7 @@ def keep_rule(c, series, base, new, after):
     return ("keep" if reason.startswith("train and test") else "revert",
             {"test_before": test_before, "test_after": test_after,
              "test_delta": None if test_before is None or test_after is None else round(test_after - test_before, 6),
-             "noise": noise, "min_gain": min_gain, "reason": reason})
+             "noise": None if noise is None else round(noise, 6), "min_gain": min_gain, "reason": reason})
 
 
 def inbox_line(c):

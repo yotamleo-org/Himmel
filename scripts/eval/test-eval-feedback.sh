@@ -285,6 +285,14 @@ ok "absent-open open" python3 -I "$FB" run --ledger "$T/absent2.jsonl" --changes
 ok "absent-open row" fp "$T/absent2.jsonl" '{"open.codex.clean_scored":0,"sealed.codex.fp_rate":0}'
 ok "absent-open measure" python3 -I "$FB" run --ledger "$T/absent2.jsonl" --changes "$T/absent2-c.jsonl" --rules "$T/absent-rules.json"
 eq "a split row's open half with no value is unmeasured, not the rule's absent: nothing measured" "$(rows "$T/absent2-c.jsonl")" "1"
+# Noise under the record's rounding is still noise: min_gain 0 keeps only a change over zero noise.
+sed 's/"min_gain": 0.25/"min_gain": 0/' "$S/rules.json" >"$T/zero-rules.json"
+ok "tiny-noise base 1" split "$T/tiny.jsonl" 0 0.4 0
+ok "tiny-noise base 2" split "$T/tiny.jsonl" 0 0.4000004 0
+ok "tiny-noise open" python3 -I "$FB" run --ledger "$T/tiny.jsonl" --changes "$T/tiny-c.jsonl" --rules "$T/zero-rules.json"
+ok "tiny-noise row" split "$T/tiny.jsonl" 1 1 1
+ok "tiny-noise measure" python3 -I "$FB" run --ledger "$T/tiny.jsonl" --changes "$T/tiny-c.jsonl" --rules "$T/zero-rules.json"
+eq "keep rule: noise that rounds to 0 is still not below a min_gain of 0" "$(field "$T/tiny-c.jsonl" 1 reason)" "noise not below min gain"
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -22,7 +22,9 @@ Against a single baseline row (not --best-of), each per-case metric named
 under "_cases" is also compared paired, case by case over the case ids both
 rows share, and the line states the detection floor: the smallest mean
 per-case change the case count can show. A paired regression gates like a
-metric one. "_headroom" {metric, at, target} prints a HEADROOM line when the
+metric one. A spec's "same" names a metric both rows must share for the
+spec's metric to be compared (pass@k at another k is another quantity).
+"_headroom" {metric, at, target} prints a HEADROOM line when the
 baseline's metric is at or above "at": quality cannot show a gain there, so
 the comparison has to be on the target metrics (cost, latency).
 
@@ -57,6 +59,16 @@ def spec_for(table, metric):
 def better(spec, a, b):
     """True when a is better than b under spec."""
     return a > b if spec["higher_is_better"] else a < b
+
+
+def unlike(spec, brow, cand):
+    """Why spec's "same" metric bars comparing the two rows, or None."""
+    k = (spec or {}).get("same")
+    if not k or not brow:
+        return None
+    a, b = brow["metrics"].get(k), cand["metrics"].get(k)
+    return None if a == b else "%s %s vs %s: not comparable" % (k, "%g" % a if eval_runs._num(a) else a,
+                                                                "%g" % b if eval_runs._num(b) else b)
 
 
 def verdict(spec, base, cand, bci, cci):
@@ -238,7 +250,9 @@ def main(argv=None):
         brow = fixed if base_of is None else base_of.get(m)
         base = brow["metrics"].get(m) if brow else None
         c = cand["metrics"].get(m)
-        v, band = verdict(spec_for(table, m), base, c, (brow or {}).get("ci", {}).get(m), cand["ci"].get(m))
+        spec = spec_for(table, m)
+        why = unlike(spec, brow, cand)
+        v, band = ("n/a", why) if why else verdict(spec, base, c, (brow or {}).get("ci", {}).get(m), cand["ci"].get(m))
         regressions += v == "REGRESSION"
         gated += v in ("REGRESSION", "better", "ok")
         fmt = lambda x: "-" if x is None else "%.6g" % x  # noqa: E731
@@ -246,6 +260,10 @@ def main(argv=None):
         print("%-28s %12s %12s %12s  %-10s %s" % (m, fmt(base), fmt(c), delta, v, band))
     if base_of is None:
         for m, spec in sorted((table.get("_cases") or {}).items()):
+            why = unlike(spec, fixed, cand)
+            if why:
+                print("paired %s: %s" % (m, why))
+                continue
             got = paired(spec, fixed.get("cases"), cand.get("cases"), m)
             if got is None:
                 continue

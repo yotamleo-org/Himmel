@@ -1,5 +1,5 @@
 {
-  "_comment": "eval-compare noise bands (HIMMEL-4647). Per eval, a metric name or fnmatch glob -> {higher_is_better, band (absolute) | band_rel (fraction of the baseline)}. A metric with a CI in the ledger is gated by the CI instead; a metric matching nothing is reported as info, never gated. Bands are first guesses from n=1 history (specs/research/HIMMEL-4645-eval-infra.md section 2); HIMMEL-4648/4650 replace them with intervals. qmd-quality rows carry bootstrap 95% CIs on *.hit1, *.hit5 and *.mrr (HIMMEL-4650), so those bands only apply to a row without one; *.missing and the latency metrics keep their bands.",
+  "_comment": "eval-compare noise bands (HIMMEL-4647). Per eval, a metric name or fnmatch glob -> {higher_is_better, band (absolute) | band_rel (fraction of the baseline), same (a metric both rows must share, else the metric is not compared)}. A metric with a CI in the ledger is gated by the CI instead; a metric matching nothing is reported as info, never gated. Bands are first guesses from n=1 history (specs/research/HIMMEL-4645-eval-infra.md section 2); HIMMEL-4648/4650 replace them with intervals. qmd-quality rows carry bootstrap 95% CIs on *.hit1, *.hit5 and *.mrr (HIMMEL-4650), so those bands only apply to a row without one; *.missing and the latency metrics keep their bands.",
   "lane-quality": {
     "accept_rate": {"higher_is_better": true, "band": 0.15},
     "accept_ok_rate": {"higher_is_better": true, "band": 0.25},
@@ -8,14 +8,14 @@
     "judge_*": {"higher_is_better": true, "band": 1.0},
     "peeked": {"higher_is_better": false, "band": 0},
     "cost_usd": {"higher_is_better": false, "band_rel": 0.5},
-    "pass_at_k": {"higher_is_better": true, "band": 0.15},
-    "pass_pow_k": {"higher_is_better": true, "band": 0.25},
+    "pass_at_k": {"higher_is_better": true, "band": 0.15, "same": "pass_k"},
+    "pass_pow_k": {"higher_is_better": true, "band": 0.25, "same": "pass_k"},
     "cost_per_accepted": {"higher_is_better": false, "band_rel": 0.5},
     "_headroom": {"metric": "accept_ok_rate", "at": 0.95, "target": ["cost_usd", "cost_per_accepted", "wall_s"]},
     "_cases": {
       "accept_ok": {"higher_is_better": true},
       "accept_frac": {"higher_is_better": true},
-      "pass_pow_k": {"higher_is_better": true},
+      "pass_pow_k": {"higher_is_better": true, "same": "pass_k"},
       "cost_per_accepted": {"higher_is_better": false}
     }
   },
