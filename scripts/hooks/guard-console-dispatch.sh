@@ -43,7 +43,7 @@
 # prompt text cannot do it here. So there is none. The two carve-outs below are the only
 # ones left, and both are load-bearing (structural / audited), never
 # spoofable by the dispatch's own prompt text:
-#   * subagent_type: Explore, or judge-ro / its old id console-judge-ro (a
+#   * subagent_type: Explore, or judge-ro (a
 #     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash only,
 #     checked at dispatch — the same structural read-only lane)
 #   * CHIEF_DISPATCH_OK=1 (see "Escape hatches" below)
@@ -147,7 +147,7 @@ fi
 [ "$tool" = "Agent" ] || exit 0
 
 subagent_type=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type | select(type == "string") // empty' 2>/dev/null || true)
-# judge-ro (old id console-judge-ro) is matched exactly and keeps the
+# judge-ro is matched exactly and keeps the
 # read-only lane only while its project agent file has one tools: line,
 # Read, Grep, Glob, Bash. A file that grants more, or no file, gets none.
 ro_judge_pinned() {
@@ -158,7 +158,7 @@ ro_judge_pinned() {
 }
 case "$subagent_type" in
     Explore) exit 0 ;;
-    judge-ro|console-judge-ro) ro_judge_pinned "$subagent_type" && exit 0 ;;
+    judge-ro) ro_judge_pinned "$subagent_type" && exit 0 ;;
 esac
 
 text=$(printf '%s' "$input" | jq -r '[.tool_input.description, .tool_input.prompt] | map(select(type == "string")) | join("\n")' 2>/dev/null || true)

@@ -323,6 +323,13 @@ RC1JW=$(run_hook impl-judge-ro-write "$REG_CLAUDEX" "$(payload judge-ro sonnet '
 HOOK="$REAL_HOOK"
 assert_rc "judge-ro whose agent file declares Write is not lane-exempt" 2 "$RC1JW"
 
+# The retired console-judge-ro id is not lane-exempt, even beside a read-only agent file.
+printf -- '---\nname: console-judge-ro\ntools: Read, Grep, Glob, Bash\nmodel: opus\n---\n' > "$JRW_ROOT/.claude/agents/console-judge-ro.md"
+HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
+RC1JO=$(run_hook impl-console-judge-ro "$REG_CLAUDEX" "$(payload console-judge-ro sonnet 'Judge PR 1513' 'Fix the failing test, commit the changes and write the verdict.')")
+HOOK="$REAL_HOOK"
+assert_rc "console-judge-ro (old id) is not lane-exempt" 2 "$RC1JO"
+
 RC2=$(run_hook impl-glm "$REG_GLM" "$(payload claude sonnet 'Fix the failing shell test' 'Land the fix.')")
 assert_rc "implementation + glm available refuses" 2 "$RC2"
 assert_contains "glm refusal names dispatcher" "bun scripts/telegram/spawn-glm.ts '<prompt>' --name <slug> --timeout-mins <n>" "$(cat "$TMP/err-impl-glm")"
