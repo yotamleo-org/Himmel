@@ -102,16 +102,16 @@ if [ "$platform" = Darwin ]; then
     writable_root="$scratch_root/work"
     mkdir -p "$writable_root/home" "$writable_root/tmp" || exit 125
     profile="$scratch_root/profile.sb"
-    # Apple bash 3.2 writes here-document temp files to /private/var/tmp// and ignores
-    # TMPDIR; the one regex allow below is exactly that name (the path carries a double
-    # slash), nothing else under /private/var/tmp.
+    # Apple bash 3.2 writes here-document temp files to /private/var/tmp and ignores
+    # TMPDIR; the one regex allow below is that directory plus the sh-thd names in it
+    # (seatbelt refused the file name alone, measured on the macOS runner).
     cat > "$profile" <<'PROFILE'
 (version 1)
 (allow default)
 (deny network*)
 (deny file-write*)
 (allow file-write* (subpath (param "SCRATCH")) (literal "/dev/null"))
-(allow file-write* (regex #"^/private/var/tmp/+sh-thd[-._0-9A-Za-z]*$"))
+(allow file-write* (regex #"^/private/var/tmp(/+sh-thd[-._0-9A-Za-z]*)?$"))
 PROFILE
     [ -s "$profile" ] || exit 125
     darwin_env=(/usr/bin/env -i PATH=/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin LANG=C.UTF-8
