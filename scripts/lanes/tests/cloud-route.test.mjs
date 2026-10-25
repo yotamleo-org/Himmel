@@ -657,6 +657,17 @@ test('a directory named with trailing punctuation and no slash still collides wi
   assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh/);
 });
 
+test('a directory that only an open PR creates still collides, with or without the file tree', () => {
+  const held = [{ file: 'scripts/lanes/newdir/a.sh', why: 'open PR 77' }];
+  for (const c of [ctx({ held, tree: TREE }), ctx({ held })]) {
+    for (const d of ['Tidy the helpers in scripts/lanes/newdir.', 'Fix scripts/hooks/guard.sh and tidy scripts/lanes/newdir.', 'Fix scripts/ci/check.sh and tidy scripts/lanes/newdir.']) {
+      const v = classifyTicket(tk({ description: d }), c);
+      assert.equal(v.class, 'BLOCKED', d);
+      assert.match(v.reason, /scripts\/lanes\/newdir\/? contains held scripts\/lanes\/newdir\/a\.sh \(open PR 77\)/, d);
+    }
+  }
+});
+
 test('an unavailable held list BLOCKS a trust-path or run-time-need ticket, not only a plain one', () => {
   for (const d of ['Edit scripts/ci/check.sh.', 'Edit scripts/lanes/example.sh. It reads the luna vault.']) {
     const v = classifyTicket(tk({ description: d }), ctx({ heldUnknown: true, tree: TREE }));

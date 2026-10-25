@@ -107,6 +107,8 @@ top1="$(run --top 1 --legs-from "$WORK/fleet.json" | grep -vc '^#')"
 : > "$GH_FAIL"
 unk="$(run --legs-from "$WORK/fleet.json")"
 has "a failing gh is reported, not treated as no PRs" "$unk" "open PRs unknown"
+unk_rows="$(printf '%s\n' "$unk" | grep -vc '^#')"
+[ "$unk_rows" = 0 ] && pass "a failing gh lists no row: an unread PR list could hold any ticket's files" || fail "a failing gh still listed $unk_rows row(s)"
 rm -f "$GH_FAIL"
 
 nc="$(run --no-classify --legs-from "$WORK/fleet.json")"

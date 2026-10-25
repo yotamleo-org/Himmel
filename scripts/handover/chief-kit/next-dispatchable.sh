@@ -690,8 +690,8 @@ for i in cands:
     if hit:
         drop(i, 'collision %s held by %s' % hit)
         continue
-    if pr_files_unknown:  # an unread PR could hold the ticket's files
-        drop(i, 'open PR files unknown (PR %s): its collisions cannot be checked' % ' '.join(pr_files_unknown))
+    if pr_unknown or pr_files_unknown:  # an unread PR list or PR file set could hold the ticket's files
+        drop(i, 'open PRs unknown (gh failed): collisions cannot be checked' if pr_unknown else 'open PR files unknown (PR %s): its collisions cannot be checked' % ' '.join(pr_files_unknown))
         continue
     free.append(i)
 

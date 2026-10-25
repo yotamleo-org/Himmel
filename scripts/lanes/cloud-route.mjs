@@ -142,7 +142,7 @@ export function askLines(description) {
   return numbered.length ? numbered : pick(lines, /^\s*[-*]\s/);
 }
 
-const overlaps = (a, b) => a === b || (b.endsWith('/') && a.startsWith(b)) || (a.endsWith('/') && b.startsWith(a));
+const overlaps = (a, b) => a === b || b.startsWith(a.replace(/\/?$/, '/')) || a.startsWith(b.replace(/\/?$/, '/'));
 
 const STALE_DAYS = 14;
 
@@ -218,7 +218,7 @@ export function classifyTicket(t, ctx) {
     const h = (ctx.held ?? []).find((x) => overlaps(f, x.file));
     if (!h) continue;
     // a directory the ticket names is held by every file under it: one writer per file
-    if (f.endsWith('/') && h.file !== f) return v('BLOCKED', `${f} contains held ${h.file} (${h.why}) — one writer per file`);
+    if (h.file !== f && h.file.startsWith(f.replace(/\/?$/, '/'))) return v('BLOCKED', `${f} contains held ${h.file} (${h.why}) — one writer per file`);
     return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
   }
   if (ctx.heldUnknown) return v('BLOCKED', 'held-file list unavailable (gh failed, or the reservation log is unreadable) — cannot prove the files are free');
