@@ -779,11 +779,11 @@ test("refuseNonPrimaryCwd: undefined (no refusal) on the primary checkout", () =
   expect(refuseNonPrimaryCwd("/repo", probe)).toBeUndefined();
 });
 
-test("refuseNonPrimaryCwd: names the primary path + HIMMEL-1503 + the spawn-glm prefix", () => {
+test("refuseNonPrimaryCwd: names the primary path + the refusal text + the spawn-glm prefix", () => {
   const probe = () => ({ gitDir: "/repo/.git/worktrees/wt1", commonDir: "/repo/.git" });
   const msg = refuseNonPrimaryCwd("/repo/.claude/worktrees/glm+t1", probe);
   expect(msg).toContain("spawn-glm:");
-  expect(msg).toContain("HIMMEL-1503");
+  expect(msg).toContain("refusing to dispatch from");
   expect(msg).toContain(resolve("/repo")); // the named primary path
   expect(msg).toMatch(/cd there and retry/);
 });
@@ -792,7 +792,7 @@ test("refuseNonPrimaryCwd: falls back to a path-only diagnostic when the primary
   const probe = () => null;
   const msg = refuseNonPrimaryCwd("/some/repo/.claude/worktrees/glm+t1", probe);
   expect(msg).toContain("spawn-glm:");
-  expect(msg).toContain("HIMMEL-1503");
+  expect(msg).toContain("refusing to dispatch from");
   expect(msg).toMatch(/looks like a worktree cwd/);
 });
 
@@ -1076,7 +1076,7 @@ test("spawn-glm real CLI: dispatch from inside a linked worktree cwd is REFUSED 
     });
     expect(r.exitCode).toBe(2);
     const err = r.stderr.toString();
-    expect(err).toContain("HIMMEL-1503");
+    expect(err).toContain("refusing to dispatch from");
     expect(err).toContain(resolve(repo)); // names the primary checkout
     expect(r.stdout.toString()).not.toContain("session-dir:"); // no dispatch happened
     // the exact incident shape: no worktree minted NESTED inside the stale worktree cwd
@@ -1084,7 +1084,7 @@ test("spawn-glm real CLI: dispatch from inside a linked worktree cwd is REFUSED 
   } finally { removeFixture(repo); }
 }, GIT_TEST_TIMEOUT_MS);
 
-test("spawn-glm real CLI: dispatch from the PRIMARY checkout is NOT caught by the HIMMEL-1503 guard (happy path — proceeds to the next, unrelated check)", () => {
+test("spawn-glm real CLI: dispatch from the PRIMARY checkout is NOT caught by the non-primary-cwd guard (happy path — proceeds to the next, unrelated check)", () => {
   const { repo } = initHermeticRepo("cli-pcwd-ok-");
   try {
     const r = Bun.spawnSync(["bun", "scripts/telegram/spawn-glm.ts", "do the task", "--cwd", repo], {
@@ -1092,7 +1092,7 @@ test("spawn-glm real CLI: dispatch from the PRIMARY checkout is NOT caught by th
     });
     expect(r.exitCode).toBe(2);
     const err = r.stderr.toString();
-    expect(err).not.toContain("HIMMEL-1503"); // the guard did not fire
+    expect(err).not.toContain("refusing to dispatch from"); // the guard did not fire
     expect(err).toMatch(/is not a himmel checkout/); // fell through to the next existing refusal
   } finally { removeFixture(repo); }
 }, GIT_TEST_TIMEOUT_MS);

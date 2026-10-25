@@ -91,7 +91,7 @@ if curated_dir:
                   " vs importer " + " | ".join(sorted(graph_notes[key])))
 
 if findings:
-    print(f"\ndetect-duplicate-notes: {findings} finding(s) -- see HIMMEL-1391 for the dedup pattern/remedy.", file=sys.stderr)
+    print(f"\ndetect-duplicate-notes: {findings} finding(s).", file=sys.stderr)
     sys.exit(1)
 print("detect-duplicate-notes: clean, no twins/overlaps found.")
 sys.exit(0)

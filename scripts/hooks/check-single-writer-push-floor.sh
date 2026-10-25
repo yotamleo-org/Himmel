@@ -39,7 +39,7 @@ while IFS=' ' read -r _local_ref local_sha remote_ref _remote_sha; do
         ''|*[!0]*) continue ;;   # not a delete
     esac
     cat >&2 <<EOF
-ERROR: Deleting '${remote_ref#refs/heads/}' on the remote is not allowed (single-writer floor, HIMMEL-5284).
+ERROR: Deleting '${remote_ref#refs/heads/}' on the remote is not allowed (single-writer floor).
        This repo has no server-side branch protection; this hook is the floor.
 EOF
     refuse=1

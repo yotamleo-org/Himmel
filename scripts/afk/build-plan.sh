@@ -64,7 +64,7 @@ Environment overrides:
   AFK_LIMIT          Default limit.
   AFK_PRIORITY       Default priority order.
                      Each AFK_* falls back to its old OVERNIGHT_* name.
-  WHERE_ARE_WE_LEDGER  Override the where-are-we ledger path (HIMMEL-517 L3
+  WHERE_ARE_WE_LEDGER  Override the where-are-we ledger path (L3
                      push-side provisioning; default
                      `$repo/.where-are-we/ledger.jsonl`). Tests seed a temp ledger.
   PROVISION_CMD      Override the provision CLI (default
@@ -164,8 +164,8 @@ plan=$(
         echo "- project: \`$PROJECT\`"
         echo "- status: \`$STATUS\`"
         echo "- limit: \`$LIMIT\`"
-        echo "- priority: \`$PRIORITY\` (v1: key-desc; jira CLI does not yet"
-        echo "  expose priority field — see HIMMEL-146 for envification work)"
+        echo "- priority: \`$PRIORITY\` (v1: key-desc; the jira CLI does not yet"
+        echo "  expose the priority field)"
         echo
         echo "## Tickets"
         echo
@@ -205,7 +205,7 @@ plan=$(
         echo
         echo "## After all subagents return"
         echo
-        echo "- Write the consolidated morning report (HIMMEL-258): one row per"
+        echo "- Write the consolidated morning report: one row per"
         echo "  ticket (ticket, branch, PR, status, outcome, decision) piped into"
         echo "  \`scripts/afk/morning-report.sh\` — decisions-needed grouped"
         echo "  at top; output path resolved via \`handover_root\`."

@@ -432,7 +432,7 @@ trap "[ \"\$(cat '$swap_lock/pid' 2>/dev/null)\" = \"$$\" ] && rm -rf '$swap_loc
 # ---- Dead: start the daemon ------------------------------------------------
 if ! resolve_qmd; then
   echo "ensure-qmd-daemon: ERROR - qmd is not installed / not on PATH." >&2
-  echo "  Install it: bash <himmel-repo>/scripts/lib/qmd-bin.sh install (HIMMEL-877)" >&2
+  echo "  Install it: bash <himmel-repo>/scripts/lib/qmd-bin.sh install" >&2
   exit 1
 fi
 

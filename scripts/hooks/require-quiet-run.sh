@@ -525,7 +525,7 @@ if [[ $cmd_stage2 =~ $PGREP_WAIT_RE ]]; then
         [ -n "$wait_pat" ] || continue
         if [[ $cmd =~ $wait_pat ]]; then
             {
-                printf 'require-quiet-run: self-matching pgrep -f wait refused (HIMMEL-4970).\n\n'
+                printf 'require-quiet-run: self-matching pgrep -f wait refused.\n\n'
                 printf 'The pattern %s occurs in this very command, and the shell running it\n' "$wait_pat"
                 printf 'carries the command line, so pgrep -f always finds its own wrapper and\n'
                 printf 'the loop never ends. Wait on something that cannot match itself:\n\n'
@@ -542,7 +542,7 @@ fi
 
 if [[ $cmd_stage2 =~ $BUSY_LOOP_RE ]]; then
     {
-        printf 'require-quiet-run: sleepless busy loop refused (HIMMEL-4970).\n\n'
+        printf 'require-quiet-run: sleepless busy loop refused.\n\n'
         printf 'A loop whose body is only ":" or "true" spins a core at 100%% CPU. Put a\n'
         printf '"sleep N" in the body, or wait on a pid: tail --pid=<pid> -f /dev/null\n\n'
         printf 'Bypass: QUIET_RUN_BYPASS=1 <launching shell>; a per-call prefix does not work.\n'
@@ -592,9 +592,9 @@ case "$suite_path" in scripts/ci/run-shell-tests.sh) suite_label=shell-unit ;; e
     printf 'scripts/quiet-run.sh already exists for this (docs/commands-catalog.md,\n'
     printf '/quiet-run) - it runs the noisy suite, suppresses output, and prints ONE\n'
     printf 'OK/ERR line with the log path, instead of a hand-rolled background run\n'
-    printf 'chased with tail/grep for the PASS/FAIL line. Run it wrapped (HIMMEL-3402:\n'
+    printf 'chased with tail/grep for the PASS/FAIL line. Run it wrapped;\n'
     printf 'only the literal labels "suite" and "shell-unit" are pre-approved, not a\n'
-    printf 'derived name):\n\n'
+    printf 'derived name:\n\n'
     printf '  bash scripts/quiet-run.sh %s -- bash %s\n\n' "$suite_label" "$suite_path"
     printf 'Append nothing to it: no > redirect, no 2>&1, no | pipe, no "; echo rc", no\n'
     printf 'timeout/env prefix. quiet-run keeps the full log and prints its path on a\n'

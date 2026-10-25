@@ -878,7 +878,7 @@ export function applyDelta(base, delta) {
       let cpSize = 0;
       /* oxlint-disable oxc/bad-bitwise-operator -- disjoint byte assembly (bits
          0-7/8-15/16-23), |= is correct here; ||= would short-circuit after the
-         first nonzero byte and silently drop high-order size bits (HIMMEL-2163) */
+         first nonzero byte and silently drop high-order size bits */
       if (op & 0x10) cpSize |= delta[p++];
       if (op & 0x20) cpSize |= delta[p++] << 8;
       if (op & 0x40) cpSize |= delta[p++] << 16;

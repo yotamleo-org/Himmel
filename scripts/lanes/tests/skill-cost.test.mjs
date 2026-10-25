@@ -610,7 +610,7 @@ test('lintPositionalArgs refuses a bare $<digit> in ANY command\'s fenced code, 
 
   const refused = run(['--check-positional-args', withArgHint]);
   assert.equal(refused.status, 1);
-  assert.match(refused.stderr, /bare \$3 inside a fenced block collides with Skill-tool arg substitution \(HIMMEL-2051\)/);
+  assert.match(refused.stderr, /bare \$3 inside a fenced block collides with Skill-tool arg substitution/);
 
   const clean = run(['--check-positional-args', fixedArgHint, proseOnly]);
   assert.equal(clean.status, 0, clean.stderr);

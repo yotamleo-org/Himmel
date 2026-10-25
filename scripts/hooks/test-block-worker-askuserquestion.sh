@@ -50,8 +50,8 @@ check "marker + AskUserQuestion -> deny" block \
     HIMMEL_CONSOLE_LEG=1
 out="$(printf '%s' '{"tool_name":"AskUserQuestion","tool_input":{"questions":[]}}' | env HIMMEL_CONSOLE_LEG=1 bash "$HOOK" 2>&1 >/dev/null)"
 case "$out" in
-    *SendMessage*HIMMEL-2923*) ok "deny text names SendMessage and the ticket" ;;
-    *) bad "deny text missing SendMessage/HIMMEL-2923 - got: $out" ;;
+    *SendMessage*) ok "deny text names SendMessage" ;;
+    *) bad "deny text missing SendMessage - got: $out" ;;
 esac
 
 echo "== marker unset -> allow (operator sessions keep the tool) =="

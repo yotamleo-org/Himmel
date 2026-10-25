@@ -1375,9 +1375,9 @@ esac
 # shellcheck disable=SC2016 # single-quoted `$(…)`/`$1` in the message are literal text, not expansions
 {
     printf 'block-jira-compound-write: refusing this jira WRITE command SHAPE (not the write itself).\n\n'
-    printf 'Jira CLI writes are sanctioned (HIMMEL-205). This command is refused because\n'
+    printf 'Jira CLI writes are sanctioned. This command is refused because\n'
     printf 'of its shape: %s.\n' "$shapes"
-    printf 'That makes the permission matcher bail out (HIMMEL-203), so the write falls\n'
+    printf 'That makes the permission matcher bail out, so the write falls\n'
     printf 'through to the auto-mode classifier and is denied cold as\n'
     printf '"[External System Writes]". Rerunning it as-is will fail again.\n\n'
     if [ "$SHAPE_LOOP" = 1 ]; then

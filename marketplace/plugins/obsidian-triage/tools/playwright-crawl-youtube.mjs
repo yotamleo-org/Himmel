@@ -406,7 +406,7 @@ async function main() {
   }
   const py = scraplingPython();
   if (!py) {
-    console.error("crawl-youtube: install the Scrapling path (HIMMEL-4677): " +
+    console.error("crawl-youtube: install the Scrapling path: " +
       "~/.himmel/scrapling-venv per tools/requirements-scrapling.txt, plus yt-dlp on PATH.");
     process.exit(2);
   }

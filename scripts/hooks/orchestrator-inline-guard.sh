@@ -449,11 +449,11 @@ if [ ! -f "$state_path" ]; then
         && [ -f "$state_path" ] && write_ok=1
     if [ "$write_ok" = "1" ]; then
         fire_log exempt-allow
-        first_ctx="You are the dispatching parent; this looks like implementation — recorded as the ONE per-PR inline exemption for branch '$branch' (resolved from $branch_src; HIMMEL-1791). The next inline implementation edit on this branch will be DENIED: dispatch it instead via the Agent tool with an explicit model tier (CLAUDE.md subagent policy — haiku/sonnet/opus/fable, see /lanes; HIMMEL-1967: impl routes to native Claude subagents only, not scripts/telegram/dispatch-lane.sh)"
+        first_ctx="You are the dispatching parent; this looks like implementation — recorded as the ONE per-PR inline exemption for branch '$branch' (resolved from $branch_src). The next inline implementation edit on this branch will be DENIED: dispatch it instead via the Agent tool with an explicit model tier (CLAUDE.md subagent policy — haiku/sonnet/opus/fable, see /lanes; impl routes to native Claude subagents only, not scripts/telegram/dispatch-lane.sh)"
     else
         warn "cannot record inline-exemption state ($state_path) — allowing anyway (budget not spent)"
         fire_log exempt-allow-unrecorded
-        first_ctx="You are the dispatching parent; this looks like implementation — allowed, but the per-PR inline exemption could NOT be recorded (state write failed, HIMMEL-1791): the budget was NOT spent, so later inline edits will not be denied by this gate. Dispatching remains the sanctioned path: the Agent tool with an explicit model tier (CLAUDE.md subagent policy; HIMMEL-1967: impl routes to native Claude subagents only, not scripts/telegram/dispatch-lane.sh)"
+        first_ctx="You are the dispatching parent; this looks like implementation — allowed, but the per-PR inline exemption could NOT be recorded (state write failed): the budget was NOT spent, so later inline edits will not be denied by this gate. Dispatching remains the sanctioned path: the Agent tool with an explicit model tier (CLAUDE.md subagent policy; impl routes to native Claude subagents only, not scripts/telegram/dispatch-lane.sh)"
     fi
     # permissionDecision:"allow" is the phase-1 idiom this hook shipped with
     # (052711a0: auto-approve-safe-bash.sh / guard-memory-capture.sh
@@ -481,7 +481,7 @@ spent_session=$(jq -r '.session // empty' "$state_path" 2>/dev/null || true)
 spent_path=$(jq -r '.path // empty' "$state_path" 2>/dev/null || true)
 if [ "$spent_session" = "$session_id" ] && [ "$spent_path" = "$path" ]; then
     fire_log retry-allow
-    retry_ctx="Same file, same session as the recorded per-PR inline exemption (HIMMEL-1791) — allowed as a retry of that edit (e.g. after a tool-level failure), no new spend. A different file, or a later session, must dispatch instead via the Agent tool with an explicit model tier (CLAUDE.md subagent policy; HIMMEL-1967: impl routes to native Claude subagents only, not scripts/telegram/dispatch-lane.sh)"
+    retry_ctx="Same file, same session as the recorded per-PR inline exemption — allowed as a retry of that edit (e.g. after a tool-level failure), no new spend. A different file, or a later session, must dispatch instead via the Agent tool with an explicit model tier (CLAUDE.md subagent policy; impl routes to native Claude subagents only, not scripts/telegram/dispatch-lane.sh)"
     jq -nc --arg ctx "$retry_ctx" '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecision:"allow",additionalContext:$ctx}}'
     exit 0
 fi
@@ -507,7 +507,7 @@ exemption for branch '$branch' (resolved from $branch_src) is already spent (rec
 from the second CR round on, batch the remaining findings to a worker lane in shared-branch
 mode). Per PR, not per round — round counting is the drift this gate exists to stop.
 
-Dispatch the work instead — use the Agent tool with an explicit model tier (HIMMEL-1967: impl
+Dispatch the work instead — use the Agent tool with an explicit model tier (impl
 routes to native Claude subagents only, NOT scripts/telegram/dispatch-lane.sh, whose unqualified
 impl dispatch exits 2 for exactly this class of work). Pick haiku for bulk mechanical work,
 sonnet for a well-specified implementation brief (the default implementor), or escalate to

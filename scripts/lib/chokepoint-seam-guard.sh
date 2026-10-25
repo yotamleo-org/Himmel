@@ -321,11 +321,11 @@ _csg_orphan() {
         [ -n "${!seam+x}" ] && set="$set $seam"
     done
     [ -z "$set" ] && return 0
-    _csg_deny "$4" "no Claude Code session ancestor, yet this process carries Claude Code markers and seam(s)${set} are set - a detached or headless (--bg) launch cannot pass seams to chokepoints (HIMMEL-3914); use a headed leg"
+    _csg_deny "$4" "no Claude Code session ancestor, yet this process carries Claude Code markers and seam(s)${set} are set - a detached or headless (--bg) launch cannot pass seams to chokepoints; use a headed leg"
 }
 
 _csg_deny() {
-    echo "$1: $2 - refusing (HIMMEL-3914)" >&2
+    echo "$1: $2 - refusing" >&2
     exit "$CSG_DENY_RC"
 }
 
@@ -407,7 +407,7 @@ EOF
     fi
     bad=${bad//$'\n'/ }
     if [ "$bgsvc" -eq 1 ]; then
-        _csg_deny "$name" "seam(s) ${bad% } differ from the claude background service's environment - headless (--bg) legs cannot pass seams to chokepoints (HIMMEL-3914); use a headed leg"
+        _csg_deny "$name" "seam(s) ${bad% } differ from the claude background service's environment - headless (--bg) legs cannot pass seams to chokepoints; use a headed leg"
     fi
     _csg_deny "$name" "seam(s) ${bad% } differ from this session's launch environment. A chokepoint seam must come from the launching shell, not a per-call prefix, export or unset - set it in the launching shell (e.g. SEAM=1 claude)"
 }

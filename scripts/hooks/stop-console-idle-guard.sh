@@ -296,7 +296,7 @@ fi
 waiter_clause=""
 [ "$waiter_live" -eq 1 ] || waiter_clause=" No live console-wait.sh waiter is armed ($waiter_note): re-arm it with Bash run_in_background (console doc ACTION ZERO step 10) before ending the turn, or Telegram lines and tick changes will not wake you."
 
-reason="Console stop guard (HIMMEL-3144): this session still holds the queue-lock on $console_doc_name — ending the turn now would leave it structurally dead (no Stop hook, no monitor event, starts a new one).$waiter_clause Before stopping: dispatch the next queued item, verify a READY PR, or run \`/console next --arm\` to hand off. State read at this stop — $bank_fleet_line; bank: $bank_token; leg locks held ($leg_count): $leg_names."
+reason="Console stop guard: this session still holds the queue-lock on $console_doc_name — ending the turn now would leave it structurally dead (no Stop hook, no monitor event, starts a new one).$waiter_clause Before stopping: dispatch the next queued item, verify a READY PR, or run \`/console next --arm\` to hand off. State read at this stop — $bank_fleet_line; bank: $bank_token; leg locks held ($leg_count): $leg_names."
 
 _hp_json_escape "$reason"
 printf '{"decision":"block","reason":"%s"}\n' "$_HP_ESC"

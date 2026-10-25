@@ -181,7 +181,7 @@ else
     fail=$((fail+1))
 fi
 assert_grep "snapshot has handover frontmatter" "type: handover" "$handover_arg"
-assert_grep "snapshot names HIMMEL-276" "HIMMEL-276" "$handover_arg"
+assert_grep "snapshot names the hook" "auto-arm-on-subagent-cap hook" "$handover_arg"
 assert_grep "stderr ACTION REQUIRED" "ACTION REQUIRED" "$STDERR_LOG"
 assert_grep "stderr RESUME ARMED" "RESUME ARMED" "$STDERR_LOG"
 fired=$(count_glob "$S" 'auto-arm-fired-sub-*')
@@ -379,7 +379,7 @@ fi
 # Verify the snapshot content (check via handover_arg)
 handover_arg=$(LC_ALL=C sed -E 's/.*--handover ([^ ]+).*/\1/' "$ARM_LOG" | head -1)
 assert_grep "acceptance: snapshot frontmatter type" "type: handover" "$handover_arg"
-assert_grep "acceptance: snapshot credits HIMMEL-276" "HIMMEL-276" "$handover_arg"
+assert_grep "acceptance: snapshot credits the hook" "auto-arm-on-subagent-cap hook" "$handover_arg"
 rm -f "$ARM_LOG"
 
 echo "Test 19: sentinel inside double quotes — no false positive (HIMMEL-294)"

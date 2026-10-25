@@ -238,7 +238,7 @@ _suite_sem_busy_report() {
     local dir="$1" n="$2" hint="$3" i=1 now age
     now=$(date +%s)
     {
-        printf 'ERR suite-semaphore: all %s suite slot(s) on this machine are busy (HIMMEL-1818).\n' "$n"
+        printf 'ERR suite-semaphore: all %s suite slot(s) on this machine are busy.\n' "$n"
         while [ "$i" -le "$n" ]; do
             if _suite_sem_read_owner "$dir/slot-$i"; then
                 case "$SO_STARTED" in ''|*[!0-9]*) age='?' ;; *) age="$((now - SO_STARTED))s" ;; esac

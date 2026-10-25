@@ -86,7 +86,7 @@ over_ceil=0; [ "$n" -gt "$LINE_CEIL" ] && over_ceil=1
 [ "$over_ceil" -eq 1 ] || [ "$k" -gt 0 ] || exit 0
 
 printf '<system-reminder>\n'
-printf 'MEMORY.md (the always-loaded auto-memory index) violates its form rules (HIMMEL-3314 state check):\n'
+printf 'MEMORY.md (the always-loaded auto-memory index) violates its form rules (state check):\n'
 if [ "$over_ceil" -eq 1 ]; then
     printf -- '- line-ceiling: %s pointer lines (ceiling %s). An over-long index is cut at session load, so its NEWEST routing lines are silently dropped.\n' "$n" "$LINE_CEIL"
 fi

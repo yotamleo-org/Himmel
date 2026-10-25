@@ -263,8 +263,8 @@ if [ -n "$bad" ]; then
   echo "ERR marketplace-source-hermetic: enabledPlugins entries whose marketplace does not resolve to a url/directory source:" >&2
   printf '%s' "$bad" >&2
   echo "    A \"github\" (owner/repo shorthand) source clones over SSH and fails host-key" >&2
-  echo "    verification on a fresh guest with no known_hosts entry and no SSH key (HIMMEL-549," >&2
-  echo "    HIMMEL-2836). Use an explicit HTTPS url source (see claude-obsidian / himmel's own" >&2
+  echo "    verification on a fresh guest with no known_hosts entry and no SSH key." >&2
+  echo "    Use an explicit HTTPS url source (see claude-obsidian / himmel's own" >&2
   echo "    marketplace in marketplace/.claude-plugin/marketplace.json), or a local directory source." >&2
   exit 1
 fi

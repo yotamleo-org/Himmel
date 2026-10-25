@@ -45,5 +45,5 @@ _df_out="$(df_detect "origin/main...HEAD" "" "$_df_root" 2>/dev/null || true)"
 [ -n "$_df_out" ] || exit 0
 
 _df_lines="$(printf '%s\n' "$_df_out" | awk -F'\t' 'NF>=2{printf "  - %s -> consider updating %s\n", $1, $2}')"
-printf '<system-reminder>\n📄 Doc-freshness (advisory, HIMMEL-587). Mapped sources changed in origin/main...HEAD without their docs:\n%s\nAdvisory nudge, not a blocker. Update the doc in this branch or ignore.\n</system-reminder>\n' "$_df_lines"
+printf '<system-reminder>\n📄 Doc-freshness (advisory). Mapped sources changed in origin/main...HEAD without their docs:\n%s\nAdvisory nudge, not a blocker. Update the doc in this branch or ignore.\n</system-reminder>\n' "$_df_lines"
 exit 0

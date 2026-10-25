@@ -68,7 +68,7 @@ if [ -f "$q_default" ]; then
 else
     pass "marker set + no override: default ledger untouched"
 fi
-if grep -q 'HIMMEL-2241 WARN' "$q_err"; then
+if grep -q 'flow-run-ledger] WARN' "$q_err"; then
     pass "quarantine warned on stderr"
 else
     fail "quarantine was silent; stderr: $(cat "$q_err")"
@@ -125,7 +125,7 @@ if [ -e "$a_out" ]; then
 else
     pass "marker set + override outside the temp root: outside ledger untouched"
 fi
-if [ -f "$a_tmp/flow-runs-unredirected.jsonl" ] && grep -q 'HIMMEL-2241 WARN' "$a_err"; then
+if [ -f "$a_tmp/flow-runs-unredirected.jsonl" ] && grep -q 'flow-run-ledger] WARN' "$a_err"; then
     pass "marker set + override outside the temp root: quarantined with the WARN"
 else
     fail "marker set + override outside the temp root: no quarantine/WARN; stderr: $(cat "$a_err")"

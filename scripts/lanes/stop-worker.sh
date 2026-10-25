@@ -51,7 +51,7 @@ _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "stop-worker.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    echo "stop-worker.sh: cannot load $_csg_lib - refusing" >&2
     exit 96
 fi
 chokepoint_seam_guard scripts/lanes/stop-worker.sh || exit 96
@@ -88,8 +88,8 @@ usage: stop-worker.sh [--list] [--dry-run] <session-id|branch>
 Resolves <session-id|branch> through the lane session registry under the
 CANONICAL root ~/.claude/handover/bridge: glm-sessions/ and claudex-sessions/.
 A raw pid is NOT accepted -- that is the point. Unlike the other BRIDGE_ROOT
-readers in this repo, a plain BRIDGE_ROOT env is IGNORED here (HIMMEL-1693
-CR): this is the sanctioned kill chokepoint, so its registry root must not be
+readers in this repo, a plain BRIDGE_ROOT env is IGNORED here:
+this is the sanctioned kill chokepoint, so its registry root must not be
 caller-controlled. Tests that need a fixture registry set
 STOP_WORKER_BRIDGE_ROOT_OVERRIDE=<path> explicitly.
 

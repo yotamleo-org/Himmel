@@ -213,21 +213,21 @@ DAILY_CHAIN="/harvest-clips + /triage-clips + /ig-media-enrich + /x-media-enrich
 WORKER_SESSION_DONE_MARKER="PIPELINE-LEG-DONE"
 COMPLETION_INSTRUCTIONS="Run every command in the foreground. Never background a command or wait for a notification. Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation. If it was blocked, parked, or bailed early, do not print the marker."
 HARVEST_PROMPT=""
-SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run (HIMMEL-255) - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means both skills ran to completion and wrote their own output. When archive-clips reports clips as (stuck) in the inbox, those are structural backlog that triage owns and re-running cannot clear: report the stuck count and still print the marker. Withhold the marker when a step itself failed or aborted (a non-zero exit, a crash, a refused write) or the leg was blocked, parked, or bailed early; do not withhold it only because stuck clips remain. $COMPLETION_INSTRUCTIONS"
-HEALTH_PROMPT="Use the Skill tool to run the obsidian-triage:vault-lint skill (not /obsidian-health) against this vault to completion. This is the scheduled daily pipeline cadence run (HIMMEL-255/HIMMEL-1386) - fully autonomous, no user prompts; report results and exit. $COMPLETION_INSTRUCTIONS"
+SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means both skills ran to completion and wrote their own output. When archive-clips reports clips as (stuck) in the inbox, those are structural backlog that triage owns and re-running cannot clear: report the stuck count and still print the marker. Withhold the marker when a step itself failed or aborted (a non-zero exit, a crash, a refused write) or the leg was blocked, parked, or bailed early; do not withhold it only because stuck clips remain. $COMPLETION_INSTRUCTIONS"
+HEALTH_PROMPT="Use the Skill tool to run the obsidian-triage:vault-lint skill (not /obsidian-health) against this vault to completion. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. $COMPLETION_INSTRUCTIONS"
 
 usage() {
     cat <<'EOF'
 Usage: pipeline-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the recurring clip-pipeline cadence
-(HIMMEL-255/357/798/1449): daily no-LLM source fetch-health probes,
+Arm the OS scheduler with the recurring clip-pipeline cadence:
+daily no-LLM source fetch-health probes,
 daily /harvest-clips (+ /triage-clips and
 /ig-media-enrich chained after in the same session), daily
 /synthesize-clips (+ /archive-clips chained after) and daily
-vault-lint (obsidian-triage:vault-lint, HIMMEL-1386), run against the
+vault-lint (obsidian-triage:vault-lint), run against the
 luna vault as interactive bounded claude sessions. Each leg launches
-with an explicit cheap --model pin (HIMMEL-506) so the cadence never
+with an explicit cheap --model pin so the cadence never
 inherits the operator's saved default.
 
 Subcommands:
@@ -288,7 +288,7 @@ while [ $# -gt 0 ]; do
         --ig-limit)      IG_LIMIT="${2:-}"; shift 2 ;;
         --ig-limit=*)    IG_LIMIT="${1#--ig-limit=}"; shift ;;
         --synth-day|--synth-day=*)
-            echo "ERR pipeline-cadence: --synth-day is no longer supported — synthesize is daily now (HIMMEL-506); use --synth-time to set the time" >&2
+            echo "ERR pipeline-cadence: --synth-day is no longer supported — synthesize is daily now; use --synth-time to set the time" >&2
             exit 1 ;;
         --synth-time)    SYNTH_TIME="${2:-}"; shift 2 ;;
         --synth-time=*)  SYNTH_TIME="${1#--synth-time=}"; shift ;;
@@ -315,7 +315,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-HARVEST_PROMPT="Run /harvest-clips to completion, then run /triage-clips, then run /ig-media-enrich --limit $IG_LIMIT --include-evidence. The /ig-media-enrich step uses --limit $IG_LIMIT --include-evidence (triage moves finished clips into Clippings/_evidence/, which the default selection skips); 0 means unlimited, otherwise one night's batch is bounded and the ig_media_pending backlog drains across nights. If /ig-media-enrich fails due to missing ffmpeg/whisper, expired IG cookies, or media download errors, report the failure but it must not abort or fail the harvest+triage leg; finish the session normally. Then run /x-media-enrich --limit $IG_LIMIT --include-evidence. If /x-media-enrich fails due to missing ffmpeg/whisper, expired X cookies or credentials, or media download errors, report the failure but it must not abort or fail the harvest+triage leg; finish the session normally. This is the scheduled daily pipeline cadence run (HIMMEL-357/HIMMEL-798) - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means every step above ran to its budget or --limit and wrote its own completion output. A backlog left for later runs is not unfinished work (X or IG media still pending, slides-pending-digest clips, deferred harvest partials): report the remaining counts and still print the marker. Withhold the marker only when a step itself failed or aborted (a non-zero exit, a crash, a refused write), not because items remain; the /ig-media-enrich and /x-media-enrich failures named above are reported and do not withhold it. $COMPLETION_INSTRUCTIONS"
+HARVEST_PROMPT="Run /harvest-clips to completion, then run /triage-clips, then run /ig-media-enrich --limit $IG_LIMIT --include-evidence. The /ig-media-enrich step uses --limit $IG_LIMIT --include-evidence (triage moves finished clips into Clippings/_evidence/, which the default selection skips); 0 means unlimited, otherwise one night's batch is bounded and the ig_media_pending backlog drains across nights. If /ig-media-enrich fails due to missing ffmpeg/whisper, expired IG cookies, or media download errors, report the failure but it must not abort or fail the harvest+triage leg; finish the session normally. Then run /x-media-enrich --limit $IG_LIMIT --include-evidence. If /x-media-enrich fails due to missing ffmpeg/whisper, expired X cookies or credentials, or media download errors, report the failure but it must not abort or fail the harvest+triage leg; finish the session normally. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means every step above ran to its budget or --limit and wrote its own completion output. A backlog left for later runs is not unfinished work (X or IG media still pending, slides-pending-digest clips, deferred harvest partials): report the remaining counts and still print the marker. Withhold the marker only when a step itself failed or aborted (a non-zero exit, a crash, a refused write), not because items remain; the /ig-media-enrich and /x-media-enrich failures named above are reported and do not withhold it. $COMPLETION_INSTRUCTIONS"
 
 # Platform detect (same matrix as arm-resume.sh).
 case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
@@ -333,7 +333,7 @@ case "$PLATFORM" in
         ;;
     linux|macos)
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
-            echo "ERR pipeline-cadence: '$CRONTAB_BIN' not on PATH (required on $PLATFORM — HIMMEL-265 cron port)" >&2
+            echo "ERR pipeline-cadence: '$CRONTAB_BIN' not on PATH (required on $PLATFORM — cron port)" >&2
             exit 2
         }
         ;;
@@ -1094,7 +1094,7 @@ emit_task_xml() {
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>himmel pipeline-cadence (HIMMEL-255/357/362)</Description>
+    <Description>himmel pipeline-cadence</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -1648,7 +1648,7 @@ cmd_arm() {
     cat <<EOF
 
 ================================================================
-  PIPELINE CADENCE ARMED (HIMMEL-255 / HIMMEL-357 / HIMMEL-506 / HIMMEL-798 / HIMMEL-1383 / HIMMEL-1449)
+  PIPELINE CADENCE ARMED
   $TASK_FETCH_HEALTH  daily   $FETCH_HEALTH_TIME  [no LLM]  -> clip-source fetch probes
   $TASK_HARVEST  daily   $HARVEST_TIME  [model: $HARVEST_MODEL]  -> $DAILY_CHAIN
   $TASK_SYNTH    daily   $SYNTH_TIME    [model: $SYNTH_MODEL]    -> /synthesize-clips + /archive-clips
@@ -1657,7 +1657,7 @@ cmd_arm() {
   Runner .bats: $BAT_DIR
 
   Sessions launch as bounded interactive claude runs (stdin from NUL)
-  in the vault directory. StartWhenAvailable=true (HIMMEL-362): a run
+  in the vault directory. StartWhenAvailable=true: a run
   missed because the PC was off/asleep fires when the PC is next on.
   Disarm anytime with:
       bash scripts/luna/pipeline-cadence.sh disarm
@@ -1784,7 +1784,7 @@ emit_runner() {
     q_task=$(printf '%q' "$name")
     q_flow=$(printf '%q' "$flow")
     printf '#!/bin/sh\n'
-    printf '# %s runner — generated by pipeline-cadence.sh arm (HIMMEL-265)\n' "$name"
+    printf '# %s runner — generated by pipeline-cadence.sh arm\n' "$name"
     printf '# %s %s\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Restore the arm-time PATH snapshot so cron's minimal
     # PATH=/usr/bin:/bin still finds every arm-time user bin dir, with node's
@@ -1908,7 +1908,7 @@ emit_fetch_health_runner() {
     q_task=$(printf '%q' "$TASK_FETCH_HEALTH")
     q_flow=$(printf '%q' "pipeline-fetch-health")
     printf '#!/bin/sh\n'
-    printf '# %s runner — generated by pipeline-cadence.sh arm (HIMMEL-1449)\n' "$TASK_FETCH_HEALTH"
+    printf '# %s runner — generated by pipeline-cadence.sh arm\n' "$TASK_FETCH_HEALTH"
     printf '# %s %s\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Restore the arm-time PATH snapshot (runner_path_snapshot) so
     # the probes' shelled-out CLIs (gallery-dl, twitter, gh) resolve under
@@ -2192,7 +2192,7 @@ cron_arm() {
     cat <<EOF
 
 ================================================================
-  PIPELINE CADENCE ARMED (HIMMEL-255 / HIMMEL-265 cron / HIMMEL-357 / HIMMEL-506 / HIMMEL-798 / HIMMEL-1383 / HIMMEL-1449)
+  PIPELINE CADENCE ARMED
   $TASK_FETCH_HEALTH  daily   $FETCH_HEALTH_TIME  [no LLM]  -> clip-source fetch probes
   $TASK_HARVEST  daily   $HARVEST_TIME  [model: $HARVEST_MODEL]  -> $DAILY_CHAIN
   $TASK_SYNTH    daily   $SYNTH_TIME    [model: $SYNTH_MODEL]    -> /synthesize-clips + /archive-clips

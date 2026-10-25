@@ -66,7 +66,7 @@ assert_rc "T6 host_mode_of on a missing path fails" 1 host_mode_of "$TMP/absent"
 assert_rc "T7 host_mode_of with no argument fails" 1 host_mode_of
 
 assert_eq "T8 host_skip prints the one stdout SKIP line" \
-    "SKIP no flock here (HIMMEL-3182)" "$(host_skip no flock here)"
+    "SKIP no flock here" "$(host_skip no flock here)"
 
 # --- NTFS/MSYS: chmod is a no-op, ln -s copies -------------------------------
 # A control that cannot fail is not evidence: every stub below is proven to be

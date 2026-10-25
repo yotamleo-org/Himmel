@@ -18,7 +18,7 @@ _csg_lib="$_csg_dir/lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "quiet-run.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    echo "quiet-run.sh: cannot load $_csg_lib - refusing" >&2
     exit 96
 fi
 chokepoint_seam_guard scripts/quiet-run.sh || exit 96
@@ -125,7 +125,7 @@ if [ "$LABEL" = "suite" ]; then
     SEM_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/lib/suite-semaphore.sh"
     # shellcheck source=lib/suite-semaphore.sh
     if ! { [ -r "$SEM_LIB" ] && . "$SEM_LIB"; } 2>/dev/null; then
-        echo "ERR quiet-run: label 'suite' needs $SEM_LIB (HIMMEL-1818)" >&2
+        echo "ERR quiet-run: label 'suite' needs $SEM_LIB" >&2
         exit 2
     fi
     SEM_RC=0

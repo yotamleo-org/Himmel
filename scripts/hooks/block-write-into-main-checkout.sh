@@ -2027,15 +2027,15 @@ _bwimc_deny() {
         unresolved-git-target) why="a git -C/--git-dir/--work-tree/GIT_* env or cd target could not be resolved (failing closed)" ;;
         repointed-remote) why="it runs a remote operation in a command that repoints a remote (a -c remote/url/protocol/core.sshCommand key, a GIT_CONFIG_COUNT/PARAMETERS/KEY_* env, or git remote add|set-url), which can reach the primary under an innocent name (failing closed)" ;;
         unresolved-heredoc) why="a heredoc opener's terminator was never found in the command (failing closed — text after it cannot be safely classified)" ;;
-        home-reassigned) why="the command assigns HOME itself, so this ~ / \$HOME target cannot be resolved (failing closed, HIMMEL-4359)" ;;
-        unresolved-cd) why="a cd/pushd target in this command could not be resolved (failing closed — a later relative write cannot be classified against an unknown cwd, HIMMEL-3648)" ;;
+        home-reassigned) why="the command assigns HOME itself, so this ~ / \$HOME target cannot be resolved (failing closed)" ;;
+        unresolved-cd) why="a cd/pushd target in this command could not be resolved (failing closed — a later relative write cannot be classified against an unknown cwd)" ;;
         marker-byte) why="the command carries a raw control byte (0x01-0x06 or 0x0e) the scanner uses as an internal marker, so its targets cannot be classified (failing closed; spell the byte as \$'\\xNN' instead)" ;;
-        shell-ambiguous) why="bash and zsh (or bash versions) read a \$'…' span in it differently, so its target cannot be classified (failing closed, HIMMEL-4138)" ;;
+        shell-ambiguous) why="bash and zsh (or bash versions) read a \$'…' span in it differently, so its target cannot be classified (failing closed)" ;;
         unclosed-expansion) why="a \${…} or \$[…] span never closes and a separator follows it, so the command after it cannot be read (failing closed)" ;;
-        unresolved-chroot) why="it runs behind a chroot (chroot DIR, sudo -R/--chroot) whose new root could not be resolved, so its targets cannot be classified (failing closed, HIMMEL-4329)" ;;
-        chroot-git) why="it runs a git write behind a chroot (chroot DIR, sudo -R/--chroot) other than /: its -C, --git-dir, --work-tree and GIT_* paths are not mapped into the new root, so its repo cannot be classified (failing closed, HIMMEL-4329)" ;;
-        unsafe-interp-body) why="an eval/bash -c/sh -c/zsh -c argument contains a write-shaped token whose target cannot be proven to stay outside the primary (failing closed, HIMMEL-3648)" ;;
-        ast-unresolved) why="the AST engine could not read the command (shfmt missing, a parse error, an unknown node kind or a control byte in a target), so its targets cannot be classified (failing closed, HIMMEL-6014)" ;;
+        unresolved-chroot) why="it runs behind a chroot (chroot DIR, sudo -R/--chroot) whose new root could not be resolved, so its targets cannot be classified (failing closed)" ;;
+        chroot-git) why="it runs a git write behind a chroot (chroot DIR, sudo -R/--chroot) other than /: its -C, --git-dir, --work-tree and GIT_* paths are not mapped into the new root, so its repo cannot be classified (failing closed)" ;;
+        unsafe-interp-body) why="an eval/bash -c/sh -c/zsh -c argument contains a write-shaped token whose target cannot be proven to stay outside the primary (failing closed)" ;;
+        ast-unresolved) why="the AST engine could not read the command (shfmt missing, a parse error, an unknown node kind or a control byte in a target), so its targets cannot be classified (failing closed)" ;;
     esac
     {
         echo "⛔ block-write-into-main-checkout: refusing a write-shaped command — $why."
@@ -2045,12 +2045,12 @@ _bwimc_deny() {
         [ -n "$repo_root" ] && echo "    (repo: $repo_root)"
         if [ -n "${_BWIMC_GIT_SUB:-}" ]; then
             echo "    (git subcommand: $_BWIMC_GIT_SUB — rewrites a protected checkout's tree, index, HEAD,"
-            echo "     refs or config; HIMMEL-3401. Allowed there: read-only git, fetch <remote>,"
+            echo "     refs or config. Allowed there: read-only git, fetch <remote>,"
             echo "     pull --ff-only [<remote> [main|master]].)"
         fi
         echo ""
         echo "    Feature work belongs in a worktree per CLAUDE.md, not a write into the"
-        echo "    PRIMARY checkout from a Bash/PowerShell-mediated command (HIMMEL-2526) —"
+        echo "    PRIMARY checkout from a Bash/PowerShell-mediated command —"
         echo "    the destination-based twin of block-edit-on-main.sh, covering the"
         echo "    redirect/tee/sed -i/cp/mv/rm/touch/ln/git-commit surface that guard,"
         echo "    wired only on Edit|Write|MultiEdit|NotebookEdit, cannot see."
@@ -2981,7 +2981,7 @@ _bwimc_cwd_check_sourced() {
                 echo "    (cwd: $cwd)"
                 echo ""
                 echo "    Feature work belongs in a worktree per CLAUDE.md, not on the primary"
-                echo "    main checkout (write-on-main class, HIMMEL-745). To proceed:"
+                echo "    main checkout (write-on-main class). To proceed:"
                 echo "      - run the command from a type/slug worktree, or"
                 echo "      - touch \"$repo_root/.single-writer\" if this repo commits to main by design."
             } >&2
@@ -6447,7 +6447,7 @@ _bwimc_git_clause() {
     [ "$_bwimc_g_jail" = 0 ] || _bwimc_deny "chroot-git" "$1" "$dir" ""
 
     _BWIMC_GIT_SUB="$sub"
-    [ "$progrun" = 0 ] || _BWIMC_GIT_SUB="$sub (runs a program: a -c/--config-env key off the safe list, a pager, --exec-path, --ext-diff/--textconv, --upload-pack, an ext:: URL or a program env such as GIT_EXTERNAL_DIFF/HOME, in any earlier statement; HIMMEL-4504)"
+    [ "$progrun" = 0 ] || _BWIMC_GIT_SUB="$sub (runs a program: a -c/--config-env key off the safe list, a pager, --exec-path, --ext-diff/--textconv, --upload-pack, an ext:: URL or a program env such as GIT_EXTERNAL_DIFF/HOME, in any earlier statement)"
     [ -n "$gitdir" ] || gitdir="$e_dir"
     [ -n "$wtree" ] || wtree="$e_wt"
     idx="$e_idx"

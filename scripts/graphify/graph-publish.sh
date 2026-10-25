@@ -159,7 +159,7 @@ corpus=$(basename "$repo_root")
 # all. That is the permanent steady state, not a gap that could
 # still be closed, so this refusal is expected to fire on every invocation.
 if ! git ls-files --error-unmatch "$GRAPH_PATH" >/dev/null 2>&1; then
-    echo "ERR graph-publish: this repo does not track $GRAPH_PATH (HIMMEL-2705 step 1: graphify-out/ retired from the git tree, gitignored outright) — nothing to publish to." >&2
+    echo "ERR graph-publish: this repo does not track $GRAPH_PATH (graphify-out/ retired from the git tree, gitignored outright) — nothing to publish to." >&2
     exit 4
 fi
 
@@ -242,12 +242,12 @@ BRANCH="chore/graph-publish-${corpus_slug}"
 title="chore(graphify): [${TICKET}] publish refreshed ${corpus} graph"
 commit_msg="chore(graphify): [${TICKET}] publish refreshed ${corpus} graph
 
-Republishes graphify-out/graph.json + GRAPH_REPORT.md for ${corpus}, regenerated locally via refresh-graph-map.sh (HIMMEL-1129). Not code — a regenerated data snapshot; ad-hoc-reviewed as low-risk per check-security-reviewed.sh's non-docs classification of graphify-out/*.json.
+Republishes graphify-out/graph.json + GRAPH_REPORT.md for ${corpus}, regenerated locally via refresh-graph-map.sh. Not code — a regenerated data snapshot; ad-hoc-reviewed as low-risk per check-security-reviewed.sh's non-docs classification of graphify-out/*.json.
 
 Security reviewed: ad-hoc"
 pr_body="## Summary
 
-Publishes a refreshed graphify-out/graph.json + GRAPH_REPORT.md for **${corpus}** so stations without the resources to re-extract (e.g. win2) pull current structure instead of an arbitrarily stale shipped graph (HIMMEL-1129).
+Publishes a refreshed graphify-out/graph.json + GRAPH_REPORT.md for **${corpus}** so stations without the resources to re-extract (e.g. win2) pull current structure instead of an arbitrarily stale shipped graph.
 
 ## Files changed
 
@@ -266,7 +266,7 @@ Every path in this PR's diff is a tracked graphify-out artifact (\`graphify-out/
 
 ---
 
-🤖 Opened by \`scripts/graphify/graph-publish.sh\` (HIMMEL-1129)."
+🤖 Opened by \`scripts/graphify/graph-publish.sh\`."
 
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY graph-publish: would publish $GRAPH_PATH + $REPORT_PATH for corpus '$corpus' against $base_ref"

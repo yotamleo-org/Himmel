@@ -111,7 +111,7 @@ out=$(printf '%s' "$input" | $tmo jq -Rsr --arg host "${HOSTNAME:-}" --slurpfile
       (if $verdict == "deny" and $mode == "enforce" then
          "mcp-policy: refusing MCP call \"\(if $p == null then "<malformed>" else "mcp__\($p.server)__\($p.tool)" end)\" (class \($class), mode enforce).\n\n"
          + "Why: \($reason).\n\n"
-         + "The registry is scripts/guardrails/mcp-policy.json (HIMMEL-4676). Add the entry in a PR,\n"
+         + "The registry is scripts/guardrails/mcp-policy.json. Add the entry in a PR,\n"
          + "or set this server back to \"mode\": \"observe\" there."
        else empty end)
 ' 2>/dev/null) || exit 0  # fail-open-ok: tracker — jq error or timeout (header)

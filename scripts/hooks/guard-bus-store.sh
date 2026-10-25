@@ -368,7 +368,7 @@ env_assign_word() {
 
 deny() {
     local msg reason
-    msg="bus store-deny: $1. himmel-bus keeps its store off-limits to a session's own tool calls (a soft block (speed bump), HIMMEL-4829). Allowed: bus status|peers|wait|send|adopt. Registration is the launcher's. Bypass: BUS_STORE_GUARD_OK=1 in the launching shell."
+    msg="bus store-deny: $1. himmel-bus keeps its store off-limits to a session's own tool calls (a soft block, a speed bump). Allowed: bus status|peers|wait|send|adopt. Registration is the launcher's. Bypass: BUS_STORE_GUARD_OK=1 in the launching shell."
     reason=$(printf '%s' "$msg" | jq -Rs . 2>/dev/null) || reason='"bus store-deny: denied"'
     printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
     printf '%s\n' "$msg" >&2

@@ -268,8 +268,8 @@ if PATH="$_bin2:$_path_no_pwsh" CADENCE_WSCRIPT_BIN="$_fake_wscript" cadence_wsh
 else
   fail=$((fail + 1)); echo "  FAIL: cadence_wsh_probe should still be available via the powershell.exe fallback (detail: $CADENCE_WSH_DETAIL)"
 fi
-if grep -q 'HIMMEL-2126' "$_stderr2" 2>/dev/null; then
-  pass=$((pass + 1)); echo "  ok: cadence_wsh_probe names the trap class + HIMMEL-2126 on fallback"
+if grep -q 'PS 5.1 misreads' "$_stderr2" 2>/dev/null; then
+  pass=$((pass + 1)); echo "  ok: cadence_wsh_probe names the trap class on fallback"
 else
   fail=$((fail + 1)); echo "  FAIL: cadence_wsh_probe fallback did not warn: $(cat "$_stderr2" 2>/dev/null)"
 fi

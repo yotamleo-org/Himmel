@@ -229,8 +229,8 @@ export function refuseNonPrimaryCwd(cwd: string, probe?: (cwd: string) => { gitD
   const r = probe ? detectNonPrimaryCwd(cwd, probe) : detectNonPrimaryCwd(cwd);
   if (r.ok) return undefined;
   return r.primaryPath
-    ? `spawn-claudex: refusing to dispatch from ${cwd} — this is not the PRIMARY checkout (resolved primary: ${r.primaryPath}); cd there and retry (HIMMEL-1503).`
-    : `spawn-claudex: refusing to dispatch from ${cwd} — this looks like a worktree cwd (path contains /.claude/worktrees/), not the PRIMARY checkout; cd to the primary checkout and retry (HIMMEL-1503).`;
+    ? `spawn-claudex: refusing to dispatch from ${cwd} — this is not the PRIMARY checkout (resolved primary: ${r.primaryPath}); cd there and retry.`
+    : `spawn-claudex: refusing to dispatch from ${cwd} — this looks like a worktree cwd (path contains /.claude/worktrees/), not the PRIMARY checkout; cd to the primary checkout and retry.`;
 }
 
 // ── real git probes for planClaudexSharedSpawn's injected deps ──────────────
@@ -290,14 +290,14 @@ export function revalidateSharedWorktree(deps: {
     // may have created the branch→worktree mapping during the backoff; a second
     // `git worktree add` would then fail. Refuse cleanly instead (codex-adv/
     // coderabbit CR). Absent mapping ⇒ ours to create, proceed.
-    if (wtNow) return { ok: false, reason: `spawn-claudex: worktree for ${deps.branch} was created by a concurrent dispatch during the preflight (now ${wtNow.path}) — refusing the duplicate worktree-add; re-dispatch (HIMMEL-1037).` };
+    if (wtNow) return { ok: false, reason: `spawn-claudex: worktree for ${deps.branch} was created by a concurrent dispatch during the preflight (now ${wtNow.path}) — refusing the duplicate worktree-add; re-dispatch.` };
     return { ok: true };
   }
   if (!wtNow || wtNow.isPrimary || norm(wtNow.path) !== norm(deps.worktree)) {
-    return { ok: false, reason: `spawn-claudex: shared worktree for ${deps.branch} changed under the lock (no longer the expected non-primary worktree ${deps.worktree}) — refusing before launch (a worker could commit to the wrong branch); re-dispatch (HIMMEL-1037).` };
+    return { ok: false, reason: `spawn-claudex: shared worktree for ${deps.branch} changed under the lock (no longer the expected non-primary worktree ${deps.worktree}) — refusing before launch (a worker could commit to the wrong branch); re-dispatch.` };
   }
   if (deps.isDirty(deps.worktree)) {
-    return { ok: false, reason: `spawn-claudex: reused worktree ${deps.worktree} became dirty before the lock (a concurrent shared worker left uncommitted changes) — refusing rather than commit onto mixed state; commit/stash there and re-dispatch (HIMMEL-1037).` };
+    return { ok: false, reason: `spawn-claudex: reused worktree ${deps.worktree} became dirty before the lock (a concurrent shared worker left uncommitted changes) — refusing rather than commit onto mixed state; commit/stash there and re-dispatch.` };
   }
   return { ok: true };
 }
@@ -354,7 +354,7 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
   "--effort": {
     kind: "value",
     apply: (s, v) => {
-      if (v === "max" || v === "ultra") return `--effort ${v} is refused — 'max' is undocumented codex juice and 'ultra' is unreachable from Claude Code (silently falls back to xhigh); the HIMMEL-1001 ladder tops out at xhigh. See docs/tooling-catalog.md#claude-codex.`;
+      if (v === "max" || v === "ultra") return `--effort ${v} is refused — 'max' is undocumented codex juice and 'ultra' is unreachable from Claude Code (silently falls back to xhigh); the effort ladder tops out at xhigh. See docs/tooling-catalog.md#claude-codex.`;
       if (v !== "low" && v !== "medium" && v !== "high" && v !== "xhigh") return `--effort must be one of low|medium|high|xhigh (got "${v}"); see docs/tooling-catalog.md#claude-codex`;
       s.effort = v;
       return undefined;
@@ -678,7 +678,7 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
   if (r.exitCode === 3) {
     const guardEvidence = r.stderr?.toString().trim();
     if (guardEvidence) console.error(`spawn-claudex: ${guardEvidence}`);
-    console.error(`spawn-claudex: the codex auth probe was refused by claude-codex's PHI/egress guard (exit 3) for ${cwd} — this is a guard verdict, NOT an auth or credential problem (HIMMEL-2626).`);
+    console.error(`spawn-claudex: the codex auth probe was refused by claude-codex's PHI/egress guard (exit 3) for ${cwd} — this is a guard verdict, NOT an auth or credential problem.`);
     return "fatal";
   }
   // the launcher already logged "HTTP <code> — body: …" to its own
@@ -729,7 +729,7 @@ export async function runAuthPreflightWithBackoff(
     const remaining = deadline - now();
     if (remaining <= 0) break; // out of the foreground budget (probes consumed it)
     const wait = Math.min(deps.delaysMs[i], remaining);
-    deps.log?.(`spawn-claudex: codex auth unavailable (503 refresh gap?) on preflight ${i + 1}/${deps.delaysMs.length + 1}; backing off ${Math.round(wait / 1000)}s before re-probing (HIMMEL-1037)`);
+    deps.log?.(`spawn-claudex: codex auth unavailable (503 refresh gap?) on preflight ${i + 1}/${deps.delaysMs.length + 1}; backing off ${Math.round(wait / 1000)}s before re-probing`);
     await deps.sleep(wait);
     if (deadline - now() <= 0) break; // budget spent by the sleep — do NOT probe past the deadline
     res = probe(probeBudget());
@@ -737,7 +737,7 @@ export async function runAuthPreflightWithBackoff(
     if (res === "ok") return { ready: true, fatal: false, attempts };
     if (res === "fatal") return { ready: false, fatal: true, attempts };
   }
-  deps.log?.(`spawn-claudex: codex auth still unavailable after ${attempts} preflight attempt(s) across the ${Math.round(budgetMs / 1000)}s backoff schedule — refusing (likely a real outage, not the transient gap) (HIMMEL-1037)`);
+  deps.log?.(`spawn-claudex: codex auth still unavailable after ${attempts} preflight attempt(s) across the ${Math.round(budgetMs / 1000)}s backoff schedule — refusing (likely a real outage, not the transient gap)`);
   return { ready: false, fatal: false, attempts };
 }
 
@@ -1182,7 +1182,7 @@ export async function executeClaudexRun(deps: {
     const hang = startupHang && (fm.status === "failed" || fm.status === "timeout")
       ? {
         failure_class: "startup-hang",
-        failure_reason: `startup timeout: no transcript growth and no output beyond the banner within ${Math.round(watchWindowMs / 60_000)} min; worker killed by the startup watchdog (HIMMEL-3147) — never started, not a crash`,
+        failure_reason: `startup timeout: no transcript growth and no output beyond the banner within ${Math.round(watchWindowMs / 60_000)} min; worker killed by the startup watchdog — never started, not a crash`,
       }
       : {};
     writeFileSync(deps.metaPath, JSON.stringify({ ...deps.runningMeta, ...fm, ...hang }, null, 2));
@@ -1252,7 +1252,7 @@ export async function runClaudexSharedDispatch(p: {
 // still comes from claude-codex --guard-check, D1 intact) · 4 =
 // shared-branch-lock acquire failure (parity with spawn-glm).
 async function main(): Promise<void> {
-  const usage = "usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--context-tier 272k|353k|900k] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file — HIMMEL-1780; default --permission-mode: dontAsk; bypassPermissions is refused — HIMMEL-1378)";
+  const usage = "usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--context-tier 272k|353k|900k] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file; default --permission-mode: dontAsk; bypassPermissions is refused)";
   const rawArgv = process.argv.slice(2);
   // help short-circuit — before parseClaudexArgs, before any side effect.
   if (isHelpFlag(rawArgv)) { console.log(usage); process.exit(0); }
@@ -1367,7 +1367,7 @@ async function main(): Promise<void> {
   const guardCheck = Bun.spawnSync([BASH_BIN, claudexLauncherPath(REPO_ROOT), "--guard-check", absCwd], { cwd: absCwd, stdout: "pipe", stderr: "pipe" });
   if (guardCheck.exitCode !== 0) {
     process.stderr.write(guardCheck.stderr);
-    console.error(`spawn-claudex: PHI/egress pre-check refused this dispatch (claude-codex --guard-check exited ${guardCheck.exitCode}) — refusing before any worktree/branch/session side-effect (HIMMEL-2626).`);
+    console.error(`spawn-claudex: PHI/egress pre-check refused this dispatch (claude-codex --guard-check exited ${guardCheck.exitCode}) — refusing before any worktree/branch/session side-effect.`);
     process.exit(3);
   }
 
@@ -1411,7 +1411,7 @@ async function main(): Promise<void> {
   // ambient/inherited setting that silently disabled this gate would restore the
   // exact unattended startup failure this branch fixes (codex-adv CR).
   if (skipAuthPreflight) {
-    console.error("spawn-claudex: WARNING - --skip-auth-preflight given: the codex auth gate is DISABLED for this dispatch. The worker may launch straight into a 503 refresh gap / invalid auth, die at startup, and strand a worktree (HIMMEL-1037).");
+    console.error("spawn-claudex: WARNING - --skip-auth-preflight given: the codex auth gate is DISABLED for this dispatch. The worker may launch straight into a 503 refresh gap / invalid auth, die at startup, and strand a worktree.");
   } else {
     const preflightDelaysMs = parseAuthRetryDelaysMs(process.env.CLAUDEX_AUTH_RETRY_DELAYS, DEFAULT_AUTH_RETRY_DELAYS_MS);
     const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -1429,8 +1429,8 @@ async function main(): Promise<void> {
         // claude-codex's PHI/egress guard ... NOT an auth or credential
         // problem" attribution line right above this one when that's the
         // cause, so this generic line no longer reads as credentials-only.
-        ? "spawn-claudex: codex auth preflight reports a PERMANENT failure — see the preflight-probe evidence line above for the observed status/body (only 401/403 means an invalid CLIPROXY_API_KEY; other causes: curl unavailable, a config/egress refusal, or a PHI/egress guard refusal — NOT a transient 5xx/408/timeout, which is retried) — aborting before any worktree; fix the claude-codex config, then re-dispatch (HIMMEL-1037/1380)."
-        : "spawn-claudex: codex auth still unavailable (503 refresh gap / transient 5xx/408/timeout) after the full backoff budget — refusing rather than launch into a known-doomed auth state (would reproduce the failure and strand a worktree); re-dispatch once the gateway recovers (HIMMEL-1037).");
+        ? "spawn-claudex: codex auth preflight reports a PERMANENT failure — see the preflight-probe evidence line above for the observed status/body (only 401/403 means an invalid CLIPROXY_API_KEY; other causes: curl unavailable, a config/egress refusal, or a PHI/egress guard refusal — NOT a transient 5xx/408/timeout, which is retried) — aborting before any worktree; fix the claude-codex config, then re-dispatch."
+        : "spawn-claudex: codex auth still unavailable (503 refresh gap / transient 5xx/408/timeout) after the full backoff budget — refusing rather than launch into a known-doomed auth state (would reproduce the failure and strand a worktree); re-dispatch once the gateway recovers.");
       process.exit(2);
     }
   }

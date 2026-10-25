@@ -169,7 +169,7 @@ ensure_export() {
 # (the host's /run is root-owned). A launch line run without its sandbox
 # wrapper therefore does nothing.
 write_jail_guard() { # $1 worktree
-  local g='test -e /run/lq-pilot-jail || { echo "HIMMEL-4869 pilot: this row runs only inside its jail (sandbox.sh); refusing" >&2; exit 2; }'
+  local g='test -e /run/lq-pilot-jail || { echo "pilot: this row runs only inside its jail (sandbox.sh); refusing" >&2; exit 2; }'
   mkdir -p "$1/.claude" || return 1
   jq -n --arg g "$g" '{hooks: {
       PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $g}]}],

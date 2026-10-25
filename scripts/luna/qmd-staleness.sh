@@ -280,7 +280,7 @@ if [ "$QMD_RC" -ne 0 ]; then
         echo "ERR qmd-staleness: '$(qmd_bin_desc) status' failed (exit $QMD_RC) — cannot assess the index."
         echo "    qmd IS installed here, so this is not an absent-tool case: the index may be"
         echo "    corrupt or locked, or a qmd process may be wedged."
-        echo "    Treat the index as UNVERIFIED until this is resolved (HIMMEL-1286)."
+        echo "    Treat the index as UNVERIFIED until this is resolved."
     } >&2
     exit 7
 fi
@@ -325,7 +325,7 @@ if [ -z "$TOTAL_RAW" ] || [ -z "$VECTORS_RAW" ] || [ -z "$UPDATED_RAW" ]; then
     {
         echo "ERR qmd-staleness: could not read the Documents block of 'qmd status'."
         echo "    Expected Total:/Vectors:/Updated: lines; qmd may have reworded its output."
-        echo "    Treat the index as UNVERIFIED until this parser is updated (HIMMEL-1286)."
+        echo "    Treat the index as UNVERIFIED until this parser is updated."
     } >&2
     exit 6
 fi
@@ -472,7 +472,7 @@ if [ "$AGE_SOURCE" != "stamp" ]; then
     if ! AGE_HOURS=$(age_hours "$UPDATED_RAW"); then
         {
             echo "ERR qmd-staleness: could not parse the index age from 'Updated: $UPDATED_RAW'."
-            echo "    Treat the index as UNVERIFIED until this parser is updated (HIMMEL-1286)."
+            echo "    Treat the index as UNVERIFIED until this parser is updated."
         } >&2
         exit 6
     fi
@@ -488,7 +488,7 @@ if [ -n "$PENDING_RAW" ]; then
     if [ -z "$PENDING" ]; then
         {
             echo "ERR qmd-staleness: could not parse the pending count from 'Pending: $PENDING_RAW'."
-            echo "    Treat the index as UNVERIFIED until this parser is updated (HIMMEL-1286)."
+            echo "    Treat the index as UNVERIFIED until this parser is updated."
         } >&2
         exit 6
     fi
@@ -531,7 +531,7 @@ if [ -n "$REQUIRE_COLLECTIONS" ]; then
         {
             echo "ERR qmd-staleness: --require-collections was given but no Collections block"
             echo "    could be read from 'qmd status'; qmd may have reworded its output."
-            echo "    Treat the index as UNVERIFIED until this parser is updated (HIMMEL-1286)."
+            echo "    Treat the index as UNVERIFIED until this parser is updated."
         } >&2
         exit 6
     fi

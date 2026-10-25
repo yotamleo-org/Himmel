@@ -913,4 +913,4 @@ utf8_ok_text=${cmd//PYTHONUTF8=1 uv /}
 [ $(((${#cmd} - ${#utf8_all_text}) / 11)) -eq "$utf8_pos" ] || exit 0
 [ $(((${#cmd} - ${#utf8_ok_text}) / 16)) -eq "$utf8_pos" ] || exit 0
 
-emit_allow "enumerated cadence engine or read-only gh api call (HIMMEL-1386/2124)"
+emit_allow "enumerated cadence engine or read-only gh api call"

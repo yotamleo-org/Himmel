@@ -1282,7 +1282,7 @@ _graphify_holder_gate() {
           echo "        the safe outcome."
         else
           echo "        uv would delete the old entry points and then fail to replace the locked"
-          echo "        directory, leaving graphify broken (HIMMEL-1274). Refusing is the safe outcome."
+          echo "        directory, leaving graphify broken. Refusing is the safe outcome."
         fi
         echo "        Holders:"
         if holder_details="$(_graphify_mcp_holder_details 2>/dev/null)" && [ -n "$holder_details" ]; then
@@ -1359,7 +1359,7 @@ _graphify_holder_gate() {
         echo "        graphify stays at v${installed:-?} and KEEPS WORKING; the pin has NOT advanced to $pin."
         echo "        A probe that cannot run does not mean the machine is clear. If a graphify-mcp"
         echo "        IS live, uv would delete the old entry points and then fail to replace the"
-        echo "        locked directory, leaving graphify broken (HIMMEL-1274/1293)."
+        echo "        locked directory, leaving graphify broken."
         echo "        To advance the pin, either close the Claude Code sessions holding graphify-mcp"
         echo "        (each live session spawns one) and install by hand:"
         echo "            uv tool install --force --with '$(_graphify_mcp_req)' '$spec'"
@@ -1532,7 +1532,7 @@ graphify_update() {
     {
       echo "  ERROR: graphify update to $pin failed AND the existing install is now BROKEN ('graphify --version' does not run)."
       echo "         uv removes the old entry points before replacing the tool dir, so a mid-way failure"
-      echo "         leaves no working graphify (HIMMEL-1274)."
+      echo "         leaves no working graphify."
       echo "         Repair: close every Claude Code session (each holds a graphify-mcp), then:"
       echo "             uv tool install --force --with '$(_graphify_mcp_req)' '$spec'"
     } >&2

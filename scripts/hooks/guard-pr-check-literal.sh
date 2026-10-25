@@ -112,7 +112,7 @@ shown=""
 flat=""
 deny() {
     {
-        echo "guard-pr-check-literal: DENIED - \`$shown\` (HIMMEL-3383, HIMMEL-3495, HIMMEL-3437): $1"
+        echo "guard-pr-check-literal: DENIED - \`$shown\`: $1"
         echo "A relative spelling of a gate-allowed scripts/cr or scripts/handover/ writer is allowed"
         echo "only in a himmel checkout, at its worktree root, on a tree whose copy of what it runs"
         echo "equals the HIMMEL_REPO anchor's byte for byte and mode for mode (compared raw, so a CRLF"
@@ -134,7 +134,7 @@ deny() {
                 echo "$FENCE"
                 ;;
             *handover/merge-on-green*)
-                echo "Run the anchored spelling instead (HIMMEL-3491) - EVERY argument must be"
+                echo "Run the anchored spelling instead - EVERY argument must be"
                 echo "unquoted, with no ' or \\ anywhere in the command (the anchor prefix is"
                 echo "exempted only when the whole command carries neither):"
                 echo
@@ -1131,7 +1131,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
 if prlit_backstop "$cmd" && ! git_read_to_file; then
     shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "the command names a guarded script and can write text to a file or feed it as input (a '>' redirect that is not an fd dup or /dev/null, a <<< here-string, or tee), or shadows a reader (cat, tee, ...) with a function or alias - whatever later runs that file cannot be enumerated, so it cannot be proven safe (HIMMEL-3917, HIMMEL-3913). If the text contains '>' (an arrow in a message, a Results bullet), write it with the Write tool and pass the file (-F, --body-file, --comment-file), or use '→' / 'to' instead. Run each script as its own literal command."
+    deny "the command names a guarded script and can write text to a file or feed it as input (a '>' redirect that is not an fd dup or /dev/null, a <<< here-string, or tee), or shadows a reader (cat, tee, ...) with a function or alias - whatever later runs that file cannot be enumerated, so it cannot be proven safe. If the text contains '>' (an arrow in a message, a Results bullet), write it with the Write tool and pass the file (-F, --body-file, --comment-file), or use '→' / 'to' instead. Run each script as its own literal command."
 fi
 readers_only() { # true when every command the command line runs is a reader
     local k sg=-1 cw=-1 w
@@ -1378,7 +1378,7 @@ if [ "$PR_LINE_GIT" = 1 ]; then
         fi
     fi
     if [ -n "$pr_line_deny" ]; then
-        deny "$pr_line_deny: git or the shell it spawns executes these values, and a second shell can build a guarded script path (HIMMEL-5170). Run the script as its own literal command, or use a plain value (GIT_EDITOR=vim git commit)."
+        deny "$pr_line_deny: git or the shell it spawns executes these values, and a second shell can build a guarded script path. Run the script as its own literal command, or use a plain value (GIT_EDITOR=vim git commit)."
     fi
 fi
 if [ "$PR_TOKENIZED" = 1 ]; then
@@ -1389,7 +1389,7 @@ if [ "$PR_TOKENIZED" = 1 ]; then
         if seg_meta "$mk" "$mek"; then
             shown=${cmd//$'\n'/ }
             shown=${shown:0:200}
-            deny "a value git or the shell it spawns will execute (a GIT_*/EDITOR/VISUAL/PAGER assignment, git -c k=v, git config <key> <value>, a git option value) carries a shell expansion character (\$ \` * ? [ { or a backslash): a second shell can build a guarded script path from it. Use a plain value (less -R, vim, code --wait) or run the script as its own literal command (HIMMEL-5170)."
+            deny "a value git or the shell it spawns will execute (a GIT_*/EDITOR/VISUAL/PAGER assignment, git -c k=v, git config <key> <value>, a git option value) carries a shell expansion character (\$ \` * ? [ { or a backslash): a second shell can build a guarded script path from it. Use a plain value (less -R, vim, code --wait) or run the script as its own literal command."
         fi
         mk=$mek
     done
@@ -1444,7 +1444,7 @@ envs_deferred=0
 if [ "$envs_deferred" = 0 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ] || [ "$PR_GIT_EXEC" = 1 ]; }; then
     shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
+    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command."
 fi
 
 # git runs an editor or an alias program this
@@ -1569,7 +1569,7 @@ fi
 edhook_deny() {
     local shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "the command names a guarded script as an assignment value, a git config value, a git option value or an argument of a git subcommand outside the safe set (GIT_EDITOR=, git config <key> <script>, git send-email --to-cmd=, GIT_CONFIG_*): git would run the script unread; run the script as its own literal command (HIMMEL-5170)."
+    deny "the command names a guarded script as an assignment value, a git config value, a git option value or an argument of a git subcommand outside the safe set (GIT_EDITOR=, git config <key> <script>, git send-email --to-cmd=, GIT_CONFIG_*): git would run the script unread; run the script as its own literal command."
 }
 
 # Command position. The rule here is "a registered gate runs unmodified with
@@ -2494,16 +2494,16 @@ herestring_split_mention() { # herestring_split_mention <raw command> - true
 if [ "$hit" -eq 0 ] && [ "$mentions" -eq 1 ] && [ "$wrapped" -eq 1 ] \
     && { split_unresolvable_mention "$cmd" || herestring_split_mention "$cmd" || [ "$ENV_SPLIT_CAPPED" -eq 1 ]; }; then
     if [ "$ENV_SPLIT_CAPPED" -eq 1 ]; then
-        deny "a shell body nested more than $ENV_SPLIT_NEST_CAP levels deep (eval / bash -c inside eval / bash -c) is not re-read past that depth, so an env -S inside it cannot be ruled out; flatten the command or run the guarded target by its literal spelling (HIMMEL-4516)."
+        deny "a shell body nested more than $ENV_SPLIT_NEST_CAP levels deep (eval / bash -c inside eval / bash -c) is not re-read past that depth, so an env -S inside it cannot be ruled out; flatten the command or run the guarded target by its literal spelling."
     fi
-    deny "an env -S / --split-string string naming a guarded target cannot be fully resolved (a backslash escape, '#' or '\$' - GNU env -S: \\c ignores the rest, '#' comments, \${VAR} expands), so which script runs is unprovable; run the target by its literal spelling with no env -S wrapper (HIMMEL-1813)."
+    deny "an env -S / --split-string string naming a guarded target cannot be fully resolved (a backslash escape, '#' or '\$' - GNU env -S: \\c ignores the rest, '#' comments, \${VAR} expands), so which script runs is unprovable; run the target by its literal spelling with no env -S wrapper."
 fi
 # An env -S line deferred here from the early check, so the more specific
 # env -S deny above names the cause when it applies.
 if [ "$envs_deferred" = 1 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ] || [ "$PR_GIT_EXEC" = 1 ]; }; then
     shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
+    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command."
 fi
 [ "$hit" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
 # A command whose every command position is a plain reader (sort, uniq and

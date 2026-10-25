@@ -370,11 +370,11 @@ test("refuseNonPrimaryCwd: undefined (no refusal) on the primary checkout", () =
   expect(refuseNonPrimaryCwd("/repo", probe)).toBeUndefined();
 });
 
-test("refuseNonPrimaryCwd: names the primary path + HIMMEL-1503 + the spawn-claudex prefix", () => {
+test("refuseNonPrimaryCwd: names the primary path + the refusal text + the spawn-claudex prefix", () => {
   const probe = () => ({ gitDir: "/repo/.git/worktrees/wt1", commonDir: "/repo/.git" });
   const msg = refuseNonPrimaryCwd("/repo/.claude/worktrees/claudex+t1", probe);
   expect(msg).toContain("spawn-claudex:");
-  expect(msg).toContain("HIMMEL-1503");
+  expect(msg).toContain("refusing to dispatch from");
   expect(msg).toContain(resolve("/repo"));
   expect(msg).toMatch(/cd there and retry/);
 });
@@ -383,7 +383,7 @@ test("refuseNonPrimaryCwd: falls back to a path-only diagnostic when the primary
   const probe = () => null;
   const msg = refuseNonPrimaryCwd("/some/repo/.claude/worktrees/claudex+t1", probe);
   expect(msg).toContain("spawn-claudex:");
-  expect(msg).toContain("HIMMEL-1503");
+  expect(msg).toContain("refusing to dispatch from");
   expect(msg).toMatch(/looks like a worktree cwd/);
 });
 
@@ -510,14 +510,14 @@ test("spawn-claudex real CLI: dispatch from inside a linked worktree cwd is REFU
     });
     expect(r.exitCode).toBe(2);
     const err = r.stderr.toString();
-    expect(err).toContain("HIMMEL-1503");
+    expect(err).toContain("refusing to dispatch from");
     expect(err).toContain(resolve(repo));
     expect(r.stdout.toString()).not.toContain("session-dir:");
     expect(existsSync(join(wt, ".claude", "worktrees"))).toBe(false);
   } finally { removeFixture(repo); }
 }, CX_GIT_TEST_TIMEOUT_MS);
 
-test("spawn-claudex real CLI: dispatch from the PRIMARY checkout is NOT caught by the HIMMEL-1503 guard (happy path — proceeds to the next, unrelated check)", () => {
+test("spawn-claudex real CLI: dispatch from the PRIMARY checkout is NOT caught by the non-primary-cwd guard (happy path — proceeds to the next, unrelated check)", () => {
   const { repo } = initHermeticRepo("cxcli-pcwd-ok-");
   try {
     // --force bypasses the codex-weekly-bank preflight (which reads the REAL
@@ -529,7 +529,7 @@ test("spawn-claudex real CLI: dispatch from the PRIMARY checkout is NOT caught b
     });
     expect(r.exitCode).toBe(2);
     const err = r.stderr.toString();
-    expect(err).not.toContain("HIMMEL-1503");
+    expect(err).not.toContain("refusing to dispatch from");
     expect(err).toMatch(/is not a himmel checkout/);
   } finally { removeFixture(repo); }
 }, CX_GIT_TEST_TIMEOUT_MS);

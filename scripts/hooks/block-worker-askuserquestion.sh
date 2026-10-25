@@ -40,7 +40,7 @@ input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null) || exit 0
 [ "$tool" = "AskUserQuestion" ] || exit 0
 
-deny_msg="You are a console-spawned leg; nobody answers in this window. Ask the console by SendMessage (your brief names it), or wait with ONE foreground blocking command / a foreground until-loop. (HIMMEL-2923)"
+deny_msg="You are a console-spawned leg; nobody answers in this window. Ask the console by SendMessage (your brief names it), or wait with ONE foreground blocking command / a foreground until-loop."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"block-worker-askuserquestion: console-spawned leg denied AskUserQuestion"'

@@ -69,7 +69,7 @@ if [ "${CADENCE_POWERSHELL_OK:-}" = "1" ]; then
 fi
 
 echo "cadence-deny-powershell: the PowerShell tool is denied in a cadence session" \
-     "(HIMMEL-1973) — it bypasses every cadence guardrail, including the" \
+     "— it bypasses every cadence guardrail, including the" \
      "enumerated-engine auto-approval, so a PowerShell call stalls on an" \
      "approval nobody is awake to give. This is NOT an operator-approval" \
      "situation: re-issue the command with the Bash tool (Git Bash) in the" \

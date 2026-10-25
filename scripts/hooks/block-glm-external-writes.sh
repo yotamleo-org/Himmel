@@ -1018,11 +1018,11 @@ PINSCRIPTS
                 echo "⛔ block-glm-external-writes: refusing a Bash/PowerShell command that"
                 echo "    references the hook-integrity pin directory ($pin_dir_raw)."
                 echo "    A dispatched worker's shell must never touch a pin file there — doing"
-                echo "    so could forge the HIMMEL-1666 hook-integrity check (HIMMEL-2085)."
+                echo "    so could forge the hook-integrity check."
                 echo "    Legitimate mid-session hook-integrity work: set"
                 echo "    HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 in the LAUNCHING shell — honoured only"
                 echo "    inside a linked worktree of the session's recorded repo, and audited"
-                echo "    (HIMMEL-3396); in the primary checkout this fence stays on."
+                echo "    — in the primary checkout this fence stays on."
             } >&2
             exit 2
         fi
@@ -1569,7 +1569,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
                 echo "    refspec that WRITES a remote-tracking ref (refs/remotes/… or the"
                 echo "    <name>/<branch> shorthand), or a ref/remote-metadata rewrite (symbolic-ref,"
                 echo "    update-ref, remote set-url/set-head/add, insteadOf, remote.origin.url)."
-                echo "    HIMMEL-2528's hook-integrity re-pin trusts whatever"
+                echo "    the hook-integrity re-pin trusts whatever"
                 echo "    refs/remotes/origin/<default> currently resolves to as legitimately-"
                 echo "    committed hook content — this command shape could redefine that."
                 echo "    This is a command-TEXT fence, not closure: a .git/config edit followed"
@@ -1577,7 +1577,7 @@ if [ "$tool_is_shell" = 1 ] && ! bypass_honoured; then
                 echo "    through a path this fence never sees spelled out, are NOT caught."
                 echo "    Legitimate mid-session work: set HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 in the"
                 echo "    LAUNCHING shell — honoured only inside a linked worktree of the session's"
-                echo "    recorded repo, and audited (HIMMEL-3396); in the primary checkout this"
+                echo "    recorded repo, and audited; in the primary checkout this"
                 echo "    fence stays on."
             } >&2
             exit 2
@@ -1595,7 +1595,7 @@ deny() {
     {
         echo "⛔ block-glm-external-writes: $1"
         echo "    This session runs on the GLM lane (ANTHROPIC_BASE_URL=api.z.ai), which has"
-        echo "    no auto-mode classifier — external writes are hard-blocked (HIMMEL-654)."
+        echo "    no auto-mode classifier — external writes are hard-blocked."
         echo "    Deliver results as a committed branch diff + your session outbox summary;"
         echo "    the parent Claude session / operator pushes and opens PRs."
         echo "    Operator bypass: GLM_EXTERNAL_WRITES_OK=1 in the spawning shell."
@@ -1618,7 +1618,7 @@ deny() {
 deny_recorded() {
     {
         echo "✅ block-glm-external-writes: guard recorded your report; the command is not"
-        echo "    executed — no further action needed (HIMMEL-1649)."
+        echo "    executed — no further action needed."
         echo "    The hook appended the outbox record itself and then denied the Bash call"
         echo "    BY DESIGN. Your report IS saved. Do not retry, reword, or find another way."
     } >&2
@@ -1682,10 +1682,10 @@ if [ "$tool_is_shell" = 1 ]; then
 
     if [ "$report_shape_ok" = 1 ]; then
         if [ "${#report_payload}" -gt 16384 ]; then
-            deny "the GLM outbox payload exceeds the 16384-character base64url cap (HIMMEL-1649)."
+            deny "the GLM outbox payload exceeds the 16384-character base64url cap."
         fi
         if [ "$session_metadata_ok" != 1 ]; then
-            deny "the GLM outbox helper requires a valid dispatcher-minted GLM_SESSION_DIR (HIMMEL-1649)."
+            deny "the GLM outbox helper requires a valid dispatcher-minted GLM_SESSION_DIR."
         fi
 
         if [ -z "$report_script" ]; then
@@ -1696,7 +1696,7 @@ if [ "$tool_is_shell" = 1 ]; then
         report_script_base=${report_script##*/}
         report_script_dir=${report_script%/*}
         report_script_dir_real=$(cd "$report_script_dir" 2>/dev/null && pwd -P) || \
-            deny "the GLM outbox helper path does not resolve inside the dispatcher-minted GLM_SESSION_DIR (HIMMEL-1649)."
+            deny "the GLM outbox helper path does not resolve inside the dispatcher-minted GLM_SESSION_DIR."
 
         # The helper file's existence/mode is deliberately NOT checked: it is
         # never executed on this lane, so making the decision depend on it would
@@ -1704,15 +1704,15 @@ if [ "$tool_is_shell" = 1 ]; then
         # gate the record.
         if [ "$report_script_base" != "append-outbox.sh" ] \
            || [ "$report_script_dir_real" != "$GLM_SESSION_REAL" ]; then
-            deny "the GLM outbox report path must name the dispatcher-minted GLM_SESSION_DIR/append-outbox.sh (HIMMEL-1649)."
+            deny "the GLM outbox report path must name the dispatcher-minted GLM_SESSION_DIR/append-outbox.sh."
         fi
 
         command -v node >/dev/null 2>&1 || \
-            deny "the GLM outbox guard needs node on PATH to record the report (HIMMEL-1649)."
+            deny "the GLM outbox guard needs node on PATH to record the report."
 
         report_outbox="$GLM_SESSION_NATIVE/outbox.jsonl"
         [ ! -L "$GLM_SESSION_REAL/outbox.jsonl" ] || \
-            deny "refusing a symlinked GLM session outbox.jsonl (HIMMEL-1649)."
+            deny "refusing a symlinked GLM session outbox.jsonl."
 
         # Fixed program, payload passed as argv DATA — never shell source.
         # Validation order is fail-closed throughout: a rejected payload appends
@@ -1824,7 +1824,7 @@ try {
   process.exit(2);
 }
 ' -- "$report_payload" "$report_outbox" 2>&1) || \
-            deny "the GLM outbox report was rejected: ${report_err:-invalid payload} (HIMMEL-1649)."
+            deny "the GLM outbox report was rejected: ${report_err:-invalid payload}."
 
         deny_recorded
     fi
@@ -1855,9 +1855,9 @@ if [ "$tool_is_shell" = 1 ]; then
     # substitutions, separators, redirects, extra arguments, and write attempts.
     case "$report_cmd" in
         *append-outbox.sh*)
-            deny "malformed GLM outbox helper command; use exactly: bash \"\$GLM_SESSION_DIR/append-outbox.sh\" <base64url> (HIMMEL-1649)." ;;
+            deny "malformed GLM outbox helper command; use exactly: bash \"\$GLM_SESSION_DIR/append-outbox.sh\" <base64url>." ;;
         node\ -e*appendFileSync*outbox.jsonl*)
-            deny "the interpolated node -e outbox append is retired; use the fixed session-dir base64url helper (HIMMEL-1649)." ;;
+            deny "the interpolated node -e outbox append is retired; use the fixed session-dir base64url helper." ;;
     esac
 fi
 
@@ -1894,21 +1894,21 @@ case "$tool" in
         # unscoped/empty array, AND any non-"himmel"/blank entry — matches the
         # Python qmd_scope_reason() query branch exactly.
         if ! printf '%s' "$input" | jq -e '(.tool_input.collections) | (type=="array") and (length>0) and (all(.=="himmel"))' >/dev/null 2>&1; then
-            deny "qmd query 'collections' must be a non-empty JSON array of only \"himmel\" on the GLM lane (HIMMEL-1239) — no blank/other entries."
+            deny "qmd query 'collections' must be a non-empty JSON array of only \"himmel\" on the GLM lane — no blank/other entries."
         fi
         exit 0
         ;;
     mcp__plugin_qmd_qmd__get)
         qmd_file=$(printf '%s' "$input" | jq -r '.tool_input.file // empty' 2>/dev/null || true)
         if [ -z "$qmd_file" ] || ! qmd_himmel_scoped "$qmd_file"; then
-            deny "qmd get on the GLM lane requires a fully-qualified qmd://himmel/... path (v1 allow-list, HIMMEL-1239) — bare paths and #docids are cross-collection-ambiguous and denied fail-closed."
+            deny "qmd get on the GLM lane requires a fully-qualified qmd://himmel/... path (v1 allow-list) — bare paths and #docids are cross-collection-ambiguous and denied fail-closed."
         fi
         exit 0
         ;;
     mcp__plugin_qmd_qmd__multi_get)
         qmd_pattern=$(printf '%s' "$input" | jq -r '.tool_input.pattern // empty' 2>/dev/null || true)
         if [ -z "$qmd_pattern" ]; then
-            deny "qmd multi_get on the GLM lane requires a qmd://himmel/... pattern (HIMMEL-1239)."
+            deny "qmd multi_get on the GLM lane requires a qmd://himmel/... pattern."
         fi
         # Root-cause fix: the empty-field loss is rooted in a
         # mismatch — bash word-splitting (the prior
@@ -1930,7 +1930,7 @@ case "$tool" in
                     if (s !~ /^qmd:\/\/himmel\//) exit 1
                 }
             }'; then
-            deny "qmd multi_get on the GLM lane requires a non-empty comma list where EVERY segment is a fully-qualified qmd://himmel/... path (HIMMEL-1239) — no empty/blank segments."
+            deny "qmd multi_get on the GLM lane requires a non-empty comma list where EVERY segment is a fully-qualified qmd://himmel/... path — no empty/blank segments."
         fi
         exit 0
         ;;
@@ -1938,7 +1938,7 @@ case "$tool" in
         # status (no scoping input) and any other/future qmd tool: scope
         # cannot be positively determined from the tool-call JSON -> deny
         # fail-closed.
-        deny "qmd tool '$tool' has no collection-scoping input the GLM lane can verify — denied fail-closed (HIMMEL-1239)."
+        deny "qmd tool '$tool' has no collection-scoping input the GLM lane can verify — denied fail-closed."
         ;;
     mcp__*) deny "MCP tool '$tool' is blocked on the GLM lane." ;;
     Bash|PowerShell) ;;
@@ -2260,7 +2260,7 @@ if [ "$gp_total" -gt "$gp_allowed" ]; then
     deny "git push is blocked on the GLM lane (commit locally; the parent session pushes)."
 fi
 if [ "$gu_total" -gt "$gu_allowed" ]; then
-    deny "rewriting git remote/push URLs is blocked on the GLM lane: a worker repointing a remote is outside its brief, and this hook is the layer that says so (HIMMEL-1961 removed the pushurl tripwire that used to sit behind it)."
+    deny "rewriting git remote/push URLs is blocked on the GLM lane: a worker repointing a remote is outside its brief, and this hook is the layer that says so (an earlier change removed the pushurl tripwire that used to sit behind it)."
 fi
 if [ "$gh_total" -gt "$gh_allowed" ]; then
     deny "gh is limited on the GLM lane: issue ops + pr/run reads; PR mutations belong to the parent session."

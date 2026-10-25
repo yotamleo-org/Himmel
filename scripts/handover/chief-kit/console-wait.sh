@@ -938,6 +938,7 @@ r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
             stem="${ldoc##*/}"; line="$line ${stem%.md}"
         fi
         outf="$inbox.wait.le-$label"
+        heartbeat sampling
         out="$(printf '%s\n' "$line" | timeout -k 5 90 bash "$leg_event_cmd" --doc "$console_doc" --fleet "$legs_from" - 2>&1 9>&-)"; rc=$?  # gnu-ok: Linux-only kit
         out="$(printf '%s\n' "$out" | r0_scrub)"
         printf '%s\n' "$out" > "$outf" 2>/dev/null

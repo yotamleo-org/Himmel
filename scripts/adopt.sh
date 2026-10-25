@@ -669,7 +669,7 @@ wire_handover_dir_luna() {
   # (applyHandoverStep) already treats it. Only external (the default,
   # preserved for a direct adopt.sh invocation) seeds env.HANDOVER_DIR.
   if [[ "$HANDOVER_MODE" == "inline" ]]; then
-    echo "  handover.mode=inline — leaving env.HANDOVER_DIR unset (HIMMEL-2466)"
+    echo "  handover.mode=inline — leaving env.HANDOVER_DIR unset"
     return
   fi
   hdir="$dest/handovers"
@@ -694,7 +694,7 @@ wire_handover_dir_luna() {
   if [[ -f "$settings" ]] && command -v jq >/dev/null 2>&1; then
     existing="$(jq -r '.env.HANDOVER_DIR // empty' "$settings" 2>/dev/null || true)"
     if [[ -n "$existing" ]]; then
-      echo "  env.HANDOVER_DIR already set in $settings ($existing) — leaving it (re-adopt reproduces, never resets; HIMMEL-839)"
+      echo "  env.HANDOVER_DIR already set in $settings ($existing) — leaving it (re-adopt reproduces, never resets)"
       # remember that this key was already here, so uninstall never
       # claims (and removes) an operator-chosen value. Best-effort, like every record.
       prov_record noop json-key "$settings" --unit /env/HANDOVER_DIR --scope "$SCOPE" --class code \
@@ -712,7 +712,7 @@ wire_handover_dir_luna() {
   done
   envfile="$HIMMEL_ROOT/.env"
   if [[ -f "$envfile" ]] && grep -qE '^[[:space:]]*HANDOVER_DIR=' "$envfile"; then
-    echo "  HANDOVER_DIR already set in $envfile (via /handover-setup) — leaving it, not wiring env.HANDOVER_DIR into $settings (HIMMEL-839)"
+    echo "  HANDOVER_DIR already set in $envfile (via /handover-setup) — leaving it, not wiring env.HANDOVER_DIR into $settings"
     return
   fi
   if [[ $DRY_RUN -eq 1 ]]; then

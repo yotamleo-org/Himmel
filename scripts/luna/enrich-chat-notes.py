@@ -3,7 +3,7 @@
 
 HIMMEL-833 (DeepSeek, original); HIMMEL-1167 generalizes the LLM backend to a
 selectable provider (--provider deepseek|codex|glm|claude, default deepseek).
-Sibling of fold-chat-history.py (HIMMEL-832). Per note: one provider call
+Sibling of fold-chat-history.py. Per note: one provider call
 (up to 2 attempts on invalid response shape) (summary + vocab-constrained
 tags); each request also carries the vault-wide top-200 tag vocabulary
 (tag names only, from all vault markdown) alongside the note payload as the
@@ -591,12 +591,12 @@ def write_atomic(path, text):
 def main(argv=None):
     ap = argparse.ArgumentParser(
         description="Provider-pluggable enrichment pass over enriched:false "
-                    "chat-import notes (HIMMEL-833/1167)")
+                    "chat-import notes")
     ap.add_argument("--vault", required=True, help="vault root (contains chats/)")
     ap.add_argument("--provider", choices=sorted(PROVIDERS),
                     default=DEFAULT_PROVIDER,
                     help="LLM backend (deepseek|codex|glm|claude); each gated "
-                         "by its own egress-matrix cell. Default: claude (deepseek de-listed, HIMMEL-1257)")
+                         "by its own egress-matrix cell. Default: claude (deepseek de-listed)")
     ap.add_argument("--limit", type=int, default=None, help="max notes this run")
     ap.add_argument("--dry-run", action="store_true",
                     help="list candidates + payload sizes; no egress, no writes")

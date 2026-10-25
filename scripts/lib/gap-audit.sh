@@ -130,7 +130,7 @@ gap_audit_offer() {
     local root="${GAP_AUDIT_ROOT:-$GAP_AUDIT_ROOT_DEFAULT}" now="${GAP_AUDIT_NOW:-$(date +%s)}"
     GAP_AUDIT_FINDINGS=""; GAP_AUDIT_SKIPPED=""
     echo ""
-    echo "==> gap audit (HIMMEL-5836)"
+    echo "==> gap audit"
     _ga_check_doctor "$root" || true
     _ga_check_qmd || true
     _ga_check_semantic "$root" "$now" || true
