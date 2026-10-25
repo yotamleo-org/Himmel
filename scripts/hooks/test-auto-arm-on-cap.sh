@@ -579,7 +579,7 @@ AUTO_ARM_SAFETY_CHILD=1 AUTO_ARM_STATE_DIR="$S17C" AUTO_ARM_CACHE="$C17C" \
     bash "$HOOK" </dev/null >/dev/null 2>"$STDERR_LOG"
 assert_rc "safety child's stale check warns visibly (exit 1), never blocks" 1 $?
 assert_file "safety child does NOT arm another resume" absent "$ARM_LOG"
-assert_grep "warn names the depth limit" "HIMMEL-812" "$STDERR_LOG"
+assert_grep "warn names the depth limit" "depth limit" "$STDERR_LOG"
 assert_grep "warn names the mark it found" "AUTO_ARM_SAFETY_CHILD=1" "$STDERR_LOG"
 assert_grep "warn orders a wind-down" "Wind down" "$STDERR_LOG"
 snap_count=$(count_glob "$H17C" 'auto-arm-status-stale-*.md')

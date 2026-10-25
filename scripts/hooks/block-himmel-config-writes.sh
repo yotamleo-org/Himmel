@@ -74,7 +74,7 @@ deny() {
         echo "    ~/.himmel/config.json carries graphify.salus_ollama_cloud_ok, the persisted"
         echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud, so"
         echo "    changing it is operator-only. Remedy: the operator edits the"
-        echo "    file by hand at their own prompt (or uses the UI flow once it"
+        echo "    file by hand at their own prompt (or uses the config UI flow once it"
         echo "    lands). Reading the file stays allowed. There is no env bypass."
     } >&2
     exit 2
