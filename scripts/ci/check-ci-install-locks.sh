@@ -130,14 +130,15 @@ claude_verified=0
 # (`install ... <dest> <target>`), else the checksum guards a file nothing uses.
 pend_dest=""; pend_rel=""; pend_file=""
 # installs_verified <segment> <verified file>: the segment is `[sudo] install
-# [options] <source>... <target>`, options only before the operands, and the
-# verified file is the last source (the operand just before the target). Only
-# the options the install step uses are allowed (-m/--mode, -D, -v, -o, -g, --):
+# [options] <verified file> <target>`: options only before the two operands, the
+# first exactly the verified file, the second a plain absolute path. Only the
+# options the install step uses are allowed (-m/--mode, -D, -v, -o, -g, --):
 # anything else, such as a -t/-T cluster or an abbreviated --target, can move
 # the target and is refused.
 installs_verified() {
   local -a tok pos=()
-  local i=0 n mode_re name_re
+  local i=0 n mode_re name_re target_re
+  target_re='^/[A-Za-z0-9_./-]+$'
   mode_re='^([0-7]{3,4}|[ugoa]*[-+=][rwxXst]+(,[ugoa]*[-+=][rwxXst]+)*)$'
   name_re='^[A-Za-z0-9_][A-Za-z0-9_.-]*$'
   read -ra tok <<< "$1"
@@ -157,11 +158,13 @@ installs_verified() {
     i=$((i + 1))
   done
   while [ "$i" -lt "$n" ]; do
-    [[ "${tok[$i]}" == -* ]] && return 1
     pos+=("${tok[$i]}")
     i=$((i + 1))
   done
-  [ "${#pos[@]}" -ge 2 ] && [ "${pos[${#pos[@]}-2]}" = "$2" ]
+  # Exactly two operands: the verified file as written, then a plain absolute
+  # target. Any quote, escape or expansion in the target could hide an option
+  # (the lint splits words without unquoting).
+  [ "${#pos[@]}" -eq 2 ] && [ "${pos[0]}" = "$2" ] && [[ "${pos[1]}" =~ $target_re ]]
 }
 while IFS=$'\t' read -r file line mark seg; do
   [ -n "$seg" ] || continue

@@ -195,6 +195,29 @@ t=$(live claude-step-backup-t); cp "$FIX/claude-install-step.yml.txt" "$t/.githu
 # shellcheck disable=SC2016
 sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install --backup=numbered -Dt /usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
 expect "--backup with a t cluster is rejected" 1 "$t"
+# The shell unquotes a token before install sees it, and the lint splits words on
+# whitespace without unquoting: the operands are allowlisted, so a quoted,
+# escaped or expanded option cannot ride in as an operand.
+t=$(live claude-step-quoted-dt); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install "-Dt" /usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "a double-quoted -Dt is not an operand" 1 "$t"
+t=$(live claude-step-quoted-t); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak "s|sudo install -m 0755 \"\\\$RUNNER_TEMP/claude\" /usr/local/bin/claude|sudo install '-t' /usr/local/bin \"\$RUNNER_TEMP/claude\" \"\$RUNNER_TEMP/evil/claude\"|" "$t/.github/workflows/other.yml"
+expect "a single-quoted -t is not an operand" 1 "$t"
+t=$(live claude-step-escaped-t); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install \\-t /usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "a backslash-escaped -t is not an operand" 1 "$t"
+t=$(live claude-step-expanded-opts); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install $IOPTS /usr/local/bin "$RUNNER_TEMP/claude" "$RUNNER_TEMP/evil/claude"|' "$t/.github/workflows/other.yml"
+expect "an expanded option variable is not an operand" 1 "$t"
+t=$(live claude-step-quoted-hash); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak "s|sudo install -m 0755 \"\\\$RUNNER_TEMP/claude\" /usr/local/bin/claude|sudo install -m 0755 \"\$RUNNER_TEMP/claude\" '/usr/local/bin/claude #' -t /tmp|" "$t/.github/workflows/other.yml"
+expect "a quoted ' #' does not end the target early" 1 "$t"
 t=$(live claude-step-noinstall); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
 sed -i.bak '/sudo install -m 0755/d' "$t/.github/workflows/other.yml"
 expect "the step after pin_fetch is not an install at all" 1 "$t"
