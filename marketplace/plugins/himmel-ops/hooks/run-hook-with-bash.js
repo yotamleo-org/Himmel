@@ -960,13 +960,17 @@ const UNROLL_BUDGET_MS = 2000;
 // No quote, glob, brace, tilde, `$`, backslash or space; no leading `=` (zsh
 // expands `=cmd` to a path in the word list).
 const UNROLL_ITEM_RE = /^[A-Za-z0-9._/@%+:,-][A-Za-z0-9._/@%+=:,-]*$/;
-// Lowercase only: every variable bash itself reads (PATH, IFS, BASH_ENV, ...)
-// and the usual exported ones are uppercase. zsh ties these lowercase names
-// to behaviour, so a loop over one is not a plain variable: every lowercase
-// special parameter of zsh 5.9 with all its modules loaded.
+// Lowercase only: the variables bash itself reads (PATH, IFS, BASH_ENV, ...)
+// and the usual exported ones are uppercase, except histchars and
+// auto_resume, listed below. zsh ties these lowercase names to behaviour, so
+// a loop over one is not a plain variable: every lowercase special parameter
+// of zsh 5.9 with all its modules loaded.
 const UNROLL_NAME_RE = /^[a-z][a-z0-9_]*$/;
+// zsh runs the functions named in a hook array (zshexit_functions,
+// chpwd_functions, ...), so any *_functions name is refused, listed or not.
+const UNROLL_HOOK_ARRAY_RE = /_functions$/;
 const UNROLL_SPECIAL_NAMES = new Set([
-  'aliases', 'argv', 'builtins', 'cdpath', 'commands', 'dirstack', 'dis_aliases', 'dis_builtins',
+  'aliases', 'argv', 'auto_resume', 'builtins', 'cdpath', 'commands', 'dirstack', 'dis_aliases', 'dis_builtins',
   'dis_functions', 'dis_functions_source', 'dis_galiases', 'dis_patchars', 'dis_reswords',
   'dis_saliases', 'epochtime', 'errnos', 'fignore', 'fpath', 'funcfiletrace', 'funcsourcetrace',
   'funcstack', 'functions', 'functions_source', 'functrace', 'galiases', 'histchars', 'history',
@@ -1075,7 +1079,8 @@ function unrollableLoop(stmt, src) {
   const iter = loop.Loop;
   if (!iter || iter.Type !== 'WordIter') return null;
   const name = iter.Name.Value;
-  if (!UNROLL_NAME_RE.test(name) || UNROLL_SPECIAL_NAMES.has(name) || Object.hasOwn(process.env, name)) return null;
+  if (!UNROLL_NAME_RE.test(name) || UNROLL_SPECIAL_NAMES.has(name) || UNROLL_HOOK_ARRAY_RE.test(name)
+    || Object.hasOwn(process.env, name)) return null;
   // No items is `for NAME; do`, which loops over the positional parameters.
   const items = iter.Items || [];
   if (items.length === 0 || items.length > UNROLL_MAX_ITEMS) return null;

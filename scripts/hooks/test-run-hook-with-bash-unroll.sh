@@ -86,6 +86,10 @@ keep 'a C-style loop' 'for ((i = 0; i < 1; i++)); do cat $i; done'
 keep 'an uppercase NAME' 'for X in a; do cat $X; done'
 keep 'a zsh special NAME' 'for path in /tmp/evil; do ls; done'
 keep 'a zsh module special NAME' 'for dirstack in /secret; do cat ~1/file; done'
+keep 'a lowercase NAME bash reads' 'for auto_resume in exact; do ls; done'
+keep 'a zsh hook array NAME' 'for zshexit_functions in myfn; do cat README.md; done'
+keep 'a zsh hook array NAME before a cd' 'for chpwd_functions in myfn; do ls; done; cd /tmp'
+keep 'an unlisted *_functions NAME' 'for my_functions in myfn; do ls; done'
 keep 'a NAME already in the environment' 'for unrollprobe in a; do cat $unrollprobe; done' unrollprobe=1
 keep 'no word list loops over "$@"' 'echo a; for x; do cat $x; done'
 keep '17 items, over the cap' 'for x in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 a17; do cat $x; done'
@@ -109,8 +113,8 @@ keep 'NAME used after the loop' 'for x in a; do cat $x; done; cat $x'
 keep 'IFS set before the loop' 'IFS=.; for x in a; do cat $x; done'
 keep 'a command over 8 KiB' "$(printf 'for x in a; do cat $x; # %09000d\ndone' 0)"
 keep 'an unrolled text over 8 KiB' "for x in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16; do cat \$x /$(printf '%0600d' 0); done"
-keep 'an item that re-reads as an assignment' 'for x in X=1; do $x ls; done'
-keep 'an item that re-reads as a keyword' 'for x in time; do $x ls; done'
+keep 'an assignment-shaped item as the command name' 'for x in X=1; do $x ls; done'
+keep 'a keyword-shaped item as the command name' 'for x in time; do $x ls; done'
 keep 'printf -v writes NAME by a computed name' "for x in a; do printf -v \"\$(printf '\\170')\" b; cat \$x; done"
 keep 'a command name outside the list' 'for x in a; do read -r y; cat $x; done'
 keep 'a command name that is not a literal' 'for x in a; do "$c" $x; done'
