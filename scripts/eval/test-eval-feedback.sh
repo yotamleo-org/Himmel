@@ -279,6 +279,12 @@ ok "absent open" python3 -I "$FB" run --ledger "$T/absent.jsonl" --changes "$T/a
 ok "absent row" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0,"sealed.codex.clean_scored":0}'
 ok "absent measure" python3 -I "$FB" run --ledger "$T/absent.jsonl" --changes "$T/absent-c.jsonl" --rules "$T/absent-rules.json"
 eq "keep rule: a sealed half with no value is unmeasured, not the rule's absent" "$(field "$T/absent-c.jsonl" 1 reason)" "test half unmeasured"
+ok "absent-open base 1" fp "$T/absent2.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent-open base 2" fp "$T/absent2.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent-open open" python3 -I "$FB" run --ledger "$T/absent2.jsonl" --changes "$T/absent2-c.jsonl" --rules "$T/absent-rules.json"
+ok "absent-open row" fp "$T/absent2.jsonl" '{"open.codex.clean_scored":0,"sealed.codex.fp_rate":0}'
+ok "absent-open measure" python3 -I "$FB" run --ledger "$T/absent2.jsonl" --changes "$T/absent2-c.jsonl" --rules "$T/absent-rules.json"
+eq "a split row's open half with no value is unmeasured, not the rule's absent: nothing measured" "$(rows "$T/absent2-c.jsonl")" "1"
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

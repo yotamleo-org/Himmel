@@ -17,6 +17,7 @@ eval-changes ledger. Per eval named in the rules, over that eval's newest "ok" r
   A rule reads only a row's tuning metrics. A split row (review-panel seeds, score.py) carries
   open.<metric> and sealed.<metric> beside the whole-set metric; its tuning metrics are the open half,
   unprefixed, so no rule ever sees the sealed half or the whole set that contains it.
+  On a split row a metric either half lacks is unmeasured: the rule's absent does not apply.
   Keep rule (split rows): train is the open half, test the sealed half of the baseline and the new row. A
   change is kept only when train and test both gain more than the rule's min_gain and run-to-run noise
   (max - min of the train value over the ok runs of the same confighash up to the baseline, two or more)
@@ -143,7 +144,7 @@ def keep_rule(c, series, base, new, after):
     test_before = value_of(split_view(base, "sealed"), c["metric"], None, per) if base else None
     test_after = value_of(split_view(new, "sealed"), c["metric"], None, per)
     upto = series[:series.index(base) + 1] if base in series else []
-    train = [v for v in (value_of(tuning_metrics(r), c["metric"], c["absent"], per) for r in upto
+    train = [v for v in (value_of(tuning_metrics(r), c["metric"], None, per) for r in upto
                          if r["confighash"] == c["confighash"] and tuning_metrics(r)) if v is not None]
     noise = round(max(train) - min(train), 6) if len(train) >= 2 else None
     if test_before is None or test_after is None:
@@ -216,7 +217,7 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                         or pos.get(c["baseline_run_id"], len(runs)) >= pos[new["run_id"]]:
                     continue
                 tm = tuning_metrics(new)
-                after = value_of(tm, c["metric"], c["absent"], c.get("per")) if tm else None
+                after = value_of(tm, c["metric"], None if is_split(new) else c["absent"], c.get("per")) if tm else None
                 if after is None:
                     continue
                 delta = round(after - c["value"], 6)
