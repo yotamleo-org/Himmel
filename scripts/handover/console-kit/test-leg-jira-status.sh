@@ -591,7 +591,7 @@ done
 FDOC="$tmp/console/console.md"; mkdir -p "${FDOC%/*}"
 printf '# console\nfocus-version: v1.1.3\n' > "$FDOC"
 fstat() { bash "$HERE/focus-refresh.sh" --doc "$FDOC" --status | cut -d: -f1; }
-fok() { printf 'status=ok\ngen=1\ndirty=\n' > "${FDOC%/*}/focus-state"; }
+fok() { printf 'status=ok\ngen=1\ndirty=\n' > "${FDOC%/*}/focus-state"; rm -f "${FDOC%/*}/focus-state.again"; }
 reset "To Do"; owned; fok
 HIMMEL_CONSOLE_DOC="$FDOC" fn "$K" --event live
 check "focus: the move lands" "$(moved)" "transition $K In Progress"
