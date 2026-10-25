@@ -97,7 +97,7 @@ rm_row "gh pr create" 2 "$(bash_payload 'gh pr create --title x')"
 rm_row "gh api -X POST" 2 "$(bash_payload 'gh api -X POST repos/o/r/issues')"
 rm_row "leg-pr-open" 2 "$(bash_payload 'bash scripts/lanes/leg-pr-open.sh t b')"
 rm_row "merge-on-green" 2 "$(bash_payload 'bash scripts/handover/merge-on-green.sh')"
-rm_row "go.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 1 abc')"
+rm_row "go.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/go.sh 1 abc')" # old-term-ok: the old path must still be denied
 rm_row "go.sh through chief-kit" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 1 abc')"
 rm_row "inbox-send" 2 "$(bash_payload 'bash scripts/handover/inbox-send.sh x')"
 rm_row "quote-spliced merge-on-green" 2 "$(bash_payload 'bash scripts/handover/merge-on-gr""een.sh')"

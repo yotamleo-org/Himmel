@@ -101,7 +101,7 @@ row "gh pr merge" 2 "$(bash_payload 'gh pr merge 12 --squash')"
 row "gh api POST comment" 2 "$(bash_payload 'gh api repos/o/r/issues/12/comments -f body=x')"
 row "leg-pr-open.sh" 2 "$(bash_payload 'bash scripts/lanes/leg-pr-open.sh t.txt b.md')"
 row "merge-on-green.sh" 2 "$(bash_payload 'bash /repo/scripts/handover/merge-on-green.sh')"
-row "go.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 12 abc')"
+row "go.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/go.sh 12 abc')" # old-term-ok: the old path must still be denied
 row "go.sh through chief-kit" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 12 abc')"
 # --- Jira writes ---
 row "jira create" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js create --type Task --summary s')"

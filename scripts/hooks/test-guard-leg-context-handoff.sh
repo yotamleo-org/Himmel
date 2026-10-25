@@ -222,9 +222,9 @@ check "ListAgents -> allow" allow "$(tool_call ListAgents)"
 check "TaskStop -> allow" allow "$(tool_call TaskStop)"
 check "ToolSearch -> allow" allow "$(tool_call ToolSearch)"
 check "append-results.sh -> allow" allow \
-    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")"
+    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")" # old-term-ok: the old path must still be allowed
 check "absolute append-results.sh -> allow" allow \
-    "$(bash_call "bash /x/himmel/scripts/handover/chief-kit/append-results.sh $DOC \"WRAPPED — done\"")"
+    "$(bash_call "bash /x/himmel/scripts/handover/console-kit/append-results.sh $DOC \"WRAPPED — done\"")" # old-term-ok: the old path must still be allowed
 check "append-results.sh through chief-kit -> allow" allow \
     "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC 'BLOCKED — context 90 %'")"
 check "absolute append-results.sh through chief-kit -> allow" allow \
