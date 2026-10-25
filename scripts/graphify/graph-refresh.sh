@@ -518,7 +518,7 @@ usage() {
 usage: graph-refresh.sh [luna|himmel|both] [--vault <path>] [--dry-run] [-h|--help]
 
 Operator one-shot graphify refresh for the luna and/or himmel corpora
-. Fires refresh-graph-map.sh per corpus SERIALLY (luna then
+Fires refresh-graph-map.sh per corpus SERIALLY (luna then
 himmel), with the SAME per-corpus argument sets the daily cadence uses. The
 runner owns all safety (fence, promote lock, manifest, host-path guard).
 

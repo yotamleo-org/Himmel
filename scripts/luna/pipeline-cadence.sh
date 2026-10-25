@@ -220,8 +220,8 @@ usage() {
     cat <<'EOF'
 Usage: pipeline-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the recurring clip-pipeline cadence
-: daily no-LLM source fetch-health probes,
+Arm the OS scheduler with the recurring clip-pipeline cadence:
+daily no-LLM source fetch-health probes,
 daily /harvest-clips (+ /triage-clips and
 /ig-media-enrich chained after in the same session), daily
 /synthesize-clips (+ /archive-clips chained after) and daily

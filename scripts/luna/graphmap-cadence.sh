@@ -364,14 +364,14 @@ Flags (arm only, except --dry-run):
   --force                Replace existing HIMMEL-GraphMap-* tasks
   --dry-run              Print what would happen, touch nothing
                          (honored by arm AND disarm)
-  --ast-only             Arm/dedup-check ONLY the free structural (AST) pair
- -- the weekly semantic pair is left
+  --ast-only             Arm/dedup-check ONLY the free structural (AST) pair.
+                         The weekly semantic pair is left
                          absent/untouched and its backend credential is not
                          required. Re-arm without --ast-only later to add the
                          semantic pair back in (--force to replace).
   --with-publish         Also register the publish leg
-                         (HIMMEL-GraphPublish-Himmel, every 6h). Opt-in
-: arm leaves it out by default.
+                         (HIMMEL-GraphPublish-Himmel, every 6h). Opt-in:
+                         arm leaves it out by default.
   --publish-every-hours N  Publish leg interval in hours (1,2,3,4,6,8,12;
                          default 6). Cron only.
   --publish-semantic     With --with-publish: the publish leg also runs the
