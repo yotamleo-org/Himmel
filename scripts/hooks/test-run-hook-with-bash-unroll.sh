@@ -99,11 +99,21 @@ keep 'an escaped \$x' 'for x in a; do echo \$x; done'
 keep "a single-quoted '\$x'" "for x in a; do echo '\$x'; done"
 keep 'NAME reassigned in the body' 'for x in a; do x=b; cat $x; done'
 keep 'NAME used after the loop' 'for x in a; do cat $x; done; cat $x'
-keep 'IFS named anywhere' 'IFS=.; for x in a; do cat $x; done'
+keep 'IFS set before the loop' 'IFS=.; for x in a; do cat $x; done'
 keep 'a command over 8 KiB' "$(printf 'for x in a; do cat $x; # %09000d\ndone' 0)"
 keep 'an unrolled text over 8 KiB' "for x in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16; do cat \$x /$(printf '%0600d' 0); done"
 keep 'an item that re-reads as an assignment' 'for x in X=1; do $x ls; done'
 keep 'an item that re-reads as a keyword' 'for x in time; do $x ls; done'
+keep 'printf -v writes NAME by a computed name' "for x in a; do printf -v \"\$(printf '\\170')\" b; cat \$x; done"
+keep 'a command name outside the list' 'for x in a; do read -r y; cat $x; done'
+keep 'a command name that is not a literal' 'for x in a; do "$c" $x; done'
+keep 'declare a computed name' 'for x in a; do declare "$(cat f)=b"; cat $x; done'
+keep 'arithmetic assigns a computed name' 'for x in a; do echo $(( $(cat f)=1 )); cat $x; done'
+keep 'a subscript on another name' 'for x in a; do echo ${y[$(cat f)=1]}; cat $x; done'
+keep 'a zsh subscript on another name' 'for x in a; do echo $y[$(cat f)=1]; cat $x; done'
+keep 'an assignment prefix' 'for x in a; do y=1 cat $x; done'
+keep 'a function defined before the loop' 'cat() { :; }; for x in a; do cat $x; done'
+keep 'an eval before the loop' 'eval "$(cat f)"; for x in a; do cat $x; done'
 keep 'shfmt calls past the unroll budget' 'for x in a; do cat $x; done' PATH="$SANDBOX/slow:$PATH"
 
 echo "== chain: the real Bash PreToolUse members =="
@@ -149,6 +159,8 @@ denied 'RED 10: NAME used after the loop' 'for x in foo; do :; done; ls ~/.local
 denied 'RED 11: a piped loop' 'for x in foo; do ls ~/.local/state/himmel/$x; done | cat'
 denied 'RED 12: a redirected loop' 'for x in foo; do ls ~/.local/state/himmel/$x; done > /dev/null'
 denied 'RED 13: 17 items' 'for x in a1 a2 a3 a4 a5 a6 a7 a8 a9 a10 a11 a12 a13 a14 a15 a16 bus; do ls ~/.local/state/himmel/$x; done'
+denied 'RED 14: printf -v sets NAME by a computed name' "for x in foo; do printf -v \"\$(printf '\\170')\" bus; ls ~/.local/state/himmel/\$x; done"
+denied 'RED 15: a function named cat sets NAME' "cat() { printf -v \"\$(printf '\\170')\" bus; }; for x in foo; do cat; ls ~/.local/state/himmel/\$x; done"
 
 echo
 if [ "$FAILED" -eq 0 ]; then

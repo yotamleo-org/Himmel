@@ -939,8 +939,9 @@ function finishChain(st, sessionId) {
 // byte-for-byte as it came: the unroller only ever adds allows for loops it
 // can prove equivalent, it never removes a deny.
 //
-// ponytail: equivalence is argued for bash and zsh with the default IFS and no
-// global aliases; a session that exported IFS, or a zsh with `alias -g`, sits
+// ponytail: equivalence is argued for bash and zsh with the default IFS, no
+// global aliases and no session function shadowing a name in UNROLL_COMMANDS;
+// a session that exported IFS, a zsh with `alias -g`, or a `cat` function sits
 // outside the proof. The upgrade path is unrolling inside the shell itself,
 // which the guards cannot do statically.
 const UNROLL_MAX_ITEMS = 16;
@@ -959,11 +960,18 @@ const UNROLL_SPECIAL_NAMES = new Set([
   'mailpath', 'manpath', 'module_path', 'options', 'parameters', 'path', 'pipestatus', 'prompt',
   'psvar', 'signals', 'status', 'watch',
 ]);
-// Node types a `$NAME` may sit inside. A reference under anything else (an
-// arithmetic or `[[ ]]` test, a case pattern, a function body, another
-// parameter expansion, a nested loop) is not unrolled.
-const UNROLL_CONTEXT_TYPES = new Set([
-  'CallExpr', 'DblQuoted', 'BinaryCmd', 'Block', 'Subshell', 'IfClause', 'CmdSubst', 'DeclClause', 'ProcSubst',
+// A body may hold only these node types. Anything else (arithmetic, `[[ ]]`,
+// declare, case, a function, a nested loop) can set a variable by a computed
+// name, so the loop is not unrolled.
+const UNROLL_BODY_TYPES = new Set([
+  'CallExpr', 'BinaryCmd', 'Block', 'Subshell', 'IfClause', 'CmdSubst', 'ProcSubst',
+  'Word', 'Lit', 'SglQuoted', 'DblQuoted', 'ParamExp',
+]);
+// The commands a body may run: programs, or builtins with no way to set a
+// shell variable or run text as code (no printf -v, read, eval, source).
+const UNROLL_COMMANDS = new Set([
+  'cat', 'cmp', 'cut', 'diff', 'du', 'echo', 'file', 'git', 'grep', 'head', 'jq', 'ls', 'readlink',
+  'realpath', 'rg', 'sort', 'stat', 'tail', 'uniq', 'wc',
 ]);
 const PARAM_EXP_OPERATORS = ['Excl', 'Length', 'Width', 'Index', 'Slice', 'Repl', 'Names', 'Exp'];
 
@@ -994,22 +1002,33 @@ function isNameRef(node, name) {
   return Boolean(node) && node.Type === 'ParamExp' && Boolean(node.Param) && node.Param.Value === name;
 }
 
-// Every `$NAME` in the loop body, or null when one is not a plain reference in
-// an allowed place, or the body holds a heredoc.
+function isCommandName(word) {
+  const parts = (word && word.Parts) || [];
+  return parts.length === 1 && parts[0].Type === 'Lit' && UNROLL_COMMANDS.has(parts[0].Value);
+}
+
+// Every `$NAME` in the loop body, or null when the body holds anything that
+// could set NAME unseen, a heredoc, or a reference that is not plain. With a
+// null NAME it only checks the statements.
 function bodyRefs(body, name, src) {
   const refs = [];
   let ok = true;
-  const visit = (node, allowed, quoted, siblings) => {
+  const visit = (node, quoted, siblings) => {
     if (!ok || !node || typeof node !== 'object') return;
     if (Array.isArray(node)) {
-      for (const child of node) visit(child, allowed, quoted, siblings);
+      for (const child of node) visit(child, quoted, siblings);
       return;
     }
-    if (isNameRef(node, name)) {
-      if (!allowed || PARAM_EXP_OPERATORS.some((key) => node[key])) { ok = false; return; }
+    if (node.Hdoc || (node.Type && !UNROLL_BODY_TYPES.has(node.Type))) { ok = false; return; }
+    if (node.Type === 'CallExpr' && ((node.Assigns && node.Assigns.length) || !isCommandName((node.Args || [])[0]))) { ok = false; return; }
+    if (node.Type === 'ParamExp') {
+      // An operator can assign (`${y:=v}`) or read arithmetic (a subscript).
+      if (PARAM_EXP_OPERATORS.some((key) => node[key])) { ok = false; return; }
       // zsh reads `$d[1]` and `$d:h` as a subscript and a modifier, and an
       // unquoted `$d{a,b}` brace-expands into other names first.
       if (node.Short && '[:({'.includes(src.subarray(node.End.Offset, node.End.Offset + 1).toString('utf8'))) { ok = false; return; }
+    }
+    if (isNameRef(node, name)) {
       // Unquoted, a brace or an open tilde prefix (`~$d`, no `/` yet) next to
       // the reference expands before the variable in bash and after it in zsh,
       // so the literal can read either way.
@@ -1017,18 +1036,15 @@ function bodyRefs(body, name, src) {
       refs.push(node);
       return;
     }
-    if (node.Hdoc) { ok = false; return; }
-    let inner = allowed;
-    if (node.Type && !UNROLL_CONTEXT_TYPES.has(node.Type) && node.Type !== 'Lit') inner = false;
     for (const [key, value] of Object.entries(node)) {
       if (!value || typeof value !== 'object') continue;
       // A command substitution's words are not in the outer quotes.
-      if (node.Type === 'CmdSubst') visit(value, inner, false, siblings);
-      else if (key === 'Parts') visit(value, inner, quoted || node.Type === 'DblQuoted', value);
-      else visit(value, inner, quoted, siblings);
+      if (node.Type === 'CmdSubst') visit(value, false, siblings);
+      else if (key === 'Parts') visit(value, quoted || node.Type === 'DblQuoted', value);
+      else visit(value, quoted, siblings);
     }
   };
-  visit(body, true, false, []);
+  visit(body, false, []);
   return ok ? refs : null;
 }
 
@@ -1054,7 +1070,6 @@ function unrollableLoop(stmt, src) {
   }
   const body = loop.Do;
   const bodyText = src.subarray(loop.DoPos.Offset + 2, loop.DonePos.Offset).toString('utf8');
-  if (countWord(bodyText, 'break') || countWord(bodyText, 'continue')) return null;
   const refs = bodyRefs(body, name, src);
   // Every NAME in the body is one of those references: none in single quotes,
   // escaped, assigned, read, exported, unset or looped over again.
@@ -1108,8 +1123,6 @@ function normalizeTree(node) {
 function unrollCommand(command) {
   if (typeof command !== 'string' || Buffer.byteLength(command) > UNROLL_MAX_BYTES) return null;
   if (countWord(command, 'for') === 0 || countWord(command, 'done') === 0) return null;
-  // A changed IFS splits an unquoted `$NAME` differently from the quoted word.
-  if (countWord(command, 'IFS') !== 0) return null;
   const deadline = Date.now() + UNROLL_BUDGET_MS;
   const tree = parseShell(command, deadline);
   if (!tree || !Array.isArray(tree.Stmts)) return null;
@@ -1117,9 +1130,14 @@ function unrollCommand(command) {
   const pieces = [];
   const expected = [];
   let cursor = 0;
+  // A statement before a loop could define a function named like a command
+  // the body runs, or change IFS, so a loop unrolls only after statements that
+  // pass the same checks as a body.
+  let prefixChecked = true;
   for (const stmt of tree.Stmts) {
-    const loop = unrollableLoop(stmt, src);
+    const loop = prefixChecked ? unrollableLoop(stmt, src) : null;
     if (!loop) {
+      if (prefixChecked && bodyRefs([stmt], null, src) === null) prefixChecked = false;
       expected.push(stmt);
       continue;
     }
