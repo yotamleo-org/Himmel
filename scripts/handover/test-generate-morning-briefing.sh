@@ -601,7 +601,7 @@ assert_contains "adopted: merged PR row"       "#7"                 "$file"
 assert_contains "adopted: own commit listed"   "feat: second widget" "$file"
 assert_contains "adopted: open PR counted"     "**1** open PR(s)"   "$file"
 rm -rf "$HIMMEL_FAILURE_REVIEW_DIR"
-assert_contains "adopted: no tracker said so"  "No tracker configured" "$file"
+assert_contains "adopted: no tracker said so"  "No Jira tracker configured" "$file"
 for bad in "jira unavailable" "HIMMEL" "/pr-check" "/clean" "Prompt cache" "Failure review"; do
     # An absent report must not pass the absence checks.
     if ! grepq "$file" -F -- "Morning Report" || grepq "$file" -F -- "$bad"; then fail "adopted: no '$bad' in the report"; else pass "adopted: no '$bad' in the report"; fi
@@ -614,7 +614,7 @@ OUT_ADT="$TMP_ROOT/adopted-tracker.md"
     bash scripts/handover/generate-morning-briefing.sh --out "$OUT_ADT" >/dev/null 2>&1 ) || true
 file=$(cat "$OUT_ADT" 2>/dev/null || true)
 assert_contains "adopted+tracker: backlog row" "ACME-3" "$file"
-if ! grepq "$file" -F -- "Morning Report" || grepq "$file" -F -- "No tracker configured"; then fail "adopted+tracker: not called trackerless"; else pass "adopted+tracker: not called trackerless"; fi
+if ! grepq "$file" -F -- "Morning Report" || grepq "$file" -F -- "No Jira tracker configured"; then fail "adopted+tracker: not called trackerless"; else pass "adopted+tracker: not called trackerless"; fi
 
 # Summary --------------------------------------------------------------
 

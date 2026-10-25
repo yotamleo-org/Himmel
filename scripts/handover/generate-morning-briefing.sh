@@ -212,7 +212,7 @@ fi
 # FAILED" so a jira/gh outage doesn't render as a confident all-clear (a 0 must
 # read as "unknown", not "none"). jira_ok starts 0 when the CLI isn't even
 # resolved; both flip to 0 on a real query failure below. A project with no
-# tracker leaves jira_ok 0 too, but says "No tracker configured" instead.
+# tracker leaves jira_ok 0 too, but says "No Jira tracker configured" instead.
 jira_ok=1
 [ -z "$JIRA_CMD" ] && jira_ok=0
 pr_map_ok=1
@@ -436,7 +436,7 @@ EOF
     # every older section follows unchanged. A field with no input says so.
     printf '## ✅ What shipped\n\n'
     if [ "$jira_ok" -eq 1 ]; then done_shown="**$done_count**"
-    elif [ "$no_tracker" -eq 1 ]; then done_shown="not available (no tracker)"
+    elif [ "$no_tracker" -eq 1 ]; then done_shown="not available (no Jira tracker)"
     else done_shown="not available (jira unavailable)"; fi
     if [ "$pr_count_ok" -eq 1 ] && [ "$pr_count" != "unknown" ]; then pr_shown="**$pr_count**"; else pr_shown="not available"; fi
     printf '%s PRs merged to main · **%s** commits · %s Done (cross-ref'"'"'d). Detail: Completed, below.\n\n' \
@@ -465,7 +465,7 @@ EOF
     if [ "$jira_ok" -eq 1 ]; then
         printf -- '- **%s** In-Progress ticket(s) in flight. Detail: In-flight WIP, below\n' "$inprog_count"
     elif [ "$no_tracker" -eq 1 ]; then
-        printf -- '- In-Progress tickets: not available (no tracker)\n'
+        printf -- '- In-Progress tickets: not available (no Jira tracker)\n'
     else
         printf -- '- In-Progress tickets: not available (jira unavailable)\n'
     fi
@@ -489,7 +489,7 @@ EOF
     if [ -n "$done_block" ]; then
         printf '%s\n' "$done_block"
     elif [ "$no_tracker" -eq 1 ]; then
-        printf '_No tracker configured._\n'
+        printf '_No Jira tracker configured._\n'
     elif [ ${#ticket_keys[@]} -eq 0 ]; then
         printf '_No ticket keys detected in commit messages._\n'
     else
@@ -523,7 +523,7 @@ EOF
 $wip_keys
 EOF_WIP
     elif [ "$no_tracker" -eq 1 ]; then
-        printf '_No tracker configured._\n'
+        printf '_No Jira tracker configured._\n'
     else
         printf '_No In-Progress tickets._\n'
     fi
@@ -560,7 +560,7 @@ EOF_WIP
             printf '_…and %s more (raise --backlog-limit to see all)._\n' "$((backlog_total - BACKLOG_LIMIT))"
         fi
     elif [ "$no_tracker" -eq 1 ]; then
-        printf '_No tracker configured._\n'
+        printf '_No Jira tracker configured._\n'
     else
         printf '_No To-Do tickets (or jira unavailable)._\n'
     fi

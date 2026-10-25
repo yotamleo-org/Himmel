@@ -16,7 +16,7 @@ trailing 14-day-median baseline and a 3-day below-baseline flag; stale or missin
 metrics print `cache: unmonitored`.
 
 It reads the current project's git, GitHub and tracker, so it works the same in an
-adopted project. With no tracker configured (`JIRA_PROJECT_KEY` unset) the ticket
+adopted project. With no Jira tracker configured (`JIRA_PROJECT_KEY` unset) the ticket
 sections say so and the PR, commit and worktree sections still print; sections that
 need himmel-only tooling are left out where that tooling is not installed.
 
