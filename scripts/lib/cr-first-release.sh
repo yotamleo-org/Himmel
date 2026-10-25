@@ -419,11 +419,17 @@ _crf_main() {
         [ -n "$nwo" ] || nwo=$(_cmg_local_nwo 2>/dev/null || true)
         case "$nwo" in */*/*) nwo=${nwo#*/} ;; esac
         cr_first_switch_on "$nwo" || return 0
-        # `gh pr view --repo X` with no selector is an error from any directory, so name the caller's branch.
-        sel=${pr:-$(git symbolic-ref --short -q HEAD 2>/dev/null || true)}
-        [ -n "$sel" ] || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
-        info=$(gh pr view "$sel" ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) \
-            || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
+        # `gh pr view --repo X` with no selector is an error from any directory, and `gh pr view <name>`
+        # reads a numeric name as a PR number, so the caller's branch goes through a head-branch list.
+        if [ -n "$pr" ]; then
+            info=$(gh pr view "$pr" ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
+        else
+            sel=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+            info=""
+            [ -z "$sel" ] || info=$(gh pr list --head "$sel" --state open ${nwo:+--repo "$nwo"} --json number,headRefOid \
+                -q '.[0] | select(. != null) | "\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
+        fi
+        [ -n "$info" ] || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
         [ -n "$pr" ] || pr=${info%% *}
         [ -n "$head" ] || head=${info#* }
     fi
