@@ -11,6 +11,8 @@
 #            cleans it.
 #   ALLOW    file<TAB>substring: one line a page keeps on purpose (a guard that
 #            blocks `schtasks`, the one archive pointer, a measured eval row).
+#   CURRENT_ONLY  pages that say what exists now and carry no release history:
+#            no PR references, no "shipped" status, no Phase milestones.
 #
 # Platform guard: bash 3.2+, grep.
 # Usage: bash scripts/docs/test-docs-current-version.sh
@@ -101,6 +103,27 @@ done
 
 for page in $PENDING; do
   in_list "$page" "$pages" || bad "PENDING names $page, which is not a site page"
+done
+
+HISTORY='\(#[0-9]+|\bshipped\b|\bPhase [0-9]\b|[Nn]ame history'
+CURRENT_ONLY='
+jarvis-subsystems.md
+'
+
+for sample in 'Status: shipped' '(#873/#877)' 'until Phase 2' 'Name history.'; do
+  if ! grep -q -E "$HISTORY" <<< "$sample"; then
+    bad "history pattern misses its own sample '$sample'"
+  fi
+done
+
+for page in $CURRENT_ONLY; do
+  found=$(grep -n -E "$HISTORY" "$ROOT/docs/$page")
+  if [ -n "$found" ]; then
+    printf '%s\n' "$found" | sed "s|^|docs/$page:|"
+    bad "docs/$page carries release history (listed above)"
+  else
+    ok "docs/$page carries no release history"
+  fi
 done
 
 echo "# pass=$pass fail=$fail"
