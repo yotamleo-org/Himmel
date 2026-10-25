@@ -1,0 +1,17 @@
+{
+  "id": "real-himmel-5296-2510",
+  "ticket": "HIMMEL-5296",
+  "pr": 2510,
+  "merge_sha": "42e68477575d34febdaa07337f188dd245d04b17",
+  "base_sha": "507f4eb97df960219e1b65a9bfc1bd0519d036a0",
+  "set": "capability",
+  "source": "proof-first",
+  "why_hard": "2 code file(s), 59 changed lines; the hidden scripts/test-claude-codex.sh must go from failing at the base to passing, checked by 1 named check(s)",
+  "tests": [
+    "scripts/test-claude-codex.sh"
+  ],
+  "fixtures": [],
+  "scope": [
+    "scripts/"
+  ]
+}

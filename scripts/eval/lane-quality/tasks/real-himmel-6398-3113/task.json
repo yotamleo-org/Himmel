@@ -1,0 +1,17 @@
+{
+  "id": "real-himmel-6398-3113",
+  "ticket": "HIMMEL-6398",
+  "pr": 3113,
+  "merge_sha": "120e535710a7f6686de783ebb8c02f5bd4a254b6",
+  "base_sha": "2990e7fe483cfaf4f67c54d43e19d61f2ee3c4a4",
+  "set": "capability",
+  "source": "bug",
+  "why_hard": "1 code file(s), 51 changed lines; the hidden scripts/handover/console-kit/test-gen-briefs.sh must go from failing at the base to passing, checked by 4 named check(s)",
+  "tests": [
+    "scripts/handover/console-kit/test-gen-briefs.sh"
+  ],
+  "fixtures": [],
+  "scope": [
+    "scripts/handover/console-kit/"
+  ]
+}

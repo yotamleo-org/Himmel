@@ -1,3 +1,5 @@
 # Windows is dropped from himmel: keep it out of the knowledge graph.
 archive/windows/
 *.ps1
+# Hidden acceptance tests of lane-quality real tasks: answers stay out of every index.
+scripts/eval/lane-quality/tasks/*/hidden/
