@@ -791,7 +791,8 @@ budget_file="$inbox.wait.budget"
 budget_cmd="${CHIEF_WAIT_BUDGET:-$HERE/console-budget.sh}"
 budget_timeout="${CHIEF_WAIT_BUDGET_TIMEOUT:-30}"
 budget_repeat_min="${CHIEF_WAIT_BUDGET_REPEAT_MIN:-30}"
-case "$budget_repeat_min" in ''|*[!0-9]*|0) budget_repeat_min=30 ;; esac
+case "$budget_repeat_min" in ''|*[!0-9]*) budget_repeat_min=30 ;; *) budget_repeat_min=$((10#$budget_repeat_min)) ;; esac
+[ "$budget_repeat_min" -gt 0 ] || budget_repeat_min=30
 budget_transcript=""; budget_resolved=""
 budget_wake() {
     local out rc title kind=""
@@ -806,7 +807,7 @@ budget_wake() {
     out="$(CONTEXT_FILL_TRANSCRIPT="$budget_transcript" timeout -k 2 "$budget_timeout" bash "$budget_cmd" --title "$title" 2>/dev/null 9>&-)"; rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the exit code below decides, only exit 3 reads the output
     if [ "$rc" -ne 3 ]; then [ "$rc" -ne 0 ] || rm -f "$budget_file"; return 1; fi
     if [ -e "$budget_file" ]; then
-        [ "$(( $(date +%s) - $(stat -c %Y "$budget_file" 2>/dev/null || echo 0) ))" -ge $(( 10#$budget_repeat_min * 60 )) ] || return 1  # gnu-ok: Linux-only kit; swallow-ok: an unreadable marker counts as old, so the wake repeats
+        [ "$(( $(date +%s) - $(stat -c %Y "$budget_file" 2>/dev/null || echo 0) ))" -ge $(( budget_repeat_min * 60 )) ] || return 1  # gnu-ok: Linux-only kit; swallow-ok: an unreadable marker counts as old, so the wake repeats
         kind="repeat "
     fi
     : > "$budget_file" 2>/dev/null

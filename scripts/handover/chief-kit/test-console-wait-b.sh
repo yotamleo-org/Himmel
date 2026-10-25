@@ -755,6 +755,10 @@ reset_stub; I="$(new_inbox hr4)"
 CHIEF_WAIT_BUDGET_REPEAT_MIN=08 start "$I" "$WORK/hr4.out" --doc "$WORK/hr4/consoles/$HC.md" --legs "N1.md"
 wait_exit "$WPID"
 check "(hr4) a leading-zero CHIEF_WAIT_BUDGET_REPEAT_MIN reads as decimal" "WAKE handover-budget repeat budget turns=60 cache_read=9.0M fill=50% verdict=HANDOVER" "$(head -n1 "$WORK/hr4.out")"
+reset_stub; I="$(new_inbox hr5)"
+: > "$I.wait.budget"; touch -d '5 minutes ago' "$I.wait.budget"  # gnu-ok: Linux-only kit
+CHIEF_WAIT_BUDGET_REPEAT_MIN=00 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hr5/consoles/$HC.md" --legs "N1.md" > "$WORK/hr5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hr5) a zero CHIEF_WAIT_BUDGET_REPEAT_MIN falls back to 30, so a fresh marker stays quiet" "124:" "$rc:$(cat "$WORK/hr5.out")"
 printf '#!/usr/bin/env bash\ncase "$*" in *--resolve*) exit 2 ;; esac\nexit 0\n' > "$STUB/budget.nores.sh"
 reset_stub; I="$(new_inbox hf1)"
 CHIEF_WAIT_BUDGET="$STUB/budget.nores.sh" timeout 3 bash "$WAIT" "$I" --doc "$WORK/hf1/consoles/$HC.md" --legs "N1.md" > "$WORK/hf1.out" 2> "$WORK/hf1.err"; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
