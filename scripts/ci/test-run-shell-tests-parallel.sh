@@ -23,6 +23,16 @@
 #  P13. With no SUITE_JOBS, GitHub Actions uses the CPU count (2 or 4)
 #       capped at 4, and a runner inside a suite (HIMMEL_TEST_FIXTURE=1)
 #       stays serial.
+#  P14. A deny-list whose last line has no final newline still keeps that
+#       entry's suite alone.
+#  P15. A TERM that reaches a lane before its first suite signals no
+#       process group id the lane inherited.
+#  P16. A lane result file without its completion marker reads as no result
+#       (rc 2), however much of it was written.
+#  P17. A lane worker killed with SIGKILL leaves no running suite or
+#       watchdog group and no per-suite temp root or attempt log.
+#  P18. The bash 3.2 polling fallback (SUITE_LANE_WAIT=poll) still reaps
+#       finished lanes and drains for a deny-listed suite.
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.
@@ -220,10 +230,10 @@ if sb=$(mk_sandbox); then
   mk_suite "$sb" test-a.sh 40
   mk_suite "$sb" test-b.sh 40
   mk_suite "$sb" test-c.sh 5
-  out=$(SUITE_JOBS=2 SUITE_RUN_BUDGET=2 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
-  if [ "$rc" -ne 0 ] && [ -z "$(peak_of "$sb" test-c.sh)" ] \
+  out=$(SUITE_JOBS=2 SUITE_RUN_BUDGET=2 SUITE_ROTATE_STATE="$sb/rotate.cursor" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && [ -z "$(peak_of "$sb" test-c.sh)" ] && [ -s "$sb/rotate.cursor" ] \
      && printf '%s\n' "$out" | sed -n '/run budget of 2s expired/,$p' | grep -qF "$sb/scripts/test-c.sh"; then
-    pass "P7: test-c.sh never started and is named as unrun by the budget"
+    pass "P7: test-c.sh never started and is named as unrun by the budget, and the cursor went to P7's own path"
   else
     fail "P7: expected a non-zero rc and test-c.sh unrun by the budget, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
   fi
@@ -392,6 +402,176 @@ if sb=$(mk_sandbox); then
   rm -rf "$sb"
 else
   fail "P13: mktemp failed"
+fi
+
+echo "== P14: a deny-list whose last line has no final newline still keeps its suite alone =="
+if sb=$(mk_sandbox); then
+  # The committed deny-list with its final newline removed.
+  printf '%s' "$(cat "$RST_FIXTURE_DIR/parallel-deny.txt")" > "$sb/deny.txt"
+  last=$(tail -n 1 "$sb/deny.txt"); glob=${last%%[[:space:]]*}; rel=${glob#\*/}
+  case "$glob" in
+    \*/scripts/*)
+      mkdir -p "$sb/$(dirname "$rel")"
+      sed "s|@SB@|$sb|g" <<'SHEOF' > "$sb/$rel"
+#!/usr/bin/env bash
+: > "@SB@/run.last-entry-alone.sh"
+_c=0; for _f in "@SB@"/run.*; do [ -e "$_f" ] && _c=$((_c + 1)); done
+printf '%s %s\n' last-entry-alone.sh "$_c" >> "@SB@/peak.log"
+sleep 1.5
+rm -f "@SB@/run.last-entry-alone.sh"
+exit 0
+SHEOF
+      chmod +x "$sb/$rel"
+      mk_suite "$sb" test-a.sh 15
+      mk_suite "$sb" test-b.sh 15
+      mk_suite "$sb" test-c.sh 15
+      out=$(SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+      if [ "$rc" -eq 0 ] && [ "$(peak_of "$sb" last-entry-alone.sh)" = 1 ] && [ ! -s "$sb/beside-alone.log" ]; then
+        pass "P14: the suite on the list's unterminated last line ($glob) ran with nothing beside it"
+      else
+        fail "P14: expected rc 0 and nothing started beside $glob, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log") beside-alone.log=$(tr '\n' ' ' < "$sb/beside-alone.log" 2>/dev/null); out: $out"
+      fi ;;
+    *) fail "P14: the deny-list's last line is not a */scripts/ entry ('$last'); point this row at an entry it can run" ;;
+  esac
+  rm -rf "$sb"
+else
+  fail "P14: mktemp failed"
+fi
+
+echo "== P15: a TERM before a lane's first suite signals no inherited group id =="
+if sb=$(mk_sandbox); then
+  mk_suite "$sb" test-a.sh 10
+  mk_suite "$sb" test-b.sh 10
+  # A group the runner must leave alone: its id arrives in the lane's environment.
+  set -m; sleep 60 & sentinel=$!; set +m
+  # A mktemp that sends the first lane asking for one a TERM, then makes the file:
+  # the lane's first command is its attempt log, so the TERM lands before any suite.
+  mkdir -p "$sb/bin"
+  cat > "$sb/bin/mktemp" <<'SHEOF'
+#!/usr/bin/env bash
+args=("$@")
+# Only the lane's own attempt-log call: no arguments, and a lane's stderr is a
+# file where the main shell's is a pipe.
+if [ ! -e "$P15_FIRED" ] && [ "${#args[@]}" -eq 0 ] && [ -f /dev/stderr ]; then
+  p=$PPID; chain=""
+  while [ -n "$p" ] && [ "$p" -gt 1 ]; do
+    case "$(ps -o args= -p "$p" 2>/dev/null)" in
+      *run-shell-tests.sh*) chain="$chain $p" ;;
+      *) break ;;
+    esac
+    p=$(ps -o ppid= -p "$p" 2>/dev/null); p=${p//[[:space:]]/}
+  done
+  # chain: the runner's processes, nearest first; the last is the main shell, the one before it a lane.
+  set -- $chain
+  if [ "$#" -ge 2 ]; then
+    : > "$P15_FIRED"
+    eval "lane=\${$(($# - 1))}"
+    kill -TERM "$lane"
+  fi
+fi
+PATH=${PATH#"$P15_STUB_DIR":}
+exec mktemp "${args[@]}"
+SHEOF
+  chmod +x "$sb/bin/mktemp"
+  out=$(P15_FIRED="$sb/fired" P15_STUB_DIR="$sb/bin" PATH="$sb/bin:$PATH" suite_pid="$sentinel" watch_pid="$sentinel" SUITE_JOBS=2 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ -e "$sb/fired" ] && [ "$rc" -eq 2 ] && kill -0 "$sentinel" 2>/dev/null; then
+    pass "P15: the TERMed lane left the group id it inherited alone"
+  else
+    fail "P15: expected the lane TERMed (fired=$([ -e "$sb/fired" ] && echo yes || echo no)), rc 2 and the inherited group (pid $sentinel) still running, got rc=$rc alive=$(kill -0 "$sentinel" 2>/dev/null && echo yes || echo no); out: $out"
+  fi
+  kill "$sentinel" 2>/dev/null
+  rm -rf "$sb"
+else
+  fail "P15: mktemp failed"
+fi
+
+echo "== P16: a lane result file without its completion marker reads as no result =="
+if sb=$(mk_sandbox); then
+  # _lane_reap on its own, with the account and stop steps stubbed: a lane killed
+  # between two writes leaves the first fields of its result file and no more.
+  cat > "$sb/reap-harness.sh" <<'SHEOF'
+#!/usr/bin/env bash
+lane_out=() lane_pid=()
+suite=s relpath=r suite_key=k mf_rel=m
+_suite_account() { echo ACCOUNTED; }
+_lanes_stop() { echo STOPPED; }
+eval "$(sed -n '/^_lane_reap() {/,/^}/p' "$1")"
+d=$(mktemp -d "$2/lane.XXXXXX")
+printf 'rc=0\ncapped=0\n' > "$d/res"
+: > "$d/out"; : > "$d/err"
+lane_out[0]=$d
+sleep 0 & lane_pid[0]=$!
+_lane_reap 0
+echo "REAPED-AS-RESULT"
+SHEOF
+  out=$(bash "$sb/reap-harness.sh" "$RUNNER" "$sb" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ] && grepq "$out" -F 'a parallel suite worker ended without a result — refusing to run more suites' \
+     && grepq "$out" -F STOPPED && ! grepq "$out" -F ACCOUNTED; then
+    pass "P16: a partial result file stopped the run with rc 2 and was not accounted"
+  else
+    fail "P16: expected rc 2, the without-a-result refusal, STOPPED and no ACCOUNTED for a result file with no completion marker, got rc=$rc; out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P16: mktemp failed"
+fi
+
+echo "== P17: a SIGKILLed lane worker leaves no suite, watchdog or temp path behind =="
+if sb=$(mk_sandbox); then
+  mkdir -p "$sb/tmp"
+  # The suite leaves a child in its own group, records its temp root, then kills
+  # the lane (its grandparent) the way P10 does.
+  sed "s|@SB@|$sb|g" <<'SHEOF' > "$sb/scripts/test-a-orphan.sh"
+#!/usr/bin/env bash
+printf '%s\n' "$TMPDIR" > "@SB@/suite-tmp.path"
+sleep 4301 &
+printf '%s\n' "$!" > "@SB@/orphan.pid"
+sleep 1
+gp=$(ps -o ppid= -p "$PPID" 2>/dev/null); gp=${gp//[[:space:]]/}
+case "$(ps -o args= -p "$gp" 2>/dev/null)" in *run-shell-tests.sh*) kill -KILL "$gp" ;; esac
+exit 0
+SHEOF
+  chmod +x "$sb/scripts/test-a-orphan.sh"
+  # The watchdog's sleep carries the cap, so SUITE_TIMEOUT=4302 names it.
+  out=$(TMPDIR="$sb/tmp" SUITE_JOBS=2 SUITE_TIMEOUT=4302 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  sleep 1
+  orphan=$(cat "$sb/orphan.pid" 2>/dev/null); stmp=$(cat "$sb/suite-tmp.path" 2>/dev/null)
+  leaks=""
+  [ -n "$orphan" ] && ! kill -0 "$orphan" 2>/dev/null || leaks="$leaks suite-group-child(${orphan:-none})"
+  ! pgrep -f 'sleep 4302' >/dev/null 2>&1 || leaks="$leaks watchdog-sleep"
+  [ -n "$stmp" ] && [ ! -e "$stmp" ] || leaks="$leaks suite-tmp(${stmp:-none})"
+  # The attempt log is the bare mktemp's tmp.XXXXXXXXXX and its .rc.
+  for _f in "$sb"/tmp/tmp.*; do [ ! -e "$_f" ] || leaks="$leaks attempt-log(${_f##*/})"; done
+  if [ "$rc" -eq 2 ] && [ -z "$leaks" ]; then
+    pass "P17: rc 2 and the dead lane's suite group, watchdog group, temp root and attempt log are gone"
+  else
+    fail "P17: expected rc 2 and nothing left behind, got rc=$rc leaks:${leaks:- none}; out: $out"
+  fi
+  [ -z "$orphan" ] || kill "$orphan" 2>/dev/null
+  pkill -f 'sleep 4302' 2>/dev/null
+  rm -rf "$sb" "${stmp:-/nonexistent}"
+else
+  fail "P17: mktemp failed"
+fi
+
+echo "== P18: the bash 3.2 polling fallback still reaps and drains =="
+if sb=$(mk_sandbox); then
+  mk_suite "$sb" test-a.sh 15
+  mk_suite "$sb" test-b.sh 15
+  mk_suite "$sb" test-c-alone.sh 10
+  mk_suite "$sb" test-d.sh 15
+  mk_suite "$sb" test-e.sh 15
+  printf '*/scripts/test-c-alone.sh  fixture: must run alone\n' > "$sb/deny.txt"
+  out=$(SUITE_JOBS=3 SUITE_LANE_WAIT=poll SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(peak_of "$sb" test-c-alone.sh)" = 1 ] && [ ! -s "$sb/beside-alone.log" ] \
+     && [ "$(wc -l < "$sb/peak.log" | tr -d ' ')" = 5 ] && [ "$(max_peak "$sb")" -ge 2 ]; then
+    pass "P18: all five suites ran, two or more at once, and test-c-alone.sh ran alone"
+  else
+    fail "P18: expected rc 0, five suites, an overlap and test-c-alone.sh alone, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log") beside-alone.log=$(tr '\n' ' ' < "$sb/beside-alone.log" 2>/dev/null); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P18: mktemp failed"
 fi
 
 rst_tally
