@@ -429,6 +429,19 @@ else
     bad "(x) COLUMNS=20 in the hook env -> census read native=$cols_n against native=$base_n without it"
 fi
 
+# --- (y) a chief-named doc gets the same verdict as a console-named one -----
+CHIEF_NAMED_DOC="$HANDOVER_DIR/FIXTURE-nextleg-roadmap-chief.md"
+printf 'fixture chief doc\n' > "$CHIEF_NAMED_DOC"
+chief_session="test-session-himmel-7505"
+chief_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="$chief_session" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$CHIEF_NAMED_DOC")" \
+    || { echo "setup: could not acquire the fixture chief lock" >&2; exit 1; }
+# shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
+chief_token="$(printf '%s\n' "$chief_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+out="$(run_guard "$(printf '{"session_id":"%s","stop_hook_active":false,"hook_event_name":"Stop"}' "$chief_session")")"
+if is_block "$out"; then ok "(y) chief-named doc, lock held, no legs -> block like a console"; else bad "(y) chief-named doc -> expected block, got: $out"; fi
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$CHIEF_NAMED_DOC" "$chief_token" >/dev/null 2>&1
+rm -f "$CHIEF_NAMED_DOC"
+
 echo
 printf '%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]

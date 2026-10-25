@@ -7,7 +7,7 @@ are read.
 
   handover-cost.py [--dir D] [--name-re RE] [--since ISO8601] [--legs-after ISO8601]
 
-Consoles are the sessions whose `agent-name` matches --name-re (default -roadmap-console$),
+Consoles are the sessions whose `agent-name` matches --name-re (default -roadmap-(console|chief)$),
 ordered by first record; each consecutive pair is one handover P -> S. A turn is a de-duplicated
 assistant message id. Price table (input-equivalent tokens, mirrors scripts/lanes/lib/burn-weights.sh,
 same WORKER_SESSION_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, output 5.
@@ -181,7 +181,7 @@ def handover(p, s, legs, legs_after):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dir", default=DEFAULT_DIR)
-    ap.add_argument("--name-re", type=regex_arg, default=r"-roadmap-console$")
+    ap.add_argument("--name-re", type=regex_arg, default=r"-roadmap-(console|chief)$")
     ap.add_argument("--since", type=iso_arg)
     ap.add_argument("--legs-after", type=iso_arg)
     a = ap.parse_args(argv)

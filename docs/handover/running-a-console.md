@@ -49,17 +49,20 @@ decisions you cannot pre-write, or will outlive one context window.
 
 `new` resolves your handover root through the shared resolver (`HANDOVER_DIR`,
 else `<repo>/handovers`) and your bucket the same way the handover skill does,
-then writes `<root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-console.md` from
+then writes `<root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-chief.md` from
 [`chief-template.md`](chief-template.md). A second `new` on the same day
-writes `…B-console.md`; it never overwrites.
+writes `…B-chief.md`; it never overwrites.
 
-**Keep the `-console` suffix in a scoped name:** `--name roadmap-console`, not
+**Keep the `-chief` suffix in a scoped name:** `--name roadmap-chief`, not
 `--name roadmap`. The suffix is load-bearing. `console-compact-reinject.sh`
 re-injects the live state after a compaction only for a session whose
-launch-time `-n` name ends in `-console`, and `/rename` does not change that
-name. `next` derives the successor's name from its `--doc`, so a doc without
+launch-time `-n` name ends in `-chief` (or the older `-console`), and `/rename`
+does not change that name. A `--name roadmap-console` is mapped to
+`roadmap-chief`, and `next` on a `…-console.md` predecessor arms a `…-chief.md`
+successor; every guard and reader still treats a live `-console` session as a
+chief. `next` derives the successor's name from its `--doc`, so a doc without
 the suffix hands the mistake down the chain. To fix a mis-named chief, copy
-its doc to a `…-console.md` path, take the lock on the new path, release the
+its doc to a `…-chief.md` path, take the lock on the new path, release the
 old one, and leave a pointer stub behind.
 
 It then acquires the queue lock on that document and prints the

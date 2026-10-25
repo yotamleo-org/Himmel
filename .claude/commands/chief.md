@@ -17,7 +17,7 @@ Run:
 bash scripts/handover/console/chief.sh $ARGUMENTS
 ```
 
-- `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-console.md`
+- `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-chief.md`
   from `docs/handover/console-template.md`, acquire the queue lock on it, and
   print the launch line. A second `new` the same day bumps the letter; it never
   overwrites.

@@ -46,6 +46,11 @@
 #      settable here; --dry-run and every refusal write nothing.
 #      Q3: a himmel.conf linked into a luna vault stays a link after a write.
 #      Q4: so does every link of a dangling chain.
+#   R. handover.root / luna.vaultPath — the Setup page's path writers: an
+#      absolute, normalized path to HANDOVER_DIR / LUNA_VAULT_PATH in
+#      ~/.himmel/himmel.conf; handover.root creates the directory, the vault
+#      path must already be one; --dry-run and every refused path (control
+#      chars, quotes, #, $, relative, ..) write nothing.
 #   P. `himmelctl profile` is a SEPARATE argv[0] special-case
 #      (same mechanism as `config`'s, added right after it in main()) that
 #      dispatches to plugin-profile.sh — proves it parses to subcommand
@@ -747,5 +752,48 @@ cmp -s "$work/envQ5.expected" "$fxQ5/.env" || fail "caseQ5: every other legacy .
 _mQ5=$(stat -c %a "$fxQ5/.env" 2>/dev/null || stat -f %Lp "$fxQ5/.env")
 [ "$_mQ5" = 600 ] || fail "caseQ5: the legacy .env must keep mode 600 (got $_mQ5)"
 echo "ok: caseQ5 tracker none drops the legacy .env ticket keys and keeps the rest"
+
+# ── Case R: handover.root / luna.vaultPath — the Setup page's path writers ──
+fxR="$work/fixtureR"; build_fixture "$fxR"
+_hR="$work/home-R-$$-$RANDOM"; mkdir -p "$_hR"
+confR="$_hR/.himmel/himmel.conf"
+hdR="$work/state R/handovers"; vR="$work/vault-R"; mkdir -p "$vR"
+run_cfg_r() {
+  set +e
+  CFG_OUT=$(cd "$work" && HOME="$_hR" USERPROFILE="$(winpath "$_hR")" HIMMELCTL_CACHE_DIR="$(winpath "$_hR.himmelctl-cache")" HIMMEL_LUNA_CONFIG_PATH="$(winpath "$_hR.himmelctl-cache/luna-config.json")" HIMMELCTL_REPO_ROOT="$(winpath "$fxR")" \
+    "$node_bin" "$wizard" config "$@" 2>&1)
+  CFG_RC=$?
+  set -e
+}
+run_cfg_r set handover.root "$hdR" --dry-run
+[ "$CFG_RC" -eq 0 ] || fail "caseR: handover.root --dry-run should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F "DRY: HANDOVER_DIR=$hdR" || fail "caseR: the dry run should name the line it would write (got: $CFG_OUT)"
+[ -e "$confR" ] && fail "caseR: --dry-run must write nothing (got: $(cat "$confR"))"
+[ -e "$hdR" ] && fail "caseR: --dry-run must not create the handover directory"
+run_cfg_r set handover.root "$hdR"
+[ "$CFG_RC" -eq 0 ] || fail "caseR: set handover.root should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qxF "HANDOVER_DIR=$hdR" "$confR" || fail "caseR: himmel.conf should carry HANDOVER_DIR (got: $(cat "$confR" 2>&1))"
+[ -d "$hdR" ] || fail "caseR: set handover.root should create the directory"
+run_cfg_r set luna.vaultPath "$vR"
+[ "$CFG_RC" -eq 0 ] || fail "caseR: set luna.vaultPath should exit 0 (got rc=$CFG_RC): $CFG_OUT"
+grep -qxF "LUNA_VAULT_PATH=$vR" "$confR" || fail "caseR: himmel.conf should carry LUNA_VAULT_PATH (got: $(cat "$confR" 2>&1))"
+grep -qxF "HANDOVER_DIR=$hdR" "$confR" || fail "caseR: the vault write must keep HANDOVER_DIR"
+cp "$confR" "$confR.before"
+run_cfg_r set luna.vaultPath "$work/no-such-vault"
+[ "$CFG_RC" -eq 2 ] || fail "caseR: a vault path that is not a directory should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+nl='
+'
+# shellcheck disable=SC2016,SC2088 # the literal '$HOME' and '~' are the refused values
+for bad in "/a${nl}HIMMEL_INITIATIVE=merge" "/a$(printf '\r')b" "/a$(printf '\t')b" "/a'b" '/a"b' '/a`b' '/a #b' '/a$HOME' '/a\b' 'a/b' '~/a' '/a/../b' '/a/./b' '/a//b' '/a/' '/' ' /a' '/a '; do
+  for key in handover.root luna.vaultPath; do
+    run_cfg_r set "$key" "$bad"
+    [ "$CFG_RC" -eq 2 ] || fail "caseR: $key must refuse '$bad' with rc 2 (got rc=$CFG_RC): $CFG_OUT"
+  done
+done
+run_cfg_r set handover.root
+[ "$CFG_RC" -eq 2 ] || fail "caseR: handover.root without a value should exit 2 (got rc=$CFG_RC)"
+cmp -s "$confR.before" "$confR" || fail "caseR: a refused path must leave himmel.conf untouched (got: $(cat "$confR" 2>&1))"
+[ -e "$work/a" ] && fail "caseR: a refused relative path must create nothing"
+echo "ok: caseR handover.root / luna.vaultPath write an absolute path to himmel.conf; refusals write nothing"
 
 echo "PASS"

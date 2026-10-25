@@ -7,6 +7,7 @@ import { promisify } from "node:util";
 import { LOGIN_EXISTS, readLogin, writeLogin } from "./login";
 import * as store from "../himmelctl/lib/secret-store.js";
 import { readConfLayers } from "./conf-layers";
+import { projectModeForge } from "../lib/project-mode.mjs";
 import manifest from "../himmelctl/lib/secrets-manifest.json";
 
 const execFileAsync = promisify(execFile);
@@ -39,6 +40,23 @@ const ctxOf = (o: SetupOpts) => ({ home: o.home, himmelRoot: o.himmelRoot, proje
 function commitRules(home: string) {
   const kv = readConfLayers({ HOME: home });
   return { tracker: kv.TRACKER ?? null, ticketIdRequired: kv.TICKET_ID_REQUIRED === "1" ? true : kv.TICKET_ID_REQUIRED === "0" ? false : null };
+}
+
+// The setup choices the page can write: each path's current value from himmel.conf (null when unset, with the default
+// that then applies), and the forge as the resolver detects it, shown only.
+function choices(o: SetupOpts) {
+  const kv = readConfLayers({ HOME: o.home });
+  const path = (target: string, key: string, fallback: string) => ({ target, key, value: kv[key] || null, fallback });
+  let forge: { value: string | null; error: string | null };
+  try { forge = { value: projectModeForge({ cwd: o.projectRoot, env: o.env, quiet: true }), error: null }; }
+  catch (e) { forge = { value: null, error: String((e as Error)?.message || e) }; }
+  return {
+    paths: [
+      path("handover-root", "HANDOVER_DIR", "handovers/ inside each repo"),
+      path("luna-vault", "LUNA_VAULT_PATH", "no luna vault; vault capture stays off"),
+    ],
+    forge,
+  };
 }
 
 const CR_APP_URL = "https://github.com/apps/coderabbitai";
@@ -90,6 +108,7 @@ export async function setupState(o: SetupOpts & AccountOpts) {
     account: account(o),
     secrets: entries.map((e) => ({ name: e.name, feature: e.feature ?? "", required: e.required ?? "", collect: e.collect, example: EXAMPLES[e.name] ?? "", status: store.detect(e.name, ctx).status })),
     commit: commitRules(o.home),
+    choices: choices(o),
     coderabbit: await coderabbit(o),
   };
 }
