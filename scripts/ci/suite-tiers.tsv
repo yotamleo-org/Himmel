@@ -371,6 +371,7 @@ scripts/handover/chief-kit/test-console-wait-r0.sh	local	behaviour suite, the sc
 scripts/handover/chief-kit/test-console-wait.sh	quarantine	cap-exceeded flakes, HIMMEL-6547
 scripts/handover/chief-kit/test-cr-disposition.sh	pr	trust-path
 scripts/handover/chief-kit/test-cut-tag.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/handover/chief-kit/test-delta-class.sh	pr	trust-path
 scripts/handover/chief-kit/test-denied-launch-alert.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/handover/chief-kit/test-doc-reader-agreement.sh	local	behaviour suite, new generator-driven reader agreement
 scripts/handover/chief-kit/test-fleet-manifest.sh	pr	static-gate

@@ -385,6 +385,7 @@ scripts/handover/chief-kit/test-console-wait-pool.sh	55
 scripts/handover/chief-kit/test-console-wait-r0.sh	26
 scripts/handover/chief-kit/test-console-wait.sh	283
 scripts/handover/chief-kit/test-cut-tag.sh	2
+scripts/handover/chief-kit/test-delta-class.sh	1
 scripts/handover/chief-kit/test-fleet-manifest.sh	1
 scripts/handover/chief-kit/test-fleet.sh	3
 scripts/handover/chief-kit/test-focus-chains-links.sh	1

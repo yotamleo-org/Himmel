@@ -51,6 +51,26 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   dispute that triggers a convening mints work on the scarcest usage budget. A finding class of
   `guard-no-fire` or `invariant-regression` skips the ladder and the budget:
   `judge-ladder.sh breakglass <class>` routes it to the operator at once.
+- **A later push needs a judge only when its delta does** (HIMMEL-7637): after a judge's GO,
+  `bash scripts/handover/chief-kit/delta-class.sh --qid <qid> <judged head> <new head>`,
+  run in the checkout holding both commits, prints one word and always exits 0:
+  `trust` (a changed file, either name of a rename, matches `scripts/ci/ci-trust-paths.txt`
+  on `origin/main`), `finding` (the delta rewrites the lines of a finding the judge named, or of a
+  CR-ledger finding at the judged head) or `none`. A trust hit wins over a finding hit, and any read
+  error (unknown sha, unreadable trust list, verdict or ledger, bad regex) prints `trust`, never
+  `none`. The judge names its findings in the verdict file as `finding: <path>[:<n>[-<m>]]` lines
+  (no line numbers means the whole file); a NO-GO that names none classifies `finding`.
+  `trust` and `finding` get a judge as before. On `none` skip the judge and record
+  `bash scripts/handover/chief-kit/write-verdict.sh <qid> GO <new head> --pr <n> --evidence-file <path>
+  --delta-noop <judged head>` (run in the repo under review): it re-runs the classifier, refuses
+  (exit 2) unless it prints `none`, and signs `delta: no-op`, `delta-judged: <sha>` and
+  `delta-class: none` into `verdicts/<qid>/delta-noop-<head>.md`. The judged head must carry the
+  qid's signed GO; a no-op is never itself a judged head, so each later push is classified against
+  the last real judge and the delta stays cumulative. `go.sh --trust-reviewed` re-runs the
+  classifier whenever a head's only GO is a no-op and refuses (exit 10) unless it still prints
+  `none`, so a trust-path delta cannot merge on a no-op. Running the delta judge on Sonnet needs a
+  model-guard change that is not made here (HIMMEL-7650); until it lands, a delta judge runs at the
+  tier the guard allows.
 - **A deferred Critical or Important finding needs a disposition before GO**
   (HIMMEL-6377): past the round cap such a finding is never dropped. `go.sh` runs
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any
