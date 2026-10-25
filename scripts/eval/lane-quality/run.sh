@@ -879,17 +879,20 @@ cmd_judge_pair() {
     m1="${prefs[0]#*:}"; m2="${prefs[1]#*:}"
     jq -nc --arg k "$key" --arg task "$task" --arg f "$first" --arg s "$second" --arg p1 "${prefs[0]%%:*}" --arg p2 "${prefs[1]%%:*}" \
       --arg m1 "$m1" --arg m2 "$m2" --arg jm "$JUDGE_MODEL" --arg je "$JUDGE_EFFORT" \
-      '{key: $k, task: $task, order: [$f, $s], position_1: $p1, position_2: $p2, preferred_1: $m1, preferred_2: $m2,
-        flip: ($m1 != $m2), preferred: (if $m1 == $m2 then $m1 else null end),
+      '($p1 != "none" and $p2 != "none") as $ok
+       | {key: $k, task: $task, order: [$f, $s], position_1: $p1, position_2: $p2, preferred_1: $m1, preferred_2: $m2,
+        judged: $ok, flip: (if $ok then $m1 != $m2 else null end), preferred: (if $ok and $m1 == $m2 then $m1 else null end),
         judge_model: $jm, judge_effort: (if $je == "" then null else $je end)}' >>"$out"
   done < <(jq -r --slurpfile c "${dirs[1]}/runs.jsonl" '
     select(. as $b | any($c[]; .task == $b.task and (.rep // 1) == ($b.rep // 1) and .base_sha == $b.base_sha and .variant == $b.variant))
     | "\(.task)#\(.rep // 1)\t\(if (.rep // 1) > 1 then "\(.task).r\(.rep)" else .task end)\t\(.task)"' "${dirs[0]}/runs.jsonl")
   [ -s "$out" ] || die "no pair judged (each run needs its stored <stem>.cand.md)"
   jq -rs --arg spent "$spent" '
+    "\(map(select(.judged)) | length) pairs judged, \(map(select(.judged | not)) | length) unjudged (a call gave no preference)",
+    (map(select(.judged)) |
     "judge-pair: \(length) pairs; agreeing: baseline \(map(select(.preferred == "baseline")) | length), candidate \(map(select(.preferred == "candidate")) | length), tie \(map(select(.preferred == "tie")) | length), both_bad \(map(select(.preferred == "both_bad")) | length)",
     "flips \(map(select(.flip)) | length) of \(length) pairs (the noise floor of a single pairwise call)",
-    "position bias: A chosen \([.[] | .position_1, .position_2 | select(. == "A")] | length) of \([.[] | .position_1, .position_2 | select(. == "A" or . == "B")] | length) calls; spent \($spent) USD"' "$out"
+    "position bias: A chosen \([.[] | .position_1, .position_2 | select(. == "A")] | length) of \([.[] | .position_1, .position_2 | select(. == "A" or . == "B")] | length) calls; spent \($spent) USD")' "$out"
 }
 
 arm_dir() { # arm_dir baseline|candidate <baseline dir> <candidate dir>

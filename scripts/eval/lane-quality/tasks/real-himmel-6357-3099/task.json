@@ -11,6 +11,9 @@
     "scripts/handover/test-friction-gate-docs.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/handover/test-friction-gate-docs.sh"
+  ],
   "scope": [
     "docs/handover/",
     "scripts/handover/"

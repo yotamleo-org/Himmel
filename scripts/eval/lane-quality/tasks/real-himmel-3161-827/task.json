@@ -11,6 +11,9 @@
     "scripts/cr/test-cr-scores.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/cr/test-cr-scores.sh"
+  ],
   "scope": [
     ".agents/skills/cr-scores/",
     ".claude/commands/",

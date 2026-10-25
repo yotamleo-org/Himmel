@@ -50,7 +50,7 @@ git -C "$TMP/src" init -q -b main
 G add -A && G commit -qm 'feat(greet): [HIMMEL-9000] greet (#40)'
 C1="$(git -C "$TMP/src" rev-parse HEAD)"
 printf '#!/usr/bin/env bash\necho "hello${1:+ $1}"  # LQ-FIX-MARKER\n' >"$TMP/src/lib/greet.sh"
-mkdir -p "$TMP/src/tests/fixtures"; printf 'Bob\n' >"$TMP/src/tests/fixtures/names.txt"
+mkdir -p "$TMP/src/tests/fixtures"; printf 'Bob\n' >"$TMP/src/tests/fixtures/names.txt"; chmod +x "$TMP/src/tests/fixtures/names.txt"
 cat >"$TMP/src/tests/test-greet.sh" <<'T'
 #!/usr/bin/env bash
 fail=0
@@ -130,6 +130,17 @@ printf '{"id": "git-probe", "tests": ["tests/test-git.sh"]}\n' >"$GP/task.json"
 printf '#!/usr/bin/env bash\ncase "$(cd "$(git rev-parse --git-common-dir)" && pwd -P)" in "$(pwd -P)"/*) exit 0 ;; esac\nexit 1\n' | gzip -n >"$GP/hidden/tests/test-git.sh.ref.gz"
 git -C "$TMP/src" worktree add -q --detach "$TMP/acc-wt" "$C2"
 check "acceptance over a linked worktree runs git in its own scratch repo" 'python3 "$MT" accept "$GP" "$TMP/acc-wt" >"$TMP/acc-wt.log" 2>&1'
+BG="$TMP/lq/tasks/bg-probe"; mkdir -p "$BG/hidden/tests" "$TMP/acc-empty"
+printf '{"id": "bg-probe", "tests": ["tests/test-bg.sh"]}\n' >"$BG/task.json"
+printf '#!/usr/bin/env bash\nsleep 300 &\necho $! >%s\n' "$TMP/bg.pid" | gzip -n >"$BG/hidden/tests/test-bg.sh.ref.gz"
+python3 "$MT" accept "$BG" "$TMP/acc-empty" >/dev/null 2>&1
+check "a hidden test leaves no process behind once acceptance returns" '[ -s "$TMP/bg.pid" ] && ! kill -0 "$(cat "$TMP/bg.pid")" 2>/dev/null'
+check "emit records which hidden files are executable" 'jq -e ".exec == [\"tests/fixtures/names.txt\"]" "$T1/task.json" >/dev/null'
+EX="$TMP/lq/tasks/exec-probe"; mkdir -p "$EX/hidden/tests"
+printf '{"id": "exec-probe", "tests": ["tests/test-ex.sh"], "exec": ["tests/run-me.sh"]}\n' >"$EX/task.json"
+printf '#!/usr/bin/env bash\ntests/run-me.sh\n' | gzip -n >"$EX/hidden/tests/test-ex.sh.ref.gz"
+printf '#!/usr/bin/env bash\nexit 0\n' | gzip -n >"$EX/hidden/tests/run-me.sh.ref.gz"
+check "a hidden file that is executable at the merge is executable in acceptance" 'python3 "$MT" accept "$EX" "$TMP/acc-empty" >/dev/null 2>&1'
 check "the hidden tests are kept out of the graphify index" 'grep -qxF "scripts/eval/lane-quality/tasks/*/hidden/" "$REAL_REPO/.graphifyignore"'
 
 echo "5. a real task runs in a fresh repo with no route to the fix"
@@ -148,7 +159,9 @@ echo "$*" >>"$LQ_FAKE_LOG"
 case " $* " in *" --json-schema "*)
   n=$(( $(cat "$LQ_FAKE_LOG.jn" 2>/dev/null || echo 0) + 1 )); echo "$n" >"$LQ_FAKE_LOG.jn"
   cat >"$LQ_FAKE_LOG.judge.$n"
-  if grep -q '^## Candidate B' "$LQ_FAKE_LOG.judge.$n"; then
+  if grep -q '^## Candidate B' "$LQ_FAKE_LOG.judge.$n" && [ -n "${LQ_FAKE_PAIR_NONE:-}" ]; then
+    jq -cn '{type:"result",is_error:false,total_cost_usd:0.02,structured_output:{evidence:"e"}}'
+  elif grep -q '^## Candidate B' "$LQ_FAKE_LOG.judge.$n"; then
     jq -cn '{type:"result",is_error:false,total_cost_usd:0.02,structured_output:{preference:"A",evidence:"e"}}'
   elif [ -f "$LQ_FAKE_CLAIMS.$n" ]; then cat "$LQ_FAKE_CLAIMS.$n"
   else cat "$LQ_FAKE_CLAIMS"; fi
@@ -232,6 +245,9 @@ jq -c '.base_sha = "0000000"' "$TMP/out-b/runs.jsonl" >"$TMP/out-c/runs.jsonl"
 : >"$TMP/fake.log"
 bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-c" --judge-model opus >"$TMP/pair-base.log" 2>&1; rc=$?
 check "judge-pair pairs a run only with one on the same task, repeat, base and variant" '[ "$rc" -ne 0 ] && [ ! -s "$TMP/fake.log" ]'
+: >"$TMP/fake.log"; rm -f "$TMP/fake.log.jn"
+LQ_FAKE_PAIR_NONE=1 bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model opus --out "$TMP/pairs-none.jsonl" >"$TMP/pair-none.log" 2>&1
+check "a pair whose judge gave no preference is unjudged, never a non-flip" 'jq -e ".judged == false and .flip == null and .preferred == null" "$TMP/pairs-none.jsonl" >/dev/null && grep -q "0 pairs judged, 1 unjudged" "$TMP/pair-none.log"'
 LQ_FAKE_PEEK="$TMP/src" LQ_FAKE_FIX_DIR="$TMP/fixsrc" bash "$RT" run --lane native --model claude-haiku-5-5 --effort high --no-judge \
   --tasks real-himmel-9001-41 --out "$TMP/out-peek" >/dev/null 2>&1
 check "a read of the source checkout by path is flagged as a peek" '[ "$(jq .peeked "$TMP/out-peek/runs.jsonl")" = true ]'

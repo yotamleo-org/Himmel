@@ -11,6 +11,9 @@
     "scripts/himmelctl/test/test-wizard-state.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/himmelctl/test/test-wizard-state.sh"
+  ],
   "scope": [
     "scripts/himmelctl/lib/",
     "scripts/himmelctl/test/"

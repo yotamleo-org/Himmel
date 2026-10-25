@@ -11,6 +11,9 @@
     "scripts/handover/console-kit/test-gen-briefs.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/handover/console-kit/test-gen-briefs.sh"
+  ],
   "scope": [
     "scripts/handover/console-kit/"
   ]

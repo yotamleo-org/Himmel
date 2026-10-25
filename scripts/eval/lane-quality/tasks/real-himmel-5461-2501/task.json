@@ -11,6 +11,9 @@
     "scripts/handover/test-merge-forward-check.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/handover/test-merge-forward-check.sh"
+  ],
   "scope": [
     "docs/handover/",
     "scripts/handover/"

@@ -11,6 +11,9 @@
     "scripts/eval/sandbox-poc/test-probe.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/eval/sandbox-poc/test-probe.sh"
+  ],
   "scope": [
     "scripts/eval/sandbox-poc/"
   ]

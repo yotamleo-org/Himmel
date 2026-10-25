@@ -11,6 +11,9 @@
     "scripts/guardrails/test-leak-classes.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/guardrails/test-leak-classes.sh"
+  ],
   "scope": [
     "marketplace/plugins/claude-hud/",
     "scripts/guardrails/"

@@ -28,6 +28,7 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -222,9 +223,12 @@ def cmd_emit(a):
                 fh.write(gzip.compress(git(a.repo, "show", "%s:%s" % (rec["merge_sha"], p), text=False), mtime=0))
         why = ("%d code file(s), %d changed lines; the hidden %s must go from failing at the base to passing,"
                " checked by %d named check(s)" % (len(rec["code"]), rec["lines"], ", ".join(rec["tests"]), len(names)))
+        modes = git(a.repo, "ls-tree", rec["merge_sha"], "--", *(rec["tests"] + rec["fixtures"])).splitlines()
         task = {"id": tid, "ticket": rec["ticket"], "pr": rec["pr"], "merge_sha": rec["merge_sha"],
                 "base_sha": rec["base_sha"], "set": a.set, "source": rec["source"], "why_hard": why,
-                "tests": rec["tests"], "fixtures": rec["fixtures"], "scope": scope_of(rec["code"] + rec["tests"] + rec["fixtures"])}
+                "tests": rec["tests"], "fixtures": rec["fixtures"],
+                "exec": sorted(l.split("\t", 1)[1] for l in modes if l.startswith("100755 ")),
+                "scope": scope_of(rec["code"] + rec["tests"] + rec["fixtures"])}
         with open(os.path.join(d, "task.json"), "w", encoding="utf-8") as fh:
             json.dump(task, fh, indent=2)
             fh.write("\n")
@@ -270,14 +274,22 @@ def run_hidden(task_dir, tree, timeout):
                "LANG": "C.UTF-8", "GIT_AUTHOR_NAME": "lq", "GIT_AUTHOR_EMAIL": "lq@invalid",
                "GIT_COMMITTER_NAME": "lq", "GIT_COMMITTER_EMAIL": "lq@invalid",
                "GIT_AUTHOR_DATE": DATE, "GIT_COMMITTER_DATE": DATE}
+        for rel in task.get("exec", []):
+            os.chmod(os.path.join(dst, rel), 0o755)
         passed, out = 0, []
         for t in task["tests"]:
+            p = subprocess.Popen(["bash", t], cwd=dst, env=env, stdin=subprocess.DEVNULL,
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             try:
-                r = subprocess.run(["bash", t], cwd=dst, env=env, stdin=subprocess.DEVNULL,
-                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=timeout)
-                ok = r.returncode == 0
+                ok = p.wait(timeout=timeout) == 0
             except subprocess.TimeoutExpired:
                 ok = False
+            finally:
+                try:
+                    os.killpg(p.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                p.wait()
             passed += ok
             out.append("%s %s" % ("ok" if ok else "FAIL", t))
         return passed, len(task["tests"]), out

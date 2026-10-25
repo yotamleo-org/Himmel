@@ -11,6 +11,9 @@
     "scripts/test-himmel-update-drift.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/test-himmel-update-drift.sh"
+  ],
   "scope": [
     "scripts/"
   ]

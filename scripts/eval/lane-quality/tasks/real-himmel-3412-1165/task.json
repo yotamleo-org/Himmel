@@ -11,6 +11,9 @@
     "scripts/handover/console-kit/test-fleet.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/handover/console-kit/test-fleet.sh"
+  ],
   "scope": [
     "scripts/handover/console-kit/"
   ]

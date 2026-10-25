@@ -11,6 +11,9 @@
     "scripts/test-claude-codex.sh"
   ],
   "fixtures": [],
+  "exec": [
+    "scripts/test-claude-codex.sh"
+  ],
   "scope": [
     "scripts/"
   ]
