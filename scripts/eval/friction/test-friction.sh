@@ -110,6 +110,7 @@ eq "ledger row: tool calls include success, failure and refusals, not the old re
 L6="$TMP/runs6.jsonl"
 python3 -I "$FRICTION" --repo "$REPO" --now 2026-10-08T00:00:00Z --days 7 --projects "$FIX/proj2" --docs "$FIX/docs" \
   --record --eval-ledger "$L6" --md "$TMP/out6.md" >/dev/null 2>&1
+eq "future-window tool calls: record run exits 0" "$?" "0"
 eq "ledger row: tool calls exclude results after --now across transcripts" \
   "$(python3 -I -c 'import json,sys; print(json.loads(open(sys.argv[1]).readline())["metrics"].get("tool_calls"))' "$L6")" "4"
 
