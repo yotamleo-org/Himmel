@@ -27,56 +27,43 @@ fixture() {
   printf 'bash scripts/voice/speak.sh\n' > "$tmp/repo/archive/voice/scripts/voice/speak.sh"
 }
 add_all() { git -C "$tmp/repo" add -A; }
+# expect <rc> <label>: the check on the fixture exits exactly <rc>.
+expect() {
+  local rc=0
+  bash "$CHECK" --root "$tmp/repo" >/dev/null 2>&1 || rc=$?
+  if [ "$rc" -eq "$1" ]; then pass "$2"; else fail "$2 (exit $rc, want $1)"; fi
+}
 
 fixture; add_all
-if bash "$CHECK" --root "$tmp/repo" >/dev/null 2>&1; then
-  pass "T2 a baselined file and the archive pass"
-else
-  fail "T2 a baselined file or the archive was flagged"
-fi
+expect 0 "T2 a baselined file and the archive pass"
 
 fixture
 printf 'case "%sOSTYPE" in msys*) schtasks /create /tn x ;; esac\n' "\$" > "$tmp/repo/scripts/new-cadence.sh"
 add_all
-if bash "$CHECK" --root "$tmp/repo" >/dev/null 2>&1; then
-  fail "T3 a planted schtasks branch outside the archive passed"
-else
-  pass "T3 a planted schtasks branch outside the archive fails"
-fi
+expect 1 "T3 a planted schtasks branch outside the archive fails"
 
 fixture
 printf 'schtasks /query\nschtasks /delete\n' > "$tmp/repo/scripts/old.sh"
 add_all
-if bash "$CHECK" --root "$tmp/repo" >/dev/null 2>&1; then
-  fail "T4 a baselined file that grew passed"
-else
-  pass "T4 a baselined file that grew fails"
-fi
+expect 1 "T4 a baselined file that grew fails"
 
 fixture
 printf 'see docs/voice.md\n' > "$tmp/repo/README.md"
 add_all
-if bash "$CHECK" --root "$tmp/repo" >/dev/null 2>&1; then
-  fail "T5 a live voice reference passed"
-else
-  pass "T5 a live voice reference fails"
-fi
+expect 1 "T5 a live voice reference fails"
 
 rm -rf "$tmp/repo"
 mkdir -p "$tmp/repo/scripts/lint"
 printf 'win\t1\tscripts/old.sh\n' > "$tmp/repo/scripts/lint/windows-leftovers-baseline.tsv"
-if bash "$CHECK" --root "$tmp/repo" >/dev/null 2>&1; then
-  fail "T6 a root git cannot scan passed"
-else
-  pass "T6 a root git cannot scan fails"
-fi
+expect 2 "T6 a root git cannot scan fails"
 
 rc=0
-timeout 10 bash "$CHECK" --root >/dev/null 2>&1 || rc=$?
+bash "$CHECK" --root >/dev/null 2>&1 || rc=$?
 if [ "$rc" -eq 2 ]; then
   pass "T7 --root without a value exits 2"
 else
   fail "T7 --root without a value exited $rc"
 fi
+
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; else echo "$failures FAILED"; exit 1; fi
