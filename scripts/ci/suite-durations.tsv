@@ -405,6 +405,7 @@ scripts/handover/chief-kit/test-inbox-send.sh	1
 scripts/handover/chief-kit/test-json-writers-final-newline.sh	1
 scripts/handover/chief-kit/test-judge-ladder.sh	10
 scripts/handover/chief-kit/test-launch-cloud.sh	2
+scripts/handover/chief-kit/test-leg-budget.sh	1
 scripts/handover/chief-kit/test-leg-doc-lock.sh	3
 scripts/handover/chief-kit/test-leg-event.sh	1
 scripts/handover/chief-kit/test-leg-jira-status.sh	0
