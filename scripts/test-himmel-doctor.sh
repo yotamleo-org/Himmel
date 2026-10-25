@@ -193,6 +193,9 @@ export HIMMEL_DOCTOR_BUN_SCAN_DIRS="$FAKEROOT/no-such-bin"
 # Same for C74-config-split: never list the operator's real .env key names; an
 # absent file is an OK skip, dedicated cases plant a fixture .env.
 export HIMMEL_DOCTOR_ENV_FILE="$FAKEROOT/no-such-env"
+# Same for C75-keyring: never look up the operator's real keyring; dedicated
+# cases turn it back on against a stub secret-tool and busctl.
+export HIMMEL_SECRETS_KEYRING=off
 # Same for C49-qmd-embed-model: never read the operator's real
 # qmd index; an absent index makes C48 silent, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_QMD_INDEX="$FAKEROOT/no-such-index.sqlite"
@@ -357,6 +360,7 @@ if git -C "$REPO_ROOT" worktree add -q --detach "$WTD" HEAD 2>/dev/null; then
     # uncommitted change is what the worktree run executes.
     cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$REPO_ROOT/scripts/doctor-counts.sh" "$WTD/scripts/"
     cp "$REPO_ROOT/scripts/graphify/check-graph-freshness.sh" "$REPO_ROOT/scripts/graphify/semantic-merge.py" "$WTD/scripts/graphify/"
+    cp "$REPO_ROOT/scripts/lib/himmel-secrets" "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$WTD/scripts/lib/"
     (cd "$WTD" && RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_STATE_DIR="$t/wtstate" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_ORPHAN_SCAN_SKIP=0 bash "$WTD/scripts/himmel-doctor.sh" --no-color >/dev/null 2>&1)
     if [ -n "$want" ] && [ "$(cat "$t/wtstate/counts" 2>/dev/null)" = "$want" ] && cmp -s "$t/full/last.tsv" "$t/wtstate/last.tsv"; then pass "a worktree run publishes the same counts and last.tsv as the primary run"; else fail "worktree run state differs from the primary run: '$(cat "$t/wtstate/counts" 2>/dev/null)' vs '$want'"; fi
     root_out="$(cd "$WTD" && RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_STATE_DIR="$t/rootstate" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_ORPHAN_SCAN_SKIP=0 bash "$WTD/scripts/himmel-doctor.sh" --no-color --root "$WTD" 2>&1)"
@@ -7227,5 +7231,56 @@ out="$(c74_run)"
 if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'not checked' && ! grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'safe default'; then pass "C74 unreadable .env -> WARN unchecked"; else fail "C74 unreadable env -> $(printf '%s' "$out" | head -4)"; fi
 rmdir "$c74_t/env"
 rm -rf "$c74_t"
+
+# --- C75-keyring: keyring state and the layer serving each manifest secret ---
+# A stub secret-tool and busctl stand in for the keyring; values are planted
+# dummies and must never appear in the output.
+c75_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c75.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c75_t/bin" "$c75_t/home" "$c75_t/claude"
+cat > "$c75_t/bin/secret-tool" <<'STUB'
+#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >>"$C75_LOG"
+[ "$1" = lookup ] || exit 1
+shift
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    if [ "$m" = 1 ]; then printf '%s' "$val"; exit 0; fi
+done <"$C75_STORE"
+exit 1
+STUB
+cat > "$c75_t/bin/busctl" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in *" Locked") echo "b ${C75_LOCKED:-false}" ;; esac
+STUB
+chmod +x "$c75_t/bin/secret-tool" "$c75_t/bin/busctl"
+c75_run() { env -u JIRA_API_TOKEN -u TELEGRAM_BOT_TOKEN -u CREDENTIALS_DIRECTORY PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" \
+    HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" C75_STORE="$c75_t/store" C75_LOG="$c75_t/log" DBUS_SESSION_BUS_ADDRESS="unix:path=$c75_t/bus" \
+    HIMMEL_SECRETS_KEYRING="${C75_KEYRING:-}" bash "$DOC" --no-color --only C75 2>&1; }
+c75_reset() { rm -f "$c75_t/env" "$c75_t/log"; : > "$c75_t/store"; }
+echo "== C75-keyring: unlocked keyring, one secret still in .env -> WARN naming it, never a value =="
+c75_reset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
+printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\nJIRA_EMAIL=planted@example.com\n' > "$c75_t/env"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'WARN C75-secrets' && grepq "$out" -F 'TELEGRAM_BOT_TOKEN' && grepq "$out" -F 'import-env' \
+    && ! grepq "$out" -F 'JIRA_EMAIL' && ! grepq "$out" -F 'planted'; then pass "C75 secret in .env with an unlocked keyring -> WARN naming TELEGRAM_BOT_TOKEN only, no values"; else fail "C75 dotenv secret -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75-keyring: every secret from the keyring, no .env -> OK =="
+c75_reset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'OK   C75-secrets' && grepq "$out" -F '1 from the keyring' && ! grepq "$out" -F 'planted'; then pass "C75 keyring-served station -> two OK rows"; else fail "C75 keyring -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75-keyring: a locked keyring -> WARN, no lookup =="
+c75_reset
+out="$(C75_LOCKED=true c75_run)"
+if grepq "$out" -F 'WARN C75-keyring' && grepq "$out" -F 'locked' && [ ! -s "$c75_t/log" ]; then pass "C75 locked keyring -> WARN with no secret-tool call"; else fail "C75 locked -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75-keyring: HIMMEL_SECRETS_KEYRING=off -> INFO, no lookup, a .env secret is INFO =="
+c75_reset
+printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\n' > "$c75_t/env"
+out="$(C75_KEYRING=off c75_run)"
+if grepq "$out" -F 'INFO C75-keyring' && grepq "$out" -F 'INFO C75-secrets' && [ ! -s "$c75_t/log" ] && ! grepq "$out" -F 'planted'; then pass "C75 keyring off -> INFO rows, no secret-tool call"; else fail "C75 off -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c75_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

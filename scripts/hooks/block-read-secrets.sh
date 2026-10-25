@@ -70,8 +70,17 @@
 #     (a glob in a later body statement, `bash -c 'echo; cat .e*'`, IS
 #     expanded: rs_tokens drops the body's closing quote first), revisit
 #     when the first real leak of that shape appears.
-#   * `git show HEAD:.env`, `git cat-file -p HEAD:.env` — git not in
-#     reader list (would false-positive on most git commands).
+#   * `git show HEAD:.env` and `git cat-file -p HEAD:.env` ARE now caught
+#     (a `REV:path` operand whose path is a secret); git stays out of the
+#     reader list, so `git log -p` or `git diff` over a committed secret is not.
+#   * Secret stores: `secret-tool lookup|search|store`, `security
+#     find-*-password -w|-g` and `dump-keychain`, `kwallet-query -r`, any
+#     busctl/gdbus/dbus-send call naming GetSecret, `systemd-creds
+#     decrypt|cat`, `op read|inject|run`, `sops` decrypt shapes, `age -d`, and
+#     scripts/lib/himmel-secrets get|put|import-env|export-env are denied;
+#     `himmel-secrets status|exec` and the keyring's Locked property read pass.
+#     ponytail: a store reached through python/node bindings (secretstorage,
+#     keytar) is not read, revisit on the first real call of that shape.
 #   * Cross-command exfil: `mv .env /tmp/x; cat /tmp/x` — mv is write-only,
 #     and the second command targets a non-secret path. (`cp .env /tmp/x`
 #     itself is denied.)
@@ -935,6 +944,7 @@ g4_scan() {
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
     local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0 rdr=0
+    local gsc="" kflag=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -965,7 +975,7 @@ g4_scan() {
                     -C|--git-dir|--work-tree|--namespace) gskip=1 ;;
                     -*) ;;
                     *) if [ "$gsub" = 0 ]; then
-                           gsub=1
+                           gsub=1; gsc="$d"
                            case "$cmd:$d" in git:commit|git:tag|git:merge|git:notes|git:revert|gh:pr|gh:issue|gh:release) gmsg=1 ;; esac
                        fi ;;
                 esac
@@ -1112,6 +1122,18 @@ g4_scan() {
             gh)
                 case "$d" in --show-token|-t) showtok=1 ;; esac
                 if [ "$a1" = gist ] && { g4_secret_tok "$d" || g4_glob_secret "$w" "${g4g[i]:-}"; }; then hit=1; note="gh gist of a secret file"; fi ;;
+            # Secret stores: a lookup prints the secret into the transcript.
+            git)
+                # `git show REV:.env` / `git cat-file -p REV:.env` print a
+                # committed secret file.
+                case "$gsc:$d" in
+                    show:-*|cat-file:-*) ;;
+                    show:*:*|cat-file:*:*) if g4_secret_tok "$d"; then hit=1; note="git $gsc of a committed secret file"; fi ;;
+                esac ;;
+            security) case "$d" in --*) ;; -*[wg]*) kflag=1 ;; esac ;;
+            kwallet-query) case "$d" in -r|--read-password) hit=1; note="kwallet-query -r prints a wallet secret" ;; esac ;;
+            busctl|gdbus|dbus-send) case "$d" in *GetSecret*) hit=1; note="$cmd GetSecret prints a keyring secret" ;; esac ;;
+            sops|age|rage) case "$d" in -d|--decrypt) kflag=1 ;; esac ;;
         esac
         case "$cls" in
             any)
@@ -1160,6 +1182,28 @@ g4_scan() {
             if [ "$nargs" = 0 ] && [ "$nflags" = 0 ]; then hit=1; note="bare $cmd dumps variables"; fi
             if [ "$pflag" = 1 ] && [ "$nnames" = 0 ]; then hit=1; note="$cmd -p dumps variables"; fi ;;
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
+        secret-tool)
+            case "$a1" in lookup|search|store) hit=1; note="secret-tool $a1 reads or writes a keyring secret" ;; esac ;;
+        security)
+            case "$a1" in
+                dump-keychain) hit=1; note="security dump-keychain prints keychain secrets" ;;
+                find-generic-password|find-internet-password)
+                    if [ "$kflag" = 1 ]; then hit=1; note="security $a1 -w/-g prints a keychain secret"; fi ;;
+            esac ;;
+        systemd-creds) case "$a1" in decrypt|cat) hit=1; note="systemd-creds $a1 prints a credential" ;; esac ;;
+        op) case "$a1" in read|inject|run) hit=1; note="op $a1 hands out a 1Password secret" ;; esac ;;
+        sops)
+            case "$a1" in decrypt|exec-env|exec-file) kflag=1 ;; esac
+            if [ "$kflag" = 1 ]; then hit=1; note="sops decrypts a secret file"; fi ;;
+        age|rage) if [ "$kflag" = 1 ]; then hit=1; note="$cmd -d decrypts a secret file"; fi ;;
+        # The resolver itself: only status and exec keep values out of the
+        # transcript. Run as a command or as `bash <path>/himmel-secrets VERB`.
+        himmel-secrets)
+            case "$a1" in get|put|import-env|export-env) hit=1; note="himmel-secrets $a1 handles a secret value" ;; esac ;;
+        bash|sh|zsh|dash|ksh)
+            if [ "${a1##*/}" = himmel-secrets ]; then
+                case "$a2" in get|put|import-env|export-env) hit=1; note="himmel-secrets $a2 handles a secret value" ;; esac
+            fi ;;
     esac
     if [ "$xt" = 1 ]; then
         hit=1; note="shell tracing prints the inherited environment into the transcript (no env -i exemption)"

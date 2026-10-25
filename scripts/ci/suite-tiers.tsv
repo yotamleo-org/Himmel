@@ -824,6 +824,7 @@ scripts/lib/test-go-gate.sh	pr	guard
 scripts/lib/test-graphify-bin.sh	pr	guard
 scripts/lib/test-handover-path.sh	pr	trust-path
 scripts/lib/test-hermetic-path.sh	pr	trust-path
+scripts/lib/test-himmel-secrets.sh	pr	trust-path
 scripts/lib/test-host-caps.sh	pr	trust-path
 scripts/lib/test-impacted-suites-runner.sh	pr	trust-path
 scripts/lib/test-initiative-legs.sh	pr	trust-path

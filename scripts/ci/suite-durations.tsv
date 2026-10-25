@@ -822,6 +822,7 @@ scripts/lib/test-go-gate.sh	5
 scripts/lib/test-graphify-bin.sh	12
 scripts/lib/test-handover-path.sh	0
 scripts/lib/test-hermetic-path.sh	0
+scripts/lib/test-himmel-secrets.sh	0
 scripts/lib/test-host-caps.sh	0
 scripts/lib/test-impacted-suites-runner.sh	0
 scripts/lib/test-initiative-legs.sh	0
