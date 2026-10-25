@@ -107,7 +107,7 @@ with only those keys added to its env), `status [KEY…]` (the layer serving
 each key, names only), `put KEY` (value from stdin or a silent prompt;
 `--project` stores a per-project item), `import-env <file>` (stores each
 secret key of a dotenv file that `scripts/himmelctl/lib/secrets-manifest.json`
-lists and prints names only; any other line is named by its number, and a
+lists, in `secrets` or `stationSecrets`, and prints names only; any other line is named by its number, and a
 file whose quoted value does not close on its line is refused) and `export-env <file>`
 (writes the keyring's himmel items to a new 0600 dotenv file).
 `block-read-secrets.sh` refuses an agent's direct `get`, `put`, `import-env`
@@ -120,7 +120,8 @@ secret names are still served from `.env` (`C75-secrets`), names only.
 
 Moving a station: `bash scripts/lib/himmel-secrets import-env <primary
 checkout>/.env`, then check `himmel-secrets status`. Leave `.env` in place
-while it holds a secret the manifest does not list: import-env skips it.
+as the fallback; import-env skips a secret the manifest does not list, so add
+a new one to `stationSecrets` first.
 Wait until the test runners export `HIMMEL_SECRETS_KEYRING=off` before you
 move a station whose suites run against the real keyring.
 

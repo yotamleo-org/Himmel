@@ -188,6 +188,14 @@ assert_eq "S6 export-env fails on a value a .env cannot carry" "rc=2" "$got"
 assert_eq "S6 export-env names the values a .env cannot carry" "2" "$(grep -c '^skipped TEST_HS_[CD] (the value would not read back from a .env)' "$TMP/s6rt.err")"
 assert_eq "S6 export-env writes no altered value" "0" "$(grep -c 'TEST_HS_[CD]' "$TMP/out-rt.env")"
 
+# S5b: import-env also stores the station secrets a script loads from .env
+# outside the wizard's list.
+kreset
+printf 'GOOGLE_HEALTH_REFRESH_TOKEN=fake-g\nZAI_API_KEY=fake-z\nTELEGRAM_CHAT_ID=fake-t\nhimmel_github_token_vm2=fake-v\n' >"$TMP/in-station.env"
+out=$(cd "$REPO" && "$HS" import-env "$TMP/in-station.env" 2>&1)
+assert_eq "S5b import-env stores the station secrets" "4" "$(grep -c '^service=himmel key=\(GOOGLE_HEALTH_REFRESH_TOKEN\|ZAI_API_KEY\|TELEGRAM_CHAT_ID\|himmel_github_token_vm2\) scope=user' "$KSTUB_STORE")"
+assert_eq "S5b import-env skips none of them" "0" "$(printf '%s' "$out" | grep -c '^skipped')"
+
 # S7: a locked keyring makes no lookup, and put changes nothing.
 kreset
 printf 'service=himmel key=TEST_HS_A scope=user\tfake-a\n' >"$KSTUB_STORE"
