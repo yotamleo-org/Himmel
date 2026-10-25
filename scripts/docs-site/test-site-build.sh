@@ -350,7 +350,7 @@ check "control: the frame 1 fixture differs from a sidebar with one entry moved"
 check "IA v5: Plugins lists himmel-guard and handover only" is "$(sidebar_of "$(route_of getting-started.md)" Plugins | paste -sd'|')" "himmel-guard|handover"
 check "IA v5: Internals… is collapsed on a page outside it" grep -qE '<details class="[^"]*"><summary class="[^"]*"><span class="group-label[^"]*"><span class="large[^"]*">Internals…<' "$(route_of getting-started.md)"
 check "control: an open group does not match the collapsed pattern" fails grep -qE '<details class="[^"]*"><summary class="[^"]*"><span class="group-label[^"]*"><span class="large[^"]*">Get started<' "$(route_of getting-started.md)"
-for r in setup/new-machine launchers setup/codex setup/cli-proxy-lane hermes-runbook setup/cloud-environment jarvis-subsystems himmel-bus voice orchestration-patterns security/npm-policy security/python-policy tool-adoption/rubric tool-adoption/registry tool-adoption/telemetry tool-adoption/lane-adoption-playbook; do
+for r in setup/new-machine launchers setup/codex setup/cli-proxy-lane hermes-runbook setup/cloud-environment jarvis-subsystems himmel-bus orchestration-patterns security/npm-policy security/python-policy tool-adoption/rubric tool-adoption/registry tool-adoption/telemetry tool-adoption/lane-adoption-playbook; do
   check "IA v5: /$r/, moved under Internals…, still resolves at its old URL" test -f "$dist/$r/index.html"
 done
 home="$dist/index.html"

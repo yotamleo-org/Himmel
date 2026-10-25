@@ -30,7 +30,7 @@ TIMEOUT=600
 OUT=""
 ONLY=""
 
-ARM_A_TEXT='Graphify is available for structure questions. Before broad greps, try: bash scripts/graphify/leg-graph.sh query "<question>" or bash scripts/graphify/leg-graph.sh explain "<concept>" (it reads a pre-built knowledge graph of this repo and may be a few commits behind; verify what it returns against the source). Use grep and Read as needed.'
+ARM_A_TEXT='Graphify is available for structure questions. Before broad greps, try: bash scripts/graphify/worker-graph.sh query "<question>" or bash scripts/graphify/worker-graph.sh explain "<concept>" (it reads a pre-built knowledge graph of this repo and may be a few commits behind; verify what it returns against the source). Use grep and Read as needed.'
 ARM_B_TEXT='Do not use graphify and do not read any graphify-out directory. Use grep, git grep, find and Read only.'
 
 sub="${1:-}"
@@ -129,7 +129,7 @@ for rep in $(seq 1 "$REPS"); do
       fi
       tag="$t.$arm.r$rep"
       [ -f "$OUT/raw/$tag.json" ] && continue
-      if [ "$arm" = A ]; then sys_text="$ARM_A_TEXT"; deny=""; else sys_text="$ARM_B_TEXT"; deny='Bash(graphify:*),Bash(bash scripts/graphify/leg-graph.sh:*)'; fi
+      if [ "$arm" = A ]; then sys_text="$ARM_A_TEXT"; deny=""; else sys_text="$ARM_B_TEXT"; deny='Bash(graphify:*),Bash(bash scripts/graphify/leg-graph.sh:*),Bash(bash scripts/graphify/worker-graph.sh:*)'; fi
       prompt="$(task_prompt "$t")"
       start="$(date +%s)"
       # graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped

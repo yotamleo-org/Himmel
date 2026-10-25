@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { uploadAttachment, normalizeEnv, baseUrl, loadEnvFile } from './client.js';
@@ -234,12 +234,86 @@ describe('loadEnvFile', () => {
   beforeEach(() => {
     dir = mkdtempSync(join(tmpdir(), 'jira-dotenv-'));
     file = join(dir, '.env');
+    vi.stubEnv('HOME', dir);
+    mkdirSync(join(dir, '.himmel'));
     writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\n');
   });
 
   afterEach(() => {
+    vi.unstubAllEnvs();
     rmSync(dir, { recursive: true, force: true });
     if (orig === undefined) delete process.env.JIRA_BASE_URL; else process.env.JIRA_BASE_URL = orig;
+  });
+
+  it('reads Jira identifiers from himmel.conf before the legacy .env', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('JIRA_EMAIL', '');
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'),
+      'JIRA_BASE_URL=https://from-config.example\nJIRA_EMAIL=dummy@example.invalid\nJIRA_PROJECT_KEY=DUMMY\n');
+    loadEnvFile(file);
+    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.example');
+    expect(process.env.JIRA_EMAIL).toBe('dummy@example.invalid');
+    expect(process.env.JIRA_PROJECT_KEY).toBe('DUMMY');
+  });
+
+  it('prefers .local to himmel.conf but preserves a non-empty process value', () => {
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_PROJECT_KEY=CONFIG\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'JIRA_PROJECT_KEY=LOCAL\n');
+    loadEnvFile(file);
+    expect(process.env.JIRA_PROJECT_KEY).toBe('LOCAL');
+    process.env.JIRA_PROJECT_KEY = 'PROCESS';
+    loadEnvFile(file);
+    expect(process.env.JIRA_PROJECT_KEY).toBe('PROCESS');
+  });
+
+  it('falls through empty config values and never reads credentials or unclassified keys from config', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    vi.stubEnv('JIRA_API_TOKEN', '');
+    vi.stubEnv('CONFLUENCE_API_TOKEN', '');
+    vi.stubEnv('JIRA_BOARD_ID', '');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf.local'), 'JIRA_BASE_URL=\nJIRA_API_TOKEN=planted\n');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'),
+      'JIRA_BASE_URL=\nJIRA_API_TOKEN=planted\nCONFLUENCE_API_TOKEN=planted\nJIRA_BOARD_ID=123\n');
+    writeFileSync(file, 'JIRA_BASE_URL=https://from-dotenv.example\nJIRA_API_TOKEN=dummy-token\n');
+    loadEnvFile(file);
+    expect(process.env.JIRA_BASE_URL).toBe('https://from-dotenv.example');
+    expect(process.env.JIRA_API_TOKEN).toBe('dummy-token');
+    expect(process.env.CONFLUENCE_API_TOKEN).toBe('');
+    expect(process.env.JIRA_BOARD_ID).toBe('');
+  });
+
+  it.each([
+    ['DUMMY # default project', 'DUMMY'],
+    ['DUMMY#literal', 'DUMMY#literal'],
+    ['"DUMMY # quoted" # comment', '"DUMMY # quoted"'],
+    ["'DUMMY # quoted' # comment", "'DUMMY # quoted'"],
+    ["DUMMY's-project # comment", "DUMMY's-project"],
+    ['"DUMMY\\\" # quoted" # comment', '"DUMMY\\\" # quoted"'],
+  ])('strips only unquoted inline comments from config: %s', (input, expected) => {
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), `JIRA_PROJECT_KEY=${input}\n`);
+    loadEnvFile(file);
+    expect(process.env.JIRA_PROJECT_KEY).toBe(expected);
+  });
+
+  it('reads identifiers from config even without a legacy .env', () => {
+    vi.stubEnv('JIRA_PROJECT_KEY', '');
+    rmSync(file);
+    writeFileSync(join(dir, '.himmel', 'himmel.conf'), 'JIRA_PROJECT_KEY=CONFIG\n');
+    loadEnvFile(file);
+    expect(process.env.JIRA_PROJECT_KEY).toBe('CONFIG');
+  });
+
+  it('never redirects credential destinations through either config layer', () => {
+    vi.stubEnv('JIRA_BASE_URL', '');
+    rmSync(file);
+    for (const name of ['himmel.conf.local', 'himmel.conf']) {
+      writeFileSync(join(dir, '.himmel', name), 'JIRA_BASE_URL=https://planted.example\n');
+    }
+    loadEnvFile(file);
+    expect(process.env.JIRA_BASE_URL).toBe('');
   });
 
   it('fills a key that is exported but EMPTY (an empty value is not a usable one)', () => {

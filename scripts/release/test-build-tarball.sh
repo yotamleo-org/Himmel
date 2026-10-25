@@ -56,9 +56,10 @@ export npm_config_registry="http://127.0.0.1:$port/" npm_config_fetch_retries=0 
 
 # --- fixture: a tiny git repo shaped like himmel's build surface -------------
 fx="$tmp/fx"
-mkdir -p "$fx/scripts/jira" "$fx/scripts/fxdep" "$fx/scripts/lib"
+mkdir -p "$fx/scripts/jira" "$fx/scripts/fxdep" "$fx/scripts/lib" "$fx/archive/old"
 echo "1.2.3" > "$fx/VERSION"
 printf '#!/usr/bin/env bash\necho hello\n' > "$fx/scripts/lib/hello.sh"
+printf '#!/usr/bin/env bash\necho archived\n' > "$fx/archive/old/feature.sh"
 cat > "$fx/scripts/jira/package.json" <<'EOF'
 {
   "name": "fx-jira",
@@ -153,6 +154,8 @@ check "carries the tracked tree (VERSION, scripts/lib/hello.sh)" \
 check "GREEN: build-complete -- scripts/jira/dist/index.js is IN the tarball" grep -Fxq 'himmel-1.2.3/scripts/jira/dist/index.js' "$list"
 check "GREEN: build-complete -- scripts/jira/node_modules/ is IN the tarball" grep -Eq '^himmel-1.2.3/scripts/jira/node_modules/?$' "$list"
 check_not "no .git directory in the tarball" grep -Eq '(^|/)\.git(/|$)' "$list"
+check "the archive/ control is tracked in the fixture" bash -c "git -C '$fx' ls-files --error-unmatch archive/old/feature.sh"
+check_not "the tracked archive/ tree is NOT in the tarball" grep -Fq 'himmel-1.2.3/archive/' "$list"
 
 # RED control for "build-complete": the same tree built with --no-build must LACK dist/.
 bash "$BUILD" --version 1.2.3 --src "$fx" --out "$tmp/out-nobuild" --no-build >/dev/null 2>&1 \

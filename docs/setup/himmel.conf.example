@@ -37,3 +37,16 @@
 
 # Updates
 # HIMMEL_UPDATE_AUTOSTASH=1
+
+# Non-secret Jira and service identifiers (tokens stay in .env)
+# JIRA_EMAIL=dummy@example.invalid
+# JIRA_PROJECTS=DUMMY
+# JIRA_PROJECT_KEY=DUMMY
+# JIRA_CLOUD_ID=dummy-cloud-id
+# GCP_CI_PROJECT_ID=dummy-project
+# SNYK_ORG_ID=dummy-org-id
+# SNYK_ORG_SLUG=dummy-org
+# VERCEL_TEAM_ID=team_dummy
+# VERCEL_USER_ID=dummy-user
+# ANTHROPIC_API_ORG_ID_A=dummy-org-a
+# ANTHROPIC_API_ORG_ID_B=dummy-org-b

@@ -31,7 +31,6 @@ luna/google-health-connector-setup.md
 luna/pr-lane-guard.md
 jarvis-subsystems.md
 himmel-bus.md
-voice.md
 handover/afk-mode.md
 handover/running-a-console.md
 internals/handover-system.md
@@ -57,6 +56,7 @@ internals/prompt-cache.md
 internals/config-layers.md
 internals/mcp-servers.md
 internals/ponytail-convention.md
+internals/install-profile-files.md
 contributing.md
 security-review.md
 security/npm-policy.md

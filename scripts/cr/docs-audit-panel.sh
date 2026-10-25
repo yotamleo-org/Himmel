@@ -99,17 +99,27 @@ done
 head="$HEAD_ARG"
 branch="$BRANCH_ARG"
 
-# Same truthiness as clear-review-marker.sh gate 3b. Process env wins; .env is
-# loaded from the primary checkout by load-dotenv.sh, same convention as the
-# full lane's CR_PROFILE bridge.
+# Same truthiness as clear-review-marker.sh gate 3b. CR_REQUIRE_CROSS_MODEL is
+# gate policy: load_policy reads it from ~/.himmel/config.json .policy (then the
+# legacy .env) and ignores the process env. CR_PROFILE is behaviour config, so
+# load_dotenv keeps it, process env first, same as the full lane's CR_PROFILE
+# bridge. The lane can only tighten the gate, so a lib without load_policy or an
+# unreadable policy file turns it ON.
 # shellcheck source=../lib/load-dotenv.sh
 # shellcheck disable=SC1091
 . "$HIMMEL_ROOT/scripts/lib/load-dotenv.sh"
-load_dotenv --root "$(_load_dotenv_primary_for "$HIMMEL_ROOT")" CR_REQUIRE_CROSS_MODEL CR_PROFILE || true
+load_dotenv --root "$(_load_dotenv_primary_for "$HIMMEL_ROOT")" CR_PROFILE || true
+if declare -F load_policy >/dev/null 2>&1 \
+    && load_policy --root "$(_load_dotenv_primary_for "$HIMMEL_ROOT")" CR_REQUIRE_CROSS_MODEL; then
+    docs_audit_policy_read=1
+else
+    docs_audit_policy_read=0
+    echo "docs-audit-panel: could not read CR_REQUIRE_CROSS_MODEL from ~/.himmel/config.json or .env - running the cross-model lane (fail closed)" >&2
+fi
 export CR_REQUIRE_CROSS_MODEL CR_PROFILE
 case "$(printf '%s' "${CR_REQUIRE_CROSS_MODEL:-}" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')" in
     1|true|on|yes) docs_audit_require_cross_model=1 ;;
-    *) docs_audit_require_cross_model=0 ;;
+    *) docs_audit_require_cross_model="$((1 - docs_audit_policy_read))" ;;
 esac
 
 # $head and $branch are the values STEP 1 captured - this fence runs

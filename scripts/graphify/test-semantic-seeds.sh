@@ -6,7 +6,7 @@
 # after any anchor seeds. Stub graphify; every row runs everywhere.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="$HERE/leg-graph.sh"
+SCRIPT="$HERE/worker-graph.sh"
 SEM="$HERE/semantic-seeds.py"
 FAILS=0
 pass() { echo "  ok: $1"; }

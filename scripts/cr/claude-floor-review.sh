@@ -29,7 +29,7 @@
 # either. The gate never counts claude-floor as cross-model evidence.
 #
 # It refuses to spend (exit 3) unless the operator opted in (the primary's
-# .env or the process env sets CR_REQUIRE_CROSS_MODEL truthy AND
+# ~/.himmel/config.json .policy or the legacy .env sets CR_REQUIRE_CROSS_MODEL truthy AND
 # CR_FLOOR_FALLBACK=claude-only) and the ledger shows the floor can actually
 # unlock: no non-Claude ok row at this head, and every non-Claude lane that
 # recorded a row is exhausted (quota/rate-limit, or a vacuous CodeRabbit pass)
@@ -81,13 +81,17 @@ git_dir=$(git rev-parse --git-common-dir 2>/dev/null) || die "not in a git repos
 ledger="${CR_LEDGER:-$git_dir/cr-critic-scores.jsonl}"
 
 # --- 1. eligibility: never spend a review the gate could not accept ---------
-# The operator opt-in first, read exactly as clear-review-marker.sh reads it (the
-# primary's .env; a non-empty process value wins): without BOTH knobs the gate
-# never accepts a claude-floor row, so the review would be spent for nothing.
+# The operator opt-in first, read exactly as clear-review-marker.sh reads it
+# (load_policy: ~/.himmel/config.json .policy, then the legacy .env; the process
+# env is ignored): without BOTH knobs the gate never accepts a claude-floor row,
+# so the review would be spent for nothing. A lib without load_policy, or a
+# policy file that cannot be read, refuses.
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/load-dotenv.sh" || die "cannot load scripts/lib/load-dotenv.sh" 1
-load_dotenv --root "$(_load_dotenv_primary_for "$REPO_ROOT")" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK \
-    || die "could not read CR_REQUIRE_CROSS_MODEL/CR_FLOOR_FALLBACK from .env" 3
+if ! declare -F load_policy >/dev/null 2>&1 \
+    || ! load_policy --root "$(_load_dotenv_primary_for "$REPO_ROOT")" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK; then
+    die "could not read CR_REQUIRE_CROSS_MODEL/CR_FLOOR_FALLBACK from ~/.himmel/config.json or .env" 3
+fi
 norm() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
 case "$(norm "${CR_REQUIRE_CROSS_MODEL:-}")" in
     1|true|on|yes) ;;

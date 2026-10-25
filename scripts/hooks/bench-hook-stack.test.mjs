@@ -114,7 +114,6 @@ test('benchEnv redirects every write-through hook at the scratch dir', () => {
   for (const key of ['AUTO_ARM_STATE_DIR', 'WHERE_ARE_WE_STATE_DIR', 'UPDATE_CHECK_STATE_DIR', 'QMD_STALENESS_CACHE_DIR']) {
     assert.match(env[key], /^[\\/]scratch[\\/]/, key);
   }
-  assert.equal(env.VOICE_SPEAK, '0');
   assert.equal(env.CLAUDE_PLUGIN_ROOT, undefined);
   assert.equal(benchEnv('/scratch', '/repo', '/plugin').CLAUDE_PLUGIN_ROOT, '/plugin');
 });

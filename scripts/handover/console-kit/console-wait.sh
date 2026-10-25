@@ -83,6 +83,8 @@
 #                               moved a ticket or its failure signature is new.
 #   WAKE focus <state>          the same pass: focus-refresh.sh --status is FAILED:<stage>,
 #                               or DIRTY:<n>m with n of 10 or more; once per state.
+#                               Each tick also starts one background refresh of a
+#                               DIRTY or FAILED page (none while one runs); no wake.
 #   WAKE tick-fail samples=<n>  CHIEF_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -828,6 +830,21 @@ sweep_wake() {
     printf 'WAKE focus %s\n' "$fstat"
 }
 
+# focus_rebuild: with --doc, each tick reads the FOCUS state and, when a status write marked it
+# DIRTY or the last refresh FAILED, starts one focus-refresh.sh in the background (detached, so
+# the waiter never blocks on it); a refresh of the same doc still running from an earlier tick is left alone.
+focus_pid_file="$inbox.wait.focus-pid"
+focus_rebuild() {
+    local fstat pid
+    [ -n "$console_doc" ] || return 0
+    pid="$(cat "$focus_pid_file" 2>/dev/null)"  # swallow-ok: no pid file reads empty, so no refresh is running
+    case "$pid" in ''|*[!0-9]*) ;; *) ps -ww -p "$pid" -o args= 2>/dev/null | grep -qxF -- "bash $focus_cmd --doc $console_doc" && return 0 ;; esac
+    fstat="$(timeout -k 2 "$sweep_timeout" bash "$focus_cmd" --doc "$console_doc" --status 2>/dev/null 9>&-)" || fstat=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable focus state starts nothing
+    case "$fstat" in focus=DIRTY:* | focus=FAILED:*) ;; *) return 0 ;; esac
+    setsid bash "$focus_cmd" --doc "$console_doc" </dev/null >/dev/null 2>&1 9>&- &
+    printf '%s\n' "$!" > "$focus_pid_file" 2>/dev/null
+}
+
 # predecessor_close: the console doc's first line names its predecessor
 # (`successor to <doc>.md`). Once that doc is WRAPPED and lock-free with exactly one
 # live session, close-wrapped-leg.sh --console closes it, once, and a Results bullet
@@ -838,7 +855,7 @@ sweep_wake() {
 # marker and prints the wake (rc 0). The marker `<inbox>.wait.predecessor` (body:
 # `<state>:<doc>`) outlives the waiter, so a done predecessor is never asked twice.
 pred_file="$inbox.wait.predecessor"
-close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-leg.sh}"
+close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-worker.sh}"
 pred_hangs=0
 pred_hang_max="${CHIEF_WAIT_CLOSE_HANGS:-3}"
 case "$pred_hang_max" in ''|*[!0-9]*|0) pred_hang_max=3 ;; esac
@@ -882,7 +899,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
 r0_file="$inbox.wait.r0"
-leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/leg-event.sh}"
+leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
     local cands label marker ldoc bullet sum line stem out rc outf what pr seen=" "
@@ -1115,6 +1132,7 @@ while :; do
             fi
         fi
         sample "$@" 9>&-
+        focus_rebuild
         if [ -n "$key" ]; then
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"

@@ -210,7 +210,7 @@ while IFS= read -r line; do
 done < "$LIST"
 [ "$bad_rows" -eq 0 ] && ok "every list row is an existing kit script"
 
-for s in wrap-merged.sh close-wrapped-leg.sh ready-check.sh verdict-go.sh action-zero.sh board.mjs; do
+for s in wrap-merged.sh close-wrapped-leg.sh close-wrapped-worker.sh ready-check.sh verdict-go.sh action-zero.sh board.mjs; do
     if grep -qxF "$s" "$LIST"; then ok "list names $s"; else bad "list lacks the ticket's named script $s"; fi
 done
 

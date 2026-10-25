@@ -1213,16 +1213,17 @@ def origin_repo():
 
 
 def open_prs(path, repo):
-    """{ticket number: [(pr, ci, draft)]} from a `gh pr list --json number,title,headRefName,isDraft,statusCheckRollup`
-    file, else one live gh read (TRACKER_GH is the test seam); None when gh cannot be read. A PR belongs to every key
-    its title or branch names; ci is running, red, cancelled, green or none."""
+    """{ticket number: [(pr, ci, draft, head)]} from a `gh pr list --json
+    number,title,headRefName,headRefOid,isDraft,statusCheckRollup` file, else one live gh read (TRACKER_GH is the test
+    seam); None when gh cannot be read. A PR belongs to every key its title or branch names; ci is running, red,
+    cancelled, green or none; head is '' when the file has no headRefOid."""
     try:
         if path:
             prs = json.load(open(path, encoding='utf-8'))
         else:
             prs = json.loads(subprocess.run(
                 [os.environ.get('TRACKER_GH', 'gh'), 'pr', 'list', '--repo', repo, '--state', 'open', '--limit', '300',
-                 '--json', 'number,title,headRefName,isDraft,statusCheckRollup'],
+                 '--json', 'number,title,headRefName,headRefOid,isDraft,statusCheckRollup'],
                 capture_output=True, text=True, timeout=60, check=True).stdout)
     except (OSError, ValueError, subprocess.SubprocessError):
         if path:
@@ -1242,7 +1243,7 @@ def open_prs(path, repo):
         else:
             ci = 'green' if all(b in ('SUCCESS', 'NEUTRAL', 'SKIPPED') for _, b in st) else 'red'
         for k in set(re.findall(r'HIMMEL-(\d+)', pr['title'] + ' ' + pr['headRefName'], re.I)):
-            out.setdefault(int(k), []).append((pr['number'], ci, bool(pr.get('isDraft'))))
+            out.setdefault(int(k), []).append((pr['number'], ci, bool(pr.get('isDraft')), str(pr.get('headRefOid') or '')))
     return out
 
 
@@ -1307,7 +1308,8 @@ def column_parity(version, cols):
 def ci_column(jira, prs):
     """The column a card sits in: Jira's status, moved by its open PRs' CI. A red PR is In Progress, a running one is
     IN CI, a green one is IN CI unless Jira already holds the card in In Review (review state is not read here); no PR
-    leaves Jira's status. The page then shows the card under Jira's status as a note, and the parity line flags it."""
+    leaves Jira's status. The page then shows the card under Jira's status as a note; parity compares the card under
+    Jira's status, so a CI move is no drift."""
     cis = {ci for _, ci, _ in prs}
     if 'red' in cis:
         return 'In Progress'
@@ -1316,14 +1318,35 @@ def ci_column(jira, prs):
     return jira
 
 
+def worker_ci(prs, workers):
+    """`prs` as (pr, ci, draft), each PR's ci read from its ticket's worker record where the record carries one for
+    the PR's current head: the record's required-check CI is what Jira's status follows, so a red latch or red is red,
+    pending is running, green and none stay. A PR the record does not name, names without ci or at another head (a
+    push since the record was written), keeps the gh rollup's."""
+    if prs is None:
+        return None
+    out = {}
+    for k, v in prs.items():
+        rec = (workers.get(k) or {}).get('prs', {})
+        row = []
+        for n, ci, d, h in v:
+            p = rec.get(str(n))
+            if (isinstance(p, dict) and h and p.get('head') == h
+                    and (p.get('red_latch') or p.get('ci') in ('red', 'pending', 'green', 'none'))):
+                ci = 'red' if p.get('red_latch') else {'pending': 'running'}.get(p['ci'], p['ci'])
+            row.append((n, ci, d))
+        out[k] = row
+    return out
+
+
 def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
     Columns are the Jira status names of the version's open tickets, moved by an open PR's CI (`ci_column`) and each
     split into the plan's priority blocks; a card
     carries its open PRs with CI state (a started card with none is flagged), its blockers, its FAST-TRACK chain step and
-    its sector. Each column ends its header with a parity line against a live JQL count. A card whose ticket has a
-    worker record in `workers` carries a worker line. The fingerprint covers what a reader acts on (tickets, priority
+    its sector. Each column ends its header with a parity line: the mirror's count of that status against a live JQL
+    count. A card whose ticket has a worker record in `workers` carries a worker line. The fingerprint covers what a reader acts on (tickets, priority
     blocks, chain steps, worker owner, state and open-PR heads, and the column a PR's CI puts a card in), never a CI badge on its own, an age or a timestamp."""
     def step_state(st):
         k = st.get('key', '')
@@ -1338,6 +1361,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
         return 'work' if mir[k]['sn'] in ('In Progress', 'In Review', 'IN CI') else 'next'
 
     workers = workers or {}
+    prs = worker_ci(prs, workers)
     base = base.strip().rstrip('/') if re.match(r'^https?://', base.strip()) else ''
     opn = {num(k): m for k, m in mir.items() if version in m['fv'] and bucket(m) not in ('done', 'wont')}
     done = sum(1 for m in mir.values() if version in m['fv'] and bucket(m) == 'done')
@@ -1349,7 +1373,10 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     ecol = {k: ci_column(jcol[k], (prs or {}).get(k, [])) for k in opn}
     for k in sorted(opn, key=order.get):
         cols.setdefault(ecol[k], []).append(k)
-    par = column_parity(version, cols)
+    mcols = {c: [] for c in VCOLS}
+    for k in sorted(opn, key=order.get):
+        mcols.setdefault(jcol[k], []).append(k)
+    par = column_parity(version, mcols)
     chains = [ch for ch in chains if any(version in mir.get(st.get('key', ''), {}).get('fv', []) for st in ch['steps'])]
     merged = sum(1 for ch in chains for st in ch['steps'] if step_state(st) == 'merged')
     chains = [dict(ch, steps=[st for st in ch['steps'] if step_state(st) != 'merged']) for ch in chains]
@@ -1394,7 +1421,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
             jn, diff = par.get(c, (0, []))
             pl = '<div class="parity %s">Jira %d · %s</div>' % ('ok' if not diff else 'drift', jn, 'ok' if not diff else
                                                                'DRIFT: ' + esc(', '.join(diff[:8]) + (' (+%d more)' % (len(diff) - 8) if len(diff) > 8 else '')))
-            tally.append('%s %d/%d %s' % (c, len(ks), jn, 'ok' if not diff else 'DRIFT'))
+            tally.append('%s %d/%d %s' % (c, len(mcols.get(c, [])), jn, 'ok' if not diff else 'DRIFT'))
         parts = []
         for bi, n in enumerate(names):
             bk = [k for k in ks if block[k] == n]
@@ -1503,7 +1530,7 @@ def main():
     ap.add_argument('--priority-file', default=None, help='the approved plan carrying the `priority:` line (--remaining, --version)')
     ap.add_argument('--version', default=None, help='write the FOCUS page of one version to --out, then exit (HIMMEL-6769); with '
                                                      '--plan-dir it also writes <out>.fp, the value --emit-fp prints for tick')
-    ap.add_argument('--prs-file', default=None, help='--version: a `gh pr list --json number,title,headRefName,isDraft,'
+    ap.add_argument('--prs-file', default=None, help='--version: a `gh pr list --json number,title,headRefName,headRefOid,isDraft,'
                                                      'statusCheckRollup` file (default: one live gh read)')
     ap.add_argument('--workers-dir', default=None, help='--version: the worker records dir (HIMMEL-<n>.json, written by '
                                                          'ticket-status.sh); a card with a record shows its worker line')

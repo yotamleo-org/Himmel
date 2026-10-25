@@ -10,7 +10,7 @@ sees.
 | path | what |
 |---|---|
 | `fixtures/case-NN.patch` | 24 frozen one-file git diffs: 12 seeded, 12 clean twins. Ids are opaque and shuffled, so a case id says nothing about its class or its twin |
-| `key/seeds.json` | the answer key: per case its twin `pair`, `kind` (seeded / clean) and `defects` (`id`, `class`, `file`, new-file `line`), plus a `canary` string |
+| `key/seeds.json` | the answer key: per case its twin `pair`, `kind` (seeded / clean), `split` (open / sealed) and `defects` (`id`, `class`, `file`, new-file `line`), plus a `canary` string |
 | `score.py` | `lint` (fixture/key integrity + leak lint) and `score` (matcher, metrics, eval-runs row) |
 | `run.sh` | one sweep: lint, panel per fixture, score, one ledger row |
 | `test-review-panel.sh` | the suite: canned critic outputs and a stub panel, no model call |
@@ -37,9 +37,9 @@ python3 scripts/eval/review-panel/score.py score --outputs ~/.himmel/eval/review
 ```
 
 The table it prints is the result; the same command re-prints it from the
-stored outputs at any time. `eval-compare review-panel` compares sweeps once
-`eval-compare.json` carries the `review-panel` bands (listed in the PR that
-added this eval).
+stored outputs at any time. `eval-compare review-panel` compares two sweeps
+case by case (`hit` and `fp`, paired, with the detection floor the 24 cases
+allow); the run-level metrics carry no bands yet, so they print as info.
 
 ## What the critic sees, and what keeps the key from it
 
@@ -88,10 +88,34 @@ case's denominators only. Recall, precision and fp_rate carry Wilson 95%
 intervals in the row's `ci`. n is small (12 defects, 2 per class): a per-class
 number is a direction, not a measurement.
 
+## Open and sealed seeds
+
+Half the pairs are sealed. Per class, `random.Random(7519)` picked one of its
+two pairs (`a` or `b`) to seal, and a pair's seeded and clean twins share its
+half, so each half holds one pair of every class: 6 pairs, 12 cases each. The
+key records the seed and the method under `split`.
+
+- `score.py` reports every metric per half as `open.<metric>` and
+  `sealed.<metric>`, each with its own Wilson interval, beside the whole-set
+  metric.
+- Tuning reads the open half only: an `eval_feedback.py` rule on this eval sees
+  the `open.` metrics, unprefixed, and never the `sealed.` metrics or the
+  whole set (which contains the sealed half).
+- The sealed half only grades the keep rule: a change is kept when the open
+  (train) and the sealed (test) half both gain more than the rule's
+  `min_gain`, and run-to-run noise is below it. Train up with test flat is
+  reverted.
+- `run.sh` sets `CRITIC_KNOWN_FINDINGS=0` and `CR_TRIVIALITY_OVERRIDE=full`,
+  which production `/pr-check` does not, so both halves grade the panel as this
+  eval runs it, not the production reviewer.
+
+Adding the split changed the key, so it started a new eval-compare series.
+
 ## Adding a fixture
 
 Write the seeded diff and its clean twin as two `case-NN.patch` files with new
-opaque ids, add both to `key/seeds.json` under one `pair`, and run
+opaque ids, add both to `key/seeds.json` under one `pair` with one `split`
+(keep one pair of every class in each half), and run
 `python3 scripts/eval/review-panel/score.py lint`. Changing any fixture or the
 key changes `config.fixture_set`, and retuning the class keywords changes
 `config.class_patterns`; either starts a new eval-compare series.

@@ -1,0 +1,22 @@
+{
+  "id": "real-himmel-3161-827",
+  "ticket": "HIMMEL-3161",
+  "pr": 827,
+  "merge_sha": "3d142e4e8d2ac999e1e40157a309f166d27333d0",
+  "base_sha": "c41546b9816048ea30f0903fa52b072efeb91ca8",
+  "set": "capability",
+  "source": "bug",
+  "why_hard": "3 code file(s), 31 changed lines; the hidden scripts/cr/test-cr-scores.sh must go from failing at the base to passing, checked by 2 named check(s)",
+  "tests": [
+    "scripts/cr/test-cr-scores.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/cr/test-cr-scores.sh"
+  ],
+  "scope": [
+    ".agents/skills/cr-scores/",
+    ".claude/commands/",
+    "scripts/cr/"
+  ]
+}

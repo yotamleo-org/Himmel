@@ -1606,9 +1606,7 @@ jobs:
       # backfill, 40 tests) had no CI step, so a regression in
       # scripts/vault/** could merge green. Runs from the repo root like the
       # telegram suite (fixtures are repo-relative). Hermetic: a stub `gh` and a
-      # preloaded fetch stub, no network, no live vault. Ubuntu only — the
-      # backfill suite prepends a bash `gh` stub to PATH with a `:` separator
-      # and calls execFileSync("gh"), which windows-latest cannot resolve, so
+      # preloaded fetch stub, no network, no live vault.
       # A step in this job (not a new job) rides the already-required
       # `bun-suites (ubuntu-latest)` context: no branch-protection change.
       - name: Vault tests (ubuntu only)
@@ -2065,8 +2063,6 @@ jobs:
         shell: bash
         run: |
           python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt
-      # Explicit `bash` prefix: on windows-latest the default run shell is pwsh,
-      # but Git Bash is preinstalled + on PATH, so `bash …` runs under MSYS2.
       # FAIL_LOG_DIR: full failed-suite logs land there and upload as an
       # artifact below — the inline tail is bounded, so without this the
       # failing assertion can be unrecoverable from Actions logs (HIMMEL-963).

@@ -24,7 +24,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LINT="$HERE/brief-lint.sh"
-LEG="$HERE/headed-arm-leg.sh"
+LEG="$HERE/headed-arm-worker.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/brief-lint.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ok() { pass=$((pass + 1)); printf 'ok   %s\n' "$1"; }

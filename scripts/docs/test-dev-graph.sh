@@ -15,14 +15,14 @@
 # Source basenames the real graph binds. impacted-suites.sh selects a suite by
 # basename, so each is named here literally (check-dev-graph.sh enforces it):
 #   chief.sh console-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
-#   headed-arm-leg.sh running-a-console.md leg-preface.md check-commit-msg.sh
+#   headed-arm-worker.sh running-a-console.md leg-preface.md check-commit-msg.sh
 #   .pre-commit-config.yaml check-cr-before-push.sh pr-check.md
 #   panel-first-pass.sh review-round.sh glossary.md grant-round.sh
 #   check-cr-marker-on-pr-create.sh check-ci.sh ready-check.sh judge-ladder.sh
 #   write-verdict.sh verdict-go.sh go.sh merge-on-green.sh
-#   block-unresolved-cr-merge.sh wrap-subtree-check.sh leg-event.sh
-#   residual-lines.sh wrap-merged.sh close-wrapped-leg.sh succession-tracker.sh
-#   leg-jira-status.sh coderabbit-signal.sh review-merge-gate.sh cr-first-release.sh
+#   block-unresolved-cr-merge.sh wrap-subtree-check.sh worker-event.sh
+#   residual-lines.sh wrap-merged.sh close-wrapped-worker.sh succession-tracker.sh
+#   worker-jira-status.sh coderabbit-signal.sh review-merge-gate.sh cr-first-release.sh
 #
 # Platform guard (gitbash-only): bash 3.2+, jq, awk, grep.
 # Usage: bash scripts/docs/test-dev-graph.sh

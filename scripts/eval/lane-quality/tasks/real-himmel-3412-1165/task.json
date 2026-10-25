@@ -1,0 +1,20 @@
+{
+  "id": "real-himmel-3412-1165",
+  "ticket": "HIMMEL-3412",
+  "pr": 1165,
+  "merge_sha": "6fe5a1b2bd6fb8fd5751f75dda82d13bc61882cc",
+  "base_sha": "98a42f16f36a94af430be802d422443b7001bc68",
+  "set": "capability",
+  "source": "proof-first",
+  "why_hard": "1 code file(s), 136 changed lines; the hidden scripts/handover/console-kit/test-fleet.sh must go from failing at the base to passing, checked by 6 named check(s)",
+  "tests": [
+    "scripts/handover/console-kit/test-fleet.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/handover/console-kit/test-fleet.sh"
+  ],
+  "scope": [
+    "scripts/handover/console-kit/"
+  ]
+}

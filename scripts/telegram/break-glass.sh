@@ -377,7 +377,7 @@ op_launch_leg() {
     now="$(date +%s)"
     : > "$state/$label.signal"
     log="$state/$label-$now.log"
-    launcher="${BREAK_GLASS_LEG_CMD:-bash $PRIMARY/scripts/handover/console-kit/headed-arm-leg.sh}"
+    launcher="${BREAK_GLASS_LEG_CMD:-bash $PRIMARY/scripts/handover/console-kit/headed-arm-worker.sh}"
     # shellcheck disable=SC2086 # the seam is a command line by design
     set -- $launcher
     if ! command -v "$1" >/dev/null 2>&1 || { [ "$1" = bash ] && [ ! -f "$2" ]; }; then
@@ -418,7 +418,7 @@ op_close_wrapped() {
             return 23
         fi
     fi
-    closer="${BREAK_GLASS_CLOSE_CMD:-bash $PRIMARY/scripts/handover/console-kit/close-wrapped-leg.sh}"
+    closer="${BREAK_GLASS_CLOSE_CMD:-bash $PRIMARY/scripts/handover/console-kit/close-wrapped-worker.sh}"
     while IFS= read -r doc; do
         [ -n "$doc" ] || continue
         # shellcheck disable=SC2086 # the seam is a command line by design

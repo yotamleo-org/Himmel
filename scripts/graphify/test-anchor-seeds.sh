@@ -6,7 +6,7 @@
 # everywhere; the real-graphify row is skipped when graphify is not installed.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="$HERE/leg-graph.sh"
+SCRIPT="$HERE/worker-graph.sh"
 ANCHOR="$HERE/anchor-seeds.py"
 FAILS=0
 pass() { echo "  ok: $1"; }
@@ -105,7 +105,7 @@ else fail "A5 rc=$rc calls='$calls'"; fi
 if [ "$order" = "go.sh|write_go_file()|write_file()|" ] && grep -q "Start (given): \['go.sh'\] | Keyword start: \['write_file()', 'Write'\] | " <<<"$out" \
   && [ "$(grep -c '^EDGE ' <<<"$out")" = 2 ]; then pass "A5b merged answer: named file first, deduplicated, both starts named"
 else fail "A5b order='$order' out='$out'"; fi
-if grep -q 'TRUNCATED: showing' <<<"$out" && grep -q "leg-graph.sh query 'how does go.sh write a GO file' --budget 10000" "$T/err"; then
+if grep -q 'TRUNCATED: showing' <<<"$out" && grep -q "worker-graph.sh query 'how does go.sh write a GO file' --budget 10000" "$T/err"; then
   pass "A5c a truncated half still gets a re-run line sized for both halves"
 else fail "A5c out='$out' err=$(cat "$T/err")"; fi
 

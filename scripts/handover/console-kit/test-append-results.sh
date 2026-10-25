@@ -268,7 +268,7 @@ check "12: a leg with no bus identity runs no re-adopt" "$(cat "$tmp/bus.log")" 
 # anchor's is current main's. The default resolution prefers the anchor and says which ran.
 anc13="$tmp/anchor13"
 mkdir -p "$anc13/scripts/handover/console-kit" "$anc13/scripts/lib" "$anc13/marketplace/plugins/himmel-bus/bin"
-for f13 in append-results.sh bucket-gitleaks.sh leg-doc-lock.sh; do cp "$HERE/$f13" "$anc13/scripts/handover/console-kit/$f13"; done
+for f13 in append-results.sh bucket-gitleaks.sh worker-doc-lock.sh; do cp "$HERE/$f13" "$anc13/scripts/handover/console-kit/$f13"; done
 cp "$HERE/../../lib/git-clean.sh" "$anc13/scripts/lib/git-clean.sh"
 # shellcheck disable=SC2016  # $2 expands in the stub, not here
 printf '#!/bin/sh\necho "adopted: legx console CON-A-console -> $2"\n' > "$anc13/marketplace/plugins/himmel-bus/bin/bus"

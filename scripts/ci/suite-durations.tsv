@@ -280,6 +280,7 @@ scripts/docs/test-adoption-trail.sh	0
 scripts/docs/test-check-doc-terms.sh	1
 scripts/docs/test-check-llms-links.sh	1
 scripts/docs/test-generate-credits.sh	1
+scripts/docs/test-install-profiles-page.sh	0
 scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
 scripts/docs/test-second-model-review-page.sh	0
@@ -293,6 +294,7 @@ scripts/eval/judge-accuracy/test-judge-accuracy.sh	1
 scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	2
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	38
 scripts/eval/lane-quality/test-lane-quality.sh	25
+scripts/eval/lane-quality/test-mine-tasks.sh	3
 scripts/eval/lane-quality/test-trajectory.sh	5
 scripts/eval/leg-digest/test-failure-review.sh	3
 scripts/eval/leg-digest/test-failure-router.sh	3
@@ -724,6 +726,7 @@ scripts/hooks/test-refresh-where-are-we-on-end.sh	14
 scripts/hooks/test-require-quiet-run.sh	3
 scripts/hooks/test-retrieval-nudge.sh	2
 scripts/hooks/test-rtk-hook-guard.sh	1
+scripts/hooks/test-run-hook-with-bash-unroll.sh	11
 scripts/hooks/test-session-end-timeout-budget.sh	12
 scripts/hooks/test-shell-tokenize.sh	0
 scripts/hooks/test-stop-console-idle-guard.sh	8
