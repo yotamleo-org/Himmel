@@ -1447,7 +1447,8 @@ dispatch_alerts=""
 dispatch_runs="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} "$GH_READ_BIN" api 'repos/{owner}/{repo}/actions/runs?event=workflow_dispatch&status=in_progress&per_page=30' --jq '.workflow_runs[] | [.id, .path, .head_branch, .head_sha, .run_started_at] | @tsv' 2>/dev/null)" || dispatch_summary='?'  # swallow-ok: an unreadable runs list renders as dispatch=?
 if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     dispatch_max="${TICK_DISPATCH_MAX:-5}"; case "$dispatch_max" in ''|*[!0-9]*) dispatch_max=5 ;; esac
-    dispatch_idle_s=$(( ${TICK_DISPATCH_IDLE_MIN:-30} * 60 ))
+    dispatch_idle_min="${TICK_DISPATCH_IDLE_MIN:-30}"; case "$dispatch_idle_min" in ''|*[!0-9]*) dispatch_idle_min=30 ;; esac
+    dispatch_idle_s=$(( 10#$dispatch_idle_min * 60 ))
     dispatch_n=0
     dispatch_list=""
     while IFS=$'\t' read -r d_run d_path d_branch d_sha d_started; do
