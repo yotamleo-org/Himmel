@@ -82,6 +82,7 @@ keep 'a negated loop' '! for x in a; do cat $x; done'
 keep 'a background loop' 'for x in a; do cat $x; done &'
 keep 'a redirected loop' 'for x in a; do cat $x; done > out'
 keep 'a C-style loop' 'for ((i = 0; i < 1; i++)); do cat $i; done'
+# read-sink-ok: fixture text handed to unrollCommand, never executed
 keep 'an uppercase NAME' 'for X in a; do cat $X; done'
 keep 'a zsh special NAME' 'for path in /tmp/evil; do ls; done'
 keep 'a zsh module special NAME' 'for dirstack in /secret; do cat ~1/file; done'
