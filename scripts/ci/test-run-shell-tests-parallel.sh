@@ -49,6 +49,10 @@ SHEOF
 # peak_of <dir> <name> — the running count <name> saw at its start.
 peak_of() { sed -n "s/^$2 //p" "$1/peak.log" 2>/dev/null; }
 
+# pair_peaks <dir> <name> <name> — "<lower> <higher>" running counts the two
+# saw, so a check does not depend on which of two launched suites ran first.
+pair_peaks() { printf '%s\n%s\n' "$(peak_of "$1" "$2")" "$(peak_of "$1" "$3")" | sort -n | paste -sd' ' -; }
+
 # max_peak <dir> — the highest running count any suite saw.
 max_peak() { sort -n -k2 "$1/peak.log" 2>/dev/null | tail -n 1 | cut -d' ' -f2; }
 
@@ -89,16 +93,16 @@ if sb=$(mk_sandbox); then
   mk_suite "$sb" test-e.sh 15
   printf '# fixture deny-list\n*/scripts/test-c-alone.sh  fixture: must run alone\n' > "$sb/deny.txt"
   out=$(SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
-  pc=$(peak_of "$sb" test-c-alone.sh); pd=$(peak_of "$sb" test-d.sh)
-  if [ "$rc" -eq 0 ] && [ "$pc" = 1 ] && [ "$pd" = 1 ]; then
-    pass "P2: test-c-alone.sh started with nothing else running, and test-d.sh only after it ended"
+  pc=$(peak_of "$sb" test-c-alone.sh); pde=$(pair_peaks "$sb" test-d.sh test-e.sh)
+  if [ "$rc" -eq 0 ] && [ "$pc" = 1 ] && [ "$pde" = "1 2" ]; then
+    pass "P2: test-c-alone.sh started with nothing else running, and the next suite only after it ended"
   else
-    fail "P2: expected rc 0 and running counts 1/1 for test-c-alone.sh/test-d.sh, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+    fail "P2: expected rc 0, running count 1 for test-c-alone.sh and 1 2 for test-d.sh/test-e.sh, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
   fi
-  if [ "$(peak_of "$sb" test-b.sh)" = 2 ] && [ "$(peak_of "$sb" test-e.sh)" = 2 ]; then
+  if [ "$(pair_peaks "$sb" test-a.sh test-b.sh)" = "1 2" ] && [ "$pde" = "1 2" ]; then
     pass "P2: the suites around it still ran in parallel"
   else
-    fail "P2: expected test-b.sh and test-e.sh to start beside a running suite; peak.log=$(tr '\n' ' ' < "$sb/peak.log")"
+    fail "P2: expected test-a.sh/test-b.sh and test-d.sh/test-e.sh to overlap; peak.log=$(tr '\n' ' ' < "$sb/peak.log")"
   fi
   rm -rf "$sb"
 else

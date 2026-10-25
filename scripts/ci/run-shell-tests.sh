@@ -4683,7 +4683,7 @@ _lane_launch() {
         printf '%s=%q\n' "$_v" "${!_v:-}"
       done
       printf '_w_timed_out=%s\n' "$((timed_out - _w_t0))"
-    } > "${lane_out[_i]}.res" ) > "${lane_out[_i]}" &
+    } > "${lane_out[_i]}.res" ) > "${lane_out[_i]}" 2> "${lane_out[_i]}.err" &
   lane_pid[_i]=$!
 }
 # _lane_reap <lane> — collect a finished lane: print its output, restore its
@@ -4695,7 +4695,8 @@ _lane_reap() {
   wait "${lane_pid[_i]}" 2>/dev/null
   lane_pid[_i]=""
   cat "${lane_out[_i]}"
-  rm -f "${lane_out[_i]}"
+  cat "${lane_out[_i]}.err" >&2
+  rm -f "${lane_out[_i]}" "${lane_out[_i]}.err"
   if [ ! -s "$_res" ]; then
     rm -f "$_res"
     echo "run-shell-tests.sh: a parallel suite worker ended without a result — refusing to run more suites" >&2
@@ -4740,7 +4741,7 @@ _lanes_stop() {
   for (( _i = 0; _i < suite_jobs; _i++ )); do
     [ -n "${lane_pid[_i]:-}" ] || continue
     proc_tree_terminate "${lane_pid[_i]}" >/dev/null 2>&1
-    rm -f "${lane_out[_i]}" "${lane_out[_i]}.res"
+    rm -f "${lane_out[_i]}" "${lane_out[_i]}.res" "${lane_out[_i]}.err"
     lane_pid[_i]=""
   done
 }
