@@ -1233,6 +1233,17 @@ contains 'the header names the age of an out-of-date focus-chains.json (HIMMEL-7
 touch "$W/vp-chains7.json"
 v7render >/dev/null
 not_contains 'a focus-chains.json newer than the Jira mirror adds no age note (HIMMEL-7621)' "$(cat "$v7out")" 'focus-chains.json last written'
+printf '%s\n' '---' 'key: "HIMMEL-433"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.4"]' 'type: "Task"' \
+    '---' '# HIMMEL-433: rowlive other version' > "$vp/HIMMEL-433.md"
+cat > "$W/vp-chains7.json" <<'EOF'
+[{"name":"c7621","steps":[{"key":"HIMMEL-432"},{"key":"HIMMEL-433"}]}]
+EOF
+v7render >/dev/null
+vfp7a="$(cat "$v7out.vfp" 2>/dev/null)"
+printf '%s\n' '---' 'key: "HIMMEL-433"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.4"]' 'type: "Task"' \
+    '---' '# HIMMEL-433: rowlive other version renamed' > "$vp/HIMMEL-433.md"
+v7render >/dev/null
+if [ "$(cat "$v7out.vfp" 2>/dev/null)" != "$vfp7a" ]; then pass 'a retitled chain step of another version moves the focus fingerprint (HIMMEL-7621)'; else fail 'a retitled chain step of another version left the focus fingerprint unchanged'; fi
 vfp7a="$(cat "$v7out.vfp" 2>/dev/null)"
 printf '%s\n' '---' 'key: "HIMMEL-431"' 'updated: "2026-09-30T10:00:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'labels: ["operator-present"]' 'type: "Task"' \
     '---' '# HIMMEL-431: rowlive operator ask' > "$vp/HIMMEL-431.md"

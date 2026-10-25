@@ -1463,6 +1463,11 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
             parts.append(esc(worker_line(workers[n])))
         return '<li class="st-%s"><b>%s</b> %s %s <span class="own">%s</span></li>\n' % (
             esc(state), esc(state), key_html(n), esc(clip(mir[k]['title'], 100)) if k in mir else '', ' · '.join(parts))
+    def step_row(k):
+        if not KEY_RE.fullmatch(k):
+            return None
+        w = workers.get(num(k))
+        return [mir[k]['title'], mir[k]['sn'] or mir[k]['cat'], [w.get('leg'), w.get('state'), open_worker_prs(w)] if w else None] if k in mir else None
     chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
                         for ch in chains)
     wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
@@ -1481,7 +1486,8 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None, ch
         'tickets': [[k, opn[k]['sn'], ecol[k], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
                     for k in sorted(opn)],
         'chains': [[ch['name'], [[st.get('key', ''), '' if KEY_RE.fullmatch(st.get('key', '')) else st.get('label', ''), step_state(st),
-                                  None if KEY_RE.fullmatch(st.get('key', '')) else st.get('pr'), None if KEY_RE.fullmatch(st.get('key', '')) else st.get('owner')]
+                                  None if KEY_RE.fullmatch(st.get('key', '')) else st.get('pr'), None if KEY_RE.fullmatch(st.get('key', '')) else st.get('owner'),
+                                  step_row(st.get('key', ''))]
                                  for st in ch['steps']]] for ch in chains],
         'waiting': [[k, sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))] for k in wait],
         'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
