@@ -281,13 +281,11 @@
       { "id": "qmd", "what": "Daily: re-indexes the vault for search. No model usage.", "offered_when": "a vault exists" },
       { "id": "graphmap", "what": "Hourly: refreshes the map of links between notes, no model usage; a weekly deeper pass uses Claude.", "offered_when": "a vault exists" },
       { "id": "vault-stall", "what": "Every 15 minutes: notices when the vault stops saving itself to git, clears a few known harmless causes, and alerts you.", "offered_when": "a vault exists" },
-      { "id": "codex-sweep", "what": "Cleans up leftover processes from the OpenAI reviewer.", "offered_when": "you turned on the GPT reviewer (Level 4)" },
       { "id": "doctor", "what": "Daily health check of your install; reports, fixes nothing.", "offered_when": "always" }
     ],
     "left_out": [
       { "id": "drift-fix", "why": "A maintainer job that bumps himmel's own pinned upstreams; the installer hides it on a starter install." },
       { "id": "upstream-watch", "why": "A maintainer job that watches himmel's own upstream pull requests and issues; the installer hides it on a starter install." },
-      { "id": "repo-sync", "why": "Needs a platform himmel no longer supports; never offered on Linux or macOS." },
       { "id": "pull-cadence", "why": "A personal health-data connector, offered only when its own token is set; not part of the trail." }
     ]
   },
