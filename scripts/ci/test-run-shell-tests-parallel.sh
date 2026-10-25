@@ -9,6 +9,10 @@
 #       finishes in at most half its serial time under SUITE_JOBS=4.
 #   P4. With no SUITE_JOBS outside CI the runner stays serial.
 #   P5. A failing suite's rc, [FAIL] line and log tail survive a parallel run.
+#   P6. Under SUITE_STOP_ON_FAIL, a failure collected while draining the lanes
+#       for a deny-listed suite stops that suite from running.
+#   P7. A run budget that expires while the runner waits for a free lane keeps
+#       the waiting suite from starting.
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.
@@ -169,6 +173,41 @@ if sb=$(mk_sandbox); then
   rm -rf "$sb"
 else
   fail "P5: mktemp failed"
+fi
+
+echo "== P6: a failure found while draining stops the deny-listed suite =="
+if sb=$(mk_sandbox); then
+  mk_suite "$sb" test-a-red.sh 5 3
+  mk_suite "$sb" test-b.sh 20
+  mk_suite "$sb" test-c-alone.sh 5
+  printf '*/scripts/test-c-alone.sh  fixture: must run alone\n' > "$sb/deny.txt"
+  out=$(SUITE_JOBS=2 SUITE_STOP_ON_FAIL=1 SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && [ -z "$(peak_of "$sb" test-c-alone.sh)" ] \
+     && printf '%s\n' "$out" | sed -n '/^STOPPED:/,$p' | grep -qF "$sb/scripts/test-c-alone.sh"; then
+    pass "P6: test-c-alone.sh never started and is named under STOPPED"
+  else
+    fail "P6: expected a non-zero rc and test-c-alone.sh unrun under STOPPED, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P6: mktemp failed"
+fi
+
+echo "== P7: a budget that expires while waiting for a lane keeps the suite from starting =="
+if sb=$(mk_sandbox); then
+  mk_suite "$sb" test-a.sh 40
+  mk_suite "$sb" test-b.sh 40
+  mk_suite "$sb" test-c.sh 5
+  out=$(SUITE_JOBS=2 SUITE_RUN_BUDGET=2 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -ne 0 ] && [ -z "$(peak_of "$sb" test-c.sh)" ] \
+     && printf '%s\n' "$out" | sed -n '/run budget of 2s expired/,$p' | grep -qF "$sb/scripts/test-c.sh"; then
+    pass "P7: test-c.sh never started and is named as unrun by the budget"
+  else
+    fail "P7: expected a non-zero rc and test-c.sh unrun by the budget, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P7: mktemp failed"
 fi
 
 rst_tally

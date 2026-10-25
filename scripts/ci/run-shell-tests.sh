@@ -4815,6 +4815,19 @@ while IFS= read -r suite <&3; do
     continue
   fi
 
+  # A parallel run waits for room first (every lane for a deny-listed suite,
+  # one lane otherwise), so the stop and budget checks below also see the
+  # suites that finished and the time that passed during the wait.
+  suite_alone=0
+  if [ "$suite_jobs" -gt 1 ]; then
+    if _suite_parallel_denied "$suite"; then
+      suite_alone=1
+      _lanes_drain
+    else
+      _lane_free
+    fi
+  fi
+
   if [ "$stopped" -eq 1 ]; then
     stopped_suites="${stopped_suites}  ${suite}
 "
@@ -4841,22 +4854,10 @@ while IFS= read -r suite <&3; do
     continue
   fi
 
-  if [ "$suite_jobs" -le 1 ]; then
-    _suite_attempts
-    _suite_account
-  elif _suite_parallel_denied "$suite"; then
-    _lanes_drain
+  if [ "$suite_jobs" -le 1 ] || [ "$suite_alone" -eq 1 ]; then
     _suite_attempts
     _suite_account
   else
-    _lane_free
-    # A lane that finished just now may have failed under SUITE_STOP_ON_FAIL.
-    if [ "$stopped" -eq 1 ]; then
-      stopped_suites="${stopped_suites}  ${suite}
-"
-      manifest_add "unrun ${mf_rel:-}"
-      continue
-    fi
     _lane_launch "$lane_free"
   fi
 done 3< "$suites_file"
