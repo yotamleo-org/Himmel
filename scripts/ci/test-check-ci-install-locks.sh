@@ -37,7 +37,8 @@ says() { # <label> <fixed string the last run must have printed>
 # live <name>: a fresh copy of the tree's install-relevant files.
 live() {
   local d="$tmp/$1"
-  mkdir -p "$d" && cp -R "$REPO_ROOT/.github" "$d/.github" && cp "$REPO_ROOT/.pre-commit-config.yaml" "$d/" || exit 1
+  mkdir -p "$d/scripts/machine-setup" && cp -R "$REPO_ROOT/.github" "$d/.github" && cp "$REPO_ROOT/.pre-commit-config.yaml" "$d/" \
+    && cp "$REPO_ROOT/scripts/machine-setup/installer-pins.sh" "$d/scripts/machine-setup/" || exit 1
   printf '%s\n' "$d"
 }
 
@@ -54,7 +55,7 @@ says "unhashed pip pin in the Dockerfile is named" "Dockerfile:5: pip install wi
 says "npm ci without --ignore-scripts is named" "install scripts enabled"
 says "bun install without --ignore-scripts is named" "bun install --frozen-lockfile"
 says "claude-code installed by name is named" "claude-code installed by name"
-says "missing claude lockfile is named" "package-lock.json missing"
+says "missing installer-pins.sh is named" "installer-pins.sh missing"
 says "dependabot without cooldown is named" "dependabot.yml: npm: no cooldown.default-days"
 
 echo "== live tree =="
@@ -105,13 +106,74 @@ t=$(live claude-name)
 # shellcheck disable=SC2016
 printf '        run: sudo npm install --global "@anthropic-ai/claude-code@${CLAUDE_CLI_VERSION}"\n' >> "$t/.github/workflows/ci.yml"
 expect "claude-code installed by name" 1 "$t"
-t=$(live claude-nolock); rm -f "$t/.github/claude-cli/package-lock.json"
-expect "claude lockfile absent" 1 "$t"
 t=$(live claude-drift); sed -i.bak "s/\(CLAUDE_CLI_VERSION: '\)[0-9.]*'/\19.9.9'/" "$t/.github/workflows/ci.yml"
-expect "CLAUDE_CLI_VERSION differs from the lockfile" 1 "$t"
+expect "CLAUDE_CLI_VERSION differs from installer-pins.sh CLAUDE_VERSION" 1 "$t"
 says "version drift is named" "(bump both)"
-t=$(live claude-nointegrity); sed -i.bak 's/"integrity": "sha512-/"integrity": "sha1-/' "$t/.github/claude-cli/package-lock.json"
-expect "claude lockfile without sha512 integrity" 1 "$t"
+t=$(live claude-pins-drift); sed -i.bak 's/^CLAUDE_VERSION="[0-9.]*"/CLAUDE_VERSION="9.9.9"/' "$t/scripts/machine-setup/installer-pins.sh"
+expect "installer-pins.sh CLAUDE_VERSION differs from CLAUDE_CLI_VERSION" 1 "$t"
+t=$(live claude-nopins); rm -f "$t/scripts/machine-setup/installer-pins.sh"
+expect "installer-pins.sh absent" 1 "$t"
+t=$(live claude-nosha)
+# the $... in the sed scripts below is workflow text, not shell
+# shellcheck disable=SC2016
+sed -i.bak 's/ "\$CLAUDE_LINUX_X64_SHA256"//' "$t/.github/workflows/ci.yml"
+expect "native download without the pinned sha256" 1 "$t"
+says "missing sha256 check is named" "sha256-verified pin_fetch"
+t=$(live claude-curl)
+# shellcheck disable=SC2016
+sed -i.bak 's/^\( *\)pin_fetch \("[^"]*"\) .*$/\1curl -fsSL -o "$RUNNER_TEMP\/claude" \2/' "$t/.github/workflows/ci.yml"
+expect "native download by bare curl" 1 "$t"
+t=$(live claude-installsh); printf '        run: curl -fsSL https://claude.ai/install.sh | bash\n' >> "$t/.github/workflows/ci.yml"
+expect "claude.ai/install.sh piped to a shell" 1 "$t"
+t=$(live claude-noshal); sed -i.bak 's/^CLAUDE_LINUX_X64_SHA256=.*$/CLAUDE_LINUX_X64_SHA256="abc"/' "$t/scripts/machine-setup/installer-pins.sh"
+expect "installer-pins.sh claude sha256 is not 64 hex" 1 "$t"
+
+# The pins equal the real release manifest (fixture: downloads.claude.ai
+# claude-code-releases/2.1.310/manifest.json, fetched verbatim 2026-10-25).
+mf="$FIX/claude-manifest-2.1.310.json"
+want_ver=$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$mf")
+want_sha=$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["platforms"]["linux-x64"]["checksum"])' "$mf")
+have=$(bash -c '. "$1"; printf "%s %s" "$CLAUDE_VERSION" "$CLAUDE_LINUX_X64_SHA256"' _ "$REPO_ROOT/scripts/machine-setup/installer-pins.sh")
+if [ "$have" = "$want_ver $want_sha" ]; then pass "pins equal the release manifest (version and linux-x64 checksum)"; else fail "pins '$have' differ from the manifest '$want_ver $want_sha'"; fi
+
+# Run the live install step against a stub curl: genuine bytes install, a
+# tampered download fails the step and installs nothing.
+step="$tmp/claude-step.sh"
+awk '
+  /^ *- id: claude-startup__cli$/ { f = 1; next }
+  f && /^ *run: \|$/ { r = 1; next }
+  f && r && /^ *- / { exit }
+  f && r { sub(/^          /, ""); print }
+' "$REPO_ROOT/.github/workflows/ci.yml" > "$step"
+if [ -s "$step" ]; then pass "install step body extracted from ci.yml"; else fail "install step body not found in ci.yml"; fi
+sb="$tmp/stepbox"; mkdir -p "$sb/bin" "$sb/scripts/machine-setup" "$sb/tmp" "$sb/usr-local-bin"
+printf 'genuine claude bytes\n' > "$sb/genuine"; printf 'tampered claude bytes\n' > "$sb/tampered"
+gsha=$(sha256sum "$sb/genuine" | cut -d' ' -f1)
+sed "s/^CLAUDE_LINUX_X64_SHA256=.*/CLAUDE_LINUX_X64_SHA256=\"$gsha\"/" "$REPO_ROOT/scripts/machine-setup/installer-pins.sh" > "$sb/scripts/machine-setup/installer-pins.sh"
+cat > "$sb/bin/curl" <<'EOF'
+#!/usr/bin/env bash
+out=""
+while [ $# -gt 0 ]; do case "$1" in -o) out="$2"; shift 2 ;; --proto|--proto-redir) shift 2 ;; *) shift ;; esac; done
+cp "$STEP_SRC" "$out"
+EOF
+printf '#!/usr/bin/env bash\nexec "$@"\n' > "$sb/bin/sudo"
+printf '#!/usr/bin/env bash\necho "claude stub"\n' > "$sb/bin/claude"
+chmod +x "$sb/bin/curl" "$sb/bin/sudo" "$sb/bin/claude"
+# the step installs to /usr/local/bin; the stub `install` redirects that to the box
+cat > "$sb/bin/install" <<EOF
+#!/usr/bin/env bash
+args=(); for a in "\$@"; do args+=("\${a/#\/usr\/local\/bin/$sb/usr-local-bin}"); done
+exec /usr/bin/install "\${args[@]}"
+EOF
+chmod +x "$sb/bin/install"
+run_step() { # <source file>
+  rm -f "$sb/usr-local-bin/claude"
+  ( cd "$sb" && PATH="$sb/bin:$PATH" STEP_SRC="$1" RUNNER_TEMP="$sb/tmp" bash -e "$step" ) >"$tmp/step.out" 2>&1
+}
+run_step "$sb/genuine"; rc=$?
+if [ "$rc" -eq 0 ] && [ -s "$sb/usr-local-bin/claude" ]; then pass "install step: genuine bytes install"; else fail "install step: genuine bytes rc=$rc"; sed -n '1,6p' "$tmp/step.out"; fi
+run_step "$sb/tampered"; rc=$?
+if [ "$rc" -ne 0 ] && [ ! -e "$sb/usr-local-bin/claude" ]; then pass "install step: a wrong sha256 fails the step and installs nothing"; else fail "install step: tampered bytes rc=$rc installed=$([ -e "$sb/usr-local-bin/claude" ] && echo yes || echo no)"; fi
 
 echo "== shellcheck-py =="
 t=$(live sc-drift); sed -i.bak 's/rev: v0\.11\.0\.1/rev: v0.11.0.2/' "$t/.pre-commit-config.yaml"

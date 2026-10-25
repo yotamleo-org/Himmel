@@ -590,7 +590,7 @@ jobs:
     env:
       LANG: C.UTF-8
       LC_ALL: C.UTF-8
-      CLAUDE_CLI_VERSION: '2.1.296'
+      CLAUDE_CLI_VERSION: '2.1.310'
     # A container's default run shell is sh; this is the host runner's default.
     defaults:
       run:
@@ -710,12 +710,14 @@ jobs:
         name: Install the pinned claude CLI
         if: ${{ !cancelled() }}
         timeout-minutes: 10
-        # HIMMEL-7092: installed from .github/claude-cli/package-lock.json (sha512 per
-        # package) with no install scripts; the native binary is the locked platform
-        # package's own file. /usr/local is root-owned in the image and the runner alike.
+        # HIMMEL-7394: the native binary at the version and sha256 pinned in
+        # scripts/machine-setup/installer-pins.sh (the checksum from the release's
+        # manifest.json); pin_fetch deletes a mismatched download and fails the step.
+        # /usr/local is root-owned in the image and the runner alike.
         run: |
-          npm ci --ignore-scripts --no-audit --no-fund --prefix .github/claude-cli
-          sudo install -m 0755 .github/claude-cli/node_modules/@anthropic-ai/claude-code-linux-x64/claude /usr/local/bin/claude
+          . scripts/machine-setup/installer-pins.sh
+          pin_fetch "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude" "$CLAUDE_LINUX_X64_SHA256" "$RUNNER_TEMP/claude"
+          sudo install -m 0755 "$RUNNER_TEMP/claude" /usr/local/bin/claude
           claude --version
       # ubuntu-24.04 refuses unprivileged user namespaces by default (AppArmor);
       # the suite needs `unshare -rn` and fails closed without it.
@@ -1416,10 +1418,11 @@ jobs:
   # namespace and no model turn runs, so it needs no login, no secret and no
   # network (see scripts/testing/fakekey-claude.sh). The CLI is PINNED to an
   # exact version so a Claude Code release cannot redden or silently change this
-  # job: to bump it, change CLAUDE_CLI_VERSION below and regenerate
-  # .github/claude-cli/package-lock.json on a test VM (the version must exist on npm:
-  # `npm view @anthropic-ai/claude-code@<v> version`; then in .github/claude-cli:
-  # `npm install --package-lock-only --ignore-scripts @anthropic-ai/claude-code@<v>`), run
+  # job: to bump it, change CLAUDE_CLI_VERSION above together with CLAUDE_VERSION
+  # and CLAUDE_LINUX_X64_SHA256 in scripts/machine-setup/installer-pins.sh (the
+  # linux-x64 checksum from https://downloads.claude.ai/claude-code-releases/<v>/manifest.json;
+  # scripts/upstreams/apply-drift-bump.sh claude-code <v> --sha256 <hex> moves all
+  # three), run
   # `bash scripts/testing/test-fakekey-claude-startup.sh` against that version
   # locally, and fix any assertion the new debug-log wording breaks in the same PR.
   # The suite is SKIP_LISTed in run-shell-tests.sh because the shell-unit shards
