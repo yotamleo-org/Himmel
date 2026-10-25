@@ -143,10 +143,11 @@ jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "")
 [ "$nogo_prose" -eq 0 ] || fin finding
 
 # Old-side line ranges the delta rewrites; an insertion counts as touching the line it follows and the next.
-git diff -U0 --no-renames --no-color "$J" "$N" -- 2>/dev/null | awk '
+git -c core.quotePath=false diff -U0 --no-renames --no-color "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust
+awk '
     /^diff --git / { inh = 1; path = ""; next }
-    inh && /^--- / { p = substr($0, 5); if (p == "/dev/null") path = ""; else { sub(/^a\//, "", p); path = p }; next }
-    inh && /^\+\+\+ / { next }
+    inh && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); if (p ~ /^"/) bad = 1; if (p == "/dev/null") path = ""; else { sub(/^a\//, "", p); path = p }; next }
+    inh && /^\+\+\+ / { if (substr($0, 5) ~ /^"/) bad = 1; next }
     /^@@ / {
         inh = 0
         if (path == "") next
@@ -155,7 +156,8 @@ git diff -U0 --no-renames --no-color "$J" "$N" -- 2>/dev/null | awk '
         b = (o[2] == "") ? 1 : o[2] + 0
         if (b == 0) { s = a; e = a + 1 } else { s = a; e = a + b - 1 }
         print path "\t" s "\t" e
-    }' > "$work/hunks.tsv"
+    }
+    END { exit bad ? 3 : 0 }' "$work/patch.txt" > "$work/hunks.tsv" || trust
 
 while IFS=$'\t' read -r fp lo hi; do
     [ -n "$fp" ] || continue

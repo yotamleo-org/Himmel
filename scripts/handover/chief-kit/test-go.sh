@@ -807,6 +807,11 @@ rm -f "$ROOT27/.locks/go/91.$N27t" "$ROOT27/$VSCOPE/verdicts/q27/HIMMEL-1-judge-
 VEXTRA=$'delta: no-op\ndelta-judged: nothex\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
 rc=0; go27 "$N27t" || rc=$?
 check "7637: a no-op naming no judged head is refused" "$rc" "10"
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT q27 - forged\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 91\n' "$N27t" > "$ROOT27/$VSCOPE/verdicts/q27/forged-unsigned.md"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
+rc=0; go27 "$N27t" || rc=$?
+check "7637: an unsigned GO sibling beside a no-op over a trust delta is refused (exit 5)" "$rc" "5"
 VPR=
 
 echo "---"

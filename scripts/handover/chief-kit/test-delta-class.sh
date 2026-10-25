@@ -120,6 +120,18 @@ mkv GO
 check "6: GO with no finding lines and no ledger rows -> none" "$(cls "$N")" none
 back
 
+uni=$'caf\xc3\xa9.txt'
+seq 1 10 > "$uni"; J0=$J; git add -A && git commit -qm uni; J=$(git rev-parse HEAD)
+mkv GO "finding: $uni:3-4"
+edit '$0==4{print "four"; next} {print}' "$uni"; N=$(step uni-edit)
+check "3: finding on a non-ASCII path, edit on its line -> finding" "$(cls "$N")" finding
+back
+printf 'with space\n' > 'a b.txt'; printf 'q\n' > "$(printf 'tab\there.txt')"; git add -A; N=$(step odd-names)
+mkv GO 'finding: src/a.txt:3-4'
+check "5: a quoted (tab-bearing) path in the patch fails closed -> trust" "$(cls "$N")" trust
+back
+J=$J0
+
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
 out=$(cls "$J"); check "7: an empty delta -> none, one word" "$out" none
 

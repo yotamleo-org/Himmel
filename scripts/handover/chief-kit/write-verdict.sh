@@ -148,7 +148,7 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0
+EVIDENCE="" NAME=judge NAME_SET=0 PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --model) [ "$#" -ge 2 ] || usage; MODEL=$2; shift 2 ;;
@@ -164,7 +164,7 @@ while [ "$#" -gt 0 ]; do
         --branch) [ "$#" -ge 2 ] || usage; BRANCH=$2; shift 2 ;;
         --prior) [ "$#" -ge 2 ] || usage; PRIOR=$2; shift 2 ;;
         --evidence-file) [ "$#" -ge 2 ] || usage; EVIDENCE=$2; shift 2 ;;
-        --judge) [ "$#" -ge 2 ] || usage; NAME=$2; shift 2 ;;
+        --judge) [ "$#" -ge 2 ] || usage; NAME=$2; NAME_SET=1; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -216,7 +216,11 @@ if [ -n "$DNOOP" ]; then
         echo "write-verdict: --delta-noop records a GO for a PR head only (not a NO-GO, --bind-reviewed, --branch or --repo)" >&2
         exit 2
     fi
-    [ "$NAME" != judge ] || NAME="delta-noop-$HEAD"
+    if [ "$NAME_SET" -eq 1 ]; then
+        echo "write-verdict: --delta-noop writes its own record name (delta-noop-<head>); --judge would let it overwrite a judged head's record" >&2
+        exit 2
+    fi
+    NAME="delta-noop-$HEAD"
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
 # the record names the model and effort that ruled, so judge accuracy is measurable.
