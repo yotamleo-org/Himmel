@@ -1347,7 +1347,7 @@ same 'the user view prints the path it wrote (HIMMEL-6879)' "$rc:$uout" "0:$W/us
 uhtml="$(cat "$W/user-board.html" 2>/dev/null)"
 same 'the user view leaves the operator board file untouched (HIMMEL-6879)' "$(sha256sum < "$board")" "$op_before"
 ucount() { printf '%s\n' "$uhtml" | grep -o "data-section=\"$1\" data-count=\"[0-9]*\"" | grep -o '[0-9]*"$' | tr -d '"'; }
-section_of() { printf '%s\n' "$uhtml" | sed -n "/data-section=\"$1\"/,/<\/section>/p"; }
+section_of() { printf '%s\n' "$uhtml" | sed -n "/<section data-section=\"$1\"/,/<\/section>/{p;/<\/section>/q}"; }
 # N1 N2 N9 N10 N11 N18 N19 and N16 (in the Live state, no handover doc yet) build or sit in review;
 # N3 awaits GO, N7 is blocked, N12 has a FINDING and the Live state holds two open operator
 # decisions; PRs 1990 and 1995 merged.
@@ -1373,6 +1373,10 @@ contains 'the user view fits a phone width (HIMMEL-6879)' "$uhtml" 'name="viewpo
 lacks 'the user view loads nothing from the network (HIMMEL-6879)' "$uhtml" 'http'
 run --view nope --out "$W/nope.html" >/dev/null 2>&1; rc=$?
 same 'an unknown --view is a usage error (HIMMEL-6879)' "rc=$rc" 'rc=2'
+run --view user --changed --out "$W/user-changed.html" >/dev/null 2>&1; rc=$?
+same '--changed with --view user is a usage error, not a bare path (HIMMEL-6879)' "rc=$rc" 'rc=2'
+run --view user --json "$W/user.json" --out "$W/user-json.html" >/dev/null 2>&1; rc=$?
+same '--json with --view user is a usage error, not a silent skip (HIMMEL-6879)' "rc=$rc" 'rc=2'
 
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?

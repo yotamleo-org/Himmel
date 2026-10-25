@@ -88,7 +88,8 @@ for (let i = 0; i < args.length; i += 2) {
     }
     opt[args[i].slice(2)] = args[i + 1];
 }
-if (!opt.doc || (opt.view !== undefined && opt.view !== 'user')) {
+// The user page embeds no fingerprint and writes no json, so --changed and --json have nothing to act on.
+if (!opt.doc || (opt.view !== undefined && opt.view !== 'user') || (opt.view === 'user' && (changedFlag || opt.json !== undefined))) {
     console.error(USAGE);
     process.exit(2);
 }
