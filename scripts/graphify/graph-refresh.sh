@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-exempt: an operator one-shot wrapper; the billed call is refresh-graph-map.sh, which carries its own marker
 # graph-refresh.sh — operator-invoked ONE-SHOT graphify refresh for the luna
 # and/or himmel corpora.
 #

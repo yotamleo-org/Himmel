@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # refresh-graph-map.sh — incremental graphify refresh + curated-MOC publish for
 # one corpus. The schedulable core behind the interval refresh that
 # bounds graph drift.
