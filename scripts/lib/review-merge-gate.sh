@@ -383,7 +383,8 @@ _crg_judge_source() {
     local owner="$1" name="$2" num="$3" states="$4" rows pr_branch br src
     rows=$(printf '%s\n' "$states" | awk -F'\t' '$1 == "@judge-go" { print $2 "\t" $3 }')
     [ -n "$rows" ] || return 0
-    pr_branch=$(gh pr view "$num" --repo "$owner/$name" --json headRefName 2>/dev/null </dev/null | jq -r '.headRefName // empty' 2>/dev/null || true)
+    pr_branch=$(gh pr view "$num" --repo "$owner/$name" --json headRefName 2>/dev/null </dev/null) || return 0
+    pr_branch=$(printf '%s' "$pr_branch" | jq -r '.headRefName // empty' 2>/dev/null) || return 0
     [ -n "$pr_branch" ] || return 0
     while IFS=$'\t' read -r br src; do
         [ "$br" = "$pr_branch" ] && { printf '%s' "$src"; return 0; }

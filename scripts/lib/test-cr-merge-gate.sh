@@ -73,6 +73,8 @@ case "$1 $2" in
     # suite's default 6-char "abc123" can never satisfy. Every other case
     # keeps the default, and the statuses arm below matches on the "abc123"
     # PREFIX so both spellings reach the same fixtures.
+    # GH_STUB_BRANCH_RC: the branch-only read prints its JSON, then fails.
+    case "$*" in *'--json headRefName') if [ -n "${GH_STUB_BRANCH_RC:-}" ]; then printf '{"headRefName":"%s"}\n' "${GH_STUB_BRANCH:-feat/x}"; exit "$GH_STUB_BRANCH_RC"; fi ;; esac
     printf '{"number":42,"headRefOid":"%s","headRefName":"%s","url":"https://github.com/o/r/pull/42"}\n' "${GH_STUB_HEAD:-abc123}" "${GH_STUB_BRANCH:-feat/x}" ;;
   "api graphql")
     case "$GH_STUB_MODE" in
@@ -227,7 +229,7 @@ av() { # av <head> <model> <status> [reason] [detail] — one avail ledger row
 }
 CRIT_OK="$(av abc123 codex ok)
 $(av abc123 claude ok)"
-led() { printf '%s\n' "$@" > "$LEDGER"; }
+led() { printf '%s\n' "$@" > "$LEDGER" || { echo "FAIL led: cannot write the fixture ledger $LEDGER"; exit 1; }; }
 led "$CRIT_OK"
 
 # hermeticity probe — when this suite re-execs itself under the
@@ -941,6 +943,8 @@ led "$(av "$JG_HEAD" codex unavailable timeout)" "${JG_ROW/\"status\":\"ok\"/\"s
 rgj J5-release-judge-go-not-ok-holds 1 --release
 led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-7","severity":"imp","verdict":""}' "$JG_HEAD")"
 rgj J6-release-judge-go-open-finding-holds 1 --release
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
+GH_STUB_BRANCH_RC=1 rgj J8-release-judge-go-failed-branch-read-holds 1 --release
 # J7 — an inherited _CRG_RELEASE=1 never loosens the merge gate: cr_merge_gate pins it.
 led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
 export _CRG_RELEASE=1
