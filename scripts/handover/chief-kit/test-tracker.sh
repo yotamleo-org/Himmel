@@ -1212,8 +1212,10 @@ mkdir -p "$W/wk7"
 printf '{"key":"HIMMEL-432","leg":"N77","state":"live","prs":{"600":{"head":"fed1234beef","open":true}}}\n' > "$W/wk7/HIMMEL-432.json"
 v7out="$W/vp-v7.html"
 v7render() {
-    TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
-        --prs-file "${V7PRS:-$W/vp-prs7.json}" --chains-file "$W/vp-chains7.json" --workers-dir "$W/wk7" --jira-base-url https://jira.example.test --out "$v7out" 2>&1
+    local o
+    o="$(TRACKER_JIRA="$W/vpjira" python3 "$HERE/tracker.py" --version v1.1.3 --repo example-org/example-repo --mirror-dir "$vp" \
+        --prs-file "${V7PRS:-$W/vp-prs7.json}" --chains-file "$W/vp-chains7.json" --workers-dir "$W/wk7" --jira-base-url https://jira.example.test --out "$v7out" 2>&1)" \
+        || fail "a chain-row render failed, so the rows after it read a stale page: $o" >&2
 }
 touch -d '2026-09-01 00:00:00 UTC' "$W/vp-chains7.json"
 v7render >/dev/null
