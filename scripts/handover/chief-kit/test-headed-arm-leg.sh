@@ -151,7 +151,15 @@ shift
 exec "$@"
 SYSD_EOF
 chmod 755 "$SYSD_STUB"
+# Stock macOS has no setsid, so headed-arm.sh would never start the waker; a
+# pass-through stub on the same PATH dir keeps the waker rows host-independent.
+printf '#!%s\nexec "$@"\n' "$(command -v bash)" > "$tmp/sysd-bin/setsid"
+chmod 755 "$tmp/sysd-bin/setsid"
 PATH="$tmp/sysd-bin:$PATH"
+# The launch rows below assert the Linux launch shape (plain-export env, systemd
+# scope, waker started); a Darwin host takes the shim branch and fails them all.
+# The Darwin rows pin HEADED_ARM_UNAME=Darwin inline.
+export HEADED_ARM_UNAME=Linux
 # pin every root this suite could resolve to its own temp dir, at
 # SUITE level. A console-spawned leg exports the LIVE HANDOVER_DIR into this
 # shell (headed-arm-leg.sh); the case-26 e2e below runs the real
@@ -321,10 +329,15 @@ fleet_launch() {
     --no-profile --fleet "$fleet_manifest" "$@" \
     HIMMEL-3748-N7-fleet "$fleet_doc" "$tmp/fleet-signal" "$PAST" "$tmp/fleet-log" claude-sonnet-5-5
 }
-rc=0; out="$(fleet_launch 2>&1)" || rc=$?
-check 'fleet: successful handoff returns zero' 0 "$rc"
-check 'fleet: successful handoff adds exactly the leg doc' "$fleet_doc" "$(jq -r '.legs[].doc' "$fleet_manifest" 2>/dev/null)"
-check 'fleet: the added row records the launch lane (HIMMEL-5074 N1)' native "$(jq -r '.legs[0].lane' "$fleet_manifest" 2>/dev/null)"
+# fleet-manifest.sh serialises the add under util-linux flock; the kit is Linux-only.
+if command -v flock >/dev/null 2>&1; then
+  rc=0; out="$(fleet_launch 2>&1)" || rc=$?
+  check 'fleet: successful handoff returns zero' 0 "$rc"
+  check 'fleet: successful handoff adds exactly the leg doc' "$fleet_doc" "$(jq -r '.legs[].doc' "$fleet_manifest" 2>/dev/null)"
+  check 'fleet: the added row records the launch lane (HIMMEL-5074 N1)' native "$(jq -r '.legs[0].lane' "$fleet_manifest" 2>/dev/null)"
+else
+  echo "SKIP - fleet: successful-handoff rows (fleet-manifest.sh needs util-linux flock, absent here)"
+fi
 rm -f "$fleet_manifest"
 rc=0; out="$(FLEET_TEST_RC=7 fleet_launch 2>&1)" || rc=$?
 check 'fleet: failed target status is preserved' 7 "$rc"
@@ -926,10 +939,18 @@ mkdir -p "$tmp/profile fleet"
 PLUGIN_PROFILES_REGISTRY="$ceiling_reg" WORKER_SESSION_CONTEXT='' RUN_LEG_ARGS='--profile design' \
   run_leg "$d8profile" "$tmp/repo8profile" "HIMMEL-4021-ceiling" "claude-sonnet-4-6" \
   "$PROCEED_PREFLIGHT" "$tmp/profile fleet/manifest.json" >/dev/null 2>&1 || rc=$?
-check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$some_doc" "$(jq -r '.legs[].doc' "$tmp/profile fleet/manifest.json" 2>/dev/null)"
+if command -v flock >/dev/null 2>&1; then
+  check 'fleet: real renderer preserves a spaced manifest path and profile ceiling' "$some_doc" "$(jq -r '.legs[].doc' "$tmp/profile fleet/manifest.json" 2>/dev/null)"
+else
+  echo "SKIP - fleet: real renderer spaced-manifest row (fleet-manifest.sh needs util-linux flock, absent here)"
+fi
 wait_record "$d8profile" || true
 rec8profile="$(cat "$d8profile/record" 2>/dev/null || true)"
-check "profile numeric ceiling: full launch succeeds" "$rc" "0"
+if command -v flock >/dev/null 2>&1; then
+  check "profile numeric ceiling: full launch succeeds" "$rc" "0"
+else
+  echo "SKIP - profile numeric ceiling: full launch exit (fleet add needs util-linux flock, absent here)"
+fi
 contains "profile numeric ceiling: renderer carries 400000" "$rec8profile" "--autocompact 400000"
 not_contains "profile numeric ceiling: no hard-coded auto" "$rec8profile" "--autocompact auto"
 contains "profile numeric ceiling: model has 1m mode" "$rec8profile" "claude-sonnet-4-6[1m]"
@@ -4027,7 +4048,7 @@ KONSOLE4152_EOF
 cat > "$atk4152/bin/bash" <<'FAKEBASH4152_EOF'
 #!/bin/sh
 case "$*" in */headed-arm.sh*|*leg-claude-launcher*) printf '%s\n' "$*" >> "$ATK4152/bash-log" ;; esac
-exec /usr/bin/bash "$@"
+exec "$SYSBASH4152" "$@"
 FAKEBASH4152_EOF
 # shellcheck disable=SC2016 # literal $ATK4152 belongs to the stub script
 printf '%s\n' '#!/bin/sh' ': > "$ATK4152/claude-ran"' > "$atk4152/bin/claude"
@@ -4037,10 +4058,12 @@ command() { case "$0" in */headed-arm.sh|*leg-claude-launcher*) printf '%s\n' "$
 STARTUP4152_EOF
 chmod 755 "$atk4152/konsole" "$atk4152/bin/bash" "$atk4152/bin/claude"
 pin4152="$(. "$HERE/../../lanes/consult-env.sh" && consult_pin_path)"
+# The system bash the consult pins: macOS has no /usr/bin/bash, only /bin/bash.
+sysbash4152="$(. "$HERE/../../lanes/consult-env.sh" && consult_pin_bash)"
 # atk4152_env <startup|fn>: arm one hostile runtime in the calling subshell. The two run
 # apart, because the startup file's own command() would mask an imported one.
 atk4152_env() {
-  export ATK4152="$atk4152"
+  export ATK4152="$atk4152" SYSBASH4152="$sysbash4152"
   if [ "$1" = fn ]; then
     # shellcheck disable=SC2317,SC2329 # exported, invoked by the child shells under test
     command() { case "$0" in */headed-arm.sh|*leg-claude-launcher*) printf '%s\n' "$0" >> "$ATK4152/fn-log" ;; esac; builtin command "$@"; }
@@ -4060,7 +4083,7 @@ for m4152 in startup fn; do
     HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
     KONSOLE_CMD="$d4152/konsole" PGREP_CMD="$d4152/pgrep" \
     WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4152/locks" HEADED_ARM_PROC="$d4152/proc" \
-      /usr/bin/bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4152-$m4152" "$some_doc" "$d4152/signal-never" "$PAST" "$d4152/log" >/dev/null 2>&1
+      "$sysbash4152" "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4152-$m4152" "$some_doc" "$d4152/signal-never" "$PAST" "$d4152/log" >/dev/null 2>&1
   ) || rc=$?
   wait_record "$d4152" || true
   check "41k-4152 [$m4152] hostile-runtime consult launch: exit 0" "$rc" "0"
@@ -4124,7 +4147,7 @@ rc=0
   HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d4159/konsole" PGREP_CMD="$d4159/pgrep" \
   WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4159/locks" HEADED_ARM_PROC="$d4159/proc" \
-    /usr/bin/bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4159-shape" "$some_doc" "$d4159/signal-never" "$PAST" "$d4159/log" >/dev/null 2>&1
+    "$sysbash4152" "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4159-shape" "$some_doc" "$d4159/signal-never" "$PAST" "$d4159/log" >/dev/null 2>&1
 ) || rc=$?
 wait_record "$d4159" || true
 check "41k-4159 [shape] a consult launch with a no-'=' token refuses (exit 2)" "$rc" "2"
@@ -4153,7 +4176,7 @@ rc=0
   HEADED_ARM_WORKER_TARGET="$HEADED_ARM" HEADED_ARM_WORKER_PREFLIGHT="$PROCEED_PREFLIGHT" \
   KONSOLE_CMD="$d4159/konsole" PGREP_CMD="$d4159/pgrep" \
   WORKER_SESSION_REPO="$tmp/repo41c" HEADED_ARM_LOCK_DIR="$d4159/locks" HEADED_ARM_PROC="$d4159/proc" \
-    /usr/bin/bash "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4159-ld" "$some_doc" "$d4159/signal-never" "$PAST" "$d4159/log" >/dev/null 2>&1
+    "$sysbash4152" "$SCRIPT" --consult --profile design-motion --console HIMMEL-4014-console "HIMMEL-4159-ld" "$some_doc" "$d4159/signal-never" "$PAST" "$d4159/log" >/dev/null 2>&1
 ) || rc=$?
 wait_record "$d4159" || true
 check "41k-4159 [ld] hostile loader/node runtime consult launch: exit 0" "$rc" "0"

@@ -87,30 +87,6 @@ assert_registry() {
     local name="$1" expression="$2"
     if jq -e "$expression" "$HIMMEL_OBSERVABILITY_CONFIG" >/dev/null 2>&1; then pass "$name"; else fail "$name" "registry assertion failed: $expression"; fi
 }
-# assert_before <name> <first> <second> <haystack> — <first> must occur at a
-# LOWER byte offset than <second> in <haystack> (both must be present). Used
-# to prove element ORDER in emitted XML, not just presence (e.g. Repetition is a base-type element and must precede the ScheduleByX
-# choice in a CalendarTrigger, or schtasks /create /xml can reject it).
-assert_before() {
-    # Piping grep -bo into head risks the same SIGPIPE/pipefail trap grepq's
-    # header comment documents: head -1 can close the pipe while
-    # grep is still writing, so under `set -o pipefail` the pipeline's status
-    # is grep's SIGPIPE death, not head's success. `|| true` absorbs that (the
-    # captured output — the first line head read before closing — is correct
-    # either way); a genuine no-match also exits nonzero and is likewise caught.
-    local name="$1" first="$2" second="$3" haystack="$4" off_first off_second
-    off_first=$(grep -bo -F -- "$first" <<< "$haystack" | head -1) || true
-    off_second=$(grep -bo -F -- "$second" <<< "$haystack" | head -1) || true
-    off_first="${off_first%%:*}"
-    off_second="${off_second%%:*}"
-    if [ -z "$off_first" ] || [ -z "$off_second" ]; then
-        fail "$name" "missing element(s): '$first' (off=$off_first) '$second' (off=$off_second)"
-    elif [ "$off_first" -lt "$off_second" ]; then
-        pass "$name"
-    else
-        fail "$name" "expected offset('$first')=$off_first < offset('$second')=$off_second"
-    fi
-}
 summary() {
     echo
     echo "===================================="
@@ -286,17 +262,8 @@ AST_UPDATE_SCRIPT_EXP="$HIMMEL_ROOT_EXP/scripts/graphify/ast-update.sh"
 # (Can't grep the bare word "claude" — the worktree path contains ".claude".)
 
 # ============================================================================
-# xml_escape unit — the one non-trivial string transform. Pure + platform-
-# agnostic, so it runs on EVERY platform: extract the function and call it.
-# ============================================================================
-echo "TEST: xml_escape escapes & < > with & ordered first"
-xesc=$( { sed -n '/^xml_escape()/,/^}/p' "$SCRIPT"; echo "xml_escape 'a & b < c > d'"; } | bash )
-assert_contains "xml_escape produces well-formed entities (& first)" "a &amp; b &lt; c &gt; d" "$xesc"
-assert_not_contains "xml_escape leaves no bare ampersand" "a & b" "$xesc"
-
-# ============================================================================
 # default_vault / resolve_user_home units — cross-platform default resolution.
-# Pure (env + cygpath only), so they run on EVERY platform.
+# Pure (env only), so they run on EVERY platform.
 # ============================================================================
 echo "TEST: default_vault resolves the cross-platform default vault"
 DV_SRC="$(sed -n '/^resolve_user_home()/,/^}/p' "$SCRIPT"; sed -n '/^default_vault()/,/^}/p' "$SCRIPT")"
@@ -383,10 +350,10 @@ assert_contains "cron himmel not armed" "not armed  HIMMEL-GraphMap-Himmel" "$ou
 assert_contains "cron ast-luna not armed"   "not armed  HIMMEL-GraphMapAst-Luna"   "$out"
 assert_contains "cron ast-himmel not armed" "not armed  HIMMEL-GraphMapAst-Himmel" "$out"
 
-# Test C1b: cron_status must not report an
+# Test C1b: cmd_status must not report an
 # unrelated task's cron entry as an owned task being armed. cron_existing/
 # list_existing were scoped to exact/end-anchored matches against the four
-# owned names in a prior commit; cron_status's own `grep -F "# $name"` was
+# owned names in a prior commit; cmd_status's own `grep -F "# $name"` was
 # missed and still substring-matched -- a `# HIMMEL-GraphMapAst-LunaExtra`
 # entry would be reported as HIMMEL-GraphMapAst-Luna being armed.
 echo "TEST: cron status ignores an unrelated LunaExtra-suffixed entry"
@@ -1092,6 +1059,14 @@ rc=0; out=$(env OSTYPE=beos bash "$SCRIPT" status 2>&1) || rc=$?
 assert_rc "unknown platform rc 2" 2 "$rc"
 assert_contains "unknown platform message" "unsupported platform" "$out"
 
+# Windows is dropped: an msys/cygwin OSTYPE is an unsupported platform.
+for ostype in msys cygwin; do
+    echo "TEST: Windows platform (OSTYPE=$ostype) exits 2"
+    rc=0; out=$(env OSTYPE="$ostype" bash "$SCRIPT" status 2>&1) || rc=$?
+    assert_rc "$ostype rc 2" 2 "$rc"
+    assert_contains "$ostype unsupported platform message" "unsupported platform" "$out"
+done
+
 # Test C15: exact-name scoping — a crontab entry whose
 # comment merely STARTS WITH the dash-less "HIMMEL-GraphMap" prefix (not one
 # of the four owned names) must be treated as neither ours-for-removal nor
@@ -1364,7 +1339,7 @@ run_cron3 disarm >/dev/null 2>&1
 
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/
-# cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
+# cron path. cmd_arm is IDENTICAL on macos and linux (both take the crontab
 # branch of the platform case) except for this warning, so OSTYPE + HOME are
 # the only two hermetic seams needed to exercise the real Darwin branch
 # without a macOS machine -- this is a real control, not a stand-in for one
@@ -1430,7 +1405,7 @@ run_fda linux-gnu disarm >/dev/null 2>&1
 # the empty case is already covered above (the luna/himmel runner asserts
 # never see --out-root/GRAPHIFY_OUT= today, since no test here sets
 # GRAPHIFY_LUNA_OUT_ROOT), so this unit-tests the plumbing directly rather
-# than re-running the whole hermetic cron_arm harness a second time.
+# than re-running the whole hermetic cmd_arm harness a second time.
 echo "TEST: cron_payload / ast_cron_payload out-root wiring (HIMMEL-3718)"
 CP_SRC="$(sed -n '/^cron_payload()/,/^}/p' "$SCRIPT")"
 ACP_SRC="$(sed -n '/^ast_cron_payload()/,/^}/p' "$SCRIPT")"

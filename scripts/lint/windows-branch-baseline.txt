@@ -67,13 +67,6 @@ scripts/lib/test-scheduler-backend.sh
 scripts/lib/usage-preflight.sh
 scripts/luna-vitals/connectors/pull-cadence.sh
 scripts/luna-vitals/connectors/test-pull-cadence-arm.sh
-scripts/luna/graphmap-cadence.sh
-scripts/luna/pipeline-cadence.sh
-scripts/luna/qmd-cadence.sh
-scripts/luna/qmd-reindex.sh
-scripts/luna/synth-input-check.sh
-scripts/luna/test-graphmap-cadence.sh
-scripts/luna/test-pipeline-cadence.sh
 scripts/observability/prometheus.yml
 scripts/observability/test-promtool-validation.sh
 scripts/setup.sh

@@ -173,8 +173,8 @@ chmod +x "$FAKE_WSH_POWERSHELL"
 export CADENCE_WSCRIPT_BIN="$FAKE_WSCRIPT"
 export CADENCE_WSH_POWERSHELL="$FAKE_WSH_POWERSHELL"
 
-# Redirect the workspace-trust pre-seed (cmd_arm / cron_arm now
-# pre-trust the vault) at a throwaway config so non-dry-run arm tests never
+# Redirect the workspace-trust pre-seed (cmd_arm pre-trusts the
+# vault) at a throwaway config so non-dry-run arm tests never
 # mutate the operator's real ~/.claude.json.
 export WORKSPACE_TRUST_CONFIG="$TMP_ROOT/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP_ROOT/flow-runs.jsonl"
@@ -195,18 +195,6 @@ mkdir -p "$VAULT"
 
 # Word-bounded headless claude invocation (`-p` / `--print` / `--bg`).
 HEADLESS_RE='(^|[^A-Za-z0-9_-])claude[[:space:]]+(-p|--print|--bg)($|[^A-Za-z0-9_-])'
-
-# ============================================================================
-# xml_escape unit — the one non-trivial new string transform.
-# Pure + platform-agnostic, so it runs on EVERY platform: extract the
-# function from the script and call it directly. Pins the &-first ordering
-# (escaping & last would double-escape the &lt;/&gt; entities) so a
-# BAT_DIR path containing & / < / > yields well-formed task XML.
-# ============================================================================
-echo "TEST: xml_escape escapes & < > with & ordered first"
-xesc=$( { sed -n '/^xml_escape()/,/^}/p' "$SCRIPT"; echo "xml_escape 'a & b < c > d'"; } | bash )
-assert_contains "xml_escape produces well-formed entities (& first)" "a &amp; b &lt; c &gt; d" "$xesc"
-assert_not_contains "xml_escape leaves no bare ampersand" "a & b" "$xesc"
 
 # ============================================================================
 # default_vault unit — cross-platform default --vault resolution.
@@ -637,8 +625,8 @@ for what in harvest synth health; do
 done
 
 # Test C4e: runner_path_snapshot unit — the shared helper both
-# emitters call. Pure (string-only), so extract it the way xml_escape/
-# default_vault are tested above and call it standalone. Pins: (1) a node_dir
+# emitters call. Pure (string-only), so extract it the way
+# default_vault is tested above and call it standalone. Pins: (1) a node_dir
 # NOT already in the snapshot gets prepended (keeps #317's guarantee: nvm-
 # managed node found under cron's minimal PATH); (2) a node_dir ALREADY in the
 # snapshot is not prepended again (no duplicate PATH entry).
@@ -684,7 +672,7 @@ if command -v env >/dev/null 2>&1 && [ -x /bin/sh ]; then
     fake_node_dir="$TMP_ROOT/c4f-fake-node-bin"
     mkdir -p "$fake_node_dir"
 
-    # Snapshot PATH exactly as cron_arm computes it: the fixture ~/.local/bin
+    # Snapshot PATH exactly as cmd_arm computes it: the fixture ~/.local/bin
     # dir is on the arming PATH (as it would be for a real `uv tool install`),
     # node's dir is not — so the fix must fold node_dir in via
     # runner_path_snapshot while STILL carrying the fixture dir through.
@@ -870,7 +858,7 @@ do
 done
 
 # Test C4d: readability warnings for the two S2a/S2b cadence-scoped hooks ----
-# AUTO_APPROVE_HOOK gets a `[ -r ] || echo WARN` in cron_arm, and the two hooks
+# AUTO_APPROVE_HOOK gets a `[ -r ] || echo WARN` in cmd_arm, and the two hooks
 # emit_settings_fragment wires beside it (cadence-deny-background.sh,
 # cadence-approve-engines.sh) need the same check. A missing hook file at
 # fire time makes that hook process fail to start; Claude Code treats a
@@ -960,8 +948,8 @@ rm -f "$CRON_DIR/pipeline-synthesize.log.prev"
 # ARMED. A scheduler entry whose generated runner file is
 # gone fires-and-fails every time — status must distinguish that from the
 # intentional pre-pin case (which exists on disk and is silent).
-# model_suffix is shared by the cron + schtasks status paths, so this covers
-# the fix on EVERY platform (the schtasks 9d mirror is Windows-only).
+# model_suffix backs cmd_status, so this covers the fix on every
+# supported platform.
 
 echo "TEST: cron armed task with runner file deleted shows [runner missing]"
 cp "$CRON_DIR/pipeline-synthesize.sh" "$CRON_DIR/pipeline-synthesize.sh.bak"
@@ -1126,7 +1114,7 @@ rm -f "$CSTATE/fail-write"
 run_cron disarm >/dev/null
 
 # Test C10b: --force re-arm with failing install leaves NO half-state ------------
-# Pins the stage-then-promote fix: cron_arm must NOT overwrite the live
+# Pins the stage-then-promote fix: cmd_arm must NOT overwrite the live
 # runners before cron_install succeeds — otherwise a failed install
 # leaves the OLD crontab live pointing at NEW-config runners, silently.
 
@@ -1704,9 +1692,17 @@ rc=0; out=$(env OSTYPE=beos bash "$SCRIPT" status 2>&1) || rc=$?
 assert_rc "unknown platform rc 2" 2 "$rc"
 assert_contains "unknown platform message" "unsupported platform" "$out"
 
+# Windows is dropped: an msys/cygwin OSTYPE is an unsupported platform.
+for ostype in msys cygwin; do
+    echo "TEST: Windows platform (OSTYPE=$ostype) exits 2"
+    rc=0; out=$(env OSTYPE="$ostype" bash "$SCRIPT" status 2>&1) || rc=$?
+    assert_rc "$ostype rc 2" 2 "$rc"
+    assert_contains "$ostype unsupported platform message" "unsupported platform" "$out"
+done
+
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/
-# cron path. cron_arm is IDENTICAL on macos and linux (both take the crontab
+# cron path. cmd_arm is IDENTICAL on macos and linux (both take the crontab
 # branch of the platform case) except for this warning, so OSTYPE + HOME are
 # the only two hermetic seams needed to exercise the real Darwin branch
 # without a macOS machine -- this is a real control, not a stand-in for one

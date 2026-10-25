@@ -38,15 +38,14 @@
 # measured 2026-07-25 ran in 16s (update) + 24s (embed) — daily is cheap, and
 # daily is what bounds the observed five-day staleness to under 24h.
 #
-# WHY THE qmd BINARY IS PINNED AT ARM TIME: schtasks and cron fire with a MINIMAL
+# WHY THE qmd BINARY IS PINNED AT ARM TIME: cron fires with a MINIMAL
 # PATH that does not carry the bun bin dir where qmd installs (~/.bun/bin here).
 # Resolving it HERE, at arm time, is what makes the failure visible — otherwise
 # the arm "succeeds" and every unattended fire dies in a log nobody reads. The
 # resolved ABSOLUTE invocation is passed to the runner as --qmd-bin (+ --qmd-js).
 # Unlike the graphmap sibling (which must PATH-prepend, because graphify spawns
 # `claude` itself), we invoke qmd directly, so passing the path is both simpler
-# and stricter. Verified 2026-07-25: qmd runs correctly under a bare
-# PATH=C:\Windows\system32, so no PATH surgery is needed.
+# and stricter.
 #
 # HOW it is resolved, and why that matters: via
 # scripts/lib/qmd-bin.sh's qmd_pinned_invocation, NOT a bare `command -v qmd`.
@@ -69,12 +68,7 @@
 # class this closes.
 #
 # WITH --hourly the SAME single task fires every hour instead of
-# once daily. Windows keeps the daily CalendarTrigger anchored at --time and
-# layers graphmap-cadence's Repetition fragment on top
-# (<Interval>PT1H</Interval><Duration>P1D</Duration><StopAtDurationEnd>false
-# </StopAtDurationEnd>) — the same "hourly forever" idiom
-# graphmap's AST-himmel task uses, since schtasks has no bare
-# /sc HOURLY reachable from /xml. The POSIX/cron path emits `MM * * * *`
+# once daily: the cron line is `MM * * * *`
 # instead of `MM HH * * *`, using --time's minute as the fixed :MM past every
 # hour — --time's hour is then irrelevant for scheduling, but the flag still
 # validates as a full HH:MM so one flag serves both cadences.
@@ -89,40 +83,30 @@
 #   bash scripts/luna/qmd-cadence.sh disarm [--dry-run]
 #
 # Test seams (used by test-qmd-cadence.sh):
-#   QMD_CADENCE_SCHTASKS  — command invoked instead of `schtasks` (Windows)
-#   QMD_CADENCE_CRONTAB   — command invoked instead of `crontab` (POSIX)
-#   QMD_CADENCE_BAT_DIR   — where the persistent runner (.bat/.sh) lives
+#   QMD_CADENCE_CRONTAB   — command invoked instead of `crontab`
+#   QMD_CADENCE_BAT_DIR   — where the persistent runner (.sh) lives
 #
 # Exit codes (mirrors graphmap-cadence.sh / pipeline-cadence.sh):
 #   0  done (armed / status printed / disarmed / dry-run)
 #   1  usage / input error
-#   2  env unusable (no schtasks/crontab; unknown platform; runner or qmd
+#   2  env unusable (no crontab; unsupported platform; runner or qmd
 #      missing; query tool errored)
 #   3  dedup block — a HIMMEL-Qmd-* task is already armed; use --force
-#   4  scheduler invocation failed (/create, /delete, crontab rewrite,
-#      path conversion)
+#   4  scheduler invocation failed (crontab rewrite)
 set -euo pipefail
 
 TASK_PREFIX="HIMMEL-Qmd-"
 TASK_REINDEX="${TASK_PREFIX}Reindex"
-SCHTASKS_BIN="${QMD_CADENCE_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${QMD_CADENCE_CRONTAB:-crontab}"
 
-# Cross-platform user-home resolution (mirrors graphmap-cadence's).
-# On Windows Git-Bash $HOME can be the MSYS home (/home/<user>) while Claude
-# Code's config (~/.claude) lives under the Windows user profile, so prefer
-# USERPROFILE via cygpath BEFORE $HOME. POSIX hosts have USERPROFILE unset and
-# fall straight through to $HOME. /tmp is the last-resort floor.
+# User-home resolution (mirrors graphmap-cadence's). /tmp is the last-resort
+# floor when HOME is unset.
 resolve_user_home() {
-    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
-    else
-        printf '%s' "${HOME:-${USERPROFILE:-/tmp}}"
-    fi
+    printf '%s' "${HOME:-/tmp}"
 }
 
-# Persistent runner home (.bat on Windows, .sh on POSIX) — NOT mktemp: this task
-# recurs daily and %TEMP% / /tmp are subject to cleanup sweeps that would
+# Persistent runner home (.sh runner) — NOT mktemp: this task
+# recurs daily and /tmp is subject to cleanup sweeps that would
 # silently kill the cadence (same rationale as the sibling cadences' BAT_DIR).
 BAT_DIR="${QMD_CADENCE_BAT_DIR:-$(resolve_user_home)/.claude/qmd-cadence}"
 
@@ -132,7 +116,7 @@ HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 REINDEX_SCRIPT="$HIMMEL_ROOT/scripts/luna/qmd-reindex.sh"
 RUNNER_SCRIPT="$REINDEX_SCRIPT"
 
-# Runner-format version stamp: emit_bat / emit_runner stamp
+# Runner-format version stamp: emit_runner stamps
 # CADENCE_RUNNER_FORMAT_VERSION into the runner so a stale-format armed cadence
 # is detectable. Shared lib, same as the sibling cadences.
 # Shared qmd resolver: qmd_pinned_invocation returns the absolute
@@ -156,15 +140,12 @@ REINDEX_TIME="05:00"
 FORCE=0
 DRY_RUN=0
 # --hourly: fire every hour instead of once daily. See the
-# header for the Windows Repetition / POSIX cron-line mechanics.
+# header for the cron-line mechanics.
 HOURLY=0
 # --every-hours N (cron only): fire every N hours (N divides 24). Every fire is
 # incremental (--no-cleanup) except the one at --time's hour: the full run with
 # cleanup, so one task covers both the frequent and the nightly refresh.
 EVERY_HOURS=0
-# Set when a --force arm has actually DELETED a previously armed task, so a
-# subsequent create failure can tell the operator the machine is now unarmed.
-REPLACED_EXISTING=0
 
 # Resolved by validate_arm_inputs: the absolute qmd invocation handed to the
 # runner. QMD_BIN is the executable (--qmd-bin); QMD_JS is the optional script
@@ -195,10 +176,8 @@ Flags (arm only, except --dry-run):
                   (the default): fires once, at this time, every day. With
                   --hourly, only the minute is used — it becomes the fixed
                   :MM the hourly cadence fires past every hour.
-  --hourly        Fire hourly instead of once daily (Windows: a Repetition
-                  fragment re-fires every hour for 24h, the same idiom
-                  graphmap-cadence uses for its AST-himmel task; POSIX: an
-                  hourly crontab line `MM * * * *`).
+  --hourly        Fire hourly instead of once daily (an hourly crontab
+                  line `MM * * * *`).
   --every-hours N Fire every N hours (N divides 24; cron only). Each fire is
                   incremental (`qmd-reindex.sh --no-cleanup`) except the one
                   at --time's hour, the full run with cleanup. Not with
@@ -296,18 +275,11 @@ esac
 
 # Platform detect (same matrix as the sibling cadences).
 case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-    msys*|cygwin*|win32*|MINGW*) PLATFORM=windows ;;
     linux*|Linux*)               PLATFORM=linux ;;
     darwin*|Darwin*)             PLATFORM=macos ;;
     *)                           PLATFORM=unknown ;;
 esac
 case "$PLATFORM" in
-    windows)
-        command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-            echo "ERR qmd-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-            exit 2
-        }
-        ;;
     linux|macos)
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR qmd-cadence: '$CRONTAB_BIN' not on PATH (required on $PLATFORM)" >&2
@@ -316,110 +288,14 @@ case "$PLATFORM" in
         ;;
     *)
         echo "ERR qmd-cadence: unsupported platform (OSTYPE=${OSTYPE:-})" >&2
-        echo "    Supported: Windows (schtasks), Linux/macOS (crontab)" >&2
+        echo "    Supported: Linux/macOS (crontab)" >&2
         exit 2
         ;;
 esac
 
-# MSYS_NO_PATHCONV=1 per call: without it gitbash mangles /query, /create etc.
-# into Windows-rooted paths before schtasks sees them.
-run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
-
-# Dedup listing: every scheduled task named HIMMEL-Qmd-*. Fail-CLOSED if the
-# query tool itself errors (mirrors the sibling cadences' list_existing).
-list_existing() {
-    local err_file out rc
-    err_file=$(mktemp -t qmd-cadence.err.XXXXXX)
-    set +e
-    out=$(run_schtasks /query /fo CSV /nh 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -ne 0 ]; then
-        # Fail-CLOSED: any nonzero rc is fatal UNLESS it matches the one trusted
-        # empty-scheduler signature — rc=1 with EMPTY stderr (schtasks returns
-        # rc=1 on a completely empty scheduler; real errors carry stderr).
-        if [ "$rc" -ne 1 ] || [ -s "$err_file" ]; then
-            echo "ERR qmd-cadence: schtasks /query failed (rc=$rc) — refusing to treat as empty scheduler:" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            exit 2
-        fi
-    fi
-    rm -f "$err_file"
-    # shellcheck disable=SC1003  # strips both quote and the literal backslash schtasks prefixes task names with
-    printf '%s\n' "$out" \
-        | grep -o '"\\\?HIMMEL-Qmd-[^"]*"' 2>/dev/null \
-        | tr -d '"\\' \
-        | sort -u || true
-}
-
-delete_task() {
-    local name="$1" err_file
-    err_file=$(mktemp -t qmd-cadence.err.XXXXXX)
-    if run_schtasks /delete /tn "$name" /f >/dev/null 2>"$err_file"; then
-        rm -f "$err_file"
-        echo "qmd-cadence: deleted scheduled task: $name"
-    else
-        echo "ERR qmd-cadence: schtasks /delete $name failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        exit 4
-    fi
-}
-
-# Known not-found stderr signatures for `/query /tn <name>` (mirrors the sibling
-# cadences). Real schtasks always emits one of these on a missing task, so rc=1
-# WITHOUT a match (silent rc=1 included) is a real query failure.
-NOT_FOUND_RE='The system cannot find the file specified|The specified task name .* does not exist'
-
-# query_one <name>: rc 0 = armed (QUERY_OUT set), rc 1 = trusted not-found,
-# rc 2 = query failed (stderr already printed).
-QUERY_OUT=""
-query_one() {
-    local name="$1" rc err_file
-    err_file=$(mktemp -t qmd-cadence.err.XXXXXX)
-    set +e
-    QUERY_OUT=$(run_schtasks /query /tn "$name" /fo LIST 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -eq 0 ]; then
-        rm -f "$err_file"
-        return 0
-    fi
-    if [ "$rc" -eq 1 ] && grep -qiE "$NOT_FOUND_RE" "$err_file"; then
-        rm -f "$err_file"
-        return 1
-    fi
-    echo "ERR qmd-cadence: schtasks /query /tn $name failed (rc=$rc) — refusing to treat as 'not armed':" >&2
-    cat "$err_file" >&2
-    echo "    If this is a localized 'task does not exist' message, the task may simply" >&2
-    echo "    not be armed. Verify / remove manually:" >&2
-    echo "        schtasks /query /tn $name" >&2
-    echo "        schtasks /delete /tn $name /f" >&2
-    rm -f "$err_file"
-    return 2
-}
-
 task_summary() {
     case "$1" in
         "$TASK_REINDEX") printf ' -> qmd-reindex (update + embed, all collections, daily)' ;;
-    esac
-}
-
-status_one() {
-    local name="$1" next qrc=0
-    query_one "$name" || qrc=$?
-    case "$qrc" in
-        0)
-            next=$(printf '%s\n' "$QUERY_OUT" | grep -i 'Next Run Time' | head -1 \
-                | sed 's/^[^:]*:[[:space:]]*//' || true)
-            cadence_registered_status "$name" "${next:+ (next run: $next)}$(task_summary "$name")" || return 2
-            ;;
-        1)  echo "not armed  $name$(task_summary "$name")" ;;
-        *)
-            echo "QUERY ERR  $name (see stderr above)"
-            return 2
-            ;;
     esac
 }
 
@@ -456,190 +332,8 @@ status_log() {
     fi
 }
 
-cmd_status() {
-    local status_rc=0
-    echo "qmd-cadence status:"
-    status_one "$TASK_REINDEX" || status_rc=2
-    status_log "$BAT_DIR/qmd-reindex.log"
-    return "$status_rc"
-}
-
-# Disarm every HIMMEL-Qmd-* task, not just the canonical TASK_REINDEX name.
-# `arm`'s dedup guard blocks on the PREFIX (list_existing), so a disarm that
-# only knew the exact name could leave an operator wedged: arm refuses with
-# "already armed", disarm answers "nothing armed", and nothing short of a manual
-# schtasks /delete breaks the tie. The POSIX path already disarms by prefix
-# (cron_existing greps TASK_PREFIX) — this brings the Windows path in line.
-# list_existing is fail-CLOSED, so a broken /query still exits 2 here rather
-# than reporting a false no-op.
-cmd_disarm() {
-    local found=0 existing name
-    existing=$(list_existing)
-    while IFS= read -r name; do
-        [ -z "$name" ] && continue
-        found=1
-        if [ "$DRY_RUN" -eq 1 ]; then
-            echo "DRY qmd-cadence: would delete $name"
-        else
-            delete_task "$name"
-        fi
-    done <<< "$existing"
-    if [ "$DRY_RUN" -eq 0 ]; then
-        rm -f "$BAT_DIR/qmd-reindex.bat"
-        rm -f "$BAT_DIR/qmd-reindex.vbs"
-    fi
-    if [ "$found" -eq 0 ]; then
-        echo "qmd-cadence: nothing armed — disarm is a no-op"
-    elif [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY qmd-cadence: no changes made"
-    else
-        echo "qmd-cadence: cadence disarmed"
-    fi
-}
-
-# Emit the .bat body: stamp the format version, rotate the run log (one prior run
-# kept as .log.prev), stamp the fire time, cd into the himmel root (a failing cd
-# aborts + is logged instead of firing from the wrong CWD), then fire bash +
-# qmd-reindex.sh with stdout+stderr captured to the rotating log. NO claude
-# SESSION, NO stdin redirect: the runner IS the payload. The qmd BINARY path is
-# still passed to the runner explicitly (see the header) — but Git's usr\bin + bin
-# are prepended to PATH so the NON-LOGIN bash.exe finds the GNU
-# coreutils qmd-reindex.sh itself calls (sed/grep/date) ahead of System32.
-emit_bat() {
-    local himmel_win_esc="$1" payload="$2" log_win_esc="$3" git_bin_esc="${4:-}"
-    printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt.
-    cadence_bat_editor_set
-    if [ -n "$git_bin_esc" ]; then
-        printf 'set "PATH=%s;%%PATH%%"\r\n' "$git_bin_esc"
-    fi
-    printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_win_esc" "$log_win_esc" "$log_win_esc"
-    printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_win_esc"
-    printf 'cd /d "%s" >> "%s" 2>&1 || exit /b 1\r\n' "$himmel_win_esc" "$log_win_esc"
-    printf '%s >> "%s" 2>&1\r\n' "$payload" "$log_win_esc"
-}
-
-# --- schtasks task XML (StartWhenAvailable) --------------------------------
-#
-# schtasks /create has no flag for StartWhenAvailable ("run as soon as possible
-# after a missed scheduled start"), so a daily 05:00 run is SILENTLY SKIPPED if
-# the machine was off/asleep at 05:00 — which for a staleness-prevention cadence
-# is the whole failure mode returning. The only CLI route is `schtasks /create
-# /xml`; we keep the .bat as the Exec Command and wrap it in XML carrying
-# StartWhenAvailable=true (same approach as the sibling cadences).
-
-# Escape the three XML-significant characters for element-body text (the Exec
-# <Command> path — a BAT_DIR path may legally contain `&`). `&` first so the `&`
-# in the &lt;/&gt; entities isn't re-escaped. sed (not bash ${//}) for a
-# version-independent literal-ampersand replacement.
-xml_escape() {
-    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-
-schedule_daily_xml() {
-    printf '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'
-}
-
-# Repetition fragment (--hourly): re-fires every hour (PT1H) for a
-# full day (Duration P1D) — the standard Task Scheduler XML idiom for "hourly,
-# forever" (schtasks has no bare /sc HOURLY equivalent reachable from /xml).
-# StopAtDurationEnd=false: the repetition itself re-arms with the next day's
-# CalendarTrigger fire, so the task keeps firing hourly indefinitely. Same
-# fragment graphmap-cadence.sh uses for its AST-himmel task —
-# see that script's repetition_xml for the base-type element-ordering
-# rationale (Repetition must precede the ScheduleByX fragment in the emitted
-# trigger, or `schtasks /create /xml` can reject it).
-repetition_xml() {
-    printf '      <Repetition>\n        <Interval>PT1H</Interval>\n        <Duration>P1D</Duration>\n        <StopAtDurationEnd>false</StopAtDurationEnd>\n      </Repetition>'
-}
-
-# Emit the task XML: a CalendarTrigger at the given local time, daily schedule,
-# StartWhenAvailable=true, and the .bat runner as the Exec Command. StartBoundary
-# date is a fixed past sentinel — the schedule fragment (not the date) governs
-# firing. MultipleInstancesPolicy=IgnoreNew is what keeps the cadence from
-# overlapping ITSELF (qmd-reindex.sh takes no lock of its own by design).
-# Declared UTF-16 (what schtasks /create /xml expects) but the bytes are plain
-# ASCII — keep it ASCII-only (a non-ASCII byte would need a real UTF-16LE +BOM
-# file; declaring UTF-8 is rejected on Win11).
-emit_task_xml() {
-    local bat_win="$1" start_time="$2" schedule_xml="$3" repetition="${4:-}" vbs_win vbs_args
-    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
-    # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
-    # still allocate visible consoles; wscript //B hosting the .vbs shim (which
-    # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
-    # WScript.Quit) allocates zero consoles. The shim path is derived from the
-    # .bat path through cadence_vbs_path — the SAME helper cmd_arm writes the
-    # file with — so the referenced path and the written file can never disagree.
-    # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
-    # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
-    # re-arm survives — proven in test-cadence-format.sh).
-    vbs_win=$(cadence_vbs_path "$bat_win")
-    vbs_args=$(xml_escape "//B \"${vbs_win}\"")
-    # Join repetition + schedule_xml with a real newline BEFORE the heredoc
-    # (mirrors graphmap-cadence's emit_task_xml): heredoc bodies get parameter
-    # expansion but not ANSI-C ($'\n') quote processing, so building the
-    # joined newline here keeps the emitted XML one-element-per-line instead
-    # of gluing `</Repetition>` and `<ScheduleByDay>` onto one line.
-    local trigger_body="$schedule_xml"
-    [ -n "$repetition" ] && trigger_body="${repetition}"$'\n'"${schedule_xml}"
-    cat <<XML
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>himmel qmd-cadence</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2020-01-01T${start_time}:00</StartBoundary>
-      <Enabled>true</Enabled>
-${trigger_body}
-    </CalendarTrigger>
-  </Triggers>
-  <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>wscript.exe</Command>
-      <Arguments>${vbs_args}</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-XML
-}
-
-# Create the task from an XML definition (so StartWhenAvailable applies).
-# Self-contained error handling; returns the schtasks rc so callers keep the
-# failure flow.
-schtasks_create_xml() {
-    local name="$1" schedule_xml="$2" start_time="$3" bat_win="$4" err_file="$5" repetition="${6:-}"
-    local xml_file xml_win rc
-    if ! xml_file=$(mktemp -t qmd-cadence.xml.XXXXXX 2>"$err_file"); then
-        return 1
-    fi
-    emit_task_xml "$bat_win" "$start_time" "$schedule_xml" "$repetition" > "$xml_file"
-    if ! xml_win=$(cygpath -w "$xml_file" 2>"$err_file"); then
-        rm -f "$xml_file"
-        return 1
-    fi
-    set +e
-    run_schtasks /create /tn "$name" /xml "$xml_win" /f 2>"$err_file"
-    rc=$?
-    set -e
-    rm -f "$xml_file"
-    return "$rc"
-}
-
-# Input validation shared by the schtasks and cron arm paths.
+# Input validation for the cron arm path.
 validate_arm_inputs() {
-    if [ "$EVERY_HOURS" -ne 0 ] && [ "$PLATFORM" = "windows" ]; then
-        echo "ERR qmd-cadence: --every-hours is cron only (Windows schtasks has --hourly)" >&2
-        exit 1
-    fi
     if ! [[ "$REINDEX_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
         echo "ERR qmd-cadence: --time must be HH:MM (24h), got: $REINDEX_TIME" >&2
         exit 1
@@ -681,10 +375,9 @@ validate_arm_inputs() {
     # resolves to a relative path. Either would be meaningless in a runner that
     # has cd'd elsewhere under a different PATH — the exact failure this check
     # exists to prevent (same guard the graphmap sibling applies to `claude`).
-    # Demand a real, absolute, executable file (Windows: the `.exe` an MSYS -x
-    # test still accepts behind an extensionless path).
+    # Demand a real, absolute, executable file.
     case "$QMD_BIN" in
-        /*|[A-Za-z]:[/\\]*) : ;;
+        /*) : ;;
         *)
             echo "ERR qmd-cadence: 'qmd' resolved to a non-absolute path ('$QMD_BIN') — a shell function/alias or a relative PATH entry cannot be pinned into a scheduled runner. Install qmd on PATH as a real executable and re-arm." >&2
             exit 2 ;;
@@ -769,237 +462,10 @@ validate_arm_inputs() {
 # unchanged.
 qmd_invocation_desc() { qmd_bin_desc; }
 
-cmd_arm() {
-    validate_arm_inputs
-    cadence_require_wsh "qmd-cadence" || exit 2
-
-    # Resolve bash to an absolute Windows path so the .bat invokes the Git-Bash
-    # interpreter directly — NOT the bare `bash` that resolves to the WSL
-    # System32 stub in a fresh cmd.exe.
-    local bash_posix bash_win
-    if ! bash_posix=$(command -v bash 2>/dev/null); then
-        echo "ERR qmd-cadence: 'bash' not on PATH at arm time" >&2
-        exit 2
-    fi
-    command -v cygpath >/dev/null 2>&1 || {
-        echo "ERR qmd-cadence: cygpath not on PATH; cannot convert paths for schtasks" >&2
-        exit 2
-    }
-    if ! bash_win=$(cygpath -w "$bash_posix" 2>&1); then
-        echo "ERR qmd-cadence: cygpath -w failed for bash path: $bash_win" >&2
-        exit 4
-    fi
-
-    # bash consumes these paths (POSIX/mixed C:/ form via cygpath -m, which
-    # Git-Bash reads); the himmel cd target is a Windows path.
-    local script_mixed qmd_mixed qmd_js_mixed="" himmel_win
-    if ! script_mixed=$(cygpath -m "$RUNNER_SCRIPT" 2>&1); then
-        echo "ERR qmd-cadence: cygpath -m failed for runner script: $script_mixed" >&2
-        exit 4
-    fi
-    if ! qmd_mixed=$(cygpath -m "$QMD_BIN" 2>&1); then
-        echo "ERR qmd-cadence: cygpath -m failed for qmd path: $qmd_mixed" >&2
-        exit 4
-    fi
-    if [ -n "$QMD_JS" ] && ! qmd_js_mixed=$(cygpath -m "$QMD_JS" 2>&1); then
-        echo "ERR qmd-cadence: cygpath -m failed for qmd script path: $qmd_js_mixed" >&2
-        exit 4
-    fi
-    if ! himmel_win=$(cygpath -w "$HIMMEL_ROOT" 2>&1); then
-        echo "ERR qmd-cadence: cygpath -w failed for himmel root: $himmel_win" >&2
-        exit 4
-    fi
-
-    # Dedup guard — never double-register the cadence.
-    local existing
-    existing=$(list_existing)
-    if [ -n "$existing" ]; then
-        if [ "$FORCE" -eq 1 ]; then
-            echo "qmd-cadence: --force set; replacing existing task(s):" >&2
-            local marker
-            while IFS= read -r marker; do
-                [ -z "$marker" ] && continue
-                echo "  $marker" >&2
-                if [ "$DRY_RUN" -eq 0 ]; then
-                    delete_task "$marker"
-                    # Track that the OLD cadence is already gone, so a later
-                    # create failure can say so plainly (see the exit-4 path).
-                    REPLACED_EXISTING=1
-                else
-                    echo "DRY qmd-cadence: would delete $marker"
-                fi
-            done <<< "$existing"
-        else
-            {
-                echo "ERR qmd-cadence: HIMMEL-Qmd-* task(s) already armed:"
-                printf '%s\n' "$existing" | sed 's/^/    /'
-                echo ""
-                echo "Dedup safeguard — re-run with --force to replace, or inspect with:"
-                echo "    bash scripts/luna/qmd-cadence.sh status"
-            } >&2
-            exit 3
-        fi
-    fi
-
-    # cmd-escape EVERY path value interpolated into the .bat payload — the bash
-    # interpreter path included. It is the least likely of the three to contain
-    # a cmd metacharacter (typically C:\Program Files\Git\bin\bash.exe), but
-    # "unlikely" is not "escaped": a `%` anywhere in the resolved path would be
-    # expanded by cmd.exe at fire time instead of taken literally, and leaving
-    # one of three interpolated values unescaped is the kind of asymmetry that
-    # reads as intentional later. (The graphmap sibling used to leave its bash
-    # path raw; that divergence is closed, so all four
-    # emitters now escape every interpolated value.)
-    local bash_win_esc script_esc qmd_esc himmel_win_esc qmd_js_esc="" git_bin_esc
-    bash_win_esc=$(cadence_cmd_escape "$bash_win")
-    # Git's usr\bin + bin, derived from the bash.exe path above:
-    # prepended to PATH in emit_bat so the non-login bash.exe finds GNU coreutils
-    # ahead of System32. Empty for a non-Git bash → emit_bat then omits the line.
-    git_bin_esc=$(cadence_cmd_escape "$(cadence_git_bin_path_win "$bash_win")")
-    script_esc=$(cadence_cmd_escape "$script_mixed")
-    qmd_esc=$(cadence_cmd_escape "$qmd_mixed")
-    himmel_win_esc=$(cadence_cmd_escape "$himmel_win")
-    [ -n "$qmd_js_mixed" ] && qmd_js_esc=$(cadence_cmd_escape "$qmd_js_mixed")
-
-    # --qmd-js rides along only when the bun-served install won the resolver;
-    # a PATH-qmd pin emits the single-token form unchanged.
-    local payload
-    payload="\"$bash_win_esc\" \"$script_esc\" --qmd-bin \"$qmd_esc\""
-    [ -n "$qmd_js_esc" ] && payload="$payload --qmd-js \"$qmd_js_esc\""
-    local bat="$BAT_DIR/qmd-reindex.bat"
-    # wscript //B shim lives beside the .bat; disarm removes both.
-    # Derived from the .bat Windows path through cadence_vbs_path — the same
-    # helper emit_task_xml derives the referenced path with.
-    local vbs="$BAT_DIR/qmd-reindex.vbs"
-
-    # Fire-time run log lives next to the .bat (cmd-escaped for the `>>` target).
-    local bat_dir_win log_esc
-    if ! bat_dir_win=$(cygpath -w "$BAT_DIR" 2>&1); then
-        echo "ERR qmd-cadence: cygpath -w failed for bat dir: $bat_dir_win" >&2
-        exit 4
-    fi
-    log_esc=$(cadence_cmd_escape "$bat_dir_win\\qmd-reindex.log")
-
-    # The .bat runner is the task's Exec Command. cygpath -w is a pure string
-    # transform (the .bat need not exist yet), so resolve the win path before the
-    # dry-run preview too.
-    local bat_win
-    if ! bat_win=$(cygpath -w "$bat" 2>&1); then
-        echo "ERR qmd-cadence: cygpath -w failed: $bat_win" >&2
-        exit 4
-    fi
-
-    local sched rep
-    sched=$(schedule_daily_xml)
-    rep=""
-    [ "$HOURLY" -eq 1 ] && rep=$(repetition_xml)
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY qmd-cadence: would write $bat:"
-        emit_bat "$himmel_win_esc" "$payload" "$log_esc" "$git_bin_esc" | sed 's/^/    /'
-        echo "DRY qmd-cadence: would write $vbs:"
-        cadence_vbs_wrapper "$bat_win" | sed 's/^/    /'
-        echo "DRY qmd-cadence: would schtasks /create /tn $TASK_REINDEX /xml <$CADENCE_DESC, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_win" "$REINDEX_TIME" "$sched" "$rep" | sed 's/^/    /'
-        echo "qmd-cadence: dry-run complete (no changes made)"
-        return 0
-    fi
-
-    mkdir -p "$BAT_DIR"
-    # Stage the .bat + .vbs shim and promote (mv) them only once complete —
-    # the same discipline the POSIX path applies to its runner. Writing in
-    # place would expose a half-written file to a task firing concurrently
-    # with a re-arm; staging in the same directory makes each promotion an
-    # atomic same-filesystem rename, so the FINAL paths only ever hold a
-    # complete file (old or new). Staged files are cleaned on every path.
-    local tmp_bat="$bat.tmp.$$" tmp_vbs="$vbs.tmp.$$"
-    emit_bat "$himmel_win_esc" "$payload" "$log_esc" "$git_bin_esc" > "$tmp_bat"
-    cadence_vbs_wrapper "$bat_win" > "$tmp_vbs"
-
-    # Publish the runner .bat AND its .vbs shim BEFORE
-    # registering the task. These tasks carry StartWhenAvailable=true, so a run
-    # missed while the PC was off can fire the moment the task is created — and
-    # if the shim were still staged at that point the task would reference a
-    # missing path (first arm) or the previous shim (re-arm). Promoting first
-    # means the only failure mode is an unarmed task beside an unused runner,
-    # which is inert; the reverse is an armed task pointing at nothing.
-    # The promotions are CHECKED — an unchecked
-    # mv that failed silently fell through to registering the task anyway, the
-    # exact armed-at-nothing state the ordering above exists to prevent. A
-    # non-regular final path is refused as well: `mv` onto a directory
-    # "succeeds" by moving the staged file INSIDE it, so the rename alone
-    # cannot catch a target the task could never run.
-    local final
-    for final in "$bat" "$vbs"; do
-        if [ -e "$final" ] && [ ! -f "$final" ]; then
-            echo "ERR qmd-cadence: $final exists and is not a regular file — refusing to publish" >&2
-            rm -f "$tmp_bat" "$tmp_vbs"
-            if [ "$REPLACED_EXISTING" -eq 1 ]; then
-                echo "    WARNING: --force already removed the previously armed task — NO qmd cadence is armed now." >&2
-            fi
-            exit 4
-        fi
-    done
-    if ! mv -f "$tmp_bat" "$bat"; then
-        echo "ERR qmd-cadence: failed to promote staged runner to $bat — no task armed" >&2
-        rm -f "$tmp_bat" "$tmp_vbs"
-        if [ "$REPLACED_EXISTING" -eq 1 ]; then
-            echo "    WARNING: --force already removed the previously armed task — NO qmd cadence is armed now." >&2
-        fi
-        exit 4
-    fi
-    if ! mv -f "$tmp_vbs" "$vbs"; then
-        echo "ERR qmd-cadence: failed to promote staged shim to $vbs — no task armed" >&2
-        rm -f "$tmp_vbs"
-        if [ "$REPLACED_EXISTING" -eq 1 ]; then
-            echo "    WARNING: --force already removed the previously armed task — NO qmd cadence is armed now." >&2
-        fi
-        exit 4
-    fi
-
-    local err_file
-    err_file=$(mktemp -t qmd-cadence.err.XXXXXX)
-    if ! schtasks_create_xml "$TASK_REINDEX" "$sched" "$REINDEX_TIME" "$bat_win" "$err_file" "$rep"; then
-        echo "ERR qmd-cadence: schtasks /create $TASK_REINDEX failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        echo "    runner .bat + .vbs shim were published, but NO task was armed" >&2
-        # Under --force the OLD task was already deleted above, so this failure
-        # leaves the machine with NO cadence armed. Say so plainly: the .bat
-        # line alone reads as "nothing changed", which is the opposite of true.
-        if [ "$REPLACED_EXISTING" -eq 1 ]; then
-            echo "    WARNING: --force already removed the previously armed task, and this" >&2
-            echo "    create failed — NO qmd cadence is armed right now. Re-run:" >&2
-            echo "        bash scripts/luna/qmd-cadence.sh arm" >&2
-        fi
-        exit 4
-    fi
-    if [ -s "$err_file" ]; then cat "$err_file" >&2; fi
-    rm -f "$err_file"
-
-    cat <<EOF
-
-================================================================
-  QMD REINDEX CADENCE ARMED
-  $TASK_REINDEX  $CADENCE_DESC  -> $RUNNER_DESC
-  Scope:  all configured qmd collections
-  qmd:    $(qmd_invocation_desc)
-  Himmel: $HIMMEL_ROOT
-  Runner .bat: $BAT_DIR
-
-  The task fires bash + $RUNNER_NAME directly (no claude session).
-  StartWhenAvailable=true: a run missed because the PC was off/asleep
-  fires when the PC is next on. Disarm anytime with:
-      bash scripts/luna/qmd-cadence.sh disarm
-================================================================
-EOF
-}
-
 # --- POSIX (cron) implementation -------------------------------------------
 #
-# Same arm/status/disarm contract as the schtasks path, against the user
-# crontab. The runner .sh mirrors the .bat: log rotation, fire stamp,
-# cd-into-himmel, then bash + qmd-reindex.sh.
+# arm/status/disarm against the user crontab. The runner .sh does log
+# rotation, fire stamp, cd-into-himmel, then bash + qmd-reindex.sh.
 
 CRON_RUNNER="$BAT_DIR/qmd-reindex.sh"
 
@@ -1017,7 +483,7 @@ cron_escape() {
     printf '%s' "${s//%/\\%}"
 }
 
-# Read the current crontab into CRON_TAB. Fail-CLOSED like list_existing.
+# Read the current crontab into CRON_TAB. Fail-CLOSED.
 CRON_TAB=""
 cron_read() {
     local err_file rc
@@ -1074,9 +540,8 @@ emit_runner() {
     printf '# %s runner — generated by qmd-cadence.sh arm\n' "$name"
     printf '# %s %s\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     printf 'log=%s\n' "$q_log"
-    # SELF-OVERLAP GUARD (cron only). The Windows task carries
-    # MultipleInstancesPolicy=IgnoreNew, which is what lets the payload take no
-    # lock of its own; cron has no equivalent, so serialize local reindexes.
+    # SELF-OVERLAP GUARD. cron has no single-instance policy, so serialize
+    # local reindexes.
     # Acquired BEFORE the rotation below, which is itself destructive across
     # concurrent runs (the second run rotates the first run's live log away).
     # mkdir, not a lockfile: it is the one atomic create-or-fail primitive
@@ -1160,13 +625,12 @@ emit_runner() {
     # script's status is that of the final `echo` inside the block — i.e. ALWAYS
     # 0 — so cron (and anything else keyed on exit status) reports success after
     # a failed reindex. That is precisely the silent-failure shape this ticket
-    # exists to eliminate, and it also made the two runner formats disagree: the
-    # .bat path already propagates, because its last line IS the payload.
+    # exists to eliminate.
     # Deliberate divergence from the graphmap sibling, which swallows it too.
     printf 'exit "$_rc"\n'
 }
 
-cron_status() {
+cmd_status() {
     cron_read
     echo "qmd-cadence status:"
     local entry sched n_entries dup=""
@@ -1182,7 +646,7 @@ cron_status() {
     status_log "$BAT_DIR/qmd-reindex.log"
 }
 
-cron_disarm() {
+cmd_disarm() {
     cron_read
     local existing
     existing=$(cron_existing)
@@ -1212,7 +676,7 @@ cron_disarm() {
     echo "qmd-cadence: cadence disarmed"
 }
 
-cron_arm() {
+cmd_arm() {
     validate_arm_inputs
 
     # Resolve bash to an absolute path so the runner doesn't depend on cron's
@@ -1259,7 +723,7 @@ cron_arm() {
     q_log=$(printf '%q' "$BAT_DIR/qmd-reindex.log")
     [ -n "$QMD_JS" ] && q_qmd_js=$(printf '%q' "$QMD_JS")
 
-    # Same two-token pin as the Windows path: --qmd-js only when
+    # Two-token pin: --qmd-js only when
     # the bun-served install won the resolver.
     local payload
     payload="$q_bash $q_script --qmd-bin $q_qmd"
@@ -1276,7 +740,7 @@ cron_arm() {
     elif [ "$HOURLY" -eq 1 ]; then
         # Hourly forever: fixed minute, every hour — mirrors graphmap-cadence's
         # AST-himmel cron entry, the cron(5) idiom for "hourly"
-        # since cron has no repetition construct to layer on top like schtasks.
+        # since cron has no repetition construct.
         entry="$mm * * * * $q_runner # $TASK_REINDEX"
     else
         entry="$mm $hh * * * $q_runner # $TASK_REINDEX"
@@ -1340,7 +804,7 @@ EOF
 }
 
 case "$SUBCMD" in
-    arm)    if [ "$PLATFORM" = "windows" ]; then cmd_arm;    else cron_arm;    fi ;;
-    status) if [ "$PLATFORM" = "windows" ]; then cmd_status; else cron_status; fi ;;
-    disarm) if [ "$PLATFORM" = "windows" ]; then cmd_disarm; else cron_disarm; fi ;;
+    arm)    cmd_arm ;;
+    status) cmd_status ;;
+    disarm) cmd_disarm ;;
 esac

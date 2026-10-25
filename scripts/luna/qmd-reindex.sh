@@ -91,7 +91,7 @@
 #   --qmd-bin PATH   Absolute path to the qmd EXECUTABLE. Default: resolved via
 #                    scripts/lib/qmd-bin.sh's preference order,
 #                    NOT a bare `command -v qmd`. The cadence passes this
-#                    explicitly, because schtasks and cron fire with a MINIMAL
+#                    explicitly, because cron fires with a MINIMAL
 #                    PATH that does not carry the bun bin dir where qmd installs.
 #   --qmd-js PATH    Optional absolute script path passed as the first argument
 #                    to --qmd-bin, i.e. the invocation becomes

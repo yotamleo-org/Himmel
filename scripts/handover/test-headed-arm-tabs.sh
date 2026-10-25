@@ -243,8 +243,11 @@ check "8b no console name: own window" "$(konsole_count "$d8")" 2
 
 # --- 9. the idle waker targets the tab's own session and the worker's pid.
 d9="$tmp/c9"; mk_env "$d9"
-arm "$d9" HIMMEL-9-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker"
-arm "$d9" HIMMEL-9-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker"
+# headed-arm.sh skips the waker on Darwin and without setsid (stock macOS has
+# neither): pin the Linux branch and give it a pass-through setsid.
+mkdir -p "$d9/sbin"; printf '#!%s\nexec "$@"\n' "$(command -v bash)" > "$d9/sbin/setsid"; chmod 755 "$d9/sbin/setsid"
+arm "$d9" HIMMEL-9-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker" HEADED_ARM_UNAME=Linux PATH="$d9/sbin:$PATH"
+arm "$d9" HIMMEL-9-N2-b HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A HEADED_ARM_WAKER="$d9/waker" HEADED_ARM_UNAME=Linux PATH="$d9/sbin:$PATH"
 n=0; while [ "$(wc -l < "$d9/waker-record" 2>/dev/null || echo 0)" -lt 2 ] && [ "$n" -lt 40 ]; do sleep 0.05; n=$((n+1)); done
 w9="$(window_of "$d9" HIMMEL-9-N1-a)"
 contains "9a waker: tab 2 gets its own session" "$(cat "$d9/waker-record" 2>/dev/null)" \
