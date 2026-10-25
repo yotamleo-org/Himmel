@@ -884,6 +884,7 @@ scripts/lint/test-check-history-comments.sh	pr	static-gate
 scripts/lint/test-check-mcp-sdk-v1.sh	pr	static-gate
 scripts/lint/test-check-rule-tags.sh	pr	catch:3125
 scripts/lint/test-check-swallowed-errors.sh	pr	catch:2919
+scripts/lint/test-check-windows-leftovers.sh	pr	static-gate
 scripts/lint/test-flag-parity.sh	pr	static-gate
 scripts/lint/test-list-enforced-rules.sh	pr	static-gate
 scripts/lint/test-shell-lint.sh	pr	static-gate
@@ -939,7 +940,6 @@ scripts/observability/test-install-stack.sh	local	behaviour suite, 0 catches in 
 scripts/observability/test-ledger-prune.sh	pr	static-gate
 scripts/observability/test-ledgers-registry.sh	pr	catch:2851
 scripts/observability/test-promtool-validation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/observability/test-restart-stack.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-suite-flake-summary.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-tool-call-census.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/openrouter/test-free-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window

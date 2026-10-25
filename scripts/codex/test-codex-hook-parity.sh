@@ -164,7 +164,6 @@ CLAUDE_END_ONLY=(
                              # — dash drops a dot-source's operands), not a guardrail
                              # script itself — the .sh-basename scan below picks it
                              # up from the command line same as a real guardrail.
-  speak-reply.sh            # deliberate: cosmetic TTS, gated off by default, not ported.
   session-run-hook.ts       # deliberate: the session-runs census is Claude-scoped, and the
                             # Codex adapter resolves scripts/hooks/<name>.sh only - a bun .ts
                             # entrypoint has no adapter shape.

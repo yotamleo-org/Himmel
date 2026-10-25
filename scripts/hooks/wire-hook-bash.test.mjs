@@ -149,8 +149,8 @@ test('rewrites the known hook inventory through the Bash resolver', () => {
     for (const command of wired) {
       assert.ok(command.startsWith(`${WIRED_LAUNCHER} `));
     }
-    // Foreign commands (the trust ledger under the owned events + speak-reply
-    // under Stop) coexist and are NOT touched by this tool — the point of
+    // Foreign commands (the trust ledger under the owned events + the Stop
+    // entries) coexist and are NOT touched by this tool — the point of
     // the own-only invariant. They remain present, in their original form.
     const foreign = all.filter((c) => !c.startsWith(WIRED_LAUNCHER));
     assert.ok(foreign.length > 0, 'foreign hook commands coexist with the owned inventory');
@@ -160,7 +160,7 @@ test('rewrites the known hook inventory through the Bash resolver', () => {
 
 // Every test above is a spec for the TOOL, and the tool's
 // own-only invariant deliberately ignores foreign events — so nothing asserted
-// the state of the FILE, and `speak-reply.sh` under `Stop` sat on a bare `bash`
+// the state of the FILE, and a hook under `Stop` sat on a bare `bash`
 // long after the owned inventory had been routed, keeping exactly the PATH
 // roulette this tool exists to remove (WSL stub / 0-byte Store alias / the
 // "Select an app to open 'bash'" modal). This case is the spec for the file:
@@ -538,11 +538,10 @@ test('rewrites the correct slots when a foreign event key precedes an owned one'
     assert.ok(preCommands[0].includes('/scripts/hooks/run-hook-with-bash.js'),
       'the first OWNED command was rewritten to its resolver');
     const stopCommand = after.hooks.Stop[0].hooks[0].command;
-    assert.match(stopCommand, /speak-reply\.sh/);
+    assert.match(stopCommand, /stop-console-idle-guard\.sh/);
     // BYTE-IDENTICAL is the actual invariant. Asserting the absence of the
-    // resolver was a proxy for it, and it stopped meaning that once the Stop
-    // slot legitimately NAMED the resolver as an argument (queueing
-    // the speak-reply invocation rather than running it inline).
+    // resolver was a proxy for it, and it stops meaning that once the Stop
+    // slot legitimately NAMES the resolver as an argument.
     assert.equal(stopCommand, stopBefore, 'the foreign Stop command was left untouched');
   });
 });

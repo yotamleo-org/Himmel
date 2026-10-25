@@ -2,7 +2,7 @@
 # Suite for scripts/observability/install-stack.sh: the
 # Linux/macOS flow-exporter user service. Every external tool the installer
 # drives — uname, systemctl, launchctl, curl, bun, crontab, sleep — is a
-# PATH stub (test-restart-stack.sh convention), and HOME points at a
+# PATH stub, and HOME points at a
 # throwaway tree, so no case touches a real service manager or real unit dir.
 set -uo pipefail
 
