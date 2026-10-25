@@ -66,20 +66,20 @@ trigger one of these commands.
 
 ## Messaging a running chief
 
-`/console <text>` delivers to the **one live chief**, without needing its
+`/chief <text>` delivers to the **one live chief**, without needing its
 session name. Live means its waiter heartbeat is `waiting` or `sampling` and
 less than five minutes old. With none live, nothing is queued; with several,
-the bridge lists them and asks you to choose `/console <session-name> <text>`.
+the bridge lists them and asks you to choose `/chief <session-name> <text>`.
 The first word names a chief only when that inbox already exists; otherwise
-it is part of the bare text. `/consoles` lists live names, heartbeat timestamps,
+it is part of the bare text. `/chiefs` lists live names, heartbeat timestamps,
 and bucket/project (older chiefs without launch metadata show `unknown`).
 The first word also selects a chief by a unique fragment of its name, and a
-message to an armed chief that is busy is queued rather than dropped. `/console`, the fleet verbs and `/lockdown` accept any letter
+message to an armed chief that is busy is queued rather than dropped. `/chief`, the fleet verbs and `/lockdown` accept any letter
 case and the `/verb@botname` form; the auto ops stay
-strict.
+strict. The older `/console` and `/consoles` still work as aliases of `/chief` and `/chiefs`.
 
 Each chief's first waiter arm queues a DM: “Console <name> is live — just <!-- old-term-ok: quotes the DM text the bridge sends until V5 -->
-send /console <text>”. A successor announces its new identity on its first arm; <!-- old-term-ok: quotes the DM text the bridge sends until V5 -->
+send /chief <text>”. A successor announces its new identity on its first arm;
 restarting the same waiter does not repeat the announcement. Replying to an
 announcement, chief acknowledgement, or chief answer routes to that
 chief using the bridge's saved chat/message-id receipt, not quoted text.
@@ -93,7 +93,7 @@ which reads it through `inbox-follow.sh --once` and a read cursor beside the
 file, so a line is never lost across a re-start).
 
 - **Who:** only the `allowFrom` operator, in an allowed chat, with a typed (not
-  forwarded, not captioned) message. Anyone else's `/console …` is ordinary
+  forwarded, not captioned) message. Anyone else's `/chief …` is ordinary
   chat, exactly as before. `access.json` remains the only sender gate.
 - **Ack:** `→ console <name>` means the line was queued, not that the chief
   has read it. A response with no live chief, or an ambiguous one, queues nothing;
@@ -112,7 +112,7 @@ file, so a line is never lost across a re-start).
 
 ## Slash chief requests and emergency lockdown
 
-These **slash forms only** carry the same authority as free `/console` text:
+These **slash forms only** carry the same authority as free `/chief` text:
 
 | Command | Queued chief request |
 |---|---|
@@ -136,7 +136,7 @@ be typed, unforwarded and without a `model:` tag.
 A trusted reply receipt selects its original chief **only while fresh**;
 otherwise exactly one fresh chief must be live. Zero or multiple live
 chiefs queue nothing. Reply to the chosen chief's announcement or answer
-to disambiguate. Unlike explicitly named `/console`, these requests refuse
+to disambiguate. Unlike explicitly named `/chief`, these requests refuse
 stale targets. Their acknowledgement says **queued**, never completed, and
 replies thread to the inbound message while retaining the same chief receipt
 owner. No handler launches a session, runs git, or grants approval.
@@ -145,7 +145,7 @@ An inbound command older than `TELEGRAM_VERB_MAX_AGE_S` (default **300 seconds**
 is refused with **“stale, resend”**, preventing outage replay. Missing/invalid
 message dates also refuse; up to five seconds of future clock skew is accepted.
 Invalid/nonpositive configuration uses 300 seconds. The same window covers
-free/named `/console`, `/consoles`, trusted chief reply threads and typed
+free/named `/chief`, `/chiefs`, trusted chief reply threads and typed
 auto-actions (`/arm`, `/mergepub`, `/cr-grant-delta`, `/restart`, the
 break-glass ops and `/confirm`). `/lockdown`
 remains narrowing-only even when replayed.
@@ -176,8 +176,8 @@ a hook-bypass launch.
 **Threat ceiling:** a same-uid process can forge an inbox line or remove the
 station-local flag. The flag is emergency narrowing, not a protected privilege
 boundary. A queued command never carries more authority than free-text
-`/console` and never bypasses PR, automated review or GO gates. If the Telegram account is
-taken over, `/console` free text, `/mergepub` and `/cr-grant-delta` remain
+`/chief` and never bypasses PR, automated review or GO gates. If the Telegram account is
+taken over, `/chief` free text, `/mergepub` and `/cr-grant-delta` remain
 one-factor operator authority until lockdown; this slice adds no approval
 capability or second factor.
 

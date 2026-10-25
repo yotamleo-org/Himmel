@@ -71,7 +71,7 @@ const MERGEPUB = /^\/mergepub\s+#?(\d{1,6})\s+([0-9a-f]{12,40})$/i;
 // time — that is rung 2.
 const RESTART = /^\/restart(?:\s+(full))?$/i;
 
-// Operator -> running console: `/console <session-name> <text>` (`/chief` is the same verb).
+// Operator -> running chief: `/chief <session-name> <text>` (`/console` is a quiet alias).
 // Slash-prefixed and anchored on the whole message like /arm, so prose such as
 // "console output: foo" never matches. The router only checks SHAPE (name charset,
 // non-empty text); the path-safety refusal and the sender gate live downstream
@@ -79,7 +79,7 @@ const RESTART = /^\/restart(?:\s+(full))?$/i;
 // back to ordinary chat.
 // the verb is case-insensitive and may carry Telegram's `/cmd@<bot>`
 // addressing; a suffix naming another bot (when `botUsername` is known) is chat.
-// Only the leading verb is matched, so a mid-text or trailing /console stays chat.
+// Only the leading verb is matched, so a mid-text or trailing /chief stays chat.
 const CONSOLE_VERB = /^\/(consoles?|chiefs?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
 
 const FLEET_VERB = /^\/(lockdown|fleet|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
@@ -87,7 +87,7 @@ const FLEET_VERB = /^\/(lockdown|fleet|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?
 export function classify(raw: string, botUsername?: string | null): Route {
   const t = raw.trim();
   // fleet verbs and /lockdown take the same case-insensitive verb and
-  // `/cmd@<bot>` addressing as /console; a suffix naming another bot (when
+  // `/cmd@<bot>` addressing as /chief; a suffix naming another bot (when
   // `botUsername` is known) is chat. With no known bot name an `@` suffix cannot
   // be checked, so only the fail-safe verbs (/halt, /lockdown) accept it. The leg
   // label stays case-exact. The auto ops below are deliberately NOT loosened.

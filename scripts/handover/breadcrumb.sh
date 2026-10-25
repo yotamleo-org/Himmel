@@ -97,7 +97,7 @@ cmd_write() {
         esac
     done
     [ -n "$ticket" ] || die "write: --ticket is required"
-    _valid_ticket "$ticket" || die "write: invalid --ticket '$ticket' (want <PROJECT>-<N>, e.g. HIMMEL-477)"
+    _valid_ticket "$ticket" || die "write: invalid --ticket '$ticket' (want <PROJECT>-<N>, e.g. PROJ-123)"
 
     # Auto-detect git facts when not supplied.
     if git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then

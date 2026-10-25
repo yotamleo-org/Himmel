@@ -394,7 +394,7 @@ if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "${CHIEF_C
     exit 2
 fi
 if [ -n "$_ab_autocompact" ] && { [ "$_ab_autocompact" != "400000" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "console" ]; }; then
-    echo "headed-arm: refusing HEADED_ARM_AB_AUTOCOMPACT=$_ab_autocompact: only 400000 on a standard-context leg arm is accepted (HIMMEL-5193)" >&2
+    echo "headed-arm: refusing HEADED_ARM_AB_AUTOCOMPACT=$_ab_autocompact: only 400000 on a standard-context leg arm is accepted" >&2
     exit 2
 fi
 # Fable-family match (shared with arm-resume.sh via console_context_model_is_fable)
@@ -586,14 +586,14 @@ LAUNCH_ARGV=("$LAUNCHER" --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME
 # --role console adds one. Fails closed: no profile, no console launch.
 if [ "$ROLE" = "console" ]; then
     _console_profile_settings=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console) || {
-        echo "headed-arm.sh: the console plugin profile did not resolve; refusing to launch a console with the full plugin set (HIMMEL-4013)" >&2
+        echo "headed-arm.sh: the console plugin profile did not resolve; refusing to launch a console with the full plugin set" >&2
         exit 2
     }
     # The console loads only the servers its profile names. Without
     # --strict-mcp-config every user-level server (graphify, ...) leaks in and its
     # tool schemas are paid on every turn. Empty output = no allowlist declared.
     _console_profile_mcp=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console --mcp-config) || {
-        echo "headed-arm.sh: the console MCP allowlist did not resolve; refusing to launch a console with every user-level MCP server (HIMMEL-5310)" >&2
+        echo "headed-arm.sh: the console MCP allowlist did not resolve; refusing to launch a console with every user-level MCP server" >&2
         exit 2
     }
     _console_profile_args=(--settings "$_console_profile_settings")
@@ -706,7 +706,7 @@ if [ "$HEADLESS" = "1" ]; then
         fi
     done
 elif ! command -v "$KONSOLE" >/dev/null 2>&1; then
-    echo "headed-arm: no '$KONSOLE' on PATH - this launcher needs a terminal emulator to give the session a TTY (HIMMEL-2534)" >&2
+    echo "headed-arm: no '$KONSOLE' on PATH - this launcher needs a terminal emulator to give the session a TTY" >&2
     exit 3
 fi
 # Unchecked, a missing pgrep fails the dedup call below rc=127,
@@ -715,7 +715,7 @@ fi
 # tied to a terminal emulator (konsole, or the macOS shim), so refusing here
 # is honest, not restrictive.
 if ! command -v "$PGREP" >/dev/null 2>&1; then
-    echo "headed-arm: no '$PGREP' on PATH - dedup needs pgrep (procps) to tell whether a session named $NAME is already running; refusing rather than risk launching a duplicate (HIMMEL-2545)" >&2
+    echo "headed-arm: no '$PGREP' on PATH - dedup needs pgrep (procps) to tell whether a session named $NAME is already running; refusing rather than risk launching a duplicate" >&2
     exit 4
 fi
 
@@ -896,7 +896,7 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
     # gap its ponytail names is announced once - never silent.
     if [ ! -d "$PROC" ]; then
         if [ "$_LOSSY_WARNED" -eq 0 ]; then
-            echo "WARN headed-arm: no $PROC on this platform - session confirmation reads each candidate's argv via ps, whitespace-joined, so an argv element containing spaces can still spoof it (HIMMEL-3484)" >&2
+            echo "WARN headed-arm: no $PROC on this platform - session confirmation reads each candidate's argv via ps, whitespace-joined, so an argv element containing spaces can still spoof it" >&2
             _LOSSY_WARNED=1
         fi
         # ps rc 1 = that pid vanished since pgrep saw it (skip it); any other
@@ -934,7 +934,7 @@ if [ "$sc_rc" -eq 0 ]; then
     echo "$(date +%F_%T) a session named $NAME is already running - not launching" >> "$LOG"
     exit 0
 elif [ "$sc_rc" -eq 2 ]; then
-    echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running' (HIMMEL-2545)" >&2
+    echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
     exit 9
 fi
@@ -1178,7 +1178,7 @@ esac
 # validation, which is what actually has to catch it.
 # shellcheck disable=SC2174
 if ! mkdir -p -m 0700 "$LOCKDIR" 2>/dev/null; then
-    echo "headed-arm: cannot create the claim-lock root '$LOCKDIR' - refusing to silently skip a launch that was never actually claimed (HIMMEL-2545)" >&2
+    echo "headed-arm: cannot create the claim-lock root '$LOCKDIR' - refusing to silently skip a launch that was never actually claimed" >&2
     exit 5
 fi
 # VALIDATE the root rather than trusting it, regardless of
@@ -1193,15 +1193,15 @@ fi
 # continuing into a directory this process does not control is exactly the
 # outcome to prevent.
 if [ -L "$LOCKDIR" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is a SYMLINK, so this process does not control what it actually resolves to (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is a SYMLINK, so this process does not control what it actually resolves to" >&2
     exit 5
 fi
 if [ ! -d "$LOCKDIR" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not a directory (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not a directory" >&2
     exit 5
 fi
 if [ ! -O "$LOCKDIR" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not owned by this user (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not owned by this user" >&2
     exit 5
 fi
 # No bash test operator covers permission BITS, so this is the same
@@ -1216,7 +1216,7 @@ fi
 # (fail closed, same as every other check in this block).
 _lockdir_mode=$(stat -c %a "$LOCKDIR" 2>/dev/null || stat -f %Lp "$LOCKDIR" 2>/dev/null)  # gnu-ok: GNU stat -c is paired with the BSD stat -f fallback on this same line
 if [ -z "$_lockdir_mode" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - could not read its permission bits (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - could not read its permission bits" >&2
     exit 5
 fi
 _lockdir_oth="${_lockdir_mode: -1}"
@@ -1224,7 +1224,7 @@ _lockdir_grp="${_lockdir_mode%?}"
 _lockdir_grp="${_lockdir_grp: -1}"
 case "$_lockdir_oth$_lockdir_grp" in
     *2*|*3*|*6*|*7*)
-        echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is group- or world-writable (HIMMEL-2545)" >&2
+        echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is group- or world-writable" >&2
         exit 5
         ;;
 esac
@@ -1272,7 +1272,7 @@ stamp_or_fail_loudly() {
     # (EACCES), so restore owner access to the lock this claim created first.
     chmod -R u+rwx "$LOCK" 2>/dev/null
     rm -rf "$LOCK" 2>/dev/null
-    echo "headed-arm: claimed the lock '$LOCK' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed (HIMMEL-2545)" >&2
+    echo "headed-arm: claimed the lock '$LOCK' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed" >&2
     exit 8
 }
 steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
@@ -1381,7 +1381,7 @@ while :; do
         echo "$(date +%F_%T) a session named $NAME is already running - not launching" >> "$LOG"
         exit 0
     elif [ "$sc_rc" -eq 2 ]; then
-        echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running' (HIMMEL-2545)" >&2
+        echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
         echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
         exit 9
     fi
@@ -1418,7 +1418,7 @@ if [ "$sc_rc" -eq 0 ]; then
     rm -rf "$LOCK" 2>/dev/null
     exit 0
 elif [ "$sc_rc" -eq 2 ]; then
-    echo "headed-arm: pgrep scan failed re-checking for $NAME right after claiming the lock - refusing to launch on an indeterminate scan (HIMMEL-2545)" >&2
+    echo "headed-arm: pgrep scan failed re-checking for $NAME right after claiming the lock - refusing to launch on an indeterminate scan" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed re-checking for $NAME after claiming the lock - releasing rather than launch blind" >> "$LOG"
     rm -rf "$LOCK" 2>/dev/null
     exit 9
@@ -1465,7 +1465,7 @@ fi
 # time, so there always is one -- dies in the claim-retry loop as exit 6
 # "the armed successor may be lost" instead of reporting this real reason.
 if [ "$RECORDER" = "1" ] && [ "$KONSOLE_IS_RESOLVED_SHIM" = "1" ]; then
-    echo "headed-arm: HEADED_ARM_RECORDER=1 is not supported on macOS - the recorder uses util-linux 'script -f/-c' syntax that BSD script rejects, so the --lane claudex tty recorder cannot run here (HIMMEL-2534)" >&2
+    echo "headed-arm: HEADED_ARM_RECORDER=1 is not supported on macOS - the recorder uses util-linux 'script -f/-c' syntax that BSD script rejects, so the --lane claudex tty recorder cannot run here" >&2
     rm -rf "$LOCK" 2>/dev/null
     exit 2
 fi
@@ -1686,7 +1686,7 @@ done
 # overreaction.
 rm -rf "$LOCK" 2>/dev/null
 if [ "$sv_indeterminate" -eq 1 ]; then
-    echo "headed-arm: pgrep scan failed confirming the post-launch session for $NAME - refusing to report an indeterminate scan as either success or failure (HIMMEL-2545)" >&2
+    echo "headed-arm: pgrep scan failed confirming the post-launch session for $NAME - refusing to report an indeterminate scan as either success or failure" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed confirming $NAME after launch" >> "$LOG"
     exit 9
 fi

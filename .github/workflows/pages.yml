@@ -30,7 +30,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -45,6 +45,28 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run build
+      # The tests below read the built site/dist; any failing step stops the run before the upload.
+      - name: Run the docs-site build test
+        run: bash scripts/docs-site/test-site-build.sh
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: .bun-version
+      - name: Check the UI's docs links against the built routes
+        run: bun test scripts/config-ui/tests/docs-routes.test.ts
+      - name: Install the pinned Playwright and Chromium
+        working-directory: scripts/config-ui/tests/e2e
+        run: |
+          bun install --frozen-lockfile --ignore-scripts
+          ./node_modules/.bin/playwright install chromium
+      # The J1 spec lives beside the docs site and borrows config-ui's pinned @playwright/test through NODE_PATH.
+      - name: Run the J1 journey against astro preview
+        env:
+          NODE_PATH: ${{ github.workspace }}/scripts/config-ui/tests/e2e/node_modules
+        run: scripts/config-ui/tests/e2e/node_modules/.bin/playwright test -c scripts/docs-site/e2e/j1.config.ts scripts/docs-site/e2e/j1.e2e.ts
+      - name: Serve llms.txt at the site root
+        run: |
+          cp llms.txt site/dist/llms.txt
+          test -s site/dist/llms.txt
       - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: site/dist
