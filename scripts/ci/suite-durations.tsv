@@ -719,6 +719,7 @@ scripts/hooks/test-refresh-where-are-we-on-end.sh	14
 scripts/hooks/test-require-quiet-run.sh	3
 scripts/hooks/test-retrieval-nudge.sh	2
 scripts/hooks/test-rtk-hook-guard.sh	1
+scripts/hooks/test-run-hook-with-bash-unroll.sh	11
 scripts/hooks/test-session-end-timeout-budget.sh	12
 scripts/hooks/test-shell-tokenize.sh	0
 scripts/hooks/test-stop-console-idle-guard.sh	8
