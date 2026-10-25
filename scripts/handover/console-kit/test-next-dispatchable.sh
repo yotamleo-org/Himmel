@@ -782,12 +782,15 @@ mk HIMMEL-870 "To Do" Medium '[]' '["v1.0.1"]' '[]' "writes-line file" "Edit doc
 mk HIMMEL-871 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a path only the scope line prose names" "Edit scripts/lib/nd-wl-reader.sh only."
 mk HIMMEL-872 "To Do" Medium '[]' '["v1.0.1"]' '[]' "under a dir the front-matter description quotes" "Edit scripts/lib/nd-fm-free.sh only."
 mk HIMMEL-873 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the front-matter leg's real file" "Edit docs/nd-frontmatter.html only."
+mk HIMMEL-874 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a file whose name contains a command word" "Edit scripts/handover/nd-find-tool.sh only."
+mk HIMMEL-875 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the file listed after a command-word name" "Edit docs/nd-find.html only."
+mk HIMMEL-876 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a sibling the command-word name must not hold" "Edit scripts/handover/nd-sibling.sh only."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror26/HIMMEL.versions.tsv"
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3543"},{"doc":"%s","label":"N3557"},{"doc":"%s","label":"N3578"},{"doc":"%s","label":"N3579"},{"doc":"%s","label":"N3580"}]}\n' \
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N3558"},{"doc":"%s","label":"N3543"},{"doc":"%s","label":"N3557"},{"doc":"%s","label":"N3578"},{"doc":"%s","label":"N3579"},{"doc":"%s","label":"N3580"},{"doc":"%s","label":"N3581"}]}\n' \
     "$FX/HIMMEL-7377-N3558-adoption-trail-narrow-panel.md" "$FX/HIMMEL-3111-N3543-config-secrets-journey.md" "$FX/HIMMEL-7131-N3557-himmel-report-command.md" \
-    "$FX/HIMMEL-7469-N3578-neg-control.md" "$FX/HIMMEL-7469-N3579-writes-line.md" "$FX/HIMMEL-7469-N3580-frontmatter-description.md" > "$WORK/fleet26.json"
-f26="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --legs-from "$WORK/fleet26.json" 2>/dev/null)"
+    "$FX/HIMMEL-7469-N3578-neg-control.md" "$FX/HIMMEL-7469-N3579-writes-line.md" "$FX/HIMMEL-7469-N3580-frontmatter-description.md" "$FX/HIMMEL-7469-N3581-command-word-in-path.md" > "$WORK/fleet26.json"
+f26="$(NEXT_DISPATCH_MIRROR="$M26" NEXT_DISPATCH_GH_CMD="$WORK/gh" bash "$SUT" --no-classify --top 50 --legs-from "$WORK/fleet26.json" 2>/dev/null)"
 lacks "held-paths: N3558 still holds its one real file docs/adoption-trail.html" "$f26" "HIMMEL-860	"
 has "held-paths: N3558's quoted 'grep -rl adoption-trail scripts/' does not hold scripts/check-ci.sh" "$f26" "HIMMEL-861	"
 has "held-paths: N3543's 'Trust path (scripts/lib/)' note does not hold scripts/lib/" "$f26" "HIMMEL-862	"
@@ -802,6 +805,9 @@ lacks "held-paths: a leg with a Writes line holds the files on it" "$f26" "HIMME
 has "held-paths: a leg with a Writes line holds nothing the scope line prose names" "$f26" "HIMMEL-871	"
 has "held-paths: a front-matter description quoting 'writes confined to' holds nothing" "$f26" "HIMMEL-872	"
 lacks "held-paths: that leg still holds the file on its real scope line" "$f26" "HIMMEL-873	"
+lacks "held-paths: a file named nd-find-tool.sh is held, not read as a find command" "$f26" "HIMMEL-874	"
+lacks "held-paths: the file listed after a command-word name is still held" "$f26" "HIMMEL-875	"
+has "held-paths: a command-word name does not hold its whole directory" "$f26" "HIMMEL-876	"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

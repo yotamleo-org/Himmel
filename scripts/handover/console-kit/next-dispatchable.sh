@@ -139,7 +139,7 @@ MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|H
 SCOPE_END_RE = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
 
 # read-only text a scope carries: a quoted search command, an impacted-suites list, a trust-path or single-writer note
-CMD_RE = re.compile(r'`?\b(?:git grep|grep|rg|find|sed -n|cat)\b(?:[^.)`]|\.(?!\s|$))*`?')
+CMD_RE = re.compile(r'`?(?<![\w./-])(?:git grep|grep|rg|find|sed -n|cat)(?=\s)(?:[^.)`]|\.(?!\s|$))*`?')  # a command word, never a name inside a path
 READ_ONLY_RE = re.compile(r'(?:Impacted suites|SINGLE-WRITER)\b(?:[^.]|\.(?!\s|$))*(?:\.(?=\s)|$)|Trust path\s*\([^)]*\)')
 WRITES_LEAD = '> **Writes:**'
 
