@@ -34,7 +34,9 @@
 #
 #   S0 is the starting cwd set (default [[]]); TAGS the starting `in`.
 #   rc 2 = shfmt or jq missing (the message says so; the caller fails closed),
-#   rc 3 = shfmt could not parse the command, rc 4 = the model failed.
+#   rc 3 = shfmt could not parse the command, rc 4 = the model failed or ran
+#   past BASH_AST_TIMEOUT_S (1-60, default 10); a timeout appends the command
+#   to $XDG_STATE_HOME/himmel/bash-ast-timeouts.log.
 #
 # Nav algebra: `a && b` runs b where a succeeded, `a || b` where a failed; a
 # failed cd does not move. A subshell, `&`, `$(…)` and coproc do not carry a
@@ -54,6 +56,9 @@
 # ponytail: a CDPATH or alias from the user's rc files is not visible to the
 # hook, and zsh-only syntax is read as bash; upgrade path = a per-shell model
 # fed from the shell snapshot.
+# ponytail: with no timeout or gtimeout on PATH the model runs unbounded and
+# only the hook runner's member budget stops it; upgrade path = a bash-only
+# watchdog.
 
 # >>> BEGIN bash-ast (canonical: scripts/hooks/lib/bash-ast.jq) >>>
 IFS= read -r -d '' _BASH_AST_JQ <<'BASH_AST_JQ_EOF' || true # swallow-ok: read -d '' returns 1 at the heredoc's end
@@ -216,31 +221,38 @@ def _seq($in):
   elif ($in | test("^(-?[0-9]+\\.\\.-?[0-9]+|[A-Za-z]\\.\\.[A-Za-z])(\\.\\.-?[0-9]+)?$")) then error("bash-ast: brace cap")
   else null end;
 
-def _brace:
-  def exp($n):
-    if $n > 64 then error("bash-ast: brace cap")
-    else
-      explode as $a
-      | (def find($i):
-           if $i >= ($a | length) then null
-           elif $a[$i] == 1 then find($i + 2)
-           elif $a[$i] == 123 then
-             (_bclose($a; $i)) as $m
-             | if $m == null then null
-               elif ($m.commas | length) > 0 then {open: $i} + $m
-               elif (($a[$i + 1:$m.close] | implode) as $in | ($in | test("\u0001") | not) and _seq($in) != null) then {open: $i} + $m
-               else find($i + 1) end
-           else find($i + 1) end;
-         find(0)) as $f
-      | if $f == null then [$a | implode]
-        else ($a[:$f.open] | implode) as $pre | ($a[$f.close + 1:] | implode) as $suf
-          | (if ($f.commas | length) > 0 then
-               [[$f.open] + $f.commas, $f.commas + [$f.close]] | transpose | map($a[.[0] + 1:.[1]] | implode)
-             else _seq($a[$f.open + 1:$f.close] | implode) end) as $alts
-          | [$alts[] | ($pre + . + $suf) | exp($n + ($alts | length))[]]
-        end
+# one word's first brace group expanded into its words, null when it has none
+def _bstep:
+  explode as $a
+  | (def find($i):
+       if $i >= ($a | length) then null
+       elif $a[$i] == 1 then find($i + 2)
+       elif $a[$i] == 123 then
+         (_bclose($a; $i)) as $m
+         | if $m == null then null
+           elif ($m.commas | length) > 0 then {open: $i} + $m
+           elif (($a[$i + 1:$m.close] | implode) as $in | ($in | test("\u0001") | not) and _seq($in) != null) then {open: $i} + $m
+           else find($i + 1) end
+       else find($i + 1) end;
+     find(0)) as $f
+  | if $f == null then null
+    else ($a[:$f.open] | implode) as $pre | ($a[$f.close + 1:] | implode) as $suf
+      | (if ($f.commas | length) > 0 then
+           [[$f.open] + $f.commas, $f.commas + [$f.close]] | transpose | map($a[.[0] + 1:.[1]] | implode)
+         else _seq($a[$f.open + 1:$f.close] | implode) end)
+      | map($pre + . + $suf)
     end;
-  exp(1) | if length > 64 then error("bash-ast: brace cap") else . end;
+
+# a worklist, so the 64-word cap bounds the whole expansion, not each path
+def _brace:
+  def go($done; $todo):
+    if ($todo | length) == 0 then $done
+    else ($todo[0] | _bstep) as $x
+      | if $x == null then go($done + [$todo[0]]; $todo[1:])
+        elif ($done | length) + ($x | length) + ($todo | length) - 1 > 64 then error("bash-ast: brace cap")
+        else go($done; $x + $todo[1:]) end
+    end;
+  go([]; [.]);
 
 def _glob_pfx:
   # the encoded text before the first live glob character, cut back to its
@@ -583,7 +595,7 @@ def positions($home; $s0; $tags; $scope; $p0):
 BASH_AST_POS_EOF
 
 bash_ast_positions() {
-    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0
+    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0 tmo secs log
     if ! command -v shfmt >/dev/null 2>&1; then
         echo "bash-ast: shfmt not on PATH, so the command model cannot run and the guard fails closed. Install shfmt (a station install goes to a test VM first)." >&2
         return 2
@@ -596,10 +608,20 @@ bash_ast_positions() {
         echo "bash-ast: shfmt could not parse the command." >&2
         return 3
     }
-    pos=$(printf '%s' "$tree" | jq -c --arg home "${HOME:-}" --argjson s0 "$s0" --argjson tags "$tags" \
+    tmo=$(command -v timeout || command -v gtimeout) || tmo=""
+    case ${BASH_AST_TIMEOUT_S:-} in [1-9] | [1-5][0-9] | 60) secs=$BASH_AST_TIMEOUT_S ;; *) secs=10 ;; esac
+    # shellcheck disable=SC2016  # the jq program's $names are jq variables
+    pos=$(printf '%s' "$tree" | ${tmo:+"$tmo" -k 2 "$secs"} jq -c --arg home "${HOME:-}" --argjson s0 "$s0" --argjson tags "$tags" \
         --arg scope "$scope" --argjson p0 "$p0" \
         "$_BASH_AST_JQ$_BASH_AST_POS_JQ"'positions($home; $s0; $tags; $scope; $p0)' 2>/dev/null) || {
-        echo "bash-ast: the command model could not read the command." >&2
+        rc=$?
+        if [ -n "$tmo" ] && { [ "$rc" = 124 ] || [ "$rc" = 137 ]; }; then
+            echo "bash-ast: the command model timed out after ${secs}s, so the guard fails closed." >&2
+            log="${XDG_STATE_HOME:-${HOME:-}/.local/state}/himmel/bash-ast-timeouts.log"
+            case $log in /*) (umask 077 && mkdir -p "${log%/*}" && printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(printf '%s' "${cmd:0:4096}" | tr '\n\t' '  ')" >>"$log") 2>/dev/null ;; esac
+        else
+            echo "bash-ast: the command model could not read the command." >&2
+        fi
         return 4
     }
     if ! printf '%s' "$pos" | jq -e 'any(.[]; .body != null)' >/dev/null; then

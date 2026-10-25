@@ -27,6 +27,7 @@ else bad "inlined model matches hooks/lib/bash-ast.jq (re-copy the file between 
 
 FIX=$(mktemp -d "${TMPDIR:-/tmp}/bash-ast.XXXXXX") || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$FIX"' EXIT
+export XDG_STATE_HOME="$FIX/state"
 
 # a PATH holding every tool but shfmt
 nosh="$FIX/no-shfmt-bin"; mkdir -p "$nosh"
@@ -188,6 +189,51 @@ if [ -n "${HIMMEL_JQ_171:-}" ] && [ -x "$HIMMEL_JQ_171" ] && [ "$("$HIMMEL_JQ_17
     done
 else
     echo "note: HIMMEL_JQ_171 is not a jq 1.7.1 binary — the jq 1.7 compile rows did not run"
+fi
+
+row "brace groups expand left to right, in bash order" \
+    'echo a{b,c}{d,e} x{1..2}' \
+    '(.[0].argv | map(.v)) == ["echo", "abd", "abe", "acd", "ace", "x1", "x2"]'
+
+ms_now() {
+    local n
+    n=$(date +%s%N 2>/dev/null)
+    case $n in *N | '') python3 -c 'import time; print(int(time.time() * 1000))' ;; *) echo $((n / 1000000)) ;; esac
+}
+tmo=$(command -v timeout || command -v gtimeout)
+# timed LABEL CMD-FILE JQ-EXPR: the model reads CMD-FILE in under a second and its positions satisfy JQ-EXPR
+timed() {
+    local t0 out rc el
+    t0=$(ms_now)
+    out=$("$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "$(cat "$2")"' _ "$LIB" "$2" 2>&1); rc=$?
+    el=$(($(ms_now) - t0))
+    if [ "$rc" = 0 ] && [ "$el" -lt 1000 ] && printf '%s' "$out" | jq -e "$3" >/dev/null 2>&1; then ok "$1 (${el}ms)"
+    else bad "$1 — rc=$rc ${el}ms $(printf '%s' "$out" | head -c 300)"; fi
+}
+if [ -n "$tmo" ]; then
+    b18=""
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18; do b18="$b18{a,b}"; done
+    printf 'echo %s\n' "$b18" >"$FIX/b18.cmd"
+    timed "eighteen brace groups are past 64 words in under a second" "$FIX/b18.cmd" \
+        '.[0].argv[1].t == "amb"'
+    timed "a heredoc of many brace groups (the 2026-10-25 hang) reads in under a second" \
+        "$SCRIPT_DIR/fixtures/bash-ast/heredoc-brace-groups.cmd" 'any(.[]; .prog == "python3")'
+
+    # a model run that never returns fails closed within the bound and logs the command
+    mkdir -p "$FIX/stuck-jq"
+    printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) exec sleep 60 ;; esac\nexec %s "$@"\n' "$(command -v jq)" >"$FIX/stuck-jq/jq"
+    chmod +x "$FIX/stuck-jq/jq"
+    t0=$(ms_now)
+    err=$(BASH_AST_TIMEOUT_S=1 XDG_STATE_HOME="$FIX/state" PATH="$FIX/stuck-jq:$PATH" \
+        "$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "echo stuck-model-row"' _ "$LIB" 2>&1 >/dev/null); rc=$?
+    el=$(($(ms_now) - t0))
+    log="$FIX/state/himmel/bash-ast-timeouts.log"
+    if [ "$rc" = 4 ] && [ "$el" -lt 5000 ] && [[ $err == *"timed out"* ]]; then ok "a stuck model run is rc 4 within the bound (${el}ms)"
+    else bad "a stuck model run is rc 4 within the bound — rc=$rc ${el}ms err=$err"; fi
+    if grep -q 'stuck-model-row' "$log" 2>/dev/null && [ -n "$(find "$log" -perm 600 2>/dev/null)" ]; then ok "a stuck model run logs its command, owner-only"
+    else bad "a stuck model run logs its command, owner-only — $(head -c 200 "$log" 2>&1)"; fi
+else
+    echo "SKIP: no timeout binary — the termination rows did not run"
 fi
 
 out=$(bash_ast_positions 'if then' 2>/dev/null); rc=$?

@@ -455,6 +455,35 @@ test('a hung chain member is killed and the chain continues past it', () => {
   }), 'a hung member must not starve later guards');
 });
 
+// A member's own children (a jq it is waiting on) die with it, or a killed
+// guard leaves a process pinning a core after the call was already denied.
+test('a member killed for its bound takes its whole process group with it', { skip: process.platform === 'win32' }, () => {
+  withChain((dir) => {
+    const pidFile = join(dir, 'grandchild.pid');
+    writeFileSync(
+      join(dir, 'orphan.sh'),
+      `#!/usr/bin/env bash\nsleep 30 >/dev/null 2>&1 &\necho $! > "${pidFile}"\nsleep 30\n`,
+    );
+    chmodSync(join(dir, 'orphan.sh'), 0o755);
+    let pid = null;
+    try {
+      const result = spawnSync(process.execPath, [LAUNCHER, '--chain', join(dir, 'orphan.sh')], {
+        encoding: 'utf8',
+        input: PAYLOAD,
+        env: { ...process.env, RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '1000' },
+      });
+      assert.match(result.stderr, /SKIP orphan\.sh/);
+      pid = Number(readFileSync(pidFile, 'utf8'));
+      const alive = () => { try { process.kill(pid, 0); return true; } catch { return false; } };
+      const until = Date.now() + 3000;
+      while (alive() && Date.now() < until) spawnSync('sleep', ['0.1']);
+      assert.equal(alive(), false, 'the killed member left its child running');
+    } finally {
+      if (pid) try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+    }
+  });
+});
+
 // N members at the full per-member bound can outlast the ENTRY's timeout, and
 // that budget blowing is what silently skips the tail. The chain clamps each
 // member to what is left, so it always reaches its own end and reports there.
