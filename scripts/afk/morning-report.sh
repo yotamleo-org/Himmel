@@ -442,6 +442,7 @@ sec_review_rounds() {
     local out="" since body
     body=$'## Review rounds per merged PR\n\n'
     if [ -n "${REVIEW_ROUNDS_TXT:-}" ]; then
+        # read-sink-ok: test seam; the text is only parsed into a table, never run or sent anywhere
         out="$(cat "$REVIEW_ROUNDS_TXT" 2>/dev/null)" \
             || { printf '%s_review-rounds scan unavailable._' "$body"; return; }
     else

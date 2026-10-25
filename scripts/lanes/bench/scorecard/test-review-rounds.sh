@@ -100,6 +100,17 @@ check_eq "a failing gh is exit 1, not an empty distribution" "$?" "1"
 bash "$SCRIPT" --since 2026-10-24T00:00:00Z --repo other/repo >/dev/null 2>&1
 check_eq "--repo is not accepted: the counters are this checkout's, so a foreign repo would be misattributed" "$?" "2"
 
+printf '9\n' > "$STATE/h.round"
+cat > "$RUN/gh-dots" <<'EOF'
+#!/usr/bin/env bash
+echo '[{"number":21,"headRefName":"feat/../h","mergedAt":"2026-10-25T08:00:00Z"}]'
+EOF
+chmod +x "$RUN/gh-dots"
+dots=$(REVIEW_ROUNDS_GH="$RUN/gh-dots" REVIEW_ROUNDS_STATE_DIR="$STATE" bash "$SCRIPT" --tsv --since 2026-10-24T00:00:00Z 2>/dev/null)
+check_eq "a branch name with .. never reads a counter outside the state dir" \
+    "$(printf '%s\n' "$dots" | grep -v '^#' | tr '\t' ' ')" \
+    "2026-10-25 21 feat/../h -"
+
 mkdir -p "$RUN/badawk"
 printf '#!/bin/sh\nexit 3\n' > "$RUN/badawk/awk"
 chmod +x "$RUN/badawk/awk"

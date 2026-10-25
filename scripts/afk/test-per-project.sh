@@ -21,6 +21,10 @@ trap cleanup EXIT
 pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
 fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
 
+# The report's review-rounds section would otherwise call a live `gh pr list`.
+: > "$TMP_ROOT/review-rounds-empty.txt"
+export REVIEW_ROUNDS_TXT="$TMP_ROOT/review-rounds-empty.txt"
+
 FAKE_HOME="$TMP_ROOT/home"
 SHARED_ROOT="$TMP_ROOT/handovers"
 mkdir -p "$FAKE_HOME/.himmel" "$SHARED_ROOT"

@@ -222,7 +222,8 @@ printf '%s\n' "HIMMEL-202${TAB}feat/HIMMEL-202-lint${TAB}https://pr/202${TAB}don
 bash "$SCRIPT" reconcile --plan "$splan" --fixed "$sfixed" --rows-in "$srows" --rows-out "$sfinal" 2>/dev/null
 # Phase 3: feed the FINAL rows into the (unchanged) morning report.
 hroot="$ssroot/handover"; mkdir -p "$hroot"
-report=$(HANDOVER_DIR="$hroot" bash "$REPORT" --rows "$sfinal" --dry-run)
+: > "$ssroot/review-rounds-empty.txt"
+report=$(HANDOVER_DIR="$hroot" REVIEW_ROUNDS_TXT="$ssroot/review-rounds-empty.txt" bash "$REPORT" --rows "$sfinal" --dry-run)
 assert_contains "report: all 3 tickets" "**3 tickets**" "$report"
 assert_contains "report: 1 decision needed" "decisions needed: **1**" "$report"
 assert_contains "report: lint ticket auto-fixed green (done)" "HIMMEL-202" "$report"

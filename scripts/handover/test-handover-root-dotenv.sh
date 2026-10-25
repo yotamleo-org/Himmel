@@ -78,7 +78,8 @@ printf 'https://claude.ai/artifact/abc\n' > "$tmp/art.md"
 probe bash "$SCRIPTS/handover/artifact-sync.sh" record "https://claude.ai/artifact/abc" "$tmp/art.md" >/dev/null
 check "artifact-sync: registry under the .env root" "$([ -f "$HO/.artifacts/registry.jsonl" ] && echo yes || echo no)" "yes"
 
-out="$(printf 'HIMMEL-1\tfeat/x\t1\tdone\tok\n' | env -u HANDOVER_DIR HIMMELCTL_CACHE_DIR="$tmp/cache" bash "$SCRIPTS/afk/morning-report.sh" --dry-run 2>&1)"
+: > "$tmp/review-rounds-empty.txt"
+out="$(printf 'HIMMEL-1\tfeat/x\t1\tdone\tok\n' | env -u HANDOVER_DIR HIMMELCTL_CACHE_DIR="$tmp/cache" REVIEW_ROUNDS_TXT="$tmp/review-rounds-empty.txt" bash "$SCRIPTS/afk/morning-report.sh" --dry-run 2>&1)"
 has "morning-report: output path under the .env root" "$out" "$HO/overnight-report-"
 
 mkdir -p "$HO/breadcrumbs"; printf '{}\n' > "$HO/breadcrumbs/HIMMEL-1.json"
