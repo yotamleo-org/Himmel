@@ -630,7 +630,7 @@ if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
   LEFT="$(git -C "$ROOT" grep -nE '(HIMMEL_LEG_|HEADED_ARM_LEG_|LEG_)[A-Z0-9_]*' -- . \
     ':!*.md' \
     ':!scripts/lib/rename-aliases.tsv' ':!scripts/lib/test-rename-aliases.sh' \
-    ':!scripts/docs/check-old-terms.sh' ':!scripts/docs/test-check-old-terms.sh' \
+    ':!scripts/docs/check-old-terms.sh' ':!scripts/docs/test-check-old-terms.sh' ':!scripts/docs/old-terms-baseline.txt' \
     ':!scripts/handover/chief-kit/test-headed-arm-leg-worker-env.sh' \
     ':!scripts/hooks/test-guard-leg-context-handoff.sh' \
     ':!scripts/handover/chief-kit/fixtures/*' \

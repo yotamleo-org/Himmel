@@ -8,7 +8,8 @@
 # kind: identifier (a name on the lint's list), prose (a word the operator renamed), env (one variable), env-prefix
 # (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is), other-sense (a name that
 # already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it), directory and path (a moved
-# directory and a short spelling of one, both with direction fail; see the slice M block at the end).
+# directory and a short spelling of one, both with direction fail; see the slice M block), value (a persisted value or
+# command word that a rename must read in both spellings, direction alias; see the HIMMEL-7620 block at the end).
 # direction: old-to-new | keep for identifier, marker, do-not-rename and other-sense; warn | fail for prose; for env and env-prefix
 # the scripts/lib/env-alias.sh function that resolves OLD against NEW: restrict (env_alias_restrict, a guard ON switch),
 # permit (env_alias_permit, an *_OK override), value (alias_env, a path, model or timeout),
@@ -377,3 +378,132 @@ console-kit	chief-kit	path	fail	M	never
 console-sections	chief-sections	path	fail	M	never
 leg-sections	worker-sections	path	fail	M	never
 eval/leg-digest	eval/worker-digest	path	fail	M	never
+# HIMMEL-7620: the names the 2026-10-25 rename sweep found with no row (MISSED) or no ruled name (NEEDS-RULING).
+# HIMMEL-6647 owns each rename. A hook keeps its old path as a forwarder until every live session restarts.
+# check-old-terms.sh --tree lists each name still in the tree in scripts/docs/old-terms-baseline.txt.
+guard-leg-context-handoff.sh	guard-worker-context-handoff.sh	identifier	old-to-new	V4a	X
+test-guard-leg-context-handoff.sh	test-guard-worker-context-handoff.sh	identifier	old-to-new	V4a	X
+guard-leg-cache-ttl.sh	guard-worker-cache-ttl.sh	identifier	old-to-new	V4a	X
+test-guard-leg-cache-ttl.sh	test-guard-worker-cache-ttl.sh	identifier	old-to-new	V4a	X
+guard-leg-wakeup.sh	guard-worker-wakeup.sh	identifier	old-to-new	V4a	X
+block-leg-askuserquestion.sh	block-worker-askuserquestion.sh	identifier	old-to-new	V4a	X
+guard-console-dispatch.sh	guard-chief-dispatch.sh	identifier	old-to-new	V5	X
+test-guard-console-dispatch.sh	test-guard-chief-dispatch.sh	identifier	old-to-new	V5	X
+guard-console-foreground.sh	guard-chief-foreground.sh	identifier	old-to-new	V5	X
+test-guard-console-foreground.sh	test-guard-chief-foreground.sh	identifier	old-to-new	V5	X
+console-compact-reinject.sh	chief-compact-reinject.sh	identifier	old-to-new	V5	X
+test-console-compact-reinject.sh	test-chief-compact-reinject.sh	identifier	old-to-new	V5	X
+console-precompact-snapshot.sh	chief-precompact-snapshot.sh	identifier	old-to-new	V5	X
+test-console-precompact-snapshot.sh	test-chief-precompact-snapshot.sh	identifier	old-to-new	V5	X
+stop-console-idle-guard.sh	stop-chief-idle-guard.sh	identifier	old-to-new	V5	X
+test-stop-console-idle-guard.sh	test-stop-chief-idle-guard.sh	identifier	old-to-new	V5	X
+notify-console-on-prompt.sh	notify-chief-on-prompt.sh	identifier	old-to-new	V5	X
+test-notify-console-on-prompt.sh	test-notify-chief-on-prompt.sh	identifier	old-to-new	V5	X
+leg-burn.sh	worker-burn.sh	identifier	old-to-new	V4b	X
+test-leg-burn.sh	test-worker-burn.sh	identifier	old-to-new	V4b	X
+leg-tail-status.sh	worker-tail-status.sh	identifier	old-to-new	V4b	X
+leg-pr-open.sh	worker-pr-open.sh	identifier	old-to-new	V4b	X
+test-leg-pr-open.sh	test-worker-pr-open.sh	identifier	old-to-new	V4b	X
+leg-claude-launcher.sh	worker-claude-launcher.sh	identifier	old-to-new	V4b	X
+leg-claude-launcher-consult.sh	worker-claude-launcher-consult.sh	identifier	old-to-new	V4b	X
+leg-resume-brief.sh	worker-resume-brief.sh	identifier	old-to-new	V4b	X
+test-leg-resume-brief.sh	test-worker-resume-brief.sh	identifier	old-to-new	V4b	X
+leg-timeline.sh	worker-timeline.sh	identifier	old-to-new	V4b	X
+test-leg-timeline.sh	test-worker-timeline.sh	identifier	old-to-new	V4b	X
+leg-cost-report.sh	worker-cost-report.sh	identifier	old-to-new	V4b	X
+test-leg-cost-report.sh	test-worker-cost-report.sh	identifier	old-to-new	V4b	X
+leg-cost-row.sh	worker-cost-row.sh	identifier	old-to-new	V4b	X
+leg-over-by-day.sh	worker-over-by-day.sh	identifier	old-to-new	V4b	X
+test-leg-over-by-day.sh	test-worker-over-by-day.sh	identifier	old-to-new	V4b	X
+leg-relaunch.sh	worker-relaunch.sh	identifier	old-to-new	V4b	X
+test-leg-relaunch.sh	test-worker-relaunch.sh	identifier	old-to-new	V4b	X
+leg-battery.sh	worker-battery.sh	identifier	old-to-new	V4b	X
+test-leg-handoff-threshold-docs.sh	test-worker-handoff-threshold-docs.sh	identifier	old-to-new	V4b	X
+test-leg-identity.sh	test-worker-identity.sh	identifier	old-to-new	V4b	X
+test-leg-doc-lock.sh	test-worker-doc-lock.sh	identifier	old-to-new	V4b	X
+test-leg-event.sh	test-worker-event.sh	identifier	old-to-new	V4b	X
+test-leg-jira-status.sh	test-worker-jira-status.sh	identifier	old-to-new	V4b	X
+test-leg-pretrust.sh	test-worker-pretrust.sh	identifier	old-to-new	V4b	X
+test-leg-graph.sh	test-worker-graph.sh	identifier	old-to-new	V4b	X
+test-leg-graph-rationale.sh	test-worker-graph-rationale.sh	identifier	old-to-new	V4b	X
+test-headed-arm-leg.sh	test-headed-arm-worker.sh	identifier	old-to-new	V4b	X
+test-headed-arm-leg-worker-env.sh	test-headed-arm-worker-env.sh	identifier	old-to-new	V4b	X
+test-close-wrapped-leg.sh	test-close-wrapped-worker.sh	identifier	old-to-new	V4b	X
+close-wrapped-legs.sh	close-wrapped-workers.sh	identifier	old-to-new	V4b	X
+leg-digest.ts	worker-digest.ts	identifier	old-to-new	V4b	X
+test-leg-digest.sh	test-worker-digest.sh	identifier	old-to-new	V4b	X
+leg_ledger.py	worker_ledger.py	identifier	old-to-new	V4b	X
+test-leg-ledger.sh	test-worker-ledger.sh	identifier	old-to-new	V4b	X
+settings.leg-sandbox.json	settings.worker-sandbox.json	identifier	old-to-new	V4b	X
+scripts/config-ui/legs.sh	scripts/config-ui/workers.sh	identifier	old-to-new	V4b	X
+scripts/config-ui/tests/test-legs.sh	scripts/config-ui/tests/test-workers.sh	identifier	old-to-new	V4b	X
+leg-preface-claudex.md	worker-preface-claudex.md	identifier	old-to-new	T	X
+leg-preface-openrouter.md	worker-preface-openrouter.md	identifier	old-to-new	T	X
+leg-context-guard.md	worker-context-guard.md	identifier	old-to-new	T	X
+.leg-settings.json	.worker-settings.json	identifier	old-to-new	V4b	X
+.leg-mcp.json	.worker-mcp.json	identifier	old-to-new	V4b	X
+.leg-contract.md	.worker-contract.md	identifier	old-to-new	V4b	X
+legs.json	workers.json	identifier	old-to-new	V4b	X
+initiative-legs.sh	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+test-initiative-legs.sh	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+marketplace/plugins/himmel-ops/scripts/legs.sh	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+marketplace/plugins/himmel-ops/scripts/test-legs.sh	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+console-wait.sh	chief-wait.sh	identifier	old-to-new	V5	X
+test-console-wait.sh	test-chief-wait.sh	identifier	old-to-new	V5	X
+test-console-wait-b.sh	test-chief-wait-b.sh	identifier	old-to-new	V5	X
+test-console-wait-pool.sh	test-chief-wait-pool.sh	identifier	old-to-new	V5	X
+test-console-wait-r0.sh	test-chief-wait-r0.sh	identifier	old-to-new	V5	X
+console-budget.sh	chief-budget.sh	identifier	old-to-new	V5	X
+test-console-budget.sh	test-chief-budget.sh	identifier	old-to-new	V5	X
+console-bus-exec.sh	chief-bus-exec.sh	identifier	old-to-new	V5	X
+test-console-handoff-roundtrip.sh	test-chief-handoff-roundtrip.sh	identifier	old-to-new	V5	X
+test-console.sh	test-chief.sh	identifier	old-to-new	V5	X
+test-console-kit-e2e.sh	test-chief-kit-e2e.sh	identifier	old-to-new	V5	X
+test-console-cmd-resolution.sh	test-chief-cmd-resolution.sh	identifier	old-to-new	V5	X
+console-route.ts	chief-route.ts	identifier	old-to-new	V5	X
+console-route.test.ts	chief-route.test.ts	identifier	old-to-new	V5	X
+console-heartbeat-watch.ts	chief-heartbeat-watch.ts	identifier	old-to-new	V5	X
+console-heartbeat-watch.test.ts	chief-heartbeat-watch.test.ts	identifier	old-to-new	V5	X
+console-census.sh	chief-census.sh	identifier	old-to-new	V5	X
+console-load-inventory.py	chief-load-inventory.py	identifier	old-to-new	V5	X
+test-console-load-inventory.sh	test-chief-load-inventory.sh	identifier	old-to-new	V5	X
+agui-console-pages.test.ts	agui-chief-pages.test.ts	identifier	old-to-new	V5	X
+console.md	chief.md	identifier	old-to-new	V5	X
+running-a-console.md	running-a-chief.md	identifier	old-to-new	V5	X
+console-handoff-template.md	chief-handoff-template.md	identifier	old-to-new	V5	X
+console-ops-lane.md	chief-ops-lane.md	identifier	old-to-new	V5	X
+--legs	--workers	identifier	old-to-new	V4a	X
+--legs-from	--workers-from	identifier	old-to-new	V4a	X
+--legs-after	--workers-after	identifier	old-to-new	V4a	X
+--leg	--worker	identifier	old-to-new	V4a	X
+--leg-doc	--worker-doc	identifier	old-to-new	V4a	X
+--leg-branch	--worker-branch	identifier	old-to-new	V4a	X
+--console	--chief	identifier	old-to-new	V5	X
+--console-override	--chief-override	identifier	old-to-new	V5	X
+LEGS_FROM	WORKERS_FROM	identifier	old-to-new	V4a	X
+ND_LEGS_FROM	ND_WORKERS_FROM	identifier	old-to-new	V4a	X
+VSA_LEGS_FROM	VSA_WORKERS_FROM	identifier	old-to-new	V4a	X
+LEGS_SPLIT	WORKERS_SPLIT	identifier	old-to-new	V4a	X
+LEGS_TIMEOUT_MS	WORKERS_TIMEOUT_MS	identifier	old-to-new	V4a	X
+CLOSE_WRAPPED_LEGS_MAX_AGE_MIN	CLOSE_WRAPPED_WORKERS_MAX_AGE_MIN	identifier	old-to-new	V4a	X
+ACTION_ZERO_LEGS_TIMEOUT	ACTION_ZERO_WORKERS_TIMEOUT	identifier	old-to-new	V4a	X
+MODEL_FLAG_BY_LEG	MODEL_FLAG_BY_WORKER	identifier	old-to-new	V4a	X
+MAX_BODY_LEGS	MAX_BODY_WORKERS	identifier	old-to-new	V4a	X
+CADENCE_USAGE_LEG	CADENCE_USAGE_WORKER	identifier	old-to-new	V4a	X
+INITIATIVE_LEGS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+FAILED_LEGS	pending-N2892	identifier	old-to-new	pending-N2892	pending-N2892
+BUS_CONSOLE	BUS_CHIEF	identifier	old-to-new	V5	X
+CACHE_HEALTH_CONSOLE	CACHE_HEALTH_CHIEF	identifier	old-to-new	V5	X
+HIMMEL_CONSOLE	HIMMEL_CONSOLE	do-not-rename	keep	none	never
+HIMMEL_SESSION_ROLE=console	HIMMEL_SESSION_ROLE=chief	value	alias	V5	X
+bus --role console	bus --role chief	value	alias	V5	X
+bus --role leg	bus --role worker	value	alias	V4a	X
+headed-arm.sh --role console	headed-arm.sh --role chief	value	alias	V5	X
+arm-resume.sh --tier leg	arm-resume.sh --tier worker	value	alias	V4a	X
+profile console	profile chief	value	alias	V5	X
+profile console-relay	profile chief-relay	value	alias	V5	X
+profile console-judge	pending-N2892	value	alias	pending-N2892	pending-N2892
+profile leg-e2e	profile worker-e2e	value	alias	V4a	X
+-nextleg-	-nextworker-	value	alias	V4a	X
+/relaunch-console	/relaunch-chief	value	alias	V5	X
+/launch-leg	/launch-worker	value	alias	V4a	X

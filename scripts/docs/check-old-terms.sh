@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Platform guard (posix-bash): POSIX bash 3.2+.
 #
-# check-old-terms.sh [<base> | --staged | --auto] — refuse NEW old-term names in
-# the lines a change adds (slice R3 of the rename plan). Only added lines
-# are read, so the terms already in the tree need no baseline file.
+# check-old-terms.sh [<base> | --staged | --auto | --tree] — refuse NEW old-term
+# names in the lines a change adds (slice R3 of the rename plan), or, with
+# --tree, every console/leg name left anywhere in the tracked tree.
 #
 #   <base>     lines added by <base>...<tip> (default origin/main, else main;
 #              tip is PRE_COMMIT_TO_REF, else HEAD)
@@ -11,8 +11,21 @@
 #              merge is in progress, the push range check covers it)
 #   --auto     the range when pre-commit runs a push (PRE_COMMIT_TO_REF set),
 #              else the index: what the pre-commit hook runs
+#   --tree     the work tree of the repo the cwd is in, run from CI by
+#              scripts/docs/test-check-old-terms-tree.sh. Three kinds of name:
+#                path   a git ls-files path matching (^|[/_.-])(console|legs?)([/_.-]|$)
+#                token  an upper-case token with LEG, LEGS or CONSOLE as a whole
+#                       _-separated part: (^|_)(LEGS?|CONSOLE)(_|$)
+#                flag   --leg, --legs or --console, alone or followed by -<word>
+#              A name passes when the registry lists it (a path by its full path
+#              or its basename) as keep (a keep row ending in _ is a prefix) or
+#              as an exact env alias (direction restrict, permit, value or cap).
+#              Every other name must be a line of scripts/docs/old-terms-baseline.txt
+#              (<kind><TAB><name>). The baseline only shrinks: a line the tree no
+#              longer has fails (delete it with the rename), and so does a line
+#              the baseline on origin/main (else main) lacks.
 #
-# Three checks:
+# Three checks on added lines:
 #   (a) PROSE, markdown only. An added line outside code spans, link targets and
 #       fences that uses a word the operator renamed: leg(s), console(s), bank,
 #       overnight mode, CR marker, judge call, class sweep, sibling sweep, ticket
@@ -20,8 +33,8 @@
 #       "batch of worker sessions". "parallel wave", "wave it through" and
 #       "browser console" are the new or unrelated senses; a bare chain is not
 #       linted (CI chain, merge chain, hook chain).
-#   (b) IDENTIFIERS, every file. An added upper-case token holding LEG_ or
-#       CONSOLE_ (at a word start), BANK, OVERNIGHT, a bare WAVE or _WAVE,
+#   (b) IDENTIFIERS, every file. An added upper-case token holding LEG, LEGS or
+#       CONSOLE as a whole _-separated part, BANK, OVERNIGHT, a bare WAVE or _WAVE,
 #       SEQUENCE_, or HIMMEL_WORKER_ not followed by SESSION_, that is not in
 #       the registry scripts/lib/rename-aliases.tsv; and the name chief-judge.
 #       The kept HIMMEL_CONSOLE_ prefix is exempt.
@@ -48,6 +61,7 @@ base=""
 case "${1:-}" in
     --staged) mode=staged ;;
     --auto) if [ -n "${PRE_COMMIT_TO_REF:-}" ]; then mode=range; else mode=staged; fi ;;
+    --tree) mode=tree ;;
     -*) echo "$me: unknown option '$1'" >&2; exit 2 ;;
     *) base="${1:-}" ;;
 esac
@@ -64,7 +78,7 @@ if [ "$mode" = range ]; then
     git rev-parse --verify -q "$tip^{commit}" >/dev/null || { echo "$me: unknown tip '$tip'" >&2; exit 2; }
     diff_args=("$base...$tip")
     src="$tip:"
-else
+elif [ "$mode" = staged ]; then
     # A merge in progress stages lines already reviewed on the other parent; the push range check covers the branch's own lines.
     if git rev-parse -q --verify MERGE_HEAD >/dev/null; then exit 0; fi
     diff_args=(--cached)
@@ -73,7 +87,7 @@ fi
 
 # The registry of the snapshot being checked, not the working tree's copy.
 reg_snap=""
-if [ -z "${OLD_TERMS_REGISTRY:-}" ] && git cat-file -e "${src}scripts/lib/rename-aliases.tsv" 2>/dev/null; then
+if [ "$mode" != tree ] && [ -z "${OLD_TERMS_REGISTRY:-}" ] && git cat-file -e "${src}scripts/lib/rename-aliases.tsv" 2>/dev/null; then
     reg_snap=$(mktemp "${TMPDIR:-/tmp}/old-terms-reg.XXXXXX") || { echo "$me: mktemp failed" >&2; exit 2; }
     trap 'rm -f "$reg_snap"' EXIT
     git show "${src}scripts/lib/rename-aliases.tsv" > "$reg_snap" || { echo "$me: cannot read the registry from the snapshot" >&2; exit 2; }
@@ -83,14 +97,103 @@ fi
 is_exempt_path() {
     case "$1" in
         */fixtures/*|fixtures/*|*/fixture/*|fixture/*) return 0 ;;
-        scripts/lib/rename-aliases.tsv) return 0 ;;
-        docs/glossary.md) return 0 ;;
+        scripts/lib/rename-aliases.tsv|scripts/lib/test-rename-aliases.sh) return 0 ;;
+        docs/glossary.md|docs/migration/*) return 0 ;;
         scripts/eval/lane-quality/tasks/*|scripts/eval/graphify-ab/tasks.json|scripts/eval/graphify-ab/truth.py) return 0 ;;
         scripts/docs/check-old-terms.sh|scripts/docs/test-check-old-terms.sh) return 0 ;;
+        scripts/docs/old-terms-baseline.txt|scripts/docs/test-check-old-terms-tree.sh) return 0 ;;
         CHANGELOG.md|*/CHANGELOG.md) return 0 ;;
     esac
     return 1
 }
+
+if [ "$mode" = tree ]; then
+    top=$(git rev-parse --show-toplevel) || { echo "$me: --tree needs a git work tree" >&2; exit 2; }
+    cd "$top" || { echo "$me: cannot cd to $top" >&2; exit 2; }
+    if [ -z "${OLD_TERMS_REGISTRY:-}" ] && [ -f scripts/lib/rename-aliases.tsv ]; then registry="$top/scripts/lib/rename-aliases.tsv"; fi
+    baseline_rel=scripts/docs/old-terms-baseline.txt
+    [ -f "$baseline_rel" ] || { echo "$me: baseline missing: $top/$baseline_rel" >&2; exit 2; }
+    # shellcheck source=../lib/prim.sh
+    . "$here/../lib/prim.sh" || { echo "$me: cannot load prim.sh" >&2; exit 2; }
+    work=$(tmpdir) || { echo "$me: mktemp failed" >&2; exit 2; }
+    trap 'rm -rf "$work"' EXIT
+    git -c core.quotePath=false ls-files > "$work/files" || { echo "$me: git ls-files failed" >&2; exit 2; }
+    while IFS= read -r f; do
+        if is_exempt_path "$f"; then printf '%s\n' "$f"; fi
+    done < "$work/files" > "$work/exempt"
+    git -c core.quotePath=false grep -I -n -E -e '(LEGS?|CONSOLE)' -e '--(legs?|console)' > "$work/hits"
+    [ $? -le 1 ] || { echo "$me: git grep failed" >&2; exit 2; }
+    have_base=0
+    for candidate in origin/main main; do
+        git rev-parse --verify -q "$candidate^{commit}" >/dev/null || continue
+        if git cat-file -e "$candidate:$baseline_rel" 2>/dev/null; then
+            git show "$candidate:$baseline_rel" > "$work/base" || { echo "$me: cannot read $candidate:$baseline_rel" >&2; exit 2; }
+            have_base=1
+        fi
+        break
+    done
+    awk -v registry="$registry" -v exemptf="$work/exempt" -v baselinef="$baseline_rel" -v basef="$work/base" \
+        -v have_base="$have_base" -v filesf="$work/files" -v hitsf="$work/hits" '
+        function exempt_name(n,    i) {
+            if (n in ok) return 1
+            for (i = 1; i <= nk; i++) if (index(n, kprefix[i]) == 1) return 1
+            return 0
+        }
+        function add(kind, name, site) { if (!((kind "\t" name) in found)) found[kind "\t" name] = site }
+        BEGIN {
+            while ((getline l < registry) > 0) {
+                if (l ~ /^[[:space:]]*(#|$)/) continue
+                split(l, f, "\t")
+                if (f[4] == "keep") { if (f[1] ~ /_$/) kprefix[++nk] = f[1]; else ok[f[1]] = 1 }
+                else if (f[3] == "env" && f[4] ~ /^(restrict|permit|value|cap)$/) ok[f[1]] = 1
+            }
+            while ((getline l < exemptf) > 0) skip[l] = 1
+            while ((getline l < baselinef) > 0) if (l !~ /^[[:space:]]*(#|$)/) { inbase[l] = 1; border[++nb] = l }
+            if (have_base) while ((getline l < basef) > 0) if (l !~ /^[[:space:]]*(#|$)/) onbase[l] = 1
+            while ((getline l < filesf) > 0) {
+                if ((l in skip) || l !~ /(^|[\/_.-])(console|legs?)([\/_.-]|$)/) continue
+                b = l; sub(/.*\//, "", b)
+                if (!exempt_name(l) && !exempt_name(b)) add("path", l, "file name")
+            }
+            while ((getline l < hitsf) > 0) {
+                if (!match(l, /^[^:]*:[0-9]+:/)) continue
+                site = substr(l, 1, RLENGTH - 1); body = substr(l, RLENGTH + 1)
+                file = site; sub(/:[0-9]+$/, "", file)
+                if ((file in skip) || body ~ /old-term-ok:[[:space:]]*[^[:space:]]/) continue
+                rest = body
+                while (match(rest, /[A-Za-z0-9_]+/)) {
+                    tok = substr(rest, RSTART, RLENGTH); rest = substr(rest, RSTART + RLENGTH)
+                    if (tok ~ /^[A-Z][A-Z0-9_]*$/ && tok ~ /(^|_)(LEGS?|CONSOLE)(_|$)/ && !exempt_name(tok)) add("token", tok, site)
+                }
+                rest = body
+                while (match(rest, /--(legs?|console)(-[a-z0-9]+)*/)) {
+                    before = (RSTART > 1) ? substr(rest, RSTART - 1, 1) : ""
+                    fl = substr(rest, RSTART, RLENGTH); after = substr(rest, RSTART + RLENGTH, 1)
+                    rest = substr(rest, RSTART + RLENGTH)
+                    if (before ~ /[A-Za-z0-9_-]/ || after ~ /[A-Za-z0-9_]/) continue
+                    if (!exempt_name(fl)) add("flag", fl, site)
+                }
+            }
+            for (k in found) if (!(k in inbase)) {
+                split(k, kk, "\t")
+                printf "new old-term %s `%s` (%s): not in %s\n", kk[1], kk[2], found[k], baselinef
+                bad = 1
+            }
+            for (i = 1; i <= nb; i++) {
+                split(border[i], kk, "\t")
+                if (!(border[i] in found)) { printf "stale baseline line %s `%s`: the tree no longer has it, delete the line\n", kk[1], kk[2]; bad = 1 }
+                else if (have_base && !(border[i] in onbase)) { printf "baseline line %s `%s` is not on the base branch: the baseline only shrinks\n", kk[1], kk[2]; bad = 1 }
+            }
+            exit bad
+        }' > "$work/out"
+    rc=$?
+    [ "$rc" -le 1 ] || { echo "$me: awk failed (rc=$rc)" >&2; exit 2; }
+    LC_ALL=C sort "$work/out"
+    if [ "$rc" -eq 1 ]; then
+        printf '%s: --tree found old-term names outside the registry and the baseline. Rename the name, list it in scripts/lib/rename-aliases.tsv as keep, or delete its stale baseline line.\n' "$me" >&2
+    fi
+    exit "$rc"
+fi
 
 # -C: a doc moved behind a redirect stub reads as a copy, so only its changed lines count.
 diff_out=$(git -c core.quotePath=false diff -U0 -C --no-color --no-ext-diff --no-textconv --src-prefix=a/ --dst-prefix=b/ --diff-filter=ACMR "${diff_args[@]}") \
@@ -201,7 +304,7 @@ while IFS="$(printf '\t')" read -r file nums; do
                 tok = substr(rest, RSTART, RLENGTH)
                 rest = substr(rest, RSTART + RLENGTH)
                 if (tok !~ /^[A-Z][A-Z0-9_]*$/) continue
-                if (!(tok ~ /(^|_)(LEG|CONSOLE)_[A-Z0-9]/ || tok ~ /BANK/ || tok ~ /OVERNIGHT/ \
+                if (!(tok ~ /(^|_)(LEGS?|CONSOLE)(_|$)/ || tok ~ /BANK/ || tok ~ /OVERNIGHT/ \
                       || tok ~ /^WAVE$/ || tok ~ /_WAVE/ || tok ~ /SEQUENCE_/ \
                       || (tok ~ /^HIMMEL_WORKER_/ && tok !~ /^HIMMEL_WORKER_SESSION_/))) continue
                 if (tok ~ /^HIMMEL_CONSOLE_/ || (tok in known)) continue

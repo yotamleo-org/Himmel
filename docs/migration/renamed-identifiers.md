@@ -72,7 +72,7 @@ A name the registry marks pending-N2892 has no ruled new name yet.
 | N28 | F10 | V3 | `overnight-shift` | `afk-shift` | command, directory | HIMMEL-6647 (V3 HIMMEL-6638 Done) | new name live 1/1 | 9 / 7 | `overnight-shift` |  |
 | N29 | F10 | V3 | `overnight-mode.md` | `afk-mode.md` | file name | HIMMEL-6647 (V3 HIMMEL-6638 Done) | new name live 1/1 | 5 / 4 | `overnight-mode\.md` |  |
 | N30 | F10 | V3 | `OVERNIGHT_*, OVERNIGHT, HIMMEL_OVERNIGHT, HIMMEL_INITIATIVE_OVERNIGHT, IL_OVERNIGHT_ALL` | `AFK_*, AFK, HIMMEL_AFK, HIMMEL_INITIATIVE_AFK, IL_AFK_ALL` | env var | HIMMEL-6647 (V3 HIMMEL-6638 Done) | new name live 11/13 | 106 / 31 | `(?<![A-Za-z0-9_])[A-Z0-9_]*OVERNIGHT[A-Z0-9_]*` |  |
-| N31 | F11 | - | `watchdog (auto-arm hooks only)` | `auto-relaunch in prose; ids deferred` | word in ids and prose | none (deferred) | deferred | 287 / 75 | `watchdog` | AMBIGUOUS and DEFERRED: the glossary scopes the rename to the auto-arm hooks and names no new id; a wall-clock killer is a run timeout. Per-hit read before any rename |
+| N31 | F11 | - | `watchdog (auto-arm hooks only)` | `auto-relaunch in prose; ids deferred` | word in ids and prose | keep (deferred) | deferred | 287 / 75 | `watchdog` | AMBIGUOUS and DEFERRED: the glossary scopes the rename to the auto-arm hooks and names no new id; a wall-clock killer is a run timeout. Per-hit read before any rename |
 | N32 | F13 | V2 | `class-sweep, missing-class-sweep` | `variant-sweep, missing-variant-sweep` | id (exit reason), message text | HIMMEL-6647 (V2 HIMMEL-6640 Done) | new name live 2/2 | 35 / 12 | `(missing-)?class-sweep` | the SWEEP ledger keyword is unchanged |
 | N33 | F14 | D | `speed bump` | `soft block` | message text | HIMMEL-6645 | new name live 1/1 | 12 / 9 | `speed bump` | text only; tests may grep it |
 | N34 | F16 | T | `tick fields legs=, legset=, bank=` | `workers=, workerset=, usage=` | id (tick field) | HIMMEL-6644 | new name live 2/3 | 203 / 42 | `(?<![A-Za-z_])(legs\|legset\|bank)=` | AMBIGUOUS: also matches shell variables named bank or legs; tails= and parked= keep their names | <!-- old-term-ok: this page inventories the old names -->
@@ -83,8 +83,8 @@ A name the registry marks pending-N2892 has no ruled new name yet.
 | N39 | F1c | V5 | `upper-case names with CONSOLE inside (BREAK_GLASS_CONSOLE_CMD, ...)` | `pending-N2892: no ruled name` | env var, script-local name | HIMMEL-6647 (V5 HIMMEL-6641 Done) | no ruled name for 11 | 48 / 18 | `(?<![A-Za-z0-9_-])(?!HIMMEL_CONSOLE)(?:[A-Z_][A-Z0-9_]*)?[A-Z0-9]_CONSOLE(?:_[A-Z0-9_]*)?(?![A-Za-z0-9_])` | HIMMEL_CONSOLE and HIMMEL_CONSOLE_* are kept (OD-1) |
 | N40 | F8 | M | `directories docs/handover/console-sections/, docs/handover/leg-sections/` | `chief-sections/, worker-sections/` | directory | HIMMEL-6646 | new name live 0/2 | 93 / 40 | `(console\|leg)-sections` | plan row 60 |
 | N41 | F10 | M | `directories scripts/console/, scripts/handover/console/, scripts/overnight/` | `scripts/chief/, scripts/handover/chief/, scripts/afk/` | directory | HIMMEL-6646 | new name live 0/3 | 151 / 62 | `scripts/(?:handover/)?console/\|scripts/overnight/` | plan row 61; scripts/eval/leg-digest/ is in N17 |
-| N42 | F7 | - | `other leg-*.sh scripts (leg-burn, leg-pr-open, leg-resume-brief, leg-timeline, ...)` | `needs a ruling` | script/file name | none (not in the approved table) | no ruled name for 34 | 400 / 140 | `(?<![A-Za-z0-9-])[a-z-]*leg-(?!identity\|doc-lock\|event\|jira-status\|pretrust\|transcripts\|graph\|digest\|preface\|brief\|sections)[a-z0-9-]+\.sh` | not in the approved rename table; a rename needs a ruling. The `leg-burn:` PR-body line is kept (plan do-not-rename list) |
-| N43 | F9 | - | `other console-* scripts (console-wait.sh, console-budget.sh, guard-console-dispatch.sh, ...)` | `needs a ruling` | script/file name | none (not in the approved table) | no ruled name for 47 | 495 / 137 | `(?<![A-Za-z0-9-])[a-z-]*console-(?!context\.sh\|compact-reinject\|foreground\|kit\|template\|sections\|judge)[a-z0-9-]+\.(?:sh\|ts\|py\|mjs\|md)` | not in the approved rename table; a rename needs a ruling |
+| N42 | F7 | - | `other leg-*.sh scripts (leg-burn, leg-pr-open, leg-resume-brief, leg-timeline, ...)` | `needs a ruling` | script/file name | HIMMEL-6647 | no ruled name for 34 | 400 / 140 | `(?<![A-Za-z0-9-])[a-z-]*leg-(?!identity\|doc-lock\|event\|jira-status\|pretrust\|transcripts\|graph\|digest\|preface\|brief\|sections)[a-z0-9-]+\.sh` | not in the approved rename table; a rename needs a ruling. The `leg-burn:` PR-body line is kept (plan do-not-rename list) |
+| N43 | F9 | - | `other console-* scripts (console-wait.sh, console-budget.sh, guard-console-dispatch.sh, ...)` | `needs a ruling` | script/file name | HIMMEL-6647 | no ruled name for 47 | 495 / 137 | `(?<![A-Za-z0-9-])[a-z-]*console-(?!context\.sh\|compact-reinject\|foreground\|kit\|template\|sections\|judge)[a-z0-9-]+\.(?:sh\|ts\|py\|mjs\|md)` | not in the approved rename table; a rename needs a ruling |
 
 Total: 43 old-name entries, 8899 matching lines (a line that matches two entries counts in each).
 N01 to N36 keep the numbers of the first draft; N37 to N43 were missing from it.
@@ -2218,7 +2218,7 @@ Distinct matched strings (13): `HIMMEL_INITIATIVE_OVERNIGHT` to `HIMMEL_INITIATI
 
 ### N31 `watchdog (auto-arm hooks only)` to `auto-relaunch in prose; ids deferred`
 
-Family F11, slice -; word in ids and prose; owner none (deferred); 287 lines in 75 files; deferred. AMBIGUOUS and DEFERRED: the glossary scopes the rename to the auto-arm hooks and names no new id; a wall-clock killer is a run timeout. Per-hit read before any rename.
+Family F11, slice -; word in ids and prose; owner keep (deferred); 287 lines in 75 files; deferred. AMBIGUOUS and DEFERRED: the glossary scopes the rename to the auto-arm hooks and names no new id; a wall-clock killer is a run timeout. Per-hit read before any rename.
 
 Distinct matched strings (1): `watchdog` (no ruled name)
 
@@ -2737,7 +2737,7 @@ Distinct matched strings (3): `scripts/console/` to `scripts/chief/`, `scripts/h
 
 ### N42 `other leg-*.sh scripts (leg-burn, leg-pr-open, leg-resume-brief, leg-timeline, ...)` to `needs a ruling`
 
-Family F7, slice -; script/file name; owner none (not in the approved table); 400 lines in 140 files; no ruled name for 34. not in the approved rename table; a rename needs a ruling. The `leg-burn:` PR-body line is kept (plan do-not-rename list).
+Family F7, slice -; script/file name; owner HIMMEL-6647; 400 lines in 140 files; no ruled name for 34. not in the approved rename table; a rename needs a ruling. The `leg-burn:` PR-body line is kept (plan do-not-rename list).
 
 Distinct matched strings (34): `block-leg-askuserquestion.sh` (no ruled name), `guard-leg-cache-ttl.sh` (no ruled name), `guard-leg-context-handoff-v2.sh` (no ruled name), `guard-leg-context-handoff.sh` (no ruled name), `guard-leg-wakeup.sh` (no ruled name), `headed-arm-leg-cwd.sh` (no ruled name), `leg-battery.sh` (no ruled name), `leg-burn-broken.sh` (no ruled name), `leg-burn.sh` (no ruled name), `leg-claude-launcher-consult.sh` (no ruled name), `leg-claude-launcher.sh` (no ruled name), `leg-cost-report.sh` (no ruled name), `leg-cost-row.sh` (no ruled name), `leg-over-by-day.sh` (no ruled name), `leg-path.sh` (no ruled name), `leg-pr-open.sh` (no ruled name), `leg-relaunch.sh` (no ruled name), `leg-resume-brief.sh` (no ruled name), `leg-tail-status.sh` (no ruled name), `leg-timeline.sh` (no ruled name), `test-block-leg-askuserquestion.sh` (no ruled name), `test-guard-leg-cache-ttl.sh` (no ruled name), `test-guard-leg-context-handoff.sh` (no ruled name), `test-guard-leg-wakeup.sh` (no ruled name), `test-headed-arm-leg-worker-env.sh` (no ruled name), `test-leg-burn.sh` (no ruled name), `test-leg-cost-report.sh` (no ruled name), `test-leg-handoff-threshold-docs.sh` (no ruled name), `test-leg-ledger.sh` (no ruled name), `test-leg-over-by-day.sh` (no ruled name), `test-leg-pr-open.sh` (no ruled name), `test-leg-relaunch.sh` (no ruled name), `test-leg-resume-brief.sh` (no ruled name), `test-leg-timeline.sh` (no ruled name)
 
@@ -2886,7 +2886,7 @@ Distinct matched strings (34): `block-leg-askuserquestion.sh` (no ruled name), `
 
 ### N43 `other console-* scripts (console-wait.sh, console-budget.sh, guard-console-dispatch.sh, ...)` to `needs a ruling`
 
-Family F9, slice -; script/file name; owner none (not in the approved table); 495 lines in 137 files; no ruled name for 47. not in the approved rename table; a rename needs a ruling.
+Family F9, slice -; script/file name; owner HIMMEL-6647; 495 lines in 137 files; no ruled name for 47. not in the approved rename table; a rename needs a ruling.
 
 Distinct matched strings (47): `console-2026-10-01.md` (no ruled name), `console-2026-10-31.md` (no ruled name), `console-budget.sh` (no ruled name), `console-bus-exec-gone.sh` (no ruled name), `console-bus-exec.sh` (no ruled name), `console-c.md` (no ruled name), `console-census.sh` (no ruled name), `console-decisions-2026-09-20.md` (no ruled name), `console-decisions-2026-09-21.md` (no ruled name), `console-decisions-2026-10-19.md` (no ruled name), `console-decisions-2026-10-20.md` (no ruled name), `console-doc-bold.md` (no ruled name), `console-doc.md` (no ruled name), `console-doc11.md` (no ruled name), `console-doc2.md` (no ruled name), `console-guide.md` (no ruled name), `console-handoff-template.md` (no ruled name), `console-heartbeat-watch.ts` (no ruled name), `console-himmel.md` (no ruled name), `console-load-inventory.py` (no ruled name), `console-m.md` (no ruled name), `console-ops-lane.md` (no ruled name), `console-precompact-snapshot.sh` (no ruled name), `console-project.md` (no ruled name), `console-rd-none.md` (no ruled name), `console-rd.md` (no ruled name), `console-relay.sh` (no ruled name), `console-route.ts` (no ruled name), `console-s.md` (no ruled name), `console-wait.sh` (no ruled name), `guard-console-dispatch.sh` (no ruled name), `notify-console-on-prompt.sh` (no ruled name), `other-console-wait.sh` (no ruled name), `stop-console-idle-guard.sh` (no ruled name), `test-a-console-doc.sh` (no ruled name), `test-console-budget.sh` (no ruled name), `test-console-cmd-resolution.sh` (no ruled name), `test-console-handoff-roundtrip.sh` (no ruled name), `test-console-load-inventory.sh` (no ruled name), `test-console-precompact-snapshot.sh` (no ruled name), `test-console-wait-b.sh` (no ruled name), `test-console-wait-pool.sh` (no ruled name), `test-console-wait-r0.sh` (no ruled name), `test-console-wait.sh` (no ruled name), `test-guard-console-dispatch.sh` (no ruled name), `test-notify-console-on-prompt.sh` (no ruled name), `test-stop-console-idle-guard.sh` (no ruled name)
 
@@ -3093,88 +3093,88 @@ its script (`test-` plus the new name) in the same rename PR; the rename PR conf
 row of the approved table names them, so this page proposes no new name. They go to the operator with
 the table.
 
-| Path |
-|---|
-| `.claude/commands/cr-learnings-refresh.md` |
-| `.claude/commands/cr-scores.md` |
-| `.claude/commands/cr-tune.md` |
-| `docs/handover/console-handoff-template.md` |
-| `docs/handover/running-a-console.md` |
-| `docs/internals/console-ops-lane.md` |
-| `docs/internals/leg-context-guard.md` |
-| `marketplace/plugins/himmel-ops/scripts/test-console-cmd-resolution.sh` |
-| `scripts/ci/cr-first-measure.sh` |
-| `scripts/config-ui/legs.sh` |
-| `scripts/config-ui/tests/agui-console-pages.test.ts` |
-| `scripts/config-ui/tests/bank-route.test.ts` |
-| `scripts/config-ui/tests/test-legs.sh` |
-| `scripts/cr/cr-pending-audit.sh` |
-| `scripts/cr/cr-reset.sh` |
-| `scripts/cr/cr-round-metrics.sh` |
-| `scripts/cr/cr-scores.sh` |
-| `scripts/cr/cr-trigger-ledger.sh` |
-| `scripts/cr/cr-tune.sh` |
-| `scripts/eval/console-load-inventory.py` |
-| `scripts/eval/leg-digest/leg_ledger.py` |
-| `scripts/eval/leg-digest/test-leg-ledger.sh` |
-| `scripts/eval/sandbox-poc/settings.leg-sandbox.json` |
-| `scripts/eval/test-console-load-inventory.sh` |
-| `scripts/handover/console-kit/console-budget.sh` |
-| `scripts/handover/console-kit/console-wait.sh` |
-| `scripts/handover/console-kit/cr-disposition.sh` |
-| `scripts/handover/console-kit/test-console-budget.sh` |
-| `scripts/handover/console-kit/test-console-kit-e2e.sh` |
-| `scripts/handover/console-kit/test-console-wait-b.sh` |
-| `scripts/handover/console-kit/test-console-wait-pool.sh` |
-| `scripts/handover/console-kit/test-console-wait-r0.sh` |
-| `scripts/handover/console-kit/test-console-wait.sh` |
-| `scripts/handover/console/console-bus-exec.sh` |
-| `scripts/handover/console/test-console-handoff-roundtrip.sh` |
-| `scripts/handover/leg-resume-brief.sh` |
-| `scripts/handover/leg-timeline.sh` |
-| `scripts/handover/test-arm-resume-bank-refresh.sh` |
-| `scripts/handover/test-leg-handoff-threshold-docs.sh` |
-| `scripts/handover/test-leg-resume-brief.sh` |
-| `scripts/handover/test-leg-timeline.sh` |
-| `scripts/hooks/block-bank-lift-writes.sh` |
-| `scripts/hooks/console-precompact-snapshot.sh` |
-| `scripts/hooks/guard-console-dispatch.sh` |
-| `scripts/hooks/guard-leg-cache-ttl.sh` |
-| `scripts/hooks/guard-leg-context-handoff.sh` |
-| `scripts/hooks/notify-console-on-prompt.sh` |
-| `scripts/hooks/stop-console-idle-guard.sh` |
-| `scripts/hooks/test-block-bank-lift-writes.sh` |
-| `scripts/hooks/test-console-precompact-snapshot.sh` |
-| `scripts/hooks/test-guard-console-dispatch.sh` |
-| `scripts/hooks/test-guard-leg-cache-ttl.sh` |
-| `scripts/hooks/test-guard-leg-context-handoff.sh` |
-| `scripts/hooks/test-notify-console-on-prompt.sh` |
-| `scripts/hooks/test-stop-console-idle-guard.sh` |
-| `scripts/lanes/bench/bank-snapshot-core.mjs` |
-| `scripts/lanes/bench/bank-snapshot.sh` |
-| `scripts/lanes/bench/scorecard/leg-over-by-day.sh` |
-| `scripts/lanes/bench/scorecard/leg-relaunch.sh` |
-| `scripts/lanes/bench/scorecard/test-leg-over-by-day.sh` |
-| `scripts/lanes/bench/scorecard/test-leg-relaunch.sh` |
-| `scripts/lanes/leg-burn.sh` |
-| `scripts/lanes/leg-claude-launcher-consult.sh` |
-| `scripts/lanes/leg-claude-launcher.sh` |
-| `scripts/lanes/leg-cost-report.sh` |
-| `scripts/lanes/leg-pr-open.sh` |
-| `scripts/lanes/lib/leg-cost-row.sh` |
-| `scripts/lanes/srt-poc/leg-battery.sh` |
-| `scripts/lanes/test-leg-cost-report.sh` |
-| `scripts/lanes/test-leg-pr-open.sh` |
-| `scripts/lanes/tests/bench-bank-snapshot.test.mjs` |
-| `scripts/lanes/tests/test-leg-burn.sh` |
-| `scripts/lib/cr-first-release.sh` |
-| `scripts/lib/leg-tail-status.sh` |
-| `scripts/probes/claude-p/06-bank-delta.sh` |
-| `scripts/telegram/console-census.sh` |
-| `scripts/telegram/console-heartbeat-watch.test.ts` |
-| `scripts/telegram/console-heartbeat-watch.ts` |
-| `scripts/telegram/console-route.test.ts` |
-| `scripts/telegram/console-route.ts` |
+| Path | Owner |
+|---|---|
+| `.claude/commands/cr-learnings-refresh.md` | HIMMEL-6647 |
+| `.claude/commands/cr-scores.md` | HIMMEL-6647 |
+| `.claude/commands/cr-tune.md` | HIMMEL-6647 |
+| `docs/handover/console-handoff-template.md` | HIMMEL-6647 |
+| `docs/handover/running-a-console.md` | HIMMEL-6647 |
+| `docs/internals/console-ops-lane.md` | HIMMEL-6647 |
+| `docs/internals/leg-context-guard.md` | HIMMEL-6647 |
+| `marketplace/plugins/himmel-ops/scripts/test-console-cmd-resolution.sh` | HIMMEL-6647 |
+| `scripts/ci/cr-first-measure.sh` | HIMMEL-6647 |
+| `scripts/config-ui/legs.sh` | HIMMEL-6647 |
+| `scripts/config-ui/tests/agui-console-pages.test.ts` | HIMMEL-6647 |
+| `scripts/config-ui/tests/bank-route.test.ts` | HIMMEL-6647 |
+| `scripts/config-ui/tests/test-legs.sh` | HIMMEL-6647 |
+| `scripts/cr/cr-pending-audit.sh` | HIMMEL-6647 |
+| `scripts/cr/cr-reset.sh` | HIMMEL-6647 |
+| `scripts/cr/cr-round-metrics.sh` | HIMMEL-6647 |
+| `scripts/cr/cr-scores.sh` | HIMMEL-6647 |
+| `scripts/cr/cr-trigger-ledger.sh` | HIMMEL-6647 |
+| `scripts/cr/cr-tune.sh` | HIMMEL-6647 |
+| `scripts/eval/console-load-inventory.py` | HIMMEL-6647 |
+| `scripts/eval/leg-digest/leg_ledger.py` | HIMMEL-6647 |
+| `scripts/eval/leg-digest/test-leg-ledger.sh` | HIMMEL-6647 |
+| `scripts/eval/sandbox-poc/settings.leg-sandbox.json` | HIMMEL-6647 |
+| `scripts/eval/test-console-load-inventory.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/console-budget.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/console-wait.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/cr-disposition.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/test-console-budget.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/test-console-kit-e2e.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/test-console-wait-b.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/test-console-wait-pool.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/test-console-wait-r0.sh` | HIMMEL-6647 |
+| `scripts/handover/console-kit/test-console-wait.sh` | HIMMEL-6647 |
+| `scripts/handover/console/console-bus-exec.sh` | HIMMEL-6647 |
+| `scripts/handover/console/test-console-handoff-roundtrip.sh` | HIMMEL-6647 |
+| `scripts/handover/leg-resume-brief.sh` | HIMMEL-6647 |
+| `scripts/handover/leg-timeline.sh` | HIMMEL-6647 |
+| `scripts/handover/test-arm-resume-bank-refresh.sh` | HIMMEL-6647 |
+| `scripts/handover/test-leg-handoff-threshold-docs.sh` | HIMMEL-6647 |
+| `scripts/handover/test-leg-resume-brief.sh` | HIMMEL-6647 |
+| `scripts/handover/test-leg-timeline.sh` | HIMMEL-6647 |
+| `scripts/hooks/block-bank-lift-writes.sh` | HIMMEL-6647 |
+| `scripts/hooks/console-precompact-snapshot.sh` | HIMMEL-6647 |
+| `scripts/hooks/guard-console-dispatch.sh` | HIMMEL-6647 |
+| `scripts/hooks/guard-leg-cache-ttl.sh` | HIMMEL-6647 |
+| `scripts/hooks/guard-leg-context-handoff.sh` | HIMMEL-6647 |
+| `scripts/hooks/notify-console-on-prompt.sh` | HIMMEL-6647 |
+| `scripts/hooks/stop-console-idle-guard.sh` | HIMMEL-6647 |
+| `scripts/hooks/test-block-bank-lift-writes.sh` | HIMMEL-6647 |
+| `scripts/hooks/test-console-precompact-snapshot.sh` | HIMMEL-6647 |
+| `scripts/hooks/test-guard-console-dispatch.sh` | HIMMEL-6647 |
+| `scripts/hooks/test-guard-leg-cache-ttl.sh` | HIMMEL-6647 |
+| `scripts/hooks/test-guard-leg-context-handoff.sh` | HIMMEL-6647 |
+| `scripts/hooks/test-notify-console-on-prompt.sh` | HIMMEL-6647 |
+| `scripts/hooks/test-stop-console-idle-guard.sh` | HIMMEL-6647 |
+| `scripts/lanes/bench/bank-snapshot-core.mjs` | HIMMEL-6647 |
+| `scripts/lanes/bench/bank-snapshot.sh` | HIMMEL-6647 |
+| `scripts/lanes/bench/scorecard/leg-over-by-day.sh` | HIMMEL-6647 |
+| `scripts/lanes/bench/scorecard/leg-relaunch.sh` | HIMMEL-6647 |
+| `scripts/lanes/bench/scorecard/test-leg-over-by-day.sh` | HIMMEL-6647 |
+| `scripts/lanes/bench/scorecard/test-leg-relaunch.sh` | HIMMEL-6647 |
+| `scripts/lanes/leg-burn.sh` | HIMMEL-6647 |
+| `scripts/lanes/leg-claude-launcher-consult.sh` | HIMMEL-6647 |
+| `scripts/lanes/leg-claude-launcher.sh` | HIMMEL-6647 |
+| `scripts/lanes/leg-cost-report.sh` | HIMMEL-6647 |
+| `scripts/lanes/leg-pr-open.sh` | HIMMEL-6647 |
+| `scripts/lanes/lib/leg-cost-row.sh` | HIMMEL-6647 |
+| `scripts/lanes/srt-poc/leg-battery.sh` | HIMMEL-6647 |
+| `scripts/lanes/test-leg-cost-report.sh` | HIMMEL-6647 |
+| `scripts/lanes/test-leg-pr-open.sh` | HIMMEL-6647 |
+| `scripts/lanes/tests/bench-bank-snapshot.test.mjs` | HIMMEL-6647 |
+| `scripts/lanes/tests/test-leg-burn.sh` | HIMMEL-6647 |
+| `scripts/lib/cr-first-release.sh` | HIMMEL-6647 |
+| `scripts/lib/leg-tail-status.sh` | HIMMEL-6647 |
+| `scripts/probes/claude-p/06-bank-delta.sh` | HIMMEL-6647 |
+| `scripts/telegram/console-census.sh` | HIMMEL-6647 |
+| `scripts/telegram/console-heartbeat-watch.test.ts` | HIMMEL-6647 |
+| `scripts/telegram/console-heartbeat-watch.ts` | HIMMEL-6647 |
+| `scripts/telegram/console-route.test.ts` | HIMMEL-6647 |
+| `scripts/telegram/console-route.ts` | HIMMEL-6647 |
 
 | Directory | Tracked files | Entry | Owner |
 |---|---|---|---|

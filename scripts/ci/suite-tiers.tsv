@@ -257,6 +257,7 @@ scripts/docs-site/test-site-build.sh	local	behaviour suite, 0 catches in the 400
 scripts/docs/test-adoption-trail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-check-doc-terms.sh	pr	static-gate
 scripts/docs/test-check-llms-links.sh	pr	static-gate
+scripts/docs/test-check-old-terms-tree.sh	pr	static-gate
 scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
 scripts/docs/test-docs-current-version.sh	pr	static-gate
