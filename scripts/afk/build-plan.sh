@@ -126,26 +126,28 @@ ${common%/.git}" ;; esac
     fi
 fi
 
-# Resolve jira CLI. Default: node $repo/scripts/jira/dist/index.js.
+# Resolve jira CLI. Default: node $repo/scripts/jira/dist/index.js, run with a
+# quoted path so a checkout path with spaces stays one argument.
+jira_js=""
 if [ -z "$JIRA_CMD" ]; then
     jira_js="$repo_root/scripts/jira/dist/index.js"
     if [ ! -f "$jira_js" ] && [ -n "${HIMMEL_REPO:-}" ]; then jira_js="$HIMMEL_REPO/scripts/jira/dist/index.js"; fi
-    if [ -f "$jira_js" ] && command -v node >/dev/null 2>&1; then
-        JIRA_CMD="node $jira_js"
-    else
-        echo "ERR build-plan: jira CLI not found at $jira_js and JIRA_CMD not set" >&2
+    if [ ! -f "$jira_js" ] || ! command -v node >/dev/null 2>&1; then
+        echo "ERR build-plan: jira CLI not found at $jira_js and JIRA_CMD not set — build it: (cd ${jira_js%/dist/index.js} && npm install && npm run build)" >&2
         exit 2
     fi
 fi
+jira_run() { if [ -n "$jira_js" ]; then node "$jira_js" "$@"; else $JIRA_CMD "$@"; fi; }
 
 # where-are-we L3 push-side provisioning: each non-epic ticket's
 # subagent prompt is pre-loaded with that ticket's prior ledger slice. Both
 # seams are overridable for hermetic tests (mirrors JIRA_CMD).
 LEDGER="${WHERE_ARE_WE_LEDGER:-$repo_root/.where-are-we/ledger.jsonl}"
-PROVISION_CMD="${PROVISION_CMD:-node $repo_root/scripts/where-are-we/provision.mjs}"
+PROVISION_CMD="${PROVISION_CMD:-}"
+provision_run() { if [ -z "$PROVISION_CMD" ]; then node "$repo_root/scripts/where-are-we/provision.mjs" "$@"; else $PROVISION_CMD "$@"; fi; }
 
 # Query. The jira CLI emits TSV: KEY \t TYPE \t STATUS \t TITLE.
-if ! tickets_raw=$($JIRA_CMD list --project "$PROJECT" --status "$STATUS" --limit "$LIMIT" 2>/dev/null); then
+if ! tickets_raw=$(jira_run list --project "$PROJECT" --status "$STATUS" --limit "$LIMIT" 2>/dev/null); then
     echo "ERR build-plan: jira list failed for project=$PROJECT status='$STATUS' limit=$LIMIT" >&2
     exit 2
 fi
@@ -220,7 +222,7 @@ plan=$(
                 # ledger slice. Fail-open — no node/ledger/item → empty → block
                 # skipped → plan unchanged (the `2>/dev/null || true` + empty-test
                 # IS the guard; no separate node-presence check needed).
-                slice=$($PROVISION_CMD slice --ledger "$LEDGER" --for "$key" 2>/dev/null || true)
+                slice=$(provision_run slice --ledger "$LEDGER" --for "$key" 2>/dev/null || true)
                 if [ -n "$slice" ]; then
                     echo "   - prior ledger state:"
                     printf '%s\n' "$slice" | sed 's/^/     /'

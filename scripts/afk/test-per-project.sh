@@ -27,11 +27,13 @@ mkdir -p "$FAKE_HOME/.himmel" "$SHARED_ROOT"
 # The station config names himmel's own queue; an adopted project must never inherit it.
 printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$FAKE_HOME/.himmel/himmel.conf"
 
-# Fake jira: one ticket in whichever project the plan asked for.
+# Fake jira: `list --project KEY` prints one ticket in KEY; anything else fails.
 FAKE_JIRA="$TMP_ROOT/jira-fake.sh"
 # shellcheck disable=SC2016
 printf '%s\n' '#!/usr/bin/env bash' \
+    '[ "${1:-}" = list ] || { echo "fake jira: not a list call: $*" >&2; exit 64; }' \
     'p=""; while [ $# -gt 0 ]; do [ "$1" = --project ] && p="$2"; shift; done' \
+    '[ -n "$p" ] || { echo "fake jira: list without --project" >&2; exit 64; }' \
     'printf "%s-1\tTask\tTo Do\tWork in %s\n" "$p" "$p"' > "$FAKE_JIRA"
 chmod +x "$FAKE_JIRA"
 
@@ -56,10 +58,18 @@ mkproject "$A"; mkproject "$B"; mkproject "$C" clone
 today=$(date -u +%F)
 
 echo "TEST: each adopted project plans from its own Jira queue"
-plan_a=$(inproj "$A" env JIRA_PROJECT_KEY=AAA bash scripts/afk/build-plan.sh 2>&1)
-plan_b=$(inproj "$B" env JIRA_PROJECT_KEY=BBB bash scripts/afk/build-plan.sh 2>&1)
-case "$plan_a" in *"AAA-1"*) pass "alpha queue is AAA" ;; *) fail "alpha queue is AAA" "$plan_a" ;; esac
-case "$plan_b" in *"BBB-1"*) pass "beta queue is BBB" ;; *) fail "beta queue is BBB" "$plan_b" ;; esac
+rc_a=0; plan_a=$(inproj "$A" env JIRA_PROJECT_KEY=AAA bash scripts/afk/build-plan.sh 2>&1) || rc_a=$?
+rc_b=0; plan_b=$(inproj "$B" env JIRA_PROJECT_KEY=BBB bash scripts/afk/build-plan.sh 2>&1) || rc_b=$?
+if [ "$rc_a" -eq 0 ] && [[ "$plan_a" == *AAA-1* ]]; then pass "alpha queue is AAA"; else fail "alpha queue is AAA" "rc=$rc_a $plan_a"; fi
+if [ "$rc_b" -eq 0 ] && [[ "$plan_b" == *BBB-1* ]]; then pass "beta queue is BBB"; else fail "beta queue is BBB" "rc=$rc_b $plan_b"; fi
+
+echo "TEST: the default jira CLI runs from a project path with a space"
+S="$TMP_ROOT/with space"; mkproject "$S"
+mkdir -p "$S/scripts/jira/dist"
+cp "$FAKE_JIRA" "$S/scripts/jira/dist/fake.sh"
+printf '%s\n' 'require("child_process").execFileSync(__dirname + "/fake.sh", process.argv.slice(2), { stdio: "inherit" });' > "$S/scripts/jira/dist/index.js"
+rc_s=0; plan_s=$(inproj "$S" env -u JIRA_CMD JIRA_PROJECT_KEY=SPC bash scripts/afk/build-plan.sh 2>&1) || rc_s=$?
+if [ "$rc_s" -eq 0 ] && [[ "$plan_s" == *SPC-1* ]]; then pass "spaced path keeps the CLI one argument"; else fail "spaced path keeps the CLI one argument" "rc=$rc_s $plan_s"; fi
 
 echo "TEST: an adopted project with no JIRA_PROJECT_KEY is refused, never handed himmel's queue"
 rc=0; out=$(inproj "$A" env -u JIRA_PROJECT_KEY bash scripts/afk/build-plan.sh 2>&1) || rc=$?
@@ -76,12 +86,13 @@ plan_d=$(inproj "$D" env -u JIRA_PROJECT_KEY bash scripts/afk/build-plan.sh 2>&1
 if [[ "$plan_d" == *DEMO-1* ]] && [[ "$plan_d" != *HIMMEL-1* ]]; then pass "demo queue is DEMO from its .env"; else fail "demo queue is DEMO from its .env" "$plan_d"; fi
 
 echo "TEST: each adopted project keeps its plan and ledger in its own state dir"
-dir_a=$(inproj "$A" bash scripts/afk/project-state.sh dir 2>&1)
-dir_b=$(inproj "$B" bash scripts/afk/project-state.sh dir 2>&1)
-if [ -n "$dir_a" ] && [ "$dir_a" != "$dir_b" ] && [ -d "$dir_a" ] && [ -d "$dir_b" ]; then
+rc_d=0
+dir_a=$(inproj "$A" bash scripts/afk/project-state.sh dir 2>&1) || rc_d=$?
+dir_b=$(inproj "$B" bash scripts/afk/project-state.sh dir 2>&1) || rc_d=$?
+if [ "$rc_d" -eq 0 ] && [ -n "$dir_a" ] && [ "$dir_a" != "$dir_b" ] && [ -d "$dir_a" ] && [ -d "$dir_b" ]; then
     pass "state dirs differ and exist"
 else
-    fail "state dirs differ and exist" "a=$dir_a b=$dir_b"
+    fail "state dirs differ and exist" "rc=$rc_d a=$dir_a b=$dir_b"
 fi
 case "$dir_a" in "$SHARED_ROOT/afk/alpha-"*) pass "alpha state under <handover root>/afk/" ;; *) fail "alpha state under <handover root>/afk/" "$dir_a" ;; esac
 
@@ -123,11 +134,11 @@ rm -f "$FAKE_HOME/.claude/.overnight-stop"
 echo "TEST: each adopted project writes its own morning report"
 printf 'AAA-1\tfeat/a\t1\tdone\tok\n' > "$TMP_ROOT/rows-a.tsv"
 printf 'BBB-1\tfeat/b\t2\tdone\tok\n' > "$TMP_ROOT/rows-b.tsv"
-out_a=$(inproj "$A" bash scripts/afk/morning-report.sh --rows "$TMP_ROOT/rows-a.tsv" --no-unlanded 2>&1)
-out_b=$(inproj "$B" bash scripts/afk/morning-report.sh --rows "$TMP_ROOT/rows-b.tsv" --no-unlanded 2>&1)
+rc_ra=0; out_a=$(inproj "$A" bash scripts/afk/morning-report.sh --rows "$TMP_ROOT/rows-a.tsv" --no-unlanded 2>&1) || rc_ra=$?
+rc_rb=0; out_b=$(inproj "$B" bash scripts/afk/morning-report.sh --rows "$TMP_ROOT/rows-b.tsv" --no-unlanded 2>&1) || rc_rb=$?
 rep_a="$dir_a/overnight-report-$today.md"; rep_b="$dir_b/overnight-report-$today.md"
-if [ -f "$rep_a" ] && grep -q 'AAA-1' "$rep_a" && ! grep -q 'BBB-1' "$rep_a"; then pass "alpha report holds only alpha"; else fail "alpha report holds only alpha" "$out_a"; fi
-if [ -f "$rep_b" ] && grep -q 'BBB-1' "$rep_b"; then pass "beta report in beta's dir"; else fail "beta report in beta's dir" "$out_b"; fi
+if [ "$rc_ra" -eq 0 ] && [ -f "$rep_a" ] && grep -q 'AAA-1' "$rep_a" && ! grep -q 'BBB-1' "$rep_a"; then pass "alpha report holds only alpha"; else fail "alpha report holds only alpha" "rc=$rc_ra $out_a"; fi
+if [ "$rc_rb" -eq 0 ] && [ -f "$rep_b" ] && grep -q 'BBB-1' "$rep_b" && ! grep -q 'AAA-1' "$rep_b"; then pass "beta report holds only beta"; else fail "beta report holds only beta" "rc=$rc_rb $out_b"; fi
 
 echo "TEST: a shift from the himmel clone keeps its current paths"
 plan_c=$(inproj "$C" env JIRA_PROJECT_KEY=ZZZ bash scripts/afk/build-plan.sh 2>&1)
