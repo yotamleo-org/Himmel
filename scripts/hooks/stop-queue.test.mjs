@@ -72,8 +72,9 @@ const reaped = async (pid, budgetMs = 5000) => {
 
 test('the liveness probe sees this process alive and an unreaped zombie dead', async () => {
   assert.equal(alive(process.pid), true, 'the liveness probe must see this test process alive');
-  // `sleep` (exec'd by sh) never waits on the `true` it was left holding, so that child stays a zombie
-  const holder = spawn('sh', ['-c', 'true & echo $!; exec sleep 30'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  // `sleep` (exec'd by sh) never waits on the child it was left holding, so that child stays a zombie once it exits;
+  // it outlives the exec by a beat so a shell that reaps its own jobs cannot reap it first
+  const holder = spawn('sh', ['-c', 'sleep 0.3 & echo $!; exec sleep 30'], { stdio: ['ignore', 'pipe', 'ignore'] });
   try {
     const zombie = await new Promise((resolve) => {
       holder.stdout.once('data', (d) => resolve(Number(String(d).trim())));
