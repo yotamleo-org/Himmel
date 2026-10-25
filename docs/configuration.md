@@ -300,12 +300,16 @@ only under `GLM_LANE_OK`. Hermes critic rows inside `/pr-check` are unaffected.
 `/lanes` is the live inventory; `internals/lane-calibration.md` is the status
 of record.
 
-Key invariants (enforced or structural, not just prose): external workers
+Key invariants (enforced or structural, not just prose): claudex workers
 commit on their **own** `claudex/<slug>` branches in isolated
 worktrees (shared-branch mode `--branch <existing>` serializes through
-`scripts/lib/shared-branch-lock.sh` — single writer); the parent session owns
-review and merge. `spawn-claudex.ts` leaves git config untouched, so the
-no-push rule is the worker's contract, not a git-level fence.
+`scripts/lib/shared-branch-lock.sh` — single writer). codex-exec runs in the
+worktree the caller names under `.claude/worktrees/`, on that worktree's own
+throwaway branch; `--shared-branch <existing>` instead verifies the
+checked-out branch (never `main`/`master`, no uncommitted changes) and takes
+the same single-writer lock. The parent session owns review and merge for
+both. `spawn-claudex.ts` leaves git config untouched, so the no-push rule is
+the worker's contract, not a git-level fence.
 
 ## 3. The gates
 

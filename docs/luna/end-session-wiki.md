@@ -18,7 +18,7 @@ Your first capture in a vault is an *orphan* (no inbound links) until you build 
 
 ## What it does
 
-On every `SessionEnd` event, a hook runs `scripts/hooks/end-session-wiki.{ps1,sh}`. It reads the session transcript + git metadata, renders a session note matching the schema, and writes it into the Luna vault at `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md`. The hook is silent on success and never blocks session end.
+On every `SessionEnd` event, a hook runs `scripts/hooks/end-session-wiki.sh`. It reads the session transcript + git metadata, renders a session note matching the schema, and writes it into the Luna vault at `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md`. The hook is silent on success and never blocks session end.
 
 **Enabled by default.** It runs automatically on every session end. No setup is needed to start capturing, and a stock install writes into `~/Documents/luna`. Opt out per-session or per-repo (see [How to opt out](#how-to-opt-out)); sessions shorter than `min_duration_seconds` (default 60s) are skipped so accidental opens aren't captured.
 
