@@ -1,6 +1,6 @@
 # Chief section — wrapping a worker by hand, and the digest line
 
-Read on demand from `chief-template.md` `## Wrapping a leg`. Moved verbatim from the template.
+Read on demand from `chief-template.md` `## Wrapping a worker`. Moved verbatim from the template.
 
 ## Wrapping a worker
 

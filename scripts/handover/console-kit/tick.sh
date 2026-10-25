@@ -190,8 +190,8 @@ leg's own handover doc decides: its LATEST `- ... SUCCESSION accepted:` Results
 bullet naming this console as the incoming session = RELAYED (the leg took this
 console over, informational, nothing to do); no such bullet = UNCONFIRMED (this
 console cannot tell whether the leg was re-briefed -- ask the leg for its quote-back, or have the
-predecessor relay it, which is the stronger form; a chain, see leg-preface.md
-"Console succession", is only for a predecessor that is gone and never replaces
+predecessor relay it, which is the stronger form; a chain, see worker-preface.md
+"chief succession", is only for a predecessor that is gone and never replaces
 an accepted relay). UNCONFIRMED wins the field when both occur.
 unknown = the doc name carries no console letter or has no `legs:` line.
 
