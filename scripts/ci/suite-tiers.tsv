@@ -218,6 +218,7 @@ scripts/cr/test-critic-panel-registry.sh	pr	static-gate
 scripts/cr/test-critic-panel-triviality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-critic-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-d1-verdict.sh	pr	trust-path
+scripts/cr/test-dependabot-go.sh	pr	trust-path
 scripts/cr/test-doc-freshness-advisory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-docs-audit-panel.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/cr/test-emit-gate-fail.sh	pr	trust-path

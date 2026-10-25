@@ -244,6 +244,7 @@ scripts/cr/test-critic-panel-registry.sh	1
 scripts/cr/test-critic-panel-triviality.sh	1
 scripts/cr/test-critic-panel.sh	45
 scripts/cr/test-d1-verdict.sh	1
+scripts/cr/test-dependabot-go.sh	2
 scripts/cr/test-doc-freshness-advisory.sh	0
 scripts/cr/test-docs-audit-panel.sh	0
 scripts/cr/test-emit-gate-fail.sh	0

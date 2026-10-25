@@ -34,7 +34,9 @@
 #      check-ci.sh; a >100-thread PR cannot silently short-circuit to PASS.
 #   4. CR ledger: <git-common-dir>/cr-critic-scores.jsonl has >=1 row for
 #      <head-sha> with status "ok": a critic avail row (not claude,
-#      claude-floor or codex-adv), or an evidence/judge-go row for this PR branch.
+#      claude-floor or codex-adv), or an evidence/judge-go/dependabot-go row for
+#      this PR branch (dependabot-go: scripts/cr/dependabot-go.sh, a signed judge
+#      GO at this head on a Dependabot manifest-only PR).
 #   5. The PR's first commit carries the attestation trailers the pre-push
 #      gates require, for the file classes that trip them: `Platforms
 #      tested:` when the diff touches scripts/**, *.sh/.bash/.zsh/.ps1/.psm1/
@@ -364,7 +366,7 @@ else
             fromjson? | select(.head == $h and .status == "ok") |
             select((.kind == "avail" and (.model | type) == "string" and .model != ""
                     and .model != "claude" and .model != "claude-floor" and .model != "codex-adv")
-                or ((.kind == "evidence" or .kind == "judge-go") and $b != "" and .branch == $b)) |
+                or ((.kind == "evidence" or .kind == "judge-go" or .kind == "dependabot-go") and $b != "" and .branch == $b)) |
             .head' "$ledger" 2>/dev/null | wc -l | tr -d ' ')
         if [ "${n:-0}" -ge 1 ]; then
             echo "[PASS] 4. CR ledger: $n row(s) for $SHA with status=ok"
@@ -535,7 +537,20 @@ cov_section=$(printf '%s\n' "$cov_body" | awk '
     f && /^#/ { exit }
     f')
 cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*]|[0-9]+[.)])[[:space:]]' || true)
-if [ -z "$cov_lines" ]; then
+# A dependency-only Dependabot PR (author app/dependabot, every changed file a
+# manifest or lockfile by name) has no asks to cover; its coverage is generated.
+dep_pr_generated() {
+    local author files
+    author=$("$GH" pr view "$PR" --repo "$nwo" --json author --jq '.author.login' 2>/dev/null) || return 1  # swallow-ok: an unreadable author is not a Dependabot PR
+    [ "$author" = "app/dependabot" ] || return 1
+    files="${files_json:-}"
+    [ -n "$files" ] || files=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[].filename' 2>/dev/null) || return 1  # swallow-ok: an unreadable list is not a dependency-only PR
+    [ -n "$files" ] || return 1
+    ! printf '%s\n' "$files" | grep -Evq '(^|/)(package\.json|package-lock\.json|bun\.lock|requirements[A-Za-z0-9._-]*\.txt)$'
+}
+if [ -z "$cov_lines" ] && dep_pr_generated; then
+    echo "[PASS] 7. ticket coverage: generated for a Dependabot dependency-only PR (manifest and lockfile files only)"
+elif [ -z "$cov_lines" ]; then
     echo "[FAIL] 7. PR body has no '## Ticket coverage' section with list lines (one per ask: done | deferred → HIMMEL-<n>)"
     cov_shape_help
     mark_fail
