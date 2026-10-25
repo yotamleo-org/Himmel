@@ -1694,6 +1694,8 @@ check "HIMMEL-6685: blast rows default to ran, keep the duration and the off rea
 CR_LEDGER="$tmp/blast-noreason.jsonl" bash "$LA" blast --branch b --head BL1 --status off 2>/dev/null
 check "HIMMEL-6685: an off row with no --reason is refused" "$?" "2"
 check "HIMMEL-6685: a refused off row writes nothing" "$(test -s "$tmp/blast-noreason.jsonl" && echo wrote || echo none)" "none"
+CR_LEDGER="$tmp/blast-blankreason.jsonl" bash "$LA" blast --branch b --head BL1 --status off --reason ' ' 2>/dev/null
+check "HIMMEL-6685: an off row whose reason is only whitespace is refused" "$?" "2"
 CR_LEDGER="$tmp/blast-bad.jsonl" bash "$LA" blast --branch b --head BL1 --status skipped 2>/dev/null
 check "HIMMEL-6685: a status other than ran|off is refused" "$?" "2"
 CR_LEDGER="$tmp/blast-nohead.jsonl" bash "$LA" blast --branch b 2>/dev/null

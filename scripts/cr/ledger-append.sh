@@ -469,7 +469,7 @@ if [ "$kind" = "blast" ]; then
   [ -n "$status" ] || status=ran
   case "$status" in
     ran) ;;
-    off) [ -n "$reason" ] || { echo "ledger-append.sh: blast --status off needs --reason <why the pass was skipped> - NOTHING was written" >&2; exit 2; } ;;
+    off) [ -n "${reason//[[:space:]]/}" ] || { echo "ledger-append.sh: blast --status off needs --reason <why the pass was skipped> - NOTHING was written" >&2; exit 2; } ;;
     *) echo "ledger-append.sh: blast --status must be ran|off (got '$status')" >&2; exit 2;;
   esac
   if [ -n "$duration_secs" ] && ! [[ "$duration_secs" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
