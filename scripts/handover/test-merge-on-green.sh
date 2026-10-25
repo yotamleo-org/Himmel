@@ -3651,6 +3651,9 @@ assert_jira_log_lacks "7641: a current ticket files no request" "release request
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: a bare merge of an unversioned ticket files nothing"
 assert_jira_log_lacks "7641: an unversioned ticket files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.0"}' STUB_JIRA_VERSIONS='v1.1.3\tfalse\t2026-10-22\tfalse\nv1.1.0\tfalse\t2026-10-01\ttrue\n' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket held in an older archived version files nothing"
+assert_jira_log_lacks "7641: an archived held version is not a later one" "release request"
 STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_JIRA_REQUEST_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: an INTAKE request that cannot be filed still lets the merge succeed"
 assert_audit_has "7641: an unfiled INTAKE request is on the audit line" "intake=failed"

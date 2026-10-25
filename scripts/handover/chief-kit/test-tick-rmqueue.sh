@@ -108,6 +108,11 @@ sleep 1
 check 'a held lease still shows the queue' '1,45m' "$(field rm-queue "$out")"
 check 'and no rm-run is launched while the lease is held' '' "$([ -e "$W/rmrun-ran" ] && echo ran)"
 
+reset; state '["Q-1"]' "\"$(ago 45)\"" '{"epoch":3,"owner_doc":null,"released":true}'
+out="$(tick)"
+sleep 1
+check 'a released lease is free: the tick launches the rm-run' '1' "$(ran)"
+
 reset; state '[]' null null
 out="$(tick)"
 sleep 1

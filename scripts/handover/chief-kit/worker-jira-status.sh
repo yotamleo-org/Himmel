@@ -237,7 +237,7 @@ intake_to_current() {
     cur=$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print ($3 == "" ? "9999-99-99" : $3) "\t" $1 }' | sort | head -n 1 | cut -f2)
     [ -n "$cur" ] || return 0
     from=$(jq -r '.fields.fixVersions[]?.name' <<<"$json" 2>/dev/null | while IFS= read -r n; do
-        [ "$n" != "$cur" ] && printf '%s\n' "$vers" | awk -F'\t' -v n="$n" '$1 == n && $2 == "false" { f = 1 } END { exit !f }' && { printf '%s\n' "$n"; break; }
+        [ "$n" != "$cur" ] && printf '%s\n' "$vers" | awk -F'\t' -v n="$n" '$1 == n && $2 == "false" && $4 != "true" { f = 1 } END { exit !f }' && { printf '%s\n' "$n"; break; }
     done)
     [ -n "$from" ] || return 0
     if out=$(ts_jira release request "$cur" --verb INTAKE --key "$KEY" --from "$from" --to "$cur" \

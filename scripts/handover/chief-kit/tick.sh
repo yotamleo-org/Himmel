@@ -1754,7 +1754,8 @@ age = 0
 if n and r.get("oldest_open"):
     t = datetime.datetime.fromisoformat(r["oldest_open"].replace("Z", "+00:00"))
     age = max(0, int((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() // 60))
-print(n, age, "held" if d.get("lease") else "free", d.get("status") or "UNKNOWN")
+ls = d.get("lease")
+print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN")
 ' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads ?
     fi
     case "$rm_n" in

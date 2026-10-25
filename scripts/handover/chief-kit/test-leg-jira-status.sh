@@ -631,6 +631,11 @@ check "7641: an unversioned key files nothing" "$(intakes)" 0
 reset "To Do"; owned; vset '[{"name":"v1.1.2"}]'
 fn "$K" --event live
 check "7641: a released version is not a later one" "$(intakes)" 0
+VERS=$(printf 'v1.1.3\tfalse\t2026-10-28\tfalse\nv1.1.0\tfalse\t2026-10-01\ttrue\n')
+reset "To Do"; owned; vset '[{"name":"v1.1.0"}]'
+fn "$K" --event live
+check "7641: an archived version older than the current one is not a later one" "$(intakes)" 0
+VERS=$(printf 'v1.1.3\tfalse\t2026-10-28\tfalse\nv1.1.4\tfalse\t2026-11-04\tfalse\nv1.1.2\ttrue\t2026-10-20\tfalse\n')
 reset "To Do"; owned LIVE; vset '[{"name":"v1.1.4"}]'
 fn "$K" --event wrapped
 check "7641: only a LIVE event files the request" "$(intakes)" 0

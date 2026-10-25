@@ -2225,8 +2225,8 @@ _jira_intake_to_current() {
             const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
             const have = ((d.fields && d.fields.fixVersions) || []).map(v => v.name);
             const vs = process.argv[1].split("\n").filter(Boolean).map(l => l.split("\t"));
-            const open = new Set(vs.filter(v => v[1] === "false").map(v => v[0]));
             const live = vs.filter(v => v[1] === "false" && v[3] !== "true");
+            const open = new Set(live.map(v => v[0]));
             const dated = live.filter(v => v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
             const cur = dated.length ? dated[0][0] : live.length ? live[0][0] : "";
             const later = have.find(n => open.has(n) && n !== cur);
