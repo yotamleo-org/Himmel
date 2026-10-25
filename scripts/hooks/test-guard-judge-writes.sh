@@ -36,7 +36,8 @@ OWN_DOC="$ROOT/u/himmel/HIMMEL-1-judge-J1-2026-10-06.md"
 OWN_QID=J1
 # The /tmp scratch judge-dir.sh and the session scratchpad live under (T7).
 TMP_SCRATCH="/tmp/claude-$(id -u)"
-mkdir -p "$TMP_SCRATCH"
+# shellcheck disable=SC2174 # /tmp exists; -m must apply to the scratch dir itself
+mkdir -p -m 700 "$TMP_SCRATCH"
 
 pass=0
 fail=0
