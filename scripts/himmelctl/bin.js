@@ -4595,7 +4595,7 @@ async function runPlan(answers, args) {
       // check above is a pure fs read); exit non-zero in non-dry-run mode
       // (never silently pretend the flow ran). --dry-run prints the same
       // would-be refusal and exits 0, matching every other dry-run preview.
-      console.log('himmelctl: non-luna→luna conversion is deferred; see HIMMEL-862 §5.3/§5.8.');
+      console.log('himmelctl: non-luna→luna conversion is deferred.');
       return args.dryRun ? 0 : 1;
     }
     // STAMPED: derive the two-command wire/apply plan. It is printed and run
@@ -6743,8 +6743,8 @@ async function cmdEnsure(args) {
   if (towardDisabled.length > 0) {
     const evidenceCtx = { repoRoot: repoRoot(), targetPath: baseTargetPath, scope, env: process.env };
     if (recordLooksUnderRecorded) {
-      console.log(`himmelctl: ${presentDisableCandidates.length} item(s) this target's recorded install-profile does not declare are live and working right now — that looks UNDER-RECORDED, not a genuine bulk decommission (a non-hermetic test suite run can overwrite real state — HIMMEL-2350). NOT offering to disable them.`);
-      console.log("himmelctl: fix the record instead — re-run 'himmelctl install --from-profile <path>' or the wizard for real (see HIMMEL-2348 to save your current profile first), then re-run 'himmelctl ensure'. Or, if this IS a deliberate downgrade, re-run with an explicit --profile <core|luna|all> — that re-declares your intent for this target and skips this guard (still behind its own --prune confirm).");
+      console.log(`himmelctl: ${presentDisableCandidates.length} item(s) this target's recorded install-profile does not declare are live and working right now — that looks UNDER-RECORDED, not a genuine bulk decommission (a non-hermetic test suite run can overwrite real state). NOT offering to disable them.`);
+      console.log("himmelctl: fix the record instead — re-run 'himmelctl install --from-profile <path>' or the wizard for real (the wizard offers to save your current profile first), then re-run 'himmelctl ensure'. Or, if this IS a deliberate downgrade, re-run with an explicit --profile <core|luna|all> — that re-declares your intent for this target and skips this guard (still behind its own --prune confirm).");
     } else if (!args.prune) {
       console.log(`himmelctl: ${towardDisabled.length} item(s) are enabled but no longer desired for this target (converge-only by default — not disabling; re-run with --prune to review):`);
     } else {
@@ -7315,7 +7315,7 @@ async function cmdScopeSet(args) {
   if (failClosed.length > 0) {
     console.error(`himmelctl: cannot switch scope '${oldScope}' -> '${newScope}': the following item(s) are wired in the old scope '${oldScope}' and have no mechanical unwire path, so switching would leave them wired in BOTH scopes:`);
     for (const id of failClosed) console.error(`  - ${id}`);
-    console.error("Handle each manually (or via 'himmelctl uninstall'), or wait for the per-item unwire extension (HIMMEL-1172).");
+    console.error("Handle each manually (or via 'himmelctl uninstall'), or wait for the per-item unwire extension.");
     // refused, ZERO mutation (this check runs before any spawn
     // or write) — a distinct exit code from a real mid-switch error (1) so an
     // unattended caller can tell "refused" from "failed" without parsing

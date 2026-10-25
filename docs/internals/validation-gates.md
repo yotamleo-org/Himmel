@@ -1,29 +1,30 @@
-# Validation / quality gates — placement doctrine (WS7)
+# Validation / quality gates — placement doctrine
 
-WS7 owns WHERE validation gates sit on himmel's workflows: gate placement,
-rubric chains, PASS/FAIL semantics, the report contract, human-checkpoint
-doctrine, lane trust tiers, and the unquarantine gate for cheap-lane
-(GLM/Codex) outputs. Every mechanic it invokes is an ALREADY-SHIPPED instrument
-(the automated review stack + spawn-glm PR #843); WS7 places them, it does not
-respec them. It unquarantines the GLM/Codex capacity WS1 already shipped.
+This page says WHERE himmel checks work before it advances or merges: which
+review runs on which kind of change, what counts as PASS or FAIL, what a gate
+report must name, where a human must sign off, and how a cheaper
+implementation lane (a Codex worker, or the dormant GLM lane) earns the right
+to have its branches reviewed for merge. Every check it places already exists
+(the automated review stack and the `spawn-glm` worker); this page places
+them, it does not redefine them.
 
 Spec: `<state-repo>/handovers/<user>/himmel/specs/design/ws7-validation-gates.md`.
 Where this doc and the spec disagree, the spec wins.
 
 ## 0. Two meanings of "gate" (read first)
 
-- **WS7 gate = per-artifact correctness/merge gate:** "is this specific output
-  correct enough to advance/merge?"
-- **WS6 gate = per-tool adoption gate:** "is this boundary-owner change worth
-  keeping?" (measured token delta + outcome-per-session verdict).
+- **Merge gate (this page):** "is this specific output correct enough to
+  advance or merge?"
+- **Adoption gate ([token economy](../token-economy.md)):** "is this tool
+  change worth keeping?" (measured token delta + outcome-per-session verdict).
 
-They compose: a new WS7 gate *mechanism* is itself a tool and must pass WS6's
-measurement bar (license gate first, then measured delta) before adoption.
-Nothing here redefines WS6's bar.
+They compose: a new merge-gate *mechanism* is itself a tool and must pass the
+adoption gate (license check first, then measured delta) before it is adopted.
+Nothing here redefines the adoption bar.
 
 `pre-commit run --all-files` must exit 0 on main; a red there is a regression, not a baseline (HIMMEL-2716).
 
-## 1. The lane gate (D1 — unquarantine gate for GLM/Codex)
+## 1. The lane gate (merge review for Codex and GLM branches)
 
 **Placement:** between a cheap-lane worker branch and PR creation — a
 **validating-session review** run by a Claude-family session on the worker's
@@ -44,7 +45,7 @@ Absence is NEVER cheap-lane: an unmarked branch is indistinguishable from
 ordinary Claude work, so it takes the Claude chain (an "unmarked ⇒ cheap" rule
 is not mechanically actionable and would make the Claude chain unreachable). A
 known-Codex branch not yet named `codex/*` is manually flagged cheap by the
-operator/validating session (recorded in the D1 verdict PR-body snippet); Codex
+operator/validating session (recorded in the lane-gate verdict PR-body snippet); Codex
 work predating the convention does not ride this gate mechanically.
 
 **Stated deviation:** `lane-classify.sh` is branch-string-only by design (pure,
@@ -53,22 +54,23 @@ no I/O). The spec's session-meta corroboration happens at the verdict/hook layer
 fails SAFE: a `glm/*` branch with no session meta has no verdict ⇒ no advance.
 
 **Chain:** the standard `/pr-check` full lane (panel + reviewer matrix + VERDICT
-adjudication + marker clear) PLUS the D2 lane rubric (R1-R4) reviewed by the
+adjudication + marker clear) PLUS the lane rubric (R1-R4, §2) reviewed by the
 validating session.
 
-**Verdict owner (⚑ Fork A DEFAULT):** the Claude-family validating session
+**Verdict owner:** the Claude-family validating session
 applying the lane rubric owns the merge-trust verdict. Panel findings stay
-ADVISORY blocking-candidates (WS4 Fork-1: junior models advise, Claude
-adjudicates; the gate stays Claude-only). The operator retains the physical
+ADVISORY blocking-candidates (junior models advise, Claude adjudicates; the
+gate stays Claude-only). The operator retains the physical
 merge action (unchanged).
 
 **PASS/FAIL semantics:** fail-closed on the verdict-presence axis. No
 validating-session verdict ⇒ not PR-eligible. A worker self-report ("done") is
-never a PASS input (WS3 workers-never-self-report invariant).
+never a PASS input (a worker never grades its own work;
+[orchestration patterns](../orchestration-patterns.md)).
 
 **Verdict persistence:** the validating session writes a one-line verdict record
 — `d1_verdict: pass|fail (R1-R4)` — via `scripts/cr/d1-verdict.sh`, into the
-spawn-glm session meta AND the PR body. D5's gated-merge count reads that record
+spawn-glm session meta AND the PR body. The trust-tier count (§5) reads that record
 + git history (NOT the CR ledger, which carries critic findings, not lane
 verdicts).
 
@@ -79,7 +81,7 @@ panel/automated review half. The R1-R4 lane-rubric verdict is BEHAVIORALLY enfor
 (validating-session discipline); its structural enforcement is the deferred
 lane-marker hook (§9), escalated on drift.
 
-## 2. Rubric chains per artifact class (D2)
+## 2. Rubric chains per artifact class
 
 A gate chain = ordered rubric set + failure posture + report contract. Every
 mechanic invoked is a shipped instrument.
@@ -87,12 +89,12 @@ mechanic invoked is a shipped instrument.
 | Artifact class | Chain (shipped instruments only) | Posture (panel avail. / verdict presence) | Human checkpoint |
 |---|---|---|---|
 | Code diff (Claude lane) | pre-push deterministic gates → `/pr-check` full lane → operator merge | panel fail-open; verdict/marker fail-closed | merge (operator) |
-| Code diff (GLM/Codex lane) | D1 lane gate = full lane + lane rubric, validating session adjudicates | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | merge (operator) |
+| Code diff (GLM/Codex lane) | lane gate = full lane + lane rubric, validating session adjudicates | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | merge (operator) |
 | Docs-only diff | docs-audit lane (never-zero-CR) | verdict/marker fail-closed | merge (operator) |
-| Spec/plan artifacts (minerva) | Stage-2/4 adversarial critics (same-family today — known blind spot; the cross-model lane arrives with WS4 D1 artifact-critic, a FUTURE instrument, non-blocking) | critics advisory; orchestrator gates advance (fail-closed on a missing critic round) | operator ratifies ⚑ forks |
+| Spec/plan artifacts (minerva) | Stage-2/4 adversarial critics (same-family today — known blind spot; a cross-model artifact critic is not built yet) | critics advisory; orchestrator gates advance (fail-closed on a missing critic round) | operator ratifies open design choices |
 | Handover state | exempt — no gate | exempt — no gate | none |
 
-**Lane rubric (the D1 extension, applied to cheap-lane diffs on top of the full
+**Lane rubric (the lane-gate extension, applied to cheap-lane diffs on top of the full
 lane):**
 
 - **R1 scope adherence:** the diff touches only what the task named (worker
@@ -105,7 +107,7 @@ lane):**
   the actual diff (catches "confidently wrong done").
 
 **Behavioral-degradation checks** are part of the lane rubric — the failure
-surface WS1 names (attestation honesty, scope adherence, convention drift) that
+surface of a cheaper model (attestation honesty, scope adherence, convention drift) that
 structural guards do not catch.
 
 **Gate-report contract (all chains):** a FAIL names the exact failing item —
@@ -117,14 +119,14 @@ that triggered the miss. This preserves the `[<slug>-N]` bullet contract and the
 its evidence covers (e.g. "reviewed at diff scale; no production-scale claim").
 Small-set green ≠ production green (benchmark-saturation lesson).
 
-## 3. Degradation posture (D3 — ⚑ Fork B)
+## 3. Degradation posture
 
 **Posture axes, stated once:** panel availability is fail-open; verdict presence
 is fail-closed. "Fail-closed" anywhere in this doc refers to the verdict/marker
 axis (no verdict ⇒ no advance), never to panel availability.
 
-**⚑ Fork B DEFAULT:** **critic-panel UNAVAILABILITY** ⇒ degrade fail-open to
-Claude-only adjudication, for ALL chains including the D1 lane gate.
+**Default:** **critic-panel UNAVAILABILITY** ⇒ degrade fail-open to
+Claude-only adjudication, for ALL chains including the lane gate.
 "Unavailable" is the runbook's own umbrella for BOTH shapes: the panel runs and
 every critic errors/times out (`panel_rc=1`), OR the panel cannot be run at all
 (e.g. the diff could not be produced — `pr-check.md:99`). `CR_PROFILE=none` is
@@ -149,8 +151,7 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    anchor kept erroring rc=1. This is a decision, not drift; the
    panel is paid-by-default on purpose and only the docs had lagged.
 3. **The selected panel runs but every critic errors/times out** (panel rc=1)
-   ⇒ Claude-only fail-open, exactly as this fork has always specified.
-   Unchanged, and still fires. Observed live 2026-07-17: the sole registered
+   ⇒ Claude-only fail-open. Observed live 2026-07-17: the sole registered
    critic (paid codex) returned rc=1 for a whole run once its weekly usage was
    exhausted — with no free row registered, that is 0/1 panel critics.
    **This does NOT by itself block the automated review gate.** `clear-cr-marker.sh` counts
@@ -160,21 +161,15 @@ only 3 and 4 reach Claude-only; 1 and 2 BILL:
    cross-model redundancy, not the gate's ability to certify. Accepted
    knowingly.
 
-   **Narrowed.** This paragraph used to name a second escape —
-   the non-panel CodeRabbit CLI pass in `/pr-check` step 3.2, which recorded an
-   availability row of its own. That pass is deleted (CodeRabbit is the App
-   only), so the Claude floor is the sole remaining one. Under
-   `CR_REQUIRE_CROSS_MODEL=1` a panel-wide outage is much closer to closed:
-   gate 3b requires a non-Claude `avail … ok` at the SHA, and only the panel
-   itself can still supply one (the codex adversarial pass that used to record
-   `avail --model codex-adv` was removed, and a legacy row of
-   that name no longer counts). A Claude-only floor keeps the marker closed
-   (exit 14) until a panel critic responds.
+   The Claude floor is the only responder outside the panel (CodeRabbit runs
+   as the GitHub App only). Under `CR_REQUIRE_CROSS_MODEL=1` a panel-wide
+   outage keeps the gate closed: gate 3b requires a non-Claude `avail … ok` at
+   the SHA, only the panel can supply one, and a Claude-only floor keeps the
+   marker closed (exit 14) until a panel critic responds.
 
    The caveat that survives: the panel's non-Claude rows can share a provider.
    An OpenAI-side outage or a usage budget that has run out takes the `codex` row out, and
-   then nothing can satisfy gate 3b. That single point of failure is what
-   was re-introduced when the `glm` row was retired, and it is a known
+   then nothing can satisfy gate 3b. That single point of failure is a known
    limitation.
 4. **The panel cannot be run at all** — e.g. the diff could not be produced
    (`pr-check.md:99`, "critic panel unavailable — claude-only review (git diff
@@ -185,13 +180,13 @@ Operator-relevant consequence: cases 1 and 2 both draw on the OpenAI usage budge
 paid anchor (paid usage is user-enabled by design). Do not read "the panel was
 unavailable" as "nothing was billed" — only 3 and 4 reach zero panel members.
 
-So the fork's rationale below holds for cases 3-4; cases 1-2 reach a paid critic
+So the rationale below holds for cases 3-4; cases 1-2 reach a paid critic
 rather than zero panel members.
 Rationale: for GLM/Codex-origin artifacts the adjudicator is already a DIFFERENT
-family than the implementer — the WS3 "evaluator = different family, never
-self-grading" invariant holds even with zero panel members. The known residual
+family than the implementer — the "evaluator = different family, never self-grading"
+invariant holds even with zero panel members. The known residual
 blind spot is Claude-reviewing-Claude (same-family) on Claude-lane diffs — that
-is today's shipped posture, targeted by WS4 D1(b), not worsened by this default.
+is today's shipped posture, not worsened by this default.
 
 Alternative rejected by default: hard-block on anchor death (turns a free
 third-party outage into a repo-wide merge freeze — disproportionate).
@@ -199,64 +194,63 @@ third-party outage into a repo-wide merge freeze — disproportionate).
 blocked (locked) — no GLM critic in any panel until the operator enables
 per-token billing.
 
-## 4. Human checkpoints (D4 — first-class, bounded)
+## 4. Human checkpoints (first-class, bounded)
 
-- **Merge is operator-only.** The D1 verdict feeds it, never replaces it.
+- **Merge is operator-only.** The lane-gate verdict feeds it, never replaces it.
   `--admin`/gate-bypass remain HARD-vetoed.
 - **`/code-review ultra`** stays the operator-triggered top escalation, recorded
   as a one-action operator step.
 - **Batching bound:** the review surface batches into the consolidated morning
-  report; fan-out ceiling ≈6-8 tickets/shift (rubber-stamp threshold) — a WS7
+  report; fan-out ceiling ≈6-8 tickets/shift (rubber-stamp threshold) — a
   checkpoint property, owned operationally by the AFK (unattended) mode doc.
 - **Checkpoint placement rule:** a human checkpoint is REQUIRED where a verdict
   is (a) irreversible outward (merge, publish, external write) or (b) a
   trust-tier promotion (§5). Everything else is agent-adjudicated.
 
-## 5. Trust-tier promotion (D5 — ⚑ Fork C)
+## 5. Trust-tier promotion
 
 Unquarantine is not binary-forever; it is a per-lane trust ledger.
 
-- **Tier 0 (today, executable):** every cheap-lane output passes the D1 gate.
-- **Tier 1 (earned — ⚑ Fork C DEFAULT N=10):** after ≥N gated merges with zero
+- **Tier 0 (today, executable):** every cheap-lane output passes the lane gate.
+- **Tier 1 (earned — default N=10):** after ≥N gated merges with zero
   post-merge reverts/regressions attributable to the lane (counted from the
   verdict records + git history), the operator MAY relax the lane rubric to
-  sampled application. **The sampling mechanism is a FUTURE instrument** (WS4 D3
-  ships policy text + an acceptance criterion only — no sampling harness exists
-  today). Tier 1 is a reserved slot, not executable now.
+  sampled application. **No sampling harness exists today.** Tier 1 is a reserved slot, not executable now.
 - **Demotion:** any lane-attributed regression that reaches main returns the
   lane to Tier 0 (full gating) until N accrues again.
 - Promotion/demotion are **operator actions** (§4 checkpoint rule b); this doc
   only defines the ledger evidence that justifies them.
 
-## 6. Trace→regression loop (D6 — WS10 seam, placement only)
+## 6. Trace→regression loop (placement only)
 
-Every D1/D2 gate FAIL emits a machine-findable record stored with the run
+Every lane-gate or lane-rubric FAIL emits a machine-findable record stored with the run
 artifacts. **Emission points:**
 
 - lane fails → the spawn-glm session dir (shipped);
 - blocking automated review fails on a cheap-lane branch → `scripts/cr/emit-gate-fail.sh`
   writes them to the SAME `<session-dir>/gate-report.jsonl` as lane fails.
 
-This is the ONE added emission WS7 places: today `file-deferred-issues.sh`
+This is the ONE added emission this page places: today `file-deferred-issues.sh`
 captures ONLY deferred low-severity findings; blocking Critical/High/Important
 automated review fails are NOT persisted (they block the marker and get fixed in place), so
-the corpus was missing the failures that matter. WS10's self-improvement loop
-consumes these ("failed traces become the next test cases"); WS7 places the
-emission points, WS10 owns the loop. No new storage system (YAGNI) — session
+the corpus was missing the failures that matter. Nothing reads these records
+yet: this page places only the emission points, and the lessons loop
+([lesson-audit.md](lesson-audit.md)) samples lesson files, not this corpus.
+No new storage system (YAGNI) — session
 dirs + issues are the corpus v1, with the one added write above.
 
-## 7. CI promotion path (D7 — ⚑ Fork D)
+## 7. CI promotion path
 
 Shell-unit CI (`workflow_dispatch`-only) is advisory evidence a
 validating session MAY cite, never a PASS substitute, until promoted.
 
-**⚑ Fork D DEFAULT (unmeasured constants — ratify or retune before promotion):**
+**Default (unmeasured constants — ratify or retune before promotion):**
 20 consecutive manual runs green on main AND per-run wall time < 10 min AND zero
-flaky-test quarantines open. The promotion decision itself is a WS6-bar adoption
-call. (Public-repo CI is already per-push; this fork governs the private repo's
+flaky-test quarantines open. The promotion decision itself is an adoption-gate
+call. (Public-repo CI is already per-push; this rule governs the private repo's
 workflow.)
 
-## 8. Data-egress-safe gate lane (D8)
+## 8. Data-egress-safe gate lane
 
 Sensitive (Salus/PHI/secret-touching) artifacts NEVER route through cloud
 critics — the panel is cloud (NIM/hermes), so their chains are
@@ -266,60 +260,46 @@ Claude-session-local review only, today.
 only (diffs in Salus-profile vaults, or matching sensitive-path
 patterns); PHI/secret CONTENT in an otherwise-ordinary diff is
 operator/adjudicator judgment, not a mechanical gate — content scanning is
-runtime DLP, explicitly out of scope (WS1 non-goal inherited). This is a
+runtime DLP, explicitly out of scope. This is a
 **placement rule**, not a gate: no sensitive-path diff on a cloud critic lane.
 
-DeepEval (local-execution, Apache-2.0 — license to be verified at adoption per
-WS6's license gate) is the named candidate engine for a future local assertion
-gate; adopting it is a WS6-gated tool decision, not a WS7 build item.
+DeepEval (local-execution, Apache-2.0 — license to be verified at adoption) is
+the named candidate engine for a future local assertion gate; adopting it is
+an adoption-gate decision, not a build item here.
 
 ## 9. Deferred structural enforcement
-
-The GLM-only lane-marker hook
-(`block-cheap-lane-pr-without-verdict`) and its paired suite
-were removed: the GLM implementation lane is gone, and the hook
-was never wired into either hook inventory. Removal changes no dispatched
-protection.
 
 The live claudex implementation lane runs through the Claude Code harness
 ([lane calibration](lane-calibration.md#claudex-worker--implementor-default-operating-model)),
 with publication subject to its permission classifier. The chief's
 `scripts/handover/chief-kit/ready-check.sh` separately refuses a head without
 an `ok` CR-ledger row. These cover publication authorization and automated review readiness,
-not the historical GLM `d1_verdict` field.
+not the GLM `d1_verdict` field.
 
-D1 lane-rubric verdict persistence remains behavioral (validating-session
-discipline); historical `cheap-codex` structural provenance enforcement still
-waits on a hermes task→branch record (spec D1.1/SC2). See §1 enforcement-honesty.
+Lane-rubric verdict persistence remains behavioral (validating-session
+discipline); structural `cheap-codex` provenance enforcement waits on a hermes
+task→branch record. See §1 enforcement-honesty.
 
-## Forks awaiting ratification
+## Defaults you can change
 
-Each fork ships at its DEFAULT; ratification flips exactly the one knob below —
-no rewrite.
+Each default above is one knob; changing it touches only the named sentence.
 
-- **⚑ Fork A (§1 — verdict owner):** DEFAULT = Claude-family validating session
-  owns the merge-trust verdict (operator owns the merge action). Flip changes
-  §1's owner sentence + the `d1-verdict.sh`/hook headers — the record format is
-  unchanged.
-- **⚑ Fork B (§3 — anchor-death posture):** DEFAULT = fail-open to Claude-only
-  adjudication. Flip changes §3's default clause only (to hard-block).
-- **⚑ Fork C (§5 — Tier-1 threshold):** DEFAULT = N=10 gated merges (Tier-1
-  itself is future/non-executable). Flip changes §5's N only; no code (the
-  sampling harness is a WS4 future instrument).
-- **⚑ Fork D (§7 — CI-promotion constants):** DEFAULT = 20 green / <10 min / 0
-  open flaky quarantines. Flip changes §7's constants only.
+- **Verdict owner (§1):** the Claude-family validating session owns the
+  merge-trust verdict (the operator owns the merge action). Changing it edits
+  §1's owner sentence and the `d1-verdict.sh` header; the record format stays.
+- **Panel-outage posture (§3):** fail-open to Claude-only adjudication; the
+  alternative is a hard block.
+- **Tier-1 threshold (§5):** N=10 gated merges (Tier 1 is not executable yet).
+- **CI-promotion constants (§7):** 20 green / under 10 min / 0 open flaky
+  quarantines.
 
-## Carry-forwards
+## Not built yet
 
-- **→ WS8 (Mission Control):** the Phase 1 read-only dashboard
-  (`scripts/fleet-control/`, see `docs/jarvis-subsystems.md`) ships fleet/
-  escalation/quota surfaces but not gate verdicts or trust-tier state; making
-  those (what's quarantined, what's pending verdict) first-class C&C surfaces
-  is still forward work, alongside the dispatch/adjudication controls Phase 2
-  will add.
-- **→ WS10 (Jarvis):** the §6 emission points are the self-improvement loop's
-  input corpus.
-- **→ WS4:** when the artifact-critic (D1) ships, minerva Stage-2/4 chains gain
-  a cross-model lane — the placement slot is reserved in §2 (spec/plan row).
-- **→ WS5 (parity):** the D1 lane-gate rubric applies to any future Codex-driven
-  himmel work regardless of harness (AGENTS.md surface).
+- **Gate state on the Fleet page:** Mission Control's Fleet page
+  (see [Jarvis](../jarvis-subsystems.md#mission-control-the-surface)) shows
+  each worker's stage, but not gate verdicts or trust-tier state.
+- **Cross-model artifact critic:** when it exists, minerva Stage-2/4 chains
+  gain a cross-model lane in the §2 spec/plan row.
+- **Codex work outside Claude Code:** the lane-gate rubric applies to any
+  Codex-driven himmel work whatever the harness (the `AGENTS.md` surface;
+  [lane parity](lane-parity.md)).

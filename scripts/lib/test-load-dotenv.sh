@@ -23,9 +23,83 @@ assert_eq() {
         FAILED=$((FAILED + 1))
     fi
 }
+# assert_eq_fp: for a row that requests a real key name. A failure prints
+# only a length and a hash prefix, never the value.
+assert_eq_fp() {
+    local label="$1" expected="$2" actual="$3"
+    if [ "$expected" = "$actual" ]; then
+        echo "PASS $label"
+    else
+        echo "FAIL $label — got a value of length ${#actual}, sha256 $(printf '%s' "$actual" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
+        FAILED=$((FAILED + 1))
+    fi
+}
 
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+
+# Stub keyring. load_dotenv asks scripts/lib/himmel-secrets for secret-class
+# keys, so every row runs with a stub secret-tool and busctl first on PATH and
+# never reaches a real keyring. The stub store is one `attrs<TAB>value` line per
+# item; a lookup matches an item holding every queried attribute, as libsecret
+# does. The two error lines are copied from the station (CachyOS, libsecret
+# 0.21.8, systemd 262) under `env -i HOME=… PATH=/usr/bin:/bin`, 2026-10-25.
+KBIN="$TMP/kbin"
+mkdir -p "$KBIN"
+export KSTUB_STORE="$TMP/keyring.tsv" KSTUB_LOG="$TMP/keyring.log" KSTUB_LOCKED=false
+: >"$KSTUB_STORE"
+cat >"$KBIN/secret-tool" <<'STUB'
+#!/usr/bin/env bash
+printf 'secret-tool[%s] %s\n' "${DBUS_SESSION_BUS_ADDRESS:-}" "$*" >>"$KSTUB_LOG"
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    echo 'secret-tool: Cannot autolaunch D-Bus without X11 $DISPLAY' >&2
+    exit 1
+fi
+verb="$1"; shift
+[ "${1:-}" = --all ] && shift
+if [ "$verb" = store ]; then shift 2; fi
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+case "$verb" in
+    store) IFS= read -r val || true; printf '%s\t%s\n' "${q# }" "$val" >>"$KSTUB_STORE"; exit 0 ;;
+esac
+rc=1
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    [ "$m" = 1 ] || continue
+    case "$verb" in
+        lookup) printf '%s' "$val"; exit 0 ;;
+        # As libsecret's secret-tool.c: the item lines and the secret go to
+        # stdout (g_print), the attribute lines to stderr (g_printerr).
+        search)
+            printf '[/stub]\nlabel = stub\nsecret = %s\n' "$val"
+            for p in $attrs; do printf 'attribute.%s = %s\n' "${p%%=*}" "${p#*=}" >&2; done
+            rc=0 ;;
+    esac
+done <"$KSTUB_STORE"
+# A search that matches nothing exits 0, as libsecret's does.
+[ "$verb" = search ] && exit 0
+exit "$rc"
+STUB
+cat >"$KBIN/busctl" <<'STUB'
+#!/usr/bin/env bash
+printf 'busctl[%s] %s\n' "${DBUS_SESSION_BUS_ADDRESS:-}" "$*" >>"$KSTUB_LOG"
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && [ -z "${XDG_RUNTIME_DIR:-}" ]; then
+    echo 'Failed to set bus address: $DBUS_SESSION_BUS_ADDRESS and $XDG_RUNTIME_DIR not defined (consider using --machine=<user>@.host --user to connect to bus of other user)' >&2
+    exit 1
+fi
+[ -n "${KSTUB_HANG:-}" ] && exec sleep 10
+case "$*" in
+    *Unlock*) echo unlock-called >>"$KSTUB_LOG" ;;
+    *" Locked") echo "b ${KSTUB_LOCKED:-false}" ;;
+esac
+STUB
+chmod +x "$KBIN/secret-tool" "$KBIN/busctl"
+export PATH="$KBIN:$PATH"
+export DBUS_SESSION_BUS_ADDRESS="unix:path=$TMP/stub-bus"
+kreset() { : >"$KSTUB_STORE"; : >"$KSTUB_LOG"; }
+
 REPO="$TMP/repo"
 mkdir -p "$REPO"
 git -C "$REPO" init --quiet
@@ -168,7 +242,7 @@ printf 'CLIPROXY_API_KEY=pk-from-primary\n' > "$PFREPO/.env"   # gitleaks:allow 
 # in the PRIMARY .env (exactly what claude-codex does). Run from the worktree's
 # own cwd to prove --root + helper reaches the primary regardless of CWD.
 got=$( cd "$PFWT" && unset CLIPROXY_API_KEY && load_dotenv --root "$(_load_dotenv_primary_for "$PFWT")" CLIPROXY_API_KEY && printf '%s' "${CLIPROXY_API_KEY:-<unset>}" )
-assert_eq "T18 load_dotenv via helper finds primary key" "pk-from-primary" "$got"
+assert_eq_fp "T18 load_dotenv via helper finds primary key" "pk-from-primary" "$got"
 
 # T19: a non-git candidate dir → returned unchanged (git fails, no fallback, no
 # advisory) — hermetic tests that pin the root to a temp dir are unaffected.
@@ -374,6 +448,125 @@ printf 'DOTENV_CACHE=from-root-flag\n' > "$ROOTDIR/.env"
 got=$( cd "$NONGIT" && unset DOTENV_CACHE && HIMMELCTL_CACHE_DIR="$CACHEDIR" load_dotenv --root "$ROOTDIR" DOTENV_CACHE && printf '%s' "${DOTENV_CACHE:-<unset>}" )
 assert_eq "T40 --root bypasses the cache dir entirely" "from-root-flag" "$got"
 rm -f "$ROOTDIR/.env"
+
+# ── secret keys through the resolver (scripts/lib/himmel-secrets) ──────────
+# TEST_KR_TOKEN is secret-class and fake. Default items carry scope=user; a
+# project override carries project=<primary checkout path>.
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP K1-K8:the macOS Keychain backend is a follow-up; the resolver skips the keyring on Darwin"
+else
+PROJ=$(cd "$REPO" && pwd -P)
+
+# K1: a key served by the stub keyring reaches load_dotenv with no .env present.
+kreset
+printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KSTUB_STORE"
+rm -f "$REPO/.env"
+got=$( cd "$REPO" && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>/dev/null && printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K1 keyring serves a secret key with no .env" "fake-keyring-value" "$got"
+
+# K2: a locked keyring returns within 3 s with one 'keyring locked' line, makes
+# no lookup (a lookup on a locked collection raises the unlock prompt) and no
+# Unlock call.
+kreset
+printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KSTUB_STORE"
+SECONDS=0
+got=$( cd "$REPO" && export KSTUB_LOCKED=true && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>"$TMP/k2.err"; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+k2_secs=$SECONDS
+assert_eq "K2 locked keyring serves nothing" "<unset>" "$got"
+assert_eq "K2 one 'keyring locked' line" "1" "$(grep -c 'keyring locked' "$TMP/k2.err")"
+assert_eq "K2 no lookup and no unlock on a locked keyring" "0" "$(grep -c 'secret-tool\|unlock-called' "$KSTUB_LOG")"
+assert_eq "K2 returns within 3 s" "yes" "$([ "$k2_secs" -le 3 ] && echo yes || echo "no (${k2_secs}s)")"
+
+# K2b: a bus that never answers is cut off by the timeout and falls through.
+kreset
+SECONDS=0
+got=$( cd "$REPO" && export KSTUB_HANG=1 && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+k2_secs=$SECONDS
+assert_eq "K2b hung bus serves nothing" "<unset>" "$got"
+assert_eq "K2b hung bus returns within 3 s" "yes" "$([ "$k2_secs" -le 3 ] && echo yes || echo "no (${k2_secs}s)")"
+
+# K3: a cron-shaped env (env -i, no DBUS_SESSION_BUS_ADDRESS) finds the bus at
+# <runtime dir>/bus. The runtime dir is the test seam; the socket is a scratch one.
+RT="$TMP/rt"
+mkdir -p "$RT"
+python3 -c 'import socket, sys; socket.socket(socket.AF_UNIX).bind(sys.argv[1])' "$RT/bus"
+kreset
+printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KSTUB_STORE"
+# shellcheck disable=SC2016 # the body expands in the child shell
+got=$( cd "$REPO" && env -i HOME="$HOME" PATH="$KBIN:/usr/bin:/bin" KSTUB_STORE="$KSTUB_STORE" KSTUB_LOG="$KSTUB_LOG" HIMMEL_SECRETS_RUNTIME_DIR="$RT" \
+    bash -c '. "$1"; load_dotenv TEST_KR_TOKEN 2>/dev/null; printf "%s" "${TEST_KR_TOKEN:-<unset>}"' _ "$LIB" )
+assert_eq "K3 cron-shaped env resolves through the runtime-dir bus" "fake-keyring-value" "$got"
+assert_eq "K3 the lookup used the runtime-dir bus" "yes" "$(grep -q "secret-tool\[unix:path=$RT/bus\]" "$KSTUB_LOG" && echo yes || echo no)"
+
+# K4: backend order — process env, then $CREDENTIALS_DIRECTORY, then the
+# keyring, then .env. A key served from .env prints one DEPRECATED line.
+CRED="$TMP/creds"
+mkdir -p "$CRED"
+printf 'from-credentials\n' >"$CRED/TEST_KR_TOKEN"
+kreset
+printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfrom-keyring\n' >"$KSTUB_STORE"
+printf 'TEST_KR_TOKEN=from-dotenv\n' >"$REPO/.env"
+got=$( cd "$REPO" && export TEST_KR_TOKEN=from-env CREDENTIALS_DIRECTORY="$CRED" && load_dotenv TEST_KR_TOKEN 2>/dev/null && printf '%s' "$TEST_KR_TOKEN" )
+assert_eq "K4 process env beats every backend" "from-env" "$got"
+got=$( cd "$REPO" && export CREDENTIALS_DIRECTORY="$CRED" && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>/dev/null && printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K4 CREDENTIALS_DIRECTORY beats the keyring" "from-credentials" "$got"
+got=$( cd "$REPO" && unset TEST_KR_TOKEN CREDENTIALS_DIRECTORY && load_dotenv TEST_KR_TOKEN 2>/dev/null && printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K4 keyring beats .env" "from-keyring" "$got"
+kreset
+got=$( cd "$REPO" && unset TEST_KR_TOKEN CREDENTIALS_DIRECTORY && load_dotenv TEST_KR_TOKEN 2>"$TMP/k4.err"; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K4 .env serves a key the keyring lacks" "from-dotenv" "$got"
+assert_eq "K4 one DEPRECATED line for a secret from .env" "1" "$(grep -c 'DEPRECATED' "$TMP/k4.err")"
+assert_eq "K4 the DEPRECATED line names the key, never the value" "1|0" "$(grep -c 'TEST_KR_TOKEN' "$TMP/k4.err")|$(grep -c 'from-dotenv' "$TMP/k4.err")"
+rm -f "$REPO/.env"
+
+# K5: a project-scoped item for this repo (keyed by the primary checkout, so a
+# worktree matches its primary) beats the user default; with no override for
+# this repo the default serves, even when another project's override exists.
+kreset
+printf 'service=himmel key=TEST_KR_TOKEN project=/elsewhere/other-repo\tother-project\n' >"$KSTUB_STORE"
+printf 'service=himmel key=TEST_KR_TOKEN scope=user\tuser-default\n' >>"$KSTUB_STORE"
+got=$( cd "$REPO" && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>/dev/null && printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K5 no override for this repo: the user default serves" "user-default" "$got"
+printf 'service=himmel key=TEST_KR_TOKEN project=%s\tproject-value\n' "$PROJ" >>"$KSTUB_STORE"
+got=$( cd "$REPO" && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>/dev/null && printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K5 this repo's override beats the user default" "project-value" "$got"
+KWT="$TMP/k5-wt"
+git -C "$REPO" worktree add -q "$KWT" -b k5-branch
+got=$( cd "$KWT" && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>/dev/null && printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K5 a worktree matches its primary's override" "project-value" "$got"
+git -C "$REPO" worktree remove --force "$KWT" 2>/dev/null || true
+
+# K6: a git-tracked .env is refused with one line and serves no secret.
+TREPO="$TMP/tracked"
+mkdir -p "$TREPO"
+git -C "$TREPO" init --quiet
+git -C "$TREPO" config user.email t@example.com
+git -C "$TREPO" config user.name tester
+printf 'TEST_KR_TOKEN=tracked-value\n' >"$TREPO/.env"
+git -C "$TREPO" add .env
+git -C "$TREPO" commit -q -m tracked
+kreset
+got=$( cd "$TREPO" && unset TEST_KR_TOKEN && load_dotenv TEST_KR_TOKEN 2>"$TMP/k6.err"; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K6 a tracked .env serves no secret" "<unset>" "$got"
+assert_eq "K6 one refusal line" "1" "$(grep -c 'tracked by git' "$TMP/k6.err")"
+
+# K7: config-class and policy-class keys never touch the resolver.
+kreset
+printf 'HANDOVER_DIR=/c/h\nCR_REQUIRE_CROSS_MODEL=1\n' >"$REPO/.env"
+( cd "$REPO" && unset HANDOVER_DIR CR_REQUIRE_CROSS_MODEL && load_dotenv HANDOVER_DIR CR_REQUIRE_CROSS_MODEL 2>/dev/null )
+assert_eq "K7 config and policy keys make no keyring call" "" "$(cat "$KSTUB_LOG")"
+rm -f "$REPO/.env"
+
+# K8: sourced by a slash-less name from its own directory, the loader still
+# finds the resolver beside it.
+K8LIB="$TMP/k8/scripts/lib"
+mkdir -p "$K8LIB"
+cp "$LIB" "$(dirname "$LIB")/himmel-secrets" "$K8LIB/"
+kreset
+printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KSTUB_STORE"
+got=$( cd "$K8LIB" && unset TEST_KR_TOKEN && . load-dotenv.sh && load_dotenv --root "$REPO" TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K8 a slash-less source still reaches the resolver" "fake-keyring-value" "$got"
+fi
 
 echo
 if [ "$FAILED" -eq 0 ]; then

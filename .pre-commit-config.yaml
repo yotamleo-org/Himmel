@@ -199,6 +199,13 @@ repos:
         files: ^scripts/(hooks|cr|handover|ci)/.*\.sh$|^scripts/lint/swallowed-errors-baseline\.txt$
         pass_filenames: false
 
+      - id: no-removal-ratchet-in-ci
+        name: a removal ratchet is a one-shot helper under scripts/one-shot/, never a suite, hook or CI step (himmel-dev only)
+        entry: bash scripts/ci/check-removal-ratchets.sh
+        language: system
+        always_run: true
+        pass_filenames: false
+
       - id: no-ticket-id-in-user-strings
         name: adopter-facing strings stay free of raw ticket IDs (himmel-dev only)
         # HIMMEL-2371

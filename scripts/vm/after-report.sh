@@ -474,6 +474,7 @@ FETCH_URL="https://github.com/yotamleo-org/Himmel.git" # leak-allow: hostname th
 # string — the tilde is expanded by the GUEST's shell, not this one.
 GUEST_DEST="~/himmel"
 
+# prim-ok: this directory is created on the guest before himmel is staged there; the host's tmpdir cannot create it.
 GUEST_TMP=$(guest_ssh "umask 077 && mktemp -d") \
     || fail "could not create a guest tmp dir for the ephemeral fetch token"
 GUEST_TOKEN_FILE="$GUEST_TMP/token"

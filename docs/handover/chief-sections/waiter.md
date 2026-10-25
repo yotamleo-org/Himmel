@@ -20,13 +20,21 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     the usage read is broken: fix it, then restart the waiter; it wakes once per
     failure streak), or, on a successor's first arm only (ACTION ZERO step 9,
     `--succession <your session> [--silent-min T]`), `WAKE succession complete
-    <k/n>` plus the printed LIVE command when every inherited worker's `SUCCESSION
+    <k/n>` plus the printed LIVE bullet command when every inherited worker's `SUCCESSION
     accepted` bullet is in, or `WAKE succession partial <k/n> silent <T> min`
-    naming the workers still out. Each fires once; **re-arm without `--succession`**
+    naming the workers still out. Both are informational (LIVE went on the
+    predecessor's `RELAYED` line). Each fires once; **re-arm without `--succession`**
     (a re-arm that keeps it after a complete wake stays quiet). An outgoing
     chief started with `chief.sh next --relay-on-live` gets `WAKE relay-on-live
-    successor=<session>` plus `relay-batch.sh`'s SENDMESSAGE lines once the
-    successor's lock is held fresh; send each line. It runs `tick.sh` every
+    successor=<session>`, then `relay-batch.sh`'s SENDMESSAGE lines and its
+    closing `RELAYED <n> of <m>` line, once the successor's lock is held fresh;
+    send each SENDMESSAGE line first (n counts them), then the `RELAYED` line to
+    the successor, naming every worker still unrelayed. A batch that fails or
+    times out wakes `relay-failed rc=<n>` with its partial output and no
+    `RELAYED` line, and is never re-run. On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line,
+    then send `RELAYED <n> of <m>` yourself (n the delivered lines). Once the successor validated, `<your inbox>.handover` mutes
+    your waiter for `CHIEF_WAIT_HANDOVER_MIN` (default 60); `rm` it to end the
+    mute early. It runs `tick.sh` every
     180 s and wakes only when two consecutive samples differ from the action
     key you last saw: `workers=` (a worker FRESH → STALE / FREE / WRAPPED …),
     `livestate=` (DRIFT / MALFORMED), `prs=` (the repo's open-PR set — any

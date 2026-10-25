@@ -161,8 +161,8 @@
 #
 # --semantic (OFF by default): after the structural refresh, run
 # semantic-update.sh on the dedicated worktree with GRAPH_CADENCE_SEMANTIC_BACKEND
-# (default claude-cli: Sonnet, bank-gated; ollama is the opt-in: local, zero
-# egress, no bank draw). Under it the per-run `git clean` keeps
+# (default claude-api: API credit, needs the API lane; claude-cli and ollama are
+# explicit opt-ins: subscription bank-gated, and local zero egress). Under it the per-run `git clean` keeps
 # graphify-out/, so the semantic manifest (the change gate) persists between
 # fires. A failure alerts through scripts/luna/cadence-alert.sh (leg
 # graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
@@ -198,10 +198,11 @@
 #   GRAPH_CADENCE_GRAPH_PUBLISH   override the graph-publish.sh path.
 #   GRAPH_CADENCE_MERGE_ON_GREEN  override the merge-on-green.sh path.
 #   GRAPH_CADENCE_SEMANTIC_UPDATE override the semantic-update.sh path.
-#   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-cli (default),
-#                                 claude-api (needs HIMMEL_API_LANE=on and
-#                                 HIMMEL_API_ACCOUNT) or ollama; `api` and `cli`
-#                                 are aliases; any other value refuses rc=1.
+#   GRAPH_CADENCE_SEMANTIC_BACKEND semantic backend, claude-api (default; needs
+#                                 HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT, else
+#                                 rc=1), claude-cli or ollama (explicit opt-in);
+#                                 `api` and `cli` are aliases; any other value
+#                                 refuses rc=1.
 #   GRAPH_CADENCE_LEDGER_ROOT     override the handover-root resolution
 #                                 entirely (bypasses handover_root_ensure AND
 #                                 the HANDOVER_DIR-unset refusal below).
@@ -278,7 +279,7 @@ Optional:
   --flow-name <name>  Flow-run ledger name for this run (A-Za-z0-9._- only,
                        else rc=2). Default: graph-publish-<corpus-slug>.
   --semantic          Also run the incremental semantic step (backend from
-                       GRAPH_CADENCE_SEMANTIC_BACKEND, default claude-cli)
+                       GRAPH_CADENCE_SEMANTIC_BACKEND, default claude-api)
                        after the structural refresh. OFF by default.
 EOF
 }
@@ -330,6 +331,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # same path (this script only ever ships inside the primary checkout it also
 # measures), so this split is invisible outside the test suite.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$REPO_ROOT/scripts/lib/prim.sh" || exit 2
 
 # Resolve the PRIMARY checkout root, mirroring ggs-cadence.sh's
 # resolve_himmel_root: via
@@ -381,16 +384,17 @@ AST_UPDATE="${GRAPH_CADENCE_AST_UPDATE:-$SCRIPT_DIR/ast-update.sh}"
 GRAPH_PUBLISH="${GRAPH_CADENCE_GRAPH_PUBLISH:-$SCRIPT_DIR/graph-publish.sh}"
 MERGE_ON_GREEN="${GRAPH_CADENCE_MERGE_ON_GREEN:-$REPO_ROOT/scripts/handover/merge-on-green.sh}"
 SEMANTIC_UPDATE="${GRAPH_CADENCE_SEMANTIC_UPDATE:-$SCRIPT_DIR/semantic-update.sh}"
-# the semantic backend is claude-cli unless opted into claude-api (or its
-# `api` alias) or ollama, resolved by the shared scripts/lib/llm-backend.sh.
+# the semantic backend is claude-api unless opted into claude-cli or ollama (or
+# the `cli` alias), resolved by the shared scripts/lib/llm-backend.sh.
 # Anything else refuses before any work (fail closed, no silent fallback), and
-# claude-api refuses unless the API lane is on (never a fallback to the bank).
+# claude-api under --semantic refuses unless the API lane is on (never a fallback
+# to the bank); a run without --semantic never uses the backend, so it never refuses.
 . "$REPO_ROOT/scripts/lib/llm-backend.sh"
-SEMANTIC_BACKEND="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-cli}")" || {
+SEMANTIC_BACKEND="$(llm_backend_resolve "${GRAPH_CADENCE_SEMANTIC_BACKEND:-claude-api}")" || {
     echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND='${GRAPH_CADENCE_SEMANTIC_BACKEND:-}' is not accepted -- claude-cli, claude-api or ollama only" >&2
     exit 1
 }
-if [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_backend_api_ready; then
+if [ "$SEMANTIC" -eq 1 ] && [ "$SEMANTIC_BACKEND" = "claude-api" ] && ! llm_backend_api_ready; then
     echo "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
     exit 1
 fi
@@ -785,11 +789,11 @@ _pipeline_lock_is_ours() {
     cur=$(cat "$PIPELINE_LOCK/owner" 2>/dev/null) || cur=""
     [ -n "$PIPELINE_LOCK_TOKEN" ] && [ "$cur" = "$PIPELINE_LOCK_TOKEN" ]
 }
-# _pipeline_lock_stamp_heartbeat -- atomic (tmp + rename) so a reader never
-# sees a half-written stamp.
+# _pipeline_lock_stamp_heartbeat -- readers never see a half-written stamp.
 _pipeline_lock_stamp_heartbeat() {
-    local tmp="$PIPELINE_LOCK/heartbeat.tmp.$$"
-    date -u +%s > "$tmp" 2>/dev/null && mv -f "$tmp" "$PIPELINE_LOCK/heartbeat" 2>/dev/null
+    local stamp
+    stamp=$(date -u +%s 2>/dev/null) || return "$?"
+    atomic_write "$PIPELINE_LOCK/heartbeat" <<< "$stamp" 2>/dev/null
 }
 # _pipeline_lock_describe -- DETECTION ONLY, never acted on: sets
 # PIPELINE_LOCK_VERDICT to a description of the lock another run holds. rc 0:
@@ -841,6 +845,7 @@ _pipeline_lock_describe() {
 # heartbeating. rc 1: another run's lock is there -- see
 # PIPELINE_LOCK_VERDICT; nothing was touched.
 _pipeline_lock_try_acquire() {
+    # prim-ok: skip-not-wait, host/heartbeat classification and token-checked release require the persistent directory protocol.
     mkdir "$PIPELINE_LOCK" 2>/dev/null || return 1
     # Ours from this point on, so the EXIT trap may remove it.
     PIPELINE_LOCK_TOKEN="$$-$RANDOM"
@@ -1005,8 +1010,6 @@ if [ "$_ast_rc" -ne 0 ]; then
 fi
 ACTION="refreshed"
 
-# shellcheck source=../lib/prim.sh
-. "$REPO_ROOT/scripts/lib/prim.sh" || exit 2
 # _promote_semantic_to_primary -- copy the merged graph the semantic step built in
 # the dedicated worktree into the primary checkout's graphify-out, the directory
 # legs and the session-start advisory read. It takes the promote lock the hourly

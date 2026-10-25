@@ -253,7 +253,7 @@ worktree_in_use() {
     # not implemented here.
     if [ -z "$WORKTREE_INUSE_DARWIN_WARNED" ] && [ "$(uname -s 2>/dev/null)" = "Darwin" ]; then
         WORKTREE_INUSE_DARWIN_WARNED=1
-        echo "worktree-inuse: this platform (Darwin) has no /proc to scan for a live holder -- in-use detection here falls back to the rename probe alone, which does NOT detect a holder (POSIX rename ignores open handles/cwd, same as Linux). See HIMMEL-2602." >&2
+        echo "worktree-inuse: this platform (Darwin) has no /proc to scan for a live holder -- in-use detection here falls back to the rename probe alone, which does NOT detect a holder (POSIX rename ignores open handles/cwd, same as Linux)." >&2
     fi
 
     if ! mv "$path" "$probe" 2>/dev/null; then

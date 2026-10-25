@@ -33,6 +33,8 @@
 version: 2
 updates:
   - package-ecosystem: "npm"
+    commit-message:
+      prefix: "chore(deps): [HIMMEL-7588]"
     directories:
       - "/scripts/jira"
       - "/scripts/bitbucket"
@@ -62,6 +64,8 @@ updates:
           - "patch"
 
   - package-ecosystem: "github-actions"
+    commit-message:
+      prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -71,6 +75,8 @@ updates:
   # Digest bumps of the CI image's ubuntu:24.04 base only: a release jump
   # (24.10, 26.04) is a deliberate Dockerfile change, not a weekly bump.
   - package-ecosystem: "docker"
+    commit-message:
+      prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/.github/ci-image"
     schedule:
       interval: "weekly"
@@ -85,6 +91,8 @@ updates:
   # pins and their hashes together. A shellcheck-py bump must also move the
   # .pre-commit-config.yaml rev (check-ci-install-locks.sh fails until it does).
   - package-ecosystem: "pip"
+    commit-message:
+      prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/.github/ci-image"
     schedule:
       interval: "weekly"
@@ -94,6 +102,8 @@ updates:
   # The obsidian-triage tools' hashed requirements (requirements-scrapling.txt,
   # requirements-whisper.txt), installed outside CI by the operator's venv / `uv run`.
   - package-ecosystem: "pip"
+    commit-message:
+      prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/marketplace/plugins/obsidian-triage/tools"
     schedule:
       interval: "weekly"

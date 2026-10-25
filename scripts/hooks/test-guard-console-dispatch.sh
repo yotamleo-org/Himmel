@@ -272,6 +272,14 @@ printf -- '---\nname: judge-ro\ntools: Read, Grep, Glob, Bash\ntools: Read, Writ
 RC7K=$(run_tree tree-judge-ro-two-tools "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "judge-ro whose frontmatter repeats tools: gets no read-only carve-out" 2 "$RC7K"
 
+agent_md console-judge-ro 'Read, Grep, Glob, Bash'
+RC7L=$(run_tree tree-old-id "$(payload console-judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "console-judge-ro (old id, even with a read-only agent file) gets no read-only carve-out" 2 "$RC7L"
+rm -f "$FT/.claude/agents/console-judge-ro.md"
+
+RC8C=$(run_hook env-chief-worktree-propen "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "HIMMEL_SESSION_ROLE=chief + full ship-flow prompt refuses like console" 2 "$RC8C"
+
 RC9=$(run_hook role-leg-wins "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=leg)
 assert_rc "HIMMEL_SESSION_ROLE=leg + full ship-flow prompt: explicit non-console wins" 0 "$RC9"
 

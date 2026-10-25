@@ -106,8 +106,18 @@ SH
   printf '%s' "$root"
 }
 
+# The gate reads this clock, never the real date. OLD_PUB is past the 72 h buffer
+# at NOW, YOUNG_PUB inside it.
+export DRIFT_NOW="2026-10-25T12:00:00Z"
+OLD_PUB="2026-10-01T00:00:00Z"
+YOUNG_PUB="2026-10-24T12:00:00Z"
+
+# run_bump <root> <args...>: supplies an old --published unless the caller gave one.
 run_bump() {
   local root="$1"; shift
+  local a has_pub=0
+  for a in "$@"; do [ "$a" = "--published" ] && has_pub=1; done
+  if [ "$has_pub" -eq 0 ]; then set -- "$@" --published "$OLD_PUB"; fi
   DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" "$@"
 }
 
@@ -187,7 +197,7 @@ json.dump(d, open(p, "w"), indent=2)
 PY
 before_pin=$(cat "$root/scripts/lib/widget-bin.sh")
 before_reg=$(cat "$root/scripts/upstreams.json")
-assert_rc 4 "absent pin literal is rc=4" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4
+assert_rc 4 "absent pin literal is rc=4" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4 --published "$OLD_PUB"
 if [ "$(cat "$root/scripts/lib/widget-bin.sh")" = "$before_pin" ]; then pass "pin file byte-identical after the failure"; else fail "pin file was modified on a failed bump"; fi
 if [ "$(cat "$root/scripts/upstreams.json")" = "$before_reg" ]; then pass "registry byte-identical after the failure"; else fail "registry was modified on a failed bump"; fi
 rm -rf "$root"
@@ -229,7 +239,7 @@ builtins.open = _patched
 PY
 out=$(DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" \
      DRIFT_TEST_BREAK_PIN_WRITE="$pin" PYTHONPATH="$scdir" \
-     bash "$BUMP" widget 1.2.4 2>&1); rc=$?
+     bash "$BUMP" widget 1.2.4 --published "$OLD_PUB" 2>&1); rc=$?
 if [ "$rc" -eq 4 ]; then pass "pin write failure is rc=4"; else fail "pin write failure — expected rc=4 got rc=$rc: $out"; fi
 if [ "$(cat "$pin")" = "$before_pin" ]; then
   pass "pin file restored to its original content after the failed write"
@@ -250,14 +260,14 @@ root=$(make_fixture)
 # literal copy of the pin template to the fixture, so the bumper must refuse it as
 # ambiguous. Expanding it here would defeat the case.
 printf '%s\n' '_widget_version_again() { printf "%s\\n" "${WIDGET_VERSION:-1.2.3}"; }' >> "$root/scripts/lib/widget-bin.sh"
-assert_rc 4 "two matches is rc=4" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4
+assert_rc 4 "two matches is rc=4" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4 --published "$OLD_PUB"
 assert_file_has "$root/scripts/upstreams.json" '"synced_base": "1.2.3"' "ambiguous match left the registry alone"
 rm -rf "$root"
 
 echo "[test-apply-drift-bump] missing pin file is rc=4"
 root=$(make_fixture)
 rm -f "$root/scripts/lib/widget-bin.sh"
-assert_rc 4 "absent pin file is rc=4" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4
+assert_rc 4 "absent pin file is rc=4" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4 --published "$OLD_PUB"
 rm -rf "$root"
 
 echo "[test-apply-drift-bump] version_pin.file may not escape the repo root"
@@ -269,7 +279,7 @@ d = json.load(open(p))
 d["entries"][0]["version_pin"]["file"] = "../outside/widget-bin.sh"
 json.dump(d, open(p, "w"), indent=2)
 PY
-assert_rc 2 "'..' in version_pin.file rejected" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4
+assert_rc 2 "'..' in version_pin.file rejected" -- env DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4 --published "$OLD_PUB"
 rm -rf "$root"
 
 echo "[test-apply-drift-bump] malformed registry is rc=2, never a bump"
@@ -374,6 +384,43 @@ out=$(run_bump "$root" proxy 8.0.26 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then pass "a falsey non-list companion_pins is refused (rc=2), not skipped"; else fail "companion_pins {} — expected rc=2 got rc=$rc: $out"; fi
 rm -rf "$root"
 
+echo "[test-apply-drift-bump] release-age gate: a tag younger than 72 h is refused (clock injected via DRIFT_NOW)"
+root=$(make_fixture)
+before=$(cat "$root/scripts/upstreams.json" "$root/scripts/lib/widget-bin.sh")
+out=$(DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" widget 1.2.4 2>&1); rc=$?
+if [ "$rc" -eq 5 ]; then pass "a bump without --published is refused (rc=5)"; else fail "no --published — expected rc=5 got rc=$rc: $out"; fi
+assert_contains "$out" "--published" "the refusal names the missing --published"
+out=$(run_bump "$root" widget 1.2.4 --published "$YOUNG_PUB" 2>&1); rc=$?
+if [ "$rc" -eq 5 ]; then pass "a tag published 24 h ago is refused (rc=5)"; else fail "young tag — expected rc=5 got rc=$rc: $out"; fi
+assert_contains "$out" "72 h" "the refusal names the 72 h buffer"
+out=$(run_bump "$root" widget 1.2.4 --published "2026-10-22T12:00:01Z" 2>&1); rc=$?
+if [ "$rc" -eq 5 ]; then pass "a tag one second inside the buffer is refused (rc=5)"; else fail "edge-young tag — expected rc=5 got rc=$rc: $out"; fi
+out=$(run_bump "$root" widget 1.2.4 --published "2026-10-26T12:00:00Z" 2>&1); rc=$?
+if [ "$rc" -eq 5 ]; then pass "a publish date in the future is refused (rc=5)"; else fail "future tag — expected rc=5 got rc=$rc: $out"; fi
+out=$(run_bump "$root" widget 1.2.4 --published "2026-10-24" 2>&1); rc=$?
+if [ "$rc" -eq 2 ]; then pass "a --published without a time is a usage error (rc=2)"; else fail "date-only --published — expected rc=2 got rc=$rc: $out"; fi
+if [ "$(cat "$root/scripts/upstreams.json" "$root/scripts/lib/widget-bin.sh")" = "$before" ]; then pass "every refusal left the registry and the pin untouched"; else fail "a refused bump wrote something"; fi
+out=$(run_bump "$root" widget 1.2.4 --dry-run --published "$YOUNG_PUB" 2>&1); rc=$?
+if [ "$rc" -eq 5 ]; then pass "--dry-run is gated too (rc=5)"; else fail "young dry-run — expected rc=5 got rc=$rc: $out"; fi
+rm -rf "$root"
+
+echo "[test-apply-drift-bump] release-age gate: a tag past 72 h bumps"
+root=$(make_fixture)
+out=$(run_bump "$root" widget 1.2.4 --published "2026-10-22T12:00:00Z" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "a tag published exactly 72 h ago bumps"; else fail "72 h tag — expected rc=0 got rc=$rc: $out"; fi
+assert_file_has "$root/scripts/lib/widget-bin.sh" 'WIDGET_VERSION:-1.2.4' "the old tag's pin literal moved"
+rm -rf "$root"
+root=$(make_fixture)
+out=$(run_bump "$root" widget 1.2.4 --published "2026-10-22T14:00:00+02:00" 2>&1); rc=$?
+if [ "$rc" -eq 0 ]; then pass "a +02:00 offset timestamp is read as UTC-correct (72 h old) and bumps"; else fail "offset tag — expected rc=0 got rc=$rc: $out"; fi
+rm -rf "$root"
+
+echo "[test-apply-drift-bump] release-age gate: SKIP and already-current win over the gate"
+root=$(make_fixture)
+out=$(DRIFT_REPO_ROOT="$root" DRIFT_REGISTRY="$root/scripts/upstreams.json" bash "$BUMP" forked 1.2.4 2>&1); rc=$?
+if [ "$rc" -eq 3 ]; then pass "a no-version_pin entry stays SKIP without --published (rc=3)"; else fail "forked without --published — expected rc=3 got rc=$rc: $out"; fi
+rm -rf "$root"
+
 echo "[test-apply-drift-bump] the REAL registry: neither graphify nor qmd is auto-bumpable"
 REAL_ROOT=$(cd "$SCRIPT_DIR/.." && cd .. && pwd)
 if [ -f "$REAL_ROOT/scripts/upstreams.json" ]; then
@@ -383,7 +430,7 @@ if [ -f "$REAL_ROOT/scripts/upstreams.json" ]; then
   out=$(DRIFT_REPO_ROOT="$REAL_ROOT" bash "$BUMP" qmd 99.99.99 --dry-run 2>&1); rc=$?
   if [ "$rc" -eq 3 ]; then pass "qmd is SKIP (SHA pin, no version_pin, not auto-bumpable)"; else fail "qmd — expected rc=3 (SKIP) got $rc: $out"; fi
   # CI's bun version is a bare-version file the nightly bump owns.
-  out=$(DRIFT_REPO_ROOT="$REAL_ROOT" bash "$BUMP" bun-ci 99.99.99 --dry-run 2>&1); rc=$?
+  out=$(DRIFT_REPO_ROOT="$REAL_ROOT" bash "$BUMP" bun-ci 99.99.99 --dry-run --published "$OLD_PUB" 2>&1); rc=$?
   if [ "$rc" -eq 0 ]; then pass "bun-ci resolves against the live registry (dry-run)"; else fail "bun-ci dry-run — expected rc=0 got $rc: $out"; fi
   assert_contains "$out" ".bun-version" "bun-ci version_pin points at the repo-root .bun-version"
 else

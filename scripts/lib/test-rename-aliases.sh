@@ -313,8 +313,7 @@ print(" ".join(r[2] for r in friction.DOC_RULES if re.search(r[0], sys.argv[2]))
 done
 
 # --- slice V5a: the chief script and its context lib, /chief the canonical command ---
-V5A_ROWS='console-context.sh|chief-context.sh|identifier|old-to-new|V5|X
-console.sh|chief.sh|identifier|old-to-new|V5|X'
+V5A_ROWS='console.sh|chief.sh|identifier|old-to-new|V5|X'
 while IFS= read -r want; do
   tabbed="$(printf '%s' "$want" | tr '|' '\t')"
   old="${want%%|*}"
@@ -324,20 +323,10 @@ done <<EOF
 $V5A_ROWS
 EOF
 forwards bash scripts/handover/chief console.sh chief.sh "$SH_STUB"
-# The launchers and the arm tests still source the old lib path, so it loads
-# the new file and stays silent.
-d="$FT/v5a-lib"
-mkdir -p "$d" "$FT/v5a-cwd"
+# The old lib path is gone: no forwarder file, no registry row.
 check "scripts/lib/chief-context.sh exists" "yes" "$([ -f "$ROOT/scripts/lib/chief-context.sh" ] && echo yes || echo no)"
-if cp "$ROOT/scripts/lib/console-context.sh" "$d/console-context.sh" 2>/dev/null; then
-  # shellcheck disable=SC2016 # the stub body is expanded when sourced, not here
-  printf 'v5a_probe() { printf "NEW:%%s" "$1"; }\nreturn 5\n' > "$d/chief-context.sh"
-  out="$(cd "$FT/v5a-cwd" && bash -c '. "$1"; printf "rc=%s|" "$?"; v5a_probe x' _ "$d/console-context.sh" 2> "$d/err")"
-  check "console-context.sh sources chief-context.sh from another cwd and keeps its status" "rc=5|NEW:x" "$out"
-  check "console-context.sh prints nothing when sourced" "" "$(cat "$d/err")"
-else
-  check "scripts/lib/console-context.sh exists" "yes" "no"
-fi
+check "scripts/lib/console-context.sh is gone" "no" "$([ -e "$ROOT/scripts/lib/console-context.sh" ] && echo yes || echo no)"
+check "the registry has no console-context.sh row" "0" "$(printf '%s\n' "$ROWS" | awk -F'\t' '$2 == "console-context.sh"' | wc -l | tr -d ' ')"
 stub .claude/commands/supervisor-session.md .claude/commands/chief.md
 stub .claude/commands/console.md .claude/commands/chief.md
 
@@ -604,17 +593,10 @@ done <<EOF
 $V4A2_ROWS
 EOF
 
-# --- slice V5d: the judge agent ids, each old id still dispatchable ---
-V5D_ROWS='console-judge|judge|identifier|old-to-new|V5|X
-console-judge-ro|judge-ro|identifier|old-to-new|V5|X'
-while IFS= read -r want; do
-  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
-  old="${want%%|*}"
-  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
-  check "V5d row '$old'" "$tabbed" "$got"
-done <<EOF
-$V5D_ROWS
-EOF
+# --- slice V5d: the old judge agent ids are gone ---
+for old in console-judge console-judge-ro; do
+  check "the registry has no '$old' row" "0" "$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o' | wc -l | tr -d ' ')"
+done
 
 # --- an exact seed name sits above every prefix row that would swallow it ---
 ORDER="$(printf '%s\n' "$ROWS" | awk -F'\t' '

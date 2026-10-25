@@ -1331,6 +1331,93 @@ BOARD_KNOWN_FINDINGS="$W/bin/absent" crrun >/dev/null; rc=$?
 contains 'overdue-classes: an unreadable ladder never fails the render (rc 0)' "rc=$rc" 'rc=0'
 lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/board.html")" 'data-overdue-classes='
 
+# --- the operator board is byte-identical: golden of the base render on the main fixture
+# (html + archive, the minute stamp normalised, a hermetic env: no operator ledger, HOME or
+# handover root). A deliberate operator-board change updates GOLDEN_OPERATOR_SHA.
+GOLDEN_OPERATOR_SHA='9a06641d93ff6e42b2a592f1d402903b2aa8204e5f2b85a1a291afb9b32f622f'
+mkdir -p "$W/home"
+( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
+golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"
+same 'the operator board html + archive are byte-identical to the base render on the same fixture (HIMMEL-6879)' "$golden_sha" "$GOLDEN_OPERATOR_SHA"
+
+# --- the user shift board: --view user, a second renderer over the same reads
+op_before="$(sha256sum < "$board")"
+uout="$(run --view user --out "$W/user-board.html")"; rc=$?
+same 'the user view prints the path it wrote (HIMMEL-6879)' "$rc:$uout" "0:$W/user-board.html"
+uhtml="$(cat "$W/user-board.html" 2>/dev/null)"
+same 'the user view leaves the operator board file untouched (HIMMEL-6879)' "$(sha256sum < "$board")" "$op_before"
+ucount() { printf '%s\n' "$uhtml" | grep -o "data-section=\"$1\" data-count=\"[0-9]*\"" | grep -o '[0-9]*"$' | tr -d '"'; }
+section_of() { printf '%s\n' "$uhtml" | sed -n "/<section data-section=\"$1\"/,/<\/section>/{p;/<\/section>/q}"; }
+# N1 N2 N9 N10 N11 N18 N19 and N16 (in the Live state, no handover doc yet) build or sit in review;
+# N3 awaits GO, N7 is blocked, N12 has a FINDING and the Live state holds two open operator
+# decisions; PRs 1990 and 1995 merged.
+same 'running now counts the legs that need nobody (HIMMEL-6879)' "$(ucount running)" '8'
+contains 'a running leg without a ticket reads worker session (HIMMEL-6879)' "$(section_of running)" '<b>worker session</b>'
+lacks 'a question row drops the bullet time and marker (HIMMEL-6879)' "$(section_of waiting)" '12:00 BLOCKED'
+contains 'a question row keeps the question text (HIMMEL-6879)' "$(section_of waiting)" 'the push was refused'
+same 'waiting on you counts a GO, a question and the open decisions (HIMMEL-6879)' "$(ucount waiting)" '5'
+same 'shipped counts the merged PRs (HIMMEL-6879)' "$(ucount shipped)" '2'
+contains 'a READY leg is a GO row with its PR (HIMMEL-6879)' "$(section_of waiting)" 'GO · PR #2001'
+contains 'a waiting row names the ticket (HIMMEL-6879)' "$(section_of waiting)" 'HIMMEL-3332'
+contains 'an open operator decision is a waiting row (HIMMEL-6879)' "$(section_of waiting)" 'widen the fleet cap to 20?'
+contains 'a running row names the ticket (HIMMEL-6879)' "$(section_of running)" 'HIMMEL-3340'
+contains 'a shipped row names the merged PR (HIMMEL-6879)' "$(section_of shipped)" 'PR #1995'
+for hidden in 'Failure classes' 'Phase ladder' 'data-label=' 'data-phase=' 'data-need=' 'Fleet' 'lane' '>N3<' '>N12<' 'READY-TO-OPEN' 'console-board-fp'; do
+    lacks "the user view leaves out '$hidden' (HIMMEL-6879)" "$uhtml" "$hidden"
+done
+for secret in aaaa1111 bbbb2222 cccc3333 pid111111 pid830420 'V-N1-' 'x8664' abcdef12 cafe0123 cafe1919 pid181818; do
+    lacks "no nonce/lock-token text in the user view: $secret (HIMMEL-6879)" "$uhtml" "$secret"
+done
+lacks 'a <script> in a leg bullet is escaped in the user view (HIMMEL-6879)' "$uhtml" '<script>alert(1)'
+contains 'the user view fits a phone width (HIMMEL-6879)' "$uhtml" 'name="viewport" content="width=device-width, initial-scale=1"'
+lacks 'the user view loads nothing from the network (HIMMEL-6879)' "$uhtml" 'http'
+run --view nope --out "$W/nope.html" >/dev/null 2>&1; rc=$?
+same 'an unknown --view is a usage error (HIMMEL-6879)' "rc=$rc" 'rc=2'
+run --view user --changed --out "$W/user-changed.html" >/dev/null 2>&1; rc=$?
+same '--changed with --view user is a usage error, not a bare path (HIMMEL-6879)' "rc=$rc" 'rc=2'
+run --view user --json "$W/user.json" --out "$W/user-json.html" >/dev/null 2>&1; rc=$?
+same '--json with --view user is a usage error, not a silent skip (HIMMEL-6879)' "rc=$rc" 'rc=2'
+# a READY-TO-OPEN leg (no PR yet) is in no section: not running, not the user's to answer.
+lacks 'a READY-TO-OPEN leg is in no user section (HIMMEL-6879)' "$uhtml" 'HIMMEL-3350'
+# a parked leg is in no section either: N7 leaves waiting, running is unchanged.
+for park in PARKED-USAGE PARKED-BANK; do
+    PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub-park" TICK_STUB_PARK="$park" TICK_ARGV_LOG="$W/argv-upark.log" \
+        BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+        GH_OPEN="$W/open.json" GH_MERGED="$W/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+        node "$SUT" --doc "$DOC" --repo "$W/repo" --view user --out "$W/user-park.html" >/dev/null 2>"$W/stderr.log"
+    phtml="$(cat "$W/user-park.html" 2>/dev/null)"
+    lacks "a $park leg is in no user section (HIMMEL-6879)" "$phtml" 'HIMMEL-3351'
+    same "a $park leg leaves waiting on you at 4 (HIMMEL-6879)" "$(printf '%s\n' "$phtml" | grep -o 'data-section="waiting" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '4'
+    same "a $park leg leaves running now at 8 (HIMMEL-6879)" "$(printf '%s\n' "$phtml" | grep -o 'data-section="running" data-count="[0-9]*"' | grep -o '[0-9]*"$' | tr -d '"')" '8'
+done
+
+# --- the leaks the user view must strip: a COPY of the fixture whose user-read fields (a BLOCKED
+# bullet, a FINDING bullet, a decisions: line, an open PR title and a merged PR title) carry a
+# nonce, a lock token, a worker label and a home path. The main fixture stays untouched (the golden).
+cp -R "$B" "$W/leak"
+hu=somebody  # the home path is built, so the leak-class gate sees no literal home directory
+mkleg_leak() { printf '%s\n' '# leg' '## Results' "$2" > "$W/leak/$1-2026-09-21-RESUME.md"; }
+mkleg_leak HIMMEL-3351-N7-eta "- 12:00 BLOCKED — N3 and N12 clash, V-N7-ffff6666 lock cachyos-x8664-pid777777 in /home/$hu/leak/n7.log"
+mkleg_leak HIMMEL-3379-N12-xi "- 12:30 FINDING N3 clash, V-N12-aaaa1212 lock cachyos-x8664-pid121212 in /home/$hu/leak/n12.log"
+LDOC="$W/leak/$(basename "$DOC")"
+sed "s|^decisions: .*|decisions: ask N3 about V-N3-cccc3333 lock cachyos-x8664-pid333333 in /home/$hu/leak/d.md?; second one?|" "$DOC" > "$LDOC"  # gnu-ok: console kit is Linux-only
+sed "s|slice S3|slice S3 for N12 in /home/$hu/leak/o V-N12-aaaa1212 cachyos-x8664-pid121212|" "$W/open.json" > "$W/leak/open.json"  # gnu-ok: console kit is Linux-only
+sed "s|harden|harden N7 in /home/$hu/leak/m V-N7-ffff6666 cachyos-x8664-pid777777|" "$W/merged.json" > "$W/leak/merged.json"  # gnu-ok: console kit is Linux-only
+PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv-leak.log" \
+    BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
+    GH_OPEN="$W/leak/open.json" GH_MERGED="$W/leak/merged.json" GH_EPIC="$W/epic.json" GH_VIEW="$W/view" \
+    node "$SUT" --doc "$LDOC" --repo "$W/repo" --view user --out "$W/user-leak.html" >/dev/null 2>"$W/stderr.log"
+lhtml="$(cat "$W/user-leak.html" 2>/dev/null)"
+contains 'the leak page still shows a BLOCKED question (HIMMEL-6879)' "$lhtml" 'clash, '
+contains 'the leak page still shows the decision (HIMMEL-6879)' "$lhtml" 'ask a worker about'
+contains 'the leak page still shows the open PR goal (HIMMEL-6879)' "$lhtml" 'slice S3 for a worker in'
+contains 'the leak page still shows the merged PR goal (HIMMEL-6879)' "$lhtml" 'harden a worker in'
+contains 'a worker label in a user-read field reads "a worker" (HIMMEL-6879)' "$lhtml" 'a worker and a worker clash'
+same 'no worker label survives in the user view (HIMMEL-6879)' "$(printf '%s\n' "$lhtml" | grep -cE '\bN[0-9]+\b')" '0'
+for leak in ffff6666 aaaa1212 cccc3333 pid777777 pid121212 pid333333 x8664 "/home/$hu" 'V-N7-' 'V-N12-' 'V-N3-'; do
+    lacks "a planted $leak in a user-read field does not reach the user view (HIMMEL-6879)" "$lhtml" "$leak"
+done
+
 # --- usage
 PATH="$W/bin:$PATH" node "$SUT" >/dev/null 2>&1; rc=$?
 contains 'no --doc is a usage error (rc 2)' "rc=$rc" 'rc=2'
@@ -1352,8 +1439,8 @@ contains 'board-tracker.md: the board subagent runs at effort medium' "$BT_BOARD
 contains 'board-tracker.md: the tracker publish goes to the same haiku subagent' "$BT_TRACKER" 'goes to the same haiku subagent'
 contains 'board-tracker.md: the subagent returns one line, not the page' "$BT" 'returns one line'
 contains 'board-tracker.md: names the cost of an unviewed publish (the refusal returns the live page)' "$BT" 'returns the whole live page'
-contains 'board-tracker.md: the ponytail line names its ceiling' "$BT" 'ponytail: subagent cost absorption is not yet measured'
-contains 'board-tracker.md: the ponytail line names its upgrade path' "$BT" 'the first chief publish that uses it records the parent-context delta'
+contains 'board-tracker.md: names the measured parent-context cost of a delegated publish' "$BT" 'measured: a haiku-delegated publish adds about 1.4k-2.7k tokens'
+contains 'board-tracker.md: the measured cost is under the 5k limit' "$BT" 'under the 5k limit'
 # shellcheck disable=SC2016  # literal backticks in the needle
 lacks 'board-tracker.md: no bare Artifact read in the console context' "$BT" 'must `Artifact read` it before it `Artifact publish`es'
 # shellcheck disable=SC2016  # literal backticks in the needle

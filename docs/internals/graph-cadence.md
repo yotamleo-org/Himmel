@@ -236,7 +236,7 @@ explicit `GRAPHIFY_MAX_CONCURRENCY` wins, and an ollama-cloud model keeps 6.
 
 - **The armed task's own run log** — `graphmap-cadence.sh status` surfaces
   it: `~/.claude/graphmap-cadence/graphmap-publish-himmel.log` (rotated to
-  `.log.prev` each fire by the cron/schtasks wrapper `graphmap-cadence.sh`
+  `.log.prev` each fire by the cron wrapper `graphmap-cadence.sh`
   itself emits). This captures `graph-cadence.sh`'s **complete** stdout +
   stderr for the fire — fetch, `ast-update.sh`, `graph-publish.sh`,
   `merge-on-green.sh`, all of it — and is the log to check first during an

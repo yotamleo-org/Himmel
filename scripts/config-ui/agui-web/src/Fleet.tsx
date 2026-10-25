@@ -372,10 +372,10 @@ function Meter({ fill }: { fill: number }) {
   return <span className={`fleet-meter ${fill >= 90 ? "fail" : fill >= 75 ? "warn" : "ok"}`} aria-hidden="true"><i style={{ width: `${Math.min(100, fill)}%` }} /></span>;
 }
 
-// context fill against the session's ceiling, then the cumulative tokens and their cost-eq.
+// context fill against the session's ceiling, then the cumulative tokens and their cost-eq (a lane the server does not price has none).
 function usageText(u: NonNullable<Row["usage"]>): string {
   const fill = u.fill === null ? "context not measured" : `context ${u.fill}% of ${k(u.ceiling)} (${u.ceilingFrom === "autocompact" ? "autocompact" : "model window"})`;
-  return `${fill} · ${u.calls} call${u.calls === 1 ? "" : "s"} · in ${k(u.input)} · out ${k(u.output)} · cache read ${k(u.cacheRead)} · cache write ${k(u.cacheCreate)} · cost-eq ${k(u.costEq)}`;
+  return `${fill} · ${u.calls} call${u.calls === 1 ? "" : "s"} · in ${k(u.input)} · out ${k(u.output)} · cache read ${k(u.cacheRead)} · cache write ${k(u.cacheCreate)} · cost-eq ${u.costEq === null ? "not priced" : k(u.costEq)}`;
 }
 
 // what the cloud session last reported on its PR (the brief's CLOUD-DONE / CLOUD-BLOCKED comment).

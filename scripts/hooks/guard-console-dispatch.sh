@@ -43,7 +43,7 @@
 # prompt text cannot do it here. So there is none. The two carve-outs below are the only
 # ones left, and both are load-bearing (structural / audited), never
 # spoofable by the dispatch's own prompt text:
-#   * subagent_type: Explore, or judge-ro / its old id console-judge-ro (a
+#   * subagent_type: Explore, or judge-ro (a
 #     repo agent whose frontmatter pins tools Read, Grep, Glob, Bash only,
 #     checked at dispatch — the same structural read-only lane)
 #   * CHIEF_DISPATCH_OK=1 (see "Escape hatches" below)
@@ -52,7 +52,7 @@
 #
 # Console detection (ordered, cheap, fail-open — unknown means NOT console):
 #   1. HIMMEL_SESSION_ROLE (set in the LAUNCHING shell; session-sticky — a
-#      per-call prefix does not reach a hook process). "console"
+#      per-call prefix does not reach a hook process). "console" or "chief"
 #      (case-insensitive) => console-shaped. Any other non-empty value =>
 #      NOT console, decided, stop — an explicit non-console marker always
 #      wins immediately, before the transcript is even read.
@@ -147,7 +147,7 @@ fi
 [ "$tool" = "Agent" ] || exit 0
 
 subagent_type=$(printf '%s' "$input" | jq -r '.tool_input.subagent_type | select(type == "string") // empty' 2>/dev/null || true)
-# judge-ro (old id console-judge-ro) is matched exactly and keeps the
+# judge-ro is matched exactly and keeps the
 # read-only lane only while its project agent file has one tools: line,
 # Read, Grep, Glob, Bash. A file that grants more, or no file, gets none.
 ro_judge_pinned() {
@@ -158,7 +158,7 @@ ro_judge_pinned() {
 }
 case "$subagent_type" in
     Explore) exit 0 ;;
-    judge-ro|console-judge-ro) ro_judge_pinned "$subagent_type" && exit 0 ;;
+    judge-ro) ro_judge_pinned "$subagent_type" && exit 0 ;;
 esac
 
 text=$(printf '%s' "$input" | jq -r '[.tool_input.description, .tool_input.prompt] | map(select(type == "string")) | join("\n")' 2>/dev/null || true)
@@ -177,7 +177,7 @@ family_count=$((worktree_match + pr_open_match + cr_gate_match))
 is_console=0
 role_lc=$(printf '%s' "${HIMMEL_SESSION_ROLE:-}" | tr '[:upper:]' '[:lower:]')
 if [ -n "$role_lc" ]; then
-    [ "$role_lc" = "console" ] && is_console=1
+    case "$role_lc" in console|chief) is_console=1 ;; esac
 else
     transcript_path=$(printf '%s' "$input" | jq -r '.transcript_path // empty' 2>/dev/null || true)
     if [ -n "$transcript_path" ] && [ -f "$transcript_path" ]; then

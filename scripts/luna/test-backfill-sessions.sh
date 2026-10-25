@@ -36,6 +36,7 @@ GOLDEN="$SCRIPT_DIR/../hooks/testdata/session-note.golden.md"
 FIXTURE_DIR="$SCRIPT_DIR/testdata"
 TRANSCRIPT_FIXTURES="$SCRIPT_DIR/../hooks/testdata/transcripts"
 CLAUDE_STUB="$SCRIPT_DIR/../hooks/testdata/bin/claude-stub.sh"
+export HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
 
 [ -f "$BACKFILL" ] || { echo "FAIL: backfill-sessions.sh not found at $BACKFILL"; exit 1; }
 [ -f "$GOLDEN" ]   || { echo "FAIL: golden fixture not found at $GOLDEN"; exit 1; }
@@ -890,6 +891,40 @@ else
         fail "reheal(mech): session_id mutated"
     fi
 fi
+
+# ============================================================================
+# Case 12b: the API lane is off — a launcher is reachable but the crystallizer
+#           would refuse, so reheal takes the mechanical fallback instead
+# ============================================================================
+echo ""
+echo "Case 12b: reheal mechanical re-render (API lane off)"
+
+reheal_lane_off() { # <label> <env-assignments...>
+    local label="$1"; shift
+    local sb="$TMP_ROOT/case12b-$label" vault proj note out
+    vault="$sb/vault"; proj="$sb/projects"
+    note="$vault/sessions/2026/06/2026-06-20-0000-testrepo.md"
+    mkdir -p "$vault" "$proj"
+    write_husk_note "$note" "reheal-sess-$label"
+    seed_named_transcript "$proj" "reheal-sess-$label" "$TRANSCRIPT_FIXTURES/normal.jsonl"
+    out=$(env "$@" CRYSTALLIZE_CLAUDE_BIN="$CLAUDE_STUB" STUB_MODE=success \
+        CRYSTALLIZE_PID_DIR="$sb/pids" \
+        bash "$BACKFILL" --reheal \
+        --projects-dir "$proj" \
+        --luna-vault-path "$vault" \
+        --state-file "$sb/state.json" \
+        --vault-registry /dev/null \
+        2>&1)
+    assert_contains "reheal($label): healed count reported" "healed=1" "$out"
+    assert_not_contains "reheal($label): no longer a husk" "_Transcript unavailable._" "$(cat "$note" 2>/dev/null)"
+    if grep -q '^crystallized: false$' "$note"; then
+        pass "reheal($label): mechanical render, stays crystallized: false"
+    else
+        fail "reheal($label): note was crystallized without a usable API lane"
+    fi
+}
+reheal_lane_off "lane-off" -u HIMMEL_API_LANE
+reheal_lane_off "bad-account" HIMMEL_API_ACCOUNT=invalid
 
 # ============================================================================
 # Case 13: reheal mechanical on a tool-only transcript (no prose turn) is a

@@ -2,8 +2,10 @@
 """scripts/eval/review-page.py - the readable page over the reviewer evals (HIMMEL-6943).
 
 Reads the eval-runs ledger (lib/eval_runs.py) and the eval-changes ledger (lib/eval_feedback.py) and
-writes one Markdown page in plain words: how often the critics catch planted bugs and are right
-(review-panel), how often the judges let a bug past a GO (judge-accuracy), the trend since the last
+writes one Markdown page in plain words, its bottom line first (each eval's headline with its run day):
+how often the critics catch planted bugs and are right
+(review-panel), how often the judges let a bug past a GO (judge-accuracy), the proof-first share of
+merged PRs (pdd-share), the trend since the last
 run of the same series, and each change the feedback step made with its re-measured result. The page
 carries no metric names: a number with no sentence here is not shown.
 
@@ -219,6 +221,23 @@ def judge_lines(cur, prev):
     return out
 
 
+def proof_lines(cur, prev):
+    m = cur["metrics"]
+    out = ["A merged PR counts as proof-first when two things hold: its ticket had a Definition of Done and a "
+           "Proof before the PR's first commit, and the PR body names RED (the new test failing) and then GREEN "
+           "(the same test passing). It matters because a check written down before the work, and seen failing "
+           "before the fix, is what shows the change does what the ticket asked: a test never seen failing may "
+           "test nothing.", "",
+           "Run of %s, the last %d merged PRs whose ticket and commits could be read.%s" % (
+               day(cur["ts"]), cur["n"] or 0, level(cur)), ""]
+    for key, text, unit in (("pdd", "Proof first", " merged PRs"), ("ticket_first", "The ticket was written first", ""),
+                            ("red_green", "RED then GREEN named in the PR body", "")):
+        s = rate(cur, prev, key + ".pct")
+        if s and count(m, key + ".n"):
+            out.append("- %s: %d of %d%s%s." % (text, count(m, key + ".k"), count(m, key + ".n"), unit, s))
+    return out
+
+
 def change_lines(changes):
     changes = [c for c in changes if isinstance(c, dict)]
     opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")
@@ -259,12 +278,31 @@ def change_lines(changes):
     return out
 
 
+def bottom_lines(rows):
+    """Each eval's headline line with its run day: the whole panel's catch when it was scored (else the first
+    critic's), bugs past a GO, the proof-first share. A run that scored nothing says so."""
+    out = []
+    for eval_id, build, mark, name in (("review-panel", critic_lines, " planted bugs: ", "Planted bugs"),
+                                       ("judge-accuracy", judge_lines, "- A bug got past a GO", "Bugs past a GO"),
+                                       ("pdd-share", proof_lines, "- Proof first: ", "Proof first")):
+        cur, prev = latest(rows, eval_id)
+        if cur is None:
+            continue
+        hits = [x for x in build(cur, prev) if mark in x]
+        whole = [x for x in hits if x.startswith("- " + CRITICS["panel"])]
+        line = (whole or hits)[0] if hits else "- %s: no score in this run." % name
+        out.append("%s Run of %s." % (line, day(cur["ts"])))
+    return out
+
+
 def page(rows, changes):
     out = ["# How good are our reviewers?", "",
            "Each critic and judge number comes from the newest run, and a trend compares it with the run "
            "before. Each change's result comes from the run that re-measured it. \"Likely between\" is a range: given how much "
            "a run measured, the true rate is likely inside it.", "",
-           "## The critics on planted bugs", ""]
+           "## Bottom line", ""]
+    out += bottom_lines(rows) or ["No run yet."]
+    out += ["", "## The critics on planted bugs", ""]
     cur, prev = latest(rows, "review-panel")
     if cur is None:
         out.append("No run yet.")
@@ -276,6 +314,9 @@ def page(rows, changes):
     out += ["", "## The five open questions", ""]
     cur, _ = latest(rows, "decision-158")
     out += ["No run yet."] if cur is None else answer_lines(cur)
+    out += ["", "## Proof first", ""]
+    cur, prev = latest(rows, "pdd-share")
+    out += ["No run yet."] if cur is None else proof_lines(cur, prev)
     out += ["", "## What we changed, and whether it helped", ""]
     out += change_lines(changes) or ["No change yet."]
     return "\n".join(out) + "\n"

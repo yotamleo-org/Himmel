@@ -1,12 +1,15 @@
 #!/usr/bin/env bash
 # console-budget.sh - the console's handover budget. Prints one line
-#   budget turns=<n> cache_read=<M>M verdict=OK|HANDOVER
-# HANDOVER when turns >= CHIEF_TURN_BUDGET (default 150) or cumulative
+#   budget turns=<n> cache_read=<M>M [fill=<n>%] verdict=OK|HANDOVER
+# HANDOVER when turns >= CHIEF_TURN_BUDGET (default 150), cumulative
 # cache-read >= CHIEF_CACHE_READ_BUDGET_M million tokens (default 30; the old
-# names CONSOLE_TURN_BUDGET and CONSOLE_CACHE_READ_BUDGET_M still read): past
-# either, every further turn re-reads the largest context for less than a
-# fresh console would cost. A turn is one assistant API call, deduped by
-# requestId (message.id when absent); sidechain (subagent) rows are not turns.
+# names CONSOLE_TURN_BUDGET and CONSOLE_CACHE_READ_BUDGET_M still read), or the
+# context fill >= CHIEF_FILL_HANDOVER_PCT percent (default 45): past any, every
+# further turn re-reads the largest context for less than a fresh console would
+# cost. The fill is context-fill.sh --percent (one formula); only a fresh
+# measurement counts - a stale, unknown or estimated fill adds no fill= field
+# and no verdict. A turn is one assistant API call, deduped by requestId
+# (message.id when absent); sidechain (subagent) rows are not turns.
 #
 # usage: console-budget.sh [--title <console session name>] [--resolve]
 # --resolve prints the session's transcript path and exits 0 (2 when unresolved).
@@ -36,6 +39,10 @@ alias_env CHIEF_TURN_BUDGET CONSOLE_TURN_BUDGET
 alias_env CHIEF_CACHE_READ_BUDGET_M CONSOLE_CACHE_READ_BUDGET_M
 TURN_BUDGET="$(num_env CHIEF_TURN_BUDGET 150)"
 CR_BUDGET_M="$(num_env CHIEF_CACHE_READ_BUDGET_M 30)"
+FILL_PCT="$(num_env CHIEF_FILL_HANDOVER_PCT 45)"
+if [ "$FILL_PCT" -gt 100 ]; then  # a fill above 100 % can never be reached, so the fill wake would never fire
+  printf 'console-budget: ignoring CHIEF_FILL_HANDOVER_PCT=%s - using 45\n' "$FILL_PCT" >&2; FILL_PCT=45
+fi
 
 title=""; resolve_only=""
 while [ "$#" -gt 0 ]; do
@@ -105,8 +112,17 @@ cr="${counts##* }"
 [ "$turns" -gt 0 ] 2>/dev/null || { echo "console-budget: no assistant usage rows in $transcript" >&2; exit 2; }
 
 m="$(awk -v c="$cr" 'BEGIN{printf "%.1f", c / 1000000}')"
-if [ "$turns" -ge "$TURN_BUDGET" ] || [ "$cr" -ge $((CR_BUDGET_M * 1000000)) ]; then
-  printf 'budget turns=%s cache_read=%sM verdict=HANDOVER\n' "$turns" "$m"
+
+# the context fill, measured by context-fill.sh --percent (the HUD snapshot): only a fresh integer
+# counts; a stale, unknown or estimated fill (exit 3, 4, 5) is left out of the line and the verdict
+fill=""
+if fp="$(CONTEXT_FILL_TRANSCRIPT="$transcript" bash "$(dirname "${BASH_SOURCE[0]}")/../../context-fill.sh" --percent 2>/dev/null)"; then  # swallow-ok: a non-zero exit is an unmeasured fill, left out of the line and the verdict
+  case "$fp" in ''|*[!0-9]*) ;; *) fill="$((10#$fp))" ;; esac
+fi
+fill_txt=""; [ -n "$fill" ] && fill_txt="fill=${fill}% "
+
+if [ "$turns" -ge "$TURN_BUDGET" ] || [ "$cr" -ge $((CR_BUDGET_M * 1000000)) ] || { [ -n "$fill" ] && [ "$fill" -ge "$FILL_PCT" ]; }; then
+  printf 'budget turns=%s cache_read=%sM %sverdict=HANDOVER\n' "$turns" "$m" "$fill_txt"
   exit 3
 fi
-printf 'budget turns=%s cache_read=%sM verdict=OK\n' "$turns" "$m"
+printf 'budget turns=%s cache_read=%sM %sverdict=OK\n' "$turns" "$m" "$fill_txt"

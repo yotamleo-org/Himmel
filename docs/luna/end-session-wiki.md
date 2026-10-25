@@ -18,7 +18,7 @@ Your first capture in a vault is an *orphan* (no inbound links) until you build 
 
 ## What it does
 
-On every `SessionEnd` event, a hook runs `scripts/hooks/end-session-wiki.{ps1,sh}`. It reads the session transcript + git metadata, renders a session note matching the schema, and writes it into the Luna vault at `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md`. The hook is silent on success and never blocks session end.
+On every `SessionEnd` event, a hook runs `scripts/hooks/end-session-wiki.sh`. It reads the session transcript + git metadata, renders a session note matching the schema, and writes it into the Luna vault at `sessions/YYYY/MM/YYYY-MM-DD-HHMM-<repo>-<branch>.md`. The hook is silent on success and never blocks session end.
 
 **Enabled by default.** It runs automatically on every session end. No setup is needed to start capturing, and a stock install writes into `~/Documents/luna`. Opt out per-session or per-repo (see [How to opt out](#how-to-opt-out)); sessions shorter than `min_duration_seconds` (default 60s) are skipped so accidental opens aren't captured.
 
@@ -76,9 +76,11 @@ The hook first writes a **mechanical** note: frontmatter + the six sections rend
 
 A note that stays `crystallized: false` is the valid mechanical baseline, **not** a failure: the crystallizer is fail-open and recoverable (see [Reheal](#reheal--recover-existing-husk-notes)).
 
-**Mechanism: bounded `claude`, billed to Max.** The crystallizer is `scripts/luna/crystallize-note.sh`. It runs `claude "<prompt>" </dev/null` (an *interactive* bounded run, not headless `-p`), so it bills to the operator's Max plan and needs **no API key**, and it is safe under the Claude invocation billing rule in `CLAUDE.md`. The note lives in the luna vault, **outside** the himmel repo, so the run uses **cwd = the note's directory** (which puts the note in the spawned run's workspace, so `--permission-mode acceptEdits` can auto-approve the edit), `--add-dir <transcript-dir>` (to read the transcript), and injects himmel's `auto-approve-safe-bash` PreToolUse hook by absolute path via `--settings` (the vault cwd carries no himmel project settings). Earlier versions ran in the himmel repo root and the out-of-workspace note edit silently fell through to a permission prompt that `</dev/null` EOFed, leaving the note byte-unchanged at `crystallized: false`. The spawn is fully detached (`scripts/lib/detach.sh`: `setsid` where available, else a backgrounded job released with `disown` so the hook's exit never waits for it) so it outlives the hook's process-group teardown; the hook never blocks on it and never exits non-zero because of it.
+**Mechanism: one API-lane call, billed to the API.** The crystallizer is `scripts/luna/crystallize-note.sh`. Its only launch path is `scripts/api-lane/claude-api.sh` (one print-mode `-p` call, `--permission-mode acceptEdits`, a per-call `--max-budget-usd` of `$CRYSTALLIZE_MAX_BUDGET_USD`, default 1.00), with `HIMMEL_API_TOOLS=Read,Edit` and `HIMMEL_API_KIND=bulk`. It never touches the Max subscription. The lane accepts no extra-directory or settings flags, so the run uses **cwd = the note's directory**: the note is in the workspace, and the Read tool still reads the transcript outside it (verified by a real call). The model is `CRYSTALLIZE_MODEL`, else the script's `DEFAULT_MODEL` (the same model this repo's `crystallize_model` config value names). A cheaper-model A/B (haiku-5-5, sonnet-5-5) did not pass the lesson-recall bar, so the model stayed and the billing moved; an observed call costs about $0.17.
 
-**Edit-confirmed flag.** The `crystallized` flag is owned by the script, not the LLM: it compares the note's hash before/after the `claude` run and sets `crystallized: true` only when the note actually changed (the prompt forbids touching the frontmatter, so any change is a body change). A no-op run (cap hit, refusal, EOF) leaves the note byte-unchanged at `crystallized: false`; a real synthesis always flips it, so the flag can never be falsely set, and a hermetic test asserts the spawn's workspace shape so the F1 boundary regression can't return.
+**Fails closed.** The crystallizer needs `HIMMEL_API_LANE=on` and `HIMMEL_API_ACCOUNT=A|B|auto` in the launching shell. Without them (or with any other account value) it prints `crystallize-note: refusing claude-api: the API lane is off ... no claude-cli fallback` and exits 2, leaving the mechanical note untouched at `crystallized: false`; `CRYSTALLIZE_CLAUDE_BIN` (the test seam) does not bypass this gate. A hook-spawned crystallizer inherits the launching shell's env, so a Claude session started without those two variables writes only the mechanical note and `backfill-sessions.sh --recrystallize` crystallizes it later from a shell that has them (`--reheal` is husk-only, and with the lane off it falls back to a mechanical re-render). A lane refusal after the gate (no credit, over the per-call budget) exits 0, also leaving the mechanical note. The spawn is fully detached (`scripts/lib/detach.sh`: `setsid` where available, else a backgrounded job released with `disown` so the hook's exit never waits for it) so it outlives the hook's process-group teardown; the hook never blocks on it and never exits non-zero because of it.
+
+**Edit-confirmed flag.** The `crystallized` flag is owned by the script, not the LLM: it compares the note's hash before/after the lane call and sets `crystallized: true` only when the note actually changed (the prompt forbids touching the frontmatter, so any change is a body change). A no-op run (cap hit, refusal, budget exhausted, or a model that judged nothing needed changing) leaves the note byte-unchanged at `crystallized: false`; a real synthesis always flips it, so the flag can never be falsely set, and a hermetic test asserts the lane call's shape (cwd, tools, kind, budget, and no extra-directory or settings flags).
 
 **Recursion guards.** The throwaway crystallizer session must not re-fire the session-end hooks. `crystallize-note.sh` exports two env vars into the spawned `claude`:
 
@@ -87,10 +89,10 @@ A note that stays `crystallized: false` is the valid mechanical baseline, **not*
 | `CLAUDE_END_SESSION_WIKI=0` | Silences this hook in the crystallizer subsession (no nested capture). |
 | `HIMMEL_WHERE_ARE_WE=0` | Silences the where-are-we session-end refresh so a crystallizer subsession doesn't kick off a jira/gh/git ledger refresh. |
 
-**Safety rails (best-effort, fail-open).** Any unavailability leaves the mechanical note untouched and exits 0:
+**Safety rails (best-effort).** The lane gate above and a missing or unreadable launcher fail closed (exit 2); any other unavailability leaves the mechanical note untouched and exits 0:
 
-- **No `claude` on PATH** → no-op (the mechanical note stands).
-- **Concurrency cap** (`CRYSTALLIZE_MAX_CONCURRENCY`, default 2) never piles up N full `claude` processes for N simultaneous session-ends; over the cap → skip.
+- **API lane off or no account** → refusal, exit 2, no fallback (see Mechanism).
+- **Concurrency cap** (`CRYSTALLIZE_MAX_CONCURRENCY`, default 2) never piles up N simultaneous lane calls for N simultaneous session-ends; over the cap → skip.
 - **Retry-read:** the live hook may have just written the note via the Obsidian REST API (async flush); the crystallizer retries the read a few times before giving up.
 - **Already crystallized** → no-op.
 
@@ -120,19 +122,13 @@ So: **`--reheal`** for husks (contentless-looking notes captured before the husk
 
 The hook writes diagnostic output to `~/.claude/logs/end-session-wiki/<project-slug>.log` and (during dry-run mode) the full rendered note including the `## Raw Conversation` callout that quotes the tail of your session transcript. Anything you typed into Claude (pasted credentials, API keys, secrets) can appear verbatim in those logs.
 
-The log lives outside any repo (per-machine, keyed by project; see [Logs](#logs) below), so it can never end up committed. If you copy it off-disk for debugging, redact secrets first. On POSIX, the .sh hook sets `umask 077` before creating anything, so the log directory/files are created owner-only (0700/0600) rather than inheriting a permissive shell umask.
+The log lives outside any repo (per-machine, keyed by project; see [Logs](#logs) below), so it can never end up committed. If you copy it off-disk for debugging, redact secrets first. The hook sets `umask 077` before creating anything, so the log directory/files are created owner-only (0700/0600) rather than inheriting a permissive shell umask.
 
 ## How to opt out
 
 There are two equivalent controls; pick whichever matches your scope.
 
 **Env var (per-shell or per-session):**
-
-```powershell
-# Disable for this Claude Code session only:
-$env:CLAUDE_END_SESSION_WIKI = "0"
-claude
-```
 
 ```bash
 # Disable for a one-off run:
@@ -162,14 +158,14 @@ Fields:
 | `dry_run` | bool | `false` | `true` → render note to log file instead of writing to vault |
 | `min_duration_seconds` | int | `60` | Sessions shorter than this are skipped (prevents capturing accidental opens) |
 | `crystallize` | bool | `true` | `false` → never spawn the LLM crystallizer; the mechanical note is the final note. See [Crystallization](#crystallization-llm-upgrade). |
-| `crystallize_model` | string | _(absent)_ | Default model for the crystallizer (e.g. `"claude-opus-4-8"`). Absent → the crystallizer's default model. A `CRYSTALLIZE_MODEL` env var set in the launching shell **overrides** the config value (per-session operator switch, e.g. `CRYSTALLIZE_MODEL=claude-sonnet-4-6 claude`). |
+| `crystallize_model` | string | _(absent)_ | Default model for the crystallizer (a model id string). Absent → the crystallizer's default model. A `CRYSTALLIZE_MODEL` env var set in the launching shell **overrides** the config value (per-session operator switch, e.g. `CRYSTALLIZE_MODEL=claude-sonnet-5-5 claude`). |
 | `crystallize_rules` | string | _(absent)_ | Path (a leading `~/` is expanded) to an operator rules/context file whose content is appended to the crystallizer prompt ("Additionally apply these operator rules…"). The file is **trusted operator input**: its content is interpolated verbatim into the crystallizer prompt, so only point it at a file you control. The content is wrapped between the literal delimiter lines `--- begin operator rules ---` and `--- end operator rules ---`, so a rules file whose own body contains those exact lines could confuse the prompt framing. Unreadable/missing → the crystallizer proceeds with no rules block (fail-open; the hook logs `crystallize_rules not readable`). Exported to the crystallizer as `CRYSTALLIZE_RULES_FILE`. |
 | `vault_path` | string | `""` | Absolute path (a leading `~/` is expanded) to the Obsidian vault this repo's sessions are captured into. Empty → fall back to `vault`, then `LUNA_VAULT_PATH` env, then the default. See [Choosing the target vault](#choosing-the-target-vault) below. |
 | `vault` | string | _(absent)_ | Vault **name** (not a path), e.g. `"salus"`. Distributable/safe to commit; resolved to a path per-machine (registry, then the `~/Documents/<name>` convention). An invalid or unresolvable name **skips** the capture rather than misrouting it. See [Choosing the target vault](#choosing-the-target-vault). |
 
 Missing file → defaults applied (`enabled: true`, `dry_run: false`, `min_duration_seconds: 60`); `vault_path`/`vault` absent.
 
-> **Write this file as UTF-8 _without_ a BOM.** A leading byte-order mark makes the hook treat the config as invalid JSON and **fail closed: it silently stops capturing**. On Windows, PowerShell 5.1's `Set-Content -Encoding utf8` _adds_ a BOM; use `-Encoding utf8NoBOM` (PowerShell 7+) or an editor that omits it. `/end-session-wiki-setup` and hand-edits in most editors are fine.
+> **The file must be one valid JSON object.** A syntax error, a comment, an empty file or a non-object value (`null`, an array, a string) makes the hook **fail closed: it skips capture** for this repo. A leading UTF-8 byte-order mark is tolerated. With a `jq` that does not skip a BOM, every field except `vault_path` / `vault` falls back to its default, so `"enabled": false` and `"dry_run": true` would be ignored; save the file without one to be safe.
 
 ## Choosing the target vault
 
@@ -177,44 +173,45 @@ Your vault almost certainly does not live where the operator's does, and you may
 
 1. **`vault_path` in `.claude/end-session-wiki.json`** (per-repo, absolute path): the most specific, highest priority. An absolute path is machine-specific, so prefer `vault` (below) for anything you commit and share.
 2. **`vault` name in `.claude/end-session-wiki.json`** (per-repo, **distributable**): a vault *name* instead of a path, so the same committed config works on every machine. Resolved per-machine: first the operator registry `~/.claude/luna-vaults.json`, else the convention `~/Documents/<name>`. The convention target must be a real vault (contain an `.obsidian/` folder); a name that resolves to no real vault, or fails validation (1–64 chars, must match `[A-Za-z0-9._-]`, start alphanumeric, no `/` or `..`), **skips the capture rather than misrouting it** (logged as `skipped: vault …`). A config file that exists but is **not valid JSON** also skips (fail-closed) rather than falling through to the default, so a malformed config can't silently leak a sensitive repo's sessions into the general vault.
-3. **`LUNA_VAULT_PATH` environment variable** (global): your default vault for everything that doesn't override it per-repo. The hook reads the **live process environment**, so set it in `~/.claude/settings.json`'s `env` block (what `/end-session-wiki-setup` and `scripts/adopt.sh` write, via `scripts/lib/wire-luna-vault.{sh,ps1}`) or export it from your shell profile. On Windows, always set it as a drive-qualified `C:/…` path, never the Git-Bash `/c/…` form (see the note under the examples below). Putting it in the repo-root `.env` does **nothing** for this hook; that key is not bridged (see `.env.example`). A `settings.json` `env` value is applied at session start, so it takes effect for **new** sessions.
-4. **Built-in default:** the `luna` vault: the `luna` entry in `~/.claude/luna-vaults.json` if you have one, else the `~/Documents/luna` (`$HOME`/`$USERPROFILE`) convention. The bare convention is honored **only when it is a real vault** (contains an `.obsidian/` folder), so a stock luna install works with zero config. With no configured vault **and** no real `~/Documents/luna`, the hook **skips** (logged `skipped: vault unresolved …`) rather than materializing a phantom vault for someone who never set luna up. An explicit `luna` registry entry is honored as-is (no existence check), like `vault_path`.
+3. **`LUNA_VAULT_PATH` environment variable** (global): your default vault for everything that doesn't override it per-repo. The hook reads the **live process environment**, so set it in `~/.claude/settings.json`'s `env` block (what `/end-session-wiki-setup` and `scripts/adopt.sh` write, via `scripts/lib/wire-luna-vault.sh`) or export it from your shell profile. Putting it in the repo-root `.env` does **nothing** for this hook; that key is not bridged (see `.env.example`). A `settings.json` `env` value is applied at session start, so it takes effect for **new** sessions.
+4. **Built-in default:** the `luna` vault: the `luna` entry in `~/.claude/luna-vaults.json` if you have one, else the `~/Documents/luna` convention. The bare convention is honored **only when it is a real vault** (contains an `.obsidian/` folder), so a stock luna install works with zero config. With no configured vault **and** no real `~/Documents/luna`, the hook **skips** (logged `skipped: vault unresolved …`) rather than materializing a phantom vault for someone who never set luna up. An explicit `luna` registry entry is honored as-is (no existence check), like `vault_path`.
 
 `vault_path` configures a path (renaming/moving the vault means updating that path). `vault` configures a name and each machine resolves the path, so the same committed value works everywhere: an operator either follows the `~/Documents/<name>` convention (zero extra config) or maps the name in their registry.
 
-**Set the target interactively** with the `/end-session-wiki-setup` command: run it from your code repo and it writes the value for you (any of the options above). The luna template setup (`templates/luna-second-brain/scripts/setup.{sh,ps1}`) prints the same options after a fresh install but doesn't write them. Or configure by hand:
+**Set the target interactively** with the `/end-session-wiki-setup` command: run it from your code repo and it writes the value for you (any of the options above). The luna template setup (`templates/luna-second-brain/scripts/setup.sh`) prints the same options after a fresh install but doesn't write them. Or configure by hand. Each file must be one valid JSON object (JSON has no comments); a `.claude/end-session-wiki.json` that is not valid JSON, or not an object, skips capture.
+
+`.claude/end-session-wiki.json`: capture this repo's sessions into a specific vault (absolute path):
 
 ```json
-// .claude/end-session-wiki.json — capture THIS repo's sessions into a specific vault (absolute path)
 { "vault_path": "~/Documents/my-vault" }
 ```
 
+`.claude/end-session-wiki.json`: route by vault name (distributable, safe to commit):
+
 ```json
-// .claude/end-session-wiki.json — distributable: route by vault NAME (safe to commit)
 { "vault": "salus" }
 ```
 
+`~/.claude/luna-vaults.json`: per-machine name→path map, needed only for vaults that don't live at `~/Documents/<name>`:
+
 ```json
-// ~/.claude/luna-vaults.json — per-machine name→path map (optional;
-// only needed for vaults that don't live at ~/Documents/<name>)
 { "vaults": { "salus": "~/Documents/salus" } }
 ```
 
+`~/.claude/settings.json`: global default vault for all repos (process env, applied at session start):
+
 ```json
-// ~/.claude/settings.json — global default vault for all repos (process env,
-// applied at session start)
-{ "env": { "LUNA_VAULT_PATH": "C:/Users/me/Documents/my-vault" } }
+{ "env": { "LUNA_VAULT_PATH": "/home/me/Documents/my-vault" } }
 ```
 
-**Windows: use the drive-qualified form (`C:/…`), never the Git-Bash MSYS form (`/c/…`)**: the PowerShell hook resolves a leading `/` under the current drive root, so an MSYS value sends captures to `\c\Users\…`. `~/Documents/my-vault` expands to the MSYS form under Git Bash, so pipe it through `cygpath -m` (absent on POSIX, where the path passes through unchanged). This applies to **every** way you set the variable, the helper and a direct export alike:
+Set the variable with the helper or a direct export:
 
 ```bash
 # write it into ~/.claude/settings.json with the helper (recommended)
-bash scripts/lib/wire-luna-vault.sh ~/.claude/settings.json \
-  "$(cygpath -m ~/Documents/my-vault 2>/dev/null || echo ~/Documents/my-vault)"
+bash scripts/lib/wire-luna-vault.sh ~/.claude/settings.json ~/Documents/my-vault
 
 # …or export it from your shell profile before launching claude (NOT the repo .env)
-export LUNA_VAULT_PATH="$(cygpath -m ~/Documents/my-vault 2>/dev/null || echo ~/Documents/my-vault)"
+export LUNA_VAULT_PATH=~/Documents/my-vault
 ```
 
 ## Logs
@@ -253,10 +250,6 @@ It regenerates `<vault>/sessions/_index.md` (links every session note → no orp
 ## Disabling per-session
 
 One-shot disable for a single Claude run, no config edit needed:
-
-```powershell
-$env:CLAUDE_END_SESSION_WIKI = "0"; claude
-```
 
 ```bash
 CLAUDE_END_SESSION_WIKI=0 claude

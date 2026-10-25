@@ -3067,4 +3067,45 @@ rc92f=0
 console next --bucket chief92f --doc "$root/tester/chief92f/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1 || rc92f=$?
 check "92 next refuses a successor letter a console-named doc already holds" "$rc92f:$([ -e "$root/tester/chief92f/DEMO-nextleg-${today}B-chief.md" ] && echo dup || echo none)" "1:none"
 
+# --- 93: a bare `next` (no --name/--doc/CHIEF_DOC/--bucket/--prefix) never
+# resolves an older doc of the default name when the bucket holds a NEWER
+# nextleg doc of another name: the live chain is named roadmap-chief, the
+# default name chief matches only the weeks-old bare -console doc.
+root93="$tmp/root93"; mkdir -p "$root93/tester/b93"
+stub_doc old > "$root93/tester/b93/ACME-nextleg-2026-10-01AG-console.md"
+stub_doc live > "$root93/tester/b93/ACME-nextleg-2026-10-25FY-roadmap-chief.md"
+rc93=0; out93="$(console_root "$root93" next --dry-run 2>&1)" || rc93=$?
+check "93 a bare next refuses when a newer doc of another name exists (rc 1)" "$rc93" "1"
+check "93 and never names the weeks-old doc as the predecessor" "$(printf '%s\n' "$out93" | grep -c '^would-doc:')" "0"
+check "93 the refusal lists the newer candidate" "$(printf '%s\n' "$out93" | grep -c 'ACME-nextleg-2026-10-25FY-roadmap-chief.md')" "1"
+check "93 the refusal says to pass --name or --doc" "$(printf '%s\n' "$out93" | grep -c 'pass --name or --doc')" "1"
+rc93n=0; out93n="$(console_root "$root93" next --name roadmap-chief --dry-run 2>&1)" || rc93n=$?
+check "93 --name roadmap-chief still resolves the live doc (rc 0)" "$rc93n" "0"
+check "93 --name names a roadmap-chief successor" "$(printf '%s\n' "$out93n" | grep -c '^would-doc: .*-nextleg-.*-roadmap-chief\.md$')" "1"
+rc93d=0; console_root "$root93" next --doc "$root93/tester/b93/ACME-nextleg-2026-10-01AG-console.md" --dry-run >/dev/null 2>&1 || rc93d=$?
+check "93 --doc keeps resolving exactly the doc it names (rc 0)" "$rc93d" "0"
+# positive control: the newest doc IS the default name, so a bare next resolves it
+root93p="$tmp/root93p"; mkdir -p "$root93p/tester/b93"
+stub_doc pred > "$root93p/tester/b93/ACME-nextleg-${today}B-chief.md"
+rc93p=0; out93p="$(console_root "$root93p" next --dry-run 2>&1)" || rc93p=$?
+check "93 positive control: a bare next over the default-named newest doc resolves (rc 0)" "$rc93p" "0"
+check "93 and names the successor letter C" "$(printf '%s\n' "$out93p" | grep -c "^would-doc: .*-nextleg-${today}C-chief\.md$")" "1"
+# letter wrap: AA is later than Z (a raw name sort puts AA first), so the newest is AA and the successor AB
+root93w="$tmp/root93w"; mkdir -p "$root93w/tester/b93"
+stub_doc old > "$root93w/tester/b93/ACME-nextleg-${today}Z-chief.md"
+stub_doc new > "$root93w/tester/b93/ACME-nextleg-${today}AA-chief.md"
+rc93w=0; out93w="$(console_root "$root93w" next --dry-run 2>&1)" || rc93w=$?
+check "93 letter wrap: Z then AA resolves the AA doc, successor AB (rc 0)" "$rc93w:$(printf '%s\n' "$out93w" | grep -c "^would-doc: .*-nextleg-${today}AB-chief\.md$")" "0:1"
+# fork budget: the discovery loops add no basename exec per doc in the tree
+stub93="$tmp/stub93"; mkdir -p "$stub93"
+printf '#!/usr/bin/env bash\necho x >> "%s/basename.calls"\nexec /usr/bin/basename "$@"\n' "$stub93" > "$stub93/basename"; chmod +x "$stub93/basename"
+root93f2="$tmp/root93f2"; mkdir -p "$root93f2/tester/b93"
+stub_doc pred > "$root93f2/tester/b93/ACME-nextleg-${today}B-chief.md"
+root93f40="$tmp/root93f40"; mkdir -p "$root93f40/tester/b93"
+stub_doc pred > "$root93f40/tester/b93/ACME-nextleg-${today}B-chief.md"
+for _n in $(seq 10 49); do : > "$root93f40/tester/b93/ACME-nextleg-2026-09-${_n}A-other.md"; done
+rc93fa=0; : > "$stub93/basename.calls"; PATH="$stub93:$PATH" console_root "$root93f2" next --dry-run >/dev/null 2>&1 || rc93fa=$?; calls93a="$(wc -l < "$stub93/basename.calls")"
+rc93fb=0; : > "$stub93/basename.calls"; PATH="$stub93:$PATH" console_root "$root93f40" next --dry-run >/dev/null 2>&1 || rc93fb=$?; calls93b="$(wc -l < "$stub93/basename.calls")"
+check "93 the bare-next discovery forks no basename per doc (2 docs vs 42 docs, both runs rc 0)" "$rc93fa:$rc93fb:$calls93a" "0:0:$calls93b"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

@@ -3,8 +3,8 @@
 // pgrep and a fake /proc (claude-sessions.sh's own CLAUDE_SESSIONS_PGREP / CLAUDE_SESSIONS_PROC seams), the
 // harness's ~/.claude/sessions/<pid>.json, the session journals under ~/.claude/projects, and leg docs under
 // HANDOVER_DIR. Shared by the route suite (agui-fleet.test.ts) and the page e2e (e2e/agui.e2e.ts).
-import { appendFileSync, chmodSync, mkdirSync, writeFileSync } from "node:fs";
-import { join } from "node:path";
+import { appendFileSync, chmodSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 
 // head = the doc's title tail and brief lines above Results (the graph link); autocompact = the
 // --autocompact argv. The console succeeded a console that is no longer live; the leg's brief names the console.
@@ -46,6 +46,18 @@ function journal(m: Member): { main: string; sub?: string } {
   };
   if (m === FLEET.idle) return { main: prompt(m, "hello") + rec(m, { type: "assistant", message: { id: "m-i", role: "assistant", stop_reason: "end_turn", content: [{ type: "text", text: "hi" }] } }) + end(m) };
   return { main: prompt(m, "wrap") + call(m, "toolu_w1", "Bash", { command: "bash wrap-subtree-check.sh", description: "Prove the subtree is clean" }) + result(m, "toolu_w1", "CLOSABLE: yes") + end(m) };
+}
+
+export function customConfig(fx: FleetFixture): string {
+  const config = join(fx.dir, "custom-config"), slug = join(config, "projects", "fleet-project");
+  mkdirSync(slug, { recursive: true });
+  mkdirSync(join(config, "sessions"));
+  renameSync(fx.journal(FLEET.leg), join(slug, `${FLEET.leg.run}.jsonl`));
+  renameSync(join(dirname(fx.journal(FLEET.leg)), FLEET.leg.run), join(slug, FLEET.leg.run));
+  writeFileSync(join(config, "sessions", `${FLEET.leg.pid}.json`), JSON.stringify({ sessionId: FLEET.leg.run, status: "busy" }));
+  writeFileSync(join(fx.home, ".claude", "sessions", `${FLEET.leg.pid}.json`), JSON.stringify({ sessionId: FLEET.idle.run }));
+  writeFileSync(join(fx.dir, "proc", String(FLEET.leg.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
+  return config;
 }
 
 export type FleetFixture = {

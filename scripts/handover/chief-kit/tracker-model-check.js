@@ -11,7 +11,7 @@ const say = (ok, name, got) => {
 };
 const eq = (name, got, want) => say(JSON.stringify(got) === JSON.stringify(want), name, got);
 const a = html.indexOf('/*MODEL*/'), b = html.indexOf('/*END MODEL*/');
-if (a < 0 || b < a) { console.log('FAIL - the page carries a /*MODEL*/ block (HIMMEL-3990)'); console.log('1 failure(s)'); process.exit(1); }
+if (a < 0 || b < a) { console.log('FAIL - the page carries a /*MODEL*/ block'); console.log('1 failure(s)'); process.exit(1); }
 const model = new Function(html.slice(a, b) + '\nreturn model;')();
 const nums = (rows) => rows.map((p) => p[0]);
 

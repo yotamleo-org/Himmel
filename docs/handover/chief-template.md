@@ -48,7 +48,7 @@ Run these, in order, and write the result as the first bullet under
    {{RELEASE_TOKEN}}
    ```
 
-   `/console new` acquires it and writes the real token above: adopt it, copy it
+   `/chief new` acquires it and writes the real token above: adopt it, copy it
    into your first bullet, never acquire again (`Work is owned elsewhere`).
    `/console next` never acquires one, so the block reads `none yet` and the lock is `free`: acquire your own and record that token. Check with
    `HANDOVER_DIR="{{HANDOVER_ROOT}}" bash "{{REPO}}/scripts/handover/queue-lock.sh" status "<this file>"`;
@@ -64,10 +64,10 @@ Run these, in order, and write the result as the first bullet under
    token and a fresh one (the token chain always rotates).
    `worker-preface.md` (`worker-sections/succession.md`) is the authority.
    A worker's quote-back is its `SUCCESSION accepted` Results bullet. **Arm step 10's
-   waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**: on
-   `WAKE succession complete` or `WAKE succession partial` write any fresh nonce
-   into `## Live state` (`next` seeded the rest), send **`{{LETTER}} LIVE`** (naming workers that did not
-   quote back), then re-arm **without `--succession`**.
+   waiter with `--succession {{SESSION_NAME}}` BEFORE you wait**. On the
+   predecessor's `RELAYED <n> of <m>` send it **`{{LETTER}} LIVE`**, naming workers
+   not relayed. `WAKE succession complete` or `WAKE succession partial` is
+   informational: write fresh nonces into `## Live state`, re-arm **without `--succession`**.
    Then close its window, re-ask judges: `chief-sections/successor-start.md`.
 10. **Start the event waiter now.** Run `console-wait.sh` **once** with the
     **Bash tool's `run_in_background: true` AND `timeout: 7200000`**; the harness
@@ -80,8 +80,8 @@ Run these, in order, and write the result as the first bullet under
     first bullet; `cat "<inbox>.wait"` is its heartbeat. Wake keys, heartbeat
     states, fleet-manifest arming: `chief-sections/waiter.md`.
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
-11. **Open your Telegram inbox.** The operator writes `/console {{SESSION_NAME}} <text>`;
-    the bridge appends to your inbox file only if it already exists. The waiter
+11. **Open your Telegram inbox.** The operator writes `/chief {{SESSION_NAME}} <text>` (alias `/console`);
+    the bridge appends only to an existing inbox file. The waiter
     (step 10) creates it (`: >> "{{INBOX}}"`; `consoles/{{SESSION_NAME}}.md`).
     The waiter reads it through `inbox-follow.sh --once` with a persisted
     cursor, so a repeated line is a duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
@@ -224,7 +224,7 @@ bare `clean.sh` sweep for a worker. long-running.txt: `timeout 90 bash <script>`
 
 At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`**, hand over:
 
-1. `/console next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
+1. `/chief next --arm --doc "{{STATE_DIR}}/{{SESSION_NAME}}.md" --bucket {{BUCKET}} --prefix {{PREFIX}} --model '{{MODEL}}'`
    writes the successor stub and this chief's `-HANDOFF.md` skeleton and arms
    the successor. **Name your own document, bucket, prefix and model**, or `next`
    picks the wrong doc, bucket or model (continue on **{{MODEL}}**). The `armed:`
@@ -232,22 +232,22 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    `{{FILL_SIGNAL}}`.
 2. `next` seeds `## Live state` into the successor doc. Fill in the HANDOFF by hand:
    head, rulings made today, what wrapped. **The HANDOFF wins over this file's
-   Results tail.** Once the successor validated, `<your inbox>.handover` mutes
-   your waiter for `CONSOLE_WAIT_HANDOVER_MIN` (default 60); `rm` it to end the mute early.
-3. `touch` the signal path from step 1 and hand your live workers to the successor.
+   Results tail.** The waiter mutes while you hand over: `chief-sections/waiter.md`.
+3. `touch` the signal path from step 1.
 4. **Re-brief every live worker before you release, never by hand.** On
-   `WAKE relay-on-live` (set by `next` for a bus chief) or by running
+   `WAKE relay-on-live` (set by `next` for a bus chief) or running
    `relay-batch.sh <this doc> --successor <it>`: a bus record relays each native
    worker, an inbox relay plus a bus notice each claudex one. A failed or absent
    record prints `SENDMESSAGE` (successor, worker's token) for a Live-state
    worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
-   Never re-run it (it resends inbox relays). It carries no fresh token:
-   native and claudex workers are not rotated on a bus succession. Wait for each
-   quote-back.
+   `FAILED-INBOX` and `UNRESOLVED` too; on `relay-failed`, any undelivered.
+   Never re-run it (it resends). It carries no fresh token: native and claudex
+   workers are not rotated on a bus succession. Then send the successor
+   `RELAYED <n> of <m>` naming any still unrelayed.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any workers that
-   did not quote back, and why. Then wrap with
-   **one** command, which writes `WRAPPED` and releases the lock:
+   did not quote back, and why. Relay any worker it names as not relayed, then
+   wrap with **one** command, which writes `WRAPPED` and releases the lock:
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
    It refuses (exit 4) while any subagent of yours, a judge subagent above all, is
    running: wait, persist the verdict with `write-verdict.sh`, re-run.

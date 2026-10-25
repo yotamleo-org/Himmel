@@ -37,6 +37,17 @@ it. The waiter keys on the names, so each worker entering the set wakes you once
 (`WAKE tick changed=holds`); the age growing, a worker leaving and the set emptying wake
 nothing. Absent when no worker holds.
 
+`focus=<state>` and `sdrift=<n>:<sig8>` are conditional too: both come from the
+`focus-state` file `focus-refresh.sh` writes beside your doc, so the tick makes no
+gh or Jira call for them. `focus=FAILED:<stage>` or `focus=DIRTY:<age>` means the
+FOCUS page is not current (re-run `focus-refresh.sh --doc <this file>`); `sdrift=` is
+the drift line of the last good refresh, `<n>` rows of status drift
+(`focus-drift.txt` beside your doc lists them). `focus=ok` and `sdrift=0:…` are left
+off the compact line, `--verbose` shows both, and both are absent with no state
+file or when `--status` reads `focus=skip` (no `focus-version:` and no `release:`
+line, or `focus-version: none`). `console-wait.sh` does not wake on them; it wakes on
+a FAILED refresh, or one DIRTY for 10 minutes, by its own `--status` read.
+
 `busedge=MISSING:<label>[,...]` is conditional too: a held worker (lock FRESH or
 STALE) whose himmel-bus peer record is missing or names another chief (never
 adopted) has no edge to the live chief. It is
@@ -64,7 +75,7 @@ re-arm.
 | usage | 300 s | poll `bank-preflight.sh`, emit only when the state word changes (headroom → park → weekly-ceiling) |
 | CI | 600 s | poll `gh run list -R <owner/repo> --limit 20 --json databaseId,status`, emit only newly-completed runs; a red main run is triaged by `chief-sections/main-red.md` before any cause is named |
 | notes repo | 300 s | the notes vault is already covered by the tick's `vault=` field (no loop to arm); only a *second* repo for handover state needs this: emit only on STALL (dirty files older than the commit cadence) or PUSH-LAG |
-| telegram | 1 s poll, event-driven | **Runs inside the step-10 waiter.** Operator messages sent from Telegram as `/console <your session name> <text>`, the inbox being `<inbox>`. The waiter drains it each second with `inbox-follow.sh --once` and wakes you with `WAKE telegram` plus the line(s). The persisted read cursor (`<inbox>.cursor`, a byte offset) means a line appended while no waiter ran is delivered on the next start, and delivered lines are not replayed (at-least-once: a waiter killed mid-emit can repeat one line). The file must exist before the bridge will write to it (step 11). See step 11 for the authority these lines carry and how to reply |
+| telegram | 1 s poll, event-driven | **Runs inside the step-10 waiter.** Operator messages sent from Telegram as `/chief <your session name> <text>` (or the older alias `/console`), the inbox being `<inbox>`. The waiter drains it each second with `inbox-follow.sh --once` and wakes you with `WAKE telegram` plus the line(s). The persisted read cursor (`<inbox>.cursor`, a byte offset) means a line appended while no waiter ran is delivered on the next start, and delivered lines are not replayed (at-least-once: a waiter killed mid-emit can repeat one line). The file must exist before the bridge will write to it (step 11). See step 11 for the authority these lines carry and how to reply |
 
 The three polling monitors are plain Bash loops over already-versioned inputs;
 write them in the session scratchpad, not in the repo. The context-fill probe
@@ -72,11 +83,19 @@ write them in the session scratchpad, not in the repo. The context-fill probe
 ordinary Bash call.
 
 **Handover budget.** `<kit>/console-budget.sh --title <your session name>` prints
-`budget turns=<n> cache_read=<M>M verdict=OK|HANDOVER` (exit 3 on HANDOVER, 2 when
-the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M cumulative
-cache-read (`CONSOLE_TURN_BUDGET`, `CONSOLE_CACHE_READ_BUDGET_M`), the same duty as
-the 45 % fill and 90k input triggers. The waiter runs it each successful sample (with `--doc`) and
-raises `WAKE handover-budget` once per streak; run it by hand in an ordinary Bash call.
+`budget turns=<n> cache_read=<M>M [fill=<n>%] verdict=OK|HANDOVER` (exit 3 on HANDOVER,
+2 when the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M
+cumulative cache-read (`CHIEF_TURN_BUDGET`, `CHIEF_CACHE_READ_BUDGET_M`), or a context
+fill of 45 % (`CHIEF_FILL_HANDOVER_PCT`; read from `context-fill.sh --percent`, so a
+stale, unknown or estimated fill adds no `fill=` and trips nothing; the `~NN% (est)` of
+`context-fill.sh` exit 5 is deliberately not counted: it is derived from one transcript turn
+over an assumed window, so it can read high after a cache-heavy turn and would fire a handover
+wake on a number nobody measured, and an OK without `fill=` leaves the repeat marker alone), the same duty as the
+90k input trigger. The waiter runs it each successful sample (with `--doc`, also with
+`--legs-from`) and raises `WAKE handover-budget`; while the verdict stays `HANDOVER` it
+repeats as `WAKE handover-budget repeat ...` every `CHIEF_WAIT_BUDGET_REPEAT_MIN` minutes
+(default 30), so a wake absorbed mid-turn is not lost. When the doc's title resolves to no
+transcript the waiter says so once on stderr. Run it by hand in an ordinary Bash call.
 
 **Stuck PRs.** The tick's `prs=` field does not say why a PR is stuck. When a worker
 waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR

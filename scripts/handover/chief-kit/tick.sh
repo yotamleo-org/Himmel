@@ -99,6 +99,19 @@ leg parked on a ruling the console may not know it owes, which a repeated BLOCKE
 shows in tails=. console-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
 
+focus=<state> sdrift=<n>:<sig8> (HIMMEL-6829) follow wt-ceiling= and are ABSENT unless a
+focus-state file sits beside the console doc and --status does not read skip: focus= is
+focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
+last good refresh. focus=ok and sdrift=0:* are elided; --verbose prints both. Read from
+the state file, no gh or Jira call. Advisory: not in console-wait's action key.
+
+rm-queue=<n>,<oldest age>m[,run] (HIMMEL-7641) follows leaks= and is ABSENT unless the console doc has a
+`release:` line and a request is open (0 and skip are elided; ? = the state read failed). An oldest open
+request past TICK_RMRUN_MIN minutes (default 30) with the lease free launches one detached `jira release
+rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run`; its output goes to
+$TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
+TICK_RMQ_TIMEOUT. Not in console-wait's action key.
+
 tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
 TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
 (default 80) or more. Read-only, never reaps, and not in console-wait's action
@@ -1546,12 +1559,27 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         [ -n "$tracker_plan" ] || tracker_plan="$tracker_dir/specs/plan/HIMMEL-3882"
         tracker_file="$tracker_dir/roadmap-tracker.html"
         tracker_class=''
+        # a focus-owned page (the same rule as wrap-merged.sh focus_owned) is written by focus-refresh.sh, which records
+        # its fingerprint as <page>.vfp and sha8 in focus-state and never writes the all-versions .fp: compare those
+        # two. No .vfp or no sha8 falls back to the .fp comparison.
+        tracker_focus_sha=''
+        tracker_fv="$(sed -n 's/^focus-version:[[:space:]]*//p' "$console_doc" | head -n 1)"
+        tracker_rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" | head -n 1)"
+        case "$tracker_fv" in none*) tracker_fv=skip ;; '') case "$tracker_rel" in ''|none*) tracker_fv=skip ;; esac ;; esac
+        if [ "$tracker_fv" != skip ] && [ -f "$tracker_file.vfp" ] && [ -f "$tracker_dir/focus-state" ]; then
+            tracker_focus_sha="$(sed -n 's/^sha8=//p' "$tracker_dir/focus-state" | head -n 1)"
+            # a pinned focus-version that differs from the version the page was rendered for is stale whatever the
+            # fingerprint says; auto and a state without ver= (rendered before it was recorded) have nothing to compare
+            tracker_focus_ver="$(sed -n 's/^ver=//p' "$tracker_dir/focus-state" | head -n 1)"
+            case "$tracker_fv" in auto*|'') ;; *) [ -z "$tracker_focus_ver" ] || [ "$tracker_focus_ver" = "$tracker_fv" ] || tracker_focus_sha='!' ;; esac
+        fi
         tracker_want="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$tracker_plan" --out "$tracker_file" --luna-map "$tracker_dir/roadmap-luna-map.json" ${TICK_TRACKER_MIRROR_DIR:+--mirror-dir "$TICK_TRACKER_MIRROR_DIR"} 2>/dev/null)" || tracker_want=""
         if [ ! -f "$tracker_file" ]; then
             tracker_summary=MISSING
         elif [ -z "$tracker_want" ]; then
             tracker_summary=skip  # cannot derive the reference (no python3, bad plan dir): no verdict
-        elif [ "$(cat "$tracker_file.fp" 2>/dev/null)" = "$tracker_want" ]; then
+        elif { [ -n "$tracker_focus_sha" ] && [ "$(cut -c1-8 "$tracker_file.vfp" | head -n 1)" = "$tracker_focus_sha" ]; } \
+            || { [ -z "$tracker_focus_sha" ] && [ "$(cat "$tracker_file.fp" 2>/dev/null)" = "$tracker_want" ]; }; then
             tracker_summary=ok
             # The console touches <page>.published after each Artifact publish; a page newer than that stamp is
             # rendered but not republished. No stamp file, no verdict.
@@ -1570,6 +1598,20 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         fi
         ;;
     esac
+fi
+
+# focus=<state> and sdrift=<n>:<sig8> read the focus-state file beside the console doc
+# (focus-refresh.sh writes it, --status reads it with no gh or Jira call). Both are absent
+# with no state file or when --status reads focus=skip.
+focus_summary="" sdrift_summary=""
+if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
+    focus_summary="$(bash "$HERE/focus-refresh.sh" --doc "$console_doc" --status 2>/dev/null)" || focus_summary=""  # swallow-ok: an unreadable state leaves both advisory fields off the line
+    focus_summary="${focus_summary#focus=}"
+    if [ "$focus_summary" = skip ]; then
+        focus_summary=""
+    elif [ -n "$focus_summary" ]; then
+        sdrift_summary="$(sed -n 's/^sdrift=//p' "${console_doc%/*}/focus-state" 2>/dev/null | head -n 1)"  # swallow-ok: no drift line leaves sdrift= off the line
+    fi
 fi
 
 # cloud=<ok|STALL:<ticket>[,...]|skip>. cloud-liveness.mjs owns the derivation
@@ -1670,6 +1712,86 @@ if [ -n "$leaks_version" ]; then
     else
         leaks_summary='?'
     fi
+fi
+
+# rm-queue=<n>,<oldest age>m[,run]: open placement requests of the console doc's `release:` release,
+# from one `jira release state <R> --json` read; the age is the oldest open request's. When the oldest is
+# TICK_RMRUN_MIN minutes old (default 30), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
+# (default 600), the tick launches ONE detached `jira release rm-run <R>` (it runs a model call, far past this
+# tick's budget; its lines go to $TICK_STATE_DIR/tick-rm-run.log) and appends `,run`. rm-run takes the lease itself,
+# so a run in flight blocks a second one. 0 = nothing open, ? = the read failed, skip = no `release:` line.
+# Not in console-wait's wake key.
+rm_queue=skip
+rm_rel=""
+if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
+    rm_rel="$(sed -n 's/^release:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1 | sed 's/[[:space:]]*$//')"  # swallow-ok: an unreadable doc shows no rm-queue field
+    case "$rm_rel" in none*) rm_rel="" ;; esac
+fi
+if [[ "$rm_rel" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+    # The CLI lives in the himmel primary checkout that holds this script, whatever --repo names.
+    # shellcheck source=../../lib/git-clean.sh
+    rm_anchor="$(cd "$HERE/../../.." && . "$HERE/../../lib/git-clean.sh" && git_env_scrub && git rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || rm_anchor=""  # swallow-ok: no anchor reads ? below
+    rm_cli="${rm_anchor%/.git}/scripts/jira/dist/index.js"
+    rm_pk="${nd_mirror##*/}"
+    rm_rc=0 rm_json=""
+    if [ -n "${TICK_RMQ_PROBE:-}" ]; then
+        rm_json="$(timeout -k 2 "${TICK_RMQ_TIMEOUT:-30}" bash "$TICK_RMQ_PROBE" "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
+    elif [ -n "$rm_anchor" ] && [ -f "$rm_cli" ]; then
+        rm_json="$(JIRA_PROJECT_KEY="$rm_pk" timeout -k 2 "${TICK_RMQ_TIMEOUT:-30}" node "$rm_cli" release state "$rm_rel" --json 2>/dev/null)" || rm_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: the exit status is kept in rm_rc and read below
+    else
+        rm_rc=-1
+    fi
+    rm_n="" rm_age="" rm_lease="" rm_status=""
+    # exit 3 is the CLI's not-OK status and still prints the state
+    if [ "$rm_rc" -eq 0 ] || [ "$rm_rc" -eq 3 ]; then
+        # shellcheck disable=SC2016  # the python program is single-quoted on purpose
+        read -r rm_n rm_age rm_lease rm_status < <(printf '%s' "$rm_json" | python3 -I -c '
+import datetime, json, sys
+d = json.load(sys.stdin)
+r = d["requests"]
+n = len(r["open"])
+age = 0
+if n and r.get("oldest_open"):
+    t = datetime.datetime.fromisoformat(r["oldest_open"].replace("Z", "+00:00"))
+    age = max(0, int((datetime.datetime.now(datetime.timezone.utc) - t).total_seconds() // 60))
+ls = d.get("lease")
+print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status") or "UNKNOWN")
+' 2>/dev/null) || true  # swallow-ok: an unparseable state leaves the fields empty and the summary reads ?
+    fi
+    case "$rm_n" in
+        '' | *[!0-9]*) rm_queue='?' ;;
+        0) rm_queue=0 ;;
+        *)
+            rm_queue="$rm_n,${rm_age}m"
+            rm_min="${TICK_RMRUN_MIN:-30}"
+            case "$rm_min" in '' | *[!0-9]*) rm_min=30 ;; esac
+            rm_gap="${TICK_RMRUN_MIN_SECS:-600}"
+            case "$rm_gap" in '' | *[!0-9]*) rm_gap=600 ;; esac
+            if [ "$rm_age" -ge "$rm_min" ] && [ "$rm_lease" = free ] && [ "$rm_status" = OK ]; then
+                rm_dir="${TICK_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"
+                rm_stamp="$rm_dir/tick-rm-run-$(printf '%s' "$rm_rel $REPO" | cksum | cut -d' ' -f1)"
+                rm_stamp_age=999999999
+                if [ -e "$rm_stamp" ]; then
+                    rm_stamp_m="$(stat -c %Y "$rm_stamp" 2>/dev/null)" || rm_stamp_m=""  # gnu-ok: console kit is Linux-only; swallow-ok: an unreadable stamp reads old
+                    case "$rm_stamp_m" in '' | *[!0-9]*) ;; *) rm_stamp_age=$(( $(date +%s) - rm_stamp_m )) ;; esac
+                fi
+                if [ "$rm_stamp_age" -ge "$rm_gap" ] && mkdir -p "$rm_dir" 2>/dev/null && touch "$rm_stamp" 2>/dev/null; then
+                    read -r -a rm_launcher <<<"${TICK_RMRUN_LAUNCHER:-setsid nohup}"
+                    rm_have=1; [ "${#rm_launcher[@]}" -gt 0 ] || rm_have=0
+                    for rm_w in "${rm_launcher[@]}"; do command -v "$rm_w" >/dev/null 2>&1 || rm_have=0; done  # command -v with several operands passes if ANY exists
+                    if [ "$rm_have" = 1 ]; then
+                        if [ -n "${TICK_RMRUN_PROBE:-}" ]; then
+                            "${rm_launcher[@]}" bash "$TICK_RMRUN_PROBE" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 &
+                            rm_queue="$rm_queue,run"
+                        elif [ -n "$rm_anchor" ] && [ -f "$rm_cli" ]; then
+                            ( export JIRA_PROJECT_KEY="$rm_pk"; "${rm_launcher[@]}" node "$rm_cli" release rm-run "$rm_rel" </dev/null >>"$rm_dir/tick-rm-run.log" 2>&1 & )
+                            rm_queue="$rm_queue,run"
+                        fi
+                    fi
+                fi
+            fi
+            ;;
+    esac
 fi
 
 # pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
@@ -2551,6 +2673,8 @@ if [ "$verbose" -eq 1 ]; then
     printf 'worker-session set: %s\n' "$legset_summary"
     printf 'board: %s\n' "$board_summary"
     printf 'tracker: %s\n' "$tracker_summary"
+    [ -z "$focus_summary" ] || printf 'focus: %s\n' "$focus_summary"
+    [ -z "$sdrift_summary" ] || printf 'sdrift: %s\n' "$sdrift_summary"
     printf 'denials: %s\n' "$denials_summary"
     printf 'ci queue: %s\n' "$ciq_summary"
     printf 'ci guardrail: %s\n' "$ciguard_summary"
@@ -2562,6 +2686,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'versionless-done: %s\n' "$vdone_summary"
     printf 'version mismatch: %s\n' "$vmismatch_summary"
     printf 'version leaks: %s\n' "$leaks_summary"
+    printf 'rm-queue: %s\n' "$rm_queue"
     printf 'leftover worktrees: %s%s\n' "$wto_summary" "${wtc_summary:+ (ceiling alarm $wtc_summary)}"
     [ -z "$flakes_tail" ] || printf 'suite flakes: %s\n' "${flakes_tail# flakes=}"
     [ "$effort_summary" = ok ] || printf 'effort: %s\n' "$effort_summary"
@@ -2590,7 +2715,8 @@ else
             *=|hb=ok|hb=skip|effort=ok|procs=0|models=none|ceiling=ok|atq=0|suites=0alive/0dead|\
             ext-prs=none|dispatch=none|acts=none|inbox=none|tick=UNKNOWN|burn=none|orphans=none|nonces=ok|nonces=skip|\
             plan-index=ok|plan-index=skip|or=skip|fails=none|fails=skip|\
-            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*) return ;;
+            versionless-done=0|versionless-done=skip|vmismatch=skip|leaks=0|leaks=skip|rm-queue=0|rm-queue=skip|wt-orphans=0|pool-closed=skip|pool-closed=0/*|\
+            focus=ok|sdrift=0:*) return ;;
         esac
         printf ' %s=%s' "$1" "$2"
     }
@@ -2641,8 +2767,11 @@ else
     compact_field versionless-done "$vdone_summary"
     compact_field vmismatch "$vmismatch_summary"
     compact_field leaks "$leaks_summary"
+    compact_field rm-queue "$rm_queue"
     compact_field wt-orphans "$wto_summary"
     compact_field wt-ceiling "$wtc_summary"
+    compact_field focus "$focus_summary"
+    compact_field sdrift "$sdrift_summary"
     printf '%s\n' "$flakes_tail$ready_tail$parked_tail$closable_tail$deadwin_tail$busedge_tail$wakerstate_tail$stall_tail$crfirst_tail$station_tail$alertfail_tail$tmp_tail$spare_tail"
     while IFS= read -r crfirst_line; do
         [ -n "$crfirst_line" ] || continue

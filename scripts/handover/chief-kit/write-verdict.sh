@@ -7,7 +7,7 @@
 # generates that line itself; the judge's prose comes from a file it wrote to
 # its scratch, so the command a judge types names nothing the guards key on.
 #
-# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>] [--repo <owner/name>] [--model <id>] [--effort <level>]
+# Usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--prior <GO|NO-GO>] [--repo <owner/name>] [--model <id>] [--effort <level>] [--delta-noop <judged-head>]
 #
 # --repo <owner/name> rules on a PR of that adopted repo instead of this
 # checkout's: the record goes under <user>/<owner>--<name> and carries a
@@ -109,6 +109,18 @@
 # nothing written. The verdict line keeps naming the judged head, so every veto
 # reader (go_trust_verdict, the GO-over-NO-GO scan, the scope round) still keys
 # on it; the round gate binds such a NO-GO to the reviewed head at read time.
+# `--delta-noop <judged-head>` (GO only) records that <head> needs no judge of its
+# own: this judge's real GO under <qid> rules on <judged-head>, and
+# `delta-class.sh --qid <qid> <judged-head> <head>`, run here in the cwd's repo,
+# prints `none` (no trust-path file, no judged finding's lines touched). The record
+# is written as <name> = delta-noop-<head> (so the judged head's own record is
+# never replaced) and its signed header carries `delta: no-op`,
+# `delta-judged: <judged-head>` and `delta-class: none`; evidence that types any of
+# those lines is refused. A no-op is never itself a judged head: the next push is
+# classified against the real one, so the delta stays cumulative. go.sh
+# --trust-reviewed re-runs the classifier on such a record and refuses it unless
+# it still prints `none`. Any other class, an unjudged head, a NO-GO or a
+# no-op judged head exits 2, nothing written.
 # A `layer-decision:` evidence line without its text|os|classifier|accept
 # keyword draws a stderr warning (review-round.sh would silently ignore it).
 #
@@ -126,7 +138,7 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--repo <owner/name>] [--model <id>] [--effort <level>]" >&2
+    echo "usage: write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--judge <name>] [--branch <name>] [--bind-reviewed <sha>] [--delta-noop <judged-head>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--repo <owner/name>] [--model <id>] [--effort <level>]" >&2
     exit 2
 }
 seg_ok() {
@@ -136,7 +148,7 @@ seg_ok() {
 [ "$#" -ge 3 ] || usage
 QID=$1 ANSWER=$2 HEAD=$3
 shift 3
-EVIDENCE="" NAME=judge PR="" BRANCH="" BIND="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0
+EVIDENCE="" NAME=judge NAME_SET=0 PR="" BRANCH="" BIND="" DNOOP="" PRIOR="" RESIDUAL_OF="" MODEL="" EFFORT="" VREPO="" VREPO_SET=0
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --model) [ "$#" -ge 2 ] || usage; MODEL=$2; shift 2 ;;
@@ -145,13 +157,17 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || usage
             [ -n "$2" ] || { echo "write-verdict: --bind-reviewed needs the full 40-char lowercase hex sha (got an empty value)" >&2; exit 2; }
             BIND=$2; shift 2 ;;
+        --delta-noop)
+            [ "$#" -ge 2 ] || usage
+            [ -n "$2" ] || { echo "write-verdict: --delta-noop needs the full 40-char lowercase hex sha of the judged head (got an empty value)" >&2; exit 2; }
+            DNOOP=$2; shift 2 ;;
         --residual-of) [ "$#" -ge 2 ] || usage; RESIDUAL_OF=$2; shift 2 ;;
         --pr) [ "$#" -ge 2 ] || usage; PR=$2; shift 2 ;;
         --repo) [ "$#" -ge 2 ] || usage; VREPO=$2; VREPO_SET=1; shift 2 ;;
         --branch) [ "$#" -ge 2 ] || usage; BRANCH=$2; shift 2 ;;
         --prior) [ "$#" -ge 2 ] || usage; PRIOR=$2; shift 2 ;;
         --evidence-file) [ "$#" -ge 2 ] || usage; EVIDENCE=$2; shift 2 ;;
-        --judge) [ "$#" -ge 2 ] || usage; NAME=$2; shift 2 ;;
+        --judge) [ "$#" -ge 2 ] || usage; NAME=$2; NAME_SET=1; shift 2 ;;
         *) usage ;;
     esac
 done
@@ -186,6 +202,28 @@ if [ -n "$BIND" ]; then
         echo "write-verdict: --bind-reviewed names the judged head itself; give the earlier reviewed head" >&2
         exit 2
     fi
+fi
+# --delta-noop: a GO for a later head of a PR a real GO already judged, never a NO-GO,
+# an adopted repo's record or a branch-only GO; the classifier runs once the repo is known.
+if [ -n "$DNOOP" ]; then
+    case "$DNOOP" in *[!0123456789abcdef]*) DNOOP_OK=0 ;; *) DNOOP_OK=1 ;; esac
+    if [ "$DNOOP_OK" -ne 1 ] || [ "${#DNOOP}" -ne 40 ]; then
+        echo "write-verdict: --delta-noop must be the full 40-char lowercase hex sha of the judged head (got '$DNOOP')" >&2
+        exit 2
+    fi
+    if [ "$DNOOP" = "$HEAD" ]; then
+        echo "write-verdict: --delta-noop names the head itself; give the earlier judged head" >&2
+        exit 2
+    fi
+    if [ "$ANSWER" != GO ] || [ -n "$BIND" ] || [ -n "$BRANCH" ] || [ "$VREPO_SET" -eq 1 ]; then
+        echo "write-verdict: --delta-noop records a GO for a PR head only (not a NO-GO, --bind-reviewed, --branch or --repo)" >&2
+        exit 2
+    fi
+    if [ "$NAME_SET" -eq 1 ]; then
+        echo "write-verdict: --delta-noop writes its own record name (delta-noop-<head>); --judge would let it overwrite a judged head's record" >&2
+        exit 2
+    fi
+    NAME="delta-noop-$HEAD"
 fi
 [ -n "$EVIDENCE" ] || { echo "write-verdict: --evidence-file <path> is required" >&2; exit 2; }
 # the record names the model and effort that ruled, so judge accuracy is measurable.
@@ -314,6 +352,10 @@ if grep -Eq '^(model|effort):' "$EVIDENCE"; then
     echo "write-verdict: the evidence carries a model: or effort: line; pass --model / --effort and the writer records them" >&2
     exit 2
 fi
+if grep -Eq '^delta(-judged|-class)?:' "$EVIDENCE"; then
+    echo "write-verdict: the evidence carries a delta:, delta-judged: or delta-class: line; --delta-noop <judged-head> makes the writer record them" >&2
+    exit 2
+fi
 if grep -Eq '^(flipped|prior):' "$EVIDENCE"; then
     echo "write-verdict: the evidence carries a prior: or flipped: line; pass --prior <GO|NO-GO> and the writer computes both" >&2
     exit 2
@@ -382,6 +424,22 @@ if [ -n "$BIND" ]; then
         exit 2
     fi
     REVIEWED=$BIND
+fi
+
+# --delta-noop: the judged head must carry this qid's signed GO, and the classifier
+# must call the delta none. It runs in the caller's cwd (the repo under review) and
+# only as the anchor's own copy; anything it prints but `none`, or any failure, refuses.
+if [ -n "$DNOOP" ]; then
+    declare -F go_trust_verdict >/dev/null 2>&1 || { echo "write-verdict: cannot load go_trust_verdict from scripts/lib/go-gate.sh - refusing" >&2; exit 3; }
+    if ! dn_why=$(go_trust_verdict "$ROOT" "$QID" "$DNOOP" "$ANCHOR" "$PR" "$VREPO"); then
+        echo "write-verdict: --delta-noop refused - the judged head has no GO from $QID: $dn_why" >&2
+        exit 2
+    fi
+    dn_class=$(bash "$ANCHOR/scripts/handover/chief-kit/delta-class.sh" --qid "$QID" "$DNOOP" "$HEAD" 2>/dev/null) || dn_class=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
+    if [ "$dn_class" != none ]; then
+        echo "write-verdict: --delta-noop refused - delta-class.sh classifies $DNOOP..$HEAD as '$dn_class', not none; a judge must rule on it (run from the repo under review); nothing written" >&2
+        exit 2
+    fi
 fi
 
 # Walk <root>/<user>/<bucket>/verdicts/<qid>, refusing a symlink at any step.
@@ -491,6 +549,7 @@ if ! {
     { [ -z "$BRANCH" ] || printf 'branch: %s\n' "$BRANCH"; } &&
     { [ -z "$PRIOR" ] || printf 'prior: %s\nflipped: %s\n' "$PRIOR" "$([ "$PRIOR" = "$ANSWER" ] && echo n || echo y)"; } &&
     printf 'model: %s\neffort: %s\n' "$MODEL" "$EFFORT" &&
+    { [ -z "$DNOOP" ] || printf 'delta: no-op\ndelta-judged: %s\ndelta-class: none\n' "$DNOOP"; } &&
     printf '\n' &&
     { [ -z "$REVIEWED" ] || printf 'reviewed-head: %s\nbound-by: write-verdict --bind-reviewed; the delta from the reviewed head is test-path-only or comment-only\n\n' "$REVIEWED"; } &&
     cat "$EVIDENCE" &&

@@ -75,7 +75,7 @@ Auto-stages and commits *.md changes in the resolved handover root
 (per scripts/lib/handover-path.sh). Mode B (external HANDOVER_DIR) only;
 refuses on Mode A (inline) to avoid clobbering the feature branch.
 
-Branched path (default, HIMMEL-140): switches to
+Branched path (default): switches to
 `<branch_prefix><TICKET>-<slug>` (idempotent reuse), commits, and pushes.
 Untagged messages fall back to `<branch_prefix>session-YYYY-MM-DD`.
 
@@ -93,13 +93,13 @@ Environment:
   HANDOVER_DIRECT_MAIN=1    Skip branching; commit on the current branch
                             (v1 behavior). Default opt-out kept until the
                             branched path is fully validated.
-  HANDOVER_LEG_SPLIT_OK=1   Override the HIMMEL-1830/1831 leg-split guard
+  HANDOVER_LEG_SPLIT_OK=1   Override the leg-split guard
                             (exit 8): allow committing two never-committed
                             numbered files for the same series in one commit.
 
 A `.single-writer` marker at the handover repo root forces direct-on-default-
 branch commits (no branch, no PR) and refuses (exit 7) if the repo is parked
-on a non-default branch (HIMMEL-571).
+on a non-default branch.
 
 The positional form lets the /handover-commit slash command pass
 $ARGUMENTS unquoted (so trailing --no-push / --dry-run still parse as
@@ -157,8 +157,8 @@ To use auto-commit:
      loads it).
   3. Re-run.
 
-See HIMMEL-118 (handover root resolver) and HIMMEL-59 (this Epic) for
-context on the deferred-branching design.
+For context on the deferred-branching design, see
+scripts/lib/handover-path.sh (the handover root resolver).
 EOF
     exit 3
 fi
@@ -524,7 +524,7 @@ fi
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY auto-commit: mode=B root=$root repo=$handover_repo"
     if [ "$leg_split_found" -eq 1 ]; then
-        echo "DRY auto-commit: would REFUSE (exit 8): second never-committed handover file for the same leg series (HIMMEL-1830/1831):"
+        echo "DRY auto-commit: would REFUSE (exit 8): second never-committed handover file for the same leg series:"
         _leg_split_print
         echo "DRY auto-commit: override with HANDOVER_LEG_SPLIT_OK=1 if this is a deliberate two-file leg"
         exit 0
@@ -609,7 +609,7 @@ if [ "${HANDOVER_LEG_SPLIT_OK:-}" != "1" ]; then
     _leg_split_reset
     _hp_collect_or_die _leg_split_add_path diff --cached --name-only --diff-filter=A
     if [ "$leg_split_found" -eq 1 ]; then
-        echo "ERR auto-commit: refusing — this commit would create a SECOND handover file for the same leg (HIMMEL-1830/1831):" >&2
+        echo "ERR auto-commit: refusing — this commit would create a SECOND handover file for the same leg:" >&2
         _leg_split_print >&2
         echo "    One leg writes ONE file (state first, then orders, in the SAME doc)." >&2
         echo "    If these genuinely are two separate legs' work, commit them separately." >&2

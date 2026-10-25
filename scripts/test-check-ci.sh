@@ -1853,7 +1853,7 @@ assert_verdict 64 "95 verdict line on a missing --max-wait value"
 # cap so only the decidable early-exit path can produce rc 0 here.
 run blocking-cr-decidable --max-wait 0
 assert_rc 0 "96 early decidable exit rc 0 (matches instant-green)"
-assert_err_has "ending the watch early (HIMMEL-2062)" "96 early-exit message printed"
+assert_err_has "ending the watch early" "96 early-exit message printed"
 
 # 97 — cap: a NON-CodeRabbit check is still pending when --max-wait elapses —
 # cannot certify green over unfinished work even though nothing has failed.
@@ -2091,7 +2091,7 @@ fi
 # with the WAITING notice naming the count and the still-pending job.
 run blocking-cap-extend --max-wait 2
 assert_rc 0 "2907-a a slow-but-healthy shard resolves after the one-time extension"
-assert_err_has "WAITING 1 pending (unit-tests) — extending once (HIMMEL-2907)" "2907-a WAITING notice names the pending count and job"
+assert_err_has "WAITING 1 pending (unit-tests) — extending once" "2907-a WAITING notice names the pending count and job"
 assert_out_has "all checks green + all review threads resolved" "2907-a eventual green verdict"
 
 # 2907-b — negative control: a check that stays pending PAST the extension

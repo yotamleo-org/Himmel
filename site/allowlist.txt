@@ -66,6 +66,7 @@ tool-adoption/rubric.md
 tool-adoption/registry.md
 tool-adoption/telemetry.md
 tool-adoption/lane-adoption-playbook.md
+evals/README.md
 evals/prompt-cache.md
 evals/review-panel.md
 release/v1.1.2-notes.md

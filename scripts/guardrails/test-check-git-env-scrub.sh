@@ -360,6 +360,7 @@ F_REPO="$(mktemp -d "${TMPDIR:-/tmp}/git-env-scrub-files-repo.XXXXXX")" || exit 
     cp "$REPO_ROOT/$CASES/unscrubbed-entry.sh" scripts/hooks/bad.sh
     cp "$REPO_ROOT/$CASES/unscrubbed-entry.sh" scripts/other/outside.sh
     cp "$REPO_ROOT/$CASES/unset-scrubbed.sh" scripts/hooks/good.sh
+    printf 'git status\n' > scripts/hooks/twin.ps1
     git add -A && git commit -q -m fixture
 ) >/dev/null 2>&1
 files_run() {
@@ -395,6 +396,7 @@ if [ "$rc" -eq 1 ]; then pass "F8 --files: a baseline entry for a deleted file i
 files_expect "F9 --files: a non-regular path outside the scan scope is skipped, not a missing file" 0 scripts/other
 cp "$REPO_ROOT/$CASES/unscrubbed-entry.sh" "$F_REPO/scripts/hooks/untracked.sh"
 files_expect "F10 --files: an untracked trust-path file fails closed" 2 scripts/hooks/untracked.sh
+files_expect "F11 --files: a .ps1 trust-path file is not scanned (Windows is dropped)" 0 scripts/hooks/twin.ps1
 rm -f "$F_BASE"
 rm -rf "$F_REPO"
 

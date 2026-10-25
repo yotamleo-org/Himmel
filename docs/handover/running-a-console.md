@@ -6,7 +6,7 @@ relay, dependency chain, parallel wave, arming and side session *are* is defined
 [`../glossary.md`](../glossary.md); read that first if any of those words is
 new. This page is how to run one.
 
-`/console new` starts one. `/console next` hands it over to its successor.
+`/chief new` starts one. `/chief next` hands it over to its successor.
 For the sources, authors and licences behind the team's tools, see
 [Credits](../credits.md).
 
@@ -32,7 +32,7 @@ They look adjacent and are not interchangeable.
 | State | in-session | a handover document + a queue lock, survives the session |
 | Children | subagents, no window of their own | headed sessions with their own worktrees and PRs |
 | Rulings | none; the plan is fixed at fanout | RETASK channel, mid-flight, authenticated |
-| Handover | none | `/console next` writes the successor + a HANDOFF |
+| Handover | none | `/chief next` writes the successor + a HANDOFF |
 
 Reach for `/afk-shift` when you have a fixed list of well-scoped tickets
 and want them done unattended. Reach for a chief when the work will need
@@ -41,10 +41,10 @@ decisions you cannot pre-write, or will outlive one context window.
 ## Starting one
 
 ```bash
-/console new                      # writes the doc, takes the lock, prints the launch line
-/console new --name night         # a differently-named succession in the same bucket
-/console new --arm                # also arms it headed, on a signal file + deadline
-/console new --dry-run            # print what it would write, touch nothing
+/chief new                        # writes the doc, takes the lock, prints the launch line
+/chief new --name night           # a differently-named succession in the same bucket
+/chief new --arm                  # also arms it headed, on a signal file + deadline
+/chief new --dry-run              # print what it would write, touch nothing
 ```
 
 `new` resolves your handover root through the shared resolver (`HANDOVER_DIR`,
@@ -124,7 +124,7 @@ It also opens a **Telegram inbox**: it creates
 `chief-kit/console-wait.sh`, run with Bash `run_in_background` (no `Monitor` re-arm loop, so an idle chief takes no turns; a persisted read
 cursor means a line appended while no waiter ran is delivered on the next
 start; at-least-once, so a waiter killed mid-emit can repeat one line), so
-the operator's `/console <session> <text>` from
+the operator's `/chief <session> <text>` (or the older alias `/console`) from
 Telegram reaches the running chief with the operator's authority (rulings,
 halts, new work) but never a permission or settings change and never a
 skipped GO verification. The chief replies with
@@ -486,7 +486,7 @@ fresh GO.
 Chiefs hand over at **45 % context fill, or 90 k input tokens in one turn**.
 
 ```bash
-/console next --arm --doc <this console's own doc> --bucket <its bucket> --prefix <its prefix> --model <its model>
+/chief next --arm --doc <this console's own doc> --bucket <its bucket> --prefix <its prefix> --model <its model>
 ```
 
 **Name your own document, bucket, prefix and model explicitly.** Without
@@ -523,14 +523,21 @@ notice record prints only `BUS-RELAY-FAIL`: that worker already has its inbox re
 worker in the fleet manifest but missing from Live state prints `NOT-IN-LIVE-STATE` when
 its record fails, when the chief has no bus identity, when it is a claudex worker, or
 when its session does not resolve: relay it by hand if it is live. `SKIPPED`, `UNRESOLVED` and
-`UNRESOLVED-LANE` lines sent nothing: each needs a relay by hand. `BUS-RELAY <label> ok` means the bus stored the record, not that the
+`UNRESOLVED-LANE` lines sent nothing: each needs a relay by hand. So does a `FAILED-INBOX` line (its claudex inbox send
+failed). `BUS-RELAY <label> ok` means the bus stored the record, not that the
 worker saw it: delivery needs the worker's `HIMMEL_BUS_NAME` hooks, so the
 successor's `WAKE succession partial` is the backstop for one that never quotes back. The worker
 session's quote-back is the `SUCCESSION accepted` Results bullet in its own doc (the successor's
 waiter tallies it); it sends a `SendMessage` only on a timeout or a decline. That run is the
 relay: never re-run it (a retry resends the claudex inbox relays). It never carries a fresh
 token, and a relay with none is complete (the worker keeps its own): native and claudex
-workers are not rotated on a bus succession.
+workers are not rotated on a bus succession. It prints `RELAYED <n> of <m>` last, and n
+counts its `SENDMESSAGE` lines: send those relays first, then that line to the successor,
+naming every worker still unrelayed (n alone does not say which). A batch that fails or
+times out (`WAKE relay-on-live ... relay-failed rc=<n>`) prints its partial output and no
+`RELAYED` line. On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line,
+then send `RELAYED <n> of <m>` yourself, n the delivered lines.
+The quote-backs are the successor's to tally; you do not wait for them.
 A successor that arrives after you have left can prove itself only with the
 two-token chain form; a worker that cannot verify that is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's
@@ -539,10 +546,14 @@ accepted` bullet names the successor (`RELAYED:<leg>`, a relay that kept the
 worker's token, is valid) or the worker has rotated.
 
 **Release your lock only after the successor reports `LIVE`.** It sends that
-only after the quote-backs (or with the workers that did not quote back named,
-and why: ACTION ZERO step 9), and it is the only evidence the arm actually fired
+once your `RELAYED` line arrives (naming the workers you could not relay, and
+why: ACTION ZERO step 9), and it is the only evidence the arm actually fired
 and the successor completed ACTION ZERO; releasing on the `touch` alone leaves
-an unattended fleet if the launch failed.
+an unattended fleet if the launch failed. Relay each worker it names as not relayed by
+hand before you wrap. A relay delivered is enough: a worker
+drains it at its next tool round whether you are live or gone (S1), so you wrap
+without waiting for the quote-backs; workers that did not quote back are named
+on the successor's informational `WAKE succession partial`.
 
 **Wrap only with no subagent still running**. An in-process
 subagent, a judge subagent above all, dies with its parent session and its verdict

@@ -174,7 +174,11 @@ _cmg_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # _crg_critic_states <head> <slug>... — each critic's state at <head>, read
 # from the CR ledger: one `slug<TAB>state<TAB>detail` line per slug, or one
-# `degraded<TAB><why>` line when the ledger cannot be read.
+# `degraded<TAB><why>` line when the ledger cannot be read. After the slug
+# lines, one `@judge-go<TAB>branch<TAB>source` line per status-ok judge-go row at
+# exactly <head> (review-round.sh judge-go writes it, after the round cap), and
+# one `@dependabot-go<TAB>branch<TAB>source<TAB>pr` line per status-ok dependabot-go row
+# at exactly <head> (scripts/cr/dependabot-go.sh writes it).
 #   pass           an avail ok row, and no open crit/imp finding of its own
 #   findings-open  open finding(s), whatever the avail rows say; detail = their ids
 #   absent         a critic-skipped row whose detail matches _CCFG_ABSENT_RE
@@ -278,6 +282,12 @@ for (const slug of e.RG_SLUGS.split(" ").filter(Boolean)) {
     }
     out.push([slug, state, detail.replace(/[\t\n]/g, " ")].join("\t"));
 }
+for (const o of recs) {
+    if (o.kind === "judge-go" && o.status === "ok" && o.head === e.RG_HEAD && str(o.branch) && str(o.source))
+        out.push(["@judge-go", str(o.branch), str(o.source)].map((s) => s.replace(/[\t\n]/g, " ")).join("\t"));
+    if (o.kind === "dependabot-go" && o.status === "ok" && o.head === e.RG_HEAD && str(o.branch) && str(o.source))
+        out.push(["@dependabot-go", str(o.branch), str(o.source), Number.isInteger(o.pr) ? String(o.pr) : ""].map((s) => s.replace(/[\t\n]/g, " ")).join("\t"));
+}
 process.stdout.write(out.length ? out.join("\n") + "\n" : "");
 '
 }
@@ -369,13 +379,50 @@ _crg_coderabbit() {
     return 0
 }
 
+# _crg_judge_source <owner> <name> <pr> <states> — the `source` of a signed judge
+# GO at the head (an `@judge-go` line of _crg_critic_states output) whose branch
+# is the PR's head branch, or nothing: no such row, or the PR's branch cannot be
+# read (the release never fails open on a failed read).
+_crg_judge_source() {
+    local owner="$1" name="$2" num="$3" states="$4" rows pr_branch br src
+    rows=$(printf '%s\n' "$states" | awk -F'\t' '$1 == "@judge-go" { print $2 "\t" $3 }')
+    [ -n "$rows" ] || return 0
+    pr_branch=$(gh pr view "$num" --repo "$owner/$name" --json headRefName 2>/dev/null </dev/null) || return 0
+    pr_branch=$(printf '%s' "$pr_branch" | jq -r '.headRefName // empty' 2>/dev/null) || return 0
+    [ -n "$pr_branch" ] || return 0
+    while IFS=$'\t' read -r br src; do
+        [ "$br" = "$pr_branch" ] && { printf '%s' "$src"; return 0; }
+    done <<<"$rows"
+    return 0
+}
+
+# _crg_dependabot_source <owner> <name> <pr> <states> — the `source` of a
+# dependabot-go row at the head (an `@dependabot-go` line of _crg_critic_states
+# output) whose branch is the PR's head branch and whose pr is <pr>, when the PR's author is
+# app/dependabot; or nothing: no such row, a human author, or a PR that cannot
+# be read (a failed read never fails open).
+_crg_dependabot_source() {
+    local owner="$1" name="$2" num="$3" states="$4" rows pr pr_branch pr_author br src row_pr
+    rows=$(printf '%s\n' "$states" | awk -F'\t' '$1 == "@dependabot-go" { print $2 "\t" $3 "\t" $4 }')
+    [ -n "$rows" ] || return 0
+    pr=$(gh pr view "$num" --repo "$owner/$name" --json headRefName,author 2>/dev/null </dev/null) || return 0
+    pr_author=$(printf '%s' "$pr" | jq -r '.author.login // empty' 2>/dev/null) || return 0
+    [ "$pr_author" = app/dependabot ] || return 0
+    pr_branch=$(printf '%s' "$pr" | jq -r '.headRefName // empty' 2>/dev/null) || return 0
+    [ -n "$pr_branch" ] || return 0
+    while IFS=$'\t' read -r br src row_pr; do
+        [ "$br" = "$pr_branch" ] && [ "$row_pr" = "$num" ] && { printf '%s' "$src"; return 0; }
+    done <<<"$rows"
+    return 0
+}
+
 # _crg_eval <config-json> <owner> <name> <pr> <head> — cr_reviewer_gate's body
 # over an already-resolved config (a review value of no_code_review is the
 # caller's to handle). Same rc and output contract as cr_reviewer_gate.
 _crg_eval() {
     local cfg="$1" owner="$2" name="$3" num="$4" head="$5"
     local rows slug mode req prov state detail line crit="" states="" crit_deg=""
-    local table="" hard_left=0 armed=1 clone_armed="" cr_row=0 hold="" note="" summary="" deg="" disp files
+    local table="" hard_left=0 armed=1 clone_armed="" cr_row=0 hold="" note="" summary="" deg="" disp files jg_src="" jg_checked="" db_src="" db_checked=""
     rows=$(printf '%s' "$cfg" | jq -r '.panel[] | [.slug, .mode, (.required | tostring), (.provider // "-")] | @tsv' 2>/dev/null) \
         || { echo "cr-reviewer-gate: degraded (cannot read the resolved config)" >&2; return 3; }
     while IFS=$'\t' read -r slug mode req prov; do
@@ -418,6 +465,25 @@ _crg_eval() {
             [ -n "$state" ] || { state=degraded; detail="no ledger state"; }
         fi
         [ "$state" = absent ] && [ "$req" = true ] && state=unavailable
+        # --release only: a signed judge GO at the head stands in for a hard
+        # reviewer that has not passed. A reviewer's own open finding still holds.
+        if [ "${_CRG_RELEASE:-0}" = 1 ] && [ "$mode" = hard ] && [ "$prov" != github-app ]; then
+            case "$state" in
+                not-yet-run|unavailable)
+                    [ -n "$jg_checked" ] || { jg_src=$(_crg_judge_source "$owner" "$name" "$num" "$states"); jg_checked=1; }
+                    [ -z "$jg_src" ] || { state=judge-go; detail=""; } ;;
+            esac
+        fi
+        # Merge gate and release alike: a dependabot-go row (a signed judge GO on a
+        # dependency-only Dependabot PR) stands in for a hard reviewer that has not
+        # passed. A reviewer's own open finding still holds.
+        if [ "$mode" = hard ] && [ "$prov" != github-app ]; then
+            case "$state" in
+                not-yet-run|unavailable)
+                    [ -n "$db_checked" ] || { db_src=$(_crg_dependabot_source "$owner" "$name" "$num" "$states"); db_checked=1; }
+                    [ -z "$db_src" ] || { state=dependabot-go; detail=""; } ;;
+            esac
+        fi
         case "$state" in absent|not-selected) ;; *) [ "$mode" = hard ] && hard_left=1 ;; esac
         table="$table$slug"$'\t'"$mode"$'\t'"$prov"$'\t'"$state"$'\t'"$detail"$'\n'
     done <<<"$rows"
@@ -442,6 +508,10 @@ _crg_eval() {
         disp="$state${detail:+($detail)}"
         case "$state" in
             pass|absent|not-selected|degraded) ;;
+            judge-go)
+                note="${note}NOTE: signed judge GO ($jg_src) at head $head of PR #$num stands in for $slug (hard) at the release — ci:go spends runner minutes and never satisfies a gate; the merge gate still reads $slug itself."$'\n' ;;
+            dependabot-go)
+                note="${note}NOTE: Dependabot dependency-only PR #$num: signed judge GO ($db_src) at head $head stands in for $slug (hard) — scripts/cr/dependabot-go.sh checked the author, the manifest-only diff and the head."$'\n' ;;
             unreadable)
                 hold="${hold}HOLD: $slug ($mode) cannot be read at head $head of PR #$num: $detail — this clone is armed, so a reviewer that cannot be read holds; repair the read (the CR ledger, or the GitHub query) and re-run, or bypass with CR_MERGE_GATE_OK=1."$'\n' ;;
             findings-open)
@@ -495,10 +565,19 @@ _crg_eval() {
 #   otherwise relaxed(<state>). No hard row left in the set is a config error,
 #   unless the config says "review": "no_code_review" (or CR_PROFILE=none):
 #   then GO with a NOTE and no gh call.
-#   --release (the CI release check, cr-first-release.sh) changes exactly one
-#   cell: a best-effort github-app row in state in-progress (CodeRabbit status
-#   pending) holds instead of relaxing. The merge gate omits it (H11): a merge
-#   also needs green heavy CI at the head.
+#   --release (the CI release check, cr-first-release.sh) changes exactly two
+#   cells. A best-effort github-app row in state in-progress (CodeRabbit status
+#   pending) holds instead of relaxing. And a hard reviewer in state
+#   not-yet-run or unavailable is judge-go when a status-ok judge-go row
+#   (review-round.sh judge-go: past the round cap, a signed judge GO) stands at
+#   exactly <head> and names the PR's head branch; its NOTE names the judge.
+#   Open findings still hold, and CodeRabbit is untouched. The merge gate omits
+#   both (H11): a merge also needs green heavy CI at the head, and the carry row
+#   clear-review-marker.sh writes once that CI is green.
+#   One cell is the same in both modes: a hard reviewer in state not-yet-run or
+#   unavailable is dependabot-go when a status-ok dependabot-go row
+#   (scripts/cr/dependabot-go.sh) stands at exactly <head>, names the PR's head
+#   branch, and the PR's author is app/dependabot. A failed PR read holds.
 cr_reviewer_gate() {
     local num="${1:-}" head="${2:-}" repo="${3:-}" cfg rc=0 owner name _CRG_RELEASE=0
     case "$repo" in --release) _CRG_RELEASE=1; repo="" ;; esac
@@ -617,7 +696,7 @@ cr_merge_gate() {
     # status or thread query) is remembered and fails open only at the end,
     # when nothing blocked: a broken query is not evidence here (the release
     # check never fails open on it).
-    local crg_out crg_rc=0 crg_degraded=0
+    local crg_out crg_rc=0 crg_degraded=0 _CRG_RELEASE=0
     crg_out=$(_crg_eval "$cfg" "$owner" "$name" "$num" "$head") || crg_rc=$?
     case "$crg_rc" in
         1) printf '%s\n' "$crg_out" | sed 's/^HOLD: /BLOCK: /'; return 2 ;;

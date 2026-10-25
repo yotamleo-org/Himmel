@@ -8,12 +8,17 @@ the relays below follow in the very next turn.
    **Wake-once succession (step 9).** A worker's quote-back is its own `SUCCESSION
    accepted` Results bullet (no token in it); it sends a `SendMessage` only on a
    timeout or a decline. Add `--succession <your session> [--silent-min T]` (T
-   whole minutes, default 20) to the step-10 waiter line on its first arm. On
-   `WAKE succession complete <n/n>` write each worker's nonce into `## Live state`
-   (the fresh one if issued, else the unchanged one) and run the printed LIVE
-   command; on `WAKE succession partial <k/n> silent <T> min` name the workers
-   still out. Sending LIVE earlier reads `nonces=UNCONFIRMED:<leg>`. Then
+   whole minutes, default 20) to the step-10 waiter line on its first arm. Send
+   LIVE to the predecessor once it reports `RELAYED <n> of <m>`, so it can wrap;
+   until a worker's bullet lands the tick reads `nonces=UNCONFIRMED:<leg>`. The
+   tally is informational: on `WAKE succession complete <n/n>` write each worker's
+   nonce into `## Live state` (the fresh one if issued, else the unchanged one)
+   and run the printed bullet command; on `WAKE succession partial <k/n> silent
+   <T> min` name the workers still out. Neither wake resends LIVE. Then
    `TaskStop` the waiter and re-arm it without `--succession`.
+   n counts only the batch's own deliveries, so n below m names nobody: LIVE
+   repeats the workers the predecessor's `RELAYED` message names as still unrelayed;
+   the predecessor relays each by hand before it wraps. If it is already gone, send each the token-chain form yourself.
    **Then close the predecessor's window.** Once its doc's lock is
    free and its last Results bullet reads `WRAPPED`, run
    `bash scripts/handover/chief-kit/close-wrapped-leg.sh --console <predecessor doc>`

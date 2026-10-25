@@ -164,7 +164,7 @@ contains 'S8 quotes: no token at all' "$(cell_of S8 4)" 'no token'
 step9="$(awk '/^9\. \*\*/ { f = 1 } /^10\. \*\*/ { f = 0 } f' "$CONSOLE")"
 contains 'ACTION ZERO step 9 has the predecessor re-brief each inherited leg' "$step9" 're-brief'
 contains 'ACTION ZERO step 9 requires each leg quote-back' "$step9" 'quote-back'
-before 'ACTION ZERO step 9: quote-back is collected BEFORE sending LIVE' "$step9" 'quote-back' '{{LETTER}} LIVE'
+before 'ACTION ZERO step 9: LIVE is sent only after the predecessor RELAYED line' "$step9" 'RELAYED' '{{LETTER}} LIVE'
 
 handing="$(section "$CONSOLE" '^## Handing over')"
 contains 'template Handing over: the outgoing console re-briefs the legs' "$handing" 're-brief'
@@ -173,7 +173,7 @@ contains 'template Handing over: the relay-on-live wake path is named' "$handing
 contains 'template Handing over: the relay run is never repeated' "$(flat "$handing")" 'never re-run it'
 contains 'template Handing over: relay-batch carries no fresh token' "$(flat "$handing")" 'carries no fresh token'
 if ! flat "$handing" | grep -iqF -- 'and the fresh one if the successor issued one'; then pass 'template Handing over: relay-batch is not said to carry the fresh token'; else fail 'template Handing over: relay-batch is not said to carry the fresh token (stale text present)'; fi
-before 'template Handing over: quote-backs are collected BEFORE the lock is released' "$handing" 'quote-back' 'release your lock'
+before 'template Handing over: RELAYED goes to the successor BEFORE the lock is released' "$handing" 'RELAYED' 'release your lock'
 
 live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/chief-sections/live-state.md")"
 contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 'only after'
@@ -189,12 +189,12 @@ if ! flat "$running" | grep -iqF -- 'MAY issue one per worker session'; then pas
 contains 'running-a-console Handing over: the LIVE release rule keeps the did-not-quote-back exception' "$running" 'did not quote back'
 step5="$(printf '%s\n' "$handing" | awk '/^5\. \*\*/ { f = 1 } f')"
 contains 'template Handing over step 5: the LIVE release rule keeps the did-not-quote-back exception' "$step5" 'did not quote back'
-before 'running-a-console Handing over: quote-backs are collected BEFORE the lock is released' "$running" 'quote-back' 'release your lock'
+before 'running-a-console Handing over: RELAYED goes to the successor BEFORE the lock is released' "$running" 'RELAYED' 'release your lock'
 
 # --- 4. handoff template: the successor's start order -------------------------
 starts="$(section "$HANDOFF" '^## How .* starts')"
 contains 'handoff "How starts": asks the predecessor to re-brief' "$starts" 're-brief'
-before 'handoff "How starts": LIVE is sent only after the quote-backs' "$starts" 'quote-back' '{{LETTER}} LIVE'
+before 'handoff "How starts": LIVE is sent only after the predecessor RELAYED line' "$starts" 'RELAYED' '{{LETTER}} LIVE'
 contains 'handoff "How starts": LIVE may name the legs that did not quote back (matches ACTION ZERO step 9)' "$starts" 'did not quote back'
 
 # --- 5. threat model ------------------------------------------------------------
@@ -385,6 +385,34 @@ contains 'leg-preface: a console change is quoted back by its SUCCESSION bullet'
 absent 'ACTION ZERO step 9 no longer waits on a SendMessage quote-back' "$(flat "$step9")" "Wait for each leg's quote-back"
 absent 'handoff no longer waits on a SendMessage quote-back' "$(flat "$starts")" "wait for each leg's quote-back"
 absent 'running-a-console no longer has the leg answer with a SendMessage quote-back' "$(flat "$running")" 'answers with a quote-back'
+# wrap on delivery: LIVE follows the predecessor's RELAYED line, the --succession tally is informational
+contains 'ACTION ZERO step 9: LIVE is sent on the predecessor RELAYED line' "$step9" 'RELAYED'
+absent 'template Handing over: the outgoing chief no longer waits for each quote-back' "$(flat "$handing")" "Wait for each quote-back"
+contains 'template Handing over: the outgoing chief sends RELAYED to the successor' "$handing" 'RELAYED <n> of <m>'
+contains 'handoff "How starts": LIVE follows the predecessor RELAYED line' "$starts" 'RELAYED'
+contains 'ACTION ZERO step 9: the succession wake is informational' "$step9" 'informational'
+contains 'waiter section: the succession wake is informational' "$waiter_doc" 'informational'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'waiter section: the relay-on-live wake carries the RELAYED line' "$(flat "$waiter_doc")" '`RELAYED <n> of <m>`'
+# a relay that failed or did not resolve is relayed by hand before the predecessor wraps
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'Handing over step 4: FAILED-INBOX and UNRESOLVED are relayed by hand too' "$(flat "$step4")" '`FAILED-INBOX` and `UNRESOLVED` too'
+before 'Handing over step 5: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$step5")" 'Relay any worker it names as not relayed' 'wrap with'
+succ_start="$(flat "$(cat "$DOCS/handover/chief-sections/successor-start.md")")"
+contains 'successor-start: n below m alone names no worker' "$succ_start" 'n below m names nobody'
+contains 'successor-start: LIVE repeats the workers the RELAYED message names as unrelayed' "$succ_start" 'names as still unrelayed'
+contains 'successor-start: a predecessor already gone leaves the token chain to the successor' "$succ_start" 'send each the token-chain form yourself'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'Handing over step 4: the RELAYED message names each worker still unrelayed' "$(flat "$step4")" '`RELAYED <n> of <m>` naming any still unrelayed'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'Handing over step 4: on relay-failed each undelivered worker gets a hand relay' "$(flat "$step4")" 'on `relay-failed`, any undelivered'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'waiter section: on relay-failed every worker with no delivery line gets a hand relay' "$(flat "$waiter_doc")" 'On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-console Handing over: on relay-failed every worker with no delivery line gets a hand relay' "$(flat "$running")" 'On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-console Handing over: a FAILED-INBOX line needs a hand relay' "$(flat "$running")" 'So does a `FAILED-INBOX` line'
+before 'running-a-console Handing over: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$running")" 'Relay each worker it names as not relayed' 'Wrap only with no subagent'
 
 # --- 9. ACTION ZERO is one batched turn --------------------------------------
 step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CONSOLE")"
@@ -403,6 +431,16 @@ contains 'ACTION ZERO step 1: Read of the decisions file in the same batch' "$st
 contains 'ACTION ZERO step 1: one batch' "$step1flat" 'one batch'
 contains 'ACTION ZERO step 1: action-zero.sh runs in the foreground' "$step1flat" 'foreground'
 absent 'ACTION ZERO step 1: action-zero.sh is never run_in_background' "$step1flat" 'run_in_background: true'
+
+# --- 10. the operator types /chief, on Telegram and in Claude Code ------------
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'template step 11: the operator writes the Telegram verb /chief' "$(cat "$CONSOLE")" '`/chief {{SESSION_NAME}} <text>`'
+absent 'template step 11: the Telegram verb is no longer /console' "$(cat "$CONSOLE")" '`/console [{][{]SESSION_NAME'
+# shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
+contains 'running-a-console: the operator writes the Telegram verb /chief' "$(cat "$RUNNING")" '`/chief <session> <text>`'
+absent 'running-a-console: the Telegram verb is no longer /console' "$(cat "$RUNNING")" '`/console <session>'
+absent 'template: the start and handover commands are /chief new and /chief next --arm' "$(cat "$CONSOLE")" '/console (new|next --arm)( |`)'
+absent 'running-a-console: the start and handover commands are /chief new and /chief next' "$(cat "$RUNNING")" '/console (new|next)( |`)'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-succession-docs.sh'

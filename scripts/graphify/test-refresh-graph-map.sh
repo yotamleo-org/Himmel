@@ -112,13 +112,11 @@ grep -q "Alpha" "$MAPS/graphify-luna-map.md" 2>/dev/null && pass "T1 MOC carries
 ls "$SCRATCH_PARENT"/graphify-refresh-* >/dev/null 2>&1 && fail "owned scratch subdir left behind" || pass "T1 owned scratch subdir cleaned"
 [ -f "$SCRATCH_PARENT/unrelated.txt" ] && pass "T1 scratch-parent unrelated data preserved" || fail "T1 clobbered unrelated data in scratch parent"
 
-# --- T1b: DEFAULT backend is claude-cli —
-# when no --backend is passed, refresh-graph-map must invoke graphify with
-# --backend claude-cli: graphify's `claude-cli` routes through the local `claude`
-# CLI on the operator's Pro/Max SUBSCRIPTION (no ANTHROPIC_API_KEY, priced 0.0),
-# whereas `claude` is the pay-as-you-go Anthropic API path — the claude-only
-# adopter story needs claude-cli. A logging stub records the argv so we can
-# assert the exact default flowed through. ---
+# --- T1b: claude-cli runs only when passed explicitly (the default is claude-api,
+# see T4b). graphify's `claude-cli` routes through the local `claude` CLI on the
+# operator's Pro/Max SUBSCRIPTION (no ANTHROPIC_API_KEY, priced 0.0), whereas
+# `claude` is the pay-as-you-go Anthropic API path. A logging stub records the
+# argv so we can assert the exact value flowed through. ---
 LOGBIN="$WS/logbin"; mkdir -p "$LOGBIN"
 BACKEND_LOG="$WS/backend.log"; : > "$BACKEND_LOG"
 cat > "$LOGBIN/graphify" <<STUB
@@ -140,12 +138,12 @@ chmod +x "$LOGBIN/graphify"
 DCORPUS="$WS/dvault"; mkdir -p "$DCORPUS/notes"; printf '# n\ncontent\n' > "$DCORPUS/notes/a.md"
 DMAPS="$WS/dmaps"; mkdir -p "$DMAPS"
 out=$( GRAPHIFY_MAP_BIN="$LOGBIN/graphify" bash "$SCRIPT" --name dtest --corpus-root "$DCORPUS" \
-  --maps-dir "$DMAPS" --title "D" --slug d-map --corpus-tag dtest 2>&1 ); rc=$?
-[ "$rc" -eq 0 ] || fail "T1b default-backend run exit 0 (got $rc): $out"
+  --maps-dir "$DMAPS" --title "D" --slug d-map --corpus-tag dtest --backend claude-cli 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T1b explicit claude-cli run exit 0 (got $rc): $out"
 # Assert the token IMMEDIATELY AFTER --backend is EXACTLY claude-cli (not the
 # paid-API `claude`, not deepseek) — arg-boundary robust per the one-per-line log.
 got_backend=$(awk 'prev=="--backend"{print; exit} {prev=$0}' "$BACKEND_LOG")
-[ "$got_backend" = "claude-cli" ] && pass "T1b default backend is exactly claude-cli" || fail "T1b default backend not exactly claude-cli (got: '$got_backend')"
+[ "$got_backend" = "claude-cli" ] && pass "T1b an explicit claude-cli reaches graphify as exactly claude-cli" || fail "T1b explicit claude-cli not exactly claude-cli (got: '$got_backend')"
 [ "$got_backend" != "deepseek" ] && pass "T1b default no longer deepseek" || fail "T1b default still uses deepseek"
 
 # --- T1c/T1d: harden-graph.py runs BETWEEN --update and
@@ -237,6 +235,21 @@ bash "$SCRIPT" --name luna --corpus-root "$CORPUS" --maps-dir "$MAPS" \
 # --- T4: missing required flag → usage exit 1 ---
 bash "$SCRIPT" --name luna >/dev/null 2>&1
 [ "$?" -eq 1 ] && pass "T4 missing flags exits 1" || fail "T4 usage exit code"
+
+# --- T4b: no --backend -> the default is claude-api. An extracting run refuses
+# before any work: lane unresolved, or lane on but not wired here; graphify is
+# never called and claude-cli never runs unless passed explicitly.
+T4B_BIN="$WS/t4b-bin"; mkdir -p "$T4B_BIN"
+printf '#!/usr/bin/env bash\necho called >> "%s/t4b-calls"\nexit 0\n' "$WS" > "$T4B_BIN/graphify"; chmod +x "$T4B_BIN/graphify"
+rm -f "$WS/t4b-calls"
+out=$( env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT GRAPHIFY_MAP_BIN="$T4B_BIN/graphify" bash "$SCRIPT" --name luna --corpus-root "$CORPUS" \
+  --maps-dir "$MAPS" --title T --slug graphify-luna-map 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"ERR refresh-graph-map: --backend claude-api needs HIMMEL_API_LANE=on"* ]] && [ ! -e "$WS/t4b-calls" ] \
+  && pass "T4b default backend with the lane off refuses rc 2, graphify never called" || fail "T4b default backend with the lane off (rc=$rc): $out"
+out=$( HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A GRAPHIFY_MAP_BIN="$T4B_BIN/graphify" bash "$SCRIPT" --name luna --corpus-root "$CORPUS" \
+  --maps-dir "$MAPS" --title T --slug graphify-luna-map 2>&1 ); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"semantic-update.sh"* ]] && [[ "$out" == *"--backend claude-cli"* ]] && [ ! -e "$WS/t4b-calls" ] \
+  && pass "T4b default backend with the lane on refuses rc 2 naming semantic-update.sh and the claude-cli opt-in" || fail "T4b default backend with the lane on (rc=$rc): $out"
 
 # --- T5: a garbage/malformed report must NOT clobber the last-good MOC
 # (curator refuses to publish → exit propagates; existing MOC survives). ---
@@ -1331,7 +1344,7 @@ t23env="$WS/t23-env.log"; t23calls="$WS/t23-calls.log"
 out=$( env -u GRAPHIFY_API_TIMEOUT \
   GRAPHIFY_T23_ENVLOG="$t23env" GRAPHIFY_CALL_LOG="$t23calls" \
   GRAPHIFY_MAP_BIN="$T23BIN/graphify" PATH="$T23BIN:$PATH" \
-  bash "$SCRIPT" --name t23a --corpus-root "$T23CORPUS" \
+  bash "$SCRIPT" --backend claude-cli --name t23a --corpus-root "$T23CORPUS" \
   --maps-dir "$T23MAPS" --title "T23" --slug t23a-map --corpus-tag t23a 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] || fail "T23a unset-timeout run exit 0 (got $rc): $out"
 # env var visible to the graphify subprocess == the worker-exported 900 default.
@@ -1349,7 +1362,7 @@ got_flag=$(awk 'prev=="--api-timeout"{print; exit} {prev=$0}' "$t23calls")
 out=$( GRAPHIFY_API_TIMEOUT=600 \
   GRAPHIFY_T23_ENVLOG="$t23env" GRAPHIFY_CALL_LOG="$t23calls" \
   GRAPHIFY_MAP_BIN="$T23BIN/graphify" PATH="$T23BIN:$PATH" \
-  bash "$SCRIPT" --name t23b --corpus-root "$T23CORPUS" \
+  bash "$SCRIPT" --backend claude-cli --name t23b --corpus-root "$T23CORPUS" \
   --maps-dir "$T23MAPS" --title "T23" --slug t23b-map --corpus-tag t23b 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] || fail "T23b caller-set timeout run exit 0 (got $rc): $out"
 got_env=$(sed -n 's/^GRAPHIFY_API_TIMEOUT=//p' "$t23env" | head -n 1)
@@ -1364,7 +1377,7 @@ got_flag=$(awk 'prev=="--api-timeout"{print; exit} {prev=$0}' "$t23calls")
 out=$( GRAPHIFY_API_TIMEOUT=abc \
   GRAPHIFY_T23_ENVLOG="$t23env" GRAPHIFY_CALL_LOG="$t23calls" \
   GRAPHIFY_MAP_BIN="$T23BIN/graphify" PATH="$T23BIN:$PATH" \
-  bash "$SCRIPT" --name t23c --corpus-root "$T23CORPUS" \
+  bash "$SCRIPT" --backend claude-cli --name t23c --corpus-root "$T23CORPUS" \
   --maps-dir "$T23MAPS" --title "T23" --slug t23c-map --corpus-tag t23c 2>&1 ); rc=$?
 [ "$rc" -eq 1 ] && pass "T23c non-numeric GRAPHIFY_API_TIMEOUT rejected (rc=1)" \
   || fail "T23c non-numeric GRAPHIFY_API_TIMEOUT should fail rc=1 (got $rc): $out"
@@ -1378,7 +1391,7 @@ grep -q "GRAPHIFY_API_TIMEOUT must be a positive integer" <<<"$out" \
 : > "$t23calls"
 out=$( GRAPHIFY_API_TIMEOUT=0 \
   GRAPHIFY_CALL_LOG="$t23calls" GRAPHIFY_MAP_BIN="$T23BIN/graphify" PATH="$T23BIN:$PATH" \
-  bash "$SCRIPT" --name t23c0 --corpus-root "$T23CORPUS" \
+  bash "$SCRIPT" --backend claude-cli --name t23c0 --corpus-root "$T23CORPUS" \
   --maps-dir "$T23MAPS" --title "T23" --slug t23c0-map --corpus-tag t23c0 2>&1 ); rc=$?
 { [ "$rc" -eq 1 ] && grep -q "GRAPHIFY_API_TIMEOUT must be" <<<"$out"; } \
   && pass "T23c2 zero GRAPHIFY_API_TIMEOUT rejected (rc=1 + validation msg)" \
@@ -1386,7 +1399,7 @@ out=$( GRAPHIFY_API_TIMEOUT=0 \
 : > "$t23calls"
 out=$( env GRAPHIFY_API_TIMEOUT='' \
   GRAPHIFY_CALL_LOG="$t23calls" GRAPHIFY_MAP_BIN="$T23BIN/graphify" PATH="$T23BIN:$PATH" \
-  bash "$SCRIPT" --name t23c3 --corpus-root "$T23CORPUS" \
+  bash "$SCRIPT" --backend claude-cli --name t23c3 --corpus-root "$T23CORPUS" \
   --maps-dir "$T23MAPS" --title "T23" --slug t23c3-map --corpus-tag t23c3 2>&1 ); rc=$?
 { [ "$rc" -eq 1 ] && grep -q "GRAPHIFY_API_TIMEOUT must be" <<<"$out"; } \
   && pass "T23c3 explicitly-empty GRAPHIFY_API_TIMEOUT rejected (rc=1 + validation msg, not silently defaulted)" \
@@ -2818,11 +2831,11 @@ for model_case in unset empty haiku; do
   # logs "model:effort" per dispatch.
   case "$model_case" in
     unset) out=$( env -u GRAPHIFY_CLAUDE_CLI_MODEL -u CLAUDE_CODE_EFFORT_LEVEL GRAPHIFY_MAP_BIN="$MODELBIN/graphify" bash "$SCRIPT" \
-      --name model-unset --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-unset 2>&1 ); rc=$?; expected=sonnet:low ;;
+      --backend claude-cli --name model-unset --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-unset 2>&1 ); rc=$?; expected=sonnet:low ;;
     empty) out=$( env -u CLAUDE_CODE_EFFORT_LEVEL GRAPHIFY_CLAUDE_CLI_MODEL='' GRAPHIFY_MAP_BIN="$MODELBIN/graphify" bash "$SCRIPT" \
-      --name model-empty --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-empty 2>&1 ); rc=$?; expected=:low ;;
+      --backend claude-cli --name model-empty --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-empty 2>&1 ); rc=$?; expected=:low ;;
     haiku) out=$( GRAPHIFY_CLAUDE_CLI_MODEL=haiku CLAUDE_CODE_EFFORT_LEVEL=medium GRAPHIFY_MAP_BIN="$MODELBIN/graphify" bash "$SCRIPT" \
-      --name model-haiku --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-haiku 2>&1 ); rc=$?; expected=haiku:medium ;;
+      --backend claude-cli --name model-haiku --corpus-root "$MODELCORPUS" --maps-dir "$MODELMAPS" --title Model --slug model-haiku 2>&1 ); rc=$?; expected=haiku:medium ;;
   esac
   # the stub logs a line on BOTH
   # graphify dispatches (comment above -- refresh-graph-map.sh:404 exports
@@ -3995,7 +4008,7 @@ target=""; if [ "\$1" = "cluster-only" ]; then target="\$2"; else target="\$1"; 
 exec "$BIN/graphify" "\$@"
 STUB
 chmod +x "$T52_MBIN/graphify"
-out=$( GRAPHIFY_MAP_BIN="$T52_MBIN/graphify" bash "$SCRIPT" --name t52n --corpus-root "$T52_N" \
+out=$( GRAPHIFY_MAP_BIN="$T52_MBIN/graphify" bash "$SCRIPT" --backend claude-cli --name t52n --corpus-root "$T52_N" \
   --maps-dir "$T52_MAPS" --title N --slug t52n-map --scratch "$T52_PARENT" 2>&1 ); rc=$?
 [ "$rc" -eq 0 ] || fail "T52 normal run rc=$rc: $out"
 [ "$(cat "$T52_MARKER_LOG")" = "$(cd "$T52_N" && pwd -P)" ] \
@@ -4353,6 +4366,8 @@ STUB
 chmod +x "$MGBIN/graphify"
 mg_corpus() { # <dir> <ast-nodes> <semantic-nodes of tracked.md> — git corpus with a live graph
   git_corpus "$1"
+  printf 'x = 1\n' > "$1/code.py"; git -C "$1" add code.py >/dev/null 2>&1
+  git -C "$1" -c core.hooksPath=/dev/null commit -qm code >/dev/null 2>&1
   mkdir -p "$1/graphify-out"
   python3 - "$1/graphify-out/graph.json" "$2" "$3" <<'PY'
 import json, sys
@@ -4404,9 +4419,9 @@ MGS="$WS/mg-shrunk"; mg_corpus "$MGS" 5 0
 python3 - "$MGS/graphify-out" <<'PY2'
 import json, os, sys
 d = sys.argv[1]; p = os.path.join(d, "graph.json"); g = json.load(open(p))
-g["nodes"] += [{"id": "gone-%d" % i, "label": "g", "source_file": "gone.md", "_origin": "semantic"} for i in range(60)]
+g["nodes"] += [{"id": "gone-%d" % i, "label": "g", "source_file": "gone-notes", "_origin": "semantic"} for i in range(60)]
 json.dump(g, open(p, "w"))
-json.dump({"version": 1, "files": {"gone.md": "x"}}, open(os.path.join(d, "semantic-manifest.json"), "w"))
+json.dump({"version": 1, "files": {"gone-notes": "x"}}, open(os.path.join(d, "semantic-manifest.json"), "w"))
 PY2
 out=$(mg_run mgs "$MGS" --merge-into-live); rc=$?
 { [ "$rc" -ne 0 ] && grep -q "staged graph is below" <<<"$out" && [ "$(mg_count "$MGS/graphify-out/graph.json")" = 65 ]; } \

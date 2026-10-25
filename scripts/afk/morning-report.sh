@@ -24,6 +24,8 @@
 #     resolver's fail-closed design. Fix HANDOVER_DIR or pass --out.
 #   - Mode A (inline)           → $repo/handovers/overnight-report-$(date -u +%F).md
 #     (created on demand via handover_root_ensure — this is a write op)
+#   - An adopted project writes under <root>/afk/<project key>/ in either mode
+#     (project-state.sh); the himmel clone keeps the paths above.
 #   - --out PATH overrides; --dry-run prints without touching files but
 #     previews the SAME resolution the real run would perform (broken
 #     HANDOVER_DIR still exits 2; Mode A previews <repo>/handovers/
@@ -44,6 +46,8 @@ if . "$SCRIPT_DIR/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_
 # shellcheck source=../lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/handover-path.sh"
+# shellcheck source=project-state.sh
+. "$SCRIPT_DIR/project-state.sh"
 
 ROWS_FILE=""
 OUT_FILE=""
@@ -67,7 +71,8 @@ Optional:
   --rows FILE   Read rows from FILE instead of stdin.
   --out PATH    Output path. Default:
                 <handover-root>/overnight-report-YYYY-MM-DD.md, resolved
-                via handover_root_ensure (scripts/lib/handover-path.sh).
+                via handover_root_ensure (scripts/lib/handover-path.sh);
+                <handover-root>/afk/<project key>/ in an adopted project.
                 A broken HANDOVER_DIR fails closed (exit 2) — no fallback.
   --actions FILE  Standing operator actions appended verbatim as a
                 "## Standing operator actions" section. Default:
@@ -81,7 +86,8 @@ Environment overrides:
   HANDOVER_DIR       External handover root (Mode B).
   MORNING_REPORT_TEMPLATE  Section-order template (one id per line: header,
                      decisions, tickets, operator-actions, unlanded,
-                     changelog). Default: <handover-root>/morning-report.tmpl,
+                     changelog, ready_mismatch, review_rounds). Default:
+                     <handover-root>/morning-report.tmpl,
                      else morning-report.default.tmpl next to this script.
                      Operator actions are always appended if not listed.
   UNLANDED_TSV       Path to a pre-computed unlanded-work.sh --tsv file (test
@@ -158,8 +164,10 @@ fi
 # the PURE resolver so "touch no files" stays true (no mkdir side effect).
 # Resolution failure fails CLOSED (exit 2) — never fall back to a guessed
 # path, matching the resolver's fail-closed design: the operator's single
-# morning entry point must not land in the wrong location.
+# morning entry point must not land in the wrong location. An adopted project's
+# report sits in its own afk/<project key>/ under the root (project-state.sh).
 if [ -z "$OUT_FILE" ]; then
+    report_sub=$(afk_report_subdir) || exit 2
     if [ "$DRY_RUN" -eq 1 ]; then
         # Preview the SAME resolution the real run would perform, minus the
         # mkdir — otherwise the dry run masks exactly the failures (or
@@ -173,15 +181,15 @@ if [ -z "$OUT_FILE" ]; then
                 echo "ERR morning-report: HANDOVER_DIR='$HANDOVER_DIR' is set but unusable — fix HANDOVER_DIR or pass --out" >&2
                 exit 2
             fi
-            OUT_FILE="$root/overnight-report-$(date -u +%F).md"
+            OUT_FILE="$root$report_sub/overnight-report-$(date -u +%F).md"
         elif repo_root=$(git rev-parse --show-toplevel 2>/dev/null); then
-            OUT_FILE="$repo_root/handovers/overnight-report-$(date -u +%F).md"
+            OUT_FILE="$repo_root/handovers$report_sub/overnight-report-$(date -u +%F).md"
         else
             OUT_FILE="<unresolved-handover-root>/overnight-report-$(date -u +%F).md"
             echo "WARN morning-report: output path unresolvable (HANDOVER_DIR unset, not in a git repo) — a real run would exit 2" >&2
         fi
     elif root=$(handover_root_ensure); then
-        OUT_FILE="$root/overnight-report-$(date -u +%F).md"
+        OUT_FILE="$root$report_sub/overnight-report-$(date -u +%F).md"
     elif [ -n "${HANDOVER_DIR:-}" ]; then
         echo "ERR morning-report: HANDOVER_DIR='$HANDOVER_DIR' is set but unusable — fix HANDOVER_DIR or pass --out" >&2
         exit 2
@@ -426,6 +434,34 @@ sec_ready_mismatch() {
     printf '%s' "$body"
 }
 
+# "## Review rounds per merged PR": per-day distribution of the /pr-check rounds
+# each merged PR took, from scorecard/review-rounds.sh over the last 2 days.
+# REVIEW_ROUNDS_TXT is a test seam: a pre-computed review-rounds.sh output read
+# instead of shelling out to gh. A scan that cannot run renders "unavailable".
+sec_review_rounds() {
+    local out="" since body
+    body=$'## Review rounds per merged PR\n\n'
+    if [ -n "${REVIEW_ROUNDS_TXT:-}" ]; then
+        # read-sink-ok: test seam; the text is only parsed into a table, never run or sent anywhere
+        out="$(cat "$REVIEW_ROUNDS_TXT" 2>/dev/null)" \
+            || { printf '%s_review-rounds scan unavailable._' "$body"; return; }
+    else
+        since="$(date -u -d '2 days ago' +%FT%TZ 2>/dev/null)" \
+            || since="$(date -u -v-2d +%FT%TZ)"  # gnu-ok: BSD/macOS fallback
+        out="$(bash "$SCRIPT_DIR/../lanes/bench/scorecard/review-rounds.sh" --since "$since" 2>/dev/null)" \
+            || { printf '%s_review-rounds scan unavailable._' "$body"; return; }
+    fi
+    if [ -z "$out" ]; then
+        printf '%s_None — no merged PR in the window._' "$body"
+        return
+    fi
+    body="${body}| Day | PRs | Median | p90 | Max | Most rounds | Unmeasured |"$'\n'"|---|---|---|---|---|---|---|"$'\n'
+    printf '%s%s' "$body" "$(printf '%s\n' "$out" | awk -F'\t' '{
+        for (i = 2; i <= 7; i++) sub(/^[a-z0-9]+=/, "", $i)
+        printf "| %s | %s | %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $5, $6, $7
+    }')"
+}
+
 # Assemble from the template ---------------------------------------------
 # Resolution: $MORNING_REPORT_TEMPLATE > <handover-root>/morning-report.tmpl >
 # the shipped default next to this script. One section id per line; blank
@@ -452,7 +488,7 @@ while IFS= read -r section_id || [ -n "$section_id" ]; do
     section_id=$(printf '%s' "$section_id" | tr -d '\r')
     case "$section_id" in ''|'#'*) continue ;; esac
     case "$section_id" in
-        header|decisions|tickets|unlanded|changelog|ready_mismatch) section=$("sec_$section_id") ;;
+        header|decisions|tickets|unlanded|changelog|ready_mismatch|review_rounds) section=$("sec_$section_id") ;;
         operator-actions) section=$(sec_actions); actions_placed=1 ;;
         *) echo "WARN morning-report: unknown template section '$section_id' — skipped" >&2; continue ;;
     esac

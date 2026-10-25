@@ -633,7 +633,7 @@ reset_stub
 # shellcheck disable=SC2016  # the stub bodies expand when the stub runs
 printf '#!/usr/bin/env bash\nexit "$(cat "$STUB/rol.rc")"\n' > "$STUB/rol-lock.sh"
 # shellcheck disable=SC2016  # as above
-printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay to $3"\n' > "$STUB/rol-relay.sh"
+printf '#!/usr/bin/env bash\necho "SENDMESSAGE to=N1 :: relay to $3"\necho "RELAYED 1 of 1"\n' > "$STUB/rol-relay.sh"
 export CHIEF_WAIT_LOCK_STATUS="$STUB/rol-lock.sh" CHIEF_WAIT_RELAY="$STUB/rol-relay.sh" CHIEF_WAIT_SUCCESSION_SEC=1
 ROLD="$WORK/rol-console.md"; : > "$ROLD"
 echo 0 > "$STUB/rol.rc"
@@ -650,6 +650,8 @@ wait_exit "$WPID"
 check "(rol2) a held successor lock wakes once in handover mode, rc 0" "0" "$rc"
 check "(rol2) the wake names the successor" "WAKE relay-on-live successor=S2" "$(head -n1 "$WORK/rol2.out")"
 check "(rol2) the block carries the relay lines" "yes" "$(grep -q '^SENDMESSAGE to=N1' "$WORK/rol2.out" && echo yes)"
+check "(rol2) the block ends with the RELAYED line, after the SENDMESSAGE lines it counts" "RELAYED 1 of 1" "$(tail -n1 "$WORK/rol2.out")"
+check "(rol2) and it is printed once" "1" "$(grep -c '^RELAYED ' "$WORK/rol2.out")"
 check "(rol2) the marker is consumed" "no" "$([ -e "$I.relay-on-live" ] && echo yes || echo no)"
 check "(rol2) the exit reason is logged" "yes" "$(grep -q 'exit=wake-relay-on-live' "$I.wait" && echo yes)"
 
@@ -687,9 +689,12 @@ check "(hb1) the console is named by the doc basename and the resolved transcrip
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1b.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/hb1b.out")"
 printf 'budget turns=3 cache_read=0.1M verdict=OK\n' > "$STUB/budget.out"; printf '0\n' > "$STUB/budget.rc"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1s.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hb3s) verdict OK with no fill measured (stale snapshot) leaves the streak marker" "present:124:" "$([ -e "$I.wait.budget" ] && echo present):$rc:$(cat "$WORK/hb1s.out")"
+printf 'budget turns=3 cache_read=0.1M fill=10%% verdict=OK\n' > "$STUB/budget.out"
 rm -f "$STUB/budget.resolves"; : > "$STUB/budget.calls"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1c.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
-check "(hb3) verdict OK clears the streak marker" "absent" "$([ -e "$I.wait.budget" ] && echo present || echo absent)"
+check "(hb3) verdict OK with a measured fill clears the streak marker" "absent" "$([ -e "$I.wait.budget" ] && echo present || echo absent)"
 check "(hb3b) the transcript is resolved once per run, not per sample" "1:ok" "$(wc -l < "$STUB/budget.resolves" | tr -d ' '):$([ "$(wc -l < "$STUB/budget.calls")" -ge 2 ] && echo ok || echo few-samples)"
 printf '2\n' > "$STUB/budget.rc"; : > "$I.wait.budget"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1d.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
@@ -718,6 +723,54 @@ kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 printf '3\n' > "$STUB/budget.rc"; : > "$STUB/budget.calls"; I="$(new_inbox hb5)"
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/hb5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(hb5) without --doc the budget is not read and nothing wakes" "0:" "$(wc -l < "$STUB/budget.calls" | tr -d ' '):$(cat "$WORK/hb5.out")"
+
+# --- (hc): the chief doc naming, --legs-from, the repeat wake and an unresolved title ---
+# A HANDOVER wake the chief missed is sent again once the marker is older than
+# CHIEF_WAIT_BUDGET_REPEAT_MIN (default 30) minutes while the verdict stays HANDOVER.
+HC="HIMMEL-nextleg-2026-10-25FX-roadmap-chief"
+printf 'budget turns=60 cache_read=9.0M fill=50%% verdict=HANDOVER\n' > "$STUB/budget.out"; printf '3\n' > "$STUB/budget.rc"
+reset_stub; : > "$STUB/budget.calls"; I="$(new_inbox hc1)"
+start "$I" "$WORK/hc1.out" --doc "$WORK/hc1/consoles/$HC.md" --legs "N1.md"
+wait_exit "$WPID"
+check "(hc1) the chief doc naming wakes with exactly one WAKE handover-budget line" "1:WAKE handover-budget budget turns=60 cache_read=9.0M fill=50% verdict=HANDOVER" "$(grep -c '^WAKE handover-budget ' "$WORK/hc1.out"):$(head -n1 "$WORK/hc1.out")"
+check "(hc1) the title is the chief doc basename" "--title $HC $STUB/budget.transcript" "$(head -n1 "$STUB/budget.calls")"
+reset_stub; : > "$STUB/budget.calls"; I="$(new_inbox hc2)"
+start "$I" "$WORK/hc2.out" --doc "$WORK/hc2/consoles/$HC.md" --legs-from "$WORK/hc2-fleet.json"
+wait_exit "$WPID"
+check "(hc2) --legs-from with --doc still runs the budget wake" "WAKE handover-budget budget turns=60 cache_read=9.0M fill=50% verdict=HANDOVER" "$(head -n1 "$WORK/hc2.out")"
+reset_stub; I="$(new_inbox hr1)"
+: > "$I.wait.budget"; touch -d '31 minutes ago' "$I.wait.budget"  # gnu-ok: Linux-only kit
+start "$I" "$WORK/hr1.out" --doc "$WORK/hr1/consoles/$HC.md" --legs "N1.md"
+wait_exit "$WPID"
+check "(hr1) a marker older than 30 min with the verdict still HANDOVER wakes again, marked as a repeat" "WAKE handover-budget repeat budget turns=60 cache_read=9.0M fill=50% verdict=HANDOVER" "$(head -n1 "$WORK/hr1.out")"
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hr1/consoles/$HC.md" --legs "N1.md" > "$WORK/hr1q.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hr1) the repeat renews the marker, so the next re-arm stays quiet and runs to its timeout" "quiet:124:" "$([ "$(( $(date +%s) - $(stat -c %Y "$I.wait.budget") ))" -lt 60 ] && echo quiet):$rc:$(cat "$WORK/hr1q.out")"  # gnu-ok: Linux-only kit
+reset_stub; I="$(new_inbox hr2)"
+: > "$I.wait.budget"; touch -d '5 minutes ago' "$I.wait.budget"  # gnu-ok: Linux-only kit
+timeout 3 bash "$WAIT" "$I" --doc "$WORK/hr2/consoles/$HC.md" --legs "N1.md" > "$WORK/hr2.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hr2) a marker younger than 30 min stays quiet" "124:" "$rc:$(cat "$WORK/hr2.out")"
+reset_stub; I="$(new_inbox hr3)"
+: > "$I.wait.budget"; touch -d '5 minutes ago' "$I.wait.budget"  # gnu-ok: Linux-only kit
+CHIEF_WAIT_BUDGET_REPEAT_MIN=2 start "$I" "$WORK/hr3.out" --doc "$WORK/hr3/consoles/$HC.md" --legs "N1.md"
+wait_exit "$WPID"
+check "(hr3) CHIEF_WAIT_BUDGET_REPEAT_MIN sets the interval" "WAKE handover-budget repeat budget turns=60 cache_read=9.0M fill=50% verdict=HANDOVER" "$(head -n1 "$WORK/hr3.out")"
+reset_stub; I="$(new_inbox hr4)"
+: > "$I.wait.budget"; touch -d '31 minutes ago' "$I.wait.budget"  # gnu-ok: Linux-only kit
+CHIEF_WAIT_BUDGET_REPEAT_MIN=08 start "$I" "$WORK/hr4.out" --doc "$WORK/hr4/consoles/$HC.md" --legs "N1.md"
+wait_exit "$WPID"
+check "(hr4) a leading-zero CHIEF_WAIT_BUDGET_REPEAT_MIN reads as decimal" "WAKE handover-budget repeat budget turns=60 cache_read=9.0M fill=50% verdict=HANDOVER" "$(head -n1 "$WORK/hr4.out")"
+reset_stub; I="$(new_inbox hr5)"
+: > "$I.wait.budget"; touch -d '5 minutes ago' "$I.wait.budget"  # gnu-ok: Linux-only kit
+CHIEF_WAIT_BUDGET_REPEAT_MIN=00 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hr5/consoles/$HC.md" --legs "N1.md" > "$WORK/hr5.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hr5) a zero CHIEF_WAIT_BUDGET_REPEAT_MIN falls back to 30, so a fresh marker stays quiet" "124:" "$rc:$(cat "$WORK/hr5.out")"
+reset_stub; I="$(new_inbox hr6)"
+: > "$I.wait.budget"; touch -d '5 minutes ago' "$I.wait.budget"  # gnu-ok: Linux-only kit
+CHIEF_WAIT_BUDGET_REPEAT_MIN=153722867280912931 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hr6/consoles/$HC.md" --legs "N1.md" > "$WORK/hr6.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hr6) an overflowing CHIEF_WAIT_BUDGET_REPEAT_MIN falls back to 30, so a fresh marker stays quiet" "124:" "$rc:$(cat "$WORK/hr6.out")"
+printf '#!/usr/bin/env bash\ncase "$*" in *--resolve*) exit 2 ;; esac\nexit 0\n' > "$STUB/budget.nores.sh"
+reset_stub; I="$(new_inbox hf1)"
+CHIEF_WAIT_BUDGET="$STUB/budget.nores.sh" timeout 3 bash "$WAIT" "$I" --doc "$WORK/hf1/consoles/$HC.md" --legs "N1.md" > "$WORK/hf1.out" 2> "$WORK/hf1.err"; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
+check "(hf1) an unresolvable title says why on stderr, once per run, and wakes nothing" "1:124:" "$(grep -c "budget not measured: cannot resolve the transcript of $HC" "$WORK/hf1.err"):$rc:$(cat "$WORK/hf1.out")"
 export CHIEF_WAIT_BUDGET="$STUB/budget-off.sh"
 
 # --- (sw): the status sweep runs every WAIT_SWEEP_SEC with --doc, bounded, and wakes only when

@@ -162,9 +162,9 @@ load_dotenv() {
     # Config layers first (defined at the end of this file):
     # a behaviour key comes from ~/.himmel/himmel.conf(.local), a gate-policy
     # key from ~/.himmel/config.json .policy. A secret key never comes from
-    # either; it falls through to .env below. This advisory reader keeps going
-    # on an unreadable config.json (the notice says so); only load_policy, the
-    # gate reader, fails closed on it.
+    # either; it falls through to the resolver, then .env, below. This advisory
+    # reader keeps going on an unreadable config.json (the notice says so); only
+    # load_policy, the gate reader, fails closed on it.
     if declare -F _himmel_config_layers >/dev/null 2>&1; then
         local _ld_found _ld_rest=()
         if ! _ld_found=$(_himmel_config_layers "${_ld_pending[@]}"); then
@@ -186,27 +186,85 @@ EOF
         _ld_pending=("${_ld_rest[@]}")
     fi
 
+    # Secret keys next: the resolver serves them from $CREDENTIALS_DIRECTORY or
+    # the OS keyring. Only when one of those can exist, so a machine with
+    # neither forks nothing; .env stays the fallback below.
+    local _ld_resolver=. _ld_secret=()
+    case "${BASH_SOURCE[0]}" in */*) _ld_resolver=${BASH_SOURCE[0]%/*} ;; esac
+    _ld_resolver="$_ld_resolver/himmel-secrets"
+    if declare -F _himmel_key_class >/dev/null 2>&1 && [ -x "$_ld_resolver" ] \
+        && { [ -n "${CREDENTIALS_DIRECTORY:-}" ] || command -v secret-tool >/dev/null 2>&1; }; then
+        for _ld_key in "${_ld_pending[@]}"; do
+            [ "$(_himmel_key_class "$_ld_key")" = secret ] && _ld_secret[${#_ld_secret[@]}]="$_ld_key"
+        done
+    fi
+    if [ "${#_ld_secret[@]}" -gt 0 ]; then
+        local _ld_got _ld_rest=()
+        if [ -n "$_ld_root" ]; then
+            _ld_got=$("$_ld_resolver" get --no-dotenv --root "$_ld_root" "${_ld_secret[@]}")
+        else
+            _ld_got=$("$_ld_resolver" get --no-dotenv "${_ld_secret[@]}")
+        fi
+        while IFS= read -r _ld_line; do
+            [ -n "$_ld_line" ] || continue
+            # shellcheck disable=SC2163 # exports the KEY=value the line holds
+            export "$_ld_line"
+        done <<EOF
+$_ld_got
+EOF
+        _ld_got=""
+        for _ld_key in "${_ld_pending[@]}"; do
+            if [ -z "${!_ld_key:-}" ]; then
+                _ld_rest[${#_ld_rest[@]}]="$_ld_key"
+            fi
+        done
+        [ "${#_ld_rest[@]}" -gt 0 ] || return 0
+        _ld_pending=("${_ld_rest[@]}")
+    fi
+
     local _ld_envfile
     _ld_envfile=$(_load_dotenv_envfile "$_ld_root")
     [ -n "$_ld_envfile" ] && [ -f "$_ld_envfile" ] || return 0
 
     # Read .env once. The helper forks at most once per requested match, not
     # once per .env line. A non-secret key found here is legacy: it still
-    # applies for one release, with one deprecation notice per call.
-    local _ld_legacy=()
+    # applies for one release, with one deprecation notice per call. A secret
+    # key found here is legacy too once a keyring can hold it; a .env tracked
+    # by git serves no secret at all.
+    local _ld_legacy=() _ld_dotsecret=() _ld_tracked=""
     while IFS= read -r _ld_line || [ -n "$_ld_line" ]; do
         _ld_key="${_ld_line%%=*}"
         _ld_val=$(_load_dotenv_trim "${_ld_line#*=}")
-        export "$_ld_key=$_ld_val"
         if declare -F _himmel_key_class >/dev/null 2>&1 \
-            && [ "$(_himmel_key_class "$_ld_key")" != secret ]; then
+            && [ "$(_himmel_key_class "$_ld_key")" = secret ]; then
+            if [ -z "$_ld_tracked" ]; then
+                _ld_tracked=0
+                if _load_dotenv_tracked "$_ld_envfile"; then
+                    _ld_tracked=1
+                    _himmel_tracked_dotenv_notice "$_ld_envfile"
+                fi
+            fi
+            [ "$_ld_tracked" = 0 ] || continue
+            _ld_dotsecret[${#_ld_dotsecret[@]}]="$_ld_key"
+        elif declare -F _himmel_key_class >/dev/null 2>&1; then
             _ld_legacy[${#_ld_legacy[@]}]="$_ld_key"
         fi
+        export "$_ld_key=$_ld_val"
     done < <(_load_dotenv_extract "$_ld_envfile" "${_ld_pending[@]}")
     if [ "${#_ld_legacy[@]}" -gt 0 ]; then
         _himmel_deprecation_notice "${_ld_legacy[@]}"
     fi
+    if [ "${#_ld_dotsecret[@]}" -gt 0 ]; then
+        _himmel_secret_dotenv_notice "$_ld_envfile" "${_ld_dotsecret[@]}"
+    fi
     return 0
+}
+
+# _load_dotenv_tracked <file> — true when git tracks <file> in its checkout.
+_load_dotenv_tracked() {
+    local _lt_dir="${1%/*}" _lt_base="${1##*/}"
+    [ "$_lt_dir" != "$1" ] || _lt_dir=.
+    git -C "$_lt_dir" ls-files --error-unmatch -- "$_lt_base" >/dev/null 2>&1
 }
 
 # _load_dotenv_extract <file> KEY... — print `KEY=<raw value>` for the first
@@ -297,7 +355,9 @@ _load_dotenv_extract() {
 #   policy keys     ~/.himmel/config.json .policy, the operator-owned file a
 #                   guard keeps agents from writing. load_policy, the gate
 #                   reader, IGNORES the process env for them.
-#   secret keys     .env only. Never read from either file above.
+#   secret keys     scripts/lib/himmel-secrets ($CREDENTIALS_DIRECTORY, then
+#                   the OS keyring), then .env with a DEPRECATED notice. Never
+#                   read from either file above.
 #
 # The directory is fixed at $HOME/.himmel; no env var selects another one.
 # ponytail: the path follows $HOME, so a caller that controls HOME picks the
@@ -335,6 +395,22 @@ _himmel_config_dir() {
 # One stderr line naming the keys (never their values) still read from .env.
 _himmel_deprecation_notice() {
     printf 'himmel: DEPRECATED: %s read from .env, which is for secrets only. Move behaviour keys to ~/.himmel/himmel.conf and policy keys to ~/.himmel/config.json .policy: run scripts/setup/migrate-env-config.sh --dry-run. Until then .env keeps working.\n' "$*" >&2
+}
+
+# _himmel_secret_dotenv_notice <file> KEY... — one stderr line naming the
+# secret keys (never their values) served from .env, printed only where a
+# keyring could hold them instead.
+_himmel_secret_dotenv_notice() {
+    local _sn_file="$1"
+    shift
+    [ "$(uname -s)" != Darwin ] && command -v secret-tool >/dev/null 2>&1 || return 0
+    printf 'himmel: DEPRECATED: secret %s read from %s. Move them to the OS keyring: scripts/lib/himmel-secrets import-env %s\n' "$*" "$_sn_file" "$_sn_file" >&2
+}
+
+# _himmel_tracked_dotenv_notice <file> — one stderr line refusing a .env that
+# git tracks: a committed secret is already leaked, so none is served from it.
+_himmel_tracked_dotenv_notice() {
+    printf 'himmel: refusing secret keys from %s: the file is tracked by git. Rotate any secret it held and remove it from the index (git rm --cached).\n' "$1" >&2
 }
 
 # _himmel_policy_json <config.json> KEY... — print KEY=value for each key

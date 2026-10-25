@@ -453,7 +453,8 @@ if [ "$tool" != PowerShell ]; then
         exit 2
     fi
     ast_rc=0
-    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    # a standalone hook has no runner bound, so cap the model at 10 s plus the 2 s kill grace, inside the 15 s entry timeout
+    pos=$(BASH_AST_MAX_S=10 bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
     case "$ast_rc" in
         0)
             # swallow-ok: a jq failure falls through to the regex verdict, never weaker

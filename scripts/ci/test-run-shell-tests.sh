@@ -2624,6 +2624,11 @@ awk -F'\t' -v r="$sb22w/stubs/" '/^[[:space:]]*#/ { next } { print r $1 "\t" $2 
   "$RST_FIXTURE_DIR/suite-durations.tsv" > "$sb22w/ledger.tsv"
 tot22w=0; max22w=0; slow22w=0; n22w=0; rc22w=0
 nfix22w=$(grep -c . "$fix22w")
+# SKIP_LIST suites are kept out of the plan on purpose, so a fixture row named
+# there is expected unplaced: count those out of the expectation.
+skip22w=$(awk '/^SKIP_LIST="$/{f=1; next} f && /^"$/{exit} f && /^scripts\//{print $1}' "$RUNNER")
+nskip22w=$(S22W="$skip22w" awk -F'\t' 'BEGIN{n=split(ENVIRON["S22W"],a,"\n"); for(i=1;i<=n;i++) k[a[i]]=1} ($1 in k){c++} END{print c+0}' "$fix22w")
+nexp22w=$((nfix22w - nskip22w))
 for _i in 1 2 3 4 5 6 7 8; do
   _out=$(SUITE_DURATIONS="$sb22w/ledger.tsv" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1) || rc22w=$((rc22w + 1))
   _t=0
@@ -2639,10 +2644,10 @@ for _i in 1 2 3 4 5 6 7 8; do
 done
 floor22w=$(( tot22w / 8 )); [ "$max22w" -gt "$floor22w" ] && floor22w=$max22w
 bound22w=$(( floor22w * 105 / 100 ))
-if [ "$rc22w" -eq 0 ] && [ "$n22w" -eq "$nfix22w" ] && [ "$slow22w" -le "$bound22w" ]; then
-  pass "22w: slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites)"
+if [ "$rc22w" -eq 0 ] && [ "$n22w" -eq "$nexp22w" ] && [ "$slow22w" -le "$bound22w" ]; then
+  pass "22w: slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites, $nskip22w SKIP_LIST-quarantined)"
 else
-  fail "22w: slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nfix22w suites placed, $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
+  fail "22w: slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nexp22w expected suites placed ($nskip22w SKIP_LIST-quarantined), $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
 fi
 rm -rf "$sb22w"
 fi

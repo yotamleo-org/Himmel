@@ -85,6 +85,10 @@
 #      only --trust-reviewed <judge qid> may write it. The leg's READY text is never read.
 #   9  refused: cr-disposition.sh check found a deferred Critical or Important
 #      finding on the PR's branch with no valid disposition at <head>
+#  10  refused: --trust-reviewed <qid>'s only GO for <head> is a `delta: no-op` verdict
+#      (write-verdict.sh --delta-noop) and delta-class.sh no longer classifies the
+#      delta from its judged head as `none` (a trust-path or judged-finding delta, or
+#      a read error): a real judge must rule on the head
 #
 # A relative entry (`bash scripts/handover/chief-kit/go.sh`, the leg
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
@@ -305,6 +309,37 @@ fi
 if [ "$TRUST_SET" -eq 1 ] && ! REASON=$(go_trust_verdict "$ROOT" "$TRUST" "$SHA" "$ANCHOR" "$PR" "$VREPO"); then
     echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - $REASON No GO written." >&2
     exit 5
+fi
+
+# a `delta: no-op` verdict (write-verdict.sh --delta-noop) stands in for a judge only
+# while the delta from the judged head still classifies none. When every GO record
+# for this head is a no-op, delta-class.sh runs again here, from the caller's cwd,
+# and a trust or finding delta (or any read error) refuses: it needs a real judge.
+if [ "$TRUST_SET" -eq 1 ]; then
+    REAL=0 NOOPS=()
+    if ! NSCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO"); then
+        echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - the verdict scope could not be resolved, so whether its verdict is a delta no-op cannot be checked. No GO written." >&2
+        exit 10
+    fi
+    for vf in "$ROOT/$NSCOPE/verdicts/$TRUST"/*.md; do
+        [ -f "$vf" ] || continue
+        tr -d '\r' < "$vf" | grep -q "^\*\*GO\*\* for head \`$SHA\`" || continue
+        if grep -qx 'delta: no-op' "$vf"; then
+            NJ=$(sed -n 's/^delta-judged: //p' "$vf" | head -n 1)
+            NOOPS+=("${NJ:--}")
+        else
+            REAL=1
+        fi
+    done
+    if [ "$REAL" -eq 0 ] && [ "${#NOOPS[@]}" -gt 0 ]; then
+        for NJ in "${NOOPS[@]}"; do
+            DCLASS=$(bash "$HERE/delta-class.sh" --qid "$TRUST" "$NJ" "$SHA" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
+            if [ "$DCLASS" != none ]; then
+                echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op, but delta-class.sh classifies the delta from '$NJ' as '$DCLASS' (not none). A judge must rule on this head; a no-op never carries a trust-path or judged-finding delta. No GO written." >&2
+                exit 10
+            fi
+        done
+    fi
 fi
 
 # no GO for a head ready-check does not pass. Its check 4 is the

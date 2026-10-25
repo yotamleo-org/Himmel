@@ -20,10 +20,10 @@ figure counts everything at or before the cut. Without --record the row is print
 Ledger: $HIMMEL_EVAL_RUNS_LEDGER, else ~/.himmel/eval-runs.jsonl; CR ledger: $CR_LEDGER, else
 <git common dir of this script's checkout>/cr-critic-scores.jsonl, whatever the caller's directory.
 A CR measurement that cannot be read makes the row "partial" and the exit code 3: a gap is never a clean run.
+Shared interval module: `scripts/eval/lib/wilson.py`.
 """
 import argparse
 import json
-import math
 import os
 import subprocess
 import sys
@@ -31,17 +31,10 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
 import eval_runs  # noqa: E402
+from wilson import wilson  # noqa: E402
 
 CUT = "2026-10-22T00:00:00Z"
 CR_EVAL = os.path.join(HERE, "cr-ledger", "cr_ledger_eval.py")
-
-
-def wilson(k, n, z=1.959964):
-    p = k / n
-    den = 1 + z * z / n
-    mid = (p + z * z / (2 * n)) / den
-    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / den
-    return {"lo": round(max(0.0, mid - half), 4), "hi": round(min(1.0, mid + half), 4)}
 
 
 def put(m, ci, key, k, n):

@@ -764,6 +764,56 @@ averdict "$VSCOPE" W5 "repo: acme/$VBUCKET"
 rc=0; go_trust_verdict "$ROOT23" W5 "$SHA" "$HERE/../../.." 88 >/dev/null || rc=$?
 check    "7392: the harness lookup refuses an adopted repo's record" "$rc" "2"
 
+# --- 27. a trust GO never rests on a no-op verdict for a delta that needs a judge ---
+# write-verdict.sh --delta-noop signs `delta: no-op` / `delta-judged: <sha>` into a
+# record; go.sh --trust-reviewed re-runs delta-class.sh over judged..head and
+# refuses (exit 10) unless it prints none. The no-op records here are signed by
+# the verdict() helper, i.e. as a writer that skipped the classifier would sign them.
+ROOT27="$tmp/root27"; mkdir -p "$ROOT27"
+fx27="$tmp/fx27"
+git init -q "$fx27"
+fx27_git() { git -C "$fx27" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+mkdir -p "$fx27/scripts/ci" "$fx27/src" "$fx27/docs"
+printf '^scripts/ci/\n' > "$fx27/scripts/ci/ci-trust-paths.txt"
+printf 'x\n' > "$fx27/scripts/ci/x.sh"
+seq 1 10 > "$fx27/src/a.txt"
+printf 'c\n' > "$fx27/docs/c.md"
+fx27_git add -A && fx27_git commit -qm base
+J27=$(fx27_git rev-parse HEAD)
+fx27_git update-ref refs/remotes/origin/main "$J27"
+fx27_git checkout -q -b docs27 "$J27"
+printf 'more\n' >> "$fx27/docs/c.md"; fx27_git add -A && fx27_git commit -qm docs
+N27d=$(fx27_git rev-parse HEAD)
+fx27_git checkout -q -b trust27 "$J27"
+printf 'y\n' >> "$fx27/scripts/ci/x.sh"; fx27_git add -A && fx27_git commit -qm trust
+N27t=$(fx27_git rev-parse HEAD)
+ready_pass_ledger "$fx27" "$N27d" "$N27t"
+VPR=91
+VEXTRA=$'finding: src/a.txt:3-4\n' verdict "$ROOT27" q27 "**GO** for head \`$J27\`." HIMMEL-1-judge-q27
+go27() {  # <head> - go.sh --trust-reviewed q27 for PR 91 from the fixture repo
+  ( cd "$fx27" && READY_STUB_HEAD="$1" HANDOVER_DIR="$ROOT27" bash "$SCRIPT" --trust-reviewed q27 91 "$1" >/dev/null 2>&1 )
+}
+VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
+rc=0; go27 "$N27t" || rc=$?
+check "7637: a no-op verdict for a trust-path delta is refused (exit 10)" "$rc" "10"
+check "7637: ...and no GO file is written" "$([ -e "$ROOT27/.locks/go/91.$N27t" ] && echo yes || echo no)" "no"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27d\`." delta-noop-docs
+rc=0; go27 "$N27d" || rc=$?
+check "7637: a no-op verdict for a none delta is accepted" "$rc" "0"
+verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." HIMMEL-1-judge-q27-trust
+rc=0; go27 "$N27t" || rc=$?
+check "7637: a real judge GO beside the no-op carries the trust delta" "$rc" "0"
+rm -f "$ROOT27/.locks/go/91.$N27t" "$ROOT27/$VSCOPE/verdicts/q27/HIMMEL-1-judge-q27-trust.md"
+VEXTRA=$'delta: no-op\ndelta-judged: nothex\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
+rc=0; go27 "$N27t" || rc=$?
+check "7637: a no-op naming no judged head is refused" "$rc" "10"
+# shellcheck disable=SC2016  # the backticks are literal verdict-line text
+printf '# VERDICT q27 - forged\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 91\n' "$N27t" > "$ROOT27/$VSCOPE/verdicts/q27/forged-unsigned.md"
+VEXTRA=$'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n' verdict "$ROOT27" q27 "**GO** for head \`$N27t\`." delta-noop-trust
+rc=0; go27 "$N27t" || rc=$?
+check "7637: an unsigned GO sibling beside a no-op over a trust delta is refused (exit 5)" "$rc" "5"
+VPR=
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-go.sh"

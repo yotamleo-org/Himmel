@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # refresh-graph-map.sh — incremental graphify refresh + curated-MOC publish for
 # one corpus. The schedulable core behind the interval refresh that
 # bounds graph drift.
@@ -56,7 +57,10 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/guardrails/phi-egress-lib.sh"
 
-# BACKEND default = claude-cli: graphify distinguishes `claude`
+# BACKEND default = claude-api: background LLM jobs bill the API,
+# never the subscription. This script has no API-lane extraction path (semantic-update.sh
+# owns it), so the default refuses with one ERR line (see the refusal block below);
+# `--backend claude-cli` is the explicit opt-in. graphify distinguishes `claude`
 # (Anthropic API — requires ANTHROPIC_API_KEY, pay-as-you-go) from `claude-cli`
 # (routes through the locally-installed `claude` CLI). The claude-ONLY adopter
 # story needs claude-cli, not claude.
@@ -75,7 +79,7 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # in the `claude` CLI and switches the run back to pay-as-you-go. We deliberately
 # do NOT strip those vars here (the operator may intend the API path); this is a
 # default, not a billing guarantee.
-NAME="" CORPUS_ROOT="" BACKEND="claude-cli" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
+NAME="" CORPUS_ROOT="" BACKEND="claude-api" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
 SCRATCH="" DO_UPDATE=1 CORPUS_CLASS="luna-personal"
 # --merge-into-live: a corpus whose live graph is AST-heavy (himmel). The markdown-only
 # extraction is merged INTO the live graph.json (semantic-merge.py merge, the step
@@ -279,6 +283,21 @@ case "$BACKEND" in
     # kimi/moonshot backend; operator ruling).
     ;;
 esac
+
+# claude-api is the default backend and the one that never draws the subscription. The
+# lane extraction lives in semantic-update.sh, not here, so an extracting run on
+# claude-api refuses (rc 2) before any work: lane unresolved, or lane on but not wired
+# here. Never a fallback to claude-cli; that runs only when passed explicitly.
+if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
+  # shellcheck source=../lib/llm-backend.sh
+  . "$REPO_ROOT/scripts/lib/llm-backend.sh"
+  if ! llm_backend_api_ready; then
+    echo "ERR refresh-graph-map: --backend claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
+    exit 2
+  fi
+  echo "ERR refresh-graph-map: --backend claude-api extraction is not wired in refresh-graph-map.sh -- use scripts/graphify/semantic-update.sh, or pass --backend claude-cli explicitly" >&2
+  exit 2
+fi
 
 # Egress preflight for the scheduled/direct path.
 # graphify-fence.sh is wired only as a PreToolUse hook, so it never sees the
@@ -917,6 +936,7 @@ _extraction_lock_takeover() {
 _extraction_lock_acquire() {
   local waited=0 missing_polls=0 held_at now age token judged_owner cur
   while :; do
+    # prim-ok: bounded stale takeover and exclusive owner publication require this directory protocol, not with_lock's PID file.
     if mkdir "$EXTRACTION_LOCK" 2>/dev/null; then
       token="$$-$RANDOM"
       if ( set -C; printf '%s\n' "$token" > "$EXTRACTION_LOCK/owner" ) 2>/dev/null; then
@@ -1068,6 +1088,7 @@ _promote_lock_takeover() {
 _promote_lock_acquire() {
   local waited=0 missing_polls=0 held_at now age token
   while :; do
+    # prim-ok: ast-update and semantic-update share this owner-token directory and stale-takeover protocol.
     if mkdir "$PROMOTE_LOCK" 2>/dev/null; then
       token="$$-$RANDOM"
       if ( set -C; printf '%s\n' "$token" > "$PROMOTE_LOCK/owner" ) 2>/dev/null; then
@@ -1456,6 +1477,7 @@ if [ "$DO_EXTRACT" -eq 1 ]; then
   # already exists under the parent is ever deleted at startup; leftovers that
   # hold a graph.json are only NAMED on stderr so the operator can recover them.
   _report_leftover_scratches
+  # prim-ok: recovery scans and quarantine identify these corpus-named scratch directories; tmpdir's generic prefix would hide them.
   SCRATCH="$(mktemp -d "$SCRATCH_PARENT/graphify-refresh-$NAME-XXXXXX")" \
     || { echo "refresh-graph-map: cannot create a scratch workdir under $SCRATCH_PARENT" >&2; exit 1; }
   # Clean the owned subdir on ANY exit — a graphify/cluster-only failure (exit 2)
@@ -3008,6 +3030,15 @@ MERGEPLANEOF
   #     orphaned external-import sweep, isolated-node pruning); a shrink at a
   #     CONSTANT version is the bug this guard exists to catch. Unknown/absent/
   #     unchanged all fall through to the normal comparison.
+  # Nodes of files the corpus no longer tracks (deleted, or renamed away) leave the staged graph, and
+  # the guard below counts the prior graph's nodes of them as an explained loss, not a shrink.
+  _gone_sources="$PROMOTE_STAGE/.graphify_gone_sources"
+  : > "$_gone_sources"
+  if ! python3 "$HERE/semantic-merge.py" prune --root "$CORPUS_ROOT" --out "$PROMOTE_STAGE" >&2; then
+    echo "refresh-graph-map: REFUSING to promote -- could not prune the staged graph of untracked source files (reason above); the existing graph at $OUT_DIR/graph.json was left in place" >&2
+    exit 2
+  fi
+  python3 "$HERE/semantic-merge.py" untracked --root "$CORPUS_ROOT" --graph "$OUT_DIR/graph.json" > "$_gone_sources" 2>/dev/null || : > "$_gone_sources"
   if [ "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" -gt 0 ]; then
     _prior_version=""
     if [ -f "$OUT_DIR/.graphify_promoted_version" ]; then
@@ -3027,6 +3058,12 @@ entries = []
 if len(sys.argv) > 4 and sys.argv[4]:
     with open(sys.argv[4], encoding="utf-8") as fh:
         entries = [l for l in fh.read().split("\n") if l]
+# Optional 5th arg: source files the prior graph holds that the corpus no longer tracks (a deleted or
+# renamed file), one per line. Their nodes are an explained loss, like an ignored path.
+gone = set()
+if len(sys.argv) > 5 and sys.argv[5]:
+    with open(sys.argv[5], encoding="utf-8") as fh:
+        gone = {l for l in fh.read().split("\n") if l}
 
 def links_of(data):
     v = data.get("links")
@@ -3057,9 +3094,11 @@ def rel(item):
         p = p[2:]
     return p
 
+def explained(p):
+    return p in gone or any(p == e or p.startswith(e + "/") for e in entries)
+
 def ignored(item):
-    p = rel(item)
-    return any(p == e or p.startswith(e + "/") for e in entries)
+    return explained(rel(item))
 
 def area_counts(nodes):
     areas = {}
@@ -3094,7 +3133,7 @@ prior_nodes, prior_links, prior_hyper = len(prior_data[0]), len(prior_data[1]), 
 # out, and so is a link of one (by its own source_file or by an endpoint).
 gone_ids = set()
 cmp_nodes, cmp_links = prior_nodes, prior_links
-if entries:
+if entries or gone:
     gone_ids = {n.get("id") for n in prior_data[0] if ignored(n)}
     cmp_nodes = prior_nodes - len(gone_ids)
     kept = [l for l in prior_data[1]
@@ -3115,11 +3154,24 @@ prior_areas, staged_areas = area_counts(prior_data[0]), area_counts(staged_data[
 for a in sorted(prior_areas):
     if staged_areas.get(a, 0) < prior_areas[a]:
         print("AREA %s %d %d" % (a, prior_areas[a], staged_areas.get(a, 0)))
+# Every source file that lost nodes, the biggest loss first: E = explained (the corpus no longer tracks
+# it, or it left the scope), U = unexplained. A refusal names the U files.
+prior_files, staged_files = {}, {}
+for counts, nodes in ((prior_files, prior_data[0]), (staged_files, staged_data[0])):
+    for n in nodes:
+        counts[rel(n)] = counts.get(rel(n), 0) + 1
+lost = sorted((p for p in prior_files if staged_files.get(p, 0) < prior_files[p]),
+              key=lambda p: (staged_files.get(p, 0) - prior_files[p], p))
+for p in lost[:200]:
+    print("FILE %d %d %s %s" % (prior_files[p], staged_files.get(p, 0), "E" if explained(p) else "U", p or "(no source_file)"))
+if len(lost) > 200:
+    print("FILE_MORE %d" % (len(lost) - 200))
 sys.exit(2 if shrunk else 0)
 PYEOF
       _scope_entries_file=""
       if [ "$_scope_changed" -eq 1 ]; then _scope_entries_file="$PROMOTE_STAGE/.graphify_scope_entries"; fi
-      _guard_out="$(python3 -c "$_guard_py" "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json" "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" "$_scope_entries_file")" || _rc=$?
+      _guard_out="$(python3 -c "$_guard_py" "$PROMOTE_STAGE/graph.json" "$OUT_DIR/graph.json" "$GRAPHIFY_PROMOTE_MIN_RETAIN_PCT" "$_scope_entries_file" "$_gone_sources")" || _rc=$?
+      _unexplained="" _unexplained_n=0
       # The per-area drop goes to the refresh log (stderr), refused or not.
       while IFS= read -r _guard_line; do
         case "$_guard_line" in
@@ -3131,6 +3183,16 @@ PYEOF
             _guard_line="${_guard_line#AREA }"
             _guard_rest="${_guard_line% *}"
             echo "refresh-graph-map: area ${_guard_rest% *}: nodes ${_guard_rest##* } -> ${_guard_line##* }" >&2
+            ;;
+          FILE\ *)
+            read -r _guard_tag _file_prior _file_staged _file_kind _file_path <<< "$_guard_line"
+            if [ "$_file_kind" = "E" ]; then
+              echo "refresh-graph-map: file $_file_path: nodes $_file_prior -> $_file_staged (explained: the corpus no longer tracks it, or it left the scope)" >&2
+            else
+              echo "refresh-graph-map: file $_file_path: nodes $_file_prior -> $_file_staged (UNEXPLAINED)" >&2
+              _unexplained_n=$((_unexplained_n + 1))
+              if [ "$_unexplained_n" -le 10 ]; then _unexplained="$_unexplained $_file_path ($_file_prior -> $_file_staged);"; fi
+            fi
             ;;
         esac
       done <<< "$_guard_out"
@@ -3144,7 +3206,7 @@ PYEOF
           ;;
         SHRINK*)
           read -r _guard_tag _prior_n _prior_l _prior_h _staged_n _staged_l _staged_h <<< "$_guard_out"
-          echo "refresh-graph-map: REFUSING to promote -- staged graph is below ${GRAPHIFY_PROMOTE_MIN_RETAIN_PCT}% of the existing graph (nodes $_prior_n -> $_staged_n, links $_prior_l -> $_staged_l; override via GRAPHIFY_PROMOTE_MIN_RETAIN_PCT) -- the existing graph at $OUT_DIR/graph.json was left in place" >&2
+          echo "refresh-graph-map: REFUSING to promote -- staged graph is below ${GRAPHIFY_PROMOTE_MIN_RETAIN_PCT}% of the existing graph (nodes $_prior_n -> $_staged_n, links $_prior_l -> $_staged_l; override via GRAPHIFY_PROMOTE_MIN_RETAIN_PCT) -- the existing graph at $OUT_DIR/graph.json was left in place; unexplained loss in ${_unexplained_n} file(s):${_unexplained:- none listed}" >&2
           exit 2
           ;;
         NO_PRIOR*|OK*)

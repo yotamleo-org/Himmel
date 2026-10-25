@@ -216,9 +216,13 @@ live chief must relay for itself. The decision table there is the fixture set
 (`scripts/handover/test-succession-docs.sh`), refuse and accept both pinned.
 
 **Order** (chief side): the successor mints the fresh tokens and
-asks the predecessor to re-brief each worker from its own socket, waits for each
-worker's quote-back, updates that worker's `## Live state` nonce only then, and sends
-`<letter> LIVE` last. The predecessor re-briefs before it releases. Prose
+asks the predecessor to re-brief each worker from its own socket, sends
+`<letter> LIVE` once the predecessor reports `RELAYED <n> of <m>` (its relays
+delivered), and updates a worker's `## Live state` nonce only after that worker's
+quote-back, which its informational `--succession` tally reports. The predecessor
+re-briefs before it releases and wraps on LIVE, without waiting for the quote-backs:
+a delivered relay is drained at the worker's next tool round whether the predecessor
+is live or gone, so S1 holds either way. Prose
 alone drifted twice (the two occurrences above), so the catch is structural:
 `tick.sh` reads a held worker whose Live-state nonce does not carry this chief's
 letter against the worker's own doc: a latest `SUCCESSION accepted` Results bullet

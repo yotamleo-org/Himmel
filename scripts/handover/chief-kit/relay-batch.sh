@@ -27,7 +27,7 @@
 #     adopt` needs it while the outgoing console is still live; a hand relay leaves none.
 # What it never does: mint a token or nonce, rotate one, adopt one, write a leg's
 # Live state entry, or send LIVE. It copies the nonce the console already holds
-# and the console still waits for each leg's quote-back before it sends LIVE.
+# and the successor sends LIVE on this run's RELAYED line; the quote-back tally is informational.
 # A leg with no manifest row has no doc to resolve: it is listed as
 # `SKIPPED <label> (no manifest row)` for a hand relay. A leg whose session is not
 # exactly one live `claude -n <name>` process (candidates: its full doc stem, then

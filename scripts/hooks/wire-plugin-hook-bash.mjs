@@ -40,9 +40,9 @@ const EXPECTED_HOOKS = Object.freeze([
   { event: 'PreToolUse', script: 'block-rogue-codex-exec.sh' },
   { event: 'PreToolUse', script: 'block-lesson-enforcement-writes.sh', failClosedWhen: 'HIMMEL_LESSON_LOOP=1' },
   { event: 'PreToolUse', script: 'guard-implementor-dispatch.sh' },
-  { event: 'PreToolUse', script: 'guard-console-dispatch.sh' },
+  { event: 'PreToolUse', script: 'guard-console-dispatch.sh', failClosedWhen: 'HIMMEL_CONSOLE=1' },
   { event: 'PreToolUse', script: 'guard-subagent-model.sh' },
-  { event: 'PreToolUse', script: 'guard-console-foreground.sh' },
+  { event: 'PreToolUse', script: 'guard-console-foreground.sh', failClosedWhen: 'HIMMEL_CONSOLE=1' },
   // plugin-shipped so it fires in a salus session too, where
   // $CLAUDE_PROJECT_DIR/scripts/hooks/ does not exist.
   { event: 'PreToolUse', script: 'block-agent-native-egress.sh', source: 'plugin' },

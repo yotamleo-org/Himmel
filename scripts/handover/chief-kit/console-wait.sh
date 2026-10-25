@@ -69,15 +69,19 @@
 #                               back; the block carries succession-tracker.sh's table
 #                               and the printed append-results.sh line for the LIVE
 #                               bullet. Once, and it prints only: nothing is sent.
+#                               An informational tally: LIVE follows the predecessor's
+#                               `RELAYED <n> of <m>`, not this wake.
 #   WAKE succession partial <k/n> silent <T> min   the tally stayed short for
 #   <tracker output>            --silent-min T minutes (default 20); the table names
 #                               the legs still out. Once. CHIEF_WAIT_SUCCESSION_SEC
 #                               (default 15) paces the tally; CHIEF_WAIT_TRACKER
 #                               replaces the tracker (tests).
-#   WAKE handover-budget <line>  with --doc <console doc>: console-budget.sh --title
-#                               <the doc's basename> says HANDOVER (150 turns or 30M
-#                               cache-read); once per streak, the marker clears on OK
-#                               (CHIEF_WAIT_BUDGET replaces the command, tests).
+#   WAKE handover-budget [repeat] <line>  with --doc <console doc>: console-budget.sh --title
+#                               <the doc's basename> says HANDOVER (150 turns, 30M
+#                               cache-read or 45 % context fill); the marker clears on OK
+#                               and, while HANDOVER holds, the wake repeats (marked
+#                               `repeat`) every CHIEF_WAIT_BUDGET_REPEAT_MIN minutes
+#                               (default 30). CHIEF_WAIT_BUDGET replaces the command, tests.
 #   WAKE status-sweep <line>    with --doc <console doc>: status-sweep.sh every 15 min
 #                               (WAIT_SWEEP_SEC), bounded at 60 s, woke only when it
 #                               moved a ticket or its failure signature is new.
@@ -199,8 +203,10 @@
 #   <inbox>.relay-on-live  (`console.sh next --relay-on-live`; needs --doc) line 1 the
 #                        successor session, line 2 its doc. When that doc's queue lock
 #                        is held fresh the waiter prints one `WAKE relay-on-live
-#                        successor=<s>` block (relay-batch.sh's output), removes the
-#                        marker and exits 0. It works in handover mode. Seams:
+#                        successor=<s>` block (relay-batch.sh's output, ending with
+#                        `RELAYED <n> of <m>`: n counts the SENDMESSAGE lines, so the
+#                        console sends those first, then RELAYED to the successor,
+#                        whose LIVE follows it), removes the marker and exits 0. It works in handover mode. Seams:
 #                        CHIEF_WAIT_LOCK_STATUS, CHIEF_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
@@ -776,26 +782,39 @@ stale_streak_wake() {
 # budget_wake: the console's handover budget (console-budget.sh, via --doc). Finding the
 # transcript scans every recent one, so it is resolved once per waiter run (--resolve);
 # each sample then reads that one file. An unresolved console is not measured this run.
-# Exit 3 (HANDOVER) wakes once per streak and sets the marker `<inbox>.wait.budget`,
-# which outlives the waiter; 0 (OK) clears it; 2 (unreadable) does neither.
+# Exit 3 (HANDOVER) wakes and sets the marker `<inbox>.wait.budget`, which outlives the
+# waiter; 0 (OK) clears it; 2 (unreadable) does neither. While the verdict stays HANDOVER
+# the wake repeats (`WAKE handover-budget repeat ...`) once the marker is older than
+# CHIEF_WAIT_BUDGET_REPEAT_MIN minutes (default 30), so a wake the console absorbed mid-turn
+# is not lost; the repeat renews the marker.
 budget_file="$inbox.wait.budget"
 budget_cmd="${CHIEF_WAIT_BUDGET:-$HERE/console-budget.sh}"
 budget_timeout="${CHIEF_WAIT_BUDGET_TIMEOUT:-30}"
+budget_repeat_min="${CHIEF_WAIT_BUDGET_REPEAT_MIN:-30}"
+case "$budget_repeat_min" in ''|*[!0-9]*|???????*) budget_repeat_min=30 ;; *) budget_repeat_min=$((10#$budget_repeat_min)) ;; esac  # 7+ digits would overflow the *60 below
+[ "$budget_repeat_min" -gt 0 ] || budget_repeat_min=30
 budget_transcript=""; budget_resolved=""
 budget_wake() {
-    local out rc title
+    local out rc title kind=""
     [ -n "$console_doc" ] || return 1
     title="$(basename "$console_doc" .md)"
     if [ -z "$budget_resolved" ]; then
         budget_resolved=1
         budget_transcript="$(timeout -k 2 "$budget_timeout" bash "$budget_cmd" --title "$title" --resolve 2>/dev/null 9>&-)" || budget_transcript=""  # gnu-ok: Linux-only kit; swallow-ok: a failed resolve leaves the path empty, so the run is not measured
+        [ -n "$budget_transcript" ] || echo "console-wait: budget not measured: cannot resolve the transcript of $title (no recent session carries that customTitle)" >&2
     fi
     [ -n "$budget_transcript" ] || return 1
     out="$(CONTEXT_FILL_TRANSCRIPT="$budget_transcript" timeout -k 2 "$budget_timeout" bash "$budget_cmd" --title "$title" 2>/dev/null 9>&-)"; rc=$?  # gnu-ok: Linux-only kit; swallow-ok: the exit code below decides, only exit 3 reads the output
-    if [ "$rc" -ne 3 ]; then [ "$rc" -ne 0 ] || rm -f "$budget_file"; return 1; fi
-    [ ! -e "$budget_file" ] || return 1
+    if [ "$rc" -ne 3 ]; then
+        case "$out" in *" fill="*) [ "$rc" -ne 0 ] || rm -f "$budget_file" ;; esac  # an OK with no fill= is an unmeasured fill: it must not reset the repeat
+        return 1
+    fi
+    if [ -e "$budget_file" ]; then
+        [ "$(( $(date +%s) - $(stat -c %Y "$budget_file" 2>/dev/null || echo 0) ))" -ge $(( budget_repeat_min * 60 )) ] || return 1  # gnu-ok: Linux-only kit; swallow-ok: an unreadable marker counts as old, so the wake repeats
+        kind="repeat "
+    fi
     : > "$budget_file" 2>/dev/null
-    printf 'WAKE handover-budget %s\n' "$out"
+    printf 'WAKE handover-budget %s%s\n' "$kind" "$out"
 }
 
 # sweep_wake: with --doc, the status sweep (status-sweep.sh) runs every WAIT_SWEEP_SEC

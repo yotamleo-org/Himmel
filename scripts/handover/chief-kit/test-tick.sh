@@ -1552,11 +1552,11 @@ l3287='HIMMEL-3287-N287-bucketed-2026-09-20-RESUME.md'
 printf '%s\n' '# leg' '- LIVE — working' > "$W/handover/bucket3287/$l3287"
 contains 'an absolute --legs path to a bucketed leg doc resolves, not NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$W/handover/bucket3287/$l3287")" 'workers=N287:FREE'
 contains 'a bare --legs name of a bucketed leg doc reads NOTFOUND (HIMMEL-3287)' "$(bash "$SUT" --legs "$l3287" 2>/dev/null)" 'workers=N287:NOTFOUND'
-next3287="$(grep -F '/console next --arm' "$tpl3287")"
-contains "the /console next line quotes --model (HIMMEL-3287)" "$next3287" "--model '{{MODEL}}'"
+next3287="$(grep -F '/chief next --arm' "$tpl3287")"
+contains "the /chief next line quotes --model (HIMMEL-3287)" "$next3287" "--model '{{MODEL}}'"
 case "$next3287" in
-    *'--model {{MODEL}}'*) fail 'the /console next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
-    *) pass 'the /console next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
+    *'--model {{MODEL}}'*) fail 'the /chief next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
+    *) pass 'the /chief next line must not carry an unquoted --model {{MODEL}} (HIMMEL-3287)' ;;
 esac
 
 # --- one leg set -- a stale --legs arm is an INPUT problem, never
@@ -2129,6 +2129,37 @@ if command -v python3 >/dev/null 2>&1; then
     touch -d '1 hour' "$t3933_out" || exit 1  # gnu-ok: console kit is Linux-only
     rm -f "$t3933_out.published"
     contains 'no publish stamp keeps reading tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
+    # a focus-owned page is written by focus-refresh.sh, which records its own fingerprint (.vfp, and sha8 in
+    # focus-state) and never the all-versions .fp: the tick compares that one for such a doc.
+    t7508_state() { printf 'status=ok\nstage=\ngen=3\ndirty=\nsha8=%s\nsdrift=0:0\nver=%s\nts=1\n' "$1" "${2:-}" > "$W/handover/focus-state"; }
+    t7508_doc() { write_console3933 'https://claude.ai/artifact/x'; sed -i "/^tracker-plan:/a $1" "$W/handover/console.md"; }  # gnu-ok: console kit is Linux-only
+    t3933_render || exit 1
+    printf '%s\n' stale-all-versions-fp > "$t3933_out.fp"
+    printf '%s\n' 0a1b2c3d4e5f6071 > "$t3933_out.vfp"
+    t7508_state 0a1b2c3d
+    t7508_doc 'focus-version: v1.0.1'
+    contains 'a focus-owned doc whose .vfp matches the focus state reads tracker=ok (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_doc 'release: v1.0'
+    contains 'a doc with a release: line and no focus-version: line is focus-owned too (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_state 0a1b2c3d v1.0.1
+    t7508_doc 'focus-version: v1.0.1'
+    contains 'a focus state recording the pinned version reads tracker=ok (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_state 0a1b2c3d v1.0.0
+    contains 'a focus-version switched since the last refresh reads tracker=STALE (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    t7508_doc 'focus-version: auto'
+    contains 'focus-version: auto keeps the recorded version out of the compare (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_doc 'release: v1.0'
+    contains 'a release-only doc keeps the recorded version out of the compare (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_state 0a1b2c3d
+    printf '%s\n' ffffffff00000000 > "$t3933_out.vfp"
+    contains 'a focus-owned page whose .vfp differs from the focus state reads tracker=STALE (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    printf '%s\n' 0a1b2c3d4e5f6071 > "$t3933_out.vfp"
+    t7508_doc 'focus-version: none'
+    contains 'a doc the focus refresh does not own keeps the .fp comparison (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    t7508_doc 'focus-version: v1.0.1'
+    rm -f "$W/handover/focus-state"
+    contains 'no focus state falls back to the .fp comparison (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    rm -f "$t3933_out.vfp"
 else
     skip 'tracker= rows: no python3'
 fi
@@ -3111,6 +3142,60 @@ d_down="$(STUB_DISPATCH_RC=1 d_tick '' '')"
 contains 'an unreadable runs list reads dispatch=? (HIMMEL-7479)' "$d_down" 'dispatch=?'
 d_verbose="$(STUB_PR_ROWS="$d_pr_rows" LEGS='HIMMEL-111-legN61' STUB_DISPATCH_RUNS="4002\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 1470)\\n" STUB_DISPATCH_JOBS="9\\t1\\t$(d_iso 120)\\n" bash "$SUT" --verbose 2>/dev/null)"
 contains 'verbose labels dispatch (HIMMEL-7479)' "$d_verbose" 'dispatch: 4002:N61:24/120m:1/9@1111111'
+
+# focus= and sdrift= come from the focus-state file beside the console doc. The gh and jira
+# stubs log any call made under focus-refresh.sh, so the two fields provably read no network.
+f_dir="$W/focus6829"
+f_calls="$W/focus6829-calls.txt"
+mkdir -p "$f_dir" "$W/bin-focus6829"
+for f_tool in gh jira; do
+    {
+        printf '#!/usr/bin/env bash\n'
+        # shellcheck disable=SC2016  # the stub body expands at its own run time
+        printf 'p=$PPID; while [ "${p:-0}" -gt 1 ]; do\n'
+        # shellcheck disable=SC2016
+        printf '  case "$(tr "\\0" " " < /proc/$p/cmdline 2>/dev/null)" in *focus-refresh.sh*) echo "%s $*" >> %q ;; esac\n' "$f_tool" "$f_calls"
+        # shellcheck disable=SC2016
+        printf '  p=$(sed -n "s/^PPid:[[:space:]]*//p" /proc/$p/status 2>/dev/null)\n'
+        printf 'done\n'
+        if [ "$f_tool" = gh ]; then printf 'exec %q "$@"\n' "$W/bin/gh"; else printf 'exit 1\n'; fi
+    } > "$W/bin-focus6829/$f_tool"
+    chmod +x "$W/bin-focus6829/$f_tool"
+done
+f_doc() { printf '%s\n' '# console' ${1:+"focus-version: $1"} '' '## Results (newest at the bottom)' > "$f_dir/console.md"; }
+f_state() { printf 'status=%s\nstage=%s\ngen=3\ndirty=\nsha8=0a1b2c3d\nsdrift=%s\nts=1\n' "$1" "$2" "$3" > "$f_dir/focus-state"; }
+f_tick() { PATH="$W/bin-focus6829:$PATH" bash "$SUT" --doc "$f_dir/console.md" "$@" 2>/dev/null; }
+# positive control: a gh call under a script named focus-refresh.sh is logged
+: > "$f_calls"
+printf '#!/usr/bin/env bash\ngh probe\n' > "$W/bin-focus6829/focus-refresh.sh"
+PATH="$W/bin-focus6829:$PATH" bash "$W/bin-focus6829/focus-refresh.sh" >/dev/null 2>&1
+f_probe="$(cat "$f_calls")"
+: > "$f_calls"
+f_doc v1.0.1
+f_state FAILED drift 2:abcd1234
+f_out="$(f_tick)"
+contains 'a FAILED:drift focus state puts focus=FAILED:drift on the compact line (HIMMEL-6829)' "$f_out" ' focus=FAILED:drift'
+contains 'a drift line in the focus state puts sdrift= on the compact line (HIMMEL-6829)' "$f_out" ' sdrift=2:abcd1234'
+f_state ok '' 0:0f0f0f0f
+f_out="$(f_tick)"
+not_contains 'a healthy focus state leaves focus= off the compact line (HIMMEL-6829)' "$f_out" ' focus='
+not_contains 'a zero drift line leaves sdrift= off the compact line (HIMMEL-6829)' "$f_out" ' sdrift='
+f_out="$(f_tick --verbose)"
+contains '--verbose shows a healthy focus state (HIMMEL-6829)' "$f_out" 'focus: ok'
+contains '--verbose shows a zero drift line (HIMMEL-6829)' "$f_out" 'sdrift: 0:0f0f0f0f'
+f_doc ''
+f_state FAILED drift 2:abcd1234
+f_out="$(f_tick --verbose)"
+not_contains 'a doc with no focus-version: line shows no focus (HIMMEL-6829)' "$f_out" 'focus:'
+not_contains 'a doc with no focus-version: line shows no sdrift (HIMMEL-6829)' "$f_out" 'sdrift:'
+f_doc v1.0.1
+rm -f "$f_dir/focus-state"
+f_out="$(f_tick)"
+not_contains 'no focus-state file leaves focus= off the line (HIMMEL-6829)' "$f_out" ' focus='
+not_contains 'no focus-state file leaves sdrift= off the line (HIMMEL-6829)' "$f_out" ' sdrift='
+if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers (HIMMEL-6829)'
+elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
+elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call (HIMMEL-6829)'; fi
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

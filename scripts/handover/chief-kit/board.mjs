@@ -7,6 +7,10 @@
 //
 //   node board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--changed]
 //
+// --view user: the user shift board (board-user.mjs) instead of the operator board: running now,
+// waiting on you, shipped. Same reads, written to --out (default console-shift-board.html);
+// the operator board, its archive and its json are not written.
+//
 // --changed (Ask 1): still renders and writes the file, but prints
 // one line -- `CHANGED <path>` or `UNCHANGED <path>` -- instead of the bare
 // path, so a console can call this after every Live-state mutation (dispatch,
@@ -65,10 +69,11 @@ import { gitClean } from '../../lanes/git-clean.mjs';
 import { readToolHealth } from '../../eval/worker-digest/tool-health.mjs';
 import { redact } from './redact.mjs';
 import { collect as collectCloud } from './cloud-liveness.mjs';
+import { goalOf, renderUserBoard } from './board-user.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const USAGE = 'usage: board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--json <file>] [--changed]';
+const USAGE = 'usage: board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--json <file>] [--changed] [--view user]';
 const rawArgs = process.argv.slice(2);
 // --changed (Ask 1) is the one console step that both re-renders
 // and says whether the render moved: a boolean flag, pulled out before the
@@ -77,13 +82,14 @@ const changedFlag = rawArgs.includes('--changed');
 const args = rawArgs.filter((a) => a !== '--changed');
 const opt = {};
 for (let i = 0; i < args.length; i += 2) {
-    if (!['--doc', '--legs', '--out', '--repo', '--json'].includes(args[i]) || args[i + 1] === undefined) {
+    if (!['--doc', '--legs', '--out', '--repo', '--json', '--view'].includes(args[i]) || args[i + 1] === undefined) {
         console.error(USAGE);
         process.exit(2);
     }
     opt[args[i].slice(2)] = args[i + 1];
 }
-if (!opt.doc) {
+// The user page embeds no fingerprint and writes no json, so --changed and --json have nothing to act on.
+if (!opt.doc || (opt.view !== undefined && opt.view !== 'user') || (opt.view === 'user' && (changedFlag || opt.json !== undefined))) {
     console.error(USAGE);
     process.exit(2);
 }
@@ -519,6 +525,34 @@ const ciFleetSig = [fleetOk ? `${fleetLive}/${fleetCap}` : '', ...(openPrs || []
 const now = new Date();
 const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 const consoleName = basename(docPath, '.md');
+
+// --view user (frame 15): the same reads, three sections, written to its own file. A leg waits on
+// the user for a GO (READY with its PR) or a question (BLOCKED, or a FINDING tail); a leg that
+// needs only the supervisor session (a lost lock, an unopened PR, an open window) is not the
+// user's to act on. A READY-TO-OPEN leg (no PR yet) and a PARKED-USAGE leg (waiting on the usage
+// budget) are in no section on purpose: neither is running, and neither is the user's to answer.
+// The operator board, its archive and its json are not touched.
+if (opt.view === 'user') {
+    const prTitle = (n) => ((openByNum.get(n) || {}).title || '');
+    const waitingLegs = legs.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED'
+        && (l.phase === 'READY' || l.phase === 'BLOCKED' || l.tail === 'FINDING'));
+    const waitingSet = new Set(waitingLegs.map((l) => l.label));
+    const running = legs.filter((l) => (l.phase === 'LIVE' || l.phase === 'PR open') && !waitingSet.has(l.label))
+        .map((l) => ({ ticket: l.ticket || 'worker session', goal: goalOf(prTitle(l.prNum)), tag: l.phase === 'PR open' ? 'in review' : 'building' }));
+    const waiting = [
+        ...waitingLegs.map((l) => (l.phase === 'READY'
+            ? { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)), tag: `GO · PR #${l.prNum}` }
+            : { ticket: l.ticket, goal: goalOf(prTitle(l.prNum)), tag: 'question', text: l.last.replace(/^(?:\d{1,2}:\d{2}\s+)?[A-Z][A-Z-]*[A-Z]\s*[—–:-]*\s*/, '') })),
+        ...decisions.map((d) => ({ tag: 'decision', text: d })),
+    ];
+    const shipped = (mergedPrs || []).map((p) => ({ ticket: (/\[([A-Z][A-Z0-9]*-\d+)\]/.exec(p.title) || [])[1] || '', goal: goalOf(p.title), tag: `PR #${p.number}` }));
+    const userOut = resolve(opt.out || join(bucket, 'console-shift-board.html'));
+    const userTmp = `${userOut}.tmp${process.pid}`;
+    writeFileSync(userTmp, renderUserBoard({ stamp, running, waiting, shipped, shippedNote: mergedPrs ? '' : 'merged PRs unavailable' }));
+    renameSync(userTmp, userOut);
+    console.log(userOut);
+    process.exit(0);
+}
 
 // One compact card per live leg: a 25-leg fleet must fit the 15 KB page.
 const legCard = (l) => `<li data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}<p>${l.last ? safe(l.last, 130) : '<i>no handover bullet yet</i>'}</p></li>`;

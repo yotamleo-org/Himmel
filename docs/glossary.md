@@ -26,6 +26,9 @@ In prose, say the plain name, and the old name once in brackets the first time.
 
 | Term | Meaning |
 |---|---|
+| **Agentic OS** | What himmel is: a harness on top of Claude Code's own harness that adds guarded sessions, handover and memory, a command layer (Jarvis) and its surface (Mission Control), so a fleet of sessions runs as one software factory. It is not an agent SDK. |
+| **Jarvis** | The agentic OS's command layer: the chief, its workers, the judge, the GO and the unattended-run parts (arming, usage-cap auto-relaunch, shifts). See [jarvis-subsystems.md](jarvis-subsystems.md). In prose say "Jarvis" for the layer and "the chief" for the session that runs it. |
+| **Mission Control** [C&C, command and control] | Jarvis's surface: the views where you watch the fleet and steer the chief. Those are the config UI's Fleet page, the chief's board, the Telegram bridge, the statusline, the morning report and the metrics. It shows the fleet but gives no orders; you steer by messaging the chief. `scripts/fleet-control/` is an older read-only pane that the Fleet page supersedes. |
 | **Automated review** [CR, code review] | The pre-PR review gate and everything named for it: the review-owed marker (CR marker), the CR ledger, the critic panel, `/pr-check` (ruled 2026-09-24, operator). A human read of the PR is "human review". CodeRabbit is one best-effort CI reviewer inside that gate and is always spelled out, never abbreviated CR. |
 | **Chief** [supervisor session, console] | The operator's chief of staff: a persistent, operator-facing session that owns the shift. It holds the queue lock on its own document, the GO authority and the token (nonce) mint. It dispatches workers, watches the fleet, acts on rulings and merges on GO, and does no implementation itself. `/chief new` starts one; `/supervisor-session` stays as a permanent alias. In prose say "the chief"; never "chief session" and never a bare "supervisor": `scripts/telegram/supervisor.ts` is a process keeper. |
 | **Judge session** / **judge subagent** [judge, judge call] | A clean session, headed or headless, spawned for one question, sometimes on a deliberately thin brief. **Advisory: it rules, the chief acts.** Several may run in parallel on one question with different scopes. A judge session is a worker of the judge kind; a judge subagent is an in-process child. See [Judge: call and session](#judge-call-and-session). A judge verdict stays "judge verdict". |
@@ -110,7 +113,7 @@ changelog (HIMMEL-7006) names the breaking change.
 | F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | V4b |
 | F7 | `leg-*.sh` helpers, `leg-digest*`, `close-wrapped-leg.sh`; profiles `leg-impl`, `leg-bus`, `leg-vm` | `worker-*`, `close-wrapped-worker.sh`; profiles `worker-impl`, `worker-bus`, `worker-vm` | V4b; V4a (profiles) |
 | F8 | `scripts/handover/console-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
-| F9 | `/console`, `console.sh`, `console-context.sh`; skill `himmel-ops:console`; agents `console-judge`, `console-judge-ro` | `/chief` canonical, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). `/supervisor-session` and `himmel-ops:supervisor-session` stay permanent aliases (OD-6) | V5 |
+| F9 | `/console`, `console.sh`; skill `himmel-ops:console` | `/chief` canonical, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). `/supervisor-session` and `himmel-ops:supervisor-session` stay permanent aliases (OD-6) | V5 |
 | F10 | `overnight-shift`, `overnight-mode.md`, `OVERNIGHT_*`, `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` | `afk-shift`, `afk-mode.md`, `AFK_*`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` | V3 |
 | F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids deferred until a new id name is ruled | — |
 | F13 | `class-sweep`, `missing-class-sweep` (the `SWEEP` ledger keyword is unchanged) | `variant-sweep`, `missing-variant-sweep` | V2 |
@@ -174,7 +177,7 @@ does not implement, push or merge.
 | Shape | What it is | Brief |
 |---|---|---|
 | judge **session** | a judge worker with its own worktree, queue lock and lifecycle; survives past one turn | [`handover/judge-brief-template.md`](handover/judge-brief-template.md), verdict per [`handover/verdict-template.md`](handover/verdict-template.md) |
-| judge **subagent** [judge call] | an in-process child (`.claude/agents/judge-ro.md`, or `judge.md`; old ids `console-judge-ro`, `console-judge`) for one question that fits in one dispatch | the dispatch prompt |
+| judge **subagent** [judge call] | an in-process child (`.claude/agents/judge-ro.md`, or `judge.md`) for one question that fits in one dispatch | the dispatch prompt |
 
 The chief template (`console-template.md`) records which shape asked each question as
 `grade: call|session`.

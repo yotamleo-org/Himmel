@@ -352,6 +352,19 @@ test('/lanes text flags a dormant lane with its reason and opt-in env', () => {
   assert.match(text, /\[DORMANT: test dormancy reason — opt in: SLEEPER_LANE_OK=1\]/);
 });
 
+// claudex is a live implementation lane: the registry gives it no dormant
+// object and /lanes renders it without a DORMANT annotation.
+test('the real registry claudex lane is live and /lanes text shows no DORMANT for it', () => {
+  const claudex = REG.lanes.find((l) => l.id === 'claudex');
+  assert.ok(claudex, 'claudex lane present in the real registry');
+  assert.equal(claudex.dormant, undefined, 'claudex carries no dormant object');
+  const env = { ...process.env, LANES_REGISTRY: join(TEST_DIR, '..', 'lanes.json'), CLIPROXY_API_KEY: 'test-forced' };
+  const text = execFileSync(process.execPath, [RESOLVER], { encoding: 'utf8', env });
+  const line = text.split('\n').find((l) => l.startsWith(`- ${claudex.label} `));
+  assert.ok(line, 'claudex renders in /lanes text');
+  assert.doesNotMatch(line, /DORMANT/);
+});
+
 // Every registry-declared dormant impl lane must actually render.
 test('every real registry dormant impl lane shows DORMANT in /lanes text', () => {
   // The resolver drops a lane whose probe fails BEFORE rendering, so a dormant lane
@@ -361,6 +374,7 @@ test('every real registry dormant impl lane shows DORMANT in /lanes text', () =>
   // LANES_REGISTRY pins the child to the tracked lanes.json: without it resolve.mjs
   // layers lanes.local.json over REG and an operator override could re-break this.
   const dormantLanes = REG.lanes.filter((l) => l.class === 'impl' && l.dormant);
+  assert.deepEqual(dormantLanes.map((l) => l.id).sort(), ['codex-exec', 'glm', 'hermes-oneshot', 'openrouter-claude']);
   const forcedEnv = { LANES_REGISTRY: join(TEST_DIR, '..', 'lanes.json') };
   const resolvedPathDirs = new Set();
   const skippedPathProbes = [];

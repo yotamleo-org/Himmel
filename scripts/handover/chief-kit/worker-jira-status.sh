@@ -223,6 +223,35 @@ mark_focus_dirty() {
         || echo "WARN leg-jira-status: cannot mark the FOCUS page dirty (continuing; the move stands)" >&2
 }
 
+# A worked ticket that sits in a later version than the current one (the earliest unreleased,
+# unarchived by date) gets one INTAKE request into the current version, so it folds in by the
+# release manager's ruling and not by hand. A stamp per key keeps a later LIVE bullet from
+# asking again; the request itself is deduplicated by the CLI. Best-effort, never blocks.
+# ponytail: the release is named after the version, upgrade path = a release lookup in the CLI
+# once a release declares several versions.
+intake_to_current() {
+    local json vers cur from out stamp="$lockdir/$KEY.intake"
+    [ ! -e "$stamp" ] || return 0
+    json=$(ts_jira get "$KEY" --json 2>/dev/null) || return 0  # swallow-ok: an unread ticket files no request
+    vers=$(ts_jira versions --project "${KEY%%-*}" 2>/dev/null) || return 0  # swallow-ok: an unread version list files no request
+    cur=$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print ($3 == "" ? "9999-99-99" : $3) "\t" $1 }' | sort | head -n 1 | cut -f2)
+    [ -n "$cur" ] || return 0
+    ! jq -e --arg c "$cur" '[.fields.fixVersions[]?.name] | index($c) != null' <<<"$json" >/dev/null 2>&1 || return 0
+    from=$(jq -r '.fields.fixVersions[]?.name' <<<"$json" 2>/dev/null | while IFS= read -r n; do
+        [ "$n" != "$cur" ] && printf '%s\n' "$vers" | awk -F'\t' -v n="$n" '$1 == n && $2 == "false" && $4 != "true" { f = 1 } END { exit !f }' && { printf '%s\n' "$n"; break; }
+    done)
+    [ -n "$from" ] || return 0
+    if out=$(ts_jira release request "$cur" --verb INTAKE --key "$KEY" --from "$from" --to "$cur" \
+        --why "the ticket is worked, so it folds from $from into the current $cur" \
+        --evidence "{\"event\":\"$EVENT\"}" 2>&1) && [[ "$out" == *"REQ "* ]]; then
+        : > "$stamp" 2>/dev/null
+        row result=intake rule=INTAKE from="$from" to="$cur"
+    else
+        echo "WARN leg-jira-status: $KEY sits in $from, later than the current $cur; the INTAKE request was NOT filed: $(printf '%s' "$out" | tr '\n' ' ')" >&2
+    fi
+}
+finish() { [ "$EVENT" != live ] || intake_to_current; exit 0; }
+
 # Derive, then re-read Jira and the PR heads before the write: Jira has no
 # conditional transition, so a change in between re-derives once, and a second
 # change leaves the write to the next event.
@@ -235,12 +264,12 @@ while :; do
         if [ "$TS_RESULT" = miss ]; then miss "$TS_STAGE"; fi
         if [ "$TS_RULE" = D0 ] && [ "$TS_J_STATUS" = Done ]; then refresh_done_record; fi
         row result=skip rule="$TS_RULE" from="${TS_J_STATUS:-}"
-        exit 0
+        finish
     fi
     if [ "$TS_DERIVED" = "$TS_J_STATUS" ]; then
         update_record "$TS_J_STATUS"
         row result=noop rule="$TS_RULE" from="$TS_J_STATUS"
-        exit 0
+        finish
     fi
     seen_j="$TS_J_STATUS" seen_heads="$TS_HEADS"
     ts_read_jira "$KEY" || miss get
@@ -268,4 +297,4 @@ update_record "$to" "$from -> $to"
 row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir"
 mark_focus_dirty
 echo "leg-jira-status: $KEY $from -> $to ($TS_RULE)"
-exit 0
+finish

@@ -31,6 +31,8 @@
 set -uo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$REPO/scripts/lib/prim.sh" || exit 1
 # shellcheck source=lib/model-replay.sh
 . "$REPO/scripts/vm/lib/model-replay.sh" || exit 1
 
@@ -46,7 +48,7 @@ now_ms() { local n; n="$(date +%s%N 2>/dev/null)"; case "$n" in *N|"") echo "$(d
 t0="$(now_ms)"
 
 # --- Launch -------------------------------------------------------------------
-W="$(mktemp -d "${TMPDIR:-/tmp}/replay-poc.XXXXXX")" || exit 1
+W="$(tmpdir)" || exit 1
 trap 'rm -rf "$W"' EXIT
 ARTIFACT="$W/artifact.txt"
 PROMPT="$W/prompt.txt"

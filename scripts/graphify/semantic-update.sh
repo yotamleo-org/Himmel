@@ -21,7 +21,7 @@
 # Measure the result with semantic-metrics.py <graph.json> [--files a.md,b.md]
 # (rationale coverage, cross-file and doc-to-code edges).
 #
-# BILLING: --backend claude-cli makes graphify shell `claude -p` once per chunk,
+# BILLING: the default backend is claude-api. --backend claude-cli (explicit opt-in only) makes graphify shell `claude -p` once per chunk,
 # which draws the SAME subscription 5h/weekly bank as interactive use
 #; hence the bank-preflight gate and the --max-files cap. Changed
 # files above the cap stay unstamped and roll to the next run (reported as
@@ -72,7 +72,7 @@
 #
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
-#       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--max-run-usd 15.00] [--seed-manifest] [--dry-run]
+#       [--backend claude-api|claude-cli|ollama] [--max-files 150] [--max-run-usd 15.00] [--seed-manifest] [--dry-run]
 #
 # --backend ollama runs the local model (OLLAMA_MODEL, default qwen3.6:27b) at
 # --max-concurrency 1 and skips bank-preflight (no subscription draw). It
@@ -91,7 +91,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
-NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-cli" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-15.00}"
+NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-api" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-15.00}"
 usage() { sed -n '/^# Usage:/,/^# Exit:/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -215,6 +215,7 @@ fi
 
 [ -f "$OUT_DIR/graph.json" ] || { echo "semantic-update: no $OUT_DIR/graph.json -- run the AST pass (ast-update.sh) first" >&2; exit 1; }
 
+# prim-ok: the corpus-named workdir identifies the isolated Claude shim and cleanup evidence; tmpdir cannot retain this prefix.
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/graphify-semantic-$NAME-XXXXXX")"
 PROMOTE_LOCK="$OUT_DIR/.promote.lock" PROMOTE_LOCK_HELD=0 PROMOTE_LOCK_TOKEN="$$-$RANDOM"
 cleanup() {
@@ -229,6 +230,7 @@ trap cleanup EXIT
 # acquired stamp). Bounded wait, then skip: the next run retries.
 acquire_promote_lock() {
   local waited=0
+  # prim-ok: interoperate with ast-update's owner-token directory and preserve bounded-wait exit 4; with_lock uses a different protocol.
   until mkdir "$PROMOTE_LOCK" 2>/dev/null; do
     if [ "$waited" -ge "${GRAPHIFY_SEMANTIC_LOCK_WAIT:-120}" ]; then
       echo "semantic-update: SKIPPED -- promote lock $PROMOTE_LOCK held by another graph refresh" >&2

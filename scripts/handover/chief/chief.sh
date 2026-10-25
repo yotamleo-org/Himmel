@@ -207,6 +207,18 @@ letter_value() {
     pb="${ALPHABET%%"$b"*}"
     printf '%s' $(( 26 + ${#pa} * 26 + ${#pb} + 1 ))
 }
+# letter_key <date> <letters>: sets REPLY to the date+letter ranking key without a
+# subshell (the bare-next discovery calls it once per doc in the handover tree).
+letter_key() {
+    local s="$2" p pa pb v
+    if [ "${#s}" -eq 1 ]; then
+        p="${ALPHABET%%"$s"*}"; v=$(( ${#p} + 1 ))
+    else
+        pa="${ALPHABET%%"${s:0:1}"*}"; pb="${ALPHABET%%"${s:1:1}"*}"
+        v=$(( 26 + ${#pa} * 26 + ${#pb} + 1 ))
+    fi
+    printf -v REPLY '%s-%03d' "$1" "$v"
+}
 
 # render_template <template> <out> KEY VALUE [KEY VALUE ...] -- literal
 # {{KEY}} -> VALUE substitution over the whole file (bash parameter
@@ -685,7 +697,7 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CH
         _auto_newest="" _auto_newest_key=""
         for _auto_cand in "$root/$slug/"*/*"-nextleg-"*"-${_auto_name}.md" "$root/$slug/"*/*"-nextleg-"*"-${_auto_old}.md"; do
             [ -f "$_auto_cand" ] || continue
-            _auto_base="$(basename "$_auto_cand")"
+            _auto_base="${_auto_cand##*/}"
             _auto_stem="${_auto_base%.md}"
             _auto_prefix_part="${_auto_stem%-"$_auto_name"}"
             [ "$_auto_prefix_part" = "$_auto_stem" ] && _auto_prefix_part="${_auto_stem%-"$_auto_old"}"
@@ -696,14 +708,38 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CH
             else
                 continue
             fi
-            _auto_key="${_auto_cdate}-$(printf '%03d' "$(letter_value "$_auto_cletter")")"
+            letter_key "$_auto_cdate" "$_auto_cletter"; _auto_key="$REPLY"
             if [ -z "$_auto_newest_key" ] || [[ "$_auto_key" > "$_auto_newest_key" ]]; then
                 _auto_newest_key="$_auto_key"
                 _auto_newest="$_auto_cand"
             fi
         done
+        # A newer nextleg doc of ANOTHER name (the live chain is roadmap-chief, the
+        # default name matches only a weeks-old bare -console doc) means the default
+        # name is the wrong chain: refuse and list, never take the old doc.
+        if [ "$NAME_GIVEN" -ne 1 ]; then
+            _auto_newer=""
+            for _auto_cand in "$root/$slug/"*/*"-nextleg-"*.md; do
+                [ -f "$_auto_cand" ] || continue
+                _auto_stem="${_auto_cand##*/}"; _auto_stem="${_auto_stem%.md}"
+                case "$_auto_stem" in *HANDOFF*|*LINEAGE*) continue ;; esac
+                if [[ "$_auto_stem" =~ ^[A-Z0-9]+-nextleg-([0-9]{4}-[0-9]{2}-[0-9]{2})([A-Z]{1,2})-.+$ ]]; then
+                    letter_key "${BASH_REMATCH[1]}" "${BASH_REMATCH[2]}"; _auto_key="$REPLY"
+                else
+                    continue
+                fi
+                if [ -z "$_auto_newest_key" ] || [[ "$_auto_key" > "$_auto_newest_key" ]]; then
+                    _auto_newer="${_auto_newer}${_auto_key} ${_auto_cand}"$'\n'
+                fi
+            done
+            if [ -n "$_auto_newer" ]; then
+                err "the newest nextleg doc under $root/$slug is not named '$_auto_name' (or '$_auto_old'), so a bare next would take an older chain; pass --name or --doc. Newer candidates:"
+                printf '%s' "$_auto_newer" | sort -r | head -n 5 | sed 's/^[^ ]* /  /' >&2
+                exit 1
+            fi
+        fi
         [ -n "$_auto_newest" ] && DOC_ARG="$_auto_newest"
-        unset _auto_cand _auto_base _auto_stem _auto_prefix_part _auto_cdate _auto_cletter _auto_key _auto_newest _auto_newest_key
+        unset _auto_cand _auto_base _auto_stem _auto_prefix_part _auto_cdate _auto_cletter _auto_key _auto_newest _auto_newest_key _auto_newer
     fi
     unset _auto_name _auto_old
 fi

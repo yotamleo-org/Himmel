@@ -1,0 +1,14 @@
+[
+  {"number": 9101, "title": "feat(lib): [HIMMEL-9001] planted claudex leg", "state": "MERGED", "mergedAt": "2026-10-25T18:30:00Z", "headRefName": "feat/himmel-9001-planted-nogo", "headRefOid": "bbbb000000000000000000000000000000000002", "mergeCommit": {"oid": "cccc000000000000000000000000000000000003"},
+   "body": "## Summary\n\nfixture\n\nleg-burn: calls=80 avg-ctx=90.0k first-turn=30.0k compactions=0 cost-eq=1200.0k profile=leg-impl\n"},
+  {"number": 9102, "title": "fix(lib): [HIMMEL-9002] clean claudex leg", "state": "MERGED", "mergedAt": "2026-10-25T17:15:00Z", "headRefName": "fix/himmel-9002-clean-claudex", "headRefOid": "dddd000000000000000000000000000000000004", "mergeCommit": {"oid": "eeee000000000000000000000000000000000005"},
+   "body": "## Summary\n\nfixture\n\nleg-burn: calls=50 avg-ctx=70.0k first-turn=30.0k compactions=0 cost-eq=800.0k profile=leg-impl\n"},
+  {"number": 9107, "title": "fix(lib): [HIMMEL-9002] clean claudex leg, second slice", "state": "MERGED", "mergedAt": "2026-10-25T17:18:00Z", "headRefName": "fix/himmel-9002-clean-claudex", "headRefOid": "dddd00000000000000000000000000000000000c", "mergeCommit": {"oid": "eeee00000000000000000000000000000000000d"},
+   "body": "## Summary\n\nfixture\n\nleg-burn: calls=20 avg-ctx=40.0k first-turn=30.0k compactions=0 cost-eq=400.0k profile=leg-impl\n"},
+  {"number": 9103, "title": "feat(ci): [HIMMEL-9003] native merged leg", "state": "MERGED", "mergedAt": "2026-10-25T17:40:00Z", "headRefName": "feat/himmel-9003-native-merged", "headRefOid": "ffff000000000000000000000000000000000006", "mergeCommit": {"oid": "9999000000000000000000000000000000000007"},
+   "body": "## Summary\n\nfixture\n\nleg-burn: calls=90 avg-ctx=100.0k first-turn=32.0k compactions=1 cost-eq=1600.0k profile=leg-impl\n"},
+  {"number": 9105, "title": "fix(lib): [HIMMEL-9001] the torn-row refusal covers the second reader", "state": "MERGED", "mergedAt": "2026-10-27T10:00:00Z", "headRefName": "fix/himmel-9001-follow-up", "headRefOid": "aaaa000000000000000000000000000000000008", "mergeCommit": {"oid": "aaaa000000000000000000000000000000000009"},
+   "body": "Follows #9101."},
+  {"number": 9106, "title": "Revert \"feat(ci): [HIMMEL-9003] native merged leg\" (#9103)", "state": "MERGED", "mergedAt": "2026-11-05T10:00:00Z", "headRefName": "revert-9103", "headRefOid": "aaaa00000000000000000000000000000000000a", "mergeCommit": {"oid": "aaaa00000000000000000000000000000000000b"},
+   "body": "Reverts #9103."}
+]

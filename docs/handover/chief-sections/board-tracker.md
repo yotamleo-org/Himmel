@@ -30,7 +30,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     paste page content." It returns one line, not the page; if a later publish
     of your own is refused, send that to the subagent too and never read the URL
     yourself. A `path` read or `overwrite_unread` does not count as viewing.
-    <!-- ponytail: subagent cost absorption is not yet measured (HIMMEL-6756), the first chief publish that uses it records the parent-context delta on that ticket -->
+    <!-- measured: a haiku-delegated publish adds about 1.4k-2.7k tokens (median 1.9k) to the parent context, under the 5k limit; the live page never reaches it -->
     The tick's `board=` field is your reminder:
     `board=MISSING` (never rendered) or `board=STALE:<age>` (the state moved
     since the last render) means re-run it now. `board=ok` proves only that the
@@ -80,7 +80,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     release state (`node <primary>/scripts/jira/dist/index.js versions` redirected to
     `<mirror-dir>.versions.tsv`, i.e. `~/.himmel/state/jira-mirror/HIMMEL.versions.tsv`),
     then render the current version with
-    `python3 "<kit>/tracker.py" --version <version> --priority-file <approved plan> --chains-file <handover bucket>/focus-chains.json --jira-base-url <site> --out <handover bucket>/roadmap-tracker.html --plan-dir <plan dir>`
+    `python3 "<kit>/tracker.py" --version <version> --priority-file <approved plan> --chains-file <handover bucket>/focus-chains.json --workers-dir ~/.himmel/state/workers --jira-base-url <site> --out <handover bucket>/roadmap-tracker.html --plan-dir <plan dir>`
     (`tracker.py --help` names every argument; `--out` and `--plan-dir` must be
     the paths the tick reads, because with `--plan-dir` the render also writes
     `<out>.fp`, the value `--emit-fp` prints, so the tick then reports `tracker=ok`).
@@ -105,9 +105,17 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     blockers (an open blocker is flagged; a link whose blocker's own text puts it
     after this ticket reads `direction?`), and its FAST-TRACK step when a dependency
     chain names it. The dependency chains and parallel waves of `--chains-file`
-    (`[{name, note, steps: [{key, pr, label, state, owner}]}]`) render above the
+    (`[{name, steps: [{key}]}]`) render above the
     board, a merged step left out and a dependency chain with none left dropped (the header
-    counts them); a page shows only the dependency chains with a step in its version. Each column header carries a parity line
+    counts them); a page shows only the dependency chains with a step in its version.
+    The file is hand input for chain names and step order only: a keyed step's row
+    is its ticket's title, Jira status, open PRs with CI and the owning worker from
+    the fleet record, read on every render (a hand `label`, `pr`, `owner`, `state`
+    and a chain `note` are ignored for a keyed step and never printed). A keyless step keeps its
+    label and state. `Waiting on you` is derived from the open tickets of the version
+    carrying an operator label (`operator-decision`, `operator`, `operator-present`,
+    `operator-gated`); a hand chain named `Waiting on you` is not printed. The header names
+    the age of `focus-chains.json` when it is older than the newest Jira update. Each column header carries a parity line
     against one live JQL count of the version's open tickets (`Jira n · ok`, or
     `DRIFT` naming each differing key with both statuses), and stdout prints the
     same per column; a DRIFT right after a render usually means Jira moved since

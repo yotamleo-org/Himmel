@@ -10,7 +10,8 @@
 //
 // Classes, first match wins:
 //   BLOCKED      ticket not To Do/Backlog/Open, the open-PR/held-file list or file tree is unknown, or a
-//                file it touches is held (one writer per file)
+//                file it touches is held (one writer per file), a directory it names included: any held file
+//                under it blocks, and the reason names the file and its holder
 //   HOOK-BYPASS  touches scripts/hooks/ (hooks do not run in the cloud, and the
 //                integrity guard locks hook edits out of a normal leg)
 //   LOCAL-NATIVE a trust path (needs a trust-reviewed GO), a run-time need the
@@ -141,7 +142,7 @@ export function askLines(description) {
   return numbered.length ? numbered : pick(lines, /^\s*[-*]\s/);
 }
 
-const overlaps = (a, b) => a === b || (b.endsWith('/') && a.startsWith(b)) || (a.endsWith('/') && b.startsWith(a));
+const overlaps = (a, b) => a === b || b.startsWith(a.replace(/\/?$/, '/')) || a.startsWith(b.replace(/\/?$/, '/'));
 
 const STALE_DAYS = 14;
 
@@ -203,7 +204,9 @@ export function fixedBy(t, files, ctx) {
 export function classifyTicket(t, ctx) {
   const text = `${t.title}\n${t.description}`;
   const named = t.files?.length ? t.files : [...extractFiles(text), ...bareNames(text, ctx.tree ?? [])];
-  const files = [...new Set(named.map((f) => posix.normalize(f)))];
+  // a directory in the tree is named with its slash, whatever punctuation followed it in the text
+  const asDir = (f) => (!f.endsWith('/') && (ctx.tree ?? []).some((p) => p.startsWith(`${f}/`)) ? `${f}/` : f);
+  const files = [...new Set(named.map((f) => asDir(posix.normalize(f))))];
   const asks = Math.max(1, askLines(t.description).length);
   const v = (cls, reason) => ({ class: cls, reason, files, asks });
   const needs = needsOf(ctx.matrix ?? (defaultMatrix ??= loadMatrix()));
@@ -213,8 +216,12 @@ export function classifyTicket(t, ctx) {
   const strange = t.files?.length || needs.re.test(text) ? [] : unrecognisedPaths(text);
   for (const f of files) {
     const h = (ctx.held ?? []).find((x) => overlaps(f, x.file));
-    if (h) return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
+    if (!h) continue;
+    // a directory the ticket names is held by every file under it: one writer per file
+    if (h.file !== f && h.file.startsWith(f.replace(/\/?$/, '/'))) return v('BLOCKED', `${f} contains held ${h.file} (${h.why}) — one writer per file`);
+    return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
   }
+  if (ctx.heldUnknown) return v('BLOCKED', 'held-file list unavailable (gh failed, or the reservation log is unreadable) — cannot prove the files are free');
   const hook = files.find((f) => HOOKS.test(f));
   if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
@@ -230,7 +237,6 @@ export function classifyTicket(t, ctx) {
   if (ctx.treeUnknown) return v('BLOCKED', 'file tree unavailable (git failed) — cannot resolve the named files');
   const lost = ctx.tree ? unresolved(files, ctx.tree) : [];
   if (lost.length) return v('LOCAL-NATIVE', `cannot resolve ${lost.join(', ')} at the base — no such file or directory, so the hook, trust and held checks cannot be trusted (pass files)`);
-  if (ctx.heldUnknown) return v('BLOCKED', 'held-file list unavailable (gh failed, or the reservation log is unreadable) — cannot prove the files are free');
   if (ctx.mergedUnknown) return v('BLOCKED', 'merged-PR list unavailable (gh failed) — cannot prove the ticket is not already fixed');
   const fixed = fixedBy(t, files, ctx);
   if (fixed.length) return { ...v('VERIFY-LOCAL', `may already be fixed on main — ${fixed.map((f) => `PR ${f.number} (${f.why}, merged ${String(f.mergedAt).slice(0, 10)})`).join('; ')}; verify locally before any cloud session`), prs: fixed.map((f) => f.number) };
@@ -326,7 +332,10 @@ function openPrFiles() {
   const nums = execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'], { encoding: 'utf8' }).split('\n').filter(Boolean);
   if (nums.length >= 200) throw new Error('200 open PRs listed — the list may be truncated');
   for (const num of nums) {
-    for (const f of execFileSync(gh, ['pr', 'diff', num, '--repo', REPO_SLUG, '--name-only'], { encoding: 'utf8' }).split('\n').filter(Boolean)) out.push({ file: f, why: `open PR ${num}` });
+    // the paginated files API: `gh pr diff` fails with HTTP 406 on a PR over 300 files. A rename holds both names.
+    const files = execFileSync(gh, ['api', '--paginate', `repos/${REPO_SLUG}/pulls/${num}/files`, '--jq', '.[] | .filename, (.previous_filename // empty)'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).split('\n').filter(Boolean);
+    if (files.length >= 3000) throw new Error(`PR ${num} lists 3000 files — the API stops there, so its files are cut short`);
+    for (const f of files) out.push({ file: f, why: `open PR ${num}` });
   }
   return out;
 }

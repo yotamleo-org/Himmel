@@ -318,7 +318,7 @@ HO_D1=$(make_handover "arm-guard-console.md")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D1" --dry-run 2>&1)
 rc=$?
 assert_rc "d1: unpinned console arm exits 0" 0 "$rc"
-assert_contains "d1: guard line reports operator default kept" "arm-resume: model=<operator default> (console arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable, HIMMEL-3169)" "$out"
+assert_contains "d1: guard line reports operator default kept" "arm-resume: model=<operator default> (console arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable)" "$out"
 # Negative control for the bare/unquoted rendering above (see case a's
 # comment): with MODEL unset, q_model is never built at all, so NO spelling
 # of --model appears here -- this proves the case-a/c/c2/d2/e1/e2 assertions
