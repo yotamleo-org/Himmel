@@ -1,7 +1,7 @@
 {
   "version": 1,
   "about": "The delivery graph on docs/guide/how-a-change-ships.html: Level 1 nodes and edges, each node's reach, its loop (Level 2) and the chains of checks that decide each move (Level 3). Every check cites the file and string it stands for; scripts/docs/test-how-a-change-ships.sh keeps the citations, the reach tags and the page in step with the tree.",
-  "cited_at": "e538e340875adbff6287ddfec4d85007a99d8481",
+  "cited_at": "c86679864f6387b300d99347d571608cb1477710",
   "reach_kinds": {
     "project": "a starter install copies it into your project (scripts/adopt.sh PORTABLE_FILES)",
     "clone": "it runs from your himmel clone; a starter install does not copy it",
@@ -770,7 +770,7 @@
         36,
         46
       ],
-      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, every review thread, and the approval. Any `gh pr merge` Claude tries goes through it.",
+      "what": "One gate sees everything the earlier steps produced: CI on this exact commit and every review thread. Any `gh pr merge` Claude tries goes through it.",
       "loop": [
         "Claude asks to merge",
         "The gate reads CI and threads",
@@ -809,21 +809,6 @@
                 "file": "scripts/lib/ci-green-gate.sh",
                 "line": 109,
                 "text": "CI not green. Bypass: CI_MERGE_GATE_OK=1."
-              }
-            },
-            {
-              "k": "go",
-              "q": "A worker merging without its chief's approval for this exact commit?",
-              "by": "`go-gate.sh`",
-              "outcome": {
-                "kind": "refuse",
-                "text": "Refuse"
-              },
-              "next": "Only the chief writes the approval (see Your approval).",
-              "source": {
-                "file": "scripts/lib/go-gate.sh",
-                "line": 86,
-                "text": "has no console GO"
               }
             },
             {
