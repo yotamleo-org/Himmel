@@ -6,6 +6,7 @@ README.md
 why-himmel.md
 getting-started.md
 setup/install.md
+setup/footprint.md
 setup/profiles/README.md
 setup/new-machine.md
 setup/updating.md

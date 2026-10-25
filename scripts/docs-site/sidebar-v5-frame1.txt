@@ -6,7 +6,7 @@ Get started
   Quickstart
   The adoption trail
   Install on your project
-  What changes on your machine [pending]
+  What changes on your machine
   Install profiles
   Updating, or undoing the install
   Moving from an older install

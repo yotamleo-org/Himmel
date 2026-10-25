@@ -187,52 +187,11 @@ previews first.
 
 ### Uninstalling
 
-`himmelctl uninstall` is the inverse of install. Preview first: `--dry-run`
-lists every path, plugin, hook and settings key it would touch and changes
-nothing:
-
-```bash
-node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run   # preview; touches nothing
-node ~/himmel/scripts/himmelctl/bin.js uninstall             # remove himmel's CODE wiring (asks first)
-node ~/himmel/scripts/himmelctl/bin.js uninstall --yes       # same, no prompt; needed without a terminal
-node ~/himmel/scripts/himmelctl/bin.js uninstall --purge-state   # ...and your operator STATE too
-```
-
-Without a terminal, a run without `--yes` aborts (`non-interactive run without
---yes — aborting (fail-closed)`) and removes nothing.
-
-It splits what himmel installed into two classes, and the default is the
-conservative one:
-
-- **Code** (removed by default): the Claude plugins and marketplaces himmel
-  added, the repo's git hooks, the himmel keys (`statusLine`, hooks and `env`)
-  in `~/.claude/settings.json` and in the current project's
-  `.claude/settings.json`, the `HIMMEL:working-principles` block install appended to
-  `~/.claude/CLAUDE.md` and `~/.codex/AGENTS.md` (only that block is stripped;
-  a file left empty by it is removed), the claude-hud config himmel wrote, the
-  `HIMMEL-Resume-*` scheduled jobs, the Telegram bridge process and the
-  himmelctl cache.
-- **State** (kept unless you pass `--purge-state`): your Telegram pairing
-  (`~/.claude/channels/telegram`) and the bridge state directory. A purge is
-  refused (non-zero exit) rather than run while the bridge is still running,
-  so state can remain after a guarded purge; stop the bridge and re-run.
-- **Never touched**: the himmel clone, your `.env`, worktrees, handover state,
-  and any `settings.json` key himmel did not add, and files of yours that were
-  never part of the install. Files the install recorded in its ledger are
-  removed from your repo's `scripts/` (git then shows them as deleted, so
-  commit or discard that); a copy the ledger does not recognize is kept and
-  named in the footprint, as is Claude Code's workspace-trust entry in
-  `~/.claude.json` when the ledger does not say himmel added it. Deleting the
-  himmel clone removes none of this; drop what is left with git.
-
-Every change is printed with its exact path and line (`removing hook
-PreToolUse: …`). After the settings step it re-reads the file and prints
-`verified: no himmel wiring left in <file>`, a check of the file (hooks,
-statusLine and the himmel `env` keys), not of a return code; if any of it is
-still wired the run stops with a non-zero exit. The full path list lives in
-[`scripts/install/uninstall-manifest.tsv`](../../scripts/install/uninstall-manifest.tsv),
-which the uninstaller reads; `--dry-run` prints it as a `KEEP`/`REMOVE`
-footprint. Flags and exit codes: [updating.md](updating.md#uninstalling--offboarding).
+`himmelctl uninstall` is the inverse of install, and it previews first with
+`--dry-run`. The commands, what it removes and what it keeps on purpose:
+[Undo the install](updating.md#undo). Every file, hook and setting an install
+writes, and what uninstall does with each one:
+[What changes on your machine](footprint.md).
 
 ## After the first success
 
@@ -264,6 +223,9 @@ The plugin profile toggles with `/profile`; its registry is
 and `humanizer@himmel` is in no plugin profile.
 
 ### What you are opting into
+
+Every file, hook and setting these choices write, where each one goes and
+what uninstall does with it: [What changes on your machine](footprint.md).
 
 Four independent axes; pick one value from each. Nothing here is a package
 deal, and every guard has an off switch (see

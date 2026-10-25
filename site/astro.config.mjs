@@ -94,6 +94,7 @@ export default defineConfig({
             { label: 'Quickstart', slug: 'getting-started' },
             { label: 'The adoption trail', link: '/adoption-trail.html' },
             { label: 'Install on your project', slug: 'setup/install' },
+            { label: 'What changes on your machine', slug: 'setup/footprint' },
             { label: 'Install profiles', slug: 'setup/profiles' },
             { label: 'Updating, or undoing the install', slug: 'setup/updating' },
             { label: 'Moving from an older install', slug: 'setup/migrating' },
