@@ -318,7 +318,8 @@ if [ "$INSTALL_FROM" = tarball ] || [ "$INSTALL_FROM" = aur ]; then
         fail "step host-git-init failed"
     fi
     VERSION="0.0.0-rt${SHA:0:12}"
-    TARBALL_OUT=$(tmpdir) || fail "mktemp failed"
+    # prim-ok: tmp-reap.sh FAMILIES reaps rt-tarball-out.* (the tarball path's cleanup leaves it).
+    TARBALL_OUT=$(mktemp -d "${TMPDIR:-/tmp}/rt-tarball-out.XXXXXX") || fail "mktemp failed"
     echo "[step] build-tarball"
     # HIMMEL_RT_TARBALL_NO_BUILD: a hermetic-test seam (test-provenance-roundtrip-dry.sh
     # only), same class as HIMMELCTL_CACHE_DIR / HIMMEL_CAPTURE_REPO_ROOT — skips
