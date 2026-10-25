@@ -529,3 +529,4 @@ wires no plugin-only guard except `block-docker-privesc`,
 `block-terminal-write-fence`, which no Claude file wires.
 
 <!-- HIMMEL-7241 throwaway ci:go live proof, head 1. DO NOT MERGE. -->
+<!-- HIMMEL-7241 throwaway ci:go live proof, head 2. DO NOT MERGE. -->
