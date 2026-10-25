@@ -95,7 +95,6 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
   cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
 - **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
 - **Never bare `git stash`.** [enforced: block-git-stash]
-- Open a PR with `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`. [prose]
 - **Token discipline.** Batch every independent tool call of a step into ONE
   turn, never emit a text-only turn between tool calls; narrate in the Results
   bullet, not in chat. [prose]
@@ -120,14 +119,8 @@ commands are VM-only): `leg-sections/shell-and-tests.md`.
 - **Attestation trailers go in the FIRST commit** (`Platforms tested: <os>`;
   `Security reviewed: <token>`, tokens listed in `check-security-reviewed.sh`).
   Never `git commit --amend` (blocked): use the stuck playbook. [enforced: security-reviewed]
-- **Order: commit → push → `/pr-check` → open the PR.** `/pr-check` needs the
-  marker the first push mints; `leg-pr-open.sh` refuses to open a PR while that
-  marker is held or the head has no `/pr-check` record, so nothing opens unreviewed. [prose]
-- **One push per review round** (CodeRabbit or `/pr-check`), one commit batching every
-  fix; title, body and `## Ticket coverage` edits ride that same push. [prose]
-- After the PR is open: `/pr-check` (at the head you will `READY`) → one foreground
-  `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a
-  background poll → `READY <pr> <full head> GREEN`. [prose]
+- **Order: commit → push → `/pr-check` → open the PR** with `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>` (refused while review is pending). **One push per review round**: one commit of every fix, title/body/`## Ticket coverage` edits too. [prose]
+- Once open: `/pr-check` at the `READY` head → one foreground `scripts/check-ci.sh <pr> --max-wait <sec>`, whose exit code decides, never a background poll → `READY <pr> <full head> GREEN`. [prose]
 - **Lint `## Ticket coverage` before `READY`:**
   `bash scripts/handover/console-kit/ready-check.sh --only 7 <pr>` until it prints
   `COVERAGE-LINT PASS` (`- <ask>: done` / `- <ask>: deferred → HIMMEL-<n>`, marker last). [prose]
