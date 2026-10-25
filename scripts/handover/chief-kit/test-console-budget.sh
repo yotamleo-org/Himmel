@@ -160,5 +160,12 @@ check    "4: a later streamed row without cache_read keeps the earlier count" "$
 run "$tmp/side.jsonl"
 check    "7: sidechain and user rows are not turns" "$out" "budget turns=1 cache_read=1.0M verdict=OK"
 
+# --- 8. bash 3.2 parse safety --------------------------------------------------
+# Apple bash 3.2 scans a $( ... <<'NODE' ... NODE ) body for quote balance, so an
+# odd count of apostrophes in the node body is a syntax error there (rc 2 in every
+# case on the macOS cadence, run 40145990367).
+apos="$(awk '/<<.NODE.$/ {b=1; next} /^NODE$/ {b=0} b {n += gsub(/\047/, "&")} END {print n + 0}' "$SCRIPT")"
+check    "8: the node heredoc body has an even number of apostrophes" "$((apos % 2))" 0
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; exit 0; fi
 echo "$fails FAILED"; exit 1

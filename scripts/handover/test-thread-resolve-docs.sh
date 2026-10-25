@@ -60,7 +60,7 @@ contains 'shell section spells the full resolve call' "$shell" 'thread-resolve-a
 contains 'shell section lists the followup reason' "$shell" 'followup HIMMEL-<n>'
 contains 'shell section lists the rejected reason' "$shell" 'rejected <why>'
 contains 'shell section: one literal call per thread' "$shell" 'one literal call per thread, never a loop'
-contains 'shell section: the console resolves a denied thread itself' "$shell" 'the console verifies each thread against the head and resolves it itself'
+contains 'shell section: the chief resolves a denied thread itself' "$shell" 'the chief verifies each thread against the head and resolves it itself'
 
 # --- 3. console template + merges section: the console resolves, never the operator
 merges_tpl="$(section "$CONSOLE" '^## Merges')"

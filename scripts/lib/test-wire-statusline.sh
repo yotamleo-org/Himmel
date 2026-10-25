@@ -11,7 +11,9 @@ set -euo pipefail
 HERE="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 HELPER="$HERE/wire-statusline.sh"
 REPO_ROOT="$(cd -- "$HERE/../.." && pwd)"
-TMP="$(mktemp -d)"
+# uninstall.sh refuses every path under /var; macOS's template-less mktemp -d
+# lands in /var/folders, so the scratch root is pinned to /tmp.
+TMP="$(mktemp -d /tmp/wire-statusline.XXXXXX)" || exit 1
 # the wire writes provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$TMP/prov"
 trap 'rm -rf "$TMP"' EXIT

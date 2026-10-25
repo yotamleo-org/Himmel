@@ -830,6 +830,8 @@ scripts/handover/chief-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Li
 scripts/handover/chief-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
 scripts/handover/test-bus-idle-waker.sh  # skipped off-Linux only — bus-idle-waker.sh types into a konsole through org.kde.konsole.Session.sendText, reads the terminal foreground group from /proc stat, and times its poll with GNU \`date +%s.%N\`; no macOS host has konsole or /proc; precedent HIMMEL-3699
 scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it drives tick.sh and console-wait.sh, both on the kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-console-wait-pool.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-console-wait-pool.sh:13) says \`Linux-only: console-wait.sh has no .ps1 twin by design\`; kit PLATFORM GUARD
+scripts/hooks/test-notify-console-on-prompt.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-notify-console-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin\`
 scripts/handover/chief-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
 "
 case "$(uname -s 2>/dev/null || echo unknown)" in

@@ -73,7 +73,7 @@ absent 'preface Wrapping up no longer tells every leg to close the ticket out un
 # never-touch-Epic invariant.
 contains 'preface Wrapping up: a skip=never-touch-type result is never closed by hand' "$wrap" 'skip=never-touch-type'
 contains 'preface Wrapping up: a skip=cannot-verify-type result is never closed by hand' "$wrap" 'skip=cannot-verify-type'
-contains 'preface Wrapping up: those deliberate skips go to the console' "$wrap" 'report it to the console'
+contains 'preface Wrapping up: those deliberate skips go to the chief' "$wrap" 'report it to the chief'
 
 # --- 3. leg-brief-template.md: the console fills the decision in ------------
 brief="$(cat "$BRIEF")"

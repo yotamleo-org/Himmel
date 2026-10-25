@@ -65,6 +65,12 @@ else
 fi
 SH
 chmod +x "$NO_PWSH_BIN/uname"
+# The same stub alone in its own dir, prepended to PATH by run_update and
+# run_only_cli_proxy: sync_cli_proxy is Linux-only, so on a macOS host the
+# cli-proxy cases must still see Linux.
+UNAME_BIN="$TMP/uname-bin"
+mkdir -p "$UNAME_BIN"
+cp "$NO_PWSH_BIN/uname" "$UNAME_BIN/uname"
 _old_ifs="$IFS"; IFS=:
 for _bindir in $PATH; do
     [ -d "$_bindir" ] || continue
@@ -204,6 +210,7 @@ run_update() {   # <clone> <fake-home> <claude-stub> [args...]
     local clone="$1" fh="$2" stub="$3"; shift 3
     mkdir -p "$fh"
     unset CLAUDE_CONFIG_DIR
+    PATH="$UNAME_BIN:$PATH" \
     USERPROFILE='' HOME="$fh" \
     HIMMEL_UPDATE_CLAUDE_BIN="$stub" \
     HERMES_HOME="$TMP/no-hermes" \
@@ -452,6 +459,7 @@ write_fake_linux_lane "$CLONE5" "9.9.9" "$C5LOG"
 run_only_cli_proxy() {   # <clone> <fake-home>
     local clone="$1" fh="$2"
     mkdir -p "$fh"
+    PATH="$UNAME_BIN:$PATH" \
     USERPROFILE='' HOME="$fh" \
     HIMMEL_UPDATE_CLAUDE_BIN="$STUB1" HERMES_HOME="$TMP/no-hermes" \
     HIMMEL_UPDATE_AUTOSTASH='' \

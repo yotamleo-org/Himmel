@@ -93,7 +93,9 @@ if [ -n "$missing" ]; then
     q="$root/${USER_SLUG:-${USER:-unknown}}/himmel/intake"
   fi
   dest=""
-  if mkdir -p "$q" 2>/dev/null && dest="$(mktemp "$q/$(date -u +%Y%m%dT%H%M%SZ)-$type-XXXXXX.md" 2>/dev/null)" \
+  # BSD mktemp substitutes only trailing X's, so the .md suffix is added after.
+  if mkdir -p "$q" 2>/dev/null && dest="$(mktemp "$q/$(date -u +%Y%m%dT%H%M%SZ)-$type-XXXXXX" 2>/dev/null)" \
+     && mv "$dest" "$dest.md" && dest="$dest.md" \
      && cp "$draft" "$dest" 2>/dev/null && cmp -s "$draft" "$dest"; then
     echo "parked in intake queue: $dest"
     echo "complete it, then re-run: ticket-standard-check.sh --type $type --draft $dest"

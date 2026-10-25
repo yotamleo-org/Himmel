@@ -139,10 +139,10 @@ echo "== exempted paths and senses pass =="
 run_case "identifier under fixtures" 0 scripts/fixtures/x.sh 'LEG_PROBE_UNREGISTERED=40'
 run_case "prose under fixtures" 0 docs/fixtures/p.md 'the console arms a leg'
 run_case "glossary alias table" 0 docs/glossary.md '| **worker** | leg | The dispatched session. |'
-run_case "base_sha-pinned lane-quality task" 0 scripts/eval/lane-quality/tasks/t1/task.json '{"path": "scripts/handover/console-kit/go.sh"}'
-run_case "base_sha-pinned graphify-ab task set" 0 scripts/eval/graphify-ab/tasks.json '{"prompt": "mentions console-kit/go.sh"}'
-run_case "base_sha-pinned graphify-ab truth" 0 scripts/eval/graphify-ab/truth.py 'needle = "console-kit/go.sh"'
-run_case "moved path in another eval file is still refused" 1 scripts/eval/graphify-ab/run.sh 'needle=console-kit/go.sh'
+run_case "base_sha-pinned lane-quality task" 0 scripts/eval/lane-quality/tasks/t1/task.json '{"path": "scripts/handover/console-kit/go.sh"}' # old-term-ok: a fixture line
+run_case "base_sha-pinned graphify-ab task set" 0 scripts/eval/graphify-ab/tasks.json '{"prompt": "mentions console-kit/go.sh"}' # old-term-ok: a fixture line
+run_case "base_sha-pinned graphify-ab truth" 0 scripts/eval/graphify-ab/truth.py 'needle = "console-kit/go.sh"' # old-term-ok: a fixture line
+run_case "moved path in another eval file is still refused" 1 scripts/eval/graphify-ab/run.sh 'needle=console-kit/go.sh' # old-term-ok: a fixture line
 run_case "the registry itself" 0 scripts/lib/rename-aliases.tsv 'LEG_PROBE_UNREGISTERED	pending-N2892	env	old-to-new	R0	pending-N2892'
 run_case "CI-matrix leg in testing.md" 0 docs/internals/testing.md 'Each leg of the matrix runs one shard.'
 run_case "CI-matrix leg in ci-image.md" 0 docs/internals/ci-image.md 'Each leg pulls the image.'

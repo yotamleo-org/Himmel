@@ -196,7 +196,7 @@
       "sources": [
         {
           "file": "docs/handover/running-a-console.md",
-          "anchor": "A worker session that hits something it cannot decide reports to the supervisor session"
+          "anchor": "A worker that hits something it cannot decide reports to the chief"
         }
       ],
       "pos": {
@@ -239,7 +239,7 @@
       "summary": "Takes the queue lock and writes a LIVE bullet. Status markers drive the tick.",
       "sources": [
         {
-          "file": "docs/handover/leg-preface.md",
+          "file": "docs/handover/worker-preface.md",
           "anchor": "Report at **milestones only**"
         }
       ],
@@ -261,7 +261,7 @@
       "summary": "One failing assertion before the implementation",
       "sources": [
         {
-          "file": "docs/handover/leg-preface.md",
+          "file": "docs/handover/worker-preface.md",
           "anchor": "RED first — one assertion that fails *before* the implementation"
         }
       ],
@@ -537,7 +537,7 @@
       "summary": "A red job is the leg's to fix. If it is not the PR's fault: MAIN-RED once.",
       "sources": [
         {
-          "file": "docs/handover/leg-preface.md",
+          "file": "docs/handover/worker-preface.md",
           "anchor": "A red CI job on your PR is yours to triage"
         }
       ],
@@ -559,8 +559,8 @@
       "summary": "Coverage lint, then READY with the full head. The GO-hold is the only permitted hold.",
       "sources": [
         {
-          "file": "docs/handover/leg-preface.md",
-          "anchor": "Merge only on the console's"
+          "file": "docs/handover/worker-preface.md",
+          "anchor": "Merge only on the chief's"
         }
       ],
       "pos": {
@@ -2178,7 +2178,7 @@
         "resolve": "a leg's BLOCKED resolve marker: the console resolves the thread itself, not a workflow decision"
       }
     },
-    "docs/handover/leg-preface.md": {
+    "docs/handover/worker-preface.md": {
       "table": "markers",
       "floor": 9,
       "mapped": {

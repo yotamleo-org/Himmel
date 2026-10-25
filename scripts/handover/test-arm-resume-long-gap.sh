@@ -20,7 +20,7 @@ set -uo pipefail
 ARM="$(cd "$(dirname "$0")" && pwd)/arm-resume.sh"
 [ -x "$ARM" ] || chmod +x "$ARM"
 
-TMP=$(mktemp -d)
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-long-gap.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
 # arm-resume.sh now calls scripts/lib/bank-preflight.sh's
@@ -132,6 +132,21 @@ write_crontab_stub() {
 case "\${1:-}" in
     -l) [ -s "$2" ] && { cat "$2"; exit 0; }; exit 1 ;;
     -)  cat > /dev/null ;;
+esac
+exit 0
+EOF
+    chmod +x "$1/crontab"
+}
+
+# The armed twin of the stub above: macOS arms through crontab ONLY, and the
+# post-arm verify reads the entry back, so `-` must store what it is given or
+# the arm reports rc 2 with no "armed" telemetry line.
+write_stateful_crontab_stub() {
+    cat > "$1/crontab" <<EOF
+#!/usr/bin/env bash
+case "\${1:-}" in
+    -l) [ -s "$2" ] && { cat "$2"; exit 0; }; exit 1 ;;
+    -)  cat > "$2"; exit 0 ;;
 esac
 exit 0
 EOF
@@ -285,7 +300,7 @@ cat > "$ARMED_STUB/powershell" <<'EOF'
 #!/usr/bin/env bash
 exit 1
 EOF
-write_crontab_stub "$ARMED_STUB" "$TMP/armed-stub.crontab"
+write_stateful_crontab_stub "$ARMED_STUB" "$TMP/armed-stub.crontab"
 chmod +x "$ARMED_STUB/schtasks" "$ARMED_STUB/atq" "$ARMED_STUB/at" "$ARMED_STUB/claude" "$ARMED_STUB/powershell"
 
 # Gap fixtures, computed relative to real now (the guard's `now` is captured

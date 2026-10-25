@@ -120,7 +120,7 @@ wait_hb "$I" || fail "(wt-ceiling) no baseline heartbeat"
 sed -i 's/ denials=none/ wt-ceiling=72\/100 denials=none/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(wt-ceiling) reaching the alarm ends the wait" "0" "$rc"
-check "(wt-ceiling) the wake names the ceiling" "WAKE tick changed=wt-ceiling bank=PROCEED" "$(head -n1 "$WORK/wt-ceiling.out")"
+check "(wt-ceiling) the wake names the ceiling" "WAKE tick changed=wt-ceiling usage=PROCEED" "$(head -n1 "$WORK/wt-ceiling.out")"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 timeout 3 bash "$WAIT" "$I" --legs "N1.md" > "$WORK/wt-ceiling-rearm.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(wt-ceiling) an unchanged alarm keeps waiting" "124" "$rc"
@@ -139,7 +139,7 @@ check "(vmismatch) a clean count (0) keeps waiting" "running" "$rc"
 sed -i 's/ vmismatch=0/ vmismatch=2/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(vmismatch) a positive count ends the wait" "0" "$rc"
-check "(vmismatch) the wake names vmismatch" "WAKE tick changed=vmismatch bank=PROCEED" "$(head -n1 "$WORK/vmismatch-quiet.out")"
+check "(vmismatch) the wake names vmismatch" "WAKE tick changed=vmismatch usage=PROCEED" "$(head -n1 "$WORK/vmismatch-quiet.out")"
 if [ "$rc" = running ]; then kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; fi
 start "$I" "$WORK/vmismatch-blip.out" --legs "N1.md"
 wait_hb "$I" || fail "(vmismatch) no re-armed heartbeat"
@@ -173,7 +173,7 @@ wait_hb "$I" || fail "(b) no baseline heartbeat"
 tick_line "N1:FREE" "ok"
 wait_exit "$WPID"
 check "(b) a leg going FREE ends the wait with rc 0" "0" "$rc"
-check "(b) the wake names the changed field" "WAKE tick changed=legs bank=PROCEED" "$(head -n1 "$WORK/b.out")"
+check "(b) the wake names the changed field" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/b.out")"
 check "(b) the wake carries the tick line" "yes" "$(sed -n 2p "$WORK/b.out" | grep -q '^TICK .*legs=N1:FREE' && echo yes)"  # gnu-ok: Linux-only kit; pipefail-ok: none set
 check "(b) exactly one wake block (2 lines)" "2" "$(wc -l < "$WORK/b.out" | tr -d ' ')"
 check "(b) the exit reason is logged" "yes" "$(grep -q 'exit=wake-tick' "$I.wait" && echo yes)"
@@ -231,7 +231,7 @@ wait_hb "$I" || fail "(b3724) no baseline heartbeat"
 sed -i 's/denials=none/denials=N1:1:SHIP-STEP/' "$STUB/tick.line"  # gnu-ok: Linux-only kit
 wait_exit "$WPID"
 check "(b3724) a denials= class change ends the wait with rc 0" "0" "$rc"
-check "(b3724) the wake names denials" "WAKE tick changed=denials bank=PROCEED" "$(head -n1 "$WORK/b3724.out")"
+check "(b3724) the wake names denials" "WAKE tick changed=denials usage=PROCEED" "$(head -n1 "$WORK/b3724.out")"
 
 # --- (b3724x) a denial EXPIRING out of tick.sh's window is not a wake ------
 # One denial wakes the console once (above); the same row aging out 30 min
@@ -253,7 +253,7 @@ check "(b3724x) a count falling as one row expires does not wake" "running" "$rc
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 denials_expiry b3724x3 'N1:1' 'N1:2:REPEAT'
 check "(b3724x) a count rising still wakes" "0" "$rc"
-check "(b3724x) and names denials" "WAKE tick changed=denials bank=PROCEED" "$(head -n1 "$WORK/b3724x3.out")"
+check "(b3724x) and names denials" "WAKE tick changed=denials usage=PROCEED" "$(head -n1 "$WORK/b3724x3.out")"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 denials_expiry b3724x4 'N1:1' 'N1:1,N2:1'
 check "(b3724x) a second leg's denial wakes" "0" "$rc"
@@ -315,7 +315,7 @@ wait_hb "$I" || fail "(d2) no baseline heartbeat"
 printf '0\n' > "$STUB/tick.churn"
 wait_exit "$WPID"
 check "(d2) a key that differs from the saved one on every sample wakes" "0" "$rc"
-check "(d2) the wake names prs" "WAKE tick changed=prs bank=PROCEED" "$(head -n1 "$WORK/d2.out")"
+check "(d2) the wake names prs" "WAKE tick changed=prs usage=PROCEED" "$(head -n1 "$WORK/d2.out")"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 
 # --- (e) a bank verdict change wakes, naming bank --------------------------
@@ -326,7 +326,7 @@ wait_hb "$I" || fail "(e) no baseline heartbeat"
 printf 'SKIPPED-BANK\n' > "$STUB/bank"
 wait_exit "$WPID"
 check "(e) a bank verdict change ends the wait" "0" "$rc"
-check "(e) the wake names bank and carries the new verdict" "WAKE tick changed=bank bank=SKIPPED-BANK" "$(head -n1 "$WORK/e.out")"
+check "(e) the wake names bank and carries the new verdict" "WAKE tick changed=usage usage=SKIPPED-BANK" "$(head -n1 "$WORK/e.out")"
 
 # --- (f) a failing tick is never a change ----------------------------------
 reset_stub
@@ -529,7 +529,7 @@ wait_hb "$I" || fail "(u) no baseline heartbeat"
 tick_line "N1:FRESH" "STALE:3m"
 wait_exit "$WPID"
 check "(u) a board move to STALE ends the wait" "0" "$rc"
-check "(u) the wake names board" "WAKE tick changed=board bank=PROCEED" "$(head -n1 "$WORK/u.out")"
+check "(u) the wake names board" "WAKE tick changed=board usage=PROCEED" "$(head -n1 "$WORK/u.out")"
 
 # --- (v) board STALE-to-ok combined with a prs change still wakes, naming
 # only the real field ---------------------------------------------------------
@@ -541,7 +541,7 @@ wait_hb "$I" || fail "(v) no baseline heartbeat"
 tick_line "N1:FRESH" "ok" "1m" "#99"
 wait_exit "$WPID"
 check "(v) board-to-ok combined with a prs change still wakes" "0" "$rc"
-check "(v) the wake names only prs, not board" "WAKE tick changed=prs bank=PROCEED" "$(head -n1 "$WORK/v.out")"
+check "(v) the wake names only prs, not board" "WAKE tick changed=prs usage=PROCEED" "$(head -n1 "$WORK/v.out")"
 
 # --- (p) a denials rise to SHIP-STEP / PAUSE-RISK pages ---------
 # One page per rise (a new leg or a higher class), never per tick. The page
@@ -601,7 +601,7 @@ EOF
 chmod +x "$STUB/page-fail.sh"
 CHIEF_WAIT_PAGE_CMD="$STUB/page-fail.sh" denials_rise p6a none 'N1:1:SHIP-STEP'
 check "(p6) a failing sender still wakes with rc 0" "0" "$rc"
-check "(p6) and the wake block is intact" "WAKE tick changed=denials bank=PROCEED" "$(head -n1 "$WORK/p6a.out")"
+check "(p6) and the wake block is intact" "WAKE tick changed=denials usage=PROCEED" "$(head -n1 "$WORK/p6a.out")"
 check "(p6) and the page record is written even though the send failed" "SHIP-STEP" "$(sed -n 's/^class=//p' "$HIMMEL_DENIAL_ACK_DIR/N1.page" 2>/dev/null)"
 cat > "$STUB/page-hang.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -646,7 +646,7 @@ tick_line "N1:FRESH" "ok"
 tracker_line STALE:3h
 wait_exit "$WPID"
 check "(w) a tracker move to STALE ends the wait" "0" "$rc"
-check "(w) the wake names tracker" "WAKE tick changed=tracker bank=PROCEED" "$(head -n1 "$WORK/w.out")"
+check "(w) the wake names tracker" "WAKE tick changed=tracker usage=PROCEED" "$(head -n1 "$WORK/w.out")"
 
 reset_stub
 tick_line "N1:FRESH" "ok"
@@ -681,7 +681,7 @@ tick_line "N1:FRESH" "ok"
 orph_line 1:HIMMEL-9
 wait_exit "$WPID"
 check "(w4) an orphans-wip change ends the wait" "0" "$rc"
-check "(w4) the wake names orphans-wip" "WAKE tick changed=orphans-wip bank=PROCEED" "$(head -n1 "$WORK/w4.out")"
+check "(w4) the wake names orphans-wip" "WAKE tick changed=orphans-wip usage=PROCEED" "$(head -n1 "$WORK/w4.out")"
 
 # --- (x) vault= wakes on a class change TO STALL or PUSH-LAG, never on
 # age/count alone, never on a move back to ok/skip/unknown, and its absence
@@ -698,7 +698,7 @@ tick_line "N1:FRESH" "ok"
 vault_line STALL:25m,3
 wait_exit "$WPID"
 check "(x) a vault move to STALL ends the wait" "0" "$rc"
-check "(x) the wake names vault" "WAKE tick changed=vault bank=PROCEED" "$(head -n1 "$WORK/x.out")"
+check "(x) the wake names vault" "WAKE tick changed=vault usage=PROCEED" "$(head -n1 "$WORK/x.out")"
 check "(x) the wake names the reproduce command" "yes" "$(grep -q 'git -C .* hook run pre-commit' "$WORK/x.out" && echo yes)"
 
 reset_stub
@@ -726,7 +726,7 @@ wait_hb "$I" || fail "(x3) no baseline heartbeat"
 tick_line "N1:FRESH" "ok"
 vault_line PUSH-LAG:3h
 wait_exit "$WPID"
-check "(x3) a vault move to PUSH-LAG wakes" "WAKE tick changed=vault bank=PROCEED" "$(head -n1 "$WORK/x3.out")"
+check "(x3) a vault move to PUSH-LAG wakes" "WAKE tick changed=vault usage=PROCEED" "$(head -n1 "$WORK/x3.out")"
 
 reset_stub
 vault_line ok
@@ -761,7 +761,7 @@ tick_line "N1:FRESH" "ok"
 cloud_line STALL:HIMMEL-5077,HIMMEL-4655,HIMMEL-4686
 wait_exit "$WPID"
 check "(y) a cloud move to STALL ends the wait" "0" "$rc"
-check "(y) the wake names cloud" "WAKE tick changed=cloud bank=PROCEED" "$(head -n1 "$WORK/y.out")"
+check "(y) the wake names cloud" "WAKE tick changed=cloud usage=PROCEED" "$(head -n1 "$WORK/y.out")"
 
 reset_stub
 tick_line "N1:FRESH" "ok"

@@ -3,6 +3,7 @@
 # the rest are real doc drift to fix by editing the doc and deleting its row. #-lines survive --write-baseline.
 docs/configuration.md	scripts/check-ci.sh	--match-head-commit
 docs/handover/chief-sections/waiter.md	scripts/handover/chief-kit/console-wait.sh	--token
+docs/handover/chief-template.md	scripts/handover/chief-kit/console-wait.sh	--token
 docs/handover/console-template.md	scripts/handover/chief-kit/console-wait.sh	--token
 docs/handover/afk-mode.md	scripts/check-ci.sh	--dangerously-skip-permissions
 docs/handover/afk-mode.md	scripts/check-ci.sh	--match-head-commit
@@ -23,6 +24,9 @@ docs/handover/chief-sections/wrapping.md	scripts/handover/chief-kit/close-wrappe
 docs/handover/chief-sections/wrapping.md	scripts/handover/chief-kit/close-wrapped-leg.sh	--sweep
 docs/handover/chief-sections/wrapping.md	scripts/handover/chief-kit/leg-event.sh	--doc
 docs/handover/chief-sections/wrapping.md	scripts/handover/chief-kit/leg-event.sh	--fleet
+docs/handover/chief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--profile
+docs/handover/chief-template.md	scripts/handover/chief-kit/leg-event.sh	--doc
+docs/handover/chief-template.md	scripts/handover/chief-kit/leg-event.sh	--fleet
 docs/handover/console-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--profile
 docs/handover/console-template.md	scripts/handover/chief-kit/leg-event.sh	--doc
 docs/handover/console-template.md	scripts/handover/chief-kit/leg-event.sh	--fleet
@@ -32,12 +36,17 @@ docs/handover/judge-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.
 docs/handover/judge-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--no-prior-art-check
 docs/handover/judge-preface.md	scripts/handover/chief-kit/headed-arm-leg.sh	--dry-run
 docs/handover/judge-preface.md	scripts/handover/chief-kit/headed-arm-leg.sh	--judge
+docs/handover/worker-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--console
+docs/handover/worker-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--consult
+docs/handover/worker-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--no-prior-art-check
+docs/handover/worker-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--profile
 docs/handover/leg-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--console
 docs/handover/leg-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--consult
 docs/handover/leg-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--no-prior-art-check
 docs/handover/leg-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--profile
 docs/handover/leg-preface-claudex.md	scripts/handover/chief-kit/headed-arm-leg.sh	--lane
 docs/handover/leg-preface-openrouter.md	scripts/handover/chief-kit/headed-arm-leg.sh	--lane
+docs/handover/worker-preface.md	scripts/handover/chief-kit/headed-arm-leg.sh	--profile
 docs/handover/leg-preface.md	scripts/handover/chief-kit/headed-arm-leg.sh	--profile
 docs/handover/relay-brief-template.md	scripts/handover/chief-kit/headed-arm-leg.sh	--relay
 docs/handover/rm-preface.md	scripts/handover/chief-kit/headed-arm-leg.sh	--profile

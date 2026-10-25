@@ -1,6 +1,6 @@
-# Leg preface section — shell shapes, denials, sandbox, suites
+# Worker preface section — shell shapes, denials, sandbox, suites
 
-Read on demand: `leg-preface.md` names this file when a command is refused or before running tests. Moved verbatim from the preface.
+Read on demand: `worker-preface.md` names this file when a command is refused or before running tests. Moved verbatim from the preface.
 
 ## Shell shapes and denials
 
@@ -17,7 +17,7 @@ Read on demand: `leg-preface.md` names this file when a command is refused or be
   binary, no vars, no loops, body via file) **and retry once; a classifier
   denial on a loop shape is a shape denial**. N writes = N
   separate Bash calls. A recipe that drops a meaning-bearing prefix (a
-  `JIRA_BASE_URL=` / `JIRA_BOARD_ID=` target) is not a retry — ask the console.
+  `JIRA_BASE_URL=` / `JIRA_BOARD_ID=` target) is not a retry — ask the chief.
 - **Resolving a review thread** (fixed, deferred or rejected) goes through the
   one sanctioned path, one literal call per thread, never a loop:
   `node <anchor>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "fixed <sha>"`
@@ -26,7 +26,7 @@ Read on demand: `leg-preface.md` names this file when a command is refused or be
   auto-allowed for `yotamleo-org/Himmel`, a branch copy of the CLI is not. It
   refuses without a valid reason, posts the reason as a thread reply, and
   resolves only after the reply lands. If a single call is denied, send the
-  console `BLOCKED resolve <pr> <thread ids>` and do not retry: the console
+  chief `BLOCKED resolve <pr> <thread ids>` and do not retry: the chief
   verifies each thread against the head and resolves it itself.
 - **Never pipe into a gate script.** Write the input to a file with `Write`,
   then pass it as an argument if the script takes one; otherwise pipe into
@@ -39,24 +39,24 @@ Read on demand: `leg-preface.md` names this file when a command is refused or be
 - Where the `/pr-check` skill itself prints a command to run, its spelling
   wins over this section — it is kept in sync with its own allow rules.
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
-  to the console.** Never reshape a command to dodge a guardrail, and never try
+  to the chief.** Never reshape a command to dodge a guardrail, and never try
   a third spelling.
 - A classifier denial on a publish step (`gh pr create`, `gh pr comment`,
   `git push`) is never retried verbatim. `Stage 2 classifier error` gets **at
   most ONE** delayed retry (`--body-file` for `gh`; `git push` has no body
   flag — the delay itself is what makes the retry non-identical, so retry the
   exact same command once); any denial after that one retry → route to the
-  console, no further attempt. `[Out-of-Place Publication]` gets **no retry at
-  all**, first time seen or not — route to the console immediately. The one exception is a denied `scripts/cr/` call spelled
+  chief, no further attempt. `[Out-of-Place Publication]` gets **no retry at
+  all**, first time seen or not — route to the chief immediately. The one exception is a denied `scripts/cr/` call spelled
   with an absolute `<himmel_dir>` path (the `/pr-check` marker panel): retry it
   ONCE as the relative literal `bash scripts/cr/<script>.sh <args>` from the
-  worktree root before it goes to the console — only in a himmel
+  worktree root before it goes to the chief — only in a himmel
   worktree root whose `scripts/cr/` matches the `HIMMEL_REPO` anchor's (the
   condition `guard-pr-check-literal.sh` enforces); in an adopter or drifted
   checkout keep the absolute spelling.
 - First choice for opening or updating a PR is
   `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`:
-  title and body are files, so the Bash command a leg types is always the
+  title and body are files, so the Bash command a worker types is always the
   same short fixed literal no matter what the PR says — the body never enters
   the command the classifier reads.
 - **Ship scratch never lands in the worktree root.** PR title and

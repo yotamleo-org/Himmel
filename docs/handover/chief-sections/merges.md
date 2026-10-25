@@ -1,20 +1,20 @@
-# Console section — trust-path PRs and cutting a pre-release tag
+# Chief section — trust-path PRs and cutting a pre-release tag
 
-Read on demand from `console-template.md` `## Merges`. Moved verbatim from the template.
+Read on demand from `chief-template.md` `## Merges`. Moved verbatim from the template.
 
-**Review threads a leg could not resolve.** A leg resolves each answered
+**Review threads a worker could not resolve.** A worker resolves each answered
 thread itself with
 `node <anchor>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "<reason>"`
 (`fixed <sha>` | `followup HIMMEL-<n>` | `rejected <why>`), `<anchor>` the
 primary checkout. `allow-thread-resolve.sh` auto-allows exactly that shape for
 `yotamleo-org/Himmel` as one literal command, so the classifier never sees it;
 any variation (chained, redirected, another repo, an extra flag, a branch copy of
-the CLI) gets no allow. When the call is denied anyway the leg sends <!-- old-term-ok: console runbook wording -->
+the CLI) gets no allow. When the call is denied anyway the worker sends
 `BLOCKED resolve <pr> <thread ids>`, and the waiter wakes you with
 `WAKE resolve <leg> pr=<n> threads=<ids>`. **The operator is never asked to
 resolve a thread:** it is yours, never an operator item. For each thread, check the fix, ticket or
 rejection against the PR head, then run the same CLI with the matching reason,
-one literal call per thread. A thread you cannot verify goes back to the leg as <!-- old-term-ok: console runbook wording -->
+one literal call per thread. A thread you cannot verify goes back to the worker as
 a finding.
 When YOUR OWN resolve call is classifier-denied, that is still not an
 operator item, and the playbook's defer-to-operator does not apply: write a
@@ -24,34 +24,34 @@ denied single-thread literal call is not retried. A thread still denied
 stays open: reply with the reason if the reply goes through, and file a
 ticket for it.
 This is escalation, not permission laundering: the CLI posts its reason on
-GitHub, so every resolve is auditable. It codifies console AS's 10-15 ruling
-to leg N2224 (resolveReviewThread allowed, one literal call per thread, stop
-on denial) and adds the console step that ruling lacked.
+GitHub, so every resolve is auditable. It codifies chief AS's 10-15 ruling
+to worker N2224 (resolveReviewThread allowed, one literal call per thread, stop
+on denial) and adds the chief step that ruling lacked.
 
-**Claudex PRs: the console merges.** A claudex leg's brief ends its Ship step <!-- old-term-ok: console runbook wording -->
+**Claudex PRs: the chief merges.** A claudex worker's brief ends its Ship step
 at `READY <pr> <head> GREEN` and never runs `merge-on-green.sh` (its auto-mode
 classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
 the primary checkout and in this order: `ready-check.sh <pr> <head>`, the
 judge or trust review the PR needs, then
 `chief-kit/go.sh [--trust-reviewed <qid>] <pr> <head>`, then
-`bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --leg-doc <leg doc>`. <!-- old-term-ok: console runbook wording -->
-Pass `--jira-transition` unless the leg doc's `Completes ticket:` line says no <!-- old-term-ok: console runbook wording -->
+`bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --leg-doc <leg doc>`.
+Pass `--jira-transition` unless the worker doc's `Completes ticket:` line says no
 (a brief whose scope states neither value has no such line and takes the yes
-wording, as the leg's own Ship step does); the `--leg-doc` line binds it either way. <!-- old-term-ok: console runbook wording -->
-Then send the leg `MERGED #<pr> → <sha>` by SendMessage quoting its token; <!-- old-term-ok: console runbook wording -->
-the leg `cd`s out, sends `WRAPPED` and releases its lock. A merge that exits <!-- old-term-ok: console runbook wording -->
-non-zero is not `MERGED`: send the leg the exit and reason instead, and it <!-- old-term-ok: console runbook wording -->
-stays held. Native legs merge themselves on your GO. <!-- old-term-ok: console runbook wording -->
+wording, as the worker's own Ship step does); the `--leg-doc` line binds it either way.
+Then send the worker `MERGED #<pr> → <sha>` by SendMessage quoting its token;
+the worker `cd`s out, sends `WRAPPED` and releases its lock. A merge that exits
+non-zero is not `MERGED`: send the worker the exit and reason instead, and it
+stays held. Native workers merge themselves on your GO.
 
-**Native legs: the GO message names the GO file.** `console-kit/verdict-go.sh` <!-- old-term-ok: console runbook wording -->
-prints the leg message as `GO <pr> <head> - merge with: bash <merge script> <!-- old-term-ok: console runbook wording -->
+**Native workers: the GO message names the GO file.** `chief-kit/verdict-go.sh`
+prints the worker message as `GO <pr> <head> - merge with: bash <merge script>
 --jira-transition --go <GO file>`; send it as printed (with your token). After
-a bare GO run, give the leg the path it printed as its `--go` argument. A console leg's <!-- old-term-ok: console runbook wording -->
+a bare GO run, give the worker the path it printed as its `--go` argument. A chief worker's
 `merge-on-green.sh` exits 17 without `--go`, or with the file of another PR or
 head, and prints the verified GO evidence, so the merge command shows the
 review it relies on (HIMMEL-7165: a merge with no visible review was denied as
 Merge Without Review, intermittently). If the classifier still denies a
-reviewed merge, the leg sends `BLOCKED`; do not run the denied merge for it <!-- old-term-ok: console runbook wording -->
+reviewed merge, the worker sends `BLOCKED`; do not run the denied merge for it
 (that launders the denial) and do not loosen any rule. The fallback is the
 claudex path above, tracked as a follow-up.
 
@@ -131,6 +131,6 @@ written stops a live run, exit 2, before the cancel it could not record). Two
 drains running at once do not see each other's cancels live, so run one drain
 at a time. A
 listing that fills `CANCEL_RUNS_LIMIT` (500), or the cancel cap, exits 1 after
-cancelling what it could: re-run until it exits 0. It refuses (exit 3) in a leg
+cancelling what it could: re-run until it exits 0. It refuses (exit 3) in a worker
 or relay. Never hand-roll a `gh run cancel` loop: the classifier denies it as
 Interfere With Workloads.

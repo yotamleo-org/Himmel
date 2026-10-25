@@ -15,7 +15,7 @@
 # Source basenames the real graph binds. impacted-suites.sh selects a suite by
 # basename, so each is named here literally (check-dev-graph.sh enforces it):
 #   chief.sh console-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
-#   headed-arm-worker.sh running-a-console.md leg-preface.md check-commit-msg.sh
+#   headed-arm-worker.sh running-a-console.md worker-preface.md check-commit-msg.sh
 #   .pre-commit-config.yaml check-cr-before-push.sh pr-check.md
 #   panel-first-pass.sh review-round.sh glossary.md grant-round.sh
 #   check-cr-marker-on-pr-create.sh check-ci.sh ready-check.sh judge-ladder.sh

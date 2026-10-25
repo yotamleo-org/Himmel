@@ -1,11 +1,11 @@
-# Leg preface section — CI red, merge-forward, suite coverage
+# Worker preface section — CI red, merge-forward, suite coverage
 
-Read on demand: `leg-preface.md` names this file when a required CI job goes red or a PR claims CI coverage. Moved verbatim from the preface.
+Read on demand: `worker-preface.md` names this file when a required CI job goes red or a PR claims CI coverage. Moved verbatim from the preface.
 
 ## CI red and merge-forward
 
 - **A red CI job on your PR is yours to triage — and you never
-  tell the console about it, unless it is not the PR's fault.** The moment ONE
+  tell the chief about it, unless it is not the PR's fault.** The moment ONE
   required job fails, do not wait for the run to end and do not report the red.
   `scripts/check-ci.sh` prints each failed Actions job's log command; if it did
   not, take the job id from `gh pr checks` and pull the log yourself:
@@ -20,15 +20,15 @@ Read on demand: `leg-preface.md` names this file when a required CI job goes red
   show otherwise, fix it at once; escalate only if the fix is outside your brief.
   If the evidence shows a GENERAL red (an advisory, an outage, a runner or
   registry failure, the same case failing on main or on unrelated PRs), do NOT
-  fix it in your PR and do not loop on it. Send the console one
+  fix it in your PR and do not loop on it. Send the chief one
   `MAIN-RED <job> <failing case> caused-by: #<pr>` (or `caused-by: unknown` when
   no PR in the range since the last green main run can be named) with that
   evidence, then carry on with
-  whatever does not depend on it; the console has it fixed once, and after that
+  whatever does not depend on it; the chief has it fixed once, and after that
   merges you merge forward per the merge-forward rule below (never rebase, never force-push). If you suspect it is general but the data
   does not settle it, report `MAIN-RED? <job> <case> inconclusive` with what you
   saw.
-- **Merge-forward.** A leg never merges,
+- **Merge-forward.** A worker never merges,
   or merges forward past, a red its own change introduced. Merge-forward cures
   ONLY a red inherited from a broken base — one already red when you were cut
   and green on main now. Anything you cannot prove inherited is yours to fix
@@ -93,9 +93,9 @@ Read on demand: `leg-preface.md` names this file when a required CI job goes red
   of the PR's job must be listed, the job must be green on latest, and a
   completed run at the merge-base itself is never overridden; any missing or
   mismatched header exits 2. Cite the command and log path in your Results
-  bullet beside both main run ids: the file is self-reported and the console
+  bullet beside both main run ids: the file is self-reported and the chief
   reviews that log before it grants the merge-forward. Exit 3 = nothing red. Once
-  per PR: a second merge-forward goes to the console. After it, `/pr-check` and
+  per PR: a second merge-forward goes to the chief. After it, `/pr-check` and
   CI run again at the new head.
 - **Never write "CI verifies" for a suite you have not looked up.** `bash scripts/handover/suite-coverage.sh <suite>...` reads
   `scripts/ci/run-shell-tests.sh` itself and says per suite: runs in PR CI /
@@ -110,4 +110,4 @@ Read on demand: `leg-preface.md` names this file when a required CI job goes red
   fixed and run through the delta round. Anything else is deferred to a ticket
   with no commit and no round. A change that does land after the cap is cleared
   by a signed judge GO at the exact head (`review-round.sh judge-go`,
-  HIMMEL-6303): ask the console for it in a `FINDING`, never for a new full round.
+  HIMMEL-6303): ask the chief for it in a `FINDING`, never for a new full round.

@@ -109,7 +109,7 @@ changelog (HIMMEL-7006) names the breaking change.
 | F5 | `clear-cr-marker.sh`, `cr-*.sh`, `CR_MARKER*` | `clear-review-marker.sh`, `review-*.sh` (the CodeRabbit scripts to `coderabbit-*`), `REVIEW_MARKER*`; the `<git-dir>/cr-pending/` dir keeps its name (OD-3) | V2 |
 | F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | V4b |
 | F7 | `leg-*.sh` helpers, `leg-digest*`, `close-wrapped-leg.sh`; profiles `leg-impl`, `leg-bus`, `leg-vm` | `worker-*`, `close-wrapped-worker.sh`; profiles `worker-impl`, `worker-bus`, `worker-vm` | V4b; V4a (profiles) |
-| F8 | `scripts/handover/console-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
+| F8 | `scripts/handover/chief-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
 | F9 | `/console`, `console.sh`, `console-context.sh`; skill `himmel-ops:console`; agents `console-judge`, `console-judge-ro` | `/chief` canonical, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). `/supervisor-session` and `himmel-ops:supervisor-session` stay permanent aliases (OD-6) | V5 |
 | F10 | `overnight-shift`, `overnight-mode.md`, `OVERNIGHT_*`, `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` | `afk-shift`, `afk-mode.md`, `AFK_*`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` | V3 |
 | F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids deferred until a new id name is ruled | — |
