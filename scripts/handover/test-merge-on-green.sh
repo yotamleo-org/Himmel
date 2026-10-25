@@ -3790,6 +3790,14 @@ else fail "focus: the transition marks the FOCUS page dirty (focus.log: $(cat "$
 MOG_ANCHOR_SETUP=mog_focus_stub STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "focus: a merge with no console doc" -- --jira-transition
 if [ -e "$LAST_TMP/focus.log" ]; then fail "focus: with no console doc nothing is marked"; else pass; fi
+# The mark follows the fixVersion fold, so a rebuild it starts sees the folded version.
+# shellcheck disable=SC2016 # $JIRA_LOG must reach the stub FILE unexpanded
+mog_focus_order_stub() { printf '#!/usr/bin/env bash\necho focus-mark >> "$JIRA_LOG"\n' > "$1/scripts/handover/console-kit/focus-refresh.sh"; }
+HIMMEL_CONSOLE_DOC=/nonexistent/console.md MOG_ANCHOR_SETUP=mog_focus_order_stub STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' \
+    STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" run_mog 0 "focus: a merge that folds the fixVersion" -- --jira-transition
+if grep -q 'index.js edit HIMMEL-374 --fix-version' "$LAST_JIRA_LOG" \
+    && [ "$(grep -E 'focus-mark|index\.js edit HIMMEL-374 ' "$LAST_JIRA_LOG" | tail -n 1)" = focus-mark ]; then pass
+else fail "focus: the mark follows the fixVersion fold ($(grep -E 'focus-mark|index\.js edit HIMMEL-374 ' "$LAST_JIRA_LOG" | tr '\n' '|'))"; fi
 
 # A failing Jira transition must never fail the merge itself (best-effort),
 # even when opted in.

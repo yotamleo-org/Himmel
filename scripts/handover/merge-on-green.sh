@@ -2336,7 +2336,6 @@ $remaining")
     # Exit 3: the ticket closed, but the transition would not stamp a frozen version it was deferred out of.
     if [ "$transition_rc" -eq 0 ] || [ "$transition_rc" -eq 3 ]; then
         JIRA_AUTO_TRANSITION_RESULT="ok key=$key status=$target_status"
-        _focus_mark_dirty
         # A closed ticket holds no future version: move it to the
         # current one (earliest unreleased by release date) when it sits in a
         # later unreleased version, and a ticket with no version gets the
@@ -2396,6 +2395,7 @@ $remaining")
                 _jira_fold_request "$repo_root" "$key" "$fold_cur" "$pr_num" "$pr_sha" "the fixVersion edit to $fold_cur failed"
             fi
         fi
+        _focus_mark_dirty
     else
         JIRA_AUTO_TRANSITION_RESULT="failed key=$key status=$target_status rc=$transition_rc out=${transition_out//$'\n'/ }"
     fi
