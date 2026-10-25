@@ -942,7 +942,7 @@ export DD3K="$WORK/dd3k"; mkdir -p "$DD3K"
 cp "$DD_DIR/live.txt" "$DD3K/live.txt"
 printf '5101\tfix(x): [HIMMEL-9104] vast\tfix/himmel-9104-vast\n' > "$DD3K/prs.tsv"
 seq 1 3000 | sed 's#^#scripts/lib/dd-vast-#' > "$DD3K/files-5101"
-dd3k_out="$(DD_DIR="$DD3K" rundd --dispositions)"
+dd3k_out="$(DD_DIR="$DD3K" rundd --dispositions)" && pass "prs: the 3000-file run exits 0" || fail "prs: the 3000-file run failed"
 has "prs: a PR listing 3000 files is named unknown in the header" "$dd3k_out" "5101"
 lacks "prs: a PR listing 3000 files suppresses RESUME rows" "$dd3k_out" "RESUME	HIMMEL-940"
 # (d) a disposition for every open ticket of the version
