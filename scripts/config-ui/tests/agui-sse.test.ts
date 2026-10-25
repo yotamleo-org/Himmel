@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { startServer } from "../server";
 import { mapFile } from "../agui/journal-mapper.ts";
 import { journalStream, resolveJournal } from "../agui/sse.ts";
+import { readFleet } from "../agui/fleet.ts";
+import { customConfig, fleetFixture, FLEET } from "./agui-fleet-fixture";
 
 // GET /api/agui/<run> streams a session journal as AG-UI over SSE.
 // seams: env.HOME (a temp HOME whose ~/.claude/projects holds the fixture journals),
@@ -86,6 +88,84 @@ for (const bad of ["not-a-uuid", "%2e%2e%2f%2e%2e%2fetc%2fpasswd", "..%2fsecret"
     expect((await get(port, bad)).status).toBe(400);
   });
 }
+
+function customRoot() {
+  const fx = fleetFixture(join(home(), "fleet"));
+  const config = customConfig(fx), s = boot(fx.home);
+  const census = () => readFleet({ script: join(import.meta.dir, "../fleet.sh"), env: { PATH: process.env.PATH, ...fx.env }, home: fx.home, now: Date.now(), redact: (v) => v });
+  return { ...fx, ...s, config, census };
+}
+
+test("a custom config run streams only after the live census discovers its root", async () => {
+  const s = customRoot();
+  expect((await get(s.port, FLEET.leg.run)).status).toBe(404);
+  for (const query of [`?root=${encodeURIComponent(s.config)}`, ""]) {
+    expect((await get(s.port, FLEET.leg.run + query, { "X-Himmel-Token": TOKEN, "X-Claude-Config-Dir": s.config })).status).toBe(404);
+  }
+  expect((await get(s.port, encodeURIComponent(join(s.config, FLEET.leg.run)))).status).toBe(400);
+  expect((await get(s.port, `..%2f${FLEET.leg.run}`)).status).toBe(400);
+  await s.census();
+  expect((await get(s.port, FLEET.leg.run, {})).status).toBe(401);
+  const r = await get(s.port, FLEET.leg.run);
+  expect(r.status).toBe(200);
+  expect(r.headers.get("content-type")).toBe("text/event-stream");
+  const { reader, events } = await readUntil(r, (ev) => ev.some((e) => e.type === "TOOL_CALL_START"));
+  await reader.cancel();
+  expect(events.some((e) => e.type === "TOOL_CALL_START")).toBe(true);
+});
+
+test("a custom config UUID colliding with the native root is ambiguous", async () => {
+  const s = customRoot();
+  journal(s.home, "-collision", FLEET.leg.run, "");
+  await s.census();
+  expect((await get(s.port, FLEET.leg.run)).status).toBe(409);
+});
+
+for (const target of ["journal", "project", "projects"]) {
+  test(`a custom config ${target} symlink escaping projects is not served`, async () => {
+    const s = customRoot();
+    await s.census();
+    const r = await get(s.port, FLEET.leg.run);
+    expect(r.status).toBe(200);
+    await r.body?.cancel();
+    const path = join(s.config, "projects", ...(target === "projects" ? [] : ["fleet-project"]), ...(target === "journal" ? [`${FLEET.leg.run}.jsonl`] : []));
+    const outside = join(s.dir, "outside");
+    renameSync(path, outside);
+    symlinkSync(outside, path);
+    expect((await get(s.port, FLEET.leg.run)).status).toBe(404);
+  });
+}
+
+for (const kind of ["relative", "empty", "dotdot", "missing-projects"]) {
+  test(`a custom config ${kind} launch root registers nothing`, async () => {
+    const s = customRoot();
+    const config = kind === "relative" ? "custom-config" : kind === "empty" ? "" : kind === "dotdot" ? `${s.config}/../custom-config` : s.config;
+    if (kind === "missing-projects") renameSync(join(s.config, "projects"), join(s.dir, "saved-projects"));
+    writeFileSync(join(s.dir, "proc", String(FLEET.leg.pid), "environ"), `CLAUDE_CONFIG_DIR=${config}\0`);
+    await s.census();
+    if (kind === "missing-projects") renameSync(join(s.dir, "saved-projects"), join(s.config, "projects"));
+    expect((await get(s.port, FLEET.leg.run)).status).toBe(404);
+  });
+}
+
+test("the custom config registry drops the oldest root past 32 and deduplicates repeats", async () => {
+  const api = await import("../agui/sse.ts");
+  expect(typeof api.registerConfigRoot).toBe("function");
+  const h = home(), configs: string[] = [];
+  const run = (i: number) => `2a000000-0000-4000-8000-${String(i).padStart(12, "0")}`;
+  for (let i = 0; i < 33; i++) {
+    const config = join(h, `config-${i}`);
+    mkdirSync(join(config, "projects", "-proj"), { recursive: true });
+    writeFileSync(join(config, "projects", "-proj", `${run(i)}.jsonl`), "");
+    configs.push(config);
+    await api.registerConfigRoot(config);
+    await api.registerConfigRoot(config);
+  }
+  expect(api.configRoots()).toEqual(configs.slice(1));
+  expect(await resolveJournal(h, run(0))).toEqual({ status: 404 });
+  expect(await resolveJournal(h, run(1))).toEqual({ path: join(configs[1], "projects", "-proj", `${run(1)}.jsonl`) });
+  expect(await resolveJournal(h, run(32))).toEqual({ path: join(configs[32], "projects", "-proj", `${run(32)}.jsonl`) });
+});
 
 test("a non-GET is 405", async () => {
   const h = home();

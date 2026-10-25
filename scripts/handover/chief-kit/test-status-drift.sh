@@ -819,24 +819,34 @@ check "3d: none still skips beside a release: line" "$(frout)" "focus=skip"
 fr_auto "" ""
 check "3d: no focus-version and no release: line still skips" "$(frout)" "focus=skip"
 fr_auto "focus-version: auto" "release: R" '["v1.1.4"]'
-printf '{"release":"R","status":"DEGRADED","versions":["v1.1.4","v1.1.5"]}\n' > "$FX/fr.release"; echo 3 > "$FX/fr.release.rc"
+printf '{"release":"R","status":"UNKNOWN","versions":[]}\n' > "$FX/fr.release"; echo 3 > "$FX/fr.release.rc"
 fr
-contains "3d: a not-OK release state (exit 3) still names its version" "$(grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--version v1.1.4 "
+check "3d: a not-OK release state (exit 3) with no version is loud, FAILED:release" "$(frout)" "focus=FAILED:release"
 fr_reset; sed -i '/^focus-version:/d' "$FR/doc/console.md"; printf 'focus-version: auto\nrelease: ACME-R\n' >> "$FR/doc/console.md"  # gnu-ok: Linux-only kit
 printf '{"release":"ACME-R","versions":["a1.0"]}\n' > "$FX/fr.release"; rm -f "$FX/fr.rel.log"
 JIRA_PROJECT_KEY=ACME fr
 contains "3d: an adopted project renders its own current version" "$(grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--version a1.0 "
 check "3d: and reads its own release under its own project key" "$(cat "$FX/fr.rel.log" 2>/dev/null)" "release release state ACME-R --json pk=ACME"
+# the mirror dir follows the project key; TICK_TRACKER_MIRROR_DIR still wins
+fr_mir() { # <project key or empty> - one refresh with no mirror override, HOME under the sandbox
+    fr_reset; rm -f "$FX/fr.log"
+    HOME="$tmp/frhome" JIRA_PROJECT_KEY="$1" env -u TICK_TRACKER_MIRROR_DIR bash "$FOCUS" --doc "$FR/doc/console.md" >"$tmp/frout" 2>"$tmp/frerr"
+    grep '^tracker ' "$FX/fr.log" | tail -n 1
+}
+contains "3d: an adopted project mirrors into its own dir" "$(fr_mir ACME)" "--mirror-dir $tmp/frhome/.himmel/state/jira-mirror/ACME "
+contains "3d: an unset project key keeps the HIMMEL mirror dir" "$(fr_mir "")" "--mirror-dir $tmp/frhome/.himmel/state/jira-mirror/HIMMEL "
+contains "3d: TICK_TRACKER_MIRROR_DIR still wins over the project key" "$(fr_reset; rm -f "$FX/fr.log"; JIRA_PROJECT_KEY=ACME bash "$FOCUS" --doc "$FR/doc/console.md" >/dev/null 2>&1; grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--mirror-dir $FR/mir/HIMMEL "
 fr_auto "focus-version: auto" "release: R"
 rm -f "$FR/doc/focus-state"
 fr --status
 check "3d: --status of an auto doc is not skip" "$(frout)" "focus=DIRTY:unknown"
-for bad in read-fail empty null-version no-release; do
+for bad in read-fail empty null-version semi-version no-release; do
     fr_auto "focus-version: auto" "release: R"
     case "$bad" in
         read-fail) echo 1 > "$FX/fr.release.rc" ;;
         empty) printf '{"release":"R","versions":[]}\n' > "$FX/fr.release" ;;
         null-version) printf '{"release":"R","versions":[null]}\n' > "$FX/fr.release" ;;
+        semi-version) printf '{"release":"R","versions":["v1;x"]}\n' > "$FX/fr.release" ;;
         no-release) sed -i '/^release:/d' "$FR/doc/console.md" ;;  # gnu-ok: Linux-only kit
     esac
     echo "page-before" > "$PAGE"; : > "$FX/fr.log"

@@ -779,7 +779,7 @@ export function buildClaudexRunArgs(launcherPath: string, prompt: string, permMo
 // overrides this lane makes are the optional per-dispatch effort pin (D5,
 // unset => the launcher's own `${CLAUDE_CODE_EFFORT_LEVEL:-medium}` default
 // applies), the optional per-dispatch model pin (unset =>
-// the launcher's own `${CODEX_MODEL:-gpt-5.6-sol}` default applies), the
+// the launcher's own `${CODEX_MODEL:-gpt-6.1-sol}` default applies), the
 // unconditional HIMMEL_WORKER worker-ness marker (see below) —
 // plus stripping TELEGRAM_OWN_POLLER so a spawned worker never adopts poller
 // ownership (mirrors run.ts's sessionEnv/glmChildEnv). `base` is injected so

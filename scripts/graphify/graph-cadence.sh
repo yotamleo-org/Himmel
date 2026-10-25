@@ -330,6 +330,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # same path (this script only ever ships inside the primary checkout it also
 # measures), so this split is invisible outside the test suite.
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$REPO_ROOT/scripts/lib/prim.sh" || exit 2
 
 # Resolve the PRIMARY checkout root, mirroring ggs-cadence.sh's
 # resolve_himmel_root: via
@@ -785,11 +787,11 @@ _pipeline_lock_is_ours() {
     cur=$(cat "$PIPELINE_LOCK/owner" 2>/dev/null) || cur=""
     [ -n "$PIPELINE_LOCK_TOKEN" ] && [ "$cur" = "$PIPELINE_LOCK_TOKEN" ]
 }
-# _pipeline_lock_stamp_heartbeat -- atomic (tmp + rename) so a reader never
-# sees a half-written stamp.
+# _pipeline_lock_stamp_heartbeat -- readers never see a half-written stamp.
 _pipeline_lock_stamp_heartbeat() {
-    local tmp="$PIPELINE_LOCK/heartbeat.tmp.$$"
-    date -u +%s > "$tmp" 2>/dev/null && mv -f "$tmp" "$PIPELINE_LOCK/heartbeat" 2>/dev/null
+    local stamp
+    stamp=$(date -u +%s 2>/dev/null) || return "$?"
+    atomic_write "$PIPELINE_LOCK/heartbeat" <<< "$stamp" 2>/dev/null
 }
 # _pipeline_lock_describe -- DETECTION ONLY, never acted on: sets
 # PIPELINE_LOCK_VERDICT to a description of the lock another run holds. rc 0:
@@ -841,6 +843,7 @@ _pipeline_lock_describe() {
 # heartbeating. rc 1: another run's lock is there -- see
 # PIPELINE_LOCK_VERDICT; nothing was touched.
 _pipeline_lock_try_acquire() {
+    # prim-ok: skip-not-wait, host/heartbeat classification and token-checked release require the persistent directory protocol.
     mkdir "$PIPELINE_LOCK" 2>/dev/null || return 1
     # Ours from this point on, so the EXIT trap may remove it.
     PIPELINE_LOCK_TOKEN="$$-$RANDOM"
@@ -1005,8 +1008,6 @@ if [ "$_ast_rc" -ne 0 ]; then
 fi
 ACTION="refreshed"
 
-# shellcheck source=../lib/prim.sh
-. "$REPO_ROOT/scripts/lib/prim.sh" || exit 2
 # _promote_semantic_to_primary -- copy the merged graph the semantic step built in
 # the dedicated worktree into the primary checkout's graphify-out, the directory
 # legs and the session-start advisory read. It takes the promote lock the hourly

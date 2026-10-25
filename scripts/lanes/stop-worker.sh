@@ -58,6 +58,8 @@ chokepoint_seam_guard scripts/lanes/stop-worker.sh || exit 96
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 1
 
 # shellcheck source=../lib/proc-tree.sh
 # shellcheck disable=SC1091
@@ -350,7 +352,7 @@ checkpoint_worker_worktree() {
     fi
     head_oid=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null) || head_oid=""
     [ -n "$head_oid" ] || { echo "no HEAD"; return 1; }
-    tmp_dir=$(mktemp -d 2>/dev/null) || tmp_dir=""
+    tmp_dir=$(tmpdir 2>/dev/null) || tmp_dir=""
     [ -n "$tmp_dir" ] || { echo "mktemp failed"; return 1; }
     tmp_index="$tmp_dir/index"
     if ! GIT_INDEX_FILE="$tmp_index" git -C "$wt" read-tree "$head_oid" >/dev/null 2>&1; then

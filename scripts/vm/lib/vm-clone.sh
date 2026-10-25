@@ -152,6 +152,7 @@ vm_slot_acquire() {
             # prefix), hence eval — the path is shell-quoted via printf %q first
             # so this never re-interprets anything in $lockfile.
             eval "exec $fd>$(printf '%q' "$lockfile")" 2>/dev/null || _vm_fail "cannot open lock file $lockfile"
+            # prim-ok: nonblocking multi-slot probe retains the winning fd in the caller; with_lock blocks inside a subshell.
             if flock -n "$fd"; then
                 CLONE_IDX=$i
                 CLONE_FD=$fd

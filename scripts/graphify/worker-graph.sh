@@ -26,6 +26,8 @@ set -u
 # that kills the process group. Without GNU timeout they run unbounded.
 # shellcheck source=../lib/timeout-bin.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/timeout-bin.sh" 2>/dev/null
+# shellcheck source=../lib/prim.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" || exit 1
 PROBE_SECS="${GRAPH_WRAP_PROBE_SECS:-10}"
 CALL_SECS="${GRAPH_WRAP_CALL_SECS:-120}"
 bounded() { local secs="$1"; shift; ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$secs"} "$@"; }
@@ -116,7 +118,7 @@ if [ "$sub" = query ] && [ "$has_seed" = 0 ] && [ -n "$question" ] && command -v
 fi
 [ "$has_budget" = 1 ] || set -- "$@" --budget "$budget"
 if [ "${#seeds[@]}" -gt 0 ]; then
-  tmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-graph.XXXXXX")" || exit 1
+  tmp="$(tmpdir)" || exit 1
   trap 'rm -rf "$tmp"' EXIT
   half=$((budget / 2))
   GRAPHIFY_OUT="$out" bounded "$CALL_SECS" graphify query "${rest[@]}" "${seeds[@]}" --budget "$half" >"$tmp/given" 2>"$tmp/given.err" &
