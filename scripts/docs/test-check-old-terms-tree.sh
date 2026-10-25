@@ -89,6 +89,10 @@ put scripts/legacy-tool.sh 'echo x'
 put scripts/consoles.md 'x'
 put scripts/fixtures/console-old.sh 'echo frozen'
 tree_case "legacy-, consoles. and fixtures/ paths" 0
+fresh
+put scripts/hooks/console-gone.sh 'echo gone'
+rm -f "$repo/scripts/hooks/console-gone.sh"
+tree_case "a tracked file deleted from the working tree is not a hit" 0
 
 echo "== tokens and flags =="
 fresh

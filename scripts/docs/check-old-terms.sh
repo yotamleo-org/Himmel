@@ -121,6 +121,7 @@ if [ "$mode" = tree ]; then
     while IFS= read -r f; do
         if is_exempt_path "$f"; then printf '%s\n' "$f"; fi
     done < "$work/files" > "$work/exempt"
+    git -c core.quotePath=false ls-files --deleted >> "$work/exempt" || { echo "$me: git ls-files --deleted failed" >&2; exit 2; }
     git -c core.quotePath=false grep -I -n -E -e '(LEGS?|CONSOLE)' -e '--(legs?|console)' > "$work/hits"
     [ $? -le 1 ] || { echo "$me: git grep failed" >&2; exit 2; }
     have_base=0
