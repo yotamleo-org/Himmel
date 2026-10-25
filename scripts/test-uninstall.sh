@@ -544,6 +544,7 @@ out=$(TELEGRAM_CHANNEL_DIR="$CHANNEL" BRIDGE_ROOT="$BRIDGE" PATH="$HBIN" \
     bash "$CLI" --purge-state --yes --skip-tasks --skip-plugins --skip-hooks </dev/null 2>&1); rc=$?
 assert_rc "bun-missing run halts with rc=2" 2 "$rc"
 assert_has "bun missing WARNs" "bun is not on PATH" "$out"
+assert_has "bun-missing recovery names both pidfile PIDs" "supervisor and poller PIDs" "$out"
 assert_has "bun-missing run skips state removal" "SKIPPED: step 1 could not stop the bridge" "$out"
 if [ -f "$CHANNEL/access.json" ]; then
     echo "PASS state preserved when bridge cannot be stopped"
@@ -1260,19 +1261,19 @@ fi
 #      otherwise exit 96 before writing the record.
 mk_cache
 REAL_SCRIPTS="$(dirname "$CLI")"
-LLD="$TMP/launch20c"; mkdir -p "$LLD/scripts/lib" "$LLD/scripts/handover/console-kit"
+LLD="$TMP/launch20c"; mkdir -p "$LLD/scripts/lib" "$LLD/scripts/handover/chief-kit"
 for _e in "$REAL_SCRIPTS"/*; do
     case "${_e##*/}" in lib|handover) ;; *) ln -s "$_e" "$LLD/scripts/${_e##*/}" ;; esac
 done
 for _e in "$REAL_SCRIPTS"/lib/*; do ln -s "$_e" "$LLD/scripts/lib/${_e##*/}"; done
 for _e in "$REAL_SCRIPTS"/handover/*; do
-    case "${_e##*/}" in console-kit) ;; *) ln -s "$_e" "$LLD/scripts/handover/${_e##*/}" ;; esac
+    case "${_e##*/}" in chief-kit) ;; *) ln -s "$_e" "$LLD/scripts/handover/${_e##*/}" ;; esac
 done
-for _e in "$REAL_SCRIPTS"/handover/console-kit/*; do ln -s "$_e" "$LLD/scripts/handover/console-kit/${_e##*/}"; done
-for _e in lib/chokepoint-seam-guard.sh handover/console-kit/headed-arm-leg.sh; do
+for _e in "$REAL_SCRIPTS"/handover/chief-kit/*; do ln -s "$_e" "$LLD/scripts/handover/chief-kit/${_e##*/}"; done
+for _e in lib/chokepoint-seam-guard.sh handover/chief-kit/headed-arm-worker.sh; do
     rm -f "$LLD/scripts/$_e"; cp "$REAL_SCRIPTS/$_e" "$LLD/scripts/$_e"
 done
-WORKER_SESSION_SH="$LLD/scripts/handover/console-kit/headed-arm-leg.sh"
+WORKER_SESSION_SH="$LLD/scripts/handover/chief-kit/headed-arm-worker.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LLD/target.sh"; printf '#!/usr/bin/env bash\necho PROCEED\n' > "$LLD/preflight.sh"
 chmod +x "$LLD/target.sh" "$LLD/preflight.sh"
 # the arming gate lints every brief (description + Prior art line).

@@ -135,11 +135,11 @@
 #   ARMAUTOMERGE           Must be truthy (1/true/on/yes) to enable at all.
 #   MERGE_ON_GREEN_LOG     Audit-log path override. Default:
 #                          "$(git rev-parse --git-dir)/merge-on-green.log".
-#   HIMMEL_CONSOLE_LEG     Exported (=1) by console-kit/headed-arm-leg.sh into
+#   HIMMEL_CONSOLE_LEG     Exported (=1) by chief-kit/headed-arm-leg.sh into
 #                          every console-spawned leg. Truthy => the merge needs
 #                          <handover_root>/.locks/go/<pr>.<certified head sha>
 #                          containing head=<that sha>, written by the console
-#                          via console-kit/go.sh (HIMMEL-2919). Unset/falsy =>
+#                          via chief-kit/go.sh (HIMMEL-2919). Unset/falsy =>
 #                          no GO gate.
 #   HANDOVER_DIR           Where handover_root resolves that GO file
 #                          (scripts/lib/handover-path.sh); read only under
@@ -517,7 +517,7 @@ fi
 
 # HIMMEL-2919 — console-GO gate. A console-spawned leg (headed-arm-leg.sh
 # exports HIMMEL_CONSOLE_LEG=1) merges ONLY on its console's GO: a file the
-# console writes with console-kit/go.sh under the handover root, bound to THIS
+# console writes with chief-kit/go.sh under the handover root, bound to THIS
 # PR and to the head sha check-ci just certified — the same $sha
 # --match-head-commit pins below. The evidence is a file, never an env value
 # the leg could set on its own merge line. Placed before the marker clear so a
@@ -1077,7 +1077,7 @@ prune_merged_worktree() {
 # covering scoped suite's SUMMARY necessarily reaches the PR as a comment (the
 # suite can still be running, or a closed parent session never got to post
 # it — the HIMMEL-2360/2371 incident this ticket exists to structurally
-# catch). scripts/console/base-status.sh's live gh query is the authoritative
+# catch). scripts/chief/base-status.sh's live gh query is the authoritative
 # PENDING/RED detector; this is a durable LOCAL trace of the same gap at
 # merge time, same marker-dir shape as the cr-pending marker above, so a
 # console tick has a fallback even if this doesn't stay abreast of every

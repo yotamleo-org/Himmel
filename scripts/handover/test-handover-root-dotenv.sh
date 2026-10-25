@@ -64,7 +64,7 @@ out="$(probe bash "$SCRIPTS/lanes/bench/scorecard/ready-go-latency.sh" --doc "$t
 lacks "ready-go-latency: root resolved from .env" "$out" "cannot resolve the handover root"
 has "ready-go-latency: got past root resolution" "$out" "no YYYY-MM-DD"
 
-out="$(probe bash "$SCRIPTS/handover/console-kit/inbox-send.sh" --pending)"
+out="$(probe bash "$SCRIPTS/handover/chief-kit/inbox-send.sh" --pending)"
 lacks "inbox-send: root resolved from .env" "$out" "cannot resolve handover root"
 
 out="$(probe bash "$SCRIPTS/telegram/auto-action.sh" arm-resume HIMMEL-1 12:00)"
@@ -78,7 +78,7 @@ printf 'https://claude.ai/artifact/abc\n' > "$tmp/art.md"
 probe bash "$SCRIPTS/handover/artifact-sync.sh" record "https://claude.ai/artifact/abc" "$tmp/art.md" >/dev/null
 check "artifact-sync: registry under the .env root" "$([ -f "$HO/.artifacts/registry.jsonl" ] && echo yes || echo no)" "yes"
 
-out="$(printf 'HIMMEL-1\tfeat/x\t1\tdone\tok\n' | env -u HANDOVER_DIR HIMMELCTL_CACHE_DIR="$tmp/cache" bash "$SCRIPTS/overnight/morning-report.sh" --dry-run 2>&1)"
+out="$(printf 'HIMMEL-1\tfeat/x\t1\tdone\tok\n' | env -u HANDOVER_DIR HIMMELCTL_CACHE_DIR="$tmp/cache" bash "$SCRIPTS/afk/morning-report.sh" --dry-run 2>&1)"
 has "morning-report: output path under the .env root" "$out" "$HO/overnight-report-"
 
 mkdir -p "$HO/breadcrumbs"; printf '{}\n' > "$HO/breadcrumbs/HIMMEL-1.json"
@@ -91,10 +91,10 @@ has "statusline-segment: breadcrumb marker found via the .env root" "$out" "📋
 # block-unresolved-cr-merge.sh and merge-on-green.sh are not listed: they resolve
 # their root through go_resolve_root, which loads the anchor's .env itself, so
 # they never call a bare handover_root.
-for f in hermes/egress-gate.sh guardrails/graphify-fence.sh handover/console-kit/smoke-consult-sandbox.sh \
+for f in hermes/egress-gate.sh guardrails/graphify-fence.sh handover/chief-kit/smoke-consult-sandbox.sh \
          hooks/auto-arm-on-cap.sh hooks/auto-arm-on-subagent-cap.sh hooks/console-compact-reinject.sh \
          hooks/console-precompact-snapshot.sh hooks/guard-relay-writes.sh hooks/stop-console-idle-guard.sh \
-         handover/console-kit/tick.sh; do
+         handover/chief-kit/tick.sh; do
     ld="$(grep -n 'load_dotenv HANDOVER_DIR' "$SCRIPTS/$f" | head -1 | cut -d: -f1)"
     hr="$(grep -nE '(^|[^_a-z])handover_root( |\)|"|$)' "$SCRIPTS/$f" | grep -v '^[0-9]*:[[:space:]]*#' | head -1 | cut -d: -f1)"
     check "$f: load_dotenv precedes handover_root" "$([ -n "$ld" ] && [ -n "$hr" ] && [ "$ld" -lt "$hr" ] && echo yes || echo "no (ld=$ld hr=$hr)")" "yes"

@@ -410,7 +410,6 @@ set -e
 [ "$rcUR1" -eq 0 ] || fail "case f: ensure --yes should exit 0 (core-item2 still converges) (got rc=$rcUR1): $outUR1"
 [ -f "$fixtureRepo2/core2.marker" ] || fail "case f: core-item2 should still converge under the guard: $outUR1"
 grepq "$outUR1" -F 'UNDER-RECORDED' || fail "case f: should name the record as under-recorded (got: $outUR1)"
-grepq "$outUR1" -F 'HIMMEL-2350' || fail "case f: should name HIMMEL-2350 (got: $outUR1)"
 for id in luna-x luna-y luna-z; do
   grepq "$outUR1" -F "$id: recorded install-profile says" || fail "case f: should list $id's evidence line (got: $outUR1)"
   [ -f "$fixtureRepo2/$id.marker" ] || fail "case f: $id must be left untouched (got: $outUR1)"

@@ -222,44 +222,48 @@ check "ListAgents -> allow" allow "$(tool_call ListAgents)"
 check "TaskStop -> allow" allow "$(tool_call TaskStop)"
 check "ToolSearch -> allow" allow "$(tool_call ToolSearch)"
 check "append-results.sh -> allow" allow \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")"
+    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC 'BLOCKED — context 90 %; ctx | see \`RESUME\` & (more)'")" # old-term-ok: the old path must still be allowed
 check "absolute append-results.sh -> allow" allow \
-    "$(bash_call "bash /x/himmel/scripts/handover/console-kit/append-results.sh $DOC \"WRAPPED — done\"")"
+    "$(bash_call "bash /x/himmel/scripts/handover/console-kit/append-results.sh $DOC \"WRAPPED — done\"")" # old-term-ok: the old path must still be allowed
+check "append-results.sh through chief-kit -> allow" allow \
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC 'BLOCKED — context 90 %'")"
+check "absolute append-results.sh through chief-kit -> allow" allow \
+    "$(bash_call "bash /x/himmel/scripts/handover/chief-kit/append-results.sh $DOC \"WRAPPED — done\"")"
 check "queue-lock.sh release -> allow" allow "$(bash_call "bash scripts/handover/queue-lock.sh release $DOC tok")"
 check "wrap-subtree-check.sh -> allow" allow "$(bash_call 'bash scripts/handover/wrap-subtree-check.sh')"
 check "context-fill.sh probe -> allow" allow "$(bash_call 'bash scripts/context-fill.sh --percent')"
 check "queue-lock.sh acquire -> block (not a hand-off)" block "$(bash_call "bash scripts/handover/queue-lock.sh acquire $DOC")"
 check "append-results.sh && more -> block" block \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE x\" && rm -rf /tmp/x")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE x\" && rm -rf /tmp/x")"
 check "append-results.sh || more -> block" block \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE x\" || ls")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE x\" || ls")"
 check "append-results.sh with \$( -> block" block \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"\$(ls)\"")"
-check "echo naming append-results.sh -> block" block "$(bash_call 'echo scripts/handover/console-kit/append-results.sh')"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"\$(ls)\"")"
+check "echo naming append-results.sh -> block" block "$(bash_call 'echo scripts/handover/chief-kit/append-results.sh')"
 # the allowed script is matched as a parsed word, so quoting it or
 # a checkout path with spaces still passes; nothing else widens.
 check "double-quoted append-results.sh -> allow" allow \
-    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
+    "$(bash_call "bash \"scripts/handover/chief-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
 check "single-quoted append-results.sh -> allow" allow \
-    "$(bash_call "bash 'scripts/handover/console-kit/append-results.sh' $DOC \"WRAPPED — done\"")"
+    "$(bash_call "bash 'scripts/handover/chief-kit/append-results.sh' $DOC \"WRAPPED — done\"")"
 check "quoted absolute path with a space -> allow" allow \
-    "$(bash_call "bash \"/work/a b/himmel/scripts/handover/console-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
+    "$(bash_call "bash \"/work/a b/himmel/scripts/handover/chief-kit/append-results.sh\" $DOC \"WRAPPED — done\"")"
 check "single-quoted doc path with a space (as the deny message prints it) -> allow" allow \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh '/work/a b/doc.md' \"BLOCKED — why\"")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh '/work/a b/doc.md' \"BLOCKED — why\"")"
 check "quoted queue-lock.sh release -> allow" allow \
     "$(bash_call "bash \"scripts/handover/queue-lock.sh\" release $DOC tok")"
 check "quoted queue-lock.sh acquire -> block" block \
     "$(bash_call "bash \"scripts/handover/queue-lock.sh\" acquire $DOC")"
 check "quoted other script -> block" block \
-    "$(bash_call "bash \"scripts/handover/console-kit/other.sh\" $DOC")"
+    "$(bash_call "bash \"scripts/handover/chief-kit/other.sh\" $DOC")"
 check "quoted allowed path with a chained suffix word -> block" block \
-    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh\"x $DOC")"
+    "$(bash_call "bash \"scripts/handover/chief-kit/append-results.sh\"x $DOC")"
 check "quoted path with a variable -> block" block \
-    "$(bash_call "bash \"\$H/scripts/handover/console-kit/append-results.sh\" $DOC")"
+    "$(bash_call "bash \"\$H/scripts/handover/chief-kit/append-results.sh\" $DOC")"
 check "quoted allowed script then && more -> block" block \
-    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh\" $DOC \"LIVE x\" && ls")"
+    "$(bash_call "bash \"scripts/handover/chief-kit/append-results.sh\" $DOC \"LIVE x\" && ls")"
 check "quoted path embedding a command -> block" block \
-    "$(bash_call "bash \"scripts/handover/console-kit/append-results.sh x;rm\" $DOC")"
+    "$(bash_call "bash \"scripts/handover/chief-kit/append-results.sh x;rm\" $DOC")"
 
 echo "== the exemptions: a RESUME doc exists, or the last marker is WRAPPED/BLOCKED =="
 printf 'resume\n' > "$RESUME"
@@ -388,10 +392,10 @@ check "git status | more -> block" block "$(bash_call 'git status | sh')"
 check "git push & more -> block" block "$(bash_call 'git push & touch x')"
 check "git commit -F <( -> block" block "$(bash_call 'git commit -F <(echo x)')"
 check "double-quoted bullet with ; -> allow" allow \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE a; b | c\"")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE a; b | c\"")"
 # shellcheck disable=SC2016
 check "double-quoted bullet with backticks -> block" block \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE \`id\`\"")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE \`id\`\"")"
 check "escaped quote then ; -> block" block "$(bash_call "git status \\'; touch x; echo \\'")"
 check "apostrophe in double quotes then ; -> block" block "$(bash_call "git commit -m \"it's\"; touch x; echo \"'\"")"
 check "unclosed quote -> block" block "$(bash_call "git commit -m 'x")"
@@ -401,7 +405,7 @@ check "ANSI-C quote alone -> block" block "$(bash_call "git commit -m \$'x'")"
 check "dollar-quote inside double quotes is literal -> allow" allow "$(bash_call "git commit -m \"cost \$'x'\"")"
 check "redirect -> block" block "$(bash_call 'git status > x')"
 check "append-results.sh; more -> block" block \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE x\"; rm -rf /tmp/x")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE x\"; rm -rf /tmp/x")"
 
 echo "== compact mode: a pushed CHECKPOINT of HEAD unlocks =="
 session "load $DOC and continue"
@@ -466,7 +470,7 @@ check_c "compact, last marker WRAPPED -> allow" allow "$LS"
 doc "- 10:01 LIVE — working"
 check_c "compact, git commit stays allowed" allow "$(bash_call 'git commit -m wip')"
 check_c "compact, append-results.sh stays allowed" allow \
-    "$(bash_call "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE — CHECKPOINT $HEAD2 pushed\"")"
+    "$(bash_call "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE — CHECKPOINT $HEAD2 pushed\"")"
 
 echo "== compact mode: a clean tree with nothing unpushed checkpoints without a push =="
 # A leg that has only read has nothing to commit, and the

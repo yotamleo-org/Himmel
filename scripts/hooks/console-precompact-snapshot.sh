@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # console-precompact-snapshot.sh — PreCompact hook: snapshot a CONSOLE's
 # authority-bearing state to disk at the moment of compaction,
-# so scripts/handover/console-kit/compacted-check.sh (G11) can prove the
+# so scripts/handover/chief-kit/compacted-check.sh (G11) can prove the
 # console's post-compaction COMPACTED bullet matches what it held before.
 #
 # Sibling of console-compact-reinject.sh (SessionStart:compact, S1): that hook

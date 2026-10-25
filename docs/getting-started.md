@@ -113,6 +113,8 @@ git status --short
 These steps were run with project scope only. A `--scope user` install wires the
 harness for every project on the machine instead (see
 [setup/install.md](setup/install.md)); steps 8 to 10 are not written for it.
+This install uses the starter answers; the other answers, and how to move
+between them later, are on [Install profiles](setup/profiles/README.md).
 
 You should see: in `~/try-himmel`, `git status` lists `.claude/`, `scripts/`
 and `.gitignore` as **untracked**. The install is on disk but not yet in your

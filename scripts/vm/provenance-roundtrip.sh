@@ -89,6 +89,8 @@ set -uo pipefail
 # shellcheck disable=SC2029 # deliberate: guest commands are built client-side.
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$REPO_ROOT/scripts/lib/prim.sh" || exit 2
 
 usage() {
     echo "usage: scripts/vm/provenance-roundtrip.sh <branch|sha> [--expect-red] [--profile core|all] [--purge-state] [--keep-backups] [--clone-gone] [--with-qmd] [--install-from clone|tarball|aur] [--runtime docker|podman] [--image <ref>] [--s2a-case a|b]" >&2
@@ -303,7 +305,7 @@ step() {
 }
 
 # 1. Stage the ref's tree (git archive: tracked files only) + the helpers.
-HOST_TMP=$(mktemp -d "${TMPDIR:-/tmp}/rt-src.XXXXXX") || fail "mktemp failed"
+HOST_TMP=$(tmpdir) || fail "mktemp failed"
 git -C "$REPO_ROOT" archive "$SHA" | tar -x -C "$HOST_TMP" || fail "git archive $SHA failed"
 if [ "$INSTALL_FROM" = tarball ] || [ "$INSTALL_FROM" = aur ]; then
     # build-tarball.sh always archives HEAD of --src, so HOST_TMP (already the
@@ -316,6 +318,7 @@ if [ "$INSTALL_FROM" = tarball ] || [ "$INSTALL_FROM" = aur ]; then
         fail "step host-git-init failed"
     fi
     VERSION="0.0.0-rt${SHA:0:12}"
+    # prim-ok: tmp-reap.sh FAMILIES reaps rt-tarball-out.* (the tarball path's cleanup leaves it).
     TARBALL_OUT=$(mktemp -d "${TMPDIR:-/tmp}/rt-tarball-out.XXXXXX") || fail "mktemp failed"
     echo "[step] build-tarball"
     # HIMMEL_RT_TARBALL_NO_BUILD: a hermetic-test seam (test-provenance-roundtrip-dry.sh
@@ -378,6 +381,7 @@ cp /art/PKGBUILD /art/himmel.install "/art/$ASSET" "/art/$ASSET.sha256" /build/p
 # would stay dashless while the tarball's own top-level dir keeps the dash
 # build-tarball.sh was given. Pin _tag straight to that dir name instead of
 # relying on the substitution to invert a string it does not recognize.
+# prim-ok: this runs in a disposable Arch container before himmel is installed, so the host's atomic_write is unavailable.
 sed -i \
     -e "s|^pkgver=.*|pkgver=$PKGVER|" \
     -e "s|^_tag=.*|_tag=\"$TAG\"|" \

@@ -33,7 +33,7 @@ function fixture(t, reg = registry()) {
     HIMMEL_DENIAL_ACK_DIR: join(dir, 'acks'), XDG_RUNTIME_DIR: dir } };
 }
 function launch(f, profile, extra = {}) {
-  return spawnSync(BASH_BIN, [join(ROOT, 'scripts/handover/console-kit/headed-arm-leg.sh'),
+  return spawnSync(BASH_BIN, [join(ROOT, 'scripts/handover/chief-kit/headed-arm-worker.sh'),
     '--dry-run', '--profile', profile, 'HIMMEL-4021-fixture', join(f.dir, 'brief.md'),
     join(f.dir, 'signal'), '99999999999', join(f.dir, 'launch.log'), 'claude-sonnet-5-5'],
   { cwd: f.dir, env: { ...f.env, ...extra }, encoding: 'utf8', timeout: 20000 });

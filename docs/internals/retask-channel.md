@@ -151,7 +151,7 @@ a directly Telegram-relayed one.
 `scripts/claude-codex`) cannot `ListAgents`/`SendMessage` a native session, so
 it has no A→B bus to receive a RETASK revision on. The file inbox
 (`<handover root>/inbox/<session-name>.md`, written by
-`scripts/handover/console-kit/inbox-send.sh`, delivered by
+`scripts/handover/chief-kit/inbox-send.sh`, delivered by
 `scripts/hooks/claudex-inbox-hook.sh` as `hookSpecificOutput.additionalContext`
 on the worker's own next tool call) is that lane's transport-origin equivalent to
 the bus: the inbox path is built ONLY from `handover_root()` plus a
@@ -185,7 +185,7 @@ consumption, and never advances the hook's authoritative delivery cursor.
 - **Cursor locking:** a session-keyed `flock` beside the cursor serializes peek/deliver/commit; missing `flock` retains unlocked, fail-open delivery.
 - **Delivery confirmation:** PostToolUse, SessionStart, and direct stdout callers commit only after successful serialization/output; failures leave rulings pending (this confirms the local write, not downstream consumption).
 - **Document mirroring:** `--doc` writers serialize on a canonical-path hash lock in a private user directory under `${TMPDIR:-/tmp}`; other doc writers must use the same lock to participate, and missing/failed `flock` aborts before mirroring or inbox append.
-- **Sent-record + audit:** every `--token` send records a `sha256` of the delivered bullet in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<console.sh convention>}/<sender>/inbox-sent.log`); `scripts/handover/console-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names any token-quoting bullet in an inbox with no matching ledger line — a forged bullet, or one lost to an `inbox-send.sh` exit-4 ledger-write failure.
+- **Sent-record + audit:** every `--token` send records a `sha256` of the delivered bullet in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<console.sh convention>}/<sender>/inbox-sent.log`); `scripts/handover/chief-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names any token-quoting bullet in an inbox with no matching ledger line — a forged bullet, or one lost to an `inbox-send.sh` exit-4 ledger-write failure.
 
 ## 3a. Chief succession
 
@@ -201,7 +201,7 @@ rule and J had already left. The second case is the proof the fix is the
 *rule*, not the chief's care: a correct message failed for want of a rule the
 worker could read.
 
-**Rule** (worker side, `docs/handover/leg-sections/succession.md`): a
+**Rule** (worker side, `docs/handover/worker-sections/succession.md`): a
 change of chief is genuine when either (1) the outgoing chief relays it
 directly, from the session the worker last accepted (the brief's until a change), quoting the worker's current token
 (a fresh one is optional: a relay that keeps the token is valid and complete), whether
@@ -216,9 +216,13 @@ live chief must relay for itself. The decision table there is the fixture set
 (`scripts/handover/test-succession-docs.sh`), refuse and accept both pinned.
 
 **Order** (chief side): the successor mints the fresh tokens and
-asks the predecessor to re-brief each worker from its own socket, waits for each
-worker's quote-back, updates that worker's `## Live state` nonce only then, and sends
-`<letter> LIVE` last. The predecessor re-briefs before it releases. Prose
+asks the predecessor to re-brief each worker from its own socket, sends
+`<letter> LIVE` once the predecessor reports `RELAYED <n> of <m>` (its relays
+delivered), and updates a worker's `## Live state` nonce only after that worker's
+quote-back, which its informational `--succession` tally reports. The predecessor
+re-briefs before it releases and wraps on LIVE, without waiting for the quote-backs:
+a delivered relay is drained at the worker's next tool round whether the predecessor
+is live or gone, so S1 holds either way. Prose
 alone drifted twice (the two occurrences above), so the catch is structural:
 `tick.sh` reads a held worker whose Live-state nonce does not carry this chief's
 letter against the worker's own doc: a latest `SUCCESSION accepted` Results bullet
@@ -227,7 +231,7 @@ incident); none gives `nonces=UNCONFIRMED:<leg>`. It never asserts a worker is
 stranded, which it cannot observe, and both reads are self-reported by the worker.
 
 **Severity is bounded — say so, do not describe a worker as lost.** The GO file (merge approval) is a
-file (`console-kit/go.sh`, checked by `merge-on-green.sh`), so it needs no
+file (`chief-kit/go.sh`, checked by `merge-on-green.sh`), so it needs no
 nonce, and halt/narrowing need none by design. A stranded worker can be finished
 and merged; only EXPANSION and REDIRECT are lost, so it cannot be re-scoped.
 The worker system prompt says a stranded worker keeps working, keeps accepting halt/narrowing
@@ -349,7 +353,7 @@ therefore cannot tell "received and complying" from "cannot hear me", and
 must not assume compliance from a successful send.
 
 Mitigation, not a guarantee: a worker runs its suites one scan root per call with
-`scripts/handover/console-kit/run-suite.sh`, so each root boundary is a turn
+`scripts/handover/chief-kit/run-suite.sh`, so each root boundary is a turn
 boundary where the inbox is drained, so a halt lands **at the next
 checkpoint**, not always immediately. The unreachable window shrinks from the
 whole tree to the largest single root. It is still bounded below by one root:

@@ -394,7 +394,7 @@ if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "${CHIEF_C
     exit 2
 fi
 if [ -n "$_ab_autocompact" ] && { [ "$_ab_autocompact" != "400000" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "console" ]; }; then
-    echo "headed-arm: refusing HEADED_ARM_AB_AUTOCOMPACT=$_ab_autocompact: only 400000 on a standard-context leg arm is accepted (HIMMEL-5193)" >&2
+    echo "headed-arm: refusing HEADED_ARM_AB_AUTOCOMPACT=$_ab_autocompact: only 400000 on a standard-context leg arm is accepted" >&2
     exit 2
 fi
 # Fable-family match (shared with arm-resume.sh via console_context_model_is_fable)
@@ -586,14 +586,14 @@ LAUNCH_ARGV=("$LAUNCHER" --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME
 # --role console adds one. Fails closed: no profile, no console launch.
 if [ "$ROLE" = "console" ]; then
     _console_profile_settings=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console) || {
-        echo "headed-arm.sh: the console plugin profile did not resolve; refusing to launch a console with the full plugin set (HIMMEL-4013)" >&2
+        echo "headed-arm.sh: the console plugin profile did not resolve; refusing to launch a console with the full plugin set" >&2
         exit 2
     }
     # The console loads only the servers its profile names. Without
     # --strict-mcp-config every user-level server (graphify, ...) leaks in and its
     # tool schemas are paid on every turn. Empty output = no allowlist declared.
     _console_profile_mcp=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console --mcp-config) || {
-        echo "headed-arm.sh: the console MCP allowlist did not resolve; refusing to launch a console with every user-level MCP server (HIMMEL-5310)" >&2
+        echo "headed-arm.sh: the console MCP allowlist did not resolve; refusing to launch a console with every user-level MCP server" >&2
         exit 2
     }
     _console_profile_args=(--settings "$_console_profile_settings")
@@ -696,7 +696,7 @@ case "$DEADLINE" in
 esac
 if [ "$HEADLESS" = "1" ]; then
     if [ -z "${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}" ]; then
-        echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-leg.sh --headless --profile <name>" >&2
+        echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-worker.sh --headless --profile <name>" >&2
         exit 2
     fi
     for _hl_need in "$CLAUDE_CLI" jq; do
@@ -706,7 +706,7 @@ if [ "$HEADLESS" = "1" ]; then
         fi
     done
 elif ! command -v "$KONSOLE" >/dev/null 2>&1; then
-    echo "headed-arm: no '$KONSOLE' on PATH - this launcher needs a terminal emulator to give the session a TTY (HIMMEL-2534)" >&2
+    echo "headed-arm: no '$KONSOLE' on PATH - this launcher needs a terminal emulator to give the session a TTY" >&2
     exit 3
 fi
 # Unchecked, a missing pgrep fails the dedup call below rc=127,
@@ -715,7 +715,7 @@ fi
 # tied to a terminal emulator (konsole, or the macOS shim), so refusing here
 # is honest, not restrictive.
 if ! command -v "$PGREP" >/dev/null 2>&1; then
-    echo "headed-arm: no '$PGREP' on PATH - dedup needs pgrep (procps) to tell whether a session named $NAME is already running; refusing rather than risk launching a duplicate (HIMMEL-2545)" >&2
+    echo "headed-arm: no '$PGREP' on PATH - dedup needs pgrep (procps) to tell whether a session named $NAME is already running; refusing rather than risk launching a duplicate" >&2
     exit 4
 fi
 
@@ -896,7 +896,7 @@ session_confirmed() { # session_confirmed <pgrep-ere-pattern> - returns
     # gap its ponytail names is announced once - never silent.
     if [ ! -d "$PROC" ]; then
         if [ "$_LOSSY_WARNED" -eq 0 ]; then
-            echo "WARN headed-arm: no $PROC on this platform - session confirmation reads each candidate's argv via ps, whitespace-joined, so an argv element containing spaces can still spoof it (HIMMEL-3484)" >&2
+            echo "WARN headed-arm: no $PROC on this platform - session confirmation reads each candidate's argv via ps, whitespace-joined, so an argv element containing spaces can still spoof it" >&2
             _LOSSY_WARNED=1
         fi
         # ps rc 1 = that pid vanished since pgrep saw it (skip it); any other
@@ -934,7 +934,7 @@ if [ "$sc_rc" -eq 0 ]; then
     echo "$(date +%F_%T) a session named $NAME is already running - not launching" >> "$LOG"
     exit 0
 elif [ "$sc_rc" -eq 2 ]; then
-    echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running' (HIMMEL-2545)" >&2
+    echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
     exit 9
 fi
@@ -1178,7 +1178,7 @@ esac
 # validation, which is what actually has to catch it.
 # shellcheck disable=SC2174
 if ! mkdir -p -m 0700 "$LOCKDIR" 2>/dev/null; then
-    echo "headed-arm: cannot create the claim-lock root '$LOCKDIR' - refusing to silently skip a launch that was never actually claimed (HIMMEL-2545)" >&2
+    echo "headed-arm: cannot create the claim-lock root '$LOCKDIR' - refusing to silently skip a launch that was never actually claimed" >&2
     exit 5
 fi
 # VALIDATE the root rather than trusting it, regardless of
@@ -1193,15 +1193,15 @@ fi
 # continuing into a directory this process does not control is exactly the
 # outcome to prevent.
 if [ -L "$LOCKDIR" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is a SYMLINK, so this process does not control what it actually resolves to (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is a SYMLINK, so this process does not control what it actually resolves to" >&2
     exit 5
 fi
 if [ ! -d "$LOCKDIR" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not a directory (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not a directory" >&2
     exit 5
 fi
 if [ ! -O "$LOCKDIR" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not owned by this user (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is not owned by this user" >&2
     exit 5
 fi
 # No bash test operator covers permission BITS, so this is the same
@@ -1216,7 +1216,7 @@ fi
 # (fail closed, same as every other check in this block).
 _lockdir_mode=$(stat -c %a "$LOCKDIR" 2>/dev/null || stat -f %Lp "$LOCKDIR" 2>/dev/null)  # gnu-ok: GNU stat -c is paired with the BSD stat -f fallback on this same line
 if [ -z "$_lockdir_mode" ]; then
-    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - could not read its permission bits (HIMMEL-2545)" >&2
+    echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - could not read its permission bits" >&2
     exit 5
 fi
 _lockdir_oth="${_lockdir_mode: -1}"
@@ -1224,7 +1224,7 @@ _lockdir_grp="${_lockdir_mode%?}"
 _lockdir_grp="${_lockdir_grp: -1}"
 case "$_lockdir_oth$_lockdir_grp" in
     *2*|*3*|*6*|*7*)
-        echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is group- or world-writable (HIMMEL-2545)" >&2
+        echo "headed-arm: refusing to use the claim-lock root '$LOCKDIR' - it is group- or world-writable" >&2
         exit 5
         ;;
 esac
@@ -1272,7 +1272,7 @@ stamp_or_fail_loudly() {
     # (EACCES), so restore owner access to the lock this claim created first.
     chmod -R u+rwx "$LOCK" 2>/dev/null
     rm -rf "$LOCK" 2>/dev/null
-    echo "headed-arm: claimed the lock '$LOCK' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed (HIMMEL-2545)" >&2
+    echo "headed-arm: claimed the lock '$LOCK' but could not write its acquired stamp - refusing to hold an unstampable lock that could never be reclaimed" >&2
     exit 8
 }
 steal_stale_lock() { # steal_stale_lock <expected-acquired-stamp>
@@ -1381,7 +1381,7 @@ while :; do
         echo "$(date +%F_%T) a session named $NAME is already running - not launching" >> "$LOG"
         exit 0
     elif [ "$sc_rc" -eq 2 ]; then
-        echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running' (HIMMEL-2545)" >&2
+        echo "headed-arm: pgrep scan failed checking for an existing session named $NAME - refusing to treat an indeterminate scan as 'nothing running'" >&2
         echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed checking for $NAME - refusing rather than risk a duplicate" >> "$LOG"
         exit 9
     fi
@@ -1418,7 +1418,7 @@ if [ "$sc_rc" -eq 0 ]; then
     rm -rf "$LOCK" 2>/dev/null
     exit 0
 elif [ "$sc_rc" -eq 2 ]; then
-    echo "headed-arm: pgrep scan failed re-checking for $NAME right after claiming the lock - refusing to launch on an indeterminate scan (HIMMEL-2545)" >&2
+    echo "headed-arm: pgrep scan failed re-checking for $NAME right after claiming the lock - refusing to launch on an indeterminate scan" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed re-checking for $NAME after claiming the lock - releasing rather than launch blind" >> "$LOG"
     rm -rf "$LOCK" 2>/dev/null
     exit 9
@@ -1449,7 +1449,7 @@ fi
 # `script -q -a -f "$LOG" -c "$LAUNCH_CMD"`, which is util-linux syntax. BSD
 # script (macOS) has neither -f nor -c ("illegal option -- f"; it takes the
 # file positionally and the command as trailing argv), so on a Mac the branch
-# dies in milliseconds. That is not a rare seam: console-kit/headed-arm-leg.sh
+# dies in milliseconds. That is not a rare seam: chief-kit/headed-arm-leg.sh
 # exports HEADED_ARM_RECORDER=1 unconditionally for --lane claudex. Refuse
 # with the real reason instead of letting the lane fail as a mystery FAILED.
 # Gated on KONSOLE_IS_RESOLVED_SHIM, not the platform: with an explicit
@@ -1465,7 +1465,7 @@ fi
 # time, so there always is one -- dies in the claim-retry loop as exit 6
 # "the armed successor may be lost" instead of reporting this real reason.
 if [ "$RECORDER" = "1" ] && [ "$KONSOLE_IS_RESOLVED_SHIM" = "1" ]; then
-    echo "headed-arm: HEADED_ARM_RECORDER=1 is not supported on macOS - the recorder uses util-linux 'script -f/-c' syntax that BSD script rejects, so the --lane claudex tty recorder cannot run here (HIMMEL-2534)" >&2
+    echo "headed-arm: HEADED_ARM_RECORDER=1 is not supported on macOS - the recorder uses util-linux 'script -f/-c' syntax that BSD script rejects, so the --lane claudex tty recorder cannot run here" >&2
     rm -rf "$LOCK" 2>/dev/null
     exit 2
 fi
@@ -1523,8 +1523,9 @@ fi
 # its tab, and a crashed worker leaves only its own tab dead.
 # Returns 1 to open a window instead: the switch is off, this is a console
 # arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
-# window recorded for the console yet (TAB_RECORD=1: the window this arm opens
-# becomes the console's window). A D-Bus failure also returns 1, with a WARN:
+# window recorded for the console or its predecessor chief yet (TAB_RECORD=1:
+# the window this arm opens, or adopts from a live konsole predecessor, becomes
+# the console's window). A D-Bus failure also returns 1, with a WARN:
 # a worker is never lost to a tab.
 # The tab's shell inherits the WINDOW's environment (the first worker's), not
 # this arm's, so the tab runs a one-shot script that rebuilds this arm's env
@@ -1536,19 +1537,56 @@ fi
 # (the record keeps the later one), a recycled window pid that is another
 # konsole would take the tab, /Windows/1 is assumed, and tick.sh's deadwin
 # sweep never closes a dead tab in a window that still has live ones; a
-# per-console flock and a konsole comm check are the upgrade path.
+# per-console flock is the upgrade path. A successor finds its predecessor by
+# the previous letter of the -nextleg-<date><LETTERS> name part only, so a
+# hand-over that changes the date or the naming opens a window; chief.sh next
+# exporting the predecessor's name is the upgrade path. The konsole check is
+# /proc comm (Linux), so it never adopts a recycled non-konsole pid.
 TAB_SESSION=""
 TAB_WINDOW_FILE=""
 TAB_RECORD=0
+# tab_predecessor_name <console name> - print the name of the chief this one
+# succeeded: the previous letter of its -nextleg-<date><LETTERS> part (FY -> FX,
+# AA -> Z), same date and suffix. Returns 1 when the name has no such part or
+# the letter is A (the first of the day has no predecessor).
+tab_predecessor_name() {
+    local re='^(.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2})([A-Z]{1,2})(-.*)?$' alpha=ABCDEFGHIJKLMNOPQRSTUVWXYZ letters before n i
+    [[ "$1" =~ $re ]] || return 1
+    letters="${BASH_REMATCH[2]}"; n=0
+    for ((i = 0; i < ${#letters}; i++)); do
+        before="${alpha%%"${letters:i:1}"*}"
+        n=$((n * 26 + ${#before} + 1))
+    done
+    n=$((n - 1))
+    [ "$n" -ge 1 ] || return 1
+    if [ "$n" -le 26 ]; then
+        letters="${alpha:n-1:1}"
+    else
+        letters="${alpha:(n-1)/26-1:1}${alpha:(n-1)%26:1}"
+    fi
+    printf '%s%s%s\n' "${BASH_REMATCH[1]}" "$letters" "${BASH_REMATCH[3]}"
+}
 tab_launch() {
-    local wpid sid tab_sh kv
+    local wpid sid tab_sh kv pred
     [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
     [ "$ROLE" != "console" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
     wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
-    case "$wpid" in ''|*[!0-9]*|0|1) TAB_RECORD=1; return 1 ;; esac
-    kill -0 "$wpid" 2>/dev/null || { TAB_RECORD=1; return 1; }
+    case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
+    if [ -z "$wpid" ] || ! kill -0 "$wpid" 2>/dev/null; then
+        # No live window of this console's own: a successor chief adopts its
+        # predecessor's live konsole window and records it as its own.
+        TAB_RECORD=1; wpid=""
+        if pred="$(tab_predecessor_name "$HIMMEL_CONSOLE_NAME")"; then
+            wpid="$(cat "$LOCKDIR/tabs-$pred.window" 2>/dev/null)"  # swallow-ok: no readable predecessor record means no window to adopt, so this arm opens one
+            case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
+            if [ -n "$wpid" ]; then
+                case "$(cat "/proc/$wpid/comm" 2>/dev/null)" in konsole*) ;; *) wpid="" ;; esac  # swallow-ok: a pid with no readable comm is dead or not ours, so it is not adopted
+            fi
+        fi
+        [ -n "$wpid" ] || return 1
+    fi
     tab_sh="$LOCK/tab.sh"
     case "$tab_sh" in
         *[!A-Za-z0-9._/+-]*)
@@ -1686,7 +1724,7 @@ done
 # overreaction.
 rm -rf "$LOCK" 2>/dev/null
 if [ "$sv_indeterminate" -eq 1 ]; then
-    echo "headed-arm: pgrep scan failed confirming the post-launch session for $NAME - refusing to report an indeterminate scan as either success or failure (HIMMEL-2545)" >&2
+    echo "headed-arm: pgrep scan failed confirming the post-launch session for $NAME - refusing to report an indeterminate scan as either success or failure" >&2
     echo "$(date +%F_%T) INDETERMINATE: pgrep scan failed confirming $NAME after launch" >> "$LOG"
     exit 9
 fi

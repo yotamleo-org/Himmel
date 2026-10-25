@@ -10,8 +10,9 @@ import { BASH_BIN } from "./run";
 // 409s the bridge), so nothing reaches it today. Instead the poller — the one
 // getUpdates consumer, unchanged — appends one line to the console's own file
 // inbox and the console Monitors that file (docs/handover/console-template.md,
-// ACTION ZERO). Bare `/console <text>` discovers a single fresh heartbeat;
-// explicit `/console <name> <text>` and Telegram reply receipts pin a console.
+// ACTION ZERO). Bare `/chief <text>` discovers a single fresh heartbeat;
+// explicit `/chief <name> <text>` and Telegram reply receipts pin a console;
+// `/console` is a quiet alias of the same verb.
 //
 // The inbox lives in the bridge's own non-git state dir (<bridge root>/consoles/),
 // NOT under the handover root: that root is a git repo that auto-commits and
@@ -27,7 +28,7 @@ import { BASH_BIN } from "./run";
 // -> console, never console -> leg (docs/internals/retask-channel.md).
 //
 // ponytail: explicit named/thread routes preserve armed-inbox delivery even
-// without a fresh heartbeat; use /consoles before addressing an old identity,
+// without a fresh heartbeat; use /chiefs before addressing an old identity,
 // or require liveness on named routes if silent old-inbox queues recur.
 
 export type ConsoleReplyFn = (chat_id: number, text: string, consoleName?: string, replyToMessageId?: number) => Promise<void>;
@@ -83,7 +84,7 @@ export async function armedConsoles(root: string, now = Date.now()): Promise<Arm
 
 const describeConsoles = (live: (LiveConsole & { busy?: boolean })[]) => live.map(c => `${c.name} — hb=${c.hb} (${new Date(c.hb * 1000).toISOString()}) bucket=${c.bucket} project=${c.project}${c.busy ? " (busy)" : ""}`).join("\n");
 
-// Same refusals as console-kit/inbox-send.sh (empty, path separator, `..`,
+// Same refusals as chief-kit/inbox-send.sh (empty, path separator, `..`,
 // whitespace) — the path is built from this value. The router's charset already
 // excludes `/` and whitespace; `..` and empty are what reach here.
 export function consoleInboxPath(root: string, name: string): string | null {
@@ -171,7 +172,7 @@ export async function routeToConsole(
       const hits = tiers.map(t => live.filter(t)).find(h => h.length) ?? [];
       if (hits.length === 1) name = hits[0].name;
       else {
-        await say(hits.length > 1 ? `More than one console matches "${name}"; choose /console <name> <text>:\n${describeConsoles(hits)}` : live.length ? `More than one console is live; choose /console <name> <text>:\n${describeConsoles(live)}` : `⚠️ no live console${name ? ` (requested "${name}")` : ""} — nothing was sent.`);
+        await say(hits.length > 1 ? `More than one console matches "${name}"; choose /chief <name> <text>:\n${describeConsoles(hits)}` : live.length ? `More than one console is live; choose /chief <name> <text>:\n${describeConsoles(live)}` : `⚠️ no live console${name ? ` (requested "${name}")` : ""} — nothing was sent.`);
         return;
       }
     }
@@ -238,7 +239,7 @@ export async function announceConsole(inbox: string): Promise<void> {
   // use transactional outbox dedupe if crash-loss is observed. Re-arms never spam.
   try {
     const { replyViaOutbox } = await import("./poller");
-    await replyViaOutbox(root, chat, `Console ${name} is live — just send /console <text>`, name);
+    await replyViaOutbox(root, chat, `Console ${name} is live — just send /chief <text>`, name);
   } catch (e) { await unlink(marker); throw e; }
 }
 

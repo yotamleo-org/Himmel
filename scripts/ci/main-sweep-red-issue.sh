@@ -191,7 +191,7 @@ if [ -n "$num" ]; then
   # by hand, or by a pre-marker version) is treated as run 0.
   # A close that stamped main-red-closed-run but then failed to close leaves the
   # issue open with that marker: it is the newest run that wrote the issue too.
-  seen_run="$(printf '%s\n' "$body" | sed -n 's/^<!-- main-red-\(closed-run\|run\): \([0-9][0-9]*\) -->[[:space:]]*$/\2/p' | sort -n | tail -n 1)"
+  seen_run="$(printf '%s\n' "$body" | sed -n -E 's/^<!-- main-red-(closed-run|run): ([0-9][0-9]*) -->[[:space:]]*$/\2/p' | sort -n | tail -n 1)"
   if [ -n "$seen_run" ] && [ "$seen_run" -gt "$RUN_ID" ]; then
     echo "main-sweep-red-issue: #$num was last written by run $seen_run, newer than $RUN_ID -- ignoring this older run."
     exit 0
@@ -222,7 +222,7 @@ if [ -z "$num" ] && [ -s "$TMP/failed" ]; then
       echo "main-sweep-red-issue: could not read closed issue #$cnum (gh failed) -- not creating." >&2
       exit 1
     fi
-    crun="$(printf '%s\n' "$cbody" | sed -n 's/^<!-- main-red-\(closed-run\|run\): \([0-9][0-9]*\) -->[[:space:]]*$/\2/p' | sort -n | tail -n 1)"
+    crun="$(printf '%s\n' "$cbody" | sed -n -E 's/^<!-- main-red-(closed-run|run): ([0-9][0-9]*) -->[[:space:]]*$/\2/p' | sort -n | tail -n 1)"
     if [ -n "$crun" ] && [ "$crun" -gt "$closed_run" ]; then
       closed_run="$crun"
       closed_num="$cnum"

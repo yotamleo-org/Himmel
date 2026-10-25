@@ -12,9 +12,9 @@
 #
 # WHY: console F ended its turn with an empty fleet, a 9-item held queue and
 # `PROCEED` from the bank, and stayed dead for 58 minutes — Stop was
-# unguarded (the only Stop entry, stop-queue.mjs's speak-reply job, never
-# blocks) and no monitor event starts a new turn in an idle interactive
-# session. This hook is the wake path D1 in the ticket calls for: it blocks
+# unguarded (its only entry never blocked) and no monitor event starts a
+# new turn in an idle interactive session. This hook is the wake path D1 in
+# the ticket calls for: it blocks
 # a CONSOLE session's stop exactly once per turn so it is re-prompted
 # instead of going structurally dead. What "outstanding work" means here is
 # deliberately narrow and testable: a console that has genuinely finished

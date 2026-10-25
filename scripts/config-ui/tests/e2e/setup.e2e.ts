@@ -1,5 +1,5 @@
-// Journeys J5 and J7: the Setup page. A secret typed into it reaches the store and nowhere else, and the commit rules
-// change only after a dry-run is confirmed.
+// Journeys J5, J7 and J8: the Setup page. A secret typed into it reaches the store and nowhere else, and the commit
+// rules and setup paths change only after a dry-run is confirmed.
 import { test, expect, type Page } from "@playwright/test";
 import { randomBytes, randomInt } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
@@ -213,4 +213,24 @@ test("J7. cancel runs nothing, and ticket-ID required is off-limits while the tr
   await page.locator('#main .plan button[data-act="close"]').click();
   await expect(page.locator("#main .plan")).toHaveCount(0);
   expect(h.argv().every((l) => l.endsWith("--dry-run")), h.argv().join("\n")).toBe(true);
+});
+
+test("J8. a handover-root change shows its dry-run first and only confirm runs it", async ({ page }) => {
+  await open(page);
+  await page.locator('input[data-path="handover-root"]').fill("/srv/state/handovers");
+  await page.locator('[data-path-form][data-target="handover-root"] button[type="submit"]').click();
+  const plan = page.locator("#main .plan");
+  await expect(plan).toContainText("config set handover.root /srv/state/handovers --dry-run");
+  expect(h.argv().every((l) => l.endsWith("--dry-run")), h.argv().join("\n")).toBe(true);
+  await plan.locator('button[data-act="run"]').click();
+  await expect(page.locator("#main .plan")).toContainText("rc=0");
+  expect(h.argv().at(-1)).toBe("himmelctl config set handover.root /srv/state/handovers");
+});
+
+test("J8. a refused path shows the reason and runs nothing", async ({ page }) => {
+  await open(page);
+  await page.locator('input[data-path="luna-vault"]').fill("../vault");
+  await page.locator('[data-path-form][data-target="luna-vault"] button[type="submit"]').click();
+  await expect(page.locator("#main .plan")).toContainText("absolute path");
+  expect(h.argv()).toEqual([]);
 });

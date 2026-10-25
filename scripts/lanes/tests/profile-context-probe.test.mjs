@@ -541,7 +541,7 @@ test('evaluateProfile: user-scope skill dirs on disk fail the profile; none pass
 });
 
 test('listingTokensByPlugin sums the Skill listing and splits it by plugin; empty usage is zero', () => {
-  const usage = JSON.parse(readFileSync(join(HERE, '..', '..', 'eval', 'leg-digest', 'fixtures', 'profiles', 'probe-context-usage.json'), 'utf8'));
+  const usage = JSON.parse(readFileSync(join(HERE, '..', '..', 'eval', 'worker-digest', 'fixtures', 'profiles', 'probe-context-usage.json'), 'utf8'));
   assert.deepEqual(listingTokensByPlugin(usage), { skill: 260, plugins: { 'lean-skills': 200, qmd: 60 } });
   assert.deepEqual(listingTokensByPlugin(null), { skill: 0, plugins: {} });
 });

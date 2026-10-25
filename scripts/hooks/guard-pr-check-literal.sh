@@ -35,8 +35,10 @@
 # SELF-CONTAINED BY DESIGN: this file sources and execs nothing from the
 # checkout under review - no scripts/guardrails/lib.sh, no scripts/cr/*. Its
 # own bytes are the project hook path run-hook-with-bash.js pins at session
-# start (hook-integrity.js); everything else it consults is git's answer about
-# the cwd, with the repo's fsmonitor switched off and no filter ever run.
+# start (hook-integrity.js), and the one file it sources, ../lib/bash-ast.sh
+# beside it, sits in a directory the same pin covers; everything else it
+# consults is git's answer about the cwd, with the repo's fsmonitor switched
+# off and no filter ever run.
 #
 # FAILURE DIRECTION: FAIL CLOSED (scripts/hooks/CLAUDE.md) - a security fence,
 # and a MUST_RUN_CHAIN_MEMBERS entry in run-hook-with-bash.js, so a starved run
@@ -44,12 +46,12 @@
 # same chain already does. There is no bypass variable: the canonical fence is
 # always available and is the remedy.
 #
-# ponytail: commands are classified by this file's own text scan, not by the
-# bash-ast command positions, because the model reads a heredoc body, ${x@P}
-# and arithmetic as inert data where the write-channel, heredoc-body and
-# printf -v rows this suite pins deny it; upgrade path: give the positions
-# model a deny-on-unreadable mode for those forms, then move the argv and cwd
-# reads.
+# ponytail: commands are classified by this file's own text scan; the bash-ast
+# command positions only lift its deny for a command made of plain readers
+# (ast_data_only), because the model reads a heredoc body, ${x@P} and
+# arithmetic as inert data where the write-channel, heredoc-body and printf -v
+# rows this suite pins deny it; upgrade path: give the positions model a
+# deny-on-unreadable mode for those forms, then move the argv and cwd reads.
 #
 # The targets are EVERY gate-allowed scripts/cr script (the
 # `Bash(bash scripts/cr/...` rows of .claude/settings.json and the leg
@@ -78,7 +80,7 @@ FULL_GUARDED='scripts/cr scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh'
 GUARDED=$FULL_GUARDED
 
 # the scripts/handover/ gate-writer entries the allow rules also pre-approve
-# as RELATIVE literals (merge-on-green.sh, console-kit/go.sh, himmel-gate.sh,
+# as RELATIVE literals (merge-on-green.sh, chief-kit/go.sh, himmel-gate.sh,
 # write-verdict.sh, console-wait.sh)
 # - outside scripts/cr/, so TARGETS above (and the derived/declared check in
 # the test suite, which is scoped to scripts/cr/ allow rows only) does not
@@ -88,9 +90,11 @@ GUARDED=$FULL_GUARDED
 # mode-equal the anchor's. Full relative paths, not bare basenames: "go.sh" is
 # too common a stem to key on alone, and matching the full path is exact
 # rather than relying on a directory-marker substring.
-HTARGETS='scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
-scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh
-scripts/handover/console-kit/console-wait.sh'
+HTARGETS='scripts/handover/merge-on-green.sh
+scripts/handover/console-kit/go.sh scripts/handover/chief-kit/go.sh
+scripts/handover/console-kit/himmel-gate.sh scripts/handover/chief-kit/himmel-gate.sh
+scripts/handover/console-kit/write-verdict.sh scripts/handover/chief-kit/write-verdict.sh
+scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/console-wait.sh'
 # shellcheck disable=SC2016 # printed verbatim as the remedy, never expanded
 FENCE='if himmel_repo=$(printenv HIMMEL_REPO | grep .); then
     bash "$himmel_repo/scripts/cr/pr-check-context.sh"
@@ -108,14 +112,15 @@ shown=""
 flat=""
 deny() {
     {
-        echo "guard-pr-check-literal: DENIED - \`$shown\` (HIMMEL-3383, HIMMEL-3495, HIMMEL-3437): $1"
+        echo "guard-pr-check-literal: DENIED - \`$shown\`: $1"
         echo "A relative spelling of a gate-allowed scripts/cr or scripts/handover/ writer is allowed"
         echo "only in a himmel checkout, at its worktree root, on a tree whose copy of what it runs"
         echo "equals the HIMMEL_REPO anchor's byte for byte and mode for mode (compared raw, so a CRLF"
         echo "checkout differs): scripts/cr/, scripts/guardrails/lib.sh and scripts/lib/load-dotenv.sh"
         echo "for pr-check-context.sh / pr-check-env.sh; the script and scripts/cr/anchor-handoff.sh"
-        echo "for every other target, merge-on-green.sh and console-kit/go.sh included. A scripts/handover/"
-        echo "entry the branch never changed may instead equal its merge-base with main's copy."
+        echo "for every other target, merge-on-green.sh and chief-kit/go.sh included. An entry the"
+        echo "branch never changed (any target but pr-check-context.sh / pr-check-env.sh) may instead"
+        echo "equal its merge-base with main's copy."
         echo "If the command only mentions the script (a message, a heredoc), move that text into a file."
         case "$flat" in
             *pr-check-env*)
@@ -129,7 +134,7 @@ deny() {
                 echo "$FENCE"
                 ;;
             *handover/merge-on-green*)
-                echo "Run the anchored spelling instead (HIMMEL-3491) - EVERY argument must be"
+                echo "Run the anchored spelling instead - EVERY argument must be"
                 echo "unquoted, with no ' or \\ anywhere in the command (the anchor prefix is"
                 echo "exempted only when the whole command carries neither):"
                 echo
@@ -141,25 +146,29 @@ deny() {
                 echo
                 echo "bash \"<himmel_dir>/scripts/handover/merge-on-green.sh\" <args>"
                 ;;
-            *console-kit/go*)
+            *console-kit/go* | *chief-kit/go*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/console-kit/go.sh\" <args>"
+                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/go.sh\" <args>"
                 ;;
-            *console-kit/write-verdict*)
+            *console-kit/write-verdict* | *chief-kit/write-verdict*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/console-kit/write-verdict.sh\" <args>"
+                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/write-verdict.sh\" <args>"
                 ;;
-            *console-kit/console-wait*)
+            *console-kit/console-wait* | *chief-kit/console-wait*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/console-kit/console-wait.sh\" <args>"
+                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/console-wait.sh\" <args>"
                 ;;
             *)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/cr/<script>.sh\" <args>"
+                # shellcheck disable=SC2016 # printed verbatim, never expanded
+                case "${entries:-}" in
+                    ' '*' '*|'') echo "bash \"<himmel_dir>/scripts/cr/<script>.sh\" <args>" ;;
+                    *) echo 'bash "$HIMMEL_REPO/scripts/cr/'"${entries# }"'" <args>' ;;
+                esac
                 ;;
         esac
     } >&2
@@ -746,12 +755,16 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     done
     # same prefix-stem match, keyed on each HTARGET's own
     # immediate parent directory (handover/ for merge-on-green.sh,
-    # console-kit/ for go.sh) rather than a fixed "cr/" marker.
+    # chief-kit/ for go.sh) rather than a fixed "cr/" marker.
     case "$1" in *[hH]andover/merge-on-green*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/write-verdict*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/console-wait*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/go*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/himmel-gate*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/console-wait*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"
 }
@@ -1118,7 +1131,7 @@ git_mentions_only() { # git_mentions_only <command-word index>
 if prlit_backstop "$cmd" && ! git_read_to_file; then
     shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "the command names a guarded script and can write text to a file or feed it as input (a '>' redirect that is not an fd dup or /dev/null, a <<< here-string, or tee), or shadows a reader (cat, tee, ...) with a function or alias - whatever later runs that file cannot be enumerated, so it cannot be proven safe (HIMMEL-3917, HIMMEL-3913). If the text contains '>' (an arrow in a message, a Results bullet), write it with the Write tool and pass the file (-F, --body-file, --comment-file), or use '→' / 'to' instead. Run each script as its own literal command."
+    deny "the command names a guarded script and can write text to a file or feed it as input (a '>' redirect that is not an fd dup or /dev/null, a <<< here-string, or tee), or shadows a reader (cat, tee, ...) with a function or alias - whatever later runs that file cannot be enumerated, so it cannot be proven safe. If the text contains '>' (an arrow in a message, a Results bullet), write it with the Write tool and pass the file (-F, --body-file, --comment-file), or use '→' / 'to' instead. Run each script as its own literal command."
 fi
 readers_only() { # true when every command the command line runs is a reader
     local k sg=-1 cw=-1 w
@@ -1365,7 +1378,7 @@ if [ "$PR_LINE_GIT" = 1 ]; then
         fi
     fi
     if [ -n "$pr_line_deny" ]; then
-        deny "$pr_line_deny: git or the shell it spawns executes these values, and a second shell can build a guarded script path (HIMMEL-5170). Run the script as its own literal command, or use a plain value (GIT_EDITOR=vim git commit)."
+        deny "$pr_line_deny: git or the shell it spawns executes these values, and a second shell can build a guarded script path. Run the script as its own literal command, or use a plain value (GIT_EDITOR=vim git commit)."
     fi
 fi
 if [ "$PR_TOKENIZED" = 1 ]; then
@@ -1376,7 +1389,7 @@ if [ "$PR_TOKENIZED" = 1 ]; then
         if seg_meta "$mk" "$mek"; then
             shown=${cmd//$'\n'/ }
             shown=${shown:0:200}
-            deny "a value git or the shell it spawns will execute (a GIT_*/EDITOR/VISUAL/PAGER assignment, git -c k=v, git config <key> <value>, a git option value) carries a shell expansion character (\$ \` * ? [ { or a backslash): a second shell can build a guarded script path from it. Use a plain value (less -R, vim, code --wait) or run the script as its own literal command (HIMMEL-5170)."
+            deny "a value git or the shell it spawns will execute (a GIT_*/EDITOR/VISUAL/PAGER assignment, git -c k=v, git config <key> <value>, a git option value) carries a shell expansion character (\$ \` * ? [ { or a backslash): a second shell can build a guarded script path from it. Use a plain value (less -R, vim, code --wait) or run the script as its own literal command."
         fi
         mk=$mek
     done
@@ -1431,7 +1444,7 @@ envs_deferred=0
 if [ "$envs_deferred" = 0 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ] || [ "$PR_GIT_EXEC" = 1 ]; }; then
     shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
+    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command."
 fi
 
 # git runs an editor or an alias program this
@@ -1556,7 +1569,7 @@ fi
 edhook_deny() {
     local shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "the command names a guarded script as an assignment value, a git config value, a git option value or an argument of a git subcommand outside the safe set (GIT_EDITOR=, git config <key> <script>, git send-email --to-cmd=, GIT_CONFIG_*): git would run the script unread; run the script as its own literal command (HIMMEL-5170)."
+    deny "the command names a guarded script as an assignment value, a git config value, a git option value or an argument of a git subcommand outside the safe set (GIT_EDITOR=, git config <key> <script>, git send-email --to-cmd=, GIT_CONFIG_*): git would run the script unread; run the script as its own literal command."
 }
 
 # Command position. The rule here is "a registered gate runs unmodified with
@@ -1604,7 +1617,8 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     return "$rc"
 }
 
-GATE_REL=scripts/handover/console-kit/himmel-gate.sh
+GATE_REL=scripts/handover/console-kit/himmel-gate.sh # old-term-ok: the layout before the move
+GATE_REL_NEW=scripts/handover/chief-kit/himmel-gate.sh
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
 # cmdpos_git <git word index> - a pathspec-only git, or one that names no
@@ -1624,9 +1638,11 @@ cmdpos_git() {
     return "$rc"
 }
 cmdpos_clean() { # true when no segment of $cmd executes a script but the dispatcher
-    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw hit
+    local k j sg=-1 cw=-1 kind='' dk=-1 gates=0 gseg=-1 w t raw hit gold=0 gnew=0
     # shellcheck disable=SC2016 # the literal anchored spellings, never expanded
     local s1="\"\$HIMMEL_REPO/$GATE_REL\"" s2="\"\${HIMMEL_REPO}/$GATE_REL\""
+    # shellcheck disable=SC2016 # as above
+    local s3="\"\$HIMMEL_REPO/$GATE_REL_NEW\"" s4="\"\${HIMMEL_REPO}/$GATE_REL_NEW\""
     st_tokenize "$cmd" || return 1
     [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
     k=0
@@ -1657,7 +1673,11 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
                     [ "$j" -lt "$ST_N" ] && [ "${ST_S[j]}" = "$sg" ] || return 1
                     [ "${ST_Q[j]}${ST_X[j]}${ST_G[j]}" = 110 ] || return 1
                     # shellcheck disable=SC2016 # literal text, never expanded
-                    case "${ST_W[j]}" in '$HIMMEL_REPO/'"$GATE_REL" | '${HIMMEL_REPO}/'"$GATE_REL") ;; *) return 1 ;; esac
+                    case "${ST_W[j]}" in
+                        '$HIMMEL_REPO/'"$GATE_REL" | '${HIMMEL_REPO}/'"$GATE_REL") gold=1 ;;
+                        '$HIMMEL_REPO/'"$GATE_REL_NEW" | '${HIMMEL_REPO}/'"$GATE_REL_NEW") gnew=1 ;;
+                        *) return 1 ;;
+                    esac
                     # A pipe only after a lone --help: an fd dup (1>&2, 1>&-)
                     # hides the pipe from the dispatcher's own check.
                     if [ "${ST_SEP[sg]}" = '|' ]; then
@@ -1687,17 +1707,21 @@ cmdpos_clean() { # true when no segment of $cmd executes a script but the dispat
         case "${ST_SEP[k]}" in '' | '&&' | '|') ;; *) return 1 ;; esac
         k=$((k + 1))
     done
-    # Every dispatcher word is one of the two raw spellings above (a `"$"`
+    # Every dispatcher word is one of the raw spellings above (a `"$"`
     # or quoted-away `$` reads the same once tokenized), the command names
     # HIMMEL_REPO nowhere else, and this hook's own value is an anchor that
-    # carries the dispatcher.
-    case "${HIMMEL_REPO:-}" in /*) [ -f "$HIMMEL_REPO/$GATE_REL" ] || return 1 ;; *) return 1 ;; esac
+    # carries the dispatcher under each kit spelling used.
+    case "${HIMMEL_REPO:-}" in /*) ;; *) return 1 ;; esac
+    [ "$gold" = 0 ] || [ -f "$HIMMEL_REPO/$GATE_REL" ] || return 1
+    [ "$gnew" = 0 ] || [ -f "$HIMMEL_REPO/$GATE_REL_NEW" ] || return 1
     raw=$cmd
     k=0
     while :; do
         case "$raw" in
             *"$s1"*) raw=${raw/"$s1"/ } ;;
             *"$s2"*) raw=${raw/"$s2"/ } ;;
+            *"$s3"*) raw=${raw/"$s3"/ } ;;
+            *"$s4"*) raw=${raw/"$s4"/ } ;;
             *) break ;;
         esac
         k=$((k + 1))
@@ -1970,7 +1994,7 @@ glob_is_literal_elsewhere() {
             case "$dir" in *[][*?{}~\$]*|*..*|*//*|*/./*) return 1 ;; esac
             shopt -s nocasematch
             case "/${rel%/*}" in
-                */cr|*/scripts/cr/*|*/scripts/handover|*/scripts/handover/console-kit)
+                */cr|*/scripts/cr/*|*/scripts/handover|*/scripts/handover/console-kit|*/scripts/handover/chief-kit)
                     shopt -u nocasematch; return 1 ;;
             esac
             shopt -u nocasematch
@@ -2162,6 +2186,9 @@ for word in $scan_flat; do
 done
 entries=""
 hentries=""
+KIT_OLD=scripts/handover/console-kit # old-term-ok: the layout before the move
+KIT_NEW=scripts/handover/chief-kit
+kit_new_spelled=0 kit_old_spelled=0
 _c_ops_eq_to_nl "$scan_flat"
 for tok in $REPLY; do
     if [ "$himmel_anchor_prefix" -eq 1 ]; then
@@ -2209,9 +2236,15 @@ for tok in $REPLY; do
         # itself + scripts/cr/anchor-handoff.sh - full-path match, not a
         # TARGETS-style basename lookup, since HTARGETS entries are full
         # relative paths (a basename alone, "go.sh", is too common a stem).
+        # A kit writer is recorded by its chief-kit/ path whichever kit
+        # spelling named it; manifest() reads it from each root's own kit.
         hit=1
         case " $HTARGETS " in
             *[[:space:]]"$rel"[[:space:]]*)
+                case "$rel" in
+                    "$KIT_OLD"/*) rel=$KIT_NEW/${rel#"$KIT_OLD"/}; kit_old_spelled=1 ;;
+                    "$KIT_NEW"/*) kit_new_spelled=1 ;;
+                esac
                 case " $hentries " in *" $rel "*) ;; *) hentries="$hentries $rel" ;; esac ;;
             *) unresolved=$tok ;;
         esac
@@ -2461,18 +2494,109 @@ herestring_split_mention() { # herestring_split_mention <raw command> - true
 if [ "$hit" -eq 0 ] && [ "$mentions" -eq 1 ] && [ "$wrapped" -eq 1 ] \
     && { split_unresolvable_mention "$cmd" || herestring_split_mention "$cmd" || [ "$ENV_SPLIT_CAPPED" -eq 1 ]; }; then
     if [ "$ENV_SPLIT_CAPPED" -eq 1 ]; then
-        deny "a shell body nested more than $ENV_SPLIT_NEST_CAP levels deep (eval / bash -c inside eval / bash -c) is not re-read past that depth, so an env -S inside it cannot be ruled out; flatten the command or run the guarded target by its literal spelling (HIMMEL-4516)."
+        deny "a shell body nested more than $ENV_SPLIT_NEST_CAP levels deep (eval / bash -c inside eval / bash -c) is not re-read past that depth, so an env -S inside it cannot be ruled out; flatten the command or run the guarded target by its literal spelling."
     fi
-    deny "an env -S / --split-string string naming a guarded target cannot be fully resolved (a backslash escape, '#' or '\$' - GNU env -S: \\c ignores the rest, '#' comments, \${VAR} expands), so which script runs is unprovable; run the target by its literal spelling with no env -S wrapper (HIMMEL-1813)."
+    deny "an env -S / --split-string string naming a guarded target cannot be fully resolved (a backslash escape, '#' or '\$' - GNU env -S: \\c ignores the rest, '#' comments, \${VAR} expands), so which script runs is unprovable; run the target by its literal spelling with no env -S wrapper."
 fi
 # An env -S line deferred here from the early check, so the more specific
 # env -S deny above names the cause when it applies.
 if [ "$envs_deferred" = 1 ] && [ "$PR_GIT_UNSAFE" = 1 ] && { [ "$mentions" = 1 ] || [ "$PR_GIT_EXEC" = 1 ]; }; then
     shown=${cmd//$'\n'/ }
     shown=${shown:0:200}
-    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command (HIMMEL-4916)."
+    deny "git execution/config options or ambiguous option-value boundaries cannot be proven to be pathspec mentions (a guarded script is named, or the option runs a program whatever the pathspec); drop the option or run the script as its own literal command."
 fi
 [ "$hit" -eq 1 ] || { [ "${edhook_pending:-0}" = 1 ] && edhook_deny; exit 0; }
+# A command whose every command position is a plain reader (sort, uniq and
+# sed only in forms that write no file and run nothing), a standalone
+# assignment, or bash/sh running the append-results.sh bullet writer (which
+# never runs its arguments) runs no guarded script, so a gate path or glob in
+# its arguments, a heredoc body or a message is data. The positions come from the shared shfmt model
+# (scripts/lib/bash-ast.sh, pinned with this hook); a parse failure, a
+# position it cannot read, a wrapper, an interpreter or any other program
+# keeps the text scan below, so this only lifts a deny raised on data.
+# Arithmetic, [[ ]], ${x@P}, a subscripted expansion, an indirect ${!x}, a
+# ${x:offset} and a NAME[sub]= assignment can run a substitution the model
+# does not list (bash evaluates another variable's value as a subscript); a for/select loop variable is an
+# assignment it does not list either (only an upper-case name or a zsh name
+# tied to one, like path, can be a dangerous one), and neither is a printf
+# %n conversion, which assigns the
+# variable its argument names; a command or process substitution's output is re-split and
+# globbed; a write to a file can hold text a later call runs; and the Bash
+# tool runs zsh, whose glob qualifiers (`*(e:'cmd':)`, `x(N)`), extglob-shaped
+# words and ${(e)x}/${~x} expansions can run a command the bash model reads as
+# a plain word. Each keeps the text scan. The bullet writer is trusted only by the anchor's path, or
+# by the cwd-relative path with no cd and the cwd's copy byte-equal to the
+# anchor's: any other copy may run its arguments.
+# shellcheck disable=SC2016 # a jq program, never expanded by bash
+AST_JQ='def lit: .t == "lit" and (.g | not);
+  def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
+  def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
+  def ok: .opaque == null and ((.via // []) | length) == 0
+    and ((((.assigns // []) | length) == 0) or (.prog == null and all(.assigns[]; danger | not)))
+    and all(.redirs[]; (outw | not) or (.w != null and (.w | lit) and .w.v == "/dev/null"))
+    and (if .prog == null then true
+         elif ((.argv[0] // {t: "dyn"}) | lit and (.v | contains("/") | not)) | not then false
+         elif .prog == "bash" or .prog == "sh" then
+             (.argv[1] // null) as $a
+             | $a != null and ($a | lit) and ($a.v == $ar or $a.v == $rel)
+         elif .prog == "printf" then
+             (.argv[1] // null) as $a | $a == null or (($a | lit) and ($a.v | startswith("-") | not)
+               and ($a.v | test("%[^a-zA-Z%]*[hlLqjzt]*n") | not))
+         elif .prog == "sort" then
+             all(.argv[1:][]; lit and ((.v | test("^-([bdfgiMnrRsuVz]+|k[0-9.,a-zA-Z]+|t.)$")) or (.v | startswith("-") | not)))
+         elif .prog == "uniq" then
+             all(.argv[1:][]; lit and ((.v | test("^-[cdiuz]+$")) or (.v | startswith("-") | not)))
+             and ([.argv[1:][] | select(.v | startswith("-") | not)] | length) <= 1
+         elif .prog == "sed" then
+             (.argv | length) >= 3 and (.argv[1] | lit and .v == "-n")
+             and (.argv[2] | lit and (.v | test("^([0-9]+|\\$)(,([0-9]+|\\$))?p$")))
+             and all(.argv[3:][]; lit and (.v | startswith("-") | not))
+         else .prog as $p | any("grep", "egrep", "fgrep", "cat", "head", "tail", "wc", "ls", "cut", "tr", "nl", "jq", "echo", "cd", "mkdir", "true", ":"; . == $p)
+         end);
+if all(.[]; ok) | not then "legacy"
+elif any(.[]; (.prog == "bash" or .prog == "sh") and .argv[1].v == $rel) then
+    (if any(.[]; .prog == "cd") then "legacy" else "data-rel" end)
+else "data" end'
+ast_data_only() {
+    local lib pos verdict here j
+    local rel=scripts/handover/chief-kit/append-results.sh anchor=${HIMMEL_REPO:-}
+    anchor=${anchor%/}
+    [ -n "$anchor" ] || return 1
+    # The shell joins a backslash-newline away before it reads `$\<nl>{`, so
+    # every pre-screen reads the joined text.
+    _c_join_continuations "$cmd"
+    j=$REPLY
+    # shellcheck disable=SC2016 # literal patterns, never expanded
+    case "$j" in *'@P'* | *'(('* | *'$['* | *'[['* | *'$('* | *'`'* | *'<('* | *'>('*) return 1 ;; esac
+    # shellcheck disable=SC2016 # literal patterns, never expanded
+    case "$j" in *'*('* | *'?('* | *'+('* | *'@('* | *'!('* | *'${('* | *'${~'* | *'$~'*) return 1 ;; esac
+    [[ "$j" =~ [^[:space:]\;\&\|\<\>\(]\([^\)]*\)([[:space:]\;\&\|\<\>]|$) ]] && return 1
+    [[ "$j" =~ \$\{[^}]*\[ ]] && return 1
+    # shellcheck disable=SC2016 # literal pattern, never expanded
+    case "$j" in *'${!'*) return 1 ;; esac
+    [[ "$j" =~ \$\{[^}:]+:[^-=+?] ]] && return 1
+    [[ "$j" =~ [[:alnum:]_]\[.*\]\+?= ]] && return 1
+    [[ "$j" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+([[:alnum:]_]*[[:upper:]]|(path|cdpath|fpath|manpath|module_path)([^[:alnum:]_]|$)) ]] && return 1
+    lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
+    # shellcheck source=../lib/bash-ast.sh
+    { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || return 1
+    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || return 1 # swallow-ok: any failure keeps the text scan
+    verdict=$(printf '%s' "$pos" | jq -r --arg ar "$anchor/$rel" --arg rel "$rel" "$AST_JQ" 2>/dev/null) || return 1 # swallow-ok: a jq failure keeps the text scan
+    case "$verdict" in
+    data) return 0 ;;
+    data-rel)
+        here=$(jq -r '. + "."' <<<"$cwd_json" 2>/dev/null) || return 1 # swallow-ok: an undecodable cwd keeps the text scan
+        here=${here%.}
+        case "$here" in /*) ;; *) return 1 ;; esac
+        cmp -s -- "$here/$rel" "$anchor/$rel"
+        ;;
+    *) return 1 ;;
+    esac
+}
+if ast_data_only; then
+    [ "${edhook_pending:-0}" = 1 ] && edhook_deny
+    exit 0
+fi
 # ponytail: a glob through a directory symlink the text does not spell as
 # scripts/cr (`bash scripts/lnk/*`, lnk -> cr) is not a candidate - the same
 # class as `bash scripts/lnk/x.sh`, which this hook never saw either, and no
@@ -2495,13 +2619,13 @@ for e in $hentries; do
     # own $HERE. Once entry + the hand-off it shares with scripts/cr/ byte-
     # match the anchor's, the hand-off's own `exec` fully replaces the
     # process before $HERE (or either sibling) is ever read, landing $HERE
-    # in the ANCHOR's own console-kit/ - a branch's edited siblings are
+    # in the ANCHOR's own kit directory - a branch's edited siblings are
     # provably never read (verified empirically with a toy fixture, not
     # just reasoned). Listed anyway as defence in depth: for an anchor
     # predating #1212 (no hand-off wired yet) and for N463's upcoming
     # go.sh/go-gate.sh touch.
     case "$e" in
-        scripts/handover/console-kit/go.sh)
+        scripts/handover/chief-kit/go.sh)
             GUARDED="$GUARDED scripts/lib/go-gate.sh scripts/lib/handover-path.sh" ;;
     esac
 done
@@ -2601,40 +2725,84 @@ prefix=$(gitq rev-parse --show-prefix 2>/dev/null) \
 # moves main itself (update-ref) is fenced by the git-write guards, not here.
 # ponytail: checked at match time only - a background job or another session
 # can swap the bytes between this check and the exec (TOCTOU), not closed here.
-manifest() { # manifest <root> - "<mode> <blob-id> <path>" per regular file, sorted
-    local root=$1 odd files execs oids modes prune_dirs
-    # shellcheck disable=SC2086 # $GUARDED is a fixed, space-free word list
+# kit_of <root> - print the directory <root> keeps the kit writers in: a real
+# console-kit/ with nothing named chief-kit beside it (the layout before the
+# move), or a real chief-kit/ with nothing named console-kit beside it. Any
+# other shape (both, neither, or a symlink at either) fails, so neither
+# spelling can run bytes the manifest never hashed.
+kit_of() {
+    local h=$1/scripts/handover
+    [ ! -L "$h/chief-kit" ] && [ ! -L "$h/console-kit" ] || return 1 # old-term-ok: the layout before the move
+    if [ -d "$h/console-kit" ] && [ ! -e "$h/chief-kit" ]; then
+        echo console-kit # old-term-ok: the layout before the move
+    elif [ -d "$h/chief-kit" ] && [ ! -e "$h/console-kit" ]; then
+        echo chief-kit
+    else
+        return 1
+    fi
+}
+# kit_words <kit> <word>... - the words, a chief-kit/ path moved under <kit>
+kit_words() {
+    local k=$1 w kw=''
+    shift
+    for w in "$@"; do
+        case "$w" in "$KIT_NEW"/*) w=scripts/handover/$k/${w#"$KIT_NEW"/} ;; esac
+        kw="$kw $w"
+    done
+    printf '%s\n' "${kw# }"
+}
+# An awk canon(): a path under the old kit read as its chief-kit/ path, so the
+# manifests of two roots on different layouts compare path for path.
+KIT_CANON_AWK='function canon(p) { if (index(p, "scripts/handover/console-kit/") == 1) return "scripts/handover/chief-kit/" substr(p, 30); return p }' # old-term-ok: the layout before the move
+manifest() { # manifest <root> <kit> - "<mode> <blob-id> <path>" per regular file, sorted
+    local root=$1 kit=$2 odd files execs oids modes prune_dirs g
     # scripts/ and scripts/cr/ themselves must be real directories: a per-file
     # GUARDED list would otherwise read straight through a symlinked one.
-    # scripts/handover/ and scripts/handover/console-kit/ join the
+    # scripts/handover/ and the root's kit directory join the
     # same check, but only when $GUARDED actually reaches under them - the
     # fixtures a scripts/cr/-only run checks never create scripts/handover/,
     # and an unconditional check here would deny those runs on a missing path.
     prune_dirs='scripts scripts/cr'
     case " $GUARDED " in
-        *' scripts/handover/console-kit/go.sh '* | *' scripts/handover/console-kit/himmel-gate.sh '* | *' scripts/handover/console-kit/write-verdict.sh '* | *' scripts/handover/console-kit/console-wait.sh '*) prune_dirs="$prune_dirs scripts/handover scripts/handover/console-kit" ;;
+        *" $KIT_NEW/"*)
+            [ -n "$kit" ] || { printf 'ODD %s\n' "scripts/handover/chief-kit or console-kit (not exactly one real kit directory)"; return 0; }
+            prune_dirs="$prune_dirs scripts/handover scripts/handover/$kit" ;;
         *' scripts/handover/merge-on-green.sh '*) prune_dirs="$prune_dirs scripts/handover" ;;
     esac
-    # shellcheck disable=SC2086 # prune_dirs is a fixed, space-free word list
+    # shellcheck disable=SC2086 # $GUARDED is a fixed, space-free word list
+    g=$(kit_words "$kit" $GUARDED)
+    # shellcheck disable=SC2086 # prune_dirs and $g are fixed, space-free word lists
     odd=$(cd "$root" && {
         find $prune_dirs -prune ! -type d
-        find $GUARDED \( ! -type d ! -type f \) -o -name '*[[:cntrl:]]*'
+        find $g \( ! -type d ! -type f \) -o -name '*[[:cntrl:]]*'
     } 2>/dev/null) || return 1
     [ -z "$odd" ] || { printf 'ODD %s\n' "$(printf '%s' "$odd" | tr '\n' ' ')"; return 0; }
     # shellcheck disable=SC2086 # as above
-    files=$(cd "$root" && find $GUARDED -type f 2>/dev/null) || return 1
+    files=$(cd "$root" && find $g -type f 2>/dev/null) || return 1
     [ -n "$files" ] || return 1
     # shellcheck disable=SC2086 # as above
-    execs=$(cd "$root" && find $GUARDED -type f -perm -100 2>/dev/null) || return 1
+    execs=$(cd "$root" && find $g -type f -perm -100 2>/dev/null) || return 1
     oids=$(printf '%s\n' "$files" \
         | git --no-replace-objects -C "$root" -c core.fsmonitor=false hash-object --no-filters --stdin-paths 2>/dev/null) || return 1
     modes=$(awk 'NR == FNR { x[$0] = 1; next } { print (($0 in x) ? "100755" : "100644") }' \
         <(printf '%s\n' "$execs") <(printf '%s\n' "$files")) || return 1
     [ "$(printf '%s\n' "$files" | wc -l)" = "$(printf '%s\n' "$oids" | wc -l)" ] || return 1
     [ "$(printf '%s\n' "$files" | wc -l)" = "$(printf '%s\n' "$modes" | wc -l)" ] || return 1
-    paste -d' ' <(printf '%s\n' "$modes") <(printf '%s\n' "$oids") <(printf '%s\n' "$files") | LC_ALL=C sort
+    paste -d' ' <(printf '%s\n' "$modes") <(printf '%s\n' "$oids") \
+        <(printf '%s\n' "$files" | awk "$KIT_CANON_AWK"' { print canon($0) }') | LC_ALL=C sort
 }
-if ! want=$(manifest "$repo") || [ -z "$want" ]; then
+akit='' wkit=''
+case " $GUARDED " in
+    *" $KIT_NEW/"*)
+        akit=$(kit_of "$repo") || akit=''
+        wkit=$(kit_of "$cwd") || wkit=''
+        ;;
+esac
+[ "$kit_new_spelled" = 0 ] || [ "$wkit" = chief-kit ] \
+    || deny "the command spells scripts/handover/chief-kit/, but this tree keeps its kit writers in scripts/handover/console-kit/, so the chief-kit spelling runs bytes this check never hashed."
+[ "$kit_old_spelled" = 0 ] || [ "$wkit" != chief-kit ] \
+    || deny "the command spells scripts/handover/console-kit/, but this tree keeps its kit writers in scripts/handover/chief-kit/ and no console-kit path exists after the move: spell it scripts/handover/chief-kit/."
+if ! want=$(manifest "$repo" "$akit") || [ -z "$want" ]; then
     deny "the HIMMEL_REPO anchor's scripts/cr/ and sourced libs ($repo) cannot be read and hashed."
 fi
 case "$want" in ODD\ *) deny "the HIMMEL_REPO anchor carries a non-regular file or a control-character name under the guarded paths: ${want#ODD }" ;; esac
@@ -2642,39 +2810,46 @@ anchorq() { git --no-replace-objects -C "$repo" -c core.fsmonitor=false -c core.
 head_ref=$(anchorq symbolic-ref -q HEAD 2>/dev/null) || head_ref=""
 [ "$head_ref" = refs/heads/main ] \
     || deny "the HIMMEL_REPO anchor ($repo) is not on refs/heads/main (its HEAD is '${head_ref:-detached}'), so its bytes are not main's."
-# shellcheck disable=SC2086 # $GUARDED is a fixed, space-free word list
-if ! committed=$(anchorq ls-tree -r --full-tree refs/heads/main -- $GUARDED 2>/dev/null \
-    | awk -F'\t' '{ split($1, m, " "); print m[1] " " m[3] " " $2 }' | LC_ALL=C sort) || [ -z "$committed" ]; then
+# shellcheck disable=SC2046,SC2086 # $GUARDED is a fixed, space-free word list
+if ! committed=$(anchorq ls-tree -r --full-tree refs/heads/main -- $(kit_words "$akit" $GUARDED) 2>/dev/null \
+    | awk -F'\t' "$KIT_CANON_AWK"' { split($1, m, " "); print m[1] " " m[3] " " canon($2) }' | LC_ALL=C sort) || [ -z "$committed" ]; then
     deny "refs/heads/main's guarded paths in the HIMMEL_REPO anchor ($repo) cannot be listed."
 fi
 [ "$want" = "$committed" ] \
     || deny "the HIMMEL_REPO anchor's working tree ($repo) under the guarded paths is not refs/heads/main's committed bytes, so it cannot serve as the base."
-if ! have=$(manifest "$cwd") || [ -z "$have" ]; then
+if ! have=$(manifest "$cwd" "$wkit") || [ -z "$have" ]; then
     deny "the worktree's scripts/cr/ and sourced libs cannot be read and hashed."
 fi
 case "$have" in ODD\ *) deny "a non-regular file or a control-character name sits under the guarded paths: ${have#ODD }" ;; esac
-# A branch cut before main moved a scripts/handover/ entry still carries the
-# copy of its merge-base with main when the branch never touched it: main-
-# reviewed bytes whose first statement sources the hand-off, which then execs
-# the anchor's copy. Only the entries may differ that way; the hand-off and
-# go.sh's siblings must still equal the anchor's. The merge-base is computed
-# with grafts and the commit-graph off (both are files a leg can write in the
-# shared .git, and either can fake a parent), and replace refs off as above.
-# ponytail: scripts/cr/ entries keep the strict equality (/pr-check's anchored
-# fence covers them); a hand-off whose own runtime check finds
-# scripts/guardrails/lib.sh or scripts/lib/load-dotenv.sh moved on main still
-# refuses at run time - merge main forward in that case.
+# A branch cut before main moved an entry still carries the copy of its
+# merge-base with main when the branch never touched it: main-reviewed bytes
+# whose first statement sources the hand-off, which then execs the anchor's
+# copy. Only the entries may differ that way; the hand-off and go.sh's
+# siblings must still equal the anchor's (the hand-off compares its own bytes
+# with the anchor's at run time and refuses on a difference). pr-check-
+# context.sh / pr-check-env.sh keep the whole-tree equality. The merge-base is
+# computed with grafts and the commit-graph off (both are files a leg can
+# write in the shared .git, and either can fake a parent), and replace refs
+# off as above.
+# ponytail: a hand-off whose own runtime check finds scripts/guardrails/lib.sh
+# or scripts/lib/load-dotenv.sh moved on main still refuses at run time -
+# merge main forward in that case.
 behind_main_entries_ok() {
-    local wt_head mb base e rest_have rest_want
-    [ -z "$entries" ] && [ -n "$hentries" ] || return 1
+    local wt_head mb mkit=console-kit base e s mentries rest_have rest_want # old-term-ok: the layout before the move
+    [ "$GUARDED" != "$FULL_GUARDED" ] || return 1
+    mentries=$hentries
+    for e in $entries; do mentries="$mentries scripts/cr/$e"; done
+    [ -n "$mentries" ] || return 1
     wt_head=$(gitq rev-parse --verify -q 'HEAD^{commit}' 2>/dev/null) || return 1 # swallow-ok: a failure denies
     mb=$(GIT_GRAFT_FILE=/dev/null anchorq -c core.commitGraph=false merge-base refs/heads/main "$wt_head" 2>/dev/null) || return 1 # swallow-ok: a failure denies
     [ -n "$mb" ] || return 1
-    # shellcheck disable=SC2086 # $hentries is a fixed, space-free word list
-    base=$(anchorq ls-tree -r --full-tree "$mb" -- $hentries 2>/dev/null \
-        | awk -F'\t' '{ split($1, m, " "); print m[1] " " m[3] " " $2 }' | LC_ALL=C sort) || return 1
+    # The merge-base keeps its kit writers wherever its own tree has them.
+    case "$(anchorq ls-tree "$mb" -- "$KIT_NEW" 2>/dev/null)" in '040000 tree '*) mkit=chief-kit ;; esac # swallow-ok: a failed read keeps console-kit, whose empty listing below denies
+    # shellcheck disable=SC2046,SC2086 # $mentries is a fixed, space-free word list
+    base=$(anchorq ls-tree -r --full-tree "$mb" -- $(kit_words "$mkit" $mentries) 2>/dev/null \
+        | awk -F'\t' "$KIT_CANON_AWK"' { split($1, m, " "); print m[1] " " m[3] " " canon($2) }' | LC_ALL=C sort) || return 1
     [ -n "$base" ] || return 1
-    [ "$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } ($3 in h)')" = "$base" ] || return 1
+    [ "$(printf '%s\n' "$have" | awk -v e="$mentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } ($3 in h)')" = "$base" ] || return 1
     # The merge-base copy must run nothing before the hand-off: past comments,
     # blank lines and one `set -u` / `set -uo pipefail` line, its first
     # statements are the `_ah_d` line and the hand-off source line, which
@@ -2682,17 +2857,22 @@ behind_main_entries_ok() {
     # depth sources a file the guard never hashes). Blank means space or tab
     # only: bash does not treat \v, \f or \r as blank, so [[:space:]] would
     # skip a line bash runs.
-    for e in $hentries; do
+    for e in $mentries; do
+        # The dot is quoted apart from the path so hook-integrity.js does not
+        # read these strings as this hook sourcing scripts/cr/anchor-handoff.sh.
+        # shellcheck disable=SC2016 # the entries' literal source line
         case "$e" in
-            scripts/handover/merge-on-green.sh) up=.. ;;
-            scripts/handover/console-kit/go.sh | scripts/handover/console-kit/write-verdict.sh \
-                | scripts/handover/console-kit/console-wait.sh) up=../.. ;;
+            scripts/cr/anchor-handoff.sh) return 1 ;;
+            scripts/cr/*) s='.'' "$_ah_d/anchor-handoff.sh" || exit 2' ;;
+            scripts/handover/merge-on-green.sh) s='.'' "$_ah_d/../cr/anchor-handoff.sh" || exit 2' ;;
+            scripts/handover/chief-kit/go.sh | scripts/handover/chief-kit/write-verdict.sh \
+                | scripts/handover/chief-kit/console-wait.sh) s='.'' "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' ;;
             *) return 1 ;;
         esac
-        # shellcheck disable=SC2016 # the entries' literal `_ah_d` and source lines
-        anchorq cat-file blob "$mb:$e" 2>/dev/null \
+        # shellcheck disable=SC2016 # the entries' literal `_ah_d` line
+        anchorq cat-file blob "$mb:$(kit_words "$mkit" "$e")" 2>/dev/null \
             | awk -v c='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; esac' \
-                -v s=". \"\$_ah_d/$up/cr/anchor-handoff.sh\" || exit 2" '
+                -v s="$s" '
                 d { next }
                 /^[ \t]*(#|$)/ { next }
                 n == 0 && /^set -u(o pipefail)?$/ { n = 1; next }
@@ -2700,8 +2880,8 @@ behind_main_entries_ok() {
                 { f = ($0 == s); d = 1 }
                 END { exit !f }' || return 1
     done
-    rest_have=$(printf '%s\n' "$have" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
-    rest_want=$(printf '%s\n' "$want" | awk -v e="$hentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
+    rest_have=$(printf '%s\n' "$have" | awk -v e="$mentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
+    rest_want=$(printf '%s\n' "$want" | awk -v e="$mentries" 'BEGIN { split(e, a, " "); for (i in a) h[a[i]] = 1 } !($3 in h)')
     [ "$rest_have" = "$rest_want" ]
 }
 if [ "$have" != "$want" ] && ! behind_main_entries_ok; then

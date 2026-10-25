@@ -152,7 +152,7 @@ if is_scheduler_create "$cmd_lc" && launches_claude "$cmd_lc"; then
         echo "    A hand-rolled schtasks/crontab/at job that launches claude fires with"
         echo "    its DEFAULT cwd (C:\\Windows\\System32 on Windows), so the relaunch runs"
         echo "    OUTSIDE the repo — wasting the run and registering a stray System32"
-        echo "    project (HIMMEL-647)."
+        echo "    project."
         echo ""
         echo "    Use the sanctioned tool, which sets cwd, pre-trusts it, dedups and"
         echo "    self-cleans:"

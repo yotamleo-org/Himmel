@@ -231,7 +231,7 @@ refuse scripts/eval/graphify-ab/run.sh bash 2 "HIMMEL_BILLED_OK" run
 refuse scripts/eval/retrieval-eval/answer-ab.py python3 64 "HIMMEL_BILLED_OK" run --questions q.jsonl --out o
 refuse scripts/eval/review-panel/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/rp"
 refuse scripts/codex/hook-smoke-demo.sh bash 2 "HIMMEL_BILLED_OK"
-refuse scripts/handover/console-kit/smoke-consult-sandbox.sh bash 0 "HIMMEL_BILLED_OK"
+refuse scripts/handover/chief-kit/smoke-consult-sandbox.sh bash 0 "HIMMEL_BILLED_OK"
 
 echo
 if [ "$failures" -eq 0 ]; then echo "test-billed-optin: all passed"; exit 0; fi

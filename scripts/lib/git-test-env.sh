@@ -90,7 +90,7 @@ git_test_env_repair() {
       # GIT_CONFIG_COUNT is the pristine no-inline-config state (identical to
       # a shell that never pinned anything), which is a cleaner target than
       # exporting 0 -- 0 is still a value git has to parse, unset is not.
-      printf 'WARN (HIMMEL-2231): GIT_CONFIG_COUNT is malformed (%s) -- unsetting the GIT_CONFIG block\n' \
+      printf 'WARN: GIT_CONFIG_COUNT is malformed (%s) -- unsetting the GIT_CONFIG block\n' \
         "$GIT_CONFIG_COUNT" >&2
       unset GIT_CONFIG_COUNT
       # A malformed COUNT gives no int to bound a walk by, so we cannot know
@@ -137,7 +137,7 @@ git_test_env_repair() {
   done
 
   if [ "$_missing" -ge 0 ]; then
-    printf 'WARN (HIMMEL-2231): GIT_CONFIG block corrupt -- GIT_CONFIG_COUNT=%s but index %s is missing its KEY or VALUE; truncating to GIT_CONFIG_COUNT=%s\n' \
+    printf 'WARN: GIT_CONFIG block corrupt -- GIT_CONFIG_COUNT=%s but index %s is missing its KEY or VALUE; truncating to GIT_CONFIG_COUNT=%s\n' \
       "$GIT_CONFIG_COUNT" "$_missing" "$_missing" >&2
     export GIT_CONFIG_COUNT="$_missing"
     _i=$_missing

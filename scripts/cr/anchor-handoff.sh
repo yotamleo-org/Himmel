@@ -12,7 +12,7 @@
 # docs-audit-panel, doc-freshness-advisory,
 # known-findings, ledger-append, and the later review-round,
 # orphan-check, impacted-suites, cr-scores), and also
-# scripts/handover/merge-on-green.sh and scripts/handover/console-kit/go.sh.
+# scripts/handover/merge-on-green.sh and scripts/handover/chief-kit/go.sh.
 # From a leg's worktree that literal runs the BRANCH's copy, so a branch that
 # edits its own gate writer would run it unseen under the allow rule. Every
 # writer resolves the reviewed repo from cwd (git-common-dir / show-toplevel)
@@ -26,7 +26,7 @@
 # that root-relative path re-applied under HIMMEL_REPO - so this same file,
 # still physically living at scripts/cr/anchor-handoff.sh, hands off a
 # scripts/cr/<writer>.sh (depth 2) exactly as it hands off a
-# scripts/handover/console-kit/go.sh (depth 3). A tree this resolver cannot
+# scripts/handover/chief-kit/go.sh (depth 3). A tree this resolver cannot
 # place inside a git worktree (`git rev-parse` fails) refuses rather than
 # guess a root.
 #
@@ -45,7 +45,7 @@
 # still not the anchor refuses instead of looping.
 # ponytail: (HIMMEL-3437) this file and the one line sourcing it are branch bytes. For every
 # gate-allowed scripts/cr/ writer (its TARGETS) and for merge-on-green.sh,
-# console-kit/go.sh, himmel-gate.sh, write-verdict.sh and console-wait.sh (its HTARGETS),
+# chief-kit/go.sh, himmel-gate.sh, write-verdict.sh and console-wait.sh (its HTARGETS),
 # guard-pr-check-literal.sh denies a relative run unless the entry script and
 # this file equal the anchor's byte for byte, so a branch that deletes either
 # is refused before it runs.
@@ -272,7 +272,7 @@ case "$_ah_self" in
             #
             # This file's OWN root-relative path is NOT "${_ah_prefix}anchor-handoff.sh":
             # $_ah_prefix is the ENTRY script's
-            # prefix (e.g. scripts/handover/ or scripts/handover/console-kit/),
+            # prefix (e.g. scripts/handover/ or scripts/handover/chief-kit/),
             # but this file always physically lives at scripts/cr/anchor-handoff.sh
             # regardless of who sources it. Using the entry's prefix resolved
             # to a nonexistent scripts/handover/anchor-handoff.sh for the two

@@ -1,13 +1,13 @@
 # Cloud brief template
 
-The brief a console hands to `claude --cloud` for a small, well-scoped ticket. A cloud session sees the repo clone plus the claude.ai MCP
+The brief a chief hands to `claude --cloud` for a small, well-scoped ticket. A cloud session sees the repo clone plus the claude.ai MCP
 connectors that are enabled for that session (see "claude.ai connectors in the
 cloud" below), plus whatever plugins the environment's setup script installs (see below). It has no handover
-state and no console inbox. A plugin uploaded on claude.ai (Customize, Plugins)
+state and no chief inbox. A plugin uploaded on claude.ai (Customize, Plugins)
 does NOT load in a cloud session: it only syncs as `<name>@synced`, and it also
 syncs into every local terminal session, so do not use that route. The brief is
-its working world, so it is self-contained. For a local leg, use
-[`leg-brief-template.md`](leg-brief-template.md) instead.
+its working world, so it is self-contained. For a local worker, use
+[`worker-brief-template.md`](worker-brief-template.md) instead.
 
 `/cloud-route` (`scripts/lanes/cloud-route.mjs`) generates this brief for a
 CLOUD-OK ticket and prints the launch line.
@@ -19,21 +19,21 @@ CLOUD-OK ticket and prints the launch line.
 | The clone's `CLAUDE.md`, `.claude/{skills,agents,commands,rules}`, `.mcp.json` (single-repo session only) | Plugins not in the environment's profile; claude.ai-uploaded plugins (sync as `@synced` only) |
 | The repo's `.claude/settings.json` hooks and permissions | Your local `~/.claude` state; `settings.local.json` |
 | Plugins the environment setup script installs (`--with-plugins` / `--plugins <list>`) and their hooks | Plugin hooks of plugins outside the profile (see the state-repo proposal `specs/proposals/cloud-hooks-proposal.md`) |
-| Skills enabled on claude.ai; claude.ai MCP connectors only when enabled for the session (Atlassian for Jira: read, comment, file follow-ups, transition) | The local jira CLI, luna, the console inbox; context7 by default (see below) |
+| Skills enabled on claude.ai; claude.ai MCP connectors only when enabled for the session (Atlassian for Jira: read, comment, file follow-ups, transition) | The local jira CLI, luna, the chief inbox; context7 by default (see below) |
 | The environment setup script's installs (graphify, AST-only; qmd over the repo only, BM25); `CLAUDE_CODE_REMOTE=true` | Handover state; qmd over any vault; qmd vector search |
 
 So the local shepherd stays mandatory: it runs `/pr-check`, the CR gate and the
 merge. The cloud session ships a PR and stops.
 
 The mechanical half of the shepherd is scripted:
-`bash scripts/handover/console-kit/shepherd.sh <pr>` makes a detached worktree of
+`bash scripts/handover/chief-kit/shepherd.sh <pr>` makes a detached worktree of
 the PR head, runs the coverage lint, the impacted shell suites, `check-ci.sh` and
 `ready-check.sh`, and prints one `SHEPHERD <pr> <head> READY-CANDIDATE|NEEDS-LEG
 <reasons>` block (exit 0 / 1; 2 = usage or infra). It skips `CLOUD-ACK` steering
 only when `CLOUD-DONE` is already posted, and it is read-only toward the PR. It
 cannot run `/pr-check` (a model-session runbook): with no `ok` CR-ledger row for
 the head it reports `panel: NOT-RUN` and the PR still needs a `/pr-check` round.
-A clean candidate needs no shepherd leg; the console reads the diff, GOs and merges.
+A clean candidate needs no shepherd worker; the chief reads the diff, GOs and merges.
 
 ## claude.ai connectors in the cloud (probed 2026-10-08)
 
@@ -200,18 +200,18 @@ below are the background and the plugin-free variant.
 
 ## What replaces the handover and the lock
 
-A local leg is held together by its handover doc (status bullets the console's
-tick reads), a queue lock on that doc, and SendMessage to the console. A cloud
+A local worker is held together by its handover doc (status bullets the chief's
+tick reads), a queue lock on that doc, and SendMessage to the chief. A cloud
 session has none of the three: no luna, no `queue-lock.sh` state, and no inbox
 (SendMessage cannot reach a local session from the cloud). It works on four
 substitutes, all of them on GitHub or Jira, which it reaches:
 
-| Local leg | Cloud session |
+| Local worker | Cloud session |
 |---|---|
-| One handover doc per leg | One ticket = one branch = one PR. The PR body (summary, results, `## Ticket coverage`) is the record |
-| Queue lock on the doc | The ticket's Jira status: `In Progress` + an open `cloud-pilot:` PR means taken. The console dispatches no second session on it |
-| `LIVE` / `READY` / `WRAPPED` bullets | One `CLOUD-DONE <session URL>` top-level PR comment when the PR is up; the console polls the PR with `gh` (no callback exists) |
-| `BLOCKED` / `FINDING` to the console | A `CLOUD-BLOCKED <session URL>` PR comment (or, before a PR exists, a ticket comment) stating the question, then end the session; the console answers with `claude -p "<msg>" --cloud <session>` |
+| One handover doc per worker | One ticket = one branch = one PR. The PR body (summary, results, `## Ticket coverage`) is the record |
+| Queue lock on the doc | The ticket's Jira status: `In Progress` + an open `cloud-pilot:` PR means taken. The chief dispatches no second session on it |
+| `LIVE` / `READY` / `WRAPPED` bullets | One `CLOUD-DONE <session URL>` top-level PR comment when the PR is up; the chief polls the PR with `gh` (no callback exists) |
+| `BLOCKED` / `FINDING` to the chief | A `CLOUD-BLOCKED <session URL>` PR comment (or, before a PR exists, a ticket comment) stating the question, then end the session; the chief answers with `claude -p "<msg>" --cloud <session>` |
 | Jira close at merge | Unchanged: the local shepherd merges and closes; the session never transitions past `In Progress` |
 
 The `CLOUD-<MARKER>` first-line shape matches the `CLOUD-ACK` reply proven on
@@ -228,8 +228,8 @@ completes-ticket: yes|no
 ```
 
 - **One line per ask** of each cited ticket, each `done` or `deferred → HIMMEL-<n>`
-  (the console's ready-check fails a missing section, a deferred key
-  that does not exist and one already Done). The console files a follow-up
+  (the chief's ready-check fails a missing section, a deferred key
+  that does not exist and one already Done). The chief files a follow-up
   ticket for every ask the brief scopes out BEFORE writing the brief and names
   each key in `## The change`; the session writes it as `deferred → HIMMEL-<n>`.
   An ask is never silently dropped: no key to name means the ask belongs in the
@@ -248,12 +248,12 @@ completes-ticket: yes|no
 claude --cloud "$(cat cloud-brief-HIMMEL-<n>.md)" --permission-mode auto
 ```
 
-A console launches it through the kit instead, which opens the session in its
+A chief launches it through the kit instead, which opens the session in its
 own konsole window and appends it to the bucket's `cloud-sessions.tsv`:
-`bash scripts/handover/console-kit/launch-cloud.sh <n>`.
+`bash scripts/handover/chief-kit/launch-cloud.sh <n>`.
 
 Steering a running session is headless (`claude -p "<msg>" --cloud <id>`) and
-draws the same bank as interactive use (see CLAUDE.md, "Claude invocation
+draws the same usage as interactive use (see CLAUDE.md, "Claude invocation
 billing"). There is no completion callback: the shepherd polls the PR with `gh`.
-A cloud session reports back to the console only when the console is connected
+A cloud session reports back to the chief only when the chief is connected
 to Remote Control; do not rely on it, and brief the session to end on the PR URL.

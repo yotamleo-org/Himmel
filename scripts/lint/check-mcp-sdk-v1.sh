@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard (posix-bash): POSIX bash 3.2+.
 #
 # check-mcp-sdk-v1.sh — refuse NEW dependencies on, or imports of, the v1
 # monolith `@modelcontextprotocol/sdk`.

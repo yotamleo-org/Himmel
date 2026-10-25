@@ -617,7 +617,7 @@ function runCli(argv) {
     const offenders = lintPositionalArgs(files);
     if (offenders.length === 0) return;
     for (const { file, line, token } of offenders) {
-      process.stderr.write(`skill-cost: ${file}:${line}: bare ${token} inside a fenced block collides with Skill-tool arg substitution (HIMMEL-2051) — use \${N} in bash or $(N) in awk\n`);
+      process.stderr.write(`skill-cost: ${file}:${line}: bare ${token} inside a fenced block collides with Skill-tool arg substitution — use \${N} in bash or $(N) in awk\n`);
     }
     process.exit(1);
   }

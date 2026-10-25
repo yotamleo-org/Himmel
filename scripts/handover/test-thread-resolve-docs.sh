@@ -18,9 +18,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DOCS="${DOCS:-$HERE/../../docs}"
 PLUGIN="${PLUGIN:-$HERE/../../plugins/himmel-gh}"
 PREFACE="$DOCS/handover/leg-preface.md"
-SHELL_SECTION="$DOCS/handover/leg-sections/shell-and-tests.md"
+SHELL_SECTION="$DOCS/handover/worker-sections/shell-and-tests.md"
 CONSOLE="$DOCS/handover/console-template.md"
-MERGES="$DOCS/handover/console-sections/merges.md"
+MERGES="$DOCS/handover/chief-sections/merges.md"
 PLAYBOOK="$DOCS/internals/stuck-playbook.md"
 AFK="$DOCS/handover/afk-mode.md"
 RESOLVE_CMD="$PLUGIN/commands/gh-pr-resolve.md"
@@ -54,13 +54,13 @@ contains 'preface Shipping routes a denied resolve to the console' "$ship" 'BLOC
 work="$(section "$PREFACE" '^## How you work')"
 contains 'preface: a classifier denial on a loop shape is a shape denial' "$work" 'a denied loop is a shape denial'
 
-# --- 2. leg-sections/shell-and-tests.md: the full call --------------------
+# --- 2. worker-sections/shell-and-tests.md: the full call --------------------
 shell="$(cat "$SHELL_SECTION")"
 contains 'shell section spells the full resolve call' "$shell" 'thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id'
 contains 'shell section lists the followup reason' "$shell" 'followup HIMMEL-<n>'
 contains 'shell section lists the rejected reason' "$shell" 'rejected <why>'
 contains 'shell section: one literal call per thread' "$shell" 'one literal call per thread, never a loop'
-contains 'shell section: the console resolves a denied thread itself' "$shell" 'the console verifies each thread against the head and resolves it itself'
+contains 'shell section: the chief resolves a denied thread itself' "$shell" 'the chief verifies each thread against the head and resolves it itself'
 
 # --- 3. console template + merges section: the console resolves, never the operator
 merges_tpl="$(section "$CONSOLE" '^## Merges')"

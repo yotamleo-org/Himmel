@@ -10,9 +10,12 @@
 #   2. npm/bun every `npm ci`, `npm install` and `bun install` carries
 #              --ignore-scripts, unless that line (or the comment line right
 #              above it) holds `install-scripts-ok: <reason>`.
-#   3. claude  the claude CLI is never `npm install`ed by name: it comes from
-#              .github/claude-cli/package-lock.json (sha512 integrity), whose
-#              version equals ci.yml's CLAUDE_CLI_VERSION.
+#   3. claude  the claude CLI is never `npm install`ed by name: the native
+#              binary comes through pin_fetch with the sha256 pinned in
+#              scripts/machine-setup/installer-pins.sh, whose version equals
+#              ci.yml's CLAUDE_CLI_VERSION, and the very next command installs
+#              the file pin_fetch verified. npm/bun i|install|add, npx and bunx
+#              by name are all refused.
 #   4. shellcheck-py   the version in requirements-shellcheck.txt equals the
 #              rev the pre-commit hook pins in .pre-commit-config.yaml.
 #   5. dependabot      every package-ecosystem has a cooldown of at least
@@ -114,10 +117,64 @@ fi
 checked_reqs=""
 pip_re='(^|[^[:alnum:]_.-])pip3?[[:space:]]+install([[:space:]]|$)'
 npm_re='(^|[^[:alnum:]_.-])(npm[[:space:]]+(ci|install)|bun[[:space:]]+install)([[:space:]]|$)'
-claude_re='npm[[:space:]]+(i|install|add)[[:space:]].*@anthropic-ai/claude-code'
+claude_re='((npm|bun)[[:space:]]+(i|install|add)|npx|bunx)[[:space:]].*@anthropic-ai/claude-code'
+claude_dl_re='claude-code-releases'
+claude_pipe_re='claude\.ai/install'
+# pin_fetch <url> <sha256> <dest>: the URL carries the pinned version and the
+# sha256 sits in the slot pin_fetch checks (the second argument). The ${...}
+# and $... below are workflow text, not shell.
+# shellcheck disable=SC2016
+claude_pin_re='^pin_fetch[[:space:]]+"[^"]*claude-code-releases/\$\{CLAUDE_VERSION\}/[^"]*"[[:space:]]+"\$CLAUDE_LINUX_X64_SHA256"[[:space:]]+("\$RUNNER_TEMP/[A-Za-z0-9_.-]+")[[:space:]]*$'
+claude_verified=0
+# The command right after a verified pin_fetch must install the file it verified
+# (`install ... <dest> <target>`), else the checksum guards a file nothing uses.
+pend_dest=""; pend_rel=""; pend_file=""
+# installs_verified <segment> <verified file>: the segment is `[sudo] install
+# [options] <verified file> <target>`: options only before the two operands, the
+# first exactly the verified file, the second a plain absolute path. Only the
+# options the install step uses are allowed (-m/--mode, -D, -v, -o, -g, --):
+# anything else, such as a -t/-T cluster or an abbreviated --target, can move
+# the target and is refused.
+installs_verified() {
+  local -a tok pos=()
+  local i=0 n mode_re name_re target_re
+  target_re='^/[A-Za-z0-9_./-]+$'
+  mode_re='^([0-7]{3,4}|[ugoa]*[-+=][rwxXst]+(,[ugoa]*[-+=][rwxXst]+)*)$'
+  name_re='^[A-Za-z0-9_][A-Za-z0-9_.-]*$'
+  read -ra tok <<< "$1"
+  [ "${tok[0]:-}" = sudo ] && i=1
+  [ "${tok[$i]:-}" = install ] || return 1
+  i=$((i + 1)); n=${#tok[@]}
+  while [ "$i" -lt "$n" ] && [[ "${tok[$i]}" == -* ]]; do
+    case "${tok[$i]}" in
+      --) i=$((i + 1)); break ;;
+      -D|-v) ;;
+      --mode=*) [[ "${tok[$i]#--mode=}" =~ $mode_re ]] || return 1 ;;
+      -m?*) [[ "${tok[$i]#-m}" =~ $mode_re ]] || return 1 ;;
+      -m) i=$((i + 1)); [[ "${tok[$i]:-}" =~ $mode_re ]] || return 1 ;;
+      -o|-g) i=$((i + 1)); [[ "${tok[$i]:-}" =~ $name_re ]] || return 1 ;;
+      *) return 1 ;;
+    esac
+    i=$((i + 1))
+  done
+  while [ "$i" -lt "$n" ]; do
+    pos+=("${tok[$i]}")
+    i=$((i + 1))
+  done
+  # Exactly two operands: the verified file as written, then a plain absolute
+  # target. Any quote, escape or expansion in the target could hide an option
+  # (the lint splits words without unquoting).
+  [ "${#pos[@]}" -eq 2 ] && [ "${pos[0]}" = "$2" ] && [[ "${pos[1]}" =~ $target_re ]]
+}
 while IFS=$'\t' read -r file line mark seg; do
   [ -n "$seg" ] || continue
   rel="${file#"$ROOT"/}:$line"
+  if [ -n "$pend_dest" ]; then
+    if [ "$file" != "$pend_file" ] || ! installs_verified "$seg" "$pend_dest"; then
+      err "$rel: the command after pin_fetch installs a different file than pin_fetch verified ($pend_dest, fetched at $pend_rel): $seg"
+    fi
+    pend_dest=""
+  fi
   if [[ "$seg" =~ $pip_re ]]; then
     if [[ "$seg" != *--require-hashes* ]]; then
       err "$rel: pip install without --require-hashes: $seg"
@@ -141,25 +198,39 @@ while IFS=$'\t' read -r file line mark seg; do
     done
   fi
   if [[ "$seg" =~ $claude_re ]]; then
-    err "$rel: claude-code installed by name; install it from the lockfile in .github/claude-cli/: $seg"
+    err "$rel: claude-code installed by name; install the native binary through pin_fetch (installer-pins.sh): $seg"
   elif [[ "$seg" =~ $npm_re ]] && [[ "$seg" != *--ignore-scripts* ]] && [ "$mark" != 1 ]; then
     err "$rel: install scripts enabled (add --ignore-scripts, or an install-scripts-ok: <reason> comment): $seg"
   fi
-done <<< "$recs"
-
-# claude CLI lock: the lockfile pins the version and its sha512, and ci.yml's
-# CLAUDE_CLI_VERSION (read by the claude-startup suites) names the same one.
-cli_pin=$(sed -n "s/^ *CLAUDE_CLI_VERSION: '\([0-9][0-9.]*\)'.*/\1/p" "$GH/workflows/ci.yml" | sed -n 1p)
-if [ -n "$cli_pin" ]; then
-  lock="$GH/claude-cli/package-lock.json"
-  if [ ! -f "$lock" ]; then
-    err ".github/claude-cli/package-lock.json missing (the claude CLI would install unlocked)"
-  else
-    lock_ver=$(awk '/"node_modules\/@anthropic-ai\/claude-code": *\{/ {f=1; next} f && /"version":/ {gsub(/[",]/, ""); print $2; exit}' "$lock")
-    lock_int=$(awk '/"node_modules\/@anthropic-ai\/claude-code": *\{/ {f=1; next} f && /"integrity": *"sha512-/ {print "ok"; exit}' "$lock")
-    [ "$lock_ver" = "$cli_pin" ] || err ".github/claude-cli/package-lock.json locks claude-code '${lock_ver:-none}' but ci.yml CLAUDE_CLI_VERSION is '$cli_pin' (bump both)"
-    [ "$lock_int" = ok ] || err ".github/claude-cli/package-lock.json: claude-code has no sha512 integrity"
+  if [[ "$seg" =~ $claude_pipe_re ]]; then
+    err "$rel: claude installed from the unpinned claude.ai installer; use pin_fetch with the pinned sha256: $seg"
+  elif [[ "$seg" =~ $claude_dl_re ]]; then
+    if [[ "$seg" =~ $claude_pin_re ]]; then
+      [ "$file" = "$GH/workflows/ci.yml" ] && claude_verified=1
+      pend_dest="${BASH_REMATCH[1]}"; pend_rel="$rel"; pend_file="$file"
+    else
+      err "$rel: native claude binary downloaded without a sha256-verified pin_fetch: $seg"
+    fi
   fi
+done <<< "$recs"
+[ -z "$pend_dest" ] || err "$pend_rel: nothing installs the file pin_fetch verified ($pend_dest)"
+
+# claude CLI: installed natively, never by npm. installer-pins.sh holds the
+# version and the linux-x64 sha256 from the release manifest, ci.yml's
+# CLAUDE_CLI_VERSION (read by the claude-startup suites) names the same version,
+# and the install step fetches it through pin_fetch with that sha256.
+cli_pin=$(sed -n "s/^ *CLAUDE_CLI_VERSION: '\([0-9][0-9.]*\)'.*/\1/p" "$GH/workflows/ci.yml" | sed -n 1p)
+pins="$ROOT/scripts/machine-setup/installer-pins.sh"
+if [ -n "$cli_pin" ]; then
+  if [ ! -f "$pins" ]; then
+    err "scripts/machine-setup/installer-pins.sh missing (the claude CLI would install unpinned)"
+  else
+    pin_ver=$(sed -n 's/^CLAUDE_VERSION="\([0-9][0-9.]*\)".*/\1/p' "$pins" | sed -n 1p)
+    pin_sha=$(sed -n 's/^CLAUDE_LINUX_X64_SHA256="\([0-9a-f]*\)".*/\1/p' "$pins" | sed -n 1p)
+    [ "$pin_ver" = "$cli_pin" ] || err "scripts/machine-setup/installer-pins.sh pins claude '${pin_ver:-none}' but ci.yml CLAUDE_CLI_VERSION is '$cli_pin' (bump both)"
+    [ "${#pin_sha}" -eq 64 ] || err "scripts/machine-setup/installer-pins.sh: CLAUDE_LINUX_X64_SHA256 is not a 64-hex sha256"
+  fi
+  [ "$claude_verified" = 1 ] || err ".github/workflows/ci.yml: the claude CLI is not installed through a sha256-verified pin_fetch of the claude-code-releases binary"
 fi
 
 # The shellcheck-py wheel: one rev, two files.

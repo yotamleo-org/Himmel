@@ -1,1 +1,1 @@
-bash scripts/handover/console-kit/himmel-gate.sh orphan-check 12
+bash scripts/handover/chief-kit/himmel-gate.sh orphan-check 12

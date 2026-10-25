@@ -93,7 +93,7 @@ test("Commit rules and Session switches are display-only; their home is ~/.himme
 });
 
 // The command and effect text are written once for the page; this holds them to the action table the server runs.
-const ctx = { root: "/r", cadenceRoot: "/h", himmelctl: "/h/scripts/himmelctl/bin.js", platform: "linux", plugins: ["p@himmel"], lanes: ["codex"] };
+const ctx = { root: "/r", cadenceRoot: "/h", himmelctl: "/h/scripts/himmelctl/bin.js", plugins: ["p@himmel"], lanes: ["codex"] };
 const table = buildTable(ctx);
 
 test("settingsCommand spells exactly the argv the server runs, for every action in the table", () => {
@@ -103,11 +103,12 @@ test("settingsCommand spells exactly the argv the server runs, for every action 
     ["config.lanes", "codex", "on"], ["config.lanes", "codex", "off"],
     ["config.initiative", "prcheck", "on"], ["config.initiative", "prcheck", "off"],
     ["config.commitRules", "tracker", "jira"], ["config.commitRules", "ticket-id-required", "off"],
+    ["config.paths", "handover-root", "/srv/state/handovers"], ["config.paths", "luna-vault", "/srv/My Vault"],
     ...["pipeline", "graphmap", "qmd", "doctor"].flatMap((t) => [["cadence.arm", t, undefined], ["cadence.disarm", t, undefined]] as [string, string, undefined][]),
   ];
   expect(new Set(cases.map((c) => c[0]))).toEqual(new Set(table.keys()));
   for (const [action, target, value] of cases) {
-    const want = resolveAction(table, action, target, value).argv.join(" ");
+    const want = R.shellLine(resolveAction(table, action, target, value).argv);
     expect(R.settingsCommand({ action, target }, "/h", value), `${action} ${target} ${value}`).toBe(want);
   }
 });

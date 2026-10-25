@@ -22,7 +22,7 @@ reads `Nothing.`
 
 A change is user-visible if an adopter can see it from outside the repo: a
 command, flag, config key, skill, UI, doc or default changed, or a bug they
-could hit is gone. Everything else is internal: guards and hooks, console-kit
+could hit is gone. Everything else is internal: guards and hooks, chief-kit
 and worker mechanics, review gates, CI and test tooling, lint baselines, refactors,
 dependency pins.
 

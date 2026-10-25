@@ -176,8 +176,7 @@
 # An armed v21 runner of those kinds fails silently and leaves no ledger row.
 # The graphmap-publish runner is unchanged (graph-cadence.sh alerts and writes
 # its own rows). The alert call pins the arm-time PATH so the sender finds bun
-# under cron. NOT covered: the codex-sweep runner and every graphmap/qmd/
-# upstream-watch .bat twin (the pipeline .bat twins are tracked separately).
+# under cron. NOT covered: every graphmap/qmd/upstream-watch .bat twin (the pipeline .bat twins are tracked separately).
 # Re-arm with
 # `graphmap-cadence.sh|qmd-cadence.sh|upstream-watch-cadence.sh arm --force`.
 # shellcheck disable=SC2034  # consumed by sourcing scripts (pipeline-cadence/doctor/update)
@@ -190,7 +189,7 @@ CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
 # Basename registry for generated cadence runners. Keep explicit: a stray
 # foreign *.bat/*.sh in a runner dir must not poison the staleness probe.
 # shellcheck disable=SC2034  # consumed by cadence_runner_stamp callers/tests
-CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health codex-sweep graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence"
+CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence"
 
 # cadence_posix_leg_start <q_flow_lib> <flow> <task>
 # cadence_posix_leg_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]
@@ -234,8 +233,8 @@ cadence_posix_leg_end() {
 # (on Windows Git-Bash $HOME can be the MSYS home while
 # ~/.claude lives under the Windows profile — prefer USERPROFILE via
 # cygpath). READERS must resolve the same way or they probe an empty MSYS
-# dir and report "no armed cadence" on exactly the machines the Windows-only
-# codex-sweep cadence runs on (codex-adv finding). Same body as
+# dir and report "no armed cadence" on exactly the Windows machines the .bat
+# runners run on (codex-adv finding). Same body as
 # the emitters' resolve_user_home; kept here so the readers share one copy.
 cadence_user_home() {
     if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
@@ -343,7 +342,7 @@ cadence_vbs_path() {
 cadence_vbs_wrapper() {
     local bat_win="$1" bat_quoted
     bat_quoted="${bat_win//\"/\"\"}"
-    printf '%s\r\n' "' himmel cadence wrapper (HIMMEL-1753) - generated DO NOT EDIT; runs the .bat hidden, returns its exit code."
+    printf '%s\r\n' "' himmel cadence wrapper - generated DO NOT EDIT; runs the .bat hidden, returns its exit code."
     printf '%s\r\n' 'Set sh = CreateObject("WScript.Shell")'
     printf 'WScript.Quit sh.Run("""%s""", 0, True)\r\n' "$bat_quoted"
 }
@@ -419,7 +418,7 @@ cadence_wsh_probe() {
         :
     elif powershell_bin=$(command -v powershell.exe 2>/dev/null); then
         # pwsh is unavailable — loud, named 5.1 fallback, never silent.
-        echo "WARN cadence_wsh_probe: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 (powershell.exe) -- HIMMEL-2126: PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh." >&2
+        echo "WARN cadence_wsh_probe: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 (powershell.exe) -- PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh." >&2
     else
         CADENCE_WSH_DETAIL="PowerShell is unavailable, so WSH policy cannot be verified"
         return 1
@@ -533,9 +532,7 @@ cadence_bat_editor_set() {
 
 # cadence_runner_platform_ext
 # Echo the runner file extension the CURRENT platform actually executes:
-# "bat" on Windows, "sh" everywhere else. Same OSTYPE case arms
-# codex-sweep-cadence.sh's own Windows-only gate uses (scripts/cleanup/
-# codex-sweep-cadence.sh) — kept in lockstep rather than reinvented.
+# "bat" on Windows, "sh" everywhere else, from the usual OSTYPE case arms.
 # CADENCE_RUNNER_PLATFORM_OS is a test seam (mirrors scheduler_backend_os's
 # SCHEDULER_BACKEND_OS override): set it to "windows" to force the Windows
 # branch, or anything else to force POSIX, without an actual Windows host.

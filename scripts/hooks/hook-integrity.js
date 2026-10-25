@@ -746,7 +746,7 @@ function takeUnvouchedNotice(sessionId, scriptPath) {
   }
   return `himmel hook-integrity: NOTICE ${path.basename(scriptPath)} ran UNVERIFIED — record-hook-integrity.sh did not `
     + 'publish a verified integrity record for this session (killed by its timeout, or failed), so nothing '
-    + 'vouches for any hook script this session (HIMMEL-5171). Start a new session to restore verification, or '
+    + 'vouches for any hook script this session. Start a new session to restore verification, or '
     + 'from another terminal re-run the recorder with this session\'s id: '
     + `printf '{"session_id":"${sessionId}"}' | CLAUDE_PROJECT_DIR=<project> bash <project>/scripts/hooks/record-hook-integrity.sh`;
 }
@@ -1703,11 +1703,11 @@ function denyIntegrityMismatch(scriptPath, relPath, reason) {
     process.stderr.write(
       `run-hook-with-bash: DENY ${path.basename(scriptPath)} — the session's hook-integrity record is missing, `
       + `empty or unreadable (${reason.slice(MISSING_RECORD_DENY.length)}) although record-hook-integrity.sh ran `
-      + `this session, so nothing vouches for ${relPath} (HIMMEL-2588). A record that disappears mid-session is `
+      + `this session, so nothing vouches for ${relPath}. A record that disappears mid-session is `
       + 'not "no opinion": deleting it used to switch verification off. Start a new session to record a fresh one; '
       + 'HIMMEL_HOOK_INTEGRITY_BYPASS_OK cannot apply without a record. Operator recovery from another terminal: '
       + `rm ${reason.slice(MISSING_RECORD_DENY.length).replace(/\.json$/, RECORDER_MARKER_SUFFIX)} (the recorder marker) `
-      + 'to fail open for this session, or re-run record-hook-integrity.sh with the session id (HIMMEL-5171).\n',
+      + 'to fail open for this session, or re-run record-hook-integrity.sh with the session id.\n',
     );
     return;
   }
@@ -1723,7 +1723,7 @@ function denyIntegrityMismatch(scriptPath, relPath, reason) {
     process.stderr.write(
       `run-hook-with-bash: DENY ${path.basename(scriptPath)} — a file it sources (${relPath}) cannot be vouched for: `
       + `${reason.slice(SOURCED_DENY.length)}. A guard runs every lib it sources, so an unverified lib is an `
-      + 'unverified guard (HIMMEL-4575). Legitimate mid-session lib edit: rerun with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 '
+      + 'unverified guard. Legitimate mid-session lib edit: rerun with HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 '
       + `set in the LAUNCHING shell. ${BYPASS_SCOPE}\n`,
     );
     return;

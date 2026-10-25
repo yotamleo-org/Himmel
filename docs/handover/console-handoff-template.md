@@ -4,7 +4,7 @@
 > only where a section here is empty.
 
 **Head:** {{HEAD_LINE}}
-**Bank at write:** {{BANK_LINE}}
+**Usage at write:** {{BANK_LINE}}
 **Operator:** `<at the station / away / asleep>`.
 
 ## How {{LETTER}} starts
@@ -17,10 +17,11 @@ Ask `{{PREDECESSOR}}` (minus `.md`) to re-brief each worker from its own socket,
 naming you and quoting the worker's token (and your fresh one, if issued).
 Arm `console-wait.sh --succession <your session name>` before you wait (ACTION
 ZERO step 9); a quote-back is the worker's `SUCCESSION accepted` bullet. On
-`WAKE succession complete` send **`{{LETTER}} LIVE`** to that session; on
-`WAKE succession partial` send it naming each worker that did not quote back, and
-why (`LIVE` first strands every worker not yet re-briefed). Then re-arm without
-`--succession`.
+that session's `RELAYED <n> of <m>` send it **`{{LETTER}} LIVE`**, naming each
+worker it could not relay (`LIVE` before `RELAYED` strands every worker not yet
+re-briefed). The tally is informational: on `WAKE succession partial` name each
+worker that did not quote back, and why, in a Results bullet; never resend LIVE.
+Then re-arm without `--succession`.
 
 ## Current direction
 
@@ -56,7 +57,7 @@ pending); never re-run a written verdict.>
 
 {{SHIFT_SUMMARY}}
 
-## Rulings and judgement notes — the only part the console writes
+## Rulings and judgement notes — the only part the chief writes
 
 <Numbered, one line each: binding rulings, each worker's model, brief and
 debt, the queue's tiers and owned files. One Edit replaces this block.>

@@ -59,13 +59,13 @@ scripts/lib/test-wire-luna-vault.sh
 scripts/lib/test-wire-pretooluse-hooks.sh
 scripts/lib/test-worktree-inuse.sh
 
-# --- handover + console-kit (scripts/handover)
+# --- handover + chief-kit (scripts/handover)
 # queue lock, merge gate and arm-resume are the load-bearing handover paths; flock is absent and /tmp is a symlink on macOS.
-scripts/handover/console-kit/test-console-kit-e2e.sh
-scripts/handover/console-kit/test-cut-tag.sh
-scripts/handover/console-kit/test-go.sh
-scripts/handover/console-kit/test-ready-check.sh
-scripts/handover/console-kit/test-shepherd.sh
+scripts/handover/chief-kit/test-console-kit-e2e.sh
+scripts/handover/chief-kit/test-cut-tag.sh
+scripts/handover/chief-kit/test-go.sh
+scripts/handover/chief-kit/test-ready-check.sh
+scripts/handover/chief-kit/test-shepherd.sh
 scripts/handover/test-arm-resume-1879.sh
 scripts/handover/test-arm-resume-base.sh
 scripts/handover/test-arm-resume-wrapper-coverage.sh
@@ -79,7 +79,6 @@ scripts/handover/test-suite-coverage.sh
 # --- ci scripts (scripts/ci)
 # the runner, selector and workflow-pin suites: the runner itself must work on bash 3.2 and BSD tools for any macOS proof to mean anything.
 scripts/ci/test-cancel-superseded-runs.sh
-scripts/ci/test-check-cr-terminology.sh
 scripts/ci/test-ci-job-timeouts.sh
 scripts/ci/test-ci-main-cron.sh
 scripts/ci/test-ci-nightly-only-os.sh
@@ -126,10 +125,9 @@ scripts/himmelctl/test/test-wizard-status-golden.sh
 
 # --- vm, parity, observability, luna, codex, telegram, lanes, others
 # portable-shell and path-form sensitive helpers that passed on macOS.
-scripts/cleanup/test-codex-sweep-cadence.sh
 scripts/codex/test-codex-hook-parity.sh
 scripts/codex/test-dispatch-codex-exec.sh
-scripts/console/test-base-status.sh
+scripts/chief/test-base-status.sh
 scripts/docs/test-check-llms-links.sh
 scripts/guardrails/test-check-git-env-scrub.sh
 scripts/install/test-capture-operator-profile.sh

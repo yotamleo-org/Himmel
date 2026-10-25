@@ -102,10 +102,10 @@ if [ "$status" = "weak" ]; then
 else
     lead="${what} without an escalation marker"
 fi
-deny_msg="agent-model-deny: ${lead} — HIMMEL-3630 retired Fable as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding; HIMMEL-3595). Drop the model override, or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json. (HIMMEL-3847)"
+deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). Drop the model override, or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
 
 reason_json=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
-    || reason_json='"agent-model-deny: model override denied without a usable ESCALATION: marker (HIMMEL-3630)"'
+    || reason_json='"agent-model-deny: model override denied without a usable ESCALATION: marker"'
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason_json"
 printf '%s\n' "$deny_msg" >&2
 exit 2

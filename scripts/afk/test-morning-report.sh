@@ -1,0 +1,685 @@
+#!/usr/bin/env bash
+# Smoke test for scripts/afk/morning-report.sh.
+#
+# Strategy: feed canned TSV rows via --rows / stdin; assert report
+# structure, decisions-first ordering, and handover-path resolution.
+#
+# Covers:
+#   1. Basic report shape: header, summary, decisions block, ticket table.
+#   2. Decisions-first ordering: decision row sorts above done row;
+#      blocked sorts above partial/done within no-decision group.
+#   3. No decisions -> "_None" placeholder.
+#   4. Default output path resolves via HANDOVER_DIR (Mode B,
+#      handover-path.sh resolver) when --out is not passed.
+#   5. Invalid status -> exit 1.
+#   6. Too few fields -> exit 1.
+#   7. Empty input -> exit 1.
+#   8. --dry-run prints body, touches no file.
+#   9. Pipe chars in fields are escaped in the table.
+#  10. Too many fields (NF>6, e.g. literal tab inside OUTCOME) -> exit 1.
+#  11. --rows / --out missing or empty value -> exit 1 + diagnostic.
+#  12. Broken HANDOVER_DIR + no --out -> exit 2, no fallback write.
+#  13. Mode A (HANDOVER_DIR unset, temp git repo): default path lands
+#      under <repo>/handovers/.
+#  14. Mode A --dry-run previews <repo>/handovers/ path (no placeholder)
+#      and creates NO handovers/ dir.
+#  15. Broken HANDOVER_DIR + --dry-run -> exit 2 (preview matches the
+#      real run's fail-closed behavior), resolver diagnostic visible.
+#  16. Empty KEY / empty BRANCH rows -> exit 1 + diagnostic.
+#  17. CRLF row file -> parsed clean (no \r polluting the last field).
+set -euo pipefail
+
+# grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
+# pipeline. printf/echo-into-`grep -q` is a trap under this file's
+# `set -o pipefail`: grep -q exits the instant it matches, the producer
+# then takes SIGPIPE writing the remainder, and pipefail reports the
+# PIPELINE as failed — so a SUCCESSFUL match returns non-zero whenever
+# the match lands early in a large input. A here-string is not a pipeline,
+# so the status is grep's own verdict alone.
+grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT="$SCRIPT_DIR/morning-report.sh"
+
+PASS=0
+FAIL=0
+TMP_ROOT=""
+
+# shellcheck disable=SC2329,SC2317
+cleanup() {
+    if [ -n "$TMP_ROOT" ] && [ -d "$TMP_ROOT" ]; then
+        rm -rf "$TMP_ROOT" 2>/dev/null || true
+    fi
+}
+trap cleanup EXIT
+
+pass() { echo "  PASS: $1"; PASS=$((PASS+1)); }
+fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FAIL=$((FAIL+1)); }
+assert_contains() {
+    local name="$1" needle="$2" haystack="$3"
+    if grepq "$haystack" -F -- "$needle"; then pass "$name"; else fail "$name" "missing: $needle"; fi
+}
+# Assert needle1 appears on an earlier line than needle2.
+assert_before() {
+    local name="$1" first="$2" second="$3" haystack="$4"
+    local l1 l2
+    l1=$(printf '%s\n' "$haystack" | grep -nF -- "$first"  | head -1 | cut -d: -f1 || true)
+    l2=$(printf '%s\n' "$haystack" | grep -nF -- "$second" | head -1 | cut -d: -f1 || true)
+    if [ -n "$l1" ] && [ -n "$l2" ] && [ "$l1" -lt "$l2" ]; then
+        pass "$name"
+    else
+        fail "$name" "first='$first' line=${l1:-missing}, second='$second' line=${l2:-missing}"
+    fi
+}
+
+TMP_ROOT=$(mktemp -d)
+if command -v cygpath >/dev/null 2>&1; then TMP_ROOT=$(cygpath -m "$TMP_ROOT"); fi
+
+ROWS="$TMP_ROOT/rows.tsv"
+
+# Hermetic default root: tests that exercise default-path resolution (or
+# could fall through to it) pin HANDOVER_DIR so results never depend on
+# the repo this suite runs from.
+hroot="$TMP_ROOT/handover-root"
+mkdir -p "$hroot"
+
+# Hermeticity: every case below invokes $SCRIPT, and morning-report
+# now always tries to append a "## Unlanded work" section. Without a seam that
+# would shell out to the LIVE scripts/unlanded-work.sh from every test here —
+# slow (a full scan takes minutes on this repo) and dependent on this checkout's
+# real branches. Point every unrelated case at an empty pre-computed TSV;
+# dedicated Unlanded-work tests below override UNLANDED_TSV per-case.
+UNLANDED_EMPTY="$TMP_ROOT/unlanded-empty.tsv"
+: > "$UNLANDED_EMPTY"
+export UNLANDED_TSV="$UNLANDED_EMPTY"
+
+# Same hermeticity problem for "## Changelog freshness": without
+# a seam every case below would shell out to the LIVE scripts/gen-changelog.sh
+# --check against THIS checkout's real, full git history — slow (repeated
+# once per test case) and dependent on whether CHANGELOG.md happens to be
+# current when this suite runs. Point every unrelated case at a fast stub
+# that always reports current; the dedicated changelog-freshness test below
+# overrides GEN_CHANGELOG_SCRIPT per-case.
+CHANGELOG_CHECK_OK="$TMP_ROOT/fake-gen-changelog-ok.sh"
+cat > "$CHANGELOG_CHECK_OK" <<'FAKEEOF'
+#!/usr/bin/env bash
+echo "OK gen-changelog: CHANGELOG.md is current"
+exit 0
+FAKEEOF
+chmod +x "$CHANGELOG_CHECK_OK"
+export GEN_CHANGELOG_SCRIPT="$CHANGELOG_CHECK_OK"
+
+# Test 1+2: report shape + decisions-first ordering --------------------
+
+echo "TEST: basic report shape + decisions-first ordering"
+printf '%s\n' \
+    $'HIMMEL-301\tfeat/HIMMEL-301-widget-a\thttps://example.com/pr/1\tdone\tShipped widget A' \
+    $'HIMMEL-302\tfix/HIMMEL-302-broken-x\thttps://example.com/pr/2\tblocked\tMerge conflict vs main' \
+    $'HIMMEL-303\tfeat/HIMMEL-303-widget-b\thttps://example.com/pr/3\tpartial\tTests red on CI\tPick retry vs revert' \
+    > "$ROWS"
+out=$(bash "$SCRIPT" --rows "$ROWS" --out "$TMP_ROOT/report.md")
+report=$(cat "$TMP_ROOT/report.md")
+assert_contains "header present"        "# Overnight shift report"     "$report"
+assert_contains "summary counts"        "**3 tickets**: 1 done, 1 partial, 1 blocked — decisions needed: **1**." "$report"
+assert_contains "decisions section"     "## Decisions needed (1)"      "$report"
+assert_contains "decision item"         "**HIMMEL-303** — Pick retry vs revert" "$report"
+assert_contains "tickets section"       "## Tickets (3)"               "$report"
+assert_contains "table header"          "| Ticket | Branch | PR | Status | Outcome |" "$report"
+assert_contains "done row"              $'| HIMMEL-301 | `feat/HIMMEL-301-widget-a` | https://example.com/pr/1 | done | Shipped widget A |' "$report"
+assert_contains "wrote confirmation"    "morning-report: wrote"        "$out"
+table=$(printf '%s\n' "$report" | sed -n '/## Tickets/,$p')
+assert_before "decision row sorts first"   "HIMMEL-303" "HIMMEL-302" "$table"
+assert_before "blocked sorts before done"  "HIMMEL-302" "HIMMEL-301" "$table"
+
+# Test 3: no decisions -> placeholder ----------------------------------
+
+echo "TEST: no decisions -> placeholder"
+printf '%s\n' $'HIMMEL-310\tfeat/HIMMEL-310-thing\thttps://example.com/pr/9\tdone\tShipped' > "$ROWS"
+report=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "zero-decision heading" "## Decisions needed (0)" "$report"
+assert_contains "none placeholder"      "_None — no ticket needs a human decision._" "$report"
+
+# Test 4: default path resolves via HANDOVER_DIR (Mode B) --------------
+
+echo "TEST: default output path via handover-path resolver (Mode B)"
+out=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS")
+expected="$hroot/overnight-report-$(date -u +%F).md"
+if [ -f "$expected" ]; then
+    pass "report written under HANDOVER_DIR ($expected)"
+else
+    fail "default path not under HANDOVER_DIR" "out=$out"
+fi
+
+# Test 5: invalid status -> exit 1 -------------------------------------
+
+echo "TEST: invalid status rejected"
+printf '%s\n' $'HIMMEL-320\tfeat/x\tpr\tshipped\tOops' > "$ROWS"
+rc=0
+out=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on invalid status" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "status diagnostic" 'invalid status "shipped"' "$out"
+
+# Test 6: too few fields -> exit 1 -------------------------------------
+
+echo "TEST: too few fields rejected"
+printf '%s\n' $'HIMMEL-321\tfeat/x\tdone' > "$ROWS"
+rc=0
+out=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on missing columns" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "field-count diagnostic" "expected >=5 tab-separated fields" "$out"
+
+# Test 7: empty input -> exit 1 ----------------------------------------
+
+echo "TEST: empty input rejected"
+rc=0
+out=$(bash "$SCRIPT" --dry-run </dev/null 2>&1) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on empty input" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+
+# Test 8: --dry-run touches no file ------------------------------------
+
+echo "TEST: --dry-run prints body, writes nothing"
+printf '%s\n' $'HIMMEL-330\tfeat/HIMMEL-330-dry\thttps://example.com/pr/4\tdone\tShipped dry' > "$ROWS"
+dry_out_dir="$TMP_ROOT/dry-root"
+mkdir -p "$dry_out_dir"
+out=$(HANDOVER_DIR="$dry_out_dir" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "dry-run marker" "DRY morning-report: would write to" "$out"
+assert_contains "dry-run body"   "HIMMEL-330"                         "$out"
+if find "$dry_out_dir" -name 'overnight-report-*.md' | grep -q .; then
+    fail "--dry-run wrote a file"
+else
+    pass "no file written under --dry-run"
+fi
+
+# Test 9: pipe chars escaped in table ----------------------------------
+
+echo "TEST: pipe chars in outcome are escaped"
+printf '%s\n' $'HIMMEL-340\tfeat/HIMMEL-340-pipes\thttps://example.com/pr/5\tdone\tA | B outcome' > "$ROWS"
+report=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "escaped pipe" 'A \| B outcome' "$report"
+
+# Test 10: too many fields (NF>6) -> exit 1 ----------------------------
+
+echo "TEST: too many fields rejected (literal tab inside a field)"
+printf '%s\n' $'HIMMEL-350\tfeat/x\tpr\tdone\tOutcome with\ttab\tDecision' > "$ROWS"
+rc=0
+out=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on too many fields" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "field-overflow diagnostic" "expected <=6 tab-separated fields, got 7" "$out"
+
+# Test 11: --rows / --out missing or empty value -> exit 1 --------------
+
+echo "TEST: --rows / --out missing or empty value rejected"
+rc=0
+out=$(bash "$SCRIPT" --rows 2>&1) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on --rows as last arg" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "--rows diagnostic" "--rows requires a FILE" "$out"
+rc=0
+out=$(bash "$SCRIPT" --rows "" 2>&1 </dev/null) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on empty --rows value" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+rc=0
+out=$(bash "$SCRIPT" --out 2>&1 </dev/null) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on --out as last arg" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "--out diagnostic" "--out requires a PATH" "$out"
+
+# Test 12: broken HANDOVER_DIR -> exit 2, no fallback -------------------
+
+echo "TEST: broken HANDOVER_DIR fails closed (exit 2)"
+printf '%s\n' $'HIMMEL-360\tfeat/HIMMEL-360-x\thttps://example.com/pr/6\tdone\tShipped' > "$ROWS"
+rc=0
+out=$(HANDOVER_DIR="$TMP_ROOT/does-not-exist" bash "$SCRIPT" --rows "$ROWS" 2>&1) || rc=$?
+case "$rc" in
+    2) pass "exit 2 on unusable HANDOVER_DIR" ;;
+    *) fail "expected rc=2, got $rc" "$out" ;;
+esac
+assert_contains "fail-closed diagnostic" "fix HANDOVER_DIR or pass --out" "$out"
+if grepq "$out" -i "falling back"; then
+    fail "broken HANDOVER_DIR fell back instead of failing closed" "$out"
+else
+    pass "no fallback on broken HANDOVER_DIR"
+fi
+
+# Test 13: Mode A default path lands under <repo>/handovers/ ------------
+
+echo "TEST: Mode A (HANDOVER_DIR unset) default path under <repo>/handovers/"
+# A himmel-clone-shaped repo (it has scripts/adopt.sh) keeps the report at the
+# root; a scratch HOME keeps ~/.himmel/himmel.conf from supplying HANDOVER_DIR.
+mode_a_home="$TMP_ROOT/mode-a-home"
+mkdir -p "$mode_a_home"
+repo_a="$TMP_ROOT/mode-a-repo"
+mkdir -p "$repo_a/scripts"
+git -C "$repo_a" init -q
+: > "$repo_a/scripts/adopt.sh"
+printf '%s\n' $'HIMMEL-370\tfeat/HIMMEL-370-a\thttps://example.com/pr/7\tdone\tShipped A' > "$ROWS"
+out=$(cd "$repo_a" && env -u HANDOVER_DIR HOME="$mode_a_home" bash "$SCRIPT" --rows "$ROWS")
+expected_a="$repo_a/handovers/overnight-report-$(date -u +%F).md"
+if [ -f "$expected_a" ]; then
+    pass "Mode A report written under <repo>/handovers/"
+else
+    fail "Mode A default path missing ($expected_a)" "out=$out"
+fi
+
+# Test 14: Mode A --dry-run previews real path, creates NO handovers/ ---
+
+echo "TEST: Mode A --dry-run previews <repo>/handovers/ path, creates nothing"
+repo_dry="$TMP_ROOT/mode-a-dry-repo"
+mkdir -p "$repo_dry/scripts"
+git -C "$repo_dry" init -q
+: > "$repo_dry/scripts/adopt.sh"
+out=$(cd "$repo_dry" && env -u HANDOVER_DIR HOME="$mode_a_home" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "dry-run still prints body" "HIMMEL-370" "$out"
+assert_contains "previews real <repo>/handovers/ path" "mode-a-dry-repo/handovers/overnight-report-" "$out"
+if grepq "$out" -F '<unresolved-handover-root>'; then
+    fail "Mode A --dry-run printed the placeholder instead of the real path" "$out"
+else
+    pass "no placeholder in Mode A --dry-run preview"
+fi
+if [ -d "$repo_dry/handovers" ]; then
+    fail "Mode A --dry-run created handovers/"
+else
+    pass "no handovers/ dir created under Mode A --dry-run"
+fi
+
+# Test 15: broken HANDOVER_DIR + --dry-run -> exit 2 ---------------------
+
+echo "TEST: broken HANDOVER_DIR + --dry-run fails closed (exit 2)"
+printf '%s\n' $'HIMMEL-371\tfeat/HIMMEL-371-x\thttps://example.com/pr/8\tdone\tShipped' > "$ROWS"
+rc=0
+out=$(HANDOVER_DIR="$TMP_ROOT/does-not-exist" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    2) pass "exit 2 on unusable HANDOVER_DIR under --dry-run" ;;
+    *) fail "expected rc=2, got $rc" "$out" ;;
+esac
+assert_contains "fail-closed diagnostic (dry-run)" "fix HANDOVER_DIR or pass --out" "$out"
+assert_contains "resolver diagnostic not suppressed" "is not a directory" "$out"
+
+# Test 16: empty KEY / empty BRANCH rows -> exit 1 -----------------------
+
+echo "TEST: empty KEY / empty BRANCH rows rejected"
+printf '%s\n' $'\tfeat/HIMMEL-372-x\thttps://example.com/pr/9\tdone\tShipped' > "$ROWS"
+rc=0
+out=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on empty KEY" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "empty-KEY diagnostic" "empty KEY field" "$out"
+printf '%s\n' $'HIMMEL-373\t\thttps://example.com/pr/10\tdone\tShipped' > "$ROWS"
+rc=0
+out=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on empty BRANCH" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "empty-BRANCH diagnostic" "empty BRANCH field" "$out"
+
+# Test 17: CRLF row file -> parsed clean ---------------------------------
+
+echo "TEST: CRLF row file parsed clean"
+printf 'HIMMEL-374\tfeat/HIMMEL-374-crlf\thttps://example.com/pr/11\tdone\tShipped CRLF\r\n' > "$ROWS"
+report=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "CRLF row renders clean last field" '| done | Shipped CRLF |' "$report"
+if grepq "$report" $'\r'; then
+    fail "report output contains a stray CR"
+else
+    pass "no CR chars leak into the report"
+fi
+
+# Test 18: standing operator actions appended from --actions -------------
+
+echo "TEST: standing operator actions appended (verbatim, after tickets)"
+printf '%s\n' $'HIMMEL-380\tfeat/HIMMEL-380-x\thttps://example.com/pr/12\tdone\tShipped' > "$ROWS"
+acts="$TMP_ROOT/operator-actions.md"
+printf '🔴 SINGLE-SESSION-ONLY:\n- Run the leak history rewrite.\n' > "$acts"
+report=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --actions "$acts" --dry-run)
+assert_contains "standing-actions heading" "## Standing operator actions" "$report"
+assert_contains "standing-actions content" "Run the leak history rewrite." "$report"
+assert_before "tickets before standing actions" "## Tickets" "## Standing operator actions" "$report"
+
+# Test 19: blank/whitespace-only actions file -> no section --------------
+
+echo "TEST: blank actions file -> no standing-actions section"
+printf '   \n\n' > "$acts"
+report=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --actions "$acts" --dry-run)
+if grepq "$report" -F "## Standing operator actions"; then
+    fail "blank actions file produced a section"
+else
+    pass "blank actions file -> no section"
+fi
+
+# Test 20: --actions missing value -> exit 1 ----------------------------
+
+echo "TEST: --actions missing value rejected"
+rc=0
+out=$(bash "$SCRIPT" --actions 2>&1 </dev/null) || rc=$?
+case "$rc" in
+    1) pass "exit 1 on --actions as last arg" ;;
+    *) fail "expected rc=1, got $rc" "$out" ;;
+esac
+assert_contains "--actions diagnostic" "--actions requires a FILE" "$out"
+
+# Test 21: default actions path resolves next to OUT_FILE ----------------
+
+echo "TEST: default actions path = <dirname OUT_FILE>/operator-actions.md"
+out_dir="$TMP_ROOT/acts-default"
+mkdir -p "$out_dir"
+printf '%s\n' $'HIMMEL-381\tfeat/HIMMEL-381-y\thttps://example.com/pr/13\tdone\tShipped' > "$ROWS"
+printf -- '- Default-path standing action.\n' > "$out_dir/operator-actions.md"
+report=$(bash "$SCRIPT" --rows "$ROWS" --out "$out_dir/report.md" --dry-run)
+assert_contains "default actions path picked up" "Default-path standing action." "$report"
+
+# Test 22: actions body is appended VERBATIM (not pipe-escaped) ----------
+# Locks the verbatim contract so a future "let's escape it" refactor breaks here.
+
+echo "TEST: actions body appended verbatim (markdown/pipes un-escaped)"
+printf -- '- Action with a | pipe and **bold**.\n' > "$acts"
+printf '%s\n' $'HIMMEL-382\tfeat/HIMMEL-382-z\thttps://example.com/pr/14\tdone\tShipped' > "$ROWS"
+report=$(HANDOVER_DIR="$hroot" bash "$SCRIPT" --rows "$ROWS" --actions "$acts" --dry-run)
+assert_contains "actions body verbatim (pipe un-escaped)" "Action with a | pipe and **bold**." "$report"
+
+# Test 23: UNLANDED_TSV seam — no rows -> "None" placeholder -------------
+
+echo "TEST: no UNLANDED_TSV rows -> Unlanded work section shows None"
+printf '%s\n' $'HIMMEL-390\tfeat/HIMMEL-390-a\thttps://example.com/pr/15\tdone\tShipped' > "$ROWS"
+report=$(bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "unlanded heading present" "## Unlanded work" "$report"
+assert_contains "unlanded none placeholder" "_None — no aged unlanded branch found._" "$report"
+
+# Test 24: UNLANDED_TSV seam — an AGED UNLANDED-LIVE row is listed -------
+
+echo "TEST: UNLANDED_TSV with an AGED UNLANDED-LIVE row -> listed in the section"
+u="$TMP_ROOT/unlanded-aged.tsv"
+printf 'UNLANDED-LIVE\tfeat/himmel-9001-widget\t3\t72\t1\tno PR found; delta applies cleanly\t\n' > "$u"
+printf 'LANDED-ELSEWHERE\tglm/himmel-9002-old\t1\t500\t0\tcontent already on main\t\n' >> "$u"
+report=$(UNLANDED_TSV="$u" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "aged row listed"     "feat/himmel-9001-widget"          "$report"
+assert_contains "aged row evidence"   "no PR found; delta applies cleanly" "$report"
+assert_contains "aged row ahead/age"  "+3 commits, age 72h"              "$report"
+if grep -qF "himmel-9002-old" <<<"$report"; then
+    fail "non-aged/other-class row leaked into Unlanded work section"
+else
+    pass "only AGED UNLANDED-LIVE rows appear in the section"
+fi
+
+# Test 25: --no-unlanded suppresses the section entirely ------------------
+
+echo "TEST: --no-unlanded suppresses the Unlanded work section"
+report=$(UNLANDED_TSV="$u" bash "$SCRIPT" --rows "$ROWS" --dry-run --no-unlanded)
+if grep -qF "## Unlanded work" <<<"$report"; then
+    fail "--no-unlanded did not suppress the section"
+else
+    pass "--no-unlanded suppresses the Unlanded work section"
+fi
+
+# Test 26: detector unavailable -> explicit "unavailable" line, never a false "None"
+
+echo "TEST: UNLANDED_TSV points at a missing file -> explicit unavailable line"
+report=$(UNLANDED_TSV="$TMP_ROOT/does-not-exist.tsv" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "unavailable line shown" "_unlanded-work scan unavailable._" "$report"
+if grep -qF "_None — no aged unlanded branch found._" <<<"$report"; then
+    fail "missing UNLANDED_TSV silently rendered as None instead of unavailable"
+else
+    pass "missing UNLANDED_TSV never silently renders as None"
+fi
+
+# Test 27: report generation succeeds when changelog --check returns 1
+# Guards the `|| changelog_rc=$?` capture in morning-report.sh: a stale
+# changelog is the EXPECTED common case, not a script error, so it must
+# never abort this report under `set -e`.
+
+echo "TEST: report generation succeeds when changelog --check returns 1"
+fake_changelog="$TMP_ROOT/fake-gen-changelog-stale.sh"
+cat > "$fake_changelog" <<'FAKEEOF'
+#!/usr/bin/env bash
+echo "STALE gen-changelog: CHANGELOG.md is 5 entr(ies) behind - run scripts/gen-changelog.sh"
+exit 1
+FAKEEOF
+chmod +x "$fake_changelog"
+printf '%s\n' $'HIMMEL-391\tfeat/HIMMEL-391-a\thttps://example.com/pr/16\tdone\tShipped' > "$ROWS"
+rc=0
+report=$(HANDOVER_DIR="$hroot" GEN_CHANGELOG_SCRIPT="$fake_changelog" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    0) pass "report generation succeeds (rc=0) with a stale changelog" ;;
+    *) fail "expected rc=0, got $rc" "$report" ;;
+esac
+assert_contains "changelog freshness heading" "## Changelog freshness" "$report"
+assert_contains "stale changelog row"          "CHANGELOG.md is 5 entries behind" "$report"
+
+# Test 28: --check rc=1 with NO digits in its output -> verbatim fallback,
+# report still generates in full (regression: an earlier version
+# of the digit-parse `n="$(... | grep ... | head -1)"` was unguarded, and
+# under `set -o pipefail` a no-match `grep` fails the whole substitution —
+# `set -e` then killed the report on exactly this "--check line shape
+# changed" case the verbatim fallback exists to survive).
+
+echo "TEST: changelog --check rc=1 with no digits -> verbatim fallback, report still generates"
+fake_changelog_nodigits="$TMP_ROOT/fake-gen-changelog-nodigits.sh"
+cat > "$fake_changelog_nodigits" <<'FAKEEOF'
+#!/usr/bin/env bash
+echo "STALE: unknown"
+exit 1
+FAKEEOF
+chmod +x "$fake_changelog_nodigits"
+rc=0
+report=$(HANDOVER_DIR="$hroot" GEN_CHANGELOG_SCRIPT="$fake_changelog_nodigits" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1) || rc=$?
+case "$rc" in
+    0) pass "report generation succeeds (rc=0) with a no-digits stale line" ;;
+    *) fail "expected rc=0, got $rc" "$report" ;;
+esac
+assert_contains "verbatim fallback row" "STALE: unknown" "$report"
+
+# Test 29: changelog freshness count is parsed from the STRUCTURED line only,
+# not the first digits anywhere in the merged stdout+stderr capture:
+# a stray digit earlier in the stream must never be mistaken for
+# the entry count).
+
+echo "TEST: changelog freshness count ignores stray digits elsewhere in the capture"
+fake_changelog_noisy="$TMP_ROOT/fake-gen-changelog-noisy.sh"
+cat > "$fake_changelog_noisy" <<'FAKEEOF'
+#!/usr/bin/env bash
+echo "warning: could not read config from 42 sources" >&2
+echo "STALE gen-changelog: CHANGELOG.md is 7 entr(ies) behind — run scripts/gen-changelog.sh"
+exit 1
+FAKEEOF
+chmod +x "$fake_changelog_noisy"
+printf '%s\n' $'HIMMEL-392\tfeat/HIMMEL-392-a\thttps://example.com/pr/17\tdone\tShipped' > "$ROWS"
+report=$(HANDOVER_DIR="$hroot" GEN_CHANGELOG_SCRIPT="$fake_changelog_noisy" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1)
+assert_contains "count taken from the structured line (7)" "CHANGELOG.md is 7 entries behind" "$report"
+leaked=$(printf '%s\n' "$report" | grep -F "42 entries behind") || leaked=""
+if [ -n "$leaked" ]; then
+    fail "count leaked from an unrelated stderr digit (42) instead of the structured line (7)"
+else
+    pass "count not polluted by an unrelated stderr digit"
+fi
+
+# Test 30: a RELATIVE GEN_CHANGELOG_SCRIPT actually RUNS, not just "doesn't
+# 127". morning-report.sh's `-f "$changelog_script"` existence
+# check runs in the CALLER's cwd, but the execution line `cd "$SCRIPT_DIR/.."
+# && bash "$changelog_script"` runs after cd'ing away from it — so a relative
+# override passes the existence check and then fails to exec. bash's own
+# "command not found" for that failed exec is rc=127, which COLLIDES with
+# this script's own file-missing branch (also rc=127): a changelog script
+# that EXISTS but was named relatively renders the identical "changelog
+# freshness check unavailable." row as a genuinely missing one. Asserting
+# rc != 127 would not catch this (the report always exits 0 under --dry-run
+# regardless of changelog_rc) — only asserting the RENDERED row reflects a
+# real, successful run proves the script was actually invoked.
+
+echo "TEST: relative GEN_CHANGELOG_SCRIPT is actually executed, not just found"
+caller_dir="$TMP_ROOT/caller"
+mkdir -p "$caller_dir"
+cat > "$caller_dir/fake-changelog.sh" <<'FAKEEOF'
+#!/usr/bin/env bash
+echo "OK gen-changelog: CHANGELOG.md is current"
+exit 0
+FAKEEOF
+chmod +x "$caller_dir/fake-changelog.sh"
+printf '%s\n' $'HIMMEL-393\tfeat/HIMMEL-393-a\thttps://example.com/pr/18\tdone\tShipped' > "$ROWS"
+report=$(cd "$caller_dir" && HANDOVER_DIR="$hroot" GEN_CHANGELOG_SCRIPT="fake-changelog.sh" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>&1)
+if grepq "$report" -F "_changelog freshness check unavailable._"; then
+    fail "relative GEN_CHANGELOG_SCRIPT rendered as unavailable — the -f check and the exec disagreed on the path" "$report"
+else
+    pass "relative GEN_CHANGELOG_SCRIPT does not render as unavailable"
+fi
+assert_contains "changelog freshness reflects a real run" "_Current — CHANGELOG.md matches git history._" "$report"
+
+# Templates ------------------------------------------------
+
+echo "TEST: no template -> byte-identical to the pre-template layout"
+troot="$TMP_ROOT/tmpl-root"
+mkdir -p "$troot"
+printf -- '- do the thing\n' > "$troot/operator-actions.md"
+printf '%s\n' \
+    $'HIMMEL-1\tfeat/a\thttps://x/1\tdone\tShipped' \
+    $'HIMMEL-2\tfeat/b\t\tblocked\tStuck\tPick A or B' \
+    $'HIMMEL-3\tfeat/c\thttps://x/3\tpartial\tHalf' > "$ROWS"
+tmpl_unlanded="$TMP_ROOT/tmpl-unlanded.tsv"
+printf 'UNLANDED-LIVE\tfeat/z\t3\t50\t1\tabc\n' > "$tmpl_unlanded"
+today=$(date -u +%F)
+golden="$TMP_ROOT/golden.txt"
+cat > "$golden" <<GOLDEN
+# Overnight shift report — $today
+
+> Auto-generated by \`scripts/afk/morning-report.sh\` (HIMMEL-258).
+> Morning review: read this ONE report, then drill into PRs — work the
+> decisions block first, then review PRs in table order (\`/pr-check\`).
+
+**3 tickets**: 1 done, 1 partial, 1 blocked — decisions needed: **1**.
+
+## Decisions needed (1)
+
+- **HIMMEL-2** — Pick A or B (status: blocked, PR: —)
+
+## Tickets (3)
+
+| Ticket | Branch | PR | Status | Outcome |
+|---|---|---|---|---|
+| HIMMEL-2 | \`feat/b\` | — | blocked | Stuck |
+| HIMMEL-3 | \`feat/c\` | https://x/3 | partial | Half |
+| HIMMEL-1 | \`feat/a\` | https://x/1 | done | Shipped |
+
+## Standing operator actions
+
+- do the thing
+
+## Unlanded work
+
+- **feat/z** — +3 commits, age 50h (abc)
+
+## Changelog freshness
+
+_Current — CHANGELOG.md matches git history._
+
+## READY claims contradicted
+
+_ready-mismatch scan unavailable._
+GOLDEN
+export HANDOVER_DIR="$troot" UNLANDED_TSV="$tmpl_unlanded"
+unset MORNING_REPORT_TEMPLATE
+report=$(MORNING_REPORT_READY_DIR="$troot/no-such-bucket" bash "$SCRIPT" --rows "$ROWS" --dry-run | tail -n +3)
+if [ "$report" = "$(cat "$golden")" ]; then pass "default layout unchanged"; else fail "default layout drifted" "$(diff <(printf '%s\n' "$report") "$golden" | head -10)"; fi
+
+echo "TEST: MORNING_REPORT_TEMPLATE reorders/omits sections; unknown id warns; actions survive"
+tmpl="$TMP_ROOT/custom.tmpl"
+printf '%s\n' tickets '# a comment' '' decisions bogus-section > "$tmpl"
+rc=0
+report=$(MORNING_REPORT_TEMPLATE="$tmpl" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>"$TMP_ROOT/tmpl.err") || rc=$?
+if [ "$rc" -eq 0 ]; then pass "custom template rc 0 despite unknown id"; else fail "custom template rc=$rc"; fi
+assert_before "template puts tickets before decisions" "## Tickets (3)" "## Decisions needed (1)" "$report"
+if grepq "$report" -F "## Unlanded work" || grepq "$report" -F "## Changelog freshness" || grepq "$report" -F "# Overnight shift report"; then
+    fail "omitted sections still rendered" "$report"
+else
+    pass "omitted sections not rendered"
+fi
+assert_contains "operator actions survive a template that omits them" "- do the thing" "$report"
+assert_contains "unknown section id warns on stderr" "bogus-section" "$(cat "$TMP_ROOT/tmpl.err")"
+
+echo "TEST: template resolution — env wins over <handover-root>/morning-report.tmpl"
+rroot="$TMP_ROOT/tmpl-root2"
+mkdir -p "$rroot"
+printf '%s\n' changelog > "$rroot/morning-report.tmpl"
+export HANDOVER_DIR="$rroot"
+report=$(bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "handover-root template is used" "## Changelog freshness" "$report"
+if grepq "$report" -F "## Tickets"; then fail "handover-root template ignored" "$report"; else pass "handover-root template limits sections"; fi
+report=$(MORNING_REPORT_TEMPLATE="$tmpl" bash "$SCRIPT" --rows "$ROWS" --dry-run 2>/dev/null)
+assert_contains "env template beats handover-root template" "## Tickets (3)" "$report"
+export UNLANDED_TSV="$UNLANDED_EMPTY"
+unset HANDOVER_DIR
+
+# "## READY claims contradicted" -------------------------------
+# Fixtures only: changed-file lists are pre-recorded in the ready-files cache and the gh stub
+# fails, so no live gh runs. The scan itself is tick.sh --ready-mismatch.
+echo "TEST: READY claims a judge or the diff contradicts are flagged, a clean READY is not"
+RMB="$TMP_ROOT/rm-bucket"
+RMS="$TMP_ROOT/rm-state"
+mkdir -p "$RMB/verdicts/j104" "$RMB/verdicts/j103" "$RMS/ready-files"
+printf '#!/bin/sh\nexit 1\n' > "$TMP_ROOT/rm-gh"
+chmod +x "$TMP_ROOT/rm-gh"
+rm_head() { printf '%040d' "$1"; }
+rm_leg() { printf '# T - leg N%s (claude-sonnet-5-5, native)\n\n- 10:00 READY %s %s GREEN %s\n' "$1" "$2" "$(rm_head "$2")" "$3" > "$RMB/leg$1.md"; }
+rm_leg 1 101 '- trust path: none'
+printf 'scripts/ci/x.sh\n' > "$RMS/ready-files/101-$(rm_head 101)"
+rm_leg 2 102 '- CI green'
+printf 'scripts/lib/y.sh\n' > "$RMS/ready-files/102-$(rm_head 102)"
+rm_leg 3 103 '- no trust path touched'
+printf 'docs/a.md\n' > "$RMS/ready-files/103-$(rm_head 103)"
+# shellcheck disable=SC2016  # the backticks are literal verdict text
+printf '## Verdict\n\n**GO** for head `%s`.\n\npr: 103\n' "$(rm_head 103)" > "$RMB/verdicts/j103/judge.md"
+rm_leg 4 104 '- trust path: none'
+printf 'docs/b.md\n' > "$RMS/ready-files/104-$(rm_head 104)"
+# shellcheck disable=SC2016  # the backticks are literal verdict text
+printf '## Verdict\n\n**NO-GO** for head `%s`.\n\npr: 104\n' "$(rm_head 104)" > "$RMB/verdicts/j104/judge.md"
+mkdir -p "$TMP_ROOT/rm-repo/scripts/ci"
+printf '^scripts/ci/\n^scripts/lib/\n' > "$TMP_ROOT/rm-repo/scripts/ci/ci-trust-paths.txt"
+report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "ready section has its heading" "## READY claims contradicted" "$report"
+assert_contains "claimed-none READY on a trust-path diff is flagged" "M1b** PR 101" "$report"
+assert_contains "silent READY on a trust-path diff is flagged" "M1c** PR 102" "$report"
+assert_contains "READY whose head a judge NO-GO-ed is flagged" "M1a** PR 104" "$report"
+if grepq "$report" -F "PR 103"; then fail "clean READY with a GO verdict was flagged" "$report"; else pass "clean READY with a GO verdict is not flagged"; fi
+assert_contains "NO-GO rate line is rendered" "NO-GO at head: 1 of 2 judged" "$report"
+assert_contains "trust mismatch raises the alert" "ALERT" "$report"
+rm -f "$RMB/leg1.md" "$RMB/leg2.md" "$RMB/leg4.md"
+rm -rf "$RMB/verdicts/j104"
+report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "a clean window renders None" "every READY in the window matches" "$report"
+rm -f "$RMB/leg3.md"
+report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "a window with no READY renders no READYs found" "no READYs found" "$report"
+if grepq "$report" -F "every READY in the window matches"; then fail "zero READYs rendered the vacuous clean line" "$report"; else pass "zero READYs is not the clean line"; fi
+mkdir -p "$TMP_ROOT/rm-root/slug/himmel"
+rm_leg 3 103 '- no trust path touched'
+mv "$RMB/leg3.md" "$TMP_ROOT/rm-root/slug/himmel/leg3.md"
+report=$(HANDOVER_DIR="$TMP_ROOT/rm-root" USER_SLUG=slug MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "the default bucket is the handover root's user/himmel folder" "NO-GO at head: 0 of 0 judged (1 READY" "$report"
+report=$(MORNING_REPORT_READY_DIR="$TMP_ROOT/no-such-bucket" bash "$SCRIPT" --rows "$ROWS" --dry-run)
+assert_contains "an unreadable bucket renders unavailable, not None" "ready-mismatch scan unavailable" "$report"
+
+# Summary --------------------------------------------------------------
+
+echo
+echo "===================================="
+echo "test summary: $PASS passed, $FAIL failed"
+echo "===================================="
+[ "$FAIL" -gt 0 ] && exit 1 || exit 0

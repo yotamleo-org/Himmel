@@ -6,7 +6,7 @@ import { spawn } from "node:child_process";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { readToolHealth as readToolHealthRollup } from "../eval/leg-digest/tool-health.mjs";
+import { readToolHealth as readToolHealthRollup } from "../eval/worker-digest/tool-health.mjs";
 // The page prices each profile's Skill listing from the installed plugins (an unbilled scan, never a claude run).
 export const readToolHealth = (env?: Env, query?: URLSearchParams, now?: number) => readToolHealthRollup(env, query, now, { estimateListing: true });
 // The one owner of tracker/forge; read here, never re-derived.

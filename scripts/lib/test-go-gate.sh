@@ -4,7 +4,7 @@
 #
 # Before go-gate.sh the HIMMEL_CONSOLE_LEG truthiness test was hand-copied at
 # three sites (merge-on-green.sh's _truthy(), block-unresolved-cr-merge.sh's
-# gate 3, console-kit/go.sh's inline check) with no shared source of truth --
+# gate 3, chief-kit/go.sh's inline check) with no shared source of truth --
 # nothing stopped one copy drifting from the other two. This suite is a single
 # table-driven test: one spellings list, checked directly against console_leg()
 # and, for the cheapest call site (go.sh, which only needs a HANDOVER_DIR
@@ -27,7 +27,7 @@ set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 GO_GATE_SRC="${GO_GATE_SRC:-$HERE/go-gate.sh}"
-GO_SCRIPT="${GO_SCRIPT:-$HERE/../handover/console-kit/go.sh}"
+GO_SCRIPT="${GO_SCRIPT:-$HERE/../handover/chief-kit/go.sh}"
 MERGE_ON_GREEN_SRC="${MERGE_ON_GREEN_SRC:-$HERE/../handover/merge-on-green.sh}"
 BLOCK_CR_MERGE_SRC="${BLOCK_CR_MERGE_SRC:-$HERE/../hooks/block-unresolved-cr-merge.sh}"
 
@@ -151,8 +151,8 @@ export STUB_NWO="o/r"
 # go.sh refuses unless ready-check.sh passes, so it runs from a
 # repo whose CR ledger has an ok row for $SHA, under a gh answering ready-check
 # green (every other call falls through to the stub above).
-# shellcheck source=../handover/console-kit/testlib-ready-pass.sh
-. "$HERE/../handover/console-kit/testlib-ready-pass.sh"
+# shellcheck source=../handover/chief-kit/testlib-ready-pass.sh
+. "$HERE/../handover/chief-kit/testlib-ready-pass.sh"
 ready_pass_bin "$ROOT/ready-bin"
 export PATH="$ROOT/ready-bin:$PATH" READY_STUB_HEAD="$SHA"
 git init -q "$ROOT/ready-repo"
@@ -577,6 +577,41 @@ printf '%s\n' "$CORE_NO_SETTINGS" > "$LA/scripts/ci/ci-trust-paths.txt"; lg -C "
 got=$(tpc "$LAID" br-feat-s "$LAH" "$CA")
 [ "$got" = '2:list core-missing ^[.]claude/settings[.]json$' ] || fail "9k: a local-git list missing a core line was not refused core-missing: $got"
 
+# 9l. GitHub lists a file whose type changes (a file turned into a symlink) as two rows with
+# one filename, so the files listing is counted by unique filename against changed_files.
+cat > "$ROOT/ghsl" <<STUB
+#!/usr/bin/env bash
+case "\$2" in
+    repos/acme/widget/contents/*\?ref=main)
+        f=\${2#repos/acme/widget/contents/}; f=\${f%%\?ref=main}
+        git -C "$AW" show "main:\$f" 2>/dev/null || { echo "gh: Not Found (HTTP 404)" >&2; exit 1; } ;;
+    repos/acme/widget/pulls/7) cat "$ROOT/sl.meta" ;;
+    repos/acme/widget/pulls/7/files) cat "$ROOT/sl.files" ;;
+    *) echo "unexpected gh: \$*" >&2; exit 1 ;;
+esac
+STUB
+chmod +x "$ROOT/ghsl"
+aw_main '' '^deploy/'
+SLSHA=$(printf '%040d' 7)
+sl() {  # <changed_files> <rows as printf format>: trust_path_check's rc:stdout for a stubbed listing
+    printf '%s|%s\n' "$SLSHA" "$1" > "$ROOT/sl.meta"; printf '%b' "$2" > "$ROOT/sl.files"
+    GH="$ROOT/ghsl" tpc acme/widget 7 "$SLSHA" "$ROOT/lgold"
+}
+got=$(sl 2 'README.md\t\nREADME.md\t\nsrc/a.sh\t\n')
+[ "$got" = "0:none" ] || fail "9l: a type-change pair (two rows, one filename) counted as two files: $got"
+got=$(sl 3 'README.md\t\nREADME.md\t\nsrc/a.sh\t\n')
+case "$got" in "2:files listed 2 of PR #7's 3 changed files"*) ;; *) fail "9l: a listing short of changed_files (unique names below the count) was not refused: $got" ;; esac
+got=$(sl 2 'README.md\t\nsrc/a.sh\t\nsrc/a.sh\t\nsrc/b.sh\t\n')
+case "$got" in "2:files listed 3 of PR #7's 2 changed files"*) ;; *) fail "9l: a listing longer than changed_files by unique names was not refused: $got" ;; esac
+got=$(sl 2 'docs/new.md\tdeploy/old.md\nREADME.md\t\nREADME.md\t\n')
+case "$got" in "2:anchor PR #7 touches trust path deploy/old.md "*) ;; *) fail "9l: a trust path in previous_filename was not a hit: $got" ;; esac
+got=$(sl 1 'X\t\nX\tY\n')
+[ "$got" = "0:none" ] || fail "9l: one filename with and without a previous name counted as two files (the unique count must read the filename column only): $got"
+printf '%s|%s\n' "$SLSHA" 2 > "$ROOT/sl.meta"
+awk 'BEGIN { for (i = 0; i < 3000; i++) printf "f%d\t\n", i % 2 }' > "$ROOT/sl.files"
+got=$(GH="$ROOT/ghsl" tpc acme/widget 7 "$SLSHA" "$ROOT/lgold")
+case "$got" in "2:files PR #7's files listing reached its 3000-row cap"*) ;; *) fail "9l: 3000 raw rows with a unique count equal to changed_files were not refused: $got" ;; esac
+
 # 9j. scripts/lib/fixtures/ready-lines.tsv: parse_ready_line and fleet.mjs agree with the fixture.
 TSV="$HERE/fixtures/ready-lines.tsv"
 want=$(grep -v '^#' "$TSV" | grep -v '^$' | cut -f2-4)
@@ -585,7 +620,7 @@ shell_out=$(grep -v '^#' "$TSV" | grep -v '^$' | cut -f1 | while IFS= read -r l;
 done | sed "s/$(printf '\t')*\$//")
 [ "$shell_out" = "$want" ] || fail "9j: parse_ready_line disagrees with ready-lines.tsv: $(diff <(printf '%s\n' "$want") <(printf '%s\n' "$shell_out") | tr '\n' ' ')"
 if command -v node >/dev/null 2>&1; then
-    node_out=$(node "$HERE/../handover/console-kit/fleet.mjs" --ready-lines "$TSV" | sed "s/$(printf '\t')*\$//")
+    node_out=$(node "$HERE/../handover/chief-kit/fleet.mjs" --ready-lines "$TSV" | sed "s/$(printf '\t')*\$//")
     [ "$node_out" = "$want" ] || fail "9j: fleet.mjs disagrees with ready-lines.tsv: $(diff <(printf '%s\n' "$want") <(printf '%s\n' "$node_out") | tr '\n' ' ')"
 else
     fail "9j: node is missing, so fleet.mjs's parser cannot be checked"
@@ -660,7 +695,7 @@ lg -C "$TL" add -A && lg -C "$TL" commit -q -m list
 TLID="local:$(cd "$TL/.git" && pwd -P)"
 n=0
 for tp in scripts/hooks/block-x.sh scripts/hooks/read-clamp.sh scripts/hooks/check-cr-x.sh \
-    scripts/handover/console-kit/verdict-go.sh scripts/cr/write-verdicts.sh \
+    scripts/handover/chief-kit/verdict-go.sh scripts/handover/chief-kit/go.sh scripts/cr/write-verdicts.sh \
     .codex/hooks.json marketplace/plugins/p/hooks/hooks.json; do
     n=$((n + 1))
     lg -C "$TL" checkout -q -b "feat/tp$n" main

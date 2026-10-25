@@ -7,7 +7,7 @@
 # State lives under the repository's shared git common directory, so head
 # commits and merge-forwards do not reset it and linked worktrees agree.
 # A third trigger - a judge NO-GO on the last reviewed head, as
-# console-kit/write-verdict.sh records it in this repo's verdict scope - buys
+# chief-kit/write-verdict.sh records it in this repo's verdict scope - buys
 # one more delta round per reviewed head, even after the fix/merge-forward
 # delta was used. Consumed records are kept in <branch>.verdicts.
 # A CLEAN merge of the base (conflict-free, the PR's own diff
@@ -144,7 +144,7 @@ version_bump_only() {
 # judge_scope_record rule, plus a version-only plugin.json bump beside at
 # least one test path) or only comment lines. A judge often reviews a head
 # after such a commit, which never got its own panel round. Also the one
-# classifier console-kit/write-verdict.sh --bind-reviewed asks, through the
+# classifier chief-kit/write-verdict.sh --bind-reviewed asks, through the
 # `trivial-descendant` verb below, so the writer and the gate cannot disagree.
 # ponytail: the comment test is a line-prefix heuristic, not per-language: a
 # line is a comment when it starts with "# " / "##" / a bare "#" or with "//"
@@ -559,7 +559,7 @@ record_binds() {
 }
 
 # Print space-separated "<qid>/<name>" records ruling NO-GO for
-# head $1 (one per qid), in console-kit/write-verdict.sh format, under this repo's
+# head $1 (one per qid), in chief-kit/write-verdict.sh format, under this repo's
 # verdict scope; rc 1 when there is none. A qid counts only when every record
 # in it parses, so a hand-written or edited file disqualifies its qid.
 # A consumed qid buys no other round. A qid
@@ -737,7 +737,7 @@ clean_merge_forward() {
 }
 
 # Print "<qid>/<name> <scope>" for a judge GO on head $2 (the
-# delta's new head) written by console-kit/write-verdict.sh, whose evidence
+# delta's new head) written by chief-kit/write-verdict.sh, whose evidence
 # carries exactly one `delta-scope: test-only|lint-only` and one
 # `delta-from: $1` line; rc 1 when there is none, rc 8 when a record is
 # refused. A test-only record also needs every changed path to be a test path,
@@ -869,7 +869,7 @@ EOF
 )
 
 # Print "<qid>/<name>" for a signed judge GO on head $1, written
-# by console-kit/write-verdict.sh and bound to this branch's PR; rc 1 when there
+# by chief-kit/write-verdict.sh and bound to this branch's PR; rc 1 when there
 # is none, rc 8 when a NO-GO for the head or an unresolvable PR refuses it.
 # Unlike a scope record it carries no delta-from, is not consumed (it is bound
 # to one head) and buys no round: it stands in for the panel review.
@@ -1225,7 +1225,7 @@ EOF
         delta_trigger="postcap-ci-red"
         return 0
     fi
-    delta_refuse "review-round: $delta_to neither answers a round-3 finding nor only merges the base into $delta_from, and no judge NO-GO for $delta_from is recorded (console-kit/write-verdict.sh) - $full_note; new work after the cap goes to the console"
+    delta_refuse "review-round: $delta_to neither answers a round-3 finding nor only merges the base into $delta_from, and no judge NO-GO for $delta_from is recorded (chief-kit/write-verdict.sh) - $full_note; new work after the cap goes to the console"
     return 8
 }
 
@@ -1234,7 +1234,7 @@ delta_refuse() {
     if [ -n "$delta_used" ]; then
         # Name the check that fired; the used-delta note follows it.
         [ -z "$1" ] || echo "$1" >&2
-        echo "review-round: the one delta round was already used on $branch ($delta_used) - a second delta round is refused, and $full_note; only a judge NO-GO on the last reviewed head (console-kit/write-verdict.sh) buys another; ask the console" >&2
+        echo "review-round: the one delta round was already used on $branch ($delta_used) - a second delta round is refused, and $full_note; only a judge NO-GO on the last reviewed head (chief-kit/write-verdict.sh) buys another; ask the console" >&2
     else
         echo "$1" >&2
     fi

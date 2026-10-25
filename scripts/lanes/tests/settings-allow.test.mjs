@@ -174,7 +174,7 @@ const SANCTIONED = [
   'bash scripts/context-fill.sh',
   'bash scripts/handover/queue-lock.sh acquire /abs/doc.md',
   'bash scripts/handover/wrap-subtree-check.sh',
-  'bash scripts/handover/console-kit/go.sh 1090 abc',
+  'bash scripts/handover/chief-kit/go.sh 1090 abc',
   'bash scripts/lanes/leg-burn.sh HIMMEL-1-N1-x',
   'bash scripts/lanes/leg-pr-open.sh /t/title /t/body',
   'bash scripts/lib/bank-preflight.sh',
@@ -233,11 +233,11 @@ const LITERAL_FILE = /^(bash|bun|nohup bun) [A-Za-z0-9_./-]+\.(sh|ts|mjs|js):\*$
 // The vm-runner console control, five exact literals (no `:*`).
 const PROJECT_EXACT_LITERALS = [
   'bash scripts/cr/cr-scores.sh',
-  'bash scripts/handover/console-kit/vm-runner.sh on',
-  'bash scripts/handover/console-kit/vm-runner.sh on --vms 1',
-  'bash scripts/handover/console-kit/vm-runner.sh on --vms 2',
-  'bash scripts/handover/console-kit/vm-runner.sh off',
-  'bash scripts/handover/console-kit/vm-runner.sh status',
+  'bash scripts/handover/chief-kit/vm-runner.sh on',
+  'bash scripts/handover/chief-kit/vm-runner.sh on --vms 1',
+  'bash scripts/handover/chief-kit/vm-runner.sh on --vms 2',
+  'bash scripts/handover/chief-kit/vm-runner.sh off',
+  'bash scripts/handover/chief-kit/vm-runner.sh status',
   'bash scripts/ci/gcp-runners.sh down',
   'bash scripts/ci/gcp-runners.sh status',
 ];

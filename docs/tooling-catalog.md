@@ -169,7 +169,7 @@ Installed via `extraKnownMarketplaces` in `settings.json`.
 
 > **Boundary ownership:** which optimizer owns which token boundary (rtk vs
 > MCP-output vs cache vs routing) is governed by
-> [`docs/token-economy.md`](token-economy.md) (WS6) — one
+> [`docs/token-economy.md`](token-economy.md) — one
 > optimizer per boundary; adoption changes gate on a measured real-session
 > delta.
 
@@ -1134,7 +1134,7 @@ through `scripts/lanes/claudex-session-root.mjs` and still look in the old
 bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
 ```
 
-**Codex weekly subscription usage budget preflight (D4):** reads the LAST
+**Codex weekly subscription usage budget preflight:** reads the LAST
 `"secondary":{"used_percent":<N>` occurrence from a bounded tail read of
 `~/.codex/logs_2.sqlite` (the rollout log; `secondary` = weekly, `primary` =
 5h) — fail-**OPEN** on any read error (a cold/absent log never bricks a
@@ -1242,8 +1242,7 @@ not a `himmelctl` install item. Operator view: [himmel-bus.md](himmel-bus.md).
 the offload loop (spawn → inspect → validate → push-by-validator). It creates a
 fresh git worktree + `glm/<slug>` branch, resolves the GLM env block
 (`glm-env.ts` — `ZAI_API_KEY` from shell env or the himmel repo `.env`, launcher
--parity `ANTHROPIC_*` vars), runs the D2 egress guard (`phi-egress-guard.ts`,
-renamed from `glm-guard.ts`), composes
+-parity `ANTHROPIC_*` vars), runs the PHI egress guard (`phi-egress-guard.ts`), composes
 the worker prompt with minted `outbox.jsonl` / `context.md` paths, and drives
 the run through the `runSession(…, lane:"glm")` seam in `run.ts`. GLM runs pin
 `--model opus` (→ `glm-5.2[1m]`) and ignore `TELEGRAM_CLAUDE_MODEL`. Sessions live
@@ -1253,7 +1252,6 @@ Telegram-flushed. A blocked worker can record a capability request and degrade
 gracefully via the **escalation channel** — `spawn-glm --grant`/`--autonomous`
 pre-seed, an `adjudicate list|grant|refuse` CLI, and a per-session append-only
 `grants.jsonl` the deny-hook honors on one arm (TTL/use-bounded, fail-closed).
-The offload-loop doc was removed with the lane.
 
 ```
 bun scripts/telegram/spawn-glm.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--timeout-mins <n>] [--permission-mode <mode>] [--arm-on-cap | --no-arm-on-cap]
@@ -1276,10 +1274,9 @@ could lose operator push configuration), so push protection is **contract-only**
 and every dispatch report says so. A worker inherits operator git credentials
 via the shared `~/.claude`; the in-session accident guard is
 `block-glm-external-writes.sh` and the load-bearing control is the automated review gate (no
-GLM branch merges except by the validating session). D2 guards are
-dormant-by-construction in v1 (himmel-worktree cwd scope). Uses GLM flat-rate
-Coding-Plan quota, sanctioned by the operator directive — the per-token block
-gates the WS2 router only, not this direct-CLI lane.
+GLM branch merges except by the validating session). The egress guards
+are dormant by construction (himmel-worktree cwd scope). Uses GLM flat-rate
+Coding-Plan quota, sanctioned by the operator directive.
 
 **Acceptance:** bun unit suite in the telegram bridge (guard red paths, env
 builder block + missing-key throw + quote-strip, `runSession` lane env merge
@@ -1496,7 +1493,7 @@ committed.
 
 ## Release Scripts (`scripts/`)
 
-- `scripts/gen-changelog.sh` — **CHANGELOG generator** (version-tag grouping + `--check` + morning-report wiring). Writes `CHANGELOG.md` from conventional-commit history: `feat` → Added, `fix` → Fixed, `chore|refactor|docs|test` → Changed, everything else → Other. Groups commits by version tag (`v[0-9]*`, newest-first): each tag gets its own `## [<tag>] - <date>` section, with `## [Unreleased]` covering everything after the newest tag; a tagless repo gets a single `## [Unreleased]` over all history. `--check` writes nothing and exits 1 with an entry count when `CHANGELOG.md` is stale — the primitive the daily `scripts/overnight/morning-report.sh` "Changelog freshness" section reads, since the file is regenerate-on-demand (never per-commit/per-worktree, which would guarantee merge conflicts) so staleness needs a visible surface. Idempotent on immediate re-run; do not hand-edit the generated file.
+- `scripts/gen-changelog.sh` — **CHANGELOG generator** (version-tag grouping + `--check` + morning-report wiring). Writes `CHANGELOG.md` from conventional-commit history: `feat` → Added, `fix` → Fixed, `chore|refactor|docs|test` → Changed, everything else → Other. Groups commits by version tag (`v[0-9]*`, newest-first): each tag gets its own `## [<tag>] - <date>` section, with `## [Unreleased]` covering everything after the newest tag; a tagless repo gets a single `## [Unreleased]` over all history. `--check` writes nothing and exits 1 with an entry count when `CHANGELOG.md` is stale — the primitive the daily `scripts/afk/morning-report.sh` "Changelog freshness" section reads, since the file is regenerate-on-demand (never per-commit/per-worktree, which would guarantee merge conflicts) so staleness needs a visible surface. Idempotent on immediate re-run; do not hand-edit the generated file.
 
 ---
 

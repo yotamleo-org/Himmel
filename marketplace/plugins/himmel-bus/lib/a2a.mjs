@@ -3,7 +3,7 @@
 // is DATA; the `c` authority flag is carried only under metadata so nothing in
 // the A2A message can be read as a ruling, and inbound A2A text is always c=0.
 import { loadPeers } from './identity.mjs';
-import { redact } from '../../../../scripts/handover/console-kit/redact.mjs';
+import { redact } from '../../../../scripts/handover/chief-kit/redact.mjs';
 
 export const A2A_VERSION = '1.0.0';
 

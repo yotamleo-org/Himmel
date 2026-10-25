@@ -7,5 +7,5 @@ Alias of [`/chief`](chief.md) (HIMMEL-6641); same arguments, same behaviour.
 Kept so the old `/console` spelling keeps working.
 
 ```bash
-bash scripts/handover/console/chief.sh $ARGUMENTS
+bash scripts/handover/chief/chief.sh $ARGUMENTS
 ```

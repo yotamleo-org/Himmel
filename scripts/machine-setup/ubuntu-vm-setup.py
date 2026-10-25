@@ -100,7 +100,7 @@ def nopasswd_dropin(user):
 
 
 def install_nopasswd_sudoers(client, user):
-    """Install /etc/sudoers.d/90-<user>-nopasswd (scoped NOPASSWD, HIMMEL-492).
+    """Install /etc/sudoers.d/90-<user>-nopasswd (scoped NOPASSWD).
 
     Validates with `visudo -cf` on a staged temp file BEFORE installing, so a
     malformed drop-in can never land in /etc/sudoers.d and lock out sudo.
@@ -165,7 +165,7 @@ def main():
         print("  WARNING: no SSH key found at", PUBKEY_PATH)
         print("  Run: ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519 -N ''")
 
-    print("[7c] Installing scoped NOPASSWD sudoers drop-in (HIMMEL-492)...")
+    print("[7c] Installing scoped NOPASSWD sudoers drop-in...")
     install_nopasswd_sudoers(client, USER)
 
     print("  Rebooting guest...")

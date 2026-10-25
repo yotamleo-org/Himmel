@@ -57,7 +57,7 @@ the fleet's own load, and the PR stays yours. When `scripts/check-ci.sh` exits
 `DEADLINE-PENDING` (exit 2, nothing failed), re-run one foreground `check-ci`
 until it is green or red; do not wrap, and do not arm an inbox hold while re-running. A
 red is yours to triage, as on the native lane: read
-`docs/handover/leg-sections/ci-red.md`. The wait is bounded: after at most 3
+`docs/handover/worker-sections/ci-red.md`. The wait is bounded: after at most 3
 `DEADLINE-PENDING` re-runs or 90 minutes, whichever comes first, post
 `BLOCKED ci-pending: <pr> <head> <pending checks>` to Results and take the
 bounded inbox hold below; never wrap before the hold deadline. If `check-ci` reports no checks registered
@@ -68,7 +68,7 @@ Resolve `<handover-root>` through `scripts/lib/handover-path.sh`'s
 sender-supplied path or the console's inbox. Use the resulting absolute path:
 
 ```text
-Monitor({command: "bash scripts/handover/console-kit/inbox-follow.sh --wake <handover-root>/inbox/<session>.md", description: "own-inbox console wake", timeout_ms: 1800000})
+Monitor({command: "bash scripts/handover/chief-kit/inbox-follow.sh --wake <handover-root>/inbox/<session>.md", description: "own-inbox console wake", timeout_ms: 1800000})
 ```
 
 The follower keeps its byte cursor in `<inbox>.cursor` across re-arms and emits

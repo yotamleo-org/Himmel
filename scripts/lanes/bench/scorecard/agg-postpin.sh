@@ -27,7 +27,7 @@
 #                             <name>.log, holding one appended
 #                             "headed-arm-leg: profile=<name> ... session=<name>"
 #                             line per launch attempt (writer:
-#                             scripts/handover/console-kit/headed-arm-leg.sh).
+#                             scripts/handover/chief-kit/headed-arm-leg.sh).
 #                             A session with no launch-log entry is excluded
 #                             under --cohort (no profile on record).
 #                             MULTI-LINE RULE: the log is append-only

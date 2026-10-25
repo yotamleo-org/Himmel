@@ -34,7 +34,14 @@ f() { [ -f "$S/$1" ] && cat "$S/$1" || echo "${2:-[]}"; }
 case "$A" in
   "variable get CI_GO_GATE"*) [ -f "$S/var" ] || { echo "could not find variable" >&2; exit 1; }; cat "$S/var"; exit 0 ;;
   *graphql*) f threads.json '{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false},"nodes":[]}}}}}'; exit 0 ;;
-  *"-X DELETE "*"/labels/ci:go"*) [ -f "$S/delete-fail" ] && exit 1; exit 0 ;;
+  *"-X DELETE "*"/labels/ci:go"*)
+    [ -f "$S/delete-fail" ] && exit 1
+    if [ -f "$S/delete-real" ]; then
+      # GitHub: removing a label that is not on the PR is a 404 and leaves no timeline event
+      jq -e 'any(.[]; .name == "ci:go")' "$S/labels.json" >/dev/null 2>&1 || { echo '{"message":"Label does not exist"}' >&2; exit 1; }
+      jq -c --arg t "${GH_STUB_NOW:-$(date -u +%Y-%m-%dT%H:%M:%SZ)}" '. + [{event:"unlabeled",label:{name:"ci:go"},created_at:$t}]' "$S/events.json" > "$S/events.tmp" && mv "$S/events.tmp" "$S/events.json"
+    fi
+    exit 0 ;;
   *"-X POST "*"/issues/"*"/labels"*)
     [ -f "$S/add-fail" ] && { echo "HTTP 502" >&2; exit 1; }
     [ -f "$S/add-fail-once" ] && { rm -f "$S/add-fail-once"; echo "HTTP 502" >&2; exit 1; }
@@ -49,7 +56,14 @@ case "$A" in
   "api repos/o/r/commits/"*"/check-runs"*) f checks.json '{"check_runs":[]}'; exit 0 ;;
   "api repos/o/r/commits/"*"/statuses"*) : > "$S/gate-began"; f statuses.json; exit 0 ;;
   "api repos/o/r/commits/"*) f commit.json '{}'; exit 0 ;;
-  "pr view"*) echo "42 0000000000000000000000000000000000000000"; exit 0 ;;
+  "pr view --"*) echo "argument required when using the --repo flag" >&2; exit 1 ;;
+  "pr view "*) echo "42 0000000000000000000000000000000000000000"; exit 0 ;;
+  "pr list --head "*)
+    # the open PRs of $S/prlist.json whose head branch is --head, through the caller's -q expression
+    b="${A#pr list --head }"; b="${b%% *}"; q=""
+    while [ "$#" -gt 0 ]; do [ "$1" = -q ] && q="$2"; shift; done
+    [ -f "$S/prlist.json" ] && jq -r --arg b "$b" "[.[] | select(.headRefName == \$b)] | $q" "$S/prlist.json"
+    exit 0 ;;
 esac
 echo '{}'
 EOF
@@ -178,7 +192,10 @@ jq -e --arg h "$HEAD1" '.pr == 42 and .head == $h and (.ts | type == "string") a
         and has("findings") and has("latency_s") and has("cost_usd")))' "$CR_FIRST_LEDGER" >/dev/null 2>&1 \
   && ok "release: ledger line carries pr, head, ts, cheap_settled_at, reviewers[slug,mode,state,verdict,findings,latency_s,cost_usd]" \
   || { bad "release: ledger line shape"; sed 's/^/  ledger: /' "$CR_FIRST_LEDGER" 2>/dev/null; }
+# flock is util-linux: without it the release runs unlocked (no lock file by design), so the row has nothing to assert.
+if command -v flock >/dev/null 2>&1; then
 ls "$TMP/repo/.git"/cr-first-release.42.lock >/dev/null 2>&1 && ok "release: per-PR lock file in the git common dir" || bad "release: per-PR lock file in the git common dir"
+else echo "SKIP release: per-PR lock file in the git common dir (no flock on this host)"; fi
 p1 release-clean
 # RL7 — a second call at the same head: no second pair (the timeline now shows the event).
 run RL7-second
@@ -454,6 +471,62 @@ has "$TMP/out-arg" '^CR-FIRST RELEASE ' "CLI: --repo o/r --pr --head runs agains
 # a named PR with no head reads that PR's head, not the current branch's PR.
 reset; echo on > "$S/var"; RC=0; bash "$SCRIPT_DIR/cr-first-release.sh" --repo o/r --pr 42 >"$TMP/out-arg" 2>&1 || RC=$?
 has "$S/calls.log" '^pr view 42 --repo o/r ' "CLI: --pr N with no head reads the head of PR N"
+
+# no --pr/--head: the PR is the caller's branch's. `gh pr view --repo` with no selector is an error
+# whatever the directory, so the entry names the branch it was run from.
+git -C "$TMP/repo" checkout -q -b feat-x 2>/dev/null
+mkdir -p "$TMP/other"; git -C "$TMP/other" init --quiet -b main >/dev/null 2>&1
+git -C "$TMP/other" remote add origin https://github.com/o/r.git
+# prlist <branch> <number> <cross-repo true|false>... — the open PRs `gh pr list --head` can return, one per triple
+prlist() {
+  local out='[]'
+  while [ "$#" -ge 3 ]; do
+    out=$(printf '%s' "$out" | jq -c --arg b "$1" --argjson n "$2" --argjson x "$3" --arg h "$HEAD1" \
+      '. + [{number:$n, headRefOid:$h, headRefName:$b, isCrossRepository:$x}]')
+    shift 3
+  done
+  printf '%s\n' "$out" > "$S/prlist.json"
+}
+reset; prlist feat-x 42 false
+RC=0; (cd "$TMP/repo"&& bash "$SCRIPT_DIR/cr-first-release.sh") >"$TMP/out-arg" 2>&1 || RC=$?
+eq "$RC" 0 "CLI: the caller's branch release exits 0"
+has "$TMP/out-arg" '^CR-FIRST RELEASE ' "CLI: no --pr/--head resolves the PR from the caller's branch and releases"
+has "$S/calls.log" '^pr list --head feat-x --state open --repo o/r ' "CLI: the lookup names the caller's branch"
+eq "$(deletes)/$(posts)" 1/1 "CLI: the caller's branch release writes the label pair"
+reset; prlist feat-x 42 false
+RC=0; (cd "$TMP/other" && bash "$SCRIPT_DIR/cr-first-release.sh") >"$TMP/out-arg" 2>&1 || RC=$?
+eq "$RC" 2 "CLI: a directory on another branch exits 2"
+has "$TMP/out-arg" '^CR-FIRST ERROR no pull request for the current branch' "CLI: a directory on another branch finds no PR"
+eq "$(posts)$(deletes)" 00 "CLI: a directory on another branch writes no label"
+# a fork's PR that shares the branch name is not the caller's PR, whichever comes first.
+reset; prlist feat-x 99 true feat-x 42 false
+RC=0; (cd "$TMP/repo" && bash "$SCRIPT_DIR/cr-first-release.sh") >"$TMP/out-arg" 2>&1 || RC=$?
+eq "$RC" 0 "CLI: a fork PR sharing the branch name is skipped (exit 0)"
+has "$S/calls.log" '^api -X POST repos/o/r/issues/42/labels' "CLI: the label goes to the same-repo PR"
+hasnt "$S/calls.log" 'issues/99' "CLI: nothing is written to the fork PR"
+reset; prlist feat-x 99 true
+RC=0; (cd "$TMP/repo" && bash "$SCRIPT_DIR/cr-first-release.sh") >"$TMP/out-arg" 2>&1 || RC=$?
+eq "$RC" 2 "CLI: only a fork PR on the branch name is no PR for the caller (exit 2)"
+eq "$(posts)$(deletes)" 00 "CLI: only a fork PR on the branch name writes no label"
+# a branch named like a PR number is a branch, not PR #42.
+git -C "$TMP/other" checkout -q -b 42 2>/dev/null
+reset; prlist feat-x 42 false
+RC=0; (cd "$TMP/other" && bash "$SCRIPT_DIR/cr-first-release.sh") >"$TMP/out-arg" 2>&1 || RC=$?
+eq "$RC" 2 "CLI: a numeric branch name is not read as a PR number (exit 2)"
+hasnt "$S/calls.log" '^pr view' "CLI: a numeric branch name makes no pr view call"
+eq "$(posts)$(deletes)" 00 "CLI: a numeric branch name writes no label"
+
+# ── a first release: label add only, no unlabel event ────────────────────────
+# the remove is attempted every time; it leaves an `unlabeled` event only when ci:go was on the PR.
+reset; touch "$S/delete-real"; run first-release
+has "$TMP/out-first-release" '^CR-FIRST RELEASE ' "first release: releases with ci:go absent"
+eq "$(jq -r '[.[] | .event] | join(",")' "$S/events.json")" labeled "first release: timeline shows labeled only, no unlabeled"
+reset; touch "$S/delete-real"; echo '[{"name":"ci:go"}]' > "$S/labels.json"
+jq -nc --arg t "2026-10-23T09:00:00Z" '[{event:"labeled",label:{name:"ci:go"},created_at:$t}]' > "$S/events.json"; run re-release
+eq "$(jq -r '[.[] | .event] | join(",")' "$S/events.json")" labeled,unlabeled,labeled "re-release over a stale label: unlabeled then labeled"
+# a different label whose name merely contains ci:go is not the label: no unlabeled event.
+reset; touch "$S/delete-real"; echo '[{"name":"not-ci:go"}]' > "$S/labels.json"; run other-label
+eq "$(jq -r '[.[] | .event] | join(",")' "$S/events.json")" labeled "a label named not-ci:go is not ci:go: labeled only"
 
 # ── the ledger CLI ───────────────────────────────────────────────────────────
 LCLI="$SCRIPT_DIR/../cr/cr-trigger-ledger.sh"

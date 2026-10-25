@@ -2,7 +2,7 @@
 """scripts/eval/session-retro.py - top recurring leg stall classes over a window (HIMMEL-5514 POC).
 
 Read-only, deterministic, no model call. Counts the leg-failures ledger that
-scripts/handover/console-kit/leg-digest-step.sh feeds (writer: leg_ledger.py;
+scripts/handover/chief-kit/leg-digest-step.sh feeds (writer: leg_ledger.py;
 path: $HIMMEL_WORKER_SESSION_FAILURES_LEDGER, else the old $HIMMEL_LEG_FAILURES_LEDGER,
 else ~/.himmel/leg-failures.jsonl).
 

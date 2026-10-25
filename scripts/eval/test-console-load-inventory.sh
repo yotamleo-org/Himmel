@@ -24,7 +24,7 @@ P="$TMP/proj"; mkdir -p "$P"
     echo '{"type":"custom-title","customTitle":"X-2026-10-14Z-roadmap-console"}'
     echo '{"type":"user","message":{"role":"user","content":"Another Claude session sent a message:\n<cross-session-message from=\"s\" from-name=\"leg\" from-mode=\"prompting\">\nMERGED #2566 N2088"}}'
     echo '{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":5},"content":[{"type":"text","text":"x"}]}}'
-    echo '{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":5},"content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/handover/console-kit/close-wrapped-leg.sh /h/leg.md"}}]}}'
+    echo '{"type":"assistant","message":{"id":"m1","usage":{"input_tokens":2,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000,"output_tokens":5},"content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/handover/chief-kit/close-wrapped-leg.sh /h/leg.md"}}]}}'
     echo '{"type":"user","message":{"role":"user","content":[{"type":"tool_result","content":"ok"}]}}'
     echo '{"type":"assistant","message":{"id":"m2","usage":{"input_tokens":1,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":5},"content":[{"type":"text","text":"done"}]}}'
 } > "$P/console.jsonl"
@@ -43,7 +43,7 @@ check "input-eq is input + creation + 0.1 x read (m1 = 202, m2 = 1)" 'python3 "$
 
 {
     echo '{"type":"custom-title","customTitle":"Y-2026-10-14Z-roadmap-console"}'
-    echo '{"type":"assistant","message":{"id":"v1","usage":{"input_tokens":1},"content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/handover/console-kit/verdict-go.sh q GO abc"}}]}}'
+    echo '{"type":"assistant","message":{"id":"v1","usage":{"input_tokens":1},"content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/handover/chief-kit/verdict-go.sh q GO abc"}}]}}'
 } > "$P/verdict.jsonl"
 check "verdict-go.sh is not also counted as go.sh" 'python3 "$CLI" --projects "$P" --match "^Y-" --json | python3 -c "import json,sys; d=json.load(sys.stdin)[\"script_calls\"]; sys.exit(0 if d.get(\"verdict-go.sh\")==1 and not d.get(\"go.sh\") else 1)"'
 

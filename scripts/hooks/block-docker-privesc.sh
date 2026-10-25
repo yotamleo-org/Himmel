@@ -453,7 +453,8 @@ if [ "$tool" != PowerShell ]; then
         exit 2
     fi
     ast_rc=0
-    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    # a standalone hook has no runner bound, so cap the model at 10 s plus the 2 s kill grace, inside the 15 s entry timeout
+    pos=$(BASH_AST_MAX_S=10 bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
     case "$ast_rc" in
         0)
             # swallow-ok: a jq failure falls through to the regex verdict, never weaker
@@ -471,6 +472,11 @@ if [ "$tool" != PowerShell ]; then
         2)
             [ "${DOCKER_PRIVESC_OK:-0}" = "1" ] && exit 0
             echo "block-docker-privesc: shfmt not on PATH, so this command that names docker or podman cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or bypass with DOCKER_PRIVESC_OK=1." >&2
+            exit 2
+            ;;
+        5)
+            [ "${DOCKER_PRIVESC_OK:-0}" = "1" ] && exit 0
+            echo "block-docker-privesc: the command model timed out, so this command that names docker or podman cannot be read; refusing. Split the command, or bypass with DOCKER_PRIVESC_OK=1." >&2
             exit 2
             ;;
     esac

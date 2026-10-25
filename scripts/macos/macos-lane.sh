@@ -18,7 +18,7 @@
 set -uo pipefail
 
 if [ "${HIMMEL_MACOS_LANE_OK:-}" != "1" ]; then
-  echo "macos-lane: refusing to run — set HIMMEL_MACOS_LANE_OK=1 in the launching shell (operator go required, HIMMEL-4980)" >&2
+  echo "macos-lane: refusing to run — set HIMMEL_MACOS_LANE_OK=1 in the launching shell (operator go required)" >&2
   exit 2
 fi
 

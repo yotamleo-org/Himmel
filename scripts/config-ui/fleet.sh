@@ -80,6 +80,6 @@ routes=""
 manifests="" consoles=""
 if [ -n "$root" ]; then
     manifests=$(find "$root" -maxdepth 4 -type f -name '*.fleet.json' 2>/dev/null) # gnu-ok: BSD find supports -maxdepth
-    consoles=$(find "$root" -maxdepth 4 -type f -name '*-console.md' 2>/dev/null) # gnu-ok: BSD find supports -maxdepth
+    consoles=$(find "$root" -maxdepth 4 -type f \( -name '*-console.md' -o -name '*-chief.md' \) 2>/dev/null) # gnu-ok: BSD find supports -maxdepth
 fi
 jq -n --arg census "$census" --arg rows "$rows" --arg routes "$routes" --arg manifests "$manifests" --arg consoles "$consoles" '{census: $census, sessions: [$rows | split("\n")[] | select(length > 0) | split("\t") | {pid: .[0], name: .[1], model: .[2], doc: .[3], status: (.[4] // ""), autocompact: (.[5] // ""), startedAt: (if (.[6] // "") == "" then null else (.[6] | tonumber) * 1000 end)}], cloudRoutes: [$routes | split("\n")[] | select(length > 0)], manifests: [$manifests | split("\n")[] | select(length > 0)], consoleDocs: [$consoles | split("\n")[] | select(length > 0)]}'

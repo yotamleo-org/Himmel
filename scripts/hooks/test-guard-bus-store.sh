@@ -278,6 +278,12 @@ RC=$?
 if [ "$RC" = 0 ] && [ -z "$OUT" ]; then ok "no shfmt, bus status -> allow, silent"; else bad "no shfmt, bus status: rc=$RC out=$OUT"; fi
 rm -rf "$NOSHFMT"
 
+echo "== a command model that runs past its bound denies =="
+# a stub timeout stands in for the slow model
+mkdir -p "$SCR/slow-model" && printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' >"$SCR/slow-model/timeout" && chmod +x "$SCR/slow-model/timeout"
+run "$(bash_json 'bus send console /tmp/register.txt')" XDG_STATE_HOME="$SCR/state" PATH="$SCR/slow-model:$PATH"
+if [ "$RC" = 2 ] && [[ $OUT == *"timed out"* ]]; then ok "a timed-out command model denies a command that names bus and a verb"; else bad "timed-out model: rc=$RC out=$OUT"; fi
+
 echo "== allowed bus verbs =="
 allow "bus status" "$(bash_json 'bus status')"
 allow "bus status <name>" "$(bash_json 'bus status x')"

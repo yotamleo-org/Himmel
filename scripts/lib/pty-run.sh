@@ -63,7 +63,7 @@ _himmel_pty_run() (
         :
     else
         [ -n "$_hp_d" ] && rmdir "$_hp_d" 2>/dev/null
-        echo "WARN pty-run: script(1)/mkfifo unavailable -- launching $1 WITHOUT a pty; an idle cross-session message will end this session (HIMMEL-2534)" >&2
+        echo "WARN pty-run: script(1)/mkfifo unavailable -- launching $1 WITHOUT a pty; an idle cross-session message will end this session" >&2
         command "$@"
         exit $?
     fi

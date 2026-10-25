@@ -223,7 +223,7 @@ gh_forge_pr_merge() {
     local number="$1" head="${2:-}"
     local out
     if [ -z "$head" ]; then
-        echo "ERR forge(github): refusing to merge PR #$number without a vetted head SHA — the HIMMEL-1058 head binding is mandatory (CodeRabbit #470)." >&2
+        echo "ERR forge(github): refusing to merge PR #$number without a vetted head SHA — the head binding is mandatory." >&2
         return 4
     fi
     local -a match=(--match-head-commit "$head")

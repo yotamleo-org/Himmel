@@ -268,6 +268,29 @@ test("bare /console with zero or two live consoles lists the problem without que
   }
 });
 
+test("HIMMEL-7573: the pick-a-chief prompts tell the operator to send /chief, never /console", async () => {
+  for (const text of ["/chief halt", "/chief HIMMEL halt"]) {
+    const r = root(); const replies: string[] = [];
+    heartbeat(r); heartbeat(r, "HIMMEL-second-chief");
+    await handleInbound(r, say(text), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+    expect(replies.join("\n")).toContain("choose /chief <name> <text>");
+    expect(replies.join("\n")).not.toContain("/console");
+  }
+});
+
+test("HIMMEL-7573: /console stays a quiet alias that queues exactly what /chief queues", async () => {
+  const lines: string[] = []; const acks: string[][] = [];
+  for (const verb of ["/console", "/chief"]) {
+    const r = root(); const f = armInbox(r); const replies: string[] = [];
+    await handleInbound(r, say(`${verb} ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+    lines.push(readFileSync(f, "utf8").replace(/^- \d\d:\d\d /, ""));
+    acks.push(replies);
+  }
+  expect(lines[0]).toBe("[telegram from=1 chat=1] go ahead\n");
+  expect(lines[1]).toBe(lines[0]);
+  expect(acks[1]).toEqual(acks[0]);
+});
+
 test("/consoles lists only fresh consoles with heartbeat and bucket/project", async () => {
   const r = root(); heartbeat(r); heartbeat(r, "old", "waiting", 300); heartbeat(r, "exited", "exited");
   const replies: string[] = []; const ran: string[] = [];
@@ -407,7 +430,7 @@ test("first waiter arm queues one announcement per identity, including successor
     // timing probe. First-arm announcement must happen before its first wake.
     writeFileSync(inbox, "wake\n");
     writeFileSync(inbox + ".cursor", "0");
-    const p = Bun.spawn([BASH_BIN, join(import.meta.dir, "../handover/console-kit/console-wait.sh"), inbox], {
+    const p = Bun.spawn([BASH_BIN, join(import.meta.dir, "../handover/chief-kit/console-wait.sh"), inbox], {
       env: { ...process.env, BRIDGE_ROOT: r, TELEGRAM_ACCESS_PATH: access, CONSOLE_WAIT_TICK: tick, CONSOLE_WAIT_BANK: bank }, stdout: "pipe", stderr: "pipe",
     });
     await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
@@ -415,7 +438,8 @@ test("first waiter arm queues one announcement per identity, including successor
   }
   const out = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").map(l => JSON.parse(l));
   expect(out.map(m => m.console)).toEqual([NAME, "successor"]);
-  expect(out[0].text).toContain(`/console <text>`);
+  expect(out[0].text).toContain(`/chief <text>`);
+  expect(out.map(m => m.text).join("\n")).not.toContain("/console");
   expect(out[1].text).toContain("successor");
 });
 

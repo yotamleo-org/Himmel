@@ -307,7 +307,7 @@ strip_evidence_heredocs() {
     case "$text" in *"<<'"*) ;; *) return 0 ;; esac
     case "$text" in */tmp/claude-*) ;; *) return 0 ;; esac
     open_re="^cat[[:blank:]]+>[[:blank:]]*(/tmp/claude-[0-9]+/[A-Za-z0-9_./+-]+\\.(md|txt))[[:blank:]]+<<[[:blank:]]*'([A-Za-z0-9_]+)'[[:blank:]]*\$"
-    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[A-Za-z0-9_./+-]*scripts/handover/console-kit/write-verdict\\.sh([[:blank:]]+[A-Za-z0-9_./=:+-]+)*[[:blank:]]*\$"
+    wv_re="^[[:blank:]]*(bash[[:blank:]]+)?[A-Za-z0-9_./+-]*scripts/handover/(console|chief)-kit/write-verdict\\.sh([[:blank:]]+[A-Za-z0-9_./=:+-]+)*[[:blank:]]*\$"
     while IFS= read -r line || [ -n "$line" ]; do
         lines[n]=$line; n=$((n + 1))
     done <<<"$text"
@@ -948,7 +948,7 @@ deny() {  # deny <script-path> <var-name> -- both from OUR registry, never
     the same thing), or if this is a test seam, set it from the test suite's
     own process, not the agent's command line.
 
-    Retry as ONE literal command (HIMMEL-4815): bash ${script} <same args>
+    Retry as ONE literal command: bash ${script} <same args>
     -- no VAR= prefix, no env wrapper, no \$VAR path.
 
     To bypass this guard intentionally, set ENV_PREFIX_GUARD_OK=1 in the
@@ -977,7 +977,7 @@ deny_unresolvable() {  # deny_unresolvable <script-path> -- from OUR
     LAUNCHING shell, never per call. Run the chokepoint bare; if the text
     only mentions the chokepoint, move it into a file and pass the file.
 
-    Retry as ONE literal command (HIMMEL-4815): bash ${script} <same args>
+    Retry as ONE literal command: bash ${script} <same args>
     -- no VAR= prefix, no env wrapper, no \$VAR path.
 
     To bypass this guard intentionally, set ENV_PREFIX_GUARD_OK=1 in the
@@ -1004,7 +1004,7 @@ deny_raw_mention() {  # deny_raw_mention <script-path> -- from OUR registry,
     LAUNCHING shell, never per call; run the chokepoint bare. If the text
     only mentions the chokepoint, move it into a file and pass the file.
 
-    Retry as ONE literal command (HIMMEL-4815): bash ${script} <same args>
+    Retry as ONE literal command: bash ${script} <same args>
     -- no VAR= prefix, no env wrapper, no \$VAR path.
 
     To bypass this guard intentionally, set ENV_PREFIX_GUARD_OK=1 in the
@@ -2025,8 +2025,9 @@ obf_ast_relief() { # obf_ast_relief <text> <verb regex> <hard 0|1>
     # shellcheck source=../lib/timeout-bin.sh
     { [ -r "$lib" ] && [ -r "$SCRIPT_DIR/../lib/timeout-bin.sh" ] && . "$SCRIPT_DIR/../lib/timeout-bin.sh"; } 2>/dev/null || return 1 # swallow-ok: no model or no resolver keeps the deny
     [ -n "$_TIMEOUT_BIN" ] || return 1
+    # --foreground keeps the model's jq in this hook's process group, so the runner's group kill reaches it
     # shellcheck disable=SC2016 # $1/$2 expand in the child shell
-    pos=$("$_TIMEOUT_BIN" 5 bash -c '. "$1" && bash_ast_positions "$2"' _ "$lib" "$t" 2>/dev/null) || return 1 # swallow-ok: a model error or timeout keeps the deny
+    pos=$("$_TIMEOUT_BIN" --foreground 5 bash -c '. "$1" && bash_ast_positions "$2"' _ "$lib" "$t" 2>/dev/null) || return 1 # swallow-ok: a model error or timeout keeps the deny
     [ "$(printf '%s' "$pos" | jq -r --arg vr "$vr" --arg hard "$hd" --arg pyi "${PYTHONINSPECT:-}" "$OBF_AST_JQ" 2>/dev/null)" = allow ] # swallow-ok: a jq error is not allow, so the deny stands
 }
 

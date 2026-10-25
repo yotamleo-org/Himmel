@@ -62,6 +62,13 @@ rows.append(eval_runs.make_row("decision-158", "scripts/eval/decision-158-answer
                                run_id="d158-1", ci=d158_ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40,
                                meta={"notes": {"q3": "verdicts by one judge model"}}))
 rows[3]["ts"] = "2026-10-24T12:00:00Z"
+pdd = {"pdd.pct": 0.1083, "pdd.k": 13, "pdd.n": 120, "ticket_first.pct": 0.1917, "ticket_first.k": 23,
+       "ticket_first.n": 120, "red_green.pct": 0.5917, "red_green.k": 71, "red_green.n": 120}
+pdd_ci = {"pdd.pct": {"lo": 0.0644, "hi": 0.1766}, "ticket_first.pct": {"lo": 0.1313, "hi": 0.2712},
+          "red_green.pct": {"lo": 0.5022, "hi": 0.6754}}
+rows.append(eval_runs.make_row("pdd-share", "scripts/eval/worker-digest/pdd_share.py", {"pdd_v": 1, "prs": 120, "min_n": 50},
+                               pdd, n=120, run_id="pdd-1", ci=pdd_ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40))
+rows[4]["ts"] = "2026-10-24T23:52:30Z"
 with open(sys.argv[2], "w") as fh:
     for r in rows:
         fh.write(json.dumps(r) + "\n")
@@ -110,18 +117,53 @@ has "answers: a question with no data says not measured" "$out" "Is CodeRabbit r
 has "answers: the note rides along" "$out" "verdicts by one judge model"
 has "answers: the judge question counts merged PRs, not verdicts" "$out" "matter? 90 % (likely between 60 % and 98 %) of 10 merged PRs"
 
+has "proof first: says what counts as proof-first" "$out" "A merged PR counts as proof-first when"
+has "proof first: says why the number matters" "$out" "It matters because"
+has "proof first: the share as a count, a percentage and a range" "$out" "Proof first: 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %)"
+has "proof first: the ticket half on its own" "$out" "The ticket was written first: 23 of 120: 19 % (likely between 13 % and 27 %)"
+has "proof first: the RED-then-GREEN half on its own" "$out" "RED then GREEN named in the PR body: 71 of 120: 59 % (likely between 50 % and 68 %)"
+
+# Bottom line: the first section, each eval's headline with its run day.
+bottom="$(printf '%s\n' "$out" | awk '/^## /{n++} n==1')"
+eq "bottom line: the first section" "$(printf '%s\n' "$out" | grep -m1 '^## ')" "## Bottom line"
+has "bottom line: the planted-bug catch with its run day" "$bottom" "- The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %), up 20 points since the last run (40 %). Run of 24 Oct 2026."
+eq "bottom line: bugs past a GO with its run day" "$(printf '%s\n' "$bottom" | grep -c '^- A bug got past a GO on 3 of 150 merged PRs: 2 % .*\. Run of 24 Oct 2026\.$')" "1"
+has "bottom line: proof first with its run day" "$bottom" "- Proof first: 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %). Run of 24 Oct 2026."
+has "proof first: the sample counts PRs whose ticket and commits could be read" "$out" "the last 120 merged PRs whose ticket and commits could be read."
+eq "bottom line: one line per eval" "$(printf '%s\n' "$bottom" | grep -c '^- ')" "3"
+
 # CodeRabbit absent from the critic list: the page says it is not measured, never a silent gap.
 python3 -I - "$HERE/lib" "$TMP/codex-only.jsonl" <<'PY' || { echo "test-review-page: writing the codex-only ledger failed" >&2; exit 1; }
 import json, sys
 sys.path.insert(0, sys.argv[1])
 import eval_runs
-m = {"codex.recall": 0.6, "codex.precision": 0.7, "codex.findings": 10, "codex.class.logic.recall": 0.6, "codex.class.logic.n": 5}
+m = {"codex.recall": 0.6, "codex.precision": 0.7, "codex.findings": 10, "codex.class.logic.recall": 0.6, "codex.class.logic.n": 5,
+     "panel.recall": 0.8, "panel.class.logic.recall": 0.8, "panel.class.logic.n": 5}
 row = eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"critics": ["codex"]}, m, n=5,
                          run_id="rp-c", gitsha="0" * 40)
 open(sys.argv[2], "w").write(json.dumps(row) + "\n")
 PY
 out2="$(python3 -I "$PAGE" --ledger "$TMP/codex-only.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"
 has "CodeRabbit: not measured yet, needs a scratch pull request" "$out2" "CodeRabbit is not measured yet: it needs a scratch pull request"
+has "bottom line: the whole panel's catch when it was scored" "$(printf '%s\n' "$out2" | awk '/^## /{n++} n==1')" "- The whole panel caught 4 of 5 planted bugs"
+
+# A run that scored nothing still shows in the Bottom line, with its run day.
+python3 -I - "$HERE/lib" "$TMP/unscored.jsonl" <<'PY' || { echo "test-review-page: writing the unscored ledger failed" >&2; exit 1; }
+import json, sys
+sys.path.insert(0, sys.argv[1])
+import eval_runs
+rows = [eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"critics": ["codex"]}, {"codex.recall": None},
+                           n=0,
+                           run_id="rp-u", status="partial", gitsha="0" * 40),
+        eval_runs.make_row("pdd-share", "scripts/eval/worker-digest/pdd_share.py", {"pdd_v": 1, "prs": 3, "min_n": 50},
+                           {"pdd.pct": None},
+                           n=0, run_id="pdd-u", status="partial", gitsha="0" * 40)]
+rows[0]["ts"], rows[1]["ts"] = "2026-10-23T10:00:00Z", "2026-10-25T01:00:00Z"
+open(sys.argv[2], "w").write("".join(json.dumps(r) + "\n" for r in rows))
+PY
+bottom3="$(python3 -I "$PAGE" --ledger "$TMP/unscored.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1 | awk '/^## /{n++} n==1')"
+has "bottom line: an unscored planted-bug run is not dropped" "$bottom3" "- Planted bugs: no score in this run. Run of 23 Oct 2026."
+has "bottom line: an unscored proof-first run is not dropped" "$bottom3" "- Proof first: no score in this run. Run of 25 Oct 2026."
 
 # The answers script: five questions from fixture ledgers, before and after a cut.
 python3 -I - "$HERE/lib" "$TMP/ans-runs.jsonl" "$TMP/cr.jsonl" <<'PY' || { echo "test-review-page: writing the answers fixtures failed" >&2; exit 1; }
@@ -207,7 +249,9 @@ case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans 
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"; rc=$?
 eq "no ledger: exit 0" "$rc" "0"
-eq "no ledger: every section says there is no run yet" "$(printf '%s\n' "$out" | grep -c 'No run yet')" "3"
+for sec in "Bottom line" "The critics on planted bugs" "The judges" "The five open questions" "Proof first"; do
+    eq "no ledger: '$sec' says there is no run yet" "$(printf '%s\n' "$out" | awk -v h="## $sec" '/^## /{on=($0==h)} on' | grep -c '^No run yet\.$')" "1"
+done
 
 cp "$TMP/changes.jsonl" "$TMP/bad-changes.jsonl"
 printf '%s\n' '{"status":"measured"}' '{"status":"open","eval":"review-panel","metric":null}' '7' >> "$TMP/bad-changes.jsonl"
@@ -217,6 +261,85 @@ has "malformed change records: the good change still shows" "$out" "Changed the 
 
 python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/changes.jsonl" --out "$TMP/page.md" >/dev/null 2>&1
 eq "--out writes the page" "$(head -1 "$TMP/page.md" 2>/dev/null)" "# How good are our reviewers?"
+
+# --panel: the CR ledger's headline, one count per finding. PR b1 raises one claim three times (codex at
+# heads h1 and h2, CodeRabbit at h2) and one other claim; PR b2 has a deferral and two findings with no
+# text on one line; PR b3 was reviewed and drew nothing.
+python3 -I - "$TMP/cr-panel.jsonl" <<'PY' || { echo "test-review-page: writing the panel CR ledger failed" >&2; exit 1; }
+import json, sys
+def fin(br, head, model, fid, line, text, ts, sev="imp"):
+    r = {"kind": "finding", "ts": ts, "branch": br, "head": head, "model": model, "finding_id": fid, "severity": sev,
+         "file": "a.sh", "line": line, "verdict": "", "artifact": "diff", "perspective": "off"}
+    if text is not None:
+        r["text"] = text
+    return r
+def amend(br, head, fid, verdict, ts="2026-10-20T00:00:00Z"):
+    return {"kind": "amend", "ts": ts, "branch": br, "target_head": head, "finding_id": fid, "artifact": "diff",
+            "perspective": "off", "set": {"verdict": verdict}, "reason": "r"}
+rows = [
+    fin("b1", "h1", "codex", "codex-1", 3, "- [imp]: The guard fails open on an empty file [a.sh:3]", "2026-10-10T00:00:00Z"),
+    amend("b1", "h1", "codex-1", "fixed"),
+    fin("b1", "h2", "codex", "codex-1", 3, "- [imp]: the guard fails open on an empty file. [a.sh:3]", "2026-10-11T00:00:00Z"),
+    amend("b1", "h2", "codex-1", "disproved"),
+    fin("b1", "h2", "coderabbit", "coderabbit-7", 3, "The guard fails OPEN on an empty file", "2026-10-11T00:00:01Z"),
+    fin("b1", "h1", "codex", "codex-2", 9, "- [sug]: A second claim", "2026-10-10T00:00:00Z", sev="sug"),
+    amend("b1", "h1", "codex-2", "disproved"),
+    fin("b2", "k1", "codex", "codex-1", 5, "- [imp]: Deferred claim", "2026-10-12T00:00:00Z"),
+    amend("b2", "k1", "codex-1", "deferred"),
+    fin("b2", "k1", "codex", "codex-2", 7, None, "2026-10-12T00:00:00Z"),
+    fin("b2", "k1", "codex", "codex-3", 7, None, "2026-10-12T00:00:00Z"),
+    {"kind": "avail", "ts": "2026-10-13T00:00:00Z", "branch": "b3", "head": "m1", "model": "codex", "status": "ok",
+     "artifact": "diff", "perspective": "off", "responding_model": "gpt-6.1-sol"},
+    fin("b9", "z1", "codex", "codex-1", 1, "- [imp]: After the cut", "2026-10-26T00:00:00Z"),
+]
+with open(sys.argv[1], "w") as fh:
+    for r in rows:
+        fh.write(json.dumps(r) + "\n")
+PY
+panel="$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --min-findings 1 2>&1)"; rc=$?
+eq "panel: exit 0" "$rc" "0"
+has "panel: states the as-of date" "$panel" "As of 25 Oct 2026"
+has "panel: a claim re-raised across rounds and reviewers counts once" "$panel" "5 distinct findings across 2 PRs"
+has "panel: says how many rows were repeats" "$panel" "7 finding rows"
+has "panel: per-PR numbers" "$panel" "3 PRs reviewed, 2 with at least one finding"
+has "panel: findings per PR" "$panel" "median 2.5 and mean 2.5 distinct findings per PR with findings"
+has "panel: a merged finding takes its first raise's verdict" "$panel" "| **All** | **5** | **2** | **1** | **1** | **1** | **2** |"
+has "panel: the merged finding counts for each critic that raised it" "$panel" "| \`coderabbit\` | 1 | 1 | 1 | 0 | 0 | 0 |"
+has "panel: a re-run command pins the cut" "$panel" "--until 2026-10-25T00:00:00Z"
+folded="$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --min-findings 2 2>&1)"
+has "panel: a critic under --min-findings folds into one other row" "$folded" "| other (1 slugs under 2 findings each) | 1 | 1 | 1 | 0 | 0 | 0 |"
+has "panel: a critic at --min-findings keeps its row" "$folded" "| \`codex\` | 5 | 2 |"
+has "panel: the re-run command keeps a non-default --min-findings" "$folded" "--min-findings 2 --out"
+cp "$TMP/page.md" "$TMP/nomark.md"
+python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --out "$TMP/nomark.md" >/dev/null 2>&1; rc=$?
+eq "panel --out: a file with no generated block is refused" "$rc" "2"
+eq "panel --out: the refused file is untouched" "$(cmp -s "$TMP/page.md" "$TMP/nomark.md" && echo same)" "same"
+printf '%s\n' "# Kept title" "" "<!-- review-page.py --panel: start -->" "stale" "<!-- review-page.py --panel: end -->" "" "Kept tail." > "$TMP/doc.md"
+python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --out "$TMP/doc.md" >/dev/null 2>&1; rc=$?
+eq "panel --out: exit 0" "$rc" "0"
+doc="$(cat "$TMP/doc.md")"
+has "panel --out: the text before the block is kept" "$doc" "# Kept title"
+has "panel --out: the text after the block is kept" "$doc" "Kept tail."
+has "panel --out: the block is regenerated" "$doc" "5 distinct findings across 2 PRs"
+case "$doc" in *stale*) fail "panel --out: the old block is gone";; *) pass "panel --out: the old block is gone";; esac
+printf '%s\n' '{"kind":"finding","ts":"2026-10-10T00:00:00Z","branch":"b1","head":"h1","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"- [imp]: a == b [a.sh:1]"}' \
+  '{"kind":"finding","ts":"2026-10-10T00:00:00Z","branch":"b1","head":"h1","model":"codex","finding_id":"codex-2","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"- [imp]: a != b [a.sh:1]"}' > "$TMP/cr-ops.jsonl"
+has "panel: claims that differ only by an operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-ops.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
+sed -e 's/a == b/a + b/' -e 's/a != b/a - b/' "$TMP/cr-ops.jsonl" > "$TMP/cr-arith.jsonl"
+has "panel: claims that differ only by an arithmetic operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-arith.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
+sed -e 's/a == b/a \&\& b/' -e 's/a != b/a || b/' "$TMP/cr-ops.jsonl" > "$TMP/cr-logic.jsonl"
+has "panel: claims that differ only by a logical operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-logic.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
+has "--help prints the whole usage text" "$(python3 -I "$PAGE" --help 2>&1)" "--panel [--cr-ledger P] [--until TS]"
+
+# The evals page must not tell a reader to run a script that is not in the tree.
+ROOT="$(cd "$HERE/../.." && pwd)"
+python3 -I "$ROOT/scripts/cr/evals-page-gen.py" render --out "$TMP/evals-page.md" >/dev/null 2>&1
+missing=""
+while IFS= read -r p; do
+  [ -e "$ROOT/$p" ] || missing="$missing $p"
+done < <(grep -Eo 'scripts/[A-Za-z0-9_./-]+\.(py|sh)' "$TMP/evals-page.md" | sort -u)
+eq "evals page: every script path it names exists in the tree" "$missing" ""
+if [ -s "$TMP/evals-page.md" ]; then pass "evals page: rendered"; else fail "evals page: rendered nothing"; fi
 
 echo "test-review-page: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

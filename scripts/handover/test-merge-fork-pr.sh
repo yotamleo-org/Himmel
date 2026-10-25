@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
 # scripts/handover/test-merge-fork-pr.sh - suite for the console's fork-merge path:
-# console-kit/go.sh --repo (writes a GO for an allowlisted fork PR) and
+# chief-kit/go.sh --repo (writes a GO for an allowlisted fork PR) and
 # merge-fork-pr.sh (the only chokepoint that merges one). gh is a stub.
 #   1. go.sh --repo: usage, allowlist (absent / merge_allowed false), PR state
 #      (head, MERGEABLE, OPEN, base = himmel_branch), judge verdict, leg refused,
@@ -14,7 +14,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-GO_SH="$HERE/console-kit/go.sh"
+GO_SH="$HERE/chief-kit/go.sh"
 MERGE_SH="$HERE/merge-fork-pr.sh"
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME CONSOLE_SESSION_NAME 2>/dev/null || true
 
@@ -280,14 +280,14 @@ check "registry: yotamleo-org/qmd himmel_branch is the fork main the pin tracks"
 # A go_fork_ready inherited from the caller's env must not stand in for one the
 # gate lib failed to define: the gate lib copy below lacks it, the env supplies a stale one.
 LD="$tmp/ld"
-mkdir -p "$LD/scripts/handover/console-kit" "$LD/scripts/lib"
-cp "$GO_SH" "$LD/scripts/handover/console-kit/go.sh"
+mkdir -p "$LD/scripts/handover/chief-kit" "$LD/scripts/lib"
+cp "$GO_SH" "$LD/scripts/handover/chief-kit/go.sh"
 ln -s "$HERE/../cr" "$LD/scripts/cr"
 for lf in "$HERE"/../lib/*; do
   [ "$(basename "$lf")" = go-gate.sh ] || ln -s "$lf" "$LD/scripts/lib/$(basename "$lf")"
 done
 sed 's/^go_fork_ready()/go_fork_ready_renamed()/' "$HERE/../lib/go-gate.sh" > "$LD/scripts/lib/go-gate.sh"
-rc=0; out="$(env HANDOVER_DIR="$ROOT" BASH_FUNC_go_fork_ready%%='() { echo stale; }' bash "$LD/scripts/handover/console-kit/go.sh" --repo "$FORK" --trust-reviewed j1 18 "$SHA" 2>&1)" || rc=$?
+rc=0; out="$(env HANDOVER_DIR="$ROOT" BASH_FUNC_go_fork_ready%%='() { echo stale; }' bash "$LD/scripts/handover/chief-kit/go.sh" --repo "$FORK" --trust-reviewed j1 18 "$SHA" 2>&1)" || rc=$?
 check "go: a stale env go_fork_ready with none defined by the lib -> exit 1" "$rc" 1
 contains "go: a stale env go_fork_ready is refused at load" "$out" "cannot load scripts/lib/go-gate.sh"
 

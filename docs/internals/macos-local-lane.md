@@ -76,7 +76,7 @@ export HIMMEL_MACOS_LANE_OK=1
 L=scripts/macos/macos-lane.sh
 bash $L start && bash $L wait-ssh
 bash $L sync-worktree <worktree>
-bash $L run-suites scripts/test-himmel-doctor.sh scripts/handover/console-kit/test-hook-copy-reaper.sh
+bash $L run-suites scripts/test-himmel-doctor.sh scripts/handover/chief-kit/test-hook-copy-reaper.sh
 bash $L fetch-results <dest>     # <suite>.log + <suite>.rc per suite
 bash $L stop
 ```

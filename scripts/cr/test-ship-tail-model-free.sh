@@ -13,8 +13,8 @@ REPO="$DIR/../.."
 
 SHIP_TAIL_FILES=(
     "scripts/handover/merge-on-green.sh"
-    "scripts/handover/console-kit/ready-check.sh"
-    "scripts/handover/console-kit/tick.sh"
+    "scripts/handover/chief-kit/ready-check.sh"
+    "scripts/handover/chief-kit/tick.sh"
     "scripts/check-ci.sh"
 )
 
@@ -62,7 +62,7 @@ check "$got" "matched" "T1 injected headless call in fixture is caught"
 # check alone would pass it vacuously; the continuation-joined fallback below
 # must catch it. ------------------------------------------------------------
 fixture2="$tmp/tick.sh"
-cp "$REPO/scripts/handover/console-kit/tick.sh" "$fixture2"
+cp "$REPO/scripts/handover/chief-kit/tick.sh" "$fixture2"
 printf '\nclaude \\\n  -p "drive the merge"\n' >>"$fixture2"
 
 if joined2="$(sed -e ':a' -e 'N' -e '$!ba' -e 's/\\\n/ /g' -- "$fixture2")"; then

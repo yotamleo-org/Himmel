@@ -2008,6 +2008,10 @@ case "$cmd_nq" in
                         ;;
                 esac
                 ;;
+            5)
+                echo "block-bare-qmd-query: the command model timed out, so this command that names qmd cannot be read; refusing. Split the command, or bypass with QMD_UNBOUNDED_OK=1." >&2
+                exit 2
+                ;;
         esac
         ;;
 esac
@@ -2020,7 +2024,7 @@ esac
 if [ "$deny" = 1 ]; then
     bounded="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" 2>/dev/null && pwd)/qmd-bounded.sh"
     cat >&2 <<DENY
-block-bare-qmd-query: a bare qmd query/search/vsearch is refused (HIMMEL-3956).
+block-bare-qmd-query: a bare qmd query/search/vsearch is refused.
 
 The qmd launcher forwards no signals, so when this call is killed — by the Bash
 tool's timeout, a timeout(1) prefix or the session ending — its bun child keeps

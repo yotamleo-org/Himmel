@@ -105,7 +105,7 @@ case "$tool" in
 esac
 [ "$deny" = "1" ] || exit 0
 
-deny_msg="You are a subagent (worker) — $what is DENIED here (HIMMEL-2140).
+deny_msg="You are a subagent (worker) — $what is DENIED here.
 
 Backgrounding a call, or reaching for Monitor, and then ending your turn to 'wait for the
 notification' is how workers PARK: a human or controller has to notice and nudge you awake before

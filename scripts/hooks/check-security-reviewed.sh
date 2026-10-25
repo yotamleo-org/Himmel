@@ -342,8 +342,8 @@ ${near_part}
    authn/authz, secrets exposure, command injection, SSRF, etc.) that
    the existing code-review-before-push gate is not specifically tuned
    to catch. This gate forces the security lens to be acknowledged
-   before push — the gate does NOT run the review itself, so HIMMEL-128
-   (no new headless-claude introductions) is respected.
+   before push — the gate does NOT run the review itself, so the
+   no-new-headless-claude rule is respected.
 
    See \`docs/security-review.md\` for the suggested review playbook.
 EOF

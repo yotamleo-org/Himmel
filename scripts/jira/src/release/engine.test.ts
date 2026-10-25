@@ -617,7 +617,7 @@ describe('rm-run: the on-demand release manager (HIMMEL-7201)', () => {
     expect(jira.fv.get('K-2')).toEqual(['v1']);
     const s = state(ctx());
     expect(s.lease).toMatchObject({ epoch: 1, released: true });
-    expect(s.requests).toEqual({ open: [], claimed: [] });
+    expect(s.requests).toEqual({ open: [], claimed: [], oldest_open: null });
   });
 
   it('refuses a concurrent batch by the lease and rules nothing in it', async () => {
@@ -790,7 +790,7 @@ describe('release withdraw (HIMMEL-7434)', () => {
     const q = ask('K-2', 'INTAKE', null, 'v1');
     expect(withdraw(ctx(), { req: q.req, reason: 'junk from a test run' }).state).toBe('withdrawn:console');
     expect(claim(ctx(rmEnv))).toEqual([]);
-    expect(state(ctx()).requests).toEqual({ open: [], claimed: [] });
+    expect(state(ctx()).requests).toEqual({ open: [], claimed: [], oldest_open: null });
   });
 
   it('a withdrawn request does not swallow a fresh one for the same move', async () => {

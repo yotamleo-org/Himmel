@@ -67,7 +67,7 @@ _vm_fail() {
 vm_env_init() {
     HIMMEL_VM_AR_VBOXMANAGE_DEFAULT="${HIMMEL_VM_AR_VBOXMANAGE_DEFAULT:-/usr/bin/VBoxManage}"
     if [ -z "${VBOXMANAGE_PATH:-}" ] && [ "${HIMMEL_VM_AR_LIVE:-0}" != "1" ]; then
-        _vm_fail "VBOXMANAGE_PATH is unset and HIMMEL_VM_AR_LIVE is not '1' — refusing to fall through to a real VBoxManage (HIMMEL-2623 incident hardening). Set VBOXMANAGE_PATH explicitly (a real path, or a stub for testing), or HIMMEL_VM_AR_LIVE=1 to run for real."
+        _vm_fail "VBOXMANAGE_PATH is unset and HIMMEL_VM_AR_LIVE is not '1' — refusing to fall through to a real VBoxManage. Set VBOXMANAGE_PATH explicitly (a real path, or a stub for testing), or HIMMEL_VM_AR_LIVE=1 to run for real."
     fi
     VBOXMANAGE="${VBOXMANAGE_PATH:-$HIMMEL_VM_AR_VBOXMANAGE_DEFAULT}"
     # A relative path (`./stub`) must resolve here: the VBoxManage calls run
@@ -152,6 +152,7 @@ vm_slot_acquire() {
             # prefix), hence eval — the path is shell-quoted via printf %q first
             # so this never re-interprets anything in $lockfile.
             eval "exec $fd>$(printf '%q' "$lockfile")" 2>/dev/null || _vm_fail "cannot open lock file $lockfile"
+            # prim-ok: nonblocking multi-slot probe retains the winning fd in the caller; with_lock blocks inside a subshell.
             if flock -n "$fd"; then
                 CLONE_IDX=$i
                 CLONE_FD=$fd

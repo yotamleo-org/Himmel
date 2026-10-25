@@ -2114,11 +2114,11 @@ cmd="$(fold_backslash_newline "$cmd")"
 # came, before the CRLF→LF fold above, so any CR at all refuses it.
 case "$cmd" in
     bash*impacted-suites.sh*)
-        [ "$abstain" = 0 ] && cmd_is_impacted_suites "${result#*$'\n'}" && emit_allow "pr-check impacted-suites literal (HIMMEL-3486): ${cmd%%$'\n'*}" ;;
+        [ "$abstain" = 0 ] && cmd_is_impacted_suites "${result#*$'\n'}" && emit_allow "pr-check impacted-suites literal: ${cmd%%$'\n'*}" ;;
 esac
 case "$cmd" in
     "bash scripts/quiet-run.sh shell-unit -- "*)
-        [ "$abstain" = 0 ] && cmd_is_shell_unit_runner "${result#*$'\n'}" && emit_allow "shell-unit runner literal (HIMMEL-6664): $cmd" ;;
+        [ "$abstain" = 0 ] && cmd_is_shell_unit_runner "${result#*$'\n'}" && emit_allow "shell-unit runner literal: $cmd" ;;
 esac
 
 # Quote-aware structural scan: produces SCAN_SEGS (split only at
@@ -2151,7 +2151,7 @@ case "${FIND_ROOTWALK_OK:-}" in
             seg="${seg#"${seg%%[! $'\t']*}"}"   # ltrim space/tab only (HIMMEL-5034)
             [ -z "$seg" ] && continue
             if segment_is_rootwalk_find "$seg"; then
-                emit_deny "a root-anchored find with no -maxdepth walks the WHOLE disk and can outlive its parent for 20+ minutes in headless/cadence sessions, where the fall-through prompt is unattended (HIMMEL-2121). Use the Glob tool, or scope it to a repo-rooted directory: find <dir> ... -maxdepth N. One-run bypass: set FIND_ROOTWALK_OK=1 in the LAUNCHING shell."
+                emit_deny "a root-anchored find with no -maxdepth walks the WHOLE disk and can outlive its parent for 20+ minutes in headless/cadence sessions, where the fall-through prompt is unattended. Use the Glob tool, or scope it to a repo-rooted directory: find <dir> ... -maxdepth N. One-run bypass: set FIND_ROOTWALK_OK=1 in the LAUNCHING shell."
             fi
         done <<EOF
 $SCAN_SEGS
@@ -2276,7 +2276,7 @@ done <<EOF
 $SCAN_SEGS
 EOF
 if [ "$ql_unquoted_sep" -eq 0 ] && [ "$ql_segs" -eq 1 ] && segment_is_queue_lock "$ql_only"; then
-    emit_allow "queue-lock.sh lock verb (HIMMEL-3131): $cmd"
+    emit_allow "queue-lock.sh lock verb: $cmd"
 fi
 
 # a payload cwd of `/` makes every relative walk a root walk.

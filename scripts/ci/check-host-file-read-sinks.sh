@@ -7,7 +7,8 @@
 #   Scans the net diff merge-base(<base>, HEAD)..HEAD (with --merge-ref the
 #   range is HEAD^1..HEAD, for a CI merge-ref checkout). Only ADDED lines of
 #   *.sh / *.bash are considered, so the large pre-existing count never blocks
-#   an unrelated change. Fail-closed: an unresolvable base is an error.
+#   an unrelated change; a renamed file counts only the lines the rename
+#   changed. Fail-closed: an unresolvable base is an error.
 #
 # A line is a sink when a reader (cat head tail less more source `.` or a `<`
 # redirect) takes, as its whole operand, one of:
@@ -65,16 +66,23 @@ fi
 FILES_LIST="$(mktemp "${TMPDIR:-/tmp}/read-sinks.XXXXXX")" || { echo "FAIL: check-host-file-read-sinks: cannot allocate scratch file (fail-closed)" >&2; exit 2; }
 : "${FILES_LIST:?}"
 trap 'rm -f "$FILES_LIST"' EXIT
-git diff -z --name-only --diff-filter=AMRT "$OLD" HEAD -- '*.sh' '*.bash' > "$FILES_LIST" || {
+git diff -z -M --name-status --diff-filter=AMRT "$OLD" HEAD -- '*.sh' '*.bash' > "$FILES_LIST" || {
   echo "FAIL: check-host-file-read-sinks: git diff failed (fail-closed)" >&2
   exit 2
 }
 
 found=0
-while IFS= read -r -d '' path; do
+while IFS= read -r -d '' status; do
+  IFS= read -r -d '' path || { echo "FAIL: check-host-file-read-sinks: truncated git diff record (fail-closed)" >&2; exit 2; }
+  from=""
+  case "$status" in
+    R*) from="$path"
+        IFS= read -r -d '' path || { echo "FAIL: check-host-file-read-sinks: truncated git diff record (fail-closed)" >&2; exit 2; } ;;
+  esac
   case "$path" in archive/*|*/testdata/*) continue ;; esac
-  # Added line numbers (new-file side) from the -U0 hunk headers.
-  added="$(git diff -U0 "$OLD" HEAD -- "$path" | awk '
+  # Added line numbers (new-file side) from the -U0 hunk headers; a renamed
+  # file is diffed against its old path, so a move adds only the lines it changed.
+  added="$(git diff -M -U0 "$OLD" HEAD -- ${from:+"$from"} "$path" | awk '
     /^@@ / {
       s = $3; sub(/^\+/, "", s)
       n = split(s, p, ","); start = p[1] + 0; cnt = (n > 1) ? p[2] + 0 : 1

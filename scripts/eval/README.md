@@ -13,7 +13,40 @@ himmel's evals: each one measures one thing and writes its own output.
 | `handover-cost.py` | the per-handover console price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and leg-relay turns and cost, gross and net (HIMMEL-6491 method); `--legs-after` counts only newer legs | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `weekly-rollup.py` | velocity, cost and health per ISO week and per stable version, with the change against the previous row; `review` prints the three version-review lines ([`docs/release/version-review.md`](../../docs/release/version-review.md)) | `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE`; ledger row `weekly-rollup`) |
 | `review-page.py` | the reviewers in plain words: how often the critics catch planted bugs and are right, how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
+| `deferred-outcome.py` | what became of each deferred CR-ledger finding: its follow-up ticket in the Jira mirror is done (fixed later), open, or closed Won't Do (disproved), overall and per critic | ledger row `deferred-outcome` |
+| `escapes.py` | bugs found after merge (a revert, a caused-by bug, a later fix naming the PR) per merged PR, then per critic that reviewed it and per judge that passed it; reads a `gh pr list` snapshot | ledger row `escapes` |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
+
+## What each number means
+
+The display name is what a page or report prints. The ledger key is the
+number's name in an eval-runs row (`metrics`, or `ci` for an interval). A key
+does not change with its display name, so its series stays one series.
+This table holds no values: read them on the generated evals page,
+[`docs/evals/README.md`](../../docs/evals/README.md), or in the output of
+`review-page.py`. The sections below give each eval's method. Paths in the last
+column are relative to `scripts/eval/` unless they start with `scripts/`.
+
+| Number | Ledger key | What it measures | High or low | Unit | Sample and noise | Producer |
+|---|---|---|---|---|---|---|
+| pass@k | `pass_at_k` (k is `pass_k`, the fewest repeats of any task) | The chance that at least one of k repeats of a task is accepted, averaged over the tasks. | High: the lane solves the task within k tries. Near 1 on every lane means the tasks no longer tell lanes apart. | share, 0 to 1 | Needs `--reps` of at least k; rows are compared only at the same k. A noise band, no interval. | `lane-quality/` via `lib/eval_runs.py` |
+| pass^k | `pass_pow_k` | The chance that all k repeats of a task are accepted, averaged over the tasks. | High: the lane solves the task every time. The gap below pass@k shows how inconsistent it is. | share, 0 to 1 | As pass@k; with few repeats it moves a lot. | `lane-quality/` via `lib/eval_runs.py` |
+| cost per accepted run | `cost_per_accepted` | The total cost of all the sweep's runs divided by the number that passed the hidden acceptance check. | Low: a correct result costs less. Empty when no run was accepted or any run's cost is missing. | USD, API-equivalent | One sweep; cache state moves it. A relative noise band. | `lane-quality/` via `lib/eval_runs.py` |
+| headroom | `_headroom` in `eval-compare.json` (a rule, not a metric) | Whether the baseline's `accept_ok_rate` is at or above the rule's `at` value. | When the `HEADROOM` line prints, quality is near its ceiling and cannot show much gain: read cost and latency instead. | advisory line | Never gates and skips no regression check. | `eval-compare` |
+| test-first adherence | `red_before_green_rate` | The share of runs where a test failed before the first implementation write and passed after it. | High: the lane works test-first. | share, 0 to 1 | Only runs with an implementation write count. A quiet-run test is decided by its `OK` or `ERR` line alone; any other test run fails on a non-zero exit, or a `FAIL` line or a non-zero `N failed` count; see [trajectory fields](#lane-quality-trajectory-fields). | `lane-quality/trajectory.py` via `lib/eval_runs.py` |
+| claims-backed rate | `verify_before_claim_rate` | The share of runs whose final report claims passing tests only where a passing run after the last write backs the claim. | High: a claim of green can be trusted. Low: the lane reports tests passing without running them. | share, 0 to 1 | Only runs whose report makes such a claim count. Claims are found by a sentence regex. | `lane-quality/trajectory.py` via `lib/eval_runs.py` |
+| denial recovery rate | `denial_recovery_rate` | The mean share of hook or permission denials after which the next call changed approach, or no call followed. | High: the lane does not repeat a refused call. | share, 0 to 1 | Only runs with a denial count. A respelled command counts as a change. | `lane-quality/trajectory.py` via `lib/eval_runs.py` |
+| identical retries after a denial | `identical_denied_retries` | The number of calls repeated exactly after they were denied, summed over the sweep. | Low: 0 is the goal. | count | Grows with the number of runs. | `lane-quality/trajectory.py` via `lib/eval_runs.py` |
+| false-refusal share | `over_deny_share` (per class: `over_deny:<source>/<class>`) | Of the guard refusals with a known verdict, the share that blocked a call which should have run. | Low: the guards rarely block legitimate work. | share, 0 to 1 | Verdicts come from a fixed table of refusal classes; `unclear` refusals are on neither side. Feedback reads the per-class count per `tool_calls`. | `friction/friction.py` |
+| detection rate | `<critic>.recall` (`panel.recall` for the panel, `<critic>.class.<class>.recall` per bug class) | The share of planted bugs a critic flagged at the right place with the right class. | High: the critic catches the bugs. | share, 0 to 1, with a Wilson interval (none per bug class) | Planted bugs in a fixed set of test changes, not real bugs. Small n: read the interval. | `review-panel/score.py` |
+| planted-bug precision | `<critic>.precision` | The share of a critic's findings on the test changes that match a planted bug. | High: few findings are noise. | share, 0 to 1, with a Wilson interval | A real issue that was not planted counts against it. | `review-panel/score.py` |
+| false-alarm rate | `<critic>.fp_rate` | The share of clean test changes (no planted bug) on which the critic raised a critical or important finding. | Low: the critic does not hold clean work. | share, 0 to 1, with a Wilson interval | Few clean changes per run. | `review-panel/score.py` |
+| detection floor | none: printed on the `paired` line of `eval-compare` | The estimated smallest mean per-case change the shared cases detect (80 % power, 5 % significance); see [eval-compare](#eval-compare). | Read the paired verdict, not the floor: a sign-test REGRESSION below the floor still gates. More cases lower it. | the metric's own unit | A normal approximation; unestimated for a continuous score with no spread. | `eval-compare` |
+| escape rate | `escape_rate` (`escape_rate_plausible` counts the likely ones too) | The share of merged PRs that a revert or a caused-by bug points at. A later fix naming the PR is only a likely escape, so it counts in `escape_rate_plausible` alone. | Low: few bugs get past review and approval (you, or the chief's GO; a judge only on trust paths). | share, 0 to 1, with a Wilson interval | Lags: a recent PR has had less time to show a bug. Reads a `gh pr list` snapshot. | `escapes.py` |
+| proof-first share (self-reported) | `pdd.pct` (halves `ticket_first.pct` and `red_green.pct`; `.k` and `.n` beside each) | The share of merged PRs whose ticket has a DoD and a Proof and was created before the first commit, and whose body names RED then GREEN. | High: work is proven before it is built. | share, 0 to 1, with a Wilson interval | The ticket's created time stands in for when the sections were written (the mirror keeps no description history), so a section added later reads as early. Self-reported: RED and GREEN are words the author wrote, not a checked test run. The row is `partial` below `--min-n` readable PRs. | `worker-digest/pdd_share.py` |
+| Wilson interval | `ci` with `ci_method` `wilson` (`ci_level` 0.95) | A 95 % range for a share of k in n that stays between 0 and 1 and holds at small n. | Narrow: the share is well measured. Wide: too few cases to rank. | `lo` and `hi`, in the share's unit | Covers sampling noise only, not a biased sample. | `worker-digest/pdd_share.py`, `review-panel/score.py`, `escapes.py`, `judge-accuracy/` |
+| review precision | `precision_pct` in `docs/evals/evals-data.json` (no eval-runs row) | Of the real review findings the author ruled true or false, the share ruled true. | High: a finding is usually right. | percent, with a Wilson and a by-PR bootstrap interval | The author who rules is the one who fixes. Deferred and unruled findings are on neither side. | `scripts/cr/evals-page-gen.py` |
+| cache read share | `read_ratio_pct` in `docs/evals/evals-data.json` (`hit_pct` in `cache-health.py`, `cache_hit_pct` in `weekly-rollup.py`) | The share of input tokens read from the prompt cache rather than sent uncached or written to the cache. | High: sessions cost less. | percent | No interval. The evals page reads one `cache-probe.sh` run over recent sessions; `cache-health.py` reads a recent window against a baseline window; `weekly-rollup.py` takes the mean of the cache-health history over the week. | `cache-probe.sh` via `scripts/cr/evals-page-gen.py`, `cache-health.py`, `weekly-rollup.py` |
 
 ## The eval-runs ledger
 
@@ -112,6 +145,23 @@ A metric regresses when it moves the wrong way past its noise band:
 
 A metric with no direction in that table is printed as `info` and never gated.
 
+Against a single baseline (not `--best-of`), `_cases` in that table names
+per-case metrics to compare on the case IDs both rows share. At least two
+shared valued cases are needed. The paired line reports the mean
+candidate-minus-baseline change, an exact two-sided sign-test verdict (5 %
+over the cases that moved), and the **detection floor**: the estimated smallest
+mean change this case count can show (2.8 standard errors, a normal
+approximation at 80 % power and 5 % significance). With zero spread, binary
+scores use a conservative `2.8 / sqrt(n)` floor; a continuous score's floor
+is unmeasured. A paired regression gates just like a run-level one. A spec's
+`same` names a metric that must match on both rows, so pass@k at different k
+is not compared as the same quantity.
+
+`_headroom` holds `{metric, at, target}`. When the baseline metric is at or
+above `at`, a `HEADROOM` line points to the target metrics (such as cost and
+latency): quality near its ceiling cannot show much gain. The line is
+advisory; it does not skip regression checks.
+
 A candidate whose `meta.observational` is true (the `leg-trajectory` rows) is
 not compared at all: eval-compare lists the series (the latest `ok` row per
 `run_id`, same `confighash`) with runs, mean and latest per metric, prints no
@@ -149,10 +199,38 @@ named in `feedback-rules.json`, over that eval's newest `ok` row:
 
 Records go to the `eval-changes` ledger (`$HIMMEL_EVAL_CHANGES_LEDGER`, else
 `~/.himmel/eval-changes.jsonl`). The daily failure review
-(`leg-digest/failure_review.py`) runs this step after the friction
+(`worker-digest/failure_review.py`) runs this step after the friction
 subsection and shows what it wrote under `### Eval feedback`. Its friction
 run passes `--record`, so `friction.py` appends one `eval: friction` row per
-run (refusals by verdict, `over_deny_share`, `over_deny:<source>/<class>`).
+run (`tool_calls`, refusals by verdict, `over_deny_share`,
+`over_deny:<source>/<class>`). `tool_calls` counts every `tool_result` in the
+same transcript window, including successful, failed and denied calls; it
+counts observed results, not outstanding calls with no result.
+
+A rule's optional `per` names a metric of that same row. Feedback judges
+`metric / per`, both when opening a change and when re-measuring it; a missing
+or zero denominator is unmeasured, not zero. The friction rule uses
+`per: tool_calls`, so the same over-denial count can fire with few calls but
+not with many. Its provisional threshold is `0.1`, half the fixture class's
+rate of 1 over-denial in 5 calls (`0.2`).
+
+**ponytail:** no recorded tool-call history yet; upgrade: re-derive the
+threshold once 4 weekly friction rows carry `tool_calls`.
+
+Split rows carry `open.<metric>` (train) and `sealed.<metric>` (test),
+beside any whole-set metric. Rules tune on the open half only, never on the
+sealed or whole-set values; a sealed-only row opens no change. A missing
+metric in either half stays unmeasured, even when the rule has `absent: 0`.
+
+The **train/test keep rule** replaces `improved` / `regressed` / `flat` with
+`keep` / `revert` when a change is re-measured on a split row. Keep requires
+both train and test to gain strictly more than `min_gain` (optional, default
+`0`, the smallest worthwhile gain), with run-to-run noise zero or strictly
+below `min_gain`. Noise is the spread (max minus min) of train values in at
+least two `ok` runs of the same `confighash` up to the baseline. Otherwise
+revert: the record's `reason` names the first failing check (unmeasured test,
+insufficient train or test gain, or unmeasured/excessive noise), beside the
+test before/after/delta, noise and `min_gain`.
 
 ## lane-quality: repeats and judge calibration
 
@@ -223,7 +301,11 @@ Terms the definitions use:
   follows the test after `;` or a newline. A failure in an `&&` chain counts
   only when every other command in the chain is setup (`cd`, `pushd`,
   `export`, `source`, `.`, `set`, `umask`), since the failure may be the
-  other command's; a pass in an `&&` chain always counts.
+  other command's; a pass in an `&&` chain always counts. A run wrapped in
+  `quiet-run.sh` is decided by its `OK` or `ERR` line whatever surrounds it,
+  and has no outcome when that line is missing. A run whose tool result is
+  not an error but whose output has a `FAIL` line or a non-zero `N failed`
+  count failed.
 - **Denial:** a tool result that is an error, does not start with
   `Exit code` (that is a command that ran and failed), and reads as a hook or
   permission refusal. A denied call never ran, so it is never a test run.
@@ -259,7 +341,10 @@ The fields:
 
 Known ceilings:
 
-- The outcome is the exit status only; test output is not parsed.
+- A quiet-run test is decided by its `OK` or `ERR` line alone; any other
+  test run fails on a non-zero exit, or a `FAIL` line or a non-zero
+  `N failed` count. A runner that reports a failure any other way and exits
+  0 reads as passing.
 - A respelled command (another path to the same file) counts as a changed
   approach.
 - Files written through Bash (`cat >`, `sed -i`) are not seen as
@@ -286,14 +371,14 @@ call against the most recent identical denial before it, so the counts sum to
 
 ## leg-digest: one leg session's failures as class keys
 
-`leg-digest/leg-digest.ts` (Bun) reads a leg's journal and its subagent
+`worker-digest/leg-digest.ts` (Bun) reads a worker's journal and its subagent
 transcripts, merged in the order the AG-UI page uses. It maps them with the
 AG-UI mapper and prints one digest JSON. It is read-only, makes no model call
 and writes nothing; `leg_ledger.py` (below) turns a digest into ledger rows.
 
 ```bash
-bun scripts/eval/leg-digest/leg-digest.ts --transcript ~/.claude/projects/<slug>/<session>.jsonl
-bun scripts/eval/leg-digest/leg-digest.ts --session <uuid>   # resolved under ~/.claude/projects
+bun scripts/eval/worker-digest/leg-digest.ts --transcript ~/.claude/projects/<slug>/<session>.jsonl
+bun scripts/eval/worker-digest/leg-digest.ts --session <uuid>   # resolved under ~/.claude/projects
 ```
 
 - **Class key** `<failure>/<sub>`. `<sub>` comes from closed vocabularies,
@@ -317,7 +402,7 @@ bun scripts/eval/leg-digest/leg-digest.ts --session <uuid>   # resolved under ~/
   `inconclusive` (no journal, or over 200 MB).
 - **Cross-check:** `stats.denial_divergence` lists the main-agent denials that
   only one detector saw. `test-leg-digest.sh` fails on any divergence not
-  enumerated in `leg-digest/denial-exceptions.txt`.
+  enumerated in `worker-digest/denial-exceptions.txt`.
 - **Cost:** measured 2026-10-06, 3 runs each:
   - 0.11–0.21 s wall on three recent leg journals of 3.6–6.5 MB;
   - 1.50 s wall on the station's largest journal (58 MB).
@@ -344,7 +429,7 @@ native, claudex, openrouter, cloud and unknown; the recorder normalizes the
 historical codex label in explicit recorder input or document titles to claudex.
 Backfill never borrows its own launcher's lane or guesses from a model.
 
-`leg-digest/tool-health.mjs` reads eval-runs and leg-failures and computes UTC
+`worker-digest/tool-health.mjs` reads eval-runs and leg-failures and computes UTC
 calendar-day rollups by model, lane and leg-vs-console role. Rates use summed
 counts, never averages of session percentages. Deny-hook rates divide by
 Bash calls across the selected population. Recovery is count-weighted over
@@ -365,7 +450,7 @@ on the server; the page is read-only. Overrides are
 
 ## leg_ledger: digests into the leg ledgers
 
-`leg-digest/leg_ledger.py` writes one digest as:
+`worker-digest/leg_ledger.py` writes one digest as:
 
 1. one `leg-failures` row per digest failures row
    (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
@@ -382,9 +467,9 @@ agent and class), and a later `ok` digest supersedes a `partial` or
 `inconclusive` one with one more eval-runs row.
 
 ```bash
-python3 scripts/eval/leg-digest/leg_ledger.py record --digest d.json --leg N1 --ticket PROJ-1 [--console C --pr N --doc D]
-python3 scripts/eval/leg-digest/leg_ledger.py backfill --since 2026-10-01 [--projects ~/.claude/projects]
-python3 scripts/eval/leg-digest/leg_ledger.py validate ~/.himmel/leg-failures.jsonl
+python3 scripts/eval/worker-digest/leg_ledger.py record --digest d.json --leg N1 --ticket PROJ-1 [--console C --pr N --doc D]
+python3 scripts/eval/worker-digest/leg_ledger.py backfill --since 2026-10-01 [--projects ~/.claude/projects]
+python3 scripts/eval/worker-digest/leg_ledger.py validate ~/.himmel/leg-failures.jsonl
 ```
 
 `backfill` digests every main journal whose first timestamp is on or after
@@ -396,7 +481,7 @@ trial backfill can write to scratch copies.
 
 ## pdd_share: the proof-first share of merged PRs
 
-`leg-digest/pdd_share.py` reads the last merged PRs and writes one eval-runs
+`worker-digest/pdd_share.py` reads the last merged PRs and writes one eval-runs
 row, `eval: pdd-share`. It makes no model call. A PR is proof-first when both
 hold:
 
@@ -415,8 +500,8 @@ lookup failed is counted as `commits_unreadable` and makes the row `partial`.
 Below `--min-n` (50) readable PRs the row is `partial` and the exit code is 3.
 
 ```bash
-python3 scripts/eval/leg-digest/pdd_share.py --limit 120            # print the row
-python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record   # append it to the eval-runs ledger
+python3 scripts/eval/worker-digest/pdd_share.py --limit 120            # print the row
+python3 scripts/eval/worker-digest/pdd_share.py --limit 120 --record   # append it to the eval-runs ledger
 ```
 
 `--prs FILE` reads `gh pr list --json number,title,body,commits` output

@@ -87,8 +87,8 @@ Reviewing files that changed from the base of the PR and between 16c9f23e3001895
 <details>
 <summary>📒 Files selected for processing: 6</summary>
 
-* `scripts/handover/console-kit/test-tick.sh`
-* `scripts/handover/console-kit/tick.sh`
+* `scripts/handover/chief-kit/test-tick.sh`
+* `scripts/handover/chief-kit/tick.sh`
 * `scripts/handover/queue-lock.sh`
 * `scripts/handover/test-queue-lock.sh`
 * `scripts/hooks/stop-console-idle-guard.sh`

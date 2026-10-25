@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
+# Platform guard (posix-bash): POSIX bash 3.2+.
 #
 # check-old-terms.sh [<base> | --staged | --auto] — refuse NEW old-term names in
 # the lines a change adds (slice R3 of the rename plan). Only added lines
@@ -12,7 +12,7 @@
 #   --auto     the range when pre-commit runs a push (PRE_COMMIT_TO_REF set),
 #              else the index: what the pre-commit hook runs
 #
-# Two checks:
+# Three checks:
 #   (a) PROSE, markdown only. An added line outside code spans, link targets and
 #       fences that uses a word the operator renamed: leg(s), console(s), bank,
 #       overnight mode, CR marker, judge call, class sweep, sibling sweep, ticket
@@ -25,6 +25,10 @@
 #       SEQUENCE_, or HIMMEL_WORKER_ not followed by SESSION_, that is not in
 #       the registry scripts/lib/rename-aliases.tsv; and the name chief-judge.
 #       The kept HIMMEL_CONSOLE_ prefix is exempt.
+#   (c) MOVED PATHS, every file. An added line naming the old spelling of a
+#       registry row of kind directory or path (a moved directory) as a whole
+#       path run, the way scripts/handover/move-renamed-dirs.sh matches it,
+#       unless the line also names that row's new spelling.
 #
 # Skipped: the paths in is_exempt_path below, the CI-matrix sense of "leg" in
 # ci-image.md / testing.md, and a line carrying `old-term-ok: <reason>` (a
@@ -81,6 +85,7 @@ is_exempt_path() {
         */fixtures/*|fixtures/*|*/fixture/*|fixture/*) return 0 ;;
         scripts/lib/rename-aliases.tsv) return 0 ;;
         docs/glossary.md) return 0 ;;
+        scripts/eval/lane-quality/tasks/*|scripts/eval/graphify-ab/tasks.json|scripts/eval/graphify-ab/truth.py) return 0 ;;
         scripts/docs/check-old-terms.sh|scripts/docs/test-check-old-terms.sh) return 0 ;;
         CHANGELOG.md|*/CHANGELOG.md) return 0 ;;
     esac
@@ -95,13 +100,41 @@ diff_out=$(git -c core.quotePath=false diff -U0 -C --no-color --no-ext-diff --no
 findings=$(mktemp "${TMPDIR:-/tmp}/old-terms.XXXXXX") || { echo "$me: mktemp failed" >&2; exit 2; }
 trap 'rm -f "$findings" "$reg_snap"' EXIT
 
-# file<TAB>comma-separated added line numbers, one row per changed file.
-added=$(printf '%s\n' "$diff_out" | awk '
+# file<TAB>comma-separated added line numbers, one row per changed file. An
+# added line that equals the removed line it replaces once every moved-directory
+# spelling in that line is rewritten (the move script's own edit) is not added.
+added=$(printf '%s\n' "$diff_out" | awk -v registry="$registry" '
+    BEGIN {
+        while ((getline line < registry) > 0) {
+            if (line ~ /^[[:space:]]*(#|$)/) continue
+            split(line, f, "\t")
+            if (f[3] != "directory" && f[3] != "path") continue
+            np++; pold[np] = f[1]; pnew[np] = f[2]
+            for (j = np; j > 1 && length(pold[j]) > length(pold[j - 1]); j--) {
+                t = pold[j]; pold[j] = pold[j - 1]; pold[j - 1] = t
+                t = pnew[j]; pnew[j] = pnew[j - 1]; pnew[j - 1] = t
+            }
+        }
+        close(registry)
+    }
+    function moved(s,    i, out, k) {
+        for (i = 1; i <= np; i++) {
+            out = ""
+            while ((k = index(s, pold[i])) > 0) { out = out substr(s, 1, k - 1) pnew[i]; s = substr(s, k + length(pold[i])) }
+            s = out s
+        }
+        return s
+    }
     function flush() { if (file != "" && nums != "") print file "\t" nums; nums = "" }
     /^diff --git / { flush(); file = ""; inhunk = 0; next }
     /^\+\+\+ / && !inhunk { file = $0; sub(/^\+\+\+ b\//, "", file); if ($0 == "+++ /dev/null") file = ""; next }
-    /^@@ / { inhunk = 1; ln = $0; sub(/^@@ -[0-9,]+ \+/, "", ln); sub(/[, ].*/, "", ln); ln += 0; next }
-    /^\+/ { if (file != "") nums = (nums == "" ? ln : nums "," ln); ln++ }
+    /^@@ / { inhunk = 1; nm = 0; np2 = 0; ln = $0; sub(/^@@ -[0-9,]+ \+/, "", ln); sub(/[, ].*/, "", ln); ln += 0; next }
+    /^-/ && inhunk { nm++; minus[nm] = substr($0, 2); next }
+    /^\+/ {
+        np2++
+        if (file != "" && !(np2 <= nm && moved(minus[np2]) == substr($0, 2))) nums = (nums == "" ? ln : nums "," ln)
+        ln++
+    }
     END { flush() }')
 
 while IFS="$(printf '\t')" read -r file nums; do
@@ -123,12 +156,26 @@ while IFS="$(printf '\t')" read -r file nums; do
                 if (line ~ /^[[:space:]]*(#|$)/) continue
                 split(line, f, "\t")
                 known[f[1]] = 1
+                if (f[3] == "directory" || f[3] == "path") { np++; pold[np] = f[1]; pnew[np] = f[2] }
             }
             close(registry)
             single["leg"] = single["legs"] = single["console"] = single["consoles"] = 1
             single["bank"] = single["banks"] = single["wave"] = single["waves"] = 1
             pair["overnight mode"] = pair["cr marker"] = pair["judge call"] = pair["judge calls"] = 1
             pair["class sweep"] = pair["sibling sweep"] = pair["ticket sequence"] = 1
+        }
+        # names_path(s, p): p occurs in s not preceded by a name character or a
+        # dot, and not followed by a name character or a dot and a name character.
+        function names_path(s, p,    at, k, b, a, a2) {
+            at = 0
+            while ((k = index(substr(s, at + 1), p)) > 0) {
+                at += k
+                b = (at > 1) ? substr(s, at - 1, 1) : ""
+                a = substr(s, at + length(p), 1)
+                a2 = substr(s, at + length(p) + 1, 1)
+                if (b !~ /[A-Za-z0-9_.-]/ && a !~ /[A-Za-z0-9_-]/ && !(a == "." && a2 ~ /[A-Za-z0-9_]/)) return 1
+            }
+            return 0
         }
         function fenceline(s) { return s ~ /^[[:space:]]*(```|~~~)/ }
         function report(kind, what, body) {
@@ -142,6 +189,13 @@ while IFS="$(printf '\t')" read -r file nums; do
 
             # (b) identifiers, every file
             if (body ~ /chief-judge/) report("old-term name", "chief-judge", body)
+
+            # (c) moved paths, every file
+            for (i = 1; i <= np; i++) {
+                if (index(body, pnew[i]) > 0 || !names_path(body, pold[i])) continue
+                report("old-term path", pold[i], body)
+                break
+            }
             rest = body
             while (match(rest, /[A-Za-z0-9_]+/)) {
                 tok = substr(rest, RSTART, RLENGTH)

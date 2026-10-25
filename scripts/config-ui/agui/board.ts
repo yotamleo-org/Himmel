@@ -10,7 +10,7 @@ import { execFile } from "node:child_process";
 import { mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { redact } from "../../handover/console-kit/redact.mjs";
+import { redact } from "../../handover/chief-kit/redact.mjs";
 
 export const BOARD_TTL_MS = 30_000;
 export const BOARD_TIMEOUT_MS = 90_000;

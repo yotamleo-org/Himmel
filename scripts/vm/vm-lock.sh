@@ -575,6 +575,7 @@ _vm_lock_queue_brand() {
         rm -f "$tmp" 2>/dev/null
         return 1
     fi
+    # prim-ok: queue records retain the caller's umask permissions for waiters; atomic_write would force mode 0600.
     mv -f "$tmp" "$dir/owner" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
 }
 

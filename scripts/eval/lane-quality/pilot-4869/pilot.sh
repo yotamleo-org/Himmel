@@ -169,7 +169,7 @@ ensure_export() {
 # (the host's /run is root-owned). A launch line run without its sandbox
 # wrapper therefore does nothing.
 write_jail_guard() { # $1 worktree
-  local g='test -e /run/lq-pilot-jail || { echo "HIMMEL-4869 pilot: this row runs only inside its jail (sandbox.sh); refusing" >&2; exit 2; }'
+  local g='test -e /run/lq-pilot-jail || { echo "pilot: this row runs only inside its jail (sandbox.sh); refusing" >&2; exit 2; }'
   mkdir -p "$1/.claude" || return 1
   jq -n --arg g "$g" '{hooks: {
       PreToolUse: [{matcher: "*", hooks: [{type: "command", command: $g}]}],
@@ -236,7 +236,7 @@ cmd_prepare() {
   # The row's whole launch, sandbox prefix included, lives in one wrapper, so
   # the console's line carries nothing that could be dropped from it.
   printf '#!/usr/bin/env bash\n%sHANDOVER_DIR=%q WORKER_SESSION_REPO=%q exec bash %q --lane %q --profile console-relay --console %q %q %q %q 1 %q %q\n' \
-    "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/console-kit/headed-arm-leg.sh" "$lane" "$PILOT_CONSOLE" \
+    "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" "$lane" "$PILOT_CONSOLE" \
     "HIMMEL-4869-pilot-$row" "$doc" "$ROOT/rows/$row.signal" "$run/$row.log" "$model" >"$ROOT/rows/$row.launch"
   chmod +x "$ROOT/rows/$row.launch"
   # The console runs this line, so every value is shell-quoted.

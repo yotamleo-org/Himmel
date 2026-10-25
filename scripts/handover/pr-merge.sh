@@ -87,8 +87,8 @@ Refuses (rc=3) if HEAD is not on a `handover/*` branch.
 
 Optional:
   --dry-run          Print intended gh call; don't invoke.
-  --jira-transition  Opt IN to auto-transitioning the ticket on this merge
-                     (HIMMEL-3143). Default: report what would have happened,
+  --jira-transition  Opt IN to auto-transitioning the ticket on this merge.
+                     Default: report what would have happened,
                      do not touch Jira. See jira_auto_transition_on_merge
                      below for why this is opt-in rather than an open-PR
                      heuristic.
@@ -179,7 +179,7 @@ if [ -n "$_cr_marker_common" ] && [ -f "$_cr_marker_common/cr-pending/$current_b
         _cr_clear_rc=0
         bash "$_cr_clearer" "$current_branch" || _cr_clear_rc=$?
         if [ "$_cr_clear_rc" -ne 0 ]; then
-            echo "pr-merge: could not clear the CR marker for '$current_branch' (clear-cr-marker exit $_cr_clear_rc) — it stays pending and will block \`gh pr create\` for branches resolved from a session cwd in this checkout (HIMMEL-1346). Merging anyway." >&2
+            echo "pr-merge: could not clear the CR marker for '$current_branch' (clear-cr-marker exit $_cr_clear_rc) — it stays pending and will block \`gh pr create\` for branches resolved from a session cwd in this checkout. Merging anyway." >&2
         fi
     fi
 fi
@@ -202,7 +202,7 @@ if [ "$forge" = "github" ]; then
     # every call through GH_CMD and the tests set it to a stub.
     vetted_head=$("${GH_CMD:-gh}" pr view "$pr_num" --json headRefOid --jq '.headRefOid' 2>/dev/null) || vetted_head=""
     if [ -z "$vetted_head" ]; then
-        echo "ERR pr-merge: cannot read the head SHA of PR #$pr_num — refusing to merge unbound (HIMMEL-1058)." >&2
+        echo "ERR pr-merge: cannot read the head SHA of PR #$pr_num — refusing to merge unbound." >&2
         exit 7
     fi
 
@@ -325,7 +325,7 @@ jira_auto_transition_on_merge() {
     # opt-in per merge, not a heuristic (see the file header).
     # Report what WOULD have happened and stop — no comment, no transition.
     if [ "$JIRA_TRANSITION_OPT_IN" != "1" ]; then
-        echo "pr-merge: PR #$pr merged; skip=partial key=$key status-unchanged (pass --jira-transition to transition it — opt-in per HIMMEL-3143)." >&2
+        echo "pr-merge: PR #$pr merged; skip=partial key=$key status-unchanged (pass --jira-transition to transition it — opt-in)." >&2
         return 0
     fi
 

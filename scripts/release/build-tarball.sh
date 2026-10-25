@@ -20,7 +20,8 @@
 # The tree comes from `git archive HEAD` of --src (tracked files only, no .git,
 # no untracked/ignored leftovers -- so a dirty working tree cannot leak into the
 # artifact), unpacked into a temp stage, built THERE, then tarred. The source
-# checkout is never modified.
+# checkout is never modified. archive/ is left out: it holds retired features
+# kept for a later revival, not shipped code.
 #
 # USAGE:
 #   bash scripts/release/build-tarball.sh --version <v> [--out <dir>] [--src <dir>] [--no-build]
@@ -72,7 +73,7 @@ top="himmel-${version}"
 stage="$(mktemp -d "${TMPDIR:-/tmp}/himmel-tarball.XXXXXX")" || { echo "build-tarball: cannot create a staging dir" >&2; exit 1; }
 trap 'rm -rf "$stage"' EXIT
 
-git -C "$src" archive --format=tar --prefix="$top/" HEAD | tar -x -C "$stage"
+git -C "$src" archive --format=tar --prefix="$top/" HEAD -- . ':(exclude)archive' | tar -x -C "$stage"
 tree="$stage/$top"
 
 if [ "$build" -eq 1 ]; then

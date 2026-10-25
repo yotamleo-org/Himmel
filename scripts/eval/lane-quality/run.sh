@@ -11,6 +11,9 @@
 #   run.sh run --lane native|openrouter|api --model <model> [--tasks a,b] [--effort <level>]
 #              [--reps <n>] [--base <sha>] [--max-usd <usd>] [--timeout <sec>] [--judge-model <model>]
 #              [--no-judge] [--keep] [--out <dir>] [--config <file>] [--dry-run]
+#              [--set regression|capability|all] [--judge-effort <level>] [--judge-twice]
+#   run.sh judge-pair <baseline-run-dir> <candidate-run-dir> [--judge-model <model>]
+#              [--judge-effort <level>] [--max-usd <usd>] [--timeout <sec>] [--seed <n>] [--out <file>]
 #   run.sh table <run-dir>...
 #   run.sh pair <run-dir-a> <run-dir-b>   (one task set on two base commits: one paired row per task)
 #   run.sh calibration <run-dir>... [--judge2-model <model>] [--judge2-effort <level>]
@@ -33,7 +36,23 @@
 # model or effort and reports quadratic weighted kappa per criterion. Stored
 # second-judge results are reused, so a rerun makes no call.
 #
-# Each task runs in a fresh detached worktree at the pinned BASE_SHA, plus
+# Task sets: the synthetic tasks are the regression set (the default). A real
+# task (a tasks/<id>/task.json, written by mine-tasks.py) is a merged himmel
+# change: the agent gets the ticket text and a fresh repo holding the tree at
+# the change's base sha as its only commit (git archive, then git init), outside
+# the source repo, so no ref, object or worktree link reaches the fix. Its
+# hidden tests are copied in only at acceptance. --set picks the default list.
+#
+# Judge: the rubric is checkable claims (judge-claims-rubric.md), each true or
+# false with quoted evidence; the 1-5 score per criterion is 1 + the claims that
+# hold. --judge-twice grades each output a second time and records the flips.
+# The judge may not share a model family with the model under test. judge-pair
+# shows two runs' outputs blind, in a recorded random order, judged once per
+# order. A sweep with any unjudged row is ledgered partial, never ok.
+# Plumbing failures (timeout, no JSON, truncation, API error) are a row field
+# that `table` counts apart from model failures.
+#
+# Each synthetic task runs in a fresh detached worktree at the pinned BASE_SHA, plus
 # the task's fixture/ committed on top (a fixed author and date, so the
 # fixture commit is reproducible). The agent sees only tasks/<id>/prompt.md;
 # accept.sh and reference/ stay outside its worktree. The judge sees the task,
@@ -97,13 +116,15 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TASKS="$HERE/tasks"
 die() { echo "lane-quality: $*" >&2; exit 64; }
-usage() { sed -n '2,67p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+usage() { sed -n '2,86p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 # billed-opt-in: HIMMEL_BILLED_OK
 need_billed() { [ "${HIMMEL_BILLED_OK:-}" = 1 ] || die "$1 makes real, billed model calls; set HIMMEL_BILLED_OK=1 (on-demand only)"; }
 has_arg() { local w=$1 a; shift; for a in "$@"; do if [ "$a" = "$w" ]; then return 0; fi; done; return 1; }
 command -v jq >/dev/null 2>&1 || die "jq is required"
 
-all_tasks() { for d in "$TASKS"/*/; do [ -f "$d/prompt.md" ] && basename "$d"; done; }
+all_tasks() { for d in "$TASKS"/*/; do [ -f "$d/prompt.md" ] || [ -f "$d/fixture/prompt.md" ] && basename "$d"; done; }
+# prompt_of <task>: the prompt file; a mined task keeps its ticket text under fixture/
+prompt_of() { if [ -f "$TASKS/$1/fixture/prompt.md" ]; then echo "$TASKS/$1/fixture/prompt.md"; else echo "$TASKS/$1/prompt.md"; fi; }
 
 # materialize <task> <dir> [--reference]: copy the task's fixture (or its
 # reference solution) into <dir>. The fixture is committed and its sha
@@ -111,7 +132,7 @@ all_tasks() { for d in "$TASKS"/*/; do [ -f "$d/prompt.md" ] && basename "$d"; d
 # that way so CI never discovers a reference test-*.sh as a suite).
 materialize() {
   local task="$1" dir="$2" mode="${3:-}" src f
-  [ -f "$TASKS/$task/prompt.md" ] || die "unknown task '$task'"
+  [ -f "$(prompt_of "$task")" ] || die "unknown task '$task'"
   if [ "$mode" = --reference ]; then
     src="$TASKS/$task/reference"
     [ -d "$src" ] || return 0
@@ -198,13 +219,16 @@ agent_cost() { # $1 result json -> the agent's real cost in USD, or null
     end' "$1"
 }
 
-transcript_metrics() { # $1 = transcript or empty, $2 = final report file -> JSON object
+# transcript_metrics <transcript or empty> <final report file> [source repo]: a JSON object.
+# `peeked` flags a tool input naming this harness directory, any qmd or graphify
+# use, and (for a real task, given the source repo) a path inside the source checkout.
+transcript_metrics() {
   if [ -z "$1" ] || [ ! -r "$1" ]; then
     echo '{"tool_calls":null,"dispatches":null,"dispatch_unnamed_model":null,"compactions":null,"hook_denials":null,"peeked":null,"red_before_green":null,"denial_recovery":null,"identical_denied_retries":null,"verify_before_claim":null}'; return
   fi
   local traj  # HIMMEL-4651 trajectory fields; a scorer failure leaves them null
   traj="$(python3 "$HERE/trajectory.py" score "$1" --report "$2" 2>/dev/null)" || traj=""
-  jq -s -c --argjson traj "${traj:-null}" '
+  jq -s -c --argjson traj "${traj:-null}" --arg rp "${3:+$3/}" '
     (if $traj == null then {red_before_green: null, denial_recovery: null, identical_denied_retries: null, verify_before_claim: null} else $traj end) as $traj
     |
     def text: if type == "string" then . elif type == "array" then map(.text? // "") | join(" ") else "" end;
@@ -216,13 +240,15 @@ transcript_metrics() { # $1 = transcript or empty, $2 = final report file -> JSO
         compactions: ([ .[] | select(.type == "system" and .subtype == "compact_boundary") ] | length),
         hook_denials: ([ .[] | select(.type == "user") | .message.content[]? | select(.type == "tool_result" and .is_error == true)
                          | select(.content | text | test("hook error|PreToolUse|refus|denied|blocked"; "i")) ] | length),
-        peeked: ($tu | map(.input | tostring) | any(test("eval/lane-quality"))) } + $traj' "$1"
+        peeked: (($tu | map(.input | tostring) | any(test("scripts/eval/lane-quality|\\b(qmd|graphify)\\b") or ($rp != "" and contains($rp))))
+                 or ($tu | any(.name | test("qmd|graphify"; "i")))) } + $traj' "$1"
 }
 
-# judge_call <packet> <out json> <err file> <model> <budget> [effort]: one
-# blind judge call on a stored packet; the result lands in <out json>.
+# judge_call <packet> <out json> <err file> <model> <budget> [effort] [single|pair]:
+# one blind judge call on a stored packet; the result lands in <out json>.
 judge_call() {
-  local packet="$1" out="$2" err="$3" model="$4" budget="$5" effort="${6:-}" jdir rc
+  local packet="$1" out="$2" err="$3" model="$4" budget="$5" effort="${6:-}" kind="${7:-single}" jdir rc schema
+  schema="$(jq -c ".$kind" "$HERE/judge-claims-schema.json")" || return 1
   jdir="$(mktemp -d "${TMPDIR:-/tmp}/lq-judge.XXXXXX")" || return 1
   (
     cd "$jdir" || exit 1
@@ -232,7 +258,7 @@ judge_call() {
       # blind judge call, bank-preflighted by its caller, no tools, explicit permission mode, budget-capped
       # launch-profile-ok: the judge runs with --tools "", so no tool profile applies
       timeout "$TIMEOUT" "$CLAUDE_BIN" -p --model "$model" ${effort:+--effort "$effort"} --permission-mode dontAsk --output-format json \
-        --max-budget-usd "$budget" --no-session-persistence --json-schema "$(cat "$HERE/judge-schema.json")" --tools ""
+        --max-budget-usd "$budget" --no-session-persistence --json-schema "$schema" --tools ""
     else
       exit 1
     fi
@@ -242,30 +268,114 @@ judge_call() {
   return "$rc"
 }
 
-judge_scores() { # $1 judge result json -> the scores plus cost_usd, or null
+# judge_scores <judge result json>: the scores plus cost_usd, or null. A claims
+# result also gets the integer score per criterion: 1 + the claims that hold.
+judge_scores() {
   local s  # an empty file makes jq print nothing at rc 0: still null
-  s="$(jq -c '(.structured_output // (.result | fromjson? ) // null) as $s
-         | if $s == null then null else $s + {cost_usd: (.total_cost_usd // null)} end' \
+  s="$(jq -c 'def held($c): [.claims | to_entries[] | select(.key | startswith($c)) | select(.value.holds == true)] | length;
+         (.structured_output // (.result | fromjson? ) // null) as $s
+         | if $s == null then null
+           elif ($s | type) == "object" and ($s.claims | type) == "object" then
+             $s + ($s | {correctness: (1 + held("C")), scope_discipline: (1 + held("S")), test_quality: (1 + held("T")), honesty: (1 + held("H"))})
+               + {cost_usd: (.total_cost_usd // null)}
+           else $s + {cost_usd: (.total_cost_usd // null)} end' \
     "$1" 2>/dev/null)"
   echo "${s:-null}"
 }
 
-judge() { # $1 file stem, $2 task, $3 worktree, $4 fixture sha, $5 agent report file, $6 out dir, $7 budget -> judge JSON on stdout
-  local stem="$1" task="$2" wt="$3" fix="$4" report="$5" od="$6" budget="$7" packet
+rubric() { # rubric single|pair: that section of judge-claims-rubric.md
+  awk -v want="$1" '/^<!-- pair -->$/ { part = "pair"; next } (part ? part : "single") == want' "$HERE/judge-claims-rubric.md"
+}
+
+# judge <stem> <task> <worktree> <fixture sha> <report file> <out dir> <budget> [suffix]:
+# the judge JSON on stdout. The packet and the redacted candidate (<stem>.cand.md,
+# which judge-pair reuses) are written on the first call; a suffix (-b) grades
+# the stored packet again into <stem>.judge<suffix>.json.
+judge() {
+  local stem="$1" task="$2" wt="$3" fix="$4" report="$5" od="$6" budget="$7" sfx="${8:-}" packet
   packet="$od/$stem.judge-packet.md"
-  git -C "$wt" add -A
-  {
-    cat "$HERE/judge-rubric.md"
-    printf '\n## Task given to the agent\n\n'
-    cat "$TASKS/$task/prompt.md"
-    printf '\n## The diff it produced\n\n```diff\n'
-    git -C "$wt" diff --cached "$fix" | head -c 60000
-    [ "$(git -C "$wt" diff --cached "$fix" | wc -c)" -le 60000 ] || printf '\n[truncated at 60000 bytes]'
-    printf '\n```\n\n## Its final report\n\n'
-    cat "$report"
-  } | redact >"$packet"
-  judge_call "$packet" "$od/$stem.judge.json" "$od/$stem.judge.err" "$JUDGE_MODEL" "$budget" || { echo null; return 0; }
-  judge_scores "$od/$stem.judge.json"
+  if [ -z "$sfx" ]; then
+    git -C "$wt" add -A
+    {
+      printf '## The diff it produced\n\n```diff\n'
+      git -C "$wt" diff --cached "$fix" | head -c 60000
+      [ "$(git -C "$wt" diff --cached "$fix" | wc -c)" -le 60000 ] || printf '\n[truncated at 60000 bytes]'
+      printf '\n```\n\n## Its final report\n\n'
+      cat "$report"
+    } | redact >"$od/$stem.cand.md"
+    { rubric single; printf '\n## Task given to the agent\n\n'; cat "$(prompt_of "$task")"; printf '\n'; cat "$od/$stem.cand.md"; } \
+      | redact >"$packet"
+  fi
+  judge_call "$packet" "$od/$stem.judge$sfx.json" "$od/$stem.judge$sfx.err" "$JUDGE_MODEL" "$budget" "$JUDGE_EFFORT" || { echo null; return 0; }
+  judge_scores "$od/$stem.judge$sfx.json"
+}
+
+# judge_family <model>: the vendor family a model name belongs to, else the name itself
+judge_family() {
+  local m; m="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')"
+  printf '%s\n' "$m" | grep -Eo 'opus|sonnet|haiku|fable|gpt|codex|gemini|glm|deepseek|kimi|qwen|llama|mistral' | head -1 | grep . || printf '%s\n' "$m"
+}
+
+# refuse_same_judge <judge> <model>...: exit 64 when the judge shares a family with any model
+refuse_same_judge() {
+  local j="$1" m; shift
+  for m in "$@"; do
+    [ -n "$m" ] || continue
+    [ "$(judge_family "$j")" != "$(judge_family "$m")" ] \
+      || die "judge '$j' is in the same model family as the model under test '$m'; pick a judge from another family"
+  done
+}
+
+task_set() { # task_set <task>: its task set, regression for a synthetic task
+  if [ -f "$TASKS/$1/task.json" ]; then jq -r '.set // "capability"' "$TASKS/$1/task.json"; else echo regression; fi
+}
+
+# materialize_real <task> <dir>: the task's base tree as the only commit of a new
+# repo in <dir>.repo (no remote, no shared objects, no later refs), checked out in
+# <dir> as a linked worktree on lq-task, the shape a leg works in, so the himmel
+# hooks in the tree allow edits there; origin/main names the base so they can
+# vouch its libs. Prints the base commit's sha.
+materialize_real() {
+  local task="$1" dir="$2" base src="$2.repo"
+  base="$(jq -r .base_sha "$TASKS/$task/task.json")"
+  git -C "$REPO" cat-file -e "$base^{commit}" 2>/dev/null || die "$task: base $base is not a commit in $REPO"
+  mkdir -p "$src" || die "cannot create $src"
+  git -C "$REPO" archive "$base" | tar -x -C "$src" || die "$task: cannot extract $base"
+  git -C "$src" init -q -b main || die "$task: git init failed"
+  git -C "$src" add -A || die "$task: cannot stage the base tree"
+  GIT_AUTHOR_DATE='2026-01-01T00:00:00Z' GIT_COMMITTER_DATE='2026-01-01T00:00:00Z' \
+    git -C "$src" -c user.name=lane-quality -c user.email=lane-quality@invalid \
+    -c commit.gpgsign=false commit -q --no-verify -m "lane-quality task base" || die "$task: cannot commit the base tree"
+  git -C "$src" update-ref refs/remotes/origin/main HEAD || die "$task: cannot name the default branch"
+  git -C "$src" worktree add -q -b lq-task "$dir" main || die "$task: cannot add the task worktree"
+  git -C "$dir" rev-parse HEAD
+}
+
+# The frozen pilot tasks whose accept.sh cannot change: the agent's own test
+# must still fail on the untouched fixture, checked here.
+FROZEN_OWN_TEST='{"doc-plus-code":"lq-work/test-log-tail.sh"}'
+
+# own_test_catches <task> <worktree> <fixture sha>: true, false, or null when the task is not listed
+own_test_catches() {
+  local t mut rc
+  t="$(jq -r --arg k "$1" '.[$k] // empty' <<<"$FROZEN_OWN_TEST")"
+  [ -n "$t" ] || { echo null; return 0; }
+  [ -f "$2/$t" ] || { echo false; return 0; }
+  mut="$(mktemp -d "${TMPDIR:-/tmp}/lq-own.XXXXXX")" || { echo false; return 0; }  # prim-ok: the judge scratch dir idiom above; run.sh does not source prim.sh
+  # the agent's files stay (a helper its test needs); every fixture file goes back to the fixture
+  cp -R "$2/lq-work" "$mut/"
+  if ! { git -C "$2" archive -o "$mut/fixture.tar" "$3" lq-work && tar -x -C "$mut" -f "$mut/fixture.tar"; }; then
+    rm -rf "$mut"; echo false; return 0
+  fi
+  rm -f "$mut/fixture.tar"
+  cp "$2/$t" "$mut/$t"
+  (cd "$mut" && bash "$HERE/../../api-lane/strip-env.sh" -- timeout "$TIMEOUT" bash "$t") >/dev/null 2>&1; rc=$?
+  rm -rf "$mut"
+  if [ "$rc" -ne 0 ]; then echo true; else echo false; fi
+}
+
+drop_wt() { # drop_wt <real 0|1> <dir>: remove a task's working copy
+  if [ "$1" -eq 1 ]; then rm -rf "$2" "$2.repo"; else git -C "$REPO" worktree remove --force "$2" >/dev/null 2>&1; fi
 }
 
 stem_of() { # $1 task, $2 repeat -> the file stem (the task alone for repeat 1)
@@ -274,11 +384,18 @@ stem_of() { # $1 task, $2 repeat -> the file stem (the task alone for repeat 1)
 
 run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the task's cost
   local task="$1" rp="$2" stem wt fix start end bank0 bank1 met0 met1 acost outer res sid tr metrics acc_line acc_rc scope jres remaining tok judged=0
+  local real=0 base="$BASE_SHA" arc nojson=0 cli own plumbing jres_b=null judged_b=0
   stem="$(stem_of "$task" "$rp")"
-  wt="$WORK_ROOT/lq-$RUN_ID-$stem"
-  mkdir -p "$WORK_ROOT"
-  git -C "$REPO" worktree add -q --detach "$wt" "$BASE_SHA" || die "worktree add failed for $task"
-  fix="$(materialize "$task" "$wt")" || die "fixture for $task failed"
+  [ ! -f "$TASKS/$task/task.json" ] || { real=1; base="$(jq -r .base_sha "$TASKS/$task/task.json")"; }
+  if [ "$real" -eq 1 ]; then
+    wt="$REAL_WORK_ROOT/lq-$RUN_ID-$stem"
+    fix="$(materialize_real "$task" "$wt")" || die "task repo for $task failed"
+  else
+    wt="$WORK_ROOT/lq-$RUN_ID-$stem"
+    mkdir -p "$WORK_ROOT"
+    git -C "$REPO" worktree add -q --detach "$wt" "$BASE_SHA" || die "worktree add failed for $task"
+    fix="$(materialize "$task" "$wt")" || die "fixture for $task failed"
+  fi
   if [ -n "$VARIANT_FILE" ]; then
     # The variant steering file replaces the worktree's CLAUDE.md inside the fixture commit, so it is not scope drift.
     cp "$VARIANT_FILE" "$wt/CLAUDE.md" || die "cannot copy the steering variant into $task"
@@ -290,7 +407,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
   fi
   bank0="$(bank_read)"
   if [ "${bank0%% *}" != PROCEED ] && [ "$LANE" != api ]; then
-    git -C "$REPO" worktree remove --force "$wt" >/dev/null 2>&1
+    drop_wt "$real" "$wt"
     echo "bank-refused ${bank0%% *}"; return 0
   fi
   bank0="${bank0#* }"; met0="$(metered_read)"
@@ -299,6 +416,8 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
   start="$(date +%s)"
   (
     cd "$wt" || exit 1
+    # an eval session is not operator work: no end-session note in the vault
+    export CLAUDE_END_SESSION_WIKI=0
     if [ "$LANE" = api ]; then
       # the launcher keeps the key and removes every other credential source; the
       # subscription token is dropped here too, so no layer between can hand it to the agent.
@@ -309,7 +428,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
       # the lane is tool-free unless named; the eval agent edits fixtures and runs their tests, so it opts in to the full set.
       ANTHROPIC_API_KEY="$LQ_API_KEY" HIMMEL_API_LANE="$LQ_API_LANE" HIMMEL_API_ACCOUNT="$LQ_API_ACCOUNT" HIMMEL_API_KEY_ID="$LQ_API_KEY_ID" \
         HIMMEL_API_TOOLS="Read,Edit,Write,Glob,Grep,Bash" \
-        timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \
+        timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$(prompt_of "$task")")" --model "$MODEL" --permission-mode auto \
         --output-format json --max-budget-usd "$outer" ${EFFORT:+--effort "$EFFORT"}
       exit $?
     fi
@@ -318,28 +437,46 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
       # lane-quality agent run, bank-preflighted per sweep, explicit permission mode, budget-capped
       # launch-profile-ok: the eval measures the lane's own default config (claude or the lane launcher in $AGENT_BIN), not a leg profile
-      timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$TASKS/$task/prompt.md")" --model "$MODEL" --permission-mode auto \
+      timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$(prompt_of "$task")")" --model "$MODEL" --permission-mode auto \
         --output-format json --max-budget-usd "$outer" ${EFFORT:+--effort "$EFFORT"}
     else
       exit 1
     fi
   )>"$OUT/$stem.result.json" 2>"$OUT/$stem.stderr"
+  arc=$?
   end="$(date +%s)"
   res="$OUT/$stem.result.json"
-  jq -e . "$res" >/dev/null 2>&1 || echo '{"is_error":true,"subtype":"harness-no-json"}' >"$res"
+  jq -e . "$res" >/dev/null 2>&1 || { nojson=1; echo '{"is_error":true,"subtype":"harness-no-json"}' >"$res"; }
   jq -r '.result // ""' "$res" >"$OUT/$stem.report.md"
   acost="$(agent_cost "$res")"
   sid="$(jq -r '.session_id // ""' "$res")"
   tr=""
   [ -n "$sid" ] && tr="$(find "$TRANSCRIPTS" -name "$sid.jsonl" -print 2>/dev/null | head -1)"
-  metrics="$(transcript_metrics "$tr" "$OUT/$stem.report.md")"
+  metrics="$(transcript_metrics "$tr" "$OUT/$stem.report.md" "$( [ "$real" -eq 1 ] && echo "$REPO" )")"
+  cli=""
+  [ -z "$tr" ] || cli="$(jq -r 'select(.version? | type == "string") | .version' "$tr" 2>/dev/null | head -1)"
+  cli="${cli:-$CLI_VERSION}"
+  # plumbing: a failure of the harness or the API, counted apart from the model's own failures
+  plumbing="$(jq -r --argjson rc "$arc" --argjson nj "$nojson" '
+    if $rc == 124 then "timeout" elif $nj == 1 then "no-json"
+    elif (.subtype // "") | test("^error_max_(budget|turns)") then "truncated"
+    elif .is_error == true then "api-error" else "" end' "$res")"
   # acceptance runs agent-written code, so the API key and lane selectors are removed first.
   # strip-env runs outside timeout, so the direct parent of accept.sh never carried the key either.
   bash "$HERE/../../api-lane/strip-env.sh" -- timeout "$TIMEOUT" bash "$TASKS/$task/accept.sh" "$wt" "$fix" >"$OUT/$stem.accept.log" 2>&1; acc_rc=$?
   acc_line="$(grep -E '^accept: [0-9]+/[0-9]+$' "$OUT/$stem.accept.log" | tail -1)"
+  own="$(own_test_catches "$task" "$wt" "$fix")"
+  if [ "$own" = false ]; then
+    echo "FAIL own-test-catches-fixture (run.sh)" >>"$OUT/$stem.accept.log"; acc_rc=1
+  fi
   # Staged against the fixture commit, so a file the agent committed counts too.
   git -C "$wt" add -A
-  scope="$(git -C "$wt" diff --cached --name-only "$fix" | grep -v '^lq-work/' | jq -R . | jq -sc .)"
+  if [ "$real" -eq 1 ]; then
+    scope="$(git -C "$wt" diff --cached --name-only "$fix" | jq -R . | jq -sc --slurpfile t "$TASKS/$task/task.json" \
+      '[.[] | . as $f | select($t[0].scope | all(. as $d | $f | startswith($d) | not))]')"
+  else
+    scope="$(git -C "$wt" diff --cached --name-only "$fix" | grep -v '^lq-work/' | jq -R . | jq -sc .)"
+  fi
   remaining="$(awk -v m="$MAX_USD" -v s="$SPENT" -v c="$( [ "$acost" = null ] && echo 0 || echo "$acost" )" 'BEGIN{printf "%.2f", m - s - c}')"
   jres=null
   if [ "$NO_JUDGE" -eq 0 ]; then
@@ -351,20 +488,36 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     elif awk -v r="$remaining" 'BEGIN{exit !(r >= 0.01)}'; then
       jres="$(judge "$stem" "$task" "$wt" "$fix" "$OUT/$stem.report.md" "$OUT" "$remaining")"
       judged=1
+      if [ "$JUDGE_TWICE" -eq 1 ] && [ "${jres:-null}" != null ]; then
+        remaining="$(awk -v r="$remaining" -v c="$(jq -r '.cost_usd // 0' <<<"$jres")" 'BEGIN{printf "%.2f", r - c}')"
+        if awk -v r="$remaining" 'BEGIN{exit !(r >= 0.01)}'; then
+          jres_b="$(judge "$stem" "$task" "$wt" "$fix" "$OUT/$stem.report.md" "$OUT" "$remaining" -b)"
+          judged_b=1
+        fi
+      fi
     else
       echo "lane-quality: budget spent by the agent; judge skipped" >"$OUT/$stem.judge.err"
     fi
   fi
   [ -n "$jres" ] || jres=null
+  [ -n "$jres_b" ] || jres_b=null
   # read after the judge, so the balance counts its spend
   bank1="$(bank_read)"; bank1="${bank1#* }"; met1="$(metered_read)"
-  if [ "$KEEP" -eq 0 ]; then git -C "$REPO" worktree remove --force "$wt" >/dev/null 2>&1; fi
+  if [ "$KEEP" -eq 0 ]; then drop_wt "$real" "$wt"; fi
   jq -nc --arg run "$RUN_ID" --arg lane "$LANE" --arg model "$MODEL" --arg effort "$EFFORT" --arg task "$task" --argjson rep "$rp" \
-    --arg variant "$VARIANT" --arg base "$BASE_SHA" --arg fix "$fix" --argjson wall "$((end - start))" --arg b0 "$bank0" --arg b1 "$bank1" --arg m0 "$met0" --arg m1 "$met1" --argjson ac "$acost" \
+    --arg set "$(task_set "$task")" --arg cli "$cli" --arg je "$JUDGE_EFFORT" --argjson own "$own" --arg pl "$plumbing" \
+    --argjson jb "$jres_b" \
+    --arg variant "$VARIANT" --arg base "$base" --arg fix "$fix" --argjson wall "$((end - start))" --arg b0 "$bank0" --arg b1 "$bank1" --arg m0 "$met0" --arg m1 "$met1" --argjson ac "$acost" \
     --arg acc "$acc_line" --argjson accrc "$acc_rc" --argjson scope "$scope" --argjson m "$metrics" \
     --argjson j "$jres" --argjson nojudge "$NO_JUDGE" --arg jm "$JUDGE_MODEL" --arg wt "$( [ "$KEEP" -eq 1 ] && echo "$wt" )" --slurpfile r "$res" '
     $r[0] as $r
-    | { run_id: $run, lane: $lane, model: $model, effort: $effort, task: $task, rep: $rep, variant: (if $variant == "" then null else $variant end), base_sha: $base, fixture_sha: $fix,
+    | def flips: if $j == null or $jb == null then null
+        else { claims: (if ($j.claims | type) == "object" and ($jb.claims | type) == "object"
+                        then [$j.claims | keys[] | select($j.claims[.].holds != $jb.claims[.].holds)] | length else null end),
+               criteria: ([["correctness", "scope_discipline", "test_quality", "honesty"][] | select($j[.] != $jb[.])] | length) } end;
+      { run_id: $run, lane: $lane, model: $model, effort: (if $effort == "" then null else $effort end), task: $task, rep: $rep,
+        set: $set, cli_version: (if $cli == "" then null else $cli end), plumbing: (if $pl == "" then null else $pl end),
+        own_test_catches_fixture: $own, variant: (if $variant == "" then null else $variant end), base_sha: $base, fixture_sha: $fix,
         wall_s: $wall, duration_ms: ($r.duration_ms // null), num_turns: ($r.num_turns // null),
         cost_usd: $ac, reported_cost_usd: ($r.total_cost_usd // null), bank_5h_before: $b0, bank_5h_after: $b1,
         metered_before: (if $m0 == "" then null else $m0 end), metered_after: (if $m1 == "" then null else $m1 end),
@@ -375,12 +528,14 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
         accept_total: (($acc | capture("/(?<t>[0-9]+)").t? | tonumber?) // 0),
         tokens: ([($r.modelUsage // {}) | to_entries[] | .value] | {input: (map(.inputTokens // 0) | add // 0), output: (map(.outputTokens // 0) | add // 0), cache_read: (map(.cacheReadInputTokens // 0) | add // 0), cache_create: (map(.cacheCreationInputTokens // 0) | add // 0)}),
         accept_ok: ($accrc == 0), scope_ok: ($scope | length == 0), out_of_scope: $scope,
-        judge: $j, judge_model: (if $nojudge == 1 then null else $jm end), kept_worktree: $wt } + $m' >>"$OUT/runs.jsonl" || die "$task: could not record its runs.jsonl row"
+        judge: $j, judge_model: (if $nojudge == 1 then null else $jm end),
+        judge_effort: (if $nojudge == 1 or $je == "" then null else $je end), judge_b: $jb, judge_flips: flips,
+        kept_worktree: $wt } + $m' >>"$OUT/runs.jsonl" || die "$task: could not record its runs.jsonl row"
   # "unknown" when the agent, or a judge that was launched, left no cost
   # (killed by the timeout, or failed): the sweep stops.
-  jq -nr --argjson ac "$acost" --argjson j "$jres" --argjson judged "$judged" '
-    if $ac == null or ($judged == 1 and ($j.cost_usd? // null) == null) then "unknown"
-    else $ac + ($j.cost_usd? // 0) end'
+  jq -nr --argjson ac "$acost" --argjson j "$jres" --argjson judged "$judged" --argjson jb "$jres_b" --argjson judgedb "$judged_b" '
+    if $ac == null or ($judged == 1 and ($j.cost_usd? // null) == null) or ($judgedb == 1 and ($jb.cost_usd? // null) == null) then "unknown"
+    else $ac + ($j.cost_usd? // 0) + ($jb.cost_usd? // 0) end'
 }
 
 API_PILOT_CAP=1  # HIMMEL-4986: the most one api sweep may be given, in USD
@@ -414,13 +569,19 @@ init_env() { # the claude binary, the repo, the bank preflight and the native-au
 #   tasks_dir   task directory, relative to this dir, must stay under it
 #   base_sha    40-hex commit the fixture worktrees are cut from
 #   transcripts transcript root searched for the agent session
+#   effort      the agent's --effort, unless --effort is given
+#   judge_effort the judge's --effort, unless --judge-effort is given
 apply_config() {
-  local f="$1" td bs tr_ root
+  local f="$1" td bs tr_ root ef jef
   [ -f "$f" ] || die "--config: no such file '$f'"
   jq -e 'type == "object"' "$f" >/dev/null 2>&1 || die "--config: '$f' is not a JSON object"
   td="$(jq -r '.tasks_dir // empty' "$f")"
   bs="$(jq -r '.base_sha // empty' "$f")"
   tr_="$(jq -r '.transcripts // empty' "$f")"
+  ef="$(jq -r '.effort // empty' "$f")"
+  jef="$(jq -r '.judge_effort // empty' "$f")"
+  [ -n "$EFFORT" ] || EFFORT="$ef"
+  [ -n "$JUDGE_EFFORT" ] || JUDGE_EFFORT="$jef"
   if [ -n "$td" ]; then
     root="$(realpath -m "$HERE")"
     td="$(realpath -m "$HERE/$td")"
@@ -438,9 +599,10 @@ apply_config() {
 cmd_run() {
   LANE=""; MODEL=""; TASK_LIST=""; EFFORT=""; MAX_USD=""; TIMEOUT=1800; JUDGE_MODEL=opus
   NO_JUDGE=0; KEEP=0; OUT=""; REPS=1; CONFIG=""; DRY_RUN=0; BASE_ARG=""; VARIANT=""; VARIANT_FILE=""
+  SET=regression; JUDGE_EFFORT=""; JUDGE_TWICE=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --lane|--model|--tasks|--effort|--max-usd|--timeout|--judge-model|--out|--reps|--config|--base|--steering-variant)
+      --lane|--model|--tasks|--effort|--max-usd|--timeout|--judge-model|--out|--reps|--config|--base|--steering-variant|--set|--judge-effort)
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in
           --steering-variant)
@@ -454,14 +616,18 @@ cmd_run() {
           --lane) LANE="$2" ;; --model) MODEL="$2" ;; --tasks) TASK_LIST="$2" ;;
           --effort) EFFORT="$2" ;; --max-usd) MAX_USD="$2" ;; --timeout) TIMEOUT="$2" ;;
           --judge-model) JUDGE_MODEL="$2" ;; --out) OUT="$2" ;; --reps) REPS="$2" ;;
+          --set) SET="$2" ;; --judge-effort) JUDGE_EFFORT="$2" ;;
         esac; shift 2 ;;
       --no-judge) NO_JUDGE=1; shift ;;
+      --judge-twice) JUDGE_TWICE=1; shift ;;
       --keep) KEEP=1; shift ;;
       --dry-run) DRY_RUN=1; shift ;;
       *) die "unknown argument '$1'" ;;
     esac
   done
   [ -n "$MODEL" ] || die "--model is required"
+  case "$SET" in regression|capability|all) ;; *) die "--set must be regression, capability or all" ;; esac
+  [ "$NO_JUDGE" -eq 1 ] || refuse_same_judge "$JUDGE_MODEL" "$MODEL"
   [ "$DRY_RUN" -eq 1 ] || need_billed "run"
   case "$LANE" in
     native|openrouter) ;;
@@ -482,11 +648,11 @@ cmd_run() {
     claudex)
       # the per-dispatch lane opt-in the dispatcher reads.
       if [ "${CLAUDEX_LANE_OK:-}" != 1 ]; then
-        echo "lane-quality: lane claudex needs CLAUDEX_LANE_OK=1 on the command (HIMMEL-4906)" >&2
+        echo "lane-quality: lane claudex needs CLAUDEX_LANE_OK=1 on the command" >&2
         exit 3
       fi ;;
     deepseek)
-      echo "lane-quality: lane '$LANE' is not enabled (HIMMEL-4090): it needs the operator's go; see docs/internals/lane-calibration.md" >&2
+      echo "lane-quality: lane '$LANE' is not enabled: it needs the operator's go; see docs/internals/lane-calibration.md" >&2
       exit 3 ;;
     *) die "--lane must be native, openrouter, api or claudex; got '$LANE'" ;;
   esac
@@ -504,6 +670,11 @@ cmd_run() {
     BASE_SHA="$(git -C "$REPO" rev-parse --verify "$BASE_ARG^{commit}" 2>/dev/null)" || die "base '$BASE_ARG' is not a commit in $REPO"
   fi
   WORK_ROOT="${LQ_WORK_ROOT:-$REPO/.claude/worktrees}"
+  # a real task's repo sits outside the source checkout, so no path inside it leads back
+  REAL_WORK_ROOT="${LQ_WORK_ROOT:-$HOME/.himmel/eval/lane-quality/work}"
+  # the transcript's version field is the record; this is the fallback, never asked of a test seam
+  CLI_VERSION=""
+  [ -n "${LQ_CLAUDE_BIN:-}" ] || CLI_VERSION="$("$CLAUDE_BIN" --version 2>/dev/null | awk 'NR == 1 {print $1}')"
   # The judge always runs native; a metered lane's agent goes through its launcher.
   AGENT_BIN="$CLAUDE_BIN"; METERED_PROBE=""; BUDGET_FACTOR=1; TRANSCRIPTS="${LQ_TRANSCRIPTS:-$HOME/.claude/projects}"
   if [ "$LANE" = openrouter ]; then
@@ -539,12 +710,20 @@ cmd_run() {
   OUT="${OUT:-$HOME/.himmel/eval/lane-quality/$RUN_ID}"
   mkdir -p "$OUT" || die "cannot create $OUT"
   OUT="$(cd "$OUT" && pwd)" || die "cannot resolve $OUT"
-  git -C "$REPO" cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || die "base sha $BASE_SHA not in $REPO"
 
   local tasks t cost tok r
-  tasks="${TASK_LIST:-$(all_tasks | tr '\n' ',')}"
+  tasks="$TASK_LIST"
+  if [ -z "$tasks" ]; then
+    for t in $(all_tasks); do
+      [ "$SET" = all ] || [ "$(task_set "$t")" = "$SET" ] || continue
+      tasks="$tasks$t,"
+    done
+    [ -n "$tasks" ] || die "no task in set '$SET'"
+  fi
   for t in $(printf '%s' "$tasks" | tr ',' ' '); do
-    [ -f "$TASKS/$t/prompt.md" ] || die "unknown task '$t'"
+    [ -f "$(prompt_of "$t")" ] || die "unknown task '$t'"
+    # a real task carries its own base, checked when its repo is made
+    [ -f "$TASKS/$t/task.json" ] || git -C "$REPO" cat-file -e "$BASE_SHA^{commit}" 2>/dev/null || die "base sha $BASE_SHA not in $REPO"
   done
   if [ "$DRY_RUN" -eq 1 ]; then api_dry_run "$tasks"; return 0; fi
   SPENT=0; STATUS=ok; UNKNOWN_COST=0
@@ -576,6 +755,14 @@ cmd_run() {
   done
   done
   echo "lane-quality: done, spent $SPENT USD (API-price equivalent); rows in $OUT/runs.jsonl"
+  # a sweep with any row lacking one of the four judge scores (of either
+  # grading, under --judge-twice) is not a baseline
+  if [ "$NO_JUDGE" -eq 1 ] || { [ -s "$OUT/runs.jsonl" ] && jq -se --arg r "$RUN_ID" --argjson twice "$JUDGE_TWICE" '
+      def unscored: . == null or ([.correctness, .scope_discipline, .test_quality, .honesty] | any(type != "number"));
+      map(select(.run_id == $r)) | any((.judge | unscored) or ($twice == 1 and (.judge_b | unscored)))' \
+      "$OUT/runs.jsonl" >/dev/null; }; then
+    STATUS=partial
+  fi
   # one eval-runs ledger row per sweep (scripts/eval/lib/eval_runs.py);
   # a ledger failure warns and never changes the sweep's result.
   if [ -s "$OUT/runs.jsonl" ]; then
@@ -600,6 +787,13 @@ cmd_table() {
     + " | \(.wall_s) | \(.tool_calls | n) | \(.compactions | n) | \(.cost_usd | n) | \(.bank_5h_before)→\(.bank_5h_after) | "
     + (if .metered_before == null then "–" else "\(.metered_before)→\(.metered_after)" end) + " | "
     + "\(.permission_denials)/\(.hook_denials | n) | \(.peeked | n) |"' "${files[@]}"
+  echo
+  # plumbing rows (timeout, no JSON, truncation, API error) leave the per-set acceptance
+  jq -rs '
+    (map(select(.plumbing != null)) | group_by(.plumbing) | map({(.[0].plumbing): length}) | add // {}) as $p
+    | "plumbing: \(map(select(.plumbing != null)) | length) of \(length) rows (timeout \($p.timeout // 0), no-json \($p["no-json"] // 0), truncated \($p.truncated // 0), api-error \($p["api-error"] // 0))",
+      (map(select(.plumbing == null)) | group_by(.set // "regression")[]
+       | "set \(.[0].set // "regression"): accept \(map(select(.accept_ok)) | length)/\(length) (plumbing rows excluded)")' "${files[@]}"
   echo
   python3 "$HERE/lq_stats.py" summary "${files[@]}"
 }
@@ -626,6 +820,90 @@ cmd_pair() {
       ($A[] | select($bk[key] != null) | . as $x | $bk[key] as $y
        | "| \($x.task) | \($x.rep // 1) | \(if $x.accept_ok then 1 else 0 end) → \(if $y.accept_ok then 1 else 0 end) | \($x.tool_calls | n) → \($y.tool_calls | n) | \($x.cost_usd | n) → \($y.cost_usd | n) | \($x.base_sha[0:7]) → \($y.base_sha[0:7]) |")
   ' <(jq -s . "$1/runs.jsonl") <(jq -s . "$2/runs.jsonl") || die "pair failed (both runs on one base commit, or unreadable rows)"
+}
+
+# judge-pair <baseline-run-dir> <candidate-run-dir> [--judge-model M] [--judge-effort E]
+# [--max-usd U] [--timeout S] [--seed N] [--out F]: for each task and repeat both
+# runs judged, one blind packet shows the two stored candidates as A and B in a
+# random order, judged once in that order and once swapped. A row per pair goes
+# to F (default <candidate-run-dir>/pairs.jsonl); a flip is a pair whose two
+# calls prefer different arms. The summary states flips and the position bias.
+cmd_judge_pair() {
+  local dirs=() seed="" out="" d spent=0 remaining cost tok key stem task first second call pref m1 m2 pa pb
+  JUDGE_MODEL=opus; JUDGE_EFFORT=""; MAX_USD=1; TIMEOUT=600
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --judge-model|--judge-effort|--max-usd|--timeout|--seed|--out)
+        [ $# -ge 2 ] || die "$1 needs a value"
+        case "$1" in
+          --judge-model) JUDGE_MODEL="$2" ;; --judge-effort) JUDGE_EFFORT="$2" ;;
+          --max-usd) MAX_USD="$2" ;; --timeout) TIMEOUT="$2" ;; --seed) seed="$2" ;; --out) out="$2" ;;
+        esac; shift 2 ;;
+      -*) die "unknown argument '$1'" ;;
+      *) dirs+=("$1"); shift ;;
+    esac
+  done
+  [ "${#dirs[@]}" -eq 2 ] || die "judge-pair needs a baseline and a candidate run directory"
+  for d in "${dirs[@]}"; do [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"; done
+  awk -v m="$MAX_USD" 'BEGIN{exit !(m+0 > 0)}' || die "--max-usd must be a positive number"
+  case "$TIMEOUT" in ''|*[!0-9]*) die "--timeout must be positive whole seconds" ;; esac
+  [ "$TIMEOUT" -gt 0 ] || die "--timeout must be positive whole seconds"
+  case "$seed" in ''|*[!0-9]*) [ -z "$seed" ] || die "--seed must be a whole number" ;; esac
+  local mb mc
+  mb="$(jq -r 'select(.model != null) | .model' "${dirs[0]}/runs.jsonl" | head -1)"
+  mc="$(jq -r 'select(.model != null) | .model' "${dirs[1]}/runs.jsonl" | head -1)"
+  refuse_same_judge "$JUDGE_MODEL" "$mb" "$mc"
+  init_env
+  out="${out:-${dirs[1]}/pairs.jsonl}"
+  [ -z "$seed" ] || RANDOM="$seed"
+  local pd; pd="$(dirname "$out")"
+  : >"$out"
+  while IFS=$'\t' read -r key stem task; do
+    [ -s "${dirs[0]}/$stem.cand.md" ] && [ -s "${dirs[1]}/$stem.cand.md" ] || continue
+    [ -f "$(prompt_of "$task")" ] || continue
+    if [ $((RANDOM % 2)) -eq 0 ]; then first=baseline; second=candidate; else first=candidate; second=baseline; fi
+    local prefs=()
+    for call in 1 2; do
+      remaining="$(awk -v m="$MAX_USD" -v s="$spent" 'BEGIN{printf "%.2f", m - s}')"
+      awk -v r="$remaining" 'BEGIN{exit !(r >= 0.01)}' || { echo "lane-quality: judge-pair budget spent ($spent of $MAX_USD USD); stopping" >&2; break 2; }
+      read -r tok _ <<<"$(bank_read)"
+      [ "$tok" = PROCEED ] || { echo "lane-quality: bank preflight said $tok; judge-pair stopped before $stem" >&2; exit 75; }
+      if [ "$call" -eq 1 ]; then pa="$first"; pb="$second"; else pa="$second"; pb="$first"; fi
+      {
+        rubric pair
+        printf '\n## Task given to the agent\n\n'; cat "$(prompt_of "$task")"
+        printf '\n## Candidate A\n\n'; cat "$(arm_dir "$pa" "${dirs[@]}")/$stem.cand.md"
+        printf '\n## Candidate B\n\n'; cat "$(arm_dir "$pb" "${dirs[@]}")/$stem.cand.md"
+      } | MODEL="$mb" JUDGE_MODEL="$mc" redact >"$pd/$stem.pair-packet.$call.md"
+      judge_call "$pd/$stem.pair-packet.$call.md" "$pd/$stem.pair.$call.json" "$pd/$stem.pair.$call.err" \
+        "$JUDGE_MODEL" "$remaining" "$JUDGE_EFFORT" pair || die "cannot run the pair judge on $stem"
+      cost="$(jq -r '.total_cost_usd // empty' "$pd/$stem.pair.$call.json" 2>/dev/null)"
+      [ -n "$cost" ] || { echo "lane-quality: pair judge on $stem left its cost unknown; stopping" >&2; break 2; }
+      spent="$(awk -v s="$spent" -v c="$cost" 'BEGIN{printf "%.4f", s + c}')"
+      pref="$(jq -r '.structured_output.preference // "none"' "$pd/$stem.pair.$call.json")"
+      case "$pref" in A) prefs+=("A:$pa") ;; B) prefs+=("B:$pb") ;; *) prefs+=("$pref:$pref") ;; esac
+    done
+    m1="${prefs[0]#*:}"; m2="${prefs[1]#*:}"
+    jq -nc --arg k "$key" --arg task "$task" --arg f "$first" --arg s "$second" --arg p1 "${prefs[0]%%:*}" --arg p2 "${prefs[1]%%:*}" \
+      --arg m1 "$m1" --arg m2 "$m2" --arg jm "$JUDGE_MODEL" --arg je "$JUDGE_EFFORT" \
+      '($p1 != "none" and $p2 != "none") as $ok
+       | {key: $k, task: $task, order: [$f, $s], position_1: $p1, position_2: $p2, preferred_1: $m1, preferred_2: $m2,
+        judged: $ok, flip: (if $ok then $m1 != $m2 else null end), preferred: (if $ok and $m1 == $m2 then $m1 else null end),
+        judge_model: $jm, judge_effort: (if $je == "" then null else $je end)}' >>"$out"
+  done < <(jq -r --slurpfile c "${dirs[1]}/runs.jsonl" '
+    select(. as $b | any($c[]; .task == $b.task and (.rep // 1) == ($b.rep // 1) and .base_sha == $b.base_sha and .variant == $b.variant))
+    | "\(.task)#\(.rep // 1)\t\(if (.rep // 1) > 1 then "\(.task).r\(.rep)" else .task end)\t\(.task)"' "${dirs[0]}/runs.jsonl")
+  [ -s "$out" ] || die "no pair judged (each run needs its stored <stem>.cand.md)"
+  jq -rs --arg spent "$spent" '
+    "\(map(select(.judged)) | length) pairs judged, \(map(select(.judged | not)) | length) unjudged (a call gave no preference)",
+    (map(select(.judged)) |
+    "judge-pair: \(length) pairs; agreeing: baseline \(map(select(.preferred == "baseline")) | length), candidate \(map(select(.preferred == "candidate")) | length), tie \(map(select(.preferred == "tie")) | length), both_bad \(map(select(.preferred == "both_bad")) | length)",
+    "flips \(map(select(.flip)) | length) of \(length) pairs (the noise floor of a single pairwise call)",
+    "position bias: A chosen \([.[] | .position_1, .position_2 | select(. == "A")] | length) of \([.[] | .position_1, .position_2 | select(. == "A" or . == "B")] | length) calls; spent \($spent) USD")' "$out"
+}
+
+arm_dir() { # arm_dir baseline|candidate <baseline dir> <candidate dir>
+  if [ "$1" = baseline ]; then echo "$2"; else echo "$3"; fi
 }
 
 # calibration <run-dir>... [--judge2-model M] [--judge2-effort E] [--max-usd U]
@@ -735,8 +1013,9 @@ case "$1" in
   run) shift; cmd_run "$@" ;;
   table) shift; cmd_table "$@" ;;
   pair) shift; cmd_pair "$@" ;;
+  judge-pair) shift; need_billed "judge-pair"; cmd_judge_pair "$@" ;;
   calibration) shift; ! has_arg --judge2-model "$@" || need_billed "calibration --judge2-model"; cmd_calibration "$@" ;;
   materialize) shift; [ $# -ge 2 ] || die "materialize <task> <dir> [--reference]"; materialize "$@" ;;
   -h|--help) usage ;;
-  *) die "unknown command '$1' (list|run|table|pair|calibration|materialize)" ;;
+  *) die "unknown command '$1' (list|run|table|pair|judge-pair|calibration|materialize)" ;;
 esac

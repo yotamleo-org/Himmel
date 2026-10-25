@@ -36,10 +36,10 @@ eq "plan prints 15 rows" "15" "$(bash "$HERE/run.sh" plan | wc -l | tr -d ' ')"
 # 4. sweep with a stub claude: arm B answers right, arm A answers wrong.
 cat > "$W/claude" <<'STUB'
 #!/usr/bin/env bash
-# stub: ARM A = text mentions leg-graph.sh in --append-system-prompt
+# stub: ARM A = text mentions worker-graph.sh in --append-system-prompt
 sp=""; while [ $# -gt 0 ]; do [ "$1" = "--append-system-prompt" ] && sp="$2"; shift; done
 case "$sp" in
-  *leg-graph*) ans='ANSWER: ["wrong"]' ;;
+  *worker-graph*) ans='ANSWER: ["wrong"]' ;;
   *) ans='ANSWER: ["console-judge", "leg-impl", "telegram"]' ;;
 esac
 printf '{"result":"%s","is_error":false,"session_id":"s","num_turns":3,"total_cost_usd":0.1,"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000}}\n' "$(printf '%s' "$ans" | sed 's/"/\\"/g')"

@@ -238,9 +238,9 @@ deal, and every guard has an off switch (see
 |---|---|---|---|---|
 | **Scope** | `project` | The harness is wired in **this repo's** `.claude/settings.json` | Nothing extra | Everyone who clones the repo inherits it — commit the file deliberately |
 | | `user` | The harness is wired in **`~/.claude/settings.json`** | Nothing extra | Applies to *every* project you open on this machine, including ones you did not mean to gate |
-| **Install profile** | `starter` → `core` | 44 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build | `git`, `bash`, `node`, `jq`, `python3` | The PR-gated workflow becomes the only way to commit — that is the point, and it is the thing to try on one repo first |
+| **Install profile** | `starter` → `core` | 41 items: hooks, git gates, worktree commands, statusline (claude-hud, cache-expiry line on; legacy bash bar stays opt-in/rollback — [tooling-catalog.md](../tooling-catalog.md#claude-statusline-vendored)), marketplace plugins, the Jira CLI build | `git`, `bash`, `node`, `jq`, `python3` | The PR-gated workflow becomes the only way to commit — that is the point, and it is the thing to try on one repo first |
 | | `luna` | `core` plus the second-brain surface: vault scaffold, qmd index, graphify MCP, the clip cadences | `bun`, plus disk for the qmd index | A vault you now have to maintain; the cadences run on a schedule |
-| | `operator` / `custom` | `all` (58 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
+| | `operator` / `custom` | `all` (55 items) / whatever you answer | Everything above | The maintainer's full machine — not an adopter starting point |
 | **Release channel** | unset (no recorded channel) | `git pull --ff-only` on your branch | Nothing | You track the tip, including work in progress — this is the *fallback*, not what a fresh install records |
 | | `stable` | The highest `vX.Y.Z` tag | Nothing | You update only when a release is cut |
 | | `pre` | The highest tag including `-pre.N` | Nothing | Prereleases, so earlier fixes and earlier breakage |
@@ -340,7 +340,7 @@ worktree workflow.
 | Telegram (`scripts/telegram/`) | Remote dispatch and chat bridge | Absent without a bot token |
 | hermes (`scripts/hermes/`) | Free-inference junior and review lanes | Absent without API keys |
 | graphify (`scripts/graphify/`) | Knowledge-graph retrieval over a corpus | Optional; its data egress is fenced by [`scripts/guardrails/egress-matrix.json`](../../scripts/guardrails/egress-matrix.json) |
-| AFK (unattended) mode (`scripts/overnight/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
+| AFK (unattended) mode (`scripts/afk/`) | Unattended multi-ticket dispatch | Depends on handover plus Jira |
 
 ## Lifecycle
 

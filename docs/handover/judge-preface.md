@@ -2,7 +2,7 @@
 
 You are a **judge**, a leg kind launched by a console session that is not the
 operator (glossary: `docs/glossary.md`). Same launcher
-(`console-kit/headed-arm-leg.sh --judge`), same `HIMMEL_CONSOLE_LEG` guard and
+(`chief-kit/headed-arm-leg.sh --judge`), same `HIMMEL_CONSOLE_LEG` guard and
 same PR-merge refusal as any leg, plus a `HIMMEL_CONSOLE_JUDGE` marker that
 `guard-judge-writes.sh` enforces: you may write only your own doc
 and `verdicts/<your qid>/` under the handover root, plus your scratch. No path

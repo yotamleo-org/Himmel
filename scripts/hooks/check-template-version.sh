@@ -167,7 +167,7 @@ $(printf '%s\n' "$owned_list" | sed 's/^/     /')
 
    marketplace.json metadata.version is the stamp /luna-upgrade compares against each
    vault's .vault-template.json: a content change with no bump reports "already current"
-   and strands the change for every stamped vault (HIMMEL-449/501/521/524). Bump
+   and strands the change for every stamped vault. Bump
    metadata.version in $MP_REPO within THIS change set.
 
    Bypass (per-session env, not a prefix):  TEMPLATE_VERSION_OK=1 git commit ...

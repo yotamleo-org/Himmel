@@ -47,7 +47,7 @@
 # /proc/<pid>/environ, which is credential-adjacent, so it is deliberately not
 # done. Tool-call shells are direct children of the session (the N35 leak
 # class), so they stay visible; the complementary check is tick's orphans=
-# field (console-kit/orphan-loops.sh), which lists such shells as owner `orphan`.
+# field (chief-kit/orphan-loops.sh), which lists such shells as owner `orphan`.
 # ponytail: the start-time rule is a conjunction (direct child AND non-wrapper
 # AND forked inside the window, from etime at 1s resolution). Its errors fall
 # toward WITHHELD: an MCP server started lazily or after a `/mcp` reconnect is

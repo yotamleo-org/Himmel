@@ -1,0 +1,13 @@
+      - id: claude-startup__cli
+        name: Install the pinned claude CLI
+        if: ${{ !cancelled() }}
+        timeout-minutes: 10
+        # HIMMEL-7394: the native binary at the version and sha256 pinned in
+        # scripts/machine-setup/installer-pins.sh (the checksum from the release's
+        # manifest.json); pin_fetch deletes a mismatched download and fails the step.
+        # /usr/local is root-owned in the image and the runner alike.
+        run: |
+          . scripts/machine-setup/installer-pins.sh
+          pin_fetch "https://downloads.claude.ai/claude-code-releases/${CLAUDE_VERSION}/linux-x64/claude" "$CLAUDE_LINUX_X64_SHA256" "$RUNNER_TEMP/claude"
+          sudo install -m 0755 "$RUNNER_TEMP/claude" /usr/local/bin/claude
+          claude --version

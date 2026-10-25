@@ -2,8 +2,9 @@
 # legs.sh — read-only legs view for the config UI's Health page.
 # Composes the existing owners and parses nothing itself: the handover root from
 # `load_dotenv HANDOVER_DIR` + `handover_root`, the legs from `fleet-manifest.sh
-# list`, each leg's status from `leg_tail_status`. Prints one JSON object:
-#   {"manifest": "<path>", "legs": [{"doc": "<path>", "status": "<marker>"}]}
+# list`, each leg's status from `leg_tail_status` and description from
+# `leg_description`. Prints one JSON object:
+#   {"manifest": "<path>", "legs": [{"doc": "<path>", "status": "<marker>", "description": "<text>"}]}
 #   {"manifest": null, "legs": []}     no *.fleet.json under the root
 # Exit 3 when there is no handover root. `himmelctl ui` is launched without
 # HANDOVER_DIR, and a bare handover_root would fall back to a worktree's
@@ -21,6 +22,8 @@ common=$(git -C "$self" rev-parse --path-format=absolute --git-common-dir 2>/dev
 . "$self/../lib/handover-path.sh"
 # shellcheck source=../lib/leg-tail-status.sh
 . "$self/../lib/leg-tail-status.sh"
+# shellcheck source=../lib/worker-identity.sh
+. "$self/../lib/worker-identity.sh"
 
 load_dotenv --root "$anchor" HANDOVER_DIR
 root=$(cd "$anchor" && handover_root 2>/dev/null) || { echo "legs: no handover root" >&2; exit 3; }
@@ -35,13 +38,13 @@ if [ -z "$best" ]; then
     exit 0
 fi
 
-docs=$(bash "$self/../handover/console-kit/fleet-manifest.sh" list "$best") || { echo "legs: fleet-manifest list failed for $best" >&2; exit 1; }
+docs=$(bash "$self/../handover/chief-kit/fleet-manifest.sh" list "$best") || { echo "legs: fleet-manifest list failed for $best" >&2; exit 1; }
 rows=""
 while IFS= read -r d; do
     [ -n "$d" ] || continue
-    rows="$rows$d	$(leg_tail_status "$d")
+    rows="$rows$d	$(leg_tail_status "$d")	$(leg_description "$d" | tr -s '\t\n' ' ')
 "
 done <<EOF
 $docs
 EOF
-jq -n --arg m "$best" --arg rows "$rows" '{manifest: $m, legs: [$rows | split("\n")[] | select(length > 0) | split("\t") | {doc: .[0], status: (.[1] // "")}]}'
+jq -n --arg m "$best" --arg rows "$rows" '{manifest: $m, legs: [$rows | split("\n")[] | select(length > 0) | split("\t") | {doc: .[0], status: (.[1] // ""), description: (.[2] // "")}]}'

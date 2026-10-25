@@ -7,9 +7,9 @@ GIL")** (`60-Maps/agent-orchestration-MOC.md`, addyosmani). Orchestration design
 optimizes the human serial fraction (batched review surfaces, verifier lanes,
 closed-loop specialists) instead of raw agent count.
 
-This doc names slot **classes**, never concrete models; model binding is WS2's
-router (the WS2↔WS3 seam: *routing = model selection; orchestration = task
-decomposition*). Each claim below carries its evidence pointer inline (a luna
+This doc names slot **classes**, never concrete models; model binding is lane
+selection ([`internals/lane-calibration.md`](internals/lane-calibration.md)):
+*routing = model selection; orchestration = task decomposition*. Each claim below carries its evidence pointer inline (a luna
 clip path or a shipped himmel code path); the resolved evidence table is at the
 foot of the doc.
 
@@ -27,8 +27,8 @@ _Evidence:_ Cognition / walden_yan
 (`Clippings/_done/2026-05/@walden_yan – 2026-05-25T030401+0200.md`).
 _Shipped:_ `/afk-shift` (`.claude/commands/afk-shift.md`) is himmel's
 live implementation: one worktree-isolated subagent per ticket, a self-heal
-pass (`scripts/overnight/self-heal.sh`), then a single-threaded synthesis and
-morning report (`scripts/overnight/morning-report.sh`); per-ticket branches are
+pass (`scripts/afk/self-heal.sh`), then a single-threaded synthesis and
+morning report (`scripts/afk/morning-report.sh`); per-ticket branches are
 independent products, the parent owns merge + synthesis (single-writer).
 
 ## 2. The four shapes + use-when / breaks-when
@@ -48,9 +48,9 @@ Hierarchical decomposition breaks when subgoals are **not** independent; the
 coordinator shape breaks on ambiguous routing (sairahul1). map-reduce-and-manage
 (§1) is the safe default the other three specialize.
 
-## 3. Slot classes (blast-radius routing — INPUT CONTRACT to WS2)
+## 3. Slot classes (blast-radius routing)
 
-Route by **blast radius**, expressed as classes; model binding is WS2's:
+Route by **blast radius**, expressed as classes; lane selection binds the model:
 
 - **planner / loose-spec implementer = top tier.** Filling the gaps in a loose
   spec takes reasoning more than typing, so it earns the top tier.
@@ -64,7 +64,7 @@ _Evidence:_ blast-radius routing, from Av1dlive orchestration.md
 (`Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md`); evaluator =
 different family, "cost = iterations not tokens", from Cherny
 (`Clippings/_done/2026-05/How Boris Cherny Uses Claude Code.md`). Optimize for
-mergeable output over per-call price. **Classes only:** WS2's router owns which
+mergeable output over per-call price. **Classes only:** lane selection owns which
 concrete model/lane fills a slot given class + compliance + cost state.
 
 ## 4. Context rule (resolving the sharing contradiction)
@@ -87,7 +87,7 @@ _Evidence:_ Cognition / walden_yan
   `Clippings/_evidence/telegram-tg-group_-1001234567890-1782407069-tweet-from-x-com-i-status-2070079645148451263.md`).
 - **The orchestrator owns stop-conditions; workers never self-report done**
   (0xMorlex, same clip). himmel enforces this structurally: `/afk-shift`
-  reads `scripts/overnight/stop-marker.sh`, not a worker's claim of completion.
+  reads `scripts/afk/stop-marker.sh`, not a worker's claim of completion.
 - **The coordinator passes prior agent outputs into each subsequent agent's
   prompt**, a concrete, testable coordinator obligation (eng-khairallah1,
   `Clippings/_done/2026-05/@eng_khairallah1 – 2026-05-25T023712+0200.md`).
@@ -129,7 +129,7 @@ UNDER**, never a consumer of it.
 teammate. **Opt-in trigger:** the operator
 names a debugging-competing-hypotheses case AND accepts the experimental flag;
 the pilot mechanics (single session, ≤3 teammates, explicit token cap)
-instantiate only then. **No WS3 machinery depends on Teams**; everything rides
+instantiate only then. **No orchestration machinery depends on Teams**; everything rides
 subagents and saved workflows until GA.
 
 ---
@@ -142,7 +142,7 @@ Each doctrine claim → its pointer → resolved (clip/path exists as of 2026-07
 |---|---|---|---|
 | §intro | operator attention = serial resource ("you are the GIL") | `60-Maps/agent-orchestration-MOC.md` (addyosmani) | ✔ path exists |
 | §1 | map-reduce-and-manage default; writes single-threaded; agents contribute intelligence | luna `Clippings/_done/2026-05/@walden_yan – 2026-05-25T030401+0200.md` | ✔ clip exists |
-| §1 | shipped fan-out-and-synthesize | `.claude/commands/afk-shift.md`; `scripts/overnight/self-heal.sh`; `scripts/overnight/morning-report.sh` | ✔ paths exist |
+| §1 | shipped fan-out-and-synthesize | `.claude/commands/afk-shift.md`; `scripts/afk/self-heal.sh`; `scripts/afk/morning-report.sh` | ✔ paths exist |
 | §2 | four shapes + use-when/breaks-when | luna `Clippings/_evidence/@sairahul1 – 2026-06-23T001852+0200.md` | ✔ clip exists |
 | §3 | blast-radius slot classes | luna `Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md` | ✔ clip exists |
 | §3 | reviewer = different family; cost = iterations | luna `Clippings/_done/2026-05/How Boris Cherny Uses Claude Code.md` | ✔ clip exists |

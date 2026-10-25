@@ -91,7 +91,7 @@
 #   --qmd-bin PATH   Absolute path to the qmd EXECUTABLE. Default: resolved via
 #                    scripts/lib/qmd-bin.sh's preference order,
 #                    NOT a bare `command -v qmd`. The cadence passes this
-#                    explicitly, because schtasks and cron fire with a MINIMAL
+#                    explicitly, because cron fires with a MINIMAL
 #                    PATH that does not carry the bun bin dir where qmd installs.
 #   --qmd-js PATH    Optional absolute script path passed as the first argument
 #                    to --qmd-bin, i.e. the invocation becomes
@@ -114,7 +114,12 @@
 #   3  `qmd update` failed (a SQLITE_BUSY lock is retried first, up to
 #      QMD_REINDEX_BUSY_WAIT_SECS=180 at QMD_REINDEX_BUSY_RETRY_SECS=10)
 #   4  `qmd embed` failed
-#   5  embed INCOMPLETE — vectors still pending after the embed pass
+#   5  embed INCOMPLETE — vectors still pending after the embed sessions. Embed
+#      sessions repeat while each embeds chunks, up to QMD_REINDEX_EMBED_MAX_SESSIONS
+#      (default 4) or QMD_REINDEX_EMBED_MAX_SECS (default 7200); two sessions in
+#      a row without progress stop it sooner. The log line names the cause
+#      (session cap, provider errors with their HTTP status, or no progress),
+#      the remaining hash count and the last provider error.
 #   6  completeness assert could not READ its verifier (qmd reworded its
 #      output) — distinct from 5 on purpose; see the sentinel note below
 #   7  MODEL MISMATCH — the index holds vectors from an embed model other
@@ -455,7 +460,7 @@ write_refresh_stamp() {
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY qmd-reindex: would run: $(qmd_bin_desc) update"
     echo "DRY qmd-reindex: would run: $(qmd_bin_desc) embed"
-    echo "DRY qmd-reindex: would re-run: $(qmd_bin_desc) embed   (completeness assert, one retry if it did work)"
+    echo "DRY qmd-reindex: would re-run: $(qmd_bin_desc) embed   (completeness assert; more sessions while each embeds chunks, up to the session bounds)"
     [ "$NO_CLEANUP" -eq 1 ] || echo "DRY qmd-reindex: would run: $(qmd_bin_desc) cleanup"
     echo "qmd-reindex: dry-run complete (no changes made)"
     exit 0
@@ -524,67 +529,125 @@ if ! run_update; then
     exit 3
 fi
 
-# --- 2. embed whatever the update left without vectors ----------------------
-echo "qmd-reindex: [2/3] qmd embed"
-EMBED_RC=0
-run_embed || EMBED_RC=$?
-if [ "$EMBED_RC" -eq 9 ]; then
-    exit 9
-elif [ "$EMBED_RC" -ne 0 ]; then
-    echo "ERR qmd-reindex: 'qmd embed' failed — lex index is fresh but vectors are NOT." >&2
-    exit 4
-fi
-
-# --- 3. completeness assert (see the header for why this is not optional) ---
+# --- 2+3. embed sessions until the completeness assert passes ---------------
+# One `qmd embed` is a bounded SESSION (--timeout, default 30 min): a backlog
+# larger than one session, or one slowed by a provider outage, ends the session
+# with vectors still pending. So the runner loops sessions: a session that
+# embedded chunks resumes at once, a session that embedded none twice in a row
+# stops the loop, and the loop is bounded in sessions and seconds. Session 1
+# is the work pass; the run only succeeds on the all-clear of a LATER session,
+# so a session never certifies itself. A "Embedded N chunks" line is the
+# progress evidence; the fork logs "embed: request failed status=<code>" for
+# every failed provider attempt, which is how the rc 5 cause names the status.
 # A no-op embed prints "All content hashes already have embeddings". Match the
 # ASCII substring only: the real line is prefixed with a UTF-8 check mark, and
 # this output is read under the OEM codepage when the cadence fires from cmd.exe.
-echo "qmd-reindex: [3/3] verifying embed completeness"
-# The first pass can leave a 1-2 document tail that the verify
-# pass then embeds (observed with the daemon down, so not a concurrent writer);
-# the nightly run exited 5 and nothing retried it until the next day. Retry the
-# verify ONCE when it did work; a second did-work is still rc 5 below. Bounded
-# on purpose: never an unbounded loop, never success with vectors pending.
-VERIFY_OUT=""
-for VERIFY_TRY in 1 2; do
-    VERIFY_RC=0
-    VERIFY_OUT=$(run_embed 2>&1) || VERIFY_RC=$?
-    if [ "$VERIFY_RC" -eq 9 ]; then
-        printf '%s\n' "$VERIFY_OUT" >&2
-        exit 9
-    fi
-    if [ "$VERIFY_RC" -ne 0 ]; then
-        echo "ERR qmd-reindex: completeness re-check ('qmd embed') failed (rc=$VERIFY_RC):" >&2
-        printf '%s\n' "$VERIFY_OUT" >&2
-        exit 4
-    fi
-    if grep -qF -- "$QMD_SENTINEL_COMPLETE" <<<"$VERIFY_OUT" || ! grep -qE -- "$QMD_SENTINEL_DID_WORK" <<<"$VERIFY_OUT"; then
-        break
-    fi
-    [ "$VERIFY_TRY" -eq 1 ] && echo "qmd-reindex: verify pass embedded a tail; re-verifying once"
-done
-# Match with a HERE-STRING, not `printf … | grep -q` (same class
-# already fixed in check-security-reviewed.sh). Under `set -o pipefail`, grep -q
-# exits early on a match, printf takes SIGPIPE (141), and pipefail surfaces 141
-# as the pipeline status — so a SUCCESSFUL match reads as a failure once the
-# output is large enough to not fit the pipe buffer. Here that inversion would
-# report "embed INCOMPLETE" (rc=5) on a fully COMPLETE embed: a loud false alarm
-# in the exact check that exists to prevent silent wrongness.
-if grep -qF -- "$QMD_SENTINEL_COMPLETE" <<<"$VERIFY_OUT"; then
-    :   # complete — fall through to the success line below
-elif grep -qE -- "$QMD_SENTINEL_DID_WORK" <<<"$VERIFY_OUT"; then
-    # POSITIVE evidence of incompleteness: the verify pass found work left to
-    # do, so vectors really are lagging the lex index.
+EMBED_MAX_SESSIONS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SESSIONS:-}" 4)
+[ "$EMBED_MAX_SESSIONS" -ge 1 ] || EMBED_MAX_SESSIONS=1
+EMBED_MAX_SECS=$(secs_or_default "${QMD_REINDEX_EMBED_MAX_SECS:-}" 7200)
+
+# "N unique hashes still need vectors", from a fresh `qmd update` scan (the only
+# qmd command that counts them), or "unknown". Best-effort: a failed scan must
+# not change the rc 5 this is reporting.
+remaining_hashes() {
+    local out n
+    out=$(run_qmd update 2>&1) || true
+    n=$(sed -nE '/[0-9]+ unique hashes need vectors/{s/^(.*[^0-9])?([0-9]+) unique hashes need vectors.*/\2/p;q}' <<<"$out")
+    if [ -n "$n" ]; then printf '%s unique hashes still need vectors' "$n"; else printf 'unknown (the recount printed no pending-hash line)'; fi
+}
+
+# The rc 5 report: the cause first, then what is left and the last provider error.
+fail_incomplete() {
+    local cause="$1"
     {
         echo "ERR qmd-reindex: embed INCOMPLETE — content hashes still need vectors after the embed pass."
+        echo "    cause: $cause"
+        echo "    remaining: $(remaining_hashes)"
+        echo "    last provider error: ${LAST_PROVIDER_ERR:-none}"
         echo "    Vectors are lagging the lex index, which is the silently-stale state this"
-        echo "    runner exists to prevent. Most likely cause: 'qmd embed' hit its session"
-        echo "    cap (--timeout, default 30 min). Re-run this script, or embed by hand:"
+        echo "    runner exists to prevent. Re-run this script, or embed by hand without the"
+        echo "    session cap (--timeout, default 30 min):"
         echo "        $(qmd_bin_desc) embed --timeout 0"
-        echo "    Verifier output was:"
-        printf '%s\n' "$VERIFY_OUT" | sed 's/^/        /'
+        echo "    Last session output was:"
+        printf '%s\n' "$SESSION_OUT" | sed 's/^/        /'
     } >&2
     exit 5
+}
+
+# The HTTP statuses seen so far, as "HTTP 503, HTTP 429" ("timeout" for status 0).
+provider_status_list() {
+    local s out=""
+    # shellcheck disable=SC2086
+    for s in $(printf '%s\n' $PROVIDER_STATUSES | sort -un); do
+        if [ "$s" = 0 ]; then s="timeout"; else s="HTTP $s"; fi
+        out="${out:+$out, }$s"
+    done
+    printf '%s' "$out"
+}
+
+EMBED_T0=$SECONDS
+SESSION=0
+STALLS=0
+PROVIDER_STATUSES=""
+LAST_PROVIDER_ERR=""
+SESSION_OUT=""
+while :; do
+    SESSION=$((SESSION + 1))
+    case "$SESSION" in
+        1) echo "qmd-reindex: [2/3] qmd embed" ;;
+        2) echo "qmd-reindex: [3/3] verifying embed completeness" ;;
+        *) echo "qmd-reindex: embed session $SESSION (max $EMBED_MAX_SESSIONS)" ;;
+    esac
+    SESSION_RC=0
+    SESSION_OUT=$(run_embed 2>&1) || SESSION_RC=$?
+    if [ "$SESSION_RC" -eq 9 ]; then
+        printf '%s\n' "$SESSION_OUT" >&2
+        exit 9
+    fi
+    printf '%s\n' "$SESSION_OUT"
+    if [ "$SESSION_RC" -ne 0 ]; then
+        if [ "$SESSION" -eq 1 ]; then
+            echo "ERR qmd-reindex: 'qmd embed' failed — lex index is fresh but vectors are NOT." >&2
+        else
+            echo "ERR qmd-reindex: completeness re-check ('qmd embed') failed (rc=$SESSION_RC)." >&2
+        fi
+        exit 4
+    fi
+    # Match with a HERE-STRING, not `printf … | grep -q` (same class already
+    # fixed in check-security-reviewed.sh). Under `set -o pipefail`, grep -q
+    # exits early on a match, printf takes SIGPIPE (141), and pipefail surfaces
+    # 141 as the pipeline status — a SUCCESSFUL match would then read as a
+    # failure once the output outgrows the pipe buffer, and here that
+    # inversion reports "embed INCOMPLETE" (rc=5) on a fully COMPLETE embed.
+    SESSION_ERRS=$(grep -oE -- 'embed: request failed status=[0-9]+ provider=[^[:space:]]+' <<<"$SESSION_OUT" || true)
+    if [ -n "$SESSION_ERRS" ]; then
+        LAST_PROVIDER_ERR=$(sed -n '$p' <<<"$SESSION_ERRS")
+        PROVIDER_STATUSES="$PROVIDER_STATUSES $(sed -E 's/.*status=([0-9]+).*/\1/' <<<"$SESSION_ERRS" | tr '\n' ' ')"
+    fi
+    if grep -qF -- "$QMD_SENTINEL_COMPLETE" <<<"$SESSION_OUT"; then
+        [ "$SESSION" -ge 2 ] && break
+        continue    # nothing pending after session 1; session 2 still verifies it
+    elif grep -qE -- "$QMD_SENTINEL_DID_WORK" <<<"$SESSION_OUT"; then
+        CHUNKS=$(sed -nE '/Embedded [0-9]+ chunks?/{s/.*Embedded ([0-9]+) chunks?.*/\1/p;q}' <<<"$SESSION_OUT")
+        if [ "${CHUNKS:-0}" -gt 0 ]; then STALLS=0; else STALLS=$((STALLS + 1)); fi
+    else
+        break    # neither sentinel: the unreadable-verifier report below
+    fi
+    # POSITIVE evidence of incompleteness: the session found work left to do,
+    # so vectors really are lagging the lex index.
+    if [ "$STALLS" -ge 2 ]; then
+        if [ -n "$PROVIDER_STATUSES" ]; then
+            fail_incomplete "provider errors ($(provider_status_list)); $STALLS sessions in a row embedded no chunks"
+        fi
+        fail_incomplete "no progress ($STALLS sessions in a row embedded no chunks)"
+    fi
+    if [ "$SESSION" -ge "$EMBED_MAX_SESSIONS" ] || [ $((SECONDS - EMBED_T0)) -ge "$EMBED_MAX_SECS" ]; then
+        fail_incomplete "session cap reached ($SESSION of $EMBED_MAX_SESSIONS sessions, $((SECONDS - EMBED_T0))s of ${EMBED_MAX_SECS}s used)"
+    fi
+done
+VERIFY_OUT="$SESSION_OUT"
+if grep -qF -- "$QMD_SENTINEL_COMPLETE" <<<"$VERIFY_OUT"; then
+    :   # complete — fall through to the success line below
 else
     # NEITHER sentinel matched. Do not guess. Treating an
     # unrecognized verifier as "INCOMPLETE" (rc 5) would mean that the day qmd rewords

@@ -27,6 +27,7 @@ else bad "inlined model matches hooks/lib/bash-ast.jq (re-copy the file between 
 
 FIX=$(mktemp -d "${TMPDIR:-/tmp}/bash-ast.XXXXXX") || { echo "FATAL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$FIX"' EXIT
+export XDG_STATE_HOME="$FIX/state"
 
 # a PATH holding every tool but shfmt
 nosh="$FIX/no-shfmt-bin"; mkdir -p "$nosh"
@@ -188,6 +189,116 @@ if [ -n "${HIMMEL_JQ_171:-}" ] && [ -x "$HIMMEL_JQ_171" ] && [ "$("$HIMMEL_JQ_17
     done
 else
     echo "note: HIMMEL_JQ_171 is not a jq 1.7.1 binary — the jq 1.7 compile rows did not run"
+fi
+
+row "brace groups expand left to right, in bash order" \
+    'echo a{b,c}{d,e} x{1..2}' \
+    '(.[0].argv | map(.v)) == ["echo", "abd", "abe", "acd", "ace", "x1", "x2"]'
+
+ms_now() {
+    local n
+    n=$(date +%s%N 2>/dev/null)
+    case $n in *N | '') python3 -c 'import time; print(int(time.time() * 1000))' ;; *) echo $((n / 1000000)) ;; esac
+}
+tmo=$(command -v timeout || command -v gtimeout)
+# timed LABEL CMD-FILE JQ-EXPR: the model reads CMD-FILE in under five seconds and its positions satisfy JQ-EXPR
+timed() {
+    local t0 out rc el
+    t0=$(ms_now)
+    # read-sink-ok: $2 is a command fixture this suite names, from its own fixtures dir or its own mktemp dir
+    out=$("$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "$(cat "$2")"' _ "$LIB" "$2" 2>&1); rc=$?
+    el=$(($(ms_now) - t0))
+    if [ "$rc" = 0 ] && [ "$el" -lt 5000 ] && printf '%s' "$out" | jq -e "$3" >/dev/null 2>&1; then ok "$1 (${el}ms)"
+    else bad "$1 — rc=$rc ${el}ms $(printf '%s' "$out" | head -c 300)"; fi
+}
+if [ -n "$tmo" ]; then
+    b18=""
+    for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18; do b18="$b18{a,b}"; done
+    printf 'echo %s\n' "$b18" >"$FIX/b18.cmd"
+    timed "eighteen brace groups are past 64 words in under five seconds" "$FIX/b18.cmd" \
+        '.[0].argv[1].t == "amb"'
+    timed "a heredoc of many brace groups (the 2026-10-25 hang) reads in under five seconds" \
+        "$SCRIPT_DIR/fixtures/bash-ast/heredoc-brace-groups.cmd" 'any(.[]; .prog == "python3")'
+
+    # a model run that never returns fails closed within the bound and logs the command
+    mkdir -p "$FIX/stuck-jq"
+    printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) exec sleep 60 ;; esac\nexec %s "$@"\n' "$(command -v jq)" >"$FIX/stuck-jq/jq"
+    chmod +x "$FIX/stuck-jq/jq"
+    t0=$(ms_now)
+    err=$(BASH_AST_TIMEOUT_S=1 XDG_STATE_HOME="$FIX/state" PATH="$FIX/stuck-jq:$PATH" \
+        "$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "echo stuck-model-row"' _ "$LIB" 2>&1 >/dev/null); rc=$?
+    el=$(($(ms_now) - t0))
+    log="$FIX/state/himmel/bash-ast-timeouts.log"
+    if [ "$rc" = 5 ] && [ "$el" -lt 5000 ] && [[ $err == *"timed out"* ]]; then ok "a stuck model run is rc 5 within the bound (${el}ms)"
+    else bad "a stuck model run is rc 5 within the bound — rc=$rc ${el}ms err=$err"; fi
+    if grep -q 'stuck-model-row' "$log" 2>/dev/null && [ -n "$(find "$log" -perm 600 2>/dev/null)" ]; then ok "a stuck model run logs its command, owner-only"
+    else bad "a stuck model run logs its command, owner-only — $(head -c 200 "$log" 2>&1)"; fi
+
+    # the bound keeps jq in the caller's process group and grows 1 s per KiB past 4 KiB
+    mkdir -p "$FIX/argv-timeout"
+    # answers --version and the probe run like GNU timeout, and logs the bound it is given around jq
+    printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) echo "$1 $2 $3 $4 $5" >>"$TMO_ARGV"; exit 124 ;; esac\nexit 0\n' >"$FIX/argv-timeout/timeout"
+    chmod +x "$FIX/argv-timeout/timeout"
+    big="echo $(head -c 10240 /dev/zero | tr '\0' x)"
+    TMO_ARGV="$FIX/timeout-argv" XDG_STATE_HOME="$FIX/state" PATH="$FIX/argv-timeout:$PATH" bash -c \
+        '. "$1"; bash_ast_positions "echo short"; bash_ast_positions "$2"; BASH_AST_TIMEOUT_S=3 bash_ast_positions "$2"' _ "$LIB" "$big" >/dev/null 2>&1
+    # read-sink-ok: the file is this suite's own stub output in its mktemp dir
+    argv=$(tr '\n' ';' <"$FIX/timeout-argv" 2>&1)
+    if [ "$argv" = "--foreground -k 2 10 jq;--foreground -k 2 16 jq;--foreground -k 2 3 jq;" ]; then ok "the model bound is --foreground, scales with the command and takes BASH_AST_TIMEOUT_S"
+    else bad "the model bound is --foreground, scales with the command and takes BASH_AST_TIMEOUT_S — $argv"; fi
+
+    # the scaled bound stops at 40 s
+    huge="echo $(head -c 60000 /dev/zero | tr '\0' x)"
+    rm -f "$FIX/timeout-argv"
+    TMO_ARGV="$FIX/timeout-argv" XDG_STATE_HOME="$FIX/state" PATH="$FIX/argv-timeout:$PATH" bash -c \
+        '. "$1"; bash_ast_positions "$2"' _ "$LIB" "$huge" >/dev/null 2>&1
+    # read-sink-ok: the file is this suite's own stub output in its mktemp dir
+    argv=$(tr '\n' ';' <"$FIX/timeout-argv" 2>&1)
+    if [ "$argv" = "--foreground -k 2 40 jq;" ]; then ok "the scaled model bound stops at 40 s"
+    else bad "the scaled model bound stops at 40 s — $argv"; fi
+
+    # a pin above the 15 s member window less the 2 s kill grace is capped, and a cut-off at the cap is rc 5 with a log line
+    rm -f "$FIX/timeout-argv" "$FIX/state/himmel/bash-ast-timeouts.log"
+    err=$(BASH_AST_TIMEOUT_S=60 TMO_ARGV="$FIX/timeout-argv" XDG_STATE_HOME="$FIX/state" PATH="$FIX/argv-timeout:$PATH" bash -c \
+        '. "$1"; bash_ast_positions "echo pinned-row"' _ "$LIB" 2>&1 >/dev/null); rc=$?
+    # read-sink-ok: the file is this suite's own stub output in its mktemp dir
+    argv=$(tr '\n' ';' <"$FIX/timeout-argv" 2>&1)
+    if [ "$rc" = 5 ] && [ "$argv" = "--foreground -k 2 13 jq;" ] && [[ $err == *"timed out after 13s"* ]] && grep -q 'pinned-row' "$log" 2>/dev/null; then ok "a pin of 60 s is capped at 13 s, and its cut-off is rc 5 with a log line"
+    else bad "a pin of 60 s is capped at 13 s, and its cut-off is rc 5 with a log line — rc=$rc argv=$argv err=$err"; fi
+
+    # one absolute deadline runs through the nested shell bodies: each body used to get a fresh bound
+    mkdir -p "$FIX/slow-jq"
+    printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) sleep 2 ;; esac\nexec %s "$@"\n' "$(command -v jq)" >"$FIX/slow-jq/jq"
+    chmod +x "$FIX/slow-jq/jq"
+    rm -f "$FIX/state/himmel/bash-ast-timeouts.log"
+    t0=$(ms_now)
+    err=$(BASH_AST_TIMEOUT_S=3 XDG_STATE_HOME="$FIX/state" PATH="$FIX/slow-jq:$PATH" \
+        "$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "bash -c \"echo a\"; bash -c \"echo b\""' _ "$LIB" 2>&1 >/dev/null); rc=$?
+    el=$(($(ms_now) - t0))
+    if [ "$rc" = 5 ] && [[ $err == *"timed out"* ]] && grep -q 'echo [ab]' "$log" 2>/dev/null; then ok "nested shell bodies share one deadline: rc 5 with a log line (${el}ms)"
+    else bad "nested shell bodies share one deadline: rc 5 with a log line — rc=$rc ${el}ms err=$err"; fi
+
+    # a timeout that fails --version, ahead of a working one on PATH, is skipped
+    mkdir -p "$FIX/bad-tmo" "$FIX/good-tmo"
+    printf '#!/bin/sh\necho "$*" >>"$BAD_LOG"\nexit 1\n' >"$FIX/bad-tmo/timeout"
+    printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\necho "$*" >>"$GOOD_LOG"\n[ "$1" = --foreground ] && shift\n[ "$1" = -k ] && shift 2\nshift\nexec "$@"\n' >"$FIX/good-tmo/gtimeout"
+    chmod +x "$FIX/bad-tmo/timeout" "$FIX/good-tmo/gtimeout"
+    out=$(BAD_LOG="$FIX/bad-log" GOOD_LOG="$FIX/good-log" PATH="$FIX/bad-tmo:$FIX/good-tmo:$PATH" bash -c \
+        '. "$1"; bash_ast_positions "echo skip-bad-timeout"' _ "$LIB" 2>&1); rc=$?
+    # read-sink-ok: the files are this suite's own stub output in its mktemp dir
+    badcalls=$(sort -u "$FIX/bad-log" 2>&1)
+    if [ "$rc" = 0 ] && [ "$badcalls" = "--version" ] && grep -q -e '^--foreground -k 2 10 jq ' "$FIX/good-log" 2>/dev/null; then ok "a timeout that fails --version, ahead of a working one, is skipped"
+    else bad "a timeout that fails --version, ahead of a working one, is skipped — rc=$rc bad=$badcalls out=$(printf '%s' "$out" | head -c 200)"; fi
+
+    # a timeout without --foreground still bounds the model run, instead of failing every call to rc 4
+    mkdir -p "$FIX/nofg-tmo"
+    printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; --foreground) echo "timeout: unrecognized option" >&2; exit 125 ;; esac\n[ "$1" = -k ] && shift 2\nshift\nexec "$@"\n' >"$FIX/nofg-tmo/timeout"
+    chmod +x "$FIX/nofg-tmo/timeout"
+    out=$(PATH="$FIX/nofg-tmo:$PATH" bash -c '. "$1"; bash_ast_positions "echo no-foreground"' _ "$LIB" 2>&1); rc=$?
+    if [ "$rc" = 0 ] && printf '%s' "$out" | jq -e '.[0].prog == "echo"' >/dev/null 2>&1; then ok "a timeout without --foreground still reads the command"
+    else bad "a timeout without --foreground still reads the command — rc=$rc out=$(printf '%s' "$out" | head -c 200)"; fi
+else
+    echo "SKIP: no timeout binary — the termination rows did not run"
 fi
 
 out=$(bash_ast_positions 'if then' 2>/dev/null); rc=$?

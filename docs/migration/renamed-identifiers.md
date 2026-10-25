@@ -170,7 +170,6 @@ last caller moves.
 | `scripts/lib/bank-lift.sh` |
 | `scripts/lib/bank-monitor.sh` |
 | `scripts/lib/bank-preflight.sh` |
-| `scripts/lib/console-context.sh` |
 | `scripts/lib/cr-available.sh` |
 | `scripts/lib/cr-body-findings.sh` |
 | `scripts/lib/cr-default-base.sh` |

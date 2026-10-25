@@ -322,6 +322,13 @@ assert_contains "e1: guard line defaults console to 1m (HIMMEL-3884)" 'context=1
 assert_contains_either "e1: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
 assert_contains "e1: unpinned console preserves operator model default" 'model unset (operator default)' "$out"
 
+HO_E1C=$(make_handover "arm-context-chief.md")
+out=$(run_arm --time "$(future_time)" --handover "$HO_E1C" --dry-run 2>&1)
+rc=$?
+assert_rc "e1c: chief handover, no --context, exits 0" 0 "$rc"
+assert_contains "e1c: guard line defaults a chief to 1m" 'context=1m (default)' "$out"
+assert_contains_either "e1c: relaunch command carries --autocompact auto" '--autocompact auto' '--autocompact "auto"' "$out"
+
 HO_E2=$(make_handover)
 out=$(run_arm --time "$(future_time)" --handover "$HO_E2" --dry-run 2>&1)
 rc=$?

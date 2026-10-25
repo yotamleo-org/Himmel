@@ -225,13 +225,13 @@ write_snapshot() {
         echo "type: handover"
         echo "task: auto-arm subagent-cap snapshot (in-flight subagent hit session limit)"
         echo "created: $ts"
-        echo "armed-by: auto-arm-on-subagent-cap hook (HIMMEL-276)"
+        echo "armed-by: auto-arm-on-subagent-cap hook"
         [ -n "$cwd_repo" ] && echo "resume_cwd: $cwd_repo"
         echo "---"
         echo
         echo "# Auto-armed resume — subagent hit usage cap mid-wave"
         echo
-        echo "The auto-arm-on-subagent-cap hook (HIMMEL-276) detected the session-limit"
+        echo "The auto-arm-on-subagent-cap hook detected the session-limit"
         echo "sentinel in an Agent tool result. The main-loop is still responsive but"
         echo "subagents are capped — further Agent dispatches will fail with the same"
         echo "message until the cap resets."

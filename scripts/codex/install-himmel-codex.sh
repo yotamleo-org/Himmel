@@ -124,7 +124,7 @@ done
 # both traps surface on `/himmel-update`, which runs THIS script, not the .ps1
 # twin that already carried this phase. Never fails the install.
 echo ""
-echo "--- 4. lint the effective Codex hook set for the Windows pwsh runner (HIMMEL-1982) ---"
+echo "--- 4. lint the effective Codex hook set for the Windows pwsh runner ---"
 case "$(uname -s 2>/dev/null || echo unknown)" in
   MINGW*|MSYS*|CYGWIN*|Windows_NT)
     if command -v pwsh >/dev/null 2>&1; then

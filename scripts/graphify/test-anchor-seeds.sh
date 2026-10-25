@@ -6,7 +6,7 @@
 # everywhere; the real-graphify row is skipped when graphify is not installed.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="$HERE/leg-graph.sh"
+SCRIPT="$HERE/worker-graph.sh"
 ANCHOR="$HERE/anchor-seeds.py"
 FAILS=0
 pass() { echo "  ok: $1"; }
@@ -25,8 +25,8 @@ import json, sys
 def node(i, label, src, loc="L1", ft="code"):
     return {"id": i, "label": label, "norm_label": label.lower(), "file_type": ft, "source_file": src, "source_location": loc}
 nodes = [
-    node("go_sh", "go.sh", "scripts/handover/console-kit/go.sh"),
-    node("go_write", "write_go_file()", "scripts/handover/console-kit/go.sh", "L20"),
+    node("go_sh", "go.sh", "scripts/handover/chief-kit/go.sh"),
+    node("go_write", "write_go_file()", "scripts/handover/chief-kit/go.sh", "L20"),
     node("write_file", "write_file()", "scripts/lib/files.sh", "L3"),
     node("write_ts", "Write", "scripts/tools.ts", "L9"),
     node("file_ts", "File", "scripts/tools.ts", "L12"),
@@ -76,8 +76,8 @@ case "\$*" in
   *--seed*)
     echo "Graph: x (12 nodes) | Traversal: BFS depth=2 | Start (given): ['go.sh'] | 2 nodes found"
     echo ""
-    echo "NODE go.sh [src=scripts/handover/console-kit/go.sh loc=L1 community=]"
-    echo "NODE write_go_file() [src=scripts/handover/console-kit/go.sh loc=L20 community=]"
+    echo "NODE go.sh [src=scripts/handover/chief-kit/go.sh loc=L1 community=]"
+    echo "NODE write_go_file() [src=scripts/handover/chief-kit/go.sh loc=L20 community=]"
     echo "EDGE go.sh --contains [EXTRACTED]--> write_go_file()" ;;
   *)
     echo "Graph: x (12 nodes) | Traversal: BFS depth=2 | Start: ['write_file()', 'Write'] | 3 nodes found"
@@ -85,7 +85,7 @@ case "\$*" in
     echo "[!] TRUNCATED: showing 2 of 3 nodes (~4000-token budget). The answer may be among the 1 cut nodes — raise the token budget to 5000 to get all 3 (CLI: --budget 5000, MCP: token_budget=5000) or narrow the query."
     echo ""
     echo "NODE write_file() [src=scripts/lib/files.sh loc=L3 community=]"
-    echo "NODE go.sh [src=scripts/handover/console-kit/go.sh loc=L1 community=]"
+    echo "NODE go.sh [src=scripts/handover/chief-kit/go.sh loc=L1 community=]"
     echo "EDGE write_file() --calls [EXTRACTED]--> Write"
     echo "... (truncated — 1 more nodes cut by ~4000-token budget. Narrow the query)" ;;
 esac
@@ -105,7 +105,7 @@ else fail "A5 rc=$rc calls='$calls'"; fi
 if [ "$order" = "go.sh|write_go_file()|write_file()|" ] && grep -q "Start (given): \['go.sh'\] | Keyword start: \['write_file()', 'Write'\] | " <<<"$out" \
   && [ "$(grep -c '^EDGE ' <<<"$out")" = 2 ]; then pass "A5b merged answer: named file first, deduplicated, both starts named"
 else fail "A5b order='$order' out='$out'"; fi
-if grep -q 'TRUNCATED: showing' <<<"$out" && grep -q "leg-graph.sh query 'how does go.sh write a GO file' --budget 10000" "$T/err"; then
+if grep -q 'TRUNCATED: showing' <<<"$out" && grep -q "worker-graph.sh query 'how does go.sh write a GO file' --budget 10000" "$T/err"; then
   pass "A5c a truncated half still gets a re-run line sized for both halves"
 else fail "A5c out='$out' err=$(cat "$T/err")"; fi
 
@@ -133,7 +133,7 @@ else fail "A9 rc=$rc calls='$calls' err=$(cat "$T/err")"; fi
 python3 -I - "$T/other.json" <<'PY'
 import json, sys
 n = {"id": "other_go", "label": "go.sh", "norm_label": "go.sh", "file_type": "code",
-     "source_file": "scripts/handover/console-kit/go.sh", "source_location": "L1"}
+     "source_file": "scripts/handover/chief-kit/go.sh", "source_location": "L1"}
 json.dump({"nodes": [n], "links": []}, open(sys.argv[1], "w"))
 PY
 run query "how does go.sh write a GO file" --graph "$T/other.json" >/dev/null
@@ -150,7 +150,7 @@ import json, sys
 def node(i, label, src):
     return {"id": i, "label": label, "norm_label": label.lower(), "file_type": "code", "source_file": src, "source_location": "L1"}
 nodes = [
-    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/console-kit/headed-arm-leg.sh"),
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
     node("chief_relay", "chief-relay.sh", "scripts/handover/chief-relay.sh"),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
 ]
@@ -173,7 +173,7 @@ if command -v graphify >/dev/null 2>&1 && graphify --help 2>&1 | grep -q -- '--r
   rm -f "$T/bin/graphify"
   bare="$(GRAPHIFY_OUT="$P/graphify-out" graphify query "how does go.sh write a GO file" --budget 8000 | grep -m1 '^NODE ')"
   first="$(run query "how does go.sh write a GO file" | grep -m1 '^NODE ')"
-  if [ "${bare#*\[src=}" != "${first#*\[src=}" ] && grep -q '^NODE go.sh \[src=scripts/handover/console-kit/go.sh ' <<<"$first"; then
+  if [ "${bare#*\[src=}" != "${first#*\[src=}" ] && grep -q '^NODE go.sh \[src=scripts/handover/chief-kit/go.sh ' <<<"$first"; then
     pass "A8 real graphify: the named file leads the answer (bare graphify led with '${bare%% \[src=*}')"
   else fail "A8 bare='$bare' first='$first' err=$(cat "$T/err")"; fi
 else

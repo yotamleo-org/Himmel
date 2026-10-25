@@ -4,7 +4,7 @@ How himmel's CI, the merge gate and a red main fit together. A chief, a worker o
 adopter reads this page instead of re-deriving the rules. Mechanism detail lives
 elsewhere: the suite runner in [testing.md](testing.md), the merge gate exits in
 [stuck-playbook.md](stuck-playbook.md), the worker-side rules in
-`docs/handover/leg-sections/ci-red.md`.
+`docs/handover/worker-sections/ci-red.md`.
 
 ## CI on main, and why PRs never update-branch
 
@@ -98,7 +98,7 @@ deliberate merge commit, never a rebase and never a force-push.
 1. **Real conflicts.** Git cannot merge the branch cleanly.
 2. **A needed fix on main.** Your PR is red from a break it inherited and main has since
    fixed it. Merge-forward cures **only** an inherited red, never one your own change
-   introduced (rule and proof script: `docs/handover/leg-sections/ci-red.md`).
+   introduced (rule and proof script: `docs/handover/worker-sections/ci-red.md`).
 3. **Proofs tied to the final head.** Evidence that must hold at the merged result (a
    gate or e2e proof pinned to a sha) is re-taken after the merge.
 

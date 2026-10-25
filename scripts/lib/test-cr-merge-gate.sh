@@ -73,7 +73,10 @@ case "$1 $2" in
     # suite's default 6-char "abc123" can never satisfy. Every other case
     # keeps the default, and the statuses arm below matches on the "abc123"
     # PREFIX so both spellings reach the same fixtures.
-    printf '{"number":42,"headRefOid":"%s","url":"https://github.com/o/r/pull/42"}\n' "${GH_STUB_HEAD:-abc123}" ;;
+    # GH_STUB_BRANCH_RC: the branch-only read prints its JSON, then fails.
+    # GH_STUB_AUTHOR: the PR author's login (a real PR 3861 read prints app/dependabot).
+    case "$*" in *'--json headRefName'*) if [ -n "${GH_STUB_BRANCH_RC:-}" ]; then printf '{"headRefName":"%s","author":{"login":"%s"}}\n' "${GH_STUB_BRANCH:-feat/x}" "${GH_STUB_AUTHOR:-yotamleo}"; exit "$GH_STUB_BRANCH_RC"; fi ;; esac
+    printf '{"number":42,"headRefOid":"%s","headRefName":"%s","author":{"login":"%s"},"url":"https://github.com/o/r/pull/42"}\n' "${GH_STUB_HEAD:-abc123}" "${GH_STUB_BRANCH:-feat/x}" "${GH_STUB_AUTHOR:-yotamleo}" ;;
   "api graphql")
     case "$GH_STUB_MODE" in
       api-error) exit 1 ;;
@@ -227,7 +230,7 @@ av() { # av <head> <model> <status> [reason] [detail] — one avail ledger row
 }
 CRIT_OK="$(av abc123 codex ok)
 $(av abc123 claude ok)"
-led() { printf '%s\n' "$@" > "$LEDGER"; }
+led() { printf '%s\n' "$@" > "$LEDGER" || { echo "FAIL led: cannot write the fixture ledger $LEDGER"; exit 1; }; }
 led "$CRIT_OK"
 
 # hermeticity probe — when this suite re-execs itself under the
@@ -911,6 +914,77 @@ has "$TMP/out-G2-merge-mode-in-progress-relaxed" '^NOTE: CodeRabbit pending' "G2
 GH_STUB_MODE=cr-ratelimited rgr G3-release-rate-limited-relaxed 0
 GH_STUB_MODE=clean rgr G3b-release-clean-go 0
 GH_STUB_MODE=cr-absent rgr G3c-release-absent-relaxed 0
+# J1-J6 — `--release` changes a second cell: a judge-go row (status ok, exact
+# head, bound to the PR's branch) stands in for each hard reviewer that is not
+# pass, so a PR past the round cap releases ci:go without the carry row (which
+# only green CI writes). The merge gate never reads it. JG_ROW is a judge-go
+# line copied from a station cr-critic-scores.jsonl.
+JG_HEAD=abc1230000000000000000000000000000000000
+JG_BRANCH=feat/himmel-5512-lean-claude-md-bench
+JG_ROW='{"kind":"judge-go","ts":"2026-10-19T01:06:35Z","branch":"feat/himmel-5512-lean-claude-md-bench","head":"867b2983f503401e4515acf71da87f08de01bd62","status":"ok","source":"judge:jC3125f/judge"}'
+JG_ROW=${JG_ROW/867b2983f503401e4515acf71da87f08de01bd62/$JG_HEAD}  # the stub's statuses arm keys on the abc123 prefix
+rgj() { # rgj <name> <expected-rc> [--release] — like rgr, at GH_STUB_HEAD
+  local name="$1" want="$2" rel="${3:-}" rc=0
+  export GH_STUB_LOG="$TMP/calls-$name.log"; : > "$GH_STUB_LOG"
+  cr_reviewer_gate 42 "$GH_STUB_HEAD" o/r ${rel:+"$rel"} >"$TMP/out-$name" 2>"$TMP/err-$name" || rc=$?
+  if [ "$rc" = "$want" ]; then pass=$((pass+1)); echo "ok   $name"
+  else fail=$((fail+1)); echo "FAIL $name (rc=$rc want=$want)"; sed 's/^/  out: /' "$TMP/out-$name"; sed 's/^/  err: /' "$TMP/err-$name"; fi
+}
+export GH_STUB_HEAD=$JG_HEAD GH_STUB_BRANCH=$JG_BRANCH GH_STUB_MODE=clean
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
+rgj J1-release-judge-go-stands-in 0 --release
+has "$TMP/out-J1-release-judge-go-stands-in" '^NOTE: .*judge GO.*jC3125f/judge' "J1 NOTE names the judge GO"
+has "$TMP/err-J1-release-judge-go-stands-in" 'codex hard judge-go · claude hard judge-go' "J1 state line shows the stand-in, not a pass"
+rgj J2-merge-mode-judge-go-still-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${JG_ROW//$JG_HEAD/0000000000000000000000000000000000000001}"
+rgj J3-release-judge-go-other-head-holds 1 --release
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
+GH_STUB_BRANCH=feat/other rgj J4-release-judge-go-other-branch-holds 1 --release
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${JG_ROW/\"status\":\"ok\"/\"status\":\"refused\"}"
+rgj J5-release-judge-go-not-ok-holds 1 --release
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-7","severity":"imp","verdict":""}' "$JG_HEAD")"
+rgj J6-release-judge-go-open-finding-holds 1 --release
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
+GH_STUB_BRANCH_RC=1 rgj J8-release-judge-go-failed-branch-read-holds 1 --release
+# D1-D9 — a dependabot-go row (scripts/cr/dependabot-go.sh: a signed judge GO at the
+# head on a Dependabot manifest-only PR) stands in for each hard reviewer that has not
+# passed, in the MERGE gate as well as the release, and only for that head, that
+# PR branch and an app/dependabot author. DG_ROW is the judge-go line above with the
+# kind the writer stamps and the PR number.
+DG_BRANCH=dependabot/pip/marketplace/plugins/obsidian-triage/tools/numpy-2.5.4
+DG_ROW=${JG_ROW/\"kind\":\"judge-go\"/\"kind\":\"dependabot-go\"}
+DG_ROW=${DG_ROW/$JG_BRANCH/$DG_BRANCH}
+DG_ROW=${DG_ROW/\"source\"/\"pr\":42,\"source\"}
+export GH_STUB_BRANCH=$DG_BRANCH GH_STUB_AUTHOR=app/dependabot
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
+rgj D1-merge-dependabot-go-stands-in 0
+has "$TMP/out-D1-merge-dependabot-go-stands-in" '^NOTE: .*Dependabot.*judge:jC3125f/judge' "D1 NOTE names the judge GO"
+rgj D2-release-dependabot-go-stands-in 0 --release
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW//$JG_HEAD/0000000000000000000000000000000000000001}"
+rgj D3-dependabot-go-other-head-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
+GH_STUB_BRANCH=dependabot/other rgj D4-dependabot-go-other-branch-holds 1
+GH_STUB_AUTHOR=yotamleo rgj D5-dependabot-go-human-author-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"status\":\"ok\"/\"status\":\"refused\"}"
+rgj D6-dependabot-go-not-ok-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW" "$(printf '{"kind":"finding","head":"%s","model":"codex","finding_id":"codex-7","severity":"imp","verdict":""}' "$JG_HEAD")"
+rgj D7-dependabot-go-open-finding-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$DG_ROW"
+GH_STUB_BRANCH_RC=1 rgj D8-dependabot-go-failed-read-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/dependabot-go/judge-go}"
+rgj D9-merge-judge-go-row-still-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"pr\":42/\"pr\":43}"
+rgj D10-dependabot-go-other-pr-holds 1
+led "$(av "$JG_HEAD" codex unavailable timeout)" "${DG_ROW/\"pr\":42,/}"
+rgj D11-dependabot-go-no-pr-holds 1
+export GH_STUB_BRANCH=$JG_BRANCH; unset GH_STUB_AUTHOR
+# J7 — an inherited _CRG_RELEASE=1 never loosens the merge gate: cr_merge_gate pins it.
+led "$(av "$JG_HEAD" codex unavailable timeout)" "$JG_ROW"
+export _CRG_RELEASE=1
+t J7-merge-gate-ignores-inherited-release-flag 2
+unset _CRG_RELEASE
+unset GH_STUB_HEAD GH_STUB_BRANCH
+led "$CRIT_OK"
 # G4 — the release flag is scoped to the call: after a --release gate, whether it
 # ran through the evaluation or returned early, the shell holds no flag for the
 # merge gate to read.

@@ -1255,12 +1255,12 @@ cat > "$manifestO" <<'JSON'
   "harness": "claude",
   "items": [
     {
-      "id": "cadence-runs-codex-sweep",
+      "id": "cadence-runs-win-only",
       "kind": "scheduler",
       "scopes": ["project"],
       "profiles": ["core", "all"],
       "deps": [],
-      "probe": { "type": "cadence-runs", "script": "scripts/cleanup/codex-sweep-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-CodexOrphanSweep", "intervalHours": 4}] }
+      "probe": { "type": "cadence-runs", "script": "scripts/win-only-cadence.sh", "platform": "win32", "tasks": [{"task": "HIMMEL-WinOnly", "intervalHours": 4}] }
     }
   ]
 }

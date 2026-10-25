@@ -92,7 +92,7 @@ _ga_check_semantic() {
 }
 
 _ga_check_resume() {
-    local root="$1" out rows nd="$1/scripts/handover/console-kit/next-dispatchable.sh"
+    local root="$1" out rows nd="$1/scripts/handover/chief-kit/next-dispatchable.sh"
     if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ] && [ -z "$GAP_AUDIT_RESUME_CMD" ]; then return 0; fi
     [ -n "${JIRA_PROJECT_KEY:-}" ] || { _ga_skip "in-work tickets (Jira not configured)"; return 0; }
     if [ "${GAP_AUDIT_RESUME_CMD+set}" = set ]; then
@@ -102,7 +102,7 @@ _ga_check_resume() {
         out="$(bash "$nd" --resume-only 2>/dev/null)" || { _ga_skip "in-work tickets (detector failed)"; return 0; }
     fi
     rows="$(printf '%s\n' "$out" | awk -F'\t' '$1 == "RESUME" { printf "%s (%s, %s); ", $2, $5, $7 }')"
-    [ -n "$rows" ] && _ga_add tickets "in-work with no session or open PR: $rows" "bash scripts/handover/console-kit/next-dispatchable.sh --resume-only"
+    [ -n "$rows" ] && _ga_add tickets "in-work with no session or open PR: $rows" "bash scripts/handover/chief-kit/next-dispatchable.sh --resume-only"
     return 0
 }
 
@@ -130,7 +130,7 @@ gap_audit_offer() {
     local root="${GAP_AUDIT_ROOT:-$GAP_AUDIT_ROOT_DEFAULT}" now="${GAP_AUDIT_NOW:-$(date +%s)}"
     GAP_AUDIT_FINDINGS=""; GAP_AUDIT_SKIPPED=""
     echo ""
-    echo "==> gap audit (HIMMEL-5836)"
+    echo "==> gap audit"
     _ga_check_doctor "$root" || true
     _ga_check_qmd || true
     _ga_check_semantic "$root" "$now" || true

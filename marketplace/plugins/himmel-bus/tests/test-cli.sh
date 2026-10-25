@@ -12,7 +12,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")/.." && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 BUS="$HERE/bin/bus"
-INBOX_SEND="$REPO/scripts/handover/console-kit/inbox-send.sh"
+INBOX_SEND="$REPO/scripts/handover/chief-kit/inbox-send.sh"
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }

@@ -1371,7 +1371,7 @@ station), nothing is signed and every amend is honoured, as before.
 
 Spec: `scripts/cr/test-ledger-amend-auth.sh`, plus the HIMMEL-6511 rows in
 `test-clear-cr-marker.sh`, `test-pr-check-rounds.sh` and
-`console-kit/test-cr-disposition.sh`.
+`chief-kit/test-cr-disposition.sh`.
 
 ### `block-jira-compound-write.sh` — jira write-shape bounce (HIMMEL-1077)
 
@@ -2745,7 +2745,7 @@ that output.
 a command whose every command word provably runs no gate directly is allowed:
 an inert reader, an inert `sed`, a pathspec-only `git`, `echo`, `printf`
 without `-v`, `cd`, or
-`bash` running `scripts/handover/console-kit/himmel-gate.sh` by its exact
+`bash` running `scripts/handover/chief-kit/himmel-gate.sh` by its exact
 anchored spelling (`bash "$HIMMEL_REPO/…/himmel-gate.sh" <name> <args>`, with
 `HIMMEL_REPO` absolute and every other `HIMMEL_REPO` reference refused). Such a
 command has no `VAR=` word, no substitution, `$'…'` or comment, no write
@@ -3272,7 +3272,7 @@ owes is what every head owes: zero unresolved threads and the exact-head
 critic panel via `/pr-check`.
 
 **Chief GO gate (HIMMEL-2919 / HIMMEL-3142) — runs THIRD, after the CR and CI
-gates.** A worker spawned by a chief (`console-kit/headed-arm-leg.sh` exports
+gates.** A worker spawned by a chief (`chief-kit/headed-arm-leg.sh` exports
 `HIMMEL_CONSOLE_LEG=1`) may merge only on its chief's GO. The hook first
 checks the marker is non-empty at all — an unset/empty marker (the ordinary
 session) never sources `scripts/lib/go-gate.sh`, so a missing or broken library
@@ -3286,7 +3286,7 @@ only when `<root>/.locks/go/<pr>.<head>` exists and carries the line
 `head=<head>` exactly; otherwise rc 2 with a one-line reason naming the exact
 GO path (no root / no file / a GO for an older head are all the same refusal —
 a stale GO is never reusable). The GO file (merge approval) is written only by the chief
-(`console-kit/go.sh`, which itself refuses under the marker), so the evidence is
+(`chief-kit/go.sh`, which itself refuses under the marker), so the evidence is
 a file the worker cannot set on its own command line. Once a GO is confirmed the
 hook additionally REQUIRES the merge command to pin `--match-head-commit`
 (space- or `=`-form, quotes stripped) equal to that GO-bound head: an unpinned
@@ -3302,7 +3302,7 @@ certified — the same head its `--match-head-commit` pins — and `go.sh` uses
 worker" or "what a GO binds" (HIMMEL-3149).
 
 `go.sh` itself refuses to write a GO for a head nobody reviewed (HIMMEL-4565):
-before it signs anything it runs the anchor's own `console-kit/ready-check.sh
+before it signs anything it runs the anchor's own `chief-kit/ready-check.sh
 <pr> <head>` from the caller's cwd, and any non-PASS exits 4 with ready-check's
 output and writes nothing. That covers the CR ledger (check 4: an ok row for
 that exact head in `<git-common-dir>/cr-critic-scores.jsonl`), the head and
@@ -3580,7 +3580,7 @@ non-Claude row to `critics.json` re-opens the lane.
 **The one-suite-run invariant.** The after-report's `== Summary ==` PR comment
 is the ONE suite-run artifact any PR gate consumes — nothing in the merge or
 CR path re-runs `scripts/ci/run-shell-tests.sh` against a head that already
-carries one. `scripts/console/base-status.sh:257-316` is the implementation:
+carries one. `scripts/chief/base-status.sh:257-316` is the implementation:
 it reads the after-report Summary keyed by head SHA + fence scope and refuses
 to certify a fence PASS unless a Summary exists at that exact head, is not
 `TRUNCATED` (a budget-expired run), was not filtered by `--changed-since`, carries
@@ -3897,12 +3897,12 @@ Spec: `scripts/hooks/test-guard-console-dispatch.sh`.
 
 ### `guard-console-foreground.sh` — the chief runs long kit scripts in the background (HIMMEL-5821)
 
-A foreground run of a slow console-kit script blocks the chief's turn for minutes
+A foreground run of a slow chief-kit script blocks the chief's turn for minutes
 and every worker's `SendMessage` queues behind it. Fires on `Bash`, only when
 `HIMMEL_CONSOLE_DOC` is set (`headed-arm.sh` exports it into a `--role console`
 session, but a worker launched from a chief can inherit it) and the resolved session
-name ends in `-console` (an unresolvable name is allowed), and denies a command that runs a script
-named in `scripts/handover/console-kit/long-running.txt` unless
+name ends in `-chief` or `-console` (an unresolvable name is allowed), and denies a command that runs a script
+named in `scripts/handover/chief-kit/long-running.txt` unless
 `tool_input.run_in_background` is true. The deny message gives the re-issue shape.
 A textual match (interpreter + name, or a path in command position), so a grep that
 names a script is allowed. A workflow nudge: fails open on missing `jq` or an
@@ -3992,7 +3992,7 @@ The old path `block-leg-askuserquestion.sh` sources this file, so settings that
 still name it run the same hook.
 
 Fires on `AskUserQuestion`, keyed on `HIMMEL_CONSOLE_LEG=1` (set by the
-chief's launcher, `scripts/handover/console-kit/headed-arm-leg.sh`,
+chief's launcher, `scripts/handover/chief-kit/headed-arm-leg.sh`,
 HIMMEL-2919). A worker launched headed by a chief runs in a window nobody
 answers — two workers parked on this call in 2026-09-10, one for 77 minutes.
 Second drift on prose → structural. Denies with a message naming SendMessage
@@ -4942,7 +4942,7 @@ hand-pasted line has neither variable and is simply not snapshotted. It ALWAYS
 exits 0 and has no bypass variable: a workflow nudge, not a security fence, so a
 failure must degrade to "no snapshot", never block a compaction.
 
-The consumer is `scripts/handover/console-kit/compacted-check.sh` (G11): it
+The consumer is `scripts/handover/chief-kit/compacted-check.sh` (G11): it
 compares the doc's last `COMPACTED` bullet (`legs`, `queue`, `last GO`, and
 `acked` when present) against the newest snap. rc 0 `G11 ok`; rc 1 `G11 LOSS
 <field>` per differing field; rc 2 `no snapshot` / `snapshot corrupt`, which the
@@ -4954,7 +4954,7 @@ truncated to its first line (G11 then reports LOSS, it does not hide it);
 shipped bullet carries neither; and nothing writes `last-tick.txt` yet, so the
 `--- tick` tail is normally absent. Specs:
 `scripts/hooks/test-console-precompact-snapshot.sh`,
-`scripts/handover/console-kit/test-compacted-check.sh`.
+`scripts/handover/chief-kit/test-compacted-check.sh`.
 
 ## Claude SessionEnd Hooks
 
@@ -5071,7 +5071,7 @@ files allowed to name either field, so a new reader fails the suite until that
 list is edited on purpose. None of the phase 2b files reads the log: they see
 only the tick's `denials=` field.
 
-**Phase 2b: page, ack, refuse re-dispatch** (`scripts/handover/console-kit/`).
+**Phase 2b: page, ack, refuse re-dispatch** (`scripts/handover/chief-kit/`).
 - **Page.** When a `console-wait.sh` wake's `denials=` change raises a worker to
   `SHIP-STEP` or `PAUSE-RISK` (a new worker, or a higher class; a count rising inside
   one class wakes but does not page), the waiter sends ONE Telegram message per

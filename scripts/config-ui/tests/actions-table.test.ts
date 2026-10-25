@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { buildTable, resolveAction, loadRegistries } from "../actions";
 
 // T4.0: the action table on its own, no server. Every path is a fixed fake root.
-const ctx = { root: "/R", cadenceRoot: "/C", himmelctl: "/H/bin.js", platform: "linux", plugins: ["a@m", "b@m"], lanes: ["l1"] };
+const ctx = { root: "/R", cadenceRoot: "/C", himmelctl: "/H/bin.js", plugins: ["a@m", "b@m"], lanes: ["l1"] };
 const table = buildTable(ctx);
 const H = ["node", "/H/bin.js"];
 
@@ -27,6 +27,8 @@ const cases: [string, string, string | undefined, string[]][] = [
   ["config.commitRules", "tracker", "jira", [...H, "config", "set", "commit.tracker", "jira"]],
   ["config.commitRules", "tracker", "none", [...H, "config", "set", "commit.tracker", "none"]],
   ["config.commitRules", "ticket-id-required", "off", [...H, "config", "set", "commit.ticketIdRequired", "off"]],
+  ["config.paths", "handover-root", "/home/me/state/handovers", [...H, "config", "set", "handover.root", "/home/me/state/handovers"]],
+  ["config.paths", "luna-vault", "/home/me/My Vault", [...H, "config", "set", "luna.vaultPath", "/home/me/My Vault"]],
 ];
 
 for (const [action, target, value, argv] of cases) {
@@ -52,7 +54,6 @@ const refused: [string, string, string | undefined][] = [
   ["__proto__", "graphmap", undefined],
   ["constructor", "graphmap", undefined],
   ["cadence.arm", "nightly", undefined],
-  ["cadence.arm", "codex-sweep", undefined], // platform gate: linux
   ["plugin.disable", "handover@himmel", undefined], // floor, never a target
   ["plugin.enable", "c@m", undefined],
   ["plugin.enable", "-a@m", undefined],
@@ -68,17 +69,29 @@ const refused: [string, string, string | undefined][] = [
   ["config.commitRules", "ticket-id-required", "jira"],
   ["config.commitRules", "ticketIdPattern", "^X-1$"], // the pattern is typed in the terminal, never a UI target
   ["config.commitRules", "tracker", undefined],
+  ["config.paths", "forge", "/x"], // forge is shown, never set here
+  ["config.paths", "handover-root", undefined],
 ];
+// A path value reaches an argv and a KEY=value line in himmel.conf: each of these would break out of one or the other.
+const PATH_MUTANTS: [string, unknown][] = [
+  ["newline", "/a\nHIMMEL_INITIATIVE=merge"], ["carriage return", "/a\rb"], ["NUL", "/a\0b"], ["tab", "/a\tb"], ["DEL", "/a\x7fb"],
+  ["single quote", "/a'b"], ["double quote", '/a"b'], ["backtick", "/a`b"], ["hash", "/a #b"], ["dollar", "/a$HOME"],
+  ["backslash", "/a\\b"], ["relative", "a/b"], ["tilde", "~/a"], ["dot-dot", "/a/../b"], ["dot", "/a/./b"],
+  ["double slash", "/a//b"], ["trailing slash", "/a/"], ["root", "/"], ["option", "--dry-run"], ["leading space", " /a"],
+  ["trailing space", "/a "], ["empty", ""], ["too long", "/" + "a".repeat(1024)], ["not a string", 7],
+];
+for (const [what, v] of PATH_MUTANTS) {
+  for (const t of ["handover-root", "luna-vault"]) {
+    test(`config.paths ${t} refuses a ${what} path`, () => {
+      expect(() => resolveAction(table, "config.paths", t, v)).toThrow(/absolute path/);
+    });
+  }
+}
 for (const [action, target, value] of refused) {
   test(`${action} ${target} ${value ?? ""} is refused`, () => {
     expect(() => resolveAction(table, action, target, value)).toThrow();
   });
 }
-
-test("the codex-sweep cadence is a target only on Windows", () => {
-  const win = buildTable({ ...ctx, platform: "win32" });
-  expect(resolveAction(win, "cadence.arm", "codex-sweep").argv).toEqual(["bash", "/C/scripts/cleanup/codex-sweep-cadence.sh", "arm"]);
-});
 
 test("the table is frozen", () => {
   expect(Object.isFrozen(table)).toBe(true);

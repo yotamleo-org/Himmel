@@ -2,10 +2,10 @@
 # scripts/lib/test-cadence-format.sh — unit tests for cadence-format.sh.
 #
 # Covers cadence_cmd_escape, the shared .bat value escaper the
-# four cadence emitters (pipeline / graphmap / qmd / codex-sweep) now share.
+# cadence emitters (pipeline / graphmap / qmd) share.
 # The per-emitter arm tests assert the escape end-to-end through a generated
 # .bat; this suite pins the transform itself, including the characters it must
-# deliberately LEAVE ALONE — that half is what the four deleted copies got
+# deliberately LEAVE ALONE — that half is what the deleted per-emitter copies got
 # wrong, and it is invisible in a test that only checks what changes.
 #
 # cadence_runner_stamp already has coverage in test-himmel-update-hermes.sh
@@ -268,8 +268,8 @@ if PATH="$_bin2:$_path_no_pwsh" CADENCE_WSCRIPT_BIN="$_fake_wscript" cadence_wsh
 else
   fail=$((fail + 1)); echo "  FAIL: cadence_wsh_probe should still be available via the powershell.exe fallback (detail: $CADENCE_WSH_DETAIL)"
 fi
-if grep -q 'HIMMEL-2126' "$_stderr2" 2>/dev/null; then
-  pass=$((pass + 1)); echo "  ok: cadence_wsh_probe names the trap class + HIMMEL-2126 on fallback"
+if grep -q 'PS 5.1 misreads' "$_stderr2" 2>/dev/null; then
+  pass=$((pass + 1)); echo "  ok: cadence_wsh_probe names the trap class on fallback"
 else
   fail=$((fail + 1)); echo "  FAIL: cadence_wsh_probe fallback did not warn: $(cat "$_stderr2" 2>/dev/null)"
 fi

@@ -124,8 +124,8 @@ case "$out" in
     *) bad "reason lacks the bounded check-ci wait — got: $out" ;;
 esac
 case "$out" in
-    *'leg-sections/cache-keepalive.md'*) ok "reason names the wrap rule" ;;
-    *) bad "reason lacks leg-sections/cache-keepalive.md — got: $out" ;;
+    *'worker-sections/cache-keepalive.md'*) ok "reason names the wrap rule" ;;
+    *) bad "reason lacks worker-sections/cache-keepalive.md — got: $out" ;;
 esac
 case "$out" in
     *'HIMMEL-1-N1-fixture-leg.md'*) ok "reason names the held doc" ;;
@@ -181,6 +181,20 @@ run_guard 'not json'
 expect_allow "junk payload -> allow (fail open)"
 run_guard ''
 expect_allow "empty payload -> allow (fail open)"
+
+# a chief's own lock is skipped whether the doc is named *-console or *-chief
+CHIEF_SESSION="test-session-himmel-7505"
+for chief_doc in "$HANDOVER_DIR/HIMMEL-nextleg-2026-10-25A-roadmap-console.md" "$HANDOVER_DIR/HIMMEL-nextleg-2026-10-25B-roadmap-chief.md"; do
+    printf 'fixture chief doc\n' > "$chief_doc"
+    chief_out="$(QUEUE_LOCK_SESSION_SCOPE="$CHIEF_SESSION" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$chief_doc")" \
+        || { echo "setup: could not acquire the fixture chief lock" >&2; exit 1; }
+    # shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
+    chief_token="$(printf '%s\n' "$chief_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+    run_guard "$(payload "$T_IDLE" false "$CHIEF_SESSION")"
+    expect_allow "chief session holding ${chief_doc##*/} -> allow (a chief's lock is not a leg's)"
+    QUEUE_LOCK_SESSION_SCOPE="$CHIEF_SESSION" bash "$REPO/scripts/handover/queue-lock.sh" release "$chief_doc" "$chief_token" >/dev/null 2>&1
+    rm -f "$chief_doc"
+done
 
 release_lock
 run_guard "$(payload "$T_IDLE")"

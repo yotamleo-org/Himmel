@@ -157,7 +157,7 @@ case "$subagent_type" in
     Explore|gemini-subagent|statusline-setup|himmel-ops:claudex-subagent|codex:codex-rescue)
         exit 0
         ;;
-    judge-ro|console-judge-ro)
+    judge-ro)
         ro_judge_pinned "$subagent_type" && exit 0
         ;;
     Plan)

@@ -120,7 +120,7 @@ install_status_funnel() {
     for f in ticket-status.sh required-checks.sh prim.sh git-clean.sh timeout-bin.sh; do
         cp "$REPLAY_TREE/scripts/lib/$f" "$tmp/scripts/lib/$f"
     done
-    cp "$REPLAY_TREE/scripts/handover/console-kit/leg-jira-status.sh" "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
+    cp "$REPLAY_TREE/scripts/handover/chief-kit/worker-jira-status.sh" "$tmp/scripts/handover/chief-kit/worker-jira-status.sh"
     mkdir -p "$tmp/derive" "$tmp/dbin" "$tmp/ts"
     printf '[]\n' > "$tmp/derive/prs.json"
     echo 0 > "$tmp/derive/lock.rc"
@@ -174,7 +174,7 @@ own_ticket() {
 run_funnel() {
     JIRA_STATE="$TMP/state" PATH="$TMP/dbin:$TMP/bin:$PATH" TICKET_STATUS_STATE_DIR="$TMP/ts" \
         TICKET_STATUS_QUEUE_LOCK="$TMP/derive/lock-stub" GH_LOG="$TMP/gh.log" \
-        bash "$TMP/scripts/handover/console-kit/leg-jira-status.sh" HIMMEL-9001 "$@" >/dev/null 2>>"$TMP/funnel.err"
+        bash "$TMP/scripts/handover/chief-kit/worker-jira-status.sh" HIMMEL-9001 "$@" >/dev/null 2>>"$TMP/funnel.err"
 }
 
 # run_merge <expected-exit> <args...>   (reads STUB_* from the environment)
@@ -319,6 +319,7 @@ if jq -e -s 'map(select(.event == "wrapped" and .stage == "done-pending")) | len
 else fail "7 the WRAPPED event logs done-pending (rows: $(cat "$TMP/ts/status-events.jsonl" 2>/dev/null))"; fi
 
 # --- 8 a status event and the Done write race on one key: Done stands ----------------------
+if command -v flock >/dev/null 2>&1; then
 new_case "In Review" "v1.1.3"
 printf '[{"number":42,"title":"feat(x): [HIMMEL-9001] a thing","headRefOid":"sha1","baseRefName":"main","reviewDecision":""}]\n' > "$TMP/derive/prs.json"
 printf '[{"bucket":"pending","name":"unit-tests"}]\n' > "$TMP/derive/checks-42.json"
@@ -330,6 +331,9 @@ for _ in $(seq 1 100); do [ -e "$TMP/state/in-ci.started" ] && break; sleep 0.1;
 STUB_NUM=42 run_merge 0 --jira-transition
 wait "$race_pid"
 assert_eq "8 Done stands after the race" "$(state_status)" "Done"
+else
+    echo "  SKIP: 8 Done stands after the race (no flock: merge-on-green.sh takes no shared status lock without it, HIMMEL-7569)"
+fi
 
 echo "test-merge-on-green-jira-end-state: PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

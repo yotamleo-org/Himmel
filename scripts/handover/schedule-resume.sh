@@ -36,7 +36,7 @@ set -uo pipefail
 if [ "$#" -lt 2 ]; then
     cat >&2 <<EOF
 usage: bash scripts/handover/schedule-resume.sh <RESUME_TIME_LOCAL> <HANDOVER_PATH>
-example: bash scripts/handover/schedule-resume.sh 07:22 handovers/<USER_SLUG>/himmel/epics/HIMMEL-70-github-warp/next-session-12.md
+example: bash scripts/handover/schedule-resume.sh 07:22 handovers/<USER_SLUG>/himmel/epics/PROJ-70-example/next-session-12.md
 EOF
     exit 2
 fi
@@ -81,7 +81,7 @@ platform=$(detect_platform)
 SR_LANES="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lanes" && pwd)"
 SR_PROFILE=$(bash "$SR_LANES/role-profile.sh" "$HANDOVER_PATH" 2>/dev/null) || SR_PROFILE=user
 SR_SETTINGS=$(bash "$SR_LANES/profile-settings.sh" "$SR_PROFILE") || {
-    echo "ERROR: plugin profile '$SR_PROFILE' did not resolve; refusing to emit a full-plugin-set resume (HIMMEL-4013)" >&2
+    echo "ERROR: plugin profile '$SR_PROFILE' did not resolve; refusing to emit a full-plugin-set resume" >&2
     exit 2
 }
 # A Windows claude needs a Windows path in the .bat.

@@ -81,7 +81,7 @@ Only when the dispatch asks for one. Write your reasoning to an evidence file
 under your scratch dir (`bash <primary checkout>/scripts/judge-dir.sh <PR>
 [suffix a-z]` makes it; never `mkdir` it yourself), keep the verdict line out
 of the file, then run
-`bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid>
+`bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid>
 <GO|NO-GO> <full 40-hex head> --pr <PR> --evidence-file <file> --model <your
 model id> --effort <your effort level>` (the dispatch names both; the writer
 refuses a verdict without them, HIMMEL-6944) and put the path it prints in your

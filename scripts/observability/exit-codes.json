@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "_doc": "HIMMEL-4853. script -> rc -> {class, meaning}. class: result (a state answer, not a failure), retry (try again later), refusal (a gate said no: counted as an error), error. The leg digest (scripts/eval/leg-digest) counts result/retry rcs apart from failures; an rc a script does not list here stays error. 'table': true = the script documents its rcs as '#   <n> - <meaning>' header rows and test-exit-codes.sh fails when a row is missing here; absent = documented in prose, seeded by hand. Basenames must be unique.",
+  "_doc": "HIMMEL-4853. script -> rc -> {class, meaning}. class: result (a state answer, not a failure), retry (try again later), refusal (a gate said no: counted as an error), error. The leg digest (scripts/eval/worker-digest) counts result/retry rcs apart from failures; an rc a script does not list here stays error. 'table': true = the script documents its rcs as '#   <n> - <meaning>' header rows and test-exit-codes.sh fails when a row is missing here; absent = documented in prose, seeded by hand. Basenames must be unique.",
   "scripts": {
     "scripts/quiet-run.sh": {
       "codes": {
@@ -21,7 +21,7 @@
         "64": { "class": "error", "meaning": "usage error, no gate ran" }
       }
     },
-    "scripts/handover/console-kit/ready-check.sh": {
+    "scripts/handover/chief-kit/ready-check.sh": {
       "table": true,
       "codes": {
         "0": { "class": "result", "meaning": "READY-CHECK PASS" },
@@ -29,7 +29,7 @@
         "2": { "class": "error", "meaning": "usage, or cannot evaluate (gh/jq missing, repo or PR unreadable)" }
       }
     },
-    "scripts/handover/console-kit/go.sh": {
+    "scripts/handover/chief-kit/go.sh": {
       "codes": {
         "4": { "class": "result", "meaning": "ready-check did not PASS at this head: no GO written" },
         "5": { "class": "result", "meaning": "trust-reviewed GO refused: no GO written" },

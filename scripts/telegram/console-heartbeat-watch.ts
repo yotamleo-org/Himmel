@@ -1,6 +1,6 @@
 // scripts/telegram/console-heartbeat-watch.ts
 // Bridge-side alert for a console's console-wait.sh heartbeat
-// (scripts/handover/console-kit/console-wait.sh)
+// (scripts/handover/chief-kit/console-wait.sh)
 // going stale while the
 // console session is still running. N383 measured that an external SIGKILL
 // of the waiter re-invokes the console (a task notification fires) — not

@@ -30,7 +30,7 @@ Tick and board migration is a separate follow-up slice: their open/recent-merged
 
 ```bash
 bash scripts/quiet-run.sh suite -- bash scripts/lib/test-gh-pr-snapshot.sh
-bash scripts/quiet-run.sh suite -- bash scripts/handover/console-kit/test-ready-check.sh
+bash scripts/quiet-run.sh suite -- bash scripts/handover/chief-kit/test-ready-check.sh
 ```
 
 The shim counts calls without live GitHub access. Coverage includes batching, TTL hits, moved heads, a push during a fetch, unreadable/partial/malformed snapshots, workflow identity, continuation threads and cycling cursors. The ready-check suite keeps the existing verdict cases and checks the query budget and failure of every snapshot-dependent gate.

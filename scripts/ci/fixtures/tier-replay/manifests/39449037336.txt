@@ -56,7 +56,7 @@ suite scripts/docs/test-readme-hygiene.sh
 suite scripts/docs/test-site-guides.sh
 suite scripts/eval/lane-quality/pilot-4869/test-pilot.sh
 suite scripts/eval/lane-quality/test-lane-quality.sh
-suite scripts/eval/leg-digest/test-failure-review.sh
+suite scripts/eval/worker-digest/test-failure-review.sh
 suite scripts/graphify/test-ast-update.sh
 suite scripts/graphify/test-graph-cadence.sh
 suite scripts/graphify/test-graph-publish.sh
@@ -65,9 +65,9 @@ suite scripts/graphify/test-quality-sample.sh
 suite scripts/guardrails/test-hook-probe.sh
 suite scripts/guardrails/test-lesson-write-fence.sh
 suite scripts/guardrails/test-lint-fail-open.sh
-suite scripts/handover/console-kit/test-action-zero.sh
-suite scripts/handover/console-kit/test-go.sh
-suite scripts/handover/console-kit/test-ready-check.sh
+suite scripts/handover/chief-kit/test-action-zero.sh
+suite scripts/handover/chief-kit/test-go.sh
+suite scripts/handover/chief-kit/test-ready-check.sh
 suite scripts/handover/test-merge-on-green.sh
 suite scripts/handover/test-pr-merge.sh
 suite scripts/handover/test-worker-lifecycle.sh

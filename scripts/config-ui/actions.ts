@@ -1,7 +1,9 @@
 // the closed action table (spec §5.2). Every argv is built
 // from constants here plus a target validated against a frozen list and, for
-// config.*, a value from {on, off}. No feed text ever reaches an argv.
+// config.*, a value from {on, off} or, for config.paths, an absolute path that
+// passes himmelctl's own confPathOk. No feed text ever reaches an argv.
 import { execFileSync } from "node:child_process";
+import { confPathOk } from "../himmelctl/lib/behaviour-config.js";
 
 export type Consent = { kind: "typed" | "plain"; expect: string | null };
 export type Resolved = {
@@ -9,7 +11,7 @@ export type Resolved = {
   argv: string[]; dryArgv: string[]; consent: Consent; cwd: string; timeoutMs: number;
   effect: string; bank: string; rowIds: string[];
 };
-export type Ctx = { root: string; cadenceRoot: string; himmelctl: string; platform: string; plugins: readonly string[]; lanes: readonly string[] };
+export type Ctx = { root: string; cadenceRoot: string; himmelctl: string; plugins: readonly string[]; lanes: readonly string[] };
 type Spec = {
   targets: readonly string[];
   argv: (t: string, v: string | null) => string[];
@@ -18,6 +20,7 @@ type Spec = {
   bank: (t: string) => string;
   needsValue: boolean;
   values?: (t: string) => readonly string[];
+  pathValue?: boolean;
   rowIds: (t: string) => string[];
 };
 export type Table = ReadonlyMap<string, Readonly<Spec>>;
@@ -29,6 +32,8 @@ const HIMMELCTL_TIMEOUT_MS = 60_000;
 const ID_RE = /^[a-z0-9@._-]+$/;
 const VALUES: readonly string[] = Object.freeze(["on", "off"]);
 const TRACKERS: readonly string[] = Object.freeze(["jira", "local", "none"]);
+// The Setup page's path choices and the himmelctl config path each one writes.
+const PATH_KEYS: Readonly<Record<string, string>> = Object.freeze({ "handover-root": "handover.root", "luna-vault": "luna.vaultPath" });
 // The plugins plugin-profile.sh refuses to disable (critic G11): never a target.
 export const FLOOR: readonly string[] = Object.freeze(["handover@himmel", "himmel-ops@himmel", "qmd@himmel"]);
 // merge and public are guard-class (critic F4): shown, never toggled here.
@@ -37,7 +42,6 @@ const CADENCE_PATH: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "scripts/luna/pipeline-cadence.sh",
   graphmap: "scripts/luna/graphmap-cadence.sh",
   qmd: "scripts/luna/qmd-cadence.sh",
-  "codex-sweep": "scripts/cleanup/codex-sweep-cadence.sh",
   doctor: "scripts/doctor-cadence.sh",
 });
 // Shown in the consent text (critic F3); mirrors config-feed.js CADENCES[].cost.
@@ -45,7 +49,6 @@ const CADENCE_BANK: Readonly<Record<string, string>> = Object.freeze({
   pipeline: "runs Claude-backed harvest/synthesize and draws the subscription bank",
   graphmap: "weekly claude-cli extraction; draws the subscription bank",
   qmd: "none (local qmd reindex)",
-  "codex-sweep": "none",
   doctor: "none",
 });
 
@@ -70,7 +73,7 @@ export function loadRegistries(root: string): { plugins: string[]; lanes: string
 
 export function buildTable(ctx: Ctx): Table {
   const h = (...a: string[]) => ["node", ctx.himmelctl, ...a];
-  const cadences = Object.keys(CADENCE_PATH).filter((c) => c !== "codex-sweep" || ctx.platform === "win32");
+  const cadences = Object.keys(CADENCE_PATH);
   const none = () => "none";
   const cadence = (verb: string): Spec => ({
     targets: cadences, argv: (t) => ["bash", `${ctx.cadenceRoot}/${CADENCE_PATH[t]}`, verb], consent: "typed",
@@ -105,6 +108,11 @@ export function buildTable(ctx: Ctx): Table {
       cwd: ctx.root, timeoutMs: HIMMELCTL_TIMEOUT_MS, effect: "your next commit", bank: none,
       needsValue: true, values: (t) => (t === "tracker" ? TRACKERS : VALUES), rowIds: () => [],
     }],
+    ["config.paths", {
+      targets: Object.keys(PATH_KEYS), argv: (t, v) => h("config", "set", PATH_KEYS[t], v as string), consent: "plain",
+      cwd: ctx.root, timeoutMs: HIMMELCTL_TIMEOUT_MS, effect: "next Claude launch", bank: none,
+      needsValue: true, pathValue: true, rowIds: () => [],
+    }],
   ];
   for (const [, s] of specs) { Object.freeze(s.targets); Object.freeze(s); }
   const m = new Map(specs);
@@ -118,7 +126,10 @@ export function resolveAction(table: Table, action: unknown, target: unknown, va
   const s = table.get(action)!;
   if (!validId(target) || !s.targets.includes(target)) throw new ActionError("target not offered for this action");
   let v: string | null = null;
-  if (s.needsValue) {
+  if (s.pathValue) {
+    if (!confPathOk(value)) throw new ActionError("value must be an absolute path with no '.' or '..' part, quote, '#', '$', backslash or control character");
+    v = value as string;
+  } else if (s.needsValue) {
     const offered = s.values ? s.values(target) : VALUES;
     if (typeof value !== "string" || !offered.includes(value)) throw new ActionError(`value must be ${offered.join(" or ")}`);
     v = value;

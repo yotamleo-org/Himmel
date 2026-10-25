@@ -41,7 +41,7 @@ const GATE_RULES = [
   // classifier (client-side on claudex) ever decides it.
   'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")',
   'Bash(bash scripts/handover/queue-lock.sh:*)',
-  'Bash(bash scripts/handover/console-kit/inbox-send.sh:*)',
+  'Bash(bash scripts/handover/chief-kit/inbox-send.sh:*)',
   'Bash(bash scripts/cr/write-verdicts.sh:*)',
   'Bash(bash scripts/cr/clear-cr-marker.sh:*)',
   'Bash(bash scripts/cr/clear-review-marker.sh:*)',
@@ -76,7 +76,7 @@ const SUITE_TAILS = [
   'bash scripts/git/test-*.sh',
   'bash scripts/cr/test-*.sh',
   'bash scripts/handover/test-*.sh',
-  'bash scripts/handover/console-kit/test-*.sh',
+  'bash scripts/handover/chief-kit/test-*.sh',
   'bash scripts/hooks/test-*.sh',
   'bash scripts/guardrails/test-*.sh',
   'bash scripts/lib/test-*.sh',
@@ -180,7 +180,7 @@ const BAD_GATE_RULES = [
   ['docs push wildcard absorbs hook-skipping options', 'Bash(git push -u origin docs/*)'],
   ['refactor push wildcard absorbs hook-skipping options', 'Bash(git push -u origin refactor/*)'],
   ['test push wildcard absorbs hook-skipping options', 'Bash(git push -u origin test/*)'],
-  ['leg-written GO', 'Bash(bash scripts/handover/console-kit/go.sh:*)'],
+  ['leg-written GO', 'Bash(bash scripts/handover/chief-kit/go.sh:*)'],
   ['unlisted script', 'Bash(bash scripts/uninstall.sh:*)'],
   // The relative merge-on-green rule was retired — only the
   // anchored literal is admitted now.
@@ -1479,7 +1479,7 @@ const MARKER_ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/cr/clear-cr-marker.
 // being typed by a leg as an absolute Bash command.
 const SHIP_STEP_ANCHOR_RULES = [
   'Bash(bash /home/u/himmel/scripts/handover/queue-lock.sh:*)',
-  'Bash(bash /home/u/himmel/scripts/handover/console-kit/inbox-send.sh:*)',
+  'Bash(bash /home/u/himmel/scripts/handover/chief-kit/inbox-send.sh:*)',
   'Bash(bash /home/u/himmel/scripts/cr/write-verdicts.sh:*)',
   MARKER_ANCHOR_RULE,
   'Bash(bash /home/u/himmel/scripts/cr/clear-review-marker.sh:*)',

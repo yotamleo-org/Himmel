@@ -21,15 +21,15 @@ the project is dispatched into it explicitly with `WORKER_SESSION_REPO=<path>`.
 ```bash
 # Resolve the himmel checkout: $HIMMEL_REPO -> canonical paths -> error. Never
 # the cwd's own git toplevel: a foreign repo shipping its own
-# scripts/handover/console/chief.sh would otherwise get ITS script executed
+# scripts/handover/chief/chief.sh would otherwise get ITS script executed
 # in preference to himmel's (HIMMEL-3623 verdict J1268O change 5, F6).
 REPO="${HIMMEL_REPO:-}"
-if [ -z "$REPO" ] || [ ! -f "$REPO/scripts/handover/console/chief.sh" ]; then
+if [ -z "$REPO" ] || [ ! -f "$REPO/scripts/handover/chief/chief.sh" ]; then
   for c in "$HOME/Documents/github/himmel" "$HOME/Documents/github/Himmel" "$HOME/github/himmel" "$HOME/github/Himmel" "$HOME/Himmel" "$HOME/himmel"; do
-    [ -f "$c/scripts/handover/console/chief.sh" ] && { REPO="$c"; break; }
+    [ -f "$c/scripts/handover/chief/chief.sh" ] && { REPO="$c"; break; }
   done
 fi
-[ -n "$REPO" ] && [ -f "$REPO/scripts/handover/console/chief.sh" ] || { echo "ERR: cannot locate himmel checkout — set HIMMEL_REPO to your himmel clone" >&2; exit 1; }
+[ -n "$REPO" ] && [ -f "$REPO/scripts/handover/chief/chief.sh" ] || { echo "ERR: cannot locate himmel checkout — set HIMMEL_REPO to your himmel clone" >&2; exit 1; }
 
 # The console is FOR the project this session runs in: git toplevel, mapped
 # from a linked worktree to its MAIN worktree (git worktree list's first
@@ -67,20 +67,20 @@ fi
 case "$ARGUMENTS" in
   new|"new "*)
     case "$ARGUMENTS" in
-      *--project*) bash "$REPO/scripts/handover/console/chief.sh" $ARGUMENTS ;;
-      *) bash "$REPO/scripts/handover/console/chief.sh" $ARGUMENTS --project "$PROJECT" ;;
+      *--project*) bash "$REPO/scripts/handover/chief/chief.sh" $ARGUMENTS ;;
+      *) bash "$REPO/scripts/handover/chief/chief.sh" $ARGUMENTS --project "$PROJECT" ;;
     esac
     ;;
   "")
-    bash "$REPO/scripts/handover/console/chief.sh"
+    bash "$REPO/scripts/handover/chief/chief.sh"
     ;;
   *)
-    bash "$REPO/scripts/handover/console/chief.sh" $ARGUMENTS
+    bash "$REPO/scripts/handover/chief/chief.sh" $ARGUMENTS
     ;;
 esac
 ```
 
-- `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-console.md`
+- `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-chief.md`
   from `docs/handover/console-template.md`, acquire the queue lock on it, and
   print the launch line. A second `new` the same day bumps the letter; it never
   overwrites.

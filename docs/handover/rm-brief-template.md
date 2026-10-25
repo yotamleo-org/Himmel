@@ -3,7 +3,7 @@
 The document the chief writes to arm an **on-demand release-manager (RM)
 session** for one release, only to run STATUS, BURN-DOWN or READY. Requests
 are never ruled by a session: `jira release rm-run <R>` rules them in one
-batch (`console-sections/release-manager.md`, HIMMEL-7201). The session does
+batch (`chief-sections/release-manager.md`, HIMMEL-7201). The session does
 the verb it was armed for, reports, releases the lease and wraps; it never
 holds for a `REQ`. The `release-manager` launch profile is not shipped yet, so arm
 the RM with plain `headed-arm-leg.sh` from a shell that exports

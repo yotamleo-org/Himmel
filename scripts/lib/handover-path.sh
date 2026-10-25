@@ -30,7 +30,7 @@
 #   - `handover_root_ensure` mkdirs the Mode A inline dir if missing, then
 #     delegates to `handover_root`. Direct callers in himmel:
 #     `scripts/handover/auto-commit.sh`,
-#     `scripts/overnight/morning-report.sh` and
+#     `scripts/afk/morning-report.sh` and
 #     `scripts/handover/generate-morning-briefing.sh` — write-op sites that
 #     legitimately need the dir to exist. (setup.sh + flush.sh do NOT call
 #     _ensure directly: setup.sh shells out to handover-link.sh doctor

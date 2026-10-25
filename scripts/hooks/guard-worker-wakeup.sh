@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # guard-worker-wakeup.sh — PreToolUse hook (matcher "ScheduleWakeup"): denies
 # ScheduleWakeup for a console-spawned leg. A leg launched headed
-# by a console (scripts/handover/console-kit/headed-arm-leg.sh exports
+# by a console (scripts/handover/chief-kit/headed-arm-leg.sh exports
 # HIMMEL_CONSOLE_LEG=1 in the launching shell) has no reason to self-schedule a
 # polling wakeup: every wake re-reads the leg's whole context just to find "not
 # yet" (cost program), and a leg waits with ONE foreground blocking
@@ -40,7 +40,7 @@ input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null) || exit 0
 [ "$tool" = "ScheduleWakeup" ] || exit 0
 
-deny_msg="leg wakeup-deny: a console-spawned leg never self-schedules a polling wakeup — each wake re-reads your full context to find 'not yet'. Wait with ONE foreground blocking command (bash scripts/check-ci.sh <pr> --max-wait <s>, or a foreground until-loop), or report to the console by SendMessage and end your turn. (HIMMEL-3034)"
+deny_msg="leg wakeup-deny: a console-spawned leg never self-schedules a polling wakeup — each wake re-reads your full context to find 'not yet'. Wait with ONE foreground blocking command (bash scripts/check-ci.sh <pr> --max-wait <s>, or a foreground until-loop), or report to the console by SendMessage and end your turn."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"leg wakeup-deny: console-spawned leg denied ScheduleWakeup"'

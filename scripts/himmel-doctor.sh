@@ -491,7 +491,7 @@ check_c8() {
     # key off resolve_user_home (USERPROFILE via cygpath before $HOME on
     # Windows Git-Bash), NOT $CLAUDE_DIR, so probe via the lib's
     # cadence_user_home rather than $HOME or $CLAUDE_DIR_R.
-    # PIPELINE_BAT_DIR/SWEEP_BAT_DIR/GRAPHMAP_BAT_DIR override those homes.
+    # PIPELINE_BAT_DIR/GRAPHMAP_BAT_DIR/... override those homes.
     local label bat_dir rearm ver saw_any=0 uh
     uh="$(cadence_user_home)"
     while IFS='|' read -r label bat_dir rearm; do
@@ -509,7 +509,6 @@ check_c8() {
         fi
     done <<EOF
 pipeline-cadence|${PIPELINE_BAT_DIR:-$uh/.claude/pipeline-cadence}|bash scripts/luna/pipeline-cadence.sh arm --force
-codex-sweep-cadence|${SWEEP_BAT_DIR:-$uh/.claude/codex-sweep-cadence}|bash scripts/cleanup/codex-sweep-cadence.sh arm --force
 graphmap-cadence|${GRAPHMAP_BAT_DIR:-$uh/.claude/graphmap-cadence}|bash scripts/luna/graphmap-cadence.sh arm --force
 qmd-cadence|${QMD_CADENCE_BAT_DIR:-$uh/.claude/qmd-cadence}|bash scripts/luna/qmd-cadence.sh arm --force
 upstream-watch-cadence|${UPSTREAMWATCH_BAT_DIR:-$uh/.claude/upstream-watch-cadence}|bash scripts/upstreams/upstream-watch-cadence.sh arm --force
@@ -1315,7 +1314,7 @@ check_c23() {
 }
 
 # --- C24: expected-but-absent cadence tasks (read-only advisory) ---
-# The cadence scripts (codex-sweep-cadence.sh, graphmap-cadence.sh, ...)
+# The cadence scripts (graphmap-cadence.sh, qmd-cadence.sh, ...)
 # self-register every task they arm into observability_registry_path()'s
 # .expected_tasks[] (and unregister it on disarm). An operator-armed cadence
 # that silently stops existing — deleted, never armed, wiped by the OS
@@ -3390,6 +3389,156 @@ check_c73_bun_compiled() {
     [ "$stale" -gt 0 ] || emit OK C73-bun-compiled "$scanned bun-compiled binaries scanned, none embeds a Bun older than .bun-version $pin"
 }
 
+# --- C74-config-split: the configuration split (docs/internals/config-layers.md) ---
+# Three rows: ~/.himmel/himmel.conf present and parseable (INFO when absent, WARN
+# when a line is not KEY=value or the link dangles); behaviour keys still in
+# .env (WARN, names only); the policy file ~/.himmel/config.json parseable and
+# holding every gate key the legacy .env still carries (WARN otherwise). Key
+# classes come from _himmel_key_class; .env is read for key NAMES only and no
+# value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (the .env to list).
+check_c74_config_split() {
+    local dir conf pol envfile bad names key held miss="" cfg="" present="" envbad=""
+    local migrate="bash $REPO_ROOT/scripts/setup/migrate-env-config.sh"
+    dir="$(_himmel_config_dir)"; conf="$dir/himmel.conf"; pol="$dir/config.json"
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+
+    if [ -L "$conf" ] && [ ! -e "$conf" ]; then
+        emit WARN C74-himmel-conf "$conf is a link to a file that does not exist" \
+            "restore the vault checkout it points at, or remove the link and re-run: $migrate --dry-run"
+    elif [ ! -e "$conf" ]; then
+        emit INFO C74-himmel-conf "no $conf (this install has not migrated its behaviour keys out of .env)" \
+            "optional: $migrate --dry-run, then without --dry-run (docs/internals/config-layers.md)"
+    elif [ ! -f "$conf" ] || [ ! -r "$conf" ]; then
+        emit WARN C74-himmel-conf "$conf is not a readable file" "fix its permissions, or replace it with a KEY=value file"
+    else
+        bad="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*(#|$)/ { next } !/^[[:space:]]*[A-Za-z_][A-Za-z0-9_]*[[:space:]]*=/ { print NR; exit }' "$conf")"
+        if [ -n "$bad" ]; then
+            emit WARN C74-himmel-conf "$conf has a line that is not KEY=value (line $bad); load_dotenv skips it" \
+                "fix line $bad by hand (the file holds KEY=value lines and # comments only)"
+        else
+            emit OK C74-himmel-conf "$conf is present and parseable"
+        fi
+    fi
+
+    if [ ! -e "$envfile" ]; then
+        emit OK C74-env-keys "no .env to check"
+    elif [ ! -f "$envfile" ] || [ ! -r "$envfile" ]; then
+        envbad=1
+        emit WARN C74-env-keys "$envfile exists but is not a readable file, so its keys were not checked (load_policy refuses an unreadable .env)" \
+            "fix its permissions, then re-run the doctor"
+    else
+        names="$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+            i = index($0, "="); if (i == 0) next
+            k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)
+            if (k ~ /^[A-Za-z_][A-Za-z0-9_]*$/ && !(k in seen)) { seen[k] = 1; print k }
+        }' "$envfile")"
+        for key in $names; do
+            case "$(_himmel_key_class "$key")" in
+                config) cfg="${cfg:+$cfg, }$key" ;;
+                policy) present="$present $key" ;;
+            esac
+        done
+        if [ -n "$cfg" ]; then
+            emit WARN C74-env-keys ".env still holds behaviour keys that moved to himmel.conf: $cfg (they still work, with a DEPRECATED notice)" \
+                "run $migrate --dry-run, then without --dry-run; delete the moved lines from .env by hand"
+        else
+            emit OK C74-env-keys ".env holds no behaviour keys"
+        fi
+    fi
+
+    if [ ! -e "$pol" ]; then
+        if [ -n "$envbad" ]; then
+            emit INFO C74-policy "no $pol, and .env is unreadable so the gate keys it carries were not checked" \
+                "fix the .env permissions, then re-run the doctor"
+        elif [ -n "$present" ]; then
+            emit WARN C74-policy "$pol is missing but .env still carries gate keys: ${present# } (gates read them with a DEPRECATED notice)" \
+                "the operator moves them at their own prompt: $migrate --dry-run prints the command"
+        else
+            emit INFO C74-policy "no $pol; every gate uses its safe default" \
+                "only needed once the operator sets a gate key (docs/internals/config-layers.md)"
+        fi
+    elif ! command -v node >/dev/null 2>&1; then
+        emit INFO C74-policy "node is not on PATH, so $pol was not checked" "install Node (see docs/setup/new-machine.md)"
+    elif ! held="$(_himmel_policy_json "$pol" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK ARMAUTOMERGE)"; then
+        emit WARN C74-policy "$pol cannot be parsed or its .policy is malformed; gate policy fails closed (clear-cr-marker refuses)" \
+            "the operator fixes the file by hand at their own prompt"
+    else
+        for key in $present; do
+            case "
+$held" in *"
+$key="*) ;; *) miss="$miss $key" ;; esac
+        done
+        if [ -n "$miss" ]; then
+            emit WARN C74-policy "$pol does not hold gate keys that .env still carries: ${miss# }" \
+                "the operator adds them under .policy at their own prompt: $migrate --dry-run prints the command"
+        elif [ -n "$envbad" ]; then
+            emit INFO C74-policy "$pol is parseable; .env is unreadable so its gate keys were not compared" \
+                "fix the .env permissions, then re-run the doctor"
+        else
+            emit OK C74-policy "$pol is parseable and holds every gate key .env carries"
+        fi
+    fi
+}
+
+# --- C75-keyring: the OS keyring and the layer serving each secret ---
+# Two rows: the keyring state scripts/lib/himmel-secrets sees (unlocked, locked,
+# absent, off, unsupported) and, for each secret-class key in
+# scripts/himmelctl/lib/secrets-manifest.json, the layer serving it. The resolver
+# runs with --no-dotenv and prints layers only; .env is read for key NAMES
+# only. No value is ever printed. Seam: HIMMEL_DOCTOR_ENV_FILE (shared with C74).
+check_c75_keyring() {
+    local hs="$SELF_DIR/lib/himmel-secrets" envfile state names="" key layer
+    local envnames="" dot="" kr=0 other=0 unset_n=0 status_out
+    envfile="${HIMMEL_DOCTOR_ENV_FILE:-$(_load_dotenv_envfile "")}"
+    if [ ! -x "$hs" ]; then
+        emit WARN C75-keyring "$hs is missing or not executable" "restore it: git checkout -- scripts/lib/himmel-secrets"
+        return 0
+    fi
+    # shellcheck disable=SC2013 # a manifest name is one word
+    for key in $(sed -n 's/^ *"name": "\([A-Za-z_][A-Za-z0-9_]*\)".*/\1/p' "$SELF_DIR/himmelctl/lib/secrets-manifest.json"); do
+        [ "$(_himmel_key_class "$key")" = secret ] && names="$names $key"
+    done
+    # shellcheck disable=SC2086 # one word per key name
+    status_out="$("$hs" status --no-dotenv $names 2>/dev/null)"
+    state="$(printf '%s\n' "$status_out" | sed -n 's/^keyring: //p')"
+    case "$state" in
+        unlocked) emit OK C75-keyring "the OS keyring is unlocked and serves himmel secrets" ;;
+        locked) emit WARN C75-keyring "the OS keyring is locked, so himmel secrets fall back to .env" \
+            "unlock the wallet (log in to the desktop session), then re-run the doctor" ;;
+        unreachable) emit WARN C75-keyring "the OS keyring did not answer within 2 s, so himmel secrets fall back to .env" \
+            "check the Secret Service (busctl --user status org.freedesktop.secrets)" ;;
+        off) emit INFO C75-keyring "HIMMEL_SECRETS_KEYRING=off: the keyring is skipped" ;;
+        unsupported) emit INFO C75-keyring "no keyring backend on this platform yet; secrets come from .env" ;;
+        *) emit INFO C75-keyring "no keyring backend (secret-tool, busctl or timeout missing); secrets come from .env" \
+            "optional: install libsecret's secret-tool (Debian/Ubuntu: libsecret-tools) and a Secret Service such as gnome-keyring or KWallet" ;;
+    esac
+    if [ -f "$envfile" ] && [ -r "$envfile" ]; then
+        envnames=" $(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
+            i = index($0, "="); if (i == 0) next
+            k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k); print k
+        }' "$envfile" | tr '\n' ' ')"
+    fi
+    for key in $names; do
+        layer="$(printf '%s\n' "$status_out" | sed -n "s/^$key: //p")"
+        case "$layer" in
+            keyring|keyring-project) kr=$((kr + 1)) ;;
+            env|credentials) other=$((other + 1)) ;;
+            *) case "$envnames" in
+                   *" $key "*) dot="${dot:+$dot, }$key" ;;
+                   *) unset_n=$((unset_n + 1)) ;;
+               esac ;;
+        esac
+    done
+    if [ -n "$dot" ] && [ "$state" = unlocked ]; then
+        emit WARN C75-secrets "secrets still served from .env: $dot ($kr from the keyring, $other from the environment, $unset_n unset)" \
+            "the operator moves them at their own prompt: bash $hs import-env $envfile, then bash $hs status"
+    elif [ -n "$dot" ]; then
+        emit INFO C75-secrets "secrets served from .env: $dot ($unset_n unset); no unlocked keyring to move them to"
+    else
+        emit OK C75-secrets "no secret comes from .env ($kr from the keyring, $other from the environment, $unset_n unset)"
+    fi
+}
+
 # --- C50-qmd-fork-stamp: build stamp vs deployed HEAD vs the pin ---
 # `himmelctl update` once rolled the station's qmd fork back to the pin with
 # nothing reporting it. Three values must agree: the fork clone's build-success
@@ -3766,13 +3915,13 @@ check_c47_runaway_procs() {  # t13b-ok: doctor row that reads ps only, kills not
 }
 
 # --- C54-hook-copy-reaper: orphaned hook copies spinning a core ---
-# Runs scripts/handover/console-kit/hook-copy-reaper.sh REPORT-ONLY (never --kill):
+# Runs scripts/handover/chief-kit/hook-copy-reaper.sh REPORT-ONLY (never --kill):
 # rc 0 -> OK, rc 1 -> one WARN per pid=/age=/cpu=/script= row, any other rc -> WARN
 # naming the failure (never a silent OK). C47 matches hook.sh by name and misses
 # arbitrarily named /tmp/claude-*/ copies reparented to the user subreaper.
 # Seam: HIMMEL_DOCTOR_HOOK_REAPER (the reaper script; absent -> silent).
 check_c54_hook_copy_reaper() {  # t13b-ok: doctor row that runs the reaper report-only, kills nothing
-    local reaper="${HIMMEL_DOCTOR_HOOK_REAPER:-$REPO_ROOT/scripts/handover/console-kit/hook-copy-reaper.sh}"
+    local reaper="${HIMMEL_DOCTOR_HOOK_REAPER:-$REPO_ROOT/scripts/handover/chief-kit/hook-copy-reaper.sh}"
     local out rc line found=0 shown=0
     [ -f "$reaper" ] || return 0
     out="$(bash "$reaper" 2>&1)"; rc=$?
@@ -3784,12 +3933,12 @@ check_c54_hook_copy_reaper() {  # t13b-ok: doctor row that runs the reaper repor
                 found=$((found+1))
                 [ "$shown" -lt 5 ] || continue
                 shown=$((shown+1))
-                emit WARN C54-hook-copy-reaper "orphaned hook copy: ${line:0:200}" "report only, nothing is killed; inspect it, then: bash $REPO_ROOT/scripts/handover/console-kit/hook-copy-reaper.sh --kill"  # t13b-ok: doctor report text, kills nothing
+                emit WARN C54-hook-copy-reaper "orphaned hook copy: ${line:0:200}" "report only, nothing is killed; inspect it, then: bash $REPO_ROOT/scripts/handover/chief-kit/hook-copy-reaper.sh --kill"  # t13b-ok: doctor report text, kills nothing
             done <<< "$out"
             [ "$found" -le "$shown" ] || emit INFO C54-hook-copy-reaper "$((found - shown)) more orphaned hook copy(ies) not listed"
             [ "$found" -gt 0 ] || emit WARN C54-hook-copy-reaper "hook-copy-reaper.sh exited rc=1 but printed no pid= rows: ${out:0:160}"
             ;;
-        *) emit WARN C54-hook-copy-reaper "hook-copy-reaper.sh failed rc=$rc: ${out:0:160}" "run it by hand: bash $REPO_ROOT/scripts/handover/console-kit/hook-copy-reaper.sh" ;;
+        *) emit WARN C54-hook-copy-reaper "hook-copy-reaper.sh failed rc=$rc: ${out:0:160}" "run it by hand: bash $REPO_ROOT/scripts/handover/chief-kit/hook-copy-reaper.sh" ;;
     esac
 }
 
@@ -4238,7 +4387,7 @@ check_c71_verdict_scratch() {
     case "$kb" in ''|*[!0-9]*) emit INFO C71-verdict-scratch "could not size $dir"; return 0 ;; esac
     if [ "$kb" -gt "$limit_kb" ]; then
         emit WARN C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)" \
-            "run: bash $REPO_ROOT/scripts/handover/console-kit/verdict-retention.sh prune --unproven-older-than 14 (dry run lists what it would remove and why; plain prune frees only scratch whose PR is provably closed), then re-run it with --apply"
+            "run: bash $REPO_ROOT/scripts/handover/chief-kit/verdict-retention.sh prune --unproven-older-than 14 (dry run lists what it would remove and why; plain prune frees only scratch whose PR is provably closed), then re-run it with --apply"
     else
         emit OK C71-verdict-scratch "judge scratch at $dir is $((kb / 1024)) MB (warn above $((limit_kb / 1024)) MB)"
     fi
@@ -4440,7 +4589,7 @@ check_c63_claude_cli() {
 # policy still all_external_contributors, no DEAD/STUCK units. The probes live in
 # vm-runner.sh doctor (TSV: SEV, id, msg); skipped there when no VM exists.
 check_c64_vm_runner() {
-    local runner="${DOCTOR_VM_RUNNER:-$REPO_ROOT/scripts/handover/console-kit/vm-runner.sh}" rows sev id msg
+    local runner="${DOCTOR_VM_RUNNER:-$REPO_ROOT/scripts/handover/chief-kit/vm-runner.sh}" rows sev id msg
     if [ ! -f "$runner" ]; then
         emit INFO C64-vm-runner "vm-runner.sh not found — not checked"
         return
@@ -4455,8 +4604,8 @@ check_c64_vm_runner() {
     while IFS="$(printf '\t')" read -r sev id msg; do
         case "$sev" in
             OK|INFO) emit "$sev" C64-vm-runner "$msg" ;;
-            WARN) emit WARN C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh status" ;;
-            FAIL) emit FAIL C64-vm-runner "$msg" "bash scripts/handover/console-kit/vm-runner.sh off, then fix and re-run on" ;;
+            WARN) emit WARN C64-vm-runner "$msg" "bash scripts/handover/chief-kit/vm-runner.sh status" ;;
+            FAIL) emit FAIL C64-vm-runner "$msg" "bash scripts/handover/chief-kit/vm-runner.sh off, then fix and re-run on" ;;
         esac
     done <<EOF_ROWS
 $rows
@@ -4697,6 +4846,8 @@ run_check C70 check_c70_graph_semantic
 run_heavy C71 check_c71_verdict_scratch C71-verdict-scratch
 run_check C72 check_c72_design_mcp_auth
 run_check C73 check_c73_bun_compiled
+run_check C74 check_c74_config_split
+run_check C75 check_c75_keyring
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

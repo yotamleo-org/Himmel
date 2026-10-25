@@ -262,7 +262,8 @@ load_manifest() {
       workspace-trust)  _want="file path 6" ;;
       marketplaces)     _want="marketplaces - 7" ;;
       himmelctl-cache)  _want="dir path 8" ;;
-      *)                _want="" ;;
+      himmel-conf|himmel-conf-local|himmel-config-json) _want="file path 8" ;;
+      *)              _want="" ;;
     esac
     if [ -n "$_want" ]; then
       read -r _wk _wp _ws <<< "$_want"
@@ -354,6 +355,9 @@ _ix_cadence_pipeline=$(m_index cadence-pipeline-dir) || exit 2
 _ix_cadence_qmd=$(m_index cadence-qmd-dir) || exit 2
 _ix_cadence_graphmap=$(m_index cadence-graphmap-dir) || exit 2
 _ix_obs=$(m_index observability-registry) || exit 2
+_ix_conf=$(m_index himmel-conf) || exit 2
+_ix_conf_local=$(m_index himmel-conf-local) || exit 2
+_ix_conf_json=$(m_index himmel-config-json) || exit 2
 
 CHANNEL_DIR="$(strip_trailing_slash "$(m_path "$_ix_channel")")"
 BRIDGE_ROOT="$(strip_trailing_slash "$(m_path "$_ix_bridge")")"
@@ -1538,8 +1542,8 @@ if [ "$DRY_RUN" -eq 0 ] && [ "${HIMMEL_UNINSTALL_REAL_HOME:-0}" != "1" ]; then
   if [ -n "$_live_marker" ]; then
     echo "ERROR: refusing a wet uninstall — found $_live_marker" >&2
     echo "  This \$HOME ($HOME) looks like a live operator profile, not a test" >&2
-    echo "  fixture. A wet uninstall here is refused by default (HIMMEL-2505," >&2
-    echo "  after the 2026-09-03 incident where a test run swept a real HOME)." >&2
+    echo "  fixture. A wet uninstall here is refused by default" >&2
+    echo "  (a test run once swept a real HOME)." >&2
     echo "" >&2
     echo "  If this really IS the machine to offboard, re-run from your OWN" >&2
     echo "  shell with: HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh ..." >&2
@@ -2274,12 +2278,7 @@ elif [ ! -f "$BRIDGE_ROOT/supervisor.pid" ]; then
 elif [ -f "$REPO_ROOT/scripts/telegram/supervisor.ts" ]; then
   if ! command -v bun >/dev/null 2>&1; then
     echo "  WARN: supervisor.pid exists but bun is not on PATH — cannot stop the bridge." >&2
-    if [[ "$OSTYPE" == "msys" || "$OSTYPE" == "cygwin" || "$OSTYPE" == "win"* ]] \
-        || command -v pwsh >/dev/null 2>&1; then
-      echo "  Stop it manually: pwsh -File scripts/telegram/restart-bridge.ps1 -StatusOnly (inspect), then kill." >&2
-    else
-      echo "  Find the supervisor pid in $BRIDGE_ROOT/supervisor.pid and kill it manually." >&2
-    fi
+    echo "  Find the supervisor and poller PIDs in $BRIDGE_ROOT/supervisor.pid and kill both manually." >&2
     fail_step "[1/8] telegram bridge: could not stop the supervisor"
   else
     run env BRIDGE_ROOT="$BRIDGE_ROOT" bun --cwd "$REPO_ROOT/scripts/telegram" supervisor.ts --kill
@@ -3768,6 +3767,27 @@ else
     fail_step "[8/8] observability registry: $OBSERVABILITY_REGISTRY could not be removed"
   fi
 fi
+# the operator's configuration files: state rows, so removed only under
+# --purge-state. `rm -f` unlinks a symlink (himmel.conf is a link into the luna
+# vault on a luna install) and never follows it, so the vault target stays.
+for _ix in "$_ix_conf" "$_ix_conf_local" "$_ix_conf_json"; do
+  _cf="$(m_path "$_ix")"
+  if [ "$HALTED" -eq 1 ]; then
+    STEPS_INCOMPLETE+=("[8/8] config file ${M_ID[$_ix]}: skipped — halted after an earlier failure")
+  elif ! class_removes "$_ix"; then
+    echo "  kept (manifest class ${M_CLASS[$_ix]}): $_cf"
+  elif suspicious_rm_path "$(dirname -- "$_cf")"; then
+    echo "  ERROR: refusing to remove suspicious path: '$_cf'" >&2
+    fail_step "[8/8] config file ${M_ID[$_ix]}: refused a suspicious path ('$_cf')"
+  elif [ ! -e "$_cf" ] && [ ! -L "$_cf" ]; then
+    echo "  absent, skipping: $_cf"
+  elif guarded run rm -f -- "$_cf"; then
+    [ "$DRY_RUN" -eq 0 ] && echo "  removed: $_cf"
+  else
+    echo "  ERROR: failed to remove $_cf — residue remains; remove it manually." >&2
+    fail_step "[8/8] config file ${M_ID[$_ix]}: $_cf could not be removed"
+  fi
+done
 echo ""
 
 # S8: `tool register` rows are docs-only — himmel records the tool
@@ -3987,7 +4007,7 @@ qmd_print_stub_kept_line() {
   fi
 }
 
-echo "[qmd] provenance-recorded qmd install (HIMMEL-3332 U24):"
+echo "[qmd] provenance-recorded qmd install:"
 # shellcheck source=lib/qmd-bin.sh
 . "$SCRIPT_DIR/lib/qmd-bin.sh"
 _qmd_stub_unit=""
@@ -4330,7 +4350,7 @@ if [ "${#STEPS_INCOMPLETE[@]}" -gt 0 ]; then
       echo "Fix the cause and re-run:"
     fi
     echo "    $(rerun_command)"
-    echo "ANY failed step halts every later one (HIMMEL-2754). Re-running"
+    echo "ANY failed step halts every later one. Re-running"
     echo "is safe and repairs a half-torn-down machine:"
     echo "it re-adds any marketplace its still-installed plugins need."
   } >&2
@@ -4341,7 +4361,10 @@ if [ "$DRY_RUN" -eq 0 ]; then
   # Footprint read-back: every manifest directory this run was
   # meant to remove is checked absent on disk — the file system, not the rc.
   for _mi in "${!M_ID[@]}"; do
-    [ "${M_KIND[$_mi]}" = "dir" ] || continue
+    case "${M_KIND[$_mi]}:${M_ID[$_mi]}" in
+      dir:*|file:himmel-conf|file:himmel-conf-local|file:himmel-config-json) ;;
+      *) continue ;;
+    esac
     class_removes "$_mi" || continue
     step_skipped "${M_STEP[$_mi]}" && continue
     _mp="$(strip_trailing_slash "$(m_path "$_mi")")"

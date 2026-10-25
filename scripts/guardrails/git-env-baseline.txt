@@ -32,7 +32,7 @@ SHELL:scripts/cr/write-verdicts.sh
 SHELL:scripts/handover/arm-resume.sh
 SHELL:scripts/handover/auto-commit.sh
 SHELL:scripts/handover/breadcrumb.sh
-SHELL:scripts/handover/console-kit/ready-check.sh
+SHELL:scripts/handover/chief-kit/ready-check.sh
 SHELL:scripts/handover/flush.sh
 SHELL:scripts/handover/generate-morning-briefing.sh
 SHELL:scripts/handover/hop.sh
@@ -124,9 +124,9 @@ SHELL:scripts/lanes/stop-worker.sh
 
 # Shell: unsets only the original four vars (full 14-var set required now).
 SHELL:scripts/cr/live-gate-e2e.sh
-SHELL:scripts/handover/console-kit/action-zero.sh
-SHELL:scripts/handover/console-kit/handoff-facts.sh
-SHELL:scripts/handover/console-kit/run-suite.sh
+SHELL:scripts/handover/chief-kit/action-zero.sh
+SHELL:scripts/handover/chief-kit/handoff-facts.sh
+SHELL:scripts/handover/chief-kit/run-suite.sh
 SHELL:scripts/lanes/lane-canary.sh
 SHELL:scripts/lib/go-gate.sh
 # Shell: unsets 11 of 14 (misses GIT_IMPLICIT_WORK_TREE, GIT_GRAFT_FILE, GIT_SHALLOW_FILE).
@@ -139,7 +139,7 @@ SHELL:scripts/hooks/capture-baseline.sh
 SHELL:scripts/hooks/lib-test-write-fence-matrix.sh
 SHELL:scripts/hooks/lib-test-write-fence.sh
 # Python / PowerShell, file level (extensions newly scanned). PowerShell is windows-parked, epic HIMMEL-4102.
-FILE:scripts/handover/console-kit/gen-briefs.py
+FILE:scripts/handover/chief-kit/gen-briefs.py
 # JS: wrapper helpers whose spawn env is not the full set (claude-floor.mjs git(), verify-return.mjs exec,
 # hook-integrity.js spawnSync adds only GIT_NO_REPLACE_OBJECTS; the hook file is hook-integrity guarded).
 JS:scripts/cr/claude-floor.mjs:8770942d7fbd

@@ -74,8 +74,7 @@ fi
 
 # 5. bridge bring-up — documented, never executed here (single-poller rule)
 echo "  bridge bring-up (run yourself once token + pairing are in place):"
-echo "    Windows:     pwsh -File scripts/telegram/restart-bridge.ps1"
-echo "    Linux/macOS: (cd scripts/telegram && bun supervisor.ts)"
+echo "    (cd scripts/telegram && bun supervisor.ts)"
 echo "    reboot persistence (optional logon task): scripts/telegram/README.md"
 
 exit 0

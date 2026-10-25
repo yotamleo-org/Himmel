@@ -20,6 +20,9 @@
 # Usage: merged-count.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>] [--bundle <path>]
 set -u
 
+# shellcheck source=../../../lib/prim.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../../lib/prim.sh" || exit 1
+
 usage() { echo "usage: merged-count.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>] [--bundle <path>]" >&2; }
 
 SINCE=""; UNTIL=""; REPO="yotamleo/Himmel"; BUNDLE_ARG=""
@@ -56,7 +59,7 @@ if [ -n "$UNTIL" ]; then
     UNTIL_EPOCH=$(to_epoch "$UNTIL") || { echo "merged-count: bad --until: $UNTIL" >&2; exit 2; }
 fi
 
-RUN=$(mktemp -d "${TMPDIR:-/tmp}/merged-count.XXXXXX") || { echo "merged-count: mktemp failed" >&2; exit 1; }
+RUN=$(tmpdir) || { echo "merged-count: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$RUN"' EXIT
 
 # $1=since_epoch $2=until_epoch $3=exclude propagate/dependabot (0/1)

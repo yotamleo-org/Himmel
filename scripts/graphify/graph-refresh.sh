@@ -66,6 +66,8 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HIMMEL_ROOT="$(cd "$HERE/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$HERE/../lib/prim.sh" || exit 2
 REFRESH_SCRIPT="${GRAPH_REFRESH_RUNNER:-$HIMMEL_ROOT/scripts/graphify/refresh-graph-map.sh}"
 CADENCE_SCRIPT="${GRAPH_REFRESH_CADENCE_SCRIPT:-$HIMMEL_ROOT/scripts/luna/graphmap-cadence.sh}"
 # ONE resolver for the out-of-corpus promote destination — see
@@ -263,10 +265,12 @@ _under_any_list() {
 _resolve_symlinks() {
     local p="$1" r
     if command -v realpath >/dev/null 2>&1; then
+        # prim-ok: preflight also resolves file paths; canon_path accepts existing directories only.
         r="$(realpath "$p" 2>/dev/null)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
+        # prim-ok: configured roots may not exist; preserve lenient resolution before the directory-only fallback.
         r="$(realpath -m "$p" 2>/dev/null)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
     fi
-    r="$(cd "$p" 2>/dev/null && pwd -P)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
+    r="$(canon_path "$p" 2>/dev/null)" && [ -n "$r" ] && { printf '%s' "$r"; return 0; }
     return 1
 }
 
@@ -369,7 +373,7 @@ preflight_vault() {
     case "$ap" in
         "/"|[A-Za-z]:/) preflight_refuse "vault is a filesystem root ($ap)" ;;
     esac
-    # --- HOME identity guard (HIMMEL-1670) -----------------------------------
+    # --- HOME identity guard -----------------------------------
     # Refuse when the vault IS the operator HOME by FILESYSTEM IDENTITY
     # (device+inode via _fs_id), not case-folded path text. The previous text
     # compare (a lowercase-fold of both sides) was a defect in BOTH directions:
@@ -394,11 +398,11 @@ preflight_vault() {
     # failed resolve).
     home_canon="$(_abs "$(resolve_user_home)")"
     home_canon="$(_resolve_symlinks "$home_canon")" || \
-        preflight_refuse "operator HOME could not be symlink-resolved ($(_abs "$(resolve_user_home)")) -- fail-closed, cannot prove vault is not HOME (HIMMEL-1670)"
+        preflight_refuse "operator HOME could not be symlink-resolved ($(_abs "$(resolve_user_home)")) -- fail-closed, cannot prove vault is not HOME"
     vault_id="$(_fs_id "$class_path")" || \
-        preflight_refuse "vault identity could not be probed via stat ($VAULT -> $class_path) -- fail-closed (HIMMEL-1670)"
+        preflight_refuse "vault identity could not be probed via stat ($VAULT -> $class_path) -- fail-closed"
     home_id="$(_fs_id "$home_canon")" || \
-        preflight_refuse "operator HOME identity could not be probed via stat ($home_canon) -- fail-closed, cannot prove vault is not HOME (HIMMEL-1670)"
+        preflight_refuse "operator HOME identity could not be probed via stat ($home_canon) -- fail-closed, cannot prove vault is not HOME"
     if [ "$vault_id" = "$home_id" ]; then
         preflight_refuse "vault is the operator HOME ($VAULT -> $class_path)"
     fi
@@ -502,7 +506,7 @@ preflight_vault() {
             # would fail OPEN by disabling the runner's use-time check
             # exactly when something unexpected is happening. Fail CLOSED
             # instead, matching the luna/both leg's posture above.
-            preflight_refuse "maps-dir exists but could not be identity-probed as a directory ($class_path/60-Maps) -- fail-closed (HIMMEL-1704)"
+            preflight_refuse "maps-dir exists but could not be identity-probed as a directory ($class_path/60-Maps) -- fail-closed"
         else
             PREFLIGHT_MAPS_ID=""   # legitimately absent -- first-ever publish
         fi
@@ -518,7 +522,7 @@ usage() {
 usage: graph-refresh.sh [luna|himmel|both] [--vault <path>] [--dry-run] [-h|--help]
 
 Operator one-shot graphify refresh for the luna and/or himmel corpora
-(HIMMEL-1644). Fires refresh-graph-map.sh per corpus SERIALLY (luna then
+Fires refresh-graph-map.sh per corpus SERIALLY (luna then
 himmel), with the SAME per-corpus argument sets the daily cadence uses. The
 runner owns all safety (fence, promote lock, manifest, host-path guard).
 
@@ -570,7 +574,7 @@ fi
 # drive-relative path usually cannot even exist on Windows).
 case "$VAULT" in
     [A-Za-z]:|[A-Za-z]:[!/\\]*)
-        preflight_refuse "drive-relative vault path '$VAULT' resolves against Windows' per-drive current directory and cannot be classified safely (HIMMEL-845 fail-closed) -- use an absolute path"
+        preflight_refuse "drive-relative vault path '$VAULT' resolves against Windows' per-drive current directory and cannot be classified safely (fail-closed) -- use an absolute path"
         ;;
 esac
 if [ ! -d "$VAULT" ]; then
@@ -680,7 +684,7 @@ SKIPPED=0
 # Each runner's output is kept in a per-corpus log (printed on FAIL) so an
 # operator can see WHY a paid run failed. Outside the repo and the vault; the
 # directory persists on purpose -- the log is the evidence.
-LOG_DIR="$(mktemp -d "${TMPDIR:-/tmp}/graph-refresh-logs.XXXXXX")" || { echo "ERR graph-refresh: could not create the per-corpus log directory" >&2; exit 2; }
+LOG_DIR="$(tmpdir)" || { echo "ERR graph-refresh: could not create the per-corpus log directory" >&2; exit 2; }
 FAILED_LEGS=()
 for c in "${CORPORA[@]}"; do
     resolve_corpus_args "$c"
@@ -728,7 +732,7 @@ for c in "${CORPORA[@]}"; do
         # arbitrarily stale one. Do NOT auto-run it (publishing stays its own
         # operator action — a commit + push + PR the operator should opt into).
         if [ "$c" = "himmel" ]; then
-            echo "graph-refresh: [$c] NEXT -- run /graph-publish to ship the refreshed graphify-out/ (HIMMEL-1129)"
+            echo "graph-refresh: [$c] NEXT -- run /graph-publish to ship the refreshed graphify-out/"
         fi
     else
         leg_rc=$?
@@ -753,7 +757,7 @@ done
 # already completed. `|| true` masks the cadence rc; the captured stdout is what
 # matters. Both streams are merged so a scheduler warning is not lost.
 echo
-echo "graph-refresh: cadence status (HIMMEL-829) -- advisory:"
+echo "graph-refresh: cadence status -- advisory:"
 if [ -f "$CADENCE_SCRIPT" ]; then
     cadence_out=$(bash "$CADENCE_SCRIPT" status 2>&1) || true
     if [ -n "$cadence_out" ]; then

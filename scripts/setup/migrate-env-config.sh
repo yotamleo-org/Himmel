@@ -55,6 +55,8 @@ confdir=$(_himmel_config_dir)
 conf="$confdir/himmel.conf"
 
 # Key names only: the text before '=' on each uncommented line.
+# The shared registry includes non-secret Jira and service identifiers, so
+# both the dry run and the copy use the same classification as load_dotenv.
 names=$(awk '{ sub(/\r$/, "") } /^[[:space:]]*#/ { next } {
     i = index($0, "="); if (i == 0) next
     k = substr($0, 1, i - 1); gsub(/^[[:space:]]+|[[:space:]]+$/, "", k)

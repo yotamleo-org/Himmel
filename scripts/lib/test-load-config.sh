@@ -43,6 +43,32 @@ reset() { rm -f "$HOME/.himmel/"* "$REPO/.env"; }
 # run <snippet> — source the loader in a subshell inside the fixture repo.
 run() { ( cd "$REPO" && . "$LIB" && eval "$1" ) 2>&1; }
 
+# Reclassifying only the named service identifiers makes the config layers usable.
+identifiers='JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
+GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
+VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B'
+for k in $identifiers; do
+    reset
+    assert_eq "$k is config" "config" "$(run '_himmel_key_class "$k"')"
+    printf '%s=dummy-legacy\n' "$k" > "$REPO/.env"
+    printf '%s=dummy-config\n' "$k" > "$HOME/.himmel/himmel.conf"
+    out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
+    assert_eq "$k loads from config before legacy .env" "[dummy-config|rc=0]" "$out"
+    printf '%s=dummy-local\n' "$k" > "$HOME/.himmel/himmel.conf.local"
+    out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
+    assert_eq "$k loads from local override before config" "[dummy-local|rc=0]" "$out"
+    out=$(run 'export "$k=dummy-process"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
+    assert_eq "$k preserves non-empty process env" "[dummy-process|rc=0]" "$out"
+done
+for k in JIRA_BASE_URL TELEGRAM_GROUP_CHAT_ID JIRA_API_TOKEN TELEGRAM_BOT_TOKEN GCP_SERVICE_ACCOUNT_KEY SNYK_TOKEN VERCEL_TOKEN ANTHROPIC_API_KEY CONFLUENCE_EMAIL; do
+    reset
+    assert_eq "$k remains secret" "secret" "$(run '_himmel_key_class "$k"')"
+    printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf"
+    printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf.local"
+    out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
+    assert_eq "$k is never read from config" "[|rc=0]" "$out"
+done
+
 # (a) A gate-policy key set in config.json is NOT overridden by the env.
 reset
 printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1","CR_FLOOR_FALLBACK":"off"}}\n' > "$HOME/.himmel/config.json"
@@ -71,11 +97,18 @@ out=$(run 'load_policy --root "$PWD" CR_REQUIRE_CROSS_MODEL; printf "[%s]" "${CR
 assert_has "(b2) legacy .env policy key still applies" "[1]" "$out"
 assert_has "(b2) legacy .env policy key prints a deprecation notice" "DEPRECATED" "$out"
 
-# (b3) A secret key read from .env prints NO deprecation notice.
+# (b3) A secret key read from .env still loads, with exactly one deprecation
+# notice where a keyring CLI exists to move it to (a stub secret-tool here; the
+# keyring step itself is off). Darwin has no keyring backend yet, so no notice.
 reset
+mkdir -p "$TMP/stub-bin"
+printf '#!/bin/sh\nexit 1\n' > "$TMP/stub-bin/secret-tool"
+chmod +x "$TMP/stub-bin/secret-tool"
 printf 'JIRA_API_TOKEN=dummy\n' > "$REPO/.env"
-out=$(run 'load_dotenv JIRA_API_TOKEN; printf "[%s]" "${JIRA_API_TOKEN-}"')
-assert_eq "(b3) secret key loads from .env silently" "[dummy]" "$out"
+out=$(PATH="$TMP/stub-bin:$PATH" HIMMEL_SECRETS_KEYRING=off run 'load_dotenv JIRA_API_TOKEN; printf "[%s]" "${JIRA_API_TOKEN-}"')
+want=1; [ "$(uname -s)" = Darwin ] && want=0
+assert_has "(b3) legacy .env secret key still loads" "[dummy]" "$out"
+assert_eq "(b3) legacy .env secret key prints one deprecation notice" "$want" "$(printf '%s\n' "$out" | grep -c DEPRECATED)"
 
 # (c) Missing config file: safe default (unset) plus a visible notice.
 reset

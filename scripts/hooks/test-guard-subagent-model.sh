@@ -136,8 +136,8 @@ RC1E=$(run_hook explore-no-model "$(payload Explore '')")
 assert_rc "typed agent (Explore) with no model is DENIED (rc=2)" 2 "$RC1E"
 assert_contains "typed deny names the type" "Explore" "$(cat "$TMP/err-explore-no-model")"
 
-RC1F=$(run_hook judge-ro-no-model "$(payload console-judge-ro '')")
-assert_rc "typed agent (console-judge-ro) with no model is DENIED (rc=2)" 2 "$RC1F"
+RC1F=$(run_hook judge-ro-no-model "$(payload judge-ro '')")
+assert_rc "typed agent (judge-ro) with no model is DENIED (rc=2)" 2 "$RC1F"
 
 RC1G=$(run_hook plugin-agent-no-model "$(payload_no_model_field example-plugin:reviewer)")
 assert_rc "plugin-namespaced agent with no model is DENIED (rc=2)" 2 "$RC1G"

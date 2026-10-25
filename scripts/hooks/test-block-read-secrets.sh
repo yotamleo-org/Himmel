@@ -1262,12 +1262,14 @@ assert_rc "5484 ctl echo {a,b}"                 0 "$(run_case "$(j_bash 'echo {a
 
 # The tracing word as DATA (doc name, message text) is not a trace
 # switch; a position that sets the option still denies.
-APR='bash scripts/handover/console-kit/append-results.sh'
+APR='bash scripts/handover/chief-kit/append-results.sh'
 QLK='bash scripts/handover/queue-lock.sh'
 XDOC='/h/yotamleo/himmel/HIMMEL-1-secrets-guard-xtrace-word-2026-10-15.md'
 assert_rc "5659 append-results doc named with the word"   0 "$(run_case "$(j_bash "$APR $XDOC 'LIVE — started'")")"
 assert_rc "5659 append-results word in the text"          0 "$(run_case "$(j_bash "$APR $XDOC 'FINDING — the xtrace word is denied'")")"
-assert_rc "5659 append-results abs script path"           0 "$(run_case "$(j_bash "bash /r/scripts/handover/console-kit/append-results.sh $XDOC 'LIVE'")")"
+assert_rc "5659 append-results abs script path"           0 "$(run_case "$(j_bash "bash /r/scripts/handover/console-kit/append-results.sh $XDOC 'LIVE'")")" # old-term-ok: the old path must still be allowed
+assert_rc "5659 append-results through chief-kit"         0 "$(run_case "$(j_bash "bash scripts/handover/chief-kit/append-results.sh $XDOC 'LIVE — started'")")"
+assert_rc "5659 append-results abs path through chief-kit" 0 "$(run_case "$(j_bash "bash /r/scripts/handover/chief-kit/append-results.sh $XDOC 'LIVE'")")"
 assert_rc "5659 queue-lock release doc named with word"   0 "$(run_case "$(j_bash "$QLK release $XDOC tok-1")")"
 assert_rc "5659 queue-lock acquire doc named with word"   0 "$(run_case "$(j_bash "$QLK acquire $XDOC")")"
 assert_rc "5659 git commit -m message names the word"     0 "$(run_case "$(j_bash "git commit -m 'fix: the xtrace word in a data position'")")"
@@ -1338,6 +1340,58 @@ assert_rc "command env NAME='x; cat .env' prog denies"     2 "$(run_case "$(j_ba
 assert_rc "env -C sub NAME=1 cat .e* denies"               2 "$(run_case "$(j_bash 'env -C sub NAME=1 cat .e*')")"
 assert_rc "cd sub then env NAME=1 cat .e* denies"          2 "$(run_case "$(j_bash 'cd sub && env NAME=1 cat .e*')")"
 assert_rc "env NAME=ok prog stays allowed"                 0 "$(run_case "$(j_bash 'env NAME=ok prog')")"
+
+# --- secret stores: agent-issued retrieval from a keyring, the Keychain, the
+# Secret Service bus, systemd credentials, the himmel resolver, a committed
+# secret, and the 1Password / sops / age CLIs.
+assert_rc "7147 secret-tool lookup"                        2 "$(run_case "$(j_bash 'secret-tool lookup service himmel key FAKE_KEY')")"
+assert_rc "7147 secret-tool search"                        2 "$(run_case "$(j_bash 'secret-tool search --all service himmel')")"
+assert_rc "7147 secret-tool store"                         2 "$(run_case "$(j_bash 'secret-tool store --label x service himmel key FAKE_KEY')")"
+assert_rc "7147 timeout-wrapped secret-tool lookup"        2 "$(run_case "$(j_bash 'timeout 3 secret-tool lookup service himmel key FAKE_KEY')")"
+assert_rc "7147 security find-generic-password -w"         2 "$(run_case "$(j_bash 'security find-generic-password -s himmel -a FAKE_KEY -w')")"
+assert_rc "7147 security find-internet-password -w"        2 "$(run_case "$(j_bash 'security find-internet-password -s example.com -w')")"
+assert_rc "7147 security find-generic-password -g"         2 "$(run_case "$(j_bash 'security find-generic-password -g -s himmel')")"
+assert_rc "7147 security dump-keychain"                    2 "$(run_case "$(j_bash 'security dump-keychain -d')")"
+assert_rc "7147 kwallet-query -r"                          2 "$(run_case "$(j_bash 'kwallet-query -r FAKE_KEY kdewallet')")"
+assert_rc "7147 busctl GetSecrets"                         2 "$(run_case "$(j_bash 'busctl --user call org.freedesktop.secrets /org/freedesktop/secrets org.freedesktop.Secret.Service GetSecrets aoo 1 /x /s')")"
+assert_rc "7147 gdbus Item.GetSecret"                      2 "$(run_case "$(j_bash 'gdbus call --session --dest org.freedesktop.secrets --object-path /org/freedesktop/secrets/collection/login/1 --method org.freedesktop.Secret.Item.GetSecret /s')")"
+assert_rc "7147 dbus-send GetSecret"                       2 "$(run_case "$(j_bash 'dbus-send --session --print-reply --dest=org.freedesktop.secrets /org/freedesktop/secrets/collection/login/1 org.freedesktop.Secret.Item.GetSecret objpath:/s')")"
+assert_rc "7147 systemd-creds decrypt"                     2 "$(run_case "$(j_bash 'systemd-creds decrypt --user fake.cred -')")"
+assert_rc "7147 himmel-secrets get"                        2 "$(run_case "$(j_bash 'himmel-secrets get FAKE_KEY')")"
+assert_rc "7147 repo-path himmel-secrets get"              2 "$(run_case "$(j_bash 'scripts/lib/himmel-secrets get FAKE_KEY')")"
+assert_rc "7147 bash himmel-secrets get"                   2 "$(run_case "$(j_bash 'bash scripts/lib/himmel-secrets get FAKE_KEY')")"
+assert_rc "7147 bash -c himmel-secrets get"                2 "$(run_case "$(j_bash "bash -c 'scripts/lib/himmel-secrets get FAKE_KEY'")")"
+assert_rc "7147 himmel-secrets put"                        2 "$(run_case "$(j_bash 'himmel-secrets put --stdin FAKE_KEY')")"
+assert_rc "7147 himmel-secrets import-env"                 2 "$(run_case "$(j_bash 'himmel-secrets import-env fake.env')")"
+assert_rc "7147 himmel-secrets export-env"                 2 "$(run_case "$(j_bash 'himmel-secrets export-env out.env')")"
+assert_rc "7147 git show rev:.env"                         2 "$(run_case "$(j_bash 'git show HEAD:.env')")"
+assert_rc "7147 git show rev:path/.env"                    2 "$(run_case "$(j_bash 'git show main~3:config/.env.local')")"
+assert_rc "7147 git cat-file -p rev:.env"                  2 "$(run_case "$(j_bash 'git cat-file -p HEAD:.env')")"
+assert_rc "7147 git -c k=v show rev:.env"                  2 "$(run_case "$(j_bash 'git -c color.ui=always show HEAD:.env')")"
+assert_rc "7147 git -c k=v cat-file -p rev:.env"           2 "$(run_case "$(j_bash 'git -c core.pager=cat cat-file -p HEAD:.env')")"
+assert_rc "7147 git -C dir show rev:credentials.json"      2 "$(run_case "$(j_bash 'git -C ../other show HEAD:credentials.json')")"
+assert_rc "7147 op read"                                   2 "$(run_case "$(j_bash 'op read op://vault/item/field')")"
+assert_rc "7147 op inject"                                 2 "$(run_case "$(j_bash 'op inject -i tpl.env')")"
+assert_rc "7147 op run"                                    2 "$(run_case "$(j_bash 'op run -- ./deploy.sh')")"
+assert_rc "7147 sops decrypt"                              2 "$(run_case "$(j_bash 'sops decrypt secrets.enc.yaml')")"
+assert_rc "7147 sops -d"                                   2 "$(run_case "$(j_bash 'sops -d secrets.enc.yaml')")"
+assert_rc "7147 sops exec-env"                             2 "$(run_case "$(j_bash 'sops exec-env secrets.enc.yaml ./run.sh')")"
+assert_rc "7147 sops exec-file"                            2 "$(run_case "$(j_bash 'sops exec-file secrets.enc.yaml ./run.sh')")"
+assert_rc "7147 sops edit"                                 2 "$(run_case "$(j_bash 'SOPS_EDITOR=cat sops edit secrets.enc.yaml')")"
+assert_rc "7147 age -d"                                    2 "$(run_case "$(j_bash 'age -d -i key.txt secret.age')")"
+assert_rc "7147 age --decrypt"                             2 "$(run_case "$(j_bash 'age --decrypt -i key.txt secret.age')")"
+assert_rc "7147 ctl himmel-secrets status"                 0 "$(run_case "$(j_bash 'himmel-secrets status')")"
+assert_rc "7147 ctl repo-path himmel-secrets status"       0 "$(run_case "$(j_bash 'bash scripts/lib/himmel-secrets status FAKE_KEY')")"
+assert_rc "7147 ctl himmel-secrets exec"                   0 "$(run_case "$(j_bash 'himmel-secrets exec --keys FAKE_KEY -- ./run.sh')")"
+assert_rc "7147 ctl git show of a source file"             0 "$(run_case "$(j_bash 'git show HEAD:scripts/lib/load-dotenv.sh')")"
+assert_rc "7147 ctl git show --stat"                       0 "$(run_case "$(j_bash 'git show --stat HEAD')")"
+assert_rc "7147 ctl git cat-file -p of a source file"      0 "$(run_case "$(j_bash 'git cat-file -p HEAD:README.md')")"
+assert_rc "7147 ctl git show of .env.example"              0 "$(run_case "$(j_bash 'git show HEAD:.env.example')")"
+assert_rc "7147 ctl busctl Locked property read"           0 "$(run_case "$(j_bash 'busctl --user get-property org.freedesktop.secrets /org/freedesktop/secrets/aliases/default org.freedesktop.Secret.Collection Locked')")"
+assert_rc "7147 ctl security without -w or -g"             0 "$(run_case "$(j_bash 'security find-generic-password -s himmel -a FAKE_KEY')")"
+assert_rc "7147 ctl grep for secret-tool in a file"        0 "$(run_case "$(j_bash 'grep -n secret-tool scripts/lib/himmel-secrets')")"
+assert_rc "7147 ctl commit message naming secret-tool"     0 "$(run_case "$(j_bash "git commit -m 'docs: secret-tool lookup is denied'")")"
+assert_rc "7147 ctl age encrypt"                           0 "$(run_case "$(j_bash 'age -r age1xyz -o out.age in.txt')")"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then

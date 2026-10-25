@@ -222,7 +222,7 @@ head>`). The PR's own green rollup is not the question here: main is.
    is refused with the same exit 22. Trailers belong in the FIRST commit; a
    late declaration costs a new commit, never `--amend`.
    **Or the chief writes a fix-GO**, when a commit line is not
-   an option: `bash <anchor>/scripts/handover/console-kit/go.sh --fix-main-red
+   an option: `bash <anchor>/scripts/handover/chief-kit/go.sh --fix-main-red
    <red run id> <pr> <full head sha>`, from the chief (a worker cannot; it needs
    the same ready-check PASS as any GO). The signed file names ONE red run, one
    PR and one head, and the gate accepts it only while that run is still
@@ -533,7 +533,7 @@ never the problem.
 **What to do:** retype the same script call as the **bare literal** its
 allow rule spells out — unquoted, no `$VAR`, no `cd … &&` prefix, no pipe
 into the gate script itself (write the input to a file first). That is the
-one permitted retry (`docs/handover/leg-sections/shell-and-tests.md`). If the
+one permitted retry (`docs/handover/worker-sections/shell-and-tests.md`). If the
 bare literal is *still* denied, this is not a spelling problem: stop, do not
 try a third spelling, and go `BLOCKED` to the chief.
 
@@ -666,7 +666,7 @@ directories. `headed-arm-leg.sh --profile` now grants every generated worker
 settings file (native and claudex) only the worker **doc's own directory** as a
 `permissions.additionalDirectories` entry — never the whole handover root —
 so a Results write no longer falls to the classifier on a fresh launch. The
-grant is scoped this narrowly because `console-kit/go.sh`'s merge GO is
+grant is scoped this narrowly because `chief-kit/go.sh`'s merge GO is
 authenticated only by the *existence* of a file under
 `<handover_root>/.locks/go/<pr>.<sha>` (`go-gate.sh`, `merge-on-green.sh`),
 with no hook guarding that path: widening the grant to the root would let a
@@ -777,7 +777,7 @@ it, so keep working while you wait.
 ## Symptom: `vm-runner.sh on|off|status` is denied by the classifier (HIMMEL-5037)
 
 The VM CI runner's only control entry point is
-`bash scripts/handover/console-kit/vm-runner.sh on|off|status` (optionally
+`bash scripts/handover/chief-kit/vm-runner.sh on|off|status` (optionally
 `on --vms 1` or `on --vms 2`), each pre-approved as one exact literal in
 `.claude/settings.json`. A denial means that allow rule is missing or does not
 match the text you typed (a quote, a `VAR=` prefix, an absolute path, an extra
@@ -787,7 +787,7 @@ effect, and never widen the rule to a wildcard.
 
 **What to do:** retype the bare relative literal once from the worktree root.
 If it is still denied, report `BLOCKED` to the chief naming the exact text
-that was refused; the operator runs `! bash scripts/handover/console-kit/vm-runner.sh <on|off|status>`
+that was refused; the operator runs `! bash scripts/handover/chief-kit/vm-runner.sh <on|off|status>`
 at the station. `off` is the kill switch and is always safe to ask for.
 
 ---

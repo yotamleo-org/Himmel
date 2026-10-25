@@ -2,11 +2,15 @@
 // write path for a secret value. The value is held in a local for the write only: it is never logged, audited,
 // returned, or put in an error.
 import { execFile, execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { LOGIN_EXISTS, readLogin, writeLogin } from "./login";
+import { runChild } from "./lock";
 import * as store from "../himmelctl/lib/secret-store.js";
 import { readConfLayers } from "./conf-layers";
+import { projectModeForge } from "../lib/project-mode.mjs";
 import manifest from "../himmelctl/lib/secrets-manifest.json";
 
 const execFileAsync = promisify(execFile);
@@ -39,6 +43,23 @@ const ctxOf = (o: SetupOpts) => ({ home: o.home, himmelRoot: o.himmelRoot, proje
 function commitRules(home: string) {
   const kv = readConfLayers({ HOME: home });
   return { tracker: kv.TRACKER ?? null, ticketIdRequired: kv.TICKET_ID_REQUIRED === "1" ? true : kv.TICKET_ID_REQUIRED === "0" ? false : null };
+}
+
+// The setup choices the page can write: each path's current value from himmel.conf (null when unset, with the default
+// that then applies), and the forge as the resolver detects it, shown only.
+function choices(o: SetupOpts) {
+  const kv = readConfLayers({ HOME: o.home });
+  const path = (target: string, key: string, fallback: string) => ({ target, key, value: kv[key] || null, fallback });
+  let forge: { value: string | null; error: string | null };
+  try { forge = { value: projectModeForge({ cwd: o.projectRoot, env: o.env, quiet: true }), error: null }; }
+  catch (e) { forge = { value: null, error: String((e as Error)?.message || e) }; }
+  return {
+    paths: [
+      path("handover-root", "HANDOVER_DIR", "handovers/ inside each repo"),
+      path("luna-vault", "LUNA_VAULT_PATH", "no luna vault; vault capture stays off"),
+    ],
+    forge,
+  };
 }
 
 const CR_APP_URL = "https://github.com/apps/coderabbitai";
@@ -90,8 +111,41 @@ export async function setupState(o: SetupOpts & AccountOpts) {
     account: account(o),
     secrets: entries.map((e) => ({ name: e.name, feature: e.feature ?? "", required: e.required ?? "", collect: e.collect, example: EXAMPLES[e.name] ?? "", status: store.detect(e.name, ctx).status })),
     commit: commitRules(o.home),
+    choices: choices(o),
     coderabbit: await coderabbit(o),
   };
+}
+
+export type VerifyOpts = { env: Env; doctor: string; cwd: string; timeoutMs: number; redact: <T>(v: T) => T };
+type Sev = "OK" | "INFO" | "WARN" | "FAIL";
+
+// POST /api/setup/verify: the doctor's read-only checks as one summary and the WARN/FAIL rows. The argv is constant (no
+// --fix, no --file-issue) and the state dir is a throwaway, so a run publishes nothing to the statusline counts. Row text
+// passes the caller's redactor; the child's stderr is dropped, never returned or logged.
+export async function verifyDoctor(o: VerifyOpts): Promise<Record<string, unknown>> {
+  const stateDir = mkdtempSync(join(tmpdir(), "himmel-verify-"));
+  try {
+    const r = await runChild(["bash", o.doctor, "--json", "--no-color"], { cwd: o.cwd, env: { ...o.env, HIMMEL_DOCTOR_STATE_DIR: stateDir }, timeoutMs: o.timeoutMs });
+    if (r.timedOut) return { state: "timeout", error: `the doctor did not finish within ${Math.round(o.timeoutMs / 1000)} s; run it in your terminal: bash scripts/himmel-doctor.sh` };
+    const count = { OK: 0, INFO: 0, WARN: 0, FAIL: 0 };
+    const findings: { sev: Sev; id: string; msg: string; remedy: string }[] = [];
+    let unread = 0;
+    for (const line of r.stdout.split("\n")) {
+      if (!line.trim()) continue;
+      let row: any;
+      try { row = JSON.parse(line); } catch { unread++; continue; }
+      if (!row || typeof row.id !== "string" || !(row.sev in count)) { unread++; continue; }
+      count[row.sev as Sev]++;
+      if (row.sev === "WARN" || row.sev === "FAIL") findings.push({ sev: row.sev, id: row.id, msg: String(row.msg ?? ""), remedy: String(row.remedy ?? "") });
+    }
+    // A finished run reads every row it printed (the runner caps captured output, which can cut a row), prints a Summary line
+    // (stderr, read here and dropped) whose counts match those rows, and exits 1 exactly when a FAIL row was printed, else 0.
+    const sum = /^Summary: (\d+) FAIL\s+(\d+) WARN\s+(\d+) INFO/m.exec(r.stderr);
+    const finished = unread === 0 && !!sum && [count.FAIL, count.WARN, count.INFO].every((n, i) => n === Number(sum[i + 1])) && r.rc === (count.FAIL > 0 ? 1 : 0);
+    if (!finished) return { state: "error", error: `the doctor did not finish its report (exit ${r.rc}); run it in your terminal: bash scripts/himmel-doctor.sh` };
+    findings.sort((a, b) => Number(b.sev === "FAIL") - Number(a.sev === "FAIL"));
+    return o.redact({ state: "done", ok: count.OK, info: count.INFO, warn: count.WARN, fail: count.FAIL, findings });
+  } finally { rmSync(stateDir, { recursive: true, force: true }); }
 }
 
 const fail = (status: number, error: string): SecretResult => ({ status, body: { error }, audit: null });

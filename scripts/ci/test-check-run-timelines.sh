@@ -166,7 +166,7 @@ run_ready_check() {
     local of="$CASE/rc-out" sha
     sha=$(jq -r .headRefOid "$CASE/pr.json")
     PATH="$BIN:$PATH" HOME="$TMP/home" GH_CMD="$BIN/gh" GH_PR_SNAPSHOT_CACHE_DIR="$CASE/snap" \
-        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 120} bash "$ROOT/scripts/handover/console-kit/ready-check.sh" \
+        ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 5 120} bash "$ROOT/scripts/handover/chief-kit/ready-check.sh" \
         "$(jq -r .number "$CASE/pr.json")" "$sha" >"$of" 2>"$CASE/rc-err" </dev/null
     RC_OUT=$(cat "$of")
 }

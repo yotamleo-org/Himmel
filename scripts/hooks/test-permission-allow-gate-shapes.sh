@@ -6,7 +6,7 @@
 # else through (no output). Builds a throwaway repo + linked worktree.
 # env: HOOK overrides the hook under test (RED run against a tree without it).
 #
-# bash 3.2-safe. PLATFORM GUARD: Linux-only console-kit surface, no .ps1 twin.
+# bash 3.2-safe. PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -63,8 +63,8 @@ expect() {
     if [ "$got" = "$want" ]; then ok "$label"; else bad "$label (want $want, got $got)"; fi
 }
 
-expect "append-results (source set unbounded) passes through" pass "$WT" Bash "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE — step done\""
-expect "append-results absolute spelling passes through" pass "$WT" Bash "bash $WT/scripts/handover/console-kit/append-results.sh $DOC \"LIVE — x\""
+expect "append-results (source set unbounded) passes through" pass "$WT" Bash "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE — step done\""
+expect "append-results absolute spelling passes through" pass "$WT" Bash "bash $WT/scripts/handover/chief-kit/append-results.sh $DOC \"LIVE — x\""
 expect "impacted-suites --check --from-file" allow "$WT" Bash "bash scripts/cr/impacted-suites.sh --check $SHA..$SHA --from-file .tmp/v.txt"
 expect "review-round promote" allow "$WT" Bash "bash scripts/cr/review-round.sh promote --branch 'feat/himmel-1-x' --head $SHA"
 expect "write-verdicts aggregate" allow "$WT" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch feat/himmel-1-x --from-file .tmp/v.txt"
@@ -80,7 +80,7 @@ expect "worktree of a different repository passes through" pass "$T/other/.claud
 expect "non-Bash tool passes through" pass "$WT" Edit "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 expect "unlisted SKIP hook passes through" pass "$WT" Bash "SKIP=check-commit-msg git commit -F .tmp/msg.txt"
 expect "chained command passes through" pass "$WT" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt; rm -rf /"
-expect "command substitution in doc text passes through" pass "$WT" Bash "bash scripts/handover/console-kit/append-results.sh $DOC \"LIVE \$(id)\""
+expect "command substitution in doc text passes through" pass "$WT" Bash "bash scripts/handover/chief-kit/append-results.sh $DOC \"LIVE \$(id)\""
 expect "extra argument passes through" pass "$WT" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt --force"
 expect "newline-joined command passes through" pass "$WT" Bash "$(printf 'bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt\nrm -rf x')"
 expect "quiet-run suite outside the worktree passes through" pass "$WT" Bash "bash scripts/quiet-run.sh suite -- bash /tmp/test-evil.sh"

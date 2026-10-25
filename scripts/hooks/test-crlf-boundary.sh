@@ -827,10 +827,10 @@ check guard-rm-writes Bash 0 "gi""t status" "allow a read in a release-manager s
 # The listed-name match ends at a tail class; a terminal CR must not glue itself
 # to the script name.
 printf 'claude\0-n\0N-console\0' > "$TMP/cmdline-console"
-check guard-console-foreground Bash 2 "bash scripts/handover/console-kit/wrap-merged.sh --pr 12" \
+check guard-console-foreground Bash 2 "bash scripts/handover/chief-kit/wrap-merged.sh --pr 12" \
     "deny a foreground long kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md \
     CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console"
-check guard-console-foreground Bash 0 "bash scripts/handover/console-kit/go.sh x" \
+check guard-console-foreground Bash 0 "bash scripts/handover/chief-kit/go.sh x" \
     "allow a short kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md \
     CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console"
 

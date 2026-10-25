@@ -345,13 +345,14 @@ selects, or probes either; an operator who wants them sets the registry's
 `optInEnv` directly rather than through himmelctl. This is a wizard/installer
 scoping decision, not a registry deletion: both rows stay fully live in
 `/lanes` and this table, on the operator's own explicit opt-in, "based on user
-requests" (the ruling's own words) — the same dormant shape every other row
-below already uses.
+requests" (the ruling's own words) — the same dormant shape the other dormant
+rows below use. `claudex` is the exception: a live implementation lane with no
+`dormant` entry and no opt-in.
 
 | Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota | Calibration status |
 |---|---|---|---|---|---|
 | `glm` — GLM lane (spawn-glm.ts) | impl | small-context discipline — chunk big plans | 1M | glm (flat-rate overflow, not per-token) | dormant (HIMMEL-1967) |
-| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | launcher default `high`; `xhigh` rare; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | calibrated |
+| `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | model `gpt-6.1-sol`; launcher default `medium`; a chief-dispatched worker runs `xhigh` through its brief's `effort` key; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | live — calibrated; `dispatch-lane.sh` accepts it once 5 consecutive verified passes exist (`readiness.passesRequired`) |
 | `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default (ox-alpha stays reserved for `hermes-oneshot`/dispatch-trusted); not yet wired into the `/pr-check` gate |
 | `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
 | `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
@@ -483,15 +484,15 @@ dispatch surfaces, both keyed off the same `lanes.json` `effort` field
   `run.ts:328-329` folds the row's `effort` into `CLAUDE_CODE_EFFORT_LEVEL` for
   the spawned session's env.
 - **Chief-launched native worker** (`79b205218`):
-  `scripts/handover/console-kit/headed-arm-leg.sh:746-764` mirrors the same
+  `scripts/handover/chief-kit/headed-arm-leg.sh:746-764` mirrors the same
   match rule (exact model id, or `claude-<tier-id>-` prefix) for `LANE=native`
   — an explicit ambient `CLAUDE_CODE_EFFORT_LEVEL` always wins (checked before
   the lookup, `headed-arm-leg.sh:747-748`); otherwise it resolves the row via
-  `jq` against `lanes.json` and exports it. `scripts/handover/console-kit/
+  `jq` against `lanes.json` and exports it. `scripts/handover/chief-kit/
   test-headed-arm-leg.sh` carries 18 assertions on `CLAUDE_CODE_EFFORT_LEVEL`
   (including cases 34a-34c: tier-row export, no-row leaves it unset, ambient
   value survives the lookup), all passing on current main
-  (`bash scripts/quiet-run.sh suite -- bash scripts/handover/console-kit/
+  (`bash scripts/quiet-run.sh suite -- bash scripts/handover/chief-kit/
   test-headed-arm-leg.sh`).
 
 A third, related mechanism — the tier-reason gate that requires a sanctioned
@@ -766,8 +767,8 @@ does not reach subagents, since they carry no `-n` name.
 
 Workers were already pinned to the standard (200k-autocompact) context mode by
 the table above — but the fact lived only in prose, one convention every
-ad-hoc console-kit copy of the worker launcher had to remember correctly.
-`scripts/handover/console-kit/headed-arm-leg.sh` makes it structural: a thin
+ad-hoc chief-kit copy of the worker launcher had to remember correctly.
+`scripts/handover/chief-kit/headed-arm-leg.sh` makes it structural: a thin
 wrapper around `headed-arm.sh` whose resolved worker launch must carry the
 cost-driving `--autocompact 200000` pair. `WORKER_SESSION_CONTEXT=1m` now refuses with
 exit 2 instead of weakening the worker ceiling; absence of a `[1m]` model suffix
@@ -776,7 +777,7 @@ still receiving `--autocompact auto`. Scheduled workers opt into the same
 guard with `arm-resume.sh --tier leg`; `--tier leg --context 1m` refuses before
 scheduler work. A caller that hands the headed wrapper an already-`[1m]`-
 suffixed model still gets it forwarded unchanged, and `headed-arm.sh` strips
-the literal suffix under standard mode (`scripts/handover/console-kit/
+the literal suffix under standard mode (`scripts/handover/chief-kit/
 test-headed-arm-leg.sh` asserts this end-to-end). The wrapper also adds the
 worker-only `IMPL_GUARD_OK=1` env and folds `WORKER_SESSION_REPO` onto `headed-arm.sh`'s own
 `HEADED_ARM_REPO` seam.
@@ -831,7 +832,7 @@ workers (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
 excluding names containing `-console` — chiefs are not workers) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
 `HIMMEL_FLEET_CAP` (env, else `.env`, default **4**). Wired at ARM time in
-both `scripts/handover/console-kit/headed-arm-leg.sh` and
+both `scripts/handover/chief-kit/headed-arm-leg.sh` and
 `scripts/handover/arm-resume.sh`, so a new worker is refused before the
 scheduler entry (or the konsole window) is ever created — cheaper than
 refusing after a signal/deadline wait. Off switch: `FLEET_CAP_OK=1` in the
@@ -875,6 +876,27 @@ GPT-6.1 Sol (`gpt-6.1-sol`) via the local CLIProxyAPI service — drawing on the
 usage budget** (`bank-preflight.sh` parks a claudex worker on
 `scripts/lanes/codex-bank-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
+
+**A live lane.** claudex is a live implementation lane in
+`scripts/lanes/lanes.json`: its row has no `dormant` entry, `/lanes` lists it
+without a DORMANT note, and no opt-in variable is needed to dispatch it. Two
+routes reach it:
+
+- **A worker** (`headed-arm-worker.sh --lane claudex`) runs `gpt-6.1-sol` by
+  default (a brief's `model` key overrides it). The launcher's own default
+  effort is `medium`; a chief-dispatched worker runs at `xhigh` through its
+  brief's `effort` key, which exports `WORKER_SESSION_EFFORT`.
+- **A one-off dispatch** (`dispatch-lane.sh --lane claudex`) is accepted once
+  the flow-runs ledger holds 5 consecutive verified passes on `claudex/`
+  branches (`readiness.passesRequired`). Until then the readiness gate refuses
+  it.
+
+`CLAUDEX_LANE_OK=1` is not a dispatch opt-in. Neither `scripts/claude-codex`
+nor `spawn-claudex.ts` sets it; only `headed-arm-worker.sh --lane claudex`
+exports it into the worker it launches. `usage-preflight.sh` reads it to label
+that worker's fleet line `claudex`, and `chief-context.sh` strips it before it
+arms a chief. One run still requires it: `scripts/eval/lane-quality/run.sh
+--lane claudex` exits 3 unless `CLAUDEX_LANE_OK=1` is on the command.
 
 **Default while the Claude weekly is scarce.** A well-specified, single-worker
 implementation brief is the claudex lane's home case precisely because it
@@ -934,12 +956,23 @@ the doc rather than going quiet.
 
 **The one sanctioned park:** the READY → GO merge hold
 (`docs/handover/leg-preface-claudex.md`) does not violate "never park" — it is
-bounded by the file inbox channel (`scripts/handover/console-kit/inbox-send.sh`
+bounded by the file inbox channel (`scripts/handover/chief-kit/inbox-send.sh`
 writing, `scripts/hooks/claudex-inbox-hook.sh` delivering), observable (a READY
 bullet in the doc, held by one background Bash wait on the doc for the
 matching GO file (merge approval), with a 30-minute timeout, re-issued rather than open-ended), and
 required because a merge is irreversible. See also `docs/internals/retask-channel.md` for the token
 discipline governing the GO itself. No other wait qualifies.
+
+**Measuring the split.** `scripts/lanes/bench/scorecard/fleet-scorecard.sh`
+compares claudex and native workers on real fleet work. It prints one row per
+worker in two halves: output quality (judge verdicts, CR findings, rounds to
+clean, pushes after READY, main reds, 7-day escapes) and fleet management
+(launch to LIVE and READY, chief interventions, protocol misses, stalls,
+denials, cost-eq per merged PR). A per-lane table gives totals and medians.
+Run it as `fleet-scorecard.sh --manifest <chief>.fleet.json [--manifest …]
+--since <ISO time> --prs <gh pr list --state all --json …>`. It reads local
+ledgers only and writes to stdout or a local `--out` path. Any source it
+cannot read prints `n/a (<reason>)`, never 0.
 
 ## Every launch path applies a role-matched plugin profile
 

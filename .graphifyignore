@@ -3,3 +3,5 @@ archive/windows/
 *.ps1
 # Voice is archived until it returns for Linux/macOS.
 archive/voice/
+# Hidden acceptance tests of lane-quality real tasks: answers stay out of every index.
+scripts/eval/lane-quality/tasks/*/hidden/

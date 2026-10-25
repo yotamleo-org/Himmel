@@ -5,7 +5,7 @@ export type Row = {
   lastEventAt: number | null; subagents: { total: number; running: number }; failures: number;
   parent: string | null; predecessor: string | null; agents: { name: string; role: string; state: string }[];
   usage: {
-    calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number;
+    calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number | null;
     resident: number | null; ceiling: number; ceilingFrom: "autocompact" | "window"; fill: number | null;
   } | null;
   cloud: { url: string | null; phase: "working" | "done" | "blocked" | "merged" | "closed" | "unknown" } | null;
@@ -187,9 +187,9 @@ export function filterCount(rows: Row[], f: Filters, procs: ProcessOrphan[] = []
 }
 
 // A session name without its ticket and date: `HIMMEL-NNNN-N1497-sandbox-runner-2026-10-08` is `N1497 sandbox-runner`,
-// a console `HIMMEL-nextleg-2026-10-08BU-roadmap-console` is `BU-roadmap-console`; anything else is kept whole.
+// a console `HIMMEL-nextleg-2026-10-08BU-roadmap-console` is `BU-roadmap-console` (a chief's `-roadmap-chief` the same); anything else is kept whole.
 export function shortName(name: string): string {
-  const c = /-\d{4}-\d{2}-\d{2}([A-Z]+-.*-console)$/.exec(name);
+  const c = /-\d{4}-\d{2}-\d{2}([A-Z]+-.*-(?:console|chief))$/.exec(name);
   if (c) return c[1];
   const l = /^[A-Z][A-Z0-9]+-\d+-(N\d+[a-z]?)-(.+?)(?:-\d{4}-\d{2}-\d{2})?(-RESUME)?$/.exec(name);
   return l ? `${l[1]} ${l[2]}${l[3] ? " (resume)" : ""}` : name;

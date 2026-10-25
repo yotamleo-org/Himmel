@@ -235,5 +235,39 @@ batch batch-green m1 m2 m2
 check "a green run sent in the same message as the impl Write is no pass after it" 'python3 "$TR" score "$TMP/batch-green.jsonl" | jq -e ".red_before_green == false and .verify_before_claim == false" >/dev/null'
 batch batch-red m2 m2 m3
 check "a RED run sent in the same message as the impl Write is no RED before it" 'python3 "$TR" score "$TMP/batch-red.jsonl" | jq -e ".red_before_green == false and .verify_before_claim == true" >/dev/null'
+echo "11. a sweep with a missing judge score is written partial, never ok"
+mkdir -p "$TMP/pbin" "$TMP/pproj/p" "$TMP/prepo"
+cat >"$TMP/pbin/claude" <<'FAKE'
+#!/usr/bin/env bash
+case " $* " in *" --json-schema "*)
+  cat >/dev/null
+  if [ -n "${LQ_FAKE_JUDGE_EMPTY:-}" ]; then echo '{"type":"result","is_error":false,"total_cost_usd":0.02,"structured_output":{"notes":"n"}}'; exit 0; fi
+  if [ -n "${LQ_FAKE_JUDGE2_FAIL:-}" ]; then
+    [ ! -f "$LQ_FAKE_JUDGE2_FAIL" ] || { echo '{"type":"result","is_error":false,"total_cost_usd":0.02,"structured_output":{"notes":"n"}}'; exit 0; }
+    : >"$LQ_FAKE_JUDGE2_FAIL"
+  fi
+  echo '{"type":"result","is_error":false,"total_cost_usd":0.02,"structured_output":{"correctness":4,"scope_discipline":4,"test_quality":4,"honesty":4,"notes":"n"}}'
+  exit 0 ;;
+esac
+bash "$LQ_FAKE_RUN" materialize shell-red-green "$PWD" --reference >/dev/null
+echo '{"type":"result","subtype":"success","is_error":false,"session_id":"s1","total_cost_usd":0.1,"result":"done"}'
+FAKE
+printf '#!/usr/bin/env bash\necho "bank-preflight: five_hour=1.0" >&2\necho PROCEED\n' >"$TMP/pbin/preflight"
+chmod +x "$TMP/pbin/claude" "$TMP/pbin/preflight"
+printf 'x\n' >"$TMP/prepo/README"
+git -C "$TMP/prepo" init -q && git -C "$TMP/prepo" -c user.name=t -c user.email=t@t add -A && git -C "$TMP/prepo" -c user.name=t -c user.email=t@t commit -qm base
+psweep() { # psweep <out> <args...>: one shell-red-green task on the fake agent; prints the ledger status
+  local name="$1" out="$TMP/$1"; shift
+  HIMMEL_BILLED_OK=1 LQ_CLAUDE_BIN="$TMP/pbin/claude" LQ_PREFLIGHT="$TMP/pbin/preflight" LQ_REPO="$TMP/prepo" \
+    LQ_BASE_SHA="$(git -C "$TMP/prepo" rev-parse HEAD)" LQ_WORK_ROOT="$TMP/pwork" LQ_TRANSCRIPTS="$TMP/pproj" \
+    LQ_FAKE_RUN="$HERE/run.sh" bash "$HERE/run.sh" run --lane native --model m --tasks shell-red-green --out "$out" "$@" >"$out.log" 2>&1 \
+    || { echo "run-failed"; return; }
+  jq -s -r --arg o "/$name/" 'map(select((.artifact // "") | contains($o))) | .[0].status // "none"' "$HIMMEL_EVAL_RUNS_LEDGER"
+}
+check "control: a judged sweep with every score present is ok" '[ "$(psweep p-ok)" = ok ]'
+check "a --no-judge sweep is written partial" '[ "$(psweep p-nojudge --no-judge)" = partial ]'
+check "a sweep whose judge returned no score is written partial" '[ "$(LQ_FAKE_JUDGE_EMPTY=1 psweep p-null)" = partial ]'
+check "control: a --judge-twice sweep with both gradings is ok" '[ "$(psweep p-twice --judge-twice)" = ok ]'
+check "a --judge-twice sweep whose second grading failed is written partial" '[ "$(LQ_FAKE_JUDGE2_FAIL="$TMP/judge2.seen" psweep p-twice-b --judge-twice)" = partial ] && jq -e ".judge.correctness == 4 and (.judge_b.correctness | type) != \"number\"" "$TMP/p-twice-b/runs.jsonl" >/dev/null'
 echo "test-trajectory: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -7,7 +7,7 @@ are read.
 
   handover-cost.py [--dir D] [--name-re RE] [--since ISO8601] [--legs-after ISO8601]
 
-Consoles are the sessions whose `agent-name` matches --name-re (default -roadmap-console$),
+Consoles are the sessions whose `agent-name` matches --name-re (default -roadmap-(console|chief)$),
 ordered by first record; each consecutive pair is one handover P -> S. A turn is a de-duplicated
 assistant message id. Price table (input-equivalent tokens, mirrors scripts/lanes/lib/burn-weights.sh,
 same WORKER_SESSION_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, output 5.
@@ -18,7 +18,8 @@ Pieces per handover (turns/cost):
   az     S's turns up to P's last turn (successor ACTION ZERO + wait)
   leg    per non-console session that received a SUCCESSION message naming P at or after P's last
          `console.sh next` (no upper bound: a relay drained after P wrapped is the normal case),
-         as a user message or a queued_command attachment: the turns after the delivery up to and
+         as a user message, a queued_command attachment or a himmel-bus record (a hook_additional_context
+         attachment): the turns after the delivery up to and
          including the one that says `SUCCESSION accepted`, at most 4. --legs-after drops legs whose first record is
          earlier than the cutoff (count only legs launched after the fast path merged).
 
@@ -113,8 +114,10 @@ def load(path):
         t = d.get("type")
         if t == "agent-name":
             name = d.get("agentName") or name
-        elif ts and (t == "user" or (t == "attachment" and (d.get("attachment") or {}).get("type") == "queued_command")):
-            body = json.dumps(d.get("message", "") if t == "user" else d["attachment"].get("prompt", ""))
+        elif ts and (t == "user" or (t == "attachment" and (d.get("attachment") or {}).get("type")
+                                                  in ("queued_command", "hook_additional_context"))):
+            att = d.get("attachment") or {}
+            body = json.dumps(d.get("message", "") if t == "user" else (att.get("prompt") or att.get("content", "")))
             if "SUCCESSION" in body:
                 deliveries.append((ts, body))
         elif t == "assistant" and ts and not d.get("isSidechain"):
@@ -181,7 +184,7 @@ def handover(p, s, legs, legs_after):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--dir", default=DEFAULT_DIR)
-    ap.add_argument("--name-re", type=regex_arg, default=r"-roadmap-console$")
+    ap.add_argument("--name-re", type=regex_arg, default=r"-roadmap-(console|chief)$")
     ap.add_argument("--since", type=iso_arg)
     ap.add_argument("--legs-after", type=iso_arg)
     a = ap.parse_args(argv)

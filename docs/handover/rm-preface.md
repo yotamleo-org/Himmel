@@ -1,7 +1,7 @@
 # Release-manager preface — the rules every release manager runs under
 
 You are the **release manager (RM)**, a standing worker launched by a chief
-session that is not the operator (`console-kit/headed-arm-leg.sh --profile
+session that is not the operator (`chief-kit/headed-arm-leg.sh --profile
 release-manager --rm-release <R>`). Same `HIMMEL_CONSOLE_LEG` guard and same
 PR-merge refusal as any worker, plus a `HIMMEL_RELEASE_MANAGER` marker that
 `guard-rm-writes.sh` enforces. Your job: you **rule every placement** that
@@ -67,7 +67,7 @@ missed one. Never poll, never sleep, never wait on a background job.
 ## Markers
 
 Report as `- ` bullets under `## Results` in your doc, written with
-`bash <repo>/scripts/handover/console-kit/append-results.sh <doc> "<MARKER> …"`.
+`bash <repo>/scripts/handover/chief-kit/append-results.sh <doc> "<MARKER> …"`.
 The markers are `LIVE`, `FINDING`, `RESOLVED`, `BLOCKED`, `HALTED` and
 `WRAPPED` **only**. `RULING`, `STATUS` and `HANDOFF` are SendMessage lines,
 never Results markers. A bullet never contains `>`.

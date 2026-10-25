@@ -116,6 +116,15 @@
 #   SUITE_RUN_BUDGET   whole-run wall-clock cap, seconds (default 7200); the
 #                      runner stops BETWEEN suites once it is spent and names
 #                      what did not run, instead of running until morning
+#   SUITE_JOBS         suites run at once (default 1; on a GitHub Actions
+#                      runner the CPU count, capped at 4, except on Windows).
+#                      Each suite keeps its own log, rc, cap and retry; its
+#                      output prints as one block when it finishes
+#   SUITE_PARALLEL_DENY the list of suites that run alone (default
+#                      scripts/ci/parallel-deny.txt beside this runner)
+#   SUITE_LANE_WAIT    poll forces the parallel lanes to be reaped by polling,
+#                      as on bash older than 4.3 (the self-test uses it);
+#                      otherwise wait -n where bash has it
 #   SUITE_LOCK         0 disables the machine lock entirely
 #   SUITE_LOCK_DIR     override the lock path (tests use their own sandbox);
 #                      by default the path is keyed by SCAN ROOT, so a scoped
@@ -807,24 +816,26 @@ scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux on
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/release/test-tarball-vs-clone.sh     # HIMMEL-3699: skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design; precedent HIMMEL-3203
-scripts/handover/console-kit/test-console-wait.sh    # HIMMEL-3699: skipped off-Linux only — console-wait.sh's own \`# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` (console-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the console kit is Linux-only by design; precedent HIMMEL-3203
-scripts/handover/console-kit/test-console-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-console-wait.sh above, same console-kit Linux-only-by-design PLATFORM GUARD (console-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
-scripts/handover/console-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same console-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
-scripts/handover/console-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same console-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
-scripts/handover/console-kit/test-console-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-console-wait-r0.sh:25) says \"Linux-only: console-wait.sh has no .ps1 twin by design\"; the kit PLATFORM GUARD is console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/console-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/console-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: no .ps1 twin, by design (the console kit is Linux-only)\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
-scripts/handover/console-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says no .ps1 twin by design (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/console-kit/test-live-subagents.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/console-kit/test-ops-run.sh         # HIMMEL-7101: skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-console-wait.sh    # HIMMEL-3699: skipped off-Linux only — console-wait.sh's own \`# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` (console-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the console kit is Linux-only by design; precedent HIMMEL-3203
+scripts/handover/chief-kit/test-console-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-console-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (console-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
+scripts/handover/chief-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
+scripts/handover/chief-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
+scripts/handover/chief-kit/test-console-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-console-wait-r0.sh:25) says \"Linux-only: console-wait.sh has no .ps1 twin by design\"; the kit PLATFORM GUARD is console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: no .ps1 twin, by design (the console kit is Linux-only)\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says no .ps1 twin by design (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-live-subagents.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-ops-run.sh         # HIMMEL-7101: skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
 scripts/ci/test-ci-lint-tree-gates.sh  # HIMMEL-7101: skipped off-Linux only — it extracts and runs the real ci.yml lint-job step (ci.yml:1273), which calls GNU tar \`--verbatim-files-from\` (bsdtar: \"Option --verbatim-files-from is not supported\"); that job is \`runs-on: ubuntu-latest\` (ci.yml:1128), so the step never runs on macOS
-scripts/handover/console-kit/test-wrap-merged.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-wrap-merged.sh:26) declares \`Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs the util-linux file-lock tool + jq)\`; fleet-manifest.sh:134 takes that lock, marked \`gnu-ok: Linux-only kit\` (absent from stock macOS); precedent HIMMEL-3699
-scripts/handover/console-kit/test-close-wrapped-leg.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-close-wrapped-leg.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/console-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/console-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-wrap-merged.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-wrap-merged.sh:26) declares \`Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs the util-linux file-lock tool + jq)\`; fleet-manifest.sh:134 takes that lock, marked \`gnu-ok: Linux-only kit\` (absent from stock macOS); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-close-wrapped-leg.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-close-wrapped-leg.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
 scripts/handover/test-bus-idle-waker.sh  # skipped off-Linux only — bus-idle-waker.sh types into a konsole through org.kde.konsole.Session.sendText, reads the terminal foreground group from /proc stat, and times its poll with GNU \`date +%s.%N\`; no macOS host has konsole or /proc; precedent HIMMEL-3699
-scripts/handover/console-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it drives tick.sh and console-wait.sh, both on the kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/console-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it drives tick.sh and console-wait.sh, both on the kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-console-wait-pool.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-console-wait-pool.sh:13) says \`Linux-only: console-wait.sh has no .ps1 twin by design\`; kit PLATFORM GUARD
+scripts/hooks/test-notify-console-on-prompt.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-notify-console-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin\`
+scripts/handover/chief-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
 "
 case "$(uname -s 2>/dev/null || echo unknown)" in
   Linux) ;;
@@ -943,7 +954,7 @@ scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-pus
 scripts/hooks/test-check-commit-msg-precommit.sh  pre-commit  # real commit-msg shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-fork-precommit-core.sh  pre-commit  # real git commits through the fork pre-commit core (HIMMEL-5978): its own guard exits 0 without pre-commit, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/guardrails/test-gitleaks-retired-org.sh  gitleaks  # its own guard exits 0 without the real scanner (HIMMEL-2475 sweep); runs wherever gitleaks exists, loud-skips where it does not
-scripts/handover/console-kit/test-leg-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not
+scripts/handover/chief-kit/test-leg-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not
 scripts/hooks/test-check-hook-lib-suites.sh  node  # its own guard exits 0 without node (HIMMEL-2475 sweep); runs wherever node exists, loud-skips where it does not
 scripts/hooks/test-check-hook-file-parse.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
 scripts/hooks/test-crlf-boundary.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
@@ -3354,7 +3365,7 @@ fi
 # --------------------------------------------------------------------------
 suites_file=$(mktemp)
 suites_raw=$(mktemp)
-trap 'rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
+trap '[ "${suite_jobs:-1}" -le 1 ] || ! declare -F _lanes_stop >/dev/null || _lanes_stop; rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; [ -z "${live_lane_roots:-}" ] || rm -rf $live_lane_roots; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
 
 # Check EVERY discovery stage so a partial-output-then-fail can't mask an
 # incomplete scan (ran>0 with the guard below passing → green on a scan that
@@ -4299,6 +4310,68 @@ if [ "$list_only" -eq 0 ]; then
     exit 2
   fi
 fi
+
+# In-shard parallelism: up to suite_jobs suites at once, each in its own lane
+# with its own live-state sentinels. SUITE_JOBS wins; otherwise a CI runner
+# (GITHUB_ACTIONS=true) uses its CPU count, capped at 4, and every other caller
+# stays serial: on a workstation the machine semaphore budgets one slot per
+# runner, and a nested runner inside a suite must not multiply its parent.
+# Windows stays serial too: MSYS forks are the bottleneck there already.
+if [ -n "${SUITE_JOBS:-}" ]; then
+  suite_jobs=$(_suite_num SUITE_JOBS "$SUITE_JOBS" 1)
+elif [ "${GITHUB_ACTIONS:-}" = true ] && [ "${HIMMEL_TEST_FIXTURE:-}" != 1 ] && ! proc_tree_is_windows; then
+  suite_jobs=$(getconf _NPROCESSORS_ONLN 2>/dev/null) || suite_jobs=1  # swallow-ok: an unknown CPU count runs serial
+  suite_jobs=$(_suite_num "the CPU count" "$suite_jobs" 1)
+  [ "$suite_jobs" -le 4 ] || suite_jobs=4
+else
+  suite_jobs=1
+fi
+# Suites that must run alone (fixed ports, shared global state): one glob per
+# line, matched against "/<resolved suite path>" (suite_key), then a reason. Unreadable list in a
+# parallel run: fall back to serial rather than guess which suites are safe.
+parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
+parallel_deny=""
+if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
+  if [ -r "$parallel_deny_file" ]; then
+    while read -r _pd_glob _pd_reason || [ -n "$_pd_glob" ]; do
+      case "$_pd_glob" in ''|'#'*) continue ;; esac
+      parallel_deny="${parallel_deny}${_pd_glob}
+"
+    done < "$parallel_deny_file"
+  else
+    printf 'WARN: parallel deny-list %s is unreadable — running suites one at a time\n' "$parallel_deny_file" >&2
+    suite_jobs=1
+  fi
+fi
+_suite_parallel_denied() {
+  local _p
+  while IFS= read -r _p; do
+    [ -n "$_p" ] || continue
+    # shellcheck disable=SC2254  # the list entries are patterns
+    case "/$1" in $_p) return 0 ;; esac
+  done <<< "$parallel_deny"
+  return 1
+}
+# Lane 0 reuses live_root; every other lane gets its own sentinel root.
+lane_root=() lane_pid=() lane_out=()
+live_lane_roots=""
+if [ "$suite_jobs" -gt 1 ] && [ "$list_only" -eq 0 ]; then
+  lane_root[0]="$live_root"
+  _lane_main_root="$live_root"
+  for (( _li = 1; _li < suite_jobs; _li++ )); do
+    # prim-ok: anchored at literal /tmp like live_root above; swallow-ok: an empty root aborts the run below
+    live_root=$(mktemp -d "/tmp/himmel-live-sentinel.XXXXXX" 2>/dev/null) || live_root=""
+    [ -z "$live_root" ] || live_lane_roots="$live_lane_roots $live_root"
+    if [ -z "$live_root" ] || ! _live_reset; then
+      live_root="$_lane_main_root"
+      echo "run-shell-tests.sh: could not create the live-state sentinels for a parallel lane — refusing to run suites against the caller's live state" >&2
+      exit 2
+    fi
+    lane_root[_li]="$live_root"
+  done
+  live_root="$_lane_main_root"
+  printf 'parallel: up to %s suites at once (SUITE_JOBS), deny-list %s\n' "$suite_jobs" "$parallel_deny_file"
+fi
 # FAIL_LOG_DIR/.run-complete marks a loop that ran to its end (pass
 # or fail); a killed run never writes it, so a consumer can tell a partial log
 # set from a complete one. Cleared first so a stale one cannot vouch for this run.
@@ -4311,102 +4384,8 @@ if [ -n "${FAIL_LOG_DIR:-}" ] && [ "${RST_SENTINEL_DIR:-}" != "$FAIL_LOG_DIR" ];
   export RST_SENTINEL_DIR="$FAIL_LOG_DIR"
   rm -f "$FAIL_LOG_DIR/.run-complete"
 fi
-while IFS= read -r suite <&3; do
-  [ -n "$suite" ] || continue
-
-  # Two derived paths, for two different jobs:
-  #   relpath    — scan-root-relative, the CURSOR's spelling (see the budget
-  #                block below). Keeps the caller's spelling on purpose.
-  #   suite_key  — the same suite under the RESOLVED scan root. This is what
-  #                every suite table matches against, so a verdict depends on
-  #                neither the scan root's depth nor how it was spelled
-  #                (symlink, junction, absolute, "./", trailing slash).
-  relpath="${suite#"${scan}"/}"
-  suite_key="${scan_resolved}/${relpath}"
-  # The manifest's spelling: repo-relative, as impacted-selection.sh prints.
-  if [ -n "$manifest_path" ]; then
-    mf_rel="${suite_key#"$manifest_root"/}"
-    _mf_seen="${_mf_seen}${mf_rel}
-"
-  fi
-
-  # Every skip filter, in one call. SKIP_LIST -> docs-only ->
-  # tier -> conditional -> capability, in that precedence, with the reason the
-  # chain chose. The --shard pre-pass above walks the same function, so the
-  # run list the loop produces and the run list the bin-pack partitioned are
-  # the same list by construction rather than by two chains staying in step.
-  if suite_filter_reason "$relpath" "$suite_key"; then
-    skip=$((skip + 1))
-    printf '[SKIP] %s — %s\n' "$suite" "$_filter_reason"
-    manifest_add "skip ${mf_rel:-}"
-    continue
-  fi
-
-  # Shard filter — LAST, after every
-  # filter above, so the split is over the FINAL run list. Splitting raw
-  # discovery instead would let a host's SKIP_LIST/tier/capability skips fall
-  # unevenly across shards, so one runner carries the corpus while five idle.
-  #
-  # The decision itself was made before the loop started: $shard_assignment
-  # holds this shard's bin from the duration bin-pack, or $shard_binpack is 0
-  # and the v1 round-robin still applies. Both are an EXACT partition — their
-  # union is the unsharded run list and they are pairwise disjoint. Anything
-  # weaker drops suites off the gate while all n shards report green, the
-  # false-green class reached through the parallelism instead of
-  # through discovery.
-  #
-  # $run_index counts run-ELIGIBLE suites and advances for EVERY one of them,
-  # whether or not this shard claims it. It is what the round-robin fallback
-  # divides, and what the empty-shard refusal below reports as the size of the
-  # run list, so it advances on both paths.
-  if [ "$shard_total" -gt 0 ]; then
-    if [ "$shard_binpack" -eq 1 ]; then
-      # Membership by newline-delimited containment: no fork per suite, and no
-      # separator a path could contain (discovery is newline-delimited, so a
-      # path with a newline in it never reached this list).
-      case "$shard_assignment" in
-        *"${_shard_nl}${suite}${_shard_nl}"*) _shard_mine=1 ;;
-        *)                                    _shard_mine=0 ;;
-      esac
-    else
-      _shard_mine=$(( run_index % shard_total == shard_offset ))
-    fi
-    run_index=$((run_index + 1))
-    [ "$_shard_mine" -eq 1 ] || continue
-    shard_assigned=$((shard_assigned + 1))
-  fi
-
-  if [ "$list_only" -eq 1 ]; then
-    printf '[RUN ] %s\n' "$suite"
-    continue
-  fi
-
-  if [ "$stopped" -eq 1 ]; then
-    stopped_suites="${stopped_suites}  ${suite}
-"
-    manifest_add "unrun ${mf_rel:-}"
-    continue
-  fi
-
-  # Whole-run budget, checked BETWEEN suites so a cap can never truncate a
-  # suite mid-assertion. Everything still on the list is named as unrun —
-  # stopping quietly here would be the same false green the discovery guards
-  # above exist to prevent.
-  if [ "$budget_expired" -eq 1 ] || \
-     [ $(( SECONDS - run_start )) -ge "$SUITE_RUN_BUDGET" ]; then
-    if [ "$budget_expired" -eq 0 ]; then
-      budget_expired=1
-      # The first suite the budget kept from running: the next run resumes
-      # HERE. Scan-root-relative so the spelling of the scan
-      # root cannot invalidate the cursor.
-      rotate_next="$relpath"
-    fi
-    unrun_suites="${unrun_suites}  ${suite}
-"
-    manifest_add "unrun ${mf_rel:-}"
-    continue
-  fi
-
+# _suite_attempts — run the current suite, retrying a failed attempt 1 once.
+_suite_attempts() {
   # Attempt 1 is the normal run; a failed attempt 1 jumps back here
   # once, for attempt 2. The body is not re-indented, to keep this diff reviewable.
   _attempt=1
@@ -4462,6 +4441,8 @@ while IFS= read -r suite <&3; do
     # reach real operator state (restart-bridge.sh) REFUSES when the suite
     # forgot to sandbox its root, instead of trusting it.
     export HIMMEL_TEST_FIXTURE=1
+    # A runner a suite starts runs its own fixtures one at a time.
+    unset SUITE_JOBS
     # No ambient guard override reaches a suite; a case that needs
     # one sets it explicitly on its own invocation.
     scrub_override_env
@@ -4483,6 +4464,10 @@ while IFS= read -r suite <&3; do
     fi ) &
   watch_pid=$!
   set +m
+  # A lane tells its parent what to end if the lane is SIGKILLed, when no trap
+  # can run: both groups, the temp root and the attempt log, in one write.
+  [ -z "${_lane_live:-}" ] || printf 'suite_pid=%s watch_pid=%s suite_tmp=%q log=%q\n' \
+    "$suite_pid" "$watch_pid" "$suite_tmp" "$log" > "$_lane_live"
 
   wait "$suite_pid" 2>/dev/null
 
@@ -4553,8 +4538,12 @@ LIVEMSGS
   fi
   break
   done
+  suite_end=$SECONDS
+}
 
-  dur=$(( SECONDS - start ))
+# _suite_account — count, report and clean up the suite _suite_attempts ran.
+_suite_account() {
+  dur=$(( suite_end - start ))
   # A retry that exits 0 through the suite's own SKIP path ran none of the
   # assertions that failed the first time, so it is no evidence of a flake: the
   # suite stays FAIL with the first attempt's status.
@@ -4686,7 +4675,262 @@ ${suite_key#"$tier_repo_root"/}
   rm -f "$log"
   [ -z "$first_log" ] || rm -f "$first_log" "$first_log.rc"
   [ "$rc" -eq 0 ] || [ "$_quar" -eq 1 ] || [ "$stop_on_fail" != 1 ] || stopped=1
+}
+
+# _lane_worker_stop — inside a lane: end the suite's and the watchdog's
+# process groups, which a TERM to the lane itself does not reach.
+# shellcheck disable=SC2317,SC2329  # invoked from the lane's TERM trap
+_lane_worker_stop() {
+  local _g _n=0 _alive
+  for _g in ${watch_pid:-} ${suite_pid:-}; do kill -TERM -"$_g" 2>/dev/null; done
+  while [ "$_n" -lt 30 ]; do
+    _alive=0
+    for _g in ${watch_pid:-} ${suite_pid:-}; do proc_tree_group_alive "$_g" && _alive=1; done
+    [ "$_alive" -eq 1 ] || break
+    sleep 0.1
+    _n=$((_n + 1))
+  done
+  for _g in ${watch_pid:-} ${suite_pid:-}; do kill -KILL -"$_g" 2>/dev/null; done
+  [ -z "${suite_tmp:-}" ] || rm -rf "$suite_tmp" 2>/dev/null
+  [ -z "${log:-}" ] || rm -f "$log" "$log.rc"
+}
+# _lane_launch <lane> — run the current suite's attempts in the background in
+# that lane. Its output is held in a private directory and printed when the
+# parent reaps it, so a suite's lines stay together; its result comes back as
+# a sourced file there.
+_lane_launch() {
+  local _i="$1"
+  # prim-ok: anchored at literal /tmp like the suite temp roots
+  lane_out[_i]=$(mktemp -d "/tmp/himmel-lane.XXXXXX") || { echo "run-shell-tests.sh: mktemp failed for a parallel lane" >&2; _lanes_stop; exit 2; }
+  # A group id the lane inherited is not its own to signal: clear both first.
+  ( suite_pid='' watch_pid=''
+    trap '_lane_worker_stop; exit 143' TERM
+    live_root="${lane_root[_i]}"
+    _lane_live="${lane_out[_i]}/live"
+    _w_t0=$timed_out
+    _suite_attempts
+    # The marker goes last: _lane_reap reads a result without it as none.
+    { for _v in rc capped _attempt first_rc first_capped first_log log start suite_end suite_timeout \
+                suite relpath suite_key mf_rel; do
+        printf '%s=%q\n' "$_v" "${!_v:-}"
+      done
+      printf '_w_timed_out=%s\n' "$((timed_out - _w_t0))"
+      printf '_res_complete=1\n'
+    } > "${lane_out[_i]}/res" ) > "${lane_out[_i]}/out" 2> "${lane_out[_i]}/err" &
+  lane_pid[_i]=$!
+}
+# _lane_reap <lane> — collect a finished lane: print its output, restore its
+# result, account for it. A worker that left no result exits the run with 2.
+_lane_reap() {
+  local _i="$1" _res="${lane_out[$1]}/res"
+  # The loop's own suite variables belong to the suite about to launch.
+  local _s="$suite" _r="$relpath" _k="$suite_key" _m="${mf_rel:-}"
+  wait "${lane_pid[_i]}" 2>/dev/null
+  lane_pid[_i]=""
+  cat "${lane_out[_i]}/out"
+  cat "${lane_out[_i]}/err" >&2
+  if ! grep -qxF '_res_complete=1' "$_res" 2>/dev/null; then
+    # A SIGKILLed worker never ran _lane_worker_stop: end the groups and remove
+    # the paths it recorded in live, then the lane's directory.
+    if [ -s "${lane_out[_i]}/live" ]; then
+      ( . "${lane_out[_i]}/live"; _lane_worker_stop )
+    fi
+    rm -rf "${lane_out[_i]}"
+    echo "run-shell-tests.sh: a parallel suite worker ended without a result — refusing to run more suites" >&2
+    _lanes_stop
+    exit 2
+  fi
+  _w_timed_out=0
+  # shellcheck disable=SC1090  # written by _lane_launch above
+  . "$_res"
+  rm -rf "${lane_out[_i]}"
+  timed_out=$((timed_out + _w_timed_out))
+  _suite_account
+  suite="$_s" relpath="$_r" suite_key="$_k" mf_rel="$_m"
+}
+# Lanes are reaped with wait -n where bash has it (4.3+). bash older than that
+# (macOS ships 3.2), or SUITE_LANE_WAIT=poll, polls kill -0 every 0.2s instead.
+_lane_wait_n=0
+if [ "${BASH_VERSINFO[0]}" -gt 4 ] || { [ "${BASH_VERSINFO[0]}" -eq 4 ] && [ "${BASH_VERSINFO[1]}" -ge 3 ]; }; then
+  _lane_wait_n=1
+fi
+[ "${SUITE_LANE_WAIT:-}" != poll ] || _lane_wait_n=0
+# _lane_running <pid> — the lane is still running. With wait -n the answer
+# comes from bash's own job table: a pid that wait -n has reaped may already
+# belong to another process, which a kill -0 would take for the lane.
+_lane_running() {
+  if [ "$_lane_wait_n" -eq 1 ]; then
+    case " $(jobs -rp | tr '\n' ' ')" in *" $1 "*) return 0 ;; esac
+    return 1
+  fi
+  kill -0 "$1" 2>/dev/null
+}
+# _lane_wait_any — block until some lane may have finished. 127 means bash has
+# no child left to wait for; sleep then rather than spin.
+_lane_wait_any() {
+  if [ "$_lane_wait_n" -eq 1 ]; then
+    wait -n 2>/dev/null
+    [ "$?" -ne 127 ] || sleep 0.2
+  else
+    sleep 0.2
+  fi
+}
+# _lane_free — reap every finished lane, then set lane_free to an idle one.
+# Reaping all of them first accounts every finished suite before the caller's
+# stop check.
+_lane_free() {
+  local _i
+  while :; do
+    for (( _i = 0; _i < suite_jobs; _i++ )); do
+      [ -n "${lane_pid[_i]:-}" ] || continue
+      _lane_running "${lane_pid[_i]}" || _lane_reap "$_i"
+    done
+    for (( _i = 0; _i < suite_jobs; _i++ )); do
+      if [ -z "${lane_pid[_i]:-}" ]; then lane_free=$_i; return 0; fi
+    done
+    _lane_wait_any
+  done
+}
+_lanes_drain() {
+  local _i
+  for (( _i = 0; _i < suite_jobs; _i++ )); do
+    [ -n "${lane_pid[_i]:-}" ] || continue
+    while _lane_running "${lane_pid[_i]}"; do _lane_wait_any; done
+    _lane_reap "$_i"
+  done
+}
+# _lanes_stop — terminate every running lane, for an exit mid-run. Each lane
+# ends its own suite's process groups on TERM (_lane_worker_stop).
+_lanes_stop() {
+  local _i
+  for (( _i = 0; _i < suite_jobs; _i++ )); do
+    [ -z "${lane_pid[_i]:-}" ] || kill -TERM "${lane_pid[_i]}" 2>/dev/null
+  done
+  for (( _i = 0; _i < suite_jobs; _i++ )); do
+    [ -n "${lane_pid[_i]:-}" ] || continue
+    wait "${lane_pid[_i]}" 2>/dev/null
+    rm -rf "${lane_out[_i]}"
+    lane_pid[_i]=""
+  done
+}
+
+while IFS= read -r suite <&3; do
+  [ -n "$suite" ] || continue
+
+  # Two derived paths, for two different jobs:
+  #   relpath    — scan-root-relative, the CURSOR's spelling (see the budget
+  #                block below). Keeps the caller's spelling on purpose.
+  #   suite_key  — the same suite under the RESOLVED scan root. This is what
+  #                every suite table matches against, so a verdict depends on
+  #                neither the scan root's depth nor how it was spelled
+  #                (symlink, junction, absolute, "./", trailing slash).
+  relpath="${suite#"${scan}"/}"
+  suite_key="${scan_resolved}/${relpath}"
+  # The manifest's spelling: repo-relative, as impacted-selection.sh prints.
+  if [ -n "$manifest_path" ]; then
+    mf_rel="${suite_key#"$manifest_root"/}"
+    _mf_seen="${_mf_seen}${mf_rel}
+"
+  fi
+
+  # Every skip filter, in one call. SKIP_LIST -> docs-only ->
+  # tier -> conditional -> capability, in that precedence, with the reason the
+  # chain chose. The --shard pre-pass above walks the same function, so the
+  # run list the loop produces and the run list the bin-pack partitioned are
+  # the same list by construction rather than by two chains staying in step.
+  if suite_filter_reason "$relpath" "$suite_key"; then
+    skip=$((skip + 1))
+    printf '[SKIP] %s — %s\n' "$suite" "$_filter_reason"
+    manifest_add "skip ${mf_rel:-}"
+    continue
+  fi
+
+  # Shard filter — LAST, after every
+  # filter above, so the split is over the FINAL run list. Splitting raw
+  # discovery instead would let a host's SKIP_LIST/tier/capability skips fall
+  # unevenly across shards, so one runner carries the corpus while five idle.
+  #
+  # The decision itself was made before the loop started: $shard_assignment
+  # holds this shard's bin from the duration bin-pack, or $shard_binpack is 0
+  # and the v1 round-robin still applies. Both are an EXACT partition — their
+  # union is the unsharded run list and they are pairwise disjoint. Anything
+  # weaker drops suites off the gate while all n shards report green, the
+  # false-green class reached through the parallelism instead of
+  # through discovery.
+  #
+  # $run_index counts run-ELIGIBLE suites and advances for EVERY one of them,
+  # whether or not this shard claims it. It is what the round-robin fallback
+  # divides, and what the empty-shard refusal below reports as the size of the
+  # run list, so it advances on both paths.
+  if [ "$shard_total" -gt 0 ]; then
+    if [ "$shard_binpack" -eq 1 ]; then
+      # Membership by newline-delimited containment: no fork per suite, and no
+      # separator a path could contain (discovery is newline-delimited, so a
+      # path with a newline in it never reached this list).
+      case "$shard_assignment" in
+        *"${_shard_nl}${suite}${_shard_nl}"*) _shard_mine=1 ;;
+        *)                                    _shard_mine=0 ;;
+      esac
+    else
+      _shard_mine=$(( run_index % shard_total == shard_offset ))
+    fi
+    run_index=$((run_index + 1))
+    [ "$_shard_mine" -eq 1 ] || continue
+    shard_assigned=$((shard_assigned + 1))
+  fi
+
+  if [ "$list_only" -eq 1 ]; then
+    printf '[RUN ] %s\n' "$suite"
+    continue
+  fi
+
+  # A parallel run waits for room first (every lane for a deny-listed suite,
+  # one lane otherwise), so the stop and budget checks below also see the
+  # suites that finished and the time that passed during the wait.
+  suite_alone=0
+  if [ "$suite_jobs" -gt 1 ]; then
+    if _suite_parallel_denied "$suite_key"; then
+      suite_alone=1
+      _lanes_drain
+    else
+      _lane_free
+    fi
+  fi
+
+  if [ "$stopped" -eq 1 ]; then
+    stopped_suites="${stopped_suites}  ${suite}
+"
+    manifest_add "unrun ${mf_rel:-}"
+    continue
+  fi
+
+  # Whole-run budget, checked BETWEEN suites so a cap can never truncate a
+  # suite mid-assertion. Everything still on the list is named as unrun —
+  # stopping quietly here would be the same false green the discovery guards
+  # above exist to prevent.
+  if [ "$budget_expired" -eq 1 ] || \
+     [ $(( SECONDS - run_start )) -ge "$SUITE_RUN_BUDGET" ]; then
+    if [ "$budget_expired" -eq 0 ]; then
+      budget_expired=1
+      # The first suite the budget kept from running: the next run resumes
+      # HERE. Scan-root-relative so the spelling of the scan
+      # root cannot invalidate the cursor.
+      rotate_next="$relpath"
+    fi
+    unrun_suites="${unrun_suites}  ${suite}
+"
+    manifest_add "unrun ${mf_rel:-}"
+    continue
+  fi
+
+  if [ "$suite_jobs" -le 1 ] || [ "$suite_alone" -eq 1 ]; then
+    _suite_attempts
+    _suite_account
+  else
+    _lane_launch "$lane_free"
+  fi
 done 3< "$suites_file"
+[ "$suite_jobs" -le 1 ] || _lanes_drain
 
 if [ "$list_only" -eq 0 ] && [ "$sentinel_owner" -eq 1 ] && [ "$budget_expired" -eq 0 ] && [ -z "$stopped_suites" ]; then
   mkdir -p "$FAIL_LOG_DIR" && : > "$FAIL_LOG_DIR/.run-complete"

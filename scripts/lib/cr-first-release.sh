@@ -13,7 +13,11 @@
 #       head commit, or a heavy job that actually ran at the head).
 #     CR-FIRST HOLD <reason> <age>        rc 1  (one line per reason)
 #     CR-FIRST HOLD degraded (<why>)      rc 3  (a read failed; never releases)
-#     CR-FIRST RELEASE <reason>           rc 0  (label removed then added)
+#     CR-FIRST RELEASE <reason>           rc 0  (label removed then added; the remove
+#                                                only leaves an `unlabeled` event when ci:go
+#                                                was on the PR, so a first release at a head
+#                                                shows `labeled` alone and a re-release over
+#                                                a stale label shows `unlabeled` then `labeled`)
 #     CR-FIRST ERROR <what>               rc 2  (config error, label missing,
 #                                                label write failed)
 #     CR-FIRST ALERT <text>               once per (hard reviewer, reason)
@@ -47,11 +51,13 @@
 #
 # Sourceable (cr_first_release) and executable:
 #   bash scripts/lib/cr-first-release.sh [--pr N] [--head SHA] [--repo OWNER/NAME]
+#   With no --pr, the PR is the one for the branch checked out in the caller's
+#   directory (the cwd a hand-off to the anchor's copy preserves).
 # bash 3.2-safe; does not toggle set -e.
 
 _CRF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 _CRF_LEDGER_CLI="$_CRF_DIR/../cr/cr-trigger-ledger.sh"
-_CRF_APPEND="$_CRF_DIR/../handover/console-kit/append-results.sh"
+_CRF_APPEND="$_CRF_DIR/../handover/chief-kit/append-results.sh"
 if ! { [ -r "$_CRF_DIR/review-merge-gate.sh" ] && . "$_CRF_DIR/review-merge-gate.sh"; }; then
     echo "CR-FIRST ERROR cannot load review-merge-gate.sh" >&2
     (return 0 2>/dev/null) && return 1 || exit 1
@@ -398,7 +404,7 @@ cr_first_sweep() {
 }
 
 _crf_main() {
-    local pr="" head="" nwo="" info
+    local pr="" head="" nwo="" info sel
     while [ "$#" -gt 0 ]; do
         case "$1" in
             --pr|--head|--repo)
@@ -413,8 +419,17 @@ _crf_main() {
         [ -n "$nwo" ] || nwo=$(_cmg_local_nwo 2>/dev/null || true)
         case "$nwo" in */*/*) nwo=${nwo#*/} ;; esac
         cr_first_switch_on "$nwo" || return 0
-        info=$(gh pr view ${pr:+"$pr"} ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) \
-            || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
+        # `gh pr view --repo X` with no selector is an error from any directory, and `gh pr view <name>`
+        # reads a numeric name as a PR number, so the caller's branch goes through a head-branch list.
+        if [ -n "$pr" ]; then
+            info=$(gh pr view "$pr" ${nwo:+--repo "$nwo"} --json number,headRefOid -q '"\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
+        else
+            sel=$(git symbolic-ref --short -q HEAD 2>/dev/null || true)
+            info=""
+            [ -z "$sel" ] || info=$(gh pr list --head "$sel" --state open ${nwo:+--repo "$nwo"} --json number,headRefOid,isCrossRepository \
+                -q '[.[] | select(.isCrossRepository | not)] | .[0] | select(. != null) | "\(.number) \(.headRefOid)"' 2>/dev/null) || info=""
+        fi
+        [ -n "$info" ] || { echo "CR-FIRST ERROR no pull request for the current branch (pass --pr and --head)"; return 2; }
         [ -n "$pr" ] || pr=${info%% *}
         [ -n "$head" ] || head=${info#* }
     fi

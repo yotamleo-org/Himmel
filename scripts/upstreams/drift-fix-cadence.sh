@@ -76,6 +76,8 @@ SCHTASKS_BIN="${DRIFTFIX_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${DRIFTFIX_CRONTAB:-crontab}"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 4
 
 # Cross-platform user-home resolution: on Windows Git-Bash the MSYS
 # $HOME can differ from where ~/.claude actually lives, so prefer USERPROFILE.
@@ -113,7 +115,7 @@ if [ -n "${DRIFTFIX_HIMMEL_ROOT:-}" ]; then
 elif HIMMEL_ROOT="$(resolve_himmel_root)" && [ -n "$HIMMEL_ROOT" ]; then
     :
 else
-    echo "WARN drift-fix-cadence: could not resolve the primary checkout via git -- falling back to this script's own location. If this checkout is a worktree that gets pruned later, the armed cadence will break (HIMMEL-892 codex-adv-1)." >&2
+    echo "WARN drift-fix-cadence: could not resolve the primary checkout via git -- falling back to this script's own location. If this checkout is a worktree that gets pruned later, the armed cadence will break." >&2
     HIMMEL_ROOT="$(cd "$SCRIPT_DIR/.." 2>/dev/null && cd .. && pwd)"
 fi
 
@@ -173,8 +175,8 @@ usage() {
     cat <<'EOF'
 Usage: drift-fix-cadence.sh <arm|status|disarm> [flags]
 
-Arm the OS scheduler with the nightly upstream-drift REPAIR cadence
-(HIMMEL-1323): TWO daily tasks. HIMMEL-DriftFix fires an interactive claude
+Arm the OS scheduler with the nightly upstream-drift REPAIR cadence:
+TWO daily tasks. HIMMEL-DriftFix fires an interactive claude
 session on the /drift-fix runbook -- bump what is mechanically bumpable, open
 an ordinary PR against origin, and stop.
 HIMMEL-ForkResync fires one on the /fork-resync runbook -- rebase the carried
@@ -414,7 +416,7 @@ run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
 emit_bat() {
     local root_esc="$1" claude_esc="$2" prompt_esc="$3" log_esc="$4" model_esc="$5"
     printf '@echo off\r\n'
-    printf 'rem drift-fix-cadence runner (HIMMEL-1323)\r\n'
+    printf 'rem drift-fix-cadence runner\r\n'
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
     # schtasks) can never block on an editor prompt.
@@ -442,12 +444,10 @@ xml_escape() {
 # The `encoding="UTF-16"` declaration on ASCII bytes is DELIBERATE and correct
 # here — do not "fix" it. It looks like a parse risk, but it is disproved by
 # production evidence, not
-# argument: `HIMMEL-CodexOrphanSweep` is armed and Ready on the operator's
-# machine right now, created by scripts/cleanup/codex-sweep-cadence.sh through
-# `schtasks /create /xml` with byte-identical output. Real schtasks accepts the
-# declaration without a BOM or a UTF-16LE re-encode. All three sibling emitters
-# (codex-sweep, graphmap, this one) share the convention, so "fixing" it would
-# break a working pattern in three places at once.
+# argument: real `schtasks /create /xml` accepts the declaration without a
+# BOM or a UTF-16LE re-encode. The sibling emitters (graphmap, this one) share
+# the convention, so "fixing" it would break a working pattern in both places
+# at once.
 #
 # The load-bearing constraint is the OTHER direction: the bytes must STAY
 # ASCII. cmd.exe's OEM codepage mojibakes non-ASCII, and a non-ASCII byte here
@@ -472,7 +472,7 @@ emit_task_xml() {
 <?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <RegistrationInfo>
-    <Description>himmel drift-fix-cadence (HIMMEL-1323)</Description>
+    <Description>himmel drift-fix-cadence</Description>
   </RegistrationInfo>
   <Triggers>
     <CalendarTrigger>
@@ -706,8 +706,7 @@ cmd_arm() {
 
         # Atomic runner publication: emit
         # to a staged temp BESIDE the final path (same dir -> same filesystem
-        # -> `mv` is an atomic rename, not a copy; mirrors codex-sweep's
-        # publish discipline). Redirecting straight onto the final path let a
+        # -> `mv` is an atomic rename, not a copy). Redirecting straight onto the final path let a
         # task firing concurrently with a re-arm read a half-written
         # .bat/.vbs; after the rename the final path only ever holds a
         # complete file (old or new). A non-regular final path is refused up
@@ -736,16 +735,18 @@ cmd_arm() {
                 win_rollback_both; exit 4
             fi
         done
-        if ! mv -f "$vbs_tmp" "$vbs_file"; then
+        if ! atomic_write "$vbs_file" < "$vbs_tmp"; then
             echo "ERR drift-fix-cadence: failed to publish shim to $vbs_file" >&2
             rm -f "$bat_tmp" "$vbs_tmp"
             win_rollback_both; exit 4
         fi
-        if ! mv -f "$bat_tmp" "$bat_file"; then
+        if ! atomic_write "$bat_file" < "$bat_tmp"; then
             echo "ERR drift-fix-cadence: failed to publish runner to $bat_file" >&2
-            rm -f "$bat_tmp"
+            rm -f "$bat_tmp" "$vbs_tmp"
             win_rollback_both; exit 4
         fi
+
+        rm -f "$bat_tmp" "$vbs_tmp"
 
         err_file=$(mktemp -t drift-fix-cadence.err.XXXXXX)
         if ! schtasks_create_xml "$leg" "$time" "$bat_win" "$err_file"; then
@@ -912,7 +913,7 @@ leg_existing() { printf '%s\n' "$CRON_TAB" | grep -F "# $1" || true; }
 emit_runner() {
     local q_root="$1" q_claude="$2" q_prompt="$3" q_log="$4" q_model="$5" q_node_dir="${6:-}"
     printf '#!/bin/sh\n'
-    printf '# drift-fix-cadence runner — generated by drift-fix-cadence.sh arm (HIMMEL-1323)\n'
+    printf '# drift-fix-cadence runner — generated by drift-fix-cadence.sh arm\n'
     printf '# %s %s\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     if [ -n "$q_node_dir" ]; then
         printf 'PATH=%s:$PATH\nexport PATH\n' "$q_node_dir"
@@ -1020,7 +1021,7 @@ cron_arm() {
     # already exist gets no snapshot — see the restore comment below for why
     # that is fine.
     local snap_dir
-    snap_dir=$(mktemp -d -t drift-fix-cadence.runner-snap.XXXXXX)
+    snap_dir=$(tmpdir)
 
     # restore_runner_snapshots — restore each pre-existing runner's CONTENT
     # from $snap_dir, never delete it (CR glm-3). A failed install leaves the
@@ -1158,7 +1159,7 @@ arm_summary() {
     log_resync="$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").log"
     cat <<EOF
 ================================================================
-drift-fix-cadence ARMED (HIMMEL-1323)
+drift-fix-cadence ARMED
 
   $WORKER_SESSION_DRIFT   daily $FIRE_TIME local   — $kind — runner: $runner_drift
   $WORKER_SESSION_RESYNC  daily $RESYNC_TIME local — $kind — runner: $runner_resync

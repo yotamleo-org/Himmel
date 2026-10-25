@@ -177,6 +177,11 @@ assert_rc "env console + worktree + cr-gate (third pairing) refuses" 2 "$RC3"
 RC3A=$(run_hook real-handover-path-survives "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$REAL_HANDOVER_TRANSCRIPT")")
 assert_rc "real handovers/.../HIMMEL-2323-console.md load line + full ship-flow prompt still refuses (tightened regex positive survives)" 2 "$RC3A"
 
+CHIEF_NAMED_TRANSCRIPT="$TMP/chief-named.jsonl"
+printf '%s\n' '{"type":"user","message":{"content":"Loaded handover: handovers/yotamleo/himmel/HIMMEL-nextleg-2026-10-25A-roadmap-chief.md — resume from there."}}' > "$CHIEF_NAMED_TRANSCRIPT"
+RC3B=$(run_hook chief-named-doc "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT" "$CHIEF_NAMED_TRANSCRIPT")")
+assert_rc "a *-chief.md load line + full ship-flow prompt refuses like a *-console.md one" 2 "$RC3B"
+
 RC_OPENPR=$(run_hook open-a-pr-boundary "$(payload general-purpose 'ship it' "$OPEN_A_PR_PROMPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "codex-3: 'open a PR' (POSIX boundary, no GNU \\b) + worktree refuses" 2 "$RC_OPENPR"
 
@@ -266,6 +271,14 @@ assert_rc "judge-ro with no agent file gets no read-only carve-out" 2 "$RC7J"
 printf -- '---\nname: judge-ro\ntools: Read, Grep, Glob, Bash\ntools: Read, Write\n---\n' > "$FT/.claude/agents/judge-ro.md"
 RC7K=$(run_tree tree-judge-ro-two-tools "$(payload judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
 assert_rc "judge-ro whose frontmatter repeats tools: gets no read-only carve-out" 2 "$RC7K"
+
+agent_md console-judge-ro 'Read, Grep, Glob, Bash'
+RC7L=$(run_tree tree-old-id "$(payload console-judge-ro 'judge' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=console)
+assert_rc "console-judge-ro (old id, even with a read-only agent file) gets no read-only carve-out" 2 "$RC7L"
+rm -f "$FT/.claude/agents/console-judge-ro.md"
+
+RC8C=$(run_hook env-chief-worktree-propen "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=chief)
+assert_rc "HIMMEL_SESSION_ROLE=chief + full ship-flow prompt refuses like console" 2 "$RC8C"
 
 RC9=$(run_hook role-leg-wins "$(payload general-purpose 'ship it' "$SHIP_FLOW_PROMPT")" HIMMEL_SESSION_ROLE=leg)
 assert_rc "HIMMEL_SESSION_ROLE=leg + full ship-flow prompt: explicit non-console wins" 0 "$RC9"

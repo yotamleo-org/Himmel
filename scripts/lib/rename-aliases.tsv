@@ -7,7 +7,8 @@
 # remove-at X is the removal release after v1.1.3, which deletes the read-both path.
 # kind: identifier (a name on the lint's list), prose (a word the operator renamed), env (one variable), env-prefix
 # (a prefix ending in _), marker (a status token), do-not-rename (a name kept as is), other-sense (a name that
-# already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it).
+# already uses a new word in another sense, e.g. a lane worker; retrieval never aliases it), directory and path (a moved
+# directory and a short spelling of one, both with direction fail; see the slice M block at the end).
 # direction: old-to-new | keep for identifier, marker, do-not-rename and other-sense; warn | fail for prose; for env and env-prefix
 # the scripts/lib/env-alias.sh function that resolves OLD against NEW: restrict (env_alias_restrict, a guard ON switch),
 # permit (env_alias_permit, an *_OK override), value (alias_env, a path, model or timeout),
@@ -338,10 +339,9 @@ bank-monitor.sh	usage-monitor.sh	identifier	old-to-new	V1	X
 bank-preflight.sh	usage-preflight.sh	identifier	old-to-new	V1	X
 bank-status.ts	usage-status.ts	identifier	old-to-new	V1	X
 clear-cr-marker.sh	clear-review-marker.sh	identifier	old-to-new	V2	X
+close-wrapped-leg.sh	close-wrapped-worker.sh	identifier	old-to-new	V4b	X
 codex-bank-probe.ts	codex-usage-probe.ts	identifier	old-to-new	V1	X
-console-context.sh	chief-context.sh	identifier	old-to-new	V5	X
-console-judge	judge	identifier	old-to-new	V5	X
-console-judge-ro	judge-ro	identifier	old-to-new	V5	X
+console-template.md	chief-template.md	identifier	old-to-new	T	X
 console.sh	chief.sh	identifier	old-to-new	V5	X
 cr-available.sh	coderabbit-available.sh	identifier	old-to-new	V2	X
 cr-body-findings.sh	coderabbit-body-findings.sh	identifier	old-to-new	V2	X
@@ -351,5 +351,29 @@ cr-ledger-evidence.sh	review-ledger-evidence.sh	identifier	old-to-new	V2	X
 cr-merge-gate.sh	review-merge-gate.sh	identifier	old-to-new	V2	X
 cr-signal.sh	coderabbit-signal.sh	identifier	old-to-new	V2	X
 cr-trigger-ledger.sh	coderabbit-trigger-ledger.sh	identifier	old-to-new	V2	X
+headed-arm-leg.sh	headed-arm-worker.sh	identifier	old-to-new	V4b	X
+leg-brief-template.md	worker-brief-template.md	identifier	old-to-new	T	X
+leg-digest-step.sh	worker-digest-step.sh	identifier	old-to-new	V4b	X
+leg-doc-lock.sh	worker-doc-lock.sh	identifier	old-to-new	V4b	X
+leg-event.sh	worker-event.sh	identifier	old-to-new	V4b	X
+leg-graph.sh	worker-graph.sh	identifier	old-to-new	V4b	X
+leg-identity.sh	worker-identity.sh	identifier	old-to-new	V4b	X
+leg-jira-status.sh	worker-jira-status.sh	identifier	old-to-new	V4b	X
+leg-preface.md	worker-preface.md	identifier	old-to-new	T	X
+leg-pretrust.sh	worker-pretrust.sh	identifier	old-to-new	V4b	X
+leg-transcripts.sh	worker-transcripts.sh	identifier	old-to-new	V4b	X
 overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
 overnight-shift	afk-shift	identifier	old-to-new	V3	X
+# Slice M: the moved directories (kind directory: git mv and rewrite) and their short spellings (kind path: rewrite
+# only), applied by scripts/handover/move-renamed-dirs.sh. check-old-terms.sh fails an added line naming an old one.
+scripts/handover/console-kit	scripts/handover/chief-kit	directory	fail	M	never
+scripts/handover/console	scripts/handover/chief	directory	fail	M	never
+scripts/console	scripts/chief	directory	fail	M	never
+scripts/overnight	scripts/afk	directory	fail	M	never
+scripts/eval/leg-digest	scripts/eval/worker-digest	directory	fail	M	never
+docs/handover/console-sections	docs/handover/chief-sections	directory	fail	M	never
+docs/handover/leg-sections	docs/handover/worker-sections	directory	fail	M	never
+console-kit	chief-kit	path	fail	M	never
+console-sections	chief-sections	path	fail	M	never
+leg-sections	worker-sections	path	fail	M	never
+eval/leg-digest	eval/worker-digest	path	fail	M	never

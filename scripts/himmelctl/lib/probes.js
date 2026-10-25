@@ -1916,8 +1916,8 @@ function probeCmdHermesCheckout(item, ctx) {
 
 // ── cmd:cadence_armed ────────────────────────────────────────────────────
 
-// the three scheduled cadence runners (pipeline-cadence,
-// codex-sweep-cadence, graphmap-cadence) have dedicated staleness detection
+// the scheduled cadence runners (pipeline-cadence,
+// graphmap-cadence) have dedicated staleness detection
 // in himmel-update.sh (report_cadence_stale) but zero manifest presence — the
 // manifest can't even say whether one is ARMED, let alone stale. This probe
 // covers the armed-vs-not question only; staleness stays advisory (the

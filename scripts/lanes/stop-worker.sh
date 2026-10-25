@@ -51,13 +51,15 @@ _csg_lib="$_csg_dir/../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "stop-worker.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    echo "stop-worker.sh: cannot load $_csg_lib - refusing" >&2
     exit 96
 fi
 chokepoint_seam_guard scripts/lanes/stop-worker.sh || exit 96
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+# shellcheck source=../lib/prim.sh
+. "$SCRIPT_DIR/../lib/prim.sh" || exit 1
 
 # shellcheck source=../lib/proc-tree.sh
 # shellcheck disable=SC1091
@@ -88,8 +90,8 @@ usage: stop-worker.sh [--list] [--dry-run] <session-id|branch>
 Resolves <session-id|branch> through the lane session registry under the
 CANONICAL root ~/.claude/handover/bridge: glm-sessions/ and claudex-sessions/.
 A raw pid is NOT accepted -- that is the point. Unlike the other BRIDGE_ROOT
-readers in this repo, a plain BRIDGE_ROOT env is IGNORED here (HIMMEL-1693
-CR): this is the sanctioned kill chokepoint, so its registry root must not be
+readers in this repo, a plain BRIDGE_ROOT env is IGNORED here:
+this is the sanctioned kill chokepoint, so its registry root must not be
 caller-controlled. Tests that need a fixture registry set
 STOP_WORKER_BRIDGE_ROOT_OVERRIDE=<path> explicitly.
 
@@ -350,7 +352,7 @@ checkpoint_worker_worktree() {
     fi
     head_oid=$(git -C "$wt" rev-parse --verify HEAD 2>/dev/null) || head_oid=""
     [ -n "$head_oid" ] || { echo "no HEAD"; return 1; }
-    tmp_dir=$(mktemp -d 2>/dev/null) || tmp_dir=""
+    tmp_dir=$(tmpdir 2>/dev/null) || tmp_dir=""
     [ -n "$tmp_dir" ] || { echo "mktemp failed"; return 1; }
     tmp_index="$tmp_dir/index"
     if ! GIT_INDEX_FILE="$tmp_index" git -C "$wt" read-tree "$head_oid" >/dev/null 2>&1; then

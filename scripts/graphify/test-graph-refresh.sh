@@ -666,11 +666,12 @@ assert_contains "16e fail-closed message names fail-closed" "fail-closed" "$out"
 # on this Windows box, so assert the LOGIC -- the HOME-comparison region uses
 # device+inode identity (_fs_id) and no longer case-folds path text. TDD shape:
 # red on pre-fix source (marker absent), green after.
-region="$(sed -n '/HOME identity guard (HIMMEL-1670)/,/HARD-refuse PHI/p' "$SCRIPT")"
+region="$(sed -n '/HOME identity guard/,/HARD-refuse PHI/p' "$SCRIPT")"
 if [ -z "$region" ]; then
-    fail "16f HOME identity-guard region not found in source (HIMMEL-1670 marker absent)"
+    fail "16f HOME identity-guard region not found in source (marker absent)"
 else
     assert_contains "16f HOME guard uses filesystem identity (_fs_id)" "_fs_id" "$region"
+    assert_not_contains "16f HOME guard region carries no internal id" "HIMMEL-1670" "$region"
     assert_not_contains "16f HOME guard dropped the lowercase-fold mechanism (_lc gone)" "_lc" "$region"
 fi
 

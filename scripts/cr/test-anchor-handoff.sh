@@ -4,7 +4,7 @@
 # by a RELATIVE path from a non-anchor tree runs the anchor's copy; an
 # absolute entry runs the local copy; the relative door fails closed.
 # T1-T10, T9b, T9c exercise scripts/cr/*.sh (depth 2 under the repo root).
-# T11-T13 exercise a depth-3 entry (scripts/handover/console-kit/*.sh)
+# T11-T13 exercise a depth-3 entry (scripts/handover/chief-kit/*.sh)
 # to prove the git-rev-parse-based root resolution is depth-agnostic.
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -147,7 +147,7 @@ for w in $WRITERS; do
     check "$first" "$SOURCE_LINE" "T10 $w sources the hand-off first"
 done
 
-# 11-13. A depth-3 entry (scripts/handover/console-kit/*.sh) —
+# 11-13. A depth-3 entry (scripts/handover/chief-kit/*.sh) —
 # the source line points at ITS OWN sibling anchor-handoff.sh copy (the one
 # generalizing this file no longer requires the two hardcoded scripts/cr/
 # writers to be depth-2; real scripts/handover/*.sh sources scripts/cr/anchor-handoff.sh
@@ -156,21 +156,21 @@ done
 # shellcheck disable=SC2016  # the literal line each writer carries, not an expansion
 D3_SOURCE_LINE="$SOURCE_LINE"
 make_d3_tree() {  # <root> <label>
-    mkdir -p "$1/scripts/handover/console-kit"
+    mkdir -p "$1/scripts/handover/chief-kit"
     git init -q "$1"
-    cp "$DIR/anchor-handoff.sh" "$1/scripts/handover/console-kit/anchor-handoff.sh"
-    printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:%s"\n' "$D3_SOURCE_LINE" "$2" > "$1/scripts/handover/console-kit/go-stub.sh"
+    cp "$DIR/anchor-handoff.sh" "$1/scripts/handover/chief-kit/anchor-handoff.sh"
+    printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:%s"\n' "$D3_SOURCE_LINE" "$2" > "$1/scripts/handover/chief-kit/go-stub.sh"
     git -C "$1" add -A
 }
 d3_anchor="$tmp/d3_anchor"; d3_wt="$tmp/d3_wt"
 make_d3_tree "$d3_anchor" anchor
 make_d3_tree "$d3_wt" branch
 # 11. Relative entry three levels deep hands off to the anchor's copy.
-check "$(run "$d3_wt" "$d3_anchor" scripts/handover/console-kit/go-stub.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T11 depth-3 relative entry hands off"
+check "$(run "$d3_wt" "$d3_anchor" scripts/handover/chief-kit/go-stub.sh | tr '\n' ' ')" "RAN:anchor rc=0 " "T11 depth-3 relative entry hands off"
 # 12. Absolute entry three levels deep still runs the local copy.
-check "$(run "$d3_wt" "$d3_anchor" "$d3_wt/scripts/handover/console-kit/go-stub.sh" | tr '\n' ' ')" "RAN:branch rc=0 " "T12 depth-3 absolute entry runs local"
+check "$(run "$d3_wt" "$d3_anchor" "$d3_wt/scripts/handover/chief-kit/go-stub.sh" | tr '\n' ' ')" "RAN:branch rc=0 " "T12 depth-3 absolute entry runs local"
 # 13. Relative entry three levels deep with HIMMEL_REPO unset fails closed.
-check "$(run "$d3_wt" - scripts/handover/console-kit/go-stub.sh | tr '\n' ' ')" "rc=2 " "T13 depth-3 unset HIMMEL_REPO exits 2"
+check "$(run "$d3_wt" - scripts/handover/chief-kit/go-stub.sh | tr '\n' ' ')" "rc=2 " "T13 depth-3 unset HIMMEL_REPO exits 2"
 
 # 14. A worktree reached through a SYMLINKED path must still
 # hand off. `_ah_dir` is built from plain `pwd` (logical, symlink-preserving)
@@ -286,7 +286,7 @@ printf 'echo local-lib\n' > "$depmismatch/scripts/guardrails/lib.sh"
 check "$(run "$depmismatch" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n' ' ')" "rc=2 " "T23 tampered scripts/guardrails/lib.sh refused before hand-off"
 
 # 24. Depth-3 twin of T22: a depth-3 entry
-# (scripts/handover/console-kit/go-stub.sh, mirroring the real go.sh, which
+# (scripts/handover/chief-kit/go-stub.sh, mirroring the real go.sh, which
 # sources ../../cr/anchor-handoff.sh cross-directory - unlike T11-T13's
 # make_d3_tree fixture, which copies a SIBLING anchor-handoff.sh next to the
 # entry and so never exercises this file's own self-path resolution) must
@@ -298,17 +298,17 @@ check "$(run "$depmismatch" "$anchor" scripts/cr/clear-review-marker.sh | tr '\n
 D3T_SOURCE_LINE="$SOURCE_CASE
 . \"\$_ah_d/../../cr/anchor-handoff.sh\" || exit 2"
 d3t_anchor="$tmp/d3t_anchor"; d3t_wt="$tmp/d3t_wt"
-mkdir -p "$d3t_anchor/scripts/cr" "$d3t_anchor/scripts/handover/console-kit" "$d3t_wt/scripts/cr" "$d3t_wt/scripts/handover/console-kit"
+mkdir -p "$d3t_anchor/scripts/cr" "$d3t_anchor/scripts/handover/chief-kit" "$d3t_wt/scripts/cr" "$d3t_wt/scripts/handover/chief-kit"
 git init -q "$d3t_anchor"
 git init -q "$d3t_wt"
 cp "$DIR/anchor-handoff.sh" "$d3t_anchor/scripts/cr/anchor-handoff.sh"
 cp "$DIR/anchor-handoff.sh" "$d3t_wt/scripts/cr/anchor-handoff.sh"
 printf '\n# tampered\n' >> "$d3t_wt/scripts/cr/anchor-handoff.sh"
-printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:%s"\n' "$D3T_SOURCE_LINE" "anchor" > "$d3t_anchor/scripts/handover/console-kit/go-stub.sh"
-printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:%s"\n' "$D3T_SOURCE_LINE" "d3t" > "$d3t_wt/scripts/handover/console-kit/go-stub.sh"
+printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:%s"\n' "$D3T_SOURCE_LINE" "anchor" > "$d3t_anchor/scripts/handover/chief-kit/go-stub.sh"
+printf '#!/usr/bin/env bash\nset -uo pipefail\n%s\necho "RAN:%s"\n' "$D3T_SOURCE_LINE" "d3t" > "$d3t_wt/scripts/handover/chief-kit/go-stub.sh"
 git -C "$d3t_anchor" add -A
 git -C "$d3t_wt" add -A
-check "$(run "$d3t_wt" "$d3t_anchor" scripts/handover/console-kit/go-stub.sh | tr '\n' ' ')" "rc=2 " "T24 depth-3 entry refuses a tampered scripts/cr/anchor-handoff.sh (the real go.sh/merge-on-green.sh shape)"
+check "$(run "$d3t_wt" "$d3t_anchor" scripts/handover/chief-kit/go-stub.sh | tr '\n' ' ')" "rc=2 " "T24 depth-3 entry refuses a tampered scripts/cr/anchor-handoff.sh (the real go.sh/merge-on-green.sh shape)"
 
 # T25: the hand-off source line of EVERY real entry script must
 # not resolve its directory through a PATH-resolved dirname. Each entry's own
@@ -338,7 +338,7 @@ for entry in $(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' --
 done
 # Pin the entry set: a bare count let a new entry script slip in
 # or an old one drop out unnoticed. Adding an entry script means adding it here.
-t25_want="scripts/cr/clear-cr-marker.sh scripts/cr/clear-review-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-freshness-advisory.sh scripts/cr/docs-audit-panel.sh scripts/cr/impacted-suites.sh scripts/cr/known-findings.sh scripts/cr/ledger-append.sh scripts/cr/orphan-check.sh scripts/cr/panel-first-pass.sh scripts/cr/review-round.sh scripts/cr/write-verdicts.sh scripts/handover/console-kit/console-wait.sh scripts/handover/console-kit/go.sh scripts/handover/console-kit/grant-round.sh scripts/handover/console-kit/himmel-gate.sh scripts/handover/console-kit/write-verdict.sh scripts/handover/merge-fork-pr.sh scripts/handover/merge-on-green.sh"
+t25_want="scripts/cr/clear-cr-marker.sh scripts/cr/clear-review-marker.sh scripts/cr/cr-scores.sh scripts/cr/doc-freshness-advisory.sh scripts/cr/docs-audit-panel.sh scripts/cr/impacted-suites.sh scripts/cr/known-findings.sh scripts/cr/ledger-append.sh scripts/cr/orphan-check.sh scripts/cr/panel-first-pass.sh scripts/cr/review-round.sh scripts/cr/write-verdicts.sh scripts/handover/chief-kit/console-wait.sh scripts/handover/chief-kit/go.sh scripts/handover/chief-kit/grant-round.sh scripts/handover/chief-kit/himmel-gate.sh scripts/handover/chief-kit/write-verdict.sh scripts/handover/merge-fork-pr.sh scripts/handover/merge-on-green.sh"
 t25_got=$(git -C "$REPO_ROOT" grep -l -F '/anchor-handoff.sh" || exit 2' -- scripts/cr scripts/handover ':!*test-*' | sort | tr '\n' ' ' | sed 's/ $//')
 check "$t25_got" "$t25_want" "T25 hand-off entry set matches the pinned list ($t25_n found)"
 

@@ -1225,7 +1225,7 @@ case $normalised in
         _tp_hd_real=$(((${#normalised} - ${#_tp_hd_tmp}) / ${#HEREDOC_MARK}))
         heredoc_reexpands_gate "$cmd" "$_tp_crhd" "$_tp_hd_real" || exit 0
         printf '%s\n' \
-          "block-tail-pipe-on-gates: DENIED — an unquoted heredoc body with a live \$ beside a command that names a himmel gate. \${x@P}, \${_@P} or an arithmetic subscript in the body can re-expand a quoted gate, so the body is code, and a gate piped to tail/head there loses its exit code (HIMMEL-2082)." \
+          "block-tail-pipe-on-gates: DENIED — an unquoted heredoc body with a live \$ beside a command that names a himmel gate. \${x@P}, \${_@P} or an arithmetic subscript in the body can re-expand a quoted gate, so the body is code, and a gate piped to tail/head there loses its exit code." \
           "Quote the delimiter so the body is data:" \
           "    cat <<'EOF'" \
           "or run the gate on its own, redirecting: <gate> > <file> 2>&1; echo \"RC=\$?\"; tail -80 <file>" \
@@ -1281,8 +1281,14 @@ if [ -z "$offender" ] && [ "${GUARD_UNWRAP_DEPTH:-0}" = 0 ] && [ -z "$_tp_varian
     _tp_hit=
     # shellcheck source=../lib/bash-ast.sh
     if { [ -r "$_tp_lib" ] && . "$_tp_lib"; } 2>/dev/null; then
+        _tp_rc=0
+        _tp_pos=$(bash_ast_positions "$cmd" 2>/dev/null) || _tp_rc=$? # swallow-ok: the rc is read next
+        if [ "$_tp_rc" = 5 ]; then
+            echo "block-tail-pipe-on-gates: the command model timed out, so this command that names a gate and tail/head cannot be read; refusing. Split the command." >&2
+            exit 2
+        fi
         # swallow-ok: the model only adds denies; a failed parse leaves the scanner verdict
-        _tp_hit=$(bash_ast_positions "$cmd" 2>/dev/null | jq -r --arg re "$GATE_RE" "$TP_JQ" 2>/dev/null)
+        _tp_hit=$(printf '%s' "$_tp_pos" | jq -r --arg re "$GATE_RE" "$TP_JQ" 2>/dev/null)
     fi
     if [ -n "$_tp_hit" ]; then
         offender=$_tp_hit
@@ -1294,7 +1300,7 @@ fi
 
 if [ "$kind" = trailing ]; then
     printf '%s\n' \
-      "block-tail-pipe-on-gates: DENIED — a gate must be the final segment so the task exit status is the gate's. A later \`;\`/\`&&\`/\`||\` segment replaces \$?, so a failing gate (e.g. check-ci.sh exit 3) is reported as the later command's exit 0 (HIMMEL-2082)." \
+      "block-tail-pipe-on-gates: DENIED — a gate must be the final segment so the task exit status is the gate's. A later \`;\`/\`&&\`/\`||\` segment replaces \$?, so a failing gate (e.g. check-ci.sh exit 3) is reported as the later command's exit 0." \
       "Offending segment:" \
       "    $(printf '%s' "$offender" | sed 's/^[[:space:]]*//')" \
       "Make the gate the LAST segment, or capture its status in the same command:" \
@@ -1306,7 +1312,7 @@ fi
 # printf, not echo: echo joins its arguments with a space, which would leave a
 # stray space at the head of every continuation line in this multi-line message.
 printf '%s\n' \
-  "block-tail-pipe-on-gates: DENIED — this pipes an exit-code-critical himmel gate command into tail/head. Unless the invoking shell has \`pipefail\` set (a Bash tool call cannot assume it does), \$? becomes tail's status (0) and the gate's real exit code is LOST. That misread is what made a session record CLEAR_RC=0 when clear-cr-marker.sh had exited 16 (HIMMEL-1696). Even under pipefail the \`| tail\` throws away the head of the output several incidents needed to diagnose." \
+  "block-tail-pipe-on-gates: DENIED — this pipes an exit-code-critical himmel gate command into tail/head. Unless the invoking shell has \`pipefail\` set (a Bash tool call cannot assume it does), \$? becomes tail's status (0) and the gate's real exit code is LOST. That misread is what made a session record CLEAR_RC=0 when clear-cr-marker.sh had exited 16. Even under pipefail the \`| tail\` throws away the head of the output several incidents needed to diagnose." \
   "Offending pipeline:" \
   "    $(printf '%s' "$offender" | sed 's/^[[:space:]]*//')" \
   "Use the redirect shape instead — it keeps the exit code AND the full output you would otherwise throw away:" \

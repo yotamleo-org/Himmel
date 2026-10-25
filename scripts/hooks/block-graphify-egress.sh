@@ -232,7 +232,8 @@ elif any(.[]; unread or viaenv) then "legacy"
 else "skip" end
 GA_JQ_EOF
     ast_rc=0
-    pos=$(bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
+    # a standalone hook has no runner bound, so cap the model at 10 s plus the 2 s kill grace, inside the 15 s entry timeout
+    pos=$(BASH_AST_MAX_S=10 bash_ast_positions "$cmd" 2>/dev/null) || ast_rc=$? # swallow-ok: the rc is read next
     case "$ast_rc" in
         0)
             # A position the model cannot read (a shell reading stdin, an eval or
@@ -247,6 +248,10 @@ GA_JQ_EOF
             ;;
         2)
             echo "block-graphify-egress: shfmt not on PATH, so this command that mentions graphify cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or comment the hook." >&2
+            exit 2
+            ;;
+        5)
+            echo "block-graphify-egress: the command model timed out, so this command that mentions graphify cannot be read; refusing. Split the command." >&2
             exit 2
             ;;
     esac
@@ -281,6 +286,6 @@ rc=$?
 cat "$err_file" >&2
 rm -f "$err_file"
 if [ "$rc" -eq 2 ]; then
-    echo "block-graphify-egress: for read-only queries use: bash scripts/graphify/leg-graph.sh query|explain \"<question>\"  (no cd, no relative target)" >&2
+    echo "block-graphify-egress: for read-only queries use: bash scripts/graphify/worker-graph.sh query|explain \"<question>\"  (no cd, no relative target)" >&2
 fi
 exit "$rc"

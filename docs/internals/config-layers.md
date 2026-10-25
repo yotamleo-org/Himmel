@@ -8,14 +8,14 @@ which they are read.
 
 | Layer | File | Owner | Tracked? | Holds |
 |---|---|---|---|---|
-| Secrets | `<primary checkout>/.env` | operator | never (gitignored, unreadable to agents) | API tokens, passwords, credentials, and the keys not yet classified (below) |
+| Secrets | the OS keyring through `scripts/lib/himmel-secrets`, then legacy `<primary checkout>/.env` | operator | never (gitignored, unreadable to agents) | API tokens, passwords, credentials, and the keys not yet classified (below) |
 | Behaviour config | `~/.himmel/himmel.conf` | operator, reviewable | yes on a luna install (a link to `<vault>/.himmel/himmel.conf`); a plain file otherwise | non-secret knobs: `HANDOVER_DIR`, `CR_PROFILE`, `HIMMEL_INITIATIVE`, … |
 | Local override | `~/.himmel/himmel.conf.local` | operator, this machine | never | the same keys, for one machine only |
 | Gate policy | `~/.himmel/config.json`, under `"policy"` | operator only (a hook refuses agent writes) | no | `CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE` |
 | Adopter config | `~/.himmel/config.json`, other fields | `himmelctl install`; `jira.sectorField` by the operator | no | luna cadence, bridge, PHI declarations, the Jira Sector field id (`jira.sectorField`) |
 | Install profile | `~/.claude/himmel/install-profile.json` | `himmelctl install` | no | the wizard's answers, replayed by `--from-profile` |
 | Handover registry | `~/.claude/handover/registry.json` | `/handover` | no | handover repos, buckets, branch prefixes |
-| Plugin and lane profiles | `scripts/machine-setup/` profiles, console-kit `--profile` | himmel repo | yes | which plugins and tools a session loads |
+| Plugin and lane profiles | `scripts/machine-setup/` profiles, chief-kit `--profile` | himmel repo | yes | which plugins and tools a session loads |
 | Chief rules | chief template, worker and judge system prompts, hooks | himmel repo | yes | how chiefs and workers behave |
 | Per-chief state | the fleet manifest in the handover bucket | the chief | in the state repo | which workers are live, their docs and tokens |
 
@@ -46,8 +46,8 @@ loosen the review gate; `load_policy` drops the value and prints
 `himmel.conf` or `himmel.conf.local` is ignored too, because no hook guards
 agent writes to those files yet.
 
-Secrets are read from `.env` only. A secret key planted in `himmel.conf` is
-never loaded.
+Secrets come from the resolver (next section), never from `himmel.conf`. A
+secret key planted in `himmel.conf` is never loaded.
 
 A policy key exported from a shell profile (for example a sourced
 `~/.config/himmel/env`) is process env too, so it is ignored with the same
@@ -67,9 +67,63 @@ not consulted for policy).
 | `config.json` not valid JSON | notice; legacy `.env` | `load_policy` returns non-zero; `clear-cr-marker.sh` refuses (exit 14) |
 | `.env` present but unreadable | key stays unset | `load_policy` returns non-zero; the gate refuses |
 
+`himmel-doctor` check C74 reports a half-migrated station: `himmel.conf`
+missing or unparseable, behaviour keys still in `.env`, and gate keys the
+policy file does not yet hold. It prints key names only, never values.
+
 A missing file never turns a gate on its permissive side: unset policy keys
 leave the cross-model requirement off, the floor fallback off, and automerge
 off, which are today's defaults.
+
+## Secrets: the keyring resolver
+
+`scripts/lib/himmel-secrets` serves every secret-class key. `load_dotenv`
+asks it for secret keys it has not found yet, so shell consumers need no
+change. Order, first hit wins:
+
+1. the process environment (a non-empty value)
+2. `$CREDENTIALS_DIRECTORY/<KEY>` (a systemd unit's `LoadCredential=`)
+3. the OS keyring: first the item for this project
+   (`service himmel key <KEY> project <primary checkout path>`), then the
+   user-wide item (`service himmel key <KEY> scope user`)
+4. legacy `.env`, with one `DEPRECATED` line on stderr naming the keys,
+   printed only where `secret-tool` is installed (never on macOS)
+5. unset
+
+The keyring is Linux only for now (libsecret's `secret-tool` against a Secret
+Service such as gnome-keyring or KWallet); macOS falls through to `.env`. The
+resolver never prompts: a locked keyring prints
+`himmel-secrets: keyring locked (unlock the wallet or run himmel-secrets status)`
+and falls through within 3 s, and a cron or systemd job without
+`DBUS_SESSION_BUS_ADDRESS` finds the session bus under
+`$XDG_RUNTIME_DIR/bus`, or `/run/user/<uid>/bus` when `XDG_RUNTIME_DIR` is
+unset too. `HIMMEL_SECRETS_KEYRING=off` skips the keyring.
+
+The secret keys of a `.env` that git tracks are refused with one line naming
+the file; only an untracked `.env` serves secrets.
+
+Verbs: `get KEY…`, `exec --keys KEY[,KEY…] -- <command>` (runs the command
+with only those keys added to its env), `status [KEY…]` (the layer serving
+each key, names only), `put KEY` (value from stdin or a silent prompt;
+`--project` stores a per-project item), `import-env <file>` (stores each
+secret key of a dotenv file that `scripts/himmelctl/lib/secrets-manifest.json`
+lists, in `secrets` or `stationSecrets`, and prints names only; any other line is named by its number, and a
+file whose quoted value does not close on its line is refused) and `export-env <file>`
+(writes the keyring's himmel items to a new 0600 dotenv file).
+`block-read-secrets.sh` refuses an agent's direct `get`, `put`, `import-env`
+and `export-env` commands and direct keyring reads. That is not a full
+barrier: an agent can still reach `get` by sourcing the script
+(`. scripts/lib/himmel-secrets get KEY`), which HIMMEL-7585 tracks.
+
+`himmel-doctor` check C75 reports the keyring state (`C75-keyring`) and which
+secret names are still served from `.env` (`C75-secrets`), names only.
+
+Moving a station: `bash scripts/lib/himmel-secrets import-env <primary
+checkout>/.env`, then check `himmel-secrets status`. Leave `.env` in place
+as the fallback; import-env skips a secret the manifest does not list, so add
+a new one to `stationSecrets` first.
+Wait until the test runners export `HIMMEL_SECRETS_KEYRING=off` before you
+move a station whose suites run against the real keyring.
 
 ## Which keys go where
 
@@ -79,8 +133,16 @@ Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `HIMMEL_WHERE_ARE_WE_STALE_HOURS`, `HIMMEL_WORKTREE_NUDGE`,
 `HIMMEL_UPDATE_AUTOSTASH`, `CR_PROFILE`, `CR_CLAUDE_AGENTS`,
 `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`,
-`TRACKER`. Their meanings and defaults are unchanged; `.env.example`
-documents each one.
+`TRACKER`.
+
+Non-secret Jira and service identifiers also belong in `himmel.conf`:
+`JIRA_EMAIL`, `JIRA_PROJECTS`, `JIRA_PROJECT_KEY`, `JIRA_CLOUD_ID`,
+`GCP_CI_PROJECT_ID`, `SNYK_ORG_ID`,
+`SNYK_ORG_SLUG`, `VERCEL_TEAM_ID`, `VERCEL_USER_ID`, `ANTHROPIC_API_ORG_ID_A`,
+`ANTHROPIC_API_ORG_ID_B`. Their meanings and defaults are unchanged;
+`.env.example` documents them. The Jira CLI reads its identifiers through
+these same config layers; API tokens still come only from the process env
+or legacy `.env`, never from `himmel.conf` or its local override.
 
 Every reader of these keys follows the same order as `load_dotenv`: the
 process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
@@ -93,9 +155,11 @@ Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
 
 Everything else stays in `.env`. That includes keys whose secret-or-config
-class has not been decided yet: account emails, chat IDs, cookie-file paths,
-service URLs, VM user names and the non-token Jira keys. Until each is
-classified with the operator, it is treated as a secret.
+class has not been decided yet: other account emails, chat IDs, cookie-file
+paths, service URLs and VM user names. Only the explicitly named identifiers
+above are config; tokens and all other unclassified keys remain secrets.
+A key that decides where a credential or message is sent (`JIRA_BASE_URL`,
+`TELEGRAM_GROUP_CHAT_ID`) stays secret while `himmel.conf` is unguarded.
 
 The registry is `_himmel_key_class` in `scripts/lib/load-dotenv.sh`. A key
 moves from secret to config only by editing that list in a reviewed PR.

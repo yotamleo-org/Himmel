@@ -65,7 +65,7 @@ if [ -z "$MOG_SUITE_TMP" ] || [ ! -d "$MOG_SUITE_TMP" ]; then echo "FAIL: mktemp
 trap 'chmod -R u+rwX "$MOG_SUITE_TMP"; rm -rf "$MOG_SUITE_TMP"' EXIT
 export TMPDIR="$MOG_SUITE_TMP"
 
-# console-kit/go.sh mints, and the console-GO gate verifies with,
+# chief-kit/go.sh mints, and the console-GO gate verifies with,
 # a key under $HOME/.config/himmel — a scratch HOME keeps every GO this suite
 # writes off the operator's real key.
 MOG_HOME=$(mktemp -d "${TMPDIR:-/tmp}/mog-home.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -255,14 +255,14 @@ mog_build_fixture() {
     # existing case that never sets it is unaffected.
     cp "${WT_INUSE_SRC:-$SCRIPT_DIR/../lib/worktree-inuse.sh}" "$tmp/scripts/lib/worktree-inuse.sh"
     # The PARTIAL report appends to the console doc through this sibling.
-    mkdir -p "$tmp/scripts/handover/console-kit"
-    cp "$SCRIPT_DIR/console-kit/append-results.sh" "$tmp/scripts/handover/console-kit/append-results.sh"
+    mkdir -p "$tmp/scripts/handover/chief-kit"
+    cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
     # The status lib is sourced from the anchor; the status funnel at its anchor
     # path is a stub that logs each event to funnel.log.
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
     cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$tmp/scripts/lib/"
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
-    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/chief-kit/worker-jira-status.sh"
     # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion
@@ -3065,7 +3065,7 @@ GO_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mog-go.XXXXXX")
 GO_ROOT=$(cd "$GO_ROOT" && pwd)
 GO_SHA=0123456789abcdef0123456789abcdef01234567
 GO_OLD=fedcba9876543210fedcba9876543210fedcba98
-GO_WRITER="$SCRIPT_DIR/console-kit/go.sh"
+GO_WRITER="$SCRIPT_DIR/chief-kit/go.sh"
 # go.sh now resolves this repo's nwo via `gh repo view` to bind
 # the GO mac. The direct $GO_WRITER invocations below run outside run_mog's
 # own per-call fixture (which stubs gh only for merge-on-green.sh itself), so
@@ -3086,8 +3086,8 @@ chmod +x "$GO_WRITER_BIN/gh"
 # writer runs from a repo whose CR ledger holds an ok row for each head, under a
 # gh that answers ready-check green (anything else falls through to the stub
 # above). go_write <root> <go.sh args...> - the head is the last argument.
-# shellcheck source=console-kit/testlib-ready-pass.sh
-. "$SCRIPT_DIR/console-kit/testlib-ready-pass.sh"
+# shellcheck source=chief-kit/testlib-ready-pass.sh
+. "$SCRIPT_DIR/chief-kit/testlib-ready-pass.sh"
 GO_READY_REPO=$(mktemp -d "${TMPDIR:-/tmp}/mog-go-repo.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 git -C "$GO_READY_REPO" init -q
 ready_pass_bin "$GO_READY_REPO/.bin"
@@ -3637,6 +3637,29 @@ assert_jira_log_lacks "jira: partial merge never transitions to Done" "transitio
 assert_jira_log_has "jira: partial merge comments a Remaining line" "comment-body: Remaining:"
 # A bare merge leaves the ticket open, so say so (stderr) and tell the console doc.
 assert_err_has "jira: bare merge prints the PARTIAL line" "PARTIAL HIMMEL-374: next slice not dispatched"
+# A merge of a ticket held in a later unreleased version than the current one files an INTAKE
+# request into the current version, whatever the merge's transition opt-in; a ticket already current, or one
+# with no version, files nothing.
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket held in a later version files an INTAKE request"
+assert_jira_log_has "7641: the INTAKE goes to the current version from the held one" "release request v1.1.3 --verb INTAKE --key HIMMEL-374 --from v1.1.4 --to v1.1.3"
+assert_audit_has "7641: the request rides the audit line" "intake=Q-v1.1.3-0099"
+assert_jira_log_lacks "7641: the merge still never edits the ticket's versions" "edit HIMMEL-374"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.3"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket already in the current version files nothing"
+assert_jira_log_lacks "7641: a current ticket files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.3"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket holding the current version as well files nothing"
+assert_jira_log_lacks "7641: a ticket that also holds the current version files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of an unversioned ticket files nothing"
+assert_jira_log_lacks "7641: an unversioned ticket files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.0"}' STUB_JIRA_VERSIONS='v1.1.3\tfalse\t2026-10-22\tfalse\nv1.1.0\tfalse\t2026-10-01\ttrue\n' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket held in an older archived version files nothing"
+assert_jira_log_lacks "7641: an archived held version is not a later one" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_JIRA_REQUEST_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: an INTAKE request that cannot be filed still lets the merge succeed"
+assert_audit_has "7641: an unfiled INTAKE request is on the audit line" "intake=failed"
 mog_doc="$LAST_TMP/console-doc.md"
 printf '# console\n\n## Results\n' > "$mog_doc"
 HIMMEL_CONSOLE_DOC="$mog_doc" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
@@ -3778,6 +3801,34 @@ if [ -n "$jira_comment_ln" ] && [ -n "$jira_transition_ln" ] && [ "$jira_comment
 else
     fail "jira: comment precedes transition (comment@${jira_comment_ln:-none} transition@${jira_transition_ln:-none})"
 fi
+
+# A status the merge wrote marks the console's FOCUS page dirty (focus-state
+# dirty=, plus focus-state.again); a failing mark changes neither the exit nor the result.
+HIMMEL_CONSOLE_DOC=/nonexistent/console.md STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "focus: a failing mark-dirty never fails the merge" -- --jira-transition
+assert_audit_has "focus: the transition is still recorded ok" "jira-transition=ok key=HIMMEL-374 status=Done"
+MOG_FOCUS_DOC="$MOG_SUITE_TMP/focus-console/console.md"
+mkdir -p "${MOG_FOCUS_DOC%/*}"; printf '# console\nfocus-version: v1.1.3\n' > "$MOG_FOCUS_DOC"
+printf 'status=ok\ngen=1\ndirty=\n' > "${MOG_FOCUS_DOC%/*}/focus-state"
+# The mark follows the fixVersion fold, so a rebuild it starts sees the folded version:
+# the stub CLI records whether the page was already dirty when the fold ran.
+# shellcheck disable=SC2016 # $JIRA_LOG, $* and $@ must reach the stub FILE unexpanded
+mog_focus_order_stub() {
+    mv "$1/bin/node" "$1/bin/node.real"
+    printf '#!/usr/bin/env bash\ncase "$*" in *" edit HIMMEL-374 --fix-version"*) grep -q "^dirty=." "%s" && echo "fold: dirty" >> "$JIRA_LOG" ;; esac\nexec "%s" "$@"\n' \
+        "${MOG_FOCUS_DOC%/*}/focus-state" "$1/bin/node.real" > "$1/bin/node"
+    chmod +x "$1/bin/node"
+}
+HIMMEL_CONSOLE_DOC="$MOG_FOCUS_DOC" MOG_ANCHOR_SETUP=mog_focus_order_stub STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' \
+    STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" run_mog 0 "focus: a merge that folds the fixVersion" -- --jira-transition
+if grep -q '^dirty=[0-9]' "${MOG_FOCUS_DOC%/*}/focus-state" && grep -q '^status=ok$' "${MOG_FOCUS_DOC%/*}/focus-state" \
+    && [ -s "${MOG_FOCUS_DOC%/*}/focus-state.again" ]; then pass
+else fail "focus: the transition marks the FOCUS page dirty ($(tr '\n' '|' < "${MOG_FOCUS_DOC%/*}/focus-state"))"; fi
+if grep -q 'index.js edit HIMMEL-374 --fix-version' "$LAST_JIRA_LOG" && ! grep -q '^fold: dirty$' "$LAST_JIRA_LOG"; then pass
+else fail "focus: the mark follows the fixVersion fold ($(grep -E 'fold: dirty|index\.js edit HIMMEL-374 ' "$LAST_JIRA_LOG" | tr '\n' '|'))"; fi
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "focus: a merge with no console doc" -- --jira-transition
+if [ -n "$(find "$LAST_TMP" -name 'focus-state*' 2>/dev/null)" ]; then fail "focus: with no console doc nothing is marked"; else pass; fi
 
 # A failing Jira transition must never fail the merge itself (best-effort),
 # even when opted in.
@@ -4714,10 +4765,17 @@ assert_audit_has "5188-e: audited as a head-moved refusal" "phase=head-moved"
 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
     bp_run 0 "5188-f: no plugin file in the PR → merged, gate skipped"
 # 5188-g — the files endpoint stops at 3000 entries, so a list that long may
-# have dropped the plugin paths: the recheck runs anyway and refuses.
+# have dropped the plugin paths: the trust-path gate refuses it before the
+# recheck runs (exit 21).
 BP_BIG=$(jq -nc '[range(3000) | {filename: ("docs/f\(.).md")}]')
 STUB_PR_FILES_JSON="$BP_BIG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
-    bp_run 23 "5188-g: a possibly truncated 3000-file list still runs the recheck → exit 23"
+    bp_run 21 "5188-g: a possibly truncated 3000-file list is refused at the trust-path gate → exit 21"
+assert_err_has "5188-g: stderr names the 3000-row cap" "3000-row cap"
+# 5188-g2 — 1500 renames pass the trust-path gate (1500 unique files) yet list
+# 3000 names with their previous names, so the plugin-bump recheck still runs.
+BP_REN=$(jq -nc '[range(1500) | {filename: ("docs/n\(.).md"), previous_filename: ("docs/o\(.).md")}]')
+STUB_PR_FILES_JSON="$BP_REN" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5188-g2: 1500 renames list 3000 names and still run the recheck → exit 23"
 # 5188-h — a plugin file FIRST in a long list must still be seen (an early-exit
 # grep under pipefail would SIGPIPE the producer and read as "no plugin file").
 BP_LONG=$(jq -nc '[{filename: "marketplace/plugins/himmel-ops/a.txt"}] + [range(2500) | {filename: ("docs/f\(.).md")}]')
@@ -4755,8 +4813,8 @@ no_merge_call "5208-b: no merge call"
 # the mode relaxes no gate and is refused wherever a GO is the rule. -----------
 solo_cfg_setup() { git -C "$1" config --local himmel.mergeMode "${SOLO_CFG-solo}"; }
 solo_clone_setup() {
-    solo_cfg_setup "$1" && mkdir -p "$1/scripts/handover/console-kit" \
-        && : > "$1/scripts/handover/console-kit/go.sh"
+    solo_cfg_setup "$1" && mkdir -p "$1/scripts/handover/chief-kit" \
+        && : > "$1/scripts/handover/chief-kit/go.sh"
 }
 
 # 7001-a — solo config, no GO file: a green PR merges, pinned and audited as solo.
@@ -4785,7 +4843,7 @@ MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=0 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_
     run_mog 0 "7001-c2: solo config, HIMMEL_CONSOLE_LEG=0 → merged"
 assert_audit_has "7001-c2: audited as solo" "mode=solo"
 
-# 7001-d — never in the himmel clone: an anchor carrying console-kit/go.sh
+# 7001-d — never in the himmel clone: an anchor carrying chief-kit/go.sh
 # refuses the config rather than ignoring it.
 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_clone_setup STUB_SHA="solo7001d" \
     run_mog 17 "7001-d: solo config in the himmel clone → exit 17"
@@ -4816,7 +4874,7 @@ MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=
 assert_audit_has "7001-g: still the console-GO refusal" "phase=console-go"
 
 # --- 7390. Solo mode in an adopted project: the anchor is the himmel clone
-# (it carries console-kit/go.sh) and the merge runs from the adopted repo, which
+# (it carries chief-kit/go.sh) and the merge runs from the adopted repo, which
 # holds the config. The mode is read from, and the clone test made on, the PR's
 # repo. -------------------------------------------------------------------------
 SOLO_ADOPTED=$(mktemp -d "${TMPDIR:-/tmp}/mog-solo-adopted.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -4824,7 +4882,7 @@ if ! git init -q "$SOLO_ADOPTED" || ! git -C "$SOLO_ADOPTED" config --local himm
     echo "FAIL: cannot build the adopted-repo fixture" >&2; exit 1
 fi
 himmel_clone_setup() {
-    mkdir -p "$1/scripts/handover/console-kit" && : > "$1/scripts/handover/console-kit/go.sh"
+    mkdir -p "$1/scripts/handover/chief-kit" && : > "$1/scripts/handover/chief-kit/go.sh"
 }
 SOLO_HANDOVER=$(mktemp -d "${TMPDIR:-/tmp}/mog-solo-ho.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 # The himmel clone's origin names the harness repo, not the PR's.

@@ -24,7 +24,7 @@ assert_rc() {  # assert_rc <expected> <ok-name> <fail-detail>
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/canon-path.sh"
 
-TMP="$(mktemp -d)"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/dispatch-codex-exec.XXXXXX")" || exit 1
 trap 'rm -rf "$TMP"' EXIT
 # dispatch-codex-exec.sh resolves the worktree with `pwd -P`, so the
 # fixture root must be the physical spelling too (macOS TMPDIR sits behind the

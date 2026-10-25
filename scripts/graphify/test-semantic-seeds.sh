@@ -6,7 +6,7 @@
 # after any anchor seeds. Stub graphify; every row runs everywhere.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="$HERE/leg-graph.sh"
+SCRIPT="$HERE/worker-graph.sh"
 SEM="$HERE/semantic-seeds.py"
 FAILS=0
 pass() { echo "  ok: $1"; }
@@ -35,7 +35,7 @@ nodes = [
     node("need", "Need", "scripts/auth/need.ts"),
     node("pc", "prompt-cache.md", "docs/internals/prompt-cache.md", "document"),
     node("pc_test", "prompt-cache.test.js", "scripts/tests/prompt-cache.test.js"),
-    node("go_sh", "go.sh", "scripts/handover/console-kit/go.sh"),
+    node("go_sh", "go.sh", "scripts/handover/chief-kit/go.sh"),
 ]
 json.dump({"directed": False, "multigraph": False, "graph": {}, "nodes": nodes, "links": []}, open(sys.argv[1], "w"))
 PY
@@ -80,7 +80,7 @@ run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>
 out="$(run query "how does a console hand work to a leg")"; rc=$?
 calls="$(cat "$T/calls")"
 if [ "$rc" = 0 ] && [ "$(wc -l < "$T/calls")" -eq 2 ] \
-  && grep -qx -- "query how does a console hand work to a leg --rationale --seed glossary --seed runc --seed go_sh --budget 4000" <<<"$calls" \
+  && grep -qx -- "query how does a console hand work to a leg --rationale --seed glossary --seed runc --budget 4000" <<<"$calls" \
   && grep -qx -- "query how does a console hand work to a leg --rationale --budget 4000" <<<"$calls"; then
   pass "S4 semantic seed passed to graphify query"
 else fail "S4 rc=$rc calls='$calls'"; fi
@@ -198,8 +198,8 @@ def node(i, label, src, ft="code", **kw):
     n.update(kw)
     return n
 nodes = [
-    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/console-kit/headed-arm-leg.sh"),
-    node("arm_fn", "start_leg_session()", "scripts/handover/console-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."),
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
+    node("arm_fn", "start_leg_session()", "scripts/handover/chief-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."),
     node("preface", "leg-preface.md", "docs/handover/leg-preface.md", "document"),
     node("pf_rule", "Report to the console", "docs/handover/leg-preface.md", "concept", rationale="A leg reports a blocker to its console first."),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),

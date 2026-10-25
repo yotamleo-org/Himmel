@@ -172,7 +172,7 @@ CLAUDE_END_ONLY=(
                              # CLAUDE_CODE_SESSION_ID -- a Claude Code-specific env
                              # var the Codex lane never sets -- and the console
                              # kit (tick.sh, ACTION ZERO) this guard exists to
-                             # enforce is itself Claude-only (console-kit/tick.sh's
+                             # enforce is itself Claude-only (chief-kit/tick.sh's
                              # own header: "Linux-only... Bash 3.2-compatible" with
                              # no Codex wiring). Not ported.
 )

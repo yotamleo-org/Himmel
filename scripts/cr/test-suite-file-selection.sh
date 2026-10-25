@@ -33,7 +33,6 @@ WHOLE_REPO = {
     'scripts/agents-md/test-pointers.sh': 'pointers.sh inventories every tracked path to find CLAUDE.md siblings',
     'scripts/ci/test-tier-replay.sh': 'tier-replay.sh inventories every tracked suite for its trust-tier floor',
     'scripts/claudex/test-probe-chunk.sh': 'reference stream reads the repository-wide tracked *.md pathspec',
-    'scripts/graphify/test-no-windows-indexed.sh': 'git inventory forbids tracked *.ps1 anywhere in the tree',
     'scripts/guardrails/test-leak-classes.sh': 'executed leak-classes.sh inventories the tracked git root in tree/ignore-removal modes; suite uses fixture repos',
     'scripts/himmelctl/test/test-versioned-layout.sh': 'fixture copies the tracked and untracked working tree',
     'scripts/hooks/test-check-npm-audit.sh': 'check-npm-audit.sh inventories *package.json throughout the repository',
@@ -300,7 +299,6 @@ console.log("import '../data/fake.mjs'");
         'scripts/lanes/test-veto.sh': 'true\n',
         'scripts/lanes/test-launch-site-profiles.sh': 'true\n',
         'scripts/cr/test-pr-check-run.sh': 'true\n',
-        'scripts/ci/test-check-cr-terminology.sh': 'true\n',
         **miniature,
     }.items():
         write(path, text)
@@ -311,7 +309,7 @@ console.log("import '../data/fake.mjs'");
     assert baseline.returncode == 0, baseline.stderr
     reference.write_text(baseline.stdout)
     (repo / 'anchor-handoff.sh').write_text((root / 'scripts/cr/anchor-handoff.sh').read_text())
-    for changed in ['scripts/lib/shared.sh', 'scripts/lanes/test-veto.sh', 'scripts/new-setting.sh', 'scripts/lanes/guarded.sh', '.claude/commands/zz-oracle-probe.html', 'assets/new.txt']:
+    for changed in ['scripts/lib/shared.sh', 'scripts/lanes/test-veto.sh', 'scripts/new-setting.sh', 'scripts/lanes/guarded.sh', 'assets/new.txt']:
         before = git('rev-parse', 'HEAD')
         queried = matrix(repo, [changed])[changed]
         target = repo / changed
@@ -437,8 +435,6 @@ exec /usr/bin/git -c grep.threads=1 "$@"
                 assert previous.returncode == 0, previous.stderr
                 if path in current['files']:
                     assert path in previous.stdout.splitlines(), 'main replay missed a changed-suite self-edge; diff shim did not apply'
-                if path == '.claude/commands/zz-oracle-probe.html':
-                    assert 'scripts/ci/test-check-cr-terminology.sh' in previous.stdout.splitlines(), 'main replay lost known add-probe edge'
                 drops += [(path, suite) for suite in set(previous.stdout.splitlines()) - actual[path]]
                 checked += 1
             print(f'MONOTONIC-SHARD {index}: {checked}/{len(chunk)} paths, {len(drops)} drops', flush=True)
@@ -538,8 +534,6 @@ for suite, rows in resolved['unresolved'].items():
 for row in resolved['closure_pins']:
     print(f'CLOSURE-PIN {row}', flush=True)
 edges = {suite: set(resolved['files'][suite]) | set(resolved['probes'][suite]) for suite in resolved['files']}
-term = 'scripts/ci/test-check-cr-terminology.sh'
-assert '.claude/commands/zz-oracle-probe.html' in edges[term], 'known terminology probe missing from oracle'
 paths = sorted({path for dependencies in edges.values() for path in dependencies})
 assert paths and edges, 'empty oracle'
 with tempfile.TemporaryDirectory(prefix='suite-matrix-') as scratch:

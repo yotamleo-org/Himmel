@@ -7,7 +7,7 @@ set -uo pipefail
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 SUT="$REPO/scripts/handover/librarian-cadence.sh"
 PASS=0; FAIL=0
-W="$(mktemp -d -t librarian-cadence.XXXXXX)" || exit 1; trap 'rm -rf "$W"' EXIT
+W="$(mktemp -d "${TMPDIR:-/tmp}/librarian-cadence.XXXXXX")" || exit 1; trap 'rm -rf "$W"' EXIT
 
 check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "ok - $1";
   else FAIL=$((FAIL+1)); echo "FAIL - $1: expected '$2' got '$3'"; fi; }

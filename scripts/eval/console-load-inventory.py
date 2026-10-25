@@ -6,7 +6,7 @@ transcripts and attributes every API request to a trigger class (the last
 non-tool-result user turn: a leg message, a task notification, the operator)
 and an action class (what its tool calls did), then costs it.
 
-  console-load-inventory.py [--projects DIR] [--suffix -roadmap-console]
+  console-load-inventory.py [--projects DIR] [--suffix -roadmap-chief,-roadmap-console]
                             [--match REGEX] [--last N] [--json]
 
 Cost per API request (deduped by message id; assistant entries are split per
@@ -33,9 +33,9 @@ import sys
 
 SCRIPTS = [
     "wrap-merged.sh", "verdict-go.sh", "relay-batch.sh", "succession-tracker.sh",
-    "close-wrapped-leg.sh", "live-state.sh", "write-verdict.sh", "go.sh",
+    "close-wrapped-leg.sh", "close-wrapped-worker.sh", "live-state.sh", "write-verdict.sh", "go.sh",
     "fleet-manifest.sh", "append-results.sh", "board.mjs", "console-wait.sh",
-    "tick.sh", "headed-arm-leg.sh", "ready-check.sh", "merge-on-green.sh",
+    "tick.sh", "headed-arm-leg.sh", "headed-arm-worker.sh", "ready-check.sh", "merge-on-green.sh",
 ]
 
 TRIGGERS = [
@@ -52,13 +52,13 @@ TRIGGERS = [
 
 ACTIONS = [
     ("verdict-persist", r"write-verdict\.sh|verdict-go\.sh|\bgo\.sh\b"),
-    ("wrap-close", r"close-wrapped-leg\.sh|wrap-merged\.sh|fleet-manifest\.sh\s+\S*\s*(remove|rm)"),
+    ("wrap-close", r"close-wrapped-(?:leg|worker)\.sh|wrap-merged\.sh|fleet-manifest\.sh\s+\S*\s*(remove|rm)"),
     ("merge-ready-gate", r"ready-check\.sh|merge-on-green\.sh|check-ci\.sh|gh pr (view|checks)"),
     ("succession-bookkeeping", r"succession-tracker\.sh|live-state\.sh"),
     ("board-render", r"board\.mjs|fleet\.mjs"),
     ("jira-defer", r"jira/dist/index\.js"),
     ("ci-rerun", r"gh run (rerun|list|view)"),
-    ("dispatch-leg", r"headed-arm-leg\.sh|gen-briefs|brief-lint"),
+    ("dispatch-leg", r"headed-arm-(?:leg|worker)\.sh|gen-briefs|brief-lint"),
     ("tick-wait", r"console-wait\.sh|tick\.sh"),
     ("results-only", r"append-results\.sh"),
 ]
@@ -154,7 +154,7 @@ def parse(path):
                     for s in SCRIPTS:
                         if re.search(r"(?<![\w-])" + re.escape(s), cmd):
                             script_calls[s] += 1
-                    if "close-wrapped-leg.sh" in cmd and "wrap-merged.sh" not in cmd:
+                    if ("close-wrapped-leg.sh" in cmd or "close-wrapped-worker.sh" in cmd) and "wrap-merged.sh" not in cmd:
                         hand_wraps += 1
                 elif x["name"] == "SendMessage":
                     r["cmds"].append("SendMessage")
@@ -173,7 +173,7 @@ def parse(path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--projects", default=os.path.expanduser("~/.claude/projects/-home-overlord-Documents-github-himmel"))
-    ap.add_argument("--suffix", default="-roadmap-console")
+    ap.add_argument("--suffix", default="-roadmap-chief,-roadmap-console")
     ap.add_argument("--match", default="")
     ap.add_argument("--last", type=int, default=0)
     ap.add_argument("--json", action="store_true")
@@ -182,7 +182,7 @@ def main(argv=None):
     sessions = []
     for f in glob.glob(os.path.join(a.projects, "*.jsonl")):
         t = title_of(f)
-        if t and t.endswith(a.suffix) and re.search(a.match, t):
+        if t and t.endswith(tuple(a.suffix.split(","))) and re.search(a.match, t):
             sessions.append((t, f))
     sessions.sort()
     if a.last:

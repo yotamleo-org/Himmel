@@ -148,7 +148,7 @@
 #       passed --go and it fails the same checks; (3) solo mode (git config
 #       himmel.mergeMode) is set to a value other than 'solo', or to 'solo' under
 #       HIMMEL_CONSOLE_LEG or in the himmel clone (the PR's repo carries
-#       console-kit/go.sh, or the anchor does and its origin does not name
+#       chief-kit/go.sh, or the anchor does and its origin does not name
 #       another github.com repo) — checked after check-ci, before any merge
 #       call, on --dry-run too (see the solo-mode and console-GO gates below). Before
 #       this code also carried the GitHub-blocked refusals now reported as 18.
@@ -177,7 +177,7 @@
 #       if the title cannot be re-queried at all.
 #   21  trust-path gate: the PR changes a path matching the
 #       default branch's scripts/ci/ci-trust-paths.txt and carries no valid
-#       trust-reviewed GO (console-kit/go.sh --trust-reviewed) for this PR at
+#       trust-reviewed GO (chief-kit/go.sh --trust-reviewed) for this PR at
 #       the certified head — for every caller, console leg or not. Also when
 #       the gate cannot prove the PR touches no trust path: the list unreadable,
 #       empty, invalid, or missing on the anchor's own repo; the file listing
@@ -224,12 +224,12 @@
 #                          anything else leaves it on. The one off switch.
 #   MERGE_ON_GREEN_LOG     Audit-log path override. Default:
 #                          "$(git rev-parse --git-dir)/merge-on-green.log".
-#   HIMMEL_CONSOLE_LEG     Exported (=1) by console-kit/headed-arm-leg.sh into
+#   HIMMEL_CONSOLE_LEG     Exported (=1) by chief-kit/headed-arm-leg.sh into
 #                          every console-spawned leg. Truthy => the merge needs
 #                          <handover_root>/.locks/go/<pr>.<certified head sha>
 #                          containing head=<that sha> and a verifying mac=
 #                         written by the console via
-#                          console-kit/go.sh. Unset/falsy =>
+#                          chief-kit/go.sh. Unset/falsy =>
 #                          no GO gate.
 #   HANDOVER_DIR           Where go_resolve_root (scripts/lib/go-gate.sh)
 #                          resolves that GO file; empty or the harness repo's
@@ -604,8 +604,21 @@ block_alert() { merge_block_alert "${nwo:-?}" "${pr_num:-?}" "${sha:-}" "$@"; }
 # _status_event <key> <event> <pr> [head] — the status funnel re-derives the
 # ticket's status; best-effort, never changes an exit code.
 _status_event() {
-    bash "$himmel_repo/scripts/handover/console-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
+    bash "$himmel_repo/scripts/handover/chief-kit/worker-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
         ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
+}
+# _focus_mark_dirty — a status the merge wrote leaves the console's FOCUS page
+# behind: mark it dirty (HIMMEL_CONSOLE_DOC) so the waiter's next tick rebuilds
+# it. The mark is written here as focus-refresh.sh --mark-dirty writes it
+# (dirty=<epoch> in focus-state, plus focus-state.again), so the merge runs no
+# unguarded code; best-effort, never changes an exit code.
+_focus_mark_dirty() {
+    [ -n "${HIMMEL_CONSOLE_DOC:-}" ] || return 0
+    local st; st="$(dirname "$HIMMEL_CONSOLE_DOC")/focus-state"
+    { [ -f "$HIMMEL_CONSOLE_DOC" ] \
+        && { grep -q '^dirty=.' "$st" \
+            || { { grep -v '^dirty=' "$st"; echo "dirty=$(date +%s)"; } > "$st.tmp.$$" && mv -f "$st.tmp.$$" "$st"; }; } \
+        && date +%s > "$st.again"; } 2>/dev/null || true
 }
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
@@ -925,7 +938,7 @@ fi
 # because only a console leg or an explicit --go is ever bound to one. What it
 # adds is a refusal wherever a GO is the rule — a console leg, or the himmel
 # clone (the PR's repo, or an anchor that is not another repo's harness, carries
-# console-kit/go.sh) — and an unknown value fails
+# chief-kit/go.sh) — and an unknown value fails
 # closed, so the config can never quietly stand in for a GO.
 SOLO_TAG=""
 solo_cfg=""
@@ -952,13 +965,13 @@ if [ "$solo_set" = 1 ]; then
             || solo_refuse solo-console-leg "the console-leg marker cannot be read"
         ! console_leg || solo_refuse solo-console-leg "a console leg merges only on its console's GO"
     fi
-    [ ! -e "$pr_repo_root/scripts/handover/console-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
+    [ ! -e "$pr_repo_root/scripts/handover/chief-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
     # The cwd is the caller's to choose, so a checkout posing as the PR's repo
     # must not make a himmel PR solo: an anchor carrying go.sh is the himmel
     # clone of this PR unless its origin, read from its own config only,
     # positively names another github.com repo. An unreadable origin or an SSH
     # host alias proves nothing and refuses.
-    if [ -e "$himmel_repo/scripts/handover/console-kit/go.sh" ]; then
+    if [ -e "$himmel_repo/scripts/handover/chief-kit/go.sh" ]; then
         solo_origin=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR git -C "$himmel_repo" config --local --get remote.origin.url) || solo_origin=""
         solo_origin=${solo_origin%/}; solo_origin=${solo_origin%.git}
         case "$solo_origin" in
@@ -970,14 +983,14 @@ if [ "$solo_set" = 1 ]; then
         case "$solo_origin" in */*/*|*[!A-Za-z0-9._/-]*) solo_origin="" ;; ?*/?*) ;; *) solo_origin="" ;; esac
         [ -n "$solo_origin" ] \
             && [ "$(printf '%s' "$solo_origin" | LC_ALL=C tr '[:upper:]' '[:lower:]')" != "$(printf '%s' "$nwo" | LC_ALL=C tr '[:upper:]' '[:lower:]')" ] \
-            || solo_refuse solo-himmel-clone "the anchor carries console-kit/go.sh and its origin does not name a github.com repo other than $nwo, so this is the himmel clone, which merges only on a GO"
+            || solo_refuse solo-himmel-clone "the anchor carries chief-kit/go.sh and its origin does not name a github.com repo other than $nwo, so this is the himmel clone, which merges only on a GO"
     fi
     SOLO_TAG=" mode=solo"
 fi
 
 # Console-GO gate. A console-spawned leg (headed-arm-leg.sh
 # exports HIMMEL_CONSOLE_LEG=1) merges ONLY on its console's GO: a file the
-# console writes with console-kit/go.sh under the handover root, bound to THIS
+# console writes with chief-kit/go.sh under the handover root, bound to THIS
 # PR and to the head sha check-ci just certified — the same $sha
 # --match-head-commit pins below. The evidence is a file, never an env value
 # the leg could set on its own merge line. Placed before the marker clear so a
@@ -1087,7 +1100,7 @@ fi
 # PR editing CI, the selector or the merge gate could narrow its own coverage
 # and merge. A PR whose changed files (renames' old names included) match any
 # pattern in scripts/ci/ci-trust-paths.txt merges only on a trust-reviewed GO
-# (console-kit/go.sh --trust-reviewed) for this exact PR and certified head —
+# (chief-kit/go.sh --trust-reviewed) for this exact PR and certified head —
 # checked for EVERY caller, not only a console leg (HIMMEL_CONSOLE_LEG is an
 # env value the caller controls). A PR touching none is unaffected.
 # The detection (the default-branch list, the paginated file listing, every
@@ -2106,7 +2119,7 @@ prune_merged_worktree() {
 # covering scoped suite's SUMMARY necessarily reaches the PR as a comment (the
 # suite can still be running, or a closed parent session never got to post
 # it — the incident this ticket exists to structurally
-# catch). scripts/console/base-status.sh's live gh query is the authoritative
+# catch). scripts/chief/base-status.sh's live gh query is the authoritative
 # PENDING/RED detector; this is a durable LOCAL trace of the same gap at
 # merge time, same marker-dir shape as the cr-pending marker above, so a
 # console tick has a fallback even if this doesn't stay abreast of every
@@ -2198,6 +2211,42 @@ _jira_fold_request() {
     fi
 }
 
+# _jira_intake_to_current <repo_root> <key> <issue json> <pr> <sha> — a merged ticket held in an unreleased version
+# later than the current one (earliest unreleased by date, archived never) gets an INTAKE request into the current
+# version, so worked tickets fold in without a hand edit. The CLI answers a key already queued with its open request,
+# so one key holds at most one. The outcome rides the audit line as intake=. Best-effort, never fails the merge.
+# ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a release
+# declares several versions.
+_jira_intake_to_current() {
+    local repo_root="$1" key="$2" json="$3" pr_num="$4" pr_sha="$5" versions_out pick cur from out rc=0 req
+    versions_out=$(cd "$repo_root" && node scripts/jira/dist/index.js versions --project "${key%%-*}" 2>/dev/null) || return 0  # swallow-ok: an unread version list files no request
+    pick=$(printf '%s' "$json" | node -e '
+        try {
+            const d = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            const have = ((d.fields && d.fields.fixVersions) || []).map(v => v.name);
+            const vs = process.argv[1].split("\n").filter(Boolean).map(l => l.split("\t"));
+            const live = vs.filter(v => v[1] === "false" && v[3] !== "true");
+            const open = new Set(live.map(v => v[0]));
+            const dated = live.filter(v => v[2]).sort((a, b) => a[2] < b[2] ? -1 : a[2] > b[2] ? 1 : 0);
+            const cur = dated.length ? dated[0][0] : live.length ? live[0][0] : "";
+            const later = have.find(n => open.has(n) && n !== cur);
+            if (cur && later && !have.includes(cur)) process.stdout.write(cur + "\t" + later);
+        } catch {}
+    ' "$versions_out" 2>/dev/null)
+    [ -n "$pick" ] || return 0
+    cur=${pick%%$'\t'*} from=${pick#*$'\t'}
+    out=$(cd "$repo_root" && node scripts/jira/dist/index.js release request "$cur" --verb INTAKE --key "$key" --from "$from" --to "$cur" \
+        --why "merged in PR #$pr_num @ ${pr_sha:0:12}: the ticket is worked, so it folds from $from into the current $cur" \
+        --evidence "{\"pr\":$pr_num,\"sha\":\"$pr_sha\"}" 2>&1) || rc=$?
+    req=$(printf '%s\n' "$out" | sed -n 's/^REQ //p' | head -n 1)
+    if [ "$rc" -eq 0 ] && [ -n "$req" ]; then
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT intake=$req"
+    else
+        echo "merge-on-green: WARN $key sits in $from, later than the current $cur; the INTAKE request was NOT filed (rc=$rc): ${out//$'\n'/ }" >&2
+        JIRA_AUTO_TRANSITION_RESULT="$JIRA_AUTO_TRANSITION_RESULT intake=failed"
+    fi
+}
+
 _jira_close_on_merge() {
     local nwo="$1" pr_num="$2" pr_sha="$3"
     JIRA_AUTO_TRANSITION_RESULT="not-attempted"
@@ -2280,12 +2329,13 @@ _jira_close_on_merge() {
 
     if ! _truthy "$opt_in"; then
         JIRA_AUTO_TRANSITION_RESULT="skip=partial key=$key status-unchanged"
+        _jira_intake_to_current "$repo_root" "$key" "$issue_type_json" "$pr_num" "$pr_sha"
         # A bare merge leaves the ticket open: say so, so a sliced ticket's next
         # slice is dispatched instead of sitting orphaned.
         local partial="PARTIAL $key: next slice not dispatched"
         echo "merge-on-green: $partial" >&2
-        if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/console-kit/append-results.sh" ]; then
-            bash "$_csg_dir/console-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$partial" >/dev/null 2>&1 || true
+        if [ -n "${HIMMEL_CONSOLE_DOC:-}" ] && [ -x "$_csg_dir/chief-kit/append-results.sh" ]; then
+            bash "$_csg_dir/chief-kit/append-results.sh" "$HIMMEL_CONSOLE_DOC" "$partial" >/dev/null 2>&1 || true
         fi
         # The ticket keeps whatever status it has; the PR body's `Remaining:` line
         # is posted as a comment so the next slice is findable.
@@ -2388,6 +2438,7 @@ $remaining")
                 _jira_fold_request "$repo_root" "$key" "$fold_cur" "$pr_num" "$pr_sha" "the fixVersion edit to $fold_cur failed"
             fi
         fi
+        _focus_mark_dirty
     else
         JIRA_AUTO_TRANSITION_RESULT="failed key=$key status=$target_status rc=$transition_rc out=${transition_out//$'\n'/ }"
     fi

@@ -181,7 +181,7 @@ is_handoff_script_call() {
     # The word ends at a space or the end: nothing glued after its closing quote.
     case "$rest" in ''|[[:space:]]*) ;; *) return 1 ;; esac
     case "$word" in
-        scripts/handover/console-kit/append-results.sh|*/scripts/handover/console-kit/append-results.sh) ;;
+        scripts/handover/console-kit/append-results.sh|*/scripts/handover/console-kit/append-results.sh|scripts/handover/chief-kit/append-results.sh|*/scripts/handover/chief-kit/append-results.sh) ;;
         scripts/handover/wrap-subtree-check.sh|*/scripts/handover/wrap-subtree-check.sh) ;;
         scripts/context-fill.sh|*/scripts/context-fill.sh) ;;
         scripts/handover/queue-lock.sh|*/scripts/handover/queue-lock.sh)
@@ -419,18 +419,18 @@ fi
 
 allowed="SendMessage, ListAgents, ToolSearch, TaskStop, append-results.sh, queue-lock.sh release, wrap-subtree-check.sh, context-fill.sh, git add/commit/push/status/rev-parse, a bare cd"
 commit_form='A commit is one line (a newline in the command is denied): git commit -m "<subject>" -m "<body>" --trailer "Platforms tested: <os>" --trailer "Security reviewed: <token> - <what>".'
-stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your console ${HIMMEL_CONSOLE_NAME} what blocks you, then bash scripts/handover/console-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
+stuck_note="If you cannot push or commit (a moved upstream, a refused attestation or pre-commit gate), do not work around it: SendMessage your console ${HIMMEL_CONSOLE_NAME} what blocks you, then bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — <why>\" and stop. BLOCKED frees only these hand-off calls and reads (Read, Grep, Glob), not your work; WRAPPED (after the merge) frees everything."
 mode_note="The mode is set at launch by the console (HIMMEL_WORKER_SESSION_CONTEXT_MODE, old name HIMMEL_LEG_CONTEXT_MODE); it cannot be changed in-session."
 bypass_note="Bypass: WORKER_SESSION_CONTEXT_HANDOFF_OK=1 (old name LEG_CONTEXT_HANDOFF_OK) in the launching shell."
 if [ "$MODE" = "compact" ]; then
-    deny_msg="leg context checkpoint (mode compact): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. ${commit_form} 2) git rev-parse HEAD. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"LIVE — CHECKPOINT <full sha of HEAD> pushed\". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write \"LIVE — CHECKPOINT <full sha of HEAD> clean\" instead. ${stuck_note} Still allowed meanwhile: ${allowed}. ${mode_note} ${bypass_note}"
+    deny_msg="leg context checkpoint (mode compact): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you checkpoint. Do exactly this: 1) git add and git commit your WIP, then git push. ${commit_form} 2) git rev-parse HEAD. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"LIVE — CHECKPOINT <full sha of HEAD> pushed\". 4) Carry on with your work: the session compacts at its ceiling and continues. A new commit after the checkpoint needs a push and a fresh CHECKPOINT bullet. Nothing to commit and nothing unpushed (git status clean, HEAD on its upstream or in origin/main)? Skip 1 and write \"LIVE — CHECKPOINT <full sha of HEAD> clean\" instead. ${stuck_note} Still allowed meanwhile: ${allowed}. ${mode_note} ${bypass_note}"
 else
     if [ "$no_successor" = 1 ]; then
         write_to="a new *-RESUME.md in ${dir} that is not ${doc}, whose name carries the leg id ${leg_base} with no suffix (the leg id ${leg_id} ends in z, so no successor suffix exists)"
     else
         write_to="${want}"
     fi
-    deny_msg="leg context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your console ${HIMMEL_CONSOLE_NAME}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/console-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
+    deny_msg="leg context hand-off (mode handoff): this session is at ${fill} % context fill (threshold ${threshold} % = ${basis}). Ordinary tool calls stay denied until you hand off. Do exactly this: 1) Write your resume brief to ${write_to} (ticket, branch, worktree, committed-vs-dirty, PR/CR state, remaining ordered steps). 2) SendMessage your console ${HIMMEL_CONSOLE_NAME}: context ${fill} %, RESUME at that path. 3) bash scripts/handover/chief-kit/append-results.sh '${doc}' \"BLOCKED — context ${fill} %, RESUME written: <path>\". 4) Stop. Still allowed meanwhile: ${allowed}. ${commit_form} ${mode_note} ${bypass_note}"
 fi
 
 if [ "$event" = "PreCompact" ]; then

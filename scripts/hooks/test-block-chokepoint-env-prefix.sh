@@ -118,6 +118,12 @@ assert_deny "USAGE_LIFT_FILE= on usage-preflight.sh" "$(j "USAGE_LIFT_FILE=/tmp/
 assert_deny "BANK_LIFT_FILE= on usage-preflight.sh"  "$(j "BANK_LIFT_FILE=/tmp/x.json bash scripts/lib/usage-preflight.sh")"
 assert_deny "HIMMEL_FLEET_CAP= on usage-preflight.sh" "$(j "HIMMEL_FLEET_CAP=99 bash scripts/lib/usage-preflight.sh")"
 
+# The worker launcher under its new name and the forwarding old one.
+assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-worker.sh" "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
+assert_deny "HEADED_ARM_LEG_PREFLIGHT= (old name) on headed-arm-worker.sh" "$(j "HEADED_ARM_LEG_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
+assert_deny "HIMMEL_FLEET_CAP= on headed-arm-worker.sh"            "$(j "HIMMEL_FLEET_CAP=99 bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
+assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-leg.sh"    "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-leg.sh --dry-run")"
+
 # --- DENIED: the named ticket shapes + wrapper/compound variants ---
 assert_deny "env wrapper on $MERGE_ON_GREEN"            "$(j "env ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny "env -u PATH wrapper (flag consumes value)" "$(j "env -u PATH ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
@@ -1030,7 +1036,7 @@ assert_allow "3914 word boundary: seam prefix + tools/cargo.sh is not go.sh" "$(
 assert_allow "3914 word boundary: env -S naming tools/cargo.sh" "$(j "env -S 'bash tools/cargo.sh'")"
 assert_deny "3914 word boundary control: seam prefix + ./go.sh" "$(j "HIMMEL_REPO=/x bash ./go.sh")"
 assert_deny "3914 word boundary control: seam prefix + \$x\"go.sh\" (x empty)" "$(j "HIMMEL_REPO=/x bash \$x\"go.sh\"")"
-assert_deny "3914 word boundary control: env -S naming go.sh" "$(j "env -S 'bash scripts/handover/console-kit/go.sh'")"
+assert_deny "3914 word boundary control: env -S naming go.sh" "$(j "env -S 'bash scripts/handover/chief-kit/go.sh'")"
 
 # --- The text layer for detached / non-Linux launches. A seam
 # write (VAR=, export, env, read, printf -v) beside a program word under a
@@ -1040,7 +1046,7 @@ assert_deny "3914 word boundary control: env -S naming go.sh" "$(j "env -S 'bash
 # refused beside a chokepoint word; and CLEARING a seam or HIMMEL_CONSOLE_LEG
 # (env -u / unset) beside a chokepoint word is refused too. The obfuscated seam
 # NAME (export "$n=1") stays a documented residual. ---
-GOK='scripts/handover/console-kit'
+GOK='scripts/handover/chief-kit'
 assert_deny "3921 setsid -f: VAR= prefix, globbed go.sh"          "$(j "HIMMEL_CONSOLE_LEG=1 setsid -f bash $GOK/g*.sh")"
 assert_deny "3921 setsid -f: export, ? glob"                      "$(j "export HIMMEL_CONSOLE_LEG=1; setsid -f bash $GOK/g?.sh")"
 assert_deny "3921 setsid -f: env assignment, [] glob"             "$(j "env HIMMEL_CONSOLE_LEG=1 setsid -f bash $GOK/go.s[h]")"
@@ -1104,7 +1110,7 @@ assert_deny "3921 I1 globbed env binary -u"          "$(j "/usr/bin/en? -u HIMME
 assert_deny "3921 I1 unset \${!PREFIX*} in a subshell" "$(j "( (unset \${!HIMMEL_CON*}; exec bash $MERGE_ON_GREEN) & )")"
 assert_deny "3921 I1 export -n \${!PREFIX@}"         "$(j "export -n \${!HIMMEL_@}; bash $MERGE_ON_GREEN")"
 assert_deny "3921 I1 exec -c"                        "$(j "( (exec -c bash $MERGE_ON_GREEN) & )")"
-assert_deny "3921 r5 detached exec -c beside a globbed kit path" "$(j "setsid -f exec -c bash scripts/handover/console-kit/g*.sh")"
+assert_deny "3921 r5 detached exec -c beside a globbed kit path" "$(j "setsid -f exec -c bash scripts/handover/chief-kit/g*.sh")"
 # 3921 judge r2: any unset, and long-option / bare-dash env spellings.
 assert_deny "3921 r2 I-A unset of an ANSI-C-split name"   "$(j "setsid -f bash -c 'unset HIMMEL_CON\$'\"'\"'SOLE_LEG'\"'\"'; bash $MERGE_ON_GREEN'")"
 assert_deny "3921 r2 I-A unset of a command-substituted name" "$(j "unset \$(echo HIMMEL_CONSOLE_LEG); setsid -f bash $MERGE_ON_GREEN")"
@@ -1119,15 +1125,15 @@ assert_deny "3921 r3 \\c control escape word"      "$(j "setsid -f env FOO=1 \$'
 assert_deny "3921 r3 \\e escape word"              "$(j "setsid -f env FOO=1 \$'\\e[0m'")"
 assert_allow "3921 r3 printf ANSI-C newline/tab/quote" "$(j "printf \$'a\\tb\\n\\'c\\\\'; export LC_ALL=C")"
 # 3921 r8: an env-clearing token beside a globbed kit path needs no write verb.
-assert_deny "3921 r8 held env -i then a globbed kit path"  "$(j "e=/usr/bin/env; setsid -f \"\$e\" -i bash scripts/handover/console-kit/g*.sh")"
-assert_deny "3921 r8 held env -u X then a globbed kit path" "$(j "setsid -f \"\$e\" -u X scripts/handover/console-kit/g*.sh")"
+assert_deny "3921 r8 held env -i then a globbed kit path"  "$(j "e=/usr/bin/env; setsid -f \"\$e\" -i bash scripts/handover/chief-kit/g*.sh")"
+assert_deny "3921 r8 held env -u X then a globbed kit path" "$(j "setsid -f \"\$e\" -u X scripts/handover/chief-kit/g*.sh")"
 # 3921 r9: dot-segment / double-slash spellings of a scripts/ path (blunt deny).
 assert_deny "3921 r9 lanes .. segment + glob"      "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash scripts/lanes/../lanes/stop-w*.sh")"
 assert_deny "3921 r9 lanes /./ segment + glob"     "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash scripts/lanes/./stop-w*.sh")"
 assert_deny "3921 r9 scripts// double slash"       "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash scripts//lanes/stop-w*.sh")"
 assert_deny "3921 r9 lib .. segment + glob"        "$(j "FLEET_CAP_OK=1 setsid -f bash scripts/lib/../lib/bank-pre*.sh")"
 assert_deny "3921 r9 env -i quiet-run .. glob"     "$(j "setsid -f env -i bash scripts/x/../quiet-r*.sh")"
-assert_deny "3921 r9 handover .. segment + glob"   "$(j "setsid -f env FOO=1 bash scripts/handover/../handover/console-kit/g*.sh")"
+assert_deny "3921 r9 handover .. segment + glob"   "$(j "setsid -f env FOO=1 bash scripts/handover/../handover/chief-kit/g*.sh")"
 assert_deny "3921 r10 absolute path .. segment + glob"  "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash /abs/himmel/scripts/lanes/../lanes/stop-w*.sh")"
 assert_deny "3921 r10 leading dir scripts// + glob"     "$(j "STOP_WORKER_GRACE_SECS=0 setsid -f bash x/scripts//lanes/stop-w*.sh")"
 assert_deny "3921 r10 absolute path /./ segment + glob" "$(j "FLEET_CAP_OK=1 setsid -f bash /abs/scripts/lib/./bank-pre*.sh")"
@@ -1264,73 +1270,73 @@ assert_allow "3955 grep -i beside a chokepoint word" "$(j "grep -i deferred scri
 assert_allow "3955 diff -u beside a chokepoint word" "$(j "diff -u $MERGE_ON_GREEN /tmp/x.sh")"
 assert_deny "3955 no relief (glob/quote), main verdict: --long-option VAR=x argument, no chokepoint named" "$(j "bash scripts/cr/ledger-append.sh amend --set ${MOG_VAR}=1 --reason \"scripts/hooks/x?\"")"
 # 3955 controls: env position still denies, including beside a plain program word.
-assert_deny "3955 env -i, then a globbed kit path"       "$(j "setsid -f env -i bash scripts/handover/console-kit/g*.sh")"
-assert_deny "3955 env -i after grep in another segment"  "$(j "grep x f; env -i bash scripts/handover/console-kit/g*.sh")"
-assert_deny "3955 env -i in a subshell after grep"       "$(j "grep x \$(env -i bash scripts/handover/console-kit/g*.sh)")"
+assert_deny "3955 env -i, then a globbed kit path"       "$(j "setsid -f env -i bash scripts/handover/chief-kit/g*.sh")"
+assert_deny "3955 env -i after grep in another segment"  "$(j "grep x f; env -i bash scripts/handover/chief-kit/g*.sh")"
+assert_deny "3955 env -i in a subshell after grep"       "$(j "grep x \$(env -i bash scripts/handover/chief-kit/g*.sh)")"
 assert_deny "3955 env with an option beside grep -i"     "$(j "grep -i x f; env -u HIMMEL_CONSOLE_LEG bash $MERGE_ON_GREEN")"
 assert_deny "3955 env -i beside a chokepoint word"       "$(j "env -i bash $MERGE_ON_GREEN")"
-assert_deny "3955 seam assignment beside a globbed kit path" "$(j "${MOG_VAR}=1 setsid -f bash scripts/handover/console-kit/g*.sh")"
-assert_deny "3955 env VAR=x (no long option) then a globbed kit path" "$(j "setsid -f env --ignore-environment ${MOG_VAR}=1 bash scripts/handover/console-kit/g*.sh")"
-assert_deny "3955 env option operand then -i (--chdir /tmp -i)" "$(j "/usr/bin/en? --chdir /tmp -i bash scripts/handover/console-kit/g*.sh")"
+assert_deny "3955 seam assignment beside a globbed kit path" "$(j "${MOG_VAR}=1 setsid -f bash scripts/handover/chief-kit/g*.sh")"
+assert_deny "3955 env VAR=x (no long option) then a globbed kit path" "$(j "setsid -f env --ignore-environment ${MOG_VAR}=1 bash scripts/handover/chief-kit/g*.sh")"
+assert_deny "3955 env option operand then -i (--chdir /tmp -i)" "$(j "/usr/bin/en? --chdir /tmp -i bash scripts/handover/chief-kit/g*.sh")"
 assert_deny "3955 env option operand then -i beside a chokepoint word" "$(j "/usr/bin/en? --chdir /tmp -i bash $MERGE_ON_GREEN")"
 BSNL=$'\\\n'
-assert_deny "3955 globbed env, backslash-newline, then -i"   "$(j "/usr/bin/en? ${BSNL}-i bash scripts/handover/console-kit/g*.sh")"
+assert_deny "3955 globbed env, backslash-newline, then -i"   "$(j "/usr/bin/en? ${BSNL}-i bash scripts/handover/chief-kit/g*.sh")"
 assert_deny "3955 globbed env, backslash-newline, -i beside a chokepoint word" "$(j "/usr/bin/en? ${BSNL}-i bash $MERGE_ON_GREEN")"
-assert_deny "3955 env short option operand then -u"    "$(j "/usr/bin/en? -C /tmp -u HIMMEL_CONSOLE_LEG bash scripts/handover/console-kit/g*.sh")"
+assert_deny "3955 env short option operand then -u"    "$(j "/usr/bin/en? -C /tmp -u HIMMEL_CONSOLE_LEG bash scripts/handover/chief-kit/g*.sh")"
 # A redirection, a $(..)/backtick word, a zsh glob
 # group or a split word between the env word and -i must not end env position.
-assert_deny "3955 env, 2>/dev/null, -i"   "$(j '/usr/bin/en? 2>/dev/null -i bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 env, 2>&1, -i"          "$(j '/usr/bin/en? 2>&1 -i bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 env, >&2, -u PATH"      "$(j '/usr/bin/en? >&2 -u PATH bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 env, </dev/null, -i"    "$(j '/usr/bin/en? </dev/null -i bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 env, > file (spaced), -i" "$(j '/usr/bin/en? > /tmp/o -i bash scripts/handover/console-kit/go.sh')"
+assert_deny "3955 env, 2>/dev/null, -i"   "$(j '/usr/bin/en? 2>/dev/null -i bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 env, 2>&1, -i"          "$(j '/usr/bin/en? 2>&1 -i bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 env, >&2, -u PATH"      "$(j '/usr/bin/en? >&2 -u PATH bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 env, </dev/null, -i"    "$(j '/usr/bin/en? </dev/null -i bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 env, > file (spaced), -i" "$(j '/usr/bin/en? > /tmp/o -i bash scripts/handover/chief-kit/go.sh')"
 # shellcheck disable=SC2016 # the $( and backtick are the probe text, not expansions
 assert_deny "3955 env, \$(true), -i"    "$(j '/usr/bin/en? $(true) -i bash scripts/handover/merge-on-green.sh')"
 # shellcheck disable=SC2016 # the backtick is the probe text, not an expansion
 assert_deny "3955 env, backticks, -i"   "$(j '/usr/bin/en? `true` -i bash scripts/handover/merge-on-green.sh')"
-assert_deny "3955 zsh en(v|x) -i"         "$(j '/usr/bin/en(v|x) -i bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 zsh (env) -i"           "$(j '/usr/bin/(env) -i bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 env name split by backslash-newline" "$(j "/usr/bin/e${BSNL}nv -i bash scripts/handover/console-kit/g*.sh")"
+assert_deny "3955 zsh en(v|x) -i"         "$(j '/usr/bin/en(v|x) -i bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 zsh (env) -i"           "$(j '/usr/bin/(env) -i bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 env name split by backslash-newline" "$(j "/usr/bin/e${BSNL}nv -i bash scripts/handover/chief-kit/g*.sh")"
 assert_deny "3955 seam arm after 2>/dev/null --debug" "$(j '/usr/bin/en? 2>/dev/null --debug ARMAUTOMERGE=1 bash scripts/h*/m*.sh')"
 # The relief also needs a read-only first program (grep diff ls cat ...): other
 # env-clearing launchers keep main's anywhere-match deny.
-assert_deny "3955 bwrap --unsetenv leg var" "$(j 'bwrap --unsetenv HIMMEL_CONSOLE_LEG --dev-bind / / bash scripts/handover/console-kit/go.sh')"
+assert_deny "3955 bwrap --unsetenv leg var" "$(j 'bwrap --unsetenv HIMMEL_CONSOLE_LEG --dev-bind / / bash scripts/handover/chief-kit/go.sh')"
 assert_deny "3955 bwrap --unsetenv seam"    "$(j "bwrap --unsetenv ${MOG_VAR} --dev-bind / / bash $MERGE_ON_GREEN")"
-assert_deny "3955 flatpak-spawn --unset-env" "$(j 'flatpak-spawn --unset-env=HIMMEL_CONSOLE_LEG bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 systemd-run --unset-environment" "$(j 'systemd-run --user --unset-environment=HIMMEL_CONSOLE_LEG bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 nix develop -i -c"        "$(j 'nix develop -i -c bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 sudo -i"                  "$(j 'sudo -i bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 su - root -c"             "$(j 'su - root -c scripts/handover/console-kit/go.sh')"
+assert_deny "3955 flatpak-spawn --unset-env" "$(j 'flatpak-spawn --unset-env=HIMMEL_CONSOLE_LEG bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 systemd-run --unset-environment" "$(j 'systemd-run --user --unset-environment=HIMMEL_CONSOLE_LEG bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 nix develop -i -c"        "$(j 'nix develop -i -c bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 sudo -i"                  "$(j 'sudo -i bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 su - root -c"             "$(j 'su - root -c scripts/handover/chief-kit/go.sh')"
 # setpriv --reset-env and nix-shell --pure clear the environment
 # (verified live for setpriv); timeout -k / --kill-after does not, so it stays ALLOW.
-assert_deny "4049 setpriv --reset-env"                  "$(j 'setpriv --reset-env bash scripts/handover/console-kit/go.sh')"
-assert_deny "4049 setpriv --reset-env after --reuid"    "$(j 'setpriv --reuid 1000 --reset-env bash scripts/handover/console-kit/go.sh')"
-assert_deny "4049 setpriv --reset-env then --reuid"     "$(j 'setpriv --reset-env --reuid 1000 bash scripts/handover/console-kit/go.sh')"
-assert_deny "4049 setpriv abbreviated --reset"          "$(j 'setpriv --reset bash scripts/handover/console-kit/go.sh')"
-assert_deny "4049 setpriv shortest unique --res"        "$(j 'setpriv --res bash scripts/handover/console-kit/go.sh')"
-assert_deny "4049 path-qualified setpriv --reset-env"   "$(j '/usr/bin/setpriv --reset-env bash scripts/handover/console-kit/go.sh')"
+assert_deny "4049 setpriv --reset-env"                  "$(j 'setpriv --reset-env bash scripts/handover/chief-kit/go.sh')"
+assert_deny "4049 setpriv --reset-env after --reuid"    "$(j 'setpriv --reuid 1000 --reset-env bash scripts/handover/chief-kit/go.sh')"
+assert_deny "4049 setpriv --reset-env then --reuid"     "$(j 'setpriv --reset-env --reuid 1000 bash scripts/handover/chief-kit/go.sh')"
+assert_deny "4049 setpriv abbreviated --reset"          "$(j 'setpriv --reset bash scripts/handover/chief-kit/go.sh')"
+assert_deny "4049 setpriv shortest unique --res"        "$(j 'setpriv --res bash scripts/handover/chief-kit/go.sh')"
+assert_deny "4049 path-qualified setpriv --reset-env"   "$(j '/usr/bin/setpriv --reset-env bash scripts/handover/chief-kit/go.sh')"
 assert_deny "4049 setpriv --reset-env beside merge-on-green" "$(j "setpriv --reset-env bash $MERGE_ON_GREEN")"
-assert_deny "4049 nix-shell --pure --run"               "$(j "nix-shell --pure --run 'bash scripts/handover/console-kit/go.sh'")"
-assert_deny "4049 nix-shell --pure after -p"            "$(j "nix-shell -p bash --pure --run 'bash scripts/handover/console-kit/go.sh'")"
-assert_deny "4049 nix-shell --pure bare script"         "$(j 'nix-shell --pure bash scripts/handover/console-kit/go.sh')"
-assert_deny "4049 nix shell --ignore-environment"       "$(j 'nix shell --ignore-environment nixpkgs#bash -c bash scripts/handover/console-kit/go.sh')"
-assert_allow "4049 setpriv without --reset-env"         "$(j 'setpriv --ruid 1000 bash scripts/handover/console-kit/go.sh')"
-assert_allow "4049 nix-shell without --pure"            "$(j "nix-shell --run 'bash scripts/handover/console-kit/go.sh'")"
-assert_allow "4049 nix-shell --keep without --pure"     "$(j "nix-shell --keep FOO --run 'bash scripts/handover/console-kit/go.sh'")"
-assert_allow "4049 timeout -k keeps the environment"    "$(j 'timeout -k 5 10 bash scripts/handover/console-kit/go.sh')"
-assert_allow "4049 timeout --kill-after= keeps it"      "$(j 'timeout --kill-after=5 10 bash scripts/handover/console-kit/go.sh')"
-assert_deny "3955 ENV -i (any case)"        "$(j 'ENV -i bash scripts/handover/console-kit/go.sh')"
+assert_deny "4049 nix-shell --pure --run"               "$(j "nix-shell --pure --run 'bash scripts/handover/chief-kit/go.sh'")"
+assert_deny "4049 nix-shell --pure after -p"            "$(j "nix-shell -p bash --pure --run 'bash scripts/handover/chief-kit/go.sh'")"
+assert_deny "4049 nix-shell --pure bare script"         "$(j 'nix-shell --pure bash scripts/handover/chief-kit/go.sh')"
+assert_deny "4049 nix shell --ignore-environment"       "$(j 'nix shell --ignore-environment nixpkgs#bash -c bash scripts/handover/chief-kit/go.sh')"
+assert_allow "4049 setpriv without --reset-env"         "$(j 'setpriv --ruid 1000 bash scripts/handover/chief-kit/go.sh')"
+assert_allow "4049 nix-shell without --pure"            "$(j "nix-shell --run 'bash scripts/handover/chief-kit/go.sh'")"
+assert_allow "4049 nix-shell --keep without --pure"     "$(j "nix-shell --keep FOO --run 'bash scripts/handover/chief-kit/go.sh'")"
+assert_allow "4049 timeout -k keeps the environment"    "$(j 'timeout -k 5 10 bash scripts/handover/chief-kit/go.sh')"
+assert_allow "4049 timeout --kill-after= keeps it"      "$(j 'timeout --kill-after=5 10 bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 ENV -i (any case)"        "$(j 'ENV -i bash scripts/handover/chief-kit/go.sh')"
 # A leading assignment can swap the program (PATH) or its behaviour: no relief.
 assert_deny "3955 PATH= before grep"        "$(j 'PATH=/attacker/bin grep -i scripts/handover/merge-on-green.sh')"
 assert_deny "3955 LD_PRELOAD= before grep"  "$(j 'LD_PRELOAD=/x/y.so grep -i scripts/handover/merge-on-green.sh')"
 assert_deny "3955 GREP_OPTIONS= before grep" "$(j 'GREP_OPTIONS=--foo grep -i scripts/handover/merge-on-green.sh')"
 # The relief is an ALLOWLIST: only plain unquoted words, no glob, redirection or
 # separator. Anything else takes main's plain match.
-assert_deny "3955 attached redirection hides the env word" "$(j '/usr/bin/en?>/dev/null -i bash scripts/handover/console-kit/g*.sh')"
-assert_deny "3955 quoted operand with a space, then -i" "$(j '/usr/bin/en? --chdir "/tmp/a b" -i bash scripts/handover/console-kit/g*.sh')"
+assert_deny "3955 attached redirection hides the env word" "$(j '/usr/bin/en?>/dev/null -i bash scripts/handover/chief-kit/g*.sh')"
+assert_deny "3955 quoted operand with a space, then -i" "$(j '/usr/bin/en? --chdir "/tmp/a b" -i bash scripts/handover/chief-kit/g*.sh')"
 # Substitution shapes fail closed (main's plain match): the relief never runs there.
 # shellcheck disable=SC2016 # the $( is probe text, not an expansion
-assert_deny "3955 env, \$(true; true), -i" "$(j '/usr/bin/en? $(true; true) -i bash scripts/handover/console-kit/g*.sh')"
+assert_deny "3955 env, \$(true; true), -i" "$(j '/usr/bin/en? $(true; true) -i bash scripts/handover/chief-kit/g*.sh')"
 # shellcheck disable=SC2016 # the $( is probe text, not an expansion
 assert_deny "3955 seam in \$( ) after long option" "$(j 'echo --flag $(ARMAUTOMERGE=1 bash scripts/h*/m*.sh)')"
 
@@ -1373,10 +1379,10 @@ assert_deny "4130 /.claude/ without worktrees/ is not relieved"  "$(j "printf x;
 # tr splits the word at `(` so it looked plain: any `(`
 # in the text turns the relief off.
 WT2=/home/u/r/.claude/worktrees/fix+a
-assert_deny "4130 zsh grouping g(o).sh + env -u, worktree path"       "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/console-kit/g(o).sh")"
-assert_deny "4130 zsh grouping (go).sh + env -u, worktree path"       "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/console-kit/(go).sh")"
-assert_deny "4130 zsh alternation g(o|zz).sh + env -u, worktree path" "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/console-kit/g(o|zz).sh")"
-assert_deny "4130 zsh glob flag (#i)GO.sh + env -u, worktree path"    "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/console-kit/(#i)GO.sh")"
+assert_deny "4130 zsh grouping g(o).sh + env -u, worktree path"       "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/chief-kit/g(o).sh")"
+assert_deny "4130 zsh grouping (go).sh + env -u, worktree path"       "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/chief-kit/(go).sh")"
+assert_deny "4130 zsh alternation g(o|zz).sh + env -u, worktree path" "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/chief-kit/g(o|zz).sh")"
+assert_deny "4130 zsh glob flag (#i)GO.sh + env -u, worktree path"    "$(j "env -u HIMMEL_CONSOLE_LEG $WT2/scripts/handover/chief-kit/(#i)GO.sh")"
 assert_deny "4130 zsh grouping m(erge-on-green).sh + seam prefix"     "$(j "${MOG_VAR}=1 bash $WT2/scripts/handover/m(erge-on-green).sh")"
 # Every traversal spelling still counts, beside a seam write, with no glob.
 assert_deny "4130 scripts/./ beside a write verb"     "$(j "printf x; bash scripts/./x.sh")"
@@ -1427,20 +1433,20 @@ assert_deny "4130 squote basename + split seam name, worktree path"    "$(j "n=A
 # so on a PLAIN path neither the glob scan nor the basename backstop saw it
 # A `(` after scripts/ in a word now counts as obfuscation.
 PP=/r/w/scripts
-assert_deny "4148 zsh grouping g(o).sh + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/console-kit/g(o).sh")"
-assert_deny "4148 zsh grouping (go).sh + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/console-kit/(go).sh")"
-assert_deny "4148 zsh alternation g(o|zz).sh + env -u, plain path"    "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/console-kit/g(o|zz).sh")"
-assert_deny "4148 zsh glob flag (#i)GO.sh + env -u, plain path"       "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/console-kit/(#i)GO.sh")"
-assert_deny "4148 zsh grouping go.s(h) + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/console-kit/go.s(h)")"
-assert_deny "4148 zsh grouping, relative scripts/ path"               "$(j "env -u HIMMEL_CONSOLE_LEG scripts/handover/console-kit/g(o).sh")"
+assert_deny "4148 zsh grouping g(o).sh + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/chief-kit/g(o).sh")"
+assert_deny "4148 zsh grouping (go).sh + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/chief-kit/(go).sh")"
+assert_deny "4148 zsh alternation g(o|zz).sh + env -u, plain path"    "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/chief-kit/g(o|zz).sh")"
+assert_deny "4148 zsh glob flag (#i)GO.sh + env -u, plain path"       "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/chief-kit/(#i)GO.sh")"
+assert_deny "4148 zsh grouping go.s(h) + env -u, plain path"          "$(j "env -u HIMMEL_CONSOLE_LEG $PP/handover/chief-kit/go.s(h)")"
+assert_deny "4148 zsh grouping, relative scripts/ path"               "$(j "env -u HIMMEL_CONSOLE_LEG scripts/handover/chief-kit/g(o).sh")"
 assert_deny "4148 zsh grouping m(erge-on-green).sh + seam prefix"     "$(j "${MOG_VAR}=1 bash $PP/handover/m(erge-on-green).sh")"
 assert_deny "4148 zsh grouping q(uiet-run).sh + seam prefix"          "$(j "HIMMEL_SUITE_SLOTS=9 bash $PP/q(uiet-run).sh suite -- bash x")"
 assert_deny "4148 zsh grouping s(top-worker).sh + seam prefix"        "$(j "${SW_VAR}=0 bash $PP/lanes/s(top-worker).sh")"
 assert_deny "4148 zsh grouping q(uiet-run).sh + seam prefix, worktree path"  "$(j "HIMMEL_SUITE_SLOTS=9 bash $WT2/scripts/q(uiet-run).sh suite -- bash x")"
 assert_deny "4148 zsh grouping s(top-worker).sh + seam prefix, worktree path" "$(j "${SW_VAR}=0 bash $WT2/scripts/lanes/s(top-worker).sh")"
-assert_deny "4148 zsh grouping g(o).sh + env -u, /./ dot path"        "$(j "env -u HIMMEL_CONSOLE_LEG /r/w/./scripts/handover/console-kit/g(o).sh")"
+assert_deny "4148 zsh grouping g(o).sh + env -u, /./ dot path"        "$(j "env -u HIMMEL_CONSOLE_LEG /r/w/./scripts/handover/chief-kit/g(o).sh")"
 # Controls: a `(` with no write verb, or one before scripts/ only, stays allowed.
-assert_allow "4148 grouping basename with no seam write"              "$(j "bash $PP/handover/console-kit/g(o).sh 1 abc")"
+assert_allow "4148 grouping basename with no seam write"              "$(j "bash $PP/handover/chief-kit/g(o).sh 1 abc")"
 assert_allow "4148 grep alternation under scripts/ with no write"     "$(j "grep -E 'scripts/(a|b)' notes.txt")"
 # shellcheck disable=SC2016 # $(pwd) is probe text, not an expansion
 assert_allow "4148 \$(pwd) before scripts/ beside printf"             "$(j 'printf x; bash "$(pwd)/scripts/x.sh"')"
@@ -1449,7 +1455,7 @@ assert_allow "4148 \$(pwd) before scripts/ beside printf"             "$(j 'prin
 # itself, and zsh extendedglob has non-paren operators (# ## ^ ~). Each was
 # execution-verified under zsh -c to run go.sh with HIMMEL_CONSOLE_LEG dropped.
 # A metachar in ANY segment of a path word now counts, scripts/ or not.
-CK=handover/console-kit
+CK=handover/chief-kit
 UL="env -u HIMMEL_CONSOLE_LEG"
 XG="setopt extendedglob; $UL"
 for P in /r/w /r/w/. "$WT2" ./x; do
@@ -1613,7 +1619,7 @@ done
 assert_allow "4157 a prose '. (' is not a sourced glob" "$(j "echo 'unset HIMMEL_CONSOLE_LEG, done . (see x)'")"
 assert_allow "4157 bash on a plain basename" "$(j "export FOO=1; bash go.sh")"
 # shellcheck disable=SC2016 # $D is probe text, not an expansion
-assert_deny "4157 \$D/g*.sh (anchor in a variable)"            "$(j 'D=scripts/handover/console-kit; env -u HIMMEL_CONSOLE_LEG $D/g*.sh')"
+assert_deny "4157 \$D/g*.sh (anchor in a variable)"            "$(j 'D=scripts/handover/chief-kit; env -u HIMMEL_CONSOLE_LEG $D/g*.sh')"
 assert_deny "4157 m(erge-on-green).sh + seam prefix, hidden anchor" "$(j "${MOG_VAR}=1 bash /r/w/scr(ipts)/handover/m(erge-on-green).sh")"
 # Controls: no seam write, or a metachar outside any path word, stays allowed.
 # The anchor-less arm: each writer form of a seam NAME, and each env-clearing
@@ -1658,7 +1664,7 @@ for pre in "unset HIMMEL_CONSOLE_LEG;" "HIMMEL_CONSOLE_LEG=;"; do
     done
     assert_deny "4442 J1871b += definition [$pre]" "$(j "functions[ls]+='bash \"\$@\"; '; $pre ls $GP")"
     assert_deny "4442 J1871b judge input [$pre]" \
-        "$(j "functions[ls]='bash \"\$@\"; '; $pre ls /r/w/scrip?s/handover/console-kit/g?.sh")"
+        "$(j "functions[ls]='bash \"\$@\"; '; $pre ls /r/w/scrip?s/handover/chief-kit/g?.sh")"
     # Any word naming a shadow table, enable/autoload, or set -A/+A
     # gets no relief, whatever the syntax around it.
     for D in "set -A functions ls 'bash \"\$@\"; '" "set -A dis_functions ls x; enable -f ls" \
@@ -1671,7 +1677,7 @@ for pre in "unset HIMMEL_CONSOLE_LEG;" "HIMMEL_CONSOLE_LEG=;"; do
         assert_deny "4442 J1871c shadow-table word: $D [$pre]" "$(j "$D; $pre ls $GP")"
     done
     assert_deny "4442 J1871c judge input [$pre]" \
-        "$(j "functions[ls]=x; $pre ls /r/w/scrip?s/handover/console-kit/g?.sh")"
+        "$(j "functions[ls]=x; $pre ls /r/w/scrip?s/handover/chief-kit/g?.sh")"
     assert_allow "4442 control: myfunctions= is not functions= [$pre]" "$(j "myfunctions=1; $pre ls /r/w/docs/*.md")"
     assert_allow "4442 control: mycommands is not commands [$pre]" "$(j "mycommands=1; $pre ls /r/w/docs/*.md")"
     assert_allow "4442 control: a quoted 'functions' is not a word [$pre]" "$(j "$pre ls /r/w/docs/*.md | grep 'functions'")"
@@ -2499,19 +2505,20 @@ assert_allow "6015 printf with no %n conversion keeps the relief" "$(j "printf '
 # hands it to write-verdict.sh. A body line opening with a verb word beside a
 # glob path under scripts/ is prose, not a seam write.
 EV=/tmp/claude-1000/j3611/evidence.md
-WV="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high"
+WV="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high" # old-term-ok: the rows below cover both kit paths
 EVH="cat > $EV <<'EOF2'"
 assert_allow "7009 evidence heredoc, line-start read beside a glob scripts/ path" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh before judging; all unchanged."$'\n'"EOF2")"
 assert_allow "7009 evidence heredoc, verb line after a glob mention" "$(j "$EVH"$'\n'"- checked scripts/hooks/*.sh"$'\n'"export the notes."$'\n'"EOF2")"
 assert_allow "7009 evidence heredoc then the literal write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"$WV")"
 assert_allow "7009 the literal write-verdict.sh call alone" "$(j "$WV")"
+assert_allow "7009 evidence heredoc then write-verdict.sh through chief-kit" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"${WV/console-kit/chief-kit}")"
 assert_deny "7009 control: a registered chokepoint env prefix beside the evidence heredoc" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN")"
 assert_deny "7009 control: a verb line AFTER the heredoc closes still denies" "$(j "$EVH"$'\n'"prose"$'\n'"EOF2"$'\n'"read scripts/hooks/*.sh")"
 assert_deny "7009 control: an evidence file that is then run still denies" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash $EV")"
 EVR="HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN"
 EVB="HIMMEL_REPO=/tmp bash ${MERGE_ON_GREEN%n.sh}?.sh"
 assert_allow "7009 evidence heredoc with a wide-spaced opener" "$(j "cat >   $EV <<'EOF2'"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"$WV")"
-WVQ="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2"
+WVQ="bash /srv/himmel/scripts/handover/chief-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2"
 assert_deny "7009 control: a chokepoint env prefix in the evidence body is seen by the raw backstop" "$(j "$EVH"$'\n'"$EVR"$'\n'"EOF2"$'\n'"$WV")"
 assert_deny "7009 control: a double quote opened on the write-verdict line swallows the opener" "$(j "$WVQ \""$'\n'"$EVH"$'\n'"\"; $EVB; echo \""$'\n'"EOF2"$'\n'"$WVQ \"")"
 assert_deny "7009 control: a single quote opened on the write-verdict line swallows the opener" "$(j "$WVQ '"$'\n'"$EVH"$'\n'"'; $EVB; echo '"$'\n'"EOF2"$'\n'"$WVQ '")"
@@ -2658,6 +2665,45 @@ if [ "$RC" = "2" ] && grep -qF "Edit tool" <<<"$ERR" && grep -qF "python3 -I <fi
 else
     echo "FAIL 7371 text-layer deny lacks the Edit-tool / python3 -I <file> replacement (rc=$RC): $ERR"
     FAILED=$((FAILED + 1))
+fi
+
+# 7530: the relief pass runs the command model under `timeout`, and the runner's
+# group kill of a timed-out hook must reach the model's jq. A plain `timeout`
+# moves itself and jq into a group of their own, which that kill misses.
+if command -v setsid >/dev/null 2>&1; then
+    STUCK_DIR=$(mktemp -d "${TMPDIR:-/tmp}/choke-stuck.XXXXXX") || exit 1
+    mkdir -p "$STUCK_DIR/bin"
+    printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) echo $$ >"%s/jq.pid"; exec sleep 60 ;; esac\nexec %s "$@"\n' "$STUCK_DIR" "$(command -v jq)" >"$STUCK_DIR/bin/jq"
+    chmod +x "$STUCK_DIR/bin/jq"
+    # shellcheck disable=SC2016 # the guard reads the literal $n
+    j 'unset $n; ls scripts/hooks/*.sh' >"$STUCK_DIR/payload.json"
+    pid_up() { case "$(ps -o stat= -p "$1" 2>/dev/null | tr -d ' ')" in '' | Z*) return 1 ;; *) return 0 ;; esac; }
+    PATH="$STUCK_DIR/bin:$PATH" setsid bash "$HOOK" <"$STUCK_DIR/payload.json" >/dev/null 2>&1 &
+    STUCK_HOOK=$!
+    n=0
+    while [ ! -s "$STUCK_DIR/jq.pid" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$((n + 1)); done
+    STUCK_JQ=$(cat "$STUCK_DIR/jq.pid" 2>/dev/null)
+    CASES=$((CASES + 1))
+    if [ -z "$STUCK_JQ" ] || ! pid_up "$STUCK_JQ" || ! pid_up "$$"; then
+        echo "FAIL 7530 the timed jq dies with the member -- control: the model's jq never ran, or ps cannot see a live process (jq='$STUCK_JQ')"
+        FAILED=$((FAILED + 1))
+    else
+        STUCK_PG=$(ps -o pgid= -p "$STUCK_HOOK" 2>/dev/null | tr -d ' ')
+        [ -z "$STUCK_PG" ] || kill -9 -- "-$STUCK_PG" 2>/dev/null
+        n=0
+        while pid_up "$STUCK_JQ" && [ "$n" -lt 20 ]; do sleep 0.1; n=$((n + 1)); done
+        if pid_up "$STUCK_JQ"; then
+            echo "FAIL 7530 the timed jq dies with the member -- the hook's group kill left the model's jq running"
+            FAILED=$((FAILED + 1))
+        else
+            echo "PASS 7530 the timed jq dies with the member"
+        fi
+    fi
+    [ -z "$STUCK_JQ" ] || kill -9 "$STUCK_JQ" 2>/dev/null
+    wait "$STUCK_HOOK" 2>/dev/null
+    rm -rf "$STUCK_DIR"
+else
+    echo "WARN 7530 timed-jq row skipped: no setsid(1)"
 fi
 
 if [ "$FAILED" -eq 0 ]; then

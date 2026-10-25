@@ -36,7 +36,8 @@ OWN_DOC="$ROOT/u/himmel/HIMMEL-1-judge-J1-2026-10-06.md"
 OWN_QID=J1
 # The /tmp scratch judge-dir.sh and the session scratchpad live under (T7).
 TMP_SCRATCH="/tmp/claude-$(id -u)"
-mkdir -p "$TMP_SCRATCH"
+# shellcheck disable=SC2174 # /tmp exists; -m must apply to the scratch dir itself
+mkdir -p -m 700 "$TMP_SCRATCH"
 
 pass=0
 fail=0
@@ -100,15 +101,17 @@ row "gh pr merge" 2 "$(bash_payload 'gh pr merge 12 --squash')"
 row "gh api POST comment" 2 "$(bash_payload 'gh api repos/o/r/issues/12/comments -f body=x')"
 row "leg-pr-open.sh" 2 "$(bash_payload 'bash scripts/lanes/leg-pr-open.sh t.txt b.md')"
 row "merge-on-green.sh" 2 "$(bash_payload 'bash /repo/scripts/handover/merge-on-green.sh')"
-row "go.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/go.sh 12 abc')"
+row "go.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/go.sh 12 abc')" # old-term-ok: the old path must still be denied
+row "go.sh through chief-kit" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 12 abc')"
 # --- Jira writes ---
 row "jira create" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js create --type Task --summary s')"
 row "jira comment" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js comment HIMMEL-1 --comment-file c.md')"
 row "jira transition" 2 "$(bash_payload 'node /repo/scripts/jira/dist/index.js transition HIMMEL-1 Done')"
-row "leg-jira-status.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/leg-jira-status.sh HIMMEL-1 Done')"
+row "leg-jira-status.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/leg-jira-status.sh HIMMEL-1 Done')"
+row "worker-jira-status.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/worker-jira-status.sh HIMMEL-1 Done')"
 row "foreign MCP write" 2 "$(mcp_payload 'mcp__claude_ai_Slack__slack_send_message')"
 # --- inbox sends ---
-row "inbox-send.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/inbox-send.sh --to c --file m.md')"
+row "inbox-send.sh" 2 "$(bash_payload 'bash scripts/handover/chief-kit/inbox-send.sh --to c --file m.md')"
 # --- marker override ---
 row "marker named in command" 2 "$(bash_payload 'env -u HIMMEL_CONSOLE_JUDGE bash x.sh')"
 # --- Edit / Write outside the verdict and scratch dirs ---
@@ -138,7 +141,7 @@ row "git log read" 0 "$(bash_payload 'git log -1 --format=%H')"
 row "gh pr view read" 0 "$(bash_payload 'gh pr view 12 --json state')"
 row "gh pr diff read" 0 "$(bash_payload 'gh pr diff 12')"
 row "jira get read" 0 "$(bash_payload 'node /repo/scripts/jira/dist/index.js get HIMMEL-1')"
-row "append-results bullet" 0 "$(bash_payload 'bash scripts/handover/console-kit/append-results.sh d.md "LIVE x"')"
+row "append-results bullet" 0 "$(bash_payload 'bash scripts/handover/chief-kit/append-results.sh d.md "LIVE x"')"
 row "qmd MCP read" 0 "$(mcp_payload 'mcp__qmd__query')"
 row "Read tool" 0 "$(jq -nc '{tool_name:"Read", tool_input:{file_path:"/etc/hostname"}}')"
 

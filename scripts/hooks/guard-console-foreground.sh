@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # guard-console-foreground.sh — PreToolUse hook (matcher "Bash"):
-# a CONSOLE session must run a long console-kit script with the Bash tool's
+# a CONSOLE session must run a long chief-kit script with the Bash tool's
 # run_in_background: true, never in the foreground. A foreground run blocks the
 # console turn for minutes and every leg's SendMessage (READY, MERGED, BLOCKED,
 # quote-backs) queues behind it. Prose ("run it in the background") drifted
 # twice, so per root CLAUDE.md's "Adding a rule" it is a hook.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_DOC is set (a cheap first gate, before stdin is
-# read) AND the session's own `-n` name ends in `-console` (a leg launched from
+# read) AND the session's own `-n` name ends in `-chief` or `-console` (a leg launched from
 # a console inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
-# scripts/handover/console-kit/long-running.txt AND tool_input.run_in_background
+# scripts/handover/chief-kit/long-running.txt AND tool_input.run_in_background
 # is not true. "Runs" means the name follows an interpreter (bash, sh, node,
 # bun, python) in command position or sits in command position behind a path,
 # after any VAR=value prefixes; a grep or cat that
@@ -58,15 +58,15 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) |
 [ -n "$cmd" ] || exit 0
 
 # A leg launched from a console's Bash inherits HIMMEL_CONSOLE_DOC as ambient env,
-# so the env var alone cannot tell them apart: only a session named `*-console`
+# so the env var alone cannot tell them apart: only a session named `*-chief`/`*-console`
 # is a console (the console-compact-reinject.sh rule). Unresolvable name: allow.
 lib="$HERE/../lib/session-name.sh"
 # shellcheck source=scripts/lib/session-name.sh
 { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || exit 0
 sname=$(current_session_name 2>/dev/null) || exit 0
-case "$sname" in *-console) ;; *) exit 0 ;; esac
+case "$sname" in *-console|*-chief) ;; *) exit 0 ;; esac
 
-list="${CHIEF_FG_LIST:-${CONSOLE_FG_LIST:-$HERE/../handover/console-kit/long-running.txt}}"
+list="${CHIEF_FG_LIST:-${CONSOLE_FG_LIST:-$HERE/../handover/chief-kit/long-running.txt}}"
 [ -r "$list" ] || exit 0
 
 hit=""
@@ -104,7 +104,7 @@ case "$hit:$cmd" in
         esac ;;
 esac
 
-deny_msg="You are a CONSOLE session running a long console-kit script (${hit}) in the foreground — DENIED (HIMMEL-5821).
+deny_msg="You are a CONSOLE session running a long chief-kit script (${hit}) in the foreground — DENIED.
 
 A foreground run blocks this console turn for minutes, and every leg's SendMessage (READY, MERGED,
 BLOCKED, quote-backs) queues behind it.
@@ -115,15 +115,15 @@ The completion arrives as a task notification; do not poll its output file or sl
 handling leg messages meanwhile and read the result when the notification lands.
 
 A bounded run is allowed in the foreground: make \`timeout 90\` (1 to 90 s) the outermost command, e.g.
-  timeout 90 bash scripts/handover/console-kit/ready-check.sh <args>
+  timeout 90 bash scripts/handover/chief-kit/ready-check.sh <args>
 console-wait.sh and suites stay background. Short scripts (append-results.sh, go.sh, write-verdict.sh,
-fleet-manifest.sh, leg-event.sh) are not on the list and stay foreground. The list is scripts/handover/console-kit/long-running.txt.
+fleet-manifest.sh, leg-event.sh) are not on the list and stay foreground. The list is scripts/handover/chief-kit/long-running.txt.
 
 Bypass for one session: relaunch with CHIEF_FG_OK=1 (old name CONSOLE_FG_OK) in the launching
 shell (a per-call prefix does not reach this hook)."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
-    || reason='"guard-console-foreground: console session denied a foreground long console-kit script"'
+    || reason='"guard-console-foreground: console session denied a foreground long chief-kit script"'
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
 printf '%s\n' "$deny_msg" >&2
 exit 2

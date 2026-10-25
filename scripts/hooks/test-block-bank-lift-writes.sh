@@ -242,6 +242,11 @@ for b in bash cat awk sed tr grep printf env dirname; do
 done
 got=$(printf '%s' "$(bash_json "echo hi")" | PATH="$T/nojq" "$(command -v bash)" "$HOOK" >/dev/null 2>&1; echo $?)
 if [ "$got" = 2 ]; then ok "jq missing denies"; else bad "jq missing denies — rc=$got"; fi
+# a command model that runs past its bound denies: a stub timeout stands in for the slow model
+# shellcheck disable=SC2016 # $1/$5 belong to the stub
+mkdir -p "$T/slow-model" && printf '#!/bin/sh\ncase "$1" in --version) exit 0 ;; esac\ncase "$5" in jq) exit 124 ;; esac\nexit 0\n' >"$T/slow-model/timeout" && chmod +x "$T/slow-model/timeout"
+err=$(printf '%s' "$(bash_json "echo hi | bash")" | XDG_STATE_HOME="$T/state" PATH="$T/slow-model:$PATH" bash "$HOOK" 2>&1 >/dev/null); got=$?
+if [ "$got" = 2 ] && [[ $err == *"timed out"* ]]; then ok "a timed-out command model denies a pipe into a shell"; else bad "a timed-out command model denies a pipe into a shell — rc=$got $(printf '%s' "$err" | head -c 200)"; fi
 
 echo "== deny message names the operator remedy =="
 err=$(printf '%s' "$(bash_json "bash $S set")" | bash "$HOOK" 2>&1 >/dev/null)
@@ -299,7 +304,7 @@ EOF
 row "echo mention"                 allow "echo 'run: bash scripts/lib/bank-lift.sh set'"
 row "echo mention to a file"       allow "echo \"see bank-lift.json\" > notes.txt"
 row "git grep the set text"        allow "git grep -n 'bank-lift.sh set'"
-row "Results bullet via append-results" allow "bash scripts/handover/console-kit/append-results.sh /tmp/doc.md 'LIVE — bank-lift.json write fence cut'"
+row "Results bullet via append-results" allow "bash scripts/handover/chief-kit/append-results.sh /tmp/doc.md 'LIVE — bank-lift.json write fence cut'"
 row "ticket title names the lift"  allow "node /x/jira/dist/index.js create --type Task --title 'bank-lift: hook-deny agent writes to ~/.himmel/state/bank-lift.json and bank-lift.sh set'"
 row "set -e then show"             allow "set -euo pipefail; bash $S show"
 row "test -f lift && echo"         allow "test -f ~/.himmel/state/bank-lift.json && echo yes"

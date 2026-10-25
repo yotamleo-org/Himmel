@@ -97,7 +97,7 @@ cmd_write() {
         esac
     done
     [ -n "$ticket" ] || die "write: --ticket is required"
-    _valid_ticket "$ticket" || die "write: invalid --ticket '$ticket' (want <PROJECT>-<N>, e.g. HIMMEL-477)"
+    _valid_ticket "$ticket" || die "write: invalid --ticket '$ticket' (want <PROJECT>-<N>, e.g. PROJ-123)"
 
     # Auto-detect git facts when not supplied.
     if git -C "$cwd" rev-parse --git-dir >/dev/null 2>&1; then
@@ -250,7 +250,7 @@ cmd_resolve() {
         jira_line="(skipped — --no-jira)"
     else
         if [ "$jira_set" -ne 1 ]; then
-            # Primary checkout's dist via the git common dir (same idiom as console-kit/leg-jira-status.sh); script-relative outside git.
+            # Primary checkout's dist via the git common dir (same idiom as chief-kit/leg-jira-status.sh); script-relative outside git.
             local jira_js common
             if common="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
                 jira_js="$(dirname "$common")/scripts/jira/dist/index.js"

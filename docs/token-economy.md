@@ -3,9 +3,8 @@
 > Operative reference (load-on-trigger instead of a CLAUDE.md rule, by
 > layer selection). Single source of truth for **who owns which token
 > boundary**. Sessions and evals cite this doc; changes to a boundary owner
-> go through the measurement gate below. Spec provenance: the WS6 design
-> (state repo, `himmel/specs/design/ws6-token-economy-policy.md`); sequencing
-> comment dated 2026-07-03.
+> go through the measurement gate below. The design spec is
+> `himmel/specs/design/ws6-token-economy-policy.md` in the state repo.
 
 ## The policy
 
@@ -17,12 +16,12 @@ same one (then pick the stronger and disable the loser).
 | Boundary | Owner | Status / gate |
 |---|---|---|
 | Dev command output | **RTK (hooked)**, which keeps the boundary | context-mode is **REJECTED for adoption while NOASSERTION-licensed** (himmel targets an MIT-licensed public path); re-open ONLY if it ships an OSI license AND beats RTK on a measured real-session delta (same measured-eval protocol) |
-| Conversational / verbose output | **unowned**: the incumbent response-compression plugin was removed 2026-08-22 | it had been `off` since 2026-06-12 and its vendored skill family tripped Hermes's skill scanner on every start. The boundary is now deliberately empty: any replacement enters through invariant 2 (license) then invariant 3 (measured delta); there is nothing left to grandfather here |
+| Conversational / verbose output | **unowned** | the boundary is deliberately empty: a candidate enters through invariant 2 (license) then invariant 3 (measured delta) |
 | MCP / tool output | **open; the MCP eval decides** (Headroom lead candidate, Apache-2.0), with token-optimizer-mcp as TAKE-PARTS comparator (PolyForm-NC = personal-internal ceiling, never redistributed) | adoption gate = measured token delta on a real himmel workday + outcome-per-session verdict |
 | Stable prefixes (prompt cache) | **owner = the operator** (as `/morning-report` reviewer), responder path below | cheapest lever, least instrumented. **monitored by `scripts/eval/cache-health-cadence.sh`** (HIMMEL-5672, [`docs/internals/cache-health.md`](internals/cache-health.md)): hourly, no model, per-role hit rate against a 7-day baseline, one Telegram + chief message only on a real threshold crossing (baseline 2026-10-14: 97.9 % overall, chiefs 99.3, workers 97.8, subagents 94.9). The circulating 76.5% read-ratio / "<40% = structural issue" figures are one-tweet heuristics from someone else's workspace, flagged non-representative by the source note itself; himmel's own read-ratio was first measured 2026-09-29: 98.2% over 1,210 session first-turns and 36.0G tokens of a single project's transcripts (`scripts/eval/cache-probe.sh first-turn`, [`docs/internals/prompt-cache.md`](internals/prompt-cache.md)) |
 | Context bloat | **CLAUDE.md hygiene** | with the Vercel passive-beats-on-demand caveat baked into its acceptance (always-on beat on-demand 100% vs 79% for general knowledge; don't blanket-move content out of always-on) |
-| Whole task (routing) | **WS2's router**; this doc only states the policy: trivial→cheap is the biggest lever | seam: WS6 = policy + measurement bar; WS2 = mechanism (router, model tables, fallback chains) |
-| Downgraded bulk output (validation) | **WS4: sampling rule** | every downgraded task class names its validation sampling rule: rate, judge, escalation trigger (sampled failure ⇒ batch escalates to the frontier lane). Proposed as an acceptance criterion on the bulk-downgrade routing work; cheap routing that silently degrades outcome-per-session is the named failure |
+| Whole task (routing) | **lane selection** ([`lane-calibration.md`](internals/lane-calibration.md)); this doc only states the policy: trivial→cheap is the biggest lever | seam: this doc = policy + measurement bar; lane selection = mechanism (lane table, model defaults, fallback chains) |
+| Downgraded bulk output (validation) | **the sampling rule** (below) | every downgraded task class names its validation sampling rule: rate, judge, escalation trigger (sampled failure ⇒ batch escalates to the frontier lane). Proposed as an acceptance criterion on the bulk-downgrade routing work; cheap routing that silently degrades outcome-per-session is the named failure |
 
 ### Prompt-cache responder path (owner: operator)
 
@@ -32,7 +31,7 @@ read-ratio trends **materially below that baseline sustained over ≥3 days**
 Responder action = file a context-hygiene investigation ticket
 (context-bloat shaped). Until then this boundary is explicitly unmonitored.
 
-### Downgrade-safety (WS4)
+### Downgrade-safety
 
 Cheap-lane bulk work (the downgraded task classes: clip-filling,
 mechanical sweeps) is validated by **SAMPLING, not 100% review**, because
@@ -43,11 +42,12 @@ validated → a sampled failure **escalates the whole batch to the frontier
 lane**. So every downgraded task class MUST name its sampling rule (the
 **rate**, the **judge**, and the **escalation trigger**), or it is not
 eligible for the cheap lane (proposed as an acceptance criterion).
-Split of ownership: **WS4 owns the validation MECHANICS** (the critic panel,
-diversity, the correctness ledger); **WS7 owns gate PLACEMENT**
-(where the sampling gate sits in a workflow, PASS/FAIL, human checkpoints).
-WS4 ships the pattern and the criterion, not a sampling harness: there is no
-live bulk lane to sample until WS1 ships and the routing work defines the classes.
+The validation MECHANICS (the critic panel, diversity, the correctness
+ledger) belong to the review stack; gate PLACEMENT (where the sampling gate
+sits in a workflow, PASS/FAIL, human checkpoints) is set in
+[`validation-gates.md`](internals/validation-gates.md). This page states the
+pattern and the criterion, not a sampling harness: no bulk cheap lane is live
+to sample.
 
 ## Invariants (normative)
 
@@ -80,11 +80,9 @@ live bulk lane to sample until WS1 ships and the routing work defines the classe
   license gate → measured eval (Headroom Apache-2.0/55.8k★ lead
   vs rtk incumbent), token-optimizer-mcp as comparator. The eval ticket owns the
   verdict; this doc records the protocol so the decision is reproducible.
-- **Lane compliance (2026-07-03, WS4 re-validation):** panel/router lanes
-  terminate PER-TOKEN keys only; subscription lanes (Z.ai Coding Plan,
-  ToS-restricted to officially supported tools) are launcher-only (WS1's
-  `claude-glm` was the compliant use, and that GLM lane is now dormant,
-  HIMMEL-1967; Claude Code qualifies).
+- **Lane compliance (2026-07-03):** panel/router lanes terminate PER-TOKEN
+  keys only; subscription lanes (ToS-restricted to officially supported
+  tools) are launcher-only, and Claude Code qualifies as a launcher.
 
 ## Measured preload deltas
 

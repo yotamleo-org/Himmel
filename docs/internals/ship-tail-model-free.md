@@ -7,8 +7,8 @@ merged, with no judgment call left in them — contains no `claude -p` /
 `claude --print` / `claude --bg` invocation:
 
 - `scripts/handover/merge-on-green.sh`
-- `scripts/handover/console-kit/ready-check.sh`
-- `scripts/handover/console-kit/tick.sh`
+- `scripts/handover/chief-kit/ready-check.sh`
+- `scripts/handover/chief-kit/tick.sh`
 - `scripts/check-ci.sh`
 
 Verified by grepping all four for the pattern

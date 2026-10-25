@@ -21,7 +21,7 @@
 #   3. Console-GO gate (HIMMEL-2919/HIMMEL-3142): when this is a console-spawned
 #      leg (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-leg.sh), the PR's
 #      head SHA must have a matching GO file under the handover root's
-#      `.locks/go/` (console-kit/go.sh writes it — "the file IS the GO"). Before
+#      `.locks/go/` (chief-kit/go.sh writes it — "the file IS the GO"). Before
 #      this gate existed, a leg merging via `gh pr merge` directly (instead of
 #      merge-on-green.sh) never consulted `.locks/go/` at all, so the GO was
 #      advisory rather than binding on that path (PR #798). No bypass env var —

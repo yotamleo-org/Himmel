@@ -1,30 +1,30 @@
 # Judge brief template
 
-The document a console writes to dispatch a **judge session**
+The document a chief writes to dispatch a **judge session**
 (`headed-arm-leg.sh --judge`) for one verdict-grade question. File it in the
-console's bucket as `<PREFIX>-<ticket-slug>-judge-<qid>-<date>-RESUME.md`, and
-hand its path to `console-kit/headed-arm-leg.sh --judge` as the judge's
+chief's bucket as `<PREFIX>-<ticket-slug>-judge-<qid>-<date>-RESUME.md`, and
+hand its path to `chief-kit/headed-arm-leg.sh --judge` as the judge's
 handover doc.
 
-**A judge is a leg — a leg kind** (definition and the call-vs-session split:
-[`../glossary.md`](../glossary.md)). It is launched by the leg launcher, runs
-under the leg guards and inherits its cost gate, queue-lock discipline and
-RETASK asymmetry (`docs/handover/leg-preface.md` — read for contrast; it is
-not edited to fit the judge role). What differs is the job: a work leg
+**A judge is a worker — a worker kind** (definition and the call-vs-session split:
+[`../glossary.md`](../glossary.md)). It is launched by the worker launcher, runs
+under the worker guards and inherits its cost gate, queue-lock discipline and
+RETASK asymmetry (`docs/handover/worker-preface.md` — read for contrast; it is
+not edited to fit the judge role). What differs is the job: a work worker
 implements and ships; a judge rules on one question and writes a verdict
 file, then ends its turn. This template is a **sibling** of
-`docs/handover/leg-brief-template.md`, not a fork of it: everywhere the two
+`docs/handover/worker-brief-template.md`, not a fork of it: everywhere the two
 disagree, the roles differ, not one drifting from the other. **The parent
-holds the applicable lock and the child-call nonce; only the console holds
-fleet GO and RETASK authority. The judge holds no console or fleet
+holds the applicable lock and the child-call nonce; only the chief holds
+fleet GO and RETASK authority. The judge holds no chief or fleet
 authority — it holds its own judge-document lock, and is advisory: it
-rules, the console acts.**
+rules, the chief acts.**
 
 ## Blind, not thin
 
-**The judge gets the evidence, not the console's conclusion.** That is what
+**The judge gets the evidence, not the chief's conclusion.** That is what
 makes its verdict independent rather than a rubber stamp: a judge told what
-the console already believes has nothing left to disagree with. "Thin" was
+the chief already believes has nothing left to disagree with. "Thin" was
 the failure mode of an earlier attempt — a brief that handed the judge a
 summary instead of the material the summary was drawn from, leaving the
 judge's only honest answer as "there is not enough here to rule on."
@@ -36,12 +36,12 @@ finished answer looks like, not what the answer should be.
 ---
 
 **`resume_cwd` is the judge's scratch directory, never a path under the
-handover root.** `headed-arm-leg.sh` refuses (exit 15) any leg or judge whose
+handover root.** `headed-arm-leg.sh` refuses (exit 15) any worker or judge whose
 doc's `resume_cwd` resolves inside the handover root (symlinks followed) — the root commonly lives in an Obsidian vault, and a judge
 whose working tree is there hung it twice. Write `resume_cwd` as an absolute
 path (a leading `~` is not expanded by `arm-resume.sh`) and `mkdir -p` it
 before launch: a `resume_cwd` that is not yet a directory is ignored and the
-judge falls back to the console's own cwd. A judge that needs a real worktree
+judge falls back to the chief's own cwd. A judge that needs a real worktree
 uses one under the repo's `.claude/worktrees/` instead.
 
 ```markdown
@@ -371,11 +371,11 @@ gathering, per the rule below.>
 
 > **Lifecycle — the one rule.** Write your verdict file per
 > `docs/handover/verdict-template.md` — for a merge question, through
-> `bash <primary checkout>/scripts/handover/console-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name> --model <your model id> --effort <your effort level>`
+> `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <the PR number> --evidence-file <scratch file> --judge <your session name> --model <your model id> --effort <your effort level>`
 > (`--pr` is required), which emits the exact line `go.sh --trust-reviewed` parses
 > and refuses a path outside `verdicts/<qid>/` — release your own-doc lock, append a
 > closing bullet to your own doc with
-> `bash <primary checkout>/scripts/handover/console-kit/append-results.sh <your doc> "WRAPPED verdict written, lock released"`
+> `bash <primary checkout>/scripts/handover/chief-kit/append-results.sh <your doc> "WRAPPED verdict written, lock released"`
 > (the console's sweep closes only a window whose doc tail says `WRAPPED`), and **end
 > your turn.** Do not wait for an ack, do not open a PR, do not merge
 > anything. The console kills your window when it reads the verdict — a
@@ -397,17 +397,17 @@ gathering, per the rule below.>
 
 | Part | What goes wrong without it |
 |---|---|
-| Blind-not-thin | A judge given the console's conclusion has nothing to independently confirm or reject — its verdict becomes a rubber stamp, defeating the reason a judge call or session exists. |
+| Blind-not-thin | A judge given the chief's conclusion has nothing to independently confirm or reject — its verdict becomes a rubber stamp, defeating the reason a judge subagent or session exists. |
 | `description:` line (required) | A judge is named by its label and question id, which says nothing a reader of the board or tick can act on. The front-matter line is the plain-language description a surface shows next to the label; `leg_description` in `scripts/lib/leg-identity.sh` is its only reader. `brief-lint.sh` fails a fresh brief with no line or the `<placeholder>`, and `headed-arm-leg.sh --judge` refuses the launch (no flag skips it). |
-| Prior art line (required) | Console, judge and consult sessions made 0 qmd calls in the 7 days to 2026-10-06, so a judge ruled on a question whose related tickets and prior fixes nobody had looked up. The console retrieves once at dispatch; as pointers only, so blindness is kept. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-leg.sh --judge` refuses the launch unless `--no-prior-art-check` is passed. |
+| Prior art line (required) | Chief, judge and consult sessions made 0 qmd calls in the 7 days to 2026-10-06, so a judge ruled on a question whose related tickets and prior fixes nobody had looked up. The chief retrieves once at dispatch; as pointers only, so blindness is kept. `brief-lint.sh` fails a missing, empty, placeholder or bare `none` line (`none found (<query>)` passes) and `headed-arm-leg.sh --judge` refuses the launch unless `--no-prior-art-check` is passed. |
 | `## Evidence` as a real, numbered section | A judge whose evidence is scattered through prose cannot cite it by number in its verdict's `## Evidence checked`, breaking the verdict template's contract. |
 | Tier line | `headed-arm-leg.sh:239-282` refuses to launch an Opus or Fable session without an exact-lowercase category tag and non-blank free text after it — every judge dispatch launches at one tier or the other (Opus by default), so this line is never optional. |
 | Completion condition | Without a stated shape for "done", a judge can return a verdict too vague to act on, or keep gathering evidence past the point the question needed — and a condition that only admits one answer produces a judge that cannot say no. |
-| RETASK block | The same asymmetry as a leg's: a narrowing needs no token, an EXPANSION does, and no revision from anyone widens what the judge may act with — which for a judge is nothing to begin with. |
-| Lifecycle rule | A judge that does not end its turn after writing its verdict holds a fleet slot the console cannot reclaim without killing the window itself. |
+| RETASK block | The same asymmetry as a worker's: a narrowing needs no token, an EXPANSION does, and no revision from anyone widens what the judge may act with — which for a judge is nothing to begin with. |
+| Lifecycle rule | A judge that does not end its turn after writing its verdict holds a fleet slot the chief cannot reclaim without killing the window itself. |
 | "Checkpoint to disk as you go" | The standard `--autocompact 200000` pin is too small for a design-grade question (design spec §3.2); a judge holding its reasoning only in context loses it at compaction. |
 | Scratch lives outside the handover root | Judges extract whole repo trees; under a vault-resident handover root they are indexed by Obsidian despite `.gitignore` (843k files, 16 GB). `/tmp` is ruled out because it can be tmpfs. |
 | Per-child scratch subdirectory | Parallel evidence-gatherers sharing one directory overwrite or interleave each other's output. |
 | Ticket coverage block | Three of 14 cloud PRs closed tickets Done with asks undone because the brief scoped them out and no judge asked whether the PR did every ask of the ticket it closes. |
-| Guard escape tests: three routes + classifier stop | On 2026-10-06 a safety classifier stopped a leg and an opus judge that were hand-writing bypass-shaped rows, and then the adversarial review of this very policy. Without the routes a guard PR either goes unjudged or its judge improvises instances; without the GO wording a GO on generated rows reads as "escape-proof"; without the stop rule a stopped session is rephrased or re-dispatched until something gets through. |
+| Guard escape tests: three routes + classifier stop | On 2026-10-06 a safety classifier stopped a worker and an opus judge that were hand-writing bypass-shaped rows, and then the adversarial review of this very policy. Without the routes a guard PR either goes unjudged or its judge improvises instances; without the GO wording a GO on generated rows reads as "escape-proof"; without the stop rule a stopped session is rephrased or re-dispatched until something gets through. |
 | Fixtures under a group deadline | A judge's `subprocess.run(timeout=60)` fixture runner killed only the hook's direct `bash`; six looping `$(…)` subshells of a pre-merge hook revision ran on at 99.5 % CPU for ~3h45m. |

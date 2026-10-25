@@ -23,7 +23,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # _tq_bare_token <release-token-line-value> -- acquire now
 # prints the token backticked ("release-token: `<token>`"); this recovers
 # the bare token from either that shape or the pre-2910 bare one, the way
-# every real consumer (console.sh, the console-kit) must.
+# every real consumer (console.sh, the chief-kit) must.
 _tq_bare_token() {
     local t="$1"
     t="${t#\`}"

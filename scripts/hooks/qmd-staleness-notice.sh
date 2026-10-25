@@ -364,7 +364,7 @@ unverified() {
     printf '\nThis is NOT a staleness verdict — the check could not run, so the index\n'
     printf 'may be fine. Treat qmd MISSES AS UNPROVEN either way: a miss is only\n'
     printf 'evidence of absence when the index is verifiably current, and here it\n'
-    printf 'could not be verified (HIMMEL-1286).\n'
+    printf 'could not be verified.\n'
     printf '</system-reminder>\n'
     exit 0
 }
@@ -550,7 +550,7 @@ esac
 
 printf '<system-reminder>\n'
 printf '%s\n' "$out"
-printf '\nThis is a SessionStart advisory (HIMMEL-1286), not an instruction to act.\n'
+printf '\nThis is a SessionStart advisory, not an instruction to act.\n'
 printf 'It matters for how you READ qmd results this session: a miss is only\n'
 printf 'evidence of absence when the index is current.\n'
 printf '</system-reminder>\n'

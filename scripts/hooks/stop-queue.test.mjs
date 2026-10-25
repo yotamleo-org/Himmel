@@ -48,10 +48,14 @@ const pending = (dir) => {
   return existsSync(p) ? readdirSync(p).filter((f) => f.endsWith('.json')) : [];
 };
 
-// Whether a pid is still around. EPERM means it exists and belongs to someone
-// else — still alive. Mirrors pidAlive() in the module under test.
+// Whether a pid is still around. Signal 0 answers for a ZOMBIE too (the slot
+// stays allocated until the parent reaps it), so a killed grandchild of a
+// still-running parent would read as alive; the process state settles that. A
+// failed ps read proves nothing: only ESRCH from the signal means the pid is gone.
 const alive = (pid) => {
-  try { process.kill(pid, 0); return true; } catch (e) { return e.code === 'EPERM'; }
+  try { process.kill(pid, 0); } catch (e) { return e.code === 'EPERM'; }
+  const st = (spawnSync('ps', ['-o', 'stat=', '-p', String(pid)], { encoding: 'utf8' }).stdout ?? '').trim();
+  return !st.startsWith('Z');
 };
 
 // A tree teardown is not instantaneous — taskkill returns before the tree is
@@ -65,6 +69,27 @@ const reaped = async (pid, budgetMs = 5000) => {
 };
 
 // ------------------------------------------------------------------ paths
+
+test('the liveness probe sees this process alive and an unreaped zombie dead', async () => {
+  assert.equal(alive(process.pid), true, 'the liveness probe must see this test process alive');
+  // `sleep` (exec'd by sh) never waits on the child it was left holding, so that child stays a zombie once it exits;
+  // it outlives the exec by a beat so a shell that reaps its own jobs cannot reap it first
+  const holder = spawn('sh', ['-c', 'sleep 0.3 & echo $!; exec sleep 30'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  try {
+    const zombie = await new Promise((resolve) => {
+      holder.stdout.once('data', (d) => resolve(Number(String(d).trim())));
+    });
+    assert.ok(zombie > 0, `unusable zombie pid: ${zombie}`);
+    const until = Date.now() + 3000;
+    while (Date.now() < until && !/^Z/.test(spawnSync('ps', ['-o', 'stat=', '-p', String(zombie)], { encoding: 'utf8' }).stdout.trim())) {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    process.kill(zombie, 0); // still allocated: signal 0 alone would call it alive
+    assert.equal(alive(zombie), false, 'a zombie is not alive');
+  } finally {
+    holder.kill('SIGKILL');
+  }
+});
 
 test('queueDir prefers the explicit override, else $HOME/.himmel/stop-queue', () => {
   assert.equal(queueDir({ HIMMEL_STOP_QUEUE_DIR: '/q' }), '/q');
@@ -80,16 +105,16 @@ test('sanitizeKey refuses separators, traversal and emptiness', () => {
   assert.match(sanitizeKey('../../etc/passwd'), /^_\.\._etc_passwd-[0-9a-f]{8}$/);
   assert.match(sanitizeKey('a/b\\c'), /^a_b_c-[0-9a-f]{8}$/);
   assert.equal(sanitizeKey(''), 'unkeyed');
-  assert.equal(sanitizeKey('speak-reply.abc_123'), 'speak-reply.abc_123');
+  assert.equal(sanitizeKey('sample-key.abc_123'), 'sample-key.abc_123');
 });
 
 // The dedup identity carries the session, which is what makes a FLEET of N
 // children produce N entries while one session re-firing produces one.
 test('entryKey namespaces by session_id, and degrades without one', () => {
-  assert.equal(entryKey('speak-reply', JSON.stringify({ session_id: 's1' })), 'speak-reply.s1');
+  assert.equal(entryKey('sample-key', JSON.stringify({ session_id: 's1' })), 'sample-key.s1');
   // No session to key on: a unique suffix, never a collision with a sibling.
-  assert.match(entryKey('speak-reply', 'not json'), /^speak-reply\.\d+-[a-z0-9]+$/);
-  assert.match(entryKey('speak-reply', ''), /^speak-reply\.\d+-[a-z0-9]+$/);
+  assert.match(entryKey('sample-key', 'not json'), /^sample-key\.\d+-[a-z0-9]+$/);
+  assert.match(entryKey('sample-key', ''), /^sample-key\.\d+-[a-z0-9]+$/);
 });
 
 // ---------------------------------------------------------------- enqueue
@@ -471,7 +496,7 @@ test('the env snapshot takes the gate variables and refuses the secret-shaped on
   const env = {
     HIMMEL_WHERE_ARE_WE: '1',
     CLAUDE_PROJECT_DIR: '/repo',
-    VOICE_SPEAK: '1',
+    HIMMEL_SAMPLE_GATE: '1',
     JIRA_NUDGE_RELAY_CMD: 'true',
     HIMMEL_TELEGRAM_BOT_TOKEN: 'shibboleth',
     CLAUDE_CODE_OAUTH_TOKEN: 'shibboleth',
@@ -482,11 +507,13 @@ test('the env snapshot takes the gate variables and refuses the secret-shaped on
   assert.deepEqual(snapshotEnv(env), {
     HIMMEL_WHERE_ARE_WE: '1',
     CLAUDE_PROJECT_DIR: '/repo',
-    VOICE_SPEAK: '1',
+    HIMMEL_SAMPLE_GATE: '1',
     JIRA_NUDGE_RELAY_CMD: 'true',
     // Carried on purpose — it decides which interpreter the job resolves.
     PATH: '/usr/bin',
   });
+  // The retired VOICE_ namespace is no longer snapshotted.
+  assert.equal(snapshotEnv({ VOICE_SPEAK: '1' }).VOICE_SPEAK, undefined);
 });
 
 test('an entry carries the snapshot and never a secret', () => {
@@ -1027,7 +1054,7 @@ test('sanitizeKey keeps distinct raw inputs distinct', () => {
   assert.notEqual(sanitizeKey('a/b'), sanitizeKey('a\\b'));
   assert.notEqual(sanitizeKey('x'.repeat(150) + 'A'), sanitizeKey('x'.repeat(150) + 'B'));
   // Already filename-safe input is untouched — the common case stays readable.
-  assert.equal(sanitizeKey('speak-reply.abc_123'), 'speak-reply.abc_123');
+  assert.equal(sanitizeKey('sample-key.abc_123'), 'sample-key.abc_123');
 });
 
 // ------------------------------------------- panel findings

@@ -32,7 +32,7 @@ import { cloudRoutes, consoleOf, GH_WAIT_MS, readCloudPrs, type CloudPhase, type
 import { createJournalMapper } from "./journal-mapper.ts";
 import { mergeJournalFiles, sessionFiles } from "./journal-merge.ts";
 import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, readCodexBank, W, type CodexBank, type CostRow, type EvalRow, type Lane, type LaneFrom } from "./lane.ts";
-import { busRootOf, resolveJournal } from "./sse.ts";
+import { busRootOf, registerConfigRoot, resolveJournal } from "./sse.ts";
 import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { loadPeers } from "../../../marketplace/plugins/himmel-bus/lib/identity.mjs";
 
@@ -149,7 +149,7 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
 // `pid=<pid> owner=<session> age=<n>m` row each); read-only, and null when it failed rather than an empty list.
 // a wrapper owned by a live session is that session's own long-running call, not an orphan.
 async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set()): Promise<ProcessOrphan[] | null> {
-  const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/console-kit/orphan-loops.sh");
+  const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/chief-kit/orphan-loops.sh");
   return new Promise((ok) => {
     execFile("bash", [script, "--list"], { env: opts.env as NodeJS.ProcessEnv, timeout: 10_000, maxBuffer: 256 * 1024 }, (err, stdout) => {
       if (err) return ok(null);
@@ -242,7 +242,7 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
 const RECORDED_LOCK = [/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m, /release token is:\s*\n\s*```[^\n]*\n\s*[^\s`]+\s*\n\s*```/i];
 
 const roleOf = (name: string, doc: string): FleetRow["role"] =>
-  /-console$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
+  /-(console|chief)$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
 
 // The PR a leg doc names last: `READY <pr> ...` or `PR <n>` / `PR #<n>` in its bullets.
 function prOf(text: string): number | null {
@@ -348,6 +348,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
       const env = (await readFile(join(opts.env.CLAUDE_SESSIONS_PROC || "/proc", c.pid, "environ"), "utf8")).split("\0");
       launch = Object.fromEntries(env.filter((v) => v.includes("=")).map((v) => { const i = v.indexOf("="); return [v.slice(0, i), v.slice(i + 1)]; }));
     } catch { /* unavailable launch record: use doc or manifest */ }
+    if (launch.CLAUDE_CONFIG_DIR) await registerConfigRoot(launch.CLAUDE_CONFIG_DIR);
     let rec: { sessionId?: unknown; status?: unknown; name?: unknown; startedAt?: unknown } = {};
     const configs = launch.CLAUDE_CONFIG_DIR ? [launch.CLAUDE_CONFIG_DIR] : [join(opts.home, ".claude"), join(opts.home, ".claude-codex")];
     for (const config of configs) {

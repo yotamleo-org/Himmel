@@ -185,7 +185,7 @@ console_context_write_record() {
 }
 
 # console_context_leg_env_unset_names -- prints, one per line, every env var
-# name scripts/handover/console-kit/headed-arm-leg.sh sets on a leg itself,
+# name scripts/handover/chief-kit/headed-arm-leg.sh sets on a leg itself,
 # via leg_propagate_env (crosses macOS's `open -a` boundary too) or a plain
 # `export` (crosses via ordinary fork/exec inheritance to every descendant of
 # the long-running leg process, not just its immediate child). A leg's own

@@ -89,7 +89,7 @@ if grep -q "claude-haiku-5-5" "$T/launched.log" && [ "$(grep -c -- '--lane claud
 # prunes its files, so render through a failing leg, which keeps its doc.
 run liveonly 2 --lanes claudex >/dev/null
 doc="$(ls "$T/root"/lane-canary-claudex-*.md 2>/dev/null | head -1)"
-if [ -n "$doc" ] && bash "$REPO/scripts/handover/console-kit/brief-lint.sh" "$doc" 2>/dev/null && ! grep -q '@[A-Z]*@' "$doc" && grep -q "^resume_cwd: $T$" "$doc"; then ok "T7 rendered brief lints and has no placeholders"; else bad "T7 doc=$doc"; fi
+if [ -n "$doc" ] && bash "$REPO/scripts/handover/chief-kit/brief-lint.sh" "$doc" 2>/dev/null && ! grep -q '@[A-Z]*@' "$doc" && grep -q "^resume_cwd: $T$" "$doc"; then ok "T7 rendered brief lints and has no placeholders"; else bad "T7 doc=$doc"; fi
 
 # T8: the leg is launched from the repo it was given, not the caller's cwd.
 if [ -s "$T/cwd.log" ] && [ "$(sort -u "$T/cwd.log")" = "$(cd "$T" && pwd -P)" ]; then ok "T8 launched from the primary repo"; else bad "T8 cwd: $(cat "$T/cwd.log" 2>/dev/null)"; fi

@@ -11,8 +11,8 @@ they almost always mean the first one.
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
 | Config UI | One local web app: Settings, Setup, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
-| Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/console-kit/board.mjs --doc <console doc> --changed` | a running himmel chief |
-| Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/console-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
+| Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <console doc> --changed` | a running himmel chief |
+| Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
 ## The config UI (`himmelctl ui`)
 
@@ -29,6 +29,7 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
+| Setup choices (Setup) | `HANDOVER_DIR` and `LUNA_VAULT_PATH` in `~/.himmel/himmel.conf`, through `himmelctl config set handover.root` or `luna.vaultPath`; an absolute path with no `.` or `..` part, quote, `#`, `$`, backslash or control character | next Claude launch |
 | Fleet cap (Settings) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a `HIMMEL_FLEET_CAP` exported in the shell that launches a worker wins over the `.env` line for that launch, and it takes any whole number, outside 1 to 50 too; and the page shows a notice while the shell that started the UI sets one | the next worker launch |
 | VM mode (Settings) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
 | Review gate (Settings) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
@@ -56,6 +57,18 @@ works without it), and the steps to install the GitHub App on the repo and arm t
 for a `CodeRabbit` check: seen is `installed`; not seen is `not detected` (a new install, a repo with no PRs or skipped
 reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both of those show a manual confirm. The check only reads; it never installs or arms anything.
 
+The Setup page ends with Setup choices: the handover root and the luna vault path, each prefilled from
+`~/.himmel/himmel.conf` (or marked `not set` with the default that applies) and changed through a dry run you
+confirm. The vault path must be a folder that exists. The forge is shown as detected, read-only: set `FORGE` or
+`git config himmel.forge` in the terminal. The plugin set, Review by a second model and Auto-ship steps are
+linked to their Settings toggles, not repeated.
+
+The Setup page closes with a Verify step: a button runs the doctor (`scripts/himmel-doctor.sh --json`, its read-only
+checks; never `--fix`) and shows a fail, warn and ok count with one row per warning or failure, its remedy, and an
+Open in Settings link to that check's row. It takes a minute or two and stops at 200 seconds. The run publishes nothing
+(no statusline counts), and any secret value in a row is redacted before the page sees it. The result lives in the
+page only, so come back to Setup and press run again any time to re-check. It is `POST /api/setup/verify`, handled by `verifyDoctor` in `scripts/config-ui/setup.ts`.
+
 The Roadmap and Kanban boards also write to Jira: dragging a card to another column
 transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
 through `POST /api/roadmap/write` and the Jira CLI; a refusal leaves the card where it was.
@@ -71,6 +84,7 @@ This is the full set, each mapped to the code that handles it:
 | Dry-run a switch, then run it after confirm | `/api/preview`, `/api/run` | `previewRoute` and `runRoute` in `scripts/config-ui/server.ts` |
 | Save or remove a file-stored secret | `/api/setup/secret` | `secretWrite` in `scripts/config-ui/setup.ts` |
 | Create the UI login once (Account step) | `/api/setup/account` | `accountCreate` in `scripts/config-ui/setup.ts` |
+| Run the doctor's read-only checks (Verify step) | `/api/setup/verify` | `verifyDoctor` in `scripts/config-ui/setup.ts` |
 | Review gate reviewers | `/api/review-gate` | `scripts/config-ui/review-gate.ts` |
 | Fleet cap | `/api/fleet-cap` | `scripts/config-ui/fleet-cap.ts` |
 | VM mode | `/api/vm` | `scripts/config-ui/vm-config.ts` |
@@ -116,8 +130,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   (first the Account step, which creates the UI login once on a fresh install;
   which secrets are set, never their values; a file-stored secret can be saved or
   removed here; the always-on service saves one only after you log in at `/login`
-  (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login; plus the commit rules, tracker and ticket-id-required, each with a
-  dry-run before it changes), `#/health` (one verdict:
+  (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login; plus the commit rules, tracker and ticket-id-required, and the setup
+  choices, handover root and luna vault path, each with a dry-run before it changes), `#/health` (one verdict:
   All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
   cards from the weekly roll-up, see below), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and

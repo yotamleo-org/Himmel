@@ -37,7 +37,7 @@ ORIGIN="$TMP/origin"
 PRIMARY="$TMP/himmel"
 WT="$TMP/wt"
 mkdir -p "$ORIGIN/scripts/cr" "$ORIGIN/scripts/guardrails" "$ORIGIN/scripts/lib" "$ORIGIN/docs" \
-    "$ORIGIN/scripts/handover/console-kit"
+    "$ORIGIN/scripts/handover/chief-kit"
 g init -q "$ORIGIN"
 echo 'echo anchor' >"$ORIGIN/scripts/cr/pr-check-context.sh"
 # The sentinel file the guard's himmel_anchor_prefix
@@ -58,14 +58,15 @@ done
 # targets, held to the entry + scripts/cr/anchor-handoff.sh (narrower family) -
 # plus go.sh's own sibling-sourced libs (go-gate.sh, handover-path.sh), which
 # it reads via a branch-relative path even after the hand-off's re-exec lands
-# it in the anchor's own console-kit/, so they must be guarded too.
+# it in the anchor's own chief-kit/, so they must be guarded too.
 echo 'echo mog' >"$ORIGIN/scripts/handover/merge-on-green.sh"
-echo 'echo go' >"$ORIGIN/scripts/handover/console-kit/go.sh"
-echo 'echo gate' >"$ORIGIN/scripts/handover/console-kit/himmel-gate.sh"
-echo 'echo verdict' >"$ORIGIN/scripts/handover/console-kit/write-verdict.sh"
-echo 'echo wait' >"$ORIGIN/scripts/handover/console-kit/console-wait.sh"
+echo 'echo go' >"$ORIGIN/scripts/handover/chief-kit/go.sh"
+echo 'echo gate' >"$ORIGIN/scripts/handover/chief-kit/himmel-gate.sh"
+echo 'echo verdict' >"$ORIGIN/scripts/handover/chief-kit/write-verdict.sh"
+echo 'echo wait' >"$ORIGIN/scripts/handover/chief-kit/console-wait.sh"
 echo ': go-gate' >"$ORIGIN/scripts/lib/go-gate.sh"
 echo ': handover-path' >"$ORIGIN/scripts/lib/handover-path.sh"
+echo 'echo bullet' >"$ORIGIN/scripts/handover/chief-kit/append-results.sh"
 echo 'doc' >"$ORIGIN/docs/a.md"
 g -C "$ORIGIN" add -A
 g -C "$ORIGIN" commit -qm base
@@ -248,22 +249,22 @@ mv "$WT/scripts/cr-real" "$WT/scripts/cr"
 run "scripts/cr dir restored, review-round -> allow" 0 "$(payload "$RR" "$WT")" "$HR"
 
 # ---- scripts/handover/ gate writers are targets too --------------
-# merge-on-green.sh and console-kit/go.sh are gate-allowed RELATIVE literals
+# merge-on-green.sh and chief-kit/go.sh are gate-allowed RELATIVE literals
 # too (scripts/lanes/plugin-profiles.json gateAllow), outside scripts/cr/ -
 # held to the same narrower condition as the other thirteen: the entry script
 # and scripts/cr/anchor-handoff.sh byte-equal the anchor's.
 MOG='bash scripts/handover/merge-on-green.sh'
-GO='bash scripts/handover/console-kit/go.sh'
+GO='bash scripts/handover/chief-kit/go.sh'
 run "clean tree, bash scripts/handover/merge-on-green.sh -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
-run "clean tree, bash scripts/handover/console-kit/go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
+run "clean tree, bash scripts/handover/chief-kit/go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
 echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
 run "edited merge-on-green.sh -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 need_in_err "deny names merge-on-green.sh" "scripts/handover/merge-on-green.sh"
 g -C "$WT" checkout -q -- scripts/handover/merge-on-green.sh
-echo ': edited' >>"$WT/scripts/handover/console-kit/go.sh"
+echo ': edited' >>"$WT/scripts/handover/chief-kit/go.sh"
 run "edited go.sh -> deny" 2 "$(payload "$GO" "$WT")" "$HR"
-need_in_err "deny names go.sh" "scripts/handover/console-kit/go.sh"
-g -C "$WT" checkout -q -- scripts/handover/console-kit/go.sh
+need_in_err "deny names go.sh" "scripts/handover/chief-kit/go.sh"
+g -C "$WT" checkout -q -- scripts/handover/chief-kit/go.sh
 echo ': edited' >>"$WT/scripts/cr/anchor-handoff.sh"
 run "edited anchor-handoff.sh, merge-on-green -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
@@ -275,16 +276,16 @@ echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
 run "merge-on-green.sh edited, go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
 run "merge-on-green.sh edited, review-round -> allow" 0 "$(payload "$RR" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/handover/merge-on-green.sh
-chmod +x "$WT/scripts/handover/console-kit/go.sh"
+chmod +x "$WT/scripts/handover/chief-kit/go.sh"
 run "chmod +x on go.sh -> deny" 2 "$(payload "$GO" "$WT")" "$HR"
-chmod -x "$WT/scripts/handover/console-kit/go.sh"
+chmod -x "$WT/scripts/handover/chief-kit/go.sh"
 # A symlinked entry is refused even when the bytes it points at match.
 mv "$WT/scripts/handover/merge-on-green.sh" "$TMP/mog.real"
 ln -s "$TMP/mog.real" "$WT/scripts/handover/merge-on-green.sh"
 run "symlinked merge-on-green.sh -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 rm "$WT/scripts/handover/merge-on-green.sh"
 mv "$TMP/mog.real" "$WT/scripts/handover/merge-on-green.sh"
-# A symlinked scripts/handover/ or console-kit/ directory is refused even when
+# A symlinked scripts/handover/ or chief-kit/ directory is refused even when
 # every byte underneath matches (same class as the symlinked scripts/cr dir
 # case above).
 mv "$WT/scripts/handover" "$WT/scripts/handover-real"
@@ -292,31 +293,101 @@ ln -s handover-real "$WT/scripts/handover"
 run "symlinked scripts/handover dir, merge-on-green -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 rm "$WT/scripts/handover"
 mv "$WT/scripts/handover-real" "$WT/scripts/handover"
-mv "$WT/scripts/handover/console-kit" "$WT/scripts/handover/console-kit-real"
-ln -s console-kit-real "$WT/scripts/handover/console-kit"
-run "symlinked console-kit dir, go.sh -> deny" 2 "$(payload "$GO" "$WT")" "$HR"
-rm "$WT/scripts/handover/console-kit"
-mv "$WT/scripts/handover/console-kit-real" "$WT/scripts/handover/console-kit"
+mv "$WT/scripts/handover/chief-kit" "$WT/scripts/handover/console-kit-real"
+ln -s console-kit-real "$WT/scripts/handover/chief-kit"
+run "symlinked chief-kit dir, go.sh -> deny" 2 "$(payload "$GO" "$WT")" "$HR"
+rm "$WT/scripts/handover/chief-kit"
+mv "$WT/scripts/handover/console-kit-real" "$WT/scripts/handover/chief-kit"
 run "handover writers restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 run "handover writers restored, go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
-# console-kit/write-verdict.sh mints a GO-key-signed verdict, so a relative
+# chief-kit/write-verdict.sh mints a GO-key-signed verdict, so a relative
 # run is held to the same entry + hand-off byte-compare as go.sh. RED control
 # (the guard before this change): the tampered copy is allowed.
-WV='bash scripts/handover/console-kit/write-verdict.sh'
-run "clean tree, bash scripts/handover/console-kit/write-verdict.sh -> allow" 0 "$(payload "$WV" "$WT")" "$HR"
-echo ': edited' >>"$WT/scripts/handover/console-kit/write-verdict.sh"
+WV='bash scripts/handover/chief-kit/write-verdict.sh'
+run "clean tree, bash scripts/handover/chief-kit/write-verdict.sh -> allow" 0 "$(payload "$WV" "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/handover/chief-kit/write-verdict.sh"
 run "tampered worktree write-verdict.sh -> deny" 2 "$(payload "$WV" "$WT")" "$HR"
-need_in_err "deny names write-verdict.sh" "scripts/handover/console-kit/write-verdict.sh"
-g -C "$WT" checkout -q -- scripts/handover/console-kit/write-verdict.sh
-# console-kit/console-wait.sh runs under a :* allow rule too, so a relative
+need_in_err "deny names write-verdict.sh" "scripts/handover/chief-kit/write-verdict.sh"
+g -C "$WT" checkout -q -- scripts/handover/chief-kit/write-verdict.sh
+# chief-kit/console-wait.sh runs under a :* allow rule too, so a relative
 # run gets the same byte-compare. RED control (the guard before this change):
 # the tampered copy is allowed.
-CW='bash scripts/handover/console-kit/console-wait.sh'
-run "clean tree, bash scripts/handover/console-kit/console-wait.sh -> allow" 0 "$(payload "$CW" "$WT")" "$HR"
-echo ': edited' >>"$WT/scripts/handover/console-kit/console-wait.sh"
+CW='bash scripts/handover/chief-kit/console-wait.sh'
+run "clean tree, bash scripts/handover/chief-kit/console-wait.sh -> allow" 0 "$(payload "$CW" "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/handover/chief-kit/console-wait.sh"
 run "tampered worktree console-wait.sh -> deny" 2 "$(payload "$CW" "$WT")" "$HR"
-need_in_err "deny names console-wait.sh" "scripts/handover/console-kit/console-wait.sh"
-g -C "$WT" checkout -q -- scripts/handover/console-kit/console-wait.sh
+need_in_err "deny names console-wait.sh" "scripts/handover/chief-kit/console-wait.sh"
+g -C "$WT" checkout -q -- scripts/handover/chief-kit/console-wait.sh
+
+# ---- the two kit layouts: console-kit/ before the move, chief-kit/ after ----
+# A tree keeps its kit writers in exactly one real directory: console-kit/ on a # old-term-ok: the layout before the move
+# branch cut before the move, chief-kit/ after it. The same bytes get the same
+# verdict on either layout; an old-layout worktree is checked against a
+# new-layout anchor's chief-kit/ copy. A symlink at either path, both
+# directories at once, or the spelling of the kit a tree lacks is refused.
+ORIGIN2="$TMP/origin2"
+PRIMARY2="$TMP/himmel2"
+WT2="$TMP/wt2"
+WT2OLD="$TMP/wt2old"
+H2="$ORIGIN2/scripts/handover"
+cp -R "$ORIGIN" "$ORIGIN2"
+rm -rf "$ORIGIN2/.git"
+[ -d "$H2/chief-kit" ] && mv "$H2/chief-kit" "$H2/console-kit" # old-term-ok: the fixture's old layout
+g init -q "$ORIGIN2"
+g -C "$ORIGIN2" add -A
+g -C "$ORIGIN2" commit -qm base
+old_layout="$(g -C "$ORIGIN2" rev-parse HEAD)"
+g -C "$ORIGIN2" mv scripts/handover/console-kit scripts/handover/chief-kit
+g -C "$ORIGIN2" commit -qm move
+g clone -q "$ORIGIN2" "$PRIMARY2"
+g -C "$PRIMARY2" worktree add -q -b feat/y "$WT2" refs/remotes/origin/main
+g -C "$PRIMARY2" worktree add -q -b feat/old "$WT2OLD" "$old_layout"
+HR2="HIMMEL_REPO=$PRIMARY2"
+OLDKIT=scripts/handover/console-kit # old-term-ok: the old layout's kit path
+NEWKIT=scripts/handover/chief-kit
+for s in go write-verdict console-wait himmel-gate; do
+    run "new layout, clean tree, bash $NEWKIT/$s.sh -> allow" 0 "$(payload "bash $NEWKIT/$s.sh" "$WT2")" "$HR2"
+    run "old layout, clean tree, bash $OLDKIT/$s.sh -> allow" 0 "$(payload "bash $OLDKIT/$s.sh" "$WT2OLD")" "$HR2"
+done
+for wt in "$WT2" "$WT2OLD"; do
+    run "anchor's dispatcher from ${wt##*/} -> allow" 0 \
+        "$(payload "bash \"\$HIMMEL_REPO/$NEWKIT/himmel-gate.sh\" orphan-check 12" "$wt")" "$HR2"
+done
+for s in go write-verdict; do
+    echo ': edited' >>"$WT2/$NEWKIT/$s.sh"
+    run "new layout, edited $s.sh -> deny" 2 "$(payload "bash $NEWKIT/$s.sh" "$WT2")" "$HR2"
+    g -C "$WT2" checkout -q -- "$NEWKIT/$s.sh"
+    echo ': edited' >>"$WT2OLD/$OLDKIT/$s.sh"
+    run "old layout, edited $s.sh -> deny" 2 "$(payload "bash $OLDKIT/$s.sh" "$WT2OLD")" "$HR2"
+    g -C "$WT2OLD" checkout -q -- "$OLDKIT/$s.sh"
+done
+# The spelling of the kit a tree lacks never runs.
+run "new layout, go.sh via the old kit path -> deny" 2 "$(payload "bash $OLDKIT/go.sh" "$WT2")" "$HR2"
+need_in_err "deny names the new spelling" "spell it scripts/handover/chief-kit/"
+run "old layout, go.sh via the new kit path -> deny" 2 "$(payload "bash $NEWKIT/go.sh" "$WT2OLD")" "$HR2"
+# A symlink at the old path beside the new kit is refused: no alias stays after the move.
+ln -s chief-kit "$WT2/$OLDKIT"
+run "a symlink at the old kit path, go.sh via the new path -> deny" 2 "$(payload "bash $NEWKIT/go.sh" "$WT2")" "$HR2"
+run "a symlink at the old kit path, go.sh via the old path -> deny" 2 "$(payload "bash $OLDKIT/go.sh" "$WT2")" "$HR2"
+rm "$WT2/$OLDKIT"
+run "the symlink removed, go.sh -> allow" 0 "$(payload "bash $NEWKIT/go.sh" "$WT2")" "$HR2"
+# An old-layout kit that is itself a symlink is refused too.
+mv "$WT2OLD/$OLDKIT" "$WT2OLD/scripts/handover/kit-real"
+ln -s kit-real "$WT2OLD/$OLDKIT"
+run "old layout through a symlinked kit, go.sh -> deny" 2 "$(payload "bash $OLDKIT/go.sh" "$WT2OLD")" "$HR2"
+rm "$WT2OLD/$OLDKIT"
+mv "$WT2OLD/scripts/handover/kit-real" "$WT2OLD/$OLDKIT"
+run "old layout restored, go.sh -> allow" 0 "$(payload "bash $OLDKIT/go.sh" "$WT2OLD")" "$HR2"
+# Both kit directories at once: either spelling could run bytes the other's check never hashed.
+cp -R "$WT2OLD/$OLDKIT" "$WT2OLD/$NEWKIT"
+echo ': edited' >>"$WT2OLD/$NEWKIT/go.sh"
+run "both kit dirs, go.sh via the new path -> deny" 2 "$(payload "bash $NEWKIT/go.sh" "$WT2OLD")" "$HR2"
+run "both kit dirs, go.sh via the old path -> deny" 2 "$(payload "bash $OLDKIT/go.sh" "$WT2OLD")" "$HR2"
+rm -rf "${WT2OLD:?}/$NEWKIT"
+# The first fixture never runs the spelling of the kit it lacks.
+lacks=$OLDKIT
+[ -d "$WT/$OLDKIT" ] && lacks=$NEWKIT
+run "first fixture, go.sh via the kit path it lacks -> deny" 2 "$(payload "bash $lacks/go.sh" "$WT")" "$HR"
 
 # ---- console-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
 # The documented anchored spelling for merge-on-green.sh, gate-
@@ -343,7 +414,7 @@ run 'literal $HIMMEL_REPO/ prefix onto a scripts/cr/ target -> allow' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/cr/pr-check-context.sh"' "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run 'literal $HIMMEL_REPO/ prefix onto go.sh -> allow' 0 \
-    "$(payload 'bash "$HIMMEL_REPO/scripts/handover/console-kit/go.sh"' "$WT")" "$HR"
+    "$(payload 'bash "$HIMMEL_REPO/scripts/handover/chief-kit/go.sh"' "$WT")" "$HR"
 
 # codex-1: the anchor-prefix exemption
 # above trusted the COMMAND TEXT shape alone, never the hook's own actual
@@ -415,7 +486,7 @@ run "fully single-quoted \$HIMMEL_REPO never expands -> deny" 2 \
     "$(payload "bash '\$HIMMEL_REPO/scripts/cr/pr-check-context.sh'" "$WT")" "$HR"
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run "single-quoted with leading junk before the dollar -> deny" 2 \
-    "$(payload "bash 'x \$HIMMEL_REPO/scripts/handover/console-kit/go.sh'" "$WT")" "$HR"
+    "$(payload "bash 'x \$HIMMEL_REPO/scripts/handover/chief-kit/go.sh'" "$WT")" "$HR"
 # Byte-exact reproductions of the
 # original report's probes 4 and 6, built with $'...' ANSI-C quoting so
 # no character is reinterpreted along the way - $'...' processes only
@@ -498,7 +569,7 @@ for v in \
     "env -S 'bash scripts/handover/merge-on-green.sh\\t'" \
     "env -S 'bash scripts/handover/merge-on-green.sh#'" \
     "env -S 'bash scripts/cr/clear-cr-marker.sh\\c'" \
-    "env -S 'bash scripts/handover/console-kit/go.sh\\c'" \
+    "env -S 'bash scripts/handover/chief-kit/go.sh\\c'" \
     "env -S 'ARMAUTOMERGE=1 bash"$'\n'"scripts/handover/merge-on-green.sh\\c'" \
     "env -S 'true;bash scripts/handover/merge-on-green.sh\\c'" \
     "env -S 'true|bash scripts/handover/merge-on-green.sh\\c'" \
@@ -582,10 +653,10 @@ bash -c "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
 sh -c "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
 eval "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"
 eval env -S 'bash scripts/cr/clear-cr-marker.sh\c'
-bash -c "env -S 'bash scripts/handover/console-kit/go.sh\c'"
-sh -c "env -S 'bash scripts/handover/console-kit/go.sh\c'"
-eval "env -S 'bash scripts/handover/console-kit/go.sh\c'"
-eval env -S 'bash scripts/handover/console-kit/go.sh\c'
+bash -c "env -S 'bash scripts/handover/chief-kit/go.sh\c'"
+sh -c "env -S 'bash scripts/handover/chief-kit/go.sh\c'"
+eval "env -S 'bash scripts/handover/chief-kit/go.sh\c'"
+eval env -S 'bash scripts/handover/chief-kit/go.sh\c'
 bash -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 sh -c "env -S 'bash scripts/cr/pr-check-context.sh\c'"
 eval "env -S 'bash scripts/cr/pr-check-context.sh\c'"
@@ -725,7 +796,7 @@ tee /tmp/f <<< "env -S 'bash scripts/handover/merge-on-green.sh\c'"; bash /tmp/f
 cat <<< "env -S 'bash scripts/handover/merge-on-green.sh\c'" > /tmp/f && sh /tmp/f
 tee /tmp/f <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"; source /tmp/f
 tee /tmp/f <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'"; . /tmp/f
-tee /tmp/f <<< "env -S 'bash scripts/handover/console-kit/go.sh\c'"; eval "$(cat /tmp/f)"
+tee /tmp/f <<< "env -S 'bash scripts/handover/chief-kit/go.sh\c'"; eval "$(cat /tmp/f)"
 cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" > /tmp/f; exec bash /tmp/f
 cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" >> /tmp/f; /bin/bash /tmp/f
 cat <<< "env -S 'bash scripts/cr/clear-cr-marker.sh\c'" > /tmp/f; env bash /tmp/f
@@ -768,13 +839,13 @@ run "3913: [variable write target then run of an outside scripts/cr path] clean 
 while IFS= read -r v; do
     run "3913: allowed spelling [$v] clean root -> no-op" 0 "$(payload "$v" "$WT")" "$HR"
 done <<'BACKSTOP_ALLOW'
-bash scripts/handover/console-kit/go.sh GO 1 abc
+bash scripts/handover/chief-kit/go.sh GO 1 abc
 bash scripts/handover/merge-on-green.sh --jira-transition
 bash scripts/cr/write-verdicts.sh --from-file /tmp/v.txt
 BACKSTOP_ALLOW
 for v in \
     "bash \"$PRIMARY/scripts/handover/merge-on-green.sh\" --jira-transition" \
-    "bash \"$PRIMARY/scripts/handover/console-kit/go.sh\" GO 1 abc" \
+    "bash \"$PRIMARY/scripts/handover/chief-kit/go.sh\" GO 1 abc" \
     "bash \"$PRIMARY/scripts/cr/write-verdicts.sh\" --from-file /tmp/v.txt" \
     "bash \"$PRIMARY/scripts/cr/pr-check-step0.sh\"" \
     "bash \"$PRIMARY/scripts/cr/pr-check-env.sh\" CR_CLAUDE_AGENTS"; do
@@ -836,7 +907,7 @@ OTHERWRITER
 # The Results-bullet case the console ruling measured: an arrow in the text of a
 # bullet naming a guarded writer denies, and the deny names the remedy.
 run "3917: [append-results bullet naming merge-on-green with an arrow] -> deny" 2 \
-    "$(payload "bash scripts/handover/console-kit/append-results.sh /tmp/d.md 'MERGED via scripts/handover/merge-on-green.sh -> abc'" "$WT")" "$HR"
+    "$(payload "bash scripts/handover/chief-kit/append-results.sh /tmp/d.md 'MERGED via scripts/handover/merge-on-green.sh -> abc'" "$WT")" "$HR"
 need_in_err "3917: arrow deny names the Write-tool remedy" "write it with the Write tool and pass the file"
 need_in_err "3917: arrow deny names the arrow remedy" "use '→' / 'to' instead"
 # Only an fd dup or a redirect to exactly /dev/null is inert: the backstop stays
@@ -1559,7 +1630,7 @@ g -C "$WT" checkout -q -- scripts/cr/pr-check-context.sh
 # allowed outside any checkout too.
 JIRA_CLI=$PRIMARY/scripts/jira/dist/index.js
 for v in \
-    'gh pr comment 1 --body "ran: bash scripts/handover/console-kit/go.sh 12 abc"' \
+    'gh pr comment 1 --body "ran: bash scripts/handover/chief-kit/go.sh 12 abc"' \
     'gh pr create --title "x" --body "a; bash scripts/cr/clear-cr-marker.sh | b"' \
     "gh issue comment 5 --body 'then bash scripts/cr/write-verdicts.sh sweep'" \
     "node $JIRA_CLI comment HIMMEL-1 \"see bash scripts/cr/clear-cr-marker.sh; then go.sh\""; do
@@ -1586,7 +1657,7 @@ done
 # nothing; the printf -v / cd rebinding shapes above stay denied.
 for v in \
     "cat <<'EOF'${NL}then run bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
-    "cat <<'EOF' | head -3${NL}run bash scripts/handover/console-kit/go.sh 12 abc${NL}EOF"; do
+    "cat <<'EOF' | head -3${NL}run bash scripts/handover/chief-kit/go.sh 12 abc${NL}EOF"; do
     run "HIMMEL-6015 inert cat heredoc [${v%%"$NL"*}] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 done
 # An unquoted heredoc body expands $: prompt expansion (${_@P}, ${x@P}) and
@@ -1618,7 +1689,7 @@ for v in \
     'grep -n x scripts/cr/*.sh 2>/dev/null | cut -c1-80' \
     'sed -n 60,96p scripts/cr/write-verdicts.sh; sed -n 1,9p scripts/cr/clear-cr-marker.sh' \
     'git grep -n "bash scripts/cr/write-verdicts.sh" -- docs | head' \
-    'git log --oneline -3 -- scripts/handover/console-kit/go.sh' \
+    'git log --oneline -3 -- scripts/handover/chief-kit/go.sh' \
     'git show HEAD:scripts/cr/clear-cr-marker.sh | head -5'; do
     run "HIMMEL-4574 readers [$v] -> allow" 0 "$(payload "$v" "$TMP")" "$HR"
 done
@@ -1651,7 +1722,7 @@ for v in \
     "bash -c \"\$(cat <<'EOF'${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF${NL})\"" \
     "eval \"\$(cat <<'EOF'${NL}bash scripts/cr/write-verdicts.sh sweep${NL}EOF${NL})\"" \
     "cat <<'EOF'; bash scripts/cr/write-verdicts.sh sweep${NL}x${NL}EOF" \
-    "python3 - <<'EOF'${NL}print('bash scripts/handover/console-kit/go.sh 1 abc')${NL}EOF" \
+    "python3 - <<'EOF'${NL}print('bash scripts/handover/chief-kit/go.sh 1 abc')${NL}EOF" \
     "cat > /tmp/x.md <<'EOF'${NL}then run bash scripts/cr/write-verdicts.sh sweep${NL}EOF" \
     'gh pr comment 1 --body "x"; bash scripts/cr/write-verdicts.sh sweep' \
     'gh pr comment 1 --body "x" | bash scripts/cr/write-verdicts.sh sweep' \
@@ -2206,7 +2277,7 @@ for v in \
 done
 # A quoted glob or regex inside a segment whose command is a plain reader names no
 # script, whatever else the line runs. AR is a handover writer outside the guarded set.
-AR='bash scripts/handover/console-kit/append-results.sh /tmp/d.md "LIVE"'
+AR='bash scripts/handover/chief-kit/append-results.sh /tmp/d.md "LIVE"'
 for v in \
     "$AR; grep -n '**' docs/a.md" \
     "$AR; grep -nE '(a ?){2,}' docs/a.md | head -3" \
@@ -2344,9 +2415,9 @@ done
 g -C "$WT" checkout -q -- . 2>/dev/null
 g -C "$PRIMARY" checkout -q -- . 2>/dev/null
 D4932=/tmp/d4932.md
-AR4932="bash scripts/handover/console-kit/append-results.sh $D4932"
+AR4932="bash scripts/handover/chief-kit/append-results.sh $D4932"
 run "4932: [append-results bullet naming go.sh and ready-check] -> allow" 0 \
-    "$(payload "$AR4932 'FINDING ready-check.sh item 7 and scripts/handover/console-kit/go.sh GO file'" "$WT")" "$HR"
+    "$(payload "$AR4932 'FINDING ready-check.sh item 7 and scripts/handover/chief-kit/go.sh GO file'" "$WT")" "$HR"
 run "4932: [a file named after this hook, redirected] -> allow" 0 \
     "$(payload "head -n 5 scripts/hooks/test-guard-pr-check-literal.sh > /tmp/o4932" "$WT")" "$HR"
 # Keep-denied controls: the shapes that carry the risk still deny.
@@ -2375,17 +2446,29 @@ AH_CASE='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah
 # shellcheck disable=SC2016 # the entry's literal hand-off line
 printf '%s\n' '#!/usr/bin/env bash' '# header' 'set -uo pipefail' '' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
 # shellcheck disable=SC2016 # the entry's literal hand-off line
-printf '%s\n' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go' >"$PRIMARY/scripts/handover/console-kit/go.sh"
+printf '%s\n' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go' >"$PRIMARY/scripts/handover/chief-kit/go.sh"
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' '#!/usr/bin/env bash' 'set -uo pipefail' "$AH_CASE" '. "$_ah_d/anchor-handoff.sh" || exit 2' 'echo wv' >"$PRIMARY/scripts/cr/write-verdicts.sh"
 g -C "$PRIMARY" commit -qam 'entries source the hand-off'
 BASE_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
 g -C "$WT" reset -q --hard "$BASE_MAIN"
 echo 'echo mog v2' >"$PRIMARY/scripts/handover/merge-on-green.sh"
-echo 'echo go v2' >"$PRIMARY/scripts/handover/console-kit/go.sh"
+echo 'echo go v2' >"$PRIMARY/scripts/handover/chief-kit/go.sh"
 echo 'echo write-verdicts v2' >"$PRIMARY/scripts/cr/write-verdicts.sh"
+echo 'echo review-round v2' >"$PRIMARY/scripts/cr/review-round.sh"
 g -C "$PRIMARY" commit -qam 'main moves on'
 run "behind main, untouched merge-on-green.sh -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 run "behind main, untouched go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
-run "behind main, untouched scripts/cr writer -> still deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+run "behind main, untouched scripts/cr writer -> allow" 0 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+run "behind main, two untouched writers in one call -> deny (not one simple command)" 2 \
+    "$(payload 'bash scripts/cr/write-verdicts.sh; bash scripts/handover/merge-on-green.sh' "$WT")" "$HR"
+run "behind main, untouched writer whose merge-base copy skips the hand-off -> deny" 2 \
+    "$(payload 'bash scripts/cr/review-round.sh' "$WT")" "$HR"
+need_in_err "deny names the anchored spelling" "\$HIMMEL_REPO/"
+run "behind main, pr-check-context.sh keeps the whole-tree equality -> deny" 2 "$(payload "$LITERAL" "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh"
+run "behind main, dirty scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
 run "behind main, dirty merge-on-green.sh -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 g -C "$WT" commit -qam 'branch edits merge-on-green'
@@ -2403,6 +2486,8 @@ echo ': handoff v2' >>"$PRIMARY/scripts/cr/anchor-handoff.sh"
 g -C "$PRIMARY" commit -qam 'main moves the hand-off'
 run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
+run "behind main, hand-off moved on main, scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+need_in_err "deny names the anchored spelling" "\$HIMMEL_REPO/scripts/cr/write-verdicts.sh"
 g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 # main moved to a child that restores its bytes, so the merge-base is a commit
@@ -2424,11 +2509,11 @@ g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
 mb_variant_run() { # <label> <want> <mog-file> <go-file>
     g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
     cp "$3" "$PRIMARY/scripts/handover/merge-on-green.sh"
-    cp "$4" "$PRIMARY/scripts/handover/console-kit/go.sh"
+    cp "$4" "$PRIMARY/scripts/handover/chief-kit/go.sh"
     g -C "$PRIMARY" commit -qam 'variant entries'
     local variant
     variant=$(g -C "$PRIMARY" rev-parse HEAD)
-    g -C "$PRIMARY" checkout -q "$BASE_MAIN" -- scripts/handover/merge-on-green.sh scripts/handover/console-kit/go.sh
+    g -C "$PRIMARY" checkout -q "$BASE_MAIN" -- scripts/handover/merge-on-green.sh scripts/handover/chief-kit/go.sh
     g -C "$PRIMARY" commit -qam 'restore main bytes'
     g -C "$WT" reset -q --hard "$variant"
     run "behind main, $1 (merge-on-green.sh)" "$2" "$(payload "$MOG" "$WT")" "$HR"
@@ -2459,7 +2544,7 @@ mb_variant_run "merge-base hand-off at the wrong depth -> deny" 2 "$VARIANTS/mog
 mb_variant_run "merge-base runs a vertical-tab line above the hand-off -> deny" 2 "$VARIANTS/mog-vt" "$VARIANTS/go-vt"
 REAL_REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 g -C "$REAL_REPO" show HEAD:scripts/handover/merge-on-green.sh >"$VARIANTS/mog-real"
-g -C "$REAL_REPO" show HEAD:scripts/handover/console-kit/go.sh >"$VARIANTS/go-real"
+g -C "$REAL_REPO" show HEAD:scripts/handover/chief-kit/go.sh >"$VARIANTS/go-real"
 mb_variant_run "merge-base is the real main prologue -> allow" 0 "$VARIANTS/mog-real" "$VARIANTS/go-real"
 rm -rf "$VARIANTS"
 g -C "$PRIMARY" reset -q --hard "$ORIG_MAIN"
@@ -2543,12 +2628,126 @@ for f in "$FX_CMDPOS"/*.cmd; do
     case "$name" in allow-*) want=0 ;; *) want=2 ;; esac
     case "$name" in
     deny-catch-anchor-mismatch.cmd) echo changed >>"$WT/scripts/cr/ledger-append.sh" ;;
-    deny-gate-relative-dirty.cmd) echo changed >>"$WT/scripts/handover/console-kit/himmel-gate.sh" ;;
+    deny-gate-relative-dirty.cmd) echo changed >>"$WT/scripts/handover/chief-kit/himmel-gate.sh" ;;
     deny-python-*-execv.cmd | allow-asmain-python-*-execv.cmd) echo changed >>"$WT/scripts/cr/write-verdicts.sh" ;;
     esac
     run "6015: [$name]" "$want" "$(payload "$(cat "$f")" "$WT")" "$HR"
     g -C "$WT" checkout -q -- .
 done
+# The dispatcher shapes again on both kit layouts against the new-layout
+# anchor: a relative run in the tree's own kit spelling, an anchored run in the
+# anchor's.
+for wt in "$WT2" "$WT2OLD"; do
+    kit=$NEWKIT
+    [ "$wt" = "$WT2OLD" ] && kit=$OLDKIT
+    for f in "$FX_CMDPOS"/*-gate-*.cmd; do
+        name="${f##*/}"
+        case "$name" in allow-*) want=0 ;; *) want=2 ;; esac
+        case "$name" in
+        deny-gate-relative-dirty.cmd) echo changed >>"$wt/$kit/himmel-gate.sh" ;;
+        esac
+        fx_cmd="$(cat "$f")"
+        case "$fx_cmd" in
+        *HIMMEL_REPO*) fx_cmd="${fx_cmd//$OLDKIT/$NEWKIT}" ;;
+        *) fx_cmd="${fx_cmd//$OLDKIT/$kit}" fx_cmd="${fx_cmd//$NEWKIT/$kit}" ;;
+        esac
+        run "6015 ${wt##*/} layout: [$name]" "$want" "$(payload "$fx_cmd" "$wt")" "$HR2"
+        g -C "$wt" checkout -q -- .
+    done
+done
+
+# ---- a glob or $VAR beside a gate-path mention runs no target --------------
+# Live shapes the "does not resolve" deny refused: every command position is
+# a reader, an assignment, or bash running a non-target script.
+D7130=/tmp/d7130.md
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+for v in \
+    'D=/tmp/d7130.md; bash scripts/handover/chief-kit/append-results.sh $D "LIVE go.sh and scripts/cr/*.sh"' \
+    "bash scripts/handover/chief-kit/append-results.sh $D7130 'LIVE ran scripts/cr/write-verdicts.sh at \$HEAD'" \
+    "grep -nE 'scripts/cr/.*\\.sh' docs/a.md | head -3" \
+    'cd scripts/cr/ref && for f in 33-a.md 40-b.md; do echo "=== $f"; grep -n -E "^(bash )" -A3 $f | cut -c1-260 | head -50; done' \
+    'for f in 40-step4 45-step4.5; do echo "=== $f"; grep -n bash -A3 scripts/cr/ref/$f.md | cut -c1-300; done' \
+    "grep -oE 'bash scripts/cr/(write-verdicts.sh aggregate|orphan-check.sh)[^\"\\\\]*' /tmp/s7130.jsonl | sort -u | uniq -c | sort -rn | head" \
+    "for f in review-round.sh impacted-suites.sh; do echo \"== \$f\"; grep -n -m3 'anchor-handoff' scripts/cr/\$f; done; echo; sed -n 1,200p scripts/cr/anchor-handoff.sh | head -120" \
+    'for p in 1 2; do echo "#$p" | grep -E "scripts/cr/(write|review).*"; done' \
+    "cat > /tmp/o7130.md <<'EOF'
+notes on \$HEAD
+EOF
+grep -c scripts/cr/ /tmp/o7130.md"; do
+    run "7130 class1 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+echo changed >>"$WT/scripts/cr/write-verdicts.sh"
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+for v in \
+    'D=x; bash scripts/cr/write-verdicts.sh $D "*"' \
+    'sh ./scripts/cr/write-verdicts.sh *' \
+    'bash scripts/quiet-run.sh suite -- bash scripts/cr/write-verdicts.sh $D' \
+    'X=scripts/cr/write-verdicts.sh; bash scripts/quiet-run.sh suite -- bash $X' \
+    'bash scripts/handover/chief-kit/append-results.sh $D; bash scripts/cr/write-verdicts.sh $D' \
+    'f() { bash scripts/cr/write-verdicts.sh; }; f *' \
+    'cat <(bash scripts/cr/write-verdicts.sh) *' \
+    'eval "bash scripts/cr/write-verdicts.sh" $D' \
+    'echo * | xargs bash scripts/cr/write-verdicts.sh' \
+    'PATH=/tmp/p7130; bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"' \
+    'for PATH in /tmp/p7130; do bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"; done' \
+    "for \\${NL}PATH in /tmp/p7130; do bash scripts/handover/chief-kit/append-results.sh \$D 'scripts/cr/*'; done" \
+    'grep -h bash scripts/cr/* >> /tmp/r7130.sh' \
+    'grep -h bash scripts/cr/* | sort -o /tmp/r7130.sh' \
+    'sed -n "1e bash scripts/cr/write-verdicts.sh" scripts/cr/*' \
+    'BASH_ENV=/tmp/p7130 bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"' \
+    'grep x scripts/cr/* | bash' \
+    'cat() { bash "$@"; }; cat scripts/cr/write-verdicts.sh $D' \
+    "cat > /tmp/r7130.sh <<'EOF'
+bash scripts/cr/write-verdicts.sh \$D
+EOF" \
+    "python3 - <<'EOF'
+import os; os.system('bash scripts/cr/write-verdicts.sh *')
+EOF" \
+    'echo $D > scripts/cr/write-verdicts.sh' \
+    'echo [[ $D ]]; bash scripts/cr/write-verdicts.sh' \
+    'bash /tmp/e7130/scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    'bash ./scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    'cd /tmp/e7130 && bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    "printf '%n' PATH; bash scripts/handover/chief-kit/append-results.sh \$D 'scripts/cr/*'" \
+    "printf 'a%ln' PATH; bash scripts/handover/chief-kit/append-results.sh \$D 'scripts/cr/*'" \
+    "cat ?(scripts/cr/write-verdicts.sh)" \
+    'path=(/tmp/p7130); bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"' \
+    'for path in /tmp/p7130; do bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"; done' \
+    "x='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; echo \${!x}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; s=hi; echo \${s:y}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; s=hi; echo \${s:0:y}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; a[y]=1" \
+    "for x in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${!x}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s: y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do a[y]=1; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${\$:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${?:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${-:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat < \${\$:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \$\\${NL}{s:y}; done" \
+    "for x in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \$\\${NL}{!x}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \$\\${NL}{a[y]}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; cat <<EOF
+\$\\${NL}{s:y}
+EOF
+done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat <<EOF
+\${\$:y}
+EOF
+done"; do
+    run "7130 class1 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+run "7130 class1 [a quoted message with parentheses] -> allow" 0 \
+    "$(payload "echo 'fix(hooks): a bullet' scripts/cr/*" "$WT")" "$HR"
+run "7130 class1 [printf with a newline escape] -> allow" 0 \
+    "$(payload "printf '%s\\n' scripts/cr/* | head -3" "$WT")" "$HR"
+run "7130 class1 [the anchor's bullet writer by absolute path] -> allow" 0 \
+    "$(payload "bash $PRIMARY/scripts/handover/chief-kit/append-results.sh /tmp/d7130.md 'scripts/cr/*'" "$WT")" "$HR"
+echo changed >>"$WT/scripts/handover/chief-kit/append-results.sh"
+run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
+    "$(payload "bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh" "$WT")" "$HR"
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-kit/append-results.sh
 
 # ---- the shared command-position corpus, from the unrelated non-himmel repo ---
 # A run of the script is refused there (wrong lane); a mention is not a run.

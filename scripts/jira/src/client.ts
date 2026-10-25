@@ -1,6 +1,7 @@
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
-import { basename, dirname } from 'node:path';
+import { homedir } from 'node:os';
+import { basename, dirname, join } from 'node:path';
 
 function repoRoot(): string {
   try {
@@ -29,16 +30,47 @@ const DOTENV_KEYS = new Set([
   'JIRA_SEVERITY_FIELD', 'JIRA_BOARD_ID', 'CONFLUENCE_EMAIL', 'CONFLUENCE_API_TOKEN',
 ]);
 
+const CONFIG_KEYS = new Set(['JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
+
 export function loadEnvFile(envPath: string): void {
+  const confDir = join(process.env.HOME || homedir(), '.himmel');
+  readEnvFile(join(confDir, 'himmel.conf.local'), CONFIG_KEYS);
+  readEnvFile(join(confDir, 'himmel.conf'), CONFIG_KEYS);
+  readEnvFile(envPath, DOTENV_KEYS);
+}
+
+function stripInlineComment(value: string): string {
+  let quote = '';
+  let started = false;
+  let escaped = false;
+  for (let i = 0; i < value.length; i++) {
+    const char = value[i];
+    if (!started) {
+      if (char === ' ' || char === '\t') continue;
+      started = true;
+      if (char === '"' || char === "'") { quote = char; continue; }
+    }
+    if (quote) {
+      if (quote === '"' && escaped) { escaped = false; continue; }
+      if (quote === '"' && char === '\\') { escaped = true; continue; }
+      if (char === quote) quote = '';
+      continue;
+    }
+    if (char === '#' && i > 0 && /[ \t]/.test(value[i - 1])) return value.slice(0, i);
+  }
+  return value;
+}
+
+function readEnvFile(envPath: string, keys: ReadonlySet<string>): void {
   if (!existsSync(envPath)) return;
   for (const line of readFileSync(envPath, 'utf8').split('\n')) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith('#') || !trimmed.includes('=')) continue;
     const [key, ...rest] = trimmed.split('=');
-    if (!DOTENV_KEYS.has(key.trim())) continue;
+    if (!keys.has(key.trim())) continue;
     // An exported-but-empty value is not usable (baseUrl() rejects it), so it
     // must not shadow the file: `||=`, not `??=`.
-    process.env[key.trim()] ||= rest.join('=').trim();
+    process.env[key.trim()] ||= stripInlineComment(rest.join('=')).trim();
   }
 }
 

@@ -16,6 +16,8 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=../../../lib/prim.sh
+. "$HERE/../../../lib/prim.sh" || exit 1
 
 usage() { echo "usage: ledger-metrics.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>]" >&2; }
 
@@ -46,7 +48,7 @@ if [ -n "$UNTIL" ]; then
     UNTIL_EPOCH_ARG=$(to_epoch "$UNTIL") || { echo "ledger-metrics: bad --until: $UNTIL" >&2; exit 2; }
 fi
 
-RUN=$(mktemp -d "${TMPDIR:-/tmp}/ledger-metrics.XXXXXX") || { echo "ledger-metrics: mktemp failed" >&2; exit 1; }
+RUN=$(tmpdir) || { echo "ledger-metrics: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$RUN"' EXIT
 
 gh pr list -R "$REPO" --state merged --limit 1000 --json number,title,mergedAt,headRefName \

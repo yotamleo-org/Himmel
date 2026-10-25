@@ -123,7 +123,7 @@ usage: dispatch-lane.sh [options]
 Default lane precedence: --lane > HIMMEL_IMPL_LANE > lanes.local.json
 (defaultImplLane) > lanes.json defaultImplLane. A named unavailable lane is
 never substituted. lanes.json currently declares no defaultImplLane (impl
-routes to native Claude subagents only, HIMMEL-1967) — an unqualified
+routes to native Claude subagents only) — an unqualified
 dispatch (no --lane, no HIMMEL_IMPL_LANE) refuses; use the Agent tool inside
 the session (named model tier) instead of this dispatcher.
 USAGE
@@ -213,7 +213,7 @@ if [ -z "$LANE" ]; then
   LANE="$(printf '%s\n' "$IMPL_JSON" | jq -r '[.[] | select(.dispatch.preferredDefault == true)] | if length == 1 then .[0].id else "" end')"
 fi
 if [ -z "$LANE" ]; then
-  echo "dispatch-lane.sh: no unambiguous available default impl lane; impl routes to native Claude subagents only (operator ruling 2026-08-19, HIMMEL-1967) — use the Agent tool inside this session (named model tier: haiku/sonnet/opus/fable) instead, or pass --lane / set HIMMEL_IMPL_LANE for an explicit opt-in dispatch" >&2
+  echo "dispatch-lane.sh: no unambiguous available default impl lane; impl routes to native Claude subagents only — use the Agent tool inside this session (named model tier: haiku/sonnet/opus/fable) instead, or pass --lane / set HIMMEL_IMPL_LANE for an explicit opt-in dispatch" >&2
   list_lanes >&2
   exit 2
 fi

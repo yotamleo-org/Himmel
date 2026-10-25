@@ -113,7 +113,7 @@ NOT_RUN="scripts/cr/install-cr-gate.sh -> scripts/hooks/check-cr-before-push.sh
 scripts/lib/wire-statusline.sh -> marketplace/plugins/claude-hud/dist/index.js
 scripts/lib/usage-preflight.sh -> scripts/lanes/codex-usage-probe.ts
 scripts/lanes/bank-status-core.mjs -> scripts/lanes/codex-usage-probe.ts
-scripts/cr/live-gate-e2e.sh -> scripts/handover/console-kit/ready-check.sh"
+scripts/cr/live-gate-e2e.sh -> scripts/handover/chief-kit/ready-check.sh"
 
 # Parents allowed to name scripts/jira/dist, pinned as <file>::<regex>. The regex
 # must match the file, proving the dist path there is anchored on the PRIMARY
@@ -133,7 +133,7 @@ closure() {
       | sed 's#^<himmel_dir>/##'
     for f in "$ROOT"/scripts/cr/*.sh "$ROOT"/scripts/cr/*.js "$ROOT"/scripts/cr/*.mjs; do
       [ -f "$f" ] || continue
-      case "$(basename "$f")" in test-*) continue ;; esac
+      case "$(basename "$f")" in (test-*) continue ;; esac
       printf '%s\n' "${f#"$ROOT"/}"
     done
   )"
@@ -246,7 +246,7 @@ chmod 600 "$fx/scripts/lib/locked.sh"
 # the jira dist filter is per-edge. A script-relative dist edge
 # (the arm-resume.sh / breadcrumb.sh shape) must stay an edge, and a pinned
 # parent's dist edge is still dropped.
-mkdir -p "$fx/scripts/jira/dist" "$fx/scripts/handover/console-kit"
+mkdir -p "$fx/scripts/jira/dist" "$fx/scripts/handover/chief-kit"
 : > "$fx/scripts/jira/dist/index.js"
 # shellcheck disable=SC2016  # fixture text, the $ must stay literal
 printf '%s\n' '_jira="${X_CLI:-$SCRIPT_DIR/../jira/dist/index.js}"' > "$fx/scripts/handover/relative-dist.sh"

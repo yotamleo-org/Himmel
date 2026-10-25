@@ -16,6 +16,34 @@ that fails for an unrelated reason). Before removing a test it requires a
 candidate-evidence record. A new or repaired assertion is shown RED against the
 broken subject before it goes green.
 
+## Removal ratchets are one-shot helpers
+
+A removal ratchet checks that something removed stays removed: a retired term,
+file or platform that it greps or lists for in the live tree. Typical signs are
+a committed allow-baseline of hits, a `test-no-*` name, or a ticket that cites a
+removal or a drop. Run it once by hand to prove the removal. Never make it a
+suite, a pre-commit hook or a CI step. Run forever, it catches nothing new and
+fails on unrelated work instead.
+
+A helper lives under `scripts/one-shot/`, under a name that is not `test-*.sh`,
+so the shell runner never discovers it, impacted-suites never selects it and
+the `all` mode never runs it. `scripts/ci/check-removal-ratchets.sh` runs in
+pre-commit and, through its suite, on every PR. It refuses each of these:
+
+- a tracked `test-no-*.sh` anywhere;
+- a `test-*.sh` under `scripts/one-shot/`;
+- a `suite-tiers.tsv` row for a `scripts/one-shot/` path, at any tier;
+- a `scripts/one-shot/` helper named, by basename, in `.pre-commit-config.yaml`
+  or a `.github/workflows/` file;
+- a `scripts/one-shot/` helper that carries `# selector: tree-scan`.
+
+The gate keys on a directory and a filename and never reads shell text. A
+ratchet renamed to dodge the `test-no-*` key is still a new suite. A new suite
+needs a `suite-tiers.tsv` row, and that file is a trust path, so the
+trust-reviewed GO sees the ratchet before it ships. Ongoing invariants are not
+removal ratchets and stay as gates: the rename check (`check-old-terms.sh`),
+`check-mcp-sdk-v1.sh`, swallowed-errors and shell-lint.
+
 ## Corpus/replay containment
 
 Corpus/replay tests run through the sandbox runner; execution of destructive
@@ -568,9 +596,7 @@ T13(b) is **not** rename-blind: its corpus is one full-tree
 `git diff "$BASE...HEAD"` (since #776/#777), so rename pairing applies — a
 pure `git mv` passes, a rename that also adds a trigger line still fails. The
 earlier false positive came from a per-file pathspec that has been replaced.
-The residual is T15: its new-script list is `--diff-filter=A` limited to
-`scripts/`, so a rename from OUTSIDE `scripts/` reads as an addition — but T15
-is advisory (`WARN`, never a CI gate). Read the assertion, then decide.
+Read the assertion, then decide.
 
 ### T13(b) marker-only exemption
 
@@ -589,7 +615,7 @@ rather than patched again (standing rule: stop adding arms, simplify).
 
 The **only** exemption is now a trailing same-line `# t13b-ok: <reason>` (or
 `// t13b-ok: <reason>` for JS/TS), which exempts that one line from T13(b)
-only (not T13(a), not T12/T14/T15) — the general escape hatch so a real
+only (not T13(a), not T12/T14) — the general escape hatch so a real
 read-only lookup does not need its own gate PR. It is hardened: the marker
 must open with exactly `# t13b-ok: ` (or `// t13b-ok: `) — one space after
 `#`/`//` and at least one after the colon (`#t13b-ok:`, `#  t13b-ok:` and

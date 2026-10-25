@@ -148,7 +148,7 @@ export HIMMEL_DOCTOR_SYSTEMCTL="$HIMMEL_DOCTOR_SYSTEMCTL_BASE/no-systemctl"
 # the "no armed cadence runners" and "no false nudges" cases (added
 # the qmd seam).
 C8_EMPTY="$(mktemp -d)"
-export PIPELINE_BAT_DIR="$C8_EMPTY/pipeline" SWEEP_BAT_DIR="$C8_EMPTY/sweep" GRAPHMAP_BAT_DIR="$C8_EMPTY/graphmap" QMD_CADENCE_BAT_DIR="$C8_EMPTY/qmd"
+export PIPELINE_BAT_DIR="$C8_EMPTY/pipeline" GRAPHMAP_BAT_DIR="$C8_EMPTY/graphmap" QMD_CADENCE_BAT_DIR="$C8_EMPTY/qmd"
 
 failures=0
 pass() { printf '  PASS  %s\n' "$1"; }
@@ -190,6 +190,12 @@ export HIMMEL_DOCTOR_VERDICT_CACHE="$FAKEROOT/no-such-verdict-cache"
 # Same for C73-bun-compiled: never scan the operator's real ~/.local/bin; an
 # absent dir is an OK skip, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_BUN_SCAN_DIRS="$FAKEROOT/no-such-bin"
+# Same for C74-config-split: never list the operator's real .env key names; an
+# absent file is an OK skip, dedicated cases plant a fixture .env.
+export HIMMEL_DOCTOR_ENV_FILE="$FAKEROOT/no-such-env"
+# Same for C75-keyring: never look up the operator's real keyring; dedicated
+# cases turn it back on against a stub secret-tool and busctl.
+export HIMMEL_SECRETS_KEYRING=off
 # Same for C49-qmd-embed-model: never read the operator's real
 # qmd index; an absent index makes C48 silent, dedicated cases point at a fixture.
 export HIMMEL_DOCTOR_QMD_INDEX="$FAKEROOT/no-such-index.sqlite"
@@ -354,6 +360,7 @@ if git -C "$REPO_ROOT" worktree add -q --detach "$WTD" HEAD 2>/dev/null; then
     # uncommitted change is what the worktree run executes.
     cp "$REPO_ROOT/scripts/himmel-doctor.sh" "$REPO_ROOT/scripts/doctor-counts.sh" "$WTD/scripts/"
     cp "$REPO_ROOT/scripts/graphify/check-graph-freshness.sh" "$REPO_ROOT/scripts/graphify/semantic-merge.py" "$WTD/scripts/graphify/"
+    cp "$REPO_ROOT/scripts/lib/himmel-secrets" "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$WTD/scripts/lib/"
     (cd "$WTD" && RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_STATE_DIR="$t/wtstate" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_ORPHAN_SCAN_SKIP=0 bash "$WTD/scripts/himmel-doctor.sh" --no-color >/dev/null 2>&1)
     if [ -n "$want" ] && [ "$(cat "$t/wtstate/counts" 2>/dev/null)" = "$want" ] && cmp -s "$t/full/last.tsv" "$t/wtstate/last.tsv"; then pass "a worktree run publishes the same counts and last.tsv as the primary run"; else fail "worktree run state differs from the primary run: '$(cat "$t/wtstate/counts" 2>/dev/null)' vs '$want'"; fi
     root_out="$(cd "$WTD" && RESOLVE_NODE_PROBE_DIRS="$FAKENODE" CLAUDE_DIR="$t/claude" HOME="$t/home" HIMMEL_DOCTOR_STATE_DIR="$t/rootstate" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_ORPHAN_SCAN_SKIP=0 bash "$WTD/scripts/himmel-doctor.sh" --no-color --root "$WTD" 2>&1)"
@@ -939,37 +946,17 @@ fi
 echo "== C8: no armed cadence runners -> OK C8-cadence =="
 t="$(mktemp -d)"; mkdir -p "$t/claude"; write_settings "$t/claude" "$WRAPPER"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C8-cadence: no armed cadence runners (skipped)'; then pass "C8 -> OK (no runners)"; else fail "C8 -> $(printf '%s' "$out" | grep C8)"; fi
-rm -rf "$t"
-
-echo "== C8: stale codex-sweep runner -> WARN + codex re-arm hint =="
-# sweep only ever arms a .bat, and only on Windows —
-# cadence_runner_stamp now reads only the CURRENT platform's runner extension,
-# so this fixture forces the Windows branch via the CADENCE_RUNNER_PLATFORM_OS
-# test seam to keep exercising the real (Windows) codex-sweep path.
-t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/sweep"; write_settings "$t/claude" "$WRAPPER"
-printf 'rem himmel-cadence-runner-format: %s\r\n' "$STALE_CADENCE_VER" > "$t/sweep/codex-sweep.bat"
-out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
-    DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
-    CADENCE_RUNNER_PLATFORM_OS=windows \
-    bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
-if grepq "$out" 'WARN C8-cadence: codex-sweep-cadence runners are stale' \
-    && grepq "$out" 'bash scripts/cleanup/codex-sweep-cadence.sh arm --force'; then
-    pass "C8 -> WARN (stale codex-sweep runner)"
-else
-    fail "C8 -> $(printf '%s' "$out" | grep C8)"
-fi
 rm -rf "$t"
 
 echo "== C8: stale graphmap runner -> WARN + graphmap re-arm hint =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/graphmap"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old graphmap\n' "$STALE_CADENCE_VER" > "$t/graphmap/graphmap-luna.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap" \
+    GRAPHMAP_BAT_DIR="$t/graphmap" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
 if grepq "$out" 'WARN C8-cadence: graphmap-cadence runners are stale' \
@@ -984,7 +971,7 @@ echo "== C8: stale qmd runner -> WARN + qmd re-arm hint =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/qmd"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old qmd\n' "$STALE_CADENCE_VER" > "$t/qmd/qmd-reindex.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     QMD_CADENCE_BAT_DIR="$t/qmd" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
@@ -1000,7 +987,7 @@ echo "== C8: stale upstream-watch runner -> WARN + upstream-watch re-arm hint ==
 t="$(mktemp -d)" || exit 1; mkdir -p "$t/claude" "$t/uw"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho old upstream-watch\n' "$STALE_CADENCE_VER" > "$t/uw/upstream-watch.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline-empty" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     QMD_CADENCE_BAT_DIR="$t/qmd-empty" UPSTREAMWATCH_BAT_DIR="$t/uw" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --root "$REPO_ROOT" --no-color 2>&1)"
@@ -1016,7 +1003,7 @@ echo "== C8: pipeline-only current runner -> OK, no false nudges =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/pipeline"; write_settings "$t/claude" "$WRAPPER"
 printf '#!/bin/sh\n# himmel-cadence-runner-format: %s\necho current runner\n' "$CADENCE_VER" > "$t/pipeline/pipeline-harvest.sh"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" PIPELINE_BAT_DIR="$t/pipeline" \
-    SWEEP_BAT_DIR="$t/sweep-empty" GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
+    GRAPHMAP_BAT_DIR="$t/graphmap-empty" \
     DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" \
     bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C8-cadence: pipeline-cadence runners current' \
@@ -2114,8 +2101,8 @@ rm -rf "$t"
 
 echo "== C24: expected task present on the live scheduler -> OK C24-cadence-registry =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
-fake_task_probe "$t/probe" "HIMMEL-CodexOrphanSweep"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
+fake_task_probe "$t/probe" "HIMMEL-Qmd-Reindex"
 out="$(PATH="$t/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C24-cadence-registry' && grepq "$out" -F 'expected cadence task(s) present' && ! grepq "$out" 'WARN C24-cadence-registry'; then
     pass "C24 -> OK (expected task present)"
@@ -2126,10 +2113,10 @@ rm -rf "$t"
 
 echo "== C24: expected task ABSENT from the live scheduler -> WARN C24-cadence-registry =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 fake_task_probe "$t/probe"
 out="$(PATH="$t/probe:$PATH" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'expected-but-absent cadence task(s): HIMMEL-CodexOrphanSweep'; then
+if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'expected-but-absent cadence task(s): HIMMEL-Qmd-Reindex'; then
     pass "C24 -> WARN (expected task absent)"
 else
     fail "C24 absent -> $(printf '%s' "$out" | grep C24)"
@@ -2138,7 +2125,7 @@ rm -rf "$t"
 
 echo "== C24: scheduler probe itself fails (access-denied/transient) -> INFO, not a false-mass-WARN (codex-1, CR round 3) =="
 t="$(mktemp -d)"; mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 if case "$(uname -s 2>/dev/null || echo x)" in MINGW*|MSYS*|CYGWIN*) true ;; *) false ;; esac; then
     printf '#!/bin/sh\nexit 1\n' > "$t/probe/schtasks"; chmod +x "$t/probe/schtasks"
 else
@@ -2326,11 +2313,11 @@ rm -rf "$t"
 echo "== C24 (HIMMEL-2515): a NON-bridge task expected, systemctl reports enabled -> the systemd probe must NOT leak to other tasks (still WARN) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-sysd.XXXXXX")" || { fail "C24 no-leak: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 fake_task_probe --posix "$t/probe"
 fake_systemctl "$t/probe" enabled 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$PATH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'HIMMEL-CodexOrphanSweep'; then
+if grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" -F 'HIMMEL-Qmd-Reindex'; then
     pass "C24 -> WARN (a non-bridge task stays crontab-only, systemd probe did not leak)"
 else
     fail "C24 no-leak -> $(printf '%s' "$out" | grep C24)"
@@ -2455,12 +2442,12 @@ rm -rf "$t"
 echo "== C24 (HIMMEL-2515 CR round 4): mixed registry -- bridge armed via systemd + a crontab-ONLY sibling task, crontab NOT on PATH at all -> bridge PRESENT, sibling task INDETERMINATE (never joins the WARN, never silently dropped) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c24-nocron.XXXXXX")" || { fail "C24 nocron-mixed: mktemp -d failed"; exit 1; }
 mkdir -p "$t/claude" "$t/home/.himmel" "$t/probe"; write_settings "$t/claude" "$WRAPPER"
-printf '{"flows":[{"name":"codex-sweep","cadence_seconds":14400}],"expected_tasks":["HimmelTelegramBridge","HIMMEL-CodexOrphanSweep"]}\n' > "$t/home/.himmel/observability.json"
+printf '{"flows":[{"name":"qmd","cadence_seconds":14400}],"expected_tasks":["HimmelTelegramBridge","HIMMEL-Qmd-Reindex"]}\n' > "$t/home/.himmel/observability.json"
 fake_systemctl "$t/probe" enabled 424242 0
 out="$(PATH="$FAKEBIN:$t/probe:$NOGH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemctl" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 # pre-fix, this INDETERMINATE line hardcoded the bridge's cause
 # (systemd bus unreachable) and remedy (check telegram-bridge.service) even
-# though HIMMEL-CodexOrphanSweep is a crontab-ONLY sibling -- crontab, not
+# though HIMMEL-Qmd-Reindex is a crontab-ONLY sibling -- crontab, not
 # systemd, is what's unreachable here. Assert the corrected per-task
 # attribution: names crontab, recommends `crontab -l`, and never sends this
 # sibling's operator to check the bridge's unit. Scoped to just this
@@ -2468,7 +2455,7 @@ out="$(PATH="$FAKEBIN:$t/probe:$NOGH" HIMMEL_DOCTOR_SYSTEMCTL="$t/probe/systemct
 # file's pipefail note near grepq's definition) rather than the whole $out,
 # because C30 legitimately prints 'telegram-bridge.service' elsewhere in its
 # own unrelated MainPID remedy.
-c24_indet_ctx="$(grep -A1 -F 'UNDETERMINED enablement (crontab itself is unreachable, and these tasks have no other backend): HIMMEL-CodexOrphanSweep' <<< "$out")"
+c24_indet_ctx="$(grep -A1 -F 'UNDETERMINED enablement (crontab itself is unreachable, and these tasks have no other backend): HIMMEL-Qmd-Reindex' <<< "$out")"
 if ! grepq "$out" 'WARN C24-cadence-registry' && grepq "$out" 'OK   C24-cadence-registry' && grepq "$out" 'INFO C24-cadence-registry' && [ -n "$c24_indet_ctx" ] && grepq "$c24_indet_ctx" -F 'crontab -l' && ! grepq "$c24_indet_ctx" 'telegram-bridge.service'; then
     pass "C24 -> bridge present via systemd, crontab-only sibling task INDETERMINATE naming CRONTAB (not systemd) as its cause, recommending crontab -l (not systemctl)"
 else
@@ -7174,5 +7161,131 @@ if grepq "$out" -F 'WARN C73-bun-compiled' && grepq "$out" -F "$c73_t/links/stal
 out="$(c73_run "$c73_t/no-such-dir")"
 if grepq "$out" -F 'OK   C73-bun-compiled'; then pass "C73 absent scan dir -> OK"; else fail "C73 absent -> $(printf '%s' "$out" | head -3)"; fi
 rm -rf "$c73_t"
+
+# --- C74-config-split: himmel.conf, config keys left in .env, the policy file ---
+# Reads KEY NAMES only (never values); HIMMEL_DOCTOR_ENV_FILE is the .env seam.
+# Fixture values are planted dummies.
+c74_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c74.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c74_t/home/.himmel" "$c74_t/claude"
+c74_pol="$c74_t/home/.himmel/config.json"
+c74_conf="$c74_t/home/.himmel/himmel.conf"
+c74_run() { PATH="$FAKEBIN:$PATH" CLAUDE_DIR="$c74_t/claude" HOME="$c74_t/home" HIMMEL_DOCTOR_ENV_FILE="$c74_t/env" bash "$DOC" --no-color --only C74 2>&1; }
+c74_reset() { rm -f "$c74_t/env" "$c74_conf" "$c74_conf.local" "$c74_pol"; }
+echo "== C74-config-split: a config-class key still in .env -> WARN naming the key, never the value =="
+c74_reset
+printf 'JIRA_EMAIL=planted-dummy-value-74\nOPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'JIRA_EMAIL' && grepq "$out" -F 'migrate-env-config.sh' && ! grepq "$out" -F 'OPERATOR_SCRATCH_NOTE' && ! grepq "$out" -F 'planted-'; then pass "C74 config key in .env -> WARN naming JIRA_EMAIL only, no values"; else fail "C74 env key -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: migrated (secrets-only .env, himmel.conf, policy file) -> OK =="
+c74_reset
+printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
+printf 'JIRA_EMAIL=moved@example.invalid\n' > "$c74_conf"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}' > "$c74_pol"
+out="$(c74_run)"
+if grepq "$out" -F 'OK   C74-himmel-conf' && grepq "$out" -F 'OK   C74-env-keys' && grepq "$out" -F 'OK   C74-policy' && ! grepq "$out" -E '(WARN|INFO) C74'; then pass "C74 migrated station -> three OK rows"; else fail "C74 migrated -> $(printf '%s' "$out" | head -6)"; fi
+echo "== C74-config-split: himmel.conf absent on a never-migrated install -> INFO =="
+c74_reset
+printf 'OPERATOR_SCRATCH_NOTE=planted-note-74\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'INFO C74-himmel-conf' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no himmel.conf, nothing to migrate -> INFO only"; else fail "C74 absent conf -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: himmel.conf with a line that is not KEY=value -> WARN =="
+c74_reset
+printf 'HANDOVER_DIR=/x\nthis line is not a setting\n' > "$c74_conf"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-himmel-conf' && grepq "$out" -F 'line 2'; then pass "C74 unparseable himmel.conf -> WARN naming the line"; else fail "C74 bad conf -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: himmel.conf as a dangling link -> WARN =="
+c74_reset
+ln -s "$c74_t/no-such-vault/himmel.conf" "$c74_conf"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-himmel-conf'; then pass "C74 dangling himmel.conf link -> WARN"; else fail "C74 dangling -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: a directory at the himmel.conf path -> WARN, never OK =="
+c74_reset
+mkdir -p "$c74_conf"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-himmel-conf' && ! grepq "$out" -F 'OK   C74-himmel-conf'; then pass "C74 himmel.conf is a directory -> WARN"; else fail "C74 conf dir -> $(printf '%s' "$out" | head -4)"; fi
+rmdir "$c74_conf"
+echo "== C74-config-split: a policy key still in .env, no policy file -> WARN naming the key =="
+c74_reset
+printf 'ARMAUTOMERGE=1\n' > "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-policy' && grepq "$out" -F 'ARMAUTOMERGE' && grepq "$out" -F 'config.json'; then pass "C74 policy key in .env without config.json -> WARN"; else fail "C74 env policy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: a policy key in .env missing from .policy -> WARN naming only it =="
+c74_reset
+printf 'ARMAUTOMERGE=1\nCR_FLOOR_FALLBACK=claude-only\n' > "$c74_t/env"
+printf '{"policy":{"CR_FLOOR_FALLBACK":"claude-only"}}' > "$c74_pol"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-policy' && grepq "$out" -F 'ARMAUTOMERGE' && ! grepq "$out" -F 'CR_FLOOR_FALLBACK'; then pass "C74 only the unmoved policy key is named"; else fail "C74 partial policy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: the policy file is not valid JSON -> WARN =="
+c74_reset
+printf '{not json' > "$c74_pol"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-policy' && grepq "$out" -F 'fails closed'; then pass "C74 unparseable policy file -> WARN (gates fail closed)"; else fail "C74 bad json -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: no policy file and no policy key in .env -> INFO =="
+c74_reset
+out="$(c74_run)"
+if grepq "$out" -F 'INFO C74-policy' && ! grepq "$out" -F 'WARN C74'; then pass "C74 no policy file, nothing relies on it -> INFO"; else fail "C74 no policy -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C74-config-split: an unreadable .env path -> WARN unchecked, never OK or safe defaults =="
+c74_reset
+mkdir -p "$c74_t/env"
+out="$(c74_run)"
+if grepq "$out" -F 'WARN C74-env-keys' && grepq "$out" -F 'not checked' && ! grepq "$out" -F 'OK   C74-env-keys' && ! grepq "$out" -F 'safe default'; then pass "C74 unreadable .env -> WARN unchecked"; else fail "C74 unreadable env -> $(printf '%s' "$out" | head -4)"; fi
+rmdir "$c74_t/env"
+rm -rf "$c74_t"
+
+# --- C75-keyring: keyring state and the layer serving each manifest secret ---
+# A stub secret-tool and busctl stand in for the keyring; values are planted
+# dummies and must never appear in the output.
+c75_t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c75.XXXXXX")" || { echo "mktemp failed" >&2; exit 1; }
+mkdir -p "$c75_t/bin" "$c75_t/home" "$c75_t/claude"
+cat > "$c75_t/bin/secret-tool" <<'STUB'
+#!/usr/bin/env bash
+printf 'secret-tool %s\n' "$*" >>"$C75_LOG"
+[ "$1" = lookup ] || exit 1
+shift
+q=""
+while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
+while IFS="$(printf '\t')" read -r attrs val; do
+    m=1
+    for p in $q; do case " $attrs " in *" $p "*) ;; *) m=0 ;; esac; done
+    if [ "$m" = 1 ]; then printf '%s' "$val"; exit 0; fi
+done <"$C75_STORE"
+exit 1
+STUB
+cat > "$c75_t/bin/busctl" <<'STUB'
+#!/usr/bin/env bash
+case "$*" in *" Locked") echo "b ${C75_LOCKED:-false}" ;; esac
+STUB
+chmod +x "$c75_t/bin/secret-tool" "$c75_t/bin/busctl"
+c75_run() { env -u JIRA_API_TOKEN -u TELEGRAM_BOT_TOKEN -u CREDENTIALS_DIRECTORY PATH="$c75_t/bin:$FAKEBIN:$PATH" CLAUDE_DIR="$c75_t/claude" HOME="$c75_t/home" \
+    HIMMEL_DOCTOR_ENV_FILE="$c75_t/env" C75_STORE="$c75_t/store" C75_LOG="$c75_t/log" DBUS_SESSION_BUS_ADDRESS="unix:path=$c75_t/bus" \
+    HIMMEL_SECRETS_KEYRING="${C75_KEYRING:-}" bash "$DOC" --no-color --only C75 2>&1; }
+c75_reset() { rm -f "$c75_t/env" "$c75_t/log"; : > "$c75_t/store"; }
+# The resolver reports no keyring backend on Darwin, so only the off case runs there.
+if [ "$(uname -s)" = Darwin ]; then
+    echo "SKIP C75 unlocked/locked cases: no keyring backend on Darwin"
+else
+echo "== C75-keyring: unlocked keyring, one secret still in .env -> WARN naming it, never a value =="
+c75_reset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
+printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\nJIRA_EMAIL=planted@example.com\n' > "$c75_t/env"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'WARN C75-secrets' && grepq "$out" -F 'TELEGRAM_BOT_TOKEN' && grepq "$out" -F 'import-env' \
+    && ! grepq "$out" -F 'JIRA_EMAIL' && ! grepq "$out" -F 'planted'; then pass "C75 secret in .env with an unlocked keyring -> WARN naming TELEGRAM_BOT_TOKEN only, no values"; else fail "C75 dotenv secret -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75-keyring: every secret from the keyring, no .env -> OK =="
+c75_reset
+printf 'service=himmel key=JIRA_API_TOKEN scope=user\tplanted-keyring-value\n' > "$c75_t/store"
+out="$(c75_run)"
+if grepq "$out" -F 'OK   C75-keyring' && grepq "$out" -F 'OK   C75-secrets' && grepq "$out" -F '1 from the keyring' && ! grepq "$out" -F 'planted'; then pass "C75 keyring-served station -> two OK rows"; else fail "C75 keyring -> $(printf '%s' "$out" | head -4)"; fi
+echo "== C75-keyring: a locked keyring -> WARN, no lookup =="
+c75_reset
+out="$(C75_LOCKED=true c75_run)"
+if grepq "$out" -F 'WARN C75-keyring' && grepq "$out" -F 'locked' && [ ! -s "$c75_t/log" ]; then pass "C75 locked keyring -> WARN with no secret-tool call"; else fail "C75 locked -> $(printf '%s' "$out" | head -4)"; fi
+fi
+echo "== C75-keyring: HIMMEL_SECRETS_KEYRING=off -> INFO, no lookup, a .env secret is INFO =="
+c75_reset
+printf 'TELEGRAM_BOT_TOKEN=planted-dotenv-value\n' > "$c75_t/env"
+out="$(C75_KEYRING=off c75_run)"
+if grepq "$out" -F 'INFO C75-keyring' && grepq "$out" -F 'INFO C75-secrets' && [ ! -s "$c75_t/log" ] && ! grepq "$out" -F 'planted'; then pass "C75 keyring off -> INFO rows, no secret-tool call"; else fail "C75 off -> $(printf '%s' "$out" | head -4)"; fi
+rm -rf "$c75_t"
 
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi

@@ -161,6 +161,6 @@ fi
     done
     printf '\nThe write belonged in a worktree, not the primary checkout. Check whether\n'
     printf 'a dispatched worker/subagent was handed an absolute PRIMARY-checkout path\n'
-    printf 'instead of its own worktree path. HIMMEL-2526.\n'
+    printf 'instead of its own worktree path.\n'
 } >&2
 exit 2

@@ -23,7 +23,7 @@ _LCR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lanes/lib/burn-weights.sh
 . "$_LCR_HERE/burn-weights.sh"
 # shellcheck source=scripts/lib/leg-identity.sh
-. "$_LCR_HERE/../../lib/leg-identity.sh"
+. "$_LCR_HERE/../../lib/worker-identity.sh"
 
 # _lcr_doc_root <doc | stem> - the deepest known handover root holding the doc,
 # resolved the way queue-lock.sh keys a lock (HANDOVER_DIR + registry). Prints

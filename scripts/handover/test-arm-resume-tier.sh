@@ -318,7 +318,7 @@ HO_D1=$(make_handover "arm-guard-console.md")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D1" --dry-run 2>&1)
 rc=$?
 assert_rc "d1: unpinned console arm exits 0" 0 "$rc"
-assert_contains "d1: guard line reports operator default kept" "arm-resume: model=<operator default> (console arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable, HIMMEL-3169)" "$out"
+assert_contains "d1: guard line reports operator default kept" "arm-resume: model=<operator default> (console arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable)" "$out"
 # Negative control for the bare/unquoted rendering above (see case a's
 # comment): with MODEL unset, q_model is never built at all, so NO spelling
 # of --model appears here -- this proves the case-a/c/c2/d2/e1/e2 assertions
@@ -339,6 +339,19 @@ assert_rc "d2: console arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
 assert_contains "d2: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; console arm -- ruling 25, exempt)" "$out"
 # bare/unquoted POSIX %q rendering -- see case (a) above.
 assert_model_flag "d2: relaunch command carries the fable model" claude-fable-5 "$out"
+
+# A *-chief.md handover is a console arm too: unpinned keeps the operator
+# default, a Fable pin is exempt.
+HO_D3=$(make_handover "arm-guard-chief.md")
+out=$(run_arm --time "$(future_time)" --handover "$HO_D3" --dry-run 2>&1)
+rc=$?
+assert_rc "d3: unpinned chief arm exits 0" 0 "$rc"
+assert_contains "d3: guard line reports operator default kept" "arm-resume: model=<operator default> (console arm, unpinned" "$out"
+HO_D4=$(make_handover "arm-guard-chief.md")
+out=$(run_arm --time "$(future_time)" --handover "$HO_D4" --model claude-fable-5 --dry-run 2>&1)
+rc=$?
+assert_rc "d4: chief arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
+assert_contains "d4: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; console arm -- ruling 25, exempt)" "$out"
 
 # ---------------------------------------------------------------------------
 # (e) unregressed existing behavior.

@@ -40,7 +40,7 @@ clean_output() { ! grep -q -E '"(permissionDecision|decision)"' "$TMP/out"; }
 
 # 1. Five sweeps, no retrieval: exactly one nudge, naming both tools.
 sweeps s1 5
-if [ "$nudges" = 1 ] && grep -q 'leg-graph.sh' "$TMP/out" && grep -q 'qmd-bounded.sh' "$TMP/out" \
+if [ "$nudges" = 1 ] && grep -q 'worker-graph.sh' "$TMP/out" && grep -q 'qmd-bounded.sh' "$TMP/out" \
     && jq -e '.hookSpecificOutput.hookEventName == "PostToolUse" and (.hookSpecificOutput.additionalContext | length > 0)' "$TMP/out" >/dev/null 2>&1 \
     && clean_output; then pass "5 sweeps give exactly one nudge naming both tools"; else fail "5 sweeps give one nudge (nudges=$nudges rc=$rc)"; fi
 
@@ -57,6 +57,10 @@ sweeps s3 3
 call s3 Bash 'bash scripts/graphify/leg-graph.sh query "who calls foo"'
 sweeps s3 4
 if [ "$nudges" = 0 ]; then pass "graphify query before the 5th sweep gives no nudge"; else fail "graphify control (nudges=$nudges)"; fi
+sweeps s3w 3
+call s3w Bash 'bash scripts/graphify/worker-graph.sh query "who calls foo"'
+sweeps s3w 4
+if [ "$nudges" = 0 ]; then pass "worker-graph.sh query before the 5th sweep gives no nudge"; else fail "worker-graph control (nudges=$nudges)"; fi
 
 # 5. A qmd MCP call or qmd-bounded.sh call also counts as retrieval.
 sweeps s4 2

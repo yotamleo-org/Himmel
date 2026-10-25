@@ -2,27 +2,47 @@
 """scripts/eval/review-page.py - the readable page over the reviewer evals (HIMMEL-6943).
 
 Reads the eval-runs ledger (lib/eval_runs.py) and the eval-changes ledger (lib/eval_feedback.py) and
-writes one Markdown page in plain words: how often the critics catch planted bugs and are right
-(review-panel), how often the judges let a bug past a GO (judge-accuracy), the trend since the last
+writes one Markdown page in plain words, its bottom line first (each eval's headline with its run day):
+how often the critics catch planted bugs and are right
+(review-panel), how often the judges let a bug past a GO (judge-accuracy), the proof-first share of
+merged PRs (pdd-share), the trend since the last
 run of the same series, and each change the feedback step made with its re-measured result. The page
 carries no metric names: a number with no sentence here is not shown.
 
   review-page.py [--ledger P] [--changes P] [--out FILE]
+  review-page.py --panel [--cr-ledger P] [--until TS] [--min-findings N] [--out FILE]
 
 Ledgers: $HIMMEL_EVAL_RUNS_LEDGER / $HIMMEL_EVAL_CHANGES_LEDGER, else ~/.himmel/. Prints the page, or
 writes it to --out. Exit 0. Stdlib only; no network, no model call.
+
+--panel renders the headline of docs/evals/review-panel.md from the CR ledger ($CR_LEDGER, else the git
+common dir's cr-critic-scores.jsonl) instead: each finding counted once, keyed on (PR, file, line, claim)
+across rounds and critics, with per-PR numbers and the as-of date. A merged finding takes the verdict of
+its earliest raise that has one; a finding with no recorded text is never merged. A critic with fewer
+than --min-findings distinct findings (default 10) shares one "other" row. With --out it replaces
+the block between the two `review-page.py --panel` marker comments of FILE, and refuses (exit 2) a FILE
+that has no such block.
 ponytail: the page is rendered by the weekly judge-accuracy cadence into the file scripts/config-ui's
 /api/reviewers serves; it is not live-updating, upgrade path a push from the ledger append.
 """
 import argparse
+import collections
 import os
+import re
+import statistics
 import sys
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(HERE, "lib"))
+sys.path.insert(0, os.path.join(HERE, "cr-ledger"))
+import cr_ledger_eval  # noqa: E402
 import eval_feedback  # noqa: E402
 import eval_runs  # noqa: E402
+
+PANEL_START = "<!-- review-page.py --panel: start -->"
+PANEL_END = "<!-- review-page.py --panel: end -->"
+SMALL = 10
 
 CRITICS = {"codex": "The codex critic", "coderabbit": "CodeRabbit", "claude": "The Claude critic",
            "panel": "The whole panel"}
@@ -201,6 +221,23 @@ def judge_lines(cur, prev):
     return out
 
 
+def proof_lines(cur, prev):
+    m = cur["metrics"]
+    out = ["A merged PR counts as proof-first when two things hold: its ticket had a Definition of Done and a "
+           "Proof before the PR's first commit, and the PR body names RED (the new test failing) and then GREEN "
+           "(the same test passing). It matters because a check written down before the work, and seen failing "
+           "before the fix, is what shows the change does what the ticket asked: a test never seen failing may "
+           "test nothing.", "",
+           "Run of %s, the last %d merged PRs whose ticket and commits could be read.%s" % (
+               day(cur["ts"]), cur["n"] or 0, level(cur)), ""]
+    for key, text, unit in (("pdd", "Proof first", " merged PRs"), ("ticket_first", "The ticket was written first", ""),
+                            ("red_green", "RED then GREEN named in the PR body", "")):
+        s = rate(cur, prev, key + ".pct")
+        if s and count(m, key + ".n"):
+            out.append("- %s: %d of %d%s%s." % (text, count(m, key + ".k"), count(m, key + ".n"), unit, s))
+    return out
+
+
 def change_lines(changes):
     changes = [c for c in changes if isinstance(c, dict)]
     opened = [c for c in changes if c.get("status") == "open" and c.get("eval") in ("review-panel", "judge-accuracy")
@@ -241,12 +278,31 @@ def change_lines(changes):
     return out
 
 
+def bottom_lines(rows):
+    """Each eval's headline line with its run day: the whole panel's catch when it was scored (else the first
+    critic's), bugs past a GO, the proof-first share. A run that scored nothing says so."""
+    out = []
+    for eval_id, build, mark, name in (("review-panel", critic_lines, " planted bugs: ", "Planted bugs"),
+                                       ("judge-accuracy", judge_lines, "- A bug got past a GO", "Bugs past a GO"),
+                                       ("pdd-share", proof_lines, "- Proof first: ", "Proof first")):
+        cur, prev = latest(rows, eval_id)
+        if cur is None:
+            continue
+        hits = [x for x in build(cur, prev) if mark in x]
+        whole = [x for x in hits if x.startswith("- " + CRITICS["panel"])]
+        line = (whole or hits)[0] if hits else "- %s: no score in this run." % name
+        out.append("%s Run of %s." % (line, day(cur["ts"])))
+    return out
+
+
 def page(rows, changes):
     out = ["# How good are our reviewers?", "",
            "Each critic and judge number comes from the newest run, and a trend compares it with the run "
            "before. Each change's result comes from the run that re-measured it. \"Likely between\" is a range: given how much "
            "a run measured, the true rate is likely inside it.", "",
-           "## The critics on planted bugs", ""]
+           "## Bottom line", ""]
+    out += bottom_lines(rows) or ["No run yet."]
+    out += ["", "## The critics on planted bugs", ""]
     cur, prev = latest(rows, "review-panel")
     if cur is None:
         out.append("No run yet.")
@@ -258,17 +314,157 @@ def page(rows, changes):
     out += ["", "## The five open questions", ""]
     cur, _ = latest(rows, "decision-158")
     out += ["No run yet."] if cur is None else answer_lines(cur)
+    out += ["", "## Proof first", ""]
+    cur, prev = latest(rows, "pdd-share")
+    out += ["No run yet."] if cur is None else proof_lines(cur, prev)
     out += ["", "## What we changed, and whether it helped", ""]
     out += change_lines(changes) or ["No change yet."]
     return "\n".join(out) + "\n"
 
 
+def claim(text):
+    """A finding's claim without its severity tag or trailing [file:line] citation, case and punctuation folded
+    (comparison, arithmetic, logical and bitwise operators kept)."""
+    t = re.sub(r"^\s*-\s*\[[^\]]+\]\s*:\s*", "", text or "")
+    t = re.sub(r"\s*\[[^\]\r\n]+:\d+(?:-\d+)?\]\s*$", "", t)
+    return re.sub(r"[^a-z0-9=!<>+*/%&|^~-]+", " ", t.lower()).strip()
+
+
+def distinct(rows):
+    """One record per (PR, file, line, claim): its critics, and the bucket of its earliest ruled raise."""
+    raw = [r for r in rows if r.get("kind") == "finding"]
+    groups = {}
+    # fold() keeps ledger order, one entry per finding row, so it pairs with raw.
+    for f, r in zip(cr_ledger_eval.fold(rows), raw):
+        c = claim(r.get("text"))
+        anchor = re.sub(r"^\./", "", re.sub(r":l?\d+(?:-\d+)?$", "", str(r.get("file") or "").strip().replace("\\", "/")))
+        k = (f["branch"], anchor, str(r.get("line") or ""), c) if c else ("no-text", f["id"])
+        groups.setdefault(k, []).append(f)
+    out = []
+    for fs in groups.values():
+        fs.sort(key=lambda f: f["ts"])
+        ruled = [f for f in fs if f["bucket"] != "unadjudicated"]
+        first = ruled[0] if ruled else fs[0]
+        out.append(dict(first, severity=fs[0]["severity"], ts=fs[0]["ts"], critics={f["critic"] for f in fs}))
+    return out
+
+
+def num(n):
+    return "{:,}".format(n)
+
+
+def share(k, n):
+    return "%.1f%%" % (100 * k / n) if n else "n/a"
+
+
+def precision_cells(fs):
+    s = cr_ledger_eval.split(fs)
+    p = "—" if s["precision"] is None else "%.1f%%" % (100 * s["precision"])
+    ci = s["precision_ci"]
+    return s, p, "—" if not ci else "%.1f–%.1f" % (100 * ci["lo"], 100 * ci["hi"])
+
+
+def panel(rows, until, small_n=SMALL):
+    finding_rows = [r for r in rows if r.get("kind") == "finding"]
+    groups = distinct(rows)
+    cut = until or max((r.get("ts") or "" for r in rows), default="")
+    reviewed = {r.get("branch") or "" for r in rows if r.get("kind") == "avail" and r.get("status") == "ok"}
+    per_pr = collections.Counter(g["branch"] for g in groups)
+    reviewed |= set(per_pr)
+    allc = cr_ledger_eval.split(groups)
+    out = ["## Headline numbers", "",
+           "As of %s (CR ledger cut `%s`): %s distinct findings across %s PRs, %s to %s." % (
+               day(cut), cut, num(len(groups)), num(len(per_pr)), allc["first"][:10], allc["last"][:10]), "",
+           "The ledger holds %s finding rows. %s of them repeat a finding already counted here: the same claim "
+           "on the same file and line of the same PR, raised again in a later round or by another critic. A "
+           "merged finding takes the verdict of its earliest raise that has one. A finding with no recorded "
+           "text is never merged." % (num(len(finding_rows)), num(len(finding_rows) - len(groups))), ""]
+    if per_pr:
+        counts = sorted(per_pr.values())
+        out += ["Per PR: %s PRs reviewed, %s with at least one finding; median %g and mean %g distinct findings "
+                "per PR with findings, at most %s on one PR." % (
+                    num(len(reviewed)), num(len(per_pr)), round(statistics.median(counts), 1),
+                    round(statistics.fmean(counts), 1), num(counts[-1])), ""]
+    out += ["| Critic | Findings | PRs | Agreed | Disproved | Deferred | Unadjudicated | Precision | 95% CI |",
+            "|---|---:|---:|---:|---:|---:|---:|---:|---|"]
+    by = collections.defaultdict(list)
+    for g in groups:
+        for c in g["critics"]:
+            by[c].append(g)
+    small = sorted(c for c in by if len(by[c]) < small_n)
+    rows_out = [("`%s`" % c, by[c]) for c in sorted(by, key=lambda c: (min(g["ts"] for g in by[c]), c)) if c not in small]
+    if small:
+        other = {id(g): g for c in small for g in by[c]}
+        rows_out.append(("other (%d slugs under %d findings each)" % (len(small), small_n), list(other.values())))
+    for label, fs in rows_out:
+        s, p, ci = precision_cells(fs)
+        out.append("| %s | %s | %s | %s | %s | %s | %s | %s | %s |" % (
+            label, num(s["n"]), num(s["prs"]), num(s["agreed"]), num(s["disproved"]), num(s["deferred"]),
+            num(s["unadjudicated"]), p, ci))
+    s, p, ci = precision_cells(groups)
+    out += ["| **All** | **%s** | **%s** | **%s** | **%s** | **%s** | **%s** | **%s** | %s |" % (
+        num(s["n"]), num(s["prs"]), num(s["agreed"]), num(s["disproved"]), num(s["deferred"]),
+        num(s["unadjudicated"]), p, ci), "",
+        "A finding raised by two critics counts once in each critic's row and once in **All**. Precision is "
+        "agreed / (agreed + disproved); the interval resamples whole PRs.", ""]
+    n = len(groups)
+    out.append("- Of the %s distinct findings, %s were agreed, %s disproved, %s deferred and %s never ruled on." % (
+        num(n), share(s["agreed"], n), share(s["disproved"], n), share(s["deferred"], n), share(s["unadjudicated"], n)))
+    sev = collections.defaultdict(list)
+    for g in groups:
+        sev[g["severity"]].append(g)
+    parts = []
+    for name in ("critical", "important", "suggestion"):
+        if sev.get(name):
+            ss, p, ci = precision_cells(sev[name])
+            parts.append("%s %s (%s findings%s)" % (name.capitalize(), p, num(ss["n"]), ", CI " + ci if ci != "—" else ""))
+    if parts:
+        out.append("- Precision by severity: %s." % "; ".join(parts))
+    cls = collections.Counter(g["fu_class"] for g in groups if g["bucket"] == "deferred" and g["fu_class"])
+    if cls:
+        out.append("- %s of the %s deferred findings carry a follow-up class: %s." % (
+            num(sum(cls.values())), num(s["deferred"]), ", ".join("%s `%s`" % (num(v), k) for k, v in cls.most_common())))
+    out += ["", "Regenerate this section from a himmel checkout (the cut makes it re-run exactly):", "", "```bash",
+            "python3 scripts/eval/review-page.py --panel --until %s%s --out docs/evals/review-panel.md" % (
+                cut, "" if small_n == SMALL else " --min-findings %d" % small_n), "```"]
+    return "\n".join(out) + "\n"
+
+
+def write_panel(path, text):
+    """Replace the marked block of path; 2 when path exists without one."""
+    block = "%s\n%s%s" % (PANEL_START, text, PANEL_END)
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as fh:
+            doc = fh.read()
+        i, j = doc.find(PANEL_START), doc.find(PANEL_END)
+        if i < 0 or j < i:
+            print("review-page: refused: %s has no %s ... %s block" % (path, PANEL_START, PANEL_END), file=sys.stderr)
+            return 2
+        block = doc[:i] + block + doc[j + len(PANEL_END):]
+    else:
+        block += "\n"
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write(block)
+    return 0
+
+
 def main(argv=None):
-    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--ledger")
     ap.add_argument("--changes")
     ap.add_argument("--out")
+    ap.add_argument("--panel", action="store_true")
+    ap.add_argument("--cr-ledger")
+    ap.add_argument("--until")
+    ap.add_argument("--min-findings", type=int, default=SMALL)
     a = ap.parse_args(argv)
+    if a.panel:
+        rows, _ = cr_ledger_eval.load(a.cr_ledger or cr_ledger_eval.default_ledger(), a.until)
+        text = panel(rows, a.until, a.min_findings)
+        if a.out:
+            return write_panel(a.out, text)
+        sys.stdout.write(text)
+        return 0
     path = eval_runs.ledger_path(a.ledger)
     rows = eval_runs.read_rows(path) if os.path.exists(path) else []
     text = page(rows, eval_feedback.read_changes(eval_feedback.changes_path(a.changes)))

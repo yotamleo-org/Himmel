@@ -182,6 +182,23 @@ case_repo pass-preexisting.base pass-preexisting
 run_check
 [ "$RC" -eq 0 ] && ok "a pre-existing sink is not re-flagged" || bad "pre-existing sink flagged (rc=$RC): $OUT"
 
+# A moved file keeps its old lines: only the line added in the move is read.
+n=$((n + 1))
+{
+  mkdir -p "$SCRATCH/r$n/old" && cd "$SCRATCH/r$n" &&
+  git init -q . && git config user.email t@t && git config user.name t && git config commit.gpgsign false &&
+  cp "$FIX/flag-renamed.base.fixture" old/launch.sh &&
+  git add old && git commit -q -m base &&
+  mkdir new && git mv old/launch.sh new/launch.sh &&
+  cp "$FIX/flag-renamed.fixture" new/launch.sh &&
+  git add new && git commit -q -m move
+} || { echo "FAIL - fixture repo setup failed (flag-renamed)" >&2; exit 1; }
+run_check
+case "$RC:$OUT" in
+  1:*"new/launch.sh:3"*) case "$OUT" in *"new/launch.sh:2"*) bad "a moved file's old sink is re-flagged: $OUT" ;; *) ok "a moved file reports only the line the move added" ;; esac ;;
+  *) bad "the line added in a move is not flagged (rc=$RC): $OUT" ;;
+esac
+
 # --- a reader operand with no variable name must not hang the gate ------------------
 case_repo base pass-length-control
 run_check

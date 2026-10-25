@@ -421,7 +421,7 @@ _GF_MAX_CMD_BYTES=32768
 # undercounts its true byte length, so the cap must measure real bytes
 _GF_CMD_BYTES=$(LC_ALL=C printf '%s' "$CMD" | wc -c)
 if [ "$_GF_CMD_BYTES" -gt "$_GF_MAX_CMD_BYTES" ]; then
-    deny "routed command is ${_GF_CMD_BYTES} bytes, over the ${_GF_MAX_CMD_BYTES}-byte fence cap (fail-closed, HIMMEL-3683/J1323C F1 - a command this size cannot be scanned within the hook timeout)"
+    deny "routed command is ${_GF_CMD_BYTES} bytes, over the ${_GF_MAX_CMD_BYTES}-byte fence cap (fail-closed: a command this size cannot be scanned within the hook timeout)"
 fi
 
 # file-readability and endpoint-host
@@ -450,7 +450,7 @@ GUARD_LIB="$SCRIPT_DIR/lib.sh"
 # and must not be echoed into a denial message.
 _gf_deny_on_endpoint_override() {
     [ -n "${_GF_ENDPOINT_OVERRIDE:-}" ] || return 0
-    deny "command-local endpoint-selector assignment ($_GF_ENDPOINT_OVERRIDE=...) in front of graphify - a per-call VAR=x prefix or env VAR=x changes which provider this extraction actually reaches, and this fence process's own environment cannot see it (HIMMEL-1085). Set it in the launching shell (export, or a persistent env) where fence classification can see it, or drop the prefix."
+    deny "command-local endpoint-selector assignment ($_GF_ENDPOINT_OVERRIDE=...) in front of graphify - a per-call VAR=x prefix or env VAR=x changes which provider this extraction actually reaches, and this fence process's own environment cannot see it. Set it in the launching shell (export, or a persistent env) where fence classification can see it, or drop the prefix."
 }
 
 # --- path helpers (pure bash, bash 3.2-safe) --------------------------------
@@ -1535,7 +1535,7 @@ _deny_on_classify_sentinel() {
     local rest mkpath mkcontent
     case "$1" in
         __cross_drive__$'\t'*)
-            deny "drive-relative target '${1#__cross_drive__$'\t'}' resolves against Windows' per-drive current directory, which this fence cannot read - use an absolute path (fail-closed, HIMMEL-845)" ;;
+            deny "drive-relative target '${1#__cross_drive__$'\t'}' resolves against Windows' per-drive current directory, which this fence cannot read - use an absolute path (fail-closed)" ;;
         __unreadable__)
             deny "a PHI root list under $PHI_CONFIG_DIR exists but is not readable (fail-closed)" ;;
         __marker_unreadable__$'\t'*)

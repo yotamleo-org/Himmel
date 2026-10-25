@@ -28,7 +28,7 @@
 #                              HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1 is exported
 #   cr-reset          <pr>     scripts/cr/cr-reset.sh: back up and reset the PR
 #                              branch's review-round counters
-#   close-wrapped     <N-label|-> console-kit/close-wrapped-leg.sh on that leg,
+#   close-wrapped     <N-label|-> chief-kit/close-wrapped-leg.sh on that leg,
 #                              or on every fleet leg (it refuses unless the
 #                              lock is free and the tail is WRAPPED)
 #   relaunch-console  <name>   `console.sh next --arm --name <name>` from the
@@ -277,16 +277,16 @@ op_revert_main() {
 }
 
 # The current console's fleet manifest: the seam, else the newest
-# *-console.fleet.json under the handover root.
+# *-chief.fleet.json or *-console.fleet.json under the handover root.
 fleet_manifest() {
     local fleet="${BREAK_GLASS_FLEET:-}"
     if [ -z "$fleet" ]; then
         # shellcheck source=../lib/handover-path.sh
         . "$PRIMARY/scripts/lib/handover-path.sh"
-        # ponytail: newest *-console.fleet.json by mtime stands in for "the current
+        # ponytail: newest *-chief/*-console.fleet.json by mtime stands in for "the current
         # console", upgrade path: a console pointer file if two consoles ever run.
         # gnu-ok: the bridge runs only on the Linux station (find -printf)
-        fleet="$(find "$(handover_root)" -maxdepth 4 -name '*-console.fleet.json' -printf '%T@ %p\n' 2>/dev/null \
+        fleet="$(find "$(handover_root)" -maxdepth 4 \( -name '*-console.fleet.json' -o -name '*-chief.fleet.json' \) -printf '%T@ %p\n' 2>/dev/null \
             | sort -rn | head -n 1 | cut -d' ' -f2-)"
     fi
     if [ -z "$fleet" ] || [ ! -f "$fleet" ]; then
@@ -361,7 +361,7 @@ op_launch_leg() {
         return 23
     fi
     [ -f "$doc" ] || { echo "ERR break-glass: leg doc missing: $doc" >&2; return 23; }
-    wt="$(sed -n '1,/^---$/{s/^resume_cwd:[[:space:]]*//p}' "$doc" | head -n 1)"
+    wt="$(sed -n '1,/^---$/{s/^resume_cwd:[[:space:]]*//p;}' "$doc" | head -n 1)"
     [ -n "$wt" ] && [ -d "$wt" ] || { echo "ERR break-glass: worktree missing for $label: '${wt}'" >&2; return 23; }
     gitdir="$(git -C "$wt" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || gitdir=""
     common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""
@@ -377,7 +377,7 @@ op_launch_leg() {
     now="$(date +%s)"
     : > "$state/$label.signal"
     log="$state/$label-$now.log"
-    launcher="${BREAK_GLASS_LEG_CMD:-bash $PRIMARY/scripts/handover/console-kit/headed-arm-leg.sh}"
+    launcher="${BREAK_GLASS_LEG_CMD:-bash $PRIMARY/scripts/handover/chief-kit/headed-arm-worker.sh}"
     # shellcheck disable=SC2086 # the seam is a command line by design
     set -- $launcher
     if ! command -v "$1" >/dev/null 2>&1 || { [ "$1" = bash ] && [ ! -f "$2" ]; }; then
@@ -418,7 +418,7 @@ op_close_wrapped() {
             return 23
         fi
     fi
-    closer="${BREAK_GLASS_CLOSE_CMD:-bash $PRIMARY/scripts/handover/console-kit/close-wrapped-leg.sh}"
+    closer="${BREAK_GLASS_CLOSE_CMD:-bash $PRIMARY/scripts/handover/chief-kit/close-wrapped-worker.sh}"
     while IFS= read -r doc; do
         [ -n "$doc" ] || continue
         # shellcheck disable=SC2086 # the seam is a command line by design
@@ -441,7 +441,7 @@ op_relaunch_console() {
         echo "ERR break-glass: bad console name: '$name'" >&2
         return 1
     fi
-    cmd="${BREAK_GLASS_CONSOLE_CMD:-bash $PRIMARY/scripts/handover/console/chief.sh}"
+    cmd="${BREAK_GLASS_CONSOLE_CMD:-bash $PRIMARY/scripts/handover/chief/chief.sh}"
     scrub_env
     # shellcheck disable=SC2086 # the seam is a command line by design
     (cd "$PRIMARY" && $cmd next --arm --name "$name")

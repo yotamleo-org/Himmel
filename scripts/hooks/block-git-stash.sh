@@ -228,7 +228,7 @@ legacy_denied() {
 
 deny_stash() {
     cat >&2 <<'DENY'
-block-git-stash: git stash MUTATION refused (HIMMEL-1755).
+block-git-stash: git stash MUTATION refused.
 
 Every worktree of this checkout shares ONE refs/stash, so `push`/`pop`/`drop`/
 `clear`/`branch` (and a bare `git stash`) act on entries other live sessions
@@ -342,6 +342,10 @@ if [ "$tool" != PowerShell ]; then
             ;;
         2)
             echo "block-git-stash: shfmt not on PATH, so this command that names a git stash verb cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or bypass with GIT_STASH_OK=1." >&2
+            exit 2
+            ;;
+        5)
+            echo "block-git-stash: the command model timed out, so this command that names a git stash verb cannot be read; refusing. Split the command, or bypass with GIT_STASH_OK=1." >&2
             exit 2
             ;;
     esac

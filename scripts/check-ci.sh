@@ -488,7 +488,7 @@ CR_STATE=$(cr_app_state "$PWD")
 # block: this gate exists to stop blocking on CodeRabbit's absence, and a
 # config typo must not wedge a merge at 3am.
 if [ "$CR_STATE" = broken ]; then
-    echo "check-ci: WARNING - this repo's himmel.coderabbit marker holds a value git cannot parse as a boolean, so the CodeRabbit gates are DISARMED and any green below certifies a CodeRabbit review that was never checked for. If this repo HAS CodeRabbit: git config --local himmel.coderabbit true. If it does not: git config --local --unset himmel.coderabbit (HIMMEL-2380)." >&2
+    echo "check-ci: WARNING - this repo's himmel.coderabbit marker holds a value git cannot parse as a boolean, so the CodeRabbit gates are DISARMED and any green below certifies a CodeRabbit review that was never checked for. If this repo HAS CodeRabbit: git config --local himmel.coderabbit true. If it does not: git config --local --unset himmel.coderabbit." >&2
 fi
 
 # `not-configured` is silently correct for the adopter with no
@@ -752,7 +752,7 @@ required_gate() {
     # or a POLL of 0 must not turn the bounded wait into a spin.
     max_tries=$(( GRACE / (POLL > 0 ? POLL : 1) + 1 ))
     if ! reqs=$(required_set); then
-        echo "check-ci: BLOCKED — required-set unreadable: could not list the checks GitHub requires on this PR's base branch (rules/branches or branch-protection read failed). Refusing rather than treating it as an empty set; re-run once gh/API access recovers (HIMMEL-3381, exit 5)" >&2
+        echo "check-ci: BLOCKED — required-set unreadable: could not list the checks GitHub requires on this PR's base branch (rules/branches or branch-protection read failed). Refusing rather than treating it as an empty set; re-run once gh/API access recovers (exit 5)" >&2
         _alert "required-set unreadable — the required-check list for the base branch could not be read; nothing was assumed"
         exit 5
     fi
@@ -766,14 +766,14 @@ required_gate() {
         # An unreadable producer read fails CLOSED like the set itself —
         # falling back to the name-only rows would certify the wrong producer.
         if _has_producer_ids "$reqs" && ! prows=$(_producer_rows); then
-            echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (HIMMEL-3385, exit 5)" >&2
+            echo "check-ci: BLOCKED — required-check producers unreadable: could not read which app reported each check on this PR's head, so a required check pinned to an app cannot be verified. Refusing rather than matching by name alone; re-run once gh/API access recovers (exit 5)" >&2
             _alert "required-check producers unreadable — a required check pinned to an app could not be verified; nothing was assumed"
             exit 5
         fi
         st=$(_required_status "$reqs" "$rows" "$prows")
         failed=$(_join_by_status fail "$st")
         if [ -n "$failed" ]; then
-            echo "check-ci: checks FAILED — required check(s) failed: $failed (HIMMEL-3381)" >&2
+            echo "check-ci: checks FAILED — required check(s) failed: $failed" >&2
             _job_log_hint
             _alert "required check(s) FAILED: $failed — GitHub will refuse this merge until they pass"
             exit 1
@@ -816,10 +816,10 @@ required_gate() {
         tries=$((tries + 1))
         if [ "$wait_ok" -ne 1 ] || [ $((SECONDS - req_start)) -ge "$GRACE" ] || [ "$tries" -ge "$max_tries" ]; then
             missing="${missing:+$missing, }$pending"
-            echo "check-ci: BLOCKED — required check(s) never reported within ${GRACE}s: $missing. GitHub will refuse this merge; is the workflow configured for this branch, or did it not trigger? (HIMMEL-3381, exit 5)" >&2
+            echo "check-ci: BLOCKED — required check(s) never reported within ${GRACE}s: $missing. GitHub will refuse this merge; is the workflow configured for this branch, or did it not trigger? (exit 5)" >&2
             status_only=$(_status_only "$st")
             if [ -n "$status_only" ]; then
-                echo "check-ci: BLOCKED — status-only producer: $status_only appear as a commit status but not as a check run from the pinned app. A commit status carries no app id, so the app this requirement pins cannot be verified; refusing rather than matching by name alone (HIMMEL-3391, exit 5)" >&2
+                echo "check-ci: BLOCKED — status-only producer: $status_only appear as a commit status but not as a check run from the pinned app. A commit status carries no app id, so the app this requirement pins cannot be verified; refusing rather than matching by name alone (exit 5)" >&2
                 missing="$missing (status-only, producer unverifiable: $status_only)"
             fi
             _alert "required check(s) never reported within ${GRACE}s: $missing — GitHub will refuse this merge"
@@ -1219,9 +1219,9 @@ watch_round() {
     wait "$wpid" 2>/dev/null || :
     rm -f "$err_file" "$rc_file" "$gh_pid_file" "$rc_file.tmp" "$gh_pid_file.tmp"
     if [ "$stopped" = cap ]; then
-        echo "check-ci: watch cap reached (${WATCH_CAP}s) — evaluating now (HIMMEL-2062); if this repeats, verify state directly: gh pr view <PR> --json state" >&2
+        echo "check-ci: watch cap reached (${WATCH_CAP}s) — evaluating now; if this repeats, verify state directly: gh pr view <PR> --json state" >&2
     else
-        echo "check-ci: every non-CodeRabbit check is terminal — ending the watch early (HIMMEL-2062)" >&2
+        echo "check-ci: every non-CodeRabbit check is terminal — ending the watch early" >&2
     fi
 
     failed=$(_fail_count)
@@ -1251,11 +1251,11 @@ watch_round() {
             *) pending_names=${report#*$'\n'} ;;
         esac
         if [ "$extend_ok" -eq 1 ]; then
-            echo "check-ci: WAITING ${pending_n} pending (${pending_names:-unnamed}) — extending once (HIMMEL-2907)" >&2
+            echo "check-ci: WAITING ${pending_n} pending (${pending_names:-unnamed}) — extending once" >&2
             watch_round 0
             return $?
         fi
-        echo "check-ci: DEADLINE-PENDING — the ${MAX_WAIT}s --max-wait deadline passed with nothing failed (not an error): watch cap reached with non-CodeRabbit checks still pending (${pending_names:-unnamed}) — cannot evaluate the gate; re-run (raise --max-wait). Do NOT infer state from log absence — verify directly: gh pr view <PR> --json state (HIMMEL-2206)" >&2
+        echo "check-ci: DEADLINE-PENDING — the ${MAX_WAIT}s --max-wait deadline passed with nothing failed (not an error): watch cap reached with non-CodeRabbit checks still pending (${pending_names:-unnamed}) — cannot evaluate the gate; re-run (raise --max-wait). Do NOT infer state from log absence — verify directly: gh pr view <PR> --json state" >&2
         _deadline_exit
     fi
 
@@ -1296,7 +1296,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
         jira_tb=$(. "$(dirname "$0")/lib/timeout-bin.sh" >/dev/null 2>&1; printf '%s' "${_TIMEOUT_BIN:-}")
         if [ -n "$jira_tb" ] && jira_key=$(ticket_key_from_title "$pr_title"); then
             _ticket_event() {
-                "$jira_tb" -k 5 30 bash "${TICKET_STATUS_FUNNEL:-$(dirname "$0")/handover/console-kit/leg-jira-status.sh}" \
+                "$jira_tb" -k 5 30 bash "${TICKET_STATUS_FUNNEL:-$(dirname "$0")/handover/chief-kit/worker-jira-status.sh}" \
                     "$jira_key" --event "$1" --pr "${initial_url##*/pull/}" --head "$initial_head" \
                     ${CHECK_CI_CACHE_REPO:+--repo "$CHECK_CI_CACHE_REPO"} >/dev/null 2>&1 || true
             }
@@ -1533,7 +1533,7 @@ cr_signal_gate() {
     case "$state" in
         success) : ;;
         *)
-            echo "check-ci: NOTE — CodeRabbit $state on head $head0 of PR #$num: best effort (HIMMEL-3360), not gating; thread + body-findings gates still apply." >&2 ;;
+            echo "check-ci: NOTE — CodeRabbit $state on head $head0 of PR #$num: best effort, not gating; thread + body-findings gates still apply." >&2 ;;
     esac
     # A CodeRabbit verdict was just read: one CI-release event, switch read first.
     _cr_first_event || true
@@ -1661,7 +1661,7 @@ _cr_prior_outside_gate() {
     done <<<"$heads"
     [ "$_cog_blocked" -eq 0 ] || exit 3
     if [ -n "$gated" ]; then
-        echo "check-ci: NOTE — CodeRabbit posted no review at head $head0 of PR #$num; its outside-diff findings at prior head(s)$gated are all dispositioned (best effort, HIMMEL-3360: no wait, no re-trigger)" >&2
+        echo "check-ci: NOTE — CodeRabbit posted no review at head $head0 of PR #$num; its outside-diff findings at prior head(s)$gated are all dispositioned (best effort: no wait, no re-trigger)" >&2
     fi
 }
 
@@ -1782,7 +1782,7 @@ merge_state_gate() {
             # Diagnosis only: which runs on the head did not pass. Never a verdict input.
             runs=$(gh_read api "repos/$owner/$repo/commits/$head0/check-runs?per_page=100" --paginate \
                 --jq '.check_runs[] | select(.conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") | "\(.name) \(.conclusion // .status)"' 2>/dev/null | sort -u | paste -sd, - | sed 's/,/, /g')
-            echo "check-ci: every gate passed but GitHub refuses the merge: mergeStateStatus=$state at ${head0}. Non-passing check runs on this head: ${runs:-none found}. GitHub's state is the verdict (HIMMEL-3473, exit 6)" >&2
+            echo "check-ci: every gate passed but GitHub refuses the merge: mergeStateStatus=$state at ${head0}. Non-passing check runs on this head: ${runs:-none found}. GitHub's state is the verdict (exit 6)" >&2
             exit 6 ;;
         "")
             echo "check-ci: could not read GitHub's mergeStateStatus within ${GRACE}s — cannot evaluate; re-run" >&2

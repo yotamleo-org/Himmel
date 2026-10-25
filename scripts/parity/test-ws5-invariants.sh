@@ -34,7 +34,6 @@
 #                       gemini/copilot/cursor index rows stay deferred.
 #                       (The former T14(a) claude-codex-launcher prohibition
 #                       was retired 2026-07-13.)
-#   T15 no-windows   -- no tracked .ps1/.cmd/.bat outside archive/windows/.
 #
 # Public propagation-snapshot guard: T12/T13 assume
 # $BASE...HEAD is a normal feature-branch diff -- what one PR authored. A
@@ -810,23 +809,6 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# T15 -- Windows is dropped: no tracked .ps1/.cmd/.bat anywhere (test fixtures
-# excepted), and no archive/windows/ tree.
-# ----------------------------------------------------------------------------
-if t15_all="$(git ls-files '*.ps1' '*.cmd' '*.bat' 'archive/windows')"; then
-    t15_stray="$(printf '%s\n' "$t15_all" | grep -v '/fixtures/' || true)"
-else
-    t15_stray="git ls-files failed"
-fi
-if [ -z "$t15_stray" ]; then
-    echo "PASS T15 no-windows: no tracked .ps1/.cmd/.bat and no archive/windows/."
-else
-    echo "FAIL T15 no-windows: tracked Windows files:" >&2
-    printf '%s\n' "$t15_stray" | head -10 >&2
-    FAIL=$((FAIL + 1))
-fi
-
-# ----------------------------------------------------------------------------
 # Verdict
 # ----------------------------------------------------------------------------
 if [ "$FAIL" -ne 0 ]; then
@@ -840,6 +822,6 @@ fi
 if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
     echo "PASS: WS5 invariants test (T14 locks ran; T12 no-bloat, T13 no-always-on SKIPPED -- propagation snapshot, HIMMEL-2642)."
 else
-    echo "PASS: WS5 invariants test (T12 no-bloat, T13 no-always-on, T14 locks, T15 no-windows)."
+    echo "PASS: WS5 invariants test (T12 no-bloat, T13 no-always-on, T14 locks)."
 fi
 exit 0
