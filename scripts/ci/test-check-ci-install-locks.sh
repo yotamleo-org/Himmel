@@ -143,8 +143,8 @@ sed -i.bak 's/\(pin_fetch "[^"]*\)\${CLAUDE_VERSION}/\1${OTHER_VERSION}/' "$t/.g
 expect "the pin_fetch URL no longer names the pinned version" 1 "$t"
 
 # The pins equal the real release manifest (fixture: downloads.claude.ai
-# claude-code-releases/2.1.310/manifest.json, fetched verbatim 2026-10-25).
-mf="$FIX/claude-manifest-2.1.310.json"
+# claude-code-releases/2.1.307/manifest.json, fetched verbatim 2026-10-25).
+mf="$FIX/claude-manifest-2.1.307.json"
 want_ver=$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["version"])' "$mf")
 want_sha=$(python3 -I -c 'import json,sys;print(json.load(open(sys.argv[1]))["platforms"]["linux-x64"]["checksum"])' "$mf")
 have=$(bash -c '. "$1"; printf "%s %s" "$CLAUDE_VERSION" "$CLAUDE_LINUX_X64_SHA256"' _ "$REPO_ROOT/scripts/machine-setup/installer-pins.sh")
