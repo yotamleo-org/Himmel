@@ -216,9 +216,10 @@ def parse_doc(leg, tz):
         dt = None
         if prev is not None:
             dt = prev.replace(hour=int(b.group(1)), minute=int(b.group(2)), second=0, microsecond=0)
-            if dt + timedelta(minutes=10) < prev:
+            # sections interleave, so only a jump back of half a day is midnight
+            if dt + timedelta(hours=12) < prev:
                 dt += timedelta(days=1)
-            prev = dt
+            prev = max(prev, dt)
         rest = b.group(3)
         c = CHIEF.match(rest)
         word = rest.split()[0].rstrip(":—") if rest.split() and not c else ""
@@ -352,7 +353,7 @@ def score(leg, ctx):
             q[k] = reason
         for k in ("live", "ready", "interventions", "breakdown", "protocol", "delivery", "stalls", "denials", "cost"):
             f[k] = reason
-        return q, f, {"merged": False, "in_flight": True}
+        return q, f, {"merged": None, "in_flight": None}
     worker = [b for b in bullets if not b["chief"]]
     chief_entries = [b for b in bullets if b["chief"]]
     mine = leg_prs(leg, bullets, ctx["prs"])
@@ -595,7 +596,9 @@ def main():
                   "median interventions", "denials", "median cost-eq per merged PR"], lane_rows(scored)), "",
            "## Sources", "",
            "- manifests: %s" % (", ".join(a.manifest) or "none (bare --doc legs)"),
-           "- chief docs: %s" % (", ".join(found) or na("none found")),
+           "- chief docs: %s%s" % (", ".join(found) or na("none found"),
+                                   " (missing: %s)" % ", ".join(c for c in chief_docs if c not in found)
+                                   if found and len(found) < len(chief_docs) else ""),
            "- verdicts: %s" % (ctx["vdir"] if ctx["recs"] is not None else na("absent: " + ctx["vdir"])),
            "- CR ledger: %s" % (ledger if ctx["ledger_rows"] is not None else na("absent: " + ledger)),
            "- PRs: %s" % (a.prs or na("no --prs")),

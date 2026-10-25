@@ -70,6 +70,7 @@ check "(b) a caused-by bug within 7 days is an escape, a revert at day 11 is not
     "$(cell "$OUT" "Output quality" N9003 12)" "caused-by 1"
 check "(b) launch to LIVE" "$(cell "$OUT" "Fleet management" N9001 4)" "5m"
 check "(b) launch to READY" "$(cell "$OUT" "Fleet management" N9001 5)" "100m"
+check "(b) an earlier ruling after a later bullet is not the next day" "$(cell "$OUT" "Fleet management" N9003 5)" "90m"
 check "(b) an unmarked bullet is a protocol miss" "$(cell "$OUT" "Fleet management" N9002 8)" "miss: unmarked 1"
 check "(b) a chief entry in the doc is inbox delivery" "$(cell "$OUT" "Fleet management" N9002 9)" "inbox"
 check "(b) stalls read the BLOCKED bullets and the chief idle ticks" \
@@ -94,6 +95,12 @@ check "(b) without --prs the lane merged and in-flight totals are n/a" \
     "$(cell "$NOPRS" "Per lane" claudex 4) / $(cell "$NOPRS" "Per lane" claudex 5)" "n/a / n/a"
 check "(b) a missing denial log is n/a with its reason" \
     "$(cell "$NOPRS" "Fleet management" N9001 11)" "n/a (no denial log: $FX/absent-denials.jsonl)"
+GONE=$(run --doc "$FX/HIMMEL-9099-N9099-gone-2026-10-25.md" \
+    --chief-doc "$FX/FT-roadmap-chief.md" --chief-doc "$FX/absent-chief.md" 2>/dev/null)
+check "(b) a missing worker doc leaves its lane merged and in-flight n/a" \
+    "$(cell "$GONE" "Per lane" unknown 4) / $(cell "$GONE" "Per lane" unknown 5)" "n/a / n/a"
+check "(b) a missing chief doc is named on the Sources line" \
+    "$(printf '%s\n' "$GONE" | grep '^- chief docs:')" "- chief docs: $FX/FT-roadmap-chief.md (missing: $FX/absent-chief.md)"
 
 # --- (c) per-lane totals and medians; a total that skips an n/a worker says so,
 # and the cost median runs over merged PRs (N9002 merged two), not workers
