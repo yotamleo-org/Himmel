@@ -1218,6 +1218,23 @@ report_pending_migrations() {
             done
         ' _ "$ROOT" 2>/dev/null || true
 
+        # Handover docs that still name a directory slice M moved.
+        # ponytail: one full scan under a 10 s bound, so a tree too big to scan in time stays silent; upgrade path is a first-hit --check.
+        # shellcheck disable=SC2016 # Expansion belongs to the bounded child shell.
+        "$_TIMEOUT_BIN" -k 1 10 bash -c '
+            helper="$1/scripts/lib/handover-path.sh"
+            script="$1/scripts/handover/move-renamed-dirs.sh"
+            [ -r "$helper" ] && [ -r "$script" ] || exit 0
+            . "$helper" # read-sink-ok: path is built from the checkout ROOT, not operator input
+            state=$(handover_root) || exit 0
+            [ -d "$state" ] || exit 0
+            rc=0
+            bash "$script" --slice M --handover-root "$state" --check >/dev/null || rc=$?
+            [ "$rc" = 1 ] || exit 0
+            printf "handover directory-rename migration needed: %s; preview: bash %q --slice M --handover-root %q --dry-run\n" \
+                "$state" "$script" "$state"
+        ' _ "$ROOT" 2>/dev/null || true
+
         local vault="${LUNA_VAULT_PATH:-}"
         local script="$ROOT/marketplace/plugins/obsidian-triage/tools/migrate-clip-lifecycle.mjs"
         [ -n "$vault" ] && [ -r "$vault" ] && [ -x "$vault" ] && [ -r "$script" ] || exit 0

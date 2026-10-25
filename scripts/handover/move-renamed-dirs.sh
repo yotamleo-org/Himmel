@@ -18,8 +18,10 @@
 # Usage:
 #   move-renamed-dirs.sh --slice <S> [--registry <file>] [--check | --dry-run] [--with-settings]
 #       at a himmel worktree root: move, rewrite and stage. The registry itself,
-#       docs/migration/renamed-identifiers.md and CHANGELOG files keep the old
-#       spellings; .claude/settings.json does too unless --with-settings, and
+#       docs/migration/renamed-identifiers.md, CHANGELOG files and the vault
+#       template templates/luna-second-brain (its kit names are archive names in
+#       a vault, not this tree's directories) keep the old spellings;
+#       .claude/settings.json does too unless --with-settings, and
 #       its pending count is printed.
 #   move-renamed-dirs.sh --slice <S> --handover-root <dir> [--check | --dry-run]
 #       rewrite the old spellings in the .md and .sh files under <dir> (.git
@@ -141,7 +143,7 @@ files() { # NUL-separated tracked text files naming an old spelling
   local pat=() old new kind rc
   while IFS=$'\t' read -r old new kind; do pat+=(-e "$old"); done < "$tmp/rows"
   git grep -lIzF "${pat[@]}" -- . ':!scripts/lib/rename-aliases.tsv' ':!docs/migration/renamed-identifiers.md' \
-    ':!CHANGELOG*' ':!**/CHANGELOG*' ':!.claude/settings.json'
+    ':!CHANGELOG*' ':!**/CHANGELOG*' ':!templates/luna-second-brain' ':!.claude/settings.json'
   rc=$?
   [ "$rc" -le 1 ] || return 2
   [ "$with_settings" = 1 ] && [ -f .claude/settings.json ] && printf '.claude/settings.json\0'

@@ -99,13 +99,41 @@ diff_out=$(git -c core.quotePath=false diff -U0 -C --no-color --no-ext-diff --no
 findings=$(mktemp "${TMPDIR:-/tmp}/old-terms.XXXXXX") || { echo "$me: mktemp failed" >&2; exit 2; }
 trap 'rm -f "$findings" "$reg_snap"' EXIT
 
-# file<TAB>comma-separated added line numbers, one row per changed file.
-added=$(printf '%s\n' "$diff_out" | awk '
+# file<TAB>comma-separated added line numbers, one row per changed file. An
+# added line that equals the removed line it replaces once every moved-directory
+# spelling in that line is rewritten (the move script's own edit) is not added.
+added=$(printf '%s\n' "$diff_out" | awk -v registry="$registry" '
+    BEGIN {
+        while ((getline line < registry) > 0) {
+            if (line ~ /^[[:space:]]*(#|$)/) continue
+            split(line, f, "\t")
+            if (f[3] != "directory" && f[3] != "path") continue
+            np++; pold[np] = f[1]; pnew[np] = f[2]
+            for (j = np; j > 1 && length(pold[j]) > length(pold[j - 1]); j--) {
+                t = pold[j]; pold[j] = pold[j - 1]; pold[j - 1] = t
+                t = pnew[j]; pnew[j] = pnew[j - 1]; pnew[j - 1] = t
+            }
+        }
+        close(registry)
+    }
+    function moved(s,    i, out, k) {
+        for (i = 1; i <= np; i++) {
+            out = ""
+            while ((k = index(s, pold[i])) > 0) { out = out substr(s, 1, k - 1) pnew[i]; s = substr(s, k + length(pold[i])) }
+            s = out s
+        }
+        return s
+    }
     function flush() { if (file != "" && nums != "") print file "\t" nums; nums = "" }
     /^diff --git / { flush(); file = ""; inhunk = 0; next }
     /^\+\+\+ / && !inhunk { file = $0; sub(/^\+\+\+ b\//, "", file); if ($0 == "+++ /dev/null") file = ""; next }
-    /^@@ / { inhunk = 1; ln = $0; sub(/^@@ -[0-9,]+ \+/, "", ln); sub(/[, ].*/, "", ln); ln += 0; next }
-    /^\+/ { if (file != "") nums = (nums == "" ? ln : nums "," ln); ln++ }
+    /^@@ / { inhunk = 1; nm = 0; np2 = 0; ln = $0; sub(/^@@ -[0-9,]+ \+/, "", ln); sub(/[, ].*/, "", ln); ln += 0; next }
+    /^-/ && inhunk { nm++; minus[nm] = substr($0, 2); next }
+    /^\+/ {
+        np2++
+        if (file != "" && !(np2 <= nm && moved(minus[np2]) == substr($0, 2))) nums = (nums == "" ? ln : nums "," ln)
+        ln++
+    }
     END { flush() }')
 
 while IFS="$(printf '\t')" read -r file nums; do

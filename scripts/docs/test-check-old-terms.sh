@@ -110,6 +110,28 @@ run_case "a line naming both spellings passes" 0 scripts/both.sh 'case $p in scr
 run_case "look-alikes pass" 0 scripts/look.sh 'bash scripts/overnight-shift.sh; ls my-console-kit scripts/console.md' # old-term-ok: a fixture line
 run_case "a marked old path passes" 0 scripts/mk.sh 'bash scripts/overnight/x.sh # old-term-ok: the old layout'
 
+# run_edit_case <name> <expected rc> <path> <before> <after>: commit <before>,
+# then <after> over it, and lint only the second commit.
+run_edit_case() {
+    local name="$1" want="$2" path="$3" before="$4" after="$5" rc out from
+    git -C "$repo" checkout -q -B case "$base" || { fail "$name: setup checkout failed"; return; }
+    mkdir -p "$repo/$(dirname "$path")" || { fail "$name: setup mkdir failed"; return; }
+    printf '%s\n' "$before" > "$repo/$path" || { fail "$name: setup write failed"; return; }
+    git -C "$repo" add -A || { fail "$name: setup add failed"; return; }
+    git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "before $name" || { fail "$name: setup commit failed"; return; }
+    from=$(git -C "$repo" rev-parse HEAD) || { fail "$name: setup HEAD lookup failed"; return; }
+    printf '%s\n' "$after" > "$repo/$path" || { fail "$name: setup write failed"; return; }
+    git -C "$repo" add -A || { fail "$name: setup add failed"; return; }
+    git -C "$repo" -c core.hooksPath=/dev/null commit -q -m "after $name" || { fail "$name: setup commit failed"; return; }
+    out=$(cd "$repo" && bash "$LINT" "$from" 2>&1); rc=$?
+    if [ "$rc" -eq "$want" ]; then pass "$name (rc=$rc)"; else fail "$name: want rc=$want got rc=$rc: $out"; fi
+}
+
+echo "== a line the move rewrote is not an added line =="
+run_edit_case "old prose kept on a line whose path moved" 0 docs/mv1.md 'The leg runs `scripts/overnight/x.sh` and reads leg-sections/a.md.' 'The leg runs `scripts/afk/x.sh` and reads worker-sections/a.md.' # old-term-ok: a fixture line
+run_edit_case "prose changed beside the moved path is still read" 1 docs/mv2.md 'Run `scripts/overnight/x.sh` first.' 'The leg runs `scripts/afk/x.sh` first.' # old-term-ok: a fixture line
+run_edit_case "an old path added on a rewritten line is still refused" 1 scripts/mv3.sh 'bash scripts/overnight/x.sh' 'bash scripts/afk/x.sh scripts/console/y.sh' # old-term-ok: a fixture line
+
 echo "== prose rules apply to markdown only =="
 run_case "old word in a shell comment" 0 scripts/cmt.sh '# the console arms a leg'
 
