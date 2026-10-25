@@ -66,7 +66,7 @@
 #      named; a LATER mention, e.g. a mission doc naming the console leg's
 #      own doc further down the same turn, is not evidence of loading and
 #      does not count) — console-shaped only if THAT
-#      first path's basename matches *-console.md. Scoping to the first
+#      first path's basename matches *-chief.md or *-console.md. Scoping to the first
 #      user turn (not the raw file head) matters: a system prompt, a tool
 #      result, or an assistant turn merely MENTIONING such a path must not
 #      count, only the session's own actual launch turn. This
@@ -252,7 +252,7 @@ else
         if [ -n "$first_user_text" ]; then
             first_doc_path=$(printf '%s' "$first_user_text" | grep -Eoi 'handover[A-Za-z0-9_./\\-]*[/\\][A-Za-z0-9_.-]*\.md' 2>/dev/null | head -n 1 || true)
         fi
-        if [ -n "$first_doc_path" ] && grepq "$first_doc_path" -Eqi -- '-console\.md$'; then
+        if [ -n "$first_doc_path" ] && grepq "$first_doc_path" -Eqi -- '-(console|chief)\.md$'; then
             is_console=1
         fi
     fi

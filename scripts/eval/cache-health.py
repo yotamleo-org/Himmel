@@ -44,7 +44,7 @@ def classify(path, title, first):
     if "/subagents/" in path:
         return "subagent"
     t = title or ""
-    if "-console" in t:
+    if "-console" in t or t.endswith("-chief"):
         return "console"
     if re.search(r"HIMMEL-\d+-.*N\d+|leg[A-Z]?\d+|-N\d+", t):
         return "leg"
