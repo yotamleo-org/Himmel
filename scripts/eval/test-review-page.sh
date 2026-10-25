@@ -283,6 +283,8 @@ printf '%s\n' '{"kind":"finding","ts":"2026-10-10T00:00:00Z","branch":"b1","head
 has "panel: claims that differ only by an operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-ops.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
 sed -e 's/a == b/a + b/' -e 's/a != b/a - b/' "$TMP/cr-ops.jsonl" > "$TMP/cr-arith.jsonl"
 has "panel: claims that differ only by an arithmetic operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-arith.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
+sed -e 's/a == b/a \&\& b/' -e 's/a != b/a || b/' "$TMP/cr-ops.jsonl" > "$TMP/cr-logic.jsonl"
+has "panel: claims that differ only by a logical operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-logic.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
 has "--help prints the whole usage text" "$(python3 -I "$PAGE" --help 2>&1)" "--panel [--cr-ledger P] [--until TS]"
 
 echo "test-review-page: $PASS passed, $FAIL failed"

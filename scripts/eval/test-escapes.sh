@@ -38,7 +38,7 @@ prs = [pr(10, "feat(x): [HIMMEL-1] add x", day=10),
        pr(50, "fix(v): [HIMMEL-6] v", "Names #60, which merged after it.", day=16),
        pr(60, "feat(v): [HIMMEL-7] v", day=17),
        pr(70, "feat(u): [HIMMEL-8] u", day=18),
-       pr(71, "revert(u): [HIMMEL-9] withdraw u", "Withdraws the change merged as `%040x`; #40 is only context." % (70 + 1000), day=19)]
+       pr(71, "revert(u): [HIMMEL-9] withdraw u", "This reverts commit `%040x`; #40 and `%040x` are only context." % (70 + 1000, 40 + 1000), day=19)]
 json.dump(prs, open(os.path.join(d, "prs.json"), "w"))
 def avail(br, model, rm=None, status="ok", ts="2026-10-10T00:00:00Z"):
     r = {"kind": "avail", "ts": ts, "branch": br, "head": "h", "model": model, "status": status,
@@ -56,6 +56,9 @@ os.makedirs(os.path.join(d, "mirror"))
 with open(os.path.join(d, "mirror", "HIMMEL-90.md"), "w") as fh:
     fh.write('---\nkey: "HIMMEL-90"\ntype: "Bug"\nlabels: ["main-red"]\ncreated: "2026-10-20T00:00:00.000+0200"\n---\n\n'
              '# HIMMEL-90\n\nmain went red.\ncaused-by: #30\n')
+with open(os.path.join(d, "mirror", "HIMMEL-91.md"), "w") as fh:
+    fh.write('---\nkey: "HIMMEL-91"\ntype: "Bug"\nlabels: []\ncreated: "2026-10-01T00:00:00.000+0200"\n---\n\n'
+             '# HIMMEL-91\n\nfiled before #40 merged.\ncaused-by: #40\n')
 os.makedirs(os.path.join(d, "verdicts", "j1"))
 os.makedirs(os.path.join(d, "verdicts", "j2"))
 with open(os.path.join(d, "verdicts", "j2", "stale.md"), "w") as fh:
@@ -78,7 +81,7 @@ eq "sure escapes: the two reverted PRs and the caused-by PR" "$(pick escapes)" "
 eq "plausible escapes add the PR a later fix names" "$(pick escapes_plausible)" "4"
 eq "a fix naming a PR that merged after it is no escape" "$(pick signal.fix-forward)" "1"
 eq "a revert naming the merge commit counts" "$(pick signal.revert)" "2"
-eq "a caused-by bug is one signal" "$(pick signal.caused-by)" "1"
+eq "a caused-by bug is one signal, a bug filed before the merge none" "$(pick signal.caused-by)" "1"
 eq "per critic: PRs it reviewed" "$(pick critic.codex:gpt-6.1-sol.prs)" "3"
 eq "per critic: a fix-forward is plausible, not sure" "$(pick critic.coderabbit.escapes)" "0"
 eq "per critic: a review after the merge is not credited" "$(pick critic.coderabbit.prs)" "1"

@@ -4,9 +4,10 @@
 A merged PR has escaped review when a later signal says it shipped a bug:
 
   revert       sure       a PR titled "Revert ..." or "revert(...)" names it in its title (#n), as
-                          "Reverts [owner/repo]#n", or by its merge commit; a PR it cites only as context is not named
-  caused-by    sure       a Bug ticket in the Jira mirror carries `caused-by: #n` (how a red main run
-                          bisected to a PR is recorded)
+                          "Reverts [owner/repo]#n", or as "This reverts commit <merge sha>"; a PR or commit it
+                          cites only as context is not named
+  caused-by    sure       a Bug ticket in the Jira mirror created after the merge carries `caused-by: #n` (how
+                          a red main run bisected to a PR is recorded)
   fix-forward  plausible  a PR titled "fix..." names it (#n) in its title or body and merged after it;
                           a fix often names an earlier PR only as context, so this is never a sure escape
 
@@ -45,7 +46,7 @@ SOURCE = "scripts/eval/escapes.py"
 REVERT = re.compile(r"^\s*revert\b", re.I)
 FIX = re.compile(r"^\s*fix[(!:]")
 REVERTS_PR = re.compile(r"\breverts?\s+(?:[\w.-]+/[\w.-]+)?#(\d+)", re.I)
-SHA = re.compile(r"\b([0-9a-f]{7,40})\b", re.I)
+REVERTS_SHA = re.compile(r"\breverts?\s+(?:commit\s+)?`?([0-9a-f]{7,40})\b", re.I)
 
 
 def signals(prs, bugs):
@@ -59,7 +60,7 @@ def signals(prs, bugs):
         text = title + "\n" + (p.get("body") or "")
         if REVERT.match(title):
             named = {int(x) for x in judge_accuracy.CITE.findall(title) + REVERTS_PR.findall(text)}
-            for sha in SHA.findall(text):
+            for sha in REVERTS_SHA.findall(text):
                 named |= {t for s, t in by_sha.items() if s and s.startswith(sha.lower())}
             kind, level = "revert", "S"
         elif FIX.match(title):
@@ -71,8 +72,9 @@ def signals(prs, bugs):
             out[t].add((kind, level))
             count[kind] += 1
     for b in bugs:
-        if b["caused_by"] and b["caused_by"].isdigit() and int(b["caused_by"]) in merged:
-            out[int(b["caused_by"])].add(("caused-by", "S"))
+        t = merged.get(int(b["caused_by"])) if b["caused_by"] and b["caused_by"].isdigit() else None
+        if t and (not b["created"] or b["created"] > judge_accuracy.when(t["mergedAt"])):
+            out[t["number"]].add(("caused-by", "S"))
             count["caused-by"] += 1
     return merged, out, count
 
