@@ -129,11 +129,35 @@ claude_verified=0
 # The command right after a verified pin_fetch must install the file it verified
 # (`install ... <dest> <target>`), else the checksum guards a file nothing uses.
 pend_dest=""; pend_rel=""; pend_file=""
+# installs_verified <segment> <verified file>: the segment is `[sudo] install
+# [options] <source>... <target>`, options only before the operands, and the
+# verified file is the last source (the operand just before the target).
+installs_verified() {
+  local -a tok pos=()
+  local i=0 n
+  read -ra tok <<< "$1"
+  [ "${tok[0]:-}" = sudo ] && i=1
+  [ "${tok[$i]:-}" = install ] || return 1
+  i=$((i + 1)); n=${#tok[@]}
+  while [ "$i" -lt "$n" ] && [[ "${tok[$i]}" == -* ]]; do
+    case "${tok[$i]}" in
+      -t*|--target-directory*|-T|--no-target-directory) return 1 ;;
+      -m|-o|-g|--mode|--owner|--group) i=$((i + 1)) ;;
+    esac
+    i=$((i + 1))
+  done
+  while [ "$i" -lt "$n" ]; do
+    [[ "${tok[$i]}" == -* ]] && return 1
+    pos+=("${tok[$i]}")
+    i=$((i + 1))
+  done
+  [ "${#pos[@]}" -ge 2 ] && [ "${pos[${#pos[@]}-2]}" = "$2" ]
+}
 while IFS=$'\t' read -r file line mark seg; do
   [ -n "$seg" ] || continue
   rel="${file#"$ROOT"/}:$line"
   if [ -n "$pend_dest" ]; then
-    if [ "$file" != "$pend_file" ] || [[ ! "$seg" =~ ^(sudo[[:space:]]+)?install[[:space:]] ]] || [[ "$seg" != *" $pend_dest "* ]]; then
+    if [ "$file" != "$pend_file" ] || ! installs_verified "$seg" "$pend_dest"; then
       err "$rel: the command after pin_fetch installs a different file than pin_fetch verified ($pend_dest, fetched at $pend_rel): $seg"
     fi
     pend_dest=""

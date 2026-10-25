@@ -156,6 +156,18 @@ t=$(live claude-step-swapped); cp "$FIX/claude-install-step.yml.txt" "$t/.github
 # shellcheck disable=SC2016
 sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install -m 0755 "$RUNNER_TEMP/other" "$RUNNER_TEMP/claude"|' "$t/.github/workflows/other.yml"
 expect "the verified file is the install target, not its source" 1 "$t"
+t=$(live claude-step-trailing-opt); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install -m 0755 "$RUNNER_TEMP/other" "$RUNNER_TEMP/claude" -v|' "$t/.github/workflows/other.yml"
+expect "an option after the target does not make the verified file the install target" 1 "$t"
+t=$(live claude-step-two-sources); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude" /usr/local/bin/claude|sudo install -m 0755 "$RUNNER_TEMP/claude" "$RUNNER_TEMP/other" /usr/local/bin/claude|' "$t/.github/workflows/other.yml"
+expect "the verified file is not the last source before the target" 1 "$t"
+t=$(live claude-step-opts-before); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
+# shellcheck disable=SC2016
+sed -i.bak 's|sudo install -m 0755 "\$RUNNER_TEMP/claude"|sudo install -v -m 0755 "$RUNNER_TEMP/claude"|' "$t/.github/workflows/other.yml"
+expect "options before the operands are accepted" 0 "$t"
 t=$(live claude-step-noinstall); cp "$FIX/claude-install-step.yml.txt" "$t/.github/workflows/other.yml"
 sed -i.bak '/sudo install -m 0755/d' "$t/.github/workflows/other.yml"
 expect "the step after pin_fetch is not an install at all" 1 "$t"
