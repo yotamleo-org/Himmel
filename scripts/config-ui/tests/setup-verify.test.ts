@@ -139,6 +139,18 @@ test("an exit code that contradicts the rows is an error", async () => {
   }
 });
 
+test("a report with a cut-off row is an error, not a smaller summary", async () => {
+  const j = JSON.parse((await boot({ STUB_JUNK: "1" }).verify()).text);
+  expect(j.state).toBe("error");
+  expect(j.ok).toBeUndefined();
+});
+
+test("a Summary line that disagrees with the rows read is an error", async () => {
+  const j = JSON.parse((await boot({ STUB_SUMMARY: "Summary: 1 FAIL  3 WARN  1 INFO" }).verify()).text);
+  expect(j.state).toBe("error");
+  expect(j.warn).toBeUndefined();
+});
+
 test("only a same-origin POST runs it", async () => {
   const { verify } = boot();
   expect((await verify("GET")).status).toBe(405);

@@ -129,15 +129,19 @@ export async function verifyDoctor(o: VerifyOpts): Promise<Record<string, unknow
     if (r.timedOut) return { state: "timeout", error: `the doctor did not finish within ${Math.round(o.timeoutMs / 1000)} s; run it in your terminal: bash scripts/himmel-doctor.sh` };
     const count = { OK: 0, INFO: 0, WARN: 0, FAIL: 0 };
     const findings: { sev: Sev; id: string; msg: string; remedy: string }[] = [];
+    let unread = 0;
     for (const line of r.stdout.split("\n")) {
+      if (!line.trim()) continue;
       let row: any;
-      try { row = JSON.parse(line); } catch { continue; }
-      if (!row || typeof row.id !== "string" || !(row.sev in count)) continue;
+      try { row = JSON.parse(line); } catch { unread++; continue; }
+      if (!row || typeof row.id !== "string" || !(row.sev in count)) { unread++; continue; }
       count[row.sev as Sev]++;
       if (row.sev === "WARN" || row.sev === "FAIL") findings.push({ sev: row.sev, id: row.id, msg: String(row.msg ?? ""), remedy: String(row.remedy ?? "") });
     }
-    // A finished run prints its Summary line (stderr, read here and dropped) and exits 1 exactly when a FAIL row was printed, else 0.
-    const finished = /^Summary: /m.test(r.stderr) && r.rc === (count.FAIL > 0 ? 1 : 0);
+    // A finished run reads every row it printed (the runner caps captured output, which can cut a row), prints a Summary line
+    // (stderr, read here and dropped) whose counts match those rows, and exits 1 exactly when a FAIL row was printed, else 0.
+    const sum = /^Summary: (\d+) FAIL\s+(\d+) WARN\s+(\d+) INFO/m.exec(r.stderr);
+    const finished = unread === 0 && !!sum && [count.FAIL, count.WARN, count.INFO].every((n, i) => n === Number(sum[i + 1])) && r.rc === (count.FAIL > 0 ? 1 : 0);
     if (!finished) return { state: "error", error: `the doctor did not finish its report (exit ${r.rc}); run it in your terminal: bash scripts/himmel-doctor.sh` };
     findings.sort((a, b) => Number(b.sev === "FAIL") - Number(a.sev === "FAIL"));
     return o.redact({ state: "done", ok: count.OK, info: count.INFO, warn: count.WARN, fail: count.FAIL, findings });

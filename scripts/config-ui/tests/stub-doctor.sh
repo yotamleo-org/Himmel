@@ -13,6 +13,9 @@ printf '%s\n' '{"sev":"OK","id":"C2","msg":"node resolves","remedy":""}'
 printf '%s\n' '{"sev":"INFO","id":"C3","msg":"no cron job armed","remedy":""}'
 printf '%s\n' "{\"sev\":\"WARN\",\"id\":\"C4\",\"msg\":\"token ${STUB_LEAK:-none} expires soon\",\"remedy\":\"rotate it: ${STUB_LEAK:-none}\"}"
 printf '%s\n' '{"sev":"FAIL","id":"C5","msg":"qmd index is missing","remedy":"run qmd update"}'
-printf 'Summary: 1 FAIL  1 WARN  1 INFO\n' >&2
+# STUB_JUNK: a row cut off mid-line, as the runner's output cap leaves it
+if [ -n "${STUB_JUNK:-}" ]; then printf '%s' '{"sev":"WARN","id":"C9","ms'; fi
+# STUB_SUMMARY: the Summary line the doctor claims, when it differs from the rows
+printf '%s\n' "${STUB_SUMMARY:-Summary: 1 FAIL  1 WARN  1 INFO}" >&2
 # the doctor exits 1 exactly when a FAIL row was printed; STUB_RC forces another code
 exit "${STUB_RC:-1}"
