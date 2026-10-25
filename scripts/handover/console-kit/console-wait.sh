@@ -17,8 +17,8 @@
 #                               --once, so its byte cursor is shared and a
 #                               re-arm replays nothing.
 #   WAKE tick changed=<f,...>   the tick's ACTION KEY changed and the change
-#     bank=<verdict>            held for two consecutive samples; bank= is the
-#   TICK ...                    bank-preflight verdict word the key carries.
+#     usage=<verdict>           held for two consecutive samples; usage= is the
+#   TICK ...                    usage-preflight verdict word the key carries.
 #   WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity
 #   <tick line>                 field says live < cap with no launch for
 #   <next-dispatchable.sh out>  TICK_UNDERFILL_MIN; on the streak's first sample, and
@@ -88,9 +88,10 @@
 #                               broken. Once per streak; the re-arm stays quiet
 #                               until a sample succeeds.
 #
-# The action key is the tick fields a console acts on: legs=, livestate=,
-# prs=, tails=, acts= (a leg's newest READY, BLOCKED, FINDING or MERGED bullet and a count:
-# a repeat or a later LIVE bullet cannot hide it; absent when a leg has none), legset=, board= and tracker= (class only, the STALE
+# The action key is the tick fields a chief acts on: workers= (an older tick's legs=),
+# livestate=, prs=, tails=, acts= (a worker's newest READY, BLOCKED, FINDING or MERGED bullet and a count:
+# a repeat or a later LIVE bullet cannot hide it; absent when a worker has none), workerset= (an older
+# tick's legset=), board= and tracker= (class only, the STALE
 # age is dropped; tracker= is absent from an older tick line, never a failure),
 # vault= (class only, wakes ONLY on a move to STALL or PUSH-LAG --
 # never on a change of its age or count, nor a move back to ok/skip/unknown --
@@ -404,6 +405,12 @@ field() { # <name> <tick line>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
 
+# old_key_names: a key saved under the old field names (legs=, legset=, bank=) reads
+# as the same key under the new ones, so a restart over it is no change.
+old_key_names() {
+    printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/'
+}
+
 # sample: sets tick_line and key (empty on a failed tick).
 sample() {
     local f v raw bank
@@ -416,8 +423,15 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails acts holds legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall denials closable deadwin; do
+    for f in workers livestate prs tails acts holds workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
+        # An older tick.sh prints legs= and legset=; field() matches whole tokens, so max_workers= is never workers=.
+        if [ -z "$v" ]; then
+            case "$f" in
+                workers) v="$(field legs "$tick_line")" ;;
+                workerset) v="$(field legset "$tick_line")" ;;
+            esac
+        fi
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
@@ -452,7 +466,7 @@ sample() {
         fi
         key="$key$f=$v|"
     done
-    key="${key}bank=$bank"
+    key="${key}usage=$bank"
 }
 
 changed_fields() { # <old key> <new key>
@@ -956,8 +970,8 @@ EOF
 # r0_fold_key: <saved key> <new key> <absorbed words> — the baseline after the relay
 # absorbed those legs' wraps (words: labels and #<pr>). A field whose only difference
 # is absorbed tokens (`<word>`, `<word>:…`; `none` counts as empty) takes the new
-# value, and so do the derived leg-set fields livestate legset board (each leg's own
-# state is in legs=/tails=/acts=). closable= moves with time alone, so it takes the
+# value, and so do the derived worker-set fields livestate workerset board (each worker's own
+# state is in workers=/tails=/acts=). closable= moves with time alone, so it takes the
 # new value only when it did not rise. Any other difference keeps the saved value,
 # so another leg's pending change still wakes.
 r0_fold_key() {
@@ -978,7 +992,7 @@ r0_fold_key() {
         nk = split(k, kp, "|"); out = ""
         for (i = 1; i <= nk; i++) {
             f = kp[i]; sub(/=.*/, "", f); v = substr(kp[i], length(f) + 2); seen[f] = 1
-            if (f == "closable" ? num(v) <= num(sv[f]) : f ~ /^(livestate|legset|board)$/ || strip(v) == ((f in sv) ? strip(sv[f]) : "")) out = out "|" f "=" v
+            if (f == "closable" ? num(v) <= num(sv[f]) : f ~ /^(livestate|workerset|board)$/ || strip(v) == ((f in sv) ? strip(sv[f]) : "")) out = out "|" f "=" v
             else if (f in sv) out = out "|" f "=" sv[f]
         }
         for (i = 1; i <= ns; i++) { f = sp[i]; sub(/=.*/, "", f); if (!(f in seen) && f != "closable" && strip(sv[f]) != "") out = out "|" sp[i] }
@@ -988,7 +1002,7 @@ r0_fold_key() {
 
 saved=""
 if [ -f "$key_file" ] && [ "$(sed -n 1p "$key_file")" = "$args_hash" ]; then
-    saved="$(sed -n 2p "$key_file")"
+    saved="$(old_key_names "$(sed -n 2p "$key_file")")"
 fi
 save_key() {
     tmp="$(mktemp "$key_file.XXXXXX" 2>/dev/null)" || return 0
@@ -1173,7 +1187,7 @@ while :; do
                     saved="$key"; save_key "$key"; pending=""
                 else
                     page_denials "$saved" "$key"
-                    printf 'WAKE tick changed=%s bank=%s\n%s\n' "$real_changed" "${key##*|bank=}" "$tick_line"
+                    printf 'WAKE tick changed=%s usage=%s\n%s\n' "$real_changed" "${key##*|usage=}" "$tick_line"
                     # a vault wake names how to reproduce the stuck commit.
                     case ",$real_changed," in *,vault,*)
                         vault_dir="$(bash "$HERE/vault-status.sh" --path 2>/dev/null)" || vault_dir=""

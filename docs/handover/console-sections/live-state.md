@@ -1,12 +1,12 @@
-# Console section — Live state entry format and optional fields
+# Chief section — Live state entry format and optional fields
 
-Read on demand from `console-template.md` `## Live state`. Moved verbatim from the template, whose two-line preamble points here.
+Read on demand from `chief-template.md` `## Live state`. Moved verbatim from the template, whose two-line preamble points here.
 
 > **Authority-bearing state — not a summary.** Per-leg RETASK nonces, lock
 > release tokens, the held queue and the last GO live HERE, on disk, not only
 > in this context window: `SessionStart:compact` re-injects
 > exactly this section after an autocompact, and `<kit>/tick.sh` flags
-> `livestate=DRIFT:<leg>[,…]` when it disagrees with the leg locks actually
+> `livestate=DRIFT:<leg>[,…]` when it disagrees with the worker locks actually
 > held (and `livestate=MALFORMED:<leg>[,…]` for a malformed entry, below). Update this section on every dispatch, ruling, wrap and GO — not only
 > at handover; `console.sh next` seeds its `legs:` block, `queue:`, `last GO:` and
 > `acked:` verbatim into the successor's own Live state (the HANDOFF holds only
@@ -15,35 +15,35 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > `action-zero.sh --render-legs` keeps the seeded nonces. A per-leg detail line
 > past the `legs:` block is not seeded: put what the successor needs in the
 > HANDOFF's judgement notes. A worker's nonce is
-> updated **only after** that leg's quote-back (of the fresh nonce, when one
+> updated **only after** that worker's quote-back (of the fresh nonce, when one
 > was issued): until then the line still names the predecessor's. A relay may hand out no fresh token,
-> so a leg can stay on the predecessor's nonce for good and be fully
-> authenticated; the tick tells that apart from a leg that never accepted
-> (`nonces=RELAYED:<leg>` needs the leg's own `SUCCESSION accepted` bullet,
+> so a worker can stay on the predecessor's nonce for good and be fully
+> authenticated; the tick tells that apart from a worker that never accepted
+> (`nonces=RELAYED:<leg>` needs the worker's own `SUCCESSION accepted` bullet,
 > else `UNCONFIRMED:<leg>`).
 >
-> **Every nonce and lock token is a single backtick span, one per leg, with no
+> **Every nonce and lock token is a single backtick span, one per worker, with no
 > trailing punctuation inside or directly after the span** — bare
 > token-shaped text stalls the vault's gitleaks pre-commit scanners. Format:
 > `` `<leg>:<nonce>:<lock-token>:<pid>` ``. Anything comparing these values
 > strips backticks before comparing.
 >
-> **`<leg>` is the leg's label, `N<k>`** (`N191` for
+> **`<leg>` is the worker's label, `N<k>`** (`N191` for
 > `HIMMEL-3269-N191-scorecard-discovery-…`) — the same label
-> `tick.sh` prints in `legs=`. A label may contain letters, digits, `_`, `.`
+> `tick.sh` prints in `workers=`. A label may contain letters, digits, `_`, `.`
 > and `-`, so a full doc stem also parses.
 >
 > **Prose is permitted on the `legs:` line, and the tick reads it as prose**. Only a backtick span of exactly four non-empty colon-separated
 > fields under a label is an entry. A span with whitespace, no colon, or a first
-> field that is not a leg label (`` `legs:` ``, `` `procs:2` ``,
+> field that is not a worker label (`` `legs:` ``, `` `procs:2` ``,
 > `` `livestate=DRIFT:N192` ``, `` `N191` ``) is ignored, so a note may quote
-> tick fields and name legs freely. **A span that looks like an entry but is not
-> one** — a label (`N<k>` or a leg doc stem) with a colon and not four non-empty
+> tick fields and name workers freely. **A span that looks like an entry but is not
+> one** — a label (`N<k>` or a worker doc stem) with a colon and not four non-empty
 > fields (`` `N191:<nonce>:<lock-token>` ``, a trailing or doubled colon) — is
 > never dropped: the tick reads `livestate=MALFORMED:<label>[,…]` (by label
 > only; the span carries a nonce and a lock token), and any real drift on the
 > same line follows as `;DRIFT:<leg>[,…]`. Fix the span, or if it was meant as
-> prose, drop the colon. A label that is neither `N<k>` nor a leg doc stem is
+> prose, drop the colon. A label that is neither `N<k>` nor a worker doc stem is
 > treated as prose even when malformed, so a truncated entry under such a label
 > reads as absent (`DRIFT`) rather than `MALFORMED`.
 >
@@ -60,7 +60,7 @@ Read on demand from `console-template.md` `## Live state`. Moved verbatim from t
 > line (`- `, `* `, `+ `, `1. `, or a line starting `>` or `#`). A span anywhere
 > in that block is an entry, judged exactly as above. **A span past the block's
 > end is not an entry** — a per-leg detail bullet may quote a span freely — so a
-> held leg named only there reads `DRIFT`. Put every leg's span in the block;
+> held worker named only there reads `DRIFT`. Put every worker's span in the block;
 > **the blank line before the per-leg detail is load-bearing**: a wrapped line
 > never starts with a list marker, so a marker ends the block, but prose
 > written straight under `legs:` without one is read as part of it.

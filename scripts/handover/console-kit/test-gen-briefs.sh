@@ -95,7 +95,7 @@ has "the brief carries the handover root" "$b1" "$WORK/handovers"
 has "a two-key leg's Why lists both tickets' get commands" "$b2" "get HIMMEL-9003"
 has "a hook leg's brief says it is launched with the bypass" "$b2" "hook-integrity bypass flag"
 lacks "a plain leg's brief does not" "$b1" "hook-integrity bypass flag"
-has "a judge leg's brief announces the opus judge" "$b2" "console runs an opus judge"
+has "a judge leg's brief announces the opus judge" "$b2" "chief runs an opus judge"
 has "the other leg's scope is listed under 'other live legs'" "$b1" "N902 (h.sh)"
 # a leg flagged for CI, infra or the environment gets a RED-first line requiring a real-environment fixture.
 has "a flagged leg's brief requires a fixture copied from the real environment" "$b2" "copied from the real environment"
@@ -336,7 +336,7 @@ cx_no="$(cx_brief no "$WORK/cx1")"
 ship_cx="$(printf '%s\n' "$cx_no" | grep '^> 4\. Ship:')"
 lacks "a claudex Ship step has no merge-on-green.sh" "$ship_cx" "merge-on-green.sh"
 lacks "a claudex Ship step has no merge-on-GO clause" "$ship_cx" "Merge only on GO"
-has "a claudex Ship step names the console as the merger" "$ship_cx" "the console merges"
+has "a claudex Ship step names the chief as the merger" "$ship_cx" "the chief merges"
 has "a claudex Ship step waits for MERGED" "$ship_cx" "MERGED #<pr>"
 has "a claudex Ship step still ends at READY" "$ship_cx" 'READY <pr> <full-40-hex-head> GREEN'
 has "a claudex completes-ticket: no Ship step keeps the clause" "$ship_cx" "completes-ticket: no"
@@ -428,15 +428,31 @@ done
 # Every leg and console pays these two files on every turn: keep the always-on core small
 # (rarely-read rules live in docs/handover/leg-sections/ and console-sections/).
 HANDOVER_DOCS="${HANDOVER_DOCS:-$HERE/../../../docs/handover}"
-for budget in "leg-preface.md:12352" "console-template.md:16384"; do
+for budget in "worker-preface.md:12352" "chief-template.md:16384"; do
     f="${budget%%:*}"; max="${budget##*:}"
     size="$(wc -c < "$HANDOVER_DOCS/$f" 2>/dev/null | tr -d '[:space:]')"
     [ -n "$size" ] && [ "$size" -le "$max" ] && pass "$f is within its byte budget ($size <= $max)" || fail "$f is over its byte budget (${size:-missing} > $max)"
 done
 
-tr '\n' ' ' < "$HANDOVER_DOCS/leg-preface.md" | grep -Eq 'ONE +turn.*text-only turn' \
-    && pass "leg-preface.md tells a leg to batch tool calls into ONE turn and skip text-only turns" \
-    || fail "leg-preface.md lacks the batch-tool-calls / no text-only turn rule"
+tr '\n' ' ' < "$HANDOVER_DOCS/worker-preface.md" | grep -Eq 'ONE +turn.*text-only turn' \
+    && pass "worker-preface.md tells a worker to batch tool calls into ONE turn and skip text-only turns" \
+    || fail "worker-preface.md lacks the batch-tool-calls / no text-only turn rule"
+
+# The renamed templates keep a symlink at the old path, so a launcher, chief or
+# brief that names the old path reads the same bytes until the removal release.
+for pair in leg-preface.md:worker-preface.md console-template.md:chief-template.md leg-brief-template.md:worker-brief-template.md; do
+    old="${pair%%:*}"; new="${pair##*:}"
+    [ -f "$HANDOVER_DOCS/$new" ] && [ ! -L "$HANDOVER_DOCS/$new" ] && pass "$new is a regular file" || fail "$new is missing or not a regular file"
+    [ "$(readlink "$HANDOVER_DOCS/$old" 2>/dev/null)" = "$new" ] && pass "$old is a symlink to $new" || fail "$old is not a symlink to $new"
+    cmp -s "$HANDOVER_DOCS/$old" "$HANDOVER_DOCS/$new" && pass "$old reads byte-identical to $new" || fail "$old does not read the same bytes as $new"
+done
+# A worker launched through the launcher's default preface path (the plain
+# worker branch, last of the role defaults) gets the worker preface.
+# shellcheck disable=SC2016  # $HERE is the launcher's literal text, matched not expanded
+launch_preface="$(sed -n 's#.*PREFACE:-\$HERE/../../../\(docs/handover/[a-z-]*\.md\)}.*#\1#p' "$HERE/headed-arm-leg.sh" | tail -n 1)"
+[ -n "$launch_preface" ] && cmp -s "$HERE/../../../$launch_preface" "$HANDOVER_DOCS/worker-preface.md" \
+    && pass "the launcher's default preface ($launch_preface) is the worker preface, byte for byte" \
+    || fail "the launcher's default preface (${launch_preface:-unparsed}) is not the worker preface"
 
 # --- bare --bucket resolves under the handover root; --no-worktree needs a real worktree ---
 # (the rows above stub the worktree step, so they skip the existing-worktree check)

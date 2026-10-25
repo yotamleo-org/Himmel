@@ -305,7 +305,8 @@ if (!tickLine) fp = '';
 const field = {};
 for (const m of tickLine.matchAll(/(?:^|\s)([a-z]+)=(\S*)/g)) field[m[1]] = m[2];
 const pairs = (v) => new Map((v || '').split(',').map((p) => p.split(':')).filter((p) => /^N\d+[a-z]*$/.test(p[0] || '')).map((p) => [p[0], p.slice(1).join(':')]));
-const locks = pairs(field.legs);
+// workers=, or legs= from an older tick.sh.
+const locks = pairs(field.workers ?? field.legs);
 const tails = pairs(field.tails);
 const [fleetLive, fleetCap] = (field.fleet || '').split('/').map(Number);
 const fleetOk = Number.isFinite(fleetLive) && Number.isFinite(fleetCap) && fleetCap > 0;

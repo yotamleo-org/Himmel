@@ -135,7 +135,7 @@ tick_line "N1:FRESH" "ok"
 vmrun_line DEAD
 wait_exit "$WPID"
 check "(vm) a vmrun move to DEAD ends the wait" "0" "$rc"
-check "(vm) the wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm.out")"
+check "(vm) the wake names vmrun" "WAKE tick changed=vmrun usage=PROCEED" "$(head -n1 "$WORK/vm.out")"
 
 reset_stub
 vmrun_line DEAD
@@ -157,7 +157,7 @@ tick_line "N1:FRESH" "ok"
 vmrun_line DISAGREE:2/2,online=0
 wait_exit "$WPID"
 check "(vm3) a vmrun move to DISAGREE ends the wait" "0" "$rc"
-check "(vm3) the DISAGREE wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm3.out")"
+check "(vm3) the DISAGREE wake names vmrun" "WAKE tick changed=vmrun usage=PROCEED" "$(head -n1 "$WORK/vm3.out")"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 
 reset_stub
@@ -169,7 +169,7 @@ tick_line "N1:FRESH" "ok"
 vmrun_line DISAGREE:2/2,online=1
 wait_exit "$WPID"
 check "(vm3b) a vmrun move to a partial-outage DISAGREE ends the wait" "0" "$rc"
-check "(vm3b) the partial-outage DISAGREE wake names vmrun" "WAKE tick changed=vmrun bank=PROCEED" "$(head -n1 "$WORK/vm3b.out")"
+check "(vm3b) the partial-outage DISAGREE wake names vmrun" "WAKE tick changed=vmrun usage=PROCEED" "$(head -n1 "$WORK/vm3b.out")"
 [ "$rc" = running ] && { kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null; }
 
 for recovery in ok:2/2,busy=0 off FAILING; do
@@ -208,7 +208,7 @@ tick_line "N1:FRESH" "ok"
 parked_line N1:6m
 wait_exit "$WPID"
 check "(pk2) a leg joining the parked set ends the wait" "0" "$rc"
-check "(pk2) the wake names parked" "WAKE tick changed=parked bank=PROCEED" "$(head -n1 "$WORK/pk2.out")"
+check "(pk2) the wake names parked" "WAKE tick changed=parked usage=PROCEED" "$(head -n1 "$WORK/pk2.out")"
 
 # the same legs parked in a different order is not a membership change
 reset_stub
@@ -232,7 +232,7 @@ tick_line "N1:FRESH" "ok"
 sed 's# parked=[^ ]*##' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
 check "(pk3) a leg leaving the parked set ends the wait" "0" "$rc"
-check "(pk3) the wake names parked" "WAKE tick changed=parked bank=PROCEED" "$(head -n1 "$WORK/pk3.out")"
+check "(pk3) the wake names parked" "WAKE tick changed=parked usage=PROCEED" "$(head -n1 "$WORK/pk3.out")"
 
 # --- (m3748) a leg-set change made through --legs-from is a silent baseline --
 # with --legs-from the argv never changes, so the waiter folds the
@@ -240,7 +240,7 @@ check "(pk3) the wake names parked" "WAKE tick changed=parked bank=PROCEED" "$(h
 # that moves legs=/tails= is the console's own act -- a silent baseline, the
 # same as a restart with new --legs -- while a real change on the same leg set
 # still wakes. RED control (console-wait.sh before this change): the dispatch
-# below woke with changed=legs.
+# below woke with changed=workers.
 reset_stub
 I="$(new_inbox m3748)"
 M="$WORK/m3748/console.fleet.json"
@@ -267,7 +267,7 @@ check "(m3748) and still prints nothing" "" "$(cat "$WORK/m3748.out")"
 tick_line "N2:FREE,N1:FRESH" "ok"
 wait_exit "$WPID"
 check "(m3748) a real change on the new leg set still wakes (rc 0)" "0" "$rc"
-check "(m3748) naming legs" "WAKE tick changed=legs bank=PROCEED" "$(head -n1 "$WORK/m3748.out")"
+check "(m3748) naming legs" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/m3748.out")"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # --- (l4568) a READY tail turning READY!stale (30 min, no GO file) is a wake
@@ -279,7 +279,7 @@ wait_hb "$I" || fail "(l4568) no baseline heartbeat"
 sed 's/ tails=N1:READY/ tails=N1:READY!stale/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
 check "(l4568) a READY going stale wakes the console (rc 0)" "0" "$rc"
-check "(l4568) the wake names tails" "WAKE tick changed=tails bank=PROCEED" "$(head -n1 "$WORK/l4568.out")"
+check "(l4568) the wake names tails" "WAKE tick changed=tails usage=PROCEED" "$(head -n1 "$WORK/l4568.out")"
 
 # --- acts= moving (a new READY, a second BLOCKED) wakes, though tails= did not move
 # RED control (pre-fix console-wait.sh): acts= is not in the key, so the waiter stays asleep.
@@ -291,7 +291,7 @@ wait_hb "$I" || fail "(a6292) no baseline heartbeat"
 sed 's/ acts=N1:READY#1/ acts=N1:BLOCKED#2/' "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
 wait_exit "$WPID"
 check "(a6292) a new actionable bullet wakes the console (rc 0)" "0" "$rc"
-check "(a6292) the wake names acts" "WAKE tick changed=acts bank=PROCEED" "$(head -n1 "$WORK/a6292.out")"
+check "(a6292) the wake names acts" "WAKE tick changed=acts usage=PROCEED" "$(head -n1 "$WORK/a6292.out")"
 check "(a6292) and the tick line names the leg and marker" "1" "$(grep -c 'acts=N1:BLOCKED#2' "$WORK/a6292.out")"
 
 # --- (u4959) a sustained capacity=UNDERFILLED wakes, once per streak
@@ -818,7 +818,7 @@ tick_line "N1:FRESH" "ok"
 stall_line 2887:conflict
 wait_exit "$WPID"
 check "(st) a new conflict stall ends the wait" "0" "$rc"
-check "(st) the wake names stall" "WAKE tick changed=stall bank=PROCEED" "$(head -n1 "$WORK/st.out")"
+check "(st) the wake names stall" "WAKE tick changed=stall usage=PROCEED" "$(head -n1 "$WORK/st.out")"
 
 reset_stub
 tick_line "N1:FRESH" "ok"
@@ -866,6 +866,67 @@ start "$I" "$WORK/st3.out" --legs "N1.md"
 wait_hb "$I" || fail "(st3) no baseline heartbeat"
 wait_exit "$WPID"
 check "(st3) a tick line with no stall= field is still a valid sample" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# --- (od5) the tick fields say workers=, workerset= and usage=; the waiter reads
+# workers= and the old legs= alike, and a token that only ends in workers= is not
+# the field. RED control (console-wait.sh before the rename): a tick line carrying
+# workers= has no legs= field, so every sample fails and nothing wakes.
+od5_line() { # <workers value> [max_workers value]
+    sed -e "s/ legs=[^ ]*/ workers=$1/" -e 's/ legset=/ workerset=/' -e 's/ bank=/ usage=/' \
+        -e "s/ fill=/${2:+ max_workers=$2} fill=/" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"
+}
+reset_stub
+od5_line "N1:FRESH"
+I="$(new_inbox od5a)"
+start "$I" "$WORK/od5a.out" --legs "N1.md"
+wait_hb "$I" || fail "(od5a) no baseline heartbeat on a workers= tick line"
+tick_line "N1:FRESH" "ok"; od5_line "N1:STALE"
+wait_exit "$WPID"
+check "(od5a) a workers= change wakes the chief (rc 0)" "0" "$rc"
+check "(od5a) naming workers" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/od5a.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+I="$(new_inbox od5b)"
+start "$I" "$WORK/od5b.out" --legs "N1.md"
+wait_hb "$I" || fail "(od5b) no baseline heartbeat on a legs= tick line"
+tick_line "N1:STALE" "ok"
+wait_exit "$WPID"
+check "(od5b) an old legs= change still wakes the chief (rc 0)" "0" "$rc"
+check "(od5b) under the new field name" "WAKE tick changed=workers usage=PROCEED" "$(head -n1 "$WORK/od5b.out")"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+od5_line "N1:FRESH" 1
+I="$(new_inbox od5c)"
+start "$I" "$WORK/od5c.out" --legs "N1.md"
+wait_hb "$I" || fail "(od5c) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"; od5_line "N1:FRESH" 2
+sleep 2
+tick_line "N1:FRESH" "ok"; od5_line "N1:FRESH" 3
+wait_exit "$WPID"
+check "(od5c) a max_workers= change alone does not wake" "running" "$rc"
+# The tick moving from the old names to the new ones with the same values is no change.
+tick_line "N1:FRESH" "ok"
+wait_exit "$WPID"
+check "(od5c) nor does a tick line going back to legs= with the same value" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+# A baseline an older waiter saved under legs=/legset=/bank= is the same key, not a change.
+reset_stub
+I="$(new_inbox od5d)"
+start "$I" "$WORK/od5d.out" --legs "N1.md"
+wait_hb "$I" || fail "(od5d) no baseline heartbeat"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+sed -i -e '2s/workers=/legs=/' -e '2s/workerset=/legset=/' -e '2s/usage=/bank=/' "$I.wait.state"  # gnu-ok: Linux-only kit
+check "(od5d) the saved key now carries the old names" "1" "$(sed -n 2p "$I.wait.state" | grep -c 'legs=.*legset=.*bank=')"
+: > "$I.wait"
+start "$I" "$WORK/od5d.out" --legs "N1.md"
+wait_hb "$I" || fail "(od5d) no heartbeat after the restart"
+sleep 2
+wait_exit "$WPID"
+check "(od5d) a restart over an old-names baseline does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
 # an option-shaped first argument is refused before any path is derived from it

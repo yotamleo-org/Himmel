@@ -4,7 +4,7 @@
 > only where a section here is empty.
 
 **Head:** {{HEAD_LINE}}
-**Bank at write:** {{BANK_LINE}}
+**Usage at write:** {{BANK_LINE}}
 **Operator:** `<at the station / away / asleep>`.
 
 ## How {{LETTER}} starts
@@ -56,7 +56,7 @@ pending); never re-run a written verdict.>
 
 {{SHIFT_SUMMARY}}
 
-## Rulings and judgement notes — the only part the console writes
+## Rulings and judgement notes — the only part the chief writes
 
 <Numbered, one line each: binding rulings, each worker's model, brief and
 debt, the queue's tiers and owned files. One Edit replaces this block.>

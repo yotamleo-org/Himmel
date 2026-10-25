@@ -3,6 +3,7 @@
 # the rest are real doc drift to fix by editing the doc and deleting its row. #-lines survive --write-baseline.
 docs/configuration.md	scripts/check-ci.sh	--match-head-commit
 docs/handover/console-sections/waiter.md	scripts/handover/console-kit/console-wait.sh	--token
+docs/handover/chief-template.md	scripts/handover/console-kit/console-wait.sh	--token
 docs/handover/console-template.md	scripts/handover/console-kit/console-wait.sh	--token
 docs/handover/afk-mode.md	scripts/check-ci.sh	--dangerously-skip-permissions
 docs/handover/afk-mode.md	scripts/check-ci.sh	--match-head-commit

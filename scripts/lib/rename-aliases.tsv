@@ -342,6 +342,7 @@ codex-bank-probe.ts	codex-usage-probe.ts	identifier	old-to-new	V1	X
 console-context.sh	chief-context.sh	identifier	old-to-new	V5	X
 console-judge	judge	identifier	old-to-new	V5	X
 console-judge-ro	judge-ro	identifier	old-to-new	V5	X
+console-template.md	chief-template.md	identifier	old-to-new	T	X
 console.sh	chief.sh	identifier	old-to-new	V5	X
 cr-available.sh	coderabbit-available.sh	identifier	old-to-new	V2	X
 cr-body-findings.sh	coderabbit-body-findings.sh	identifier	old-to-new	V2	X
@@ -351,5 +352,7 @@ cr-ledger-evidence.sh	review-ledger-evidence.sh	identifier	old-to-new	V2	X
 cr-merge-gate.sh	review-merge-gate.sh	identifier	old-to-new	V2	X
 cr-signal.sh	coderabbit-signal.sh	identifier	old-to-new	V2	X
 cr-trigger-ledger.sh	coderabbit-trigger-ledger.sh	identifier	old-to-new	V2	X
+leg-brief-template.md	worker-brief-template.md	identifier	old-to-new	T	X
+leg-preface.md	worker-preface.md	identifier	old-to-new	T	X
 overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
 overnight-shift	afk-shift	identifier	old-to-new	V3	X
