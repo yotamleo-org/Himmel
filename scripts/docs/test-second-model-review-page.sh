@@ -6,15 +6,17 @@
 #
 #   1. CITES   — every rule bullet under "What a finding does" carries a
 #                <!-- source: ... --> comment, and every path any source
-#                comment names exists in the tree.
+#                comment names is a file inside the tree.
 #   2. NOW     — the page text carries no "for now" reach tag.
 #   3. REACH   — "In your own project" holds while scripts/adopt.sh
 #                PORTABLE_FILES copies in the merge gate's reviewer check;
 #                "ships with the himmel checkout, not your project" holds while
 #                it does not copy .claude/commands/pr-check.md; the HIMMEL_REPO
 #                claim holds while pr-check-context.sh has the adopter lane.
-#   4. CONTROL — a fixture page citing a missing script fails case 1, and one
-#                with a "for now" tag fails case 2, so neither passes vacuously.
+#   4. CONTROL — fixture pages citing a missing script or a file outside the
+#                tree fail case 1, one with a "for now" tag fails case 2, and a
+#                commented-out adopter lane fails case 3, so none passes
+#                vacuously.
 #
 # Usage: bash scripts/docs/test-second-model-review-page.sh [page.md]
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
@@ -47,9 +49,13 @@ else:
 cites = re.findall(r"<!--\s*source:\s*(.*?)\s*-->", text, flags=re.S)
 if not cites:
     print("no source comments")
+real_root = os.path.realpath(root)
 for c in cites:
     for path in (p.strip() for p in c.split(",")):
-        if not os.path.isfile(os.path.join(root, path)):
+        full = os.path.realpath(os.path.join(root, path))
+        if os.path.isabs(path) or not full.startswith(real_root + os.sep):
+            print("cited path outside the tree: " + path)
+        elif not os.path.isfile(full):
             print("cited file missing: " + path)
 PY
 }
@@ -61,6 +67,9 @@ page_text() {
 
 # An unreadable page counts as carrying the tag, so NOW never passes on no text.
 has_for_now() { local t; t=$(page_text "$1") || return 0; grep -qi 'for now' <<< "$t"; }
+
+# An assignment line, not a comment that only names the lane.
+has_adopter_lane() { grep -qE '^[[:space:]]*anchor_lane=adopter[[:space:]]*$' "$1"; }
 
 # The PORTABLE_FILES array of scripts/adopt.sh, one path per line.
 portable_files() {
@@ -104,7 +113,7 @@ else
 fi
 if ! grep -qF 'HIMMEL_REPO' <<< "$text"; then
   bad "REACH: the page names the HIMMEL_REPO anchor"
-elif grep -qF 'anchor_lane=adopter' "$ROOT/scripts/cr/pr-check-context.sh"; then
+elif has_adopter_lane "$ROOT/scripts/cr/pr-check-context.sh"; then
   ok "REACH: pr-check-context.sh reviews another repo through the anchor"
 else
   bad "REACH: pr-check-context.sh reviews another repo through the anchor" "no anchor_lane=adopter in scripts/cr/pr-check-context.sh"
@@ -115,8 +124,12 @@ fx=$(mktemp -d -t smr-page.XXXXXX) || { bad "CONTROL: mktemp"; printf '\n%d pass
 trap 'rm -rf "$fx"' EXIT
 printf '## What a finding does\n\n- A rule. <!-- source: scripts/cr/no-such-script.sh -->\n\n## Next\n' >"$fx/cite.md"
 if [ -n "$(cite_problems "$fx/cite.md")" ]; then ok "CONTROL: a missing cited script fails CITES"; else bad "CONTROL: a missing cited script fails CITES"; fi
+printf '## What a finding does\n\n- A rule. <!-- source: %s -->\n\n## Next\n' "$fx/cite.md" >"$fx/outside.md"
+if [ -n "$(cite_problems "$fx/outside.md")" ]; then ok "CONTROL: a cited path outside the tree fails CITES"; else bad "CONTROL: a cited path outside the tree fails CITES"; fi
 printf 'It runs from your himmel clone, for now.\n' >"$fx/now.md"
 if has_for_now "$fx/now.md"; then ok "CONTROL: a 'for now' tag fails NOW"; else bad "CONTROL: a 'for now' tag fails NOW"; fi
+printf '#   - NO MATCH -> anchor_lane=adopter.\n    # anchor_lane=adopter\n' >"$fx/lane.sh"
+if has_adopter_lane "$fx/lane.sh"; then bad "CONTROL: a commented-out adopter lane fails REACH"; else ok "CONTROL: a commented-out adopter lane fails REACH"; fi
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
