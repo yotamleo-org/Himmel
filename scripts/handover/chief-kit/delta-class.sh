@@ -60,6 +60,7 @@ command -v jq >/dev/null 2>&1 || trust
 work=$(mktemp -d "${TMPDIR:-/tmp}/delta-class.XXXXXX") || trust # prim-ok: a read-only classifier's scratch dir, removed by the EXIT trap
 trap 'rm -rf "$work"' EXIT
 
+# read-sink-ok: the path is a verdict file the chief names; the classifier only parses it and prints one word
 verdict_line() { tr -d '\r' < "$1" | awk '/^## Verdict[[:space:]]*$/ { p = 1; next } p && NF { print; exit }'; }
 # shellcheck disable=SC2016  # the backticks are literal verdict-line text, not a command substitution
 verdict_word() { verdict_line "$1" | sed -nE 's/^\*\*(GO|NO-GO)\*\* for head `[0-9a-f]{40}`\.?$/\1/p'; }
