@@ -236,7 +236,7 @@ automated review fails are NOT persisted (they block the marker and get fixed in
 the corpus was missing the failures that matter. The lessons loop
 ([lesson-audit.md](lesson-audit.md)) consumes these ("failed traces become the
 next test cases"); this page places the emission points, and the loop owns
-what is learned from them. A unified autonomy loop over them is planned. No new storage system (YAGNI) — session
+what is learned from them. No new storage system (YAGNI) — session
 dirs + issues are the corpus v1, with the one added write above.
 
 ## 7. CI promotion path

@@ -11,7 +11,7 @@ deep doc lives.
 
 | Part | What it is | Default | Start it with |
 |---|---|---|---|
-| [Mission Control](#mission-control-the-surface) | the Fleet page, the chief's board, Telegram, the statusline and the morning report | each piece opt-in | `himmelctl ui`, `board.mjs`, `bun supervisor.ts` |
+| [Mission Control](#mission-control-the-surface) | the Fleet page, the chief's board, Telegram, the statusline, the morning report and the metrics | each piece opt-in | `himmelctl ui`, `board.mjs`, `bun supervisor.ts` |
 | [The fleet](#the-fleet-the-engine) | the chief, its workers, the judge and the GO that gates a merge | opt-in | `/chief new` |
 | [Unattended runs](#unattended-runs-the-driver) | arming, relaunch on a usage cap, AFK and overnight shifts | off | `/afk-shift`, `/overnight-shift` |
 | [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup, reads only |
@@ -78,7 +78,7 @@ and `/escalations` (JSON) and `/events` (SSE).
 
 - **Arming.** `scripts/handover/arm-resume.sh` starts a session from its
   handover doc at a set time.
-- **Usage caps.** When a session hits its usage cap,
+- **Usage caps.** When a session nears its usage cap,
   `scripts/hooks/auto-arm-on-cap.sh` arms it again for the reset.
 - **Shifts.** `/afk-shift` and `/overnight-shift` run the fleet with nobody at
   the keyboard and stop only on the block-only criteria:

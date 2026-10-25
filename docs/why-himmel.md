@@ -18,7 +18,9 @@ replacing it. Each failure mode below is fixed at the lowest layer that can
 fix it. A guarded session fixes the forgotten rule, and handover fixes the
 context that dies with the session. At the top, Jarvis, the command layer
 ([jarvis-subsystems.md](jarvis-subsystems.md)), runs a fleet of guarded
-sessions as one software factory.
+sessions as one software factory. Runs on Claude Code today; under Codex the
+guardrails fire through the hook adapter and AGENTS.md; other harnesses are
+audited, not ported.
 
 ---
 

@@ -32,12 +32,15 @@ turn it off.
 ## What himmel is
 
 himmel is an agentic OS for a solo operator or a small team who works with
-Claude Code every day. It is a harness that sits on top of Claude Code's own
-harness and adds to it. It wraps Claude Code in hooks, guardrails, slash
-commands, a local Jira CLI and a handover system, so the work follows a
-worktree-isolated, PR-gated, Jira-tracked workflow without anyone having to
-remember the rules. On top of that it runs as a software factory: a fleet of
+Claude Code every day. It is a bootstrap harness that you install on top of
+Claude Code's own harness, and it adds to that harness without replacing it.
+It wraps Claude Code in hooks, guardrails, slash commands, a local Jira CLI and
+a handover system, so the work follows a worktree-isolated, PR-gated,
+Jira-tracked workflow without anyone having to remember the rules. On top of that it runs as a software factory: a fleet of
 sessions that turns tickets into reviewed, merged PRs.
+
+Runs on Claude Code today; under Codex the guardrails fire through the hook
+adapter and AGENTS.md; other harnesses are audited, not ported.
 
 It has four layers, and each one works without the layers above it:
 
@@ -49,7 +52,8 @@ It has four layers, and each one works without the layers above it:
    has each result judged and merges on GO. [Jarvis](docs/jarvis-subsystems.md)
    describes it.
 4. **Mission Control, the surface.** The Fleet page, the chief's board,
-   Telegram and the statusline let you watch the fleet and steer the chief.
+   Telegram, the statusline, the morning report and the metrics let you watch
+   the fleet and steer the chief.
 
 The idea is simple: anything you would otherwise repeat by hand (checking a
 commit, reviewing a PR, writing down where you stopped, restarting after a
