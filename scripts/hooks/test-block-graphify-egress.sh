@@ -476,9 +476,11 @@ if [ "$rc" -eq 2 ] && grep -q 'timed out' <<<"$out"; then ok "a timed-out comman
 # The hook's entry timeout is 15 s and nothing bounds it from outside, so a command large enough to push the
 # model's own bound (10 s plus 1 s per KiB past 4 KiB) past that must still end in a deny inside 15 s.
 mkdir -p "$T/stuck-jq" && printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) exec sleep 60 ;; esac\nexec %s "$@"\n' "$(command -v jq)" >"$T/stuck-jq/jq" && chmod +x "$T/stuck-jq/jq"
-if command -v timeout >/dev/null 2>&1; then
+# shellcheck source=../lib/timeout-bin.sh
+. "$HOOKS_DIR/../lib/timeout-bin.sh" 2>/dev/null
+if [ -n "${_TIMEOUT_BIN:-}" ]; then
     t0=$(date +%s)
-    out="$(jq -n --arg cmd "grep -rn graphify $T/luna; echo $(head -c 12288 /dev/zero | tr '\0' x)" '{tool_name:"Bash",tool_input:{command:$cmd}}' | XDG_STATE_HOME="$T/state" PATH="$T/stuck-jq:$PATH" CLAUDE_PROJECT_DIR="$PROJECT" timeout -k 2 30 bash "$HOOK" 2>&1)"; rc=$?
+    out="$(jq -n --arg cmd "grep -rn graphify $T/luna; echo $(head -c 12288 /dev/zero | tr '\0' x)" '{tool_name:"Bash",tool_input:{command:$cmd}}' | XDG_STATE_HOME="$T/state" PATH="$T/stuck-jq:$PATH" CLAUDE_PROJECT_DIR="$PROJECT" "$_TIMEOUT_BIN" -k 2 30 bash "$HOOK" 2>&1)"; rc=$?
     el=$(($(date +%s) - t0))
     if [ "$rc" -eq 2 ] && grep -q 'timed out' <<<"$out" && [ "$el" -lt 15 ]; then ok "a large command that mentions graphify is denied inside the 15 s entry timeout (${el}s)"; else bad "large command: rc=$rc ${el}s out=$out"; fi
 else

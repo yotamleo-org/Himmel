@@ -218,10 +218,12 @@ case "$out" in *"timed out"*"rc=2") echo "PASS a timed-out command model denies 
 # The hook's entry timeout is 15 s and nothing bounds it from outside, so a command large enough to push the
 # model's own bound (10 s plus 1 s per KiB past 4 KiB) past that must still end in a deny inside 15 s.
 mkdir -p "$NOSH/stuck-jq" && printf '#!/usr/bin/env bash\ncase "$*" in *"def positions("*) exec sleep 60 ;; esac\nexec %s "$@"\n' "$(command -v jq)" >"$NOSH/stuck-jq/jq" && chmod +x "$NOSH/stuck-jq/jq"
-if command -v timeout >/dev/null 2>&1; then
+# shellcheck source=../lib/timeout-bin.sh
+. "$(dirname "$HOOK")/../lib/timeout-bin.sh" 2>/dev/null
+if [ -n "${_TIMEOUT_BIN:-}" ]; then
     t0=$(date +%s)
     # shellcheck disable=SC2069
-    out=$(printf '%s' "$(j_bash "docker ps; echo $(head -c 12288 /dev/zero | tr '\0' x)")" | XDG_STATE_HOME="$NOSH/state" PATH="$NOSH/stuck-jq:$PATH" timeout -k 2 30 bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+    out=$(printf '%s' "$(j_bash "docker ps; echo $(head -c 12288 /dev/zero | tr '\0' x)")" | XDG_STATE_HOME="$NOSH/state" PATH="$NOSH/stuck-jq:$PATH" "$_TIMEOUT_BIN" -k 2 30 bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
     el=$(($(date +%s) - t0))
     case "$out" in *"timed out"*"rc=2") if [ "$el" -lt 15 ]; then echo "PASS a large docker command is denied inside the 15 s entry timeout (${el}s)"; else echo "FAIL a large docker command is denied inside the 15 s entry timeout - took ${el}s"; FAILED=$((FAILED + 1)); fi ;; *) echo "FAIL a large docker command is denied inside the 15 s entry timeout - ${el}s $out"; FAILED=$((FAILED + 1)) ;; esac
 else
