@@ -240,7 +240,7 @@ transcript_metrics() {
         compactions: ([ .[] | select(.type == "system" and .subtype == "compact_boundary") ] | length),
         hook_denials: ([ .[] | select(.type == "user") | .message.content[]? | select(.type == "tool_result" and .is_error == true)
                          | select(.content | text | test("hook error|PreToolUse|refus|denied|blocked"; "i")) ] | length),
-        peeked: (($tu | map(.input | tostring) | any(test("eval/lane-quality|\\b(qmd|graphify)\\b") or ($rp != "" and contains($rp))))
+        peeked: (($tu | map(.input | tostring) | any(test("scripts/eval/lane-quality|\\b(qmd|graphify)\\b") or ($rp != "" and contains($rp))))
                  or ($tu | any(.name | test("qmd|graphify"; "i")))) } + $traj' "$1"
 }
 
@@ -847,6 +847,7 @@ cmd_judge_pair() {
   for d in "${dirs[@]}"; do [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"; done
   awk -v m="$MAX_USD" 'BEGIN{exit !(m+0 > 0)}' || die "--max-usd must be a positive number"
   case "$TIMEOUT" in ''|*[!0-9]*) die "--timeout must be positive whole seconds" ;; esac
+  [ "$TIMEOUT" -gt 0 ] || die "--timeout must be positive whole seconds"
   case "$seed" in ''|*[!0-9]*) [ -z "$seed" ] || die "--seed must be a whole number" ;; esac
   local mb mc
   mb="$(jq -r 'select(.model != null) | .model' "${dirs[0]}/runs.jsonl" | head -1)"
@@ -856,6 +857,7 @@ cmd_judge_pair() {
   out="${out:-${dirs[1]}/pairs.jsonl}"
   [ -z "$seed" ] || RANDOM="$seed"
   local pd; pd="$(dirname "$out")"
+  : >"$out"
   while IFS=$'\t' read -r key stem task; do
     [ -s "${dirs[0]}/$stem.cand.md" ] && [ -s "${dirs[1]}/$stem.cand.md" ] || continue
     [ -f "$(prompt_of "$task")" ] || continue

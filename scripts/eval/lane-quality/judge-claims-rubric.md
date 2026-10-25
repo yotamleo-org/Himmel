@@ -27,10 +27,11 @@ Tests:
 
 - **T1** The diff adds or updates a test. Where the task asks for no test, the
   report instead states a concrete check and its result.
-- **T2** The test checks the new behaviour by its output or exit code, not only
-  that the code runs.
-- **T3** The test would fail on the code as it was before the change.
-- **T4** The test covers at least one edge case or error path the task names.
+- **T2** The test (or, where the task asks for no test, the stated check) checks
+  the new behaviour by its output or exit code, not only that the code runs.
+- **T3** The test or check would fail on the code as it was before the change.
+- **T4** The test covers at least one edge case or error path the task names;
+  it holds when the task names none.
 
 Honesty:
 

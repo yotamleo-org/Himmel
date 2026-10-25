@@ -182,6 +182,7 @@ sid="sess-$$"
 {
   echo '{"type":"assistant","version":"9.9.9","message":{"id":"m1","content":[{"type":"tool_use","id":"tu1","name":"Read","input":{"file_path":"lib/greet.sh"}}]}}'
   [ -z "${LQ_FAKE_PEEK:-}" ] || jq -cn --arg p "$LQ_FAKE_PEEK/lib/greet.sh" '{type:"assistant",version:"9.9.9",message:{id:"m2",content:[{type:"tool_use",id:"tu2",name:"Read",input:{file_path:$p}}]}}'
+  [ -z "${LQ_FAKE_OWN:-}" ] || jq -cn --arg p "$PWD/lib/greet.sh" '{type:"assistant",version:"9.9.9",message:{id:"m3",content:[{type:"tool_use",id:"tu3",name:"Read",input:{file_path:$p}}]}}'
 } >"$LQ_TRANSCRIPTS/p/$sid.jsonl"
 jq -cn --arg s "$sid" '{type:"result",subtype:"success",is_error:false,session_id:$s,total_cost_usd:0.1,num_turns:2,duration_ms:10,result:"Changed greet.sh; tests/test-greet.sh passes."}'
 FAKE
@@ -251,10 +252,18 @@ bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-c" --judge-model opus >"$TMP/pair-b
 check "judge-pair pairs a run only with one on the same task, repeat, base and variant" '[ "$rc" -ne 0 ] && [ ! -s "$TMP/fake.log" ]'
 : >"$TMP/fake.log"; rm -f "$TMP/fake.log.jn"
 LQ_FAKE_PAIR_NONE=1 bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model opus --out "$TMP/pairs-none.jsonl" >"$TMP/pair-none.log" 2>&1
+bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model opus --timeout 0 --out "$TMP/pairs-t0.jsonl" >/dev/null 2>&1; rc=$?
+check "judge-pair refuses --timeout 0 (no limit)" '[ "$rc" -ne 0 ] && [ ! -e "$TMP/pairs-t0.jsonl" ]'
+bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model opus --out "$TMP/pairs-twice.jsonl" >/dev/null 2>&1
+bash "$RT" judge-pair "$TMP/out-a" "$TMP/out-b" --judge-model opus --out "$TMP/pairs-twice.jsonl" >"$TMP/pair-twice.log" 2>&1
+check "a re-run of judge-pair replaces its pairs file, never double-counts" '[ "$(wc -l <"$TMP/pairs-twice.jsonl" | tr -d " ")" = 1 ] && grep -q "^1 pairs judged" "$TMP/pair-twice.log"'
 check "a pair whose judge gave no preference is unjudged, never a non-flip" 'jq -e ".judged == false and .flip == null and .preferred == null" "$TMP/pairs-none.jsonl" >/dev/null && grep -q "0 pairs judged, 1 unjudged" "$TMP/pair-none.log"'
 LQ_FAKE_PEEK="$TMP/src" LQ_FAKE_FIX_DIR="$TMP/fixsrc" bash "$RT" run --lane native --model claude-haiku-5-5 --effort high --no-judge \
   --tasks real-himmel-9001-41 --out "$TMP/out-peek" >/dev/null 2>&1
 check "a read of the source checkout by path is flagged as a peek" '[ "$(jq .peeked "$TMP/out-peek/runs.jsonl")" = true ]'
+LQ_WORK_ROOT="$TMP/home/.himmel/eval/lane-quality/work" LQ_FAKE_OWN=1 LQ_FAKE_FIX_DIR="$TMP/fixsrc" bash "$RT" run --lane native \
+  --model claude-haiku-5-5 --effort high --no-judge --tasks real-himmel-9001-41 --out "$TMP/out-own" >/dev/null 2>&1
+check "a read by absolute path inside the agent's own work dir under the default work root is not a peek" '[ "$(jq .peeked "$TMP/out-own/runs.jsonl")" = false ]'
 LQ_FAKE_NOJSON=1 bash "$RT" run --lane native --model claude-haiku-5-5 --effort high --no-judge \
   --tasks real-himmel-9001-41 --out "$TMP/out-nj" >/dev/null 2>&1
 check "a killed agent is recorded as plumbing (timeout), not as a model failure" '[ "$(jq -r .plumbing "$TMP/out-nj/runs.jsonl")" = timeout ]'

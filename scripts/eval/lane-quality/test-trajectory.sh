@@ -260,7 +260,8 @@ psweep() { # psweep <out> <args...>: one shell-red-green task on the fake agent;
   local name="$1" out="$TMP/$1"; shift
   HIMMEL_BILLED_OK=1 LQ_CLAUDE_BIN="$TMP/pbin/claude" LQ_PREFLIGHT="$TMP/pbin/preflight" LQ_REPO="$TMP/prepo" \
     LQ_BASE_SHA="$(git -C "$TMP/prepo" rev-parse HEAD)" LQ_WORK_ROOT="$TMP/pwork" LQ_TRANSCRIPTS="$TMP/pproj" \
-    LQ_FAKE_RUN="$HERE/run.sh" bash "$HERE/run.sh" run --lane native --model m --tasks shell-red-green --out "$out" "$@" >"$out.log" 2>&1
+    LQ_FAKE_RUN="$HERE/run.sh" bash "$HERE/run.sh" run --lane native --model m --tasks shell-red-green --out "$out" "$@" >"$out.log" 2>&1 \
+    || { echo "run-failed"; return; }
   jq -s -r --arg o "/$name/" 'map(select((.artifact // "") | contains($o))) | .[0].status // "none"' "$HIMMEL_EVAL_RUNS_LEDGER"
 }
 check "control: a judged sweep with every score present is ok" '[ "$(psweep p-ok)" = ok ]'
