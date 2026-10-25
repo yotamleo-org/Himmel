@@ -2618,9 +2618,14 @@ EOF" \
     'bash ./scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh' \
     'cd /tmp/e7130 && bash scripts/handover/console-kit/append-results.sh scripts/cr/write-verdicts.sh' \
     "printf '%n' PATH; bash scripts/handover/console-kit/append-results.sh \$D 'scripts/cr/*'" \
-    "printf 'a%ln' PATH; bash scripts/handover/console-kit/append-results.sh \$D 'scripts/cr/*'"; do
+    "printf 'a%ln' PATH; bash scripts/handover/console-kit/append-results.sh \$D 'scripts/cr/*'" \
+    "cat ?(scripts/cr/write-verdicts.sh)" \
+    'path=(/tmp/p7130); bash scripts/handover/console-kit/append-results.sh $D "scripts/cr/*"' \
+    'for path in /tmp/p7130; do bash scripts/handover/console-kit/append-results.sh $D "scripts/cr/*"; done'; do
     run "7130 class1 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
 done
+run "7130 class1 [a quoted message with parentheses] -> allow" 0 \
+    "$(payload "echo 'fix(hooks): a bullet' scripts/cr/*" "$WT")" "$HR"
 run "7130 class1 [printf with a newline escape] -> allow" 0 \
     "$(payload "printf '%s\\n' scripts/cr/* | head -3" "$WT")" "$HR"
 run "7130 class1 [the anchor's bullet writer by absolute path] -> allow" 0 \

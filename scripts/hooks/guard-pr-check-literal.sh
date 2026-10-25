@@ -2490,17 +2490,20 @@ fi
 # keeps the text scan below, so this only lifts a deny raised on data.
 # Arithmetic, [[ ]], ${x@P} and a subscripted expansion can run a
 # substitution the model does not list; a for/select loop variable is an
-# assignment it does not list either (only an upper-case name can be a
-# dangerous one), and neither is a printf %n conversion, which assigns the
+# assignment it does not list either (only an upper-case name or a zsh name
+# tied to one, like path, can be a dangerous one), and neither is a printf
+# %n conversion, which assigns the
 # variable its argument names; a command or process substitution's output is re-split and
-# globbed; and a write to a file can hold text a later call runs. Each keeps
-# the text scan. The bullet writer is trusted only by the anchor's path, or
+# globbed; a write to a file can hold text a later call runs; and the Bash
+# tool runs zsh, whose glob qualifiers (`*(e:'cmd':)`, `x(N)`), extglob-shaped
+# words and ${(e)x}/${~x} expansions can run a command the bash model reads as
+# a plain word. Each keeps the text scan. The bullet writer is trusted only by the anchor's path, or
 # by the cwd-relative path with no cd and the cwd's copy byte-equal to the
 # anchor's: any other copy may run its arguments.
 # shellcheck disable=SC2016 # a jq program, never expanded by bash
 AST_JQ='def lit: .t == "lit" and (.g | not);
   def outw: (.op | test(">")) and ((.op == ">&" and .w != null and .w.t == "lit" and (.w.v | test("^([0-9]+-?|-)$"))) | not);
-  def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|BASH_FUNC.*)$");
+  def danger: test("^(PATH|BASH_ENV|ENV|IFS|CDPATH|HOME|PWD|OLDPWD|SHELLOPTS|BASHOPTS|GLOBIGNORE|PS4|PROMPT_COMMAND|HIMMEL_REPO|BASH_CMDS|BASH_ALIASES|LD_.*|GIT_.*|BASH_FUNC.*|path|cdpath|fpath|manpath|module_path)$");
   def ok: .opaque == null and ((.via // []) | length) == 0
     and ((((.assigns // []) | length) == 0) or (.prog == null and all(.assigns[]; danger | not)))
     and all(.redirs[]; (outw | not) or (.w != null and (.w | lit) and .w.v == "/dev/null"))
@@ -2534,8 +2537,11 @@ ast_data_only() {
     [ -n "$anchor" ] || return 1
     # shellcheck disable=SC2016 # literal patterns, never expanded
     case "$cmd" in *'@P'* | *'(('* | *'$['* | *'[['* | *'$('* | *'`'* | *'<('* | *'>('*) return 1 ;; esac
+    # shellcheck disable=SC2016 # literal patterns, never expanded
+    case "$cmd" in *'*('* | *'?('* | *'+('* | *'@('* | *'!('* | *'${('* | *'${~'* | *'$~'*) return 1 ;; esac
+    [[ "$cmd" =~ [^[:space:]\;\&\|\<\>\(]\([^\)]*\)([[:space:]\;\&\|\<\>]|$) ]] && return 1
     [[ "$cmd" =~ \$\{[^}]*\[ ]] && return 1
-    [[ "${cmd//$'\\\n'/}" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+[[:alnum:]_]*[[:upper:]] ]] && return 1
+    [[ "${cmd//$'\\\n'/}" =~ (^|[^[:alnum:]_])(for|select)[[:space:]]+([[:alnum:]_]*[[:upper:]]|(path|cdpath|fpath|manpath|module_path)([^[:alnum:]_]|$)) ]] && return 1
     lib=${BASH_SOURCE[0]%/*}/../lib/bash-ast.sh
     # shellcheck source=../lib/bash-ast.sh
     { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || return 1

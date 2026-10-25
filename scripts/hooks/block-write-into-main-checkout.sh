@@ -2495,7 +2495,9 @@ _bwimc_unq_eq() {
 # _bwimc_chdir_model RAW: a wrapper chdir operand (`env -C RAW`)
 # moves _bwimc_ecwd like a `cd RAW` would. A non-literal operand (`$`, a
 # backtick, a glob, a backslash, an odd quote) or one that does not resolve
-# marks the cwd unresolved, so a relative write target behind it denies.
+# marks the cwd unresolved, so a relative write target behind it denies. A
+# relative operand after an earlier cd also marks it unresolved: that cd may
+# have failed or never run, so the modelled cwd is not where the shell is.
 _bwimc_chdir_model() {
     local raw="$1" carg r q="${1//[!\"]/}" a="${1//[!\']/}"
     case "$raw" in
@@ -2505,7 +2507,9 @@ _bwimc_chdir_model() {
     _bwimc_unqv "$raw"; carg=$_BWIMC_UNQ
     case "$carg" in
         /*|[A-Za-z]:/*|[A-Za-z]:\\*) ;;
-        *) [ "$_bwimc_ecwd_unres" = 0 ] || return 0 ;;
+        *) if [ "$_bwimc_ecwd_unres" = 1 ] || [ "$_bwimc_ecwd" != "$_bwimc_cwd" ]; then
+               _bwimc_ecwd_unres=1; return 0
+           fi ;;
     esac
     if r=$(_bwimc_resolve_abs "$carg" "$_bwimc_ecwd"); then
         _bwimc_ecwd="$r"; _bwimc_ecwd_unres=0

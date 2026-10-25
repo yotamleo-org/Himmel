@@ -702,6 +702,12 @@ rm -f "$FIX/wt/plink"
 # skips the cd back), so the real cwd is the primary, not the payload cwd.
 check_both "96f fromW: cd primary && mkdir wt && cd wt; cd wt/newscratch; echo x > a.txt denies" block \
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/primary && mkdir $FIX/wt && cd $FIX/wt; cd $FIX/wt/newscratch; echo x > a.txt\",\"cwd\":\"$FIX/wt\"}}"
+# 96g/96h: a relative `env -C` operand after a cd that failed or never ran
+# resolves against the primary, not the modelled cwd.
+check_both "96g fromP: cd wt/missing; env -C scripts tee ../a.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"cd $FIX/wt/missing7130; env -C scripts tee ../a.txt </dev/null\",\"cwd\":\"$FIX/primary\"}}"
+check_both "96h fromP: false && cd wt; env -C scripts tee ../a.txt denies" block \
+    "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"false && cd $FIX/wt; env -C scripts tee ../a.txt </dev/null\",\"cwd\":\"$FIX/primary\"}}"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"
 [ "$fail" -eq 0 ]
