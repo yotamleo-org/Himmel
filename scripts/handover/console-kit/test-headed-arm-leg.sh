@@ -115,7 +115,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT="$HERE/headed-arm-leg.sh"
+SCRIPT="$HERE/headed-arm-worker.sh"
 # The bare tool names leg-impl denies from the registry, ahead of the launcher's own deny rules.
 TRIM_DENY="$(jq -c '.profiles["leg-impl"].denyTools' "$HERE/../../lanes/plugin-profiles.json")"
 HEADED_ARM="$HERE/../headed-arm.sh"
@@ -3385,12 +3385,12 @@ mk_launcher_tree() {
   for e in "$root"/*; do b="$(basename "$e")"; [ "$b" = scripts ] || ln -s "$e" "$dst/$b"; done
   for e in "$root"/scripts/*; do b="$(basename "$e")"; [ "$b" = handover ] || ln -s "$e" "$dst/scripts/$b"; done
   for e in "$root"/scripts/handover/*; do b="$(basename "$e")"; [ "$b" = console-kit ] || ln -s "$e" "$dst/scripts/handover/$b"; done
-  for e in "$root"/scripts/handover/console-kit/*; do b="$(basename "$e")"; [ "$b" = headed-arm-leg.sh ] || ln -s "$e" "$dst/scripts/handover/console-kit/$b"; done
-  cp "$HERE/headed-arm-leg.sh" "$dst/scripts/handover/console-kit/headed-arm-leg.sh"
+  for e in "$root"/scripts/handover/console-kit/*; do b="$(basename "$e")"; [ "$b" = headed-arm-worker.sh ] || ln -s "$e" "$dst/scripts/handover/console-kit/$b"; done
+  cp "$HERE/headed-arm-worker.sh" "$dst/scripts/handover/console-kit/headed-arm-worker.sh"
 }
 # mutate_launcher <tree> <sed args...> - rewrite the tree's launcher in place.
 mutate_launcher() {
-  local f="$1/scripts/handover/console-kit/headed-arm-leg.sh"; shift
+  local f="$1/scripts/handover/console-kit/headed-arm-worker.sh"; shift
   sed "$@" "$f" > "$f.new" && mv "$f.new" "$f" && chmod 755 "$f"
 }
 
@@ -3399,7 +3399,7 @@ mutate_launcher() {
 mut6507="$tmp/revert-6507"; mk_launcher_tree "$mut6507"
 # shellcheck disable=SC2016  # the sed patterns hold a literal $.
 mutate_launcher "$mut6507" -e 's|^\( *\)EFFORT_SOURCE="WORKER_SESSION_EFFORT"$|\1:|' -e 's|^\( *\)leg_propagate_env CLAUDE_CODE_EFFORT_LEVEL "\$WORKER_SESSION_EFFORT"$|\1:|'
-mut6507_script="$mut6507/scripts/handover/console-kit/headed-arm-leg.sh"
+mut6507_script="$mut6507/scripts/handover/console-kit/headed-arm-worker.sh"
 check "34k control: the reverted launcher differs from the real one in exactly the two resolver lines" "$(diff "$SCRIPT" "$mut6507_script" | grep -c '^>')" "2"
 rc34k=0
 out34k="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" WORKER_SESSION_EFFORT=high CLAUDE_CODE_EFFORT_LEVEL='' bash "$mut6507_script" --dry-run --no-profile HIMMEL-9999-leg-34k "$doc_tier_opus" /tmp/nosig 99999999999 "$tmp/leg34k.log" claude-opus-5-5 2>&1)" || rc34k=$?
@@ -3415,7 +3415,7 @@ check "34l a preset launcher token over WORKER_SESSION_EFFORT still launches (34
 mutmodel="$tmp/mutate-model"; mk_launcher_tree "$mutmodel"
 # shellcheck disable=SC2016  # the sed pattern holds a literal $.
 mutate_launcher "$mutmodel" -e 's|^export HEADED_ARM_REQUIRED_AUTOCOMPACT="\$RESOLVED_AUTOCOMPACT"$|&; MODEL=claude-haiku-5-5|'
-mutmodel_script="$mutmodel/scripts/handover/console-kit/headed-arm-leg.sh"
+mutmodel_script="$mutmodel/scripts/handover/console-kit/headed-arm-worker.sh"
 check "34m control: the mutated launcher differs from the real one in exactly one line" "$(diff "$SCRIPT" "$mutmodel_script" | grep -c '^>')" "1"
 rc34m=0
 out34m="$(HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" CLAUDE_CODE_EFFORT_LEVEL='' bash "$mutmodel_script" --dry-run --no-profile HIMMEL-9999-leg-34m some/doc.md /tmp/nosig 99999999999 "$tmp/leg34m.log" claude-sonnet-5-5 2>&1)" || rc34m=$?
@@ -3487,7 +3487,7 @@ for e34n in "$HERE"/../../lib/*; do ln -s "$(cd "$(dirname "$e34n")" && pwd)/$(b
 rm "$tree34n/scripts/lib/chokepoint-seam-guard.sh"; cp "$HERE/../../lib/chokepoint-seam-guard.sh" "$tree34n/scripts/lib/chokepoint-seam-guard.sh"
 d34n="$tmp/c34n-explicit"; mk_exec_stubs "$d34n" "HIMMEL-9999-leg-34n-explicit"
 rc34n=0
-CLAUDE_CODE_EFFORT_LEVEL=xhigh WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-leg.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
+CLAUDE_CODE_EFFORT_LEVEL=xhigh WORKER_SESSION_EFFORT=high HEADED_ARM_WORKER_LANES_JSON="$lanes_fixture_med" e2e_leg "$tree34n/scripts/handover/console-kit/headed-arm-worker.sh" "$d34n" "HIMMEL-9999-leg-34n-explicit" >/dev/null 2>&1 || rc34n=$?
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the launcher exits 0" "$rc34n" "0"
 check "34n explicit CLAUDE_CODE_EFFORT_LEVEL=xhigh: the claude process gets xhigh" "$(e2e_effort "$d34n")" "xhigh"
 
@@ -3997,7 +3997,7 @@ check "41i-4152 a non-consult launch with a PATH token still passes (exit 0)" "$
 # with HEADED_ARM_WORKER_TARGET unset, a consult's default target is canonicalised
 # too, so a script reached through a symlinked kit directory still execs the real headed-arm.sh.
 ln -sfn "$(cd -P "$HERE" && pwd -P)" "$tmp/kit-link4152"
-rc=0; out="$(unset HEADED_ARM_WORKER_TARGET; WORKER_SESSION_REPO="$tmp/repo41c" bash "$tmp/kit-link4152/headed-arm-leg.sh" --dry-run --consult --profile design-motion HIMMEL-4152-t "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
+rc=0; out="$(unset HEADED_ARM_WORKER_TARGET; WORKER_SESSION_REPO="$tmp/repo41c" bash "$tmp/kit-link4152/headed-arm-worker.sh" --dry-run --consult --profile design-motion HIMMEL-4152-t "$some_doc" /tmp/nosig 99999999999 /tmp/leg.log 2>&1)" || rc=$?
 check "41i-4152 a consult via a symlinked kit dir passes (exit 0)" "$rc" "0"
 contains "41i-4152 the default exec target is the canonical headed-arm.sh" "$out" "would exec: $target_canon41 "
 # bash startup tokens in the launcher env would run caller code before

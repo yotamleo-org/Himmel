@@ -302,7 +302,7 @@ while IFS= read -r key; do
         elif [ "$TS_RULE" = D0 ] && [ "$TS_J_STATUS" = Done ] && done_record_stale "$key"; then
             TS_SNAPSHOT_DIR="" TS_EVENT=""
             funnel=$((funnel + 1))
-            bash "$HERE/leg-jira-status.sh" "$key" --event sweep --repo "$REPO" >/dev/null 2>&1
+            bash "$HERE/worker-jira-status.sh" "$key" --event sweep --repo "$REPO" >/dev/null 2>&1
             continue
         fi
         TS_SNAPSHOT_DIR="" TS_EVENT=""
@@ -317,7 +317,7 @@ while IFS= read -r key; do
     funnel=$((funnel + 1))
     before=0
     [ ! -e "$LOG" ] || before=$(wc -l < "$LOG")
-    bash "$HERE/leg-jira-status.sh" "$key" --event sweep --repo "$REPO" >/dev/null 2>&1
+    bash "$HERE/worker-jira-status.sh" "$key" --event sweep --repo "$REPO" >/dev/null 2>&1
     outcome=""
     [ ! -e "$LOG" ] || outcome=$(tail -n "+$((before + 1))" "$LOG" | jq -rs --arg k "$key" \
         '[.[] | select(.key == $k)] | ((map(select(.result == "miss" or .result == "deferred")) | first) // last) | select(. != null) | [.result, (.stage // "")] | @tsv' 2>/dev/null)

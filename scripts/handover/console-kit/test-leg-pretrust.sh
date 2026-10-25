@@ -24,7 +24,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT="$HERE/leg-pretrust.sh"
+SCRIPT="$HERE/worker-pretrust.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-pretrust-test.XXXXXX")" || { echo "FAIL: mktemp" >&2; exit 1; }
 tmp="$(cd "$tmp" && pwd -P)"
 trap 'rm -rf "$tmp"' EXIT
@@ -196,7 +196,7 @@ check "9g key override does not widen the dir check: exit 3" "$rc" "3"
 # 10. the pilot jail launcher seeds exactly its own jail key into exactly its row config.
 sb="$HERE/../../eval/lane-quality/pilot-4869/sandbox.sh"
 check "10a sandbox.sh launch seeds \$JWT into \$ROWCONF" "$(grep -c 'WORKER_SESSION_PRETRUST_CONFIG="$ROWCONF/.claude.json" WORKER_SESSION_PRETRUST_KEY="$JWT"' "$sb")" "1"
-check "10b only one pretrust call in sandbox.sh" "$(grep -c 'leg-pretrust.sh' "$sb")" "1"
+check "10b only one pretrust call in sandbox.sh" "$(grep -c 'worker-pretrust.sh' "$sb")" "1"
 
 # 11. the jail can write the row's config dir, so in seam
 # mode a symlinked config, sidecar or lock is refused (exit 3) and nothing outside is touched.

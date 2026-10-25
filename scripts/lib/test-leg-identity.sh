@@ -9,7 +9,7 @@
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=leg-identity.sh
-. "$HERE/leg-identity.sh"
+. "$HERE/worker-identity.sh"
 
 PASS=0
 FAIL=0

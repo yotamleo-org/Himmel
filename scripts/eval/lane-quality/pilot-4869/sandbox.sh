@@ -292,7 +292,7 @@ case "$mode" in
     # The jailed claude runs at $JWT with $ROWCONF as its lane config, so the folder-trust
     # flag (HIMMEL-5068) must be seeded there, under that exact key; non-fatal like the caller's.
     WORKER_SESSION_PRETRUST_CONFIG="$ROWCONF/.claude.json" WORKER_SESSION_PRETRUST_KEY="$JWT" \
-      bash "$REPO/scripts/handover/console-kit/leg-pretrust.sh" "$LANE" "$WT" \
+      bash "$REPO/scripts/handover/console-kit/worker-pretrust.sh" "$LANE" "$WT" \
       || echo "pilot-sandbox: warning: could not pre-trust $JWT in $ROWCONF" >&2
     if [ -z "${!KEY:-}" ]; then
       # shellcheck source=/dev/null

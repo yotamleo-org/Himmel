@@ -223,7 +223,7 @@ SP="$W/sp ace"
 mkdir -p "$SP/scripts/handover" "$SP/scripts/lib"
 cp -R "$HERE" "$SP/scripts/handover/console-kit"
 cp -R "$HERE/../../lib/." "$SP/scripts/lib/"
-printf '#!/usr/bin/env bash\necho "close $*" >> "$WM_CALLS"\n' > "$SP/scripts/handover/console-kit/close-wrapped-leg.sh"
+printf '#!/usr/bin/env bash\necho "close $*" >> "$WM_CALLS"\n' > "$SP/scripts/handover/console-kit/close-wrapped-worker.sh"
 printf 'import { appendFileSync } from "node:fs"\nappendFileSync(process.env.WM_CALLS, "board " + process.argv.slice(2).join(" ") + "\\n")\n' > "$SP/scripts/handover/console-kit/board.mjs"
 rc=0; out="$(env -u WM_CLOSE -u WM_BOARD -u WM_JIRA bash "$SP/scripts/handover/console-kit/wrap-merged.sh" --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG" 2>&1)" || rc=$?
 calls="$(cat "$WM_CALLS")"

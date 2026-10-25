@@ -120,7 +120,7 @@ install_status_funnel() {
     for f in ticket-status.sh required-checks.sh prim.sh git-clean.sh timeout-bin.sh; do
         cp "$REPLAY_TREE/scripts/lib/$f" "$tmp/scripts/lib/$f"
     done
-    cp "$REPLAY_TREE/scripts/handover/console-kit/leg-jira-status.sh" "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
+    cp "$REPLAY_TREE/scripts/handover/console-kit/worker-jira-status.sh" "$tmp/scripts/handover/console-kit/worker-jira-status.sh"
     mkdir -p "$tmp/derive" "$tmp/dbin" "$tmp/ts"
     printf '[]\n' > "$tmp/derive/prs.json"
     echo 0 > "$tmp/derive/lock.rc"
@@ -174,7 +174,7 @@ own_ticket() {
 run_funnel() {
     JIRA_STATE="$TMP/state" PATH="$TMP/dbin:$TMP/bin:$PATH" TICKET_STATUS_STATE_DIR="$TMP/ts" \
         TICKET_STATUS_QUEUE_LOCK="$TMP/derive/lock-stub" GH_LOG="$TMP/gh.log" \
-        bash "$TMP/scripts/handover/console-kit/leg-jira-status.sh" HIMMEL-9001 "$@" >/dev/null 2>>"$TMP/funnel.err"
+        bash "$TMP/scripts/handover/console-kit/worker-jira-status.sh" HIMMEL-9001 "$@" >/dev/null 2>>"$TMP/funnel.err"
 }
 
 # run_merge <expected-exit> <args...>   (reads STUB_* from the environment)

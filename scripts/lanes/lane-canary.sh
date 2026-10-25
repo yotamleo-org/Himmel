@@ -59,8 +59,8 @@ case "$POLL" in ''|*[!0-9]*) echo "lane-canary: CANARY_POLL_SEC must be a positi
 POLL=$((10#$POLL))
 [ "$POLL" -gt 0 ] || { echo "lane-canary: CANARY_POLL_SEC must be a positive whole number" >&2; exit 2; }
 
-LAUNCHER="${CANARY_LAUNCHER:-$KIT/headed-arm-leg.sh}"
-CLOSER="${CANARY_CLOSER:-$KIT/close-wrapped-leg.sh}"
+LAUNCHER="${CANARY_LAUNCHER:-$KIT/headed-arm-worker.sh}"
+CLOSER="${CANARY_CLOSER:-$KIT/close-wrapped-worker.sh}"
 LOCK="${CANARY_LOCK:-$SELF_REPO/scripts/handover/queue-lock.sh}"
 APPEND="${CANARY_APPEND:-$KIT/append-results.sh}"
 TEMPLATE="$SELF_REPO/docs/handover/lane-canary-brief-template.md"

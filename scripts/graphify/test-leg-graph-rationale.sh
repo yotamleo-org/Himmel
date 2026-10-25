@@ -6,7 +6,7 @@
 # when the installed graphify does not take --rationale.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="$HERE/leg-graph.sh"
+SCRIPT="$HERE/worker-graph.sh"
 FIXTURE="$HERE/fixtures/rationale-graph.json"
 FAILS=0
 pass() { echo "  ok: $1"; }
