@@ -604,8 +604,21 @@ block_alert() { merge_block_alert "${nwo:-?}" "${pr_num:-?}" "${sha:-}" "$@"; }
 # _status_event <key> <event> <pr> [head] — the status funnel re-derives the
 # ticket's status; best-effort, never changes an exit code.
 _status_event() {
-    bash "$himmel_repo/scripts/handover/chief-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
+    bash "$himmel_repo/scripts/handover/chief-kit/worker-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
         ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
+}
+# _focus_mark_dirty — a status the merge wrote leaves the console's FOCUS page
+# behind: mark it dirty (HIMMEL_CONSOLE_DOC) so the waiter's next tick rebuilds
+# it. The mark is written here as focus-refresh.sh --mark-dirty writes it
+# (dirty=<epoch> in focus-state, plus focus-state.again), so the merge runs no
+# unguarded code; best-effort, never changes an exit code.
+_focus_mark_dirty() {
+    [ -n "${HIMMEL_CONSOLE_DOC:-}" ] || return 0
+    local st; st="$(dirname "$HIMMEL_CONSOLE_DOC")/focus-state"
+    { [ -f "$HIMMEL_CONSOLE_DOC" ] \
+        && { grep -q '^dirty=.' "$st" \
+            || { { grep -v '^dirty=' "$st"; echo "dirty=$(date +%s)"; } > "$st.tmp.$$" && mv -f "$st.tmp.$$" "$st"; }; } \
+        && date +%s > "$st.again"; } 2>/dev/null || true
 }
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
@@ -2388,6 +2401,7 @@ $remaining")
                 _jira_fold_request "$repo_root" "$key" "$fold_cur" "$pr_num" "$pr_sha" "the fixVersion edit to $fold_cur failed"
             fi
         fi
+        _focus_mark_dirty
     else
         JIRA_AUTO_TRANSITION_RESULT="failed key=$key status=$target_status rc=$transition_rc out=${transition_out//$'\n'/ }"
     fi

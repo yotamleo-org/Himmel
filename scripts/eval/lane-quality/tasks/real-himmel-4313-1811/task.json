@@ -1,0 +1,20 @@
+{
+  "id": "real-himmel-4313-1811",
+  "ticket": "HIMMEL-4313",
+  "pr": 1811,
+  "merge_sha": "10018d0afd67a8b52a3377b82ed9294c3cb60a73",
+  "base_sha": "eed82565a62968bc92f402c2ccac488c5d24dbe8",
+  "set": "capability",
+  "source": "proof-first",
+  "why_hard": "1 code file(s), 95 changed lines; the hidden scripts/test-himmel-update-drift.sh must go from failing at the base to passing, checked by 0 named check(s)",
+  "tests": [
+    "scripts/test-himmel-update-drift.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/test-himmel-update-drift.sh"
+  ],
+  "scope": [
+    "scripts/"
+  ]
+}

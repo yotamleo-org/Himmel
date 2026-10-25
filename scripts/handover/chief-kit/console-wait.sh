@@ -83,6 +83,8 @@
 #                               moved a ticket or its failure signature is new.
 #   WAKE focus <state>          the same pass: focus-refresh.sh --status is FAILED:<stage>,
 #                               or DIRTY:<n>m with n of 10 or more; once per state.
+#                               Each tick also starts one background refresh of a
+#                               DIRTY or FAILED page (none while one runs); no wake.
 #   WAKE tick-fail samples=<n>  CHIEF_WAIT_FAIL_WAKE consecutive samples
 #                               failed (tick or bank read): the monitor is
 #                               broken. Once per streak; the re-arm stays quiet
@@ -416,12 +418,12 @@ sample() {
     bank="$(bank_word)" || { tick_state=fail; return; }
     tick_state=ok
     cap_val="$(field capacity "$tick_line")"
-    for f in legs livestate prs tails acts holds legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall denials closable deadwin; do
+    for f in legs livestate prs tails acts holds legset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall dispatch denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
         # tracker= is newer than the other fields; a tick line
         # without it (an older kit) just has no tracker key, not a failed sample.
         # vault= is newer still, the same way.
-        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ]; } && [ -z "$v" ]; then continue; fi
+        if { [ "$f" = tracker ] || [ "$f" = acts ] || [ "$f" = holds ] || [ "$f" = vault ] || [ "$f" = cloud ] || [ "$f" = orphans-wip ] || [ "$f" = wt-ceiling ] || [ "$f" = vmismatch ] || [ "$f" = vmrun ] || [ "$f" = parked ] || [ "$f" = stall ] || [ "$f" = closable ] || [ "$f" = deadwin ] || [ "$f" = dispatch ]; } && [ -z "$v" ]; then continue; fi
         # A field missing from a malformed/partial tick line is a failed
         # sample, never a key with an empty value baked in.
         if [ -z "$v" ]; then tick_state=fail; key=""; return; fi
@@ -447,6 +449,18 @@ sample() {
                 v="$(key_field stall "$saved")"
             else
                 v="$(printf '%s' "$v" | tr ',' '\n' | grep -E ':(conflict|no-ci)$' | LC_ALL=C sort | paste -sd, -)"  # swallow-ok: no match is the empty set
+            fi
+            [ -n "$v" ] || continue
+        fi
+        # dispatch= keeps one <run>:<flag> token per late, idle or orphan flag, sorted: the
+        # elapsed time and job counts grow every tick and must not wake, nor must stale-head
+        # (report-only), and a run losing a flag is no new token. A set with none is left out
+        # of the key; dispatch=? keeps the saved set.
+        if [ "$f" = dispatch ]; then
+            if [ "$v" = '?' ]; then
+                v="$(key_field dispatch "$saved")"
+            else
+                v="$(printf '%s' "$v" | tr ',' '\n' | awk -F: '{ for (i = 2; i <= NF; i++) if ($i == "late" || $i == "idle" || $i == "orphan") print $1 ":" $i }' | LC_ALL=C sort | paste -sd, -)"
             fi
             [ -n "$v" ] || continue
         fi
@@ -556,17 +570,17 @@ drop_denials_expiry() {
     done | paste -sd, -
 }
 
-# drop_stall_resolved: <changed csv> <old key> <new key> — stall= wakes only when the new
-# value holds a pr:class token the old one lacked; a stall resolving is not an event.
+# drop_stall_resolved: <changed csv> <old key> <new key> [field] — stall= (or dispatch=) wakes
+# only when the new value holds a token the old one lacked; a stall resolving is not an event.
 drop_stall_resolved() {
-    local old new tok fresh=""
-    old=",$(key_field stall "$2"),"; new="$(key_field stall "$3")"
+    local old new tok fresh="" fld="${4:-stall}"
+    old=",$(key_field "$fld" "$2"),"; new="$(key_field "$fld" "$3")"
     for tok in $(printf '%s' "$new" | tr ',' ' '); do
         case "$old" in *",$tok,"*) ;; *) fresh=1 ;; esac
     done
     if [ -n "$fresh" ]; then printf '%s\n' "$1"; return; fi
     printf '%s\n' "$1" | tr ',' '\n' | while IFS= read -r f; do
-        [ "$f" = stall ] && continue
+        [ "$f" = "$fld" ] && continue
         printf '%s\n' "$f"
     done | paste -sd, -
 }
@@ -816,6 +830,21 @@ sweep_wake() {
     printf 'WAKE focus %s\n' "$fstat"
 }
 
+# focus_rebuild: with --doc, each tick reads the FOCUS state and, when a status write marked it
+# DIRTY or the last refresh FAILED, starts one focus-refresh.sh in the background (detached, so
+# the waiter never blocks on it); a refresh of the same doc still running from an earlier tick is left alone.
+focus_pid_file="$inbox.wait.focus-pid"
+focus_rebuild() {
+    local fstat pid
+    [ -n "$console_doc" ] || return 0
+    pid="$(cat "$focus_pid_file" 2>/dev/null)"  # swallow-ok: no pid file reads empty, so no refresh is running
+    case "$pid" in ''|*[!0-9]*) ;; *) ps -ww -p "$pid" -o args= 2>/dev/null | grep -qxF -- "bash $focus_cmd --doc $console_doc" && return 0 ;; esac
+    fstat="$(timeout -k 2 "$sweep_timeout" bash "$focus_cmd" --doc "$console_doc" --status 2>/dev/null 9>&-)" || fstat=""  # gnu-ok: Linux-only kit; swallow-ok: an unreadable focus state starts nothing
+    case "$fstat" in focus=DIRTY:* | focus=FAILED:*) ;; *) return 0 ;; esac
+    setsid bash "$focus_cmd" --doc "$console_doc" </dev/null >/dev/null 2>&1 9>&- &
+    printf '%s\n' "$!" > "$focus_pid_file" 2>/dev/null
+}
+
 # predecessor_close: the console doc's first line names its predecessor
 # (`successor to <doc>.md`). Once that doc is WRAPPED and lock-free with exactly one
 # live session, close-wrapped-leg.sh --console closes it, once, and a Results bullet
@@ -826,7 +855,7 @@ sweep_wake() {
 # marker and prints the wake (rc 0). The marker `<inbox>.wait.predecessor` (body:
 # `<state>:<doc>`) outlives the waiter, so a done predecessor is never asked twice.
 pred_file="$inbox.wait.predecessor"
-close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-leg.sh}"
+close_cmd="${CHIEF_WAIT_CLOSE:-$HERE/close-wrapped-worker.sh}"
 pred_hangs=0
 pred_hang_max="${CHIEF_WAIT_CLOSE_HANGS:-3}"
 case "$pred_hang_max" in ''|*[!0-9]*|0) pred_hang_max=3 ;; esac
@@ -870,7 +899,7 @@ predecessor_close() { # prints the WAKE block and returns 0 only for an unexpect
 # R0 takes no lock and sends nothing; RETASK-token-shaped strings are scrubbed from the
 # line it passes and the output it keeps.
 r0_file="$inbox.wait.r0"
-leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/leg-event.sh}"
+leg_event_cmd="${CHIEF_WAIT_WORKER_EVENT:-$HERE/worker-event.sh}"
 r0_scrub() { sed -E 's/(^|[^A-Za-z0-9])[A-Z]{1,3}-N[0-9]+-[0-9a-f]{6,}/\1<token>/g'; }
 r0_relay() { # prints the WAKE block and returns 0 only for a leg-event wake
     local cands label marker ldoc bullet sum line stem out rc outf what pr seen=" "
@@ -1103,6 +1132,7 @@ while :; do
             fi
         fi
         sample "$@" 9>&-
+        focus_rebuild
         if [ -n "$key" ]; then
             fail_streak=0
             fail_woke && save_key "${saved:-$key}"
@@ -1169,6 +1199,7 @@ while :; do
                 real_changed="$(drop_denials_expiry "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_holds_left "$real_changed" "$saved" "$key")"
                 real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key")"
+                real_changed="$(drop_stall_resolved "$real_changed" "$saved" "$key" dispatch)"
                 if [ -z "$real_changed" ]; then
                     saved="$key"; save_key "$key"; pending=""
                 else

@@ -22,7 +22,7 @@ if [ -n "$EXPLICIT" ]; then printf '%s\n' "$EXPLICIT"; exit 0; fi
 BASE="$(basename "$DOC")"
 FIRST_HEADING="$(printf '%s\n' "$HEAD60" | grep -m1 '^# ')"
 case "$FIRST_HEADING" in *CONSOLE*) echo console; exit 0 ;; esac
-case "$BASE" in *console*) echo console; exit 0 ;; esac
+case "$BASE" in *console*|*-chief.md) echo console; exit 0 ;; esac
 if grep -q 'RETASK token' "$DOC"; then echo leg-impl; exit 0; fi
 echo "role-profile: $BASE is neither a console nor a leg doc; defaulting to profile 'user'" >&2
 echo user

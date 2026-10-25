@@ -242,7 +242,7 @@ while IFS= read -r key; do
         want=$(printf '%s|%s|%s|%s' "$leg" "$wstate_derive" "$heads" "$derived" | cksum | awk '{ print $1 }')
         have=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
         if [ "$want" != "$have" ]; then
-            add WORKER-COMMENT "$key" "record hash ${have:-none} vs class hash $want" "$FUNNEL" "bash scripts/handover/chief-kit/leg-jira-status.sh $key --event sweep"
+            add WORKER-COMMENT "$key" "record hash ${have:-none} vs class hash $want" "$FUNNEL" "bash scripts/handover/chief-kit/worker-jira-status.sh $key --event sweep"
         fi
     fi
 
@@ -289,7 +289,7 @@ if [ -n "$logtail" ]; then
         ts_derive "$k"
         [ "$TS_RULE" != D0 ] || continue
         [ "$TS_DERIVED" = no-write ] || [ "$TS_DERIVED" != "$TS_J_STATUS" ] || continue
-        add MISSED "$k" "${p:+pr=$p }event=$ev${st:+ stage=$st} has no later moved or noop row" "$FUNNEL" "bash scripts/handover/chief-kit/leg-jira-status.sh $k --event sweep"
+        add MISSED "$k" "${p:+pr=$p }event=$ev${st:+ stage=$st} has no later moved or noop row" "$FUNNEL" "bash scripts/handover/chief-kit/worker-jira-status.sh $k --event sweep"
     done < <(jq -rs '[.[] | select(.key != null and .key != "-")] | group_by([.key, (.pr // "")])[]
         | . as $g | ([range(0; length)] | map(select($g[.].result == "miss")) | last) as $m
         | select($m != null)

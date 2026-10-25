@@ -24,7 +24,7 @@ LOG="${HOME:-}/.claude/failure-review-cadence/failure-review-cadence.log"
 
 alert() { bash "$ALERT" fail failure-review-route "$1" "$LOG" "$2" "$3" >/dev/null 2>&1 || true; }
 
-# live_console: newest held *-console queue lock's session name ("" if none).
+# live_console: newest held *-chief / *-console queue lock's session name ("" if none).
 live_console() {
     local line slug age st best="" best_age=-1
     while IFS= read -r line; do
@@ -32,7 +32,7 @@ live_console() {
         slug="${line#slug=}"; slug="${slug%% *}"
         age="${line#*age=}"; age="${age%%s *}"
         st="${line##*status=}"
-        case "$slug" in *-console) ;; *) continue ;; esac
+        case "$slug" in *-console|*-chief) ;; *) continue ;; esac
         case "$st" in OK|'IDLE-HELD?') ;; *) continue ;; esac
         [[ "$age" =~ ^[0-9]+$ ]] || continue
         if [ "$best_age" -lt 0 ] || [ "$age" -lt "$best_age" ]; then best="${slug##*__}"; best_age="$age"; fi
@@ -46,7 +46,7 @@ cmd_console() {
     [ -n "$text" ] || { echo "ERR failure-route-notify: console needs a text" >&2; return 64; }
     console="$(live_console)"
     if [ -z "$console" ]; then
-        alert "no console is live to tell: $text" "no held *-console queue lock" "read the digest and the router log"
+        alert "no console is live to tell: $text" "no held *-chief or *-console queue lock" "read the digest and the router log"
         return 1
     fi
     if ! bash "${FAILURE_ROUTE_INBOX_SEND:-$ROOT/scripts/handover/chief-kit/inbox-send.sh}" "$console" "$text"; then

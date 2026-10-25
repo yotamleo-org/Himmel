@@ -404,7 +404,7 @@ def arm_qmd(q, hybrid, timeout, k, collection, rerank=True):
 
 def arm_graphify(q, repo, timeout, k):
     cmd = os.environ.get("RETRIEVAL_EVAL_GRAPH_CMD")
-    argv = shlex.split(cmd) if cmd else ["bash", os.path.join(repo, "scripts", "graphify", "leg-graph.sh")]
+    argv = shlex.split(cmd) if cmd else ["bash", os.path.join(repo, "scripts", "graphify", "worker-graph.sh")]
     out, to, rc = run_cmd(argv + ["query", q], timeout, cwd=repo)
     files = []
     for f in re.findall(r"\[src=([^\s\]]+)", out):
@@ -707,7 +707,7 @@ def graph_built(repo):
 
 SWEEP = re.compile(r"(?:^|[;&|(\n]\s*)(?:git\s+grep\b|grep\s+-\w*[rR]|rg\s|find\s)")
 QMD_BASH = re.compile(r"(?:qmd-bounded\.sh|(?:^|[;&|(\n]\s*)qmd)\s+(?:query|search|vsearch)\b")
-GRAPH_BASH = re.compile(r"(?:(?:^|[;&|(\n]\s*)graphify|leg-graph\.sh)\s+(?:query|explain)\b")
+GRAPH_BASH = re.compile(r"(?:(?:^|[;&|(\n]\s*)graphify|(?:leg|worker)-graph\.sh)\s+(?:query|explain)\b")
 PATHS = re.compile(r"src=([^\s\]]+)|qmd://[^/\s]+/([^\"\s\]]+)|([\w./-]+\.(?:md|sh|py|js|mjs|ts|json))")
 RESOURCE = re.compile(r"\[Resource from [^\]]*?qmd://[^/\s\]]+/([^\s\]]+)\]")
 QMD_TOOL =re.compile(r"^mcp__(?:plugin_qmd_)?qmd__(?:query|get|multi_get)$")

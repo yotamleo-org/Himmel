@@ -1556,10 +1556,8 @@ update_qmd_fork() {
         #
         # Stopping it is process termination, which block-destructive-commands.sh
         # refuses in an agent's own Bash text — correctly. This is NOT given a
-        # restart-stack.sh-style sanctioned carve-out: that carve-out is bounded
-        # by a hard allowlist of four NAMED himmel-observability-* SCHEDULED
-        # TASKS. The qmd daemon is a plain bun process that was never
-        # schtasks-registered, so identifying "the" one to stop would be a
+        # sanctioned carve-out: the qmd daemon is a plain bun process, so
+        # identifying "the" one to stop would be a
         # process-list pattern match — exactly the generic-kill-wrapper this
         # repo has already refused to grow. Print the command, let the operator
         # run it.

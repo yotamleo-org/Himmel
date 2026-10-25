@@ -65,6 +65,14 @@
 #      `preflight` row (/pr-check step 2.8) stamped before the first `score`
 #      row. The docs-audit lane and a branch whose first `score` row predates
 #      the gate are exempt (reason=missing-preflight).
+#   4f. A lane=full marker whose diff changes a non-test guard or gate file
+#      (scripts/hooks/, scripts/ci/check-*, clear-cr-marker.sh,
+#      clear-review-marker.sh, scripts/testing/check-*, chief-kit
+#      ready-check.sh) needs a `blast` row stamped with this branch at any
+#      head: the blast-radius pass ran, or an `off` row with a reason (audited
+#      as blast=off on the CLEARED line). As in 4e, a branch with no `score`
+#      row, or whose first `score` row predates the gate, is exempt
+#      (reason=missing-blast-radius).
 #   4d. Every finding stamped with this branch whose effective verdict is
 #      agreed or fixed, at ANY round head, has a variant-sweep record in
 #      <git-common-dir>/cr-class-sweeps/<branch> (written by
@@ -120,6 +128,9 @@
 #       this branch — adjudicate it, then re-run. A promote exit other than
 #       0/3 (malformed ledger, bad head, missing ledger) also refuses here,
 #       fail-closed, as reason=promote-error.
+#       Also (4f): a guard or gate diff has no blast-radius row on this
+#       branch (reason=missing-blast-radius), or the diff or ledger could not
+#       be read (reason=blast-radius-unreadable).
 #   15  blocking finding(s) recorded at that SHA — address them, re-run /pr-check
 #   16  the marker is unbound (no endpoint/base recorded — a legacy
 #       format), the marker-bound endpoint head is unreadable/different, a PR
@@ -1335,7 +1346,7 @@ if [ -n "$blocking" ]; then
     _difffile="$(mktemp 2>/dev/null || true)"
     _bffile="$(mktemp 2>/dev/null || true)"
     if [ -n "$_difffile" ] && [ -n "$_bffile" ] \
-       && git diff --name-only -z "$marker_base...$tip" > "$_difffile" 2>/dev/null \
+       && git diff --no-renames --name-only -z --end-of-options "$marker_base...$tip" > "$_difffile" 2>/dev/null \
        && [ -s "$_difffile" ]; then
         printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{for(const r of (JSON.parse(s).blockingFiles||[])) process.stdout.write(r.id+"\0"+r.file+"\0");})' > "$_bffile" 2>/dev/null
         _ood=""
@@ -1483,6 +1494,64 @@ if [ "$marker_lane" = "full" ]; then
         *)
             echo "clear-cr-marker: could not evaluate the pre-round lessons pass from $ledger — refusing closed." >&2
             audit "REFUSED reason=preflight-unreadable branch=$branch sha=$tip"
+            exit 14 ;;
+    esac
+fi
+
+# 4f. Blast-radius pass on guard and gate diffs (/pr-check step 3.5). A
+# lane=full marker whose marker_base...tip diff changes a non-test guard or
+# gate file (a rename counts at both paths) needs a `blast` row stamped with
+# this branch, at any head: one pass per branch, and a row written late still
+# counts. An `off` row with a reason is the audited opt-out. The scope lives
+# here only; the gate runs from the anchor, so a branch cannot narrow the
+# scope it is judged by. A marker minted before BLAST_GATE_SINCE is exempt,
+# and, as in 4e, so is a branch whose first `score` row predates it (or
+# carries no ts); a branch with no `score` row at all (a Claude-floor-only
+# review) is not. Read-only, so it runs under --dry-run too.
+# ponytail: the row is self-attested, the same trust as `preflight`. Upgrade
+# path: run the pass as a context-free headless reviewer with a provenance
+# artifact, as claude-floor-review.sh does.
+if [ "$marker_lane" = "full" ]; then
+    blast_verdict="error"
+    _blastdiff="$(mktemp "${TMPDIR:-/tmp}/blast-diff.XXXXXX" 2>/dev/null || true)" # swallow-ok: an empty path keeps blast_verdict=error and gate 4f refuses (fail-closed)
+    if [ -n "$_blastdiff" ] && git diff --no-renames --name-only -z --end-of-options "$marker_base...$tip" > "$_blastdiff" 2>/dev/null; then
+        _marker_ts=$(awk -F' [|] ' '{gsub(/^[ \t]+|[ \t]+$/,"",$1); print $1; exit}' "$marker" 2>/dev/null || true) # swallow-ok: an empty ts parses as NaN and earns no exemption (fail-closed)
+        blast_verdict=$(LEDGER="$ledger" BRANCH="$branch" DIFF="$_blastdiff" MARKER_TS="$_marker_ts" BLAST_GATE_SINCE="2026-10-26T00:00:00Z" node -e '
+          const fs = require("fs"), e = process.env;
+          const scope = [/^scripts\/hooks\//, /^scripts\/ci\/check-/, /^scripts\/cr\/clear-(cr|review)-marker\.sh$/,
+                         /^scripts\/testing\/check-/, /^scripts\/handover\/chief-kit\/ready-check\.sh$/];
+          const inScope = (p) => scope.some((r) => r.test(p)) && !/(^|\/)test-[^\/]*$/.test(p) && !/\/fixtures\//.test(p);
+          const touched = fs.readFileSync(e.DIFF, "utf8").split("\0").some(inScope);
+          const rows = fs.existsSync(e.LEDGER)
+              ? fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean) : [];
+          let firstScore = Infinity, ran = false, offReason = "";
+          for (const l of rows) {
+              let r;
+              try { r = JSON.parse(l); } catch { continue; }
+              if (!r || r.branch !== e.BRANCH) continue;
+              if (r.kind === "score") { const t = Date.parse(r.ts); firstScore = Math.min(firstScore, Number.isNaN(t) ? -Infinity : t); }
+              else if (r.kind === "blast" && r.status === "ran") ran = true;
+              else if (r.kind === "blast" && r.status === "off" && String(r.reason || "").trim()) offReason = String(r.reason).replace(/\s+/g, " ").replace(/=/g, ":").trim();
+          }
+          const since = Date.parse(e.BLAST_GATE_SINCE);
+          console.log(!touched || ran || Date.parse(e.MARKER_TS) < since || firstScore < since ? "ok"
+              : offReason ? "off " + offReason : "missing");' 2>/dev/null || echo "error")
+    fi
+    rm -f "$_blastdiff"
+    case "$blast_verdict" in
+        ok) ;;
+        off\ *)
+            echo "clear-cr-marker: the blast-radius pass on this guard/gate diff was skipped by an off row: ${blast_verdict#off }" >&2
+            clear_basis="${clear_basis:-} blast=off reason=${blast_verdict#off }" ;;
+        missing)
+            echo "clear-cr-marker: $branch changes a guard or gate file but has no blast-radius row — the /pr-check step 3.5 pass (scripts/cr/pr-check-ref/32-step3-reviewers.md) did not run. Refusing." >&2
+            echo "  Run the pass, then record it: bash scripts/cr/ledger-append.sh blast --head $tip --duration-secs <s>" >&2
+            echo "  To skip it, record why: bash scripts/cr/ledger-append.sh blast --head $tip --status off --reason \"<why>\"" >&2
+            audit "REFUSED reason=missing-blast-radius branch=$branch sha=$tip"
+            exit 14 ;;
+        *)
+            echo "clear-cr-marker: could not evaluate the blast-radius gate (diff ${marker_base:0:8}...${tip:0:8} or $ledger unreadable) — refusing closed." >&2
+            audit "REFUSED reason=blast-radius-unreadable branch=$branch sha=$tip"
             exit 14 ;;
     esac
 fi

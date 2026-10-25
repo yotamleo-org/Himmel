@@ -66,6 +66,7 @@ echo 'echo verdict' >"$ORIGIN/scripts/handover/chief-kit/write-verdict.sh"
 echo 'echo wait' >"$ORIGIN/scripts/handover/chief-kit/console-wait.sh"
 echo ': go-gate' >"$ORIGIN/scripts/lib/go-gate.sh"
 echo ': handover-path' >"$ORIGIN/scripts/lib/handover-path.sh"
+echo 'echo bullet' >"$ORIGIN/scripts/handover/chief-kit/append-results.sh"
 echo 'doc' >"$ORIGIN/docs/a.md"
 g -C "$ORIGIN" add -A
 g -C "$ORIGIN" commit -qm base
@@ -2446,16 +2447,28 @@ AH_CASE='case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah
 printf '%s\n' '#!/usr/bin/env bash' '# header' 'set -uo pipefail' '' "$AH_CASE" '. "$_ah_d/../cr/anchor-handoff.sh" || exit 2' 'echo mog' >"$PRIMARY/scripts/handover/merge-on-green.sh"
 # shellcheck disable=SC2016 # the entry's literal hand-off line
 printf '%s\n' "$AH_CASE" '. "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' 'echo go' >"$PRIMARY/scripts/handover/chief-kit/go.sh"
+# shellcheck disable=SC2016 # the entry's literal hand-off line
+printf '%s\n' '#!/usr/bin/env bash' 'set -uo pipefail' "$AH_CASE" '. "$_ah_d/anchor-handoff.sh" || exit 2' 'echo wv' >"$PRIMARY/scripts/cr/write-verdicts.sh"
 g -C "$PRIMARY" commit -qam 'entries source the hand-off'
 BASE_MAIN=$(g -C "$PRIMARY" rev-parse refs/heads/main)
 g -C "$WT" reset -q --hard "$BASE_MAIN"
 echo 'echo mog v2' >"$PRIMARY/scripts/handover/merge-on-green.sh"
 echo 'echo go v2' >"$PRIMARY/scripts/handover/chief-kit/go.sh"
 echo 'echo write-verdicts v2' >"$PRIMARY/scripts/cr/write-verdicts.sh"
+echo 'echo review-round v2' >"$PRIMARY/scripts/cr/review-round.sh"
 g -C "$PRIMARY" commit -qam 'main moves on'
 run "behind main, untouched merge-on-green.sh -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 run "behind main, untouched go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
-run "behind main, untouched scripts/cr writer -> still deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+run "behind main, untouched scripts/cr writer -> allow" 0 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+run "behind main, two untouched writers in one call -> deny (not one simple command)" 2 \
+    "$(payload 'bash scripts/cr/write-verdicts.sh; bash scripts/handover/merge-on-green.sh' "$WT")" "$HR"
+run "behind main, untouched writer whose merge-base copy skips the hand-off -> deny" 2 \
+    "$(payload 'bash scripts/cr/review-round.sh' "$WT")" "$HR"
+need_in_err "deny names the anchored spelling" "\$HIMMEL_REPO/"
+run "behind main, pr-check-context.sh keeps the whole-tree equality -> deny" 2 "$(payload "$LITERAL" "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh"
+run "behind main, dirty scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 echo ': edited' >>"$WT/scripts/handover/merge-on-green.sh"
 run "behind main, dirty merge-on-green.sh -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 g -C "$WT" commit -qam 'branch edits merge-on-green'
@@ -2473,6 +2486,8 @@ echo ': handoff v2' >>"$PRIMARY/scripts/cr/anchor-handoff.sh"
 g -C "$PRIMARY" commit -qam 'main moves the hand-off'
 run "behind main, hand-off moved on main -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 need_in_err "deny names the hand-off" "scripts/cr/anchor-handoff.sh"
+run "behind main, hand-off moved on main, scripts/cr writer -> deny" 2 "$(payload 'bash scripts/cr/write-verdicts.sh' "$WT")" "$HR"
+need_in_err "deny names the anchored spelling" "\$HIMMEL_REPO/scripts/cr/write-verdicts.sh"
 g -C "$PRIMARY" reset -q --hard "$BASE_MAIN"
 run "main restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 # main moved to a child that restores its bytes, so the merge-base is a commit
@@ -2640,6 +2655,99 @@ for wt in "$WT2" "$WT2OLD"; do
         g -C "$wt" checkout -q -- .
     done
 done
+
+# ---- a glob or $VAR beside a gate-path mention runs no target --------------
+# Live shapes the "does not resolve" deny refused: every command position is
+# a reader, an assignment, or bash running a non-target script.
+D7130=/tmp/d7130.md
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+for v in \
+    'D=/tmp/d7130.md; bash scripts/handover/chief-kit/append-results.sh $D "LIVE go.sh and scripts/cr/*.sh"' \
+    "bash scripts/handover/chief-kit/append-results.sh $D7130 'LIVE ran scripts/cr/write-verdicts.sh at \$HEAD'" \
+    "grep -nE 'scripts/cr/.*\\.sh' docs/a.md | head -3" \
+    'cd scripts/cr/ref && for f in 33-a.md 40-b.md; do echo "=== $f"; grep -n -E "^(bash )" -A3 $f | cut -c1-260 | head -50; done' \
+    'for f in 40-step4 45-step4.5; do echo "=== $f"; grep -n bash -A3 scripts/cr/ref/$f.md | cut -c1-300; done' \
+    "grep -oE 'bash scripts/cr/(write-verdicts.sh aggregate|orphan-check.sh)[^\"\\\\]*' /tmp/s7130.jsonl | sort -u | uniq -c | sort -rn | head" \
+    "for f in review-round.sh impacted-suites.sh; do echo \"== \$f\"; grep -n -m3 'anchor-handoff' scripts/cr/\$f; done; echo; sed -n 1,200p scripts/cr/anchor-handoff.sh | head -120" \
+    'for p in 1 2; do echo "#$p" | grep -E "scripts/cr/(write|review).*"; done' \
+    "cat > /tmp/o7130.md <<'EOF'
+notes on \$HEAD
+EOF
+grep -c scripts/cr/ /tmp/o7130.md"; do
+    run "7130 class1 [$v] -> allow" 0 "$(payload "$v" "$WT")" "$HR"
+done
+echo changed >>"$WT/scripts/cr/write-verdicts.sh"
+# shellcheck disable=SC2016  # the payload text must stay unexpanded
+for v in \
+    'D=x; bash scripts/cr/write-verdicts.sh $D "*"' \
+    'sh ./scripts/cr/write-verdicts.sh *' \
+    'bash scripts/quiet-run.sh suite -- bash scripts/cr/write-verdicts.sh $D' \
+    'X=scripts/cr/write-verdicts.sh; bash scripts/quiet-run.sh suite -- bash $X' \
+    'bash scripts/handover/chief-kit/append-results.sh $D; bash scripts/cr/write-verdicts.sh $D' \
+    'f() { bash scripts/cr/write-verdicts.sh; }; f *' \
+    'cat <(bash scripts/cr/write-verdicts.sh) *' \
+    'eval "bash scripts/cr/write-verdicts.sh" $D' \
+    'echo * | xargs bash scripts/cr/write-verdicts.sh' \
+    'PATH=/tmp/p7130; bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"' \
+    'for PATH in /tmp/p7130; do bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"; done' \
+    "for \\${NL}PATH in /tmp/p7130; do bash scripts/handover/chief-kit/append-results.sh \$D 'scripts/cr/*'; done" \
+    'grep -h bash scripts/cr/* >> /tmp/r7130.sh' \
+    'grep -h bash scripts/cr/* | sort -o /tmp/r7130.sh' \
+    'sed -n "1e bash scripts/cr/write-verdicts.sh" scripts/cr/*' \
+    'BASH_ENV=/tmp/p7130 bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"' \
+    'grep x scripts/cr/* | bash' \
+    'cat() { bash "$@"; }; cat scripts/cr/write-verdicts.sh $D' \
+    "cat > /tmp/r7130.sh <<'EOF'
+bash scripts/cr/write-verdicts.sh \$D
+EOF" \
+    "python3 - <<'EOF'
+import os; os.system('bash scripts/cr/write-verdicts.sh *')
+EOF" \
+    'echo $D > scripts/cr/write-verdicts.sh' \
+    'echo [[ $D ]]; bash scripts/cr/write-verdicts.sh' \
+    'bash /tmp/e7130/scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    'bash ./scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    'cd /tmp/e7130 && bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh' \
+    "printf '%n' PATH; bash scripts/handover/chief-kit/append-results.sh \$D 'scripts/cr/*'" \
+    "printf 'a%ln' PATH; bash scripts/handover/chief-kit/append-results.sh \$D 'scripts/cr/*'" \
+    "cat ?(scripts/cr/write-verdicts.sh)" \
+    'path=(/tmp/p7130); bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"' \
+    'for path in /tmp/p7130; do bash scripts/handover/chief-kit/append-results.sh $D "scripts/cr/*"; done' \
+    "x='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; echo \${!x}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; s=hi; echo \${s:y}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; s=hi; echo \${s:0:y}" \
+    "y='a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; a[y]=1" \
+    "for x in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${!x}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \${s: y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do a[y]=1; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${\$:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${?:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \${-:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat < \${\$:y}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; echo \$\\${NL}{s:y}; done" \
+    "for x in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \$\\${NL}{!x}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do echo \$\\${NL}{a[y]}; done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do s=hi; cat <<EOF
+\$\\${NL}{s:y}
+EOF
+done" \
+    "for y in 'a[\$'\"(\"'bash scripts/cr/write-verdicts.sh)]'; do cat <<EOF
+\${\$:y}
+EOF
+done"; do
+    run "7130 class1 control [$v] -> deny" 2 "$(payload "$v" "$WT")" "$HR"
+done
+run "7130 class1 [a quoted message with parentheses] -> allow" 0 \
+    "$(payload "echo 'fix(hooks): a bullet' scripts/cr/*" "$WT")" "$HR"
+run "7130 class1 [printf with a newline escape] -> allow" 0 \
+    "$(payload "printf '%s\\n' scripts/cr/* | head -3" "$WT")" "$HR"
+run "7130 class1 [the anchor's bullet writer by absolute path] -> allow" 0 \
+    "$(payload "bash $PRIMARY/scripts/handover/chief-kit/append-results.sh /tmp/d7130.md 'scripts/cr/*'" "$WT")" "$HR"
+echo changed >>"$WT/scripts/handover/chief-kit/append-results.sh"
+run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
+    "$(payload "bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh" "$WT")" "$HR"
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-kit/append-results.sh
 
 # ---- the shared command-position corpus, from the unrelated non-himmel repo ---
 # A run of the script is refused there (wrong lane); a mention is not a run.

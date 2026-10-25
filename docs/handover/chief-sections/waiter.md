@@ -33,7 +33,12 @@ Read on demand from `console-template.md` step 10. `<kit>` is the kit path in st
     PR opening or merging, yours or not), `orphans-wip=` (an In Progress /
     In Review ticket nobody holds — no leg, no open PR: dispatch it as a RESUME
     row of `next-dispatchable.sh`), `tails=` (a leg's marker: FINDING, READY …),
-    `legset=`, `board=` (its class — the STALE age alone does not wake, and a
+    `legset=`, `dispatch=` (a workflow_dispatch run a worker started by hand that is `late` past
+    80 % of its job timeout, `idle` with no job changing state for 30 min, or `orphan` because
+    its worker wrapped: the wake is `WAKE tick changed=dispatch` and the tick line carries one
+    `ACTION dispatch-stall <run> <worker> (<branch>): <reasons>` line per run; look with
+    `gh run view <run>`, cancel it or tell the worker. Elapsed time, job counts and `stale-head` never
+    wake, and a run leaving the set does not), `board=` (its class — the STALE age alone does not wake, and a
     move TO `ok` never wakes on its own either, since that's just the console's
     own render; the key still saves, so a later move to STALE/MISSING wakes
     again) and the

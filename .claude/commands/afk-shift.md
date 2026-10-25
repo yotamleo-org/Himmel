@@ -5,7 +5,7 @@ argument-hint: [--limit N] [--project HIMMEL|LUNA] [--status STATUS] [--priority
 
 Pulls the top-N tickets from Jira matching the operator's filter, emits a
 dispatch plan, asks for confirmation, and then fans out one Task subagent
-per ticket (each in its own worktree). Automates the manual overnight-mode
+per ticket (each in its own worktree). Automates the manual AFK-mode
 dispatch step from `docs/handover/afk-mode.md`.
 
 ## Workflow
@@ -273,7 +273,7 @@ dispatch step from `docs/handover/afk-mode.md`.
 
 7. **Drop a durable resume breadcrumb (HIMMEL-477, C3).**
    This post-fanout step is one of the seams the breadcrumb writer
-   piggybacks (there is no per-leg dispatch runtime). Record where the run
+   piggybacks (there is no per-worker dispatch runtime). Record where the run
    stopped so a crashed/interrupted resume reconstructs intent instead of
    silently grounding in raw repo state:
 

@@ -77,7 +77,7 @@ IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' CONSULT_SETTINGS_HOME="$WORK/home" \
 HEADED_ARM_WORKER_TARGET="$REPO/scripts/handover/headed-arm.sh" \
 KONSOLE_CMD="$WORK/konsole" PGREP_CMD="$WORK/pgrep" \
 WORKER_SESSION_REPO="$PRIMARY" HEADED_ARM_LOCK_DIR="$WORK/locks" HEADED_ARM_PROC="$WORK/proc" \
-  bash "$REPO/scripts/handover/chief-kit/headed-arm-leg.sh" --consult --profile design-motion --console MOCK-console \
+  bash "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" --consult --profile design-motion --console MOCK-console \
     MOCK-consult "$DOC" "$WORK/signal-never" "$(( $(date +%s) - 100 ))" "$WORK/log" >"$WORK/launch.out" 2>&1 &
 lp=$!
 SETTINGS="$WORK/MOCK-consult.leg-settings.json"

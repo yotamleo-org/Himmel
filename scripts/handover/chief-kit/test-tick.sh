@@ -127,6 +127,16 @@ if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then
   if [ -n "${GH_TOKEN:-}" ]; then printf '%s\n' "${STUB_RATE_READ_OUT:-}"; else printf '%s\n' "${STUB_RATE_OUT:-}"; fi
   exit 0
 fi
+# dispatch= reads the in-flight workflow_dispatch runs (one TSV row per run: id, workflow
+# path, head branch, head sha, started) and, per run, one jobs row (job count, completed
+# count, newest job timestamp). STUB_DISPATCH_RUNS / STUB_DISPATCH_JOBS are printf %b
+# strings, empty by default; every call is logged to STUB_DISPATCH_LOG, never to the gql log.
+if [ "${1:-}" = api ]; then
+  case "${2:-}" in
+    repos/*/actions/runs/*/jobs*) [ -z "${STUB_DISPATCH_LOG:-}" ] || printf '%s\n' "jobs $2" >> "$STUB_DISPATCH_LOG"; printf '%b' "${STUB_DISPATCH_JOBS-}"; exit 0 ;;
+    repos/*/actions/runs\?*) [ -z "${STUB_DISPATCH_LOG:-}" ] || printf '%s\n' "runs $2" >> "$STUB_DISPATCH_LOG"; printf '%b' "${STUB_DISPATCH_RUNS-}"; exit "${STUB_DISPATCH_RC:-0}" ;;
+  esac
+fi
 if [ "${1:-}" = api ]; then
   [ -z "${STUB_GH_API_LOG:-}" ] || printf '%s\n' "$*" >> "$STUB_GH_API_LOG"
   printf '%b' "${STUB_GQL_OUT-HTTP/2.0 200 OK\r\nX-Ratelimit-Remaining: 4321\r\nX-Ratelimit-Reset: 1790000000\r\n\r\n}"
@@ -3044,6 +3054,63 @@ not_contains 'tmp= is absent when the dir is unreadable (HIMMEL-4316)' "$(bash "
 cw_keys="$(grep -m1 'for f in legs livestate' "$HERE/console-wait.sh")"
 contains "console-wait's wake key list was found" "$cw_keys" ' vmrun '
 not_contains "tmp= is not in console-wait's wake key (HIMMEL-4316)" "$cw_keys" ' tmp'
+
+# --- dispatch=: in-flight workflow_dispatch runs on leg branches, one runs
+# list per tick plus one jobs read per run; late (>= 80 % of the job timeout), idle (no job
+# changed state for 30 min) and orphan (its leg WRAPPED) raise ACTION dispatch-stall.
+mkdir -p "$W/repo/.github/workflows"
+printf '%s\n' 'jobs:' '  shell:' '    timeout-minutes: 120' '  summary:' '    timeout-minutes: 10' > "$W/repo/.github/workflows/macos-cadence.yml"
+printf '%s\n' '# leg' '- WRAPPED — done' > "$W/handover/HIMMEL-333-legN333.md"
+d_iso() { date -u -d "-$1 seconds" +%Y-%m-%dT%H:%M:%SZ; }
+d_wf='.github/workflows/macos-cadence.yml'
+d_log="$W/dispatch-calls.txt"
+d_tick() { # <runs> <jobs> [legs]
+    LEGS="${3:-HIMMEL-111-legN61 HIMMEL-333-legN333}" STUB_DISPATCH_RUNS="$1" STUB_DISPATCH_JOBS="$2" STUB_DISPATCH_LOG="$d_log" bash "$SUT" 2>/dev/null
+}
+d_head=1111111111111111111111111111111111111111
+d_pr_rows="3768\\tfix/himmel-111-mac\\ttrue\\tme\\tfalse\\t2026-01-01T00:00:00Z\\t0\\t$d_head\\t\\n"
+
+: > "$d_log"
+d_late="$(STUB_PR_ROWS="$d_pr_rows" d_tick "4001\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 6150)\\n" "9\\t3\\t$(d_iso 300)\\n")"
+contains 'a run at 85 % of its job timeout lists dispatch= with the leg, elapsed/timeout and jobs done (HIMMEL-7479)' "$d_late" 'dispatch=4001:N61:102/120m:3/9@1111111:late'
+contains 'a run at 85 % of its job timeout raises ACTION dispatch-stall (HIMMEL-7479)' "$d_late" 'ACTION dispatch-stall 4001 N61'
+not_contains 'a run on the open PR head is not stale-head (HIMMEL-7479)' "$d_late" 'stale-head'
+d_calls="$(grep -c '^runs ' "$d_log")"
+if [ "$d_calls" = 1 ]; then pass 'one tick lists the runs exactly once (HIMMEL-7479)'; else fail "runs list calls per tick = $d_calls, want 1"; fi
+if grep -q '^runs .*per_page=100' "$d_log"; then pass 'the runs list asks for the largest page, so the oldest in-flight runs are in it (HIMMEL-7479)'; else fail 'runs list is not per_page=100'; fi
+d_jobs="$(grep -c '^jobs ' "$d_log")"
+if [ "$d_jobs" = 1 ]; then pass 'one tick reads the jobs of each run once (HIMMEL-7479)'; else fail "jobs reads per tick = $d_jobs, want 1"; fi
+
+d_early="$(STUB_PR_ROWS="$d_pr_rows" d_tick "4002\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 1470)\\n" "9\\t1\\t$(d_iso 120)\\n")"
+contains 'a run at 20 % of its job timeout is listed (HIMMEL-7479)' "$d_early" 'dispatch=4002:N61:24/120m:1/9@1111111'
+not_contains 'a run at 20 % of its job timeout is not flagged late (HIMMEL-7479)' "$d_early" ':late'
+not_contains 'a run at 20 % of its job timeout raises no ACTION dispatch-stall (HIMMEL-7479)' "$d_early" 'ACTION dispatch-stall'
+
+d_idle="$(STUB_PR_ROWS="$d_pr_rows" d_tick "4003\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 2400)\\n" "9\\t1\\t$(d_iso 2100)\\n")"
+contains 'a run whose jobs have not changed state for 30 min is flagged idle (HIMMEL-7479)' "$d_idle" 'dispatch=4003:N61:40/120m:1/9@1111111:idle'
+contains 'an idle run raises ACTION dispatch-stall (HIMMEL-7479)' "$d_idle" 'ACTION dispatch-stall 4003 N61'
+
+d_orph="$(d_tick "4004\\t$d_wf\\tfix/himmel-333-mac\\t$d_head\\t$(d_iso 300)\\n" "9\\t1\\t$(d_iso 60)\\n")"
+contains 'a run whose leg is WRAPPED is flagged orphan (HIMMEL-7479)' "$d_orph" 'dispatch=4004:N333:5/120m:1/9@1111111:orphan'
+contains 'an orphan run raises ACTION dispatch-stall (HIMMEL-7479)' "$d_orph" 'ACTION dispatch-stall 4004 N333'
+
+d_stale="$(STUB_PR_ROWS="$d_pr_rows" d_tick "4005\\t$d_wf\\tfix/himmel-111-mac\\t2222222222222222222222222222222222222222\\t$(d_iso 300)\\n" "9\\t1\\t$(d_iso 60)\\n")"
+contains 'a run whose head is no longer the PR head is flagged stale-head (HIMMEL-7479)' "$d_stale" 'dispatch=4005:N61:5/120m:1/9@2222222:stale-head'
+not_contains 'a stale head alone raises no ACTION dispatch-stall (HIMMEL-7479)' "$d_stale" 'ACTION dispatch-stall'
+
+d_other="$(d_tick "4006\\t$d_wf\\trelease/other\\t$d_head\\t$(d_iso 300)\\n" "9\\t1\\t$(d_iso 60)\\n")"
+not_contains 'a run on a branch no leg or PR owns is not listed (HIMMEL-7479)' "$d_other" 'dispatch='
+
+d_cap="$(TICK_DISPATCH_MAX=1 STUB_PR_ROWS="$d_pr_rows" d_tick "4010\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 300)\\n4011\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 6150)\\n" "9\\t3\\t$(d_iso 300)\\n")"
+contains 'under the per-tick cap the oldest run is read first, so a hung run is never crowded out by newer ones (HIMMEL-7479)' "$d_cap" 'dispatch=4011:'
+not_contains 'under the per-tick cap a newer run does not take the slot of an older one (HIMMEL-7479)' "$d_cap" '4010:'
+
+d_none="$(d_tick '' '')"
+not_contains 'no in-flight run leaves dispatch= out of the compact line (HIMMEL-7479)' "$d_none" 'dispatch='
+d_down="$(STUB_DISPATCH_RC=1 d_tick '' '')"
+contains 'an unreadable runs list reads dispatch=? (HIMMEL-7479)' "$d_down" 'dispatch=?'
+d_verbose="$(STUB_PR_ROWS="$d_pr_rows" LEGS='HIMMEL-111-legN61' STUB_DISPATCH_RUNS="4002\\t$d_wf\\tfix/himmel-111-mac\\t$d_head\\t$(d_iso 1470)\\n" STUB_DISPATCH_JOBS="9\\t1\\t$(d_iso 120)\\n" bash "$SUT" --verbose 2>/dev/null)"
+contains 'verbose labels dispatch (HIMMEL-7479)' "$d_verbose" 'dispatch: 4002:N61:24/120m:1/9@1111111'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-tick.sh'

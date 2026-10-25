@@ -63,7 +63,7 @@ in the launching shell; the flag wins) — same profile injection, model and
 - **Env inheritance:** the background session runs under the `claude`
   daemon and inherits *the daemon's* environment, not the launching shell's
   (`headed-arm-leg.sh:388-390`). `headed-arm.sh`'s `headless_launch` compensates
-  by writing every worker env var into the per-worker-session `settings.json`
+  by writing every worker env var into the per-worker `settings.json`
   `.env` block before launch (`headed-arm.sh:1008-1062`), forcing
   `CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1` (`headed-arm.sh:1017`), and
   refusing to launch blind if it can't read the daemon's own `/proc/<pid>/environ`
@@ -73,7 +73,7 @@ in the launching shell; the flag wins) — same profile injection, model and
 - **Sanctioned scripts refuse seams:** the seam guard
   (`scripts/lib/chokepoint-seam-guard.sh`) takes its baseline from the
   outermost claude ancestor, which for a `--bg` session is the
-  `claude daemon run` service. It deliberately ignores the per-leg settings
+  `claude daemon run` service. It deliberately ignores the per-worker settings
   file, because a session can write to that file. Any registered seam that
   differs from the daemon's env therefore exits 96 with "headless (--bg) legs <!-- old-term-ok: quotes the guard message text until V5 -->
   cannot pass seams to chokepoints". This includes `ARMAUTOMERGE` for
@@ -99,7 +99,7 @@ in the launching shell; the flag wins) — same profile injection, model and
 - **Fleet UI:** `fleet.mjs` derives `mode = 'headless'` from any of: the
   agents census showing the session running, the launch log's `headless=1`,
   or the process argv containing `--bg`/`--background`
-  (`chief-kit/fleet.mjs:437-444`), and renders it in the per-worker-session row
+  (`chief-kit/fleet.mjs:437-444`), and renders it in the per-worker row
   (`chief-kit/fleet.mjs:605`). Built specifically because headless workers have no konsole window for an operator
   to see (`fleet.mjs:3-5`).
 

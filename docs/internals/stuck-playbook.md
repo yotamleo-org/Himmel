@@ -52,7 +52,7 @@ operator, don't reshape to dodge it.
 
 ---
 
-## Symptom: a leg needs a tracked file back at HEAD and `git checkout -- <path>` is denied
+## Symptom: a worker needs a tracked file back at HEAD and `git checkout -- <path>` is denied
 
 Every TDD RED control needs a way to restore a dirtied tracked file to HEAD
 before implementing, but `Bash(git checkout -- *)` is a `deny` entry in
@@ -187,7 +187,7 @@ explicit in-session authorization.
    PR #N"). Do **NOT** retry the merge via a different command path — the
    classifier flags that as evasion and hardens the block (first
    principle: structural fix over workaround — here the structural fix is
-   *not emitting `--admin`*, already shipped in `pr-merge.sh` + overnight-mode
+   *not emitting `--admin`*, already shipped in `pr-merge.sh` + AFK-mode
    Phase 9).
 
 The model-based classifier is an Anthropic layer; it cannot be made to read a
@@ -370,7 +370,7 @@ standing workaround to normalize.
 
 ---
 
-## Symptom: every `git` call is refused — "runs rtk with a git command among its operands" — for the rest of one leg's session
+## Symptom: every `git` call is refused — "runs rtk with a git command among its operands" — for the rest of one worker's session
 
 A worktree-pinned worker that has been running `git` normally can reach a state
 where its `git` Bash calls are refused. Observed 2026-09-20, worker N198.
@@ -461,7 +461,7 @@ cause is not identified, so do not spend the session diagnosing your own conduct
 
 - **Never run the worker's refused git command on its behalf.** That is permission
   laundering, exactly as for `[Out-of-Place Publication]` above.
-- Write the worker's message to a **supervisor-session-owned** file in the state repo (the
+- Write the worker's message to a **chief-owned** file in the state repo (the
   N198 record, `<TICKET>-N198-BLOCKED-state-2026-09-20.md`, is the shape) so
   the reasoning survives the worker's transcript.
 - Recover by **re-dispatching a fresh worker onto the identical worktree**: same
@@ -679,7 +679,7 @@ does not pick this up — the interim above still applies to it.
 
 ---
 
-## Symptom: a leg's `queue-lock.sh release` is denied `[Merge Without Review]` right after its merge
+## Symptom: a worker's `queue-lock.sh release` is denied `[Merge Without Review]` right after its merge
 
 `HANDOVER_DIR=<root> bash scripts/handover/queue-lock.sh release <doc> <token>`
 acquired the lock at session start, but the same shape is denied after the

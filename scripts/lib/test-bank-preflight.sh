@@ -361,6 +361,25 @@ pconsole="$W/psconsole"; mk_ps_stub "$pconsole" \
 check "3 legs + 1 console, cap=4 -> PROCEED (console excluded)" PROCEED \
   "$(fleet_verdict "$pconsole" HIMMEL_FLEET_CAP=4)"
 
+# A chief (-n name ends -chief) is excluded the same way.
+pchief="$W/pschief"; mk_ps_stub "$pchief" \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-leg load doc' \
+  '9004:claude:--model claude-opus-5 -n HIMMEL-nextleg-2026-10-25A-roadmap-chief load doc'
+check "3 legs + 1 chief, cap=4 -> PROCEED (chief excluded)" PROCEED \
+  "$(fleet_verdict "$pchief" HIMMEL_FLEET_CAP=4)"
+
+# Only a name ENDING -console or -chief is excluded: a leg whose slug merely
+# contains -chief- or -console- still counts toward the cap.
+pslug="$W/psslug"; mk_ps_stub "$pslug" \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-7600-N3001-chief-handoff-2026-10-26 load doc' \
+  '9004:claude:--model claude-opus-5 -n HIMMEL-7601-N3002-console-wait-fix-2026-10-26 load doc'
+check "2 legs + 2 legs with chief/console in the slug, cap=4 -> SKIPPED-FLEET" SKIPPED-FLEET \
+  "$(fleet_verdict "$pslug" HIMMEL_FLEET_CAP=4)"
+
 # HIMMEL_FLEET_CAP is configurable: the same 3-leg fixture trips a cap of 2.
 check "3 legs, cap=2 (HIMMEL_FLEET_CAP override) -> SKIPPED-FLEET" SKIPPED-FLEET \
   "$(fleet_verdict "$p3" HIMMEL_FLEET_CAP=2)"

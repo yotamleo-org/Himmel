@@ -199,7 +199,7 @@ const consoleResults = section('## Results').filter((l) => l.startsWith('- ')).s
 // call labels every name.
 // A lookup that fails, or labels fewer names than it was given, is not an empty
 // fleet: it is reported on stderr and the board renders "leg labels unavailable".
-const LEGID = process.env.BOARD_LEGID || join(HERE, '..', '..', 'lib', 'leg-identity.sh');
+const LEGID = process.env.BOARD_LEGID || join(HERE, '..', '..', 'lib', 'worker-identity.sh');
 const legLabel = new Map();
 let labelFailure = '';
 const primeLabels = (names) => {
@@ -467,7 +467,7 @@ try {
 // The pre-close checks a hand-close needs: close-wrapped-leg.sh --check signals nothing,
 // exits 0 when safe, and otherwise names what is still running. A check that cannot run
 // reads as unknown, never as safe.
-const CLOSE_CHECK = process.env.BOARD_CLOSE_CHECK || join(HERE, 'close-wrapped-leg.sh');
+const CLOSE_CHECK = process.env.BOARD_CLOSE_CHECK || join(HERE, 'close-wrapped-worker.sh');
 // One board render waits at most CLOSE_BUDGET_MS in all, so several slow checks cannot stall it.
 const CLOSE_BUDGET_MS = 60000;
 let closeBudgetLeft = CLOSE_BUDGET_MS;

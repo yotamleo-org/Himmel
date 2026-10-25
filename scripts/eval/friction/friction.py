@@ -11,7 +11,7 @@ usage: friction.py [--days N] [--now ISO] [--projects DIR]... [--docs DIR] [--re
 --reports reads the user-reports ledger /himmel-report (scripts/report/himmel_report.py) appends to (default ~/.himmel/state/user-reports.jsonl,
 or $HIMMEL_USER_REPORTS): a third verdict source, user-reported over-deny, counted apart from the transcript verdicts
 and recorded as user_reported_over_deny and user_over_deny:<source>/<class>.
---record also appends one eval-runs row (eval "friction": refusals, over_deny, true_positive,
+--record also appends one eval-runs row (eval "friction": tool_calls, refusals, over_deny, true_positive,
 unclear, over_deny_share and over_deny:<source>/<class> per class), so the eval feedback step
 (scripts/eval/lib/eval_feedback.py) can raise a change on it and re-measure it on the next run.
 Transcript text is reduced to a normalised <=140 char snippet with token-shaped
@@ -303,7 +303,7 @@ def block_text(b):
     return str(t)
 
 
-def scan_transcript(path, lane, since, until=None):
+def scan_transcript(path, lane, since, until=None, counts=None):
     rows = []
     pending = []  # (row, ts) pairs awaiting the next non-denied tool_result for recovery time
     try:
@@ -325,6 +325,8 @@ def scan_transcript(path, lane, since, until=None):
             for b in ct:
                 if not (isinstance(b, dict) and b.get('type') == 'tool_result'):
                     continue
+                if counts is not None and ts >= since and (until is None or ts < until):
+                    counts['tool_calls'] += 1
                 refused = None
                 if b.get('is_error') or o.get('toolDenialKind'):
                     refused = classify(block_text(b), o.get('toolDenialKind'))
@@ -594,15 +596,16 @@ def render_md(agg, meta):
     return '\n'.join(lines) + '\n'
 
 
-def scan_all(projects, since, until=None, unreadable=None):
-    """Rows from every transcript in the window; the path of each one that cannot be opened goes to unreadable."""
+def scan_all(projects, since, until=None, unreadable=None, counts=None):
+    """Rows from every transcript in the window; unreadable paths go to unreadable.
+    counts optionally accumulates tool_calls: every in-window tool_result, including successes and failures."""
     rows = []
     for pdir in projects:
         lane = 'claudex' if 'codex' in pdir else 'native'
         for path in glob.glob(os.path.join(pdir, '*', '*.jsonl')):
             if os.path.getmtime(path) < since.timestamp():
                 continue
-            got = scan_transcript(path, lane, since, until)
+            got = scan_transcript(path, lane, since, until, counts)
             if got is None:
                 if unreadable is not None:
                     unreadable.append(path)
@@ -641,14 +644,15 @@ def render_section(tx, prior_tx, docs, days, top=5):
     return '\n'.join(out) + '\n'
 
 
-def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0, user_reports=()):
+def record(tx, docs, days, since, repo, ledger=None, projects=None, unreadable=0, user_reports=(), tool_calls=0):
     """One eval-runs row for this window: the refusal counts by verdict and the over-deny count per class.
     An explicit --projects scope joins the config, so a run over other transcripts is its own series. A scan
     that could not open every transcript is "partial", never a baseline."""
     totals = refusal_totals(tx)
     tx = [r for r in tx if r['source'] != 'ci-wait']
     verdicts = collections.Counter(r['verdict'] for r in tx)
-    metrics = {'refusals': len(tx), 'over_deny': verdicts['over-deny'], 'true_positive': verdicts['true-positive'],
+    metrics = {'tool_calls': tool_calls, 'refusals': len(tx), 'over_deny': verdicts['over-deny'],
+               'true_positive': verdicts['true-positive'],
                'unclear': verdicts['unclear'], 'over_deny_share': None, 'ci_wait': totals['ci_wait'],
                'hook_refusals': totals['hook_refusals'], 'hook_unclear': totals['hook_unclear'],
                'hook_unclear_share': totals['hook_unclear_share']}
@@ -693,11 +697,13 @@ def main(argv=None):
     names = known_names(a.repo)
     projects = a.projects or DEFAULT_PROJECTS
     unreadable = []
-    tx = scan_all(projects, since, now, unreadable)
+    counts = collections.Counter()
+    tx = scan_all(projects, since, now, unreadable, counts)
     docs = scan_docs(a.docs, since, names)
     reports = scan_reports(a.reports, since, now)
     if a.record:
-        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects, len(unreadable), reports)
+        record(tx, docs, a.days, since, a.repo, a.eval_ledger, a.projects, len(unreadable), reports,
+               tool_calls=counts['tool_calls'])
     if a.section:
         prior = scan_all(projects, since - dt.timedelta(days=a.days), since)
         sys.stdout.write(render_section(tx, prior, docs, a.days))

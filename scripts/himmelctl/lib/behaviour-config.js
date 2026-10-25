@@ -116,4 +116,15 @@ function linkTarget(file) {
   throw Object.assign(new Error(`too many links: ${file}`), { code: 'ELOOP' });
 }
 
-module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, writeTarget, upsertConfEntries };
+// A directory path a KEY=value line can carry: absolute and normalized (no
+// '.', '..', '//' or trailing '/'), at most 1024 bytes, from a character set
+// with no control byte, quote, '#', '$' or backslash, so neither the conf
+// parsers (comment strip, trim, quote strip) nor an argv can read it as more
+// than one path.
+const CONF_PATH_RE = /^(\/[A-Za-z0-9._@+,:=~ -]+)+$/;
+function confPathOk(v) {
+  return typeof v === 'string' && v.length <= 1024 && CONF_PATH_RE.test(v)
+    && v === v.trim() && path.posix.normalize(v) === v;
+}
+
+module.exports = { confPath, confLocalPath, readConfigVar, layersSetting, writeTarget, upsertConfEntries, confPathOk };

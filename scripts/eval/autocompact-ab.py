@@ -147,7 +147,7 @@ def parse_transcripts(paths):
 
 
 WORKER_SESSION_IDENTITY = os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                            "..", "lib", "leg-identity.sh")
+                            "..", "lib", "worker-identity.sh")
 
 
 _IDENTITY_CACHE = {}

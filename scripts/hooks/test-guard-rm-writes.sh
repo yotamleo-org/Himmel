@@ -90,6 +90,7 @@ rm_row "gh release uplo\\ad escaped verb" 2 "$(bash_payload 'gh release uplo\ad 
 rm_row "gh release up<backslash-newline>load continued verb" 2 "$(bash_payload $'gh release up\\\nload v1.1.3 dist.tgz --clobber')"
 rm_row "even backslashes before a newline stay a separator" 2 "$(bash_payload $'echo a\\\\\ngh release upload v1.1.3 dist.tgz')"
 rm_row "leg-jira-status" 2 "$(bash_payload 'bash scripts/handover/chief-kit/leg-jira-status.sh HIMMEL-1 Done')"
+rm_row "worker-jira-status" 2 "$(bash_payload 'bash scripts/handover/chief-kit/worker-jira-status.sh HIMMEL-1 Done')"
 rm_row "git commit" 2 "$(bash_payload 'git commit -m x')"
 rm_row "git push" 2 "$(bash_payload 'git push origin HEAD')"
 rm_row "gh pr create" 2 "$(bash_payload 'gh pr create --title x')"

@@ -76,7 +76,7 @@ n=0; failed=0; gone=0
 for m in "$@"; do
     n=$((n + 1))
     # shellcheck disable=SC2086
-    out=$(bash "$HERE/close-wrapped-leg.sh" $check --sweep --fleet "$m" 2>&1); rc=$?
+    out=$(bash "$HERE/close-wrapped-worker.sh" $check --sweep --fleet "$m" 2>&1); rc=$?
     # a WRAPPED, lock-free leg with no live session has no window left to close:
     # count it, print every other line as the sweep wrote it
     g=$(printf '%s\n' "$out" | grep -c -E '^sweep: refused .* \(rc=5\): .* - 0 live session\(s\) matched')

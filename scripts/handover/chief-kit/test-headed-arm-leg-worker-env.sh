@@ -16,7 +16,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT="$HERE/headed-arm-leg.sh"
+SCRIPT="$HERE/headed-arm-worker.sh"
 export HEADED_ARM_LEG_PROFILES="$HERE/../../lanes/plugin-profiles.mjs"
 export PLUGIN_PROFILES_ADAPTERS="$HERE/../../guardrails/himmel-adapters.json"
 unset HIMMEL_CONSOLE_DOC CADENCE_BANK_LANE LEG_LANE LEG_CONTEXT LEG_REPO LEG_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV \

@@ -1029,7 +1029,7 @@ fi
 # the default/refusal for free without themselves changing.
 #
 # Ruling 25 exempts the CONSOLE lane, which may legitimately pin Fable: a
-# console arm (handover basename *-console.md, case-insensitive) must stay
+# console arm (handover basename *-chief.md or *-console.md, case-insensitive) must stay
 # ceremony-free -- neither defaulted to opus nor required to justify a Fable
 # pin. An UNPINNED console arm passes no --model at all, so the launched
 # claude uses the operator's own default; console.sh / headed-arm.sh default
@@ -1038,7 +1038,7 @@ fi
 # check happens later, so no canonicalization dependency is needed here.
 _arm_is_console=0
 case "$(basename -- "$HANDOVER_PATH" | tr '[:upper:]' '[:lower:]')" in
-    *-console.md) _arm_is_console=1 ;;
+    *-console.md|*-chief.md) _arm_is_console=1 ;;
 esac
 
 # Fable-FAMILY match, not a literal string -- fable, fable-5, claude-fable-5,
@@ -2699,7 +2699,7 @@ RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble sta
 # ponytail: only the crontab and `at` launch bodies are wired; the Windows
 # (.bat) and WSL bodies export nothing, so a console relaunched there has no
 # snapshot and G11 (compacted-check.sh) reports `no snapshot` rc 2 -- unverified,
-# never a false pass. "Console" = the same basename *-console.md test the model
+# never a false pass. "Console" = the same basename *-chief.md / *-console.md test the model
 # default uses, so a console doc with another name is not snapshotted either.
 CHIEF_PRECOMPACT_DOC=""; CHIEF_PRECOMPACT_WORKDIR=""
 if [ "$_arm_is_console" -eq 1 ]; then

@@ -1,8 +1,10 @@
 # Review panel — what the CR ledger says about its critics
 
-> Evaluation write-up, read off the production ledger. Numbers are a fixed cut
-> (`--until 2026-10-06T20:00:00Z`) and re-run byte-for-byte with the command at
-> the end. The controlled complement — seeded defects with a hidden key, which
+> Evaluation write-up, read off the production ledger. The headline numbers are
+> regenerated from the live ledger by `scripts/eval/review-page.py --panel`, which
+> counts each finding once and states its own cut. The sections after it are a
+> fixed cut (`--until 2026-10-06T20:00:00Z`) and re-run byte-for-byte with the
+> command at the end. The controlled complement — seeded defects with a hidden key, which
 > measures recall — is [`scripts/eval/review-panel/`](../../scripts/eval/review-panel/README.md).
 > This page measures what that one cannot: how the panel behaves
 > on real PRs, and why its findings get thrown out.
@@ -42,42 +44,45 @@ they are not independent; resampling findings one by one would give intervals
 too narrow by roughly the square root of findings-per-PR. "PR" here means a
 branch: almost every branch is one PR, but a few are not.
 
+<!-- review-page.py --panel: start -->
 ## Headline numbers
 
-5,722 findings across 914 PRs, 2026-09-04 to 2026-10-06. One slug, `codex`,
-raised 98% of them; the other critics are spot reviewers with small samples.
+As of 25 Oct 2026 (CR ledger cut `2026-10-25T02:30:00Z`): 11,646 distinct findings across 2,147 PRs, 2026-09-04 to 2026-10-25.
+
+The ledger holds 11,720 finding rows. 74 of them repeat a finding already counted here: the same claim on the same file and line of the same PR, raised again in a later round or by another critic. A merged finding takes the verdict of its earliest raise that has one. A finding with no recorded text is never merged.
+
+Per PR: 3,322 PRs reviewed, 2,147 with at least one finding; median 3 and mean 5.4 distinct findings per PR with findings, at most 87 on one PR.
 
 | Critic | Findings | PRs | Agreed | Disproved | Deferred | Unadjudicated | Precision | 95% CI |
 |---|---:|---:|---:|---:|---:|---:|---:|---|
 | `codex:gpt-5.6-sol` | 231 | 27 | 95 | 18 | 35 | 83 | 84.1% | 74.2–91.7 |
+| `citation-guard` | 15 | 15 | 7 | 6 | 1 | 1 | 53.8% | 30.8–76.9 |
 | `codex:gpt-6-astra` | 2,435 | 362 | 1,099 | 132 | 697 | 507 | 89.3% | 86.1–92.0 |
-| `codex:gpt-6-sol` | 873 | 169 | 443 | 184 | 235 | 11 | **70.7%** | 64.8–76.2 |
-| `codex:gpt-6.1-sol` | 1,980 | 330 | 1,045 | 214 | 715 | 6 | **83.0%** | 79.8–86.1 |
-| `codex` (model not recorded) | 89 | 3 | 85 | 3 | 1 | 0 | 96.6% | wide |
-| `coderabbit` | 36 | 23 | 24 | 2 | 10 | 0 | 92.3% | 73.9–100 |
-| `coderabbit-outside` | 10 | 8 | 3 | 2 | 5 | 0 | 60.0% | 14.3–100 |
-| `sonnet` | 24 | 1 | 22 | 1 | 1 | 0 | 95.7% | one PR |
-| `claude` | 21 | 10 | 6 | 0 | 15 | 0 | 100% | — |
-| other (4 small slugs) | 23 | — | 6 | 2 | 13 | 2 | — | — |
-| **All** | **5,722** | **914** | **2,828** | **558** | **1,727** | **609** | **83.5%** | 81.4–85.6 |
+| `codex` | 109 | 8 | 100 | 2 | 7 | 0 | 98.0% | 95.8–100.0 |
+| `coderabbit` | 87 | 52 | 57 | 5 | 25 | 0 | 91.9% | 82.6–100.0 |
+| `sonnet` | 24 | 1 | 22 | 1 | 1 | 0 | 95.7% | — |
+| `unlabelled` | 48 | 11 | 0 | 0 | 47 | 1 | — | — |
+| `claude` | 130 | 58 | 24 | 0 | 106 | 0 | 100.0% | 100.0–100.0 |
+| `coderabbit-outside` | 216 | 119 | 67 | 54 | 95 | 0 | 55.4% | 44.1–65.1 |
+| `codex:gpt-6-sol` | 872 | 169 | 443 | 184 | 234 | 11 | 70.7% | 64.8–76.2 |
+| `codex:gpt-6.1-sol` | 7,079 | 1,500 | 3,996 | 1,026 | 2,016 | 41 | 79.6% | 77.9–81.2 |
+| `claude:claude-opus-5-5` | 341 | 36 | 93 | 100 | 138 | 10 | 48.2% | 36.5–59.2 |
+| `disposition-carry-forward` | 13 | 2 | 0 | 0 | 13 | 0 | — | — |
+| other (25 slugs under 10 findings each) | 50 | 34 | 10 | 0 | 40 | 0 | 100.0% | 100.0–100.0 |
+| **All** | **11,646** | **2,147** | **6,012** | **1,528** | **3,452** | **654** | **79.7%** | 78.3–81.2 |
 
-Read across the whole ledger:
+A finding raised by two critics counts once in each critic's row and once in **All**. Precision is agreed / (agreed + disproved); the interval resamples whole PRs.
 
-- **About one finding in ten is wrong.** 558 of 5,722 (9.8%) were disproved.
-  Half (49.4%) were agreed, and 30.2% were deferred.
-- **Deferral is mostly a review-budget decision, not a quality verdict.**
-  `/pr-check` stops after three rounds and defers every Suggestion still open
-  at the cap. Since 2026-10-01 a deferral carries a follow-up
-  class: of the 556 classed deferrals, 292 are `polish`, 250 `hardening` and 14
-  `escape` (a defect that would reach users). The other 1,171 predate the class.
-- **Severity does not buy precision.** Critical findings were ruled true 78.8%
-  of the time (CI 70.6–86.7), Important 85.8% (83.2–88.3), Suggestion 80.9%
-  (78.2–83.6). A Critical label is no stronger a signal than an Important one.
-- **Older critics have a verdict gap.** `gpt-5.6-sol` and `gpt-6-astra` left
-  36% and 21% of their findings with no verdict. Their precision is computed over the
-  findings someone bothered to rule on, which flatters them if the skipped ones
-  were weaker. The two later critics have under 1.3% unadjudicated, so their
-  numbers are the trustworthy ones.
+- Of the 11,646 distinct findings, 51.6% were agreed, 13.1% disproved, 29.6% deferred and 5.6% never ruled on.
+- Precision by severity: Critical 78.1% (276 findings, CI 70.6–84.9); Important 82.8% (4,962 findings, CI 80.8–84.5); Suggestion 76.4% (6,345 findings, CI 74.4–78.2).
+- 2,284 of the 3,452 deferred findings carry a follow-up class: 1,407 `polish`, 808 `hardening`, 69 `escape`.
+
+Regenerate this section from a himmel checkout (the cut makes it re-run exactly):
+
+```bash
+python3 scripts/eval/review-page.py --panel --until 2026-10-25T02:30:00Z --out docs/evals/review-panel.md
+```
+<!-- review-page.py --panel: end -->
 
 ## Before and after: the gpt-6.1-sol re-pin
 
@@ -119,7 +124,7 @@ seeded eval is for.
 
 ## Why findings get disproved: a failure taxonomy
 
-The 558 disproved findings each carry the author's written reason. A seeded
+The 558 disproved finding rows of the 2026-10-06 cut each carry the author's written reason. A seeded
 sample of 80 (seed 4482, drawn by the script; 73 distinct PRs) was hand-coded
 into the classes below. The classes were derived from the sample, not decided
 in advance. Each row is coded by the **first** rule that matches, in this order:
@@ -175,7 +180,7 @@ What the classes say:
 - **The author grades their own homework.** Verdicts come from the session
   that has to fix the finding, which has a motive to disprove or defer. The
   `no-rationale` share is the visible part of that risk. Precision here is
-  biased in an unknown direction: down where authors wave off real findings,
+  biased in an unknown direction: down where authors dismiss real findings,
   up where they accept wrong ones to end the review loop. The seeded recall eval, with a
   hidden key, is the unbiased check.
 - **Observational, not controlled.** No PR was reviewed by two critic models,
@@ -187,9 +192,9 @@ What the classes say:
   published (finding text quotes private artifacts as well as public code). The script, the
   cut and the coded sample are public; the rows they read are not. Anyone with
   their own ledger can run the same analysis on it.
-- **Small critics are anecdotes.** Every critic other than the four codex
-  models and the bare `codex` row (89 findings on three PRs) has under 40
-  findings; their intervals are too wide to rank them.
+- **Small critics are anecdotes.** In the 2026-10-06 cut every critic other
+  than the four codex models and the bare `codex` row (89 findings on three
+  PRs) had under 40 findings; a critic with a wide interval cannot be ranked.
 - **A branch is not exactly a PR.** The resampling unit is the branch, which
   is a PR in all but a handful of cases.
 
@@ -211,6 +216,19 @@ current ledger. `--sample 80 --seed 4482` prints the sample that was coded
 or `CR_LEDGER` points it at another ledger. The script makes no model or
 network call and writes nothing. Its suite is
 `scripts/eval/cr-ledger/test-cr-ledger.sh`, on a fixture ledger.
+
+The headline section counts a finding once however often it was raised: the
+same claim on the same file and line of the same PR, raised again in a later
+round or by another critic, is one finding. `cr_ledger_eval.py` above counts
+ledger rows. Regenerate the headline in place with:
+
+```bash
+python3 scripts/eval/review-page.py --panel --out docs/evals/review-panel.md
+```
+
+It rewrites only the block between the two `review-page.py --panel` comments,
+and prints the `--until` command that re-runs its cut. Its suite is
+`scripts/eval/test-review-page.sh`.
 
 `/cr-scores` (`scripts/cr/cr-scores.sh`) is the operational view of the same
 ledger: per-slug agreed%, availability and drop advice over a recent window.

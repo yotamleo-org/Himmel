@@ -62,7 +62,9 @@ allowlisted-operator check; see the auto-action docs in
 for what's enabled and how it's authorized. A forwarded message can never
 trigger one of these commands.
 
-## Messaging a running console
+<a id="messaging-a-running-console"></a>
+
+## Messaging a running chief
 
 `/console <text>` delivers to the **one live chief**, without needing its
 session name. Live means its waiter heartbeat is `waiting` or `sampling` and
@@ -108,7 +110,7 @@ file, so a line is never lost across a re-start).
 - **A wrapped chief leaves its file behind**, so a line to one is acked but
   read by no one; check the chief is live before relying on it.
 
-## Slash supervisor session requests and emergency lockdown
+## Slash chief requests and emergency lockdown
 
 These **slash forms only** carry the same authority as free `/console` text:
 

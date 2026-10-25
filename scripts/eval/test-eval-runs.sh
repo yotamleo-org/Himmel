@@ -46,6 +46,20 @@ if [ "$(field "$L" 2 confighash)" != "$h1" ]; then pass "append: confighash chan
 out=$(python3 "$LIB" validate "$L" 2>&1); rc=$?
 eq "validate: the written rows are valid" "$rc" "0"
 
+# --- writer: every row records the CLI version and effort of the session that wrote it ------------
+mkdir -p "$TMP/cli/versions" "$TMP/cli/bin"
+printf '#!/bin/sh\nexit 0\n' >"$TMP/cli/versions/9.8.7"; chmod +x "$TMP/cli/versions/9.8.7"
+ln -s "$TMP/cli/versions/9.8.7" "$TMP/cli/bin/claude"
+LE="$TMP/session.jsonl"
+PATH="$TMP/cli/bin:$PATH" CLAUDE_CODE_EFFORT_LEVEL=high python3 "$LIB" append --ledger "$LE" --eval demo --source s \
+  --config-json '{}' --metrics-json '{"s":1}' >/dev/null 2>&1
+eq "append: meta carries the claude CLI version" "$(field "$LE" 0 meta.cli_version)" "9.8.7"
+eq "append: meta carries the session's effort" "$(field "$LE" 0 meta.effort)" "high"
+PATH="$TMP/cli/bin:$PATH" CLAUDE_CODE_EFFORT_LEVEL=high python3 "$LIB" append --ledger "$LE" --eval demo --source s \
+  --config-json '{}' --metrics-json '{"s":1}' --meta-json '{"effort":"max","cli_version":"1.0.0"}' >/dev/null 2>&1
+eq "append: a caller's own effort wins" "$(field "$LE" 1 meta.effort)" "max"
+eq "append: a caller's own CLI version wins" "$(field "$LE" 1 meta.cli_version)" "1.0.0"
+
 # --- writer: refusals append nothing ------------------------------------------
 L2="$TMP/bad.jsonl"
 python3 "$LIB" append --ledger "$L2" --eval demo --source s --config-json '{}' --metrics-json '{"score":"high"}' >/dev/null 2>&1; rc=$?
@@ -156,6 +170,101 @@ eq "compare: below the baseline's CI lower bound exits 1 (band 0.5 ignored)" "$r
 row "$V" civ c3 '{}' '{"acc":0.78}'
 out=$(python3 "$CMP" civ --ledger "$V" --thresholds "$TH" --baseline c1 2>&1); rc=$?
 eq "compare: inside the baseline's CI exits 0" "$rc" "0"
+
+# Paired per-case comparison with a stated detection floor. The run-level band
+# (1.0) never fires, so only the paired test can.
+cat >"$TMP/paired-th.json" <<'EOF'
+{"pv": {"acc": {"higher_is_better": true, "band": 1.0}, "_cases": {"hit": {"higher_is_better": true}}},
+ "hr": {"acc": {"higher_is_better": true, "band": 0.1}, "cost_usd": {"higher_is_better": false, "band_rel": 0.5},
+        "_headroom": {"metric": "acc", "at": 0.95, "target": ["cost_usd", "wall_s"]}}}
+EOF
+cases12() { python3 -c 'import json,sys; m=int(sys.argv[1]); print(json.dumps({"c%02d" % i: {"hit": 0 if i < m else 1} for i in range(12)}))' "$1"; }
+prow() { python3 "$LIB" append --ledger "$1" --eval pv --run-id "$2" --source s --config-json '{}' --metrics-json '{"acc":0.9}' \
+  --cases-json "$(cases12 "$3")" >/dev/null 2>&1 || fail "fixture row $2 not written"; }
+PV="$TMP/pv.jsonl"
+prow "$PV" pv1 0
+prow "$PV" pv2 0
+out=$(python3 "$CMP" pv --ledger "$PV" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: identical per-case results exit 0" "$rc" "0"
+has "paired: the per-case metric is compared paired" "$out" "paired hit"
+has "paired: the detection floor is stated (2.8 x 1 / sqrt 12: a -1..+1 difference spreads at most 1)" "$out" "detection floor ±0.808"
+prow "$PV" pv3 1
+out=$(python3 "$CMP" pv --ledger "$PV" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: one case of 12 flipping is inside the floor (exit 0)" "$rc" "0"
+prow "$PV" pv4 6
+out=$(python3 "$CMP" pv --ledger "$PV" --thresholds "$TMP/paired-th.json" --baseline pv2 2>&1); rc=$?
+eq "paired: 6 of 12 cases lost is a regression the run-level band misses (exit 1)" "$rc" "1"
+has "paired: the paired regression is named" "$out" "REGRESSION"
+# Zero spread: every shared case moved the same way. An exact sign test needs 6 such cases for 5 %.
+casesn() { python3 -c 'import json,sys; print(json.dumps({"c%02d" % i: {"hit": int(sys.argv[2])} for i in range(int(sys.argv[1]))}))' "$1" "$2"; }
+zrow() { python3 "$LIB" append --ledger "$1" --eval pv --run-id "$2" --source s --config-json '{}' --metrics-json '{"acc":0.9}' \
+  --cases-json "$(casesn "$3" "$4")" >/dev/null 2>&1 || fail "fixture row $2 not written"; }
+Z="$TMP/pz.jsonl"
+zrow "$Z" z1 2 1
+zrow "$Z" z2 2 0
+out=$(python3 "$CMP" pv --ledger "$Z" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: 2 of 2 cases lost, no spread, is under what a sign test can call (exit 0)" "$rc" "0"
+zrow "$Z" z3 6 1
+zrow "$Z" z4 6 0
+out=$(python3 "$CMP" pv --ledger "$Z" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: 6 of 6 cases lost, no spread, is a regression (exit 1)" "$rc" "1"
+zrow "$Z" z5 12 1
+python3 "$LIB" append --ledger "$Z" --eval pv --run-id z6 --source s --config-json '{}' --metrics-json '{"acc":0.9}' \
+  --cases-json "$(python3 -c 'import json; print(json.dumps({"c%02d" % i: {"hit": 0 if i < 4 else 1} for i in range(12)}))')" >/dev/null 2>&1 || fail "fixture row z6 not written"
+out=$(python3 "$CMP" pv --ledger "$Z" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: 4 losses and 8 ties is p=0.125 on an exact sign test, not a regression (exit 0)" "$rc" "0"
+cat >"$TMP/paired-cost.json" <<'EOF'
+{"pc": {"_cases": {"cost": {"higher_is_better": false}}}}
+EOF
+crow() { python3 "$LIB" append --ledger "$1" --eval pc --run-id "$2" --source s --config-json '{}' --metrics-json '{"acc":0.9}' \
+  --cases-json "{\"a\":{\"cost\":$3},\"b\":{\"cost\":$3}}" >/dev/null 2>&1 || fail "fixture row $2 not written"; }
+C="$TMP/pc.jsonl"
+crow "$C" k1 2.5
+crow "$C" k2 2.5
+out=$(python3 "$CMP" pc --ledger "$C" --thresholds "$TMP/paired-cost.json" 2>&1); rc=$?
+has "paired: a continuous metric with no spread states its floor is unestimated" "$out" "detection floor unestimated"
+eq "paired: an unchanged continuous metric exits 0" "$rc" "0"
+
+# pass@k at a different k is another quantity: "same" names the metric both rows must share.
+cat >"$TMP/same-th.json" <<'EOF'
+{"sk": {"pass_at_k": {"higher_is_better": true, "band": 0.15, "same": "pass_k"}, "acc": {"higher_is_better": true, "band": 0.1},
+        "_cases": {"pass_pow_k": {"higher_is_better": true, "same": "pass_k"}}}}
+EOF
+skrow() { python3 "$LIB" append --ledger "$1" --eval sk --run-id "$2" --source s --config-json '{}' \
+  --metrics-json "{\"acc\":0.9,\"pass_k\":$3,\"pass_at_k\":$4}" \
+  --cases-json "$(python3 -c 'import json,sys; print(json.dumps({"c%02d" % i: {"pass_pow_k": float(sys.argv[1])} for i in range(8)}))' "$4")" \
+  >/dev/null 2>&1 || fail "fixture row $2 not written"; }
+SK="$TMP/sk.jsonl"
+skrow "$SK" s1 3 1.0
+skrow "$SK" s2 1 0.5
+out=$(python3 "$CMP" sk --ledger "$SK" --thresholds "$TMP/same-th.json" 2>&1); rc=$?
+eq "same: pass@k at k=3 vs k=1 is not compared, so no regression (exit 0)" "$rc" "0"
+has "same: the line says why" "$out" "pass_k 3 vs 1: not comparable"
+has "same: the paired case metric is skipped the same way" "$out" "paired pass_pow_k: pass_k 3 vs 1: not comparable"
+skrow "$SK" s3 1 0.2
+out=$(python3 "$CMP" sk --ledger "$SK" --thresholds "$TMP/same-th.json" 2>&1); rc=$?
+eq "same: at the same k a pass@k drop still gates (exit 1)" "$rc" "1"
+out=$(python3 "$CMP" sk --ledger "$SK" --thresholds "$TMP/same-th.json" --best-of 3 2>&1); rc=$?
+eq "same: --best-of picks the best row at the candidate's k, so the drop gates (exit 1)" "$rc" "1"
+has "same: --best-of compares against 0.5, not the k=3 row's 1.0" "$out" "pass_at_k                             0.5"
+NK="$TMP/nk.jsonl"
+python3 "$LIB" append --ledger "$NK" --eval sk --run-id n1 --source s --config-json '{}' --metrics-json '{"acc":0.9,"pass_at_k":1.0}' >/dev/null 2>&1 || fail "fixture row n1 not written"
+python3 "$LIB" append --ledger "$NK" --eval sk --run-id n2 --source s --config-json '{}' --metrics-json '{"acc":0.9,"pass_at_k":0.2}' >/dev/null 2>&1 || fail "fixture row n2 not written"
+out=$(python3 "$CMP" sk --ledger "$NK" --thresholds "$TMP/same-th.json" 2>&1); rc=$?
+eq "same: rows that both lack pass_k are not compared (exit 0)" "$rc" "0"
+has "same: a missing k says so" "$out" "pass_k missing vs missing: not comparable"
+
+# Headroom: a baseline at or above the ceiling says quality cannot show a gain.
+HR="$TMP/hr.jsonl"
+row "$HR" hr h1 '{}' '{"acc":0.97,"cost_usd":2}'
+row "$HR" hr h2 '{}' '{"acc":0.97,"cost_usd":2}'
+out=$(python3 "$CMP" hr --ledger "$HR" --thresholds "$TMP/paired-th.json" 2>&1)
+has "headroom: a 0.97 baseline points the comparison at cost or latency" "$out" "HEADROOM: baseline acc 0.97 is at or above 0.95"
+has "headroom: names the metrics to compare on" "$out" "cost_usd, wall_s"
+row "$HR" hr h3 '{}' '{"acc":0.80,"cost_usd":2}'
+row "$HR" hr h4 '{}' '{"acc":0.80,"cost_usd":2}'
+out=$(python3 "$CMP" hr --ledger "$HR" --thresholds "$TMP/paired-th.json" 2>&1)
+case "$out" in *HEADROOM*) fail "headroom: a 0.80 baseline printed HEADROOM";; *) pass "headroom: a 0.80 baseline has room, no HEADROOM line";; esac
 
 # A metric with no direction is reported, never gated.
 W="$TMP/wi.jsonl"

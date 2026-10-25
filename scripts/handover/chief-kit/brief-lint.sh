@@ -60,8 +60,8 @@ esac
 # plain-language line every surface shows next to the leg's label. A doc whose
 # Results section already holds a bullet has run, and was briefed before the
 # field existed, so it passes without one.
-# shellcheck source=../../lib/leg-identity.sh
-. "$(dirname "$0")/../../lib/leg-identity.sh"
+# shellcheck source=../../lib/worker-identity.sh
+. "$(dirname "$0")/../../lib/worker-identity.sh"
 if [ -z "$(leg_description_field "$doc")" ] && ! leg_doc_has_run "$doc"; then
     fail "no front-matter 'description:' line (required: one plain-language line saying what this leg is doing and why, e.g. 'description: Add a description line to every leg brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/leg-brief-template.md)"
 fi

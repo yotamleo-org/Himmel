@@ -149,6 +149,7 @@ export default defineConfig({
             { label: 'Running without a terminal', slug: 'internals/headless-modes' },
             { label: 'Using it from Codex', slug: 'internals/harness-compat' },
             { label: 'Jira integration', slug: 'internals/jira-plugin' },
+            { label: 'Troubleshooting', slug: 'troubleshooting' },
             { label: 'Glossary', slug: 'glossary' },
           ],
         },
@@ -200,7 +201,6 @@ export default defineConfig({
                   items: [
                     { label: 'Jarvis subsystems', slug: 'jarvis-subsystems' },
                     { label: 'himmel-bus (early)', slug: 'himmel-bus' },
-                    { label: 'Voice (beta)', slug: 'voice' },
                   ],
                 },
                 { label: 'Orchestration patterns', slug: 'orchestration-patterns' },

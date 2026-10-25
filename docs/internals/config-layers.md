@@ -79,8 +79,16 @@ Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `HIMMEL_WHERE_ARE_WE_STALE_HOURS`, `HIMMEL_WORKTREE_NUDGE`,
 `HIMMEL_UPDATE_AUTOSTASH`, `CR_PROFILE`, `CR_CLAUDE_AGENTS`,
 `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`,
-`TRACKER`. Their meanings and defaults are unchanged; `.env.example`
-documents each one.
+`TRACKER`.
+
+Non-secret Jira and service identifiers also belong in `himmel.conf`:
+`JIRA_EMAIL`, `JIRA_PROJECTS`, `JIRA_PROJECT_KEY`, `JIRA_CLOUD_ID`,
+`GCP_CI_PROJECT_ID`, `SNYK_ORG_ID`,
+`SNYK_ORG_SLUG`, `VERCEL_TEAM_ID`, `VERCEL_USER_ID`, `ANTHROPIC_API_ORG_ID_A`,
+`ANTHROPIC_API_ORG_ID_B`. Their meanings and defaults are unchanged;
+`.env.example` documents them. The Jira CLI reads its identifiers through
+these same config layers; API tokens still come only from the process env
+or legacy `.env`, never from `himmel.conf` or its local override.
 
 Every reader of these keys follows the same order as `load_dotenv`: the
 process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
@@ -93,9 +101,11 @@ Gate policy (`config.json` `.policy`): `CR_REQUIRE_CROSS_MODEL`,
 `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
 
 Everything else stays in `.env`. That includes keys whose secret-or-config
-class has not been decided yet: account emails, chat IDs, cookie-file paths,
-service URLs, VM user names and the non-token Jira keys. Until each is
-classified with the operator, it is treated as a secret.
+class has not been decided yet: other account emails, chat IDs, cookie-file
+paths, service URLs and VM user names. Only the explicitly named identifiers
+above are config; tokens and all other unclassified keys remain secrets.
+A key that decides where a credential or message is sent (`JIRA_BASE_URL`,
+`TELEGRAM_GROUP_CHAT_ID`) stays secret while `himmel.conf` is unguarded.
 
 The registry is `_himmel_key_class` in `scripts/lib/load-dotenv.sh`. A key
 moves from secret to config only by editing that list in a reviewed PR.
@@ -136,7 +146,7 @@ HIMMEL_INITIATIVE=prcheck,pr,ticket,handover
 `himmelctl install` keeps the `policy` field untouched and names it in one
 `WARN` line, as it does for any field outside its own schema.
 
-## Console rules
+## Chief rules
 
 Prose and hooks stay where they are: the chief template, the worker and judge
 system prompts, and the hooks are code, reviewed in the himmel repo. A rule that is

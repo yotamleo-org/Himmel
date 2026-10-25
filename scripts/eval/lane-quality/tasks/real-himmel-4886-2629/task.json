@@ -1,0 +1,20 @@
+{
+  "id": "real-himmel-4886-2629",
+  "ticket": "HIMMEL-4886",
+  "pr": 2629,
+  "merge_sha": "f5682076d809d9b74dbff0a3bbc6e13e1aeda8c0",
+  "base_sha": "66b8097bcca86b2dd3257cbf50b2eb37838102f9",
+  "set": "capability",
+  "source": "escape",
+  "why_hard": "2 code file(s), 226 changed lines; the hidden scripts/eval/sandbox-poc/test-probe.sh must go from failing at the base to passing, checked by 10 named check(s)",
+  "tests": [
+    "scripts/eval/sandbox-poc/test-probe.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/eval/sandbox-poc/test-probe.sh"
+  ],
+  "scope": [
+    "scripts/eval/sandbox-poc/"
+  ]
+}

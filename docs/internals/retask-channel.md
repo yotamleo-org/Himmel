@@ -30,7 +30,7 @@ weakened.
 1. Tool-result mimicry (the standard attack; the shape the motivating
    incident resembled).
 2. Compromised sibling: another live agent, itself injected, uses its own
-   real re-task channel — transport authenticity ≠ sender-is-my-console.
+   real re-task channel — transport authenticity ≠ sender-is-my-chief.
 3. Compromised parent: the parent reads a poisoned page and relays attacker
    intent through a fully authenticated re-task. No channel-auth design
    helps here — only capability scoping + post-hoc review do.
@@ -54,7 +54,7 @@ capability scoping + branch review (§5).
 
 A brief clause that pre-authorizes a named revision channel **without** a
 token would be worse than no clause at all — it teaches the child that
-console-shaped messages are welcome, lowering its guard exactly where
+chief-shaped messages are welcome, lowering its guard exactly where
 vector-1 attackers strike. The clause and the token ship together, always.
 
 **Mint a distinct nonce per child — never reuse your own inbound token.** A
@@ -187,7 +187,7 @@ consumption, and never advances the hook's authoritative delivery cursor.
 - **Document mirroring:** `--doc` writers serialize on a canonical-path hash lock in a private user directory under `${TMPDIR:-/tmp}`; other doc writers must use the same lock to participate, and missing/failed `flock` aborts before mirroring or inbox append.
 - **Sent-record + audit:** every `--token` send records a `sha256` of the delivered bullet in a per-sender ledger (`${HIMMEL_CONSOLE_RUNDIR:-<console.sh convention>}/<sender>/inbox-sent.log`); `scripts/handover/chief-kit/inbox-audit.sh <inbox-file> <sent-log-dir>` names any token-quoting bullet in an inbox with no matching ledger line — a forged bullet, or one lost to an `inbox-send.sh` exit-4 ledger-write failure.
 
-## 3a. Console succession
+## 3a. Chief succession
 
 The nonce authenticates a revision *to one chief*. Chiefs hand over, so the
 rule "only the session my brief names" has, on its own, no path by which the
@@ -300,7 +300,7 @@ peer message. This pins what counts as a ruling on the bus.
   "the named chief is gone" maps to `bus status <name>`: `live` iff the bound
   pid exists with the bound start time. Pending:
   `console.sh next` does not yet register the successor or create the
-  `--predecessor` console-to-console edge; today only a manual `bus register
+  `--predecessor` chief-to-chief edge; today only a manual `bus register
   --predecessor` does. Once the edge exists, the outgoing chief's relay (S1)
   arrives as `from` because it is still the worker's registered chief, and the
   worker then runs `bus adopt <new console>`. The chain path (S3) keeps its
@@ -368,7 +368,7 @@ direct store writes are another matter.
   forge it. A same-uid process can still rewrite
   `peers/*.json` or append to a log directly (T6).
 - **T4, a tool result or peer impersonating a ruling:** prevented through the
-  API (hook-only delivery, console-only `from`). What remains is the model's
+  API (hook-only delivery, chief-only `from`). What remains is the model's
   discipline in telling hook context from tool output, the same discipline the
   file inbox relies on today.
 - **T6, storage tampering:** the hash chain detects an edited, inserted,

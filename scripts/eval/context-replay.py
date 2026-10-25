@@ -103,7 +103,7 @@ def replay(calls, window, mode, post, floor):
 
 def classify(name, path):
     n = name.lower()
-    if n.endswith("-console") or "console" in n and "nextleg" in n:
+    if n.endswith("-console") or n.endswith("-chief") or "console" in n and "nextleg" in n:
         return "console"
     if "-n1" in n or "/worktrees/" in path.replace("--claude-worktrees-", "/worktrees/"):
         return "leg"

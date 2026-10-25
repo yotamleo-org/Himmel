@@ -64,7 +64,7 @@ case "$successor" in */*|*.md) successor="$(basename "$successor" .md)" ;; esac
 sender="$(basename "$doc" .md)"
 send="${INBOX_SEND:-$HERE/inbox-send.sh}"
 # shellcheck source=../../lib/leg-identity.sh
-. "$HERE/../../lib/leg-identity.sh"
+. "$HERE/../../lib/worker-identity.sh"
 # shellcheck source=../../lib/leg-tail-status.sh
 . "$HERE/../../lib/leg-tail-status.sh"
 # shellcheck source=../../lib/prim.sh

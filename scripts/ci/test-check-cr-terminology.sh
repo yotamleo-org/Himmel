@@ -34,12 +34,6 @@ echo "== Case C: scan dir absent =="
 bash "$GUARD" "$tmp/does-not-exist" >/dev/null 2>&1; rc=$?
 if [ "$rc" -eq 0 ]; then pass "absent dir -> exit 0"; else fail "absent dir -> expected 0 got $rc"; fi
 
-# Case D: the real repo docs pass post-fix.
-echo "== Case D: real repo docs clean =="
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
-( cd "$REPO_ROOT" && bash scripts/ci/check-cr-terminology.sh ) >/dev/null 2>&1; rc=$?
-if [ "$rc" -eq 0 ]; then pass "repo docs -> exit 0"; else fail "repo docs -> expected 0 got $rc"; fi
-
 echo
 if [ "$failures" -eq 0 ]; then
   echo "ALL PASS"

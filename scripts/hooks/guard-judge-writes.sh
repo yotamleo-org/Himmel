@@ -22,7 +22,7 @@
 #   Bash (a command word matches bare or as a path's last component, so
 #     /usr/bin/git is git) — the command text names HIMMEL_CONSOLE_JUDGE (an
 #     override or unset of the marker); or names leg-pr-open, merge-on-green, chief-kit/go.sh,
-#     inbox-send or leg-jira-status; or has the word "git" and a mutating git
+#     inbox-send, leg-jira-status or worker-jira-status; or has the word "git" and a mutating git
 #     verb (push, commit, merge, rebase, reset, cherry-pick, revert); or the
 #     word "gh" and a write verb (create, comment, review, merge, edit, close,
 #     reopen, ready, delete, lock, unlock, transfer); or "gh api" with a
@@ -134,6 +134,7 @@ case "$tool" in
             *console-kit/go.sh* | *chief-kit/go.sh*) deny "go" "console-kit/go.sh" ;;
             *inbox-send*) deny "inbox-send" "inbox-send" ;;
             *leg-jira-status*) deny "jira-write" "leg-jira-status" ;;
+            *worker-jira-status*) deny "jira-write" "worker-jira-status" ;;
         esac
 
         # Words: split on whitespace and shell separators, quotes dropped.

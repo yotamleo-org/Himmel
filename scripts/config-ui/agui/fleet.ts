@@ -242,7 +242,7 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
 const RECORDED_LOCK = [/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m, /release token is:\s*\n\s*```[^\n]*\n\s*[^\s`]+\s*\n\s*```/i];
 
 const roleOf = (name: string, doc: string): FleetRow["role"] =>
-  /-console$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
+  /-(console|chief)$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
 
 // The PR a leg doc names last: `READY <pr> ...` or `PR <n>` / `PR #<n>` in its bullets.
 function prOf(text: string): number | null {

@@ -83,8 +83,8 @@ has "the leg preface's HALT/WRAP step passes --queue-doc" "$(tr '\n' ' ' < "$HER
 # (a copy without resume_cwd: the worktree check is a later gate and the copy leaves D1 alone)
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
 mkdir -p "$WORK/arm"; grep -v '^resume_cwd:' "$D1" > "$WORK/arm/HIMMEL-9001-N901-copy.md"
-rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --profile leg-impl HIMMEL-9001-N901 "$WORK/arm/HIMMEL-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
-[ "$rc" = 0 ] && pass "a generated brief arms through headed-arm-leg.sh (brief-lint gate)" || fail "generated brief refused by headed-arm-leg.sh rc=$rc: $arm_out"
+rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile leg-impl HIMMEL-9001-N901 "$WORK/arm/HIMMEL-9001-N901-copy.md" "$WORK/arm/signal" 9999999999 "$WORK/arm/log" claude-sonnet-5-5 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "a generated brief arms through headed-arm-worker.sh (brief-lint gate)" || fail "generated brief refused by headed-arm-worker.sh rc=$rc: $arm_out"
 
 b1="$(cat "$D1" 2>/dev/null)"; b2="$(cat "$D2" 2>/dev/null)"
 has "the brief names the console" "$b1" "HIMMEL-nextleg-2026-10-08BZ-roadmap-console"
@@ -97,6 +97,9 @@ has "a hook leg's brief says it is launched with the bypass" "$b2" "hook-integri
 lacks "a plain leg's brief does not" "$b1" "hook-integrity bypass flag"
 has "a judge leg's brief announces the opus judge" "$b2" "console runs an opus judge"
 has "the other leg's scope is listed under 'other live legs'" "$b1" "N902 (h.sh)"
+has "the brief puts the write list on its own '> **Writes:**' line (HIMMEL-7469)" "$(grep -c '^> \*\*Writes:\*\* ' "$D1")" "1"
+[ "$(grep '^> \*\*Writes:\*\* ' "$D1")" = "> **Writes:** scripts/x/" ] && pass "the Writes line is the scope's paths only (HIMMEL-7469)" || fail "the Writes line is not exactly the scope's paths: $(grep '^> \*\*Writes:\*\* ' "$D1")"
+lacks "the Writes line carries no backtick prose (HIMMEL-7469)" "$(grep '^> \*\*Writes:\*\* ' "$D1")" '`'
 # a leg flagged for CI, infra or the environment gets a RED-first line requiring a real-environment fixture.
 has "a flagged leg's brief requires a fixture copied from the real environment" "$b2" "copied from the real environment"
 lacks "an unflagged leg's brief does not" "$b1" "copied from the real environment"
@@ -104,7 +107,7 @@ lacks "an unflagged leg's brief does not" "$b1" "copied from the real environmen
 l1="$(cat "$BUCKET/launch-N901.sh" 2>/dev/null)"; l2="$(cat "$BUCKET/launch-N902.sh" 2>/dev/null)"
 lacks "a plain leg's launcher has NO bypass export" "$l1" "HIMMEL_HOOK_INTEGRITY_BYPASS_OK"
 has "a hook leg's launcher exports the bypass" "$l2" "export HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1"
-has "the launcher calls headed-arm-leg.sh under the repo" "$l1" "$REPO/scripts/handover/chief-kit/headed-arm-leg.sh --profile leg-impl --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console"
+has "the launcher calls headed-arm-worker.sh under the repo" "$l1" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh --profile leg-impl --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console"
 has "the launcher passes the deadline and model" "$l1" "1791475000"
 has "the launcher is syntactically valid bash" "$(bash -n "$BUCKET/launch-N901.sh" 2>&1 && echo ok)" "ok"
 [ -x "$BUCKET/launch-N901.sh" ] && pass "launchers are executable" || fail "launcher not executable"
@@ -230,8 +233,8 @@ TD="$(find "$WORK/b12" -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | hea
 has "the opus brief carries the Tier line" "$(cat "$TD" 2>/dev/null)" "> **Tier:** opus — design: multi-step design: the gate shape is open"
 # the launcher's own gate is the check: a copy without resume_cwd (as in the arming row above) arms, not refused.
 mkdir -p "$WORK/tier-arm"; grep -v '^resume_cwd:' "$TD" > "$WORK/tier-arm/HIMMEL-9001-N901-copy.md"
-rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --profile leg-impl HIMMEL-9001-N901 "$WORK/tier-arm/HIMMEL-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
-[ "$rc" = 0 ] && pass "headed-arm-leg.sh's Tier gate accepts the generated opus brief" || fail "opus brief refused by headed-arm-leg.sh rc=$rc: $tier_out"
+rc=0; tier_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --profile leg-impl HIMMEL-9001-N901 "$WORK/tier-arm/HIMMEL-9001-N901-copy.md" "$WORK/tier-arm/signal" 9999999999 "$WORK/tier-arm/log" claude-opus-5-5 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "headed-arm-worker.sh's Tier gate accepts the generated opus brief" || fail "opus brief refused by headed-arm-worker.sh rc=$rc: $tier_out"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["model"]="claude-opus-5-5"; l[0]["tier"]={"category":"cheap","reason":"x"}; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/tier-badcat.json"
 python3 "$SUT" "$WORK/tier-badcat.json" --base 4ccb59d --console BZ --bucket "$WORK/b13" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/tier-badcat.err"; rc=$?
 [ "$rc" = 1 ] && grep -q 'tier.category' "$WORK/tier-badcat.err" && pass "a tier category outside the four tags is refused" || fail "bad tier category rc=$rc"
@@ -269,10 +272,10 @@ has "its brief header names the lane model and the lane" "$(cat "$WORK/b20"/HIMM
 # scripts/claude-codex as CODEX_MODEL: the launcher's own arguments, run as a dry run.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["model"]="gpt-6-astra"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-astra.json"
 python3 "$SUT" "$WORK/lane-astra.json" --base 4ccb59d --console BZ --bucket "$WORK/b20a" --repo "$REPO" --handover-root "$WORK/handovers" --no-worktree >/dev/null 2>&1
-has "a claudex leg with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-leg.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
+has "a claudex leg with a model key passes it as the launcher's model argument" "$(grep -F headed-arm-worker.sh "$WORK/b20a/launch-N901.sh")" '.log" gpt-6-astra >'
 mkdir -p "$WORK/astra-arm"; grep -v '^resume_cwd:' "$(find "$WORK/b20a" -name 'HIMMEL-9001-N901-*.md' | head -n 1)" > "$WORK/astra-arm/HIMMEL-9001-N901-copy.md"
-rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-leg.sh" --dry-run --lane claudex --profile leg-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
-[ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-leg.sh rc=$rc: $astra_out"
+rc=0; astra_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" bash "$HERE/headed-arm-worker.sh" --dry-run --lane claudex --profile leg-impl HIMMEL-9001-N901 "$WORK/astra-arm/HIMMEL-9001-N901-copy.md" "$WORK/astra-arm/signal" 9999999999 "$WORK/astra-arm/log" gpt-6-astra 2>&1)" || rc=$?
+[ "$rc" = 0 ] && pass "the generated claudex brief arms with the named model" || fail "claudex brief refused by headed-arm-worker.sh rc=$rc: $astra_out"
 has "and the named model reaches the leg as CODEX_MODEL" "$astra_out" "CODEX_MODEL=gpt-6-astra"
 # An effort key exports WORKER_SESSION_EFFORT in the launcher.
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="claudex"; l[0]["effort"]="high"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-effort.json"
@@ -290,6 +293,11 @@ ct_brief() { # <scope text> <bucket>
     python3 "$SUT" "$WORK/ct.json" --base 4ccb59d --console BZ --bucket "$2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/ct.err" || fail "completes-ticket scope generation rc=$?: $(cat "$WORK/ct.err")"
     cat "$2"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null
 }
+wr_brief="$(ct_brief 'writes confined to scripts/wr/a.sh, docs/wr.md (find what scripts/wr-read/ uses). Find callers with grep -rl wr scripts/wr-grep/ and grep -rl "a needle" scripts/wr-quoted/. Impacted suites: scripts/wr/test-a.sh. SINGLE-WRITER: scripts/wr-sw.ts is held by open PR #3791 (N3537). Touches scripts/wr-ci/, a ci-trust-paths pattern. Replace grep -E in scripts/wr/c.sh. SINGLE-WRITER: this leg is the one writer of scripts/wr/d.sh, which PR #3791 only reads. Also find and fix the caller in scripts/wr/b.sh. completes-ticket: no' "$WORK/wr1")"
+wr_line="$(printf '%s\n' "$wr_brief" | grep '^> \*\*Writes:\*\* ')"
+[ "$wr_line" = "> **Writes:** scripts/wr/a.sh docs/wr.md scripts/wr/c.sh scripts/wr/d.sh scripts/wr/b.sh" ] && pass "the Writes line is exactly the files the scope writes (HIMMEL-7469)" || fail "the Writes line keeps read-only text or drops a write: $wr_line"
+lacks "the Writes line drops a read aside, a quoted-arg grep, another holder's SINGLE-WRITER and Touches boilerplate (HIMMEL-7469)" "$wr_line" "scripts/wr-"
+lacks "the Writes line drops an Impacted suites file (HIMMEL-7469)" "$wr_line" "test-a.sh"
 ct_count() { printf '%s\n' "$1" | grep -c '^> \*\*Completes ticket:\*\* '; }
 ct_no="$(ct_brief 'one PR. completes-ticket: no' "$WORK/ct1")"
 has "scope ending completes-ticket: no writes the no line" "$ct_no" "> **Completes ticket:** no"

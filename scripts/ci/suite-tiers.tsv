@@ -153,6 +153,7 @@ scripts/ci/test-run-shell-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-impacted.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-live-state.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-manifest.sh	pr	static-gate
+scripts/ci/test-run-shell-tests-parallel.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-guards.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation.sh	pr	trust-path
@@ -258,10 +259,12 @@ scripts/docs/test-check-llms-links.sh	pr	static-gate
 scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
 scripts/docs/test-generate-credits.sh	pr	static-gate
+scripts/docs/test-install-profiles-page.sh	pr	static-gate
 scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-second-model-review-page.sh	pr	static-gate
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/docs/test-troubleshooting-page.sh	pr	static-gate
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
 scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
@@ -270,6 +273,7 @@ scripts/eval/judge-accuracy/test-judge-accuracy.sh	local	behaviour suite, new HI
 scripts/eval/judge-accuracy/test-judge-accuracy-cadence.sh	local	behaviour suite, new HIMMEL-7385
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/lane-quality/test-lane-quality.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/lane-quality/test-mine-tasks.sh	local	behaviour suite, new, no audit-window history
 scripts/eval/lane-quality/test-trajectory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-failure-review.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/worker-digest/test-failure-router.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -292,6 +296,8 @@ scripts/eval/test-cache-probe.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/eval/test-ci-metrics.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-console-load-inventory.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-context-replay.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/test-deferred-outcome.sh	local	behaviour suite, new HIMMEL-7517
+scripts/eval/test-escapes.sh	local	behaviour suite, new HIMMEL-7517
 scripts/eval/test-eval-feedback.sh	local	behaviour suite, new HIMMEL-6942
 scripts/eval/test-eval-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/test-handover-cost.sh	local	behaviour suite, backfilled HIMMEL-6716
@@ -318,7 +324,7 @@ scripts/graphify/test-graph-refresh.sh	pr	guard
 scripts/graphify/test-harden-graph.sh	pr	guard
 scripts/graphify/test-leg-graph-rationale.sh	pr	guard
 scripts/graphify/test-leg-graph.sh	pr	guard
-scripts/graphify/test-no-windows-indexed.sh	pr	guard
+scripts/graphify/test-no-windows-indexed.sh	local	one-time Windows-drop check, run by hand
 scripts/graphify/test-quality-sample.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	pr	guard
 scripts/graphify/test-refresh-graph-map-lock.sh	pr	guard
@@ -721,6 +727,7 @@ scripts/hooks/test-refresh-where-are-we-on-end.sh	local	behaviour suite, 0 catch
 scripts/hooks/test-require-quiet-run.sh	pr	guard
 scripts/hooks/test-retrieval-nudge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-rtk-hook-guard.sh	pr	trust-path
+scripts/hooks/test-run-hook-with-bash-unroll.sh	pr	trust-path
 scripts/hooks/test-session-end-timeout-budget.sh	pr	static-gate
 scripts/hooks/test-shell-tokenize.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/hooks/test-stop-console-idle-guard.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -944,7 +951,6 @@ scripts/observability/test-install-stack.sh	local	behaviour suite, 0 catches in 
 scripts/observability/test-ledger-prune.sh	pr	static-gate
 scripts/observability/test-ledgers-registry.sh	pr	catch:2851
 scripts/observability/test-promtool-validation.sh	local	behaviour suite, 0 catches in the 400-PR audit window
-scripts/observability/test-restart-stack.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-suite-flake-summary.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/observability/test-tool-call-census.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/openrouter/test-free-watch.sh	local	behaviour suite, 0 catches in the 400-PR audit window

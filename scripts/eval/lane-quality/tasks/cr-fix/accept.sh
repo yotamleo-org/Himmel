@@ -27,4 +27,12 @@ accept_rc numeric-ok-0 0 bash "$S" "$D" 5
 accept_ok own-test-passes bash -c 'cd "$1" && bash lq-work/test-cleanup-old.sh' _ "$WT"
 rm -rf "$D"
 
+# Test quality: the candidate's own test must FAIL against the untouched
+# fixture script (a test that cannot fail is not evidence).
+MUT="$(mktemp -d "${TMPDIR:-/tmp}/lq-mut.XXXXXX")" || { echo "accept: mktemp failed" >&2; exit 1; }  # prim-ok: the scratch dir idiom above; accept.sh is self-contained
+cp -R "$WT/lq-work" "$MUT/" 2>/dev/null
+git -C "$WT" show "$2:lq-work/cleanup-old.sh" >"$MUT/lq-work/cleanup-old.sh" 2>/dev/null || { echo "accept: fixture script unreadable at $2" >&2; rm -rf "$MUT"; exit 1; }
+accept_ok own-test-catches-fixture bash -c 'cd "$1" && [ -f lq-work/test-cleanup-old.sh ] && ! bash lq-work/test-cleanup-old.sh' _ "$MUT"
+rm -rf "$MUT"
+
 accept_done

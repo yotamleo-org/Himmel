@@ -282,7 +282,7 @@ was never wired into either hook inventory. Removal changes no dispatched
 protection.
 
 The live claudex implementation lane runs through the Claude Code harness
-([lane calibration](lane-calibration.md#claudex-leg--implementor-default-operating-model)),
+([lane calibration](lane-calibration.md#claudex-worker--implementor-default-operating-model)),
 with publication subject to its permission classifier. The chief's
 `scripts/handover/chief-kit/ready-check.sh` separately refuses a head without
 an `ok` CR-ledger row. These cover publication authorization and automated review readiness,
@@ -311,7 +311,7 @@ no rewrite.
 
 ## Carry-forwards
 
-- **→ WS8 (Mission Control):** the Phase 1 read-only console
+- **→ WS8 (Mission Control):** the Phase 1 read-only dashboard
   (`scripts/fleet-control/`, see `docs/jarvis-subsystems.md`) ships fleet/
   escalation/quota surfaces but not gate verdicts or trust-tier state; making
   those (what's quarantined, what's pending verdict) first-class C&C surfaces

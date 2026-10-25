@@ -91,7 +91,7 @@ IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' CONSULT_SETTINGS_HOME="$work/home" \
 HEADED_ARM_WORKER_TARGET="$HERE/../headed-arm.sh" \
 KONSOLE_CMD="$work/konsole" PGREP_CMD="$work/pgrep" \
 WORKER_SESSION_REPO="$primary" HEADED_ARM_LOCK_DIR="$work/locks" HEADED_ARM_PROC="$work/proc" \
-    bash "$HERE/headed-arm-leg.sh" --consult --profile design-motion --console SMOKE-console \
+    bash "$HERE/headed-arm-worker.sh" --consult --profile design-motion --console SMOKE-console \
         SMOKE-consult "$doc" "$work/signal-never" "$(( $(date +%s) - 100 ))" "$work/log" >"$work/launch.out" 2>&1 &
 launch_pid=$!
 settings="$work/SMOKE-consult.leg-settings.json"

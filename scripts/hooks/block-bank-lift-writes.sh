@@ -982,8 +982,14 @@ if [[ $CMD == *'|'* ]] && [[ "$CMD" =~ (^|[^A-Za-z0-9_.-])(bash|sh|zsh|dash|ksh)
     bl_texts=
     # shellcheck source=../lib/bash-ast.sh
     if { [ -r "$bl_lib" ] && . "$bl_lib"; } 2>/dev/null; then
+        bl_rc=0
+        bl_pos=$(bash_ast_positions "$CMD" 2>/dev/null) || bl_rc=$? # swallow-ok: the rc is read next
+        if [ "$bl_rc" = 5 ]; then
+            echo "block-bank-lift-writes: the command model timed out, so this command that pipes into a shell cannot be read; refusing. Split the command." >&2
+            exit 2
+        fi
         # swallow-ok: the model only adds denies; a failed parse keeps the tokenizer verdict above
-        bl_texts=$(bash_ast_positions "$CMD" 2>/dev/null | jq -c "$BL_JQ" 2>/dev/null)
+        bl_texts=$(printf '%s' "$bl_pos" | jq -c "$BL_JQ" 2>/dev/null)
     fi
     while IFS= read -r bl_t; do
         [ -n "$bl_t" ] || continue

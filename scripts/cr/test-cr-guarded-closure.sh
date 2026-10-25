@@ -133,7 +133,7 @@ closure() {
       | sed 's#^<himmel_dir>/##'
     for f in "$ROOT"/scripts/cr/*.sh "$ROOT"/scripts/cr/*.js "$ROOT"/scripts/cr/*.mjs; do
       [ -f "$f" ] || continue
-      case "$(basename "$f")" in test-*) continue ;; esac
+      case "$(basename "$f")" in (test-*) continue ;; esac
       printf '%s\n' "${f#"$ROOT"/}"
     done
   )"

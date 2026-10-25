@@ -7,7 +7,7 @@
 # twice, so per root CLAUDE.md's "Adding a rule" it is a hook.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_DOC is set (a cheap first gate, before stdin is
-# read) AND the session's own `-n` name ends in `-console` (a leg launched from
+# read) AND the session's own `-n` name ends in `-chief` or `-console` (a leg launched from
 # a console inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
 # scripts/handover/chief-kit/long-running.txt AND tool_input.run_in_background
 # is not true. "Runs" means the name follows an interpreter (bash, sh, node,
@@ -58,13 +58,13 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) |
 [ -n "$cmd" ] || exit 0
 
 # A leg launched from a console's Bash inherits HIMMEL_CONSOLE_DOC as ambient env,
-# so the env var alone cannot tell them apart: only a session named `*-console`
+# so the env var alone cannot tell them apart: only a session named `*-chief`/`*-console`
 # is a console (the console-compact-reinject.sh rule). Unresolvable name: allow.
 lib="$HERE/../lib/session-name.sh"
 # shellcheck source=scripts/lib/session-name.sh
 { [ -r "$lib" ] && . "$lib"; } 2>/dev/null || exit 0
 sname=$(current_session_name 2>/dev/null) || exit 0
-case "$sname" in *-console) ;; *) exit 0 ;; esac
+case "$sname" in *-console|*-chief) ;; *) exit 0 ;; esac
 
 list="${CHIEF_FG_LIST:-${CONSOLE_FG_LIST:-$HERE/../handover/chief-kit/long-running.txt}}"
 [ -r "$list" ] || exit 0

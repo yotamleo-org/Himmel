@@ -41,7 +41,7 @@ tickets not yet started are reported, never silently dropped.
 
 `/afk-shift`'s dispatch loop polls the marker between dispatches
 (HIMMEL-2724 lead 4) — this is the reference implementation. Any other
-long-running dispatch loop (overnight-mode Phase 3's manual runbook,
+long-running dispatch loop (AFK-mode Phase 3's manual runbook,
 autonomous loops) MUST poll the marker the same way, between dispatches:
 
 ```bash

@@ -19,8 +19,10 @@
 # Idempotent: finds an open PR for the current branch (forge_pr_find_open)
 # and updates its body instead of opening a second one.
 #
-# Refuses (exit 1): on `main`, when the branch has no upstream, or on an
-# empty body file. No retry logic — a classifier denial of THIS invocation is
+# Refuses (exit 1): on `main`, when the branch has no upstream, on an empty
+# body file, or when opening (not updating) a PR before /pr-check finished: a
+# cr-pending marker still held, or no `avail ... ok` ledger row at that head.
+# No retry logic — a classifier denial of THIS invocation is
 # the stuck-playbook Stage 2 / Out-of-Place rows' territory, not this
 # script's.
 #
@@ -226,6 +228,23 @@ rm -f "$find_open_err"
 existing_pr=$(printf '%s\n' "$existing_pr" | head -n 1)
 
 if [ -z "$existing_pr" ]; then
+    # Opening a PR needs a finished /pr-check: an `avail ... ok` row at this head
+    # in the CR ledger (a critic responded) AND no pending cr-pending marker,
+    # which only clear-review-marker.sh removes once no finding blocks (the same
+    # marker check-cr-marker-on-pr-create.sh holds `gh pr create` on). Paths are
+    # fixed, never an env seam. An existing PR's body update is not an open and
+    # is not gated.
+    common_dir="$(git rev-parse --path-format=absolute --git-common-dir)"
+    if [ -e "$common_dir/cr-pending/$branch" ]; then
+        echo "ERR leg-pr-open: /pr-check is still pending for branch '$branch' (cr-pending marker present) — finish /pr-check until it clears the marker, then open the PR" >&2
+        exit 1
+    fi
+    ledger="$common_dir/cr-critic-scores.jsonl"
+    if ! [ -f "$ledger" ] || ! awk -v h="\"head\":\"$head_sha\"" \
+        'index($0, "\"kind\":\"avail\"") && index($0, "\"status\":\"ok\"") && index($0, h) { found = 1; exit } END { exit !found }' "$ledger"; then
+        echo "ERR leg-pr-open: no /pr-check record for head $head_sha — run /pr-check on this head before opening the PR (order: commit, push the branch, /pr-check, then open)" >&2
+        exit 1
+    fi
     # Capture stdout (the PR URL) and stderr (diagnostics, plus the
     # CodeRabbit-trigger confirmation) into SEPARATE streams —
     # merging them with `2>&1` let a stderr line race the URL for "first
@@ -279,7 +298,7 @@ if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
     # shellcheck disable=SC1091
     . "$HERE/../lib/ticket-status.sh"
     if jira_key=$(ticket_key_from_title "$title"); then
-        bash "${TICKET_STATUS_FUNNEL:-$HERE/../handover/chief-kit/leg-jira-status.sh}" "$jira_key" \
+        bash "${TICKET_STATUS_FUNNEL:-$HERE/../handover/chief-kit/worker-jira-status.sh}" "$jira_key" \
             --event pr-open --pr "$number" --head "$head_sha" >/dev/null || true
     fi
 fi

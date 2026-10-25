@@ -34,6 +34,7 @@ let fleetCapLoadGen = 0, fleetCapSaving = false; // likewise for loadFleetCap()
 let toolHealth = null, toolHealthGen = 0;
 let setup = null, setupGen = 0; // GET /api/setup: secret presence and the commit rules; declared before route() runs
 const setupMsgs = {}; // per secret name: the last save or remove outcome, never a value
+let verify = null; // the Setup page's Verify step: null, { state: "running" } or POST /api/setup/verify's answer; page memory only
 const toolFilters = new URLSearchParams();
 let roadmap = null, roadmapGen = 0; // declared before route() runs, as healthGen is
 const roadmapUi = { version: null, theme: null, ver: null, hideDone: false, writes: true, writeError: null }; // writes = cards drag and take a theme // ver = the #/roadmap/<version> drill-in, from the route
@@ -42,7 +43,7 @@ const noTracker = () => `<div class="nodata">No tracker the UI can read is confi
 const trackerPage = (draw) => () => (sources && sources.length === 0 ? noTracker() : draw());
 const PAGES = [
   { id: "config", label: "Settings", regions: true, render: (f) => render(f, state), onVisit: () => { if (!state.vm || !state.vm.data) loadVm(); if (!state.reviewGate || !state.reviewGate.data) loadReviewGate(); if (!state.fleetCap || !state.fleetCap.data) loadFleetCap(); } },
-  { id: "setup", label: "Setup", needsFeed: false, render: () => renderSetup(setup, state.plans, setupMsgs), onVisit: () => loadSetup() },
+  { id: "setup", label: "Setup", needsFeed: false, render: () => renderSetup(setup, state.plans, setupMsgs, verify), onVisit: () => loadSetup() },
   { id: "health", label: "Health", needsFeed: false, render: (f) => renderHealth(f, health), onVisit: () => { if (!health) loadHealth(); } },
   { id: "toolhealth", label: "Tool health", needsFeed: false, render: () => renderToolHealth(toolHealth, token), onVisit: () => { if (!toolHealth) loadToolHealth(); } },
   { id: "roadmap", label: "Roadmap", needsFeed: false, render: trackerPage(() => renderRoadmap(roadmap, roadmapUi)), onVisit: () => { if (!roadmap && !(sources && !sources.length)) loadRoadmap(); } },
@@ -294,6 +295,14 @@ async function loadSetup() {
   setup = data;
   if (currentPage.id === "setup") paint();
 }
+async function runVerify() {
+  if (verify && verify.state === "running") return;
+  verify = { state: "running" };
+  paint();
+  const { ok, j } = await post("/api/setup/verify", {});
+  verify = ok ? j : { state: "error", error: j.error || "the checks failed" };
+  if (currentPage.id === "setup") paint();
+}
 // The value leaves the field in this one request and the field is cleared whatever the answer is.
 async function saveSecret(name, op, input) {
   const body = { name, op };
@@ -390,12 +399,14 @@ document.addEventListener("change", (e) => {
 });
 
 // Two-step write: the dry-run binds a preview id; only confirm runs it.
-async function preview(b) {
-  const k = b.dataset.k;
-  const busy = state.plans[k];
-  if (busy && (busy.stage === "loading" || busy.stage === "running")) return; // one request per row at a time
+function preview(b) {
   const req ={ action: b.dataset.action, target: b.dataset.target };
   if (b.dataset.value) req.value = b.dataset.value;
+  return previewReq(b.dataset.k, req);
+}
+async function previewReq(k, req) {
+  const busy = state.plans[k];
+  if (busy && (busy.stage === "loading" || busy.stage === "running")) return; // one request per row at a time
   state.plans[k] = { stage: "loading" }; paint();
   const { ok, j } = await post("/api/preview", req);
   state.plans[k] = ok ? { stage: "plan", req, typed: "", ...j } : { stage: "error", error: j.error || "preview failed", output: j.output };
@@ -411,8 +422,28 @@ async function run(k) {
   paint();
   if (ok) { loadFeed(); if (currentPage.id === "setup") loadSetup(); }
 }
+// The password leaves its fields in this one request; both fields are cleared whatever the answer is.
+async function createAccount(f) {
+  const user = f.querySelector('[data-account="user"]').value;
+  const pw = f.querySelector('[data-account="password"]'), again = f.querySelector('[data-account="confirm"]');
+  const same = pw.value === again.value, password = pw.value;
+  pw.value = ""; again.value = "";
+  if (!same) { setupMsgs.account = "the two passwords differ"; return paint(); }
+  const { ok, j } = await post("/api/setup/account", { user, password });
+  setupMsgs.account = ok ? "login created" : (j.error || "failed");
+  paint();
+  if (ok) loadSetup();
+}
 document.addEventListener("submit", (e) => {
-  const f = e.target.closest && e.target.closest("[data-setup-form]");
+  const a = e.target.closest && e.target.closest("[data-account-form]");
+  if (a) { e.preventDefault(); return void createAccount(a); }
+  const pf = e.target.closest && e.target.closest("[data-path-form]");
+  if (pf) {
+    e.preventDefault();
+    const target = pf.dataset.target;
+    return void previewReq(`setup|${target}`, { action: "config.paths", target, value: pf.querySelector("input").value });
+  }
+  const f =e.target.closest && e.target.closest("[data-setup-form]");
   if (!f) return;
   e.preventDefault();
   void saveSecret(f.dataset.name, "set", f.querySelector("input"));
@@ -440,6 +471,7 @@ document.addEventListener("click", (e) => {
   if (b.dataset.act === "review-gate-save") return void saveReviewGate();
   if (b.dataset.act === "fleet-cap-save") return void saveFleetCap();
   if (b.dataset.act === "setup-remove") return void saveSecret(b.dataset.name, "remove", null);
+  if (b.dataset.act === "setup-verify") return void runVerify();
   if (b.dataset.act === "refresh-health") { loadHealth(); return void loadFeed(true); } // the verdict reads the doctor feed too
   if (b.dataset.act === "open-config") {
     state.filt = { health: null, kind: null, q: b.dataset.id, problems: false };

@@ -59,9 +59,14 @@ printf '%s\n' "${FAKE_ENV:-$env_default}"
 EOF
 chmod +x "$FAKE"
 export HIMMEL_CLAUDE_BIN="$FAKE"
-# The operator opt-in the gate requires. Non-empty, so the primary's .env never
-# overrides a case (load_dotenv lets a non-empty process value win).
-export CR_REQUIRE_CROSS_MODEL=1 CR_FLOOR_FALLBACK=claude-only
+# The operator opt-in the gate requires. Both keys are gate policy: they come
+# from $HOME/.himmel/config.json .policy, never from the process env.
+# set_policy <require> <fallback> - an empty argument leaves that key out.
+set_policy() {
+    mkdir -p "$HOME/.himmel"
+    jq -n --arg r "$1" --arg f "$2" '{version:1,policy:({CR_REQUIRE_CROSS_MODEL:$r,CR_FLOOR_FALLBACK:$f}|with_entries(select(.value!="")))}' > "$HOME/.himmel/config.json"
+}
+set_policy 1 claude-only
 
 # mk_repo — main + one commit on feat/himmel-9-x; sets R and HEAD_SHA.
 mk_repo() {
@@ -162,13 +167,28 @@ check "7 no provenance artifact" no "$([ -e "$R/.git/cr-floor/$HEAD_SHA.json" ] 
 
 # 8. No opt-in: the gate would refuse the floor, so nothing is spent.
 mk_repo 8; row codex unavailable quota
-CR_FLOOR_FALLBACK=off run_sut
+set_policy 1 off
+run_sut
 check "8 no claude-only opt-in -> exit 3" 3 "$RC"
 check "8 claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
 mk_repo 8b; row codex unavailable quota
-CR_REQUIRE_CROSS_MODEL=0 run_sut
+set_policy 0 claude-only
+run_sut
 check "8b no cross-model requirement -> exit 3" 3 "$RC"
 check "8b claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+# 8c/8d. The process env is not a policy source: a truthy env value cannot
+# stand in for an opt-in the policy file withholds or leaves unset.
+mk_repo 8c; row codex unavailable quota
+set_policy 1 off
+CR_FLOOR_FALLBACK=claude-only run_sut
+check "8c env claude-only against policy off -> exit 3" 3 "$RC"
+check "8c claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+mk_repo 8d; row codex unavailable quota
+set_policy "" ""
+CR_REQUIRE_CROSS_MODEL=1 CR_FLOOR_FALLBACK=claude-only run_sut
+check "8d env opt-in with policy unset -> exit 3" 3 "$RC"
+check "8d claude never invoked" no "$([ -e "$REC/argv" ] && echo yes || echo no)"
+set_policy 1 claude-only
 
 # 9. A TRACKED .cr-floor-review.json in the snapshot never stands in for a
 # review the headless session did not write.

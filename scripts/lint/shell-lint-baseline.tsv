@@ -245,7 +245,7 @@ scripts/graphify/graph-publish.sh	errexit	1
 scripts/graphify/graph-refresh.sh	errexit	1
 scripts/graphify/graph-refresh.sh	prim-canon	3
 scripts/graphify/graph-refresh.sh	prim-tmpdir	1
-scripts/graphify/leg-graph.sh	prim-tmpdir	1
+scripts/graphify/worker-graph.sh	prim-tmpdir	1
 scripts/graphify/refresh-graph-map.sh	errexit	1
 scripts/graphify/refresh-graph-map.sh	prim-lock	2
 scripts/graphify/refresh-graph-map.sh	prim-tmpdir	1
@@ -315,10 +315,10 @@ scripts/handover/chief-kit/inbox-send.sh	prim-atomic	1
 scripts/handover/chief-kit/inbox-send.sh	prim-lock	1
 scripts/handover/chief-kit/judge-ladder.sh	prim-lock	1
 scripts/handover/chief-kit/launch-cloud.sh	errexit	1
-scripts/handover/chief-kit/leg-digest-step.sh	gnu-flag	10
-scripts/handover/chief-kit/leg-doc-lock.sh	prim-atomic	1
-scripts/handover/chief-kit/leg-doc-lock.sh	prim-lock	1
-scripts/handover/chief-kit/leg-pretrust.sh	prim-lock	1
+scripts/handover/chief-kit/worker-digest-step.sh	gnu-flag	10	renamed from leg-digest-step.sh with its 10 findings; the old path is a forwarder, so git sees no rename
+scripts/handover/chief-kit/worker-doc-lock.sh	prim-atomic	1
+scripts/handover/chief-kit/worker-doc-lock.sh	prim-lock	1
+scripts/handover/chief-kit/worker-pretrust.sh	prim-lock	1
 scripts/handover/chief-kit/ops-run.sh	gnu-flag	1
 scripts/handover/chief-kit/test-close-wrapped-leg.sh	gnu-flag	1
 scripts/handover/chief-kit/test-go.sh	mktemp	1
@@ -891,8 +891,6 @@ scripts/measurements/test-prose-audit.sh	bash32	2
 scripts/measurements/test-prose-audit.sh	mktemp	1
 scripts/memory/test-audit-memory-capture.sh	mktemp	1
 scripts/observability/ledger-prune.sh	prim-atomic	1
-scripts/observability/restart-stack.sh	prim-atomic	1
-scripts/observability/restart-stack.sh	prim-lock	1
 scripts/observability/test-install-grafana.sh	gnu-flag	3
 scripts/observability/test-tool-call-census.sh	errexit	1
 scripts/observability/test-tool-call-census.sh	mktemp	1

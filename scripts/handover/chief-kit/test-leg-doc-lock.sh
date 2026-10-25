@@ -16,7 +16,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-LIB="$HERE/leg-doc-lock.sh"
+LIB="$HERE/worker-doc-lock.sh"
 APPEND="$HERE/append-results.sh"
 export WORKER_SESSION_JIRA_STATUS=0
 

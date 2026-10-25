@@ -19,7 +19,7 @@
 # their own `coverage:` lines in the same shape.
 
 # shellcheck source=../../../../lib/leg-identity.sh
-. "$(dirname "${BASH_SOURCE[0]}")/../../../../lib/leg-identity.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../../../../lib/worker-identity.sh"
 
 # The transcript roots, one per line; the FIRST is the one that must exist.
 #
@@ -101,7 +101,7 @@ role_of() {
         return 0
     fi
     case "$1" in
-        *-console*) echo console ;;
+        *-console*|*-chief) echo console ;;
         *-relay*) echo relay ;;
         *legN*) echo leg ;;
         *) if [[ $1 =~ -N[0-9]+- ]]; then echo leg; else echo other; fi ;;

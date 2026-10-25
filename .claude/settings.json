@@ -29,8 +29,6 @@
       "PowerShell(Set-Location *)",
       "PowerShell(Push-Location *)",
       "PowerShell(Pop-Location)",
-      "PowerShell(pwsh -File scripts/telegram/restart-bridge.ps1 -FromLedger)",
-      "PowerShell(pwsh -File scripts/telegram/restart-bridge.ps1 -FromLedger -Kill)",
       "mcp__obsidian-vault__obsidian_list_files_in_vault",
       "mcp__obsidian-vault__obsidian_list_files_in_dir",
       "mcp__obsidian-vault__obsidian_append_content",
@@ -72,10 +70,10 @@
       "Bash(bash scripts/handover/chief-kit/console-wait.sh:*)",
       "Bash(bash scripts/handover/chief-kit/ready-check.sh:*)",
       "Bash(bash scripts/handover/chief-kit/tick.sh:*)",
-      "Bash(bash scripts/handover/chief-kit/headed-arm-leg.sh:*)",
+      "Bash(bash scripts/handover/chief-kit/headed-arm-worker.sh:*)",
       "Bash(bash scripts/handover/chief-kit/inbox-send.sh:*)",
       "Bash(bash scripts/handover/chief-kit/cut-tag.sh:*)",
-      "Bash(bash scripts/handover/chief-kit/close-wrapped-leg.sh:*)",
+      "Bash(bash scripts/handover/chief-kit/close-wrapped-worker.sh:*)",
       "Bash(bash scripts/handover/chief-kit/launch-cloud.sh:*)",
       "Bash(bash scripts/ci/gcp-runners.sh down)",
       "Bash(bash scripts/ci/gcp-runners.sh status)",
@@ -548,15 +546,6 @@
       }
     ],
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/stop-queue.mjs\" enqueue --key speak-reply -- node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/speak-reply.sh\"",
-            "timeout": 10
-          }
-        ]
-      },
       {
         "hooks": [
           {

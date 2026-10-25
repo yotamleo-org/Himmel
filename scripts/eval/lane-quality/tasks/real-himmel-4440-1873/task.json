@@ -1,0 +1,21 @@
+{
+  "id": "real-himmel-4440-1873",
+  "ticket": "HIMMEL-4440",
+  "pr": 1873,
+  "merge_sha": "a4650f116fbb94c0d2b8444a89e2838389629222",
+  "base_sha": "9ff3e0b86f7d032595d73b27a47b2bffecadd5df",
+  "set": "capability",
+  "source": "proof-first",
+  "why_hard": "1 code file(s), 32 changed lines; the hidden scripts/himmelctl/test/test-wizard-state.sh must go from failing at the base to passing, checked by 0 named check(s)",
+  "tests": [
+    "scripts/himmelctl/test/test-wizard-state.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/himmelctl/test/test-wizard-state.sh"
+  ],
+  "scope": [
+    "scripts/himmelctl/lib/",
+    "scripts/himmelctl/test/"
+  ]
+}

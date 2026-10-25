@@ -1,4 +1,4 @@
-# Leg context guard
+# Worker context guard
 
 `scripts/hooks/guard-leg-context-handoff.sh` is the
 one reference for what the worker context guard does, when it runs, and how a worker
@@ -8,7 +8,7 @@ Hook wiring and the enforcement matrix are in
 
 ## Purpose
 
-A supervisor-session-spawned worker auto-compacts at its `--autocompact` ceiling. Compaction
+A chief-spawned worker auto-compacts at its `--autocompact` ceiling. Compaction
 is a backstop and not data loss: 309 of 349 compacted workers still reached
 `WRAPPED`. The guard is there for one job. When a launch wants
 uncommitted work pushed **before** that lossy summary, the guard makes the worker
@@ -85,7 +85,7 @@ is opt-in and audited:
   else refuses) on `headed-arm-leg.sh`, with the brief line
   `> **Context:** ab-400k — operator-ruling: <reason>`. It needs the standard
   context and is refused with `WORKER_SESSION_CONTEXT=1m`. `200000` is the control arm and
-  needs no line. `gen-briefs.py` writes both from a per-worker-session `ab_arm`
+  needs no line. `gen-briefs.py` writes both from a per-worker `ab_arm`
   (`200k` | `400k`) key.
 - **Threshold.** The launcher exports `HIMMEL_WORKER_SESSION_AUTOCOMPACT=400000`, so the
   guard's 75 % share is 300000 tokens (30 % of a 1000000 window).
@@ -207,7 +207,7 @@ VM worker is a planned follow-up.
   - input that does not parse.
 
   A false block strands a worker that nobody watches.
-- **Scope.** The hook acts only on a supervisor-session-spawned worker: `HIMMEL_CONSOLE_LEG=1`
+- **Scope.** The hook acts only on a chief-spawned worker: `HIMMEL_CONSOLE_LEG=1`
   plus a non-empty `HIMMEL_CONSOLE_NAME`. In-process subagents (a non-empty
   `agent_id`) are exempt.
 - **Codex.** Codex wires the hook for PreToolUse only. Codex has no PreCompact

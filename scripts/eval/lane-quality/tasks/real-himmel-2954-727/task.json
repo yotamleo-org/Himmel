@@ -1,0 +1,21 @@
+{
+  "id": "real-himmel-2954-727",
+  "ticket": "HIMMEL-2954",
+  "pr": 727,
+  "merge_sha": "5e8e4cca8ecafa2864e8f4aa97c06012ab33e6cc",
+  "base_sha": "d021935b617c513a3e1ee66777d1f62317b4329e",
+  "set": "capability",
+  "source": "escape",
+  "why_hard": "2 code file(s), 139 changed lines; the hidden scripts/guardrails/test-leak-classes.sh must go from failing at the base to passing, checked by 5 named check(s)",
+  "tests": [
+    "scripts/guardrails/test-leak-classes.sh"
+  ],
+  "fixtures": [],
+  "exec": [
+    "scripts/guardrails/test-leak-classes.sh"
+  ],
+  "scope": [
+    "marketplace/plugins/claude-hud/",
+    "scripts/guardrails/"
+  ]
+}
