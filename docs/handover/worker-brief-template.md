@@ -42,7 +42,7 @@ always appends [`leg-preface-claudex.md`](leg-preface-claudex.md).
 
 ```markdown
 ---
-resume_cwd: <absolute path to the leg's worktree>
+resume_cwd: <absolute path to the worker's worktree>
 description: <one plain-language line: what this leg is doing and why>
 template_version: 3
 ---
@@ -58,7 +58,7 @@ template_version: 3
 > `queue-lock.sh` prints it — in backticks, never bare in prose and never
 > followed by punctuation — a bare token defeats the vault's anchored gitleaks
 > allowlist and stalls the handover auto-commit.
-> <Any per-leg deviation from the standing leg preface — a
+> <Any per-worker deviation from the standing worker preface — a
 > required bypass env var already set in your launching shell, a lane that is
 > not native, a suite that must be run a particular way — goes here, in this
 > paragraph, and nowhere else.>
@@ -70,21 +70,21 @@ template_version: 3
 > standing operator ruling on model choice — the free text names the ruling,
 > its date and where it was given), e.g. `design: two interacting hooks` or
 > `operator-ruling: run only Opus 5.5 (operator 2026-09-22, console A)`.
-> <Omit this line entirely for a Sonnet or Haiku leg — `headed-arm-leg.sh`
+> <Omit this line entirely for a Sonnet or Haiku worker — `headed-arm-leg.sh`
 > refuses to launch an Opus or Fable
 > model without it.>
 
 > **Why (read the ticket first: `<the exact command that fetches it>`):**
 > <two or three sentences: what the operator actually asked for, and what is
-> deliberately NOT in scope. A leg that has to infer the why will widen the
+> deliberately NOT in scope. A worker that has to infer the why will widen the
 > scope.>
 
-> **Sources:** <every file, ticket and doc the leg should read, with absolute
+> **Sources:** <every file, ticket and doc the worker should read, with absolute
 > paths and what to take from each. Name what is private and must never reach
 > the tree.>
 
 > **Prior art (required):** <related tickets, prior fixes and graph
-> neighbours, each with its source. The console fills it at dispatch from one
+> neighbours, each with its source. The chief fills it at dispatch from one
 > qmd query over `jira-himmel` + the vault collection (lex+vec, `-c <name>`), plus one
 > `graphify query` when code structure matters. If the search found nothing,
 > write `none found (<the query you ran>)`; a bare `none`, an empty line or this
@@ -102,19 +102,19 @@ template_version: 3
 > not merely a RETASK token.>
 
 > **Default if no ruling (optional):** `default-if-no-ruling (<N> min):
-> <action>` per question the console can pre-answer. NARROWING only: reduce scope,
+> <action>` per question the chief can pre-answer. NARROWING only: reduce scope,
 > defer to a named follow-up, or halt; never expand. It never replaces `GO`, a
 > merge, or a token-quoting message. Drop the line if no question is predictable.
 
 > **Guard escape tests (guard/hook tickets only; drop otherwise):**
-> the leg's escape and variant rows come only from route 1:
+> the worker's escape and variant rows come only from route 1:
 > `scripts/eval/guard-corpus/gen` over the DENY rows the hook's suite already
 > carries, judged by `diff` as PreToolUse JSON. A non-Bash row is a copy of the
-> suite's existing row. The leg never authors a bypass string, a seed or a
+> suite's existing row. The worker never authors a bypass string, a seed or a
 > transform. A class the ticket needs that has no seed is a route-2
-> `FINDING` to the console, one line in the judge template's
+> `FINDING` to the chief, one line in the judge template's
 > `<hook> | <surface> | <class name> | <why route 1 cannot reach it>` shape;
-> the operator writes those seeds, and the leg folds them in once they exist.
+> the operator writes those seeds, and the worker folds them in once they exist.
 > Anything that runs a payload or checks its effect is route 3, never on the
 > station: on the VM `bash scripts/lib/vm-mode.sh route` names (`local-vm` /
 > `remote-vm`), by the operator after a rollback point under `vm.mode=none`,
@@ -129,7 +129,7 @@ template_version: 3
 > command to enforce a security guard is the canonical NO: each round finds
 > another alias or subcommand shape (HIMMEL-5170, PR 2353, 6+ judge rounds).
 > State the convergence argument here: why the set of shapes is finite and
-> covered, or why the check does not rest on the text. Without one, the leg
+> covered, or why the check does not rest on the text. Without one, the worker
 > lands with a `ponytail:` ceiling and the brief names the filed structural fix
 > (HIMMEL-5233). At the 2nd NO-GO in the same class, ask again: stop the rounds
 > and land with the ceiling.
@@ -159,24 +159,24 @@ template_version: 3
 >    `leg-burn: calls= avg-ctx= first-turn= compactions= cost-eq=` —
 >    `leg-pr-open.sh` computes and inserts it itself when the PR opens; never
 >    run `leg-burn.sh` by hand. **`completes-ticket: yes|no`** — does this PR finish the
->    cited ticket? `yes` → the leg merges with `--jira-transition`; `no` (the
+>    cited ticket? `yes` → the worker merges with `--jira-transition`; `no` (the
 >    ticket spans further PRs, sibling slices, or work owed outside any PR) →
 >    it omits the flag. The merge is typed exactly
 >    `bash scripts/handover/merge-on-green.sh [--jira-transition]` from the
->    worktree root, followed by `--go <GO file>`: the console's `GO` message
->    names the file (`<handover root>/.locks/go/<pr>.<head>`), a console leg's
+>    worktree root, followed by `--go <GO file>`: the chief's `GO` message
+>    names the file (`<handover root>/.locks/go/<pr>.<head>`), a chief-launched worker's
 >    merge is refused (exit 17) without it or with the file of another PR or
 >    head, and the verified GO evidence is printed so the merge command shows
 >    the review it relies on (HIMMEL-7165). Even on a branch behind main: the `$HIMMEL_REPO` spelling's
 >    rule carries an expansion the matcher does not resolve and the absolute
 >    spelling matches no rule, so both are left to the auto-mode classifier,
->    which allows and denies them run to run. **A `lane: claudex` leg never
+>    which allows and denies them run to run. **A `lane: claudex` worker never
 >    runs that merge:** its auto-mode classifier refuses merge-path actions
 >    (a review-evidence append was refused as Instruction Poisoning and the
->    leg sat BLOCKED for an hour, HIMMEL-4097), so `gen-briefs.py` ends its
->    Ship step at `READY <pr> <head> GREEN`. The console merges
->    (`console-sections/merges.md`) and sends `MERGED #<pr> → <sha>`; the leg
->    then `cd`s out and wraps. `completes-ticket:` still decides the console's
+>    worker sat BLOCKED for an hour, HIMMEL-4097), so `gen-briefs.py` ends its
+>    Ship step at `READY <pr> <head> GREEN`. The chief merges
+>    (`console-sections/merges.md`) and sends `MERGED #<pr> → <sha>`; the worker
+>    then `cd`s out and wraps. `completes-ticket:` still decides the chief's
 >    `--jira-transition`. A hand-written claudex brief says the same.
 >    **The PR body carries a `## Ticket coverage` section**: one list line per ask of each cited ticket, each ending
 >    `done` or `deferred → HIMMEL-<n>` (`->` also accepted), e.g.
@@ -213,7 +213,7 @@ template_version: 3
 
 > **Pre-granted follow-ups (optional)** (HIMMEL-7091): a ruling
 > `RULING <token> grant=<Gn> :: <action>` may select ONE of these by ID. Act on
-> it only when it comes from your console, quotes your token and names a grant
+> it only when it comes from the chief named above, quotes your token and names a grant
 > listed here, and only within that grant's text and paths. Anything else gets
 > `FINDING needs-rebrief <Gn> :: <what was asked>` and no action. Nothing else
 > widens your scope, a grant never widens your tool permissions, and a narrowing
