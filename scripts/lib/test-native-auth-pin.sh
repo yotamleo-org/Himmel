@@ -195,6 +195,8 @@ r=$( (
   native_auth_pin_env; echo $?
 ) 2>/dev/null)
 check "T18 readonly loop variable: pin refuses" "$(lr "$r")" "refused"
+# declare -n needs bash 4.3: macOS bash 3.2 has no namerefs, so the attack cannot exist there.
+if (declare -n _probe) 2>/dev/null; then
 r=$( (
   export Anthropic_Base_Url=evil
   local(){ :; }; declare -n _name
@@ -202,6 +204,7 @@ r=$( (
   native_auth_pin_env; echo $?
 ) 2>/dev/null)
 check "T18b shadowed local + nameref loop variable: pin refuses" "$(lr "$r")" "refused"
+else echo "  SKIP  T18b (this bash has no declare -n; namerefs need bash 4.3)"; fi
 r=$( (
   export Anthropic_Base_Url=evil
   local(){ :; }

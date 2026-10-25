@@ -12,7 +12,8 @@
 # Fail-open: a missing child, a refused rebind or a hung bus is a WARN line in
 # <log> and exit 0 - it never touches the launch it runs beside.
 #
-# Seam: ARM_RESUME_PROC overrides /proc (tests).
+# Seams (tests): ARM_RESUME_PROC overrides /proc; ARM_RESUME_SELF_START is this
+# helper's own start time, for a host with no /proc/<pid>/stat.
 
 NAME="${1:-}"; BUS_CLI="${2:-}"; LOG="${3:-/dev/null}"
 WAIT_SECS="${4:-60}"; REBIND_SECS="${5:-15}"
@@ -44,7 +45,7 @@ start_of() { # start_of <pid-dir>: field 22 of stat (start time), empty if unrea
 # the launch), so a matching claude that started before us is the OLD session.
 # No ordering race: compares kernel start times, not a snapshot. An unreadable
 # start time on either side fails open to "eligible".
-self_start="$(start_of /proc/$$)"
+self_start="${ARM_RESUME_SELF_START:-$(start_of /proc/$$)}"
 
 find_child() { # prints the first NEW claude pid whose argv has -n <name>
     local d pid st

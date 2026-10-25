@@ -31,6 +31,8 @@ hasnt() { case "$3" in *"$2"*) fail "$1" "unexpected: $2" ;; *) ok "$1" ;; esac;
 
 # ---- A. helper -------------------------------------------------------------
 PROCD="$TMP/proc"
+# A host with no procfs (macOS) cannot report the helper's own start time: give it one between PSTART=1 and the default.
+[ -r /proc/self/stat ] || export ARM_RESUME_SELF_START=50000000000
 mkproc() { # mkproc <pid> <comm> <argv...>
     local pid="$1" comm="$2"; shift 2
     mkdir -p "$PROCD/$pid"
