@@ -453,7 +453,7 @@ rm -f "$ROOTDIR/.env"
 # TEST_KR_TOKEN is secret-class and fake. Default items carry scope=user; a
 # project override carries project=<primary checkout path>.
 if [ "$(uname -s)" = Darwin ]; then
-    echo "SKIP K1-K7: the macOS Keychain backend is a follow-up; the resolver skips the keyring on Darwin"
+    echo "SKIP K1-K8:the macOS Keychain backend is a follow-up; the resolver skips the keyring on Darwin"
 else
 PROJ=$(cd "$REPO" && pwd -P)
 
@@ -556,6 +556,16 @@ printf 'HANDOVER_DIR=/c/h\nCR_REQUIRE_CROSS_MODEL=1\n' >"$REPO/.env"
 ( cd "$REPO" && unset HANDOVER_DIR CR_REQUIRE_CROSS_MODEL && load_dotenv HANDOVER_DIR CR_REQUIRE_CROSS_MODEL 2>/dev/null )
 assert_eq "K7 config and policy keys make no keyring call" "" "$(cat "$KSTUB_LOG")"
 rm -f "$REPO/.env"
+
+# K8: sourced by a slash-less name from its own directory, the loader still
+# finds the resolver beside it.
+K8LIB="$TMP/k8/scripts/lib"
+mkdir -p "$K8LIB"
+cp "$LIB" "$(dirname "$LIB")/himmel-secrets" "$K8LIB/"
+kreset
+printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KSTUB_STORE"
+got=$( cd "$K8LIB" && unset TEST_KR_TOKEN && . load-dotenv.sh && load_dotenv --root "$REPO" TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K8 a slash-less source still reaches the resolver" "fake-keyring-value" "$got"
 fi
 
 echo

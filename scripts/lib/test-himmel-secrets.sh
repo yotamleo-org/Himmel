@@ -120,10 +120,17 @@ assert_eq "S4 put --project stores a project override" "service=himmel key=TEST_
 
 # S5: import-env stores secret-class keys only and prints names, never values.
 kreset
-printf 'TEST_HS_A="fake-first\nfake frag ment=fake-tail\nfake-last"\n' >"$TMP/in-ml.env"
+printf 'TEST_HS_A=fake-first\nfake frag ment=fake-tail\n' >"$TMP/in-ml.env"
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in-ml.env" 2>&1)
 assert_eq "S5 import-env prints no fragment of a multi-line value" "0" "$(printf '%s' "$out" | grep -c 'fake\|frag')"
 assert_eq "S5 import-env names a line that is no key by its number" "1" "$(printf '%s' "$out" | grep -c '^skipped line 2 (not a key name)$')"
+kreset
+printf 'TEST_HS_A=fake-a\nTEST_HS_K="-----BEGIN FAKE KEY-----\nfakeKeyBody\nabcDEF123==\n-----END FAKE KEY-----"\n' >"$TMP/in-pem.env"
+got=$(cd "$REPO" && "$HS" import-env "$TMP/in-pem.env" >"$TMP/s5pem.out" 2>&1; echo "rc=$?")
+assert_eq "S5 import-env refuses a file with a quoted value that does not close on its line" "rc=2" "$got"
+assert_eq "S5 import-env names only the opening line of an unclosed quote" "1" "$(grep -c 'line 2 opens a quoted value' "$TMP/s5pem.out")"
+assert_eq "S5 import-env prints no continuation line" "0" "$(grep -c 'abcDEF\|fakeKey\|FAKE' "$TMP/s5pem.out")"
+assert_eq "S5 import-env stores nothing from a refused file" "0" "$(grep -c . "$KSTUB_STORE")"
 kreset
 printf '# comment\nTEST_HS_A=fake-a\nHANDOVER_DIR=/c/h\nTEST_HS_E=\nTEST_HS_B = "fake-b" # gutter\n' >"$TMP/in.env"
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in.env" 2>&1)
@@ -152,6 +159,12 @@ printf '#!/bin/sh\necho 644\n' >"$SBIN/stat"
 chmod +x "$SBIN/stat"
 got=$(cd "$REPO" && export PATH="$SBIN:$PATH" && "$HS" export-env "$TMP/out-mode.env" >/dev/null 2>&1; echo "rc=$?")
 assert_eq "S6 export-env fails and removes a file whose mode is not 600" "rc=2|absent" "$got|$([ -e "$TMP/out-mode.env" ] && echo present || echo absent)"
+FBIN="$TMP/fdstat-bin"
+mkdir -p "$FBIN"
+printf '#!/bin/sh\ncase "$*" in */dev/fd/3*) echo 644; exit 0 ;; esac\nexec %s "$@"\n' "$(command -v stat)" >"$FBIN/stat"
+chmod +x "$FBIN/stat"
+got=$(cd "$REPO" && export PATH="$FBIN:$PATH" && "$HS" export-env "$TMP/out-fdmode.env" >/dev/null 2>&1; echo "rc=$?")
+assert_eq "S6 export-env checks the mode on the open descriptor before writing" "rc=2|absent" "$got|$([ -e "$TMP/out-fdmode.env" ] && echo present || echo absent)"
 got=$(cd "$REPO" && export KSTUB_SEARCH_FAIL=1 && "$HS" export-env "$TMP/out-sfail.env" >/dev/null 2>&1; echo "rc=$?")
 assert_eq "S6 export-env fails when the keyring listing fails, creates no file" "rc=2|absent" "$got|$([ -e "$TMP/out-sfail.env" ] && echo present || echo absent)"
 printf 'service=himmel key=TEST_HS_C scope=user\tfake-c #x\n' >>"$KSTUB_STORE"

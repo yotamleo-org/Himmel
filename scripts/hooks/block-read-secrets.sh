@@ -971,7 +971,8 @@ g4_scan() {
             if [ "$gskip" = 1 ]; then gskip=0
             else
                 case "$d" in
-                    -c|-c*|--config-env*) gcfg=1 ;;
+                    -c) gcfg=1; gskip=1 ;;
+                    -c*|--config-env*) gcfg=1 ;;
                     -C|--git-dir|--work-tree|--namespace) gskip=1 ;;
                     -*) ;;
                     *) if [ "$gsub" = 0 ]; then
@@ -1193,7 +1194,7 @@ g4_scan() {
         systemd-creds) case "$a1" in decrypt|cat) hit=1; note="systemd-creds $a1 prints a credential" ;; esac ;;
         op) case "$a1" in read|inject|run) hit=1; note="op $a1 hands out a 1Password secret" ;; esac ;;
         sops)
-            case "$a1" in decrypt|exec-env|exec-file) kflag=1 ;; esac
+            case "$a1" in decrypt|edit|exec-env|exec-file) kflag=1 ;; esac
             if [ "$kflag" = 1 ]; then hit=1; note="sops decrypts a secret file"; fi ;;
         age|rage) if [ "$kflag" = 1 ]; then hit=1; note="$cmd -d decrypts a secret file"; fi ;;
         # The resolver itself: only status and exec keep values out of the

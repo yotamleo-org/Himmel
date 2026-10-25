@@ -189,7 +189,9 @@ EOF
     # Secret keys next: the resolver serves them from $CREDENTIALS_DIRECTORY or
     # the OS keyring. Only when one of those can exist, so a machine with
     # neither forks nothing; .env stays the fallback below.
-    local _ld_resolver="${BASH_SOURCE[0]%/*}/himmel-secrets" _ld_secret=()
+    local _ld_resolver=. _ld_secret=()
+    case "${BASH_SOURCE[0]}" in */*) _ld_resolver=${BASH_SOURCE[0]%/*} ;; esac
+    _ld_resolver="$_ld_resolver/himmel-secrets"
     if declare -F _himmel_key_class >/dev/null 2>&1 && [ -x "$_ld_resolver" ] \
         && { [ -n "${CREDENTIALS_DIRECTORY:-}" ] || command -v secret-tool >/dev/null 2>&1; }; then
         for _ld_key in "${_ld_pending[@]}"; do
