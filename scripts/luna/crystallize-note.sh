@@ -3,18 +3,24 @@
 # Reads the session transcript + the just-written note and asks a
 # bounded `claude` run to rewrite the four body sections (Summary / Decisions /
 # Files Touched / Follow-ups), preserving frontmatter identity and setting
-# `crystallized: true`. Billed to the operator's Max plan — this is an
-# INTERACTIVE bounded run (`claude "<prompt>" </dev/null`), NOT headless `-p`,
-# so it is safe from headless billing and needs no API key.
+# `crystallized: true`. Billed to the API, never the subscription: the one launch
+# path is scripts/api-lane/claude-api.sh (one print-mode call, tools limited to
+# Read,Edit, a per-call budget). It needs HIMMEL_API_LANE=on and
+# HIMMEL_API_ACCOUNT=A|B|auto in the launching shell and fails closed (exit 2)
+# without them: there is no claude-cli fallback.
 #
 # Usage: crystallize-note.sh <note_path> <transcript_path>
 #
-# Best-effort + fail-open: any unavailability (no `claude`, over the concurrency
-# cap, note not yet on disk) -> exit 0, leaving the mechanical note
-# (`crystallized: false`). The reheal sweep (`backfill-sessions.sh --reheal`)
-# recovers anything a backgrounded run missed.
+# Model: CRYSTALLIZE_MODEL (the hook exports it from .claude/end-session-wiki.json),
+# else DEFAULT_MODEL below, which that config value must equal.
+# CRYSTALLIZE_MAX_BUDGET_USD bounds each call.
 #
-# Test seam: CRYSTALLIZE_CLAUDE_BIN overrides the `claude` binary with a stub so
+# Best-effort once launched: any unavailability after the lane gate (over the
+# concurrency cap, note not yet on disk, a lane refusal such as no credit) ->
+# exit 0, leaving the mechanical note (`crystallized: false`). The reheal sweep
+# (`backfill-sessions.sh --reheal`) recovers anything a backgrounded run missed.
+#
+# Test seam: CRYSTALLIZE_CLAUDE_BIN overrides the lane launcher with a stub so
 # the suite stays hermetic. CRYSTALLIZE_PID_DIR / CRYSTALLIZE_MAX_CONCURRENCY
 # tune the concurrency cap. bash 3.2-safe.
 set -uo pipefail
@@ -59,11 +65,17 @@ if [ -n "${CLAUDE_CONFIG_DIR:-}" ]; then
     esac
 fi
 
-# Resolve the claude binary (test override wins). No claude -> leave the
-# mechanical note untouched.
-CLAUDE_BIN="${CRYSTALLIZE_CLAUDE_BIN:-}"
-[ -n "$CLAUDE_BIN" ] || CLAUDE_BIN="$(command -v claude 2>/dev/null || true)"
-[ -n "$CLAUDE_BIN" ] || exit 0
+HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
+DEFAULT_MODEL="claude-opus-4-8"
+DEFAULT_BUDGET_USD="1.00"
+
+# API lane only: a refusal leaves the mechanical note untouched and never falls
+# back to the subscription. The test override replaces the launcher, not the gate.
+{ [ "${HIMMEL_API_LANE:-}" = "on" ] && [ -n "${HIMMEL_API_ACCOUNT:-}" ]; } \
+    || { echo "crystallize-note: refusing claude-api: the API lane is off (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT=A|B|auto are required) -- note untouched, no claude-cli fallback" >&2; exit 2; }
+LAUNCHER="${CRYSTALLIZE_CLAUDE_BIN:-$HIMMEL_ROOT/scripts/api-lane/claude-api.sh}"
+[ -r "$LAUNCHER" ] \
+    || { echo "crystallize-note: refusing claude-api: $LAUNCHER is missing -- note untouched" >&2; exit 2; }
 
 # Concurrency cap — never pile up N full claude processes for N simultaneous
 # session-ends. Best-effort pidfile counting; stale entries are pruned.
@@ -83,15 +95,12 @@ done
 [ "$live" -ge "$MAX" ] && exit 0
 MY_PID="$PID_DIR/$$.pid"
 printf '%s' "$$" > "$MY_PID" 2>/dev/null || true
-# SETTINGS_TMP is the per-run `claude --settings` fragment (set below); SNAP_TMP
-# is the refresh-mode pre-run snapshot; both cleaned up here so they never leak
-# even on early exit.
-SETTINGS_TMP=""
+# SNAP_TMP is the refresh-mode pre-run snapshot, cleaned up here so it never
+# leaks even on early exit.
 SNAP_TMP=""
 # shellcheck disable=SC2317,SC2329  # invoked via trap
 _cleanup() {
     rm -f "$MY_PID" 2>/dev/null || true
-    if [ -n "$SETTINGS_TMP" ]; then rm -f "$SETTINGS_TMP" 2>/dev/null || true; fi
     if [ -n "$SNAP_TMP" ]; then rm -f "$SNAP_TMP" 2>/dev/null || true; fi
 }
 trap _cleanup EXIT
@@ -147,12 +156,8 @@ _refresh_valid() { # <note>
 # the note is waiting on your permission grant"). The stub-based suite masked it
 # because the stub edits the note directly.
 #
-# Fix: put the note's directory in the workspace by
-# running `claude` with cwd = the note's directory, add the transcript's
-# directory via `--add-dir`, and inject himmel's `auto-approve-safe-bash`
-# PreToolUse hook by ABSOLUTE path via `--settings` (the vault cwd carries no
-# himmel project settings, so any bash the run does would otherwise stall on the
-# compound-bash prompt). The LLM rewrites only the four body sections;
+# Fix: put the note's directory in the workspace by running `claude` with
+# cwd = the note's directory (Edit is also pre-granted on the lane). The LLM rewrites only the four body sections;
 # the `crystallized` flag is owned DETERMINISTICALLY by this script, set only
 # when the note body actually changed (T1d) — so a no-op never falsely flags and
 # a real synthesis always does, regardless of what the model touched.
@@ -229,60 +234,27 @@ ${_rules_content}
     fi
 fi
 
-HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
-AUTO_APPROVE_HOOK="$HIMMEL_ROOT/scripts/hooks/auto-approve-safe-bash.sh"
-
-# Settings fragment wiring auto-approve-safe-bash by absolute path.
-# HIMMEL_ROOT comes from `pwd`, so it is already forward-slash (JSON-safe and
-# bash-readable) on Git Bash / macOS / Linux alike.
-SETTINGS_TMP="$(mktemp 2>/dev/null || printf '%s' "${TMPDIR:-/tmp}/crys-settings-$$.json")"
-cat > "$SETTINGS_TMP" <<JSON
-{
-  "hooks": {
-    "PreToolUse": [
-      {
-        "matcher": "Bash",
-        "hooks": [
-          { "type": "command", "command": "bash ${AUTO_APPROVE_HOOK}" }
-        ]
-      }
-    ]
-  }
-}
-JSON
-
-# Optional model pin + transcript --add-dir. bash 3.2-safe empty-array guard.
-EXTRA_ARGS=()
-[ -n "${CRYSTALLIZE_MODEL:-}" ] && EXTRA_ARGS=(--model "$CRYSTALLIZE_MODEL")
+MODEL="${CRYSTALLIZE_MODEL:-$DEFAULT_MODEL}"
+BUDGET_USD="${CRYSTALLIZE_MAX_BUDGET_USD:-$DEFAULT_BUDGET_USD}"
 NOTE_DIR="$(cd "$(dirname "$NOTE_PATH")" 2>/dev/null && pwd)"
-TR_DIR=""
-[ -n "$TRANSCRIPT_PATH" ] && TR_DIR="$(cd "$(dirname "$TRANSCRIPT_PATH")" 2>/dev/null && pwd)"
-[ -n "$TR_DIR" ] && EXTRA_ARGS=(${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} --add-dir "$TR_DIR")
 
 # Pre-hash: the edit-confirmed flag-set keys off whether the body actually moved.
 _hash() { { sha256sum "$1" 2>/dev/null || shasum -a 256 "$1" 2>/dev/null; } | awk '{print $1}'; }
 HASH_BEFORE="$(_hash "$NOTE_PATH")"
 
-# Ambient proxy exports must not redirect this Max-plan launch.
-# shellcheck source=scripts/lib/native-auth-pin.sh
-# shellcheck disable=SC1091
-. "$HIMMEL_ROOT/scripts/lib/native-auth-pin.sh" || exit 0
-# the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
-# Subshell function: its `exit 0` ends only the launch, and `cd` precedes the gate
-# so nothing runs between gate and launch.
-launch_claude_if_native_auth_pinned() {
+# The lane removes the other credential sources itself and pins its own endpoint,
+# so there is no native-auth pin here. It allows no --add-dir or --settings: the
+# transcript is read through the granted Read tool, and Read,Edit are the only
+# tools (hooks are off on the lane, so a Bash grant would be unguarded).
+# Subshell function: its `exit 0` ends only the launch.
+launch_api_lane() {
     cd "$NOTE_DIR" 2>/dev/null || exit 0
-    if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
-        CRYSTALLIZE_NOTE="$NOTE_PATH" CRYSTALLIZE_TRANSCRIPT="$TRANSCRIPT_PATH" \
-            "$CLAUDE_BIN" ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} \
-            --settings "$SETTINGS_TMP" \
-            --permission-mode acceptEdits "$PROMPT" </dev/null >/dev/null 2>&1
-    else
-        exit 0
-    fi
+    CRYSTALLIZE_NOTE="$NOTE_PATH" CRYSTALLIZE_TRANSCRIPT="$TRANSCRIPT_PATH" \
+        HIMMEL_API_TOOLS=Read,Edit HIMMEL_API_KIND=bulk \
+        bash "$LAUNCHER" -p "$PROMPT" --model "$MODEL" \
+        --permission-mode acceptEdits --max-budget-usd "$BUDGET_USD" </dev/null >/dev/null
 }
-native_auth_pin_env
-( launch_claude_if_native_auth_pinned ) || true
+( launch_api_lane ) || true
 
 # Edit-confirmed flag-set (T1d): only stamp crystallized:true when the note body
 # actually changed. A failed/no-op run leaves the note byte-unchanged and the

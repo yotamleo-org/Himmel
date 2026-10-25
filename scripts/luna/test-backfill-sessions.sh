@@ -36,6 +36,7 @@ GOLDEN="$SCRIPT_DIR/../hooks/testdata/session-note.golden.md"
 FIXTURE_DIR="$SCRIPT_DIR/testdata"
 TRANSCRIPT_FIXTURES="$SCRIPT_DIR/../hooks/testdata/transcripts"
 CLAUDE_STUB="$SCRIPT_DIR/../hooks/testdata/bin/claude-stub.sh"
+export HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
 
 [ -f "$BACKFILL" ] || { echo "FAIL: backfill-sessions.sh not found at $BACKFILL"; exit 1; }
 [ -f "$GOLDEN" ]   || { echo "FAIL: golden fixture not found at $GOLDEN"; exit 1; }

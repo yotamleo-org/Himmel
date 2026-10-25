@@ -21,6 +21,24 @@ fail() { printf 'FAIL: %s\n' "$1"; FAILED=1; }
 # a live lane worker; the dedicated lane-config case below sets the variable back.
 unset CLAUDE_CONFIG_DIR
 
+# The crystallizer fails closed without the API lane; the stub stands in for the
+# lane launcher, so every case below runs with the lane switched on (the refusal
+# cases unset it explicitly).
+export HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
+unset ANTHROPIC_API_KEY CRYSTALLIZE_MODEL
+
+# A launcher wrapper that records the lane env the crystallizer hands over, then
+# runs the claude stub; the stub itself is shared with other suites.
+LANE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/crystallize-lane.XXXXXX")" || exit 1
+trap 'rm -rf "$LANE_DIR"' EXIT
+LANE_STUB="$LANE_DIR/lane-stub.sh"
+cat > "$LANE_STUB" <<EOF
+#!/usr/bin/env bash
+[ -n "\${CRYSTALLIZE_LANE_DUMP:-}" ] && printf 'HIMMEL_API_TOOLS=%s\nHIMMEL_API_KIND=%s\n' "\${HIMMEL_API_TOOLS-<unset>}" "\${HIMMEL_API_KIND-<unset>}" > "\$CRYSTALLIZE_LANE_DUMP"
+exec "$STUB" "\$@"
+EOF
+chmod +x "$LANE_STUB"
+
 write_note() {
     # $1 = path
     cat > "$1" <<'EOF'
@@ -104,6 +122,43 @@ if [ ! -s "$MARK" ]; then pass "lane-config: claude was not launched"; else fail
 if grep -q 'crystallize-note: DEFERRED' "$STDERR_OUT" 2>/dev/null; then pass "lane-config: emits an explanatory deferral line"; else fail "lane-config: no deferral message on stderr"; fi
 rm -rf "$SB"
 
+# --- Case L1: no model env — the crystallizer passes the chosen model ------------
+# The chosen model is the config's crystallize_model; the script's built-in default
+# must agree with it, so the hook (config -> env) and a bare backfill run price alike.
+CFG_MODEL="$(sed -n 's/.*"crystallize_model"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$SCRIPT_DIR/../../.claude/end-session-wiki.json")"
+SB="$(mktemp -d)" || exit 1
+NOTE="$SB/note.md"; TR="$SB/t.jsonl"; ARGVD="$SB/argv.txt"
+write_note "$NOTE"; printf '{}\n' > "$TR"
+env -u CRYSTALLIZE_MODEL CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success \
+    CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_ARGV_DUMP="$ARGVD" bash "$CRYS" "$NOTE" "$TR"
+GOT_MODEL="$(awk '/^arg=/{if (prev=="arg=--model") print substr($0,5); prev=$0}' "$ARGVD" 2>/dev/null)"
+if [ -n "$CFG_MODEL" ] && [ "$GOT_MODEL" = "$CFG_MODEL" ]; then pass "model: with no model env the crystallizer passes the config's chosen model ($GOT_MODEL)"; else fail "model: no-env model was '${GOT_MODEL:-<none>}', config says '${CFG_MODEL:-<none>}'"; fi
+env CRYSTALLIZE_MODEL="env-switch-model" CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success \
+    CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_ARGV_DUMP="$ARGVD" CRYSTALLIZE_REFRESH=1 bash "$CRYS" "$NOTE" "$TR"
+if grep -qxF 'arg=env-switch-model' "$ARGVD" 2>/dev/null; then pass "model: CRYSTALLIZE_MODEL still overrides the default"; else fail "model: CRYSTALLIZE_MODEL no longer reaches the launcher"; fi
+rm -rf "$SB"
+
+# --- Case L2: lane unset — refuse, never launch, note untouched, no fallback -----
+lane_refusal() { # <label> <env-assignments...>
+    local label="$1"; shift
+    local sb note tr mark err rc=0 before after
+    sb="$(mktemp -d)" || exit 1
+    note="$sb/note.md"; tr="$sb/t.jsonl"; mark="$sb/marker.txt"; err="$sb/stderr.txt"
+    write_note "$note"; printf '{}\n' > "$tr"
+    before="$( { sha256sum "$note" 2>/dev/null || shasum -a 256 "$note"; } | awk '{print $1}')"
+    env "$@" CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success CRYSTALLIZE_MARKER="$mark" \
+        CRYSTALLIZE_PID_DIR="$sb/pids" bash "$CRYS" "$note" "$tr" 2>"$err" || rc=$?
+    after="$( { sha256sum "$note" 2>/dev/null || shasum -a 256 "$note"; } | awk '{print $1}')"
+    if [ "$rc" != "0" ]; then pass "$label: exits non-zero ($rc)"; else fail "$label: exited 0 without the API lane"; fi
+    if grep -q '^crystallize-note: refusing claude-api' "$err" 2>/dev/null; then pass "$label: ERR line names the refusal"; else fail "$label: no refusal line on stderr"; fi
+    if [ ! -s "$mark" ]; then pass "$label: the claude stub was never called"; else fail "$label: claude launched without the API lane"; fi
+    if [ "$before" = "$after" ] && grep -q '^crystallized: false$' "$note"; then pass "$label: mechanical note unchanged"; else fail "$label: note changed without the API lane"; fi
+    rm -rf "$sb"
+}
+lane_refusal "lane-off" -u HIMMEL_API_LANE
+lane_refusal "lane-no-account" -u HIMMEL_API_ACCOUNT
+lane_refusal "lane-not-on" HIMMEL_API_LANE=off
+
 # --- Case 1: success — sections filled, crystallized true, identity preserved --
 SB="$(mktemp -d)"
 NOTE="$SB/note.md"; TR="$SB/t.jsonl"
@@ -114,7 +169,6 @@ ENVD="$SB/env.txt"
 # (the script — not the stub — now owns the flag + timestamp).
 env CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success \
     CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_ENV_DUMP="$ENVD" \
-    ANTHROPIC_BASE_URL="http://ambient-proxy.invalid" \
     CRYSTALLIZE_NOW="2026-06-28T12:00:00Z" \
     bash "$CRYS" "$NOTE" "$TR"
 if grep -q '^crystallized: true$' "$NOTE"; then pass "success: crystallized: true set (by script, from body diff)"; else fail "success: crystallized not flipped"; fi
@@ -123,45 +177,7 @@ if grep -q '^crystallized_at: 2026-06-28T12:00:00Z$' "$NOTE"; then pass "success
 if [ "$ID_BEFORE" = "$(identity_lines "$NOTE")" ]; then pass "success: identity frontmatter byte-stable"; else fail "success: identity frontmatter changed"; fi
 if grep -q '^CLAUDE_END_SESSION_WIKI=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: CLAUDE_END_SESSION_WIKI=0 exported to claude"; else fail "recursion-guard: end-session-wiki env not set"; fi
 if grep -q '^HIMMEL_WHERE_ARE_WE=0$' "$ENVD" 2>/dev/null; then pass "recursion-guard: HIMMEL_WHERE_ARE_WE=0 exported (HIMMEL-572 fold-in)"; else fail "recursion-guard: where-are-we env not set"; fi
-if grep -q '^ANTHROPIC_BASE_URL=<unset>$' "$ENVD" 2>/dev/null; then pass "native-auth pin: ambient ANTHROPIC_BASE_URL cleared before launch"; else fail "native-auth pin: ambient ANTHROPIC_BASE_URL reached claude"; fi
 rm -rf "$SB"
-
-# --- Case 1b: exported exit/return/unset shadows must never reach the launch ---
-# the pin's rc and any `|| exit` refusal are shadowable builtins; the
-# launch must sit inside the keyword-only gate. Control (no ambient proxy) proves
-# the shadowed script still reaches the launch; the proxied run must not.
-shadow_launch() { # <proxy-url|-> -> prints launched|refused
-    local sb envd; sb="$(mktemp -d)" || return 1; envd="$sb/env.txt"
-    write_note "$sb/note.md"; printf '{}\n' > "$sb/t.jsonl"
-    # shellcheck disable=SC2016
-    bash -c '
-        exit() { :; }; return() { :; }; unset() { :; }; export -f exit return unset
-        [ "$1" = - ] && p=() || p=(ANTHROPIC_BASE_URL="$1")
-        exec env "${p[@]}" CRYSTALLIZE_CLAUDE_BIN="$2" STUB_MODE=success CRYSTALLIZE_PID_DIR="$3/pids" \
-            CRYSTALLIZE_ENV_DUMP="$4" bash "$5" "$3/note.md" "$3/t.jsonl"' _ "$1" "$STUB" "$sb" "$envd" "$CRYS" >/dev/null 2>&1
-    if [ -s "$envd" ]; then echo launched; else echo refused; fi
-    rm -rf "$sb"
-}
-if [ "$(shadow_launch -)" = launched ]; then pass "shadowed exit/return/unset, no proxy: the script still reaches the launch (control)"; else fail "shadow control: the shadowed script never reached the launch (vacuous rows below)"; fi
-if [ "$(shadow_launch http://evil.invalid)" = refused ]; then pass "shadowed exit/return/unset + ambient ANTHROPIC_BASE_URL: claude is NOT launched"; else fail "shadowed builtins let an ambient proxy variable reach the launch"; fi
-
-# --- Case 1c: a shadowed `cd` must not export a proxy var between gate and launch ---
-# the exported `cd` sets ANTHROPIC_BASE_URL then runs the real cd. The
-# control (plain cd) launches with the variable unset; the shadow must not launch
-# claude with the proxy variable set.
-cd_shadow_env() { # <shadow|plain> -> prints the ANTHROPIC_BASE_URL line claude saw, or none
-    local sb envd; sb="$(mktemp -d)" || return 1; envd="$sb/env.txt"
-    write_note "$sb/note.md"; printf '{}\n' > "$sb/t.jsonl"
-    # shellcheck disable=SC2016
-    bash -c '
-        [ "$1" = shadow ] && { cd() { export ANTHROPIC_BASE_URL=http://evil.invalid; builtin cd "$@"; }; export -f cd; }
-        exec env CRYSTALLIZE_CLAUDE_BIN="$2" STUB_MODE=success CRYSTALLIZE_PID_DIR="$3/pids" \
-            CRYSTALLIZE_ENV_DUMP="$4" bash "$5" "$3/note.md" "$3/t.jsonl"' _ "$1" "$STUB" "$sb" "$envd" "$CRYS" >/dev/null 2>&1
-    grep '^ANTHROPIC_BASE_URL=' "$envd" 2>/dev/null || echo none
-    rm -rf "$sb"
-}
-if [ "$(cd_shadow_env plain)" = 'ANTHROPIC_BASE_URL=<unset>' ]; then pass "plain cd: claude launches with ANTHROPIC_BASE_URL unset (control)"; else fail "cd control: claude did not launch clean (vacuous row below)"; fi
-if [ "$(cd_shadow_env shadow)" != 'ANTHROPIC_BASE_URL=http://evil.invalid' ]; then pass "shadowed cd exporting a proxy URL: claude is NOT launched with it set"; else fail "a shadowed cd after the gate let a proxy variable reach the launch"; fi
 
 # --- Case 2: fail — note unchanged, crystallized stays false -----------------
 SB="$(mktemp -d)"
@@ -182,20 +198,6 @@ SHA_BEFORE="$( { sha256sum "$NOTE" 2>/dev/null || shasum -a 256 "$NOTE"; } | awk
 env CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=noop CRYSTALLIZE_PID_DIR="$SB/pids" bash "$CRYS" "$NOTE" "$TR"
 SHA_AFTER="$( { sha256sum "$NOTE" 2>/dev/null || shasum -a 256 "$NOTE"; } | awk '{print $1}')"
 if [ "$SHA_BEFORE" = "$SHA_AFTER" ]; then pass "noop: note byte-unchanged"; else fail "noop: note modified on no-op"; fi
-rm -rf "$SB"
-
-# --- Case 4: claude absent — exit 0, note unchanged --------------------------
-SB="$(mktemp -d)"
-NOTE="$SB/note.md"; TR="$SB/t.jsonl"
-write_note "$NOTE"; printf '{}\n' > "$TR"
-SHA_BEFORE="$( { sha256sum "$NOTE" 2>/dev/null || shasum -a 256 "$NOTE"; } | awk '{print $1}')"
-# Minimal PATH keeps coreutils/bash but excludes `claude` (installed in
-# ~/.local/bin / AppData, never /usr/bin) so `command -v claude` resolves empty.
-RC=0
-env -u CRYSTALLIZE_CLAUDE_BIN PATH="/usr/bin:/bin" CRYSTALLIZE_PID_DIR="$SB/pids" bash "$CRYS" "$NOTE" "$TR" || RC=$?
-SHA_AFTER="$( { sha256sum "$NOTE" 2>/dev/null || shasum -a 256 "$NOTE"; } | awk '{print $1}')"
-if [ "$RC" = "0" ]; then pass "claude-absent: exits 0"; else fail "claude-absent: exit was $RC"; fi
-if [ "$SHA_BEFORE" = "$SHA_AFTER" ]; then pass "claude-absent: note unchanged (mechanical stub stays)"; else fail "claude-absent: note modified"; fi
 rm -rf "$SB"
 
 # --- Case 5: concurrency cap — over cap, no spawn (T2.7) ----------------------
@@ -242,27 +244,25 @@ rm -rf "$SB"
 # The real-claude no-op was an OUT-OF-WORKSPACE edit (cwd=himmel,
 # note in vault) that acceptEdits could not auto-approve. This hermetic guard
 # asserts the fix shape directly from the spawned argv/cwd dump: the run's cwd is
-# the note's directory, the transcript dir is added via --add-dir, and a
-# --settings fragment wiring auto-approve-safe-bash is injected.
+# the note's directory, and the launch is the API lane's: the lane allows no
+# --add-dir or --settings, so the transcript is read through the granted Read tool
+# and the only tools are Read and Edit, a bounded budget, an explicit permission mode.
 SB="$(mktemp -d)"
 mkdir -p "$SB/vault/sessions" "$SB/proj"
 NOTE="$SB/vault/sessions/note.md"; TR="$SB/proj/t.jsonl"
 write_note "$NOTE"; printf '{}\n' > "$TR"
-ARGVD="$SB/argv.txt"
-env CRYSTALLIZE_CLAUDE_BIN="$STUB" STUB_MODE=success \
+ARGVD="$SB/argv.txt"; LANED="$SB/lane.txt"
+env CRYSTALLIZE_CLAUDE_BIN="$LANE_STUB" STUB_MODE=success CRYSTALLIZE_LANE_DUMP="$LANED" \
     CRYSTALLIZE_PID_DIR="$SB/pids" CRYSTALLIZE_ARGV_DUMP="$ARGVD" \
     bash "$CRYS" "$NOTE" "$TR"
 NOTE_DIR_REAL="$(cd "$(dirname "$NOTE")" && pwd)"
-TR_DIR_REAL="$(cd "$(dirname "$TR")" && pwd)"
 if grep -qF "cwd=$NOTE_DIR_REAL" "$ARGVD" 2>/dev/null; then pass "workspace: spawn cwd is the note's directory"; else fail "workspace: spawn cwd is NOT the note-dir (out-of-workspace edit risk)"; fi
-if grep -qxF "arg=--add-dir" "$ARGVD" 2>/dev/null && grep -qF "arg=$TR_DIR_REAL" "$ARGVD" 2>/dev/null; then pass "workspace: transcript dir added via --add-dir"; else fail "workspace: transcript dir not in --add-dir"; fi
-SETF="$(awk -F= '/^arg=/{if (prev=="arg=--settings") print substr($0,5); prev=$0}' "$ARGVD")"
-if [ -n "$SETF" ]; then pass "workspace: --settings fragment injected"; else fail "workspace: no --settings fragment"; fi
-# Content, not just presence: the fragment must actually wire auto-approve-safe-bash
-# by absolute path (a regression that writes an empty/wrong settings file would
-# pass a presence-only check). The stub captured the fragment body (settings:…).
-if grep -q '^settings:.*auto-approve-safe-bash' "$ARGVD" 2>/dev/null; then pass "workspace: --settings fragment wires auto-approve-safe-bash by path"; else fail "workspace: --settings fragment does not wire the hook"; fi
-if grep -q '^settings:.*"PreToolUse"' "$ARGVD" 2>/dev/null && grep -q '^settings:.*"Bash"' "$ARGVD" 2>/dev/null; then pass "workspace: --settings fragment is a PreToolUse/Bash hook block"; else fail "workspace: --settings fragment malformed"; fi
+if grep -qxF 'arg=-p' "$ARGVD" 2>/dev/null; then pass "lane: print-mode call (-p)"; else fail "lane: not a -p call"; fi
+if ! grep -qxF 'arg=--add-dir' "$ARGVD" 2>/dev/null && ! grep -qxF 'arg=--settings' "$ARGVD" 2>/dev/null; then pass "lane: no --add-dir / --settings (the lane refuses both)"; else fail "lane: passes a flag the lane refuses"; fi
+if grep -qxF 'HIMMEL_API_TOOLS=Read,Edit' "$LANED" 2>/dev/null; then pass "lane: tool grant is exactly Read,Edit"; else fail "lane: tool grant is not Read,Edit ($(cat "$LANED" 2>/dev/null))"; fi
+if grep -qxF 'HIMMEL_API_KIND=bulk' "$LANED" 2>/dev/null; then pass "lane: run kind is bulk"; else fail "lane: run kind is not bulk"; fi
+BUDGET="$(awk '/^arg=/{if (prev=="arg=--max-budget-usd") print substr($0,5); prev=$0}' "$ARGVD")"
+if printf '%s' "$BUDGET" | grep -Eq '^[0-9]+(\.[0-9]+)?$'; then pass "lane: bounded --max-budget-usd ($BUDGET)"; else fail "lane: no numeric --max-budget-usd"; fi
 # acceptEdits must survive — it's what auto-approves the in-workspace note edit.
 if grep -qxF 'arg=acceptEdits' "$ARGVD" 2>/dev/null; then pass "workspace: --permission-mode acceptEdits passed"; else fail "workspace: acceptEdits not passed (out-of-workspace edit would prompt)"; fi
 rm -rf "$SB"

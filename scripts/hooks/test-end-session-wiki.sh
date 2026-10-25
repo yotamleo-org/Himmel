@@ -26,6 +26,7 @@ HOOK="$(cd "$(dirname "$0")" && pwd)/end-session-wiki.sh"
 STUB="$(cd "$(dirname "$0")" && pwd)/testdata/bin/claude-stub.sh"
 chmod +x "$STUB" 2>/dev/null || true
 export CRYSTALLIZE_CLAUDE_BIN="$STUB"
+export HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=A
 export STUB_MODE="noop"
 CRYSTALLIZE_PID_DIR="$(mktemp -d)"
 export CRYSTALLIZE_PID_DIR
