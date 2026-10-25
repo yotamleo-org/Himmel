@@ -411,7 +411,7 @@ if [ "$cache_age" -gt "$MAX_CACHE_AGE" ]; then
 
     # >>> WS9-QUOTA-GAUGE: usage confirmed INVISIBLE (wedged cache).
     # Record the dim-lane observation (best-effort) before the safety arm.
-    quota_gauge_note_claude "invisible" "" "" "" "statusline usage cache wedged (HIMMEL-275)"
+    quota_gauge_note_claude "invisible" "" "" "" "statusline usage cache wedged"
     # <<< WS9-QUOTA-GAUGE
 
     # ─── escalate: SAFETY ARM off the stale data ────────────────────────

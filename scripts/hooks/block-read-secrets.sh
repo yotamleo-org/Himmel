@@ -1161,7 +1161,7 @@ g4_scan() {
         gh) if [ "$a1" = auth ] && { [ "$a2" = token ] || [ "$showtok" = 1 ]; }; then hit=1; note="gh auth token prints a credential"; fi ;;
     esac
     if [ "$xt" = 1 ]; then
-        hit=1; note="shell tracing prints the inherited environment into the transcript (no env -i exemption: HIMMEL-5609)"
+        hit=1; note="shell tracing prints the inherited environment into the transcript (no env -i exemption)"
     fi
     if [ "$hit" = 1 ]; then block=1; g4_note="$note"; fi
     return 0

@@ -104,7 +104,7 @@ case "$hit:$cmd" in
         esac ;;
 esac
 
-deny_msg="You are a CONSOLE session running a long console-kit script (${hit}) in the foreground — DENIED (HIMMEL-5821).
+deny_msg="You are a CONSOLE session running a long console-kit script (${hit}) in the foreground — DENIED.
 
 A foreground run blocks this console turn for minutes, and every leg's SendMessage (READY, MERGED,
 BLOCKED, quote-backs) queues behind it.

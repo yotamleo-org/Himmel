@@ -140,7 +140,7 @@ if [ ! -e "$resolved_val" ]; then
     repo toplevel  = $toplevel
 
 Git is silently SKIPPING all hooks because the hooks dir is gone. This is
-the HIMMEL-45 class of bug — every pre-commit + pre-push gate
+the class of bug — every pre-commit + pre-push gate
 (no-push-to-main, npm-audit, code-review-before-push, platforms-tested,
 worktree-isolation, etc.) is bypassed.
 
@@ -255,7 +255,7 @@ cat >&2 <<EOF
     git-common-dir  = $real_gcd
 
 Git is loading hooks from a directory that is not part of this repo. This
-is the HIMMEL-45 class of bug — hooks from a leftover or stale repo path
+is the class of bug — hooks from a leftover or stale repo path
 are running (or, more likely, an empty/missing dir is running NOTHING)
 instead of this repo's pre-commit-installed gates.
 

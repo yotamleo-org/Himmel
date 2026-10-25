@@ -46,7 +46,7 @@ tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null || true)
 
 if printf '%s' "$input" | jq -e '.tool_input.run_in_background == true' >/dev/null 2>&1; then
     echo "cadence-deny-background: run_in_background is denied in a cadence session" \
-         "(HIMMEL-1682) — unattended runs cannot act on a background-task notification." \
+         "— unattended runs cannot act on a background-task notification." \
          "Re-run this command synchronously in the FOREGROUND (run_in_background=false);" \
          "cadence legs are foreground-by-design." >&2
     exit 2

@@ -948,7 +948,7 @@ deny() {  # deny <script-path> <var-name> -- both from OUR registry, never
     the same thing), or if this is a test seam, set it from the test suite's
     own process, not the agent's command line.
 
-    Retry as ONE literal command (HIMMEL-4815): bash ${script} <same args>
+    Retry as ONE literal command: bash ${script} <same args>
     -- no VAR= prefix, no env wrapper, no \$VAR path.
 
     To bypass this guard intentionally, set ENV_PREFIX_GUARD_OK=1 in the
@@ -977,7 +977,7 @@ deny_unresolvable() {  # deny_unresolvable <script-path> -- from OUR
     LAUNCHING shell, never per call. Run the chokepoint bare; if the text
     only mentions the chokepoint, move it into a file and pass the file.
 
-    Retry as ONE literal command (HIMMEL-4815): bash ${script} <same args>
+    Retry as ONE literal command: bash ${script} <same args>
     -- no VAR= prefix, no env wrapper, no \$VAR path.
 
     To bypass this guard intentionally, set ENV_PREFIX_GUARD_OK=1 in the
@@ -1004,7 +1004,7 @@ deny_raw_mention() {  # deny_raw_mention <script-path> -- from OUR registry,
     LAUNCHING shell, never per call; run the chokepoint bare. If the text
     only mentions the chokepoint, move it into a file and pass the file.
 
-    Retry as ONE literal command (HIMMEL-4815): bash ${script} <same args>
+    Retry as ONE literal command: bash ${script} <same args>
     -- no VAR= prefix, no env wrapper, no \$VAR path.
 
     To bypass this guard intentionally, set ENV_PREFIX_GUARD_OK=1 in the

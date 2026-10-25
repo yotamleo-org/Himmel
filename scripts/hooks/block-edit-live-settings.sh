@@ -759,7 +759,7 @@ launch):
 
 If this is a heredoc that only MENTIONS a settings path in its body (the
 write target is some other file) and its consumer is not a bare \`cat\`, the
-guard cannot tell it from a write (HIMMEL-3615): write that file with the
+guard cannot tell it from a write: write that file with the
 Write tool instead and retry.
 $([ "${SHFMT_NOTE:-0}" = 1 ] && echo "shfmt is not on PATH, so the heredoc could not be read as data; install shfmt (a station install goes to a test VM first).")
 

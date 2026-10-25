@@ -69,8 +69,8 @@ check "model fable, marker mid-line (not a line) -> deny" block \
 out="$(agent general-purpose fable 'x' | bash "$HOOK" 2>/dev/null)"
 reason="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)"
 case "$reason" in
-    *HIMMEL-3630*"ESCALATION:"*) ok "deny reason names HIMMEL-3630 and the marker" ;;
-    *) bad "deny reason missing HIMMEL-3630 / marker - got: $reason" ;;
+    *"ESCALATION:"*) ok "deny reason names the marker" ;;
+    *) bad "deny reason missing the marker - got: $reason" ;;
 esac
 if [ "$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)" = "deny" ]; then
     ok "permissionDecision is deny"

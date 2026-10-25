@@ -272,7 +272,7 @@ ERR6B=$(cat "$TMP/err6b")
 # exits 2 (no defaultImplLane), so a guard that named it left
 # an agent following the denial text verbatim on a guaranteed second failure.
 assert_contains "budget: deny names the Agent tool as the recovery" "$ERR6B" "Agent tool with an explicit model tier"
-assert_contains "budget: deny cites HIMMEL-1967 (why not dispatch-lane.sh)" "$ERR6B" "HIMMEL-1967"
+assert_contains "budget: deny routes impl to native Claude subagents (why not dispatch-lane.sh)" "$ERR6B" "native Claude subagents"
 assert_not_contains "budget: deny no longer prescribes the stale dispatch-lane.sh command" "$ERR6B" "bash scripts/telegram/dispatch-lane.sh --brief-file"
 assert_contains "budget: deny names the per-PR rule" "$ERR6B" "Per PR, not per round"
 assert_contains "budget: deny closes the round-guard hole (escalation)" "$ERR6B" "NOT licence to implement inline"

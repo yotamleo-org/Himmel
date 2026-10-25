@@ -267,7 +267,7 @@ if [ "$verdict_rc" -eq 2 ]; then
     cat >&2 <<EOF
 ⛔ block-edit-on-main: refusing to edit \`$file_path\` — its repo is the PRIMARY
 checkout on a feature branch. Feature work must be isolated in a worktree per
-CLAUDE.md, not done on a branch checked out in the primary tree (HIMMEL-507).
+CLAUDE.md, not done on a branch checked out in the primary tree.
 (file: $file_real — repo: $repo_real)
 
 Move the work into a worktree (a linked worktree carries its own \`.git\` file,

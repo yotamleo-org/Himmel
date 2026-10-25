@@ -56,7 +56,7 @@ run "$(wf "$want")"
 reason_txt="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason')"
 sq="'"
 args="${reason_txt#*fetch-url.sh"$sq" }"
-args="${args% (HIMMEL-4908*}"
+args="${args% (bypass:*}"
 # The quoted arg must round-trip to the exact URL through the shell's own parser.
 rt="$(eval "set -- $args; printf '%s' \"\$1\"" 2>/dev/null)"
 [ "$rt" = "$want" ] && ok "quoted arg round-trips to the exact URL" || bad "round-trip mismatch: [$rt]"

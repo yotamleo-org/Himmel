@@ -228,7 +228,7 @@ legacy_denied() {
 
 deny_stash() {
     cat >&2 <<'DENY'
-block-git-stash: git stash MUTATION refused (HIMMEL-1755).
+block-git-stash: git stash MUTATION refused.
 
 Every worktree of this checkout shares ONE refs/stash, so `push`/`pop`/`drop`/
 `clear`/`branch` (and a bare `git stash`) act on entries other live sessions

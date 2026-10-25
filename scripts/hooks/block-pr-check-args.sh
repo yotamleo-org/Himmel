@@ -187,8 +187,8 @@ trimmed="$(printf '%s' "$command_args" | tr -d '[:space:]')"
 # is that the untrusted value never transits a prompt; printing it into the
 # transcript would hand it straight to the agent this hook is protecting.
 cat >&2 <<'EOF'
-block-pr-check-args: DENIED — /pr-check takes no argument (HIMMEL-2226,
-operator ruling 2026-08-31). The argument was discarded; nothing was expanded
+block-pr-check-args: DENIED — /pr-check takes no argument
+(operator ruling 2026-08-31). The argument was discarded; nothing was expanded
 and nothing ran.
 
 Passing one used to be silently ignored, which is the actual hazard: the run

@@ -61,8 +61,8 @@ case "$reason" in
     *) bad "stdout JSON reason not 'leg wakeup-deny: ...' - got: $out" ;;
 esac
 case "$reason" in
-    *"check-ci.sh <pr> --max-wait"*HIMMEL-3034*) ok "reason names the foreground replacement and the ticket" ;;
-    *) bad "reason missing 'check-ci.sh <pr> --max-wait' / HIMMEL-3034 - got: $reason" ;;
+    *"check-ci.sh <pr> --max-wait"*) ok "reason names the foreground replacement" ;;
+    *) bad "reason missing check-ci.sh <pr> --max-wait - got: $reason" ;;
 esac
 decision="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecision // empty' 2>/dev/null)"
 if [ "$decision" = "deny" ]; then ok "permissionDecision is deny"; else
