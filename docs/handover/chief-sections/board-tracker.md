@@ -30,7 +30,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     paste page content." It returns one line, not the page; if a later publish
     of your own is refused, send that to the subagent too and never read the URL
     yourself. A `path` read or `overwrite_unread` does not count as viewing.
-    <!-- ponytail: subagent cost absorption is not yet measured (HIMMEL-6756), the first chief publish that uses it records the parent-context delta on that ticket -->
+    <!-- measured: a haiku-delegated publish adds about 1.4k-2.7k tokens (median 1.9k) to the parent context, under the 5k limit; the live page never reaches it -->
     The tick's `board=` field is your reminder:
     `board=MISSING` (never rendered) or `board=STALE:<age>` (the state moved
     since the last render) means re-run it now. `board=ok` proves only that the
