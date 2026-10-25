@@ -52,7 +52,7 @@ Regenerate: `python3 scripts/cr/evals-page-gen.py data --cache-probe cache-probe
 - RED then GREEN alone: **57.5%** named RED and then GREEN in the PR body, 95% Wilson interval 48.6 to 66.0, as of 2026-10-24, n = 120 merged PRs. Method: [proof-first share](../../scripts/eval/README.md).
 - Test first: not measured yet, as of 2026-10-25, n = 0 sessions scored under trajectory version 2; it needs 30. Method: [test-first record](../../scripts/eval/README.md).
 
-Regenerate: `python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record` writes a new proof-first row; the test-first sessions are written as agent sessions end. Then run the review regenerate above.
+Regenerate: `python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record` writes a new proof-first row; the test-first sessions are written as agent sessions end. Then run the review regenerate above with --until and --as-of moved past the new row.
 
 ## How much does caching save?
 

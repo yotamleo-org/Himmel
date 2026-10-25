@@ -328,7 +328,7 @@ def render(d):
     out += [
         "", "Regenerate: `python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record` writes a new "
         "proof-first row; the test-first sessions are written as agent sessions end. Then run the "
-        "review regenerate above.", "",
+        "review regenerate above with --until and --as-of moved past the new row.", "",
         "## How much does caching save?", "",
         "- **%s%%** of input tokens were cache reads (served from the prompt cache) rather than uncached input or cache writes, %s. "
         "Method: [prompt cache](prompt-cache.md)." % (

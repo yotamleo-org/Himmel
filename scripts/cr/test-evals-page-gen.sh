@@ -166,6 +166,7 @@ has "render: pdd figure" "$(cat "$R")" "**10.8%** of merged PRs were proof-first
 has "render: pdd interval and n" "$(cat "$R")" "6.4 to 17.7, as of 2026-10-24, n = 120 merged PRs"
 has "render: test-first not measured yet" "$(cat "$R")" "Test first: not measured yet"
 has "render: test-first says how far from the floor" "$(cat "$R")" "n = 1 session scored under trajectory version 2"
+has "render: pdd regenerate moves the cut past the new row" "$(cat "$R")" "with --until and --as-of moved past the new row"
 has "render: interval printed" "$(cat "$R")" "77.8 to 94.2"
 has "render: date and n under a figure" "$(cat "$R")" "as of 2026-10-25, n = 60"
 has "render: cache regenerate saves the probe output" "$(cat "$R")" "1. \`bash scripts/eval/cache-probe.sh first-turn"
