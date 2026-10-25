@@ -114,6 +114,7 @@ if [ -r /proc/self/stat ]; then
     "$TMP/claude" -c 'sleep 8; :' -n HIM-9 &
     oldpid=$!
     sleep 1
+    eq "A6 setup: the claude-named older process is live" claude "$(cat "/proc/$oldpid/comm" 2>/dev/null)"
     mkbus ok; : > "$TMP/bus-calls"; : > "$TMP/log"
     env -u ARM_RESUME_PROC ARM_RESUME_SELF_START=1 bash "$HELPER" HIM-9 "$TMP/bus" "$TMP/log" 2 5
     eq "A6 inherited ARM_RESUME_SELF_START without the proc seam is ignored: the older session is not rebound" "" "$(cat "$TMP/bus-calls")"
