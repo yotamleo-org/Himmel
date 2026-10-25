@@ -121,7 +121,7 @@ so the deployed Pages artifact carries pele's code. Its licence text, which
 also covers the Lucide `rotate-ccw` icon (ISC) in its zoom controls, is
 reproduced here as the MIT licence requires:
 
-```
+```text
 MIT License
 
 Copyright (c) 2026 kepano
