@@ -66,8 +66,9 @@
 # (scripts/lib/rename-aliases.tsv, kind directory) maps a pre-rename spelling to its new one.
 # An open PR's files come from the paginated files API (`gh api --paginate`, filename and
 # previous_filename), one PR at a time: a PR whose read fails (HTTP 406 over 300 files by
-# `gh pr diff`, a timeout) is named in an `open PR files unknown` header and the other PRs
-# still hold their files. When the PR list itself fails the list is printed with an
+# `gh pr diff`, a timeout, the API's 3000-file cap) is named in an `open PR files unknown`
+# header, the other PRs still hold their files, and no RESUME or IN CI row is listed (the
+# unread PR could own it). When the PR list itself fails the list is printed with an
 # `open PRs unknown` header rather than silently trusting an empty set.
 #
 # Drops: every To Do ticket of the earliest unreleased version that is not listed
@@ -80,10 +81,11 @@
 #
 # Blockers: one the mirror shows open may be Done (the mirror lags). Its live status is read
 # once, bounded, and a Done blocker no longer drops the ticket; a live one is named
-# `blocker KEY (<status>, live)`. A classifier BLOCKED whose reason names other tickets (a
-# reservation `routed KEY`) is listed as LOCAL when every one of them is Done live; otherwise
-# the drop carries the classifier's reason. The live read runs with the real classifier, or
-# when NEXT_DISPATCH_JIRA_CMD is set; an unreadable key leaves the blocker open.
+# `blocker KEY (<status>, live)`. The live read runs with the real classifier, or when
+# NEXT_DISPATCH_JIRA_CMD is set; an unreadable key leaves the blocker open. A classifier
+# BLOCKED is never lifted: the drop carries its reason. A classifier LOCAL-NATIVE that names a
+# directory with a held file in it is listed with a `# overlap <KEY> <directory, held files,
+# holder>` line right after the row, so a listed row never hides who holds a file under it.
 #
 # Classification: the survivors go through scripts/lanes/cloud-route.mjs
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
@@ -603,10 +605,11 @@ try:
     def pr_files(num):
         # the paginated files API, not `gh pr diff`: that fails with HTTP 406 on a PR over 300 files. A rename holds both names.
         try:
-            return subprocess.run([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
-                                  capture_output=True, text=True, timeout=120, check=True).stdout.splitlines()
+            files = subprocess.run([gh, 'api', '--paginate', 'repos/%s/pulls/%s/files' % (gh_repo, num), '--jq', '.[] | .filename, (.previous_filename // empty)'],
+                                   capture_output=True, text=True, timeout=120, check=True).stdout.splitlines()
         except (OSError, subprocess.SubprocessError):
             return None  # this PR's files are unknown; the rest are still read
+        return None if len(files) >= 3000 else files  # the API stops at 3000 files: a PR that long is cut short, so its files are unknown
     pr_nums = [] if resume_only else nums
     if pr_nums:
         from concurrent.futures import ThreadPoolExecutor
@@ -630,7 +633,7 @@ merged_unknown = False
 merged_keys = set()
 inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Sub-task')
              and i['key'] not in leg_keys and i['key'] not in pr_keys]
-if inci_keys and not (pr_unknown or legs_unknown):
+if inci_keys and not (pr_unknown or pr_files_unknown or legs_unknown):
     def merged_cites(key):
         out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
                              capture_output=True, text=True, timeout=60, check=True).stdout
@@ -663,7 +666,7 @@ for i in issues.values():
         continue
     if i['key'] in leg_keys or i['key'] in pr_keys:
         continue
-    if pr_unknown or legs_unknown:  # an unread PR set or leg set could hide the ticket's owner
+    if pr_unknown or pr_files_unknown or legs_unknown:  # an unread PR, PR file set or leg set could hide the ticket's owner
         continue
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)
@@ -726,7 +729,6 @@ def picked_hit(i):
     return None
 emitted = []
 lane_of = {}  # key -> how a listed ticket was listed
-lifted = {}   # key -> why a classifier BLOCKED no longer holds
 
 def drop_summary():
     # every To Do ticket of the active version that is not listed, by reason (--why: one line each)
@@ -833,13 +835,6 @@ def emit_free(rows):
         for i in batch:
             c = cls_cache.get(i['key'])
             if classified:
-                if c == 'BLOCKED':
-                    # a BLOCKED reason that names other tickets (a file reserved by `routed KEY`) is re-checked against their live status
-                    named = [k for k in dict.fromkeys(re.findall(r'[A-Z]+-\d+', reasons.get(i['key'], ''))) if k != i['key']]
-                    live_fetch(named)
-                    if named and all(live_cache.get(k) in DONE_STATES for k in named):
-                        c = 'LOCAL-NATIVE'
-                        lifted[i['key']] = 'blocker %s Done (live)' % ', '.join(named)
                 if c is None or c == 'BLOCKED':
                     drop(i, 'classification ' + (('BLOCKED: ' + reasons.get(i['key'], '')[:160]).rstrip(': ') if c else 'none (cloud-route gave no verdict)'))
                     continue
@@ -853,8 +848,11 @@ def emit_free(rows):
                 continue
             picked.extend((f, i['key']) for f in i['files'])
             emitted.append(i)
-            lane_of[i['key']] = lane + (' (%s)' % lifted[i['key']] if i['key'] in lifted else '')
+            overlap = reasons.get(i['key'], '') if reasons.get(i['key'], '').startswith('names the directory') else ''  # a directory the ticket names with a held file in it: listed, never without its holder
+            lane_of[i['key']] = lane + (' (overlap: %s)' % overlap if overlap else '')
             print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
+            if overlap:
+                print('# overlap %s %s' % (i['key'], overlap))
             n += 1
             if n >= top:
                 break

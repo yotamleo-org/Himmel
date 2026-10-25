@@ -284,7 +284,8 @@ esac`);
   const gh = stub(dir, 'gh', `
 if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
 if [ "$1 $2" = "pr list" ]; then echo 77; exit 0; fi
-if [ "$1 $2" = "pr diff" ]; then echo scripts/held/file.sh; exit 0; fi
+if [ "$1 $2" = "pr diff" ]; then echo 'HTTP 406: the diff exceeded the maximum number of files (300)' >&2; exit 1; fi
+if [ "$1 $2" = "api --paginate" ]; then echo scripts/held/file.sh; exit 0; fi
 exit 1`);
   return { dir, bucket, jira, gh };
 }
@@ -638,4 +639,36 @@ test('HIMMEL-7574: a ticket naming a directory is not BLOCKED by an open PR on a
   assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live leg' }] })).class, 'BLOCKED');
   // nothing held under the directory: unchanged
   assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] })).class, 'CLOUD-OK');
+});
+
+test('a ticket naming a directory lists the held files under it in the reason', () => {
+  const held = [1, 2, 3, 4].map((n) => ({ file: `scripts/lanes/f${n}.sh`, why: 'open PR 77' }));
+  const v = classifyTicket(tk({ description: 'Tidy the helpers under scripts/lanes/.' }), ctx({ held }));
+  assert.equal(v.class, 'LOCAL-NATIVE');
+  assert.match(v.reason, /scripts\/lanes\/f1\.sh \(open PR 77\), scripts\/lanes\/f2\.sh \(open PR 77\), scripts\/lanes\/f3\.sh \(open PR 77\), \+1 more/);
+});
+
+test('CLI: open PR files come from the paginated API, so a PR gh pr diff refuses with 406 still holds its files', () => {
+  const { bucket, jira, gh } = setup();
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9004'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /HIMMEL-9004\s+BLOCKED\s.*scripts\/held\/file\.sh is held \(open PR 77\)/);
+  assert.doesNotMatch(r.stderr, /open-PR files unknown/);
+});
+
+test('CLI: a PR listing 3000 files is cut short by the API, so the held list is unknown and every ticket is BLOCKED', () => {
+  const { dir, bucket, jira } = setup();
+  const big = stub(dir, 'gh-big', `
+if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
+if [ "$1 $2" = "pr list" ]; then echo 77; exit 0; fi
+if [ "$1 $2" = "api --paginate" ]; then i=0; while [ $i -lt 3000 ]; do echo "scripts/big/f$i.sh"; i=$((i+1)); done; exit 0; fi
+exit 1`);
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9001'], {
+    encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: big },
+  });
+  assert.equal(r.status, 0, r.stderr);
+  assert.match(r.stdout, /HIMMEL-9001\s+BLOCKED\s.*held-file list unavailable/);
+  assert.match(r.stderr, /3000 files/);
 });

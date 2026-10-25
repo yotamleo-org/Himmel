@@ -218,14 +218,14 @@ export function classifyTicket(t, ctx) {
   for (const f of files) {
     const h = (ctx.held ?? []).find((x) => overlaps(f, x.file) && !underDir(f, x));
     if (h) return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
-    const u = (ctx.held ?? []).find((x) => underDir(f, x));
-    if (u && !dirHold) dirHold = { dir: f, held: u };
+    const u = (ctx.held ?? []).filter((x) => underDir(f, x));
+    if (u.length && !dirHold) dirHold = { dir: f, held: u };
   }
   const hook = files.find((f) => HOOKS.test(f));
   if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
   if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO`);
-  if (dirHold) return v('LOCAL-NATIVE', `names the directory ${dirHold.dir} and ${dirHold.held.file} in it is held (${dirHold.held.why}) — a local leg scopes the files, a cloud brief cannot (pass files)`);
+  if (dirHold) return v('LOCAL-NATIVE', `names the directory ${dirHold.dir} with held file(s) in it: ${dirHold.held.slice(0, 3).map((x) => `${x.file} (${x.why})`).join(', ')}${dirHold.held.length > 3 ? `, +${dirHold.held.length - 3} more` : ''} — a local leg scopes the files and must not write them, a cloud brief cannot (pass files)`);
   if (strange.length) return v('LOCAL-NATIVE', `unrecognised path ${strange.join(', ')} — outside the known roots, so the hook, trust and held checks cannot be trusted (pass files)`);
   if (!files.length) return v('LOCAL-NATIVE', 'no file named in the ticket — nothing to scope a brief on (pass files)');
   const need = text.match(needs.re);
@@ -333,7 +333,10 @@ function openPrFiles() {
   const nums = execFileSync(gh, ['pr', 'list', '--repo', REPO_SLUG, '--state', 'open', '--limit', '200', '--json', 'number', '--jq', '.[].number'], { encoding: 'utf8' }).split('\n').filter(Boolean);
   if (nums.length >= 200) throw new Error('200 open PRs listed — the list may be truncated');
   for (const num of nums) {
-    for (const f of execFileSync(gh, ['pr', 'diff', num, '--repo', REPO_SLUG, '--name-only'], { encoding: 'utf8' }).split('\n').filter(Boolean)) out.push({ file: f, why: `open PR ${num}` });
+    // the paginated files API: `gh pr diff` fails with HTTP 406 on a PR over 300 files. A rename holds both names.
+    const files = execFileSync(gh, ['api', '--paginate', `repos/${REPO_SLUG}/pulls/${num}/files`, '--jq', '.[] | .filename, (.previous_filename // empty)'], { encoding: 'utf8', maxBuffer: 16 * 1024 * 1024 }).split('\n').filter(Boolean);
+    if (files.length >= 3000) throw new Error(`PR ${num} lists 3000 files — the API stops there, so its files are cut short`);
+    for (const f of files) out.push({ file: f, why: `open PR ${num}` });
   }
   return out;
 }
