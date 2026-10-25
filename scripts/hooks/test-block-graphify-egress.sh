@@ -485,12 +485,12 @@ else
     bad "denial hint: rc=$rc out=$out"
 fi
 
-# The renamed wrapper and its old path get the same verdict for a relative target after a cd.
+# The renamed wrapper and its old path both pass for a relative target after a cd: their program is bash, not graphify, so neither reaches the fence, and the deny hint names this wrapper as the route.
 for verb in "query q journal.md" "explain journal.md"; do
     out="$(run_hook "cd $T/luna && bash scripts/graphify/leg-graph.sh $verb" 2>&1)"; rc_old=$?
     out="$(run_hook "cd $T/luna && bash scripts/graphify/worker-graph.sh $verb" 2>&1)"; rc_new=$?
-    if [ "$rc_old" -eq "$rc_new" ]; then
-        ok "worker-graph.sh and leg-graph.sh get one verdict after a cd ($verb, rc=$rc_new)"
+    if [ "$rc_old" -eq 0 ] && [ "$rc_new" -eq 0 ]; then
+        ok "worker-graph.sh and leg-graph.sh both pass the hook after a cd ($verb)"
     else
         bad "wrapper parity ($verb): leg-graph rc=$rc_old worker-graph rc=$rc_new out=$out"
     fi
