@@ -111,11 +111,13 @@ def split_view(row, split):
     return {m[len(pre):]: v for m, v in row["metrics"].items() if m.startswith(pre)}
 
 
+def is_split(row):
+    return any(m.startswith(("open.", "sealed.")) for m in row["metrics"])
+
+
 def tuning_metrics(row):
-    """The metrics a rule may read: the open half of a split row, else every metric."""
-    if any(m.startswith("open.") for m in row["metrics"]):
-        return split_view(row, "open")
-    return row["metrics"]
+    """The metrics a rule may read: the open half of a split row (empty when it ran none), else every metric."""
+    return split_view(row, "open") if is_split(row) else row["metrics"]
 
 
 def rate(metrics, v, per):
@@ -142,7 +144,7 @@ def keep_rule(c, series, base, new, after):
     test_after = value_of(split_view(new, "sealed"), c["metric"], c["absent"], per)
     upto = series[:series.index(base) + 1] if base in series else []
     train = [v for v in (value_of(tuning_metrics(r), c["metric"], c["absent"], per) for r in upto
-                         if r["confighash"] == c["confighash"]) if v is not None]
+                         if r["confighash"] == c["confighash"] and tuning_metrics(r)) if v is not None]
     noise = round(max(train) - min(train), 6) if len(train) >= 2 else None
     if test_before is None or test_after is None:
         reason = "test half unmeasured"
@@ -213,12 +215,13 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 if c["eval"] != ev or c["id"] in measured or c["confighash"] != new["confighash"] \
                         or pos.get(c["baseline_run_id"], len(runs)) >= pos[new["run_id"]]:
                     continue
-                after = value_of(tuning_metrics(new), c["metric"], c["absent"], c.get("per"))
+                tm = tuning_metrics(new)
+                after = value_of(tm, c["metric"], c["absent"], c.get("per")) if tm else None
                 if after is None:
                     continue
                 delta = round(after - c["value"], 6)
                 extra = {}
-                if split_view(new, "open"):
+                if is_split(new):
                     verdict, extra = keep_rule(c, series, by_id.get(c["baseline_run_id"]), new, after)
                 else:
                     # ponytail: a bare sign test, no noise band; the split rows' keep rule is the upgrade path.

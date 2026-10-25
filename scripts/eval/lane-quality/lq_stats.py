@@ -117,14 +117,15 @@ def cmd_summary(paths):
           "pass@k: at least one of k repeats accepted; pass^k: all k accepted; k is the fewest repeats "
           "of any task in that lane and model. $/accepted: cost over accepted runs.")
     print()
-    print("| lane | model | task | n | accept | pass@k | pass^k | $/accepted | correctness | scope | tests | honesty "
+    print("| lane | model | task | n | k | accept | pass@k | pass^k | $/accepted | correctness | scope | tests | honesty "
           "| judge missing |")
-    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|")
+    print("|---|---|---|---|---|---|---|---|---|---|---|---|---|---|")
     for (lane, model), rs in sorted(groups.items()):
         for tid, s in eval_runs.lane_quality_stats(rs).items():
             cells = [_cell(s["accept_frac"])] + [_num_cell(s[k]) for k in ("pass_at_k", "pass_pow_k", "cost_per_accepted")] \
                 + [_cell(s["judge_" + c]) for c in CRITERIA]
-            print("| %s | %s | %s | %d | %s | %d |" % (lane, model, tid, s["n"], " | ".join(cells), s["judge_missing"]))
+            print("| %s | %s | %s | %d | %d | %s | %d |" % (lane, model, tid, s["n"], s["k"], " | ".join(cells),
+                                                           s["judge_missing"]))
     return 0
 
 

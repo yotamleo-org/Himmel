@@ -412,9 +412,9 @@ def pass_pow_k(n, c, k):
 
 
 def lane_quality_stats(tasks, k=None):
-    """Per task id: {"n", "judge_missing", "pass_at_k", "pass_pow_k",
+    """Per task id: {"n", "k", "judge_missing", "pass_at_k", "pass_pow_k",
     "cost_per_accepted", "accept_frac", "accept_ok", "scope_ok", "judge_<c>"...},
-    each score a {"mean", "ci"}, the first five plain numbers. Repeats
+    each score a {"mean", "ci"}, the first six plain numbers. Repeats
     (HIMMEL-4648) are rows sharing a task; a row with no judge score counts in
     judge_missing and is left out of the judge means only. k (default: the
     fewest repeats of any task) is the same for every task, so pass@k means one
@@ -426,7 +426,7 @@ def lane_quality_stats(tasks, k=None):
         k = min(len(rows) for rows in by.values())
     out = {}
     for tid, rows in sorted(by.items()):
-        s = {"n": len(rows), "judge_missing": sum(1 for t in rows if not isinstance(t.get("judge"), dict))}
+        s = {"n": len(rows), "k": k, "judge_missing": sum(1 for t in rows if not isinstance(t.get("judge"), dict))}
         accepted = sum(1 for t in rows if t.get("accept_ok"))
         costs = [t.get("cost_usd") for t in rows]
         s["pass_at_k"] = pass_at_k(len(rows), accepted, k)

@@ -92,24 +92,29 @@ def verdict(spec, base, cand, bci, cci):
 def paired(spec, base_cases, cand_cases, metric):
     """(verdict, n, mean, floor) of the per-case candidate-minus-baseline
     differences of metric over the case ids both rows value, or None under two
-    shared cases. ponytail: a normal approximation (|mean| beyond 1.96 standard
-    errors, floor 2.8 standard errors for 80 % power at 5 %), loose on a dozen
-    0/1 cases; upgrade path is an exact sign or permutation test."""
-    diffs = []
+    shared cases; floor is None when it cannot be estimated. ponytail: a normal
+    approximation (|mean| beyond 1.96 standard errors, floor 2.8 standard
+    errors for 80 % power at 5 %), loose on a dozen 0/1 cases; upgrade path is
+    an exact sign or permutation test."""
+    diffs, binary = [], True
     for cid in sorted(set(base_cases or {}) & set(cand_cases or {})):
         b, c = (base_cases[cid] or {}).get(metric), (cand_cases[cid] or {}).get(metric)
         if eval_runs._num(b) or isinstance(b, bool):
             if eval_runs._num(c) or isinstance(c, bool):
                 diffs.append(float(c) - float(b))
+                binary = binary and float(b) in (0.0, 1.0) and float(c) in (0.0, 1.0)
     n = len(diffs)
     if n < 2:
         return None
     mean = sum(diffs) / n
     sd = (sum((d - mean) ** 2 for d in diffs) / (n - 1)) ** 0.5
     se = sd / n ** 0.5
-    # A zero spread says nothing about the floor; 0.5 is the widest a 0/1 case can spread.
-    floor = 2.8 * (sd if sd else 0.5) / n ** 0.5
-    moved = abs(mean) > 1.96 * se + EPS if sd else abs(mean) > EPS
+    # A zero spread says nothing about the floor; 0.5 is the widest a 0/1 case
+    # can spread, and a continuous metric has no such bound.
+    floor = 2.8 * sd / n ** 0.5 if sd else 2.8 * 0.5 / n ** 0.5 if binary else None
+    # With no spread every case moved one way: an exact sign test reaches 5 %
+    # (two-sided p = 2 * 0.5 ** n) from 6 cases.
+    moved = abs(mean) > 1.96 * se + EPS if sd else abs(mean) > EPS and n >= 6
     if not moved:
         v = "ok"
     else:
@@ -247,7 +252,8 @@ def main(argv=None):
             v, n, mean, floor = got
             regressions += v == "REGRESSION"
             gated += 1
-            print("paired %s over %d cases: mean %+.3g  %-10s detection floor ±%.3g" % (m, n, mean, v, floor))
+            print("paired %s over %d cases: mean %+.3g  %-10s detection floor %s"
+                  % (m, n, mean, v, "unestimated (no spread)" if floor is None else "±%.3g" % floor))
     head = table.get("_headroom")
     if head:
         hrow = fixed if base_of is None else base_of.get(head["metric"])

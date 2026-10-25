@@ -195,6 +195,29 @@ prow "$PV" pv4 6
 out=$(python3 "$CMP" pv --ledger "$PV" --thresholds "$TMP/paired-th.json" --baseline pv2 2>&1); rc=$?
 eq "paired: 6 of 12 cases lost is a regression the run-level band misses (exit 1)" "$rc" "1"
 has "paired: the paired regression is named" "$out" "REGRESSION"
+# Zero spread: every shared case moved the same way. An exact sign test needs 6 such cases for 5 %.
+casesn() { python3 -c 'import json,sys; print(json.dumps({"c%02d" % i: {"hit": int(sys.argv[2])} for i in range(int(sys.argv[1]))}))' "$1" "$2"; }
+zrow() { python3 "$LIB" append --ledger "$1" --eval pv --run-id "$2" --source s --config-json '{}' --metrics-json '{"acc":0.9}' \
+  --cases-json "$(casesn "$3" "$4")" >/dev/null 2>&1 || fail "fixture row $2 not written"; }
+Z="$TMP/pz.jsonl"
+zrow "$Z" z1 2 1
+zrow "$Z" z2 2 0
+out=$(python3 "$CMP" pv --ledger "$Z" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: 2 of 2 cases lost, no spread, is under what a sign test can call (exit 0)" "$rc" "0"
+zrow "$Z" z3 6 1
+zrow "$Z" z4 6 0
+out=$(python3 "$CMP" pv --ledger "$Z" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: 6 of 6 cases lost, no spread, is a regression (exit 1)" "$rc" "1"
+cat >"$TMP/paired-cost.json" <<'EOF'
+{"pc": {"_cases": {"cost": {"higher_is_better": false}}}}
+EOF
+crow() { python3 "$LIB" append --ledger "$1" --eval pc --run-id "$2" --source s --config-json '{}' --metrics-json '{"acc":0.9}' \
+  --cases-json "{\"a\":{\"cost\":$3},\"b\":{\"cost\":$3}}" >/dev/null 2>&1 || fail "fixture row $2 not written"; }
+C="$TMP/pc.jsonl"
+crow "$C" k1 2.5
+crow "$C" k2 2.5
+out=$(python3 "$CMP" pc --ledger "$C" --thresholds "$TMP/paired-cost.json" 2>&1)
+has "paired: a continuous metric with no spread states its floor is unestimated" "$out" "detection floor unestimated"
 
 # Headroom: a baseline at or above the ceiling says quality cannot show a gain.
 HR="$TMP/hr.jsonl"

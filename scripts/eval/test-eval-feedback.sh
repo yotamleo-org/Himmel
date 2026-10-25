@@ -231,6 +231,11 @@ ok "open-bad feedback" python3 -I "$FB" run --ledger "$S/b.jsonl" --changes "$S/
 eq "sealed: a bad open half opens one change" "$(rows "$S/b-changes.jsonl")" "1"
 eq "sealed: the change names the open-half metric, unprefixed" "$(field "$S/b-changes.jsonl" 0 metric)" "codex.class.quoting.recall"
 eq "sealed: its value is the open half's" "$(field "$S/b-changes.jsonl" 0 value)" "0"
+# A sweep of sealed cases only (--only) has sealed. metrics and no open. half.
+ok "sealed-only row" python3 -I "$RUNS" append --ledger "$S/c.jsonl" --eval review-panel --source s --config-json '{"review_panel_v":2}' \
+  --metrics-json '{"codex.class.quoting.recall":0,"sealed.codex.class.quoting.recall":0}'
+ok "sealed-only feedback" python3 -I "$FB" run --ledger "$S/c.jsonl" --changes "$S/c-changes.jsonl" --rules "$S/rules.json"
+eq "sealed: a row with no open half opens no change from its sealed or whole-set metrics" "$(rows "$S/c-changes.jsonl")" "0"
 
 # --- train/test keep rule: keep only when train AND test both gain more than min_gain, over noise --------
 T="$TMP/keep"; mkdir -p "$T"

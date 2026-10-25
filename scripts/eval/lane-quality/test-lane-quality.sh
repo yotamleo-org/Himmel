@@ -514,7 +514,7 @@ check "pass^k from a fixture: one failed repeat drops a task to 0, so pass^3 = 0
 check "cost per accepted run: 3.00 over 5 accepted" 'jq -e ".metrics.cost_per_accepted == 0.6" "$TMP/fxk-ledger.jsonl" >/dev/null'
 check "the row keeps each repeat, so pass@k is recomputable once the run dir is gone" 'jq -e "(.meta.reps.p | length) == 3 and .meta.reps.p[2].accept_ok == false and .meta.reps.q[0].cost_usd == 0.5" "$TMP/fxk-ledger.jsonl" >/dev/null'
 bash "$RUN" table "$FXK" >"$TMP/table-fxk.md" 2>&1
-check "table reports pass@k, pass^k and cost per accepted run per task" 'grep -qF "| pass@k | pass^k | \$/accepted |" "$TMP/table-fxk.md" && grep -qE "^\| native \| m \| p \| 3 \|.*\| 1\.00 \| 0\.00 \| 0\.75 \|" "$TMP/table-fxk.md"'
+check "table reports k, pass@k, pass^k and cost per accepted run per task" 'grep -qF "| n | k |" "$TMP/table-fxk.md" && grep -qF "| pass@k | pass^k | \$/accepted |" "$TMP/table-fxk.md" && grep -qE "^\| native \| m \| p \| 3 \| 3 \|.*\| 1\.00 \| 0\.00 \| 0\.75 \|" "$TMP/table-fxk.md"'
 
 # Calibration math, by hand: correctness on accept-pass {4,5} vs accept-fail
 # {2,4} -> AUC 3.5/4 = 0.875; point-biserial r = 1.5 / sqrt(4.75) = 0.6882.
