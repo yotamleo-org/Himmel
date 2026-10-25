@@ -3055,5 +3055,11 @@ out92e="$(console new --bucket chief92e)"
 token92e="$(token_of "$out92e")"
 check "92 new skips a letter a console-named doc already holds" "$([ -f "$root/tester/chief92e/DEMO-nextleg-${today}B-chief.md" ] && echo yes)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/chief92e/DEMO-nextleg-${today}B-chief.md" "$token92e" >/dev/null 2>&1
+mkdir -p "$root/tester/chief92f"
+stub_doc predecessor > "$root/tester/chief92f/DEMO-nextleg-${today}A-console.md"
+: > "$root/tester/chief92f/DEMO-nextleg-${today}B-console.md"
+rc92f=0
+console next --bucket chief92f --doc "$root/tester/chief92f/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1 || rc92f=$?
+check "92 next refuses a successor letter a console-named doc already holds" "$rc92f:$([ -e "$root/tester/chief92f/DEMO-nextleg-${today}B-chief.md" ] && echo dup || echo none)" "1:none"
 
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

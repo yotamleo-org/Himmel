@@ -92,6 +92,13 @@ pgrep_x_stub 107
 out_e="$(run_primary)"
 contains 'the console row alone is ok' "$out_e" 'ceiling=ok'
 
+# (e2) a chief row (-n name ends -chief) is exempt the same way
+mkcmdline 107 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-10-25A-roadmap-chief work
+pgrep_x_stub 107
+out_e2="$(run_primary)"
+contains 'the chief row alone is ok' "$out_e2" 'ceiling=ok'
+mkcmdline 107 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13B-console work
+
 # (f) pgrep itself fails (rc>1, a scan failure, not "no processes") -> ceiling=?
 # (a scan failure must not read as ceiling=ok).
 # pgrep's own real fatal-error rc is ALSO 3 (e.g. OOM), same

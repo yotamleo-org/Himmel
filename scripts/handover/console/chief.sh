@@ -1963,6 +1963,11 @@ cmd_next() {
     # advance — `next` computes exactly one successor letter, never a range
     # to retry across.
     mkdir -p "$state_dir"
+    local legacy_doc="$state_dir/${prefix}-nextleg-${successor_date}${successor_letter}-${old_name}.md"
+    if [ -e "$legacy_doc" ]; then
+        err "successor letter ${successor_letter} is already held by $legacy_doc, refusing to claim it twice"
+        exit 1
+    fi
     set -C
     if ! : 2>/dev/null > "$doc"; then
         set +C
