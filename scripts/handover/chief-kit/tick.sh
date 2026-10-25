@@ -1561,6 +1561,10 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         case "$tracker_fv" in none*) tracker_fv=skip ;; '') case "$tracker_rel" in ''|none*) tracker_fv=skip ;; esac ;; esac
         if [ "$tracker_fv" != skip ] && [ -f "$tracker_file.vfp" ] && [ -f "$tracker_dir/focus-state" ]; then
             tracker_focus_sha="$(sed -n 's/^sha8=//p' "$tracker_dir/focus-state" | head -n 1)"
+            # a pinned focus-version that differs from the version the page was rendered for is stale whatever the
+            # fingerprint says; auto and a state without ver= (rendered before it was recorded) have nothing to compare
+            tracker_focus_ver="$(sed -n 's/^ver=//p' "$tracker_dir/focus-state" | head -n 1)"
+            case "$tracker_fv" in auto*|'') ;; *) [ -z "$tracker_focus_ver" ] || [ "$tracker_focus_ver" = "$tracker_fv" ] || tracker_focus_sha='!' ;; esac
         fi
         tracker_want="$(python3 "$HERE/tracker.py" --emit-fp --plan-dir "$tracker_plan" --out "$tracker_file" --luna-map "$tracker_dir/roadmap-luna-map.json" ${TICK_TRACKER_MIRROR_DIR:+--mirror-dir "$TICK_TRACKER_MIRROR_DIR"} 2>/dev/null)" || tracker_want=""
         if [ ! -f "$tracker_file" ]; then

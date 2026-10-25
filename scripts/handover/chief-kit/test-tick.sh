@@ -2131,9 +2131,9 @@ if command -v python3 >/dev/null 2>&1; then
     contains 'no publish stamp keeps reading tracker=ok (HIMMEL-6483)' "$(t3933)" ' tracker=ok'
     # a focus-owned page is written by focus-refresh.sh, which records its own fingerprint (.vfp, and sha8 in
     # focus-state) and never the all-versions .fp: the tick compares that one for such a doc.
-    t7508_state() { printf 'status=ok\nstage=\ngen=3\ndirty=\nsha8=%s\nsdrift=0:0\nts=1\n' "$1" > "$W/handover/focus-state"; }
+    t7508_state() { printf 'status=ok\nstage=\ngen=3\ndirty=\nsha8=%s\nsdrift=0:0\nver=%s\nts=1\n' "$1" "${2:-}" > "$W/handover/focus-state"; }
     t7508_doc() { write_console3933 'https://claude.ai/artifact/x'; sed -i "/^tracker-plan:/a $1" "$W/handover/console.md"; }  # gnu-ok: console kit is Linux-only
-    t3933_render
+    t3933_render || exit 1
     printf '%s\n' stale-all-versions-fp > "$t3933_out.fp"
     printf '%s\n' 0a1b2c3d4e5f6071 > "$t3933_out.vfp"
     t7508_state 0a1b2c3d
@@ -2141,6 +2141,16 @@ if command -v python3 >/dev/null 2>&1; then
     contains 'a focus-owned doc whose .vfp matches the focus state reads tracker=ok (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
     t7508_doc 'release: v1.0'
     contains 'a doc with a release: line and no focus-version: line is focus-owned too (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_state 0a1b2c3d v1.0.1
+    t7508_doc 'focus-version: v1.0.1'
+    contains 'a focus state recording the pinned version reads tracker=ok (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_state 0a1b2c3d v1.0.0
+    contains 'a focus-version switched since the last refresh reads tracker=STALE (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
+    t7508_doc 'focus-version: auto'
+    contains 'focus-version: auto keeps the recorded version out of the compare (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_doc 'release: v1.0'
+    contains 'a release-only doc keeps the recorded version out of the compare (HIMMEL-7508)' "$(t3933)" ' tracker=ok'
+    t7508_state 0a1b2c3d
     printf '%s\n' ffffffff00000000 > "$t3933_out.vfp"
     contains 'a focus-owned page whose .vfp differs from the focus state reads tracker=STALE (HIMMEL-7508)' "$(t3933)" ' tracker=STALE:'
     printf '%s\n' 0a1b2c3d4e5f6071 > "$t3933_out.vfp"

@@ -35,7 +35,7 @@
 # replaced is restored.
 #
 # focus-state (<doc dir>/focus-state, key=value): status (ok|FAILED), stage, gen,
-# dirty (epoch of the first unrefreshed ship event), sha8 (page fingerprint), sdrift
+# dirty (epoch of the first unrefreshed ship event), sha8 (page fingerprint), sdrift, ver (the version the page shows)
 # (the drift line), ts. A refresh marks the state dirty when it starts and clears
 # that only on success, so a run that dies midway reads as DIRTY.
 # --status prints focus=ok | focus=DIRTY:<minutes>m | focus=FAILED:<stage> |
@@ -104,15 +104,15 @@ AGAIN="$DIR/focus-state.again"
 OUT="$DIR/roadmap-tracker.html"
 now() { date +%s; }
 
-S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift=""
+S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver=""
 load_state() {
     local k v
-    S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift=""
+    S_status="" S_stage="" S_gen=0 S_dirty="" S_sha8="" S_sdrift="" S_ver=""
     if [ -f "$STATEF" ]; then
         while IFS='=' read -r k v || [ -n "$k" ]; do
             case "$k" in
                 status) S_status=$v ;; stage) S_stage=$v ;; gen) S_gen=$v ;;
-                dirty) S_dirty=$v ;; sha8) S_sha8=$v ;; sdrift) S_sdrift=$v ;;
+                dirty) S_dirty=$v ;; sha8) S_sha8=$v ;; sdrift) S_sdrift=$v ;; ver) S_ver=$v ;;
             esac
         done < "$STATEF"
     fi
@@ -120,8 +120,8 @@ load_state() {
 }
 save_state() {
     local t="$STATEF.tmp.$$"
-    printf 'status=%s\nstage=%s\ngen=%s\ndirty=%s\nsha8=%s\nsdrift=%s\nts=%s\n' \
-        "$S_status" "$S_stage" "$S_gen" "$S_dirty" "$S_sha8" "$S_sdrift" "$(now)" > "$t" && mv -f "$t" "$STATEF"
+    printf 'status=%s\nstage=%s\ngen=%s\ndirty=%s\nsha8=%s\nsdrift=%s\nver=%s\nts=%s\n' \
+        "$S_status" "$S_stage" "$S_gen" "$S_dirty" "$S_sha8" "$S_sdrift" "$S_ver" "$(now)" > "$t" && mv -f "$t" "$STATEF"
 }
 load_state
 
@@ -282,7 +282,7 @@ if ! grep -Fq "<meta name=\"himmel-focus\" content=\"$VER $vfp\">" "$OUT" 2>/dev
     mv -f "$stage/page.html.vfp" "$OUT.vfp" || failed publish
 fi
 mv -f "$stage/drift.txt" "$DIR/focus-drift.txt" || failed publish
-S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}"
+S_status=ok S_stage="" S_gen=$NEWGEN S_dirty="" S_sha8="${vfp:0:8}" S_sdrift="${sdrift#sdrift=}" S_ver="$VER"
 again=""
 [ ! -f "$AGAIN" ] || again=$(cat "$AGAIN")
 if [[ "$again" =~ ^[0-9]+$ ]]; then
