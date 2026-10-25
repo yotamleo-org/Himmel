@@ -278,6 +278,9 @@ has "panel --out: the text before the block is kept" "$doc" "# Kept title"
 has "panel --out: the text after the block is kept" "$doc" "Kept tail."
 has "panel --out: the block is regenerated" "$doc" "5 distinct findings across 2 PRs"
 case "$doc" in *stale*) fail "panel --out: the old block is gone";; *) pass "panel --out: the old block is gone";; esac
+printf '%s\n' '{"kind":"finding","ts":"2026-10-10T00:00:00Z","branch":"b1","head":"h1","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"- [imp]: a == b [a.sh:1]"}' \
+  '{"kind":"finding","ts":"2026-10-10T00:00:00Z","branch":"b1","head":"h1","model":"codex","finding_id":"codex-2","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"- [imp]: a != b [a.sh:1]"}' > "$TMP/cr-ops.jsonl"
+has "panel: claims that differ only by an operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-ops.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
 
 echo "test-review-page: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

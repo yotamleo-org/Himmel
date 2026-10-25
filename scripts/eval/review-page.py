@@ -282,10 +282,11 @@ def page(rows, changes):
 
 
 def claim(text):
-    """A finding's claim without its severity tag or trailing [file:line] citation, case and punctuation folded."""
+    """A finding's claim without its severity tag or trailing [file:line] citation, case and punctuation folded
+    (comparison operators kept)."""
     t = re.sub(r"^\s*-\s*\[[^\]]+\]\s*:\s*", "", text or "")
     t = re.sub(r"\s*\[[^\]\r\n]+:\d+(?:-\d+)?\]\s*$", "", t)
-    return re.sub(r"[^a-z0-9]+", " ", t.lower()).strip()
+    return re.sub(r"[^a-z0-9=!<>]+", " ", t.lower()).strip()
 
 
 def distinct(rows):

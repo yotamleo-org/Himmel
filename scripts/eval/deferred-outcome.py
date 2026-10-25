@@ -7,7 +7,7 @@ joins each one to that ticket's current state in the local Jira mirror and split
   fixed_later  the ticket is done with resolution Done
   still_open   the ticket is not done
   disproved    the ticket was closed without a fix (Won't Do)
-  unknown      the ticket is not in the mirror
+  unknown      the ticket is not in the mirror, or is done with a resolution other than Done or Won't Do
   no_ticket    the deferral names no ticket
 
 overall and per critic (the panel slug plus the model that answered, as cr_ledger_eval.py labels it).
@@ -81,7 +81,7 @@ def outcome(mirror, deferred_to, cache):
         return "still_open"
     if st["resolution"] == "won't do" or st["status"] in ("wont do", "wont fix"):
         return "disproved"
-    return "fixed_later"
+    return "fixed_later" if st["resolution"] == "done" else "unknown"
 
 
 def put(m, prefix, counts):

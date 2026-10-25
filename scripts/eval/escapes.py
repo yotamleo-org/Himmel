@@ -3,7 +3,8 @@
 
 A merged PR has escaped review when a later signal says it shipped a bug:
 
-  revert       sure       a PR titled "Revert ..." or "revert(...)" names it (#n) or its merge commit
+  revert       sure       a PR titled "Revert ..." or "revert(...)" names it in its title (#n), as
+                          "Reverts [owner/repo]#n", or by its merge commit; a PR it cites only as context is not named
   caused-by    sure       a Bug ticket in the Jira mirror carries `caused-by: #n` (how a red main run
                           bisected to a PR is recorded)
   fix-forward  plausible  a PR titled "fix..." names it (#n) in its title or body and merged after it;
@@ -12,12 +13,12 @@ A merged PR has escaped review when a later signal says it shipped a bug:
 escapes counts PRs with a sure signal, escapes_plausible PRs with any signal; a PR counts once however
 many signals it has. Per critic (a CR-ledger critic that reviewed the PR's branch: an `ok` avail row or a
 finding, labelled as cr_ledger_eval.py labels it; keys critic.<critic>.*) and per judge (the model of each
-GO verdict record on the PR, console GOs left out; keys judge.<model>.*): prs, escapes, escapes_plausible
+GO verdict record on the PR at its merged head and before its merge, console GOs left out; keys judge.<model>.*): prs, escapes, escapes_plausible
 and escape_rate.
 
   escapes.py --prs FILE [--cr-ledger P] [--mirror DIR] [--verdicts DIR] [--record] [--ledger P]
 
---prs is `gh pr list --state merged --limit 5000 --json number,title,body,mergedAt,headRefName,mergeCommit`.
+--prs is `gh pr list --state merged --limit 5000 --json number,title,body,mergedAt,headRefName,headRefOid,mergeCommit`.
 Without --verdicts there are no judge numbers. Without --record the eval-runs row is printed, not appended.
 A PR merged recently has had less time to show an escape, so its rate reads low.
 Exit 0 done; 2 refused input. Stdlib only; no network, no model call.
@@ -41,7 +42,8 @@ EVAL_ID = "escapes"
 SOURCE = "scripts/eval/escapes.py"
 REVERT = re.compile(r"^\s*revert\b", re.I)
 FIX = re.compile(r"^\s*fix[(!:]")
-REVERTS_SHA = re.compile(r"reverts commit ([0-9a-f]{7,40})", re.I)
+REVERTS_PR = re.compile(r"\breverts?\s+(?:[\w.-]+/[\w.-]+)?#(\d+)", re.I)
+SHA = re.compile(r"\b([0-9a-f]{7,40})\b", re.I)
 
 
 def signals(prs, bugs):
@@ -51,18 +53,19 @@ def signals(prs, bugs):
     out = collections.defaultdict(set)
     count = collections.Counter()
     for n, p in merged.items():
-        text = (p.get("title") or "") + "\n" + (p.get("body") or "")
-        named = {int(x) for x in judge_accuracy.CITE.findall(text)}
-        named = {t for t in named if t != n and t in merged and merged[t]["mergedAt"] < p["mergedAt"]}
-        if REVERT.match(p.get("title") or ""):
-            for sha in REVERTS_SHA.findall(text):
-                named |= {t for s, t in by_sha.items() if s and s.startswith(sha.lower()) and t != n}
+        title = p.get("title") or ""
+        text = title + "\n" + (p.get("body") or "")
+        if REVERT.match(title):
+            named = {int(x) for x in judge_accuracy.CITE.findall(title) + REVERTS_PR.findall(text)}
+            for sha in SHA.findall(text):
+                named |= {t for s, t in by_sha.items() if s and s.startswith(sha.lower())}
             kind, level = "revert", "S"
-        elif FIX.match(p.get("title") or ""):
+        elif FIX.match(title):
+            named = {int(x) for x in judge_accuracy.CITE.findall(text)}
             kind, level = "fix-forward", "P"
         else:
             continue
-        for t in named:
+        for t in {t for t in named if t != n and t in merged and merged[t]["mergedAt"] < p["mergedAt"]}:
             out[t].add((kind, level))
             count[kind] += 1
     for b in bugs:
@@ -84,11 +87,14 @@ def reviewers(rows):
     return by
 
 
-def judges(recs):
-    """{pr: {judge model, ...}} from the GO verdict records, console GOs left out."""
+def judges(recs, merged):
+    """{pr: {judge model, ...}} from the GO verdict records at the merged head before the merge, console GOs left out."""
     by = collections.defaultdict(set)
     for r in recs:
-        if r["verdict"] == "GO" and r["pr"] is not None and not r["console"]:
+        p = merged.get(r["pr"])
+        if r["verdict"] != "GO" or r["console"] or not p or r["head"] != p.get("headRefOid"):
+            continue
+        if r["at"] and r["at"] <= judge_accuracy.when(p["mergedAt"]):
             by[r["pr"]].add(r["model"] or "unknown")
     return by
 
@@ -126,10 +132,9 @@ def build(prs, rows, bugs, recs):
         tally(m, ci, "critic." + c + ".", per[c], sig)
     if recs is not None:
         per = collections.defaultdict(list)
-        for n, models in judges(recs).items():
-            if n in merged:
-                for j in models:
-                    per[j].append(n)
+        for n, models in judges(recs, merged).items():
+            for j in models:
+                per[j].append(n)
         for j in sorted(per):
             tally(m, ci, "judge." + j + ".", per[j], sig)
     return eval_runs.make_row(EVAL_ID, SOURCE, {"escapes_v": 1, "judges": recs is not None}, m, n=len(merged),

@@ -19,8 +19,9 @@ eq() { if [ "$2" = "$3" ]; then pass "$1"; else fail "$1: expected '$3', got '$2
 
 command -v python3 >/dev/null 2>&1 || { echo "SKIP test-deferred-outcome: python3 not on PATH"; exit 0; }
 
-# Six findings: deferred to a Done ticket (by amend), to an open ticket (on the finding row), to a
-# Won't Do ticket, to a ticket the mirror lacks, deferred with no ticket, and deferred then fixed.
+# Seven findings: deferred to a Done ticket (by amend), to an open ticket (on the finding row), to a
+# Won't Do ticket, to a ticket the mirror lacks, to a ticket closed as a duplicate, deferred with no
+# ticket, and deferred then fixed.
 python3 -I - "$TMP/cr.jsonl" "$TMP/mirror" <<'PY' || { echo "test-deferred-outcome: writing the fixtures failed" >&2; exit 1; }
 import json, os, sys
 def fin(fid, br, model, **kw):
@@ -41,6 +42,7 @@ rows = [
     fin("f6", "b6", "codex"), amend("f6", "b6", verdict="deferred", deferred_to="HIMMEL-10"),
     amend("f6", "b6", ts="2026-10-12T00:00:00Z", verdict="fixed"),
     fin("f7", "b7", "codex"), amend("f7", "b7", verdict="agreed"),
+    fin("f8", "b8", "codex"), amend("f8", "b8", verdict="deferred", deferred_to="HIMMEL-13"),
 ]
 with open(sys.argv[1], "w") as fh:
     for r in rows:
@@ -53,6 +55,7 @@ def ticket(key, status, cat, res):
 ticket("HIMMEL-10", "Done", "Done", "Done")
 ticket("HIMMEL-11", "To Do", "To Do", None)
 ticket("HIMMEL-12", "wont do", "Done", "Won't Do")
+ticket("HIMMEL-13", "Done", "Done", "Duplicate")
 PY
 
 out="$(python3 -I "$EVAL" --cr-ledger "$TMP/cr.jsonl" --mirror "$TMP/mirror" 2>"$TMP/err")"; rc=$?
@@ -61,9 +64,9 @@ pick() { printf '%s' "$out" | python3 -I -c 'import json, sys; print(json.load(s
 eq "a deferred row joined to a Done ticket counts as fixed later" "$(pick fixed_later)" "1"
 eq "a deferred row joined to an open ticket counts as still open" "$(pick still_open)" "1"
 eq "a deferred row joined to a Won't Do ticket counts as disproved" "$(pick disproved)" "1"
-eq "a ticket the mirror lacks counts as unknown" "$(pick unknown)" "1"
+eq "a ticket the mirror lacks, or done with neither Done nor Won't Do, counts as unknown" "$(pick unknown)" "2"
 eq "a deferral with no ticket counts as no ticket" "$(pick no_ticket)" "1"
-eq "only findings still deferred count, not an agreed one or one fixed after deferral" "$(pick deferred)" "5"
+eq "only findings still deferred count, not an agreed one or one fixed after deferral" "$(pick deferred)" "6"
 eq "the fixed-later share is over the rulable outcomes" "$(pick fixed_later_share)" "0.3333"
 eq "per critic: the critic is the slug plus the model that answered" "$(pick codex:gpt-6.1-sol.fixed_later)" "1"
 eq "per critic: CodeRabbit's open deferral" "$(pick coderabbit.still_open)" "1"
