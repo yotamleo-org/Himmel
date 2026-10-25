@@ -6,7 +6,7 @@
 #   P2. A deny-listed suite starts only after every running suite finished,
 #       and nothing starts beside it.
 #   P3. A real shard's duration profile (copied from a CI log, scaled down)
-#       finishes in at most half its serial time under SUITE_JOBS=4.
+#       runs four suites at once under SUITE_JOBS=4.
 #   P4. With no SUITE_JOBS outside CI the runner stays serial.
 #   P5. A failing suite's rc, [FAIL] line and log tail survive a parallel run.
 #   P6. Under SUITE_STOP_ON_FAIL, a failure collected while draining the lanes
@@ -16,6 +16,12 @@
 #   P8. The deny-list matches a suite however the scan root is spelled (a
 #       symlink to the suites' directory).
 #   P9. A runner terminated mid-run leaves no parallel suite running.
+#  P10. A lane that dies without a result stops the run with rc 2.
+#  P11. A hard-listed suite that writes a live-state sentinel in one lane
+#       fails with [LIVE-STATE]; the clean suite in the other lane passes.
+#  P12. An unreadable deny-list runs a parallel run one suite at a time.
+#  P13. With no SUITE_JOBS, GitHub Actions uses the CPU count capped at 4,
+#       and a runner inside a suite (HIMMEL_TEST_FIXTURE=1) stays serial.
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.
@@ -110,7 +116,7 @@ else
   fail "P2: mktemp failed"
 fi
 
-echo "== P3: a real shard's duration profile finishes in half its serial time =="
+echo "== P3: a real shard's duration profile runs four suites at once =="
 # Copied verbatim from the job log of run 40074059569, job 120813532475
 # (shell-unit-shard (ubuntu-latest, 4), main 6fa549bc5, 2026-10-24): fifteen
 # consecutive suites of that shard. Each fixture sleeps its CI seconds / 10.
@@ -137,13 +143,11 @@ if sb=$(mk_sandbox); then
     mk_suite "$sb" "$n" "$s"
     serial10=$((serial10 + s))
   done <<< "$P3_CI_LINES"
-  t0=$(date +%s)
   out=$(SUITE_JOBS=4 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
-  wall=$(( $(date +%s) - t0 ))
-  if [ "$rc" -eq 0 ] && [ $((wall * 20)) -le "$serial10" ]; then
-    pass "P3: ${wall}s wall for $((serial10 / 10))s of serial suite time"
+  if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 4 ]; then
+    pass "P3: four of the shard's suites ran at once ($((serial10 / 10))s of serial suite time)"
   else
-    fail "P3: expected rc 0 and at most $((serial10 / 20))s wall, got rc=$rc wall=${wall}s; out: $out"
+    fail "P3: expected rc 0 and a running count of 4, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
   fi
   rm -rf "$sb"
 else
@@ -256,6 +260,119 @@ if sb=$(mk_sandbox); then
   rm -rf "$sb"
 else
   fail "P9: mktemp failed"
+fi
+
+echo "== P10: a lane that dies without a result stops the run with rc 2 =="
+if sb=$(mk_sandbox); then
+  # The suite's parent is its attempt subshell; the grandparent is the lane.
+  cat > "$sb/scripts/test-a-kill-lane.sh" <<'SHEOF'
+#!/usr/bin/env bash
+gp=$(ps -o ppid= -p "$PPID" 2>/dev/null); gp=${gp//[[:space:]]/}
+case "$(ps -o args= -p "$gp" 2>/dev/null)" in *run-shell-tests.sh*) kill -KILL "$gp" ;; esac
+exit 0
+SHEOF
+  chmod +x "$sb/scripts/test-a-kill-lane.sh"
+  mk_suite "$sb" test-b.sh 10
+  mk_suite "$sb" test-c.sh 10
+  mk_suite "$sb" test-d.sh 10
+  out=$(SUITE_JOBS=2 SUITE_TIMEOUT=5 env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -eq 2 ] && grepq "$out" -F 'a parallel suite worker ended without a result — refusing to run more suites' \
+     && [ -z "$(peak_of "$sb" test-d.sh)" ]; then
+    pass "P10: rc 2, the refusal named, and no later suite started"
+  else
+    fail "P10: expected rc 2, the without-a-result refusal and test-d.sh unrun, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P10: mktemp failed"
+fi
+
+echo "== P11: a live-state write in one lane fails that suite only =="
+if sb=$(mk_sandbox); then
+  mk_suite "$sb" test-a-clean.sh 10
+  # The bullet test-run-shell-tests-live-state.sh replays into the console doc.
+  # The writer stays running past the clean suite's end, so a sentinel shared
+  # between the lanes would still be dirty when the clean suite is checked.
+  cat > "$sb/scripts/test-b-writer.sh" <<SHEOF
+#!/usr/bin/env bash
+: > "$sb/run.test-b-writer.sh"
+_c=0; for _f in "$sb"/run.*; do [ -e "\$_f" ] && _c=\$((_c + 1)); done
+printf '%s %s\n' test-b-writer.sh "\$_c" >> "$sb/peak.log"
+printf -- '- 22:03 PARTIAL HIMMEL-374: next slice not dispatched\n' >> "\$HIMMEL_CONSOLE_DOC"
+sleep 2.5
+rm -f "$sb/run.test-b-writer.sh"
+exit 0
+SHEOF
+  chmod +x "$sb/scripts/test-b-writer.sh"
+  out=$(SUITE_JOBS=2 SUITE_LIVE_HARD='*/test-b-writer.sh' env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -eq 1 ] && [ "$(pair_peaks "$sb" test-a-clean.sh test-b-writer.sh)" = "1 2" ] \
+     && grepq "$out" -E '^\[LIVE-STATE\] .*/test-b-writer\.sh — .*HIMMEL_CONSOLE_DOC' \
+     && grepq "$out" -E '^\[FAIL\] .*/test-b-writer\.sh ' \
+     && grepq "$out" -F '[PASS] '"$sb"'/scripts/test-a-clean.sh (' \
+     && ! grepq "$out" -E '^\[LIVE-STATE\] .*/test-a-clean\.sh'; then
+    pass "P11: test-b-writer.sh failed with [LIVE-STATE] while test-a-clean.sh ran beside it and passed"
+  else
+    fail "P11: expected rc 1, an overlap, [LIVE-STATE] and [FAIL] for test-b-writer.sh only, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P11: mktemp failed"
+fi
+
+echo "== P12: an unreadable deny-list runs one suite at a time =="
+if sb=$(mk_sandbox); then
+  mk_suite "$sb" test-a.sh 10
+  mk_suite "$sb" test-b.sh 10
+  out=$(SUITE_JOBS=2 SUITE_PARALLEL_DENY="$sb/no-such-deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 1 ] \
+     && grepq "$out" -F "WARN: parallel deny-list $sb/no-such-deny.txt is unreadable — running suites one at a time"; then
+    pass "P12: the WARN named the list and the suites ran one at a time"
+  else
+    fail "P12: expected rc 0, the unreadable WARN and a running count of 1, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P12: mktemp failed"
+fi
+
+echo "== P13: the default lane count on GitHub Actions =="
+# p13_run <cpus> <fixture flag or -> — 5 suites under GITHUB_ACTIONS=true with
+# no SUITE_JOBS and a getconf that reports <cpus>; '-' leaves
+# HIMMEL_TEST_FIXTURE unset.
+p13_run() {
+  mkdir -p "$sb/bin"
+  printf '#!/usr/bin/env bash\necho %s\n' "$1" > "$sb/bin/getconf"
+  chmod +x "$sb/bin/getconf"
+  : > "$sb/peak.log"
+  if [ "$2" = - ]; then
+    out=$(PATH="$sb/bin:$PATH" GITHUB_ACTIONS=true env -u SUITE_JOBS -u HIMMEL_TEST_FIXTURE -u GITHUB_STEP_SUMMARY -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  else
+    out=$(PATH="$sb/bin:$PATH" GITHUB_ACTIONS=true HIMMEL_TEST_FIXTURE="$2" env -u SUITE_JOBS -u GITHUB_STEP_SUMMARY -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  fi
+}
+if sb=$(mk_sandbox); then
+  for _n in a b c d e; do mk_suite "$sb" "test-$_n.sh" 15; done
+  p13_run 4 -
+  if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 4 ] && grepq "$out" -F 'parallel: up to 4 suites at once'; then
+    pass "P13: 4 CPUs ran 4 suites at once"
+  else
+    fail "P13: 4 CPUs: expected rc 0, 4 lanes and a running count of 4, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  p13_run 16 -
+  if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 4 ] && grepq "$out" -F 'parallel: up to 4 suites at once'; then
+    pass "P13: 16 CPUs are capped at 4 lanes"
+  else
+    fail "P13: 16 CPUs: expected rc 0, 4 lanes and a running count of 4, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  p13_run 16 1
+  if [ "$rc" -eq 0 ] && [ "$(max_peak "$sb")" = 1 ] && ! grepq "$out" -F 'parallel: up to'; then
+    pass "P13: HIMMEL_TEST_FIXTURE=1 keeps a runner inside a suite serial"
+  else
+    fail "P13: HIMMEL_TEST_FIXTURE=1: expected rc 0, no parallel line and a running count of 1, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P13: mktemp failed"
 fi
 
 rst_tally
