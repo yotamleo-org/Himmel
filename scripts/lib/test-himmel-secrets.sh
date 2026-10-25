@@ -120,6 +120,11 @@ assert_eq "S4 put --project stores a project override" "service=himmel key=TEST_
 
 # S5: import-env stores secret-class keys only and prints names, never values.
 kreset
+printf 'TEST_HS_A="fake-first\nfake frag ment=fake-tail\nfake-last"\n' >"$TMP/in-ml.env"
+out=$(cd "$REPO" && "$HS" import-env "$TMP/in-ml.env" 2>&1)
+assert_eq "S5 import-env prints no fragment of a multi-line value" "0" "$(printf '%s' "$out" | grep -c 'fake\|frag')"
+assert_eq "S5 import-env names a line that is no key by its number" "1" "$(printf '%s' "$out" | grep -c '^skipped line 2 (not a key name)$')"
+kreset
 printf '# comment\nTEST_HS_A=fake-a\nHANDOVER_DIR=/c/h\nTEST_HS_E=\nTEST_HS_B = "fake-b" # gutter\n' >"$TMP/in.env"
 out=$(cd "$REPO" && "$HS" import-env "$TMP/in.env" 2>&1)
 assert_eq "S5 import-env prints names only" "0" "$(printf '%s' "$out" | grep -c 'fake-')"
@@ -141,6 +146,12 @@ assert_eq "S6 export-env names the unread items" "2" "$(grep -c '^skipped TEST_H
 ln -s "$TMP/s6-target.env" "$TMP/out-link.env"
 got=$(cd "$REPO" && "$HS" export-env "$TMP/out-link.env" 2>/dev/null; echo "rc=$?")
 assert_eq "S6 export-env refuses a dangling symlink, creates no target" "rc=2|absent" "$got|$([ -e "$TMP/s6-target.env" ] && echo present || echo absent)"
+SBIN="$TMP/stat-bin"
+mkdir -p "$SBIN"
+printf '#!/bin/sh\necho 644\n' >"$SBIN/stat"
+chmod +x "$SBIN/stat"
+got=$(cd "$REPO" && export PATH="$SBIN:$PATH" && "$HS" export-env "$TMP/out-mode.env" >/dev/null 2>&1; echo "rc=$?")
+assert_eq "S6 export-env fails and removes a file whose mode is not 600" "rc=2|absent" "$got|$([ -e "$TMP/out-mode.env" ] && echo present || echo absent)"
 got=$(cd "$REPO" && export KSTUB_SEARCH_FAIL=1 && "$HS" export-env "$TMP/out-sfail.env" >/dev/null 2>&1; echo "rc=$?")
 assert_eq "S6 export-env fails when the keyring listing fails, creates no file" "rc=2|absent" "$got|$([ -e "$TMP/out-sfail.env" ] && echo present || echo absent)"
 printf 'service=himmel key=TEST_HS_C scope=user\tfake-c #x\n' >>"$KSTUB_STORE"

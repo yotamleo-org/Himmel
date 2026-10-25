@@ -86,7 +86,8 @@ change. Order, first hit wins:
 3. the OS keyring: first the item for this project
    (`service himmel key <KEY> project <primary checkout path>`), then the
    user-wide item (`service himmel key <KEY> scope user`)
-4. legacy `.env`, with one `DEPRECATED` line on stderr naming the key
+4. legacy `.env`, with one `DEPRECATED` line on stderr naming the keys,
+   printed only where `secret-tool` is installed (never on macOS)
 5. unset
 
 The keyring is Linux only for now (libsecret's `secret-tool` against a Secret
@@ -95,18 +96,22 @@ resolver never prompts: a locked keyring prints
 `himmel-secrets: keyring locked (unlock the wallet or run himmel-secrets status)`
 and falls through within 3 s, and a cron or systemd job without
 `DBUS_SESSION_BUS_ADDRESS` finds the session bus under
-`$XDG_RUNTIME_DIR/bus`. `HIMMEL_SECRETS_KEYRING=off` skips the keyring.
+`$XDG_RUNTIME_DIR/bus`, or `/run/user/<uid>/bus` when `XDG_RUNTIME_DIR` is
+unset too. `HIMMEL_SECRETS_KEYRING=off` skips the keyring.
 
-A secret key in a `.env` that git tracks is refused with one line naming the
-key; only an untracked `.env` serves secrets.
+The secret keys of a `.env` that git tracks are refused with one line naming
+the file; only an untracked `.env` serves secrets.
 
 Verbs: `get KEY…`, `exec --keys KEY[,KEY…] -- <command>` (runs the command
 with only those keys added to its env), `status [KEY…]` (the layer serving
 each key, names only), `put KEY` (value from stdin or a silent prompt;
 `--project` stores a per-project item), `import-env <file>` (stores every
 secret key of a dotenv file, prints names only) and `export-env <file>`
-(writes the keyring's himmel items to a new 0600 dotenv file). Agents cannot run `get`, `put`, `import-env`, `export-env` or a
-direct keyring read; `block-read-secrets.sh` refuses them.
+(writes the keyring's himmel items to a new 0600 dotenv file).
+`block-read-secrets.sh` refuses an agent's direct `get`, `put`, `import-env`
+and `export-env` commands and direct keyring reads. That is not a full
+barrier: an agent can still reach `get` by sourcing the script
+(`. scripts/lib/himmel-secrets get KEY`), which HIMMEL-7585 tracks.
 
 `himmel-doctor` check C75 reports the keyring state (`C75-keyring`) and which
 secret names are still served from `.env` (`C75-secrets`), names only.
