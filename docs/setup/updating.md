@@ -264,8 +264,9 @@ runs the teardown script's own `--dry-run`, so the preview is exactly what a
 real run would do, and changes nothing. By default only himmel's **code**
 wiring is removed and operator **state** (your Telegram pairing + bridge state)
 is kept; `--purge-state` removes that too, unless the bridge is still running
-(a guarded purge is refused and leaves the state intact) (`--keep-telegram-state`
-is the older spelling of the default and contradicts `--purge-state`). Exit codes: `0` = torn down (or preview complete),
+(a guarded purge is refused and leaves the state intact). `himmelctl` does not
+take `--keep-telegram-state`; `scripts/uninstall.sh` still accepts it as the
+older spelling of the default, and it contradicts `--purge-state`. Exit codes: `0` = torn down (or preview complete),
 `2` = non-interactive refusal without `--yes`, `3` = operator declined;
 otherwise the teardown script's own code is returned. For `uninstall.sh`,
 `2` also means bad usage or an incomplete teardown (any failed step halts

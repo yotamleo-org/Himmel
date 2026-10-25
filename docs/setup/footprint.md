@@ -58,10 +58,15 @@ in place: delete `~/.local/bin/himmel` yourself.
 qmd's search models (about 2 GB) live in qmd's own cache and are listed under
 [Never touched](#never-touched).
 
+When the qmd plugin's launcher in `~/.claude/plugins/cache/qmd/qmd/<version>/bin/qmd`
+is broken, setup patches it in place and keeps the original beside it as
+`bin/qmd.orig`. Uninstall keeps the patch: undoing it would bring the broken
+launcher back.
+
 ## Only when you turn it on
 
 A starter install leaves these off. Each appears once you set up the Telegram
-bridge or arm a scheduled job.
+bridge, arm a scheduled job, or declare a personal or medical vault in setup.
 
 | What | Path | Where | Owner | Uninstall | Row |
 |---|---|---|---|---|---|
@@ -75,6 +80,10 @@ bridge or arm a scheduled job.
 | The qmd refresh job's runner scripts | `~/.claude/qmd-cadence/` | user | himmel | Removed | `cadence-qmd-dir` |
 | The graph-map job's runner scripts | `~/.claude/graphmap-cadence/` | user | himmel | Removed | `cadence-graphmap-dir` |
 | The list of jobs a health check expects to see run | `~/.himmel/observability.json` | user | himmel | Removed | `observability-registry` |
+| The personal or medical vault you declare, so local guards keep it away from cloud backends | `~/.config/claude-glm/phi-roots` | user | himmel | Not removed yet: uninstall leaves these lines in place | `phi-roots` |
+
+If you also say yes to the `.salus` marker, setup creates an empty `.salus`
+file in that vault. Uninstall leaves it there.
 
 ## Never touched
 

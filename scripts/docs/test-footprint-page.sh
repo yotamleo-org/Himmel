@@ -54,7 +54,6 @@ case, page, manifest, updating = sys.argv[1:5]
 LEFT_OUT = {
     "aur-package": "the AUR package payload: pacman owns it",
     "graphify-wiring": "graphify is wired by the luna profile, not by a starter install",
-    "phi-roots": "written by the second-model lane launchers, not by an install",
 }
 
 klass = {}
