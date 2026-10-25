@@ -119,7 +119,7 @@ for f in "${VFILES[@]}"; do
     [ -n "$(verdict_word "$f")" ] || trust
     [ "$(verdict_head "$f")" = "$J" ] || trust
     n=0
-    while IFS= read -r line; do
+    while IFS= read -r line || [ -n "$line" ]; do
         line=${line%$'\r'}
         if [[ $line =~ $re ]]; then
             lo=${BASH_REMATCH[3]} hi=${BASH_REMATCH[5]:-${BASH_REMATCH[3]}}

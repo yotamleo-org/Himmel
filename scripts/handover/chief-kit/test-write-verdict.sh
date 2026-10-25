@@ -922,6 +922,8 @@ rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-no
 check "26: a malformed --delta-noop is refused" "$rc" 2
 rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --judge judge >/dev/null 2>&1) || rc=$?
 check "26: --delta-noop with an explicit --judge name is refused" "$rc" 2
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "" >/dev/null 2>&1) || rc=$?
+check "26: an empty --delta-noop is refused" "$rc" 2
 printf 'delta: no-op\n' > "$evd/typed26.md"
 rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/typed26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
 check "26: evidence typing a delta: line is refused" "$rc" 2

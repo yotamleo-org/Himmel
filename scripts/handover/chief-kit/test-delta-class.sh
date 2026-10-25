@@ -145,6 +145,11 @@ printf 'more\n' >> docs/c.md; N=$(step nofile)
 check "3: a ledger finding with no file -> finding" "$(cls "$N")" finding
 : > "$ledger"
 back
+mkv GO
+printf 'finding: src/a.txt:3-4' >> "$vf"
+edit '$0==4{print "four"; next} {print}' src/a.txt; N=$(step no-newline)
+check "3: a final finding line with no trailing newline is read -> finding" "$(cls "$N")" finding
+back
 mkv GO 'finding: a b.txt:3-4'
 printf 'more\n' >> docs/c.md; N=$(step spaced)
 check "5: a finding path holding a space fails closed -> trust" "$(cls "$N")" trust

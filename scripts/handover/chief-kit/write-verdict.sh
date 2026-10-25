@@ -157,7 +157,10 @@ while [ "$#" -gt 0 ]; do
             [ "$#" -ge 2 ] || usage
             [ -n "$2" ] || { echo "write-verdict: --bind-reviewed needs the full 40-char lowercase hex sha (got an empty value)" >&2; exit 2; }
             BIND=$2; shift 2 ;;
-        --delta-noop) [ "$#" -ge 2 ] || usage; DNOOP=$2; shift 2 ;;
+        --delta-noop)
+            [ "$#" -ge 2 ] || usage
+            [ -n "$2" ] || { echo "write-verdict: --delta-noop needs the full 40-char lowercase hex sha of the judged head (got an empty value)" >&2; exit 2; }
+            DNOOP=$2; shift 2 ;;
         --residual-of) [ "$#" -ge 2 ] || usage; RESIDUAL_OF=$2; shift 2 ;;
         --pr) [ "$#" -ge 2 ] || usage; PR=$2; shift 2 ;;
         --repo) [ "$#" -ge 2 ] || usage; VREPO=$2; VREPO_SET=1; shift 2 ;;
