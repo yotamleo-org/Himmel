@@ -2,8 +2,9 @@
 // write path for a secret value. The value is held in a local for the write only: it is never logged, audited,
 // returned, or put in an error.
 import { execFile, execFileSync } from "node:child_process";
-import { dirname } from "node:path";
+import { dirname, join } from "node:path";
 import { promisify } from "node:util";
+import { LOGIN_EXISTS, readLogin, writeLogin } from "./login";
 import * as store from "../himmelctl/lib/secret-store.js";
 import { readConfLayers } from "./conf-layers";
 import manifest from "../himmelctl/lib/secrets-manifest.json";
@@ -71,10 +72,22 @@ async function coderabbit(o: SetupOpts) {
   };
 }
 
+type AccountOpts = { loginPath: string; serviceMode: boolean };
+const SET_LOGIN = `bun ${join(import.meta.dir, "server.ts")} --set-login <user>`;
+
+// The first-run Account step: create: "ui" only when no login exists and this is not a service-mode server.
+function account(o: AccountOpts) {
+  try {
+    const l = readLogin(o.loginPath);
+    return { status: l ? "set" : "not-set", user: l?.user ?? null, create: !l && !o.serviceMode ? "ui" : "terminal", setLogin: SET_LOGIN };
+  } catch { return { status: "unreadable", user: null, create: "terminal", setLogin: SET_LOGIN }; }
+}
+
 // GET /api/setup: presence only, never a value.
-export async function setupState(o: SetupOpts) {
+export async function setupState(o: SetupOpts & AccountOpts) {
   const ctx = ctxOf(o);
   return {
+    account: account(o),
     secrets: entries.map((e) => ({ name: e.name, feature: e.feature ?? "", required: e.required ?? "", collect: e.collect, example: EXAMPLES[e.name] ?? "", status: store.detect(e.name, ctx).status })),
     commit: commitRules(o.home),
     coderabbit: await coderabbit(o),
@@ -82,6 +95,25 @@ export async function setupState(o: SetupOpts) {
 }
 
 const fail = (status: number, error: string): SecretResult => ({ status, body: { error }, audit: null });
+
+// POST /api/setup/account {user, password}: creates the UI login once. The caller holds the write lock across the
+// check and the write. A service-mode token outlives the process, so it cannot create the login that unlocks a secret save.
+export function accountCreate(b: Record<string, unknown>, o: AccountOpts): SecretResult {
+  if (o.serviceMode) return fail(403, `service mode: set the login with \`${SET_LOGIN}\` from your own terminal`);
+  if (typeof b.user !== "string" || typeof b.password !== "string") return fail(400, "user and password required");
+  const a = account(o);
+  const exists = fail(409, `${LOGIN_EXISTS}; change it with \`${SET_LOGIN}\``);
+  if (a.status === "unreadable") return fail(409, `the login file cannot be read; set the login again with \`${SET_LOGIN}\``);
+  if (a.status !== "not-set") return exists;
+  try { writeLogin(o.loginPath, b.user, b.password, { createOnly: true }); }
+  catch (err) {
+    const msg = (err as Error).message;
+    if (/^the (user name|password) must/.test(msg)) return fail(400, msg);
+    if (msg === LOGIN_EXISTS) return exists;
+    return { status: 500, body: { error: "internal error" }, audit: { action: "login.create", target: "ui-login", ok: false } };
+  }
+  return { status: 200, body: { status: "set", user: b.user }, audit: { action: "login.create", target: "ui-login", ok: true } };
+}
 
 // POST /api/setup/secret {name, op: "set"|"remove", value?}.
 // A service-mode server takes a set only from a login session: its launch token outlives the process, too weak alone for a write that takes a secret.

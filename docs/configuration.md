@@ -376,7 +376,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | `check-cr-marker-on-pr-create` | `gh pr create` while a review-owed marker exists | auth-gated | clean `/pr-check` (clears the marker) |
 | `block-unresolved-cr-merge` | `gh pr merge` — two sub-gates: the reviewer set (each `critics.json` row by its mode, see [Reviewer modes](#reviewer-modes)), and CI not green | auth-gated | `CR_MERGE_GATE_OK=1` / `CI_MERGE_GATE_OK=1` (independent); `"review": "no_code_review"` (or `CR_PROFILE=none`) skips the reviewer sub-gate with a NOTE |
 | `guard-implementor-dispatch` | expensive implementor-shaped `Agent` dispatches while the 5h Claude subscription usage budget is hot | auth-gated cost guard (fail-open; blocks only at ≥80% of the usage budget + provably live window, warns at ≥65%) | `IMPL_GUARD_DISABLE=1` / `IMPL_GUARD_OK=1` |
-| `guard-console-dispatch` | a supervisor session dispatching ship-flow-shaped `Agent` work (≥2 of worktree/pr-open/cr-gate marker families) as an in-process subagent | workflow fence (fail-open; console-shaped AND ≥2-family match required) | `CHIEF_DISPATCH_DISABLE=1` / `CHIEF_DISPATCH_OK=1` (old names `CONSOLE_*` still read) |
+| `guard-console-dispatch` | a chief dispatching ship-flow-shaped `Agent` work (≥2 of worktree/pr-open/cr-gate marker families) as an in-process subagent | workflow fence (fail-open; chief-shaped AND ≥2-family match required) | `CHIEF_DISPATCH_DISABLE=1` / `CHIEF_DISPATCH_OK=1` (old names `CONSOLE_*` still read) |
 | `block-graphify-egress` + `scripts/guardrails/graphify-fence.sh` | any `graphify` run — corpus × provider egress policy | HARD (fail-closed EXIT trap) | none for hard-deny cells; narrow per-cell opt-ins only (`GRAPHIFY_SALUS_LOCAL_OK`, `GRAPHIFY_CLIPPINGS_GLM_OK`) |
 | `block-agent-native-egress` (plugin-shipped) | an `mcp__*agent-native*` call (hosted Builder.io MCP) from a salus session, or with a payload naming salus or a PHI root | HARD (fail-closed) | none (salus × builder-io is a hard matrix cell) |
 | `auto-arm-on-cap` / `auto-arm-on-subagent-cap` | usage cap approaching / subagent hit a cap | watchdog (fail-open; blocks once to force a handover, after arming a resume) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) |
@@ -393,7 +393,7 @@ per-hook behavior: [internals/enforcement.md](internals/enforcement.md).
 | Public merge (`scripts/merge-public-on-green.sh`, via Telegram `/mergepub`) | HARD human-authorization | operator-typed, non-forwarded `/mergepub <pr> <sha12>`; SHA must prefix-match the live head at read *and* fresh pre-merge re-verify; `check-ci.sh` exit 0 is the only pass; the script refuses outright if `CLAUDECODE` is set (i.e. if any agent tries to run it) |
 | `check-ci.sh` (the watcher those gates call) | mechanism, not a veto | exit 0 = green + threads resolved + no changes-requested; 1 = red; 2 = cannot evaluate; 64 = usage error, no gate ran; 3 = unresolved threads / changes requested; 5 = a required check (rulesets ∪ classic protection) never reported within `--grace`, or the required set is unreadable — fail-fast with one operator DM, never waited on; 4 = no longer emitted (the stale-CodeRabbit-anchor exit, retired: CodeRabbit is best effort and its absence prints a NOTE, never a failure) |
 
-**`check-ci.sh` API cost.** Many worker sessions waiting on CI drain one shared
+**`check-ci.sh` API cost.** Many workers waiting on CI drain one shared
 GitHub quota (5,000/h REST core, 5,000/h GraphQL — `gh pr checks` is GraphQL), so
 the wait is cheap by construction: the first caller in a TTL window fetches a PR's
 checks and every other caller reads that snapshot from a shared cache (a `cancel`
@@ -700,7 +700,7 @@ because the cross-model marker needs a row at the NEW head. One PR (#523) ran
 twelve rounds spending a CodeRabbit call on nearly every one. Measure a
 branch's panel cost with `scripts/cr/cr-scores.sh --by-branch <branch>`. That
 paragraph IS the rationale and stays here, in the public doc; the longer-form
-argument behind it, and the budget/termination legs deliberately NOT
+argument behind it, and the budget/termination parts deliberately NOT
 implemented yet, are in the review-posture design note in the state repo.
 
 **Initiative & autonomy** — grammar first, since
@@ -756,7 +756,7 @@ default subset:
 | `AUTO_ARM_DISABLE` / `AUTO_ARM_SUBAGENT_DISABLE` | OFF (watchdogs armed) | shell | kill switches for the cap watchdogs (`scripts/hooks/auto-arm-on-cap.sh`, `auto-arm-on-subagent-cap.sh`) |
 | `AUTO_ARM_THRESHOLD` (+ `AUTO_ARM_CHECK_INTERVAL`, `AUTO_ARM_CACHE`, `AUTO_ARM_STATE_DIR`, `AUTO_ARM_MAX_ARM_FAILURES`, `AUTO_ARM_STALE_*`, `AUTO_ARM_BIN`) | 90% (60s, …) | env | watchdog tuning — **usage budget wall 1**, see below |
 | `RESUME_SLOT_THRESHOLD` | 90% | env | **usage budget wall 2**: utilization at/above which `--time smart` treats a window as exhausted (`scripts/handover/resume-slot.sh`) — an explicit `--threshold` still wins; must be 0-100, and a non-numeric or out-of-range value falls back to 90 silently (a `970` typo would otherwise read every window as headroom) |
-| Recurring vault cadence | — | `scripts/luna/pipeline-cadence.sh arm` | daily harvest/synthesize + weekly health runs, per-leg cheap model pins, `HIMMEL-Pipeline-*` dedup |
+| Recurring vault cadence | — | `scripts/luna/pipeline-cadence.sh arm` | daily harvest/synthesize + weekly health runs, per-job cheap model pins, `HIMMEL-Pipeline-*` dedup |
 
 **The two usage budget walls are INDEPENDENT**. Both default to 90% and
 both must be raised to move the effective wall:
