@@ -373,6 +373,12 @@ fi
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$repo_root" ] || repo_root=$(cd "$hook_dir/../.." && pwd)
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+# shellcheck source=../lib/env-alias.sh
+# shellcheck disable=SC1091
+{ [ -r "$hook_dir/../lib/env-alias.sh" ] && . "$hook_dir/../lib/env-alias.sh" \
+    && alias_env IMPL_GUARD_USAGE_BUDGET_SECS IMPL_GUARD_BANK_BUDGET_SECS \
+    && alias_env IMPL_GUARD_USAGE_STATUS_CMD IMPL_GUARD_BANK_STATUS_CMD; } 2>/dev/null || true
 
 # --- refuse only when a concrete external lane is
 # registry-available AND actually runnable AND bank-funded. The registry marks
@@ -439,8 +445,8 @@ _run_bounded() {
 # lane or the parent-bank guard, but never routes toward unmeasured capacity.
 lane_funded() {
     local id="$1" cmd budget out rc state lid lstate _detail
-    budget="${IMPL_GUARD_USAGE_BUDGET_SECS:-${IMPL_GUARD_BANK_BUDGET_SECS:-4}}"
-    cmd="${IMPL_GUARD_USAGE_STATUS_CMD:-${IMPL_GUARD_BANK_STATUS_CMD:-}}"
+    budget="${IMPL_GUARD_USAGE_BUDGET_SECS:-4}"
+    cmd="${IMPL_GUARD_USAGE_STATUS_CMD:-}"
     if [ -z "$cmd" ]; then
         if ! command -v bun >/dev/null 2>&1; then
             warn "lane '$id' bank-status probe needs bun, which is not on PATH — bank UNKNOWN; skipping it"

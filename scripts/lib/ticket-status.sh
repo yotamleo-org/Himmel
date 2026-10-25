@@ -62,6 +62,9 @@ _TS_LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib/prim.sh
 # shellcheck disable=SC1091
 . "$_TS_LIB_DIR/prim.sh"
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+. "$_TS_LIB_DIR/env-alias.sh"
 
 ts_state_dir() { printf '%s' "${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}"; }
 
@@ -99,7 +102,9 @@ status_event() {
 }
 
 ts_jira() {
-    local cli="${WORKER_SESSION_JIRA_CLI:-${LEG_JIRA_CLI:-}}" common
+    # old names, read only while HIMMEL_LEGACY_NAMES is on
+    alias_env WORKER_SESSION_JIRA_CLI LEG_JIRA_CLI
+    local cli="${WORKER_SESSION_JIRA_CLI:-}" common
     if [ -z "$cli" ]; then
         common="$(git -C "$_TS_LIB_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || return 127
         cli="$(dirname "$common")/scripts/jira/dist/index.js"

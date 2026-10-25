@@ -66,10 +66,18 @@
 # HEADED_ARM_LAUNCHER, and that script is Linux/KDE-only (konsole).
 set -u
 
-CLAUDE_BIN="${WORKER_SESSION_CLAUDE_BIN:-${LEG_CLAUDE_BIN:-claude}}"
-WORKER_SESSION_PROFILE_SETTINGS="${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}"
-WORKER_SESSION_PROFILE_PREFACE="${WORKER_SESSION_PROFILE_PREFACE:-${LEG_PROFILE_PREFACE:-}}"
-WORKER_SESSION_PROFILE_MCP_CONFIG="${WORKER_SESSION_PROFILE_MCP_CONFIG:-${LEG_PROFILE_MCP_CONFIG:-}}"
+# shellcheck source=../lib/env-alias.sh
+. "${BASH_SOURCE[0]%/*}/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_CLAUDE_BIN LEG_CLAUDE_BIN
+alias_env WORKER_SESSION_PROFILE_SETTINGS LEG_PROFILE_SETTINGS
+alias_env WORKER_SESSION_PROFILE_PREFACE LEG_PROFILE_PREFACE
+alias_env WORKER_SESSION_PROFILE_MCP_CONFIG LEG_PROFILE_MCP_CONFIG
+alias_env WORKER_SESSION_ID LEG_SESSION_ID
+CLAUDE_BIN="${WORKER_SESSION_CLAUDE_BIN:-claude}"
+WORKER_SESSION_PROFILE_SETTINGS="${WORKER_SESSION_PROFILE_SETTINGS:-}"
+WORKER_SESSION_PROFILE_PREFACE="${WORKER_SESSION_PROFILE_PREFACE:-}"
+WORKER_SESSION_PROFILE_MCP_CONFIG="${WORKER_SESSION_PROFILE_MCP_CONFIG:-}"
 WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}"
 
 # Under a consult the caller's PATH must not pick the binary: a
@@ -82,7 +90,7 @@ WORKER_SESSION_PROFILE_NO_SETTING_SOURCES="${WORKER_SESSION_PROFILE_NO_SETTING_S
 # seam: headed-arm-leg.sh scrubs it (var + token) and refuses its
 # HEADED_ARM_WORKER_CLAUDE_BIN source before a consult launches, so no consult
 # reaches here with it set. The ponytail for the pinned dirs is in consult-env.sh.
-if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}" = 1 ] && [ -z "${WORKER_SESSION_CLAUDE_BIN:-${LEG_CLAUDE_BIN:-}}" ]; then
+if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}" = 1 ] && [ -z "${WORKER_SESSION_CLAUDE_BIN:-}" ]; then
     # shellcheck source=consult-env.sh
     if ! . "${BASH_SOURCE[0]%/*}/consult-env.sh"; then
         echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_NO_SETTING_SOURCES=1 (a consult) but consult-env.sh did not load" >&2
@@ -107,7 +115,7 @@ fi
 
 PRE=()
 
-if [ -n "${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}" ]; then
+if [ -n "${WORKER_SESSION_PROFILE_SETTINGS:-}" ]; then
     if [ ! -f "$WORKER_SESSION_PROFILE_SETTINGS" ]; then
         echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_SETTINGS is set but missing: $WORKER_SESSION_PROFILE_SETTINGS" >&2
         echo "leg-claude-launcher: launching without it would silently give this leg the FULL plugin set and a floor the ticket cannot measure." >&2
@@ -116,7 +124,7 @@ if [ -n "${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}" ]; then
     PRE+=(--settings "$WORKER_SESSION_PROFILE_SETTINGS")
 fi
 
-if [ -n "${WORKER_SESSION_PROFILE_PREFACE:-${LEG_PROFILE_PREFACE:-}}" ]; then
+if [ -n "${WORKER_SESSION_PROFILE_PREFACE:-}" ]; then
     if [ ! -f "$WORKER_SESSION_PROFILE_PREFACE" ]; then
         echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_PREFACE is set but missing: $WORKER_SESSION_PROFILE_PREFACE" >&2
         echo "leg-claude-launcher: the preface carries the invariant leg rules the brief no longer repeats; a leg without it is under-briefed." >&2
@@ -125,7 +133,7 @@ if [ -n "${WORKER_SESSION_PROFILE_PREFACE:-${LEG_PROFILE_PREFACE:-}}" ]; then
     PRE+=(--append-system-prompt-file "$WORKER_SESSION_PROFILE_PREFACE")
 fi
 
-if [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-${LEG_PROFILE_MCP_CONFIG:-}}" ]; then
+if [ -n "${WORKER_SESSION_PROFILE_MCP_CONFIG:-}" ]; then
     if [ ! -f "$WORKER_SESSION_PROFILE_MCP_CONFIG" ]; then
         echo "leg-claude-launcher: refusing to launch: WORKER_SESSION_PROFILE_MCP_CONFIG is set but missing: $WORKER_SESSION_PROFILE_MCP_CONFIG" >&2
         echo "leg-claude-launcher: launching without it under --strict-mcp-config would start the leg with NO MCP servers at all, silently breaking whatever this profile's allowlist promised it." >&2
@@ -136,7 +144,7 @@ fi
 
 # headed-arm-leg.sh minted this id and already recorded it in the
 # leg doc's front matter, so the digest step finds the session by id.
-_session_id="${WORKER_SESSION_ID:-${LEG_SESSION_ID:-}}"
+_session_id="${WORKER_SESSION_ID:-}"
 [ -z "$_session_id" ] || PRE+=(--session-id "$_session_id")
 if [ "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-${LEG_PROFILE_NO_SETTING_SOURCES:-}}" = 1 ]; then
     PRE+=(--setting-sources "")

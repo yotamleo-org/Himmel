@@ -115,6 +115,21 @@ check "sourcing names the run spelling" "old-name.sh is deprecated: run 'sub/new
 OUT_GOT=$(FWD_ARGV="$T/argv" bash -c '. "$0"; echo "rc=$?"' "$T/old-name.sh" 2> "$T/err")
 check "sourcing with the forwarder as \$0 refuses too" "rc=2" "$OUT_GOT"
 
+# legacy names off: the old path refuses with 127 and one line, the target never runs
+for v in 0 false OFF; do
+  : > "$T/argv"
+  HIMMEL_LEGACY_NAMES="$v" FWD_RC=0 FWD_ARGV="$T/argv" bash "$T/old-name.sh" a < "$T/stdin" > "$T/out" 2> "$T/err"
+  check "off ($v): exits 127" "127" "$?"
+  check "off ($v): the target never ran" "" "$(cat "$T/argv")"
+  check "off ($v): stdout is empty" "" "$(cat "$T/out")"
+  check "off ($v): one stderr line naming both spellings" \
+    "old-name.sh was renamed to sub/new-name.sh; legacy names are off" "$(cat "$T/err")"
+done
+for v in "" 1 yes; do
+  HIMMEL_LEGACY_NAMES="$v" FWD_RC=5 FWD_ARGV="$T/argv" bash "$T/old-name.sh" a < "$T/stdin" > /dev/null 2>&1
+  check "knob '$v' keeps the forwarder on" "5" "$?"
+done
+
 check "template carries the __OLD__ placeholder" "yes" "$(grep -q '__OLD__' "$TEMPLATE" && echo yes || echo no)"
 check "template carries the __NEW__ placeholder" "yes" "$(grep -q '__NEW__' "$TEMPLATE" && echo yes || echo no)"
 

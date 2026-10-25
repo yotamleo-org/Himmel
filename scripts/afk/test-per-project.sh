@@ -3,7 +3,7 @@
 # ledger, stop marker and morning report; a shift from the himmel clone keeps
 # its current paths.
 #
-# Each scratch project carries its own copy of scripts/afk/ and the two lib
+# Each scratch project carries its own copy of scripts/afk/ and the four lib
 # files the shift sources, the layout adopt.sh leaves behind. The "himmel
 # clone" is a scratch project that also has scripts/adopt.sh.
 set -uo pipefail
@@ -42,7 +42,7 @@ mkproject() {
     mkdir -p "$1/scripts/afk" "$1/scripts/lib"
     git init -q -b main "$1"
     cp "$REPO_ROOT"/scripts/afk/*.sh "$REPO_ROOT"/scripts/afk/*.tmpl "$1/scripts/afk/"
-    cp "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$REPO_ROOT/scripts/lib/handover-path.sh" "$1/scripts/lib/"
+    cp "$REPO_ROOT/scripts/lib/load-dotenv.sh" "$REPO_ROOT/scripts/lib/handover-path.sh" "$REPO_ROOT/scripts/lib/env-alias.sh" "$REPO_ROOT/scripts/lib/legacy-names.sh" "$1/scripts/lib/"
     if [ "${2:-}" = clone ]; then : > "$1/scripts/adopt.sh"; fi
 }
 

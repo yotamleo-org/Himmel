@@ -38,8 +38,14 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="${REPO:-$(cd "$HERE/../.." && pwd)}"
-USAGE_MONITOR_CACHE_FILE="${USAGE_MONITOR_CACHE_FILE:-${BANK_CACHE_FILE:-/tmp/claude/statusline-usage-cache.json}}"
-USAGE_MONITOR_STATE_FILE="${USAGE_MONITOR_STATE_FILE:-${BANK_STATE_FILE:-}}"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/env-alias.sh"
+alias_env USAGE_MONITOR_CACHE_FILE BANK_CACHE_FILE
+alias_env USAGE_MONITOR_STATE_FILE BANK_STATE_FILE
+alias_env USAGE_MONITOR_SAMPLES_FILE BANK_SAMPLES_FILE
+USAGE_MONITOR_CACHE_FILE="${USAGE_MONITOR_CACHE_FILE:-/tmp/claude/statusline-usage-cache.json}"
+USAGE_MONITOR_STATE_FILE="${USAGE_MONITOR_STATE_FILE:-}"
 spare_only=0
 [ "${1:-}" = "--spare" ] && spare_only=1
 
@@ -50,7 +56,7 @@ elif [ -n "${HOME:-}" ]; then
 else
     state_file="${TMPDIR:-/tmp}/himmel-bank-monitor-${UID:-user}.state"
 fi
-samples_file="${USAGE_MONITOR_SAMPLES_FILE:-${BANK_SAMPLES_FILE:-$state_file.samples}}"
+samples_file="${USAGE_MONITOR_SAMPLES_FILE:-$state_file.samples}"
 
 now="${BANK_NOW_EPOCH:-$(date +%s 2>/dev/null)}"
 clock="${BANK_NOW_HM:-$(date +%H:%M 2>/dev/null)}"

@@ -78,12 +78,19 @@
 # is Linux/macOS-shaped, and WORKER_SESSION_BURN_PROJECTS_DIR overrides that.
 set -u
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$(dirname "$0")/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env HIMMEL_WORKER_SESSION_PROFILE HIMMEL_LEG_PROFILE
+alias_env WORKER_SESSION_BURN_RAW LEG_BURN_RAW
+alias_env WORKER_SESSION_BURN_PROJECTS_DIR LEG_BURN_PROJECTS_DIR
+
 usage() {
     echo "usage: leg-burn.sh [--raw] [--profile <name>] <transcript.jsonl|session-name>" >&2
 }
 
 RAW=0
-PROFILE="${HIMMEL_WORKER_SESSION_PROFILE:-${HIMMEL_LEG_PROFILE:-}}"
+PROFILE="${HIMMEL_WORKER_SESSION_PROFILE:-}"
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --raw) RAW=1; shift ;;
@@ -97,7 +104,7 @@ case "$PROFILE" in
     *[!A-Za-z0-9._,-]*) echo "leg-burn: invalid profile name: $PROFILE" >&2; exit 2 ;;
 esac
 PROFILE_FIELD="${PROFILE:+ profile=$PROFILE}"
-[ "${WORKER_SESSION_BURN_RAW:-${LEG_BURN_RAW:-0}}" = "1" ] && RAW=1
+[ "${WORKER_SESSION_BURN_RAW:-0}" = "1" ] && RAW=1
 
 if [ "$#" -ne 1 ] || [ -z "${1:-}" ]; then
     usage
@@ -111,7 +118,7 @@ WORKER_SESSION_BURN_HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$WORKER_SESSION_BURN_HERE/lib/burn-weights.sh"
 
 ARG="$1"
-PROJECTS="${WORKER_SESSION_BURN_PROJECTS_DIR:-${LEG_BURN_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}}"
+PROJECTS="${WORKER_SESSION_BURN_PROJECTS_DIR:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects}"
 
 if [ -f "$ARG" ]; then
     TRANSCRIPT="$ARG"

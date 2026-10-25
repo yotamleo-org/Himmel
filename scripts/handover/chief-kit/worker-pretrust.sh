@@ -27,6 +27,13 @@ set -uo pipefail
 # shellcheck source=../../lib/git-clean.sh
 . "$(dirname "$0")/../../lib/git-clean.sh"
 git_env_scrub   # an inherited GIT_DIR would make the worktree check read the wrong repo
+# shellcheck source=scripts/lib/env-alias.sh
+. "$(dirname "$0")/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_PRETRUST_HOME LEG_PRETRUST_HOME
+alias_env WORKER_SESSION_PRETRUST_KEY LEG_PRETRUST_KEY
+alias_env WORKER_SESSION_PRETRUST_CONFIG LEG_PRETRUST_CONFIG
+alias_env WORKER_SESSION_PRETRUST_LOCK_TRIES LEG_PRETRUST_LOCK_TRIES
 
 lane="${1:-}"; dir="${2:-}"
 if [ -z "$lane" ] || [ -z "$dir" ]; then
@@ -39,7 +46,7 @@ command -v node >/dev/null 2>&1 || { echo "leg-pretrust: node not on PATH" >&2; 
 # The trailing "x" keeps $(...) from eating a newline that is part of the directory name.
 abs="$(cd -P "$dir" 2>/dev/null && pwd -P && printf x)" || { echo "leg-pretrust: cannot resolve: $dir" >&2; exit 2; }
 abs="${abs%x}"; abs="${abs%$'\n'}"   # drop the x, then the one newline pwd added
-home="$(cd -P "${WORKER_SESSION_PRETRUST_HOME:-${LEG_PRETRUST_HOME:-$HOME}}" 2>/dev/null && pwd -P)" || { echo "leg-pretrust: cannot resolve HOME" >&2; exit 2; }  # WORKER_SESSION_PRETRUST_HOME: test seam
+home="$(cd -P "${WORKER_SESSION_PRETRUST_HOME:-$HOME}" 2>/dev/null && pwd -P)" || { echo "leg-pretrust: cannot resolve HOME" >&2; exit 2; }  # WORKER_SESSION_PRETRUST_HOME: test seam
 
 refuse() { echo "leg-pretrust: REFUSED $abs: $1" >&2; exit 3; }
 
@@ -80,8 +87,8 @@ esac
 # config. The key is honoured only with the config, as <repo>/.claude/worktrees/<same
 # last component as the checked dir> with no empty or dot segment (the jail re-binds
 # the same worktree, it never trusts a different one).
-WORKER_SESSION_PRETRUST_KEY="${WORKER_SESSION_PRETRUST_KEY:-${LEG_PRETRUST_KEY:-}}"
-WORKER_SESSION_PRETRUST_CONFIG="${WORKER_SESSION_PRETRUST_CONFIG:-${LEG_PRETRUST_CONFIG:-}}"
+WORKER_SESSION_PRETRUST_KEY="${WORKER_SESSION_PRETRUST_KEY:-}"
+WORKER_SESSION_PRETRUST_CONFIG="${WORKER_SESSION_PRETRUST_CONFIG:-}"
 if [ -n "${WORKER_SESSION_PRETRUST_KEY}" ] && [ -z "${WORKER_SESSION_PRETRUST_CONFIG}" ]; then
     refuse "WORKER_SESSION_PRETRUST_KEY is honoured only together with WORKER_SESSION_PRETRUST_CONFIG"
 fi
@@ -130,7 +137,7 @@ lock_reclaimable() {
     [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null && return 1
     return 0
 }
-tries="${WORKER_SESSION_PRETRUST_LOCK_TRIES:-${LEG_PRETRUST_LOCK_TRIES:-150}}"   # x 0.1 s; > a 10 s stale window. WORKER_SESSION_PRETRUST_LOCK_TRIES: test seam
+tries="${WORKER_SESSION_PRETRUST_LOCK_TRIES:-150}"   # x 0.1 s; > a 10 s stale window. WORKER_SESSION_PRETRUST_LOCK_TRIES: test seam
 waited=0
 until mkdir "$lock" 2>/dev/null; do
     # A reclaim that cannot remove the dir falls through to the timeout count below.

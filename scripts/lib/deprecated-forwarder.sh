@@ -8,13 +8,20 @@
 # stderr line, then runs the new script with the same argv, stdin and stdout;
 # its exit code is the new script's. The target always runs under bash, whatever
 # its shebang says, so copy this only for a bash target. Sourced, it refuses
-# with status 2 before the exec, so the caller's shell survives.
+# with status 2 before the exec, so the caller's shell survives. With legacy
+# names off (HIMMEL_LEGACY_NAMES falsy, the pattern of legacy-names.sh) it
+# exits 127 with one stderr line and runs nothing.
 # scripts/lib/test-deprecated-forwarder.sh proves the pass-through.
 if (return 0 2>/dev/null); then
   echo "__OLD__ is deprecated: run '__NEW__', do not source it" >&2
   return 2
 fi
 set -uo pipefail
+case "${HIMMEL_LEGACY_NAMES:-}" in
+  0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff])
+    echo "__OLD__ was renamed to __NEW__; legacy names are off" >&2
+    exit 127 ;;
+esac
 
 src="${BASH_SOURCE[0]}"
 while [ -L "$src" ]; do

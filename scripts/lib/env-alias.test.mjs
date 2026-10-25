@@ -31,25 +31,27 @@ test('every declared row was read', () => {
   assert.equal(ROWS.length, WANT_ROWS);
 });
 
-for (const [fn, nnRaw, onRaw, nv, ov, want] of ROWS) {
+for (const [fn, nnRaw, onRaw, nv, ov, wantOn, wantOff] of ROWS) {
   const nn = nnRaw === '<empty>' ? '' : nnRaw;
   const on = onRaw === '<empty>' ? '' : onRaw;
-  const label = `${fn} '${nn}'=${nv} '${on}'=${ov} -> ${want}`;
-  test(`function: ${label}`, () => {
-    const env = rowEnv(nn, on, nv, ov);
-    if (want === '2') {
-      assert.throws(() => FN[fn](nn, on, env), (e) => e.code === 2);
-    } else {
-      assert.equal(FN[fn](nn, on, env), want === '0');
-    }
-  });
-  test(`cli: ${label}`, () => {
-    const r = spawnSync(process.execPath, [join(HERE, 'env-alias.mjs'), fn, nn, on], {
-      env: { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT, ...rowEnv(nn, on, nv, ov) },
-      encoding: 'utf8',
+  for (const [mode, want, knob] of [['on', wantOn, {}], ['off', wantOff, { HIMMEL_LEGACY_NAMES: '0' }]]) {
+    const label = `${mode}: ${fn} '${nn}'=${nv} '${on}'=${ov} -> ${want}`;
+    test(`function: ${label}`, () => {
+      const env = { ...knob, ...rowEnv(nn, on, nv, ov) };
+      if (want === '2') {
+        assert.throws(() => FN[fn](nn, on, env), (e) => e.code === 2);
+      } else {
+        assert.equal(FN[fn](nn, on, env), want === '0');
+      }
     });
-    assert.equal(r.status, Number(want), r.stderr);
-  });
+    test(`cli: ${label}`, () => {
+      const r = spawnSync(process.execPath, [join(HERE, 'env-alias.mjs'), fn, nn, on], {
+        env: { PATH: process.env.PATH, SYSTEMROOT: process.env.SYSTEMROOT, ...knob, ...rowEnv(nn, on, nv, ov) },
+        encoding: 'utf8',
+      });
+      assert.equal(r.status, Number(want), r.stderr);
+    });
+  }
 }
 
 test('cli: a function name inherited from Object.prototype exits 2', () => {

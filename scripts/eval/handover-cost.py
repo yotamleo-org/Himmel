@@ -47,11 +47,13 @@ import os
 import re
 import sys
 from datetime import datetime, timezone
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "lib"))
+import env_alias
 
-W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1")))
-W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1")))
-W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25")))
-W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5")))
+W_IN = float(os.environ.get("WORKER_SESSION_BURN_W_INPUT", os.environ.get("LEG_BURN_W_INPUT", "1") if env_alias.legacy_names_on() else "1"))
+W_CR = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_READ", os.environ.get("LEG_BURN_W_CACHE_READ", "0.1") if env_alias.legacy_names_on() else "0.1"))
+W_CC = float(os.environ.get("WORKER_SESSION_BURN_W_CACHE_CREATE", os.environ.get("LEG_BURN_W_CACHE_CREATE", "1.25") if env_alias.legacy_names_on() else "1.25"))
+W_OUT = float(os.environ.get("WORKER_SESSION_BURN_W_OUTPUT", os.environ.get("LEG_BURN_W_OUTPUT", "5") if env_alias.legacy_names_on() else "5"))
 DEFAULT_DIR = "~/.claude/projects/-home-overlord-Documents-github-himmel"
 WORKER_SESSION_TURN_CAP = 4
 NEXT_RE = re.compile(r'(?:console|chief)\.sh(?:\\"|")?\s+next\b')

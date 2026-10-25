@@ -577,8 +577,14 @@ EOF
 # When the two context names disagree, standard wins, so a stale name never
 # widens the 1m gate.
 [ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
-CHIEF_CONTEXT="${CHIEF_CONTEXT:-${CONSOLE_CONTEXT:-}}"
-CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-${CONSOLE_WORK_DIR:-}}"
+# shellcheck source=../lib/env-alias.sh
+. "$_csg_dir/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
+alias_env CHIEF_WORK_DIR CONSOLE_WORK_DIR
+alias_env CADENCE_USAGE_SKIP_REFRESH CADENCE_BANK_SKIP_REFRESH
+CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
+CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/claude-version.sh"
 
@@ -1362,7 +1368,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(CADENCE_USAGE_LEG="$_arm_fleet_leg" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-${CADENCE_BANK_SKIP_REFRESH:-}}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(CADENCE_USAGE_LEG="$_arm_fleet_leg" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
             echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another leg. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
             exit 22

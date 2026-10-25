@@ -321,7 +321,13 @@ fi
 # CHIEF_CONTEXT still reads its old name, CONSOLE_CONTEXT. When the two
 # disagree, standard wins, so a stale name never widens the 1m gate.
 [ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
-CHIEF_CONTEXT="${CHIEF_CONTEXT:-${CONSOLE_CONTEXT:-}}"
+# shellcheck source=../lib/env-alias.sh
+. "$(cd "$(dirname "$0")" && pwd)/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
+alias_env HEADED_ARM_WORKER_PROFILES HEADED_ARM_LEG_PROFILES
+alias_env WORKER_SESSION_PROFILE_SETTINGS LEG_PROFILE_SETTINGS
+CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/claude-version.sh"
 # shellcheck source=../lib/dedupe-path.sh
@@ -349,7 +355,7 @@ _context_profiles="$(dirname "$0")/../lanes/plugin-profiles.mjs"
 # a direct console arm into 1m. This guards ambient leakage, not a hostile shell.
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
     _context_profile="${HEADED_ARM_CONTEXT_PROFILE:-console}"
-    _context_profiles="${HEADED_ARM_WORKER_PROFILES:-${HEADED_ARM_LEG_PROFILES:-$_context_profiles}}"
+    _context_profiles="${HEADED_ARM_WORKER_PROFILES:-$_context_profiles}"
 fi
 # The audited 400k A/B arm marker, set only by headed-arm-leg.sh.
 # Same PID pairing as above, so an ambient value from another process is ignored.
@@ -695,7 +701,7 @@ case "$DEADLINE" in
     ''|*[!0-9]*) echo "headed-arm: deadline must be an epoch second, got '$DEADLINE'" >&2; exit 2 ;;
 esac
 if [ "$HEADLESS" = "1" ]; then
-    if [ -z "${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}" ]; then
+    if [ -z "${WORKER_SESSION_PROFILE_SETTINGS:-}" ]; then
         echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-worker.sh --headless --profile <name>" >&2
         exit 2
     fi
@@ -736,7 +742,7 @@ if [ "$DRY_RUN" -eq 1 ]; then
     printf 'headed-arm: launcher=%s recorder=%s konsole=%s pgrep=%s repo=%s\n' \
         "$LAUNCHER" "$RECORDER" "$KONSOLE" "$PGREP" "$REPO"
     if [ "$HEADLESS" = "1" ]; then
-        printf 'headed-arm: headless=1 claude-cli=%s settings=%s\n' "$CLAUDE_CLI" "${WORKER_SESSION_PROFILE_SETTINGS:-$LEG_PROFILE_SETTINGS}"
+        printf 'headed-arm: headless=1 claude-cli=%s settings=%s\n' "$CLAUDE_CLI" "$WORKER_SESSION_PROFILE_SETTINGS"
     fi
     exit 0
 fi
@@ -1035,7 +1041,7 @@ headless_fail() { # headless_fail <rc> <message>
 # the CLAUDE_PID / CLAUDE_CODE_SESSION_ID a headed launch clears with env -u -
 # still reaches the leg from the daemon.
 headless_launch() {
-    local name val tok pid pids pg_rc settings="${WORKER_SESSION_PROFILE_SETTINGS:-$LEG_PROFILE_SETTINGS}" tmp_settings pair
+    local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" tmp_settings pair
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
     for name in $(compgen -e); do
         _hl_leg_var "$name" || continue

@@ -835,6 +835,7 @@ scripts/lib/test-host-caps.sh	pr	trust-path
 scripts/lib/test-impacted-suites-runner.sh	pr	trust-path
 scripts/lib/test-initiative-legs.sh	pr	trust-path
 scripts/lib/test-leg-identity.sh	pr	trust-path
+scripts/lib/test-legacy-names.sh	pr	trust-path
 scripts/lib/test-llm-backend.sh	pr	trust-path
 scripts/lib/test-load-config.sh	pr	trust-path
 scripts/lib/test-load-dotenv.sh	pr	trust-path

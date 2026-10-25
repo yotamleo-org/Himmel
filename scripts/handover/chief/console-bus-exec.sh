@@ -18,13 +18,17 @@
 set -u
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CHIEF_BUS_CLI CONSOLE_BUS_CLI
 session="$1"; shift
 predecessor=""
 if [ "${1:-}" = --predecessor ]; then predecessor="$2"; shift 2; fi
 [ "${1:-}" = -- ] && shift
 
 for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
-bus_cli="${CHIEF_BUS_CLI:-${CONSOLE_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}}"
+bus_cli="${CHIEF_BUS_CLI:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
 bus_secs="${BUS_EXEC_SECS:-15}"
 case "$bus_secs" in
     ''|*[!0-9]*) bus_secs=15 ;;

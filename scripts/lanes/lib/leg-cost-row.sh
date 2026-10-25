@@ -24,6 +24,8 @@ _LCR_HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$_LCR_HERE/burn-weights.sh"
 # shellcheck source=scripts/lib/leg-identity.sh
 . "$_LCR_HERE/../../lib/worker-identity.sh"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$_LCR_HERE/../../lib/env-alias.sh"
 
 # _lcr_doc_root <doc | stem> - the deepest known handover root holding the doc,
 # resolved the way queue-lock.sh keys a lock (HANDOVER_DIR + registry). Prints
@@ -52,7 +54,8 @@ EOF
 # HANDOVER_DIR unset) never writes into that repo's handovers/ stub
 # handovers/ stub. No doc, or one no known root holds: handover_root.
 leg_cost_ledger_path() {
-    if [ -n "${WORKER_SESSION_COST_LEDGER:-${LEG_COST_LEDGER:-}}" ]; then printf '%s\n' "${WORKER_SESSION_COST_LEDGER:-${LEG_COST_LEDGER:-}}"; return 0; fi
+    alias_env WORKER_SESSION_COST_LEDGER LEG_COST_LEDGER   # old name, read only while HIMMEL_LEGACY_NAMES is on
+    if [ -n "${WORKER_SESSION_COST_LEDGER:-}" ]; then printf '%s\n' "${WORKER_SESSION_COST_LEDGER}"; return 0; fi
     # handover_root reads only the live env; feed it the .env HANDOVER_DIR first.
     # shellcheck disable=SC1091
     if . "$_LCR_HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
@@ -76,7 +79,8 @@ _lcr_front() {
 leg_cost_row() {
     local transcript="$1" ref="$2" stem raw calls comp out cr cc inp cost model
     local label ticket pr="" class="" profile="" burn
-    burn="${WORKER_SESSION_BURN_BIN:-${LEG_BURN_BIN:-$_LCR_HERE/../leg-burn.sh}}"
+    alias_env WORKER_SESSION_BURN_BIN LEG_BURN_BIN   # old name, read only while HIMMEL_LEGACY_NAMES is on
+    burn="${WORKER_SESSION_BURN_BIN:-$_LCR_HERE/../leg-burn.sh}"
     raw=$(bash "$burn" --raw "$transcript") || { echo "leg-burn failed on $transcript" >&2; return 1; }
     _lcr_field() { printf '%s' "$raw" | sed -nE "s/.* $1=([0-9]+).*/\\1/p"; }
     calls=$(_lcr_field calls); comp=$(_lcr_field compactions); out=$(_lcr_field out)

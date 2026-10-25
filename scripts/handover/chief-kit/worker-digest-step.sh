@@ -48,8 +48,17 @@
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_DIGEST_STATE_DIR LEG_DIGEST_STATE_DIR
+alias_env WORKER_SESSION_DIGEST_SETTLE_MAX LEG_DIGEST_SETTLE_MAX
+alias_env WORKER_SESSION_DIGEST_SETTLE_QUIET LEG_DIGEST_SETTLE_QUIET
+alias_env WORKER_SESSION_DIGEST_BIN LEG_DIGEST_BIN
+alias_env WORKER_SESSION_DIGEST_TIMEOUT LEG_DIGEST_TIMEOUT
+alias_env WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN LEG_DIGEST_CHAIN_SLACK_MIN
 LD_DIR="$HERE/../../eval/worker-digest"
-STATE_DIR="${WORKER_SESSION_DIGEST_STATE_DIR:-${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}}"
+STATE_DIR="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}"
 PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
@@ -136,7 +145,7 @@ snapshot() {
       find "${1%.jsonl}" -name '*.jsonl' -exec stat -c '%n %Y %s' {} + 2>/dev/null; } | sort
 }
 settle() {
-    local pid="$1" j="$2" max="${WORKER_SESSION_DIGEST_SETTLE_MAX:-${LEG_DIGEST_SETTLE_MAX:-15}}" need="${WORKER_SESSION_DIGEST_SETTLE_QUIET:-${LEG_DIGEST_SETTLE_QUIET:-5}}" i=0 quiet=0 snap prev="-"
+    local pid="$1" j="$2" max="${WORKER_SESSION_DIGEST_SETTLE_MAX:-15}" need="${WORKER_SESSION_DIGEST_SETTLE_QUIET:-5}" i=0 quiet=0 snap prev="-"
     while :; do
         snap="$(snapshot "$j")"
         if [ "$snap" = "$prev" ]; then quiet=$((quiet + 1)); else quiet=0; prev="$snap"; fi
@@ -174,10 +183,10 @@ digest_one() { # digest_one <sid> <journal> <pid-or-empty> <wait:0|1>
     local sid="$1" j="$2" pid="$3" settled=1 rc status
     if [ -z "$j" ] || [ ! -f "$j" ]; then failed_digest "$sid" no-journal; return; fi
     if [ "$4" = 1 ] && ! settle "$pid" "$j"; then settled=0; fi
-    if [ -n "${WORKER_SESSION_DIGEST_BIN:-${LEG_DIGEST_BIN:-}}" ]; then
-        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-${LEG_DIGEST_TIMEOUT:-60}}" "${WORKER_SESSION_DIGEST_BIN:-$LEG_DIGEST_BIN}" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
+    if [ -n "${WORKER_SESSION_DIGEST_BIN:-}" ]; then
+        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-60}" "$WORKER_SESSION_DIGEST_BIN" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
     else
-        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-${LEG_DIGEST_TIMEOUT:-60}}" bun "$LD_DIR/leg-digest.ts" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
+        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-60}" bun "$LD_DIR/leg-digest.ts" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
     fi
     rc=$?
     case "$rc" in
@@ -281,7 +290,7 @@ done <<EOF
 $(grep -E '^- [0-9]{2}:[0-9]{2} ' "$DOC")
 EOF
 [ -n "$hi" ] || hi="$(date -d "$day $wrapped" +%s)"
-lo=$(( lo - ${WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN:-${LEG_DIGEST_CHAIN_SLACK_MIN:-30}} * 60 ))
+lo=$(( lo - ${WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN:-30} * 60 ))
 hi=$(( hi + 60 ))
 ident="$(leg_identity "$DOC")"
 candidates="$(printf '%s\n%s\n' "${ident#*$'\t'}" "$(basename "$DOC" .md)" | tr ',' '\n' | sed '/^$/d')"

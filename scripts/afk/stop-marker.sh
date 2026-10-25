@@ -31,6 +31,8 @@ set -uo pipefail
 
 # shellcheck source=project-state.sh
 . "$(dirname "${BASH_SOURCE[0]}")/project-state.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env AFK_STOP_DIR OVERNIGHT_STOP_DIR
 MARKER_DIR=$(afk_stop_dir) || {
     # An unresolvable project still honours the clone's global stop.
     [ "${1:-}" = check ] && [ -f "$HOME/.claude/.overnight-stop" ] && exit 0
@@ -39,7 +41,7 @@ MARKER_DIR=$(afk_stop_dir) || {
 MARKER_PATH="$MARKER_DIR/.overnight-stop"
 # The clone's global marker halts every adopted shift too (a /stop from the clone).
 GLOBAL_PATH=""
-if [ -z "${AFK_STOP_DIR:-${OVERNIGHT_STOP_DIR:-}}" ] && [ "$MARKER_PATH" != "$HOME/.claude/.overnight-stop" ]; then
+if [ -z "${AFK_STOP_DIR:-}" ] && [ "$MARKER_PATH" != "$HOME/.claude/.overnight-stop" ]; then
     GLOBAL_PATH="$HOME/.claude/.overnight-stop"
 fi
 

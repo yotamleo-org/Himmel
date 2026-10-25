@@ -64,6 +64,10 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
 
 warn() { echo "WARN leg-jira-status: $* (continuing; the leg is not blocked)" >&2; exit 0; }
 
@@ -82,7 +86,7 @@ row() {
     status_event event="$EVENT" key="$KEY" ${PR:+"pr=$PR"} ${HEAD:+"head=$HEAD"} "$@"
 }
 
-if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" = 0 ]; then
+if [ "${WORKER_SESSION_JIRA_STATUS:-1}" = 0 ]; then
     row result=disabled
     exit 0
 fi

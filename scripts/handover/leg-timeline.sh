@@ -58,20 +58,27 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/prim.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/prim.sh" || exit 2
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_TIMELINE_WORKER_GLM LEG_TIMELINE_WORKER_GLM
+alias_env WORKER_SESSION_TIMELINE_WORKER_CLAUDEX LEG_TIMELINE_WORKER_CLAUDEX
+alias_env WORKER_SESSION_TIMELINE_CHAIN_LEDGER LEG_TIMELINE_CHAIN_LEDGER
+alias_env WORKER_SESSION_TIMELINE_CR_LEDGER LEG_TIMELINE_CR_LEDGER
 # pin to this script's OWN checkout, never the caller's CWD repo
 # (load_dotenv with no --root resolves via the process CWD's git repo — see
 # bank-preflight.sh for the failure mode).
 load_dotenv --root "$(_load_dotenv_primary_for "$SCRIPT_DIR/../..")" HANDOVER_DIR USER_SLUG
 
-glm_dir="${WORKER_SESSION_TIMELINE_WORKER_GLM:-${LEG_TIMELINE_WORKER_GLM:-$HOME/.claude/handover/bridge/glm-sessions}}"
-claudex_dir="${WORKER_SESSION_TIMELINE_WORKER_CLAUDEX:-${LEG_TIMELINE_WORKER_CLAUDEX:-}}"
+glm_dir="${WORKER_SESSION_TIMELINE_WORKER_GLM:-$HOME/.claude/handover/bridge/glm-sessions}"
+claudex_dir="${WORKER_SESSION_TIMELINE_WORKER_CLAUDEX:-}"
 claudex_legacy=""
 if [ -z "$claudex_dir" ]; then
   claudex_roots=$(node "$SCRIPT_DIR/../lanes/claudex-session-root.mjs" all) || claudex_roots=""
   claudex_dir=$(printf '%s\n' "$claudex_roots" | sed -n 1p)
   claudex_legacy=$(printf '%s\n' "$claudex_roots" | sed -n 2p)
 fi
-WORKER_SESSION_TIMELINE_CHAIN_LEDGER="${WORKER_SESSION_TIMELINE_CHAIN_LEDGER:-${LEG_TIMELINE_CHAIN_LEDGER:-}}"
 if [ -n "${WORKER_SESSION_TIMELINE_CHAIN_LEDGER:-}" ]; then
   chain_ledger="$WORKER_SESSION_TIMELINE_CHAIN_LEDGER"
 elif handover_base=$(handover_root 2>/dev/null) && handover_slug=$(user_slug 2>/dev/null); then
@@ -83,7 +90,6 @@ fi
 # The CR ledger lives under the PRIMARY checkout's .git, not the worktree's
 # (worktrees share the primary's .git via the common dir). An explicit env value
 # always wins.
-WORKER_SESSION_TIMELINE_CR_LEDGER="${WORKER_SESSION_TIMELINE_CR_LEDGER:-${LEG_TIMELINE_CR_LEDGER:-}}"
 if [ -z "${WORKER_SESSION_TIMELINE_CR_LEDGER:-}" ]; then
   common_dir=$(git rev-parse --git-common-dir 2>/dev/null || printf '.git')
   # Treat both POSIX-absolute (/c/...) and Windows-drive-absolute (C:/...) as

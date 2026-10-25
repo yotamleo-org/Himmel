@@ -1,55 +1,55 @@
 {
   "scripts/cr/clear-review-marker.sh": {
-    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL"]
+    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/cr/clear-cr-marker.sh": {
-    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL"]
+    "seam_env_vars": ["CR_REQUIRE_CROSS_MODEL", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/merge-on-green.sh": {
-    "seam_env_vars": ["ARMAUTOMERGE", "MERGE_ON_GREEN_LOG", "HIMMEL_CONSOLE_LEG", "HANDOVER_DIR", "HIMMEL_REPO", "MERGE_STATIC_RECHECK"]
+    "seam_env_vars": ["ARMAUTOMERGE", "MERGE_ON_GREEN_LOG", "HIMMEL_CONSOLE_LEG", "HANDOVER_DIR", "HIMMEL_REPO", "MERGE_STATIC_RECHECK", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/go.sh": {
-    "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO"]
+    "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/merge-fork-pr.sh": {
-    "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO"]
+    "seam_env_vars": ["HIMMEL_CONSOLE_LEG", "HIMMEL_REPO", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/lanes/stop-worker.sh": {
-    "seam_env_vars": ["STOP_WORKER_GRACE_SECS", "STOP_WORKER_BRIDGE_ROOT_OVERRIDE"]
+    "seam_env_vars": ["STOP_WORKER_GRACE_SECS", "STOP_WORKER_BRIDGE_ROOT_OVERRIDE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/lib/usage-preflight.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/lib/bank-preflight.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "BANK_LIFT_FILE", "USAGE_LIFT_FILE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/arm-resume.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "ARM_ISOLATION_ROOT", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/headed-arm-worker.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_LEG_PREFLIGHT"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_LEG_PREFLIGHT", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/headed-arm-leg.sh": {
-    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_LEG_PREFLIGHT"]
+    "seam_env_vars": ["FLEET_CAP_OK", "FLEET_PS_CMD", "FLEET_PROC", "HIMMEL_FLEET_CAP", "HEADED_ARM_WORKER_PREFLIGHT", "HEADED_ARM_LEG_PREFLIGHT", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/lib/claude-headless.sh": {
-    "seam_env_vars": ["NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK", "HIMMEL_DISPATCH_MAX_CONCURRENT", "HIMMEL_DISPATCH_ROW_TTL_SECS", "HIMMEL_HEADLESS_SEAM_DIR", "HIMMEL_HEADLESS_NO_FLOCK"]
+    "seam_env_vars": ["NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK", "HIMMEL_DISPATCH_MAX_CONCURRENT", "HIMMEL_DISPATCH_ROW_TTL_SECS", "HIMMEL_HEADLESS_SEAM_DIR", "HIMMEL_HEADLESS_NO_FLOCK", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/codex/dispatch-codex-exec.sh": {
-    "seam_env_vars": ["CODEX_BIN", "CODEX_HOOK_TRUST_CHECK"]
+    "seam_env_vars": ["CODEX_BIN", "CODEX_HOOK_TRUST_CHECK", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/vm-runner.sh": {
-    "seam_env_vars": ["HIMMEL_VM_RUNNER_VM_LIB", "HIMMEL_CI_RUNNER_REPO", "HIMMEL_VM_RUNNER_UNIT_DIR", "HIMMEL_VM_RUNNER_STATE_DIR", "HIMMEL_CI_RUNNER_STOP_FILE", "VBOXMANAGE_PATH", "HIMMEL_CI_RUNNER_JOB_MAX", "HIMMEL_VM_RUNNER_SETTLE", "HIMMEL_VM_AR_LIVE"]
+    "seam_env_vars": ["HIMMEL_VM_RUNNER_VM_LIB", "HIMMEL_CI_RUNNER_REPO", "HIMMEL_VM_RUNNER_UNIT_DIR", "HIMMEL_VM_RUNNER_STATE_DIR", "HIMMEL_CI_RUNNER_STOP_FILE", "VBOXMANAGE_PATH", "HIMMEL_CI_RUNNER_JOB_MAX", "HIMMEL_VM_RUNNER_SETTLE", "HIMMEL_VM_AR_LIVE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/handover/chief-kit/tick.sh": {
-    "seam_env_vars": ["HIMMEL_VMRUN_PROBE"]
+    "seam_env_vars": ["HIMMEL_VMRUN_PROBE", "HIMMEL_LEGACY_NAMES"]
   },
   "scripts/quiet-run.sh": {
-    "seam_env_vars": ["HIMMEL_SUITE_SLOTS", "HIMMEL_SUITE_SLOT_HELD", "HIMMEL_SUITE_SEMAPHORE_DIR", "HIMMEL_SUITE_SLOT_TTL"],
+    "seam_env_vars": ["HIMMEL_SUITE_SLOTS", "HIMMEL_SUITE_SLOT_HELD", "HIMMEL_SUITE_SEMAPHORE_DIR", "HIMMEL_SUITE_SLOT_TTL", "HIMMEL_LEGACY_NAMES"],
     "internal_seams": ["HIMMEL_SUITE_SLOT_HELD"]
   },
   "scripts/ci/run-shell-tests.sh": {
-    "seam_env_vars": ["HIMMEL_SUITE_SLOTS", "HIMMEL_SUITE_SLOT_HELD", "HIMMEL_SUITE_SEMAPHORE_DIR", "HIMMEL_SUITE_SLOT_TTL"],
+    "seam_env_vars": ["HIMMEL_SUITE_SLOTS", "HIMMEL_SUITE_SLOT_HELD", "HIMMEL_SUITE_SEMAPHORE_DIR", "HIMMEL_SUITE_SLOT_TTL", "HIMMEL_LEGACY_NAMES"],
     "internal_seams": ["HIMMEL_SUITE_SLOT_HELD"]
   }
 }

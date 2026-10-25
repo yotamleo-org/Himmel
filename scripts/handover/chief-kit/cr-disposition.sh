@@ -52,6 +52,10 @@ case "$SHA" in *[!0123456789abcdef]*) usage; exit 2 ;; esac
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CHIEF_SESSION_NAME CONSOLE_SESSION_NAME
 GH="${GH_CMD:-gh}"
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
@@ -107,7 +111,7 @@ if [ "$VERB" = record ]; then
     esac
     case "$SRC" in
         console)
-            SRC="console:$(printf '%s' "${CHIEF_SESSION_NAME:-${CONSOLE_SESSION_NAME:-${USER:-unknown}@$(hostname 2>/dev/null || uname -n)}}" | tr -c 'A-Za-z0-9._@-' '_')" ;;  # swallow-ok: hostname is only a label fallback
+            SRC="console:$(printf '%s' "${CHIEF_SESSION_NAME:-${USER:-unknown}@$(hostname 2>/dev/null || uname -n)}" | tr -c 'A-Za-z0-9._@-' '_')" ;;  # swallow-ok: hostname is only a label fallback
         judge:*) go_trust_id_ok "${SRC#judge:}" || { usage; exit 2; } ;;
         *) usage; exit 2 ;;
     esac

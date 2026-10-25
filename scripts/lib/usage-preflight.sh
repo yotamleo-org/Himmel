@@ -49,6 +49,7 @@ for _ua in PRODUCER MAX_AGE CACHE LEDGER LEG LAUNCH LANE CALLER_PID STATUS_CMD S
     alias_env "CADENCE_USAGE_$_ua" "CADENCE_BANK_$_ua"
 done
 alias_env_cap CADENCE_USAGE_MAX_PCT CADENCE_BANK_MAX_PCT
+alias_env WORKER_SESSION_LANE LEG_LANE
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PRODUCER="${CADENCE_USAGE_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
@@ -79,7 +80,7 @@ LAUNCH_INTENT="${CADENCE_USAGE_LAUNCH:-}"
 # codex weekly bank instead (scripts/lanes/usage-status.ts's "claudex" row) —
 # a claudex leg must never be refused by the Claude subscription bank, a
 # different bucket entirely.
-LANE="${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}"
+LANE="${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}"
 
 is_num() { case "$1" in ''|*[!0-9.]*) return 1 ;; *.*.*) return 1 ;; *[0-9]*) return 0 ;; *) return 1 ;; esac; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
@@ -205,7 +206,7 @@ _fleet_lane_of() {
     return
   fi
   lane=$(printf '%s\n' "$envtxt" | sed -n 's/^WORKER_SESSION_LANE=//p' | tail -n 1)
-  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1) # old name, read both ways
+  [ -n "$lane" ] || ! legacy_names_on || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1) # old name, read both ways
   if [ "$lane" = openrouter ]; then echo openrouter; else echo native; fi
 }
 

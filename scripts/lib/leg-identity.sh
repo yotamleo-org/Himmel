@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # DEPRECATED alias, kept so old callers keep sourcing: use worker-identity.sh.
-# Sourced, it loads worker-identity.sh and prints nothing.
+# Sourced, it loads worker-identity.sh and prints nothing; with legacy names off it returns 127 with one stderr line.
+case "${HIMMEL_LEGACY_NAMES:-}" in
+  0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff])
+    echo "leg-identity.sh was renamed to worker-identity.sh; legacy names are off" >&2
+    return 127 ;;
+esac
 case "${BASH_SOURCE[0]}" in */*) _leg_identity_alias_dir="${BASH_SOURCE[0]%/*}" ;; *) _leg_identity_alias_dir=. ;; esac
 # shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091

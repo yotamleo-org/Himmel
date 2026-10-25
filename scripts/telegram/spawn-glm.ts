@@ -18,6 +18,7 @@ import { parseGrantFlag, composeGrantLine, nextGrantId, authorityGate, classifyS
 // runs lean while the operator's shared ~/.claude stays full.
 import { resolveProfileByName, parseAddPlugins, readEnabledPluginIds, loadListingLib } from "../lanes/plugin-profiles.mjs";
 import { scanSkillCosts } from "../lanes/skill-cost.mjs";
+import { legacyNamesOn } from "../lib/env-alias.mjs";
 await loadListingLib();
 // symptom-brief loop breaker, two-stage — at 2 reviewed rounds
 // the brief must carry an INVARIANT section; at 3+ this cheap lane is refused
@@ -1707,7 +1708,7 @@ async function main(): Promise<void> {
     // a write-shaped grant — recording a pending operator escalation instead of a
     // grant. accumulated feeds nextGrantId so repeated --grant flags get distinct
     // ids (g1, g2, …) rather than all colliding on g1 against the empty file.
-    const autonomousEff = autonomous || !!process.env.HIMMEL_AFK || !!process.env.HIMMEL_OVERNIGHT;
+    const autonomousEff = autonomous || !!process.env.HIMMEL_AFK || (legacyNamesOn() && !!process.env.HIMMEL_OVERNIGHT);
     const grantsPath = join(sessionDir, "grants.jsonl");
     const seedOutbox = join(sessionDir, "outbox.jsonl");
     const accumulated: string[] = [];
