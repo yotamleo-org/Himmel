@@ -50,7 +50,7 @@ set -u
 # visible DENY.
 if [ "$#" -eq 0 ]; then
     # shellcheck disable=SC2016  # backticks in the message are literal, not expansion
-    printf '%s\n' 'run-node.sh: refusing — no script argument. A `. run-node.sh <args>` wiring drops its operands under dash (POSIX-unspecified); wire hooks with `command -p sh run-node.sh <args>` (HIMMEL-2758).' >&2
+    printf '%s\n' 'run-node.sh: refusing — no script argument. A `. run-node.sh <args>` wiring drops its operands under dash (POSIX-unspecified); wire hooks with `command -p sh run-node.sh <args>`.' >&2
     exit 2
 fi
 
