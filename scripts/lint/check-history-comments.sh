@@ -37,9 +37,9 @@ case "$1" in
     --staged) base=HEAD
               # during a merge, only lines our side adds relative to the merged-in parent are new
               git rev-parse -q --verify MERGE_HEAD >/dev/null 2>&1 && base=MERGE_HEAD
-              git diff --cached "$base" -U0 --text --no-color --no-ext-diff --no-renames --diff-filter=ACMR > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
+              git diff --cached "$base" -U0 --text --no-color --no-ext-diff --find-renames=100% --diff-filter=ACMR > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
     --range)  [ $# -eq 2 ] || usage
-              git diff -U0 --text --no-color --no-ext-diff --no-renames --diff-filter=ACMR "$2" HEAD > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
+              git diff -U0 --text --no-color --no-ext-diff --find-renames=100% --diff-filter=ACMR "$2" HEAD > "$DIFF" || { echo "check-history-comments: git diff failed" >&2; exit 2; } ;;
     --diff)   if [ $# -ne 2 ] || [ ! -f "$2" ]; then usage; fi
               cp "$2" "$DIFF" ;;
     *)        usage ;;

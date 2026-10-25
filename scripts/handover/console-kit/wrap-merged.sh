@@ -35,13 +35,13 @@
 #                 mirror) + tracker.py render, each under WM_TRACKER_TIMEOUT (120 s).
 #                 Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip. Publishing the
 #                 artifact stays the console's job. Seam: WM_TRACKER_PY. With a
-#                 `focus-version:` line the page belongs to focus-refresh.sh (step 5c):
+#                 `focus-version:` line (or `auto`, or none beside a `release:` line) the page belongs to focus-refresh.sh (step 5c):
 #                 mirror + versions still run, the render does not (tracker=skip:focus).
 #   5b. remaining the console doc's `remaining-board: <version>` line renders that version's open tickets,
 #                 grouped by the plan's priority line, to <doc dir>/roadmap-remaining-<version>.md from the
 #                 mirror step 5 just refreshed. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
-#   5c. focus     best effort, never fails the wrap: the console doc's `focus-version:` line runs
-#                 focus-refresh.sh under WM_FOCUS_TIMEOUT (300 s) and prints focus=ok|busy|DIRTY:<age>|
+#   5c. focus     best effort, never fails the wrap: the console doc's `focus-version:` line (a version, `auto`,
+#                 or no line beside `release: <R>`; `none` skips) runs focus-refresh.sh under WM_FOCUS_TIMEOUT (300 s) and prints focus=ok|busy|DIRTY:<age>|
 #                 FAILED:<stage>|skip. Seam: WM_FOCUS. After focus=ok each line of
 #                 <doc dir>/focus-drift.txt is printed as `drift: <line>`.
 #   6. board      (as above)
@@ -151,11 +151,17 @@ fi
 # opts in (the same line, plan dir and paths tick.sh's tracker= reads). Mirror Jira,
 # snapshot the versions, re-render when the page's fingerprint moved. Artifact
 # publishing stays the console's job. Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip.
+focus_owned() { # 0 when the FOCUS page is focus-refresh's: a version or `auto`, or no line beside a release: line
+    local f r
+    f="$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)"
+    r="$(sed -n 's/^release:[[:space:]]*//p' "$DOC" | head -n 1)"
+    case "$f" in none*) return 1 ;; '') case "$r" in ''|none*) return 1 ;; esac ;; esac
+    return 0
+}
 tracker_refresh() {
-    local url dir plan out tmo mir rc want durl furl out_done out_future split focus
+    local url dir plan out tmo mir rc want durl furl out_done out_future split
     url="$(sed -n 's/^tracker:[[:space:]]*//p' "$DOC" | head -n 1)"
     case "$url" in ''|none*) echo "tracker=skip"; return 0 ;; esac
-    focus="$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)"
     dir="${DOC%/*}"
     plan="$(sed -n 's/^tracker-plan:[[:space:]]*//p' "$DOC" | head -n 1)"
     [ -n "$plan" ] || plan="$dir/specs/plan/HIMMEL-3882"
@@ -174,7 +180,7 @@ tracker_refresh() {
     mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
     MIRROR_FRESH="$mir"
     # one writer per page: a focus-version console's page is focus-refresh's
-    case "$focus" in ''|none*) ;; *) echo "tracker=skip:focus"; return 0 ;; esac
+    ! focus_owned || { echo "tracker=skip:focus"; return 0; }
     set -- --plan-dir "$plan" --out "$out" --luna-map "$dir/roadmap-luna-map.json" --mirror-dir "$mir"
     split=""
     if [ -n "$durl" ] || [ -n "$furl" ]; then
@@ -223,9 +229,8 @@ remaining_refresh
 # refresh (focus-refresh.sh, bounded) reuses the mirror step 5 just refreshed.
 # Prints focus=ok|busy|DIRTY:<age>|FAILED:<stage>|skip.
 focus_refresh() {
-    local ver tmo got rc
-    ver="$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)"
-    case "$ver" in ''|none*) echo "focus=skip"; return 0 ;; esac
+    local tmo got rc
+    focus_owned || { echo "focus=skip"; return 0; }
     tmo="${WM_FOCUS_TIMEOUT:-300}"
     # swallow-ok: only the focus= line and the exit code decide; a missing line prints FAILED:rc<n>
     got="$(timeout -k 5 "$tmo" "${FOCUS[@]}" --doc "$DOC" ${MIRROR_FRESH:+--mirror-fresh "$MIRROR_FRESH"} 2>/dev/null)"; rc=$?  # gnu-ok: Linux-only kit

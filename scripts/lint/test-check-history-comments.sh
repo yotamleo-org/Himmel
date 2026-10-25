@@ -14,6 +14,8 @@
 #   12.   --staged and --range read real git state
 #   13.   the lint-job step of ci.yml, run against a throwaway PR range
 #   14.   a .gitattributes -diff entry does not hide an added line (--staged, --range)
+#   15.   --range ignores unchanged output ids
+#   16.   a verbatim move (old path left as a symlink) adds no lines; an edited move is checked
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -221,6 +223,25 @@ if [ "$RC" -eq 1 ] && has "scripts/a.sh:3"; then pass "--staged: new output id r
 git -C "$O" commit -q -m output
 OUT="$(cd "$O" && bash "$GATE" --range "$output_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ] && has "scripts/a.sh:3"; then pass "--range: new output id refused"; else fail "range output -> rc=$RC: $OUT"; fi
+
+echo "== 16. a verbatim move adds no lines =="
+M="$T/move"; mkdir -p "$M/scripts/old"; git -C "$M" init -q
+git -C "$M" config user.email t@t; git -C "$M" config user.name t
+printf 'echo a\n# %s-9 old history\n' "$H" > "$M/scripts/old/a.sh"
+git -C "$M" add -A; git -C "$M" commit -q -m base
+move_base="$(git -C "$M" rev-parse HEAD)"
+git -C "$M" mv scripts/old scripts/new
+ln -s new "$M/scripts/old"
+git -C "$M" add -A
+OUT="$(cd "$M" && bash "$GATE" --staged 2>&1)"; RC=$?
+if [ "$RC" -eq 0 ]; then pass "--staged: moved dir with a symlink at the old path -> 0"; else fail "staged move -> rc=$RC: $OUT"; fi
+git -C "$M" commit -q -m move
+OUT="$(cd "$M" && bash "$GATE" --range "$move_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 0 ]; then pass "--range: moved dir with a symlink at the old path -> 0"; else fail "range move -> rc=$RC: $OUT"; fi
+printf 'echo a\n# %s-9 old history\n# round 2 note\n' "$H" > "$M/scripts/new/a.sh"
+git -C "$M" add -A; git -C "$M" commit -q -m edit
+OUT="$(cd "$M" && bash "$GATE" --range "$move_base" 2>&1)"; RC=$?
+if [ "$RC" -eq 1 ] && has "scripts/new/a.sh"; then pass "--range: a move that also edits the file is still checked"; else fail "range move+edit -> rc=$RC: $OUT"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
