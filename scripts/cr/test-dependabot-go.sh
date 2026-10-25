@@ -30,6 +30,7 @@ cat > "$tmp/bin/gh" <<'STUB'
 case "$*" in
     "pr view"*) [ -z "${STUB_PR_FAIL:-}" ] || exit 1; printf '%s\n' "$STUB_PR_JSON" ;;
     "repo view"*) printf 'o/r\n' ;;
+    "api --paginate"*"/files"*previous_filename*) printf '%s\n' "${STUB_PREV:-}" ;;
     "api --paginate"*"/files"*) printf '%s\n' "$STUB_FILES" ;;
     *) exit 91 ;;
 esac
@@ -73,7 +74,7 @@ pr_json() { # pr_json <login> <state> <head> <changedFiles>
 }
 reset() {
     export STUB_PR_JSON; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 1)"
-    export STUB_FILES="$FILE"; unset STUB_PR_FAIL
+    export STUB_FILES="$FILE" STUB_PREV=""; unset STUB_PR_FAIL
     : > "$LEDGER"
 }
 writer() { rc=0; out="$(bash "$WRITER" "$@" 2>&1)" || rc=$?; }
@@ -93,6 +94,14 @@ check    "1: the row parses as JSON" "$(jq -r '.pr' "$LEDGER")" "$PR"
 writer "$PR" "$SHA" --judge j1
 check    "1: a second run is a no-op" "$(rows)" "1"
 
+# a row of another kind or branch at this head must not stand in for the row
+reset
+printf '{"kind":"judge-go","ts":"t","branch":"%s","head":"%s","status":"ok","source":"judge:j1"}\n' "$BRANCH" "$SHA" > "$LEDGER"
+printf '{"kind":"dependabot-go","ts":"t","branch":"other/branch","head":"%s","status":"ok","source":"judge:j1","pr":%s}\n' "$SHA" "$PR" >> "$LEDGER"
+writer "$PR" "$SHA" --judge j1
+check    "1: other-kind and other-branch rows do not suppress the row" "$(rows)" "3"
+contains "1: the new row is the PR's own" "$(tail -n 1 "$LEDGER")" "\"kind\":\"dependabot-go\",\"ts\""
+
 # --- 2. refused PRs (RED controls: the ledger stays empty) ----------------
 reset; STUB_PR_JSON="$(pr_json yotamleo OPEN "$SHA" 1)"
 writer "$PR" "$SHA" --judge j1
@@ -111,10 +120,15 @@ reset; STUB_FILES=".github/workflows/ci.yml"
 writer "$PR" "$SHA" --judge j1
 check    "2: a workflow file -> exit 2" "$rc" "2"
 
-reset; STUB_FILES="$FILE
-scripts/hooks/guard.sh"; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 1)"
+reset; STUB_PREV="scripts/hooks/guard.sh"
 writer "$PR" "$SHA" --judge j1
 check    "2: a rename out of a non-manifest (old name listed) -> exit 2" "$rc" "2"
+check    "2: a rename out of a non-manifest appends nothing" "$(rows)" "0"
+
+reset; STUB_PREV="old/package.json"; STUB_PR_JSON="$(pr_json app/dependabot OPEN "$SHA" 2)"
+writer "$PR" "$SHA" --judge j1
+check    "2: an old name does not make up a truncated list -> exit 2" "$rc" "2"
+contains "2: says it was truncated (old names uncounted)" "$out" "truncated"
 
 reset; STUB_FILES="package.json.sh"
 writer "$PR" "$SHA" --judge j1

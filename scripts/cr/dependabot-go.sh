@@ -63,12 +63,16 @@ esac
 want=$(printf '%s' "$pr_json" | jq -r '.changedFiles // empty' 2>/dev/null) || want=""  # swallow-ok: empty fails the count check
 nwo=$("$GH" repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null) || nwo=""  # swallow-ok: empty fails closed on the next line
 [ -n "$nwo" ] || refuse "cannot resolve the repository"
-# every changed name, and each rename's old name; same name pattern as ready-check.sh dep_pr_generated
-files=$("$GH" api --paginate "repos/$nwo/pulls/$PR/files" --jq '.[] | .filename, (.previous_filename // empty)' 2>/dev/null) || refuse "cannot read PR #$PR's files"  # swallow-ok: rc is checked, an unreadable list refuses
+# every changed name (counted against changedFiles) and each rename's old name; same name pattern as ready-check.sh dep_pr_generated
+files=$("$GH" api --paginate "repos/$nwo/pulls/$PR/files" --jq '.[].filename' 2>/dev/null) || refuse "cannot read PR #$PR's files"  # swallow-ok: rc is checked, an unreadable list refuses
+prev=$("$GH" api --paginate "repos/$nwo/pulls/$PR/files" --jq '.[].previous_filename // empty' 2>/dev/null) || refuse "cannot read PR #$PR's renamed paths"  # swallow-ok: rc is checked, an unreadable list refuses
 [ -n "$files" ] || refuse "PR #$PR lists no changed files"
 case "$want" in ''|*[!0-9]*) refuse "PR #$PR reports no changedFiles count" ;; esac
 [ "$(printf '%s\n' "$files" | sort -u | wc -l | tr -d ' ')" -ge "$want" ] || refuse "the file list is shorter than the $want changed files (truncated)"
-if bad=$(printf '%s\n' "$files" | grep -Ev '(^|/)(package\.json|package-lock\.json|bun\.lock|requirements[A-Za-z0-9._-]*\.txt)$'); then
+names="$files"
+[ -z "$prev" ] || names="$files
+$prev"
+if bad=$(printf '%s\n' "$names" | grep -Ev '(^|/)(package\.json|package-lock\.json|bun\.lock|requirements[A-Za-z0-9._-]*\.txt)$'); then
     refuse "PR #$PR changes a file that is not a dependency manifest or lockfile: $(printf '%s' "$bad" | head -n 1)"
 fi
 
@@ -81,7 +85,7 @@ fi
 [ -n "$ROOT" ] || refuse "cannot resolve the handover root to read judge $QID's verdict"
 why=$(go_trust_verdict "$ROOT" "$QID" "$SHA" "$ANCHOR" "$PR") || refuse "judge $QID has no signed GO for this head: $why"
 
-if ! grep -qsF "\"head\":\"$SHA\",\"status\":\"ok\",\"source\":\"judge:$QID\"" "$LEDGER" 2>/dev/null; then
+if ! grep -qsF "\"branch\":\"$BRANCH\",\"head\":\"$SHA\",\"status\":\"ok\",\"source\":\"judge:$QID\",\"pr\":$PR}" "$LEDGER" 2>/dev/null; then  # swallow-ok: a missing ledger means no row yet
     printf '{"kind":"dependabot-go","ts":"%s","branch":"%s","head":"%s","status":"ok","source":"judge:%s","pr":%s}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$SHA" "$QID" "$PR" >> "$LEDGER" || exit 2
 fi

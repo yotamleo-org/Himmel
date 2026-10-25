@@ -540,13 +540,17 @@ cov_lines=$(printf '%s\n' "$cov_section" | grep -E '^[[:space:]]*([-*]|[0-9]+[.)
 # A dependency-only Dependabot PR (author app/dependabot, every changed file a
 # manifest or lockfile by name) has no asks to cover; its coverage is generated.
 dep_pr_generated() {
-    local author files
+    local author files prev bad
     author=$("$GH" pr view "$PR" --repo "$nwo" --json author --jq '.author.login' 2>/dev/null) || return 1  # swallow-ok: an unreadable author is not a Dependabot PR
     [ "$author" = "app/dependabot" ] || return 1
     files="${files_json:-}"
     [ -n "$files" ] || files=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[].filename' 2>/dev/null) || return 1  # swallow-ok: an unreadable list is not a dependency-only PR
     [ -n "$files" ] || return 1
-    ! printf '%s\n' "$files" | grep -Evq '(^|/)(package\.json|package-lock\.json|bun\.lock|requirements[A-Za-z0-9._-]*\.txt)$'
+    prev=$("$GH" api --paginate "repos/$owner/$repo/pulls/$PR/files" --jq '.[] | .previous_filename // empty' 2>/dev/null) || return 1  # swallow-ok: an unreadable rename list is not a dependency-only PR
+    [ -z "$prev" ] || files="$files
+$prev"
+    bad=$(printf '%s\n' "$files" | grep -Ev '(^|/)(package\.json|package-lock\.json|bun\.lock|requirements[A-Za-z0-9._-]*\.txt)$' || true)  # swallow-ok: every name a manifest is grep rc 1, and an empty set is the answer
+    [ -z "$bad" ]
 }
 if [ -z "$cov_lines" ] && dep_pr_generated; then
     echo "[PASS] 7. ticket coverage: generated for a Dependabot dependency-only PR (manifest and lockfile files only)"

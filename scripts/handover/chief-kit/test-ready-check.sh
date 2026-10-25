@@ -2245,6 +2245,17 @@ dep_fixture; STUB_FILES=".github/workflows/ci.yml"
 rc=0; out="$(run)" || rc=$?
 contains "dependabot: a workflow file fails row 7" "$out" "[FAIL] 7."
 
+# a rename out of a non-manifest into a manifest name is refused (the old name counts)
+dep_fixture; STUB_RENAMES="$DEP_FILES scripts/hooks/guard.sh"
+rc=0; out="$(run)" || rc=$?
+check "dependabot: a rename out of a non-manifest exits 1" "$rc" "1"
+contains "dependabot: a rename out of a non-manifest fails row 7" "$out" "[FAIL] 7."
+
+# an unreadable rename list is not a dependency-only PR
+dep_fixture; STUB_RENAMES_FAIL=1
+rc=0; out="$(run)" || rc=$?
+contains "dependabot: an unreadable rename list fails row 7" "$out" "[FAIL] 7."
+
 # RED control: a human PR with the same files and no ticket ID still fails rows 6 and 7
 dep_fixture; STUB_AUTHOR="yotamleo"; STUB_COMMITS='[{"messageHeadline":"chore(deps): Bump numpy","messageBody":""}]'
 rc=0; out="$(run)" || rc=$?
