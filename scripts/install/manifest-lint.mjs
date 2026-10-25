@@ -163,10 +163,7 @@
 //                            | here) — this row is added so bridge-persistence
 //                            | does not add to that gap.
 //   observability-stack      | (no fields) queries the FOUR
-//                            | himmel-observability-* scheduled tasks
-//                            | (restart-stack.sh's own hard allowlist is the
-//                            | authoritative task-name family — this probe
-//                            | mirrors it, not a second source of truth) via
+//                            | himmel-observability-* scheduled tasks via
 //                            | Get-ScheduledTask on win32; all four
 //                            | Ready/Running/Queued -> present, none
 //                            | registered -> absent, anything in between
@@ -587,8 +584,7 @@ function checkProbeShape(probe, label, errors) {
     }
     case 'observability-stack': {
       // No fields. The four himmel-observability-* task names
-      // are a fixed convention (restart-stack.sh's own hard allowlist),
-      // not per-item configuration — same posture as cmd:codex_provisioned/
+      // are a fixed convention, not per-item configuration — same posture as cmd:codex_provisioned/
       // phi-coherence/bridge-persistence above.
       reportExtra([]);
       break;

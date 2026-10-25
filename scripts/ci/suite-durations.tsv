@@ -937,7 +937,6 @@ scripts/observability/test-install-stack.sh	5
 scripts/observability/test-ledger-prune.sh	0
 scripts/observability/test-ledgers-registry.sh	0
 scripts/observability/test-promtool-validation.sh	0
-scripts/observability/test-restart-stack.sh	0
 scripts/observability/test-suite-flake-summary.sh	1
 scripts/observability/test-tool-call-census.sh	11
 scripts/openrouter/test-free-watch.sh	1

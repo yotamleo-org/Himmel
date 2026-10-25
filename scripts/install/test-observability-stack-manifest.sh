@@ -35,14 +35,6 @@
 #      'degraded' on BOTH win32 and posix — proves the n/a downgrade is
 #      scoped to 'absent' only and can never swallow a real partial-install
 #      warning.
-#   i. drift guard: probes.js's
-#      OBSERVABILITY_TASK_NAMES is extracted from source and asserted EQUAL
-#      to restart-stack.sh's own himmel-observability-* hard allowlist
-#      (~L190-216) — the probe's comment claims the two never drift apart;
-#      this case is what makes that claim true instead of asserted on
-#      faith. Both extractions are guarded against silently yielding an
-#      empty set (a broken pattern must fail loudly, not vacuously "pass"
-#      by comparing empty-to-empty).
 #   j. install-engine.js's dispatch for install.type:observability:
 #      planInstall() with an injected ctx.platform (no
 #      global process.platform stubbing needed — install-engine.js reads
@@ -59,10 +51,8 @@ manifest_path="$repo_root/scripts/install/manifest.json"
 lint="$repo_root/scripts/install/manifest-lint.mjs"
 probes_lib="$repo_root/scripts/himmelctl/lib/probes.js"
 status_report_lib="$repo_root/scripts/himmelctl/lib/status-report.js"
-restart_stack_lib="$repo_root/scripts/observability/restart-stack.sh"
 install_engine_lib="$repo_root/scripts/himmelctl/lib/install-engine.js"
 [ -f "$manifest_path" ] || { echo "FAIL: $manifest_path not found" >&2; exit 1; }
-[ -f "$restart_stack_lib" ] || { echo "FAIL: $restart_stack_lib not found" >&2; exit 1; }
 command -v node >/dev/null 2>&1 || { echo "FAIL: node required" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "SKIP: jq not on PATH"; echo "$(basename "$0"): SKIPPED — 0 cases ran (jq not on PATH)"; exit 0; }
 
@@ -285,39 +275,6 @@ outH_posix=$(status_report_degraded_stub linux)
 [ "$(echo "$outH_posix" | jq -r '.severity')" = "degraded" ] \
   || fail "case h: posix + probe.actual:degraded must ALSO stay severity:degraded (the n/a downgrade is scoped to 'absent' only), got: $outH_posix"
 echo "ok: case h — status-report.js: degraded stays severity:degraded on both win32 and posix"
-
-# ── case i: drift guard — probes.js's
-# OBSERVABILITY_TASK_NAMES must equal restart-stack.sh's own
-# himmel-observability-* hard allowlist. Extraction is TEXT-based on both
-# sides (never `require`s probes.js's internal, unexported array; never
-# sources/evals restart-stack.sh) — a formatting change upstream that breaks
-# the pattern must yield an EMPTY set, which the guards below turn into a
-# loud FAIL rather than a vacuous empty-equals-empty pass ─────────────────
-# CR self-fix: `|| true` on each whole pipeline is REQUIRED, not cosmetic —
-# under top-level `set -e`, a plain `var=$(pipeline)` assignment whose
-# pipeline legitimately matches zero lines (pipefail turns that into a
-# nonzero pipeline status) aborts the SCRIPT right here, before the
-# `[ -n ... ] || fail` guard below ever runs — silently, with no FAIL
-# message at all. Verified empirically while building this case: an
-# unguarded version died with rc=1 and NO output the moment the extraction
-# pattern was faulted to match nothing. `|| true` neutralizes that so the
-# explicit, informative guard below is what actually fires.
-restartStackNames=$( (grep -oE 'TASK_NAME="himmel-observability-[A-Za-z0-9_-]+"' "$restart_stack_lib" \
-  | sed -E 's/^TASK_NAME="(.*)"$/\1/' | sort -u) || true)
-[ -n "$restartStackNames" ] \
-  || fail "case i: extracted ZERO task names from restart-stack.sh's allowlist ($restart_stack_lib) — the TASK_NAME=\"himmel-observability-...\" extraction pattern is broken, this is NOT a genuinely empty family"
-
-probesNames=$( (awk '/const OBSERVABILITY_TASK_NAMES = \[/,/\];/' "$probes_lib" \
-  | grep -oE "'himmel-observability-[A-Za-z0-9_-]+'" | tr -d "'" | sort -u) || true)
-[ -n "$probesNames" ] \
-  || fail "case i: extracted ZERO task names from probes.js's OBSERVABILITY_TASK_NAMES ($probes_lib) — the extraction pattern is broken, this is NOT a genuinely empty list"
-
-onlyInRestartStack=$(comm -23 <(printf '%s\n' "$restartStackNames") <(printf '%s\n' "$probesNames"))
-onlyInProbes=$(comm -13 <(printf '%s\n' "$restartStackNames") <(printf '%s\n' "$probesNames"))
-if [ -n "$onlyInRestartStack" ] || [ -n "$onlyInProbes" ]; then
-  fail "case i: OBSERVABILITY_TASK_NAMES (probes.js) has drifted from restart-stack.sh's himmel-observability-* allowlist — only in restart-stack.sh: [$onlyInRestartStack]; only in probes.js: [$onlyInProbes]"
-fi
-echo "ok: case i — OBSERVABILITY_TASK_NAMES (probes.js) matches restart-stack.sh's himmel-observability-* task allowlist exactly (drift-guarded)"
 
 # ── case j: install-engine.js's dispatch for install.type:observability
 # Drives planInstall() with an injected

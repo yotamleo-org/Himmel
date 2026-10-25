@@ -104,7 +104,6 @@
           {
             "type": "command",
             "command": ".codex/run-hook.sh --sandbox retrieval-nudge.sh",
-            "commandWindows": ".codex/run-hook.cmd --sandbox retrieval-nudge.sh",
             "timeout": 10
           }
         ]

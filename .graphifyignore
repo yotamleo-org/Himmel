@@ -1,3 +1,5 @@
 # Windows is dropped from himmel: keep it out of the knowledge graph.
 archive/windows/
 *.ps1
+# Voice is archived until it returns for Linux/macOS.
+archive/voice/

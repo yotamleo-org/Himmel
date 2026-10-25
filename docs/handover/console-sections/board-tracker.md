@@ -114,7 +114,20 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     the mirror refresh, so refresh and render again. When `gh` or Jira cannot be
     read the page says so and flags no card for a missing PR.
 
-    **Automatic refresh.** When the handover doc has a `focus-version:` line,
+    **Which version the page shows.** `focus-version: auto`, or no
+    `focus-version:` line beside a `release: <R>` line, follows the current version
+    of the declared release: the first version of `jira release state <R> --json`
+    (the project's own `JIRA_PROJECT_KEY` and release, so an adopted project needs
+    nothing himmel-specific). A version cut and shipped moves the page on at the next
+    refresh, with no edit. To pin a version, write `focus-version: v1.1.3`; the
+    page then stays on it until you change the line. `focus-version: none` turns the
+    page off, and no line with no `release:` line also reads `focus=skip`. When the
+    release cannot be read (CLI failure, no `release:` line, no version), the refresh
+    prints `focus=FAILED:release`, warns on stderr and keeps the published page; it
+    never falls back to a stale version. `console.sh next` carries the line forward.
+
+    **Automatic refresh.** When the version rule above resolves to a page (it does
+    unless it reads `focus=skip`),
     `wrap-merged.sh` runs `bash "<kit>/focus-refresh.sh" --doc <console doc>` after
     every merge (it also reads `focus-plan:` and `<doc dir>/focus-chains.json`).
     It stages the mirror, versions, status sweep, open PRs, the page and

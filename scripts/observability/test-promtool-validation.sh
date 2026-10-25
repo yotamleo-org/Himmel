@@ -1,10 +1,9 @@
 #!/usr/bin/env bash
 # test-promtool-validation.sh — REAL-BINARY positive control for promtool validation.
 #
-# WHY a second suite: test-restart-stack.sh proves the PLUMBING (resolution
-# order, fail-closed refusal, sync mechanics) against a stub promtool that
-# always exits 0 or 1 on command. None of that proves promtool actually
-# REJECTS a broken rules/config file — a validation step that cannot be shown
+# WHY: a stub promtool that always exits 0 or 1 on command proves no more
+# than plumbing. It never proves promtool actually REJECTS a broken
+# rules/config file — a validation step that cannot be shown
 # to reject anything is exactly the vacuous-verdict class this suite exists
 # to close. This suite runs the REAL promtool binary against a known-good
 # copy of each repo file (negative control: must pass) and a deliberately
@@ -19,7 +18,7 @@
 # install-stack.ps1 has no Prometheus release unpacked at all).
 # scripts/ci/run-shell-tests.sh's SUITE_REQUIRE_TOOL table can't express this
 # gate — it keys capability checks on PATH presence, and promtool is
-# deliberately NOT on PATH (see resolve_promtool in restart-stack.sh) — so
+# deliberately NOT on PATH — so
 # this suite carries its own runtime guard instead of relying on that table.
 # Never touches this machine's real %LOCALAPPDATA% state: it only READS repo
 # files and WRITES broken copies into its own mktemp -d tmp dir.
@@ -232,20 +231,15 @@ while IFS='|' read -r t_uid _t_want; do
         "table references a uid not present in the file"
 done < <(nodatastate_table)
 
-# Resolves the same way restart-stack.sh's own resolve_promtool does — the
-# himmel-observability-prometheus scheduled task's registered Execute path,
-# then PATH — so there is one resolution story in this directory, not two
-# (a LOCALAPPDATA glob is not used here: it is not a privilege boundary the
-# way it is in restart-stack.sh's own sanctioned carve-out, and keeping two
-# resolvers in sync is pure upkeep for no benefit).
+# Resolves the himmel-observability-prometheus scheduled task's registered
+# Execute path, then PATH.
 # $SCHTASKS_BIN missing (non-Windows, or an unusual station) just falls
 # through to PATH and then the loud-skip below — never a hard failure.
 # Loud-skip (exit 0, never a silent pass) when nothing resolves.
 PROMTOOL=""
 SCHTASKS_BIN="/c/Windows/System32/schtasks.exe"
 if [ -x "$SCHTASKS_BIN" ]; then
-    # Language-independent value-shape scan (see resolve_promtool in
-    # restart-stack.sh): a Windows drive-letter path ending in
+    # Language-independent value-shape scan: a Windows drive-letter path ending in
     # prometheus.exe, never the (localizable) "Task To Run:" label.
     exe_path="$("$SCHTASKS_BIN" //Query //TN himmel-observability-prometheus //V //FO LIST 2>/dev/null \
         | grep -oE '[A-Za-z]:[\\].*prometheus\.exe' | head -n 1)"
