@@ -457,7 +457,7 @@ done
 # A worker launched through the launcher's default preface path (the plain
 # worker branch, last of the role defaults) gets the worker preface.
 # shellcheck disable=SC2016  # $HERE is the launcher's literal text, matched not expanded
-launch_preface="$(sed -n 's#.*PREFACE:-\$HERE/../../../\(docs/handover/[a-z-]*\.md\)}.*#\1#p' "$HERE/headed-arm-leg.sh" | tail -n 1)"
+launch_preface="$(sed -n 's#.*PREFACE:-\$HERE/../../../\(docs/handover/[a-z-]*\.md\)}.*#\1#p' "$HERE/headed-arm-worker.sh" | tail -n 1)"
 [ -n "$launch_preface" ] && cmp -s "$HERE/../../../$launch_preface" "$HANDOVER_DOCS/worker-preface.md" \
     && pass "the launcher's default preface ($launch_preface) is the worker preface, byte for byte" \
     || fail "the launcher's default preface (${launch_preface:-unparsed}) is not the worker preface"
