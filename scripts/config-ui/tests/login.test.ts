@@ -98,6 +98,25 @@ test("logout ends the session and clears the cookie", async () => {
   expect((await b.feed({ cookie: c })).status).toBe(401);
 });
 
+test("a logout that is not JSON is 415 and leaves the session alive", async () => {
+  const b = boot();
+  const c = cookieOf(await b.login(USER, b.password));
+  const out = await b.post("/api/logout", {}, { cookie: c, "content-type": "text/plain" });
+  expect(out.status).toBe(415);
+  expect(out.headers.get("set-cookie")).toBeNull();
+  expect((await b.feed({ cookie: c })).status).toBe(200);
+});
+
+test("a login written under a strict umask is still mode 600 and readable", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-umask-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const f = join(dir, "ui-login");
+  const old = process.umask(0o277);
+  try { writeLogin(f, USER, secret()); } finally { process.umask(old); }
+  expect(statSync(f).mode & 0o777).toBe(0o600);
+  expect(readLogin(f)?.user).toBe(USER);
+});
+
 test("a session expires after its TTL", async () => {
   const b = boot();
   const c = cookieOf(await b.login(USER, b.password));

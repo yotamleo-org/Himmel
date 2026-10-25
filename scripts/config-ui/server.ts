@@ -414,13 +414,13 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   async function loginRoute(req: Request, path: string, origin: string): Promise<Response> {
     if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
     if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
+    if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
     if (path === "/api/logout") {
       auth.logout(req.headers.get("cookie"));
       const r = json({ ok: true });
       r.headers.set("set-cookie", clearedCookie());
       return r;
     }
-    if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
     let b: Record<string, unknown>;
     try { b = JSON.parse(await req.text()); } catch { return json({ error: "bad json" }, 400); }
     if (!b || typeof b !== "object") return json({ error: "bad json" }, 400);

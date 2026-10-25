@@ -1,6 +1,6 @@
 // The UI login: one operator user whose password is kept as a scrypt hash, sessions held in memory.
 // ponytail: the hash lives in a mode-600 file (~/.himmel/state/ui-login, the same rules as token-file.ts), upgrade path is the keyring vault backend, HIMMEL-7147.
-import { closeSync, constants, fstatSync, mkdirSync, openSync, renameSync, writeSync } from "node:fs";
+import { closeSync, constants, fchmodSync, fstatSync, mkdirSync, openSync, renameSync, writeSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
 import { readPrivateFile } from "./token-file";
@@ -24,6 +24,7 @@ export function writeLogin(path: string, user: string, password: string): void {
   const fd = openSync(tmp, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600);
   try {
     if (!fstatSync(fd).isFile()) throw new Error(`login file ${tmp} is not a regular file`);
+    fchmodSync(fd, 0o600);
     writeSync(fd, JSON.stringify({ user, salt, hash }) + "\n");
   } finally { closeSync(fd); }
   renameSync(tmp, path);
