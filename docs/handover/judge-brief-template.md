@@ -301,6 +301,12 @@ gathering, per the rule below.>
 > missing or already Done is a NO-GO line in your verdict. The console puts the
 > ticket body and the PR body in `## Evidence`.
 
+> **Docs review (PR-review judges, docs PRs).** When the PR changes a docs
+> page, run the `docs-reviewer` skill yourself at the READY head and compare it
+> with the findings and `Code changes implied` section the worker quoted in
+> READY. A BLOCKING finding left open, or a code change the page implies with no
+> fix in the diff and no follow-up ticket, is a NO-GO line in your verdict.
+
 > **Critical/Important disposition (PR-review judges).** A CR finding of
 > severity Critical or Important deferred on the PR's branch blocks the GO until
 > it has a disposition at this head. Rule one per finding: (a) **fix-here** — the

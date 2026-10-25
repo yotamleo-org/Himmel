@@ -59,7 +59,6 @@ marketplace/plugins/himmel-ops/scripts/test-minerva-scripts-resolution.sh	0
 marketplace/plugins/himmel-ops/scripts/test-minerva-spec-gate.sh	0
 marketplace/plugins/himmel-ops/scripts/test-minerva-trace-lint.sh	0
 marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh	1
-marketplace/plugins/himmel-ops/skills/docs-reviewer/test-docs-reviewer.sh	1
 marketplace/plugins/lean-skills/hooks/test-note-superpowers-prefix.sh	0
 marketplace/plugins/obsidian-triage/tests/test-archive-clips.sh	0
 marketplace/plugins/obsidian-triage/tests/test-archive-deload.sh	0
@@ -201,7 +200,6 @@ scripts/ci/test-suite-concurrency.sh	117
 scripts/ci/test-suite-ledger.sh	2
 scripts/ci/test-suite-lock-brand-gap.sh	70
 scripts/ci/test-suite-lock-orphan-reaper.sh	15
-scripts/ci/test-tier-replay.sh	263
 scripts/ci/test-tmp-sweep.sh	1
 scripts/ci/test-vm-runner-probe-workflow.sh	1
 scripts/ci/test-workflow-red-issue.sh	1
@@ -1015,7 +1013,6 @@ scripts/test-adopt-features.sh	457
 scripts/test-adopt-merge-gate.sh	120
 scripts/test-adopt-only-hooks.sh	1
 scripts/test-adopt-portable-libs.sh	0
-scripts/test-adopt-sequences.sh	407
 scripts/test-adopt-user-claude-md.sh	0
 scripts/test-adopt.sh	512
 scripts/test-check-ci-cache.sh	15

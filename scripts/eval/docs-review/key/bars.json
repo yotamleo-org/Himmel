@@ -1,0 +1,37 @@
+{
+  "A": {
+    "bar": "at least 4 of the 7 points of decision 270, each with file:line, in 30 findings or fewer",
+    "points": [
+      "dormant GLM rows on the lane table (lane-parity.md)",
+      "hermes-junior is removed (lane-parity.md)",
+      "explain each lane",
+      "environment-gotchas should be structured or scripted",
+      "jarvis-subsystems is unclear and out of date",
+      "say what exists, not ship status or jira",
+      "history goes to an ADR; the tool-eval yes/no becomes a tool list"
+    ]
+  },
+  "B": {
+    "bar": "names a CODE fix in scripts/docs/gen-team-page.sh: the Workers card's model tier is read from the chief-scoped LANES pattern, so it is wrong for workers",
+    "ground_truth": "537d0f2a8c516e9333ef9c725f4977aba629009d",
+    "negative_control": "the CR comment on docs/contributing.md:122 (an incomplete regeneration source list) is a docs-only fix, not a code change"
+  },
+  "C": {
+    "bar": "the learned row is candidate, dated 2026-10-25, quotes decision 284 verbatim, and a finding flags Mission Control / Jarvis with that quote"
+  },
+  "D": {
+    "bar": "every BLOCKING finding is true at the head; report true and false positives",
+    "true_positives": [
+      "html:148 hooks run in order: adopters wire each hook as its own stanza (wire-pretooluse-hooks.sh:9)",
+      "html:216 an unreadable required reviewer holds the merge only in an armed clone (review-merge-gate.sh)",
+      "html:130-131 the ceiling is checked before the merged PR (_new-worktree.sh:129,143)",
+      "html:112 BANK-STALE and BANK-UNKNOWN launch, SKIPPED-BANK refuses (headed-arm-worker.sh)",
+      "M05: 'from your himmel clone, for now'",
+      "M13: 'trust path' unexplained"
+    ],
+    "false_positives": [
+      "html:208 'In a starter install this check is not installed' is the wording ruling 3910-10 prescribed",
+      "html:73 'Claude + OpenAI GPT' is a reviewer list, not a cross-model claim"
+    ]
+  }
+}

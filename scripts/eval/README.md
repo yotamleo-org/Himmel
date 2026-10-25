@@ -6,6 +6,7 @@ himmel's evals: each one measures one thing and writes its own output.
 |---|---|---|
 | `lane-quality/` | a lane or model on fixed tasks: acceptance, scope, judge scores, cost | `runs.jsonl` per sweep |
 | `qmd-quality/` | qmd retrieval: hit@1, hit@5 and MRR per mode, plus latency | `scores.tsv`, `latency.tsv` |
+| `docs-review/` | the `docs-reviewer` skill on frozen docs PRs: the operator's points found, the code fix named, BLOCKING true against false | a hand-scored result per case (no ledger row) |
 | `guard-corpus/` | a hook change, base vs head, over a command corpus | `diff` stdout plus a `JSON` line |
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |

@@ -1,92 +1,101 @@
 ---
 name: docs-reviewer
-description: Use when a PR or diff changes a docs page - review it against the operator's past docs remarks; learn new ones.
+description: Review a docs PR against the operator's own remarks, name the code each finding implies, learn new remarks.
 ---
 
-# docs-reviewer — review docs the way the operator does
+# docs-reviewer — the operator's remarks as the bar
 
-Lean-invoke: run it on any PR or diff that changes a docs page, and whenever
-the operator makes a new remark about docs. The rules are the operator's own
-remarks, one per row of `rules.tsv`, each with its date, source and verbatim
-quote. Pattern and prose rules are checked by a script; judgement rules are
-yours to apply by reading the page.
+A docs change is judged against what the operator has already said about docs.
+The bar is `remarks.tsv` beside this file: one row per verbatim operator remark,
+with a one-line rule paraphrasing it, its date and its source. The quote is the
+authority; the rule is only a reading of it. Nothing is pattern-matched: every
+row is applied by judgement, on opus at high effort (decision 274).
 
-Docs pages are `README.md` and `docs/**/*.md|html`. `docs/archive/` and
-`docs/release/` are history and exempt.
+Docs pages are `README.md`, `site/`, and any `.md` or `.html` under `docs/` a
+reader sees. `docs/archive/` and `docs/release/` are history and exempt.
+`scripts/docs/test-docs-current-version.sh` owns the dropped-platform, old-model
+and workstream-code checks; do not repeat them.
 
-## Run it
+## Inputs
 
-```bash
-D="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/skills/docs-reviewer}"
-[ -f "$D/docs_review.py" ] || D="$(git rev-parse --show-toplevel)/marketplace/plugins/himmel-ops/skills/docs-reviewer"
+- A PR number (`gh pr diff <n>`, `gh pr view <n> --json files,reviews,comments`,
+  `gh api repos/<owner>/<repo>/pulls/<n>/comments`), or a diff range
+  (`git diff <base>...<head>`).
+- `remarks.tsv`: every row whose `state` is `active` or `candidate`.
 
-python3 -I "$D/docs_review.py" check --pr 3865                 # the PR's added lines
-python3 -I "$D/docs_review.py" check --pr 3865 --whole-file    # every line of each changed page
-python3 -I "$D/docs_review.py" check --range origin/main...HEAD
-python3 -I "$D/docs_review.py" check --diff change.diff        # or --diff - for stdin
-```
+## Procedure
 
-| Output line | Meaning |
-|---|---|
-| `path:line: R04 <rule> \| matched: GLM` | a pattern or prose rule broke on that line |
-| `CHECK path: R10 <rule>` | a judgement rule: read the page and decide |
-| `CANDIDATE R17 …` | a learned remark not yet confirmed; not enforced |
-| `docs-review: N finding(s) …` | the summary; exit 1 when N > 0, 2 on a usage error, input that is not a diff, or a broken rules file |
+1. Read the whole remarks table first.
+2. List the changed docs pages. Read each one in full at the head
+   (`git show <head>:<path>`), not only its hunks: "no clear bottom line" is a
+   remark about the page, not a line.
+3. **Remark pass, first.** Take the remarks one at a time, in table order. For
+   each, read every changed page in full (tables and lists too) and ask only
+   that remark's question of it. Write one list per remark:
+   `### <id> — <rule>` then one line per page that breaks it,
+   `- <file>:<line>[, <line>…] — <what breaks it, one sentence>`, or `- none`.
+   A remark about a kind of thing (an integration we will not have, a dropped
+   lane, an unexplained term) covers every instance of that kind on the page,
+   not only the one its quote names. Do not check correctness in this pass.
+4. **Correctness pass, second.** Check every claim the page makes about the
+   system against the code at the head (`git grep`, read the script or file it
+   names): a page that describes code that does not exist, or behaves
+   otherwise, is a finding. At most 10, one line each:
+   `- <file>:<line> — <the claim> is false: <what the code does>`.
+5. Write the findings, at most 30, one line each, the remark-pass findings
+   first (in remark order), then the correctness ones:
+   `- [BLOCKING|SHOULD|NIT] <file>:<line> — <what is wrong, one sentence> (<remark id>: "<short verbatim quote>")`
+   - BLOCKING: the page states something false, or breaks a remark the
+     operator has made more than once: the same remark, repeated, so that more
+     than one row of the table quotes it. A finding that also touches a second,
+     different remark is not a repeat and stays SHOULD.
+   - SHOULD: it clearly breaks one remark.
+   - NIT: taste; also any finding no remark backs, marked `(no remark)`.
+   Group repeats: one finding per page per remark, naming the other lines.
+6. Read the PR's CodeRabbit comments and any judge findings on it.
+7. Write the required section below. Never skip it.
+8. End with one line:
+   `docs-review: <N> findings (<B> blocking, <S> should, <K> nit); code changes implied: <M>`.
 
-Use `--whole-file` when the operator will read the whole page, which is the
-usual case for a docs PR: the remark on PR 3865 was about pages, not lines.
-Also run `bash scripts/docs/test-docs-current-version.sh`; it owns the dropped
-platform, old model and workstream-code checks, which this skill does not repeat.
+## Code changes implied (required)
 
-## Report the findings
+For every finding above, and for every CodeRabbit comment and judge finding on
+the PR, ask: is the page only describing code that is itself wrong, missing or
+confusing? If so, the fix is in the code, not the words (decision 299). A
+caveat such as "for now, run it from your clone" or "delete it yourself" is a
+gap to close in code. One line each:
 
-1. Run `check`. Each finding is a real line to read, not a verdict: a
-   `shipped` inside a code sample or a GLM row in a migration note may be
-   right. Keep the ones that break the rule's intent.
-2. For each `CHECK` line, read the page against that rule and add a finding
-   when it breaks it. Cite `file:line` and the rule id.
-3. Write one list, worst first, in the format of the consolidated docs
-   audits: `<n>. **<id>, BLOCKING|MINOR|NIT (<rule>).** Location: file:line.`,
-   then the fix as the exact replacement text.
+`- <code file> — <the change the code needs> (from: <remark id | CR comment | judge finding>)`
 
-## Learn a new remark
+Write `none — <why>` only after checking each one.
 
-When the operator makes a docs remark, in a PR or in a chief conversation,
-record it as a candidate rule in the same step, quoting the operator verbatim.
-`--pattern` is a Python regular expression (`\s`, not `[[:space:]]`):
+## Learn step
 
-```bash
-python3 -I "$D/docs_review.py" learn --pattern '<regex>' --rule '<the rule, one line>' \
-  --source 'decision <n>' --quote '<the operator, verbatim>'
-python3 -I "$D/docs_review.py" learn --judgement --rule '…' --source '…' --quote '…'
-```
-
-A candidate is listed, never reported. It becomes active after one
-confirmation: the operator says yes when asked "is this a standing docs rule?",
-or makes the same remark again. Then:
-
-```bash
-python3 -I "$D/docs_review.py" confirm R17 --by 'decision <n>'
-```
-
-`rules.tsv` is in the repo, so a learned or confirmed rule ships in a PR like
-any other change. `--rules <file>` or `DOCS_REVIEW_RULES` points at another copy.
+When the operator makes a new docs remark (a verbatim line in a decisions file,
+or a comment that is theirs and not an agent reply), the chief adds one row to
+`remarks.tsv` in a PR: the next id, state `candidate`, a one-line rule, the
+date, the source (decisions file and entry), and the quote, verbatim. A
+candidate row is applied like an active one and its findings say `candidate`.
+It becomes `active` once the operator confirms it, or when a later remark
+repeats it; the repeat is its own row, so the remark now counts as made more
+than once. A quote is never edited; a changed view is a new row, and the old
+row becomes `retired`.
 
 ## How the chief uses it
 
 Docs PRs do not wait on the operator (decision 286). In place of that gate:
 
-1. The docs worker runs on opus at high effort (decision 274) and runs `check
-   --whole-file` before READY, fixing or answering each finding.
-2. The chief's opus-high judge runs it again on the READY head, then the
-   second-model pass audits it adversarially (decisions 279, 280).
-3. The chief GOs the PR after that pipeline.
-4. The chief lists every merged docs change in its report (PR, pages
-   touched, one line on what changed) for the operator's review after the fact.
-5. Each remark the operator makes in that review goes through **Learn a new
-   remark** above, so the next docs PR is checked against it.
+1. The docs worker runs this review before READY and quotes the findings line
+   and the code-changes section in its READY message
+   (`docs/handover/worker-brief-template.md`).
+2. The chief's judge runs it again on the READY head
+   (`docs/handover/judge-brief-template.md`).
+3. The chief lists every merged docs change in its report for the operator's
+   review after the fact, and runs the learn step on each remark the operator
+   makes there (`docs/handover/chief-template.md`).
 
-## Proof
+## Measure
 
-`test-docs-reviewer.sh` checks the rule matching on the fixture diffs in
-`fixtures/` and the learn → candidate → confirm → finding path.
+`scripts/eval/docs-review/` holds the frozen cases (a PR, its base and head, and
+which remark rows the run may see) and the held-out pass bars. Re-run them
+after a change to this file or to the table.

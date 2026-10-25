@@ -1,0 +1,33 @@
+{
+  "cases": {
+    "A": {
+      "pr": 3865,
+      "base": "f5e6abc972ef5dfe4f4c7561d4b404cf1ff96158",
+      "head": "a70480da65a2baa77cf2cf304deb4f260a93152c",
+      "remarks": "date before 2026-10-25",
+      "pr_comments": false
+    },
+    "B": {
+      "pr": 3892,
+      "base": "1bbcb21d498c6193f1ebda6c85cd7e018d599331",
+      "head": "ae0a2744ca7bca4f65c3f82ed4dc118810bbbc94",
+      "remarks": "all rows except M31",
+      "pr_comments": true
+    },
+    "C": {
+      "pr": null,
+      "base": "be152579752f51ff26575c459654b1245d0f5abd",
+      "head": "be152579752f51ff26575c459654b1245d0f5abd",
+      "page": "docs/jarvis-subsystems.md",
+      "remarks": "all rows except M30 and M31; first run the learn step on decision 284",
+      "pr_comments": false
+    },
+    "D": {
+      "pr": 3910,
+      "base": "be152579752f51ff26575c459654b1245d0f5abd",
+      "head": "8465ee89de1ab75681e4956684775e34f4c49f57",
+      "remarks": "all rows",
+      "pr_comments": true
+    }
+  }
+}
