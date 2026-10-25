@@ -409,7 +409,7 @@ reap_leg_scratch() {
         return 0
     fi
     # the TERM is asynchronous: give the session a moment to exit so its scratch is not "live"
-    for ((i = 0; i < ${CLOSE_WRAPPED_LEG_REAP_WAIT:-5}; i++)); do
+    for ((i = 0; i < ${CLOSE_WRAPPED_LEG_REAP_WAIT:-5}; i++)); do  # read-sink-ok: the < is an arithmetic comparison, not a redirect
         [ -d "$PROC_ROOT/$matched" ] || break
         sleep 1
     done

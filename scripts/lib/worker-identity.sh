@@ -157,5 +157,5 @@ leg_doc_has_run() {
         inr && /^## / { inr = 0 }
         inr && /^- / { found = 1; exit }
         END { exit found ? 0 : 1 }
-    ' < "$1"
+    ' < "$1"  # read-sink-ok: $1 is the handover doc the caller asks about
 }

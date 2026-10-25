@@ -736,7 +736,7 @@ NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-}"
 # profile from the doc would silently end the unprofiled-launch refusal below.
 if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ] && [ -f "$DOC" ]; then
     # shellcheck disable=SC2016  # backticks in the sed regex are literal
-    PROFILE="$(head -n 60 "$DOC" | sed -n -E 's/^[>* -]*profile:[[:space:]]*`?([A-Za-z0-9._,-]+)`?[[:space:]]*$/\1/p' | head -n 1)"
+    PROFILE="$(head -n 60 "$DOC" | sed -n -E 's/^[>* -]*profile:[[:space:]]*`?([A-Za-z0-9._,-]+)`?[[:space:]]*$/\1/p' | head -n 1)"  # read-sink-ok: DOC is the handover doc this launcher was asked to arm
 fi
 
 # worker-* profile ids are the new names of the leg-* registry keys
@@ -2495,7 +2495,7 @@ fi
 # writer shares, so a concurrent append-results.sh bullet is never lost.
 _leg_sid=""
 if [ "$LANE" = "native" ] && [ -n "$PROFILE" ] && [ "$HEADLESS" -eq 0 ] && [ "$CONSULT" -eq 0 ] \
-    && [ ! -L "$DOC" ] && [ "$(head -n 1 "$DOC" 2>/dev/null)" = "---" ]; then
+    && [ ! -L "$DOC" ] && [ "$(head -n 1 "$DOC" 2>/dev/null)" = "---" ]; then  # read-sink-ok: DOC is the handover doc this launcher was asked to arm
     # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
     . "$HERE/worker-doc-lock.sh"
     _leg_sid="$(cat /proc/sys/kernel/random/uuid 2>/dev/null || uuidgen 2>/dev/null)"

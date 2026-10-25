@@ -62,7 +62,7 @@ while [ "$#" -gt 0 ]; do
 done
 if [ -z "$DOC" ] || [ -z "$FLEET" ] || [ -z "$MSG" ]; then usage; fi
 
-if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi
+if [ "$MSG" = "-" ]; then body="$(cat)"; else body="$(cat "$MSG")" || usage; fi  # read-sink-ok: MSG is the message file the caller asks to post
 line="$(printf '%s\n' "$body" | grep -m1 -E '[^[:space:]]')" || line=""
 line="${line#- }"
 # a message may lead with its own N<k> label and ticket key before the marker

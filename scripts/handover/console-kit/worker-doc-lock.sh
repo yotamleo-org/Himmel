@@ -77,7 +77,7 @@ leg_doc_add_session_id() {
     # rc 3 (no flock) writes unlocked, as before locking existed; rc 1 records nothing.
     doc_lock "$_ls_doc" leg-doc-lock || _ls_lock=$?
     [ "$_ls_lock" -eq 1 ] && return 1
-    _ls_sum="$(cksum < "$_ls_doc" 2>/dev/null)"
+    _ls_sum="$(cksum < "$_ls_doc" 2>/dev/null)"  # read-sink-ok: the handover doc the caller holds the lock on
     if _ls_tmp="$(mktemp "$_ls_doc.sid.XXXXXX")" \
         && cp -p "$_ls_doc" "$_ls_tmp" \
         && awk -v sid="$_ls_sid" '
@@ -85,8 +85,9 @@ leg_doc_add_session_id() {
             fm && /^session_ids:/ { sub(/[[:space:]]*$/, ""); print $0 "," sid; done = 1; next }
             fm && /^---$/ { if (!done) print "session_ids: " sid; fm = 0 }
             { print }' "$_ls_doc" > "$_ls_tmp" \
-        && grep -q "^session_ids:.*$_ls_sid" "$_ls_tmp" \
-        && [ "$(cksum < "$_ls_doc" 2>/dev/null)" = "$_ls_sum" ] \
+        && grep -q "^session_ids:.*$_ls_sid" "$_ls_tmp" &&
+        # read-sink-ok: the handover doc the caller holds the lock on
+        [ "$(cksum < "$_ls_doc" 2>/dev/null)" = "$_ls_sum" ] \
         && mv -f "$_ls_tmp" "$_ls_doc"; then
         _ls_rc=0
     fi
