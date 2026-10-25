@@ -605,6 +605,12 @@ got=$(sl 2 'README.md\t\nsrc/a.sh\t\nsrc/a.sh\t\nsrc/b.sh\t\n')
 case "$got" in "2:files listed 3 of PR #7's 2 changed files"*) ;; *) fail "9l: a listing longer than changed_files by unique names was not refused: $got" ;; esac
 got=$(sl 2 'docs/new.md\tdeploy/old.md\nREADME.md\t\nREADME.md\t\n')
 case "$got" in "2:anchor PR #7 touches trust path deploy/old.md "*) ;; *) fail "9l: a trust path in previous_filename was not a hit: $got" ;; esac
+got=$(sl 1 'X\t\nX\tY\n')
+[ "$got" = "0:none" ] || fail "9l: one filename with and without a previous name counted as two files (the unique count must read the filename column only): $got"
+printf '%s|%s\n' "$SLSHA" 2 > "$ROOT/sl.meta"
+awk 'BEGIN { for (i = 0; i < 3000; i++) printf "f%d\t\n", i % 2 }' > "$ROOT/sl.files"
+got=$(GH="$ROOT/ghsl" tpc acme/widget 7 "$SLSHA" "$ROOT/lgold")
+case "$got" in "2:files PR #7's files listing reached its 3000-row cap"*) ;; *) fail "9l: 3000 raw rows with a unique count equal to changed_files were not refused: $got" ;; esac
 
 # 9j. scripts/lib/fixtures/ready-lines.tsv: parse_ready_line and fleet.mjs agree with the fixture.
 TSV="$HERE/fixtures/ready-lines.tsv"

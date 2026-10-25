@@ -533,9 +533,15 @@ EOF
     files=$("$gh_bin" api "repos/$tp_nwo/pulls/$tp_pr/files" --paginate \
         --jq '.[] | [.filename, (.previous_filename // "")] | @tsv' 2>/dev/null) \
         || refuse files "cannot list PR #$tp_pr's changed files"
-    listed=0
+    listed=0; rows=0
     # A type change (a file turned into a symlink) is two rows with one filename.
-    [ -n "$files" ] && listed=$(printf '%s\n' "$files" | cut -f1 | sort -u | wc -l | tr -d ' ')
+    if [ -n "$files" ]; then
+        rows=$(printf '%s\n' "$files" | wc -l | tr -d ' ')
+        listed=$(printf '%s\n' "$files" | cut -f1 | LC_ALL=C sort -u | wc -l | tr -d ' ')
+    fi
+    # At the cap the dropped tail rows may repeat kept names, so the unique count proves nothing.
+    [ "$rows" -lt 3000 ] \
+        || refuse files "PR #$tp_pr's files listing reached its 3000-row cap, so it may be truncated"
     [ "$listed" -eq "$count" ] \
         || refuse files "listed $listed of PR #$tp_pr's $count changed files (the listing stops at 3000)"
     meta=$("$gh_bin" api "repos/$tp_nwo/pulls/$tp_pr" --jq "$pr_jq" 2>/dev/null) || meta=""
