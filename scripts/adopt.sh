@@ -247,6 +247,7 @@ PORTABLE_FILES=(
   scripts/afk/morning-report.sh
   scripts/afk/morning-report.default.tmpl
   scripts/afk/project-state.sh
+  .claude/commands/stop.md
   scripts/lib/result.sh
   scripts/clean-garden.sh
   scripts/worktree.sh

@@ -11,13 +11,14 @@
 #
 # Marker path: ~/.claude/.overnight-stop in the himmel clone,
 # ~/.claude/afk/<project key>/.overnight-stop in an adopted project
-# (project-state.sh), so a stop halts only its own project's shift. Single
+# (project-state.sh), so a stop halts only its own project's shift; `check`
+# also honours the clone's global marker, so a /stop from the clone halts all. Single
 # file, no content needed — existence is the signal. Stored under $HOME so it
 # survives worktree pruning.
 #
 # Subcommands:
 #   set     Touch the marker. Idempotent (no-op if already set).
-#   check   Exit 0 if marker exists, 1 otherwise. Silent (script-friendly).
+#   check   Exit 0 if the marker (or the global one) exists, 1 otherwise. Silent.
 #   clear   Remove the marker. Idempotent. Aliases: reset, rm.
 #   status  Print human-readable state to stdout. Always exits 0.
 #
@@ -32,6 +33,11 @@ set -uo pipefail
 . "$(dirname "${BASH_SOURCE[0]}")/project-state.sh"
 MARKER_DIR=$(afk_stop_dir) || exit 3
 MARKER_PATH="$MARKER_DIR/.overnight-stop"
+# The clone's global marker halts every adopted shift too (a /stop from the clone).
+GLOBAL_PATH=""
+if [ -z "${AFK_STOP_DIR:-${OVERNIGHT_STOP_DIR:-}}" ] && [ "$MARKER_PATH" != "$HOME/.claude/.overnight-stop" ]; then
+    GLOBAL_PATH="$HOME/.claude/.overnight-stop"
+fi
 
 usage() {
     cat <<'EOF'
@@ -74,7 +80,9 @@ case "$cmd" in
         echo "stop-marker: SET at $MARKER_PATH"
         ;;
     check)
-        [ -f "$MARKER_PATH" ] && exit 0 || exit 1
+        [ -f "$MARKER_PATH" ] && exit 0
+        [ -n "$GLOBAL_PATH" ] && [ -f "$GLOBAL_PATH" ] && exit 0
+        exit 1
         ;;
     clear|reset|rm)
         if [ -f "$MARKER_PATH" ]; then
@@ -93,6 +101,9 @@ case "$cmd" in
             echo "stop-marker: SET ($MARKER_PATH; armed at $ts)"
         else
             echo "stop-marker: CLEAR (no marker at $MARKER_PATH)"
+        fi
+        if [ -n "$GLOBAL_PATH" ] && [ -f "$GLOBAL_PATH" ]; then
+            echo "stop-marker: global marker SET at $GLOBAL_PATH (halts every shift)"
         fi
         ;;
     -h|--help)

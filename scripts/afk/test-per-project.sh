@@ -23,7 +23,9 @@ fail() { echo "  FAIL: $1"; if [ $# -ge 2 ]; then printf '    %s\n' "$2"; fi; FA
 
 FAKE_HOME="$TMP_ROOT/home"
 SHARED_ROOT="$TMP_ROOT/handovers"
-mkdir -p "$FAKE_HOME" "$SHARED_ROOT"
+mkdir -p "$FAKE_HOME/.himmel" "$SHARED_ROOT"
+# The station config names himmel's own queue; an adopted project must never inherit it.
+printf 'JIRA_PROJECT_KEY=HIMMEL\n' > "$FAKE_HOME/.himmel/himmel.conf"
 
 # Fake jira: one ticket in whichever project the plan asked for.
 FAKE_JIRA="$TMP_ROOT/jira-fake.sh"
@@ -67,6 +69,12 @@ else
     fail "unset key refused (rc 1)" "rc=$rc out=$out"
 fi
 
+echo "TEST: an adopted project reads its key from its own .env, not the station's himmel.conf"
+D="$TMP_ROOT/demo"; mkproject "$D"
+printf 'JIRA_PROJECT_KEY=DEMO\n' > "$D/.env"
+plan_d=$(inproj "$D" env -u JIRA_PROJECT_KEY bash scripts/afk/build-plan.sh 2>&1)
+if [[ "$plan_d" == *DEMO-1* ]] && [[ "$plan_d" != *HIMMEL-1* ]]; then pass "demo queue is DEMO from its .env"; else fail "demo queue is DEMO from its .env" "$plan_d"; fi
+
 echo "TEST: each adopted project keeps its plan and ledger in its own state dir"
 dir_a=$(inproj "$A" bash scripts/afk/project-state.sh dir 2>&1)
 dir_b=$(inproj "$B" bash scripts/afk/project-state.sh dir 2>&1)
@@ -106,6 +114,11 @@ inproj "$A" bash scripts/afk/stop-marker.sh set >/dev/null 2>&1
 if inproj "$A" bash scripts/afk/stop-marker.sh check; then pass "alpha sees its own stop"; else fail "alpha sees its own stop"; fi
 rc=0; inproj "$B" bash scripts/afk/stop-marker.sh check || rc=$?
 if [ "$rc" -eq 1 ]; then pass "beta not stopped by alpha"; else fail "beta not stopped by alpha" "rc=$rc"; fi
+
+echo "TEST: a /stop from the himmel clone (the global marker) halts every adopted shift"
+mkdir -p "$FAKE_HOME/.claude"; : > "$FAKE_HOME/.claude/.overnight-stop"
+if inproj "$B" bash scripts/afk/stop-marker.sh check; then pass "beta halts on the global marker"; else fail "beta halts on the global marker"; fi
+rm -f "$FAKE_HOME/.claude/.overnight-stop"
 
 echo "TEST: each adopted project writes its own morning report"
 printf 'AAA-1\tfeat/a\t1\tdone\tok\n' > "$TMP_ROOT/rows-a.tsv"

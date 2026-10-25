@@ -3,7 +3,10 @@ description: Graceful-halt marker for in-progress /afk-shift sessions.
 argument-hint: [--hard | --reset]
 ---
 
-Sets the `~/.claude/.overnight-stop` marker. `/afk-shift`'s dispatch
+Sets the current project's stop marker: `~/.claude/.overnight-stop` in the
+himmel clone, `~/.claude/afk/<project key>/.overnight-stop` in an adopted
+project, so a stop there halts only that project's shift. The clone's marker
+also halts every adopted project's shift. `/afk-shift`'s dispatch
 loop (`.claude/commands/afk-shift.md` step 4, and the fix-dispatch
 loop in step 5c) polls it before every subagent dispatch — HIMMEL-2724
 lead 4. When set, the dispatcher finishes the in-flight subagent(s) +
@@ -51,8 +54,8 @@ if bash scripts/afk/stop-marker.sh check; then
 fi
 ```
 
-`check` is silent (no stdout/stderr) and exits 0 when the marker
-exists, 1 when it doesn't. Cheap to call.
+`check` is silent (no stdout/stderr) and exits 0 when the project's
+marker or the clone's global marker exists, 1 when neither does. Cheap to call.
 
 ## Status inspection
 

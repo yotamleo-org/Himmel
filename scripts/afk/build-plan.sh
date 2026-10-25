@@ -108,9 +108,17 @@ if [ -z "$PROJECT" ]; then
     if afk_legacy_paths; then
         PROJECT=HIMMEL
     else
-        # shellcheck disable=SC1091
-        if . "$script_dir/../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv JIRA_PROJECT_KEY 2>/dev/null || true; fi
+        # Never load_dotenv here: it reads ~/.himmel/himmel.conf first, which on a
+        # himmel station names HIMMEL. The key comes from the process env or the
+        # project's own .env (this checkout's, then the primary checkout's).
         PROJECT="${JIRA_PROJECT_KEY:-}"
+        env_dirs=$(git rev-parse --show-toplevel 2>/dev/null)
+        common=$(afk_git_common_dir 2>/dev/null) && case "$common" in */.git) env_dirs="$env_dirs
+${common%/.git}" ;; esac
+        while [ -z "$PROJECT" ] && IFS= read -r env_dir; do
+            [ -n "$env_dir" ] && [ -f "$env_dir/.env" ] || continue
+            PROJECT=$(sed -n -E "s/^(export[[:space:]]+)?JIRA_PROJECT_KEY=[\"']?([A-Za-z0-9_]*).*/\\2/p" "$env_dir/.env" | tail -n 1)
+        done <<< "$env_dirs"
         if [ -z "$PROJECT" ]; then
             echo "ERR build-plan: JIRA_PROJECT_KEY is unset for this project — set it (env or the project's .env) or pass --project" >&2
             exit 1
