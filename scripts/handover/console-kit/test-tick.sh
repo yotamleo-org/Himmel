@@ -3077,6 +3077,7 @@ contains 'a run at 85 % of its job timeout raises ACTION dispatch-stall (HIMMEL-
 not_contains 'a run on the open PR head is not stale-head (HIMMEL-7479)' "$d_late" 'stale-head'
 d_calls="$(grep -c '^runs ' "$d_log")"
 if [ "$d_calls" = 1 ]; then pass 'one tick lists the runs exactly once (HIMMEL-7479)'; else fail "runs list calls per tick = $d_calls, want 1"; fi
+if grep -q '^runs .*per_page=100' "$d_log"; then pass 'the runs list asks for the largest page, so the oldest in-flight runs are in it (HIMMEL-7479)'; else fail 'runs list is not per_page=100'; fi
 d_jobs="$(grep -c '^jobs ' "$d_log")"
 if [ "$d_jobs" = 1 ]; then pass 'one tick reads the jobs of each run once (HIMMEL-7479)'; else fail "jobs reads per tick = $d_jobs, want 1"; fi
 

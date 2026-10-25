@@ -916,6 +916,20 @@ wait_exit "$WPID"
 check "(dp3) the same late run returning after the outage does not wake" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+reset_stub
+tick_line "N1:FRESH" "ok"
+dispatch_line 4001:N61:102/120m:3/9@1111111:late:idle
+I="$(new_inbox dp4)"
+start "$I" "$WORK/dp4.out" --legs "N1.md"
+wait_hb "$I" || fail "(dp4) no baseline heartbeat"
+dispatch_line 4001:N61:103/120m:3/9@1111111:late
+wait_exit "$WPID"
+check "(dp4) a run dropping one of its flags does not wake" "running" "$rc"
+dispatch_line 4001:N61:104/120m:3/9@1111111:late:orphan
+wait_exit "$WPID"
+check "(dp4) the same run gaining a new flag wakes" "0" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # an option-shaped first argument is refused before any path is derived from it
 mkdir -p "$WORK/kopt"
 (cd "$WORK/kopt" && bash "$WAIT" --help >"$WORK/kopt.out" 2>&1); rc=$?

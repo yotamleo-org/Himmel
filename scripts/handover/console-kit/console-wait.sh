@@ -450,14 +450,15 @@ sample() {
             fi
             [ -n "$v" ] || continue
         fi
-        # dispatch= keeps <run>:<flags> for the runs flagged late, idle or orphan, sorted: the
+        # dispatch= keeps one <run>:<flag> token per late, idle or orphan flag, sorted: the
         # elapsed time and job counts grow every tick and must not wake, nor must stale-head
-        # (report-only). A set with none is left out of the key; dispatch=? keeps the saved set.
+        # (report-only), and a run losing a flag is no new token. A set with none is left out
+        # of the key; dispatch=? keeps the saved set.
         if [ "$f" = dispatch ]; then
             if [ "$v" = '?' ]; then
                 v="$(key_field dispatch "$saved")"
             else
-                v="$(printf '%s' "$v" | tr ',' '\n' | awk -F: '{ fl = ""; for (i = 2; i <= NF; i++) if ($i == "late" || $i == "idle" || $i == "orphan") fl = fl (fl == "" ? "" : "+") $i; if (fl != "") print $1 ":" fl }' | LC_ALL=C sort | paste -sd, -)"
+                v="$(printf '%s' "$v" | tr ',' '\n' | awk -F: '{ for (i = 2; i <= NF; i++) if ($i == "late" || $i == "idle" || $i == "orphan") print $1 ":" $i }' | LC_ALL=C sort | paste -sd, -)"
             fi
             [ -n "$v" ] || continue
         fi
