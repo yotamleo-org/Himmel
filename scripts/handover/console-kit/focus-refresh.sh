@@ -129,6 +129,8 @@ if [ "$MODE" = status ]; then
     if [ ! -f "$STATEF" ]; then echo "focus=DIRTY:unknown"
     elif [ "$S_status" = FAILED ]; then echo "focus=FAILED:${S_stage:-unknown}"
     elif [ -n "$S_dirty" ]; then echo "focus=DIRTY:$(( ($(now) - S_dirty) / 60 ))m"
+    # a request that landed after the last run read it and saved a clean state
+    elif [ -f "$AGAIN" ]; then echo "focus=DIRTY:unknown"
     elif [ "$S_status" = ok ]; then echo "focus=ok"
     else echo "focus=DIRTY:unknown"; fi
     exit 0

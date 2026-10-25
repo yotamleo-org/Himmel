@@ -917,6 +917,10 @@ check "3c: --status after a failed render is FAILED:render" "$(frout)" "focus=FA
 rm -f "$FX/fr.fail"; fr
 fr --status
 check "3c: --status after the next good refresh is ok" "$(frout)" "focus=ok"
+date +%s > "$FR/doc/focus-state.again"
+fr --status
+check "3c: a request that lands after a run's final save still reads DIRTY" "$(frout)" "focus=DIRTY:unknown"
+rm -f "$FR/doc/focus-state.again"
 fr --mark-dirty
 check "3c: --mark-dirty leaves a request marker for a running refresh" "$([ -s "$FR/doc/focus-state.again" ] && echo set || echo none)" set
 fr --status
