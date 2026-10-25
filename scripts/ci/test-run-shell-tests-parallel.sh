@@ -563,12 +563,22 @@ if sb=$(mk_sandbox); then
   mk_suite "$sb" test-d.sh 15
   mk_suite "$sb" test-e.sh 15
   printf '*/scripts/test-c-alone.sh  fixture: must run alone\n' > "$sb/deny.txt"
-  out=$(SUITE_JOBS=3 SUITE_LANE_WAIT=poll SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
-  if [ "$rc" -eq 0 ] && [ "$(peak_of "$sb" test-c-alone.sh)" = 1 ] && [ ! -s "$sb/beside-alone.log" ] \
+  # Polling is the only mode that sleeps 0.2s between lane checks, so a logged
+  # 0.2 sleep proves the knob took effect; wait -n gives the same outcomes.
+  mkdir -p "$sb/bin"
+  # The runner rebuilds PATH, so the stub names the real sleep by path.
+  sed -e "s|@SB@|$sb|g" -e "s|@REAL@|$(command -v sleep)|g" <<'SHEOF' > "$sb/bin/sleep"
+#!/usr/bin/env bash
+[ "$1" != 0.2 ] || echo poll >> "@SB@/poll.log"
+exec @REAL@ "$@"
+SHEOF
+  chmod +x "$sb/bin/sleep"
+  out=$(PATH="$sb/bin:$PATH" SUITE_JOBS=3 SUITE_LANE_WAIT=poll SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/scripts" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ -s "$sb/poll.log" ] && [ "$(peak_of "$sb" test-c-alone.sh)" = 1 ] && [ ! -s "$sb/beside-alone.log" ] \
      && [ "$(wc -l < "$sb/peak.log" | tr -d ' ')" = 5 ] && [ "$(max_peak "$sb")" -ge 2 ]; then
-    pass "P18: all five suites ran, two or more at once, and test-c-alone.sh ran alone"
+    pass "P18: the lanes were polled, all five suites ran, two or more at once, and test-c-alone.sh ran alone"
   else
-    fail "P18: expected rc 0, five suites, an overlap and test-c-alone.sh alone, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log") beside-alone.log=$(tr '\n' ' ' < "$sb/beside-alone.log" 2>/dev/null); out: $out"
+    fail "P18: expected rc 0, a polling sleep, five suites, an overlap and test-c-alone.sh alone, got rc=$rc poll.log=$(wc -l < "$sb/poll.log" 2>/dev/null | tr -d ' ') peak.log=$(tr '\n' ' ' < "$sb/peak.log") beside-alone.log=$(tr '\n' ' ' < "$sb/beside-alone.log" 2>/dev/null); out: $out"
   fi
   rm -rf "$sb"
 else
