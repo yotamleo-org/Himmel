@@ -858,6 +858,7 @@ mk HIMMEL-932 "To Do" Medium '[]' '["v1.0.1"]' '[]' "the old name of a file a PR
 mk HIMMEL-940 "In Progress" Medium '[]' '["v1.0.1"]' '[]' "orphan in progress" "Edit scripts/lib/dd-940.sh only."
 mk HIMMEL-951 "To Do" Medium '["operator-decision"]' '["v1.0.1"]' '[]' "waits on an operator question" "Edit scripts/lib/dd-951.sh only."
 mk HIMMEL-960 "To Do" Medium '[]' '["v1.0.1"]' '[]' "names a directory with a held file in it" "Tidy the helpers under scripts/lib/dd-ov/."
+mk HIMMEL-961 "To Do" Medium '[]' '["v1.0.1"]' '[]' "a hook ticket naming a directory with a held file in it" "Edit scripts/hooks/dd-hk.sh and tidy scripts/lib/dd-ov2/."
 M="$M_SAVE"
 cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/jira-mirror-dd/HIMMEL.versions.tsv"
 cat > "$WORK/gh-dd" <<'EOF'
@@ -883,6 +884,7 @@ for k in "$@"; do
     case "$k" in
         HIMMEL-906) printf '%s\tBLOCKED\tscripts/lib/dd-906.sh is held (routed HIMMEL-912 in an earlier run)\n' "$k" ;;
         HIMMEL-907) printf '%s\tBLOCKED\tscripts/lib/dd-907.sh is held (routed HIMMEL-913 in an earlier run)\n' "$k" ;;
+        HIMMEL-961) printf '%s\tHOOK-BYPASS\ttouches scripts/hooks/dd-hk.sh — hooks do not run in the cloud; names the directory scripts/lib/dd-ov2/ with held file(s) in it: scripts/lib/dd-ov2/y.sh (open PR 5001)\n' "$k" ;;
         HIMMEL-960) printf '%s\tLOCAL-NATIVE\tnames the directory scripts/lib/dd-ov/ with held file(s) in it: scripts/lib/dd-ov/x.sh (open PR 5001) — a local leg scopes the files\n' "$k" ;;
         *) printf '%s\tLOCAL-NATIVE\tstub\n' "$k" ;;
     esac
@@ -898,7 +900,7 @@ EOF
 chmod +x "$WORK/gh-dd" "$WORK/classify-dd" "$WORK/jira-dd"
 printf 'HIMMEL-910 Done\nHIMMEL-911 In Progress\nHIMMEL-912 Done\nHIMMEL-913 In Progress\n' > "$DD_DIR/live.txt"
 printf '5001\tfix(x): [HIMMEL-9101] one\tfix/himmel-9101-one\n5002\tfix(x): [HIMMEL-9102] huge\tfix/himmel-9102-huge\n5003\tfix(x): [HIMMEL-9103] three\tfix/himmel-9103-three\n' > "$DD_DIR/prs.tsv"
-printf 'scripts/lib/dd-pr1.sh\nscripts/lib/dd-ov/x.sh\n' > "$DD_DIR/files-5001"
+printf 'scripts/lib/dd-pr1.sh\nscripts/lib/dd-ov/x.sh\nscripts/lib/dd-ov2/y.sh\n' > "$DD_DIR/files-5001"
 : > "$DD_DIR/fail-5002"
 printf 'scripts/lib/dd-pr3.sh\nscripts/lib/dd-new-name.sh\nscripts/lib/dd-old-name.sh\n' > "$DD_DIR/files-5003"
 sed "s#@@FIXTURE@@#$DD#" "$DD/fleet.json" > "$WORK/dd-fleet.json"
@@ -934,6 +936,7 @@ lacks "prs: one unreadable PR does not mark every open PR unknown" "$dd_out" "op
 lacks "prs: RESUME rows are suppressed while a PR's files are unreadable" "$dd_out" "RESUME	HIMMEL-940"
 has "dispositions: a directory ticket with a held file under it is listed with its holder and file" "$dd_out" "# disposition HIMMEL-960 listed LOCAL (overlap: names the directory scripts/lib/dd-ov/ with held file(s) in it: scripts/lib/dd-ov/x.sh (open PR 5001)"
 has "dispositions: the overlap row is followed by an overlap line naming the file" "$dd_out" "# overlap HIMMEL-960 names the directory scripts/lib/dd-ov/ with held file(s) in it: scripts/lib/dd-ov/x.sh (open PR 5001)"
+has "dispositions: a hook row keeps the overlap holder and file" "$dd_out" "# overlap HIMMEL-961 names the directory scripts/lib/dd-ov2/ with held file(s) in it: scripts/lib/dd-ov2/y.sh (open PR 5001)"
 # a PR the API cuts short at 3000 files is unknown, not a silent truncation
 export DD3K="$WORK/dd3k"; mkdir -p "$DD3K"
 cp "$DD_DIR/live.txt" "$DD3K/live.txt"
@@ -947,7 +950,7 @@ has "dispositions: a listed ticket says so" "$dd_out" "# disposition HIMMEL-902 
 has "dispositions: an in-progress ticket whose RESUME row is suppressed is still accounted for" "$dd_out" "# disposition HIMMEL-940 unowned In Progress"
 has "dispositions: a label drop names the label" "$dd_out" "# disposition HIMMEL-951 label operator-decision"
 dd_n="$(printf '%s\n' "$dd_out" | grep -c '^# disposition ')"
-[ "$dd_n" = 19 ] && pass "dispositions: one line per open v1.0.1 ticket (19)" || fail "dispositions: $dd_n lines for 19 open v1.0.1 tickets"
+[ "$dd_n" = 20 ] && pass "dispositions: one line per open v1.0.1 ticket (20)" || fail "dispositions: $dd_n lines for 20 open v1.0.1 tickets"
 dd_plain="$(rundd)"
 lacks "dispositions: a plain run prints none" "$dd_plain" "# disposition "
 

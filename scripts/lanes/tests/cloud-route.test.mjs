@@ -648,6 +648,17 @@ test('a ticket naming a directory lists the held files under it in the reason', 
   assert.match(v.reason, /scripts\/lanes\/f1\.sh \(open PR 77\), scripts\/lanes\/f2\.sh \(open PR 77\), scripts\/lanes\/f3\.sh \(open PR 77\), \+1 more/);
 });
 
+test('a hook or trust-path verdict keeps the directory overlap and its holder', () => {
+  const held = [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }];
+  const hook = classifyTicket(tk({ description: 'Fix scripts/hooks/guard.sh and tidy scripts/lanes/.' }), ctx({ held }));
+  assert.equal(hook.class, 'HOOK-BYPASS');
+  assert.match(hook.reason, /names the directory scripts\/lanes\/ with held file\(s\) in it: scripts\/lanes\/other\.sh \(open PR 77\)/);
+  const trust = classifyTicket(tk({ description: 'Fix scripts/ci/check.sh and tidy scripts/lanes/.' }), ctx({ held }));
+  assert.equal(trust.class, 'LOCAL-NATIVE');
+  assert.match(trust.reason, /trust path scripts\/ci\/check\.sh/);
+  assert.match(trust.reason, /names the directory scripts\/lanes\/ with held file\(s\) in it: scripts\/lanes\/other\.sh \(open PR 77\)/);
+});
+
 test('CLI: open PR files come from the paginated API, so a PR gh pr diff refuses with 406 still holds its files', () => {
   const { bucket, jira, gh } = setup();
   const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9004'], {

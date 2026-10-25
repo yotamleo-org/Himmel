@@ -221,11 +221,12 @@ export function classifyTicket(t, ctx) {
     const u = (ctx.held ?? []).filter((x) => underDir(f, x));
     if (u.length && !dirHold) dirHold = { dir: f, held: u };
   }
+  const dirNote = dirHold ? `names the directory ${dirHold.dir} with held file(s) in it: ${dirHold.held.slice(0, 3).map((x) => `${x.file} (${x.why})`).join(', ')}${dirHold.held.length > 3 ? `, +${dirHold.held.length - 3} more` : ''}` : '';
   const hook = files.find((f) => HOOKS.test(f));
-  if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
+  if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass${dirNote ? `; ${dirNote}` : ''}`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
-  if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO`);
-  if (dirHold) return v('LOCAL-NATIVE', `names the directory ${dirHold.dir} with held file(s) in it: ${dirHold.held.slice(0, 3).map((x) => `${x.file} (${x.why})`).join(', ')}${dirHold.held.length > 3 ? `, +${dirHold.held.length - 3} more` : ''} — a local leg scopes the files and must not write them, a cloud brief cannot (pass files)`);
+  if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO${dirNote ? `; ${dirNote}` : ''}`);
+  if (dirHold) return v('LOCAL-NATIVE', `${dirNote} — a local leg scopes the files and must not write them, a cloud brief cannot (pass files)`);
   if (strange.length) return v('LOCAL-NATIVE', `unrecognised path ${strange.join(', ')} — outside the known roots, so the hook, trust and held checks cannot be trusted (pass files)`);
   if (!files.length) return v('LOCAL-NATIVE', 'no file named in the ticket — nothing to scope a brief on (pass files)');
   const need = text.match(needs.re);

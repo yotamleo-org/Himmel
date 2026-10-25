@@ -848,7 +848,7 @@ def emit_free(rows):
                 continue
             picked.extend((f, i['key']) for f in i['files'])
             emitted.append(i)
-            overlap = reasons.get(i['key'], '') if reasons.get(i['key'], '').startswith('names the directory') else ''  # a directory the ticket names with a held file in it: listed, never without its holder
+            overlap = reasons.get(i['key'], '')[reasons.get(i['key'], '').find('names the directory'):] if 'names the directory' in reasons.get(i['key'], '') else ''  # a directory the ticket names with a held file in it: listed, never without its holder
             lane_of[i['key']] = lane + (' (overlap: %s)' % overlap if overlap else '')
             print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
             if overlap:
