@@ -34,7 +34,6 @@
 #                       gemini/copilot/cursor index rows stay deferred.
 #                       (The former T14(a) claude-codex-launcher prohibition
 #                       was retired 2026-07-13.)
-#   T15 no-windows   -- no tracked .ps1/.cmd/.bat outside archive/windows/.
 #
 # Public propagation-snapshot guard: T12/T13 assume
 # $BASE...HEAD is a normal feature-branch diff -- what one PR authored. A
@@ -810,44 +809,6 @@ else
 fi
 
 # ----------------------------------------------------------------------------
-# T15 -- Windows is dropped: no tracked .ps1/.cmd/.bat anywhere (test fixtures
-# excepted), and no archive/windows/ tree.
-# ----------------------------------------------------------------------------
-t15_strays() {
-    local all
-    if all="$(env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE git -C "$1" ls-files '*.ps1' '*.cmd' '*.bat' 'archive/windows')"; then
-        printf '%s\n' "$all" | grep -v '/fixtures/' || true
-    else
-        echo "git ls-files failed"
-    fi
-}
-
-# Control: a planted stray in a scratch index must be reported, a fixture not.
-T15_CONTROL="$(mktemp -d "${TMPDIR:-/tmp}/ws5-t15.XXXXXX")" || { echo "test-ws5-invariants.sh: mktemp failed" >&2; exit 2; }
-trap 'rm -f "$SHIPPED" "$VENDORED_LIST" "$REMOVED" "$SHIPPED_KIND"; rm -rf "$T15_CONTROL"' EXIT
-mkdir -p "$T15_CONTROL/scripts/fixtures"
-: > "$T15_CONTROL/scripts/stray.ps1"
-: > "$T15_CONTROL/scripts/fixtures/kept.cmd"
-env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE git -C "$T15_CONTROL" init -q
-env -u GIT_DIR -u GIT_INDEX_FILE -u GIT_WORK_TREE git -C "$T15_CONTROL" add -f -- scripts/stray.ps1 scripts/fixtures/kept.cmd || { echo "test-ws5-invariants.sh: staging the T15 control failed" >&2; exit 2; }
-t15_control="$(t15_strays "$T15_CONTROL")"
-if [ "$t15_control" = "scripts/stray.ps1" ]; then
-    echo "PASS T15 control: a planted stray .ps1 is reported and a fixtures/ .cmd is not."
-else
-    echo "FAIL T15 control: want exactly scripts/stray.ps1, got: ${t15_control:-nothing}" >&2
-    FAIL=$((FAIL + 1))
-fi
-
-t15_stray="$(t15_strays "$REPO")"
-if [ -z "$t15_stray" ]; then
-    echo "PASS T15 no-windows: no tracked .ps1/.cmd/.bat and no archive/windows/."
-else
-    echo "FAIL T15 no-windows: tracked Windows files:" >&2
-    printf '%s\n' "$t15_stray" | head -10 >&2
-    FAIL=$((FAIL + 1))
-fi
-
-# ----------------------------------------------------------------------------
 # Verdict
 # ----------------------------------------------------------------------------
 if [ "$FAIL" -ne 0 ]; then
@@ -861,6 +822,6 @@ fi
 if [ "$PROPAGATION_SNAPSHOT" -eq 1 ]; then
     echo "PASS: WS5 invariants test (T14 locks ran; T12 no-bloat, T13 no-always-on SKIPPED -- propagation snapshot, HIMMEL-2642)."
 else
-    echo "PASS: WS5 invariants test (T12 no-bloat, T13 no-always-on, T14 locks, T15 no-windows)."
+    echo "PASS: WS5 invariants test (T12 no-bloat, T13 no-always-on, T14 locks)."
 fi
 exit 0

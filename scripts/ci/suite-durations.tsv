@@ -132,7 +132,6 @@ scripts/ci/test-cancel-superseded-runs.sh	1
 scripts/ci/test-check-ci-install-locks.sh	5
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
-scripts/ci/test-check-cr-terminology.sh	0
 scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
@@ -141,6 +140,7 @@ scripts/ci/test-check-lockfile-release-age.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
 scripts/ci/test-check-manifest-coverage.sh	1
 scripts/ci/test-check-no-secrets.sh	0
+scripts/ci/test-check-removal-ratchets.sh	1
 scripts/ci/test-check-run-timelines.sh	6
 scripts/ci/test-check-vacuous-path-assert.sh	1
 scripts/ci/test-ci-container-jobs.sh	1
@@ -348,7 +348,6 @@ scripts/graphify/test-graph-refresh.sh	1
 scripts/graphify/test-harden-graph.sh	2
 scripts/graphify/test-leg-graph-rationale.sh	1
 scripts/graphify/test-leg-graph.sh	1
-scripts/graphify/test-no-windows-indexed.sh	0
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	0
 scripts/graphify/test-refresh-graph-map-lock.sh	68
 scripts/graphify/test-refresh-graph-map-resume.sh	7
@@ -901,7 +900,6 @@ scripts/lint/test-check-rule-tags.sh	1
 scripts/lint/test-check-swallowed-errors.sh	1
 scripts/lint/test-flag-parity.sh	1
 scripts/lint/test-list-enforced-rules.sh	0
-scripts/lint/test-no-windows-branches.sh	1
 scripts/lint/test-shell-lint.sh	10
 scripts/lint/test-skill-lint.sh	2
 scripts/lint/test-vendored-domain-modeling.sh	0
