@@ -100,6 +100,9 @@ put scripts/a.sh 'LEGS_SPLIT=2'
 tree_case "LEGS_SPLIT fails" 1
 case "$LAST_OUT" in *'token `LEGS_SPLIT`'*scripts/a.sh:1*) pass "finding names token and first site" ;; *) fail "finding names token and first site: $LAST_OUT" ;; esac
 fresh
+put 'scripts/a:b.sh' 'LEGS_SPLIT=2'
+tree_case "a token in a file name with a colon fails" 1
+fresh
 put scripts/b.sh 'export CACHE_HEALTH_CONSOLE=1'
 tree_case "a trailing _CONSOLE fails" 1
 fresh

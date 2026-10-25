@@ -122,8 +122,9 @@ if [ "$mode" = tree ]; then
         if is_exempt_path "$f"; then printf '%s\n' "$f"; fi
     done < "$work/files" > "$work/exempt"
     git -c core.quotePath=false ls-files --deleted >> "$work/exempt" || { echo "$me: git ls-files --deleted failed" >&2; exit 2; }
-    git -c core.quotePath=false grep -I -n -E -e '(LEGS?|CONSOLE)' -e '--(legs?|console)' > "$work/hits"
+    git -c core.quotePath=false grep -z -I -n -E -e '(LEGS?|CONSOLE)' -e '--(legs?|console)' > "$work/hits.z"
     [ $? -le 1 ] || { echo "$me: git grep failed" >&2; exit 2; }
+    tr '\000' '\001' < "$work/hits.z" > "$work/hits" || { echo "$me: tr failed" >&2; exit 2; }
     have_base=0
     for candidate in origin/main main; do
         git rev-parse --verify -q "$candidate^{commit}" >/dev/null || continue
@@ -156,10 +157,12 @@ if [ "$mode" = tree ]; then
                 b = l; sub(/.*\//, "", b)
                 if (!exempt_name(l) && !exempt_name(b)) add("path", l, "file name")
             }
+            sep = sprintf("%c", 1)
             while ((getline l < hitsf) > 0) {
-                if (!match(l, /^[^:]*:[0-9]+:/)) continue
-                site = substr(l, 1, RLENGTH - 1); body = substr(l, RLENGTH + 1)
-                file = site; sub(/:[0-9]+$/, "", file)
+                p = index(l, sep); if (!p) continue
+                file = substr(l, 1, p - 1); body = substr(l, p + 1)
+                p = index(body, sep); if (!p) continue
+                site = file ":" substr(body, 1, p - 1); body = substr(body, p + 1)
                 if ((file in skip) || body ~ /old-term-ok:[[:space:]]*[^[:space:]]/) continue
                 rest = body
                 while (match(rest, /[A-Za-z0-9_]+/)) {
