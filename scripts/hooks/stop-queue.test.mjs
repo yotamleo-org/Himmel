@@ -80,16 +80,16 @@ test('sanitizeKey refuses separators, traversal and emptiness', () => {
   assert.match(sanitizeKey('../../etc/passwd'), /^_\.\._etc_passwd-[0-9a-f]{8}$/);
   assert.match(sanitizeKey('a/b\\c'), /^a_b_c-[0-9a-f]{8}$/);
   assert.equal(sanitizeKey(''), 'unkeyed');
-  assert.equal(sanitizeKey('speak-reply.abc_123'), 'speak-reply.abc_123');
+  assert.equal(sanitizeKey('sample-key.abc_123'), 'sample-key.abc_123');
 });
 
 // The dedup identity carries the session, which is what makes a FLEET of N
 // children produce N entries while one session re-firing produces one.
 test('entryKey namespaces by session_id, and degrades without one', () => {
-  assert.equal(entryKey('speak-reply', JSON.stringify({ session_id: 's1' })), 'speak-reply.s1');
+  assert.equal(entryKey('sample-key', JSON.stringify({ session_id: 's1' })), 'sample-key.s1');
   // No session to key on: a unique suffix, never a collision with a sibling.
-  assert.match(entryKey('speak-reply', 'not json'), /^speak-reply\.\d+-[a-z0-9]+$/);
-  assert.match(entryKey('speak-reply', ''), /^speak-reply\.\d+-[a-z0-9]+$/);
+  assert.match(entryKey('sample-key', 'not json'), /^sample-key\.\d+-[a-z0-9]+$/);
+  assert.match(entryKey('sample-key', ''), /^sample-key\.\d+-[a-z0-9]+$/);
 });
 
 // ---------------------------------------------------------------- enqueue
@@ -471,7 +471,7 @@ test('the env snapshot takes the gate variables and refuses the secret-shaped on
   const env = {
     HIMMEL_WHERE_ARE_WE: '1',
     CLAUDE_PROJECT_DIR: '/repo',
-    VOICE_SPEAK: '1',
+    HIMMEL_SAMPLE_GATE: '1',
     JIRA_NUDGE_RELAY_CMD: 'true',
     HIMMEL_TELEGRAM_BOT_TOKEN: 'shibboleth',
     CLAUDE_CODE_OAUTH_TOKEN: 'shibboleth',
@@ -482,11 +482,13 @@ test('the env snapshot takes the gate variables and refuses the secret-shaped on
   assert.deepEqual(snapshotEnv(env), {
     HIMMEL_WHERE_ARE_WE: '1',
     CLAUDE_PROJECT_DIR: '/repo',
-    VOICE_SPEAK: '1',
+    HIMMEL_SAMPLE_GATE: '1',
     JIRA_NUDGE_RELAY_CMD: 'true',
     // Carried on purpose — it decides which interpreter the job resolves.
     PATH: '/usr/bin',
   });
+  // The retired VOICE_ namespace is no longer snapshotted.
+  assert.equal(snapshotEnv({ VOICE_SPEAK: '1' }).VOICE_SPEAK, undefined);
 });
 
 test('an entry carries the snapshot and never a secret', () => {
@@ -1027,7 +1029,7 @@ test('sanitizeKey keeps distinct raw inputs distinct', () => {
   assert.notEqual(sanitizeKey('a/b'), sanitizeKey('a\\b'));
   assert.notEqual(sanitizeKey('x'.repeat(150) + 'A'), sanitizeKey('x'.repeat(150) + 'B'));
   // Already filename-safe input is untouched — the common case stays readable.
-  assert.equal(sanitizeKey('speak-reply.abc_123'), 'speak-reply.abc_123');
+  assert.equal(sanitizeKey('sample-key.abc_123'), 'sample-key.abc_123');
 });
 
 // ------------------------------------------- panel findings
