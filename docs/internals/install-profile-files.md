@@ -14,8 +14,10 @@ matches it across that directory.
 
 A live capture of the operator's own reference machine: the most-loaded
 himmel install that exists, used as the "does the wizard cover everything a
-real setup needs" reference. Every path in it is a placeholder token
-(`<LUNA_VAULT_PATH>`, `<HANDOVER_DIR>`, ...), never a real personal path.
+real setup needs" reference. Every machine-specific path in it is a
+placeholder token (`<LUNA_VAULT_PATH>`, `<HANDOVER_DIR>`, ...), never a real
+personal path; a path under `~` that is the same on every machine, such as
+`bridge.envPath`, stays as it is.
 
 Regenerate it with:
 
@@ -58,7 +60,7 @@ escape hatch when none of the named presets fit, not a free-form label: it is
 still validated against that fixed 4-value enum, so a fifth, invented value
 (e.g. `"minimal"`) still gets a validation refusal, not silent acceptance.
 
-## Status: the v2 loader reads it; the paths are still placeholders
+## Status: the v2 loader reads it; the machine-specific paths are still placeholders
 
 Two separate things, previously conflated here.
 
@@ -79,8 +81,8 @@ enumerated it (it validates a named allowlist and ignores unknown keys), so a
 profile captured before this change and still carrying `tier` remains valid
 input.
 
-**The committed file is still not runnable input as-is.** Every path in it is
-a placeholder token (`<LUNA_VAULT_PATH>`, `<HANDOVER_DIR>`, `<WHISPER_CLI>`)
+**The committed file is still not runnable input as-is.** Every
+machine-specific path in it is a placeholder token (`<LUNA_VAULT_PATH>`, `<HANDOVER_DIR>`, `<WHISPER_CLI>`)
 written by the capture's scrub pass, and **nothing expands those tokens**:
 there is no substitution step in `bin.js` between `loadProfile` and the plan.
 They are non-empty strings, so they pass validation and would then be used
