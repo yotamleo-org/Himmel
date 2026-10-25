@@ -30,7 +30,7 @@ done
 [ -n "$root" ] || root="$(git rev-parse --show-toplevel)" || exit 2
 
 WIN_RE='schtasks|commandWindows|cmd\.exe|powershell\.exe|%LOCALAPPDATA%|windows-latest|MSYS_NO_PATHCONV|cygpath|\.ps1\b|run-hook\.cmd|Get-ScheduledTask'
-VOICE_RE='scripts/voice/|speak-reply|voice-policy|commands/speak\.md|docs/voice\.md|(^|[/( ])voice\.md|VOICE_SPEAK|jarvis\.py|push-to-talk|speech-daemon'
+VOICE_RE='scripts/voice/|speak-reply|voice-policy|commands/speak\.md|docs/voice\.md|(^|[/( ])voice\.md|VOICE_SPEAK|jarvis\.py|push-to-talk|speech-daemon' # t13b-ok: a pattern naming the archived voice script, starts no process
 SELF='scripts/lint/check-windows-leftovers.sh'
 TEST='scripts/lint/test-check-windows-leftovers.sh'
 BASELINE='scripts/lint/windows-leftovers-baseline.tsv'
