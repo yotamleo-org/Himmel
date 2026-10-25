@@ -1,7 +1,8 @@
 # Suites run-shell-tests.sh runs alone when SUITE_JOBS > 1: nothing else is
 # running while one of these runs. One glob per line, matched against
-# "/<suite path>", then the reason. A suite belongs here only for a shared
-# resource its own temp root cannot isolate, found by reading it.
+# "/<suite path>" with the scan root resolved (symlinks followed), then the
+# reason. A suite belongs here only for a shared resource its own temp root
+# cannot isolate, found by reading it.
 */scripts/docs-site/test-serve.sh        binds the fixed port 4321
 */scripts/vm/test-after-report.sh        binds fixed ports from 2231 (BASE_PORT_T*)
 */scripts/vm/test-dry-run-restore.sh     binds the fixed ports 2281-2284

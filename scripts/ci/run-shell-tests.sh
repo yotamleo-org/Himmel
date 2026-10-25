@@ -3360,7 +3360,7 @@ fi
 # --------------------------------------------------------------------------
 suites_file=$(mktemp)
 suites_raw=$(mktemp)
-trap 'rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; [ -z "${live_lane_roots:-}" ] || rm -rf $live_lane_roots; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
+trap '[ "${suite_jobs:-1}" -le 1 ] || ! declare -F _lanes_stop >/dev/null || _lanes_stop; rm -f "$suites_file" "$suites_raw"; [ -z "${live_root:-}" ] || rm -rf "$live_root"; [ -z "${live_lane_roots:-}" ] || rm -rf $live_lane_roots; suite_lock_release; suite_lock_queue_leave; [ -z "${SUITE_SEM_SLOT:-}" ] || suite_sem_release' EXIT
 
 # Check EVERY discovery stage so a partial-output-then-fail can't mask an
 # incomplete scan (ran>0 with the guard below passing → green on a scan that
@@ -4322,7 +4322,7 @@ else
   suite_jobs=1
 fi
 # Suites that must run alone (fixed ports, shared global state): one glob per
-# line, matched against "/<suite path>", then a reason. Unreadable list in a
+# line, matched against "/<resolved suite path>" (suite_key), then a reason. Unreadable list in a
 # parallel run: fall back to serial rather than guess which suites are safe.
 parallel_deny_file="${SUITE_PARALLEL_DENY:-$REPO_ROOT/scripts/ci/parallel-deny.txt}"
 parallel_deny=""
@@ -4820,7 +4820,7 @@ while IFS= read -r suite <&3; do
   # suites that finished and the time that passed during the wait.
   suite_alone=0
   if [ "$suite_jobs" -gt 1 ]; then
-    if _suite_parallel_denied "$suite"; then
+    if _suite_parallel_denied "$suite_key"; then
       suite_alone=1
       _lanes_drain
     else

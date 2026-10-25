@@ -13,6 +13,8 @@
 #       for a deny-listed suite stops that suite from running.
 #   P7. A run budget that expires while the runner waits for a free lane keeps
 #       the waiting suite from starting.
+#   P8. The deny-list matches a suite however the scan root is spelled (a
+#       symlink to the suites' directory).
 #
 # Each fixture suite records how many fixture suites were running when it
 # started, so overlap is read from the suites themselves, not from timing.
@@ -208,6 +210,24 @@ if sb=$(mk_sandbox); then
   rm -rf "$sb"
 else
   fail "P7: mktemp failed"
+fi
+
+echo "== P8: a deny-listed suite runs alone when the scan root is a symlink =="
+if sb=$(mk_sandbox); then
+  mk_suite "$sb" test-a.sh 15
+  mk_suite "$sb" test-c-alone.sh 10
+  mk_suite "$sb" test-d.sh 15
+  printf '*/scripts/test-c-alone.sh  fixture: must run alone\n' > "$sb/deny.txt"
+  ln -s "$sb/scripts" "$sb/link"
+  out=$(SUITE_JOBS=3 SUITE_PARALLEL_DENY="$sb/deny.txt" env -u SUITE_TIER_MODE bash "$RUNNER" "$sb/link" 2>&1); rc=$?
+  if [ "$rc" -eq 0 ] && [ "$(peak_of "$sb" test-c-alone.sh)" = 1 ] && [ "$(peak_of "$sb" test-d.sh)" = 1 ]; then
+    pass "P8: the deny-list matched link/test-c-alone.sh through its resolved path"
+  else
+    fail "P8: expected rc 0 and running counts 1/1 for test-c-alone.sh/test-d.sh, got rc=$rc peak.log=$(tr '\n' ' ' < "$sb/peak.log"); out: $out"
+  fi
+  rm -rf "$sb"
+else
+  fail "P8: mktemp failed"
 fi
 
 rst_tally
