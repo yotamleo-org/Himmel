@@ -196,7 +196,13 @@ def critics(path):
         return None
     rows = []
     for row in json.loads(text).get("panel", []):
-        model = f"`{row['model']}`" if row.get("model") else f"provider `{row.get('provider')}`"
+        if row.get("model"):
+            model = f"`{row['model']}`"
+        elif row.get("provider"):
+            model = f"provider `{row['provider']}`"
+        else:
+            problems.append(f"panel row {row.get('slug')} has no model or provider in {path}")
+            continue
         rows.append(f"{row['slug']}: {model} ({row.get('mode', 'hard')})")
     if not rows:
         problems.append(f"no panel rows in {path}")
@@ -320,6 +326,9 @@ if mode == "check":
         print(f"gen-team-page: {PAGE} is {'missing' if committed is None else 'stale'}; run bash scripts/docs/gen-team-page.sh", file=sys.stderr)
         sys.exit(1)
     sys.exit(0)
+if os.path.islink(target):
+    print(f"gen-team-page: {PAGE} is a symlink; refusing to write through it", file=sys.stderr)
+    sys.exit(1)
 with open(target, "w", encoding="utf-8") as fh:
     fh.write(page)
 print(f"gen-team-page: wrote {PAGE}")

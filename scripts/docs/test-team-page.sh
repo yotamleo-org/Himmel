@@ -16,6 +16,10 @@
 #                carries no script.
 #   7. CONTROL — an untouched fixture copy passes, so 2 to 5 fail for their
 #                planted cause and not for the copy.
+#   8. NO MODEL — a critics.json panel row with neither a model nor a
+#                provider fails, naming the row.
+#   9. SYMLINK — write mode refuses a docs/team.md that is a symlink and
+#                leaves the link's target untouched.
 #
 # Usage: bash scripts/docs/test-team-page.sh
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
@@ -103,6 +107,34 @@ if d=$(fixture drift); then
     expect_fail "drift: a source that lost a card's anchor fails" "$d" "no frontmatter model: in .claude/agents/judge-ro.md"
 else
     bad "drift: fixture" "could not build the fixture"
+fi
+
+# 8. NO MODEL
+if d=$(fixture nomodel); then
+    python3 -I -c 'import json, sys
+p = sys.argv[1]
+data = json.load(open(p, encoding="utf-8"))
+data["panel"].append({"slug": "ghost", "mode": "hard"})
+json.dump(data, open(p, "w", encoding="utf-8"))' "$d/scripts/cr/critics.json"
+    expect_fail "no model: a panel row with no model or provider fails" "$d" "panel row ghost has no model or provider"
+else
+    bad "no model: fixture" "could not build the fixture"
+fi
+
+# 9. SYMLINK
+if d=$(fixture symlink); then
+    printf 'outside\n' >"$TMP/outside.md"
+    rm -f "$d/docs/team.md"
+    ln -s "$TMP/outside.md" "$d/docs/team.md"
+    err=$(bash "$GEN" --root "$d" 2>&1 >/dev/null)
+    rc=$?
+    if [ "$rc" -eq 1 ] && [[ "$err" == *"is a symlink"* ]] && [ "$(cat "$TMP/outside.md")" = "outside" ]; then
+        ok "symlink: write mode refuses a symlinked page and leaves its target alone"
+    else
+        bad "symlink: write mode refuses a symlinked page and leaves its target alone" "rc=$rc, target=$(cat "$TMP/outside.md" | head -1); got: $err"
+    fi
+else
+    bad "symlink: fixture" "could not build the fixture"
 fi
 
 # 6. NO JS
