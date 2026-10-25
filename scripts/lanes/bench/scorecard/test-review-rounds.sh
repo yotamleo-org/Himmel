@@ -97,6 +97,15 @@ check_eq "a gh answer at the 1000 limit is exit 1, not a silently partial window
 REVIEW_ROUNDS_GH=/nonexistent bash "$SCRIPT" --since 2026-10-24T00:00:00Z >/dev/null 2>&1
 check_eq "a failing gh is exit 1, not an empty distribution" "$?" "1"
 
+bash "$SCRIPT" --since 2026-10-24T00:00:00Z --repo other/repo >/dev/null 2>&1
+check_eq "--repo is not accepted: the counters are this checkout's, so a foreign repo would be misattributed" "$?" "2"
+
+mkdir -p "$RUN/badawk"
+printf '#!/bin/sh\nexit 3\n' > "$RUN/badawk/awk"
+chmod +x "$RUN/badawk/awk"
+PATH="$RUN/badawk:$PATH" bash "$SCRIPT" --since 2026-10-24T00:00:00Z >/dev/null 2>&1
+check_eq "a failing aggregation is a non-zero exit, not an empty distribution" "$?" "3"
+
 if [ "$fails" -gt 0 ]; then
     echo "test-review-rounds: $fails failed"
     exit 1

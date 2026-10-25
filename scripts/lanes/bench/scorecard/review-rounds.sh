@@ -19,19 +19,19 @@
 # Platform guard: no .ps1 twin, by design, same as the rest of this
 # directory - POSIX bash 3.2+ plus jq and gh.
 #
-# Usage: review-rounds.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>] [--tsv]
-# --repo defaults to the repo of this checkout's own remote.
+# Usage: review-rounds.sh --since <ISO8601> [--until <ISO8601>] [--tsv]
+# The repo is this checkout's own remote: the counters are this checkout's too.
 # Seams: REVIEW_ROUNDS_GH (gh), REVIEW_ROUNDS_STATE_DIR (the counter dir).
 set -u
+set -o pipefail
 
-usage() { echo "usage: review-rounds.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>] [--tsv]" >&2; }
+usage() { echo "usage: review-rounds.sh --since <ISO8601> [--until <ISO8601>] [--tsv]" >&2; }
 
-SINCE=""; UNTIL=""; REPO=""; TSV=0
+SINCE=""; UNTIL=""; TSV=0
 while [ $# -gt 0 ]; do
     case "$1" in
         --since) SINCE="${2:?--since needs a value}"; shift 2 ;;
         --until) UNTIL="${2:?--until needs a value}"; shift 2 ;;
-        --repo) REPO="${2:?--repo needs a value}"; shift 2 ;;
         --tsv) TSV=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "review-rounds: unknown argument: $1" >&2; usage; exit 2 ;;
@@ -69,9 +69,8 @@ RUN=$(tmpdir) || { echo "review-rounds: mktemp failed" >&2; exit 1; }
 trap 'rm -rf "$RUN"' EXIT
 
 SINCE_DAY=$(date -u -d "@$SINCE_EPOCH" +%F 2>/dev/null || date -u -r "$SINCE_EPOCH" +%F)  # gnu-ok: BSD/macOS fallback
-# no --repo: gh resolves the repo from this checkout's own remote
-set --; [ -z "$REPO" ] || set -- -R "$REPO"
-(cd "$HERE" && "$GH" pr list "$@" --state merged --limit 1000 --search "merged:>=$SINCE_DAY" --json number,headRefName,mergedAt) > "$RUN/prs.json" 2>/dev/null \
+# gh resolves the repo from this checkout's own remote
+(cd "$HERE" && "$GH" pr list --state merged --limit 1000 --search "merged:>=$SINCE_DAY" --json number,headRefName,mergedAt) > "$RUN/prs.json" 2>/dev/null \
     || { echo "review-rounds: gh pr list failed" >&2; exit 1; }
 # a full page means PRs inside the window may be cut off: refuse rather than print a partial distribution
 if [ "$(jq 'length' "$RUN/prs.json" 2>/dev/null)" = "1000" ]; then
