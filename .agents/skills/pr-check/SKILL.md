@@ -1,6 +1,6 @@
 ---
 name: pr-check
-description: Panel-only CR gate for Codex — run the critic panel, clear the CR marker when clean. /pr-check.
+description: Panel-only CR gate for Codex — run the critic panel, clear the review marker when clean. /pr-check.
 ---
 
 # pr-check (Codex panel-only subset)
@@ -99,7 +99,7 @@ substitutes it before the runbook is read.
 (HIMMEL-3798, superseding HIMMEL-2335's one-fence shape).** The one-fence
 compound below (kept for history) already satisfied the worktree-isolation
 guard, but it was still the single highest-rate classifier-denial shape on
-this runbook (HIMMEL-3724 4a row 2): a leg's `gateAllow` literal matches a
+this runbook (HIMMEL-3724 4a row 2): a worker's `gateAllow` literal matches a
 whole SIMPLE command, and the permission matcher splits a compound on its
 shell separators before matching, so no exact-literal rule for the whole
 `if...fi` string ever fired reliably. `scripts/cr/pr-check-step0.sh` moves
@@ -145,7 +145,7 @@ exactly as it accepted the bare form (probed directly in an
 EnterWorktree-isolated session).
 
 **If this fence is refused with "runs bash in a plain command … cannot be
-shown not to run git" anyway, the session is EnterWorktree-pinned** (a leg
+shown not to run git" anyway, the session is EnterWorktree-pinned** (a worker
 launched before HIMMEL-3536's fix, or one whose settings someone hand-edited
 back in) — the fix and the interim are in `docs/internals/stuck-playbook.md`
 (HIMMEL-3536), not a respelling of this fence.
@@ -155,10 +155,10 @@ fence above, never both, and ONLY in a himmel checkout on a diff that touches
 none of the paths `pr-check-context.sh` guards: `scripts/cr/`, `scripts/lib/`,
 `scripts/guardrails/lib.sh`, `scripts/check-ci.sh`,
 `scripts/handover/resolve-active-item.sh` and the files the critic panel, the
-handover bridges and the bank preflight run through a variable — the full
+handover bridges and the usage preflight run through a variable — the full
 list is `cr_guarded` in `pr-check-context.sh` (what a clean step 0 later runs
 from the branch — HIMMEL-3493).** First prove the lane — the allow rule is
-emitted for every leg profile whatever its cwd, so the relative path is
+emitted for every worker profile whatever its cwd, so the relative path is
 trusted only once the cwd shares `HIMMEL_REPO`'s git dir AND is the worktree
 root (from a subdirectory the relative path would name a local file there,
 not himmel's):
@@ -179,7 +179,7 @@ the fence — the safe direction
 (always against refs/remotes/origin/main, even on a stacked PR — the branch
 runs its parent's bytes too, and a diff against a stacked base would hide
 them; spelled in full because a local branch named `origin/main` would shadow
-the bare name; the working-tree and untracked legs are what make an
+the bare name; the working-tree and untracked parts are what make an
 UNCOMMITTED `scripts/cr/` edit count too, and a main-side change only
 over-reports):
 
@@ -200,14 +200,14 @@ the lane check already proved the cwd is the worktree root and an inherited
 `GIT_LITERAL_PATHSPECS=1` would take `:(top)scripts/cr/` literally and match
 nothing, while a plain pathspec means the same under every pathspec env var; `unknown`
 OR any path proves nothing clean and counts as a guarded-path diff. It is the
-one shape a leg's allow rule can match:
+one shape a worker's allow rule can match:
 
     bash scripts/cr/pr-check-context.sh
 
 If the check prints any path or `unknown`, use the canonical fence above — and if that
 fence is refused, stop and report BLOCKED; never fall back to the bare
 literal. On such a diff an allow-listed literal would auto-run the branch's own
-bytes, which may have deleted their own hand-off (console ruling on
+bytes, which may have deleted their own hand-off (chief ruling on
 HIMMEL-3359). The in-script hand-off is defense in depth, not the trust root:
 run from a copy that is not the anchor's, `pr-check-context.sh` reads
 `HIMMEL_REPO` itself and `exec`s the ANCHOR's copy before deciding anything
@@ -311,7 +311,7 @@ for the drifted or adopter case.
 adopter-safe spelling. When step 0's printed `himmel_dir=` equals `repo=` (the
 himmel lane), drop the `"<himmel_dir>/` prefix and its closing quote and run the
 cwd-relative literal `bash scripts/cr/<script>.sh <literal args>` instead: the
-Claude twin's leg allow rules match only that relative text, and keeping the
+Claude twin's worker allow rules match only that relative text, and keeping the
 twins in one spelling avoids a lane-dependent runbook. When they differ (the
 adopter lane) keep the absolute spelling — a relative path there would run the
 REVIEWED repo's scripts. `scripts/lanes/tests/plugin-profiles.test.mjs` pins
@@ -382,8 +382,8 @@ Stop. Only `lane = full` or empty proceeds.
 ## 3. Run the panel over the diff
 
 **Operator ruling 2026-09-21 (HIMMEL-3338): the operator authorises sending
-review diffs to Codex from legs.** `panel-first-pass.sh` below is allow-listed
-for the leg profiles as a literal, so a denial on it most likely means the call
+review diffs to Codex from workers.** `panel-first-pass.sh` below is allow-listed
+for the worker profiles as a literal, so a denial on it most likely means the call
 was not spelled as one (see the himmel-lane spelling note above) — check the
 spelling first. A denial that names a deny rule or a policy restriction is not a
 spelling problem: stop and report it, never respell around it, and never skip
@@ -409,7 +409,7 @@ operator decision: accept paid-by-default).** The free lane was removed
 deliberately (HIMMEL-667, HIMMEL-953), and `critics.json` today holds exactly one
 row — `codex` / `gpt-6.1-sol`, tier `paid` — so an unset `CR_PROFILE` resolves to
 zero free rows and falls back to it: a default `/pr-check` that actually runs the
-panel consumes the operator's OpenAI usage bank. `CR_PROFILE=none` is the instant
+panel consumes the operator's OpenAI usage budget. `CR_PROFILE=none` is the instant
 escape when spend is unwanted — but it skips the panel, and this subset has no
 Claude backstop, so it leaves zero
 responders: the marker is RETAINED per the review floor above and `SKIP_CR=1` is

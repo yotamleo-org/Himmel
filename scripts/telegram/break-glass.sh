@@ -277,16 +277,16 @@ op_revert_main() {
 }
 
 # The current console's fleet manifest: the seam, else the newest
-# *-console.fleet.json under the handover root.
+# *-chief.fleet.json or *-console.fleet.json under the handover root.
 fleet_manifest() {
     local fleet="${BREAK_GLASS_FLEET:-}"
     if [ -z "$fleet" ]; then
         # shellcheck source=../lib/handover-path.sh
         . "$PRIMARY/scripts/lib/handover-path.sh"
-        # ponytail: newest *-console.fleet.json by mtime stands in for "the current
+        # ponytail: newest *-chief/*-console.fleet.json by mtime stands in for "the current
         # console", upgrade path: a console pointer file if two consoles ever run.
         # gnu-ok: the bridge runs only on the Linux station (find -printf)
-        fleet="$(find "$(handover_root)" -maxdepth 4 -name '*-console.fleet.json' -printf '%T@ %p\n' 2>/dev/null \
+        fleet="$(find "$(handover_root)" -maxdepth 4 \( -name '*-console.fleet.json' -o -name '*-chief.fleet.json' \) -printf '%T@ %p\n' 2>/dev/null \
             | sort -rn | head -n 1 | cut -d' ' -f2-)"
     fi
     if [ -z "$fleet" ] || [ ! -f "$fleet" ]; then

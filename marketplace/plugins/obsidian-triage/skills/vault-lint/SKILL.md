@@ -19,7 +19,7 @@ Run the vault-lint engine against a vault root. Deterministic, report-only, file
    token in the engine path is refused outright, and `CLAUDE_PLUGIN_ROOT`
    resolves to the plugin's installed *cache* copy, not this repo, which the
    hook does not trust either. If `$HIMMEL_REPO` is unset, ask the operator for
-   the himmel repo path (interactive) or abort the leg (unattended) rather than
+   the himmel repo path (interactive) or abort the run (unattended) rather than
    guessing:
    ```bash
    python "<himmel-repo-root>/marketplace/plugins/obsidian-triage/skills/vault-lint/vault_lint.py" "<vault>"

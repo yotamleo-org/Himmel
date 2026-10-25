@@ -1382,6 +1382,14 @@ allow "6548 parity tail | gate" 'tail f | bash scripts/check-ci.sh 1'
 allow "6548 parity git log | tail" 'git log | tail -5'
 allow "6548 parity the shape quoted as data" 'echo "bash scripts/check-ci.sh 1 | tail -5"'
 
+# a command model that runs past its bound denies: a stub timeout stands in for the slow model
+slow=$(mktemp -d "${TMPDIR:-/tmp}/btpog-slow.XXXXXX") || exit 1
+printf '#!/bin/sh\nexit 124\n' >"$slow/timeout" && chmod +x "$slow/timeout"
+err=$(printf '%s' "$(j_bash "bash -c 'scripts/check-ci.sh 1' | tail -5 | cat")" | XDG_STATE_HOME="$slow/state" PATH="$slow:$PATH" bash "$HOOK" 2>&1 >/dev/null); rc=$?
+if [ "$rc" = 2 ] && [[ $err == *"timed out"* ]]; then pass "a timed-out command model denies a gate and tail the model would read"
+else fail "a timed-out command model denies a gate and tail the model would read — rc=$rc $err"; fi
+rm -rf "$slow"
+
 if [ "$FAILED" -eq 0 ]; then
     echo "OK block-tail-pipe-on-gates: all cases passed"
     exit 0

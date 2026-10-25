@@ -71,7 +71,7 @@ const MERGEPUB = /^\/mergepub\s+#?(\d{1,6})\s+([0-9a-f]{12,40})$/i;
 // time — that is rung 2.
 const RESTART = /^\/restart(?:\s+(full))?$/i;
 
-// Operator -> running console: `/console <session-name> <text>`.
+// Operator -> running console: `/console <session-name> <text>` (`/chief` is the same verb).
 // Slash-prefixed and anchored on the whole message like /arm, so prose such as
 // "console output: foo" never matches. The router only checks SHAPE (name charset,
 // non-empty text); the path-safety refusal and the sender gate live downstream
@@ -80,7 +80,7 @@ const RESTART = /^\/restart(?:\s+(full))?$/i;
 // the verb is case-insensitive and may carry Telegram's `/cmd@<bot>`
 // addressing; a suffix naming another bot (when `botUsername` is known) is chat.
 // Only the leading verb is matched, so a mid-text or trailing /console stays chat.
-const CONSOLE_VERB = /^\/(consoles?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
+const CONSOLE_VERB = /^\/(consoles?|chiefs?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
 
 const FLEET_VERB = /^\/(lockdown|fleet|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
 
@@ -151,7 +151,7 @@ export function classify(raw: string, botUsername?: string | null): Route {
   const verb = t.match(CONSOLE_VERB);
   if (verb && (!verb[2] || !botUsername || verb[2].toLowerCase() === botUsername.toLowerCase())) {
     const rest = t.slice(verb[0].length);
-    if (verb[1].toLowerCase() === "consoles") { if (rest === "") return { kind: "consoles" }; }
+    if (/^(consoles|chiefs)$/i.test(verb[1])) { if (rest === "") return { kind: "consoles" }; }
     else {
       const con = rest.match(/^\s+([A-Za-z0-9_.-]+)\s+([\s\S]+)$/);
       if (con) return { kind: "console", name: con[1], text: con[2] };

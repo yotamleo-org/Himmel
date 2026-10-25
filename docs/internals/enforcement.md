@@ -665,8 +665,8 @@ normal suite load is worse than 600 s):
 
 | Tier | Timeout | Membership |
 |---|---|---|
-| **fast guard / injector** | `15` | nothing slow runs *inside the hook's own runtime*: string analysis, a registry read, at most one `py_armor` leg — **or** an outbound call that is `detach_run`-ed and therefore outside the bound |
-| **synchronous external call** | `60` | the hook itself blocks on `gh`, `schtasks`, or ≥2 `py_armor` legs (each capped at `PY_ARMOR_TIMEOUT`, default 10 s) |
+| **fast guard / injector** | `15` | nothing slow runs *inside the hook's own runtime*: string analysis, a registry read, at most one `py_armor` call — **or** an outbound call that is `detach_run`-ed and therefore outside the bound |
+| **synchronous external call** | `60` | the hook itself blocks on `gh`, `schtasks`, or ≥2 `py_armor` calls (each capped at `PY_ARMOR_TIMEOUT`, default 10 s) |
 
 Both tiers size a **single** hook. A `--chain` entry (HIMMEL-2002) is bounded as
 a unit, so it takes `60` once it has several members regardless of their tier —
@@ -679,13 +679,13 @@ all reach the network, but every one of them `detach_run`s the `curl` and
 returns — measured 176–234 ms — so they belong in the fast tier; bounding them
 at 60 s would protect nothing.
 
-60 s members: `block-edit-on-main.sh` (2 `py_armor` legs), `auto-arm-on-cap.sh` /
+60 s members: `block-edit-on-main.sh` (2 `py_armor` calls), `auto-arm-on-cap.sh` /
 `auto-arm-on-subagent-cap.sh` (`py_armor` + `arm-resume.sh` → `schtasks`),
 `trigger-cr-on-pr-create.sh` / `trigger-cr-on-push.sh` (`gh api --paginate` +
 `gh pr comment`), `block-merged-pr-commit.sh` / `block-unresolved-cr-merge.sh`
 (gh-backed `branch-shipped.sh` / `review-merge-gate.sh` / `ci-green-gate.sh`).
 Hooks that already carried an operator-chosen bound
-(the 10 s ledger legs, the 10–30 s SessionStart injectors, the 10 s Stop hook)
+(the 10 s ledger hooks, the 10–30 s SessionStart injectors, the 10 s Stop hook)
 keep it — all measured with ≥8× headroom. The same convention already lives in
 `wire-hook-bash.mjs`, which splices new SessionStart siblings at `timeout: 30`.
 
@@ -788,7 +788,7 @@ the stack's cost is roughly the slowest matching entry, not their sum — but a
 `--chain` entry runs its own members serially, so that entry's p95 is their sum
 (measured 2026-08-22: the 10-member Bash chain 2.1 s p95, the 5-member PowerShell
 chain 1.3 s, both `warn:slo`, both far inside their 60 s bound). Measured on
-OVERLORD8 (2026-08-21, 5–7 runs each, serial): the ledger legs sit at ~60 ms and
+OVERLORD8 (2026-08-21, 5–7 runs each, serial): the ledger hooks sit at ~60 ms and
 the graphify `hook-guard` binaries at ~150–220 ms, but everything that spawns a
 shell is **dominated by Windows process-start and therefore by whatever else the
 box is doing** — the heaviest guards (`block-backend-tier.sh`,
@@ -937,9 +937,9 @@ for the 21 `marketplace/plugins/himmel-ops/hooks/hooks.json` entries) emit
 legacy forms, so existing entries MIGRATE on the next run rather than being
 refused as foreign. `run-node.sh` (both byte-identical copies) refuses an empty
 `"$@"` with one stderr line and **rc=2** — a visible DENY — instead of exec'ing
-a payload-less node. And `scripts/lib/test-run-node.sh` gained three legs: the
+a payload-less node. And `scripts/lib/test-run-node.sh` gained three cases: the
 zero-argument refusal under both bash and dash, an assertion that no live hook
-command carries either superseded launcher, and the hostile-PATH leg below.
+command carries either superseded launcher, and the hostile-PATH case below.
 `.codex/hooks.json` does not reference `run-node.sh`, so the Codex lane needed
 no twin change.
 
@@ -974,7 +974,7 @@ unresolvable there. `command -p` is the POSIX "search the standard utilities
 PATH" form, so the launcher resolves from the system default whatever PATH was
 inherited. `test-run-node.sh` pins both PATH shapes (unset — where `exec`'s
 confstr fallback to `/bin:/usr/bin` means even a bare `sh` would have worked,
-which is why that leg alone did not catch this — and set-but-useless), with a
+which is why that case alone did not catch this — and set-but-useless), with a
 negative control asserting the superseded bare `sh` still dies rc=127 there.
 
 The same commit dropped `run-node.sh`'s `$(dirname "$0")` fork for the builtin
@@ -1070,7 +1070,7 @@ narrative, denied `release` as a merge without review. Guards:
   is not wired into the per-segment safe check, and ANY unquoted separator in
   the command (`;` `|` `&` newline — including a trailing `&`, `;`, `&&`, `||`
   or `|` that leaves an empty tail) disqualifies it. `HANDOVER_DIR` is the only
-  env prefix accepted, so `QUEUE_LOCK_FORCE_RELEASE=1` (a supervisor session action) can
+  env prefix accepted, so `QUEUE_LOCK_FORCE_RELEASE=1` (a chief action) can
   never ride along.
 - **Every value literal:** no expansion, glob or `..`; the doc is an absolute
   `.md`, and — when `HANDOVER_DIR` is given — contained under it. A
@@ -1105,7 +1105,7 @@ narrative, denied `release` as a merge without review. Guards:
 `bash <path> --check <40hex>..<40hex> <<'IMPACTED_EOF'` followed by zero or
 more `SUITE …` lines and a closing `IMPACTED_EOF` are granted. This required
 gate step used to fall through to the classifier, which sometimes denied it as
-Out-of-Place Publication and so parked the worker session. Guards:
+Out-of-Place Publication and so parked the worker. Guards:
 - **The WHOLE command only**, parsed off the raw command. Line 1 has no
   control character, operator, expansion or glob. The heredoc form needs
   `--check` and the quoted delimiter. Every body line starts with `SUITE `.
@@ -1134,7 +1134,7 @@ never the bare relative one (HIMMEL-3587).** This grant sits in
 relative spelling of the heredoc form at its own "one simple command" check —
 a heredoc carries a `<` and a newline, so `bash scripts/cr/impacted-suites.sh
 --check <sha>..<sha> <<'IMPACTED_EOF' …` is refused there before this grant is
-ever reached, parking the worker session. The no-heredoc listing command
+ever reached, parking the worker. The no-heredoc listing command
 (`bash <path> <40hex>..<40hex>`) has no heredoc and is not affected either way.
 
 It fails toward a prompt, never toward approval. Spec:
@@ -1187,7 +1187,7 @@ passing. Fails OPEN on any parse/lookup failure (missing jq/git, no branch
 resolved, unreadable marker) — a missed block is cheaper than bricking
 `gh pr create` on this hook's own bug. One deliberate exception (HIMMEL-2720):
 once a marker is present for the resolved branch, an unreadable HEAD fails
-CLOSED — a hook that cannot read HEAD must not wave a pending-CR PR through.
+CLOSED — a hook that cannot read HEAD must not let a pending-CR PR through.
 Spec: `scripts/hooks/test-check-cr-marker-on-pr-create.sh`.
 
 ### CR gate outside the himmel checkout (adopters + upstream PRs) — HIMMEL-2035
@@ -1547,10 +1547,10 @@ diff --output=.claude/settings.json` is denied. HIMMEL-4518 treats
 `archive -o <file>`, `format-patch -o <dir>` / `--output-directory[=]<dir>`
 (also `-o` at the end of a bundled cluster such as `-ko <dir>`) and the file
 operand of `bundle create` the same way. Their repo check alone passed from a
-worker session cwd, so `git archive -o <primary>/x.tar HEAD` is now denied, while
-`-o /tmp/x.tar` and worker-session-local paths are allowed. `restore --staged` writes only
-the primary's index, but it is still denied like `add`: the supervisor session's next
-commit would carry what the worker session staged.
+worker cwd, so `git archive -o <primary>/x.tar HEAD` is now denied, while
+`-o /tmp/x.tar` and worker-local paths are allowed. `restore --staged` writes only
+the primary's index, but it is still denied like `add`: the chief's next
+commit would carry what the worker staged.
 
 A `cd` may not have run (`false && cd <leg>; git merge x`), so a write is also
 checked from every cwd an earlier `cd` left. The cost is that
@@ -1560,7 +1560,7 @@ Checking the repo root closes the `-C <primary>/handovers` and
 `-C <primary>/<ignored-dir>` exemption holes. An unresolvable cwd or target on
 a write fails closed.
 
-The supervisor session's wrap flow is carved out by shape:
+The chief's wrap flow is carved out by shape:
 
 - `pull` is allowed only with `--ff-only`, flags from a closed list, and
   operands limited to none, `<remote-name>`, or `<remote-name> main|master`.
@@ -1605,14 +1605,14 @@ legitimate feature checkout, so the ordinary verdict allows. But `config` /
 `remote` writes, `branch -u|--set-upstream-to|--unset-upstream|-M|-C|-f|--force`,
 `checkout -B`/`switch -C` onto `main|master`, and `update-ref` /
 `symbolic-ref` on `refs/heads/main|master` land in the worktree's SHARED
-`$GIT_COMMON_DIR`, which the PRIMARY checkout also reads — so a worker session could
+`$GIT_COMMON_DIR`, which the PRIMARY checkout also reads — so a worker could
 repoint `branch.main.remote/merge` or `remote.origin.url` (poisoning the
-supervisor session's own `pull --ff-only`) or move `refs/heads/main` itself, all without
+chief's own `pull --ff-only`) or move `refs/heads/main` itself, all without
 ever writing `-C <primary>`. For exactly those subcommands/flags, the
 target's OWNING primary checkout (`primary_checkout_root` — a no-op for an
 ordinary, non-worktree repo) now gets the SAME `main_checkout_verdict`
 (`_bwimc_git_check_common_owner`). Accepted cost: an ordinary `git config
-<k> <v>` or `git remote add <name> <url>` from a worker session's own cwd now denies too
+<k> <v>` or `git remote add <name> <url>` from a worker's own cwd now denies too
 — it writes the shared config regardless of the key/remote name, and the
 `-C <primary>` form of the same write already denied unconditionally.
 Ordinary worktree git (checkout, commit, merge, `branch` create/delete/plain
@@ -1656,7 +1656,7 @@ payloads:
   check, never removes one).
 - (false deny) `-u`/`--set-upstream-to`/`--unset-upstream`/`-f`/`-M`/`-C`
   implicitly target the CURRENT branch when no branch-name operand is given
-  — in a linked worktree that is always the worker session's own feature branch (git
+  — in a linked worktree that is always the worker's own feature branch (git
   refuses to check main out in two worktrees at once), never main, so `branch
   -u origin/x` with no third operand is ordinary and matches the
   already-allowed `push -u`. The branch arm now requires an EXPLICIT
@@ -1785,19 +1785,19 @@ differs from git-common-dir — always allowed there.
 glob-deny rule cannot distinguish the primary checkout from a linked
 worktree — gitignore-style glob semantics match at any depth, and the rule
 is not scoped to which working directory the session is actually in — so it
-also blocked a worker session from editing the WORKTREE COPY of settings.json, a
-harmless edit that only takes effect after that worker session's PR is reviewed, merged,
+also blocked a worker from editing the WORKTREE COPY of settings.json, a
+harmless edit that only takes effect after that worker's PR is reviewed, merged,
 and the operator relaunches. The discriminator is **git-dir ==
 git-common-dir: protection follows repo layout, not machine paths.** A
 second full clone of the repo elsewhere on disk has the same layout and is
 therefore ALSO denied; a linked worktree is not.
 
-**Workflow implication:** because a worker session can now edit its own worktree's
+**Workflow implication:** because a worker can now edit its own worktree's
 settings.json, a hook-wiring change (the "three places" rule in
 `scripts/hooks/CLAUDE.md`: script + `wire-hook-bash.mjs`'s
-`EXPECTED_SCRIPT_ORDER` + `.claude/settings.json`) rides the OWNING WORKER SESSION's own
+`EXPECTED_SCRIPT_ORDER` + `.claude/settings.json`) rides the OWNING WORKER's own
 PR — the operator no longer hand-edits `.claude/settings.json` inside each
-worker session's worktree for every hook-wiring change.
+worker's worktree for every hook-wiring change.
 
 **`env -S` text (HIMMEL-4521).** The Bash arm decodes GNU `env -S` escapes
 (`\c \f \n \r \t \v \# \$ \_ \\ \' \"`, `${NAME}`) and judges the decoded
@@ -2117,7 +2117,7 @@ detects and reports; it does not prevent the write.** Residual gap: a
 non-Write/Edit writer can still break the ceiling within a session and is
 caught at the next session start, not at the write. Silent when healthy, and it
 **fails open** — every error path exits 0, because it runs on every session
-start including supervisor sessions and worker sessions. Cost: one `git rev-parse` and one `awk` pass
+start including chiefs and workers. Cost: one `git rev-parse` and one `awk` pass
 over at most the first 256 KiB of the index. Tests live in
 `test-guard-memory-capture.sh` (S/F/D/W cases).
 
@@ -2338,7 +2338,7 @@ controls including a healthy-corpus sweep of every `scripts/hooks/*.sh`).
 
 Fires on Bash/PowerShell. Every worktree of a checkout shares ONE `refs/stash`,
 so a stash mutation in one session acts on entries a PARALLEL session owns —
-measured twice in a single worker session (2026-08-12): a `git stash drop` destroyed
+measured twice in a single worker (2026-08-12): a `git stash drop` destroyed
 another chain's entry, recovered only because it had been tagged. Refuses the
 MUTATIONS at COMMAND POSITION (same grammar as
 `block-destructive-commands.sh`, so `git -C <path> stash pop` and
@@ -2386,7 +2386,7 @@ CLOSED on missing `jq` or malformed JSON. PowerShell is unguarded (ponytail in
 the hook). Bypass: `QMD_UNBOUNDED_OK=1` (launching shell). Spec:
 `scripts/hooks/test-block-bare-qmd-query.sh`.
 
-Before a leg or preflight depends on qmd retrieval, run
+Before a worker or preflight depends on qmd retrieval, run
 `bash scripts/lib/qmd-key-probe.sh` (HIMMEL-5895): one real vec query against
 the qmd server (`QMD_MCP_URL`, default `http://localhost:8181/mcp`), bounded by
 `QMD_KEY_PROBE_TIMEOUT` seconds (default 90). Exit 0 = the server embedded the
@@ -2591,7 +2591,7 @@ most the rest of the current 7-day window. Remaining hook gaps
 (ponytail): an edited or planted copy of `scripts/lib/bank-lift.sh` inside a
 worktree is trusted as the repo's script; and a pure-glob source under a
 computed destination (`cp --parents * "$d"`).
-Name rule (supervisor session ruling, applied before the rules above on every clause,
+Name rule (chief ruling, applied before the rules above on every clause,
 nested ones included): a clause with a word naming `bank-lift.json` or
 `bank-lift.sh` (not a longer name such as `test-bank-lift.sh`) passes only
 when it is `bash scripts/lib/bank-lift.sh show|clear` or the direct
@@ -2619,12 +2619,12 @@ tokenizer error. Residuals are ponytail-marked in the hook. Spec:
 
 ### `guard-pr-check-literal.sh` — relative `scripts/cr/` gate spellings (HIMMEL-3383, HIMMEL-3495)
 
-Every worker session profile allow-lists `bash scripts/cr/pr-check-context.sh` and
+Every worker profile allow-lists `bash scripts/cr/pr-check-context.sh` and
 `bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS` (HIMMEL-3359, HIMMEL-3375),
 plus relative literals for thirteen more `scripts/cr/` gate scripts
 (`review-round`, `cr-scores`, `clear-cr-marker`, `write-verdicts`, ... — the
 hook's `TARGETS` list, which its suite checks against every
-`Bash(bash scripts/cr/…` allow row). From a worker session's worktree such a literal runs
+`Bash(bash scripts/cr/…` allow row). From a worker's worktree such a literal runs
 the BRANCH's copy. The permission matcher is a prefix match, so the rule also
 covers other spellings that run the same relative file: extra arguments, `./`,
 `//`, `..`, quotes, `sh`/`source`/`.`, wrappers such as `env` or `timeout`, a
@@ -2641,14 +2641,14 @@ own copy only when three conditions hold:
   (HIMMEL-3495): each of those entry scripts sources the hand-off as its first
   statement, so an entry byte-equal to the anchor's re-execs the anchor's copy,
   and every library it loads comes from the anchor. A branch that deletes the
-  hand-off line changes the entry's bytes and is denied. A worker session that edits one
+  hand-off line changes the entry's bytes and is denied. A worker that edits one
   gate script loses only that script's relative spelling, not all of them. The
   hand-off reads `HIMMEL_REPO` from the environment, as the hook does.
 
 `review-round.sh` (every verb), `panel-first-pass.sh` and `clear-cr-marker.sh`
 also refuse a branch other than the one checked out in cwd, and a detached
 HEAD: they write shared per-branch state, and a relative run is auto-allowed
-from any worker session's worktree.
+from any worker's worktree.
 
 **What fires it.** The hook classifies by the script a command runs, not by its
 text. It strips quotes and backslashes and splits the command into simple
@@ -2766,8 +2766,8 @@ for `go`, the set the guard holds them to), and a piped stdout (a lone `--help` 
 
 **Why the anchor, not a ref.** The compare base is the anchor's working-tree
 bytes, never `refs/remotes/origin/main`. Refs live in the common git dir, which
-a worker session can write (`git update-ref`), so a ref-based base could be moved onto the
-edit. The anchor is the primary checkout, which `block-edit-on-main` keeps worker sessions
+a worker can write (`git update-ref`), so a ref-based base could be moved onto the
+edit. The anchor is the primary checkout, which `block-edit-on-main` keeps workers
 from editing. A git write can still reach its working tree (`git -C <primary>
 checkout <branch> -- <path>`, a detached HEAD), so the anchor must be on
 `refs/heads/main` and its guarded paths must equal main's committed tree
@@ -2870,7 +2870,7 @@ position before the paren), plus any paren nested inside an already-opaque one.
 Legacy `$[ … ]` arithmetic is consumed as one opaque, bracket-balanced span, so
 a `;`/`&`/`|`/newline inside it neither splits a segment nor lets the following
 `(` read as a real subshell — the `$[1 +<newline>(SEAM=0)]` shape `main` denies was
-briefly allowed by an early paren-depth build (HIMMEL-2929, worker session N45).
+briefly allowed by an early paren-depth build (HIMMEL-2929, worker N45).
 Opaque for SCOPING is not opaque for SCANNING (HIMMEL-3185): `segment_cmd`
 lifts every `(( … ))` / `$(( … ))` body out whole (`arith_body`, paren-balanced
 to the closing `))`, also inside a double-quoted string) and emits it as its own
@@ -2964,7 +2964,7 @@ also fails closed (exit 96) on Linux when `/proc` is unreadable or is not a
 real procfs mount (`stat -f -c %T /proc` must be `proc`; a fake view via
 `unshare -rm` + tmpfs is refused); genuine non-Linux stays hook-only.
 Deliberate over-deny: `quiet-run.sh ... -- env -u X bash test` and a
-worker-session-launch argv whose brief text mentions `env -u` or `extdebug` deny beside
+worker-launch argv whose brief text mentions `env -u` or `extdebug` deny beside
 a sanctioned-script word; put the control in a script file and run that instead. Residuals (ponytail): an obfuscated seam NAME beside a LITERAL
 sanctioned-script path (`export "$n=1"`), a program word that hides both its
 `scripts/` anchor and its glob, and S2/S4 (HIMMEL-3930).
@@ -3127,7 +3127,7 @@ while the check-runs API did not. The gate now reads the `/statuses` LIST
 endpoint (the combined `/status` drops `creator`, and the rollup carries no
 identity at all) and matches on **`creator.id`** — HIMMEL-1058's "identity, not
 display name". The zombie override is **gone**: reviving it on the status would
-wave a >90m pending review through on age alone, which is the same
+let a >90m pending review through on age alone, which is the same
 uncertainty-reads-as-green bug. `CR_ZOMBIE_CHECKRUN_MINS` is no longer read.
 
 **Posture:** deny on unresolved threads and on undisposed outside-diff body
@@ -3271,23 +3271,23 @@ absent review, and the reader plus its suite are deleted. What that head still
 owes is what every head owes: zero unresolved threads and the exact-head
 critic panel via `/pr-check`.
 
-**Supervisor session GO gate (HIMMEL-2919 / HIMMEL-3142) — runs THIRD, after the CR and CI
-gates.** A worker session spawned by a supervisor session (`console-kit/headed-arm-leg.sh` exports
-`HIMMEL_CONSOLE_LEG=1`) may merge only on its supervisor session's GO. The hook first
+**Chief GO gate (HIMMEL-2919 / HIMMEL-3142) — runs THIRD, after the CR and CI
+gates.** A worker spawned by a chief (`console-kit/headed-arm-leg.sh` exports
+`HIMMEL_CONSOLE_LEG=1`) may merge only on its chief's GO. The hook first
 checks the marker is non-empty at all — an unset/empty marker (the ordinary
 session) never sources `scripts/lib/go-gate.sh`, so a missing or broken library
 cannot block a merge the gate was never meant to bind. A non-empty marker
 sources it (dropping any inherited `go_gate`/`console_leg` first) and
 `console_leg` applies the one shared reading: empty/`0`/`false`/`off`/`no`,
-case-insensitive and whitespace-stripped, is not a worker session; anything else is. A
-worker session's `gh pr merge` then resolves the PR number and head SHA itself and calls
+case-insensitive and whitespace-stripped, is not a worker; anything else is. A
+worker's `gh pr merge` then resolves the PR number and head SHA itself and calls
 `go_gate <pr> <head> <handover_root>`, which is pure (no `gh`, no write): rc 0
 only when `<root>/.locks/go/<pr>.<head>` exists and carries the line
 `head=<head>` exactly; otherwise rc 2 with a one-line reason naming the exact
 GO path (no root / no file / a GO for an older head are all the same refusal —
-a stale GO is never reusable). The GO file (merge approval) is written only by the supervisor session
+a stale GO is never reusable). The GO file (merge approval) is written only by the chief
 (`console-kit/go.sh`, which itself refuses under the marker), so the evidence is
-a file the worker session cannot set on its own command line. Once a GO is confirmed the
+a file the worker cannot set on its own command line. Once a GO is confirmed the
 hook additionally REQUIRES the merge command to pin `--match-head-commit`
 (space- or `=`-form, quotes stripped) equal to that GO-bound head: an unpinned
 or mismatched pin exits 2, because the GO was bound to this hook's own `gh pr
@@ -3299,7 +3299,7 @@ siblings. `merge-on-green.sh` runs the same
 `console_leg`/`go_gate` pair as its own gate (below), using the `$sha` check-ci
 certified — the same head its `--match-head-commit` pins — and `go.sh` uses
 `console_leg` for its refusal, so none of the three can drift on "is this a
-worker session" or "what a GO binds" (HIMMEL-3149).
+worker" or "what a GO binds" (HIMMEL-3149).
 
 `go.sh` itself refuses to write a GO for a head nobody reviewed (HIMMEL-4565):
 before it signs anything it runs the anchor's own `console-kit/ready-check.sh
@@ -3307,8 +3307,8 @@ before it signs anything it runs the anchor's own `console-kit/ready-check.sh
 output and writes nothing. That covers the CR ledger (check 4: an ok row for
 that exact head in `<git-common-dir>/cr-critic-scores.jsonl`), the head and
 merge state, the check rollup, unresolved threads, trailers, ticket ids and
-coverage. It re-runs rather than trusting a recorded PASS, so the supervisor session's
-flow is unchanged (ready-check, then go) and no file a worker session could write stands
+coverage. It re-runs rather than trusting a recorded PASS, so the chief's
+flow is unchanged (ready-check, then go) and no file a worker could write stands
 in for the check. A trust-reviewed GO (`--trust-reviewed <qid>`, HIMMEL-3832)
 also needs the judge's verdict on disk: `go_trust_verdict` reads every
 `*.md` in `<root>/<user>/<bucket>/verdicts/<qid>/` only (the scope
@@ -3339,7 +3339,7 @@ non-text control bytes in evidence. `go_trust_verdict` also refuses a scope-roun
 the branch's PR/branch and lets any NO-GO for the new head block the scope round.
 Records written before this change are unsigned and are refused; re-run
 `write-verdict.sh` for an open PR's judge record. Residual: the key is readable
-by the worker session's uid, so a same-uid forger can still sign; it proves a record came
+by the worker's uid, so a same-uid forger can still sign; it proves a record came
 through the writer's format and key, not who ran it. Like the key residual
 below, that is HIMMEL-3897's.
 
@@ -3404,7 +3404,7 @@ Disarming CodeRabbit never turns a real finding green.
 **The MACHINE-GENERATED PR class — HIMMEL-2278.** Some PRs never receive an App
 review *at all*, so "absent" is their steady state and the armed gate blocks
 them forever. Two shapes, both with a precedent PR that ended in a manual
-operator merge after a supervisor session parked on a review that was never coming:
+operator merge after a chief parked on a review that was never coming:
 
 | Shape | Precedent | Why the App never reviews it |
 |---|---|---|
@@ -3760,7 +3760,7 @@ checks), `scripts/hooks/test-block-lesson-enforcement-writes.sh` (9 checks).
 ### `guard-implementor-dispatch.sh` — lane-routing dispatcher guard (HIMMEL-1513; composed with the HIMMEL-920 usage budget guard)
 
 Fires on `Agent`. Structural enforcement of the second-drift lane-routing
-rule: worker session 31 routed four implementation workers through ordinary Agent-tool
+rule: worker 31 routed four implementation workers through ordinary Agent-tool
 Claude subagents while the claudex/GLM entry points were available, consuming
 the scarce Claude subscription usage budget and bypassing the flow-run ledger.
 
@@ -3843,17 +3843,17 @@ escape for this failure mode.
 
 Spec: `scripts/hooks/test-guard-implementor-dispatch.sh`.
 
-### `guard-console-dispatch.sh` — supervisor session/worker session dispatch fence (HIMMEL-2323)
+### `guard-console-dispatch.sh` — chief/worker dispatch fence (HIMMEL-2323)
 
 Fires on `Agent`. Structural enforcement of standing operator ruling 20:
-PR/ticket-shaped work dispatched FROM A SUPERVISOR session must go to an armed
+PR/ticket-shaped work dispatched FROM A CHIEF must go to an armed
 DETACHED session with a mission doc (`bash scripts/handover/arm-resume.sh`),
 never an in-process Agent-tool subagent — those die with the parent, are not
 relaunchable, and dump their reports into parent context. This is the
 CLAUDE.md "second drift" escalation: the ruling stood verbatim in its own
 handover chain and still drifted twice.
 
-**Policy:** deny only when the session is SUPERVISOR-shaped AND the dispatch's
+**Policy:** deny only when the session is CHIEF-shaped AND the dispatch's
 `description`/`prompt` match markers from at least TWO DISTINCT ship-flow
 marker families — `worktree` (`.claude/worktrees`, `clean-garden.sh`,
 `git worktree`, `/worktree`, "create a worktree"), `pr-open` (`gh pr create`,
@@ -3872,14 +3872,14 @@ patched a fourth time. A genuinely read-only dispatch uses `Explore` or
 `judge-ro`, or the
 audited `CHIEF_DISPATCH_OK=1` override below.
 
-**Supervisor session detection (fail-open — unknown means NOT a supervisor session):**
+**Chief detection (fail-open — unknown means NOT a chief):**
 `HIMMEL_SESSION_ROLE=console` (case-insensitive; any other non-empty value
-decides NOT a supervisor session immediately) in the launching shell — the PRIMARY, exact
+decides NOT a chief immediately) in the launching shell — the PRIMARY, exact
 signal. Failing that, a bounded head-read of `transcript_path`'s first user
 turn, scoped to the FIRST handover-doc path named in it (the launch prompt
 loads exactly one doc, and it is the first path named — a later mention,
-e.g. a mission doc naming the supervisor session's own doc further down the same
-turn, does not count): console-shaped only if that first path's basename
+e.g. a mission doc naming the chief's own doc further down the same
+turn, does not count): chief-shaped only if that first path's basename
 matches `*-console.md`.
 
 **Audited bypass:** `CHIEF_DISPATCH_OK=1` (deliberate carve-out) or
@@ -3895,13 +3895,13 @@ after `/himmel-update` (marketplace re-sync) + a fresh session.
 
 Spec: `scripts/hooks/test-guard-console-dispatch.sh`.
 
-### `guard-console-foreground.sh` — console runs long kit scripts in the background (HIMMEL-5821)
+### `guard-console-foreground.sh` — the chief runs long kit scripts in the background (HIMMEL-5821)
 
-A foreground run of a slow console-kit script blocks the console turn for minutes
-and every leg's `SendMessage` queues behind it. Fires on `Bash`, only when
+A foreground run of a slow console-kit script blocks the chief's turn for minutes
+and every worker's `SendMessage` queues behind it. Fires on `Bash`, only when
 `HIMMEL_CONSOLE_DOC` is set (`headed-arm.sh` exports it into a `--role console`
-session, but a leg launched from a console can inherit it) and the resolved session
-name ends in `-console` (an unresolvable name is allowed), and denies a command that runs a script
+session, but a worker launched from a chief can inherit it) and the resolved session
+name ends in `-chief` or `-console` (an unresolvable name is allowed), and denies a command that runs a script
 named in `scripts/handover/console-kit/long-running.txt` unless
 `tool_input.run_in_background` is true. The deny message gives the re-issue shape.
 A textual match (interpreter + name, or a path in command position), so a grep that
@@ -3986,39 +3986,39 @@ checkout workers branch from having pulled the merge. Spec:
 > arm (settings-chain entries are `Bash`/`PowerShell`-only), and a `--chain`
 > member cannot carry `--fail-closed-when`.
 
-### `block-worker-askuserquestion.sh` — console-spawned-leg AskUserQuestion deny (HIMMEL-2923)
+### `block-worker-askuserquestion.sh` — chief-spawned worker AskUserQuestion deny (HIMMEL-2923)
 
 The old path `block-leg-askuserquestion.sh` sources this file, so settings that
 still name it run the same hook.
 
 Fires on `AskUserQuestion`, keyed on `HIMMEL_CONSOLE_LEG=1` (set by the
-supervisor session's launcher, `scripts/handover/console-kit/headed-arm-leg.sh`,
-HIMMEL-2919). A worker session launched headed by a supervisor session runs in a window nobody
-answers — two worker sessions parked on this call in 2026-09-10, one for 77 minutes.
+chief's launcher, `scripts/handover/console-kit/headed-arm-leg.sh`,
+HIMMEL-2919). A worker launched headed by a chief runs in a window nobody
+answers — two workers parked on this call in 2026-09-10, one for 77 minutes.
 Second drift on prose → structural. Denies with a message naming SendMessage
-to the supervisor session as the replacement. Workflow nudge, not a security fence: fails
+to the chief as the replacement. Workflow nudge, not a security fence: fails
 open on missing `jq`, malformed, or empty stdin so it never locks an operator
-session out of the tool. Live: the launcher exports the marker into every console-spawned leg (HIMMEL-2919).
-A `--judge` worker session (HIMMEL-3133, design §3.2 "the judge is a leg") is denied
+session out of the tool. Live: the launcher exports the marker into every chief-spawned worker (HIMMEL-2919).
+A `--judge` worker (HIMMEL-3133, design §3.2 "the judge is a worker") is denied
 identically — same `HIMMEL_CONSOLE_LEG=1` (its separate `HIMMEL_CONSOLE_JUDGE=1`
 marker feeds only `guard-judge-writes.sh`, below) — and
 correctly so: a judge is read-only and evidence-gathering, so it has no one
 to ask either.
 
-### `guard-worker-wakeup.sh` — console-spawned-leg ScheduleWakeup deny (HIMMEL-3034)
+### `guard-worker-wakeup.sh` — chief-spawned worker ScheduleWakeup deny (HIMMEL-3034)
 
 The old path `guard-leg-wakeup.sh` sources this file, so settings that still
 name it run the same hook.
 
 Fires on `ScheduleWakeup`, keyed on `HIMMEL_CONSOLE_LEG=1` (same gate and
-launcher export as `block-worker-askuserquestion.sh`). A worker session waits with ONE
+launcher export as `block-worker-askuserquestion.sh`). A worker waits with ONE
 foreground blocking command (`docs/handover/leg-preface.md`); a self-scheduled
-polling wake re-reads the worker session's full context just to find "not yet" — cost
+polling wake re-reads the worker's full context just to find "not yet" — cost
 program HIMMEL-2763. Denies with a `leg wakeup-deny: …` reason naming
 `check-ci.sh --max-wait` / a foreground until-loop / a `SendMessage` to the
-supervisor session as the replacement. Not a worker session (marker unset or not `1`) or any other
+chief as the replacement. Not a worker (marker unset or not `1`) or any other
 `tool_name` → exit 0 with **no output at all**, so it costs an operator or
-supervisor session zero context. Workflow nudge, not a security fence: fails open
+chief zero context. Workflow nudge, not a security fence: fails open
 on missing `jq`, malformed, or empty stdin. Claude lane only —
 `ScheduleWakeup` is a Claude Code tool, so `.codex/hooks.json` carries no twin.
 Suite: `scripts/hooks/test-guard-worker-wakeup.sh`.
@@ -4036,12 +4036,14 @@ input or a control character in the URL, and makes no network call. Bypass:
 tool, so there is no `.codex/hooks.json` twin. Suite:
 `scripts/hooks/test-redirect-webfetch-walled-hosts.sh`.
 
-### `guard-leg-context-handoff.sh` — console-spawned-leg context hand-off (HIMMEL-4569)
+<a id="guard-leg-context-handoffsh--console-spawned-leg-context-hand-off-himmel-4569"></a>
+
+### `guard-leg-context-handoff.sh` — chief-spawned worker context hand-off (HIMMEL-4569)
 
 Fires on every tool (`*`), keyed on `HIMMEL_CONSOLE_LEG=1` plus a non-empty
 `HIMMEL_CONSOLE_NAME` (both from `headed-arm-leg.sh`); anything else exits 0
-with no output, and so does a call from the worker session's in-process subagents (a
-non-empty string `agent_id`), which inherit the worker session's env and transcript.
+with no output, and so does a call from the worker's in-process subagents (a
+non-empty string `agent_id`), which inherit the worker's env and transcript.
 Reads fill with `scripts/context-fill.sh --percent` on the hook's
 `transcript_path`, and the window from the same claude-hud snapshot.
 
@@ -4055,16 +4057,16 @@ is `CLAUDE_CODE_AUTO_COMPACT_WINDOW` when numeric (it outranks the flag), else
 `HIMMEL_WORKER_SESSION_AUTOCOMPACT` (the launcher's resolved `--autocompact`; unset = the
 200000 pin, `auto` = the window, junk = the window with a warning), clamped to
 the window; threshold % = ceil(share × ceiling / window), share =
-`HIMMEL_WORKER_SESSION_CONTEXT_SHARE` (1-100, else 75). An opus worker session pinned at 200000
+`HIMMEL_WORKER_SESSION_CONTEXT_SHARE` (1-100, else 75). An opus worker pinned at 200000
 reports a 1000000-token window, so the ceiling is 20 % fill and a flat 75 % of
 the window never fired; it now fires at 15 % (150k). Headroom: compactions were
 observed from 157k of 200k (HIMMEL-4089), so 75 % leaves 7k tokens for the
 checkpoint; 85 % would let a compaction fire first, and HIMMEL-4569's 65 %
-stopped every opus worker session at 13 %. No window in the snapshot → 75 % of the fill.
+stopped every opus worker at 13 %. No window in the snapshot → 75 % of the fill.
 
-**Two modes, `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name `HIMMEL_LEG_CONTEXT_MODE`),** set by the supervisor session at launch
+**Two modes, `HIMMEL_WORKER_SESSION_CONTEXT_MODE` (old name `HIMMEL_LEG_CONTEXT_MODE`),** set by the chief at launch
 (`headed-arm-leg.sh --context-guard`, which validates it and propagates it only
-when set) and read only from the hook process's env, so a worker session cannot flip it
+when set) and read only from the hook process's env, so a worker cannot flip it
 in-session.
 
 - `compact`: unlocked by the newest CHECKPOINT Results bullet: `CHECKPOINT
@@ -4072,8 +4074,8 @@ in-session.
   call's `cwd`, or `CHECKPOINT <full sha> clean` whose sha is HEAD while the
   tree is clean and HEAD equals `@{u}` or is in `origin/main`. The session then
   compacts at its ceiling and carries on.
-- `handoff`: unlocked by a `*-RESUME.md` beside the worker session doc that carries the
-  doc's worker session id (`N1364`, `N1364b` …) and was modified after the session's first
+- `handoff`: unlocked by a `*-RESUME.md` beside the worker doc that carries the
+  doc's worker id (`N1364`, `N1364b` …) and was modified after the session's first
   turn.
 
 Past the threshold it denies every call except the hand-off ones — a
@@ -4081,13 +4083,13 @@ Write/Edit/MultiEdit of a `*-RESUME.md`, `SendMessage`, `ListAgents`,
 `ToolSearch`, `TaskStop`, a bare `bash …/append-results.sh`,
 `queue-lock.sh release`, `wrap-subtree-check.sh` or `context-fill.sh`, a bare
 `git [-C <dir>] add|commit|push|status|rev-parse` and a bare `cd [<dir>]` (no
-`&&`, `||`, `$(` or newline) — until the mode's unlock holds or the worker session doc
+`&&`, `||`, `$(` or newline) — until the mode's unlock holds or the worker doc
 (the `.md` path in the transcript's first `load <brief> and continue` turn)
 ends on a `WRAPPED` marker. A last `BLOCKED` frees only those hand-off calls
 plus Read, Grep and Glob (HIMMEL-4710). The deny names the mode, the fill, the
 threshold and its basis, the exact unlock steps (compact: commit, push,
 rev-parse, the CHECKPOINT bullet; handoff: the RESUME path with the next id
-letter, the supervisor session and the marker command), the one-line commit form (`-m`
+letter, the chief and the marker command), the one-line commit form (`-m`
 paragraphs plus `--trailer`) and the BLOCKED route.
 
 **PreCompact.** Also wired as a PreCompact hook: past the threshold an `auto`
@@ -4096,8 +4098,8 @@ RESUME unlock holds or the last marker is `WRAPPED`, so WIP is pushed before con
 compaction is always allowed. What the harness does after a refused
 auto-compaction is undocumented (`ponytail:` in the header). Codex has no
 PreCompact event. Fails open with one stderr line when fill
-is UNKNOWN/STALE, the transcript or worker session doc cannot be found, or the input does
-not parse — a false block strands a worker session nobody watches (`ponytail:` in the
+is UNKNOWN/STALE, the transcript or worker doc cannot be found, or the input does
+not parse — a false block strands a worker nobody watches (`ponytail:` in the
 header). Bypass: `WORKER_SESSION_CONTEXT_HANDOFF_OK=1` (old name
 `LEG_CONTEXT_HANDOFF_OK=1`) in the launching shell. Wired in
 `.claude/settings.json` (PreToolUse and PreCompact) and `.codex/hooks.json`
@@ -4160,8 +4162,8 @@ Suite: `scripts/hooks/test-guard-subagent-model.sh`.
 ### `read-clamp.sh` — read-clamp PreToolUse hook (HIMMEL-2993)
 
 Fires on `Read`/`Grep` and `Bash`, keyed on `HIMMEL_CONSOLE_LEG=1` (same gate as
-`block-leg-askuserquestion.sh` — never a supervisor session or an interactive session).
-Measured over 12 merged-PR worker sessions, repeated Reads of the same file
+`block-leg-askuserquestion.sh` — never a chief or an interactive session).
+Measured over 12 merged-PR workers, repeated Reads of the same file
 (≈4.5%) and whole-file reads (≈2.2%) were the #2/#3 cost levers on a PR's
 token bill after HIMMEL-2990; the instructional layer already existed (the
 worker system prompt's read-range sentence, #692) — this is the structural escalation on
@@ -4329,7 +4331,7 @@ utilization crosses `AUTO_ARM_THRESHOLD` (default 90%):
    cap-window+session, so retries overwrite in place (no file spam),
 2. arms a resume via `arm-resume.sh --time smart --handover <snapshot>`
    (rc=3 "already armed" counts as success — dedup with any
-   operator-armed or supervisor-armed job),
+   operator-armed or chief-armed job),
 3. blocks the in-flight tool call ONCE (exit 2) so the model is told to
    write a full handover and wind down. The fired marker is keyed per
    cap window AND per session (from the PreToolUse `session_id`), so
@@ -4376,7 +4378,7 @@ Arm failures leave no fired marker (next interval retries) and after
 `AUTO_ARM_MAX_ARM_FAILURES` (default 3) consecutive failures the hook
 escalates to the one-shot exit-2 block anyway — "the safety net is
 TORN, arm manually" — because a watchdog that sees the cliff must bark
-even when its own legs are broken.
+even when its own parts are broken.
 
 This is the *detect* half of HIMMEL-122 (the arm half is
 `arm-resume.sh`). Boundary vs the HIMMEL-207 supervisor: the supervisor
@@ -4541,7 +4543,7 @@ states the observation and *both* of its readings rather than asserting
 staleness — an always-on warning that is wrong daily is one the reader learns
 to skip, which would take the real warning with it. The durable
 refresh/receipt timestamp that would settle it is **HIMMEL-1307** (it spans
-`qmd-reindex.sh` and the receiver leg, so it is not the guard's to invent).
+`qmd-reindex.sh` and the receiver side, so it is not the guard's to invent).
 The proxy is still worth having for the case this was built for: a receiving
 station whose index stopped arriving while the source corpus kept moving is
 exactly what it detects correctly.
@@ -4881,13 +4883,13 @@ command still names the same `.sh`/`.ts` script, so
 `scripts/codex/test-codex-hook-parity.sh` sees the same end-side inventory and
 the `CLAUDE_END_ONLY` allowlist is untouched.
 
-### `stop-console-idle-guard.sh` — a supervisor session may not go structurally dead (HIMMEL-3144 / HIMMEL-3148)
+### `stop-console-idle-guard.sh` — a chief may not go structurally dead (HIMMEL-3144 / HIMMEL-3148)
 
 A second `Stop` entry in `.claude/settings.json`, deliberately a SIBLING of the
 `stop-queue.mjs` entry and NOT enqueued through it: the queue exists to run
 end-side work asynchronously and always allows, while this hook must hand
 Claude Code a synchronous `{"decision":"block","reason":"…"}` on stdout before
-the turn ends. Origin: a supervisor session ended its turn with an empty fleet and a
+the turn ends. Origin: a chief ended its turn with an empty fleet and a
 9-item held queue and sat dead for 58 minutes — no Stop guard and no monitor
 event starts a new turn in an idle interactive session.
 
@@ -4899,12 +4901,12 @@ the stopping session holds a `*-console` queue-lock (best-effort — it recomput
 persisted per-session token file under `${XDG_RUNTIME_DIR:-/tmp}/himmel-queue-lock/`;
 a false negative only allows); `bank-preflight.sh` and `queue-lock.sh status
 --sweep` both answer (sweep rc 0 or 20 are valid, anything else is a fault);
-and **zero worker session locks are held** (a straight count of held `slug=` lines other
-than the supervisor session's own — deliberately not gated on freshness, since
-`IDLE-HELD?` is heartbeat age, not death). One or more held worker session locks IS the
-wake path (a worker session's `SendMessage` starts a new turn), so the hook does not block
+and **zero worker locks are held** (a straight count of held `slug=` lines other
+than the chief's own — deliberately not gated on freshness, since
+`IDLE-HELD?` is heartbeat age, not death). One or more held worker locks IS the
+wake path (a worker's `SendMessage` starts a new turn), so the hook does not block
 then (HIMMEL-3148). The block reason names the lock document, the
-`bank-preflight` FLEET line, the usage budget token and the held worker session locks, and says to
+`bank-preflight` FLEET line, the usage budget token and the held worker locks, and says to
 dispatch the next queued item, verify a READY PR, or run `/console next --arm`.
 Every subprocess shares ONE 8 s budget (`HIMMEL_STOP_GUARD_TIMEOUT`, under the
 wired 10 s Stop timeout), and the JSON is printed only as the last statement.
@@ -4912,16 +4914,16 @@ It does not inspect the held Jira/dispatch queue. Test seams:
 `HIMMEL_STOP_GUARD_USAGE_PREFLIGHT` (old `HIMMEL_STOP_GUARD_BANK_PREFLIGHT` still read), `HIMMEL_STOP_GUARD_QUEUE_LOCK`. Spec:
 `scripts/hooks/test-stop-console-idle-guard.sh`.
 
-### `console-precompact-snapshot.sh` — snapshot a supervisor session's Live state at compaction (HIMMEL-2973)
+### `console-precompact-snapshot.sh` — snapshot a chief's Live state at compaction (HIMMEL-2973)
 
 Wired as the repo's one `PreCompact` entry in `.claude/settings.json` (10 s
 timeout, no matcher, so it fires for both `manual` and `auto` compaction). It is
 the out-of-band sibling of the `SessionStart:compact` re-inject hook: that one
-restores a supervisor session's state INTO the transcript after compaction; this one
+restores a chief's state INTO the transcript after compaction; this one
 records what the state WAS at compaction time, so the restoration can be audited
 rather than trusted.
 
-It reads the supervisor session doc named by `HIMMEL_CONSOLE_DOC` (exported by
+It reads the chief doc named by `HIMMEL_CONSOLE_DOC` (exported by
 `headed-arm.sh` / `arm-resume.sh`) and writes an immutable
 `<HIMMEL_CONSOLE_WORKDIR>/precompact-<n>.snap`, `n` = highest existing + 1
 (written to a temp name and hard-linked into place, so a snap is never
@@ -4934,8 +4936,8 @@ in `.locks/go/`), `trigger=` (from stdin when present), and a verbatim
 0700 and refused when it is a symlink or not owned by the caller, since the snap
 carries RETASK nonces and lock tokens.
 
-It is a SILENT NO-OP for every non-supervisor session (`HIMMEL_CONSOLE_DOC` unset,
-or the doc or work dir unusable): no output, no file. A supervisor session launched by a
+It is a SILENT NO-OP for every non-chief session (`HIMMEL_CONSOLE_DOC` unset,
+or the doc or work dir unusable): no output, no file. A chief launched by a
 hand-pasted line has neither variable and is simply not snapshotted. It ALWAYS
 exits 0 and has no bypass variable: a workflow nudge, not a security fence, so a
 failure must degrade to "no snapshot", never block a compaction.
@@ -5044,9 +5046,9 @@ above: it appends one redacted JSON line per denial to
 `~/.himmel/state/classifier-denials.jsonl` (session/tool/reason_tag, a capped
 and redacted `input_head`, and a normalised `input_sha` — never unredacted
 command text), and never blocks, delays, or `ask`s. `tick.sh` reads that log
-into a `denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK]` field so a supervisor session
+into a `denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK]` field so a chief
 sees a repeated or escalating denial within one tick instead of only when a
-worker session happens to report it. Paired smoke test:
+worker happens to report it. Paired smoke test:
 `scripts/hooks/test-log-classifier-denial.sh`.
 
 Hardening (phase 2a): every text field (`cwd`, `session_id`, `tool`,
@@ -5058,34 +5060,35 @@ catches short secrets in `KEY=value` and flag forms (`DB_PASS=x`, `--password x`
 `tick.sh` labels a non-worktree row `<dir>#<session_id[0:8]>` so a re-dispatched
 slug never inherits an old session's count, and reads `denials=none` when the
 log does not exist yet. `console-wait.sh` wakes on `denials=` only when it gets
-worse (a new worker session, a higher count or class), so one denial wakes the supervisor session once
+worse (a new worker, a higher count or class), so one denial wakes the chief once
 and not again when it ages out of the 30-minute window.
 
 **Hard rule:** `input_head` and `reason_tag` never leave the host. They are
 redacted best-effort, not scrubbed; `tick.sh` classifies on them locally and
-prints only `leg:count:class`. The page (phase 2b, below) sends the worker session label,
+prints only `leg:count:class`. The page (phase 2b, below) sends the worker label,
 count and class and nothing else. `test-log-classifier-denial.sh` pins the set of
 files allowed to name either field, so a new reader fails the suite until that
 list is edited on purpose. None of the phase 2b files reads the log: they see
 only the tick's `denials=` field.
 
 **Phase 2b: page, ack, refuse re-dispatch** (`scripts/handover/console-kit/`).
-- **Page.** When a `console-wait.sh` wake's `denials=` change raises a worker session to
-  `SHIP-STEP` or `PAUSE-RISK` (a new worker session, or a higher class; a count rising inside
+- **Page.** When a `console-wait.sh` wake's `denials=` change raises a worker to
+  `SHIP-STEP` or `PAUSE-RISK` (a new worker, or a higher class; a count rising inside
   one class wakes but does not page), the waiter sends ONE Telegram message per
   rise through the kit's existing bridge path (`scripts/lib/merge-block-alert.sh`:
   first `allowFrom` of `access.json`, `console-route.ts reply`; no new bot, token
-  or client): `DENIAL-PAGE <leg> <class> x<count> - a classifier denial parked
-  this leg. ...`. It fails open and is bounded by `CONSOLE_WAIT_PAGE_TIMEOUT`
+  or client):
+  `DENIAL-PAGE <leg> <class> x<count> - a classifier denial parked this leg. ...`. <!-- old-term-ok: quotes the console-wait.sh page text -->
+  It fails open and is bounded by `CONSOLE_WAIT_PAGE_TIMEOUT`
   (default 45 s, also the most a hung sender can delay the wake). It pages only
   what a running waiter saw rise.
-- **Records.** Before the send, the waiter writes `<key>.page` (worker session, count, class,
+- **Records.** Before the send, the waiter writes `<key>.page` (worker, count, class,
   timestamp) to `${HIMMEL_DENIAL_ACK_DIR:-~/.himmel/state/denial-acks}` (dir 0700,
-  files 0600; format in `denial-ack-lib.sh`). The key is the worker session label reduced to
+  files 0600; format in `denial-ack-lib.sh`). The key is the worker label reduced to
   `[A-Za-z0-9._#+-]`: the worktree slug, or `<dir>#<sid8>` for a non-worktree cwd.
-- **`ack-denial.sh <leg-label-or-handover-doc>`** writes `<key>.ack` (worker session, the
+- **`ack-denial.sh <leg-label-or-handover-doc>`** writes `<key>.ack` (worker, the
   paged count and class, timestamp). A doc resolves through its frontmatter
-  `resume_cwd` to the worktree slug. Idempotent; a worker session never paged is a no-op.
+  `resume_cwd` to the worktree slug. Idempotent; a worker never paged is a no-op.
   Exit 0 acked / already acked / nothing to ack; 1 record dir not writable; 2
   usage, unusable label, or a doc with no `resume_cwd`.
 - **Refusal.** `headed-arm-leg.sh` exits **14**, naming `ack-denial.sh`, when the
@@ -5094,7 +5097,7 @@ only the tick's `denials=` field.
   one, a `REPEAT`, or an unreadable record launches (fail open); the check runs
   before `--dry-run`'s exit, so a dry run predicts the refusal.
 - **Known limits.** Timestamps are 1 s granularity (a page in the same second as
-  an ack reads as acked). A `<dir>#<sid8>` worker session can be paged and acked but a
+  an ack reads as acked). A `<dir>#<sid8>` worker can be paged and acked but a
   launch cannot be matched to it. The refusal covers only denials a running
   `console-wait.sh` paged. Tests: `test-ack-denial.sh`, `test-console-wait.sh`
   (`p*` cases), `test-headed-arm-leg.sh` (case 38).
@@ -5166,7 +5169,7 @@ hook-visible marks a session as `EnterWorktree`-pinned, so the guard
 forwards no rewrite that names git as a word when the payload cwd is inside
 `.claude/worktrees/` — the harness sees plain `git`. Cost: rtk's git
 compression is lost in unpinned worktree sessions too; a worktree outside
-`.claude/worktrees/` keeps the rewrite. Evidence and the worker-session-side recovery:
+`.claude/worktrees/` keeps the rewrite. Evidence and the worker-side recovery:
 [`stuck-playbook.md`](stuck-playbook.md).
 
 **Wiring:** `docs/setup/settings-template.json` registers the guard
@@ -5310,23 +5313,23 @@ When both filters pass and a matched in-scope file is found, the detector
 emits a tab-separated finding line (`source-file TAB required-doc TAB reason`).
 It **always exits 0** — a broken warn-only hook must never stall a session.
 
-**Three legs, all gated by `HIMMEL_DOC_FRESHNESS`:**
-- **`advise` leg** — `/pr-check` prints findings at review time (pre-push).
-- **`session` leg** — `scripts/hooks/inject-doc-freshness.sh` (SessionStart
+**Three surfaces, all gated by `HIMMEL_DOC_FRESHNESS`:**
+- **`advise` surface** — `/pr-check` prints findings at review time (pre-push).
+- **`session` surface** — `scripts/hooks/inject-doc-freshness.sh` (SessionStart
   hook) injects a `<system-reminder>` block over `origin/main...HEAD` at the
   start of each feature-branch session.
-- **`morning` leg** — `generate-morning-briefing.sh` includes a freshness
+- **`morning` surface** — `generate-morning-briefing.sh` includes a freshness
   section in the daily morning report.
 
 **`HIMMEL_DOC_FRESHNESS` grammar** (default OFF; grammar mirrors `HIMMEL_INITIATIVE`):
-- `1` / `all` / `true` / `on` / `yes` — all three legs active.
-- Comma-subset e.g. `advise,session` — only those legs; `morning` stays off.
-- `0` / `false` / `off` / `no` / unset — all legs off.
-- No `gate` leg — the hard blocking gate is `check-doc-guard.sh`, controlled
+- `1` / `all` / `true` / `on` / `yes` — all three surfaces active.
+- Comma-subset e.g. `advise,session` — only those surfaces; `morning` stays off.
+- `0` / `false` / `off` / `no` / unset — all surfaces off.
+- No `gate` surface — the hard blocking gate is `check-doc-guard.sh`, controlled
   by `.himmel-dev` + `DOC_GUARD_OK`.
 
 Read from the himmel clone's `.env` by the `session` and `morning` surfaces
-(via `scripts/lib/load-dotenv.sh`); the `advise` leg also reads `.env` at
+(via `scripts/lib/load-dotenv.sh`); the `advise` surface also reads `.env` at
 `/pr-check` call time. A value exported in the launching shell or set in
 `~/.claude/settings.json "env" {}` overrides `.env`.
 
@@ -5417,7 +5420,7 @@ before forwarding to `gh`). `--admin` is INSPECTED but forwarded.
 
 **Convention: every guard classifies its input allow / deny / unknown — and
 unknown never silently takes the allow path.** HIMMEL-1776 was filed against
-5 confirmed instances of this one rule implemented wrong in one worker session. The
+5 confirmed instances of this one rule implemented wrong in one worker. The
 lint pins 4 SHAPES (`unreadable-config`, `sentinel-not-denied`,
 `pct-unguarded`, `quota-zero`) against 6 pre-fix reconstructions in
 `fixtures/fail-open/` — `sentinel-not-denied` (an unresolvable endpoint
@@ -5667,7 +5670,7 @@ opposite ways — this script's pin NARROWS what a human-only,
 boundary an agent runs under.
 **Protection source (HIMMEL-3808).** The widened public-origin gate is satisfied by classic branch protection, by an effective ruleset, or by both, per `HIMMEL_PROTECTION_SOURCE` in `merge-on-green.sh`: `classic`, `ruleset`, `either` (default) or `both` (both must pass). Like `HIMMEL_PUBLIC_ORIGIN_NWO` it is a fixed literal in the script, never an env seam (`ruleset`/`either` are widening choices; an ambient variable must not steer a merge gate) — an adopter chooses by editing the line, and an unknown value refuses (exit 12, `unknown-protection-source=<value>`). Classic = `enforce_admins` on AND a non-empty required-status-checks list (unchanged). Ruleset = `rules/branches/<base>` carries at least one required status check AND every contributing ruleset (`rulesets/<id>`) is `enforcement: active` with an EMPTY `bypass_actors` — any bypass actor (admin `RepositoryRole`, `pull_request` or `always` mode) refuses, since it can merge past the required checks; an API error, null/non-array field or zero checks refuses too. `either` reads classic first and never touches the ruleset endpoints when classic passes. Both call sites (guard 2b and the fresh pre-merge re-read) share one function, and each success writes `PROTECTION-OK[-PREMERGE] source=classic|ruleset|classic+ruleset detail=…` to the audit log. With the live yotamleo-org/Himmel ruleset (`protect-main`, admin bypass `pull_request`) the ruleset path refuses and classic protection carries the merge; relaxing that bypass is an operator call.
 `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is the policy refusal: no GO, a GO path naming another PR or head, or a solo-mode refusal when `himmel.mergeMode` is set); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 (HIMMEL-2887).
-The Jira auto-transition is opt-in per merge (HIMMEL-3143): without `--jira-transition` `merge-on-green.sh` merges, then only records `jira-transition=skip=partial key=<KEY> status-unchanged` on the `MERGED` audit line and posts the PR body's `Remaining:` line as a Jira comment — the ticket status is never changed (HIMMEL-6094) — so the caller decides (a worker session reads its brief's `completes-ticket: yes|no` line, `docs/handover/leg-preface.md` § Shipping — HIMMEL-3271); with the flag it comments and transitions the ticket named by the PR title's `[PROJ-N]` tag (never an Epic — a Story is transitioned like a Task, HIMMEL-5540; any unreadable step degrades to a `skip=…` result, never a failed merge). It used to fire on every merge and closed a ticket whose sibling work was still owed, which no "no other open PR" heuristic can detect, so it stays opt-in rather than heuristic. A PR carrying two ticket tags transitions only the first.
+The Jira auto-transition is opt-in per merge (HIMMEL-3143): without `--jira-transition` `merge-on-green.sh` merges, then only records `jira-transition=skip=partial key=<KEY> status-unchanged` on the `MERGED` audit line and posts the PR body's `Remaining:` line as a Jira comment — the ticket status is never changed (HIMMEL-6094) — so the caller decides (a worker reads its brief's `completes-ticket: yes|no` line, `docs/handover/leg-preface.md` § Shipping — HIMMEL-3271); with the flag it comments and transitions the ticket named by the PR title's `[PROJ-N]` tag (never an Epic — a Story is transitioned like a Task, HIMMEL-5540; any unreadable step degrades to a `skip=…` result, never a failed merge). It used to fire on every merge and closed a ticket whose sibling work was still owed, which no "no other open PR" heuristic can detect, so it stays opt-in rather than heuristic. A PR carrying two ticket tags transitions only the first.
 It also exits 17 (`policy-refused phase=console-go`) when `HIMMEL_CONSOLE_LEG` is set — exported by `console-kit/headed-arm-leg.sh` into every console-spawned leg — and `go_gate` (`scripts/lib/go-gate.sh`, shared with `block-unresolved-cr-merge.sh`'s Console-GO gate and with `go.sh`; see there) finds `<handover_root>/.locks/go/<pr>.<certified head sha>` missing or not carrying `head=<that sha>` (a broken/truncated `go-gate.sh` refuses too: `phase=console-go-lib-missing` / `console-go-symbol-missing`); the gate runs before the marker clear and before `--dry-run`, so a refused leg mutates nothing and a dry run reports the refusal, and the merge itself pins `--match-head-commit` to that same certified sha; a console leg's merge must also pass `--go <that GO file>` (same directory and basename as the file `go_gate` verified, so another PR's or head's file or a missing path exits 17 with `phase=console-go-flag`) and prints a `GO evidence:` line, so the merge command shows the review it relies on (HIMMEL-7165); only the console writes it, via `console-kit/go.sh` (which refuses under the marker), and `scripts/chokepoints.json` registers the marker so a per-call `HIMMEL_CONSOLE_LEG=` prefix is denied (HIMMEL-2919). A `--judge` leg (HIMMEL-3133) is the same `HIMMEL_CONSOLE_LEG=1` process, so it is blocked from writing its own `GO` by this exact same gate — Guard E needs no judge marker for that; "the judge is a leg" (design §3.2). HIMMEL-4564 later added a separate `HIMMEL_CONSOLE_JUDGE=1` marker for a different job, the write fence below. <!-- old-term-ok: HIMMEL_CONSOLE_LEG identifier and registered leg wording -->
 
 **Plugin-bump recheck (HIMMEL-5188, HIMMEL-5203, HIMMEL-5208, HIMMEL-7310).** Plugin versions change only in a release cut, the PR that changes the root `VERSION` file; any other PR leaves every `plugin.json` version as it is at its merge-base, so two PRs editing one plugin from the same base never collide and never need a merge of main. `merge-on-green.sh` exits 23 when a PR touching `marketplace/plugins/` fails that rule against the live base: a non-release PR changed a plugin version, or a release cut leaves a plugin it touches at or below the version the base already ships, which would put two contents under one version. It runs `scripts/check-plugin-drift.sh --bump-required` from a freshly fetched base-tip copy (with `scripts/lib/vm-mode.sh`); a checker blob that cannot be read OR is empty refuses (an empty script exits 0), and a checker that exits 0 without one of its fixed success lines (`no plugin version changed outside a release cut` / `release cut: every changed plugin version is above the base` / `no plugin files changed`, whole line) refuses too, so a newline-only or unrelated-output stub is no verdict. `scripts/check-plugin-drift.sh` is in `ci-trust-paths.txt` because the gate executes it (`vm-mode.sh` is covered by `^scripts/lib/`). Residual window: a sibling PR merging between the recheck and `gh pr merge` is not seen; closing it needs a server-side merge queue or required up-to-date branch, like the HIMMEL-1105 retarget window.
@@ -5675,7 +5678,7 @@ It also exits 17 (`policy-refused phase=console-go`) when `HIMMEL_CONSOLE_LEG` i
 **Solo mode (HIMMEL-7001).** An adopted project with one person and no chief selects it with `git config himmel.mergeMode solo` in the anchor's local config; `adopt.sh` ships `merge-on-green.sh` and the files it needs (`check-pr-title.sh`, `ticket-id-internal.sh`, `ticket-id-internal-authors.txt`, `chokepoints.json`). Solo mode relaxes no gate an adopted project can run: green checks with every review thread resolved (check-ci), the trust-path, main-red and privacy gates, and `ARMAUTOMERGE` all still apply, and a PR touching a trust path still needs a trust-reviewed GO. Only a himmel chief signs that GO for an adopted project (`go.sh --repo <owner/name> --trust-reviewed <qid>`, HIMMEL-7392), and only for a repo listed with `merge_allowed` true in `scripts/guardrails/himmel-adopted.json` on the harness repo's default branch (shipped empty), on a judge record written with `write-verdict.sh --repo <owner/name>`. Without that GO `merge-on-green.sh` refuses such a PR for every caller; the operator merges it in the forge web UI or with a raw `gh pr merge`, both of which bypass the script and so nothing enforces the list there. The optional forge branch rules (HIMMEL-3897) are the way to enforce it on those paths. The one skip is in the static re-check: an adopted project carries none of the harness's registries, so a check whose script is absent from the merge result is skipped and audited per check (`STATIC-RECHECK skipped check=<name> reason=solo-absent`), while a script that is present still runs and still fails closed (exit 24); outside solo mode a missing script is still exit 24. No GO file is asked for because only a leg session or a caller that passes a GO file is ever bound to one. What it adds is a refusal (exit 17, `phase=solo-console-leg` / `solo-himmel-clone`) wherever a GO is the rule, a console leg or an anchor carrying `console-kit/go.sh`, and any value other than `solo` fails closed (`phase=solo-invalid-mode`). A solo merge's MERGING and MERGED audit lines end in `mode=solo`; without the config nothing changes. <!-- old-term-ok: names the leg/console identifiers the mode checks -->
 
 **Judge write guard** (`scripts/hooks/guard-judge-writes.sh`, plugin copy `marketplace/plugins/himmel-ops/hooks/guard-judge-writes.sh`, HIMMEL-4564/4608/4614). With `HIMMEL_CONSOLE_JUDGE=1` (exported by `headed-arm-leg.sh --judge`) it denies a judge every push, PR write, merge, GO, inbox send, Jira write and non-qmd MCP call, and any Write/Edit outside: `~/.cache/himmel/verdicts/`, `/tmp/claude-<uid>/`, `<handover root>/**/verdicts/<qid>/` and the judge's own doc. The doc and qid come from `HIMMEL_CONSOLE_JUDGE_DOC` / `HIMMEL_CONSOLE_JUDGE_QID`, both set by the launcher (the qid is the `<qid>` of the judge's `resume_cwd` `~/.cache/himmel/verdicts/<qid>/scratch`); a missing or malformed value allows nothing under the handover root, so a judge cannot forge a sibling judge's verdict or doc. A symlink that does not resolve is denied. Bash file writes are not screened (residual, HIMMEL-4607). With the marker unset it is a silent no-op.
-It exits 21 (`REFUSED reason=trust-path`, HIMMEL-3895) for EVERY caller, worker session or not, when the PR's diff touches a CI trust path and the GO does not carry a valid trust-reviewed mac. The pattern list (`scripts/ci/ci-trust-paths.txt`, one ERE per line) is read from the repo's default branch via the contents API, never the PR head or a worktree file, so a PR editing the list cannot shrink its own gate; the PR's files come from REST `pulls/<n>/files` (paginated, renames match on both names), the listed count must equal `changed_files`, and the head sha is re-read around the listing so a push mid-check refuses. A missing list, an empty one, an invalid ERE or any unreadable step refuses; the one exception is a 404 when the anchor checkout's `origin` URL positively names a different github.com repo, which is audited `TRUST not-adopted` and merges as before (an unreadable origin or an SSH host alias cannot prove that, so it refuses). In an adopted repo (its default branch's `.claude/settings.json` sets `env.HIMMEL_REPO`) a missing list refuses instead of `not-adopted`, and the list may add to the anchor's core list `scripts/ci/ci-trust-paths-core.txt` but never shrink it: a changed file matching a core line the list lacks refuses `list core-missing <pattern>` (HIMMEL-7391). A trust-path PR additionally refuses while the anchor checkout is behind `origin` (`git ls-remote origin HEAD` not an ancestor of the anchor's HEAD), so the gate code that runs is current. The GO passes only when `go_trust_gate` (`scripts/lib/go-gate.sh`) verifies the ordinary GO and a `trust-reviewed=<id>` line inside its mac — `go.sh --trust-reviewed <id>` signs `himmel-go-trust-v1|nwo|pr|sha|id`, a separate domain from the ordinary `himmel-go-v2` mac, so an ordinary GO cannot be relabelled and the id cannot be edited after signing; success is audited `TRUST reviewed … trust=<id>`. Residual risk: the key (`~/.config/himmel/go-hmac.key`) is readable by the same uid every worker session runs as, so the mac proves the file came through `go.sh`, not that a human or judge ran it; and a raw `gh pr merge` bypasses merge-on-green entirely — binding the trust review to required CI on the base is HIMMEL-3897 (H1).
+It exits 21 (`REFUSED reason=trust-path`, HIMMEL-3895) for EVERY caller, worker or not, when the PR's diff touches a CI trust path and the GO does not carry a valid trust-reviewed mac. The pattern list (`scripts/ci/ci-trust-paths.txt`, one ERE per line) is read from the repo's default branch via the contents API, never the PR head or a worktree file, so a PR editing the list cannot shrink its own gate; the PR's files come from REST `pulls/<n>/files` (paginated, renames match on both names), the listed count must equal `changed_files`, and the head sha is re-read around the listing so a push mid-check refuses. A missing list, an empty one, an invalid ERE or any unreadable step refuses; the one exception is a 404 when the anchor checkout's `origin` URL positively names a different github.com repo, which is audited `TRUST not-adopted` and merges as before (an unreadable origin or an SSH host alias cannot prove that, so it refuses). In an adopted repo (its default branch's `.claude/settings.json` sets `env.HIMMEL_REPO`) a missing list refuses instead of `not-adopted`, and the list may add to the anchor's core list `scripts/ci/ci-trust-paths-core.txt` but never shrink it: a changed file matching a core line the list lacks refuses `list core-missing <pattern>` (HIMMEL-7391). A trust-path PR additionally refuses while the anchor checkout is behind `origin` (`git ls-remote origin HEAD` not an ancestor of the anchor's HEAD), so the gate code that runs is current. The GO passes only when `go_trust_gate` (`scripts/lib/go-gate.sh`) verifies the ordinary GO and a `trust-reviewed=<id>` line inside its mac — `go.sh --trust-reviewed <id>` signs `himmel-go-trust-v1|nwo|pr|sha|id`, a separate domain from the ordinary `himmel-go-v2` mac, so an ordinary GO cannot be relabelled and the id cannot be edited after signing; success is audited `TRUST reviewed … trust=<id>`. Residual risk: the key (`~/.config/himmel/go-hmac.key`) is readable by the same uid every worker runs as, so the mac proves the file came through `go.sh`, not that a human or judge ran it; and a raw `gh pr merge` bypasses merge-on-green entirely — binding the trust review to required CI on the base is HIMMEL-3897 (H1).
 That is why merge-on-green deliberately does NOT
 reuse this script's `CR_PUBLIC_REPO`: an env-overridable constant costs nothing
 on a narrowing pin and would be a widening seam on the other. Supports
@@ -5706,7 +5709,7 @@ Subscription-authenticated `claude -p` / `--print` / `--bg` draws from the
   update repeats that they still run on subscription limits.
 - New on 2026-10-07: Max and Team plans get monthly API credits (Max 5x
   $100, Max 20x $200, Team up to $500 pooled; no rollover). They are spent
-  only through an API key from a linked Console org, the credit page lists
+  only through an API key from a linked Claude Console org, <!-- old-term-ok: Anthropic product name --> the credit page lists
   Claude Code as not covered, and the credits do not change Claude or Claude
   Code usage limits. The Help Center adds that the credits do cover
   `claude -p` and the Agent SDK when you run them with an API key from the
@@ -5746,21 +5749,21 @@ both values again and compare the deltas.
 
 **API-key `claude -p` and the monthly API credit (HIMMEL-5433, 2026-10-13):**
 as the billing note above says, the credit covers `claude -p` run with an API
-key from the linked Console org (https://support.claude.com/en/articles/17154008);
+key from the linked Claude Console org (https://support.claude.com/en/articles/17154008); <!-- old-term-ok: Anthropic product name -->
 the platform page's "Doesn't cover: Claude Code" row means interactive Claude
 Code. So the API credit lane (`claude -p` + `ANTHROPIC_API_KEY`)
 uses the covered surface; no switch
-to the SDK or the raw Messages API is needed. Measured 2026-10-13 (account B, Haiku, `total_cost_usd` 0.0032): Console >
+to the SDK or the raw Messages API is needed. Measured 2026-10-13 (account B, Haiku, `total_cost_usd` 0.0032): Console > <!-- old-term-ok: Anthropic product name -->
 Billing promotional credit went from $199.91 to $199.90, so the spend landed
 on the credit.
 
-**Leg API-lane switch (HIMMEL-6476):** `scripts/api-lane/claude-api.sh` refuses
+**Worker API-lane switch (HIMMEL-6476):** `scripts/api-lane/claude-api.sh` refuses
 rc 5 unless `HIMMEL_API_LANE=on` is in the caller's environment, and a per-call
-env prefix is refused by the guards, so legs never reached it and the PR critic
+env prefix is refused by the guards, so workers never reached it and the PR critic
 (`critic-first-pass.sh`) was skipped. `headed-arm-leg.sh` now reads an opt-in seam
 from the LAUNCHING shell: `WORKER_SESSION_API_LANE=on` puts `HIMMEL_API_LANE=on` and
-`HIMMEL_API_ACCOUNT=auto` into the leg's environment (`--dry-run` prints both).
-Default OFF: unset or any other value launches a leg with neither. The wrapper
+`HIMMEL_API_ACCOUNT=auto` into the worker's environment (`--dry-run` prints both).
+Default OFF: unset or any other value launches a worker with neither. The wrapper
 strips an ambient `HIMMEL_API_LANE`/`HIMMEL_API_ACCOUNT` (both are in
 `console_context_leg_env_unset_names`), so the seam is the only way in. The
 console makes it the standing default by exporting `WORKER_SESSION_API_LANE=on` in its own <!-- old-term-ok: only the env name changed, prose is pre-existing -->
@@ -5901,7 +5904,7 @@ state dir. A same-uid process that re-chains the log is undetected until phase 2
 **What changed.** HIMMEL-1666's `record-hook-integrity.sh` used to pin every
 `scripts/hooks/*.sh` / `scripts/guardrails/*.sh` script to its git-committed
 blob hash at HEAD, once, at `SessionStart` — session-start-absolute. That
-meant a wired hook change landing on main between a worker session's start
+meant a wired hook change landing on main between a worker's start
 and a later call **hard-blocked every already-running session**, even a
 fully legitimate merge: the on-disk bytes no longer matched the pin, forever,
 for the life of that session.

@@ -51,7 +51,7 @@
 # token file written on every acquire/heartbeat/release THIS session made
 # (queue-lock.sh's own comment on `_ql_token_persist`: "best-effort ON
 # PURPOSE"). Recomputing that digest for the Stop payload's `session_id`
-# against every held `*-console` lock and checking whether the file exists
+# against every held `*-chief` / `*-console` lock and checking whether the file exists
 # is the same best-effort signal, one layer up — a false negative here just
 # allows the stop (fail-open), it never blocks one it should not.
 #
@@ -135,7 +135,7 @@ _hp_json_field "$payload" session_id
 session_id="$_HP_FIELD"
 [ -n "$session_id" ] || exit 0
 
-# --- is the stopping session holding a *-console.md queue-lock? -----------
+# --- is the stopping session holding a *-chief.md / *-console.md queue-lock? -
 # shellcheck disable=SC2016  # $1 is meant for the inner bash -c, not this shell
 root="$(_bounded bash -c '. "$1/../lib/handover-path.sh" 2>/dev/null && handover_root 2>/dev/null' _ "$HERE")" || exit 0
 [ -n "$root" ] || exit 0
@@ -154,7 +154,7 @@ digest_of() {
 token_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-queue-lock"
 
 console_doc=""
-for lockdir in "$lockdir_root"/*-console.lock; do
+for lockdir in "$lockdir_root"/*-console.lock "$lockdir_root"/*-chief.lock; do
     [ -d "$lockdir" ] || continue
     [ -f "$lockdir/owner.json" ] || continue
     owner_raw="$(cat "$lockdir/owner.json" 2>/dev/null)" || continue
@@ -206,7 +206,7 @@ leg_count=0
 leg_names=""
 while IFS= read -r line; do
     case "$line" in
-        slug=*-console\ *) continue ;;   # the console's own lock, not a leg
+        slug=*-console\ *|slug=*-chief\ *) continue ;;   # the console's own lock, not a leg
         # past the TTL with a provably dead owner -- a lock nobody holds,
         # not a leg that could wake this console. (IDLE-HELD? stays counted, below.)
         slug=*status=STALE-DEAD*) continue ;;

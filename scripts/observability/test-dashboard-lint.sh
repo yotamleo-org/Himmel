@@ -13,9 +13,8 @@
 #      hard-coded uid that drifts from provisioning;
 #   5. the dashboard provider ships INERT: provisioning/dashboards/ carries
 #      himmel-dashboards.yaml.tmpl (rendered by the Linux installer)
-#      and NO active *.yaml/*.yml. restart-stack.sh syncs
-#      provisioning/ wholesale onto the station, and a provider whose path is
-#      missing there breaks Grafana provisioning (console ruling 2026-10-04).
+#      and NO active *.yaml/*.yml. A provider whose path is missing on the
+#      station breaks Grafana provisioning (console ruling 2026-10-04).
 # Reads repo files only; writes broken copies into its own mktemp -d dir.
 set -uo pipefail
 

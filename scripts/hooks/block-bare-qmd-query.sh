@@ -2008,6 +2008,10 @@ case "$cmd_nq" in
                         ;;
                 esac
                 ;;
+            5)
+                echo "block-bare-qmd-query: the command model timed out, so this command that names qmd cannot be read; refusing. Split the command, or bypass with QMD_UNBOUNDED_OK=1." >&2
+                exit 2
+                ;;
         esac
         ;;
 esac
