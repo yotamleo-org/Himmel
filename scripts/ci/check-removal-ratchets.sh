@@ -29,7 +29,7 @@ if [ $# -gt 0 ]; then
   root="$2"
 fi
 
-if ! tracked="$(git -C "$root" ls-files)"; then
+if ! tracked="$(git -C "$root" -c core.quotePath=false ls-files)"; then
   echo "check-removal-ratchets: git ls-files failed in $root" >&2; exit 2
 fi
 

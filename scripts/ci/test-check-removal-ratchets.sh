@@ -67,6 +67,9 @@ row "RED: a one-shot helper registered at tier local" 1 "one-shot helper has a s
 mkrepo; printf '#!/usr/bin/env bash\n' > "$R/scripts/lint/test-no-oldterm.sh"; commit
 row "RED: a test-no-*.sh suite with no tier row" 1 "removal ratchet named as a suite (test-no-*.sh): scripts/lint/test-no-oldterm.sh"
 
+mkrepo; git -C "$R" config core.quotePath true; printf '#!/usr/bin/env bash\n' > "$R/scripts/lint/test-no-café.sh"; commit
+row "RED: a test-no-*.sh with a non-ASCII name (git quotes it by default)" 1 "removal ratchet named as a suite (test-no-*.sh): scripts/lint/test-no-café.sh"
+
 mkrepo; printf '#!/usr/bin/env bash\n' > "$R/scripts/lint/test-no-oldterm.sh"
 printf 'scripts/lint/test-no-oldterm.sh\tlocal\tone-shot\n' >> "$R/scripts/ci/suite-tiers.tsv"; commit
 row "RED: a test-no-*.sh suite at tier local" 1 "removal ratchet named as a suite (test-no-*.sh): scripts/lint/test-no-oldterm.sh"
