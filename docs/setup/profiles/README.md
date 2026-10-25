@@ -126,8 +126,29 @@ himmelctl install
 Run the installer again and pick another install profile. It prints the plan
 and asks `Proceed? [Y/n]` before it changes anything.
 
-Not yet verified: a second install over a starter install, switching to luna,
-has not been run on a test machine yet.
+Checked on a test VM (a bare Ubuntu machine, project scope): a `starter`
+install, then `himmelctl install` again, picking `luna` and accepting the
+plan. The second run finished with exit code 0 and changed these:
+
+- The answers file went from `profile: "starter"` to `profile: "luna"`. Its
+  vault changed from `none` to the default template at `~/Documents/luna`, and
+  it gained the luna, Telegram bridge and scheduled-job answers.
+- The notes vault was created at `~/Documents/luna` from the luna template. A
+  `luna` search collection was added.
+- In the project, no file was added or removed. `.claude/settings.json` gained
+  `LUNA_VAULT_PATH`, which points at the new vault.
+- The second install asked more than the first: the vault path, where VM
+  checks run, a longer list of scheduled jobs, two health-data questions and
+  the Telegram bridge. With the defaults accepted, every scheduled job and
+  the bridge stayed off, and the install stayed uncommitted.
+
+`himmelctl status` right after the move showed 2 red and 2 degraded items. Both
+red items came from the bare test machine, not from the move: `pre-commit` was
+not installed (the machine had neither `uv` nor `pipx`) and no search daemon
+(`qmd`, optional) was running.
+
+Scheduled jobs you armed before the move are not turned off for you; the
+installer prints the command to disarm each one.
 
 ### Change scope
 
