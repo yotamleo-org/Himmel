@@ -153,6 +153,7 @@ scripts/ci/test-run-shell-tests-flake.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-impacted.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-live-state.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-manifest.sh	pr	static-gate
+scripts/ci/test-run-shell-tests-parallel.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation-guards.sh	pr	trust-path
 scripts/ci/test-run-shell-tests-rotation.sh	pr	trust-path

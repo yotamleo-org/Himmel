@@ -17,6 +17,9 @@
 #   test-adopt.sh ran 969s on green main run 40030573258 (shard 3); HIMMEL-7300 split it
 #   into test-adopt.sh and test-adopt-features.sh, the 969s shared in proportion to their
 #   local times (479s / 427s) as 512 / 457.
+#   test-pr-check-rounds.sh (961) and test-arm-resume-1879.sh (811) are the medians of
+#   green main runs 40139904184, 40108400925, 40104911068, 40079522631 and 40074059569.
+#   test-run-shell-tests-parallel.sh (25) is a local measurement (HIMMEL-7483).
 # The quarantined suites (SKIP_LIST, HIMMEL-3196) have no row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -182,6 +185,7 @@ scripts/ci/test-run-shell-tests-flake.sh	12
 scripts/ci/test-run-shell-tests-impacted.sh	8
 scripts/ci/test-run-shell-tests-live-state.sh	3
 scripts/ci/test-run-shell-tests-manifest.sh	6
+scripts/ci/test-run-shell-tests-parallel.sh	25
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	102
 scripts/ci/test-run-shell-tests-rotation-guards.sh	115
 scripts/ci/test-run-shell-tests-rotation.sh	112
@@ -262,7 +266,7 @@ scripts/cr/test-pr-check-context.sh	55
 scripts/cr/test-pr-check-env.sh	0
 scripts/cr/test-pr-check-external.sh	1
 scripts/cr/test-pr-check-pair.sh	1
-scripts/cr/test-pr-check-rounds.sh	732
+scripts/cr/test-pr-check-rounds.sh	961
 scripts/cr/test-pr-check-run.sh	4
 scripts/cr/test-pr-check-step0.sh	0
 scripts/cr/test-residue-scan.sh	0
@@ -423,7 +427,7 @@ scripts/handover/console-kit/test-write-verdict.sh	22
 scripts/handover/console/test-console.sh	59
 scripts/handover/test-append-cr-bugs.sh	0
 scripts/handover/test-append-cr-findings.sh	0
-scripts/handover/test-arm-resume-1879.sh	858
+scripts/handover/test-arm-resume-1879.sh	811
 scripts/handover/test-arm-resume-at-pty.sh	7
 scripts/handover/test-arm-resume-bank-refresh.sh	1
 scripts/handover/test-arm-resume-base.sh	4
