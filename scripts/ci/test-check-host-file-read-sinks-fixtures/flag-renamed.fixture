@@ -1,0 +1,3 @@
+# fixture, not executable
+prompt="$(cat "$1")"
+extra="$(cat "$2")"
