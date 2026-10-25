@@ -2,9 +2,12 @@
 // write path for a secret value. The value is held in a local for the write only: it is never logged, audited,
 // returned, or put in an error.
 import { execFile, execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { LOGIN_EXISTS, readLogin, writeLogin } from "./login";
+import { runChild } from "./lock";
 import * as store from "../himmelctl/lib/secret-store.js";
 import { readConfLayers } from "./conf-layers";
 import { projectModeForge } from "../lib/project-mode.mjs";
@@ -111,6 +114,32 @@ export async function setupState(o: SetupOpts & AccountOpts) {
     choices: choices(o),
     coderabbit: await coderabbit(o),
   };
+}
+
+export type VerifyOpts = { env: Env; doctor: string; cwd: string; timeoutMs: number; redact: <T>(v: T) => T };
+type Sev = "OK" | "INFO" | "WARN" | "FAIL";
+
+// POST /api/setup/verify: the doctor's read-only checks as one summary and the WARN/FAIL rows. The argv is constant (no
+// --fix, no --file-issue) and the state dir is a throwaway, so a run publishes nothing to the statusline counts. Row text
+// passes the caller's redactor; the child's stderr is dropped, never returned or logged.
+export async function verifyDoctor(o: VerifyOpts): Promise<Record<string, unknown>> {
+  const stateDir = mkdtempSync(join(tmpdir(), "himmel-verify-"));
+  try {
+    const r = await runChild(["bash", o.doctor, "--json", "--no-color"], { cwd: o.cwd, env: { ...o.env, HIMMEL_DOCTOR_STATE_DIR: stateDir }, timeoutMs: o.timeoutMs });
+    if (r.timedOut) return { state: "timeout", error: `the doctor did not finish within ${Math.round(o.timeoutMs / 1000)} s; run it in your terminal: bash scripts/himmel-doctor.sh` };
+    const count = { OK: 0, INFO: 0, WARN: 0, FAIL: 0 };
+    const findings: { sev: Sev; id: string; msg: string; remedy: string }[] = [];
+    for (const line of r.stdout.split("\n")) {
+      let row: any;
+      try { row = JSON.parse(line); } catch { continue; }
+      if (!row || typeof row.id !== "string" || !(row.sev in count)) continue;
+      count[row.sev as Sev]++;
+      if (row.sev === "WARN" || row.sev === "FAIL") findings.push({ sev: row.sev, id: row.id, msg: String(row.msg ?? ""), remedy: String(row.remedy ?? "") });
+    }
+    if (!Object.values(count).some((n) => n > 0)) return { state: "error", error: `the doctor produced no report (exit ${r.rc}); run it in your terminal: bash scripts/himmel-doctor.sh` };
+    findings.sort((a, b) => Number(b.sev === "FAIL") - Number(a.sev === "FAIL"));
+    return o.redact({ state: "done", ok: count.OK, info: count.INFO, warn: count.WARN, fail: count.FAIL, findings });
+  } finally { rmSync(stateDir, { recursive: true, force: true }); }
 }
 
 const fail = (status: number, error: string): SecretResult => ({ status, body: { error }, audit: null });

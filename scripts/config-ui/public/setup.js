@@ -1,4 +1,4 @@
-// The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, and the commit rules.
+// The Setup page: which secrets are set (presence only, never a value), a form to set or remove one, the commit rules, and the Verify step.
 // A value lives in the password field until the request is sent and the field is cleared at once: it is never kept in
 // page state, localStorage or the markup, and the server answers with the name and the new status only.
 import { esc, planHtml } from "./render.js";
@@ -90,7 +90,22 @@ function account(a, msg) {
       <button class="btn primary" type="submit">create login</button></form>${note}`;
 }
 
-export function renderSetup(setup, plans, msgs) {
+// The Verify step: the doctor's read-only checks, run when asked. A finding links to its row on the Settings page, which
+// carries the fix; the remedy is shown too. The result is the server's summary and rows (secrets already redacted), kept in page memory only.
+function verifyStep(v) {
+  const head = `<h3>Verify</h3><p class="sub">Run himmel's health checks on this install. They only read: nothing is fixed or changed, and no secret value is shown.</p>`;
+  const run = (label) => `<button class="btn primary" type="button" data-act="setup-verify">${label}</button>`;
+  if (!v) return `${head}<div class="srow"><span class="id">Health checks</span><span class="det">not run yet</span>${run("run the checks")}</div>`;
+  if (v.state === "running") return `${head}<div class="srow"><span class="id">Health checks</span><span class="det" role="status">running… this can take a minute or two</span></div>`;
+  if (v.state !== "done") return `${head}<div class="nodata" role="alert">${esc(v.error || "the checks did not finish")}</div>${run("run again")}`;
+  const summary = `<div class="summary"><span class="st fail">${v.fail} fail</span> <span class="st warn">${v.warn} warn</span> <span class="st ok">${v.ok} ok</span>${v.info ? ` <span class="st info">${v.info} info</span>` : ""}</div>`;
+  const rows = v.findings.map((f) => `<div class="srow"><span class="id">${esc(f.id)}</span>
+      <span class="det"><span class="st ${f.sev === "FAIL" ? "fail" : "warn"}">${esc(f.sev.toLowerCase())}</span> ${esc(f.msg)}${f.remedy ? ` · fix: ${esc(f.remedy)}` : ""}</span>
+      <button class="btn" type="button" data-act="open-config" data-id="doctor:${esc(f.id)}">Open in Settings</button></div>`).join("");
+  return `${head}${summary}${rows || `<p class="sub" role="status">Nothing to fix.</p>`}${run("run again")}`;
+}
+
+export function renderSetup(setup, plans, msgs, verify = null) {
   const head = `<h2>Setup</h2>`;
   if (!setup) return `${head}<p class="sub">loading…</p>`;
   if (setup.error) return `${head}<div class="nodata" role="alert">${esc(setup.error)}</div>`;
@@ -99,5 +114,6 @@ export function renderSetup(setup, plans, msgs) {
     <h3>Secrets</h3>${setup.secrets.map((s) => secretRow(s, msgs[s.name])).join("")}
     ${coderabbit(setup.coderabbit)}
     ${commitRules(setup.commit, plans)}
-    ${setupChoices(setup.choices, plans)}`;
+    ${setupChoices(setup.choices, plans)}
+    ${verifyStep(verify)}`;
 }
