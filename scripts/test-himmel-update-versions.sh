@@ -231,8 +231,19 @@ before_head=$(git -C "$CHECKOUT_DIR" rev-parse HEAD)
 before_status=$(git -C "$CHECKOUT_DIR" status --porcelain --ignore-submodules)
 before_home=$(find "$fh3" \( -type f -exec cksum {} \; -o -type d -print \) 2>/dev/null | sort)
 before_hermes=$(git -C "$TMP/hermes-home/hermes-agent" rev-parse HEAD)
+# sync_cli_proxy is Linux-only, so on a macOS host the cli_proxy row still needs a Linux uname
+UNAME_BIN="$TMP/uname-bin"; mkdir -p "$UNAME_BIN"
+REAL_UNAME="$(command -v uname)"
+{
+  echo "#!/bin/sh"
+  echo "REAL_UNAME='$REAL_UNAME'"
+  cat <<'STUB'
+if [ "${1:-}" = "-s" ]; then echo Linux; else exec "$REAL_UNAME" "$@"; fi
+STUB
+} > "$UNAME_BIN/uname"
+chmod +x "$UNAME_BIN/uname"
 rc=0
-out=$(USERPROFILE='' HOME="$fh3" HIMMEL_UPDATE_CLAUDE_BIN="$TMP/claude-versions" \
+out=$(USERPROFILE='' HOME="$fh3" HIMMEL_UPDATE_CLAUDE_BIN="$TMP/claude-versions" PATH="$UNAME_BIN:$PATH" \
       HERMES_HOME="$TMP/hermes-home" HIMMEL_UPDATE_AUTOSTASH='' CLAUDE_USER_SETTINGS="$fh3/.claude/settings.json" \
       bash "$CHECKOUT_DIR/scripts/himmel-update.sh" --versions 2>&1) || rc=$?
 # shellcheck disable=SC2001  # indent every line; a ${//} rewrite reads worse

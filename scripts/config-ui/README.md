@@ -325,7 +325,7 @@ imports, so its suite runs in CI without an install.
 
   | Toggle | Works end to end? |
   |---|---|
-  | cadence arm/disarm (pipeline, qmd, graphmap, doctor; codex-sweep is Windows-only) | yes: a crontab entry, `status` reads `ARMED` / `not armed`, the row flips |
+  | cadence arm/disarm (pipeline, qmd, graphmap, doctor) | yes: a crontab entry, `status` reads `ARMED` / `not armed`, the row flips |
   | initiative on/off (execute, prcheck, pr, ticket, handover) | yes: `HIMMEL_INITIATIVE` in `~/.himmel/himmel.conf`, `config get` and the SessionStart hook agree, the row flips |
   | plugin enable/disable (on-demand tier) | yes: user scope flips, `plugin-profile.sh list` agrees, the row flips |
   | lane on/off | written and read back (`probe.kind` always / never), but **the row cannot show which**: it reads `local override in lanes.local.json` for both (config-feed.js `laneRows`) |

@@ -49,7 +49,8 @@
         "doctor:C22-chain-skips", "doctor:C27-guard-signals", "doctor:C28-guardrail-consent",
         "probe-disagree:C28-guardrail-consent", "doctor:C32-main-ref-guard", "doctor:C34-cost-guards",
         "doctor:C41-mcp-argv-key", "doctor:C43-rtk-hook", "doctor:C57-dotenv-allowlists", "doctor:C58-mcp-sdk-v1",
-        "doctor:C65-git-hooks", "doctor:C65-branch-protection", "doctor:C65-gate-deps"
+        "doctor:C65-git-hooks", "doctor:C65-branch-protection", "doctor:C65-gate-deps",
+        "doctor:C74-himmel-conf", "doctor:C74-env-keys", "doctor:C74-policy"
       ]
     },
     {
@@ -61,7 +62,7 @@
       "id": "lanes",
       "title": "Lanes & models",
       "rows": [
-        "lane:*", "hermes-checkout", "hermes-lanes", "codex-cli", "codex-sweep-cadence",
+        "lane:*", "hermes-checkout", "hermes-lanes", "codex-*",
         "plugin:codex@openai-codex", "doctor:C12-codex", "doctor:C21-hermes-profile",
         "doctor:C31-tokensave-dropped", "doctor:C59-codex-bank-cache",
         "doctor:C60-hermes-origin", "doctor:C61-codex-cli", "doctor:C63-claude-cli",

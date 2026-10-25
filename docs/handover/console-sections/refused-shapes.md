@@ -1,6 +1,6 @@
-# Console section — refused shapes and their literal retry
+# Chief section — refused shapes and their literal retry
 
-Read on demand from `console-template.md`. A refused SHAPE runs nothing, so retry
+Read on demand from `chief-template.md`. A refused SHAPE runs nothing, so retry
 once with the one spelling below; a second refusal goes to `himmel-ops:stuck-playbook`.
 Never reshape to dodge a guard that fired on purpose.
 

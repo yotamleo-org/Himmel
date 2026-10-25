@@ -36,7 +36,7 @@
 #      NOT at/atrun, which is off-by-default / SIP-fragile; see arm-resume.sh +
 #      scripts/lib/scheduler-backend.sh)
 #   6. hands off to the himmelctl install wizard — arming a
-#      cadence (drift-fix/upstream-watch/repo-sync/pull-cadence/...) was
+#      cadence (drift-fix/upstream-watch/pull-cadence/...) was
 #      previously reachable only by separately running himmelctl, so this is
 #      where arming stops being undiscoverable, same as ubuntu.sh/win11.ps1
 #      already do at the end of their own runs.
@@ -193,7 +193,7 @@ step "Seed operator leak denylist (private tooling — skipped if absent)"
 
 step "Hand off to the himmelctl install wizard (cadences, plugins, hooks)"
 {
-  # Arming a cadence (drift-fix, upstream-watch, repo-sync,
+  # Arming a cadence (drift-fix, upstream-watch,
   # pull-cadence, ...) was previously reachable only by separately running
   # himmelctl, so it never happened on a fresh machine unless the operator
   # remembered to. ubuntu.sh/win11.ps1 already end by delegating to this

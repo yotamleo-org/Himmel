@@ -59,10 +59,11 @@ const cadenceEmitLib = require('./lib/cadence-emit.js');
 const SECRETS_MANIFEST = require('./lib/secrets-manifest.json');
 const secretStoreLib = require('./lib/secret-store.js');
 const secretPromptLib = require('./lib/secret-prompt.js');
-// per-cadence wizard registry (pipeline/qmd/graphmap/codex-sweep
-// — see the file's own $comment for why ggs-cadence.sh is excluded). The
+// per-cadence wizard registry (pipeline/qmd/graphmap and the
+// rest — see the file's own $comment for why ggs-cadence.sh is excluded). The
 // wizard enumerates cadence UNITS from here, never a hardcoded list.
 const CADENCE_REGISTRY = require('./lib/cadence-registry.json').cadences;
+const RETIRED_CADENCE_IDS = ['codex-sweep', 'repo-sync'];
 
 // install provenance (lib/provenance.js; contract in
 // docs/internals/install-provenance.md). Recording is best-effort — a ledger
@@ -1043,9 +1044,7 @@ async function handleMissing(missing, args) {
 // this set). Only 'operator' seeds anything (pipeline+qmd+graphmap, matching
 // the richest-defaults posture the other preset fields already carry);
 // starter/luna/custom seed none, same as today's cadence:'off' default for
-// every profile but operator. codex-sweep is never preset-seeded — it needs
-// the codex lane too, and decision text explicitly holds it out
-// of even the operator seed.
+// every profile but operator.
 // `whisperModel` seeds the whisper-model question below (bare
 // filename, per the BARE FILENAME contract documented at whisperDirPath()'s
 // neighbor comment ~L1930). Only `operator` diverges from the schema default
@@ -1585,11 +1584,9 @@ async function askLanes(ask, defaultLanes) {
 }
 
 // Cadence-registry rows this run can actually offer: PER-ROW filtering, not
-// whole-question vault gating (the spec deviation this fix
-// closes — codex-sweep, `requires:'lane:codex'`, must be offerable on a
-// vault-less codex-lane machine). A 'requires:vault' row is offered only when
-// vaultMode!=='none'; a 'requires:lane:codex' row only when 'codex' is in the
-// FINAL lanes selection; a 'requires:env:<KEY>' row (e.g.
+// whole-question vault gating (a 'requires:none' or 'requires:env:<KEY>' row
+// must be offerable on a vault-less machine). A 'requires:vault' row is offered
+// only when vaultMode!=='none'; a 'requires:env:<KEY>' row (e.g.
 // pull-cadence's GOOGLE_HEALTH_REFRESH_TOKEN) only when <KEY> is non-empty in
 // the primary checkout's .env FILE (readEnvVarFile — never process.env; a
 // connector's persisted config is a distinct question from a launching
@@ -1598,29 +1595,13 @@ async function askLanes(ask, defaultLanes) {
 // source config get/set already read from. None of these is ever asked
 // otherwise — the answer stays genuinely undefined, the same round-8 "not
 // asked ≠ answered off" discipline every other section in this file follows.
-// A 'requires:platform:<windows|macos|linux>' row (repo-sync is
-// schtasks-only) is offered only when the host matches; the host is
-// cadencePlatform(), a hermetic-test seam over process.platform. An
-// unrecognised `requires` string is still offered (the pre-existing
-// fall-through); an unrecognised platform NAME matches no host, so it is never.
-const CADENCE_PLATFORM_NAMES = { win32: 'windows', darwin: 'macos', linux: 'linux' };
-
-// HIMMELCTL_CADENCE_PLATFORM is a hermetic-test seam (process.platform
-// vocabulary: win32|darwin|linux); normal runs use the real process platform.
-function cadencePlatform() {
-  return process.env.HIMMELCTL_CADENCE_PLATFORM || process.platform;
-}
-
-function offeredCadenceRows(lanes, vaultMode, platform, registry) {
-  const host = CADENCE_PLATFORM_NAMES[platform || cadencePlatform()];
+// An unrecognised `requires` string is still offered (the pre-existing
+// fall-through).
+function offeredCadenceRows(vaultMode, registry) {
   return (registry || CADENCE_REGISTRY).filter((r) => {
-    if (r.requires === 'lane:codex') return (lanes || []).indexOf('codex') !== -1;
     if (r.requires === 'vault') return vaultMode !== 'none';
     if (typeof r.requires === 'string' && r.requires.indexOf('env:') === 0) {
       return readEnvVarFile(r.requires.slice(4)) !== '';
-    }
-    if (typeof r.requires === 'string' && r.requires.indexOf('platform:') === 0) {
-      return host !== undefined && r.requires.slice(9) === host;
     }
     return true;
   });
@@ -1680,8 +1661,8 @@ function vmProofNote(row, route) {
   return 'vm.mode config error — fix ~/.himmel/config.json';
 }
 
-async function askCadences(ask, lanes, vaultMode, defaultIds, vmAnswer, doc, hideIds) {
-  const rows = offeredCadenceRows(lanes, vaultMode).filter((r) => (hideIds || []).indexOf(r.id) === -1);
+async function askCadences(ask, vaultMode, defaultIds, vmAnswer, doc, hideIds) {
+  const rows = offeredCadenceRows(vaultMode).filter((r) => (hideIds || []).indexOf(r.id) === -1);
   const ids = rows.map((r) => r.id);
   const route = rows.some((r) => r.vm_proof) ? vmProofRoute(doc, vmAnswer) : { rc: 0 };
   const blocked = (id) => rows.some((r) => r.id === id && r.vm_proof) && route.rc !== 0;
@@ -1826,13 +1807,11 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
 
   // 8 (installer v1 fix, spec deviation): cadences is PER-ROW
   // gated, not whole-question vault gated — offeredCadenceRows() above
-  // already filters each row by its own `requires` (vault vs lane:codex), so
+  // already filters each row by its own `requires` (vault vs env vs none), so
   // the question itself must sit outside the vaultMode!=='none' gate too, or
-  // a vault=none + lane:codex machine could never reach codex-sweep at all
-  // (the exact bug this fix closes). Asked only when at least one row is
-  // actually offered — zero offered rows = never asked, `cadences` stays
-  // genuinely undefined (round-8 discipline), same as it always did for a
-  // codex-less run before this fix. `cadences` is a TOP-LEVEL answer
+  // a vault=none machine could never reach a 'requires:none' row at all.
+  // Asked only when at least one row is actually offered — zero offered rows
+  // = never asked, `cadences` stays genuinely undefined (round-8 discipline). `cadences` is a TOP-LEVEL answer
   // (buildAnswers below), same pattern as luna/secretsWalk/bridge, not
   // nested inside `luna`.
   let cadences;
@@ -1840,11 +1819,11 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   let vm;
   let existingDoc;
   // starter offers only the doctor among the always-available rows; rows with a
-  // real requirement (vault, lane, env, platform) stay offered once it is met
+  // real requirement (vault, env) stay offered once it is met
   const hideCadenceIds = profile === 'starter'
     ? CADENCE_REGISTRY.filter((r) => r.requires === 'none' && r.id !== 'doctor').map((r) => r.id)
     : [];
-  const offeredRows = offeredCadenceRows(lanes, vaultMode).filter((r) => hideCadenceIds.indexOf(r.id) === -1);
+  const offeredRows = offeredCadenceRows(vaultMode).filter((r) => hideCadenceIds.indexOf(r.id) === -1);
   if (offeredRows.length > 0) {
     // the vm.mode question sits right before the cadences it
     // gates — asked only when a vm_proof row is offered, so a flow with none
@@ -1853,7 +1832,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
       try { existingDoc = lunaConfigLib.inspect().doc; } catch (_e) { existingDoc = undefined; }
       vm = await askVm(ask, existingDoc && existingDoc.vm); // step: vm
     }
-    cadences = await askCadences(ask, lanes, vaultMode, preset.cadenceIds, vm, existingDoc, hideCadenceIds); // step: cadences
+    cadences = await askCadences(ask, vaultMode, preset.cadenceIds, vm, existingDoc, hideCadenceIds); // step: cadences
     // RETASK stage1-build-6d2e an earlier fix (extended to
     // every declined UNIT, not just pipeline): declining a unit writes its
     // disposition as 'off' but does NOT, by itself, disarm anything already
@@ -1865,7 +1844,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     // the operator is never left assuming "off" already took effect. Per
     // decision #5: ONE consent question for every declined
     // unit — no per-unit disarm consent. Stays with cadences (moved out of
-    // the vault gate together) since a vault=none + declined codex-sweep run
+    // the vault gate together) since a vault=none + declined doctor run
     // can equally have an existing armed job to clean up.
     const declinedIds = Object.keys(cadences).filter((id) => cadences[id] === 'off');
     if (declinedIds.length > 0) {
@@ -1996,7 +1975,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
     }
   } else if (disarmCadence) {
     // vault=none can still reach the disarm consent question above (a
-    // declined lane:codex row, e.g. codex-sweep) — record it in a partial
+    // declined 'requires:none' row, e.g. doctor) — record it in a partial
     // `luna` carrying ONLY disarmCadence, never phiDeclared/cadenceEnabled
     // (those were never asked on this path). lunaSectionSupplied() above is
     // keyed on `phiDeclared` specifically for exactly this reason: this
@@ -2239,7 +2218,7 @@ function loadProfile(p) {
     // fix: cadenceEnabled/phiDeclared are each individually
     // optional WITHIN the (already-optional) luna section — a vault=none
     // interactive run can now reach the disarm-consent question (a declined
-    // lane:codex cadence row) without vault/PHI ever being asked, producing
+    // 'requires:none' cadence row) without vault/PHI ever being asked, producing
     // a partial `luna = { disarmCadence }` with neither field. Same
     // optional-when-present treatment disarmCadence itself already has just
     // below.
@@ -2395,6 +2374,12 @@ function loadProfile(p) {
     }
     const knownIds = CADENCE_REGISTRY.map((r) => r.id);
     for (const id of Object.keys(obj.cadences)) {
+      // Rows the wizard used to save before these cadences were removed.
+      if (RETIRED_CADENCE_IDS.indexOf(id) !== -1) {
+        console.error(`himmelctl: profile ${p}: dropping retired cadence '${id}' (no longer shipped)`);
+        delete obj.cadences[id];
+        continue;
+      }
       if (knownIds.indexOf(id) === -1) {
         profileError(p, `field 'cadences' contains unknown cadence id ${JSON.stringify(id)} (known: ${knownIds.join(', ')})`);
       }
@@ -2408,20 +2393,14 @@ function loadProfile(p) {
     // breaks/no-ops at arm time — the validates-then-breaks class this
     // wizard forbids everywhere else. Fail loud here instead, naming both
     // the cadence and the unmet requirement.
-    //
-    // Deliberately asymmetric: a `requires:'lane:codex'` cadence (codex-sweep)
-    // is NOT gated on whether 'codex' is actually in `lanes` here. `requires:
-    // 'vault'` is a functional dependency (the cadence script has nothing to
-    // run against without a vault) and is enforced; `requires:'lane:codex'`
-    // is a consent surface — same principle as the lanes comment above (a
-    // hand-reviewed profile naming codex-sweep IS the consent), so profile
-    // naming alone suffices and it is left unchecked on purpose. Do not
-    // "fix" this into symmetry.
     for (const row of CADENCE_REGISTRY) {
       if (row.requires === 'vault' && obj.cadences[row.id] === 'armed' && obj.vault.mode === 'none') {
         profileError(p, `field 'cadences.${row.id}' is 'armed' but requires a vault (vault.mode is 'none')`);
       }
     }
+    // Only retired ids were named: drop the section so a legacy
+    // `luna.cadenceEnabled` answer still applies.
+    if (Object.keys(obj.cadences).length === 0) delete obj.cadences;
   }
   // `vm` is an OPTIONAL whole section (absent = never asked, the
   // resolver then reads ~/.himmel/config.json). When present it gets the
@@ -3387,7 +3366,7 @@ function runSecretsWalk(bridge, answers) {
 // never drift on what "supplied" means.
 // fix: keyed on `phiDeclared` specifically (not mere presence of
 // `luna`) — the cadences question now moves off the vault gate, so a
-// vault=none run that still asks cadences (a lane:codex row) can build a
+// vault=none run that still asks cadences (a 'requires:none' row) can build a
 // partial `luna = { disarmCadence }` with NO phiDeclared field (PHI was never
 // asked). Checking bare `luna !== undefined` there would wrongly read as
 // "PHI supplied" and write a fabricated `luna.phi.declared = false` to disk.
@@ -3409,16 +3388,15 @@ function bridgeSectionSupplied(answers) {
 // per-unit arm-argv builder. pipeline keeps cadence-emit.js's
 // existing persisted config->flag mapping (~/.himmel/config.json's
 // luna.cadence.* — untouched by this ticket, see luna-config.js SCHEMA).
-// qmd/graphmap/codex-sweep have NO persisted per-adopter schedule surface
+// qmd/graphmap have NO persisted per-adopter schedule surface
 // (explicitly NOT IN SCOPE for) — arm them with the script's own
 // all-default invocation: verified in-tree against each script's own
 // usage()/cmd_arm() that every flag is genuinely optional with a sane
 // script-side default (qmd-cadence.sh: --time/--hourly/--ship-to all
 // optional; graphmap-cadence.sh: --luna-time/--himmel-time/--vault all
-// optional; codex-sweep-cadence.sh: --time/--repeat-hours both optional) —
-// none of the four registry units needed a guessed schedule, so none is
-// preview-only. graphmap-cadence.sh accepts the same --vault flag pipeline
-// does; qmd/codex-sweep take none.
+// optional) — none of these registry units needed a guessed schedule, so
+// none is preview-only. graphmap-cadence.sh accepts the same --vault flag
+// pipeline does; qmd takes none.
 function cadenceArmFlags(id, { doc, vaultPath }) {
   if (id === 'pipeline') return cadenceEmitLib.buildArmFlags({ cadence: doc.luna.cadence, vaultPath: vaultPath });
   if (id === 'graphmap') return vaultPath ? ['--vault', vaultPath] : [];
@@ -4017,7 +3995,7 @@ function applyLunaSectionsStep(answers) {
 
   // arm/disarm EVERY unit with an actual disposition this run
   // pipeline keeps the exact single-unit behavior above (same gating, same
-  // spawn), generalized to qmd/graphmap/codex-sweep via the registry.
+  // spawn), generalized to qmd/graphmap and the rest via the registry.
   // disarm stays gated on `luna.disarmCadence` (decision #5: ONE consent
   // question covers every declined unit — no per-unit disarm consent).
   if (configSaveOk) {

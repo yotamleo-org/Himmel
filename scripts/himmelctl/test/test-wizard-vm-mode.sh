@@ -164,7 +164,7 @@ askcad() { # extra-node-js-before (sets vm answer) -> JSON {vs, menu}
     const ask = async (q) => { prompts.push(q); return prompts.length > 1 ? "none" : ""; };
     const vmAns = process.env.VMANS ? JSON.parse(process.env.VMANS) : undefined;
     const doc = process.env.DOC ? JSON.parse(process.env.DOC) : undefined;
-    w.askCadences(ask, [], "existing", ["pipeline", "vault-stall"], vmAns, doc).then((r) => {
+    w.askCadences(ask, "existing", ["pipeline", "vault-stall"], vmAns, doc).then((r) => {
       const line = prompts[0].split("\n").find((l) => l.includes(" vault-stall")) || "";
       console.log(JSON.stringify({ vs: r["vault-stall"], pipeline: r.pipeline, line }));
     });
@@ -200,14 +200,14 @@ printf '{"vm":{"mode":"bogus"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 got=$(node -e '
   const w = require(process.argv[1]);
   const seq = ["vault-stall", "none"]; let n = 0;
-  w.askCadences(async () => seq[n++], [], "existing", [], undefined).then((r) => console.log(JSON.stringify({ n, vs: r["vault-stall"] })));
+  w.askCadences(async () => seq[n++], "existing", [], undefined).then((r) => console.log(JSON.stringify({ n, vs: r["vault-stall"] })));
 ' "$wizard" 2>/dev/null)
 [ "$got" = '{"n":2,"vs":"off"}' ] || fail "c: error — explicit vault-stall should be refused and re-asked: $got"
 # none: an explicit selection is the operator's ack — armable
 printf '{"vm":{"mode":"none"}}\n' > "$HIMMEL_VM_MODE_CONFIG"
 got=$(node -e '
   const w = require(process.argv[1]);
-  w.askCadences(async () => "vault-stall", [], "existing", [], undefined).then((r) => console.log(JSON.stringify({ vs: r["vault-stall"] })));
+  w.askCadences(async () => "vault-stall", "existing", [], undefined).then((r) => console.log(JSON.stringify({ vs: r["vault-stall"] })));
 ' "$wizard" 2>/dev/null)
 [ "$got" = '{"vs":"armed"}' ] || fail "c: none — an explicit selection should still be armable: $got"
 ok "c — vault-stall pre-selected only under local/remote; none/error say why; error is not armable"
@@ -311,7 +311,7 @@ askcad_doc() { # <answer-json> -> {n, vs}; doc = the wizard's own read of its co
     const w = require(process.argv[1]);
     const doc = require(process.argv[2]).inspect().doc;
     const seq = ["vault-stall", "none"]; let n = 0;
-    w.askCadences(async () => seq[n++], [], "existing", [], JSON.parse(process.argv[3]), doc)
+    w.askCadences(async () => seq[n++], "existing", [], JSON.parse(process.argv[3]), doc)
       .then((r) => console.log(JSON.stringify({ n, vs: r["vault-stall"] })));
   ' "$wizard" "$luna_cfg" "$1" 2>/dev/null
 }

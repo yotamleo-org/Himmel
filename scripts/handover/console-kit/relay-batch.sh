@@ -196,7 +196,7 @@ while IFS=: read -r label nonce _lock _pid; do
         # locked rows only (lockless is the boolean true; anything else is locked and
         # visible). Two locked rows under one label are ambiguous, so nothing is sent.
         mrows="$(jq -r --arg l "$label" '.legs[] | select(.label == $l and (.lockless == true | not)) | [.doc, ((.lane // "") | if . == "" then "unknown" else . end)] | @tsv' "$manifest" 2>/dev/null)"
-        nrows=0; [ -z "$mrows" ] || nrows="$(printf '%s\n' "$mrows" | wc -l)"
+        nrows=0; [ -z "$mrows" ] || nrows="$(printf '%s\n' "$mrows" | wc -l | tr -d ' ')"
         if [ "$nrows" -gt 1 ]; then
             echo "UNRESOLVED $label ($nrows manifest rows share the label, nothing sent) — relay by hand"
             continue

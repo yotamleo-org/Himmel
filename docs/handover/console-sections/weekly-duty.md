@@ -1,6 +1,6 @@
 # Chief section — the weekly standards duty
 
-Read on demand from `console-template.md` `## Standing rules`. The review loop
+Read on demand from `chief-template.md` `## Standing rules`. The review loop
 collects findings; this duty is how it learns from them. Owner: the chief
 (O4 (a), HIMMEL-6371 R5a). A separate dedicated weekly run is HIMMEL-6914 and
 does not replace this.

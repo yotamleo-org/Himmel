@@ -59,7 +59,7 @@ an empty leg set that reads as every leg gone.
 produce identical output: --legs "N1.md N2.md" and --legs "N1.md,N2.md" are
 the same list. A --legs entry that does not resolve to a readable file prints
 a "tick: no such leg doc: <path>" warning on stderr and is reported as
-NOTFOUND in legs=, never as MISSING -- MISSING is reserved for a lock that is
+NOTFOUND in workers=, never as MISSING -- MISSING is reserved for a lock that is
 actually gone.
 
 fleet=<live>/<cap> and capacity= (HIMMEL-3167) are always appended, last on the
@@ -148,12 +148,12 @@ tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n
 window exists); :held = reported only. console-wait.sh wakes when it appears or
 changes. Env seam: TICK_KILL_BIN.
 
-legs= reads a leg's lock as FRESH or STALE (held; an idle-warned lock still reads
+workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held; an idle-warned lock still reads
 FRESH/STALE here -- the IDLE-HELD? flag belongs to the sweep and the exit code),
 CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED, AND the leg's own
 session process is still alive in the census -- the window is sitting there
 finished but not yet closed; console-wait.sh wakes on this the same way it
-wakes on any other legs= change, since it samples the whole field, so no
+wakes on any other workers= change, since it samples the whole field, so no
 change was needed there), WRAPPED (lock released and the tail says WRAPPED,
 but either no live session matched or the census itself could not be read --
 the normal end of a leg once its window is gone, and also the fail-closed
@@ -166,14 +166,14 @@ resolve here -- neither ruled held nor free: check its owner, never reclaim on
 it; HIMMEL-3290), CORRUPT, UNKNOWN (queue-lock status unreadable) or NOTFOUND
 (no such doc).
 
-legset=<ok|STALE:unarmed=A+B;unlisted=C|unknown|skip> (HIMMEL-3293) compares
+workerset=<ok|STALE:unarmed=A+B;unlisted=C|unknown|skip> (legset= in an older tick; HIMMEL-3293) compares
 this console's `## Live state` legs with the --legs arm. unarmed = listed in
 Live state but not in the arm; unlisted = in the arm, not held, and absent from
 Live state. STALE means the arm is out of date -- re-arm the tick with the
 current leg docs (absolute paths) -- and is never leg trouble. livestate=DRIFT
 names only a leg the arm covers (a not-held one Live state still lists, or a
 held one it omits); a Live-state leg the arm omits is reported as unarmed
-here, not as DRIFT. legset=unknown when
+here, not as DRIFT. workerset=unknown when
 livestate=unknown, skip when there is no --doc.
 
 procs=<n>,...,unwatched=<A+B> also names a live claude session, in the process
@@ -190,8 +190,8 @@ leg's own handover doc decides: its LATEST `- ... SUCCESSION accepted:` Results
 bullet naming this console as the incoming session = RELAYED (the leg took this
 console over, informational, nothing to do); no such bullet = UNCONFIRMED (this
 console cannot tell whether the leg was re-briefed -- ask the leg for its quote-back, or have the
-predecessor relay it, which is the stronger form; a chain, see leg-preface.md
-"Console succession", is only for a predecessor that is gone and never replaces
+predecessor relay it, which is the stronger form; a chain, see worker-preface.md
+"chief succession", is only for a predecessor that is gone and never replaces
 an accepted relay). UNCONFIRMED wins the field when both occur.
 unknown = the doc name carries no console letter or has no `legs:` line.
 
@@ -2202,7 +2202,7 @@ fi
 # ponytail: bank-preflight still takes its fleet admission lock and prunes
 # expired/consumed reservations while it counts, exactly as any bank read does.
 fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
-# bank= uses the selected lane's own preflight verdict. Keep
+# usage= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
 if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}}" = openrouter ]; then
     or_verdict="$(printf '%s\n' "$fleet_out" | grep -E '^(PROCEED|SKIPPED-BANK|BANK-UNKNOWN|SKIPPED-FLEET)$' | tail -n 1)"
@@ -2596,7 +2596,7 @@ else
     }
     printf 'TICK %s' "$clock"
     compact_field hb "$hb"
-    compact_field legs "$legs_summary"
+    compact_field workers "$legs_summary"
     compact_field livestate "$livestate_summary"
     compact_field procs "$procs"
     compact_field models "$models_summary"
@@ -2607,7 +2607,7 @@ else
     compact_field unowned-prs "$unowned_prs"
     compact_field ext-prs "$ext_prs"
     compact_field dispatch "$dispatch_summary"
-    compact_field bank "$bank"
+    compact_field usage "$bank"
     compact_field fill "$fill"
     compact_field tails "$tails_summary"
     compact_field cachettl "$cachettl_summary"
@@ -2624,7 +2624,7 @@ else
     compact_field rest-read "$(rest_compact "$rest_read_line")"
     compact_field orphans "$orphans"
     compact_field nonces "$nonces_summary"
-    compact_field legset "$legset_summary"
+    compact_field workerset "$legset_summary"
     compact_field board "$board_summary"
     compact_field tracker "$tracker_summary"
     compact_field vault "$vault_summary"

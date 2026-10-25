@@ -78,8 +78,8 @@ stubDoctor="$work/stub-doctor.sh"
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" %s\n' "'{\"sev\":\"OK\",\"id\":\"C1-x\",\"msg\":\"ok\",\"remedy\":\"\"}'" > "$stubDoctor"
 chmod +x "$stubDoctor"
 scriptRoot="$work/scripts-root"
-mkdir -p "$scriptRoot/scripts/luna" "$scriptRoot/scripts/cleanup" "$scriptRoot/scripts/machine-setup"
-for s in luna/pipeline-cadence luna/qmd-cadence luna/graphmap-cadence doctor-cadence cleanup/codex-sweep-cadence; do
+mkdir -p "$scriptRoot/scripts/luna" "$scriptRoot/scripts/machine-setup"
+for s in luna/pipeline-cadence luna/qmd-cadence luna/graphmap-cadence doctor-cadence; do
   printf '#!/usr/bin/env bash\nexit 2\n' > "$scriptRoot/scripts/$s.sh"
 done
 printf '#!/usr/bin/env bash\necho %s\n' "'{\"always\":[],\"connectors\":[],\"onDemand\":[]}'" > "$scriptRoot/scripts/machine-setup/plugin-profile.sh"

@@ -67,6 +67,10 @@ not consulted for policy).
 | `config.json` not valid JSON | notice; legacy `.env` | `load_policy` returns non-zero; `clear-cr-marker.sh` refuses (exit 14) |
 | `.env` present but unreadable | key stays unset | `load_policy` returns non-zero; the gate refuses |
 
+`himmel-doctor` check C74 reports a half-migrated station: `himmel.conf`
+missing or unparseable, behaviour keys still in `.env`, and gate keys the
+policy file does not yet hold. It prints key names only, never values.
+
 A missing file never turns a gate on its permissive side: unset policy keys
 leave the cross-model requirement off, the floor fallback off, and automerge
 off, which are today's defaults.

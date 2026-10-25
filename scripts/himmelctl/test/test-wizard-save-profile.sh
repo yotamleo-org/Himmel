@@ -164,8 +164,7 @@ stage() {
 # starter/project/vault=none/inline/no-lanes/no-alwaysOn profile — verbatim the same sequence
 # test-wizard-questions.sh's case5 uses. this vault=none +
 # no-codex-lane shape now ALSO reaches the cadences question (drift-fix/
-# upstream-watch are requires:'none', always offered; repo-sync is Windows-
-# only) followed by
+# upstream-watch are requires:'none', always offered) followed by
 # the disarm-consent question (since declining all three counts as a
 # decline) — 7 became 9; see that file's case1/case7 for the exact count
 # assertion this mirrors.

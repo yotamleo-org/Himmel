@@ -628,7 +628,7 @@ cmd_disarm() {
 # EVERY parameter arrives already cadence_cmd_escape'd, and every name says so.
 # Mixing pre-escaped and raw parameters is how a value slips through unescaped:
 # a raw parameter sitting among escaped ones looks like it was already handled.
-# Both sibling emitters, codex-sweep-cadence.sh and graphmap-cadence.sh, settle on
+# The sibling emitter graphmap-cadence.sh settles on
 # caller-escapes-everything. With the convention "if it is not named _esc it
 # does not belong in a printf here", the next added parameter is checkable by
 # eye instead of by archaeology.
@@ -1548,7 +1548,7 @@ cmd_arm() {
     # Atomic runner publication: every runner .bat
     # and .vbs shim is emitted to a staged temp BESIDE its final path (same dir
     # -> same filesystem -> `mv` is an atomic rename, not a copy) and promoted
-    # only once complete, mirroring codex-sweep-cadence's publish discipline.
+    # only once complete.
     # Redirecting straight onto the FINAL path let a task firing concurrently
     # with a re-arm read a half-written shim; after the rename the final path
     # only ever holds a complete file (old or new). Shims promote first (an

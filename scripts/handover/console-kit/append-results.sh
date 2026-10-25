@@ -71,7 +71,7 @@ fi
 # (name ends -chief.md or -console.md) or a doc with no leg brief takes any bullet, since
 # console-template.md has the console log MERGED / VERDICT / OPERATOR / free text
 # through this script.
-lead="${TEXT%%[!A-Z-]*}"
+lead="${TEXT%%[!ABCDEFGHIJKLMNOPQRSTUVWXYZ-]*}"  # a bash 3.2 range follows the locale collation and takes lowercase
 is_leg=0
 case "${DOC##*/}" in
     *-console.md|*-chief.md) ;;

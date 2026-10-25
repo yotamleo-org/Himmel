@@ -1,6 +1,6 @@
 # Chief section — the release manager: routing every placement
 
-Read on demand from `console-template.md` `## Standing rules`. Applies while a
+Read on demand from `chief-template.md` `## Standing rules`. Applies while a
 release is declared (`jira release state <R>` prints a status other than
 `UNKNOWN: … is missing`). Design: HIMMEL-6796; on demand since HIMMEL-7201.
 
@@ -34,7 +34,7 @@ release is declared (`jira release state <R>` prints a status other than
 - **An operator ruling is a scoped record.** Write it before `rm-run` rules
   on it, then quote the printed `O-` id in the request's `--why`:
   `jira release operator decision <R> --decision <n> --keys <k1,k2> --op add|remove|move|keep|discharge --from <v|backlog> --to <v|backlog> --verbatim-file <f>`.
-  The writer refuses inside any worker session the chief spawned. A bare decision number
+  The writer refuses inside any worker the chief spawned. A bare decision number
   authorizes nothing.
 - **Declaring a release and freezing a baseline are operator acts**, done by
   you on an operator decision: `jira release operator declare <R> --versions

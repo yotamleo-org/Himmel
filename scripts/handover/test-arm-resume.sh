@@ -217,7 +217,9 @@ fi
 ARM="$(cd "$(dirname "$0")" && pwd)/arm-resume.sh"
 [ -x "$ARM" ] || chmod +x "$ARM"
 
-TMP=$(mktemp -d)
+# Under TMPDIR, never a template-less mktemp -d: macOS puts that in /var/folders,
+# outside the suite temp root, so the flow-run ledger quarantines its rows.
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume.XXXXXX") || exit 1
 # macOS: mktemp yields /var/folders/... but arm-resume resolves the real path
 # (/private/var/...); canonicalise so path assertions compare like with like.
 TMP=$(cd "$TMP" && pwd -P)

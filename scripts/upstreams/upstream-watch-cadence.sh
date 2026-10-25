@@ -21,7 +21,7 @@
 # drift-fix-cadence.sh, which does not register anywhere and is invisible to
 # himmel-doctor's C24 check. That gap is not repeated here — see the
 # observability_register_cadence / observability_unregister_cadence call
-# sites below (same pattern as scripts/cleanup/codex-sweep-cadence.sh).
+# sites below.
 #
 # Default fire time 06:00 local — after drift-fix-cadence's 05:00/05:30 legs
 # (no overlap on the same machine) and still well before the workday.
@@ -521,7 +521,7 @@ cmd_arm() {
     fi
     rm -f "$err_file"
 
-    # Register immediately after /create succeeds (mirrors codex-sweep-cadence):
+    # Register immediately after /create succeeds:
     # if the post-arm verify below proves the task dead and rolls it back, the
     # task intentionally stays "expected" so himmel-doctor's C24 check pages on
     # the vanished registration instead of staying silent about it.

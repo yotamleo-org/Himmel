@@ -118,7 +118,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     promUrl = `http://127.0.0.1:${(prom.address() as { port: number }).port}`;
   }
   const stubCad = join(ROOT, "scripts/config-ui/tests/stub-cadence.sh");
-  for (const c of ["scripts/luna/pipeline-cadence.sh", "scripts/luna/graphmap-cadence.sh", "scripts/luna/qmd-cadence.sh", "scripts/cleanup/codex-sweep-cadence.sh", "scripts/doctor-cadence.sh"]) {
+  for (const c of ["scripts/luna/pipeline-cadence.sh", "scripts/luna/graphmap-cadence.sh", "scripts/luna/qmd-cadence.sh", "scripts/doctor-cadence.sh"]) {
     mkdirSync(join(cad, c, ".."), { recursive: true });
     copyFileSync(stubCad, join(cad, c));
   }

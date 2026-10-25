@@ -1,15 +1,15 @@
-# Console section — board and roadmap tracker (ACTION ZERO step 12)
+# Chief section — board and roadmap tracker (ACTION ZERO step 12)
 
-Read on demand from `console-template.md` step 12. `<kit>` is the kit path in step 7. Moved verbatim from the template.
+Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step 7. Moved verbatim from the template.
 
-12. **Render and publish the console board**. The board is a
-    generated HTML page — fleet N/cap with idle slots, every leg's phase
+12. **Render and publish the chief board**. The board is a
+    generated HTML page — fleet N/cap with idle slots, every worker's phase
     (LIVE → READY-TO-OPEN → PR open → READY → MERGED → WRAPPED, plus its own
-    `WRAPPED, window still open` when a WRAPPED leg's claude window is still
+    `WRAPPED, window still open` when a WRAPPED worker's claude window is still
     alive — derived from an independent process census, since tick.sh's `procs=`
-    only counts HELD legs), what needs you, epic merged/total, the operator's
+    only counts HELD workers), what needs you, epic merged/total, the operator's
     open decisions — so the operator sees progress and convergence without
-    asking. The published page shows live work only: WRAPPED and MERGED legs
+    asking. The published page shows live work only: WRAPPED and MERGED workers
     and the merged PRs are written to `console-board-archive.html` beside it
     (local, never published, one item per line — `grep` it for a ticket key,
     PR or last bullet), so a successor republishes a small page. Render it with `node "<kit>/board.mjs" --doc "<this file>" --changed`: `--changed` re-renders and prints `CHANGED <path>` or
@@ -30,14 +30,14 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     paste page content." It returns one line, not the page; if a later publish
     of your own is refused, send that to the subagent too and never read the URL
     yourself. A `path` read or `overwrite_unread` does not count as viewing.
-    <!-- ponytail: subagent cost absorption is not yet measured (HIMMEL-6756), the first console publish that uses it records the parent-context delta on that ticket; old-term-ok: this section is the console's own runbook -->
+    <!-- ponytail: subagent cost absorption is not yet measured (HIMMEL-6756), the first chief publish that uses it records the parent-context delta on that ticket -->
     The tick's `board=` field is your reminder:
     `board=MISSING` (never rendered) or `board=STALE:<age>` (the state moved
     since the last render) means re-run it now. `board=ok` proves only that the
     LOCAL file matches the current state; republishing the artifact stays your
     step.
 
-    The live page stays under 15 KB at 25 live legs: one line per leg card,
+    The live page stays under 15 KB at 25 live workers: one line per worker card,
     finished judges (last bullet `WRAPPED` or `VERDICT`) go to the archive with
     the other done work, and the exploration and failures tables show their top
     5 rows (the full tables are in the archive).
@@ -46,7 +46,7 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     `himmel.board/1`) for a richer UI (HIMMEL-5968) to render. It holds:
     - `needs_you`: each item has a verb (`go`, `unblock`, `decide` or `act`); a
       `go` item carries the `go.sh` command.
-    - `legs`: each leg's stage, state, PR, ticket and brief links, and a
+    - `legs`: each worker's stage, state, PR, ticket and brief links, and a
       timeline of its marker bullets.
     - `ci`, `bank`, and `milestones` (Jira fixVersion done/total).
     - `red_main`: `{ days: 30, merges }`, the `red-main:` count of
@@ -55,12 +55,12 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
       page shows the same count in its "Red main" panel.
     - `trends`:
       - `leg_time` and `cost`;
-      - `console_cost`: the console's own Opus-eq spend, deduplicated by
+      - `console_cost`: the chief's own Opus-eq spend, deduplicated by
         message id from its transcript, total and per hour, beside the fleet's
         `fleet_eq`;
       - `exploration` and `failures`;
       - `tools`: a `console-succession` row (turns, eq and wall minutes from
-        the successor's first message to its LIVE bullet, legs that quoted the
+        the successor's first message to its LIVE bullet, workers that quoted the
         token back versus silent ones, pass/fail against eq ≤ 457k and
         turns ≤ 20, and a recommendation).
     - `legend`: the meaning and theme colour of every colour-coded value.
@@ -103,11 +103,11 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
     `~/.himmel/config.json`), its open PRs with their CI state (one live
     `gh pr list`, or `--prs-file`; a started card with no open PR is flagged), its
     blockers (an open blocker is flagged; a link whose blocker's own text puts it
-    after this ticket reads `direction?`), and its FAST-TRACK step when a merge
-    chain names it. The merge chains and parallel waves of `--chains-file`
+    after this ticket reads `direction?`), and its FAST-TRACK step when a dependency
+    chain names it. The dependency chains and parallel waves of `--chains-file`
     (`[{name, note, steps: [{key, pr, label, state, owner}]}]`) render above the
-    board, a merged step left out and a chain with none left dropped (the header
-    counts them); a page shows only the chains with a step in its version. Each column header carries a parity line
+    board, a merged step left out and a dependency chain with none left dropped (the header
+    counts them); a page shows only the dependency chains with a step in its version. Each column header carries a parity line
     against one live JQL count of the version's open tickets (`Jira n · ok`, or
     `DRIFT` naming each differing key with both statuses), and stdout prints the
     same per column; a DRIFT right after a render usually means Jira moved since
@@ -146,7 +146,7 @@ Read on demand from `console-template.md` step 12. `<kit>` is the kit path in st
 
 - **Version-status audit:** `bash scripts/handover/console-kit/version-status-audit.sh --legs-from <fleet manifest>`
   lists started tickets outside the active version, open tickets in a released
-  version and versionless started Tasks, Stories and Bugs (OWNED = a live leg or
+  version and versionless started Tasks, Stories and Bugs (OWNED = a live worker or
   open PR holds it, RESET = move it to To Do with a reason comment). Run it after
   a version cut; expect `vmismatch=0`. Without the manifest, or when `gh` cannot be
   read, ownership is unknown: unowned started rows print UNKNOWN and the run exits

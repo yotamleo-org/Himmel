@@ -361,7 +361,7 @@ op_launch_leg() {
         return 23
     fi
     [ -f "$doc" ] || { echo "ERR break-glass: leg doc missing: $doc" >&2; return 23; }
-    wt="$(sed -n '1,/^---$/{s/^resume_cwd:[[:space:]]*//p}' "$doc" | head -n 1)"
+    wt="$(sed -n '1,/^---$/{s/^resume_cwd:[[:space:]]*//p;}' "$doc" | head -n 1)"
     [ -n "$wt" ] && [ -d "$wt" ] || { echo "ERR break-glass: worktree missing for $label: '${wt}'" >&2; return 23; }
     gitdir="$(git -C "$wt" rev-parse --path-format=absolute --git-dir 2>/dev/null)" || gitdir=""
     common="$(git -C "$wt" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || common=""

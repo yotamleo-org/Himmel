@@ -48,7 +48,6 @@ const CADENCES = [
   { name: 'pipeline', script: 'scripts/luna/pipeline-cadence.sh', evidence: 'log', cost: 'runs Claude-backed harvest/synthesize and draws the subscription bank' },
   { name: 'qmd', script: 'scripts/luna/qmd-cadence.sh', evidence: 'log', cost: 'none (local qmd reindex)' },
   { name: 'graphmap', script: 'scripts/luna/graphmap-cadence.sh', evidence: 'log', cost: 'weekly claude-cli extraction; draws the subscription bank' },
-  { name: 'codex-sweep', script: 'scripts/cleanup/codex-sweep-cadence.sh', evidence: 'log', windowsOnly: true, cost: 'none' },
   { name: 'doctor', script: 'scripts/doctor-cadence.sh', evidence: 'doctor-last', cost: 'none' },
 ];
 
@@ -256,16 +255,6 @@ function cadenceRow(c, ctx) {
     desired: 'opt-in',
     profile: item ? (item.profiles || []).join(',') : 'all',
   };
-  if (c.windowsOnly && process.platform !== 'win32') {
-    return mkRow({
-      id, source: 'cadence', group: 'cadence', title: `${c.name} cadence`, declared,
-      installed: { state: 'n/a', detail: 'Windows only' },
-      health: 'off',
-      fix: { remedy: '', owner: 'user' },
-      probedAt,
-      control: { class: 'display-only', reason: 'Windows only' },
-    });
-  }
   const script = path.join(scriptRoot(), c.script);
   const r = spawnSync(resolveBash({ env: process.env }), [script, 'status'], { encoding: 'utf8', timeout: CADENCE_STATUS_TIMEOUT_MS });
   const out = String(r.stdout || '');

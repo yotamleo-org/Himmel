@@ -327,9 +327,7 @@
           <li class="step off"><span class="dot" aria-hidden="true">5</span><div><div><b>qmd</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">6</span><div><div><b>graphmap</b> <span class="sub">hourly</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
           <li class="step off"><span class="dot" aria-hidden="true">7</span><div><div><b>vault-stall</b> <span class="sub">every 15 min</span><span class="who">not running</span></div><p>Offered only when you run a companion vault.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">8</span><div><div><b>codex-sweep</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only when you pick the codex lane in the installer.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">9</span><div><div><b>repo-sync</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Windows only.</p></div></li>
-          <li class="step off"><span class="dot" aria-hidden="true">10</span><div><div><b>pull-cadence</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only once GOOGLE_HEALTH_REFRESH_TOKEN is set.</p></div></li>
+          <li class="step off"><span class="dot" aria-hidden="true">8</span><div><div><b>pull-cadence</b> <span class="sub">daily</span><span class="who">not running</span></div><p>Offered only once GOOGLE_HEALTH_REFRESH_TOKEN is set.</p></div></li>
         </ol>
       </details>
       <details class="sloop">
@@ -708,8 +706,6 @@
           vaultJob('qmd', 'qmd', 'daily', 'Re-indexes your notes for search so the index never goes stale.', false),
           vaultJob('graphmap', 'graphmap', 'hourly', s.graphmap ? 'Armed: the graph refresh runs on its own (see the Graph refresh loop).' : 'Not armed: the graphs refresh only when you run /graph-refresh.', s.graphmap),
           { k: 'vault-stall', c: 'vault-stall', l: 'vault-stall', sub: 'every 15 min', st: stall, n: !v ? 'Offered only when you run a companion vault.' : (s.vm === 'none' ? 'Wants proof on a test VM first. With vm.mode none, picking it counts as your acknowledgement that you have a rollback point.' : 'A test VM is available (vm.mode ' + s.vm + '), so you can arm it like any other job. No profile picks it for you.') },
-          { k: 'codex-sweep', c: 'codex-sweep', l: 'codex-sweep', sub: 'daily', st: 'off', n: 'Offered only when you pick the codex lane in the installer.' },
-          { k: 'repo-sync', c: 'repo-sync', l: 'repo-sync', sub: 'daily', st: 'off', n: 'Windows only.' },
           { k: 'pull-cadence', c: 'pull-cadence', l: 'pull-cadence', sub: 'daily', st: 'off', n: 'Offered only once GOOGLE_HEALTH_REFRESH_TOKEN is set.' }
         ];
       } },

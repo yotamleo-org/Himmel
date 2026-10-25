@@ -17,7 +17,7 @@ _observability_registry_warn() {
 }
 
 # mkdir-based mutex around the read-modify-write below (codex-2
-# CR): two concurrent arms (e.g. codex-sweep + graphmap racing at boot)
+# CR): two concurrent arms (e.g. qmd + graphmap racing at boot)
 # without this could both read the same generation and one's merge would
 # clobber the other's. mkdir is atomic; ~2s of retries then gives up and
 # proceeds UNLOCKED rather than blocking an otherwise-good arm/disarm
