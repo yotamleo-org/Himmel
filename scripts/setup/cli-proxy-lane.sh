@@ -50,7 +50,7 @@ PORT=8317
 # operator-set value in config.yaml is never overwritten.
 RETRY_COUNT=3
 RETRY_INTERVAL=30
-VERSION="8.0.36"
+VERSION="8.0.42"
 # Station-target override: the VM upgrade stage rolls the proxy to a
 # target without editing this file. Default unchanged; a version never rides on the
 # pinned sha, so CLIPROXY_API_SHA256 is required alongside CLIPROXY_API_VERSION
@@ -78,7 +78,7 @@ RELEASE_URL="${RELEASE_BASE}/${ASSET}"
 # release's own checksums.txt. Upstream DOES publish per-asset
 # checksums as of this version — the .ps1's "upstream publishes no per-asset
 # checksum" comment is stale; not corrected here (out of scope, Windows file).
-ASSET_SHA256="6607e53ad346a0439beeb26de14717056281625c4cafdf23ebc31028e1b31e97"
+ASSET_SHA256="1e10566fe0042ed5a9b80306cf296bf86a83de590cd967a8b177988b896c8d31"
 [ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
 UNIT_NAME="cli-proxy-api.service"
