@@ -383,8 +383,8 @@ configured remote (e.g. `origin/main`).
     → `content.hash` is a declared FK); SHA256 match across machines.
 - **`~/.cache/qmd/mcp.pid` goes stale — it is not proof qmd is idle.** It
   named a dead PID while the real daemon holding the DB ran elsewhere; find
-  the holder by command line (`pgrep -af qmd`) rather than trusting the PID
-  file.
+  the holder by command line (`ps -ax -o pid,command | grep '[q]md'`, which
+  works on Linux and macOS) rather than trusting the PID file.
 
 ## Claude Code: a background-task notification's "exit code 0" is the LAST command in the chain
 

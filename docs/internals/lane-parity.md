@@ -130,8 +130,6 @@ sub-table below is `tested:<path>` -- no `GAP`, no `pending:`.
 
 ## Lane-parity index
 
-## Lane-parity index
-
 | Lane | Rule projection | Guardrail firing | Skills/cmds | Vault/memory | Merge-trust |
 |---|---|---|---|---|---|
 | main-claude | `native` (CLAUDE.md) | `native` (hooks + classifier) | `native` | `native` | `native` (baseline) |
