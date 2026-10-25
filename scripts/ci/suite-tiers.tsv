@@ -262,6 +262,7 @@ scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-second-model-review-page.sh	pr	static-gate
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/docs/test-troubleshooting-page.sh	pr	static-gate
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
 scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
