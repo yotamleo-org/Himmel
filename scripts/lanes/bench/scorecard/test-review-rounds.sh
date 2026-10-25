@@ -35,7 +35,9 @@ printf '6\n' > "$STATE/fix/c.round"
 printf '3\n' > "$STATE/feat/d.round"
 printf '4\n' > "$STATE/feat/e.round"
 # a counter that is not a number must not be read as a round count
-printf 'x\n' > "$STATE/feat/g.round"
+printf 'x\n' > "$STATE/feat/g.round" || { echo "FAIL - setup: g.round not written"; exit 1; }
+# digits split by whitespace must not be glued into a round count
+printf '1 2\n' > "$STATE/feat/s.round" || { echo "FAIL - setup: s.round not written"; exit 1; }
 
 cat > "$RUN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -53,6 +55,7 @@ cat <<'JSON'
  {"number":15,"headRefName":"feat/e","mergedAt":"2026-10-25T09:00:00Z"},
  {"number":16,"headRefName":"dependabot/npm/x","mergedAt":"2026-10-25T10:00:00Z"},
  {"number":17,"headRefName":"feat/g","mergedAt":"2026-10-25T11:00:00Z"},
+ {"number":19,"headRefName":"feat/s","mergedAt":"2026-10-25T12:00:00Z"},
  {"number":18,"headRefName":"feat/old","mergedAt":"2026-10-20T11:00:00Z"}
 ]
 JSON
@@ -62,6 +65,7 @@ chmod +x "$RUN/gh"
 export REVIEW_ROUNDS_GH="$RUN/gh" REVIEW_ROUNDS_STATE_DIR="$STATE" REVIEW_ROUNDS_GH_LOG="$RUN/gh.log"
 
 out=$(bash "$SCRIPT" --tsv --since 2026-10-24T00:00:00Z --until 2026-10-26T00:00:00Z 2>/dev/null)
+check_eq "tsv: the scan exits 0" "$?" "0"
 check_eq "tsv: one row per merged PR in the window, rounds from the counter" \
     "$(printf '%s\n' "$out" | grep -v '^#' | tr '\t' ' ')" \
     "2026-10-24 11 feat/a 1
@@ -70,17 +74,20 @@ check_eq "tsv: one row per merged PR in the window, rounds from the counter" \
 2026-10-25 14 feat/d 3
 2026-10-25 15 feat/e 4
 2026-10-25 16 dependabot/npm/x -
-2026-10-25 17 feat/g -"
+2026-10-25 17 feat/g -
+2026-10-25 19 feat/s -"
 
 dist=$(bash "$SCRIPT" --since 2026-10-24T00:00:00Z --until 2026-10-26T00:00:00Z 2>/dev/null)
+check_eq "distribution: the scan exits 0" "$?" "0"
 check_eq "distribution: day one count, median, p90, max, top PRs" \
     "$(printf '%s\n' "$dist" | grep '^2026-10-24' | tr '\t' ' ')" \
     "2026-10-24 prs=3 median=2 p90=6 max=6 top=#13:6,#12:2,#11:1 unmeasured=0"
 check_eq "distribution: day two, even count median, unmeasured PRs counted apart" \
     "$(printf '%s\n' "$dist" | grep '^2026-10-25' | tr '\t' ' ')" \
-    "2026-10-25 prs=2 median=3.5 p90=4 max=4 top=#15:4,#14:3 unmeasured=2"
+    "2026-10-25 prs=2 median=3.5 p90=4 max=4 top=#15:4,#14:3 unmeasured=3"
 
 empty=$(bash "$SCRIPT" --since 2026-11-01T00:00:00Z 2>/dev/null)
+check_eq "an empty window exits 0" "$?" "0"
 check_eq "an empty window prints no day rows" "$(printf '%s\n' "$empty" | grep -c '^20')" "0"
 
 bash "$SCRIPT" >/dev/null 2>&1

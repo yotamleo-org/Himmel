@@ -95,7 +95,7 @@ while IFS="$(printf '\t')" read -r day pr branch; do
         *..*) ;;
         *)
             if [ -f "$STATE_DIR/$branch.round" ]; then
-                n="$(tr -d '[:space:]' < "$STATE_DIR/$branch.round")"
+                n="$(tr -d '\r\n' < "$STATE_DIR/$branch.round")"
                 case "$n" in ''|*[!0-9]*) ;; *) rounds="$n" ;; esac
             fi ;;
     esac
