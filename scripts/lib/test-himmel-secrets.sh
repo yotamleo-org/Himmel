@@ -37,6 +37,7 @@ while [ "$#" -ge 2 ]; do q="$q $1=$2"; shift 2; done
 case "$verb" in
     store) IFS= read -r val || true; printf '%s\t%s\n' "${q# }" "$val" >>"$KSTUB_STORE"; exit 0 ;;
     lookup) [ -z "${KSTUB_LOOKUP_FAIL:-}" ] || exit 1 ;;
+    search) [ -z "${KSTUB_SEARCH_FAIL:-}" ] || { echo 'secret-tool: stub failure' >&2; exit 1; } ;;
 esac
 rc=1
 while IFS="$(printf '\t')" read -r attrs val; do
@@ -53,6 +54,8 @@ while IFS="$(printf '\t')" read -r attrs val; do
             rc=0 ;;
     esac
 done <"$KSTUB_STORE"
+# A search that matches nothing exits 0, as libsecret's does.
+[ "$verb" = search ] && exit 0
 exit "$rc"
 STUB
 cat >"$KBIN/busctl" <<'STUB'
@@ -95,6 +98,8 @@ assert_eq "S2 status names each layer" "keyring: unlocked|TEST_HS_A: keyring|TES
 out=$(cd "$REPO" && "$HS" status 2>&1)
 assert_eq "S2 bare status lists the user items by name" "keyring: unlocked|keyring item: TEST_HS_A" "$(printf '%s' "$out" | tr '\n' '|')"
 assert_eq "S2 status prints no value" "0" "$(printf '%s' "$out" | grep -c 'fake-')"
+out=$(cd "$REPO" && export KSTUB_SEARCH_FAIL=1 && "$HS" status 2>&1)
+assert_eq "S2 bare status reports a failed listing" "keyring: unlocked|keyring items: the listing failed" "$(printf '%s' "$out" | tr '\n' '|' | sed 's/|$//')"
 
 # S3: exec adds only the listed keys to the child.
 kreset
@@ -136,6 +141,14 @@ assert_eq "S6 export-env names the unread items" "2" "$(grep -c '^skipped TEST_H
 ln -s "$TMP/s6-target.env" "$TMP/out-link.env"
 got=$(cd "$REPO" && "$HS" export-env "$TMP/out-link.env" 2>/dev/null; echo "rc=$?")
 assert_eq "S6 export-env refuses a dangling symlink, creates no target" "rc=2|absent" "$got|$([ -e "$TMP/s6-target.env" ] && echo present || echo absent)"
+got=$(cd "$REPO" && export KSTUB_SEARCH_FAIL=1 && "$HS" export-env "$TMP/out-sfail.env" >/dev/null 2>&1; echo "rc=$?")
+assert_eq "S6 export-env fails when the keyring listing fails, creates no file" "rc=2|absent" "$got|$([ -e "$TMP/out-sfail.env" ] && echo present || echo absent)"
+printf 'service=himmel key=TEST_HS_C scope=user\tfake-c #x\n' >>"$KSTUB_STORE"
+printf 'service=himmel key=TEST_HS_D scope=user\tfake-d \n' >>"$KSTUB_STORE"
+got=$(cd "$REPO" && "$HS" export-env "$TMP/out-rt.env" >/dev/null 2>"$TMP/s6rt.err"; echo "rc=$?")
+assert_eq "S6 export-env fails on a value a .env cannot carry" "rc=2" "$got"
+assert_eq "S6 export-env names the values a .env cannot carry" "2" "$(grep -c '^skipped TEST_HS_[CD] (the value would not read back from a .env)' "$TMP/s6rt.err")"
+assert_eq "S6 export-env writes no altered value" "0" "$(grep -c 'TEST_HS_[CD]' "$TMP/out-rt.env")"
 
 # S7: a locked keyring makes no lookup, and put changes nothing.
 kreset

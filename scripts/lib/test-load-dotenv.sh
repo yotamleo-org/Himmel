@@ -78,6 +78,8 @@ while IFS="$(printf '\t')" read -r attrs val; do
             rc=0 ;;
     esac
 done <"$KSTUB_STORE"
+# A search that matches nothing exits 0, as libsecret's does.
+[ "$verb" = search ] && exit 0
 exit "$rc"
 STUB
 cat >"$KBIN/busctl" <<'STUB'
