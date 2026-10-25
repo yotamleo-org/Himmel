@@ -82,7 +82,7 @@ test("a path change runs its dry-run first, and only the bound preview runs the 
   const h = boot();
   const p = await h.post("/api/preview", { action: "config.paths", target: "handover-root", value: "/srv/new handovers" });
   expect(p.status).toBe(200);
-  expect(p.j.command).toMatch(/config set handover\.root \/srv\/new handovers --dry-run$/);
+  expect(p.j.command).toMatch(/config set handover\.root '\/srv\/new handovers' --dry-run$/);
   expect(h.argv()).toEqual([expect.stringMatching(/config set handover\.root \/srv\/new handovers --dry-run$/)]);
   const other = await h.post("/api/run", { previewId: p.j.previewId, action: "config.paths", target: "handover-root", value: "/srv/other" });
   expect(other.status).toBe(409);

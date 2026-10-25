@@ -108,7 +108,7 @@ test("settingsCommand spells exactly the argv the server runs, for every action 
   ];
   expect(new Set(cases.map((c) => c[0]))).toEqual(new Set(table.keys()));
   for (const [action, target, value] of cases) {
-    const want = resolveAction(table, action, target, value).argv.join(" ");
+    const want = R.shellLine(resolveAction(table, action, target, value).argv);
     expect(R.settingsCommand({ action, target }, "/h", value), `${action} ${target} ${value}`).toBe(want);
   }
 });

@@ -14,6 +14,8 @@ import { scrubProviderKeys } from "../fleet-control/server";
 import { redactDeep, envValues } from "../himmelctl/lib/redact.js";
 import { parseDotEnv } from "../himmelctl/lib/probes.js";
 import { ActionError, buildTable, loadRegistries, resolveAction, type Resolved } from "./actions";
+// @ts-ignore plain browser ES module, no types
+import { shellLine } from "./public/render.js";
 import { acquireLock, runChild, type Lock } from "./lock";
 import { readBank, readLegs, readMode, readMonitoring, readToolHealth } from "./health-sources";
 import { readQuota } from "./quota-sources";
@@ -343,7 +345,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     for (const [k, v] of previews) if (v.expires <= now()) previews.delete(k);
     const previewId = Buffer.from(crypto.getRandomValues(new Uint8Array(16))).toString("hex");
     previews.set(previewId, { ...p, expires: now() + PREVIEW_TTL_MS });
-    return json({ previewId, ...redactOut({ command: p.dryArgv.join(" "), output, consent: p.consent, effect: p.effect, bank: p.bank }), expiresInMs: PREVIEW_TTL_MS });
+    return json({ previewId, ...redactOut({ command: shellLine(p.dryArgv), output, consent: p.consent, effect: p.effect, bank: p.bank }), expiresInMs: PREVIEW_TTL_MS });
   }
 
   async function runRoute(b: Record<string, unknown>, onStart: () => void): Promise<Response> {
@@ -368,7 +370,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     catch { audit = "failed"; }
     if (failed || !r || !before || !after) return json({ error: "internal error", audit }, 500);
     const reprobeState = before.state !== "ok" ? before.state : after.state;
-    return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: p.argv.join(" "), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
+    return json(redactOut({ rc: r.rc, timedOut: r.timedOut, command: shellLine(p.argv), output: r.stdout + r.stderr, before: before.probe, after: after.probe, reprobe: reprobeState, audit }));
   }
 
   // a Kanban drop or theme select, written to Jira by the CLI under the same write lock and audit as an action.

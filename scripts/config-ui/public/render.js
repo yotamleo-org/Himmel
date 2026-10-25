@@ -262,16 +262,19 @@ const EFFECT = {
 const PATH_KEYS = { "handover-root": "handover.root", "luna-vault": "luna.vaultPath" };
 
 // The command an action runs, spelled as the action table builds its argv; root is the himmel download.
+// An argv as one line a shell reads back as the same argv: an argument outside the plain set is single-quoted.
+export const shellLine = (argv) => argv.map((a) => (/^[A-Za-z0-9@%+=:,.\/~_-]+$/.test(a) ? a : `'${a.replace(/'/g, "'\\''")}'`)).join(" ");
+
 export function settingsCommand({ action, target }, root = HIMMEL_HOME, value) {
   const ctl = ["node", `${root}/scripts/himmelctl/bin.js`];
   const [ns, verb] = action.split(".");
-  if (ns === "cadence") return ["bash", `${root}/${CADENCE_PATH[target]}`, verb].join(" ");
-  if (ns === "plugin") return [...ctl, "profile", verb, target].join(" ");
-  if (action === "profile.set") return [...ctl, "profile", target].join(" ");
+  if (ns === "cadence") return shellLine(["bash", `${root}/${CADENCE_PATH[target]}`, verb]);
+  if (ns === "plugin") return shellLine([...ctl, "profile", verb, target]);
+  if (action === "profile.set") return shellLine([...ctl, "profile", target]);
   if (!value) return ["on", "off"].map((v) => settingsCommand({ action, target }, root, v)).join("\n");
   const key = action === "config.commitRules" ? (target === "tracker" ? "commit.tracker" : "commit.ticketIdRequired")
     : action === "config.paths" ? PATH_KEYS[target] : `${verb}.${target}`;
-  return [...ctl, "config", "set", key, value].join(" ");
+  return shellLine([...ctl, "config", "set", key, value]);
 }
 export const settingsEffect = (action) => EFFECT[action] || "";
 
