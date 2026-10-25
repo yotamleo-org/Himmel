@@ -218,7 +218,7 @@
       "sources": [
         {
           "file": "scripts/handover/console-kit/worker-jira-status.sh",
-          "anchor": "leg-jira-status.sh - the ONE writer of a"
+          "anchor": "worker-jira-status.sh - the ONE writer of a"
         }
       ],
       "pos": {
