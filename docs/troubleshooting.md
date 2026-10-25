@@ -21,14 +21,14 @@ starter install can show are in [Checking the install](#checking-the-install).
 | What you see | Why | The fix |
 | --- | --- | --- |
 | `WARN: 'bun' not found — qmd search will be skipped;` | qmd, the local notes search, runs on bun. A starter install does not use it. | Nothing to do. To add notes search later, install bun from <https://bun.sh> and run the install again. |
-| `The install is uncommitted on <branch>, which the git gates now refuse commits on.` | The install did not commit itself: you answered no, or it ran without a terminal and could not ask. The git gates it just installed refuse commits on main, apart from this one. | Run the command printed on the next line, `Commit it once with: …`. It makes the one allowed commit on main. |
+| `The install is uncommitted on <branch>, which the git gates now refuse commits on.` | The install did not commit itself: you answered no, or it ran without a terminal and could not ask. The git gates it just installed refuse commits on the default branch the message names, apart from this one. | Run the command printed on the next line, `Commit it once with: …`. It makes the one allowed commit on that branch. |
 
 ## Starting a worktree
 
 | What you see | Why | The fix |
 | --- | --- | --- |
-| `WARN new-worktree: no 'origin' remote - branching from local '<branch>'` | The project has no `origin` remote, so the new worktree branches from your local main. | Nothing to do for a local project. Once the project has a remote that holds its main, run `git remote add origin <url>` and `git fetch origin`; later worktrees branch from `origin/main`. |
-| `WARN new-worktree: uniqueness-vs-merged-PR check skipped (forge unreachable)` | Before it creates a branch, `scripts/worktree.sh` checks that no merged pull request already used the name. It needs a GitHub `origin` and a signed-in `gh` for that, and found neither. | Nothing to do: the worktree was still created. The check runs again once the project has a GitHub remote and `gh auth status` shows you signed in. |
+| `WARN new-worktree: no 'origin' remote - branching from local '<branch>'` | The project has no `origin` remote, so the new worktree branches from your local default branch (`main` or `master`), the one the warning names. | Nothing to do for a local project. Once the project has a remote that holds its default branch, run `git remote add origin <url>` and `git fetch origin`; later worktrees branch from the remote copy of that branch. |
+| `WARN new-worktree: uniqueness-vs-merged-PR check skipped (forge unreachable)` | Before it creates a branch, `scripts/worktree.sh` asks the forge whether a merged pull request already used the name, and got no answer: there is no GitHub remote, `gh` is missing or signed out, or the forge timed out. | Nothing to do: the check is skipped, not failed, and the worktree is still created unless a later step fails. The check runs again once the forge answers; for a GitHub project, `gh auth status` should show you signed in. |
 
 ## Committing
 

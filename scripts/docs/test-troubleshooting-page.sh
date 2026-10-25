@@ -6,16 +6,18 @@
 # key may carry a <placeholder> where the code interpolates a value; the parts
 # between placeholders are then searched for separately, in one file.
 #
-#   1. ROWS     — the page exists and has at least one keyed row.
+#   1. ROWS     — the page exists, has keyed rows, and has no table row whose
+#                 first cell lacks a key.
 #   2. DRIFT    — every key still exists in the code (scripts/ or marketplace/,
 #                 tests, fixtures and Markdown left out), so a reworded message
 #                 fails here instead of leaving a row nobody can find.
 #   3. NOREPEAT — no key appears on the page the sidebar labels "When a
 #                 guardrail stops you": a refusal it covers is linked, not
 #                 repeated.
-#   4. CONTROL  — a copy of the page with a made-up message fails case 2, and a
-#                 copy with a row keyed on a guardrail-page message fails case 3,
-#                 so neither check can pass vacuously.
+#   4. CONTROL  — a copy of the page with a made-up message fails case 2, a
+#                 copy with an unkeyed row fails case 1, and a copy with a row
+#                 keyed on a guardrail-page message fails case 3, so no check
+#                 can pass vacuously.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+ plus git and grep/sed, so it
 # runs unchanged under Git Bash on Windows. No .ps1 twin needed.
@@ -38,6 +40,13 @@ bad() { fail=$((fail + 1)); printf 'FAIL %s\n' "$1"; [ -n "${2:-}" ] && printf '
 row_keys() {
   # shellcheck disable=SC2016  # the backticks are Markdown, not a substitution
   sed -n 's/^| `\([^`]*\)`.*/\1/p' "$1"
+}
+
+# Prints each table body row of a page whose first cell does not start with a
+# code span, so a row nobody keyed cannot slip past cases 2 and 3.
+unkeyed_rows() {
+  # shellcheck disable=SC2016  # the backticks are Markdown, not a substitution
+  grep '^|' "$1" | grep -v '^| What you see |' | grep -vE '^\|[ |:-]+$' | grep -v '^| `'
 }
 
 # Prints the parts of a key between its <placeholders>, one per line; a part
@@ -92,6 +101,11 @@ if [ -f "$PAGE" ] && [ -n "$(row_keys "$PAGE")" ]; then
 else
   bad "ROWS: docs/troubleshooting.md has keyed rows" "no page, or no row whose first cell starts with a code span"
 fi
+if [ -f "$PAGE" ]; then
+  loose=$(unkeyed_rows "$PAGE")
+  if [ -z "$loose" ]; then ok "ROWS: every table row is keyed on its message"
+  else bad "ROWS: every table row is keyed on its message" "unkeyed: $(printf '%s' "$loose" | cut -c1-80 | tr '\n' ';')"; fi
+fi
 
 # 2. DRIFT
 if [ -f "$PAGE" ]; then
@@ -117,6 +131,9 @@ trap 'rm -rf "$tmp"' EXIT
 printf '| `troubleshooting-control: a message no code prints` | x | y |\n' > "$tmp/drift.md"
 if [ -n "$(missing_keys "$tmp/drift.md")" ]; then ok "CONTROL: a made-up message fails DRIFT"
 else bad "CONTROL: a made-up message fails DRIFT"; fi
+printf '| an unkeyed message | x | y |\n' > "$tmp/unkeyed.md"
+if [ -n "$(unkeyed_rows "$tmp/unkeyed.md")" ]; then ok "CONTROL: an unkeyed row fails ROWS"
+else bad "CONTROL: an unkeyed row fails ROWS"; fi
 if [ -n "$GPAGE" ] && [ -f "$GPAGE" ]; then
   # shellcheck disable=SC2016  # the backticks are Markdown, not a substitution
   printf '| `check-main-ref-transaction: refusing to update <ref>` | x | y |\n' > "$tmp/repeat.md"
