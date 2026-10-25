@@ -50,11 +50,26 @@ function commitRules(c, plans) {
     ${plans[rk] ? planHtml(rk, plans[rk]) : ""}`;
 }
 
+// The first-run Account step: the UI login the always-on UI asks for. The page creates it once; changing it is a terminal step.
+function account(a, msg) {
+  if (!a) return "";
+  const note = msg ? `<p class="sub" role="status">${esc(msg)}</p>` : "";
+  if (a.status === "set") return `<h3>Account</h3><p class="sub">The UI login is set for <code>${esc(a.user)}</code>. Log in with it at <code>/login</code> on the always-on UI. To change it, run <code>${esc(a.setLogin)}</code> in your own terminal.</p>${note}`;
+  if (a.create !== "ui") return `<h3>Account</h3><p class="sub">${a.status === "unreadable" ? "The login file cannot be read. " : "No UI login is set yet. "}Set it with <code>${esc(a.setLogin)}</code> in your own terminal.</p>${note}`;
+  return `<h3>Account</h3><p class="sub">Create the login for the always-on UI first: it asks for this user and password before it saves a secret. The password is at least 8 characters and is kept only as a hash.</p>
+    <form class="sform" data-account-form autocomplete="off">
+      <input type="text" data-account="user" autocomplete="username" spellcheck="false" aria-label="user name">
+      <input type="password" data-account="password" autocomplete="new-password" aria-label="password">
+      <input type="password" data-account="confirm" autocomplete="new-password" aria-label="password again">
+      <button class="btn primary" type="submit">create login</button></form>${note}`;
+}
+
 export function renderSetup(setup, plans, msgs) {
   const head = `<h2>Setup</h2>`;
   if (!setup) return `${head}<p class="sub">loading…</p>`;
   if (setup.error) return `${head}<div class="nodata" role="alert">${esc(setup.error)}</div>`;
-  return `${head}<p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, <code>himmelctl install</code> asks for secrets in the terminal instead.</p>
+  return `${head}${account(setup.account, msgs.account)}
+    <p class="sub">A secret you save here goes to this machine over a loopback connection, bound to this launch's token; it is never shown again. This page shows only whether each secret is set, never its value. With no browser available, <code>himmelctl install</code> asks for secrets in the terminal instead.</p>
     <h3>Secrets</h3>${setup.secrets.map((s) => secretRow(s, msgs[s.name])).join("")}
     ${coderabbit(setup.coderabbit)}
     ${commitRules(setup.commit, plans)}`;

@@ -1390,6 +1390,12 @@ for f in .claude/commands/cr-scores.md .claude/commands/cr-tune.md .claude/comma
     *)    [ ! -x "$crtarget/$f" ] || fail "HIMMEL-6999: the project's $f (not a script) was made executable" ;;
   esac
 done
+# /morning-report and its generator ship, so an adopted project reads its own state.
+for f in .claude/commands/morning-report.md scripts/handover/generate-morning-briefing.sh scripts/lib/result.sh; do
+  [ -f "$crtarget/$f" ] || fail "HIMMEL-7002: $f was not copied into the project"
+  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-7002: the project's $f differs from himmel's"
+done
+echo "ok: HIMMEL-7002 the adopted project gets /morning-report and its generator"
 for f in scripts/cr/anchor-handoff.sh scripts/cr/cr-scores.sh scripts/cr/known-findings.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh; do
   mkdir -p "$crclone/$(dirname "$f")"; cp "$repo_root/$f" "$crclone/$f"
 done

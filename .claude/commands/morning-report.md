@@ -15,6 +15,11 @@ The cache line reads the cache-health metrics: 7-day read ratio per role, a
 trailing 14-day-median baseline and a 3-day below-baseline flag; stale or missing
 metrics print `cache: unmonitored`.
 
+It reads the current project's git, GitHub and tracker, so it works the same in an
+adopted project. With no Jira tracker configured (`JIRA_PROJECT_KEY` unset) the ticket
+sections say so and the PR, commit and worktree sections still print; sections that
+need himmel-only tooling are left out where that tooling is not installed.
+
 Pass `--llm` to enrich TL;DR, Suggested order, and Backlog theme-clustering via a
 bounded interactive Sonnet turn (degrades to the deterministic heuristic if
 `claude` is unavailable, and skipped with a notice under Codex). It is a point-in-time snapshot — cross-day continuity

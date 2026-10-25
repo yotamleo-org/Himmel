@@ -31,7 +31,7 @@ import { readGate, writeGate } from "./review-gate";
 import { readConfLayers } from "./conf-layers";
 import { envFileOf, readCap, writeCap } from "./fleet-cap";
 import { applyWrite, parseWrite, type WriteResult } from "./jira-write";
-import { secretWrite, setupState } from "./setup";
+import { accountCreate, secretWrite, setupState, type SecretResult } from "./setup";
 import { clearedCookie, createAuth, sessionCookie, writeLogin } from "./login";
 
 const LOOPBACK = "127.0.0.1";
@@ -287,6 +287,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   const lockPath = join(stateDir, "write.lock");
   const auditPath = join(stateDir, "actions.jsonl");
   const auth = createAuth(loginPath(env), now);
+  const accountOpts = { loginPath: loginPath(env), serviceMode: !!opts.noIdle };
   const reprobeMs = opts.reprobeBudgetMs ?? REPROBE_BUDGET_MS;
   // Operator override HIMMEL_REPORT_CADENCE_ROOT (shared with
   // `report`, so the feed and the actions agree): the tree the cadence scripts
@@ -394,12 +395,13 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     return json(redactOut({ ...res.body, audit }), res.status);
   }
 
-  // The value is in `b` only until secretWrite returns: the audit line and the answer carry the name and the outcome.
-  function setupSecretRoute(b: Record<string, unknown>, session: boolean): Response {
+  // The value (a secret, or the Account step's password) is in `b` only until the write returns: the audit line and the
+  // answer carry the name and the outcome.
+  function setupWriteRoute(write: () => SecretResult): Response {
     const lock = acquireLock(lockPath);
     if ("busy" in lock) return json({ error: lock.busy }, 409);
     let r;
-    try { r = secretWrite(b, { ...setupOpts, serviceMode: !!opts.noIdle, session }); } finally { lock.release(); }
+    try { r = write(); } finally { lock.release(); }
     if (r.audit) {
       try {
         appendAudit(auditPath, { time: new Date(now()).toISOString(), action: r.audit.action, target: r.audit.target, value: null, argv: [], rc: r.audit.ok ? 0 : 1,
@@ -599,7 +601,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       // which secrets are set (presence only) and the commit rules in effect, for the Setup page.
       if (path === "/api/setup") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        return json(await setupState(setupOpts));
+        return json(await setupState({ ...setupOpts, ...accountOpts }));
       }
       // the vm section of the himmel config, validated and saved through luna-config.js.
       if (path === "/api/vm" && req.method === "GET") { const v = readVm(); return json(redactOut(v.body), v.status); }
@@ -607,7 +609,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       if (path === "/api/review-gate" && req.method === "GET") { const g = readGate(env); return json(redactOut(g.body), g.status); }
       // the fleet cap: HIMMEL_FLEET_CAP read from the launching shell and the station .env; a write replaces that one .env line.
       if (path === "/api/fleet-cap" && req.method === "GET") { const c = readCap(capEnvFile(), env); return json(redactOut(c.body), c.status); }
-      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret") return new Response("not found", { status: 404 });
+      if (path !== "/api/preview" && path !== "/api/run" && path !== "/api/vm" && path !== "/api/review-gate" && path !== "/api/fleet-cap" && path !== "/api/roadmap/write" && path !== "/api/setup/secret" && path !== "/api/setup/account") return new Response("not found", { status: 404 });
       if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
       if (req.headers.get("origin") !== origin) return new Response("bad origin", { status: 403 });
       if ((req.headers.get("content-type") || "").split(";")[0].trim().toLowerCase() !== "application/json") return new Response("json only", { status: 415 });
@@ -627,7 +629,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       }
       if (path === "/api/vm") { const v = writeVm(b as Record<string, unknown>); return json(redactOut(v.body), v.status); }
       if (path === "/api/roadmap/write") return roadmapWriteRoute(b as Record<string, unknown>);
-      if (path === "/api/setup/secret") return setupSecretRoute(b as Record<string, unknown>, session);
+      if (path === "/api/setup/secret") return setupWriteRoute(() => secretWrite(b as Record<string, unknown>, { ...setupOpts, serviceMode: !!opts.noIdle, session }));
+      if (path === "/api/setup/account") return setupWriteRoute(() => accountCreate(b as Record<string, unknown>, accountOpts));
       if (path === "/api/preview") return previewRoute(b as Record<string, unknown>);
       let started = false;
       const res = await runRoute(b as Record<string, unknown>, () => { started = true; });

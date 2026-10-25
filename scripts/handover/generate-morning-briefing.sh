@@ -47,12 +47,23 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$SCRIPT_DIR/../lib/forge.sh"
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/../lib/result.sh"
+# Which tracker the current project uses (jira | local | none).
+# shellcheck source=../lib/project-mode.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/project-mode.sh"
+
+# himmel-only commands are hinted only where they ship (an adopted project has
+# neither): cmd_hint NAME prints " (/NAME)" or nothing.
+cmd_hint() {
+    if [ -f "$SCRIPT_DIR/../../.claude/commands/$1.md" ]; then printf ' (/%s)' "$1"; fi
+}
 
 GH_CMD="${GH_CMD:-gh}"
 GIT_CMD="${GIT_CMD:-git}"
 JIRA_CMD="${JIRA_CMD:-}"
 CLAUDE_CMD="${CLAUDE_CMD:-claude}"
 SINCE_SHA=""
+since_all=0
 SINCE_DATE=""
 OUT_FILE=""
 DRY_RUN=0
@@ -127,10 +138,17 @@ fi
 if [ -z "$SINCE_SHA" ]; then
     if last_tag=$($GIT_CMD -C "$repo_root" describe --tags --abbrev=0 2>/dev/null); then
         SINCE_SHA="$last_tag"
-    else
+    elif $GIT_CMD -C "$repo_root" rev-parse --verify -q "HEAD~50" >/dev/null 2>&1; then
         SINCE_SHA="HEAD~50"
+    else
+        # A project younger than 50 commits has no HEAD~50: list its whole history.
+        SINCE_SHA="start of history"
+        since_all=1
     fi
 fi
+# Markdown for the Source markers line: only a real revision is offered as --since.
+since_marker="\`--since $SINCE_SHA\`"
+[ "$since_all" -eq 1 ] && since_marker="the whole history (fewer than 50 commits)"
 
 # LOCAL day, computed ONCE. Reused for the
 # --since-date default, the output filename, and the header so a run spanning
@@ -154,36 +172,60 @@ if [ -z "$OUT_FILE" ]; then
     fi
 fi
 
-# Resolve jira CLI (best-effort; absence is non-fatal).
+# The tracker is the current project's: jira only when project-mode says so (a
+# JIRA_CMD override means jira). No tracker is a normal state, not an outage.
+# shellcheck source=../lib/load-dotenv.sh
+# shellcheck disable=SC1091
+. "$SCRIPT_DIR/../lib/load-dotenv.sh"
+no_tracker=0
+no_tracker_msg="No Jira tracker configured."
+JIRA_ARGV=()
 if [ -z "$JIRA_CMD" ]; then
-    if [ -f "$repo_root/scripts/jira/dist/index.js" ] && command -v node >/dev/null 2>&1; then
-        JIRA_CMD="node $repo_root/scripts/jira/dist/index.js"
+    load_dotenv JIRA_PROJECT_KEY || true
+    if run_or_unknown project_mode_tracker && [ "$RESULT_OUT" = "jira" ]; then
+        # Resolve jira CLI (best-effort; absence is non-fatal).
+        if [ -f "$repo_root/scripts/jira/dist/index.js" ] && command -v node >/dev/null 2>&1; then
+            JIRA_ARGV=(node "$repo_root/scripts/jira/dist/index.js")
+            JIRA_CMD="${JIRA_ARGV[*]}"
+        fi
+    else
+        no_tracker=1
+        # rc 2 is a setting project-mode rejects (TRACKER invalid, jira without a key).
+        [ "$RESULT_RC" = "2" ] && no_tracker_msg="The tracker setting is invalid (check TRACKER and JIRA_PROJECT_KEY)."
     fi
+fi
+
+# A JIRA_CMD override is a command line; the resolved CLI keeps its path as one word.
+if [ ${#JIRA_ARGV[@]} -eq 0 ] && [ -n "$JIRA_CMD" ]; then
+    read -r -a JIRA_ARGV <<<"$JIRA_CMD"
 fi
 
 briefing_forge=$(forge_detect 2>/dev/null || true)
 
-# Docs drift — advisory; gated by HIMMEL_DOC_FRESHNESS morning leg.
-# Source the clone's .env so the morning leg activates when himmel turned it on
-# there (mirrors inject-where-are-we.sh; the cadence/skill may not export it).
-if [ -f "$repo_root/.env" ]; then
-    # shellcheck source=../lib/load-dotenv.sh
-    # shellcheck disable=SC1091
-    . "$SCRIPT_DIR/../lib/load-dotenv.sh"
-    load_dotenv --root "$repo_root" HIMMEL_DOC_FRESHNESS || true
-fi
-# shellcheck source=../lib/doc-freshness.sh
-# shellcheck disable=SC1091
-. "$SCRIPT_DIR/../lib/doc-freshness.sh"
+# Docs drift — advisory; gated by HIMMEL_DOC_FRESHNESS morning leg. A project
+# without the doc-freshness lib has no such section.
 docs_drift=""
-if df_leg_active morning; then
-    docs_drift="$(df_detect "${SINCE_SHA}..HEAD" "" "$repo_root" 2>/dev/null || true)"
+docs_drift_present=0
+if [ -f "$SCRIPT_DIR/../lib/doc-freshness.sh" ]; then
+    docs_drift_present=1
+    # Source the clone's .env so the morning leg activates when himmel turned it on
+    # there (mirrors inject-where-are-we.sh; the cadence/skill may not export it).
+    if [ -f "$repo_root/.env" ]; then
+        load_dotenv --root "$repo_root" HIMMEL_DOC_FRESHNESS || true
+    fi
+    # shellcheck source=../lib/doc-freshness.sh
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/../lib/doc-freshness.sh"
+    if [ "$since_all" -eq 0 ] && df_leg_active morning; then
+        docs_drift="$(df_detect "${SINCE_SHA}..HEAD" "" "$repo_root" 2>/dev/null || true)"
+    fi
 fi
 
 # Reachability flags — distinguish "tool returned nothing" from "tool call
 # FAILED" so a jira/gh outage doesn't render as a confident all-clear (a 0 must
 # read as "unknown", not "none"). jira_ok starts 0 when the CLI isn't even
-# resolved; both flip to 0 on a real query failure below.
+# resolved; both flip to 0 on a real query failure below. A project with no
+# tracker leaves jira_ok 0 too, but says "No Jira tracker configured" instead.
 jira_ok=1
 [ -z "$JIRA_CMD" ] && jira_ok=0
 pr_map_ok=1
@@ -191,7 +233,9 @@ pr_map_ok=1
 # Gather sections (all PARENT-scope; the template heredoc only prints these) ----
 
 # Commits since SINCE_SHA.
-if commits_raw=$($GIT_CMD -C "$repo_root" log --oneline "${SINCE_SHA}..HEAD" 2>/dev/null); then
+commit_range="${SINCE_SHA}..HEAD"
+[ "$since_all" -eq 1 ] && commit_range="HEAD"
+if commits_raw=$($GIT_CMD -C "$repo_root" log --oneline "$commit_range" 2>/dev/null); then
     :
 else
     commits_raw=""
@@ -228,7 +272,7 @@ fi
 # Done tickets via jira (best-effort) — cross-referenced against commit keys.
 done_block=""
 if [ -n "$JIRA_CMD" ]; then
-    if done_raw=$($JIRA_CMD list --status Done --limit "$JIRA_LIMIT" 2>/dev/null); then
+    if done_raw=$("${JIRA_ARGV[@]}" list --status Done --limit "$JIRA_LIMIT" 2>/dev/null); then
         if [ ${#ticket_keys[@]} -gt 0 ]; then
             done_block=$(printf '%s\n' "$done_raw" | awk -F'\t' -v keys="$(IFS='|'; echo "${ticket_keys[*]}")" '
                 BEGIN { split(keys, k, "|"); for (i in k) want[k[i]]=1 }
@@ -265,7 +309,7 @@ wt_branches=$(printf '%s\n' "$wt_porcelain" | awk '/^branch /{sub("refs/heads/",
 # In-Progress tickets.
 inprogress_raw=""
 if [ -n "$JIRA_CMD" ]; then
-    if ! inprogress_raw=$($JIRA_CMD list --status 'In Progress' --limit "$JIRA_LIMIT" 2>/dev/null); then
+    if ! inprogress_raw=$("${JIRA_ARGV[@]}" list --status 'In Progress' --limit "$JIRA_LIMIT" 2>/dev/null); then
         jira_ok=0; inprogress_raw=""
         echo "WARNING: briefing: jira 'In Progress' query failed — counts may be incomplete" >&2
     fi
@@ -290,7 +334,7 @@ EOF_WT
 # Backlog (To-Do) tickets.
 backlog_raw=""
 if [ -n "$JIRA_CMD" ]; then
-    if ! backlog_raw=$($JIRA_CMD list --status 'To Do' --limit "$JIRA_LIMIT" 2>/dev/null); then
+    if ! backlog_raw=$("${JIRA_ARGV[@]}" list --status 'To Do' --limit "$JIRA_LIMIT" 2>/dev/null); then
         jira_ok=0; backlog_raw=""
         echo "WARNING: briefing: jira 'To Do' query failed — counts may be incomplete" >&2
     fi
@@ -304,20 +348,33 @@ inprog_count=$(printf '%s\n' "$inprogress_raw" | awk -F'\t' 'NF>=3 && $1!="KEY"{
 stale_count=$(printf '%s\n' "$stale_rows" | grep -c . || true)
 done_count=$(printf '%s\n' "$done_block" | grep -c . || true)
 
-tldr_default="**${inprog_count}** in-flight · **${stale_count}** stale worktrees · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
-
 open_prs=$(printf '%s\n' "$pr_map" | awk -F'\t' '$1=="OPEN"{c++} END{print c+0}')
+
+if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
+    open_prs_shown="**${open_prs}** open PRs"
+    stale_shown="**${stale_count}** stale worktrees"
+else
+    open_prs_shown="open PRs unavailable"
+    stale_shown="stale worktrees unavailable"
+fi
+if [ "$no_tracker" -eq 1 ]; then
+    tldr_default="${open_prs_shown} · ${stale_shown} · **${commit_count}** commits"
+else
+    tldr_default="**${inprog_count}** in-flight · ${stale_shown} · **${done_count}** Done (cross-ref'd) · **${backlog_total}** backlog"
+fi
 
 order_default=$(
     n=1
-    [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale worktree(s) (/clean).\n' "$n" "$stale_count"; n=$((n+1)); }
-    [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s) (/pr-check).\n' "$n" "$open_prs"; n=$((n+1)); }
+    [ "$stale_count" -gt 0 ] && { printf '%d. Prune %s stale worktree(s)%s.\n' "$n" "$stale_count" "$(cmd_hint clean)"; n=$((n+1)); }
+    [ "$open_prs" -gt 0 ] && { printf '%d. Review/merge %s open PR(s)%s.\n' "$n" "$open_prs" "$(cmd_hint pr-check)"; n=$((n+1)); }
     [ "$inprog_count" -gt 0 ] && { printf '%d. Advance %s In-Progress ticket(s).\n' "$n" "$inprog_count"; n=$((n+1)); }
     [ "$backlog_total" -gt 0 ] && printf '%d. Pull from the %s-item backlog.\n' "$n" "$backlog_total"
     :   # force final exit 0 — a trailing short-circuit && would propagate rc1 to
         # the assignment and abort under set -e (empty backlog / jira down).
 )
-[ -z "$order_default" ] && order_default="_Nothing in flight — pick from the backlog._"
+if [ -z "$order_default" ]; then
+    if [ "$no_tracker" -eq 1 ]; then order_default="_Nothing waiting on you._"; else order_default="_Nothing in flight — pick from the backlog._"; fi
+fi
 
 # --llm enrichment (opt-in, fail-open per block) -------------------------------
 
@@ -380,30 +437,37 @@ briefing=$(
     cat <<EOF
 # 🌅 Morning Report — $today
 
-> Auto-generated by \`scripts/handover/generate-morning-briefing.sh\`
-> (HIMMEL-135/574). Source markers: \`--since $SINCE_SHA\`,
+> Auto-generated by \`scripts/handover/generate-morning-briefing.sh\`.
+> Source markers: $since_marker,
 > \`--since-date $SINCE_DATE\`. Point-in-time snapshot — continuity is a session's job.
 
 EOF
     # Reachability banner — when a tool call FAILED (not just returned nothing),
     # the counts below are unknown, not zero. Surface it so a 0 isn't read as "none".
-    if [ "$jira_ok" -eq 0 ] || [ "$pr_map_ok" -eq 0 ]; then
+    jira_down=0
+    [ "$jira_ok" -eq 0 ] && [ "$no_tracker" -eq 0 ] && jira_down=1
+    if [ "$jira_down" -eq 1 ] || [ "$pr_map_ok" -eq 0 ]; then
         printf '> ⚠️ '
-        [ "$jira_ok" -eq 0 ] && printf 'jira unavailable — In-flight / Backlog / Done counts are INCOMPLETE. '
+        [ "$jira_down" -eq 1 ] && printf 'jira unavailable — In-flight / Backlog / Done counts are INCOMPLETE. '
         [ "$pr_map_ok" -eq 0 ] && printf 'gh PR state unavailable — Stale + PR correlation SKIPPED. '
         printf '\n\n'
     fi
     # The four answers a reader back from a shift needs first (v5 frame 16);
     # every older section follows unchanged. A field with no input says so.
     printf '## ✅ What shipped\n\n'
-    if [ "$jira_ok" -eq 1 ]; then done_shown="**$done_count**"; else done_shown="not available (jira unavailable)"; fi
+    if [ "$jira_ok" -eq 1 ]; then done_shown="**$done_count**"
+    elif [ "$no_tracker" -eq 1 ]; then done_shown="not available (no Jira tracker)"
+    else done_shown="not available (jira unavailable)"; fi
     if [ "$pr_count_ok" -eq 1 ] && [ "$pr_count" != "unknown" ]; then pr_shown="**$pr_count**"; else pr_shown="not available"; fi
     printf '%s PRs merged to main · **%s** commits · %s Done (cross-ref'"'"'d). Detail: Completed, below.\n\n' \
         "$pr_shown" "$commit_count" "$done_shown"
     printf '## ⏳ What waits on you\n\n'
     if [ "$briefing_forge" = "github" ] && [ "$pr_map_ok" -eq 1 ]; then
-        printf -- '- **%s** open PR(s) to review/merge (/pr-check)\n' "$open_prs"
-        printf -- '- **%s** stale worktree(s) to prune (/clean)\n' "$stale_count"
+        printf -- '- **%s** open PR(s) to review/merge%s\n' "$open_prs" "$(cmd_hint pr-check)"
+        printf -- '- **%s** stale worktree(s) to prune%s\n' "$stale_count" "$(cmd_hint clean)"
+    elif [ "$briefing_forge" != "github" ]; then
+        printf -- '- Open PRs: not available (no GitHub forge for this project)\n'
+        printf -- '- Stale worktrees: not available (no GitHub forge for this project)\n'
     else
         printf -- '- Open PRs: not available (gh PR state unavailable)\n'
         printf -- '- Stale worktrees: not available (gh PR state unavailable)\n'
@@ -420,6 +484,8 @@ EOF
     printf '## ▶️ What runs next\n\n'
     if [ "$jira_ok" -eq 1 ]; then
         printf -- '- **%s** In-Progress ticket(s) in flight. Detail: In-flight WIP, below\n' "$inprog_count"
+    elif [ "$no_tracker" -eq 1 ]; then
+        printf -- '- In-Progress tickets: not available (no Jira tracker)\n'
     else
         printf -- '- In-Progress tickets: not available (jira unavailable)\n'
     fi
@@ -442,6 +508,8 @@ EOF
     printf '\n### Tickets transitioned to Done (cross-referenced against commits)\n\n'
     if [ -n "$done_block" ]; then
         printf '%s\n' "$done_block"
+    elif [ "$no_tracker" -eq 1 ]; then
+        printf '_%s_\n' "$no_tracker_msg"
     elif [ ${#ticket_keys[@]} -eq 0 ]; then
         printf '_No ticket keys detected in commit messages._\n'
     else
@@ -474,6 +542,8 @@ EOF
         done <<EOF_WIP
 $wip_keys
 EOF_WIP
+    elif [ "$no_tracker" -eq 1 ]; then
+        printf '_%s_\n' "$no_tracker_msg"
     else
         printf '_No In-Progress tickets._\n'
     fi
@@ -509,38 +579,50 @@ EOF_WIP
         if [ "$backlog_total" -gt "$BACKLOG_LIMIT" ]; then
             printf '_…and %s more (raise --backlog-limit to see all)._\n' "$((backlog_total - BACKLOG_LIMIT))"
         fi
+    elif [ "$no_tracker" -eq 1 ]; then
+        printf '_%s_\n' "$no_tracker_msg"
     else
         printf '_No To-Do tickets (or jira unavailable)._\n'
     fi
 
     # Docs drift -------------------------------------------------
-    printf '\n## 📄 Docs drift\n\n'
-    if ! df_leg_active morning; then
-        # shellcheck disable=SC2016  # backticks here are markdown literal, not subshell
-        printf '_Doc-freshness off (set HIMMEL_DOC_FRESHNESS to include `morning`)._\n'
-    elif [ -n "$docs_drift" ]; then
-        printf '%s\n' "$docs_drift" | awk -F'\t' 'NF>=2{printf "- %s → update %s\n", $1, $2}'
-    else
-        printf '_No mapped-source-vs-doc drift since %s._\n' "$SINCE_SHA"
+    if [ "$docs_drift_present" -eq 1 ]; then
+        printf '\n## 📄 Docs drift\n\n'
+        if ! df_leg_active morning; then
+            # shellcheck disable=SC2016  # backticks here are markdown literal, not subshell
+            printf '_Doc-freshness off (set HIMMEL_DOC_FRESHNESS to include `morning`)._\n'
+        elif [ "$since_all" -eq 1 ]; then
+            printf '_Docs drift is not computed for a history shorter than 50 commits._\n'
+        elif [ -n "$docs_drift" ]; then
+            printf '%s\n' "$docs_drift" | awk -F'\t' 'NF>=2{printf "- %s → update %s\n", $1, $2}'
+        else
+            printf '_No mapped-source-vs-doc drift since %s._\n' "$SINCE_SHA"
+        fi
     fi
 
     # Failure review --------------------------------------------
     # The digest the daily failure-review cadence wrote today; its headings drop
-    # one level so it nests under this section.
-    printf '\n## 🧯 Failure review\n\n'
+    # one level so it nests under this section. Only where the cadence ships: the
+    # shared state dir may hold another project's digest.
     failure_review="${HIMMEL_FAILURE_REVIEW_DIR:-$HOME/.himmel/state/failure-review}/failure-review-$today.md"
-    if [ -f "$failure_review" ]; then
-        sed -e '/^## Failure review$/d' -e 's/^### /#### /' "$failure_review" | sed '/./,$!d'
-    else
-        printf '_No failure review digest for %s (scripts/eval/leg-digest/failure-review-cadence.sh)._\n' "$today"
+    if [ -f "$SCRIPT_DIR/../eval/leg-digest/failure-review-cadence.sh" ]; then
+        printf '\n## 🧯 Failure review\n\n'
+        if [ -f "$failure_review" ]; then
+            sed -e '/^## Failure review$/d' -e 's/^### /#### /' "$failure_review" | sed '/./,$!d'
+        else
+            printf '_No failure review digest for %s (scripts/eval/leg-digest/failure-review-cadence.sh)._\n' "$today"
+        fi
     fi
 
     # Prompt cache ------------------------------------------------------------
     # One zero-token line from the cache-health metrics (scripts/eval/cache-health.py).
-    printf '\n## 🗄️ Prompt cache\n\n'
-    if ! python3 -I "$SCRIPT_DIR/cache-health-line.py" \
-        ${CACHE_HEALTH_STATE_DIR:+--state-dir "$CACHE_HEALTH_STATE_DIR"} 2>/dev/null; then
-        printf 'cache: unmonitored (reader failed)\n'
+    # Only where the reader ships.
+    if [ -f "$SCRIPT_DIR/cache-health-line.py" ]; then
+        printf '\n## 🗄️ Prompt cache\n\n'
+        if ! python3 -I "$SCRIPT_DIR/cache-health-line.py" \
+            ${CACHE_HEALTH_STATE_DIR:+--state-dir "$CACHE_HEALTH_STATE_DIR"} 2>/dev/null; then
+            printf 'cache: unmonitored (reader failed)\n'
+        fi
     fi
 
     # Suggested order ---------------------------------------------------------

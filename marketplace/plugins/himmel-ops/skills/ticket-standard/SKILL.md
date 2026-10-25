@@ -21,7 +21,7 @@ script passes them.
 4. **Plan** - numbered steps.
 5. **DoD** - the observable done-condition, one line per check.
 6. **Proof** - the named evidence (rule below).
-7. **Agent detail** - what a worker session needs that a reader does not (files, suites, ordering).
+7. **Agent detail** - what a worker needs that a reader does not (files, suites, ordering).
 
 Also give a primary **Sector**: `--sector NAME` or a `Sector: <name>` line.
 Each section needs at least one real line; `TBD`, `TODO`, `N/A`, `none`, `...`
