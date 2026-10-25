@@ -248,15 +248,15 @@ echo "== 17. a moved file with one edited line judges only the edit =="
 E="$T/moveedit"; mkdir -p "$E/scripts/old"; git -C "$E" init -q
 git -C "$E" config user.email t@t; git -C "$E" config user.name t
 printf 'echo a\n# %s-9 old history\necho c\necho d\necho e\necho f\n' "$H" > "$E/scripts/old/a.sh"
-git -C "$E" add -A; git -C "$E" commit -q -m base
+git -C "$E" add -A; git -C "$E" commit -q -m base || exit 1
 edit_base="$(git -C "$E" rev-parse HEAD)"
-git -C "$E" mv scripts/old scripts/new
+git -C "$E" mv scripts/old scripts/new || exit 1
 printf 'echo b\n# %s-9 old history\necho c\necho d\necho e\necho f\n' "$H" > "$E/scripts/new/a.sh"
-git -C "$E" add -A; git -C "$E" commit -q -m move-edit
+git -C "$E" add -A; git -C "$E" commit -q -m move-edit || exit 1
 OUT="$(cd "$E" && bash "$GATE" --range "$edit_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 0 ]; then pass "--range: moved file's old ticket comment is not judged"; else fail "moved+edited old comment -> rc=$RC: $OUT"; fi
 printf 'echo b\n# %s-9 old history\necho c\necho d\necho e\n# %s-10 added this guard\n' "$H" "$H" > "$E/scripts/new/a.sh"
-git -C "$E" add -A; git -C "$E" commit -q -m add-ticket
+git -C "$E" add -A; git -C "$E" commit -q -m add-ticket || exit 1
 OUT="$(cd "$E" && bash "$GATE" --range "$edit_base" 2>&1)"; RC=$?
 if [ "$RC" -eq 1 ] && has "scripts/new/a.sh:6" && ! has "scripts/new/a.sh:2"; then pass "--range: the edited line adding a ticket comment is flagged alone"; else fail "moved+edited new comment -> rc=$RC: $OUT"; fi
 
