@@ -257,7 +257,9 @@ const EFFECT = {
   "cadence.arm": "at the next scheduled run", "cadence.disarm": "at the next scheduled run",
   "plugin.enable": "next Claude launch", "plugin.disable": "next Claude launch", "profile.set": "next Claude launch",
   "config.lanes": "next time work is handed to a lane", "config.initiative": "next Claude launch", "config.commitRules": "your next commit",
+  "config.paths": "next Claude launch",
 };
+const PATH_KEYS = { "handover-root": "handover.root", "luna-vault": "luna.vaultPath" };
 
 // The command an action runs, spelled as the action table builds its argv; root is the himmel download.
 export function settingsCommand({ action, target }, root = HIMMEL_HOME, value) {
@@ -267,7 +269,8 @@ export function settingsCommand({ action, target }, root = HIMMEL_HOME, value) {
   if (ns === "plugin") return [...ctl, "profile", verb, target].join(" ");
   if (action === "profile.set") return [...ctl, "profile", target].join(" ");
   if (!value) return ["on", "off"].map((v) => settingsCommand({ action, target }, root, v)).join("\n");
-  const key = action === "config.commitRules" ? (target === "tracker" ? "commit.tracker" : "commit.ticketIdRequired") : `${verb}.${target}`;
+  const key = action === "config.commitRules" ? (target === "tracker" ? "commit.tracker" : "commit.ticketIdRequired")
+    : action === "config.paths" ? PATH_KEYS[target] : `${verb}.${target}`;
   return [...ctl, "config", "set", key, value].join(" ");
 }
 export const settingsEffect = (action) => EFFECT[action] || "";

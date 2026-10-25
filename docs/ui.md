@@ -29,6 +29,7 @@ dry-run first, then, once confirmed, runs the `himmelctl` command printed under 
 | Auto-ship steps | `HIMMEL_INITIATIVE` in the `.env` of the himmel download, through `himmelctl config set initiative.<step>` | next Claude launch |
 | Scheduled jobs | the job's crontab entry, through its `*-cadence.sh arm` or `disarm` | at the next scheduled run |
 | Commit rules (Setup) | `TRACKER` and `TICKET_ID_REQUIRED` in `~/.himmel/himmel.conf`, through `himmelctl config set commit.<key>` | your next commit |
+| Setup choices (Setup) | `HANDOVER_DIR` and `LUNA_VAULT_PATH` in `~/.himmel/himmel.conf`, through `himmelctl config set handover.root` or `luna.vaultPath`; an absolute path with no `.` or `..` part, quote, `#`, `$`, backslash or control character | next Claude launch |
 | Fleet cap (Settings) | the one `HIMMEL_FLEET_CAP` line in the `.env` of the himmel download, a whole number from 1 to 50 (default 4); a `HIMMEL_FLEET_CAP` exported in the shell that launches a worker wins over the `.env` line for that launch, and it takes any whole number, outside 1 to 50 too; and the page shows a notice while the shell that started the UI sets one | the next worker launch |
 | VM mode (Settings) | the `vm` section of the himmel config file in `~/.himmel`: `local`, `remote` (ssh target, port, identity) or `none`; validated before the write | the next VM proof run |
 | Review gate (Settings) | the per-machine overlay `critics.local.json` only, through `POST /api/review-gate`: each reviewer's `mode`, `required` and on/off (`drop`). The shared `scripts/cr/critics.json` is never written | the next review round |
@@ -55,6 +56,12 @@ works without it), and the steps to install the GitHub App on the repo and arm t
 (`git config --local himmel.coderabbit true`). The installed check runs `gh pr list` over the last 10 PRs and looks
 for a `CodeRabbit` check: seen is `installed`; not seen is `not detected` (a new install, a repo with no PRs or skipped
 reviews look the same); no `gh`, no sign-in or no remote is `not checked`. Both of those show a manual confirm. The check only reads; it never installs or arms anything.
+
+The Setup page ends with Setup choices: the handover root and the luna vault path, each prefilled from
+`~/.himmel/himmel.conf` (or marked `not set` with the default that applies) and changed through a dry run you
+confirm. The vault path must be a folder that exists. The forge is shown as detected, read-only: set `FORGE` or
+`git config himmel.forge` in the terminal. The plugin set, Review by a second model and Auto-ship steps are
+linked to their Settings toggles, not repeated.
 
 The Roadmap and Kanban boards also write to Jira: dragging a card to another column
 transitions the ticket, and a card's theme select sets its single `theme-<slug>` label. Both go
@@ -116,8 +123,8 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   (first the Account step, which creates the UI login once on a fresh install;
   which secrets are set, never their values; a file-stored secret can be saved or
   removed here; the always-on service saves one only after you log in at `/login`
-  (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login; plus the commit rules, tracker and ticket-id-required, each with a
-  dry-run before it changes), `#/health` (one verdict:
+  (set the login with `bun scripts/config-ui/server.ts --set-login <user>`), an ad-hoc `himmelctl ui` needs no login; plus the commit rules, tracker and ticket-id-required, and the setup
+  choices, handover root and luna vault path, each with a dry-run before it changes), `#/health` (one verdict:
   All clear / Needs a look / Act now; a Trends section with Velocity, Cost and Health
   cards from the weekly roll-up, see below), `#/toolhealth` (tool-call failure and
   denial rates by model and lane), `#/roadmap` (releases, drift, sync and
