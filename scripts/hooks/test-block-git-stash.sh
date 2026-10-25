@@ -331,6 +331,12 @@ case "$out" in *shfmt*"rc=2") echo "PASS no shfmt: the verb is denied and the me
 out=$(nosh_case 'git status')
 case "$out" in "rc=0") echo "PASS no shfmt: a command without the verb is not denied" ;; *) echo "FAIL no shfmt: a command without the verb is not denied - $out"; FAILED=$((FAILED + 1)) ;; esac
 
+# A command model that runs past its bound denies: a stub timeout stands in for the slow model.
+mkdir -p "$NOSH/slow-model" && printf '#!/bin/sh\nexit 124\n' >"$NOSH/slow-model/timeout" && chmod +x "$NOSH/slow-model/timeout"
+# shellcheck disable=SC2069
+out=$(printf '%s' "$(j_bash 'git stash list')" | XDG_STATE_HOME="$NOSH/state" PATH="$NOSH/slow-model:$PATH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+case "$out" in *"timed out"*"rc=2") echo "PASS a timed-out command model denies a command that names the verb" ;; *) echo "FAIL a timed-out command model denies a command that names the verb - $out"; FAILED=$((FAILED + 1)) ;; esac
+
 # --- BYPASS case ---
 assert_rc "GIT_STASH_OK bypass"       0 "$(run_case "$(j_bash 'git stash drop')" "GIT_STASH_OK=1")"
 

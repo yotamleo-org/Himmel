@@ -34,9 +34,11 @@
 #
 #   S0 is the starting cwd set (default [[]]); TAGS the starting `in`.
 #   rc 2 = shfmt or jq missing (the message says so; the caller fails closed),
-#   rc 3 = shfmt could not parse the command, rc 4 = the model failed or ran
-#   past BASH_AST_TIMEOUT_S (1-60, default 10); a timeout appends the command
-#   to $XDG_STATE_HOME/himmel/bash-ast-timeouts.log.
+#   rc 3 = shfmt could not parse the command, rc 4 = the model failed, rc 5 =
+#   the model ran past its bound: BASH_AST_TIMEOUT_S (1-60) when set, else
+#   10 s plus 1 s per KiB of command past 4 KiB, at most 40 s, which stays 5 s
+#   inside the hook runner's member window. A timeout appends the command to
+#   $XDG_STATE_HOME/himmel/bash-ast-timeouts.log. Every caller denies on rc 5.
 #
 # Nav algebra: `a && b` runs b where a succeeded, `a || b` where a failed; a
 # failed cd does not move. A subshell, `&`, `$(…)` and coproc do not carry a
@@ -595,7 +597,8 @@ def positions($home; $s0; $tags; $scope; $p0):
 BASH_AST_POS_EOF
 
 bash_ast_positions() {
-    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0 tmo secs log
+    local cmd=$1 s0=${2:-'[[]]'} tags=${3:-'[]'} depth=${4:-0} scope=${5:-0} p0=${6:-null} tree pos line inner acc rc k=0 tmo secs log over
+    local -a bound=()
     if ! command -v shfmt >/dev/null 2>&1; then
         echo "bash-ast: shfmt not on PATH, so the command model cannot run and the guard fails closed. Install shfmt (a station install goes to a test VM first)." >&2
         return 2
@@ -609,9 +612,14 @@ bash_ast_positions() {
         return 3
     }
     tmo=$(command -v timeout || command -v gtimeout) || tmo=""
-    case ${BASH_AST_TIMEOUT_S:-} in [1-9] | [1-5][0-9] | 60) secs=$BASH_AST_TIMEOUT_S ;; *) secs=10 ;; esac
+    over=$(((${#cmd} - 4096) / 1024))
+    [ "$over" -gt 0 ] || over=0
+    [ "$over" -lt 30 ] || over=30
+    case ${BASH_AST_TIMEOUT_S:-} in [1-9] | [1-5][0-9] | 60) secs=$BASH_AST_TIMEOUT_S ;; *) secs=$((10 + over)) ;; esac
+    # --foreground keeps jq in the caller's process group, so the hook runner's group kill reaches it
+    [ -z "$tmo" ] || bound=("$tmo" --foreground -k 2 "$secs")
     # shellcheck disable=SC2016  # the jq program's $names are jq variables
-    pos=$(printf '%s' "$tree" | ${tmo:+"$tmo" -k 2 "$secs"} jq -c --arg home "${HOME:-}" --argjson s0 "$s0" --argjson tags "$tags" \
+    pos=$(printf '%s' "$tree" | ${bound[@]+"${bound[@]}"} jq -c --arg home "${HOME:-}" --argjson s0 "$s0" --argjson tags "$tags" \
         --arg scope "$scope" --argjson p0 "$p0" \
         "$_BASH_AST_JQ$_BASH_AST_POS_JQ"'positions($home; $s0; $tags; $scope; $p0)' 2>/dev/null) || {
         rc=$?
@@ -619,6 +627,7 @@ bash_ast_positions() {
             echo "bash-ast: the command model timed out after ${secs}s, so the guard fails closed." >&2
             log="${XDG_STATE_HOME:-${HOME:-}/.local/state}/himmel/bash-ast-timeouts.log"
             case $log in /*) (umask 077 && mkdir -p "${log%/*}" && printf '%s\t%s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(printf '%s' "${cmd:0:4096}" | tr '\n\t' '  ')" >>"$log") 2>/dev/null ;; esac
+            return 5
         else
             echo "bash-ast: the command model could not read the command." >&2
         fi

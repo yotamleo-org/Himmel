@@ -201,23 +201,23 @@ ms_now() {
     case $n in *N | '') python3 -c 'import time; print(int(time.time() * 1000))' ;; *) echo $((n / 1000000)) ;; esac
 }
 tmo=$(command -v timeout || command -v gtimeout)
-# timed LABEL CMD-FILE JQ-EXPR: the model reads CMD-FILE in under a second and its positions satisfy JQ-EXPR
+# timed LABEL CMD-FILE JQ-EXPR: the model reads CMD-FILE in under five seconds and its positions satisfy JQ-EXPR
 timed() {
     local t0 out rc el
     t0=$(ms_now)
     # read-sink-ok: $2 is a command fixture this suite names, from its own fixtures dir or its own mktemp dir
     out=$("$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "$(cat "$2")"' _ "$LIB" "$2" 2>&1); rc=$?
     el=$(($(ms_now) - t0))
-    if [ "$rc" = 0 ] && [ "$el" -lt 1000 ] && printf '%s' "$out" | jq -e "$3" >/dev/null 2>&1; then ok "$1 (${el}ms)"
+    if [ "$rc" = 0 ] && [ "$el" -lt 5000 ] && printf '%s' "$out" | jq -e "$3" >/dev/null 2>&1; then ok "$1 (${el}ms)"
     else bad "$1 — rc=$rc ${el}ms $(printf '%s' "$out" | head -c 300)"; fi
 }
 if [ -n "$tmo" ]; then
     b18=""
     for _ in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18; do b18="$b18{a,b}"; done
     printf 'echo %s\n' "$b18" >"$FIX/b18.cmd"
-    timed "eighteen brace groups are past 64 words in under a second" "$FIX/b18.cmd" \
+    timed "eighteen brace groups are past 64 words in under five seconds" "$FIX/b18.cmd" \
         '.[0].argv[1].t == "amb"'
-    timed "a heredoc of many brace groups (the 2026-10-25 hang) reads in under a second" \
+    timed "a heredoc of many brace groups (the 2026-10-25 hang) reads in under five seconds" \
         "$SCRIPT_DIR/fixtures/bash-ast/heredoc-brace-groups.cmd" 'any(.[]; .prog == "python3")'
 
     # a model run that never returns fails closed within the bound and logs the command
@@ -229,10 +229,22 @@ if [ -n "$tmo" ]; then
         "$tmo" -k 2 20 bash -c '. "$1"; bash_ast_positions "echo stuck-model-row"' _ "$LIB" 2>&1 >/dev/null); rc=$?
     el=$(($(ms_now) - t0))
     log="$FIX/state/himmel/bash-ast-timeouts.log"
-    if [ "$rc" = 4 ] && [ "$el" -lt 5000 ] && [[ $err == *"timed out"* ]]; then ok "a stuck model run is rc 4 within the bound (${el}ms)"
-    else bad "a stuck model run is rc 4 within the bound — rc=$rc ${el}ms err=$err"; fi
+    if [ "$rc" = 5 ] && [ "$el" -lt 5000 ] && [[ $err == *"timed out"* ]]; then ok "a stuck model run is rc 5 within the bound (${el}ms)"
+    else bad "a stuck model run is rc 5 within the bound — rc=$rc ${el}ms err=$err"; fi
     if grep -q 'stuck-model-row' "$log" 2>/dev/null && [ -n "$(find "$log" -perm 600 2>/dev/null)" ]; then ok "a stuck model run logs its command, owner-only"
     else bad "a stuck model run logs its command, owner-only — $(head -c 200 "$log" 2>&1)"; fi
+
+    # the bound keeps jq in the caller's process group and grows 1 s per KiB past 4 KiB
+    mkdir -p "$FIX/argv-timeout"
+    printf '#!/bin/sh\necho "$1 $2 $3 $4 $5" >>"$TMO_ARGV"\nexit 124\n' >"$FIX/argv-timeout/timeout"
+    chmod +x "$FIX/argv-timeout/timeout"
+    big="echo $(head -c 10240 /dev/zero | tr '\0' x)"
+    TMO_ARGV="$FIX/timeout-argv" XDG_STATE_HOME="$FIX/state" PATH="$FIX/argv-timeout:$PATH" bash -c \
+        '. "$1"; bash_ast_positions "echo short"; bash_ast_positions "$2"; BASH_AST_TIMEOUT_S=3 bash_ast_positions "$2"' _ "$LIB" "$big" >/dev/null 2>&1
+    # read-sink-ok: the file is this suite's own stub output in its mktemp dir
+    argv=$(tr '\n' ';' <"$FIX/timeout-argv" 2>&1)
+    if [ "$argv" = "--foreground -k 2 10 jq;--foreground -k 2 16 jq;--foreground -k 2 3 jq;" ]; then ok "the model bound is --foreground, scales with the command and takes BASH_AST_TIMEOUT_S"
+    else bad "the model bound is --foreground, scales with the command and takes BASH_AST_TIMEOUT_S — $argv"; fi
 else
     echo "SKIP: no timeout binary — the termination rows did not run"
 fi

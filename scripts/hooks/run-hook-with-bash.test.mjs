@@ -486,6 +486,38 @@ test('a member killed for its bound takes its whole process group with it', { sk
   });
 });
 
+// The command model runs jq as `timeout --foreground -k 2 N jq …`. A plain
+// `timeout` moves itself and jq into a group of their own, which the runner's
+// group kill would miss.
+const timeoutBin = ['timeout', 'gtimeout'].find((b) => spawnSync(b, ['--version']).status === 0);
+test('a member killed for its bound takes a jq it runs under timeout --foreground with it', { skip: process.platform === 'win32' || !timeoutBin }, () => {
+  withChain((dir) => {
+    const pidFile = join(dir, 'model.pid');
+    writeFileSync(
+      join(dir, 'model.sh'),
+      `#!/usr/bin/env bash\n${timeoutBin} --foreground -k 2 30 bash -c 'echo $$ > "$1"; exec sleep 30' _ "${pidFile}"\n`,
+    );
+    chmodSync(join(dir, 'model.sh'), 0o755);
+    let pid = null;
+    try {
+      const result = spawnSync(process.execPath, [LAUNCHER, '--chain', join(dir, 'model.sh')], {
+        encoding: 'utf8',
+        input: PAYLOAD,
+        env: { ...process.env, RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS: '1000' },
+      });
+      assert.match(result.stderr, /SKIP model\.sh/);
+      pid = Number(readFileSync(pidFile, 'utf8'));
+      const alive = (p) => /^[^Z]/.test(spawnSync('ps', ['-o', 'stat=', '-p', String(p)], { encoding: 'utf8' }).stdout.trim());
+      assert.equal(alive(process.pid), true, 'the liveness probe must see this test process alive');
+      const until = Date.now() + 3000;
+      while (alive(pid) && Date.now() < until) spawnSync('sleep', ['0.1']);
+      assert.equal(alive(pid), false, 'the killed member left its timed jq running');
+    } finally {
+      if (pid) try { process.kill(pid, 'SIGKILL'); } catch { /* already gone */ }
+    }
+  });
+});
+
 // N members at the full per-member bound can outlast the ENTRY's timeout, and
 // that budget blowing is what silently skips the tail. The chain clamps each
 // member to what is left, so it always reaches its own end and reports there.
