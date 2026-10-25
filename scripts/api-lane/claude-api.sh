@@ -246,6 +246,8 @@ stop_call() {
 }
 # shellcheck disable=SC2329 # invoked from the signal trap below
 on_signal() {
+  # a second TERM (the bounded wrapper's group kill) must not cut the settle short; the ignore is inherited by it
+  trap '' TERM INT HUP
   [ -z "$WATCHDOG_PID" ] || kill "$WATCHDOG_PID" 2>/dev/null
   stop_call; settle_dead; exit 143
 }
