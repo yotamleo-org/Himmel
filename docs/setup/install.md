@@ -189,8 +189,9 @@ previews first.
 
 `himmelctl uninstall` is the inverse of install, and it previews first with
 `--dry-run`. Without a terminal, pass `uninstall --yes`: a run without it
-aborts and removes nothing. The commands, what it removes and what it keeps on
-purpose:
+aborts and removes nothing. Your Telegram pairing and the install record stay
+unless you add `--purge-state`, which is refused while the bridge is
+still running. The commands, what it removes and what it keeps on purpose:
 [Undo the install](updating.md#undo). Every file, hook and setting an install
 writes, and what uninstall does with each one:
 [What changes on your machine](footprint.md).
