@@ -660,7 +660,7 @@ lg -C "$TL" add -A && lg -C "$TL" commit -q -m list
 TLID="local:$(cd "$TL/.git" && pwd -P)"
 n=0
 for tp in scripts/hooks/block-x.sh scripts/hooks/read-clamp.sh scripts/hooks/check-cr-x.sh \
-    scripts/handover/chief-kit/verdict-go.sh scripts/cr/write-verdicts.sh \
+    scripts/handover/chief-kit/verdict-go.sh scripts/handover/chief-kit/go.sh scripts/cr/write-verdicts.sh \
     .codex/hooks.json marketplace/plugins/p/hooks/hooks.json; do
     n=$((n + 1))
     lg -C "$TL" checkout -q -b "feat/tp$n" main
