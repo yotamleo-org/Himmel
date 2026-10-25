@@ -334,7 +334,7 @@ else
 fi
 # The notice is once per session: a second hook call stays silent.
 gone_run g6 "$T/g6"; rc=$?
-if [ "$rc" -eq 0 ] && absent 'HIMMEL-5171' "$T/g6.out" "$T/g6.err"; then
+if [ "$rc" -eq 0 ] && absent 'ran UNVERIFIED' "$T/g6.out" "$T/g6.err"; then
   ok "HIMMEL-5171: the fail-open notice is shown once per session"
 else
   bad "HIMMEL-5171 notice once: expected rc=0 and no notice, got rc=$rc out=$(cat "$T/g6.out") err=$(cat "$T/g6.err")"
@@ -443,7 +443,7 @@ cp "$GUARD" "$T/guard.orig"
 printf '\n# tampered\n' >> "$GUARD"
 gone_dir g12; printf 'failed\n' > "$T/g12/$SID.recorder"
 gone_run g12 "$T/g12"; rc=$?
-if [ "$rc" -eq 2 ] && absent 'HIMMEL-5171' "$T/g12.out"; then
+if [ "$rc" -eq 2 ] && absent 'ran UNVERIFIED' "$T/g12.out"; then
   ok "HIMMEL-5171: a tampered pinned guard with a valid record and a failed marker is still denied"
 else
   bad "HIMMEL-5171 tamper + failed marker: expected rc=2, got rc=$rc out=$(cat "$T/g12.out") err=$(cat "$T/g12.err")"

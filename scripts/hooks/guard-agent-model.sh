@@ -102,7 +102,7 @@ if [ "$status" = "weak" ]; then
 else
     lead="${what} without an escalation marker"
 fi
-deny_msg="agent-model-deny: ${lead} — retired Fable as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). Drop the model override, or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
+deny_msg="agent-model-deny: ${lead} — Fable is retired as the judge default (Opus 5.5 high measured ~2.7x cheaper per verdict, \$8.23 vs \$21.94, with no missed finding). Drop the model override, or for ONE genuinely hard call add a prompt line 'ESCALATION: <reason>' with a real reason and re-dispatch. To unblock a model for good, edit scripts/guardrails/agent-model-policy.json."
 
 reason_json=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason_json='"agent-model-deny: model override denied without a usable ESCALATION: marker"'
