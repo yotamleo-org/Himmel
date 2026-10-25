@@ -16,6 +16,7 @@ himmelctl.md
 configuration.md
 cadences.md
 ui.md
+guide/second-model-review.md
 launchers.md
 setup/codex.md
 setup/cli-proxy-lane.md

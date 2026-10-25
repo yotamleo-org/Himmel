@@ -69,8 +69,21 @@ holds a verdict whose first line under `## Verdict` is exactly
 verdict beside it. Brief the judge to write that line. The id is
 signed into the GO's mac, so it
 cannot be added or edited after the fact, and a push after it needs a fresh
-trust-reviewed GO. A trust-path PR also refuses while the anchor checkout is
-behind `origin` (pull the primary first), so the gate it runs is current.
+trust-reviewed GO.
+
+**Judge beside CI.** A worker sends `JUDGE-REQUEST <pr> <head>` when its head
+enters the final CI run, after the local `/pr-check` round is clean. Dispatch
+the trust or docs judge on that head then, in parallel with CI, rather than at
+`READY`; `READY <pr> <head> GREEN` follows CI green. Any push after the judge
+needs a fresh judge and a fresh GO: the trust-reviewed GO is still checked at
+the exact head, so nothing is weakened.
+
+**Anchor behind `origin`.** A trust-path PR needs the anchor checkout to hold
+`origin`'s HEAD, so the gate it runs is current. `merge-on-green.sh` now
+fast-forwards the anchor (`git pull --ff-only`) and re-runs itself from the
+fresh bytes when that is all the gap is. A diverged anchor, a dirty tree
+that blocks the pull or an unreadable `origin` still exits 21: fix the primary
+checkout by hand.
 
 Plugin versions change only in the release cut, the PR that changes the root
 `VERSION` file; `check-plugin-drift.sh --bump-required`, ready-check item 9

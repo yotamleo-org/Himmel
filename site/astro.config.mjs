@@ -102,6 +102,7 @@ export default defineConfig({
             { label: 'Settings & configuration', slug: 'configuration' },
             { label: 'Scheduled jobs', slug: 'cadences' },
             { label: 'The local dashboard', slug: 'ui' },
+            { label: 'Review by a second model', slug: 'guide/second-model-review' },
             { label: 'Telegram bridge', slug: 'telegram-bridge' },
             {
               label: 'Second brain (notes vault)',

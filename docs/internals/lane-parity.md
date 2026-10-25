@@ -101,7 +101,7 @@ confirmed the write-fence landed (see the conformance notes below).
 | glm-spawn | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
 | glm-launcher | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
 | codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
-| hermes-main (DEFAULT; engines codex-5.5 + GLM) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The four OTHER deny-guards were ported into parity_guard by Task 6 (all now `present`). |
+| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The four OTHER deny-guards were ported into parity_guard by Task 6 (all now `present`). |
 | hermes-junior | n/a -- read-only tier (`luna_vault_guard`) |
 | gemini / copilot / cursor | `deferred` |
 
@@ -140,7 +140,7 @@ row (Task 2) is `tested:<path>` -- no `GAP`, no `pending:`.
 | glm-spawn | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
 | glm-launcher | `tested:scripts/hooks/test-claude-glm-seed-check.sh` (seeded `~/.claude-glm`, drift-checked) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
 | codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
-| hermes-main (DEFAULT; engines codex-5.5 + GLM) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
+| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
 | hermes-junior | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `GAP` (`luna_vault_guard`, no in-repo test) | `asserted-only` | `asserted-only` | `WS7-owned` (read-only tier) |
 | gemini / copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
 
@@ -202,7 +202,7 @@ deny-guards plus the write-fence are now PRESENT under hermes.
 
 <!-- BEGIN guard-lane-conformance -->
 
-| deny-guard | glm-spawn | glm-launcher | codex-direct | hermes-main (codex-5.5 + GLM) | hermes-junior |
+| deny-guard | glm-spawn (dormant) | glm-launcher (dormant) | codex-direct | hermes-main (gpt-6.1-sol; GLM dormant) | hermes-junior |
 |---|---|---|---|---|---|
 | block-edit-on-main | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` | `n/a` |
 | block-read-secrets | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` | `n/a` |
@@ -246,7 +246,7 @@ Notes on the cells:
   write-on-main class honouring `.single-writer`), unit-tested by
   `scripts/hooks/test-block-terminal-write-fence.sh` and e2e-proved through the
   adapter. The codex-direct column is now `tested`-green.
-- **hermes-main (DEFAULT; both engines codex-5.5 + GLM).** himmel's CC
+- **hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant).** himmel's CC
   PreToolUse hooks do NOT load under hermes, so `parity_guard.py` is the sole
   fence; both engines are exercised by
   `tested:scripts/hermes/test-parity-guard.sh`. The GLM-engine write-fence cell
@@ -274,7 +274,7 @@ The contract side of the index: for each invariant DENY-guard (the Task-0 set
 of six PreToolUse deny-hooks PLUS the cross-lane write-authority dimension),
 what does `scripts/hermes/assets/parity_guard.py` -- the SOLE fence under
 hermes, since himmel's Claude Code PreToolUse hooks do NOT load there -- actually
-enforce, for BOTH engines (codex-5.5 + GLM) the `himmel_agent` profile is
+enforce, for BOTH engines (gpt-6.1-sol + the dormant GLM) the `himmel_agent` profile is
 pointed at? Tags: `present` (parity_guard enforces it), `n/a-for-runtime`
 (Claude-Code-specific mechanics with no hermes analog), `GAP` (not enforced --
 filed for porting, which is Task 6).

@@ -822,6 +822,12 @@ run_mog() {
             { $g -C "$tmp" commit -q --allow-empty -m ahead && $g -C "$tmp" push -q origin HEAD \
                 && $g -C "$tmp" reset -q --hard HEAD~1; } >/dev/null 2>&1 \
                 || { LAST_TMP="$tmp"; fail "$name (setup: MOG_ANCHOR_BEHIND)"; return; }
+            # MOG_ANCHOR_DIVERGED=1 also gives the anchor a commit origin lacks,
+            # so it cannot fast-forward to origin.
+            if [ "${MOG_ANCHOR_DIVERGED:-0}" = "1" ]; then
+                $g -C "$tmp" commit -q --allow-empty -m local >/dev/null 2>&1 \
+                    || { LAST_TMP="$tmp"; fail "$name (setup: MOG_ANCHOR_DIVERGED)"; return; }
+            fi
         fi
     fi
 
@@ -3319,11 +3325,27 @@ no_merge_call "3895-f10: no merge call"
 STUB_TRUST_LIST=$(sed 's/^\(.\)/  \1/; s/$/ 	 /' "$SCRIPT_DIR/../ci/ci-trust-paths.txt") \
     tp_run 21 "3895-f11: blank-padded trust list, trust-path PR with no GO → exit 21"
 no_merge_call "3895-f11: no merge call"
-# 3895-f9 — the anchor is one commit behind origin: a trust-path PR is judged
-# by a possibly stale gate, so it refuses (a non-trust PR is not affected).
+# 3895-f9 — the anchor cannot catch up to origin (it holds a commit origin
+# lacks): a trust-path PR is judged by a possibly stale gate, so it refuses (a
+# non-trust PR is not affected).
 tp_mint --trust-reviewed judge-N9 77 "$GO_SHA"
-MOG_ANCHOR_BEHIND=1 tp_run 21 "3895-f9: anchor behind origin, trust-path PR → exit 21"
+MOG_ANCHOR_BEHIND=1 MOG_ANCHOR_DIVERGED=1 tp_run 21 "3895-f9: anchor diverged from origin, trust-path PR → exit 21"
 assert_err_has "3895-f9: stderr says to pull the anchor" "behind"
+no_merge_call "3895-f9: no merge call"
+# 7474 — an anchor merely one commit behind origin fast-forwards first, so the
+# same trust-path PR with its trust-reviewed GO merges instead of exiting 21.
+MOG_ANCHOR_BEHIND=1 tp_run 0 "7474-a: anchor one commit behind origin, trust-path PR → merged"
+assert_merge_has "7474-a: merge pins the certified head" "--match-head-commit $GO_SHA"
+assert_audit_has "7474-a: the trust review rides the audit" "trust=judge-N9"
+# The catch-up does not weaken the gate: with no trust-reviewed GO it still refuses.
+rm -f "$TP_GO/77.$GO_SHA"
+MOG_ANCHOR_BEHIND=1 tp_run 21 "7474-b: anchor behind origin, trust-path PR with no GO → exit 21"
+no_merge_call "7474-b: no merge call"
+# A dry run mutates nothing: it does not fast-forward the anchor, it reports the refusal.
+tp_mint --trust-reviewed judge-N9 77 "$GO_SHA"
+MOG_ANCHOR_BEHIND=1 tp_run 21 "7474-c: dry-run, anchor behind origin, trust-path PR → exit 21" -- --dry-run
+assert_audit_lacks "7474-c: the anchor was not fast-forwarded" "ANCHOR fast-forwarded"
+tp_mint --trust-reviewed judge-N9 77 "$GO_SHA"
 MOG_ANCHOR_BEHIND=1 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' \
     tp_run 0 "3895-f10: anchor behind origin, non-trust PR → merged (unchanged)"
 rm -f "$TP_GO/77.$GO_SHA"
