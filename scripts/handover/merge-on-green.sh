@@ -607,6 +607,13 @@ _status_event() {
     bash "$himmel_repo/scripts/handover/console-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
         ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
 }
+# _focus_mark_dirty — a status the merge wrote leaves the console's FOCUS page
+# behind: mark it dirty (HIMMEL_CONSOLE_DOC) so the waiter's next tick rebuilds
+# it; best-effort, never changes an exit code.
+_focus_mark_dirty() {
+    [ -n "${HIMMEL_CONSOLE_DOC:-}" ] || return 0
+    bash "$himmel_repo/scripts/handover/console-kit/focus-refresh.sh" --doc "$HIMMEL_CONSOLE_DOC" --mark-dirty >/dev/null 2>&1 || true
+}
 
 # gh helper honoring an optional selector (mirrors check-ci's pr_view shape).
 gh_pr_view() {
@@ -2329,6 +2336,7 @@ $remaining")
     # Exit 3: the ticket closed, but the transition would not stamp a frozen version it was deferred out of.
     if [ "$transition_rc" -eq 0 ] || [ "$transition_rc" -eq 3 ]; then
         JIRA_AUTO_TRANSITION_RESULT="ok key=$key status=$target_status"
+        _focus_mark_dirty
         # A closed ticket holds no future version: move it to the
         # current one (earliest unreleased by release date) when it sits in a
         # later unreleased version, and a ticket with no version gets the

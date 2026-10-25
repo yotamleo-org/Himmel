@@ -208,6 +208,15 @@ refresh_done_record() {
     ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot write the $KEY worker record" >&2
 }
 
+# A moved status leaves the console's FOCUS page behind: mark it dirty so the
+# waiter's next tick rebuilds it. HIMMEL_CONSOLE_DOC names the console doc (unset:
+# nothing to mark). A failed mark never fails the move.
+mark_focus_dirty() {
+    [ -n "${HIMMEL_CONSOLE_DOC:-}" ] || return 0
+    bash "$HERE/focus-refresh.sh" --doc "$HIMMEL_CONSOLE_DOC" --mark-dirty >/dev/null 2>&1 \
+        || echo "WARN leg-jira-status: cannot mark the FOCUS page dirty (continuing; the move stands)" >&2
+}
+
 # Derive, then re-read Jira and the PR heads before the write: Jira has no
 # conditional transition, so a change in between re-derives once, and a second
 # change leaves the write to the next event.
@@ -251,5 +260,6 @@ if ! ts_read_jira "$KEY" || [ "$TS_J_STATUS" != "$to" ]; then
 fi
 update_record "$to" "$from -> $to"
 row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir"
+mark_focus_dirty
 echo "leg-jira-status: $KEY $from -> $to ($TS_RULE)"
 exit 0

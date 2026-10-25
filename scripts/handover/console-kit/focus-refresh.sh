@@ -20,7 +20,9 @@
 #   mirror    jira mirror, then versions, each staged and moved into place
 #             (--mirror-fresh <dir> names a mirror the caller just refreshed and skips both)
 #   sweep     status-sweep.sh, so Jira and the worker records are current; it keeps
-#             its PR, check and thread snapshot in the stage for the drift pass
+#             its PR, check and thread snapshot in the stage for the drift pass. It runs
+#             with a 60+20 s budget and fails as sweep:<why>: timeout, rc<n>, the
+#             snapshot read it could not finish (gh, jira, ...), unknown
 #   prs       one `gh pr list` snapshot, staged
 #   render    tracker.py --version, staged
 #   drift     status-drift.sh over the sweep's snapshot, staged (report only). It fails as
@@ -223,8 +225,23 @@ else
     mv -f "$stage/versions.tsv" "$MIR.versions.tsv" || failed versions
 fi
 
-sweep_out=$(bounded 90 "${SWEEP[@]}" --repo "$REPO" --snapshot-out "$stage/snap" 2>&1) || failed sweep
-case "$sweep_out" in *"status-sweep: unknown"*) failed sweep ;; esac
+# the sweep's own budget plus grace (60+20) ends inside the 90 s bound, so it reports why it stopped
+rc=0
+sweep_out=$(TICKET_STATUS_SWEEP_BUDGET=60 TICKET_STATUS_SWEEP_GRACE=20 bounded 90 "${SWEEP[@]}" --repo "$REPO" --snapshot-out "$stage/snap" 2>&1) || rc=$?
+sweep_failed() { # <cause>
+    last=$(printf '%s\n' "$sweep_out" | grep '^status-sweep:' | tail -n 1)
+    [ -z "$last" ] || echo "focus-refresh: $last" >&2
+    failed "sweep:$1"
+}
+case "$rc" in 0) ;; 124 | 137) sweep_failed timeout ;; *) sweep_failed "rc$rc" ;; esac
+case "$sweep_out" in
+    *"status-sweep: unknown (timeout"*) sweep_failed timeout ;;
+    *"status-sweep: unknown (snapshot "*)
+        why=$(printf '%s\n' "$sweep_out" | sed -n 's/.*status-sweep: unknown (snapshot \([^)]*\)).*/\1/p' | tail -n 1)
+        [[ "$why" =~ ^[a-z-]+$ ]] || why=unknown
+        sweep_failed "$why" ;;
+    *"status-sweep: unknown"*) sweep_failed unknown ;;
+esac
 moved=$(printf '%s\n' "$sweep_out" | sed -n 's/.* moved=\([0-9][0-9]*\).*/\1/p' | tail -n 1)
 if [ "${moved:-0}" -gt 0 ]; then
     JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bounded 120 "${JIRA[@]}" mirror --root "$MIR" >/dev/null 2>&1 || failed mirror

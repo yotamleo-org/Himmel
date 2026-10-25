@@ -25,7 +25,8 @@ DRIFT="$HERE/status-drift.sh"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/status-drift-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
-unset GH_REPO
+# a leg shell carries the live console doc; a move would mark its FOCUS page dirty
+unset GH_REPO HIMMEL_CONSOLE_DOC
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails+1)) ;; esac; }
@@ -107,10 +108,14 @@ case "$1 $2" in
         else
             [ -e "$FX/graphql.fail" ] && { echo "HTTP 502" >&2; exit 1; }
             more=false; [ -e "$FX/graphql.more" ] && more=true
-            jq -c --arg more "$more" '{data:{repository:{pullRequests:{pageInfo:{hasNextPage:($more == "true")},
+            over=$(cat "$FX/contexts.more" 2>/dev/null || echo 0)
+            jq -c --arg more "$more" --argjson over "$over" '{data:{repository:{pullRequests:{pageInfo:{hasNextPage:($more == "true")},
                 nodes: map({number, reviewThreads:{pageInfo:{hasNextPage:false},nodes:[{isResolved:true}]},
-                    commits:{nodes:[{commit:{statusCheckRollup:{contexts:{pageInfo:{hasNextPage:false},nodes:[]}}}}]}})}}}}' "$FX/pr-list.json"
+                    commits:{nodes:[{commit:{statusCheckRollup:{contexts:{pageInfo:{hasNextPage:(.number == $over)},nodes:[]}}}}]}})}}}}' "$FX/pr-list.json"
         fi ;;
+    "api repos/{owner}/{repo}/commits/"*)
+        sha=${2#repos/\{owner\}/\{repo\}/commits/}; sha=${sha%%/*}
+        cat "$FX/check-runs-$sha.json" ;;
     "api repos/{owner}/{repo}/rules/branches/"*)
         cat "$FX/rules.json" ;;
     "api repos/{owner}/{repo}/branches/"*)
@@ -314,6 +319,21 @@ if [ -n "${_TIMEOUT_BIN:-}" ]; then
 else
     echo "ok - 2b: timeout case skipped (no timeout binary)"
 fi
+
+# A PR with more check runs than one GraphQL page reads its own checks, every page,
+# and the sweep stays known: its red required check still moves the ticket.
+reset "IN CI"; owned "$K" LIVE '{"state":"live","lock_seen":true,"lock_gone_sweeps":0,"prs":{"11":{"head":"ccc333","ci":"pending","red_latch":false,"open":true}}}'
+pr 11 "[$K] many checks" ccc333; checks 11 fail
+jq -c 'map(.statusCheckRollup = [])' "$FX/pr-list.json" > "$FX/p.t" && mv "$FX/p.t" "$FX/pr-list.json"
+printf '11\n' > "$FX/contexts.more"
+printf '%s\n%s\n' '{"check_runs":[{"id":1,"name":"shell-unit","status":"completed","conclusion":"failure","app":{"id":15368},"started_at":"2026-10-25T01:00:00Z"}]}' \
+    '{"check_runs":[{"id":2,"name":"lint","status":"completed","conclusion":"success","app":{"id":15368},"started_at":"2026-10-25T01:00:00Z"}]}' > "$FX/check-runs-ccc333.json"
+jl "$K" "IN CI"
+sweep
+contains "2b: a PR whose check runs overflow one page is no unknown sweep" "$(cat "$tmp/sout")" "status-sweep: keys="
+check "2b: the snapshot reads the overflowing PR's checks with gh pr checks" "$(awk '/^gh pr checks 11 /{print "snapshot"; exit} /^get /{print "funnel"; exit}' "$STUB_LOG")" snapshot
+check "2b: and its check runs with the paginated REST read" "$(grep -c '^gh api repos/{owner}/{repo}/commits/ccc333/check-runs?per_page=100 --paginate' "$STUB_LOG")" 1
+check "2b: its red required check moves the ticket" "$(grep '^transition' "$STUB_LOG")" "transition $K In Progress"
 
 # Lock-gone counting: D6 only after lock_seen plus two sweeps; a held lock resets.
 reset "In Progress"; owned "$K" LIVE '{"state":"live","lock_seen":false,"lock_gone_sweeps":0}'
@@ -674,9 +694,12 @@ EOS
 cat >"$tmp/frbin/sweep" <<'EOS'
 #!/usr/bin/env bash
 echo "sweep $*" >> "$FX/fr.log"
+echo "budget=${TICKET_STATUS_SWEEP_BUDGET:-} grace=${TICKET_STATUS_SWEEP_GRACE:-}" > "$FX/fr.sweep.env"
 case "$(cat "$FX/fr.fail" 2>/dev/null)" in
     sweep) exit 1 ;;
-    sweep-unknown) echo "status-sweep: unknown (gh unreadable) keys=0 sig=x wake=1"; exit 0 ;;
+    sweep-unknown) echo "status-sweep: unknown (snapshot gh) keys=0 sig=x wake=1"; exit 0 ;;
+    sweep-timeout) echo "status-sweep: unknown (timeout after 80s) keys=0 sig=timeout wake=1"; exit 0 ;;
+    sweep-odd) echo "status-sweep: unknown (snapshot Gh/x) keys=0 sig=x wake=1"; exit 0 ;;
 esac
 echo "status-sweep: keys=2 served=2 moved=$(cat "$FX/sweep.moved" 2>/dev/null || echo 0) miss=0 funnel=1 sig=abc wake=1"
 EOS
@@ -822,7 +845,7 @@ fr --mirror-fresh "$FR/m2"
 check "3c: a fresh mirror from the caller skips the mirror and versions steps" "$(frseq)" "sweep,tracker,drift"
 contains "3c: the render reads that mirror" "$(grep '^tracker ' "$FX/fr.log")" "--mirror-dir $FR/m2"
 
-for stage in mirror versions sweep render drift:rc1; do
+for stage in mirror versions sweep:rc1 render drift:rc1; do
     fr_reset
     fr
     echo "page-before" > "$PAGE"
@@ -838,7 +861,17 @@ for stage in mirror versions sweep render drift:rc1; do
 done
 fr_reset; echo sweep-unknown > "$FX/fr.fail"
 fr
-check "3c: an unknown sweep is FAILED:sweep" "$(frout)" "focus=FAILED:sweep"
+check "3c: an unknown sweep names its snapshot read: FAILED:sweep:gh" "$(frout)" "focus=FAILED:sweep:gh"
+contains "3c: and the sweep's last line reaches stderr" "$(cat "$tmp/frerr")" "status-sweep: unknown (snapshot gh)"
+check "3c: the sweep runs with budget 60 and grace 20, inside its 90 s bound" "$(cat "$FX/fr.sweep.env")" "budget=60 grace=20"
+fr_reset; echo sweep-timeout > "$FX/fr.fail"
+fr
+check "3c: a sweep cut off by its own budget is FAILED:sweep:timeout" "$(frout)" "focus=FAILED:sweep:timeout"
+fr --status
+check "3c: and --status names the cause" "$(frout)" "focus=FAILED:sweep:timeout"
+fr_reset; echo sweep-odd > "$FX/fr.fail"
+fr
+check "3c: an unparseable snapshot cause is FAILED:sweep:unknown" "$(frout)" "focus=FAILED:sweep:unknown"
 fr_reset; echo drift-unknown > "$FX/fr.fail"
 fr
 check "3c: an unknown drift pass with no reason is FAILED:drift:unknown" "$(frout)" "focus=FAILED:drift:unknown"

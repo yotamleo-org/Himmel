@@ -26,7 +26,8 @@ LIB="$HERE/../../lib/ticket-status.sh"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/leg-jira-status-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
-unset GH_REPO
+# a leg shell carries the live console doc; a move would mark its FOCUS page dirty
+unset GH_REPO HIMMEL_CONSOLE_DOC
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] lacks [$3]"; fails=$((fails+1)) ;; esac; }
@@ -585,6 +586,25 @@ for bad in HIMMEL-123junk HIMMEL-x-1 "HIMMEL-1 2"; do
     # read-sink-ok: STUB_LOG is this suite's own mktemp stub log
     check "bad key '$bad': no Jira call" "$(wc -c < "$STUB_LOG" | tr -d ' ')" 0
 done
+
+# --- a move marks the console's FOCUS page dirty --------------------------------
+FDOC="$tmp/console/console.md"; mkdir -p "${FDOC%/*}"
+printf '# console\nfocus-version: v1.1.3\n' > "$FDOC"
+fstat() { bash "$HERE/focus-refresh.sh" --doc "$FDOC" --status | cut -d: -f1; }
+fok() { printf 'status=ok\ngen=1\ndirty=\n' > "${FDOC%/*}/focus-state"; }
+reset "To Do"; owned; fok
+HIMMEL_CONSOLE_DOC="$FDOC" fn "$K" --event live
+check "focus: the move lands" "$(moved)" "transition $K In Progress"
+check "focus: and marks the FOCUS page dirty, so the next tick rebuilds it" "$(fstat)" "focus=DIRTY"
+reset "In Progress"; owned; fok
+HIMMEL_CONSOLE_DOC="$FDOC" fn "$K" --event live
+check "focus: no move leaves the page clean" "$(fstat)" "focus=ok"
+reset "To Do"; owned
+rc=0; HIMMEL_CONSOLE_DOC="$tmp/console/missing.md" bash "$SUT" "$K" --event live >"$tmp/out" 2>&1 || rc=$?
+check "focus: a failing mark-dirty never fails the move (exit)" "$rc" 0
+check "focus: the move still lands" "$(moved)" "transition $K In Progress"
+check "focus: and is logged moved" "$(row result)" moved
+contains "focus: the failed mark is a WARN" "$(cat "$tmp/out")" "cannot mark the FOCUS page dirty"
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1
