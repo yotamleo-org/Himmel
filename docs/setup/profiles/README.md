@@ -3,8 +3,8 @@
 Pick a starting point. You can move later.
 
 The installer's first question is the install profile. An install profile
-only fills in default answers. The installer still asks every question, so
-you can change any answer as you go. Nothing is final: you can run the
+only fills in default answers. The installer still asks every question that
+applies to your answers, so you can change any answer as you go. Nothing is final: you can run the
 installer again, switch scope, or undo the whole install.
 
 The install profile is one of three separate choices. The second is the
