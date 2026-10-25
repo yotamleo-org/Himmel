@@ -264,7 +264,8 @@ msg=$(cd "$TMP" && bash "$HOOK" "deny.sh" 2>&1 >/dev/null </dev/null)
 hook_rc=$?
 case "$msg" in
     *no-headless-claude*) rc=1 ;;
-    *) if [ "$hook_rc" = 1 ]; then rc=0; else rc=1; fi ;;
+    *"Headless gemini-cli invocations eat quota silently"*) if [ "$hook_rc" = 1 ]; then rc=0; else rc=1; fi ;;
+    *) rc=1 ;;
 esac
 assert_rc "T34 deny message does not name retired no-headless-claude gate" 0 "$rc"
 
