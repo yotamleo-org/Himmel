@@ -136,7 +136,8 @@ elif command -v ps >/dev/null 2>&1; then
     # lstart is a FIXED five-token date ("Thu Aug 21 04:12:00 2026") however
     # the columns wrap, so args starts at $9. It is also exactly what
     # `ps -o lstart= -p <pid>` re-reads at reap time, which is why it is here.
-    ps -eo pid=,ppid=,etime=,lstart=,args= 2>/dev/null | awk '
+    # -ww: a COLUMNS in the environment would otherwise cut the command the classifier matches.
+    { ps -ww -eo pid=,ppid=,etime=,lstart=,args= || ps -eo pid=,ppid=,etime=,lstart=,args=; } 2>/dev/null | awk '
       {
         e = $3; gsub(/-/, ":", e)
         n = split(e, f, ":")

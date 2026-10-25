@@ -870,24 +870,50 @@ g4_clause() {
 }
 
 g4_segments() {
-    local s=0 k n g4raw=0
-    local -a idx g4w g4g g4hs hs
-    hs=()
+    local s=0 k n g4raw=0 g4shadow=0
+    local -a idx g4w g4g g4k g4hs hs nw
+    hs=() nw=()
     # here-string targets (`<<< "$TOKEN"`) are redirect targets, so
     # guard_unwrap's segment words leave them out; collect the live-`$` ones.
+    # A command that defines a function or alias (or evals or sources text
+    # that may) can give a reader's name to code, so no reader's operands are
+    # data (g4shadow). The same word as a reader's own operand defines nothing.
+    # `name()` tokenizes as a segment ending `(` then an empty one ending `)`,
+    # whatever body follows.
     k=0
     while [ "$k" -lt "${ST_N:-0}" ]; do
+        nw[ST_S[k]]=1
         case "${ST_RO[k]:-}" in *'<<<') if [ "${ST_X[k]:-0}" = 1 ]; then hs[${#hs[@]}]=$k; fi ;; esac
+        if [ "${ST_Q[k]:-1}" = 0 ]; then
+            case "${ST_W[k]}" in
+                alias | function | eval | . | source)
+                    read -r -a idx <<<"${GU_SW[ST_S[k]]:-}"
+                    n=${idx[0]:-$k}
+                    case "$n:${ST_Q[n]}${ST_W[n]}" in
+                        "$k:"*) g4shadow=1 ;;
+                        *:0grep | *:0egrep | *:0fgrep | *:0cat | *:0head | *:0tail | *:0wc | *:0ls | *:0nl | *:0cut | *:0tr | *:0sed) ;;
+                        *) g4shadow=1 ;;
+                    esac ;;
+            esac
+        fi
+        k=$((k + 1))
+    done
+    k=0
+    while [ "$((k + 1))" -lt "${ST_NSEG:-0}" ]; do
+        if [ "${ST_SEP[k]}${ST_SEP[k + 1]}" = '()' ] && [ -n "${nw[k]:-}" ] && [ -z "${nw[k + 1]:-}" ]; then
+            g4shadow=1
+        fi
         k=$((k + 1))
     done
     while [ "$s" -lt "$ST_NSEG" ]; do
         if [ "${GU_LOOKUP[s]:-0}" = 0 ]; then
             read -r -a idx <<<"${GU_SW[s]:-}"
-            g4w=(); g4g=(); g4hs=()
+            g4w=(); g4g=(); g4k=(); g4hs=()
             k=0; n=${#idx[@]}
             while [ "$k" -lt "$n" ]; do
                 g4w[${#g4w[@]}]="${ST_W[idx[k]]}"
                 g4g[${#g4g[@]}]="${ST_G[idx[k]]:-0}"
+                g4k[${#g4k[@]}]="${idx[k]}"
                 k=$((k + 1))
             done
             # Here-string bodies travel in their OWN array: ST_W is dequoted,
@@ -908,7 +934,7 @@ g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
-    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0
+    local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0 rdr=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -923,7 +949,9 @@ g4_scan() {
         # queue-lock / append-results scripts (a doc name carries the word), or
         # the value of a git/gh message flag. `-m`-style flags are marked here,
         # for the NEXT word.
-        xskip=$dsc
+        # Nor any operand of a reader that runs no program (grep, cat, ls, an
+        # inert sed, ...): its pattern or file name is data, not a shell option.
+        xskip=$((dsc | rdr))
         if [ "$msgv" = 1 ]; then msgv=0; xskip=1; fi
         # git/gh message flags are data only for the positional subcommand (the
         # first non-option word, past the values of -C/--git-dir/--work-tree/
@@ -984,6 +1012,13 @@ g4_scan() {
             esac
             if [ "$need_dur" = 1 ]; then need_dur=0; continue; fi
             cmd="${d##*/}"; cmd="${cmd%.exe}"
+            # Tokenized only: a raw clause can hold a pipe into a shell.
+            if [ "$g4raw" = 0 ] && [ "${g4shadow:-0}" = 0 ]; then
+                case "$w" in
+                    grep | egrep | fgrep | cat | head | tail | wc | ls | nl | cut | tr) rdr=1 ;;
+                    sed) if st_sed_args "${g4k[i]}" 0; then rdr=1; fi ;;
+                esac
+            fi
             case "$d" in scripts/handover/queue-lock.sh|*/scripts/handover/queue-lock.sh|scripts/handover/console-kit/append-results.sh|*/scripts/handover/console-kit/append-results.sh) dsc=1 ;; esac
             case "$cmd" in
                 python|python[23]|python[23].*|node|nodejs|bun|deno) g4_interp=1 ;;
@@ -1168,6 +1203,81 @@ interp_env_dump() {
     # Whole words only, so a script named check_environment.py is not a dump.
     if [[ $t =~ (^|[^A-Za-z0-9_])(environb?|process\.env|Bun\.env|Deno\.env)([^A-Za-z0-9_]|$) ]]; then return 0; fi
     return 1
+}
+
+# rs_interp_text CMD: the text interp_env_dump reads, in REPLY. A pipeline of
+# plain readers (grep, cat, head, tail, wc, ls, cut, tr, nl, jq, an inert
+# sed, git grep/log/show/diff with only literal words and no pager, exec or
+# output option, long, abbreviated or in a short cluster) that writes no file is
+# neither code an interpreter runs nor a file it can run later, so its words
+# are left out (`git grep -n 'os.environ' | head; python3 -c ...`). CMD itself
+# when the tokenizer did not read it, or it holds a heredoc, a substitution, a
+# group, a subshell or a compound word, where a reader's output can still
+# reach an interpreter.
+rs_interp_text() {
+    local s k c w n o t='' g0 keep
+    local -a idx rd
+    REPLY=$1
+    [ "${GU_TOKENIZED:-0}" = 1 ] || return 0
+    # shellcheck disable=SC2016 # literal $( and ` bytes
+    case "$1" in *'<<'* | *'$('* | *'`'*) return 0 ;; esac
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        case "${ST_SEP[s]:-}" in '' | ';' | '&&' | '||' | '|' | '&' | nl) ;; *) return 0 ;; esac
+        rd[s]=0
+        read -r -a idx <<<"${GU_SW[s]:-}"
+        c=${GU_CORE[s]:-x}
+        if [ "$c" = 0 ] && [ "${#idx[@]}" -gt 0 ] && [ "${ST_Q[idx[0]]}${ST_X[idx[0]]}${ST_G[idx[0]]}" = 000 ]; then
+            case "${ST_W[idx[0]]}" in
+                grep | egrep | fgrep | cat | head | tail | wc | ls | cut | tr | nl | jq) rd[s]=1 ;;
+                sed) if st_sed_args "${idx[0]}" 0; then rd[s]=1; fi ;;
+                git) case "${ST_W[idx[1]]:-}" in grep | log | show | diff) rd[s]=1 ;; esac
+                    for k in "${idx[@]:1}"; do
+                        [ "${ST_X[k]}${ST_G[k]}" = 00 ] || rd[s]=0
+                        case "${ST_W[k]}" in
+                            -O* | -[!-]*O* | -x) rd[s]=0 ;;
+                            --?*) n=${ST_W[k]#--}; n=${n%%=*}
+                                for o in open-files-in-pager exec extcmd output ext-diff textconv; do
+                                    case "$o" in "$n"*) rd[s]=0 ;; esac
+                                done ;;
+                        esac
+                    done ;;
+            esac
+        fi
+        s=$((s + 1))
+    done
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        w=${ST_W[k]}
+        if [ "${ST_Q[k]}" = 0 ]; then
+            case "$w" in
+                '{' | '}' | if | then | else | elif | fi | for | while | until | do | done | case | 'esac' | select | function | coproc) return 0 ;;
+            esac
+        fi
+        case "${ST_RO[k]}" in
+            *'>&') case "$w" in *[!0-9-]* | '') rd[ST_S[k]]=0 ;; esac ;;
+            *'>'*) [ "$w" = /dev/null ] || rd[ST_S[k]]=0 ;;
+        esac
+        k=$((k + 1))
+    done
+    s=0
+    while [ "$s" -lt "$ST_NSEG" ]; do
+        g0=$s keep=0
+        while :; do
+            [ "${rd[s]}" = 1 ] || keep=1
+            [ "${ST_SEP[s]:-}" = '|' ] && [ "$((s + 1))" -lt "$ST_NSEG" ] || break
+            s=$((s + 1))
+        done
+        if [ "$keep" = 1 ]; then
+            k=0
+            while [ "$k" -lt "$ST_N" ]; do
+                if [ "${ST_S[k]}" -ge "$g0" ] && [ "${ST_S[k]}" -le "$s" ]; then t="$t ${ST_W[k]}"; fi
+                k=$((k + 1))
+            done
+        fi
+        s=$((s + 1))
+    done
+    REPLY=$t
 }
 
 # is_transcript_path PATH: a Claude Code session transcript
@@ -1640,7 +1750,7 @@ case "$tool" in
         done <<EOF
 $normalized
 EOF
-        if [ "$g4_interp" = 1 ] && interp_env_dump "$cmd"; then
+        if [ "$g4_interp" = 1 ] && rs_interp_text "$cmd" && interp_env_dump "$REPLY"; then
             block=1; g4_note="an interpreter prints the whole environment or reads /proc/*/environ"
         fi
 

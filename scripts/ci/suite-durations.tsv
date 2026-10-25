@@ -245,6 +245,7 @@ scripts/cr/test-d1-verdict.sh	1
 scripts/cr/test-doc-freshness-advisory.sh	0
 scripts/cr/test-docs-audit-panel.sh	0
 scripts/cr/test-emit-gate-fail.sh	0
+scripts/cr/test-evals-page-gen.sh	1
 scripts/cr/test-failure-classify.sh	0
 scripts/cr/test-file-deferred-issues.sh	1
 scripts/cr/test-finding-reraise.sh	22
@@ -313,6 +314,7 @@ scripts/eval/test-eval-feedback.sh	1
 scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
+scripts/eval/test-profile-openings.sh	0
 scripts/eval/test-review-page.sh	1
 scripts/eval/test-session-retro.sh	1
 scripts/eval/test-stability-scorecard.sh	0
@@ -959,6 +961,7 @@ scripts/release/test-check-version-tag.sh	0
 scripts/release/test-followup-report.sh	1
 scripts/release/test-gen-release-notes.sh	0
 scripts/release/test-tarball-vs-clone.sh	3
+scripts/report/test-himmel-report.sh	1
 scripts/roadmap/test-plan-graph.sh	1
 scripts/roadmap/test-plan-index.sh	2
 scripts/security/test-snyk-scan.sh	1

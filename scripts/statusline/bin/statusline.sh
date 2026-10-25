@@ -229,7 +229,7 @@ if [ -n "$session_start" ] && [ "$session_start" != "null" ]; then
 fi
 
 skip_perms=""
-parent_cmd=$(ps -o args= -p "$PPID" 2>/dev/null)
+parent_cmd=$(ps -ww -o args= -p "$PPID" 2>/dev/null || ps -o args= -p "$PPID" 2>/dev/null)
 if [[ "$parent_cmd" == *"--dangerously-skip-permissions"* ]]; then
     skip_perms="⚡  "
 fi
