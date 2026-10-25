@@ -15,9 +15,9 @@
 #   4. COMMANDS — every himmelctl command on the page names a command, a
 #                 sub-command and flags that `himmelctl --help` lists.
 #   5. CACHE    — the answers file path on the page is cachePath()'s default.
-#   6. CONTROL  — fixture pages with a missing profile, a wrong seed and an
-#                 unknown command fail cases 1, 2 and 4, so none passes
-#                 vacuously.
+#   6. CONTROL  — fixture pages with a missing profile, a wrong seed, an
+#                 unseeded scheduled job and an unknown command fail cases 1,
+#                 2 and 4, so none passes vacuously.
 #
 # Usage: bash scripts/docs/test-install-profiles-page.sh [page.md]
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
@@ -111,9 +111,8 @@ elif case == "seeds":
             if key == "cadenceIds":
                 if not want and "none picked" not in line:
                     print("%s: %s seeds none, the bullet does not say 'none picked'" % (name, label))
-                for job in want:
-                    if job not in ticks:
-                        print("%s: %s seeds %s, missing from the bullet" % (name, label, job))
+                if set(ticks) != set(want):
+                    print("%s: %s seeds %s, the bullet says %s" % (name, label, sorted(want), sorted(ticks)))
                 continue
             if key == "whisperModel":
                 want = model_key.get(want, want)
@@ -188,6 +187,7 @@ page, out = sys.argv[1], sys.argv[2]
 text = open(page, encoding="utf-8").read()
 open(out + "/no-custom.md", "w", encoding="utf-8").write(re.sub(r"^### [^\n]*`custom`.*?(?=^#{1,3} )", "", text, count=1, flags=re.S | re.M))
 open(out + "/wrong-seed.md", "w", encoding="utf-8").write(re.sub(r"^(- \*\*Notes vault:\*\*[^`\n]*)`existing`", r"\1`none`", text, count=1, flags=re.M))
+open(out + "/extra-job.md", "w", encoding="utf-8").write(re.sub(r"^(- \*\*Scheduled jobs:\*\*) none picked", r"\1 `qmd` picked", text, count=1, flags=re.M))
 open(out + "/bad-command.md", "w", encoding="utf-8").write(text + "\n`himmelctl profile wipe`\n")
 ' "$PAGE" "$fx"; }; then
   bad "CONTROL: write the fixtures" "$fx"
@@ -195,6 +195,7 @@ open(out + "/bad-command.md", "w", encoding="utf-8").write(text + "\n`himmelctl 
 fi
 case "$(check profiles "$fx/no-custom.md")" in *"differ from PROFILE_HELP keys"*) ok "CONTROL: a page missing a profile fails PROFILES" ;; *) bad "CONTROL: a page missing a profile fails PROFILES" ;; esac
 case "$(check seeds "$fx/wrong-seed.md")" in *"operator: Notes vault seeds existing, the bullet says none"*) ok "CONTROL: a wrong seed fails SEEDS" ;; *) bad "CONTROL: a wrong seed fails SEEDS" ;; esac
+case "$(check seeds "$fx/extra-job.md")" in *"starter: Scheduled jobs seeds [], the bullet says ['qmd']"*) ok "CONTROL: an unseeded scheduled job fails SEEDS" ;; *) bad "CONTROL: an unseeded scheduled job fails SEEDS" ;; esac
 case "$(check commands "$fx/bad-command.md")" in *"sub-command not in --help: himmelctl profile wipe"*) ok "CONTROL: an unknown command fails COMMANDS" ;; *) bad "CONTROL: an unknown command fails COMMANDS" ;; esac
 
 finish
