@@ -398,7 +398,7 @@ _baseline_growth() {
     awk -v old="$old" -v ren="$renames" -v new="$BASE_TEXT" '
     BEGIN {
         n = split(old, o, "\n")
-        for (i = 1; i <= n; i++) { m = split(o[i], p, "\t"); if (m >= 3) before[p[1] SUBSEP p[2]] = p[3] + 0 }
+        for (i = 1; i <= n; i++) { m = split(o[i], p, "\t"); if (m >= 3) { before[p[1] SUBSEP p[2]] = p[3] + 0; breason[p[1] SUBSEP p[2]] = (m >= 4) ? p[4] : "" } }
         n = split(ren, r, "\n")
         for (i = 1; i <= n; i++) { m = split(r[i], p, "\t"); if (m == 3) from[p[3]] = p[2] }
         n = split(new, w, "\n")
@@ -406,12 +406,14 @@ _baseline_growth() {
             m = split(w[i], p, "\t")
             if (m < 3) continue
             k = p[1] SUBSEP p[2]
-            if (!(k in before) && (p[1] in from) && ((from[p[1]] SUBSEP p[2]) in before)) prev = before[from[p[1]] SUBSEP p[2]]
-            else prev = (k in before) ? before[k] : 0
+            if (!(k in before) && (p[1] in from) && ((from[p[1]] SUBSEP p[2]) in before)) bk = from[p[1]] SUBSEP p[2]
+            else bk = k
+            prev = (bk in before) ? before[bk] : 0
+            prior = (bk in breason) ? breason[bk] : ""
             if (p[3] + 0 <= prev) continue
             if (p[2] ~ /^prim-/) { printf "shell-lint: warn: prim baseline grew: %s\t%s\t%d -> %d\n", p[1], p[2], prev, p[3]; continue }
-            if (m >= 4 && p[4] ~ /[^[:space:]]/) continue
-            printf "shell-lint: baseline grew without a reason: %s\t%s\t%d -> %d (add a 4th column reason, or fix the finding)\n", p[1], p[2], prev, p[3]
+            if (m >= 4 && p[4] ~ /[^[:space:]]/ && p[4] != prior) continue
+            printf "shell-lint: baseline grew without a new reason: %s\t%s\t%d -> %d (add a 4th column reason that differs from the base row'"'"'s, or fix the finding)\n", p[1], p[2], prev, p[3]
             bad = 1
         }
         exit bad

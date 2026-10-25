@@ -1608,6 +1608,29 @@ EOF
 OUT24L="$(cd "$GR4" && bash scripts/lint/shell-lint.sh --changed main...side --baseline "$GRB" 2>&1)"; EC24L=$?
 if [ "$EC24L" -eq 1 ]; then pass "24l --changed A...B compares against the merge base, not A"; else fail "24l expected exit 1, got $EC24L" "$OUT24L"; fi
 
+GR5="$TMP_ROOT/reuse"
+mkdir -p "$GR5/scripts/lint"
+cp "$LINT" "$SCRIPT_DIR/hook-parse-check.sh" "$GR5/scripts/lint/"
+(
+    cd "$GR5" || exit 1
+    git init -q
+    git config user.email t@t
+    git config user.name t
+    printf '#!/usr/bin/env bash\nset -uo pipefail\nprintf hi\n' > a.sh
+    printf 'a.sh\tmktemp\t3\tthe first reason\n' > "$GRB"
+    git add -A
+    git commit -q -m seed
+) >/dev/null 2>&1
+printf 'a.sh\tmktemp\t20\tthe first reason\n' > "$GR5/$GRB"
+(cd "$GR5" && git add "$GRB") >/dev/null 2>&1
+OUT24M="$(cd "$GR5" && bash scripts/lint/shell-lint.sh --staged --baseline "$GRB" 2>&1)"; EC24M=$?
+if [ "$EC24M" -eq 1 ]; then pass "24m a raised count that reuses the base row's reason fails"; else fail "24m expected exit 1, got $EC24M" "$OUT24M"; fi
+
+printf 'a.sh\tmktemp\t20\ta new reason for this raise\n' > "$GR5/$GRB"
+(cd "$GR5" && git add "$GRB") >/dev/null 2>&1
+OUT24N="$(cd "$GR5" && bash scripts/lint/shell-lint.sh --staged --baseline "$GRB" 2>&1)"; EC24N=$?
+if [ "$EC24N" -eq 0 ]; then pass "24n a raised count with a changed reason passes"; else fail "24n expected exit 0, got $EC24N" "$OUT24N"; fi
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"
