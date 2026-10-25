@@ -90,7 +90,7 @@ Adopt a fresh token if one came; then in your very next tool batch `append-resul
 - **Two refusals of one command → `himmel-ops:stuck-playbook`, then `BLOCKED`
   to the console**; never a third spelling. A denial on `gh pr create` /
   `gh pr comment` / `git push` is never retried verbatim; `[Out-of-Place
-  Publication]` gets no retry. Details: `worker-sections/shell-and-tests.md`. [prose]
+  Publication]` gets no retry (`worker-sections/shell-and-tests.md`). [prose]
 - A "running low on memory" task kill is unproven: read `/proc/pressure/memory` and
   cgroup `memory.events`; all-zero → run the suite foreground, `BLOCKED` with numbers. [prose]
 - **Never pipe into a gate script.** [enforced: block-tail-pipe-on-gates]
