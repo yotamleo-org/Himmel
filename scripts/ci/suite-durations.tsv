@@ -343,6 +343,7 @@ scripts/graphify/test-check-graph-freshness.sh	1
 scripts/graphify/test-detect-duplicate-notes.sh	0
 scripts/graphify/test-graph-cadence.sh	22
 scripts/graphify/test-graph-out-root.sh	0
+scripts/graphify/test-graph-prune-deleted.sh	4
 scripts/graphify/test-graph-publish.sh	1
 scripts/graphify/test-graph-refresh.sh	1
 scripts/graphify/test-harden-graph.sh	2
@@ -754,6 +755,7 @@ scripts/lanes/bench/scorecard/fixtures/dead-parts/basic-repo/test-caller.sh	0
 scripts/lanes/bench/scorecard/test-agg-burn.sh	3
 scripts/lanes/bench/scorecard/test-dead-parts.sh	5
 scripts/lanes/bench/scorecard/test-extra-metrics.sh	0
+scripts/lanes/bench/scorecard/test-fleet-scorecard.sh	1
 scripts/lanes/bench/scorecard/test-ledger-metrics.sh	1
 scripts/lanes/bench/scorecard/test-leg-over-by-day.sh	1
 scripts/lanes/bench/scorecard/test-leg-relaunch.sh	1
@@ -958,6 +960,7 @@ scripts/openrouter/test-free-watch.sh	1
 scripts/afk/test-build-plan.sh	1
 scripts/afk/test-dispatch-stop-poll.sh	0
 scripts/afk/test-morning-report.sh	3
+scripts/afk/test-per-project.sh	1
 scripts/afk/test-self-heal.sh	6
 scripts/afk/test-stop-marker.sh	1
 scripts/parity/test-guard-conformance.sh	0

@@ -9,6 +9,7 @@
 #   2. a baseline row whose file no longer matches  -> scan exits 1, row named
 #   3. hits under archive/, docs/, *.md and *.html  -> scan exits 0
 #   4. the real tree against the committed baseline -> scan exits 0
+#   5. the docs detector is skipped, a sibling is not -> scan exits 1, sibling named
 #
 # Exit: 0 all passed, 1 any failed. bash 3.2-safe.
 
@@ -19,6 +20,8 @@ REPO="$(cd "$SELF_DIR/../.." && pwd)"
 BASELINE="$SELF_DIR/windows-branch-baseline.txt"
 SELF_REL="scripts/lint/test-no-windows-branches.sh"
 BASE_REL="scripts/lint/windows-branch-baseline.txt"
+# A detector that must spell the term to find it on the site pages.
+DETECTOR_REL="scripts/docs/test-docs-current-version.sh"
 
 PASS=0; FAIL=0
 pass() { PASS=$((PASS + 1)); echo "  PASS: $1"; }
@@ -28,7 +31,7 @@ fail() { FAIL=$((FAIL + 1)); echo "  FAIL: $1"; }
 scan() {
     local root="$1" base="$2" hits listed rc=0 f
     [ -f "$base" ] || { echo "missing baseline: $base"; return 2; }
-    hits="$(git -C "$root" grep -il schtasks -- . ':!archive' ':!docs' ':!*.md' ':!*.html' ":!$SELF_REL" ":!$BASE_REL" | LC_ALL=C sort)"
+    hits="$(git -C "$root" grep -il schtasks -- . ':!archive' ':!docs' ':!*.md' ':!*.html' ":!$SELF_REL" ":!$BASE_REL" ":!$DETECTOR_REL" | LC_ALL=C sort)"
     listed="$(grep -v '^#' "$base" | grep -v '^$' | LC_ALL=C sort)"
     while IFS= read -r f; do
         [ -n "$f" ] || continue
@@ -95,6 +98,16 @@ out="$(scan "$REPO" "$BASELINE")"; rc=$?
 if [ "$rc" -eq 0 ]; then pass "real tree matches the baseline"
 else fail "real tree vs baseline (rc=$rc):
 $out"; fi
+
+echo "case 5: the docs detector is skipped, a sibling is not"
+mkrepo
+mkdir -p "$T/r/scripts/docs"
+printf 'PATTERN=schtasks\n' > "$T/r/$DETECTOR_REL"
+printf 'schtasks /create /tn X\n' > "$T/r/scripts/docs/sibling.sh"
+commit
+out="$(scan "$T/r" "$T/base.txt")"; rc=$?
+if [ "$rc" -eq 1 ] && grep -qF 'scripts/docs/sibling.sh' <<< "$out" && ! grep -qF "$DETECTOR_REL" <<< "$out"; then pass "detector skipped, sibling named"
+else fail "only the sibling should be named (rc=$rc, out=$out)"; fi
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

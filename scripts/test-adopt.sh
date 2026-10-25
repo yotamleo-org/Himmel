@@ -1396,6 +1396,14 @@ for f in .claude/commands/morning-report.md scripts/handover/generate-morning-br
   cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-7002: the project's $f differs from himmel's"
 done
 echo "ok: HIMMEL-7002 the adopted project gets /morning-report and its generator"
+# /afk-shift and its shift scripts ship, so an adopted project runs its own shift.
+for f in .claude/commands/afk-shift.md scripts/afk/build-plan.sh scripts/afk/self-heal.sh \
+         scripts/afk/stop-marker.sh scripts/afk/morning-report.sh scripts/afk/morning-report.default.tmpl \
+         scripts/afk/project-state.sh .claude/commands/stop.md; do
+  [ -f "$crtarget/$f" ] || fail "HIMMEL-7003: $f was not copied into the project"
+  cmp -s "$repo_root/$f" "$crtarget/$f" || fail "HIMMEL-7003: the project's $f differs from himmel's"
+done
+echo "ok: HIMMEL-7003 the adopted project gets /afk-shift and its shift scripts"
 for f in scripts/cr/anchor-handoff.sh scripts/cr/cr-scores.sh scripts/cr/known-findings.sh scripts/guardrails/lib.sh scripts/lib/load-dotenv.sh; do
   mkdir -p "$crclone/$(dirname "$f")"; cp "$repo_root/$f" "$crclone/$f"
 done
