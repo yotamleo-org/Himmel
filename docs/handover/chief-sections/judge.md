@@ -59,7 +59,8 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   CR-ledger finding at the judged head) or `none`. A trust hit wins over a finding hit, and any read
   error (unknown sha, unreadable trust list, verdict or ledger, bad regex) prints `trust`, never
   `none`. The judge names its findings in the verdict file as `finding: <path>[:<n>[-<m>]]` lines
-  (no line numbers means the whole file); a NO-GO that names none classifies `finding`.
+  (no line numbers means the whole file; the line holds nothing else, and any other line starting
+  `finding:` reads `trust`); a NO-GO that names none classifies `finding`.
   `trust` and `finding` get a judge as before. On `none` skip the judge and record
   `bash scripts/handover/chief-kit/write-verdict.sh <qid> GO <new head> --pr <n> --evidence-file <path>
   --delta-noop <judged head>` (run in the repo under review): it re-runs the classifier, refuses

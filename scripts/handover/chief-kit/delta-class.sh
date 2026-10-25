@@ -113,10 +113,11 @@ done < "$work/patterns.txt"
 # Findings, as <path><TAB><first line><TAB><last line>; the lines are empty for a whole file.
 : > "$work/findings.tsv"
 nogo_prose=0
-re='^finding:[[:space:]]+([^[:space:]:]+)(:([0-9]+)(-([0-9]+))?)?([[:space:]].*)?$'
+re='^finding:[[:space:]]+([^[:space:]:]+)(:([0-9]+)(-([0-9]+))?)?[[:space:]]*$'
 for f in "${VFILES[@]}"; do
     [ -r "$f" ] || trust
     [ -n "$(verdict_word "$f")" ] || trust
+    [ "$(verdict_head "$f")" = "$J" ] || trust
     n=0
     while IFS= read -r line; do
         line=${line%$'\r'}
@@ -124,6 +125,8 @@ for f in "${VFILES[@]}"; do
             lo=${BASH_REMATCH[3]} hi=${BASH_REMATCH[5]:-${BASH_REMATCH[3]}}
             printf '%s\t%s\t%s\n' "${BASH_REMATCH[1]}" "$lo" "$hi" >> "$work/findings.tsv"
             n=$((n + 1))
+        else
+            case $line in finding:*) trust ;; esac
         fi
     done < "$f"
     [ "$n" -gt 0 ] || [ "$(verdict_word "$f")" != NO-GO ] || nogo_prose=1
@@ -141,6 +144,8 @@ jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "")
     "$work/rows.jsonl" >> "$work/findings.tsv" 2>/dev/null || trust
 
 [ "$nogo_prose" -eq 0 ] || fin finding
+# a ledger finding that names no file cannot be matched to any hunk, so it needs a judge
+[ -z "$(jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") == "")) | "x"' "$work/rows.jsonl")" ] || fin finding
 
 # Old-side line ranges the delta rewrites; an insertion counts as touching the line it follows and the next.
 git -c core.quotePath=false diff -U0 --no-renames --no-color "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust
@@ -159,11 +164,21 @@ awk '
     }
     END { exit bad ? 3 : 0 }' "$work/patch.txt" > "$work/hunks.tsv" || trust
 
+# A binary change has no hunks, so a finding on a path git reports as binary counts as touched.
+git -c core.quotePath=false diff --numstat -z --no-renames "$J" "$N" -- > "$work/numstat.z" 2>/dev/null || trust
+: > "$work/binary.txt"
+while IFS= read -r -d '' rec; do
+    case "$rec" in
+        -$'\t'-$'\t'*) printf '%s\n' "${rec#-$'\t'-$'\t'}" >> "$work/binary.txt" ;;
+    esac
+done < "$work/numstat.z"
+
 while IFS=$'\t' read -r fp lo hi; do
     [ -n "$fp" ] || continue
     if [ -z "$lo" ]; then
         grep -qxF -- "$fp" "$work/names.txt" && fin finding
     fi
+    grep -qxF -- "$fp" "$work/binary.txt" && fin finding
 done < "$work/findings.tsv"
 
 awk -F'\t' '

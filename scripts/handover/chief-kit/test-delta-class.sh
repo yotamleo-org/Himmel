@@ -132,6 +132,31 @@ check "5: a quoted (tab-bearing) path in the patch fails closed -> trust" "$(cls
 back
 J=$J0
 
+mkv GO 'finding: src/a.txt:3-4'
+printf 'bin\0ary\n' > src/a.txt; N=$(step binary)
+check "3: binary replacement of a finding's file -> finding" "$(cls "$N")" finding
+back
+printf 'bin\0ary\n' > src/b.txt; N=$(step binary-other)
+check "2: binary change to a file with no finding -> none" "$(cls "$N")" none
+back
+mkv GO 'finding: src/a.txt:3-4'
+printf '{"kind":"finding","head":"%s","finding_id":"c-9"}\n' "$J" > "$ledger"
+printf 'more\n' >> docs/c.md; N=$(step nofile)
+check "3: a ledger finding with no file -> finding" "$(cls "$N")" finding
+: > "$ledger"
+back
+mkv GO 'finding: a b.txt:3-4'
+printf 'more\n' >> docs/c.md; N=$(step spaced)
+check "5: a finding path holding a space fails closed -> trust" "$(cls "$N")" trust
+mkv GO 'finding: src/a.txt:3-4 and some prose'
+check "5: trailing text on a finding line fails closed -> trust" "$(cls "$N")" trust
+back
+mkv GO 'finding: src/a.txt:3-4'
+printf 'more\n' >> docs/c.md; N=$(step wrong-head)
+sed "s/$J/0000000000000000000000000000000000000000/" "$vf" > "$tmp/other.md"
+check "5: an explicit verdict file for another head fails closed -> trust" "$(bash "$SCRIPT" --verdict-file "$tmp/other.md" --ledger "$ledger" --trust-file "$trustf" "$J" "$N")" trust
+back
+
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
 out=$(cls "$J"); check "7: an empty delta -> none, one word" "$out" none
 
