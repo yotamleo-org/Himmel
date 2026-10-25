@@ -34,7 +34,7 @@ starter install can show are in [Checking the install](#checking-the-install).
 
 | What you see | Why | The fix |
 | --- | --- | --- |
-| `COMMIT REJECTED: no ticket reference matched:` | Every commit message needs a ticket reference by default. Unless you set your own pattern or a Jira project key, the reference is `#` and a number, such as `#1`. The lines under the message show which pattern applies. | Add the reference: `git commit -m "feat: add hello #1"`. To drop the rule for every project on this machine, run `himmelctl config set commit.tracker none`. |
+| `COMMIT REJECTED: no ticket reference matched:` | Every commit message needs a ticket reference by default. The pattern printed right after the message is the one in force. On a starter install it is `#` and a number, such as `#1`; your own pattern, a Jira project key or a tracker prefix changes it. | Add a reference that matches the printed pattern, for example `git commit -m "feat: add hello #1"`. To drop the rule for every project on this machine, run `himmelctl config set commit.tracker none`. |
 | `COMMIT REJECTED: message does not match conventional commit format.` | Commit messages follow the conventional format `type(scope): message`, with a type such as `feat`, `fix`, `docs` or `chore`. | Reword the message, for example `git commit -m "docs: explain the setup #1"`. The refusal lists every type it accepts. |
 
 ## Checking the install
@@ -45,6 +45,6 @@ starter install can show are in [Checking the install](#checking-the-install).
 | What you see | Why | The fix |
 | --- | --- | --- |
 | `of them desired but not set up: see the n/a rows above` | Your install profile asks for these items, but they are not set up yet. On a starter install most are opt-in, such as the Jira keys, or appear on first use, such as the handover folder. | Read the `n/a` rows: each names what turns it green. An opt-in item you do not use can stay `n/a`. |
-| `<n> himmelctl install/wiring finding(s) (delegated from 'himmelctl status --json')` | `/himmel-doctor` found items that `himmelctl status` reports `red` or `degraded`. | Run `himmelctl status` to see them, then `himmelctl ensure`, which installs or rewires each one. |
+| `<n> himmelctl install/wiring finding(s) (delegated from 'himmelctl status --json')` | `/himmel-doctor` found items that `himmelctl status` reports `red` or `degraded`. | Run `himmelctl status` to see them, then `himmelctl ensure` in a terminal (`himmelctl ensure --yes` without one). It installs or rewires each finding it has an action for and prints a hint for the rest, which you fix by hand. |
 | `hook(s) wired to a bare interpreter not installed on this host:` | A hook in your settings starts with a program this machine lacks, so every session prints `<interp>: command not found` and the hook never runs. | Install the program it names, or run the install again so it rewires the hook. |
 | `plugin(s) enabled but not installed:` | Your settings turn on a plugin that Claude Code has not installed. | Install it with `claude plugin install <id>`, or set it to `false` in the settings file the finding names. |
