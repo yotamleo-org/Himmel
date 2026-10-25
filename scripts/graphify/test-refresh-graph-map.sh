@@ -4304,6 +4304,24 @@ want=$(printf './docs/two.md\n./tracked.md\n')
 got=$(cat "$GL_LISTING" 2>/dev/null)
 [ "$got" = "$want" ] && pass "T-gitcorpus-bsdawk a BSD-awk host still copies only tracked markdown" \
   || fail "T-gitcorpus-bsdawk expected only tracked files, got: $got"
+# A tracked name holding byte 0x01 must stay one record: if the filter splits on
+# \001, its tail ("y.md") would admit an untracked file of that name.
+GSCORPUS="$WS/gscorpus"; GSMAPS="$WS/gsmaps"; mkdir -p "$GSMAPS"
+git_corpus "$GSCORPUS"
+SOHNAME="$(printf 'x\001y.md')"
+printf '# soh\n' > "$GSCORPUS/$SOHNAME"
+git -C "$GSCORPUS" add -A >/dev/null 2>&1
+git -C "$GSCORPUS" commit -qm soh >/dev/null 2>&1
+printf '# untracked tail\n' > "$GSCORPUS/y.md"
+: > "$GL_LISTING"
+out=$( GRAPHIFY_MAP_BIN="$GLBIN/graphify" PATH="$GLBIN:$PATH" \
+  bash "$SCRIPT" --name gst --corpus-root "$GSCORPUS" --backend claude-cli \
+  --maps-dir "$GSMAPS" --title "GS Map" --slug gs-map --corpus-tag gs 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T-gitcorpus-soh run exit 0 (got $rc): $out"
+want=$(printf './tracked.md\n./%s\n' "$SOHNAME")
+got=$(cat "$GL_LISTING" 2>/dev/null)
+[ "$got" = "$want" ] && pass "T-gitcorpus-soh a tracked name with byte 0x01 does not admit an untracked tail" \
+  || fail "T-gitcorpus-soh expected tracked.md and the 0x01 name only, got: $(printf '%s' "$got" | od -c | head -5)"
 
 # --- T-merge: a himmel-shaped refresh (--merge-into-live) merges the md-only
 # semantic extraction INTO the live AST-heavy graph instead of promoting it over

@@ -79,6 +79,18 @@ cat > "$TMP/bin/record" <<'EOF'
   echo "other=${OTHER_GUARD_OK:-unset}"; echo "legrepo=${WORKER_SESSION_REPO:-${LEG_REPO:-unset}}"; echo "token=${TELEGRAM_BOT_TOKEN:-unset}"; } > "$RECORD"
 EOF
 chmod +x "$TMP/bin/"*
+# break-glass detaches a launch with `setsid nohup`; macOS has no setsid. A
+# pass-through stand-in keeps the launch rows testing the launch contract
+# rather than the host's util-linux.
+if ! command -v setsid >/dev/null 2>&1; then
+    mkdir -p "$TMP/nosetsid"
+    cat > "$TMP/nosetsid/setsid" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+    chmod +x "$TMP/nosetsid/setsid"
+    PATH="$TMP/nosetsid:$PATH"
+fi
 export GH_LOG="$TMP/gh.log" BREAK_GLASS_GH="$TMP/bin/gh" BREAK_GLASS_SYSTEMCTL="$TMP/bin/systemctl"
 export BREAK_GLASS_PRIMARY="$PRIMARY" BREAK_GLASS_MERGE_SLEEP=0 BREAK_GLASS_MERGE_TRIES=2
 export BREAK_GLASS_BANK_CMD="echo BANK-STUB"
