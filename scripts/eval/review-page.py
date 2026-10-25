@@ -210,8 +210,8 @@ def proof_lines(cur, prev):
            "(the same test passing). It matters because a check written down before the work, and seen failing "
            "before the fix, is what shows the change does what the ticket asked: a test never seen failing may "
            "test nothing.", "",
-           "Run of %s, the last %d merged PRs whose ticket could be read.%s" % (day(cur["ts"]), cur["n"] or 0,
-                                                                              level(cur)), ""]
+           "Run of %s, the last %d merged PRs whose ticket and commits could be read.%s" % (
+               day(cur["ts"]), cur["n"] or 0, level(cur)), ""]
     for key, text, unit in (("pdd", "Proof first", " merged PRs"), ("ticket_first", "The ticket was written first", ""),
                             ("red_green", "RED then GREEN named in the PR body", "")):
         s = rate(cur, prev, key + ".pct")
@@ -262,16 +262,18 @@ def change_lines(changes):
 
 def bottom_lines(rows):
     """Each eval's headline line with its run day: the whole panel's catch when it was scored (else the first
-    critic's), bugs past a GO, the proof-first share."""
+    critic's), bugs past a GO, the proof-first share. A run that scored nothing says so."""
     out = []
-    for eval_id, build, mark in (("review-panel", critic_lines, " planted bugs: "),
-                                 ("judge-accuracy", judge_lines, "- A bug got past a GO"),
-                                 ("pdd-share", proof_lines, "- Proof first: ")):
+    for eval_id, build, mark, name in (("review-panel", critic_lines, " planted bugs: ", "Planted bugs"),
+                                       ("judge-accuracy", judge_lines, "- A bug got past a GO", "Bugs past a GO"),
+                                       ("pdd-share", proof_lines, "- Proof first: ", "Proof first")):
         cur, prev = latest(rows, eval_id)
-        hits = [x for x in build(cur, prev) if mark in x] if cur else []
+        if cur is None:
+            continue
+        hits = [x for x in build(cur, prev) if mark in x]
         whole = [x for x in hits if x.startswith("- " + CRITICS["panel"])]
-        if hits:
-            out.append("%s Run of %s." % ((whole or hits)[0], day(cur["ts"])))
+        line = (whole or hits)[0] if hits else "- %s: no score in this run." % name
+        out.append("%s Run of %s." % (line, day(cur["ts"])))
     return out
 
 

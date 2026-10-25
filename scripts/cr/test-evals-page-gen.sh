@@ -286,6 +286,9 @@ eq "data: a zero-token cache probe is refused" "$rc" "2"
 printf 'cache-probe idle-gap (cold expected at gap >= session TTL, warm expected at 60s <= gap < TTL)\nread-ratio: 97.4%% over 1200000 tokens\nverdict: ttl-consistent cold-expected=1 cold-rewrote=1 warm-expected=2 warm-rewrote=0\n' > "$TMP/idle.txt"
 python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$TMP/idle.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
 eq "data: an idle-gap probe is refused, first-turn only" "$rc" "2"
+printf 'cache-probe idle-gap\nread-ratio: 97.4%% over 1200000 tokens\nverdict: warm-start warm=9 cold=1\n' > "$TMP/idle-warm.txt"
+python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$TMP/idle-warm.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
+eq "data: an idle-gap header is refused even with a warm=/cold= verdict line" "$rc" "2"
 printf 'cache-probe first-turn\nread-ratio: 1..2%% over 1200000 tokens\nverdict: warm-start warm=9 cold=1\n' > "$TMP/dots.txt"
 python3 -I "$GEN" data --ledger "$L" --eval-runs "$E" --cache-probe "$TMP/dots.txt" --as-of 2026-10-25 --out "$TMP/x.json" > /dev/null 2>&1; rc=$?
 eq "data: an unparsable read ratio is refused, not a traceback" "$rc" "2"
