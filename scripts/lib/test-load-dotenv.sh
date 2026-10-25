@@ -585,6 +585,16 @@ assert_eq "C1 an empty config dir leaves HANDOVER_DIR unset" "<unset>" "$got"
 got=$( unset HIMMEL_CONFIG_DIR; _himmel_config_dir )
 assert_eq "C1 the default config dir is \$HOME/.himmel" "$HOME/.himmel" "$got"
 
+# C2: HIMMEL_CONFIG_DIR never redirects the gate-policy file; load_policy and
+# the policy layer of load_dotenv read $HOME/.himmel/config.json only.
+mkdir -p "$TMP/c2-home/.himmel" "$TMP/c2-config"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}\n' >"$TMP/c2-home/.himmel/config.json"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' >"$TMP/c2-config/config.json"
+got=$( cd "$REPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/c2-home" HIMMEL_CONFIG_DIR="$TMP/c2-config" load_policy --root "$REPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
+assert_eq "C2 load_policy ignores HIMMEL_CONFIG_DIR" "1" "$got"
+got=$( cd "$REPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/c2-home" HIMMEL_CONFIG_DIR="$TMP/c2-config" load_dotenv CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
+assert_eq "C2 load_dotenv policy layer ignores HIMMEL_CONFIG_DIR" "1" "$got"
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "All load-dotenv tests passed."

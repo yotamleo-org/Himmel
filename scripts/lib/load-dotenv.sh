@@ -359,7 +359,9 @@ _load_dotenv_extract() {
 #                   the OS keyring), then .env with a DEPRECATED notice. Never
 #                   read from either file above.
 #
-# The directory is fixed at $HOME/.himmel; no env var selects another one.
+# The policy directory is fixed at $HOME/.himmel; no env var selects another
+# one. HIMMEL_CONFIG_DIR redirects only the himmel.conf read (tests use it to
+# stay off the station's file).
 # ponytail: the path follows $HOME, so a caller that controls HOME picks the
 # file; clear-cr-marker's seam guard does not cover HOME (it is always set).
 # Upgrade path: pin the directory from the passwd entry if a gate ever runs
@@ -390,6 +392,12 @@ _himmel_key_class() {
 
 _himmel_config_dir() {
     printf '%s' "${HIMMEL_CONFIG_DIR:-$HOME/.himmel}"
+}
+
+# The gate-policy file's directory: pinned to $HOME/.himmel so no env var can
+# redirect what load_policy and the policy layer read.
+_himmel_policy_dir() {
+    printf '%s' "$HOME/.himmel"
 }
 
 # One stderr line naming the keys (never their values) still read from .env.
@@ -465,8 +473,8 @@ _himmel_config_layers() {
             done < <(_load_dotenv_extract "$_hc_file" "${_hc_cfg[@]}")
         done
     fi
-    if [ "${#_hc_pol[@]}" -gt 0 ] && [ -f "$_hc_dir/config.json" ]; then
-        _himmel_policy_json "$_hc_dir/config.json" "${_hc_pol[@]}" || return 1
+    if [ "${#_hc_pol[@]}" -gt 0 ] && [ -f "$(_himmel_policy_dir)/config.json" ]; then
+        _himmel_policy_json "$(_himmel_policy_dir)/config.json" "${_hc_pol[@]}" || return 1
     fi
     return 0
 }
@@ -486,7 +494,7 @@ load_policy() {
     local _lp_key _lp_line _lp_val _lp_out _lp_envfile _lp_i _lp_found=" "
     local _lp_keys=() _lp_env=() _lp_rest=() _lp_legacy=()
     local _lp_conf
-    _lp_conf="$(_himmel_config_dir)/config.json"
+    _lp_conf="$(_himmel_policy_dir)/config.json"
 
     for _lp_key in "$@"; do
         if [ "$(_himmel_key_class "$_lp_key")" != policy ]; then
