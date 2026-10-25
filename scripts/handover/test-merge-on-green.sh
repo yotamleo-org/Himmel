@@ -4742,10 +4742,17 @@ assert_audit_has "5188-e: audited as a head-moved refusal" "phase=head-moved"
 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
     bp_run 0 "5188-f: no plugin file in the PR → merged, gate skipped"
 # 5188-g — the files endpoint stops at 3000 entries, so a list that long may
-# have dropped the plugin paths: the recheck runs anyway and refuses.
+# have dropped the plugin paths: the trust-path gate refuses it before the
+# recheck runs (exit 21).
 BP_BIG=$(jq -nc '[range(3000) | {filename: ("docs/f\(.).md")}]')
 STUB_PR_FILES_JSON="$BP_BIG" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
-    bp_run 23 "5188-g: a possibly truncated 3000-file list still runs the recheck → exit 23"
+    bp_run 21 "5188-g: a possibly truncated 3000-file list is refused at the trust-path gate → exit 21"
+assert_err_has "5188-g: stderr names the 3000-row cap" "3000-row cap"
+# 5188-g2 — 1500 renames pass the trust-path gate (1500 unique files) yet list
+# 3000 names with their previous names, so the plugin-bump recheck still runs.
+BP_REN=$(jq -nc '[range(1500) | {filename: ("docs/n\(.).md"), previous_filename: ("docs/o\(.).md")}]')
+STUB_PR_FILES_JSON="$BP_REN" MOG_BUMP_SIB="$BP_V1" MOG_BUMP_PR="$BP_V1" \
+    bp_run 23 "5188-g2: 1500 renames list 3000 names and still run the recheck → exit 23"
 # 5188-h — a plugin file FIRST in a long list must still be seen (an early-exit
 # grep under pipefail would SIGPIPE the producer and read as "no plugin file").
 BP_LONG=$(jq -nc '[{filename: "marketplace/plugins/himmel-ops/a.txt"}] + [range(2500) | {filename: ("docs/f\(.).md")}]')
