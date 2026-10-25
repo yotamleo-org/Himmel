@@ -470,6 +470,7 @@ scripts/handover/test-merge-forward-check.sh	local	behaviour suite, 0 catches in
 scripts/handover/test-merge-on-green-jira-end-state.sh	pr	guard
 scripts/handover/test-merge-on-green-static-recheck.sh	pr	guard
 scripts/handover/test-merge-on-green.sh	pr	guard
+scripts/handover/test-move-renamed-dirs.sh	local	behaviour suite for a one-slice move tool
 scripts/handover/test-pr-merge.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-pr-open.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/test-queue-lock.sh	local	behaviour suite, 0 catches in the 400-PR audit window
