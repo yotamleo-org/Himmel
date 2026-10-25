@@ -101,7 +101,7 @@ role_of() {
         return 0
     fi
     case "$1" in
-        *-console*) echo console ;;
+        *-console*|*-chief) echo console ;;
         *-relay*) echo relay ;;
         *legN*) echo leg ;;
         *) if [[ $1 =~ -N[0-9]+- ]]; then echo leg; else echo other; fi ;;

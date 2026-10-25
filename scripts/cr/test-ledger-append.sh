@@ -1683,4 +1683,22 @@ check "HIMMEL-6376: a preflight accepts the scanner fractional seconds" "$?" "0"
 CR_LEDGER="$CLS" bash "$LA" preflight --branch b --head CL1 --hit exit-contract-drift=open 2>/dev/null
 check "HIMMEL-6376: an unknown hit state is refused" "$?" "2"
 
+# ── a blast row records the guard/gate blast-radius pass gate 4f reads ──
+BLS="$tmp/blast.jsonl"; : > "$BLS"
+blast_rows() { L="$BLS" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).filter(Boolean).map(JSON.parse).filter(r=>r.kind==="blast");console.log(rs.map(r=>[r.branch,r.head,r.status,r.duration_secs,r.reason||""].join(",")).join("|"))'; }
+CR_LEDGER="$BLS" bash "$LA" blast --branch b --head BL1 --duration-secs 90 2>/dev/null
+check "HIMMEL-6685: a blast row write exits 0" "$?" "0"
+CR_LEDGER="$BLS" bash "$LA" blast --branch b --head BL1 --status off --reason 'rename only, no behaviour change' 2>/dev/null
+check "HIMMEL-6685: an off row with a reason exits 0" "$?" "0"
+check "HIMMEL-6685: blast rows default to ran, keep the duration and the off reason, and are never deduped" "$(blast_rows)" "b,BL1,ran,90,|b,BL1,off,,rename only, no behaviour change"
+CR_LEDGER="$tmp/blast-noreason.jsonl" bash "$LA" blast --branch b --head BL1 --status off 2>/dev/null
+check "HIMMEL-6685: an off row with no --reason is refused" "$?" "2"
+check "HIMMEL-6685: a refused off row writes nothing" "$(test -s "$tmp/blast-noreason.jsonl" && echo wrote || echo none)" "none"
+CR_LEDGER="$tmp/blast-blankreason.jsonl" bash "$LA" blast --branch b --head BL1 --status off --reason ' ' 2>/dev/null
+check "HIMMEL-6685: an off row whose reason is only whitespace is refused" "$?" "2"
+CR_LEDGER="$tmp/blast-bad.jsonl" bash "$LA" blast --branch b --head BL1 --status skipped 2>/dev/null
+check "HIMMEL-6685: a status other than ran|off is refused" "$?" "2"
+CR_LEDGER="$tmp/blast-nohead.jsonl" bash "$LA" blast --branch b 2>/dev/null
+check "HIMMEL-6685: a blast row with no --head is refused" "$?" "2"
+
 [ "$fails" -eq 0 ] && echo "ALL PASS" || { echo "$fails FAILED"; exit 1; }

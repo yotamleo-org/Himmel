@@ -29,6 +29,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [commands-catalog.md](commands-catalog.md) — every project-local slash command.
 - [tooling-catalog.md](tooling-catalog.md) — every tool, script, and plugin in active use.
 - [himmelctl.md](himmelctl.md) — every `himmelctl` verb (status, ensure, update, scope, profile, config, deps, gaps, trust, `--version --all`) with its exit codes.
+- [troubleshooting.md](troubleshooting.md) — each message a starter install can show, why it appears, and the fix.
 - [cadences.md](cadences.md) — every recurring job you can arm: what it does, when the wizard offers it, how to arm, status and disarm it.
 - [launchers.md](launchers.md) — the `claude-codex`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes; the GLM lane is dormant.
 - [himmel-bus.md](himmel-bus.md) — **early.** The local session-to-session message bus: CLI, MCP tools, identity, delivery guarantees.

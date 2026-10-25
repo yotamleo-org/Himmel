@@ -103,11 +103,12 @@ test("settingsCommand spells exactly the argv the server runs, for every action 
     ["config.lanes", "codex", "on"], ["config.lanes", "codex", "off"],
     ["config.initiative", "prcheck", "on"], ["config.initiative", "prcheck", "off"],
     ["config.commitRules", "tracker", "jira"], ["config.commitRules", "ticket-id-required", "off"],
+    ["config.paths", "handover-root", "/srv/state/handovers"], ["config.paths", "luna-vault", "/srv/My Vault"],
     ...["pipeline", "graphmap", "qmd", "doctor"].flatMap((t) => [["cadence.arm", t, undefined], ["cadence.disarm", t, undefined]] as [string, string, undefined][]),
   ];
   expect(new Set(cases.map((c) => c[0]))).toEqual(new Set(table.keys()));
   for (const [action, target, value] of cases) {
-    const want = resolveAction(table, action, target, value).argv.join(" ");
+    const want = R.shellLine(resolveAction(table, action, target, value).argv);
     expect(R.settingsCommand({ action, target }, "/h", value), `${action} ${target} ${value}`).toBe(want);
   }
 });

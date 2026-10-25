@@ -209,6 +209,12 @@ case "$out" in "rc=0") echo "PASS no shfmt: a command without docker/podman is n
 out=$(printf '%s' "$(j_bash 'docker run --rm img sh')" | PATH="$NOSH" DOCKER_PRIVESC_OK=1 bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
 case "$out" in *"rc=0") echo "PASS no shfmt: the bypass still allows" ;; *) echo "FAIL no shfmt: the bypass still allows - $out"; FAILED=$((FAILED + 1)) ;; esac
 
+# A command model that runs past its bound denies: a stub timeout stands in for the slow model.
+mkdir -p "$NOSH/slow-model" && printf '#!/bin/sh\nexit 124\n' >"$NOSH/slow-model/timeout" && chmod +x "$NOSH/slow-model/timeout"
+# shellcheck disable=SC2069
+out=$(printf '%s' "$(j_bash 'docker ps')" | XDG_STATE_HOME="$NOSH/state" PATH="$NOSH/slow-model:$PATH" bash "$HOOK" 2>&1 >/dev/null; echo "rc=$?")
+case "$out" in *"timed out"*"rc=2") echo "PASS a timed-out command model denies a docker command" ;; *) echo "FAIL a timed-out command model denies a docker command - $out"; FAILED=$((FAILED + 1)) ;; esac
+
 # --- BYPASS case (expect rc=0 with DOCKER_PRIVESC_OK=1) ---
 assert_rc "Bypass --privileged"                0 "$(run_case "$(j_bash 'docker run --privileged img sh')" "DOCKER_PRIVESC_OK=1")"
 assert_rc "Bypass -v /etc:/h:rw"               0 "$(run_case "$(j_bash 'docker run -v /etc:/h:rw img sh')" "DOCKER_PRIVESC_OK=1")"

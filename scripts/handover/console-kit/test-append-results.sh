@@ -147,6 +147,11 @@ rc=0; bash "$SCRIPT" "$d8leg" "SHIPPED the thing" >/dev/null 2>&1 || rc=$?
 check "8: a leg doc still refuses a coined marker rc 6" "$rc" 6
 rc=0; bash "$SCRIPT" "$d8leg" "MERGED #12 → abc123" >/dev/null 2>&1 || rc=$?
 check "8: a leg doc refuses MERGED (not leg vocabulary) rc 6" "$rc" 6
+# A chief doc (name ends -chief.md) takes any bullet even though it quotes leg tokens.
+d8chief="$tmp/HIMMEL-nextleg-2026-10-25A-roadmap-chief.md"
+printf '# chief\n\nN1 RETASK token is X-1.\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE up\n' > "$d8chief"
+rc=0; bash "$SCRIPT" "$d8chief" "MERGED #12 → abc123" >/dev/null 2>&1 || rc=$?
+check "8: a chief doc takes MERGED rc 0" "$rc" 0
 
 # --- 9. a short coined all-caps marker (WIP) is refused too; the real markers still append ---
 d9="$tmp/HIMMEL-9-N2-fixture-2026-10-06.md"

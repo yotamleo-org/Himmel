@@ -33,7 +33,6 @@ MIN_SECONDS=$((MIN_DAYS * 86400))
 
 # prefix|reason — a manifest under a prefix is deliberately not watched.
 EXEMPT=(
-  ".github/claude-cli|bumped by hand together with CLAUDE_CLI_VERSION"
   "marketplace/plugins/claude-hud|vendored tree, moves on a re-vendor (its VENDORED.md)"
   "scripts/lanes/bench/fixtures|benchmark fixtures, never installed"
 )

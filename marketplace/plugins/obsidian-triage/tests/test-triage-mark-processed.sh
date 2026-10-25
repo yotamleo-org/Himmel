@@ -224,7 +224,7 @@ printf -- '---\ntitle: [unclosed\ntype: article\n---\nbody\n' > "$V/Clippings/m.
 before="$(sha_of "$V/Clippings/m.md")"
 out="$(PYTHONPATH="$TMP/noyaml" python3 "$TOOL" "$V" "$V/Clippings/m.md" --expect-sha "$before" 2>&1)"; rc=$?
 assert "missing PyYAML exits 4" "4" "$rc"
-assert "result line names PyYAML" "yes" "$(case "$out" in SKIP*PyYAML*) echo yes;; *) echo no;; esac)"
+assert "result line names PyYAML" "yes" "$(case "$out" in (SKIP*PyYAML*) echo yes;; (*) echo no;; esac)"
 assert "clip untouched" "$before" "$(sha_of "$V/Clippings/m.md")"
 assert "clip not moved" "no" "$([ -e "$V/Clippings/_evidence/m.md" ] && echo yes || echo no)"
 
