@@ -74,7 +74,8 @@ has "an added line starting with ++ is content, not a header" "docs/plus.md:2: R
 
 # --- whole-file mode reads the page at the range's head ---
 repo="$td/repo"
-git init -q "$repo" && git -C "$repo" config user.email t@t && git -C "$repo" config user.name t
+git init -q "$repo" && git -C "$repo" config user.email t@t && git -C "$repo" config user.name t \
+  && git -C "$repo" config commit.gpgsign false
 mkdir -p "$repo/docs"
 printf '# Page\nThe GLM lane runs here.\n' >"$repo/docs/page.md"
 git -C "$repo" add . && git -C "$repo" commit -q -m one
@@ -119,6 +120,9 @@ check "input with no file header exits 2" "$rc" 2
 : >"$td/empty.diff"
 rc=$(run check --diff "$td/empty.diff")
 check "empty input exits 2" "$rc" 2
+printf '%s\n' '--- docs/np.md' '+++ docs/np.md' '@@ -0,0 +1 @@' '+The GLM lane.' >"$td/noprefix.diff"
+rc=$(run check --diff "$td/noprefix.diff")
+check "a +++ header with no b/ prefix exits 2" "$rc" 2
 head -1 "$here/rules.tsv" >"$td/bad.tsv"
 printf 'R01\tactive\tpattern\t(\tr\t2026-10-25\ts\tq\n' >>"$td/bad.tsv"
 rc=$(run check --rules "$td/bad.tsv" --diff "$here/fixtures/clean.diff")
@@ -154,6 +158,8 @@ rc=$(run learn --rules "$td/rules.tsv" --pattern 'x' --rule 'r' --source 's')
 check "learn without a quote is refused" "$rc" 2
 rc=$(run learn --rules "$td/rules.tsv" --pattern '(' --rule 'r' --source 's' --quote 'q')
 check "learn with a broken pattern is refused" "$rc" 2
+rc=$(run learn --rules "$td/rules.tsv" --pattern 'x*' --rule 'r' --source 's' --quote 'q')
+check "learn with a pattern that matches an empty line is refused" "$rc" 2
 rc=$(run learn --rules "$td/rules.tsv" --pattern 'a	b' --rule 'r' --source 's' --quote 'q')
 check "learn with a tab in a field is refused" "$rc" 2
 rc=$(run learn --rules "$td/rules.tsv" --pattern 'x' --rule 'r' --source 's' --quote "$(printf 'a\rb')")

@@ -65,8 +65,16 @@ def is_docs_page(path):
     return path == "README.md" or (path.startswith("docs/") and path.endswith((".md", ".html")))
 
 
+def run(cmd, timeout=120):
+    try:
+        return subprocess.run(cmd, capture_output=True, text=True, encoding="utf-8",
+                              errors="replace", timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        die(f"{cmd[0]} failed: {exc}")
+
+
 def git(*args):
-    out = subprocess.run(["git", *args], capture_output=True, text=True)
+    out = run(["git", *args])
     if out.returncode != 0:
         die(f"git {' '.join(args)} failed: {out.stderr.strip()}")
     return out.stdout
@@ -85,7 +93,11 @@ def unquote(path):
 def diff_path(target):
     """The new-side path of a `+++` header, or None for /dev/null."""
     target = unquote(target)
-    return target[2:] if target.startswith("b/") else None
+    if target == "/dev/null":
+        return None
+    if not target.startswith("b/"):
+        die(f"unsupported diff header '+++ {target}': want a b/ prefix (no --no-prefix)")
+    return target[2:]
 
 
 def parse_diff(text):
@@ -186,8 +198,7 @@ def review(pages, rules, bodies):
 
 
 def pr_head(pr):
-    head = subprocess.run(["gh", "pr", "view", str(pr), "--json", "headRefOid", "--jq", ".headRefOid"],
-                          capture_output=True, text=True).stdout.strip()
+    head = run(["gh", "pr", "view", str(pr), "--json", "headRefOid", "--jq", ".headRefOid"]).stdout.strip()
     if not head:
         die(f"cannot read the head of PR {pr}")
     return head
@@ -203,13 +214,13 @@ def cmd_check(args):
     head = None
     if args.pr:
         head = pr_head(args.pr)
-        diff = subprocess.run(["gh", "pr", "diff", str(args.pr)], capture_output=True, text=True)
+        diff = run(["gh", "pr", "diff", str(args.pr)])
         if diff.returncode != 0:
             die(f"gh pr diff {args.pr} failed: {diff.stderr.strip()}")
         text = diff.stdout
         if pr_head(args.pr) != head:
             die(f"PR {args.pr} moved while its diff was read; run it again")
-        if subprocess.run(["git", "cat-file", "-e", head], capture_output=True).returncode != 0:
+        if run(["git", "cat-file", "-e", head]).returncode != 0:
             git("fetch", "-q", "origin", f"pull/{args.pr}/head")
     elif args.range:
         if args.range.startswith("-"):
@@ -259,9 +270,11 @@ def cmd_learn(args):
     kind = "judgement" if args.judgement else "pattern"
     if kind == "pattern":
         try:
-            re.compile(args.pattern)
+            rx = re.compile(args.pattern)
         except re.error as exc:
             die(f"broken pattern {args.pattern!r}: {exc}")
+        if rx.search(""):
+            die("the pattern matches an empty line and would flag every line")
     values = [args.pattern or "", args.rule, args.date, args.source, args.quote]
     if not all(one_line(v) for v in values):
         die("a field holds a tab or a line break")
