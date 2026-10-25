@@ -25,22 +25,24 @@ pdd() { python3 -I "$PDD" --prs "$FX/prs.json" --mirror "$FX/mirror" "$@"; }
 
 echo "1. the halves, per PR"
 pdd --min-n 5 >"$TMP/row.json" 2>"$TMP/row.err"; RC=$?
-check "eight readable PRs, exit 0 when n reaches --min-n" '[ "$RC" = 0 ] && jq -e ".n == 8 and .eval == \"pdd-share\" and .status == \"ok\"" "$TMP/row.json" >/dev/null'
-check "two PRs are proof-first (one with blank lines under its headings): DoD and Proof before the first commit, RED then GREEN" 'jq -e ".metrics | .[\"pdd.k\"] == 2 and .[\"pdd.n\"] == 8" "$TMP/row.json" >/dev/null'
-check "five tickets had DoD and Proof first (not the no-Proof ticket, not the late ticket, not the empty-DoD ticket)" 'jq -e ".metrics[\"ticket_first.k\"] == 5" "$TMP/row.json" >/dev/null'
-check "five bodies show RED then GREEN (not GREEN-first, not only in the CodeRabbit block, not GREEN-only)" 'jq -e ".metrics[\"red_green.k\"] == 5" "$TMP/row.json" >/dev/null'
+check "nine readable PRs, exit 0 when n reaches --min-n" '[ "$RC" = 0 ] && jq -e ".n == 9 and .eval == \"pdd-share\" and .status == \"ok\"" "$TMP/row.json" >/dev/null'
+check "two PRs are proof-first (one with blank lines under its headings): DoD and Proof before the first commit, RED then GREEN" 'jq -e ".metrics | .[\"pdd.k\"] == 2 and .[\"pdd.n\"] == 9" "$TMP/row.json" >/dev/null'
+check "five tickets had DoD and Proof first (not the no-Proof ticket, not the late ticket, not the empty-DoD ticket, not the ticket filed between two commits)" 'jq -e ".metrics[\"ticket_first.k\"] == 5" "$TMP/row.json" >/dev/null'
+check "six bodies show RED then GREEN (not GREEN-first, not only in the CodeRabbit block, not GREEN-only)" 'jq -e ".metrics[\"red_green.k\"] == 6" "$TMP/row.json" >/dev/null'
 
 echo "2. skipped PRs"
-check "no ticket, ticket outside the mirror and no commits are named in meta.skipped" 'jq -e ".meta.skipped == {\"no_ticket\": 1, \"not_in_mirror\": 1, \"no_commits\": 1} and .meta.prs_seen == 11" "$TMP/row.json" >/dev/null'
+check "no ticket, ticket outside the mirror and no commits are named in meta.skipped" 'jq -e ".meta.skipped == {\"no_ticket\": 1, \"not_in_mirror\": 1, \"no_commits\": 1} and .meta.prs_seen == 12" "$TMP/row.json" >/dev/null'
 
 jq '. + [(.[0] | .number = 99 | .commits = null)]' "$FX/prs.json" >"$TMP/unreadable.json"
 python3 -I "$PDD" --prs "$TMP/unreadable.json" --mirror "$FX/mirror" --min-n 5 >"$TMP/unreadable.out" 2>/dev/null; RC=$?
-check "a PR whose commit lookup failed is named, and makes the row partial with exit 3 even above --min-n" '[ "$RC" = 3 ] && jq -e ".status == \"partial\" and .n == 8 and .meta.skipped.commits_unreadable == 1" "$TMP/unreadable.out" >/dev/null'
+check "a PR whose commit lookup failed is named, and makes the row partial with exit 3 even above --min-n" '[ "$RC" = 3 ] && jq -e ".status == \"partial\" and .n == 9 and .meta.skipped.commits_unreadable == 1" "$TMP/unreadable.out" >/dev/null'
 
 echo "3. the row"
 check "the share has a 95 % Wilson range around it" 'jq -e ".ci_method == \"wilson\" and .ci_level == 0.95 and .ci[\"pdd.pct\"].lo <= .metrics[\"pdd.pct\"] and .metrics[\"pdd.pct\"] <= .ci[\"pdd.pct\"].hi and .ci[\"pdd.pct\"].hi < 1" "$TMP/row.json" >/dev/null'
+check "the range is the Wilson interval: 2 of 9 reads 0.0632 to 0.5474" 'jq -e ".ci[\"pdd.pct\"] == {\"lo\": 0.0632, \"hi\": 0.5474}" "$TMP/row.json" >/dev/null'
+check "the range of the live row's 13 of 120 reads 0.0644 to 0.1766" '[ "$(python3 -I -c "import sys; sys.path.insert(0, sys.argv[1]); import pdd_share; w = pdd_share.wilson(13, 120); print(w[\"lo\"], w[\"hi\"])" "$HERE")" = "0.0644 0.1766" ]'
 pdd >"$TMP/small.json" 2>/dev/null; RC=$?
-check "below the default --min-n 50 the row is partial and the exit code is 3" '[ "$RC" = 3 ] && jq -e ".status == \"partial\" and .n == 8" "$TMP/small.json" >/dev/null'
+check "below the default --min-n 50 the row is partial and the exit code is 3" '[ "$RC" = 3 ] && jq -e ".status == \"partial\" and .n == 9" "$TMP/small.json" >/dev/null'
 echo '[]' >"$TMP/none.json"
 python3 -I "$PDD" --prs "$TMP/none.json" --mirror "$FX/mirror" >/dev/null 2>&1; RC=$?
 check "no readable PR exits 1 with no row" '[ "$RC" = 1 ]'

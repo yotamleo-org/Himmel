@@ -402,6 +402,8 @@ def score_calls(calls, texts, report=None):
             if t and ((passed and t[1]) or t[1] == "pass+fail"):
                 runs.append((c["pos"], t[0], passed, c["mid"]))
     writes = [(c["pos"], p, c["mid"]) for c in calls for p in [_written_path(c)] if p]
+    # ponytail: no code means no main-agent Write/Edit to an implementation path, so code written through Bash or
+    # delegated to a subagent drops out as null, read the Bash command and the subagent transcript to count it
     impl = [(pos, mid) for pos, p, mid in writes if is_impl_path(p)]
 
     # red_before_green
