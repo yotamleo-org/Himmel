@@ -196,13 +196,13 @@ reset_case
 printf 'DEGRADED\n' > "$STUB_PLUGINS_JSON"
 run_case
 assert_rc "P5 successful degraded uninstalls still block marketplaces" 1 "$rc"
-assert_has "P5 fallback warning" "WARN: \`claude plugin list --json\` unavailable — falling back to the template set at scope user (HIMMEL-2694)" "$out"
+assert_has "P5 fallback warning" "WARN: \`claude plugin list --json\` unavailable — falling back to the template set at scope user" "$out"
 assert_rc "P5 all six template plugins attempted" 6 "$(grep -c '^plugin uninstall .* --scope user$' "$CLAUDE_CALL_LOG")"
 for spec in handover@himmel ops@himmel review@claude-plugins-official notes@obsidian-skills extra@himmel spare@himmel; do
     assert_has "P5 $spec uses user scope" "plugin uninstall $spec --scope user" "$calls"
 done
 assert_not_has "P5 no marketplace removals" 'plugin marketplace remove' "$calls"
-assert_has "P5 skip names enumeration failure" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins (HIMMEL-2754)' "$out"
+assert_has "P5 skip names enumeration failure" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins' "$out"
 
 # P5b — RED: degraded enumeration plus a failed plugin never strands.
 reset_case
@@ -211,14 +211,14 @@ STUB_FAIL_IDS='handover@himmel'
 run_case
 assert_rc "P5b failed degraded run exits 1" 1 "$rc"
 assert_not_has "P5b no marketplace removals" 'plugin marketplace remove' "$calls"
-assert_has "P5b skip names the cause" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins (HIMMEL-2754)' "$out"
+assert_has "P5b skip names the cause" 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins' "$out"
 
 # WHY: a separate process has no successful plugin phase evidence.
 reset_case
 printf 'DEGRADED\n' > "$STUB_PLUGINS_JSON"
 run_case --marketplaces-only
 if [ "$rc" -eq 1 ] && ! grep -qF 'plugin marketplace remove' <<< "$calls" &&
-    grep -qF 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins (HIMMEL-2754)' <<< "$out" &&
+    grep -qF 'SKIP: marketplace himmel — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins' <<< "$out" &&
     ! grep -qF 'proceeding with marketplace removal' <<< "$out"; then
     echo 'ok - P5c degraded marketplaces-only refuses unverified removal'
 else

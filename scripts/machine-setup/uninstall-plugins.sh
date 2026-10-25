@@ -328,7 +328,7 @@ if [[ $MARKETPLACES_ONLY -eq 0 ]]; then
   INSTALLED_JSON="$(claude plugin list --json 2>/dev/null)" || INSTALLED_JSON=""
   TARGETS=""
   if ! printf '%s\n' "$INSTALLED_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-    echo "WARN: \`claude plugin list --json\` unavailable — falling back to the template set at scope $SCOPE (HIMMEL-2694)" >&2
+    echo "WARN: \`claude plugin list --json\` unavailable — falling back to the template set at scope $SCOPE" >&2
     if [[ -n "$LEDGER_OWNED" ]]; then
       # WHY: the ledger already names each pair's scope; the
       # fallback --scope would remove the id at a scope himmel never installed to.
@@ -343,7 +343,7 @@ EOF_SPECS
     fi
   else
     if ! TARGETS="$(select_targets "$INSTALLED_JSON")"; then
-      echo "ERROR: could not determine which installed plugins are ours — halting before anything is removed or unwired (HIMMEL-2754)" >&2
+      echo "ERROR: could not determine which installed plugins are ours — halting before anything is removed or unwired" >&2
       exit 1
     fi
     TARGETS="$(printf '%s\n' "$TARGETS" | sort -u)"
@@ -386,7 +386,7 @@ EOF_FOREIGN
     # source registration while leaving its installed plugins enabled.
     MKT_JSON="$(claude plugin marketplace list --json 2>/dev/null)" || MKT_JSON=""
     if ! printf '%s\n' "$MKT_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-      echo "WARN: \`claude plugin marketplace list --json\` unavailable — skipping marketplace repair (HIMMEL-2754)" >&2
+      echo "WARN: \`claude plugin marketplace list --json\` unavailable — skipping marketplace repair" >&2
     else
       while IFS= read -r M; do
         [[ -n "$M" ]] || continue
@@ -477,7 +477,7 @@ if [[ $PLUGINS_ONLY -eq 0 ]]; then
   REMAINING_JSON="$(claude plugin list --json 2>/dev/null)" || REMAINING_JSON=""
   VERIFIED=1
   if ! printf '%s\n' "$REMAINING_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-    echo "WARN: remaining-plugin enumeration failed — dependent plugins cannot be ruled out; removing marketplaces could strand them (HIMMEL-2754)" >&2
+    echo "WARN: remaining-plugin enumeration failed — dependent plugins cannot be ruled out; removing marketplaces could strand them" >&2
     VERIFIED=0
   fi
   # WHY: the caller runs phases in separate processes; recover
@@ -512,7 +512,7 @@ if [[ $PLUGINS_ONLY -eq 0 ]]; then
   PREVIEW_TARGETS=""
   if [[ $DRY_RUN -eq 1 && $VERIFIED -eq 1 && ( $MARKETPLACES_ONLY -eq 0 || -n "$REMOVED_SCOPES" ) ]]; then
     if ! PREVIEW_TARGETS="$(select_targets "$REMAINING_JSON" indices)"; then
-      echo "ERROR: could not compute the dry-run plugin subtraction — halting rather than previewing a marketplace removal against an unresolved plugin set (HIMMEL-2754)" >&2
+      echo "ERROR: could not compute the dry-run plugin subtraction — halting rather than previewing a marketplace removal against an unresolved plugin set" >&2
       exit 1
     fi
     # WHY: a prior partial run proves only its recorded IDs,
@@ -536,7 +536,7 @@ if [[ $PLUGINS_ONLY -eq 0 ]]; then
   MKT_JSON="$(claude plugin marketplace list --json 2>/dev/null)" || MKT_JSON=""
   MKT_VERIFIED=1
   if ! printf '%s\n' "$MKT_JSON" | jq -e 'type == "array"' >/dev/null 2>&1; then
-    echo "WARN: cannot verify registered marketplaces — attempting removal subject to the remaining-plugin safety check (HIMMEL-2754)" >&2
+    echo "WARN: cannot verify registered marketplaces — attempting removal subject to the remaining-plugin safety check" >&2
     MKT_VERIFIED=0
   fi
   while IFS= read -r M; do
@@ -551,7 +551,7 @@ $TRANSIENT_MARKETPLACES
 EOF_TRANSIENT
     [[ $TRANSIENT -eq 0 ]] || continue
     if [[ $VERIFIED -eq 0 ]]; then
-      echo "  SKIP: marketplace $M — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins (HIMMEL-2754)"
+      echo "  SKIP: marketplace $M — cannot verify remaining plugins (enumeration unavailable); removing it could strand plugins"
       BLOCKED=$((BLOCKED + 1))
       continue
     else
@@ -561,11 +561,11 @@ EOF_TRANSIENT
         [.[] | select((.id | split("@") | last) == $m)
           | select(owned_row)] | length' --arg m "$M")"
       if [[ $REMAINING_OWNED -gt 0 ]]; then
-        echo "  SKIP: marketplace $M — $REMAINING plugin(s) sourced from it are still installed; removing it would strand them (HIMMEL-2754)"
+        echo "  SKIP: marketplace $M — $REMAINING plugin(s) sourced from it are still installed; removing it would strand them"
         BLOCKED=$((BLOCKED + 1))
         continue
       elif [[ $REMAINING -gt 0 ]]; then
-        echo "  keep: marketplace $M — $REMAINING plugin(s) not managed by himmel are still installed from it; leaving the registration in place (HIMMEL-2754)"
+        echo "  keep: marketplace $M — $REMAINING plugin(s) not managed by himmel are still installed from it; leaving the registration in place"
         continue
       fi
     fi
@@ -580,9 +580,9 @@ EOF_TRANSIENT
       # project; replay project/local scopes only in their recorded project.
       if [[ "$REMOVED_SCOPE" == "project" || "$REMOVED_SCOPE" == "local" ]] && [[ "$ROW_PROJECT" != "$CURRENT_PROJECT" ]]; then
         if [[ -z "$ROW_PROJECT" ]]; then
-          echo "  note: marketplace $M — a persisted $REMOVED_SCOPE scope carries no recorded project (written before HIMMEL-2754); not replaying it"
+          echo "  note: marketplace $M — a persisted $REMOVED_SCOPE scope carries no recorded project; not replaying it"
         else
-          echo "  note: marketplace $M — a persisted $REMOVED_SCOPE scope belongs to <$ROW_PROJECT> and this run is in <$CURRENT_PROJECT>; not replaying it (HIMMEL-2754)"
+          echo "  note: marketplace $M — a persisted $REMOVED_SCOPE scope belongs to <$ROW_PROJECT> and this run is in <$CURRENT_PROJECT>; not replaying it"
         fi
         continue
       fi
@@ -652,7 +652,7 @@ EOF_MKT_SCOPES
         case $'\n'"$MKT_SCOPES" in
           *$'\n'"$SWEEP_SCOPE"$'\n'*) continue ;;
         esac
-        echo "  marketplace $M still registered — trying $SWEEP_SCOPE scope (HIMMEL-3350)"
+        echo "  marketplace $M still registered — trying $SWEEP_SCOPE scope"
         run claude plugin marketplace remove "$M" --scope "$SWEEP_SCOPE" || true
       done
     fi
@@ -664,7 +664,7 @@ EOF_MKT_SCOPES
         FAILURES=$((FAILURES + 1))
       elif printf '%s\n' "$AFTER_MKT_JSON" | jq -e --arg m "$M" 'any(.[]; .name == $m)' >/dev/null; then
         if [[ -n "$LEDGER_OWNED" ]]; then
-          echo "    note: marketplace $M is still registered — a registration at a scope the ledger did not record is not himmel's; left in place (HIMMEL-3378)"
+          echo "    note: marketplace $M is still registered — a registration at a scope the ledger did not record is not himmel's; left in place"
         else
           echo "    WARN: marketplace $M is still registered after removal attempts" >&2
           FAILURES=$((FAILURES + 1))
@@ -676,7 +676,7 @@ $OWNED_MARKETPLACES
 EOF_MARKETPLACES
 fi
 
-echo "──── Done: $FAILURES failed call(s); $BLOCKED blocked marketplace removal(s) (HIMMEL-2754) ────"
+echo "──── Done: $FAILURES failed call(s); $BLOCKED blocked marketplace removal(s) ────"
 if [[ $FAILURES -gt 0 || $BLOCKED -gt 0 ]]; then
   exit 1
 fi

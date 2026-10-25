@@ -16,7 +16,7 @@ done
 # the flag and silently dropping it would let a machine rebuild complete
 # WITHOUT the operator's vault.
 if [[ -n "$LUNA_REMOTE" ]]; then
-  echo "ERROR: --luna-remote is not supported by the delegated himmelctl flow yet (HIMMEL-755)." >&2
+  echo "ERROR: --luna-remote is not supported by the delegated himmelctl flow yet." >&2
   echo "  Clone the vault manually first:  git clone $LUNA_REMOTE ~/Documents/luna" >&2
   echo "  then re-run this script WITHOUT --luna-remote." >&2
   exit 1
@@ -226,7 +226,7 @@ fi
 rm -f "$rtk_settings_bak"
 cd -
 
-step "Delegate himmel/luna wiring to himmelctl bootstrap (HIMMEL-887)"
+step "Delegate himmel/luna wiring to himmelctl bootstrap"
 # This script is soft-deprecated for himmel/luna WIRING — the
 # provisioning above (steps 1-6, full toolchain) is unchanged and stays the
 # source of truth (locked decision O4: zero capability loss). Wiring (Claude
@@ -247,6 +247,6 @@ step "Delegate himmel/luna wiring to himmelctl bootstrap (HIMMEL-887)"
 # an unattended/non-TTY run fails loud with remediation (documented posture);
 # this cd only guarantees that when it DOES run, its inference targets the
 # himmel clone deterministically.
-echo "NOTICE: himmel/luna wiring in this script is soft-deprecated (HIMMEL-887) -- delegating to himmelctl bootstrap. Hard-remove deferred to HIMMEL-755."
+echo "NOTICE: himmel/luna wiring in this script is soft-deprecated -- delegating to himmelctl bootstrap. Hard-remove is deferred."
 cd "$HIMMEL_PATH"
 HIMMELCTL_REPO_ROOT="$HIMMEL_PATH" exec bash "$HIMMEL_PATH/scripts/himmelctl/bootstrap.sh" --default-scope user

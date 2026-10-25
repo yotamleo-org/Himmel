@@ -724,7 +724,7 @@ assert_contains "storm log reports no token summary" \
     "run summary: NO tokens summary (run did not finish)" "$out"
 assert_contains "storm log reports last chunk reached" "last chunk 149/314" "$out"
 assert_contains "storm log counts hollow responses"     "20 hollow responses" "$out"
-assert_contains "storm log flags the storm"           "HOLLOW-BISECT STORM (HIMMEL-1901)" "$out"
+assert_contains "storm log flags the storm"           "HOLLOW-BISECT STORM" "$out"
 assert_contains "healthy log reports token totals" \
     "run summary: 144,540 in / 10,669 out, est. cost (~claude): \$0.1234 | last chunk 12/12 | 0 hollow responses" "$out"
 # One line per marker-bearing log, and no storm marker on the healthy one:

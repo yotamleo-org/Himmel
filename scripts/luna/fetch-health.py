@@ -369,7 +369,7 @@ def probe_bitbucket(env: dict[str, str], http: Callable[..., HttpResult]) -> Pro
 
 
 def firecrawl_ledger_append(env: dict[str, str], endpoint: str, credits: int, ok: bool = True) -> None:
-    """One line in the shared per-call Firecrawl ledger (HIMMEL-4335): same
+    """One line in the shared per-call Firecrawl ledger: same
     file and shape as harvest-clip-body-batch.py. Never the key or any body;
     a write failure never fails the probe."""
     override = env.get("HIMMEL_FIRECRAWL_LEDGER", "").strip()
@@ -608,7 +608,7 @@ def _ig_cooldown(reason: str) -> ProbeResult:
 def guarded_instagram_probe(
     source: str, env: dict[str, str], probe: Callable[[], ProbeResult], now: Callable[[], float] | None = None
 ) -> ProbeResult:
-    """Throttle + cache an Instagram probe (HIMMEL-4306). Never sleeps: a probe
+    """Throttle + cache an Instagram probe. Never sleeps: a probe
     that cannot send right now reports `cooldown` instead of waiting."""
     import time
 

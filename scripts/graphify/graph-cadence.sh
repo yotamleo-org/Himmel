@@ -650,7 +650,7 @@ if ! git -C "$HIMMEL_ROOT" cat-file -e "origin/main:graphify-out/graph.json" 2>/
     # stays 0 either way (fail closed).
     if [ -n "$(git -C "$HIMMEL_ROOT" ls-tree origin/main -- graphify-out/graph.json 2>/dev/null)" ]; then
         GRAPH_JSON_OBJECT_UNREADABLE=1
-        echo "graph-cadence: WARN graphify-out/graph.json is listed in origin/main's tree but its object could not be read (corrupt or partial clone?) -- treating as unpublishable this run, NOT the permanent HIMMEL-2705 retired-path skip" >&2
+        echo "graph-cadence: WARN graphify-out/graph.json is listed in origin/main's tree but its object could not be read (corrupt or partial clone?) -- treating as unpublishable this run, NOT the permanent retired-path skip" >&2
     fi
 fi
 
@@ -681,7 +681,7 @@ if [ "$PUBLISH_POSSIBLE" -eq 1 ]; then
 elif [ "$GRAPH_JSON_OBJECT_UNREADABLE" -eq 1 ]; then
     : # already reported by the loud WARN above; nothing more to say here
 else
-    echo "graph-cadence: origin/main does not track graphify-out/graph.json (HIMMEL-2705 step 1: retired from the git tree) -- publish/merge will no-op this run, but the local AST-only refresh (step 5) still runs"
+    echo "graph-cadence: origin/main does not track graphify-out/graph.json (retired from the git tree) -- publish/merge will no-op this run, but the local AST-only refresh (step 5) still runs"
 fi
 
 # --- 5. dedicated worktree: create on demand, always resync to origin/main --

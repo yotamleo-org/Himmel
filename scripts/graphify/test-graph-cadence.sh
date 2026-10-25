@@ -327,7 +327,7 @@ rc=0
 out=$(HOME="$HOME1B" GRAPH_CADENCE_HIMMEL_ROOT="$REPO1B" GRAPH_CADENCE_LEDGER_ROOT="$LEDGER1B" \
       run_gc --threshold 10 2>&1) || rc=$?
 assert_eq        "untracked-graph rc=0 (local refresh + clean no-op, not a failure)" "0" "$rc"
-assert_contains  "untracked-graph message names HIMMEL-2705" "HIMMEL-2705" "$out"
+assert_contains  "untracked-graph message says retired" "retired from the git tree" "$out"
 assert_contains  "untracked-graph message" "does not track graphify-out/graph.json" "$out"
 CORPUS_SLUG1B=$(corpus_slug_of "$REPO1B")
 WT1B="$HOME1B/.claude/graph-cadence/$CORPUS_SLUG1B"

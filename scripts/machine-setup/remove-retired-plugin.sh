@@ -100,7 +100,7 @@ detect() {
 detect || exit 0
 
 echo ""
-echo "==> retired plugin still installed (HIMMEL-2033)"
+echo "==> retired plugin still installed"
 echo "    $SPEC is installed but is no longer part of himmel;"
 echo "    himmel recommends removing it."
 

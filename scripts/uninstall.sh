@@ -1538,8 +1538,8 @@ if [ "$DRY_RUN" -eq 0 ] && [ "${HIMMEL_UNINSTALL_REAL_HOME:-0}" != "1" ]; then
   if [ -n "$_live_marker" ]; then
     echo "ERROR: refusing a wet uninstall — found $_live_marker" >&2
     echo "  This \$HOME ($HOME) looks like a live operator profile, not a test" >&2
-    echo "  fixture. A wet uninstall here is refused by default (HIMMEL-2505," >&2
-    echo "  after the 2026-09-03 incident where a test run swept a real HOME)." >&2
+    echo "  fixture. A wet uninstall here is refused by default" >&2
+    echo "  (a test run once swept a real HOME)." >&2
     echo "" >&2
     echo "  If this really IS the machine to offboard, re-run from your OWN" >&2
     echo "  shell with: HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh ..." >&2
@@ -3982,7 +3982,7 @@ qmd_print_stub_kept_line() {
   fi
 }
 
-echo "[qmd] provenance-recorded qmd install (HIMMEL-3332 U24):"
+echo "[qmd] provenance-recorded qmd install:"
 # shellcheck source=lib/qmd-bin.sh
 . "$SCRIPT_DIR/lib/qmd-bin.sh"
 _qmd_stub_unit=""
@@ -4325,7 +4325,7 @@ if [ "${#STEPS_INCOMPLETE[@]}" -gt 0 ]; then
       echo "Fix the cause and re-run:"
     fi
     echo "    $(rerun_command)"
-    echo "ANY failed step halts every later one (HIMMEL-2754). Re-running"
+    echo "ANY failed step halts every later one. Re-running"
     echo "is safe and repairs a half-torn-down machine:"
     echo "it re-adds any marketplace its still-installed plugins need."
   } >&2
