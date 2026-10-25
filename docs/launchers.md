@@ -15,7 +15,7 @@ No launcher has a `--force` bypass around it.
 
 | Launcher | Backend | Status |
 |---|---|---|
-| `scripts/claude-codex` | Codex subscription through a local CLIProxyAPI proxy | Supported |
+| `scripts/claude-codex` | Codex subscription through a local CLIProxyAPI proxy | Supported; runs the live `claudex` lane |
 | `scripts/claude-openrouter` | OpenRouter, metered | Available, **not health-checked** |
 | `scripts/claude-deepseek` | DeepSeek's Anthropic-compatible endpoint, metered | Available, **not health-checked** |
 | `scripts/claude-glm` | Z.ai GLM | **Removed** from the supported set (see below) |
@@ -45,9 +45,19 @@ Runs Claude Code on the Codex subscription through a local CLIProxyAPI proxy
 Per-host bring-up: [setup/cli-proxy-lane.md](setup/cli-proxy-lane.md); full
 reference: the `claude-codex` section of [tooling-catalog.md](tooling-catalog.md).
 
+`claude-codex` is the launcher behind `claudex`, a live implementation lane in
+`scripts/lanes/lanes.json`: no opt-in variable is needed to dispatch it. A
+worker reaches it with `headed-arm-worker.sh --lane claudex`; a one-off
+dispatch with `dispatch-lane.sh --lane claudex`, which accepts the lane once 5
+consecutive verified passes exist in the flow-runs ledger. The launcher exports
+`CLAUDEX_LANE_OK=1` into its process as the marker that tells a claudex session
+from a native one. Lane routing, effort and the readiness gate:
+[internals/lane-calibration.md](internals/lane-calibration.md#claudex-worker--implementor-default-operating-model).
+
 | Variable | Default | Effect |
 |---|---|---|
-| `CODEX_MODEL` | the proxy's current Codex model | Main model slug |
+| `CODEX_MODEL` | `gpt-6.1-sol` | Main model slug |
+| `CLAUDE_CODE_EFFORT_LEVEL` | `medium` | Effort sent to the Codex model; a chief-dispatched claudex worker runs `xhigh` through its brief's `effort` key |
 | `CODEX_HAIKU`, `CODEX_SUBAGENT_MODEL` | `CODEX_MODEL` | Small-model and subagent slugs |
 | `CODEX_CONTEXT_WINDOW` | `272000` | Compaction window. Above about 272k input is billed at a higher rate; above about 372k exceeds the backend window and warns. `spawn-claudex --context-tier 272k\|353k\|900k` sets it per dispatch and always overrides an ambient value (unstated = 272k, the cheapest); `dispatch-codex-exec.sh` takes the same flag with the same rule, and `/lanes` shows the default and the enum on each of those lanes; the tier used is recorded as `context_tier` in the session `meta.json` |
 

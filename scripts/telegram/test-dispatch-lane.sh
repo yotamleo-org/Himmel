@@ -235,13 +235,13 @@ fi
 # get their DORMANT refusal exercised, but must never narrow this count, or a
 # registry regression that dropped the dormant block would go uncaught right
 # alongside a probe that happens to fail everywhere. Bump it DELIBERATELY when
-# the registry's dormant set changes. Currently 5: glm, claudex, hermes-oneshot,
+# the registry's dormant set changes. Currently 4: glm, hermes-oneshot,
 # codex-exec, openrouter-claude.
 #
-# The count above proves the registry still ENUMERATES 5 dormant lanes; it says
+# The count above proves the registry still ENUMERATES 4 dormant lanes; it says
 # nothing about whether any of them was actually EXERCISED -- a probe-lookup
-# failure (caught above) or a host where every single one of the 5 happens to
-# be probe-unavailable would both leave DORMANT_COUNT at 5 while DORMANT_EXERCISED
+# failure (caught above) or a host where every single one of the 4 happens to
+# be probe-unavailable would both leave DORMANT_COUNT at 4 while DORMANT_EXERCISED
 # stays 0, i.e. the exact vacuity this case exists to catch, reintroduced one
 # level up. So require DORMANT_EXERCISED > 0 as its own hard failure, separate
 # from the count check, so a reader can tell "wrong count" apart from "right
@@ -250,9 +250,35 @@ fi
 if [ "$DORMANT_EXERCISED" -eq 0 ]; then
   bad "dormant refusals exercised zero of $DORMANT_COUNT registry-declared dormant lanes (all probe-unavailable on this host, or the probe lookup above failed) -- a DORMANT-gate case that tests nothing must not report ok"
 fi
-if [ "$DORMANT_COUNT" -eq 5 ] && [ -z "$DORMANT_FAILURES" ]; then ok "all registry-declared dormant lanes require their own opt-in (probe-unavailable here:${DORMANT_SKIPPED:- none})"; else bad "dormant refusals (count=$DORMANT_COUNT failures=$DORMANT_FAILURES)"; fi
+if [ "$DORMANT_COUNT" -eq 4 ] && [ -z "$DORMANT_FAILURES" ]; then ok "all registry-declared dormant lanes require their own opt-in (probe-unavailable here:${DORMANT_SKIPPED:- none})"; else bad "dormant refusals (count=$DORMANT_COUNT failures=$DORMANT_FAILURES)"; fi
 
-# With every impl lane dormant, an unqualified dispatch (no
+# claudex is a live lane: the real registry row (probe forced, dispatch swapped
+# for the stub) dispatches without CLAUDEX_LANE_OK once the ledger holds its 5
+# verified passes, and its readiness gate still refuses it with none.
+CLAUDEX_REG="$TMP/claudex-lane.json"
+jq --arg stub "$STUB" '{lanes: [.lanes[] | select(.id == "claudex") | .probe = {kind:"always"} |
+    .dispatch = {kind:"oneshot",command:["bash",$stub],flags:{},briefDelivery:"stdin",workspaceOwner:"dispatcher",timeoutSeconds:5}]}' \
+  "$REAL_REG" > "$CLAUDEX_REG"
+CLAUDEX_LEDGER="$TMP/claudex-ledger.jsonl"
+for n in 1 2 3 4 5; do
+  printf '{"v":1,"ev":"end","flow":"verify-return","note":"PASS HIMMEL-1 claudex/w%s"}\n' "$n" >> "$CLAUDEX_LEDGER"
+done
+run_registry env -u CLAUDEX_LANE_OK LANES_REGISTRY="$CLAUDEX_REG" HIMMEL_FLOW_RUNS_LEDGER="$CLAUDEX_LEDGER" \
+  bash "$DISPATCH" --lane claudex --brief-file "$BRIEF" --name claudex-live --cwd "$REPO"
+if [ "$RC" -eq 0 ] && contains "$OUT" "lane: claudex" && contains "$OUT" "final status: clean" && ! contains "$OUT" "DORMANT"; then
+  ok "claudex dispatches without CLAUDEX_LANE_OK once its readiness gate is met"
+else
+  bad "claudex live dispatch (rc=$RC out=$OUT)"
+fi
+run_registry env -u CLAUDEX_LANE_OK LANES_REGISTRY="$CLAUDEX_REG" HIMMEL_FLOW_RUNS_LEDGER="$TMP/claudex-empty-ledger.jsonl" \
+  bash "$DISPATCH" --lane claudex --brief-file "$BRIEF" --name claudex-unready --cwd "$REPO"
+if [ "$RC" -eq 2 ] && contains "$OUT" "readiness gate is unmet" && ! contains "$OUT" "DORMANT"; then
+  ok "claudex with no verified passes is refused by its readiness gate, not by dormancy"
+else
+  bad "claudex readiness refusal (rc=$RC out=$OUT)"
+fi
+
+# With no impl lane marked preferredDefault, an unqualified dispatch (no
 # --lane, no HIMMEL_IMPL_LANE) must refuse and name the native-subagent path
 # rather than silently falling through to a lane.
 run_registry env -u HIMMEL_IMPL_LANE LANES_REGISTRY="$REAL_REG" bash "$DISPATCH" --brief-file "$BRIEF" --name unqualified --cwd "$REPO"
