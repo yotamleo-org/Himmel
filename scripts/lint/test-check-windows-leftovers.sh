@@ -62,4 +62,21 @@ else
   pass "T5 a live voice reference fails"
 fi
 
+rm -rf "$tmp/repo"
+mkdir -p "$tmp/repo/scripts/lint"
+printf 'win\t1\tscripts/old.sh\n' > "$tmp/repo/scripts/lint/windows-leftovers-baseline.tsv"
+if bash "$CHECK" --root "$tmp/repo" >/dev/null 2>&1; then
+  fail "T6 a root git cannot scan passed"
+else
+  pass "T6 a root git cannot scan fails"
+fi
+
+rc=0
+timeout 10 bash "$CHECK" --root >/dev/null 2>&1 || rc=$?
+if [ "$rc" -eq 2 ]; then
+  pass "T7 --root without a value exits 2"
+else
+  fail "T7 --root without a value exited $rc"
+fi
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; else echo "$failures FAILED"; exit 1; fi

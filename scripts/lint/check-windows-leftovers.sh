@@ -20,7 +20,9 @@ root=""
 print=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --root) root="${2:-}"; shift 2 ;;
+    --root)
+      [ $# -ge 2 ] || { echo "check-windows-leftovers: --root needs a directory" >&2; exit 2; }
+      root="$2"; shift 2 ;;
     --print) print=1; shift ;;
     *) echo "check-windows-leftovers: unknown argument: $1" >&2; exit 2 ;;
   esac
@@ -33,15 +35,24 @@ SELF='scripts/lint/check-windows-leftovers.sh'
 TEST='scripts/lint/test-check-windows-leftovers.sh'
 BASELINE='scripts/lint/windows-leftovers-baseline.tsv'
 
+# git grep exits 1 on no match; anything above 1 means the tree was not scanned.
 counts() {
-  local class="$1" re="$2"
-  git -C "$root" grep -c -I -i -E "$re" -- . \
+  local class="$1" re="$2" out rc=0
+  out=$(git -C "$root" grep -c -I -i -E "$re" -- . \
     ':!archive/' ':!docs/release/' ':!**/CHANGELOG.md' ':!CHANGELOG.md' \
-    ":!$SELF" ":!$TEST" ":!$BASELINE" 2>/dev/null |
+    ":!$SELF" ":!$TEST" ":!$BASELINE") || rc=$?
+  if [ "$rc" -gt 1 ]; then
+    echo "check-windows-leftovers: git grep failed (rc=$rc) under $root" >&2
+    return 2
+  fi
+  [ -n "$out" ] || return 0
+  printf '%s\n' "$out" |
     awk -F: -v c="$class" '{ n = $NF; sub(/:[0-9]+$/, ""); printf "%s\t%s\t%s\n", c, n, $0 }'
 }
 
-current="$( { counts win "$WIN_RE"; counts voice "$VOICE_RE"; } | sort -t "$(printf '\t')" -k1,1 -k3,3)"
+win=$(counts win "$WIN_RE") || exit 2
+voice=$(counts voice "$VOICE_RE") || exit 2
+current="$(printf '%s\n%s\n' "$win" "$voice" | awk 'NF' | sort -t "$(printf '\t')" -k1,1 -k3,3)"
 if [ "$print" -eq 1 ]; then
   printf '%s\n' "$current"
   exit 0
