@@ -16,8 +16,9 @@
 #                 sub-command and flags that `himmelctl --help` lists.
 #   5. CACHE    — the answers file path on the page is cachePath()'s default.
 #   6. CONTROL  — fixture pages with a missing profile, a wrong seed, an
-#                 unseeded scheduled job and an unknown command fail cases 1,
-#                 2 and 4, so none passes vacuously.
+#                 unseeded scheduled job and an unknown command (indented in
+#                 a fence, after a leading flag) fail cases 1, 2 and 4, so
+#                 none passes vacuously.
 #
 # Usage: bash scripts/docs/test-install-profiles-page.sh [page.md]
 # Exit:  0 = every case passed, 1 = at least one failed (all are reported).
@@ -129,7 +130,7 @@ elif case == "contribute":
 elif case == "commands":
     cmds = re.findall(r"`(himmelctl [^`]+)`", text)
     for block in re.findall(r"^```[^\n]*\n(.*?)^```", text, flags=re.S | re.M):
-        cmds += [l.split(" #")[0].strip() for l in block.splitlines() if l.startswith("himmelctl ")]
+        cmds += [l.split(" #")[0].strip() for l in block.splitlines() if l.lstrip().startswith("himmelctl ")]
     if not cmds:
         print("no himmelctl commands on the page")
     listed = set(re.findall(r"^  ([a-z][a-z-]*)\b", helptext.split("\noptions:")[0], flags=re.M))
@@ -137,10 +138,15 @@ elif case == "commands":
     for cmd in cmds:
         words = cmd.split()[1:]
         verb = words[0] if words else ""
-        if verb.startswith("--"):
-            if not re.search(r"(?<![\w-])" + re.escape(verb) + r"(?![\w-])", flat):
+        while words and words[0].startswith("--"):
+            flag = words.pop(0)
+            if not re.search(r"(?<![\w-])" + re.escape(flag) + r"(?![\w-])", flat):
                 print("flag not in --help: " + cmd)
+            if flag == "--help":
+                words = []
+        if not words:
             continue
+        verb = words[0]
         if verb not in listed:
             print("command not in --help: " + cmd)
             continue
@@ -188,7 +194,7 @@ text = open(page, encoding="utf-8").read()
 open(out + "/no-custom.md", "w", encoding="utf-8").write(re.sub(r"^### [^\n]*`custom`.*?(?=^#{1,3} )", "", text, count=1, flags=re.S | re.M))
 open(out + "/wrong-seed.md", "w", encoding="utf-8").write(re.sub(r"^(- \*\*Notes vault:\*\*[^`\n]*)`existing`", r"\1`none`", text, count=1, flags=re.M))
 open(out + "/extra-job.md", "w", encoding="utf-8").write(re.sub(r"^(- \*\*Scheduled jobs:\*\*) none picked", r"\1 `qmd` picked", text, count=1, flags=re.M))
-open(out + "/bad-command.md", "w", encoding="utf-8").write(text + "\n`himmelctl profile wipe`\n")
+open(out + "/bad-command.md", "w", encoding="utf-8").write(text + "\n```bash\n  himmelctl --contribute profile wipe\n```\n")
 ' "$PAGE" "$fx"; }; then
   bad "CONTROL: write the fixtures" "$fx"
   finish
@@ -196,6 +202,6 @@ fi
 case "$(check profiles "$fx/no-custom.md")" in *"differ from PROFILE_HELP keys"*) ok "CONTROL: a page missing a profile fails PROFILES" ;; *) bad "CONTROL: a page missing a profile fails PROFILES" ;; esac
 case "$(check seeds "$fx/wrong-seed.md")" in *"operator: Notes vault seeds existing, the bullet says none"*) ok "CONTROL: a wrong seed fails SEEDS" ;; *) bad "CONTROL: a wrong seed fails SEEDS" ;; esac
 case "$(check seeds "$fx/extra-job.md")" in *"starter: Scheduled jobs seeds [], the bullet says ['qmd']"*) ok "CONTROL: an unseeded scheduled job fails SEEDS" ;; *) bad "CONTROL: an unseeded scheduled job fails SEEDS" ;; esac
-case "$(check commands "$fx/bad-command.md")" in *"sub-command not in --help: himmelctl profile wipe"*) ok "CONTROL: an unknown command fails COMMANDS" ;; *) bad "CONTROL: an unknown command fails COMMANDS" ;; esac
+case "$(check commands "$fx/bad-command.md")" in *"sub-command not in --help: himmelctl --contribute profile wipe"*) ok "CONTROL: an unknown command fails COMMANDS" ;; *) bad "CONTROL: an unknown command fails COMMANDS" ;; esac
 
 finish

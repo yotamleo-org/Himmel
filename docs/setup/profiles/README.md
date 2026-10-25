@@ -94,7 +94,7 @@ The second question is the scope.
 
 | What | Where | Change it with |
 |---|---|---|
-| Your install answers | `~/.claude/himmel/install-profile.json` | the installer, or `--from-profile` to replay them |
+| Your install answers | `~/.claude/himmel/install-profile.json` (in `$HIMMELCTL_CACHE_DIR` instead, if you set it) | the installer, or `--from-profile` to replay them |
 | Hooks and the status line | `.claude/settings.json` (project scope) or `~/.claude/settings.json` (user scope) | `himmelctl scope set` |
 | Which plugins are on | `~/.claude/settings.json`, whichever scope you install | `himmelctl profile …` |
 | Commit rules | `~/.himmel/himmel.conf` | the tracker questions, `himmelctl config set commit.tracker`, or edit the file |
@@ -161,7 +161,8 @@ user, not one project.
 himmelctl install --from-profile install-profile.json
 ```
 
-Copy `~/.claude/himmel/install-profile.json` across first. The answers file
+Copy `~/.claude/himmel/install-profile.json` (or `install-profile.json` in
+`$HIMMELCTL_CACHE_DIR`, if you set it) across first. The answers file
 records only whether each secret is set, never its value, so set the secrets
 again on the new machine.
 
