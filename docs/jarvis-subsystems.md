@@ -14,7 +14,7 @@ deep doc lives.
 | [Mission Control](#mission-control-the-surface) | the Fleet page, the chief's board, Telegram, the statusline, the morning report and the metrics | each piece opt-in | `himmelctl ui`, `board.mjs`, `bun supervisor.ts` |
 | [The fleet](#the-fleet-the-engine) | the chief, its workers, the judge and the GO that gates a merge | opt-in | `/chief new` |
 | [Unattended runs](#unattended-runs-the-driver) | arming, relaunch on a usage cap, AFK and overnight shifts | off | `/afk-shift`, `/overnight-shift` |
-| [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup, reads only |
+| [Quota-gauge](#quota-gauge--cross-lane-quota-observability) | how much quota each lane has left | **on** (passive) | no setup; lanes fill its ledger as they run |
 | [Escalation channel](#escalation-channel) | a scoped grant for a sandboxed worker | **off** (no lane writes to it) | a sandboxed worker lane |
 | [Statusline](#statusline) | session context in the terminal | opt-in | `bash scripts/lib/wire-statusline.sh <settings-json-path> <himmel-path>` |
 
