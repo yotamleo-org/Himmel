@@ -120,9 +120,12 @@ PY
 }
 
 run() {
-  local name="$1" case="$2" out
+  local name="$1" case="$2" out rc
   out="$(check "$case" "$PAGE" "$MANIFEST")"
-  if [ -z "$out" ]; then ok "$name"; else bad "$name" "$(printf '%s' "$out" | head -20 | tr '\n' ';')"; fi
+  rc=$?
+  if [ "$rc" -ne 0 ]; then bad "$name" "checker exited $rc"
+  elif [ -z "$out" ]; then ok "$name"
+  else bad "$name" "$(printf '%s' "$out" | head -20 | tr '\n' ';')"; fi
 }
 
 run "1 ROWS: every page row is a manifest id, once" rows
