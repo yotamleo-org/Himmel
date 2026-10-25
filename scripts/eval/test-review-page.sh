@@ -66,7 +66,7 @@ pdd = {"pdd.pct": 0.1083, "pdd.k": 13, "pdd.n": 120, "ticket_first.pct": 0.1917,
        "ticket_first.n": 120, "red_green.pct": 0.5917, "red_green.k": 71, "red_green.n": 120}
 pdd_ci = {"pdd.pct": {"lo": 0.0644, "hi": 0.1766}, "ticket_first.pct": {"lo": 0.1313, "hi": 0.2712},
           "red_green.pct": {"lo": 0.5022, "hi": 0.6754}}
-rows.append(eval_runs.make_row("pdd-share", "scripts/eval/leg-digest/pdd_share.py", {"pdd_v": 1, "prs": 120, "min_n": 50},
+rows.append(eval_runs.make_row("pdd-share", "scripts/eval/worker-digest/pdd_share.py", {"pdd_v": 1, "prs": 120, "min_n": 50},
                                pdd, n=120, run_id="pdd-1", ci=pdd_ci, ci_level=0.95, ci_method="wilson", gitsha="0" * 40))
 rows[4]["ts"] = "2026-10-24T23:52:30Z"
 with open(sys.argv[2], "w") as fh:
@@ -155,7 +155,7 @@ import eval_runs
 rows = [eval_runs.make_row("review-panel", "scripts/eval/review-panel/score.py", {"critics": ["codex"]}, {"codex.recall": None},
                            n=0,
                            run_id="rp-u", status="partial", gitsha="0" * 40),
-        eval_runs.make_row("pdd-share", "scripts/eval/leg-digest/pdd_share.py", {"pdd_v": 1, "prs": 3, "min_n": 50},
+        eval_runs.make_row("pdd-share", "scripts/eval/worker-digest/pdd_share.py", {"pdd_v": 1, "prs": 3, "min_n": 50},
                            {"pdd.pct": None},
                            n=0, run_id="pdd-u", status="partial", gitsha="0" * 40)]
 rows[0]["ts"], rows[1]["ts"] = "2026-10-23T10:00:00Z", "2026-10-25T01:00:00Z"
@@ -330,6 +330,16 @@ has "panel: claims that differ only by an arithmetic operator stay two findings"
 sed -e 's/a == b/a \&\& b/' -e 's/a != b/a || b/' "$TMP/cr-ops.jsonl" > "$TMP/cr-logic.jsonl"
 has "panel: claims that differ only by a logical operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-logic.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
 has "--help prints the whole usage text" "$(python3 -I "$PAGE" --help 2>&1)" "--panel [--cr-ledger P] [--until TS]"
+
+# The evals page must not tell a reader to run a script that is not in the tree.
+ROOT="$(cd "$HERE/../.." && pwd)"
+python3 -I "$ROOT/scripts/cr/evals-page-gen.py" render --out "$TMP/evals-page.md" >/dev/null 2>&1
+missing=""
+while IFS= read -r p; do
+  [ -e "$ROOT/$p" ] || missing="$missing $p"
+done < <(grep -Eo 'scripts/[A-Za-z0-9_./-]+\.(py|sh)' "$TMP/evals-page.md" | sort -u)
+eq "evals page: every script path it names exists in the tree" "$missing" ""
+if [ -s "$TMP/evals-page.md" ]; then pass "evals page: rendered"; else fail "evals page: rendered nothing"; fi
 
 echo "test-review-page: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

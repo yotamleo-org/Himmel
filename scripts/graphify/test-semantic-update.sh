@@ -143,7 +143,8 @@ new_corpus() {
  "links": [{"source": "stale_a", "target": "code_a", "relation": "references", "_origin": "semantic", "source_file": "a.md"}]}
 EOF
 }
-run() { PATH="$WS/bin:$PATH" bash "$SCRIPT" "$@" 2>&1; }
+# claude-cli is an explicit opt-in (the default is claude-api); a later --backend in "$@" wins.
+run() { PATH="$WS/bin:$PATH" bash "$SCRIPT" --backend claude-cli "$@" 2>&1; }
 ids() { python3 -c 'import json,sys;print(" ".join(sorted(n["id"] for n in json.load(open(sys.argv[1]))["nodes"])))' "$1/graphify-out/graph.json"; }
 scratch() { find "$WS/tmp" -maxdepth 1 -name 'graphify-semantic-*'; }
 lastrun() { tail -1 "$1/graphify-out/semantic-runs.jsonl" | python3 -c "import json,sys;print(json.load(sys.stdin)['$2'])"; }
@@ -412,6 +413,18 @@ C32="$WS/c32"; new_corpus "$C32"; : > "$WS/calls.log"
 out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t32 --corpus-root "$C32" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
 [ "$rc" -eq 2 ] && [[ "$out" == *"API lane"* ]] && [ ! -s "$WS/calls.log" ] && [ -z "$(scratch)" ] \
   && pass "T32 refused, nothing invoked" || fail "T32 (rc=$rc): $out / $(cat "$WS/calls.log")"
+
+echo "T32b: no --backend and the lane OFF: the default is claude-api, so it refuses (exit 2) and never calls claude or graphify"
+C32B="$WS/c32b"; new_corpus "$C32B"; : > "$WS/calls.log"
+out=$(env -u HIMMEL_API_LANE -u HIMMEL_API_ACCOUNT PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t32b --corpus-root "$C32B" --corpus-class himmel-code 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [[ "$out" == *"semantic-update: refusing claude-api: the API lane is off"* ]] && [ ! -s "$WS/calls.log" ] && [ -z "$(scratch)" ] \
+  && pass "T32b default backend refused with the lane off, nothing invoked" || fail "T32b (rc=$rc): $out / $(cat "$WS/calls.log")"
+
+echo "T32c: no --backend and the lane ON: the default resolves to claude-api (graphify's claude is the lane shim, no bank-preflight)"
+C32C="$WS/c32c"; new_corpus "$C32C"; : > "$WS/calls.log"; : > "$WS/env.log"
+out=$(run_api --name t32c --corpus-root "$C32C" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && grep -q '^CLAUDE_BIN=.*graphify-semantic-t32c-' "$WS/env.log" && ! grep -qx bank "$WS/calls.log" \
+  && pass "T32c default backend is claude-api" || fail "T32c (rc=$rc): $out / $(cat "$WS/calls.log")"
 
 echo "T33: lane on -> graphify runs the claude-cli path, native bank untouched, shim first on PATH"
 C33="$WS/c33"; new_corpus "$C33"; : > "$WS/calls.log"; : > "$WS/env.log"

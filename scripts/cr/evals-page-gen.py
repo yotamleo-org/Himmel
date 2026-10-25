@@ -440,7 +440,7 @@ def render(d):
         "one session are not independent. [prompt cache](prompt-cache.md) |", "",
         "## Regenerate", "",
         "A new planted-bug row comes from the %s; a new proof-first row from "
-        "`python3 scripts/eval/leg-digest/pdd_share.py --limit 120 --record`; test-first sessions are written as "
+        "`python3 scripts/eval/worker-digest/pdd_share.py --limit 120 --record`; test-first sessions are written as "
         "agent sessions end. Then run steps 2 and 3 with --until and --as-of moved past the new row." % PLANTED_METHOD, "",
         "1. `%s` (the transcripts modified from the sample's first day to its last)" % c["command"],
         "2. `%s`" % r["command"], "3. `%s`" % RENDER_CMD, "",

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# billed-opt-in: arming
 # refresh-graph-map.sh — incremental graphify refresh + curated-MOC publish for
 # one corpus. The schedulable core behind the interval refresh that
 # bounds graph drift.
@@ -56,7 +57,10 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/guardrails/phi-egress-lib.sh"
 
-# BACKEND default = claude-cli: graphify distinguishes `claude`
+# BACKEND default = claude-api: background LLM jobs bill the API,
+# never the subscription. This script has no API-lane extraction path (semantic-update.sh
+# owns it), so the default refuses with one ERR line (see the refusal block below);
+# `--backend claude-cli` is the explicit opt-in. graphify distinguishes `claude`
 # (Anthropic API — requires ANTHROPIC_API_KEY, pay-as-you-go) from `claude-cli`
 # (routes through the locally-installed `claude` CLI). The claude-ONLY adopter
 # story needs claude-cli, not claude.
@@ -75,7 +79,7 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # in the `claude` CLI and switches the run back to pay-as-you-go. We deliberately
 # do NOT strip those vars here (the operator may intend the API path); this is a
 # default, not a billing guarantee.
-NAME="" CORPUS_ROOT="" BACKEND="claude-cli" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
+NAME="" CORPUS_ROOT="" BACKEND="claude-api" MAPS_DIR="" TITLE="" SLUG="" CORPUS_TAG=""
 SCRATCH="" DO_UPDATE=1 CORPUS_CLASS="luna-personal"
 # --merge-into-live: a corpus whose live graph is AST-heavy (himmel). The markdown-only
 # extraction is merged INTO the live graph.json (semantic-merge.py merge, the step
@@ -279,6 +283,21 @@ case "$BACKEND" in
     # kimi/moonshot backend; operator ruling).
     ;;
 esac
+
+# claude-api is the default backend and the one that never draws the subscription. The
+# lane extraction lives in semantic-update.sh, not here, so an extracting run on
+# claude-api refuses (rc 2) before any work: lane unresolved, or lane on but not wired
+# here. Never a fallback to claude-cli; that runs only when passed explicitly.
+if [ "$BACKEND" = "claude-api" ] && [ "$DO_EXTRACT" -eq 1 ]; then
+  # shellcheck source=../lib/llm-backend.sh
+  . "$REPO_ROOT/scripts/lib/llm-backend.sh"
+  if ! llm_backend_api_ready; then
+    echo "ERR refresh-graph-map: --backend claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
+    exit 2
+  fi
+  echo "ERR refresh-graph-map: --backend claude-api extraction is not wired in refresh-graph-map.sh -- use scripts/graphify/semantic-update.sh, or pass --backend claude-cli explicitly" >&2
+  exit 2
+fi
 
 # Egress preflight for the scheduled/direct path.
 # graphify-fence.sh is wired only as a PreToolUse hook, so it never sees the

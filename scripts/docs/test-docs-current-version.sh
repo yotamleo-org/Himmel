@@ -10,7 +10,7 @@
 #            now clean fails too, so its entry is removed in the PR that
 #            cleans it.
 #   ALLOW    file<TAB>substring: one line a page keeps on purpose (a guard that
-#            blocks `schtasks`, the one archive pointer).
+#            blocks `schtasks`, the one archive pointer, a measured eval row).
 #
 # Platform guard: bash 3.2+, grep.
 # Usage: bash scripts/docs/test-docs-current-version.sh
@@ -27,14 +27,10 @@ setup/install.md
 setup/new-machine.md
 daily-loop.md
 commands-catalog.md
-configuration.md
 cadences.md
 hermes-runbook.md
-luna/end-session-wiki.md
-voice.md
 handover/afk-mode.md
 handover/running-a-console.md
-architecture.md
 glossary.md
 internals/enforcement.md
 internals/stuck-playbook.md
@@ -51,6 +47,8 @@ evals/review-panel.md
 ALLOW='
 internals/lane-parity.md	`TERMINAL_DESTRUCTIVE` blocks `schtasks`
 internals/environment-gotchas.md	(../archive/windows-wsl-gotchas.md)
+evals/README.md	| `codex:gpt-6-astra` |
+evals/README.md	| `codex:gpt-6-sol` |
 '
 
 pass=0

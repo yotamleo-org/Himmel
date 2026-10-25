@@ -40,6 +40,9 @@ alias_env CHIEF_CACHE_READ_BUDGET_M CONSOLE_CACHE_READ_BUDGET_M
 TURN_BUDGET="$(num_env CHIEF_TURN_BUDGET 150)"
 CR_BUDGET_M="$(num_env CHIEF_CACHE_READ_BUDGET_M 30)"
 FILL_PCT="$(num_env CHIEF_FILL_HANDOVER_PCT 45)"
+if [ "$FILL_PCT" -gt 100 ]; then  # a fill above 100 % can never be reached, so the fill wake would never fire
+  printf 'console-budget: ignoring CHIEF_FILL_HANDOVER_PCT=%s - using 45\n' "$FILL_PCT" >&2; FILL_PCT=45
+fi
 
 title=""; resolve_only=""
 while [ "$#" -gt 0 ]; do

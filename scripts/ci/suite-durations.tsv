@@ -133,7 +133,6 @@ scripts/ci/test-cancel-superseded-runs.sh	1
 scripts/ci/test-check-ci-install-locks.sh	5
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
-scripts/ci/test-check-cr-terminology.sh	0
 scripts/ci/test-check-docs-decision-records.sh	0
 scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
@@ -142,6 +141,7 @@ scripts/ci/test-check-lockfile-release-age.sh	1
 scripts/ci/test-check-macos-nightly-health.sh	0
 scripts/ci/test-check-manifest-coverage.sh	1
 scripts/ci/test-check-no-secrets.sh	0
+scripts/ci/test-check-removal-ratchets.sh	1
 scripts/ci/test-check-run-timelines.sh	6
 scripts/ci/test-check-vacuous-path-assert.sh	1
 scripts/ci/test-ci-container-jobs.sh	1
@@ -284,6 +284,7 @@ scripts/docs/test-check-doc-terms.sh	1
 scripts/docs/test-check-llms-links.sh	1
 scripts/docs/test-docs-current-version.sh	0
 scripts/docs/test-generate-credits.sh	1
+scripts/docs/test-how-a-change-ships.sh	1
 scripts/docs/test-install-profiles-page.sh	0
 scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
@@ -329,6 +330,7 @@ scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
 scripts/eval/test-judge-cache-row.sh	0
 scripts/eval/test-profile-openings.sh	0
+scripts/eval/test-readme-glossary.sh	0
 scripts/eval/test-review-page.sh	1
 scripts/eval/test-session-retro.sh	1
 scripts/eval/test-stability-scorecard.sh	0
@@ -350,7 +352,6 @@ scripts/graphify/test-graph-refresh.sh	1
 scripts/graphify/test-harden-graph.sh	2
 scripts/graphify/test-leg-graph-rationale.sh	1
 scripts/graphify/test-leg-graph.sh	1
-scripts/graphify/test-no-windows-indexed.sh	0
 scripts/graphify/test-refresh-graph-map-backup-prune.sh	0
 scripts/graphify/test-refresh-graph-map-lock.sh	68
 scripts/graphify/test-refresh-graph-map-resume.sh	7
@@ -386,6 +387,7 @@ scripts/handover/chief-kit/test-console-wait-pool.sh	55
 scripts/handover/chief-kit/test-console-wait-r0.sh	26
 scripts/handover/chief-kit/test-console-wait.sh	283
 scripts/handover/chief-kit/test-cut-tag.sh	2
+scripts/handover/chief-kit/test-delta-class.sh	1
 scripts/handover/chief-kit/test-fleet-manifest.sh	1
 scripts/handover/chief-kit/test-fleet.sh	3
 scripts/handover/chief-kit/test-focus-chains-links.sh	1
@@ -428,6 +430,7 @@ scripts/handover/chief-kit/test-succession-tracker.sh	0
 scripts/handover/chief-kit/test-tick-deadwin.sh	5
 scripts/handover/chief-kit/test-tick-holds.sh	3
 scripts/handover/chief-kit/test-tick-nolive.sh	9
+scripts/handover/chief-kit/test-tick-rmqueue.sh	9
 scripts/handover/chief-kit/test-tick.sh	128
 scripts/handover/chief-kit/test-tracker.sh	5
 scripts/handover/chief-kit/test-vault-status.sh	2
@@ -903,7 +906,6 @@ scripts/lint/test-check-rule-tags.sh	1
 scripts/lint/test-check-swallowed-errors.sh	1
 scripts/lint/test-flag-parity.sh	1
 scripts/lint/test-list-enforced-rules.sh	0
-scripts/lint/test-no-windows-branches.sh	1
 scripts/lint/test-shell-lint.sh	10
 scripts/lint/test-skill-lint.sh	2
 scripts/lint/test-vendored-domain-modeling.sh	0
@@ -961,6 +963,7 @@ scripts/openrouter/test-free-watch.sh	1
 scripts/afk/test-build-plan.sh	1
 scripts/afk/test-dispatch-stop-poll.sh	0
 scripts/afk/test-morning-report.sh	3
+scripts/afk/test-per-project.sh	1
 scripts/afk/test-self-heal.sh	6
 scripts/afk/test-stop-marker.sh	1
 scripts/parity/test-guard-conformance.sh	0
@@ -1130,3 +1133,4 @@ scripts/himmelctl/test/test-install-ui-handoff.sh	1
 scripts/guardrails/test-settings-waiter-allow.sh	1
 scripts/ci/test-billed-optin.sh	10
 scripts/ci/test-ci-go-gate.sh	1
+scripts/lanes/bench/scorecard/test-review-rounds.sh	1

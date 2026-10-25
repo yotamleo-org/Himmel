@@ -79,7 +79,6 @@ scripts/handover/test-suite-coverage.sh
 # --- ci scripts (scripts/ci)
 # the runner, selector and workflow-pin suites: the runner itself must work on bash 3.2 and BSD tools for any macOS proof to mean anything.
 scripts/ci/test-cancel-superseded-runs.sh
-scripts/ci/test-check-cr-terminology.sh
 scripts/ci/test-ci-job-timeouts.sh
 scripts/ci/test-ci-main-cron.sh
 scripts/ci/test-ci-nightly-only-os.sh

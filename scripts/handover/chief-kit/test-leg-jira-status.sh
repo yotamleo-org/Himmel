@@ -50,9 +50,14 @@ case "$1" in
         if [ -e "$FX/type" ] && [ ! -s "$FX/type" ]; then
             printf '{"fields":{"status":{"name":"%s"},"labels":[]}}\n' "$(cat "$FX/status.cur")"
         else
-            printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"%s"},"labels":[]}}\n' \
-                "$(cat "$FX/status.cur")" "$(cat "$FX/type" 2>/dev/null || echo Task)"
+            printf '{"fields":{"status":{"name":"%s"},"issuetype":{"name":"%s"},"labels":[],"fixVersions":%s}}\n' \
+                "$(cat "$FX/status.cur")" "$(cat "$FX/type" 2>/dev/null || echo Task)" "$(cat "$FX/fixversions" 2>/dev/null || echo '[]')"
         fi ;;
+    versions)
+        cat "$FX/versions" 2>/dev/null ;;
+    release)
+        [ -e "$FX/request.fail" ] && { echo "boom" >&2; exit 1; }
+        echo "REQ Q-9001" ;;
     list)
         printf '%s\tTask\t%s\ttitle\n' "$(cat "$FX/list.key" 2>/dev/null)" "$(cat "$FX/status.cur")" ;;
     transition)
@@ -606,6 +611,45 @@ check "focus: a failing mark-dirty never fails the move (exit)" "$rc" 0
 check "focus: the move still lands" "$(moved)" "transition $K In Progress"
 check "focus: and is logged moved" "$(row result)" moved
 contains "focus: the failed mark is a WARN" "$(cat "$tmp/out")" "cannot mark the FOCUS page dirty"
+
+# --- INTAKE: a worked ticket held in a later version folds into the current one ----------
+VERS=$(printf 'v1.1.3\tfalse\t2026-10-28\tfalse\nv1.1.4\tfalse\t2026-11-04\tfalse\nv1.1.2\ttrue\t2026-10-20\tfalse\n')
+intakes() { grep -c '^release request' "$STUB_LOG" || true; }
+vset() { printf '%s\n' "$VERS" > "$FX/versions"; printf '%s\n' "$1" > "$FX/fixversions"; }
+reset "To Do"; owned; vset '[{"name":"v1.1.4"}]'
+fn "$K" --event live
+contains "7641: a LIVE bullet files an INTAKE into the current version from the held one" "$(grep '^release request' "$STUB_LOG")" "release request v1.1.3 --verb INTAKE --key $K --from v1.1.4 --to v1.1.3"
+check "7641: and the status still moves" "$(moved)" "transition $K In Progress"
+fn "$K" --event live
+check "7641: a second LIVE bullet files no second request" "$(intakes)" 1
+reset "To Do"; owned; vset '[{"name":"v1.1.3"}]'
+fn "$K" --event live
+check "7641: a key already in the current version files nothing" "$(intakes)" 0
+reset "To Do"; owned; vset '[]'
+fn "$K" --event live
+check "7641: an unversioned key files nothing" "$(intakes)" 0
+reset "To Do"; owned; vset '[{"name":"v1.1.2"}]'
+fn "$K" --event live
+check "7641: a released version is not a later one" "$(intakes)" 0
+reset "To Do"; owned; vset '[{"name":"v1.1.4"},{"name":"v1.1.3"}]'
+fn "$K" --event live
+check "7641: a key holding the current version as well files nothing" "$(intakes)" 0
+VERS=$(printf 'v1.1.3\tfalse\t2026-10-28\tfalse\nv1.1.0\tfalse\t2026-10-01\ttrue\n')
+reset "To Do"; owned; vset '[{"name":"v1.1.0"}]'
+fn "$K" --event live
+check "7641: an archived version older than the current one is not a later one" "$(intakes)" 0
+VERS=$(printf 'v1.1.3\tfalse\t2026-10-28\tfalse\nv1.1.4\tfalse\t2026-11-04\tfalse\nv1.1.2\ttrue\t2026-10-20\tfalse\n')
+reset "To Do"; owned LIVE; vset '[{"name":"v1.1.4"}]'
+fn "$K" --event wrapped
+check "7641: only a LIVE event files the request" "$(intakes)" 0
+reset "To Do"; owned; vset '[{"name":"v1.1.4"}]'; touch "$FX/request.fail"
+rc=0; bash "$SUT" "$K" --event live >"$tmp/out" 2>&1 || rc=$?
+check "7641: a failed request never fails the leg (exit)" "$rc" 0
+check "7641: and the status still moves" "$(moved)" "transition $K In Progress"
+contains "7641: and the failure is a WARN" "$(cat "$tmp/out")" "INTAKE request was NOT filed"
+reset "To Do"; owned; vset '[{"name":"v1.1.4"}]'
+HIMMEL_RELEASE_MANAGER=1 fn "$K" --event live
+check "7641: a release manager files no request" "$(intakes)" 0
 
 [ "$fails" -eq 0 ] && { echo "all passed"; exit 0; }
 echo "$fails failed"; exit 1

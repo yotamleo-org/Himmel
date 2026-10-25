@@ -861,6 +861,75 @@ for bad_repo in a a/b/c /a a/ 'a b/c' ../x a/.. -a/b; do
 done
 check "25: refused --repo writes nothing" "$(find "$tmp" -path '*/q25b*' | wc -l | tr -d ' ')" 0
 
+# --- 26. --delta-noop records a no-op verdict for a later head ----------------
+# The fixture repo has the trust list on its origin/main and an empty CR ledger;
+# the judged head's verdict names one finding. A delta that classifies `none`
+# (delta-class.sh) is signed as a `delta: no-op` record under its own name; a
+# trust or finding delta, an unjudged head, a no-op as the judged head, a NO-GO
+# or evidence typing the delta lines are all refused with nothing written.
+fx="$tmp/fx26"
+git init -q "$fx" || exit 1
+fx_git() { git -C "$fx" -c user.email=t@t -c user.name=t -c commit.gpgsign=false "$@"; }
+mkdir -p "$fx/scripts/ci" "$fx/src" "$fx/docs"
+printf '^scripts/ci/\n' > "$fx/scripts/ci/ci-trust-paths.txt"
+printf 'x\n' > "$fx/scripts/ci/x.sh"
+seq 1 10 > "$fx/src/a.txt"
+printf 'c\n' > "$fx/docs/c.md"
+fx_git add -A && fx_git commit -qm base
+J26=$(fx_git rev-parse HEAD)
+fx_git update-ref refs/remotes/origin/main "$J26"
+: > "$(fx_git rev-parse --path-format=absolute --git-common-dir)/cr-critic-scores.jsonl"
+fx_commit() { fx_git add -A && fx_git commit -qm "$1" && fx_git rev-parse HEAD; }
+printf 'finding: src/a.txt:3-4\n' > "$evd/j26.md"
+printf 'delta check, nothing else\n' > "$evd/noop26.md"
+wv q26 GO "$J26" --evidence-file "$evd/j26.md" >/dev/null 2>&1
+fx_git checkout -q -b n1 "$J26"
+printf 'more\n' >> "$fx/docs/c.md"; N26=$(fx_commit docs)
+rc=0; out=$(cd "$fx" && wv q26 GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" 2>&1) || rc=$?
+check "26: --delta-noop on a none delta rc 0" "$rc" 0
+f26="$scope_dir/q26/delta-noop-$N26.md"
+check "26: written under its own name, judge.md untouched" "$([ -f "$f26" ] && grep -q "$J26" "$scope_dir/q26/judge.md" && echo yes)" yes
+contains "26: the record says delta: no-op" "$(cat "$f26" 2>/dev/null)" "delta: no-op"
+contains "26: the record names the judged head" "$(cat "$f26" 2>/dev/null)" "delta-judged: $J26"
+contains "26: the record carries the classifier output" "$(cat "$f26" 2>/dev/null)" "delta-class: none"
+rc=0; verdict_rc q26 "$N26" || rc=$?
+check "26: go_trust_verdict accepts the no-op GO" "$rc" 0
+rc=0; verdict_rc q26 "$J26" || rc=$?
+check "26: the judged head's GO still stands" "$rc" 0
+
+fx_git checkout -q -b n2 "$J26"
+printf 'y\n' >> "$fx/scripts/ci/x.sh"; N26t=$(fx_commit trust)
+rc=0; (cd "$fx" && wv q26 GO "$N26t" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+check "26: a trust-path delta is refused" "$rc" 2
+check "26: ...and nothing is written" "$([ -e "$scope_dir/q26/delta-noop-$N26t.md" ] && echo yes || echo no)" no
+fx_git checkout -q -b n3 "$J26"
+seq 1 10 | awk '$0==4{print "four"; next} {print}' > "$fx/src/a.txt"; N26f=$(fx_commit finding)
+rc=0; (cd "$fx" && wv q26 GO "$N26f" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+check "26: a delta on a judged finding's lines is refused" "$rc" 2
+rc=0; (cd "$fx" && wv q26u GO "$N26" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+check "26: a judged head with no verdict in the qid is refused" "$rc" 2
+fx_git checkout -q -b n4 "$N26"
+printf 'again\n' >> "$fx/docs/c.md"; N26c=$(fx_commit chain)
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$N26" >/dev/null 2>&1) || rc=$?
+check "26: a no-op record cannot be the judged head" "$rc" 2
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+check "26: the cumulative delta from the real judged head is accepted" "$rc" 0
+rc=0; (cd "$fx" && wv q26n NO-GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+check "26: --delta-noop on a NO-GO is refused" "$rc" 2
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$N26c" >/dev/null 2>&1) || rc=$?
+check "26: --delta-noop naming the head itself is refused" "$rc" 2
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop nothex >/dev/null 2>&1) || rc=$?
+check "26: a malformed --delta-noop is refused" "$rc" 2
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "$J26" --judge judge >/dev/null 2>&1) || rc=$?
+check "26: --delta-noop with an explicit --judge name is refused" "$rc" 2
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/noop26.md" --delta-noop "" >/dev/null 2>&1) || rc=$?
+check "26: an empty --delta-noop is refused" "$rc" 2
+printf 'delta: no-op\n' > "$evd/typed26.md"
+rc=0; (cd "$fx" && wv q26 GO "$N26c" --evidence-file "$evd/typed26.md" --delta-noop "$J26" >/dev/null 2>&1) || rc=$?
+check "26: evidence typing a delta: line is refused" "$rc" 2
+rc=0; wv q26e GO "$N26c" --evidence-file "$evd/typed26.md" >/dev/null 2>&1 || rc=$?
+check "26: evidence typing a delta: line is refused without the flag too" "$rc" 2
+
 [ "$fails" -eq 0 ] && { echo "PASS: test-write-verdict.sh"; exit 0; }
 echo "FAIL: $fails case(s)"
 exit 1

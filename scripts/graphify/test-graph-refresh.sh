@@ -164,9 +164,12 @@ chmod +x "$FAKE_CADENCE"
 # real vault (observed live). A test that uses a different vault ratifies it
 # with an env prefix on the call (TEST_LUNA_ROOT="$OTHER" run_refresh ...),
 # mirroring how an operator ratifies a non-conventional vault location.
+# The launching shell's lane settings must not reach the real-run rows.
+unset HIMMEL_API_LANE HIMMEL_API_ACCOUNT
 run_refresh() {
     GRAPH_REFRESH_RUNNER="$FAKE_RUNNER" GRAPH_REFRESH_CADENCE_SCRIPT="$FAKE_CADENCE" \
     LUNA_VAULT_PATH="${TEST_LUNA_ROOT:-$VAULT}" \
+    HIMMEL_API_LANE="${HIMMEL_API_LANE-on}" HIMMEL_API_ACCOUNT="${HIMMEL_API_ACCOUNT-A}" \
         "$REAL_BASH" "$SCRIPT" "$@"
 }
 reset_runner_log() { : > "$RUNNER_LOG"; }
@@ -210,7 +213,7 @@ echo "TEST: --dry-run prints plan, invokes nothing"
 reset_runner_log
 rc=0; out=$(run_refresh both --vault "$VAULT" --dry-run 2>&1) || rc=$?
 assert_rc "dry-run rc 0" 0 "$rc"
-assert_contains "dry-run names the backend" "backend claude-cli" "$out"
+assert_contains "dry-run names the backend" "backend claude-api" "$out"
 assert_contains "dry-run plan has luna leg" "--name luna" "$out"
 assert_contains "dry-run plan has himmel leg" "--name himmel" "$out"
 assert_contains "dry-run plan has luna slug" "--slug graphify-luna-map" "$out"
@@ -291,6 +294,25 @@ assert_not_contains "dry-run luna leg with --out-root has NO env -u scrub" "env 
 assert_contains "dry-run himmel leg (still in-corpus) shows the env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$himmel_dry_d2"
 
 # ============================================================================
+# Test 4b: the default backend is claude-api, so a real run with the API lane
+# unset refuses (rc 2, one ERR line) before any leg runs; --dry-run is unaffected
+# ============================================================================
+echo "TEST: real run with no API lane refuses, runner never called"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_refresh both --vault "$VAULT" 2>&1) || rc=$?
+assert_rc "no API lane -> rc 2" 2 "$rc"
+assert_contains "no API lane names the lane switch" "ERR graph-refresh: backend claude-api needs HIMMEL_API_LANE=on" "$out"
+assert_eq "no API lane never invokes the runner" "0" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_refresh both --vault "$VAULT" --dry-run 2>&1) || rc=$?
+assert_rc "dry-run without an API lane still rc 0" 0 "$rc"
+echo "TEST: an explicit --backend claude-cli runs without the API lane"
+reset_runner_log
+rc=0; out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_refresh himmel --vault "$VAULT" --backend claude-cli 2>&1) || rc=$?
+assert_rc "explicit claude-cli rc 0" 0 "$rc"
+assert_contains "explicit claude-cli reaches the runner" "--backend claude-cli" "$(cat "$RUNNER_LOG")"
+
+# ============================================================================
 # Test 5: serial both -> order luna then himmel, canonical arg sets, hint, status
 # ============================================================================
 echo "TEST: serial both invokes luna then himmel with the canonical arg sets"
@@ -308,14 +330,15 @@ assert_contains "luna corpus-root is the vault"          "--corpus-root $VAULT" 
 assert_contains "luna maps-dir is the vault 60-Maps"      "--maps-dir $VAULT/60-Maps"  "$line1"
 assert_contains "luna slug"                              "--slug graphify-luna-map"   "$line1"
 assert_contains "luna corpus-tag"                        "--corpus-tag luna"          "$line1"
-assert_contains "luna fixed claude-cli backend"          "--backend claude-cli"       "$line1"
+assert_contains "luna fixed claude-api backend"          "--backend claude-api"       "$line1"
 assert_contains "luna title"                             "Graphify Luna Map"          "$line1"
 assert_contains "luna leg passes explicit corpus-class" "--corpus-class luna-personal" "$line1"
 assert_contains "himmel corpus-root is the himmel repo"  "--corpus-root $HIMMEL_ROOT_EXP" "$line2"
 assert_contains "himmel maps-dir is the vault 60-Maps"   "--maps-dir $VAULT/60-Maps"  "$line2"
 assert_contains "himmel slug"                            "--slug graphify-himmel-map" "$line2"
 assert_contains "himmel corpus-tag"                      "--corpus-tag himmel"        "$line2"
-assert_contains "himmel fixed claude-cli backend"        "--backend claude-cli"       "$line2"
+assert_contains "himmel fixed claude-api backend"        "--backend claude-api"       "$line2"
+assert_not_contains "no leg passes claude-cli"                "claude-cli"                 "$line1$line2"
 assert_contains "himmel title"                           "Graphify Himmel Map"        "$line2"
 assert_not_contains "himmel leg passes no corpus-class"  "--corpus-class"             "$line2"
 assert_contains "himmel leg merges into the live graph"  "--merge-into-live"          "$line2"

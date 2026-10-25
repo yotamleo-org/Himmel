@@ -1339,7 +1339,11 @@ def worker_ci(prs, workers):
     return out
 
 
-def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
+OPERATOR_LABELS = ('operator-decision', 'operator', 'operator-present', 'operator-gated')
+WAITING_CHAIN_RE = re.compile(r'waiting on you', re.I)
+
+
+def version_page(mir, version, groups, prs, chains, base, repo, workers=None, chains_mtime=None):
     """(html, stdout parity line, focus fingerprint): the FOCUS page of one version (HIMMEL-6769).
 
     Columns are the Jira status names of the version's open tickets, moved by an open PR's CI (`ci_column`) and each
@@ -1377,6 +1381,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     for k in sorted(opn, key=order.get):
         mcols.setdefault(jcol[k], []).append(k)
     par = column_parity(version, mcols)
+    chains = [ch for ch in chains if not WAITING_CHAIN_RE.search(ch['name'])]  # Waiting on you is derived below, never hand-kept
     chains = [ch for ch in chains if any(version in mir.get(st.get('key', ''), {}).get('fv', []) for st in ch['steps'])]
     merged = sum(1 for ch in chains for st in ch['steps'] if step_state(st) == 'merged')
     chains = [dict(ch, steps=[st for st in ch['steps'] if step_state(st) != 'merged']) for ch in chains]
@@ -1385,7 +1390,7 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
     for ch in chains:
         for i, st in enumerate(ch['steps'], 1):
             if st.get('key'):
-                inchain.setdefault(st['key'], '%s · step %d%s' % (ch['name'], i, ' · ' + st['owner'] if st.get('owner') else ''))
+                inchain.setdefault(st['key'], '%s · step %d' % (ch['name'], i))
 
     def key_html(k):
         return '<a href="%s/browse/HIMMEL-%d">HIMMEL-%d</a>' % (esc(base), k, k) if base else '<b>HIMMEL-%d</b>' % k
@@ -1432,16 +1437,53 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
                        % (esc(c), esc(c), len(ks), pl, ''.join(parts) or '<div class="empty">none</div>'))
     parline = 'parity %s: %s' % (version, ', '.join(tally) if par is not None else 'unavailable')
 
+    def pr_badge(n, ci, d):
+        return '<a class="pr ci-%s" href="https://github.com/%s/pull/%d">#%d · CI %s%s</a>' % (ci, esc(repo), n, n, ci, ' · draft' if d else '')
+
+    def row_worker(n):
+        w = workers.get(n)
+        if w is None or prs is None:
+            return w
+        live = {pn for pn, _, _ in prs.get(n, [])}
+        return dict(w, prs={pk: p for pk, p in w.get('prs', {}).items() if str(pk).isdigit() and int(pk) in live})
+
     def step(st):
         state = step_state(st)
         k = st.get('key', '')
-        return '<li class="st-%s"><b>%s</b> %s%s %s%s</li>\n' % (
-            esc(state), esc(state), '<a href="https://github.com/%s/pull/%d">#%d</a> ' % (esc(repo), st['pr'], st['pr']) if st.get('pr') else '',
-            key_html(num(k)) if KEY_RE.fullmatch(k) else esc(k), esc(st.get('label', '')),
-            ' <span class="own">%s</span>' % esc(st['owner']) if st.get('owner') else '')
-    chainhtml = ''.join('<div class="chain"><h3>%s</h3>%s<ol>\n%s</ol></div>' % (
-        esc(ch['name']), '<div class="dep">%s</div>' % esc(ch['note']) if ch.get('note') else '', ''.join(step(st) for st in ch['steps']))
-        for ch in chains)
+        if not KEY_RE.fullmatch(k):
+            return '<li class="st-%s"><b>%s</b> %s%s %s%s</li>\n' % (
+                esc(state), esc(state), '<a href="https://github.com/%s/pull/%d">#%d</a> ' % (esc(repo), st['pr'], st['pr']) if st.get('pr') else '',
+                esc(k), esc(st.get('label', '')), ' <span class="own">%s</span>' % esc(st['owner']) if st.get('owner') else '')
+        n = num(k)
+        parts = []
+        if k in mir:
+            parts.append('Jira %s' % esc(mir[k]['sn'] or mir[k]['cat']))
+            if prs is None:
+                parts.append('PR state unavailable')
+            elif prs.get(n):
+                parts += [pr_badge(pn, ci, d) for pn, ci, d in sorted(prs[n])]
+            elif bucket(mir[k]) != 'todo':
+                parts.append('no open PR')
+        else:
+            parts.append('not in the Jira mirror')
+        if n in workers:
+            parts.append(esc(worker_line(row_worker(n))))
+        return '<li class="st-%s"><b>%s</b> %s %s <span class="own">%s</span></li>\n' % (
+            esc(state), esc(state), key_html(n), esc(clip(mir[k]['title'], 100)) if k in mir else '', ' · '.join(parts))
+    def step_row(k):
+        if not KEY_RE.fullmatch(k):
+            return None
+        w = row_worker(num(k))
+        m = mir.get(k)
+        return [m['title'] if m else None, (m['sn'] or m['cat']) if m else None, [w.get('leg'), w.get('state'), open_worker_prs(w)] if w else None,
+                None if prs is None else sorted(prs.get(num(k), []))]
+    chainhtml = ''.join('<div class="chain"><h3>%s</h3><ol>\n%s</ol></div>' % (esc(ch['name']), ''.join(step(st) for st in ch['steps']))
+                        for ch in chains)
+    wait = [k for k in sorted(opn, key=order.get) if set(OPERATOR_LABELS) & set(opn[k].get('labels', []))]
+    waithtml = '<section data-section="waiting" data-count="%d"><h2 class="sh">Waiting on you <span class="n">%d</span></h2>%s</section>' % (
+        len(wait), len(wait), '<ul>%s</ul>' % ''.join('<li>%s %s <span class="own">Jira %s · %s</span></li>' % (
+            key_html(k), esc(clip(opn[k]['title'], 100)), esc(jcol[k]), esc(', '.join(sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))))) for k in wait)
+        if wait else '<div class="empty">nothing is waiting on you</div>')
     legend = ''.join('<span class="lg b%d">%s</span>' % (min(i, 7), esc(n)) for i, n in enumerate(names))
     seclegend = ''.join('<span class="sec" style="--s:%s">%s %d</span>' % (c, esc(n), sum(1 for m in opn.values() if m['sector'] == n))
                         for n, c in SECTOR_COLORS.items() if any(m['sector'] == n for m in opn.values()))
@@ -1452,14 +1494,22 @@ def version_page(mir, version, groups, prs, chains, base, repo, workers=None):
         'merged': merged,
         'tickets': [[k, opn[k]['sn'], ecol[k], opn[k]['title'], 'held' in opn[k].get('labels', []), block[k], order[k], opn[k]['sector'], blocker_list(mir, k)]
                     for k in sorted(opn)],
-        'chains': [[ch['name'], [[st.get('key', ''), st.get('label', ''), step_state(st), st.get('pr'), st.get('owner')]
+        'chains': [[ch['name'], [[st.get('key', ''), '' if KEY_RE.fullmatch(st.get('key', '')) else st.get('label', ''), step_state(st),
+                                  None if KEY_RE.fullmatch(st.get('key', '')) else st.get('pr'), None if KEY_RE.fullmatch(st.get('key', '')) else st.get('owner'),
+                                  step_row(st.get('key', ''))]
                                  for st in ch['steps']]] for ch in chains],
+        'waiting': [[k, sorted(set(OPERATOR_LABELS) & set(opn[k]['labels']))] for k in wait],
         'prs': None if prs is None else [[k, [[n, d] for n, _, d in sorted(v)]] for k, v in sorted(prs.items())],
         'workers': [[k, r.get('leg'), r.get('state'), open_worker_prs(r)] for k, r in sorted(workers.items()) if k in opn]},
         sort_keys=True)
     vfp = hashlib.sha256(fp.encode('utf-8')).hexdigest()[:16]
+    cdt = datetime.fromtimestamp(chains_mtime, timezone.utc) if chains_mtime is not None else None
+    ndt = utc_dt(upd)
+    age = (' focus-chains.json last written %s, older than the newest Jira update (%s): the chain order and grouping may be out of date.'
+           % (cdt.strftime('%Y-%m-%d %H:%M UTC'), utc_stamp(upd))) if cdt and ndt and cdt < ndt else ''
     html = VERSION_TEMPLATE.format(
         v=esc(version), n=len(opn), d=done, h=merged, gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=esc(utc_stamp(upd)),
+        age=esc(age), waiting=waithtml,
         prs='' if prs is not None else ' PR state unavailable (gh could not be read), so no card is flagged for a missing PR.',
         chains='<h2 class="sh">Waves and merge chains</h2><div class="chains">%s</div>' % chainhtml if chainhtml else '',
         legend=legend, seclegend=seclegend or '<span class="empty">no sector set</span>', board=''.join(colhtml), vfp=vfp)
@@ -1512,7 +1562,8 @@ a{{color:var(--acc);text-decoration:none}}
 <div class="sub">{n} open · {d} Done · {h} merged chain steps hidden. Rendered {gen} from the Jira mirror (newest update {mir}). Columns are Jira statuses, except that a card with an open PR follows
 that PR's CI (red In Progress, running or green IN CI, except that green keeps a card Jira holds In Review) and says so; each column is split into the
 approved plan's priority blocks; each column header carries its parity against a live JQL count. A card shows its open PR and that PR's CI
-state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}</div>
+state; a started card without an open PR is flagged, and so is a card with an open blocker.{prs}{age}</div>
+{waiting}
 {chains}
 <div class="legend">Priority blocks: {legend}</div>
 <div class="seclegend">Sectors (card edge and chip): {seclegend}</div>
@@ -1592,13 +1643,14 @@ def main():
             raise SystemExit('tracker: --priority-file %s is unreadable or has no priority: line' % a.priority_file)
         try:
             chains = json.load(open(a.chains_file, encoding='utf-8')) if a.chains_file else []
+            chains_mtime = os.path.getmtime(a.chains_file) if a.chains_file else None
         except (OSError, ValueError):
             raise SystemExit('tracker: --chains-file %s is unreadable' % a.chains_file)
         repo = a.repo or origin_repo()
         if not repo:
             raise SystemExit('tracker: no GitHub origin found for this checkout; pass --repo owner/name')
         html, par, vfp = version_page(read_mirror(), a.version, grp, open_prs(a.prs_file, repo), chains, a.jira_base_url, repo,
-                                      read_workers(a.workers_dir))
+                                      read_workers(a.workers_dir), chains_mtime)
         os.makedirs(os.path.dirname(OUT), exist_ok=True)
         open(OUT, 'w', encoding='utf-8').write(html)
         open(OUT + '.vfp', 'w', encoding='utf-8').write(vfp + '\n')

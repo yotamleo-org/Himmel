@@ -21,7 +21,7 @@
 # Measure the result with semantic-metrics.py <graph.json> [--files a.md,b.md]
 # (rationale coverage, cross-file and doc-to-code edges).
 #
-# BILLING: --backend claude-cli makes graphify shell `claude -p` once per chunk,
+# BILLING: the default backend is claude-api. --backend claude-cli (explicit opt-in only) makes graphify shell `claude -p` once per chunk,
 # which draws the SAME subscription 5h/weekly bank as interactive use
 #; hence the bank-preflight gate and the --max-files cap. Changed
 # files above the cap stay unstamped and roll to the next run (reported as
@@ -72,7 +72,7 @@
 #
 # Usage:
 #   semantic-update.sh --name N --corpus-root R --corpus-class C
-#       [--backend claude-cli|claude-api|ollama] [--max-files 150] [--max-run-usd 15.00] [--seed-manifest] [--dry-run]
+#       [--backend claude-api|claude-cli|ollama] [--max-files 150] [--max-run-usd 15.00] [--seed-manifest] [--dry-run]
 #
 # --backend ollama runs the local model (OLLAMA_MODEL, default qwen3.6:27b) at
 # --max-concurrency 1 and skips bank-preflight (no subscription draw). It
@@ -91,7 +91,7 @@ set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 
-NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-cli" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-15.00}"
+NAME="" CORPUS_ROOT="" CORPUS_CLASS="" BACKEND="claude-api" MAX_FILES=150 SEED=0 DRY=0 RUN_CAP="${GRAPHIFY_API_RUN_BUDGET_USD:-15.00}"
 usage() { sed -n '/^# Usage:/,/^# Exit:/p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 1; }
 while [ $# -gt 0 ]; do
   case "$1" in

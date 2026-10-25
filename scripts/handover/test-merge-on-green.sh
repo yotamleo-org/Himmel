@@ -3637,6 +3637,29 @@ assert_jira_log_lacks "jira: partial merge never transitions to Done" "transitio
 assert_jira_log_has "jira: partial merge comments a Remaining line" "comment-body: Remaining:"
 # A bare merge leaves the ticket open, so say so (stderr) and tell the console doc.
 assert_err_has "jira: bare merge prints the PARTIAL line" "PARTIAL HIMMEL-374: next slice not dispatched"
+# A merge of a ticket held in a later unreleased version than the current one files an INTAKE
+# request into the current version, whatever the merge's transition opt-in; a ticket already current, or one
+# with no version, files nothing.
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket held in a later version files an INTAKE request"
+assert_jira_log_has "7641: the INTAKE goes to the current version from the held one" "release request v1.1.3 --verb INTAKE --key HIMMEL-374 --from v1.1.4 --to v1.1.3"
+assert_audit_has "7641: the request rides the audit line" "intake=Q-v1.1.3-0099"
+assert_jira_log_lacks "7641: the merge still never edits the ticket's versions" "edit HIMMEL-374"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.3"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket already in the current version files nothing"
+assert_jira_log_lacks "7641: a current ticket files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"},{"name":"v1.1.3"}' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket holding the current version as well files nothing"
+assert_jira_log_lacks "7641: a ticket that also holds the current version files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of an unversioned ticket files nothing"
+assert_jira_log_lacks "7641: an unversioned ticket files no request" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.0"}' STUB_JIRA_VERSIONS='v1.1.3\tfalse\t2026-10-22\tfalse\nv1.1.0\tfalse\t2026-10-01\ttrue\n' STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: a bare merge of a ticket held in an older archived version files nothing"
+assert_jira_log_lacks "7641: an archived held version is not a later one" "release request"
+STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_JIRA_REQUEST_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+    run_mog 0 "jira: an INTAKE request that cannot be filed still lets the merge succeed"
+assert_audit_has "7641: an unfiled INTAKE request is on the audit line" "intake=failed"
 mog_doc="$LAST_TMP/console-doc.md"
 printf '# console\n\n## Results\n' > "$mog_doc"
 HIMMEL_CONSOLE_DOC="$mog_doc" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \

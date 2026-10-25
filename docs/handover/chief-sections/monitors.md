@@ -87,7 +87,10 @@ ordinary Bash call.
 2 when the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M
 cumulative cache-read (`CHIEF_TURN_BUDGET`, `CHIEF_CACHE_READ_BUDGET_M`), or a context
 fill of 45 % (`CHIEF_FILL_HANDOVER_PCT`; read from `context-fill.sh --percent`, so a
-stale, unknown or estimated fill adds no `fill=` and trips nothing), the same duty as the
+stale, unknown or estimated fill adds no `fill=` and trips nothing; the `~NN% (est)` of
+`context-fill.sh` exit 5 is deliberately not counted: it is derived from one transcript turn
+over an assumed window, so it can read high after a cache-heavy turn and would fire a handover
+wake on a number nobody measured, and an OK without `fill=` leaves the repeat marker alone), the same duty as the
 90k input trigger. The waiter runs it each successful sample (with `--doc`, also with
 `--legs-from`) and raises `WAKE handover-budget`; while the verdict stays `HANDOVER` it
 repeats as `WAKE handover-budget repeat ...` every `CHIEF_WAIT_BUDGET_REPEAT_MIN` minutes

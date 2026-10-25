@@ -1,0 +1,1313 @@
+{
+  "version": 1,
+  "about": "The delivery graph on docs/guide/how-a-change-ships.html: Level 1 nodes and edges, each node's reach, its loop (Level 2) and the chains of checks that decide each move (Level 3). Every check cites the file and string it stands for; scripts/docs/test-how-a-change-ships.sh keeps the citations, the reach tags and the page in step with the tree.",
+  "cited_at": "a17b85971de23887f1f7459cffb0bba56cca2c75",
+  "reach_kinds": {
+    "project": "a starter install copies it into your project (scripts/adopt.sh PORTABLE_FILES)",
+    "clone": "it runs from your himmel clone; a starter install does not copy it",
+    "plugin": "a plugin the starter install turns on",
+    "human": "you, or the chief's GO; a judge only on trust paths"
+  },
+  "inputs": [
+    {
+      "id": "ticket",
+      "label": "A ticket",
+      "box": [
+        185,
+        30,
+        150,
+        44
+      ]
+    },
+    {
+      "id": "codebase",
+      "label": "Your codebase",
+      "box": [
+        425,
+        30,
+        150,
+        44
+      ]
+    },
+    {
+      "id": "rules",
+      "label": "Your rules",
+      "box": [
+        665,
+        30,
+        150,
+        44
+      ]
+    }
+  ],
+  "nodes": [
+    {
+      "id": "plan",
+      "label": "Plan & hand out",
+      "sub": "the chief · parallel waves",
+      "reach": {
+        "kind": "clone",
+        "text": "from your himmel clone"
+      },
+      "box": [
+        385,
+        124,
+        230,
+        52
+      ],
+      "what": "The chief, a long-running session you talk to, turns tickets into work. Tickets that touch different files start together as a parallel wave; a ticket that needs another one merged first waits in a dependency chain. Which release a ticket belongs to is the release manager's ruling, not the chief's.",
+      "loop": [
+        "Pick the next ticket",
+        "Check it collides with no running worker",
+        "Write the brief and the worktree",
+        "Start the worker"
+      ],
+      "chains": [
+        {
+          "title": "Starting a worker",
+          "rows": [
+            {
+              "k": "usage",
+              "q": "Is your Claude usage too high? (the usage preflight does not say `PROCEED`)",
+              "by": "`usage-preflight.sh`",
+              "outcome": {
+                "kind": "ask",
+                "text": "Ask"
+              },
+              "next": "The chief waits for your ruling.",
+              "source": {
+                "file": "scripts/lib/usage-preflight.sh",
+                "line": 957,
+                "text": "emit SKIPPED-BANK"
+              },
+              "reach": {
+                "kind": "project",
+                "text": "in your project"
+              }
+            },
+            {
+              "k": "cap",
+              "q": "Is the fleet at its size cap?",
+              "by": "`usage-preflight.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Wait"
+              },
+              "next": "The chief waits until a worker finishes.",
+              "source": {
+                "file": "scripts/lib/usage-preflight.sh",
+                "line": 757,
+                "text": "emit SKIPPED-FLEET"
+              },
+              "reach": {
+                "kind": "project",
+                "text": "in your project"
+              }
+            },
+            {
+              "k": "tier",
+              "q": "A top-tier worker (opus, fable) without a stated reason?",
+              "by": "`headed-arm-worker.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Back to the brief, which must say why.",
+              "source": {
+                "file": "scripts/handover/chief-kit/headed-arm-worker.sh",
+                "line": 1357,
+                "text": "launch: $DOC has no '> **Tier:** $TIER_GATE"
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "The worker starts in its own window, with a one-time token for later changes of plan.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "cap",
+              "label": "the fleet is full"
+            },
+            {
+              "hit": "ok",
+              "label": "there is a free slot"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "build",
+      "label": "Build in a worktree",
+      "sub": "test → change → run",
+      "reach": {
+        "kind": "project",
+        "text": "in your project"
+      },
+      "box": [
+        386,
+        222,
+        228,
+        56
+      ],
+      "what": "Each change is built in its own worktree, a second folder on its own branch, so main stays untouched. One worker, one ticket, one pull request.",
+      "loop": [
+        "Write a failing test",
+        "Change the code",
+        "Run the tests",
+        "Fix until green",
+        "Commit"
+      ],
+      "chains": [
+        {
+          "title": "Starting the worktree",
+          "rows": [
+            {
+              "k": "name",
+              "q": "Is the branch name a `type/slug` (feat, fix, chore, docs, refactor, test)?",
+              "by": "`_new-worktree.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse if not"
+              },
+              "next": "Pick a name such as `feat/login`.",
+              "source": {
+                "file": "scripts/_new-worktree.sh",
+                "line": 70,
+                "text": "must be type/slug where type"
+              }
+            },
+            {
+              "k": "merged",
+              "q": "Does that branch name belong to a pull request that already merged?",
+              "by": "`_new-worktree.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Pick a fresh name. Skipped with a warning when the forge cannot be reached.",
+              "source": {
+                "file": "scripts/_new-worktree.sh",
+                "line": 149,
+                "text": "maps to a merged PR — pick a fresh name"
+              }
+            },
+            {
+              "k": "ceiling",
+              "q": "Are too many worktrees open already?",
+              "by": "`_new-worktree.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Reclaim merged ones, or raise `HIMMEL_WORKTREE_CEILING`.",
+              "source": {
+                "file": "scripts/_new-worktree.sh",
+                "line": 130,
+                "text": "worktree ceiling reached"
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "from `origin/<default branch>`, or your local default branch when there is no remote",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "`OK new-worktree: …` names the folder to start Claude in.",
+              "source": {
+                "file": "scripts/_new-worktree.sh",
+                "line": 171,
+                "text": "no 'origin' remote - branching from local"
+              },
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "ok",
+              "label": "the branch is feat/try-himmel"
+            },
+            {
+              "hit": "name",
+              "label": "the branch has no type"
+            }
+          ]
+        },
+        {
+          "title": "Committing",
+          "rows": [
+            {
+              "k": "main",
+              "q": "Committing on `main`?",
+              "by": "`check-worktree-isolation.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "`ERROR: Committing directly on 'main' is not allowed.` Commit in your worktree.",
+              "source": {
+                "file": "scripts/hooks/check-worktree-isolation.sh",
+                "line": 18,
+                "text": "ERROR: Committing directly on 'main' is not allowed."
+              }
+            },
+            {
+              "k": "shape",
+              "q": "Does the message start with a type: `feat:`, `fix:`, `chore:` …?",
+              "by": "`check-commit-msg.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse if not"
+              },
+              "next": "`COMMIT REJECTED: message does not match conventional commit format.`",
+              "source": {
+                "file": "scripts/hooks/check-commit-msg.sh",
+                "line": 191,
+                "text": "COMMIT REJECTED: message does not match conventional commit format."
+              }
+            },
+            {
+              "k": "ticket",
+              "q": "Does it name a ticket in your tracker's form: `#1` by default, or your Jira key such as `ABC-123`?",
+              "by": "`check-commit-msg.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse if not"
+              },
+              "next": "No tracker? Set `TICKET_ID_REQUIRED=0` in `~/.himmel/himmel.conf`.",
+              "source": {
+                "file": "scripts/hooks/check-commit-msg.sh",
+                "line": 316,
+                "text": "Opt out entirely with TICKET_ID_REQUIRED=0 in ~/.himmel/himmel.conf"
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "The commit is made.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "main",
+              "label": "you commit on main"
+            },
+            {
+              "hit": "shape",
+              "label": "the message is \"wip\""
+            },
+            {
+              "hit": "ticket",
+              "label": "it names no ticket"
+            },
+            {
+              "hit": "ok",
+              "label": "it reads \"feat: add hello #1\""
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "guard",
+      "label": "Guardrails",
+      "sub": "on every tool call",
+      "reach": {
+        "kind": "project",
+        "text": "in your project"
+      },
+      "box": [
+        180,
+        334,
+        210,
+        52
+      ],
+      "what": "Before Claude Code runs any tool, himmel's hooks see the call. They run in order, and the first one that says no stops it before anything happens. Git gates do the same for commits and pushes.",
+      "loop": [
+        "Claude asks to run a tool",
+        "The hooks run in order",
+        "Refused: Claude reads why and changes course",
+        "Allowed or asked: the call runs"
+      ],
+      "chains": [
+        {
+          "title": "Every tool call",
+          "rows": [
+            {
+              "k": "main",
+              "q": "An edit in a repo that is on `main`?",
+              "by": "`block-edit-on-main.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Make a worktree first. Once, on purpose: start Claude with `EDIT_ON_MAIN_OK=1 claude`.",
+              "source": {
+                "file": "scripts/hooks/block-edit-on-main.sh",
+                "line": 268,
+                "text": "block-edit-on-main: refusing to edit"
+              }
+            },
+            {
+              "k": "secret",
+              "q": "Reading `.env`, a key file or another secret?",
+              "by": "`block-read-secrets.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Keys stay out of Claude's context. Once: `READ_SECRETS_OK=1 claude`.",
+              "source": {
+                "file": "scripts/hooks/block-read-secrets.sh",
+                "line": 697,
+                "text": "READ_SECRETS_OK=1 claude"
+              }
+            },
+            {
+              "k": "destroy",
+              "q": "A destructive command: `rm -rf`, `git reset --hard`, `git clean -f`, a force push?",
+              "by": "`block-destructive-commands.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Once: `DESTRUCTIVE_OK=1 claude`.",
+              "source": {
+                "file": "marketplace/plugins/himmel-guard/hooks/block-destructive-commands.sh",
+                "line": 208,
+                "text": "bypass: DESTRUCTIVE_OK=1 in the launching shell (per run)"
+              },
+              "reach": {
+                "kind": "plugin",
+                "text": "on by default"
+              }
+            },
+            {
+              "k": "safe",
+              "q": "A read-only look: `ls`, `git log`, `grep` and the like?",
+              "by": "`auto-approve-safe-bash.sh`",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "Runs without a prompt, even inside a pipe.",
+              "source": {
+                "file": "scripts/hooks/auto-approve-safe-bash.sh",
+                "line": 1821,
+                "text": "\"permissionDecision\":\"allow\""
+              }
+            },
+            {
+              "k": "ask",
+              "q": "Anything else",
+              "by": "Claude Code's own permission settings",
+              "outcome": {
+                "kind": "ask",
+                "text": "Ask"
+              },
+              "next": "The same prompt you get without himmel.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "main",
+              "label": "Claude creates hello.txt on main"
+            },
+            {
+              "hit": "secret",
+              "label": "Claude reads .env"
+            },
+            {
+              "hit": "destroy",
+              "label": "Claude runs rm -rf build"
+            },
+            {
+              "hit": "safe",
+              "label": "Claude runs git log"
+            },
+            {
+              "hit": "ask",
+              "label": "Claude edits in a worktree"
+            }
+          ]
+        },
+        {
+          "title": "Every push",
+          "rows": [
+            {
+              "k": "main",
+              "q": "Pushing to `main`?",
+              "by": "`check-push-target.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "`ERROR: Direct push to 'main' is not allowed.` There is no bypass: changes reach main through a pull request.",
+              "source": {
+                "file": "scripts/hooks/check-push-target.sh",
+                "line": 29,
+                "text": "ERROR: Direct push to 'main' is not allowed."
+              }
+            },
+            {
+              "k": "force",
+              "q": "A force push to `main`?",
+              "by": "`check-no-force-push.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "`ERROR: Force-push to 'main' is not allowed.` To another branch it goes through with a warning.",
+              "source": {
+                "file": "scripts/hooks/check-no-force-push.sh",
+                "line": 60,
+                "text": "ERROR: Force-push to 'main' is not allowed."
+              }
+            },
+            {
+              "k": "owed",
+              "q": "Code changed since the last clean review?",
+              "by": "`check-cr-before-push.sh`",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow, review owed"
+              },
+              "next": "The push goes through and leaves a review-owed marker, which the pull-request check reads.",
+              "source": {
+                "file": "scripts/hooks/check-cr-before-push.sh",
+                "line": 970,
+                "text": "→ code-review: marker written for ${branch}"
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "platforms",
+              "q": "Script changes with no `Platforms tested:` line in a commit or the PR body?",
+              "by": "`check-platforms-tested.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Name the systems you tested on, such as `Platforms tested: linux`, in the branch's first commit.",
+              "source": {
+                "file": "scripts/hooks/check-platforms-tested.sh",
+                "line": 216,
+                "text": "attestation found in commit messages or PR body."
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "security",
+              "q": "Code changes with no `Security reviewed:` line in a commit or the PR body?",
+              "by": "`check-security-reviewed.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Say how you checked it, such as `Security reviewed: manual — <what you did>`, in the branch's first commit.",
+              "source": {
+                "file": "scripts/hooks/check-security-reviewed.sh",
+                "line": 308,
+                "text": "'Security reviewed:' attestation was found in commit messages or"
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "The branch is on the remote.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "main",
+              "label": "you push to main"
+            },
+            {
+              "hit": "force",
+              "label": "you force-push to main"
+            },
+            {
+              "hit": "owed",
+              "label": "you push your branch"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ci",
+      "label": "Tests & CI",
+      "sub": "on every push",
+      "reach": {
+        "kind": "project",
+        "text": "in your project"
+      },
+      "box": [
+        405,
+        334,
+        190,
+        52
+      ],
+      "what": "Your own CI runs on every push. `check-ci.sh` waits once in the foreground and its exit code is the answer, so nobody guesses whether a run is green.",
+      "loop": [
+        "Push",
+        "CI runs",
+        "Red: back to the worktree",
+        "Green and resolved: on to the gate"
+      ],
+      "chains": [
+        {
+          "title": "Reading the result",
+          "rows": [
+            {
+              "k": "red",
+              "q": "A check failed? (exit 1)",
+              "by": "`check-ci.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Back to Build"
+              },
+              "next": "A red job on your pull request is yours to fix.",
+              "source": {
+                "file": "scripts/check-ci.sh",
+                "line": 94,
+                "text": "1 — at least one check failed"
+              }
+            },
+            {
+              "k": "threads",
+              "q": "Green, but review threads are open? (exit 3)",
+              "by": "`check-ci.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Back to review"
+              },
+              "next": "Answer and resolve the threads.",
+              "source": {
+                "file": "scripts/check-ci.sh",
+                "line": 108,
+                "text": "3 — checks green but the review state blocks the merge"
+              }
+            },
+            {
+              "k": "block",
+              "q": "GitHub will block the merge? (exit 5 or 6)",
+              "by": "`check-ci.sh`",
+              "outcome": {
+                "kind": "ask",
+                "text": "Ask"
+              },
+              "next": "A branch rule or a conflict: your call.",
+              "source": {
+                "file": "scripts/check-ci.sh",
+                "line": 119,
+                "text": "5 — GitHub will BLOCK this merge"
+              }
+            },
+            {
+              "k": "wait",
+              "q": "Cannot tell yet? (exit 2)",
+              "by": "`check-ci.sh`",
+              "outcome": {
+                "kind": "ask",
+                "text": "Wait"
+              },
+              "next": "Run `check-ci.sh` again, or repair the read.",
+              "source": {
+                "file": "scripts/check-ci.sh",
+                "line": 101,
+                "text": "2 — cannot evaluate: no PR found / no checks registered"
+              }
+            },
+            {
+              "k": "green",
+              "q": "Green and resolved (exit 0)",
+              "by": "`check-ci.sh`",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "Ready to merge.",
+              "source": {
+                "file": "scripts/check-ci.sh",
+                "line": 89,
+                "text": "0 — all checks green AND all review threads resolved"
+              },
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "red",
+              "label": "a test fails"
+            },
+            {
+              "hit": "green",
+              "label": "everything is green"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "review",
+      "label": "Second-model review",
+      "sub": "Claude + OpenAI GPT",
+      "reach": {
+        "kind": "clone",
+        "text": "from your himmel clone, for now"
+      },
+      "box": [
+        610,
+        334,
+        210,
+        52
+      ],
+      "what": "`/pr-check` has a second model family review the diff: OpenAI GPT through the Codex CLI, with Claude over the API when that lane is on. A finding you agree with sends the change back to the worktree; a pull request cannot open while a review is owed.",
+      "loop": [
+        "Review round",
+        "Findings",
+        "Agree: fix and push",
+        "Next round, three at most",
+        "Clean: the review-owed marker clears"
+      ],
+      "chains": [
+        {
+          "title": "Each review round",
+          "rows": [
+            {
+              "k": "find",
+              "q": "A blocking finding that you agree with?",
+              "by": "`/pr-check`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Back to Build"
+              },
+              "next": "Fix it, push again, and a new review round starts.",
+              "source": {
+                "file": ".claude/commands/pr-check.md",
+                "line": 32,
+                "text": "= agreed|disproved|conflict|unaddressed|deferred"
+              }
+            },
+            {
+              "k": "cap",
+              "q": "Three full rounds used already?",
+              "by": "`review-round.sh`",
+              "outcome": {
+                "kind": "ask",
+                "text": "Ask"
+              },
+              "next": "One diff-only round is left, and it blocks only on critical findings. A fourth full round is refused.",
+              "source": {
+                "file": "scripts/cr/review-round.sh",
+                "line": 1038,
+                "text": "a 4th full round is refused"
+              }
+            },
+            {
+              "k": "clean",
+              "q": "Clean",
+              "by": "`clear-review-marker.sh`",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "The review-owed marker is cleared.",
+              "source": {
+                "file": "scripts/cr/clear-review-marker.sh",
+                "line": 2028,
+                "text": "CR clean — marker cleared for $branch"
+              },
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "find",
+              "label": "the review finds a real bug"
+            },
+            {
+              "hit": "clean",
+              "label": "nothing blocking is found"
+            }
+          ]
+        },
+        {
+          "title": "Opening the pull request",
+          "rows": [
+            {
+              "k": "owed",
+              "q": "Is a review still owed for this branch?",
+              "by": "`check-cr-marker-on-pr-create.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "`gh pr create` waits for a clean review.",
+              "source": {
+                "file": "scripts/hooks/check-cr-marker-on-pr-create.sh",
+                "line": 509,
+                "text": "Automated review pending for ${branch}."
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "The pull request opens. In a starter install this check is not installed, so it always opens.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "owed",
+              "label": "you open it before the review"
+            },
+            {
+              "hit": "ok",
+              "label": "you open it after a clean review"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "gate",
+      "label": "Merge gate",
+      "sub": "",
+      "reach": {
+        "kind": "project",
+        "text": "in your project"
+      },
+      "diamond": [
+        500,
+        470,
+        36,
+        46
+      ],
+      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; most failed reads let the merge through with a warning, but a required reviewer it cannot read holds the merge.",
+      "loop": [
+        "Claude asks to merge",
+        "The gate reads CI, the reviewers and CodeRabbit's threads",
+        "Any no: back to that step",
+        "All yes: on to approval"
+      ],
+      "chains": [
+        {
+          "title": "Every merge",
+          "rows": [
+            {
+              "k": "reviewer",
+              "q": "A required reviewer has not passed at this commit?",
+              "by": "`review-merge-gate.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Re-run the review, or fix its findings.",
+              "source": {
+                "file": "scripts/lib/review-merge-gate.sh",
+                "line": 489,
+                "text": "a hard reviewer must pass at the head"
+              }
+            },
+            {
+              "k": "threads",
+              "q": "Unresolved CodeRabbit review threads?",
+              "by": "`review-merge-gate.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Resolve them first.",
+              "source": {
+                "file": "scripts/lib/review-merge-gate.sh",
+                "line": 373,
+                "text": "unresolved CodeRabbit review thread(s) on PR"
+              }
+            },
+            {
+              "k": "ci",
+              "q": "A check failed or still running on this commit?",
+              "by": "`ci-green-gate.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Back to Tests & CI.",
+              "source": {
+                "file": "scripts/lib/ci-green-gate.sh",
+                "line": 109,
+                "text": "CI not green. Bypass: CI_MERGE_GATE_OK=1."
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "On to approval; the merge runs once it is given, pinned to the checked commit.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "reviewer",
+              "label": "a required reviewer has not passed"
+            },
+            {
+              "hit": "threads",
+              "label": "a review thread is still open"
+            },
+            {
+              "hit": "ok",
+              "label": "reviewers passed, threads resolved and CI green"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "approve",
+      "label": "Approval",
+      "sub": "you, or the chief",
+      "reach": {
+        "kind": "human",
+        "text": "approval: you, or the chief in a fleet"
+      },
+      "box": [
+        628,
+        444,
+        164,
+        52
+      ],
+      "what": "Working alone, you decide when to merge: himmel does not require a GO for your own merges, except a change to a CI trust path, which needs a trust-reviewed GO. In a fleet, the worker reports READY and waits; the chief, itself a Claude session, checks it and writes a signed approval, the GO, for that one commit. A judge is added only when the change touches a trust path such as a guard, a gate or CI.",
+      "loop": [
+        "READY, and wait",
+        "The ready-check",
+        "A trust path? A judge rules",
+        "GO for this exact commit"
+      ],
+      "chains": [
+        {
+          "title": "Before READY",
+          "rows": [
+            {
+              "k": "ci",
+              "q": "CI red, or threads open?",
+              "by": "`check-ci.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Back to Build"
+              },
+              "next": "Same exits as Tests & CI.",
+              "source": {
+                "file": "scripts/check-ci.sh",
+                "line": 94,
+                "text": "1 — at least one check failed"
+              },
+              "reach": {
+                "kind": "project",
+                "text": "in your project"
+              }
+            },
+            {
+              "k": "ready",
+              "q": "Does the chief's ready-check fail? (head, CI, threads, trailers, ticket coverage)",
+              "by": "`ready-check.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "The worker fixes the one line that failed.",
+              "source": {
+                "file": "scripts/handover/chief-kit/ready-check.sh",
+                "line": 539,
+                "text": "PR body has no '## Ticket coverage' section"
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "trust",
+              "q": "Does the change touch a trust path (guards, gates, CI)?",
+              "by": "`go.sh`",
+              "outcome": {
+                "kind": "ask",
+                "text": "Ask a judge"
+              },
+              "next": "A separate judge session rules GO or NO-GO on that exact commit.",
+              "source": {
+                "file": "scripts/handover/chief-kit/go.sh",
+                "line": 325,
+                "text": "refusing the plain GO for PR"
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "The worker reports READY and waits. Waiting for approval is the only wait a worker is allowed.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "trust",
+              "label": "the change edits a guard"
+            },
+            {
+              "hit": "ok",
+              "label": "every check passes"
+            }
+          ]
+        },
+        {
+          "title": "Writing the approval",
+          "rows": [
+            {
+              "k": "self",
+              "q": "A worker trying to approve its own merge?",
+              "by": "`go.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Only the chief writes the approval file, signed for one pull request and one commit.",
+              "source": {
+                "file": "scripts/handover/chief-kit/go.sh",
+                "line": 246,
+                "text": "go: refusing - this is a console-spawned leg"
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "nogo",
+              "q": "No approval for this exact commit?",
+              "by": "`go-gate.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "A new push needs a new approval.",
+              "source": {
+                "file": "scripts/lib/go-gate.sh",
+                "line": 86,
+                "text": "a GO for an older head is stale, never reuse it."
+              },
+              "reach": {
+                "kind": "project",
+                "text": "in your project"
+              }
+            },
+            {
+              "k": "red",
+              "q": "Is main itself red?",
+              "by": "`merge-on-green.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "Only a change that declares itself the fix goes through: a `Fixes-main-red:` line in a commit, or the chief's fix approval.",
+              "source": {
+                "file": "scripts/handover/merge-on-green.sh",
+                "line": 1202,
+                "text": "main-red gate: $1 — not merging."
+              },
+              "reach": {
+                "kind": "project",
+                "text": "in your project"
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Otherwise",
+              "by": "",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "Squash merge; the worker wraps up and the chief closes its window.",
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "self",
+              "label": "the worker writes its own approval"
+            },
+            {
+              "hit": "ok",
+              "label": "the chief approves this commit"
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "ship",
+      "label": "Ship and hand over",
+      "sub": "merge + handover",
+      "reach": {
+        "kind": "project",
+        "text": "in your project"
+      },
+      "box": [
+        832,
+        444,
+        146,
+        52
+      ],
+      "what": "The merge is pinned to the commit that was checked; `merge-on-green.sh` squashes it. `/handover` writes what was done and what is next, so the next session, or the next shift of the chief, starts where this one stopped.",
+      "loop": [
+        "Merge the checked commit",
+        "Write the handover",
+        "The next session reads it",
+        "Back to Plan"
+      ],
+      "chains": [
+        {
+          "title": "Handing over the chief",
+          "rows": [
+            {
+              "k": "fill",
+              "q": "Is the chief's context 45 % full?",
+              "by": "`chief.sh`",
+              "outcome": {
+                "kind": "allow",
+                "text": "Hand over"
+              },
+              "next": "It starts its successor and writes a handoff note.",
+              "source": {
+                "file": "scripts/handover/chief/chief.sh",
+                "line": 966,
+                "text": "fill_percent=\"${CHIEF_FILL_PERCENT:-45}\""
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "busy",
+              "q": "Something of its own still running?",
+              "by": "`chief.sh`",
+              "outcome": {
+                "kind": "refuse",
+                "text": "Refuse"
+              },
+              "next": "It stops its own tasks first.",
+              "source": {
+                "file": "scripts/handover/chief/chief.sh",
+                "line": 451,
+                "text": "wrap refused: this session has live non-harness processes"
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              }
+            },
+            {
+              "k": "ok",
+              "q": "Is the relay delivered to every running worker? (`RELAYED n of m`)",
+              "by": "`relay-batch.sh`",
+              "outcome": {
+                "kind": "allow",
+                "text": "Allow"
+              },
+              "next": "The old chief wraps; the new chief carries on from step 1.",
+              "source": {
+                "file": "scripts/handover/chief-kit/relay-batch.sh",
+                "line": 282,
+                "text": "echo \"RELAYED $sent of $total\""
+              },
+              "reach": {
+                "kind": "clone",
+                "text": "from your himmel clone, for now"
+              },
+              "end": true
+            }
+          ],
+          "try": [
+            {
+              "hit": "busy",
+              "label": "a task is still running"
+            },
+            {
+              "hit": "ok",
+              "label": "every worker has the relay"
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "e-in1",
+      "from": "ticket",
+      "to": "plan",
+      "kind": "flow",
+      "d": "M260 74 L430 124"
+    },
+    {
+      "id": "e-in2",
+      "from": "codebase",
+      "to": "plan",
+      "kind": "flow",
+      "d": "M500 74 L500 124"
+    },
+    {
+      "id": "e-in3",
+      "from": "rules",
+      "to": "plan",
+      "kind": "flow",
+      "d": "M740 74 L570 124"
+    },
+    {
+      "id": "e-pb",
+      "from": "plan",
+      "to": "build",
+      "kind": "flow",
+      "d": "M500 176 L500 222"
+    },
+    {
+      "id": "e-bg",
+      "from": "build",
+      "to": "guard",
+      "kind": "flow",
+      "d": "M430 278 L285 334"
+    },
+    {
+      "id": "e-bc",
+      "from": "build",
+      "to": "ci",
+      "kind": "flow",
+      "d": "M500 278 L500 334"
+    },
+    {
+      "id": "e-br",
+      "from": "build",
+      "to": "review",
+      "kind": "flow",
+      "d": "M570 278 L715 334"
+    },
+    {
+      "id": "e-gg",
+      "from": "guard",
+      "to": "gate",
+      "kind": "flow",
+      "d": "M285 386 L470 448"
+    },
+    {
+      "id": "e-cg",
+      "from": "ci",
+      "to": "gate",
+      "kind": "flow",
+      "d": "M500 386 L500 424"
+    },
+    {
+      "id": "e-rg",
+      "from": "review",
+      "to": "gate",
+      "kind": "flow",
+      "d": "M715 386 L530 448"
+    },
+    {
+      "id": "e-ga",
+      "from": "gate",
+      "to": "approve",
+      "kind": "flow",
+      "d": "M536 470 L628 470"
+    },
+    {
+      "id": "e-as",
+      "from": "approve",
+      "to": "ship",
+      "kind": "flow",
+      "d": "M792 470 L832 470"
+    },
+    {
+      "id": "e-sp",
+      "from": "ship",
+      "to": "plan",
+      "kind": "back",
+      "d": "M905 444 C 985 360, 985 150, 602 150"
+    },
+    {
+      "id": "e-fg",
+      "from": "guard",
+      "to": "build",
+      "kind": "fix",
+      "d": "M180 334 C 120 280, 240 250, 386 250"
+    },
+    {
+      "id": "e-fr",
+      "from": "review",
+      "to": "build",
+      "kind": "fix",
+      "d": "M820 334 C 880 280, 760 250, 614 250"
+    },
+    {
+      "id": "e-fc",
+      "from": "ci",
+      "to": "build",
+      "kind": "fix",
+      "d": "M560 334 C 572 312, 560 294, 548 280"
+    }
+  ]
+}
