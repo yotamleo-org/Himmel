@@ -4286,6 +4286,24 @@ want=$(printf './a.md\n./sub/b.md\n')
 got=$(cat "$GL_LISTING" 2>/dev/null)
 [ "$got" = "$want" ] && pass "T-gitcorpus non-git corpus still copies its markdown" \
   || fail "T-gitcorpus non-git expected a.md and sub/b.md, got: $got"
+# BSD awk (macOS) reads -v RS='\0' as "" = paragraph mode, so a NUL-separated
+# stream is one record and the tracked intersect comes back empty (macOS
+# cadence run 40145990367: "T-gitcorpus expected only tracked files, got: ").
+# This awk shim reproduces that on any host.
+BSDAWK_BIN="$WS/bsdawk-bin"; mkdir -p "$BSDAWK_BIN"
+printf '%s\n' '#!/usr/bin/env bash' \
+  'args=(); for a in "$@"; do case "$a" in RS=\\0|ORS=\\0) a="${a%%=*}=" ;; esac; args+=("$a"); done' \
+  "exec \"$(command -v awk)\" \"\${args[@]}\"" > "$BSDAWK_BIN/awk"
+chmod +x "$BSDAWK_BIN/awk"
+: > "$GL_LISTING"
+out=$( GRAPHIFY_MAP_BIN="$GLBIN/graphify" PATH="$BSDAWK_BIN:$GLBIN:$PATH" \
+  bash "$SCRIPT" --name glb --corpus-root "$GLCORPUS" --backend claude-cli \
+  --maps-dir "$GLMAPS" --title "GL Map" --slug gl-map --corpus-tag gl 2>&1 ); rc=$?
+[ "$rc" -eq 0 ] || fail "T-gitcorpus-bsdawk run exit 0 (got $rc): $out"
+want=$(printf './docs/two.md\n./tracked.md\n')
+got=$(cat "$GL_LISTING" 2>/dev/null)
+[ "$got" = "$want" ] && pass "T-gitcorpus-bsdawk a BSD-awk host still copies only tracked markdown" \
+  || fail "T-gitcorpus-bsdawk expected only tracked files, got: $got"
 
 # --- T-merge: a himmel-shaped refresh (--merge-into-live) merges the md-only
 # semantic extraction INTO the live AST-heavy graph instead of promoting it over

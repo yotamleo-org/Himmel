@@ -57,8 +57,10 @@ m=$(printf '%s\n' "$s" | grep -c '(#[0-9]*)$')
 f=$(printf '%s\n' "$s" | grep -c '^fix')
 t=$(printf '%s\n' "$s" | grep -c '^feat')
 r=$(printf '%s\n' "$s" | grep -c 'main-red')
+share=0
+[ "$m" -gt 0 ] && share=$(( 100 * f / m ))
 echo "merges: $m"
-echo "fix-share: fix=$f feat=$t share=$(( m ? 100 * f / m : 0 ))%"
+echo "fix-share: fix=$f feat=$t share=$share%"
 echo "guard-churn: 0"
 echo "compaction-share: compacted=0 runs=0 share=0%"
 echo "sprawl: none"

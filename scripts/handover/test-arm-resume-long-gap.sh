@@ -20,7 +20,7 @@ set -uo pipefail
 ARM="$(cd "$(dirname "$0")" && pwd)/arm-resume.sh"
 [ -x "$ARM" ] || chmod +x "$ARM"
 
-TMP=$(mktemp -d)
+TMP=$(mktemp -d "${TMPDIR:-/tmp}/arm-resume-long-gap.XXXXXX") || exit 1
 trap 'rm -rf "$TMP"' EXIT
 
 # arm-resume.sh now calls scripts/lib/bank-preflight.sh's
