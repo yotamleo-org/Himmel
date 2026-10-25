@@ -690,7 +690,7 @@ timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$
 check "(hb2) the re-arm inside the same streak stays quiet" "" "$(cat "$WORK/hb1b.out")"
 printf 'budget turns=3 cache_read=0.1M verdict=OK\n' > "$STUB/budget.out"; printf '0\n' > "$STUB/budget.rc"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1s.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
-check "(hb3s) verdict OK with no fill measured (stale snapshot) leaves the streak marker" "present:" "$([ -e "$I.wait.budget" ] && echo present):$(cat "$WORK/hb1s.out")"
+check "(hb3s) verdict OK with no fill measured (stale snapshot) leaves the streak marker" "present:124:" "$([ -e "$I.wait.budget" ] && echo present):$rc:$(cat "$WORK/hb1s.out")"
 printf 'budget turns=3 cache_read=0.1M fill=10%% verdict=OK\n' > "$STUB/budget.out"
 rm -f "$STUB/budget.resolves"; : > "$STUB/budget.calls"
 timeout 3 bash "$WAIT" "$I" --doc "$WORK/hb1/consoles/HB.md" --legs "N1.md" > "$WORK/hb1c.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit; pipefail-ok: none set
