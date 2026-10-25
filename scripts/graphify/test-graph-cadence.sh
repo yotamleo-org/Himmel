@@ -1272,6 +1272,8 @@ run_sem() { # <tag> [run_gc args...] -- one fixture per tag, seams pinned
     local tag="$1"; shift
     FAKE_SEM_LOG="$FAKE_SEM_LOG" FAKE_SEND_LOG="$FAKE_SEND_LOG" \
     GRAPH_CADENCE_SEMANTIC_UPDATE="$FAKE_SEM" \
+    GRAPH_CADENCE_SEMANTIC_BACKEND="${GRAPH_CADENCE_SEMANTIC_BACKEND-}" \
+    HIMMEL_API_LANE="${HIMMEL_API_LANE-on}" HIMMEL_API_ACCOUNT="${HIMMEL_API_ACCOUNT-A}" \
     CADENCE_ALERT_FILE="$TMP_ROOT/t9-$tag-alerts.log" CADENCE_ALERT_DEDUPE_DIR="$TMP_ROOT/t9-$tag-dedupe" \
     CADENCE_ALERT_SEND_CMD="$FAKE_SEND" \
     HOME="$TMP_ROOT/t9-$tag-home" GRAPH_CADENCE_HIMMEL_ROOT="$TMP_ROOT/t9-$tag-primary" \
@@ -1293,8 +1295,9 @@ mkdir -p "$TMP_ROOT/t9-on-dedupe"; : > "$TMP_ROOT/t9-on-dedupe/graph-semantic-$S
 rc=0; out=$(run_sem on --semantic) || rc=$?
 assert_eq "semantic opt-in rc=0" "0" "$rc"
 sem_log=$(cat "$FAKE_SEM_LOG")
-assert_contains "semantic step runs with --semantic" "--backend claude-cli" "$sem_log"
-assert_not_contains "semantic step defaults to claude-cli, not ollama (HIMMEL-5367)" "--backend ollama" "$sem_log"
+assert_contains "semantic step runs with --semantic on the API by default" "--backend claude-api" "$sem_log"
+assert_not_contains "semantic step defaults to the API, never claude-cli (HIMMEL-7634)" "--backend claude-cli" "$sem_log"
+assert_not_contains "semantic step defaults to the API, not ollama (HIMMEL-5367)" "--backend ollama" "$sem_log"
 assert_contains "semantic step targets the dedicated worktree as himmel-code" "--corpus-root $TMP_ROOT/t9-on-home/.claude/graph-cadence/$SLUG9 --corpus-class himmel-code" "$sem_log"
 if [ -e "$TMP_ROOT/t9-on-dedupe/graph-semantic-$SLUG9.stale" ]; then
     fail "a successful semantic step clears its cadence alert"
@@ -1395,8 +1398,8 @@ seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 out=$(FAKE_SEM_RC=5 FAKE_SEM_OUT="semantic-merge: BACKED OFF a.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
 assert_contains "a back-off before a non-zero semantic exit still appends the back-off alert" "graph-semantic-$(corpus_slug_of "$TMP_ROOT/t9-$tag-primary")-backoff a file was skipped after repeated semantic failures" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
 # (f) the backend is GRAPH_CADENCE_SEMANTIC_BACKEND, default
-# claude-cli; ollama is the opt-in; anything else refuses before any work.
-for tag in ollama bogus; do
+# claude-api; claude-cli and ollama are explicit opt-ins; anything else refuses before any work.
+for tag in ollama bogus cliopt apidefoff; do
     mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
     seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 done
@@ -1404,6 +1407,19 @@ done
 out=$(GRAPH_CADENCE_SEMANTIC_BACKEND=ollama run_sem ollama --semantic) || rc=$?
 assert_eq "backend=ollama opt-in rc=0" "0" "$rc"
 assert_contains "backend=ollama is passed through to semantic-update" "--backend ollama" "$(cat "$FAKE_SEM_LOG")"
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(GRAPH_CADENCE_SEMANTIC_BACKEND=claude-cli run_sem cliopt --semantic) || rc=$?
+assert_eq "backend=claude-cli explicit opt-in rc=0" "0" "$rc"
+assert_contains "backend=claude-cli runs only when passed explicitly" "--backend claude-cli" "$(cat "$FAKE_SEM_LOG")"
+# no backend env, lane unset: the default is claude-api, so the run refuses and never falls back
+: > "$FAKE_SEM_LOG"; rc=0
+out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_sem apidefoff --semantic) || rc=$?
+assert_eq "no backend env and no API lane refuses rc=1" "1" "$rc"
+assert_contains "default-backend refusal is one ERR line naming HIMMEL_API_LANE" "ERR graph-cadence: GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api needs HIMMEL_API_LANE=on" "$out"
+assert_eq "default-backend refusal never calls semantic-update" "" "$(cat "$FAKE_SEM_LOG")"
+# a run without --semantic never uses the backend: the default must not refuse it (the paused armed runner)
+rc=0; out=$(HIMMEL_API_LANE='' HIMMEL_API_ACCOUNT='' run_sem apidefoff) || rc=$?
+assert_eq "no --semantic and no API lane does not refuse" "0" "$rc"
 : > "$FAKE_SEM_LOG"; rc=0
 out=$(GRAPH_CADENCE_SEMANTIC_BACKEND=bogus run_sem bogus --semantic) || rc=$?
 assert_eq "unknown backend refuses rc=1" "1" "$rc"

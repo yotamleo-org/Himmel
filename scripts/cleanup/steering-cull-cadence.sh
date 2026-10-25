@@ -12,7 +12,7 @@
 #
 #   steering-cull-cadence.sh run  --proposal-dir <dir> [--console <session>] [--repo <path>]
 #   steering-cull-cadence.sh arm  --proposal-dir <dir> [--console <session>]
-#                                 [--day 0-6] [--time HH:MM] [--backend claude-cli|claude-api]
+#                                 [--day 0-6] [--time HH:MM] [--backend claude-api|claude-cli]
 #                                 [--api-account A|B|auto] [--force] [--dry-run]
 #   steering-cull-cadence.sh status
 #   steering-cull-cadence.sh disarm [--dry-run]
@@ -36,13 +36,15 @@
 # budget as interactive use, so a run first asks scripts/lib/usage-preflight.sh
 # and skips (rc 0) unless it prints PROCEED.
 #
-# Backend (STEERING_CULL_BACKEND, resolved by scripts/lib/llm-backend.sh): claude-cli
-# is the default and the bank-preflight path above. claude-api sends the same call
-# through scripts/api-lane/claude-api.sh (API credit, Read tool only, plan mode, a
-# per-call budget STEERING_CULL_API_BUDGET_USD, default 0.50); it needs
-# HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT, skips bank-preflight (it draws no
-# subscription budget) and never falls back to claude-cli. `arm --backend claude-api
-# --api-account A|B|auto` bakes those three into the cron runner.
+# Backend (STEERING_CULL_BACKEND, resolved by scripts/lib/llm-backend.sh): claude-api
+# is the default. It sends the call through scripts/api-lane/claude-api.sh (API credit,
+# Read tool only, plan mode, a per-call budget STEERING_CULL_API_BUDGET_USD, default
+# 0.50); it needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT (else the run refuses, rc 1),
+# skips bank-preflight (it draws no subscription budget) and never falls back to
+# claude-cli. claude-cli is the explicit opt-in and the bank-preflight path above: set
+# STEERING_CULL_BACKEND=claude-cli, or `arm --backend claude-cli`. `arm` with no
+# --backend arms the cron runner on the API lane with the auto account;
+# `arm --backend claude-api --api-account A|B|auto` picks the account.
 #
 # Seams (tests): STEERING_CULL_CLAUDE, STEERING_CULL_API_LANE, STEERING_CULL_PREFLIGHT_CMD,
 # STEERING_CULL_STATE_DIR, STEERING_CULL_DATE, STEERING_CULL_CRONTAB,
@@ -111,7 +113,7 @@ cmd_run() {
     [ -n "$repo" ] || repo="$(resolve_primary)" || { echo "ERR steering-cull: cannot resolve the repo" >&2; return 64; }
     [ -n "$pdir" ] || { echo "ERR steering-cull: --proposal-dir is required" >&2; return 64; }
 
-    backend="$(llm_backend_resolve "${STEERING_CULL_BACKEND:-claude-cli}")" || {
+    backend="$(llm_backend_resolve "${STEERING_CULL_BACKEND:-claude-api}")" || {
         echo "ERR steering-cull: STEERING_CULL_BACKEND='${STEERING_CULL_BACKEND:-}' is not accepted: claude-cli or claude-api only" >&2; return 1; }
     case "$backend" in
         claude-cli)
@@ -242,6 +244,10 @@ cmd_arm() {
     if [ -n "$backend" ]; then
         backend="$(llm_backend_resolve "$backend")" || { echo "ERR steering-cull: --backend must be claude-cli or claude-api" >&2; return 1; }
         [ "$backend" != "ollama" ] || { echo "ERR steering-cull: --backend must be claude-cli or claude-api" >&2; return 1; }
+    fi
+    if [ -z "$backend" ]; then
+        backend="claude-api"
+        [ -n "$acct" ] || acct="auto"
     fi
     if [ "$backend" = "claude-api" ]; then
         case "$acct" in A|B|auto) ;; *) echo "ERR steering-cull: --backend claude-api needs --api-account A|B|auto" >&2; return 1 ;; esac

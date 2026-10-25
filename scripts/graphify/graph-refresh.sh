@@ -9,7 +9,7 @@
 # argument sets by reading the cadence script — the title/slug/tag literals, the
 # luna-vs-himmel corpus-root asymmetry (luna extracts the VAULT, himmel extracts
 # the HIMMEL REPO, BOTH publish their curated MOC into the vault's 60-Maps/), and
-# the fixed claude-cli backend. This wrapper is that missing one-shot: it encodes
+# the fixed claude-api backend. This wrapper is that missing one-shot: it encodes
 # the per-corpus argument sets ONCE (identical literals to the cadence's
 # bat_payload/cron_payload) and fires refresh-graph-map.sh per corpus serially.
 #
@@ -23,7 +23,7 @@
 # SERIAL, never concurrent: luna then himmel, mirroring the cadence's stagger
 # rationale. The two corpora use different out-dirs, so no shared lock serializes
 # them — a deliberate serial run here is the operator-side guard against two
-# back-to-back extractions piling onto the claude-cli backend at once.
+# back-to-back extractions piling onto the backend at once.
 #
 # TIMEOUT CALIBRATION lives in refresh-graph-map.sh: this wrapper does NOT set GRAPHIFY_API_TIMEOUT itself — it forwards the
 # caller's environment verbatim, so a sane default landed in the runner applies
@@ -54,7 +54,7 @@
 # Exit codes:
 #   0  all selected corpora refreshed successfully
 #   1  usage error (unknown corpus / unknown flag)
-#   2  environment error (refresh-graph-map.sh not found, or --vault is not a
+#   2  environment error (refresh-graph-map.sh not found, the API lane is off, or --vault is not a
 #      directory)
 #   3  one or more corpus refresh legs FAILED (runner exited non-zero, not a
 #      bank skip) -- investigate
@@ -82,10 +82,13 @@ CADENCE_SCRIPT="${GRAPH_REFRESH_CADENCE_SCRIPT:-$HIMMEL_ROOT/scripts/luna/graphm
 PHI_CONFIG_DIR="${CLAUDE_GLM_CONFIG_DIR:-$HOME/.config/claude-glm}"
 
 # Fixed per-corpus map identity — IDENTICAL literals to graphmap-cadence.sh's
-# LUNA_*/HIMMEL_* + BACKEND. Both encode the canonical per-corpus argument set;
-# kept in sync by hand (this wrapper and the cadence are the two places it lives,
-# by design — the cadence is the scheduled path, this is the on-demand path).
-BACKEND="claude-cli"
+# LUNA_*/HIMMEL_*. Both encode the canonical per-corpus argument set; kept in sync
+# by hand (this wrapper and the cadence are the two places it lives, by design —
+# the cadence is the scheduled path, this is the on-demand path). BACKEND is the
+# exception: background LLM jobs default to the API, so a real run
+# needs the API lane (HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT) and never falls
+# back to the subscription claude-cli.
+BACKEND="claude-api"
 LUNA_TITLE="Graphify Luna Map"
 LUNA_SLUG="graphify-luna-map"
 LUNA_TAG="luna"
@@ -678,6 +681,12 @@ if [ "$DRY_RUN" -eq 1 ]; then
 fi
 
 # --- real run: fire refresh-graph-map.sh per corpus, serially -----------------
+# shellcheck source=../lib/llm-backend.sh
+. "$HIMMEL_ROOT/scripts/lib/llm-backend.sh"
+if [ "$BACKEND" = "claude-api" ] && ! llm_backend_api_ready; then
+    echo "ERR graph-refresh: backend claude-api needs HIMMEL_API_LANE=on and HIMMEL_API_ACCOUNT in the launching environment -- refusing, no claude-cli fallback" >&2
+    exit 2
+fi
 echo "graph-refresh: refreshing $CORPUS serially on backend $BACKEND (vault: $VAULT)" >&2
 FAILURES=0
 SKIPPED=0
