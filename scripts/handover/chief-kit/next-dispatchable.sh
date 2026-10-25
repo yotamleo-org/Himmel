@@ -83,9 +83,9 @@
 # once, bounded, and a Done blocker no longer drops the ticket; a live one is named
 # `blocker KEY (<status>, live)`. The live read runs with the real classifier, or when
 # NEXT_DISPATCH_JIRA_CMD is set; an unreadable key leaves the blocker open. A classifier
-# BLOCKED is never lifted: the drop carries its reason. A classifier LOCAL-NATIVE that names a
-# directory with a held file in it is listed with a `# overlap <KEY> <directory, held files,
-# holder>` line right after the row, so a listed row never hides who holds a file under it.
+# BLOCKED is never lifted: the drop carries its reason, and a ticket naming a directory with a
+# held file in it is BLOCKED naming that file's holder. While any open PR's files are unreadable
+# no To Do row is listed: a false free is worse than a short list.
 #
 # Classification: the survivors go through scripts/lanes/cloud-route.mjs
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
@@ -151,6 +151,8 @@ def files_in(text):
     out = []
     for m in FILE_RE.finditer(text):
         f = re.sub(r'[.,;:)\]-]+$', '', m.group(1))
+        if f and not f.endswith('/') and os.path.isdir(os.path.join(repo, f)):
+            f += '/'  # a directory keeps its slash, whatever punctuation followed it in the text
         if f and f not in out:
             out.append(f)
     return out
@@ -209,6 +211,7 @@ def scope_paths(line):
     # directory included; a path named later on the line holds only when it is a concrete file, since a directory a
     # brief mentions there ("grep scripts/ci", "N3185 is the single writer in scripts/config-ui/") is context
     text = write_scope(line)
+    # ponytail: the list ends at its first sentence break, so a path after a mid-list "." reads as later prose and holds only when concrete, upgrade path: end the list at the next heading
     m = SENT_BREAK_RE.search(text) if not line.startswith(WRITES_LEAD) and 'writes confined to' in line else None
     inside, outside = (text[:m.start()], text[m.end():]) if m else (text, '')
     later = [s for s in SENT_BREAK_RE.split(outside)]
@@ -687,6 +690,9 @@ for i in cands:
     if hit:
         drop(i, 'collision %s held by %s' % hit)
         continue
+    if pr_files_unknown:  # an unread PR could hold the ticket's files
+        drop(i, 'open PR files unknown (PR %s): its collisions cannot be checked' % ' '.join(pr_files_unknown))
+        continue
     free.append(i)
 
 reasons = {}  # the classifier's stated reason per key
@@ -848,11 +854,8 @@ def emit_free(rows):
                 continue
             picked.extend((f, i['key']) for f in i['files'])
             emitted.append(i)
-            overlap = reasons.get(i['key'], '')[reasons.get(i['key'], '').find('names the directory'):] if 'names the directory' in reasons.get(i['key'], '') else ''  # a directory the ticket names with a held file in it: listed, never without its holder
-            lane_of[i['key']] = lane + (' (overlap: %s)' % overlap if overlap else '')
+            lane_of[i['key']] = lane
             print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
-            if overlap:
-                print('# overlap %s %s' % (i['key'], overlap))
             n += 1
             if n >= top:
                 break

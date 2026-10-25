@@ -10,11 +10,11 @@
 //
 // Classes, first match wins:
 //   BLOCKED      ticket not To Do/Backlog/Open, the open-PR/held-file list or file tree is unknown, or a
-//                file it touches is held (one writer per file); a directory it names collides only with an
-//                equal or enclosing held path, never with a held file under it (that is LOCAL-NATIVE below)
+//                file it touches is held (one writer per file), a directory it names included: any held file
+//                under it blocks, and the reason names the file and its holder
 //   HOOK-BYPASS  touches scripts/hooks/ (hooks do not run in the cloud, and the
 //                integrity guard locks hook edits out of a normal leg)
-//   LOCAL-NATIVE a trust path (needs a trust-reviewed GO), a directory it names with a held file in it, a run-time need the
+//   LOCAL-NATIVE a trust path (needs a trust-reviewed GO), a run-time need the
 //                cloud lacks by design (luna, a vault, handover state, the state repo
 //                or its specs: private data never leaves the station), more than 3 asks, or no file
 //                named to scope a brief on. graphify and BM25 qmd over the repo
@@ -204,7 +204,9 @@ export function fixedBy(t, files, ctx) {
 export function classifyTicket(t, ctx) {
   const text = `${t.title}\n${t.description}`;
   const named = t.files?.length ? t.files : [...extractFiles(text), ...bareNames(text, ctx.tree ?? [])];
-  const files = [...new Set(named.map((f) => posix.normalize(f)))];
+  // a directory in the tree is named with its slash, whatever punctuation followed it in the text
+  const asDir = (f) => (!f.endsWith('/') && (ctx.tree ?? []).some((p) => p.startsWith(`${f}/`)) ? `${f}/` : f);
+  const files = [...new Set(named.map((f) => asDir(posix.normalize(f))))];
   const asks = Math.max(1, askLines(t.description).length);
   const v = (cls, reason) => ({ class: cls, reason, files, asks });
   const needs = needsOf(ctx.matrix ?? (defaultMatrix ??= loadMatrix()));
@@ -212,21 +214,18 @@ export function classifyTicket(t, ctx) {
   if (!/^(to do|backlog|open)$/i.test(t.status ?? '')) return v('BLOCKED', `status is '${t.status}', not To Do/Backlog/Open — already in flight or done`);
   // a run-time need (state-repo spec paths and the like) is the more specific LOCAL-NATIVE reason
   const strange = t.files?.length || needs.re.test(text) ? [] : unrecognisedPaths(text);
-  // a directory the ticket names is context: it collides with nothing but an equal or enclosing held path
-  const underDir = (f, x) => f.endsWith('/') && !x.file.endsWith('/') && x.file.startsWith(f);
-  let dirHold;
   for (const f of files) {
-    const h = (ctx.held ?? []).find((x) => overlaps(f, x.file) && !underDir(f, x));
-    if (h) return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
-    const u = (ctx.held ?? []).filter((x) => underDir(f, x));
-    if (u.length && !dirHold) dirHold = { dir: f, held: u };
+    const h = (ctx.held ?? []).find((x) => overlaps(f, x.file));
+    if (!h) continue;
+    // a directory the ticket names is held by every file under it: one writer per file
+    if (f.endsWith('/') && h.file !== f) return v('BLOCKED', `${f} contains held ${h.file} (${h.why}) — one writer per file`);
+    return v('BLOCKED', `${f} is held (${h.why}) — one writer per file`);
   }
-  const dirNote = dirHold ? `names the directory ${dirHold.dir} with held file(s) in it: ${dirHold.held.slice(0, 3).map((x) => `${x.file} (${x.why})`).join(', ')}${dirHold.held.length > 3 ? `, +${dirHold.held.length - 3} more` : ''}` : '';
+  if (ctx.heldUnknown) return v('BLOCKED', 'held-file list unavailable (gh failed, or the reservation log is unreadable) — cannot prove the files are free');
   const hook = files.find((f) => HOOKS.test(f));
-  if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass${dirNote ? `; ${dirNote}` : ''}`);
+  if (hook) return v('HOOK-BYPASS', `touches ${hook} — hooks do not run in the cloud and edits need the hook-integrity bypass`);
   const trust = files.find((f) => (ctx.trust ?? []).some((re) => re.test(f)));
-  if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO${dirNote ? `; ${dirNote}` : ''}`);
-  if (dirHold) return v('LOCAL-NATIVE', `${dirNote} — a local leg scopes the files and must not write them, a cloud brief cannot (pass files)`);
+  if (trust) return v('LOCAL-NATIVE', `touches trust path ${trust} — needs a trust-reviewed GO`);
   if (strange.length) return v('LOCAL-NATIVE', `unrecognised path ${strange.join(', ')} — outside the known roots, so the hook, trust and held checks cannot be trusted (pass files)`);
   if (!files.length) return v('LOCAL-NATIVE', 'no file named in the ticket — nothing to scope a brief on (pass files)');
   const need = text.match(needs.re);
@@ -238,7 +237,6 @@ export function classifyTicket(t, ctx) {
   if (ctx.treeUnknown) return v('BLOCKED', 'file tree unavailable (git failed) — cannot resolve the named files');
   const lost = ctx.tree ? unresolved(files, ctx.tree) : [];
   if (lost.length) return v('LOCAL-NATIVE', `cannot resolve ${lost.join(', ')} at the base — no such file or directory, so the hook, trust and held checks cannot be trusted (pass files)`);
-  if (ctx.heldUnknown) return v('BLOCKED', 'held-file list unavailable (gh failed, or the reservation log is unreadable) — cannot prove the files are free');
   if (ctx.mergedUnknown) return v('BLOCKED', 'merged-PR list unavailable (gh failed) — cannot prove the ticket is not already fixed');
   const fixed = fixedBy(t, files, ctx);
   if (fixed.length) return { ...v('VERIFY-LOCAL', `may already be fixed on main — ${fixed.map((f) => `PR ${f.number} (${f.why}, merged ${String(f.mergedAt).slice(0, 10)})`).join('; ')}; verify locally before any cloud session`), prs: fixed.map((f) => f.number) };

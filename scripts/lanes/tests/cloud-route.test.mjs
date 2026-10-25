@@ -626,37 +626,43 @@ test('matrix: a matrix with no match rows has no run-time need', () => {
   assert.equal(classifyTicket(tk({ description: 'Edit scripts/a.sh. It reads the luna vault.' }), ctx({ matrix })).class, 'CLOUD-OK');
 });
 
-test('HIMMEL-7574: a ticket naming a directory is not BLOCKED by an open PR on another file in it', () => {
+test('HIMMEL-7574: a ticket naming a directory with a held file under it is BLOCKED, naming the file and its holder', () => {
   const dirTicket = tk({ description: 'Tidy the helpers under scripts/lanes/.' });
   const v = classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
-  assert.equal(v.class, 'LOCAL-NATIVE');
-  assert.match(v.reason, /scripts\/lanes\//);
-  assert.match(v.reason, /open PR 77/);
-  // the exact file a PR touches still blocks, even beside a directory the ticket names
+  assert.equal(v.class, 'BLOCKED');
+  assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh \(open PR 77\)/);
+  // the exact file a PR touches blocks, beside a directory the ticket names
   const exact = classifyTicket(tk({ description: 'Tidy scripts/lanes/ and fix scripts/lanes/other.sh.' }), ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
   assert.equal(exact.class, 'BLOCKED');
-  // a held directory (a live leg's tree) over a ticket's directory stays BLOCKED
+  // a held directory (a live leg's tree) over a ticket's directory blocks too
   assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live leg' }] })).class, 'BLOCKED');
   // nothing held under the directory: unchanged
   assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] })).class, 'CLOUD-OK');
 });
 
-test('a ticket naming a directory lists the held files under it in the reason', () => {
-  const held = [1, 2, 3, 4].map((n) => ({ file: `scripts/lanes/f${n}.sh`, why: 'open PR 77' }));
-  const v = classifyTicket(tk({ description: 'Tidy the helpers under scripts/lanes/.' }), ctx({ held }));
-  assert.equal(v.class, 'LOCAL-NATIVE');
-  assert.match(v.reason, /scripts\/lanes\/f1\.sh \(open PR 77\), scripts\/lanes\/f2\.sh \(open PR 77\), scripts\/lanes\/f3\.sh \(open PR 77\), \+1 more/);
+test('a hook or trust-path ticket naming a directory with a held file under it is BLOCKED, not routed', () => {
+  const held = [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }];
+  for (const d of ['Fix scripts/hooks/guard.sh and tidy scripts/lanes/.', 'Fix scripts/ci/check.sh and tidy scripts/lanes/.']) {
+    const v = classifyTicket(tk({ description: d }), ctx({ held }));
+    assert.equal(v.class, 'BLOCKED', d);
+    assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh \(open PR 77\)/);
+  }
 });
 
-test('a hook or trust-path verdict keeps the directory overlap and its holder', () => {
+test('a directory named with trailing punctuation and no slash still collides with a held file under it', () => {
   const held = [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }];
-  const hook = classifyTicket(tk({ description: 'Fix scripts/hooks/guard.sh and tidy scripts/lanes/.' }), ctx({ held }));
-  assert.equal(hook.class, 'HOOK-BYPASS');
-  assert.match(hook.reason, /names the directory scripts\/lanes\/ with held file\(s\) in it: scripts\/lanes\/other\.sh \(open PR 77\)/);
-  const trust = classifyTicket(tk({ description: 'Fix scripts/ci/check.sh and tidy scripts/lanes/.' }), ctx({ held }));
-  assert.equal(trust.class, 'LOCAL-NATIVE');
-  assert.match(trust.reason, /trust path scripts\/ci\/check\.sh/);
-  assert.match(trust.reason, /names the directory scripts\/lanes\/ with held file\(s\) in it: scripts\/lanes\/other\.sh \(open PR 77\)/);
+  const v = classifyTicket(tk({ description: 'Tidy the helpers in scripts/lanes.' }), ctx({ held, tree: [...TREE, 'scripts/lanes/other.sh'] }));
+  assert.equal(v.class, 'BLOCKED');
+  assert.ok(v.files.includes('scripts/lanes/'));
+  assert.match(v.reason, /scripts\/lanes\/ contains held scripts\/lanes\/other\.sh/);
+});
+
+test('an unavailable held list BLOCKS a trust-path or run-time-need ticket, not only a plain one', () => {
+  for (const d of ['Edit scripts/ci/check.sh.', 'Edit scripts/lanes/example.sh. It reads the luna vault.']) {
+    const v = classifyTicket(tk({ description: d }), ctx({ heldUnknown: true, tree: TREE }));
+    assert.equal(v.class, 'BLOCKED', d);
+    assert.match(v.reason, /held-file list unavailable/);
+  }
 });
 
 test('CLI: open PR files come from the paginated API, so a PR gh pr diff refuses with 406 still holds its files', () => {
