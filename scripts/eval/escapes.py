@@ -11,7 +11,7 @@ A merged PR has escaped review when a later signal says it shipped a bug:
                           a fix often names an earlier PR only as context, so this is never a sure escape
 
 escapes counts PRs with a sure signal, escapes_plausible PRs with any signal; a PR counts once however
-many signals it has. Per critic (a CR-ledger critic that reviewed the PR's branch: an `ok` avail row or a
+many signals it has. Per critic (a CR-ledger critic that reviewed the PR's branch by its merge: an `ok` avail row or a
 finding, labelled as cr_ledger_eval.py labels it; keys critic.<critic>.*) and per judge (the model of each
 GO verdict record on the PR at its merged head and before its merge, console GOs left out; keys judge.<model>.*): prs, escapes, escapes_plausible
 and escape_rate.
@@ -78,15 +78,22 @@ def signals(prs, bugs):
 
 
 def reviewers(rows):
-    """{branch: {critic, ...}} from ok avail rows and findings."""
-    by = collections.defaultdict(set)
+    """{branch: {critic: [row time, ...]}} from ok avail rows and findings; an undated row's time is None."""
+    by = collections.defaultdict(lambda: collections.defaultdict(list))
     for r in rows:
         if r.get("kind") == "avail" and r.get("status") == "ok" and r.get("model"):
             rm = r.get("responding_model")
-            by[r.get("branch") or ""].add(r["model"] + ":" + rm if rm else r["model"])
+            critic = r["model"] + ":" + rm if rm else r["model"]
+            by[r.get("branch") or ""][critic].append(judge_accuracy.when(r.get("ts") or ""))
     for f in cr_ledger_eval.fold(rows):
-        by[f["branch"]].add(f["critic"])
+        by[f["branch"]][f["critic"]].append(judge_accuracy.when(f["ts"]))
     return by
+
+
+def reviewed_before(rev, p):
+    """The critics with a row on the PR's branch at or before its merge (an undated row counts)."""
+    cut = judge_accuracy.when(p["mergedAt"])
+    return {c for c, ts in rev.get(p.get("headRefName") or "", {}).items() if any(t is None or t <= cut for t in ts)}
 
 
 def judges(recs, merged):
@@ -126,10 +133,12 @@ def build(prs, rows, bugs, recs, until=None):
         m["signal." + kind] = count[kind]
     rev = reviewers(rows)
     per = collections.defaultdict(list)
+    m["reviewed"] = 0
     for n, p in merged.items():
-        for c in rev.get(p.get("headRefName") or "", ()):
+        critics = reviewed_before(rev, p)
+        m["reviewed"] += bool(critics)
+        for c in critics:
             per[c].append(n)
-    m["reviewed"] = sum(1 for p in merged.values() if rev.get(p.get("headRefName") or ""))
     for c in sorted(per):
         tally(m, ci, "critic." + c + ".", per[c], sig)
     if recs is not None:

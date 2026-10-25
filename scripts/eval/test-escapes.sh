@@ -40,14 +40,15 @@ prs = [pr(10, "feat(x): [HIMMEL-1] add x", day=10),
        pr(70, "feat(u): [HIMMEL-8] u", day=18),
        pr(71, "revert(u): [HIMMEL-9] withdraw u", "Withdraws the change merged as `%040x`; #40 is only context." % (70 + 1000), day=19)]
 json.dump(prs, open(os.path.join(d, "prs.json"), "w"))
-def avail(br, model, rm=None, status="ok"):
-    r = {"kind": "avail", "ts": "2026-10-10T00:00:00Z", "branch": br, "head": "h", "model": model, "status": status,
+def avail(br, model, rm=None, status="ok", ts="2026-10-10T00:00:00Z"):
+    r = {"kind": "avail", "ts": ts, "branch": br, "head": "h", "model": model, "status": status,
          "artifact": "diff", "perspective": "off"}
     if rm:
         r["responding_model"] = rm
     return r
 cr = [avail("b10", "codex", "gpt-6.1-sol"), avail("b20", "codex", "gpt-6.1-sol"), avail("b40", "codex", "gpt-6.1-sol"),
-      avail("b20", "coderabbit"), avail("b30", "claude", status="unavailable"), avail("b10", "judge")]
+      avail("b20", "coderabbit"), avail("b30", "claude", status="unavailable"), avail("b10", "judge"),
+      avail("b10", "coderabbit", ts="2026-10-12T00:00:00Z")]
 with open(os.path.join(d, "cr.jsonl"), "w") as fh:
     for r in cr:
         fh.write(json.dumps(r) + "\n")
@@ -80,6 +81,7 @@ eq "a revert naming the merge commit counts" "$(pick signal.revert)" "2"
 eq "a caused-by bug is one signal" "$(pick signal.caused-by)" "1"
 eq "per critic: PRs it reviewed" "$(pick critic.codex:gpt-6.1-sol.prs)" "3"
 eq "per critic: a fix-forward is plausible, not sure" "$(pick critic.coderabbit.escapes)" "0"
+eq "per critic: a review after the merge is not credited" "$(pick critic.coderabbit.prs)" "1"
 eq "per critic: CodeRabbit's plausible escape" "$(pick critic.coderabbit.escapes_plausible)" "1"
 eq "an unavailable critic did not review the PR" "$(pick critic.claude.prs)" "None"
 eq "per judge: the judge that passed the reverted PR" "$(pick judge.claude-opus-5-5.escapes)" "1"
