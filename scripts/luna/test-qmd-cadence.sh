@@ -202,15 +202,6 @@ export BUN_INSTALL="$TMP_ROOT/bun-none"
 HIMMEL_ROOT_EXP="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # ============================================================================
-# xml_escape unit — the one non-trivial string transform. Pure + platform-
-# agnostic, so it runs on EVERY platform: extract the function and call it.
-# ============================================================================
-echo "TEST: xml_escape escapes & < > with & ordered first"
-xesc=$( { sed -n '/^xml_escape()/,/^}/p' "$SCRIPT"; echo "xml_escape 'a & b < c > d'"; } | bash )
-assert_contains "xml_escape produces well-formed entities (& first)" "a &amp; b &lt; c &gt; d" "$xesc"
-assert_not_contains "xml_escape leaves no bare ampersand" "a & b" "$xesc"
-
-# ============================================================================
 # POSIX (cron) suite. Runs on EVERY platform: the cron code path is forced via
 # an OSTYPE override + the QMD_CADENCE_CRONTAB seam.
 # ============================================================================
@@ -948,6 +939,14 @@ echo "TEST: unknown platform (OSTYPE=beos) exits 2"
 rc=0; out=$(env OSTYPE=beos bash "$SCRIPT" status 2>&1) || rc=$?
 assert_rc "unknown platform rc 2" 2 "$rc"
 assert_contains "unknown platform message" "unsupported platform" "$out"
+
+# Windows is dropped: an msys/cygwin OSTYPE is an unsupported platform.
+for ostype in msys cygwin; do
+    echo "TEST: Windows platform (OSTYPE=$ostype) exits 2"
+    rc=0; out=$(env OSTYPE="$ostype" bash "$SCRIPT" status 2>&1) || rc=$?
+    assert_rc "$ostype rc 2" 2 "$rc"
+    assert_contains "$ostype unsupported platform message" "unsupported platform" "$out"
+done
 
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/

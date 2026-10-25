@@ -14,11 +14,11 @@
 #   HIMMEL-Pipeline-FetchHealth daily  (default 01:30, no LLM)
 #       python fetch-health.py
 #   HIMMEL-Pipeline-Harvest     daily   (default 02:00, model: claude-sonnet-5-5)
-#       claude --model claude-sonnet-5-5 "/harvest-clips ... then /triage-clips ... then /ig-media-enrich ..." < NUL
+#       claude --model claude-sonnet-5-5 "/harvest-clips ... then /triage-clips ... then /ig-media-enrich ..." < /dev/null
 #   HIMMEL-Pipeline-Synthesize  daily   (default 03:00, model: claude-sonnet-5-5)
-#       claude --model claude-sonnet-5-5 "/synthesize-clips … then /archive-clips …" < NUL
+#       claude --model claude-sonnet-5-5 "/synthesize-clips … then /archive-clips …" < /dev/null
 #   HIMMEL-Pipeline-Health      daily   (default 04:00, model: haiku)
-#       claude --model haiku "vault-lint (obsidian-triage:vault-lint) …" < NUL
+#       claude --model haiku "vault-lint (obsidian-triage:vault-lint) …" < /dev/null
 #
 # Defaults:
 # harvest+triage+ig-media-enrich daily at 02:00 (cheap, idempotent,
@@ -36,18 +36,17 @@
 # frequencies affordable. All overridable via flags.
 #
 # The armed command is interactive-claude shaped — `claude "<prompt>"`
-# with stdin redirected from NUL (the bounded-run primitive: the session
+# with stdin redirected from /dev/null (the bounded-run primitive: the session
 # runs the full turn, then exits clean). NOT headless (`-p`/`--print`)
 # (billing rule: headless invocations bill to a separate
 # Agent SDK credit bucket from 2026-06-15; interactive stays on Max
-# quota). Each task fires a runner (.bat on Windows, .sh on POSIX) that
+# quota). Each task fires a runner .sh that
 # cd's into the luna vault so the obsidian-triage skills operate on the
 # right tree.
 #
-# Windows (schtasks) is the primary platform.
 # macOS/Linux use crontab entries,
 # following the arm-resume.sh crontab-fallback precedent: each entry
-# fires a persistent runner .sh (same role as the Windows .bat — log
+# fires a persistent runner .sh (log
 # rotation + fire stamp + cd into the vault + bounded claude run) and
 # carries a trailing `# HIMMEL-Pipeline-*` marker so dedup/status/
 # disarm can find it (cron hands the whole line to /bin/sh, which reads
@@ -63,17 +62,15 @@
 #   bash scripts/luna/pipeline-cadence.sh disarm
 #
 # Test seams (used by test-pipeline-cadence.sh):
-#   PIPELINE_SCHTASKS  — command invoked instead of `schtasks` (Windows)
-#   PIPELINE_CRONTAB   — command invoked instead of `crontab` (POSIX)
-#   PIPELINE_BAT_DIR   — where the persistent runners (.bat/.sh) live
+#   PIPELINE_CRONTAB   — command invoked instead of `crontab`
+#   PIPELINE_BAT_DIR   — where the persistent runners (.sh) live
 #
 # Exit codes (mirrors arm-resume.sh):
 #   0  done (armed / status printed / disarmed / dry-run)
 #   1  usage / input error
-#   2  env unusable (no schtasks/crontab; unknown platform; query tool errored)
+#   2  env unusable (no crontab; unsupported platform; query tool errored)
 #   3  dedup block — HIMMEL-Pipeline-* task(s) already armed; use --force
-#   4  scheduler invocation failed (/create, /delete, crontab rewrite,
-#      path conversion)
+#   4  scheduler invocation failed (crontab rewrite)
 set -euo pipefail
 
 TASK_PREFIX="HIMMEL-Pipeline-"
@@ -81,7 +78,6 @@ TASK_FETCH_HEALTH="${TASK_PREFIX}FetchHealth"
 TASK_HARVEST="${TASK_PREFIX}Harvest"
 TASK_SYNTH="${TASK_PREFIX}Synthesize"
 TASK_HEALTH="${TASK_PREFIX}Health"
-SCHTASKS_BIN="${PIPELINE_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${PIPELINE_CRONTAB:-crontab}"
 
 # Cross-platform user-home resolution + default_vault, extracted into a
@@ -91,12 +87,10 @@ CRONTAB_BIN="${PIPELINE_CRONTAB:-crontab}"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/resolve-user-home.sh"
 
-# Persistent runner home (.bat on Windows, .sh on POSIX) — NOT mktemp
+# Persistent runner home (.sh runners) — NOT mktemp
 # like arm-resume's one-shot task: these tasks recur indefinitely, and
-# %TEMP% / /tmp are subject to cleanup sweeps that would silently kill
-# the cadence. Default home resolved cross-platform: the bare
-# $HOME default put the runners under the MSYS home on Windows Git-Bash,
-# where Claude Code does not read its config.
+# /tmp is subject to cleanup sweeps that would silently kill
+# the cadence.
 BAT_DIR="${PIPELINE_BAT_DIR:-$(resolve_user_home)/.claude/pipeline-cadence}"
 
 # A `claude --settings` fragment that wires himmel's
@@ -104,7 +98,7 @@ BAT_DIR="${PIPELINE_BAT_DIR:-$(resolve_user_home)/.claude/pipeline-cadence}"
 # the luna vault cwd, which carries no himmel .claude/settings.json — so without
 # this an autonomous run STALLS on the compound-bash permission
 # prompt (the static matcher bails on any `$var`/`$()`/pipe/compound command and
-# prompts; an unattended `< NUL` run has nobody to answer it, wasting the run).
+# prompts; an unattended `< /dev/null` run has nobody to answer it, wasting the run).
 # Injecting the hook by absolute himmel path — resolved here at arm time —
 # restores the auto-approve posture in the luna cwd. The hook only ever GRANTS
 # (fail-open; never blocks), so this widens nothing the block-* hooks guard.
@@ -148,7 +142,7 @@ WORKER_SESSION_FAILED_MARKER="PIPELINE-LEG-FAILED"
 # NEVER bypassPermissions — that is the one mode the billing rule forbids.
 CADENCE_PERMISSION_MODE="acceptEdits"
 
-# Runner-format version stamp: emit_bat / emit_runner stamp
+# Runner-format version stamp: emit_runner stamps
 # CADENCE_RUNNER_FORMAT_VERSION into every runner so himmel-doctor / himmel-update
 # can detect a cadence armed before a format change and nudge `arm --force`.
 # shellcheck source=../lib/cadence-format.sh
@@ -205,8 +199,6 @@ VAULT="$(default_vault)"
 FORCE=0
 DRY_RUN=0
 
-# Prompts are ASCII-only on purpose: the .bat is parsed by cmd.exe under
-# the OEM codepage, where UTF-8 punctuation mojibakes into the prompt.
 DAILY_CHAIN="/harvest-clips + /triage-clips + /ig-media-enrich + /x-media-enrich"
 # The bare completion marker the leg prompt asks for; flow_run_classify treats
 # a zero exit WITHOUT this line in the log tail as `parked`.
@@ -254,8 +246,7 @@ Flags (arm only, except --dry-run):
   --synth-model <m>      claude --model for the synthesize leg (default claude-sonnet-5-5)
   --health-model <m>     claude --model for the health leg (default haiku)
   --vault <PATH>         Luna vault root (default: $LUNA_VAULT_PATH if set,
-                         else <user-profile>/Documents/luna — on Windows
-                         Git-Bash the Windows profile, not the MSYS $HOME)
+                         else $HOME/Documents/luna)
   --force                Replace existing HIMMEL-Pipeline-* tasks
   --dry-run              Print what would happen, touch nothing
                          (honored by arm AND disarm)
@@ -319,18 +310,11 @@ HARVEST_PROMPT="Run /harvest-clips to completion, then run /triage-clips, then r
 
 # Platform detect (same matrix as arm-resume.sh).
 case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-    msys*|cygwin*|win32*|MINGW*) PLATFORM=windows ;;
     linux*|Linux*)               PLATFORM=linux ;;
     darwin*|Darwin*)             PLATFORM=macos ;;
     *)                           PLATFORM=unknown ;;
 esac
 case "$PLATFORM" in
-    windows)
-        command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-            echo "ERR pipeline-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-            exit 2
-        }
-        ;;
     linux|macos)
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR pipeline-cadence: '$CRONTAB_BIN' not on PATH (required on $PLATFORM — cron port)" >&2
@@ -339,115 +323,11 @@ case "$PLATFORM" in
         ;;
     *)
         echo "ERR pipeline-cadence: unsupported platform (OSTYPE=${OSTYPE:-})" >&2
-        echo "    Supported: Windows (schtasks), Linux/macOS (crontab)" >&2
+        echo "    Supported: Linux/macOS (crontab)" >&2
         exit 2
         ;;
 esac
 
-# MSYS_NO_PATHCONV=1 per call: without it gitbash mangles
-# /query, /create etc. into Windows-rooted paths before schtasks sees them.
-run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
-
-# Dedup listing: every scheduled task named HIMMEL-Pipeline-*.
-# Fail-CLOSED if the query tool itself errors — a silent empty result
-# followed by an arm would double-register (same rationale as
-# arm-resume.sh list_existing).
-list_existing() {
-    local err_file out rc
-    err_file=$(mktemp -t pipeline-cadence.err.XXXXXX)
-    # set +e: schtasks rc=1 on an empty scheduler must not trip set -e
-    # before we can classify it (arm-resume never hits this because a
-    # real Windows scheduler is never empty; the fake in tests can be).
-    set +e
-    out=$(run_schtasks /query /fo CSV /nh 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -ne 0 ]; then
-        # Fail-CLOSED: any nonzero rc is fatal UNLESS it matches the one
-        # trusted empty-scheduler signature — rc=1 with EMPTY stderr
-        # (schtasks returns rc=1 on a completely empty scheduler; real
-        # errors like access-denied always carry stderr). Keyword-
-        # grepping stderr the other way round was fail-OPEN: any
-        # non-English / unrecognised error read as "empty scheduler" and
-        # arm's /create /f would silently overwrite an armed cadence.
-        if [ "$rc" -ne 1 ] || [ -s "$err_file" ]; then
-            echo "ERR pipeline-cadence: schtasks /query failed (rc=$rc) — refusing to treat as empty scheduler:" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            exit 2
-        fi
-    fi
-    rm -f "$err_file"
-    # shellcheck disable=SC1003  # `"\\'` strips both quote and the literal backslash schtasks prefixes task names with
-    printf '%s\n' "$out" \
-        | grep -o '"\\\?HIMMEL-Pipeline-[^"]*"' 2>/dev/null \
-        | tr -d '"\\' \
-        | sort -u || true
-}
-
-delete_task() {
-    local name="$1" err_file
-    err_file=$(mktemp -t pipeline-cadence.err.XXXXXX)
-    if run_schtasks /delete /tn "$name" /f >/dev/null 2>"$err_file"; then
-        rm -f "$err_file"
-        echo "pipeline-cadence: deleted scheduled task: $name"
-    else
-        echo "ERR pipeline-cadence: schtasks /delete $name failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        exit 4
-    fi
-}
-
-# Known not-found stderr signatures for `/query /tn <name>` on a real
-# scheduler — anchored on the two exact schtasks messages so unrelated
-# errors that merely contain "does not exist" (e.g. "The specified
-# service does not exist as an installed service" when the Task
-# Scheduler service is down) never classify as not-found. Real schtasks
-# always emits one of these on a missing task, so rc=1 WITHOUT a match
-# (silent rc=1 included) is a real query failure (access denied,
-# service down) and fail-closes.
-NOT_FOUND_RE='The system cannot find the file specified|The specified task name .* does not exist'
-
-# query_one <name>: rc 0 = armed (stdout = /fo LIST output via the
-# QUERY_OUT global), rc 1 = trusted not-found, rc 2 = query failed
-# (stderr already printed).
-QUERY_OUT=""
-query_one() {
-    local name="$1" rc err_file
-    err_file=$(mktemp -t pipeline-cadence.err.XXXXXX)
-    set +e
-    QUERY_OUT=$(run_schtasks /query /tn "$name" /fo LIST 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -eq 0 ]; then
-        rm -f "$err_file"
-        return 0
-    fi
-    # Trusted not-found is rc=1 AND a NOT_FOUND_RE stderr match — real
-    # schtasks always emits the message on a missing task, so a silent
-    # rc=1 (or a crashed query tool, rc=255) must NOT read as "not
-    # armed": disarm would no-op and delete the runners while the
-    # tasks stay armed.
-    if [ "$rc" -eq 1 ] && grep -qiE "$NOT_FOUND_RE" "$err_file"; then
-        rm -f "$err_file"
-        return 1
-    fi
-    echo "ERR pipeline-cadence: schtasks /query /tn $name failed (rc=$rc) — refusing to treat as 'not armed':" >&2
-    cat "$err_file" >&2
-    # Escape hatch: NOT_FOUND_RE only matches the English schtasks
-    # signatures, so a localized (non-English) not-found message of a
-    # genuinely unarmed task lands here and fail-closes loud. Give the
-    # operator the manual verify/remove commands instead of a dead end.
-    echo "    If this is a localized 'task does not exist' message, the task may simply" >&2
-    echo "    not be armed. Verify / remove manually:" >&2
-    echo "        schtasks /query /tn $name" >&2
-    echo "        schtasks /delete /tn $name /f" >&2
-    rm -f "$err_file"
-    return 2
-}
-
-# rc 0 = query trusted (armed or not-armed), rc 2 = query errored.
 task_summary() {
     case "$1" in
         "$TASK_FETCH_HEALTH") printf ' -> clip-source fetch probes [no LLM]' ;;
@@ -455,11 +335,11 @@ task_summary() {
     esac
 }
 
-# Map a cadence task name to its generated runner file path (.bat on
-# Windows, .sh on POSIX) so status can surface the pinned model.
+# Map a cadence task name to its generated runner .sh path so status can
+# surface the pinned model.
 # Returns the path on stdout; rc 1 on an unknown name.
 runner_for_name() {
-    local base ext
+    local base
     case "$1" in
         "$TASK_FETCH_HEALTH") base="pipeline-fetch-health" ;;
         "$TASK_HARVEST") base="pipeline-harvest" ;;
@@ -467,16 +347,12 @@ runner_for_name() {
         "$TASK_HEALTH")  base="pipeline-health" ;;
         *) return 1 ;;
     esac
-    case "$PLATFORM" in
-        windows) ext="bat" ;;
-        *)       ext="sh" ;;
-    esac
-    printf '%s/%s.%s' "$BAT_DIR" "$base" "$ext"
+    printf '%s/%s.sh' "$BAT_DIR" "$base"
 }
 
-# Read the --model pin back out of a generated runner (.bat or .sh) so
-# status can flag an armed-but-wrong-model cadence. Both
-# emitters inject `--model <m>` right after the binary; this greps that
+# Read the --model pin back out of a generated runner .sh so
+# status can flag an armed-but-wrong-model cadence. emit_runner
+# injects `--model <m>` right after the binary; this greps that
 # token. rc 1 when the runner is absent (not armed / dry-run), empty
 # stdout when armed without a stampable pin (pre-pin runner).
 runner_model() {
@@ -502,27 +378,8 @@ model_suffix() {
     return 0
 }
 
-status_one() {
-    local name="$1" next qrc=0
-    query_one "$name" || qrc=$?
-    case "$qrc" in
-        0)
-            # "Next Run Time" header is locale-dependent (English assumed —
-            # operator env); fall back to plain ARMED when absent.
-            next=$(printf '%s\n' "$QUERY_OUT" | grep -i 'Next Run Time' | head -1 \
-                | sed 's/^[^:]*:[[:space:]]*//' || true)
-            cadence_registered_status "$name" "${next:+ (next run: $next)}$(task_summary "$name")$(model_suffix "$name")" || return 2
-            ;;
-        1)  echo "not armed  $name$(task_summary "$name")" ;;
-        *)
-            echo "QUERY ERR  $name (see stderr above)"
-            return 2
-            ;;
-    esac
-}
-
 # Surface fire-time evidence: each runner writes its claude output to a
-# .log next to the .bat (rotated per fire — the log holds exactly the
+# .log next to the runner (rotated per fire — the log holds exactly the
 # current run; the previous run survives as .log.prev), so "armed but
 # never succeeding" is visible here.
 status_log() {
@@ -543,8 +400,8 @@ status_log() {
     else
         echo "  run log    $log (absent — task has not fired yet)"
     fi
-    # Rotation keeps exactly one prior run as .log.prev (emit_bat's
-    # `move /y`) — surface it too, so the previous run's outcome stays
+    # Rotation keeps exactly one prior run as .log.prev (the runner's
+    # `mv -f`) — surface it too, so the previous run's outcome stays
     # visible right after a fresh fire truncated the current .log.
     # Absence is normal (fewer than two fires) and stays silent.
     if [ -f "$log.prev" ]; then
@@ -555,319 +412,6 @@ status_log() {
             echo "             last line: $last"
         fi
     fi
-}
-
-cmd_status() {
-    # Exit-code contract: 0 only when every query was trusted; 2 when
-    # any query errored (the QUERY ERR line alone exiting 0 would let
-    # scripted callers read a broken query tool as "all fine").
-    local status_rc=0
-    echo "pipeline-cadence status:"
-    status_one "$TASK_FETCH_HEALTH" || status_rc=2
-    status_log "$BAT_DIR/pipeline-fetch-health.log"
-    status_one "$TASK_HARVEST" || status_rc=2
-    status_log "$BAT_DIR/pipeline-harvest.log"
-    status_one "$TASK_SYNTH" || status_rc=2
-    status_log "$BAT_DIR/pipeline-synthesize.log"
-    status_one "$TASK_HEALTH" || status_rc=2
-    status_log "$BAT_DIR/pipeline-health.log"
-    return "$status_rc"
-}
-
-cmd_disarm() {
-    local name found=0 qrc
-    for name in "$TASK_FETCH_HEALTH" "$TASK_HARVEST" "$TASK_SYNTH" "$TASK_HEALTH"; do
-        qrc=0
-        query_one "$name" || qrc=$?
-        case "$qrc" in
-            0)
-                found=1
-                if [ "$DRY_RUN" -eq 1 ]; then
-                    echo "DRY pipeline-cadence: would delete $name"
-                else
-                    delete_task "$name"
-                fi
-                ;;
-            1)  : ;;  # trusted not-found — genuinely nothing to delete
-            *)
-                # Real query failure: do NOT report no-op, do NOT delete
-                # the .bats (the task may still be armed and pointing at
-                # them). query_one already printed the stderr.
-                exit 2
-                ;;
-        esac
-    done
-    # Reached only when every query was trusted (armed or not-found) and
-    # every delete succeeded (delete_task exits 4 otherwise) — safe to
-    # remove the runners now.
-    if [ "$DRY_RUN" -eq 0 ]; then
-        rm -f "$BAT_DIR/pipeline-fetch-health.bat" "$BAT_DIR/pipeline-harvest.bat" "$BAT_DIR/pipeline-synthesize.bat" "$BAT_DIR/pipeline-health.bat"
-        rm -f "$BAT_DIR/pipeline-fetch-health.vbs" "$BAT_DIR/pipeline-harvest.vbs" "$BAT_DIR/pipeline-synthesize.vbs" "$BAT_DIR/pipeline-health.vbs" "$SETTINGS_FRAGMENT"
-    fi
-    if [ "$found" -eq 0 ]; then
-        echo "pipeline-cadence: nothing armed — disarm is a no-op"
-    elif [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY pipeline-cadence: no changes made"
-    else
-        echo "pipeline-cadence: cadence disarmed"
-    fi
-}
-
-# Emit .bat body for one cadence task: rotate the run log (one prior
-# run kept as .log.prev), stamp the fire time, cd into the vault, then
-# a bounded interactive claude run. `< NUL` is the cmd.exe spelling of
-# the `claude "<prompt>" < /dev/null` bounded-run primitive — the
-# session runs the full turn on stdin-EOF and exits clean (no
-# -p/--print: billing rule). `cd /d ... || exit /b 1` aborts instead of
-# silently running claude from the wrong CWD — and its output (incl.
-# the cd error if the vault moved/was deleted after arming) goes to the
-# .log next to the .bat, so the log exists on EVERY fire and a failing
-# cd is visible instead of silently absent. The task fires in a
-# transient console (03:00 Sunday) whose output would otherwise vanish;
-# `status` surfaces the log.
-# EVERY parameter arrives already cadence_cmd_escape'd, and every name says so.
-# Mixing pre-escaped and raw parameters is how a value slips through unescaped:
-# a raw parameter sitting among escaped ones looks like it was already handled.
-# The sibling emitter graphmap-cadence.sh settles on
-# caller-escapes-everything. With the convention "if it is not named _esc it
-# does not belong in a printf here", the next added parameter is checkable by
-# eye instead of by archaeology.
-#
-# The escaping itself did NOT move to a weaker place: cmd_arm already builds
-# vault/prompt/log/settings that way and is the single call path (the dry-run
-# preview and the real write share one set of locals), and validate_arm_inputs
-# still rejects metacharacters at the gate.
-emit_bat() {
-    local vault_win_esc="$1" claude_win_esc="$2" prompt_esc="$3" log_win_esc="$4" settings_esc="$5" model_esc="$6" flow_esc="$7" task_name_esc="$8" bash_win_esc="$9" flow_lib_m_esc="${10}" git_bin_esc="${11:-}" bank_lib_m_esc="${12:-}" gate_lib_m_esc="${13:-}"
-    printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt.
-    cadence_bat_editor_set
-    # Prepend Git's usr\bin + bin so the NON-LOGIN bash.exe the flow-run-ledger
-    # legs fire finds GNU coreutils (dirname/date/tail/grep/wc/tr) ahead of
-    # System32. claude/bash/flow-lib are all absolute paths below;
-    # this fixes their unqualified coreutils, not those resolutions.
-    if [ -n "$git_bin_esc" ]; then
-        printf 'set "PATH=%s;%%PATH%%"\r\n' "$git_bin_esc"
-    fi
-    printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_win_esc" "$log_win_esc" "$log_win_esc"
-    printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_win_esc"
-    printf 'cd /d "%s" >> "%s" 2>&1 || exit /b 1\r\n' "$vault_win_esc" "$log_win_esc"
-    # Capture the run_id via a temp file, NOT `for /f` — for /f re-parses its
-    # backquoted command through cmd /c, whose quote-stripping mangles a
-    # command that STARTS with a quoted path and carries more quoted args
-    # (live-fire verified s52: FLOW_RUN_ID came back empty). A plain quoted
-    # command line with a redirect parses fine.
-    printf 'set "FLOW_RUN_TMP=%%TEMP%%\\flow-run-%s.tmp"\r\n' "$task_name_esc"
-
-    # --- Gate 1: is there anything to do? -------------------
-    # Emitted ONLY for a leg that was given a gate script (today: synthesize).
-    # Ordered BEFORE the bank preflight on purpose: this check is pure local
-    # filesystem work, the preflight shells a network fetch. Ask the free
-    # question first.
-    # The verdict is read through the same temp-file capture the ledger rows
-    # use -- NOT `for /f`, whose cmd /c re-parse mangles a quoted-path command
-    # line (live-fire verified, see the FLOW_RUN_ID note below). stderr is
-    # appended to the leg log so the reason a night was skipped is on disk.
-    if [ -n "$gate_lib_m_esc" ]; then
-        printf 'set "PIPELINE_GATE="\r\n'
-        # `.` not the vault path: the runner cd'd into the vault above, and a
-        # Windows-form path handed to a bash argument loses its backslashes to
-        # shell escaping. See the helper's own header.
-        printf '"%s" "%s" "." > "%%FLOW_RUN_TMP%%" 2>> "%s"\r\n' "$bash_win_esc" "$gate_lib_m_esc" "$log_win_esc"
-        printf 'if exist "%%FLOW_RUN_TMP%%" set /p PIPELINE_GATE=<"%%FLOW_RUN_TMP%%"\r\n'
-        printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-        # Fail-open by construction: ONLY the explicit NONE token skips. An
-        # empty verdict (helper missing, bash unusable) falls through and the
-        # leg runs, exactly as it did before this gate existed.
-        # The reason is set UNCONDITIONALLY on the line before the test, never
-        # as `if ... set X & goto Y`: cmd.exe splits on `&` at the TOP level,
-        # so the goto in that shape would run whether the `if` matched or not.
-        printf 'set "PIPELINE_SKIP_REASON=no-new-input"\r\n'
-        printf 'if "%%PIPELINE_GATE%%"=="NONE" goto pipeline_skipped\r\n'
-    fi
-
-    # --- Gate 2: may we spend the bank? ---------------------
-    # CADENCE_USAGE_LEG is what makes the spend ATTRIBUTABLE: before this every
-    # row in ~/.himmel/cadence-ledger.jsonl read leg:"unknown". The flow name
-    # (pipeline-harvest / -synthesize / -health) is already this leg's identity
-    # in flow-runs.jsonl, so the two ledgers join on the same word.
-    #
-    # NO `timeout` wrapper here, unlike refresh-graph-map.sh's call site. That
-    # one guards a multi-HOUR extraction where an unbounded precondition check
-    # is a real hazard. usage-preflight.sh's only network work is
-    # usage-cache-producer.sh, whose single curl is already `--max-time 5`, and
-    # this leg's own budget is ~20 minutes -- a second bound would be
-    # speculative, and emitting one through the cmd -> bash boundary costs more
-    # quoting risk than it removes. Revisit if the producer ever grows an
-    # unbounded call.
-    if [ -n "$bank_lib_m_esc" ]; then
-        printf 'set "CADENCE_USAGE_LEG=%s"\r\n' "$flow_esc"
-        printf 'set "PIPELINE_BANK="\r\n'
-        printf '"%s" "%s" > "%%FLOW_RUN_TMP%%" 2>> "%s"\r\n' "$bash_win_esc" "$bank_lib_m_esc" "$log_win_esc"
-        printf 'if exist "%%FLOW_RUN_TMP%%" set /p PIPELINE_BANK=<"%%FLOW_RUN_TMP%%"\r\n'
-        printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-        # Only SKIPPED-BANK refuses. BANK-STALE / BANK-UNKNOWN are the helper's
-        # deliberate fail-open verdicts and an empty capture means the helper
-        # could not run at all -- neither may silence a cadence.
-        printf 'set "PIPELINE_SKIP_REASON=bank-at-threshold"\r\n'
-        printf 'if "%%PIPELINE_BANK%%"=="SKIPPED-BANK" goto pipeline_skipped\r\n'
-    fi
-
-    # Retry/resume loop. cmd.exe has no `while`, so an attempt is a
-    # goto label — which also means no delayed expansion (`!var!`) is needed:
-    # a goto re-parses each line on every pass, so %FLOW_RUN_ATTEMPT% is the
-    # current value. The marker line is what --is-transient scans FORWARD from,
-    # so each attempt is judged on its own output, never on a previous
-    # attempt's leftover error. Everything from the marker to :pipeline_done is
-    # one attempt, and every attempt lands its own start/end ledger pair.
-    printf 'set "FLOW_RUN_ATTEMPT=1"\r\n'
-    printf ':pipeline_attempt\r\n'
-    printf 'echo [%s %%FLOW_RUN_ATTEMPT%%/%s] >> "%s" 2>&1\r\n' "$FLOW_RUN_ATTEMPT_MARKER" "$RETRY_MAX_ATTEMPTS" "$log_win_esc"
-    printf 'set "FLOW_RUN_ID="\r\n'
-    printf '"%s" "%s" --append-start "%s" "" "%%COMPUTERNAME%%" "claude" "%s" "%s" "%s" "" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$model_esc" "$task_name_esc" "$log_win_esc"
-    printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_ID=<"%%FLOW_RUN_TMP%%"\r\n'
-    printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-    # No bg-wait ceiling override here — CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
-    # only affects --print mode, and cadence runners are interactive-shaped.
-    # `call`: when
-    # claude resolves to a .cmd/.bat shim (npm-global install), a bare invocation
-    # makes cmd.exe TRANSFER control into the shim and never come back — every
-    # line below (rc capture, classify, the --append-end ledger row, exit /b)
-    # would silently never run. Latent where claude is an .exe; fatal on a shim.
-    # --permission-mode is EXPLICIT: an unattended launch must not
-    # inherit whatever mode the operator last saved interactively. In-repo
-    # constant, no operator input, so it carries no escaping burden.
-    # launch-profile-ok: audited, NOT folded into a named profile: cadence-settings.json (emit_settings_fragment) is already a per-run --settings that force-enables obsidian-triage@himmel over the operator's disable and wires the cadence hooks; the .bat is written on Windows where plugin-profiles.mjs is not run at arm time
-    printf 'call "%s" --model "%s" --permission-mode "%s" --settings "%s" "%s" < NUL >> "%s" 2>&1\r\n' "$claude_win_esc" "$model_esc" "$CADENCE_PERMISSION_MODE" "$settings_esc" "$prompt_esc" "$log_win_esc"
-    printf 'set "FLOW_RUN_RC=%%ERRORLEVEL%%"\r\n'
-    # Fail-closed fallback (coderabbit #1762): if the classifier is unavailable
-    # or prints nothing, a zero-rc run is `parked` (no proof of completion),
-    # a non-zero run `error` -- never `complete` by default.
-    printf 'set "FLOW_RUN_OUTCOME="\r\n'
-    printf '"%s" "%s" --classify "%%FLOW_RUN_RC%%" "%s" "" "%s" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$log_win_esc" "$WORKER_SESSION_DONE_MARKER"
-    printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_OUTCOME=<"%%FLOW_RUN_TMP%%"\r\n'
-    printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-    printf 'if "%%FLOW_RUN_OUTCOME%%"=="" if "%%FLOW_RUN_RC%%"=="0" set "FLOW_RUN_OUTCOME=parked"\r\n'
-    printf 'if "%%FLOW_RUN_OUTCOME%%"=="" set "FLOW_RUN_OUTCOME=error"\r\n'
-    # The end row carries the attempt in `note` — the ONE ledger, one row pair
-    # per attempt, so a retried night is readable as
-    # attempt=1/3 error -> attempt=2/3 complete instead of a single mystery.
-    printf 'if not "%%FLOW_RUN_ID%%"=="" "%s" "%s" --append-end "%s" "%%FLOW_RUN_ID%%" "" "%%FLOW_RUN_RC%%" "%%FLOW_RUN_OUTCOME%%" "" "attempt=%%FLOW_RUN_ATTEMPT%%/%s" > NUL 2>&1\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$RETRY_MAX_ATTEMPTS"
-    # Retry ONLY a non-zero exit whose own attempt log carries the transient
-    # upstream signature, and only within the bound. `if errorlevel 1` is true
-    # for any non-zero, so a --is-transient that cannot run (missing bash, no
-    # awk) falls through to done — fail-closed, never a retry storm.
-    printf 'if "%%FLOW_RUN_RC%%"=="0" goto pipeline_done\r\n'
-    printf 'if %%FLOW_RUN_ATTEMPT%% GEQ %s goto pipeline_done\r\n' "$RETRY_MAX_ATTEMPTS"
-    printf '"%s" "%s" --is-transient "%%FLOW_RUN_RC%%" "%s"\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$log_win_esc"
-    printf 'if errorlevel 1 goto pipeline_done\r\n'
-    printf 'set "FLOW_RUN_DELAY=%s"\r\n' "$RETRY_BACKOFF_1"
-    printf 'if %%FLOW_RUN_ATTEMPT%% GEQ 2 set "FLOW_RUN_DELAY=%s"\r\n' "$RETRY_BACKOFF_2"
-    printf 'echo [retry %%FLOW_RUN_ATTEMPT%%/%s after transient upstream API error - sleeping %%FLOW_RUN_DELAY%%s] >> "%s" 2>&1\r\n' "$((RETRY_MAX_ATTEMPTS - 1))" "$log_win_esc"
-    # The backoff runs through the bash.exe this runner already bakes in:
-    # `timeout /t` refuses a redirected stdin (which is exactly how the cadence
-    # fires) and `ping -n` is a lie about what the line does.
-    printf '"%s" -c "sleep %%FLOW_RUN_DELAY%%"\r\n' "$bash_win_esc"
-    printf 'set /a FLOW_RUN_ATTEMPT+=1\r\n'
-    printf 'goto pipeline_attempt\r\n'
-    printf ':pipeline_done\r\n'
-    # A parked leg (zero claude rc, no PIPELINE-LEG-DONE in the
-    # log) must reach Task Scheduler as a FAILURE, not rc=0 -- the same
-    # exit-code fidelity the codex sweep has. The ledger row
-    # above keeps the true rc + outcome=parked; only the scheduler-visible
-    # code is raised. 3 = parked (1 = cd failed, claude's own rc otherwise).
-    printf 'if "%%FLOW_RUN_OUTCOME%%"=="parked" if "%%FLOW_RUN_RC%%"=="0" exit /b 3\r\n'
-    # Completion stamp. Written ONLY on a leg that genuinely
-    # finished (`complete` is the classifier's verdict when the session printed
-    # PIPELINE-LEG-DONE), because it is the reference the input gate measures
-    # "new since" against. Stamping a parked or errored night would advance the
-    # reference past clips no session ever considered, and those clips would
-    # never be synthesized. Emitted only for a gated leg.
-    if [ -n "$gate_lib_m_esc" ]; then
-        printf 'if "%%FLOW_RUN_OUTCOME%%"=="complete" "%s" "%s" --stamp "." >> "%s" 2>&1\r\n' "$bash_win_esc" "$gate_lib_m_esc" "$log_win_esc"
-    fi
-    printf 'exit /b %%FLOW_RUN_RC%%\r\n'
-    # --- deliberate skip ----------------------
-    # rc 0, NOT the 3 a parked leg exits with. Those are different events: a
-    # parked leg SPENT a session and produced nothing (a failure the scheduler
-    # must surface), a skipped leg deliberately spent nothing. The evidence
-    # lives where the audit asked for it -- a PIPELINE-LEG-SKIPPED line in the
-    # log and a start/end ledger pair whose `note` carries the reason -- so a
-    # skipped night is legible without being a false alarm.
-    # Unreachable for an ungated leg: the `exit /b` above is the last line it
-    # executes, and a label cmd.exe never jumps to costs nothing.
-    if [ -n "$bank_lib_m_esc" ] || [ -n "$gate_lib_m_esc" ]; then
-        printf ':pipeline_skipped\r\n'
-        printf 'echo [%s %%PIPELINE_SKIP_REASON%%] >> "%s" 2>&1\r\n' "$WORKER_SESSION_SKIPPED_MARKER" "$log_win_esc"
-        printf 'set "FLOW_RUN_ID="\r\n'
-        printf '"%s" "%s" --append-start "%s" "" "%%COMPUTERNAME%%" "claude" "%s" "%s" "%s" "" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$model_esc" "$task_name_esc" "$log_win_esc"
-        printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_ID=<"%%FLOW_RUN_TMP%%"\r\n'
-        printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-        printf 'if not "%%FLOW_RUN_ID%%"=="" "%s" "%s" --append-end "%s" "%%FLOW_RUN_ID%%" "" "0" "skipped" "0" "%%PIPELINE_SKIP_REASON%%" > NUL 2>&1\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc"
-        printf 'exit /b 0\r\n'
-    fi
-}
-
-# Emit the plain-script fetch-health runner. It rotates one prior log, writes
-# no fetched response content, and returns the probe's aggregate exit code.
-#
-# It also writes the SAME flow-run ledger start/end rows emit_bat
-# writes, so the FetchHealth leg participates in stall / never-started
-# detection. Without them the ledger never had a `pipeline-fetch-health` row,
-# so "the task stopped firing" was indistinguishable from "never armed" — the
-# leg reported success by being silent.
-#
-# The outcome is derived from the probe's rc inline instead of through
-# flow_run_classify: that classifier exists to read a CLAUDE session log (the
-# truncation signature, the PIPELINE-LEG-DONE completion marker), and this leg
-# runs no LLM — its rc IS the completion signal, so there is no `parked` state
-# to detect and nothing in the probe log for the classifier to read. Deriving
-# it here also keeps the row honest when the ledger lib is unreachable: the
-# end row simply never appears (append-start failed too), rather than a
-# fail-open `complete`.
-emit_fetch_health_bat() {
-    local python_win_esc="$1" script_win_esc="$2" log_win_esc="$3" env_file_win_esc="$4" bash_win_esc="$5" flow_lib_m_esc="$6" flow_esc="$7" task_name_esc="$8" git_bin_esc="${9:-}"
-    printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt.
-    cadence_bat_editor_set
-    # Prepend Git's usr\bin + bin so the NON-LOGIN bash.exe the flow-run-ledger
-    # legs fire finds GNU coreutils (dirname/date/mkdir/mv) ahead of System32
-    # — same reason as emit_bat, and now the same need: this
-    # runner shells that lib twice.
-    if [ -n "$git_bin_esc" ]; then
-        printf 'set "PATH=%s;%%PATH%%"\r\n' "$git_bin_esc"
-    fi
-    printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_win_esc" "$log_win_esc" "$log_win_esc"
-    printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_win_esc"
-    # Source the repo's gitignored .env at FIRE time (not arm time) so the
-    # credentialed probes (bitbucket/firecrawl) inherit env-sourced secrets
-    # under schtasks' minimal environment — mirrors emit_fetch_health_runner's
-    # `[ -f .env ] && . .env`. Only the PATH is embedded
-    # (quoted); the values are parsed by cmd at fire time, never baked into the
-    # .bat — secrets stay in the gitignored file. `for /f` skips
-    # blank lines; eol=# skips comments; tokens=1,* with delims== keeps `=` in
-    # values; the quoted `set "K=V"` survives value metacharacters (& | < >).
-    printf 'if exist "%s" for /f "usebackq eol=# tokens=1,* delims==" %%%%K in ("%s") do set "%%%%K=%%%%L"\r\n' "$env_file_win_esc" "$env_file_win_esc"
-    # Ledger start row. Same temp-file capture as emit_bat — NOT
-    # `for /f`, whose cmd /c re-parse mangles a quoted-path command line.
-    printf 'set "FLOW_RUN_ID="\r\n'
-    printf 'set "FLOW_RUN_TMP=%%TEMP%%\\flow-run-%s.tmp"\r\n' "$task_name_esc"
-    printf '"%s" "%s" --append-start "%s" "" "%%COMPUTERNAME%%" "python" "" "%s" "%s" "" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc" "$task_name_esc" "$log_win_esc"
-    printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_ID=<"%%FLOW_RUN_TMP%%"\r\n'
-    printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-    # `call`: pyenv-win/conda expose `python` as a .bat shim, and
-    # a bare invocation of one transfers control away for good — the rc stamp,
-    # the ledger end row and the exit /b below would never run, which is the
-    # exact invisibility this leg is being fixed for.
-    printf 'call "%s" "%s" >> "%s" 2>&1\r\n' "$python_win_esc" "$script_win_esc" "$log_win_esc"
-    printf 'set "FETCH_HEALTH_RC=%%ERRORLEVEL%%"\r\n'
-    printf 'echo [exit rc=%%FETCH_HEALTH_RC%%] >> "%s" 2>&1\r\n' "$log_win_esc"
-    printf 'set "FLOW_RUN_OUTCOME=complete"\r\n'
-    printf 'if not "%%FETCH_HEALTH_RC%%"=="0" set "FLOW_RUN_OUTCOME=error"\r\n'
-    printf 'if not "%%FLOW_RUN_ID%%"=="" "%s" "%s" --append-end "%s" "%%FLOW_RUN_ID%%" "" "%%FETCH_HEALTH_RC%%" "%%FLOW_RUN_OUTCOME%%" "" "" > NUL 2>&1\r\n' "$bash_win_esc" "$flow_lib_m_esc" "$flow_esc"
-    printf 'exit /b %%FETCH_HEALTH_RC%%\r\n'
 }
 
 # Emit the JSON settings fragment that wires the auto-approve-safe-bash hook by
@@ -1004,56 +548,7 @@ emit_settings_fragment() {
 JSON
 }
 
-# --- schtasks task XML ---------------------------------------
-#
-# schtasks /create has no flag for StartWhenAvailable ("run the task as
-# soon as possible after a missed scheduled start"), so a daily 02:00 run
-# is SILENTLY SKIPPED if the machine was off/asleep at 02:00. The only way
-# to set it from the CLI is to build the task from an XML definition and
-# create via `schtasks /create /xml`. We keep the existing per-task .bat
-# runner as the task's Exec Command and wrap it in XML that carries
-# StartWhenAvailable=true. Catch-up only (operator decision 2026-06-17):
-# we do NOT add a wake timer, and DisallowStartIfOnBatteries keeps its
-# schema default (true) so a battery laptop catches up when next on AC
-# rather than draining on battery.
-
-# Escape the XML-significant characters for text interpolated into an
-# element body (the Exec <Command> path — a BAT_DIR path may legally
-# contain `&`). `&` first so the `&` in the &lt;/&gt; entities isn't
-# re-escaped. Implemented with sed, NOT bash `${s//&/&amp;}`: bash 5.1+
-# treats a literal `&` in a substitution REPLACEMENT as the matched text
-# (so `${s//</&lt;}` yields `<lt;`, dropping the ampersand) — a version-
-# dependent trap. In sed, `\&` is an unambiguous literal ampersand on every
-# bash version (incl. the macOS 3.2 baseline).
-xml_escape() {
-    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-
-# The <CalendarTrigger> schedule fragment. Three legs are daily (harvest +
-# synthesize, fetch health); health is weekly
-# again unless --health-day daily says otherwise (cadence audit 2026-08-23).
-schedule_daily_xml() {
-    printf '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'
-}
-
-# Weekly on ONE day. $1 is a canonical DOW token (MON..SUN) already validated
-# by validate_arm_inputs; cron_dow/xml_dow are the only two places that know the
-# mapping, so a new spelling is added in one place.
-schedule_weekly_xml() {
-    printf '      <ScheduleByWeek>\n        <DaysOfWeek>\n          <%s />\n        </DaysOfWeek>\n        <WeeksInterval>1</WeeksInterval>\n      </ScheduleByWeek>' "$(xml_dow "$1")"
-}
-
-# DOW token -> Task Scheduler element name / cron numeric field. Both tables
-# live beside each other on purpose: they are the same fact in two dialects,
-# and the Windows and POSIX arms must never disagree about which day "SUN" is.
-xml_dow() {
-    case "$1" in
-        MON) printf 'Monday' ;;   TUE) printf 'Tuesday' ;;
-        WED) printf 'Wednesday' ;; THU) printf 'Thursday' ;;
-        FRI) printf 'Friday' ;;   SAT) printf 'Saturday' ;;
-        *)   printf 'Sunday' ;;
-    esac
-}
+# DOW token -> cron numeric field.
 cron_dow() {
     case "$1" in
         MON) printf '1' ;; TUE) printf '2' ;; WED) printf '3' ;;
@@ -1062,95 +557,11 @@ cron_dow() {
     esac
 }
 
-# Emit one task XML: a CalendarTrigger at the given local time with the
-# supplied schedule fragment, StartWhenAvailable=true, and the .bat runner
-# as the Exec Command. StartBoundary's date is a fixed past sentinel — the
-# schedule fragment (not the date) governs which days fire; the date only
-# marks when the schedule became active.
-#
-# Encoding: the prolog declares UTF-16 (what `schtasks /create /xml`
-# expects) but the bytes we write are plain ASCII — every value in this
-# document is ASCII (fixed tags, an ASCII HH:MM, and the .bat path under
-# ~/.claude/pipeline-cadence). schtasks accepts that combination; declaring
-# `encoding="UTF-8"` instead is REJECTED on Win11 with
-# "(1,40):: unable to switch the encoding" (verified). Keep this ASCII-only
-# — a non-ASCII byte here would need a real UTF-16LE+BOM file.
-emit_task_xml() {
-    local bat_win="$1" start_time="$2" schedule_xml="$3" vbs_win vbs_args
-    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
-    # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
-    # still allocate visible consoles; wscript //B hosting the .vbs shim (which
-    # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
-    # WScript.Quit) allocates zero consoles. The shim path is derived from the
-    # .bat path through cadence_vbs_path — the SAME helper cmd_arm writes the
-    # file with — so the referenced path and the written file can never disagree.
-    # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
-    # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
-    # re-arm survives — proven in test-cadence-format.sh).
-    vbs_win=$(cadence_vbs_path "$bat_win")
-    vbs_args=$(xml_escape "//B \"${vbs_win}\"")
-    cat <<XML
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>himmel pipeline-cadence</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2020-01-01T${start_time}:00</StartBoundary>
-      <Enabled>true</Enabled>
-${schedule_xml}
-    </CalendarTrigger>
-  </Triggers>
-  <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>wscript.exe</Command>
-      <Arguments>${vbs_args}</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-XML
-}
-
-# Create one task from an XML definition (so StartWhenAvailable applies).
-# Writes the XML to a temp file, converts the path for schtasks, creates,
-# then removes the temp. stderr -> $5 (shared err_file); returns the
-# schtasks rc so callers keep the existing failure/rollback flow.
-schtasks_create_xml() {
-    local name="$1" bat_win="$2" schedule_xml="$3" start_time="$4" err_file="$5"
-    local xml_file xml_win rc
-    # Self-contained error handling (does not rely on the caller's `if !`
-    # to suspend set -e): a failed mktemp/cygpath returns 1 with the temp
-    # cleaned up; the create's rc is captured under `set +e` so it is
-    # returned (not aborted on) even if called bare. Mirrors list_existing.
-    if ! xml_file=$(mktemp -t pipeline-cadence.xml.XXXXXX 2>"$err_file"); then
-        return 1
-    fi
-    emit_task_xml "$bat_win" "$start_time" "$schedule_xml" > "$xml_file"
-    if ! xml_win=$(cygpath -w "$xml_file" 2>"$err_file"); then
-        rm -f "$xml_file"
-        return 1
-    fi
-    set +e
-    run_schtasks /create /tn "$name" /xml "$xml_win" /f 2>"$err_file"
-    rc=$?
-    set -e
-    rm -f "$xml_file"
-    return "$rc"
-}
-
 # Validate a per-leg --*-model value. Defense in
 # depth: a conservative identifier grammar rejects empty/whitespace and
 # every shell/CMD metacharacter BEFORE the value is interpolated into a
-# runner, so a model like a"&b can't corrupt the .bat (which additionally
-# cmd_escapes it via emit_bat) or break the cron re-parse (emit_runner
-# pre-quotes with printf '%q'). Known aliases (sonnet|opus|haiku|fable)
+# runner, so a model like a"&b can't break the cron re-parse (emit_runner
+# additionally pre-quotes with printf '%q'). Known aliases (sonnet|opus|haiku|fable)
 # and dotted full ids (containing '.' or a 'claude-' prefix) arm silently;
 # any other grammar-valid value earns a non-fatal WARNING so a future
 # model name never hard-breaks arming. POSIX-safe `case` (not [[ =~ ]]):
@@ -1178,7 +589,7 @@ validate_model_name() {
     esac
 }
 
-# Input validation shared by the schtasks and cron arm paths.
+# Input validation for the cron arm path.
 validate_arm_inputs() {
     if ! [[ "$FETCH_HEALTH_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
         echo "ERR pipeline-cadence: --fetch-health-time must be HH:MM (24h), got: $FETCH_HEALTH_TIME" >&2
@@ -1196,8 +607,8 @@ validate_arm_inputs() {
         echo "ERR pipeline-cadence: --ig-limit must be a non-negative integer, got: $IG_LIMIT" >&2
         exit 1
     fi
-    # Canonicalise --health-day once, here, so every consumer below (the XML
-    # fragment, the cron DOW field, both summary blocks) reads one spelling.
+    # Canonicalise --health-day once, here, so every consumer below (the cron
+    # DOW field, the summary block) reads one spelling.
     # bash 3.2 has no ${v^^}.
     HEALTH_DAY=$(printf '%s' "$HEALTH_DAY" | tr '[:lower:]' '[:upper:]')
     case "$HEALTH_DAY" in
@@ -1218,9 +629,8 @@ validate_arm_inputs() {
     # Per-leg model pins: each --*-model must match a
     # conservative identifier grammar ([A-Za-z0-9][A-Za-z0-9._:-]*) -
     # this rejects empty/whitespace AND every shell/CMD metacharacter
-    # before the value reaches a runner. The .bat emitter additionally
-    # cmd_escapes the value (emit_bat) and the cron emitter pre-quotes it
-    # with printf '%q' (emit_runner) - defense in depth, never the sole
+    # before the value reaches a runner. The cron emitter additionally
+    # pre-quotes it with printf '%q' (emit_runner) - defense in depth, never the sole
     # guard. claude's own runtime error on a bad name is a last line, not
     # the first.
     validate_model_name "--harvest-model" "$HARVEST_MODEL" || exit 1
@@ -1232,445 +642,11 @@ validate_arm_inputs() {
     fi
 }
 
-cmd_arm() {
-    validate_arm_inputs
-    cadence_require_wsh "pipeline-cadence" || exit 2
-
-    # Resolve claude to an absolute Windows path so the .bat doesn't
-    # depend on PATH in whatever cmd shell schtasks spawns.
-    local claude_posix claude_win bash_posix bash_win flow_lib_m python_posix python_win fetch_script_win
-    if ! claude_posix=$(command -v claude 2>/dev/null); then
-        echo "ERR pipeline-cadence: 'claude' not on PATH at arm time" >&2
-        exit 2
-    fi
-    if ! bash_posix=$(command -v bash 2>/dev/null); then
-        echo "ERR pipeline-cadence: 'bash' not on PATH at arm time" >&2
-        exit 2
-    fi
-    if python_posix=$(command -v python3 2>/dev/null); then
-        :
-    elif python_posix=$(command -v python 2>/dev/null); then
-        :
-    else
-        echo "ERR pipeline-cadence: python3/python not on PATH at arm time (required for fetch-health)" >&2
-        exit 2
-    fi
-    command -v cygpath >/dev/null 2>&1 || {
-        echo "ERR pipeline-cadence: cygpath not on PATH; cannot convert paths for schtasks" >&2
-        exit 2
-    }
-    if ! claude_win=$(cygpath -w "$claude_posix" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed for claude path: $claude_win" >&2
-        exit 4
-    fi
-    if ! bash_win=$(cygpath -w "$bash_posix" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed for bash path: $bash_win" >&2
-        exit 4
-    fi
-    if ! python_win=$(cygpath -w "$python_posix" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed for python path: $python_win" >&2
-        exit 4
-    fi
-    if ! fetch_script_win=$(cygpath -w "$HIMMEL_ROOT/scripts/luna/fetch-health.py" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed for fetch-health.py: $fetch_script_win" >&2
-        exit 4
-    fi
-    # The repo .env (gitignored, may be absent) is sourced by the
-    # .bat at FIRE time so credentialed probes inherit env-sourced secrets under
-    # schtasks' minimal environment. cygpath -w is a pure string transform, so a
-    # missing .env still resolves; the .bat guards the load with `if exist`.
-    if ! env_file_win=$(cygpath -w "$HIMMEL_ROOT/.env" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed for repo .env: $env_file_win" >&2
-        exit 4
-    fi
-    if ! flow_lib_m=$(cygpath -m "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -m failed for flow-run-ledger.sh: $flow_lib_m" >&2
-        exit 4
-    fi
-    # The two gate helpers. MIXED form (`cygpath
-    # -m`, C:/...), like flow_lib_m and unlike the -w paths above: these are
-    # bash arguments, and a Windows-form path loses its backslashes to shell
-    # escaping the moment it crosses the cmd -> bash boundary.
-    local bank_lib_m gate_lib_m
-    if ! bank_lib_m=$(cygpath -m "$BANK_PREFLIGHT" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -m failed for usage-preflight.sh: $bank_lib_m" >&2
-        exit 4
-    fi
-    if ! gate_lib_m=$(cygpath -m "$SYNTH_GATE" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -m failed for synth-input-check.sh: $gate_lib_m" >&2
-        exit 4
-    fi
-    # Both gates are fail-open at fire time, so a missing helper degrades to the
-    # pre-gate behaviour rather than breaking the cadence — but it must
-    # not do so silently, because "the bank guard is armed" would then be false.
-    [ -r "$BANK_PREFLIGHT" ] || \
-        echo "WARN pipeline-cadence: bank-preflight not readable at $BANK_PREFLIGHT (claude legs will spend the bank UNGUARDED)" >&2
-    [ -r "$SYNTH_GATE" ] || \
-        echo "WARN pipeline-cadence: synth input gate not readable at $SYNTH_GATE (the synthesize leg will launch on empty nights)" >&2
-    local vault_win
-    if ! vault_win=$(cygpath -w "$VAULT" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed for vault path: $vault_win" >&2
-        exit 4
-    fi
-    # Drop a trailing separator (public-PR CR). `--vault` is operator input and
-    # shell tab-completion happily supplies "…/vault/", which cygpath -w
-    # PRESERVES: `C:\…\vault\`. That lands bare in `cd /d "%s"`, giving a
-    # backslash immediately before the closing quote.
-    #
-    # Honesty about WHY: the review said cmd.exe's batch parser consumes that
-    # `\"` as an escaped quote and corrupts the rest of the line. That does NOT
-    # reproduce — measured on a spaced path with a trailing backslash, `cd`
-    # succeeded, the `>>` redirect was honoured, the following line ran, rc 0.
-    # Backslash-escaping of quotes is the C runtime's argv convention, not cmd's
-    # own tokenizer, and this value is consumed by `cd /d`, a cmd BUILTIN.
-    #
-    # Normalizing anyway, because it stands on its own terms: a trailing
-    # separator is redundant in a `cd` target (C:\foo and C:\foo\ are the same
-    # directory), it is noise in a generated runner an operator has to read, and
-    # stripping it removes the whole question rather than resting the runner's
-    # correctness on a parser subtlety. Done HERE, at the source, rather than in
-    # cadence_cmd_escape — the shared escaper is the %-only contract four
-    # emitters depend on and that this PR spent rounds hardening; a path-shape
-    # concern does not belong in it.
-    # A DRIVE ROOT keeps its separator: `cd /d "C:\"` is the root of C:, while
-    # `cd /d "C:"` means "the current directory on C:" — a different place, and
-    # stripping there would be a real regression in the name of cosmetics.
-    # Plain suffix removal in a loop (bash 3.2-safe; no extglob).
-    while :; do
-        case "$vault_win" in
-            [A-Za-z]:\\) break ;;
-            *\\)         vault_win="${vault_win%\\}" ;;
-            *)           break ;;
-        esac
-    done
-
-    # Pre-trust the vault dir so the fired cadence runs don't stall
-    # on Claude Code's interactive workspace-trust prompt ("Is this a project
-    # you trust?"). An autonomous run has no human to answer it and its stdin is
-    # NUL (cmd.exe's /dev/null — see the runner below), so an untrusted cwd
-    # silently wastes the run. Non-fatal: a pre-seed failure must never block
-    # the arm.
-    local _pc_lib
-    _pc_lib="$(cd "$(dirname "${BASH_SOURCE[0]}")/../lib" && pwd)/ensure-workspace-trust.sh"
-    if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY pipeline-cadence: would pre-trust workspace '$VAULT' in ~/.claude.json"
-    else
-        "$_pc_lib" "$VAULT" \
-            || echo "WARN pipeline-cadence: workspace-trust pre-seed failed for '$VAULT' (arm continues; first run may prompt to trust the folder)" >&2
-    fi
-
-    # Dedup guard — never double-register the cadence.
-    local existing
-    existing=$(list_existing)
-    if [ -n "$existing" ]; then
-        if [ "$FORCE" -eq 1 ]; then
-            echo "pipeline-cadence: --force set; replacing existing task(s):" >&2
-            local marker
-            while IFS= read -r marker; do
-                [ -z "$marker" ] && continue
-                echo "  $marker" >&2
-                if [ "$DRY_RUN" -eq 0 ]; then
-                    delete_task "$marker"
-                else
-                    echo "DRY pipeline-cadence: would delete $marker"
-                fi
-            done <<< "$existing"
-        else
-            {
-                echo "ERR pipeline-cadence: HIMMEL-Pipeline-* task(s) already armed:"
-                printf '%s\n' "$existing" | sed 's/^/    /'
-                echo ""
-                echo "Dedup safeguard — re-run with --force to replace, or inspect with:"
-                echo "    bash scripts/luna/pipeline-cadence.sh status"
-            } >&2
-            exit 3
-        fi
-    fi
-
-    local vault_esc harvest_esc synth_esc health_esc
-    vault_esc=$(cadence_cmd_escape "$vault_win")
-    harvest_esc=$(cadence_cmd_escape "$HARVEST_PROMPT")
-    synth_esc=$(cadence_cmd_escape "$SYNTH_PROMPT")
-    health_esc=$(cadence_cmd_escape "$HEALTH_PROMPT")
-    # The remaining six emit_bat parameters, escaped HERE rather than inside the
-    # emitter (public-PR CR — see emit_bat's header). Escaped once and reused by
-    # both the dry-run preview and the real write below, so the two can never
-    # disagree about what lands in the .bat.
-    local claude_win_esc bash_win_esc flow_lib_m_esc python_win_esc fetch_script_win_esc env_file_win_esc git_bin_esc
-    claude_win_esc=$(cadence_cmd_escape "$claude_win")
-    bash_win_esc=$(cadence_cmd_escape "$bash_win")
-    # Git's usr\bin + bin, derived from the bash.exe path above:
-    # prepended to PATH in emit_bat so the non-login bash.exe finds GNU coreutils
-    # ahead of System32. Empty for a non-Git bash → emit_bat then omits the line.
-    git_bin_esc=$(cadence_cmd_escape "$(cadence_git_bin_path_win "$bash_win")")
-    flow_lib_m_esc=$(cadence_cmd_escape "$flow_lib_m")
-    local bank_lib_m_esc gate_lib_m_esc
-    bank_lib_m_esc=$(cadence_cmd_escape "$bank_lib_m")
-    gate_lib_m_esc=$(cadence_cmd_escape "$gate_lib_m")
-    python_win_esc=$(cadence_cmd_escape "$python_win")
-    fetch_script_win_esc=$(cadence_cmd_escape "$fetch_script_win")
-    env_file_win_esc=$(cadence_cmd_escape "$env_file_win")
-    local harvest_model_esc synth_model_esc health_model_esc
-    harvest_model_esc=$(cadence_cmd_escape "$HARVEST_MODEL")
-    synth_model_esc=$(cadence_cmd_escape "$SYNTH_MODEL")
-    health_model_esc=$(cadence_cmd_escape "$HEALTH_MODEL")
-    local task_fetch_health_esc task_harvest_esc task_synth_esc task_health_esc
-    task_fetch_health_esc=$(cadence_cmd_escape "$TASK_FETCH_HEALTH")
-    task_harvest_esc=$(cadence_cmd_escape "$TASK_HARVEST")
-    task_synth_esc=$(cadence_cmd_escape "$TASK_SYNTH")
-    task_health_esc=$(cadence_cmd_escape "$TASK_HEALTH")
-    # The flow names are in-repo literals, not operator input, so escaping them
-    # changes nothing today. They go through the same call anyway: the value of
-    # this convention is that NOTHING reaches emit_bat unescaped, and an
-    # exception "because this one is a literal" is what makes the next one
-    # arguable.
-    local flow_fetch_health_esc flow_harvest_esc flow_synth_esc flow_health_esc
-    flow_fetch_health_esc=$(cadence_cmd_escape "pipeline-fetch-health")
-    flow_harvest_esc=$(cadence_cmd_escape "pipeline-harvest")
-    flow_synth_esc=$(cadence_cmd_escape "pipeline-synthesize")
-    flow_health_esc=$(cadence_cmd_escape "pipeline-health")
-    local bat_fetch_health="$BAT_DIR/pipeline-fetch-health.bat"
-    local bat_harvest="$BAT_DIR/pipeline-harvest.bat"
-    local bat_synth="$BAT_DIR/pipeline-synthesize.bat"
-    local bat_health="$BAT_DIR/pipeline-health.bat"
-    # wscript //B shims live beside their .bats; disarm removes
-    # both together. Derived from the .bat Windows path through cadence_vbs_path
-    # — the same helper emit_task_xml derives the referenced path with.
-    local vbs_fetch_health="$BAT_DIR/pipeline-fetch-health.vbs"
-    local vbs_harvest="$BAT_DIR/pipeline-harvest.vbs"
-    local vbs_synth="$BAT_DIR/pipeline-synthesize.vbs"
-    local vbs_health="$BAT_DIR/pipeline-health.vbs"
-
-    # Fire-time run logs live next to the .bats (cmd-escaped for the
-    # `>>` redirect target inside the .bat).
-    local bat_dir_win log_fetch_health_esc log_harvest_esc log_synth_esc log_health_esc
-    if ! bat_dir_win=$(cygpath -w "$BAT_DIR" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed for bat dir: $bat_dir_win" >&2
-        exit 4
-    fi
-    log_fetch_health_esc=$(cadence_cmd_escape "$bat_dir_win\\pipeline-fetch-health.log")
-    log_harvest_esc=$(cadence_cmd_escape "$bat_dir_win\\pipeline-harvest.log")
-    log_synth_esc=$(cadence_cmd_escape "$bat_dir_win\\pipeline-synthesize.log")
-    log_health_esc=$(cadence_cmd_escape "$bat_dir_win\\pipeline-health.log")
-
-    # Settings fragment: the `claude --settings` target inside each
-    # .bat (a Windows path, cmd-escaped) plus the auto-approve hook's mixed
-    # (C:/...) path embedded in the fragment JSON (forward-slash so it's both
-    # JSON-safe and bash-readable when claude runs the hook command).
-    local settings_esc hook_path_m
-    settings_esc=$(cadence_cmd_escape "$bat_dir_win\\cadence-settings.json")
-    if ! hook_path_m=$(cygpath -m "$AUTO_APPROVE_HOOK" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -m failed for hook path: $hook_path_m" >&2
-        exit 4
-    fi
-    [ -r "$AUTO_APPROVE_HOOK" ] || \
-        echo "WARN pipeline-cadence: auto-approve hook not readable at $AUTO_APPROVE_HOOK (cadence runs may stall on compound-bash prompts)" >&2
-# The two cadence-scoped hooks emit_settings_fragment wires beside AUTO_APPROVE_HOOK
-# need the same readability check. If either is missing at fire time, the
-    # hook process fails to start; Claude Code treats a non-2 exit as
-    # NON-BLOCKING, so the cadence session runs with that hook's protection
-    # silently absent — exactly the permission surface these hooks guard.
-    local hooks_dir_check="${AUTO_APPROVE_HOOK%/*}"
-    [ -r "$hooks_dir_check/cadence-deny-background.sh" ] || \
-        echo "WARN pipeline-cadence: deny-background hook not readable at $hooks_dir_check/cadence-deny-background.sh (background-command denies will be silently absent)" >&2
-    [ -r "$hooks_dir_check/cadence-approve-engines.sh" ] || \
-        echo "WARN pipeline-cadence: approve-engines hook not readable at $hooks_dir_check/cadence-approve-engines.sh (engine calls will prompt or stall)" >&2
-    [ -r "$hooks_dir_check/cadence-deny-powershell.sh" ] || \
-        echo "WARN pipeline-cadence: deny-powershell hook not readable at $hooks_dir_check/cadence-deny-powershell.sh (PowerShell-tool calls will bypass every cadence guardrail)" >&2
-
-    # Per-cadence schedule fragments for the task XML. Built
-    # once and reused by the dry-run preview and the real create below.
-    local sched_fetch_health sched_harvest sched_synth sched_health
-    sched_fetch_health=$(schedule_daily_xml)
-    sched_harvest=$(schedule_daily_xml)
-    sched_synth=$(schedule_daily_xml)
-    if [ "$HEALTH_DAY" = DAILY ]; then
-        sched_health=$(schedule_daily_xml)
-    else
-        sched_health=$(schedule_weekly_xml "$HEALTH_DAY")
-    fi
-
-    # The .bat runner is the task's Exec Command. cygpath -w is a pure
-    # string transform (the .bat need not exist yet), so resolve the win
-    # paths before the dry-run preview too — the XML preview must show the
-    # real Exec Command.
-    local bat_fetch_health_win bat_harvest_win bat_synth_win bat_health_win
-    if ! bat_fetch_health_win=$(cygpath -w "$bat_fetch_health" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed: $bat_fetch_health_win" >&2
-        exit 4
-    fi
-    if ! bat_harvest_win=$(cygpath -w "$bat_harvest" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed: $bat_harvest_win" >&2
-        exit 4
-    fi
-    if ! bat_synth_win=$(cygpath -w "$bat_synth" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed: $bat_synth_win" >&2
-        exit 4
-    fi
-    if ! bat_health_win=$(cygpath -w "$bat_health" 2>&1); then
-        echo "ERR pipeline-cadence: cygpath -w failed: $bat_health_win" >&2
-        exit 4
-    fi
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY pipeline-cadence: would write $SETTINGS_FRAGMENT:"
-        emit_settings_fragment "$hook_path_m" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $bat_fetch_health:"
-        emit_fetch_health_bat "$python_win_esc" "$fetch_script_win_esc" "$log_fetch_health_esc" "$env_file_win_esc" "$bash_win_esc" "$flow_lib_m_esc" "$flow_fetch_health_esc" "$task_fetch_health_esc" "$git_bin_esc" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $vbs_fetch_health:"
-        cadence_vbs_wrapper "$bat_fetch_health_win" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $bat_harvest:"
-        emit_bat "$vault_esc" "$claude_win_esc" "$harvest_esc" "$log_harvest_esc" "$settings_esc" "$harvest_model_esc" "$flow_harvest_esc" "$task_harvest_esc" "$bash_win_esc" "$flow_lib_m_esc" "$git_bin_esc" "$bank_lib_m_esc" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $vbs_harvest:"
-        cadence_vbs_wrapper "$bat_harvest_win" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $bat_synth:"
-        emit_bat "$vault_esc" "$claude_win_esc" "$synth_esc" "$log_synth_esc" "$settings_esc" "$synth_model_esc" "$flow_synth_esc" "$task_synth_esc" "$bash_win_esc" "$flow_lib_m_esc" "$git_bin_esc" "$bank_lib_m_esc" "$gate_lib_m_esc" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $vbs_synth:"
-        cadence_vbs_wrapper "$bat_synth_win" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $bat_health:"
-        emit_bat "$vault_esc" "$claude_win_esc" "$health_esc" "$log_health_esc" "$settings_esc" "$health_model_esc" "$flow_health_esc" "$task_health_esc" "$bash_win_esc" "$flow_lib_m_esc" "$git_bin_esc" "$bank_lib_m_esc" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would write $vbs_health:"
-        cadence_vbs_wrapper "$bat_health_win" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would schtasks /create /tn $TASK_FETCH_HEALTH /xml <daily $FETCH_HEALTH_TIME, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_fetch_health_win" "$FETCH_HEALTH_TIME" "$sched_fetch_health" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would schtasks /create /tn $TASK_HARVEST /xml <daily $HARVEST_TIME, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_harvest_win" "$HARVEST_TIME" "$sched_harvest" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would schtasks /create /tn $TASK_SYNTH /xml <daily $SYNTH_TIME, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_synth_win" "$SYNTH_TIME" "$sched_synth" | sed 's/^/    /'
-        echo "DRY pipeline-cadence: would schtasks /create /tn $TASK_HEALTH /xml <$HEALTH_CADENCE_LABEL, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_health_win" "$HEALTH_TIME" "$sched_health" | sed 's/^/    /'
-        echo "pipeline-cadence: dry-run complete (no changes made)"
-        return 0
-    fi
-
-    mkdir -p "$BAT_DIR"
-    emit_settings_fragment "$hook_path_m" > "$SETTINGS_FRAGMENT"
-    # Atomic runner publication: every runner .bat
-    # and .vbs shim is emitted to a staged temp BESIDE its final path (same dir
-    # -> same filesystem -> `mv` is an atomic rename, not a copy) and promoted
-    # only once complete.
-    # Redirecting straight onto the FINAL path let a task firing concurrently
-    # with a re-arm read a half-written shim; after the rename the final path
-    # only ever holds a complete file (old or new). Shims promote first (an
-    # already-armed task can safely run a new shim against the still-current
-    # .bat mid-replacement), and every promotion is CHECKED — a failed one
-    # aborts the arm BEFORE any task is registered, with the staged temps
-    # cleaned. A non-regular final path is refused too: `mv` onto a directory
-    # squatting on a runner name "succeeds" by moving the staged file INSIDE
-    # it, arming a task at a path that is not a file.
-    local tmp_fetch_health_bat tmp_harvest_bat tmp_synth_bat tmp_health_bat
-    local tmp_fetch_health_vbs tmp_harvest_vbs tmp_synth_vbs tmp_health_vbs
-    tmp_fetch_health_bat=$(mktemp "$BAT_DIR/.pipeline-fetch-health.bat.XXXXXX")
-    tmp_harvest_bat=$(mktemp "$BAT_DIR/.pipeline-harvest.bat.XXXXXX")
-    tmp_synth_bat=$(mktemp "$BAT_DIR/.pipeline-synthesize.bat.XXXXXX")
-    tmp_health_bat=$(mktemp "$BAT_DIR/.pipeline-health.bat.XXXXXX")
-    tmp_fetch_health_vbs=$(mktemp "$BAT_DIR/.pipeline-fetch-health.vbs.XXXXXX")
-    tmp_harvest_vbs=$(mktemp "$BAT_DIR/.pipeline-harvest.vbs.XXXXXX")
-    tmp_synth_vbs=$(mktemp "$BAT_DIR/.pipeline-synthesize.vbs.XXXXXX")
-    tmp_health_vbs=$(mktemp "$BAT_DIR/.pipeline-health.vbs.XXXXXX")
-    emit_fetch_health_bat "$python_win_esc" "$fetch_script_win_esc" "$log_fetch_health_esc" "$env_file_win_esc" "$bash_win_esc" "$flow_lib_m_esc" "$flow_fetch_health_esc" "$task_fetch_health_esc" "$git_bin_esc" > "$tmp_fetch_health_bat"
-    emit_bat "$vault_esc" "$claude_win_esc" "$harvest_esc" "$log_harvest_esc" "$settings_esc" "$harvest_model_esc" "$flow_harvest_esc" "$task_harvest_esc" "$bash_win_esc" "$flow_lib_m_esc" "$git_bin_esc" "$bank_lib_m_esc" > "$tmp_harvest_bat"
-    emit_bat "$vault_esc" "$claude_win_esc" "$synth_esc"  "$log_synth_esc"  "$settings_esc" "$synth_model_esc"   "$flow_synth_esc" "$task_synth_esc" "$bash_win_esc" "$flow_lib_m_esc" "$git_bin_esc" "$bank_lib_m_esc" "$gate_lib_m_esc" > "$tmp_synth_bat"
-    emit_bat "$vault_esc" "$claude_win_esc" "$health_esc" "$log_health_esc" "$settings_esc" "$health_model_esc"  "$flow_health_esc" "$task_health_esc" "$bash_win_esc" "$flow_lib_m_esc" "$git_bin_esc" "$bank_lib_m_esc" > "$tmp_health_bat"
-    cadence_vbs_wrapper "$bat_fetch_health_win" > "$tmp_fetch_health_vbs"
-    cadence_vbs_wrapper "$bat_harvest_win" > "$tmp_harvest_vbs"
-    cadence_vbs_wrapper "$bat_synth_win" > "$tmp_synth_vbs"
-    cadence_vbs_wrapper "$bat_health_win" > "$tmp_health_vbs"
-    local promote_src promote_dst idx
-    promote_src=("$tmp_fetch_health_vbs" "$tmp_harvest_vbs" "$tmp_synth_vbs" "$tmp_health_vbs" \
-                 "$tmp_fetch_health_bat" "$tmp_harvest_bat" "$tmp_synth_bat" "$tmp_health_bat")
-    promote_dst=("$vbs_fetch_health" "$vbs_harvest" "$vbs_synth" "$vbs_health" \
-                 "$bat_fetch_health" "$bat_harvest" "$bat_synth" "$bat_health")
-    for idx in "${!promote_dst[@]}"; do
-        if [ -e "${promote_dst[$idx]}" ] && [ ! -f "${promote_dst[$idx]}" ]; then
-            echo "ERR pipeline-cadence: ${promote_dst[$idx]} exists and is not a regular file — refusing to publish" >&2
-            rm -f "${promote_src[@]}"
-            exit 4
-        fi
-        if ! mv -f "${promote_src[$idx]}" "${promote_dst[$idx]}"; then
-            echo "ERR pipeline-cadence: failed to publish runner to ${promote_dst[$idx]} — NO task armed" >&2
-            rm -f "${promote_src[@]}"
-            exit 4
-        fi
-    done
-
-    local err_file
-    err_file=$(mktemp -t pipeline-cadence.err.XXXXXX)
-    if ! schtasks_create_xml "$TASK_HARVEST" "$bat_harvest_win" "$sched_harvest" "$HARVEST_TIME" "$err_file"; then
-        echo "ERR pipeline-cadence: schtasks /create $TASK_HARVEST failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        exit 4
-    fi
-    # Surface success-path /create warnings instead of deleting them unread.
-    if [ -s "$err_file" ]; then cat "$err_file" >&2; fi
-    if ! schtasks_create_xml "$TASK_SYNTH" "$bat_synth_win" "$sched_synth" "$SYNTH_TIME" "$err_file"; then
-        echo "ERR pipeline-cadence: schtasks /create $TASK_SYNTH failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        # Don't leave a half-armed cadence behind: roll back the daily
-        # task that DID register so status/dedup stay truthful.
-        if ! run_schtasks /delete /tn "$TASK_HARVEST" /f >/dev/null 2>&1; then
-            echo "WARN: rollback of $TASK_HARVEST failed — run disarm" >&2
-        fi
-        exit 4
-    fi
-    if [ -s "$err_file" ]; then cat "$err_file" >&2; fi
-    if ! schtasks_create_xml "$TASK_HEALTH" "$bat_health_win" "$sched_health" "$HEALTH_TIME" "$err_file"; then
-        echo "ERR pipeline-cadence: schtasks /create $TASK_HEALTH failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        # Roll back the tasks that DID register so
-        # status/dedup stay truthful.
-        if ! run_schtasks /delete /tn "$TASK_HARVEST" /f >/dev/null 2>&1; then
-            echo "WARN: rollback of $TASK_HARVEST failed — run disarm" >&2
-        fi
-        if ! run_schtasks /delete /tn "$TASK_SYNTH" /f >/dev/null 2>&1; then
-            echo "WARN: rollback of $TASK_SYNTH failed — run disarm" >&2
-        fi
-        exit 4
-    fi
-    if [ -s "$err_file" ]; then cat "$err_file" >&2; fi
-    if ! schtasks_create_xml "$TASK_FETCH_HEALTH" "$bat_fetch_health_win" "$sched_fetch_health" "$FETCH_HEALTH_TIME" "$err_file"; then
-        echo "ERR pipeline-cadence: schtasks /create $TASK_FETCH_HEALTH failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        for name in "$TASK_HARVEST" "$TASK_SYNTH" "$TASK_HEALTH"; do
-            if ! run_schtasks /delete /tn "$name" /f >/dev/null 2>&1; then
-                echo "WARN: rollback of $name failed — run disarm" >&2
-            fi
-        done
-        exit 4
-    fi
-    if [ -s "$err_file" ]; then cat "$err_file" >&2; fi
-    rm -f "$err_file"
-
-    cat <<EOF
-
-================================================================
-  PIPELINE CADENCE ARMED
-  $TASK_FETCH_HEALTH  daily   $FETCH_HEALTH_TIME  [no LLM]  -> clip-source fetch probes
-  $TASK_HARVEST  daily   $HARVEST_TIME  [model: $HARVEST_MODEL]  -> $DAILY_CHAIN
-  $TASK_SYNTH    daily   $SYNTH_TIME    [model: $SYNTH_MODEL]    -> /synthesize-clips + /archive-clips
-  $TASK_HEALTH   $HEALTH_CADENCE_LABEL   [model: $HEALTH_MODEL]   -> vault-lint (obsidian-triage:vault-lint)
-  Vault: $vault_win
-  Runner .bats: $BAT_DIR
-
-  Sessions launch as bounded interactive claude runs (stdin from NUL)
-  in the vault directory. StartWhenAvailable=true: a run
-  missed because the PC was off/asleep fires when the PC is next on.
-  Disarm anytime with:
-      bash scripts/luna/pipeline-cadence.sh disarm
-================================================================
-EOF
-}
-
 # --- POSIX (cron) implementation ------------------------------
 #
-# Same arm/status/disarm contract as the schtasks path above, against
-# the user crontab. Both cadence entries live in ONE crontab rewrite
-# (snapshot -> filter -> append -> install), so there is no half-armed
-# state to roll back. Runner .sh files mirror the .bat runners: log
+# arm/status/disarm against the user crontab. Every cadence entry lives
+# in ONE crontab rewrite (snapshot -> filter -> append -> install), so
+# there is no half-armed state to roll back. Each runner .sh does log
 # rotation, fire stamp, cd-into-vault, bounded interactive claude run.
 
 CRON_RUNNER_FETCH_HEALTH="$BAT_DIR/pipeline-fetch-health.sh"
@@ -1696,8 +672,8 @@ cron_escape() {
     printf '%s' "${s//%/\\%}"
 }
 
-# Read the current crontab into the CRON_TAB global. Fail-CLOSED like
-# list_existing: any nonzero rc is fatal UNLESS it matches the trusted
+# Read the current crontab into the CRON_TAB global. Fail-CLOSED: any
+# nonzero rc is fatal UNLESS it matches the trusted
 # no-crontab-yet signature — rc=1 with EMPTY stderr or the standard
 # "no crontab for <user>" message. A failed listing must never read as
 # "nothing armed" (arm would double-register; disarm would no-op and
@@ -1809,7 +785,7 @@ emit_runner() {
     else
         printf '    cd %s || exit 1\n' "$q_vault"
     fi
-    # The POSIX twins of the two .bat gates. Both live INSIDE the `{ } >> $log`
+    # The two gates. Both live INSIDE the `{ } >> $log`
     # group, so each helper's stderr diagnostics land in the leg log while its
     # single verdict token is captured. `exit` from a brace group (not a
     # subshell) exits the runner, so a refused leg never reaches the claude
@@ -1841,7 +817,7 @@ emit_runner() {
         printf '        exit 0\n'
         printf '    fi\n'
     fi
-    # Retry/resume loop, the POSIX twin of the .bat goto loop. The
+    # Retry/resume loop. The
     # marker line is what --is-transient scans FORWARD from, so each attempt is
     # judged on its own output; each attempt lands its own start/end ledger
     # pair, the end row tagged attempt=N/MAX.
@@ -1851,7 +827,8 @@ emit_runner() {
     printf '        _flow_run_id=$(%s --append-start %s "" "" claude %s %s "$log" "$$" 2>/dev/null) || _flow_run_id=\n' "$q_flow_lib" "$q_flow" "$q_model" "$q_task"
     # No bg-wait ceiling override here — CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS
     # only affects --print mode, and cadence runners are interactive-shaped.
-    # --permission-mode is EXPLICIT — see emit_bat's twin.
+    # --permission-mode is EXPLICIT: never inherit a default that could be
+    # bypassPermissions (billing rule).
     printf '        _rc=0; %s --model %s --permission-mode %s --settings %s %s < /dev/null || _rc=$?\n' "$q_claude" "$q_model" "$CADENCE_PERMISSION_MODE" "$q_settings" "$q_prompt"
     # Fail-closed fallback (coderabbit #1762): classifier unavailable/silent ->
     # parked on rc 0, error otherwise -- never complete by default.
@@ -1880,8 +857,7 @@ emit_runner() {
     if [ -n "$q_alert_lib" ]; then
         printf '    if [ "$_fail" != "" ]; then %s fail %s "$_fail" "$log" || true; else %s clear %s || true; fi\n' "$q_alert_lib" "$q_flow" "$q_alert_lib" "$q_flow"
     fi
-    # Completion stamp — the POSIX twin; `complete` only, for the
-    # reason emit_bat documents.
+    # Completion stamp — `complete` only.
     if [ -n "$q_gate_lib" ]; then
         printf '    { [ "$_flow_outcome" = complete ] && %s --stamp .; } || true\n' "$q_gate_lib"
     fi
@@ -1895,7 +871,7 @@ emit_runner() {
     fi
     printf '} >> "$log" 2>&1\n'
 # A parked leg (zero rc, no marker) exits 3 so cron/the operator
-# sees a failure, mirroring the .bat runner; it covers any
+# sees a failure; it covers any
     # zero-rc outcome short of complete (truncated too): a no-op is not green.
     printf 'if [ "$_rc" = 0 ] && [ "$_flow_outcome" != complete ]; then exit 3; fi\n'
     printf 'exit "$_rc"\n'
@@ -1922,10 +898,9 @@ emit_fetch_health_runner() {
     printf 'if [ -f "$log" ]; then mv -f "$log" "$log.prev" || exit 1; fi\n'
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
-    # Flow-run ledger rows — the POSIX twin of the .bat leg's
-    # rows, so a cron-armed FetchHealth leg is equally visible to stall /
+    # Flow-run ledger rows, so the FetchHealth leg is visible to stall /
     # never-started detection. Outcome derived from the rc (no LLM, so no
-    # truncation/parked state to classify); see emit_fetch_health_bat.
+    # truncation/parked state to classify).
     printf '    _flow_run_id=$(%s --append-start %s "" "" python "" %s "$log" "$$" 2>/dev/null) || _flow_run_id=\n' "$q_flow_lib" "$q_flow" "$q_task"
     printf '    _rc=0; %s %s || _rc=$?\n' "$q_python" "$q_script"
     printf '    _flow_outcome=complete; [ "$_rc" = 0 ] || _flow_outcome=error\n'
@@ -1970,7 +945,7 @@ cron_disarm() {
     existing=$(cron_existing)
     if [ -z "$existing" ]; then
         # Trusted-empty read (cron_read exits 2 otherwise) — safe to
-        # sweep the runners like the schtasks path does.
+        # sweep the runners.
         if [ "$DRY_RUN" -eq 0 ]; then
             rm -f "$CRON_RUNNER_FETCH_HEALTH" "$CRON_RUNNER_HARVEST" "$CRON_RUNNER_SYNTH" "$CRON_RUNNER_HEALTH" "$SETTINGS_FRAGMENT"
         fi
@@ -2022,7 +997,7 @@ cron_arm() {
         node_dir=$(dirname "$node_bin")
     fi
 
-    # Pre-trust the vault dir — same rationale as cmd_arm: a
+    # Pre-trust the vault dir: a
     # cron-fired claude run (stdin /dev/null) has no human to answer Claude
     # Code's interactive workspace-trust prompt, so an untrusted cwd wastes
     # the run. Non-fatal: a pre-seed failure must never block the arm.
@@ -2100,8 +1075,7 @@ cron_arm() {
     q_env_file=$(printf '%q' "$HIMMEL_ROOT/.env")
     [ -r "$AUTO_APPROVE_HOOK" ] || \
         echo "WARN pipeline-cadence: auto-approve hook not readable at $AUTO_APPROVE_HOOK (cadence runs may stall on compound-bash prompts)" >&2
-# See the matching comment at the cmd_arm call site above — the two
-# cadence-scoped hooks need the same readability check as AUTO_APPROVE_HOOK.
+# The cadence-scoped hooks need the same readability check as AUTO_APPROVE_HOOK.
     local hooks_dir_check="${AUTO_APPROVE_HOOK%/*}"
     [ -r "$hooks_dir_check/cadence-deny-background.sh" ] || \
         echo "WARN pipeline-cadence: deny-background hook not readable at $hooks_dir_check/cadence-deny-background.sh (background-command denies will be silently absent)" >&2
@@ -2209,7 +1183,7 @@ EOF
 }
 
 case "$SUBCMD" in
-    arm)    if [ "$PLATFORM" = "windows" ]; then cmd_arm;    else cron_arm;    fi ;;
-    status) if [ "$PLATFORM" = "windows" ]; then cmd_status; else cron_status; fi ;;
-    disarm) if [ "$PLATFORM" = "windows" ]; then cmd_disarm; else cron_disarm; fi ;;
+    arm)    cron_arm ;;
+    status) cron_status ;;
+    disarm) cron_disarm ;;
 esac

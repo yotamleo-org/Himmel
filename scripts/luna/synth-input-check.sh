@@ -12,7 +12,7 @@
 #   * Prints exactly ONE token to stdout: NEW or NONE.
 #   * Diagnostics to stderr.
 #   * ALWAYS exits 0. Callers branch on the TOKEN, never the exit code — a
-#     non-zero exit is indistinguishable from a crash to the schtasks/cron
+#     non-zero exit is indistinguishable from a crash to the cron
 #     wrapper.
 #   * FAIL-OPEN: anything this script cannot determine yields NEW. A broken
 #     checker must never be the reason the pipeline silently stops

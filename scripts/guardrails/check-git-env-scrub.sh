@@ -14,11 +14,11 @@
 #
 # Trust paths (fixed, not discovered): scripts/handover/**, scripts/lanes/**,
 # scripts/hooks/**, scripts/cr/**, scripts/lib/go-gate.sh. Excluded within
-# those: test-*.sh, *.test.{mjs,js,cjs,ts}, test-*.ps1, test_*.py, and
+# those: test-*.sh, *.test.{mjs,js,cjs,ts}, test_*.py, and
 # anything under a fixtures/ or test-fixtures/ directory — those run git in
 # scratch fixtures by design.
 #
-# Scanned extensions: .sh .mjs .js .cjs .ts .py .ps1.
+# Scanned extensions: .sh .mjs .js .cjs .ts .py.
 #
 # Three detectors, deliberately different units:
 #
@@ -48,7 +48,7 @@
 #                  carries a real trailing `// git-env-ok: <reason>` comment.
 #                  A nearby gitClean() call masks nothing.
 #
-#   py/ps1         FILE-LEVEL, like shell: all 14 names must appear in code
+#   py             FILE-LEVEL, like shell: all 14 names must appear in code
 #                  before the first git call, or `# git-env-ok: <reason>`.
 #
 # Exemption: a non-empty reason only — a bare marker still fails.
@@ -185,7 +185,6 @@ trim() {
 is_excluded_path() {
     case "$1" in
         */test-*.sh|test-*.sh) return 0 ;;
-        */test-*.ps1|test-*.ps1|*.Tests.ps1) return 0 ;;
         */test_*.py|test_*.py) return 0 ;;
         *.test.mjs|*.test.js|*.test.cjs|*.test.ts) return 0 ;;
         */fixtures/*|*/test-fixtures/*) return 0 ;;
@@ -195,7 +194,7 @@ is_excluded_path() {
 
 scannable() {
     case "$1" in
-        *.sh|*.mjs|*.js|*.cjs|*.ts|*.py|*.ps1) return 0 ;;
+        *.sh|*.mjs|*.js|*.cjs|*.ts|*.py) return 0 ;;
     esac
     return 1
 }
@@ -553,7 +552,7 @@ BEGIN { nsv = split(scrub, SV, " "); for (i = 1; i <= nsv; i++) ISSV[SV[i]] = 1;
 END { tokenize(); detect() }
 AWK
 
-# ---- py / ps1 detector (awk, file-level) ----
+# ---- py detector (awk, file-level) ----
 # Prints `R <first|0> <exempt> <exempt-noreason>`.
 read -r -d '' FL_AWK <<'AWK' || true
 function trim(s) { sub(/^[ \t]+/, "", s); sub(/[ \t]+$/, "", s); return s }
@@ -561,14 +560,10 @@ function has_name(code, nm,   re) {
   re = "(^|[^A-Za-z0-9_])" nm "([^A-Za-z0-9_]|$)"
   return (code ~ re)
 }
-BEGIN { nsv = split(scrub, SV, " "); first = 0; exempt = 0; exempt_nr = 0; blockc = 0 }
+BEGIN { nsv = split(scrub, SV, " "); first = 0; exempt = 0; exempt_nr = 0 }
 {
   t = trim($0)
   if (first) next
-  if (lang == "ps1") {
-    if (blockc) { if (t ~ /#>/) blockc = 0; next }
-    if (t ~ /^<#/) { if (t !~ /#>/) blockc = 1; next }
-  }
   if (t == "") next
   if (t ~ /^#/) {
     if (match(t, /^#[ \t]*git-env-ok:/)) {
@@ -580,10 +575,7 @@ BEGIN { nsv = split(scrub, SV, " "); first = 0; exempt = 0; exempt_nr = 0; block
   p = match(code, /[ \t]#/)
   if (p > 0) code = substr(code, 1, p - 1)
   for (k = 1; k <= nsv; k++) if (has_name(code, SV[k])) SEEN[SV[k]] = 1
-  gc = 0
-  if (lang == "py") { if (code ~ /["\047]git(["\047]|[ \t])/) gc = 1 }
-  else { if ((" " code " ") ~ /[ \t;|({&]git[ \t]/) gc = 1 }
-  if (gc) {
+  if (code ~ /["\047]git(["\047]|[ \t])/) {
     all = 1
     for (k = 1; k <= nsv; k++) if (!(SV[k] in SEEN)) { all = 0; break }
     if (!all) first = NR
@@ -601,7 +593,7 @@ BASELINE_KEYS=()
 USED_BASELINE=()
 FULL_SCAN=0
 
-# File-level result handling shared by shell and py/ps1.
+# File-level result handling shared by shell and py.
 # $1 file, $2 awk R line, $3 key prefix, $4 has_shebang (shell only), $5 hint
 file_level_verdict() {
     local f="$1" res="$2" prefix="$3" has_shebang="$4" first exempt exempt_nr srclib srclib_nr _r
@@ -639,9 +631,9 @@ scan_shell_file() {
 }
 
 scan_filelevel_file() {
-    local f="$1" src="$2" lang="$3" res
+    local f="$1" src="$2" res
     is_excluded_path "$f" && return 0
-    res=$(LC_ALL=C awk -v scrub="$SCRUB_VARS" -v lang="$lang" "$FL_AWK" "$src")
+    res=$(LC_ALL=C awk -v scrub="$SCRUB_VARS" "$FL_AWK" "$src")
     file_level_verdict "$f" "$res" FILE 1
 }
 
@@ -700,8 +692,7 @@ scan_one() {
     case "$f" in
         *.sh) scan_shell_file "$f" "$src" ;;
         *.mjs|*.js|*.cjs|*.ts) scan_js_file "$f" "$src" ;;
-        *.py) scan_filelevel_file "$f" "$src" py ;;
-        *.ps1) scan_filelevel_file "$f" "$src" ps1 ;;
+        *.py) scan_filelevel_file "$f" "$src" ;;
     esac
 }
 
@@ -742,7 +733,7 @@ else
             elif [ -d "$p" ]; then
                 while IFS= read -r f; do
                     scan_one "$f" "$f"
-                done < <(find "$p" -type f \( -name '*.sh' -o -name '*.mjs' -o -name '*.js' -o -name '*.cjs' -o -name '*.ts' -o -name '*.py' -o -name '*.ps1' \) | sort)
+                done < <(find "$p" -type f \( -name '*.sh' -o -name '*.mjs' -o -name '*.js' -o -name '*.cjs' -o -name '*.ts' -o -name '*.py' \) | sort)
             else
                 # A renamed/moved fixture must FAIL loud, not silently scan
                 # nothing and report clean.

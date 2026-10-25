@@ -173,8 +173,8 @@ chmod +x "$FAKE_WSH_POWERSHELL"
 export CADENCE_WSCRIPT_BIN="$FAKE_WSCRIPT"
 export CADENCE_WSH_POWERSHELL="$FAKE_WSH_POWERSHELL"
 
-# Redirect the workspace-trust pre-seed (cmd_arm / cron_arm now
-# pre-trust the vault) at a throwaway config so non-dry-run arm tests never
+# Redirect the workspace-trust pre-seed (cron_arm pre-trusts the
+# vault) at a throwaway config so non-dry-run arm tests never
 # mutate the operator's real ~/.claude.json.
 export WORKSPACE_TRUST_CONFIG="$TMP_ROOT/claude-trust.json"
 export HIMMEL_FLOW_RUNS_LEDGER="$TMP_ROOT/flow-runs.jsonl"
@@ -195,18 +195,6 @@ mkdir -p "$VAULT"
 
 # Word-bounded headless claude invocation (`-p` / `--print` / `--bg`).
 HEADLESS_RE='(^|[^A-Za-z0-9_-])claude[[:space:]]+(-p|--print|--bg)($|[^A-Za-z0-9_-])'
-
-# ============================================================================
-# xml_escape unit — the one non-trivial new string transform.
-# Pure + platform-agnostic, so it runs on EVERY platform: extract the
-# function from the script and call it directly. Pins the &-first ordering
-# (escaping & last would double-escape the &lt;/&gt; entities) so a
-# BAT_DIR path containing & / < / > yields well-formed task XML.
-# ============================================================================
-echo "TEST: xml_escape escapes & < > with & ordered first"
-xesc=$( { sed -n '/^xml_escape()/,/^}/p' "$SCRIPT"; echo "xml_escape 'a & b < c > d'"; } | bash )
-assert_contains "xml_escape produces well-formed entities (& first)" "a &amp; b &lt; c &gt; d" "$xesc"
-assert_not_contains "xml_escape leaves no bare ampersand" "a & b" "$xesc"
 
 # ============================================================================
 # default_vault unit — cross-platform default --vault resolution.
@@ -637,8 +625,8 @@ for what in harvest synth health; do
 done
 
 # Test C4e: runner_path_snapshot unit — the shared helper both
-# emitters call. Pure (string-only), so extract it the way xml_escape/
-# default_vault are tested above and call it standalone. Pins: (1) a node_dir
+# emitters call. Pure (string-only), so extract it the way
+# default_vault is tested above and call it standalone. Pins: (1) a node_dir
 # NOT already in the snapshot gets prepended (keeps #317's guarantee: nvm-
 # managed node found under cron's minimal PATH); (2) a node_dir ALREADY in the
 # snapshot is not prepended again (no duplicate PATH entry).
@@ -960,8 +948,8 @@ rm -f "$CRON_DIR/pipeline-synthesize.log.prev"
 # ARMED. A scheduler entry whose generated runner file is
 # gone fires-and-fails every time — status must distinguish that from the
 # intentional pre-pin case (which exists on disk and is silent).
-# model_suffix is shared by the cron + schtasks status paths, so this covers
-# the fix on EVERY platform (the schtasks 9d mirror is Windows-only).
+# model_suffix backs cron_status, so this covers the fix on every
+# supported platform.
 
 echo "TEST: cron armed task with runner file deleted shows [runner missing]"
 cp "$CRON_DIR/pipeline-synthesize.sh" "$CRON_DIR/pipeline-synthesize.sh.bak"
@@ -1703,6 +1691,14 @@ echo "TEST: unknown platform (OSTYPE=beos) exits 2"
 rc=0; out=$(env OSTYPE=beos bash "$SCRIPT" status 2>&1) || rc=$?
 assert_rc "unknown platform rc 2" 2 "$rc"
 assert_contains "unknown platform message" "unsupported platform" "$out"
+
+# Windows is dropped: an msys/cygwin OSTYPE is an unsupported platform.
+for ostype in msys cygwin; do
+    echo "TEST: Windows platform (OSTYPE=$ostype) exits 2"
+    rc=0; out=$(env OSTYPE="$ostype" bash "$SCRIPT" status 2>&1) || rc=$?
+    assert_rc "$ostype rc 2" 2 "$rc"
+    assert_contains "$ostype unsupported platform message" "unsupported platform" "$out"
+done
 
 # ============================================================================
 # Darwin Full Disk Access arm-time warning, POSIX/

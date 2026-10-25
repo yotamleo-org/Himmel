@@ -100,18 +100,16 @@
 # operator-configurable (see WHY :05/:15 above).
 #
 # Test seams (used by test-graphmap-cadence.sh):
-#   GRAPHMAP_SCHTASKS  — command invoked instead of `schtasks` (Windows)
-#   GRAPHMAP_CRONTAB   — command invoked instead of `crontab` (POSIX)
-#   GRAPHMAP_BAT_DIR   — where the persistent runners (.bat/.sh) live
+#   GRAPHMAP_CRONTAB   — command invoked instead of `crontab`
+#   GRAPHMAP_BAT_DIR   — where the persistent runners (.sh) live
 #
 # Exit codes (mirrors pipeline-cadence.sh):
 #   0  done (armed / status printed / disarmed / dry-run)
 #   1  usage / input error
-#   2  env unusable (no schtasks/crontab; unknown platform; runner missing;
+#   2  env unusable (no crontab; unsupported platform; runner missing;
 #      query tool errored)
 #   3  dedup block — HIMMEL-GraphMap-* task(s) already armed; use --force
-#   4  scheduler invocation failed (/create, /delete, crontab rewrite,
-#      path conversion)
+#   4  scheduler invocation failed (crontab rewrite)
 set -euo pipefail
 
 TASK_PREFIX="HIMMEL-GraphMap-"
@@ -144,24 +142,15 @@ TASK_SEMANTIC_LUNA="HIMMEL-GraphSemantic-Luna"
 # false dedup-block on arm. Adding a task later means adding it to this
 # alternation, not widening a prefix.
 TASK_MATCH_RE="(${TASK_LUNA}|${TASK_HIMMEL}|${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL}|${TASK_SEMANTIC_LUNA})"
-SCHTASKS_BIN="${GRAPHMAP_SCHTASKS:-schtasks}"
 CRONTAB_BIN="${GRAPHMAP_CRONTAB:-crontab}"
 
-# Cross-platform user-home resolution (mirrors pipeline-cadence's
-# resolve_user_home). On Windows Git-Bash $HOME can be the MSYS home
-# (/home/<user>) while Claude Code's config (~/.claude) lives under the Windows
-# user profile, so prefer USERPROFILE via cygpath BEFORE $HOME. POSIX hosts have
-# USERPROFILE unset and fall straight through to $HOME. /tmp is the last-resort
-# floor when both are unset.
+# User-home resolution (mirrors pipeline-cadence's resolve_user_home). /tmp is
+# the last-resort floor when HOME is unset.
 resolve_user_home() {
-    if [ -n "${USERPROFILE:-}" ] && command -v cygpath >/dev/null 2>&1; then
-        cygpath -u "$USERPROFILE" 2>/dev/null || printf '%s' "$USERPROFILE"
-    else
-        printf '%s' "${HOME:-${USERPROFILE:-/tmp}}"
-    fi
+    printf '%s' "${HOME:-/tmp}"
 }
 
-# Persistent runner home (.bat on Windows, .sh on POSIX) — NOT mktemp: these
+# Persistent runner home (.sh runners) — NOT mktemp: these
 # tasks recur daily and %TEMP% / /tmp are subject to cleanup sweeps that would
 # silently kill the cadence (same rationale as pipeline-cadence's BAT_DIR).
 BAT_DIR="${GRAPHMAP_BAT_DIR:-$(resolve_user_home)/.claude/graphmap-cadence}"
@@ -225,7 +214,6 @@ HIMMEL_TIME="13:20"
 # Weekly day-of-week, semantic legs only. Sunday: quiet, low odds
 # of colliding with weekday operator work; ONE fixed day shared by both legs
 # (the 20-min stagger still separates them within that day).
-WEEKLY_DAY_XML="Sunday"    # schtasks XML <DaysOfWeek> element name
 WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
 
 # Structural (AST) legs: free, no bank, no claude session.
@@ -266,7 +254,7 @@ LUNA_SEMANTIC_MAX_FILES=20
 LUNA_SEMANTIC_RUN_USD="2.00"
 LUNA_SEMANTIC_PAUSE_MARKER="semantic-luna.paused"
 
-# Default vault resolution (cross-platform; mirrors pipeline-cadence). Honors
+# Default vault resolution (mirrors pipeline-cadence). Honors
 # LUNA_VAULT_PATH first, else <home>/Documents/luna. Explicit --vault overrides.
 default_vault() {
     if [ -n "${LUNA_VAULT_PATH:-}" ]; then
@@ -297,8 +285,7 @@ PUBLISH_SEMANTIC=0
 SEMANTIC_ACTIVE=0
 WITH_LUNA_SEMANTIC=0
 
-# Fixed per-corpus map identity (titles/slugs/tags). ASCII-only: the .bat is
-# parsed by cmd.exe under the OEM codepage where UTF-8 punctuation mojibakes.
+# Fixed per-corpus map identity (titles/slugs/tags).
 LUNA_TITLE="Graphify Luna Map"
 LUNA_SLUG="graphify-luna-map"
 LUNA_TAG="luna"
@@ -446,18 +433,11 @@ done
 
 # Platform detect (same matrix as pipeline-cadence.sh).
 case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-    msys*|cygwin*|win32*|MINGW*) PLATFORM=windows ;;
     linux*|Linux*)               PLATFORM=linux ;;
     darwin*|Darwin*)             PLATFORM=macos ;;
     *)                           PLATFORM=unknown ;;
 esac
 case "$PLATFORM" in
-    windows)
-        command -v "$SCHTASKS_BIN" >/dev/null 2>&1 || {
-            echo "ERR graphmap-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
-            exit 2
-        }
-        ;;
     linux|macos)
         command -v "$CRONTAB_BIN" >/dev/null 2>&1 || {
             echo "ERR graphmap-cadence: '$CRONTAB_BIN' not on PATH (required on $PLATFORM)" >&2
@@ -466,7 +446,7 @@ case "$PLATFORM" in
         ;;
     *)
         echo "ERR graphmap-cadence: unsupported platform (OSTYPE=${OSTYPE:-})" >&2
-        echo "    Supported: Windows (schtasks), Linux/macOS (crontab)" >&2
+        echo "    Supported: Linux/macOS (crontab)" >&2
         exit 2
         ;;
 esac
@@ -478,97 +458,6 @@ esac
 if [ "$PUBLISH_SEMANTIC" -eq 1 ] && [ "$WITH_PUBLISH" -ne 1 ]; then
     echo "ERR graphmap-cadence: --publish-semantic needs --with-publish" >&2; exit 1
 fi
-if [ "$PLATFORM" = "windows" ] && { [ "$PUBLISH_SEMANTIC" -eq 1 ] || [ "$PUBLISH_EVERY_HOURS" -ne 6 ]; }; then
-    echo "ERR graphmap-cadence: --publish-every-hours / --publish-semantic are cron-only" >&2; exit 1
-fi
-if [ "$PLATFORM" = "windows" ] && [ "$WITH_LUNA_SEMANTIC" -eq 1 ]; then
-    echo "ERR graphmap-cadence: --with-luna-semantic is cron-only" >&2; exit 1
-fi
-
-# MSYS_NO_PATHCONV=1 per call: without it gitbash mangles /query, /create etc.
-# into Windows-rooted paths before schtasks sees them.
-run_schtasks() { MSYS_NO_PATHCONV=1 "$SCHTASKS_BIN" "$@"; }
-
-# Dedup listing: every scheduled task named HIMMEL-GraphMap-*. Fail-CLOSED if
-# the query tool itself errors (mirrors pipeline-cadence list_existing).
-list_existing() {
-    local err_file out rc
-    err_file=$(mktemp -t graphmap-cadence.err.XXXXXX)
-    set +e
-    out=$(run_schtasks /query /fo CSV /nh 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -ne 0 ]; then
-        # Fail-CLOSED: any nonzero rc is fatal UNLESS it matches the one trusted
-        # empty-scheduler signature — rc=1 with EMPTY stderr (schtasks returns
-        # rc=1 on a completely empty scheduler; real errors carry stderr).
-        if [ "$rc" -ne 1 ] || [ -s "$err_file" ]; then
-            echo "ERR graphmap-cadence: schtasks /query failed (rc=$rc) — refusing to treat as empty scheduler:" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            exit 2
-        fi
-    fi
-    rm -f "$err_file"
-    # shellcheck disable=SC1003  # strips both quote and the literal backslash schtasks prefixes task names with
-    # First narrow to candidates carrying either prefix (cheap pre-filter),
-    # then require an EXACT match against one of the four owned names
-    # (TASK_MATCH_RE) — a task merely starting with
-    # "HIMMEL-GraphMap" (an operator's own unrelated task) must not be treated
-    # as ours, or --force would delete it and a plain arm would false-dedup-block.
-    printf '%s\n' "$out" \
-        | grep -o '"\\\?HIMMEL-Graph[^"]*"' 2>/dev/null \
-        | tr -d '"\\' \
-        | sort -u \
-        | grep -xE "$TASK_MATCH_RE" || true
-}
-
-delete_task() {
-    local name="$1" err_file
-    err_file=$(mktemp -t graphmap-cadence.err.XXXXXX)
-    if run_schtasks /delete /tn "$name" /f >/dev/null 2>"$err_file"; then
-        rm -f "$err_file"
-        echo "graphmap-cadence: deleted scheduled task: $name"
-    else
-        echo "ERR graphmap-cadence: schtasks /delete $name failed:" >&2
-        cat "$err_file" >&2
-        rm -f "$err_file"
-        exit 4
-    fi
-}
-
-# Known not-found stderr signatures for `/query /tn <name>` (mirrors
-# pipeline-cadence). Real schtasks always emits one of these on a missing task,
-# so rc=1 WITHOUT a match (silent rc=1 included) is a real query failure.
-NOT_FOUND_RE='The system cannot find the file specified|The specified task name .* does not exist'
-
-# query_one <name>: rc 0 = armed (QUERY_OUT set), rc 1 = trusted not-found,
-# rc 2 = query failed (stderr already printed).
-QUERY_OUT=""
-query_one() {
-    local name="$1" rc err_file
-    err_file=$(mktemp -t graphmap-cadence.err.XXXXXX)
-    set +e
-    QUERY_OUT=$(run_schtasks /query /tn "$name" /fo LIST 2>"$err_file")
-    rc=$?
-    set -e
-    if [ "$rc" -eq 0 ]; then
-        rm -f "$err_file"
-        return 0
-    fi
-    if [ "$rc" -eq 1 ] && grep -qiE "$NOT_FOUND_RE" "$err_file"; then
-        rm -f "$err_file"
-        return 1
-    fi
-    echo "ERR graphmap-cadence: schtasks /query /tn $name failed (rc=$rc) — refusing to treat as 'not armed':" >&2
-    cat "$err_file" >&2
-    echo "    If this is a localized 'task does not exist' message, the task may simply" >&2
-    echo "    not be armed. Verify / remove manually:" >&2
-    echo "        schtasks /query /tn $name" >&2
-    echo "        schtasks /delete /tn $name /f" >&2
-    rm -f "$err_file"
-    return 2
-}
 
 # The semantic pair's backend label must come from the INSTALLED runner's
 # baked-in --backend, not this script's current BACKEND constant -- a runner
@@ -580,9 +469,8 @@ query_one() {
 # --backend flag gets its own explicit label rather than silently falling
 # back to "configured".
 installed_semantic_backend() {
-    local name="$1" ext runner match
-    if [ "$PLATFORM" = "windows" ]; then ext="bat"; else ext="sh"; fi
-    runner="$BAT_DIR/$name.$ext"
+    local name="$1" runner match
+    runner="$BAT_DIR/$name.sh"
     if [ -f "$runner" ]; then
         match=$(grep -o -- '--backend [^[:space:]]*' "$runner" | head -1 || true)
         if [ -n "$match" ]; then
@@ -606,23 +494,6 @@ task_summary() {
     esac
 }
 
-status_one() {
-    local name="$1" next qrc=0
-    query_one "$name" || qrc=$?
-    case "$qrc" in
-        0)
-            next=$(printf '%s\n' "$QUERY_OUT" | grep -i 'Next Run Time' | head -1 \
-                | sed 's/^[^:]*:[[:space:]]*//' || true)
-            cadence_registered_status "$name" "${next:+ (next run: $next)}$(task_summary "$name")" || return 2
-            ;;
-        1)  echo "not armed  $name$(task_summary "$name")" ;;
-        *)
-            echo "QUERY ERR  $name (see stderr above)"
-            return 2
-            ;;
-    esac
-}
-
 # Runaway summary for one run log. Prints ONE line, or
 # nothing when the file carries none of the three markers (not a graphify run
 # log, or a run that died before its first chunk).
@@ -641,7 +512,7 @@ status_one() {
 # treating hollow as truncation in the first place, are upstream
 # (Graphify-Labs/graphify#2880; this repo has read-only access there).
 log_summary() {
-    # Logs are written by a Windows .bat, so every line carries a trailing CR.
+    # A trailing CR, if any, is stripped before matching.
     # STORM threshold: one chunk bisecting to graphify's max_retry_depth=3 cap
     # issues at most 15 calls, so >15 hollow responses is more than a single
     # bad chunk -- i.e. the sustained storm this ticket exists to catch.
@@ -703,306 +574,7 @@ status_log() {
     fi
 }
 
-cmd_status() {
-    local status_rc=0
-    echo "graphmap-cadence status:"
-    status_one "$TASK_LUNA" || status_rc=2
-    status_log "$BAT_DIR/graphmap-luna.log"
-    status_one "$TASK_HIMMEL" || status_rc=2
-    status_log "$BAT_DIR/graphmap-himmel.log"
-    status_one "$TASK_AST_LUNA" || status_rc=2
-    status_log "$BAT_DIR/graphmap-ast-luna.log"
-    status_one "$TASK_AST_HIMMEL" || status_rc=2
-    status_log "$BAT_DIR/graphmap-ast-himmel.log"
-    status_one "$TASK_PUBLISH_HIMMEL" || status_rc=2
-    status_log "$BAT_DIR/graphmap-publish-himmel.log"
-    return "$status_rc"
-}
-
-cmd_disarm() {
-    local name found=0 qrc
-    for name in "$TASK_LUNA" "$TASK_HIMMEL" "$TASK_AST_LUNA" "$TASK_AST_HIMMEL" "$TASK_PUBLISH_HIMMEL"; do
-        qrc=0
-        query_one "$name" || qrc=$?
-        case "$qrc" in
-            0)
-                found=1
-                if [ "$DRY_RUN" -eq 1 ]; then
-                    echo "DRY graphmap-cadence: would delete $name"
-                else
-                    delete_task "$name"
-                fi
-                ;;
-            1)  : ;;
-            *)  exit 2 ;;
-        esac
-    done
-    if [ "$DRY_RUN" -eq 0 ]; then
-        rm -f "$BAT_DIR/graphmap-luna.bat" "$BAT_DIR/graphmap-himmel.bat" \
-              "$BAT_DIR/graphmap-ast-luna.bat" "$BAT_DIR/graphmap-ast-himmel.bat" \
-              "$BAT_DIR/graphmap-publish-himmel.bat"
-        rm -f "$BAT_DIR/graphmap-luna.vbs" "$BAT_DIR/graphmap-himmel.vbs" \
-              "$BAT_DIR/graphmap-ast-luna.vbs" "$BAT_DIR/graphmap-ast-himmel.vbs" \
-              "$BAT_DIR/graphmap-publish-himmel.vbs"
-        observability_unregister_cadence graphmap-luna "$TASK_LUNA"
-        observability_unregister_cadence graphmap-himmel "$TASK_HIMMEL"
-        observability_unregister_cadence graphmap-ast-luna "$TASK_AST_LUNA"
-        observability_unregister_cadence graphmap-ast-himmel "$TASK_AST_HIMMEL"
-        observability_unregister_cadence "$PUBLISH_FLOW_NAME" "$TASK_PUBLISH_HIMMEL"
-    fi
-    if [ "$found" -eq 0 ]; then
-        echo "graphmap-cadence: nothing armed — disarm is a no-op"
-    elif [ "$DRY_RUN" -eq 1 ]; then
-        echo "DRY graphmap-cadence: no changes made"
-    else
-        echo "graphmap-cadence: cadence disarmed"
-    fi
-}
-
-# Build the argv the .bat hands to bash: the refresh-graph-map.sh path + its
-# flags. All interpolated path values are already cmd-escaped by the caller;
-# name/slug/tag/backend are fixed ASCII literals.
-bat_payload() {
-    local script_esc="$1" name="$2" corpus_esc="$3" maps_esc="$4" title="$5" slug="$6" tag="$7" out_root_esc="${8:-}"
-    printf '"%s" --name %s --corpus-root "%s" --maps-dir "%s" --title "%s" --slug %s --backend %s --corpus-tag %s' \
-        "$script_esc" "$name" "$corpus_esc" "$maps_esc" "$title" "$slug" "$BACKEND" "$tag"
-    if [ -n "$out_root_esc" ]; then printf ' --out-root "%s"' "$out_root_esc"; fi
-}
-
-# Structural (AST) payload builder (routed through the
-# promote-lock wrapper): fires ast-update.sh by absolute path
-# with the corpus root as its sole argument. No --backend/--maps-dir/--title/
-# --slug: `update` publishes no curated MOC, just the local structural
-# re-parse. --force stays but is no longer on THIS command line -- it is
-# baked into ast-update.sh itself (see that script's
-# header). ast-update.sh is a bash script, so (unlike the old bare `graphify`
-# call) it needs the bash prefix the caller adds, same as bat_payload's
-# refresh-graph-map.sh call. GRAPHIFY_DECLARED_BACKEND (luna leg only, see
-# emit_bat's declare_ollama arg) satisfies the fence's LLM-free-subcommand
-# backend-declaration requirement out of band; it is never part of this
-# command line.
-ast_bat_payload() {
-    local script_esc="$1" corpus_esc="$2"
-    printf '"%s" "%s"' "$script_esc" "$corpus_esc"
-}
-
-# Publish leg payload builder: unlike ast-update.sh, graph-
-# cadence.sh takes its corpus root via an explicit `--corpus-root` flag, not
-# a bare positional -- it also accepts a bare `--threshold`, but that is left
-# at its documented default (see graph-cadence.sh's own header for the
-# measured trade-off) rather than baked into the runner, so retuning it needs
-# only editing that script's DEFAULT, never a re-arm of this cadence.
-publish_bat_payload() {
-    local script_esc="$1" corpus_esc="$2"
-    printf '"%s" --corpus-root "%s" --flow-name %s' "$script_esc" "$corpus_esc" "$PUBLISH_FLOW_NAME"
-}
-
-# Emit the .bat body for one cadence task: stamp the format version, rotate the
-# run log (one prior run kept as .log.prev), stamp the fire time, cd into the
-# himmel root (a failing cd aborts + is logged, instead of firing from the wrong
-# CWD), then fire the payload with its stdout+stderr captured to the rotating
-# log. NO interactive claude SESSION, NO stdin redirect, on ANY pair --
-# the runner IS the payload, and `graphify` itself (semantic
-# pair, via refresh-graph-map.sh; structural pair, via ast-update.sh) must be
-# resolvable on the scheduler's minimal PATH -- hence the PATH prepend below.
-# The semantic pair's claude-cli backend additionally shells the local
-# `claude` CLI headlessly from inside graphify -- its directory is prepended too, when resolved.
-emit_bat() {
-    # No bash-path parameter: the interpreter is already baked into $payload by
-    # the caller (cmd-escaped).
-    local himmel_win_esc="$1" payload="$2" log_win_esc="$3" graphify_dir_win_esc="${4:-}" git_bin_esc="${5:-}" declare_ollama="${6:-0}" claude_dir_win_esc="${7:-}" graphify_out_esc="${8:-}"
-    printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
-    # Pin editor hooks to the no-op `true` so a cadence child (stdin closed under
-    # schtasks) can never block on an editor prompt.
-    cadence_bat_editor_set
-    # Prepend Git's usr\bin + bin so a NON-LOGIN bash.exe finds GNU coreutils
-    # ahead of their System32 namesakes; then the npm-global bin
-    # dir pins `graphify` itself; then (semantic
-    # pair only) the `claude` CLI's own dir, since graphify's claude-cli
-    # backend shells it internally. schtasks fires with a minimal PATH that
-    # carries none of these by default. Git's dirs come FIRST (GNU tools must
-    # win over System32); graphify_dir then claude_dir are appended when
-    # present.
-    local path_prefix="$git_bin_esc"
-    [ -n "$path_prefix" ] && [ -n "$graphify_dir_win_esc" ] && path_prefix="$path_prefix;$graphify_dir_win_esc"
-    [ -n "$path_prefix" ] || path_prefix="$graphify_dir_win_esc"
-    [ -n "$path_prefix" ] && [ -n "$claude_dir_win_esc" ] && path_prefix="$path_prefix;$claude_dir_win_esc"
-    [ -n "$path_prefix" ] || path_prefix="$claude_dir_win_esc"
-    if [ -n "$path_prefix" ]; then
-        printf 'set "PATH=%s;%%PATH%%"\r\n' "$path_prefix"
-    fi
-    # Luna's structural leg only: the fence refuses an
-    # undeclared backend on graphify's LLM-free `update` for the luna-personal
-    # corpus (it cannot see which cloud key graphify would auto-detect).
-    # GRAPHIFY_DECLARED_BACKEND=ollama satisfies that declaration in-policy
-    # (fence maps ollama -> local-ollama, luna-personal x local-ollama = allow,
-    # zero egress) without adding any bypass.
-    if [ "$declare_ollama" -eq 1 ]; then
-        printf 'set "GRAPHIFY_DECLARED_BACKEND=ollama"\r\n'
-    fi
-    # Mirror ast_cron_payload's GRAPHIFY_OUT= prefix
-    # on the POSIX structural leg -- a .bat sets env vars as their own `set`
-    # line, not as part of the command, so this stays a separate emit_bat arg
-    # rather than something ast_bat_payload's payload string could carry.
-    if [ -n "$graphify_out_esc" ]; then
-        printf 'set "GRAPHIFY_OUT=%s"\r\n' "$graphify_out_esc"
-    fi
-    printf 'if exist "%s" move /y "%s" "%s.prev" > NUL 2>&1\r\n' "$log_win_esc" "$log_win_esc" "$log_win_esc"
-    printf 'echo [fired %%DATE%% %%TIME%%] >> "%s" 2>&1\r\n' "$log_win_esc"
-    printf 'cd /d "%s" >> "%s" 2>&1 || exit /b 1\r\n' "$himmel_win_esc" "$log_win_esc"
-    # `call`: the
-    # payload leads with an absolute interpreter path, and if that ever resolves
-    # to a .cmd/.bat shim cmd.exe transfers control into it and never returns —
-    # the .bat's own exit path (and anything a later change appends after this
-    # line) would silently never run. bash.exe is an .exe today, so this is
-    # consistency + future-proofing, not a live outage.
-    printf 'call %s >> "%s" 2>&1\r\n' "$payload" "$log_win_esc"
-}
-
-# --- schtasks task XML (StartWhenAvailable) --------------------------------
-#
-# schtasks /create has no flag for StartWhenAvailable ("run as soon as possible
-# after a missed scheduled start"), so a daily 13:00 run is SILENTLY SKIPPED if
-# the machine was off/asleep at 13:00. The only CLI route is `schtasks /create
-# /xml`; we keep the per-task .bat as the Exec Command and wrap it in XML that
-# carries StartWhenAvailable=true (same approach as pipeline-cadence).
-
-# Escape the three XML-significant characters for element-body text (the Exec
-# <Command> path — a BAT_DIR path may legally contain `&`). `&` first so the `&`
-# in the &lt;/&gt; entities isn't re-escaped. sed (not bash ${//}) for a
-# version-independent literal-ampersand replacement.
-xml_escape() {
-    printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'
-}
-
-# Weekly schedule fragment (semantic pair): one fixed day/week,
-# the given <DaysOfWeek> element name (WEEKLY_DAY_XML, e.g. "Sunday").
-schedule_weekly_xml() {
-    local day="$1"
-    printf '      <ScheduleByWeek>\n        <WeeksInterval>1</WeeksInterval>\n        <DaysOfWeek>\n          <%s/>\n        </DaysOfWeek>\n      </ScheduleByWeek>' "$day"
-}
-
-# Hourly-forever schedule fragment (structural/AST pair):
-# a daily CalendarTrigger (fires once at StartBoundary's time-of-day, then
-# restarts every day). The re-fire-every-hour Repetition lives in
-# repetition_xml() below, NOT here — it belongs at the base-type position in
-# the trigger (see repetition_xml's comment), earlier than this ScheduleByX
-# fragment.
-schedule_hourly_xml() {
-    printf '      <ScheduleByDay>\n        <DaysInterval>1</DaysInterval>\n      </ScheduleByDay>'
-}
-
-# Repetition fragment (structural/AST pair only): re-fires
-# every hour (PT1H) for a full day (Duration P1D) — the standard Task Scheduler
-# XML idiom for "hourly, forever" (schtasks has no bare /sc HOURLY equivalent
-# reachable from /xml). StopAtDurationEnd=false: the repetition itself re-arms
-# with the next day's CalendarTrigger fire, so the task keeps firing hourly
-# indefinitely.
-#
-# Position matters: calendarTriggerType EXTENDS triggerBaseType, whose
-# sequence is Enabled?, StartBoundary?, EndBoundary?, Repetition?,
-# ExecutionTimeLimit? — THEN the extension appends RandomDelay? followed by
-# the ScheduleByDay|ScheduleByWeek|... choice. Repetition is a base-type
-# element and must precede the ScheduleByX fragment in the emitted trigger, or
-# `schtasks /create /xml` can reject it. emit_task_xml splices this ahead of
-# schedule_xml for that reason. Weekly (semantic) tasks pass no repetition.
-repetition_xml() {
-    printf '      <Repetition>\n        <Interval>PT1H</Interval>\n        <Duration>P1D</Duration>\n        <StopAtDurationEnd>false</StopAtDurationEnd>\n      </Repetition>'
-}
-
-# Same fragment, parameterized interval in HOURS (publish leg:
-# every 6h, not hourly). repetition_xml() above stays hardcoded to PT1H —
-# untouched — because it is also the DOCUMENTED interoperability shape (its
-# own comment); this sibling exists rather than
-# widening that one, so the AST pair's proven PT1H path is never touched by
-# a change made for a different leg's cadence.
-repetition_xml_hours() {
-    local hours="$1"
-    printf '      <Repetition>\n        <Interval>PT%dH</Interval>\n        <Duration>P1D</Duration>\n        <StopAtDurationEnd>false</StopAtDurationEnd>\n      </Repetition>' "$hours"
-}
-
-# Emit one task XML: a CalendarTrigger at the given local time, daily schedule,
-# StartWhenAvailable=true, and the .bat runner as the Exec Command. StartBoundary
-# date is a fixed past sentinel — the schedule fragment (not the date) governs
-# firing. repetition_xml (from repetition_xml(), empty for weekly tasks) is
-# spliced BEFORE schedule_xml — the base-type element order the CalendarTrigger
-# schema requires (see repetition_xml's comment). Declared UTF-16 (what
-# schtasks /create /xml expects) but the bytes are plain ASCII — keep it
-# ASCII-only (a non-ASCII byte would need a real UTF-16LE+BOM file; declaring
-# UTF-8 is rejected on Win11).
-emit_task_xml() {
-    local bat_win="$1" start_time="$2" schedule_xml="$3" repetition="${4:-}" vbs_win vbs_args
-    # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
-    # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
-    # still allocate visible consoles; wscript //B hosting the .vbs shim (which
-    # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
-    # WScript.Quit) allocates zero consoles. The shim path is derived from the
-    # .bat path through cadence_vbs_path — the SAME helper cmd_arm writes the
-    # file with — so the referenced path and the written file can never disagree.
-    # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
-    # a BAT_DIR with spaces survives, then xml_escaped like any element text.
-    # WScript.Quit in the shim preserves exit-code fidelity (rc=42
-    # re-arm survives — proven in test-cadence-format.sh).
-    vbs_win=$(cadence_vbs_path "$bat_win")
-    vbs_args=$(xml_escape "//B \"${vbs_win}\"")
-    # Join repetition + schedule_xml with a real newline BEFORE the heredoc:
-    # heredoc bodies get parameter expansion but not ANSI-C ($'\n') quote
-    # processing, so building the joined newline here (a plain assignment,
-    # where $'\n' works normally) keeps the emitted XML one-element-per-line
-    # instead of gluing `</Repetition>` and `<ScheduleByDay>` onto one line.
-    local trigger_body="$schedule_xml"
-    [ -n "$repetition" ] && trigger_body="${repetition}"$'\n'"${schedule_xml}"
-    cat <<XML
-<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <RegistrationInfo>
-    <Description>himmel graphmap-cadence</Description>
-  </RegistrationInfo>
-  <Triggers>
-    <CalendarTrigger>
-      <StartBoundary>2020-01-01T${start_time}:00</StartBoundary>
-      <Enabled>true</Enabled>
-${trigger_body}
-    </CalendarTrigger>
-  </Triggers>
-  <Settings>
-    <StartWhenAvailable>true</StartWhenAvailable>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <Enabled>true</Enabled>
-  </Settings>
-  <Actions Context="Author">
-    <Exec>
-      <Command>wscript.exe</Command>
-      <Arguments>${vbs_args}</Arguments>
-    </Exec>
-  </Actions>
-</Task>
-XML
-}
-
-# Create one task from an XML definition (so StartWhenAvailable applies). Mirrors
-# pipeline-cadence's schtasks_create_xml: self-contained error handling, returns
-# the schtasks rc so callers keep the failure/rollback flow.
-schtasks_create_xml() {
-    local name="$1" schedule_xml="$2" start_time="$3" bat_win="$4" err_file="$5" repetition="${6:-}"
-    local xml_file xml_win rc
-    if ! xml_file=$(mktemp -t graphmap-cadence.xml.XXXXXX 2>"$err_file"); then
-        return 1
-    fi
-    emit_task_xml "$bat_win" "$start_time" "$schedule_xml" "$repetition" > "$xml_file"
-    if ! xml_win=$(cygpath -w "$xml_file" 2>"$err_file"); then
-        rm -f "$xml_file"
-        return 1
-    fi
-    set +e
-    run_schtasks /create /tn "$name" /xml "$xml_win" /f 2>"$err_file"
-    rc=$?
-    set -e
-    rm -f "$xml_file"
-    return "$rc"
-}
-
-# Input validation shared by the schtasks and cron arm paths.
+# Input validation for the cron arm path.
 validate_arm_inputs() {
     if ! [[ "$LUNA_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
         echo "ERR graphmap-cadence: --luna-time must be HH:MM (24h), got: $LUNA_TIME" >&2
@@ -1033,11 +605,11 @@ validate_arm_inputs() {
     # via refresh-graph-map.sh (which shells it with --backend $BACKEND), the
     # structural/publish pair via ast-update.sh (`graphify update ...`).
     # Resolving graphify HERE, at arm time, is what makes the failure
-    # visible: cron and schtasks fire with a MINIMAL PATH (no
+    # visible: cron fires with a MINIMAL PATH (no
     # npm-global/cargo bin dir), so without this the arm "succeeds" and the
     # first unattended fire dies in a log nobody reads with "graphify:
     # command not found". The resolved directory is prepended to PATH in
-    # BOTH generated runner formats (.sh/.bat). `claude` itself is resolved
+    # the generated .sh runner. `claude` itself is resolved
     # separately below (semantic pair only -- BACKEND is
     # claude-cli).
     if ! GRAPHIFY_BIN=$(command -v graphify 2>/dev/null); then
@@ -1055,9 +627,9 @@ validate_arm_inputs() {
     # a runner that has cd'd elsewhere and runs under a different PATH — the
     # exact failure this check exists to prevent, silently reintroduced.
     # Demand a real, absolute, executable
-    # file (Windows: the `.exe`/`.cmd` a POSIX -x test still accepts under MSYS).
+    # file.
     case "$GRAPHIFY_BIN" in
-        /*|[A-Za-z]:[/\\]*) : ;;
+        /*) : ;;
         *)
             echo "ERR graphmap-cadence: 'graphify' resolved to a non-absolute path ('$GRAPHIFY_BIN') — a shell function/alias or a relative PATH entry cannot be pinned into a scheduled runner. Install it on PATH as a real executable and re-arm." >&2
             exit 2 ;;
@@ -1119,8 +691,8 @@ validate_arm_inputs() {
 # a refused arm -- it reports ARMED in `status` while producing nothing.
 #
 # WHAT COUNTS AS PROOF is the whole subtlety here. A key exported
-# into the ARMING shell proves nothing about fire time: cron and Task Scheduler
-# start with a minimal environment, and the generated runners deliberately carry
+# into the ARMING shell proves nothing about fire time: cron starts with a
+# minimal environment, and the generated runners deliberately carry
 # no secrets (refresh-graph-map.sh re-resolves the key itself when it fires).
 # The only source that survives to fire time on its own is the primary
 # checkout's .env -- which is the fallback refresh-graph-map.sh already uses. So
@@ -1128,10 +700,8 @@ validate_arm_inputs() {
 # load_dotenv deliberately does not clobber a live non-empty value and would
 # otherwise report the arming shell's own export back to us.
 #
-# A live env var is NOT accepted, on either scheduler. Earlier revisions took
-# it with a warning on schtasks, since Task Scheduler does inherit a PERSISTENT
-# user/system variable -- but bash cannot tell that apart from a transient
-# `export`, and a gate whose only job is to stop a SILENT unattended failure
+# A live env var is NOT accepted: bash cannot tell a persistent variable
+# apart from a transient `export`, and a gate whose only job is to stop a SILENT unattended failure
 # must not rest on an unverifiable guess. .env costs the operator one line, in
 # the file this repo already keeps such keys in. Env-only -> refuse; nothing at
 # all -> refuse.
@@ -1139,8 +709,8 @@ validate_arm_inputs() {
 # Only backends that need a key are checked. The structural pair needs none
 # (it never calls a model), so this gates the semantic pair alone.
 #
-# GRAPHMAP_DOTENV_ROOT is a TEST SEAM (sibling of GRAPHMAP_SCHTASKS /
-# GRAPHMAP_CRONTAB / GRAPHMAP_BAT_DIR): it pins which .env is consulted so the
+# GRAPHMAP_DOTENV_ROOT is a TEST SEAM (sibling of GRAPHMAP_CRONTAB /
+# GRAPHMAP_BAT_DIR): it pins which .env is consulted so the
 # suite can assert both outcomes without depending on whether the operator's
 # real .env happens to carry the key. It is honoured ONLY alongside a fake
 # scheduler, so a real arm can never reach it; set in production it is ignored
@@ -1179,11 +749,8 @@ validate_backend_credential() {
         return 0
     fi
 
-    # A live env var is NOT accepted as proof, on EITHER scheduler.
-    # Earlier revisions of this check tried to be clever about it: accept it
-    # with a warning on schtasks (Task Scheduler DOES inherit persistent
-    # user/system variables) and refuse on cron (which does not). But "is this
-    # export persistent?" is exactly the question bash cannot answer here, and
+    # A live env var is NOT accepted as proof: "is this export persistent?"
+    # is exactly the question bash cannot answer here, and
     # a gate whose whole purpose is to stop a SILENT unattended failure must
     # not itself rest on an unverifiable guess.
     #
@@ -1223,15 +790,15 @@ credential_in_dotenv() {
     # The seam is honoured ONLY inside the hermetic suite. Warning was
     # not enough: an unrestricted override that can satisfy this gate IS the
     # armed-and-inert failure, just with a note attached. A real arm registers
-    # against the real scheduler, so it never sets GRAPHMAP_SCHTASKS or
-    # GRAPHMAP_CRONTAB; requiring one of those present makes the redirect
-    # unreachable in production while leaving the suite (which always sets one)
+    # against the real scheduler, so it never sets GRAPHMAP_CRONTAB;
+    # requiring it present makes the redirect
+    # unreachable in production while leaving the suite (which always sets it)
     # exactly as deterministic as before. Set in production it is IGNORED, and
     # says so -- never silently obeyed, never silently dropped.
     local dotenv_root=""
     if [ -n "${GRAPHMAP_DOTENV_ROOT:-}" ]; then
         # THREE conditions, none of which a production arm sets.
-        # Presence of a scheduler seam was too weak (GRAPHMAP_SCHTASKS=schtasks
+        # Presence of a scheduler seam was too weak (GRAPHMAP_CRONTAB=crontab
         # names the REAL scheduler and would register real tasks); requiring it
         # to be a file on disk was better but an absolute path to the real
         # scheduler, or a forwarding wrapper, still satisfies it. So the
@@ -1245,10 +812,10 @@ credential_in_dotenv() {
         # arm-time check still can, and no environment-variable scheme fixes
         # that -- it is out of scope, stated rather than papered over.
         if [ "${GRAPHMAP_TEST_MODE:-}" = "1" ] \
-           && { [ -f "${GRAPHMAP_SCHTASKS:-}" ] || [ -f "${GRAPHMAP_CRONTAB:-}" ]; }; then
+           && [ -f "${GRAPHMAP_CRONTAB:-}" ]; then
             dotenv_root="$GRAPHMAP_DOTENV_ROOT"
         else
-            echo "WARN graphmap-cadence: GRAPHMAP_DOTENV_ROOT is set but IGNORED -- it is a test seam, honoured only alongside a fake scheduler (GRAPHMAP_SCHTASKS/GRAPHMAP_CRONTAB). The credential check is reading the primary checkout's .env, as a real arm must." >&2
+            echo "WARN graphmap-cadence: GRAPHMAP_DOTENV_ROOT is set but IGNORED -- it is a test seam, honoured only alongside a fake scheduler (GRAPHMAP_CRONTAB). The credential check is reading the primary checkout's .env, as a real arm must." >&2
         fi
     fi
     (
@@ -1265,550 +832,11 @@ credential_in_dotenv() {
     )
 }
 
-cmd_arm() {
-    validate_arm_inputs
-    cadence_require_wsh "graphmap-cadence" || exit 2
-
-    # Resolve bash to an absolute Windows path so the .bat invokes the Git-Bash
-    # interpreter directly — NOT the bare `bash` that resolves to the WSL
-    # System32 stub in a fresh cmd.exe.
-    local bash_posix bash_win
-    if ! bash_posix=$(command -v bash 2>/dev/null); then
-        echo "ERR graphmap-cadence: 'bash' not on PATH at arm time" >&2
-        exit 2
-    fi
-    command -v cygpath >/dev/null 2>&1 || {
-        echo "ERR graphmap-cadence: cygpath not on PATH; cannot convert paths for schtasks" >&2
-        exit 2
-    }
-    if ! bash_win=$(cygpath -w "$bash_posix" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed for bash path: $bash_win" >&2
-        exit 4
-    fi
-
-    # bash consumes these paths (POSIX/mixed C:/ form via cygpath -m, which
-    # Git-Bash reads); the himmel cd target is a Windows path.
-    local script_mixed ast_script_mixed publish_script_mixed vault_mixed maps_mixed himmel_mixed himmel_win
-    if ! script_mixed=$(cygpath -m "$REFRESH_SCRIPT" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -m failed for refresh script: $script_mixed" >&2
-        exit 4
-    fi
-    if ! ast_script_mixed=$(cygpath -m "$AST_UPDATE_SCRIPT" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -m failed for ast-update script: $ast_script_mixed" >&2
-        exit 4
-    fi
-    if ! publish_script_mixed=$(cygpath -m "$PUBLISH_CADENCE_SCRIPT" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -m failed for graph-cadence script: $publish_script_mixed" >&2
-        exit 4
-    fi
-    if ! vault_mixed=$(cygpath -m "$VAULT" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -m failed for vault path: $vault_mixed" >&2
-        exit 4
-    fi
-    if ! maps_mixed=$(cygpath -m "$VAULT/60-Maps" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -m failed for maps dir: $maps_mixed" >&2
-        exit 4
-    fi
-    if ! himmel_mixed=$(cygpath -m "$HIMMEL_ROOT" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -m failed for himmel root: $himmel_mixed" >&2
-        exit 4
-    fi
-    if ! himmel_win=$(cygpath -w "$HIMMEL_ROOT" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed for himmel root: $himmel_win" >&2
-        exit 4
-    fi
-    # Same trailing-separator normalization as pipeline-cadence.sh's vault path
-    # — see the long note there for why this is
-    # done at the source rather than in the shared cadence_cmd_escape, and for
-    # the measurement showing cmd.exe does NOT consume the `\"` as an escape.
-    # Lower probability here: HIMMEL_ROOT is resolved via `cd … && pwd`, which
-    # does not produce a trailing separator. Normalized anyway so the two `cd /d`
-    # emitters answer the question identically instead of one of them relying on
-    # its input happening to be well-shaped.
-    # A DRIVE ROOT keeps its separator: `cd /d "C:\"` is the root of C:, while
-    # `cd /d "C:"` is the current directory on C:.
-    while :; do
-        case "$himmel_win" in
-            [A-Za-z]:\\) break ;;
-            *\\)         himmel_win="${himmel_win%\\}" ;;
-            *)           break ;;
-        esac
-    done
-
-    # Dedup guard — never double-register the cadence. --ast-only
-    # scopes both the dedup check AND --force's replacement to the two AST
-    # tasks only — an already-armed semantic pair must survive an --ast-only
-    # (re-)arm untouched, never dedup-blocked on and never deleted by it.
-    local existing
-    existing=$(list_existing)
-    # --ast-only: scopes dedup/--force to
-    # the free legs only -- the AST pair AND, only under --with-publish,
-    # the publish leg -- leaving the semantic pair untouched.
-    if [ "$AST_ONLY" -eq 1 ]; then
-        if [ "$WITH_PUBLISH" -eq 1 ]; then
-            existing=$(printf '%s\n' "$existing" | grep -xE "(${TASK_AST_LUNA}|${TASK_AST_HIMMEL}|${TASK_PUBLISH_HIMMEL})" || true)
-        else
-            existing=$(printf '%s\n' "$existing" | grep -xE "(${TASK_AST_LUNA}|${TASK_AST_HIMMEL})" || true)
-        fi
-    fi
-    # --force's DELETION scope is narrower than the dedup scope above, exactly
-    # as on the cron branch: there the atomic rewrite drops only the lines
-    # matching $own_match_re (cron_arm, below), which omits the publish leg
-    # unless --with-publish asked for it this run -- so an opt-in publish entry
-    # survives a --force arm that doesn't want it, while a plain arm still
-    # dedup-blocks naming it. cmd_arm used to delete straight from $existing,
-    # which is unfiltered whenever --ast-only is absent, so a plain
-    # `arm --force` DELETED the publish task and then skipped re-creating it,
-    # silently disarming the operator's opt-in leg.
-    # Mirror cron's dedup/deletion split rather than widening the dedup scope.
-    local own_match_re="(${TASK_AST_LUNA}|${TASK_AST_HIMMEL})"
-    if [ "$WITH_PUBLISH" -eq 1 ]; then
-        own_match_re="(${own_match_re}|${TASK_PUBLISH_HIMMEL})"
-    fi
-    if [ "$AST_ONLY" -eq 0 ]; then
-        own_match_re="(${own_match_re}|${TASK_LUNA}|${TASK_HIMMEL})"
-    fi
-    if [ -n "$existing" ]; then
-        if [ "$FORCE" -eq 1 ]; then
-            local replacing
-            replacing=$(printf '%s\n' "$existing" | grep -xE "$own_match_re" || true)
-            if [ -n "$replacing" ]; then
-                echo "graphmap-cadence: --force set; replacing existing task(s):" >&2
-                local marker
-                while IFS= read -r marker; do
-                    [ -z "$marker" ] && continue
-                    echo "  $marker" >&2
-                    if [ "$DRY_RUN" -eq 0 ]; then
-                        delete_task "$marker"
-                    else
-                        echo "DRY graphmap-cadence: would delete $marker"
-                    fi
-                done <<< "$replacing"
-            fi
-        else
-            {
-                echo "ERR graphmap-cadence: HIMMEL-GraphMap-* task(s) already armed:"
-                printf '%s\n' "$existing" | sed 's/^/    /'
-                echo ""
-                echo "Dedup safeguard — re-run with --force to replace, or inspect with:"
-                echo "    bash scripts/luna/graphmap-cadence.sh status"
-            } >&2
-            exit 3
-        fi
-    fi
-
-    # cmd-escape the path values interpolated into each .bat payload.
-    local script_esc ast_script_esc publish_script_esc vault_esc maps_esc himmel_esc himmel_win_esc graphify_dir_win graphify_dir_win_esc claude_dir_win_esc
-    if ! graphify_dir_win=$(cygpath -w "$GRAPHIFY_DIR" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed for graphify dir: $graphify_dir_win" >&2
-        exit 4
-    fi
-    graphify_dir_win_esc=$(cadence_cmd_escape "$graphify_dir_win")
-    # CLAUDE_DIR is only resolved (validate_arm_inputs) for the semantic pair
-    # (empty under --ast-only). Only the luna/himmel semantic emit_bat calls below
-    # pass this through; the AST/publish legs never shell claude.
-    claude_dir_win_esc=""
-    if [ -n "$CLAUDE_DIR" ]; then
-        local claude_dir_win
-        if ! claude_dir_win=$(cygpath -w "$CLAUDE_DIR" 2>&1); then
-            echo "ERR graphmap-cadence: cygpath -w failed for claude dir: $claude_dir_win" >&2
-            exit 4
-        fi
-        claude_dir_win_esc=$(cadence_cmd_escape "$claude_dir_win")
-    fi
-    script_esc=$(cadence_cmd_escape "$script_mixed")
-    ast_script_esc=$(cadence_cmd_escape "$ast_script_mixed")
-    publish_script_esc=$(cadence_cmd_escape "$publish_script_mixed")
-    vault_esc=$(cadence_cmd_escape "$vault_mixed")
-    maps_esc=$(cadence_cmd_escape "$maps_mixed")
-    himmel_esc=$(cadence_cmd_escape "$himmel_mixed")
-    himmel_win_esc=$(cadence_cmd_escape "$himmel_win")
-
-    # Per-corpus payloads. NOTE the asymmetric --corpus-root: the luna map
-    # extracts the VAULT ($vault_esc); the himmel map extracts the HIMMEL REPO
-    # ($himmel_esc, so its derived graphify-out stays repo-local + gitignored) —
-    # but BOTH publish their curated MOC into the luna vault's 60-Maps ($maps_esc).
-    # The luna vault is the single home for every map; the cross-corpus mix here
-    # is intentional, not a copy-paste bug.
-    # luna_out_root_esc: same graphify_out_root_for resolver the
-    # POSIX cron_payload path uses; himmel gets none (stays in-corpus), so its
-    # bat_payload call below omits the arg entirely.
-    local luna_out_root luna_out_root_esc
-    luna_out_root="$(graphify_out_root_for luna)"
-    luna_out_root_esc=""
-    if [ -n "$luna_out_root" ]; then
-        luna_out_root_esc=$(cadence_cmd_escape "$luna_out_root")
-    fi
-    # luna_out_dir_esc: the Windows structural
-    # (AST) runner's GRAPHIFY_OUT= counterpart to luna_out_root_esc above --
-    # same full out-dir (out-root/graphify-out) the POSIX q_out_dir_ast_luna
-    # resolves to. Like luna_out_root_esc's --out-root value, this is read by
-    # bash/ast-update.sh, not a native Windows exe, so it stays the raw POSIX
-    # path (no cygpath -w) -- only cmd-escaped for the .bat `set` line.
-    local luna_out_dir_esc
-    luna_out_dir_esc=""
-    if [ -n "$luna_out_root" ]; then
-        luna_out_dir_esc=$(cadence_cmd_escape "$luna_out_root/graphify-out")
-    fi
-    local payload_luna payload_himmel
-    payload_luna=$(bat_payload "$script_esc" luna "$vault_esc" "$maps_esc" "$LUNA_TITLE" "$LUNA_SLUG" "$LUNA_TAG" "$luna_out_root_esc")
-    payload_himmel=$(bat_payload "$script_esc" himmel "$himmel_esc" "$maps_esc" "$HIMMEL_TITLE" "$HIMMEL_SLUG" "$HIMMEL_TAG")
-    # Both .bats get the bash exe prepended; assemble the full exec line.
-    # bash_win is cmd-escaped like every other interpolated value: a `%` anywhere in the resolved
-    # interpreter path would be expanded by cmd.exe at fire time instead of
-    # taken literally, and it is inside quotes exactly like the rest.
-    local bash_win_esc
-    bash_win_esc=$(cadence_cmd_escape "$bash_win")
-    payload_luna="\"$bash_win_esc\" $payload_luna"
-    payload_himmel="\"$bash_win_esc\" $payload_himmel"
-    # Structural (AST) payloads (routed through the
-    # promote-lock wrapper): ast-update.sh IS a bash script, so
-    # (unlike the old bare `graphify` call) it gets the same bash prefix as
-    # the semantic pair. Same asymmetric corpus roots as the semantic pair:
-    # luna = vault, himmel = repo.
-    local payload_ast_luna payload_ast_himmel
-    payload_ast_luna=$(ast_bat_payload "$ast_script_esc" "$vault_esc")
-    payload_ast_himmel=$(ast_bat_payload "$ast_script_esc" "$himmel_esc")
-    payload_ast_luna="\"$bash_win_esc\" $payload_ast_luna"
-    payload_ast_himmel="\"$bash_win_esc\" $payload_ast_himmel"
-    # Publish leg: himmel repo only (v1) -- same corpus root
-    # the AST_HIMMEL leg uses ($himmel_esc).
-    local payload_publish_himmel
-    payload_publish_himmel=$(publish_bat_payload "$publish_script_esc" "$himmel_esc")
-    payload_publish_himmel="\"$bash_win_esc\" $payload_publish_himmel"
-    # Git's usr\bin + bin, derived from the bash.exe path above:
-    # prepended to PATH in emit_bat so the non-login bash.exe finds GNU coreutils
-    # ahead of System32. Empty for a non-Git bash → emit_bat then omits the line.
-    local git_bin_esc
-    git_bin_esc=$(cadence_cmd_escape "$(cadence_git_bin_path_win "$bash_win")")
-
-    local bat_luna="$BAT_DIR/graphmap-luna.bat"
-    local bat_himmel="$BAT_DIR/graphmap-himmel.bat"
-    local bat_ast_luna="$BAT_DIR/graphmap-ast-luna.bat"
-    local bat_ast_himmel="$BAT_DIR/graphmap-ast-himmel.bat"
-    local bat_publish_himmel="$BAT_DIR/graphmap-publish-himmel.bat"
-    # wscript //B shims live beside their .bats; disarm removes
-    # both together. Derived from the .bat Windows path through cadence_vbs_path
-    # — the same helper emit_task_xml derives the referenced path with.
-    local vbs_luna="$BAT_DIR/graphmap-luna.vbs"
-    local vbs_himmel="$BAT_DIR/graphmap-himmel.vbs"
-    local vbs_ast_luna="$BAT_DIR/graphmap-ast-luna.vbs"
-    local vbs_ast_himmel="$BAT_DIR/graphmap-ast-himmel.vbs"
-    local vbs_publish_himmel="$BAT_DIR/graphmap-publish-himmel.vbs"
-
-    # Fire-time run logs live next to the .bats (cmd-escaped for the `>>` target).
-    local bat_dir_win log_luna_esc log_himmel_esc log_ast_luna_esc log_ast_himmel_esc log_publish_himmel_esc
-    if ! bat_dir_win=$(cygpath -w "$BAT_DIR" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed for bat dir: $bat_dir_win" >&2
-        exit 4
-    fi
-    log_luna_esc=$(cadence_cmd_escape "$bat_dir_win\\graphmap-luna.log")
-    log_himmel_esc=$(cadence_cmd_escape "$bat_dir_win\\graphmap-himmel.log")
-    log_ast_luna_esc=$(cadence_cmd_escape "$bat_dir_win\\graphmap-ast-luna.log")
-    log_ast_himmel_esc=$(cadence_cmd_escape "$bat_dir_win\\graphmap-ast-himmel.log")
-    log_publish_himmel_esc=$(cadence_cmd_escape "$bat_dir_win\\graphmap-publish-himmel.log")
-
-    # The .bat runner is the task's Exec Command. cygpath -w is a pure string
-    # transform (the .bat need not exist yet), so resolve the win paths before
-    # the dry-run preview too.
-    local bat_luna_win bat_himmel_win bat_ast_luna_win bat_ast_himmel_win bat_publish_himmel_win
-    if ! bat_luna_win=$(cygpath -w "$bat_luna" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed: $bat_luna_win" >&2
-        exit 4
-    fi
-    if ! bat_himmel_win=$(cygpath -w "$bat_himmel" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed: $bat_himmel_win" >&2
-        exit 4
-    fi
-    if ! bat_ast_luna_win=$(cygpath -w "$bat_ast_luna" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed: $bat_ast_luna_win" >&2
-        exit 4
-    fi
-    if ! bat_ast_himmel_win=$(cygpath -w "$bat_ast_himmel" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed: $bat_ast_himmel_win" >&2
-        exit 4
-    fi
-    if ! bat_publish_himmel_win=$(cygpath -w "$bat_publish_himmel" 2>&1); then
-        echo "ERR graphmap-cadence: cygpath -w failed: $bat_publish_himmel_win" >&2
-        exit 4
-    fi
-
-    local sched_semantic sched_ast rep_ast sched_publish rep_publish
-    sched_semantic=$(schedule_weekly_xml "$WEEKLY_DAY_XML")
-    sched_ast=$(schedule_hourly_xml)
-    rep_ast=$(repetition_xml)
-    # Publish leg: same daily ScheduleByDay shape as the AST
-    # pair (hourliness lives entirely in the Repetition element, same as
-    # AST_HIMMEL) -- just a 6-hour interval instead of 1.
-    sched_publish=$(schedule_hourly_xml)
-    rep_publish=$(repetition_xml_hours 6)
-
-    if [ "$DRY_RUN" -eq 1 ]; then
-        if [ "$AST_ONLY" -eq 1 ]; then
-            echo "DRY graphmap-cadence: --ast-only set; the semantic pair ($TASK_LUNA / $TASK_HIMMEL) is skipped entirely"
-        else
-            echo "DRY graphmap-cadence: would write $bat_luna:"
-            emit_bat "$himmel_win_esc" "$payload_luna" "$log_luna_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 "$claude_dir_win_esc" | sed 's/^/    /'
-            echo "DRY graphmap-cadence: would write $vbs_luna:"
-            cadence_vbs_wrapper "$bat_luna_win" | sed 's/^/    /'
-            echo "DRY graphmap-cadence: would write $bat_himmel:"
-            emit_bat "$himmel_win_esc" "$payload_himmel" "$log_himmel_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 "$claude_dir_win_esc" | sed 's/^/    /'
-            echo "DRY graphmap-cadence: would write $vbs_himmel:"
-            cadence_vbs_wrapper "$bat_himmel_win" | sed 's/^/    /'
-            echo "DRY graphmap-cadence: would schtasks /create /tn $TASK_LUNA /xml <weekly $WEEKLY_DAY_XML $LUNA_TIME, StartWhenAvailable=true> /f"
-            emit_task_xml "$bat_luna_win" "$LUNA_TIME" "$sched_semantic" | sed 's/^/    /'
-            echo "DRY graphmap-cadence: would schtasks /create /tn $TASK_HIMMEL /xml <weekly $WEEKLY_DAY_XML $HIMMEL_TIME, StartWhenAvailable=true> /f"
-            emit_task_xml "$bat_himmel_win" "$HIMMEL_TIME" "$sched_semantic" | sed 's/^/    /'
-        fi
-        echo "DRY graphmap-cadence: would write $bat_ast_luna:"
-        emit_bat "$himmel_win_esc" "$payload_ast_luna" "$log_ast_luna_esc" "$graphify_dir_win_esc" "$git_bin_esc" 1 "" "$luna_out_dir_esc" | sed 's/^/    /'
-        echo "DRY graphmap-cadence: would write $vbs_ast_luna:"
-        cadence_vbs_wrapper "$bat_ast_luna_win" | sed 's/^/    /'
-        echo "DRY graphmap-cadence: would write $bat_ast_himmel:"
-        emit_bat "$himmel_win_esc" "$payload_ast_himmel" "$log_ast_himmel_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 | sed 's/^/    /'
-        echo "DRY graphmap-cadence: would write $vbs_ast_himmel:"
-        cadence_vbs_wrapper "$bat_ast_himmel_win" | sed 's/^/    /'
-        echo "DRY graphmap-cadence: would schtasks /create /tn $TASK_AST_LUNA /xml <daily at $AST_LUNA_TIME, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_ast_luna_win" "$AST_LUNA_TIME" "$sched_ast" | sed 's/^/    /'
-        echo "DRY graphmap-cadence: would schtasks /create /tn $TASK_AST_HIMMEL /xml <hourly from $AST_HIMMEL_TIME, StartWhenAvailable=true> /f"
-        emit_task_xml "$bat_ast_himmel_win" "$AST_HIMMEL_TIME" "$sched_ast" "$rep_ast" | sed 's/^/    /'
-        if [ "$WITH_PUBLISH" -eq 1 ]; then
-            echo "DRY graphmap-cadence: would write $bat_publish_himmel:"
-            emit_bat "$himmel_win_esc" "$payload_publish_himmel" "$log_publish_himmel_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 | sed 's/^/    /'
-            echo "DRY graphmap-cadence: would write $vbs_publish_himmel:"
-            cadence_vbs_wrapper "$bat_publish_himmel_win" | sed 's/^/    /'
-            echo "DRY graphmap-cadence: would schtasks /create /tn $TASK_PUBLISH_HIMMEL /xml <every 6h from $GRAPH_PUBLISH_TIME, StartWhenAvailable=true> /f"
-            emit_task_xml "$bat_publish_himmel_win" "$GRAPH_PUBLISH_TIME" "$sched_publish" "$rep_publish" | sed 's/^/    /'
-        else
-            echo "DRY graphmap-cadence: --with-publish not set; $TASK_PUBLISH_HIMMEL is skipped entirely"
-        fi
-        echo "graphmap-cadence: dry-run complete (no changes made)"
-        return 0
-    fi
-
-    mkdir -p "$BAT_DIR"
-    # Atomic runner publication: every runner .bat
-    # and .vbs shim is emitted to a staged temp BESIDE its final path (same dir
-    # -> same filesystem -> `mv` is an atomic rename, not a copy) and promoted
-    # only once complete.
-    # Redirecting straight onto the FINAL path let a task firing concurrently
-    # with a re-arm read a half-written shim; after the rename the final path
-    # only ever holds a complete file (old or new). Shims promote first (an
-    # already-armed task can safely run a new shim against the still-current
-    # .bat mid-replacement), and every promotion is CHECKED — a failed one
-    # aborts the arm BEFORE any task is registered, with the staged temps
-    # cleaned. A non-regular final path is refused too: `mv` onto a directory
-    # squatting on a runner name "succeeds" by moving the staged file INSIDE
-    # it, arming a task at a path that is not a file.
-    local tmp_luna_bat tmp_himmel_bat tmp_luna_vbs tmp_himmel_vbs
-    local tmp_ast_luna_bat tmp_ast_himmel_bat tmp_ast_luna_vbs tmp_ast_himmel_vbs
-    local tmp_publish_himmel_bat tmp_publish_himmel_vbs
-    tmp_ast_luna_bat=$(mktemp "$BAT_DIR/.graphmap-ast-luna.bat.XXXXXX")
-    tmp_ast_himmel_bat=$(mktemp "$BAT_DIR/.graphmap-ast-himmel.bat.XXXXXX")
-    tmp_ast_luna_vbs=$(mktemp "$BAT_DIR/.graphmap-ast-luna.vbs.XXXXXX")
-    tmp_ast_himmel_vbs=$(mktemp "$BAT_DIR/.graphmap-ast-himmel.vbs.XXXXXX")
-    emit_bat "$himmel_win_esc" "$payload_ast_luna" "$log_ast_luna_esc" "$graphify_dir_win_esc" "$git_bin_esc" 1 "" "$luna_out_dir_esc" > "$tmp_ast_luna_bat"
-    emit_bat "$himmel_win_esc" "$payload_ast_himmel" "$log_ast_himmel_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 > "$tmp_ast_himmel_bat"
-    cadence_vbs_wrapper "$bat_ast_luna_win" > "$tmp_ast_luna_vbs"
-    cadence_vbs_wrapper "$bat_ast_himmel_win" > "$tmp_ast_himmel_vbs"
-    local promote_src promote_dst idx
-    promote_src=("$tmp_ast_luna_vbs" "$tmp_ast_himmel_vbs" "$tmp_ast_luna_bat" "$tmp_ast_himmel_bat")
-    promote_dst=("$vbs_ast_luna" "$vbs_ast_himmel" "$bat_ast_luna" "$bat_ast_himmel")
-    # --with-publish: opt-in, like the semantic pair below --
-    # the publish leg's runner files are neither built nor promoted unless
-    # asked for, leaving a pre-existing one (from an earlier --with-publish
-    # arm) untouched.
-    if [ "$WITH_PUBLISH" -eq 1 ]; then
-        tmp_publish_himmel_bat=$(mktemp "$BAT_DIR/.graphmap-publish-himmel.bat.XXXXXX")
-        tmp_publish_himmel_vbs=$(mktemp "$BAT_DIR/.graphmap-publish-himmel.vbs.XXXXXX")
-        emit_bat "$himmel_win_esc" "$payload_publish_himmel" "$log_publish_himmel_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 > "$tmp_publish_himmel_bat"
-        cadence_vbs_wrapper "$bat_publish_himmel_win" > "$tmp_publish_himmel_vbs"
-        promote_src+=("$tmp_publish_himmel_vbs" "$tmp_publish_himmel_bat")
-        promote_dst+=("$vbs_publish_himmel" "$bat_publish_himmel")
-    fi
-    # --ast-only: the semantic pair's runner files are neither
-    # built nor promoted — leaving them absent (or untouched, on a re-arm that
-    # left an earlier semantic pair's files on disk) is exactly "the semantic
-    # tasks stay absent/disabled": no orphaned runner ever gets registered as
-    # a task, and any PRE-EXISTING semantic runner keeps serving its own
-    # still-armed task undisturbed.
-    if [ "$AST_ONLY" -eq 0 ]; then
-        tmp_luna_bat=$(mktemp "$BAT_DIR/.graphmap-luna.bat.XXXXXX")
-        tmp_himmel_bat=$(mktemp "$BAT_DIR/.graphmap-himmel.bat.XXXXXX")
-        tmp_luna_vbs=$(mktemp "$BAT_DIR/.graphmap-luna.vbs.XXXXXX")
-        tmp_himmel_vbs=$(mktemp "$BAT_DIR/.graphmap-himmel.vbs.XXXXXX")
-        emit_bat "$himmel_win_esc" "$payload_luna" "$log_luna_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 "$claude_dir_win_esc" > "$tmp_luna_bat"
-        emit_bat "$himmel_win_esc" "$payload_himmel" "$log_himmel_esc" "$graphify_dir_win_esc" "$git_bin_esc" 0 "$claude_dir_win_esc" > "$tmp_himmel_bat"
-        cadence_vbs_wrapper "$bat_luna_win" > "$tmp_luna_vbs"
-        cadence_vbs_wrapper "$bat_himmel_win" > "$tmp_himmel_vbs"
-        promote_src+=("$tmp_luna_vbs" "$tmp_himmel_vbs" "$tmp_luna_bat" "$tmp_himmel_bat")
-        promote_dst+=("$vbs_luna" "$vbs_himmel" "$bat_luna" "$bat_himmel")
-    fi
-    for idx in "${!promote_dst[@]}"; do
-        if [ -e "${promote_dst[$idx]}" ] && [ ! -f "${promote_dst[$idx]}" ]; then
-            echo "ERR graphmap-cadence: ${promote_dst[$idx]} exists and is not a regular file — refusing to publish" >&2
-            rm -f "${promote_src[@]}"
-            exit 4
-        fi
-        if ! mv -f "${promote_src[$idx]}" "${promote_dst[$idx]}"; then
-            echo "ERR graphmap-cadence: failed to publish runner to ${promote_dst[$idx]} — NO task armed" >&2
-            rm -f "${promote_src[@]}"
-            exit 4
-        fi
-    done
-
-    # Create the AST tasks always, the semantic pair only without --ast-only,
-    # the publish leg only with --with-publish. Rolls back
-    # every task that DID register if a later /create fails (so status/dedup stay
-    # truthful no matter which task fails; --ast-only just shrinks the array
-    # to two).
-    local create_names=("$TASK_AST_LUNA" "$TASK_AST_HIMMEL")
-    local create_scheds=("$sched_ast" "$sched_ast")
-    local create_times=("$AST_LUNA_TIME" "$AST_HIMMEL_TIME")
-    local create_bats=("$bat_ast_luna_win" "$bat_ast_himmel_win")
-    # Only the HIMMEL corpus gets the
-    # hourly Repetition. luna's AST leg keeps the same daily CalendarTrigger
-    # with NO repetition, i.e. it fires once a day instead of 24 times. Both
-    # AST legs share sched_ast (a plain ScheduleByDay) -- hourliness lives
-    # entirely in rep_ast, so "lower cadence for luna" is the absence of it.
-    # The publish leg, when armed, always gets rep_publish
-    # (every 6h).
-    local create_reps=("" "$rep_ast")
-    if [ "$WITH_PUBLISH" -eq 1 ]; then
-        create_names+=("$TASK_PUBLISH_HIMMEL")
-        create_scheds+=("$sched_publish")
-        create_times+=("$GRAPH_PUBLISH_TIME")
-        create_bats+=("$bat_publish_himmel_win")
-        create_reps+=("$rep_publish")
-    fi
-    if [ "$AST_ONLY" -eq 0 ]; then
-        create_names=("$TASK_LUNA" "$TASK_HIMMEL" "${create_names[@]}")
-        create_scheds=("$sched_semantic" "$sched_semantic" "${create_scheds[@]}")
-        create_times=("$LUNA_TIME" "$HIMMEL_TIME" "${create_times[@]}")
-        create_bats=("$bat_luna_win" "$bat_himmel_win" "${create_bats[@]}")
-        create_reps=("" "" "${create_reps[@]}")
-    fi
-    local created=() ci err_file
-    err_file=$(mktemp -t graphmap-cadence.err.XXXXXX)
-    for ci in "${!create_names[@]}"; do
-        if ! schtasks_create_xml "${create_names[$ci]}" "${create_scheds[$ci]}" "${create_times[$ci]}" "${create_bats[$ci]}" "$err_file" "${create_reps[$ci]}"; then
-            echo "ERR graphmap-cadence: schtasks /create ${create_names[$ci]} failed:" >&2
-            cat "$err_file" >&2
-            local rb
-            # ${created[@]+"${created[@]}"} -- empty-array guard: under
-            # `set -u` on bash < 4.4 (this repo's floor is 3.2),
-            # expanding "${created[@]}" when created is still empty
-            # (the FIRST /create failed, so nothing was ever appended) is an
-            # unbound-variable error that aborts this rollback path before
-            # `rm -f "$err_file"` and before the deliberate `exit 4` below --
-            # surfacing the wrong exit code and leaking the temp file.
-            for rb in "${created[@]+"${created[@]}"}"; do
-                if ! run_schtasks /delete /tn "$rb" /f >/dev/null 2>&1; then
-                    echo "WARN: rollback of $rb failed — run disarm" >&2
-                fi
-            done
-            rm -f "$err_file"
-            exit 4
-        fi
-        if [ -s "$err_file" ]; then cat "$err_file" >&2; fi
-        created+=("${create_names[$ci]}")
-    done
-    rm -f "$err_file"
-
-    # Register every task this arm actually created so absence
-    # (a silently vanished scheduled task) is detectable via the registry's
-    # expected-but-absent report. AST pair is unconditional (created on
-    # every arm, --ast-only or not); the semantic pair only when this arm
-    # created it.
-    if [ "$AST_ONLY" -eq 0 ]; then
-        # weekly (604800s), not daily -- these are the semantic pair: a wrong cadence here would make future
-        # cadence-based staleness tooling flag a healthy weekly job as
-        # stalled every day it hasn't fired.
-        observability_register_cadence graphmap-luna 604800 "$TASK_LUNA"
-        observability_register_cadence graphmap-himmel 604800 "$TASK_HIMMEL"
-    fi
-    observability_register_cadence graphmap-ast-luna 86400 "$TASK_AST_LUNA"
-    observability_register_cadence graphmap-ast-himmel 3600 "$TASK_AST_HIMMEL"
-    if [ "$WITH_PUBLISH" -eq 1 ]; then
-        # Publish leg: opt-in, like the AST pair
-        # unconditional WHEN present -- every 6h (21600s). $PUBLISH_FLOW_NAME
-        # ("graph-publish-<slug>"), NOT the "graphmap-*.bat/.vbs/.log"
-        # runner-file naming this file's OTHER legs use -- it must match
-        # graph-cadence.sh's OWN FLOW_NAME byte-for-byte, or the observability
-        # registry's .flows[] entry can never be joined against the
-        # flow-run-ledger rows the runner actually emits (both sides DERIVE the
-        # name from the same corpus-slug computation instead of a hardcoded
-        # literal).
-        observability_register_cadence "$PUBLISH_FLOW_NAME" 21600 "$TASK_PUBLISH_HIMMEL"
-    fi
-
-    local semantic_lines arming_note
-    if [ "$AST_ONLY" -eq 1 ]; then
-        # An --ast-only (re-)arm never
-        # touches the semantic pair, but it can already be armed from an
-        # EARLIER full arm — report its REAL scheduler state, not a blanket
-        # "NOT armed" that would be a false negative in that case.
-        # Don't restate this arm's $BACKEND/
-        # $LUNA_TIME/$HIMMEL_TIME for a task this run never touched — a
-        # pre-existing task may have been armed with different values (e.g.
-        # a since-changed BACKEND). Point at `status` for its real config
-        # instead of guessing.
-        local luna_qrc=0 himmel_qrc=0 luna_line himmel_line
-        query_one "$TASK_LUNA" || luna_qrc=$?
-        if [ "$luna_qrc" -eq 0 ]; then
-            luna_line="  $TASK_LUNA       already armed (pre-existing, unaffected by this --ast-only run — see \`status\` for its schedule/backend)"
-        else
-            luna_line="  $TASK_LUNA       NOT armed (--ast-only)"
-        fi
-        query_one "$TASK_HIMMEL" || himmel_qrc=$?
-        if [ "$himmel_qrc" -eq 0 ]; then
-            himmel_line="  $TASK_HIMMEL     already armed (pre-existing, unaffected by this --ast-only run — see \`status\` for its schedule/backend)"
-        else
-            himmel_line="  $TASK_HIMMEL     NOT armed (--ast-only)"
-        fi
-        semantic_lines="$luna_line
-$himmel_line"
-        arming_note="  --ast-only arms/replaces only the free structural pair; a pre-existing
-  semantic pair (if shown above) is left byte-identical. Re-arm without
-  --ast-only to add a missing semantic pair (--force to replace)."
-    else
-        semantic_lines="  $TASK_LUNA       weekly $WEEKLY_DAY_XML $LUNA_TIME   -> refresh-graph-map luna (semantic, $BACKEND)
-  $TASK_HIMMEL     weekly $WEEKLY_DAY_XML $HIMMEL_TIME   -> refresh-graph-map himmel (semantic, $BACKEND)"
-        arming_note="  Arming = weekly semantic graphify extraction on the $BACKEND backend
-  (off the interactive Anthropic bank) + free structural refresh
-  (himmel hourly, luna daily);"
-    fi
-    local publish_lines=""
-    if [ "$WITH_PUBLISH" -eq 1 ]; then
-        publish_lines="  $TASK_PUBLISH_HIMMEL  every 6h from $GRAPH_PUBLISH_TIME   -> graph-cadence publish himmel (free, auto-merge)"
-    fi
-    cat <<EOF
-
-================================================================
-  GRAPHMAP CADENCE ARMED
-$semantic_lines
-  $TASK_AST_LUNA    daily $AST_LUNA_TIME   -> graphify update luna (structural, free)
-  $TASK_AST_HIMMEL  hourly from $AST_HIMMEL_TIME   -> graphify update himmel (structural, free)
-$publish_lines
-  Vault: $VAULT   (maps -> 60-Maps/)
-  Himmel: $HIMMEL_ROOT
-  Runner .bats: $BAT_DIR
-
-  No task ever opens a claude session. StartWhenAvailable=true: a run
-  missed because the PC was off/asleep fires when the PC is next on.
-$arming_note
-  disarm anytime with:
-      bash scripts/luna/graphmap-cadence.sh disarm
-================================================================
-EOF
-}
-
 # --- POSIX (cron) implementation -------------------------------------------
 #
-# Same arm/status/disarm contract as the schtasks path, against the user
-# crontab. Both cadence entries live in ONE crontab rewrite (snapshot -> filter
-# -> append -> install), so there is no half-armed state to roll back. Runner
-# .sh files mirror the .bat runners: log rotation, fire stamp, cd-into-himmel,
+# arm/status/disarm against the user crontab. Both cadence entries live in ONE crontab rewrite (snapshot -> filter
+# -> append -> install), so there is no half-armed state to roll back. Each runner
+# .sh file does log rotation, fire stamp, cd-into-himmel,
 # then bash + refresh-graph-map.sh.
 
 CRON_RUNNER_LUNA="$BAT_DIR/graphmap-luna.sh"
@@ -1899,8 +927,7 @@ cron_payload() {
 # Structural (AST) payload builder, POSIX form (routed
 # through the promote-lock wrapper): bash + ast-update.sh +
 # corpus-root. q_bash/q_script/q_corpus arrive pre-quoted (printf %q).
-# Mirrors ast_bat_payload's rationale -- --force now lives INSIDE
-# ast-update.sh, not on this command line.
+# --force lives INSIDE ast-update.sh, not on this command line.
 ast_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3" q_out_dir="${4:-}"
     # ast-update.sh reads GRAPHIFY_OUT from its environment exactly the way
@@ -1916,7 +943,7 @@ ast_cron_payload() {
 
 # Publish leg payload builder, POSIX form: unlike ast-update.sh,
 # graph-cadence.sh takes its corpus root via an explicit --corpus-root flag,
-# not a bare positional -- see publish_bat_payload's identical note.
+# not a bare positional.
 publish_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3"
     local base
@@ -2338,7 +1365,7 @@ cron_arm() {
     cadence_prov_record "$TASK_AST_HIMMEL"
     # Publish leg: opt-in via --with-publish.
     # $PUBLISH_FLOW_NAME ("graph-publish-<slug>"), NOT the
-    # "graphmap-*.bat/.vbs/.log" runner-file naming this file's OTHER legs use --
+    # "graphmap-*.sh/.log" runner-file naming this file's OTHER legs use --
     # it must match graph-cadence.sh's OWN FLOW_NAME byte-for-byte, or the
     # observability registry's .flows[] entry can never be joined against the
     # flow-run-ledger rows the runner actually emits (both sides DERIVE the name from
@@ -2432,7 +1459,7 @@ if [ "$SUBCMD" = "arm" ]; then
 fi
 
 case "$SUBCMD" in
-    arm)    if [ "$PLATFORM" = "windows" ]; then cmd_arm;    else cron_arm;    fi ;;
-    status) if [ "$PLATFORM" = "windows" ]; then cmd_status; else cron_status; fi ;;
-    disarm) if [ "$PLATFORM" = "windows" ]; then cmd_disarm; else cron_disarm; fi ;;
+    arm)    cron_arm ;;
+    status) cron_status ;;
+    disarm) cron_disarm ;;
 esac

@@ -108,12 +108,11 @@ handovers/overnight-recovery-*.md
 # they belong in <state-repo>/.../specs/decision/, never himmel docs/.
 /docs/adr/
 # Codex artifacts (HIMMEL-427: codex IS now wired). The guardrail wiring is
-# TRACKED (hooks.json + the platform run-hook wrappers + its README); codex's local
+# TRACKED (hooks.json + the run-hook wrapper + its README); codex's local
 # runtime config, sessions, and auto-generated slash-command→skill mirrors stay
 # ignored. (AGENTS.md itself is tracked separately.)
 .codex/*
 !.codex/hooks.json
-!.codex/run-hook.cmd
 !.codex/run-hook.sh
 !.codex/codex-hook-adapter.sh
 !.codex/README.md
