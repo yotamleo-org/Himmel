@@ -246,9 +246,10 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    record prints `SENDMESSAGE` (successor, worker's token) for a Live-state
    worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
    Never re-run it (it resends inbox relays). It carries no fresh token:
-   native and claudex workers are not rotated on a bus succession. Then send the
-   successor its `RELAYED <n> of <m>` line (relay-batch.sh prints it; the
-   relay-on-live wake prints it first). The quote-backs are the successor's to tally.
+   native and claudex workers are not rotated on a bus succession. Once every
+   `SENDMESSAGE` relay is sent (n counts them), send the successor the
+   `RELAYED <n> of <m>` line relay-batch.sh prints last. The quote-backs are the
+   successor's to tally.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it follows your `RELAYED`
    line, naming any workers that did not quote back or could not be relayed, and

@@ -26,9 +26,10 @@ Read on demand from `chief-template.md` step 10. `<kit>` is the kit path in step
     predecessor's `RELAYED` line). Each fires once; **re-arm without `--succession`**
     (a re-arm that keeps it after a complete wake stays quiet). An outgoing
     chief started with `chief.sh next --relay-on-live` gets `WAKE relay-on-live
-    successor=<session>`, then `relay-batch.sh`'s `RELAYED <n> of <m>` line and
-    its SENDMESSAGE lines, once the successor's lock is held fresh; send each
-    line, and the `RELAYED` line to the successor. It runs `tick.sh` every
+    successor=<session>`, then `relay-batch.sh`'s SENDMESSAGE lines and its
+    closing `RELAYED <n> of <m>` line, once the successor's lock is held fresh;
+    send each SENDMESSAGE line first (n counts them), then the `RELAYED` line to
+    the successor. It runs `tick.sh` every
     180 s and wakes only when two consecutive samples differ from the action
     key you last saw: `workers=` (a worker FRESH → STALE / FREE / WRAPPED …),
     `livestate=` (DRIFT / MALFORMED), `prs=` (the repo's open-PR set — any

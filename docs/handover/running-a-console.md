@@ -530,9 +530,9 @@ session's quote-back is the `SUCCESSION accepted` Results bullet in its own doc 
 waiter tallies it); it sends a `SendMessage` only on a timeout or a decline. That run is the
 relay: never re-run it (a retry resends the claudex inbox relays). It never carries a fresh
 token, and a relay with none is complete (the worker keeps its own): native and claudex
-workers are not rotated on a bus succession. It prints `RELAYED <n> of <m>` last (the
-relay-on-live wake prints it first): send that line to the successor. The quote-backs
-are the successor's to tally; you do not wait for them.
+workers are not rotated on a bus succession. It prints `RELAYED <n> of <m>` last, and n
+counts its `SENDMESSAGE` lines: send those relays first, then that line to the successor.
+The quote-backs are the successor's to tally; you do not wait for them.
 A successor that arrives after you have left can prove itself only with the
 two-token chain form; a worker that cannot verify that is stranded (it keeps
 working and can still be merged, but cannot be re-scoped). The successor's

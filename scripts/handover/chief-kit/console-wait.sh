@@ -201,9 +201,10 @@
 #   <inbox>.relay-on-live  (`console.sh next --relay-on-live`; needs --doc) line 1 the
 #                        successor session, line 2 its doc. When that doc's queue lock
 #                        is held fresh the waiter prints one `WAKE relay-on-live
-#                        successor=<s>` block (relay-batch.sh's output, its
-#                        `RELAYED <n> of <m>` line first: the console sends it to the
-#                        successor, whose LIVE follows it), removes the marker and exits 0. It works in handover mode. Seams:
+#                        successor=<s>` block (relay-batch.sh's output, ending with
+#                        `RELAYED <n> of <m>`: n counts the SENDMESSAGE lines, so the
+#                        console sends those first, then RELAYED to the successor,
+#                        whose LIVE follows it), removes the marker and exits 0. It works in handover mode. Seams:
 #                        CHIEF_WAIT_LOCK_STATUS, CHIEF_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
@@ -1117,11 +1118,6 @@ while :; do
                 # relay-batch may deliver a claudex leg by inbox-send (never re-run it: a retry
                 # would resend), so a failure still wakes, carrying its rc and output for the console.
                 rol_out="$(timeout -k 2 60 bash "${CHIEF_WAIT_RELAY:-$HERE/relay-batch.sh}" "$console_doc" --successor "$rol_succ" </dev/null 2>&1 9>&-)"; rol_brc=$?  # gnu-ok: Linux-only kit
-                # relay-batch prints `RELAYED <n> of <m>` last; lift it under the header so the
-                # console forwards it to the successor (its LIVE trigger) in the same turn.
-                rol_relayed="$(printf '%s\n' "$rol_out" | grep '^RELAYED ')"  # swallow-ok: no RELAYED line leaves the block as it was
-                [ -z "$rol_relayed" ] || rol_out="$rol_relayed
-$(printf '%s\n' "$rol_out" | grep -v '^RELAYED ')"
                 if [ "$rol_brc" -eq 0 ]; then
                     printf 'WAKE relay-on-live successor=%s\n%s\n' "$rol_succ" "$rol_out"
                 else
