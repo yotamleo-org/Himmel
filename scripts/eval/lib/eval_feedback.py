@@ -140,8 +140,8 @@ def gain(before, after, better):
 def keep_rule(c, series, base, new, after):
     """(verdict, fields) of the train/test keep rule for a change measured on split row new."""
     per, min_gain = c.get("per"), c.get("min_gain") or 0
-    test_before = value_of(split_view(base, "sealed"), c["metric"], c["absent"], per) if base else None
-    test_after = value_of(split_view(new, "sealed"), c["metric"], c["absent"], per)
+    test_before = value_of(split_view(base, "sealed"), c["metric"], None, per) if base else None
+    test_after = value_of(split_view(new, "sealed"), c["metric"], None, per)
     upto = series[:series.index(base) + 1] if base in series else []
     train = [v for v in (value_of(tuning_metrics(r), c["metric"], c["absent"], per) for r in upto
                          if r["confighash"] == c["confighash"] and tuning_metrics(r)) if v is not None]

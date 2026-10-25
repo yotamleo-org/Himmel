@@ -266,6 +266,19 @@ ok "one-run open" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one
 ok "one-run row" split "$T/one.jsonl" 1 1 1
 ok "one-run measure" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one-c.jsonl" --rules "$S/rules.json"
 eq "keep rule: one run before the change leaves the noise unmeasured: not kept" "$(field "$T/one-c.jsonl" 1 verdict)" "revert"
+# A rule with absent=0 must not stand in for a sealed half the row never measured.
+cat >"$T/absent-rules.json" <<'EOF'
+{"v": 1, "rules": [{"eval": "review-panel", "metric": "codex.fp_rate", "threshold": 0.2, "better": "lower",
+  "absent": 0, "change": "prompt", "target": "scripts/cr/critic-first-pass.sh", "critic": "codex", "min_gain": 0.1}]}
+EOF
+fp() { python3 -I "$RUNS" append --ledger "$1" --eval review-panel --source s --config-json '{"review_panel_v":2}' \
+  --metrics-json "$2" >/dev/null 2>&1; }
+ok "absent base 1" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent base 2" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent open" python3 -I "$FB" run --ledger "$T/absent.jsonl" --changes "$T/absent-c.jsonl" --rules "$T/absent-rules.json"
+ok "absent row" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0,"sealed.codex.clean_scored":0}'
+ok "absent measure" python3 -I "$FB" run --ledger "$T/absent.jsonl" --changes "$T/absent-c.jsonl" --rules "$T/absent-rules.json"
+eq "keep rule: a sealed half with no value is unmeasured, not the rule's absent" "$(field "$T/absent-c.jsonl" 1 reason)" "test half unmeasured"
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

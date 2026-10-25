@@ -187,7 +187,7 @@ prow "$PV" pv2 0
 out=$(python3 "$CMP" pv --ledger "$PV" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
 eq "paired: identical per-case results exit 0" "$rc" "0"
 has "paired: the per-case metric is compared paired" "$out" "paired hit"
-has "paired: the detection floor is stated (2.8 x 0.5 / sqrt 12)" "$out" "detection floor ±0.404"
+has "paired: the detection floor is stated (2.8 x 1 / sqrt 12: a -1..+1 difference spreads at most 1)" "$out" "detection floor ±0.808"
 prow "$PV" pv3 1
 out=$(python3 "$CMP" pv --ledger "$PV" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
 eq "paired: one case of 12 flipping is inside the floor (exit 0)" "$rc" "0"
@@ -208,6 +208,11 @@ zrow "$Z" z3 6 1
 zrow "$Z" z4 6 0
 out=$(python3 "$CMP" pv --ledger "$Z" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
 eq "paired: 6 of 6 cases lost, no spread, is a regression (exit 1)" "$rc" "1"
+zrow "$Z" z5 12 1
+python3 "$LIB" append --ledger "$Z" --eval pv --run-id z6 --source s --config-json '{}' --metrics-json '{"acc":0.9}' \
+  --cases-json "$(python3 -c 'import json; print(json.dumps({"c%02d" % i: {"hit": 0 if i < 4 else 1} for i in range(12)}))')" >/dev/null 2>&1 || fail "fixture row z6 not written"
+out=$(python3 "$CMP" pv --ledger "$Z" --thresholds "$TMP/paired-th.json" 2>&1); rc=$?
+eq "paired: 4 losses and 8 ties is p=0.125 on an exact sign test, not a regression (exit 0)" "$rc" "0"
 cat >"$TMP/paired-cost.json" <<'EOF'
 {"pc": {"_cases": {"cost": {"higher_is_better": false}}}}
 EOF
