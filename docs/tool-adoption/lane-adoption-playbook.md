@@ -18,7 +18,7 @@ latency, a context-compaction default sized for a 200k-token model, an
 identity file that hardcodes a different provider's name — and the new lane
 either timed out spuriously, compacted early, or ran under an
 under-specified persona, before anyone measured what the new lane actually
-needed. The GLM onboarding (GLM later dropped, HIMMEL-1967) is the worked
+needed. The GLM onboarding (the GLM lane is now dormant, HIMMEL-1967) is the worked
 example this playbook generalizes: each axis below is a knob GLM's rollout tripped over,
 with the fix now checked into the repo as evidence of what "profile it, then
 tailor it" looks like in practice.
