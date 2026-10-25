@@ -163,15 +163,21 @@ check "5: an explicit verdict file for another head fails closed -> trust" "$(ba
 back
 
 mkv GO 'finding: src/a.txt:3-4'
-git config diff.noprefix true
-edit '$0==4{print "four"; next} {print}' src/a.txt; N=$(step noprefix)
-check "5: a prefix-less diff config does not hide a finding edit -> finding" "$(cls "$N")" finding
+git config diff.srcPrefix x/
+git config diff.dstPrefix y/
+edit '$0==4{print "four"; next} {print}' src/a.txt; N=$(step prefix)
+check "5: a src/dst prefix diff config does not hide a finding edit -> finding" "$(cls "$N")" finding
+git config --unset diff.srcPrefix
+git config --unset diff.dstPrefix
 check "5: an external diff driver does not hide a finding edit -> finding" "$(GIT_EXTERNAL_DIFF=true cls "$N")" finding
-git config --unset diff.noprefix
 back
-mkv GO 'finding: src/gone.txt:3-4'
-printf 'more\n' >> docs/c.md; N=$(step absent)
-check "5: a finding path absent at the judged head fails closed -> trust" "$(cls "$N")" trust
+printf 'more\n' >> docs/c.md; N=$(step badpaths)
+for badpath in src/gone.txt ./src/a.txt src/./a.txt ../src/a.txt "$tmp/repo/src/a.txt" src; do
+    mkv GO "finding: $badpath:3-4"
+    check "5: finding path '$badpath' fails closed -> trust" "$(cls "$N")" trust
+done
+mkv GO 'finding: src'
+check "5: a finding that names a directory fails closed -> trust" "$(cls "$N")" trust
 back
 repo_trust="$HERE/../../ci/ci-trust-paths.txt"
 hit=no

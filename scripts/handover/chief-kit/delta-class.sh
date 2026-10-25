@@ -148,7 +148,7 @@ jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "")
 [ -z "$(jq -r --arg h "$J" 'select(.kind == "finding" and .head == $h and ((.file // "") == "")) | "x"' "$work/rows.jsonl")" ] || fin finding
 
 # Old-side line ranges the delta rewrites; an insertion counts as touching the line it follows and the next.
-git -c core.quotePath=false -c diff.noprefix=false -c diff.mnemonicPrefix=false diff -U0 --no-renames --no-color --no-ext-diff --no-textconv --no-relative "$J" "$N" -- > "$work/patch.txt" 2>/dev/null || trust
+git -c core.quotePath=false diff -U0 --no-renames --no-color --no-ext-diff --no-textconv --no-relative --src-prefix=a/ --dst-prefix=b/ "$J" "$N" --> "$work/patch.txt" 2>/dev/null || trust
 awk '
     /^diff --git / { inh = 1; path = ""; next }
     inh && /^--- / { p = substr($0, 5); sub(/\t$/, "", p); if (p ~ /^"/) bad = 1; if (p == "/dev/null") path = ""; else { sub(/^a\//, "", p); path = p }; next }
@@ -175,8 +175,10 @@ done < "$work/numstat.z"
 
 while IFS=$'\t' read -r fp lo hi; do
     [ -n "$fp" ] || continue
-    # a finding on a path the judged head does not hold cannot be matched to any hunk
-    git cat-file -e "$J:$fp" 2>/dev/null || trust
+    # a finding must name a repo-root file the judged head holds: any other spelling
+    # (absolute, dot segment, directory, absent path) cannot be matched to a hunk
+    case "/$fp/" in */./*|*/../*|//*) trust ;; esac
+    [ "$(git cat-file -t "$J:$fp" 2>/dev/null)" = blob ] || trust # swallow-ok: an unreadable path fails closed to trust on this line
     if [ -z "$lo" ]; then
         grep -qxF -- "$fp" "$work/names.txt" && fin finding
     fi
