@@ -3134,6 +3134,11 @@ done
 f_doc() { printf '%s\n' '# console' ${1:+"focus-version: $1"} '' '## Results (newest at the bottom)' > "$f_dir/console.md"; }
 f_state() { printf 'status=%s\nstage=%s\ngen=3\ndirty=\nsha8=0a1b2c3d\nsdrift=%s\nts=1\n' "$1" "$2" "$3" > "$f_dir/focus-state"; }
 f_tick() { PATH="$W/bin-focus6829:$PATH" bash "$SUT" --doc "$f_dir/console.md" "$@" 2>/dev/null; }
+# positive control: a gh call under a script named focus-refresh.sh is logged
+: > "$f_calls"
+printf '#!/usr/bin/env bash\ngh probe\n' > "$W/bin-focus6829/focus-refresh.sh"
+PATH="$W/bin-focus6829:$PATH" bash "$W/bin-focus6829/focus-refresh.sh" >/dev/null 2>&1
+f_probe="$(cat "$f_calls")"
 : > "$f_calls"
 f_doc v1.0.1
 f_state FAILED drift 2:abcd1234
@@ -3158,6 +3163,7 @@ f_out="$(f_tick)"
 not_contains 'no focus-state file leaves focus= off the line (HIMMEL-6829)' "$f_out" ' focus='
 not_contains 'no focus-state file leaves sdrift= off the line (HIMMEL-6829)' "$f_out" ' sdrift='
 if [ ! -r "/proc/$$/status" ]; then skip 'the focus fields make no gh or jira call: no /proc to walk the callers (HIMMEL-6829)'
+elif [ "$f_probe" != 'gh probe' ]; then fail "the call-log stub missed a gh call under focus-refresh.sh (got '$f_probe')"
 elif [ -s "$f_calls" ]; then fail "focus-refresh.sh called gh or jira from the tick: $(tr '\n' ';' < "$f_calls")"; else pass 'the focus fields make no gh or jira call (HIMMEL-6829)'; fi
 
 if [ "$fails" -eq 0 ]; then
