@@ -136,6 +136,7 @@ export default defineConfig({
           items: [
             { label: 'AFK (unattended) runs', slug: 'handover/afk-mode' },
             { label: 'The chief and its workers', slug: 'handover/running-a-console' },
+            { label: 'Meet the team', slug: 'team' },
             { label: 'Handover notes', slug: 'internals/handover-system' },
             { label: 'Usage and cost', slug: 'token-economy' },
           ],

@@ -25,7 +25,7 @@ Use it
 Run many sessions
   AFK (unattended) runs
   The chief and its workers
-  Meet the team [pending]
+  Meet the team
   Working with the team [pending]
   Add a team member [pending]
   Handover notes
