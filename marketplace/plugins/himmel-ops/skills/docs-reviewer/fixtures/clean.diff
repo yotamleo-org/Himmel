@@ -1,0 +1,11 @@
+diff --git a/docs/guide/start.md b/docs/guide/start.md
+new file mode 100644
+index 0000000..7777777
+--- /dev/null
++++ b/docs/guide/start.md
+@@ -0,0 +1,5 @@
++# Start here
++
++| Step | What you run |
++|---|---|
++| Install | `bash install.sh` |

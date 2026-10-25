@@ -1,0 +1,31 @@
+diff --git a/docs/lanes.md b/docs/lanes.md
+index 1111111..2222222 100644
+--- a/docs/lanes.md
++++ b/docs/lanes.md
+@@ -10,4 +10,7 @@ The lanes a worker can run on.
+ | Lane | What it is |
+ |---|---|
+-| claudex | the Codex lane |
++| claudex | the Codex lane, a foobar widget |
++| glm-launcher (dormant) | a seeded copy of the native lane |
++
++**Name history.** Originally shipped as "headroom" (HIMMEL-873).
+ Each lane has its own guard posture.
+@@ -40,2 +43,3 @@ Guards
+ The deny-guards fire on every lane.
++The panel lanes use per-token keys (2026-07-03).
+ See the guard list.
+diff --git a/docs/archive/old-lanes.md b/docs/archive/old-lanes.md
+index 3333333..4444444 100644
+--- a/docs/archive/old-lanes.md
++++ b/docs/archive/old-lanes.md
+@@ -1,1 +1,2 @@
+ # Old lanes
++The GLM lane was retired.
+diff --git a/scripts/lanes/run.sh b/scripts/lanes/run.sh
+index 5555555..6666666 100644
+--- a/scripts/lanes/run.sh
++++ b/scripts/lanes/run.sh
+@@ -1,1 +1,2 @@
+ #!/usr/bin/env bash
++# the GLM lane is dormant

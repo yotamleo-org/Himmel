@@ -25,6 +25,7 @@ marketplace/plugins/himmel-ops/scripts/test-minerva-scripts-resolution.sh	local	
 marketplace/plugins/himmel-ops/scripts/test-minerva-spec-gate.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-minerva-trace-lint.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-ticket-standard-check.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+marketplace/plugins/himmel-ops/skills/docs-reviewer/test-docs-reviewer.sh	local	new since the audit, behaviour suite
 marketplace/plugins/lean-skills/hooks/test-note-superpowers-prefix.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-archive-clips.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-archive-deload.sh	local	behaviour suite, 0 catches in the 400-PR audit window

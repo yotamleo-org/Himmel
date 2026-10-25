@@ -1,0 +1,261 @@
+#!/usr/bin/env python3
+"""docs_review.py: review a docs diff against the operator's own remarks.
+
+  check   [--rules F] (--pr N | --range A..B | --diff FILE|-) [--whole-file]
+  learn   [--rules F] (--pattern ERE | --judgement) --rule TEXT --source TEXT --quote TEXT [--date D]
+  confirm [--rules F] ID --by TEXT
+  list    [--rules F]
+
+check prints `path:line: ID rule | matched: text` per finding, one CHECK line
+per judgement rule per changed page, and exits 1 when there is a finding.
+learn appends a candidate rule; confirm makes it active. Usage errors exit 2.
+"""
+import argparse
+import datetime
+import os
+import re
+import subprocess
+import sys
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+DEFAULT_RULES = os.path.join(HERE, "rules.tsv")
+FIELDS = ["id", "state", "kind", "pattern", "rule", "date", "source", "quote"]
+EXEMPT = ("docs/archive/", "docs/release/")
+STRUCTURE = re.compile(r"^\s*([#|>*+<]|-|\d+[.)]\s|```|~~~)")
+HUNK = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@")
+
+
+def die(msg):
+    print(f"docs-review: {msg}", file=sys.stderr)
+    sys.exit(2)
+
+
+def load_rules(path):
+    try:
+        with open(path, encoding="utf-8") as fh:
+            lines = fh.read().splitlines()
+    except OSError as exc:
+        die(f"cannot read rules file {path}: {exc}")
+    rules = []
+    for n, line in enumerate(lines[1:], start=2):
+        if not line.strip():
+            continue
+        cols = line.split("\t")
+        if len(cols) != len(FIELDS):
+            die(f"{path}:{n}: want {len(FIELDS)} tab-separated columns, got {len(cols)}")
+        rules.append(dict(zip(FIELDS, cols)))
+    return rules
+
+
+def is_docs_page(path):
+    if path.startswith(EXEMPT):
+        return False
+    return path == "README.md" or (path.startswith("docs/") and path.endswith((".md", ".html")))
+
+
+def git(*args):
+    out = subprocess.run(["git", *args], capture_output=True, text=True)
+    if out.returncode != 0:
+        die(f"git {' '.join(args)} failed: {out.stderr.strip()}")
+    return out.stdout
+
+
+def parse_diff(text):
+    """Return {path: [(line_no, text), ...]} of the added lines."""
+    pages, path, line_no = {}, None, 0
+    for raw in text.splitlines():
+        if raw.startswith("+++ "):
+            target = raw[4:].strip()
+            path = target[2:] if target.startswith("b/") else None
+            if path is not None:
+                pages.setdefault(path, [])
+            continue
+        if raw.startswith(("--- ", "diff --git ")):
+            continue
+        hunk = HUNK.match(raw)
+        if hunk:
+            line_no = int(hunk.group(1))
+            continue
+        if path is None or not line_no:
+            continue
+        if raw.startswith("+"):
+            pages[path].append((line_no, raw[1:]))
+            line_no += 1
+        elif raw.startswith(" "):
+            line_no += 1
+    return pages
+
+
+def prose_runs(lines, threshold):
+    """Yield (first_line, last_line, count) for runs of >= threshold prose lines.
+
+    Blank lines do not break a run; a heading, list, table, quote, HTML or
+    code fence does, and fenced code is never prose. Line numbers must be
+    contiguous for two lines to share a run.
+    """
+    run, fenced, prev = [], False, None
+    for line_no, text in lines + [(None, "#")]:
+        if line_no is not None and prev is not None and line_no != prev + 1:
+            if len(run) >= threshold:
+                yield run[0], run[-1], len(run)
+            run = []
+        prev = line_no
+        stripped = text.strip()
+        if stripped.startswith(("```", "~~~")):
+            fenced = not fenced
+        if not stripped:
+            continue
+        if fenced or STRUCTURE.match(text) or line_no is None:
+            if len(run) >= threshold:
+                yield run[0], run[-1], len(run)
+            run = []
+            continue
+        run.append(line_no)
+
+
+def review(pages, rules):
+    findings, checks = [], []
+    active = [r for r in rules if r["state"] == "active"]
+    for path in sorted(pages):
+        if not is_docs_page(path):
+            continue
+        lines = pages[path]
+        for rule in active:
+            if rule["kind"] == "pattern":
+                rx = re.compile(rule["pattern"])
+                for line_no, text in lines:
+                    m = rx.search(text)
+                    if m:
+                        findings.append((path, line_no, rule, f"matched: {m.group(0).strip()}"))
+            elif rule["kind"] == "prose" and path.endswith(".md"):
+                for first, last, count in prose_runs(lines, int(rule["pattern"])):
+                    findings.append((path, first, rule, f"{count} prose lines ({first}-{last}) with no list, table or heading"))
+            elif rule["kind"] == "judgement":
+                checks.append((path, rule))
+    findings.sort(key=lambda f: (f[0], f[1], f[2]["id"]))
+    return findings, checks
+
+
+def cmd_check(args):
+    rules = load_rules(args.rules)
+    head = None
+    if args.pr:
+        diff = subprocess.run(["gh", "pr", "diff", str(args.pr)], capture_output=True, text=True)
+        if diff.returncode != 0:
+            die(f"gh pr diff {args.pr} failed: {diff.stderr.strip()}")
+        text = diff.stdout
+        if args.whole_file:
+            head = subprocess.run(["gh", "pr", "view", str(args.pr), "--json", "headRefOid", "--jq", ".headRefOid"],
+                                  capture_output=True, text=True).stdout.strip()
+            if not head:
+                die(f"cannot read the head of PR {args.pr}")
+            if subprocess.run(["git", "cat-file", "-e", head], capture_output=True).returncode != 0:
+                git("fetch", "-q", "origin", f"pull/{args.pr}/head")
+    elif args.range:
+        text = git("diff", "--no-color", "--no-ext-diff", args.range)
+        head = args.range.split("..")[-1].lstrip(".") or "HEAD"
+    else:
+        try:
+            text = sys.stdin.read() if args.diff == "-" else open(args.diff, encoding="utf-8").read()
+        except OSError as exc:
+            die(f"cannot read diff {args.diff}: {exc}")
+        if args.whole_file:
+            die("--whole-file needs --pr or --range")
+    pages = parse_diff(text)
+    if args.whole_file:
+        for path in [p for p in pages if is_docs_page(p)]:
+            body = git("show", f"{head}:{path}")
+            pages[path] = list(enumerate(body.splitlines(), start=1))
+    findings, checks = review(pages, rules)
+    for path, line_no, rule, detail in findings:
+        print(f"{path}:{line_no}: {rule['id']} {rule['rule']} | {detail}")
+    for path, rule in checks:
+        print(f"CHECK {path}: {rule['id']} {rule['rule']}")
+    for rule in rules:
+        if rule["state"] == "candidate":
+            print(f"CANDIDATE {rule['id']} awaits one confirmation: {rule['rule']}")
+    reviewed = sorted({p for p in pages if is_docs_page(p)})
+    print(f"docs-review: {len(findings)} finding(s) in {len({f[0] for f in findings})} page(s), "
+          f"{len(reviewed)} page(s) reviewed, {len(checks)} judgement check(s)")
+    return 1 if findings else 0
+
+
+def write_rules(path, rules):
+    with open(path, "w", encoding="utf-8") as fh:
+        fh.write("\t".join(FIELDS) + "\n")
+        for rule in rules:
+            fh.write("\t".join(rule[f] for f in FIELDS) + "\n")
+
+
+def cmd_learn(args):
+    rules = load_rules(args.rules)
+    kind = "judgement" if args.judgement else "pattern"
+    if kind == "pattern":
+        try:
+            re.compile(args.pattern)
+        except re.error as exc:
+            die(f"broken pattern {args.pattern!r}: {exc}")
+    values = [args.pattern or "", args.rule, args.date, args.source, args.quote]
+    if any("\t" in v or "\n" in v for v in values):
+        die("a field holds a tab or a newline")
+    if not all(v.strip() for v in [args.rule, args.source, args.quote]):
+        die("--rule, --source and --quote must not be empty")
+    nums = [int(r["id"][1:]) for r in rules if re.fullmatch(r"R\d+", r["id"])]
+    new_id = f"R{max(nums, default=0) + 1:02d}"
+    rules.append(dict(zip(FIELDS, [new_id, "candidate", kind] + values)))
+    write_rules(args.rules, rules)
+    print(f"{new_id} candidate: {args.rule}")
+    return 0
+
+
+def cmd_confirm(args):
+    rules = load_rules(args.rules)
+    match = [r for r in rules if r["id"] == args.id]
+    if not match:
+        die(f"no rule {args.id}")
+    if match[0]["state"] != "candidate":
+        die(f"{args.id} is {match[0]['state']}, not a candidate")
+    if "\t" in args.by or "\n" in args.by or not args.by.strip():
+        die("--by must be one non-empty line")
+    match[0]["state"] = "active"
+    match[0]["source"] += f"; confirmed {datetime.date.today().isoformat()} by {args.by}"
+    write_rules(args.rules, rules)
+    print(f"{args.id} active: {match[0]['rule']}")
+    return 0
+
+
+def cmd_list(args):
+    for rule in load_rules(args.rules):
+        print(f"{rule['id']}\t{rule['state']}\t{rule['kind']}\t{rule['rule']}")
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    c = sub.add_parser("check")
+    src = c.add_mutually_exclusive_group(required=True)
+    src.add_argument("--pr", type=int)
+    src.add_argument("--range")
+    src.add_argument("--diff")
+    c.add_argument("--whole-file", action="store_true")
+    lr = sub.add_parser("learn")
+    kind = lr.add_mutually_exclusive_group(required=True)
+    kind.add_argument("--pattern")
+    kind.add_argument("--judgement", action="store_true")
+    lr.add_argument("--rule", required=True)
+    lr.add_argument("--source", required=True)
+    lr.add_argument("--quote", required=True)
+    lr.add_argument("--date", default=datetime.date.today().isoformat())
+    cf = sub.add_parser("confirm")
+    cf.add_argument("id")
+    cf.add_argument("--by", required=True)
+    ls = sub.add_parser("list")
+    for sp in (c, lr, cf, ls):
+        sp.add_argument("--rules", default=os.environ.get("DOCS_REVIEW_RULES", DEFAULT_RULES))
+    args = p.parse_args()
+    return {"check": cmd_check, "learn": cmd_learn, "confirm": cmd_confirm, "list": cmd_list}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
