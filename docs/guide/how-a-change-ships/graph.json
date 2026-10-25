@@ -1,7 +1,7 @@
 {
   "version": 1,
   "about": "The delivery graph on docs/guide/how-a-change-ships.html: Level 1 nodes and edges, each node's reach, its loop (Level 2) and the chains of checks that decide each move (Level 3). Every check cites the file and string it stands for; scripts/docs/test-how-a-change-ships.sh keeps the citations, the reach tags and the page in step with the tree.",
-  "cited_at": "85b0d77e7b8dc2bbd2f75a6716acfacbdf8de709",
+  "cited_at": "a17b85971de23887f1f7459cffb0bba56cca2c75",
   "reach_kinds": {
     "project": "a starter install copies it into your project (scripts/adopt.sh PORTABLE_FILES)",
     "clone": "it runs from your himmel clone; a starter install does not copy it",
@@ -823,7 +823,7 @@
         36,
         46
       ],
-      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; a read that fails lets the merge through with a warning.",
+      "what": "One gate sees everything the earlier steps produced: CI on this exact commit, the reviewers and CodeRabbit's review threads. Any `gh pr merge` Claude tries goes through it. It refuses on what it can read; most failed reads let the merge through with a warning, but a required reviewer it cannot read holds the merge.",
       "loop": [
         "Claude asks to merge",
         "The gate reads CI, the reviewers and CodeRabbit's threads",
@@ -922,7 +922,7 @@
         164,
         52
       ],
-      "what": "Working alone, you decide when to merge: himmel does not require a GO for your own merges. In a fleet, the worker reports READY and waits; the chief, itself a Claude session, checks it and writes a signed approval, the GO, for that one commit. A judge is added only when the change touches a trust path such as a guard, a gate or CI.",
+      "what": "Working alone, you decide when to merge: himmel does not require a GO for your own merges, except a change to a CI trust path, which needs a trust-reviewed GO. In a fleet, the worker reports READY and waits; the chief, itself a Claude session, checks it and writes a signed approval, the GO, for that one commit. A judge is added only when the change touches a trust path such as a guard, a gate or CI.",
       "loop": [
         "READY, and wait",
         "The ready-check",
