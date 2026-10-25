@@ -293,6 +293,14 @@ ok "tiny-noise open" python3 -I "$FB" run --ledger "$T/tiny.jsonl" --changes "$T
 ok "tiny-noise row" split "$T/tiny.jsonl" 1 1 1
 ok "tiny-noise measure" python3 -I "$FB" run --ledger "$T/tiny.jsonl" --changes "$T/tiny-c.jsonl" --rules "$T/zero-rules.json"
 eq "keep rule: noise that rounds to 0 is still not below a min_gain of 0" "$(field "$T/tiny-c.jsonl" 1 reason)" "noise not below min gain"
+# Two finite train values can still differ by more than a float holds: that noise is unmeasured, never Infinity.
+ok "overflow base 1" fp "$T/inf.jsonl" '{"open.codex.fp_rate":-1e308,"sealed.codex.fp_rate":0.5}'
+ok "overflow base 2" fp "$T/inf.jsonl" '{"open.codex.fp_rate":1e308,"sealed.codex.fp_rate":0.5}'
+ok "overflow open" python3 -I "$FB" run --ledger "$T/inf.jsonl" --changes "$T/inf-c.jsonl" --rules "$T/absent-rules.json"
+ok "overflow row" fp "$T/inf.jsonl" '{"open.codex.fp_rate":-1e308,"sealed.codex.fp_rate":0}'
+ok "overflow measure" python3 -I "$FB" run --ledger "$T/inf.jsonl" --changes "$T/inf-c.jsonl" --rules "$T/absent-rules.json"
+eq "keep rule: overflowing noise is unmeasured: not kept" "$(field "$T/inf-c.jsonl" 1 reason)" "noise unmeasured: not a finite spread"
+eq "keep rule: the record holds no Infinity" "$(grep -c Infinity "$T/inf-c.jsonl")" "0"
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

@@ -244,6 +244,15 @@ has "same: the paired case metric is skipped the same way" "$out" "paired pass_p
 skrow "$SK" s3 1 0.2
 out=$(python3 "$CMP" sk --ledger "$SK" --thresholds "$TMP/same-th.json" 2>&1); rc=$?
 eq "same: at the same k a pass@k drop still gates (exit 1)" "$rc" "1"
+out=$(python3 "$CMP" sk --ledger "$SK" --thresholds "$TMP/same-th.json" --best-of 3 2>&1); rc=$?
+eq "same: --best-of picks the best row at the candidate's k, so the drop gates (exit 1)" "$rc" "1"
+has "same: --best-of compares against 0.5, not the k=3 row's 1.0" "$out" "pass_at_k                             0.5"
+NK="$TMP/nk.jsonl"
+python3 "$LIB" append --ledger "$NK" --eval sk --run-id n1 --source s --config-json '{}' --metrics-json '{"acc":0.9,"pass_at_k":1.0}' >/dev/null 2>&1 || fail "fixture row n1 not written"
+python3 "$LIB" append --ledger "$NK" --eval sk --run-id n2 --source s --config-json '{}' --metrics-json '{"acc":0.9,"pass_at_k":0.2}' >/dev/null 2>&1 || fail "fixture row n2 not written"
+out=$(python3 "$CMP" sk --ledger "$NK" --thresholds "$TMP/same-th.json" 2>&1); rc=$?
+eq "same: rows that both lack pass_k are not compared (exit 0)" "$rc" "0"
+has "same: a missing k says so" "$out" "pass_k missing vs missing: not comparable"
 
 # Headroom: a baseline at or above the ceiling says quality cannot show a gain.
 HR="$TMP/hr.jsonl"

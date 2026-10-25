@@ -62,13 +62,15 @@ def better(spec, a, b):
 
 
 def unlike(spec, brow, cand):
-    """Why spec's "same" metric bars comparing the two rows, or None."""
+    """Why spec's "same" metric bars comparing the two rows, or None; a row without it never compares."""
     k = (spec or {}).get("same")
     if not k or not brow:
         return None
     a, b = brow["metrics"].get(k), cand["metrics"].get(k)
-    return None if a == b else "%s %s vs %s: not comparable" % (k, "%g" % a if eval_runs._num(a) else a,
-                                                                "%g" % b if eval_runs._num(b) else b)
+    if eval_runs._num(a) and a == b:
+        return None
+    show = lambda x: "%g" % x if eval_runs._num(x) else "missing" if x is None else x  # noqa: E731
+    return "%s %s vs %s: not comparable" % (k, show(a), show(b))
 
 
 def verdict(spec, base, cand, bci, cci):
@@ -232,6 +234,7 @@ def main(argv=None):
                 vals = [r for r in window if r["metrics"].get(m) is not None]
                 if not vals:
                     continue
+                vals = [r for r in vals if not unlike(spec, r, cand)] or vals
                 if spec and "higher_is_better" in spec:
                     best = vals[0]
                     for r in vals[1:]:
@@ -251,7 +254,7 @@ def main(argv=None):
         base = brow["metrics"].get(m) if brow else None
         c = cand["metrics"].get(m)
         spec = spec_for(table, m)
-        why = unlike(spec, brow, cand)
+        why = unlike(spec, brow, cand) if base is not None and c is not None else None
         v, band = ("n/a", why) if why else verdict(spec, base, c, (brow or {}).get("ci", {}).get(m), cand["ci"].get(m))
         regressions += v == "REGRESSION"
         gated += v in ("REGRESSION", "better", "ok")
@@ -260,12 +263,12 @@ def main(argv=None):
         print("%-28s %12s %12s %12s  %-10s %s" % (m, fmt(base), fmt(c), delta, v, band))
     if base_of is None:
         for m, spec in sorted((table.get("_cases") or {}).items()):
+            got = paired(spec, fixed.get("cases"), cand.get("cases"), m)
+            if got is None:
+                continue
             why = unlike(spec, fixed, cand)
             if why:
                 print("paired %s: %s" % (m, why))
-                continue
-            got = paired(spec, fixed.get("cases"), cand.get("cases"), m)
-            if got is None:
                 continue
             v, n, mean, floor = got
             regressions += v == "REGRESSION"

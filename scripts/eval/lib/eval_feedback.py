@@ -46,6 +46,7 @@ import argparse
 import fcntl
 import fnmatch
 import json
+import math
 import os
 import re
 import socket
@@ -147,6 +148,7 @@ def keep_rule(c, series, base, new, after):
     train = [v for v in (value_of(tuning_metrics(r), c["metric"], None, per) for r in upto
                          if r["confighash"] == c["confighash"] and tuning_metrics(r)) if v is not None]
     noise = max(train) - min(train) if len(train) >= 2 else None
+    test_delta = None if test_before is None or test_after is None else test_after - test_before
     if test_before is None or test_after is None:
         reason = "test half unmeasured"
     elif gain(c["value"], after, c["better"]) <= min_gain:
@@ -155,14 +157,16 @@ def keep_rule(c, series, base, new, after):
         reason = "train up, test flat or down"
     elif noise is None:
         reason = "noise unmeasured: under two runs before the change"
+    elif not math.isfinite(noise):
+        reason = "noise unmeasured: not a finite spread"
     elif noise and noise >= min_gain:
         reason = "noise not below min gain"
     else:
         reason = "train and test up by more than min gain, over the noise"
+    finite = lambda x: round(x, 6) if x is not None and math.isfinite(x) else None  # noqa: E731
     return ("keep" if reason.startswith("train and test") else "revert",
-            {"test_before": test_before, "test_after": test_after,
-             "test_delta": None if test_before is None or test_after is None else round(test_after - test_before, 6),
-             "noise": None if noise is None else round(noise, 6), "min_gain": min_gain, "reason": reason})
+            {"test_before": test_before, "test_after": test_after, "test_delta": finite(test_delta),
+             "noise": finite(noise), "min_gain": min_gain, "reason": reason})
 
 
 def inbox_line(c):
@@ -220,7 +224,8 @@ def run(evals=None, ledger=None, changes=None, rules=None, inbox=None):
                 after = value_of(tm, c["metric"], None if is_split(new) else c["absent"], c.get("per")) if tm else None
                 if after is None:
                     continue
-                delta = round(after - c["value"], 6)
+                delta = after - c["value"]
+                delta = round(delta, 6) if math.isfinite(delta) else None
                 extra = {}
                 if is_split(new):
                     verdict, extra = keep_rule(c, series, by_id.get(c["baseline_run_id"]), new, after)
