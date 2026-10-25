@@ -266,7 +266,8 @@ test('--cancel keeps the settle alive when the TERM to the call group lands agai
   mkdirSync(late);
   // The shim is the settle's node: it sends the second TERM to its own process group, which is claude-api.sh's
   // group (qmd_bounded gives the call one), as the bounded wrapper does when its trap runs after the settle began.
-  writeFileSync(join(late, 'node'), `#!/bin/bash\nif [[ " $* " == *" settle "* ]]; then\n  [ "$(ps -o pgid= -p $$ | tr -d ' ')" != "$PPID" ] || kill -TERM -- "-$PPID"\n  sleep 0.5\nfi\nexec "${process.execPath}" "$@"\n`, { mode: 0o700 });
+  const sent = join(f.dir, 'group-term-sent');
+  writeFileSync(join(late, 'node'), `#!/bin/bash\nif [[ " $* " == *" settle "* ]]; then\n  [ "$(ps -o pgid= -p $$ | tr -d ' ')" != "$PPID" ] || { kill -TERM -- "-$PPID"; : > "${sent}"; }\n  sleep 0.5\nfi\nexec "${process.execPath}" "$@"\n`, { mode: 0o700 });
   const env = { ...f.env, PATH: `${late}:${f.env.PATH}`, STUB_HOLD: f.p.hold };
   writeFileSync(f.p.hold, '');
   const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -278,6 +279,7 @@ test('--cancel keeps the settle alive when the TERM to the call group lands agai
   assert.equal(spawnSync('bash', [BRIDGE, '--cancel', f.id], { env, encoding: 'utf8' }).status, 0);
   assert.equal(await closed, 3);
   assert.equal(f.read(out.trim()).status, 'CANCELLED');
+  assert.ok(existsSync(sent), 'the second TERM was never sent to the call group');
   assert.equal(Object.values(f.ledger().accounts.A.jobs)[0].status, 'settled');
 });
 
