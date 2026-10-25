@@ -1,6 +1,6 @@
 # config-ui
 
-`himmelctl ui` serves the config console on `127.0.0.1` (Bun, loopback only,
+`himmelctl ui` serves the config UI on `127.0.0.1` (Bun, loopback only,
 per-launch token). Operator-only: it refuses to start inside a Claude session.
 
 ## The config feed

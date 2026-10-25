@@ -23,7 +23,7 @@ The live per-machine inventory is **`/lanes`** (derived from
 `/lanes` does not list. The tier semantics below are invariant; the inventory
 is data.
 
-### Metered OpenRouter legs
+### Metered OpenRouter workers
 
 `headed-arm-leg.sh --lane openrouter` (or `WORKER_SESSION_LANE=openrouter`) uses
 `scripts/claude-openrouter` with a pinned Sonnet 5.5 default. A fresh session
@@ -43,7 +43,7 @@ The launcher keeps the session pin (`OPENROUTER_MODEL`) separate from subagent
 tiers: `OPENROUTER_HAIKU` defaults to `anthropic/claude-haiku-5.5` (1M context, verified in the public catalog 2026-10-11),
 `OPENROUTER_SONNET` to `anthropic/claude-sonnet-5.5` (1M), and `OPENROUTER_OPUS`
 to `anthropic/claude-opus-5.5` (1M). Each independently overrides its
-`ANTHROPIC_DEFAULT_*_MODEL` export, including in managed worker sessions. Tier overrides
+`ANTHROPIC_DEFAULT_*_MODEL` export, including in managed workers. Tier overrides
 must exactly match the launcher's offline synchronous Claude catalog snapshot, verified
 against the public OpenRouter model list on **2026-10-02**; unknown or malformed
 slugs (including asynchronous `:batch` variants) refuse with exit 2 before
@@ -56,20 +56,20 @@ resolves to its exact pin, otherwise it retains the explicit session slug.
 only and prints the effective balance plus account-wide spend since launch
 (not a per-session attribution). Credits metadata can lag: an immediate
 `--since` delta can under-report spend; re-read it later. Tick's `or=` labels the limiting source;
-`or=skip` makes no OpenRouter read when no OpenRouter worker session is live, and balance
-changes never wake the supervisor session waiter. OpenRouter sessions share their own
-config namespace and can message peers there. Native supervisor sessions use the
+`or=skip` makes no OpenRouter read when no OpenRouter worker is live, and balance
+changes never wake the chief waiter. OpenRouter sessions share their own
+config namespace and can message peers there. Native chiefs use the
 handover document/file inbox bridge, not cross-namespace `SendMessage`.
 
-### Plugin profiles: `lane-impl` is not the operator console
+### Plugin profiles: `lane-impl` is not the chief profile
 
 `operator` is the no-override sentinel: it injects no plugin settings and
-preserves the operator's supervisor session's installed configuration. `lane-impl` instead
+preserves the operator's chief's installed configuration. `lane-impl` instead
 injects an explicit lean surface of `handover@himmel`, `himmel-ops@himmel`,
 and `qmd@himmel`, plus `lean-skills@himmel`
 (in registry `base`, so every profile inherits it unless it says
 otherwise — `bare` carries no base at all, and `console-relay` drops it
-explicitly, a relay (the transport worker session kind — see [`docs/glossary.md`](../glossary.md))
+explicitly, a relay (the transport worker kind — see [`docs/glossary.md`](../glossary.md))
 forwarding messages having no business brainstorming;
 vendored workflow skills, not an "operator always-tier extra" the way
 superpowers/mattpocock-skills used to be, both of which are dropped from the
@@ -84,19 +84,19 @@ the union of the members' required ids. Role/non-additive profiles refuse as
 members. `headed-arm-leg.sh --consult` is a judge-shaped, plugin-scoped session
 with `Edit`/`Write`/`NotebookEdit` denied and a single `append-results.sh` Bash
 allow on its own doc; Bash runs in Claude Code's sandbox, writes confined to the doc file plus temp dirs, reads open; it launches with `--setting-sources ""` so no user/project/local scope's write roots load, with their hooks, deny/ask and env carried instead. Each consult's launch
-line in `launch-logs/<session>.log` carries `role=consult` and `console=` (the supervisor session that launched it); consult
+line in `launch-logs/<session>.log` carries `role=consult` and `console=` (the chief that launched it); consult
 cost is joined later from the session transcript, not written at launch.
 
-`leg-impl` is the profile a worker session gets from
-`headed-arm-leg.sh --profile leg-impl`. **There is exactly one worker session profile, and
+`leg-impl` is the profile a worker gets from
+`headed-arm-leg.sh --profile leg-impl`. **There is exactly one worker profile, and
 that is deliberate:** it is `lane-impl` minus `i-have-adhd` (the operator reads console windows, not leg windows) — HIMMEL-4017 <!-- old-term-ok: rewrapped line, wording unchanged -->
-audit, 33650 to 31219 first-turn tokens — because the measured worker session floor is schema-shaped, not roster-shaped (~40k of a
+audit, 33650 to 31219 first-turn tokens — because the measured worker floor is schema-shaped, not roster-shaped (~40k of a
 74.3k first-turn floor is tool and MCP schemas, ~9k the base system prompt), so
 sibling profiles for docs or upstream work would either resolve to `bare` and
 lose the floor's guards and skills or duplicate `leg-impl` exactly. What
 distinguishes it is the legacy `contextBudget: 35000` target, **not a
 measured attainable floor**. The context-budget audit below retains it for lack of
-three attributable worker sessions; measure a real worker session with `scripts/lanes/leg-burn.sh`.
+three attributable workers; measure a real worker with `scripts/lanes/leg-burn.sh`.
 
 `gateAllow` is one registry-level list of validated Bash rules;
 `lane-impl`, `leg-impl`, `lane-review`, and `lane-content` opt in with
@@ -118,14 +118,14 @@ rules are omitted entirely and remain on the classifier path. A suite run
 that wants the deterministic rule uses the label `suite`; any other label
 simply falls back to today's classifier path — no regression. Unlisted suite
 directories also retain that path. The matcher's handling of the env prefix
-and of a tail glob is unproven until the supervisor session's first native
-`--profile leg-impl` dispatch. These profile rules also reach claudex worker sessions
+and of a tail glob is unproven until the chief's first native
+`--profile leg-impl` dispatch. These profile rules also reach claudex workers
 through `--lane claudex --profile leg-impl`; operator-managed
 user-scope rules remain preserved by `sanitize_settings`.
 
 `leg-impl`'s `mcpServers: ["qmd"]` layers `--mcp-config` +
 `--strict-mcp-config` onto the same profile, stripping USER-level MCP servers
-(`graphify`, `obsidian-vault`, `context7`) a worker session never calls. `qmd` is kept
+(`graphify`, `obsidian-vault`, `context7`) a worker never calls. `qmd` is kept
 (not `[]`) because `--strict-mcp-config` drops *any* server absent from the
 allowlist, plugin-provided ones included — measured by dropping the connector
 tools entirely rather than degrading. This is lever 1 of the first-turn reduction work,
@@ -156,7 +156,7 @@ exists to wire.
 
 `--profile` also exports `HIMMEL_LEAN_LEG=1`, which silences the three warn-only
 SessionStart hooks (graphify freshness, qmd staleness, where-are-we) for that
-session only — a worker session has one ticket and a supervisor session to report to, and never acts
+session only — a worker has one ticket and a chief to report to, and never acts
 on a warn-only hook. `--profile` composes with `--lane claudex` through
 `scripts/lanes/leg-claude-launcher.sh` and its `WORKER_SESSION_CLAUDE_BIN` exec target:
 settings, worker system prompt and optional strict MCP config reach `scripts/claude-codex`
@@ -177,7 +177,7 @@ can inherit into the child.
 | Lane | Best for | Effort / notes |
 |---|---|---|
 | Haiku 5.5 | bulk mechanical; scoped read-only verification/extraction; mechanical edits that end in a real check (never delegates further) | low for bulk; `medium` (the model default; override the lane's `low`) once a brief has more than a couple of steps — see [Haiku 5.5](#haiku-55) |
-| Sonnet 5.5 | scoped research; default implementor for well-specified impl briefs | medium default (a native worker session runs at `lanes.json`'s `sonnet` lane effort, `medium`; an explicit `CLAUDE_CODE_EFFORT_LEVEL` in the launching shell overrides it — e.g. `CLAUDE_CODE_EFFORT_LEVEL=high` for a multi-step or guard-grade worker session); high for multi-file/long briefs — raise effort before reaching for Opus. Effort is recalibrated vs Sonnet 5: `low` can skip verifying a change, and at `low`/`medium` on long tasks it is likelier to stop and check in (Anthropic migration guide) |
+| Sonnet 5.5 | scoped research; default implementor for well-specified impl briefs | medium default (a native worker runs at `lanes.json`'s `sonnet` lane effort, `medium`; an explicit `CLAUDE_CODE_EFFORT_LEVEL` in the launching shell overrides it — e.g. `CLAUDE_CODE_EFFORT_LEVEL=high` for a multi-step or guard-grade worker); high for multi-file/long briefs — raise effort before reaching for Opus. Effort is recalibrated vs Sonnet 5: `low` can skip verifying a change, and at `low`/`medium` on long tasks it is likelier to stop and check in (Anthropic migration guide) |
 | Opus 5.5 | multi-step reasoning; default parent | medium default (≈ Opus 5 `high`); `low` for scoped impl; `high` for heavy parenting; `xhigh`/`max` only where a gain was measured — see [Effort calibration](#effort-calibration) |
 | Fable 5 | judgment, taste — hardest calls; escalation target | scale to the item (operator 2026-07-08, un-capped): medium default; high for substantial judgment work — not just the hardest; xhigh for the hardest |
 
@@ -348,30 +348,30 @@ scoping decision, not a registry deletion: both rows stay fully live in
 requests" (the ruling's own words) — the same dormant shape every other row
 below already uses.
 
-| Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota bank | Calibration status |
+| Lane (`lanes.json` id) | Class | Default effort convention | Cost-optimal context window | Quota | Calibration status |
 |---|---|---|---|---|---|
 | `glm` — GLM lane (spawn-glm.ts) | impl | small-context discipline — chunk big plans | 1M | glm (flat-rate overflow, not per-token) | dormant (HIMMEL-1967) |
 | `claudex` — claudex lane (claude-codex over CLIProxyAPI) | impl | launcher default `high`; `xhigh` rare; never `ultra`/`max` | 900000 — declared window raised by operator ruling (2026-08-17) alongside `hermes-oneshot`; the CLIProxyAPI path itself is UNMEASURED at 900k (see below) — the launcher's `CODEX_CONTEXT_WINDOW` default stays 272000 (its own code warns past the ~372k backend ceiling it has evidence for), so a caller opts UP toward 900k per-dispatch and accepts the risk | codex | calibrated |
 | `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default (ox-alpha stays reserved for `hermes-oneshot`/dispatch-trusted); not yet wired into the `/pr-check` gate |
 | `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
-| `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo bank | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
+| `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
 | `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) — free while ox-alpha lasts | calibrated — live-proven spawn path; see [ox-alpha](#ox-alpha--the-current-hermes-himmel_agent-default) |
 | `codex-exec` — codex CLI sandbox | impl | well-scoped chunks; job registry is per-workspace | 900000 — raised by operator ruling (2026-08-17) despite the 360K rejection hermes measured on the gpt-5.5 pin it carried then (codex-exec now follows the `codex` critic's model, `gpt-6.1-sol` (`gpt-6-sol` before it; `gpt-6-astra` before that); that probe was not repeated there); least-verified of the four raised lanes | codex | calibrated |
-| `antigravity-cli` — Antigravity CLI (Google AI Plus) | bulk | simple tasks; `--output-format` drift seen on Windows builds | unverified/varies | none (dashboard-omitted); free AI-Plus bank | **not calibrated yet** — roster + quota shape TO VERIFY at eval; parity/guards UNVERIFIED (permission flags only, no hook surface); egress-DENIED for vault corpora, himmel-code only; route only for free-bank chores / second opinions |
+| `antigravity-cli` — Antigravity CLI (Google AI Plus) | bulk | simple tasks; `--output-format` drift seen on Windows builds | unverified/varies | none (dashboard-omitted); free AI-Plus quota | **not calibrated yet** — roster + quota shape TO VERIFY at eval; parity/guards UNVERIFIED (permission flags only, no hook surface); egress-DENIED for vault corpora, himmel-code only; route only for free-bank chores / second opinions |
 | `ollama-local` — ollama (local models) | bulk | slow, small tasks | unverified/varies | none (dashboard-omitted); free, local wall-clock | calibrated — zero-egress guarantee is structural; the only salus-eligible backend |
 | `openrouter-free` — OpenRouter free models | bulk | simple tasks only; rate-limited | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; probe live availability before routing, route only for simple free-tier chores |
 | `ollama-cloud` — Ollama Cloud (free tier) | bulk | simple tasks; free-bank caps | unverified/varies | none (dashboard-omitted) | **not calibrated yet** — parity/guards UNVERIFIED pending eval; egresses to ollama.com, an undeclared egress-matrix provider — vault corpora default-DENY (himmel-code only) until the operator declares a cell; route only for free-bank chores on non-vault corpora |
 
-**`claudex` supervisor session reachability:** a claudex worker session has no
-`ListAgents`/`SendMessage` path to a native session, so a supervisor session ruling
-reaches it through a per-worker-session file inbox instead — `inbox-send.sh` appends a
-bullet, the worker session's own next PostToolUse (or a SessionStart resume) delivers any
+**`claudex` chief reachability:** a claudex worker has no
+`ListAgents`/`SendMessage` path to a native session, so a chief ruling
+reaches it through a per-worker file inbox instead — `inbox-send.sh` appends a
+bullet, the worker's own next PostToolUse (or a SessionStart resume) delivers any
 undelivered bullets as `additionalContext`, no operator paste required. See
 [`docs/internals/retask-channel.md`](retask-channel.md#3-the-retask-block-verbatim-dispatch-brief-template)'s
 "Claudex file inbox" note for the RETASK-token equivalence this relies on, and
 `scripts/hooks/claudex-inbox-hook.sh` for the delivery hook itself.
 
-**Supervisor session wake-up budget:** the tick no longer runs as a `Monitor` arm capped at 30 min — it runs inside `console-wait.sh`, started once with Bash `run_in_background`, which samples `tick.sh` every **180 seconds** and wakes the supervisor session only on a change (or a failure streak); a message or a Telegram line wakes it too, but a full-context turn fires only on an actual event, never on the sample itself, so the idle supervisor session costs zero turns. The one-shot `bank-monitor.sh` instead runs from a Bash polling loop every **300 seconds** so its 30-minute ring accumulates samples; that sampling interval is distinct from the supervisor session tick's sample cadence and adds no scheduler. An unchanged cache emits `state=stale` once, preserving the last measured projections until sampling resumes; each usage window resets its own history independently. The supervisor session batches rulings into one message per decision point, never one per thought. `ar-watch`, `pubci`, and vault monitors stay in Bash; their cost is the **EMIT**, so filters emit terminal-state changes only. Report at MILESTONES only (LIVE, FINDING, READY, BLOCKED, HALTED, WRAPPED); no progress chatter; acks to a rotation are one line.
+**Chief wake-up budget:** the tick no longer runs as a `Monitor` arm capped at 30 min — it runs inside `console-wait.sh`, started once with Bash `run_in_background`, which samples `tick.sh` every **180 seconds** and wakes the chief only on a change (or a failure streak); a message or a Telegram line wakes it too, but a full-context turn fires only on an actual event, never on the sample itself, so the idle chief costs zero turns. The one-shot `bank-monitor.sh` instead runs from a Bash polling loop every **300 seconds** so its 30-minute ring accumulates samples; that sampling interval is distinct from the chief tick's sample cadence and adds no scheduler. An unchanged cache emits `state=stale` once, preserving the last measured projections until sampling resumes; each usage window resets its own history independently. The chief batches rulings into one message per decision point, never one per thought. `ar-watch`, `pubci`, and vault monitors stay in Bash; their cost is the **EMIT**, so filters emit terminal-state changes only. Report at MILESTONES only (LIVE, FINDING, READY, BLOCKED, HALTED, WRAPPED); no progress chatter; acks to a rotation are one line.
 
 ## ox-alpha — the current hermes `himmel_agent` default
 
@@ -449,7 +449,7 @@ Effort is a **per-dispatch** lever — use the full scale per item, do not flatt
 to one default. Raise effort before raising model tier: Fable-5 `low` ≈
 prior-gen `xhigh`, and the same shift applies down-tier.
 
-The Opus lane runs **Claude Opus 5.5** (the supervisor session and headed-arm default,
+The Opus lane runs **Claude Opus 5.5** (the chief and headed-arm default,
 `claude-opus-5-5`). Anthropic's
 [Prompting Claude Opus 5.5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5-5#calibrate-effort)
 guide says effort names do not mean the same amount of thinking across models:
@@ -471,7 +471,7 @@ Telegram dispatch (`scripts/telegram/run.ts` `spawnSpec`) maps the run's model
 to its tier row (alias `opus`, or full id `claude-opus-…`) and exports the row's
 `effort` as `CLAUDE_CODE_EFFORT_LEVEL`, over any ambient value; a route's own
 env still wins, and a row with no level-shaped `effort` leaves the ambient
-setting alone. The worker session launcher mirrors this for native-lane worker sessions — see the ruling below.
+setting alone. The worker launcher mirrors this for native-lane workers — see the ruling below.
 
 **Ruling (2026-09-26): effort-at-dispatch is shipped, on both
 paths.** Re-verified live on main at `cb43cfbfa`. Two mechanisms cover the two
@@ -482,7 +482,7 @@ dispatch surfaces, both keyed off the same `lanes.json` `effort` field
   `scripts/telegram/run.ts:318` resolves the model to its lane row and
   `run.ts:328-329` folds the row's `effort` into `CLAUDE_CODE_EFFORT_LEVEL` for
   the spawned session's env.
-- **Supervisor-session-launched native worker session** (`79b205218`):
+- **Chief-launched native worker** (`79b205218`):
   `scripts/handover/console-kit/headed-arm-leg.sh:746-764` mirrors the same
   match rule (exact model id, or `claude-<tier-id>-` prefix) for `LANE=native`
   — an explicit ambient `CLAUDE_CODE_EFFORT_LEVEL` always wins (checked before
@@ -495,7 +495,7 @@ dispatch surfaces, both keyed off the same `lanes.json` `effort` field
   test-headed-arm-leg.sh`).
 
 A third, related mechanism — the tier-reason gate that requires a sanctioned
-`> **Tier:** opus|fable — <category>: <reason>` line before an Opus/Fable worker session
+`> **Tier:** opus|fable — <category>: <reason>` line before an Opus/Fable worker
 launches (`a3260c8f6`; category tags added in
 `d5a71757f`) — is the "raise effort before tier" enforcement point referenced
 above; it lives at `headed-arm-leg.sh:565-584`. All four shipping SHAs are
@@ -532,12 +532,12 @@ both lanes run at effort medium by default; export
 | Effort | Use for |
 |---|---|
 | `low` | the **first lever** for a mechanical chunk — rename, fan-out edit, fixture/doc sync, a change whose acceptance check is a single command |
-| `medium` | **default** — a well-specified single-worker session implementation brief |
+| `medium` | **default** — a well-specified single-worker implementation brief |
 | `high` | a multi-file or long-running brief where `medium` measurably under-delivers |
 | `xhigh` | rare; a hard reasoning call, not a default |
 
 Raise effort per dispatch, not per station: a fleet-wide `high` default spends
-codex usage budget tokens on every worker session for a quality gain the note above says Astra does
+codex usage budget tokens on every worker for a quality gain the note above says Astra does
 not need. What is **not** in this change: the measured before/after (an effort
 sweep on real briefs) that the ticket also asks for — it belongs to the
 usage budget attribution table, which this change leaves untouched.
@@ -597,7 +597,7 @@ via `--context 1m|standard` (`arm-resume.sh`, and the 7th positional of
 `headed-arm.sh`). The baseline default is **`standard`**;
 the headed launchers now use per-profile defaults, including
 `design`'s declared `1m` mode and numeric ceiling, without an operator override. A
-supervisor session arm (launched through `chief.sh`, which has no `--context` flag of
+chief arm (launched through `chief.sh`, which has no `--context` flag of
 its own) can still opt into `1m` via `CONSOLE_CONTEXT=1m` in the launching
 shell.
 
@@ -624,15 +624,15 @@ validate this output before launching. A composed list takes the largest
 member ceiling, and `1m` only when a member explicitly declares it.
 
 `design` declares `1m` / `1000000` (no early compaction), so a
-design worker session needs no env or brief override. All other profiles, including design
+design worker needs no env or brief override. All other profiles, including design
 kit add-ons launched alone, remain `standard` / `200000`. Integer ceilings below
 200000 or above 1000000, malformed fields and unknown profiles refuse; a
 standard profile cannot declare a ceiling above 200000. Child autocompact
 inheritance remains **UNMEASURED**: no real session was launched for this audit.
 
 `WORKER_SESSION_CONTEXT=1m` plus the sanctioned brief line
-`> **Context:** 1m — operator-ruling: <reason>` remains a per-worker-session override to
-`auto`, as does `CONSOLE_CONTEXT=1m` for a supervisor session. The brief line alone does
+`> **Context:** 1m — operator-ruling: <reason>` remains a per-worker override to
+`auto`, as does `CONSOLE_CONTEXT=1m` for a chief. The brief line alone does
 not elevate a standard profile; a bare `WORKER_SESSION_CONTEXT=1m` without it refuses. Launch logs
 record the resolved profile, ceiling and context source; argv must match the
 profile plus the sanctioned override. The older `arm-resume.sh` context API is
@@ -642,8 +642,8 @@ unchanged; the profile defaults here apply to the two headed launchers.
 
 Read-only collection: `gh pr list --state merged --search leg-burn --limit 1000
 --json number,body,mergedAt`. Of **813** returned bodies, **738** contain numeric
-`leg-burn` lines. There are **739** worker session records: #1113 explicitly records its
-original worker session and a separate N369 finish worker session. One record per measurement line,
+`leg-burn` lines. There are **739** worker records: #1113 explicitly records its
+original worker and a separate N369 finish worker. One record per measurement line,
 not one per appearance of the words `leg-burn`; unavailable and nonnumeric
 placeholders are excluded. Merged dates span **2026-09-12 through 2026-10-02
 (UTC)**, PR numbers **#643–#1604** (not every PR in that interval is a sample).
@@ -659,7 +659,7 @@ values have 100-token precision; aggregates are rounded to whole tokens, not
 claims of exact underlying usage. This is Q8 data, **not authorization to lower
 the relay ceiling**.
 
-| Profile cohort | Attributable merged worker sessions (n) | Existing profile observation | Budget decision |
+| Profile cohort | Attributable merged workers (n) | Existing profile observation | Budget decision |
 |---|---:|---|---|
 | `leg-impl` | 0 | 70,500 first-turn, #777 (73,000 control) | keep 35,000 |
 | `telegram` | 0 | 32,541 first-turn, #680 | keep 45,000 |
@@ -671,7 +671,7 @@ the relay ceiling**.
 
 The two historical observations come from the registry's existing `_comment`s;
 their source PRs merged 2026-09-17 (#777) and 2026-09-12 (#680). Neither is three
-measured worker sessions, and no per-profile `avg-ctx` can be inferred from them. Thus
+measured workers, and no per-profile `avg-ctx` can be inferred from them. Thus
 **every contextBudget is retained under the n below 3 rule**, even where the
 legacy target is demonstrably too low. A follow-up must put a profile field in
 the `leg-burn` measurement line to enable honest per-profile recalibration;
@@ -696,17 +696,17 @@ adding that telemetry is outside this PR.
 Reproduced twice, the second time with the model passed as a single argv element
 via a wrapper script, so no glob or word-split can explain it. **Fable is the
 only family that refuses the suffix**, in both alias and full-id form — which is
-why a `1m` supervisor session arm gets the `--autocompact` half only, and why the arm log
+why a `1m` chief arm gets the `--autocompact` half only, and why the arm log
 says so rather than claiming a mode it could not set.
 
-**2026-09-22:** the supervisor session and headed-arm default moved to
+**2026-09-22:** the chief and headed-arm default moved to
 `claude-opus-5-5`. The rows above were measured on Opus 5 and have **not** been
 re-run for `claude-opus-5-5` — its `[1m]` handling and plain-launch
 `context_window_size` are unmeasured; re-measure with the zero-spend method
 above before relying on them.
 
 **2026-09-28:** the Sonnet tier moved to `claude-sonnet-5-5`
-(relay default, new worker session dispatches). Anthropic's model page documents a **1M**
+(relay default, new worker dispatches). Anthropic's model page documents a **1M**
 context window and no beta header. The Sonnet 5 rows above have **not** been
 re-run for `claude-sonnet-5-5`: its `[1m]` suffix handling, the `sonnet[1m]`
 alias target, and its plain-launch `context_window_size` are unmeasured —
@@ -739,50 +739,50 @@ do not claim a stronger verification than that.
 
 The Agent tool's `model` parameter takes `sonnet|opus|haiku|fable` only. It
 selects a tier; it cannot select a context mode. **A subagent inherits the parent
-session's WINDOW** — a measured 1M supervisor session's `general-purpose` Sonnet
+session's WINDOW** — a measured 1M chief's `general-purpose` Sonnet
 child peaking at 966,764 tokens, far past any 200k ceiling. Be precise about
 which half is inherited, because `--context` sets two different things: the
 window, and the autocompact threshold. Only the window is measured here, and on
 this account the window is 1M everywhere — the table above shows
 `--autocompact 200000` leaving `context_window_size` at 1000000, so there is no
-such thing as a "200k worker session" on this station, only a worker session that compacts earlier.
+such thing as a "200k worker" on this station, only a worker that compacts earlier.
 **Whether a child inherits the parent's `--autocompact` threshold was NOT
-measured** — do not assume a `standard` worker session makes its children compact early.
-**No per-subagent control exists — choose at the worker session's arming.**
+measured** — do not assume a `standard` worker makes its children compact early.
+**No per-subagent control exists — choose at the worker's arming.**
 
 | lane | default mode | override |
 |---|---|---|
-| supervisor session arm (`*-console.md`) | `standard` | `CONSOLE_CONTEXT=1m` |
-| headed worker session / worker arm | profile default (`design`: `1m` / 1000000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
+| chief arm (`*-console.md`) | `standard` | `CONSOLE_CONTEXT=1m` |
+| headed worker / worker arm | profile default (`design`: `1m` / 1000000; others: `standard` / 200000) | `WORKER_SESSION_CONTEXT=1m` plus reasoned brief Context line; either alone does not enable 1m |
 | subagent of either | inherits the parent | none — set it on the parent's arm |
 
-Given that, the supervisor-session-side mitigation is a lean parent (the
+Given that, the chief-side mitigation is a lean parent (the
 relay/judge split), not a scan: `scripts/lanes/ceiling-conformance.sh`
 does not reach subagents, since they carry no `-n` name.
 
-### The leg launcher pins the default, it does not just document it
+### The worker launcher pins the default, it does not just document it
 
-Worker sessions were already pinned to the standard (200k-autocompact) context mode by
+Workers were already pinned to the standard (200k-autocompact) context mode by
 the table above — but the fact lived only in prose, one convention every
-ad-hoc console-kit copy of the worker session launcher had to remember correctly.
+ad-hoc console-kit copy of the worker launcher had to remember correctly.
 `scripts/handover/console-kit/headed-arm-leg.sh` makes it structural: a thin
-wrapper around `headed-arm.sh` whose resolved worker session launch must carry the
+wrapper around `headed-arm.sh` whose resolved worker launch must carry the
 cost-driving `--autocompact 200000` pair. `WORKER_SESSION_CONTEXT=1m` now refuses with
-exit 2 instead of weakening the worker session ceiling; absence of a `[1m]` model suffix
+exit 2 instead of weakening the worker ceiling; absence of a `[1m]` model suffix
 is not equivalent because Fable-family launches can strip that suffix while
-still receiving `--autocompact auto`. Scheduled worker sessions opt into the same
+still receiving `--autocompact auto`. Scheduled workers opt into the same
 guard with `arm-resume.sh --tier leg`; `--tier leg --context 1m` refuses before
 scheduler work. A caller that hands the headed wrapper an already-`[1m]`-
 suffixed model still gets it forwarded unchanged, and `headed-arm.sh` strips
 the literal suffix under standard mode (`scripts/handover/console-kit/
 test-headed-arm-leg.sh` asserts this end-to-end). The wrapper also adds the
-worker-session-only `IMPL_GUARD_OK=1` env and folds `WORKER_SESSION_REPO` onto `headed-arm.sh`'s own
+worker-only `IMPL_GUARD_OK=1` env and folds `WORKER_SESSION_REPO` onto `headed-arm.sh`'s own
 `HEADED_ARM_REPO` seam.
 
 **Sanctioned operator-ruled 1M opt-in.** The refusal above is not
 absolute — a brief (the handover doc `headed-arm-leg.sh` is given) carrying a
 well-formed `> **Context:** 1m — operator-ruling: <non-empty reason>` line
-opens the door for that one worker session, same shape as the Tier-line gate:
+opens the door for that one worker, same shape as the Tier-line gate:
 a fixed marker, grepped by exact prefix, non-blank free text
 required. Without the line — or with an empty reason, a malformed line, or no
 line at all — the refusal is byte-identical to before. On acceptance the
@@ -795,15 +795,15 @@ not edit — passes for that one exec, and it switches the internal
 to the resolved `auto`. The arm log and the `--dry-run` report both record
 `context=1m (operator-ruling)` plus the reason text.
 
-**Leg checkpoint or handover is at 75% of the leg's `--autocompact` ceiling
+**Worker checkpoint or handover is at 75% of the worker's `--autocompact` ceiling
 (150,000 input tokens of the 200k pin), with that ceiling as the backstop,
 when the launch turns the guard on.** Measured 2026-09-27..10-03 over 399 worker
 sessions: 349 compacted, 309 of those still reached WRAPPED after their last
 compaction, and every compaction fired between 157k and 176k. The earlier 60%
 hand-off only added relaunches. A later change moved to 65% (27k of headroom),
-which stopped every opus worker session at 13% fill; a further change set 75% (150k), 7k
+which stopped every opus worker at 13% fill; a further change set 75% (150k), 7k
 before the earliest compaction, and made the guard off by default. The share is
-of the ceiling, not the window: an opus worker session reports a 1,000,000-token window,
+of the ceiling, not the window: an opus worker reports a 1,000,000-token window,
 so the 200k ceiling is 20% fill and the threshold 15%.
 `guard-leg-context-handoff.sh` enforces it in two modes chosen at launch with
 `--context-guard`: `compact` (commit, push, a `CHECKPOINT <sha> pushed` bullet,
@@ -814,23 +814,23 @@ cache_creation_input_tokens` from the last assistant message in that session's
 own transcript; it excludes output tokens and is not cumulative spend.
 `scripts/context-fill.sh` prints that count alongside fill, keeps `--percent`
 as the bare integer compatibility surface, and interprets `--warn-at 1..100`
-as percent versus values above 100 as token counts. A worker session checks
+as percent versus values above 100 as token counts. A worker checks
 `--warn-at 75` after every completed step (`docs/handover/leg-preface.md`). The
 handover skill's generic task template still checks `--warn-at 45`; it serves
-general handover sessions, not worker sessions.
+general handover sessions, not workers.
 
 ### Fleet-size cap — a provisional 4, grounded in the incident
 
-The context pin above answers *how much* window one worker session burns; it says
-nothing about *how many* worker sessions run at once. 2026-09-07: 9–11
-concurrent worker sessions exhausted a WEEK's usage bucket in under 48 hours, forcing a
+The context pin above answers *how much* window one worker burns; it says
+nothing about *how many* workers run at once. 2026-09-07: 9–11
+concurrent workers exhausted a WEEK's usage bucket in under 48 hours, forcing a
 fleet-wide halt. `scripts/lib/bank-preflight.sh` now counts live worker
 sessions (processes whose argv carries `claude … -n HIMMEL-…`/`-n LUNA-…`,
-excluding names containing `-console` — supervisor sessions are not worker sessions) and refuses a
+excluding names containing `-console` — chiefs are not workers) and refuses a
 new arm — token `SKIPPED-FLEET` — once the count is at or above
 `HIMMEL_FLEET_CAP` (env, else `.env`, default **4**). Wired at ARM time in
 both `scripts/handover/console-kit/headed-arm-leg.sh` and
-`scripts/handover/arm-resume.sh`, so a new worker session is refused before the
+`scripts/handover/arm-resume.sh`, so a new worker is refused before the
 scheduler entry (or the konsole window) is ever created — cheaper than
 refusing after a signal/deadline wait. Off switch: `FLEET_CAP_OK=1` in the
 *launching* shell only (a per-call prefix is refused by
@@ -840,7 +840,7 @@ refusing after a signal/deadline wait. Off switch: `FLEET_CAP_OK=1` in the
 `HEADED_ARM_REPO` is a linked worktree (the gitignored file lives only in the
 primary), but only a value actually set there counts: if the launcher's
 environment does not export `HIMMEL_FLEET_CAP` and the primary `.env` does
-not set it, the cap falls to 4 and the fifth worker session is refused with a
+not set it, the cap falls to 4 and the fifth worker is refused with a
 full-looking census. Put `HIMMEL_FLEET_CAP` on the launcher line itself
 rather than relying on the file.
 
@@ -850,9 +850,9 @@ cycle has been isolated (codex review findings, twice: the bucket-count
 arithmetic this paragraph used to run does not by itself establish a
 sustainable concurrency number, and conflates bucket capacity with reset
 frequency). The one concrete evidence point is the incident itself: 9–11
-concurrent worker sessions exhausted a WEEK's usage bucket in under 48 hours.
+concurrent workers exhausted a WEEK's usage bucket in under 48 hours.
 4 — well under that — is the starting cap chosen to leave
-headroom for the supervisor session lane (never gated by this cap) and for legitimate
+headroom for the chief lane (never gated by this cap) and for legitimate
 concurrency bursts the operator explicitly overrides via `FLEET_CAP_OK=1`,
 pending a proper per-session burn-rate measurement to replace it with a
 derived number.
@@ -865,21 +865,21 @@ informational `FLEET native=N claudex=M total=X/CAP` line, printed
 unconditionally either way, but is never itself refused by a cap that exists
 to gate new arms, not reads.
 
-## claudex leg — implementor-default operating model
+## claudex worker — implementor-default operating model
 
-`headed-arm-leg.sh --lane claudex` (or `WORKER_SESSION_LANE=claudex`) routes a worker session arm
+`headed-arm-leg.sh --lane claudex` (or `WORKER_SESSION_LANE=claudex`) routes a worker arm
 through `scripts/claude-codex` — the Claude Code harness running against
 GPT-6.1 Sol (`gpt-6.1-sol`) via the local CLIProxyAPI service — drawing on the **codex weekly
-usage budget** (`bank-preflight.sh` parks a claudex worker session on
+usage budget** (`bank-preflight.sh` parks a claudex worker on
 `scripts/lanes/codex-bank-probe.ts`'s cache, never the Claude five-hour/weekly
 check) instead of the Claude subscription usage budget the native lane spends from.
 
-**Default while the Claude weekly is scarce.** A well-specified, single-worker session
+**Default while the Claude weekly is scarce.** A well-specified, single-worker
 implementation brief is the claudex lane's home case precisely because it
-draws a *different* usage budget: every worker session that ships on claudex is a worker session that never
+draws a *different* usage budget: every worker that ships on claudex is a worker that never
 touched the Claude weekly bucket at all, which is the whole point when that
 bucket is the constrained resource (the fleet-cap incident
-above, is what scarcity looks like). Prefer `--lane claudex` for routine worker session
+above, is what scarcity looks like). Prefer `--lane claudex` for routine worker
 implementation work; fall back to native only when the work needs something
 claudex structurally cannot provide (next section).
 
@@ -890,39 +890,39 @@ above, not a separate claudex-only scale:
 
 | `WORKER_SESSION_EFFORT` | When |
 |---|---|
-| `medium` (default, unset) | routine single-worker session implementation briefs — the common case |
+| `medium` (default, unset) | routine single-worker implementation briefs — the common case |
 | `high` | multi-file or long-running briefs — raise before reaching for a native tier |
-| `xhigh` | genuinely hard worker session work only — rare |
+| `xhigh` | genuinely hard worker work only — rare |
 
 **What stays on Claude tiers.** claudex is an **impl-only** lane (`class:
 "impl"` in `lanes.json`) reached through one wrapper script that cannot see
 or message anything else running — it is not a substitute for:
 
 - **Orchestration / parenting** — a parent that spawns and coordinates
-  children needs `ListAgents`/`SendMessage`, which no claudex worker session has (next
+  children needs `ListAgents`/`SendMessage`, which no claudex worker has (next
   paragraph). Parenting stays native.
 - **Automated review / critic passes** — cross-model review already has its own dedicated
   lanes (`codex`, `hermes-critics`, `codex-exec` as critics via
   `/pr-check`); claudex is not one of them and is never itself a reviewer.
 - **Anything needing live coordination with another running session** —
-  supervisor session arms, `war-room`-style multi-agent flows, or a worker session an operator
+  chief arms, `war-room`-style multi-agent flows, or a worker an operator
   expects to redirect mid-flight via `SendMessage`.
-- **Judgment calls above the brief** — a claudex worker session executes a well-specified
+- **Judgment calls above the brief** — a claudex worker executes a well-specified
   brief; a call that needs escalation (Fable-class judgment, a genuinely
   ambiguous ticket) belongs on a native tier that can actually escalate.
 
-**Operating model — claudex worker sessions cannot ask, so they never park.** A claudex
-worker session is `scripts/claude-codex` (Claude Code) talking to GPT-6.1 Sol (`gpt-6.1-sol`) through
+**Operating model — claudex workers cannot ask, so they never park.** A claudex
+worker is `scripts/claude-codex` (Claude Code) talking to GPT-6.1 Sol (`gpt-6.1-sol`) through
 CLIProxyAPI; it is not a peer session in this operator's `ListAgents`
 registry and structurally cannot see or message any native session —
 `ListAgents`/`SendMessage` simply do not reach it, and it cannot reach them.
-The only channel a claudex worker session has back to the operator is the handover
+The only channel a claudex worker has back to the operator is the handover
 document itself: it writes its status, findings, and any blocker straight
 into the handover doc (the "N53 Results"-style section this ticket's own
-handover uses), and the supervisor session polls that doc on its own cadence. This makes
-one rule load-bearing for every claudex worker session brief: **never park for
-authorization.** A native worker session that hits a decision point can message a
-supervisor session and wait; a claudex worker session that does the equivalent — idling on a
+handover uses), and the chief polls that doc on its own cadence. This makes
+one rule load-bearing for every claudex worker brief: **never park for
+authorization.** A native worker that hits a decision point can message a
+chief and wait; a claudex worker that does the equivalent — idling on a
 signal file, a park loop, an implicit "waiting for approval" — is invisible
 to everything except the next doc poll, which can be arbitrarily far away.
 Make the reasonable call, record it and the reasoning in the handover doc,
@@ -943,7 +943,7 @@ discipline governing the GO itself. No other wait qualifies.
 
 A claude session's plugin set is fixed at launch by `--settings <profile file>`
 (`scripts/lanes/plugin-profiles.json`). Previously only `headed-arm-leg.sh`
-did this; the supervisor session arm, `arm-resume.sh`, `hop.sh`, `schedule-resume.sh`, the
+did this; the chief arm, `arm-resume.sh`, `hop.sh`, `schedule-resume.sh`, the
 morning-briefing `--llm` call and the automated review critic launched claude with the
 operator's FULL plugin set. They now all go through
 `scripts/lanes/profile-settings.sh <profile>` (writes
@@ -954,11 +954,11 @@ fallback to the full set) and the profile is picked from the role:
 |---|---|
 | `chief.sh` arm / `headed-arm.sh --role console` | `console` (handover, himmel-ops, qmd, lean-skills; no pr-review-toolkit) |
 | `arm-resume.sh`, `schedule-resume.sh` | from the resumed doc via `scripts/lanes/role-profile.sh`; `--profile <name>` overrides (arm-resume) |
-| `hop.sh` | `HOP_PROFILE`, else console / leg-impl from the caller's role env, else `user` |
-| worker session brief (`headed-arm-leg.sh`) | `--profile` / `WORKER_SESSION_PROFILE` win; else a `profile: <name>` line in the brief's first 60 lines; else the unprofiled-launch refusal stands |
+| `hop.sh` | `HOP_PROFILE`, else `console` / `leg-impl` from the caller's role env, else `user` |
+| worker brief (`headed-arm-leg.sh`) | `--profile` / `WORKER_SESSION_PROFILE` win; else a `profile: <name>` line in the brief's first 60 lines; else the unprofiled-launch refusal stands |
 | `generate-morning-briefing.sh --llm`, `cr/hermes-critic.sh` | `bare` (floor plugins only) |
 
-`role-profile.sh` precedence: explicit `profile:` line, then supervisor session doc, then a
+`role-profile.sh` precedence: explicit `profile:` line, then chief doc, then a
 doc carrying a `RETASK token` (`leg-impl`), else `user`. Sites that deliberately
 run with no profile (the probes, `claude-headless.sh`, the cadence runners)
 carry a `launch-profile-ok:` reason; `scripts/lanes/test-launch-site-profiles.sh`
@@ -967,10 +967,10 @@ scans `scripts/` and fails on any other claude exec.
 **Fanout and afk-shift subagents inherit the parent's plugins** (see
 "Subagents inherit" above - there is no per-subagent plugin control). So the
 parent must be armed with the profile its CHILDREN need, not just the one it
-needs itself: a supervisor session that dispatches design work arms with a profile that
+needs itself: a chief that dispatches design work arms with a profile that
 carries the design tools, and a fanout parent that will spawn reviewers arms with
 a profile that includes the review plugins. Pick it when arming (`--profile`
-on the worker session, `profile:` in the brief, `--profile` on `arm-resume.sh`); it cannot
+on the worker, `profile:` in the brief, `--profile` on `arm-resume.sh`); it cannot
 be fixed from inside a running session.
 
 Known gap: the Windows `.bat`/WSL branch of `arm-resume.sh` still relaunches
@@ -986,15 +986,15 @@ a fresh window, or a fresh view. The rule-by-rule audit against this harness is
 in the state repo: `specs/research/HIMMEL-7329-fold-subagents-audit-2026-10-24.md`.
 
 **Why the worker fleet is not subagent sprawl.** The fleet is split by context,
-not by problem type: one ticket is one worker session, one worktree, one PR, and
-each worker session is a single main loop that implements its own ticket
+not by problem type: one ticket is one worker, one worktree, one PR, and
+each worker is a single main loop that implements its own ticket
 inline. The orchestrator-inline-guard's worker exemption keeps it that way; the
 guard only stops a top-tier parent from doing a worker's job.
 
 **Measured mix (himmel sessions, 3 days to 2026-10-24).** 408 subagents across
 434 sessions; judges were 343 (84 %) at ~44M input-token-equivalent, general-purpose
 61 (~18M: about 26 haiku board or tracker publishes, about 11 sonnet VM runs),
-Explore 4. Worker sessions rarely spawn. Judges change the chief's recorded prior in
+Explore 4. Workers rarely spawn. Judges change the chief's recorded prior in
 27 % of 831 verdicts (`flipped: y`), so they pass the fresh-view test; whether a
 cheaper tier rules the same is unmeasured.
 
@@ -1068,7 +1068,7 @@ fixture and passes on the reference.
   never sees the acceptance result, so the two signals stay independent;
 - wall time, turns, tool calls (deduplicated by id) and compactions. A single
   headless run cannot hand off, so handoffs are measured only when a lane is
-  driven through its worker session launcher (phase 2);
+  driven through its worker launcher (phase 2);
 - cost: the agent's `total_cost_usd`, which on a subscription lane is the
   API-price equivalent, and the account-wide five-hour subscription usage budget reading before and
   after. Any other session running at the same time lands in that delta, so
@@ -1085,8 +1085,8 @@ bash scripts/eval/lane-quality/run.sh table ~/.himmel/eval/lane-quality/<run-id>
 
 Every task is usage budget-preflighted before its agent call
 (`scripts/lib/bank-preflight.sh`; anything but `PROCEED` stops the sweep with
-exit 75). Each agent and judge call is pinned to
-native auth and declares its permission mode: `auto` for the agent, as worker sessions
+exit 75). Each agent run and judge run is pinned to
+native auth and declares its permission mode: `auto` for the agent, as workers
 run, and `dontAsk` with no tools for the judge. `--max-usd` (default 3) caps
 the sweep. No task starts once the summed `total_cost_usd` reaches the cap, and
 each agent call gets the remainder as `--max-budget-usd`.
@@ -1122,7 +1122,7 @@ sweep), so the repriced cost carries a 1.2 markup.
 
 **Not enabled.** `--lane deepseek|claudex` exits 3.
 - DeepSeek also needs the station opt-in `HIMMEL_DEEPSEEK_INFERENCE_OK=1`,
-  exported in the launching shell, and it runs as its own worker session once the
+  exported in the launching shell, and it runs as its own worker once the
   operator sets it.
 - claudex bills another usage budget and was not part of the approval.
 

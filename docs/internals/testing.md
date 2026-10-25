@@ -166,7 +166,7 @@ red:
   consolidated issue (label `shell-extended-nightly-ci`) and closes it when the
   nightly goes green. A red macOS cadence run files nothing: read the run's summary
   (new breakages) or `macos-breakage.sh report`.
-- **The supervisor session splits it.** The supervisor session turns each distinct failure cluster
+- **The chief splits it.** The chief turns each distinct failure cluster
   into its own ticket under the epic that owns the OS-portability work,
   one slice per cluster. The slice is fixed and
   verified like any other change; it is **never** a hold on an unrelated PR.
@@ -349,8 +349,8 @@ section; the ledger is uploaded with the failure logs.
 - A suite that fails both attempts is a real FAIL and keeps both logs.
 - A suite whose header carries `# no-retry` is never retried, and a suite the
   watchdog killed at its cap is never retried either.
-- The supervisor session tick prints `flakes=<rows>/<suites>@<top-suite>*<k>` and the board
-  shows the same rows when this repo's ledger took a row since the supervisor session lock
+- The chief tick prints `flakes=<rows>/<suites>@<top-suite>*<k>` and the board
+  shows the same rows when this repo's ledger took a row since the chief lock
   started; `scripts/observability/suite-flake-summary.sh --format
   detail` lists each row.
 
@@ -691,13 +691,13 @@ Three readings that look like evidence and are not:
 With a large fleet the org's 60-job cap backs up, and superseded
 `pull_request` runs sit in workflow-level `queued` — the concurrency group does
 not cancel them, and `codeowner-review-gate` / `workflow_dispatch` runs are
-outside it by design. From a supervisor session, `bash scripts/ci/cancel-superseded-runs.sh
+outside it by design. From a chief, `bash scripts/ci/cancel-superseded-runs.sh
 --dry-run [--branch <b>]` lists, and without `--dry-run` cancels, every live CI
 or codeowner-review-gate run on an open PR's branch whose head is not that PR's
 current head. It never touches a run at the current head, main, a
 schedule run or a branch with no open PR, and any `gh` read error cancels
-nothing and exits 1. Cancels land ~20 s later. Run from a supervisor session only; not yet wired
-into `tick.sh` or the worker session ship flow.
+nothing and exits 1. Cancels land ~20 s later. Run from a chief only; not yet wired
+into `tick.sh` or the worker ship flow.
 
 Never rerun a CI run by hand or in a loop: the concurrency group `ci-pr-<N>`
 makes a rerun the newest request, so rerunning a run at a superseded sha cancels

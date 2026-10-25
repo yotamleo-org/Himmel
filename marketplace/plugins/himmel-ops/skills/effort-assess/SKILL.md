@@ -15,13 +15,13 @@ calibration: HIMMEL-3992 (variant B). Every number lives in
 protocol). The estimate is recorded at dispatch, the actual comes from the PR
 body's `leg-burn: ... cost-eq=`. Adopt only at n >= 60 shipped-ticket pairs AND
 two versions shipped under the model; the KPI is outcome per version (within one
-bank, no mid-version replan, P90 not exceeded), not a lower fitted sigma. Until
+usage window, no mid-version replan, P90 not exceeded), not a lower fitted sigma. Until
 then treat sigma as a floor: the calibration set was 24 merged tickets and
 survivorship biases it low.
 
 ## When to use
 
-- Sizing a ticket before a leg is dispatched or a roadmap slot is chosen.
+- Sizing a ticket before a worker is dispatched or a roadmap slot is chosen.
 - Checking that a version still fits (`version` mode) before adding a ticket.
 - Not for: Jira writes, picking a model tier, or a placer re-run (HIMMEL-3997
   routing reads the record; HIMMEL-4001 moves the placer onto the config).
@@ -82,7 +82,7 @@ items on stderr. **Do not commit or quote a refused estimate; fix the input.**
 3. PERT / three-point: needs a mode we do not collect; the tail is thinner than observed.
 4. Reference-class bootstrap of observed actual/estimate ratios: the target at n >= 60; same interface.
 5. Monte Carlo inside first-fit: too slow. Fenton-Wilkinson for the fast check, Monte Carlo as the cross-check.
-6. Story points / velocity: no sprints; the bank is the unit.
+6. Story points / velocity: no sprints; the usage window is the unit.
 
 Prior art: Bernhardsson 2019 (log-normal blowup), reference-class forecasting
 (Kahneman and Tversky; Flyvbjerg), the cone of uncertainty (McConnell),

@@ -63,7 +63,7 @@ When a fix is attempted during debugging and **fails**, append it to the active 
 - `references/resolution.md` — shared substrate: repo/bucket/registry resolution, ID derivation, worktree gate, template placeholders, No-ID picker, status values, supplementary files, file-path map
 - `references/new-item.md` — `new-epic` / `new-task` / `new-standalone`
 - `references/update-status.md` — `update-status` + roadmap.md / tech-debt.md generation
-- `references/end-session.md` — `end-session` + cold-start format + overnight mode
+- `references/end-session.md` — `end-session` + cold-start format + AFK mode
 - `references/item-ops.md` — `bucket` / `priority` / `jira-link` / `defaults`
 - `references/bug-ops.md` — `bug` / `bugs` / `lessons`
 - `references/resume.md` — `handover-resume` (script-driven via `scripts/handover/resume.sh`)
