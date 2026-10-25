@@ -696,7 +696,7 @@ case "$DEADLINE" in
 esac
 if [ "$HEADLESS" = "1" ]; then
     if [ -z "${WORKER_SESSION_PROFILE_SETTINGS:-${LEG_PROFILE_SETTINGS:-}}" ]; then
-        echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-leg.sh --headless --profile <name>" >&2
+        echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-worker.sh --headless --profile <name>" >&2
         exit 2
     fi
     for _hl_need in "$CLAUDE_CLI" jq; do

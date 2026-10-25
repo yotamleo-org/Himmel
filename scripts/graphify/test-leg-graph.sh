@@ -5,7 +5,7 @@
 # was given, so no real graph is needed.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCRIPT="$HERE/leg-graph.sh"
+SCRIPT="$HERE/worker-graph.sh"
 FAILS=0
 pass() { echo "  ok: $1"; }
 fail() { echo "  FAIL: $1"; FAILS=$((FAILS+1)); }
@@ -106,7 +106,7 @@ else fail "T6c out='$out'"; fi
 # shellcheck disable=SC2016  # the stub's own $-expansions must stay literal
 printf '#!/bin/sh\n[ "$1" = --help ] && { echo "  --rationale"; exit 0; }\necho "[!] TRUNCATED: showing 60 of 223 nodes (~2000-token budget). raise the token budget to 7523 to get all 223 (CLI: --budget 7523)"\necho "NODE a"\n' > "$T/bin/graphify"
 out="$(run query "two words")"; rc=$?
-if [ "$rc" = 0 ] && grep -q 'NODE a' <<<"$out" && grep -q 'bash scripts/graphify/leg-graph.sh query '"'"'two words'"'"' --budget 7523' "$T/err"; then
+if [ "$rc" = 0 ] && grep -q 'NODE a' <<<"$out" && grep -q 'bash scripts/graphify/worker-graph.sh query '"'"'two words'"'"' --budget 7523' "$T/err"; then
   pass "T7 truncation prints a re-run line"
 else fail "T7 rc=$rc err=$(cat "$T/err")"; fi
 
@@ -118,7 +118,7 @@ else fail "T7b err=$(cat "$T/err")"; fi
 # T8: missing graph names the wrapper.
 mv "$P/graphify-out/graph.json" "$P/graphify-out/graph.json.x"
 run query q >/dev/null
-if grep -q 'leg-graph.sh' "$T/err"; then pass "T8 missing-graph message names leg-graph.sh"
+if grep -q 'worker-graph.sh' "$T/err"; then pass "T8 missing-graph message names worker-graph.sh"
 else fail "T8 err=$(cat "$T/err")"; fi
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

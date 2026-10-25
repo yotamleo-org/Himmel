@@ -199,10 +199,12 @@ trap 'rm -rf "$FT"' EXIT
 forwards() {  # forwards <runner> <dir> <old> <new> <stub source>
   local runner="$1" dir="$2" old="$3" new="$4" src="$5" d out rc err
   d="$FT/$old"
+  [ "$old" = headed-arm-leg.sh ] && d="$FT/$old/handover/console-kit"
   mkdir -p "$d"
   check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
   cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
   [ "$old" = bank-preflight.sh ] && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$d/"
+  [ "$old" = headed-arm-leg.sh ] && mkdir -p "$FT/$old/lib" && cp "$ROOT/scripts/lib/chokepoint-seam-guard.sh" "$FT/$old/lib/"
   printf '%s\n' "$src" > "$d/$new"
   out="$("$runner" "$d/$old" 'a b' c 2> "$d/err")"
   rc=$?
@@ -338,6 +340,49 @@ else
 fi
 stub .claude/commands/supervisor-session.md .claude/commands/chief.md
 stub .claude/commands/console.md .claude/commands/chief.md
+
+# --- slice V4b: the worker scripts, each old path a forwarder to the new one ---
+V4B_ROWS='close-wrapped-leg.sh|close-wrapped-worker.sh|identifier|old-to-new|V4b|X
+headed-arm-leg.sh|headed-arm-worker.sh|identifier|old-to-new|V4b|X
+leg-digest-step.sh|worker-digest-step.sh|identifier|old-to-new|V4b|X
+leg-doc-lock.sh|worker-doc-lock.sh|identifier|old-to-new|V4b|X
+leg-event.sh|worker-event.sh|identifier|old-to-new|V4b|X
+leg-graph.sh|worker-graph.sh|identifier|old-to-new|V4b|X
+leg-identity.sh|worker-identity.sh|identifier|old-to-new|V4b|X
+leg-jira-status.sh|worker-jira-status.sh|identifier|old-to-new|V4b|X
+leg-pretrust.sh|worker-pretrust.sh|identifier|old-to-new|V4b|X
+leg-transcripts.sh|worker-transcripts.sh|identifier|old-to-new|V4b|X'
+while IFS= read -r want; do
+  tabbed="$(printf '%s' "$want" | tr '|' '\t')"
+  old="${want%%|*}"
+  got="$(printf '%s\n' "$ROWS" | awk -F'\t' -v o="$old" '$2 == o { sub(/^[0-9]+\t/, ""); print; exit }')"
+  check "V4b row '$old'" "$tabbed" "$got"
+done <<EOF
+$V4B_ROWS
+EOF
+forwards bash scripts/handover/console-kit headed-arm-leg.sh headed-arm-worker.sh "$SH_STUB"
+forwards bash scripts/handover/console-kit close-wrapped-leg.sh close-wrapped-worker.sh "$SH_STUB"
+forwards bash scripts/handover/console-kit leg-digest-step.sh worker-digest-step.sh "$SH_STUB"
+forwards bash scripts/handover/console-kit leg-event.sh worker-event.sh "$SH_STUB"
+forwards bash scripts/handover/console-kit leg-jira-status.sh worker-jira-status.sh "$SH_STUB"
+forwards bash scripts/handover/console-kit leg-pretrust.sh worker-pretrust.sh "$SH_STUB"
+forwards bash scripts/graphify leg-graph.sh worker-graph.sh "$SH_STUB"
+# The three sourced libraries load the new file from any cwd and stay silent.
+sources_alias() {  # sources_alias <dir> <old> <new>
+  local dir="$1" old="$2" new="$3" d out
+  d="$FT/v4b-$old"
+  mkdir -p "$d" "$FT/v4b-cwd"
+  check "$dir/$new exists" "yes" "$([ -f "$ROOT/$dir/$new" ] && echo yes || echo no)"
+  cp "$ROOT/$dir/$old" "$d/$old" 2>/dev/null || { check "$dir/$old exists" "yes" "no"; return; }
+  # shellcheck disable=SC2016 # the stub body is expanded when sourced, not here
+  printf 'v4b_probe() { printf "NEW:%%s" "$1"; }\nreturn 5\n' > "$d/$new"
+  out="$(cd "$FT/v4b-cwd" && bash -c '. "$1"; printf "rc=%s|" "$?"; v4b_probe x' _ "$d/$old" 2> "$d/err")"
+  check "$old sources $new from another cwd and keeps its status" "rc=5|NEW:x" "$out"
+  check "$old prints nothing when sourced" "" "$(cat "$d/err")"
+}
+sources_alias scripts/lib leg-identity.sh worker-identity.sh
+sources_alias scripts/handover/console-kit leg-doc-lock.sh worker-doc-lock.sh
+sources_alias scripts/handover/console-kit leg-transcripts.sh worker-transcripts.sh
 stub marketplace/plugins/himmel-ops/commands/supervisor-session.md marketplace/plugins/himmel-ops/commands/chief.md
 stub marketplace/plugins/himmel-ops/commands/console.md marketplace/plugins/himmel-ops/commands/chief.md
 for a in supervisor-session console; do

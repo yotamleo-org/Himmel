@@ -117,7 +117,7 @@ while IFS= read -r f; do
     [ -r "$f" ] || { sc_cov unreadable; continue; }
     case "$f" in */subagents/*) sc_cov subagent; continue ;; esac
     name=$(title_of "$f")
-    case "$name" in *-console*) ;; *) sc_cov not-console; continue ;; esac
+    case "$name" in *-console*|*-chief) ;; *) sc_cov not-console; continue ;; esac
 
     first_ts=$(ts_of "$f" head)
     [ -n "$first_ts" ] || { sc_cov no-timestamp; continue; }

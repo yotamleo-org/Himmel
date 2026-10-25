@@ -17,6 +17,7 @@
 #   test-adopt.sh ran 969s on green main run 40030573258 (shard 3); HIMMEL-7300 split it
 #   into test-adopt.sh and test-adopt-features.sh, the 969s shared in proportion to their
 #   local times (479s / 427s) as 512 / 457.
+#   test-run-shell-tests-parallel.sh (64) is a local measurement (HIMMEL-7483).
 # The quarantined suites (SKIP_LIST, HIMMEL-3196) have no row.
 #
 # Read by scripts/ci/run-shell-tests.sh to assign --shard <i>/<n> by a greedy
@@ -182,6 +183,7 @@ scripts/ci/test-run-shell-tests-flake.sh	12
 scripts/ci/test-run-shell-tests-impacted.sh	8
 scripts/ci/test-run-shell-tests-live-state.sh	3
 scripts/ci/test-run-shell-tests-manifest.sh	6
+scripts/ci/test-run-shell-tests-parallel.sh	64
 scripts/ci/test-run-shell-tests-rotation-cursor.sh	102
 scripts/ci/test-run-shell-tests-rotation-guards.sh	115
 scripts/ci/test-run-shell-tests-rotation.sh	112
@@ -278,10 +280,12 @@ scripts/docs/test-adoption-trail.sh	0
 scripts/docs/test-check-doc-terms.sh	1
 scripts/docs/test-check-llms-links.sh	1
 scripts/docs/test-generate-credits.sh	1
+scripts/docs/test-install-profiles-page.sh	0
 scripts/docs/test-luna-page.sh	1
 scripts/docs/test-readme-hygiene.sh	0
 scripts/docs/test-second-model-review-page.sh	0
 scripts/docs/test-site-guides.sh	1
+scripts/docs/test-troubleshooting-page.sh	1
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
 scripts/eval/friction/test-friction.sh	1
 scripts/eval/graphify-ab/test-graphify-ab.sh	5
@@ -312,6 +316,8 @@ scripts/eval/test-cache-probe.sh	0
 scripts/eval/test-ci-metrics.sh	0
 scripts/eval/test-console-load-inventory.sh	0
 scripts/eval/test-context-replay.sh	0
+scripts/eval/test-deferred-outcome.sh	0
+scripts/eval/test-escapes.sh	0
 scripts/eval/test-eval-feedback.sh	1
 scripts/eval/test-eval-runs.sh	5
 scripts/eval/test-harness-run.sh	8
@@ -719,6 +725,7 @@ scripts/hooks/test-refresh-where-are-we-on-end.sh	14
 scripts/hooks/test-require-quiet-run.sh	3
 scripts/hooks/test-retrieval-nudge.sh	2
 scripts/hooks/test-rtk-hook-guard.sh	1
+scripts/hooks/test-run-hook-with-bash-unroll.sh	11
 scripts/hooks/test-session-end-timeout-budget.sh	12
 scripts/hooks/test-shell-tokenize.sh	0
 scripts/hooks/test-stop-console-idle-guard.sh	8
@@ -937,7 +944,6 @@ scripts/observability/test-install-stack.sh	5
 scripts/observability/test-ledger-prune.sh	0
 scripts/observability/test-ledgers-registry.sh	0
 scripts/observability/test-promtool-validation.sh	0
-scripts/observability/test-restart-stack.sh	0
 scripts/observability/test-suite-flake-summary.sh	1
 scripts/observability/test-tool-call-census.sh	11
 scripts/openrouter/test-free-watch.sh	1

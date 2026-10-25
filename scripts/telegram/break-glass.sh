@@ -277,16 +277,16 @@ op_revert_main() {
 }
 
 # The current console's fleet manifest: the seam, else the newest
-# *-console.fleet.json under the handover root.
+# *-chief.fleet.json or *-console.fleet.json under the handover root.
 fleet_manifest() {
     local fleet="${BREAK_GLASS_FLEET:-}"
     if [ -z "$fleet" ]; then
         # shellcheck source=../lib/handover-path.sh
         . "$PRIMARY/scripts/lib/handover-path.sh"
-        # ponytail: newest *-console.fleet.json by mtime stands in for "the current
+        # ponytail: newest *-chief/*-console.fleet.json by mtime stands in for "the current
         # console", upgrade path: a console pointer file if two consoles ever run.
         # gnu-ok: the bridge runs only on the Linux station (find -printf)
-        fleet="$(find "$(handover_root)" -maxdepth 4 -name '*-console.fleet.json' -printf '%T@ %p\n' 2>/dev/null \
+        fleet="$(find "$(handover_root)" -maxdepth 4 \( -name '*-console.fleet.json' -o -name '*-chief.fleet.json' \) -printf '%T@ %p\n' 2>/dev/null \
             | sort -rn | head -n 1 | cut -d' ' -f2-)"
     fi
     if [ -z "$fleet" ] || [ ! -f "$fleet" ]; then
@@ -377,7 +377,7 @@ op_launch_leg() {
     now="$(date +%s)"
     : > "$state/$label.signal"
     log="$state/$label-$now.log"
-    launcher="${BREAK_GLASS_LEG_CMD:-bash $PRIMARY/scripts/handover/console-kit/headed-arm-leg.sh}"
+    launcher="${BREAK_GLASS_LEG_CMD:-bash $PRIMARY/scripts/handover/console-kit/headed-arm-worker.sh}"
     # shellcheck disable=SC2086 # the seam is a command line by design
     set -- $launcher
     if ! command -v "$1" >/dev/null 2>&1 || { [ "$1" = bash ] && [ ! -f "$2" ]; }; then
@@ -418,7 +418,7 @@ op_close_wrapped() {
             return 23
         fi
     fi
-    closer="${BREAK_GLASS_CLOSE_CMD:-bash $PRIMARY/scripts/handover/console-kit/close-wrapped-leg.sh}"
+    closer="${BREAK_GLASS_CLOSE_CMD:-bash $PRIMARY/scripts/handover/console-kit/close-wrapped-worker.sh}"
     while IFS= read -r doc; do
         [ -n "$doc" ] || continue
         # shellcheck disable=SC2086 # the seam is a command line by design

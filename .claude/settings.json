@@ -29,8 +29,6 @@
       "PowerShell(Set-Location *)",
       "PowerShell(Push-Location *)",
       "PowerShell(Pop-Location)",
-      "PowerShell(pwsh -File scripts/telegram/restart-bridge.ps1 -FromLedger)",
-      "PowerShell(pwsh -File scripts/telegram/restart-bridge.ps1 -FromLedger -Kill)",
       "mcp__obsidian-vault__obsidian_list_files_in_vault",
       "mcp__obsidian-vault__obsidian_list_files_in_dir",
       "mcp__obsidian-vault__obsidian_append_content",
@@ -548,15 +546,6 @@
       }
     ],
     "Stop": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "node \"$CLAUDE_PROJECT_DIR/scripts/hooks/stop-queue.mjs\" enqueue --key speak-reply -- node \"$CLAUDE_PROJECT_DIR/scripts/hooks/run-hook-with-bash.js\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/speak-reply.sh\"",
-            "timeout": 10
-          }
-        ]
-      },
       {
         "hooks": [
           {

@@ -44,7 +44,7 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
   attach); bidirectional clipboard AND drag-and-drop set as MACHINE CONFIG
   (with the VM powered off, so it lives in the snapshot; draganddrop moved
   disabled -> bidirectional); a tty1 auto-login drop-in so an operator has a
-  console at all; and node 24.20.0 + npm 11.19.0 + bun 1.4.2 + unzip +
+  login prompt at all; and node 24.20.0 + npm 11.19.0 + bun 1.4.2 + unzip +
   Claude Code 2.1.263, closing HIMMEL-2681's runtime-skew precondition (v3
   shipped node 18.19.1 against this repo's `.nvmrc` pin of 24, and no bun).
   The move was made by delete-and-re-clone (HIMMEL-2747, 2026-09-07), not by
@@ -98,7 +98,7 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
 - **The golden image is snapshotted UNPERSONALISED.** "Snapshot after a
   first boot" (above) is a rule for a CLONE's own baseline, not for the
   golden image — the golden image is snapshotted BEFORE any identity
-  exists. If a leg boots `ubuntu_new` to modify the image, it must
+  exists. If a worker boots `ubuntu_new` to modify the image, it must
   re-de-personalise before snapshotting: truncate `/etc/machine-id` to 0
   bytes, symlink `/var/lib/dbus/machine-id` to it, remove
   `/etc/ssh/ssh_host_*`, re-create `/etc/himmel-regen-identity` (the
@@ -110,9 +110,9 @@ cloning `himmel-ar-N`, or rebuilding the golden image.
   server, so the bidirectional clipboard machine-config setting (above) is
   correct and necessary but has nothing to attach to — `VBoxClient
   --clipboard` needs an X11/Wayland session, and a guest-side clipboard
-  round trip is NOT achievable on this image. Do not spend a leg trying to
+  round trip is NOT achievable on this image. Do not spend a worker trying to
   verify one. Two host→guest text paths ARE proven: (a) `ssh -p 2222
   himmel@127.0.0.1` from a host terminal, using the HOST's own clipboard;
   (b) `VBoxManage controlvm ubuntu_new keyboardputstring "<text>"` followed
   by `VBoxManage controlvm ubuntu_new keyboardputscancode 1c 9c` (Enter),
-  typing straight into the auto-logged-in tty1 console.
+  typing straight into the auto-logged-in tty1 shell.

@@ -604,7 +604,7 @@ block_alert() { merge_block_alert "${nwo:-?}" "${pr_num:-?}" "${sha:-}" "$@"; }
 # _status_event <key> <event> <pr> [head] — the status funnel re-derives the
 # ticket's status; best-effort, never changes an exit code.
 _status_event() {
-    bash "$himmel_repo/scripts/handover/console-kit/leg-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
+    bash "$himmel_repo/scripts/handover/console-kit/worker-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
         ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
 }
 # _focus_mark_dirty — a status the merge wrote leaves the console's FOCUS page

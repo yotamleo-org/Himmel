@@ -39,7 +39,7 @@ The rule is anchored, so a secret with a token prefix or suffix is still caught.
 | `scripts/handover/queue-lock.sh` (`_ql_default_session`) | release token `<host>-pid<N>` |
 | `scripts/handover/console-kit/gen-briefs.py` | worker RETASK nonce `<letters>-<label>-<hex8>` |
 | `scripts/handover/console-kit/gen-judge-brief.py` | judge nonce `<letters>-<qid>-<hex8>` |
-| fresh-leg recovery and legacy nonces | `V-N236b-1d281f74`, `Y-N204-a68d71` |
+| fresh-worker recovery and legacy nonces | `V-N236b-1d281f74`, `Y-N204-a68d71` |
 | briefs, GO and verdict lines | commit shas, sha256 digests |
 
 ## Where the rule lives

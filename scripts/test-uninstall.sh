@@ -1269,10 +1269,10 @@ for _e in "$REAL_SCRIPTS"/handover/*; do
     case "${_e##*/}" in console-kit) ;; *) ln -s "$_e" "$LLD/scripts/handover/${_e##*/}" ;; esac
 done
 for _e in "$REAL_SCRIPTS"/handover/console-kit/*; do ln -s "$_e" "$LLD/scripts/handover/console-kit/${_e##*/}"; done
-for _e in lib/chokepoint-seam-guard.sh handover/console-kit/headed-arm-leg.sh; do
+for _e in lib/chokepoint-seam-guard.sh handover/console-kit/headed-arm-worker.sh; do
     rm -f "$LLD/scripts/$_e"; cp "$REAL_SCRIPTS/$_e" "$LLD/scripts/$_e"
 done
-WORKER_SESSION_SH="$LLD/scripts/handover/console-kit/headed-arm-leg.sh"
+WORKER_SESSION_SH="$LLD/scripts/handover/console-kit/headed-arm-worker.sh"
 printf '#!/usr/bin/env bash\nexit 0\n' > "$LLD/target.sh"; printf '#!/usr/bin/env bash\necho PROCEED\n' > "$LLD/preflight.sh"
 chmod +x "$LLD/target.sh" "$LLD/preflight.sh"
 # the arming gate lints every brief (description + Prior art line).

@@ -249,6 +249,10 @@ GA_JQ_EOF
             echo "block-graphify-egress: shfmt not on PATH, so this command that mentions graphify cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or comment the hook." >&2
             exit 2
             ;;
+        5)
+            echo "block-graphify-egress: the command model timed out, so this command that mentions graphify cannot be read; refusing. Split the command." >&2
+            exit 2
+            ;;
     esac
 fi
 
@@ -281,6 +285,6 @@ rc=$?
 cat "$err_file" >&2
 rm -f "$err_file"
 if [ "$rc" -eq 2 ]; then
-    echo "block-graphify-egress: for read-only queries use: bash scripts/graphify/leg-graph.sh query|explain \"<question>\"  (no cd, no relative target)" >&2
+    echo "block-graphify-egress: for read-only queries use: bash scripts/graphify/worker-graph.sh query|explain \"<question>\"  (no cd, no relative target)" >&2
 fi
 exit "$rc"

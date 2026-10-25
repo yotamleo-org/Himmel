@@ -262,7 +262,7 @@ mog_build_fixture() {
     cp "${TS_LIB_SRC:-$SCRIPT_DIR/../lib/ticket-status.sh}" "$tmp/scripts/lib/ticket-status.sh"
     cp "$SCRIPT_DIR/../lib/required-checks.sh" "$SCRIPT_DIR/../lib/prim.sh" "$tmp/scripts/lib/"
     # shellcheck disable=SC2016 # $* must reach the stub FILE unexpanded
-    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/console-kit/leg-jira-status.sh"
+    printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/funnel.log"\n' "$tmp" > "$tmp/scripts/handover/console-kit/worker-jira-status.sh"
     # merge-on-green now records the repo's CodeRabbit-availability
     # state on its audit lines, and reads it from this sibling. Without the copy
     # the source fails, CR_STATE falls back to `unknown`, and every cr= assertion

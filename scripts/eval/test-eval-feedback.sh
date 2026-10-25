@@ -138,7 +138,7 @@ eq "a written change is not retried" "$(rows "$IN5")" "1"
 D="$TMP/review"; mkdir -p "$D"
 : >"$D/ledger.jsonl"
 ok "review row" python3 -I "$RUNS" append --ledger "$D/runs.jsonl" --eval friction --source s \
-  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"over_deny\":500,\"$CLS\":500}"
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"refusals\":1000,\"over_deny\":500,\"$CLS\":500}"
 HIMMEL_EVAL_RUNS_LEDGER="$D/runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$D/changes.jsonl" FAILURE_REVIEW_FRICTION_CMD="" \
   JIRA_PROJECT_KEY=HIMMEL python3 "$FRV" --ledger "$D/ledger.jsonl" --state "$D/state.json" --log "$D/log.jsonl" \
   --inbox "$D/inbox.md" --out-dir "$D/out" --now 2026-10-07T12:00:00Z --notify-cmd true >"$D/run.out" 2>&1
@@ -155,13 +155,13 @@ for i in 1 2; do
   eq "live review $i after a dry run: exit 0" "$?" "0"
   eq "live review $i after a dry run: the dry-run change is delivered once" "$(rows "$D/inbox.md")" "1"
 done
-has "the delivered line names the metric and topic" "$(cat "$D/inbox.md" 2>/dev/null)" "eval/friction $CLS value=500 threshold=100 topic=shell-and-gate-traps.md"
+has "the delivered line names the metric and topic" "$(cat "$D/inbox.md" 2>/dev/null)" "eval/friction $CLS value=0.5 threshold=0.05 topic=shell-and-gate-traps.md"
 
 # --- only a --live review writes the inbox line, once per opened change ---------------------------------
 E="$TMP/review-live"; mkdir -p "$E"
 : >"$E/ledger.jsonl"
 ok "live review row" python3 -I "$RUNS" append --ledger "$E/runs.jsonl" --eval friction --source s \
-  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"over_deny\":500,\"$CLS\":500}"
+  --config-json '{"friction_v":1,"days":7}' --metrics-json "{\"refusals\":1000,\"over_deny\":500,\"$CLS\":500}"
 for i in 1 2; do
   HIMMEL_EVAL_RUNS_LEDGER="$E/runs.jsonl" HIMMEL_EVAL_CHANGES_LEDGER="$E/changes.jsonl" FAILURE_REVIEW_FRICTION_CMD="" \
     JIRA_PROJECT_KEY=HIMMEL python3 "$FRV" --ledger "$E/ledger.jsonl" --state "$E/state.json" --log "$E/log.jsonl" \
@@ -169,7 +169,7 @@ for i in 1 2; do
   eq "live review $i: exit 0" "$?" "0"
   eq "live review $i: exactly one memory-inbox line" "$(rows "$E/inbox.md")" "1"
 done
-has "live review: the line names the metric and topic" "$(cat "$E/inbox.md" 2>/dev/null)" "eval/friction $CLS value=500 threshold=100 topic=shell-and-gate-traps.md"
+has "live review: the line names the metric and topic" "$(cat "$E/inbox.md" 2>/dev/null)" "eval/friction $CLS value=0.5 threshold=0.05 topic=shell-and-gate-traps.md"
 
 # --- the shipped rules: a critic class below its threshold yields one improvement record per critic -----
 G="$TMP/critics"; mkdir -p "$G"
@@ -195,6 +195,112 @@ ok "shipped rules rerun" python3 -I "$FB" run --ledger "$G/runs.jsonl" --changes
 eq "judges rerun: a measured record and a new change" "$(rows "$G/changes.jsonl")" "5"
 eq "judges rerun: re-measured" "$(field "$G/changes.jsonl" 3 verdict)" "improved"
 eq "judges rerun: ci-selection escapes come first" "$(field "$G/changes.jsonl" 4 change)" "impacted-suites"
+
+# --- a rule with `per` judges a rate, so a count that rises only with session volume fires nothing ------
+V="$TMP/per"; mkdir -p "$V"
+# vol <ledger> <refusals> <over-denials>: one friction row
+vol() { python3 -I "$RUNS" append --ledger "$1" --eval friction --source s --config-json '{"friction_v":1,"days":7}' \
+  --metrics-json "{\"refusals\":$2,\"$CLS\":$3}" >/dev/null 2>&1; }
+ok "volume row" vol "$V/runs.jsonl" 10000 300
+ok "volume feedback" python3 -I "$FB" run --eval friction --ledger "$V/runs.jsonl" --changes "$V/c.jsonl" --rules "$HERE/feedback-rules.json"
+eq "per: 300 over-denials in 10000 refusals (3 %) opens no change under the shipped rule" "$(rows "$V/c.jsonl")" "0"
+ok "rate row" vol "$V/runs.jsonl" 1000 300
+ok "rate feedback" python3 -I "$FB" run --eval friction --ledger "$V/runs.jsonl" --changes "$V/c.jsonl" --rules "$HERE/feedback-rules.json"
+eq "per: the same 300 in 1000 refusals (30 %) opens one change" "$(rows "$V/c.jsonl")" "1"
+eq "per: the change's value is the rate" "$(field "$V/c.jsonl" 0 value)" "0.3"
+eq "per: the change names its denominator" "$(field "$V/c.jsonl" 0 per)" "refusals"
+ok "volume-up row" vol "$V/runs.jsonl" 10000 300
+ok "volume-up measure" python3 -I "$FB" run --eval friction --ledger "$V/runs.jsonl" --changes "$V/c.jsonl" --rules "$HERE/feedback-rules.json"
+eq "per: the re-measure reads the rate too" "$(field "$V/c.jsonl" 1 after)" "0.03"
+
+# --- a sealed split: rules tune on the open half only, and never read the sealed half ---------------
+# A split row carries open.<metric> and sealed.<metric> beside the whole-set metric (score.py).
+S="$TMP/sealed"; mkdir -p "$S"
+cat >"$S/rules.json" <<'EOF'
+{"v": 1, "rules": [{"eval": "review-panel", "metric": "codex.class.*.recall", "threshold": 0.5, "better": "higher",
+  "absent": null, "change": "prompt", "target": "scripts/cr/critic-first-pass.sh", "critic": "codex", "min_gain": 0.25}]}
+EOF
+# split <ledger> <whole> <open> <sealed>: one review-panel row for the quoting class
+split() { python3 -I "$RUNS" append --ledger "$1" --eval review-panel --source s --config-json '{"review_panel_v":2}' \
+  --metrics-json "{\"codex.class.quoting.recall\":$2,\"open.codex.class.quoting.recall\":$3,\"sealed.codex.class.quoting.recall\":$4}" >/dev/null 2>&1; }
+ok "sealed-bad row" split "$S/a.jsonl" 0.5 1 0
+ok "sealed-bad feedback" python3 -I "$FB" run --ledger "$S/a.jsonl" --changes "$S/a-changes.jsonl" --rules "$S/rules.json"
+eq "sealed: a bad sealed half (and whole set) with a good open half opens no change" "$(rows "$S/a-changes.jsonl")" "0"
+ok "open-bad row" split "$S/b.jsonl" 0.5 0 1
+ok "open-bad feedback" python3 -I "$FB" run --ledger "$S/b.jsonl" --changes "$S/b-changes.jsonl" --rules "$S/rules.json"
+eq "sealed: a bad open half opens one change" "$(rows "$S/b-changes.jsonl")" "1"
+eq "sealed: the change names the open-half metric, unprefixed" "$(field "$S/b-changes.jsonl" 0 metric)" "codex.class.quoting.recall"
+eq "sealed: its value is the open half's" "$(field "$S/b-changes.jsonl" 0 value)" "0"
+# A sweep of sealed cases only (--only) has sealed. metrics and no open. half.
+ok "sealed-only row" python3 -I "$RUNS" append --ledger "$S/c.jsonl" --eval review-panel --source s --config-json '{"review_panel_v":2}' \
+  --metrics-json '{"codex.class.quoting.recall":0,"sealed.codex.class.quoting.recall":0}'
+ok "sealed-only feedback" python3 -I "$FB" run --ledger "$S/c.jsonl" --changes "$S/c-changes.jsonl" --rules "$S/rules.json"
+eq "sealed: a row with no open half opens no change from its sealed or whole-set metrics" "$(rows "$S/c-changes.jsonl")" "0"
+
+# --- train/test keep rule: keep only when train AND test both gain more than min_gain, over noise --------
+T="$TMP/keep"; mkdir -p "$T"
+ok "keep base 1" split "$T/up-flat.jsonl" 0 0 0
+ok "keep base 2" split "$T/up-flat.jsonl" 0 0 0
+ok "keep open" python3 -I "$FB" run --ledger "$T/up-flat.jsonl" --changes "$T/up-flat-c.jsonl" --rules "$S/rules.json"
+ok "train-up/test-flat row" split "$T/up-flat.jsonl" 0.5 1 0
+ok "train-up/test-flat measure" python3 -I "$FB" run --ledger "$T/up-flat.jsonl" --changes "$T/up-flat-c.jsonl" --rules "$S/rules.json"
+eq "keep rule: a train-up/test-flat change is reverted" "$(field "$T/up-flat-c.jsonl" 1 verdict)" "revert"
+has "keep rule: the revert says why" "$(field "$T/up-flat-c.jsonl" 1 reason)" "test"
+eq "keep rule: the test half is recorded" "$(field "$T/up-flat-c.jsonl" 1 test_after)" "0"
+ok "both-up base 1" split "$T/both.jsonl" 0 0 0
+ok "both-up base 2" split "$T/both.jsonl" 0 0 0
+ok "both-up open" python3 -I "$FB" run --ledger "$T/both.jsonl" --changes "$T/both-c.jsonl" --rules "$S/rules.json"
+ok "both-up row" split "$T/both.jsonl" 1 1 1
+ok "both-up measure" python3 -I "$FB" run --ledger "$T/both.jsonl" --changes "$T/both-c.jsonl" --rules "$S/rules.json"
+eq "keep rule: train and test both up, no noise: kept" "$(field "$T/both-c.jsonl" 1 verdict)" "keep"
+eq "keep rule: the noise is the spread of the runs before the change" "$(field "$T/both-c.jsonl" 1 noise)" "0"
+ok "noisy base 1" split "$T/noisy.jsonl" 0 0.5 0
+ok "noisy base 2" split "$T/noisy.jsonl" 0 0 0
+ok "noisy open" python3 -I "$FB" run --ledger "$T/noisy.jsonl" --changes "$T/noisy-c.jsonl" --rules "$S/rules.json"
+ok "noisy row" split "$T/noisy.jsonl" 1 1 1
+ok "noisy measure" python3 -I "$FB" run --ledger "$T/noisy.jsonl" --changes "$T/noisy-c.jsonl" --rules "$S/rules.json"
+eq "keep rule: run-to-run noise (0.5) not below min_gain (0.25) is not kept" "$(field "$T/noisy-c.jsonl" 1 verdict)" "revert"
+has "keep rule: the noisy revert names the noise" "$(field "$T/noisy-c.jsonl" 1 reason)" "noise"
+ok "one-run base" split "$T/one.jsonl" 0 0 0
+ok "one-run open" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one-c.jsonl" --rules "$S/rules.json"
+ok "one-run row" split "$T/one.jsonl" 1 1 1
+ok "one-run measure" python3 -I "$FB" run --ledger "$T/one.jsonl" --changes "$T/one-c.jsonl" --rules "$S/rules.json"
+eq "keep rule: one run before the change leaves the noise unmeasured: not kept" "$(field "$T/one-c.jsonl" 1 verdict)" "revert"
+# A rule with absent=0 must not stand in for a sealed half the row never measured.
+cat >"$T/absent-rules.json" <<'EOF'
+{"v": 1, "rules": [{"eval": "review-panel", "metric": "codex.fp_rate", "threshold": 0.2, "better": "lower",
+  "absent": 0, "change": "prompt", "target": "scripts/cr/critic-first-pass.sh", "critic": "codex", "min_gain": 0.1}]}
+EOF
+fp() { python3 -I "$RUNS" append --ledger "$1" --eval review-panel --source s --config-json '{"review_panel_v":2}' \
+  --metrics-json "$2" >/dev/null 2>&1; }
+ok "absent base 1" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent base 2" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent open" python3 -I "$FB" run --ledger "$T/absent.jsonl" --changes "$T/absent-c.jsonl" --rules "$T/absent-rules.json"
+ok "absent row" fp "$T/absent.jsonl" '{"open.codex.fp_rate":0,"sealed.codex.clean_scored":0}'
+ok "absent measure" python3 -I "$FB" run --ledger "$T/absent.jsonl" --changes "$T/absent-c.jsonl" --rules "$T/absent-rules.json"
+eq "keep rule: a sealed half with no value is unmeasured, not the rule's absent" "$(field "$T/absent-c.jsonl" 1 reason)" "test half unmeasured"
+ok "absent-open base 1" fp "$T/absent2.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent-open base 2" fp "$T/absent2.jsonl" '{"open.codex.fp_rate":0.5,"sealed.codex.fp_rate":0.5}'
+ok "absent-open open" python3 -I "$FB" run --ledger "$T/absent2.jsonl" --changes "$T/absent2-c.jsonl" --rules "$T/absent-rules.json"
+ok "absent-open row" fp "$T/absent2.jsonl" '{"open.codex.clean_scored":0,"sealed.codex.fp_rate":0}'
+ok "absent-open measure" python3 -I "$FB" run --ledger "$T/absent2.jsonl" --changes "$T/absent2-c.jsonl" --rules "$T/absent-rules.json"
+eq "a split row's open half with no value is unmeasured, not the rule's absent: nothing measured" "$(rows "$T/absent2-c.jsonl")" "1"
+# Noise under the record's rounding is still noise: min_gain 0 keeps only a change over zero noise.
+sed 's/"min_gain": 0.25/"min_gain": 0/' "$S/rules.json" >"$T/zero-rules.json"
+ok "tiny-noise base 1" split "$T/tiny.jsonl" 0 0.4 0
+ok "tiny-noise base 2" split "$T/tiny.jsonl" 0 0.4000004 0
+ok "tiny-noise open" python3 -I "$FB" run --ledger "$T/tiny.jsonl" --changes "$T/tiny-c.jsonl" --rules "$T/zero-rules.json"
+ok "tiny-noise row" split "$T/tiny.jsonl" 1 1 1
+ok "tiny-noise measure" python3 -I "$FB" run --ledger "$T/tiny.jsonl" --changes "$T/tiny-c.jsonl" --rules "$T/zero-rules.json"
+eq "keep rule: noise that rounds to 0 is still not below a min_gain of 0" "$(field "$T/tiny-c.jsonl" 1 reason)" "noise not below min gain"
+# Two finite train values can still differ by more than a float holds: that noise is unmeasured, never Infinity.
+ok "overflow base 1" fp "$T/inf.jsonl" '{"open.codex.fp_rate":-1e308,"sealed.codex.fp_rate":0.5}'
+ok "overflow base 2" fp "$T/inf.jsonl" '{"open.codex.fp_rate":1e308,"sealed.codex.fp_rate":0.5}'
+ok "overflow open" python3 -I "$FB" run --ledger "$T/inf.jsonl" --changes "$T/inf-c.jsonl" --rules "$T/absent-rules.json"
+ok "overflow row" fp "$T/inf.jsonl" '{"open.codex.fp_rate":-1e308,"sealed.codex.fp_rate":0}'
+ok "overflow measure" python3 -I "$FB" run --ledger "$T/inf.jsonl" --changes "$T/inf-c.jsonl" --rules "$T/absent-rules.json"
+eq "keep rule: overflowing noise is unmeasured: not kept" "$(field "$T/inf-c.jsonl" 1 reason)" "noise unmeasured: not a finite spread"
+eq "keep rule: the record holds no Infinity" "$(grep -c Infinity "$T/inf-c.jsonl")" "0"
 
 echo "eval-feedback: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

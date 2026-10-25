@@ -68,13 +68,13 @@ fi
 # lead is prose.
 #
 # Leg docs only: a leg doc carries its brief's "RETASK token" line. A console doc
-# (name ends -console.md) or a doc with no leg brief takes any bullet, since
+# (name ends -chief.md or -console.md) or a doc with no leg brief takes any bullet, since
 # console-template.md has the console log MERGED / VERDICT / OPERATOR / free text
 # through this script.
 lead="${TEXT%%[!A-Z-]*}"
 is_leg=0
 case "${DOC##*/}" in
-    *-console.md) ;;
+    *-console.md|*-chief.md) ;;
     *) grep -q 'RETASK token' "$DOC" && is_leg=1 ;;
 esac
 case "$is_leg:$lead" in
@@ -166,7 +166,7 @@ fi
 # never on the replaced one. A lock that cannot be taken (rc 1) or no flock
 # (rc 3) appends unlocked, as before: the bullet matters more than the race.
 # shellcheck source=scripts/handover/console-kit/leg-doc-lock.sh
-. "$(dirname "${BASH_SOURCE[0]}")/leg-doc-lock.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/worker-doc-lock.sh"
 locked=0
 doc_lock "$DOC" append-results && locked=1
 
@@ -194,7 +194,7 @@ esac
 if [ -n "$event" ] && [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
     base="${DOC##*/}"
     if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
-        bash "$(dirname "${BASH_SOURCE[0]}")/leg-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true
+        bash "$(dirname "${BASH_SOURCE[0]}")/worker-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true
     fi
 fi
 exit 0

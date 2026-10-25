@@ -33,7 +33,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-SCRIPT="$HERE/close-wrapped-leg.sh"
+SCRIPT="$HERE/close-wrapped-worker.sh"
 QL="$HERE/../queue-lock.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/cwl-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -902,7 +902,7 @@ check "reap-alive: tmp-reap never called" "$(wc -c < "$CALLS.reap" | tr -d ' ')"
 # The real P1 digest (bun) and P2 writer over the P1 fixture journal, into
 # per-case scratch ledgers. The session id comes from the pid's sessions file.
 LD="$HERE/../../eval/leg-digest"
-STEP="$HERE/leg-digest-step.sh"
+STEP="$HERE/worker-digest-step.sh"
 DG_SID=4670c3a0-0000-4000-8000-000000000001
 DG_PROJ="$W/dg-projects"; mkdir -p "$DG_PROJ/-w" "$W/sessions"
 { printf '%s\n' "{\"type\":\"custom-title\",\"customTitle\":\"$SESSION_NAME\",\"sessionId\":\"$DG_SID\"}"

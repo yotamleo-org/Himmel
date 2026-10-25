@@ -85,7 +85,7 @@ digest_of() {
 token_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-queue-lock"
 leg_doc=""
 for lockdir in "$root"/.locks/queue/*.lock; do
-    case "$lockdir" in *-console.lock) continue ;; esac
+    case "$lockdir" in *-console.lock|*-chief.lock) continue ;; esac
     [ -f "$lockdir/owner.json" ] || continue
     doc="$(jq -r '.handover // empty' "$lockdir/owner.json" 2>/dev/null)" || continue  # swallow-ok: an unreadable lock is not ours
     [ -n "$doc" ] || continue

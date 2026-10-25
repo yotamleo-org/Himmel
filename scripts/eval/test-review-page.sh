@@ -218,5 +218,74 @@ has "malformed change records: the good change still shows" "$out" "Changed the 
 python3 -I "$PAGE" --ledger "$TMP/runs.jsonl" --changes "$TMP/changes.jsonl" --out "$TMP/page.md" >/dev/null 2>&1
 eq "--out writes the page" "$(head -1 "$TMP/page.md" 2>/dev/null)" "# How good are our reviewers?"
 
+# --panel: the CR ledger's headline, one count per finding. PR b1 raises one claim three times (codex at
+# heads h1 and h2, CodeRabbit at h2) and one other claim; PR b2 has a deferral and two findings with no
+# text on one line; PR b3 was reviewed and drew nothing.
+python3 -I - "$TMP/cr-panel.jsonl" <<'PY' || { echo "test-review-page: writing the panel CR ledger failed" >&2; exit 1; }
+import json, sys
+def fin(br, head, model, fid, line, text, ts, sev="imp"):
+    r = {"kind": "finding", "ts": ts, "branch": br, "head": head, "model": model, "finding_id": fid, "severity": sev,
+         "file": "a.sh", "line": line, "verdict": "", "artifact": "diff", "perspective": "off"}
+    if text is not None:
+        r["text"] = text
+    return r
+def amend(br, head, fid, verdict, ts="2026-10-20T00:00:00Z"):
+    return {"kind": "amend", "ts": ts, "branch": br, "target_head": head, "finding_id": fid, "artifact": "diff",
+            "perspective": "off", "set": {"verdict": verdict}, "reason": "r"}
+rows = [
+    fin("b1", "h1", "codex", "codex-1", 3, "- [imp]: The guard fails open on an empty file [a.sh:3]", "2026-10-10T00:00:00Z"),
+    amend("b1", "h1", "codex-1", "fixed"),
+    fin("b1", "h2", "codex", "codex-1", 3, "- [imp]: the guard fails open on an empty file. [a.sh:3]", "2026-10-11T00:00:00Z"),
+    amend("b1", "h2", "codex-1", "disproved"),
+    fin("b1", "h2", "coderabbit", "coderabbit-7", 3, "The guard fails OPEN on an empty file", "2026-10-11T00:00:01Z"),
+    fin("b1", "h1", "codex", "codex-2", 9, "- [sug]: A second claim", "2026-10-10T00:00:00Z", sev="sug"),
+    amend("b1", "h1", "codex-2", "disproved"),
+    fin("b2", "k1", "codex", "codex-1", 5, "- [imp]: Deferred claim", "2026-10-12T00:00:00Z"),
+    amend("b2", "k1", "codex-1", "deferred"),
+    fin("b2", "k1", "codex", "codex-2", 7, None, "2026-10-12T00:00:00Z"),
+    fin("b2", "k1", "codex", "codex-3", 7, None, "2026-10-12T00:00:00Z"),
+    {"kind": "avail", "ts": "2026-10-13T00:00:00Z", "branch": "b3", "head": "m1", "model": "codex", "status": "ok",
+     "artifact": "diff", "perspective": "off", "responding_model": "gpt-6.1-sol"},
+    fin("b9", "z1", "codex", "codex-1", 1, "- [imp]: After the cut", "2026-10-26T00:00:00Z"),
+]
+with open(sys.argv[1], "w") as fh:
+    for r in rows:
+        fh.write(json.dumps(r) + "\n")
+PY
+panel="$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --min-findings 1 2>&1)"; rc=$?
+eq "panel: exit 0" "$rc" "0"
+has "panel: states the as-of date" "$panel" "As of 25 Oct 2026"
+has "panel: a claim re-raised across rounds and reviewers counts once" "$panel" "5 distinct findings across 2 PRs"
+has "panel: says how many rows were repeats" "$panel" "7 finding rows"
+has "panel: per-PR numbers" "$panel" "3 PRs reviewed, 2 with at least one finding"
+has "panel: findings per PR" "$panel" "median 2.5 and mean 2.5 distinct findings per PR with findings"
+has "panel: a merged finding takes its first raise's verdict" "$panel" "| **All** | **5** | **2** | **1** | **1** | **1** | **2** |"
+has "panel: the merged finding counts for each critic that raised it" "$panel" "| \`coderabbit\` | 1 | 1 | 1 | 0 | 0 | 0 |"
+has "panel: a re-run command pins the cut" "$panel" "--until 2026-10-25T00:00:00Z"
+folded="$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --min-findings 2 2>&1)"
+has "panel: a critic under --min-findings folds into one other row" "$folded" "| other (1 slugs under 2 findings each) | 1 | 1 | 1 | 0 | 0 | 0 |"
+has "panel: a critic at --min-findings keeps its row" "$folded" "| \`codex\` | 5 | 2 |"
+has "panel: the re-run command keeps a non-default --min-findings" "$folded" "--min-findings 2 --out"
+cp "$TMP/page.md" "$TMP/nomark.md"
+python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --out "$TMP/nomark.md" >/dev/null 2>&1; rc=$?
+eq "panel --out: a file with no generated block is refused" "$rc" "2"
+eq "panel --out: the refused file is untouched" "$(cmp -s "$TMP/page.md" "$TMP/nomark.md" && echo same)" "same"
+printf '%s\n' "# Kept title" "" "<!-- review-page.py --panel: start -->" "stale" "<!-- review-page.py --panel: end -->" "" "Kept tail." > "$TMP/doc.md"
+python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-panel.jsonl" --until 2026-10-25T00:00:00Z --out "$TMP/doc.md" >/dev/null 2>&1; rc=$?
+eq "panel --out: exit 0" "$rc" "0"
+doc="$(cat "$TMP/doc.md")"
+has "panel --out: the text before the block is kept" "$doc" "# Kept title"
+has "panel --out: the text after the block is kept" "$doc" "Kept tail."
+has "panel --out: the block is regenerated" "$doc" "5 distinct findings across 2 PRs"
+case "$doc" in *stale*) fail "panel --out: the old block is gone";; *) pass "panel --out: the old block is gone";; esac
+printf '%s\n' '{"kind":"finding","ts":"2026-10-10T00:00:00Z","branch":"b1","head":"h1","model":"codex","finding_id":"codex-1","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"- [imp]: a == b [a.sh:1]"}' \
+  '{"kind":"finding","ts":"2026-10-10T00:00:00Z","branch":"b1","head":"h1","model":"codex","finding_id":"codex-2","severity":"imp","file":"a.sh","line":1,"verdict":"","artifact":"diff","perspective":"off","text":"- [imp]: a != b [a.sh:1]"}' > "$TMP/cr-ops.jsonl"
+has "panel: claims that differ only by an operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-ops.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
+sed -e 's/a == b/a + b/' -e 's/a != b/a - b/' "$TMP/cr-ops.jsonl" > "$TMP/cr-arith.jsonl"
+has "panel: claims that differ only by an arithmetic operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-arith.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
+sed -e 's/a == b/a \&\& b/' -e 's/a != b/a || b/' "$TMP/cr-ops.jsonl" > "$TMP/cr-logic.jsonl"
+has "panel: claims that differ only by a logical operator stay two findings" "$(python3 -I "$PAGE" --panel --cr-ledger "$TMP/cr-logic.jsonl" 2>&1)" "2 distinct findings across 1 PRs"
+has "--help prints the whole usage text" "$(python3 -I "$PAGE" --help 2>&1)" "--panel [--cr-ledger P] [--until TS]"
+
 echo "test-review-page: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

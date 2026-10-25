@@ -4190,15 +4190,7 @@ function probeBridgePersistence(item, ctx) {
 //
 // The Phase A observability stack (local Prometheus + Grafana +
 // windows_exporter + the Bun flow-exporter) registers FOUR scheduled tasks
-// at install time — restart-stack.sh's own hard allowlist (the
-// authoritative task-name family, ~L190-216) is the single source of truth
-// this list mirrors. Parity is TEST-ENFORCED, not asserted on faith
-// this probe does NOT re-parse
-// restart-stack.sh at runtime (extra file I/O + bash-parsing fragility on a
-// probe that must stay fast/dependency-free) — instead
-// scripts/install/test-observability-stack-manifest.sh's own drift case
-// extracts both lists from source and asserts them equal, failing loudly if
-// this array and restart-stack.sh's allowlist ever diverge:
+// at install time, under these names:
 const OBSERVABILITY_TASK_NAMES = [
   'himmel-observability-flow-exporter',
   'himmel-observability-grafana',

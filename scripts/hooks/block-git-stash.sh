@@ -344,6 +344,10 @@ if [ "$tool" != PowerShell ]; then
             echo "block-git-stash: shfmt not on PATH, so this command that names a git stash verb cannot be read; refusing. Install shfmt (a station install goes to a test VM first) or bypass with GIT_STASH_OK=1." >&2
             exit 2
             ;;
+        5)
+            echo "block-git-stash: the command model timed out, so this command that names a git stash verb cannot be read; refusing. Split the command, or bypass with GIT_STASH_OK=1." >&2
+            exit 2
+            ;;
     esac
 fi
 

@@ -913,6 +913,68 @@ wait_exit "$WPID"
 check "(st3) a tick line with no stall= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# --- (dp) dispatch= wakes once per NEW late/idle/orphan run; the elapsed time,
+# job counts and a stale-head flag never wake, a run leaving the set does not, dispatch=? keeps the saved set
+# RED control (console-wait.sh before this change): the flagged run never woke.
+dispatch_line() { sed -E "s# dispatch=[^ ]*##; s#  *denials=none# dispatch=$1 denials=none#" "$STUB/tick.line" > "$STUB/tick.line.tmp" && mv "$STUB/tick.line.tmp" "$STUB/tick.line"; }
+reset_stub
+I="$(new_inbox dp)"
+start "$I" "$WORK/dp.out" --legs "N1.md"
+wait_hb "$I" || fail "(dp) no baseline heartbeat"
+tick_line "N1:FRESH" "ok"
+dispatch_line 4001:N61:102/120m:3/9@1111111:late
+wait_exit "$WPID"
+check "(dp) a new late run ends the wait" "0" "$rc"
+check "(dp) the wake names dispatch" "WAKE tick changed=dispatch bank=PROCEED" "$(head -n1 "$WORK/dp.out")"
+
+reset_stub
+tick_line "N1:FRESH" "ok"
+dispatch_line 4001:N61:102/120m:3/9@1111111:late
+I="$(new_inbox dp2)"
+start "$I" "$WORK/dp2.out" --legs "N1.md"
+wait_hb "$I" || fail "(dp2) no baseline heartbeat"
+dispatch_line 4001:N61:103/120m:4/9@1111111:late
+wait_exit "$WPID"
+check "(dp2) a flagged run's elapsed time and job counts moving does not wake" "running" "$rc"
+dispatch_line 4001:N61:104/120m:4/9@1111111:late:stale-head,4002:N61:5/120m:1/9@2222222:stale-head
+wait_exit "$WPID"
+check "(dp2) a stale-head flag and an unflagged run alone do not wake" "running" "$rc"
+dispatch_line 4002:N61:6/120m:1/9@2222222
+wait_exit "$WPID"
+check "(dp2) the flagged run finishing does not wake" "running" "$rc"
+dispatch_line 4003:N333:5/120m:1/9@3333333:orphan
+wait_exit "$WPID"
+check "(dp2) a new orphan run wakes" "0" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+tick_line "N1:FRESH" "ok"
+dispatch_line 4001:N61:102/120m:3/9@1111111:late
+I="$(new_inbox dp3)"
+start "$I" "$WORK/dp3.out" --legs "N1.md"
+wait_hb "$I" || fail "(dp3) no baseline heartbeat"
+dispatch_line '?'
+wait_exit "$WPID"
+check "(dp3) an unreadable runs list alone does not wake" "running" "$rc"
+dispatch_line 4001:N61:105/120m:3/9@1111111:late
+wait_exit "$WPID"
+check "(dp3) the same late run returning after the outage does not wake" "running" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
+reset_stub
+tick_line "N1:FRESH" "ok"
+dispatch_line 4001:N61:102/120m:3/9@1111111:late:idle
+I="$(new_inbox dp4)"
+start "$I" "$WORK/dp4.out" --legs "N1.md"
+wait_hb "$I" || fail "(dp4) no baseline heartbeat"
+dispatch_line 4001:N61:103/120m:3/9@1111111:late
+wait_exit "$WPID"
+check "(dp4) a run dropping one of its flags does not wake" "running" "$rc"
+dispatch_line 4001:N61:104/120m:3/9@1111111:late:orphan
+wait_exit "$WPID"
+check "(dp4) the same run gaining a new flag wakes" "0" "$rc"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 # an option-shaped first argument is refused before any path is derived from it
 mkdir -p "$WORK/kopt"
 (cd "$WORK/kopt" && bash "$WAIT" --help >"$WORK/kopt.out" 2>&1); rc=$?

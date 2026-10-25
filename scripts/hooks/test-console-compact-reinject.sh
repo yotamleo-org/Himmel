@@ -236,6 +236,18 @@ out="$(env -u HIMMEL_CONSOLE_DOC CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLIN
 if [ "$rc" -eq 0 ]; then ok "non-console session exits 0"; else bad "expected rc 0, got $rc"; fi
 if [ -z "$out" ]; then ok "non-console session prints NOTHING"; else bad "expected total silence for a non-console session - got: $out"; fi
 
+echo "== a session named *-chief re-injects its doc like a *-console one =="
+CMDLINE_CHIEF="$TMP/cmdline-roadmap-chief"
+printf 'claude\0-n\0roadmap-chief\0' > "$CMDLINE_CHIEF"
+CHIEF_DOC_NEW="$TMP/roadmap-chief.md"
+mk_console_doc "$CHIEF_DOC_NEW"
+out="$(env CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" HIMMEL_CONSOLE_DOC="$CHIEF_DOC_NEW" bash "$HOOK")"; rc=$?
+if [ "$rc" -eq 0 ]; then ok "chief-named session exits 0"; else bad "expected rc 0, got $rc"; fi
+case "$out" in
+    *'## Live state'*) ok "chief-named session re-injects Live state" ;;
+    *) bad "chief-named session lost the re-inject - got: $out" ;;
+esac
+
 echo "== no CLAUDE_PID at all (unresolvable session name) -> SILENT no-op =="
 out="$(env -u HIMMEL_CONSOLE_DOC -u CLAUDE_PID bash "$HOOK")"; rc=$?
 if [ "$rc" -eq 0 ]; then ok "unresolvable session exits 0"; else bad "expected rc 0, got $rc"; fi

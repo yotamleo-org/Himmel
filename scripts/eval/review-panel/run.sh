@@ -7,8 +7,9 @@
 #
 # usage: run.sh --out <dir> [--fixtures <dir>] [--key <file>] [--tiers <t>]
 #               [--critics a,b] [--only case-01,...] [--meta-json <json>]
-#               [--ledger <path> | --no-ledger]
+#               [--ledger <path> | --no-ledger] [--model <m>]
 #   --tiers    CRITIC_PANEL_TIERS for the panel (default paid: the codex row).
+#   --model    the critic model, recorded on the row and in its config.
 #   --critics  critic slugs to report even when they file nothing (default:
 #              the critics.json rows in --tiers).
 # Env: REVIEW_PANEL_CMD (default scripts/cr/critic-panel.sh; the test seam),
@@ -20,11 +21,11 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 PANEL="${REVIEW_PANEL_CMD:-$HERE/../../cr/critic-panel.sh}"
 fixtures="$HERE/fixtures"; key="$HERE/key/seeds.json"
-out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=()
+out=""; tiers="paid"; critics=""; only=""; meta="{}"; ledger_args=(); model=""
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --out|--fixtures|--key|--tiers|--critics|--only|--meta-json|--ledger)
+        --out|--fixtures|--key|--tiers|--critics|--only|--meta-json|--ledger|--model)
             if [ $# -lt 2 ]; then echo "run.sh: $1 needs a value" >&2; exit 2; fi ;;
     esac
     case "$1" in
@@ -37,6 +38,7 @@ while [ $# -gt 0 ]; do
         --meta-json) meta="${2:-}"; shift 2 ;;
         --ledger) ledger_args=(--ledger "${2:-}"); shift 2 ;;
         --no-ledger) ledger_args=(--no-ledger); shift ;;
+        --model) model="${2:-}"; shift 2 ;;
         *) echo "run.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
 done
@@ -104,5 +106,5 @@ for patch in "$fixtures"/case-*.patch; do
 done
 
 python3 "$HERE/score.py" score --outputs "$out" --fixtures "$fixtures" --key "$key" \
-    --critics "$critics" ${only:+--only "$only"} --meta-json "$meta" \
+    --critics "$critics" ${only:+--only "$only"} ${model:+--model "$model"} --meta-json "$meta" \
     --json "$out/scores.json" ${ledger_args[@]+"${ledger_args[@]}"}

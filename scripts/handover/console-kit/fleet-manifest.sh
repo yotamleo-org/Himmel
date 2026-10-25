@@ -49,7 +49,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 . "$HERE/../../lib/prim.sh" || exit 2
 # shellcheck source=../../lib/leg-identity.sh
-. "$HERE/../../lib/leg-identity.sh"
+. "$HERE/../../lib/worker-identity.sh"
 
 usage() {
     cat <<'USAGE'
