@@ -29,7 +29,7 @@ fleet_slots_assert_isolated() {
   case "$resolved" in
     "$tmp"/?*) return 0 ;;
   esac
-  echo "FAIL fleet-slots isolation: bank-preflight would reserve in '$resolved', outside the suite TMP '$tmp' — a test run must never take a real FLEET_CAP slot (HIMMEL-3103)" >&2
+  echo "FAIL fleet-slots isolation: bank-preflight would reserve in '$resolved', outside the suite TMP '$tmp' — a test run must never take a real FLEET_CAP slot" >&2
   return 1
 }
 

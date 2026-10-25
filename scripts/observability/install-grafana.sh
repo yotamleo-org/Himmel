@@ -58,7 +58,7 @@ die() { echo "install-grafana: $*" >&2; exit "${2:-1}"; }
 
 case "$(uname -s 2>/dev/null)" in
     Linux) ;;
-    Darwin) die "macOS is not supported yet (launchd packaging): HIMMEL-4406" 2 ;;
+    Darwin) die "macOS is not supported yet (launchd packaging)" 2 ;;
     MINGW*|MSYS*|CYGWIN*) die "Windows shells use install-stack.ps1" 2 ;;
     *) die "unsupported platform: $(uname -s 2>/dev/null)" 2 ;;
 esac

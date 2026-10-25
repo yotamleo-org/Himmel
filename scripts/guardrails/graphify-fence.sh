@@ -421,7 +421,7 @@ _GF_MAX_CMD_BYTES=32768
 # undercounts its true byte length, so the cap must measure real bytes
 _GF_CMD_BYTES=$(LC_ALL=C printf '%s' "$CMD" | wc -c)
 if [ "$_GF_CMD_BYTES" -gt "$_GF_MAX_CMD_BYTES" ]; then
-    deny "routed command is ${_GF_CMD_BYTES} bytes, over the ${_GF_MAX_CMD_BYTES}-byte fence cap (fail-closed, HIMMEL-3683/J1323C F1 - a command this size cannot be scanned within the hook timeout)"
+    deny "routed command is ${_GF_CMD_BYTES} bytes, over the ${_GF_MAX_CMD_BYTES}-byte fence cap"
 fi
 
 # file-readability and endpoint-host
@@ -1535,7 +1535,7 @@ _deny_on_classify_sentinel() {
     local rest mkpath mkcontent
     case "$1" in
         __cross_drive__$'\t'*)
-            deny "drive-relative target '${1#__cross_drive__$'\t'}' resolves against Windows' per-drive current directory, which this fence cannot read - use an absolute path (fail-closed, HIMMEL-845)" ;;
+            deny "drive-relative target '${1#__cross_drive__$'\t'}' resolves against Windows' per-drive current directory, which this fence cannot read - use an absolute path" ;;
         __unreadable__)
             deny "a PHI root list under $PHI_CONFIG_DIR exists but is not readable (fail-closed)" ;;
         __marker_unreadable__$'\t'*)

@@ -325,7 +325,7 @@ _csg_orphan() {
 }
 
 _csg_deny() {
-    echo "$1: $2 - refusing (HIMMEL-3914)" >&2
+    echo "$1: $2 - refusing" >&2
     exit "$CSG_DENY_RC"
 }
 

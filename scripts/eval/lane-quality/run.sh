@@ -648,11 +648,11 @@ cmd_run() {
     claudex)
       # the per-dispatch lane opt-in the dispatcher reads.
       if [ "${CLAUDEX_LANE_OK:-}" != 1 ]; then
-        echo "lane-quality: lane claudex needs CLAUDEX_LANE_OK=1 on the command (HIMMEL-4906)" >&2
+        echo "lane-quality: lane claudex needs CLAUDEX_LANE_OK=1 on the command" >&2
         exit 3
       fi ;;
     deepseek)
-      echo "lane-quality: lane '$LANE' is not enabled (HIMMEL-4090): it needs the operator's go; see docs/internals/lane-calibration.md" >&2
+      echo "lane-quality: lane '$LANE' is not enabled: it needs the operator's go; see docs/internals/lane-calibration.md" >&2
       exit 3 ;;
     *) die "--lane must be native, openrouter, api or claudex; got '$LANE'" ;;
   esac

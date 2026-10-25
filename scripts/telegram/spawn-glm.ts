@@ -1263,7 +1263,7 @@ export function armStartupWatchdog(p: {
         const livePid = p.livePid();
         if (livePid !== undefined && p.outputBytes() <= 512) {
           p.onHang(livePid);
-          console.error(`${p.label}: STARTUP HANG (HIMMEL-1575) — no transcript growth and no output beyond the banner within ${Math.round(p.windowMs / 60_000)} min; killing pid ${livePid} instead of burning the full run window (disable/tune: ${p.tuneHint}, 0=off)`);
+          console.error(`${p.label}: STARTUP HANG — no transcript growth and no output beyond the banner within ${Math.round(p.windowMs / 60_000)} min; killing pid ${livePid} instead of burning the full run window (disable/tune: ${p.tuneHint}, 0=off)`);
           killWorker(livePid);
         }
       }
@@ -1403,7 +1403,7 @@ export async function executeRun(deps: {
       if (treeClean && hasGitPushEscalation(outboxText)) {
         doneEscalated = true;
         writeFileSync(deps.metaPath, JSON.stringify({ ...deps.runningMeta, ...fm, status: "done_escalated", escalation: "git-push" }, null, 2));
-        console.error("spawn-glm: run hit the timeout but the worktree is clean with a git-push escalation on record — reclassified done_escalated (HIMMEL-1641): the worker finished, block-glm-external-writes.sh stopped the push by design; the parent must push from the primary checkout and run verify-return.");
+        console.error("spawn-glm: run hit the timeout but the worktree is clean with a git-push escalation on record — reclassified done_escalated: the worker finished, block-glm-external-writes.sh stopped the push by design; the parent must push from the primary checkout and run verify-return.");
       }
     }
     // a watchdog-killed run is a classified startup hang, not a
@@ -1412,7 +1412,7 @@ export async function executeRun(deps: {
     // >192 B). Mirrors the prompt-too-long classification below.
     if (!doneEscalated && startupHang && (fm.status === "failed" || fm.status === "timeout")) {
       writeFileSync(deps.metaPath, JSON.stringify({ ...deps.runningMeta, ...fm, failure_class: "startup-hang" }, null, 2));
-      console.error("spawn-glm: run classified startup-hang (HIMMEL-1575) — the model never responded; killed at the fail-fast window instead of the full run cap. Do NOT blind-retry as primary mitigation; the base rate is ~30%.");
+      console.error("spawn-glm: run classified startup-hang — the model never responded; killed at the fail-fast window instead of the full run cap. Do NOT blind-retry as primary mitigation; the base rate is ~30%.");
     }
     // an honest failure_class for the submit-reject. ONLY on a bare
     // `failed` (a capped/blocked/timeout run is a distinct terminal state, handled

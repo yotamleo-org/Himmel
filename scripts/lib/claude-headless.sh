@@ -29,7 +29,7 @@ _csg_lib="$_csg_dir/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-  echo "claude-headless.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+  echo "claude-headless.sh: cannot load $_csg_lib - refusing" >&2
   exit 96
 fi
 chokepoint_seam_guard scripts/lib/claude-headless.sh || exit 96
@@ -114,7 +114,7 @@ done
 [ -n "$WORKTREE" ] || die "--worktree is required"
 [ -n "$ARTIFACT" ] || die "--artifact is required"
 [ -n "$PERMISSION_MODE" ] || die "--permission-mode is required"
-[ -n "$MODEL" ] || die "--model is required: every dispatch names an explicit model (HIMMEL-2198)"
+[ -n "$MODEL" ] || die "--model is required: every dispatch names an explicit model"
 [ "$PERMISSION_MODE" != "bypassPermissions" ] || die "--permission-mode bypassPermissions is refused; pick an explicit mode (default/plan/dontAsk/etc.)"
 case "$MAX_TURNS" in *[!0-9]*|0|1) die "--max-turns must be an integer >= 2 (got '$MAX_TURNS')" ;; esac
 [ -z "$PROMPT_FILE" ] || [ -r "$PROMPT_FILE" ] || die "--prompt-file not readable: $PROMPT_FILE"

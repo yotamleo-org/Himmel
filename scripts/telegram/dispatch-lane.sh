@@ -213,7 +213,7 @@ if [ -z "$LANE" ]; then
   LANE="$(printf '%s\n' "$IMPL_JSON" | jq -r '[.[] | select(.dispatch.preferredDefault == true)] | if length == 1 then .[0].id else "" end')"
 fi
 if [ -z "$LANE" ]; then
-  echo "dispatch-lane.sh: no unambiguous available default impl lane; impl routes to native Claude subagents only (operator ruling 2026-08-19, HIMMEL-1967) — use the Agent tool inside this session (named model tier: haiku/sonnet/opus/fable) instead, or pass --lane / set HIMMEL_IMPL_LANE for an explicit opt-in dispatch" >&2
+  echo "dispatch-lane.sh: no unambiguous available default impl lane; impl routes to native Claude subagents only — use the Agent tool inside this session (named model tier: haiku/sonnet/opus/fable) instead, or pass --lane / set HIMMEL_IMPL_LANE for an explicit opt-in dispatch" >&2
   list_lanes >&2
   exit 2
 fi

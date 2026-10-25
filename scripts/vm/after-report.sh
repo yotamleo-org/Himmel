@@ -309,7 +309,7 @@ import json, sys
 d = json.load(open(sys.argv[1]))
 u = d.get(sys.argv[2], {}).get("user")
 sys.exit(1) if not u else print(u)
-' "$VMS_JSON" "$SOURCE_VM" 2>/dev/null) || fail "no literal 'user' set for '$SOURCE_VM' in scripts/lib/vms.json — that JSON field is the single line to fix (HIMMEL-2623)"
+' "$VMS_JSON" "$SOURCE_VM" 2>/dev/null) || fail "no literal 'user' set for '$SOURCE_VM' in scripts/lib/vms.json — that JSON field is the single line to fix"
 fi
 
 # --- claim a clone slot (sets CLONE_IDX / CLONE_FD / CLONE_NAME) -----------
@@ -570,8 +570,8 @@ for p in .env .claude/settings.local.json .himmel-dev; do
     _absence_rc=$?
     case "$_absence_rc" in
         1) ;;  # confirmed absent — the only case that lets the loop continue
-        0) fail "guest checkout carries '$p' — refusing to run the suite (HIMMEL-2540: a guest checkout must never carry host secrets or local settings)" ;;
-        *) fail "could not verify '$p' is absent from the guest checkout (ssh exited $_absence_rc, not a confirmed 0/1 — likely a transport failure) — refusing to run the suite rather than assume it is safe (HIMMEL-2540)" ;;
+        0) fail "guest checkout carries '$p' — refusing to run the suite" ;;
+        *) fail "could not verify '$p' is absent from the guest checkout (ssh exited $_absence_rc, not a confirmed 0/1 — likely a transport failure) — refusing to run the suite rather than assume it is safe" ;;
     esac
 done
 
@@ -680,9 +680,9 @@ $(printf ' TRUNCATED: yes (run budget expired — not every suite ran)')"
     summary_block="${summary_block}
 $(printf ' CHANGED-SINCE: origin/main (suites were conditionally filtered — not full scope coverage)')"
     summary_block="${summary_block}
-$(printf ' RAN-IN: VM clone %s (HIMMEL-2623 — a separate host, not this machine'"'"'s lock domain)' "$CLONE_NAME")"
+$(printf ' RAN-IN: VM clone %s' "$CLONE_NAME")"
 else
-    summary_block=$(printf 'DIED-BEFORE-SUMMARY: the guest run exited (rc=%s) before printing its own "== Summary ==" — no PASS/SKIP/FAIL verdict exists for this run.\n head: %s\n %s\n scope: %s\n RAN-IN: VM clone %s (HIMMEL-2623)' \
+    summary_block=$(printf 'DIED-BEFORE-SUMMARY: the guest run exited (rc=%s) before printing its own "== Summary ==" — no PASS/SKIP/FAIL verdict exists for this run.\n head: %s\n %s\n scope: %s\n RAN-IN: VM clone %s' \
         "$SUITE_RC" "$REPORT_HEAD" "$scanning_line" "scripts" "$CLONE_NAME")
     # no verdict is a failure of the run, whatever EXITCODE the
     # guest captured — "could not determine a verdict" must never share an

@@ -165,7 +165,7 @@ plan=$(
         echo "- status: \`$STATUS\`"
         echo "- limit: \`$LIMIT\`"
         echo "- priority: \`$PRIORITY\` (v1: key-desc; jira CLI does not yet"
-        echo "  expose priority field — see HIMMEL-146 for envification work)"
+        echo "  expose priority field for envification work)"
         echo
         echo "## Tickets"
         echo
@@ -205,7 +205,7 @@ plan=$(
         echo
         echo "## After all subagents return"
         echo
-        echo "- Write the consolidated morning report (HIMMEL-258): one row per"
+        echo "- Write the consolidated morning report: one row per"
         echo "  ticket (ticket, branch, PR, status, outcome, decision) piped into"
         echo "  \`scripts/overnight/morning-report.sh\` — decisions-needed grouped"
         echo "  at top; output path resolved via \`handover_root\`."

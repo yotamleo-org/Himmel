@@ -678,7 +678,7 @@ export function probeClaudexAuth(repoRoot: string, cwd: string, timeoutMs: numbe
   if (r.exitCode === 3) {
     const guardEvidence = r.stderr?.toString().trim();
     if (guardEvidence) console.error(`spawn-claudex: ${guardEvidence}`);
-    console.error(`spawn-claudex: the codex auth probe was refused by claude-codex's PHI/egress guard (exit 3) for ${cwd} — this is a guard verdict, NOT an auth or credential problem (HIMMEL-2626).`);
+    console.error(`spawn-claudex: the codex auth probe was refused by claude-codex's PHI/egress guard (exit 3) for ${cwd} — this is a guard verdict, NOT an auth or credential problem.`);
     return "fatal";
   }
   // the launcher already logged "HTTP <code> — body: …" to its own
@@ -729,7 +729,7 @@ export async function runAuthPreflightWithBackoff(
     const remaining = deadline - now();
     if (remaining <= 0) break; // out of the foreground budget (probes consumed it)
     const wait = Math.min(deps.delaysMs[i], remaining);
-    deps.log?.(`spawn-claudex: codex auth unavailable (503 refresh gap?) on preflight ${i + 1}/${deps.delaysMs.length + 1}; backing off ${Math.round(wait / 1000)}s before re-probing (HIMMEL-1037)`);
+    deps.log?.(`spawn-claudex: codex auth unavailable (503 refresh gap?) on preflight ${i + 1}/${deps.delaysMs.length + 1}; backing off ${Math.round(wait / 1000)}s before re-probing`);
     await deps.sleep(wait);
     if (deadline - now() <= 0) break; // budget spent by the sleep — do NOT probe past the deadline
     res = probe(probeBudget());
@@ -737,7 +737,7 @@ export async function runAuthPreflightWithBackoff(
     if (res === "ok") return { ready: true, fatal: false, attempts };
     if (res === "fatal") return { ready: false, fatal: true, attempts };
   }
-  deps.log?.(`spawn-claudex: codex auth still unavailable after ${attempts} preflight attempt(s) across the ${Math.round(budgetMs / 1000)}s backoff schedule — refusing (likely a real outage, not the transient gap) (HIMMEL-1037)`);
+  deps.log?.(`spawn-claudex: codex auth still unavailable after ${attempts} preflight attempt(s) across the ${Math.round(budgetMs / 1000)}s backoff schedule — refusing (likely a real outage, not the transient gap)`);
   return { ready: false, fatal: false, attempts };
 }
 
@@ -1367,7 +1367,7 @@ async function main(): Promise<void> {
   const guardCheck = Bun.spawnSync([BASH_BIN, claudexLauncherPath(REPO_ROOT), "--guard-check", absCwd], { cwd: absCwd, stdout: "pipe", stderr: "pipe" });
   if (guardCheck.exitCode !== 0) {
     process.stderr.write(guardCheck.stderr);
-    console.error(`spawn-claudex: PHI/egress pre-check refused this dispatch (claude-codex --guard-check exited ${guardCheck.exitCode}) — refusing before any worktree/branch/session side-effect (HIMMEL-2626).`);
+    console.error(`spawn-claudex: PHI/egress pre-check refused this dispatch (claude-codex --guard-check exited ${guardCheck.exitCode}) — refusing before any worktree/branch/session side-effect.`);
     process.exit(3);
   }
 

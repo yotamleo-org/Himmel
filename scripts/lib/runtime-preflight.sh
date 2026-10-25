@@ -234,7 +234,7 @@ runtime_preflight() {
                 *)             printf '  %s %s %s\n' "$_kind" "$_what" "$_rest" ;;
             esac
         done
-        printf '  fix the runtime, or set HIMMEL_RUNTIME_PREFLIGHT=0 to silence this (HIMMEL-1991).\n'
+        printf '  fix the runtime, or set HIMMEL_RUNTIME_PREFLIGHT=0 to silence this.\n'
         if [ "$mode" = "strict" ]; then
             printf '  HIMMEL_RUNTIME_PREFLIGHT=strict — REFUSING to run %s on a drifted runtime.\n' "$label"
         fi

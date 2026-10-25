@@ -119,7 +119,7 @@ if [ -n "${RSC_HIMMEL_ROOT:-}" ]; then
 elif HIMMEL_ROOT="$(resolve_himmel_root)" && [ -n "$HIMMEL_ROOT" ]; then
     :
 else
-    echo "WARN repo-sync-cadence: could not resolve the primary checkout via git (git unavailable, not inside a repo, or rev-parse failed) -- falling back to this script's own location. If this checkout is a worktree that gets pruned later, the armed cadence's runner path will break (mirrors HIMMEL-892 codex-adv-1)." >&2
+    echo "WARN repo-sync-cadence: could not resolve the primary checkout via git (git unavailable, not inside a repo, or rev-parse failed) -- falling back to this script's own location. If this checkout is a worktree that gets pruned later, the armed cadence's runner path will break." >&2
     HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd)"
 fi
 RUNNER_SCRIPT="$HIMMEL_ROOT/scripts/sync/repo-sync-runner.sh"
@@ -331,7 +331,7 @@ emit_bat() {
         github_root_esc="$4" documents_root_esc="$5" results_file_esc="$6" git_bin_esc="$7" \
         wt_stale_days_esc="$8"
     printf '@echo off\r\n'
-    printf 'rem repo-sync-cadence runner (HIMMEL-2115)\r\n'
+    printf 'rem repo-sync-cadence runner\r\n'
     printf 'rem %s %s\r\n' "$CADENCE_FORMAT_MARKER" "$CADENCE_RUNNER_FORMAT_VERSION"
     cadence_bat_editor_set
     if [ -n "$git_bin_esc" ]; then

@@ -313,7 +313,7 @@ END {
 
         # (5) one reason per hit, naming WHICH half is missing.
         if (ineq) what = "an inequality"; else what = "a bare file-existence test"
-        printf "%s:%d mutation control asserts only %s and never compares the mutant's exit status -- a crashed or silent mutant satisfies it (HIMMEL-2518; use scripts/lib/red-control.sh)\n", F, i, what
+        printf "%s:%d mutation control asserts only %s and never compares the mutant's exit status -- a crashed or silent mutant satisfies it\n", F, i, what
     }
 }
 AWK

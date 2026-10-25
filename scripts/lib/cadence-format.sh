@@ -343,7 +343,7 @@ cadence_vbs_path() {
 cadence_vbs_wrapper() {
     local bat_win="$1" bat_quoted
     bat_quoted="${bat_win//\"/\"\"}"
-    printf '%s\r\n' "' himmel cadence wrapper (HIMMEL-1753) - generated DO NOT EDIT; runs the .bat hidden, returns its exit code."
+    printf '%s\r\n' "' himmel cadence wrapper - generated DO NOT EDIT; runs the .bat hidden, returns its exit code."
     printf '%s\r\n' 'Set sh = CreateObject("WScript.Shell")'
     printf 'WScript.Quit sh.Run("""%s""", 0, True)\r\n' "$bat_quoted"
 }
@@ -419,7 +419,7 @@ cadence_wsh_probe() {
         :
     elif powershell_bin=$(command -v powershell.exe 2>/dev/null); then
         # pwsh is unavailable — loud, named 5.1 fallback, never silent.
-        echo "WARN cadence_wsh_probe: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 (powershell.exe) -- HIMMEL-2126: PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh." >&2
+        echo "WARN cadence_wsh_probe: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 (powershell.exe) -- PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh." >&2
     else
         CADENCE_WSH_DETAIL="PowerShell is unavailable, so WSH policy cannot be verified"
         return 1

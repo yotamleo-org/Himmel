@@ -515,7 +515,7 @@ qmd_install() {
         # a clone of the other known qmd remote (fork or
         # upstream) -- re-point its origin in place instead of refusing an
         # install this tool actually owns.
-        echo "  $fork_dir origin is a known qmd remote ('$origin_url') - re-pointing to $repo (HIMMEL-3956)."
+        echo "  $fork_dir origin is a known qmd remote ('$origin_url') - re-pointing to $repo."
         if ! git -C "$fork_dir" remote set-url origin "$repo"; then
           echo "  ERROR: could not update $fork_dir's origin to $repo." >&2
           return 1

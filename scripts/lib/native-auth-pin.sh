@@ -217,7 +217,7 @@ native_auth_pin_screen_settings() { # $1 = --settings value (file path or inline
   local _payload="${1:-}" _rc
   # Fail closed when node is absent -- a screen that cannot run must not pass.
   command -v node >/dev/null 2>&1 || {
-    echo "native-auth-pin: REFUSED - cannot screen the --settings payload (node not found); an unscreened payload might pull headless claude off native auth (HIMMEL-1867)." >&2
+    echo "native-auth-pin: REFUSED - cannot screen the --settings payload (node not found); an unscreened payload might pull headless claude off native auth." >&2
     return 3
   }
   # Exit codes from node: 2 = unparseable/unreadable, 3 = canonical-key
@@ -238,7 +238,7 @@ process.exit(0);
     return 0
   else
     _rc=$?
-    echo "native-auth-pin: REFUSED - --settings payload sets env.ANTHROPIC_* / env.CLAUDE_CODE_USE_* (or is unparseable/unreadable, node rc=$_rc); it would pull headless claude off native auth (HIMMEL-1867)." >&2
+    echo "native-auth-pin: REFUSED - --settings payload sets env.ANTHROPIC_* / env.CLAUDE_CODE_USE_* (or is unparseable/unreadable, node rc=$_rc); it would pull headless claude off native auth." >&2
     return 3
   fi
 }

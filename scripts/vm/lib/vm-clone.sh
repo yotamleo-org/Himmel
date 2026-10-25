@@ -67,7 +67,7 @@ _vm_fail() {
 vm_env_init() {
     HIMMEL_VM_AR_VBOXMANAGE_DEFAULT="${HIMMEL_VM_AR_VBOXMANAGE_DEFAULT:-/usr/bin/VBoxManage}"
     if [ -z "${VBOXMANAGE_PATH:-}" ] && [ "${HIMMEL_VM_AR_LIVE:-0}" != "1" ]; then
-        _vm_fail "VBOXMANAGE_PATH is unset and HIMMEL_VM_AR_LIVE is not '1' — refusing to fall through to a real VBoxManage (HIMMEL-2623 incident hardening). Set VBOXMANAGE_PATH explicitly (a real path, or a stub for testing), or HIMMEL_VM_AR_LIVE=1 to run for real."
+        _vm_fail "VBOXMANAGE_PATH is unset and HIMMEL_VM_AR_LIVE is not '1' — refusing to fall through to a real VBoxManage. Set VBOXMANAGE_PATH explicitly (a real path, or a stub for testing), or HIMMEL_VM_AR_LIVE=1 to run for real."
     fi
     VBOXMANAGE="${VBOXMANAGE_PATH:-$HIMMEL_VM_AR_VBOXMANAGE_DEFAULT}"
     # A relative path (`./stub`) must resolve here: the VBoxManage calls run

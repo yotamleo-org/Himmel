@@ -28,7 +28,7 @@ resolve_powershell() {
     local ps_fallback
     for ps_fallback in powershell.exe powershell; do
         if command -v "$ps_fallback" >/dev/null 2>&1; then
-            echo "WARN: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 ($ps_fallback) -- HIMMEL-2126: PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh. Install pwsh (PowerShell 7) to silence this." >&2
+            echo "WARN: pwsh (PowerShell 7) not found; falling back to Windows PowerShell 5.1 ($ps_fallback) -- PS 5.1 misreads BOM-less UTF-8 as cp1252 (em-dash mojibake -> phantom-token ParserError at the WRONG line), has reserved-variable quirks, and strips jq-style quoting differently than pwsh. Install pwsh (PowerShell 7) to silence this." >&2
             command -v "$ps_fallback"
             return 0
         fi

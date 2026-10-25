@@ -117,5 +117,5 @@ host_isolated_bash_boots() {
 }
 
 host_skip() {
-    printf 'SKIP %s (HIMMEL-3182)\n' "$*"
+    printf 'SKIP %s\n' "$*"
 }

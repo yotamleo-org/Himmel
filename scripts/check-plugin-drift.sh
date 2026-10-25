@@ -146,7 +146,7 @@ for path in manifests:
         bad.append(path)
 
 if bad:
-    print('ERR check-plugin-drift --manifest-only: plugin manifest(s) missing a "version" field (HIMMEL-3464):', file=sys.stderr)
+    print('ERR check-plugin-drift --manifest-only: plugin manifest(s) missing a "version" field:', file=sys.stderr)
     for b in bad:
         print(f"  {b}", file=sys.stderr)
     print('    autoUpdate:true + no version falls back to the checkout HEAD sha, triggering a', file=sys.stderr)
@@ -248,7 +248,7 @@ check_bump_required() {
   # the name sed cannot attribute such a line to a plugin, so refuse it.
   case $'\n'"$changed" in
     *$'\n"'*)
-      echo "ERR check-plugin-drift --bump-required: a changed path under $rel/ is quoted by git and cannot be attributed to a plugin — rename it (HIMMEL-3551)" >&2
+      echo "ERR check-plugin-drift --bump-required: a changed path under $rel/ is quoted by git and cannot be attributed to a plugin — rename it" >&2
       return 1
       ;;
   esac
@@ -579,7 +579,7 @@ for pin in "$ROOT"/marketplace/plugins/*/UPSTREAM_PIN; do
 done
 
 echo ""
-echo "== carried upstreams (registry + installed marketplaces; HIMMEL-869) =="
+echo "== carried upstreams =="
 # scripts/upstreams.json enumerates the rest of the carried fleet (including
 # claude-hud, claude-obsidian's resync metadata, the luna template's bundled
 # third-party assets, hermes-agent, rtk, twitter-cli, graphify, and qmd); installed
