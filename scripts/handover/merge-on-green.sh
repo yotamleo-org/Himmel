@@ -1120,14 +1120,14 @@ trust_out=$(trust_path_check "$nwo" "$pr_num" "$sha" "$default_branch" "$himmel_
 # anchor, a dirty tree or an unreadable origin cannot move, so it still refuses.
 # A dry run mutates nothing, so it skips the catch-up and reports the refusal.
 if [ "$trust_rc" -ne 0 ] && [ "${trust_out%% *}" = "anchor" ] && [ "$DRY_RUN" -eq 0 ]; then
-    ff_before=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_before=""
-    ff_msg=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE GIT_TERMINAL_PROMPT=0 \
-        git -C "$himmel_repo" -c core.hooksPath=/dev/null pull -q --ff-only origin HEAD 2>&1) \
+    ff_before=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_before=""
+    ff_msg=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE GIT_TERMINAL_PROMPT=0 \
+        git -C "$himmel_repo" -c core.hooksPath=/dev/null pull -q --no-rebase --ff-only origin HEAD 2>&1) \
         || echo "merge-on-green: anchor fast-forward failed: ${ff_msg:0:300}" >&2
-    ff_after=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_after=""
+    ff_after=$(env -u GIT_DIR -u GIT_WORK_TREE -u GIT_COMMON_DIR -u GIT_INDEX_FILE git -C "$himmel_repo" rev-parse HEAD) || ff_after=""
     if [ -n "$ff_after" ] && [ "$ff_after" != "$ff_before" ]; then
         audit "ANCHOR fast-forwarded repo=$nwo pr=#$pr_num from=${ff_before:0:12} to=${ff_after:0:12}"
-        exec bash "${BASH_SOURCE[0]}" ${_mog_argv[@]+"${_mog_argv[@]}"}
+        exec "$BASH" "${BASH_SOURCE[0]}" ${_mog_argv[@]+"${_mog_argv[@]}"}
     fi
 fi
 if [ "$trust_rc" -ne 0 ]; then
