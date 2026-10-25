@@ -1001,12 +1001,12 @@ prose. "The content isn't lacked, just rough around the edges."
 Hermes-Codex work branches are named `codex/<slug>` (mirrors the spawn-glm
 `glm/<slug>` convention). This prefix is the Codex lane's positive cheap-lane
 provenance marker — `scripts/cr/lane-classify.sh` reads it to route the branch
-through the WS7 D1 lane gate (see
+through the cheap-lane gate (see
 [`docs/internals/validation-gates.md`](validation-gates.md)). Codex work
 predating this convention is unmarked and rides the Claude chain unless manually
 flagged into the cheap lane by the operator/validating session (recorded in the
-D1 verdict PR-body snippet). Absence is never inferred as cheap-lane: an unmarked
-branch is indistinguishable from ordinary Claude work (spec D1.1), so structural
+lane-gate verdict PR-body snippet). Absence is never inferred as cheap-lane: an unmarked
+branch is indistinguishable from ordinary Claude work, so structural
 cheap-lane enforcement for Codex waits on a future hermes task→branch provenance
 record; until it ships, `codex/*` PRs rely on behavioral verdict discipline.
 

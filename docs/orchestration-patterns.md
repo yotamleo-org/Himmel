@@ -7,9 +7,9 @@ GIL")** (`60-Maps/agent-orchestration-MOC.md`, addyosmani). Orchestration design
 optimizes the human serial fraction (batched review surfaces, verifier lanes,
 closed-loop specialists) instead of raw agent count.
 
-This doc names slot **classes**, never concrete models; model binding is WS2's
-router (the WS2↔WS3 seam: *routing = model selection; orchestration = task
-decomposition*). Each claim below carries its evidence pointer inline (a luna
+This doc names slot **classes**, never concrete models; model binding is lane
+selection ([`internals/lane-calibration.md`](internals/lane-calibration.md)):
+*routing = model selection; orchestration = task decomposition*. Each claim below carries its evidence pointer inline (a luna
 clip path or a shipped himmel code path); the resolved evidence table is at the
 foot of the doc.
 
@@ -48,9 +48,9 @@ Hierarchical decomposition breaks when subgoals are **not** independent; the
 coordinator shape breaks on ambiguous routing (sairahul1). map-reduce-and-manage
 (§1) is the safe default the other three specialize.
 
-## 3. Slot classes (blast-radius routing — INPUT CONTRACT to WS2)
+## 3. Slot classes (blast-radius routing)
 
-Route by **blast radius**, expressed as classes; model binding is WS2's:
+Route by **blast radius**, expressed as classes; lane selection binds the model:
 
 - **planner / loose-spec implementer = top tier.** Filling the gaps in a loose
   spec takes reasoning more than typing, so it earns the top tier.
@@ -64,7 +64,7 @@ _Evidence:_ blast-radius routing, from Av1dlive orchestration.md
 (`Clippings/_evidence/@Av1dlive – 2026-06-17T235945+0200.md`); evaluator =
 different family, "cost = iterations not tokens", from Cherny
 (`Clippings/_done/2026-05/How Boris Cherny Uses Claude Code.md`). Optimize for
-mergeable output over per-call price. **Classes only:** WS2's router owns which
+mergeable output over per-call price. **Classes only:** lane selection owns which
 concrete model/lane fills a slot given class + compliance + cost state.
 
 ## 4. Context rule (resolving the sharing contradiction)
@@ -129,7 +129,7 @@ UNDER**, never a consumer of it.
 teammate. **Opt-in trigger:** the operator
 names a debugging-competing-hypotheses case AND accepts the experimental flag;
 the pilot mechanics (single session, ≤3 teammates, explicit token cap)
-instantiate only then. **No WS3 machinery depends on Teams**; everything rides
+instantiate only then. **No orchestration machinery depends on Teams**; everything rides
 subagents and saved workflows until GA.
 
 ---

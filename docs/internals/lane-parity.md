@@ -1,14 +1,12 @@
-# Lane-parity index (WS5)
+# Lane-parity index
 
-> **Status:** WS5 Task 0 skeleton. The living successor to the 562
-> compatibility audit and the per-lane extension of
-> [`harness-compat.md`](harness-compat.md). The invariant guard set is sourced
-> from root `CLAUDE.md` ENFORCEMENT (per-hook detail in
-> [`enforcement.md`](enforcement.md)). WS5 design decisions D1-D9 are the
-> binding contract; this doc implements D1 (a living index, doc + tested
-> subset), D6 (doctrine lives here, not root `CLAUDE.md`), D7 (merge-trust is a
-> WS7-owned column the index consumes, not the trust gate). D9 (no
-> `claude-codex` row) was **RETIRED 2026-07-13** (operator decision) — see the superseded-lock note below.
+This page shows, for each worker lane (a runtime himmel can hand work to),
+which of himmel's guardrails reach that lane and which test proves it. It
+extends [`harness-compat.md`](harness-compat.md) lane by lane. The guard set
+comes from the hooks listed in [`enforcement.md`](enforcement.md). Two suites
+read this page: `scripts/parity/test-guard-conformance.sh` parses the
+deny-guard x lane table, and `scripts/parity/test-ws5-invariants.sh` checks
+that the gemini / copilot / cursor rows stay `deferred`.
 
 > **Note:** this index records compatibility/parity, not current routing —
 > dormancy status for impl lanes (GLM, claudex, hermes-oneshot, codex-exec) lives in `scripts/lanes/lanes.json` /
@@ -31,10 +29,11 @@ seeded `~/.claude-glm` copy; Codex / Cursor / Copilot read the generated
 not all kept in lockstep today; the two tested columns (rule-projection
 freshness, guard-firing pointers) are where the drift becomes visible.
 
-**The index AGGREGATES WS7's merge-trust cell; it is NOT the trust gate.** The
-merge-trust column is a VIEW that consumes WS7's verdict. WS5 wires the column
-and asserts it exists per non-native lane; WS7 fills the verdict and owns the
-trust decision. "Row green" is a composite, not a WS5 trust ruling (D7).
+**The index shows the merge-trust verdict; it is NOT the trust gate.** The
+merge-trust column is a view of the verdict the lane gate in
+[`validation-gates.md`](validation-gates.md) gives. This index only checks
+that the column exists for every non-native lane. "Row green" is a composite,
+not a trust ruling.
 
 **GLM is reachable by THREE paths, with THREE different guard mechanisms -- so
 "GLM is guarded" is proven per-path, not asserted once:**
@@ -44,21 +43,21 @@ trust decision. "Row green" is a composite, not a WS5 trust ruling (D7).
    `block-glm-external-writes.sh` (the classifier substitute for the
    write-authority dimension).
 2. `glm-launcher` -- Claude Code with the backend swapped, reads a seeded
-   `~/.claude-glm` copy; same guards as (1), plus a config-seed drift dimension
-   (owned by Task 1).
+   `~/.claude-glm` copy; same guards as (1), plus a config-seed drift dimension.
 3. GLM-via-hermes -- the hermes runtime drives GLM; himmel's Claude Code
-   PreToolUse hooks do NOT load here, so the write-fence is `parity_guard.py`,
-   not the CC hook. The GLM-engine write-fence reaching parity with the CC hook
-   is `pending:Task3` (enumeration) and `GAP` until Task 6 ports it.
+   PreToolUse hooks do NOT load here, so the fence is `parity_guard.py`, not
+   the CC hook. It enforces every deny-guard below (see the hermes table at the
+   end of this page).
 
 Same model, three runtimes, three guard mechanisms. A single "GLM is guarded"
-claim collapses three distinct proofs; this index keeps them separate.
+claim collapses three distinct proofs; this index keeps them separate. All
+three GLM paths are dormant: no work routes to them, and their rows stay so
+the proofs remain on record.
 
 ## Invariant guard set
 
-The load-bearing distinction (design sec. a). Of the 9 PreToolUse hooks + 1
-PostToolUse hook named in root `CLAUDE.md` ENFORCEMENT, only the DENY-guards
-are parity-relevant: they are the hard blocks a non-native lane must replicate.
+The load-bearing distinction: of the PreToolUse and PostToolUse hooks, only
+the DENY-guards are parity-relevant: they are the hard blocks a non-native lane must replicate.
 The non-deny hooks are EXCLUDED from the per-lane map, because enumerating them
 per lane produces spurious `GAP`s (e.g. "codex lacks `auto-arm-on-cap`") that
 swamp the real gaps.
@@ -85,40 +84,37 @@ git-hook gates):
 - `check-cr-marker-on-pr-create` -- a PR-time marker check, not a runtime deny.
 - `auto-arm-on-subagent-cap` (PostToolUse) -- a cap detector, not a deny-guard.
 
-### Write-authority / external-write fence (a cross-lane dimension -- NOT one of the 9 hooks)
+### Write-authority / external-write fence (a cross-lane dimension, not a deny-guard hook)
 
 Write-authority is the load-bearing parity dimension, but
-`block-glm-external-writes.sh` is a lane-specific classifier SUBSTITUTE, not one
-of the 9 ENFORCEMENT PreToolUse hooks -- so it has no home among the six
-deny-guards above. It is recorded here as its own dimension row so every
-write-fence cell sits in a real row (no home-less cell). The hermes
-GLM-engine write-fence cell flipped `pending:Task3` -> `tested` when Task 3
-confirmed the write-fence landed (see the conformance notes below).
+`block-glm-external-writes.sh` is a lane-specific classifier SUBSTITUTE, not
+one of the six deny-guards above. It is recorded here as its own dimension row
+so every write-fence cell sits in a real row (no home-less cell).
 
 | Lane | Write-authority / external-write fence |
 |---|---|
 | main-claude | auto-mode classifier |
-| glm-spawn | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
-| glm-launcher | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
+| glm-spawn (dormant) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
+| glm-launcher (dormant) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
 | codex-direct | `tested:scripts/hooks/test-block-terminal-write-fence.sh` -- the terminal write/push/network fence (codex-lane classifier substitute), e2e-proved through the adapter (`scripts/hooks/test-codex-adapter-e2e.sh`). The Edit/Write patch path is fenced by `block-edit-on-main.sh` via the adapter. |
-| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The four OTHER deny-guards were ported into parity_guard by Task 6 (all now `present`). |
+| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
 | hermes-junior | n/a -- read-only tier (`luna_vault_guard`) |
 | gemini / copilot / cursor | `deferred` |
 
 ## Token vocabulary (machine-readable; defined once)
 
-Every index cell carries a token from this FIXED vocabulary. Task 2's
-guard-conformance test parses these literals -- do not introduce synonyms.
+Every index cell carries a token from this FIXED vocabulary.
+`test-guard-conformance.sh` parses these literals -- do not introduce synonyms.
 
 - `tested:<relative/path>` -- a real proving test/script path (the two tested
   columns: rule projection, guardrail firing).
 - `GAP` -- no proving test exists for this cell.
-- `pending:<TaskN>` -- the verdict is owned by a later WS5 task and is not yet
-  resolved.
+- `pending:<TaskN>` -- the verdict waits on a numbered follow-up task and is
+  not yet resolved. No cell carries it today.
 - `asserted-only` -- a doc-asserted column (skills/cmds, vault/memory), not
   tested.
-- `WS7-owned` -- the merge-trust column WS7 fills (wired by WS5, unfilled by
-  WS5).
+- `gate-owned` -- the merge-trust column, filled by the lane gate in
+  [`validation-gates.md`](validation-gates.md), not by this index.
 - `native` -- the lane runs the native Claude Code ruleset/hooks directly (the
   baseline).
 - `native,no-seed` -- the native ruleset is read from LIVE config (no seeded
@@ -128,20 +124,22 @@ guard-conformance test parses these literals -- do not introduce synonyms.
 
 Column status: **rule projection** + **guardrail firing** are the two TESTED
 columns (cells carry `tested:<path>` / `GAP` / `pending:`); **skills/cmds** +
-**vault/memory** = `asserted-only`; **merge-trust** = `WS7-owned`. A row is
-`tested`-green only when every deny-guard cell in its guard x lane sub-table
-row (Task 2) is `tested:<path>` -- no `GAP`, no `pending:`.
+**vault/memory** = `asserted-only`; **merge-trust** = `gate-owned`. A row is
+`tested`-green only when every deny-guard cell in its row of the guard x lane
+sub-table below is `tested:<path>` -- no `GAP`, no `pending:`.
 
 ## Lane-parity index
 
-| Lane | Rule projection | Guardrail firing | Skills/cmds | Vault/memory | Merge-trust (WS7) |
+## Lane-parity index
+
+| Lane | Rule projection | Guardrail firing | Skills/cmds | Vault/memory | Merge-trust |
 |---|---|---|---|---|---|
 | main-claude | `native` (CLAUDE.md) | `native` (hooks + classifier) | `native` | `native` | `native` (baseline) |
-| glm-spawn | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
-| glm-launcher | `tested:scripts/hooks/test-claude-glm-seed-check.sh` (seeded `~/.claude-glm`, drift-checked) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
-| codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
-| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `WS7-owned` |
-| hermes-junior | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `GAP` (`luna_vault_guard`, no in-repo test) | `asserted-only` | `asserted-only` | `WS7-owned` (read-only tier) |
+| glm-spawn (dormant) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| glm-launcher (dormant) | `tested:scripts/hooks/test-claude-glm-seed-check.sh` (seeded `~/.claude-glm`, drift-checked) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| codex-direct | `tested:scripts/agents-md/generate.mjs` (AGENTS.md gen + gated) | `tested:scripts/hooks/test-codex-run-hook.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+| hermes-junior | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `GAP` (`luna_vault_guard`, no in-repo test) | `asserted-only` | `asserted-only` | `gate-owned` (read-only tier) |
 | gemini / copilot / cursor | `deferred` | `deferred` | `deferred` | `deferred` | `deferred` |
 
 Notes on the guardrail-firing cells. GLM IS Claude Code, so on the two CC GLM
@@ -151,54 +149,34 @@ lanes the native block-* hooks fire unchanged; the proving pointer is
 carveout). codex-direct reaches the native block-* hooks THROUGH the
 `.codex/hooks.json` adapter (the exit-2 to deny translation proved by
 `test-codex-run-hook.sh`); the per-guard codex resolution is enumerated in the
-Task 2 guard x lane sub-table. hermes-main's `parity_guard` fences both
-engines; the GLM-engine write-fence LANDED and is resolved in the
-write-authority row above (`tested:scripts/hermes/test-parity-guard.sh`); the
-residual non-write-fence GAPs are enumerated in the guard-parity table below.
+guard x lane sub-table below. hermes-main's `parity_guard` fences both
+engines; its write-fence is in the write-authority row above
+(`tested:scripts/hermes/test-parity-guard.sh`), and the other deny-guards are
+in the hermes table at the end of this page.
 
-**`claude-codex` lock (D9) — RETIRED 2026-07-13 (operator decision).**
-D9 locked "Codex reaches real work ONLY via `codex-direct` or `hermes` — never
-a `claude` backend swap" at a time when no Anthropic-compatible codex endpoint
-existed. The claudex pattern (a self-hosted CLIProxyAPI OAuth-wrapping the
-codex subscription behind an Anthropic-compatible surface; theo/t3.gg recipe,
-field evidence in luna) changed the feasibility AND the payoff: the swap keeps
-the FULL native himmel harness — every PreToolUse hook fires natively, exactly
-as in the `claude-glm` lane, so guard parity is native-column, not an adapter
-column. The launcher shipped as `scripts/claude-codex`; the
-old T14(a) invariant — which FAILED the suite whenever any `claude-codex`
-launcher file appeared in a branch diff — was retired in the same change. A
-full index row for the lane (guard x lane cells) is deferred to the next
-parity task — until then the lane's guard posture is: native (same column as
-`claude-glm`).
+**claudex (`scripts/claude-codex`).** Claude Code with its backend swapped to
+the Codex subscription through a self-hosted CLIProxyAPI that serves an
+Anthropic-compatible endpoint. Every PreToolUse hook fires natively, exactly
+as in the `claude-glm` lane, so its guard posture is the native column. It has
+no row of its own in this index yet.
 
 ## Guard-firing conformance sub-table (deny-guard x lane)
 
-The load-bearing WS5 delta over 562. The top-level index carries ONE
-guardrail-firing cell per lane; this sub-table expands each non-native lane's
-proof per invariant deny-guard (the Task-0 set of six PreToolUse deny-hooks
-plus the cross-lane write-authority dimension) into a real proving test or
-`GAP`. `scripts/parity/test-guard-conformance.sh` parses this table by its
-anchor -- Task 3 and Task 6 both rewrite this file, so the HTML-comment anchor
-(not heading text) is the stable parse key.
+The top-level index carries ONE guardrail-firing cell per lane; this
+sub-table expands each non-native lane's proof per invariant deny-guard (the
+six PreToolUse deny-hooks plus the cross-lane write-authority dimension) into
+a real proving test or `GAP`. `scripts/parity/test-guard-conformance.sh`
+parses this table by its HTML-comment anchor, not its heading text, so the
+anchor is the stable parse key.
 
-Cells use the Task-0 token vocabulary (`tested:<path>` / `GAP` /
+Cells use the token vocabulary above (`tested:<path>` / `GAP` /
 `pending:<TaskN>`). A lane column is **`tested`-green** iff EVERY cell in it --
 across all six deny-guards AND the write-authority / external-write-fence
 dimension row -- is `tested:<path>` (no `GAP`, no `pending:`). The write-fence
 row counts toward `tested`-green because write-authority is the load-bearing
-parity dimension (Task 0): a lane is fully guard-tested only once its
-write-fence is also tested. Task 3 confirmed the hermes-main GLM-engine
-write-fence LANDED (`parity_guard.py` fences plain push /
-remote-URL rewrite / gh PR-mutation / network CLIs, fail-closed on an
-untrusted or unknown engine, proved by `test-parity-guard.sh`), so the
-write-authority cell flips from `pending:Task3` to
-`tested:scripts/hermes/test-parity-guard.sh`. Task 3's enumeration found four
-deny-guards `parity_guard.py` did NOT enforce (`block-edit-on-main`,
-`block-backend-tier` / MCP-fence, `block-docker-privesc`,
-`block-merged-pr-commit`); **Task 6 ported all four into
-`parity_guard.py`** (proved by `test-parity-guard.sh`), so those four
-hermes-main cells are now `tested` and the row is `tested`-green. All six
-deny-guards plus the write-fence are now PRESENT under hermes.
+parity dimension: a lane is fully guard-tested only once its write-fence is
+also tested. All six deny-guards plus the write-fence are PRESENT under
+hermes, so the hermes-main column is `tested`-green.
 
 <!-- BEGIN guard-lane-conformance -->
 
@@ -216,8 +194,8 @@ deny-guards plus the write-fence are now PRESENT under hermes.
 
 Notes on the cells:
 
-- **glm-spawn + glm-launcher.** GLM IS Claude Code, so on these two CC GLM
-  lanes the native block-* deny-guard hooks fire unchanged; the single
+- **glm-spawn + glm-launcher (dormant).** GLM IS Claude Code, so on these two
+  CC GLM lanes the native block-* deny-guard hooks fire unchanged; the single
   lane-specific proving pointer is
   `tested:scripts/hooks/test-block-glm-external-writes.sh` (covers push /
   git-remote-URL / network / `mcp__*` deny, with the Jira-CLI + `gh`-read
@@ -228,37 +206,29 @@ Notes on the cells:
   `tested:scripts/hooks/test-codex-run-hook.sh` (the `.codex/hooks.json`
   adapter's exit-2 to `deny` translation) PLUS the NATIVE
   `tested:scripts/hooks/test-block-<guard>.sh` the adapter reaches (all six
-  native fixtures exist). The two remaining codex-direct
-  GAPs were closed with a through-adapter END-TO-END fixture,
-  `scripts/hooks/test-codex-adapter-e2e.sh`: it drives
+  native fixtures exist). `scripts/hooks/test-codex-adapter-e2e.sh` is the
+  through-adapter END-TO-END fixture: it drives
   `.codex/codex-hook-adapter.sh` against the REAL guardrails
   (`CLAUDE_PROJECT_DIR` = the checkout) and asserts the JSON `deny` lands for a
   secret-read (through `block-read-secrets.sh`) AND an external-write (through
-  the new `block-terminal-write-fence.sh`), so the `block-read-secrets` cell no
-  longer carries a `GAP`. The write-authority cell is now `tested` too: a live
-  probe on this ticket came back SPLIT -- `.codex/hooks.json` wired
-  `block-edit-on-main.sh` only on the Edit|Write matcher, so the PATCH path was
-  denied but the TERMINAL path (a pwsh/bash command that writes a file, pushes,
-  or hits the network) succeeded, and codex has NO auto-mode classifier to
-  catch it (deterministic-guards-only). `block-terminal-write-fence.sh`
-  is the codex-lane classifier substitute for that terminal surface
-  (external-write class fail-closed behind `CODEX_EXTERNAL_WRITES_OK`; a
-  write-on-main class honouring `.single-writer`), unit-tested by
+  `block-terminal-write-fence.sh`). `.codex/hooks.json` wires
+  `block-edit-on-main.sh` on the Edit|Write matcher, which covers the PATCH
+  path; the TERMINAL path (a shell command that writes a file, pushes, or hits
+  the network) is covered by `block-terminal-write-fence.sh`, because codex has
+  NO auto-mode classifier (deterministic-guards-only). That hook is the
+  codex-lane classifier substitute (external-write class fail-closed behind
+  `CODEX_EXTERNAL_WRITES_OK`; a write-on-main class honouring
+  `.single-writer`), unit-tested by
   `scripts/hooks/test-block-terminal-write-fence.sh` and e2e-proved through the
-  adapter. The codex-direct column is now `tested`-green.
+  adapter. The codex-direct column is `tested`-green.
 - **hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant).** himmel's CC
   PreToolUse hooks do NOT load under hermes, so `parity_guard.py` is the sole
   fence; both engines are exercised by
-  `tested:scripts/hermes/test-parity-guard.sh`. The GLM-engine write-fence cell
-  in the write-authority row is RESOLVED by Task 3 to
-  `tested:scripts/hermes/test-parity-guard.sh`: the
-  write-fence landed in `parity_guard.py` (plain push / remote-URL rewrite / gh
-  PR-mutation / network CLIs, fail-closed on an untrusted or unknown engine),
-  so it is PRESENT and tested -- the earlier "only `git push --force`" reading
-  is superseded. The four non-write-fence GAPs (edit-on-main, docker-privesc,
-  merged-PR-commit, MCP-fence) were PORTED into `parity_guard.py` by Task 6
-  and are now `present` (proved by `test-parity-guard.sh`), so the
-  hermes-main column is `tested`-green.
+  `tested:scripts/hermes/test-parity-guard.sh`. The write-fence in
+  `parity_guard.py` refuses plain push / remote-URL rewrite / gh PR-mutation /
+  network CLIs, fail-closed on an untrusted or unknown engine. The other
+  deny-guards (edit-on-main, docker-privesc, merged-PR-commit, MCP-fence) are
+  enforced there too, so the hermes-main column is `tested`-green.
 - **hermes-junior.** `n/a` -- an explicit out-of-scope contract, not a gap to
   close. The junior tier's `luna_vault_guard.py` is a hermes-side artifact
   (`agent-hooks/` under the hermes install root) that himmel does not ship, so
@@ -268,16 +238,15 @@ Notes on the cells:
   is never tested-green while it carries `n/a`.
 - Any deny-guard with no lane proving test is `GAP` by construction.
 
-## hermes guard-parity gap (Task 3 enumeration, both engines)
+## What `parity_guard.py` enforces under hermes (both engines)
 
-The contract side of the index: for each invariant DENY-guard (the Task-0 set
-of six PreToolUse deny-hooks PLUS the cross-lane write-authority dimension),
-what does `scripts/hermes/assets/parity_guard.py` -- the SOLE fence under
-hermes, since himmel's Claude Code PreToolUse hooks do NOT load there -- actually
-enforce, for BOTH engines (gpt-6.1-sol + the dormant GLM) the `himmel_agent` profile is
-pointed at? Tags: `present` (parity_guard enforces it), `n/a-for-runtime`
-(Claude-Code-specific mechanics with no hermes analog), `GAP` (not enforced --
-filed for porting, which is Task 6).
+The contract side of the index: for each invariant DENY-guard (the six
+PreToolUse deny-hooks PLUS the cross-lane write-authority dimension), what
+`scripts/hermes/assets/parity_guard.py` -- the SOLE fence under hermes, since
+himmel's Claude Code PreToolUse hooks do NOT load there -- enforces, for BOTH
+engines (gpt-6.1-sol + the dormant GLM) the `himmel_agent` profile is pointed
+at. Tags: `present` (parity_guard enforces it), `n/a-for-runtime`
+(Claude-Code-specific mechanics with no hermes analog), `GAP` (not enforced).
 
 | Invariant deny-guard | parity_guard.py status (both engines) | Verdict |
 |---|---|---|
@@ -296,34 +265,17 @@ external-write fence for every engine on the `himmel_agent` profile. Compared
 shape-by-shape against the hook (the behavior spec): `git push` (plain),
 `git remote set-url` / `config ...url`, the `gh` carve-out (`issue *` + PR/run
 reads only), and the network-CLI set (`curl`/`wget`/`iwr`/`irm`) all match --
-the terminal / file external-write shapes are at PARITY (present).
-The MCP surface -- once the ONE residual gap -- is now CLOSED by Task 6:
-`wire_parity_guard.py`'s matcher included `mcp__.*` (now `.*`) and
+the terminal / file external-write shapes are at PARITY (present). The MCP
+surface is fenced too: `wire_parity_guard.py`'s matcher is `.*` and
 `parity_guard.main()` blanket-denies every `mcp__*` tool except the read-only
 `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`), mirroring
-`block-glm-external-writes.sh`. So an MCP tool call now invokes the guard and is
+`block-glm-external-writes.sh`. So an MCP tool call invokes the guard and is
 fenced on the default lane -- `block-backend-tier` is `present` above.
 
-**Bonus (not in the deny-guard set, recorded for completeness):** the
-unconditional PHI / data-egress fence (F-B5) fires on EVERY engine
-on this cloud profile -- a `.salus`-marked path or a configured `phi-roots` /
-`egress-denylist` root is refused for read / search / write / delete
-(symlink/junction-safe via `realpath`, fail-closed on an unreadable list). It is
-`present` and proved by `test-parity-guard.sh`; it is not one of the six
-deny-guards, so it is not a parity GAP, just an additional fence hermes carries.
-
-**Ported by Task 6 (the four GAPs are now closed in
-`parity_guard`, proved by `test-parity-guard.sh`):**
-
-- a branch-aware main-branch edit/commit lock (`_edit_on_main_reason`) --
-  `block-edit-on-main` parity.
-- merged-PR-branch detection via `gh` (`_merged_pr_reason`) --
-  `block-merged-pr-commit` parity.
-- `docker` / `podman` mount + privilege detection (`DOCKER_PRIVESC`) --
-  `block-docker-privesc` parity.
-- the matcher extended to `mcp__*` tools + a blanket MCP deny with the `qmd`
-  carve-out (mirror `block-glm-external-writes.sh`) --
-  `block-backend-tier` / MCP-external-write parity (the load-bearing one).
-
-All four are now `present`; with the write-fence already PRESENT,
-the hermes guard gap is CLOSED and the hermes-main column is `tested`-green.
+**Beyond the deny-guard set:** the unconditional PHI / data-egress fence fires
+on EVERY engine on this cloud profile -- a `.salus`-marked path or a
+configured `phi-roots` / `egress-denylist` root is refused for read / search /
+write / delete (symlink/junction-safe via `realpath`, fail-closed on an
+unreadable list). It is `present` and proved by `test-parity-guard.sh`; it is
+not one of the six deny-guards, so it is not a parity GAP, just an additional
+fence hermes carries.
