@@ -2572,6 +2572,18 @@ if [ -f "$ciguard_probe" ]; then
     fi
 fi
 
+# cired=<n>|unknown: the open issues labelled ci-red, one bounded
+# `gh issue list` read per tick on the read token. A failed or timed-out read, or
+# output that is not a count, reads unknown. chief-wait.sh's wake key does not carry
+# cired, so a count change wakes nothing.
+cired_summary=unknown
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+cired_bound="${TICK_CIQ_TIMEOUT:-45}"
+case "$cired_bound" in ''|*[!0-9]*) cired_bound=45 ;; esac
+cired_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$cired_bound"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
+case "$cired_out" in ''|*[!0-9]*) ;; *) cired_summary="$cired_out" ;; esac
+
 # vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
 # FAILING: the himmel-vm self-hosted runner, one bounded `vm-runner.sh status
 # --tick` call. DEAD = the repo variable is on but no unit is up; STUCK = a job
@@ -2775,6 +2787,7 @@ else
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
     compact_field ciguard "$ciguard_summary"
+    compact_field cired "$cired_summary"
     compact_field plan-index "$plan_index_summary"
     compact_field or "$openrouter"
     compact_field fails "$fails_summary"

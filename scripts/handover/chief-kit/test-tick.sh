@@ -131,6 +131,12 @@ if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then
   if [ -n "${GH_TOKEN:-}" ]; then printf '%s\n' "${STUB_RATE_READ_OUT:-}"; else printf '%s\n' "${STUB_RATE_OUT:-}"; fi
   exit 0
 fi
+# cired= reads `gh issue list --label ci-red`: STUB_CIRED_OUT (default empty = unknown), STUB_CIRED_RC exit.
+if [ "${1:-}" = issue ] && [ "${2:-}" = list ]; then
+  [ -z "${STUB_CIRED_RC:-}" ] || exit "$STUB_CIRED_RC"
+  printf '%s\n' "${STUB_CIRED_OUT:-}"
+  exit 0
+fi
 # dispatch= reads the in-flight workflow_dispatch runs (one TSV row per run: id, workflow
 # path, head branch, head sha, started) and, per run, one jobs row (job count, completed
 # count, newest job timestamp). STUB_DISPATCH_RUNS / STUB_DISPATCH_JOBS are printf %b
@@ -449,7 +455,7 @@ fi
 # The default stub reset epoch, rendered the way tick.sh renders it (local HH:MM).
 gql_hm="$(date -d @1790000000 +%H:%M 2>/dev/null || date -r 1790000000 +%H:%M)"
 out="$(HIMMEL_CLASSIFIER_DENIALS_LOG="$W/denials-default-missing.jsonl" bash "$SUT")"; rc=$?
-expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown ciguard=unknown vmrun=off'
+expected='TICK 12:34 workers=N61:FRESH,N65:FREE livestate=skip procs=1,unwatched=N9 models=sonnet:1 atq=2 suites=1alive/0dead prs=#2247,#2250 unowned-prs=none usage=5h30/wk28/codex=5h12/wk34 fill=28 tails=N61:LIVE,N65:READY acts=N65:READY#1 inbox=N61:10/4 fleet=1/8 capacity=UNDERFILLED:7 gql=4321/'"$gql_hm"' workerset=skip board=skip tracker=skip vault=skip cloud=skip orphans-wip=skip denials=none ciq=unknown ciguard=unknown cired=unknown vmrun=off'
 lines="$(printf '%s\n' "$out" | wc -l | tr -d '[:space:]')"
 if [ "$rc" -eq 0 ] && [ "$lines" = 1 ] && [ "$out" = "$expected" ]; then
     pass 'default run emits exactly the expected one batched line'
@@ -3097,6 +3103,12 @@ not_contains 'tmp= is absent when the dir is unreadable (HIMMEL-4316)' "$(bash "
 cw_keys="$(grep -m1 'for f in workers livestate' "$HERE/chief-wait.sh")"
 contains "chief-wait's wake key list was found" "$cw_keys" ' vmrun '
 not_contains "tmp= is not in chief-wait's wake key (HIMMEL-4316)" "$cw_keys" ' tmp'
+# --- cired= (open ci-red issues): a count, unknown on failure, never a wake.
+cired_tick() { STUB_CIRED_OUT="$1" bash "$SUT" 2>/dev/null; }
+contains 'cired= prints the open ci-red issue count (HIMMEL-5596)' "$(cired_tick 3)" ' cired=3 '
+contains 'a failed ci-red read prints cired=unknown (HIMMEL-5596)' "$(STUB_CIRED_RC=1 bash "$SUT" 2>/dev/null)" ' cired=unknown '
+contains 'a non-count ci-red read prints cired=unknown (HIMMEL-5596)' "$(cired_tick 'oops')" ' cired=unknown '
+not_contains "cired= is not in chief-wait's wake key (HIMMEL-5596)" "$cw_keys" ' cired'
 
 # --- dispatch=: in-flight workflow_dispatch runs on worker branches, one runs
 # list per tick plus one jobs read per run; late (>= 80 % of the job timeout), idle (no job
