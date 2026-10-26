@@ -8,7 +8,7 @@
   cost [--sessions DIR ...] [--last N] [--memory F] [--no-agents] [--json]
                                 bytes and tokens of the always-on steering text, baseline vs
                                 cut, per row and per file, priced on session JSONL usage
-  summarize RAW --probe P       score one `claude -p --output-format json` reply -> JSON
+  summarize RAW --probe P       score one saved JSON reply of run.sh's model call -> JSON
   rescore --runs OUT            re-score every saved reply after a probe's checks change, no model call
   valid --runs OUT              the probes that pass BASELINE and fail RED (one per line)
   report --runs OUT [cost options] [--ledger] [--json]
