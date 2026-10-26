@@ -175,7 +175,7 @@ refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
 gets no GO. The worker merges, reports `MERGED #<n> → <sha>`; pull the
 primary.
 
-The worker closes Jira per the brief's `completes-ticket: yes|no` line
+The worker closes Jira per the brief's completes-ticket line (`> **Completes ticket:** yes|no`)
 (`--jira-transition` only for `yes`). After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
 of the PR title; check a second key by hand. Never merge with open review
 threads or on a handoff calling a PR clean: query it yourself. A worker's

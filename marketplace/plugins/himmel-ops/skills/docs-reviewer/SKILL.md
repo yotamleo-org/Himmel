@@ -20,7 +20,9 @@ and workstream-code checks; do not repeat them.
 
 - A PR number (`gh pr diff <n>`, `gh pr view <n> --json files,reviews,comments`,
   `gh api repos/<owner>/<repo>/pulls/<n>/comments`), or a diff range
-  (`git diff <base>...<head>`).
+  (`git diff <base>...<head>`). For a PR number, read the head with
+  `gh pr view <n> --json headRefOid,baseRefOid` and run
+  `git fetch origin <headRefOid>`, so that `git show <head>:<path>` resolves.
 - `remarks.tsv`: every row whose `state` is `active` or `candidate`.
 
 ## Scope: the diff, not the page
@@ -148,9 +150,10 @@ must-fix items; the summary line still counts every finding.
 
 The caller measures, not the model: it saves the answer to a file and runs
 `python3 fit_answer.py <file>` (beside this file). The script makes those cuts
-by byte count, never cutting a BLOCKING line, and prints the answer that fits.
-Exit 1 means it is still over with only BLOCKING lines left: send the answer
-back once with "cut to 3 KB".
+by byte count and prints the answer that fits. It cuts only appendix lines and
+SHOULD lines: a page verdict or a BLOCKING line is never cut. Exit 1 means it is
+still over with only page verdicts and BLOCKING lines left: send the answer back
+once with "cut to 3 KB", to shorten those lines and drop none.
 
 ## Learn step
 

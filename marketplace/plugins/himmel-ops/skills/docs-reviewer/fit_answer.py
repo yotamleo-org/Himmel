@@ -5,10 +5,10 @@ usage: fit_answer.py <answer-file>
 
 Prints the answer, cut to fit, on stdout and one `fit:` line on stderr. The cut
 follows the contract's order: appendix lines from the bottom, then the
-appendix block, then SHOULD lines of `## Must fix` from the bottom. A BLOCKING
-line is never cut. Exit 0 when the result fits; 1 when it is still over with
-only BLOCKING must-fix lines left, so the caller sends it back once with
-"cut to 3 KB"; 2 on usage.
+appendix block, then SHOULD lines of `## Must fix` from the bottom. A page
+verdict or a BLOCKING line is never cut. Exit 0 when the result fits; 1 when it
+is still over with only page verdicts and BLOCKING must-fix lines left, so the
+caller sends it back once with "cut to 3 KB"; 2 on usage.
 """
 import sys
 

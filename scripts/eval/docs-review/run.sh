@@ -24,9 +24,9 @@ out=""; model="claude-opus-5-5"; cap=6; canary_only=0; cases=()
 
 while [ $# -gt 0 ]; do
     case "$1" in
-        --out) out="${2:-}"; shift 2 ;;
-        --model) model="${2:-}"; shift 2 ;;
-        --cap-usd) cap="${2:-}"; shift 2 ;;
+        --out) [ $# -ge 2 ] || { echo "run.sh: --out needs a value" >&2; exit 2; }; out="$2"; shift 2 ;;
+        --model) [ $# -ge 2 ] || { echo "run.sh: --model needs a value" >&2; exit 2; }; model="$2"; shift 2 ;;
+        --cap-usd) [ $# -ge 2 ] || { echo "run.sh: --cap-usd needs a value" >&2; exit 2; }; cap="$2"; shift 2 ;;
         --canary-only) canary_only=1; shift ;;
         -*) echo "run.sh: unknown flag $1" >&2; exit 2 ;;
         *) cases+=("$1"); shift ;;

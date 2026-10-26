@@ -140,7 +140,7 @@ def audit(configdir, fixture):
                 calls += 1
                 args = part.get("input", {})
                 for path in (args.get("file_path"), args.get("path"), args.get("pattern") if part.get("name") == "Glob" else None):
-                    if not path or (path is args.get("pattern") and not path.startswith(("/", "~", ".."))):
+                    if not path:
                         continue
                     real = os.path.realpath(os.path.join(fixture, os.path.expanduser(path)))
                     if real != fixture and not real.startswith(fixture + os.sep):
