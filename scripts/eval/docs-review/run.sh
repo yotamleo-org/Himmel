@@ -7,7 +7,7 @@
 # Before each billed call a free canary (dummy key, a local fake API) runs the same CLI flags on the same
 # fixture and config dir; any hook event, tool beyond Read/Glob/Grep, MCP server, non-builtin plugin or
 # memory-file text in the request aborts the whole batch, with no retry. After each call the transcript
-# is audited for tool paths that leave the fixture.
+# is audited for tool paths that leave the fixture, and the answer is held to its 3 KB contract by fit_answer.py.
 #
 # usage: run.sh --out <dir> [--model <m>] [--cap-usd <n>] [--canary-only] <case>...
 #   cases from cases.json; C is refused (its learn step needs Edit).
@@ -134,9 +134,10 @@ for c in "${cases[@]}"; do
     rc=$?
     jq -r '.result // empty' "$d/review.json" >"$d/review.md" 2>/dev/null
     python3 -I "$HERE/helper.py" audit "$cfg" "$fix" >"$d/audit.txt"
+    python3 -I "$SKILL/fit_answer.py" "$d/review.md" >"$d/review.fit.md" 2>"$d/fit.txt"
     cost="$(jq -r '.total_cost_usd // 0' "$d/review.json" 2>/dev/null || echo 0)"
     total="$(awk -v a="$total" -v b="${cost:-0}" 'BEGIN { printf "%.4f", a + b }')"
-    echo "case $c: rc=$rc cost=\$${cost:-?} turns=$(jq -r '.num_turns // "?"' "$d/review.json" 2>/dev/null) $(tail -n 1 "$d/audit.txt")"
+    echo "case $c: rc=$rc cost=\$${cost:-?} turns=$(jq -r '.num_turns // "?"' "$d/review.json" 2>/dev/null) $(tail -n 1 "$d/audit.txt") $(cat "$d/fit.txt")"
     [ "$rc" = 0 ] || { echo "run.sh: case $c: api call rc=$rc (see $d/api-stderr.txt); batch stopped" >&2; exit 3; }
 done
 echo "batch: ${#cases[@]} case(s), cost \$$total"

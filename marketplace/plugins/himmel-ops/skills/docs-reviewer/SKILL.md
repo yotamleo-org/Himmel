@@ -140,6 +140,12 @@ A replacement text is one sentence. Write it in this order and nothing else:
 When the answer would pass 3 KB, cut appendix lines first, then the last
 must-fix items; the summary line still counts every finding.
 
+The caller measures, not the model: it saves the answer to a file and runs
+`python3 fit_answer.py <file>` (beside this file). The script makes those cuts
+by byte count, never cutting a BLOCKING line, and prints the answer that fits.
+Exit 1 means it is still over with only BLOCKING lines left: send the answer
+back once with "cut to 3 KB".
+
 ## Learn step
 
 When the operator makes a new docs remark (a verbatim line in a decisions file,
@@ -154,12 +160,14 @@ row becomes `retired`.
 
 ## How the chief uses it
 
-Docs PRs do not wait on the operator (decision 286). In place of that gate:
+Docs PRs do not wait on the operator (decision 286). In place of that gate,
+the review runs once per PR, on the judge side:
 
-1. The docs worker runs this review before READY and quotes the findings line
-   and the code-changes section in its READY message
-   (`docs/handover/worker-brief-template.md`).
-2. The chief's judge runs it again on the READY head
+1. The docs worker does not run it. Its READY message names the docs pages
+   the PR changes (`docs/handover/worker-brief-template.md`); the
+   deterministic docs checks already run in CI.
+2. The chief's judge runs it on the READY head, holds the answer to 3 KB with
+   `fit_answer.py`, and sends a BLOCKING finding back as a NO-GO line
    (`docs/handover/judge-brief-template.md`).
 3. The chief lists every merged docs change in its report for the operator's
    review after the fact, and runs the learn step on each remark the operator

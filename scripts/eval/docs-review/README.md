@@ -17,7 +17,7 @@ give the answer away. The pass bars are held out in `key/`.
 | B | PR 3892 | the code-changes section: a CodeRabbit comment whose fix is in the generator, still open at the head |
 | C | `docs/jarvis-subsystems.md` | the learn step: add decision 284 as a candidate, then apply it |
 | D | PR 3910 | severity: BLOCKING findings on a reviewed, merged page, true against false |
-| E | PR 3851 | the clean control: a page no later commit corrected should draw no BLOCKING finding and no code change |
+| E | PR 3923 | the clean control: every claim on its changed lines was checked true at the head, so it should draw no BLOCKING finding and no code change |
 
 ## Running a case (opus high, one run per case)
 
@@ -33,9 +33,11 @@ checks that isolation before each billed call and stops the batch if it fails.
 `--canary-only` runs the canaries and never bills. Case C stays manual: its
 learn step needs Edit.
 
-Each case leaves `review.md`, `review.json` and `audit.txt` (tool calls whose
-path left the fixture) under `<dir>/<case>/`. Score `review.md` against
-`key/bars.json` by hand, and say which bars it met.
+Each case leaves `review.md`, `review.json`, `audit.txt` (tool calls whose
+path left the fixture), and `review.fit.md` with `fit.txt` (the answer cut to
+3 KB by the skill's `fit_answer.py`, and its before and after sizes) under
+`<dir>/<case>/`. Score `review.fit.md` against `key/bars.json` by hand, say
+which bars it met, and record the size from `fit.txt`.
 
 Before you trust a run, check that the case's code gap is still open at the
 head: a bar that names a fix already in the base cannot be met.

@@ -196,10 +196,10 @@ template_version: 3
 >    without one, and prints the command; a deleted, added or renamed
 >    workflow and the `WF_DISPATCH_EXEMPT` workflows need no run, so do not
 >    try to dispatch them). **A PR that changes a docs page** (`README.md`,
->    `site/`, a reader-facing `.md` or `.html` under `docs/`) runs the
->    `docs-reviewer` skill at its READY head first, and the READY message quotes
->    its `docs-review:` line and its `Code changes implied` section verbatim; a
->    BLOCKING finding is fixed, or ruled on by the chief, before READY.
+>    `site/`, a reader-facing `.md` or `.html` under `docs/`) names those pages
+>    in its READY message. Do not run the `docs-reviewer` skill yourself: the
+>    judge runs it once at the READY head, and a BLOCKING finding comes back
+>    as a NO-GO line to fix.
 >    <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>

@@ -36,6 +36,6 @@
   },
   "E": {
     "bar": "a clean control: no BLOCKING finding and no code change implied; each one raised is checked at the head and counts as a false positive unless shown true",
-    "ground_truth": "no later commit touches docs/troubleshooting.md or scripts/docs/test-troubleshooting-page.sh (git log f5e6abc97..origin/main, 2026-10-26)"
+    "ground_truth": "every changed-line claim was checked true at the head 7681ebbbd: the /chief new|next flags --name, --arm (signal file and deadline), --dry-run, --doc, --bucket, --prefix and --model (chief.sh:595-632, .claude/commands/chief.md); the Telegram bridge verb /chief with /console as its alias (router.ts:74, console-route.ts:15); the bridge appends only to an existing inbox file (console-route.ts:182-185). Later commits on these pages only rename them (399e7a884)."
   }
 }
