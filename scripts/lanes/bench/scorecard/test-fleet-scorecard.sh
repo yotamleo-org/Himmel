@@ -142,11 +142,12 @@ check "(b) an unreadable Jira mirror is n/a with its reason" \
 sed 's#^resume_cwd: .*#resume_cwd: /fixture/himmel#' "$FX/HIMMEL-9004-N9004-native-in-flight-2026-10-25.md" \
     > "$TMP/HIMMEL-9005-N9005-primary-checkout-2026-10-25.md"
 printf '%s\n' '{"ts":"2026-10-25T16:30:00Z","session_title":"himmel","cwd":"/fixture/himmel","tool":"Bash"}' > "$TMP/shared-denials.jsonl"
-SHARED=$(run --doc "$TMP/HIMMEL-9005-N9005-primary-checkout-2026-10-25.md" --denials "$TMP/shared-denials.jsonl" 2>/dev/null)
+SHARED=$(run --doc "$TMP/HIMMEL-9005-N9005-primary-checkout-2026-10-25.md" --denials "$TMP/shared-denials.jsonl" 2>/dev/null); RC=$?
+check "(b) a worker in the shared primary checkout still exits 0" "$RC" "0"
 check "(b) a worker in the shared primary checkout gets no denials from that checkout" \
     "$(cell "$SHARED" "Fleet management" N9005 11)" "n/a (no worktree: /fixture/himmel)"
 check "(b) the report says a message-delivered worker's interventions are a floor" \
-    "$(printf '%s\n' "$OUT" | grep -c '^- interventions: .*floor')" "1"
+    "$(printf '%s\n' "$OUT" | grep -c '^- interventions: a ruling or nudge sent by SendMessage counts only when a doc logs it, so a worker with message delivery shows a floor$')" "1"
 
 # --- (e) option spellings: --doc=<path> is --doc <path>; an abbreviation or a --label is refused
 EQ=$("$FLEET" --doc="$FX/HIMMEL-9003-N9003-native-merged-2026-10-25.md" --tz UTC 2>/dev/null); RC=$?
