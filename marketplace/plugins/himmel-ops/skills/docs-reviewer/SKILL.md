@@ -22,7 +22,8 @@ and workstream-code checks; do not repeat them.
   `gh api repos/<owner>/<repo>/pulls/<n>/comments`), or a diff range
   (`git diff <base>...<head>`). For a PR number, read the head with
   `gh pr view <n> --json headRefOid,baseRefOid` and run
-  `git fetch origin <headRefOid>`, so that `git show <head>:<path>` resolves.
+  a bare `git fetch origin` (never a refspec fetch: the primary-checkout guard
+  refuses it), so that `git show <head>:<path>` resolves.
 - `remarks.tsv`: every row whose `state` is `active` or `candidate`.
 
 ## Scope: the diff, not the page
