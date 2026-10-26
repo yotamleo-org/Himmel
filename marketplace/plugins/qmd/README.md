@@ -101,7 +101,10 @@ mcp --http --daemon`). When the index config or `QMD_*_MODEL` names an
 `openai:` model it first runs `scripts/qmd/qmd-jina-gate.mjs`, which checks each
 collection against the matrix (`scripts/qmd/qmd-collection-corpus.json`; unmapped
 means denied), plus every active collection in the index database, and refuses
-to start on a denial, a missing gate or no `node`.
+to start on a denial, a missing gate or no `node`. The gate is always the copy
+beside the plugin's checkout (no environment override), the provider host must be
+exactly `api.jina.ai` or `openrouter.ai`, and the unnamed index also gates the
+`.qmd/index.{yaml,yml}` that qmd walks up to from `$HOME` (`--resolve`).
 Local-only configs skip the gate. The shipped `.mcp.json` keeps its single
 `qmd` entry; a second `qmd-salus` entry (port 8182) is added by the runbook, not
 shipped always-on. Design: `docs/internals/egress-matrix.md`.

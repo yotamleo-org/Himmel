@@ -495,7 +495,19 @@ esac
 QMD_CFG_FILE="${QMD_CONFIG_DIR:-${XDG_CONFIG_HOME:-$HOME/.config}/qmd}/index.yml"
 remote_model=0
 case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *openai:*) remote_model=1 ;; esac
-if [ "$remote_model" -eq 0 ] && grep -Eqs '^[^#]*(openai:|\\)' "$QMD_CFG_FILE"; then remote_model=1; fi
+# With no --index qmd prefers a .qmd/index.{yaml,yml} walked up from the cwd over the global config, so that file is gated too (--resolve below).
+walk_cfg=""
+walk_dir="$PWD"
+while :; do
+    for walk_name in index.yaml index.yml; do
+        if [ -f "$walk_dir/.qmd/$walk_name" ]; then walk_cfg="$walk_dir/.qmd/$walk_name"; break 2; fi
+    done
+    [ "$walk_dir" = / ] && break
+    walk_dir="$(dirname -- "$walk_dir")"
+done
+if [ "$remote_model" -eq 0 ] && grep -Eqs '^[^#]*(openai:|\\)' "$QMD_CFG_FILE" ${walk_cfg:+"$walk_cfg"}; then remote_model=1; fi
+# a config in force that cannot be read cannot be proven local: the gate refuses it
+if [ "$remote_model" -eq 0 ] && [ -n "$walk_cfg" ] && [ ! -r "$walk_cfg" ]; then remote_model=1; fi
 if [ "$remote_model" -eq 1 ]; then
     GATE_JS="$(dirname "${BASH_SOURCE[0]}")/../qmd/qmd-jina-gate.mjs"
     if [ ! -f "$GATE_JS" ] || ! command -v node >/dev/null 2>&1; then
@@ -516,7 +528,7 @@ if [ "$remote_model" -eq 1 ]; then
         echo "    Put a QMD_OPENAI_API_KEY=... line (mode 0600) in $QMD_KEY_FILE_PATH." >&2
         exit 10
     fi
-    if ! node "$GATE_JS" "$QMD_CFG_FILE" "$QMD_INDEX_PATH" >&2; then
+    if ! node "$GATE_JS" --resolve "$QMD_CFG_FILE" "$QMD_INDEX_PATH" >&2; then
         echo "ERR qmd-reindex: EGRESS REFUSED — index NOT refreshed; see docs/internals/egress-matrix.md." >&2
         exit 10
     fi

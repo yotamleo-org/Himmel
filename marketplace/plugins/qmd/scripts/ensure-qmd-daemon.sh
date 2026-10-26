@@ -323,7 +323,24 @@ tune_provider="" tune_batch="" tune_conc="" tune_queue=""
 # Case-insensitive: OpenAI: / OPENAI: model strings must reach the gate too.
 env_models="$(printf '%s' "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" | tr '[:upper:]' '[:lower:]')"
 case "$env_models" in *openai:*) remote_models=1 ;; esac
-if [ "$remote_models" -eq 0 ] && grep -Eqis '^[^#]*(openai:|\\)' "$qmd_cfg"; then
+# The unnamed index is started from $HOME, where qmd prefers a cwd-walked .qmd/index.{yaml,yml}
+# over the global config: that file is the one in force, so it is gated too (--resolve below).
+walk_cfg=""
+if [ "$QMD_INDEX_NAME" = index ]; then
+  walk_dir="${HOME:-/}"
+  while :; do
+    for walk_name in index.yaml index.yml; do
+      if [ -f "$walk_dir/.qmd/$walk_name" ]; then walk_cfg="$walk_dir/.qmd/$walk_name"; break 2; fi
+    done
+    [ "$walk_dir" = / ] && break
+    walk_dir="$(dirname -- "$walk_dir")"
+  done
+fi
+if [ "$remote_models" -eq 0 ] && grep -Eqis '^[^#]*(openai:|\\)' "$qmd_cfg" ${walk_cfg:+"$walk_cfg"}; then
+  remote_models=1
+fi
+# a config in force that cannot be read cannot be proven local: the gate refuses it
+if [ "$remote_models" -eq 0 ] && [ -n "$walk_cfg" ] && [ ! -r "$walk_cfg" ]; then
   remote_models=1
 fi
 if [ "$remote_models" -eq 1 ]; then
@@ -344,14 +361,19 @@ if [ "$remote_models" -eq 1 ]; then
     tune_conc="$(sed -n 's/^QMD_OPENAI_EMBED_CONCURRENCY=//p' "$key_env_file" | head -n 1)"
     tune_queue="$(sed -n 's/^QMD_QUERY_MAX_QUEUED=//p' "$key_env_file" | head -n 1)"
   fi
-  qmd_gate="${QMD_JINA_GATE:-$(dirname -- "${BASH_SOURCE[0]}")/../../../../scripts/qmd/qmd-jina-gate.mjs}"
+  # No override: the gate is always the one beside this plugin's checkout, never a path from the environment.
+  gate_dir="$(dirname -- "${BASH_SOURCE[0]}")/../../../../scripts/qmd"
+  qmd_gate="$(cd -- "$gate_dir" 2>/dev/null && pwd -P)/qmd-jina-gate.mjs"
   if [ ! -f "$qmd_gate" ] || ! command -v node >/dev/null 2>&1; then
     echo "ensure-qmd-daemon: ERROR - $qmd_cfg names a remote model but the egress gate ($qmd_gate) or node is missing - NOT starting qmd." >&2 # t13b-ok: message text only, starts nothing
     echo "  Run from a himmel checkout (scripts/qmd/qmd-jina-gate.mjs) or switch the models back to local hf: URIs." >&2
     exit 1
   fi
   qmd_db="${INDEX_PATH:-${XDG_CACHE_HOME:-$HOME/.cache}/qmd/$QMD_INDEX_NAME.sqlite}"
-  if ! QMD_GATE_REQUIRE_KEY=1 QMD_OPENAI_API_KEY="$provider_key" node "$qmd_gate" "$qmd_cfg" "$qmd_db" >&2; then
+  # --resolve from $HOME (the daemon's cwd) makes the gate check the config qmd will actually open.
+  gate_resolve=""
+  [ "$QMD_INDEX_NAME" = index ] && gate_resolve="--resolve"
+  if ! (cd "${HOME:-/}" 2>/dev/null || cd / || exit 1; QMD_GATE_REQUIRE_KEY=1 QMD_OPENAI_API_KEY="$provider_key" node "$qmd_gate" ${gate_resolve:+"$gate_resolve"} "$qmd_cfg" "$qmd_db") >&2; then
     echo "ensure-qmd-daemon: ERROR - the egress matrix refuses this index's remote model - NOT starting qmd." >&2 # t13b-ok: message text only, starts nothing
     exit 1
   fi

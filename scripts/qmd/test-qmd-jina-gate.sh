@@ -476,14 +476,19 @@ exit 0
 EOF
 chmod +x "$work/curl"
 
-launch() { # launch <index name|-> ; QMD_JINA_GATE inherited from the caller
+launch() { # launch <index name|-> ; runs the script named by the caller's ENSURE_UNDER_TEST, else the real one
   rm -f "$work/started" "$work/qmd-calls"
-  local idx="${1:-index}"
+  local idx="${1:-index}" script="${ENSURE_UNDER_TEST:-$ensure}"
   env -i PATH="$PATH" HOME="$work/home" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
     XDG_CACHE_HOME="$work/cache" QMD_CURL="$work/curl" QMD_MCP_URL=http://localhost:1/mcp \
     QMD_DAEMON_ENV_FILE="$work/daemon0.env" QMD_INDEX_NAME="$idx" ${QMD_JINA_GATE:+QMD_JINA_GATE="$QMD_JINA_GATE"} \
-    bash "$ensure" >"$work/out" 2>"$work/err"
+    bash "$script" >"$work/out" 2>"$work/err"
 }
+
+# (13/14) a copy of the launcher outside a himmel checkout: no gate script beside it.
+mkdir -p "$work/reloc/marketplace/plugins"
+cp -R "$(dirname "$(dirname "$ensure")")" "$work/reloc/marketplace/plugins/qmd"
+reloc_ensure="$work/reloc/marketplace/plugins/qmd/scripts/ensure-qmd-daemon.sh" # t13b-ok: path of the relocated copy under test
 
 # (11) launcher refuses to start a daemon on a salus + Jina index.
 cp "$work/a.yml" "$work/cfg/index.yml"
@@ -501,12 +506,12 @@ launch index; rc=$?
 
 # (13) a local-only config never needs the gate (works outside a himmel checkout).
 cp "$work/d.yml" "$work/cfg/index.yml"
-QMD_JINA_GATE=/nonexistent/gate.mjs launch index; rc=$?
+ENSURE_UNDER_TEST="$reloc_ensure" launch index; rc=$?
 [ "$rc" -eq 0 ] || fail "(13) local config with no gate script: expected rc 0, got $rc: $(cat "$work/err")"
 
 # (14) a remote model with the gate script missing fails closed.
 cp "$work/c.yml" "$work/cfg/index.yml"
-QMD_JINA_GATE=/nonexistent/gate.mjs launch index; rc=$?
+ENSURE_UNDER_TEST="$reloc_ensure" launch index; rc=$?
 [ "$rc" -eq 1 ] || fail "(14) Jina config with no gate script: expected rc 1, got $rc"
 [ ! -e "$work/started" ] || fail "(14) launcher STARTED qmd with no gate to vet the config"
 
@@ -714,5 +719,39 @@ for ev in QMD_EMBED_MODEL QMD_RERANK_MODEL QMD_GENERATE_MODEL; do
 done
 run_res "$work/proj"; rc=$?
 [ "$rc" -eq 0 ] || fail "(47) project-local salus on local models, no env: expected rc 0, got $rc: $(cat "$work/err")"
+
+# (48) the provider is the exact endpoint, not a hostname that merely ends in the provider's domain:
+# r.jina.ai is the keyless Reader (corpus jina-reader), eu.jina.ai is unvetted; neither is api.jina.ai.
+for h in r.jina.ai eu.jina.ai api.jina.ai.evil.example; do
+  cfg "$work/host.yml" "$JINA_EMBED" "$LOCAL_EMBED" "https://$h/v1" himmel
+  run_gate "$work/host.yml"; rc=$?
+  [ "$rc" -eq 3 ] || fail "(48) base URL host $h must not classify as jina: expected rc 3, got $rc"
+  grep -q 'not a recognised provider' "$work/err" || fail "(48) $h must be refused as unrecognised: $(cat "$work/err")"
+done
+cfg "$work/host.yml" "$JINA_EMBED" "$LOCAL_EMBED" https://api.jina.ai/v1 himmel
+run_gate "$work/host.yml"; rc=$?
+[ "$rc" -eq 0 ] || fail "(48) api.jina.ai stays allowed for a non-salus index: expected rc 0, got $rc: $(cat "$work/err")"
+
+# (49) the launcher has no gate override: an env var must not swap in a permissive gate.
+printf '#!/usr/bin/env node\nprocess.exit(0);\n' > "$work/permissive-gate.mjs"
+cp "$work/a.yml" "$work/cfg/index.yml"
+printf 'QMD_OPENAI_API_KEY=sk-test-jina\n' > "$work/daemon0.env"; chmod 600 "$work/daemon0.env"
+QMD_JINA_GATE="$work/permissive-gate.mjs" launch index; rc=$?
+[ "$rc" -eq 1 ] || fail "(49) QMD_JINA_GATE must not replace the gate: salus+Jina expected rc 1, got $rc"
+[ ! -e "$work/started" ] || fail "(49) launcher STARTED qmd through an overridden gate"
+
+# (50) the daemon runs from $HOME, where the fork's cwd walk finds ~/.qmd/index.yml before the global
+# config; a remote model there must be gated even though the global config is local-only.
+mkdir -p "$work/home/.qmd"
+cp "$work/d.yml" "$work/cfg/index.yml"
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_PIN_E" "$OR_PIN_R" "$OR_URL" > "$work/home/.qmd/index.yml"
+launch index; rc=$?
+[ "$rc" -eq 1 ] || fail "(50a) a ~/.qmd salus config with a remote route: expected rc 1, got $rc: $(cat "$work/err")"
+[ ! -e "$work/started" ] || fail "(50a) launcher STARTED qmd on a shadowing ~/.qmd salus config"
+grep -q 'salus' "$work/err" || fail "(50a) the refusal must name salus: $(cat "$work/err")"
+printf 'collections:\n  himmel:\n    path: /nonexistent/h\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_PIN_E" "$OR_PIN_R" "$OR_URL" > "$work/home/.qmd/index.yml"
+launch index; rc=$?
+[ "$rc" -eq 0 ] || fail "(50b) a clean remote ~/.qmd config: expected rc 0, got $rc: $(cat "$work/err")"
+rm -rf "$work/home/.qmd"
 
 echo "PASS: test-qmd-jina-gate.sh"

@@ -873,6 +873,17 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
     assert_rc "salus in the XDG database rc 10" 10 "$rc"
     assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
     rm -rf "$HOME/xdgcache" "$HOME/.config/qmd" 2>/dev/null || true
+
+    echo "TEST: a cwd-walked .qmd/index.yml that shadows a local global config is gated"
+    reset_state
+    mkdir -p "$HOME/.config/qmd" "$HOME/proj/.qmd" "$HOME/.cache/qmd"
+    printf 'models:\n  embed: hf:Qwen/Qwen3-Embedding-0.6B-GGUF/Qwen3-Embedding-0.6B-Q8_0.gguf\n' > "$HOME/.config/qmd/index.yml"
+    printf 'collections:\n  salus:\n    path: /x\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: https://api.jina.ai/v1\n' > "$HOME/proj/.qmd/index.yml"
+    rc=0; out=$(cd "$HOME/proj" && bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "a shadowing salus config with a remote route rc 10" 10 "$rc"
+    assert_contains "names the denied collection" "salus" "$out"
+    assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
+    rm -rf "$HOME/proj" "$HOME/.config/qmd" "$HOME/.cache/qmd" 2>/dev/null || true
 else
     pass "egress gate check skipped: sqlite3 or node not installed"
 fi

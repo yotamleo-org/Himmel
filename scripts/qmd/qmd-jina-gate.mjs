@@ -192,7 +192,7 @@ function providerOf() {
   const host = url.hostname.replace(/^\[|\]$/g, "");
   if (["localhost", "127.0.0.1", "::1"].includes(host)) return null; // on-machine server
   if (url.protocol !== "https:") return `${host}-insecure-${url.protocol.replace(":", "")}`; // never matches an allow row
-  if (host === "jina.ai" || host.endsWith(".jina.ai")) return "jina";
+  if (host === "api.jina.ai") return "jina"; // exact endpoint: r.jina.ai is the keyless Reader, other jina.ai hosts are unvetted
   if (host === "openrouter.ai") return "openrouter";
   return `${host}-unrecognised`; // a wildcard allow row must never approve a host nobody vetted
 }
