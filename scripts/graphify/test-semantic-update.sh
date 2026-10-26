@@ -953,5 +953,12 @@ out=$(run --name t81 --corpus-root "$C81" --corpus-class himmel-code); rc=$?
 [ "$rc" -eq 0 ] && [[ "$(ids "$C81")" == *stale_a4* ]] && ! [[ "$(ids "$C81")" == *sem_a.md_alpha* ]] \
   && pass "T82 the thin extraction is refused: no shrink refusal came before it" || fail "T82 (rc=$rc): $(ids "$C81") :: $out"
 
+echo "T83: graphify's own export (60-Maps/graph/) is never planned or stamped; a hand-authored 60-Maps note still is"
+C83="$WS/c83"; new_corpus "$C83"; mkdir -p "$C83/60-Maps/graph"
+printf 'derived\n' > "$C83/60-Maps/graph/Skills.md"; printf 'derived\n' > "$C83/60-Maps/graph/Skills1.md"; printf 'hand\n' > "$C83/60-Maps/hand.md"
+out=$(run --name t83 --corpus-root "$C83" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C83/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "60-Maps/hand.md a.md b.md sub/c.md" ] && pass "T83 export dir excluded, hand.md kept" || fail "T83 (rc=$rc) '$n': $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

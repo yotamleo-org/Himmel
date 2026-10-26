@@ -52,6 +52,9 @@ GRAPHIFY_SKIP_DIRS = {
 }
 # Test fixtures are data for a suite, not knowledge; a large mirror of them crowds every chunk.
 SEMANTIC_SKIP_DIRS = GRAPHIFY_SKIP_DIRS | {"fixtures"}
+# graphify's own exported notes (<vault>/60-Maps/graph/): extracting them mints Skills1.md-style duplicate families on every run.
+# ponytail: the luna vault's fixed maps dir, as refresh-graph-map.sh's <maps-dir>/graph and luna-index-hygiene.sh hardcode it; a corpus with another maps dir needs .graphify-corpus-ignore.
+EXPORT_DIRS = ["60-Maps/graph/"]
 
 
 def die(msg, rc=1):
@@ -130,7 +133,7 @@ def corpus_files(root, out_name):
             for fn in fns:
                 if fn.endswith(".md"):
                     files.append(os.path.relpath(os.path.join(dp, fn), root))
-    skip = ignored_dirs(root) + [out_name + "/", "graphify-out/"]
+    skip = ignored_dirs(root) + [out_name + "/", "graphify-out/"] + EXPORT_DIRS
     keep = []
     for rel in files:
         rel = rel.replace(os.sep, "/")
