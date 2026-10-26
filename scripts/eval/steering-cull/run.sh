@@ -16,7 +16,9 @@
 #   --ceiling  stop before the next call once the summed cost-eq of <out> reaches it.
 # Env: SC_CLAUDE (default claude), SC_PREFLIGHT (default scripts/lib/usage-preflight.sh) - the
 #      test seams.
-# Exit: 0 done; 2 usage, an <out> run under another config, or an arm that cannot be built; 3 stopped (bank refusal, ceiling, or an unsummable spend).
+# Exit: 0 done; 2 usage, an <out> run under another config, or an arm that cannot be built;
+#       3 stopped (bank refusal, ceiling, an unsummable spend, or under a ceiling a call with no
+#       usage to bill); 4 swept, but some runs errored and lack a summary (re-run to retry).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -78,20 +80,14 @@ if [ "$phase" = cut ]; then
     ids="$keep"
 fi
 # A resume must ask the same question: same model, effort and reps, and the same text the child
-# reads (preamble, prompts, row spans and cuts, baseline fixtures). Checks may change; rescore.
-python3 -c 'import hashlib,json,os,sys
-path, here = sys.argv[1], sys.argv[2]
-d = json.load(open(os.path.join(here, "probes.json")))
-rows = json.load(open(os.path.join(here, "rows.json")))["rows"]
-h = hashlib.sha256(json.dumps([d["preamble"], [[p["id"], p["prompt"]] for p in d["probes"]],
-                               [[r["id"], r["scope"], r["old"], r["cut"]] for r in rows]]).encode())
-fx = os.path.join(here, "fixtures", "baseline")
-for f in sorted(os.listdir(fx)):
-    h.update(f.encode() + open(os.path.join(fx, f), "rb").read())
-new = {"model": sys.argv[3], "effort": sys.argv[4], "reps": int(sys.argv[5]), "inputs_sha": h.hexdigest()[:16]}
+# reads (cull.py inputs-sha). Checks may change; rescore.
+isha="$(python3 "$CULL" inputs-sha)" || exit 2
+python3 -c 'import json,os,sys
+path = sys.argv[1]
+new = {"model": sys.argv[2], "effort": sys.argv[3], "reps": int(sys.argv[4]), "inputs_sha": sys.argv[5]}
 if os.path.exists(path) and json.load(open(path)) != new:
     sys.exit(3)
-json.dump(new, open(path, "w"))' "$out/run-config.json" "$HERE" "$model" "$effort" "$reps"
+json.dump(new, open(path, "w"))' "$out/run-config.json" "$model" "$effort" "$reps" "$isha"
 case $? in
     0) ;;
     3) die "$out was run with another model, effort, reps or probe text (run-config.json); use a fresh --out" ;;
@@ -106,8 +102,8 @@ arm_dir() { # $1 arm -> its built tree, built once per sweep
     [ -d "$scratch/$1/repo" ] || python3 "$CULL" build --arm "$1" --dest "$scratch/$1" >/dev/null || return 1
     printf '%s\n' "$scratch/$1"
 }
-# Spent = the scored runs plus every errored call that reported usage (errored-spend.log); a call
-# killed by --timeout reports none, and --max-usd bounds it instead.
+# Spent = the scored runs plus every errored call that reported usage (errored-spend.log). Under a
+# ceiling, a call that reports no usage (killed by --timeout, unparseable) stops the sweep.
 spent() { python3 -c 'import json,sys,glob,os
 s = sum(json.load(open(p)).get("cost_eq") or 0 for p in glob.glob(sys.argv[1]+"/*/*/*.summary.json"))
 e = os.path.join(sys.argv[1], "errored-spend.log")
@@ -150,8 +146,15 @@ for p in $ids; do
             if python3 -c 'import json,sys; sys.exit(1 if json.load(open(sys.argv[1]))["error"] else 0)' "$stem.summary.json.tmp"; then
                 mv "$stem.summary.json.tmp" "$stem.summary.json"
             else
-                python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("cost_eq") or 0)' \
-                    "$stem.summary.json.tmp" >>"$out/errored-spend.log" 2>/dev/null
+                ce="$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])).get("cost_eq"); print("" if c is None else c)' \
+                    "$stem.summary.json.tmp" 2>/dev/null)"
+                if [ -n "$ce" ]; then
+                    printf '%s\n' "$ce" >>"$out/errored-spend.log"
+                elif [ -n "$ceiling" ]; then
+                    rm -f "$stem.summary.json.tmp"
+                    echo "run.sh: $p $arm $r errored with no usage to bill against the ceiling - stopped" >&2
+                    exit 3
+                fi
             fi
             rm -f "$stem.summary.json.tmp"
             echo "run.sh: $p $arm $r -> $(python3 -c 'import json,sys
@@ -160,4 +163,15 @@ except Exception: print("error, retried on the next run")' "$stem.summary.json")
         done
     done
 done
+missing=0
+for p in $ids; do
+    if [ "$phase" = red ]; then arms="baseline red-$(row_of "$p")"; else arms="cut"; fi
+    for arm in $arms; do for r in $(seq 1 "$reps"); do
+        [ -f "$out/$p/$arm/$r.summary.json" ] || missing=$((missing + 1))
+    done; done
+done
+if [ "$missing" -gt 0 ]; then
+    echo "run.sh: $phase phase incomplete, $missing runs errored (re-run to retry), spent $(spent) cost-eq" >&2
+    exit 4
+fi
 echo "run.sh: $phase phase done, spent $(spent) cost-eq"

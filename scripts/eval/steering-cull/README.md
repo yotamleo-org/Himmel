@@ -47,9 +47,11 @@ enforces (`r1`, `l64`) or that memory repeats (`l65`) is therefore measured with
 
 `run.sh` makes real, billed model calls, so it needs `HIMMEL_BILLED_OK=1`. Before each probe
 `usage-preflight` must print `PROCEED`, and `--ceiling <cost-eq>` stops the sweep before the
-call that would pass it; an errored call that reports usage counts toward it too. Defaults:
-sonnet, effort medium, 3 reps. A resume into an `--out` run under another model, effort, reps
-or probe text is refused; an arm counts only once it has all its reps, else its row is PENDING.
+call that would pass it; an errored call that reports usage counts toward it, and one that
+reports none stops the sweep. Defaults: sonnet, effort medium, 3 reps. A sweep that leaves
+errored runs exits 4; re-run it to retry them. A resume into an `--out` run under another model,
+effort, reps or probe text is refused, and so is `report --ledger` on it; an arm counts only once
+it has all its reps, else its row is PENDING.
 
 ```bash
 out=~/.himmel/eval/steering-cull/<date>

@@ -174,6 +174,23 @@ SC_CLAUDE="$TMP/bin/claude-err" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phas
 rc=$?
 eq "run: an errored call's spend counts toward the ceiling (exit 3)" "$rc" "3"
 eq "run: the ceiling stops after the first errored call" "$(wc -l <"$STUB_LOG" | tr -d ' ')" "1"
+eq "run: a sweep that leaves errored runs exits 4" "$(SC_CLAUDE="$TMP/bin/claude-err" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase red --out "$TMP/o5" --probes r2-first-commit --reps 2 >/dev/null 2>&1; echo $?)" "4"
+
+cat >"$TMP/bin/claude-mute" <<'STUB'
+#!/usr/bin/env bash
+echo call >>"$STUB_LOG"
+STUB
+chmod +x "$TMP/bin/claude-mute"
+: >"$STUB_LOG"
+SC_CLAUDE="$TMP/bin/claude-mute" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase red --out "$TMP/o6" --probes r2-first-commit --reps 2 --ceiling 100000 >/dev/null 2>&1
+rc=$?
+eq "run: under a ceiling, a call with no usage to bill stops the sweep (exit 3)" "$rc" "3"
+eq "run: it stops after that call" "$(wc -l <"$STUB_LOG" | tr -d ' ')" "1"
+
+python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["inputs_sha"]="0"; json.dump(c, open(sys.argv[1],"w"))' "$TMP/part/run-config.json"
+before="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER" | tr -d ' ')"
+eq "ledger: a run under other probe or row text is refused" "$(python3 "$CULL" report --runs "$TMP/part" --sessions "$TMP/sessions" --no-agents --ledger >/dev/null 2>&1; echo $?)" "2"
+eq "ledger: the refused run appends no row" "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER" | tr -d ' ')" "$before"
 
 : >"$STUB_LOG"
 SC_CLAUDE="$TMP/bin/claude" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase red --out "$TMP/o3" --probes "$P" --reps 2 --ceiling 1 >/dev/null 2>&1

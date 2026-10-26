@@ -12,7 +12,9 @@
   rescore --runs OUT            re-score every saved reply after a probe's checks change, no model call
   valid --runs OUT              the probes that pass BASELINE and fail RED (one per line)
   report --runs OUT [cost options] [--ledger] [--json]
-                                the per-row table and verdicts; --ledger appends an eval-runs row
+                                the per-row table and verdicts; --ledger appends an eval-runs row,
+                                refused (2) when OUT ran on other probe or row text
+  inputs-sha                    hash of the text a child reads (run.sh pins it in run-config.json)
 
 Cost: tokens are UTF-8 bytes // 4 per side. ponytail: a bytes/4 estimate, not the tokenizer's
 count; upgrade path: the count_tokens API on the baseline and cut files.
@@ -29,6 +31,7 @@ A probe passes an arm when more than half of its scored reps pass.
 """
 import argparse
 import glob
+import hashlib
 import json
 import os
 import re
@@ -329,6 +332,23 @@ def passes(t):
     return t is not None and t[1] > 0 and t[0] * 2 > t[1]
 
 
+def inputs_sha():
+    """Hash of the text a child reads: preamble, prompts, row spans and cuts, baseline fixtures."""
+    d = probes_doc()
+    h = hashlib.sha256(json.dumps([d["preamble"], [[p["id"], p["prompt"]] for p in d["probes"]],
+                                   [[r["id"], r["scope"], r["old"], r["cut"]] for r in rows_doc()["rows"]]]).encode())
+    fx = os.path.join(HERE, "fixtures", "baseline")
+    for f in sorted(os.listdir(fx)):
+        with open(os.path.join(fx, f), "rb") as fh:
+            h.update(f.encode() + fh.read())
+    return h.hexdigest()[:16]
+
+
+def cmd_inputs_sha(a):
+    print(inputs_sha())
+    return 0
+
+
 def run_config(runs):
     path = os.path.join(runs, "run-config.json")
     return json.load(open(path)) if os.path.exists(path) else {}
@@ -417,11 +437,16 @@ def cmd_report(a):
     else:
         print(text)
     if a.ledger:
-        write_ledger(a, c, vd, tl)
+        return write_ledger(a, c, vd, tl)
     return 0
 
 
 def write_ledger(a, c, vd, tl):
+    """Refused (2) unless <runs> was run on the probe and row text the row's shas describe."""
+    if run_config(a.runs).get("inputs_sha") != inputs_sha():
+        print("cull.py: %s was run on other probe or row text than the current files (run-config.json "
+              "inputs_sha); no ledger row" % a.runs, file=sys.stderr)
+        return 2
     counts = {}
     for v in vd.values():
         counts[v["verdict"]] = counts.get(v["verdict"], 0) + 1
@@ -451,6 +476,7 @@ def write_ledger(a, c, vd, tl):
                              status="ok" if counts.get("PENDING", 0) == 0 and cases else "partial",
                              cases=cases, artifact=os.path.abspath(a.runs), reps=reps, repo=REPO)
     eval_runs.append_safe(row, None, who=EVAL_ID)
+    return 0
 
 
 def main():
@@ -475,9 +501,11 @@ def main():
     s.add_argument("--probe", required=True)
     for name in ("valid", "rescore"):
         sub.add_parser(name).add_argument("--runs", required=True)
+    sub.add_parser("inputs-sha")
     a = ap.parse_args()
     return {"check": cmd_check, "build": cmd_build, "cost": cmd_cost, "summarize": cmd_summarize,
-            "valid": cmd_valid, "rescore": cmd_rescore, "report": cmd_report}[a.cmd](a)
+            "valid": cmd_valid, "rescore": cmd_rescore, "report": cmd_report,
+            "inputs-sha": cmd_inputs_sha}[a.cmd](a)
 
 
 if __name__ == "__main__":
