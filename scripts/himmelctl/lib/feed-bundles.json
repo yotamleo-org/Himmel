@@ -17,7 +17,8 @@
         "luna-vault-scaffold", "luna-sources", "obsidian-second-brain", "pipeline-cadence",
         "doctor:C3-luna", "doctor:C26-salus-marker", "doctor:C51-firecrawl-parked",
         "plugin:claude-obsidian@himmel", "plugin:luna-correlate@himmel", "plugin:obsidian-triage@himmel",
-        "secret:FIRECRAWL_*", "secret:WHISPER_MODEL"
+        "secret:FIRECRAWL_*", "secret:WHISPER_MODEL",
+        "secret:GEMINI_API_KEY", "secret:PERPLEXITY_API_KEY", "secret:XAI_API_KEY"
       ]
     },
     {
