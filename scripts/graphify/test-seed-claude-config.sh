@@ -268,10 +268,14 @@ else
   fail "reseeding exposed partial config or left temp files (seed=$atomic_seed_rc settings=$atomic_settings_rc temps=$atomic_temp_count)"
 fi
 
+NOKC_BIN="$WS/nokc-bin"
+mkdir -p "$NOKC_BIN"
+printf '#!/usr/bin/env bash\nexit 44\n' > "$NOKC_BIN/security"
+chmod +x "$NOKC_BIN/security"
 MISSING_HOME="$WS/missing-home"
 mkdir -p "$MISSING_HOME/.claude"
 printf '{}\n' > "$MISSING_HOME/.claude/settings.json"
-if HOME="$MISSING_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$MISSING_HOME/.claude-graphify" bash "$HELPER" >/dev/null 2>&1; then
+if HOME="$MISSING_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$MISSING_HOME/.claude-graphify" PATH="$NOKC_BIN:$PATH" bash "$HELPER" >/dev/null 2>&1; then
   fail "missing subscription credentials should fail closed"
 else
   if [ ! -f "$MISSING_HOME/.claude-graphify/.seeded" ]; then
@@ -281,8 +285,8 @@ else
   fi
 fi
 
-HOME="$MISSING_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$MISSING_HOME/.claude-graphify" bash "$HELPER" > "$WS/missing-creds.log" 2>&1
-if grep -q 'Keychain' "$WS/missing-creds.log" && grep -q 'CLAUDE_CONFIG_DIR\|\.credentials\.json' "$WS/missing-creds.log"; then
+HOME="$MISSING_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$MISSING_HOME/.claude-graphify" PATH="$NOKC_BIN:$PATH" bash "$HELPER" > "$WS/missing-creds.log" 2>&1
+if grep -q 'Keychain' "$WS/missing-creds.log" && grep -q '\.credentials\.json' "$WS/missing-creds.log"; then
   pass "missing credentials message names the Keychain and the file alternative"
 else
   fail "missing credentials message does not name the Keychain: $(cat "$WS/missing-creds.log")"
@@ -331,12 +335,13 @@ fi
 
 touch -t 203101010000 "$KC_HOME/.claude-graphify/.seeded"
 kc_noop_before="$(stat -c %Y "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null)"
-run_kc_seed > /dev/null 2>&1
+kc_noop_rc=0
+run_kc_seed > /dev/null 2>&1 || kc_noop_rc=$?
 kc_noop_after="$(stat -c %Y "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null)"
-if [ "$kc_noop_before" = "$kc_noop_after" ]; then
+if [ "$kc_noop_rc" -eq 0 ] && [ "$kc_noop_before" = "$kc_noop_after" ]; then
   pass "unchanged Keychain credentials do not trigger reseed churn"
 else
-  fail "unchanged Keychain credentials reseeded ($kc_noop_before -> $kc_noop_after)"
+  fail "unchanged Keychain credentials reseeded or failed (rc=$kc_noop_rc $kc_noop_before -> $kc_noop_after)"
 fi
 
 printf '{"claudeAiOauth":{"accessToken":"kc-v2"}}\n' > "$KC_FIXTURE"
