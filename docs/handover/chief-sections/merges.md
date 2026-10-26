@@ -71,7 +71,8 @@ and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
   needs a fresh judge and GO at the new head.
 - **The worker's proof:** send it the `MERGE-FORWARD` line and the plan file. It runs
   `bash scripts/handover/merge-forward-check.sh --chain-s2 <pr> --chain-plan <plan file> --chain-after-sha <the predecessor's squash-merge sha> --pr <job file> --pr-sha <HEAD>`
-  and merges forward only on `ALLOW chain-s2`. The reason needs a green PR run (a
+  and merges forward only on `ALLOW chain-s2` (exit 0; exit 3 = the predecessor is
+  already in HEAD, nothing to merge forward). The reason needs a green PR run (a
   red goes through the inherited-red rules) and a sha that is on `origin/main`, not
   in HEAD, with a subject ending `(#<predecessor>)`.
 - **Flag off:** the planner prints one notice and no `MERGE-FORWARD` line, so the

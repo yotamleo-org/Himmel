@@ -39,7 +39,7 @@
 # --pr-sha (the PR run's headSha) must equal `git rev-parse HEAD`, so an
 # older PR run cannot stand in for the current head.
 # Exit 0 = ALLOW  1 = REFUSE  2 = usage / unreadable input
-#      3 = nothing red on the PR; no merge-forward needed
+#      3 = nothing to merge forward: no red on the PR, or (--chain-s2 mode) the predecessor is already in HEAD
 # Red = failure | timed_out | startup_failure.
 # --main-base-conclusion / --base-cover-conclusion are the RUN's conclusion from
 # `gh run view <id> --json conclusion` (`none` when no run exists at the merge-base):
