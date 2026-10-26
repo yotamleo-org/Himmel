@@ -36,6 +36,16 @@ t=open(sys.argv[2]).read()
 print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] in t) or "none")' "$HERE/rows.json" "$LIVE" \
     r1-git-workflow r2-trailers r3-jira r6-adding-a-rule l64-history-comments l70-memory-routes l88-enforcement-inventory l98-reference-index 2>&1)" "none"
 has "live cull: the git-workflow rule keeps its approval clause" "$(cat "$LIVE")" "≥1 approval"
+kept_missing() { python3 -c 'import json,sys
+rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
+t=open(sys.argv[2]).read()
+print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] not in t) or "none")' "$HERE/rows.json" "$1" \
+    r4-billing r5-invariants l65-specs-location l71-qmd-graphify 2>&1; }
+eq "live cull: the kept rows' spans are byte-present in CLAUDE.md" "$(kept_missing "$LIVE")" "none"
+python3 -c 'import json,sys
+r=[x for x in json.load(open(sys.argv[1]))["rows"] if x["id"]=="r4-billing"][0]
+open(sys.argv[3],"w").write(open(sys.argv[2]).read().replace(r["old"], ""))' "$HERE/rows.json" "$LIVE" "$TMP/kept-red.md"
+eq "live cull: a kept span deleted from a copy is reported" "$(kept_missing "$TMP/kept-red.md")" "r4-billing"
 
 # --- the arm builder ---
 python3 "$CULL" build --arm baseline --dest "$TMP/arm-baseline" >/dev/null 2>&1
