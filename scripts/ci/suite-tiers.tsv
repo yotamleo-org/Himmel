@@ -64,6 +64,7 @@ marketplace/plugins/obsidian-triage/tests/test-luna-upgrade-skill.sh	local	behav
 marketplace/plugins/obsidian-triage/tests/test-migrate-clip-lifecycle.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-playwright-crawl.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-repo-security-scan.sh	pr	guard
+marketplace/plugins/obsidian-triage/tests/test-requirements-resolve-ci-mode.sh	pr	static-gate
 marketplace/plugins/obsidian-triage/tests/test-requirements-resolve.sh	pr	static-gate
 marketplace/plugins/obsidian-triage/tests/test-roadmap-aggregate.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-scrape-backends.sh	local	behaviour suite, 0 catches in the 400-PR audit window

@@ -2052,6 +2052,22 @@ jobs:
           chmod 755 "$RUNNER_TEMP/shfmt-bin/shfmt"
           echo "$RUNNER_TEMP/shfmt-bin" >> "$GITHUB_PATH"
           echo "HIMMEL_REQUIRE_SHFMT=1" >> "$GITHUB_ENV"
+      # HIMMEL-7553: test-requirements-resolve.sh SKIPs without uv, and a
+      # Dependabot PR (no CI image) has none, so the lock bumps it guards passed
+      # vacuously. Put the SAME pinned, sha-verified uv the CI image carries
+      # (.github/ci-image/Dockerfile) on PATH; HIMMEL_REQUIRE_UV=1 on the run
+      # step below makes a missing uv or index a FAIL. Keep ver/sha in lockstep
+      # with the Dockerfile.
+      - name: Put pinned uv on PATH (Linux — requirements-resolve suite)
+        if: runner.os == 'Linux' && runner.environment == 'github-hosted' && !job.container.id
+        run: |
+          ver=0.13.5
+          sha=f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f
+          curl -sSfL "https://github.com/astral-sh/uv/releases/download/${ver}/uv-x86_64-unknown-linux-gnu.tar.gz" -o "$RUNNER_TEMP/uv.tgz"
+          echo "${sha}  $RUNNER_TEMP/uv.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/uv-bin"
+          tar -xzf "$RUNNER_TEMP/uv.tgz" -C "$RUNNER_TEMP/uv-bin" --strip-components=1 uv-x86_64-unknown-linux-gnu/uv
+          echo "$RUNNER_TEMP/uv-bin" >> "$GITHUB_PATH"
       # HIMMEL-2223 codex-3: scripts/test-template-nostash-hooks.sh hard-SKIPs
       # (exit 0) without pre-commit on PATH — the exact vacuous-SKIP shape
       # called out for the Windows vault suites above (LUNA-131) — so without
@@ -2095,6 +2111,7 @@ jobs:
         env:
           HOME_CANARY_REQUIRE_ATIME: "1"
           HOME_CANARY_TIMEOUT: "3300"
+          HIMMEL_REQUIRE_UV: "1"
           FAIL_LOG_DIR: failed-suite-logs
           SUITE_TIER_MODE: ${{ github.event_name == 'pull_request' && 'pr' || 'all' }}
           SUITE_STOP_ON_FAIL: ${{ github.event_name == 'pull_request' && '1' || '' }}
