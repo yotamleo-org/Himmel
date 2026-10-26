@@ -356,9 +356,9 @@ _suite_timeout_for() {
       scripts/ci/test-run-shell-tests.sh|*/scripts/ci/test-run-shell-tests.sh)
         # macOS run 40408566333: killed at 603s on both attempts with every
         # assertion passing (129s on the Linux ledger), the last case still
-        # pending, so 603s is a truncation floor. 1800s is ~3x the floor; the
-        # Linux default is untouched.
-        printf '1800'; return 0 ;;
+        # pending. Run 40413314701 ran it to the end in 911s. 2000s is that
+        # figure x2 (the loaded-budget rule); the Linux default is untouched.
+        printf '2000'; return 0 ;;
     esac
   fi
 

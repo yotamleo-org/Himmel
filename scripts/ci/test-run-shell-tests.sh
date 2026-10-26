@@ -1248,7 +1248,8 @@ else
   check_timeout_2267 "scripts/ci/test-not-in-any-arm-2895.sh" "600"
 
   # Ticket-cited pristine standalone figure: 799s, rc=0, genuine
-  # PASS (measured on overlord8, Windows/Git-Bash).  # A fresh scratch-HOME re-measurement here (Linux
+  # PASS (measured on overlord8, Windows/Git-Bash).
+  # A fresh scratch-HOME re-measurement here (Linux
   # CachyOS, 2026-09-26, via scripts/lib/clean-sandbox.sh) completed in ~27s,
   # rc=0, PASS -- the ~30x gap is Windows/Git-Bash node-spawn overhead on this
   # heavily node-spawning suite (winpath/hermetic-path.sh throughout), not a
@@ -1286,14 +1287,14 @@ else
   # or are unmeasured on macOS, so they keep the default.
   check_os_timeout_2267 Linux "scripts/ci/test-run-shell-tests.sh" "600"
   check_os_timeout_2267 Linux "/repo/scripts/ci/test-run-shell-tests.sh" "600"
-  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests.sh" "1800"
-  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-run-shell-tests.sh" "1800"
+  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests.sh" "2000"
+  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-run-shell-tests.sh" "2000"
   check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests-timing.sh" "600"
   # A suite in no Darwin arm keeps its table value on macOS.
   check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
   check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"
   # Headroom: the Darwin cap clears the measured macOS duration by the loaded x2 rule.
-  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700" "scripts/ci/test-run-shell-tests.sh 603"; do
+  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700" "scripts/ci/test-run-shell-tests.sh 911"; do
     s2267=${m2267% *}; d2267=${m2267#* }
     # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
     cap2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$s2267")
@@ -2631,15 +2632,31 @@ done < "$fix22w"
 # than `.` is "<root>/<suite>"; re-root the committed ledger's keys the same way.
 awk -F'\t' -v r="$sb22w/stubs/" '/^[[:space:]]*#/ { next } { print r $1 "\t" $2 }' \
   "$RST_FIXTURE_DIR/suite-durations.tsv" > "$sb22w/ledger.tsv"
-tot22w=0; max22w=0; slow22w=0; n22w=0; rc22w=0
+fakebin22w=$(mktemp -d "${TMPDIR:-/tmp}/rst-case22w-fakebin.XXXXXX") || { fail "22w: fakebin mktemp failed"; fakebin22w=""; }
+if [ -n "$fakebin22w" ]; then
+printf '#!/usr/bin/env bash\necho Darwin\n' > "$fakebin22w/uname"
+# Darwin refuses to list the sandboxed corpus suites without sandbox-exec.
+printf '#!/usr/bin/env bash\nexit 0\n' > "$fakebin22w/sandbox-exec"
+chmod +x "$fakebin22w/uname" "$fakebin22w/sandbox-exec"
+fi
 nfix22w=$(grep -c . "$fix22w")
 # SKIP_LIST suites are kept out of the plan on purpose, so a fixture row named
 # there is expected unplaced: count those out of the expectation.
 skip22w=$(awk '/^SKIP_LIST="$/{f=1; next} f && /^"$/{exit} f && /^scripts\//{print $1}' "$RUNNER")
-nskip22w=$(S22W="$skip22w" awk -F'\t' 'BEGIN{n=split(ENVIRON["S22W"],a,"\n"); for(i=1;i<=n;i++) k[a[i]]=1} ($1 in k){c++} END{print c+0}' "$fix22w")
+nonlinux22w=$(awk '/^SKIP_LIST_NON_LINUX="$/{f=1; next} f && /^"$/{exit} f && /^scripts\//{print $1}' "$RUNNER")
+# The real pass uses the host's own uname; the Darwin pass stubs it so every
+# host covers the off-Linux plan.
+for os22w in "" Darwin; do
+tot22w=0; max22w=0; slow22w=0; n22w=0; rc22w=0
+_uname22w="${os22w:-$(uname -s)}"
+_skips22w="$skip22w"
+[ "$_uname22w" = "Linux" ] || _skips22w="$skip22w
+$nonlinux22w"
+nskip22w=$(S22W="$_skips22w" awk -F'\t' 'BEGIN{n=split(ENVIRON["S22W"],a,"\n"); for(i=1;i<=n;i++) k[a[i]]=1} ($1 in k){c++} END{print c+0}' "$fix22w")
 nexp22w=$((nfix22w - nskip22w))
+_path22w="$PATH"; [ -z "$os22w" ] || _path22w="$fakebin22w:$PATH"
 for _i in 1 2 3 4 5 6 7 8; do
-  _out=$(SUITE_DURATIONS="$sb22w/ledger.tsv" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1) || rc22w=$((rc22w + 1))
+  _out=$(HIMMEL_RUNTIME_PREFLIGHT=0 PATH="$_path22w" SUITE_DURATIONS="$sb22w/ledger.tsv" bash "$RUNNER" --list --shard "$_i/8" "$sb22w/stubs" 2>&1) || rc22w=$((rc22w + 1))
   _t=0
   while IFS= read -r _p; do
     [ -n "$_p" ] || continue
@@ -2654,11 +2671,12 @@ done
 floor22w=$(( tot22w / 8 )); [ "$max22w" -gt "$floor22w" ] && floor22w=$max22w
 bound22w=$(( floor22w * 105 / 100 ))
 if [ "$rc22w" -eq 0 ] && [ "$n22w" -eq "$nexp22w" ] && [ "$slow22w" -le "$bound22w" ]; then
-  pass "22w: slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites, $nskip22w SKIP_LIST-quarantined)"
+  pass "22w (uname=$_uname22w): slowest measured shard ${slow22w}s is within 5% of the ${floor22w}s floor ($n22w suites, $nskip22w skip-listed)"
 else
-  fail "22w: slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nexp22w expected suites placed ($nskip22w SKIP_LIST-quarantined), $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
+  fail "22w (uname=$_uname22w): slowest measured shard ${slow22w}s vs bound ${bound22w}s (floor ${floor22w}s), $n22w of $nexp22w expected suites placed ($nskip22w skip-listed), $rc22w failed shard listings: refresh scripts/ci/suite-durations.tsv if the ledger is stale"
 fi
-rm -rf "$sb22w"
+done
+rm -rf "$sb22w" "$fakebin22w"
 fi
 
 # --------------------------------------------------------------------------
