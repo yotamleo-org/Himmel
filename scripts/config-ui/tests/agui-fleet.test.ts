@@ -276,9 +276,10 @@ test("a wrapper waiting on a pgrep -f pattern its own command spells is STUCK, l
   wrapper(4255, "while pgrep -vf '^worker$'; do sleep 5; done");
   wrapper(4256, "while pgrep -xvf 'worker job'; do sleep 5; done");
   wrapper(4257, "while pgrep -xf '.*worker job.*'; do sleep 5; done");
-  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.leg.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.leg.name} age=60m\\npid=4248 owner=orphan age=60m\\npid=4249 owner=orphan age=60m\\npid=4250 owner=orphan age=60m\\npid=4251 owner=orphan age=60m\\npid=4252 owner=orphan age=60m\\npid=4253 owner=orphan age=60m\\npid=4254 owner=orphan age=60m\\npid=4255 owner=orphan age=60m\\npid=4256 owner=orphan age=60m\\npid=4257 owner=orphan age=60m\\n'\n`);
+  wrapper(4258, "while pgrep -ixf 'BASH -C .*'; do sleep 5; done");
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.leg.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.leg.name} age=60m\\npid=4248 owner=orphan age=60m\\npid=4249 owner=orphan age=60m\\npid=4250 owner=orphan age=60m\\npid=4251 owner=orphan age=60m\\npid=4252 owner=orphan age=60m\\npid=4253 owner=orphan age=60m\\npid=4254 owner=orphan age=60m\\npid=4255 owner=orphan age=60m\\npid=4256 owner=orphan age=60m\\npid=4257 owner=orphan age=60m\\npid=4258 owner=orphan age=60m\\n'\n`);
   const b = await (await fleet(port)).json();
-  expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4245, "stuck"], [4246, "stuck"], [4247, "wait"], [4248, "orphan"], [4249, "orphan"], [4250, "stuck"], [4251, "orphan"], [4252, "orphan"], [4253, "orphan"], [4254, "stuck"], [4255, "stuck"], [4256, "stuck"], [4257, "stuck"]]);
+  expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4245, "stuck"], [4246, "stuck"], [4247, "wait"], [4248, "orphan"], [4249, "orphan"], [4250, "stuck"], [4251, "orphan"], [4252, "orphan"], [4253, "orphan"], [4254, "stuck"], [4255, "stuck"], [4256, "stuck"], [4257, "stuck"], [4258, "stuck"]]);
 });
 
 test("a console whose operating contract names --lane claudex still reads lane native", async () => {
