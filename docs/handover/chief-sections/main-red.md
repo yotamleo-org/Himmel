@@ -10,6 +10,10 @@ blocks every merge, so classify it first, using steps 1-3 below:
   not reach, already lets that PR through the merge gate (`main-red: cap-only`);
   the ticket and the fix are still owed.
 - **Real blocker** (main's code is broken): HOLD merges until the fix lands.
+  The fix's merge queues the recheck itself: `merge-on-green.sh` dispatches one
+  `ci.yml` run on main after a `Fixes-main-red:` or fix-GO merge and prints
+  `MAIN-RECHECK dispatched run=<id>`. Watch that run; lift the HOLD when it is
+  green at the fix's head.
 - **Complex** (no clear class, or more than one cause): escalate to a
   higher tier, a judge or the operator.
 

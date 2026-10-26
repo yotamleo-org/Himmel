@@ -1198,6 +1198,9 @@ esac
 #     fragment — or, when it ends in .sh, appear on a `##[error]` line). The
 #     line is read from the commit subject or body.
 #     Verified against the run, never trusted: an unrelated name is refused.
+#     After the merge, main_recheck_dispatch queues one `ci.yml` run on the
+#     default branch (also after a fix-GO) and prints `MAIN-RECHECK dispatched
+#     run=<id>`; a failed dispatch is a WARN, never a failed merge.
 #   - red and undeclared: the failed log is classified (main_red_classify). A cap-only
 #     red (every failed suite hit the runner's cap with assertions passing, in
 #     suites the PR does not reach) proceeds, audited `via=cap-only`; an assertion
@@ -1306,7 +1309,7 @@ mr_rows=$("$GH" run list --repo "$nwo" --branch "$default_branch" --workflow CI 
     --json databaseId,conclusion,status,event,headSha,createdAt,attempt \
     --jq '.[] | "\(.databaseId)|\(.status)|\(.conclusion)|\(.event)|\(.headSha)|\(.attempt // 1)"' 2>/dev/null) || mr_rc=$?
 [ "$mr_rc" -eq 0 ] || main_red_refuse "cannot read $nwo's $default_branch CI runs (gh run list exit $mr_rc), so main's state is unverified" "phase=run-list rc=$mr_rc"
-mr_run="" mr_conc="" mr_head="" mr_base="" mr_att="" mr_seen=0 mr_limit=50
+mr_run="" mr_conc="" mr_head="" mr_base="" mr_att="" mr_seen=0 mr_limit=50 mr_fix=0
 while IFS='|' read -r mr_id mr_status mr_c mr_ev mr_sha mr_attn; do
     [ -n "$mr_id" ] || continue
     mr_seen=$((mr_seen + 1))
@@ -1389,6 +1392,7 @@ elif [ "$mr_conc" != success ]; then
         [ -z "$mr_cls" ] || echo "main-red: $mr_cls (${mr_list//,/, })" >&2
         [ -n "$mr_ok" ] || main_red_refuse "$mr_what, covering commits $mr_range, and PR #$pr_num does not declare itself the fix — $mr_how; merge the fix first, or wait for the next green sweep" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att}${mr_cls:+ class=$mr_cls}"
         audit "MAIN-RED main-red-declared repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=$mr_ok${mr_att:+ attempt=$mr_att}"
+        mr_fix=1
     fi
 fi
 
@@ -2598,6 +2602,36 @@ jira_auto_transition_on_merge() {
     return 0
 }
 
+# main_recheck_dispatch <nwo> <base> — after a merge that passed the main-red
+# gate as the declared fix, queue one CI run on the base. ci.yml has no push
+# trigger, so without this the fix is first judged by the next scheduled sweep.
+# The new run is the first workflow_dispatch run above the newest one listed
+# before the dispatch (no clock comparison); its id is `unknown` when that list
+# cannot be read or shows no new run within the poll. A failed dispatch is a
+# WARN and an audit line, never a failed merge: this always returns 0.
+main_recheck_dispatch() {
+    local mc_nwo="$1" mc_base="$2" mc_before="" mc_new="" mc_out mc_rc=0 mc_try=0 mc_max=5
+    mc_before=$("$GH" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
+        --json databaseId --jq '[.[].databaseId] | max // 0') || mc_before=""
+    case "$mc_before" in "" | *[!0-9]*) mc_before="" ;; esac
+    mc_out=$("$GH" workflow run ci.yml --repo "$mc_nwo" --ref "$mc_base" 2>&1) || mc_rc=$?
+    if [ "$mc_rc" -ne 0 ]; then
+        echo "merge-on-green: WARN: MAIN-RECHECK dispatch failed (gh exit $mc_rc): ${mc_out:-<no output>} — the next scheduled CI run re-checks $mc_base" >&2
+        audit "MAIN-RECHECK dispatch-failed repo=$mc_nwo base=$mc_base rc=$mc_rc"
+        return 0
+    fi
+    while [ -n "$mc_before" ] && [ -z "$mc_new" ] && [ "$mc_try" -lt "$mc_max" ]; do
+        mc_new=$("$GH" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
+            --json databaseId --jq "[.[].databaseId | select(. > $mc_before)] | max // empty") || mc_new=""
+        case "$mc_new" in *[!0-9]*) mc_new="" ;; esac
+        mc_try=$((mc_try + 1))
+        [ -n "$mc_new" ] || [ "$mc_try" -ge "$mc_max" ] || "$MERGE_ON_GREEN_SLEEP_CMD" 2
+    done
+    audit "MAIN-RECHECK dispatched run=${mc_new:-unknown} repo=$mc_nwo base=$mc_base"
+    echo "merge-on-green: MAIN-RECHECK dispatched run=${mc_new:-unknown} (ci.yml on $mc_base, to re-judge main at the fix)"
+    return 0
+}
+
 # The merge is pinned to the same resolved identity. No --delete-branch:
 # every branch here is worktree-held, so gh's local-branch
 # delete failed on every real merge and turned a landed merge into a
@@ -2669,6 +2703,7 @@ if [ "$merge_rc" -ne 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
+        [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         exit 0
     fi
     if [ "$post_state" = "OPEN" ]; then
@@ -2743,6 +2778,7 @@ if [ "$merge_rc" -eq 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
+        [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         exit 0
     fi
     echo "merge-on-green: gh accepted the merge but PR #$pr_num is '${final_state:-<unreadable>}' (not MERGED) after polling — refusing to report an unconfirmed merge. Check the PR; do NOT retry via a different command path." >&2

@@ -40,6 +40,10 @@ attempt, so a red under re-run still blocks. The gate reads the failed log and p
 `main-red: <class> (<suites>)`; a red made only of runner cap timeouts with assertions
 passing (`cap-only`), in suites the PR does not reach per `scripts/cr/impacted-suites.sh`,
 passes. An `assertion`, `cap-overlap`, `cap-unverified` or `unclassified` red still blocks.
+After a merge on the declared-fix or fix-GO path the script dispatches one `ci.yml` run on
+main (`gh workflow run ci.yml --ref main`) and prints `MAIN-RECHECK dispatched run=<id>`,
+because there is no push trigger to re-check main at the fix; a failed dispatch is a WARN
+and never fails the merge. An ordinary merge, and a cap-only pass, dispatch nothing.
 
 First classify the red, then act:
 

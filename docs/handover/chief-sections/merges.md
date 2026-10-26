@@ -67,7 +67,11 @@ ordinary GO) whenever the gate prints another class: `assertion` (a suite
 failed an assertion), `cap-overlap` (a cap-timed-out suite is one the PR
 reaches), `cap-unverified` (the gate could not read the PR's reach) or
 `unclassified` (a red job that is not a shell-unit job, or a log the gate
-could not parse).
+could not parse). After a merge on the declared-fix or fix-GO path the script
+dispatches one `ci.yml` run on main and prints `MAIN-RECHECK dispatched
+run=<id>` (`run=unknown` when the new run is not listed yet; a failed dispatch
+is a WARN, the merge stands): read that run's `headSha` and `conclusion` before
+you lift a HOLD, and do not dispatch a second one.
 
 **Trust-path PRs.** A PR whose diff touches a pattern in
 `scripts/ci/ci-trust-paths.txt` (CI workflows, `scripts/ci/`, the suite

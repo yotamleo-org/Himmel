@@ -366,8 +366,8 @@ repo_arg="${3:-}"
 api_path="${2:-}"
 json=""
 jqexpr=""
-run_branch="" run_workflow="" run_attempt=""
-while [ $# -gt 0 ]; do case "$1" in --json) json="${2:-}";; --jq) jqexpr="${2:-}";; --branch) run_branch="${2:-}";; --workflow) run_workflow="${2:-}";; --attempt) run_attempt="${2:-}";; esac; shift; done
+run_branch="" run_workflow="" run_attempt="" run_event=""
+while [ $# -gt 0 ]; do case "$1" in --json) json="${2:-}";; --jq) jqexpr="${2:-}";; --branch) run_branch="${2:-}";; --workflow) run_workflow="${2:-}";; --attempt) run_attempt="${2:-}";; --event) run_event="${2:-}";; esac; shift; done
 nwo="${STUB_NWO:-owner/repo}"
 def_files='[{"filename":"README.md"}]'
 case "$verb" in
@@ -548,7 +548,23 @@ case "$verb" in
         # workflow's runs, so a call that drops one must not see main's window.
         [ "$run_branch" = "${STUB_DEFAULT_BRANCH-main}" ] || { echo "gh stub: 'run list' --branch '$run_branch' is not the default branch" >&2; exit 94; }
         [ "$run_workflow" = "CI" ] || { echo "gh stub: 'run list' --workflow '$run_workflow' is not CI" >&2; exit 95; }
+        # --event workflow_dispatch is the post-merge recheck's look at the run it
+        # dispatched: STUB_DISPATCH_BEFORE_JSON until a `workflow run` has been
+        # logged, STUB_DISPATCH_AFTER_JSON from then on.
+        if [ -n "$run_event" ]; then
+            [ "$run_event" = workflow_dispatch ] || { echo "gh stub: 'run list' --event '$run_event' is not workflow_dispatch" >&2; exit 97; }
+            if grep -q '^workflow run ' "$GH_LOG"; then
+                printf '%s' "${STUB_DISPATCH_AFTER_JSON:-[]}" | jq -r "$jqexpr"
+            else
+                printf '%s' "${STUB_DISPATCH_BEFORE_JSON:-[]}" | jq -r "$jqexpr"
+            fi
+            exit 0
+        fi
         printf '%s' "${STUB_RUN_LIST_JSON-${STUB_RUN_LIST_JSON_DEFAULT:-[]}}" | jq -r "$jqexpr" ;;
+    "workflow run")
+        # The post-merge recheck of main: `workflow run ci.yml --repo R --ref main`.
+        [ "${STUB_WORKFLOW_RUN_FAIL:-0}" = "1" ] && { echo "HTTP 403: Resource not accessible by integration" >&2; exit 1; }
+        exit 0 ;;
     "run view")
         [ "${STUB_RUN_VIEW_FAIL:-0}" = "1" ] && { echo "gh: run view failed" >&2; exit 1; }
         # `run view <id> --attempt N --json conclusion --jq ...`: the conclusion
@@ -4822,6 +4838,65 @@ STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fi
     cap_run 0 "7658-h: the declared fix for the run → merged by the declaration"
 assert_audit_has "7658-h: audited as the declared fix" "via=run=40226871918"
 assert_audit_lacks "7658-h: not audited as a cap-only pass" "main-red-cap-only"
+
+# ── a merge that fixes a red main queues one CI run on main ────
+# ci.yml has no push trigger, so without this the fix is first judged by the next
+# scheduled sweep, hours later. The new run's id is the first workflow_dispatch
+# run above the newest one listed before the dispatch.
+mog7323_calls() { grep -c '^workflow run ' "$LAST_GH_LOG"; }
+mog7323_after_merge() {  # <label>: the dispatch is logged after `pr merge`
+    local m w
+    m=$(grep -n '^pr merge ' "$LAST_GH_LOG" | head -1 | cut -d: -f1)
+    w=$(grep -n '^workflow run ' "$LAST_GH_LOG" | head -1 | cut -d: -f1)
+    if [ -n "$m" ] && [ -n "$w" ] && [ "$m" -lt "$w" ]; then pass; else fail "$1 (pr merge at gh log line '${m:-none}', workflow run at '${w:-none}')"; fi
+}
+MOG7323_BEFORE='[{"databaseId":40230000001}]'
+MOG7323_AFTER='[{"databaseId":40230000002},{"databaseId":40230000001}]'
+mog7323_fix() {  # <expect rc> <label> [run_mog args]: red main, PR 77 declares the fix
+    STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: run=37964772913')" \
+        STUB_DISPATCH_BEFORE_JSON="$MOG7323_BEFORE" STUB_DISPATCH_AFTER_JSON="${STUB_DISPATCH_AFTER_JSON-$MOG7323_AFTER}" run_mog "$@"
+}
+# 7323-a (RED) — the declared fix merges: one dispatch of ci.yml on main, after the merge.
+mog7323_fix 0 "7323-a: declared main-red fix → merged"
+if [ "$(mog7323_calls)" = 1 ]; then pass; else fail "7323-a: exactly one dispatch (got $(mog7323_calls))"; fi
+assert_gh_has "7323-a: dispatches ci.yml" "workflow run ci.yml"
+assert_gh_has "7323-a: on the base branch" "--ref main"
+mog7323_after_merge "7323-a: the dispatch follows the merge"
+assert_audit_has "7323-a: audits the dispatch with the new run's id" "MAIN-RECHECK dispatched run=40230000002"
+# 7323-b — a chief-written fix-GO is the other way onto the red-main path.
+MOG7323_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mog-7323.XXXXXX") || { echo "FAIL: 7323 setup: mktemp" >&2; exit 1; }
+MOG7323_ROOT=$(cd "$MOG7323_ROOT" && pwd)
+go_write "$MOG7323_ROOT" --fix-main-red 37964772913 77 "$GO_SHA"
+HANDOVER_DIR="$MOG7323_ROOT" STUB_SHA="$GO_SHA" STUB_RUN_LIST_JSON="$MOG_RUN_RED" \
+    STUB_DISPATCH_BEFORE_JSON="$MOG7323_BEFORE" STUB_DISPATCH_AFTER_JSON="$MOG7323_AFTER" \
+    run_mog 0 "7323-b: fix-GO main-red fix → merged"
+if [ "$(mog7323_calls)" = 1 ]; then pass; else fail "7323-b: exactly one dispatch (got $(mog7323_calls))"; fi
+assert_audit_has "7323-b: audits the dispatch" "MAIN-RECHECK dispatched run=40230000002"
+rm -rf "$MOG7323_ROOT"
+# 7323-c — an ordinary merge on a green main dispatches nothing.
+run_mog 0 "7323-c: ordinary merge, green main → merged"
+if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-c: no dispatch (got $(mog7323_calls))"; fi
+assert_audit_lacks "7323-c: no recheck audited" "MAIN-RECHECK"
+# 7323-d — a failed dispatch is a warning; the merge still succeeds.
+STUB_WORKFLOW_RUN_FAIL=1 mog7323_fix 0 "7323-d: dispatch fails → merge still exits 0"
+assert_err_has "7323-d: warns about the dispatch" "WARN: MAIN-RECHECK dispatch failed"
+assert_audit_has "7323-d: audits the failed dispatch" "MAIN-RECHECK dispatch-failed"
+assert_merge_has "7323-d: the merge ran" "--squash"
+if [ "$(mog7323_calls)" = 1 ]; then pass; else fail "7323-d: one attempt, no retry (got $(mog7323_calls))"; fi
+# 7323-e — dispatched, but the new run is not listed yet: still success, run id unknown.
+STUB_DISPATCH_AFTER_JSON="$MOG7323_BEFORE" mog7323_fix 0 "7323-e: dispatched run not listed → merge still exits 0"
+assert_audit_has "7323-e: audits the dispatch without an id" "MAIN-RECHECK dispatched run=unknown"
+# 7323-f — the merge went through gh's error path but the PR is MERGED: same recheck.
+STUB_MERGE_FAIL=1 STUB_POST_STATE=MERGED mog7323_fix 0 "7323-f: gh rc!=0 but PR MERGED → merged"
+if [ "$(mog7323_calls)" = 1 ]; then pass; else fail "7323-f: exactly one dispatch (got $(mog7323_calls))"; fi
+assert_audit_has "7323-f: audits the dispatch" "MAIN-RECHECK dispatched run=40230000002"
+# 7323-g — a merge that did not complete dispatches nothing.
+STUB_MERGE_FAIL=1 STUB_POST_STATE=OPEN mog7323_fix 15 "7323-g: merge fails, PR still OPEN → exit 15"
+if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-g: no dispatch (got $(mog7323_calls))"; fi
+# 7323-h — the cap-only pass is no fix: nothing to re-check.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7323-h: cap-only pass → merged"
+if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-h: no dispatch (got $(mog7323_calls))"; fi
+assert_audit_lacks "7323-h: no recheck audited" "MAIN-RECHECK"
 rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT"
 
 # ── merge-time plugin version-bump recheck ──────────────────────
