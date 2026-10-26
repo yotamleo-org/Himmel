@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """scripts/eval/worker-digest/failure_review.py - the daily failure review (HIMMEL-4713, P5b of HIMMEL-4670).
 
-One LLM-free pass over the leg-failures ledger: run the failure router, summarise the last 24 h,
+One LLM-free pass over the worker-failures ledger: run the failure router, summarise the last 24 h,
 write the digest, tell the operator in one Telegram line when something happened.
 
   failure_review.py [--live] [--ledger P] [--state P] [--log P] [--inbox P] [--table P] [--now ISO]
                     [--jira-bin P] [--out-dir D] [--vault V] [--notify-cmd C]
 
-ROUTING: failure_router.py route, whose own window (14 d, >= threshold distinct legs) decides
+ROUTING: failure_router.py route, whose own window (14 d, >= threshold distinct workers) decides
 recurrence. DRY-RUN BY DEFAULT: the router reads only, files nothing and calls no Jira. --live
 routes for real (tickets, comments, memory-inbox candidates); the cadence passes it only when it
 was armed with --live (judge note on PR #2020: burn in on dry-run before live filing).
 
 DIGEST (the section "## Failure review"), over the ledger rows of the last 24 h:
-  - top classes with their rows and legs, each (new) when the ledger has no earlier row of it,
+  - top classes with their rows and workers, each (new) when the ledger has no earlier row of it,
     else (recurring);
   - what was routed (or would be, on a dry run), what was capped, what the router skipped;
   - the trajectory signals, minus traj/claim-unverified and traj/red-before-green (unreliable,
@@ -66,19 +66,19 @@ HEADING = "## Failure review"
 EXCLUDED = {"traj/claim-unverified": "verify_before_claim", "traj/red-before-green": "red_before_green"}
 ROUTED = ("filed", "commented", "recurred-after-done", "would-file", "would-comment")
 CAPPED = ("capped", "would-cap")
-LIVE_LINE = re.compile(r"^failure-router: (\S+) legs=(\d+) (\S+)(?: (\S+))?$")
+LIVE_LINE = re.compile(r"^failure-router: (\S+) workers=(\d+) (\S+)(?: (\S+))?$")
 REASON_LINE = re.compile(r"^failure-router: (\S+) reason: (.+)$")
 TOP = 10
 NOTIFIER = os.path.join(HERE, "..", "..", "luna", "vault-stall-alert.sh")
 
 
-def leg_key(leg):
-    m = re.match(r"^N(\d+)", leg)
-    return (int(m.group(1)) if m else 0, leg)
+def worker_key(worker):
+    m = re.match(r"^N(\d+)", worker)
+    return (int(m.group(1)) if m else 0, worker)
 
 
 def run_router(a):
-    """(rc, decisions, inbox classes). Decisions are dicts {class, legs, decision, ticket}."""
+    """(rc, decisions, inbox classes). Decisions are dicts {class, workers, decision, ticket}."""
     argv = ["route", "--now", failure_router.iso(a.now)]
     for flag, val in (("--ledger", a.ledger), ("--state", a.state), ("--log", a.log), ("--inbox", a.inbox),
                       ("--table", a.table), ("--jira-bin", a.jira_bin)):
@@ -135,16 +135,16 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     if not n:
         out.append("- no failures in the last 24 h")
     else:
-        legs = {r["leg"] for rs in fails.values() for r in rs if r.get("leg")}
-        out.append("- failures: %d rows, %d classes, %d legs" % (n, len(fails), len(legs)))
+        workers = {r["leg"] for rs in fails.values() for r in rs if r.get("leg")}
+        out.append("- failures: %d rows, %d classes, %d workers" % (n, len(fails), len(workers)))
     if rc != 0:
         out.append("- router: failed (rc %d), see the cadence log" % rc)
 
     classes = sorted((c for c in fails if not c.startswith("traj/")), key=lambda c: (-len(fails[c]), c))
     out += ["", "### Top classes", ""]
     for c in classes[:TOP]:
-        legs = sorted({r["leg"] for r in fails[c] if r.get("leg")}, key=leg_key)
-        out.append("- %s: %d rows, legs %s (%s)" % (c, len(fails[c]), ", ".join(legs) or "none",
+        workers = sorted({r["leg"] for r in fails[c] if r.get("leg")}, key=worker_key)
+        out.append("- %s: %d rows, workers %s (%s)" % (c, len(fails[c]), ", ".join(workers) or "none",
                                                    "new" if c in new else "recurring"))
     if len(classes) > TOP:
         out.append("- and %d more classes" % (len(classes) - TOP))
@@ -160,7 +160,7 @@ def build(a, rows, seen_before, rc, decisions, boxed):
     capped = [d for d in decisions if d["decision"] in CAPPED]
     skipped = [d for d in decisions if d["decision"].startswith("skipped:")]
     if routed:
-        out += ["- %s %s%s (legs %d in %s)" % (d["decision"], d["class"], " " + d["ticket"] if d.get("ticket") else "",
+        out += ["- %s %s%s (workers %d in %s)" % (d["decision"], d["class"], " " + d["ticket"] if d.get("ticket") else "",
                                                d["legs"], days) for d in routed]
     else:
         out.append("- routed: none")
@@ -340,7 +340,7 @@ def main(argv=None):
         print("failure-review: --now %r is not an ISO time" % a.now, file=sys.stderr)
         return 2
     day = a.now.astimezone().strftime("%Y-%m-%d")
-    ledger = failure_router.leg_ledger.ledger_path(a.ledger)
+    ledger = failure_router.worker_ledger.ledger_path(a.ledger)
     since = a.now - timedelta(hours=24)
     try:
         rows = failure_router.read_ledger(ledger, since, a.now)

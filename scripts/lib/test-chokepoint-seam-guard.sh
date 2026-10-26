@@ -104,31 +104,31 @@ assert_eq "O2 cwd is not the anchor -> user only" "$TMP/home/.claude/settings.js
     "$(_csg_overlay_files "$TMP/other" "$A" "$EH" | tr '\n' ',')"
 assert_eq "O3 CLAUDE_CONFIG_DIR at launch -> the user file is not read" "$A/.claude/settings.local.json,$A/.claude/settings.json," \
     "$(_csg_overlay_files "$A" "$A" "$EC" | tr '\n' ',')"
-# The per-leg --settings file is session-writable: a seam only it sets DENIES.
-LEG="$TMP/leg-settings.json"
-printf '%s\n' '{"env":{"CSGT_B":"from-leg"}}' > "$LEG"
+# The per-worker --settings file is session-writable: a seam only it sets DENIES.
+WORKER="$TMP/leg-settings.json"
+printf '%s\n' '{"env":{"CSGT_B":"from-worker"}}' > "$WORKER"
 got=$(_csg_overlay_files "$A" "$A" "$EH")
-case "$got" in *"$LEG"*) leg=listed ;; *) leg=absent ;; esac
-assert_eq "O4a the --settings file is never in the overlay" "absent" "$leg"
+case "$got" in *"$WORKER"*) worker=listed ;; *) worker=absent ;; esac
+assert_eq "O4a the --settings file is never in the overlay" "absent" "$worker"
 set -f
 # shellcheck disable=SC2086 # the list is newline-separated fixture paths with no spaces
 set -- $got
 set +f
-assert_eq "O4b a seam matching only the --settings file -> DENY" "1|CSGT_B" "$(CSGT_B=from-leg v "$E" "$A" "$A" "CSGT_B" "$@")"
+assert_eq "O4b a seam matching only the --settings file -> DENY" "1|CSGT_B" "$(CSGT_B=from-worker v "$E" "$A" "$A" "CSGT_B" "$@")"
 set --
 
 # --- Registry --------------------------------------------------------------
 assert_eq "R1 quiet-run enforces every seam but the internal HELD" \
-    "HIMMEL_SUITE_SLOTS HIMMEL_SUITE_SEMAPHORE_DIR HIMMEL_SUITE_SLOT_TTL" \
+    "HIMMEL_SUITE_SLOTS HIMMEL_SUITE_SEMAPHORE_DIR HIMMEL_SUITE_SLOT_TTL HIMMEL_LEGACY_NAMES" \
     "$(_csg_registry_seams "$REGISTRY" scripts/quiet-run.sh)"
 assert_eq "R2 run-shell-tests enforces every seam but the internal HELD" \
-    "HIMMEL_SUITE_SLOTS HIMMEL_SUITE_SEMAPHORE_DIR HIMMEL_SUITE_SLOT_TTL" \
+    "HIMMEL_SUITE_SLOTS HIMMEL_SUITE_SEMAPHORE_DIR HIMMEL_SUITE_SLOT_TTL HIMMEL_LEGACY_NAMES" \
     "$(_csg_registry_seams "$REGISTRY" scripts/ci/run-shell-tests.sh)"
 assert_eq "R3 merge-on-green enforces its full list" \
-    "ARMAUTOMERGE MERGE_ON_GREEN_LOG HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_REPO MERGE_STATIC_RECHECK" \
+    "ARMAUTOMERGE MERGE_ON_GREEN_LOG HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_REPO MERGE_STATIC_RECHECK HIMMEL_LEGACY_NAMES" \
     "$(_csg_registry_seams "$REGISTRY" scripts/handover/merge-on-green.sh)"
 assert_eq "R3b claude-headless enforces its mock seam and the four dispatch seams (HIMMEL-5138)" \
-    "NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK HIMMEL_DISPATCH_MAX_CONCURRENT HIMMEL_DISPATCH_ROW_TTL_SECS HIMMEL_HEADLESS_SEAM_DIR HIMMEL_HEADLESS_NO_FLOCK" \
+    "NATIVE_AUTH_PIN_KEEP_LOOPBACK_MOCK HIMMEL_DISPATCH_MAX_CONCURRENT HIMMEL_DISPATCH_ROW_TTL_SECS HIMMEL_HEADLESS_SEAM_DIR HIMMEL_HEADLESS_NO_FLOCK HIMMEL_LEGACY_NAMES" \
     "$(_csg_registry_seams "$REGISTRY" scripts/lib/claude-headless.sh)"
 _csg_registry_seams "$REGISTRY" scripts/not-a-chokepoint.sh >/dev/null; rc=$?
 assert_eq "R4 an unregistered key fails (the gate then refuses)" "fail" "$([ "$rc" -ne 0 ] && echo fail || echo ok)"
@@ -320,7 +320,7 @@ ln -s "$NOGIT" "$Q9/10/cwd"
 mkenv "$Q9/10/environ" PATH=/bin "HOME=$GH"
 assert_eq "G17 headless: a seam under a claude daemon ancestor -> 96" "96" "$(gate "$Q9" "$GO" HIMMEL_CONSOLE_LEG=1)"
 case "$(cat "$TMP/gate.err")" in
-    *"headless (--bg) legs cannot pass seams to chokepoints"*) said=headless ;;
+    *"headless (--bg) workers cannot pass seams to chokepoints"*) said=headless ;;
     *) said=other ;;
 esac
 assert_eq "G17b the headless refusal says so and names the remedy" "headless" "$said"

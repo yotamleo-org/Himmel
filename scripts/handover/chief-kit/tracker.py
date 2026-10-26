@@ -78,7 +78,7 @@ def plan_globs():
              if os.path.exists(p)])
 
 
-# a ticket is in progress when a live leg works it. A leg doc is HIMMEL-<n>-N<k>-*.md in the
+# a ticket is in progress when a live worker works it. A worker doc is HIMMEL-<n>-N<k>-*.md in the
 # bucket; it is live while its queue lock is held and fresh and its newest marker is not WRAPPED / HALTED.
 WORKER_SESSION_RE = re.compile(r'^HIMMEL-(\d+)-(N\d+[a-z]?)-.*\.md$')
 MARK_RE = re.compile(r'^- (?:\d{1,2}:\d{2}\s+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE|PARKED-BANK|PARKED-USAGE|RESUMED)(?:[^A-Za-z0-9_].*)?$')
@@ -114,7 +114,7 @@ def held_docs():
 
 
 def leg_marker(path):
-    """(marker, pr) from a leg doc's Results bullets: leg-tail-status.sh's rule, and the newest PR a marker bullet names."""
+    """(marker, pr) from a leg doc's Results bullets: worker-tail-status.sh's rule, and the newest PR a marker bullet names."""
     try:
         ls = [l.rstrip('\n') for l in open(path, encoding='utf-8', errors='replace')]
     except OSError:
@@ -178,12 +178,12 @@ def live_legs():
 TS_RE = re.compile(r'^- (\d{1,2}):(\d{2})\b')
 DATE_RE = re.compile(r'(\d{4})-(\d{2})-(\d{2})')
 IDLE_MIN = 180
-ACT_NEWEST = 0.0  # newest mtime among the wrapped-leg docs actuals() last read (HIMMEL-4930)
-# ponytail: no cost column (token spend per leg is not in the mirror or the leg doc); upgrade: mirror each PR's leg-burn
+ACT_NEWEST = 0.0  # newest mtime among the wrapped-worker docs actuals() last read (HIMMEL-4930)
+# ponytail: no cost column (token spend per worker is not in the mirror or the worker doc); upgrade: mirror each PR's worker-burn
 # line and add cost beside wall and active.
 SOURCE = ('wall = first Results bullet to WRAPPED, dated from the leg doc\'s name (station clock, shown in UTC); '
           'active = the gaps between bullets of 3 h or less; dated = legs whose wall could be dated. '
-          'cost: not measured (it needs the PR\'s leg-burn line in the mirror).')
+          'cost: not measured (it needs the PR\'s worker-burn line in the mirror).')
 
 
 def leg_docs():
@@ -247,8 +247,8 @@ def actuals():
     return out
 
 
-# who filed what. A leg doc's Results bullet saying "filed HIMMEL-m" spawned m from the leg's ticket; a
-# console doc's OPERATOR bullet (not a RULING, IS AWAKE or ITEMS line) saying "Filed HIMMEL-m" makes m operator-directed.
+# who filed what. A worker doc's Results bullet saying "filed HIMMEL-m" spawned m from the worker's ticket; a
+# chief doc's OPERATOR bullet (not a RULING, IS AWAKE or ITEMS line) saying "Filed HIMMEL-m" makes m operator-directed.
 # Only the ticket key is read, never the bullet's clock time.
 FILED_RE = re.compile(r'(?i)\bfiled\s+((?:HIMMEL-\d+(?:\s*(?:,|\+|&|and)\s*)?)+)')
 OPER_RE = re.compile(r'^- (?:\d{1,2}:\d{2}\s+)?\**OPERATOR\b(?!\**\s*(?:RULINGS?|IS AWAKE|ITEMS)\b)')
@@ -275,7 +275,8 @@ def filings():
                 for k in filed_keys(l):
                     if k > n:  # an origin is always the older ticket
                         leg.setdefault(k, n)
-    for p in sorted(glob.glob(os.path.join(HANDOVERS, '*console*.md')) + glob.glob(os.path.join(HANDOVERS, 'logs', '*console*.md'))):
+    for p in sorted({p for d in (HANDOVERS, os.path.join(HANDOVERS, 'logs')) for w in ('console', 'chief')
+                     for p in glob.glob(os.path.join(d, '*%s*.md' % w))}):
         try:
             ls = open(p, encoding='utf-8', errors='replace').read().splitlines()
         except OSError:
@@ -1092,8 +1093,8 @@ def bench(mir, rows, n_plan, act, seqm, erange):
 
     def row(key, title, size, est, own, b, members, done, rs=None):
         tw = (own['wall'] if own else 0) + b['wall']
-        # the legs the ratio divides: the operator bundle counts only its estimated members. An undated leg adds no
-        # wall, so a ratio over any undated leg would understate the actual: it is left blank.
+        # the workers the ratio divides: the operator bundle counts only its estimated members. An undated worker adds no
+        # wall, so a ratio over any undated worker would understate the actual: it is left blank.
         legs, dated, rw = (rs['legs'], rs['dated'], rs['wall']) if rs else \
             ((own['legs'] if own else 0) + b['legs'], (own['dated'] if own else 0) + b['dated'], tw)
         mps = round(rw / est, 1) if est and rw and done and legs == dated else None
@@ -1807,7 +1808,7 @@ def main():
     data = dict(gen=datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'), mir=utc_stamp(upd),
                 sha=meta.get('main_sha_at_build', '')[:9], V=vers, VL=vload, VC=version_caps(rules, vers, {x['n'] for x in jv if x['rel']}), DT=dt,
                 ATS=datetime.fromtimestamp(ACT_NEWEST, timezone.utc).strftime('%Y-%m-%d %H:%M UTC') if ACT_NEWEST else '',
-                LEG={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes,
+                WORKER={str(n): v for n, v in sorted(legs.items())}, ACT={str(n): v[:4] for n, v in sorted(act.items())}, BN=[x for x in bn if x[4] or x[8]], BOP=bop, BUN=bun, SRC=SOURCE, L=LAYERS, T=themes,
                 CUR=cur, JV=jv, RU=ru, PAR=par,
                 CAP=dict(total=rules['total'], layers=[(rules['layers'] or {}).get(l) for l in LAYERS],
                          text=capacity_text(rules, [v for v in vers if not TRAIN_RE.match(v)],
@@ -2148,7 +2149,7 @@ var D=JSON.parse(document.getElementById("data").textContent);
 /*MODEL*/
 // Pure model: every figure on the page and every drill-down list comes from here; test-tracker.sh runs it under node.
 function model(D){
- var V=D.V,P=D.P,T=D.T,LEG=D.LEG||{};
+ var V=D.V,P=D.P,T=D.T,WORKER=D.WORKER||{};
  var KIND=["bugs","improvements","features","other","audits"];
  var READY=["no plan yet","problem stated","fix named, not yet checked","plan audited","spec ready"];
  function train(i){return /^v1\.\d+\.\d+[a-z]?$/.test(V[i])}
@@ -2158,7 +2159,7 @@ function model(D){
  function inV(i,rem){return P.filter(function(p){return p[3]==i}).filter(keep(rem))}
  function inT(t,rem){return P.filter(function(p){return p[5]==t&&train(p[3])}).filter(keep(rem))}
  function inTrain(rem){return P.filter(function(p){return train(p[3])}).filter(keep(rem))}
- function leg(p){return p[2]!=2&&LEG[String(p[0])]||null}
+ function leg(p){return p[2]!=2&&WORKER[String(p[0])]||null}
  function tally(a){var r={n:a.length,done:0,prog:0,todo:0,live:0};
   a.forEach(function(p){if(p[2]==2)r.done++;else if(p[2]==1)r.prog++;else r.todo++;if(leg(p))r.live++});r.left=r.n-r.done;return r}
  function r4(x){return Math.round(x*10000)/10000}
@@ -2226,7 +2227,7 @@ function model(D){
   if(c.t!=null&&st.n>c.t)b.push({what:"tickets",used:st.n,cap:c.t});
   if(c.p9!=null&&st.p9!=null&&st.p9>c.p9+e)b.push({what:"P90",used:st.p9,cap:c.p9});
   KIND.forEach(function(k,j){if(c.l&&c.l[j]!=null&&st.k[j]>c.l[j]+e)b.push({what:k,used:st.k[j],cap:c.l[j]})});return b}
- // peel(i, {keep, unpin}): take the open, leg-free, unpinned tickets by lowest return (impact per size) until every cap holds;
+ // peel(i, {keep, unpin}): take the open, worker-free, unpinned tickets by lowest return (impact per size) until every cap holds;
  // each step takes the first candidate that eases a cap still broken. keep: tickets the viewer pins here; unpin: plan pins released.
  function peel(i,o){o=o||{};var keep=o.keep||[],un=o.unpin||[],a=inV(i).filter(planned),cur=a.slice(),out=[];
   var cand=a.filter(function(p){return p[2]!=2&&!leg(p)&&keep.indexOf(p[0])<0&&(!pinned(p)||un.indexOf(p[0])>=0)})
@@ -2247,7 +2248,7 @@ function model(D){
   if(breaches(pr,stats(pr,cur)).length)return [];
   inV(i).filter(function(p){return p[2]!=2&&planned(p)&&!leg(p)}).sort(function(x,y){return roi(y)-roi(x)||x[0]-y[0]}).forEach(function(p){
    if(!breaches(pr,stats(pr,cur.concat([p]))).length){cur.push(p);out.push(p)}});return out}
- // decisions(): what needs input, ordered. Band 0 stops now (a BLOCKED or FINDING leg); band 1 blocks the release (the running
+ // decisions(): what needs input, ordered. Band 0 stops now (a BLOCKED or FINDING worker); band 1 blocks the release (the running
  // version and the next: caps, drift); band 2 queue health (later caps, drift, the unplaced, a trail its parent can take back).
  function decisions(){var cur=D.CUR,nx=cur!=null&&cur+1<V.length&&train(cur+1)?cur+1:-1,out=[];
   function near(i){return i==cur||i==nx}
@@ -2261,13 +2262,13 @@ function model(D){
  // gains(): done work per train version, newest first: what users got.
  function gains(){var g=[];for(var i=V.length-1;i>=0;i--){if(!train(i))continue;var d=order(inV(i).filter(function(p){return p[2]==2}));
   if(d.length)g.push({i:i,done:d,n:inV(i).length,s:summary(d,"theme")})}return g}
- // act(p): what a done ticket took, [wrapped legs, wall minutes, active minutes, dated legs]; null while open or when no wrapped leg doc names it.
+ // act(p): what a done ticket took, [wrapped workers, wall minutes, active minutes, dated workers]; null while open or when no wrapped worker doc names it.
  function act(p){return p[2]==2&&D.ACT&&D.ACT[String(p[0])]||null}
  var SZ=["XS","S","M","L","XL"];
  function szk(e){var s=String(e).split("–");return SZ.indexOf(s[0])*10+SZ.indexOf(s[s.length-1])}
  function med(a){var s=a.slice().sort(function(x,y){return x-y}),n=s.length;return n?(n%2?s[(n-1)/2]:(s[n/2-1]+s[n/2])/2):null}
  // accuracy(): measured done tickets grouped by their size estimate, smallest first, each with its median wall minutes and
- // legs; a ticket with no dated leg doc has no wall time and is left out.
+ // workers; a ticket with no dated worker doc has no wall time and is left out.
  function accuracy(){var g={};P.forEach(function(p){var a=act(p);if(a&&a[3]!==0&&p[10])(g[p[10]]=g[p[10]]||[]).push({p:p,legs:a[0],min:a[1]})});
   return Object.keys(g).sort(function(x,y){return szk(x)-szk(y)}).map(function(k){var r=g[k].sort(function(x,y){return x.min-y.min||x.p[0]-y.p[0]});
    return {size:k,n:r.length,rows:r,med:med(r.map(function(x){return x.min})),legs:med(r.map(function(x){return x.legs}))}})}
@@ -2365,11 +2366,11 @@ function versionBody(i,host){
 function num(x){return x==null?"–":x===Math.round(x)?String(x):f2(x)}
 function bw(b){return b.what+" "+num(b.used)+" of "+num(b.cap)}
 function fmtMin(m){return m==null?"–":m<60?Math.round(m)+" min":(Math.round(m/6)/10)+" h"}
-// renderBench(h): the benchmark: each planned item with its own legs or a spawned bundle, then the
+// renderBench(h): the benchmark: each planned item with its own workers or a spawned bundle, then the
 // operator-directed and unattributed bundles; raw inputs sit beside the ratio. Row fields follow BENCH_COLS in tracker.py.
 function renderBench(h){var rows=(D.BN||[]).concat(D.BOP?[D.BOP]:[],D.BUN?[D.BUN]:[]);if(!rows.length)return;
  var tb=el("table","ld"),hr=el("tr"),n=function(v){return v==null||v===""?"–":String(v)};
- ["Item","Size","Est S-eq","Own wall / active (dated/legs)","Bundle n (open/done)","Bundle wall / active (dated/legs)","Total wall","Min per S-eq","Ratio"]
+ ["Item","Size","Est S-eq","Own wall / active (dated/workers)","Bundle n (open/done)","Bundle wall / active (dated/workers)","Total wall","Min per S-eq","Ratio"]
   .forEach(function(x){hr.appendChild(el("th",null,x))});tb.appendChild(hr);
  rows.forEach(function(x){var tr=el("tr");
   [x[0]+(x[1]?" "+x[1]:""),n(x[2]),n(x[3]),x[4]==null?"–":fmtMin(x[6])+" / "+fmtMin(x[7])+" ("+x[5]+"/"+x[4]+")",
@@ -2379,7 +2380,7 @@ function renderBench(h){var rows=(D.BN||[]).concat(D.BOP?[D.BOP]:[],D.BUN?[D.BUN
  h.appendChild(el("p","fact","Estimate against actual. A bundle is the unplanned work a planned item spawned (Jira link, then a description reference, then the leg that filed it); ratio = minutes per S-equivalent over the median of the finished items (1.00 = typical), blank while any of its legs is undated. Hover a row for its bundle."));
  h.appendChild(add(el("div","tw"),tb));h.appendChild(el("p","fact",D.SRC))}
 function renderAcc(){var h=$("accb"),ac=M.accuracy(),mx=1;h.textContent="";
- h.appendChild(el("p","fact","Re-read from the Jira mirror and the wrapped-leg docs on every render. Jira "+D.mir+" · newest wrapped-leg doc "+(D.ATS||"none")+"."));
+ h.appendChild(el("p","fact","Re-read from the Jira mirror and the wrapped-worker docs on every render. Jira "+D.mir+" · newest wrapped-worker doc "+(D.ATS||"none")+"."));
  renderBench(h);
  if(!ac.length){h.appendChild(el("p","fact","No done ticket has both a size estimate and a wrapped leg yet."));return}
  ac.forEach(function(x){x.rows.forEach(function(r){mx=Math.max(mx,r.min)})});
@@ -2401,10 +2402,10 @@ var JV=D.JV,JT=D.JT,JB=[["todo","To Do"],["prog","In Progress"],["rev","In Revie
  RMO=matchMedia("(prefers-reduced-motion: reduce)").matches,JCUR=D.JC,JNXT=D.JN,JSEL=D.JS!=null?D.JS:D.JC>=0?D.JC:JV.length-1;
 var HIDE=true;try{var hs=localStorage.getItem("hide3990");if(hs!==null)HIDE=hs==="1"}catch(e){}
 if(D.PG){HIDE=false;$("hide").style.display="none"}
-// jb(t): a To Do ticket a live leg works reads In Progress; Jira's own later status always wins. Tickets closed without shipping are not in JT (D.JW counts them).
+// jb(t): a To Do ticket a live worker works reads In Progress; Jira's own later status always wins. Tickets closed without shipping are not in JT (D.JW counts them).
 function jb(t){return t.live?"prog":t.b}
 function jin(i){return JT.filter(function(t){return t.v===i})}
-// jtally(a,raw): raw counts the Jira status (the hero, which must equal JQL); else the board's live-leg display.
+// jtally(a,raw): raw counts the Jira status (the hero, which must equal JQL); else the board's live-worker display.
 function jtally(a,raw){var r={n:a.length};JB.forEach(function(s){r[s[0]]=[]});a.forEach(function(t){r[raw?t.b:jb(t)].push(t)});r.open=a.length-r.done.length;return r}
 function jdot(b,x){return el("span","jst jc-"+b,x)}
 function jnum(label,title,list,cls){var b=el("button",cls||"jn",String(label));b.type="button";

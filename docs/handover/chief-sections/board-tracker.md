@@ -10,7 +10,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     only counts HELD workers), what needs you, epic merged/total, the operator's
     open decisions — so the operator sees progress and convergence without
     asking. The published page shows live work only: WRAPPED and MERGED workers
-    and the merged PRs are written to `console-board-archive.html` beside it
+    and the merged PRs are written to `chief-board-archive.html` beside it
     (local, never published, one item per line — `grep` it for a ticket key,
     PR or last bullet), so a successor republishes a small page. Render it with `node "<kit>/board.mjs" --doc "<this file>" --changed`: `--changed` re-renders and prints `CHANGED <path>` or
     `UNCHANGED <path>` instead of the bare path, so you know from one line
@@ -18,7 +18,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     (nonces and lock tokens are redacted from the file either way). Rendering
     never publishes — on `CHANGED`, publish that file with the `Artifact` tool
     yourself and record the artifact URL on the `board:` line of `## Live
-    state` — `console.sh next` carries it to your successor, who updates the
+    state` — `chief.sh next` carries it to your successor, who updates the
     same artifact instead of minting a new one. **A successor's FIRST publish
     to a carried `board:` URL goes to a haiku subagent, never your own
     context.** The tool refuses a publish to an artifact this session has not
@@ -54,12 +54,12 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
       when the script fails; the key is null in a checkout without it). The
       page shows the same count in its "Red main" panel.
     - `trends`:
-      - `leg_time` and `cost`;
-      - `console_cost`: the chief's own Opus-eq spend, deduplicated by
+      - `worker_time` and `cost`;
+      - `chief_cost`: the chief's own Opus-eq spend, deduplicated by
         message id from its transcript, total and per hour, beside the fleet's
         `fleet_eq`;
       - `exploration` and `failures`;
-      - `tools`: a `console-succession` row (turns, eq and wall minutes from
+      - `tools`: a `chief-succession` row (turns, eq and wall minutes from
         the successor's first message to its LIVE bullet, workers that quoted the
         token back versus silent ones, pass/fail against eq ≤ 457k and
         turns ≤ 20, and a recommendation).
@@ -132,18 +132,18 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     page off, and no line with no `release:` line also reads `focus=skip`. When the
     release cannot be read (CLI failure, no `release:` line, no version), the refresh
     prints `focus=FAILED:release`, warns on stderr and keeps the published page; it
-    never falls back to a stale version. `console.sh next` carries the line forward.
+    never falls back to a stale version. `chief.sh next` carries the line forward.
 
     **Automatic refresh.** When the version rule above resolves to a page (it does
     unless it reads `focus=skip`),
-    `wrap-merged.sh` runs `bash "<kit>/focus-refresh.sh" --doc <console doc>` after
+    `wrap-merged.sh` runs `bash "<kit>/focus-refresh.sh" --doc <chief doc>` after
     every merge (it also reads `focus-plan:` and `<doc dir>/focus-chains.json`).
     It stages the mirror, versions, status sweep, open PRs, the page and
     `status-drift.sh` output. Only on full success does it publish `focus-drift.txt` and
     replace `roadmap-tracker.html` (and only when the page fingerprint moved); `focus-state`
     records every run, `FAILED:<stage>` included. The wrap prints
     `focus=ok|busy|FAILED:<stage>|skip` and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
-    (`console-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). Republish the page
+    (`chief-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). Republish the page
     with the `Artifact` tool as above. Each card also shows its worker (owner, PR, state).
     `status-drift.sh` is the report-only drift check (last line `sdrift=<n>:<sig8>`);
     `ticket-hold.sh <KEY> --reason <r> --owner <o>` (or `--release`) sets and clears the `held` label.
@@ -152,7 +152,7 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     (`--out-done`, `--out-future`, `tracker-done:`, `tracker-future:`) are retired;
     drop those URLs from `## Live state` at the next handover.
 
-- **Version-status audit:** `bash scripts/handover/chief-kit/version-status-audit.sh --legs-from <fleet manifest>`
+- **Version-status audit:** `bash scripts/handover/chief-kit/version-status-audit.sh --workers-from <fleet manifest>`
   lists started tickets outside the active version, open tickets in a released
   version and versionless started Tasks, Stories and Bugs (OWNED = a live worker or
   open PR holds it, RESET = move it to To Do with a reason comment). Run it after

@@ -3,8 +3,8 @@
 # Tests for scripts/telegram/break-glass.sh and scripts/cr/cr-reset.sh
 #: the shell half of the Telegram break-glass ops. Everything is
 # a fixture: a bare origin + primary clone + linked worktree under mktemp, a
-# fake HOME, and stubs for gh, systemctl, the bank preflight, the leg launcher,
-# console.sh and close-wrapped-leg.sh. No real launch, merge or restart.
+# fake HOME, and stubs for gh, systemctl, the bank preflight, the worker launcher,
+# chief.sh and close-wrapped-worker.sh. No real launch, merge or restart.
 # BREAK_GLASS_SUT / CR_RESET_SUT override the scripts under test (RED control).
 set -uo pipefail
 
@@ -99,7 +99,7 @@ export OTHER_GUARD_OK=1 TELEGRAM_BOT_TOKEN=secret-token-fixture
 bg() { (unset CLAUDECODE; bash "$SUT" "$@") 2>"$TMP/err"; }
 
 # --- gate 0 and the closed op list ------------------------------------------
-for op in station-status revert-main repin-hooks launch-leg cr-reset close-wrapped relaunch-console restart-bridge allow-rule; do
+for op in station-status revert-main repin-hooks launch-worker cr-reset close-wrapped relaunch-chief restart-bridge allow-rule; do
     out=$(CLAUDECODE=1 bash "$SUT" "$op" 1 - 2>&1); rc=$?
     assert_rc "B1 $op refuses the agent marker" 19 "$rc"
 done
@@ -124,17 +124,17 @@ NOW="$(date +%s)"
 i=0; while [ "$i" -lt 50 ]; do
     echo "hb=$((NOW - 900000 - i)) pid=1 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/stale-$i.md.wait"; i=$((i + 1))
 done
-echo "hb=$((NOW - 5)) pid=2 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/live-console.md.wait"
+echo "hb=$((NOW - 5)) pid=2 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/live-chief.md.wait"
 echo "hb=$((NOW + 100000)) pid=3 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/future.md.wait" # clock rollback: never live
 echo "hb=0$((NOW - 5)) pid=4 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/zero-pad.md.wait" # leading zero: decimal, not octal
 i=0; while [ "$i" -lt 9 ]; do # 11 live in all: the display cap (8) must bite
     echo "hb=$((NOW - 3)) pid=5 key=k tick=ok state=sampling" > "$BRIDGE_ROOT/consoles/live-extra-$i.md.wait"; i=$((i + 1))
 done
-printf '%s\n' '#!/usr/bin/env bash' "printf '11\\tnamed-console\\topus\\t200000\\n12\\t\\t\\t\\n'" > "$PRIMARY/scripts/telegram/console-census.sh"
+printf '%s\n' '#!/usr/bin/env bash' "printf '11\\tnamed-chief\\topus\\t200000\\n12\\t\\t\\t\\n'" > "$PRIMARY/scripts/telegram/chief-census.sh"
 out=$(bg station-status - -); rc=$?
 assert_rc "S7 station-status with 51 waiter files succeeds" 0 "$rc"
 n=$(printf '%s\n' "$out" | grep -c '^waiter '); [ "$n" = 8 ] && echo "PASS S8 live waiter lines capped at 8" || { echo "FAIL S8 waiter lines: $n"; FAILED=$((FAILED + 1)); }
-assert_contains "S9 the live waiter is listed" "waiter live-console:" "$out"
+assert_contains "S9 the live waiter is listed" "waiter live-chief:" "$out"
 assert_contains "S10 one summary line" "waiters: 11 live, 51 stale (oldest " "$out"
 assert_contains "S11 the primary line is present" "primary main" "$out"
 lines=$(printf '%s\n' "$out" | wc -l); [ "$lines" -lt 40 ] && echo "PASS S12 reply bounded ($lines lines)" || { echo "FAIL S12 $lines lines"; FAILED=$((FAILED + 1)); }
@@ -142,7 +142,7 @@ first_primary=$(printf '%s\n' "$out" | grep -n '^primary ' | cut -d: -f1); first
 { [ -n "$first_primary" ] && [ "$first_primary" -lt "${first_waiter:-999}" ]; } && echo "PASS S13 primary precedes the waiters" || { echo "FAIL S13 primary missing or after waiters"; FAILED=$((FAILED + 1)); }
 assert_contains "S14 a nameless census row is labelled" "(unnamed)" "$out"
 assert_not_contains "S15 no blank census row" "  12	" "$out"
-rm -f "$PRIMARY/scripts/telegram/console-census.sh"; rm -rf "$BRIDGE_ROOT"
+rm -f "$PRIMARY/scripts/telegram/chief-census.sh"; rm -rf "$BRIDGE_ROOT"
 # --- /repin-hooks ------------------------------------------------------------
 git -C "$PRIMARY" checkout -q -b side
 bg repin-hooks - - >/dev/null; assert_rc "R1 primary off the default branch is left alone" 21 "$?"
@@ -230,11 +230,11 @@ n=$(grep -c '^pr merge' "$GH_LOG")
 git -C "$TMP/seed" reset -q --hard "$TIP"; git -C "$TMP/seed" push -qf origin main
 git -C "$PRIMARY" fetch -q origin; rm -f "$GH_LOG.advanced"
 
-# --- /launch-leg -------------------------------------------------------------
-git -C "$PRIMARY" worktree add -q "$TMP/wt" -b feat/leg-x
+# --- /launch-worker -------------------------------------------------------------
+git -C "$PRIMARY" worktree add -q "$TMP/wt" -b feat/worker-x
 BUCKET="$TMP/bucket"; mkdir -p "$BUCKET"
 FLEET="$BUCKET/HIMMEL-nextleg-2026-10-09ZZ-roadmap-console.fleet.json"
-mkleg() { printf -- '---\nresume_cwd: %s\n---\n\n# HIMMEL-1 — x — leg %s (claude-opus-5-5, native), 2026-10-09\n' "$2" "$1" > "$BUCKET/HIMMEL-1-$1-x-2026-10-09.md"; }
+mkleg() { printf -- '---\nresume_cwd: %s\n---\n\n# HIMMEL-1 — x — worker %s (claude-opus-5-5, native), 2026-10-09\n' "$2" "$1" > "$BUCKET/HIMMEL-1-$1-x-2026-10-09.md"; }
 mkleg N7 "$TMP/wt"; mkleg N8 "$TMP/gone"; mkleg N9 "$PRIMARY"
 cat > "$FLEET" <<EOF
 {"schema":1,"legs":[
@@ -243,40 +243,40 @@ cat > "$FLEET" <<EOF
  {"doc":"$BUCKET/HIMMEL-1-N9-x-2026-10-09.md","label":"N9"},
  {"doc":"$BUCKET/a.md","label":"N5"},{"doc":"$BUCKET/b.md","label":"N5"}]}
 EOF
-export BREAK_GLASS_FLEET="$FLEET" BREAK_GLASS_LEG_CMD="$TMP/bin/record" RECORD="$TMP/leg.rec"
-rm -f "$RECORD"; bg launch-leg N7 bypass >/dev/null
-assert_rc "L1 --hook-bypass is refused for a manifest leg (no recorded sha256)" 23 "$?"
-rm -f "$RECORD"; out=$(bg launch-leg N7 -); rc=$?
-assert_rc "L2 a manifest leg with a linked worktree launches" 0 "$rc"
+export BREAK_GLASS_FLEET="$FLEET" BREAK_GLASS_WORKER_CMD="$TMP/bin/record" RECORD="$TMP/worker.rec"
+rm -f "$RECORD"; bg launch-worker N7 bypass >/dev/null
+assert_rc "L1 --hook-bypass is refused for a manifest worker (no recorded sha256)" 23 "$?"
+rm -f "$RECORD"; out=$(bg launch-worker N7 -); rc=$?
+assert_rc "L2 a manifest worker with a linked worktree launches" 0 "$rc"
 wait_for "$RECORD"; rec="$(cat "$RECORD" 2>/dev/null)"
 assert_contains "L3 every other *_OK is scrubbed" "other=unset" "$rec"
 assert_contains "L4 the bot token is scrubbed" "token=unset" "$rec"
-assert_contains "L5 it launches in the leg's own worktree" "legrepo=$TMP/wt" "$rec"
-assert_contains "L6 with the doc's model, session name and fleet/console" "--fleet $FLEET --console HIMMEL-nextleg-2026-10-09ZZ-roadmap-console HIMMEL-1-N7-x-2026-10-09 $BUCKET/HIMMEL-1-N7-x-2026-10-09.md" "$rec"
+assert_contains "L5 it launches in the worker's own worktree" "legrepo=$TMP/wt" "$rec"
+assert_contains "L6 with the doc's model, session name and fleet/chief" "--fleet $FLEET --chief HIMMEL-nextleg-2026-10-09ZZ-roadmap-console HIMMEL-1-N7-x-2026-10-09 $BUCKET/HIMMEL-1-N7-x-2026-10-09.md" "$rec"
 assert_contains "L7 and the model named in the doc" "claude-opus-5-5" "$rec"
-rm -f "$RECORD"; bg launch-leg N7 - >/dev/null; wait_for "$RECORD"
+rm -f "$RECORD"; bg launch-worker N7 - >/dev/null; wait_for "$RECORD"
 assert_contains "L8 without --hook-bypass nothing is exported" "bypass=unset" "$(cat "$RECORD" 2>/dev/null)"
-bg launch-leg N8 - >/dev/null; assert_rc "L9 a leg whose worktree is gone is refused" 23 "$?"
-bg launch-leg N9 - >/dev/null; assert_rc "L10 the primary (not a linked worktree) is refused" 23 "$?"
-bg launch-leg N5 bypass >/dev/null; assert_rc "L11 a label naming two legs is refused" 23 "$?"
-bg launch-leg N4 bypass >/dev/null; assert_rc "L12 an unknown label with no launcher is refused" 23 "$?"
-bg launch-leg 'N7;x' bypass >/dev/null; assert_rc "L13 a malformed label is bad input" 1 "$?"
-bg launch-leg N7 yes >/dev/null; assert_rc "L14 a bad bypass flag is bad input" 1 "$?"
-# fresh start from a console-written launcher
+bg launch-worker N8 - >/dev/null; assert_rc "L9 a worker whose worktree is gone is refused" 23 "$?"
+bg launch-worker N9 - >/dev/null; assert_rc "L10 the primary (not a linked worktree) is refused" 23 "$?"
+bg launch-worker N5 bypass >/dev/null; assert_rc "L11 a label naming two workers is refused" 23 "$?"
+bg launch-worker N4 bypass >/dev/null; assert_rc "L12 an unknown label with no launcher is refused" 23 "$?"
+bg launch-worker 'N7;x' bypass >/dev/null; assert_rc "L13 a malformed label is bad input" 1 "$?"
+bg launch-worker N7 yes >/dev/null; assert_rc "L14 a bad bypass flag is bad input" 1 "$?"
+# fresh start from a chief-written launcher
 cat > "$BUCKET/launch-N6.sh" <<EOF
 #!/usr/bin/env bash
 RECORD="$TMP/launcher.rec" "$TMP/bin/record"
 EOF
 SIDECAR="${FLEET%.json}.launchers.sha256"
-bg launch-leg N6 bypass >/dev/null; assert_rc "L15 a launcher with no recorded sha256 is refused" 23 "$?"
+bg launch-worker N6 bypass >/dev/null; assert_rc "L15 a launcher with no recorded sha256 is refused" 23 "$?"
 sha256sum "$BUCKET/launch-N6.sh" > "$SIDECAR"
-rm -f "$TMP/launcher.rec"; out=$(bg launch-leg N6 bypass); rc=$?
+rm -f "$TMP/launcher.rec"; out=$(bg launch-worker N6 bypass); rc=$?
 assert_rc "L16 a launcher matching its recorded sha256 starts" 0 "$rc"
 wait_for "$TMP/launcher.rec"; rec="$(cat "$TMP/launcher.rec" 2>/dev/null)"
 assert_contains "L17 the launcher gets only the hook-integrity bypass" "bypass=1" "$rec"
 assert_contains "L18 and no other *_OK" "other=unset" "$rec"
 echo "# tampered" >> "$BUCKET/launch-N6.sh"
-bg launch-leg N6 bypass >/dev/null; assert_rc "L19 a launcher edited after the console recorded it is refused" 23 "$?"
+bg launch-worker N6 bypass >/dev/null; assert_rc "L19 a launcher edited after the chief recorded it is refused" 23 "$?"
 # gen-briefs.py writes the launcher in --bucket and the sidecar beside --manifest
 MDIR="$TMP/manifests"; mkdir -p "$MDIR"; FLEET2="$MDIR/HIMMEL-nextleg-2026-10-09ZY-roadmap-console.fleet.json"
 echo '{"schema":1,"legs":[]}' > "$FLEET2"
@@ -285,7 +285,7 @@ cat > "$BUCKET/launch-N2.sh" <<EOF
 RECORD="$TMP/launcher2.rec" "$TMP/bin/record"
 EOF
 sha256sum "$BUCKET/launch-N2.sh" > "${FLEET2%.json}.launchers.sha256"
-rm -f "$TMP/launcher2.rec"; BREAK_GLASS_FLEET="$FLEET2" bg launch-leg N2 bypass >/dev/null; rc=$?
+rm -f "$TMP/launcher2.rec"; BREAK_GLASS_FLEET="$FLEET2" bg launch-worker N2 bypass >/dev/null; rc=$?
 assert_rc "L20 a launcher in a bucket apart from the manifest starts from its sidecar path" 0 "$rc"
 wait_for "$TMP/launcher2.rec"
 [ -s "$TMP/launcher2.rec" ] && echo "PASS L21 and it ran" || { echo "FAIL L21 the bucket launcher never ran"; FAILED=$((FAILED + 1)); }
@@ -293,12 +293,12 @@ git init -q -b main "$TMP/foreign"; git -C "$TMP/foreign" commit -q --allow-empt
 git -C "$TMP/foreign" worktree add -q "$TMP/fwt" -b feat/foreign
 mkleg N3 "$TMP/fwt"
 jq --arg d "$BUCKET/HIMMEL-1-N3-x-2026-10-09.md" '.legs += [{"doc":$d,"label":"N3"}]' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
-rm -f "$RECORD"; bg launch-leg N3 bypass >/dev/null; assert_rc "L22 a linked worktree of another repo is refused" 23 "$?"
+rm -f "$RECORD"; bg launch-worker N3 bypass >/dev/null; assert_rc "L22 a linked worktree of another repo is refused" 23 "$?"
 jq 'del(.legs[] | select(.label == "N3"))' "$FLEET" > "$TMP/fleet.new" && mv "$TMP/fleet.new" "$FLEET"
-out=$(BREAK_GLASS_LEG_CMD="$TMP/bin/no-such-launcher" bg launch-leg N7 bypass); rc=$?
+out=$(BREAK_GLASS_WORKER_CMD="$TMP/bin/no-such-launcher" bg launch-worker N7 bypass); rc=$?
 assert_rc "L23 a launcher command that is not there is not reported as launched" 23 "$rc"
 assert_not_contains "L24 and it never says launching" "launching" "$out"
-unset BREAK_GLASS_LEG_CMD
+unset BREAK_GLASS_WORKER_CMD
 
 # --- /close-wrapped ------------------------------------------------------------
 cat > "$TMP/bin/closer" <<'EOF'
@@ -309,15 +309,15 @@ EOF
 chmod +x "$TMP/bin/closer"
 export BREAK_GLASS_CLOSE_CMD="$TMP/bin/closer" CLOSE_LOG="$TMP/close.log"
 out=$(bg close-wrapped - -); rc=$?
-assert_rc "C1 close-wrapped over the fleet succeeds even when some legs refuse" 0 "$rc"
-assert_contains "C2 it closes the wrapped leg" "closed HIMMEL-1-N7-x-2026-10-09.md" "$out"
+assert_rc "C1 close-wrapped over the fleet succeeds even when some workers refuse" 0 "$rc"
+assert_contains "C2 it closes the wrapped worker" "closed HIMMEL-1-N7-x-2026-10-09.md" "$out"
 assert_contains "C3 and counts the rest as left" "closed=1 left=4" "$out"
-assert_contains "C4 each close goes through close-wrapped-leg.sh --fleet" "--fleet $FLEET $BUCKET/HIMMEL-1-N8-x-2026-10-09.md" "$(cat "$CLOSE_LOG")"
+assert_contains "C4 each close goes through close-wrapped-worker.sh --fleet" "--fleet $FLEET $BUCKET/HIMMEL-1-N8-x-2026-10-09.md" "$(cat "$CLOSE_LOG")"
 out=$(bg close-wrapped N8 -); rc=$?
-assert_rc "C5 a named leg that is not wrapped is refused" 1 "$rc"
+assert_rc "C5 a named worker that is not wrapped is refused" 1 "$rc"
 assert_contains "C6 with the closer's reason" "last marker is LIVE" "$out"
-bg close-wrapped N5 - >/dev/null; assert_rc "C7 a label naming two legs is refused" 23 "$?"
-bg close-wrapped N7 - >/dev/null; assert_rc "C8 a named wrapped leg closes" 0 "$?"
+bg close-wrapped N5 - >/dev/null; assert_rc "C7 a label naming two workers is refused" 23 "$?"
+bg close-wrapped N7 - >/dev/null; assert_rc "C8 a named wrapped worker closes" 0 "$?"
 BAD="$TMP/bad/HIMMEL-nextleg-2026-10-09ZX-roadmap-console.fleet.json"; mkdir -p "${BAD%/*}"; echo '{"legs":[' > "$BAD"
 : > "$CLOSE_LOG"
 BREAK_GLASS_FLEET="$BAD" bg close-wrapped - - >/dev/null
@@ -325,22 +325,22 @@ assert_rc "C9 a malformed manifest refuses the fleet-wide close" 23 "$?"
 assert_contains "C10 it says the manifest is unreadable" "cannot read" "$(cat "$TMP/err")"
 BREAK_GLASS_FLEET="$BAD" bg close-wrapped N7 - >/dev/null
 assert_contains "C11 and a named close says so too" "cannot read" "$(cat "$TMP/err")"
-BREAK_GLASS_FLEET="$BAD" bg launch-leg N7 - >/dev/null
-assert_rc "C12 launch-leg on a malformed manifest is refused" 23 "$?"
+BREAK_GLASS_FLEET="$BAD" bg launch-worker N7 - >/dev/null
+assert_rc "C12 launch-worker on a malformed manifest is refused" 23 "$?"
 assert_contains "C13 without falling through to a launcher" "cannot read" "$(cat "$TMP/err")"
 
-# --- /relaunch-console -------------------------------------------------------
-export BREAK_GLASS_CONSOLE_CMD="$TMP/bin/record" RECORD="$TMP/console.rec"
-out=$(bg relaunch-console roadmap-console -); rc=$?
-assert_rc "K1 relaunch-console runs console.sh next" 0 "$rc"
+# --- /relaunch-chief -------------------------------------------------------
+export BREAK_GLASS_CHIEF_CMD="$TMP/bin/record" RECORD="$TMP/chief.rec"
+out=$(bg relaunch-chief roadmap-chief -); rc=$?
+assert_rc "K1 relaunch-chief runs chief.sh next" 0 "$rc"
 rec="$(cat "$RECORD" 2>/dev/null)"
-assert_contains "K2 with --arm and the console name" "args=next --arm --name roadmap-console" "$rec"
+assert_contains "K2 with --arm and the chief name" "args=next --arm --name roadmap-chief" "$rec"
 assert_contains "K3 from the primary" "pwd=$PRIMARY" "$rec"
 assert_contains "K4 with no hook-integrity bypass" "bypass=unset" "$rec"
 assert_contains "K5 and every *_OK scrubbed" "other=unset" "$rec"
-bg relaunch-console - - >/dev/null
+bg relaunch-chief - - >/dev/null
 assert_contains "K6 the default name is console" "--name console" "$(cat "$RECORD")"
-bg relaunch-console 'Bad;Name' - >/dev/null; assert_rc "K7 a bad console name is bad input" 1 "$?"
+bg relaunch-chief 'Bad;Name' - >/dev/null; assert_rc "K7 a bad chief name is bad input" 1 "$?"
 
 # --- /restart-bridge -----------------------------------------------------------
 export BREAK_GLASS_RESTART_CMD="$TMP/bin/record" RECORD="$TMP/restart.rec"
@@ -465,37 +465,37 @@ rm -f "$PRIMARY/.claude/settings.local.json"
 # --- cr-reset.sh -----------------------------------------------------------------
 crr() { (unset CLAUDECODE; CR_RESET_PRIMARY="$PRIMARY" CR_RESET_GH="$TMP/bin/gh" CR_RESET_LOCK_LIB="$LOCK_LIB" bash "$CRR" "$@") 2>"$TMP/err"; }
 STATE="$PRIMARY/.git/cr-review-rounds"; mkdir -p "$STATE/feat"
-echo 3 > "$STATE/feat/leg-x.round"; echo abc > "$STATE/feat/leg-x.head"; echo "a b c" > "$STATE/feat/leg-x.delta"
+echo 3 > "$STATE/feat/worker-x.round"; echo abc > "$STATE/feat/worker-x.head"; echo "a b c" > "$STATE/feat/worker-x.delta"
 out=$(CLAUDECODE=1 bash "$CRR" 5 2>&1); rc=$?
 assert_rc "Z1 cr-reset refuses the agent marker" 19 "$rc"
-GH_VIEW='{"headRefName":"feat/leg-x","isCrossRepository":true,"state":"OPEN"}' crr 5 >/dev/null
+GH_VIEW='{"headRefName":"feat/worker-x","isCrossRepository":true,"state":"OPEN"}' crr 5 >/dev/null
 assert_rc "Z2 a fork PR is refused" 12 "$?"
-GH_VIEW='{"headRefName":"feat/leg-x","isCrossRepository":false,"state":"MERGED"}' crr 5 >/dev/null
+GH_VIEW='{"headRefName":"feat/worker-x","isCrossRepository":false,"state":"MERGED"}' crr 5 >/dev/null
 assert_rc "Z3 a closed PR is refused" 12 "$?"
 GH_VIEW='{"headRefName":"feat/unmapped","isCrossRepository":false,"state":"OPEN"}' crr 5 >/dev/null
 assert_rc "Z4 a branch with no review-round state is refused" 12 "$?"
 crr 5x >/dev/null; assert_rc "Z5 a non-numeric PR is bad input" 1 "$?"
-[ -f "$STATE/feat/leg-x.round" ] && echo "PASS Z6 refusals leave the counters alone" || { echo "FAIL Z6 counters touched"; FAILED=$((FAILED + 1)); }
+[ -f "$STATE/feat/worker-x.round" ] && echo "PASS Z6 refusals leave the counters alone" || { echo "FAIL Z6 counters touched"; FAILED=$((FAILED + 1)); }
 cat > "$TMP/badlock.sh" <<'EOF'
 case "$1" in status) echo garbage ;; esac
 exit 0
 EOF
-(unset CLAUDECODE; GH_VIEW='{"headRefName":"feat/leg-x","isCrossRepository":false,"state":"OPEN"}' CR_RESET_PRIMARY="$PRIMARY" \
+(unset CLAUDECODE; GH_VIEW='{"headRefName":"feat/worker-x","isCrossRepository":false,"state":"OPEN"}' CR_RESET_PRIMARY="$PRIMARY" \
     CR_RESET_GH="$TMP/bin/gh" CR_RESET_LOCK_LIB="$TMP/badlock.sh" bash "$CRR" 5) >/dev/null 2>"$TMP/err"
 assert_rc "Z15 an unreadable counter-lock owner is refused" 5 "$?"
-[ -f "$STATE/feat/leg-x.round" ] && echo "PASS Z16 and no counter moved" || { echo "FAIL Z16 counters moved under an unreadable lock owner"; FAILED=$((FAILED + 1)); }
-out=$(GH_VIEW='{"headRefName":"feat/leg-x","isCrossRepository":false,"state":"OPEN"}' crr 5); rc=$?
+[ -f "$STATE/feat/worker-x.round" ] && echo "PASS Z16 and no counter moved" || { echo "FAIL Z16 counters moved under an unreadable lock owner"; FAILED=$((FAILED + 1)); }
+out=$(GH_VIEW='{"headRefName":"feat/worker-x","isCrossRepository":false,"state":"OPEN"}' crr 5); rc=$?
 assert_rc "Z7 an open same-repo PR with state is reset" 0 "$rc"
-[ ! -e "$STATE/feat/leg-x.round" ] && [ ! -e "$STATE/feat/leg-x.head" ] && [ ! -e "$STATE/feat/leg-x.delta" ] \
+[ ! -e "$STATE/feat/worker-x.round" ] && [ ! -e "$STATE/feat/worker-x.head" ] && [ ! -e "$STATE/feat/worker-x.delta" ] \
     && echo "PASS Z8 .round/.head/.delta are reset" || { echo "FAIL Z8 counters not reset"; FAILED=$((FAILED + 1)); }
-assert_contains "Z9 the old round is backed up with a timestamp suffix" "3" "$(cat "$STATE"/feat/leg-x.round.bak-* 2>/dev/null)"
-out=$(GH_VIEW='{"headRefName":"feat/leg-x","isCrossRepository":false,"state":"OPEN"}' BREAK_GLASS_CR_RESET="$CRR" CR_RESET_PRIMARY="$PRIMARY" CR_RESET_GH="$TMP/bin/gh" CR_RESET_LOCK_LIB="$LOCK_LIB" bg cr-reset 5 -); rc=$?
+assert_contains "Z9 the old round is backed up with a timestamp suffix" "3" "$(cat "$STATE"/feat/worker-x.round.bak-* 2>/dev/null)"
+out=$(GH_VIEW='{"headRefName":"feat/worker-x","isCrossRepository":false,"state":"OPEN"}' BREAK_GLASS_CR_RESET="$CRR" CR_RESET_PRIMARY="$PRIMARY" CR_RESET_GH="$TMP/bin/gh" CR_RESET_LOCK_LIB="$LOCK_LIB" bg cr-reset 5 -); rc=$?
 assert_rc "Z10 break-glass cr-reset relays cr-reset.sh (nothing left to reset)" 12 "$rc"
-echo 4 > "$STATE/feat/leg-x.round"
-GH_VIEW='{"headRefName":"feat/leg-x","isCrossRepository":false,"state":"OPEN"}' crr 5 >/dev/null
-n=$(find "$STATE/feat" -name 'leg-x.round.bak-*' | wc -l | tr -d ' ')
+echo 4 > "$STATE/feat/worker-x.round"
+GH_VIEW='{"headRefName":"feat/worker-x","isCrossRepository":false,"state":"OPEN"}' crr 5 >/dev/null
+n=$(find "$STATE/feat" -name 'worker-x.round.bak-*' | wc -l | tr -d ' ')
 [ "$n" = 2 ] && echo "PASS Z11 a second reset keeps the first backup" || { echo "FAIL Z11 expected 2 round backups, got $n"; FAILED=$((FAILED + 1)); }
-echo 5 > "$STATE/feat/leg-x.round"; echo def > "$STATE/feat/leg-x.head"
+echo 5 > "$STATE/feat/worker-x.round"; echo def > "$STATE/feat/worker-x.head"
 mkdir -p "$TMP/failmv"
 cat > "$TMP/failmv/mv" <<EOF
 #!/usr/bin/env bash
@@ -503,9 +503,9 @@ case "\$1" in *.round) exit 1 ;; esac
 exec $(command -v mv) "\$@"
 EOF
 chmod +x "$TMP/failmv/mv"
-PATH="$TMP/failmv:$PATH" GH_VIEW='{"headRefName":"feat/leg-x","isCrossRepository":false,"state":"OPEN"}' crr 5 >/dev/null
+PATH="$TMP/failmv:$PATH" GH_VIEW='{"headRefName":"feat/worker-x","isCrossRepository":false,"state":"OPEN"}' crr 5 >/dev/null
 assert_rc "Z12 a backup that fails part-way is rc 5" 5 "$?"
-[ "$(cat "$STATE/feat/leg-x.head" 2>/dev/null)" = def ] && [ "$(cat "$STATE/feat/leg-x.round" 2>/dev/null)" = 5 ] \
+[ "$(cat "$STATE/feat/worker-x.head" 2>/dev/null)" = def ] && [ "$(cat "$STATE/feat/worker-x.round" 2>/dev/null)" = 5 ] \
     && echo "PASS Z13 and the files already moved are put back" || { echo "FAIL Z13 a partial reset was left behind"; FAILED=$((FAILED + 1)); }
 
 git -C "$PRIMARY" worktree remove --force "$TMP/wt" 2>/dev/null

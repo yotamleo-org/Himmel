@@ -10,6 +10,7 @@ import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { homedir } from 'node:os';
+import { legacyNamesOn } from '../lib/env-alias.mjs';
 // skill-listing.mjs / skill-cost.mjs are imported lazily, only by a
 // caller that opts in via opts.skillEntries. The telegram poller's cachebust loader
 // copies THIS file alone into a tmp dir (scripts/telegram/poller.ts), so a static
@@ -54,15 +55,15 @@ const GATE_SUITE_RE = /^Bash\((?:SUITE_LOCK_WAIT=60 )?bash scripts\/quiet-run\.s
 // `$` (including a different var or a different path under the anchor) still
 // falls through to the ban.
 // The relative rule (`Bash(bash scripts/handover/merge-on-green.sh:*)`) is
-// retired because legs type the ABSOLUTE spelling (the anchor discipline),
+// retired because workers type the ABSOLUTE spelling (the anchor discipline),
 // which this anchor literal matches — the relative form is dead weight, not a
-// spelling any leg still needs. This is the only admitted form.
+// spelling any worker still needs. This is the only admitted form.
 // ponytail: unmeasured outside one manual auto-mode check, upgrade path HIMMEL-3549 —
 // whether the harness's own permission matcher accepts this quoted
 // "$HIMMEL_REPO/..." literal against literal typed command text.
 const GATE_ANCHOR_LITERAL = 'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)';
 // pr-check-context.sh IS /pr-check step
-// 0's own invocation of the trusted-anchor entry point — a leg cannot spell it
+// 0's own invocation of the trusted-anchor entry point — a worker cannot spell it
 // relative to a resolved <himmel_dir> (that value does not exist until this
 // script prints it) nor via validatedAnchorPath's resolved-absolute-path
 // generators below (those exist for steps that already know the anchor from
@@ -76,15 +77,15 @@ const GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT = 'Bash(bash "$HIMMEL_REPO/scripts/cr
 // client-side classifier claudex runs denies it.
 const GATE_ANCHOR_LITERAL_PR_CHECK_STEP0 = 'Bash(bash "$HIMMEL_REPO/scripts/cr/pr-check-step0.sh")';
 const GATE_ANCHOR_LITERALS = new Set([GATE_ANCHOR_LITERAL, GATE_ANCHOR_LITERAL_PR_CHECK_CONTEXT, GATE_ANCHOR_LITERAL_PR_CHECK_STEP0]);
-const WORKER_SESSION_PROFILES = new Set(['lane-impl', 'leg-impl', 'leg-bus', 'leg-e2e', 'leg-vm', 'lane-review', 'lane-content', 'console-relay']);
+const WORKER_SESSION_PROFILES = new Set(['lane-impl', 'worker-impl', 'worker-bus', 'worker-e2e', 'worker-vm', 'lane-review', 'lane-content', 'chief-relay']);
 
 // A bare tool name in permissions.deny removes the tool's definition from the
 // request payload; a scoped rule (Bash(rm *)) only blocks calls. denyTools is
-// therefore bare names only, and never a tool a leg works through.
+// therefore bare names only, and never a tool a worker works through.
 const TOOL_TRIM_PROTECTED = new Set(['SendMessage', 'ListAgents', 'Bash', 'Read', 'Edit', 'Write', 'Agent', 'Task']);
 const BARE_TOOL_RE = /^[A-Za-z][A-Za-z0-9_]*$/;
 
-// The one rule only leg-vm adds: the sanctioned guest-launch script, relative,
+// The one rule only worker-vm adds: the sanctioned guest-launch script, relative,
 // with a tail for its args. Never ssh, claude, an absolute path or another script.
 const VM_LAUNCH_RULE_RE = /^Bash\(bash scripts\/vm\/launch-guest\.sh:\*\)$/;
 function validateVmLaunchAllow(errors, rules) {
@@ -215,19 +216,19 @@ function checkNoDuplicates(errors, ids, message) {
   if (ids.length !== new Set(ids).size) errors.push(message);
 }
 
-// denyTools (bare names) and disableWorkflows shrink the prompt of a leg-shaped
+// denyTools (bare names) and disableWorkflows shrink the prompt of a worker-shaped
 // profile; every other profile keeps the full tool set.
 function validateToolTrim(errors, name, spec) {
   if (spec.denyTools === undefined && spec.disableWorkflows === undefined) return;
   if (name !== 'bare' && !WORKER_SESSION_PROFILES.has(name)) {
-    if (spec.denyTools !== undefined) errors.push(`profile "${name}" denyTools is restricted to leg-shaped profiles`);
-    if (spec.disableWorkflows !== undefined) errors.push(`profile "${name}" disableWorkflows is restricted to leg-shaped profiles`);
+    if (spec.denyTools !== undefined) errors.push(`profile "${name}" denyTools is restricted to worker-shaped profiles`);
+    if (spec.disableWorkflows !== undefined) errors.push(`profile "${name}" disableWorkflows is restricted to worker-shaped profiles`);
   }
   if (spec.denyTools !== undefined) {
     if (!Array.isArray(spec.denyTools) || !spec.denyTools.every((t) => typeof t === 'string' && BARE_TOOL_RE.test(t))) {
       errors.push(`profile "${name}" denyTools must be an array of bare tool names (a scoped rule leaves the definition in the payload)`);
     } else {
-      for (const t of spec.denyTools) if (TOOL_TRIM_PROTECTED.has(t)) errors.push(`profile "${name}" denyTools names ${t}, a tool a leg works through`);
+      for (const t of spec.denyTools) if (TOOL_TRIM_PROTECTED.has(t)) errors.push(`profile "${name}" denyTools names ${t}, a tool a worker works through`);
     }
   }
   if (spec.disableWorkflows !== undefined && typeof spec.disableWorkflows !== 'boolean') errors.push(`profile "${name}" disableWorkflows must be a boolean`);
@@ -263,11 +264,11 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
   if (spec.gateAllow !== undefined && typeof spec.gateAllow !== 'boolean') {
     errors.push(`profile "${name}" gateAllow must be a boolean`);
   }
-  if (spec.vmLaunch !== undefined && (typeof spec.vmLaunch !== 'boolean' || (spec.vmLaunch && (name !== 'leg-vm' || spec.gateAllow !== true)))) {
-    errors.push(`profile "${name}" vmLaunch must be a boolean, true only on leg-vm with gateAllow`);
+  if (spec.vmLaunch !== undefined && (typeof spec.vmLaunch !== 'boolean' || (spec.vmLaunch && (name !== 'worker-vm' || spec.gateAllow !== true)))) {
+    errors.push(`profile "${name}" vmLaunch must be a boolean, true only on worker-vm with gateAllow`);
   }
   if (spec.gateAllow === true && !WORKER_SESSION_PROFILES.has(name)) {
-    errors.push(`profile "${name}" gateAllow is restricted to leg-shaped profiles`);
+    errors.push(`profile "${name}" gateAllow is restricted to worker-shaped profiles`);
   }
   validateIdList(errors, spec.enable, catalogSet, `profile "${name}" enable`);
   if (spec.drop !== undefined) {
@@ -291,7 +292,7 @@ function validateProfileSpec(errors, name, spec, catalogSet, floorSet) {
     const toolsOk = Array.isArray(spec.disallowedTools) && spec.disallowedTools.every((t) => typeof t === 'string' && t.length > 0);
     if (!toolsOk) errors.push(`profile "${name}" disallowedTools must be an array of non-empty strings`);
   }
-  // mcpServers — a per-leg MCP
+  // mcpServers — a per-worker MCP
   // server ALLOWLIST, orthogonal to mcpCatalog (T3.1, still schema-only): this
   // field names servers to COPY from an external source (~/.claude.json, a repo
   // .mcp.json, a plugin manifest — see collectMcpServerDefs), never a definition
@@ -465,11 +466,16 @@ export function validateRegistry(registry) {
 // can drop it (design Rule 1). "bare" is name-recognized (like operator) and
 // skips step 1: it resolves to floor-only-plus-overlay so a dispatch can
 // compose a one-off surface purely from --add-plugins with no registry entry.
-// worker-* profile ids are the new names of the leg-* registry keys; each
-// member of a comma list maps to its leg-* key before any lookup.
-export const PROFILE_ALIASES = { 'worker-impl': 'leg-impl', 'worker-bus': 'leg-bus', 'worker-vm': 'leg-vm', 'worker-e2e': 'leg-e2e' };
+// Old profile ids (leg-*, console*) map to their renamed registry keys; each
+// member of a comma list maps before any lookup. With legacy names off an old
+// id stays as typed and fails as an unknown profile.
+export const PROFILE_ALIASES = {
+  'leg-impl': 'worker-impl', 'leg-bus': 'worker-bus', 'leg-vm': 'worker-vm', 'leg-e2e': 'worker-e2e',
+  console: 'chief', 'console-relay': 'chief-relay',
+};
 
 export function canonicalProfileName(name) {
+  if (!legacyNamesOn()) return String(name);
   return String(name).split(',').map((m) => (Object.hasOwn(PROFILE_ALIASES, m) ? PROFILE_ALIASES[m] : m)).join(',');
 }
 
@@ -575,7 +581,7 @@ export function contextForProfile(registry, name) {
 // Profiles that cannot be members of a `--profile a,b` list: operator
 // injects nothing, bare skips base, and the role profiles carry guard semantics, so
 // none of them is additive. Shared with the launcher's --consult refusal.
-export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'console', 'console-relay', 'console-judge', 'release-manager'];
+export const NON_ADDITIVE_PROFILES = ['operator', 'bare', 'chief', 'chief-relay', 'console-judge', 'release-manager'];
 
 // A comma list resolves to the UNION of its members. enabledPlugins is
 // an OR (a member's drop never switches off another member's enable), the floor
@@ -625,8 +631,8 @@ function listingSettings(registry, names, enabledPlugins, opts) {
 // `$HIMMEL_REPO` one and falls to the auto-mode classifier. This validates the
 // anchor and returns the absolute path, or null when a matcher-unsafe
 // character (space, `*`, `)`, `$`, …) means no literal can be emitted safely.
-// A leg worktree's bytes are the leg's to change, so an anchor naming one
-// would let a leg approve its own edited gate script — refuse, never emit.
+// A worker worktree's bytes are the worker's to change, so an anchor naming one
+// would let a worker approve its own edited gate script — refuse, never emit.
 function validatedAnchorPath(anchor, purpose) {
   const path = String(anchor).replace(/\/+$/, '');
   if (!path.startsWith('/') || path.split('/').includes('..') || path.includes('/.claude/worktrees/')) {
@@ -638,16 +644,16 @@ function validatedAnchorPath(anchor, purpose) {
   return /^[A-Za-z0-9._/+-]+$/.test(path) ? path : null;
 }
 
-// Two ship-step scripts a leg calls carry no relative
+// Two ship-step scripts a worker calls carry no relative
 // GATE_SCRIPT_RE entry of their own — merge-on-green.sh's relative rule was
 // retired (only its $HIMMEL_REPO literal remains in
-// registry.gateAllow) and leg-pr-open.sh's relative allow lives in
+// registry.gateAllow) and worker-pr-open.sh's relative allow lives in
 // .claude/settings.json, not here — so anchorShipStepRules below carries
 // their relative spelling explicitly, the same text either rule would have
 // had, purely as the transform's input.
 const EXTRA_SHIP_STEP_RELATIVE_RULES = [
   'Bash(bash scripts/handover/merge-on-green.sh:*)',
-  'Bash(bash scripts/lanes/leg-pr-open.sh:*)',
+  'Bash(bash scripts/lanes/worker-pr-open.sh:*)',
 ];
 
 // The anchor-absolute twin of one relative `Bash(bash scripts/....sh<tail>)`
@@ -704,7 +710,7 @@ export function primaryCheckout(dir) {
 // only the repo a session started in; a clone of one of our registered forks is
 // "external" to it, so its install, tests, push and PR are denied. The documented
 // fix is an autoMode.environment entry, read only from user, managed or --settings
-// scope (never project settings), so it rides the resolved leg --settings file.
+// scope (never project settings), so it rides the resolved worker --settings file.
 // Exact owner/repo names only: no org wildcard, nothing outside yotamleo-org.
 const FORK_NWO_RE = /^yotamleo-org\/[A-Za-z0-9][A-Za-z0-9._-]*$/;
 export function forkTrustSettings(nwos) {
@@ -761,7 +767,7 @@ export function mcpServersForProfile(registry, name) {
       throw new Error(`plugin-profiles: profile "${bad}" cannot be composed in a profile list (${NON_ADDITIVE_PROFILES.join(', ')} are not additive)`);
     }
     const lists = members.map((m) => mcpServersForProfile(registry, m));
-    // A composed leg must never load more MCP servers than a member
+    // A composed worker must never load more MCP servers than a member
     // allows. Members declaring different allowlists refuse (operator ruling
     // 2026-10-05); identical lists keep that list; a member declaring none is
     // ignored, so exactly one declared list is kept rather than widened to
@@ -770,7 +776,7 @@ export function mcpServersForProfile(registry, name) {
     if (declared.length === 0) return undefined;
     const key = (l) => JSON.stringify([...l].sort());
     if (declared.some((x) => key(x.l) !== key(declared[0].l))) {
-      throw new Error(`plugin-profiles: cannot compose profiles with different mcpServers allowlists (${declared.map((x) => `${x.m}: [${x.l.join(', ')}]`).join('; ')}); a composed leg would load every user MCP server — compose members with identical lists, or none`);
+      throw new Error(`plugin-profiles: cannot compose profiles with different mcpServers allowlists (${declared.map((x) => `${x.m}: [${x.l.join(', ')}]`).join('; ')}); a composed worker would load every user MCP server — compose members with identical lists, or none`);
     }
     return declared[0].l;
   }
@@ -788,8 +794,8 @@ export function mcpServersForProfile(registry, name) {
 // user's ~/.claude.json, a repo-root .mcp.json, then the server's own
 // marketplace plugin manifest (<marketplaceDir>/<name>/.mcp.json). An
 // unresolved name is a hard refusal (fail-closed) rather than a synthesized
-// or skipped entry — a leg silently missing its one allowed server is worse
-// than a leg that never launches. Returns the ready-to-write --mcp-config
+// or skipped entry — a worker silently missing its one allowed server is worse
+// than a worker that never launches. Returns the ready-to-write --mcp-config
 // object shape: {"mcpServers": {...}}.
 // A def loaded FROM a plugin manifest has ${CLAUDE_PLUGIN_ROOT} expanded by
 // Claude at launch; a def copied out into a standalone --mcp-config file does
@@ -937,7 +943,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
     // the same leak class, just via a different layer. undefined falls back
     // to <home>/.claude, the existing behaviour.
     const installed = readEnabledPluginIds(homedir(), process.cwd(), process.env.CLAUDE_CONFIG_DIR);
-    // The anchor a leg types its merge from — the primary checkout
+    // The anchor a worker types its merge from — the primary checkout
     // behind $HIMMEL_REPO (or behind this script), never a worktree.
     const anchor = primaryCheckout(process.env.HIMMEL_REPO || SCRIPT_DIR);
     // The skill scan feeds skillOverrides + the listing budget fraction.
@@ -945,7 +951,7 @@ if (import.meta.url === `file://${process.argv[1]}` || process.argv[1] === fileU
     const { scanSkillCosts } = await import('./skill-cost.mjs');
     const configDir = process.env.CLAUDE_CONFIG_DIR || join(homedir(), '.claude');
     const skillEntries = scanSkillCosts({ cwd: process.cwd(), configDir }).entries;
-    // Fork trust is read from the ANCHOR's registry copy, never a leg worktree's bytes,
+    // Fork trust is read from the ANCHOR's registry copy, never a worker worktree's bytes,
     // unless the launching environment names a registry file (a suite testing a registry change).
     const adaptersPath = process.env.PLUGIN_PROFILES_ADAPTERS || (anchor ? join(anchor, 'scripts', 'guardrails', 'himmel-adapters.json') : null);
     const forkNwos = adaptersPath ? forkNwosFromAdapters(adaptersPath) : [];

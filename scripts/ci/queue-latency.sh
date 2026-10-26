@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/queue-latency.sh
 #
-# Read-only counts for the console tick: are GitHub Actions jobs waiting?
+# Read-only counts for the chief tick: are GitHub Actions jobs waiting?
 #   ci-queue: jobs_in_progress=N/500 macos=M/5 queued=Q oldest_wait=Xm
 # The plan figure is report-only, never a dispatch gate. At most 32 live runs
 # are sampled; sampled=true labels lower bounds. Observed waiting remains

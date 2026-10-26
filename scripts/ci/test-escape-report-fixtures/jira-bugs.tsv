@@ -1,6 +1,6 @@
 HIMMEL-7042	Bug	IN CI	main red: test-build-tarball.sh hangs to the 600 s runner cap on every CI run, blocking all merges	bug,main-red,standalone
 HIMMEL-7041	Bug	In Progress	ciq: tick reads CI as SATURATED on a 60-job cap while nothing is queued (real limit 500)	backlog,operator-directed,standalone
-HIMMEL-7040	Bug	To Do	tick: unowned-prs reads a live leg's PR as unowned when the leg ships a ticket other than its doc name	backlog,residual,standalone
+HIMMEL-7040	Bug	To Do	tick: unowned-prs reads a live worker's PR as unowned when the worker ships a ticket other than its doc name	backlog,residual,standalone
 HIMMEL-7039	Bug	To Do	Fleet orchestration: takeover can delete a lock whose holder heartbeated just after the last check	backlog,standalone
 HIMMEL-7038	Bug	To Do	Fleet orchestration: heartbeat cannot write into a lock without an arbiter file	backlog,standalone
 HIMMEL-7036	Bug	In Progress	Fleet orchestration: a late release no longer deletes the new holder's lock	operator-directed,standalone

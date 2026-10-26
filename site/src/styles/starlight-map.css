@@ -1,5 +1,5 @@
 /* Points Starlight's --sl-* variables at the shared himmel tokens (tokens.css), so the docs site and the config
-   console draw from one palette. Starlight swaps light and dark through [data-theme]; the tokens swap on the same
+   chief draw from one palette. Starlight swaps light and dark through [data-theme]; the tokens swap on the same
    attribute, so var() here resolves per theme and needs no dark twin. This sheet is unlayered, so it wins over
    Starlight's layered defaults. */
 :root {

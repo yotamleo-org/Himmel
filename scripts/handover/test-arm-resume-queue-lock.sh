@@ -78,18 +78,18 @@ unset QUEUE_LOCK_TAKEOVER QUEUE_LOCK_TTL_SECONDS ARM_DUP_OK 2>/dev/null || true
 export ARM_TEMP_CWD_OK=1
 # keep the real bank-preflight's usage-cache refresh off the live cache.
 export CADENCE_BANK_CACHE="$TMP/bank-cache.json" CLAUDE_USAGE_CACHE="$TMP/bank-cache.json"
-# Split-leg shield: this suite's fixtures are a flat POOL of
+# Split-worker shield: this suite's fixtures are a flat POOL of
 # next-session-<N>.md files in ONE directory, all created seconds apart and
-# none of them ever a relaunch point — which is exactly the shape the split-leg
-# guard refuses (rc=17). They are not a leg chain; declare the opt-out once
+# none of them ever a relaunch point — which is exactly the shape the split-worker
+# guard refuses (rc=17). They are not a worker chain; declare the opt-out once
 # here rather than teaching every case to dodge the numbering.
-export ARM_SPLIT_LEG_OK=1
+export ARM_SPLIT_WORKER_OK=1
 # Worker-census shield (same as test-arm-resume.sh): point
 # the live-lane-worker census at an isolated empty root under $TMP, or every
 # REAL-arm case here refuses rc=10 whenever a GLM/claudex lane worker (or a
 # codex render) is live on the machine — the exact suites-reading-machine-wide-
 # state class that produced this suite's shifting 8/13/18-fail reds under
-# parallel lane load (leg 7, 2026-08-09).
+# parallel lane load (worker 7, 2026-08-09).
 export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
 # Shipped-work shield: the preflight derives a ticket
 # ID from the handover (this suite's H1 lines all name one) and probes
@@ -487,9 +487,11 @@ mkdir -p "$FAKE/handover" "$FAKE/lib"
 cp "$SCRIPT_DIR/arm-resume.sh" "$FAKE/handover/arm-resume.sh"
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 cp -R "$SCRIPT_DIR/../lanes" "$FAKE/lanes"
-for lib in chief-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version; do
+for lib in chief-context py-armor handover-path telemetry macos-app-resolve chokepoint-seam-guard claude-version env-alias legacy-names; do
     cp "$SCRIPT_DIR/../lib/$lib.sh" "$FAKE/lib/$lib.sh"
 done
+# lanes/plugin-profiles.mjs imports ../lib/env-alias.mjs (which imports is-main.mjs).
+cp "$SCRIPT_DIR/../lib/env-alias.mjs" "$SCRIPT_DIR/../lib/is-main.mjs" "$FAKE/lib/"
 # guard: a lib arm-resume.sh hard-sources (column-0 `. .../lib/X.sh`
 # with no `||` / `2>/dev/null` fail-open) must exist in the fake tree, else the
 # T13-T14 cases die at source time with an unrelated-looking rc=1. Name the

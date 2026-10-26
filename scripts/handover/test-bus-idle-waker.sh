@@ -40,7 +40,7 @@ chmod +x "$tmp/qdbus" "$tmp/bus"
 export QLOG="$tmp/qlog" QPID=4242 QSCREEN="$FIX/screen-idle.txt" BUS_WAKER_PROC="$tmp/proc"
 mkdir -p "$tmp/proc/4242" "$tmp/proc/4343" "$tmp/proc/4444" "$tmp/proc/4646"
 printf 'claude\0-n\0legX\0' > "$tmp/proc/4242/cmdline"
-printf 'claude\0-n\0HIMMEL-nextleg-2026-10-19H-roadmap-console\0' > "$tmp/proc/4343/cmdline"
+printf 'claude\0-n\0HIMMEL-nextleg-2026-10-19H-roadmap-chief\0' > "$tmp/proc/4343/cmdline"
 printf 'zsh\0' > "$tmp/proc/4444/cmdline"
 printf 'python3\0-n\0legX\0' > "$tmp/proc/4646/cmdline"
 FIXED='You have unread himmel messages: read them now.'
@@ -175,7 +175,7 @@ BUS_N=2 run 3 0
 if grep -q sendText "$QLOG" && ! sed 's/.*sendText //' "$QLOG" | grep -q '[0-9]'; then
   pass "the idle prompt is woken, and the typed line carries no digit"
 else fail "idle wake or digit-free text: $(cat "$QLOG")"; fi
-# A leg name wider than the window truncates the box's top rule to ` <name>… ─`.
+# A worker name wider than the window truncates the box's top rule to ` <name>… ─`.
 QSCREEN="$FIX/screen-idle-longname.txt" BUS_N=2 run 3 0
 grep -qF "$FIXED" "$QLOG" && pass "an idle prompt under a truncated session-name rule is woken" || fail "long-name idle prompt not woken: $(cat "$QLOG")"
 sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle-longname.txt" > "$tmp/draft-longname"
@@ -186,24 +186,24 @@ QSCREEN="$FIX/screen-nonrule-top.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a non-rule line ending in the rule character above an empty prompt gets no keystroke" || fail "woke on a non-rule top line: $(cat "$QLOG")"
 
 QPID=4343 BUS_N=2 run 3 0
-[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <console>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
+[ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session running another claude (-n <chief>) is refused, rc=4" || fail "foreign target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 QPID=4444 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a konsole session that is not a named claude (a shell) is refused, rc=4" || fail "shell target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 QPID=4646 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "another program carrying -n <name> is refused, rc=4" || fail "non-claude -n target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 QPID_LATER=4444 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a session whose process changed after startup is refused before the wake, rc=4" || fail "replaced target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
-# A real leg's claude argv, read from /proc/<processId>/cmdline.
+# A real worker's claude argv, read from /proc/<processId>/cmdline.
 mkdir -p "$tmp/proc/4545" && cp "$FIX/cmdline-leg" "$tmp/proc/4545/cmdline"
 : > "$QLOG"
 QPID=4545 BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name HIMMEL-6343-N2734-write-verdict-affects-version-2026-10-19 \
   --service org.kde.konsole-1 --session /Sessions/3 --poll 0.2 --grace 0 --rewake 100 --max-polls 3 >/dev/null 2>&1
 rc=$?
-[ "$rc" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a real leg argv naming the session (-n <name>) is accepted" || fail "real leg argv: rc=$rc, qlog: $(cat "$QLOG")"
+[ "$rc" -eq 0 ] && grep -qF "$FIXED" "$QLOG" && pass "a real worker argv naming the session (-n <name>) is accepted" || fail "real worker argv: rc=$rc, qlog: $(cat "$QLOG")"
 QPID=4545 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "the same real argv aimed at another --name is refused, rc=4" || fail "real argv, wrong name: rc=$RUN_RC"
 
-# A claudex leg runs konsole -> script -c leg-claude-launcher.sh -> claude -n <name>:
+# A claudex worker runs konsole -> script -c worker-claude-launcher.sh -> claude -n <name>:
 # the session's own process is `script`, the named claude is its descendant.
 fakeproc() { # fakeproc <pid> <children or ''> <argv0> [argv...]
   local p="$1" kids="$2"; shift 2
@@ -218,17 +218,17 @@ fgstat() { # fgstat <pid> <pgrp> <tpgid>: /proc/<pid>/stat as the kernel prints 
 sent_once() { # the wake sentence was typed exactly once
   [ "$(grep -cF "$FIXED" "$QLOG")" -eq 1 ]
 }
-fakeproc 5000 5001 script -q -a -f /x.log -c /x/leg-claude-launcher.sh -n legX
+fakeproc 5000 5001 script -q -a -f /x.log -c /x/worker-claude-launcher.sh -n legX
 fakeproc 5001 '' claude --model gpt-6.1-sol -n legX hello
 fgstat 5001 5001 5001
 QPID=5000 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 0 ] && sent_once && pass "a script wrapper whose child is the named claude is accepted" || fail "claudex wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
-fakeproc 5010 5011 script -q -c /x/leg-claude-launcher.sh
+fakeproc 5010 5011 script -q -c /x/worker-claude-launcher.sh
 fakeproc 5011 '' claude -n other
 fgstat 5011 5011 5011
 QPID=5010 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a descendant claude with a different -n is refused, rc=4" || fail "wrapped foreign claude: rc=$RUN_RC, qlog: $(cat "$QLOG")"
-fakeproc 5020 '5021 5022' script -q -c /x/leg-claude-launcher.sh
+fakeproc 5020 '5021 5022' script -q -c /x/worker-claude-launcher.sh
 fakeproc 5021 '' claude -n legX
 fakeproc 5022 '' claude -n legX
 fgstat 5021 5021 5021
@@ -275,14 +275,14 @@ QPID=5070 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 0 ] && sent_once && pass "of two named claudes only the foreground group counts, so the target is unambiguous" || fail "one foreground of two: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 # script gives claude its own pty, so claude is foreground there even when the script wrapper itself is backgrounded on the session's terminal.
 fakeproc 5080 5081 bash
-fakeproc 5081 5082 script -q -c /x/leg-claude-launcher.sh
+fakeproc 5081 5082 script -q -c /x/worker-claude-launcher.sh
 fakeproc 5082 '' claude -n legX
 fgstat 5081 5081 5999
 fgstat 5082 5082 5082
 QPID=5080 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a foreground claude under a backgrounded script wrapper is refused, rc=4" || fail "background wrapper: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 fakeproc 5090 5091 bash
-fakeproc 5091 5092 script -q -c /x/leg-claude-launcher.sh
+fakeproc 5091 5092 script -q -c /x/worker-claude-launcher.sh
 fakeproc 5092 '' claude -n legX
 fgstat 5091 5091 5091
 fgstat 5092 5092 5092
@@ -297,7 +297,7 @@ QPID=5100 BUS_N=2 run 3 0
 
 echo "== waker state file =="
 # A waker that ends on rc=3 or rc=4 leaves <state dir>/<name> holding rc3 or rc4 for the
-# console tick; a healthy start clears a stale one, and a clean end leaves none.
+# chief tick; a healthy start clears a stale one, and a clean end leaves none.
 rm -rf "$BUS_WAKER_STATE_DIR"
 BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus-denied" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name legX --service s --session /S --poll 0.2 --grace 0 --rewake 0 --max-polls 50 >/dev/null 2>&1
 [ "$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)" = rc3 ] && pass "an AccessDenied end (rc=3) leaves state rc3" || fail "rc3 state: '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
@@ -307,7 +307,7 @@ BUS_N=0 run 2 0
 [ "$RUN_RC" -eq 0 ] && [ ! -e "$BUS_WAKER_STATE_DIR/legX" ] && pass "a healthy start clears a stale rc4 state" || fail "stale state kept: rc=$RUN_RC '$(cat "$BUS_WAKER_STATE_DIR/legX" 2>/dev/null)'"
 
 echo "== succession doc =="
-if grep -q 'run `bus adopt <new console>` as the worker' "$REPO/docs/handover/worker-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/worker-sections/succession.md"; then pass "succession.md tells the worker to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi
+if grep -q 'run `bus adopt <new chief>` as the worker' "$REPO/docs/handover/worker-sections/succession.md" && grep -q 'no edge to' "$REPO/docs/handover/worker-sections/succession.md"; then pass "succession.md tells the worker to run bus adopt and why"; else fail "succession.md lacks the bus adopt instruction"; fi
 
 echo "bus-idle-waker: $failures failure(s)"
 exit "$failures"

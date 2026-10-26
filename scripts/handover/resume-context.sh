@@ -24,8 +24,8 @@ fi
 # Pending CR markers for this item's ticket: re-derive the
 # machine classification EVERY resume, so an inherited "blocked/unopenable"
 # claim in the handover prose always sits next to what the marker + ledger
-# actually say (one ticket stayed falsely "blocked" for four legs because the
-# claim propagated leg-to-leg unchallenged). Ticket key comes from the item
+# actually say (one ticket stayed falsely "blocked" for four workers because the
+# claim propagated worker-to-worker unchallenged). Ticket key comes from the item
 # dir name (KEY-N-slug); #N items have no key and are skipped. Best-effort:
 # an audit failure never breaks the panel.
 key="$(basename "$item" | grep -oE '^[A-Za-z][A-Za-z0-9]*-[0-9]+' || true)"

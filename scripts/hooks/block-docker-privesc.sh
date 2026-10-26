@@ -136,7 +136,7 @@ classify_path() {
     # Unresolved glob metachar in a host path → fail-CLOSED. The shell expands
     # `-v /etc*:/h` to `/etc` before docker sees it, but the hook sees the literal
     # `/etc*`, which no anchored pattern below matches — so block any host path
-    # still bearing * ? [ rather than wave the expansion through.
+    # still bearing * ? [ rather than parallel wave the expansion through.
     case "$p" in *'*'*|*'?'*|*'['*) return 0 ;; esac
     # docker socket — root-equivalent, any mode.
     case "$p" in */docker.sock) return 0 ;; esac

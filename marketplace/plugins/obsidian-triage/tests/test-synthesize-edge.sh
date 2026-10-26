@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Edge-case + safety-property coverage for synthesize-stubs (LUNA-87/88/89),
 # closing the gaps the CR test-analyzer flagged: CRLF byte round-trip, the
-# distinct-source OR-gate legs + floor-skip, compound stub->densify revert,
+# distinct-source OR-gate workers + floor-skip, compound stub->densify revert,
 # densify idempotency, Tech-vs-Concept boundary, _deferred.md sibling-prefix +
 # densify-claim + revert-when-regenerated, and cross-subject promoted_to.
 
@@ -67,7 +67,7 @@ node "$TOOL" "$v1" --revert "$v1/.synthesize-stubs.ledger.jsonl" >/dev/null 2>&1
 if cmp -s "$root/cr1.orig" "$v1/Clippings/_evidence/cr1.md" && cmp -s "$root/cr2.orig" "$v1/Clippings/_evidence/cr2.md"; then f=identical; else f=changed; fi
 assert "CRLF clips byte-identical after stamp+revert round-trip" "identical" "$f"
 
-# ── Group 2: distinct-source OR-gate (each leg + floor-skip) ──────────────────
+# ── Group 2: distinct-source OR-gate (each worker + floor-skip) ──────────────────
 echo "Group 2: distinct-source OR-gate"
 v2="$root/v2"; mkdir -p "$v2/Clippings/_evidence" "$v2/30-Resources/Concepts"
 # (a) same author, 2 domains -> fires

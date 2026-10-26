@@ -487,7 +487,7 @@ else
     echo "WARN large graphify command row skipped: no timeout(1)"
 fi
 
-# A fence DENY must point a leg at the wrapper that works from a worktree.
+# A fence DENY must point a worker at the wrapper that works from a worktree.
 cat > "$PROJECT/scripts/guardrails/graphify-fence.sh" <<'FENCE_EOF'
 #!/usr/bin/env bash
 echo "graphify-fence: DENY fake reason" >&2
@@ -502,7 +502,7 @@ fi
 
 # The renamed wrapper and its old path both pass for a relative target after a cd: their program is bash, not graphify, so neither reaches the fence, and the deny hint names this wrapper as the route.
 for verb in "query q journal.md" "explain journal.md"; do
-    out="$(run_hook "cd $T/luna && bash scripts/graphify/leg-graph.sh $verb" 2>&1)"; rc_old=$?
+    out="$(run_hook "cd $T/luna && bash scripts/graphify/worker-graph.sh $verb" 2>&1)"; rc_old=$?
     out="$(run_hook "cd $T/luna && bash scripts/graphify/worker-graph.sh $verb" 2>&1)"; rc_new=$?
     if [ "$rc_old" -eq 0 ] && [ "$rc_new" -eq 0 ]; then
         ok "worker-graph.sh and leg-graph.sh both pass the hook after a cd ($verb)"

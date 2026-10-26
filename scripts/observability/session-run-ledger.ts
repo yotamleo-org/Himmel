@@ -3,7 +3,7 @@
 // folds for "what is running right now, as a session".
 //
 // SIBLING, NOT REPLACEMENT. `flow-runs.jsonl` tracks the five
-// pipeline-cadence legs; `spawn-glm.ts`/`spawn-claudex.ts` already keep a
+// pipeline-cadence workers; `spawn-glm.ts`/`spawn-claudex.ts` already keep a
 // per-session `meta.json` for DISPATCHED lane workers. Neither covers the
 // operator's own interactive/foreground Claude Code sessions and the Task-tool
 // subagents fanned out inside them — that population is what this ledger is
@@ -50,7 +50,7 @@ export type SessionEndReason = typeof SESSION_END_REASONS[number];
 // enum before it is written, same discipline as SESSION_END_REASONS above
 // (it becomes downstream label-ish data too). "queue_lock_release" is the
 // operator-preferred writer call site (scripts/handover/queue-lock.sh's
-// release path — every mission leg releases a lock at wrap, so coverage is
+// release path — every mission worker releases a lock at wrap, so coverage is
 // automatic); "close_sentinel" is reserved for a future direct-close path;
 // anything unrecognized normalizes to "other".
 export const SESSION_CLOSE_EVIDENCE = ["queue_lock_release", "close_sentinel", "other"] as const;

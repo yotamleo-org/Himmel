@@ -3,11 +3,11 @@
 # (AST) graphify refresh against refresh-graph-map.sh's per-out-dir promote
 # lock.
 #
-# WHY: the hourly structural cadence leg used to fire bare `graphify update
+# WHY: the hourly structural cadence worker used to fire bare `graphify update
 # <corpus> --force` directly, writing straight into <corpus>/graphify-out --
-# the SAME directory the weekly semantic leg writes through
+# the SAME directory the weekly semantic worker writes through
 # refresh-graph-map.sh, which guards that directory with an exclusive
-# mkdir-based promote lock. The AST leg bypassed that lock entirely, and the
+# mkdir-based promote lock. The AST worker bypassed that lock entirely, and the
 # schedules overlap by construction (luna semantic fires Sunday 13:00, luna
 # AST fires :05 past every hour, landing inside a still-running semantic
 # refresh at 13:05 Sunday) -- distinct scheduler tasks are not otherwise
@@ -37,12 +37,12 @@
 # design -- it accepts only the RELATIVE form and refuses an ABSOLUTE
 # GRAPHIFY_OUT outright, because it extracts into a scratch copy and
 # promotes, and an absolute out dir would bypass both. So under an absolute
-# override the semantic leg does not run at all rather than writing a
+# override the semantic worker does not run at all rather than writing a
 # directory this one is not locking; see that script's OUT_DIR block.
 #
 # POLICY DIFFERENCE from refresh-graph-map.sh's acquire: SKIP-not-wait. The
 # semantic side does a bounded spin (default 120s) because a stuck reader is
-# worth waiting out; the hourly structural leg is cheap (seconds) and fires
+# worth waiting out; the hourly structural worker is cheap (seconds) and fires
 # again in 60 minutes, so waiting buys nothing and risks stacking hourly runs
 # behind a long semantic extraction. Up to three mkdir attempts, retried only
 # while the lock dir is ABSENT (a retry there distinguishes "the
@@ -123,8 +123,8 @@ _graphify_out_name="${GRAPHIFY_OUT-graphify-out}"
 # honouring it means running graphify against a corpus whose "out dir" IS the
 # corpus, scattering graph.json/manifest.json/cache into the source tree and
 # taking the promote lock at <corpus>/.promote.lock. An earlier revision kept
-# it on the grounds that matching upstream is what keeps the two legs on one
-# directory. That reasoning was wrong: what the two legs must agree on is the
+# it on the grounds that matching upstream is what keeps the two workers on one
+# directory. That reasoning was wrong: what the two workers must agree on is the
 # directory they operate on, and BOTH refusing is agreement. The semantic side
 # already refuses an empty value via its name check, so refusing here keeps
 # them consistent AND stops the write. An empty value is a misconfiguration,
@@ -137,25 +137,25 @@ case "$_graphify_out_name" in
   /*|[A-Za-z]:[/\\]*) OUT_DIR="$_graphify_out_name" ;;
   *)
     # A RELATIVE override must be a single directory NAME, matching what
-    # refresh-graph-map.sh accepts (CR r12). Without this the legs disagreed
-    # again: `GRAPHIFY_OUT=foo/bar` was refused by the semantic leg's name
+    # refresh-graph-map.sh accepts (CR r12). Without this the workers disagreed
+    # again: `GRAPHIFY_OUT=foo/bar` was refused by the semantic worker's name
     # check while this one kept updating, so semantic refreshes would fail
-    # forever with the structural leg looking healthy. `../out` was worse than
+    # forever with the structural worker looking healthy. `../out` was worse than
     # a disagreement -- it resolves OUTSIDE the corpus root, so the lock and
     # the write would land somewhere the operator never named. The absolute
-    # form stays supported: this leg runs graphify in place and can honour it.
+    # form stays supported: this worker runs graphify in place and can honour it.
     case "$_graphify_out_name" in
       [!A-Za-z0-9]*|*[!A-Za-z0-9._-]*)
-        echo "ast-update: FAILED -- a relative GRAPHIFY_OUT must be a single directory name matching [A-Za-z0-9][A-Za-z0-9._-]* (got '$_graphify_out_name'); refresh-graph-map.sh applies the same rule, and a multi-segment or dot-dot value would put the two cadence legs on different directories. Exiting 3, not 4" >&2
+        echo "ast-update: FAILED -- a relative GRAPHIFY_OUT must be a single directory name matching [A-Za-z0-9][A-Za-z0-9._-]* (got '$_graphify_out_name'); refresh-graph-map.sh applies the same rule, and a multi-segment or dot-dot value would put the two cadence workers on different directories. Exiting 3, not 4" >&2
         exit 3 ;;
     esac
     OUT_DIR="$CORPUS_ROOT/$_graphify_out_name" ;;
 esac
-# Refuse to write into somebody's SOURCE directory (CR r10). The semantic leg
+# Refuse to write into somebody's SOURCE directory (CR r10). The semantic worker
 # gained this guard first; without the mirror, GRAPHIFY_OUT=docs made the two
-# legs DISAGREE -- the semantic side refusing while this one happily ran
+# workers DISAGREE -- the semantic side refusing while this one happily ran
 # `graphify update` and scattered graph.json/manifest.json into <corpus>/docs.
-# The whole point of resolving GRAPHIFY_OUT identically is that both legs act on
+# The whole point of resolving GRAPHIFY_OUT identically is that both workers act on
 # one directory, so they have to refuse the same ones too.
 #
 # Same shape as refresh-graph-map.sh's: only an override is checked (the
@@ -165,7 +165,7 @@ esac
 # produces a graph, so a real out dir always has one. Unmatched globs expand
 # literally and fail `-e`.
 # A SYMLINK at an overridden out dir escapes the corpus, exactly as on the
-# semantic leg (CR r14) -- `-d` follows the link, so the write would land
+# semantic worker (CR r14) -- `-d` follows the link, so the write would land
 # wherever it points. `-L` sees the link itself.
 if [ "$OUT_DIR" != "$CORPUS_ROOT/graphify-out" ] && [ -L "$OUT_DIR" ]; then
   echo "ast-update: FAILED -- GRAPHIFY_OUT is overridden to '$GRAPHIFY_OUT' and $OUT_DIR is a SYMLINK, which would place the graph write outside the directory named. Point it at a real directory. Exiting 3, not 4" >&2
@@ -276,7 +276,7 @@ if [ "$_lock_acquired" -eq 0 ]; then
   # ways: one pointing AT a directory satisfies `-d` and reads as "held by a
   # semantic refresh", while a DANGLING one fails `-e` (which follows the link)
   # and then passes the sibling writability probe as "contention". Either way an
-  # hourly leg would skip forever under the benign code. `-L` is the only test
+  # hourly worker would skip forever under the benign code. `-L` is the only test
   # that sees the link itself.
   if [ -L "$PROMOTE_LOCK" ]; then
     echo "ast-update: FAILED -- $PROMOTE_LOCK is a SYMLINK, but this lock is only ever acquired as a real directory (mkdir), so it can never be acquired here; this is a permanent conflict, NOT a lock-held skip. Remove it. Exiting 3, not 4" >&2
@@ -298,7 +298,7 @@ if [ "$_lock_acquired" -eq 0 ]; then
   # A non-directory sitting on the lock path (a stray regular file, a symlink)
   # makes mkdir fail EEXIST forever while `-d` stays false and OUT_DIR remains
   # perfectly writable -- so the probe below would call it contention and this
-  # leg would skip every hour, permanently, reporting the benign code (CR r3
+  # worker would skip every hour, permanently, reporting the benign code (CR r3
   # codex-2). That is the exact false-benign class exit 3 exists for, and it is
   # name-specific, so no probe of a SIBLING path can see it. Check the lock path
   # itself first.

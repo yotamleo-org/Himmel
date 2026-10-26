@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/ci/test-ci-pr-fail-fast.sh -- fail-fast policy of .github/workflows/ci.yml:
-# the bun-suites matrix stops at the first red leg on pull_request ONLY;
-# push-to-main and the nightly keep every leg running so a red stays attributable.
+# the bun-suites matrix stops at the first red worker on pull_request ONLY;
+# push-to-main and the nightly keep every worker running so a red stays attributable.
 # The shell-unit-shard matrix never stops early, so every red shard reports. A PR with one red shard plus fail-fast-cancelled siblings
 # must still read FAILED: the shell-unit aggregator's first step is executed here
 # for each rollup value, and every job has a fail-fast twin that cancels the run
@@ -59,7 +59,7 @@ fi
 
 # Run-level fail-fast on pull_request: every job a PR run starts has a
 # fail-fast-<job> twin that needs only that job, starts only when it failed, and
-# cancels the run (the matrix fail-fast above only reaches sibling legs). A green
+# cancels the run (the matrix fail-fast above only reaches sibling workers). A green
 # run gives no runner to any twin. A twin holds actions: write and nothing else
 # and runs no PR code: no checkout, no uses:. Fixtures are the real jobs-API
 # payloads of two CI runs (name/status/conclusion kept):

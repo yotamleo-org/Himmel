@@ -2197,9 +2197,9 @@ assert "frame-timeout: timeout traced (ffmpeg(frame))" ok "$a"
 # streams" answer so frame extraction proceeds), so it uses `sleep 2` (not exec
 # sleep) while the hanging frame branch keeps `exec sleep 5` for the Git-Bash
 # grandchild-reaping trap; the .bat twin uses single-process `ping` for both.
-# The RED (GLOBAL-seam) leg described above was verified against pre-fix code
+# The RED (GLOBAL-seam) worker described above was verified against pre-fix code
 # and is intentionally NOT executed by the suite - only the GREEN (split-seam)
-# leg runs here; on pre-fix code it still fails (the env var is ignored, no
+# worker runs here; on pre-fix code it still fails (the env var is ignored, no
 # frame timeout fires), which is the regression pin.
 echo "Test 42b: frame-timeout wrong-site race (slow probe) (HIMMEL-805)"
 emit_gallery_dl 1.jpg 2.mp4

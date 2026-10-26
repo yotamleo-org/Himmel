@@ -18,10 +18,10 @@ sees.
 Classes, two seeded cases each: `logic`, `quoting`, `fail-open`, `toctou`,
 `test-cannot-fail`, `scope-creep` (the ledger's recurring finding classes).
 
-## Running a sweep (console only: draws codex bank)
+## Running a sweep (chief only: draws codex usage)
 
 Every fixture is one paid panel call (the codex row, `tier: paid`), so a sweep
-is 24 calls; legs never run it. From the primary checkout, after
+is 24 calls; workers never run it. From the primary checkout, after
 `bash scripts/lib/bank-preflight.sh` says PROCEED and with the codex
 `used_percent` noted:
 

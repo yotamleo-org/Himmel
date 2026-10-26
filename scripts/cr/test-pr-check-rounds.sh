@@ -377,7 +377,7 @@ assert_eq "$early_rc" 2 "7345 round 1 never closes early"
 assert_eq "$(early_marker)" kept "7345 round 1 keeps the marker"
 early_ref="$(cat "$HERE/pr-check-ref/50-step5-decision.md")"
 assert_has "$early_ref" 'Fix the whole round in ONE commit and ONE push' "7345 the pr-check decision step says one commit and one push per round"
-assert_has "$(cat "$HERE/../../docs/handover/leg-preface.md")" 'One push per review round' "7345 the leg preface says one push per review round"
+assert_has "$(cat "$HERE/../../docs/handover/worker-preface.md")" 'One push per review round' "7345 the worker preface says one push per review round"
 assert_has "$early_ref" 'Suggestions-only round 2 or later' "7345 the pr-check decision step states the Suggestions-only early close"
 assert_has "$early_ref" 'ci-trust-paths.txt' "7345 the early close names the trust-path exclusion"
 if [ "${1:-}" = --residual-recovery-only ]; then
@@ -809,7 +809,7 @@ evidf_head="$(git -C "$repo" rev-parse evidf)"
 (cd "$repo" && bash "$RR" evidence --branch evidf --head "$evidf_head" >/dev/null 2>&1); evidf_rc=$?
 assert_eq "$evidf_rc" "8" "5233 evidence refused while the reviewed head has an open finding"
 
-# The RED: three rounds, the third raised a finding, the leg fixed
+# The RED: three rounds, the third raised a finding, the worker fixed
 # it at a new head. clear-cr-marker refuses that head (no critic reviewed it)
 # until the one delta round runs; then it clears through the real gate.
 three_rounds fixpath suggestion
@@ -833,7 +833,7 @@ assert_has "$fixpath_out" "pr-check: delta round 4 on fixpath (from $cap_r3_head
 assert_eq "$fixpath_clear2_rc" "0" "the fix head clears after the one delta round"
 if [ -e "$git_dir/cr-pending/fixpath" ]; then fail "the delta round's rows clear the marker"; else pass "the delta round's rows clear the marker"; fi
 
-# The delta round itself raised findings and the leg fixed them.
+# The delta round itself raised findings and the worker fixed them.
 # postcap_setup <branch> <delta panel mode>: the third round raised a finding that was
 # fixed at the fix commit, the one delta round ran there in <mode> (stub-1, plus
 # a second critic finding stub-2), and every row sits at the delta head
@@ -915,7 +915,7 @@ postcap_out="$(postcap_start postcapzero)"; postcap_rc=$?
 assert_eq "$postcap_rc" "8" "a delta round with no findings buys no post-cap round"
 
 # The documented ceiling (ponytail at ledger_query): critic rows are
-# session-writable, so a leg-written finding row under a model name outside the
+# session-writable, so a worker-written finding row under a model name outside the
 # excluded three IS a critic row and buys the round. A buy costs one review
 # round, never a merge. This row pins that behaviour so a tightening shows up.
 three_rounds postcapforge suggestion
@@ -929,7 +929,7 @@ CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.s
     --verdict fixed >/dev/null 2>"$tmp/postcapforge-finding.err" || fail "postcapforge forged finding setup"
 postcap_fix postcapforge
 postcap_out="$(postcap_start postcapforge)"; postcap_rc=$?
-assert_eq "$postcap_rc" "0" "documented ceiling: a leg-written fixed finding under a non-excluded model buys the post-cap round"
+assert_eq "$postcap_rc" "0" "documented ceiling: a worker-written fixed finding under a non-excluded model buys the post-cap round"
 
 # The excluded names stay excluded: the same row under model claude buys nothing.
 three_rounds postcapclaude suggestion
@@ -980,7 +980,7 @@ fix_commit deferredr3
 (cd "$repo" && bash "$SCRIPT" --head "$cap_fix_head" --branch deferredr3 >/dev/null 2>&1); deferredr3_rc=$?
 assert_eq "$deferredr3_rc" "8" "a deferred round-3 finding authorizes no delta round"
 
-# J1943 P2: a finding the leg itself wrote (model claude) is not a critic finding.
+# J1943 P2: a finding the worker itself wrote (model claude) is not a critic finding.
 three_rounds forgedr3 clean
 CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch forgedr3 --head "$cap_r3_head" --model claude --id forged-1 --severity sug --file f.txt --line 1 \
@@ -1000,7 +1000,7 @@ fix_commit flipr3
 (cd "$repo" && bash "$SCRIPT" --head "$cap_fix_head" --branch flipr3 >/dev/null 2>&1); flipr3_rc=$?
 assert_eq "$flipr3_rc" "8" "a disproved-then-agreed round-3 finding authorizes no delta round"
 
-# J1943 P4: an unreviewed commit plus a leg-written avail row cannot move the
+# J1943 P4: an unreviewed commit plus a worker-written avail row cannot move the
 # delta scope past itself; a merge-forward on top is still refused.
 three_rounds evilavail clean
 printf 'EVIL\n' >> "$repo/evilavail.txt"
@@ -1016,9 +1016,9 @@ git -C "$repo" push -q origin main
 git -C "$repo" checkout -q evilavail
 git -C "$repo" merge -q --no-edit main
 (cd "$repo" && bash "$SCRIPT" --head "$(git -C "$repo" rev-parse evilavail)" --branch evilavail >/dev/null 2>&1); evilavail_rc=$?
-assert_eq "$evilavail_rc" "8" "a leg-written avail row at an unreviewed commit cannot scope a merge-forward delta"
+assert_eq "$evilavail_rc" "8" "a worker-written avail row at an unreviewed commit cannot scope a merge-forward delta"
 
-# J1943 P4b: the same with a leg-written claude finding at the unreviewed commit.
+# J1943 P4b: the same with a worker-written claude finding at the unreviewed commit.
 three_rounds evilfind clean
 printf 'EVIL\n' >> "$repo/evilfind.txt"
 git -C "$repo" commit -q -am EVIL
@@ -1030,7 +1030,7 @@ CR_LEDGER="$git_dir/cr-critic-scores.jsonl" bash "$fx/scripts/cr/ledger-append.s
     --verdict agreed >/dev/null 2>"$tmp/evilfind-finding.err" || fail "evilfind finding setup"
 fix_commit evilfind
 (cd "$repo" && bash "$SCRIPT" --head "$cap_fix_head" --branch evilfind >/dev/null 2>&1); evilfind_rc=$?
-assert_eq "$evilfind_rc" "8" "a leg-written avail and finding at an unreviewed commit authorize no delta round"
+assert_eq "$evilfind_rc" "8" "a worker-written avail and finding at an unreviewed commit authorize no delta round"
 
 # A merge of main that also carries its own edit is new work, not a merge-forward.
 three_rounds evilmerge clean
@@ -1411,7 +1411,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture alpha"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_a" --id find-a \
-    --set verdict=agreed --reason "leg agrees with alpha"
+    --set verdict=agreed --reason "worker agrees with alpha"
 
 # (b) agreed, re-raised (same fingerprint reappears) at the clean head -> still-open.
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
@@ -1420,7 +1420,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture beta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_a" --id find-b \
-    --set verdict=agreed --reason "leg agrees with beta"
+    --set verdict=agreed --reason "worker agrees with beta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch promote --head "$promote_head_b" --model stub --id find-b2 \
     --severity sug --file promote.txt --line 2 --verdict "" \
@@ -1453,7 +1453,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture theta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_a" --id find-h \
-    --set verdict=agreed --reason "leg agrees with theta"
+    --set verdict=agreed --reason "worker agrees with theta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch promote --head "$promote_head_b" --model stub --id find-h2 \
     --severity sug --file promote.txt --line 7 --verdict "" \
@@ -1477,7 +1477,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture iota"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_divergent" --id find-i \
-    --set verdict=agreed --reason "leg agrees with iota"
+    --set verdict=agreed --reason "worker agrees with iota"
 
 # (f) agreed AT the clean head itself ->
 # still-open: no later commit could have fixed a finding raised THIS round.
@@ -1487,7 +1487,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture zeta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_b" --id find-f \
-    --set verdict=agreed --reason "leg agrees with zeta"
+    --set verdict=agreed --reason "worker agrees with zeta"
 
 # (g) agreed at an earlier head, its fingerprint reappears at the clean head
 # but that reappearance is already disproved
@@ -1498,7 +1498,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture eta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_a" --id find-g \
-    --set verdict=agreed --reason "leg agrees with eta"
+    --set verdict=agreed --reason "worker agrees with eta"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch promote --head "$promote_head_b" --model stub --id find-g2 \
     --severity sug --file promote.txt --line 6 --verdict "" \
@@ -1554,7 +1554,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture kappa"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch promote --head "$promote_head_a" --id find-j \
-    --set verdict=agreed --reason "leg agrees with kappa"
+    --set verdict=agreed --reason "worker agrees with kappa"
 bogus_ledger="$tmp/bogus-ledger-shouldnt-be-used.jsonl"
 promote_out_env="$(cd "$repo" && CR_LEDGER="$bogus_ledger" bash "$fx/scripts/cr/review-round.sh" promote --branch promote --head "$promote_head_b")"
 assert_has "$promote_out_env" "promoted find-j@" "an ambient CR_LEDGER does not stop promote reading the real ledger"
@@ -1579,7 +1579,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch branchkey-b --head "$promote_head_a" --model stub --id find-n \
     --severity sug --file promote.txt --line 10 --verdict "" \
     --text "tidy up the promote fixture nu"
-printf '{"kind":"amend","ts":"2020-01-01T00:00:00Z","branch":"promote","target_head":"%s","finding_id":"find-n","artifact":"diff","perspective":"off","set":{"verdict":"agreed"},"reason":"leg agrees with nu on the OTHER branch"}\n' "$promote_head_a" >> "$promote_ledger"
+printf '{"kind":"amend","ts":"2020-01-01T00:00:00Z","branch":"promote","target_head":"%s","finding_id":"find-n","artifact":"diff","perspective":"off","set":{"verdict":"agreed"},"reason":"worker agrees with nu on the OTHER branch"}\n' "$promote_head_a" >> "$promote_ledger"
 
 # (o) same-branch positive control: an amend recorded for branch
 # "branchkey-b" at promote_head_a DOES apply while judging branchkey-b.
@@ -1589,7 +1589,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture xi"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch branchkey-b --head "$promote_head_a" --id find-o \
-    --set verdict=agreed --reason "leg agrees with xi on its own branch"
+    --set verdict=agreed --reason "worker agrees with xi on its own branch"
 
 # (p) legacy back-compat: an amend row with NO branch field at all (written
 # before branches were stamped) still applies to ANY branch.
@@ -1620,7 +1620,7 @@ CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --text "tidy up the promote fixture rho"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" amend \
     --branch authq --head "$promote_head_a" --id find-q \
-    --set verdict=agreed --reason "leg agrees with rho"
+    --set verdict=agreed --reason "worker agrees with rho"
 CR_LEDGER="$promote_ledger" bash "$fx/scripts/cr/ledger-append.sh" finding \
     --branch authq --head "$promote_head_b" --model stub --id find-q2 \
     --severity imp --file promote.txt --line 13 --verdict "" \
@@ -2923,7 +2923,7 @@ cired_out="$(cd "$repo" && GH_DEFAULT_RC=1 bash "$fx/scripts/cr/review-round.sh"
 assert_eq "$cired_rc" "8" "an unreadable remote default branch refuses the base round ($cired_out)"
 assert_has "$cired_out" "cannot be verified" "the offline refusal says the base cannot be verified"
 
-# RED: a leg retargets refs/remotes/origin/HEAD at its own pushed PR
+# RED: a worker retargets refs/remotes/origin/HEAD at its own pushed PR
 # branch. The old code read the default branch name from that local ref, so the
 # local equality passed and `compare H...<pr-branch>` came back identical. The
 # stub honours its branch argument (the remote default stays main and does not

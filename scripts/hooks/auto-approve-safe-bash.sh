@@ -1546,7 +1546,7 @@ scan_cmd() {
 # segment_is_safe: the caller approves it only when it is the WHOLE command, so
 # a queue-lock segment inside a compound (`x && …`, `x | …`, `… ; …`) still
 # falls through. HANDOVER_DIR is the only env prefix accepted, so
-# QUEUE_LOCK_FORCE_RELEASE=1 (a console action) can never ride along.
+# QUEUE_LOCK_FORCE_RELEASE=1 (a chief action) can never ride along.
 # Every value must be a literal: no expansion, no glob, no `..`, doc absolute
 # and `.md`, doc under HANDOVER_DIR when one is given. "Absolute" is `/x`, `/c/x`
 # or a Git-Bash drive path `C:/x` (ql_abs_path) — in the
@@ -1708,7 +1708,7 @@ segment_is_queue_lock() {
 # `<root>/scripts/cr/impacted-suites.sh`, bare or double-quoted. No `\`, `'` or
 # drive letter: on POSIX `C:\x\…` or `C:/x/…` is checked as one path but run as
 # a cwd-relative file bash finds by its literal name. WHY: the step is a
-# required gate, and the classifier denied the listing as [Out-of-Place Publication], parking the leg. Read off the RAW
+# required gate, and the classifier denied the listing as [Out-of-Place Publication], parking the worker. Read off the RAW
 # command, ahead of scan_cmd and the tripwires: the heredoc body is inert data
 # (its delimiter is quoted, so nothing in it expands), and a SKIP reason may
 # carry an apostrophe or `$(`. Only a line starting `SUITE ` sits between the
@@ -1794,7 +1794,7 @@ impacted_suites_is_anchored() {   # $1 root, $2.. script paths (default impacted
 # scripts/ci/run-shell-tests.sh` plus literal arguments - the form
 # require-quiet-run.sh suggests for the runner? WHY: the bare runner is already
 # allow-listed in settings.json, and quiet-run only wraps it with a log, so the
-# wrapped form is the same trust; without this a leg told to run the full
+# wrapped form is the same trust; without this a worker told to run the full
 # shell-unit locally hit a prompt nobody answers. Arguments are plain words
 # (no expansion, quote, glob or `~`) and none carries `..`. Both scripts are
 # named relative to the cwd, so the cwd must be an anchored worktree root whose

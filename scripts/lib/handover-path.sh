@@ -684,32 +684,32 @@ _hp_arms_record_matches_path() {
 }
 
 # _hp_session_stem_num <basename.md> -- parse a handover session filename
-# into $_HP_STEM (series name) + $_HP_NUM (leg number string, may carry
+# into $_HP_STEM (series name) + $_HP_NUM (worker number string, may carry
 # leading zeros e.g. "01"). Used by auto-commit.sh's write-time half of the
-# one-file-per-leg guard (the arm-time half already landed
-# independently in arm-resume.sh as the rc-17 split-leg check -- this helper is
+# one-file-per-worker guard (the arm-time half already landed
+# independently in arm-resume.sh as the rc-17 split-worker check -- this helper is
 # not shared with it).
 #
 # Matches "<stem>-<digits>.md" -- the greedy `.+` plus the right-anchored
 # `-([0-9]+)\.md$` naturally picks the LAST hyphen-number run, so a stem that
 # itself contains digits (e.g. "PROJ-654-dispatch-session-25.md") still
 # splits correctly (stem="PROJ-654-dispatch-session", num="25"). The
-# supported unnumbered leg-1 spelling "<stem>.md" maps to the same stem with
+# supported unnumbered worker-1 spelling "<stem>.md" maps to the same stem with
 # num="1", so "<stem>.md" + "<stem>-2.md" cannot bypass the write-time guard.
 #
 # A bare-ticket-key stem is rejected (CR findings, codex-1 Important x2): a
 # JIRA project key is, by this codebase's own convention, an all-caps token
 # (HIMMEL, LUNA, GGS, ...). "PROJ-1830.md" parses as stem="PROJ"
-# num="1830" -- indistinguishable from a real leg number -- so two unrelated
+# num="1830" -- indistinguishable from a real worker number -- so two unrelated
 # tickets' one-off notes ("PROJ-1830.md" + "PROJ-1831.md") would collide
-# on the same stem and false-refuse a commit with no actual leg split.
+# on the same stem and false-refuse a commit with no actual worker split.
 # Rejecting every hyphen-free stem was too broad a fix: it also silently
 # stopped catching the guard's own documented examples ("foo-25.md" +
 # "foo-26.md", "foo.md" + "foo-2.md") which use ordinary lowercase/mixed-case
 # single-token stems. Only a stem that is ITSELF all-caps alnum (matches
 # ^[A-Z][A-Z0-9]*$ -- looks like nothing but a project key) is rejected;
 # any other single-token stem (lowercase or mixed-case) is still a valid
-# leg-series name.
+# worker-series name.
 #
 # Returns 1 (no match, both globals cleared) when the basename is not a
 # Markdown handover filename, or its stem is a bare ticket-key-shaped token.

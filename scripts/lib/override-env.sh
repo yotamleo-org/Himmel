@@ -6,10 +6,10 @@
 # Platform guard (gitbash-only): pure bash builtins + grep/sed/sort; sourced by
 # suites that already run under Git Bash on Windows. No .ps1 twin needed.
 #
-# WHY: a console-spawned leg's shell exports guard overrides (INLINE_IMPL_OK,
-# IMPL_GUARD_OK, HIMMEL_CONSOLE_LEG by chief-kit/headed-arm-leg.sh;
+# WHY: a chief-spawned worker's shell exports guard overrides (INLINE_IMPL_OK,
+# IMPL_GUARD_OK, HIMMEL_CONSOLE_LEG by chief-kit/headed-arm-worker.sh;
 # CLAUDE_CODE_CHILD_SESSION by claude itself; HIMMEL_HOOK_INTEGRITY_BYPASS_OK by
-# the operator for a hooks-touching leg). A hook suite that invokes the hook
+# the operator for a hooks-touching worker). A hook suite that invokes the hook
 # under test with a plain `bash "$HOOK"` inherits them, so every case that means
 # "override UNSET, the guard should FIRE" takes the override arm instead: 63 of
 # 132 inline-guard cases and 41 of 90 hook-integrity (tamper-detection) cases
@@ -20,7 +20,7 @@
 # scrub_override_env once per suite subshell, and each suite whose hook reads an
 # override calls it at its top. A case that needs an override sets it explicitly
 # on its own invocation, exactly as before. Never call it from an interactive or
-# leg shell -- it would unset the operator's own levers.
+# worker shell -- it would unset the operator's own levers.
 #
 # THE LIST CANNOT DRIFT SILENTLY: scripts/lib/test-override-env.sh scans every
 # non-test hook/guardrail/lib script for a `$..._OK` read and fails when one is
@@ -45,7 +45,7 @@ CI_MERGE_GATE_OK CR_MERGE_GATE_OK GRAPHIFY_UNPROBED_OK
 UNCHECKED_MKTEMP_OK QMD_UNBOUNDED_OK LEG_CONTEXT_HANDOFF_OK BRANCH_NAME_OK CONSOLE_FG_OK
 CHIEF_FG_OK CHIEF_DISPATCH_OK WORKER_SESSION_CONTEXT_HANDOFF_OK"
 
-# Overrides / leg markers that do not end in _OK, so the scan cannot find them.
+# Overrides / worker markers that do not end in _OK, so the scan cannot find them.
 HIMMEL_OVERRIDE_ENV_MARKERS="IMPL_GUARD_DISABLE HIMMEL_CONSOLE_LEG CLAUDE_CODE_CHILD_SESSION
 CHIEF_DISPATCH_DISABLE CONSOLE_DISPATCH_DISABLE BWIMC_ENGINE"
 
@@ -68,7 +68,7 @@ scrub_override_env() {
 }
 
 # scrub_session_env -- unset the Claude Code session, harness and credential
-# environment a console or leg shell exports, so a suite run from one sees what
+# environment a chief or worker shell exports, so a suite run from one sees what
 # it sees on a CI runner (where none of these is set). Kept: the names CI or the
 # runner set (CLAUDE_CLI_VERSION, JIRA_PROJECT_KEY, HIMMEL_SUITE_*, ...) and the
 # live-state names the runner's _live_env points at sentinels (CLAUDE_CONFIG_DIR,

@@ -772,7 +772,7 @@ rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 
 echo
 echo "== Group 5: a foreign chain's arm SURVIVES a cancel/replace (HIMMEL-1563) =="
-# The bug (reproduced live by orchestrator leg 44): cancelling/replacing an
+# The bug (reproduced live by orchestrator worker 44): cancelling/replacing an
 # armed resume by the HIMMEL-Resume- prefix reaped EVERY parallel chain's
 # scheduled task. This box runs four+ autonomous chains under that prefix
 # (himmel overnight, trust-envelope, ggs/HA, jarvis_voice), so a prefix/wildcard
@@ -783,7 +783,7 @@ echo "== Group 5: a foreign chain's arm SURVIVES a cancel/replace (HIMMEL-1563) 
 # --force reap to THIS invocation's own identity; the broad list stays read-only
 # (the rc=3 refusal + the soft-cap count). These cases prove a foreign task
 # survives a cancel/replace of our own. The fixture foreign name mimics the
-# real leg-44 victim. NEVER touch a real scheduled task here -- the stateful
+# real worker-44 victim. NEVER touch a real scheduled task here -- the stateful
 # schtasks stub behind PATH (SCHED_DB) is the only scheduler exercised.
 
 G5_FOREIGN="HIMMEL-Resume-trust-envelope-chain-06"
@@ -859,7 +859,7 @@ rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 
 echo
 echo "== Group 6: HIMMEL-2774 fleet reservation sanitization + release-on-every-exit =="
-# The leg name bank-preflight.sh reserves under is arm-resume's raw
+# The worker name bank-preflight.sh reserves under is arm-resume's raw
 # HANDOVER_PATH with every '/' collapsed to '-' (arm-resume.sh ~1126-1127).
 # Every real arm above already exercises the sanitizer implicitly (every
 # HANDOVER_PATH here contains '/'), and G3.1/G3.2/G3.3 already exercise an
@@ -901,19 +901,19 @@ OBSEOF
 done
 G6_SLOTS="$TMP/g6-fleet-slots"; mkdir -p "$G6_SLOTS"
 G6_HO="$HANDOVER_DIR/g6/slash.md"; mk_ho "$G6_HO"
-EXPECT_LEG="${G6_HO//\//-}"
+EXPECT_WORKER="${G6_HO//\//-}"
 DB14=$(new_db "$TMP/db14.tasks")
 G6_OBS_LOG="$TMP/g6-obs.log"; : > "$G6_OBS_LOG"
 out=$(OBS_LOG="$G6_OBS_LOG" HIMMEL_FLEET_SLOTS="$G6_SLOTS" SCHED_DB="$DB14" SCHED_DB_DIR="${DB14}.atdir" PATH="$OBS:$STUB:$PATH" bash "$ARM" --time "$FUTURE_TIME" --long-gap --handover "$G6_HO" 2>&1)
 rc=$?
 assert_rc "G6.1a arm with a slash-bearing handover path succeeds" 0 "$rc" "$out"
-if grep -qxF -- "$EXPECT_LEG" "$G6_OBS_LOG"; then
+if grep -qxF -- "$EXPECT_WORKER" "$G6_OBS_LOG"; then
     echo "PASS G6.1c reservation was OBSERVED existing mid-arm (so G6.1b's absence is a real release, codex-5)"
 else
     echo "FAIL G6.1c reservation never observed mid-arm -- G6.1b would pass vacuously (codex-5)"
     FAILED=$((FAILED + 1))
 fi
-if [ -d "$G6_SLOTS/$EXPECT_LEG" ]; then
+if [ -d "$G6_SLOTS/$EXPECT_WORKER" ]; then
     echo "FAIL G6.1b reservation SURVIVED a successful arm (should release immediately -- codex-4)"
     FAILED=$((FAILED + 1))
 else
@@ -926,18 +926,18 @@ rm -f "$HANDOVER_DIR/.locks/arms.jsonl"
 # induction (a FRESH queue lock on the same handover) as the abort trigger.
 G6B_SLOTS="$TMP/g6b-fleet-slots"; mkdir -p "$G6B_SLOTS"
 G6B_HO="$HANDOVER_DIR/g6b/abort.md"; mk_ho "$G6B_HO"
-EXPECT_LEG_B="${G6B_HO//\//-}"
+EXPECT_WORKER_B="${G6B_HO//\//-}"
 DB15=$(new_db "$TMP/db15.tasks")
 SEED_OUT=$(HIMMEL_FLEET_SLOTS="$G6B_SLOTS" SCHED_DB="$DB15" SCHED_DB_DIR="${DB15}.atdir" PATH="$STUB:$PATH" bash "$ARM" --time "$FUTURE_TIME" --long-gap --handover "$G6B_HO" 2>&1)
 assert_seeded "G6.2 seed: pre-existing slot armed" "$DB15" "${DB15}.atdir"
 # The seed's OWN reservation is not what is under test here -- clear it so
 # the force-arm below creates a fresh reservation to watch get released.
-rm -rf "${G6B_SLOTS:?}/$EXPECT_LEG_B" 2>/dev/null
+rm -rf "${G6B_SLOTS:?}/$EXPECT_WORKER_B" 2>/dev/null
 bash "$QL" acquire "$G6B_HO" "live-session-6b" >/dev/null 2>&1
 out=$(HIMMEL_FLEET_SLOTS="$G6B_SLOTS" SCHED_DB="$DB15" SCHED_DB_DIR="${DB15}.atdir" PATH="$STUB:$PATH" bash "$ARM" --time "$FUTURE_TIME" --long-gap --handover "$G6B_HO" --force 2>&1)
 rc=$?
 assert_rc "G6.2a failing arm exits rc=7 (FRESH queue lock)" 7 "$rc" "$out"
-if [ -d "$G6B_SLOTS/$EXPECT_LEG_B" ]; then
+if [ -d "$G6B_SLOTS/$EXPECT_WORKER_B" ]; then
     echo "FAIL G6.2b reservation SURVIVED an abort-after-preflight (should release immediately)"
     FAILED=$((FAILED + 1))
 else
@@ -956,9 +956,9 @@ _g6c_seg="$(printf 'z%.0s' $(seq 1 90))"
 G6C_HO="$HANDOVER_DIR/g6c/$_g6c_seg/$_g6c_seg/$_g6c_seg/long.md"; mk_ho "$G6C_HO"
 G6C_FLAT="${G6C_HO//\//-}"
 if [ "${#G6C_FLAT}" -gt 255 ]; then
-    echo "PASS G6.3 seed: flattened leg name is ${#G6C_FLAT} bytes (> NAME_MAX 255)"
+    echo "PASS G6.3 seed: flattened worker name is ${#G6C_FLAT} bytes (> NAME_MAX 255)"
 else
-    echo "FAIL G6.3 seed: flattened leg name only ${#G6C_FLAT} bytes -- not over-length"
+    echo "FAIL G6.3 seed: flattened worker name only ${#G6C_FLAT} bytes -- not over-length"
     FAILED=$((FAILED + 1))
 fi
 G6C_KEY="$(printf '%s' "$G6C_FLAT" | cksum | awk '{print $1}')"

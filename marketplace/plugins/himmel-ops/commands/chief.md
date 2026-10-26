@@ -1,21 +1,21 @@
 ---
-description: Start or arm a supervisor session (new) or hand it over (next) from any repo — writes the doc, takes the queue lock.
+description: Start or arm a chief (new) or hand it over (next) from any repo — writes the doc, takes the queue lock.
 argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [--doc <path>] [--model <m>] [--project <dir>]
 ---
 
-Starts or hands over a supervisor session (defined in `docs/glossary.md` in the himmel
-checkout). Background + the operating contract: `docs/handover/running-a-console.md`.
+Starts or hands over a chief (defined in `docs/glossary.md` in the himmel
+checkout). Background + the operating contract: `docs/handover/running-a-chief.md`.
 
 This command runs from **any directory**: first resolve the himmel checkout —
 `$HIMMEL_REPO` → canonical install paths → error, never the cwd's own git
-toplevel (a foreign repo shipping its own `console.sh` must never win over
-himmel's) — then point `console.sh` at the PROJECT this session is actually
+toplevel (a foreign repo shipping its own `chief.sh` must never win over
+himmel's) — then point `chief.sh` at the PROJECT this session is actually
 running in via `--project`. That is the whole point of this plugin copy over
-the project-local `.claude/commands/chief.md`: a supervisor session started from e.g.
+the project-local `.claude/commands/chief.md`: a chief started from e.g.
 `~/Websites` or a Websites repo gets THAT project's own bucket/prefix derived
 from the handover registry (or its basename, unregistered) — never himmel's
-own `JIRA_PROJECT_KEY`. The supervisor session itself always runs in the himmel
-checkout: `--project` is recorded as data in the console doc, and a worker session for
+own `JIRA_PROJECT_KEY`. The chief itself always runs in the himmel
+checkout: `--project` is recorded as data in the chief doc, and a worker for
 the project is dispatched into it explicitly with `WORKER_SESSION_REPO=<path>`.
 
 ```bash
@@ -31,7 +31,7 @@ if [ -z "$REPO" ] || [ ! -f "$REPO/scripts/handover/chief/chief.sh" ]; then
 fi
 [ -n "$REPO" ] && [ -f "$REPO/scripts/handover/chief/chief.sh" ] || { echo "ERR: cannot locate himmel checkout — set HIMMEL_REPO to your himmel clone" >&2; exit 1; }
 
-# The console is FOR the project this session runs in: git toplevel, mapped
+# The chief is FOR the project this session runs in: git toplevel, mapped
 # from a linked worktree to its MAIN worktree (git worktree list's first
 # entry) so a worktree checkout still resolves to the repo's own registry
 # entry. --git-common-dir's dirname is wrong for submodules (yields
@@ -47,10 +47,10 @@ fi
 # A bare /himmel-ops:chief (no subcommand) must print usage, not
 # "unknown command: --project" (change 9, F11).
 #
-# --project is only ever DERIVED for `new`. A running console always lives
+# --project is only ever DERIVED for `new`. A running chief always lives
 # in $REPO by design (see above), so deriving it the same way for `next`
 # would force --project=$REPO on every handover of a foreign-project chain
-# -- console.sh's `next` already inherits the predecessor doc's own
+# -- chief.sh's `next` already inherits the predecessor doc's own
 # recorded project when none is passed, and an operator's own explicit
 # --project in $ARGUMENTS is passed through untouched either way (codex-1,
 # pr-check round 1, HIMMEL-3623).
@@ -58,8 +58,8 @@ fi
 # Two more fixes here (codex-1, codex-2, pr-check round 2, HIMMEL-3623):
 # the derived --project is appended only when $ARGUMENTS carries none of its
 # own, so an operator's explicit `/chief new --project <dir>` still wins
-# (console.sh keeps the LAST --project, so appending ours unconditionally
-# always clobbered theirs); and console.sh is invoked by absolute path with
+# (chief.sh keeps the LAST --project, so appending ours unconditionally
+# always clobbered theirs); and chief.sh is invoked by absolute path with
 # no `cd "$REPO"` first, since it resolves its own script dir from
 # `${BASH_SOURCE[0]}` and never needs cwd == $REPO, and a `cd` before
 # expanding $ARGUMENTS resolved any relative --doc/--project the operator
@@ -81,17 +81,17 @@ esac
 ```
 
 - `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-chief.md`
-  from `docs/handover/console-template.md`, acquire the queue lock on it, and
+  from `docs/handover/chief-template.md`, acquire the queue lock on it, and
   print the launch line. A second `new` the same day bumps the letter; it never
   overwrites.
-- `/chief next` — from a running supervisor session, write the successor stub (letter
-  bumped, pointed at this supervisor session and its HANDOFF) plus this supervisor session's
+- `/chief next` — from a running chief, write the successor stub (letter
+  bumped, pointed at this chief and its HANDOFF) plus this chief's
   `-HANDOFF.md` skeleton. Run it at 45 % context fill or after 90 k input
   tokens in one turn.
 - `--arm` — also arm the session headed via `scripts/handover/headed-arm.sh`,
   on a signal file plus a deadline; prints the arm log path. Supervisor
   sessions launch with `--autocompact auto` (1m context) by default
-  (HIMMEL-3884); pass `--context standard` or set `CONSOLE_CONTEXT=standard`
+  (HIMMEL-3884); pass `--context standard` or set `CHIEF_CONTEXT=standard`
   in the launching shell to opt down to `--autocompact 200000`. The `[1m]`
   model suffix is appended only to the 4.6 family (native-1M and
   non-Anthropic ids launch bare), and a Claude Code below 2.1.280 refuses the
@@ -104,7 +104,7 @@ esac
   is running in, but ONLY for `new`, and only when your own arguments carry
   no `--project` of their own — an explicit `/chief new --project <dir>`
   always wins over the derived one (codex-1, pr-check round 2, HIMMEL-3623).
-  `next` derives nothing here: with no `--project` of your own, console.sh
+  `next` derives nothing here: with no `--project` of your own, chief.sh
   inherits the predecessor doc's own recorded project instead (codex-1,
   pr-check round 1, HIMMEL-3623); an explicit `--project`/`--bucket`/`--prefix`
   on `next` still wins. To target a different repo on `new` without passing
@@ -112,7 +112,7 @@ esac
   `--bucket`/`--prefix`.
 
 Record the printed `release-token: ` line — now backticked around the token
-itself (HIMMEL-2910) — in the supervisor session's first Results bullet verbatim:
+itself (HIMMEL-2910) — in the chief's first Results bullet verbatim:
 releasing the lock at wrap requires it.
 
 Linux/macOS only — `--arm` launches through konsole. The Windows station arms

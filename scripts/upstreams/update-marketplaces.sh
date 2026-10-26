@@ -11,7 +11,7 @@
 #     `mkt-manual` (autoUpdate falsy — nothing refreshes them, ever).
 #   * `.claude/commands/drift-fix.md` step 2 explicitly says to IGNORE `mkt:*`
 #     rows, because a marketplace re-sync is not a version bump and produces no
-#     repo diff, so the drift leg's PR flow has nothing to carry.
+#     repo diff, so the drift worker's PR flow has nothing to carry.
 #   * `scripts/himmel-update.sh`'s chain item 2 re-syncs exactly ONE marketplace,
 #     `himmel` — a `directory` source, where autoUpdate only re-reads the on-disk
 #     dir, which is why that step exists at all.
@@ -19,7 +19,7 @@
 # So a `mkt-manual` marketplace was detected nightly and repaired never. This
 # script is the repair, and it is deliberately the ONLY place the recipe lives:
 # himmel-update.sh's advisory block calls it (machine-local catch-up) and the
-# /drift-fix runbook calls it (the sweep's own repair leg). One implementation,
+# /drift-fix runbook calls it (the sweep's own repair worker). One implementation,
 # two front doors — the same shape himmel-update.sh already has with himmelctl.
 #
 # SCOPE — `mkt-manual` ONLY, and never `himmel`:

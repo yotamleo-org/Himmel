@@ -575,15 +575,15 @@ test('untrimmedSettings strips the profile denyTools and disableWorkflows, keepi
 });
 
 test('parseProbeArgs: --tool-bytes and --untrimmed parse; --untrimmed alone throws', () => {
-  assert.deepEqual(parseProbeArgs(['--tool-bytes', '--untrimmed', '--profile', 'leg-impl']), { profile: 'leg-impl', ledgerFlag: undefined, noLedger: false, toolBytes: true, untrimmed: true });
+  assert.deepEqual(parseProbeArgs(['--tool-bytes', '--untrimmed', '--profile', 'worker-impl']), { profile: 'worker-impl', ledgerFlag: undefined, noLedger: false, toolBytes: true, untrimmed: true });
   assert.equal(parseProbeArgs(['--tool-bytes']).toolBytes, true);
   assert.throws(() => parseProbeArgs(['--untrimmed']), /--untrimmed requires --tool-bytes/);
 });
 
 test('formatToolBytes renders a total line plus the top N tools', () => {
-  const out = formatToolBytes('leg-impl', rankToolBytes(REQ([['Read', 10], ['Workflow', 500]])), 1);
+  const out = formatToolBytes('worker-impl', rankToolBytes(REQ([['Read', 10], ['Workflow', 500]])), 1);
   const lines = out.split('\n');
-  assert.match(lines[0], /^leg-impl tools=2 bytes=\d+$/);
+  assert.match(lines[0], /^worker-impl tools=2 bytes=\d+$/);
   assert.match(lines[1], /^  Workflow \d+$/);
   assert.equal(lines.length, 2);
 });

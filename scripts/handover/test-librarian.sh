@@ -24,24 +24,24 @@ mkdir -p "$B/specs/plans" "$R/.locks/queue" "$MIR" "$SES/_archive"
 mirror() { printf -- '---\nkey: "%s"\nstatus: "%s"\nstatusCategory: "%s"\n---\n' "$1" "$2" "$3" > "$MIR/$1.md"; }
 mirror HIMMEL-1 Done Done; mirror HIMMEL-2 Done Done; mirror HIMMEL-3 Done Done
 mirror HIMMEL-4 Done Done; mirror HIMMEL-5 "In Progress" "In Progress"; mirror HIMMEL-6 "Won't Do" Done
-leg() {  # leg <file> <tail marker> <age days>
+worker() {  # worker <file> <tail marker> <age days>
   printf '# t\n\n## Results\n\n- 10:00 LIVE — x\n- 10:05 %s — y\n' "$2" > "$B/$1"; age "$3" "$B/$1"
 }
 
-leg HIMMEL-1-old-wrapped-2026-01-01.md WRAPPED 60
+worker HIMMEL-1-old-wrapped-2026-01-01.md WRAPPED 60
 printf '# resume\n' > "$B/HIMMEL-1-old-wrapped-2026-01-01-RESUME.md"; age 60 "$B/HIMMEL-1-old-wrapped-2026-01-01-RESUME.md"
 printf '# j\n' > "$B/HIMMEL-1-old-wrapped-2026-01-01-judge-J1.md"; age 60 "$B/HIMMEL-1-old-wrapped-2026-01-01-judge-J1.md"
 printf 'log\n' > "$B/HIMMEL-1-old-wrapped-2026-01-01.launch.log"; age 60 "$B/HIMMEL-1-old-wrapped-2026-01-01.launch.log"
-leg HIMMEL-2-locked-2026-01-01.md WRAPPED 60
+worker HIMMEL-2-locked-2026-01-01.md WRAPPED 60
 mkdir -p "$R/.locks/queue/u__himmel__HIMMEL-2-locked-2026-01-01.lock"
 printf '# resume\n' > "$B/HIMMEL-2-locked-2026-01-01-RESUME.md"; age 60 "$B/HIMMEL-2-locked-2026-01-01-RESUME.md"
-leg HIMMEL-3-young-2026-10-20.md WRAPPED 3
-leg HIMMEL-4-done-no-wrapped-2026-01-01.md LIVE 60
-leg HIMMEL-5-open-no-wrapped-2026-01-01.md LIVE 60
-leg HIMMEL-6-wontdo-no-wrapped-2026-01-01.md BLOCKED 60
-leg HIMMEL-7-mid-aged-2026-01-01.md WRAPPED 20
-leg HIMMEL-8-halted-2026-01-01.md HALTED 60
-leg HIMMEL-nextleg-2026-01-01-console.md WRAPPED 60
+worker HIMMEL-3-young-2026-10-20.md WRAPPED 3
+worker HIMMEL-4-done-no-wrapped-2026-01-01.md LIVE 60
+worker HIMMEL-5-open-no-wrapped-2026-01-01.md LIVE 60
+worker HIMMEL-6-wontdo-no-wrapped-2026-01-01.md BLOCKED 60
+worker HIMMEL-7-mid-aged-2026-01-01.md WRAPPED 20
+worker HIMMEL-8-halted-2026-01-01.md HALTED 60
+worker HIMMEL-nextleg-2026-01-01-chief.md WRAPPED 60
 printf '# plan\n' > "$B/specs/plans/p.md"; age 90 "$B/specs/plans/p.md"
 printf '{}\n' > "$R/arms.jsonl"; age 90 "$R/arms.jsonl"
 printf '{}\n' > "$R/admissions-ledger.jsonl"; age 90 "$R/admissions-ledger.jsonl"
@@ -91,7 +91,7 @@ check "young doc stayed" yes "$(here "$B/HIMMEL-3-young-2026-10-20.md")"
 check "doc 20 days old stayed under the 30 day default" yes "$(here "$B/HIMMEL-7-mid-aged-2026-01-01.md")"
 check "open ticket without WRAPPED stayed" yes "$(here "$B/HIMMEL-5-open-no-wrapped-2026-01-01.md")"
 check "BLOCKED tail with a Won't Do ticket moved" yes "$(here "$A/HIMMEL-6-wontdo-no-wrapped-2026-01-01.md")"
-check "console doc stayed" yes "$(here "$B/HIMMEL-nextleg-2026-01-01-console.md")"
+check "chief doc stayed" yes "$(here "$B/HIMMEL-nextleg-2026-01-01-chief.md")"
 check "specs tree untouched" yes "$(here "$B/specs/plans/p.md")"
 check "arms.jsonl untouched" yes "$(here "$R/arms.jsonl")"
 check "admissions-ledger.jsonl untouched" yes "$(here "$R/admissions-ledger.jsonl")"
@@ -128,7 +128,7 @@ check "second apply adds no index line" 7 "$(grep -c '^- ' "$IDX")"
 check "second apply reports zero moves" yes "$(grep -q 'moved=0' <<< "$out3" && echo yes || echo no)"
 
 # --- an existing destination is never overwritten -----------------------------
-leg HIMMEL-1-clash-2026-01-01.md WRAPPED 60; mkdir -p "$A"; printf 'keep\n' > "$A/HIMMEL-1-clash-2026-01-01.md"
+worker HIMMEL-1-clash-2026-01-01.md WRAPPED 60; mkdir -p "$A"; printf 'keep\n' > "$A/HIMMEL-1-clash-2026-01-01.md"
 git -C "$R" add -A; run --apply >/dev/null 2>&1
 check "clash: destination kept" keep "$(head -1 "$A/HIMMEL-1-clash-2026-01-01.md")"
 check "clash: source stayed" yes "$(here "$B/HIMMEL-1-clash-2026-01-01.md")"
@@ -136,7 +136,7 @@ check "clash: source stayed" yes "$(here "$B/HIMMEL-1-clash-2026-01-01.md")"
 # --- a failed move leaves every link pointing where the doc still is ----------
 NOROOT=0; [ "$(id -u)" -ne 0 ] && NOROOT=1   # root ignores directory permission bits, so the chmod cases need a normal user
 if [ "$NOROOT" = 1 ]; then
-leg HIMMEL-1-failmv-2026-01-01.md WRAPPED 60
+worker HIMMEL-1-failmv-2026-01-01.md WRAPPED 60
 printf 'see [f](HIMMEL-1-failmv-2026-01-01.md)\n' >> "$B/HIMMEL-9-live-2026-10-22.md"
 git -C "$R" add -A; chmod 555 "$A"
 run --apply >/dev/null 2>&1; check "failed move exits 1" 1 "$?"
@@ -153,7 +153,7 @@ check "a locked auto-arm-status note stayed" yes "$(here "$R/auto-arm-status-hel
 check "and was reported as locked" yes "$(grep -q '^SKIP locked .*auto-arm-status-held' <<< "$out5" && echo yes || echo no)"
 
 # --- a failed move of one member puts the group's earlier members back ---------
-leg HIMMEL-1-grp-2026-01-01.md WRAPPED 60
+worker HIMMEL-1-grp-2026-01-01.md WRAPPED 60
 printf '# r\n' > "$B/HIMMEL-1-grp-2026-01-01-RESUME.md"; age 60 "$B/HIMMEL-1-grp-2026-01-01-RESUME.md"
 git -C "$R" add -A
 mkdir -p "$W/stubbin"; REAL_GIT="$(command -v git)"
@@ -168,8 +168,8 @@ run --apply >/dev/null 2>&1; check "the next clean run moves the group whole" 2 
 
 # --- a doc whose own move failed still has its links to moved docs rewritten ---
 A100="$B/archive/$(ym 100)"; printf 'not a dir\n' > "$A100"   # a file where the month directory belongs: mkdir fails for any user
-leg HIMMEL-1-lnkB-2026-01-01.md WRAPPED 60
-leg HIMMEL-1-lnkA-2026-01-01.md WRAPPED 100
+worker HIMMEL-1-lnkB-2026-01-01.md WRAPPED 60
+worker HIMMEL-1-lnkA-2026-01-01.md WRAPPED 100
 printf 'see [b](HIMMEL-1-lnkB-2026-01-01.md)\n' >> "$B/HIMMEL-1-lnkA-2026-01-01.md"; age 100 "$B/HIMMEL-1-lnkA-2026-01-01.md"
 git -C "$R" add -A
 out6="$(run --apply 2>&1)"; check "a split batch exits 1" 1 "$?"
@@ -181,22 +181,22 @@ check "its sibling in the writable month moved" yes "$(here "$A/HIMMEL-1-lnkB-20
 check "and the stayer now links to the moved doc's new place" yes \
   "$(grep -q "](archive/$M60/HIMMEL-1-lnkB-2026-01-01.md)" "$B/HIMMEL-1-lnkA-2026-01-01.md" && echo yes || echo no)"
 
-# --- a dot-suffixed sibling follows its parent group; console docs and encoded links ---
-leg HIMMEL-2-locked-2026-01-01.extra.md WRAPPED 60
-leg HIMMEL-1-cref-2026-01-01.md WRAPPED 60
-printf 'see [c](HIMMEL-1-cref-2026-01-01.md)\n' >> "$B/HIMMEL-nextleg-2026-01-01-console.md"; age 60 "$B/HIMMEL-nextleg-2026-01-01-console.md"
-leg "HIMMEL-1-sp ace-2026-01-01.md" WRAPPED 60
+# --- a dot-suffixed sibling follows its parent group; chief docs and encoded links ---
+worker HIMMEL-2-locked-2026-01-01.extra.md WRAPPED 60
+worker HIMMEL-1-cref-2026-01-01.md WRAPPED 60
+printf 'see [c](HIMMEL-1-cref-2026-01-01.md)\n' >> "$B/HIMMEL-nextleg-2026-01-01-chief.md"; age 60 "$B/HIMMEL-nextleg-2026-01-01-chief.md"
+worker "HIMMEL-1-sp ace-2026-01-01.md" WRAPPED 60
 printf 'see [s](HIMMEL-1-sp%%20ace-2026-01-01.md)\n' >> "$B/HIMMEL-9-live-2026-10-22.md"
 git -C "$R" add -A; run --apply >/dev/null 2>&1
 check "a sibling of a locked parent stayed" yes "$(here "$B/HIMMEL-2-locked-2026-01-01.extra.md")"
-check "a console doc's links are not rewritten" yes "$(grep -q '](HIMMEL-1-cref-2026-01-01.md)' "$B/HIMMEL-nextleg-2026-01-01-console.md" && echo yes || echo no)"
+check "a chief doc's links are not rewritten" yes "$(grep -q '](HIMMEL-1-cref-2026-01-01.md)' "$B/HIMMEL-nextleg-2026-01-01-chief.md" && echo yes || echo no)"
 check "the doc moved" yes "$(here "$A/HIMMEL-1-cref-2026-01-01.md")"
 check "a percent-encoded link to a moved doc is rewritten, encoding kept" yes \
   "$(grep -q "](archive/$M60/HIMMEL-1-sp%20ace-2026-01-01.md)" "$B/HIMMEL-9-live-2026-10-22.md" && echo yes || echo no)"
 
 # --- a lock taken after planning is honoured at move time ----------------------
-leg HIMMEL-1-race1-2026-01-01.md WRAPPED 60
-leg HIMMEL-1-race2-2026-01-01.md WRAPPED 60
+worker HIMMEL-1-race1-2026-01-01.md WRAPPED 60
+worker HIMMEL-1-race2-2026-01-01.md WRAPPED 60
 git -C "$R" add -A
 # shellcheck disable=SC2016  # the stub keeps its $rc literal
 printf '#!/usr/bin/env bash\n%q "$@"; rc=$?\ncase "$*" in *"mv -- HIMMEL-1-race1-2026-01-01.md "*) mkdir -p "%s/u__himmel__HIMMEL-1-race2-2026-01-01.lock" ;; esac\nexit $rc\n' "$REAL_GIT" "$R/.locks/queue" > "$W/stubbin/git"
@@ -205,18 +205,18 @@ check "the doc planned first moved" yes "$(here "$A/HIMMEL-1-race1-2026-01-01.md
 check "the doc locked after planning stayed" yes "$(here "$B/HIMMEL-1-race2-2026-01-01.md")"
 
 # --- untracked doc is skipped, never plain-mv'd -------------------------------
-leg HIMMEL-1-untracked-2026-01-01.md WRAPPED 60
+worker HIMMEL-1-untracked-2026-01-01.md WRAPPED 60
 out4="$(run --apply 2>&1)"
 check "untracked doc stayed" yes "$(here "$B/HIMMEL-1-untracked-2026-01-01.md")"
 check "untracked doc reported" yes "$(grep -q '^SKIP untracked .*HIMMEL-1-untracked' <<< "$out4" && echo yes || echo no)"
 
 # --- the opt-in cited-key gate --------------------------------------------------
-leg HIMMEL-31-cited-2026-01-01.md WRAPPED 60
-leg HIMMEL-32-uncited-2026-01-01.md WRAPPED 60
-leg HIMMEL-33-nearmiss-2026-01-01.md WRAPPED 60
-leg HIMMEL-34-suffixed-2026-01-01.md WRAPPED 60
-leg HIMMEL-35-prefixed-2026-01-01.md WRAPPED 60
-leg HIMMEL-36-linked-2026-01-01.md WRAPPED 60
+worker HIMMEL-31-cited-2026-01-01.md WRAPPED 60
+worker HIMMEL-32-uncited-2026-01-01.md WRAPPED 60
+worker HIMMEL-33-nearmiss-2026-01-01.md WRAPPED 60
+worker HIMMEL-34-suffixed-2026-01-01.md WRAPPED 60
+worker HIMMEL-35-prefixed-2026-01-01.md WRAPPED 60
+worker HIMMEL-36-linked-2026-01-01.md WRAPPED 60
 CIT="$W/compounded"; mkdir -p "$CIT/themes"
 printf '# week\n\n## HIMMEL-31\n- outcome: merged\n\nalso HIMMEL-331 and HIMMEL-3 and HIMMEL-34suffix and foo_HIMMEL-35\n' > "$CIT/2026-W43.md"
 printf 'cites HIMMEL-36\n' > "$W/outside-cite.md"; ln -s "$W/outside-cite.md" "$CIT/linked.md"

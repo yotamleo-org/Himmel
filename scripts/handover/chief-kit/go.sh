@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/go.sh - write the console's GO for one PR head
+# scripts/handover/chief-kit/go.sh - write the chief's GO for one PR head
 # The file IS the GO: merge-on-green.sh, run from a
-# console-spawned leg (HIMMEL_CONSOLE_LEG=1, exported by headed-arm-leg.sh),
+# chief-spawned worker (HIMMEL_CONSOLE_LEG=1, exported by headed-arm-worker.sh),
 # refuses with exit 17 unless <handover_root>/.locks/go/<pr>.<head sha> exists
 # and carries head=<that sha> plus a mac= line: HMAC-SHA256 of
 # nwo|pr|sha under
 # the key this script mints at ~/.config/himmel/go-hmac.key (see
-# scripts/lib/go-gate.sh). The console's SendMessage GO is only the
+# scripts/lib/go-gate.sh). The chief's SendMessage GO is only the
 # notification. A GO binds ONE head: a push after it needs a fresh GO.
 #
 # Usage: go.sh [--trust-reviewed <reviewer-id>] <pr-number> <full-40-hex-head-sha>
@@ -15,13 +15,13 @@
 # Prints the written path. Re-running overwrites (idempotent).
 #
 # Every merge GO (not --fix-main-red) is also persisted as a signed verdict record
-# through write-verdict.sh: <root>/<user>/<bucket>/verdicts/go-pr-<n>/console-go-<head>.md,
+# through write-verdict.sh: <root>/<user>/<bucket>/verdicts/go-pr-<n>/chief-go-<head>.md,
 # a qid no judge uses. It carries the deciding session's model and effort, from
 # --model <id> / --effort <level> or the HIMMEL_VERDICT_MODEL / HIMMEL_VERDICT_EFFORT
 # env (effort also CLAUDE_CODE_EFFORT_LEVEL), else `unknown`. Logging never blocks
 # the GO: a failed record only warns on stderr.
 #
-# --fix-main-red: writes a FIX-GO instead of a GO - the console's
+# --fix-main-red: writes a FIX-GO instead of a GO - the chief's
 # way to let the PR that fixes a red main past merge-on-green.sh's main-red gate
 # (exit 22) without a forged `Fixes-main-red:` commit line. It is a separate
 # file, .locks/go/fix-main-red.<pr>.<head>.<run>, signed over the repo, PR,
@@ -59,21 +59,21 @@
 # ready-check.sh <pr> <head> from the caller's cwd and refuses (exit 4) unless
 # it PASSes - head, CI, threads, the CR-ledger ok row at that head (check 4),
 # trailers, ticket ids, coverage. Run it from the checkout /pr-check wrote the
-# ledger in (the console's primary), as the console already does by hand.
+# ledger in (the chief's primary), as the chief already does by hand.
 #
 # Exit codes:
 #   0  written
 #   1  handover root unresolvable (incl. an .env-configured root that is gone -
 #      HIMMEL-3572), the GO key cannot be minted or read, or the write failed; also scripts/lib/go-gate.sh
-#      failed to source or did not define console_leg (fail closed - writing a GO
-#      is sensitive enough that a broken shared lib must never read as "not a leg")
+#      failed to source or did not define chief_worker (fail closed - writing a GO
+#      is sensitive enough that a broken shared lib must never read as "not a worker")
 #   2  usage (arg count, non-digit PR, sha not exactly 40 lowercase hex, a
 #      malformed --trust-reviewed id); also
 #      a relative-entry copy handed off (anchor-handoff.sh) and
 #      refused - HIMMEL_REPO unset/empty, or the anchor carries no copy
-#   3  refused: run from a console-spawned leg (a judge included - HIMMEL-3133,
-#      "the judge is a leg") - a leg never writes its own GO
-#   3  refused: run from a console relay - only the console writes a GO
+#   3  refused: run from a chief-spawned worker (a judge included:
+#      "the judge is a worker") - a worker never writes its own GO
+#   3  refused: run from a chief relay - only the chief writes a GO
 #   4  refused: ready-check.sh did not PASS for <pr> at <head>
 #   5  refused: --trust-reviewed <qid> has no GO verdict for <head>
 #   6  refused: --repo names no himmel adapter and no adopted repo with merge_allowed true
@@ -82,7 +82,7 @@
 #      or is not CLEAN (checks green) with every review thread resolved
 #   8  refused: ready-check computed `TRUST-PATH: yes` (the PR diff touches a path in
 #      the default branch's scripts/ci/ci-trust-paths.txt) and this is a plain GO;
-#      only --trust-reviewed <judge qid> may write it. The leg's READY text is never read.
+#      only --trust-reviewed <judge qid> may write it. The worker's READY text is never read.
 #   9  refused: cr-disposition.sh check found a deferred Critical or Important
 #      finding on the PR's branch with no valid disposition at <head>
 #  10  refused: --trust-reviewed <qid>'s only GO for <head> is a `delta: no-op` verdict
@@ -90,14 +90,14 @@
 #      delta from its judged head as `none` (a trust-path or judged-finding delta, or
 #      a read error): a real judge must rule on the head
 #
-# A relative entry (`bash scripts/handover/chief-kit/go.sh`, the leg
+# A relative entry (`bash scripts/handover/chief-kit/go.sh`, the worker
 # profile's pre-approved literal) hands off to the HIMMEL_REPO anchor's own
 # copy before anything else runs - same reasoning as
-# merge-on-green.sh's own entry-script hand-off: a leg-writable worktree copy
+# merge-on-green.sh's own entry-script hand-off: a worker-writable worktree copy
 # must never decide what its own GO writer does. An absolute entry (the
-# console's own invocation) is unaffected - see anchor-handoff.sh's header.
+# chief's own invocation) is unaffected - see anchor-handoff.sh's header.
 #
-# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm-leg.sh.
+# Platform guard (gitbash-only): POSIX bash 3.2+, same as headed-arm-worker.sh.
 set -u
 # a relative-entry copy that is not the anchor's hands off to it
 # (the same one-hop, fail-closed pattern scripts/cr/anchor-handoff.sh uses).
@@ -115,6 +115,11 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/go.sh || exit 96
+
+# shellcheck source=scripts/lib/env-alias.sh
+. "$_csg_dir/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CHIEF_SESSION_NAME CONSOLE_SESSION_NAME
 
 # The reads below (PR view, repo name) ride the read-only token via gh-read.sh
 # and a missing or refused read token falls back to the main one, so
@@ -215,21 +220,21 @@ fi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 
-# console_leg is the same shared predicate merge-on-green.sh and
+# chief_worker is the same shared predicate merge-on-green.sh and
 # block-unresolved-cr-merge.sh enforce with - go.sh is the writer those two
 # gate against, so it must use their exact rule, not a hand-rolled copy of it.
 # Fail closed: this write is sensitive enough that a broken/missing shared lib
-# must never be read as "not a leg".
-unset -f go_adapter_entry go_adopted_entry _go_harness_ref console_leg go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file go_fork_ready 2>/dev/null || true
+# must never be read as "not a worker".
+unset -f go_adapter_entry go_adopted_entry _go_harness_ref chief_worker go_gate _go_gate_verify go_trust_gate go_trust_id_ok go_trust_verdict go_verdict_scope go_mac go_msg_mac go_verdict_mac go_verdict_mac_ok _go_sha256 go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file go_fork_ready 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
-if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1 \
+if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1 \
         || ! declare -F go_mac >/dev/null 2>&1 || ! declare -F go_resolve_root >/dev/null 2>&1 \
         || ! declare -F go_trust_id_ok >/dev/null 2>&1 || ! declare -F go_trust_verdict >/dev/null 2>&1 \
         || ! declare -F go_verdict_scope >/dev/null 2>&1 || ! declare -F go_fixred_file >/dev/null 2>&1 \
         || ! declare -F go_adapter_entry >/dev/null 2>&1 || ! declare -F go_fork_ready >/dev/null 2>&1 \
         || ! declare -F go_adopted_entry >/dev/null 2>&1; then
-    echo "go: cannot load scripts/lib/go-gate.sh - refusing (the console-leg marker check must fail closed, not silently no-op)" >&2
+    echo "go: cannot load scripts/lib/go-gate.sh - refusing (the chief-worker marker check must fail closed, not silently no-op)" >&2
     exit 1
 fi
 if [ "$TRUST_SET" -eq 1 ] && ! go_trust_id_ok "$TRUST"; then
@@ -237,24 +242,24 @@ if [ "$TRUST_SET" -eq 1 ] && ! go_trust_id_ok "$TRUST"; then
     echo "go: --trust-reviewed needs a reviewer id of 1-128 chars from [A-Za-z0-9._:-] (got '$TRUST')" >&2
     exit 2
 fi
-# go-pr-<n> is the qid of a persisted console GO below, never a judge's verdict.
+# go-pr-<n> is the qid of a persisted chief GO below, never a judge's verdict.
 if [ "$TRUST_SET" -eq 1 ]; then
     case "$TRUST" in
         go-pr-*)
             usage
-            echo "go: --trust-reviewed cannot name a go-pr-* record: that namespace is a persisted console GO, not a judge verdict (got '$TRUST')" >&2
+            echo "go: --trust-reviewed cannot name a go-pr-* record: that namespace is a persisted chief GO, not a judge verdict (got '$TRUST')" >&2
             exit 2 ;;
     esac
 fi
-if console_leg; then
-    echo "go: refusing - this is a console-spawned leg (HIMMEL_CONSOLE_LEG is set); only the console writes a GO. Send READY to your console and wait for GO." >&2
+if chief_worker; then
+    echo "go: refusing - this is a chief-spawned worker (HIMMEL_CONSOLE_LEG is set); only the chief writes a GO. Send READY to your chief and wait for GO." >&2
     exit 3
 fi
 
 case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
     ''|0|false|off|no) ;;
     *)
-        echo "go: refusing - this is a console relay (HIMMEL_CONSOLE_RELAY is set); only the console writes a GO. Escalate the READY to your console." >&2
+        echo "go: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); only the chief writes a GO. Escalate the READY to your chief." >&2
         exit 3 ;;
 esac
 
@@ -265,7 +270,7 @@ if ! . "$HERE/../../lib/handover-path.sh"; then
     exit 1
 fi
 # the root merge-on-green's gate reads, not whatever this
-# console's env happens to say - go_resolve_root skips an empty or stub
+# chief's env happens to say - go_resolve_root skips an empty or stub
 # HANDOVER_DIR for the anchor's .env-configured root, and fails (never falls
 # back to the stub) when that configured root is gone.
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
@@ -344,7 +349,7 @@ fi
 
 # no GO for a head ready-check does not pass. Its check 4 is the
 # CR-ledger ok row at this head (read from this cwd's git-common-dir, as when
-# the console runs it by hand), so a push after /pr-check cannot get a GO
+# the chief runs it by hand), so a push after /pr-check cannot get a GO
 # without a fresh review. Run from $HERE: the anchor's copy, never a worktree's.
 if [ "$FORK_SET" -eq 0 ] && ! READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SHA" 2>&1); then
     printf '%s\n' "$READY_OUT" >&2
@@ -353,7 +358,7 @@ if [ "$FORK_SET" -eq 0 ] && ! READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SH
 fi
 
 # ready-check COMPUTES the trust path from the PR diff and the default branch's
-# list (its TRUST-PATH line); the leg's READY prose is never read. A plain GO on
+# list (its TRUST-PATH line); the worker's READY prose is never read. A plain GO on
 # a yes line is refused: a trust path merges only on a trust-reviewed GO.
 if [ "$FORK_SET" -eq 0 ] && [ "$TRUST_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ] \
    && printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes'; then
@@ -361,15 +366,15 @@ if [ "$FORK_SET" -eq 0 ] && [ "$TRUST_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ] \
     exit 8
 fi
 
-# a Critical or Important finding the leg deferred on its own never merges:
+# a Critical or Important finding the worker deferred on its own never merges:
 # cr-disposition.sh check refuses unless a judge (or, for an Important off a
-# trust path, the console) recorded a follow-up with its three risk attests.
+# trust path, the chief) recorded a follow-up with its three risk attests.
 if [ "$FORK_SET" -eq 0 ] && [ "$FIX_SET" -eq 0 ]; then
     DTRUST=no
     printf '%s\n' "$READY_OUT" | grep -qx 'TRUST-PATH: yes' && DTRUST=yes
     if ! DISP_OUT=$(bash "$HERE/cr-disposition.sh" check "$PR" "$SHA" --trust-path "$DTRUST" 2>&1); then
         printf '%s\n' "$DISP_OUT" >&2
-        echo "go: refusing the GO for PR #$PR at $SHA - a Critical or Important finding has no valid disposition (above). A judge (or the console, for an Important off a trust path) records one with cr-disposition.sh record, or the PR fixes it. No GO written." >&2
+        echo "go: refusing the GO for PR #$PR at $SHA - a Critical or Important finding has no valid disposition (above). A judge (or the chief, for an Important off a trust path) records one with cr-disposition.sh record, or the PR fixes it. No GO written." >&2
         exit 9
     fi
 fi
@@ -389,7 +394,7 @@ if [ -z "$NWO" ]; then
     exit 1
 fi
 
-# sign the GO. The key is minted here, on the console's first GO
+# sign the GO. The key is minted here, on the chief's first GO
 # (umask 077 + noclobber: mode 0600, never overwrites an existing key);
 # go_gate verifies it and never mints one.
 if [ -z "${HOME:-}" ]; then
@@ -438,7 +443,7 @@ fi
 DIR="$ROOT/.locks/go"
 DEST="$DIR/$PR.$SHA"
 [ "$FIX_SET" -eq 0 ] || DEST=$(go_fixred_file "$ROOT" "$PR" "$SHA" "$FIXRUN")
-BY="${CHIEF_SESSION_NAME:-${CONSOLE_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostname 2>/dev/null || uname -n)}}"
+BY="${CHIEF_SESSION_NAME:-${USER:-$(id -un 2>/dev/null || echo unknown)}@$(hostname 2>/dev/null || uname -n)}"
 BY=$(printf '%s' "$BY" | tr -d '\r\n')
 AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
 
@@ -470,8 +475,8 @@ if [ "$FIX_SET" -eq 0 ]; then
     { [ -d "$GO_SCRATCH" ] || mkdir -m 700 "$GO_SCRATCH" 2>/dev/null; } &&
         GO_EVD=$(mktemp -d "$GO_SCRATCH/go-persist.XXXXXX") # prim-ok: write-verdict.sh takes evidence only from /tmp/claude-<uid>
     if [ -n "$GO_EVD" ] \
-       && printf 'console GO for %s PR #%s\nby: %s\nat: %s\ntrust-reviewed: %s\n' "$NWO" "$PR" "$BY" "$AT" "${TRUST:-none}" > "$GO_EVD/evidence.md" \
-       && GO_WV=$(bash "$HERE/write-verdict.sh" "go-pr-$PR" GO "$SHA" --pr "$PR" --judge "console-go-$SHA" \
+       && printf 'chief GO for %s PR #%s\nby: %s\nat: %s\ntrust-reviewed: %s\n' "$NWO" "$PR" "$BY" "$AT" "${TRUST:-none}" > "$GO_EVD/evidence.md" \
+       && GO_WV=$(bash "$HERE/write-verdict.sh" "go-pr-$PR" GO "$SHA" --pr "$PR" --judge "chief-go-$SHA" \
             ${VREPO:+--repo "$VREPO"} --evidence-file "$GO_EVD/evidence.md" --model "$GO_MODEL" --effort "$GO_EFFORT" 2>&1); then
         :
     else

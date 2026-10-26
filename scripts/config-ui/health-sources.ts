@@ -1,7 +1,7 @@
 // health-sources.ts — the read-only sources behind GET /api/health.
 // Each section is {state: ok|absent|error, reason?, ...data} and degrades alone (I3).
 // Nothing here computes a verdict or runs a probe: the bank row is read from the
-// ledger bank-preflight already wrote (I2), the legs from legs.sh, monitoring over loopback (I7).
+// ledger bank-preflight already wrote (I2), the workers from workers.sh, monitoring over loopback (I7).
 import { spawn } from "node:child_process";
 import { closeSync, fstatSync, openSync, readSync } from "node:fs";
 import { homedir } from "node:os";
@@ -12,17 +12,18 @@ export const readToolHealth = (env?: Env, query?: URLSearchParams, now?: number)
 // The one owner of tracker/forge; read here, never re-derived.
 // @ts-ignore plain ES module, no types
 import { projectModeTracker, projectModeForge, projectModeIdRequired } from "../lib/project-mode.mjs";
+import { legacyNamesOn } from "../lib/env-alias.mjs";
 
 type Env = Record<string, string | undefined>;
 export type Section = { state: "ok" | "absent" | "error"; reason?: string; [k: string]: unknown };
 
 const TAIL_BYTES = 64 * 1024;
 const MONITOR_TIMEOUT_MS = 2000;
-const LEGS_TIMEOUT_MS = 5000;
+const WORKERS_TIMEOUT_MS = 5000;
 
 // The newest ledger row that carries bank numbers, read from the file's last 64 KiB.
 export function readBank(env: Env): Section {
-  const file = env.CADENCE_USAGE_LEDGER || env.CADENCE_BANK_LEDGER || join(env.HOME || homedir(), ".himmel", "cadence-ledger.jsonl");
+  const file = env.CADENCE_USAGE_LEDGER || (legacyNamesOn(env) ? env.CADENCE_BANK_LEDGER : undefined) || join(env.HOME || homedir(), ".himmel", "cadence-ledger.jsonl");
   let text: string;
   try {
     const fd = openSync(file, "r");
@@ -56,26 +57,26 @@ export function readMode(cwd: string, env: Env): Section {
   }
 }
 
-// legs.sh in its own process group, so a hung child cannot hold the response past the budget.
-export function readLegs(script: string, env: Env, timeoutMs = LEGS_TIMEOUT_MS): Promise<Section> {
+// workers.sh in its own process group, so a hung child cannot hold the response past the budget.
+export function readLegs(script: string, env: Env, timeoutMs = WORKERS_TIMEOUT_MS): Promise<Section> {
   return new Promise((resolve) => {
     let out = "", done = false;
     const child = spawn("bash", [script], { env: env as NodeJS.ProcessEnv, detached: true, stdio: ["ignore", "pipe", "ignore"] });
     const finish = (s: Section) => { if (!done) { done = true; clearTimeout(timer); resolve(s); } };
     const timer = setTimeout(() => {
       try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already gone */ }
-      finish({ state: "error", reason: "legs view timed out" });
+      finish({ state: "error", reason: "workers view timed out" });
     }, timeoutMs);
     child.stdout.on("data", (d) => { out += d; });
-    child.on("error", () => finish({ state: "error", reason: "legs view failed to start" }));
+    child.on("error", () => finish({ state: "error", reason: "workers view failed to start" }));
     child.on("close", (rc) => {
       if (rc === 3) return finish({ state: "absent", reason: "no handover root" });
-      if (rc !== 0) return finish({ state: "error", reason: `legs view exited ${rc}` });
+      if (rc !== 0) return finish({ state: "error", reason: `workers view exited ${rc}` });
       try {
         const j = JSON.parse(out);
         if (!j.manifest) return finish({ state: "absent", reason: "no fleet manifest" });
         finish({ state: "ok", manifest: j.manifest, legs: j.legs });
-      } catch { finish({ state: "error", reason: "legs view printed no JSON" }); }
+      } catch { finish({ state: "error", reason: "workers view printed no JSON" }); }
     });
   });
 }

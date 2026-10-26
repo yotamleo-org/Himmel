@@ -26,7 +26,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 REPO_ROOT="$(git rev-parse --show-toplevel)"
 LIB="$REPO_ROOT/scripts/guardrails/lib.sh"
 
-# a leg's shell can export guard overrides (EDIT_ON_MAIN_OK, ...)
+# a worker's shell can export guard overrides (EDIT_ON_MAIN_OK, ...)
 # that reach the predicates under test and flip every "override UNSET" case
 # (main_checkout_verdict). Clear them before any case runs; the case that needs
 # one still sets it explicitly on its own invocation.

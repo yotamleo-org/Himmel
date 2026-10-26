@@ -187,7 +187,7 @@ case "$(uname -s)" in
                 fail "T6: detail did not name pid $T6_HOLDER: $WORKTREE_INUSE_DETAIL"
             fi
             # The detail names the holder's command so a daemon
-            # (VBoxSVC, qmd.js mcp) can be told from a live leg.
+            # (VBoxSVC, qmd.js mcp) can be told from a live worker.
             if grepq "$WORKTREE_INUSE_DETAIL" -F "(sleep"; then
                 pass "T6: detail names the holder command"
             else
@@ -243,7 +243,7 @@ case "$(uname -s)" in
         # excludes the calling process's own ANCESTRY (this process, its
         # parent, ... up to pid 1) from what counts as a foreign holder -- a
         # process in that chain is the one that ASKED for the removal, not a
-        # hazard sitting in the tree (merge-on-green's own armed chain leg is
+        # hazard sitting in the tree (merge-on-green's own armed chain worker is
         # exactly this shape: it sits in the tree it just merged). A subshell
         # whose own cwd IS the fixture is, by definition, its own ancestry --
         # this row therefore INVERTS from the earlier "in-use" expectation to
@@ -270,7 +270,7 @@ case "$(uname -s)" in
         # proves the actual PPid WALK: a child process, whose OWN cwd is
         # elsewhere, must still recognize its PARENT sitting in the tree as
         # its own ancestry -- the real shape of "merge-on-green's own armed
-        # chain leg", where the leg (an ancestor) holds the tree and the
+        # chain worker", where the worker (an ancestor) holds the tree and the
         # in-process merge itself has already cd'd elsewhere.
         t10_dir="$TMPDIR_ROOT/t10-wt"
         t10_elsewhere="$TMPDIR_ROOT"

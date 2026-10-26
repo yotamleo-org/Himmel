@@ -34,7 +34,7 @@ const themePick = (t, d) => `<select class="rm-theme" data-rm-theme-key="${t.k}"
 }).join("")}</select>`;
 
 function cardHtml(t, d, showVersion, w) {
-  const lg = t.leg ? `<div class="rm-leg"><b>${esc(t.leg.label)} ${esc(t.leg.marker)}</b>${t.leg.reason ? " " + esc(t.leg.reason) : ""}</div>` : "";
+  const lg = t.leg ? `<div class="rm-worker"><b>${esc(t.leg.label)} ${esc(t.leg.marker)}</b>${t.leg.reason ? " " + esc(t.leg.reason) : ""}</div>` : "";
   const dr = t.drift === 1 ? `<span class="st warn">drift</span> plan: ${esc(t.pv)}` : t.drift === 2 ? `<span class="st warn">unplanned</span>` : "";
   const ver = showVersion ? `<a class="ro" href="#/roadmap/${encodeURIComponent(d.versions[t.v].n)}">${esc(d.versions[t.v].n)}</a> ` : "";
   const theme = w ? themePick(t, d) : esc(d.themes[t.theme]);
@@ -64,7 +64,7 @@ function versionHtml(d, ui) {
   if (v < 0) return back + `<div class="empty">${esc(ui.ver)}: no such version in the mirror.</div>`;
   const shown = byTheme(d, ui).filter((t) => t.v === v);
   const head = `<div class="rm-bar">${themeSel(d, ui)}<button class="btn" data-act="refresh-roadmap">refresh</button></div>${writeNote(ui)}`;
-  return back + section("rm-version", d.versions[v].n, `${shown.length} tickets in this version; the leg marker shows on the card.`,
+  return back + section("rm-version", d.versions[v].n, `${shown.length} tickets in this version; the worker marker shows on the card.`,
     head + (shown.length ? boardHtml(d, shown, false, ui.writes) : `<div class="empty">No tickets match.</div>`));
 }
 
@@ -98,9 +98,9 @@ function syncHtml(d, ui) {
   const ops = (d.sync || []).filter((o) => keep.has(o.k));
   const body = ops.length ? ops.map((o) => `<tr><td>HIMMEL-${o.k}</td><td>${esc(o.marker)}</td><td>${esc(o.why)}</td>
       <td><code>${esc(jira(o.argv))}</code> <button class="btn" data-act="copy" data-cmd="${esc(jira(o.argv))}">copy</button></td></tr>`).join("")
-    : `<tr><td colspan="4" class="empty">Jira already matches the legs.</td></tr>`;
-  return `<p class="ro">Planned only: the console kit is the one writer, via the Jira CLI. Legs never write Jira and this page never does.</p>
-    <table class="rm-sync"><thead><tr><th>Ticket</th><th>Leg</th><th>Why</th><th>Command</th></tr></thead><tbody>${body}</tbody></table>`;
+    : `<tr><td colspan="4" class="empty">Jira already matches the workers.</td></tr>`;
+  return `<p class="ro">Planned only: the console kit is the one writer, via the Jira CLI. Workers never write Jira and this page never does.</p>
+    <table class="rm-sync"><thead><tr><th>Ticket</th><th>Worker</th><th>Why</th><th>Command</th></tr></thead><tbody>${body}</tbody></table>`;
 }
 
 function librarianHtml(d, ui) {
@@ -127,7 +127,7 @@ export function renderRoadmap(data, ui) {
     section("rm-releases", "Releases", `Live from the Jira mirror (${data.mirror.count} tickets, newest update ${data.mirror.newest || "unknown"}). Open a version for its kanban.`, releasesHtml(data)),
     section("rm-drift", "Drift", "Jira's fixVersion against the plan's placement.", driftHtml(data)),
     bar, // narrows the sync and librarian lists below
-    section("rm-sync", "Leg to Jira sync", "What the legs say that Jira does not yet.", syncHtml(data, u)),
+    section("rm-sync", "Worker to Jira sync", "What the workers say that Jira does not yet.", syncHtml(data, u)),
     section("rm-librarian", "Librarian", "Ready-to-approve cleanups.", librarianHtml(data, u)),
   ].join("\n");
 }

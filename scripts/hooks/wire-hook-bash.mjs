@@ -83,8 +83,8 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // carries the graphify salus x ollama-cloud opt-in — see the sibling entry on
   // the Edit|Write|MultiEdit|NotebookEdit chain below.
   'block-himmel-config-writes.sh',
-  // Guard D: denies a console relay every write channel into
-  // console state via Bash — see the sibling entry on the
+  // Guard D: denies a chief relay every write channel into
+  // chief state via Bash — see the sibling entry on the
   // Edit|Write|MultiEdit|NotebookEdit chain below.
   'guard-relay-writes.sh',
   // Speed bump over the bus store — denies a Bash
@@ -117,7 +117,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'block-edit-on-main.sh',
   // Denies writes to a LIVE settings.json/settings.local.json
   // (user-scope $HOME/.claude, or the PRIMARY checkout's) while ALLOWING the
-  // worktree copy, so hook wiring rides the owning leg's own PR. Replaces the
+  // worktree copy, so hook wiring rides the owning worker's own PR. Replaces the
   // two `Edit(**/.claude/settings*.json)` deny rules, which could not tell a
   // primary checkout from a linked worktree.
   'block-edit-live-settings.sh',
@@ -127,8 +127,8 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'block-bank-lift-writes.sh',
   // The file-tool twin of the Bash entry above.
   'block-himmel-config-writes.sh',
-  // Guard D: denies a console relay direct writes to the inbox,
-  // leg handover docs, and the console rundir (marker-gated no-op otherwise).
+  // Guard D: denies a chief relay direct writes to the inbox,
+  // worker handover docs, and the chief rundir (marker-gated no-op otherwise).
   'guard-relay-writes.sh',
   // The file-tool twin of the Bash entry above (bus store guard).
   'guard-bus-store.sh',
@@ -137,13 +137,13 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // not something a launch-count refactor gets to do.
   'orchestrator-inline-guard.sh',
   // PreToolUse `AskUserQuestion` — its own matcher: denies a
-  // console-spawned leg (HIMMEL_CONSOLE_LEG=1, the launcher export)
+  // chief-spawned worker (HIMMEL_CONSOLE_LEG=1, the launcher export)
   // from calling AskUserQuestion — nobody answers in that window.
-  'block-leg-askuserquestion.sh',
+  'block-worker-askuserquestion.sh',
   // PreToolUse `ScheduleWakeup` — its own matcher: denies a
-  // console-spawned leg (HIMMEL_CONSOLE_LEG=1) from self-scheduling a polling
-  // wakeup — each wake re-reads the leg's whole context to find "not yet".
-  'guard-leg-wakeup.sh',
+  // chief-spawned worker (HIMMEL_CONSOLE_LEG=1) from self-scheduling a polling
+  // wakeup — each wake re-reads the worker's whole context to find "not yet".
+  'guard-worker-wakeup.sh',
   // PreToolUse `Agent` — its own matcher: denies model: fable (and
   // a console-judge override off its opus tier) unless the prompt carries an
   // `ESCALATION: <reason>` line — the Opus judge default, made
@@ -158,10 +158,10 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   'mcp-policy.sh',
   'auto-arm-on-cap.sh',
   // PreToolUse `*` — its own entry: when the launch turned the
-  // guard on (off by default), denies a console-spawned leg's
+  // guard on (off by default), denies a chief-spawned worker's
   // non-hand-off calls past 75 % of its autocompact ceiling until it
   // checkpoints or hands off, or its last marker is WRAPPED. Fails open.
-  'guard-leg-context-handoff.sh',
+  'guard-worker-context-handoff.sh',
   // PreToolUse `Bash|Monitor` — its own matcher: denies a
   // subagent (agent_id present) from backgrounding a Bash call or reaching
   // for Monitor — the parking pathology. Parents (no agent_id) are
@@ -194,7 +194,7 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // session toward qmd/graphify after 5 search sweeps with no retrieval call.
   'retrieval-nudge.sh',
   // PostToolUse `*` — LAST PostToolUse group: delivers any new
-  // claudex console-inbox bullet as additionalContext. Fires on every tool
+  // claudex chief-inbox bullet as additionalContext. Fires on every tool
   // call in every session; see the script's own header for the fail-open
   // cost model.
   'claudex-inbox-hook.sh',
@@ -220,11 +220,11 @@ export const EXPECTED_SCRIPT_ORDER = Object.freeze([
   // by its first position, which would be the PostToolUse one.
   'bus-deliver-sessionstart.sh',
   // SessionStart, own matcher "compact": re-injects a
-  // console's `## Live state` after an autocompact, the console-side twin of
-  // the per-leg contract cat headed-arm-leg.sh already wires.
+  // chief's `## Live state` after an autocompact, the chief-side twin of
+  // the per-worker contract cat headed-arm-worker.sh already wires.
   // Its own group, not the --chain above, because it fires only on
   // "compact", not on every SessionStart source.
-  'console-compact-reinject.sh',
+  'chief-compact-reinject.sh',
 ]);
 const KNOWN_HOOK_SCRIPTS = new Set(EXPECTED_SCRIPT_ORDER);
 const COMMAND_FIELD = /("command")(\s*:\s*)("(?:\\.|[^"\\])*")/g;

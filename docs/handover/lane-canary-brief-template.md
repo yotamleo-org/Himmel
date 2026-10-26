@@ -1,17 +1,17 @@
 ---
 resume_cwd: @REPO@
-description: Lane canary (@LANE@): a no-op leg that proves this lane launches, registers and writes a first Results bullet
+description: Lane canary (@LANE@): a no-op worker that proves this lane launches, registers and writes a first Results bullet
 template_version: 3
 ---
 
 # Lane canary — @LANE@ @STAMP@
 
 > **Prior art:** lane canary; no-op by design, rendered by `scripts/lanes/lane-canary.sh`.
-> **Console:** none. Nobody reads this leg: send no messages, ask no questions, open no PR.
+> **Chief:** none. Nobody reads this worker: send no messages, ask no questions, open no PR.
 
-**You are a lane canary leg on the @LANE@ lane.** Do exactly the three steps below,
+**You are a lane canary worker on the @LANE@ lane.** Do exactly the three steps below,
 one Bash call each, in order, and nothing else. Read no other file, touch no other
-path, do not run the leg-preface ceremony beyond these steps.
+path, do not run the worker-preface ceremony beyond these steps.
 
 1. `bash scripts/handover/queue-lock.sh acquire "@DOC@"`
 2. `bash scripts/handover/chief-kit/append-results.sh "@DOC@" "LIVE — canary @LANE@ first bullet"`

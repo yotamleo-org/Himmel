@@ -321,7 +321,7 @@ profile, the `all` master switch runs four auto-ship steps, in order:
 **Enable it in the launching shell** (it's read at session start):
 
 ```bash
-HIMMEL_INITIATIVE=all claude        # the four interactive legs
+HIMMEL_INITIATIVE=all claude        # the four interactive steps
 HIMMEL_INITIATIVE=prcheck,pr claude # just CR + open the PR
 ```
 

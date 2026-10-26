@@ -194,11 +194,11 @@ commands:
                           converge); run from the same location the
                           corresponding install was run from, same as status
   config                  prints the link to the UI Configure page, where himmel
-                          capabilities (initiative legs, delegation lanes, opt-in
+                          capabilities (initiative steps, delegation lanes, opt-in
                           hooks) are toggled without hand-editing files; scripts use:
                             config set <path> <value>   (value is on|off)
                             config get <path>
-                          get/set paths: initiative.<leg>, lanes.<id>
+                          get/set paths: initiative.<step>, lanes.<id>
                           set-only: commit.tracker <jira|local|none>,
                             commit.ticketIdRequired <on|off> (write the commit
                             rules to ~/.himmel/himmel.conf)
@@ -250,7 +250,7 @@ commands:
   report [--items <id,..>] [--deep] --json
                           read-only config feed (himmel-config-feed/1): every
                           item, doctor check, cadence, plugin, lane, initiative
-                          leg, bypass flag and secret as one row grammar, for
+                          worker, bypass flag and secret as one row grammar, for
                           the config UI. --items re-probes only those row ids.
                           Secrets show presence, never values. --deep adds the
                           wiring layers: pre-commit ids, Claude hooks, git
@@ -545,7 +545,7 @@ function parseArgs(argv) {
         break;
       // the trust ledger's hook wiring. It exists as a command
       // because the recorder previously shipped behind a manual paste of six
-      // JSON blocks, and three consecutive chain legs measured zero rows as a
+      // JSON blocks, and three consecutive chain workers measured zero rows as a
       // result. A capability behind a manual paste is a capability that does
       // not ship.
       case 'trust':
@@ -7603,7 +7603,7 @@ async function cmdScope(args) {
 // made it seven, and a number repeated in a comment is a number that drifts.
 //
 // Why this is a command at all: the recorder shipped behind a MANUAL PASTE of
-// six JSON blocks, and three consecutive chain legs then measured
+// six JSON blocks, and three consecutive chain workers then measured
 // `requests recorded 0`. A capability that ships behind a manual paste is a
 // capability that does not ship.
 //
@@ -7688,7 +7688,7 @@ async function cmdTrust(args) {
 //
 // Three config surfaces, three DIFFERENT real mechanisms (never a uniform
 // fake one):
-//   initiative.<leg>     on|off  -> upserts HIMMEL_INITIATIVE=<comma-legs>
+//   initiative.<step>       on|off  -> upserts HIMMEL_INITIATIVE=<comma-steps>
 //                                  into ~/.himmel/himmel.conf (read by
 //                                  scripts/hooks/inject-initiative.sh through
 //                                  scripts/lib/load-dotenv.sh).
@@ -7719,10 +7719,10 @@ async function cmdTrust(args) {
 // documents. Their bypass stays the existing documented convention (a
 // session env var set in the LAUNCHING shell), unrelated to a config write.
 
-// The 7 configurable initiative legs — scripts/lib/initiative-legs.sh's own
+// The 7 configurable initiative steps — scripts/lib/initiative-workers.sh's own
 // _IL_VOCAB minus 'plan', which that file documents as a reserved token with
 // no behavior yet (nothing to toggle).
-const INITIATIVE_LEGS = ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'public', 'handover'];
+const INITIATIVE_WORKERS = ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'public', 'handover'];
 
 // The plugin names `hooks.plugin.<name>` accepts — derived lazily from the
 // canonical pluginSet=full data rather than a second hand-maintained list.
@@ -7839,7 +7839,7 @@ function readEnvVarFile(key) {
 }
 
 // Toggle one token in a comma-separated set string. Pure. Preserves every
-// OTHER token already present (including ones outside INITIATIVE_LEGS —
+// OTHER token already present (including ones outside INITIATIVE_WORKERS —
 // never silently drops an operator's hand-edited value).
 function toggleToken(csv, token, on) {
   const set = new Set(String(csv || '').split(',').map((s) => s.trim()).filter(Boolean));
@@ -7872,15 +7872,15 @@ function writeConfigVar(key, value, args, targets) {
   return true;
 }
 
-function cmdConfigSetInitiative(leg, onOff, args) {
-  if (INITIATIVE_LEGS.indexOf(leg) === -1) {
-    console.error(`himmelctl: unknown initiative leg '${leg}' (known: ${INITIATIVE_LEGS.join(', ')})`);
+function cmdConfigSetInitiative(worker, onOff, args) {
+  if (INITIATIVE_WORKERS.indexOf(worker) === -1) {
+    console.error(`himmelctl: unknown initiative step '${worker}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
     return 2;
   }
   const current = readConfigVar('HIMMEL_INITIATIVE').value;
-  const next = toggleToken(current, leg, onOff === 'on');
+  const next = toggleToken(current, worker, onOff === 'on');
   // An empty value reads as unset and falls through to the next layer, so
-  // clearing the last leg blanks every layer that carries one; otherwise the
+  // clearing the last worker blanks every layer that carries one; otherwise the
   // write lands in the layer the current value came from when that is the
   // himmel.conf.local override, else himmel.conf.
   const targets = next === ''
@@ -7889,19 +7889,19 @@ function cmdConfigSetInitiative(leg, onOff, args) {
   return writeConfigVar('HIMMEL_INITIATIVE', next, args, targets.length ? targets : undefined) ? 0 : 1;
 }
 
-function cmdConfigGetInitiative(leg) {
+function cmdConfigGetInitiative(worker) {
   const { value: current, file } = readConfigVar('HIMMEL_INITIATIVE');
   const activeSet = new Set(current.split(',').map((s) => s.trim()).filter(Boolean));
-  if (leg) {
-    if (INITIATIVE_LEGS.indexOf(leg) === -1) {
-      console.error(`himmelctl: unknown initiative leg '${leg}' (known: ${INITIATIVE_LEGS.join(', ')})`);
+  if (worker) {
+    if (INITIATIVE_WORKERS.indexOf(worker) === -1) {
+      console.error(`himmelctl: unknown initiative step '${worker}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
       return 2;
     }
-    console.log(`initiative.${leg}: ${activeSet.has(leg) ? 'on' : 'off'}`);
+    console.log(`initiative.${worker}: ${activeSet.has(worker) ? 'on' : 'off'}`);
     return 0;
   }
   console.log(`HIMMEL_INITIATIVE=${current || '(unset)'} (from ${file})`);
-  const active = INITIATIVE_LEGS.filter((l) => activeSet.has(l));
+  const active = INITIATIVE_WORKERS.filter((l) => activeSet.has(l));
   console.log(`active legs: ${active.length > 0 ? active.join(', ') : '(none)'}`);
   return 0;
 }
@@ -8090,15 +8090,15 @@ function cmdConfigSetHook(hookPath, onOff, args) {
 function cmdConfigGet(pathParts) {
   const [ns, ...rest] = pathParts;
   if (ns === 'initiative') {
-    // 'initiative' (whole) or 'initiative.<leg>' — reject over-qualified
-    // (initiative.execute.extra) and unknown legs (cmdConfigGetInitiative
-    // does not validate the leg itself).
+    // 'initiative' (whole) or 'initiative.<step>' — reject over-qualified
+    // (initiative.execute.extra) and unknown workers (cmdConfigGetInitiative
+    // does not validate the worker itself).
     if (rest.length > 1) {
-      console.error(`himmelctl: config get: over-qualified path 'initiative.${rest.join('.')}' — expected 'initiative' or 'initiative.<leg>'`);
+      console.error(`himmelctl: config get: over-qualified path 'initiative.${rest.join('.')}' — expected 'initiative' or 'initiative.<step>'`);
       return 2;
     }
-    if (rest.length === 1 && INITIATIVE_LEGS.indexOf(rest[0]) === -1) {
-      console.error(`himmelctl: config get: unknown initiative leg '${rest[0]}' (known: ${INITIATIVE_LEGS.join(', ')})`);
+    if (rest.length === 1 && INITIATIVE_WORKERS.indexOf(rest[0]) === -1) {
+      console.error(`himmelctl: config get: unknown initiative step '${rest[0]}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
       return 2;
     }
     return cmdConfigGetInitiative(rest[0]);

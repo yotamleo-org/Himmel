@@ -36,7 +36,7 @@
 // a call whose message streamed no text has none.
 // Agents: every TEXT_MESSAGE_START and TOOL_CALL_START carries
 // `agent`. The session's own agent is id "main", named by the latest
-// agent-name record (role from that name: -chief or -console, a leg's -N<digits>-, judge),
+// agent-name record (role from that name: -chief or -console, a worker's -N<digits>-, judge),
 // its model the latest assistant message.model. A sidechain record
 // (isSidechain + agentId, inline or fed from subagents/agent-<id>.jsonl) is a
 // subagent's: it is bound to the Agent call whose prompt equals its first

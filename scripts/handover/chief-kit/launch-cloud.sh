@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# launch-cloud.sh — The console's cloud launch: one `claude --cloud`
+# launch-cloud.sh — The chief's cloud launch: one `claude --cloud`
 # session in its own konsole window. `claude --cloud` creates the session,
 # prints its URL and exits; script(1) keeps a TTY and captures that output.
 #
@@ -9,7 +9,7 @@
 #
 # <bucket> is <handover_root>/<user_slug>/<repo-dir-name>; HIMMEL_BUCKET_DIR
 # overrides it (test seam). HIMMEL_CONSOLE_RUNDIR overrides the run dir
-# (default: the per-uid himmel-console dir console.sh uses).
+# (default: the per-uid himmel-chief dir chief.sh uses).
 # CLOUD_LAUNCH_POLLS / CLOUD_LAUNCH_SLEEP bound the wait for the session line
 # (default 20 x 3s).
 #
@@ -57,9 +57,9 @@ brief="$bucket/cloud-brief-HIMMEL-$t.md"
 rundir="${HIMMEL_CONSOLE_RUNDIR:-}"
 if [ -z "$rundir" ]; then
     if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ]; then
-        rundir="$XDG_RUNTIME_DIR/himmel-console"
+        rundir="$XDG_RUNTIME_DIR/himmel-chief"
     else
-        rundir="${TMPDIR:-/tmp}/himmel-console-$(id -u)"
+        rundir="${TMPDIR:-/tmp}/himmel-chief-$(id -u)"
     fi
 fi
 # shellcheck disable=SC2174 # only the final directory is ours.

@@ -14,7 +14,7 @@ A merged PR has escaped review when a later signal says it shipped a bug:
 escapes counts PRs with a sure signal, escapes_plausible PRs with any signal; a PR counts once however
 many signals it has. Per critic (a CR-ledger critic that reviewed the PR's branch by its merge: an `ok` avail row or a
 finding, labelled as cr_ledger_eval.py labels it; keys critic.<critic>.*) and per judge (the model of each
-GO verdict record on the PR at its merged head and before its merge, console GOs left out; keys judge.<model>.*): prs, escapes, escapes_plausible
+GO verdict record on the PR at its merged head and before its merge, chief GOs left out; keys judge.<model>.*): prs, escapes, escapes_plausible
 and escape_rate.
 
   escapes.py --prs FILE [--cr-ledger P] [--mirror DIR] [--verdicts DIR] [--until TS] [--record] [--ledger P]
@@ -99,7 +99,7 @@ def reviewed_before(rev, p):
 
 
 def judges(recs, merged):
-    """{pr: {judge model, ...}} from the GO verdict records at the merged head before the merge, console GOs left out."""
+    """{pr: {judge model, ...}} from the GO verdict records at the merged head before the merge, chief GOs left out."""
     by = collections.defaultdict(set)
     for r in recs:
         p = merged.get(r["pr"])

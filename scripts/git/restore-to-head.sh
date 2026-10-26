@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # restore-to-head.sh <path>... — the sanctioned shape for restoring one or
-# more tracked files to HEAD in a leg. `git checkout -- <path>`
+# more tracked files to HEAD in a worker. `git checkout -- <path>`
 # is a `deny` entry in .claude/settings.json and `git restore` falls through
 # unmatched to the classifier, resolving as a silent headless DENY. This
 # script does the same restore but saves the outgoing content first, so the

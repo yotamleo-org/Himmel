@@ -83,7 +83,7 @@ eq "refused preflight: STOPPED recorded" "1" "$(grep -c '^STOPPED: bank-prefligh
 # 6. graph-use detector and the unused-treatment verdict rule.
 pyt() { py -c "import sys; sys.path.insert(0, sys.argv[1]); import summarize as S; $1" "$HERE"; }
 eq "detector: grepping graphify-bin.sh is not graph use" "False" "$(pyt 'print(bool(S.GRAPH_USE.search("grep -rn graphify-bin.sh scripts")))')"
-eq "detector: leg-graph.sh query is graph use" "True" "$(pyt 'print(bool(S.GRAPH_USE.search("bash scripts/graphify/leg-graph.sh query x")))')"
+eq "detector: worker-graph.sh query is graph use" "True" "$(pyt 'print(bool(S.GRAPH_USE.search("bash scripts/graphify/worker-graph.sh query x")))')"
 eq "detector: graphify explain is graph use" "True" "$(pyt 'print(bool(S.GRAPH_USE.search("graphify explain foo")))')"
 V='v={"weighted_tokens":(0,-1,1,0),"correct":(0,0,0,0)}'
 eq "verdict: graph unused in most A runs is NEUTRAL, not DROP" "True" "$(pyt "$V; print(S.verdict(v,8,10).startswith('VERDICT: NEUTRAL (arm A never'))")"
@@ -99,9 +99,9 @@ printf 'ANSWER: ["console-judge", "leg-impl", "telegram"]\nANSWER: not-json\n' >
 eq "malformed final ANSWER line is unparsed, not the earlier answer" "False False 0.0" "$(c "$W/late-bad.txt")"
 T="$W/projects/-tmp-x"; mkdir -p "$T"
 printf '%s\n%s\n' \
-  '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"scripts/graphify/leg-graph.sh"}}]}}' \
-  '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/graphify/leg-graph.sh query x"}}]}}' > "$T/sid.jsonl"
-eq "graph use counts Bash commands only, not a Read of leg-graph.sh" "2 1" "$(pyt "print(*S.transcript_calls('$W/projects', '/tmp/x', 'sid'))")"
+  '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Read","input":{"file_path":"scripts/graphify/worker-graph.sh"}}]}}' \
+  '{"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"bash scripts/graphify/worker-graph.sh query x"}}]}}' > "$T/sid.jsonl"
+eq "graph use counts Bash commands only, not a Read of worker-graph.sh" "2 1" "$(pyt "print(*S.transcript_calls('$W/projects', '/tmp/x', 'sid'))")"
 
 [ "$fails" -eq 0 ] && echo "all passed" || echo "$fails failed"
 exit "$fails"

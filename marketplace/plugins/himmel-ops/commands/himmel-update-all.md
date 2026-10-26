@@ -12,7 +12,7 @@ himmel has two independent update surfaces:
 
 This combo runs both, **harness first** (so the latest template + skill are on disk before the vault upgrade reads them), then the vault. Run the two steps in order:
 
-**Step 1 — harness.** This command can run from **any directory** (HIMMEL-459), so first resolve the himmel checkout using the same checkout-resolution order as `marketplace/plugins/himmel-ops/scripts/legs.sh` (here it fails closed with an error; legs.sh fails open): `$HIMMEL_REPO` → the current git toplevel → canonical install paths → error. If `$ARGUMENTS` contains `--check`, run the dry-run form; otherwise the real update:
+**Step 1 — harness.** This command can run from **any directory** (HIMMEL-459), so first resolve the himmel checkout using the same checkout-resolution order as `marketplace/plugins/himmel-ops/scripts/workers.sh` (here it fails closed with an error; workers.sh fails open): `$HIMMEL_REPO` → the current git toplevel → canonical install paths → error. If `$ARGUMENTS` contains `--check`, run the dry-run form; otherwise the real update:
 
 ```bash
 # Resolve the himmel checkout: $HIMMEL_REPO -> git toplevel -> canonical -> error.

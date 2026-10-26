@@ -1231,7 +1231,7 @@ _deny_procsub() {
 # thing as one opaque "value" and left NOTHING for `_operand_targets` to scan,
 # so a cwd-relative or textually-signal-free write ALLOWed outright - the
 # raw-text scan this branch used to gate on cannot see a cwd-relative target
-# either, so gating the deny on it left exactly that gap open. Per console
+# either, so gating the deny on it left exactly that gap open. Per chief
 # ruling (three rounds of patching this same parser found a Critical each
 # time): treat ANY genuine `env -S`/`--split-string` use as UNANALYSABLE and
 # fail closed, full stop - `_clause_head_idx` no longer tries to skip past
@@ -1271,7 +1271,7 @@ _lc_all() {
 # token anywhere in the clause is a short-option cluster containing `S`
 # (`-S`, glued `-Stee...`, bundled `-uS`/`-iS'...'` - GNU env accepts all
 # these spellings identically) or a long-option abbreviation of
-# `--split-string`. Console ruling:
+# `--split-string`. Chief ruling:
 # the prior version walked only tok[0..head_idx-1], the wrapper-prefix range
 # `_clause_head_idx` resolves - for a NESTED wrapper (`env env -S '...'`)
 # that walk resolves the FIRST `env`'s option region and treats the SECOND
@@ -1497,7 +1497,7 @@ _operand_targets() {
 # `_clause_has_enforcement_signal` raw-text scan runs and denies on a hit,
 # UNCONDITIONALLY, regardless of whether the option-cluster walk resolved
 # the rest of the wrapper correctly (_wrapper_is_env_or_sudo) - a miss falls
-# through unchanged; (2b) console-authorized redesign (three straight rounds
+# through unchanged; (2b) chief-authorized redesign (three straight rounds
 # of Criticals against this same `env -S` parser) - if the wrapper-prefix
 # range names env's OWN `-S`/`--split-string` at all, in ANY spelling
 # (`_env_split_string_used`), this denies UNCONDITIONALLY and unguarded by any

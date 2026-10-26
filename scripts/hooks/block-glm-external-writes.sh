@@ -111,7 +111,7 @@
 #     missing hook is NORMAL there and keeps ordinary optional semantics.
 #   - It is NOT proof against a worker REWRITING project-owned hook code. The
 #     worker's own envelope reaches this file: the plugin registers the hook at
-#     $CLAUDE_PROJECT_DIR/scripts/hooks/, which in a worker session is the
+#     $CLAUDE_PROJECT_DIR/scripts/hooks/, which in a worker is the
 #     worker's worktree, and composeWorkerSettings grants Edit(<worktree>/**)
 #     plus Bash(node *)/Bash(bash *). A worker that replaces this file with
 #     `exit 0` neuters the guard for every later tool call.
@@ -244,7 +244,7 @@ case "$tool" in Bash|PowerShell) tool_is_shell=1 ;; esac
 # same variable for the hook launcher (hook-integrity.js honourBypass); this is
 # the same predicate for these fences, re-stated in bash because that function is
 # not exported and its owner keeps that file closed. It is honoured only when ALL
-# of these hold, and every leg fails CLOSED (return 1 = the fences stay ON):
+# of these hold, and every worker fails CLOSED (return 1 = the fences stay ON):
 #   - CLAUDE_PROJECT_DIR is set and the session cwd is inside it;
 #   - the session's record ($HIMMEL_HOOK_INTEGRITY_DIR/<session_id>.json) carries
 #     an ABSOLUTE git_dir (a legacy record without one refuses);

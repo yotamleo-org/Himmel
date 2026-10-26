@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-anchor-seeds.sh -- a query that names a file or identifier starts graphify from that node.
 # graphify seeds on the question's words, drops tokens of two letters or fewer (go.sh is "go" and
-# "sh") and favours one-word labels, so the named file never seeded. leg-graph.sh resolves the
+# "sh") and favours one-word labels, so the named file never seeded. worker-graph.sh resolves the
 # names with anchor-seeds.py and merges a given-seed answer with graphify's own. Stub rows run
 # everywhere; the real-graphify row is skipped when graphify is not installed.
 set -u
@@ -31,8 +31,8 @@ nodes = [
     node("write_ts", "Write", "scripts/tools.ts", "L9"),
     node("file_ts", "File", "scripts/tools.ts", "L12"),
     node("deferred", "file-deferred-issues.sh", "scripts/file-deferred-issues.sh"),
-    node("lts_sh", "leg-tail-status.sh", "scripts/lib/leg-tail-status.sh"),
-    node("lts_fn", "leg_tail_status()", "scripts/lib/leg-tail-status.sh", "L8"),
+    node("lts_sh", "worker-tail-status.sh", "scripts/lib/worker-tail-status.sh"),
+    node("lts_fn", "worker_tail_status()", "scripts/lib/worker-tail-status.sh", "L8"),
     node("ql_sh", "queue-lock.sh", "scripts/handover/queue-lock.sh"),
     node("ql_test", "queue-lock.sh", "scripts/handover/tests/queue-lock.sh"),
     node("tail_fn", "tail()", "scripts/lib/text.sh", "L2"),
@@ -53,8 +53,8 @@ if [ "$got" = "go_sh " ]; then pass "A1 go.sh resolves to its file node"
 else fail "A1 got='$got'"; fi
 
 # A2: a snake_case identifier resolves to the symbol, not to tail() or status().
-got="$(seeds "which file defines leg_tail_status")"
-if [ "$got" = "lts_fn " ]; then pass "A2 leg_tail_status resolves to its function"
+got="$(seeds "which file defines worker_tail_status")"
+if [ "$got" = "lts_fn " ]; then pass "A2 worker_tail_status resolves to its function"
 else fail "A2 got='$got'"; fi
 
 # A3: a kebab stem resolves to the file; a test copy loses to the real file.
@@ -63,7 +63,7 @@ if [ "$got" = "ql_sh " ]; then pass "A3 queue-lock resolves to the non-test file
 else fail "A3 got='$got'"; fi
 
 # A4: plain words, and a name that matches nothing, give no seeds.
-got="$(seeds "how does a console hand work to a leg") $(seeds "what does foo-bar do")"
+got="$(seeds "how does a chief hand work to a worker") $(seeds "what does foo-bar do")"
 if [ "$got" = " " ]; then pass "A4 no name, or an unknown name, seeds nothing"
 else fail "A4 got='$got'"; fi
 

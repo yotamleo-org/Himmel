@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/wrap-merged.sh - a leg's MERGED and
-# WRAPPED in one call. Replaces the console's separate turns: check the merge,
-# close the window, drop the leg from the fleet, pull the primary, log it,
+# scripts/handover/chief-kit/wrap-merged.sh - a worker's MERGED and
+# WRAPPED in one call. Replaces the chief's separate turns: check the merge,
+# close the window, drop the worker from the fleet, pull the primary, log it,
 # re-render the board.
 #
-# Usage: wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]
+# Usage: wrap-merged.sh --doc <chief doc> --fleet <manifest> <worker doc> [--pr <n>]
 #
 # Steps, in order; the first failure stops the run, names the step on stderr and
 # exits with the rc shown. A failure after pr-state proved the merge still re-renders
 # the board (its rc ignored), so a stopped wrap never leaves the board stale:
 #   1. pr-state   `gh pr view <n>` must be MERGED (rc 3 if not; rc 2 if no PR can
 #                 be found). <n> is --pr, else the newest `READY <n>` / `PR <n>`
-#                 in the leg doc. The sha recorded is mergeCommit.oid - never
-#                 the head a leg's own READY bullet names, which is the PR head.
-#   2. close      close-wrapped-leg.sh --fleet <manifest> <leg doc>, ALWAYS - the
+#                 in the worker doc. The sha recorded is mergeCommit.oid - never
+#                 the head a worker's own READY bullet names, which is the PR head.
+#   2. close      close-wrapped-worker.sh --fleet <manifest> <worker doc>, ALWAYS - the
 #                 manifest is never proof of a closed window. Its rc is
 #                 propagated: 1 plumbing/manifest, 3 lock held, 4 not WRAPPED,
 #                 5 session count, 6 subtree alive, 7 subagent alive. The one
@@ -21,26 +21,26 @@
 #                 session(s)" (lock free and tail WRAPPED already proven) means
 #                 the window is gone, so the entry is retired with
 #                 `fleet-manifest.sh remove` (rc 1 if that fails) and the run
-#                 goes on. <leg doc> is resolved to its absolute physical path.
+#                 goes on. <worker doc> is resolved to its absolute physical path.
 #   3. pull       git -C <primary> pull --ff-only (rc 5).
-#   4. log        one console-doc bullet, skipped when `MERGED #<n> → <sha8>`
+#   4. log        one chief-doc bullet, skipped when `MERGED #<n> → <sha8>`
 #                 is already in the doc (rc 6):
 #                 MERGED #<n> → <sha8> (<label>, <ticket> <status>). <label> WRAPPED, window closed.
 #                 <status> is read with the Jira CLI `get`; this script never
 #                 transitions a ticket. An unreadable status is `?`.
-#   5. board      board.mjs --doc <console doc> --changed (rc 7); its output is
+#   5. board      board.mjs --doc <chief doc> --changed (rc 7); its output is
 #                 passed through.
-#   5. tracker    best effort, never fails the wrap: when the console doc has a
+#   5. tracker    best effort, never fails the wrap: when the chief doc has a
 #                 `tracker:` line, jira mirror + jira versions (snapshot next to the
 #                 mirror) + tracker.py render, each under WM_TRACKER_TIMEOUT (120 s).
 #                 Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip. Publishing the
-#                 artifact stays the console's job. Seam: WM_TRACKER_PY. With a
+#                 artifact stays the chief's job. Seam: WM_TRACKER_PY. With a
 #                 `focus-version:` line (or `auto`, or none beside a `release:` line) the page belongs to focus-refresh.sh (step 5c):
 #                 mirror + versions still run, the render does not (tracker=skip:focus).
-#   5b. remaining the console doc's `remaining-board: <version>` line renders that version's open tickets,
+#   5b. remaining the chief doc's `remaining-board: <version>` line renders that version's open tickets,
 #                 grouped by the plan's priority line, to <doc dir>/roadmap-remaining-<version>.md from the
 #                 mirror step 5 just refreshed. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
-#   5c. focus     best effort, never fails the wrap: the console doc's `focus-version:` line (a version, `auto`,
+#   5c. focus     best effort, never fails the wrap: the chief doc's `focus-version:` line (a version, `auto`,
 #                 or no line beside `release: <R>`; `none` skips) runs focus-refresh.sh under WM_FOCUS_TIMEOUT (300 s) and prints focus=ok|busy|DIRTY:<age>|
 #                 FAILED:<stage>|skip. Seam: WM_FOCUS. After focus=ok each line of
 #                 <doc dir>/focus-drift.txt is printed as `drift: <line>`.
@@ -64,7 +64,7 @@ if [ -n "${WM_BOARD:-}" ]; then BOARD=("$WM_BOARD"); else BOARD=(node "$HERE/boa
 if [ -n "${WM_TRACKER_PY:-}" ]; then TRACKER=("$WM_TRACKER_PY"); else TRACKER=(python3 "$HERE/tracker.py"); fi
 if [ -n "${WM_FOCUS:-}" ]; then FOCUS=("$WM_FOCUS"); else FOCUS=(bash "$HERE/focus-refresh.sh"); fi
 
-usage() { echo "usage: wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]" >&2; exit 2; }
+usage() { echo "usage: wrap-merged.sh --doc <chief doc> --fleet <manifest> <worker doc> [--pr <n>]" >&2; exit 2; }
 BOARD_ON_FAIL=""
 fail()  {
     echo "wrap-merged: step $1 failed: $2" >&2
@@ -72,25 +72,25 @@ fail()  {
     exit "$3"
 }
 
-DOC=""; FLEET=""; LEG=""; PR=""
+DOC=""; FLEET=""; WORKER=""; PR=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc|--fleet|--pr) [ "$#" -ge 2 ] || usage
             case "$1" in --doc) DOC="$2" ;; --fleet) FLEET="$2" ;; --pr) PR="$2" ;; esac
             shift 2 ;;
         -*) usage ;;
-        *) [ -z "$LEG" ] || usage; LEG="$1"; shift ;;
+        *) [ -z "$WORKER" ] || usage; WORKER="$1"; shift ;;
     esac
 done
-{ [ -n "$DOC" ] && [ -n "$FLEET" ] && [ -n "$LEG" ]; } || usage
-{ [ -f "$DOC" ] && [ -f "$LEG" ]; } || { echo "wrap-merged: console doc or leg doc is not a file" >&2; exit 2; }
+{ [ -n "$DOC" ] && [ -n "$FLEET" ] && [ -n "$WORKER" ]; } || usage
+{ [ -f "$DOC" ] && [ -f "$WORKER" ]; } || { echo "wrap-merged: chief doc or worker doc is not a file" >&2; exit 2; }
 # the manifest holds absolute physical paths: match on the same form (rel path, symlink, .., // all collapse)
-LEG="$(cd "$(dirname "$LEG")" && pwd -P)/${LEG##*/}"
+WORKER="$(cd "$(dirname "$WORKER")" && pwd -P)/${WORKER##*/}"
 
 if [ -z "$PR" ]; then
-    PR="$(grep -E '^- .*(READY|PR) #?[0-9]+' "$LEG" | tail -n 1 | grep -oE '(READY|PR) #?[0-9]+' | tail -n 1 | grep -oE '[0-9]+')" || PR=""
+    PR="$(grep -E '^- .*(READY|PR) #?[0-9]+' "$WORKER" | tail -n 1 | grep -oE '(READY|PR) #?[0-9]+' | tail -n 1 | grep -oE '[0-9]+')" || PR=""
 fi
-case "$PR" in ''|*[!0-9]*) echo "wrap-merged: no PR in $LEG and no --pr given" >&2; exit 2 ;; esac
+case "$PR" in ''|*[!0-9]*) echo "wrap-merged: no PR in $WORKER and no --pr given" >&2; exit 2 ;; esac
 
 PRIMARY="${WM_PRIMARY:-}"
 if [ -z "$PRIMARY" ]; then
@@ -108,28 +108,28 @@ sha="$(printf '%s' "$view" | jq -r '.mergeCommit.oid // empty' 2>/dev/null)"
 sha8="${sha:0:8}"
 BOARD_ON_FAIL=1
 
-base="${LEG##*/}"
+base="${WORKER##*/}"
 ticket=""; label=""
 [[ $base =~ ^([A-Za-z][A-Za-z]*-[0-9]+)- ]] && ticket="${BASH_REMATCH[1]}"
 [[ $base =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
 [ -n "$label" ] || label="${base%.md}"
 
 # 2. close - always. The manifest is never proof of a closed window (it stores the
-# doc as the dispatcher typed it, and every leg is WRAPPED before its close).
-errf="$(mktemp "${TMPDIR:-/tmp}/wrap-merged-close.XXXXXX")" || fail close-wrapped-leg "mktemp failed" 1
-"${CLOSE[@]}" --fleet "$FLEET" "$LEG" 2>"$errf"; rc=$?
+# doc as the dispatcher typed it, and every worker is WRAPPED before its close).
+errf="$(mktemp "${TMPDIR:-/tmp}/wrap-merged-close.XXXXXX")" || fail close-wrapped-worker "mktemp failed" 1
+"${CLOSE[@]}" --fleet "$FLEET" "$WORKER" 2>"$errf"; rc=$?
 cat "$errf" >&2
 if [ "$rc" -eq 5 ] && grep -Fq 'refusing - 0 live session(s)' "$errf"; then
-    # close-wrapped-leg proved the lock free and the tail WRAPPED, then found no session:
+    # close-wrapped-worker proved the lock free and the tail WRAPPED, then found no session:
     # the window is already gone (a re-run). It stopped before its own manifest removal,
     # so retire the entry here, by label as well as path (the manifest keeps the as-typed doc).
     rm -f "$errf"
-    echo "wrap-merged: no live session for $LEG - window already closed"
-    bash "$HERE/fleet-manifest.sh" remove "$FLEET" "$LEG" "$label" >/dev/null \
-        || fail close-wrapped-leg "window already closed but fleet-manifest.sh remove failed - run: fleet-manifest.sh remove $FLEET $label" 1
+    echo "wrap-merged: no live session for $WORKER - window already closed"
+    bash "$HERE/fleet-manifest.sh" remove "$FLEET" "$WORKER" "$label" >/dev/null \
+        || fail close-wrapped-worker "window already closed but fleet-manifest.sh remove failed - run: fleet-manifest.sh remove $FLEET $label" 1
 else
     rm -f "$errf"
-    [ "$rc" -eq 0 ] || fail close-wrapped-leg "close-wrapped-leg.sh exited $rc" "$rc"
+    [ "$rc" -eq 0 ] || fail close-wrapped-worker "close-wrapped-worker.sh exited $rc" "$rc"
 fi
 
 # 3. pull
@@ -147,10 +147,10 @@ else
     bash "$HERE/append-results.sh" "$DOC" "$text" || fail log "append-results.sh" 6
 fi
 
-# 5. tracker - best effort, never fails the wrap. The console doc's `tracker:` line
+# 5. tracker - best effort, never fails the wrap. The chief doc's `tracker:` line
 # opts in (the same line, plan dir and paths tick.sh's tracker= reads). Mirror Jira,
 # snapshot the versions, re-render when the page's fingerprint moved. Artifact
-# publishing stays the console's job. Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip.
+# publishing stays the chief's job. Prints tracker=CHANGED|UNCHANGED|failed:<why>|skip.
 focus_owned() { # 0 when the FOCUS page is focus-refresh's: a version or `auto`, or no line beside a release: line
     local f r
     f="$(sed -n 's/^focus-version:[[:space:]]*//p' "$DOC" | head -n 1)"
@@ -180,7 +180,7 @@ tracker_refresh() {
     if [ "$rc" -ne 0 ]; then rm -f "$mir.versions.tsv.tmp.$$"; echo "tracker=failed:versions-rc$rc"; return 0; fi
     mv -f "$mir.versions.tsv.tmp.$$" "$mir.versions.tsv" || { echo "tracker=failed:versions-write"; return 0; }
     MIRROR_FRESH="$mir"
-    # one writer per page: a focus-version console's page is focus-refresh's
+    # one writer per page: a focus-version chief's page is focus-refresh's
     ! focus_owned || { echo "tracker=skip:focus"; return 0; }
     set -- --plan-dir "$plan" --out "$out" --luna-map "$dir/roadmap-luna-map.json" --mirror-dir "$mir"
     split=""
@@ -200,7 +200,7 @@ tracker_refresh() {
 MIRROR_FRESH=""
 tracker_refresh
 
-# 5b. remaining-only board - best effort, never fails the wrap. The console doc's `remaining-board: <version>`
+# 5b. remaining-only board - best effort, never fails the wrap. The chief doc's `remaining-board: <version>`
 # line opts in; the priority line comes from `remaining-plan:` (a plan file), else the newest
 # <doc dir>/specs/plans/<version>-approved-plan-<date>.md, else <version>-approved-plan.md (none: every ticket lands in the rest group). Reads the mirror step 5 just refreshed (no fresh mirror, no render).
 # Writes <doc dir>/roadmap-remaining-<version>.md. Prints remaining=CHANGED|UNCHANGED|failed:<why>|skip[:<why>].
@@ -226,7 +226,7 @@ remaining_refresh() {
 }
 remaining_refresh
 
-# 5c. focus - best effort, never fails the wrap. The console doc's `focus-version:` line opts in; the
+# 5c. focus - best effort, never fails the wrap. The chief doc's `focus-version:` line opts in; the
 # refresh (focus-refresh.sh, bounded) reuses the mirror step 5 just refreshed.
 # Prints focus=ok|busy|DIRTY:<age>|FAILED:<stage>|skip.
 focus_refresh() {

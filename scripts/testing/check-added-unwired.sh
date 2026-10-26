@@ -187,7 +187,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
   local p="$1" k="$2" b="${1##*/}" d plug imp generic_pat
   case "$k" in
     hook)
-      printf '%s\n' "$wiring_text" | grep -qE -- "$(bn_re "$b")" && return 0
+      grep -qE -- "$(bn_re "$b")" <<<"$wiring_text" && return 0
       printf '%s\n' "$hook_allow" | grep -qxF -- "$b" && return 0
       echo "no hook wiring file names it and it is not on unwired-hooks-allowlist.txt" ;;
     suite)
@@ -230,7 +230,7 @@ judge() {  # <path> <kind> -> prints a reason when unwired
         [ -n "$r" ] || continue
         rb="${r##*/}"
         case "$(kind_of "$r")" in
-          hook) printf '%s\n' "$wiring_text" | grep -qE -- "$(bn_re "$rb")" && return 0
+          hook) grep -qE -- "$(bn_re "$rb")" <<<"$wiring_text" && return 0
                 printf '%s\n' "$hook_allow" | grep -qxF -- "$rb" && return 0 ;;
           suite) printf '%s\n' "$p" | grep -qE "$TEST_HELPER_RE" && { is_pending "$r" || return 0; } ;;
           *) is_pending "$r" || return 0 ;;

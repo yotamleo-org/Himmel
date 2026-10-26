@@ -183,7 +183,7 @@ fi
 # a per-line bash loop calling `to_epoch` (a `date -d` fork) per extracted
 # timestamp: a real transcript file can carry thousands of
 # tool_use timestamps, and a real run scans every *.jsonl under every
-# transcript root (hundreds of worktree roots as legs accumulate). That is
+# transcript root (hundreds of worktree roots as workers accumulate). That is
 # tens or hundreds of thousands of serial `date` forks before the FIRST byte
 # of the report prints (the report is built and emitted only after this whole
 # scan finishes), which is indistinguishable from a silent hang.

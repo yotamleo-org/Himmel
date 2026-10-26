@@ -280,10 +280,10 @@ printf '%s\n' "$reached" | grep -v '^scripts/cr/' | sed 's/^/  /'
 
 # Sanity: the derivation actually reaches the known non-scripts/cr sites, so
 # an empty or truncated closure cannot pass vacuously.
-# console-route.ts and poller.ts are reached only through merge-block-alert.sh's
-# bare `bun` call and a dynamic import (second console review of #1148).
+# chief-route.ts and poller.ts are reached only through merge-block-alert.sh's
+# bare `bun` call and a dynamic import (second chief review of #1148).
 for known in scripts/check-ci.sh scripts/handover/resolve-active-item.sh scripts/lib/handover-path.sh scripts/lib/load-dotenv.sh scripts/guardrails/lib.sh \
-    scripts/telegram/console-route.ts scripts/telegram/bus.ts scripts/telegram/console-heartbeat-watch.ts scripts/telegram/poller.ts; do
+    scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/chief-heartbeat-watch.ts scripts/telegram/poller.ts; do
   check "$(printf '%s\n' "$reached" | grep -cxF "$known")" "1" "closure reaches $known"
 done
 
@@ -304,7 +304,7 @@ else
 fi
 
 # RED control: the set PR #1148 first shipped (3f62af60) must fail too - it
-# missed the variable-assigned exec paths the console's review found.
+# missed the variable-assigned exec paths the chief's review found.
 red="$(printf '%s\n' "$reached" | outside "scripts/cr scripts/lib scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh")"
 for missed in scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/hermes/invoke.sh scripts/statusline/usage-cache-producer.sh; do
   check "$(grep -cxF "$missed" <<< "$red")" "1" "RED control: the 3f62af60 set leaves $missed unguarded"

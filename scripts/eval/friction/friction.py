@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""HIMMEL-4926 friction measurement: every leg refusal by source, class and cost.
+"""HIMMEL-4926 friction measurement: every worker refusal by source, class and cost.
 
-Reads (never writes) session transcripts of both lanes and the leg handover docs,
+Reads (never writes) session transcripts of both lanes and the worker handover docs,
 classifies each refusal into source x class x verdict, and aggregates per class:
-count, distinct legs (sessions), median recovery minutes, console turns,
+count, distinct workers (sessions), median recovery minutes, chief turns,
 operator interrupts.  Output: JSON (machine) and Markdown (ranked table).
 
 usage: friction.py [--days N] [--now ISO] [--projects DIR]... [--docs DIR] [--reports FILE]
@@ -50,13 +50,13 @@ HOOK_CLASSES = {
         (r'does not resolve to this root', 'text-mentions-gate-path', 'over-deny',
          'fires on text that merely mentions a gate script (heredoc, message, glob in a regex)'),
         (r'not one simple command', 'pipe-or-chain-beside-gate', 'true-positive',
-         'leg appended a pipe/redirect/chain to a gate script (preface forbids it)'),
+         'worker appended a pipe/redirect/chain to a gate script (preface forbids it)'),
         (r'differs from the HIMMEL_REPO anchor', 'worktree-copy-differs-from-anchor', 'over-deny',
-         'a leg that edits a policy script cannot then run it relatively (HIMMEL-4916)'),
+         'a worker that edits a policy script cannot then run it relatively (HIMMEL-4916)'),
         (r'names a guarded script and can writ', 'redirect-beside-gate-script', 'true-positive',
          'output redirect beside a guarded script'),
         (r'changes directory, so the relative path', 'cd-before-relative-gate-path', 'true-positive',
-         'leg cd-ed before a relative gate path; the preface forbids cd && (run the literal relative shape)'),
+         'worker cd-ed before a relative gate path; the preface forbids cd && (run the literal relative shape)'),
         (r'(?s)^(?:(?!' + GIT_INVOCATION + r'|\(HIMMEL-).)*\(HIMMEL-[^)]*\): git execution/config options or ambiguous option-value',
          'git-option-beside-gate-mention', 'over-deny',
          'read-only grep/sed/loop that names a gate script; the guard cannot prove the mention is a pathspec'),
@@ -80,7 +80,7 @@ HOOK_CLASSES = {
         (r'a value git or the shell it spawns will execute', 'git-exec-value-with-expansion-char', 'unclear',
          'GIT_*/EDITOR/PAGER or -c value with a shell expansion character; harmless or hostile by value'),
         (r'--from-file path .* is not a single literal token', 'from-file-path-not-single-token', 'true-positive',
-         'a ; or quote glued to the --from-file path (leg typo)'),
+         'a ; or quote glued to the --from-file path (worker typo)'),
         (r'--from-file path', 'from-file-path-outside-scratch', 'unclear', 'scratch path rule for --from-file'),
         (r'could not be tokenized', 'unparseable-line-with-expansion-char', 'unclear',
          'a line the guard cannot tokenize that carries a shell expansion character (fail-closed)'),
@@ -124,9 +124,9 @@ HOOK_CLASSES = {
          r'grep|show|log|diff)\b', 'git-object-only-command-flagged-as-write', 'over-deny',
          'merge-tree/patch-id/hash-object/commit-tree and read-only git: object-database work, the primary tree is untouched'),
         (r'(?s)on main/master\..*\(git subcommand: ', 'git-subcommand-in-primary', 'unclear',
-         'git fetch (refs only) against the primary; true for a leg, over-deny for the console'),
+         'git fetch (refs only) against the primary; true for a worker, over-deny for the chief'),
         (r'on main/master', 'write-shaped-command-on-main', 'unclear',
-         'git merge/fetch against the primary; true for a leg, over-deny for the console'),
+         'git merge/fetch against the primary; true for a worker, over-deny for the chief'),
         (r'.', 'main-checkout-other', 'unclear', 'other main-checkout denial'),
     ],
     'run-hook-with-bash': [(r'budget=', 'hook-budget-timeout', 'over-deny',
@@ -200,7 +200,7 @@ HOOK_CLASSES = {
     ],
     'graphify-fence': [
         (r'relative graphify target after an in-command cd', 'graphify-relative-target-after-cd', 'true-positive',
-         'leg cd-ed then used a relative graphify target; absolute paths are the rule'),
+         'worker cd-ed then used a relative graphify target; absolute paths are the rule'),
         (r'unclassifiable path', 'graphify-unclassifiable-path', 'unclear',
          'a graphify path the fence cannot classify (fail-closed)'),
         (r'--backend explicitly', 'graphify-backend-undeclared', 'true-positive', 'no declared graphify backend'),
@@ -227,7 +227,7 @@ HOOK_CLASSES = {
 
 # ordered rules over the whole tool_result text: (regex, source, class, verdict, evidence)
 TEXT_RULES = [
-    (r'leg context checkpoint', 'hook:guard-leg-context-handoff', 'context-guard-lock', 'true-positive',
+    (r'worker context checkpoint', 'hook:guard-worker-context-handoff', 'context-guard-lock', 'true-positive',
      'by design at the fill threshold; cost is the unlock ritual'),
     (r'Permission for this action was denied by the Claude Code auto mode classifier\. Reason: \[([^\]]+)\]',
      'classifier', None, 'unclear', 'auto-mode classifier verdict'),
@@ -236,7 +236,7 @@ TEXT_RULES = [
     (r'ERR suite-semaphore: all \d+ suite slot', 'lane-rule', 'suite-slot-busy', 'true-positive',
      'fleet suite semaphore (HIMMEL-1818) is a deliberate cap; cost is the wait'),
     (r"ERR quiet-run: label 'suite' requires a tracked", 'gate:quiet-run', 'suite-label-untracked-path',
-     'true-positive', 'label contract; wrong invocation by the leg'),
+     'true-positive', 'label contract; wrong invocation by the worker'),
     (r'check-ci: watch cap reached', 'ci-wait', 'check-ci-watch-cap', 'unclear',
      'CI still pending at the watch cap; cost is a re-poll turn'),
     (r'clear-cr-marker[^\n]*no (class|variant)-sweep record|clear-cr-marker: agreed-and-fixed', 'gate:clear-cr-marker',
@@ -246,7 +246,7 @@ TEXT_RULES = [
     (r'clear-cr-marker: merged amend', 'gate:clear-cr-marker', 'merged-amend-open', 'unclear',
      'amend evaluation refusal'),
     (r'No such tool available: Grep', 'lane-rule', 'no-grep-tool', 'true-positive',
-     'documented leg profile; costs one retry turn'),
+     'documented worker profile; costs one retry turn'),
     (r'WITHHELD:', 'gate:wrap-subtree-check', 'wrap-subtree-withheld', 'true-positive',
      'live child processes at wrap'),
     (r'context-fill: STALE', 'gate:context-fill', 'context-fill-stale', 'over-deny',
@@ -375,15 +375,15 @@ CLASSIFIER_TAGS = [
 ]
 DOC_RULES = [
     (r'SKIPPED-BANK|bank-preflight|bank lane', 'gate:bank-preflight', 'bank-lane-mismatch'),
-    (r'context guard|context-checkpoint|checkpoint guard|context handoff', 'hook:guard-leg-context-handoff',
+    (r'context guard|context-checkpoint|checkpoint guard|context handoff', 'hook:guard-worker-context-handoff',
      'context-guard-lock'),
     (r'missing-(class|variant)-sweep|(class|variant)-sweep', 'gate:clear-cr-marker', 'missing-variant-sweep'),
     (r'runner queue|QUEUED|check-ci|DEADLINE|CI (red|wait)', 'ci-wait', 'ci-wait'),
     (r'push failed|upstream name mismatch|rc=128', 'lane-rule', 'push-failed'),
-    (r'publication|no second push|console (pushes|publishes)|push(ed)? by the console', 'lane-rule', 'one-push-per-session'),
+    (r'publication|no second push|chief (pushes|publishes)|push(ed)? by the chief', 'lane-rule', 'one-push-per-session'),
     (r'pre-commit|shellcheck|commit gate|first commit rejected', 'gate:pre-commit', 'commit-gate-reject'),
-    (r'ruling|asked (the )?console|awaiting (the )?console|console (to|decision)', 'leg-question',
-     'console-ruling-question'),
+    (r'ruling|asked (the )?(console|chief)|awaiting (the )?(console|chief)|(console|chief) (to|decision)', 'worker-question',
+     'chief-ruling-question'),
 ]
 
 
@@ -426,7 +426,7 @@ def scan_docs(docs_dir, since, names):
     for path in glob.glob(os.path.join(docs_dir, 'HIMMEL-*-N*.md')):
         if os.path.getmtime(path) < cutoff:
             continue
-        leg = os.path.basename(path)
+        worker = os.path.basename(path)
         try:
             body = open(path, errors='replace').read()
         except OSError:
@@ -448,7 +448,7 @@ def scan_docs(docs_dir, since, names):
                     break
             if hold is not None and hold > 720:
                 hold = None
-            rows.append({'source': src, 'class': cls, 'leg': leg, 'marker': marker, 'hold_min': hold,
+            rows.append({'source': src, 'class': cls, 'leg': worker, 'marker': marker, 'hold_min': hold,
                          'operator': bool(re.search(r'operator', text, re.I)), 'snippet': mask(text[8:])})
     return rows
 
@@ -500,7 +500,7 @@ def _med(xs):
 
 
 def aggregate(tx_rows, doc_rows):
-    """Per (source, class) from transcripts; per source from leg docs (docs carry no class granularity)."""
+    """Per (source, class) from transcripts; per source from worker docs (docs carry no class granularity)."""
     classes = {}
     for r in tx_rows:
         a = classes.setdefault((r['source'], r['class']), {
@@ -557,22 +557,22 @@ def aggregate(tx_rows, doc_rows):
 
 def render_md(agg, meta):
     lines = ['# Friction measurement (last %s days)' % meta['days'], '',
-             '%d transcript refusals, %d leg-doc BLOCKED/FINDING bullets.' % (meta['refusals'], meta['doc_rows']),
+             '%d transcript refusals, %d worker-doc BLOCKED/FINDING bullets.' % (meta['refusals'], meta['doc_rows']),
              'ci-wait: %d CI re-polls (not refusals, left out of the totals).' % meta['ci_wait'],
              'hook unclear: %d of %d hook refusals (%s).' % (
                  meta['hook_unclear'], meta['hook_refusals'],
                  'n/a' if meta['hook_unclear_share'] is None else '%.1f %%' % (100 * meta['hook_unclear_share'])), '',
-             '## A. Escalations to the console, by source (leg docs)', '',
-             'score = total hold min + 5 x console turns + 15 x operator interrupts.', '',
-             '| # | source | doc blocks | legs | median hold min | total hold min | console turns | operator | '
+             '## A. Escalations to the chief, by source (worker docs)', '',
+             'score = total hold min + 5 x chief turns + 15 x operator interrupts.', '',
+             '| # | source | doc blocks | workers | median hold min | total hold min | chief turns | operator | '
              'transcript refusals | score |', '|---|---|---|---|---|---|---|---|---|---|']
     for i, r in enumerate(agg['by_source'], 1):
         lines.append('| %d | %s | %d | %d | %s | %s | %d | %d | %d | %s |' % (
             i, r['source'], r['doc_blocks'], r['distinct_legs'],
             '-' if r['median_hold_min'] is None else r['median_hold_min'], r['total_hold_min'],
             r['console_turns'], r['operator_interrupts'], r['transcript_refusals'], r['score']))
-    lines += ['', '## A2. Escalations by source x class (leg docs)', '',
-              '| # | source | class | doc blocks | legs | median hold min | total hold min | operator |',
+    lines += ['', '## A2. Escalations by source x class (worker docs)', '',
+              '| # | source | class | doc blocks | workers | median hold min | total hold min | operator |',
               '|---|---|---|---|---|---|---|---|']
     for i, r in enumerate(agg['doc_classes'], 1):
         lines.append('| %d | %s | %s | %d | %d | %s | %s | %d |' % (
@@ -636,7 +636,7 @@ def render_section(tx, prior_tx, docs, days, top=5):
         e = esc.setdefault((r['source'], r['class']), {'n': 0, 'hold': 0})
         e['n'] += 1
         e['hold'] += r['hold_min'] or 0
-    out += ['', 'Escalations to the console, by total hold:', '']
+    out += ['', 'Escalations to the chief, by total hold:', '']
     for (src, cls), e in sorted(esc.items(), key=lambda kv: (-kv[1]['hold'], kv[0]))[:top]:
         out.append('- %s / %s: %d blocks, %d hold min' % (src, cls, e['n'], e['hold']))
     if not esc:

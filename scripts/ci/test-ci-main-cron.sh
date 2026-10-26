@@ -7,7 +7,7 @@
 #   - two schedule crons: the nightly `17 7 * * *` and a main-sweep cron whose
 #     hours leave no gap above 7 h;
 #   - the cadence is documented next to the cron;
-#   - nightly-only behaviour (windows legs, extended-tier issue,
+#   - nightly-only behaviour (windows workers, extended-tier issue,
 #     guard-corpus-full) is keyed on the nightly cron's github.event.schedule,
 #     never on a bare event_name == 'schedule' that the main cron would also hit;
 #   - the selector-miss ledger no longer keys on `push`;

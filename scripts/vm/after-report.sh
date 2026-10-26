@@ -13,14 +13,14 @@
 # WHY A VM: scripts/ci/run-shell-tests.sh --changed-since origin/main --pr <N>
 # takes ~35-45 min per PR here, and every run serialises on ONE machine-wide
 # advisory lock —
-# with 5-6 legs live the queue becomes the shift's bottleneck. A VM is a
+# with 5-6 workers live the queue becomes the shift's bottleneck. A VM is a
 # SEPARATE host, so a run there never contends for that lock at all; this
 # script is what makes that separation actually happen.
 #
 # WHY A STANDALONE SCRIPT, NOT A vmsdk.py VERB: this is a CI/after-report
 # WORKFLOW that happens to use a VM, not a VM-lifecycle operation (up/down/
 # snapshot/provision — vmsdk.py's actual verb surface). It lives beside the
-# rest of the after-report tooling (scripts/quiet-run.sh, the console launch
+# rest of the after-report tooling (scripts/quiet-run.sh, the chief launch
 # shape), which is bash; vmsdk.py is Python. This script CALLS the SDK/vbox
 # primitives (scripts/lib/vbox.py) rather than living inside them.
 #
@@ -65,7 +65,7 @@
 #      this time. The GOLDEN image is the opposite case: it is snapshotted
 #      BEFORE any identity exists at all, so "snapshot after first boot" is
 #      a rule for a clone's own baseline, never for the golden image itself.
-#      If a leg boots `ubuntu_new` to modify the image, it must re-zero
+#      If a worker boots `ubuntu_new` to modify the image, it must re-zero
 #      `/etc/machine-id`, remove the ssh host keys and re-create
 #      `/etc/himmel-regen-identity` before snapshotting, or the new golden
 #      image ships personalised. This is not an assumption carried forward
@@ -582,7 +582,7 @@ REPORT_HEAD=$(printf '%s' "$REPORT_HEAD" | tr -d '[:space:]')
 
 # --- derive the after-report log's ticket label from the branch name; the
 # log path shape (/tmp/quiet-run-ar-<ticket>-<ts>.log) matches
-# scripts/quiet-run.sh's own naming exactly, because console monitors grep
+# scripts/quiet-run.sh's own naming exactly, because chief monitors grep
 # for it. --------------------------------------------------------------
 TICKET=$(printf '%s' "$BRANCH" | grep -ioE '[a-z]+-[0-9]+' | head -n1 | tr '[:upper:]' '[:lower:]')
 if [ -z "$TICKET" ]; then

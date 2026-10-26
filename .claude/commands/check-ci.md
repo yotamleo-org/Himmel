@@ -25,7 +25,7 @@ Pending at the deadline prints `DEADLINE-PENDING` (`7` instead of `2` with
 `CHECK_CI_DISTINCT_DEADLINE=1`). Bounded reads require GNU timeout/gtimeout.
 The heartbeat path is printed at launch; `CHECK_CI_RUN_HEARTBEAT` overrides it.
 Its `hb=... pid=... key=... tick=... state=... [exit=...]` shape matches
-console-wait; an abandoned sampling/waiting heartbeat never means success.
+chief-wait; an abandoned sampling/waiting heartbeat never means success.
 Return the verdict; the PR-specific instructions below do not apply in this mode.
 
 ## PR mode

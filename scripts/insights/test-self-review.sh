@@ -27,12 +27,12 @@ merge() { # <date> <subject> [body]
 }
 
 merge 2026-08-01 'fix(hooks): [HIMMEL-1] outside the window' 'main is red
-leg-burn: calls=1 avg-ctx=1k first-turn=1k compactions=5'
-merge 2026-09-02 'fix(hooks): [HIMMEL-10] tighten the write fence' 'leg-burn: calls=9 avg-ctx=1k first-turn=1k compactions=2'
-merge 2026-09-03 'fix: [HIMMEL-10] guard misses a shape' 'leg-burn: calls=9 avg-ctx=1k first-turn=1k compactions=0'
+worker-burn: calls=1 avg-ctx=1k first-turn=1k compactions=5'
+merge 2026-09-02 'fix(hooks): [HIMMEL-10] tighten the write fence' 'worker-burn: calls=9 avg-ctx=1k first-turn=1k compactions=2'
+merge 2026-09-03 'fix: [HIMMEL-10] guard misses a shape' 'worker-burn: calls=9 avg-ctx=1k first-turn=1k compactions=0'
 merge 2026-09-04 'fix(docs): [HIMMEL-10] prune history comments' 'fixes-main-red: #2
-leg-burn: calls=9 avg-ctx=1k first-turn=1k compactions=1'
-merge 2026-09-05 'feat(console): [HIMMEL-11] new verb' 'leg-burn: calls=9 avg-ctx=1k first-turn=1k compactions=0'
+worker-burn: calls=9 avg-ctx=1k first-turn=1k compactions=1'
+merge 2026-09-05 'feat(chief): [HIMMEL-11] new verb' 'worker-burn: calls=9 avg-ctx=1k first-turn=1k compactions=0'
 merge 2026-09-06 'chore: [HIMMEL-12] bump' 'no burn line here'
 merge 2026-09-07 'Revert "feat(x): [HIMMEL-11] new verb"' 'red main after merge'
 merge 2026-09-08 'feature-flag: [HIMMEL-13] not a feat prefix'

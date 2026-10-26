@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # failure-review-cadence.sh — the daily failure review on a schedule.
 #
-# WHY: the failure loop records failures on every leg close and the router (failure_router.py) turns
+# WHY: the failure loop records failures on every worker close and the router (failure_router.py) turns
 # recurring classes into tickets, but nothing ran the router or showed the operator what failed.
 # This is the daily run; failure_review.py is the work. No model is ever run.
 #
@@ -16,7 +16,7 @@
 # `arm --live` also bakes the current JIRA_PROJECT_KEY into the runner (cron has none) and refuses
 # when it is unset or not a project key; dry-run needs no key.
 #
-# `run` asks scripts/lib/usage-preflight.sh first, like every pipeline cadence leg, and branches on
+# `run` asks scripts/lib/usage-preflight.sh first, like every pipeline cadence worker, and branches on
 # its verdict token: SKIPPED-BANK skips the night (logged, rc 0); every other verdict runs. It then
 # runs failure_review.py from the PRIMARY checkout (the runner bakes that path) and, on a router
 # failure, alerts through scripts/luna/cadence-alert.sh; a clean run clears that alert.

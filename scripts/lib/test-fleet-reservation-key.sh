@@ -33,7 +33,7 @@ check "(a) sourcing reserves nothing" "0" "$(find "$W/slots-a" -mindepth 1 | wc 
 
 # --- (b) key derivation
 hash_of() { printf '%s' "$1" | cksum | awk '{print $1}'; }
-check "(b) a plain name is its own key" "HIMMEL-1234-leg" "$(fleet_reservation_key HIMMEL-1234-leg)"
+check "(b) a plain name is its own key" "HIMMEL-1234-worker" "$(fleet_reservation_key HIMMEL-1234-worker)"
 check "(b) a name containing '/' hashes" "$(hash_of a/b)" "$(fleet_reservation_key a/b)"
 check "(b) a leading-'.' name hashes" "$(hash_of .hidden)" "$(fleet_reservation_key .hidden)"
 n255="$(printf 'x%.0s' $(seq 1 255))"
@@ -51,19 +51,19 @@ NOW="$(date +%s)"
 printf '{"five_hour":{"utilization":10},"seven_day":{"utilization":20},"primaries_refreshed_at":%s}' "$NOW" > "$W/c.json"
 printf '%s\n' '#!/usr/bin/env bash' 'true' > "$W/ps"; chmod +x "$W/ps"
 mkdir -p "$W/proc"
-reserve_under() { # <leg> -> prints the directory names left in a fresh slot dir
+reserve_under() { # <worker> -> prints the directory names left in a fresh slot dir
   local slots="$W/slots-$RANDOM$RANDOM"
   mkdir -p "$slots"
   FLEET_PROC="$W/proc" CADENCE_BANK_SKIP_REFRESH=1 FLEET_CAP_OK='' \
     CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_LEDGER=/dev/null CADENCE_BANK_LAUNCH=1 \
-    CADENCE_BANK_LEG="$1" HIMMEL_FLEET_SLOTS="$slots" HIMMEL_FLEET_CAP=4 FLEET_PS_CMD="$W/ps" \
+    CADENCE_USAGE_WORKER="$1" HIMMEL_FLEET_SLOTS="$slots" HIMMEL_FLEET_CAP=4 FLEET_PS_CMD="$W/ps" \
     bash "$PREFLIGHT" </dev/null >/dev/null 2>&1
   (cd "$slots" && ls -A)
 }
 long="$(printf 'y%.0s' $(seq 1 300))"
-check "(c) bank-preflight reserves an over-length leg under fleet_reservation_key" "$(fleet_reservation_key "$long")" "$(reserve_under "$long")"
-check "(c) bank-preflight reserves a dot-prefixed leg under fleet_reservation_key" "$(fleet_reservation_key .dot)" "$(reserve_under .dot)"
-check "(c) bank-preflight reserves a plain leg under its own name" "plain-leg" "$(reserve_under plain-leg)"
+check "(c) bank-preflight reserves an over-length worker under fleet_reservation_key" "$(fleet_reservation_key "$long")" "$(reserve_under "$long")"
+check "(c) bank-preflight reserves a dot-prefixed worker under fleet_reservation_key" "$(fleet_reservation_key .dot)" "$(reserve_under .dot)"
+check "(c) bank-preflight reserves a plain worker under its own name" "plain-worker" "$(reserve_under plain-worker)"
 
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
-# go-gate.sh — shared predicates for the console-GO merge gate.
+# go-gate.sh — shared predicates for the chief-GO merge gate.
 #
 # Extracted so merge-on-green.sh and block-unresolved-cr-merge.sh
 # enforce the exact same rule instead of drifting. Before this, only
-# merge-on-green.sh consulted `.locks/go/` — a console-spawned leg that ran
-# `gh pr merge` directly never consulted it at all, so the console's GO was
+# merge-on-green.sh consulted `.locks/go/` — a chief-spawned worker that ran
+# `gh pr merge` directly never consulted it at all, so the chief's GO was
 # advisory on that path (PR #798 merged with no GO file anywhere).
 #
-# console_leg() closes the outer half: the test for whether the
-# caller's session IS a console-spawned leg (HIMMEL_CONSOLE_LEG truthy) was
+# chief_worker() closes the outer half: the test for whether the
+# caller's session IS a chief-spawned worker (HIMMEL_CONSOLE_LEG truthy) was
 # hand-copied at merge-on-green.sh's _truthy(), block-unresolved-cr-merge.sh's
 # gate 3, and go.sh's own inline check — byte-identical today, but nothing
-# kept them that way. go_gate() below is reached only once console_leg() has
-# already said yes; call console_leg() first — go_gate() does not re-check it.
+# kept them that way. go_gate() below is reached only once chief_worker() has
+# already said yes; call chief_worker() first — go_gate() does not re-check it.
 #
 # Both functions: sourceable from hooks and scripts, `return`-only (never
 # `exit`), no `set -e` toggling. bash 3.2-safe.
 
-# console_leg — rc 0 iff HIMMEL_CONSOLE_LEG is truthy (this process IS a
-# console-spawned leg, exported by headed-arm-leg.sh). Same five falsy
+# chief_worker — rc 0 iff HIMMEL_CONSOLE_LEG is truthy (this process IS a
+# chief-spawned worker, exported by headed-arm-worker.sh). Same five falsy
 # spellings every call site used before this helper, case-insensitive,
 # whitespace-stripped: empty, 0, false, off, no — anything else is truthy.
-console_leg() {
+chief_worker() {
     case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | LC_ALL=C tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ''|0|false|off|no) return 1 ;;
         *) return 0 ;;
@@ -41,10 +41,10 @@ console_leg() {
 #
 #   rc 0 = the GO file <go-root>/.locks/go/<pr-num>.<head-sha> exists,
 #          carries the line `head=<head-sha>` exactly, AND carries a
-#          `mac=` line equal to go_mac <pr-num> <head-sha> <nwo> — the merge is bound, and bound by the console that
+#          `mac=` line equal to go_mac <pr-num> <head-sha> <nwo> — the merge is bound, and bound by the chief that
 #          holds the GO key, to this exact repo.
 #   rc 2 = refused; one-line reason on stdout naming the exact GO path, so the
-#          leg (or the operator reading its output) can tell which condition
+#          worker (or the operator reading its output) can tell which condition
 #          failed — no go-root, no file, a file for a different (stale) head,
 #          no key to verify with, or a missing/invalid mac — never a generic
 #          "not allowed".
@@ -83,7 +83,7 @@ _go_gate_verify() {
     fi
     if [ -n "$go_root" ]; then body=$(cat "$go_file" 2>/dev/null) || body=""; fi
     if [ -z "$go_root" ] || ! grep -qxF "head=$head_sha" <<< "$body"; then
-        printf '%s at %s has no console GO (%s) — this is a console-spawned leg; send READY to your console and wait for GO; a GO for an older head is stale, never reuse it.\n' "$what" "$head_sha" "$go_file"
+        printf '%s at %s has no chief GO (%s) — this is a chief-spawned worker; send READY to your chief and wait for GO; a GO for an older head is stale, never reuse it.\n' "$what" "$head_sha" "$go_file"
         return 2
     fi
     # A trust-reviewed GO signs its reviewer id too (go_mac's 4th
@@ -91,12 +91,12 @@ _go_gate_verify() {
     # ordinary GO, or edited in a trust GO, verifies as neither.
     trust=$(printf '%s\n' "$body" | sed -n 's/^trust-reviewed=//p' | head -n 1)
     if ! want=$(go_mac "$pr_num" "$head_sha" "$nwo" "$trust"); then
-        printf '%s at %s: cannot verify the console GO (%s) — no readable GO key at %s, or openssl is missing; send BLOCKED to your console (the console re-runs go.sh, which mints the key).\n' "$what" "$head_sha" "$go_file" "$(go_key_file)"
+        printf '%s at %s: cannot verify the chief GO (%s) — no readable GO key at %s, or openssl is missing; send BLOCKED to your chief (the chief re-runs go.sh, which mints the key).\n' "$what" "$head_sha" "$go_file" "$(go_key_file)"
         return 2
     fi
     got=$(printf '%s\n' "$body" | sed -n 's/^mac=//p' | head -n 1)
     if [ -z "$got" ] || [ "$got" != "$want" ]; then
-        printf '%s at %s: the GO file (%s) has no/invalid mac — not written by the console'"'"'s go.sh (or written before HIMMEL-3543); send BLOCKED to your console: the console re-runs go.sh %s %s.\n' "$what" "$head_sha" "$go_file" "$pr_num" "$head_sha"
+        printf '%s at %s: the GO file (%s) has no/invalid mac — not written by the chief'"'"'s go.sh (or written before GO files carried a mac); send BLOCKED to your console: the chief re-runs go.sh %s %s.\n' "$what" "$head_sha" "$go_file" "$pr_num" "$head_sha"
         return 2
     fi
     printf '%s\n' "$trust"
@@ -116,25 +116,25 @@ go_trust_id_ok() {
 # go_gate passes AND the GO is trust-reviewed (a well-formed trust-reviewed=
 # id, covered by the verified mac); the id on stdout. rc 2 = refused, the
 # reason on stdout. A merge touching a trust path (scripts/ci/ci-trust-paths.txt)
-# needs this, for a console leg and the operator path alike.
+# needs this, for a chief worker and the operator path alike.
 go_trust_gate() {
     local pr_num="$1" head_sha="$2" go_root="$3" nwo="$4" reason="" trust="" what="PR #$1"
     local go_file="${go_root:-<unresolved handover root>}/.locks/go/$pr_num.$head_sha"
     case "$pr_num" in br-*) what="change $pr_num" ;; esac
     if ! trust=$(_go_gate_verify "$pr_num" "$head_sha" "$go_root" "$nwo"); then
         reason=$trust
-        printf '%s\n' "${reason:-$what at $head_sha: no valid console GO ($go_file)}"
+        printf '%s\n' "${reason:-$what at $head_sha: no valid chief GO ($go_file)}"
         return 2
     fi
     if ! go_trust_id_ok "$trust"; then
-        printf '%s at %s touches a CI trust path, and its GO (%s) is not trust-reviewed — an independent judge must review the trust-path change; send READY to your console, which grants it with go.sh --trust-reviewed <reviewer-id> %s %s.\n' "$what" "$head_sha" "$go_file" "$pr_num" "$head_sha"
+        printf '%s at %s touches a CI trust path, and its GO (%s) is not trust-reviewed — an independent judge must review the trust-path change; send READY to your chief, which grants it with go.sh --trust-reviewed <reviewer-id> %s %s.\n' "$what" "$head_sha" "$go_file" "$pr_num" "$head_sha"
         return 2
     fi
     printf '%s\n' "$trust"
 }
 
 # go_fixred_file <go-root> <pr-num> <head-sha> <run-id>. Path of
-# the console-written fix-GO: the second way through merge-on-green.sh's
+# the chief-written fix-GO: the second way through merge-on-green.sh's
 # main-red gate (the first is a `Fixes-main-red:` commit line). One file per
 # (PR, head, red run), so a GO for an old run is a different file and a newer
 # red run finds none.
@@ -150,7 +150,7 @@ go_fixred_file() {
 # and the repo, PR, head and run id cannot be edited after signing. The caller
 # passes the CURRENT red run id: a fix-GO for a superseded run refuses. rc 2 =
 # refused, one-line reason on stdout. Pure read, one read of the file. It is NOT
-# a merge GO: the ordinary console-GO gate still applies.
+# a merge GO: the ordinary chief-GO gate still applies.
 go_fixred_gate() {
     local pr_num="$1" head_sha="$2" go_root="$3" nwo="$4" run_id="$5"
     local go_file body="" want="" got=""
@@ -173,7 +173,7 @@ go_fixred_gate() {
     }
     got=$(printf '%s\n' "$body" | sed -n 's/^mac=//p' | head -n 1)
     if [ -z "$got" ] || [ "$got" != "$want" ]; then
-        printf 'PR #%s at %s: the fix-GO (%s) has no/invalid mac — not written by the console'"'"'s go.sh --fix-main-red.\n' "$pr_num" "$head_sha" "$go_file"
+        printf 'PR #%s at %s: the fix-GO (%s) has no/invalid mac — not written by the chief'"'"'s go.sh --fix-main-red.\n' "$pr_num" "$head_sha" "$go_file"
         return 2
     fi
 }
@@ -183,7 +183,7 @@ go_fixred_gate() {
 # env, else the anchor's .env, else the forge login), <bucket> = the slugified
 # basename of the anchor's PRIMARY checkout (the parent of its git-common-dir, so
 # a linked worktree names its repo, not its own directory) — the same bucket
-# convention console.sh derives. Given <owner/name> (an adopted repo, which has
+# convention chief.sh derives. Given <owner/name> (an adopted repo, which has
 # no checkout under the anchor), <bucket> is `<owner>--<name>` lowercased, not
 # slugified: a GitHub owner never contains `--`, so no two repos share a bucket,
 # and no harness bucket (a slug, never `--`) equals one. Both must be a plain path segment
@@ -202,7 +202,7 @@ go_verdict_scope() (
     # shellcheck disable=SC1091
     . "$here/user-slug.sh" 2>/dev/null || exit 1
     # The .env lives only in the primary checkout, so resolve it the
-    # way console.sh does; the forge/git fallback runs with the anchor as cwd.
+    # way chief.sh does; the forge/git fallback runs with the anchor as cwd.
     load_dotenv --root "$(_load_dotenv_primary_for "$1" 2>/dev/null)" USER_SLUG >/dev/null 2>&1 || true
     slug=$(cd "$1" 2>/dev/null && user_slug 2>/dev/null) || exit 1
     if [ -n "${2:-}" ]; then
@@ -563,23 +563,23 @@ EOF
 
 # --- GO authentication ------------------------------
 # A GO used to be the mere existence of a file with a head= line, so any
-# process able to write the handover root (a console-spawned leg included)
+# process able to write the handover root (a chief-spawned worker included)
 # could forge its own. go.sh now signs "himmel-go-v2|<nwo>|<pr>|<sha>" with
-# HMAC-SHA256 under a key only go.sh mints (the console's zero-`!` path: it
+# HMAC-SHA256 under a key only go.sh mints (the chief's zero-`!` path: it
 # creates the key on first use, mode 0600); go_gate verifies the mac and never
 # creates a key. The key's *.key name puts it under block-read-secrets (a
-# leg's cat/Read/Grep of it is hook-denied), and it sits outside every leg's
+# worker's cat/Read/Grep of it is hook-denied), and it sits outside every worker's
 # additionalDirectories grant.
-# ponytail: same-uid ceiling — legs run as the console's Unix user, so a leg
+# ponytail: same-uid ceiling — workers run as the chief's Unix user, so a worker
 # that deliberately evades can still (1) write a helper script that reads the
 # key indirectly, (2) run go.sh under `env -u HIMMEL_CONSOLE_LEG`, (3) re-point
 # the verifier with a HOME= prefix, (4) overwrite the key (no hook denies a
 # Write to ~/.config/himmel/go-hmac.key), or (5) plant a key before the
-# console's first GO (go.sh only tests -e, not owner or mode) — each a
+# chief's first GO (go.sh only tests -e, not owner or mode) — each a
 # deliberate evasion the classifier sees, not an accidental two-line write,
 # upgrade path: a separate-uid or OS-keyring signer.
 
-# go_key_file — path of the console's GO signing key.
+# go_key_file — path of the chief's GO signing key.
 go_key_file() {
     printf '%s/.config/himmel/go-hmac.key\n' "${HOME:-}"
 }
@@ -733,10 +733,10 @@ go_verdict_mac_ok_text() {
 }
 
 # row 1: one root for the GO writer and the gate --------------
-# go.sh and merge-on-green.sh run in different processes (the console, the
-# leg) whose HANDOVER_DIR can disagree: a console armed with a clean env had
+# go.sh and merge-on-green.sh run in different processes (the chief, the
+# worker) whose HANDOVER_DIR can disagree: a chief armed with a clean env had
 # none, fell back to the harness repo's inline handovers/ stub, and wrote an
-# rc=0 GO the leg's gate (reading the .env-configured root) never saw. Both
+# rc=0 GO the worker's gate (reading the .env-configured root) never saw. Both
 # sides resolve through go_resolve_root so an env that is empty OR names the
 # harness repo's own stub yields the root the anchor's .env configures.
 
@@ -791,7 +791,7 @@ go_resolve_root() {
 }
 
 # --- the READY / MERGED line grammar, one owner -----------------
-# parse_ready_line <line> — the one parser of a leg's READY and MERGED lines;
+# parse_ready_line <line> — the one parser of a worker's READY and MERGED lines;
 # fleet.mjs's parseReadyLine mirrors it, and scripts/lib/fixtures/ready-lines.tsv
 # pins the two to the same answers. Accepted, with an optional `- ` bullet and
 # `HH:MM ` stamp in front:
@@ -825,7 +825,7 @@ parse_ready_line() {
     printf '%s\t%s\t%s\n' "$kind" "$cid" "$sha"
 }
 
-# --- himmel adapters: the forks the console may merge ----------------------
+# --- himmel adapters: the forks the chief may merge ----------------------
 # _go_harness_ref <anchor>. rc 0 prints `<nwo> <default branch>` of the harness
 # repo the anchor's origin remote names (never gh's default-repo setting); rc 1
 # when either cannot be read. gh is ${GH:-gh}. Read-only.
@@ -843,12 +843,12 @@ _go_harness_ref() {
     printf '%s %s\n' "$nwo" "$dbranch"
 }
 
-# go_adapter_entry <anchor> <target-nwo>. rc 0 prints the one branch a console
+# go_adapter_entry <anchor> <target-nwo>. rc 0 prints the one branch a chief
 # merge into <target-nwo> may land on (its himmel_branch); rc 2 prints the
 # reason. The allowlist scripts/guardrails/himmel-adapters.json is read from the
 # DEFAULT branch of the harness repo the anchor's origin remote names (never gh's
 # default-repo setting), through the
-# API - never a worktree, a PR head or a local ref - so a leg cannot widen it by
+# API - never a worktree, a PR head or a local ref - so a worker cannot widen it by
 # editing its own copy. An entry counts only with merge_allowed true; a repo
 # listed twice, an unreadable file or an unreadable branch name refuses. gh is
 # ${GH:-gh}. Read-only.
@@ -880,14 +880,14 @@ go_adapter_entry() {
         '[.[]? | select(.nwo == $n)] | if length == 1 and .[0].merge_allowed == true then (.[0].himmel_branch // "") else "" end' 2>/dev/null) || br=""
     case "$br" in
         ''|[!A-Za-z0-9]*|*[!A-Za-z0-9._/-]*|*..*)
-            printf '%s is not a himmel adapter with merge_allowed true (or its himmel_branch is unreadable) in scripts/guardrails/himmel-adapters.json on %s@%s - the console merges only allowlisted forks.\n' "$target" "$nwo" "$dbranch"
+            printf '%s is not a himmel adapter with merge_allowed true (or its himmel_branch is unreadable) in scripts/guardrails/himmel-adapters.json on %s@%s - the chief merges only allowlisted forks.\n' "$target" "$nwo" "$dbranch"
             return 2 ;;
     esac
     printf '%s\n' "$br"
 }
 
 # go_adopted_entry <anchor> <target-nwo>. rc 0 prints <target-nwo>'s default
-# branch, the only base an adopted repo's console GO may land on; rc 2 prints
+# branch, the only base an adopted repo's chief GO may land on; rc 2 prints
 # the reason. The allowlist scripts/guardrails/himmel-adopted.json, an array of
 # {"nwo": "<owner/name>", "merge_allowed": true}, is read as go_adapter_entry
 # reads himmel-adapters.json: from the harness repo's default branch through the
@@ -921,7 +921,7 @@ go_adopted_entry() {
     ok=$(printf '%s' "$raw" | jq -r --arg n "$target" \
         'if type == "array" then ([.[] | select(type == "object" and .nwo == $n)] | if length == 1 and .[0].merge_allowed == true then "yes" else "" end) else "" end' 2>/dev/null) || ok=""
     if [ "$ok" != yes ]; then
-        printf '%s is not an adopted repo with merge_allowed true in scripts/guardrails/himmel-adopted.json on %s@%s (missing, unreadable, not an array, or the repo is listed twice) - the console signs only allowlisted repos.\n' "$target" "$nwo" "$dbranch"
+        printf '%s is not an adopted repo with merge_allowed true in scripts/guardrails/himmel-adopted.json on %s@%s (missing, unreadable, not an array, or the repo is listed twice) - the chief signs only allowlisted repos.\n' "$target" "$nwo" "$dbranch"
         return 2
     fi
     tbranch=$("$gh_bin" repo view "$target" --json defaultBranchRef --jq '.defaultBranchRef.name // ""' 2>/dev/null) || tbranch=""

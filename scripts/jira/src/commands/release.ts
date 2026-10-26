@@ -1,4 +1,4 @@
-// billed-exempt: the release manager rm-run judge; run by the console on purpose, bank-preflight gated
+// billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -275,7 +275,7 @@ export function parseDecisions(stdout: string): Decision[] {
 }
 
 // A call launched from inside a session inherits its markers, which make the child identify as that session
-// or a console leg. The auth and provider vars go too, so the child bills the native subscription bank the
+// or a chief worker. The auth and provider vars go too, so the child bills the native subscription bank the
 // preflight checked, never an API key or a cloud provider.
 export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([k]) =>
@@ -360,7 +360,7 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('request <release>')
-    .description('Queue a placement request for the release manager (the console writes these)')
+    .description('Queue a placement request for the release manager (the chief writes these)')
     .requiredOption('--verb <verb>', 'INTAKE | REVERSION | DISCHARGE')
     .requiredOption('--key <key>', 'Issue key')
     .option('--from <version>', 'Source version, or backlog', 'backlog')
@@ -380,7 +380,7 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('withdraw <release>')
-    .description('Retire an open or claimed request with a reason (the console, never a leg)')
+    .description('Retire an open or claimed request with a reason (the chief, never a worker)')
     .requiredOption('--req <id>', 'Request id (Q-<R>-NNNN)')
     .requiredOption('--reason <text>', 'Why the request is withdrawn')
     .option('--by <O-id>', 'The operator decision row that settles it; it must cover the request\'s key')
@@ -390,7 +390,7 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('rm-run <release>')
-    .description('Rule every pending request in one on-demand batch: lease, claim, one judge call, rule, apply, release (the console)')
+    .description('Rule every pending request in one on-demand batch: lease, claim, one judge call, rule, apply, release (the chief)')
     .option('--doc <path>', 'Absolute run doc to take the lease as (after an operator takeover of a crashed run)')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
     .action(async (release: string, o: { doc?: string; mirrorRoot?: string }) => {
@@ -439,7 +439,7 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('fold <release>')
-    .description('Record finished tickets as delivered in a version: one signed events row per key (the console)')
+    .description('Record finished tickets as delivered in a version: one signed events row per key (the chief)')
     .requiredOption('--to <version>', 'The version the work was delivered in')
     .option('--key <key>', 'One issue key (with --pr)')
     .option('--pr <n>', 'The delivering PR number (with --key)')
@@ -458,7 +458,7 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('reopen <release>')
-    .description('Reverse a fold: the key counts against the version again (the console)')
+    .description('Reverse a fold: the key counts against the version again (the chief)')
     .requiredOption('--key <key>', 'Issue key')
     .requiredOption('--from <version>', 'The version the key was folded into')
     .action((release: string, o: { key: string; from: string }) => {
@@ -480,7 +480,7 @@ export function registerRelease(program: Command): void {
     console.log(`LEASE ${release} epoch ${l.epoch} released`);
   });
 
-  const operator = rel.command('operator').description('Record an operator decision (the console, never a leg)');
+  const operator = rel.command('operator').description('Record an operator decision (the chief, never a worker)');
   operator.command('declare <release>')
     .requiredOption('--versions <list>', 'Comma-separated versions; the first is current')
     .requiredOption('--decision <n>', 'Operator decision number')

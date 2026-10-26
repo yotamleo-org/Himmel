@@ -193,9 +193,9 @@ fi
 # hopping, not the operator's full plugin set. Precedence:
 # HOP_PROFILE; else the role read from the hopping session's handover doc (--doc,
 # or HIMMEL_CONSOLE_DOC when it is a file) via role-profile.sh, so a design or
-# reviewer leg keeps its profile; else role env: a console session
-# (HIMMEL_CONSOLE_DOC) hops as `console`, a leg (HIMMEL_CONSOLE_LEG) as
-# `leg-impl`, anything else as `user`.
+# reviewer worker keeps its profile; else role env: a chief session
+# (HIMMEL_CONSOLE_DOC) hops as `console`, a worker (HIMMEL_CONSOLE_LEG) as
+# `worker-impl`, anything else as `user`.
 [ -z "$HOP_DOC" ] && [ -f "${HIMMEL_CONSOLE_DOC:-}" ] && HOP_DOC="$HIMMEL_CONSOLE_DOC"
 if [ -n "$HOP_DOC" ] && [ ! -f "$HOP_DOC" ]; then
     echo "ERR hop: --doc is not a file: $HOP_DOC" >&2
@@ -205,8 +205,8 @@ if [ -n "${HOP_PROFILE:-}" ]; then hop_profile="$HOP_PROFILE"
 elif [ -n "$HOP_DOC" ]; then
     hop_profile=$(bash "$SCRIPT_DIR/../lanes/role-profile.sh" "$HOP_DOC" 2>/dev/null) || hop_profile=""
     [ -n "$hop_profile" ] || { echo "ERR hop: could not derive a profile from $HOP_DOC" >&2; exit 2; }
-elif [ -n "${HIMMEL_CONSOLE_DOC:-}" ]; then hop_profile=console
-elif [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then hop_profile=leg-impl
+elif [ -n "${HIMMEL_CONSOLE_DOC:-}" ]; then hop_profile=chief
+elif [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then hop_profile=worker-impl
 else hop_profile=user; fi
 hop_settings=$(bash "$(dirname "${BASH_SOURCE[0]}")/../lanes/profile-settings.sh" "$hop_profile") || {
     echo "ERR hop: plugin profile '$hop_profile' did not resolve; refusing to hop into the full plugin set" >&2

@@ -6,7 +6,7 @@
 # WHY: phase 1 of himmel-bus runs every session, the server and the store as one
 # uid (threat model T1, T3, T5, T6). The bus API cannot forge a
 # sender or reach a peer's log, but a session's own Bash could `cat` another
-# session's log, rewrite `peers/*.json`, or bind itself as its console by hand.
+# session's log, rewrite `peers/*.json`, or bind itself as its chief by hand.
 # This hook makes those tool-driven routes cost a denial and a named bypass
 # instead of one command. Direct writes are DETECTED by the hash chain; prevention
 # needs a second uid (spec §12, phase 2).
@@ -91,7 +91,7 @@
 #
 # Exit codes: 0 allow (no output); 2 deny (JSON hookSpecificOutput with
 # permissionDecision "deny" on stdout, reason starting "bus store-deny: ", and
-# the same text on stderr — belt-and-braces idiom of guard-leg-wakeup.sh).
+# the same text on stderr — belt-and-braces idiom of guard-worker-wakeup.sh).
 set -uo pipefail
 
 [ "${BUS_STORE_GUARD_OK:-}" = "1" ] && exit 0

@@ -1057,6 +1057,7 @@ BQ='bash scripts/lib/qmd-bounded.sh query -c luna x'
 allow "$BQ | python3 -c 'import sys; print(sys.stdin.read())'"
 allow "$BQ | python3 -m json.tool"
 allow "$BQ | node -e 'process.stdin.pipe(process.stdout)'"
+allow "$BQ | node -e 'process.stdin.pipe(process.stdout); console.log(1)'"
 allow "$BQ | perl -ne 'print'"
 allow "$BQ | xargs -n1 echo"
 allow "$BQ | xargs -n1 dirname"

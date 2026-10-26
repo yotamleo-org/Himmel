@@ -423,7 +423,7 @@
       "learning_match": "jq[^.]*//[[:space:]]*empty|alternative operator",
       "match": "jq[^\\n]{0,60}//|alternative operator",
       "canonical": "jq's `//` treats `false` exactly like `null`, so `.field // empty` is NOT a presence test — it silently swallows a legitimate `false`, and the caller takes the absent branch while reporting success. Ask the question you mean: presence -> `has(\"field\")`; presence plus a type contract -> `(.field | type) == \"string\"` (better than has(), because it also rejects malformed values); a value that may legitimately be false -> read it explicitly, `if has(\"f\") then (.f|tostring) else \"absent\" end`. Do NOT over-correct into treating ANY present value as the signal: on #2071 that flipped a malformed payload (true / 123 / {}) into a DENY, and a fail-open workflow guard must ALLOW on an unreadable payload. Key the fix on the field's documented contract, not on 'stop using //'. Mark a deliberate benign default with `# jq-alt-ok: <why>`.",
-      "coverage": "No structural check; shell-lint does not parse jq filters. The detector is deliberately NARROW — restricted to boolean-ish field names — because the broad `.field // (empty|\"\")` form matches 147 lines repo-wide (293 raw `// empty` occurrences), nearly all legitimate string defaults; a detector that fires on every PR buries the signal. Measured cost of the narrow form: 5 repo-wide hits, 3 of them in files that document this very trap. Ratified as a class by the 01R console 2026-09-01 (HIMMEL-2361). CR round 3 removed a `| type` clause from this exclude: it was unnecessary — the safe spelling `(.f | type) == \"string\"` carries no `//`, so the main pattern never matched it anyway — and, being a WHOLE-LINE match, it silently suppressed the genuinely buggy `.f // empty | type`, which still swallows false. The sibling `has(` clause has the same whole-line shape and may suppress a true positive too (`if has(\"f\") then .f // empty` still swallows false: has() establishes presence, it does not stop `//` treating false as absent); that one is NOT removed here because it may cover a real safe form — tracked for verification in HIMMEL-2453.",
+      "coverage": "No structural check; shell-lint does not parse jq filters. The detector is deliberately NARROW — restricted to boolean-ish field names — because the broad `.field // (empty|\"\")` form matches 147 lines repo-wide (293 raw `// empty` occurrences), nearly all legitimate string defaults; a detector that fires on every PR buries the signal. Measured cost of the narrow form: 5 repo-wide hits, 3 of them in files that document this very trap. Ratified as a class by the 01R chief 2026-09-01 (HIMMEL-2361). CR round 3 removed a `| type` clause from this exclude: it was unnecessary — the safe spelling `(.f | type) == \"string\"` carries no `//`, so the main pattern never matched it anyway — and, being a WHOLE-LINE match, it silently suppressed the genuinely buggy `.f // empty | type`, which still swallows false. The sibling `has(` clause has the same whole-line shape and may suppress a true positive too (`if has(\"f\") then .f // empty` still swallows false: has() establishes presence, it does not stop `//` treating false as absent); that one is NOT removed here because it may cover a real safe form — tracked for verification in HIMMEL-2453.",
       "prompt": true,
       "evidence": {
         "learnings_uses": 0,
@@ -486,7 +486,7 @@
         },
         "learnings_rows": 2,
         "sightings": [
-          "HIMMEL-2356 leg / PR #2070 — verified against a real suite marker line: bracket class no match, alternation match.",
+          "HIMMEL-2356 worker / PR #2070 — verified against a real suite marker line: bracket class no match, alternation match.",
           "HIMMEL-2447 (this refresh) — the tree sweep's own first pattern returned a vacuous zero for exactly this reason; caught by a positive control."
         ]
       }
@@ -926,7 +926,7 @@
       }
     },
     {
-      "id": "console-kit-lock-helper",
+      "id": "chief-kit-lock-helper",
       "kind": "checklist",
       "rung": "advisory",
       "title": "chief-kit script rolls its own lock/flock instead of the shared lock helper",
@@ -940,7 +940,7 @@
       },
       "learning_match": "lock|flock|stale lock|race",
       "match": "lock|flock|stale lock|race",
-      "canonical": "Take the queue/leg lock through scripts/handover/queue-lock.sh (acquire / release with the owner token), never an inline flock or mkdir-lock: the shared helper owns stale-lock reaping and owner-pid semantics.",
+      "canonical": "Take the queue/worker lock through scripts/handover/queue-lock.sh (acquire / release with the owner token), never an inline flock or mkdir-lock: the shared helper owns stale-lock reaping and owner-pid semantics.",
       "coverage": "Detector: added-line-regex (advisory).",
       "prompt": false,
       "evidence": {

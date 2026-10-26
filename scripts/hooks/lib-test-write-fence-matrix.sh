@@ -17,7 +17,7 @@
 # cell at a time. Enumerating the whole grammar and letting the real commands
 # decide each verdict is what replaces predicting the next cell by hand.
 #
-# THE THREE-CLASS CONTRACT (console ruling). Two classes would force the
+# THE THREE-CLASS CONTRACT (chief ruling). Two classes would force the
 # known OS-refused over-blocks to be either red rows or silently tolerated
 # ones; neither is acceptable, so each cell is classified from GROUND TRUTH:
 #   (A) the primary CHANGED            -> the fence MUST deny.  STRICT.

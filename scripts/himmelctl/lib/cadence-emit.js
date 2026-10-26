@@ -41,7 +41,7 @@ const TIME_FLAG_BY_SCHEDULE = {
 // pipeline order (fetch-health -> harvest -> synthesize -> health).
 const SCHEDULE_ORDER = ['fetchHealth', 'harvest', 'synthesize', 'health'];
 
-const MODEL_FLAG_BY_LEG = {
+const MODEL_FLAG_BY_WORKER = {
   harvest: '--harvest-model',
   synthesize: '--synth-model',
   health: '--health-model',
@@ -88,7 +88,7 @@ function buildArmFlags({ cadence, vaultPath, force, dryRun } = {}) {
   }
 
   for (const key of MODEL_ORDER) {
-    if (models[key]) flags.push(MODEL_FLAG_BY_LEG[key], models[key]);
+    if (models[key]) flags.push(MODEL_FLAG_BY_WORKER[key], models[key]);
   }
 
   if (vaultPath) flags.push('--vault', vaultPath);
@@ -101,6 +101,6 @@ module.exports = {
   buildArmFlags,
   pipelineCadenceScriptPath,
   TIME_FLAG_BY_SCHEDULE,
-  MODEL_FLAG_BY_LEG,
+  MODEL_FLAG_BY_WORKER,
   DAY_CAPABLE_SCHEDULE,
 };

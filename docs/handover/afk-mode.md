@@ -11,7 +11,7 @@ Do **not** use AFK (unattended) mode when:
 - The work touches multiple independent subsystems (split into separate tickets first).
 - Destructive ops outside the worktree are required.
 
-For work that will need mid-flight decisions or will outlive one context window, run a **supervisor session** instead ([`glossary.md`](../glossary.md)); it dispatches each ticket as its own session and hands itself over: [`running-a-console.md`](running-a-console.md).
+For work that will need mid-flight decisions or will outlive one context window, run a **chief** instead ([`glossary.md`](../glossary.md)); it dispatches each ticket as its own session and hands itself over: [`running-a-chief.md`](running-a-chief.md).
 
 ## The 11 phases (+ step 0: queue lock)
 
@@ -46,8 +46,8 @@ For work that will need mid-flight decisions or will outlive one context window,
    is covered by the TTL (default **6 h**, sized to cover the 3-4 h
    overnight budget; `QUEUE_LOCK_TTL_SECONDS` tunes it — TTL sizing
    is an open operator question on the queue-lock design) so a crashed
-   session never strands the queue. **A live worker session does not have to remember
-   to heartbeat.** A worker session acquires here and releases at Phase
+   session never strands the queue. **A live worker does not have to remember
+   to heartbeat.** A worker acquires here and releases at Phase
    11 and calls nothing in between, so after one TTL its lock used to go
    silently STALE and takeable. The lock now self-heartbeats from a
    PostToolUse hook (`queue-lock.sh self-heartbeat`) that refreshes the
@@ -56,12 +56,12 @@ For work that will need mid-flight decisions or will outlive one context window,
    session's transcript path in the lock. Operator: wire the self-heartbeat
    hook VM-first (`wire-session-telemetry-hooks.mjs` rewrites
    `settings.json`; `--check` reports whether it is wired, `--off` removes
-   it); never from a worker session. Even
+   it); never from a worker. Even
    un-refreshed, a lock whose holder's transcript on the SAME host was
    written within the TTL is LIVE regardless of heartbeat age: `status`
    reports FRESH and `acquire` refuses (`QUEUE_LOCK_TAKEOVER=1` still
    forces). `heartbeat` and `release` now emit the same `AGING` warning
-   `status` always did (heartbeat age past half the TTL), so a worker session that
+   `status` always did (heartbeat age past half the TTL), so a worker that
    outran its margin unseen finds out at its next refresh or at wrap.
    Without the hook, a manual `queue-lock.sh heartbeat <handover-path>
    <token>` on long sessions is still the lever.
@@ -84,9 +84,9 @@ For work that will need mid-flight decisions or will outlive one context window,
    Security reviewed: <pr-review-toolkit|manual|claude-code-security-review>   # only for non-docs code
    ```
    Then the push passes the `platforms-tested` / security-reviewed gates first-try with no amend. **Do NOT commit first, hit the gate, then `git commit --amend` to add the trailer**: the auto-mode classifier flags that reactive amend as security-gate circumvention and HARD-blocks it (uncleable, even with operator approval).
-9. **Merge** — `gh pr merge --squash` once automated review is clean. **Default to a PLAIN squash merge — do NOT add `--admin`**. `--admin` exists to bypass *branch protection*; this repo has none (the protection API returns 403 on a free private repo, and `reviewDecision` is empty), so `--admin` bypasses nothing useful yet it trips the auto-mode classifier's "bypassing the approval gate = destructive op outside the worktree" HARD-veto (see § Block-only criteria) — which is exactly what stalled an earlier run. Only reach for `--admin` if the repo *actually* has branch protection that blocks the plain merge, and then only with `GH_ADMIN_MERGE_OK=1` set in the launching shell (the `scripts/handover/pr-merge.sh` helper encodes this plain-first/admin-fallback logic). **If the merge is blocked for any reason, load the `himmel-ops:stuck-playbook` skill** (§ "a PR merge was blocked"), then — rather than guessing or routing around the block — record the merge as a one-action operator step in the Phase 11 handover. Retrying a blocked merge via a different command path is flagged as evasion and hardens the block. **Armed ticket sequences that auto-merge on green:** a *self-run* merge worker session is denied by the classifier ("Merge Without Review"), so an armed/overnight ticket sequence stops at a green, review-clean PR by default. To let a ticket sequence merge unattended — **PRIVATE repo only** — the sanctioned path is `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"` (the anchored spelling; the PROJECT and leg-profile relative `bash scripts/handover/merge-on-green.sh` standing allow-rules were retired — a user-scope settings rule may still admit the relative spelling on a given station, but the project and leg-profile registries no longer pre-approve it, so a station with no user-scope rule of its own loses the relative fallback and must type the anchored or absolute spelling): it merges ONLY when `ARMAUTOMERGE=1` is opted in (launching shell), the PR's own repo is private, `check-ci.sh` returns 0 (green + all threads resolved + no changes-requested), and the certified head SHA is still the PR head (`--match-head-commit`), logging every attempt (certified SHA + gate verdict). It is **not** a blanket `--dangerously-skip-permissions` (every other guard stays live). Activation is two **operator** steps (the agent cannot self-modify settings): add the specific standing allow-rule `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` and launch/arm the ticket sequence with `ARMAUTOMERGE=1`. Public propagation stays a separate one-go operator/bridge step.
+9. **Merge** — `gh pr merge --squash` once automated review is clean. **Default to a PLAIN squash merge — do NOT add `--admin`**. `--admin` exists to bypass *branch protection*; this repo has none (the protection API returns 403 on a free private repo, and `reviewDecision` is empty), so `--admin` bypasses nothing useful yet it trips the auto-mode classifier's "bypassing the approval gate = destructive op outside the worktree" HARD-veto (see § Block-only criteria) — which is exactly what stalled an earlier run. Only reach for `--admin` if the repo *actually* has branch protection that blocks the plain merge, and then only with `GH_ADMIN_MERGE_OK=1` set in the launching shell (the `scripts/handover/pr-merge.sh` helper encodes this plain-first/admin-fallback logic). **If the merge is blocked for any reason, load the `himmel-ops:stuck-playbook` skill** (§ "a PR merge was blocked"), then — rather than guessing or routing around the block — record the merge as a one-action operator step in the Phase 11 handover. Retrying a blocked merge via a different command path is flagged as evasion and hardens the block. **Armed dependency chains that auto-merge on green:** a *self-run* merge worker is denied by the classifier ("Merge Without Review"), so an armed/overnight dependency chain stops at a green, review-clean PR by default. To let a dependency chain merge unattended — **PRIVATE repo only** — the sanctioned path is `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"` (the anchored spelling; the PROJECT and worker-profile relative `bash scripts/handover/merge-on-green.sh` standing allow-rules were retired — a user-scope settings rule may still admit the relative spelling on a given station, but the project and worker-profile registries no longer pre-approve it, so a station with no user-scope rule of its own loses the relative fallback and must type the anchored or absolute spelling): it merges ONLY when `ARMAUTOMERGE=1` is opted in (launching shell), the PR's own repo is private, `check-ci.sh` returns 0 (green + all threads resolved + no changes-requested), and the certified head SHA is still the PR head (`--match-head-commit`), logging every attempt (certified SHA + gate verdict). It is **not** a blanket `--dangerously-skip-permissions` (every other guard stays live). Activation is two **operator** steps (the agent cannot self-modify settings): add the specific standing allow-rule `Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)` and launch/arm the dependency chain with `ARMAUTOMERGE=1`. Public propagation stays a separate one-go operator/bridge step.
 10. **Jira:** invoke the CLI as `node scripts/jira/dist/index.js transition <KEY> "<state>"` (NOT the global `jira` shim; it points at an unrelated, often-broken `jira-cli` package). This runs autonomously **provided the specific standing allow-rule `Bash(node scripts/jira/dist/index.js:*)` is present**. A generic `Bash(node *)` is NOT enough to authorize an external write (see § Auto-mode classifier). If the rule is missing, a transition is classifier-blocked; do NOT retry via a different path (evasion); record it as an operator action in Phase 11 and have the operator add the rule once (it then works for all future runs).
-11. **Handover** — write `next-session-<N+1>.md` (or whichever increment) in the right dir, file followup tickets for non-blocking findings, record any classifier-blocked Jira transitions as explicit operator actions (a classifier-blocked review-thread resolve is never an operator action: it goes to the console as `BLOCKED resolve <pr> <thread ids>`, which verifies it against the head and resolves it), update `status.md` + `roadmap.md`, commit + push (trailers in the first commit per Phase 8). **Release the step-0 queue lock** (`bash scripts/handover/queue-lock.sh release <handover-path> <release-token>` — the token captured from the step-0 acquire output; if the transcript line was lost to an autocompact, drop the token argument and the persisted per-session copy is used instead — it says `queue-lock: token read from <path>` on stderr, and it exists only when a session scope was resolvable at acquire time (`QUEUE_LOCK_SESSION_SCOPE` or `CLAUDE_CODE_SESSION_ID`; see Phase 0); only when that is gone too does `QUEUE_LOCK_FORCE_RELEASE=1 bash scripts/handover/queue-lock.sh release <handover-path>` force-release loudly and log the override — that log is the audit trail for genuine takeovers, so a routine wrap should never land in it) as part of this phase — the TTL is a safety net for a crashed session, not a substitute for releasing on a clean wrap.
+11. **Handover** — write `next-session-<N+1>.md` (or whichever increment) in the right dir, file followup tickets for non-blocking findings, record any classifier-blocked Jira transitions as explicit operator actions (a classifier-blocked review-thread resolve is never an operator action: it goes to the chief as `BLOCKED resolve <pr> <thread ids>`, which verifies it against the head and resolves it), update `status.md` + `roadmap.md`, commit + push (trailers in the first commit per Phase 8). **Release the step-0 queue lock** (`bash scripts/handover/queue-lock.sh release <handover-path> <release-token>` — the token captured from the step-0 acquire output; if the transcript line was lost to an autocompact, drop the token argument and the persisted per-session copy is used instead — it says `queue-lock: token read from <path>` on stderr, and it exists only when a session scope was resolvable at acquire time (`QUEUE_LOCK_SESSION_SCOPE` or `CLAUDE_CODE_SESSION_ID`; see Phase 0); only when that is gone too does `QUEUE_LOCK_FORCE_RELEASE=1 bash scripts/handover/queue-lock.sh release <handover-path>` force-release loudly and log the override — that log is the audit trail for genuine takeovers, so a routine wrap should never land in it) as part of this phase — the TTL is a safety net for a crashed session, not a substitute for releasing on a clean wrap.
 
 ## Launch preamble
 
@@ -146,7 +146,7 @@ else
 fi
 ```
 
-A supervisor session deciding whether to arm a successor for a worker session should ask the worker session
+A chief deciding whether to arm a successor for a worker should ask the worker
 for this number instead of an estimate. It measures context-window FILL, not
 the `<total_tokens>` spend budget, which is a different, much larger
 allowance and was routinely conflated with fill before this ticket.
@@ -165,13 +165,13 @@ header contract before invoking it. A wrong repo slug, an MSYS-mangled
 path, or a bare tool run against the wrong input can all render as a clean
 "0" indistinguishable from a genuine pass.
 
-**A read outside the working directory can still hang an unattended worker session.** Auto mode does not cover this class: a Read/Grep/Glob
+**A read outside the working directory can still hang an unattended worker.** Auto mode does not cover this class: a Read/Grep/Glob
 target outside cwd/`additionalDirectories` prompts interactively regardless
 of mode, and nobody is there to answer it. Pre-listing the known-safe
 outside paths in `permissions.additionalDirectories` closes the common
 cases; `queue-lock.sh status`'s idle-warn line flags the rest ("possibly
 stuck on a prompt" once a FRESH lock's heartbeat exceeds
-`QUEUE_LOCK_IDLE_WARN_SECONDS`, default 45m) so a stalled worker session is visible
+`QUEUE_LOCK_IDLE_WARN_SECONDS`, default 45m) so a stalled worker is visible
 well before the hours-scale TTL/aging thresholds fire. See
 [`environment-gotchas.md`](../internals/environment-gotchas.md) for the
 operator recovery.
@@ -190,23 +190,23 @@ grant), and Windows sessions are not covered.
 If your only remaining dependency is an operator action, **wrap at once** — do
 not idle-wait. Append a RESUME BRIEF to this file (worktree, branch, base SHA,
 dirty paths, the verbatim operator block, the ordered remaining steps), release
-the queue lock, message the console `OPERATOR-GATED, wrapped, safe to close`,
-and end the turn. **Never idle-wait for the operator** — an idle leg holds the
+the queue lock, message the chief `OPERATOR-GATED, wrapped, safe to close`,
+and end the turn. **Never idle-wait for the operator** — an idle worker holds the
 queue lock, burns its prompt cache and emits no signal, so it is
-indistinguishable from a crashed one. The console resumes it from that brief
-(`bash scripts/handover/leg-resume-brief.sh <this file>` regenerates the
+indistinguishable from a crashed one. The chief resumes it from that brief
+(`bash scripts/handover/worker-resume-brief.sh <this file>` regenerates the
 skeleton from git) instead of waking a cold session to ask.
 
 "End the turn" means the session actually **ends** — the harness exits. A
-message announcing that you are closing is not closing: a leg that says
+message announcing that you are closing is not closing: a worker that says
 "safe to close" and stays resident holds its RAM, keeps its queue lock, and
 still reads as live in `ListAgents`. If you cannot end your own session,
-say exactly that in your final message so the console can list you for the
+say exactly that in your final message so the chief can list you for the
 operator instead of assuming you are gone.
 
 ## Suite evidence — scope the run, and never wait invisibly
 
-**A worker session opens its PR on the SCOPED suite covering its diff, and reports the
+**A worker opens its PR on the SCOPED suite covering its diff, and reports the
 full run afterwards as a PR comment.** This is the default, not a
 time-pressure concession; it was re-derived per-worker-session per-shift for months
 before being written down here.
@@ -214,9 +214,9 @@ before being written down here.
 Why it has to be the default: `scripts/ci/run-shell-tests.sh` takes a
 machine-wide advisory lock keyed by **scan root**, so exactly
 one full-tree run happens at a time on the box. On the 2026-08-29 shift six
-concurrent worker sessions each needed that run; the holder was measured at **2h20m and
+concurrent workers each needed that run; the holder was measured at **2h20m and
 still going**: genuinely alive, just slow, because seven sessions were
-loading the machine. Six worker sessions × a serialized 2h+ run is a wall the parallel
+loading the machine. Six workers × a serialized 2h+ run is a wall the parallel
 dispatch pattern cannot cross.
 
 Because the lock is keyed by scan root, a scoped run takes a **different lock**
@@ -241,13 +241,13 @@ trade the default makes: it covers what the change is exercised by, in
 minutes, instead of covering everything in hours behind a fleet-wide queue.
 It is not a claim that the full run would have found nothing. That is
 exactly why the full run is still reported afterwards as a PR comment rather
-than skipped, and why a worker session that cannot identify the suites exercising its
+than skipped, and why a worker that cannot identify the suites exercising its
 change should run the full tree (with `SUITE_LOCK_WAIT`, below) instead of
 guessing at a subtree.
 
 **Run several scoped roots as separate calls, so your inbox is read between
-them.** A worker session blocked in one long foreground command cannot read
-a halt from the supervisor session until it returns. `bash scripts/handover/chief-kit/run-suite.sh`
+them.** A worker blocked in one long foreground command cannot read
+a halt from the chief until it returns. `bash scripts/handover/chief-kit/run-suite.sh`
 runs exactly one scan root per call and prints
 `CHECKPOINT <i>/<n> <root> rc=<rc> next=<root|none>`; type each call as its own
 Bash command and follow `next=`. `--plan` lists the roots. Do not chain the
@@ -257,8 +257,8 @@ unread for that run's length; see the delivery limitation in
 [`retask-channel.md`](../internals/retask-channel.md).
 
 **When you do need the full tree, never hand-roll a retry loop.** An rc=2
-refusal used to send worker sessions into their own invisible wait, and a queued worker session is
-then indistinguishable from a **parked** one: both present as a worker session that has
+refusal used to send workers into their own invisible wait, and a queued worker is
+then indistinguishable from a **parked** one: both present as a worker that has
 stopped reporting, and the remedies are opposite (a queued run needs
 patience, a parked worker needs a nudge). Getting it backwards is how a
 dispatching parent nudges a healthy worker and creates a second-writer race on its
@@ -284,26 +284,26 @@ On acquiring it says so (`ACQUIRED: … after waiting …`); if the budget runs
 out it emits the full `REFUSED` verdict and still exits 2. Default is `0`
 (refuse on sight, the historical behaviour), so this is opt-in per run.
 
-**For a dispatching parent:** a worker session reporting a `WAITING:` line is *queued*, and the
+**For a dispatching parent:** a worker reporting a `WAITING:` line is *queued*, and the
 holder pid + elapsed are right there: no `ps`, no reading
-`/tmp/himmel-shell-suite-*.lock/owner` by hand. A worker session reporting nothing at all
-is *parked*. That distinction is the point of the knob; a worker session that hand-rolls
+`/tmp/himmel-shell-suite-*.lock/owner` by hand. A worker reporting nothing at all
+is *parked*. That distinction is the point of the knob; a worker that hand-rolls
 its own sleep loop throws it away.
 
-**A worker session that ends its turn on a background job never wakes.** The harness
-backgrounds any Bash call that runs past ~120 s, and a worker session whose turn ends
+**A worker that ends its turn on a background job never wakes.** The harness
+backgrounds any Bash call that runs past ~120 s, and a worker whose turn ends
 waiting on that job gets no wake-up; it sits "working" forever while the
-supervisor session reads its silence as progress. The brief therefore **names the scoped
-suites** the worker session runs (each under the 120 s budget or explicitly foreground),
+chief reads its silence as progress. The brief therefore **names the scoped
+suites** the worker runs (each under the 120 s budget or explicitly foreground),
 and forbids "I'll wait for the notification": waiting is one foreground
 blocking command or a foreground `until … done` loop, never a turn that ends
 on a background task.
 
-## Base verification — arming on a fence, and syncing across worker sessions
+## Base verification — arming on a fence, and syncing across workers
 
-Console ruling 66 (prompted by #2080 merging while its own after-report suite
-was still running, and a dependent worker session arming minutes later on that
-unverified base): **arm a worker session on a fence only once every merged PR that
+Chief ruling 66 (prompted by #2080 merging while its own after-report suite
+was still running, and a dependent worker arming minutes later on that
+unverified base): **arm a worker on a fence only once every merged PR that
 touched it carries its after-report SUMMARY.**
 `scripts/chief/base-status.sh <fence-path>...` lists the merged PRs on a
 fence that are still PENDING (no after-report comment yet) or RED (a red
@@ -312,21 +312,21 @@ calls it before arming, refusing (rc=21) on a non-clean fence, or when the
 certification itself fails (missing script, `gh` query error, truncated
 merged-PR list), because "cannot verify" refuses exactly like "verified
 dirty", unless `--provisional-base-ok` is passed, which WARNS loudly and
-prints the warning text for the worker session's first message instead of refusing.
+prints the warning text for the worker's first message instead of refusing.
 `scripts/handover/merge-on-green.sh` records its own local
 after-report-pending marker at merge time (best-effort, mirrors the
 cr-pending marker dir), and `scripts/ci/run-shell-tests.sh --pr <N>` (or
 `SUITE_REPORT_PR=N`) posts the SUMMARY block as a PR comment from the RUNNER
 PROCESS itself, so a closed parent session can never lose the report.
 
-**How worker sessions sync**, since there is no shared live state beyond the above:
+**How workers sync**, since there is no shared live state beyond the above:
 direct messages between sessions (`SendMessage`/`ListAgents`), the
-handover/ledger files each worker session already writes, and PR comments themselves
-(the after-report SUMMARY, `MERGED`/marker audit lines). Worker sessions coordinate by
+handover/ledger files each worker already writes, and PR comments themselves
+(the after-report SUMMARY, `MERGED`/marker audit lines). Workers coordinate by
 reading each other's durable artifacts, not by a shared process. A **red**
-after-report routes to the supervisor session, which hands it to the **current owner of
-that fence** as a follow-up PR + ticket, never to whichever worker session happens to
-notice first. A **dependent worker session holds its fence conclusions** (does not
+after-report routes to the chief, which hands it to the **current owner of
+that fence** as a follow-up PR + ticket, never to whichever worker happens to
+notice first. A **dependent worker holds its fence conclusions** (does not
 build further on that fence, does not report it clean) until the fix lands
 and a fresh after-report replaces the red one.
 
@@ -405,7 +405,7 @@ Everything else proceeds without confirmation.
 Every controllable hang class in an armed/overnight run resolves to one of
 two policies: **fallback** (an opt-in knob lets the gate accept a weaker-but-
 verified floor and keep going) or **park** (the gate stays closed and the item
-is set aside). Park is never a retry-loop: a worker session that hits a park-policy
+is set aside). Park is never a retry-loop: a worker that hits a park-policy
 gate does this, and only this:
 
 1. **Write the pending item into the handover's Pending block**: the PR#, the
@@ -425,8 +425,8 @@ gate does this, and only this:
    rest of the queue while independent work is ready to ship.
 3. **Never re-run the same blocked gate in a loop** hoping it resolves on its
    own. Park records the item once and moves on; it does not poll.
-4. **At wrap, the worker session pends for cold restart**: a fresh arm/handover once the
-   blocking condition is confirmed cleared, not an in-leg retry.
+4. **At wrap, the worker pends for cold restart**: a fresh arm/handover once the
+   blocking condition is confirmed cleared, not an in-worker retry.
 
 ### The five hang classes
 
@@ -435,7 +435,7 @@ gate does this, and only this:
 | 1 | Cross-model floor exhaustion: `CR_REQUIRE_CROSS_MODEL` set, every non-Claude critic down | `CR_FLOOR_FALLBACK=claude-only` (opt-in) when the exhaustion is VERIFIED quota/rate-limit; otherwise **park** the branch and continue |
 | 2 | Plugin-tool permission wall | Operator allow-rules close it; **park** the blocked item if hit |
 | 3 | CodeRabbit rate-limit vs. stale review | Neither blocks: CodeRabbit is best effort, so a rate-limited, absent or stale review is a NOTE from `check-ci.sh`, never a park. The gate that remains is CI green + zero unresolved threads + the panel; an unresolved CodeRabbit thread still blocks like any other reviewer's |
-| 4 | Live-worker rc=10 at arm | Wrap discipline (finish/reconcile the worker before arming) closes it in-leg; **park** if it cannot be resolved before the worker session ends |
+| 4 | Live-worker rc=10 at arm | Wrap discipline (finish/reconcile the worker before arming) closes it in-worker; **park** if it cannot be resolved before the worker ends |
 | 5 | `ARMAUTOMERGE` unset | Pre-arm WARN only (`arm-resume.sh`); the run still deliberately stops at every green PR instead of merging; not itself a park |
 
 ## Telegram relaunch — always PLAIN, never `--channels`
@@ -464,9 +464,9 @@ Claude Code runs a model-based **auto-mode classifier** on every tool call in au
 What this means for an autonomous run, and how to stay unblocked:
 
 1. **Attestation: write trailers into the FIRST commit** (Phase 8), never a reactive amend. This avoids the gate-circumvention veto entirely: the push passes the deterministic git hook first-try and there is no amend for the classifier to flag. This is the single most important rule for shipping autonomously.
-2. **Never `git commit --amend` to satisfy a just-failed push gate.** If you somehow committed without a required trailer, the recovery is to author a clean replacement commit message *before* the first push of that branch, not an amend after a failed push. If the branch is already pushed, recut it: a fresh branch from main with ONE new commit carrying the trailers, a new PR, and the old one closed (a PR-body trailer clears the pre-push gate but fails the supervisor session's ready-check, which reads only the first commit; see [`stuck-playbook.md`](../internals/stuck-playbook.md) § missing attestation trailer). Do not amend.
+2. **Never `git commit --amend` to satisfy a just-failed push gate.** If you somehow committed without a required trailer, the recovery is to author a clean replacement commit message *before* the first push of that branch, not an amend after a failed push. If the branch is already pushed, recut it: a fresh branch from main with ONE new commit carrying the trailers, a new PR, and the old one closed (a PR-body trailer clears the pre-push gate but fails the chief's ready-check, which reads only the first commit; see [`stuck-playbook.md`](../internals/stuck-playbook.md) § missing attestation trailer). Do not amend.
 3. **Self-modification is operator-only by design.** The agent cannot add allow-rules to its own settings, nor edit `CLAUDE.md` / `.claude/settings.json`, even in a worktree PR branch: the *commit* of such a change is classified as self-modification and HARD-blocked when the change is **agent-inferred**. The unblock is **explicit user specification**: when the operator states the exact allow-rule string (or exact rule text) verbatim, the intent bar is met and the agent may commit it. Pure operational docs (this file) are NOT governing config and commit freely.
-4. **External writes (Jira): ensure the specific standing allow-rule exists, then run them.** With `Bash(node scripts/jira/dist/index.js:*)` in settings, transitions run autonomously — 100%, no defer. If the rule is absent (and you cannot add it — that's operator self-mod), do NOT probe alternative invocations (flagged as evasion); record the transition as an operator action in the handover and ask the operator to add the rule once. A review-thread resolve is the exception: it goes to the console, never the operator (see `stuck-playbook.md`).
+4. **External writes (Jira): ensure the specific standing allow-rule exists, then run them.** With `Bash(node scripts/jira/dist/index.js:*)` in settings, transitions run autonomously — 100%, no defer. If the rule is absent (and you cannot add it — that's operator self-mod), do NOT probe alternative invocations (flagged as evasion); record the transition as an operator action in the handover and ask the operator to add the rule once. A review-thread resolve is the exception: it goes to the chief, never the operator (see `stuck-playbook.md`).
 
 These are environment behaviors, not himmel policy, documented here so every operator's overnight run understands why an agent stalls and what the unblocked path is.
 

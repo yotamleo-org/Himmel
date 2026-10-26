@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# inbox-send.sh — console-side write for the claudex file inbox.
+# inbox-send.sh — chief-side write for the claudex file inbox.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight. The claudex lane
 # (scripts/claude-codex, konsole + /proc/$CLAUDE_PID/cmdline session-name
@@ -8,9 +8,9 @@
 # Appends one ruling bullet to <handover root>/inbox/<session-name>.md, which
 # scripts/hooks/claudex-inbox-hook.sh (PostToolUse) and
 # scripts/hooks/claudex-inbox-sessionstart.sh (SessionStart mirror) deliver to
-# the named leg as additionalContext — no ListAgents/SendMessage, no operator
-# paste. --doc additionally mirrors the same bullet under the leg's
-# "## Console Rulings (newest at the bottom)" section, which stays the durable
+# the named worker as additionalContext — no ListAgents/SendMessage, no operator
+# paste. --doc additionally mirrors the same bullet under the worker's
+# "## Chief Rulings (newest at the bottom)" section, which stays the durable
 # record; the inbox is delivery only.
 #
 # RETASK model (docs/internals/retask-channel.md): hookSpecificOutput.
@@ -27,28 +27,28 @@
 #   inbox-send.sh <session-name> --file <path> [--token <retask-token>] [--doc <path>]
 #   inbox-send.sh --pending
 #     Lists every inbox/*.md whose size exceeds its cursor — i.e. a ruling
-#     the named leg has not yet consumed. The design asks that "the
-#     console tick can list inbox/*.md whose size > cursor" so an
+#     the named worker has not yet consumed. The design asks that "the
+#     chief tick can list inbox/*.md whose size > cursor" so an
 #     undelivered ruling stays visible instead of silently waiting on the
-#     leg's next tool call / resume.
+#     worker's next tool call / resume.
 #
-# Exit 3: --token refused — either the caller is a console
-# relay (HIMMEL_CONSOLE_RELAY is set; only the console sends token-quoting
+# Exit 3: --token refused — either the caller is a chief
+# relay (HIMMEL_CONSOLE_RELAY is set; only the chief sends token-quoting
 # bullets) or the sending session name cannot be resolved (no CLAUDE_PID /
 # -n). Nothing is written in either case. A no-token bullet always carries
 # from=<sender session>, falling back to from=unknown, and is never refused
 # on this account.
 #
 # Exit 4: the inbox append succeeded and the token bullet was
-# delivered, but the console-side sent-record ledger write that follows it
+# delivered, but the chief-side sent-record ledger write that follows it
 # failed (cannot secure/create the per-sender ledger directory, or cannot
 # write the ledger line). The message is delivered either way — this is not
 # a retry cue, it is the detection gap itself: scripts/handover/chief-kit/
 # inbox-audit.sh will name this bullet as UNMATCHED on the next per-shift
 # audit, same as a genuinely forged one.
 #
-# bash 3.2-safe, shellcheck-clean. Linux/konsole-only lane (claudex legs run
-# on Linux today, same as headed-arm-leg.sh's sibling in this directory) — no
+# bash 3.2-safe, shellcheck-clean. Linux/konsole-only lane (claudex workers run
+# on Linux today, same as headed-arm-worker.sh's sibling in this directory) — no
 # .ps1 twin.
 set -uo pipefail
 
@@ -139,8 +139,8 @@ fi
 [ -n "$text" ] || usage
 
 # the inbox and the doc mirror are line-oriented — a newline in
-# the text would land later lines as bare text the leg's drain and the doc's
-# Console Rulings section ignore. Join non-blank lines into ONE bullet.
+# the text would land later lines as bare text the worker's drain and the doc's
+# Chief Rulings section ignore. Join non-blank lines into ONE bullet.
 case "$text" in
     *"
 "*)
@@ -174,7 +174,7 @@ esac
 stamp="$(date +%H:%M)"
 if [ -n "$token" ]; then
     if [ "$is_relay" -eq 1 ]; then
-        printf 'inbox-send: refusing --token from a console relay (only the console sends token-quoting messages)\n' >&2
+        printf 'inbox-send: refusing --token from a chief relay (only the chief sends token-quoting messages)\n' >&2
         exit 3
     fi
     if [ -z "$author" ]; then
@@ -198,19 +198,19 @@ if [ -n "$doc" ]; then
     fi
     # prim-ok: canon_path resolves directories only; the doc is a file whose own symlink is followed, and the result is also the write target
     doc="$(realpath -- "$doc")" || exit 2
-    # the lock (directory, key, flock -x on fd 9) is leg-doc-lock.sh's,
+    # the lock (directory, key, flock -x on fd 9) is worker-doc-lock.sh's,
     # shared with append-results.sh, live-state.sh and the launcher's
     # session_ids: rewrite. Unlike those, a ruling is never mirrored unlocked:
     # no flock (rc 3) refuses, as before.
-    # shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
+    # shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
     . "$HERE/worker-doc-lock.sh"
     lock_rc=0; doc_lock "$doc" inbox-send || lock_rc=$?
     if [ "$lock_rc" -ne 0 ]; then
         [ "$lock_rc" -eq 3 ] && printf 'inbox-send: cannot lock %s: flock not installed\n' "$doc" >&2
         exit 2
     fi
-    if grep -q '^## Console Rulings' "$doc"; then
-        # Insert as the LAST line of the FIRST "## Console Rulings" section:
+    if grep -q '^## Chief Rulings' "$doc"; then
+        # Insert as the LAST line of the FIRST "## Chief Rulings" section:
         # right before the next "## " heading, or at EOF if none follows.
         # a mktemp name beside the doc, not a predictable
         # $doc.tmp.$$; cp -p gives it the doc's mode (mktemp makes it 0600).
@@ -227,7 +227,7 @@ if [ -n "$doc" ]; then
         # the bullet verbatim.
         if ! bullet="$bullet" awk '
             BEGIN { in_section = 0; inserted = 0; bullet = ENVIRON["bullet"] }
-            /^## Console Rulings/ { if (!inserted) in_section = 1; print; next }
+            /^## Chief Rulings/ { if (!inserted) in_section = 1; print; next }
             in_section && /^## / {
                 print bullet
                 inserted = 1
@@ -250,7 +250,7 @@ if [ -n "$doc" ]; then
         fi
     else
         {
-            printf '\n## Console Rulings (newest at the bottom)\n'
+            printf '\n## Chief Rulings (newest at the bottom)\n'
             printf '%s\n' "$bullet"
         } >> "$doc" || { printf 'inbox-send: failed to update %s\n' "$doc" >&2; exit 2; }
     fi
@@ -264,18 +264,18 @@ printf '%s\n' "$bullet" >> "$inbox" || exit 2
 # inbox that has no matching record — i.e. one this script never sent. Only
 # for token bullets: a no-token bullet carries no RETASK authority to forge,
 # so there is nothing here worth recording. Runs AFTER the inbox append
-# above: a ledger failure must never block delivery of a bullet the console
+# above: a ledger failure must never block delivery of a bullet the chief
 # already committed to sending (see exit 4 above).
 if [ -n "$token" ]; then
     ledger_base="${HIMMEL_CONSOLE_RUNDIR:-}"
     if [ -z "$ledger_base" ]; then
-        # Same per-uid convention as console.sh (scripts/handover/chief/
-        # console.sh lines 18-19, 430-440): prefer a systemd-provided,
+        # Same per-uid convention as chief.sh (scripts/handover/chief/
+        # chief.sh lines 18-19, 430-440): prefer a systemd-provided,
         # already-owned XDG_RUNTIME_DIR, else the uid-qualified /tmp path.
         if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ]; then
-            ledger_base="$XDG_RUNTIME_DIR/himmel-console"
+            ledger_base="$XDG_RUNTIME_DIR/himmel-chief"
         else
-            ledger_base="${TMPDIR:-/tmp}/himmel-console-$(id -u)"
+            ledger_base="${TMPDIR:-/tmp}/himmel-chief-$(id -u)"
         fi
     fi
     ledger_dir="$ledger_base/${author:-unknown}"

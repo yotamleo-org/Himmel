@@ -3,7 +3,7 @@
 #
 # arm-resume now REFUSES (rc=9) an explicit --time HH:MM more than 60 min out
 # unless --long-gap sanctions the park (the ALWAYS-CONTINUE directive: an
-# orchestrator leg arms <=30-60 min out while work remains). This twin covers
+# orchestrator worker arms <=30-60 min out while work remains). This twin covers
 # the gap arithmetic (incl. the midnight wrap), the refusal path, the
 # --long-gap pass-through, the <=60 min silent path, the ARM_RESUME_SAFETY_ARM=1
 # safety-arm exemption (auto-arm-on-cap.sh's stale-cache escalation + spawn-glm

@@ -181,8 +181,8 @@ else
     bad "positive control: wired block-docker-privesc expected refusal, got exit $guard_rc: $(cat "$ERR")"
 fi
 
-# A chief session needs both console guards: a missing script must block, not pass.
-for guard in guard-console-dispatch guard-console-foreground; do
+# A chief session needs both chief guards: a missing script must block, not pass.
+for guard in guard-chief-dispatch guard-chief-foreground; do
     MISSING_COMMAND="$(jq -r --arg g "$guard.sh" '.hooks.PreToolUse[] | .hooks[] | select(.command | contains($g)) | .command' "$HOOKS_JSON")"
     printf '%s' "$PAYLOAD" | env \
         CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT" \

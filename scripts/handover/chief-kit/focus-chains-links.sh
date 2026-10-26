@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/focus-chains-links.sh - write the step order of the
-# console's focus-chains.json as Jira Blocks links, so the dispatcher reads the
-# chains from Jira instead of a file only the console keeps.
+# chief's focus-chains.json as Jira Blocks links, so the dispatcher reads the
+# chains from Jira instead of a file only the chief keeps.
 #
 # Usage: focus-chains-links.sh <focus-chains.json> [--mirror DIR] [--chain N]... [--apply]
 #
@@ -24,7 +24,7 @@
 # cycle, and a dry run with the same --chain list shows what --apply writes.
 #
 # --apply writes the `new` rows of the chains named by --chain (index in the file,
-# repeatable; an index past the last chain, or --apply without one, is refused, so the console picks which chains are
+# repeatable; an index past the last chain, or --apply without one, is refused, so the chief picks which chains are
 # real orderings, not groups). Each write is `jira link <blocker> --blocks <blocked>`,
 # which itself reads the issue back after the POST; then every written pair is read
 # back once more with `jira links <blocker>` and printed `readback <A> blocks <B> ok`

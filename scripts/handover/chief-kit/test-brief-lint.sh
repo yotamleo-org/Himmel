@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in the ok/bad reporting lines, as in test-headed-arm-leg.sh
+# shellcheck disable=SC2015  # A && B || C is intentional in the ok/bad reporting lines, as in test-headed-arm-worker.sh
 # scripts/handover/chief-kit/test-brief-lint.sh - suite for brief-lint.sh
-# the arming-time check that a leg or judge brief carries a
-# filled `> **Prior art:**` line, plus the headed-arm-leg.sh call site that
+# the arming-time check that a worker or judge brief carries a
+# filled `> **Prior art:**` line, plus the headed-arm-worker.sh call site that
 # refuses an arming with a failing brief unless --no-prior-art-check is passed.
 #
 # Asserts:
@@ -11,20 +11,20 @@
 #      no query all FAIL (exit 1, reason on stderr).
 #   2. A filled line, `none found (<query>)`, and a multi-line filled field PASS.
 #   3. Usage errors exit 2 (no arg, unreadable file).
-#   4. headed-arm-leg.sh refuses a template-shaped brief (carries a `> **Contract:**`
+#   4. headed-arm-worker.sh refuses a template-shaped brief (carries a `> **Contract:**`
 #      or `> **Completion condition:**` line) that fails the lint, naming
 #      --no-prior-art-check; the flag lets it through; a filled brief passes;
 #      a relay or consult launch is not gated; a brief with neither
 #      field is gated too (4e).
 #   5. a fresh brief with no front-matter `description:` (or the
 #      template placeholder) FAILS, naming the field; a doc whose Results already
-#      holds a bullet (a resume) passes without one. headed-arm-leg.sh refuses a
+#      holds a bullet (a resume) passes without one. headed-arm-worker.sh refuses a
 #      fresh template-shaped launch with no description, --no-prior-art-check
 #      or not, and still resumes a doc that has run.
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LINT="$HERE/brief-lint.sh"
-LEG="$HERE/headed-arm-worker.sh"
+WORKER="$HERE/headed-arm-worker.sh"
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/brief-lint.XXXXXX")" || exit 1; trap 'rm -rf "$tmp"' EXIT
 pass=0; fail=0
 ok() { pass=$((pass + 1)); printf 'ok   %s\n' "$1"; }
@@ -98,35 +98,35 @@ mk tmpl_bad_judge '# brief' '> **Completion condition:** z' '## Results'
 mk tmpl_ok '# brief' '> **Prior art:** none found (qmd -c jira-himmel "x")' '> **Contract:** y' '## Results'
 mk_raw fixture_plain '# fixture brief' '## Results'
 mk_raw fixture_plain_ok '---' 'description: a plain fixture brief' '---' '# fixture brief' '> **Prior art:** none found (qmd -c jira-himmel "x")' '## Results'
-run_leg() { # doc args...
+run_worker() { # doc args...
     local doc="$1"; shift
     HEADED_ARM_WORKER_PREFLIGHT="$tmp/preflight.sh" WORKER_SESSION_REPO="$tmp" \
-        bash "$LEG" --dry-run "$@" "HIMMEL-9999-x" "$doc" "$tmp/signal" 9999999999 "$tmp/log" claude-sonnet-5-5 2>&1
+        bash "$WORKER" --dry-run "$@" "HIMMEL-9999-x" "$doc" "$tmp/signal" 9999999999 "$tmp/log" claude-sonnet-5-5 2>&1
 }
-rc=0; out="$(run_leg "$tmp/tmpl_bad.md" --profile leg-impl)" || rc=$?
+rc=0; out="$(run_worker "$tmp/tmpl_bad.md" --profile worker-impl)" || rc=$?
 { [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q -- '--no-prior-art-check'; } \
     && ok "4a failing template brief is refused, flag named" || bad "4a failing template brief is refused (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/tmpl_bad_judge.md" --judge)" || rc=$?
+rc=0; out="$(run_worker "$tmp/tmpl_bad_judge.md" --judge)" || rc=$?
 { [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q -- '--no-prior-art-check'; } \
     && ok "4b failing judge brief is refused" || bad "4b failing judge brief is refused (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/tmpl_bad.md" --profile leg-impl --no-prior-art-check)" || rc=$?
+rc=0; out="$(run_worker "$tmp/tmpl_bad.md" --profile worker-impl --no-prior-art-check)" || rc=$?
 [ "$rc" -eq 0 ] && ok "4c --no-prior-art-check lets it through" || bad "4c --no-prior-art-check (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/tmpl_ok.md" --profile leg-impl)" || rc=$?
+rc=0; out="$(run_worker "$tmp/tmpl_ok.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "4d filled template brief passes" || bad "4d filled template brief (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/fixture_plain.md" --profile leg-impl)" || rc=$?
+rc=0; out="$(run_worker "$tmp/fixture_plain.md" --profile worker-impl)" || rc=$?
 { [ "$rc" -ne 0 ] && printf '%s' "$out" | grep -q -- '--no-prior-art-check'; } \
     && ok "4e a brief with no Contract/Completion field and no Prior art is refused (HIMMEL-4619)" || bad "4e field-less brief is refused (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/fixture_plain.md" --profile leg-impl --no-prior-art-check)" || rc=$?
+rc=0; out="$(run_worker "$tmp/fixture_plain.md" --profile worker-impl --no-prior-art-check)" || rc=$?
 [ "$rc" -eq 0 ] && ok "4e2 --no-prior-art-check lets a field-less brief through" || bad "4e2 field-less brief with the flag (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/fixture_plain_ok.md" --profile leg-impl)" || rc=$?
+rc=0; out="$(run_worker "$tmp/fixture_plain_ok.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "4e3 a field-less brief with a Prior art line and description arms (control)" || bad "4e3 field-less brief with Prior art (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/tmpl_bad.md" --relay)" || rc=$?
+rc=0; out="$(run_worker "$tmp/tmpl_bad.md" --relay)" || rc=$?
 { [ "$rc" -eq 0 ] && ! printf '%s' "$out" | grep -q -- 'no-prior-art-check'; } && ok "4f relay launch is not gated" || bad "4f relay launch is not gated (rc=$rc): $out"
 
 # 5. description field.
 PA='> **Prior art:** none found (qmd -c jira-himmel "x")'
 mk_raw desc_none '# brief' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
-mk_raw desc_ph '---' 'description: <one plain-language line: what this leg is doing and why>' '---' '# brief' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
+mk_raw desc_ph '---' 'description: <one plain-language line: what this worker is doing and why>' '---' '# brief' "$PA" '> **Contract:** y' '## Results (newest at the bottom)'
 mk_raw desc_resumed '# brief' "$PA" '> **Contract:** y' '## Results (newest at the bottom)' '- 10:00 LIVE — started'
 expect_rc "5a fresh brief with no description fails" 1 "$tmp/desc_none.md"
 err="$(bash "$LINT" "$tmp/desc_none.md" 2>&1 >/dev/null)"
@@ -134,18 +134,18 @@ grep -q 'description:' <<< "$err" && ok "5b the failure names the description: f
 grep -q 'first line' <<< "$err" && ok "5b2 the failure says the '---' must be the first line" || bad "5b2 the failure does not name the first-line rule: $err"
 expect_rc "5c placeholder description fails" 1 "$tmp/desc_ph.md"
 expect_rc "5d a resumed doc (Results bullet) passes without a description" 0 "$tmp/desc_resumed.md"
-rc=0; out="$(run_leg "$tmp/desc_none.md" --profile leg-impl)" || rc=$?
+rc=0; out="$(run_worker "$tmp/desc_none.md" --profile worker-impl)" || rc=$?
 { [ "$rc" -eq 2 ] && grep -q 'description:' <<< "$out"; } \
     && ok "5e launcher refuses a fresh brief with no description" || bad "5e launcher refuses a fresh brief with no description (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/desc_none.md" --profile leg-impl --no-prior-art-check)" || rc=$?
+rc=0; out="$(run_worker "$tmp/desc_none.md" --profile worker-impl --no-prior-art-check)" || rc=$?
 { [ "$rc" -eq 2 ] && grep -q 'description:' <<< "$out"; } \
     && ok "5f --no-prior-art-check does not bypass the description refusal" || bad "5f --no-prior-art-check bypassed the description refusal (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/desc_resumed.md" --profile leg-impl)" || rc=$?
+rc=0; out="$(run_worker "$tmp/desc_resumed.md" --profile worker-impl)" || rc=$?
 [ "$rc" -eq 0 ] && ok "5g launcher resumes a doc that has run without a description" || bad "5g launcher resume of a pre-description doc (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/desc_none.md" --relay)" || rc=$?
+rc=0; out="$(run_worker "$tmp/desc_none.md" --relay)" || rc=$?
 [ "$rc" -eq 0 ] && ok "5h relay launch is not gated on a description" || bad "5h relay launch gated on a description (rc=$rc): $out"
 
-# 6. Every brief template the launcher gates, filled the way a console fills it
+# 6. Every brief template the launcher gates, filled the way a chief fills it
 #    (each `<placeholder>` replaced), launches: a template that lacks a field the
 #    gates require would refuse every brief written from it.
 DOCS="$HERE/../../../docs/handover"
@@ -153,14 +153,14 @@ fill_template() { # template out
     awk '/^```markdown$/ { inb = 1; next } inb && /^```$/ { exit } inb' "$1" \
         | sed -E 's/<[^>]*>/filled/g; s/<[^>]*$/filled/' > "$2"
 }
-fill_template "$DOCS/leg-brief-template.md" "$tmp/filled_leg.md"
+fill_template "$DOCS/worker-brief-template.md" "$tmp/filled_worker.md"
 fill_template "$DOCS/judge-brief-template.md" "$tmp/filled_judge.md"
-grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$tmp/filled_leg.md" \
+grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$tmp/filled_worker.md" \
     && grep -Eq '^> \*\*(Contract|Completion condition):\*\*' "$tmp/filled_judge.md" \
     && ok "6a both filled templates are template-shaped (gated)" || bad "6a a filled template is not gate-shaped"
-rc=0; out="$(run_leg "$tmp/filled_leg.md" --profile leg-impl)" || rc=$?
-[ "$rc" -eq 0 ] && ok "6b a filled leg-brief-template launches" || bad "6b filled leg-brief-template refused (rc=$rc): $out"
-rc=0; out="$(run_leg "$tmp/filled_judge.md" --judge)" || rc=$?
+rc=0; out="$(run_worker "$tmp/filled_worker.md" --profile worker-impl)" || rc=$?
+[ "$rc" -eq 0 ] && ok "6b a filled worker-brief-template launches" || bad "6b filled worker-brief-template refused (rc=$rc): $out"
+rc=0; out="$(run_worker "$tmp/filled_judge.md" --judge)" || rc=$?
 [ "$rc" -eq 0 ] && ok "6c a filled judge-brief-template launches" || bad "6c filled judge-brief-template refused (rc=$rc): $out"
 
 printf '\n%d passed, %d failed\n' "$pass" "$fail"

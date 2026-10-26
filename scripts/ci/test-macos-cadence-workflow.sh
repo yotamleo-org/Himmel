@@ -44,7 +44,7 @@ sum_if="$(job_of summary | sed -n 's/^    if: //p' | head -1)"
 if grep -q '^always() && ' <<< "$sum_if"; then ok "summary keeps always() so a red shard still gets its verdict"
 else bad "summary's if no longer starts with always(): '$sum_if'"; fi
 # 2c. the header must not promise the old per-PR ban.
-if grep -q 'never on an unlabelled PR' "$WF" && ! grep -q 'NOT on pull_request/push, ever' "$WF"; then ok "header says the macOS legs never run on an unlabelled PR"
+if grep -q 'never on an unlabelled PR' "$WF" && ! grep -q 'NOT on pull_request/push, ever' "$WF"; then ok "header says the macOS workers never run on an unlabelled PR"
 else bad "header still carries the old 'NOT on pull_request/push, ever' wording"; fi
 
 # 3. lower frequency than nightly: the cron's day-of-week field is restricted.

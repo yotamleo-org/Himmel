@@ -1,5 +1,5 @@
 /* Design tokens shared by the docs site and the himmel UI (mockup v4, frame 9). Byte-identical twin of
-   site/src/styles/tokens.css: change both together; tests/tokens-sync.test.ts fails when they differ. The console
+   site/src/styles/tokens.css: change both together; tests/tokens-sync.test.ts fails when they differ. The chief
    serves only public/, so it carries a copy instead of importing from site/. Light by default, dark by
    preference or [data-theme="dark"]. */
 :root {

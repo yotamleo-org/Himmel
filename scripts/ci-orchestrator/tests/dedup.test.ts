@@ -67,7 +67,7 @@ describe("planSubmission", () => {
     expect(enqueue).toHaveLength(1);
   });
 
-  test("os leg is part of dedup identity (same job, different os → not reused)", () => {
+  test("os worker is part of dedup identity (same job, different os → not reused)", () => {
     const a = job({ job: "shell-unit-shard", os: "linux", treeHash: "abc" });
     const prior = new Map([[a.id, { attrs: a, status: "done" as const, conclusion: "success" }]]);
     const { enqueue, reused } = planSubmission(

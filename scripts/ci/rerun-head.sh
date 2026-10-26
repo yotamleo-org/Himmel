@@ -27,7 +27,7 @@
 # atomic compare-and-rerun: each recheck narrows the race, none closes it). A rerun
 # or re-read that itself fails is reported, the rest still go, and the exit is 1.
 # -R comes from GH_REPO or the origin remote, never a hardcoded slug.
-# Console-run only, not wired into any hook or workflow.
+# Chief-run only, not wired into any hook or workflow.
 set -uo pipefail
 
 WORKFLOW="ci.yml"

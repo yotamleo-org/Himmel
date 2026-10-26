@@ -2,16 +2,16 @@
 # scripts/lib/fleet-reservation-key.sh. Sourced by
 # scripts/lib/bank-preflight.sh (which RESERVES a fleet slot) and
 # scripts/handover/arm-resume.sh (which RELEASES it on exit): the ONE place a
-# leg name becomes the on-disk key of its reservation directory, so the
+# worker name becomes the on-disk key of its reservation directory, so the
 # reserver and the releaser cannot disagree about where the reservation lives.
 #
 # Defines functions only — sourcing prints nothing, reserves nothing and
 # touches no slot dir (pinned by scripts/lib/test-fleet-reservation-key.sh).
 # Bash 3.2-safe; no .ps1 twin (the slot dir is a POSIX tmpfs construct).
 #
-#   fleet_hash_key <leg>         bounded deterministic key (POSIX cksum): always
+#   fleet_hash_key <worker>         bounded deterministic key (POSIX cksum): always
 #                                a valid directory component
-#   fleet_reservation_key <leg>  the key the reservation dir is created under:
+#   fleet_reservation_key <worker>  the key the reservation dir is created under:
 #                                the name itself, unless it cannot be one
 #                                directory component ('/', a leading '.', or
 #                                longer than NAME_MAX = 255 BYTES), in which

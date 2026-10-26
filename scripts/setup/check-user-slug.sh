@@ -48,7 +48,7 @@
 #      to fill), and the settings.json wiring is statusline/HIMMEL_REPO/hooks.
 #   3. `export USER_SLUG` dies with the setup.sh process, so it cannot reach a
 #      consumer even in principle.
-#   4. Every real consumer — scripts/handover/{hop,schedule-resume,leg-timeline},
+#   4. Every real consumer — scripts/handover/{hop,schedule-resume,worker-timeline},
 #      hooks/block-edit-on-main.sh, lib/load-dotenv.sh, upstreams/upstream-watch,
 #      luna/file-clipper-tickets — calls this same resolver itself at use time,
 #      so an unset slug degrades cleanly and self-heals the moment any of the

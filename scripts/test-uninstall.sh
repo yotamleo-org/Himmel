@@ -408,7 +408,7 @@ assert_has "rc1-real-stderr WARNs" "WARN: crontab -l failed (rc=1)" "$out"
 assert_not_has "rc1-real-stderr not masked as no-jobs" "no matching scheduled jobs found" "$out"
 assert_not_has "rc1-real-stderr rewrite not attempted" "stripped HIMMEL-Resume-" "$out"
 
-# 9e. WET crontab rewrite (no --dry-run; the cron leg actually executes):
+# 9e. WET crontab rewrite (no --dry-run; the cron worker actually executes):
 #     atq is stubbed to an empty listing, schtasks is invisible, and the
 #     crontab stub captures the rewrite's stdin to a file — the operator's
 #     real crontab is never invoked. The failure mode pinned here is wiping
@@ -452,7 +452,7 @@ else
     echo "PASS HIMMEL-Resume- line stripped from rewritten crontab"
 fi
 
-# 9f. WET rewrite where EVERY line matched (the '|| true' leg): grep -v
+# 9f. WET rewrite where EVERY line matched (the '|| true' worker): grep -v
 #     exits 1 with empty output — a legitimately EMPTY crontab is installed.
 #     Captured stdin must be empty, reported as stripped, no WARN.
 mk_state
@@ -1247,7 +1247,7 @@ else
     echo "PASS update-check state removed with the cache"
 fi
 
-# 20c. headed-arm-leg.sh appends one launch record per leg launch
+# 20c. headed-arm-worker.sh appends one launch record per worker launch
 #      to launch-logs/<session>.log in this same dir (the cost cohort's source).
 #      Like 20b: the file is written by the REAL launcher (a stubbed target, no
 #      konsole), pointed at the cache the same way uninstall reads it, so the

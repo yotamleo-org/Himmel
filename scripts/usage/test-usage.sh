@@ -21,20 +21,20 @@ check() { # label expected actual
 row() { # sid sidechain ts req in cr cc out
   printf '{"type":"assistant","sessionId":"%s","isSidechain":%s,"timestamp":"%s","requestId":"%s","message":{"usage":{"input_tokens":%s,"cache_read_input_tokens":%s,"cache_creation_input_tokens":%s,"output_tokens":%s}}}\n' "$@"
 }
-LEG="aaaaaaaa-0000-0000-0000-000000000001"
+WORKER="aaaaaaaa-0000-0000-0000-000000000001"
 CON="bbbbbbbb-0000-0000-0000-000000000002"
 JDG="cccccccc-0000-0000-0000-000000000003"
 {
-  echo '{"type":"custom-title","customTitle":"HIMMEL-9001-N1-thing","sessionId":"'$LEG'"}'
-  row $LEG false 2026-01-01T00:00:02.000Z r1 10 100 5 20
-  row $LEG false 2026-01-01T00:00:02.000Z r1 10 100 5 20
-  row $LEG false 2026-01-01T00:00:03.000Z r2 11 101 6 21
-  echo '{"type":"user","sessionId":"'$LEG'","message":{"content":"subagent prompt SECRETSENTINEL"}}'
-} > "$SLUG/$LEG.jsonl"
-mkdir -p "$SLUG/$LEG/subagents"
-row $LEG true 2026-01-01T00:00:04.000Z s1 50 500 25 100 > "$SLUG/$LEG/subagents/agent-1.jsonl"
+  echo '{"type":"custom-title","customTitle":"HIMMEL-9001-N1-thing","sessionId":"'$WORKER'"}'
+  row $WORKER false 2026-01-01T00:00:02.000Z r1 10 100 5 20
+  row $WORKER false 2026-01-01T00:00:02.000Z r1 10 100 5 20
+  row $WORKER false 2026-01-01T00:00:03.000Z r2 11 101 6 21
+  echo '{"type":"user","sessionId":"'$WORKER'","message":{"content":"subagent prompt SECRETSENTINEL"}}'
+} > "$SLUG/$WORKER.jsonl"
+mkdir -p "$SLUG/$WORKER/subagents"
+row $WORKER true 2026-01-01T00:00:04.000Z s1 50 500 25 100 > "$SLUG/$WORKER/subagents/agent-1.jsonl"
 {
-  echo '{"type":"custom-title","customTitle":"HIMMEL-nextleg-console","sessionId":"'$CON'"}'
+  echo '{"type":"custom-title","customTitle":"HIMMEL-nextleg-chief","sessionId":"'$CON'"}'
   row $CON false 2026-01-01T00:00:02.000Z c1 3 30 2 7
 } > "$SLUG/$CON.jsonl"
 {
@@ -60,20 +60,20 @@ run() { bash "$COMPUTE" --projects "$PROJ" --ledger "$LEDGER" --range HIMMEL-900
 
 # 1. per-session totals equal usage-attribution.sh on the same fixture
 BA="$(bash "$BANK" "$PROJ")"
-ba_leg="$(printf '%s\n' "$BA" | grep -F '| HIMMEL-9001-N1-thing | slug' | awk -F' [|] ' '{print $4"/"$5"/"$6"/"$7"/"$8}')"
+ba_worker="$(printf '%s\n' "$BA" | grep -F '| HIMMEL-9001-N1-thing | slug' | awk -F' [|] ' '{print $4"/"$5"/"$6"/"$7"/"$8}')"
 OUT="$(run --print)"
 rec="$(printf '%s\n' "$OUT" | jq -c 'select(.ticket=="HIMMEL-9001")')"
-rec_leg="$(printf '%s' "$rec" | jq -r '.legs[]|select(.name=="HIMMEL-9001-N1-thing")|"\(.turns)/\(.input)/\(.cache_read)/\(.cache_create)/\(.output)"')"
-check "leg totals match bank-attribution" "$ba_leg" "$rec_leg"
-check "leg totals literal (dedup'd turn)" "2/21/201/11/41" "$rec_leg"
+rec_worker="$(printf '%s' "$rec" | jq -r '.legs[]|select(.name=="HIMMEL-9001-N1-thing")|"\(.turns)/\(.input)/\(.cache_read)/\(.cache_create)/\(.output)"')"
+check "worker totals match bank-attribution" "$ba_worker" "$rec_worker"
+check "worker totals literal (dedup'd turn)" "2/21/201/11/41" "$rec_worker"
 check "subagent tokens carried" "1/50/500/25/100" "$(printf '%s' "$rec" | jq -r '.legs[]|select(.name=="HIMMEL-9001-N1-thing")|"\(.sub_turns)/\(.sub_input)/\(.sub_cache_read)/\(.sub_cache_create)/\(.sub_output)"')"
 
 # 2. separate fields per kind
 check "judge kind separate" "judge" "$(printf '%s' "$rec" | jq -r '.legs[]|select(.name=="HIMMEL-9001-judge-call").kind')"
 check "totals.leg has no judge" "21" "$(printf '%s' "$rec" | jq -r '.totals.leg.input')"
 check "totals.judge" "4" "$(printf '%s' "$rec" | jq -r '.totals.judge.input')"
-check "console not attributed to ticket" "0" "$(printf '%s' "$rec" | jq -r '.totals.console.input')"
-check "console pool record, unallocated" "3" "$(printf '%s\n' "$OUT" | jq -r 'select(.ticket=="_console")|.totals.console.input')"
+check "chief not attributed to ticket" "0" "$(printf '%s' "$rec" | jq -r '.totals.console.input')"
+check "chief pool record, unallocated" "3" "$(printf '%s\n' "$OUT" | jq -r 'select(.ticket=="_chief")|.totals.console.input')"
 
 # 3. CR
 check "cr rounds" "2" "$(printf '%s' "$rec" | jq -r '.cr.rounds')"
@@ -114,7 +114,7 @@ check "store byte-identical on rerun" "$h1" "$(cksum < "$STORE/records.jsonl")"
 
 # 5. append-only: changed input appends a new version, old lines kept
 before="$(wc -l < "$STORE/records.jsonl" | tr -d ' ')"
-row $LEG false 2026-01-01T00:00:09.000Z r3 1 1 1 1 >> "$SLUG/$LEG.jsonl"
+row $WORKER false 2026-01-01T00:00:09.000Z r3 1 1 1 1 >> "$SLUG/$WORKER.jsonl"
 run --store "$STORE" >/dev/null
 after="$(wc -l < "$STORE/records.jsonl" | tr -d ' ')"
 check "changed input appends one version" "$((before + 1))" "$after"
@@ -181,7 +181,7 @@ check "pr facts (decoy HIMMEL-90019 excluded, numbers sorted)" '{"closed":1,"mer
 check "ci facts (runs deduped by id, secs from startedAt, in_progress not summed)" '{"basis":"startedAt","completed":2,"runs":3,"secs":90,"state":"found"}' "$(printf '%s' "$jrec" | jq -cS .ci)"
 check "no PR: pr is none" '{"state":"none"}' "$(printf '%s\n' "$J" | jq -c 'select(.ticket=="HIMMEL-9002")|.pr')"
 check "no PR: ci is no-pr, not zero runs" '{"state":"no-pr"}' "$(printf '%s\n' "$J" | jq -c 'select(.ticket=="HIMMEL-9002")|.ci')"
-check "pseudo-tickets carry no pr/ci" "null" "$(printf '%s\n' "$J" | jq -c 'select(.ticket=="_console")|.pr')"
+check "pseudo-tickets carry no pr/ci" "null" "$(printf '%s\n' "$J" | jq -c 'select(.ticket=="_chief")|.pr')"
 check "no --repo: records carry no pr/ci" "null/null" "$(run --print | jq -r 'select(.ticket=="HIMMEL-9001")|"\(.pr)/\(.ci)"')"
 mkdir -p "$ROOT/fix2"
 echo '[{"number":5,"state":"OPEN","title":"HIMMEL-9001 x","headRefName":"b"}]' > "$ROOT/fix2/pr-HIMMEL-9001.json"
@@ -202,7 +202,7 @@ echo '[{"databaseId":20,"status":"completed","conclusion":"success","createdAt":
 SJ="$ROOT/store-join"
 jrun --store "$SJ" >/dev/null
 hj="$(cksum < "$SJ/records.jsonl")"
-row $LEG false 2026-01-01T00:00:20.000Z r4 1 1 1 1 >> "$SLUG/$LEG.jsonl"   # input changed: a good run WOULD append
+row $WORKER false 2026-01-01T00:00:20.000Z r4 1 1 1 1 >> "$SLUG/$WORKER.jsonl"   # input changed: a good run WOULD append
 frc() { rc=0; "$@" >/dev/null 2>&1 || rc=$?; echo "$rc"; }
 check "gh auth failure exits non-zero" "1" "$(GHFAIL=1 frc jrun --store "$SJ")"
 check "wrong repo (gh error) exits non-zero" "1" "$(GHWANT_REPO=x/y frc jrun --store "$SJ")"

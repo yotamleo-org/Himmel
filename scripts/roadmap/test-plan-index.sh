@@ -6,7 +6,7 @@
 # temp out dir in a scratch tempdir; never the real qmd, plan dir or ~/.himmel/state.
 #
 # PLATFORM GUARD: no .ps1 twin, by design — the roadmap tooling is operator-side
-# (the console kit it pairs with is Linux-only); this suite needs bash + python3.
+# (the chief kit it pairs with is Linux-only); this suite needs bash + python3.
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail, so A && B || C is if-then-else here
 set -uo pipefail
 

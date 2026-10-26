@@ -85,7 +85,7 @@ wtl=$(git -C "$WORK/repo" worktree list 2>&1)
 has "(b) worktree list probe ran" "[main]" "$wtl"
 case "$wtl" in *shepherd-7*) fail "(b) worktree no longer listed (still in: $wtl)" ;; *) pass "(b) worktree no longer listed" ;; esac
 
-# (c) failed suite -> needs leg
+# (c) failed suite -> needs worker
 setup yes ok 0
 printf '#!/bin/sh\necho test-fail.sh\n' > "$WORK/impacted-stub"
 ( cd "$WORK/repo" && git checkout -q pr && printf '#!/bin/sh\nexit 1\n' > test-fail.sh && git add test-fail.sh && git commit -qm f \
@@ -93,7 +93,7 @@ printf '#!/bin/sh\necho test-fail.sh\n' > "$WORK/impacted-stub"
 HEADSHA=$(git -C "$WORK/repo" rev-parse pr); setup yes ok 0
 out=$(run); rc=$?
 check "(c) failed suite exits 1" 1 "$rc"
-has "(c) names suite-failed" "NEEDS-LEG" "$out"
+has "(c) names suite-failed" "NEEDS-WORKER" "$out"
 has "(c) suite-failed reason" "suite-failed:1" "$out"
 has "(c) suite verdict FAIL" "suite test-fail.sh: FAIL" "$out"
 printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
@@ -119,7 +119,7 @@ has "(f) steering DUE" "steering: DUE" "$out"
 has "(f) steering-required reason" "steering-required" "$out"
 check "(f) no worktree made" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
 
-# (g) panel not run -> says so, needs leg
+# (g) panel not run -> says so, needs worker
 setup yes none 0
 out=$(run); rc=$?
 check "(g) no ledger row exits 1" 1 "$rc"
@@ -181,7 +181,7 @@ printf '#!/bin/sh\necho test-a.sh\n' > "$WORK/impacted-stub"
 setup yes ok 0; echo 1 > "$SHEP_STUBDIR/cov.rc"
 out=$(run); rc=$?
 check "(m) coverage-gap exits 1" 1 "$rc"
-check "(m) clean tree removed on the NEEDS-LEG path" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
+check "(m) clean tree removed on the NEEDS-WORKER path" "" "$([ -d "$WORK/repo/.claude/worktrees/shepherd-7" ] && echo yes)"
 
 printf '\n%s failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

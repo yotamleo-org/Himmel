@@ -4,17 +4,17 @@
 # WHY: a prompt-cache break silently multiplies cost until someone runs a probe
 # by hand. This runs cache-health.py (no LLM, no claude -p) on a cron cadence,
 # writes ~/.himmel/state/cache-health/metrics.json, and notifies ONLY on a real
-# threshold crossing: one Telegram DM and one line in the live console's bridge
+# threshold crossing: one Telegram DM and one line in the live chief's bridge
 # inbox. Hysteresis and thresholds live in cache-health.py.
 #
-#   cache-health-cadence.sh run     [--repo <path>] [--console <session>] [--dry-run]
+#   cache-health-cadence.sh run     [--repo <path>] [--chief <session>] [--dry-run]
 #   cache-health-cadence.sh notify  <message>      (what cache-health.py calls)
 #   cache-health-cadence.sh arm     [--minute 0-59] [--every-hours 1|2|3|4|6|8|12] [--force] [--dry-run]
 #   cache-health-cadence.sh status
 #   cache-health-cadence.sh disarm  [--dry-run]
 #
-# The live console is resolved at RUN time: the newest held
-# `*-console` queue lock from `queue-lock.sh status --sweep`; --console pins one.
+# The live chief is resolved at RUN time: the newest held
+# `*-chief` queue lock from `queue-lock.sh status --sweep`; --chief pins one.
 # Delivery: Telegram via vault-stall-alert.sh and the inbox
 # `<bridge root>/consoles/<session>.md` (append-only, never created). `notify`
 # exits 0 when EITHER channel delivered; a failed run alerts via cadence-alert.sh.
@@ -29,6 +29,14 @@
 # CACHE_HEALTH_SWEEP_CMD, CACHE_HEALTH_TELEGRAM_CMD, BRIDGE_ROOT, plus
 # cadence-alert.sh's CADENCE_ALERT_*. Platform: cron (Linux/macOS).
 set -uo pipefail
+# Old names, read only while HIMMEL_LEGACY_NAMES is on.
+case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
+    alias_env CACHE_HEALTH_CHIEF CACHE_HEALTH_CONSOLE
+fi
+unset _ea_dir
 
 TASK_NAME="HIMMEL-CacheHealth"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -44,8 +52,8 @@ resolve_primary() {
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
 }
 
-# live_console <repo>: newest held *-chief / *-console queue lock's session name ("" if none).
-live_console() {
+# live_chief <repo>: newest held *-chief / *-console queue lock's session name ("" if none).
+live_chief() {
     local line slug age st best="" best_age=-1
     while IFS= read -r line; do
         case "$line" in slug=*) ;; *) continue ;; esac
@@ -61,36 +69,37 @@ live_console() {
     printf '%s' "$best"
 }
 
-# cmd_notify <message>: Telegram + console inbox; 0 when either delivered.
+# cmd_notify <message>: Telegram + chief inbox; 0 when either delivered.
 cmd_notify() {
-    local msg="${1:-}" repo console root inbox ok=1 tg
+    local msg="${1:-}" repo chief root inbox ok=1 tg
     [ -n "$msg" ] || { echo "ERR cache-health: notify needs a message" >&2; return 64; }
     repo="${CACHE_HEALTH_REPO:-$(resolve_primary)}" || repo=""
     tg="${CACHE_HEALTH_TELEGRAM_CMD:-$SCRIPT_DIR/../luna/vault-stall-alert.sh}"
     if "$tg" "$msg"; then ok=0; else echo "cache-health: Telegram send failed" >&2; fi
-    console="${CACHE_HEALTH_CONSOLE:-}"
-    [ -n "$console" ] || { [ -z "$repo" ] || console="$(live_console "$repo")"; }
+    chief="${CACHE_HEALTH_CHIEF:-}"
+    [ -n "$chief" ] || { [ -z "$repo" ] || chief="$(live_chief "$repo")"; }
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
-    if [ -n "$console" ]; then
-        inbox="$root/consoles/$console.md"
+    if [ -n "$chief" ]; then
+        inbox="$root/consoles/$chief.md"
         if [ -f "$inbox" ] && printf -- '- %s [cache-health] %s\n' "$(date +%H:%M)" "$(printf '%s' "$msg" | tr '\n' ' ')" >> "$inbox"; then
             ok=0
         else
-            echo "cache-health: no inbox for console $console" >&2
+            echo "cache-health: no inbox for chief $chief" >&2
         fi
     else
-        echo "cache-health: no live console" >&2
+        echo "cache-health: no live chief" >&2
     fi
     return "$ok"
 }
 
 cmd_run() {
-    local repo="" console="" dry=0 rc
+    local repo="" chief="" dry=0 rc
     while [ $# -gt 0 ]; do
         case "$1" in
-            --repo|--console)
+            --repo|--chief|--console)
+                [ "$1" != --console ] || legacy_flag --console --chief || { echo "ERR cache-health: unknown arg: $1" >&2; return 64; }
                 [ $# -ge 2 ] || { echo "ERR cache-health: $1 needs a value" >&2; return 64; }
-                case "$1" in --repo) repo="$2" ;; --console) console="$2" ;; esac
+                case "$1" in --repo) repo="$2" ;; --chief|--console) chief="$2" ;; esac
                 shift 2 ;;
             --dry-run) dry=1; shift ;;
             *) echo "ERR cache-health: unknown arg: $1" >&2; return 64 ;;
@@ -98,7 +107,7 @@ cmd_run() {
     done
     [ -n "$repo" ] || repo="$(resolve_primary)" || { echo "ERR cache-health: cannot resolve the repo" >&2; return 64; }
     export CACHE_HEALTH_REPO="$repo"
-    [ -z "$console" ] || export CACHE_HEALTH_CONSOLE="$console"
+    [ -z "$chief" ] || export CACHE_HEALTH_CHIEF="$chief"
     local args=(check --state-dir "$STATE_DIR" --notify-cmd "bash $(printf '%q' "$SCRIPT_DIR/cache-health-cadence.sh") notify")
     [ -z "${CACHE_HEALTH_ROOT:-}" ] || args+=(--root "$CACHE_HEALTH_ROOT")
     [ -z "${CACHE_HEALTH_NOW:-}" ] || args+=(--now "$CACHE_HEALTH_NOW")

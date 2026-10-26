@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/lib/fleet-wrapped.sh. Sourced by
-# scripts/lib/bank-preflight.sh's fleet census: a leg that has WRAPPED
+# scripts/lib/bank-preflight.sh's fleet census: a worker that has WRAPPED
 # (queue lock released, its handover doc's last status bullet reads
 # WRAPPED) but whose process is still alive should not hold a FLEET_CAP
 # slot. This defines the read-only check that decides that; it mutates
 # nothing.
 #
-# Console ruling (HIMMEL-nextleg-2026-09-23J-console, 2026-09-23): exclude a
+# Chief ruling (HIMMEL-nextleg-2026-09-23J-chief, 2026-09-23): exclude a
 # process only when BOTH the queue lock is free AND the last status bullet
 # is WRAPPED. Any lookup that fails or is ambiguous counts the process —
 # fail toward the cap, never toward an undercount that could push the fleet
@@ -22,11 +22,11 @@
 # Bash 3.2-safe; no .ps1 twin (reads /proc, a POSIX-only construct — the
 # Windows launcher has no equivalent process table to resolve this from).
 
-# fleet_doc_for_pid <pid> — prints the leg's handover doc path on stdout
-# (rc 0) when <pid>'s /proc cmdline carries one. leg-claude-launcher.sh
-# always launches a leg with a trailing prompt argv element of the exact
+# fleet_doc_for_pid <pid> — prints the worker's handover doc path on stdout
+# (rc 0) when <pid>'s /proc cmdline carries one. worker-claude-launcher.sh
+# always launches a worker with a trailing prompt argv element of the exact
 # shape `load <DOC> and continue` (see its own header comment), so this
-# is the cheap, unambiguous resolution path the console asked to try
+# is the cheap, unambiguous resolution path the chief asked to try
 # first, before any directory glob. rc 1 when cmdline is unreadable, has
 # no such element, or the path it names does not exist.
 fleet_doc_for_pid() {
@@ -58,7 +58,7 @@ fleet_doc_for_pid() {
 # matches by name but that match is a different, already-WRAPPED process
 # that happens to share <name> with the live one being checked (e.g. a
 # same-named re-arm racing its predecessor's still-live window) — a false
-# exclude, not the documented fail-toward-cap direction. Leg naming
+# exclude, not the documented fail-toward-cap direction. Worker naming
 # convention keeps <name> unique per launch in practice, so this is
 # believed rare; upgrade path if it is ever measured live: have the doc
 # itself record the pid that last wrote WRAPPED and require it match

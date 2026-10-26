@@ -61,7 +61,7 @@ new_sem() {
 }
 
 # qr <sem> [VAR=VAL ...] -- <cmd...>: quiet-run `suite` against sandbox <sem>,
-# stdin from /dev/null (the non-tty, own-process-group path legs use).
+# stdin from /dev/null (the non-tty, own-process-group path workers use).
 qr() {
     local sem="$1"; shift
     local -a envs=()
@@ -444,7 +444,7 @@ mkdir -p "$SEM"
     set -e
     . "$REPO_ROOT/scripts/lib/suite-semaphore.sh"
     # shellcheck disable=SC2030  # detail is intentionally local to this holder
-    HIMMEL_SUITE_SLOT_DETAIL=$'leg=N3665\n range=base..head\tsuites=3\r\033\177'
+    HIMMEL_SUITE_SLOT_DETAIL=$'worker=N3665\n range=base..head\tsuites=3\r\033\177'
     _suite_sem_try "$SEM/slot-1" suite
     cp "$SEM/slot-1/owner" "$SCRATCH/detail.owner"
     _suite_sem_read_owner "$SEM/slot-1"
@@ -465,8 +465,8 @@ mkdir -p "$SEM"
 DETAIL_SETUP_RC=$?
 if [ "$DETAIL_SETUP_RC" = "0" ] \
     && [ "$(grep -c '^detail=' "$SCRATCH/detail.owner")" = "1" ] \
-    && grep -qxF 'detail=leg=N3665 range=base..headsuites=3' "$SCRATCH/detail.owner" \
-    && grep -qxF 'leg=N3665 range=base..headsuites=3' "$SCRATCH/detail.read"; then
+    && grep -qxF 'detail=worker=N3665 range=base..headsuites=3' "$SCRATCH/detail.owner" \
+    && grep -qxF 'worker=N3665 range=base..headsuites=3' "$SCRATCH/detail.read"; then
     pass "holder detail strips controls, records one line and reads it back"
 else
     fail "holder detail was missing, unsanitised, duplicated or not read back"
@@ -491,13 +491,13 @@ new_sem
 mkdir -p "$SEM/slot-1"
 CAP_STARTED=$(( $(date +%s) - 10 ))
 CAP_ID=$(proc_tree_process_identity "$$")
-printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\ndetail=leg=N3665 range=base..head suites=3\n' \
+printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\ndetail=worker=N3665 range=base..head suites=3\n' \
     "$$" "$CAP_ID" "$CAP_STARTED" >"$SEM/slot-1/owner"
 ERR=$(qr "$SEM" HIMMEL_SUITE_SLOTS=1 HIMMEL_SUITE_SLOT_CAP=1 -- true 2>&1 >/dev/null); RC=$?
 if [ "$RC" = "75" ] \
-    && grep -qE "slot-1: pid $$, label suite, age [0-9]+s.*HELD PAST CAP.*leg=N3665 range=base\.\.head suites=3" <<<"$ERR" \
+    && grep -qE "slot-1: pid $$, label suite, age [0-9]+s.*HELD PAST CAP.*worker=N3665 range=base\.\.head suites=3" <<<"$ERR" \
     && [ -f "$SEM/long-held.log" ] && [ "$(wc -l <"$SEM/long-held.log")" -eq 1 ] \
-    && grep -qE "^[0-9]+ slot-1 pid=$$ label=suite age=[0-9]+s started=$CAP_STARTED detail=leg=N3665 range=base\.\.head suites=3$" "$SEM/long-held.log"; then
+    && grep -qE "^[0-9]+ slot-1 pid=$$ label=suite age=[0-9]+s started=$CAP_STARTED detail=worker=N3665 range=base\.\.head suites=3$" "$SEM/long-held.log"; then
     pass "busy acquire returns 75, marks the live holder past cap and logs its detail"
 else
     fail "past-cap holder -- expected rc 75, marked report and one log row, got rc=$RC: $ERR"
@@ -510,7 +510,7 @@ else
     fail "repeated busy acquire duplicated or omitted the past-cap holder log (rc=$RC)"
 fi
 CAP_STARTED=$((CAP_STARTED - 1))
-printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\ndetail=leg=N3665 range=base..head suites=3\n' \
+printf 'pid=%s\nidentity=%s\nlabel=suite\nstarted=%s\ndetail=worker=N3665 range=base..head suites=3\n' \
     "$$" "$CAP_ID" "$CAP_STARTED" >"$SEM/slot-1/owner"
 qr "$SEM" HIMMEL_SUITE_SLOTS=1 HIMMEL_SUITE_SLOT_CAP=1 -- true >/dev/null 2>&1; RC=$?
 if [ "$RC" = "75" ] && [ -f "$SEM/long-held.log" ] \

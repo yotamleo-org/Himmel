@@ -36,7 +36,7 @@ name="$(current_session_name 2>/dev/null)" || exit 0
 deliver_inbox() {
     inbox_peek "$1" || return 1
     if [ -n "$inbox_bullets" ]; then
-        printf 'Claudex inbox — console ruling(s) delivered on resume, no operator paste needed:\n%s\n' "$inbox_bullets" || return 1
+        printf 'Claudex inbox — chief ruling(s) delivered on resume, no operator paste needed:\n%s\n' "$inbox_bullets" || return 1
     fi
     inbox_commit
 }

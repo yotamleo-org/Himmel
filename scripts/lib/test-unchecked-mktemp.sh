@@ -403,7 +403,7 @@ assert_eq "T30f mktemp.sh is not mktemp -> ok (N333 item 3, codex-1)" "0" "$(sca
 # inside a `[ ]`/`[[ ]]`/`test` construct (the var appears embedded in a
 # larger string being compared, not as the thing actually being tested) must
 # not satisfy rule (c) -- this was the test-resolve-node.sh:73 regression the
-# console's adversarial review on #1107 found. Only an actual test of the
+# chief's adversarial review on #1107 found. Only an actual test of the
 # var itself (bare truthiness, -n/-d/-z, etc.) counts.
 f="$TMPDIR_ROOT/t31.sh"
 printf 'tmp="$(mktemp -d)"\nout="$(foo)"\nif [ "$out" = "$tmp/bin/node.exe" ]; then true; fi\n' > "$f"

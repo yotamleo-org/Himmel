@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # billed-opt-in: arming
-# graph-cadence.sh — the recurring refresh+publish leg for himmel's own
+# graph-cadence.sh — the recurring refresh+publish worker for himmel's own
 # graphify graph.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight. This is plain
 # POSIX bash, and stays that way on purpose -- graphmap-cadence.sh (the ONLY
-# arm point for this leg) already owns the one place platform actually
+# arm point for this worker) already owns the one place platform actually
 # diverges: on Windows it wraps this script in a hidden wscript/.bat shim
 # whose Exec Command is Git Bash's own bash.exe (same pattern its AST/
 # semantic siblings use, see that file's emit_bat); on POSIX it's a bare
@@ -13,7 +13,7 @@
 # `bash graph-cadence.sh --corpus-root <path>` -- and every script it shells
 # (ast-update.sh, graph-publish.sh, merge-on-green.sh) is the SAME bash
 # already required on Windows via GitBash for every other cadence in this
-# repo; there is no native-PowerShell leg here to twin against. A `.ps1`
+# repo; there is no native-PowerShell worker here to twin against. A `.ps1`
 # rewrite would duplicate this logic in a second language for a platform
 # that already runs the bash original correctly.
 #
@@ -29,7 +29,7 @@
 # publishes via a PR, and auto-merges it through the sanctioned chokepoint --
 # so there is never again a reason to reach for a bare commit on main.
 #
-# SEQUENCE (every leg's outcome is recorded; see EXIT/LEDGER below):
+# SEQUENCE (every worker's outcome is recorded; see EXIT/LEDGER below):
 #   1. git fetch origin (in the PRIMARY checkout -- safe: fetch only updates
 #      remote-tracking refs, never the working tree or the checked-out
 #      branch, so it cannot disturb a live agent session working there).
@@ -50,7 +50,7 @@
 #      no CodeRabbit review -- this cadence must not wait for one; it doesn't.
 #   8. One ledger row (this script's own JSONL, see LEDGER below) plus the
 #      standard flow-run-ledger start/end pair every other cadence writes,
-#      so cadence-audit/staleness tooling is not blind to this leg. Under
+#      so cadence-audit/staleness tooling is not blind to this worker. Under
 #      --semantic with GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api the row also carries batch_id,
 #      batch_state (submitted|pending|merged), batch_requests and batch_cost_usd,
 #      read from the `semantic-update: BATCH …` line; null on a run with no batch.
@@ -62,7 +62,7 @@
 # checkout from cron would switch the branch of a repo live agent sessions
 # are working in and leave its tracked graphify-out/ dirty -- exactly the
 # temptation that produced the manual bare commits this ticket exists to
-# stop. So every mutating leg operates inside a PERSISTENT worktree (see
+# stop. So every mutating worker operates inside a PERSISTENT worktree (see
 # WORKTREE_DIR below), created on demand via `git worktree add` off the
 # primary -- a worktree has its own HEAD/index and never touches the
 # primary's checked-out branch or working tree, which is exactly the
@@ -104,10 +104,10 @@
 # explicitly (this script does NOT `set -e`) so a later step can never mask
 # an earlier one's failure -- mirroring scripts/graphify/ggs-cadence.sh's
 # rc-preserving convention. One deliberate divergence from ggs-cadence.sh's
-# "run every leg regardless, OR every rc together": THIS pipeline's three
-# legs are not independent (graph-publish/merge-on-green have nothing to do
+# "run every worker regardless, OR every rc together": THIS pipeline's three
+# workers are not independent (graph-publish/merge-on-green have nothing to do
 # if ast-update produced nothing new), so a failing ast-update SHORT-CIRCUITS
-# the remaining legs rather than running them for no reason -- their rc's
+# the remaining workers rather than running them for no reason -- their rc's
 # would carry no information ast-update's failure doesn't already give, and
 # running graph-publish against a stale/failed refresh risks opening a PR
 # with no real content. This is a considered adaptation, not an oversight;
@@ -164,13 +164,13 @@
 # (default claude-api: API credit, needs the API lane; claude-cli and ollama are
 # explicit opt-ins: subscription bank-gated, and local zero egress). Under it the per-run `git clean` keeps
 # graphify-out/, so the semantic manifest (the change gate) persists between
-# fires. A failure alerts through scripts/luna/cadence-alert.sh (leg
+# fires. A failure alerts through scripts/luna/cadence-alert.sh (worker
 # graph-semantic-<corpus-slug>) and fails the run (rc 3); a success clears
-# that leg's alert. semantic-update.sh rc 3 (bank at/over threshold) and rc 4
+# that worker's alert. semantic-update.sh rc 3 (bank at/over threshold) and rc 4
 # (promote lock held) are benign skips: no alert, run stays green. Without the flag nothing changes for an armed cadence.
 # After a successful semantic step (rc 0) the merged graph (graph.json,
 # semantic-manifest.json, semantic-runs.jsonl) is PROMOTED from the worktree's
-# graphify-out into the primary checkout's graphify-out -- the directory legs and
+# graphify-out into the primary checkout's graphify-out -- the directory workers and
 # the session-start advisory read -- under the promote lock ast-update.sh takes
 # there, waited for (GRAPH_CADENCE_PROMOTE_LOCK_WAIT seconds, default 300; still
 # held at the deadline = benign skip, the next fire retries). It runs whether or
@@ -231,7 +231,7 @@
 #   1  usage error
 #   2  environment unusable (HOME unresolvable, required tool missing,
 #      HANDOVER_DIR unset or unresolvable)
-#   3  a pipeline leg failed (action=failed in the ledger; see stderr)
+#   3  a pipeline worker failed (action=failed in the ledger; see stderr)
 #   4  the run itself completed (or failed) but its OWN ledger.jsonl append
 #      failed (disk full, permissions, etc.) -- the run is UNRECORDED; see
 #      stderr. Distinct from every other code so an append failure can never
@@ -631,7 +631,7 @@ fi
 # all, so origin/main never has graphify-out/graph.json to read. That is the
 # permanent steady state, not a transient gap. PUBLISH_POSSIBLE gates
 # ONLY the origin-comparison staleness measurement (steps 3-4) and the
-# retired publish/merge legs (steps 6-7) -- it must NEVER
+# retired publish/merge workers (steps 6-7) -- it must NEVER
 # skip step 5, the local AST-only refresh, which has nothing to do with
 # whether origin has anything to compare against or publish to. Collapsing
 # all of that into one early `exit 0` would make step 5 -- the free,
@@ -1005,14 +1005,14 @@ _ast_rc=$?
 printf '%s\n' "$_ast_out"
 if [ "$_ast_rc" -ne 0 ]; then
     # Short-circuit here — see header's ACTION CLASSIFICATION note on why
-    # this pipeline does not run the remaining legs on a failed refresh.
+    # this pipeline does not run the remaining workers on a failed refresh.
     _fail "ast-update.sh exited $_ast_rc: $(printf '%s' "$_ast_out" | tail -n 3 | tr '\n' ' ')"
 fi
 ACTION="refreshed"
 
 # _promote_semantic_to_primary -- copy the merged graph the semantic step built in
 # the dedicated worktree into the primary checkout's graphify-out, the directory
-# legs and the session-start advisory read. It takes the promote lock the hourly
+# workers and the session-start advisory read. It takes the promote lock the hourly
 # AST pass (ast-update.sh) takes, WAITING for it (bounded) so the two never write
 # at once; a lock still held at the deadline is a benign skip, the next fire
 # retries. A promote that cannot be written fails the run. Runs before the
@@ -1067,7 +1067,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
     _run_log=$(readlink "/proc/$$/fd/1" 2>/dev/null)
     [ -f "$_run_log" ] || _run_log=$(lsof -a -p "$$" -d 1 -Fn 2>/dev/null | sed -n 's/^n//p')
     [ -f "$_run_log" ] || _run_log="$LOG_FILE"
-    _sem_leg="graph-semantic-$CORPUS_SLUG"
+    _sem_worker="graph-semantic-$CORPUS_SLUG"
     _sem_out=$(bash "$SEMANTIC_UPDATE" --name "$CORPUS_SLUG" --corpus-root "$WORKTREE_DIR" \
         --corpus-class himmel-code --backend "$SEMANTIC_BACKEND" 2>&1)
     _sem_rc=$?
@@ -1081,18 +1081,18 @@ if [ "$SEMANTIC" -eq 1 ]; then
             cost_usd=*) BATCH_COST=${_tok#cost_usd=} ;;
         esac
     done
-    # A file the merge backed off is not retried until it changes: say so once, on its own leg, whatever the
+    # A file the merge backed off is not retried until it changes: say so once, on its own worker, whatever the
     # exit (the merge prints it before the steps that can still fail). A clean run with no new back-off
-    # re-arms that leg, so the next back-off alerts again.
+    # re-arms that worker, so the next back-off alerts again.
     _sem_backoff=0
     case "$_sem_out" in *'BACKED OFF'*) _sem_backoff=1 ;; esac
-    [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_leg-backoff" \
+    [ "$_sem_backoff" -eq 0 ] || bash "$CADENCE_ALERT" fail "$_sem_worker-backoff" \
         "a file was skipped after repeated semantic failures; it is retried when it changes" "$_run_log" \
         "its semantic extraction failed on every attempt" "nothing, unless it stays skipped after an edit"
     case "$_sem_rc" in
         0)
-            bash "$CADENCE_ALERT" clear "$_sem_leg"
-            [ "$_sem_backoff" -eq 1 ] || bash "$CADENCE_ALERT" clear "$_sem_leg-backoff"
+            bash "$CADENCE_ALERT" clear "$_sem_worker"
+            [ "$_sem_backoff" -eq 1 ] || bash "$CADENCE_ALERT" clear "$_sem_worker-backoff"
             _promote_semantic_to_primary
             ;;
         # 3 = bank at/over threshold, 4 = promote lock held. Nothing
@@ -1117,7 +1117,7 @@ if [ "$SEMANTIC" -eq 1 ]; then
                     _sem_do="nothing"
                 fi
             fi
-            bash "$CADENCE_ALERT" fail "$_sem_leg" "$_sem_result" "$_run_log" "$_sem_cause" "$_sem_do"
+            bash "$CADENCE_ALERT" fail "$_sem_worker" "$_sem_result" "$_run_log" "$_sem_cause" "$_sem_do"
             _fail "semantic-update.sh exited $_sem_rc: $(printf '%s' "$_sem_out" | tail -n 3 | tr '\n' ' ')"
             ;;
     esac
@@ -1175,7 +1175,7 @@ if [ "$_merge_rc" -eq 0 ]; then
 else
     # PR-B panel r1, codex-7: NOT every non-zero merge-on-green.sh exit is a
     # benign "not yet mergeable" state -- treating all of them alike used to
-    # mean a permanently broken merge leg (gh missing, an unwritable audit
+    # mean a permanently broken merge worker (gh missing, an unwritable audit
     # sink, a misconfigured base/privacy binding) reported "published" forever,
     # exactly as healthy-looking as a PR merely waiting on CI. Classify
     # against merge-on-green.sh's own documented exit-code table (its header):
@@ -1187,7 +1187,7 @@ else
     #     ARMAUTOMERGE=1 ourselves, so seeing it means something stripped our
     #     env), 11 (required tool missing), 12 (repo/base misconfigured --
     #     will not resolve with time), 13 (can't even resolve the PR/head),
-    #     16 (audit sink unwritable), 17 (console-GO refusal), 18 (GitHub-
+    #     16 (audit sink unwritable), 17 (chief-GO refusal), 18 (GitHub-
     #     blocked: a required check never reported / the required
     #     set unreadable / a required review outstanding / a ruleset refusal --
     #     it is alerted to the operator once and needs a human, so it must NOT

@@ -3,11 +3,11 @@
 # shellcheck disable=SC2012  # ls over fixture dirs whose names the suite chose
 # shellcheck disable=SC2031  # root is set once in the main shell; the scope subshell only reads
 # scripts/handover/chief-kit/test-grant-round.sh - suite for grant-round.sh
-# the console's own one-round grant on a persisted judge record:
+# the chief's own one-round grant on a persisted judge record:
 #   1. no record for the qid refuses; a record for another head refuses; a
 #      hand-written (unsigned) record refuses; a record naming another PR or
 #      branch refuses - each leaves the counter and the consumption file alone
-#   2. a leg caller (HIMMEL_CONSOLE_LEG) and a relay caller refuse, even with a
+#   2. a worker caller (HIMMEL_CONSOLE_LEG) and a relay caller refuse, even with a
 #      valid record
 #   3. a PR whose live head is not NEW_HEAD, a fork PR and a closed PR refuse
 #   4. a branch that has not reached the cap (round < 3) or has no .head
@@ -157,13 +157,13 @@ check "bad records change nothing" "$(snap_state)" "$before"
 wv qgood NO-GO "$SHA_A" --pr 501 --branch "$BRANCH" --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qgood"; fails=$((fails+1)); }
 GR_ARGS=(501 "$SHA_A" qgood)
 
-# --- 2. leg / relay callers --------------------------------------------------
+# --- 2. worker / relay callers --------------------------------------------------
 rc=0; out=$(run HIMMEL_CONSOLE_LEG=1 2>&1) || rc=$?
-check "leg caller refuses" "$rc" 3
-contains "leg refusal says why" "$out" "leg"
+check "worker caller refuses" "$rc" 3
+contains "worker refusal says why" "$out" "worker"
 rc=0; out=$(run HIMMEL_CONSOLE_RELAY=1 2>&1) || rc=$?
 check "relay caller refuses" "$rc" 3
-check "leg/relay change nothing" "$(snap_state)" "$before"
+check "worker/relay change nothing" "$(snap_state)" "$before"
 
 # --- 3. PR shape --------------------------------------------------------------
 gh_json "$SHA_B"

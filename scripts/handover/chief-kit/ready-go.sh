@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/ready-go.sh - the console's whole mechanical READY
-# turn in one call. A leg's READY used to cost the console a wake, a ready-check,
+# scripts/handover/chief-kit/ready-go.sh - the chief's whole mechanical READY
+# turn in one call. A worker's READY used to cost the chief a wake, a ready-check,
 # a trust-path look, a ticket read, a hand-built GO line and a ledger bullet;
 # the only judgement in it is GO or not. This prints everything that decision
 # needs and the exact GO line to send. It sends nothing and writes no GO: the
-# SendMessage and go.sh stay the console's own, so no trust is widened.
+# SendMessage and go.sh stay the chief's own, so no trust is widened.
 #
-# Usage: ready-go.sh [--to <leg session> --token <nonce>] [--ledger <console doc>]
+# Usage: ready-go.sh [--to <worker> --token <nonce>] [--ledger <chief doc>]
 #                    <pr-number> <full-40-hex-head-sha>
 #
 # Output, one section per line:
@@ -15,12 +15,12 @@
 #   TRUST: none | not-adopted | hit <path> | refused <phase> <reason>
 #   TICKET: <KEY> <status> | <KEY> UNKNOWN | none  (the first key of the PR title)
 #   NEXT: ...  the go.sh command to run, then
-#   SENDMESSAGE to=<leg session> :: GO <pr> <sha>, token <nonce>
+#   SENDMESSAGE to=<worker> :: GO <pr> <sha>, token <nonce>
 # Refuses what go.sh refuses: a failed ready-check (which holds the CR-ledger ok
 # row at that head) prints no GO line and exits 4; a trust-path hit prints no GO
 # line, only the judge-first route (go.sh --trust-reviewed), and exits 0; an
 # unreadable or refused trust check exits 5. --ledger appends one bullet to the
-# console doc through append-results.sh and only on a clean result.
+# chief doc through append-results.sh and only on a clean result.
 #
 # Exit: 0 printed (a GO line, or a trust-reviewed route); 1 the --ledger bullet
 # could not be appended; 2 usage; 4 ready-check did not PASS; 5 the trust check
@@ -37,7 +37,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$HERE/../../lib/git-clean.sh"
 git_env_scrub
 ANCHOR="${READY_GO_ANCHOR:-$(cd "$HERE/../../.." && pwd)}"
-usage() { echo "usage: ready-go.sh [--to <leg session> --token <nonce>] [--ledger <console doc>] <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
+usage() { echo "usage: ready-go.sh [--to <worker session> --token <nonce>] [--ledger <chief doc>] <pr-number> <full-40-hex-head-sha>" >&2; exit 2; }
 
 TO=""; TOKEN=""; LEDGER=""
 while :; do
@@ -65,7 +65,7 @@ rc=0
 READY_OUT=$(bash "$HERE/ready-check.sh" "$PR" "$SHA" 2>&1) || rc=$?
 printf '%s\n' "$READY_OUT"
 if [ "$rc" -ne 0 ]; then
-    echo "READY-GO FAIL (ready-check exit $rc) - no GO line; the leg fixes what is named above"
+    echo "READY-GO FAIL (ready-check exit $rc) - no GO line; the worker fixes what is named above"
     exit 4
 fi
 echo "READY-GO PASS"
@@ -114,7 +114,7 @@ else
     printf 'TICKET: %s %s\n' "$KEY" "${STATUS:-UNKNOWN}"
 fi
 
-# 4. the GO: file by go.sh (console only), notification by SendMessage (console only)
+# 4. the GO: file by go.sh (chief only), notification by SendMessage (chief only)
 case "$TRUST_OUT" in
     "hit "*)
         printf 'NEXT: trust-path hit (%s) - no plain GO. Dispatch the opus judge; on its GO verdict for this head run: bash %q/go.sh --trust-reviewed <judge qid> %s %s\n' \
@@ -124,7 +124,7 @@ case "$TRUST_OUT" in
         if [ -n "$TO" ]; then
             printf 'SENDMESSAGE to=%s :: GO %s %s, token %s\n' "$TO" "$PR" "$SHA" "$TOKEN"
         else
-            echo "SENDMESSAGE skipped (pass --to <leg session> --token <nonce> for the GO line)"
+            echo "SENDMESSAGE skipped (pass --to <worker session> --token <nonce> for the GO line)"
         fi ;;
 esac
 

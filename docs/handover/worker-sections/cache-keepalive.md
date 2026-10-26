@@ -1,8 +1,8 @@
 # Worker preface section — keep the cache warm or wrap
 
-Read on demand: `scripts/hooks/guard-leg-cache-ttl.sh` names this file when it
+Read on demand: `scripts/hooks/guard-worker-cache-ttl.sh` names this file when it
 refuses a worker's stop. The cost model behind it:
-[`docs/internals/prompt-cache.md`](../../internals/prompt-cache.md#leg-keepalive-or-wrap).
+[`docs/internals/prompt-cache.md`](../../internals/prompt-cache.md#worker-keepalive-or-wrap).
 
 ## The rule
 

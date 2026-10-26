@@ -227,14 +227,14 @@ test("health: bank card shows the newest row with bank numbers; I2 the ledger is
   expect(h.ledgerLines()).toBe(1);
 });
 
-test("health: legs card shows the leg doc and its marker from the real parsers (BLOCKED flips it)", async ({ page }) => {
+test("health: workers card shows the worker doc and its marker from the real parsers (BLOCKED flips it)", async ({ page }) => {
   await openHealth(page, {}, { handover: { bullet: "- 03:00 LIVE — x" } });
-  const legs = page.locator("#legs");
-  await expect(legs).toContainText("HIMMEL-9999-N1-e2e-leg-RESUME.md");
-  await expect(legs.locator(".leg .mk")).toHaveText("LIVE");
+  const workers = page.locator("#legs");
+  await expect(workers).toContainText("HIMMEL-9999-N1-e2e-worker-RESUME.md");
+  await expect(workers.locator(".leg .mk")).toHaveText("LIVE");
   h.setBullet("- 03:05 BLOCKED — y");
   await page.locator('[data-act="refresh-health"]').click();
-  await expect(legs.locator(".leg .mk")).toHaveText("BLOCKED");
+  await expect(workers.locator(".leg .mk")).toHaveText("BLOCKED");
 });
 
 test("health: refresh re-probes the doctor feed inside the server's 30 s cache and the verdict follows (HIMMEL-7350)", async ({ page }) => {
@@ -245,7 +245,7 @@ test("health: refresh re-probes the doctor feed inside the server's 30 s cache a
   await expect(verdictWord(page)).toHaveText("Act now");
 });
 
-test("health: with the feed pending the verdict is No data and bank and legs still render (D2)", async ({ page }) => {
+test("health: with the feed pending the verdict is No data and bank and workers still render (D2)", async ({ page }) => {
   h = await boot({}, { ledger: LEDGER, handover: { bullet: "- 03:00 LIVE — x" }, feedDelayMs: 5000 });
   await page.goto(h.url);
   await page.evaluate(() => { location.hash = "#/health"; });

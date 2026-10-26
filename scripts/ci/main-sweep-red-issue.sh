@@ -7,7 +7,7 @@
 # cover contiguous ranges of merges. main-sweep-red.yml runs this once per
 # completed sweep with the run id. A red job means "a green merge produced a red
 # main" (CI red triage policy: fix main); the issue names the tested sha and the
-# range since the last green sweep so the owning leg can be found by bisect.
+# range since the last green sweep so the owning worker can be found by bisect.
 #
 #   any job failed  -> open the issue if absent, else refresh its body and add a
 #                      "still red" comment. The failed set recorded in the body
@@ -112,7 +112,7 @@ while IFS= read -r line; do
       continue ;;
     "main-sweep"*) continue ;;
     # The nightly is swept too (event `schedule`). Its windows
-    # legs are continue-on-error by design and guard-corpus-full is
+    # workers are continue-on-error by design and guard-corpus-full is
     # schedule-only with its own nightly signal; neither is main's health.
     # Their presence is also how the nightly is recognised (see is_nightly).
     *"(windows-latest"*) is_nightly=1; continue ;;
@@ -156,7 +156,7 @@ fi
 # close it. Extended reds already go to shell-extended-nightly-issue.sh; a
 # nightly never opens, refreshes or closes the main-red issue.
 if [ "$is_nightly" -eq 1 ]; then
-  echo "main-sweep-red-issue: run $RUN_ID is the nightly (windows legs / guard-corpus-full ran) -- its tier=all jobs are not the fast-sweep verdict; nothing to report."
+  echo "main-sweep-red-issue: run $RUN_ID is the nightly (windows workers / guard-corpus-full ran) -- its tier=all jobs are not the fast-sweep verdict; nothing to report."
   exit 0
 fi
 

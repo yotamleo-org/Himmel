@@ -48,18 +48,18 @@ sb=$(mktemp -d "${TMPDIR:-/tmp}/rst-live.XXXXXX") || { fail "L: mktemp failed"; 
 trap 'rm -rf "$SUITE_LOCK_SANDBOX" "$sb"' EXIT
 mkdir -p "$sb/scripts" "$sb/live/handovers" "$sb/live/claude" "$sb/live/codex" "$sb/live/workdir" "$sb/outerbin"
 
-# The caller's live state, as a console leg carries it on the station.
-printf '# console\n\n## Results\n- 00:00 LIVE — caller\n' > "$sb/live/console.md"
-cp "$sb/live/console.md" "$sb/live/console.orig"
+# The caller's live state, as a chief worker carries it on the station.
+printf '# chief\n\n## Results\n- 00:00 LIVE — caller\n' > "$sb/live/chief.md"
+cp "$sb/live/chief.md" "$sb/live/chief.orig"
 # The next scheduler on PATH after the runner's shim: records, never schedules.
 for _t in crontab at atq atrm; do
   printf '#!/usr/bin/env bash\nprintf "%%s %%s\\n" %s "$*" >> "%s"\nexit 0\n' "$_t" "$sb/outer-sched.log" > "$sb/outerbin/$_t"
   chmod +x "$sb/outerbin/$_t"
 done
 
-# The bullet merge-on-green appended to the inherited console doc on 6079's
+# The bullet merge-on-green appended to the inherited chief doc on 6079's
 # parent, copied from that replay's output.
-cat > "$sb/scripts/test-a-console-doc.sh" <<'SHEOF'
+cat > "$sb/scripts/test-a-chief-doc.sh" <<'SHEOF'
 #!/usr/bin/env bash
 printf -- '- 22:03 PARTIAL HIMMEL-374: next slice not dispatched\n' >> "$HIMMEL_CONSOLE_DOC"
 exit 0
@@ -122,7 +122,7 @@ SHEOF
 chmod +x "$sb/scripts/"*.sh
 
 out=$(PATH="$sb/outerbin:$PATH" RST_LIVE_CALLER="$sb/live" \
-  HIMMEL_CONSOLE_DOC="$sb/live/console.md" HIMMEL_CONSOLE_NAME=caller-console \
+  HIMMEL_CONSOLE_DOC="$sb/live/chief.md" HIMMEL_CONSOLE_NAME=caller-chief \
   HIMMEL_CONSOLE_RELAY=caller-relay HIMMEL_CONSOLE_WORKDIR="$sb/live/workdir" \
   HIMMEL_INBOX_SEND=caller-send HANDOVER_DIR="$sb/live/handovers" \
   CLAUDE_CONFIG_DIR="$sb/live/claude" CODEX_HOME="$sb/live/codex" \
@@ -131,10 +131,10 @@ rc=$?
 
 echo "== L1: live-state env points at sentinels; a write fails the suite =="
 if [ "$rc" -eq 1 ]; then pass "L1: run exits 1"; else fail "L1: expected rc=1, got $rc; out: $out"; fi
-if cmp -s "$sb/live/console.md" "$sb/live/console.orig"; then
-  pass "L1: the caller's console doc is byte-identical"
+if cmp -s "$sb/live/chief.md" "$sb/live/chief.orig"; then
+  pass "L1: the caller's chief doc is byte-identical"
 else
-  fail "L1: the caller's console doc was written: $(cat "$sb/live/console.md")"
+  fail "L1: the caller's chief doc was written: $(cat "$sb/live/chief.md")"
 fi
 for _d in handovers claude codex workdir; do
   if [ -z "$(ls -A "$sb/live/$_d")" ]; then
@@ -143,15 +143,15 @@ for _d in handovers claude codex workdir; do
     fail "L1: the caller's $_d dir was written: $(ls -A "$sb/live/$_d")"
   fi
 done
-if grepq "$out" -E '\[LIVE-STATE\] .*test-a-console-doc\.sh .*HIMMEL_CONSOLE_DOC'; then
-  pass "L1: a console-doc write names HIMMEL_CONSOLE_DOC"
+if grepq "$out" -E '\[LIVE-STATE\] .*test-a-chief-doc\.sh .*HIMMEL_CONSOLE_DOC'; then
+  pass "L1: a chief-doc write names HIMMEL_CONSOLE_DOC"
 else
   fail "L1: no [LIVE-STATE] HIMMEL_CONSOLE_DOC line for test-a; out: $out"
 fi
-if grepq "$out" -E '\[FAIL\] .*test-a-console-doc\.sh'; then
-  pass "L1: the console-doc writer is a [FAIL]"
+if grepq "$out" -E '\[FAIL\] .*test-a-chief-doc\.sh'; then
+  pass "L1: the chief-doc writer is a [FAIL]"
 else
-  fail "L1: test-a-console-doc.sh is not a [FAIL]; out: $out"
+  fail "L1: test-a-chief-doc.sh is not a [FAIL]; out: $out"
 fi
 if grepq "$out" -E '\[LIVE-STATE\] .*test-c-handover-dir\.sh .*HANDOVER_DIR'; then
   pass "L1: a handover-dir write names HANDOVER_DIR"
@@ -165,7 +165,7 @@ else
   fail "L1: no [LIVE-STATE] CLAUDE_CONFIG_DIR/CODEX_HOME lines for test-d; out: $out"
 fi
 if grepq "$out" -E '\[LIVE-STATE\] .*test-h-workdir\.sh .*HIMMEL_CONSOLE_WORKDIR'; then
-  pass "L1: a console-workdir write names HIMMEL_CONSOLE_WORKDIR"
+  pass "L1: a chief-workdir write names HIMMEL_CONSOLE_WORKDIR"
 else
   fail "L1: no [LIVE-STATE] HIMMEL_CONSOLE_WORKDIR line for test-h; out: $out"
 fi

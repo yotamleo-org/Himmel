@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# test-tick-holds.sh — tick.sh holds=: a leg whose newest Results marker is BLOCKED (or a
-# FINDING that awaits a console ruling) and whose doc has sat untouched for TICK_HOLD_MIN
-# minutes (default 20) reads `<leg>:<age>m`; the field is absent when no leg holds.
+# test-tick-holds.sh — tick.sh holds=: a worker whose newest Results marker is BLOCKED (or a
+# FINDING that awaits a chief ruling) and whose doc has sat untouched for TICK_HOLD_MIN
+# minutes (default 20) reads `<worker>:<age>m`; the field is absent when no worker holds.
 # Hermetic: stubs for every external probe, scratch HOME / handover / projects.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 
@@ -25,7 +25,7 @@ check() { # <name> <want> <got>
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
 }
 
-mkdir -p "$W/repo/scripts/handover" "$W/repo/scripts/lib" "$W/repo/scripts/lanes/lib" "$W/handover/inbox/.cursor" "$W/bin" "$W/proc" "$W/home" "$W/projects/p" "$W/console-work/chain"
+mkdir -p "$W/repo/scripts/handover" "$W/repo/scripts/lib" "$W/repo/scripts/lanes/lib" "$W/handover/inbox/.cursor" "$W/bin" "$W/proc" "$W/home" "$W/projects/p" "$W/chief-work/chain"
 
 cat > "$W/repo/scripts/handover/queue-lock.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -60,41 +60,41 @@ export PATH="$W/bin:$PATH"
 export HOME="$W/home"
 export HANDOVER_DIR="$W/handover" REPO="$W/repo" TICK_TMPDIR="$W" PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json" TICK_STATE_DIR="$W/state" CLAUDE_SESSIONS_PROC="$W/proc"
-export TICK_LAUNCH_DIR="$W/console-work" TICK_PROJECTS_DIR="$W/projects"
-export DOC="$W/handover/console.md" TOKEN=t LEGS=''
+export TICK_LAUNCH_DIR="$W/chief-work" TICK_PROJECTS_DIR="$W/projects"
+export DOC="$W/handover/chief.md" TOKEN=t WORKERS=''
 
-# mkleg <id-slug> <minutes-old> [bullet...]: a leg doc last written that many minutes ago.
+# mkleg <id-slug> <minutes-old> [bullet...]: a worker doc last written that many minutes ago.
 mkleg() {
     local f="$W/handover/HIMMEL-9$1.md" age="$2"; shift 2
-    printf '# leg\n' > "$f"
+    printf '# worker\n' > "$f"
     local b
     for b in "$@"; do printf '%s\n' "$b" >> "$f"; done
     touch -d "$age minutes ago" "$f"
     printf '%s' "$f"
 }
-# manifest <doc>...: a fleet manifest of those legs, added 60 minutes ago.
+# manifest <doc>...: a fleet manifest of those workers, added 60 minutes ago.
 manifest() {
-    local m="$W/handover/console.fleet.json" legs="" d t
+    local m="$W/handover/chief.fleet.json" workers="" d t
     t="$(/bin/date -u -d "60 minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
-    for d in "$@"; do legs="$legs${legs:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\"}"; done
-    printf '{"schema":1,"legs":[%s]}\n' "$legs" > "$m"
+    for d in "$@"; do workers="$workers${workers:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\"}"; done
+    printf '{"schema":1,"legs":[%s]}\n' "$workers" > "$m"
     printf '%s' "$m"
 }
 field() { # <field> <tick output>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
-run_from() { bash "$SUT" --legs-from "$1" 2>/dev/null; }
+run_from() { bash "$SUT" --workers-from "$1" 2>/dev/null; }
 
 old="$(mkleg 921-N921-old 35 '- 10:00 LIVE — x' '- 10:10 BLOCKED — need a ruling')"
 young="$(mkleg 922-N922-young 5 '- 10:00 BLOCKED — need a ruling')"
 live="$(mkleg 923-N923-live 90 '- 10:00 BLOCKED — q' '- 10:40 RESOLVED — ruling received' '- 10:41 LIVE — working')"
-find_wait="$(mkleg 924-N924-findwait 30 '- 10:00 FINDING — awaiting the console ruling on the base')"
+find_wait="$(mkleg 924-N924-findwait 30 '- 10:00 FINDING — awaiting the chief ruling on the base')"
 find_info="$(mkleg 925-N925-findinfo 30 '- 10:00 FINDING — the suite has a stale row, noted')"
 find_ci="$(mkleg 927-N927-findci 30 '- 10:00 FINDING — waiting for CI, holding the push, no ruling owed')"
 wrapped="$(mkleg 926-N926-wrapped 90 '- 10:00 BLOCKED — q' '- 10:50 WRAPPED — done')"
 
 out="$(run_from "$(manifest "$old" "$young" "$live" "$find_wait" "$find_info" "$find_ci" "$wrapped")")"
-check 'a BLOCKED leg past 20 min and an awaiting FINDING read holds=' 'N921:35m,N924:30m' "$(field holds "$out")"
+check 'a BLOCKED worker past 20 min and an awaiting FINDING read holds=' 'N921:35m,N924:30m' "$(field holds "$out")"
 
 m="$(manifest "$young" "$live" "$find_info" "$find_ci" "$wrapped")"
 out="$(run_from "$m")"

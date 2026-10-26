@@ -5,7 +5,7 @@
 # fire time: POSIX sh only, no %q, no arrays, no [[ ]].
 #
 # WHY: atd runs a job with stdin=/dev/null and no tty. A claude launched that
-# way exits at the first idle cross-session message (five fleet legs lost
+# way exits at the first idle cross-session message (five fleet workers lost
 # 2026-09-05). `script` alone is not enough: measured, `script -qefc CMD
 # /dev/null </dev/null` hands CMD a tty but forwards the EOF at once, so
 # CMD reads EOF immediately. Holding the fifo below open read-write (nothing
@@ -22,7 +22,7 @@
 # so the user's login shell ($SHELL, e.g. fish) never re-parses the prompt.
 #
 # A host with no script(1)/mkfifo (Windows Git-Bash, minimal images) falls back
-# to the pre-fix bare launch and says so on stderr -- a leg that cannot be
+# to the pre-fix bare launch and says so on stderr -- a worker that cannot be
 # messaged while idle is worse than none only if nobody is told.
 #
 # HIMMEL_PTY_SCRIPT_CMD overrides the script binary (test seam, same idiom as

@@ -3,8 +3,8 @@
 #
 # Sourced, never executed. bash 3.2-safe.
 #
-# WHY: the GraphQL budget (5000 points/hour, shared by every leg on the box)
-# ran out fleet-wide twice in three hours because ~7 legs each held a
+# WHY: the GraphQL budget (5000 points/hour, shared by every worker on the box)
+# ran out fleet-wide twice in three hours because ~7 workers each held a
 # `gh pr checks --watch` (~30 calls/min each). `gh api rate_limit` MISREPORTS
 # it (REST core bucket) — the truth is the X-Ratelimit-* headers of a real
 # `gh api -i graphql` call, which is what this reads. The probe query is
@@ -14,7 +14,7 @@
 #     Reads the headers ONCE. Healthy (remaining >= floor) -> return 0 at
 #     once. Exhausted -> sleep until X-Ratelimit-Reset (+ a small skew and a
 #     per-process jitter, both through <sleep_cmd>, so hermetic suites inject
-#     `:` and every leg does not wake in the same second) and return 0 with
+#     `:` and every worker does not wake in the same second) and return 0 with
 #     GHB_WAITED=1. If the reset is further away than <max_wait_s> (0 =
 #     unbounded) -> print why and return 1 without sleeping. Callers map rc 1
 #     onto their own "cannot evaluate" code; no exit code changes meaning.

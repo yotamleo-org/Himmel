@@ -86,7 +86,7 @@
       "id": "test-vm",
       "capability": "himmel test VMs (vmsdk, VBoxManage, VM snapshots)",
       "state": "cannot",
-      "local_split": "run the ticket LOCAL-NATIVE; the console runs VM suites",
+      "local_split": "run the ticket LOCAL-NATIVE; the chief runs VM suites",
       "evidence": "session_01FTpE2XHmk2hPJ71fwo5nSs (PR 1771): test-install-symmetry-vm rc=3, no VM reachable",
       "source": "PR 1771 CLOUD-DONE comment",
       "match": "\\btest VMs?\\b|himmel-ops:vm|\\bvmsdk\\b|\\bVBoxManage\\b|\\bVM[- ]only\\b|\\b(?:on|in|inside) (?:a|the) (?:test )?VM\\b|\\bVM snapshots?\\b",
@@ -112,7 +112,7 @@
       "capability": "push to a branch of its choice",
       "state": "partial",
       "local_split": "the session pushes to its claude/... branch and the classifier refuses commits outside the brief file scope; the local shepherd owns out-of-scope follow-ups",
-      "evidence": "session_01D8SLdstcHYxysU2d5HvEbT (PR 1760): could only push claude/leg-resume-brief-repo-flag-sp6zmm; session_01SmK2DSikFdi3x7VWdUC1Zd (PR 2168): out-of-scope commit refused",
+      "evidence": "session_01D8SLdstcHYxysU2d5HvEbT (PR 1760): could only push claude/worker-resume-brief-repo-flag-sp6zmm; session_01SmK2DSikFdi3x7VWdUC1Zd (PR 2168): out-of-scope commit refused",
       "source": "PR 1760, 2168 CLOUD-DONE comments"
     },
     {
@@ -187,7 +187,7 @@
     },
     {
       "id": "send-message",
-      "capability": "SendMessage to a local console",
+      "capability": "SendMessage to a local chief",
       "state": "cannot",
       "local_split": "the session answers with a CLOUD-DONE / CLOUD-ACK PR comment; a local shepherd relays READY",
       "evidence": "session_013KTA4ZC9nxtrGz6SDZvH7q (PR 1752): replied by a top-level CLOUD-ACK PR comment, never by SendMessage",
@@ -195,7 +195,7 @@
     },
     {
       "id": "steer-follow-up",
-      "capability": "console sends a follow-up to a running session",
+      "capability": "chief sends a follow-up to a running session",
       "state": "does",
       "evidence": "session_013KTA4ZC9nxtrGz6SDZvH7q (PR 1752): a claude -p --cloud follow-up got CLOUD-ACK within minutes (stopped: yes, last pushed sha)",
       "source": "PR 1752"

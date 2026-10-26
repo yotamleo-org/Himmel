@@ -3,7 +3,7 @@
 # submitting shell's env, so an arm made from inside a consult handed the
 # resumed session WORKER_SESSION_PROFILE_NO_SETTING_SOURCES (and the rest of the launch
 # seam: the shim, its binary, the profile files). The at job body now clears
-# console_context_launch_seam_env_names before claude starts.
+# chief_context_launch_seam_env_names before claude starts.
 #
 # Everything here uses a STUB claude -- a real arm launches a real paid
 # session. The at job body comes from `arm-resume.sh --dry-run` (the same
@@ -82,7 +82,7 @@ SEAM="$SEAM_OLD HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV
       WORKER_SESSION_PROFILE_NO_SETTING_SOURCES WORKER_SESSION_CLAUDE_BIN"
 KEEP="HIMMEL_CONSOLE_LEG HANDOVER_DIR HIMMEL_WORKER"
 REC="$TMP/rec"
-# The env atd replays: the consult's seam plus a leg identity that must survive.
+# The env atd replays: the consult's seam plus a worker identity that must survive.
 # No pty (HIMMEL_PTY_SCRIPT_CMD points nowhere): the bare fallback runs the stub directly.
 # shellcheck disable=SC2086
 env PATH="$STUB_BIN:$PATH" CLAUDE_REC="$REC" WATCH="$SEAM $KEEP" HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" \

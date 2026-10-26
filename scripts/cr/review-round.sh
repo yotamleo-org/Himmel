@@ -239,7 +239,7 @@ if ! git check-ref-format --branch "$branch" >/dev/null 2>&1; then
 fi
 # Every verb writes shared per-branch state (round counter,
 # ledger amends, marker clearance), and a relative run is auto-allowed from any
-# leg's worktree - so only the branch checked out in cwd may be written. A
+# worker's worktree - so only the branch checked out in cwd may be written. A
 # detached HEAD has no branch and is refused too.
 current_branch="$(git branch --show-current 2>/dev/null)" || current_branch=""
 if [ -z "$current_branch" ] || [ "$current_branch" != "$branch" ]; then
@@ -342,10 +342,10 @@ let lines = [];
 try { lines = fs.readFileSync(e.LEDGER, "utf8").split("\n").filter(Boolean); } catch { process.exit(0); }
 const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e.FROM.startsWith(h); };
 // ponytail: "critic" is any model name outside that list, and critic finding rows
-// and their fixed amends are session-writable through ledger-append.sh, so a leg
+// and their fixed amends are session-writable through ledger-append.sh, so a worker
 // can buy the post-cap round with a row under a non-excluded model
 // name (it buys a review round, never a merge); tie critic rows to a source the
-// leg cannot write.
+// worker cannot write.
 const critic = (m) => m !== "claude" && m !== "claude-floor" && m !== "codex-adv";
 let reviewed = false, rowed = false;
 const verdicts = new Map(), settled = new Set();
@@ -1225,7 +1225,7 @@ EOF
         delta_trigger="postcap-ci-red"
         return 0
     fi
-    delta_refuse "review-round: $delta_to neither answers a round-3 finding nor only merges the base into $delta_from, and no judge NO-GO for $delta_from is recorded (chief-kit/write-verdict.sh) - $full_note; new work after the cap goes to the console"
+    delta_refuse "review-round: $delta_to neither answers a round-3 finding nor only merges the base into $delta_from, and no judge NO-GO for $delta_from is recorded (chief-kit/write-verdict.sh) - $full_note; new work after the cap goes to the chief"
     return 8
 }
 
@@ -1234,7 +1234,7 @@ delta_refuse() {
     if [ -n "$delta_used" ]; then
         # Name the check that fired; the used-delta note follows it.
         [ -z "$1" ] || echo "$1" >&2
-        echo "review-round: the one delta round was already used on $branch ($delta_used) - a second delta round is refused, and $full_note; only a judge NO-GO on the last reviewed head (chief-kit/write-verdict.sh) buys another; ask the console" >&2
+        echo "review-round: the one delta round was already used on $branch ($delta_used) - a second delta round is refused, and $full_note; only a judge NO-GO on the last reviewed head (chief-kit/write-verdict.sh) buys another; ask the chief" >&2
     else
         echo "$1" >&2
     fi
@@ -1483,7 +1483,7 @@ if [ "$verb" = "start" ]; then
     exit 0
 fi
 
-# promote: the /pr-check flow writes verdict=agreed as a leg-agrees
+# promote: the /pr-check flow writes verdict=agreed as a worker-agrees
 # intermediate (write-verdicts.sh + step 4.5's ledger-append.sh amend) and
 # nothing ever promotes it to a terminal verdict — until now it was only ever
 # hand-amended to `fixed`. Given a CLEAN round at --head (the caller asserts

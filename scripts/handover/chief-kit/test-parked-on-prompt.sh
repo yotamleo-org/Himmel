@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # test-parked-on-prompt.sh — Hermetic tests for parked-on-prompt.sh, which
-# reads the trust shadow ledger and names a leg whose newest ledger row is an
+# reads the trust shadow ledger and names a worker whose newest ledger row is an
 # unanswered permission prompt. The ledger is a fixture under a temp dir
 # (--ledger); the real ~/.claude/himmel/trust ledger is never read.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only
+# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
 # (GNU date -d); this Bash 3.2 suite exercises that platform-specific script.
 set -uo pipefail
 
@@ -30,8 +30,8 @@ row() { # row <minutes-ago> <session> <kind> [notification_type]
         printf '{"ts":"%s","kind":"%s","session_id":"%s"}\n' "$(ago "$1")" "$3" "$2"
     fi
 }
-doc() { # doc <name> <session-id> -> path of a leg doc whose frontmatter names the session
-    printf -- '---\nresume_cwd: /x\nsession_ids: %s\n---\n\n# leg\n' "$2" > "$W/$1.md"
+doc() { # doc <name> <session-id> -> path of a worker doc whose frontmatter names the session
+    printf -- '---\nresume_cwd: /x\nsession_ids: %s\n---\n\n# worker\n' "$2" > "$W/$1.md"
     printf '%s\n' "$W/$1.md"
 }
 run() { bash "$SUT" --ledger "$W/ledger.jsonl" "$@" 2>/dev/null; }
@@ -60,9 +60,9 @@ eq 'an idle_prompt notification is not parked' 'parked=none' "$(run --min 5 "$D1
 { row 12 "$S1" permission_request; row 2 "$S2" outcome; } > "$W/ledger.jsonl"
 eq 'rows of another session do not clear it' 'parked=legA:12m' "$(run --min 5 "$D1")"
 
-# two legs, one parked
+# two workers, one parked
 D2="$(doc legB "$S2")"
-eq 'only the parked leg is named' 'parked=legA:12m' "$(run --min 5 "$D1" "$D2")"
+eq 'only the parked worker is named' 'parked=legA:12m' "$(run --min 5 "$D1" "$D2")"
 
 # no ledger, no session_ids
 rm -f "$W/ledger.jsonl"
@@ -80,11 +80,11 @@ eq 'a trailing --min terminates' '0:parked=legA:12m' "$rc:$out"
 out="$(timeout 5 bash "$SUT" "$D1" --ledger 2>/dev/null)"; rc=$?
 eq 'a trailing --ledger terminates' '0:parked=none' "$rc:$out"
 
-# a relaunched leg appends a new session id (oldest first): only the newest
+# a relaunched worker appends a new session id (oldest first): only the newest
 # id that has rows is judged
 D3="$(doc legC "$S1,$S2")"
 { row 900 "$S1" permission_request; row 3 "$S2" outcome; } > "$W/ledger.jsonl"
-eq 'an old parked session does not park the relaunched leg' 'parked=none' "$(run --min 5 "$D3")"
+eq 'an old parked session does not park the relaunched worker' 'parked=none' "$(run --min 5 "$D3")"
 { row 900 "$S1" permission_request; row 8 "$S2" permission_request; } > "$W/ledger.jsonl"
 eq 'the newest session parked is named with its own age' 'parked=legC:8m' "$(run --min 5 "$D3")"
 { row 900 "$S1" permission_request; } > "$W/ledger.jsonl"

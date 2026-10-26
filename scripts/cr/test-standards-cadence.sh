@@ -68,7 +68,7 @@ contains "file: kind fix -> lint or check" "$body" "- [jq-bool] target: lint or 
 contains "file: human->prompt rebuttal from coderabbit -> CodeRabbit rule" "$body" "- [stub-fidelity] target: CodeRabbit rule"
 contains "file: checklist -> standard line"             "$body" "- [fence-lang] target: standard line"
 contains "file: operator approves CodeRabbit rule"      "$body" "approval: operator"
-contains "file: console GO + opus judge for lints"      "$body" "approval: console GO + opus judge"
+contains "file: chief GO + opus judge for lints"      "$body" "approval: chief GO + opus judge"
 not_contains "file: a class that never recurs is absent" "$body" "[quiet-class]"
 check "file: exactly one target per proposal" "$(grep -c '^- \[' <<< "$(sed -n '/^## Proposals/,/^## /p' "$f")")" "$(grep -c 'target:' <<< "$(sed -n '/^## Proposals/,/^## /p' "$f")")"
 contains "file: promoted class shows before rate"       "$body" "- [promoted-ok] promoted 2026-10-05 before=4 after=1"

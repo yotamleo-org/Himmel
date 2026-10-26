@@ -205,7 +205,7 @@ eq "$(ledger_lines)" 1 "RL7 two calls at one head: still one ledger line"
 threads "$(thread false portable-timeout.sh 24)"; run RL4-late-finding
 eq "$(deletes)/$(posts)" 1/1 "RL4 late finding: release unchanged, no second pair"
 
-# RL8 — a manual ci:go at the head, then a leg event: no second pair.
+# RL8 — a manual ci:go at the head, then a worker event: no second pair.
 reset; jq -c '. + [{event:"labeled",label:{name:"ci:go"},created_at:"2026-10-23T10:05:00Z"}]' "$S/events.json" > "$S/e.tmp" && mv "$S/e.tmp" "$S/events.json"; run RL8-manual
 eq "$(deletes)/$(posts)" 0/0 "RL8 manual ci:go at the head: no pair"
 eq "$(ledger_lines)" 0 "RL8 manual ci:go: no ledger line (it is a manual release)"
@@ -359,29 +359,29 @@ eq "$(posts)/$(ledger_lines)/$RC" 0/0/3 "gate rc 4: no label, no ledger line, a 
 has "$TMP/out-gate-rc4" '^CR-FIRST HOLD degraded \(reviewer gate rc=4\)' "gate rc 4: HOLD degraded names the status"
 
 # ── RL13 / M3': a hard reviewer down ─────────────────────────────────────────
-CONSOLE="$TMP/x-console.md"; printf '# console\n\n## Results (newest at the bottom)\n' > "$CONSOLE"
+CHIEF="$TMP/x-chief.md"; printf '# chief\n\n## Results (newest at the bottom)\n' > "$CHIEF"
 reset; led "$(av "$HEAD1" codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av "$HEAD1" claude ok)"
-export HIMMEL_CONSOLE_DOC="$CONSOLE"
+export HIMMEL_CONSOLE_DOC="$CHIEF"
 for pr in 42 43 44; do
   RC=0; cr_first_release "$pr" "$HEAD1" o/r >"$TMP/out-RL13-$pr" 2>&1 || RC=$?
   jq -c --argjson n "$pr" '.number = $n' "$S/pull.json" > /dev/null
 done
 eq "$(cat "$TMP"/out-RL13-4[234] | grep -c '^CR-FIRST HOLD hard-unavailable codex')" 3 "RL13 hard lane down on 3 PRs: 3 hold lines"
 eq "$(cat "$TMP"/out-RL13-4[234] | grep -c '^CR-FIRST ALERT')" 1 "RL13 one fleet alert on stdout"
-eq "$(grep -c 'CR-FIRST ALERT' "$CONSOLE")" 1 "RL13 one console bullet"
-has "$CONSOLE" 'restore.*critics\.local\.json.*"mode":"best-effort".*"drop":true.*manual ci:go' "RL13 alert names the levers in order"
-hasnt "$CONSOLE" '>' "RL13 the console bullet carries no >"
+eq "$(grep -c 'CR-FIRST ALERT' "$CHIEF")" 1 "RL13 one chief bullet"
+has "$CHIEF" 'restore.*critics\.local\.json.*"mode":"best-effort".*"drop":true.*manual ci:go' "RL13 alert names the levers in order"
+hasnt "$CHIEF" '>' "RL13 the chief bullet carries no >"
 eq "$(posts)" 0 "RL13 no label while the hard lane is down"
 # the outage ends (codex passes again): the dedup entry clears, a later outage alerts again.
 led "$(av "$HEAD1" codex ok)" "$(av "$HEAD1" claude ok)"; run RL13-recovered
 led "$(av "$HEAD1" codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av "$HEAD1" claude ok)"; : > "$S/events.json"; echo '[]' > "$S/events.json"
 run RL13-again
-eq "$(grep -c 'CR-FIRST ALERT' "$CONSOLE")" 2 "RL13 a new outage after recovery alerts again"
-# M3' — no console doc: the hold line is still printed and nothing fails.
+eq "$(grep -c 'CR-FIRST ALERT' "$CHIEF")" 2 "RL13 a new outage after recovery alerts again"
+# M3' — no chief doc: the hold line is still printed and nothing fails.
 reset; led "$(av "$HEAD1" codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av "$HEAD1" claude ok)"
-unset HIMMEL_CONSOLE_DOC; run M3p-no-console
-has "$TMP/out-M3p-no-console" '^CR-FIRST HOLD hard-unavailable codex ' "M3' no console: hold line printed"
-hasnt "$TMP/out-M3p-no-console" 'CR-FIRST ERROR' "M3' no console: nothing errors"
+unset HIMMEL_CONSOLE_DOC; run M3p-no-chief
+has "$TMP/out-M3p-no-chief" '^CR-FIRST HOLD hard-unavailable codex ' "M3' no console: hold line printed"
+hasnt "$TMP/out-M3p-no-chief" 'CR-FIRST ERROR' "M3' no console: nothing errors"
 eq "$RC" 1 "M3' no console: a hold, not a failure"
 
 # ── the stuck-CodeRabbit probe (OQ2, decision 209) ───────────────────────────
@@ -431,14 +431,14 @@ eq "$(deletes)/$(posts)/$(ledger_lines)" 0/0/0 "read-only: no label write, no le
 reset; checks pending; CR_FIRST_READONLY=1 run readonly-hold
 has "$TMP/out-readonly-hold" '^CR-FIRST HOLD cheap-pending ' "read-only: a hold still prints"
 # a hard lane that is down raises no alert in read-only mode: the once-per-outage
-# key stays for the tick sweep and the console doc is not written.
-RO_CONSOLE="$TMP/ro-console.md"; printf '# console\n\n## Results (newest at the bottom)\n' > "$RO_CONSOLE"
+# key stays for the tick sweep and the chief doc is not written.
+RO_CHIEF="$TMP/ro-chief.md"; printf '# chief\n\n## Results (newest at the bottom)\n' > "$RO_CHIEF"
 reset; led "$(av "$HEAD1" codex unavailable critic-skipped 'refused: no ANTHROPIC_API_KEY and no key file')" "$(av "$HEAD1" claude ok)"
-HIMMEL_CONSOLE_DOC="$RO_CONSOLE" CR_FIRST_READONLY=1 run readonly-hard-down
+HIMMEL_CONSOLE_DOC="$RO_CHIEF" CR_FIRST_READONLY=1 run readonly-hard-down
 has "$TMP/out-readonly-hard-down" '^CR-FIRST HOLD hard-unavailable codex ' "read-only hard lane down: the hold still prints"
-eq "$(grep -c 'CR-FIRST ALERT' "$RO_CONSOLE")/$([ -s "$CR_FIRST_ALERTS" ] && echo alerts || echo none)" 0/none "read-only hard lane down: no console bullet, no alert key consumed"
+eq "$(grep -c 'CR-FIRST ALERT' "$RO_CHIEF")/$([ -s "$CR_FIRST_ALERTS" ] && echo alerts || echo none)" 0/none "read-only hard lane down: no chief bullet, no alert key consumed"
 
-# ── the console tick's sweep (event point 5) ─────────────────────────────────
+# ── the chief tick's sweep (event point 5) ─────────────────────────────────
 sweep() { printf '%b' "$1" | cr_first_sweep o/r >"$TMP/out-sweep" 2>/dev/null; }
 reset; echo off > "$S/var"; sweep "42\t$HEAD1\t\n"
 eq "$(wc -c < "$TMP/out-sweep" | tr -d ' ')/$(grep -c 'pulls\|check-runs' "$S/calls.log")" 0/0 "sweep switch off: no output and no PR read"

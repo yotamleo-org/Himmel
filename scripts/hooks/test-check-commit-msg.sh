@@ -311,7 +311,7 @@ fi
 # the `--root <repo-root>` the review suggested: --root BYPASSES the
 # git-common-dir hop entirely, and the gitignored .env exists only in the
 # PRIMARY checkout, so pinning --root to this worktree would find no .env and
-# skip in exactly the setup every leg runs from.
+# skip in exactly the setup every worker runs from.
 PRIMARY_POSTURE=$(
   cd "$HOOKS" || exit 0
   # shellcheck disable=SC1091

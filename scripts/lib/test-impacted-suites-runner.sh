@@ -3,7 +3,7 @@
 # the CI-equivalent runner command for a JS/TS suite path, read
 # off .github/workflows/ci.yml rather than guessed. Lives here rather than
 # alongside scripts/cr/test-impacted-suites.sh because scripts/cr is off
-# limits to this change beyond impacted-suites.sh itself (a concurrent leg is
+# limits to this change beyond impacted-suites.sh itself (a concurrent worker is
 # wiring an anchor hand-off into the other gate writers there) — impacted-suites.sh's
 # own basename-matching still finds this suite (it references the changed
 # file's basename).

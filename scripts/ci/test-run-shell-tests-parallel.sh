@@ -151,7 +151,7 @@ P3_CI_LINES='[PASS] scripts/hooks/test-block-bare-qmd-query.sh (92s)
 [PASS] scripts/hooks/test-check-security-reviewed.sh (4s)
 [PASS] scripts/hooks/test-codex-run-hook.sh (0s)
 [PASS] scripts/hooks/test-gitattributes-no-driver.sh (0s)
-[PASS] scripts/hooks/test-guard-leg-context-handoff.sh (15s)'
+[PASS] scripts/hooks/test-guard-worker-context-handoff.sh (15s)'
 if sb=$(mk_sandbox); then
   serial10=0
   while IFS= read -r l; do
@@ -313,7 +313,7 @@ fi
 echo "== P11: a live-state write in one lane fails that suite only =="
 if sb=$(mk_sandbox); then
   mk_suite "$sb" test-a-clean.sh 10
-  # The bullet test-run-shell-tests-live-state.sh replays into the console doc.
+  # The bullet test-run-shell-tests-live-state.sh replays into the chief doc.
   # The writer stays running past the clean suite's end, so a sentinel shared
   # between the lanes would still be dirty when the clean suite is checked.
   cat > "$sb/scripts/test-b-writer.sh" <<SHEOF

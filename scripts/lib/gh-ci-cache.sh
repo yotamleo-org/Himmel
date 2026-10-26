@@ -3,9 +3,9 @@
 #
 # Sourced, never executed. bash 3.2-safe.
 #
-# WHY: every leg waiting on CI ran its own `gh pr checks --watch`, a poll loop
+# WHY: every worker waiting on CI ran its own `gh pr checks --watch`, a poll loop
 # of GraphQL calls. Seven waiters on one shared 5000/h quota exhausted it twice in
-# an hour (403s, legs blind to CI). Waiters on the SAME PR all read the SAME
+# an hour (403s, workers blind to CI). Waiters on the SAME PR all read the SAME
 # rollup, so the first caller in a TTL window fetches it once and the rest read the
 # file it wrote.
 #

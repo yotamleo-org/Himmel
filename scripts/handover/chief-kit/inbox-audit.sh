@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # inbox-audit.sh — Per-shift audit for inbox-send.sh's
-# console-side sent-record: every token-quoting bullet in an inbox must have
+# chief-side sent-record: every token-quoting bullet in an inbox must have
 # a matching ledger line, or it is unaccounted for — either forged (a
-# console relay is barred from --token, so a token bullet
+# chief relay is barred from --token, so a token bullet
 # with no record was never sent by this script) or lost to an exit-4
 # ledger-write failure (see inbox-send.sh header). Read-only: writes
 # nothing, only reports.
@@ -13,7 +13,7 @@
 #
 # Usage: inbox-audit.sh <inbox-file> <sent-log-dir>
 #   <sent-log-dir> is the base passed as HIMMEL_CONSOLE_RUNDIR to
-#   inbox-send.sh (or its console.sh-convention default) — this script
+#   inbox-send.sh (or its chief.sh-convention default) — this script
 #   accepts a ledger line from either <sent-log-dir>/inbox-sent.log
 #   directly or <sent-log-dir>/<sender>/inbox-sent.log one level down.
 #

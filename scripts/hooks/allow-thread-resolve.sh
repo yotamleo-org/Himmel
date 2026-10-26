@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # PreToolUse Bash allow for the one audited review-thread resolve call.
 #
-# A leg that answered a review thread resolves it with
+# A worker that answered a review thread resolves it with
 #
 #   node <primary>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs \
 #     --owner yotamleo-org --repo Himmel --number <digits> \

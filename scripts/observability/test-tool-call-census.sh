@@ -121,7 +121,7 @@ cat > "$CLASS_SESSION" <<'JSONL'
 {"type":"assistant","timestamp":"2026-08-20T13:00:00.000Z","message":{"content":[{"type":"tool_use","id":"toolu_d1","name":"Bash","input":{}},{"type":"tool_use","id":"toolu_d2","name":"Bash","input":{}},{"type":"tool_use","id":"toolu_d3","name":"PowerShell","input":{}}]}}
 {"type":"user","timestamp":"2026-08-20T13:00:01.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_d1","is_error":true,"content":"Permission for this action was denied by the Claude Code auto mode classifier. Reason: Blocked by classifier."}]}}
 {"type":"user","timestamp":"2026-08-20T13:00:02.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_d2","is_error":true,"content":"The user doesn't want to proceed with this tool use. The tool use was rejected."}]}}
-{"type":"user","timestamp":"2026-08-20T13:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_d3","is_error":true,"content":"cadence-deny-powershell: refusing the PowerShell tool under a cadence leg."}]}}
+{"type":"user","timestamp":"2026-08-20T13:00:03.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_d3","is_error":true,"content":"cadence-deny-powershell: refusing the PowerShell tool under a cadence worker."}]}}
 {"type":"assistant","timestamp":"2026-08-20T13:00:04.000Z","message":{"content":[{"type":"tool_use","id":"toolu_d4","name":"mcp__qmd__query","input":{}}]}}
 {"type":"user","timestamp":"2026-08-20T13:00:05.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_d4","is_error":true,"content":"PreToolUse:mcp__qmd__query hook error: [bash $CLAUDE_PROJECT_DIR/scripts/hooks/block-backend-tier.sh]: block-backend-tier: refusing an MCP call the CLI already covers."}]}}
 JSONL

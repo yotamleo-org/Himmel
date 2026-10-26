@@ -117,8 +117,8 @@ claude session recovers.
 
 This command can run from **any directory** (HIMMEL-459), so first resolve the
 himmel checkout using the same checkout-resolution order as
-`marketplace/plugins/himmel-ops/scripts/legs.sh` (here it fails closed with an
-error; legs.sh fails open): `$HIMMEL_REPO` → the current git toplevel →
+`marketplace/plugins/himmel-ops/scripts/workers.sh` (here it fails closed with an
+error; workers.sh fails open): `$HIMMEL_REPO` → the current git toplevel →
 canonical install paths → error. Run the resolver, then ONE of the update forms:
 
 ```bash

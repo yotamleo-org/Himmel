@@ -28,7 +28,7 @@ merge. The cloud session ships a PR and stops.
 The mechanical half of the shepherd is scripted:
 `bash scripts/handover/chief-kit/shepherd.sh <pr>` makes a detached worktree of
 the PR head, runs the coverage lint, the impacted shell suites, `check-ci.sh` and
-`ready-check.sh`, and prints one `SHEPHERD <pr> <head> READY-CANDIDATE|NEEDS-LEG
+`ready-check.sh`, and prints one `SHEPHERD <pr> <head> READY-CANDIDATE|NEEDS-WORKER
 <reasons>` block (exit 0 / 1; 2 = usage or infra). It skips `CLOUD-ACK` steering
 only when `CLOUD-DONE` is already posted, and it is read-only toward the PR. It
 cannot run `/pr-check` (a model-session runbook): with no `ok` CR-ledger row for
@@ -186,7 +186,7 @@ below are the background and the plugin-free variant.
 
    7. Push, open a PR to `main` titled as the commit. The body carries a summary,
       the files changed, the test/shellcheck/impacted-suite results, the line
-      `cloud-pilot: HIMMEL-<n> (<console id>)`, the `completes-ticket:` line and
+      `cloud-pilot: HIMMEL-<n> (<chief id>)`, the `completes-ticket:` line and
       the `## Ticket coverage` section below.
    8. Turn on `/autofix-pr` for the PR, so the session fixes its own CI reds and
       review comments before the shepherd picks it up.

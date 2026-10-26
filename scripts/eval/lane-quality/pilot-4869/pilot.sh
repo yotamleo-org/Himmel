@@ -3,15 +3,15 @@
 # kit: a matched DeepSeek / native / claudex cohort on the HEADED lane, scored
 # blind. The shared runner (run.sh) refuses the deepseek and claudex lanes, so
 # this kit never runs an agent itself: `prepare` prints the launch line, the
-# console fires it, `finish` scores what the session left behind.
+# chief fires it, `finish` scores what the session left behind.
 #
 # Usage:
 #   pilot.sh verify                         frozen fixtures still match FROZEN.sha256
-#   pilot.sh init --console <name> [--floor F]
+#   pilot.sh init --chief <name> [--floor F]
 #                                           read B with the launcher's own balance read,
 #                                           size A = min(3, max(0, B - F - 0.50))
 #   pilot.sh prepare <row>                  worktree + fixture + brief + before snapshot,
-#                                           prints the one launch line for the console
+#                                           prints the one launch line for the chief
 #   pilot.sh finish <row>                   after snapshot, acceptance, scope, containment,
 #                                           transcript metrics, blind judge packet
 #   pilot.sh judged <packet-id> <json>      store one blind judge verdict (judge-schema.json)
@@ -21,6 +21,14 @@
 # PILOT_DEEPSEEK_BIN, PILOT_PREFLIGHT, PILOT_TRANSCRIPTS (colon-separated
 # projects roots).
 set -u
+# Old names, read only while HIMMEL_LEGACY_NAMES is on.
+case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+if { [ -r "$_ea_dir/../../../lib/env-alias.sh" ] && . "$_ea_dir/../../../lib/env-alias.sh"; } 2>/dev/null; then
+    alias_env PILOT_CHIEF PILOT_CONSOLE
+fi
+unset _ea_dir
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LQ="$(cd "$HERE/.." && pwd)"
 COHORT="$HERE/cohort.tsv"
@@ -78,15 +86,15 @@ row_field() { # $1 row, $2 column (1-based) from cohort.tsv
 }
 
 cmd_init() {
-  local console="" floor=3 b a
+  local chief="" floor=3 b a
   while [ $# -gt 0 ]; do
     case "$1" in
-      --console) console="$2"; shift 2 ;;
+      --chief|--console) [ "$1" = --chief ] || legacy_flag --console --chief || die "init: unknown flag '$1'"; chief="$2"; shift 2 ;;
       --floor) floor="$2"; shift 2 ;;
       *) die "init: unknown flag '$1'" ;;
     esac
   done
-  [ -n "$console" ] || die "init needs --console <session name>"
+  [ -n "$chief" ] || die "init needs --chief <session name>"
   [ -e "$ROOT/pilot.env" ] && die "already initialised: $ROOT/pilot.env (B is read once, at the start)"
   b="$(ds_balance)"
   [ -n "$b" ] || die "the DeepSeek launcher printed no balance; nothing sized"
@@ -94,12 +102,12 @@ cmd_init() {
   mkdir -p "$ROOT"/{rows,results,packets,judged,private} "$DOCS"
   # Sourced later, so every value is shell-quoted.
   printf 'PILOT_B0=%q\nPILOT_F=%q\nPILOT_A=%q\nPILOT_CONSOLE=%q\nPILOT_AT=%q\n' \
-    "$b" "$floor" "$a" "$console" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$ROOT/pilot.env"
+    "$b" "$floor" "$a" "$chief" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >"$ROOT/pilot.env"
   echo "pilot: B=$b F=$floor A=$a (DeepSeek spend cap for the whole pilot)"
 }
 
 # shellcheck source=/dev/null
-load_env() { [ -r "$ROOT/pilot.env" ] || die "not initialised; run: pilot.sh init --console <name>"; . "$ROOT/pilot.env"; }
+load_env() { [ -r "$ROOT/pilot.env" ] || die "not initialised; run: pilot.sh init --chief <name>"; . "$ROOT/pilot.env"; }
 
 materialize_row() { # $1 task, $2 worktree -> fixture sha
   local task="$1" wt="$2"
@@ -121,7 +129,7 @@ materialize_row() { # $1 task, $2 worktree -> fixture sha
 
 prompt_of() { if [ "$1" = bench-t4 ]; then cat "$HERE/tasks/bench-t4/prompt.md"; else cat "$LQ/tasks/$1/prompt.md"; fi; }
 
-write_brief() { # $1 row, $2 worktree, $3 task, $4 nonce, $5 console
+write_brief() { # $1 row, $2 worktree, $3 task, $4 nonce, $5 chief
   cat <<EOF
 ---
 resume_cwd: $2
@@ -130,11 +138,11 @@ description: HIMMEL-4869 pilot row $1, one frozen eval task
 
 # HIMMEL-4869 pilot row $1: one eval task
 
-> **Eval run, not a ticket leg.** This overrides the leg rules wherever they
+> **Eval run, not a ticket worker.** This overrides the worker rules wherever they
 > differ: do NOT commit, push, open a PR, touch Jira or spawn subagents, and
 > read nothing outside your worktree \`$2\` except this document. Skip the
 > queue lock and bank preflight.
-> - **Console:** \`$5\`. **RETASK nonce:** \`$4\`.
+> - **Chief:** \`$5\`. **RETASK nonce:** \`$4\`.
 > - **Finish:** write your final report under \`## Final report\` below (what
 >   you changed, what you verified), then append a WRAPPED bullet under
 >   \`## Results\` and stop.
@@ -234,12 +242,12 @@ cmd_prepare() {
     prefix="${prefix}HEADED_ARM_WORKER_$(printf %s "$lane" | tr '[:lower:]' '[:upper:]')_BIN=$(printf %q "$ROOT/rows/$row.sandbox") "
   fi
   # The row's whole launch, sandbox prefix included, lives in one wrapper, so
-  # the console's line carries nothing that could be dropped from it.
-  printf '#!/usr/bin/env bash\n%sHANDOVER_DIR=%q WORKER_SESSION_REPO=%q exec bash %q --lane %q --profile console-relay --console %q %q %q %q 1 %q %q\n' \
+  # the chief's line carries nothing that could be dropped from it.
+  printf '#!/usr/bin/env bash\n%sHANDOVER_DIR=%q WORKER_SESSION_REPO=%q exec bash %q --lane %q --profile chief-relay --chief %q %q %q %q 1 %q %q\n' \
     "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" "$lane" "$PILOT_CONSOLE" \
     "HIMMEL-4869-pilot-$row" "$doc" "$ROOT/rows/$row.signal" "$run/$row.log" "$model" >"$ROOT/rows/$row.launch"
   chmod +x "$ROOT/rows/$row.launch"
-  # The console runs this line, so every value is shell-quoted.
+  # The chief runs this line, so every value is shell-quoted.
   printf 'setsid nohup bash %q >/dev/null 2>&1 &\n' "$ROOT/rows/$row.launch"
 }
 

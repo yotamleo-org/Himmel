@@ -1,6 +1,6 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
@@ -13,7 +13,7 @@ import { resolveSector, sectorField, sectorOptions } from './sector.js';
 import { searchAllIssues } from './list.js';
 import { createIssueLink, requireBlockerVersion, targetFixVersion } from './link.js';
 import { appendAdmission, readAdmissions, type Admission, type AdmissionInput } from './admissions-ledger.js';
-import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, frozenDate, INTAKE_GATES } from './intake-gate.js';
+import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, frozenDate, INTAKE_GATES } from './intake-gate.js';
 import { assertVersionExists, earliestUnreleased, fetchVersions, resolveAffectsVersion } from './versions.js';
 import { ctxFor, refuseRequest } from './release.js';
 import { request as releaseRequest } from '../release/engine.js';
@@ -377,20 +377,22 @@ interface PlacementOptions {
   priority?: string;
   backlog?: boolean;
   gate?: string;
+  chiefOverride?: string;
   consoleOverride?: string;
   sector?: string;
   followUpOf?: string;
 }
 
-/** Checks the gate, backlog and console-override flags before anything is filed; returns the override reason. */
+/** Checks the gate, backlog and chief-override flags before anything is filed; returns the override reason. */
 function checkPlacementFlags(o: PlacementOptions): string | undefined {
   if (o.gate !== undefined) assertIntakeGate(o.gate);
   if (o.backlog && (o.gate !== undefined || o.fixVersion !== undefined)) {
     throw new Error('--backlog cannot be combined with --gate or --fix-version');
   }
-  if (o.consoleOverride === undefined) return undefined;
-  const reason = checkConsoleOverride(o.consoleOverride);
-  if (o.fixVersion === undefined) throw new Error('--console-override needs the --fix-version to admit into');
+  const override = chiefOverrideOf(o);
+  if (override === undefined) return undefined;
+  const reason = checkConsoleOverride(override);
+  if (o.fixVersion === undefined) throw new Error('--chief-override needs the --fix-version to admit into');
   return reason;
 }
 
@@ -590,9 +592,10 @@ export function registerCreate(program: Command): void {
       'Why this may enter a version (' + INTAKE_GATES + '): a Bug without --fix-version goes to the earliest unreleased version, and a frozen version takes nothing without it',
     )
     .option(
-      '--console-override <reason>',
-      'Console only (HIMMEL_CONSOLE=1): file into --fix-version with a reason, recorded in the admissions ledger',
+      '--chief-override <reason>',
+      'Chief only (HIMMEL_CONSOLE=1): file into --fix-version with a reason, recorded in the admissions ledger',
     )
+    .addOption(new Option('--console-override <reason>').hideHelp())
     .option(
       '--affects-version <name>',
       "Set the affectsVersion (validated against the project's versions; `current` = the earliest unreleased version)",
@@ -638,6 +641,7 @@ export function registerCreate(program: Command): void {
         priority?: string;
         backlog?: boolean;
         gate?: string;
+        chiefOverride?: string;
         consoleOverride?: string;
         affectsVersion?: string;
         residualOf?: string;

@@ -257,9 +257,9 @@ n=0; while [ ! -s "$tmp/open11.log.done" ] && [ "$n" -lt 50 ]; do sleep 0.1; n=$
 check "6e orphaned body: the body ran and exited 1 on the missing ack" "$(cat "$tmp/open11.log.done" 2>/dev/null)" "1"
 check "6e orphaned body: the command never runs without the shim's ack" "$([ -e "$tmp/orphan-ran" ] && echo ran)" ""
 
-# --- 7. the fan-out caps reach a Mac leg ------------------------
+# --- 7. the fan-out caps reach a Mac worker ------------------------
 # `open -a` starts the body from a fresh environment, so the subagent caps an
-# operator set in the launching shell were silently dropped - a Mac leg ran
+# operator set in the launching shell were silently dropped - a Mac worker ran
 # uncapped. They are forwarded explicitly, like PATH; nothing else is.
 b12="$tmp/b12"; mk_open_stub "$b12" "$tmp/open12.log"
 envdump="$tmp/env12.txt"; rm -f "$envdump"
@@ -278,7 +278,7 @@ not_contains "7b an unrelated launching-shell var still does not" "$envout" "KON
 nc8=$( grep() { return 2; }; not_contains "8 probe" "x" "y" )
 check "8 not_contains reports a grep error as a failure, not as absence" "$nc8" "FAIL - 8 probe: grep itself failed (rc 2)"
 
-# --- 9. the leg opens in the arming session's own iTerm window (#3602) -----
+# --- 9. the worker opens in the arming session's own iTerm window (#3602) -----
 # `open -a` lands the tab in whichever iTerm window is frontmost. With
 # $ITERM_SESSION_ID set, the shim targets that session's window instead.
 b13="$tmp/b13"; mk_open_stub "$b13" "$tmp/open13.log"; mk_osascript_stub "$b13" "$tmp/osa13.log"

@@ -30,7 +30,7 @@ n=0
 merge() { # <date> <subject> [cost-eq]
   n=$((n + 1))
   local body="no burn line"
-  [ -n "${3:-}" ] && body="leg-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=$3 floor-share=1%"
+  [ -n "${3:-}" ] && body="worker-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=$3 floor-share=1%"
   GIT_AUTHOR_DATE="$1T12:00:00Z" GIT_COMMITTER_DATE="$1T12:00:00Z" \
     git -C "$REPO" commit -q --allow-empty -m "$2 (#$n)" -m "$body"
 }
@@ -109,7 +109,7 @@ check "W37 cost per ticket" 200000 "$(f 2026-W37 cost_eq_per_ticket)"
 check "W37 cache mean" 92 "$(f 2026-W37 cache_hit_pct)"
 check "W37 flake rows ignore another repo" 2 "$(f 2026-W37 flake_rows)"
 check "W38 red main" 1 "$(f 2026-W38 red_main)"
-check "W38 cost is null with no leg-burn line" null "$(f 2026-W38 cost_eq)"
+check "W38 cost is null with no worker-burn line" null "$(f 2026-W38 cost_eq)"
 check "W39 empty week has zero merges" 0 "$(f 2026-W39 merges)"
 check "an empty week has no fix share" null "$(f 2026-W39 fix_share_pct)"
 check "first week has no delta" null "$(f 2026-W36 delta.merges)"
@@ -173,7 +173,7 @@ git -C "$W/repo2" config user.email t@example.com
 git -C "$W/repo2" config user.name t
 GIT_AUTHOR_DATE="2026-09-10T12:00:00Z" GIT_COMMITTER_DATE="2026-09-10T12:00:00Z" \
   git -C "$W/repo2" commit -q --allow-empty -m 'feat(x): [HIMMEL-9] late (#99)' \
-  -m "leg-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=900k floor-share=1%"
+  -m "worker-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=900k floor-share=1%"
 OUT3="$W/late.jsonl"
 run write --repo "$W/repo2" --ref main --weeks 0 --versions 2 --out "$OUT3" >/dev/null 2>&1
 check "a post-tag commit stays out of the version merges" 3 \
@@ -190,7 +190,7 @@ git -C "$W/repo3" config user.name t
 git -C "$W/repo3" config commit.gpgsign false
 GIT_AUTHOR_DATE="2026-09-08T12:00:00Z" GIT_COMMITTER_DATE="2026-09-08T12:00:00Z" \
   git -C "$W/repo3" commit -q --allow-empty -m 'feat(x): [HIMMEL-7] in window (#1)' \
-  -m "leg-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=70k floor-share=1%"
+  -m "worker-burn s.jsonl: calls=9 avg-ctx=1k first-turn=1k out=1k compactions=0 cost-eq=70k floor-share=1%"
 for i in 1 2 3 4 5 6 7; do
   GIT_AUTHOR_DATE="2026-01-0${i}T12:00:00Z" GIT_COMMITTER_DATE="2026-01-0${i}T12:00:00Z" \
     git -C "$W/repo3" commit -q --allow-empty -m "feat(x): [HIMMEL-8] old $i (#1$i)" -m "no burn line"
@@ -212,7 +212,7 @@ check "review exits 0" 0 $?
 check "review prints three lines" 3 "$(wc -l <"$W/review.out" | tr -d ' ')"
 check "review velocity line" "velocity: merges=3 (+1 vs v1.0.0) tickets=2 (+0) fix-share=33.33% (-16.67) window=8d" \
   "$(sed -n 1p "$W/review.out")"
-check "review cost line" "cost: cost-eq=400k legs=3 per-ticket=200k (+125k vs v1.0.0)" \
+check "review cost line" "cost: cost-eq=400k workers=3 per-ticket=200k (+125k vs v1.0.0)" \
   "$(sed -n 2p "$W/review.out")"
 check "review health line" "health: red-main=0 (+0) cache-hit=92% (n/a) flakes=2 (+2); failure and denial rates: no source yet" \
   "$(sed -n 3p "$W/review.out")"

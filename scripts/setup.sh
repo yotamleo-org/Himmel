@@ -394,7 +394,7 @@ echo ""
 # --- statusline + HIMMEL_REPO ---
 # Wire the himmel statusline AND env.HIMMEL_REPO into ~/.claude/settings.json via
 # the shared helpers. Both write settings.json, need no claude binary, idempotent.
-# HIMMEL_REPO default-by-install: the installer knows the clone path, so the leg
+# HIMMEL_REPO default-by-install: the installer knows the clone path, so the worker
 # resolver + minerva anchor get it without a manual export.
 echo "[9/9] Wiring statusline + HIMMEL_REPO + UNIVERSAL hooks (user scope)..."
 _user_settings="$HOME/.claude/settings.json"
@@ -406,7 +406,7 @@ if ! bash "$REPO_ROOT/scripts/lib/wire-himmel-repo.sh" "$_user_settings" "$REPO_
 fi
 # R3: wire the UNIVERSAL hooks at USER scope so a session launched
 # ANYWHERE (not just inside this repo) gets the portable safety + auto-approve
-# trio AND the SessionStart leg-injector. Referenced by THIS clone's abs path;
+# trio AND the SessionStart worker-injector. Referenced by THIS clone's abs path;
 # basename-dedup keeps a re-run from double-wiring. The HIMMEL-DEV-ONLY hooks
 # (check-cr-marker, backend-tier, auto-arm, check-update-available) stay project
 # scope — they only make sense inside the himmel repo. Invoked as a SUBPROCESS

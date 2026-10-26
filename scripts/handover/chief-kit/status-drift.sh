@@ -7,7 +7,7 @@
 # (status-sweep.sh) is the fixer.
 #
 # Usage: status-drift.sh [--repo <owner/repo>] [--docs-dir <dir>] [--snapshot <dir>]
-#   --docs-dir is where leg docs are scanned for a second owner (default the
+#   --docs-dir is where worker docs are scanned for a second owner (default the
 #   handover root).
 #   --snapshot is a status-sweep.sh --snapshot-out dir: the derive takes the PRs,
 #   their checks and threads from it instead of gh per key. A dir without prs.json
@@ -99,7 +99,7 @@ fi
 STATE="$(ts_state_dir)"
 LOG="$STATE/status-events.jsonl"
 SWEEP_FIX="bash scripts/handover/chief-kit/status-sweep.sh"
-FUNNEL="leg-jira-status.sh"
+FUNNEL="worker-jira-status.sh"
 rows=""
 add() { # <class> <key> <detail> <writer> <fix>
     rows="$rows$1 $2 $3 | writer=$4 | fix=$5"$'\n'
@@ -227,7 +227,7 @@ while IFS= read -r key; do
     fi
 
     ts_record_read "$key" || continue
-    leg=$(jq -r '.leg // ""' <<<"$TS_REC")
+    worker=$(jq -r '.leg // ""' <<<"$TS_REC")
     doc=$(jq -r '.doc // ""' <<<"$TS_REC")
     rstate=$(jq -r '.state // ""' <<<"$TS_REC")
     wstate=none
@@ -237,9 +237,9 @@ while IFS= read -r key; do
         add WORKER-STALE "$key" "record=$rstate but the doc/lock says $wstate" "$FUNNEL --event sweep" "$SWEEP_FIX"
     fi
 
-    if [ "$derived" != no-write ] && [ -n "$leg$doc" ]; then
+    if [ "$derived" != no-write ] && [ -n "$worker$doc" ]; then
         heads=$(printf '%s' "$pr_state" | awk -F'\t' 'NF { printf "%s#%s@%s", (n++ ? "," : ""), $1, substr($2, 1, 9) }')
-        want=$(printf '%s|%s|%s|%s' "$leg" "$wstate_derive" "$heads" "$derived" | cksum | awk '{ print $1 }')
+        want=$(printf '%s|%s|%s|%s' "$worker" "$wstate_derive" "$heads" "$derived" | cksum | awk '{ print $1 }')
         have=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
         if [ "$want" != "$have" ]; then
             add WORKER-COMMENT "$key" "record hash ${have:-none} vs class hash $want" "$FUNNEL" "bash scripts/handover/chief-kit/worker-jira-status.sh $key --event sweep"
@@ -254,10 +254,10 @@ while IFS= read -r key; do
         [ -n "$d" ] || continue
         if is_owner_state "$(ts_worker_state "$d")"; then nown=$((nown + 1)); fi
     done <<<"$(printf '%s\n' "$owners" | sort -u)"
-    [ "$nown" -lt 2 ] || add TWO-OWNERS "$key" "$nown live docs claim it" - "wrap or halt all but one leg doc"
+    [ "$nown" -lt 2 ] || add TWO-OWNERS "$key" "$nown live docs claim it" - "wrap or halt all but one worker doc"
 
     if [ "$(ts_rank "$jstatus")" -ge 1 ] && [ -z "$open_prs" ]; then
-        case "$wstate" in none|wrapped) add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME leg, or $SWEEP_FIX" ;; esac
+        case "$wstate" in none|wrapped) add UNOWNED "$key" "$jstatus with no open PR and no live owner" "$FUNNEL" "dispatch a RESUME worker, or $SWEEP_FIX" ;; esac
     fi
 
     if [ "$jstatus" != Done ] && { [ -n "$open_prs" ] || is_owner_state "$wstate"; }; then

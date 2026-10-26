@@ -75,7 +75,7 @@ case "$count" in
 esac
 [ "$count" -ge 2 ] || exit 0
 
-msg="Refusing a repeat: this exact command was already denied $count times in this session. Retrying the same bytes will be denied again. Stop and use the stuck-playbook instead (skill himmel-ops:stuck-playbook, docs/internals/stuck-playbook.md): rewrite the command as one different literal command, or route the blocker to the console."
+msg="Refusing a repeat: this exact command was already denied $count times in this session. Retrying the same bytes will be denied again. Stop and use the stuck-playbook instead (skill himmel-ops:stuck-playbook, docs/internals/stuck-playbook.md): rewrite the command as one different literal command, or route the blocker to the chief."
 reason=$(printf '%s' "$msg" | jq -Rs . 2>/dev/null) || exit 0 # swallow-ok: fail-open hook, no encoder means no deny
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
 printf '%s\n' "$msg" >&2

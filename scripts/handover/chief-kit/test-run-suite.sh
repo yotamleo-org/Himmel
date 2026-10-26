@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-run-suite.sh — Exercises run-suite.sh: one scan root per
-# call, so a leg's turn boundary between calls is an inbox checkpoint for a
-# console halt. The scan runner is stubbed (--runner); no real suite runs.
+# call, so a worker's turn boundary between calls is an inbox checkpoint for a
+# chief halt. The scan runner is stubbed (--runner); no real suite runs.
 # bash 3.2-safe.
 #
 # RUN_SUITE overrides the script under test (the RED control).

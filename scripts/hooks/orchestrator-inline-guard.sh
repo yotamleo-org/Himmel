@@ -7,7 +7,7 @@
 # exception is one trivial CR-fix per PR). Escalates per the
 # repo's own "second drift -> structural" doctrine (operator, 2026-07-29: "i
 # always find myself re-enforcing this"): the phase-1 advisory fired EIGHT
-# times in one leg (2026-08-15) and was overridden every time — "hook
+# times in one worker (2026-08-15) and was overridden every time — "hook
 # additionalContext ≠ compliance".
 #
 # DENY SEMANTICS:
@@ -140,7 +140,7 @@
 # apart: a worker's hook subprocess can end up tailing a transcript whose
 # most recent assistant turn is the DISPATCHING PARENT's (Opus/Fable), not
 # the worker's own model — a false fire on every worker edit (observed live,
-# leg 14, CR rounds 3-6).
+# worker 14, CR rounds 3-6).
 #
 # A first attempt at this fix keyed the exemption on the CLAUDE_CODE_CHILD_
 # SESSION=1 env var, on the basis that a dispatched worker's session carried

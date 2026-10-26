@@ -75,7 +75,7 @@ MUTATE = re.compile(
     r"(?:^|[;&|(]\s*)(?:git(?:\s+-C\s+\S+)?\s+(?:commit|push|tag)\b|"
     r"gh\s+(?:pr\s+(?:create|comment|edit|merge|ready|close)|issue\s+(?:create|comment))\b|"
     r"(?:bash\s+)?\S*(?:append-results\.sh|queue-lock\.sh\s+(?:acquire|release)|write-verdicts\.sh\s+\w|"
-    r"ledger-append\.sh|merge-on-green\.sh|leg-pr-open\.sh|clear-cr-marker\.sh)|"
+    r"ledger-append\.sh|merge-on-green\.sh|(?:worker|leg)-pr-open\.sh|clear-cr-marker\.sh)|"
     r"node\s+\S*jira/dist/index\.js\s+(?:create|comment|transition|update|edit|link))", re.M)
 # a call that ran past its timeout went to the background: not known to be done
 BACKGROUNDED = re.compile(r"^Command (?:did not complete|running in background)|moved to the background")

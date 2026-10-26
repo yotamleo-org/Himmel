@@ -7,7 +7,7 @@
 # refusal); smoke-consult-sandbox.sh is the live, bank-spending twin for that.
 # mock-backed — fake key, loopback-only netns, zero spend; the claude launch is fakekey-claude.sh
 #
-# The consult settings are the ones headed-arm-leg.sh --consult really generates (same
+# The consult settings are the ones headed-arm-worker.sh --consult really generates (same
 # stubs as smoke-consult-sandbox.sh), run with `--setting-sources ""` like the shim does.
 # The mock scripts three Bash tool_uses: the allowed append-results.sh, then a python3
 # write to a SIBLING file in the bucket, then a python3 write inside the repo. Asserts
@@ -49,14 +49,14 @@ WORK=$(cd -P "$WORK" && pwd -P)
 
 BUCKET="$WORK/bucket"; mkdir -p "$BUCKET"
 DOC="$BUCKET/consult.md"; SIBLING="$BUCKET/sibling.md"
-# A consult launches from the console's own (primary) checkout, never a worktree (headed-arm-leg.sh refuses one).
+# A consult launches from the chief's own (primary) checkout, never a worktree (headed-arm-worker.sh refuses one).
 PRIMARY="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir)"; PRIMARY="$(cd -P "$PRIMARY/.." && pwd -P)"
 REPO_PROBE="$PRIMARY/.mock-consult-probe-$$" # inside the repo: the sandbox always write-denies it
 printf '# consult\n\n## Results\n' >"$DOC"
 printf 'untouched\n' >"$SIBLING"
 trap 'rm -rf "$WORK"; rm -f "$REPO_PROBE"' EXIT
 
-# --- the consult settings headed-arm-leg.sh really generates (stubbed terminal) ---
+# --- the consult settings headed-arm-worker.sh really generates (stubbed terminal) ---
 mkdir -p "$WORK/proc/9001" "$WORK/home/.claude"
 cat >"$WORK/konsole" <<'EOF'
 #!/usr/bin/env bash
@@ -77,7 +77,7 @@ IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' CONSULT_SETTINGS_HOME="$WORK/home" \
 HEADED_ARM_WORKER_TARGET="$REPO/scripts/handover/headed-arm.sh" \
 KONSOLE_CMD="$WORK/konsole" PGREP_CMD="$WORK/pgrep" \
 WORKER_SESSION_REPO="$PRIMARY" HEADED_ARM_LOCK_DIR="$WORK/locks" HEADED_ARM_PROC="$WORK/proc" \
-  bash "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" --consult --profile design-motion --console MOCK-console \
+  bash "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" --consult --profile design-motion --chief MOCK-chief \
     MOCK-consult "$DOC" "$WORK/signal-never" "$(( $(date +%s) - 100 ))" "$WORK/log" >"$WORK/launch.out" 2>&1 &
 lp=$!
 SETTINGS="$WORK/MOCK-consult.leg-settings.json"

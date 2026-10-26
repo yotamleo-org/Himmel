@@ -48,7 +48,7 @@ const seq = (prefix: string, ids: Iterable<string>) => {
 
 function operatorFence(ctx: Ctx): void {
   if (ctx.env.HIMMEL_CONSOLE_LEG === '1' || ctx.env.HIMMEL_RELEASE_MANAGER === '1') {
-    throw new Error('release operator: a console act on an operator decision; refused inside a console-spawned leg');
+    throw new Error('release operator: a chief act on an operator decision; refused inside a chief-spawned worker');
   }
 }
 
@@ -179,7 +179,7 @@ function latestRequests(requests: Chain<RequestRow>): Map<string, RequestRow> {
   return m;
 }
 
-// --- operator acts (the console, on an operator decision) ---------------------
+// --- operator acts (the chief, on an operator decision) ---------------------
 
 function appendOperator(ctx: Ctx, k: Buffer, row: Omit<OperatorRow, 'id' | 'ts'> & { id?: string }): OperatorRow {
   const chain = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), k);
@@ -263,7 +263,7 @@ function appendWithdrawal(ctx: Ctx, k: Buffer, r: RequestRow, by: string, reason
   return appendChain<RequestRow>(f(ctx, 'requests.jsonl'), k, { ...rest, ts: ts(ctx), state: `withdrawn:${by}`, reason });
 }
 
-// The console retires an open or claimed request with a reason; --by cites the
+// The chief retires an open or claimed request with a reason; --by cites the
 // operator decision that settles it, which must cover the request's key.
 export function withdraw(ctx: Ctx, o: { req: string; reason: string; by?: string }): RequestRow {
   operatorFence(ctx);
@@ -287,7 +287,7 @@ export function takeover(ctx: Ctx, o: { epoch: number; doc: string }): OperatorR
   return locked(ctx, (l) => appendOperator(ctx, l.k, { kind: 'takeover', decision: null, epoch: o.epoch, doc: o.doc }));
 }
 
-// --- fold: a finished ticket recorded as delivered in a version (the console) ---------
+// --- fold: a finished ticket recorded as delivered in a version (the chief) ---------
 
 export interface FoldItem { key: string; pr: number }
 export interface FoldSkip { key: string; terminal: string; resolution: string }
@@ -352,10 +352,10 @@ export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
   });
 }
 
-// --- the request queue (the console writes, the RM claims) ---------------------
+// --- the request queue (the chief writes, the RM claims) ---------------------
 
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
-  if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the console writes requests; the RM claims them');
+  if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
   return locked(ctx, (l) => {
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
     const dup = [...latest.values()].find((r) => pending(r) && r.key === o.key && r.verb === o.verb
@@ -390,7 +390,7 @@ export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; se
     const takeoverRow = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), l.k).verified
       .some((x) => x.kind === 'takeover' && x.epoch === cur.epoch && x.doc === o.doc);
     if (cur.owner_doc && !cur.released && !takeoverRow) {
-      throw new Error(`release lease: held by ${cur.owner_doc} at epoch ${cur.epoch}; it needs a release or a console takeover row`);
+      throw new Error(`release lease: held by ${cur.owner_doc} at epoch ${cur.epoch}; it needs a release or a chief takeover row`);
     }
     const next: Lease = {
       release: ctx.release, epoch: cur.epoch + 1, owner_session: o.session, owner_doc: o.doc, acquired: ts(ctx),
@@ -473,7 +473,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     checkOp(l.decl, o.op);
     const given = o.sector.trim();
     const sector = sectorField() ? (given.toLowerCase() === SECTOR_OPT_OUT ? '' : given) : given || SECTOR_OPT_OUT;
-    if (!sector) throw new Error('release rule: a ruling without a sector refuses; ask the console to set it');
+    if (!sector) throw new Error('release rule: a ruling without a sector refuses; ask the chief to set it');
     if (!o.ground.trim() || !o.reason.trim()) throw new Error('release rule: --ground and --reason are required');
 
     const s = reduceLoaded(l, { issues: null, sync: null });
@@ -602,7 +602,7 @@ export async function apply(ctx: Ctx, id: string): Promise<{ phase: RulingRow['p
       // A later applied ruling that supersedes this one owns the ledger now; a replay must not write after it.
       const phaseOf = new Map(rows.verified.map((r) => [r.id, r.phase]));
       const superseded = rows.verified.some((s) => s.supersedes.includes(id) && ['applied', 'receipted'].includes(phaseOf.get(s.id) ?? ''));
-      // An RM admission is a ledger row like the console's, so the board counts it; a replay finds the row first.
+      // An RM admission is a ledger row like the chief's, so the board counts it; a replay finds the row first.
       // A REVERSION move into a version is an admission there too; readers ignore the row for an unfrozen version.
       const admitted = last.verb === 'INTAKE' && last.outcome === 'ADMIT'
         || last.verb === 'REVERSION' && last.op.kind === 'move';

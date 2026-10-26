@@ -71,7 +71,7 @@ REPO_ROOT="$(cd "$HERE/../.." && pwd)"
 # all failed). Mitigation: the sonnet model pin below
 # (GRAPHIFY_CLAUDE_CLI_MODEL, overridable), or an API backend (glm) for zero
 # bank draw. There is no kimi/moonshot backend (operator ruling); the weekly
-# graphmap-cadence.sh semantic leg accepts the bank draw and is gated by
+# graphmap-cadence.sh semantic worker accepts the bank draw and is gated by
 # usage-preflight.sh instead (see the bank guard below).
 # BILLING CAVEAT: claude-cli authenticates via the operator's
 # existing Pro/Max SUBSCRIPTION *only when no Anthropic API credential is in the
@@ -535,11 +535,11 @@ fi
 # graphify resolves its own out-dir name from GRAPHIFY_OUT
 # (paths.py: `os.environ.get("GRAPHIFY_OUT", "graphify-out")`, read once at
 # import; watch.py joins it as `out = watch_path / GRAPHIFY_OUT`), and
-# ast-update.sh resolves it the same way so the hourly structural leg takes
+# ast-update.sh resolves it the same way so the hourly structural worker takes
 # the promote lock on the directory actually being written. This script
-# hardcoded "graphify-out", so under an override the two legs would lock and write
+# hardcoded "graphify-out", so under an override the two workers would lock and write
 # DIFFERENT directories: the serialization would silently
-# guard nothing, and the semantic leg would publish from the wrong path.
+# guard nothing, and the semantic worker would publish from the wrong path.
 #
 # Only the RELATIVE form is honourable here. ast-update.sh can accept an
 # ABSOLUTE GRAPHIFY_OUT because it runs graphify against the live corpus in
@@ -559,7 +559,7 @@ fi
 GRAPHIFY_OUT_NAME="${GRAPHIFY_OUT-graphify-out}"
 case "$GRAPHIFY_OUT_NAME" in
   /*|[A-Za-z]:[/\\]*)
-    echo "refresh-graph-map: GRAPHIFY_OUT is an absolute path ('$GRAPHIFY_OUT_NAME'), which this script cannot honour -- it extracts into a scratch copy and promotes, and an absolute out dir bypasses both. Unset it, or set a plain relative directory NAME (ast-update.sh resolves the same value, so both legs stay serialized on one directory)." >&2
+    echo "refresh-graph-map: GRAPHIFY_OUT is an absolute path ('$GRAPHIFY_OUT_NAME'), which this script cannot honour -- it extracts into a scratch copy and promotes, and an absolute out dir bypasses both. Unset it, or set a plain relative directory NAME (ast-update.sh resolves the same value, so both workers stay serialized on one directory)." >&2
     exit 2 ;;
 esac
 # A plain single-segment name only: "." / ".." / a path with separators would
@@ -2306,9 +2306,9 @@ for p in sys.stdin.buffer.read().split(b"\0"):
       _bank_preflight="$REPO_ROOT/scripts/lib/usage-preflight.sh"
       if [ -f "$_bank_preflight" ]; then
         if [ -n "$_deadline_bin" ]; then
-          _bank_verdict="$(CADENCE_USAGE_LEG="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
+          _bank_verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" "$_deadline_bin" -k 10 120 bash "$_bank_preflight" || true)"
         else
-          _bank_verdict="$(CADENCE_USAGE_LEG="graphmap-$NAME" bash "$_bank_preflight" || true)"
+          _bank_verdict="$(CADENCE_USAGE_WORKER="graphmap-$NAME" bash "$_bank_preflight" || true)"
         fi
         # bank-preflight always exits 0 by design (see above), but wrapped in
         # timeout a kill yields 124, and `|| true` swallows that so `set -e`

@@ -172,10 +172,10 @@ CLOUD-OK one from [`docs/handover/cloud-brief-template.md`](../../../docs/handov
 and prints ONE operator launch line per brief. It never launches: `claude --cloud`
 needs a TTY and spends credit. A sibling of `/fanout`, not an extension: that is a
 pure type-to-tier router, this reads live Jira and open-PR files and writes into
-the console bucket.
+the chief bucket.
 
 The classifier (`scripts/lanes/cloud-route.mjs`, first match wins): BLOCKED for a
-ticket not To Do or a file held by an open PR or the supervisor session's list; HOOK-BYPASS
+ticket not To Do or a file held by an open PR or the chief's list; HOOK-BYPASS
 for `scripts/hooks/`; LOCAL-NATIVE for a trust path (`scripts/ci/ci-trust-paths.txt`),
 a Jira/qmd/graphify/luna/handover-state need, more than 3 asks, or no named file.
 Every verdict carries a one-line reason, and one record per ticket (ticket, class,

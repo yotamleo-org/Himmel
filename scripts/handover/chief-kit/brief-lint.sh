@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/brief-lint.sh <brief> - arming-time
-# check that a leg or judge brief carries a filled `> **Prior art:**` line.
+# check that a worker or judge brief carries a filled `> **Prior art:**` line.
 #
-# The console fills the field at dispatch from one qmd query (jira-himmel +
+# The chief fills the field at dispatch from one qmd query (jira-himmel +
 # luna) and, when code structure matters, one graphify query, so the retrieval
-# runs once and every leg inherits it. This is the structural half: a brief
+# runs once and every worker inherits it. This is the structural half: a brief
 # whose field is missing, empty, an unfilled `<placeholder>`, or a bare `none`
 # fails. `none found (<query>)` passes - it names the query that came up empty.
 #
@@ -57,12 +57,12 @@ case "$bare" in
 esac
 
 # a fresh brief carries a front-matter `description:` line, the
-# plain-language line every surface shows next to the leg's label. A doc whose
+# plain-language line every surface shows next to the worker's label. A doc whose
 # Results section already holds a bullet has run, and was briefed before the
 # field existed, so it passes without one.
 # shellcheck source=../../lib/worker-identity.sh
 . "$(dirname "$0")/../../lib/worker-identity.sh"
-if [ -z "$(leg_description_field "$doc")" ] && ! leg_doc_has_run "$doc"; then
-    fail "no front-matter 'description:' line (required: one plain-language line saying what this leg is doing and why, e.g. 'description: Add a description line to every leg brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/leg-brief-template.md)"
+if [ -z "$(worker_description_field "$doc")" ] && ! worker_doc_has_run "$doc"; then
+    fail "no front-matter 'description:' line (required: one plain-language line saying what this worker is doing and why, e.g. 'description: Add a description line to every worker brief'; put it between the leading '---' lines, the first of which must be the file's first line with no blank line or BOM before it; see docs/handover/worker-brief-template.md)"
 fi
 exit 0

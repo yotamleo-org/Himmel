@@ -67,7 +67,7 @@ with open(os.path.join(d, "verdicts", "j2", "late.md"), "w") as fh:
     fh.write("pr: 30\nmodel: opus\nwritten-at: 2026-10-14T13:00:00Z\n\n**GO** for head `%040x`\n" % 30)
 with open(os.path.join(d, "verdicts", "j1", "judge.md"), "w") as fh:
     fh.write("pr: 10\nmodel: opus\neffort: high\nwritten-at: 2026-10-10T11:00:00Z\n\n**GO** for head `%040x`\n" % 10)
-with open(os.path.join(d, "verdicts", "j1", "console.md"), "w") as fh:
+with open(os.path.join(d, "verdicts", "j1", "chief.md"), "w") as fh:
     fh.write("pr: 40\nmodel: opus\nwritten-at: 2026-10-15T11:00:00Z\n\n**GO** for head `%040x`\n" % 40)
 PY
 
@@ -88,7 +88,7 @@ eq "per critic: a review after the merge is not credited" "$(pick critic.coderab
 eq "per critic: CodeRabbit's plausible escape" "$(pick critic.coderabbit.escapes_plausible)" "1"
 eq "an unavailable critic did not review the PR" "$(pick critic.claude.prs)" "None"
 eq "per judge: the judge that passed the reverted PR" "$(pick judge.claude-opus-5-5.escapes)" "1"
-eq "per judge: a console GO, a GO at an unmerged head and a GO after the merge are not counted" "$(pick judge.claude-opus-5-5.prs)" "1"
+eq "per judge: a chief GO, a GO at an unmerged head and a GO after the merge are not counted" "$(pick judge.claude-opus-5-5.prs)" "1"
 eq "a critic slug named judge stays a critic" "$(pick critic.judge.prs)" "1"
 eq "a critic slug named judge is no judge model" "$(pick judge.prs)" "None"
 eq "the row is the escapes series" "$(printf '%s' "$out" | python3 -I -c 'import json, sys; r = json.load(sys.stdin); print(r["eval"], r["status"])')" "escapes ok"

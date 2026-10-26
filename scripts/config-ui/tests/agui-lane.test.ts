@@ -1,5 +1,5 @@
-// a session's lane comes from its launch record, never its model string; a claudex leg is priced
-// from the codex bank, never at Claude weights; and every leg gets a quality row with a lane dimension.
+// a session's lane comes from its launch record, never its model string; a claudex worker is priced
+// from the codex bank, never at Claude weights; and every worker gets a quality row with a lane dimension.
 import { test, expect } from "bun:test";
 import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, laneOfJournal, readCodexBank } from "../agui/lane";
 import { createJournalMapper } from "../agui/journal-mapper";
@@ -13,15 +13,15 @@ const cache = (pct: number, at = NOW, resetsAt = NOW / 1000 + 86400) =>
     { limitId: "codex/secondary", usedPercent: 90, windowDurationMins: 300, resetsAt },
   ] });
 
-test("lane precedence: WORKER_SESSION_LANE, then LEG_LANE, then the launcher's record, then the config dir, then the leg doc, else native", () => {
+test("lane precedence: WORKER_SESSION_LANE, then LEG_LANE, then the launcher's record, then the config dir, then the worker doc, else native", () => {
   expect(laneOf({ LEG_LANE: "openrouter", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "openrouter", laneFrom: "LEG_LANE" }); // old name, read both ways
   expect(laneOf({ LEG_LANE: "bogus", HIMMEL_SESSION_LANE: "claudex" }, "")).toEqual({ lane: "claudex", laneFrom: "launcher" }); // old name
   expect(laneOf({ WORKER_SESSION_LANE: "claudex", LEG_LANE: "openrouter" }, "")).toEqual({ lane: "claudex", laneFrom: "WORKER_SESSION_LANE" });
   expect(laneOf({ WORKER_SESSION_LANE: "bogus", LEG_LANE: "openrouter" }, "")).toEqual({ lane: "openrouter", laneFrom: "LEG_LANE" });
   expect(laneOf({ CLAUDE_CONFIG_DIR: "/h/.claude-codex" }, "")).toEqual({ lane: "claudex", laneFrom: "config-dir" });
   expect(laneOf({ CLAUDE_CONFIG_DIR: "/h/.claude-openrouter/" }, "")).toEqual({ lane: "openrouter", laneFrom: "config-dir" });
-  expect(laneOf({}, "---\nlane: claudex\n---\n# leg")).toEqual({ lane: "claudex", laneFrom: "doc" });
-  expect(laneOf({}, "launched with `headed-arm-leg.sh --lane openrouter`")).toEqual({ lane: "openrouter", laneFrom: "doc" });
+  expect(laneOf({}, "---\nlane: claudex\n---\n# worker")).toEqual({ lane: "claudex", laneFrom: "doc" });
+  expect(laneOf({}, "launched with `headed-arm-worker.sh --lane openrouter`")).toEqual({ lane: "openrouter", laneFrom: "doc" });
   expect(laneOf({}, "")).toEqual({ lane: "native", laneFrom: "default" });
   // A gpt-* model on a native launch is still native: the lane is never guessed from the model.
   expect(laneOf({ ANTHROPIC_MODEL: "gpt-6.1-sol" }, "")).toEqual({ lane: "native", laneFrom: "default" });
@@ -51,7 +51,7 @@ test("codex bank: the governing weekly reading; stale, reset or unparseable is n
 });
 
 const TALLY = { calls: 3, input: 30, output: 300, cacheRead: 120000, cacheCreate: 0 };
-const ID = { session: "s1", leg: "HIMMEL-901-N9001-leg", ticket: "HIMMEL-901", model: "gpt-6.1-sol" };
+const ID = { session: "s1", leg: "HIMMEL-901-N9001-worker", ticket: "HIMMEL-901", model: "gpt-6.1-sol" };
 
 test("a claudex cost row is priced from the codex bank delta, never at Claude weights", () => {
   const bank = readCodexBank(cache(46), NOW)!;
@@ -65,11 +65,11 @@ test("a claudex cost row is priced from the codex bank delta, never at Claude we
   // The start reading predates the current weekly window (it reset, then usage passed the old start): unpriced.
   const week = 7 * 86400_000;
   expect(costRowOf({ ...ID, lane: "claudex", tally: TALLY, codexStart: { pct: 10, at: NOW - 2 * week }, codexNow: bank })).toMatchObject({ priced_by: "unpriced", codex_used_pct_delta: null });
-  // native keeps the leg-burn weights.
+  // native keeps the worker-burn weights.
   expect(costRowOf({ ...ID, lane: "native", tally: TALLY, codexStart: null, codexNow: bank })).toMatchObject({ lane: "native", bank: "claude", priced_by: "claude-weights", cost_eq: 30 + 12000 + 1500, codex_used_pct_delta: null });
 });
 
-test("an eval row carries the lane and the quality measures from the journal and the leg doc", () => {
+test("an eval row carries the lane and the quality measures from the journal and the worker doc", () => {
   const rec = (o: Record<string, unknown>, i: number) => JSON.stringify({ sessionId: "s1", uuid: `u${i}`, timestamp: new Date(NOW + i * 1000).toISOString(), ...o });
   const call = (id: string, name: string, input: unknown) => ({ type: "assistant", message: { id: `m-${id}`, role: "assistant", content: [{ type: "tool_use", id, name, input }] } });
   const res = (id: string, content: string, is_error = false) => ({ type: "user", message: { role: "user", content: [{ type: "tool_result", tool_use_id: id, content, is_error }] } });

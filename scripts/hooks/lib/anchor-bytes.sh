@@ -10,7 +10,7 @@
 # Blob ids come from `hash-object --no-filters` (no clean filter can normalise an
 # edit back; no index or assume-unchanged flag is read). A missing file, a symlink
 # or a symlinked parent directory on either side is a mismatch. Refs other than
-# refs/heads/main are never consulted: a leg can move refs/remotes/* freely.
+# refs/heads/main are never consulted: a worker can move refs/remotes/* freely.
 # ponytail: checked at call time only, a swap between this check and the exec is not closed here; guard-pr-check-literal.sh still carries its own copy of this method, move it onto this lib to keep one.
 # git-env-ok: sourced only by hooks that already ran git_env_scrub
 # Bash 3.2-compatible.

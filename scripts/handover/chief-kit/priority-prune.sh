@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# priority-prune.sh — Drop the closed keys from a console doc's `priority:` line.
+# priority-prune.sh — Drop the closed keys from a chief doc's `priority:` line.
 # The line only shrinks as keys ship, so a stale line keeps the pool LOW; this
 # prints the line with every closed key removed and the rest in its order.
 #
@@ -14,12 +14,12 @@
 # goes with its attached `(...)` note unless the note holds an open key; an
 # emptied `|` group goes; prose with no key (`rest of v1.1.3`) is an
 # instruction and stays; a line with nothing left reads `none`. The dropped
-# keys are named on stderr. Pruning is not re-ranking, but the console runs
+# keys are named on stderr. Pruning is not re-ranking, but the chief runs
 # --apply only with an operator OK and logs a `PRIORITY-PRUNE: <keys>` Results
-# bullet (console.sh next accepts it for a line pruned to none).
+# bullet (chief.sh next accepts it for a line pruned to none).
 #
 # Exit: 0 printed; 1 no doc, mirror or Live state priority: line; 2 usage.
-# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
 set -u
 
 doc=""; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"; mode=print

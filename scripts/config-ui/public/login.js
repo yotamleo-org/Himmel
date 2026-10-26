@@ -1,4 +1,4 @@
-// The login form: POST /api/login, and on success the server's HttpOnly session cookie opens the console at /.
+// The login form: POST /api/login, and on success the server's HttpOnly session cookie opens the chief at /.
 // The password goes in the request body only; nothing is kept in the page or in browser storage.
 const form = document.getElementById("login");
 const status = document.getElementById("status");

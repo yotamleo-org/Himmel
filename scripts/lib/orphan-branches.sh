@@ -151,7 +151,7 @@ _ob_fetch() {
 # <number> <state> <mergeCommit oid | -> <ci>, ci = green|none|pending|failed
 # derived from statusCheckRollup. Before this the ci state cost a
 # SECOND call per open branch — `gh pr checks <n>`, measured at 4 GraphQL requests
-# each (GH_DEBUG=api) on a budget every leg on the box shares — and rc=1 there was
+# each (GH_DEBUG=api) on a budget every worker on the box shares — and rc=1 there was
 # ambiguous between a red check and "no checks reported" (cli/cli#9390, #9682,
 # #7401), which is why it used to be resolved by inspecting the output. The rollup
 # rides the branch's own `pr list` request at no extra call, and an empty rollup

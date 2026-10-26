@@ -316,7 +316,7 @@ run_case sh-t13b-ok-reason-space-padded FAIL scripts/start.sh \
 run_case sh-t13b-ok-nested-marker FAIL scripts/start.sh \
     'nohup claude daemon run &  # t13b-ok: # t13b-ok: a real reason'
 
-# Item (d), console ruling: everything after a real "# t13b-ok: <reason>" IS
+# Item (d), chief ruling: everything after a real "# t13b-ok: <reason>" IS
 # a shell comment, so a chained daemon start past it is unreachable code on
 # THIS line, not a smuggle -- this is not a bug to fix, it must keep passing.
 run_case sh-t13b-ok-mid-chain-comment-eats-rest PASS scripts/start.sh \
@@ -329,9 +329,9 @@ run_case py-t13b-ok-marker-quoted FAIL src/start.py \
 
 # Real markers already on main (verbatim).
 # Pinned so the tightened rules keep accepting the genuine shapes that shipped
-# on other legs' branches, not just the synthetic fixture lines above.
+# on other workers' branches, not just the synthetic fixture lines above.
 run_case real-1083-test-fleet-daemon-string PASS scripts/handover/chief-kit/test-fleet.sh \
-    "    '- 10:27 LIVE — background leg via the daemon'  # t13b-ok: literal fixture text for a mocked leg row, not real automation"
+    "    '- 10:27 LIVE — background worker via the daemon'  # t13b-ok: literal fixture text for a mocked worker row, not real automation"
 # shellcheck disable=SC2016  # single-quoted on purpose: literal fixture text, real argv-match line
 run_case real-1087-argv-match-marker PASS scripts/handover/headed-arm.sh \
     '        [ "${prev2##*/}" = claude ] && [ "$prev1" = daemon ] && [ "$arg" = run ] && return 0  # t13b-ok: read-only argv match of the Claude Code service, starts nothing'

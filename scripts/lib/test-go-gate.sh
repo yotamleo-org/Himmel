@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # scripts/lib/test-go-gate.sh -- fixture test for scripts/lib/go-gate.sh's
-# console_leg() predicate.
+# chief_worker() predicate.
 #
 # Before go-gate.sh the HIMMEL_CONSOLE_LEG truthiness test was hand-copied at
 # three sites (merge-on-green.sh's _truthy(), block-unresolved-cr-merge.sh's
 # gate 3, chief-kit/go.sh's inline check) with no shared source of truth --
 # nothing stopped one copy drifting from the other two. This suite is a single
-# table-driven test: one spellings list, checked directly against console_leg()
+# table-driven test: one spellings list, checked directly against chief_worker()
 # and, for the cheapest call site (go.sh, which only needs a HANDOVER_DIR
 # fixture and no gh/network calls), against the live end-to-end behaviour too.
 # It also asserts structurally that none of the three sites still hand-rolls
-# its own case statement -- each must call console_leg instead.
+# its own case statement -- each must call chief_worker instead.
 #
 # RED-control instructions for reviewers:
 #   BEFORE the fix: `git stash` the go-gate.sh/merge-on-green.sh/
 #   block-unresolved-cr-merge.sh/go.sh changes (keep this test file) and rerun
-#   -- FAIL, because scripts/lib/go-gate.sh has no console_leg() to source.
+#   -- FAIL, because scripts/lib/go-gate.sh has no chief_worker() to source.
 #   AFTER the fix, to prove the table itself can fail: temporarily add a
 #   spelling (e.g. 'disabled') to ONE call site's own copy in a scratch file,
 #   point this suite's *_SRC override at it, rerun -- FAIL naming the site;
@@ -34,7 +34,7 @@ BLOCK_CR_MERGE_SRC="${BLOCK_CR_MERGE_SRC:-$HERE/../hooks/block-unresolved-cr-mer
 FAIL=0
 fail() { echo "FAIL: $1" >&2; FAIL=1; }
 
-# --- 1. Table-driven: console_leg() directly ------------------------------
+# --- 1. Table-driven: chief_worker() directly ------------------------------
 # One spellings list, each row (value, expected rc). Falsy: empty, 0, false,
 # off, no -- case-insensitive, whitespace-stripped, same five every call site
 # used before go-gate.sh. Everything else is truthy.
@@ -58,10 +58,10 @@ SPELLINGS='
 "anything"|1
 '
 
-unset -f console_leg go_gate 2>/dev/null || true
+unset -f chief_worker go_gate 2>/dev/null || true
 # shellcheck source=/dev/null
-if ! . "$GO_GATE_SRC" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1; then
-    fail "cannot source $GO_GATE_SRC or it does not define console_leg -- this is the RED-before-fix case"
+if ! . "$GO_GATE_SRC" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1; then
+    fail "cannot source $GO_GATE_SRC or it does not define chief_worker -- this is the RED-before-fix case"
 else
     old_ifs="$IFS"
     IFS='
@@ -74,14 +74,14 @@ else
         val="${val#\"}"; val="${val%\"}"
         rc=0
         HIMMEL_CONSOLE_LEG="$val" bash -c '
-            unset -f console_leg 2>/dev/null || true
+            unset -f chief_worker 2>/dev/null || true
             . "$1"
-            console_leg
+            chief_worker
         ' _ "$GO_GATE_SRC" || rc=$?
         if [ "$exp_truthy" -eq 1 ] && [ "$rc" -ne 0 ]; then
-            fail "console_leg HIMMEL_CONSOLE_LEG='$val' expected truthy (rc 0), got rc=$rc"
+            fail "chief_worker HIMMEL_CONSOLE_LEG='$val' expected truthy (rc 0), got rc=$rc"
         elif [ "$exp_truthy" -eq 0 ] && [ "$rc" -eq 0 ]; then
-            fail "console_leg HIMMEL_CONSOLE_LEG='$val' expected falsy (rc!=0), got rc=0"
+            fail "chief_worker HIMMEL_CONSOLE_LEG='$val' expected falsy (rc!=0), got rc=0"
         fi
         IFS='
 '
@@ -97,18 +97,18 @@ fi
 CASE_LINE=$(grep -E "return 1 ;;" "$GO_GATE_SRC" 2>/dev/null | head -1)
 CASE_PATTERN=$(printf '%s' "$CASE_LINE" | sed -E 's/^[[:space:]]*//; s/\).*$//')
 if [ "$CASE_PATTERN" != "''|0|false|off|no" ]; then
-    fail "$GO_GATE_SRC's console_leg falsy branch no longer matches exactly the five spellings (empty/0/false/off/no) -- got: $CASE_LINE"
+    fail "$GO_GATE_SRC's chief_worker falsy branch no longer matches exactly the five spellings (empty/0/false/off/no) -- got: $CASE_LINE"
 fi
 
 # --- 2. Structural: no call site still hand-rolls the case statement -----
 for site in "$MERGE_ON_GREEN_SRC" "$BLOCK_CR_MERGE_SRC" "$GO_SCRIPT"; do
     if grep -qE "HIMMEL_CONSOLE_LEG.*tr -d '\[:space:\]'.*\bin\$|case .*HIMMEL_CONSOLE_LEG" "$site"; then
-        fail "$site still hand-rolls a HIMMEL_CONSOLE_LEG case statement instead of calling console_leg"
+        fail "$site still hand-rolls a HIMMEL_CONSOLE_LEG case statement instead of calling chief_worker"
     fi
     # Executable call only: strip full-line comments and the two references
     # to the name that are not invocations (declare -F probe, unset -f drop).
-    if ! grep -vE '^[[:space:]]*#' "$site" | grep -vE 'declare -F console_leg|unset -f' | grep -q 'console_leg'; then
-        fail "$site never calls console_leg -- HIMMEL-3149 predicate not wired in"
+    if ! grep -vE '^[[:space:]]*#' "$site" | grep -vE 'declare -F chief_worker|unset -f' | grep -q 'chief_worker'; then
+        fail "$site never calls chief_worker -- HIMMEL-3149 predicate not wired in"
     fi
 done
 
@@ -161,7 +161,7 @@ cd "$ROOT/ready-repo" || { echo "FAIL: cd into the ready repo" >&2; exit 1; }
 
 # HIMMEL_CONSOLE_LEG is a Claude Code marker (any value): run from an anchor
 # checkout with no claude ancestor (CI) and HANDOVER_DIR set, go.sh refuses 96
-# A console always runs under its claude session, so run
+# A chief always runs under its claude session, so run
 # under a fake one.
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 
@@ -191,7 +191,7 @@ done
 IFS="$old_ifs"
 
 # --- 4. a GO is authenticated, not merely present -----------
-# A leg that can write the handover root must not be able to forge its own
+# A worker that can write the handover root must not be able to forge its own
 # GO. go.sh signs pr|sha with a key only it mints; go_gate verifies the mac.
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY 2>/dev/null || true
 GROOT="$ROOT/g4"
@@ -200,17 +200,17 @@ gate() {  # <pr> <sha> [nwo] -> rc of go_gate in a clean shell, reason on stdout
     bash -c 'unset -f go_gate 2>/dev/null || true; . "$1"; go_gate "$2" "$3" "$4" "$5"' _ "$GO_GATE_SRC" "$1" "$2" "$GROOT" "${3:-o/r}"
 }
 
-# 4a. A leg-planted GO — the plain lines go.sh used to write — is refused.
-printf 'pr=%s\nhead=%s\nby=leg\nat=2026-09-24T00:00:00Z\n' 91 "$SHA" > "$GROOT/.locks/go/91.$SHA"
+# 4a. A worker-planted GO — the plain lines go.sh used to write — is refused.
+printf 'pr=%s\nhead=%s\nby=worker\nat=2026-09-24T00:00:00Z\n' 91 "$SHA" > "$GROOT/.locks/go/91.$SHA"
 rc=0; out=$(gate 91 "$SHA") || rc=$?
-[ "$rc" -eq 2 ] || fail "4a: a leg-planted GO (no mac) was accepted by go_gate (rc=$rc) -- HIMMEL-3543"
+[ "$rc" -eq 2 ] || fail "4a: a worker-planted GO (no mac) was accepted by go_gate (rc=$rc) -- HIMMEL-3543"
 case "$out" in *mac*) ;; *) fail "4a: refusal does not name the mac as the cause: $out" ;; esac
 
-# 4b. A real console GO written by go.sh passes.
+# 4b. A real chief GO written by go.sh passes.
 rc=0; HANDOVER_DIR="$GROOT" bash "$GO_SCRIPT" 92 "$SHA" >/dev/null 2>&1 || rc=$?
 [ "$rc" -eq 0 ] || fail "4b: go.sh could not write a GO (rc=$rc)"
 rc=0; out=$(gate 92 "$SHA") || rc=$?
-[ "$rc" -eq 0 ] || fail "4b: a real console GO was refused (rc=$rc): $out"
+[ "$rc" -eq 0 ] || fail "4b: a real chief GO was refused (rc=$rc): $out"
 
 # 4c. The key go.sh minted is 0600 and 64 hex chars.
 KEY="$HOME/.config/himmel/go-hmac.key"
@@ -322,7 +322,7 @@ rc=0; HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac_ok "$2" s q n' _ "$GO_GATE
 rc=0; HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac_ok "$2" s q n' _ "$GO_GATE_SRC" "$SREC" >/dev/null 2>&1 || rc=$?; [ "$rc" -eq 0 ] || fail "6f: the clean record stopped verifying"
 rc=0; HOME="$PINHOME" bash -c '. "$1"; go_verdict_mac_ok "$2" s q n' _ "$GO_GATE_SRC" "$SREC" >/dev/null 2>&1 || rc=$?; [ "$rc" -eq 0 ] || fail "6e: go_verdict_mac_ok disagrees with the snapshot check"
 
-# --- 7. go_fixred_gate - the console-written fix-GO for the red-main gate
+# --- 7. go_fixred_gate - the chief-written fix-GO for the red-main gate
 # A fix-GO names ONE red run: file fix-main-red.<pr>.<sha>.<run>, signed over
 # himmel-go-fixred-v1|<nwo>|<pr>|<sha>|<run>, so it never verifies as an ordinary
 # GO, a trust GO or a verdict, and binds the repo, PR, head and run id.
@@ -424,10 +424,10 @@ for bad in "" "br-" "br-X" "../7" "7x" "br-a/b" "-7"; do
 done
 # 9d. A numeric refusal is byte-identical to the pre-forge-mode behaviour.
 rc=0; out=$(g9_gate go_gate 8 "$PINSHA" o/r) || rc=$?
-[ "$rc:$out" = "2:PR #8 at $PINSHA has no console GO ($G9/.locks/go/8.$PINSHA) — this is a console-spawned leg; send READY to your console and wait for GO; a GO for an older head is stale, never reuse it." ] \
+[ "$rc:$out" = "2:PR #8 at $PINSHA has no chief GO ($G9/.locks/go/8.$PINSHA) — this is a chief-spawned worker; send READY to your chief and wait for GO; a GO for an older head is stale, never reuse it." ] \
     || fail "9d: the numeric no-GO refusal changed: $out"
 rc=0; out=$(g9_gate go_gate br-y "$PINSHA" o/r) || rc=$?
-case "$rc:$out" in "2:change br-y at $PINSHA has no console GO"*) ;; *) fail "9d: br-y's refusal does not name the change (rc=$rc): $out" ;; esac
+case "$rc:$out" in "2:change br-y at $PINSHA has no chief GO"*) ;; *) fail "9d: br-y's refusal does not name the change (rc=$rc): $out" ;; esac
 
 # 9e. trust_path_check for a local-git change reads the list and files from git.
 lg() { GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 git -c user.name=t -c user.email=t@t "$@"; }

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# guest-exec.sh - the one sanctioned way for a leg to run a command inside a himmel
+# guest-exec.sh - the one sanctioned way for a worker to run a command inside a himmel
 # test VM. A thin wrapper over `vmsdk.py <vm> exec`, which refuses any target that
 # is not a running himmel test VM (registry port + loopback NAT forward readback)
 # and logs every command to ~/.himmel/vm/guest-exec.log.

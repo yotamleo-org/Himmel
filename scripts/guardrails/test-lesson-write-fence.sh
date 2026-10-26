@@ -1110,14 +1110,14 @@ run_hook allow "27: sudo -S apt update (control: sudo's own -S, unrelated comman
 run_hook allow "27: sudo -u root cp y /etc/foo (control: -u value, unrelated absolute target)" \
     "$(bash_json "sudo -u root cp y /etc/foo" "$REPO")" 1
 
-echo "== 28: console-authorized round-9 redesign - env -S/--split-string fails closed UNCONDITIONALLY =="
+echo "== 28: chief-authorized round-9 redesign - env -S/--split-string fails closed UNCONDITIONALLY =="
 # A quoted single-token `-S` value from
 # a protected cwd (`env -S 'cp y a.sh'` @scripts/hooks) would ALLOW if
 # `_clause_head_idx` skipped `-S`'s value as an ordinary
 # 2-token-wide opaque option value (grouped with `-a`/`-u`/`-C`), and because
 # the value arrived as a SINGLE quoted token, that skip consumed the whole
 # clause in one step, leaving nothing for `_operand_targets` to scan.
-# Console ruling: stop patching this parser and fail closed on any genuine
+# Chief ruling: stop patching this parser and fail closed on any genuine
 # `env -S`/`--split-string` use, unconditionally - `_clause_head_idx` no
 # longer tries to skip `-S`'s value at all, and the deny no longer requires a
 # raw-text policy-signal match. RED-first: this exact shape reproduces
@@ -1155,7 +1155,7 @@ echo "== 29: pr-check round-4 codex-1 - nested env env -S must still fail closed
 # wrapper prefix `_clause_head_idx` resolves), and for `env env -S '...'`
 # that walk resolves the FIRST env's option region and treats the SECOND env
 # token as the already-resolved verb, so the real -S sitting past it was
-# never inspected - a protected-cwd write ALLOWed. Console-mandated fix
+# never inspected - a protected-cwd write ALLOWed. Chief-mandated fix
 # replaces the walk with a flat, per-clause scan: env's presence anywhere,
 # followed by -S/--split-string anywhere later, denies unconditionally.
 run_hook deny "29: @scripts/hooks env env -S 'cp y a.sh' (nested env, cwd-relative target)" \

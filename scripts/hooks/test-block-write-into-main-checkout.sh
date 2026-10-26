@@ -1420,7 +1420,7 @@ check_both "67e NEGATIVE CONTROL: echo \\>>|wt|/rlocal.txt (worktree-local) stil
 echo "== HIMMEL-2592 round 12 — ESCAPED WHITESPACE is not a word boundary (the root cause behind rounds 10-12) =="
 
 # 68 — the round-11 gate panel raised one instance (68a); the audit the
-# console then asked for found its sibling (68c), which is strictly worse.
+# chief then asked for found its sibling (68c), which is strictly worse.
 # Both are the SAME root cause, and naming it is the point of this block:
 # `_bwimc_space_before_redirects` asked the RAW previous character two more
 # times, so an ESCAPED space — a literal space INSIDE the word, never a word
@@ -1460,7 +1460,7 @@ check_both "68e NEGATIVE CONTROL: echo x\\ >|wt|/plocal.txt (worktree-local) sti
     "{\"tool_name\":\"Bash\",\"tool_input\":{\"command\":\"echo x\\\\ >$FIX/wt/plocal.txt\",\"cwd\":\"$FIX/wt\"}}"
 
 # 68f — the CLASS, enumerated, so it has a TEST rather than a probe list
-# (console condition 3). This class has now surfaced six times, one instance
+# (chief condition 3). This class has now surfaced six times, one instance
 # at a time; a per-instance row cannot say when it is closed. Escaped
 # whitespace x every redirect operator that can reach the primary x both
 # locations, with the expectation taken from the measured grid rather than

@@ -388,7 +388,7 @@
         <div class="loop-head"><h2 id="settings-h">Settings</h2><button class="reset" type="button" id="reset">Reset to defaults</button></div>
         <p class="panel-lede">Every control starts at the default a fresh install has.</p>
         <form id="settings" onsubmit="return false">
-          <!-- source: docs/configuration.md §4.1 Initiative & autonomy; scripts/lib/initiative-legs.sh -->
+          <!-- source: docs/configuration.md §4.1 Initiative & autonomy; scripts/lib/initiative-workers.sh -->
           <fieldset><legend class="grp">Your sessions</legend>
             <div class="setting" data-key="HIMMEL_INITIATIVE">
               <div class="setting-row"><label for="s-init">HIMMEL_INITIATIVE</label>
@@ -584,7 +584,7 @@
     <div>Every step and setting on this page comes from himmel's own code and docs; the page source cites the file beside each section.</div>
     <nav aria-label="Further reading">
       <a href="../cadences.md">Cadences reference</a>
-      <a href="../handover/running-a-console.md">Running a supervisor session</a>
+      <a href="../handover/running-a-chief.md">Running a supervisor session</a>
       <a href="../handover/afk-mode.md">AFK (unattended) mode</a>
       <a href="https://github.com/yotamleo-org/Himmel/blob/main/docs/internals/graph-cadence.md">Graph refresh internals</a>
       <a href="../glossary.md">Glossary</a>
@@ -603,14 +603,14 @@
   var last = null;
 
   // Initiative legs: docs/configuration.md "Initiative & autonomy".
-  function legs() {
+  function workers() {
     var on = s.overnight;
     var v = on ? s.initOvernight : s.init;
     if (v === 'off') return [];
     if (v === 'all') return on ? ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'handover'] : ['prcheck', 'pr', 'ticket', 'handover'];
     return v.split(',');
   }
-  function has(l) { return legs().indexOf(l) !== -1; }
+  function has(l) { return workers().indexOf(l) !== -1; }
 
   function reviewState() {
     if (s.crossModel && s.crProfile === 'none' && s.floor !== 'claude-only') {

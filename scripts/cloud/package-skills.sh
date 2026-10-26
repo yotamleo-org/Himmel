@@ -21,7 +21,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 SKILLS_DIR="${HIMMEL_CLOUD_SKILLS_DIR:-$ROOT/marketplace/plugins/lean-skills/skills}"
 # The short list: what a small cloud brief (fix, test, PR) reaches for. The rest
 # of lean-skills (planning, worktrees, subagents, branch finishing) serve local
-# multi-step legs; stuck-playbook (himmel-ops) recovers local guard denials the
+# multi-step workers; stuck-playbook (himmel-ops) recovers local guard denials the
 # cloud does not have.
 LIST="${HIMMEL_CLOUD_SKILLS_LIST:-test-driven-development systematic-debugging verification-before-completion}"
 OUT_DIR="${TMPDIR:-/tmp}/himmel-cloud-skills"

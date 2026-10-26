@@ -1,30 +1,30 @@
-# srt-poc — a claudex leg under sandbox-runtime (HIMMEL-5287)
+# srt-poc — a claudex worker under sandbox-runtime (HIMMEL-5287)
 
 VM-only proof of concept. Nothing here is wired into a launcher, hook, setting or
-CI workflow. It answers one question: can a claudex leg run under Anthropic's
+CI workflow. It answers one question: can a claudex worker run under Anthropic's
 sandbox-runtime (`srt`) so that a destructive command outside the worktree fails
 physically, a push only works through a himmel wrapper, and a blocked domain
 produces a clear request line.
 
 ## Verdict: PROCEED, with changes
 
-Adopt `srt` for claudex legs first (weak-classifier lane, where a physical limit
+Adopt `srt` for claudex workers first (weak-classifier lane, where a physical limit
 matters most). The mechanism works on the guest; the changes below are what the
 build tickets carry.
 
 | Change | Why | Ticket |
 |---|---|---|
-| Launcher wraps the leg in `srt claude` with rendered profile settings and asserts the settings loaded | srt starts on built-in defaults when no settings file exists (row F4) | HIMMEL-5397 |
+| Launcher wraps the worker in `srt claude` with rendered profile settings and asserts the settings loaded | srt starts on built-in defaults when no settings file exists (row F4) | HIMMEL-5397 |
 | AppArmor `userns` profile for `/usr/bin/bwrap` on Ubuntu 24.04+; pin srt, bump VM-first | bwrap fails (`loopback: Failed RTM_NEWADDR`) until the profile is loaded | HIMMEL-5397 |
 | Research profile is a curated domain list | srt rejects `*` and `*.com` as overly broad | HIMMEL-5397 |
 | Push wrapper plus broker is the only push path; credential never in the box | a force push to an origin inside a writable root passes (row B5) | HIMMEL-5398 |
-| Broker answers into a launcher-owned spool, not the leg-writable one | symlink checks on `<id>.out`/`.rc` do not stop a leg swapping the `req` directory between check and write (known POC limit) | HIMMEL-5398 |
-| Console-approved domain requests, default deny, logged | blocked domain returns a 403 and the box cannot widen itself (rows B12-B14) | HIMMEL-5399 |
+| Broker answers into a launcher-owned spool, not the worker-writable one | symlink checks on `<id>.out`/`.rc` do not stop a worker swapping the `req` directory between check and write (known POC limit) | HIMMEL-5398 |
+| Chief-approved domain requests, default deny, logged | blocked domain returns a 403 and the box cannot widen itself (rows B12-B14) | HIMMEL-5399 |
 | Real-model step (open POC item, below) | not run, needs an operator decision | HIMMEL-5400 |
 
 ## Open POC item: the real-model claudex step
 
-Not run. The guest holds no codex credential and the console did not authorise
+Not run. The guest holds no codex credential and the chief did not authorise
 host gateway reach from the guest, so every row below uses `srt` directly or
 `srt claude` with a stub `claude`. What the step needs:
 
@@ -35,7 +35,7 @@ host gateway reach from the guest, so every row below uses `srt` directly or
    snapshot the VM with it (secret scan before snapshot).
 4. Then run the claudex launcher under `srt claude` and add the rows this POC
    did not cover: a Write-tool write outside the roots, an MCP server touching
-   `~/.ssh` (the HIMMEL-5269 gap), hooks inside the box, and leg plumbing
+   `~/.ssh` (the HIMMEL-5269 gap), hooks inside the box, and worker plumbing
    (SendMessage, queue lock, `~/.himmel`, loopback gateway).
 
 ## Setup on the guest (Ubuntu 24.04)
@@ -56,9 +56,9 @@ Ubuntu 24.04 guest `himmel-ar-3` (restored from `suite-ready-v4`).
 | File | Role |
 |---|---|
 | `render-settings.sh` | renders the srt settings for the `impl` or `research` profile (writable roots: worktree, scratchpad, handover bucket; `denyRead` for `~/.ssh`, `~/.config/gh`, `~/.git-credentials`, `~/.netrc`) |
-| `leg-battery.sh` | the rows B0-B15, run inside the sandbox |
+| `worker-battery.sh` | the rows B0-B15, run inside the sandbox |
 | `launcher-broker.sh` | runs outside the sandbox: serves push and domain requests from a spool directory, default deny, widens the network list live through `--control-fd`, logs every decision |
-| `push-wrapper.sh` | the only push path: refuses force flags, `+refspec`, delete, `main`/`master`, other branches, URL remotes, mirror (rc 20); the leg branch is set by the launcher |
+| `push-wrapper.sh` | the only push path: refuses force flags, `+refspec`, delete, `main`/`master`, other branches, URL remotes, mirror (rc 20); the worker branch is set by the launcher |
 | `run-poc.sh` | `impl`, `research` or `failure-modes` run on the guest |
 | `test-push-wrapper.sh` | offline test of the wrapper's refusals (RED shown before the wrapper existed) |
 | `test-recorded-run.sh` | asserts the recorded transcripts still say what the verdict claims |
@@ -82,7 +82,7 @@ not move in either run.
 | B3 | write outside the roots | `Read-only file system` |
 | B4 | direct force push to an origin outside the roots | rc=1, `failed to push some refs` |
 | B5 | force push to an origin **inside** a root | rc=0: the sandbox bounds where, not what |
-| B6 | wrapper pushes the leg's own branch | rc=0 |
+| B6 | wrapper pushes the worker's own branch | rc=0 |
 | B7 / B8 / B8b | wrapper refuses `--force`, `main`, `+refspec` | rc=20 each |
 | B10 | allowed host | `registry.npmjs.org` 200 |
 | B11 | bypass the proxy | no route, name does not resolve |
@@ -96,7 +96,7 @@ not move in either run.
 ## What this POC does not prove
 
 - **No model.** Every row uses a stub `claude` or `srt` directly. Whether a real
-  claudex leg's own plumbing works inside the box is the open item above.
+  claudex worker's own plumbing works inside the box is the open item above.
 - **B9 is weak.** The credential file was absent at read time, so it shows a
   denied read of a missing path, not a `denyRead` hit. Treat `denyRead` as
   specified by srt, not as proven here.
@@ -107,6 +107,6 @@ not move in either run.
 - **Unix sockets** are all or nothing on Linux, and network filtering is by
   domain only (no path or method), per the srt spec.
 - **Not run:** the Write tool and MCP servers inside the box, hooks inside the
-  box, and the leg plumbing.
+  box, and the worker plumbing.
 - Domain widening changes network lists only; filesystem rules cannot change in
-  a running leg.
+  a running worker.

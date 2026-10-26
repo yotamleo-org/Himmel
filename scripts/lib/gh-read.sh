@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # gh-read.sh — READ-ONLY gh calls on the read-only token.
 #
-# WHY: every worker and the console share one station token (5000 REST/hour).
+# WHY: every worker and the chief share one station token (5000 REST/hour).
 # When it hit 0, go.sh and ready-check could not read the PR state and three
 # trust GOs waited ~6 minutes. Reads now ride a second, read-only token
 # (himmel_github_token_vm2, account B, public repos); every write keeps the main

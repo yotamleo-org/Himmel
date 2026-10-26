@@ -308,7 +308,7 @@ assert_rc "R4+ rmdir /S /Q c:\\tmp"         2 "$(run_case "$(j_bash 'rmdir /S /Q
 assert_rc "R4- del /q file.txt (no /s)"     0 "$(run_case "$(j_bash 'del /q file.txt')")"
 # R1 (recursive rm) must anchor on COMMAND POSITION, not match the
 # literal anywhere in the command string — reproduced by a grep PATTERN
-# argument (03B console, 2026-09-08) and a heredoc BODY being written (N84,
+# argument (03B chief, 2026-09-08) and a heredoc BODY being written (N84,
 # same day). Control (a) is R1+ above (bare command, already denies). The rm
 # literal used below (`rm -rf /tmp/x`) is chosen because it trips the existing
 # R1 alternation exactly — same flag shape as the real repros.

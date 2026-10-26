@@ -72,7 +72,7 @@ fi
 
 # A superseded run must be replaced while still pending, never
 # cancelled mid-run (a CANCELLED context). The required job's only job-level
-# `if:` skips the owner's own PRs, whose title leg-pr-open.sh checks at open and
+# `if:` skips the owner's own PRs, whose title worker-pr-open.sh checks at open and
 # merge-on-green.sh re-checks right before the squash; any other skip reports
 # success and masks a red title.
 if grep -Eq '^[[:space:]]*cancel-in-progress:[[:space:]]*false' <<< "$body"; then

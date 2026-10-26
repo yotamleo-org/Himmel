@@ -1,7 +1,7 @@
 // scripts/telegram/round-guard.ts — the symptom-brief loop breaker.
 //
 // Live incident (2026-08-04): one ticket burned FOUR CR review rounds across
-// four overnight legs without landing. Every round's dispatch brief described
+// four overnight workers without landing. Every round's dispatch brief described
 // the PREVIOUS round's defect; nobody ever wrote down the invariant all four
 // defects shared (what identity a CR certificate is keyed to). The orchestrator
 // holds the full history and kept handing the symptom forward; the worker lane
@@ -290,7 +290,7 @@ export function checkRoundGuard(
       ? [
           `Permitted paths (this chokepoint has no --rounds-override — the flag is not wired here, and there is no way to re-dispatch through the Agent tool with it):`,
           `  (a) ESCALATE: stop dispatching this ticket's implementation through the Agent tool here and hand it to a judgment-tier lane instead (see /lanes) — give it the abstraction as the task: "state the invariant all ${rounds} rounds' defects violated, then fix to it," never the newest defect;`,
-          `  (b) an operator-launched leg (e.g. via headed-arm-leg.sh) can still call spawn-glm/spawn-claudex directly with --rounds-override "<reason>" (>= ${ROUNDS_OVERRIDE_MIN_CHARS} chars) if another cheap round is genuinely justified — that path does not go through this hook.`,
+          `  (b) an operator-launched worker (e.g. via headed-arm-worker.sh) can still call spawn-glm/spawn-claudex directly with --rounds-override "<reason>" (>= ${ROUNDS_OVERRIDE_MIN_CHARS} chars) if another cheap round is genuinely justified — that path does not go through this hook.`,
         ]
       : [
           `Permitted paths:`,

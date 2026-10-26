@@ -4,15 +4,15 @@
 # WHY. The squash merge makes the PR TITLE main's commit subject, but no gate
 # checked the title itself: check-commit-msg.sh runs at author time on local
 # COMMITS, and the commit-lint CI job re-lints the same commit RANGE — neither
-# ever looks at the title a leg typed into leg-pr-open.sh's title file. On
-# 2026-09-25, 4 of 5 leg PRs opened with a type-less title even though every
+# ever looks at the title a worker typed into worker-pr-open.sh's title file. On
+# 2026-09-25, 4 of 5 worker PRs opened with a type-less title even though every
 # commit in the branch was conventional.
 #
 # This validates a title string against the EXACT SAME conventional-commit +
 # ticket regex check-commit-msg.sh enforces, by invoking that script on a
 # synthesized one-line message — the same reuse check-commit-range.sh already
 # uses for a commit range (scripts/ci/check-commit-range.sh). The regex stays
-# in ONE place (check-commit-msg.sh); leg-pr-open.sh, the commit-lint CI job
+# in ONE place (check-commit-msg.sh); worker-pr-open.sh, the commit-lint CI job
 # and merge-on-green.sh all call through this wrapper instead of re-deriving
 # it.
 #

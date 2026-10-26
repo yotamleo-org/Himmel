@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# inbox-follow.sh — Gap-free follow of a console's Telegram inbox.
+# inbox-follow.sh — Gap-free follow of a chief's Telegram inbox.
 #
 #   inbox-follow.sh [--wake] [--once|--peek] <inbox-file>
 #
 # --wake emits a fixed JSON wake envelope per complete line, never inbox text
-# On claudex, use only the leg's own inbox from handover_root()
+# On claudex, use only the worker's own inbox from handover_root()
 # plus its launch session name. This .md.cursor is independent of the hook's
 # .cursor/<session> delivery cursor: a wake is not authoritative delivery or
 # model acknowledgement. Monitor suppression may lose a wake; inspect pending
 # hook delivery on every expiry before re-arming.
 #
-# The console armed `tail -n0 -F <inbox>` under a 30-min Monitor and re-armed it
+# The chief armed `tail -n0 -F <inbox>` under a 30-min Monitor and re-armed it
 # on expiry, so a line the bridge appended between the expiry and the re-arm was
 # acked to the operator but never delivered. This keeps a byte-offset cursor
 # next to the inbox (<inbox>.cursor): every arm first emits the unread tail from
@@ -19,7 +19,7 @@
 #
 # --once drains the unread tail and exits (no live follow).
 # --peek delivers nothing and leaves the cursor alone: rc 0 when a complete
-# unread line is waiting, rc 1 when not, rc 3 when the inbox cannot be read (console-wait.sh prints its
+# unread line is waiting, rc 1 when not, rc 3 when the inbox cannot be read (chief-wait.sh prints its
 # WAKE header first, then lets --once stream, so no line's cursor moves before
 # the line itself is out).
 # INBOX_FOLLOW_POLL_SEC is the live poll interval (default 1s).
@@ -40,7 +40,7 @@
 # ponytail: the cursor is a bare byte offset, so an inbox replaced by a file
 # that is already LONGER than the old cursor is indistinguishable from an
 # append — the reset only fires when the new file is shorter. The bridge only
-# appends and the console never rotates the file, so this is a hand-edit hazard,
+# appends and the chief never rotates the file, so this is a hand-edit hazard,
 # not a normal path. Two followers armed on one inbox at once each emit every
 # new line (the cursor is not locked); a re-arm follows an expiry, so they
 # overlap only if the old Monitor's process outlives its expiry.

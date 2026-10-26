@@ -354,7 +354,7 @@ test("own-branch (flag-less) path is untouched — mints its own branch with -b,
 // resolve() silently prefixes the cwd and the expected escape string can never
 // match (these two were the "2 spawn-glm reds" on Linux). The fix
 // is a platform-appropriate ABSOLUTE fixture, not a skip: the escaping rule is
-// the same on both, so both legs keep the assertion. Expected strings stay
+// the same on both, so both workers keep the assertion. Expected strings stay
 // hand-written per platform — deriving them from the implementation's own regex
 // would make the test tautological.
 const CWD_FIXTURE = process.platform === "win32"

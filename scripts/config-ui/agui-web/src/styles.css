@@ -184,7 +184,7 @@ button.band-name{width:100%;padding:0;background:none;border:0;text-align:left;c
 .fleet-attn .fleet-head{display:inline}
 .fleet-why{color:var(--warn);font-weight:600}.fleet-why.fail{color:var(--fail)}
 .fleet-attn .fleet-meter{display:block;max-width:220px}
-/* orphans — sessions no live console watches, then tick's stale shell-tool wrappers. */
+/* orphans — sessions no live chief watches, then tick's stale shell-tool wrappers. */
 .fleet-orphans>summary{color:var(--fail)}
 .fleet-orphan-list{list-style:none;margin:6px 0;padding:0;font:12.5px var(--mono)}
 .fleet-orphan{display:flex;flex-wrap:wrap;gap:2px 10px;align-items:baseline;padding:5px 0;border-bottom:1px dashed var(--line)}
@@ -232,7 +232,7 @@ button.band-name{width:100%;padding:0;background:none;border:0;text-align:left;c
 .fleet-chip-btn.on{color:var(--fg);border-color:var(--accent);background:var(--panel)}
 .fleet-chip-btn .fleet-count{margin-left:5px}
 .fleet-clear{all:unset;cursor:pointer;color:var(--accent);text-decoration:underline;font:11.5px var(--mono);justify-self:start}
-.fleet-console-counts{margin-bottom:4px}
+.fleet-chief-counts{margin-bottom:4px}
 .fleet-graph b{color:var(--fg)}
 .fleet-meter{display:block;height:5px;margin-top:2px;background:var(--bg);border-radius:3px;overflow:hidden}
 .fleet-meter i{display:block;height:100%;background:var(--ok)}
@@ -300,16 +300,16 @@ a.fleet-head:hover .fleet-name,a.fleet-head:focus-visible .fleet-name{text-decor
   .bar,.band{transition:none}
   .caret{animation:none}
 }
-/* the page column beside the shared rail, and a fleet row's link to the console. */
+/* the page column beside the shared rail, and a fleet row's link to the chief. */
 .pane{min-width:0}
 .fleet-link{justify-self:start;color:var(--accent);font:12px var(--mono)}
-/* console sections and their fleet rail. */
-.fleet-console{margin:14px 0 6px}
-.fleet-console>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
-.fleet-console>summary::-webkit-details-marker{display:none}
-.fleet-console>summary::before{content:"▸";color:var(--dim);font:12px var(--mono)}
-.fleet-console[open]>summary::before{content:"▾"}
-.fleet-console h2{display:inline;margin:0;font:600 13.5px var(--mono);overflow-wrap:anywhere}
+/* chief sections and their fleet rail. */
+.fleet-chief{margin:14px 0 6px}
+.fleet-chief>summary{list-style:none;cursor:pointer;display:flex;flex-wrap:wrap;gap:4px 10px;align-items:baseline}
+.fleet-chief>summary::-webkit-details-marker{display:none}
+.fleet-chief>summary::before{content:"▸";color:var(--dim);font:12px var(--mono)}
+.fleet-chief[open]>summary::before{content:"▾"}
+.fleet-chief h2{display:inline;margin:0;font:600 13.5px var(--mono);overflow-wrap:anywhere}
 .fleet-menu{margin-top:20px;font:12px var(--mono);overflow-wrap:anywhere}
 .fleet-menu h2{display:inline;margin:0;font:600 12px var(--mono);color:var(--dim)}
 .fleet-menu details{margin:8px 0}
@@ -321,7 +321,7 @@ a.fleet-head:hover .fleet-name,a.fleet-head:focus-visible .fleet-name{text-decor
 .fleet-menu a[aria-current=page]{color:var(--fg);font-weight:600}
 .rail:has(.fleet-menu){overflow-y:auto;max-height:100vh}
 
-/* board: legend chips, stage dots, Trends cards, the leg drawer. --c is a legend colour (a theme token). */
+/* board: legend chips, stage dots, Trends cards, the worker drawer. --c is a legend colour (a theme token). */
 :root{--vio:#a98bd9}
 @media (prefers-color-scheme: light){:root:not([data-theme="dark"]){--vio:#6f4596}}
 :root[data-theme="light"]{--vio:#6f4596}

@@ -67,7 +67,7 @@ set -uo pipefail
 # into its own directory: a scoped `scripts/handover` run discovered the suite
 # as "test-arm-resume.sh", matched nothing, and RAN a suite the ledger says can
 # never run here. Measured live on 2026-08-30: that scoped run
-# hit CAP EXCEEDED at 604s and red-washed the leg's scoped evidence, while the
+# hit CAP EXCEEDED at 604s and red-washed the worker's scoped evidence, while the
 # full-scan ledger claimed the suite never runs. Both observations were true —
 # which is the bug.
 #

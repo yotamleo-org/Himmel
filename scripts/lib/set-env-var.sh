@@ -12,7 +12,7 @@
 #   set-env-var.sh <KEY> <VALUE> [--env-file <path>]
 #
 #   <KEY>            [A-Za-z_][A-Za-z0-9_]* — a shell-safe env var name.
-#   <VALUE>          May be empty (an explicit "unset this leg set" write is a
+#   <VALUE>          May be empty (an explicit "unset this worker set" write is a
 #                     legitimate end-state, not an error).
 #   --env-file <p>   Target .env (default: <primary-checkout-root>/.env).
 #

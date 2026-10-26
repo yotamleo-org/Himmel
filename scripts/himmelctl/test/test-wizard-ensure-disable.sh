@@ -1565,7 +1565,7 @@ grepq "$outR" -E "'[^']*target with space[^']*settings\.json'" \
   || fail "case r: the disable evidence line must quote an arg containing a space so it's unambiguous/copy-pasteable (got: $outR)"
 echo "ok: case r — the disable-command evidence line quotes an argument containing a space (consent evidence stays unambiguous)"
 
-# ── case s (v2, console ruling 77): a hazardous --prune disable
+# ── case s (v2, chief ruling 77): a hazardous --prune disable
 # pass must NOT veto an UNRELATED, safe converge in the same run. item-s-a
 # (profiles luna/all) is a prerequisite of item-s-c (profiles core/luna/all,
 # stays desired under core) -- unwiring item-s-a would break item-s-c, same

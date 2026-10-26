@@ -10,7 +10,7 @@ const RAIL = (tracker: TrackerKind) => tracker === "local" || tracker === "none"
   ? ["Fleet", "Health", "Tool health", "Settings", "Setup", "Workflow", "Docs"]
   : ["Fleet", "Health", "Tool health", "Settings", "Setup", "Roadmap", "Kanban", "Workflow", "Docs"];
 
-// landing: a console page id opened straight from the landing fragment (#t=<token>&page=<id>), as a bookmark would.
+// landing: a chief page id opened straight from the landing fragment (#t=<token>&page=<id>), as a bookmark would.
 async function open(page: Page, tracker: TrackerKind, landing = "") {
   h = await boot({}, { tracker });
   await page.goto(landing ? `${h.url}&page=${landing}` : h.url);

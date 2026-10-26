@@ -1,26 +1,26 @@
 #!/usr/bin/env bash
 # ack-denial.sh — Acknowledge a paged classifier denial so
-# the leg it parked can be re-dispatched.
+# the worker it parked can be re-dispatched.
 #
-# usage: ack-denial.sh <leg-label-or-handover-doc>
+# usage: ack-denial.sh <worker-label-or-handover-doc>
 #
-#   <leg-label>      the label the page named (the leg's worktree slug, or the
+#   <worker-label>      the label the page named (the worker's worktree slug, or the
 #                    session name), e.g. feat+himmel-3724-denial-page-ack
-#   <handover-doc>   a leg handover doc; its frontmatter resume_cwd names the
+#   <handover-doc>   a worker handover doc; its frontmatter resume_cwd names the
 #                    worktree, and the slug after /worktrees/ is the label
 #
-# When console-wait.sh pages a SHIP-STEP or PAUSE-RISK denial it also writes a
-# page record. headed-arm-leg.sh refuses to launch a leg (exit 14) while its
-# page is newer than its ack. This script writes the ack: leg, the paged class
+# When chief-wait.sh pages a SHIP-STEP or PAUSE-RISK denial it also writes a
+# page record. headed-arm-worker.sh refuses to launch a worker (exit 14) while its
+# page is newer than its ack. This script writes the ack: worker, the paged class
 # and count, and a timestamp, to
 #   ${HIMMEL_DENIAL_ACK_DIR:-~/.himmel/state/denial-acks}/<key>.ack
 # (dir 0700, file 0600). See denial-ack-lib.sh for the record format.
 #
 # Idempotent: a second ack with no newer page changes nothing and says so. A
-# newer page (a rise the console paged after your ack) needs a fresh ack. Acking
-# a leg that was never paged is a no-op (exit 0), not an error.
+# newer page (a rise the chief paged after your ack) needs a fresh ack. Acking
+# a worker that was never paged is a no-op (exit 0), not an error.
 #
-# Only the leg label, count and class are ever recorded; this script never
+# Only the worker label, count and class are ever recorded; this script never
 # reads the classifier-denial log.
 #
 # Exit codes:
@@ -38,20 +38,20 @@ if ! { [ -r "$LIB" ] && . "$LIB"; } 2>/dev/null; then
 fi
 
 if [ "$#" -ne 1 ] || [ -z "$1" ]; then
-    echo "usage: ack-denial.sh <leg-label-or-handover-doc>" >&2
+    echo "usage: ack-denial.sh <worker-label-or-handover-doc>" >&2
     exit 2
 fi
 
 arg="$1"
 if [ -f "$arg" ]; then
     label="$(denial_doc_label "$arg")" || {
-        echo "ack-denial: $arg has no resume_cwd in its frontmatter; pass the leg label instead" >&2
+        echo "ack-denial: $arg has no resume_cwd in its frontmatter; pass the worker label instead" >&2
         exit 2
     }
 else
     label="$arg"
 fi
-key="$(denial_key "$label")" || { echo "ack-denial: unusable leg label: $label" >&2; exit 2; }
+key="$(denial_key "$label")" || { echo "ack-denial: unusable worker label: $label" >&2; exit 2; }
 
 dir="$(denial_ack_dir)"
 page="$dir/$key.page"

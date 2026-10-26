@@ -3446,8 +3446,8 @@ fi
 # --- T46: GRAPHIFY_OUT must resolve the out dir, the promote
 # lock and the corpus exclusion together. graphify itself reads
 # GRAPHIFY_OUT (paths.py) and ast-update.sh mirrors that, so a hardcoded
-# "graphify-out" here would mean that under an override the semantic leg locks and
-# writes a DIFFERENT directory than the hourly structural leg -- the
+# "graphify-out" here would mean that under an override the semantic worker locks and
+# writes a DIFFERENT directory than the hourly structural worker -- the
 # serialization silently guarding nothing.
 #
 # SCOPE: these pin OUR script's handling, not graphify's resolution. T46a/T46c

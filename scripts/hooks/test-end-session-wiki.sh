@@ -876,7 +876,7 @@ rm -rf "$SB"
 
 # --- Case 21: dedup guard — two hook runs for the SAME session_id write
 # exactly one note (the "must not double-write" clause:
-# a pre-signal capture from close-wrapped-leg.sh and the hook's own normal
+# a pre-signal capture from close-wrapped-worker.sh and the hook's own normal
 # SessionEnd run can both fire for the same session). Without the guard the
 # second run's ABS_PATH collision handling (-2, -3, ...) means it takes a
 # DIFFERENT filename rather than silently overwriting — so an undeduped

@@ -41,7 +41,7 @@ for m in impl research; do
     has "$f" '^ASSERT origin main untouched' "$m: origin main untouched"
     has "$f" '^ASSERT settings-loaded' "$m: launch-time settings assertion ran"
 done
-common_rows=(B0-leg-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside
+common_rows=(B0-worker-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside
     B5-force-push-inside-root-passes B6-wrapper-own-branch B7-wrapper-refuses-force B8-wrapper-refuses-main
     B8b-wrapper-refuses-plus B9-credential-read B10-allowed-host B11-proxy-bypass B12-profile-domain B15-worktree-commit)
 for r in "${common_rows[@]}"; do
@@ -73,7 +73,7 @@ if [ "$f3_rc" -ne 0 ] && grep -q 'ASSERT FAIL F3 srt not resolvable' "$th/poc.ou
     echo '#!/bin/bash'
     for r in "${common_rows[@]}" B13-domain-request-approved B14-domain-request-default-deny; do echo "echo 'ROW $r PASS'"; done
 } >"$th/srt-all"
-printf '#!/bin/bash\necho "ROW B0-leg-commit PASS"\n' >"$th/srt-one"
+printf '#!/bin/bash\necho "ROW B0-worker-commit PASS"\n' >"$th/srt-one"
 chmod +x "$th/srt-all" "$th/srt-one"
 mkdir -p "$th/h3" "$th/h4"
 poc "$th/srt-all" impl "$th/h3"; all_rc=$?

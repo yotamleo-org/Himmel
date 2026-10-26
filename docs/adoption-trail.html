@@ -9,7 +9,7 @@
 <script>try { var t = localStorage.getItem('starlight-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
 <style>
 /* Design tokens shared by the docs site and the himmel UI (mockup v4, frame 9). Byte-identical twin of
-   site/src/styles/tokens.css: change both together; tests/tokens-sync.test.ts fails when they differ. The console
+   site/src/styles/tokens.css: change both together; tests/tokens-sync.test.ts fails when they differ. The chief
    serves only public/, so it carries a copy instead of importing from site/. Light by default, dark by
    preference or [data-theme="dark"]. */
 :root {
@@ -923,7 +923,7 @@ Open a PR from a worktree branch instead.</code></pre></div>
 <dt>What it costs</dt><dd><ul><li>Each worker is a full Claude session: a fleet spends your usage several times faster, and the preflight holds new workers back when it runs low.</li></ul></dd>
 <dt>Turn it off</dt><dd><p>Close the chief and its workers; Ctrl-C stops the fleet view. Nothing keeps running on its own.</p></dd>
 <dt>Who it is for</dt><dd><p>Anyone running many tickets at once; most adopters stop below this level.</p></dd>
-<dt>Read more</dt><dd><p><a href="ui/">The local UI</a> · <a href="handover/running-a-console/">Running a chief</a> · <a href="orchestration-patterns/">Orchestration patterns</a></p></dd>
+<dt>Read more</dt><dd><p><a href="ui/">The local UI</a> · <a href="handover/running-a-chief/">Running a chief</a> · <a href="orchestration-patterns/">Orchestration patterns</a></p></dd>
 </dl>
 </div>
 </details>

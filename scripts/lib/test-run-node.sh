@@ -273,15 +273,15 @@ EOF
         # CLAUDE_PLUGIN_ROOT env-root lanes below are NOT reached on this
         # path. The env_root split is kept for readability (it still selects
         # which copy this iteration targets) but is NOT evidence about the
-        # env-root lanes; this leg only proves the launcher chain fires end to
+        # env-root lanes; this worker only proves the launcher chain fires end to
         # end and HOOK_FIRED reaches stdout under each POSIX shell. The
         # env-root lanes themselves are still exercised — by the
-        # damaged-plugin-install leg below. That leg also runs run-node.sh via
+        # damaged-plugin-install worker below. That worker also runs run-node.sh via
         # `sh`, but its plugin root deliberately has NO sibling
         # resolve-node.sh, so the `$0` case finds nothing readable, leaves
         # _script_dir empty, and control falls through to the
-        # CLAUDE_PLUGIN_ROOT lane — which is precisely the lane that leg
-        # asserts on. Neither leg is vacuous; they just enter the resolver at
+        # CLAUDE_PLUGIN_ROOT lane — which is precisely the lane that worker
+        # asserts on. Neither worker is vacuous; they just enter the resolver at
         # different points.
         for which in repo plugin; do
             if [ "$which" = repo ]; then
@@ -301,7 +301,7 @@ EOF
             # would sail straight through. Executing the copy with $sh_cmd
             # DIRECTLY is what puts run-node.sh's own body under dash. Keep
             # both: drop the `sh` launcher and you stop testing the wired
-            # shape; drop the direct one and the dash leg is bash in a hat.
+            # shape; drop the direct one and the dash worker is bash in a hat.
             for launcher in "command -p sh" "$sh_cmd"; do
                 # a candidate shell that cannot run THIS lane at all
                 # (macOS ksh93: `command -p sh` finds no sh, and it has no `local`,
@@ -361,7 +361,7 @@ cat > "$ltmp/hostile/scripts/lib/resolve-node.sh" <<EOF
 resolve_node() { return 1; }
 EOF
 # run via `sh` (the WIRED shape, not sourced via `.`) — this is
-# the actual security control in production, so the leg exercises it, not the
+# the actual security control in production, so the worker exercises it, not the
 # dot shape. Under `sh` the `$0` case at run-node.sh:60
 # fires first and probes $ltmp/plugin/hooks/resolve-node.sh — ABSENT by
 # construction above — so _script_dir stays empty and the CLAUDE_PLUGIN_ROOT
@@ -429,7 +429,7 @@ EOF
             # `env` parses options only BEFORE the first NAME=VALUE, so the
             # PATH shape must TRAIL the -u flags: `env PATH=x -u FOO` treats
             # `-u` as the command name and exits 127 — which would look exactly
-            # like the rc=127 this leg is trying to detect.
+            # like the rc=127 this worker is trying to detect.
             if [ "$path_shape" = unset ]; then
                 path_env="-u PATH"
             else
@@ -448,7 +448,7 @@ EOF
     done
 
     # NEGATIVE control: the superseded bare-`sh` launcher must FAIL under the
-    # hostile PATH. Without this the leg above could pass for the wrong reason
+    # hostile PATH. Without this the worker above could pass for the wrong reason
     # (e.g. if some ambient PATH leaked in), and there would be no evidence the
     # `command -p` prefix is doing anything at all.
     bare_out="$(cd "$nptmp" && env -u CLAUDE_PROJECT_DIR -u CLAUDE_PLUGIN_ROOT PATH=/nonexistent /bin/sh -c "sh \"$REPO_ROOT/scripts/lib/run-node.sh\" \"$REPO_ROOT/scripts/hooks/run-hook-with-bash.js\" \"$nptmp/hooks/marker-hook.sh\"" </dev/null 2>&1)"
@@ -456,7 +456,7 @@ EOF
     if [ "$bare_rc" -eq 127 ]; then
         pass "negative control: the superseded bare \`sh\` launcher dies rc=127 under the same hostile PATH"
     else
-        fail "negative control did NOT fail as expected -> rc=$bare_rc out='$bare_out' (the hostile-PATH leg above proves nothing)"
+        fail "negative control did NOT fail as expected -> rc=$bare_rc out='$bare_out' (the hostile-PATH worker above proves nothing)"
     fi
 fi
 
@@ -478,7 +478,7 @@ echo "== run-node: no LIVE hook command wires run-node.sh via dot-source (HIMMEL
 # The patterns tolerate the backslash-escaped quotes JSON serializes a command
 # string with (`\"…\"`), and the bare-`sh` pattern is anchored on the
 # preceding `then `/`": "` so it cannot match the `command -p sh` form, which
-# contains the token `sh` itself. This leg is RED against main before
+# contains the token `sh` itself. This worker is RED against main before
 # `git show origin/main:.claude/settings.json` matches 14 times.
 DOT_WIRE_RE='\. \\?"[^"]*run-node\.sh\\?"'
 BARE_SH_WIRE_RE='(then |": \\?")sh \\?"[^"]*run-node\.sh\\?"'
@@ -553,7 +553,7 @@ EOF
         # Precondition: the starting PATH is genuinely PATH-poor — UTILS_DIR only
         # (coreutils, no node, no gh) — and gh_dir is deliberately NOT on it. A
         # fixture that fails for any other reason (unwritable TMPDIR, a blanket
-        # stub) would be vacuous; this asserts the one condition the leg actually
+        # stub) would be vacuous; this asserts the one condition the worker actually
         # depends on before trusting the run below.
         if PATH="$UTILS_DIR" command -v gh >/dev/null 2>&1; then
             fail "precondition broken: gh resolves on the minimal starting PATH before the chokepoint even runs"
@@ -578,7 +578,7 @@ echo "== run-node: an EMPTY inherited PATH does not leave a trailing colon after
 # the widening line used to append
 # `:${PATH:-}` unconditionally, so when the inherited PATH was empty (exactly
 # what a POSIX-mode `command -p sh` hands a hook whose own launching shell had
-# none — the same starting condition the leg above already establishes is
+# none — the same starting condition the worker above already establishes is
 # realistic) the result ended in a bare trailing colon. POSIX PATH search
 # treats a trailing (or any empty) colon segment as "also search the current
 # directory" — for a hook that cwd is the repo UNDER REVIEW, so a

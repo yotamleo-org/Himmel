@@ -16,7 +16,7 @@
 #   project_mode_id_pattern         ERE a commit subject must match ('' = none)
 #   project_mode_id_required        TICKET_ID_REQUIRED verbatim, else 0 for
 #                                   tracker none, else 1
-#   project_mode_phases             the leg phase set for the forge
+#   project_mode_phases             the worker phase set for the forge
 #   project_mode_env                all four as ONE TAB-separated line:
 #       TRACKER=..<TAB>FORGE=..<TAB>TICKET_ID_REQUIRED=..<TAB>TICKET_ID_PATTERN=..
 #

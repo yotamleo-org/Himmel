@@ -56,8 +56,8 @@ out="$(probe bash "$SCRIPTS/handover/resume.sh" --list)"
 lacks "resume: root resolved from .env" "$out" "handover root unresolved"
 has "resume: got past root resolution" "$out" "not in a git repo"
 
-out="$(probe bash -c ". '$SCRIPTS/lanes/lib/leg-cost-row.sh'; leg_cost_ledger_path")"
-check "leg-cost-row: ledger under the .env root" "$out" "$HO/.ledger/leg-cost.jsonl"
+out="$(probe bash -c ". '$SCRIPTS/lanes/lib/worker-cost-row.sh'; worker_cost_ledger_path")"
+check "worker-cost-row: ledger under the .env root" "$out" "$HO/.ledger/leg-cost.jsonl"
 
 printf 'doc\n' > "$tmp/doc.md"
 out="$(probe bash "$SCRIPTS/lanes/bench/scorecard/ready-go-latency.sh" --doc "$tmp/doc.md")"
@@ -93,8 +93,8 @@ has "statusline-segment: breadcrumb marker found via the .env root" "$out" "📋
 # their root through go_resolve_root, which loads the anchor's .env itself, so
 # they never call a bare handover_root.
 for f in hermes/egress-gate.sh guardrails/graphify-fence.sh handover/chief-kit/smoke-consult-sandbox.sh \
-         hooks/auto-arm-on-cap.sh hooks/auto-arm-on-subagent-cap.sh hooks/console-compact-reinject.sh \
-         hooks/console-precompact-snapshot.sh hooks/guard-relay-writes.sh hooks/stop-console-idle-guard.sh \
+         hooks/auto-arm-on-cap.sh hooks/auto-arm-on-subagent-cap.sh hooks/chief-compact-reinject.sh \
+         hooks/chief-precompact-snapshot.sh hooks/guard-relay-writes.sh hooks/stop-chief-idle-guard.sh \
          handover/chief-kit/tick.sh; do
     ld="$(grep -n 'load_dotenv HANDOVER_DIR' "$SCRIPTS/$f" | head -1 | cut -d: -f1)"
     hr="$(grep -nE '(^|[^_a-z])handover_root( |\)|"|$)' "$SCRIPTS/$f" | grep -v '^[0-9]*:[[:space:]]*#' | head -1 | cut -d: -f1)"
@@ -106,8 +106,8 @@ done
 # out that way). Run each changed hook through the guard's own resolver and
 # fail on any unresolved statement.
 if command -v node >/dev/null 2>&1; then
-    for f in hooks/auto-arm-on-cap.sh hooks/auto-arm-on-subagent-cap.sh hooks/console-compact-reinject.sh \
-             hooks/console-precompact-snapshot.sh hooks/guard-relay-writes.sh hooks/stop-console-idle-guard.sh; do
+    for f in hooks/auto-arm-on-cap.sh hooks/auto-arm-on-subagent-cap.sh hooks/chief-compact-reinject.sh \
+             hooks/chief-precompact-snapshot.sh hooks/guard-relay-writes.sh hooks/stop-chief-idle-guard.sh; do
         un="$(node -e 'const {sourcedClosure}=require(process.argv[1]);const r=sourcedClosure(process.argv[2],process.argv[3]);process.stdout.write(r.unresolved.join("\n"))' \
             "$SCRIPTS/hooks/hook-integrity.js" "$SCRIPTS/$f" "$(cd "$SCRIPTS/.." && pwd)" 2>&1)" || un="$un [node rc=$?]"
         check "$f: every source statement resolves under hook-integrity" "$un" ""

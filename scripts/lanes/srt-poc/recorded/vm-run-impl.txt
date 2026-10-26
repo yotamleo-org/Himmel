@@ -1,10 +1,10 @@
 srt: 0.0.79
 mode: impl  base: <guest-home>/poc-impl
 ASSERT settings-loaded: 431 bytes, profile=impl
-ROW B0-leg-commit PASS committed in worktree
+ROW B0-worker-commit PASS committed in worktree
 ROW B1-benign-python PASS printed 1
 ROW B2-rm-rf-outside PASS victim intact: rm: cannot remove '<guest-home>/poc-impl/victim/keep.txt': Read-only file system
-ROW B3-write-outside PASS <guest-home>/srt-poc/leg-battery.sh: line 56: <guest-home>/outside-write.txt: Read-only file system
+ROW B3-write-outside PASS <guest-home>/srt-poc/worker-battery.sh: line 56: <guest-home>/outside-write.txt: Read-only file system
 ROW B4-direct-force-push-outside PASS rc=1 error: failed to push some refs to '<guest-home>/poc-impl/origin.git'
 ROW B5-force-push-inside-root-passes PASS rc=0 (sandbox bounds where, not what)
 ROW B6-wrapper-own-branch PASS rc=0 To <guest-home>/poc-impl/origin.git

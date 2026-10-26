@@ -3,7 +3,7 @@
 # writer for a judge's verdict file. A console-judge CALL has no Write tool,
 # and the Bash text guards refuse the exact line go.sh --trust-reviewed needs
 # (`**GO** for head <sha>`), so before this a judge call could not record its
-# own ruling and the console wrote the judge's file for it. This script
+# own ruling and the chief wrote the judge's file for it. This script
 # generates that line itself; the judge's prose comes from a file it wrote to
 # its scratch, so the command a judge types names nothing the guards key on.
 #
@@ -62,7 +62,7 @@
 # judge-go honours it only for that branch while no open PR exists.
 #
 # The writer-session stamp is a breadcrumb, not authentication: an in-process
-# judge call shares the console's environment, so it names the session the
+# judge call shares the chief's environment, so it names the session the
 # writer ran in, nothing more. Anything outside [A-Za-z0-9-] is stamped
 # `invalid` (a newline must not inject a line above the real verdict).
 #
@@ -73,9 +73,9 @@
 #     or empty, not an absolute path under /tmp/claude-<uid>/, carrying a
 #     `.` or `..` segment, or reached through a symlink (so a secret is never
 #     copied into the handover state repo);
-#   - a console leg (HIMMEL_CONSOLE_LEG) that is not a judge session
-#     (HIMMEL_CONSOLE_JUDGE=1): a leg must not certify its own trust-path PR;
-#     and a console relay (HIMMEL_CONSOLE_RELAY), as go.sh refuses one;
+#   - a chief worker (HIMMEL_CONSOLE_LEG) that is not a judge session
+#     (HIMMEL_CONSOLE_JUDGE=1): a worker must not certify its own trust-path PR;
+#     and a chief relay (HIMMEL_CONSOLE_RELAY), as go.sh refuses one;
 #   - any directory from <root>/<user> down to the target file that is a
 #     symlink, so the write cannot leave verdicts/<qid>/;
 #   - a GO when verdicts/<qid>/ already holds a NO-GO for the same head, or a
@@ -127,7 +127,7 @@
 # Exit codes:
 #   0  written (the path on stdout)
 #   2  usage / validation
-#   3  refused: a console leg or relay, or the root / <user>/<bucket> scope is unresolved
+#   3  refused: a chief worker or relay, or the root / <user>/<bucket> scope is unresolved
 #   4  refused: symlink, conflicting or unparsed verdict
 #   5  write failed
 #
@@ -383,7 +383,7 @@ fi
 case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
     ''|0|false|off|no) ;;
     *)
-        echo "write-verdict: refusing - this is a console relay (HIMMEL_CONSOLE_RELAY is set); a relay never writes a verdict." >&2
+        echo "write-verdict: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); a relay never writes a verdict." >&2
         exit 3 ;;
 esac
 SESSION=${CLAUDE_CODE_SESSION_ID:-unknown}
@@ -392,14 +392,14 @@ case "$SESSION" in *[!A-Za-z0-9-]*) SESSION=invalid ;; esac
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
-if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1 \
+if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1 \
         || ! declare -F go_resolve_root >/dev/null 2>&1 || ! declare -F go_verdict_scope >/dev/null 2>&1 \
         || ! declare -F go_verdict_mac >/dev/null 2>&1 || ! declare -F go_key_file >/dev/null 2>&1; then
     echo "write-verdict: cannot load scripts/lib/go-gate.sh - refusing" >&2
     exit 3
 fi
-if console_leg && [ "${HIMMEL_CONSOLE_JUDGE:-}" != "1" ]; then
-    echo "write-verdict: refusing - this is a console-spawned leg (HIMMEL_CONSOLE_LEG is set) and not a judge session; a leg never writes the verdict for its own PR." >&2
+if chief_worker && [ "${HIMMEL_CONSOLE_JUDGE:-}" != "1" ]; then
+    echo "write-verdict: refusing - this is a chief-spawned worker (HIMMEL_CONSOLE_LEG is set) and not a judge session; a worker never writes the verdict for its own PR." >&2
     exit 3
 fi
 # shellcheck source=scripts/lib/handover-path.sh
@@ -569,7 +569,7 @@ elif [ "$ANSWER" = NO-GO ]; then
     echo "write-verdict: warning - NO-GO written without a mac (no readable GO key); it vetoes but buys no delta round" >&2
     SIGNED=0
 else
-    echo "write-verdict: cannot sign the verdict - no readable GO key at $(go_key_file) (go.sh mints it on the console's first GO), or openssl is missing; nothing written" >&2
+    echo "write-verdict: cannot sign the verdict - no readable GO key at $(go_key_file) (go.sh mints it on the chief's first GO), or openssl is missing; nothing written" >&2
     exit 3
 fi
 if { [ "$SIGNED" -ne 1 ] || printf 'mac: %s\n' "$MAC" >> "$tmpf"; } && mv -f "$tmpf" "$TARGET"; then
@@ -580,7 +580,7 @@ else
 fi
 # the evidence sat in a judge dir (/tmp/claude-<uid>/j<PR>[a-z]/...): the verdict is
 # written, so release that dir to tmp-reap.sh even while its holder (an in-process judge shares
-# the console's pid) lives. only the PR's own dir (j<PR> or j<PR><a-z>, the --pr value)
+# the chief's pid) lives. only the PR's own dir (j<PR> or j<PR><a-z>, the --pr value)
 # is released; another PR's judge dir that held the evidence is left to its own verdict.
 # Best effort: the verdict is already on disk.
 jd_seg=${EVIDENCE#"$SCRATCH"/}; jd_seg=${jd_seg%%/*}
