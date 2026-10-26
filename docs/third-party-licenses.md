@@ -2,7 +2,7 @@
 
 Pre-tag blocker for `v1.0.0-pre` (himmel targets MIT).
 Covers every tracked `package.json` in the repo (`git ls-files "*package.json"
-| grep -v node_modules`, `node_modules` excluded): 16 manifests, 19 unique
+| grep -v node_modules`, `node_modules` excluded): 16 manifests, 20 unique
 npm deps including devDependencies. **Scope: direct dependencies only**
 (the ticket's own measured surface). The transitive tree (e.g. everything
 `@modelcontextprotocol/server` or `playwright` pulls in) was NOT walked or
@@ -17,7 +17,7 @@ WTFPL, is called out explicitly below rather than silently folded in).
 
 ## Verdict
 
-**All 19 npm deps are MIT-compatible. Zero FLAGs.** One informational note
+**All 20 npm deps are MIT-compatible. Zero FLAGs.** One informational note
 (left-pad/WTFPL, test-fixture-only, never installed or shipped; see below).
 
 ## SBOM
@@ -25,6 +25,7 @@ WTFPL, is called out explicitly below rather than silently folded in).
 | Dep | Version declared → **locked** | License | Manifest(s) | Runtime/Dev | Verdict |
 |---|---|---|---|---|---|
 | `@modelcontextprotocol/server` | `2.4.0` (exact) → **2.4.0** | Apache-2.0 | marketplace/plugins/luna-correlate, marketplace/plugins/telegram-himmel, marketplace/plugins/himmel-bus, scripts/jira | runtime | COMPATIBLE |
+| `@modelcontextprotocol/client` | `2.4.0` (exact) → **2.4.0** | Apache-2.0 | marketplace/plugins/himmel-bus | dev | COMPATIBLE |
 | `commander` | `^15.0.0` → **15.0.0**; `9.4.1` (T6 fixture, exact, no lockfile) | MIT | scripts/bitbucket, scripts/himmel-run, scripts/jira, scripts/lanes/bench/fixtures/T6/.../tools/codegen/scripts | runtime | COMPATIBLE |
 | `@coderabbitai/bitbucket` | `^1.1.4` → **1.1.4** | Apache-2.0 | scripts/bitbucket | runtime | COMPATIBLE |
 | `env-paths` | `^4.0.0` → **4.0.0** | MIT | scripts/himmel-run | runtime | COMPATIBLE |
@@ -114,7 +115,7 @@ families are `@img/sharp-libvips` and `@img/sharp`:
 
 ## Docs-site bundle: `pele` (MIT, kepano)
 
-`site/package.json` pins `pele` `1.3.0` exactly (devDependency, no
+`site/package.json` pins `pele` `1.10.0` exactly (devDependency, no
 dependencies of its own; source `https://github.com/obsidianmd/pele`). It draws
 the docs site's diagrams, and its lazy chunk is bundled into `site/dist/_astro/`,
 so the deployed Pages artifact carries pele's code. Its licence text, which
