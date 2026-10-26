@@ -382,6 +382,6 @@ else
     [ "$install_rc" -eq 0 ] || exit "$install_rc"
     if [ "$WANT_FAMILY" -eq 1 ]; then
         # set-impl-family.sh records for the CURRENT branch of the cwd repo.
-        ( cd "$TARGET" && bash "$SCRIPT_DIR/set-impl-family.sh" "$IMPL_FAMILY" ) || exit $?
+        ( CDPATH='' cd -P -- "$TARGET" && bash "$SCRIPT_DIR/set-impl-family.sh" "$IMPL_FAMILY" ) || exit $?
     fi
 fi

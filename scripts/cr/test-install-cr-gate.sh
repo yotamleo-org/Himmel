@@ -497,8 +497,25 @@ out3=$(bash "$INSTALLER" --target "$d/work" --remove --impl-family codex 2>&1); 
 echo "T30: an EMPTY --impl-family value is refused, not read as 'no family requested'"
 out1=$(bash "$INSTALLER" --target "$d/work" --impl-family "" 2>&1); rc1=$?
 out2=$(bash "$INSTALLER" --target "$d/work" --impl-family= 2>&1); rc2=$?
-[ "$rc1" -ne 0 ] && [ "$rc2" -ne 0 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && grep -Fq "requires a non-empty value" <<< "$out1" && grep -Fq "requires a non-empty value" <<< "$out2" \
     && pass || fail "T30 rc1=$rc1 rc2=$rc2 out1=$out1 out2=$out2"
+
+echo "T31: an inherited CDPATH cannot send the family record to another repo"
+dd="$TMP_ROOT/f28"; mk_foreign_repo "$dd" || exit 1
+d="$TMP_ROOT/f27"; mk_foreign_repo "$d" || exit 1
+out=$(cd "$d" && CDPATH="$dd" bash "$INSTALLER" --target work --impl-family codex 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(cat "$d/work/.git/cr-impl-family/feat/x" 2>/dev/null)" = "codex" ] \
+    && [ ! -e "$dd/work/.git/cr-impl-family" ] \
+    && pass || fail "T31 rc=$rc out=$out target_rec=$(cat "$d/work/.git/cr-impl-family/feat/x" 2>&1) decoy_has_dir=$([ -e "$dd/work/.git/cr-impl-family" ] && echo yes || echo no)"
+
+echo "T32: --impl-family with a REFUSED install (foreign hook, no --force) writes no record"
+d="$TMP_ROOT/f29"; mk_foreign_repo "$d" || exit 1
+printf '#!/bin/sh\necho foreign\n' > "$d/work/.git/hooks/pre-push"; chmod +x "$d/work/.git/hooks/pre-push"
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && grep -Fq "foreign" "$d/work/.git/hooks/pre-push" \
+    && pass || fail "T32 rc=$rc out=$out"
 
 echo
 if [ "$SKIP" -gt 0 ]; then
