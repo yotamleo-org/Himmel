@@ -40,7 +40,7 @@ cat > "$W/bin/jira" <<'STUB'
 #!/usr/bin/env bash
 pwd -P > "$CG_FIX/jira-cwd"
 f="$CG_FIX/links-$1.txt"
-[ -f "$f" ] && cat "$f"
+[ -f "$f" ] && cat "$f"  # read-sink-ok: stub reads its own fixture dir only
 exit 0
 STUB
 chmod +x "$W/bin/gh" "$W/bin/jira"
