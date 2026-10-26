@@ -9,21 +9,17 @@ Positioning → `README.md`; reference detail → `docs/internals/`.
 ## RULES
 
 ### Git workflow
-- Feature work in git worktrees; never edit or commit on main. [enforced: block-edit-on-main]
-- All changes via PR, ≥1 approval, no direct push. [enforced: no-push-to-main]
+- Never edit or commit on main; use a worktree. [enforced: block-edit-on-main]
+- Land changes via PR with ≥1 approval, never a direct push. [enforced: no-push-to-main]
 - Conventional commits; **every commit and every PR carries a ticket ID**
   (search Jira and extend an existing ticket before re-filing). [enforced: conventional-commit-msg]
-- Attestation trailers (`Platforms tested: <os>`, `Security reviewed: <token>`)
-  go in the **FIRST commit**; never `git commit --amend`. Recovery:
-  `docs/internals/stuck-playbook.md`. [enforced: security-reviewed]
+- Trailers `Platforms tested: <os>` and `Security reviewed: <token>` go in the FIRST
+  commit; never `--amend` (recovery: `docs/internals/stuck-playbook.md`). [enforced: security-reviewed]
 
 ### Jira — prefer plugin over MCP
-Never reach for the Atlassian MCP first. Invoke by ABSOLUTE path from the
-primary checkout — `node <repo-root>/scripts/jira/dist/index.js <op>` — never
-relative from a worktree (`dist/` is an untracked build artifact; a worktree
-lacks it → MODULE_NOT_FOUND), never the global `jira` shim.
-`JIRA_PROJECT_KEY` is required. CLI-over-MCP routing is enforced by
-`block-backend-tier.sh`; ops + op↔MCP mapping: `docs/internals/jira-plugin.md`.
+Run `node <primary-checkout>/scripts/jira/dist/index.js <op>` by ABSOLUTE path, never
+relative from a worktree (`dist/` is untracked there); `JIRA_PROJECT_KEY` is required.
+Ops: `docs/internals/jira-plugin.md`.
 
 ### Claude invocation billing
 Subscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /
@@ -53,22 +49,18 @@ permissions. Tiers, cost, live inventory:
 `docs/internals/lane-calibration.md`, `/lanes`, `docs/internals/retask-channel.md`.
 
 ### Adding a rule — pick the cheapest layer
-Default to lean-invoke (a slash command). Escalate to always-on only for
-safety-critical (hook/gate) or frame-shaping (this file). **Structural >
-instructional**: on the second drift escalate to a hook or gate, never stronger
-prose. `docs/internals/context-architecture.md`.
+**Structural > instructional**: on the second drift escalate to a hook or gate, never
+stronger prose. `docs/internals/context-architecture.md`.
 
 ### Honesty markers and artifacts
 - `ponytail: <ceiling>, <upgrade path>` marks a deliberate simplification →
   `docs/internals/ponytail-convention.md`. [prose]
-- Other code comments: keep list only, no ticket/review history. [enforced: no-history-comments]
 - Operator reference docs → the owning repo's `docs/`; internal specs, plans
   and decision records → the state repo bucket `specs/<type>/`, never himmel
   `docs/`; vault content stays in luna. [prose]
 
 ### Retrieval routing
-`MEMORY.md` routes, it does not store: on a surprising symptom read the theme
-file its keyword names. qmd finds content (scope with `-c <name>`; a miss is
+qmd finds content (scope with `-c <name>`; a miss is
 not proof of absence). graphify explains structure (`graphify query|explain|path`).
 Extraction runs on scratchpad copies, never live vaults. A live URL → `WebFetch`
 directly.
@@ -85,19 +77,15 @@ scripts call `handover_root` (`scripts/lib/handover-path.sh`).
 
 ## ENFORCEMENT (runs automatically)
 
-Hooks plus pre-commit/commit-msg/pre-push gates; the live inventory is
-`.claude/settings.json` and `.pre-commit-config.yaml`. Hook off switch = a
-session env var set in the LAUNCHING shell (e.g. `EDIT_ON_MAIN_OK=1 claude`).
+Hook off switch = a session env var set in the LAUNCHING shell
+(e.g. `EDIT_ON_MAIN_OK=1 claude`).
 Per-repo opt-out: a gitignored `.single-writer` marker. Environment:
 `docs/setup/new-machine.md`. When a guardrail stops you, use
 `himmel-ops:stuck-playbook` (`docs/internals/stuck-playbook.md`).
 
 ## REFERENCE INDEX
 
-All under `docs/`: `internals/claude-md-detail.md` (full wording of every
-rule condensed above), `internals/harness-compat.md`, `internals/testing.md`,
-`handover/afk-mode.md`, `glossary.md`, `handover/running-a-chief.md`,
-`internals/prompt-cache.md`, `internals/headless-modes.md`.
+`docs/internals/claude-md-detail.md`: the full wording of every rule condensed above.
 
 ## graphify
 

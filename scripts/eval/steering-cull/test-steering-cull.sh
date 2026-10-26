@@ -28,6 +28,15 @@ eq "probes: every probe names a known row" "$(python3 -c 'import json,sys
 rows={r["id"] for r in json.load(open(sys.argv[1]))["rows"]}
 print(",".join(p["id"] for p in json.load(open(sys.argv[2]))["probes"] if p["row"] not in rows) or "ok")' "$HERE/rows.json" "$HERE/probes.json")" "ok"
 
+# --- the ruled cull as applied to the live repo CLAUDE.md ---
+LIVE="$HERE/../../../CLAUDE.md"
+eq "live cull: the applied rows' old spans are gone from CLAUDE.md" "$(python3 -c 'import json,sys
+rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
+t=open(sys.argv[2]).read()
+print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] in t) or "none")' "$HERE/rows.json" "$LIVE" \
+    r1-git-workflow r2-trailers r3-jira r6-adding-a-rule l64-history-comments l70-memory-routes l88-enforcement-inventory l98-reference-index 2>&1)" "none"
+has "live cull: the git-workflow rule keeps its approval clause" "$(cat "$LIVE")" "≥1 approval"
+
 # --- the arm builder ---
 python3 "$CULL" build --arm baseline --dest "$TMP/arm-baseline" >/dev/null 2>&1
 python3 "$CULL" build --arm cut --dest "$TMP/arm-cut" >/dev/null 2>&1
