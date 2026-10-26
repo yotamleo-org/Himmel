@@ -262,14 +262,16 @@ test("a wrapper waiting on a pgrep -f pattern its own command spells is STUCK, l
   const { port, dir, env } = boot();
   const wrapper = (pid: number, command: string) => {
     mkdirSync(join(env.CLAUDE_SESSIONS_PROC, String(pid)));
-    writeFileSync(join(env.CLAUDE_SESSIONS_PROC, String(pid), "cmdline"), ["bash", "-c", `source ~/.claude/shell-snapshots/snapshot-bash-1.sh && eval '${command}' < /dev/null`, ""].join("\0"));
+    writeFileSync(join(env.CLAUDE_SESSIONS_PROC, String(pid), "cmdline"), ["bash", "-c", `source ~/.claude/shell-snapshots/snapshot-bash-1.sh && eval '${command.replaceAll("'", "'\\''")}' < /dev/null`, ""].join("\0"));
   };
   wrapper(4245, "until ! pgrep -f waited-job.sh; do sleep 5; done");
   wrapper(4246, "while pgrep -f waited-job.sh; do sleep 5; done");
   wrapper(4247, "until ! pgrep -f [w]aited-job.sh; do sleep 5; done");
-  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.leg.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.leg.name} age=60m\\npid=4248 owner=orphan age=60m\\n'\n`);
+  wrapper(4249, "while pgrep -f 'worker [j]ob'; do sleep 5; done");
+  wrapper(4250, `until ! pgrep -f "waited job.sh"; do sleep 5; done`);
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.leg.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.leg.name} age=60m\\npid=4248 owner=orphan age=60m\\npid=4249 owner=orphan age=60m\\npid=4250 owner=orphan age=60m\\n'\n`);
   const b = await (await fleet(port)).json();
-  expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4245, "stuck"], [4246, "stuck"], [4247, "wait"], [4248, "orphan"]]);
+  expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4245, "stuck"], [4246, "stuck"], [4247, "wait"], [4248, "orphan"], [4249, "orphan"], [4250, "stuck"]]);
 });
 
 test("a console whose operating contract names --lane claudex still reads lane native", async () => {

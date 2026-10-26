@@ -152,12 +152,12 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
 // a wrapper owned by a live session is that session's own long-running call: a "wait", not an orphan.
 // ponytail: a wait is stuck only when a `until ! pgrep -f` / `while pgrep -f` pattern matches the wrapper's own
 // argv (the shape require-quiet-run.sh refuses, ERE read as a JS RegExp); other never-ending waits read as waits, upgrade path: add their shapes here.
-const SELF_PGREP = /(?:until\s+!\s+|while\s+)pgrep\s+(?:-\w+\s+)*?-\w*f\w*\s+(\S+)/g;
+const SELF_PGREP = /(?:until\s+!\s+|while\s+)pgrep\s+(?:-\w+\s+)*?-\w*f\w*\s+(?:(?:'\\''|'|\\?")([^'"]*)|(\S+))/g;
 async function selfMatches(pid: number, env: Record<string, string | undefined>): Promise<boolean> {
   try {
     const argv = (await readFile(join(env.CLAUDE_SESSIONS_PROC || "/proc", String(pid), "cmdline"), "utf8")).split("\0").join(" ");
     return [...argv.matchAll(SELF_PGREP)].some((m) => {
-      try { return new RegExp(m[1].replace(/^[\\'"]+|[\\'"]+$/g, "")).test(argv); } catch { return false; }
+      try { return new RegExp((m[1] ?? m[2]).replace(/\\+$/, "")).test(argv); } catch { return false; }
     });
   } catch { return false; }
 }
