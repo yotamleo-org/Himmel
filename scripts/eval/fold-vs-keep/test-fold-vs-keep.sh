@@ -122,6 +122,11 @@ run x --class publisher --out "$TMP/o0" >/dev/null 2>&1; rc=$?
 eq "run: refuses a class it cannot run" "$rc" "2"
 run x --class judge --out "$TMP/o0" --tasks t1,nope >/dev/null 2>&1; rc=$?
 eq "run: refuses an unknown --tasks id" "$rc" "2"
+for bad in "--reps 0" "--reps x" "--timeout 1s" "--ceiling 5k" "--max-usd -1" "--arms keep,flod"; do
+    # shellcheck disable=SC2086 # one flag and its value
+    run x --class judge --out "$TMP/o0" --tasks t1 $bad >/dev/null 2>&1; rc=$?
+    eq "run: refuses $bad" "$rc" "2"
+done
 STUB_PREFLIGHT=SKIPPED-BANK run a --class judge --out "$TMP/o1" >/dev/null 2>&1; rc=$?
 eq "run: a bank-preflight hold stops the sweep (exit 3)" "$rc" "3"
 eq "run: no claude call after a bank hold" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
@@ -170,6 +175,11 @@ run c --class judge --out "$TMP/o3" --tasks t1,t2 --ceiling 5000 >/dev/null 2>&1
 eq "judge: the ceiling stops the sweep (exit 3)" "$rc" "3"
 eq "judge: the ceiling stops after the call that crossed it" "$(cat "$STUB_LOG/count")" "2"
 newlog
+mkdir -p "$TMP/o10/judge/t1/keep"; echo '{' >"$TMP/o10/judge/t1/keep/9.summary.json"
+run j --class judge --out "$TMP/o10" --tasks t1 --ceiling 999999 >/dev/null 2>&1; rc=$?
+eq "judge: a spend that cannot be summed stops a ceilinged sweep (exit 3)" "$rc" "3"
+eq "judge: no call when the spend cannot be summed" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
+newlog
 STUB_LEAK="/x/Documents/luna/handovers/verdicts/q/judge.md" run d --class judge --out "$TMP/o4" --tasks t2 --arms keep --reps 1 >/dev/null 2>&1
 has "judge: a read of the verdicts tree is a leak" "$(jget "$TMP/o4/judge/t2/keep/1.summary.json" leaks)" "verdicts/"
 newlog
@@ -182,6 +192,18 @@ run i --class judge --out "$TMP/o9" --tasks t3 --arms keep --reps 1 >/dev/null 2
 eq "judge: a head already on origin/main gets no call" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
 if [ -e "$TMP/o9/judge/t3/keep/1.summary.json" ]; then s=1; else s=0; fi
 eq "judge: a head already on origin/main gets no summary" "$s" "0"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); t1=d["tasks"][0]
+d["tasks"].append(dict(t1, id="t4", diffs=[[sys.argv[2], sys.argv[3], "sub/ok.diff"], ["0" * 40, sys.argv[3], "bad.diff"]]))
+d["tasks"].append(dict(t1, id="t5", diffs=[[sys.argv[2], sys.argv[3], "sub/ok.diff"]]))
+json.dump(d, open(p, "w"))' "$FX/tasks/judge.json" "$A" "$B"
+newlog
+run k --class judge --out "$TMP/o11" --tasks t4 --arms keep --reps 1 >/dev/null 2>&1
+eq "judge: a delta diff that cannot be generated gets no call" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
+if [ -e "$TMP/o11/judge/t4/keep/1.summary.json" ]; then s=1; else s=0; fi
+eq "judge: a delta diff that cannot be generated gets no summary" "$s" "0"
+newlog
+run l --class judge --out "$TMP/o12" --tasks t5 --arms keep --reps 1 >/dev/null 2>&1
+has "judge: a delta diff under a subdir is generated" "$(cat "$TMP/scratch-l/t5/sub/ok.diff" 2>&1)" "+pr-change"
 
 # --- run.sh: the vm class ---
 python3 -c 'import json,sys
@@ -228,14 +250,38 @@ newlog
 FVK_VM=himmel-ar-9 run g --class vm --out "$TMP/o7" --reps 1 --arms keep >/dev/null 2>&1; rc=$?
 eq "vm: the keep arm refuses a VM its briefs do not name" "$rc" "2"
 eq "vm: no claude call on another VM" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["tasks"][0]["tags"]=["v0", "nope"]; json.dump(d, open(p, "w"))' "$FX/tasks/vm.json"
+newlog
+HIMMEL_VM_LOCK_DIR="$TMP/locks" run m --class vm --out "$TMP/o13" --reps 1 --arms keep >/dev/null 2>&1
+eq "vm: a tag that cannot be bundled gets no call" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
+if [ -e "$TMP/scratch-m/v1.bundle.git" ]; then left=1; else left=0; fi
+eq "vm: a failed bundle leaves no bare repo" "$left" "0"
+cp "$FX/tasks/vm-scripts/v1.sh" "$TMP/v1.sh.keep"
+printf '#!/usr/bin/env bash\necho "INFRA vm-up the VM did not start" >&2\necho "PROOF: FAIL (1 failed)"\n' >"$FX/tasks/vm-scripts/v1.sh"
+HIMMEL_VM_LOCK_DIR="$TMP/locks" run n --class vm --out "$TMP/o14" --reps 1 --arms fold >/dev/null 2>&1
+eq "vm: a proof run that hit an infra failure is an error, not a FAIL" "$(jget "$TMP/o14/vm/v1/fold/1.summary.json" error)" "true"
+cp "$TMP/v1.sh.keep" "$FX/tasks/vm-scripts/v1.sh"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); d["tasks"][0]["historic"]=sys.argv[2]; json.dump(d, open(p, "w"))' "$FX/tasks/vm.json" "$TMP/gone.jsonl"
+HIMMEL_VM_LOCK_DIR="$TMP/locks" run o --class vm --out "$TMP/o15" --reps 1 --arms fold >/dev/null 2>&1; rc=$?
+eq "vm: a historic run that cannot be summarized stops the sweep (exit 3)" "$rc" "3"
+if [ -e "$TMP/o15/vm/v1/keep/historic.summary.json" ]; then s=1; else s=0; fi
+eq "vm: a historic run that cannot be summarized leaves no summary" "$s" "0"
 
 # --- the proof scripts' helpers, the VM stubbed out ---
 LIB="$HERE/fixtures/tasks/vm-scripts/_lib.sh"
 # shellcheck disable=SC2016 # the inner shell expands it
-has "lib: a failed VM restore is no PASS" "$(TMPDIR="$TMP" bash -c '. "$1"; sdk() { return 1; }; vm_fresh' _ "$LIB")" "PROOF: FAIL"
+has "lib: a failed VM restore is no PASS" "$(TMPDIR="$TMP" bash -c '. "$1"; sdk() { return 1; }; vm_fresh' _ "$LIB" 2>/dev/null)" "PROOF: FAIL"
 # shellcheck disable=SC2016 # the inner shell expands it
 no_stage='. "$1"; cd "$2" || exit 1; sdk() { :; }; g() { :; }; z=0123456789abcdef0123456789abcdef01234567; out="$(stage $z /x)"; expect head "$out" $z; final'
 has "lib: a head that cannot be staged is no PASS" "$(TMPDIR="$TMP" bash -c "$no_stage" _ "$LIB" "$R" 2>/dev/null)" "PROOF: FAIL"
+# shellcheck disable=SC2016 # the inner shell expands it
+has "lib: a failed VM restore is marked infra" "$(TMPDIR="$TMP" bash -c '. "$1"; sdk() { return 1; }; vm_fresh' _ "$LIB" 2>&1 >/dev/null)" "INFRA vm-restore"
+has "lib: a head that cannot be staged is marked infra through \$(stage)" "$(TMPDIR="$TMP" bash -c "$no_stage" _ "$LIB" "$R" 2>&1 >/dev/null)" "INFRA stage-fetch"
+# shellcheck disable=SC2016 # the inner shell expands it
+bad_tag='. "$1"; cd "$2" || exit 1; sdk() { :; }; g() { :; }; out="$(stage "$3" /x nope)"; final'
+# shellcheck disable=SC2016 # the inner shell expands it
+has "lib: a failed file push is marked infra and fails its check" "$(TMPDIR="$TMP" bash -c '. "$1"; sdk() { return 1; }; push_file /x /y w; final' _ "$LIB" 2>&1)" $'INFRA push-w \nCHECK push-w FAIL \nPROOF: FAIL'
+has "lib: a tag that cannot be staged is marked infra" "$(TMPDIR="$TMP" bash -c "$bad_tag" _ "$LIB" "$R" "$B" 2>&1 >/dev/null)" "INFRA stage-tag"
 # shellcheck disable=SC2016 # the inner shell expands it
 cut_off='. "$1"; sdk() { :; }; g() { echo "CHECK a PASS"; return 124; }; echo x >"$WORK/p.sh"; tally "$(guest_script p.sh)"; final'
 has "lib: a guest script cut off after a passing check is no PASS" "$(TMPDIR="$TMP" bash -c "$cut_off" _ "$LIB")" "PROOF: FAIL"

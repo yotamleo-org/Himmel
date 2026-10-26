@@ -23,7 +23,7 @@ fi
 echo "samples=$n hits=$hits"
 sort -u /tmp/fvk-argv | sed -E 's/(ghp_|github_pat_)[A-Za-z0-9_]+/\1<redacted>/g; s#//[^/@ ]+@#//<redacted>@#g'
 EOF
-sdk push "$WORK/watch.sh" /tmp/watch.sh >/dev/null; check push-watcher $?
+push_file "$WORK/watch.sh" /tmp/watch.sh watcher
 
 # watched <mode> <label> <blank-var> - one clone under the watcher, its checks
 watched() {

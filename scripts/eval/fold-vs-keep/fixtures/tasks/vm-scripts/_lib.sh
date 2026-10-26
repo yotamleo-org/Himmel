@@ -21,38 +21,54 @@ sdk() {
 # g <timeout> <cmd...> - one guest command, its output on stdout, its rc returned
 g() { local t="$1"; shift; bash scripts/vm/guest-exec.sh "$VM" --timeout "$t" -- "$@"; }
 
+# infra <name> [detail] - the VM or staging failed, not the proof: an INFRA line on stderr
+# (so it survives `out="$(stage ...)"`), which run.sh turns into an unscored error run
+infra() { echo "INFRA $1 ${2:-}" >&2; }
+
 vm_fresh() {
-    sdk restore "$SNAP" || { check vm-restore 1; final; }
-    sdk up || { check vm-up 1; final; }
+    sdk restore "$SNAP" || { infra vm-restore; check vm-restore 1; final; }
+    sdk up || { infra vm-up; check vm-up 1; final; }
     trap vm_off EXIT
 }
 
 vm_off() { sdk down >/dev/null 2>&1; rm -rf "$WORK"; }
 
+# push_file <host file> <guest path> <name> - one host file onto the guest, as CHECK push-<name>
+push_file() {
+    sdk push "$1" "$2" >/dev/null; local rc=$?
+    [ "$rc" = 0 ] || infra "push-$3"
+    check "push-$3" "$rc"
+}
+
 # stage <sha> <guest dir> [extra ref...] - the commit (plus any tags named) as a git clone on the guest
 stage() {
     local sha="$1" dest="$2"; shift 2
     local bare="$WORK/stage.git" refs=(refs/heads/eval) r
-    git init -q --bare "$bare"
-    git -C "$bare" fetch -q --no-tags "$PWD" "$sha:refs/heads/eval" || { echo "CHECK stage-fetch FAIL"; return 1; }
+    rm -rf "$bare"
+    if ! { git init -q --bare "$bare" && git -C "$bare" fetch -q --no-tags "$PWD" "$sha:refs/heads/eval"; }; then
+        infra stage-fetch "$sha"; echo "CHECK stage-fetch FAIL"; return 1
+    fi
     for r in "$@"; do
-        git -C "$bare" fetch -q --no-tags "$PWD" "refs/tags/$r:refs/tags/$r" && refs+=("refs/tags/$r")
+        git -C "$bare" fetch -q --no-tags "$PWD" "refs/tags/$r:refs/tags/$r" ||
+            { infra stage-tag "$r"; echo "CHECK stage-tag FAIL $r"; return 1; }
+        refs+=("refs/tags/$r")
     done
-    git -C "$bare" bundle create -q "$WORK/stage.bundle" "${refs[@]}" || return 1
-    sdk push "$WORK/stage.bundle" /tmp/fvk-stage.bundle >/dev/null || { echo "CHECK stage-push FAIL"; return 1; }
+    git -C "$bare" bundle create -q "$WORK/stage.bundle" "${refs[@]}" || { infra stage-bundle; return 1; }
+    sdk push "$WORK/stage.bundle" /tmp/fvk-stage.bundle >/dev/null || { infra stage-push; echo "CHECK stage-push FAIL"; return 1; }
     rm -rf "$bare" "$WORK/stage.bundle"
-    g 300 "rm -rf $dest && git clone -q /tmp/fvk-stage.bundle $dest && git -C $dest checkout -q --detach $sha && git -C $dest rev-parse HEAD"
+    g 300 "rm -rf $dest && git clone -q /tmp/fvk-stage.bundle $dest && git -C $dest checkout -q --detach $sha && git -C $dest rev-parse HEAD" ||
+        infra stage-clone "$sha"
 }
 
 # guest_script <name> - push $WORK/<name> to the guest and run it under bash; a run cut
 # off before its end (a timeout, a dropped session, a signal) adds a failing CHECK line
 guest_script() {
     local name="$1" t="${2:-600}" out rc
-    sdk push "$WORK/$name" "/tmp/$name" >/dev/null || { echo "CHECK push-$name FAIL"; return 1; }
+    sdk push "$WORK/$name" "/tmp/$name" >/dev/null || { infra "push-$name"; echo "CHECK push-$name FAIL"; return 1; }
     out="$(g "$t" "bash /tmp/$name; echo FVK-GUEST-END rc=\$?")"
     printf '%s\n' "$out"
     rc="$(sed -n 's/^FVK-GUEST-END rc=\([0-9][0-9]*\)$/\1/p' <<<"$out")"
-    if [ -z "$rc" ]; then echo "CHECK guest-$name FAIL the guest script did not finish"
+    if [ -z "$rc" ]; then infra "guest-$name" "did not finish"; echo "CHECK guest-$name FAIL the guest script did not finish"
     elif [ "$rc" -ge 128 ]; then echo "CHECK guest-$name FAIL the guest script was killed (rc=$rc)"; fi
 }
 

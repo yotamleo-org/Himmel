@@ -15,7 +15,8 @@
 #   vm     keep = a fresh sonnet child on the task's brief, from the repo root, handed a
 #          host bundle of the task's head (and tags), as the fold arm's `stage` builds; fold =
 #          the task's proof script (fixtures/tasks/vm-scripts/<id>.sh), whose run costs its
-#          authoring cost-eq (fixtures/tasks/vm.json author_cost_eq). The historic child run is
+#          authoring cost-eq (fixtures/tasks/vm.json author_cost_eq); a script log with an
+#          `INFRA ` line (the VM or staging failed, not the proof) is an error, so unscored. The historic child run is
 #          written as keep rep `historic` with the recorded verdict (no model call).
 #          Each call of either arm holds the vm-lock for $FVK_VM (default himmel-ar-2); the
 #          keep arm refuses any other VM, since its briefs name himmel-ar-2.
@@ -24,7 +25,8 @@
 # Before each task's calls bank-preflight must print PROCEED, else the sweep stops (exit 3).
 # Env: FVK_CLAUDE (default claude), FVK_PREFLIGHT (default scripts/lib/bank-preflight.sh),
 #      FVK_SCRATCH (default a fresh tmpdir) - the test seams.
-# Exit: 0 done; 2 usage; 3 stopped (bank refusal, ceiling, or no vm-lock for a vm call).
+# Exit: 0 done; 2 usage; 3 stopped (bank refusal, ceiling or an unsummable spend, a historic
+#       run that cannot be summarized, or no vm-lock for a vm call).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -56,6 +58,12 @@ while [ $# -gt 0 ]; do
 done
 case "$cls" in judge|vm) ;; *) die "--class judge|vm is required" ;; esac
 [ -n "$out" ] || die "--out <dir> is required"
+case "$reps" in ''|*[!0-9]*|0|00*) die "--reps needs a positive integer, not '$reps'" ;; esac
+case "$tmo" in ''|*[!0-9]*|0|00*) die "--timeout needs a positive integer of seconds, not '$tmo'" ;; esac
+case "$ceiling" in *[!0-9]*) die "--ceiling needs an integer cost-eq, not '$ceiling'" ;; esac
+python3 -c 'import sys; sys.exit(0 if float(sys.argv[1]) > 0 else 1)' "$max_usd" 2>/dev/null || die "--max-usd needs a positive number, not '$max_usd'"
+[ -n "${arms//,/}" ] || die "--arms needs keep, fold or both"
+for a in ${arms//,/ }; do case "$a" in keep|fold) ;; *) die "--arms takes keep and fold, not '$a'" ;; esac; done
 # billed-opt-in: HIMMEL_BILLED_OK
 [ "${HIMMEL_BILLED_OK:-}" = 1 ] || die "makes real, billed model calls; set HIMMEL_BILLED_OK=1 (on-demand only)"
 tasks_file="$fixtures/tasks/$cls.json"; key="$fixtures/key/truth.json"
@@ -123,7 +131,8 @@ for rel, body in t.get("evidence", {}).items():
         "$tasks_file" "$1" "$2" || return 1
     local a b f
     while read -r a b f; do
-        [ -n "$f" ] && git -C "$repo" diff "$a" "$b" >"$2/$f"
+        [ -n "$f" ] || continue
+        mkdir -p "$(dirname "$2/$f")" && git -C "$repo" diff "$a" "$b" >"$2/$f" || return 1
     done < <(python3 -c 'import json,sys
 t=[x for x in json.load(open(sys.argv[1]))["tasks"] if x["id"]==sys.argv[2]][0]
 for a, b, f in t.get("diffs", []): print(a, b, f)' "$tasks_file" "$1")
@@ -149,9 +158,12 @@ run_judge() { # $1 task, $2 arm, $3 rep, $4 stem
 stage_bundle() { # $1 head, $2 bundle path, $3.. tags: head as branch eval, plus the tags
     local bare="$2.git" refs=(refs/heads/eval) tg head="$1" dest="$2"; shift 2
     rm -rf "$bare"
-    git init -q --bare "$bare" && git -C "$bare" fetch -q --no-tags "$repo" "$head:refs/heads/eval" || return 1
+    if ! { git init -q --bare "$bare" && git -C "$bare" fetch -q --no-tags "$repo" "$head:refs/heads/eval"; }; then
+        rm -rf "$bare"; return 1
+    fi
     for tg in "$@"; do
-        git -C "$bare" fetch -q --no-tags "$repo" "refs/tags/$tg:refs/tags/$tg" && refs+=("refs/tags/$tg")
+        git -C "$bare" fetch -q --no-tags "$repo" "refs/tags/$tg:refs/tags/$tg" || { rm -rf "$bare"; return 1; }
+        refs+=("refs/tags/$tg")
     done
     git -C "$bare" bundle create -q "$dest" "${refs[@]}"; local rc=$?
     rm -rf "$bare"
@@ -186,7 +198,8 @@ run_vm() { # $1 task, $2 arm, $3 rep, $4 stem
     python3 -c 'import json,re,sys
 log=open(sys.argv[1], errors="replace").read()
 m=re.search(r"^\W*PROOF:\s*(PASS|FAIL)\b", log, re.M)
-print(json.dumps({"file":sys.argv[1],"leaks":[],"error":m is None,"outcome":m.group(1) if m else None,
+infra=re.search(r"^INFRA ", log, re.M)
+print(json.dumps({"file":sys.argv[1],"leaks":[],"error":m is None or infra is not None,"outcome":m.group(1) if m else None,
   "cost_eq":int(float(sys.argv[2])),"wall_s":int(sys.argv[3]),"turns":0,"cost_usd":None,"reply":log[-400:]}, indent=1))' \
         "$4.log" "$(field "$1" author_cost_eq)" "$((t1 - t0))" >"$4.summary.json"
 }
@@ -200,8 +213,11 @@ if [ "$cls" = vm ]; then
     for t in $ids; do
         hist="$(field "$t" historic)"
         d="$out/vm/$t/keep"; mkdir -p "$d"
-        [ -n "$hist" ] && [ ! -f "$d/historic.summary.json" ] && \
-            python3 "$FVK" summarize "$hist" --class vm --outcome "$(truth "$t")" >"$d/historic.summary.json"
+        [ -n "$hist" ] && [ ! -f "$d/historic.summary.json" ] || continue
+        if ! { python3 "$FVK" summarize "$hist" --class vm --outcome "$(truth "$t")" >"$d/historic.summary.json.tmp" &&
+               mv "$d/historic.summary.json.tmp" "$d/historic.summary.json"; }; then
+            rm -f "$d/historic.summary.json.tmp"; echo "run.sh: cannot summarize the historic run of $t - stopped" >&2; exit 3
+        fi
     done
 fi
 
@@ -221,9 +237,12 @@ for t in $ids; do
         for r in $(seq 1 "$reps"); do
             stem="$out/$cls/$t/$arm/$r"
             [ -f "$stem.summary.json" ] && continue
-            if [ -n "$ceiling" ] && [ "$(spent)" -ge "$ceiling" ]; then
-                echo "run.sh: spent $(spent) cost-eq, ceiling $ceiling reached before $t/$arm/$r - stopped" >&2
-                exit 3
+            if [ -n "$ceiling" ]; then
+                s="$(spent)" && [ -n "$s" ] || { echo "run.sh: cannot sum the spent cost-eq before $t/$arm/$r - stopped" >&2; exit 3; }
+                if [ "$s" -ge "$ceiling" ]; then
+                    echo "run.sh: spent $s cost-eq, ceiling $ceiling reached before $t/$arm/$r - stopped" >&2
+                    exit 3
+                fi
             fi
             if [ "$cls" = vm ]; then
                 vm_lock_acquire_waiting "$FVK_VM" || { echo "run.sh: no vm-lock for $FVK_VM before $t/$arm/$r - stopped" >&2; exit 3; }

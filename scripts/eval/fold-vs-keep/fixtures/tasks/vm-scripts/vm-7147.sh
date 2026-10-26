@@ -5,7 +5,7 @@ SHA=08df7fef56d84d0a0929220d95b41fbbc623d794
 vm_fresh
 out="$(stage "$SHA" /tmp/h7147)"; expect head "$out" "$SHA"
 cp "$(dirname "$0")/_7147-trial.sh" "$WORK/7147-trial.sh"
-sdk push "$WORK/7147-trial.sh" /tmp/7147-trial.sh >/dev/null; check push-trial $?
+push_file "$WORK/7147-trial.sh" /tmp/7147-trial.sh trial
 t="$(g 300 'bash /tmp/7147-trial.sh /tmp/h7147')"; rc=$?
 echo "$t"
 check trial-rc "$rc" "rc=$rc"
