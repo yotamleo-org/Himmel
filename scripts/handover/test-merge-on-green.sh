@@ -4783,6 +4783,9 @@ MOG7658_LOG_ODD="$(mktemp "${TMPDIR:-/tmp}/mog-7658-odd.XXXXXX")" || { echo "FAI
 MOG7658_LOG_ROLL="$(mktemp "${TMPDIR:-/tmp}/mog-7658-roll.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
 # The rollup job failed in a step other than the shard-result check.
 { cat "$MOG7658_LOG_CAP"; printf '%s\t%s\t%s\n' 'shell-unit (dispatch verify) (ubuntu-latest)' 'Every shard ran exactly the selection' '2026-10-25T20:19:31.2858837Z ##[error]Process completed with exit code 1.'; } > "$MOG7658_LOG_ROLL"
+# The cap shard failed a second step of its own job after the runner step.
+MOG7658_LOG_STEP2="$(mktemp "${TMPDIR:-/tmp}/mog-7658-step2.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+{ cat "$MOG7658_LOG_CAP"; printf '%s\t%s\t%s\n' 'shell-unit-shard (ubuntu-latest, 2)' 'Upload shard manifest' '2026-10-25T20:19:40.1234567Z ##[error]Unable to upload the shard manifest'; } > "$MOG7658_LOG_STEP2"
 { cat "$MOG7658_LOG_CAP"; mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'home-canary: FAIL honeytoken reached the runner output (a suite printed the sandbox .env); lines:'; } > "$MOG7658_LOG_HC"
 { cat "$MOG7658_LOG_CAP"; printf '%s\t%s\t%s\n' 'lint (ubuntu-latest)' 'Run shellcheck' '2026-10-25T20:19:12.9906759Z ##[error]Process completed with exit code 1.'; } > "$MOG7658_LOG_LINT"
 # A shard whose runner stopped on its budget: it exits 1 with no Failed-suites block.
@@ -4881,6 +4884,9 @@ no_merge_call "7658-m: no merge call"
 STUB_RUN_LOG_FILE="$MOG7658_LOG_ROLL" cap_run 22 "7658-n: cap rows plus a rollup job that failed in another step → exit 22"
 assert_err_has "7658-n: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
 no_merge_call "7658-n: no merge call"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_STEP2" cap_run 22 "7658-p: cap rows plus a second failed step in the same shard job → exit 22"
+assert_err_has "7658-p: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
+no_merge_call "7658-p: no merge call"
 # 7658-o — the classifier matches text other files own: the rollup step name in ci.yml,
 # the runner's exit line in home-canary.sh and the cap row in run-shell-tests.sh.
 # shellcheck disable=SC2016
@@ -4950,7 +4956,7 @@ if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-g: no dispatch (got $(
 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7323-h: cap-only pass → merged"
 if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-h: no dispatch (got $(mog7323_calls))"; fi
 assert_audit_lacks "7323-h: no recheck audited" "MAIN-RECHECK"
-rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT" "$MOG7658_LOG_HC" "$MOG7658_LOG_LINT" "$MOG7658_LOG_DEAD" "$MOG7658_LOG_NOEXIT" "$MOG7658_LOG_ODD" "$MOG7658_LOG_ROLL"
+rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT" "$MOG7658_LOG_HC" "$MOG7658_LOG_LINT" "$MOG7658_LOG_DEAD" "$MOG7658_LOG_NOEXIT" "$MOG7658_LOG_ODD" "$MOG7658_LOG_ROLL" "$MOG7658_LOG_STEP2"
 
 # ── merge-time plugin version-bump recheck ──────────────────────
 # Plugin versions change only in a release cut (a change to the root VERSION

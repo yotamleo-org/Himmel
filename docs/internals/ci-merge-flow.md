@@ -40,9 +40,10 @@ attempt, so a red under re-run still blocks. The gate reads the failed log and p
 `main-red: <class> (<suites>)`; a red made only of runner cap timeouts with assertions
 passing (`cap-only`), in suites the PR does not reach per `scripts/cr/impacted-suites.sh`,
 passes. Every failed job must be a shell-unit shard that failed only through the runner: its
-`Failed suites:` rows, then `home-canary: FAIL runner exited rc=1`, and the rollup job may
-fail only in its shard-result step. A honeytoken leak or read, a timeout, a shard with no
-rows, a failed lint job and a rollup that failed in another step are `unclassified`. An
+`Failed suites:` rows, then `home-canary: FAIL runner exited rc=1`, no job may fail in
+more than one step, and the rollup job may fail only in its shard-result step. A honeytoken
+leak or read, a timeout, a shard with no rows, a failed lint job, a job that failed in a
+second step and a rollup that failed in another step are `unclassified`. An
 `assertion`, `cap-overlap`, `cap-unverified` or `unclassified` red still blocks.
 After a merge on the declared-fix or fix-GO path the script dispatches one `ci.yml` run on
 main (`gh workflow run ci.yml --ref main`) and prints `MAIN-RECHECK dispatched run=<id>`,

@@ -1229,16 +1229,18 @@ main_red_refuse() {
 #   cap-only      every failed suite hit the runner's watchdog at its cap with its
 #                 assertions passing, every failed job is a shell-unit job, every
 #                 shard failed only through the runner (its Failed-suites rows, then
-#                 scripts/ci/home-canary.sh's `home-canary: FAIL runner exited rc=1`)
-#                 and the rollup job failed only in its shard-result step
+#                 scripts/ci/home-canary.sh's `home-canary: FAIL runner exited rc=1`),
+#                 no job failed in more than one step, and the rollup job failed only
+#                 in its shard-result step
 #   assertion     a failed suite exited non-zero, or hit its cap without its
 #                 assertions passing
 #   unclassified  the log is unreadable, names no failed suite, a failed job is not a
 #                 shell-unit job or a shard that has no rows or no runner exit line
 #                 (died before any suite ran, stopped on its budget), a Failed-suites
 #                 line the row pattern cannot parse, or any other `home-canary: FAIL`
-#                 (a honeytoken leak or read, a timeout, atime not tracked), or a rollup
-#                 job that failed in another step
+#                 (a honeytoken leak or read, a timeout, atime not tracked), a job that
+#                 failed in more than one step, or a rollup job that failed in another
+#                 step
 # A cap-only red passes (mr_ok=cap-only) only when none of the capped suites is
 # reached by the PR's diff, per scripts/cr/impacted-suites.sh over the fetched base
 # tip and PR head (private refs, deleted again); a reached suite is cap-overlap and
@@ -1259,6 +1261,8 @@ main_red_classify() {
           sub(/^[^\t]*\t[^\t]*\t/, "", msg); sub(/\r$/, "", msg); sub(/^[0-9][0-9T:.Z-]* /, "", msg)
           if (!(job in seen)) { seen[job] = 1; jobs[++nj] = job }
           if (job ~ /^shell-unit \(/ && $2 != "Every gating shell-unit shard must have passed") odd[job] = 1
+          if (!(job in step1)) step1[job] = $2
+          else if ($2 != step1[job]) odd[job] = 1
           if (msg == "Failed suites:") { open[job] = 1; next }
           if (open[job]) {
               if (msg ~ /^  [^ ]+\.sh \(.*\)$/) {
