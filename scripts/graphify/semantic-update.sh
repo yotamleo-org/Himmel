@@ -472,7 +472,8 @@ for rel in json.load(open(plan))["batch"]:
     os.makedirs(os.path.dirname(os.path.join(dst, rel)), exist_ok=True)
     shutil.copy2(os.path.join(src, rel), os.path.join(dst, rel))
 PY
-    [ ! -f "$CORPUS_ROOT/.graphifyignore" ] || cp "$CORPUS_ROOT/.graphifyignore" "$SCRATCH/"
+    # The planner is the only file selector: a .graphifyignore copied here would strand planned files (no nodes, never stamped).
+    # Exclusions belong in .graphify-corpus-ignore, which the planner reads.
     [ ! -d "$OUT_DIR/cache/$CACHE_SUB" ] || cp -R "$OUT_DIR/cache/$CACHE_SUB" "$SCRATCH/graphify-out/cache/semantic"
     printf '%s\n' "$CORPUS_CLASS" > "$SCRATCH/.graphify-corpus"
     # The record run caches its placeholder answers in the scratch: keep a pristine copy for the replay.
