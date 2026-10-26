@@ -11,8 +11,8 @@
 # `config set`/`config get` are the scripted path over the same store.
 #
 # Covers:
-#   A. initiative.<worker> — set on/off toggles HIMMEL_INITIATIVE in the fixture
-#      .env; multiple workers coexist; unknown worker -> rc=2, no write.
+#   A. initiative.<step> — set on/off toggles HIMMEL_INITIATIVE in the fixture
+#      .env; multiple steps coexist; unknown step -> rc=2, no write.
 #   B. initiative get (whole + single worker).
 #   C. lanes.<id> — set on/off writes ONLY lanes.local.json (probe.kind
 #      always/never); the fixture's lanes.json (repo-registry stand-in) is
@@ -119,7 +119,7 @@ run_cfg() {
 }
 
 # CFG_HOME pins one fake HOME across calls, so a case can read back what ~/.himmel/himmel.conf holds.
-# ── Case A: initiative.<worker> set on/off ─────────────────────────────────────
+# ── Case A: initiative.<step> set on/off ───────────────────────────────────────
 fxA="$work/fixtureA"; build_fixture "$fxA"
 CFG_HOME="$work/homeA"
 confA="$CFG_HOME/.himmel/himmel.conf"
@@ -138,12 +138,12 @@ run_cfg "$fxA" set initiative.execute off
 grep -qE '^HIMMEL_INITIATIVE=pr$' "$confA" \
   || fail "caseA: toggling execute off should remove ONLY execute (got: $(cat "$confA" 2>&1))"
 run_cfg "$fxA" set initiative.bogus on
-[ "$CFG_RC" -eq 2 ] || fail "caseA: unknown worker should exit 2 (got rc=$CFG_RC): $CFG_OUT"
-grepq "$CFG_OUT" -F 'unknown initiative worker' \
-  || fail "caseA: expected 'unknown initiative worker' message (got: $CFG_OUT)"
+[ "$CFG_RC" -eq 2 ] || fail "caseA: unknown step should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F 'unknown initiative step' \
+  || fail "caseA: expected 'unknown initiative step' message (got: $CFG_OUT)"
 grep -qE '^HIMMEL_INITIATIVE=pr$' "$confA" \
   || fail "caseA: an unknown-worker rejection must not touch himmel.conf (got: $(cat "$confA" 2>&1))"
-echo "ok: caseA initiative.<worker> set on/off toggles HIMMEL_INITIATIVE in himmel.conf; unknown worker rejected without a write"
+echo "ok: caseA initiative.<step> set on/off toggles HIMMEL_INITIATIVE in himmel.conf; unknown step rejected without a write"
 
 # A key only in the legacy .env is still read, and the next set moves it into himmel.conf.
 fxA2="$work/fixtureA2"; build_fixture "$fxA2"

@@ -120,7 +120,7 @@ himmelctl config set <path> on|off
 
 | Path | Controls |
 |---|---|
-| `initiative.<worker>` | Initiative auto-ship steps (`HIMMEL_INITIATIVE` steps) |
+| `initiative.<step>` | Initiative auto-ship steps (`HIMMEL_INITIATIVE` steps) |
 | `lanes.<id>` | Delegation lanes |
 | `hooks.plugin.<name>` | Opt-in hook plugins; set-only, runs `claude plugin enable` or `disable` |
 

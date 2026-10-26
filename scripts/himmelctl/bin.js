@@ -194,11 +194,11 @@ commands:
                           converge); run from the same location the
                           corresponding install was run from, same as status
   config                  prints the link to the UI Configure page, where himmel
-                          capabilities (initiative workers, delegation lanes, opt-in
+                          capabilities (initiative steps, delegation lanes, opt-in
                           hooks) are toggled without hand-editing files; scripts use:
                             config set <path> <value>   (value is on|off)
                             config get <path>
-                          get/set paths: initiative.<worker>, lanes.<id>
+                          get/set paths: initiative.<step>, lanes.<id>
                           set-only: commit.tracker <jira|local|none>,
                             commit.ticketIdRequired <on|off> (write the commit
                             rules to ~/.himmel/himmel.conf)
@@ -7688,7 +7688,7 @@ async function cmdTrust(args) {
 //
 // Three config surfaces, three DIFFERENT real mechanisms (never a uniform
 // fake one):
-//   initiative.<worker>     on|off  -> upserts HIMMEL_INITIATIVE=<comma-workers>
+//   initiative.<step>       on|off  -> upserts HIMMEL_INITIATIVE=<comma-steps>
 //                                  into ~/.himmel/himmel.conf (read by
 //                                  scripts/hooks/inject-initiative.sh through
 //                                  scripts/lib/load-dotenv.sh).
@@ -7719,7 +7719,7 @@ async function cmdTrust(args) {
 // documents. Their bypass stays the existing documented convention (a
 // session env var set in the LAUNCHING shell), unrelated to a config write.
 
-// The 7 configurable initiative workers — scripts/lib/initiative-workers.sh's own
+// The 7 configurable initiative steps — scripts/lib/initiative-workers.sh's own
 // _IL_VOCAB minus 'plan', which that file documents as a reserved token with
 // no behavior yet (nothing to toggle).
 const INITIATIVE_WORKERS = ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'public', 'handover'];
@@ -7874,7 +7874,7 @@ function writeConfigVar(key, value, args, targets) {
 
 function cmdConfigSetInitiative(worker, onOff, args) {
   if (INITIATIVE_WORKERS.indexOf(worker) === -1) {
-    console.error(`himmelctl: unknown initiative worker '${worker}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
+    console.error(`himmelctl: unknown initiative step '${worker}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
     return 2;
   }
   const current = readConfigVar('HIMMEL_INITIATIVE').value;
@@ -7894,7 +7894,7 @@ function cmdConfigGetInitiative(worker) {
   const activeSet = new Set(current.split(',').map((s) => s.trim()).filter(Boolean));
   if (worker) {
     if (INITIATIVE_WORKERS.indexOf(worker) === -1) {
-      console.error(`himmelctl: unknown initiative worker '${worker}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
+      console.error(`himmelctl: unknown initiative step '${worker}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
       return 2;
     }
     console.log(`initiative.${worker}: ${activeSet.has(worker) ? 'on' : 'off'}`);
@@ -8090,15 +8090,15 @@ function cmdConfigSetHook(hookPath, onOff, args) {
 function cmdConfigGet(pathParts) {
   const [ns, ...rest] = pathParts;
   if (ns === 'initiative') {
-    // 'initiative' (whole) or 'initiative.<worker>' — reject over-qualified
+    // 'initiative' (whole) or 'initiative.<step>' — reject over-qualified
     // (initiative.execute.extra) and unknown workers (cmdConfigGetInitiative
     // does not validate the worker itself).
     if (rest.length > 1) {
-      console.error(`himmelctl: config get: over-qualified path 'initiative.${rest.join('.')}' — expected 'initiative' or 'initiative.<worker>'`);
+      console.error(`himmelctl: config get: over-qualified path 'initiative.${rest.join('.')}' — expected 'initiative' or 'initiative.<step>'`);
       return 2;
     }
     if (rest.length === 1 && INITIATIVE_WORKERS.indexOf(rest[0]) === -1) {
-      console.error(`himmelctl: config get: unknown initiative worker '${rest[0]}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
+      console.error(`himmelctl: config get: unknown initiative step '${rest[0]}' (known: ${INITIATIVE_WORKERS.join(', ')})`);
       return 2;
     }
     return cmdConfigGetInitiative(rest[0]);
