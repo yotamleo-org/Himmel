@@ -515,8 +515,10 @@ The loader (`scripts/lib/load-dotenv.sh`) resolves the **primary checkout's**
 value already exported in the live environment — so a bridged `.env` value
 sits at the *bottom* of the precedence chain: launching shell > project
 `settings.json` `env` > user `settings.json` `env` > `himmel.conf.local` >
-`himmel.conf` > the `.env` line. Gate-policy keys skip the live environment:
-`config.json` `"policy"` > the `.env` line > unset.
+`himmel.conf` > the `.env` line. `load_policy` skips the live environment for
+gate-policy keys: `config.json` `"policy"` > the `.env` line > unset
+(`merge-on-green.sh` is the one exception: it reads `ARMAUTOMERGE` from the
+live environment only).
 
 Minimum config: nothing is strictly required — `USER_SLUG` is recommended
 (falls back to slugified `git config user.name`), and the four `JIRA_*` keys
@@ -1020,7 +1022,7 @@ tables; this is the layer level.)
 | Layer | Off switch | Scope |
 |---|---|---|
 | Initiative mode | leave/unset `HIMMEL_INITIATIVE` (default OFF); per-repo override: `"env": { "HIMMEL_INITIATIVE": "" }` in that repo's `.claude/settings.json` | session start |
-| Armed auto-merge | leave/unset `ARMAUTOMERGE` (default OFF) | per shell |
+| Armed auto-merge | remove `"ARMAUTOMERGE"` from `"policy"` in `~/.himmel/config.json` (default OFF) so `arm-resume.sh` stops arming with it; `--no-automerge` declines it for one arm; unset the shell `ARMAUTOMERGE` to drop a one-run grant | policy: every arm; flag: that arm; shell: that run |
 | Cap watchdogs (auto-arm) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) | launching shell |
 | A scheduled resume | find the job with `atq` then `at -c <job-id>` (look for `HIMMEL-Resume-`), or `crontab -l`; remove that one job with `atrm <job-id>`, or delete that one line with `crontab -e` | OS scheduler |
 | Recurring vault cadence | `scripts/luna/pipeline-cadence.sh disarm` | OS scheduler |
