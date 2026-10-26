@@ -325,7 +325,7 @@ describe('release engine (HIMMEL-6796)', () => {
       .toThrow(/chief-spawned worker/);
     declare(ctx(), { project: 'HIMMEL', versions: ['v1'], decision: '1', verbatim: 'v', mode: 'observe' });
     expect(() => request(ctx(rmEnv), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'rm' }))
-      .toThrow(/the console writes requests/);
+      .toThrow(/the chief writes requests/);
   });
 
   it('fences the lease: wrong epoch, held lease and takeover', async () => {

@@ -48,7 +48,7 @@ const seq = (prefix: string, ids: Iterable<string>) => {
 
 function operatorFence(ctx: Ctx): void {
   if (ctx.env.HIMMEL_CONSOLE_LEG === '1' || ctx.env.HIMMEL_RELEASE_MANAGER === '1') {
-    throw new Error('release operator: a console act on an operator decision; refused inside a chief-spawned worker');
+    throw new Error('release operator: a chief act on an operator decision; refused inside a chief-spawned worker');
   }
 }
 
@@ -355,7 +355,7 @@ export function reopen(ctx: Ctx, o: { key: string; from: string }): EventRow {
 // --- the request queue (the chief writes, the RM claims) ---------------------
 
 export function request(ctx: Ctx, o: Omit<RequestRow, 'req' | 'ts' | 'state'>): RequestRow {
-  if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the console writes requests; the RM claims them');
+  if (ctx.env.HIMMEL_RELEASE_MANAGER === '1') throw new Error('release request: the chief writes requests; the RM claims them');
   return locked(ctx, (l) => {
     const latest = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k));
     const dup = [...latest.values()].find((r) => pending(r) && r.key === o.key && r.verb === o.verb
@@ -390,7 +390,7 @@ export function leaseAcquire(ctx: Ctx, o: { expectEpoch: number; doc: string; se
     const takeoverRow = readChain<OperatorRow>(f(ctx, 'operator.jsonl'), l.k).verified
       .some((x) => x.kind === 'takeover' && x.epoch === cur.epoch && x.doc === o.doc);
     if (cur.owner_doc && !cur.released && !takeoverRow) {
-      throw new Error(`release lease: held by ${cur.owner_doc} at epoch ${cur.epoch}; it needs a release or a console takeover row`);
+      throw new Error(`release lease: held by ${cur.owner_doc} at epoch ${cur.epoch}; it needs a release or a chief takeover row`);
     }
     const next: Lease = {
       release: ctx.release, epoch: cur.epoch + 1, owner_session: o.session, owner_doc: o.doc, acquired: ts(ctx),
@@ -473,7 +473,7 @@ export function rule(ctx: Ctx, o: RuleOptions): RulingRow {
     checkOp(l.decl, o.op);
     const given = o.sector.trim();
     const sector = sectorField() ? (given.toLowerCase() === SECTOR_OPT_OUT ? '' : given) : given || SECTOR_OPT_OUT;
-    if (!sector) throw new Error('release rule: a ruling without a sector refuses; ask the console to set it');
+    if (!sector) throw new Error('release rule: a ruling without a sector refuses; ask the chief to set it');
     if (!o.ground.trim() || !o.reason.trim()) throw new Error('release rule: --ground and --reason are required');
 
     const s = reduceLoaded(l, { issues: null, sync: null });

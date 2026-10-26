@@ -271,7 +271,7 @@ export async function versionReady(
   const lines: string[] = [];
   const overrides = opts.consoleOverride ?? [];
   if (overrides.length > 0) {
-    if (!hasConsoleMarker()) lines.push('chief-override ignored: no console marker (HIMMEL_CONSOLE=1 is not set)');
+    if (!hasConsoleMarker()) lines.push('chief-override ignored: no chief marker (HIMMEL_CONSOLE=1 is not set)');
     else {
       for (const o of overrides) {
         if (!o.reason.trim()) lines.push(`chief-override ${o.id} ignored: a reason is mandatory`);
@@ -307,7 +307,7 @@ export async function versionReady(
 // the ticket where it was. A source that stays on takes the target off again;
 // a source that cannot be read back leaves both and says so.
 export async function deferTicket(key: string, version: string, reason: string | undefined, to?: string): Promise<string> {
-  if (!hasConsoleMarker()) throw new Error('version-defer needs the console marker: only the console defers a frozen ticket');
+  if (!hasConsoleMarker()) throw new Error('version-defer needs the chief marker: only the chief defers a frozen ticket');
   if (!reason?.trim()) throw new Error('version-defer: --reason is mandatory');
   if (to === version) throw new Error(`version-defer: --to ${to} is the version the ticket is deferred from`);
   if (to) await addFixVersionGated(key, to, {});
@@ -330,7 +330,7 @@ export async function deferTicket(key: string, version: string, reason: string |
 }
 
 export function admitTicket(key: string, version: string, reason: string | undefined, by: string | undefined): string {
-  if (!hasConsoleMarker()) throw new Error('version-admit needs the console marker: only the console records an admission');
+  if (!hasConsoleMarker()) throw new Error('version-admit needs the chief marker: only the chief records an admission');
   if (!KEY.test(key)) throw new Error(`version-admit: "${key}" is not a ticket key`);
   if (!reason?.trim()) throw new Error('version-admit: --reason is mandatory');
   if (!by?.trim()) throw new Error('version-admit: --by <rm-session> is mandatory');
