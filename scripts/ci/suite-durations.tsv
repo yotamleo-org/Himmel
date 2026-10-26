@@ -1141,3 +1141,4 @@ scripts/ci/test-ci-go-gate.sh	1
 scripts/lanes/bench/scorecard/test-review-rounds.sh	1
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	3
 scripts/eval/steering-cull/test-steering-cull.sh	13
+scripts/handover/chief-kit/test-chain-render.sh	1
