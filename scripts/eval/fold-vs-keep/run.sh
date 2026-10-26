@@ -107,9 +107,10 @@ print(pre + b)' "$tasks_file" "$1" "$2"
 
 prepare_tree() { # $1 task, $2 work dir: the head's ancestry only, so no later commit can leak the outcome
     local head base; head="$(field "$1" head)"
-    [ -d "$2/tree/.git" ] && return 0
-    mkdir -p "$2/tree" || return 1
+    [ -f "$2/tree.done" ] && return 0
+    rm -rf "$2/tree" && mkdir -p "$2/tree" || return 1
     base="$(git -C "$repo" merge-base origin/main "$head")" || return 1
+    [ "$base" != "$(git -C "$repo" rev-parse "$head^{commit}")" ] || { echo "run.sh: $head is already on origin/main, no diff to judge" >&2; return 1; }
     git -C "$2/tree" init -q && git -C "$2/tree" fetch -q --no-tags "$repo" "$head" &&
         git -C "$2/tree" checkout -q --detach "$head" &&
         git -C "$2/tree" update-ref refs/remotes/origin/main "$base" || return 1
@@ -126,6 +127,7 @@ for rel, body in t.get("evidence", {}).items():
     done < <(python3 -c 'import json,sys
 t=[x for x in json.load(open(sys.argv[1]))["tasks"] if x["id"]==sys.argv[2]][0]
 for a, b, f in t.get("diffs", []): print(a, b, f)' "$tasks_file" "$1")
+    touch "$2/tree.done"
 }
 
 run_judge() { # $1 task, $2 arm, $3 rep, $4 stem

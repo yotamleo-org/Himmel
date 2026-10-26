@@ -172,6 +172,16 @@ eq "judge: the ceiling stops after the call that crossed it" "$(cat "$STUB_LOG/c
 newlog
 STUB_LEAK="/x/Documents/luna/handovers/verdicts/q/judge.md" run d --class judge --out "$TMP/o4" --tasks t2 --arms keep --reps 1 >/dev/null 2>&1
 has "judge: a read of the verdicts tree is a leak" "$(jget "$TMP/o4/judge/t2/keep/1.summary.json" leaks)" "verdicts/"
+newlog
+mkdir -p "$TMP/scratch-h/t1/tree/.git"
+run h --class judge --out "$TMP/o8" --tasks t1 --arms keep --reps 1 >/dev/null 2>&1
+eq "judge: a tree left part-built is rebuilt at the head" "$(cat "$STUB_LOG/head.1" 2>&1)" "$B"
+python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); t=dict(d["tasks"][0], id="t3", head=sys.argv[2]); d["tasks"].append(t); json.dump(d, open(p, "w"))' "$FX/tasks/judge.json" "$A"
+newlog
+run i --class judge --out "$TMP/o9" --tasks t3 --arms keep --reps 1 >/dev/null 2>&1
+eq "judge: a head already on origin/main gets no call" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
+if [ -e "$TMP/o9/judge/t3/keep/1.summary.json" ]; then s=1; else s=0; fi
+eq "judge: a head already on origin/main gets no summary" "$s" "0"
 
 # --- run.sh: the vm class ---
 python3 -c 'import json,sys
@@ -232,6 +242,18 @@ has "lib: a guest script cut off after a passing check is no PASS" "$(TMPDIR="$T
 # shellcheck disable=SC2016 # the inner shell expands it
 finished='. "$1"; sdk() { :; }; g() { echo "CHECK a PASS"; case "$2" in *FVK-GUEST-END*) echo FVK-GUEST-END ;; esac; }; echo x >"$WORK/p.sh"; tally "$(guest_script p.sh)"; final'
 has "lib: a guest script that finishes is scored on its checks" "$(TMPDIR="$TMP" bash -c "$finished" _ "$LIB")" "PROOF: PASS"
+# shellcheck disable=SC2016 # python reads it, not this shell
+python3 -c 'import re,sys
+bad = []
+for f in sys.argv[1:]:
+    body = open(f).read().split("<<'"'"'EOF'"'"'", 1)[-1]
+    seen = False
+    for n, l in enumerate(body.splitlines(), 1):
+        if re.search(r"\bck [a-z]", l): seen = True
+        if seen and re.search(r"\|\| exit\b", l): bad.append(f.rsplit("/", 1)[1])
+    bad += [f.rsplit("/", 1)[1] for l in body.splitlines() if l.startswith("[ -n \"$s\" ]")]
+print(",".join(bad) or "ok")' "$HERE"/fixtures/tasks/vm-scripts/vm-*.sh >"$TMP/early.txt"
+eq "lib: no proof script exits after a check without a failing check, nor passes the scan on any output" "$(cat "$TMP/early.txt")" "ok"
 
 # --- fvk.py: historic subagent transcripts ---
 python3 -c 'import json,sys

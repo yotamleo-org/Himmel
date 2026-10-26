@@ -13,8 +13,8 @@ node scripts/himmelctl/bin.js install --scope user >/tmp/old.log 2>&1; ck old-in
 mkdir -p /tmp/proj/.claude && cp .claude/settings.json /tmp/proj/.claude/settings.json
 git checkout -q 26e62fee6; ck new-checkout $?
 node scripts/himmelctl/bin.js install --scope user >/tmp/new.log 2>&1; ck new-install $? "$(tail -3 /tmp/new.log)"
-s="$(bash scripts/install/scan-duplicates.sh /tmp/proj 2>&1)"; echo "scan rc=$?"; echo "$s"
-[ -n "$s" ]; ck scan-reports $?
+s="$(bash scripts/install/scan-duplicates.sh /tmp/proj 2>&1)"; src=$?; echo "scan rc=$src"; echo "$s"
+[ "$src" = 0 ] && grep -q '^scan-duplicates: ' <<<"$s"; ck scan-reports $? "rc=$src"
 t="$(bash scripts/install/test-scan-duplicates.sh 2>&1)"; rc=$?; echo "$t" | tail -5
 ck scan-test $rc "rc=$rc"
 EOF
