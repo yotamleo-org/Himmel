@@ -144,6 +144,14 @@ test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free de
   assert.match(seen, /--permission-mode plan/);
 });
 
+test('HIMMEL-7622: every call runs --bare --restricted, so no settings, plugin hook or CLAUDE.md reaches it', () => {
+  const f = fixture();
+  assert.equal(f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Grep,Glob' }).status, 0);
+  const seen = readFileSync(f.paths.env, 'utf8');
+  assert.match(seen, / --bare( |$)/m);
+  assert.match(seen, / --restricted( |$)/m);
+});
+
 test('HIMMEL-5625: an opted-in caller gets exactly the named set; the full set is reachable only by naming it', () => {
   const f = fixture();
   assert.equal(f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Edit,Write,Glob,Grep,Bash' }).status, 0);

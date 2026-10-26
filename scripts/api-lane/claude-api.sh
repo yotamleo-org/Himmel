@@ -171,7 +171,9 @@ TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
 # so every run of a kind shares one system-prompt prefix whatever directory or branch it started in.
 # No caller can be granted an mcp__ tool, so no call loads an MCP server: with hooks off, an ambient-allowed MCP
 # tool would otherwise run.
-EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config)
+# --bare skips settings and plugin hooks, auto-memory and CLAUDE.md discovery; --restricted ignores the user,
+# project and local settings files and keeps the file tools inside the working directory.
+EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config --bare --restricted)
 [ -z "$ALLOWED_TOOLS" ] || TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
 
 # the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
