@@ -334,7 +334,7 @@ pw="$repo/scripts/config-ui/tests/e2e/node_modules/.bin/playwright"
 check "criterion 4: the playwright binary is present" test -x "$pw"
 # the file filter is a regex: pass the bare name, a worktree path holds '+' (fix+himmel-…)
 render() { NODE_PATH="$repo/scripts/config-ui/tests/e2e/node_modules" "$pw" test -c "$repo/scripts/docs-site/e2e/j1.config.ts" render.e2e.ts; }
-check "criterion 4: every standalone docs/ page and site route renders headless (render.e2e.ts)" render
+check "criterion 4: every built page and standalone docs/ page renders headless (render.e2e.ts)" render
 
 # --- IA: sidebar groups equal the F1 list and the v5 frame 1 tree, hero Home with the F2 copy and CTA
 groups=$(node --input-type=module -e "
