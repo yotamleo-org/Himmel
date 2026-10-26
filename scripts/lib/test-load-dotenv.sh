@@ -571,6 +571,14 @@ kreset
 printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KSTUB_STORE"
 got=$( cd "$K8LIB" && unset TEST_KR_TOKEN && . load-dotenv.sh && load_dotenv --root "$REPO" TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
 assert_eq "K8 a slash-less source still reaches the resolver" "fake-keyring-value" "$got"
+
+# K9: an unlocked keyring holding none of the requested secrets must fall
+# through to .env, even under a caller's set -e.
+kreset
+printf 'TEST_KR_TOKEN=env-value\n' >"$REPO/.env"
+got=$( unset TEST_KR_TOKEN; set -euo pipefail; cd "$REPO" && load_dotenv --root "$REPO" TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K9 set -e caller survives a keyring miss and reads .env" "env-value" "$got"
+rm -f "$REPO/.env"
 fi
 
 # C1: HIMMEL_CONFIG_DIR redirects the himmel.conf read; with it unset the
