@@ -46,10 +46,16 @@ diff (a named page, an audit) treats every line as changed.
    - `move-to-ADR`: it is history or a decision record, not a reader page;
    - `drop`: nothing on it is still true or needed.
    The verdict is about the whole page, so it may rest on unchanged lines.
-   The form fits when the page does what good docs do (the T3 Code, gstack
-   and hermes docs are the exemplars):
+   The form fits when the page does what good docs do (the T3 Code, gstack,
+   hermes, mattpocock/skills and pstack docs, with cursor/plugins' grok-voice
+   and orchestrate, are the exemplars):
    - its first sentence says what the thing does for the reader, not how the
      page is built;
+   - a getting-started path is the shortest route to first use and says the
+     rest is situational; a page that covers only part names its scope and
+     links the page that holds the rest;
+   - an optional part says so and what happens without it; an install step
+     says how the thing updates;
    - it is one type; mechanism the reader never acts on belongs on an
      internals page;
    - items with the same fields sit in a table, one fact per cell, defaults
