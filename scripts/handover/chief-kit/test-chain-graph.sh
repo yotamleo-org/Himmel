@@ -52,6 +52,7 @@ mkdir -p "$R/scripts/ci"
 printf '^scripts/ci/\n' > "$R/scripts/ci/ci-trust-paths.txt"
 seq 1 30 | sed 's/^/line /' > "$R/shared.txt"
 seq 1 30 | sed 's/^/reg /' > "$R/scripts/ci/reg.txt"
+seq 1 8 | awk '{printf "k%d\t%d\n", $1, $1}' > "$R/scripts/ci/suite-tiers.tsv"
 echo i1 > "$R/i1.txt"; echo i2 > "$R/i2.txt"
 g add -A; g commit -q -m base
 
@@ -97,7 +98,23 @@ EOF
 branch inb <<'EOF'
 echo b >> i2.txt
 EOF
-# pr numbers: s1a=1 s1b=2 h2a=3 h2b=4 tra=5 trb=6 h1a=7 h1b=8 ina=9 inb=10
+# row registry on a trust path: ra adds at the end, rb at the top, rm1 modifies a row, rk2 re-uses rk1's key
+branch ra <<'EOF2'
+printf 'newa\t1\n' >> scripts/ci/suite-tiers.tsv
+EOF2
+branch rb <<'EOF2'
+{ printf 'newb\t2\n'; cat scripts/ci/suite-tiers.tsv; } > t.tmp && mv t.tmp scripts/ci/suite-tiers.tsv
+EOF2
+branch rm1 <<'EOF2'
+awk 'NR==5{print "k5\t99"; next} 1' scripts/ci/suite-tiers.tsv > t.tmp && mv t.tmp scripts/ci/suite-tiers.tsv
+EOF2
+branch rk1 <<'EOF2'
+printf 'dup\t1\n' >> scripts/ci/suite-tiers.tsv
+EOF2
+branch rk2 <<'EOF2'
+{ printf 'dup\t2\n'; cat scripts/ci/suite-tiers.tsv; } > t.tmp && mv t.tmp scripts/ci/suite-tiers.tsv
+EOF2
+# pr numbers: s1a=1 s1b=2 h2a=3 h2b=4 tra=5 trb=6 h1a=7 h1b=8 ina=9 inb=10 ra=11 rb=12 rm1=13 rk1=14 rk2=15
 
 edge() { # edge <prA> <prB> [extra args]: prints "kind det" of the single edge
     local a="$1" b="$2"; shift 2
@@ -110,6 +127,9 @@ same 'H2: same lines conflict in merge-tree' "$(edge 3 4)" 'H2 D4 #3 #4'
 same 'H2: shared trust-path file, clean merge' "$(edge 5 6)" 'H2 D3 #5 #6'
 same 'H1: B names a file A adds (D7), A is the source' "$(edge 8 7)" 'H1 D7 #7 #8'
 same 'independent: no shared file' "$(edge 9 10)" 'independent  #9 #10'
+same 'S2: row registry, pure disjoint row additions' "$(edge 11 12)" 'S2 D6 #11 #12'
+same 'H2: row registry, one side modifies a row' "$(edge 13 12)" 'H2 D3 #13 #12'
+same 'H2: row registry, the added key collides' "$(edge 14 15)" 'H2 D3 #14 #15'
 
 printf '1\tBlocks\tinward=HIMMEL-909\toutward=HIMMEL-910\tHIMMEL-909 blocks HIMMEL-910\n' > "$F/links-HIMMEL-909.txt"
 same 'H1: Jira Blocks link (D1) beats independent' "$(edge 9 10)" 'H1 D1 #9 #10'
@@ -142,6 +162,26 @@ if python3 "$SUT" --prs 1,2 --base main --repo-dir "$R" --cache-dir "$W/cache" >
 else
     pass 'a files read that fails exits non-zero'
 fi
+mv "$F/files-2.tsv.gone" "$F/files-2.tsv"
+
+# jira CLI discovery follows --repo-dir, not the working directory: run from outside any checkout
+rm -rf "$W/cache"; mkdir "$W/cache"
+if (cd "$W" && env -u CHAIN_GRAPH_JIRA python3 "$SUT" --prs 1,2 --base main --repo-dir "$R" --cache-dir "$W/cache" >/dev/null 2>&1); then
+    pass 'jira CLI discovery uses --repo-dir, not the cwd'
+else
+    fail 'jira CLI discovery must not depend on the cwd'
+fi
+
+# the files cache is keyed on the base: a moved base re-reads the PR files
+rm -rf "$W/cache"; mkdir "$W/cache"
+same 'cache warm-up: S1 on the first base' "$(edge 1 2)" 'S1 D4 #1 #2'
+g checkout -q -b cache-probe main
+printf 'x\n' > "$R/cache-probe.txt"
+g add cache-probe.txt
+g commit -q -m probe
+g checkout -q main
+printf 'other.txt\tmodified\t\n' > "$F/files-2.tsv"
+same 'a moved base re-reads the PR files, not the cached list' "$(edge 1 2 --base cache-probe)" 'independent  #1 #2'
 
 [ "$fails" -eq 0 ] && printf 'PASS - test-chain-graph.sh\n' || printf 'FAIL - test-chain-graph.sh (%d)\n' "$fails"
 [ "$fails" -eq 0 ]

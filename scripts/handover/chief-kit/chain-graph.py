@@ -14,7 +14,8 @@ Edge kinds (design HIMMEL-7701 section 2): H1 hard-start, H2 hard-merge, S1 soft
 independent. Detections: D1 Jira Blocks link; D3 changed files (paginated files API); D4 git merge-tree on the
 real heads (a conflict is H2, clean confirms S1); D6 registry and vocabulary scan; D7 introduces (a file or
 symbol A adds that B's added lines name). D2 and D5 (planned scope, graphify) are not implemented.
-A shared trust-path file (ci-trust-paths.txt) is H2 whatever D4 says. Precedence H1 > H2 > S2 > S1.
+A shared trust-path file (ci-trust-paths.txt) is H2 whatever D4 says, except a row registry (ROW_REGISTRIES)
+whose two sides only add rows with disjoint keys, which is S2. Precedence H1 > H2 > S2 > S1.
 A pair with no shared file is not trial-merged; only D1, D6 and D7 can lift it above independent.
 
 Environment: CHAIN_GRAPH_GH (the gh command, default gh), CHAIN_GRAPH_JIRA (the jira `links` command prefix,
@@ -35,9 +36,11 @@ RANK = {'independent': 0, 'S1': 1, 'S2': 2, 'H2': 3, 'H1': 4}
 KEY_RE = re.compile(r'HIMMEL-\d+')
 # registries a gate reads: a clean shared edit is S2, not S1 (D6)
 GATE_REGISTRIES = ('scripts/ci/suite-tiers.tsv', 'scripts/ci/suite-durations.tsv', '.claude/settings.json')
+# one-row-per-key registries on a trust path: pure disjoint row additions from both sides are S2, not H2
+ROW_REGISTRIES = ('scripts/ci/suite-tiers.tsv', 'scripts/ci/suite-durations.tsv')
 VOCAB_REGISTRY = 'scripts/lib/rename-aliases.tsv'
 SYM_RE = re.compile(r'^\s*(?:async\s+function|function|def|class)\s+([A-Za-z_]\w{7,})|^([A-Za-z_]\w{7,})\(\)\s*\{')
-CACHE_VERSION = 'v3'
+CACHE_VERSION = 'v5'
 CODE_EXT = ('.py', '.sh', '.bash', '.js', '.mjs', '.ts', '.tsx')
 
 
@@ -77,16 +80,16 @@ def load_nodes(a):
     nodes = []
     if a.prs:
         for n in [x for x in a.prs.split(',') if x]:
-            d = json.loads(gh(['pr', 'view', n, '--repo', a.repo, '--json', 'number,title,headRefOid,headRefName']))
+            d = json.loads(gh(['pr', 'view', n, '--repo', a.repo, '--json', 'number,title,headRefOid,headRefName,baseRefName']))
             nodes.append(node(d))
     else:
         lst = json.loads(gh(['pr', 'list', '--repo', a.repo, '--state', 'open', '--limit', '500', '--json',
-                             'number,title,headRefOid,headRefName']))
+                             'number,title,headRefOid,headRefName,baseRefName']))
         if a.open:
             nodes = [node(d) for d in lst]
         else:
             for k in [x for x in a.keys.split(',') if x]:
-                hit = [d for d in lst if k in KEY_RE.findall(d['title'] or '')]
+                hit = [d for d in lst if key_of(d['title'], d.get('headRefName', '')) == k]
                 nodes.extend(node(d) for d in hit) if hit else nodes.append(
                     {'id': k, 'pr': None, 'key': k, 'head': '', 'title': ''})
     for pin in a.head or []:
@@ -99,7 +102,7 @@ def load_nodes(a):
 
 def node(d):
     return {'id': '#%s' % d['number'], 'pr': d['number'], 'key': key_of(d['title'], d.get('headRefName', '')),
-            'head': d['headRefOid'], 'title': d['title']}
+            'head': d['headRefOid'], 'title': d['title'], 'base_ref': d.get('baseRefName', '')}
 
 
 def ensure_head(repo, n):
@@ -166,13 +169,13 @@ def trust_patterns(a):
     return [re.compile(p) for p in pats]
 
 
-def jira_blocks(keys):
+def jira_blocks(keys, repo_dir):
     """{(blocker, blocked)} among keys, from `links <key>`. Empty (and noted) when Jira is unreadable."""
     base = os.environ.get('CHAIN_GRAPH_JIRA')
     if base:
         cmd = shlex.split(base)
     else:
-        common = run(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir']).stdout.strip()
+        common = git(repo_dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']).stdout.strip()
         cmd = ['node', os.path.join(os.path.dirname(common), 'scripts/jira/dist/index.js'), 'links']
     env = dict(os.environ)
     env.setdefault('JIRA_PROJECT_KEY', 'HIMMEL')
@@ -244,6 +247,23 @@ def vocab_terms(a, x):
     return terms
 
 
+def row_adds_disjoint(a, x, y, path):
+    """True when both PRs only add rows to the registry at path, and the added keys collide with
+    neither each other nor a key main already has."""
+    keys = []
+    for n in (x, y):
+        mb = git(a.repo_dir, ['merge-base', a.base, n['head']]).stdout.strip()
+        stat = git(a.repo_dir, ['diff', '--numstat', mb, n['head'], '--', path]).stdout.split()
+        if len(stat) < 3 or stat[1] != '0':
+            return False
+        diff = git(a.repo_dir, ['diff', '-U0', mb, n['head'], '--', path]).stdout
+        keys.append({l[1:].split('\t')[0] for l in diff.splitlines()
+                     if l.startswith('+') and not l.startswith('+++') and l[1:].strip() and not l.startswith('+#')})
+    in_base = git(a.repo_dir, ['show', '%s:%s' % (a.base, path)], ok=(0, 128)).stdout
+    base_keys = {l.split('\t')[0] for l in in_base.splitlines()}
+    return not (keys[0] & keys[1]) and not ((keys[0] | keys[1]) & base_keys)
+
+
 def git_pair(a, x, y, trust, declared):
     """The head-derived verdict for x, y (cacheable): (kind, det, evidence, files, direction)."""
     cands = []  # (rank, kind, det, evidence, files, from_is_x)
@@ -279,10 +299,13 @@ def git_pair(a, x, y, trust, declared):
                 conflicted.append(l)
             cands.append((3, 'H2', 'D4', 'merge-tree conflict', conflicted or shared, True))
         else:
-            tr = [s for s in shared if any(r.search(s) for r in trust)]
+            rows = [s for s in shared if s in ROW_REGISTRIES and row_adds_disjoint(a, x, y, s)]
+            tr = [s for s in shared if s not in rows and any(r.search(s) for r in trust)]
             gr = [s for s in shared if s in GATE_REGISTRIES]
             if tr:
                 cands.append((3, 'H2', 'D3', 'shared trust-path file, merge-tree clean', tr, True))
+            elif rows:
+                cands.append((2, 'S2', 'D6', 'shared row registry, disjoint row additions, merge-tree clean', rows, True))
             elif gr:
                 cands.append((2, 'S2', 'D6', 'shared gate registry, merge-tree clean', gr, True))
             else:
@@ -303,13 +326,13 @@ def build(a):
             n.update(files=[], added={}, new=[])
             continue
         ensure_head(a.repo_dir, n)
-        n['files'] = cached(a, 'files|%s|%s|%s' % (n['head'], base_sha if n.get('pinned') else '', CACHE_VERSION),
+        n['files'] = cached(a, 'files|%s|%s|%s|%s|%s' % (n['pr'], n['head'], n.get('base_ref', ''), base_sha, CACHE_VERSION),
                             lambda n=n: pr_files(a, n))
         n['added'] = cached(a, 'added|%s|%s|%s' % (n['head'], base_sha, CACHE_VERSION), lambda n=n: added_lines(a, n))
         n['new'] = cached(a, 'new|%s|%s|%s' % (n['head'], base_sha, CACHE_VERSION), lambda n=n: new_files(a, n))
     for n in nodes:
         n['trust_files'] = sorted(p for p, _, pv in n['files'] for p in (p, pv) if p and any(r.search(p) for r in trust))
-    blocks, jira_unreadable = jira_blocks({n['key'] for n in nodes})
+    blocks, jira_unreadable = jira_blocks({n['key'] for n in nodes}, a.repo_dir)
     trust_sig = hashlib.sha1('\n'.join(r.pattern for r in trust).encode()).hexdigest()[:12]
     edges = []
     for i, x in enumerate(nodes):
