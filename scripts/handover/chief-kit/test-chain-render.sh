@@ -94,6 +94,21 @@ PY
 HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/cycle.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/cyc-out.json" >/dev/null 2>&1
 same 'a cycle keeps every open step' "$(keys "$W/cyc-out.json" | tr ' ' '\n' | grep -c '^[0-9]*\[\|:[0-9]*\[')" 4
 
+same 'a cycle shares one last wave, in ticket order' "$(keys "$W/cyc-out.json")" 'Rename chain:9004[0] 9005[0] 9002[1] 9003[1]'
+
+# --- a mirror that cannot be read is not "every ticket is open"
+cp "$W/stale.json" "$W/out.json"
+HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$W/no-such-mirror" --chain "$CHAIN" --out "$W/out.json" >/dev/null 2>&1; rc=$?
+same 'a missing mirror dir exits 2' "$rc" 2
+same 'a missing mirror dir leaves the file alone' "$(cmp -s "$W/out.json" "$W/stale.json" && echo same)" same
+if [ "$(id -u)" -ne 0 ]; then
+    chmod 000 "$MIR/HIMMEL-9001.md"
+    HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/out.json" >/dev/null 2>&1; rc=$?
+    chmod 644 "$MIR/HIMMEL-9001.md"
+    same 'an unreadable mirror file exits 2' "$rc" 2
+    same 'an unreadable mirror file leaves the file alone' "$(cmp -s "$W/out.json" "$W/stale.json" && echo same)" same
+fi
+
 # --- a key missing from the mirror stays a step (the tracker shows it unknown)
 HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/graph.json" --mirror "$MIR" --chain 'Extra=HIMMEL-9099' --out "$W/extra.json" >/dev/null 2>&1
 same 'an unmirrored key stays a step' "$(keys "$W/extra.json")" 'Extra:9099[0]'

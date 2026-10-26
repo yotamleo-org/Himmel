@@ -41,8 +41,8 @@ SHIPPED = ('done', 'fixed')
 def is_done(mirror, key):
     try:
         txt = open(os.path.join(mirror, key + '.md'), encoding='utf-8', errors='replace').read()
-    except OSError:
-        return False
+    except FileNotFoundError:
+        return False  # not in the mirror: a step, the tracker shows it unknown
     fm = txt.split('---', 2)[1] if txt.count('---') >= 2 else ''
     f = dict(l.split(':', 1) for l in fm.splitlines() if ':' in l and not l.startswith(' '))
     if f.get('statusCategory', '').strip().strip('"') != 'Done':
@@ -58,9 +58,9 @@ def waves(keys, edges):
     while left:
         ready = {k for k in left if pred[k] <= set(wave)}
         if not ready:  # a hard cycle: its tickets go last
-            ready = set(left)
-            for k in ready:
-                wave[k] = 1 + max(wave.values(), default=-1)
+            last = 1 + max(wave.values(), default=-1)
+            for k in left:
+                wave[k] = last
             break
         for k in ready:
             wave[k] = 1 + max((wave[p] for p in pred[k]), default=-1)
@@ -104,11 +104,14 @@ def main():
             print('chain-render: bad --chain %r (want NAME=HIMMEL-n,HIMMEL-m,...)' % c, file=sys.stderr)
             return 2
         chains.append((name.strip(), keys))
+    if not os.path.isdir(a.mirror):
+        print('chain-render: the mirror %s is not a directory' % a.mirror, file=sys.stderr)
+        return 2
     try:
         graph = json.load(open(a.graph, encoding='utf-8'))
         res = render(graph, chains, a.mirror)
     except (OSError, ValueError, KeyError) as e:
-        print('chain-render: cannot read the graph %s (%s)' % (a.graph, e), file=sys.stderr)
+        print('chain-render: cannot read the graph %s or the mirror %s (%s)' % (a.graph, a.mirror, e), file=sys.stderr)
         return 2
     tmp = a.out + '.tmp'
     with open(tmp, 'w', encoding='utf-8') as f:
