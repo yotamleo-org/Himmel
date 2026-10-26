@@ -13,7 +13,8 @@
 #   cases from cases.json; C is refused (its learn step needs Edit).
 #   --cap-usd   per-run --max-budget-usd (default 6); the batch refuses past $24.
 #   --canary-only  build the fixtures and run the canaries, never the billed call.
-# Exit: 0 every case ran; 2 usage or setup; 3 a canary or the bank gate stopped the batch.
+# Exit: 0 every case ran; 2 usage or setup; 3 a canary, the bank gate, an api call or an answer over 3 KB
+# stopped the batch.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -40,6 +41,7 @@ done
 if ! awk -v n="${#cases[@]}" -v c="$cap" -v m="$BATCH_MAX_USD" 'BEGIN { exit !(c > 0 && n * c <= m) }'; then
     echo "run.sh: ${#cases[@]} runs at \$$cap is past the \$$BATCH_MAX_USD batch cap" >&2; exit 2
 fi
+TIMEOUT_BIN="$(command -v timeout || command -v gtimeout)" || { echo "run.sh: needs timeout (coreutils; gtimeout on macOS)" >&2; exit 2; }
 mkdir -p "$out" && out="$(cd "$out" && pwd)" || exit 2
 
 if [ "$canary_only" = 0 ]; then
@@ -77,7 +79,7 @@ run_canary() { # dir fixture prompt
     [ -n "$port" ] || { kill "$srv" 2>/dev/null; echo "canary: fake API did not start" >&2; return 1; }
     ( cd "$2" && env -i "${BASE_ENV[@]}" ANTHROPIC_API_KEY=sk-ant-api03-docs-review-canary \
         ANTHROPIC_BASE_URL="http://127.0.0.1:$port" CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL=5m \
-        timeout 120 claude -p "$3" --effort high --model "$model" --permission-mode default \
+        "$TIMEOUT_BIN" 120 claude -p "$3" --effort high --model "$model" --permission-mode default \
           --tools Read,Glob,Grep --allowedTools Read,Glob,Grep --max-budget-usd 0.01 \
           --exclude-dynamic-system-prompt-sections --strict-mcp-config \
           --output-format stream-json --verbose --include-hook-events \
@@ -135,9 +137,11 @@ for c in "${cases[@]}"; do
     jq -r '.result // empty' "$d/review.json" >"$d/review.md" 2>/dev/null
     python3 -I "$HERE/helper.py" audit "$cfg" "$fix" >"$d/audit.txt"
     python3 -I "$SKILL/fit_answer.py" "$d/review.md" >"$d/review.fit.md" 2>"$d/fit.txt"
+    fit_rc=$?
     cost="$(jq -r '.total_cost_usd // 0' "$d/review.json" 2>/dev/null || echo 0)"
     total="$(awk -v a="$total" -v b="${cost:-0}" 'BEGIN { printf "%.4f", a + b }')"
     echo "case $c: rc=$rc cost=\$${cost:-?} turns=$(jq -r '.num_turns // "?"' "$d/review.json" 2>/dev/null) $(tail -n 1 "$d/audit.txt") $(cat "$d/fit.txt")"
     [ "$rc" = 0 ] || { echo "run.sh: case $c: api call rc=$rc (see $d/api-stderr.txt); batch stopped" >&2; exit 3; }
+    [ "$fit_rc" = 0 ] || { echo "run.sh: case $c: fit_answer rc=$fit_rc, the answer is not within 3 KB (see $d/fit.txt); batch stopped" >&2; exit 3; }
 done
 echo "batch: ${#cases[@]} case(s), cost \$$total"
