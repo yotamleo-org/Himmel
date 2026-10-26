@@ -16,7 +16,7 @@ bash_bin="$(command -v bash)"
 # $CURL_FAILS calls (counted in $tmp/curl-calls), then succeeds.
 mkbin() {
   local bin="$tmp/$1"; mkdir -p "$bin"
-  for t in bash dirname mktemp rm sed grep cat sleep; do ln -s "$(command -v "$t")" "$bin/$t"; done
+  for t in bash dirname mktemp rm sed grep cat sleep diff; do ln -s "$(command -v "$t")" "$bin/$t"; done
   cat > "$bin/curl" <<'EOF'
 #!/usr/bin/env bash
 n=$(( $(cat "$CURL_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CURL_COUNT" # read-sink-ok: hermetic test stub, counter file the test itself set under its mktemp dir
