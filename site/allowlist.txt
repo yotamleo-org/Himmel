@@ -34,6 +34,7 @@ jarvis-subsystems.md
 himmel-bus.md
 handover/afk-mode.md
 handover/running-a-console.md
+team.md
 internals/handover-system.md
 orchestration-patterns.md
 token-economy.md
