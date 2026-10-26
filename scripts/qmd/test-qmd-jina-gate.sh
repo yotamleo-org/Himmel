@@ -476,10 +476,12 @@ exit 0
 EOF
 chmod +x "$work/curl"
 
+tmo="$(command -v timeout || command -v gtimeout || true)" # absent on stock macOS
+
 launch() { # launch <index name|-> ; runs the script named by the caller's ENSURE_UNDER_TEST, else the real one
   rm -f "$work/started" "$work/qmd-calls"
   local idx="${1:-index}" script="${ENSURE_UNDER_TEST:-$ensure}"
-  ${LAUNCH_TIMEOUT:+timeout "$LAUNCH_TIMEOUT"} env -i PATH="$PATH" HOME="${LAUNCH_HOME:-$work/home}" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
+  ${LAUNCH_TIMEOUT:+"$tmo" "$LAUNCH_TIMEOUT"} env -i PATH="$PATH" HOME="${LAUNCH_HOME:-$work/home}" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
     XDG_CACHE_HOME="$work/cache" QMD_CURL="$work/curl" QMD_MCP_URL=http://localhost:1/mcp \
     QMD_DAEMON_ENV_FILE="$work/daemon0.env" QMD_INDEX_NAME="$idx" ${QMD_JINA_GATE:+QMD_JINA_GATE="$QMD_JINA_GATE"} \
     bash "$script" >"$work/out" 2>"$work/err"
@@ -756,8 +758,12 @@ rm -rf "$work/home/.qmd"
 
 # (51) a relative HOME must not make the ~/.qmd walk-up loop forever (dirname of '.' is '.').
 cp "$work/d.yml" "$work/cfg/index.yml"
-LAUNCH_HOME=relhome LAUNCH_TIMEOUT=20 launch index; rc=$?
-[ "$rc" -ne 124 ] || fail "(51) a relative HOME hung the launcher's ~/.qmd walk-up"
+if [ -n "$tmo" ]; then
+  LAUNCH_HOME=relhome LAUNCH_TIMEOUT=20 launch index; rc=$?
+  [ "$rc" -eq 0 ] || fail "(51) a relative HOME: expected the launcher to finish with rc 0, got $rc (124 = hung in the ~/.qmd walk-up): $(cat "$work/err")"
+else
+  echo "  SKIP: (51) relative-HOME hang check -- no GNU timeout/gtimeout on PATH"
+fi
 
 # (52) qmd walks up from the PHYSICAL cwd: a symlinked HOME must not hide a config in a physical parent.
 mkdir -p "$work/real/sub" "$work/real/.qmd"
