@@ -302,7 +302,8 @@ if [ -n "$cur" ]; then
             [ -n "$vk" ] || continue
             case " $vseen " in *" $vk "*) continue ;; esac
             vseen="$vseen $vk"
-            add VERSION-DRIFT "$vk" "status=$vst in=$later current=$cur" release-manager "jira release request $cur --verb INTAKE --key $vk --from $later --to $cur --why \"worked ticket held in a later version\""
+            qcur=$(printf '%q' "$cur") qlater=$(printf '%q' "$later")
+            add VERSION-DRIFT "$vk" "status=$vst in=$later current=$cur" release-manager "jira release request $qcur --verb INTAKE --key $vk --from $qlater --to $qcur --why \"worked ticket held in a later version\""
         done <<<"$vrows"
     done <<<"$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print $1 }')"
 fi

@@ -702,6 +702,11 @@ contains "3b: the row names the INTAKE that fixes it" "$(drows VERSION-DRIFT)" "
 check "3b: the later-version search skips tickets that also carry the current version" "$(grep -c 'fixVersion != "v1.1.3"' "$STUB_LOG")" 1
 check "3b: only the one later unreleased version is searched (not released, archived or current)" "$(grep -c 'fixVersion = ' "$STUB_LOG")" 1
 check "3b: the version drift check writes nothing" "$(nwrites)" 0
+reset "To Do"
+printf 'v1.1.3\tfalse\t2026-10-20\tfalse\nv1.2 beta\tfalse\t2026-11-01\tfalse\n' > "$FX/versions.tsv"
+printf 'HIMMEL-90023\tTask\tDone\tsummary\n' > "$FX/list.fv.v1.2 beta"
+drift
+contains "3b: a version name with a space is shell-quoted in the INTAKE command" "$(drows VERSION-DRIFT)" "--from v1.2\\ beta --to v1.1.3"
 reset "To Do"; vd_versions
 drift
 check "3b: no ticket in a later version is no VERSION-DRIFT" "$(dcount VERSION-DRIFT)" 0
