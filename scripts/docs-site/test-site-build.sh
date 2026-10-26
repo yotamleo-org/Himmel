@@ -201,6 +201,32 @@ check "control: built links fails a dead fragment in a passthrough page" built_r
 check "control: built links fails a root link outside the site base" built_rc1 "$sweep_ctl/links-escape"
 check "control: built links exits 2 on a dist with no pages" built_rc2 "$sweep_ctl/links-empty"
 
+# team_cards <md> <html>: every <details> card of the page source has its full text inside a <details>
+# of the built page, so a reader with JS off sees every card (whitespace, markup and smart quotes ignored)
+team_cards() {
+  python3 -I - "$1" "$2" <<'PY'
+import html, re, sys
+md = open(sys.argv[1], encoding="utf-8").read()
+built = open(sys.argv[2], encoding="utf-8").read()
+quotes = str.maketrans({"“": '"', "”": '"', "‘": "'", "’": "'"})
+def norm(s):
+    return re.sub(r"\s+", "", html.unescape(s).translate(quotes))
+cards = [norm(re.sub(r"</?summary>", "", c).replace("**", "").replace("`", "").replace("\n- ", "\n"))
+         for c in re.findall(r"<details>(.*?)</details>", md, re.S)]
+boxes = [norm(re.sub(r"<[^>]+>", "", b)) for b in re.findall(r"<details[^>]*>(.*?)</details>", built, re.S)]
+missing = [c[:60] for c in cards if not any(c in b for b in boxes)]
+for m in missing:
+    print("card not in the built HTML: " + m)
+sys.exit(1 if missing or not cards else 0)
+PY
+}
+# shellcheck disable=SC2016  # the backticks are literal Markdown, not a command substitution
+printf '# T\n\n<details>\n<summary>The judge</summary>\n\n- **Its job:** \xe2\x80\x9cRules on `one <q>` question.\xe2\x80\x9d\n\n</details>\n' >"$sweep_ctl/team.md" || exit 1
+printf '<p>x</p><details><summary>The judge</summary>\n<ul><li><strong>Its job:</strong> &#8220;Rules on <code>one &lt;q&gt;</code> question.&#8221;</li></ul></details>' >"$sweep_ctl/team.html" || exit 1
+printf '<p>x</p><p>The judge Its job: &#8220;Rules on one &lt;q&gt; question.&#8221;</p>' >"$sweep_ctl/team-flat.html" || exit 1
+check "team cards: a card's text inside a built <details> passes" team_cards "$sweep_ctl/team.md" "$sweep_ctl/team.html"
+check "control: team cards fails a card whose text is outside any <details>" fails team_cards "$sweep_ctl/team.md" "$sweep_ctl/team-flat.html"
+
 if [ ! -d "$here/node_modules/astro" ]; then
   echo "SKIP: site/node_modules absent (run: cd site && npm ci); needs network, not run in the hermetic shell shards"
   printf '\n%d passed, %d failed (site build not run)\n' "$pass" "$fail"
@@ -406,6 +432,7 @@ while IFS= read -r f; do
 done <<<"$allow"
 if [ "$c_raw" -eq 1 ]; then ok "J1: every allowlisted .md is served raw at its path"; else ko "J1: every allowlisted .md is served raw at its path"; fi
 check "J1: Pagefind index built" test -f "$dist/pagefind/pagefind.js"
+check "team: with JS off every card of docs/team.md is in the built /team/ page" team_cards "$repo/docs/team.md" "$dist/team/index.html"
 hit=$(pf_hit "$dist")
 hit_rc=$?
 if hit_ok "$hit_rc" "$hit"; then ok "J1: Pagefind hit for 'stuck playbook' ($hit)"; else ko "J1: Pagefind hit for 'stuck playbook' (exit $hit_rc, got: $hit)"; fi

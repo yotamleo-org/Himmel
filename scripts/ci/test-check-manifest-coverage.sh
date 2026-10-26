@@ -114,6 +114,24 @@ mkdir -p "$m/tools/newpkg" && printf '{}\n' > "$m/tools/newpkg/package.json"
 expect "a new unlisted manifest is refused" 1 "$m"
 says "the new manifest is named" "tools/newpkg/package.json: no npm entry for /tools/newpkg"
 
+echo "== labels (HIMMEL-7663) =="
+live nolabels || { echo "live copy failed"; exit 1; }
+m=$LIVE
+subst '/^    labels: \[\]$/d' "$m/.github/dependabot.yml"
+expect "an updates entry without labels: [] is refused" 1 "$m"
+says "the first entry without labels is named" "updates entry 1 (npm) must set labels: []"
+
+live labelslist || { echo "live copy failed"; exit 1; }
+m=$LIVE
+subst '1,/^    labels: \[\]$/s/^    labels: \[\]$/    labels: ["python"]/' "$m/.github/dependabot.yml"
+expect "a non-empty labels list is refused" 1 "$m"
+says "the non-empty list is named" "updates entry 1 (npm) must set labels: []"
+
+live labelscomment || { echo "live copy failed"; exit 1; }
+m=$LIVE
+subst 's/^    labels: \[\]$/    labels: [] # no default labels/' "$m/.github/dependabot.yml"
+expect "a trailing comment after labels: [] is accepted" 0 "$m"
+
 echo "== no dependabot.yml =="
 mkdir -p "$tmp/empty"
 expect "a root without dependabot.yml is a scan failure" 2 "$tmp/empty"
