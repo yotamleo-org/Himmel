@@ -1044,8 +1044,9 @@ So the himmel-ops `SessionEnd` entries (declared `timeout: 3`) really run under
 1.5 s. Their parents full-body detach (`__himmel_detached` + `lib/detach.sh`) and
 return in about 50 ms each (measured 40–70 ms over 5 runs per hook, on a host at
 load ~24 from other sessions; `test-session-end-timeout-budget.sh` pins the
-detach with an injected 10 s child delay). A cancel therefore means the machine
-was too starved to even spawn the parent, and the lost work is classified:
+detach with an injected 10 s child delay). A cancel means the hook did not
+return before the shared budget; under severe load that can include failing to
+start or return from the detached parent. The lost work is classified:
 
 | hook | class | a cancel costs |
 |---|---|---|
