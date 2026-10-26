@@ -51,6 +51,7 @@ marketplace/plugins/himmel-ops/hooks/test-block-agent-native-egress.sh	9
 marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh	0
 marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	0
 marketplace/plugins/himmel-ops/scripts/test-chief-cmd-resolution.sh	0
+marketplace/plugins/himmel-ops/scripts/test-docs-reviewer-fit.sh	0
 marketplace/plugins/himmel-ops/scripts/test-effort-assess.sh	2
 marketplace/plugins/himmel-ops/scripts/test-himmel-update-cmd-resolution.sh	0
 marketplace/plugins/himmel-ops/scripts/test-workers.sh	0
