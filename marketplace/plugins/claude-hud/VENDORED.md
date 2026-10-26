@@ -20,7 +20,7 @@ vendored_tree_hash:   6d3808640c542bad279b148f87334f96e959804b2d03a6dd088aa70e51
 vendored_at:          2026-10-26
 ```
 
-`pinned_commit` points at the **current upstream** base `3bb6835` (v0.13.0); the vendored
+`pinned_commit` points at the **current upstream** base `cf95a32` (v0.13.1); the vendored
 tree is that base **plus** himmel's delta (`customLineCommand`, claudex lane,
 session-token cache split, write-only context snapshot writer) **plus** any
 dependabot lockfile bumps landed since the vendor (see **Fork delta**
