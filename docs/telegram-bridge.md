@@ -95,7 +95,7 @@ file, so a line is never lost across a re-start).
 - **Who:** only the `allowFrom` operator, in an allowed chat, with a typed (not
   forwarded, not captioned) message. Anyone else's `/chief …` is ordinary
   chat, exactly as before. `access.json` remains the only sender gate.
-- **Ack:** `→ console <name>` means the line was queued, not that the chief
+- **Ack:** `→ chief <name>` means the line was queued, not that the chief
   has read it. A response with no live chief, or an ambiguous one, queues nothing;
   delivery never creates a chief inbox.
 - **Reply:** the chief answers through the same outbox as every other bridge

@@ -97,7 +97,7 @@ run_case "A3 called-but-never-defined -> refused" "$NEVER_DEFINED" 1
 
 # A3b RED control (codex-3) -- a call-list entry whose ID matches a defined
 # function but whose NAME does not (check_c3_bar called, only check_c3_foo
-# defined). An ID-only comparison would parallel wave this through as "ID 3
+# defined). An ID-only comparison would wave this through as "ID 3
 # satisfied"; the name-based check must catch it as both never-called
 # (check_c3_foo) and never-defined (check_c3_bar).
 NAME_MISMATCH_SAME_ID="${FIXTURE_HEADER}

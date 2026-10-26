@@ -26,7 +26,7 @@
 # "did the panel carry the gate at this head". The caller decides whether that
 # answer lets a rate-limited CodeRabbit skip stand, and ONLY ever asks it on the
 # rate-limited description (the sole skip wording that is panel-carriable). A
-# clean ledger never parallel waves through an ABSENT, pending, failed, or
+# clean ledger never waves through an ABSENT, pending, failed, or
 # auto-reviews-disabled CodeRabbit review — those keep their current verdict.
 #
 # cr_ledger_carries_gate <full-sha>

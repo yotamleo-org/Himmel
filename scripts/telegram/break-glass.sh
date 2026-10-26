@@ -177,7 +177,7 @@ op_station_status() {
     echo "bank:"
     # shellcheck disable=SC2086 # the seam is a command line by design
     timeout 20 $bank 2>&1 | head -n 8 | sed 's/^/  /' # gnu-ok: the bridge runs only on the Linux station
-    echo "consoles:"
+    echo "chiefs:"
     # A row with no session name is labelled, never printed blank.
     bash "$PRIMARY/scripts/telegram/chief-census.sh" 2>/dev/null | head -n 10 \
         | awk -F'\t' '{ if ($2 == "") $2 = "(unnamed)"; print $1 " " $2 " " $3 " " $4 }' | sed 's/^/  /'

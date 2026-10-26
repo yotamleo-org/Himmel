@@ -452,7 +452,7 @@ out=$(QMD_FIXTURE="$FIXTURE" bash "$SCRIPT" --qmd-bin "$TMP_ROOT/does-not-exist"
 assert_rc "missing qmd binary -> rc 2 (not installed, stays silent)" 2 "$rc"
 assert_contains "rc 2 names the unusable path" "is not an executable file" "$out"
 # A DIRECTORY is present and `-x`-true, so an executability check alone would
-# parallel wave it through and only fail at invocation — which now means rc 7 ("qmd is
+# wave it through and only fail at invocation — which now means rc 7 ("qmd is
 # broken") for something that is not qmd at all. `-f` is what separates them.
 # (A chmod-based non-executable-file case is deliberately absent: MSYS keeps a
 # shebanged file `-x` regardless of chmod, so it cannot be tested portably.)

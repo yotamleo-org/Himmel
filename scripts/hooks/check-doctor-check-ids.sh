@@ -32,7 +32,7 @@
 #      needed. Matched by exact NAME, not just numeric ID: a call to
 #      check_c3_bar when only check_c3_foo is defined shares an ID but is a
 #      real bug (a call-list typo/stale rename that crashes the doctor at
-#      runtime) -- comparing IDs alone would parallel wave that through.
+#      runtime) -- comparing IDs alone would wave that through.
 #   3. a defined-but-never-called function and a called-but-never-defined
 #      function both fail. Comment lines in the call-list section are
 #      excluded from the scan, so a comment mentioning a check can never
@@ -150,7 +150,7 @@ fi
 # call-list entry whose ID matches a defined function but whose name does
 # not (e.g. check_c3_bar called, only check_c3_foo defined): that call
 # crashes himmel-doctor.sh at runtime ("command not found"), which an
-# ID-only comparison would parallel wave through as "ID 3 satisfied".
+# ID-only comparison would wave through as "ID 3 satisfied".
 never_defined="$(comm -13 <(printf '%s\n' "$def_names" | sort -u) <(printf '%s\n' "$call_names" | sort -u))"
 if [ -n "$never_defined" ]; then
     fail=1

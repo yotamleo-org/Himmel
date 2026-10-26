@@ -42,7 +42,7 @@ export function alibabaEnv(env: Record<string, string | undefined> = process.env
 
 // ── free-tier grants resolution ───────────────────
 // Every TOKEN-quota model on the account carries exactly this free-tier grant.
-// Source: operator-verified from the live Model Studio chief, 2026-07-06,
+// Source: operator-verified from the live Model Studio console, 2026-07-06,
 // cross-checked with https://www.alibabacloud.com/help/en/model-studio/new-free-quota
 // — ~89 token models (~70M total pool): qwen* families PLUS glm-5.1/glm-5.2,
 // deepseek-v3.2/v4-*, kimi-k2.7-code, qwq/qvq. Most grants expire 2026-10-03;

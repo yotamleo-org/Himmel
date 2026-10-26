@@ -17,7 +17,7 @@
 # or empty stdin), so a hook bug never locks an operator's own session out of
 # AskUserQuestion.
 #
-# The old path block-worker-askuserquestion.sh sources this file, so settings that
+# The old path block-leg-askuserquestion.sh sources this file, so settings that
 # still name it run this hook.
 #
 # Bypass: unset HIMMEL_CONSOLE_LEG in the launching shell (session-sticky; a

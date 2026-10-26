@@ -140,7 +140,7 @@ push_remote_url="${2:-}"
 #
 # The property that makes a working-tree lint meaningful is not "same branch
 # NAME" but "the commit on the wire IS this worktree's HEAD", so that is what
-# is compared. Keying on the name would still parallel wave through
+# is compared. Keying on the name would still wave through
 # `git push origin <sha>:refs/heads/b`, `HEAD~3:refs/heads/b`, or a tag pushed
 # onto a branch — every one of them lints a tree the push does not carry.
 # Ceiling (deliberate): UNCOMMITTED changes in this worktree still differ from

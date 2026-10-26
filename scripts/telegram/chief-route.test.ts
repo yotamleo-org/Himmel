@@ -261,7 +261,7 @@ test("bare /chief with zero or two live chiefs lists the problem without queuing
     if (count) { heartbeat(r); heartbeat(r, "second"); }
     await handleInbound(r, say("/chief halt"), async (s) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
     expect(ran).toEqual([]);
-    expect(replies.join("\n")).toContain(count ? "second" : "no live console");
+    expect(replies.join("\n")).toContain(count ? "second" : "no live chief");
     expect(readFileSync(old, "utf8")).toBe("");
     expect(readFileSync(exited, "utf8")).toBe("");
     if (count) expect(readFileSync(join(r, "consoles", `${NAME}.md`), "utf8")).toBe("");
@@ -333,7 +333,7 @@ test("allowlisted /chief message lands one line in the console inbox and spawns 
   expect(lines[0]).toMatch(/^- \d\d:\d\d \[telegram from=1 chat=1\] go ahead with PR 12$/);
   expect(ran).toEqual([]);
   expect(existsSync(join(r, "sessions"))).toBe(false);
-  expect(replies).toEqual([`→ console ${NAME}`]);
+  expect(replies).toEqual([`→ chief ${NAME}`]);
 });
 
 test("control: a non-allowlisted sender's console verb drops without a cold spawn", async () => {
@@ -378,7 +378,7 @@ test("a console with no armed inbox gets an error reply, no file, and no cold se
   expect(ran).toEqual([]);
   expect(existsSync(join(r, "sessions"))).toBe(false);
   expect(replies.length).toBe(1);
-  expect(replies[0]).toContain("no live console");
+  expect(replies[0]).toContain("no live chief");
   expect(replies[0]).toContain(NAME);
 });
 
@@ -395,7 +395,7 @@ test("a traversal-shaped console name is refused: nothing written outside consol
   expect(readFileSync(join(r, "escape.md"), "utf8")).toBe("");
   expect(ran).toEqual([]);
   expect(replies.length).toBe(1);
-  expect(replies[0]).toContain("no live console");
+  expect(replies[0]).toContain("no live chief");
   expect(consoleInboxPath(r, "../escape")).toBeNull();
   expect(consoleInboxPath(r, "a..b")).toBeNull();
   expect(consoleInboxPath(r, "")).toBeNull();
@@ -647,11 +647,11 @@ test("HIMMEL-5125: a dead or released console still bounces", async () => {
   const released = (r: string) => { const f = armInbox(r); writeFileSync(f + ".wait", `hb=${Math.floor(Date.now() / 1000) - 60} pid=123 key=- tick=- state=exited exit=signal-TERM\n`); return f; };
   for (const mk of [stale, released]) {
     const r = root(); const f = mk(r); const replies: string[] = [];
-    expect(await routeText(r, "/chief halt")).toContain("no live console");
+    expect(await routeText(r, "/chief halt")).toContain("no live chief");
     await inbound(r, fresh("/fleet"), replies);
-    expect(replies.join("\n")).toContain("no live console");
+    expect(replies.join("\n")).toContain("no live chief");
     expect(readFileSync(f, "utf8")).toBe("");
   }
   const r = root();
-  expect(await routeText(r, "/chief halt")).toContain("no live console");
+  expect(await routeText(r, "/chief halt")).toContain("no live chief");
 });

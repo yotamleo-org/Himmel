@@ -380,7 +380,7 @@ else fail=$((fail+1)); echo "FAIL foreign-repo-target-not-gated (rc=$foreign_rc 
 # read as "some other repo" and waved through — treating garbage as foreign would
 # let `--repo "o/r"` silently disable this gate, a worse bypass than the one the
 # foreign check closes. Real gh rejects such a value, so the faithful outcome is
-# the rc=3 re-anchor path (coderabbit-10): the gate did NOT parallel wave it through, and
+# the rc=3 re-anchor path (coderabbit-10): the gate did NOT wave it through, and
 # the hook re-anchors on the cwd branch. The property under test is "not 0".
 GH_STUB_LOG="$TMP/calls-malformed.log"; : > "$GH_STUB_LOG"
 export GH_STUB_LOG

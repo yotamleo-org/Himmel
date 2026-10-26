@@ -3988,7 +3988,7 @@ checkout workers branch from having pulled the merge. Spec:
 
 ### `block-worker-askuserquestion.sh` — chief-spawned worker AskUserQuestion deny (HIMMEL-2923)
 
-The old path `block-worker-askuserquestion.sh` sources this file, so settings that
+The old path `block-leg-askuserquestion.sh` sources this file, so settings that
 still name it run the same hook.
 
 Fires on `AskUserQuestion`, keyed on `HIMMEL_CONSOLE_LEG=1` (set by the
@@ -4007,7 +4007,7 @@ to ask either.
 
 ### `guard-worker-wakeup.sh` — chief-spawned worker ScheduleWakeup deny (HIMMEL-3034)
 
-The old path `guard-worker-wakeup.sh` sources this file, so settings that still
+The old path `guard-leg-wakeup.sh` sources this file, so settings that still
 name it run the same hook.
 
 Fires on `ScheduleWakeup`, keyed on `HIMMEL_CONSOLE_LEG=1` (same gate and

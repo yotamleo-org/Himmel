@@ -121,11 +121,11 @@ export async function routeFleetCommand(
   const live = await armedConsoles(root);
   const target = pinned ? live.find(c => c.name === pinned) : live.length === 1 ? live[0] : undefined;
   if (!target) {
-    await reply(msg.chat_id, pinned ? `⚠️ console ${pinned} is stale or not live — nothing was queued.` : live.length > 1 ? `More than one console is live; reply to its announcement or answer:\n${describeConsoles(live)}` : "⚠️ no live console — nothing was queued.");
+    await reply(msg.chat_id, pinned ? `⚠️ chief ${pinned} is stale or not live — nothing was queued.` : live.length > 1 ? `More than one chief is live; reply to its announcement or answer:\n${describeConsoles(live)}` : "⚠️ no live chief — nothing was queued.");
     return;
   }
   const text = route.verb === "status" ? "fleet status" : `${route.verb}${route.leg ? ` ${route.leg}` : ""}`;
-  await routeToConsole(root, msg, { kind: "console", name: target.name, text, thread: true }, (chat, ack, name) => reply(chat, name ? `queued ${text} → console ${name}${ack.includes(BUSY_NOTE) ? ` — ${BUSY_NOTE}` : ""}` : ack, name));
+  await routeToConsole(root, msg, { kind: "console", name: target.name, text, thread: true }, (chat, ack, name) => reply(chat, name ? `queued ${text} → chief ${name}${ack.includes(BUSY_NOTE) ? ` — ${BUSY_NOTE}` : ""}` : ack, name));
 }
 
 export async function routeToConsole(
@@ -143,7 +143,7 @@ export async function routeToConsole(
   };
   if (route.kind === "consoles") {
     const live = await liveConsoles(root);
-    await say(live.length ? describeConsoles(live) : "⚠️ no live console — nothing was sent.");
+    await say(live.length ? describeConsoles(live) : "⚠️ no live chief — nothing was sent.");
     return;
   }
   let name = route.name;
@@ -153,7 +153,7 @@ export async function routeToConsole(
   // is part of the bare command, not an invented session name.
   const named = file && await stat(file).then(s => s.isFile(), () => false);
   if (!named) {
-    if (route.thread) { await say(`⚠️ no console "${name}" has an armed inbox — nothing was sent.`); return; }
+    if (route.thread) { await say(`⚠️ no chief "${name}" has an armed inbox — nothing was sent.`); return; }
     const live = await armedConsoles(root);
     if (live.length === 1) {
       text = name ? `${name} ${text}` : text;
@@ -173,7 +173,7 @@ export async function routeToConsole(
       const hits = tiers.map(t => live.filter(t)).find(h => h.length) ?? [];
       if (hits.length === 1) name = hits[0].name;
       else {
-        await say(hits.length > 1 ? `More than one console matches "${name}"; choose /chief <name> <text>:\n${describeConsoles(hits)}` : live.length ? `More than one console is live; choose /chief <name> <text>:\n${describeConsoles(live)}` : `⚠️ no live console${name ? ` (requested "${name}")` : ""} — nothing was sent.`);
+        await say(hits.length > 1 ? `More than one chief matches "${name}"; choose /chief <name> <text>:\n${describeConsoles(hits)}` : live.length ? `More than one chief is live; choose /chief <name> <text>:\n${describeConsoles(live)}` : `⚠️ no live chief${name ? ` (requested "${name}")` : ""} — nothing was sent.`);
         return;
       }
     }
@@ -184,9 +184,9 @@ export async function routeToConsole(
   // cannot open a mailbox nobody reads. The append itself is the existence
   // check — no separate existsSync() step left to race.
   const delivered = await appendIfExists(file, `- ${hhmm()} [telegram from=${msg.from} chat=${msg.chat_id}] ${foldLine(text)}`);
-  if (!delivered) { await say(`⚠️ no console "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
+  if (!delivered) { await say(`⚠️ no chief "${name}" is listening (it has not armed its inbox) — nothing was sent.`); return; }
   const busy = (await armedConsoles(root)).some(c => c.name === name && c.busy);
-  await say(`→ console ${name}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
+  await say(`→ chief ${name}${busy ? ` — queued, ${BUSY_NOTE}` : ""}`, name);
 }
 
 function replyPath(root: string, chat: number, message: number): string | null {
