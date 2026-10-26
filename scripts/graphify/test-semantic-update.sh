@@ -898,6 +898,13 @@ out=$(run --name t78 --corpus-root "$C78" --corpus-class himmel-code --seed-mani
 n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C78/graphify-out/semantic-manifest.json" 2>/dev/null)
 [ "$rc" -eq 0 ] && [ "$n" = "a.md b.md sub/c.md" ] && pass "T78 archive/voice/docs/voice.md left out of the corpus" || fail "T78 (rc=$rc) '$n': $out"
 
+echo "T80: a .graphifyignore with a negation line keeps its directory entries in the corpus (a re-included file must not be dropped)"
+C80="$WS/c80"; new_corpus "$C80"; mkdir -p "$C80/archive"; printf 'keep\n' > "$C80/archive/keep.md"
+printf 'archive/\n!archive/keep.md\n' > "$C80/.graphifyignore"
+out=$(run --name t80 --corpus-root "$C80" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C80/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "a.md archive/keep.md b.md sub/c.md" ] && pass "T80 archive/keep.md stays in the corpus" || fail "T80 (rc=$rc) '$n': $out"
+
 echo "T79: a thin extraction of unchanged content that the shrink guard refused MAX_ATTEMPTS times is accepted, not stuck forever"
 C79="$WS/c79"; new_corpus "$C79"
 python3 - "$C79/graphify-out/graph.json" <<'PY'

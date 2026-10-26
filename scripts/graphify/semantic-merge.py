@@ -100,13 +100,14 @@ def ignored_dirs(root):
                 dirs.append(line + "/")
     # graphify itself drops what .graphifyignore lists, so a .md under one of its
     # plain directory entries would be planned on every run and never extracted.
-    # ponytail: plain `dir/` entries only (no glob, no negation), a .md under a glob pattern still backs off.
+    # ponytail: plain `dir/` entries only (no glob), and none at all once the file holds a `!` re-include; a .md under a glob pattern still backs off.
     path = os.path.join(root, ".graphifyignore")
     if os.path.exists(path):
         with open(path, encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line.endswith("/") or line.startswith("#") or any(c in line for c in "*?[!"):
+            lines = [line.strip() for line in f]
+        if not any(line.startswith("!") for line in lines):
+            for line in lines:
+                if not line.endswith("/") or line.startswith("#") or any(c in line for c in "*?["):
                     continue
                 line = line.strip("/")
                 if line and ".." not in line.split("/"):
