@@ -1252,6 +1252,12 @@ assert_rc "5484 standalone yash -c quoted -x"   2 "$(run_case "$(j_bash "yash -c
 # Brace expansion splits the word; setopt/unsetopt single-letter x.
 assert_rc "5484 shopt -os x{,}trace"            2 "$(run_case "$(j_bash 'shopt -os x{,}trace')")"
 assert_rc "5484 setopt x{,}trace"               2 "$(run_case "$(j_bash 'setopt x{,}trace')")"
+assert_rc "5484 quoted-prefix x{,}trace"        2 "$(run_case "$(j_bash 'shopt -os "x"{,}trace')")"
+assert_rc "5484 backslash-quoted brace stays data" 0 "$(run_case "$(j_bash 'echo x\{,\}trace')")"
+# A brace inside a quoted word never expands, so a GraphQL reply whose letters
+# x..t..r..a..c..e appear in order is data, not an xtrace option.
+assert_rc "6347 graphql reply, semicolon body"  0 "$(run_case "$(j_bash "gh api graphql -f 'query=mutation{addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"PRRT_kwDOS8WKNM6tonve\",body:\"Deferred to HIMMEL-6344: a malformed amend row is skipped and can leave a finding standing (fail-open, one extra round at most); fix there.\"}){comment{id}}}'")")"
+assert_rc "6347 graphql reply, prose body"      0 "$(run_case "$(j_bash "gh api graphql -f 'query=mutation{addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:\"PRRT_kwDOS8WKNM6tonve\",body:\"Deferred to HIMMEL-6344. A malformed amend row is skipped and can leave a finding standing, which fails open with one extra round at most. The fix is tracked there.\"}){comment{id}}}'")")"
 assert_rc "5484 setopt -x"                      2 "$(run_case "$(j_bash 'setopt -x')")"
 assert_rc "5484 unsetopt +x"                    2 "$(run_case "$(j_bash 'unsetopt +x')")"
 assert_rc "5484 setopt extendedglob -x"         2 "$(run_case "$(j_bash 'setopt extendedglob -x')")"
