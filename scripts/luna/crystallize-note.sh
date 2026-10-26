@@ -223,7 +223,7 @@ HASH_BEFORE="$(_hash "$NOTE_PATH")"
 # The lane removes the other credential sources itself and pins its own endpoint,
 # so there is no native-auth pin here. It allows no --add-dir or --settings: the
 # transcript is read through the granted Read tool, and Read,Edit are the only
-# tools (hooks are off on the lane, so a Bash grant would be unguarded).
+# tools the note edit needs.
 # Subshell function: its `exit 0` ends only the launch.
 launch_api_lane() {
     cd "$NOTE_DIR" 2>/dev/null || exit 0

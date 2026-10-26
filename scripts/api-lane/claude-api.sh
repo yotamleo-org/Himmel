@@ -11,6 +11,7 @@
 #        ANTHROPIC_API_KEY, or else <state_dir>/key-<account>.env (mode 600); never printed, logged,
 #        exported or passed on a command line. auto = the earliest-expiring grant with room for the budget.
 #        [HIMMEL_API_TOOLS=<comma list>]  opt-in tool grant, a subset of Read,Edit,Write,Glob,Grep,Bash; unset/empty = tool-free (default)
+#        [HIMMEL_API_ISOLATE=1] no CLAUDE.md, plugins, hooks or settings files; the grant may name only Read,Glob,Grep
 #        [HIMMEL_API_KIND=<label>] run kind for the cache report (eval|judge|bulk; default other)
 #        [HIMMEL_API_CACHE_TTL=5m|1h] prompt-cache lifetime of the call (default 5m)
 #        [HIMMEL_API_CALL_TIMEOUT_S=<seconds>] the launcher stops a call at this age, and the credit-state sweep releases a reservation older than it plus the five-second kill grace (default 3600)
@@ -154,8 +155,8 @@ BANK_VERDICT="$(env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_API_KEY -u ANTHROPIC
 # --allowedTools only preapproves; --tools is what limits the tools claude may use at all.
 # the lane is tool-free by default. GRANT_CEILING is the most a caller can ever name; a caller opts in
 # with HIMMEL_API_TOOLS=<comma subset of the ceiling>, and an unset or empty variable is a tool-free call. Anything
-# outside the ceiling (a wildcard, Bash(*), an mcp__ tool), or a malformed list, is refused. Hooks are off on this
-# lane, so every tool a caller names is one no PreToolUse guardrail can stop: name the fewest.
+# outside the ceiling (a wildcard, Bash(*), an mcp__ tool), or a malformed list, is refused. Hooks in the user's
+# and the working directory's settings still run on this lane; an isolated call (below) runs none.
 GRANT_CEILING="Read,Edit,Write,Glob,Grep,Bash"
 ALLOWED_TOOLS=""
 if [ -n "${HIMMEL_API_TOOLS:-}" ]; then
@@ -169,12 +170,22 @@ fi
 TOOL_ARGS=(--tools "$ALLOWED_TOOLS")
 # cwd, platform, memory paths and git status ride in the first user message instead of the system prompt,
 # so every run of a kind shares one system-prompt prefix whatever directory or branch it started in.
-# No caller can be granted an mcp__ tool, so no call loads an MCP server: with hooks off, an ambient-allowed MCP
+# No caller can be granted an mcp__ tool, so no call loads an MCP server: an ambient-allowed MCP
 # tool would otherwise run.
-# --bare skips settings and plugin hooks, auto-memory and CLAUDE.md discovery; --restricted ignores the user,
-# project and local settings files and keeps the file tools inside the working directory.
-EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config --bare --restricted)
+EXTRA_ARGS=(--exclude-dynamic-system-prompt-sections --strict-mcp-config)
 [ -z "$ALLOWED_TOOLS" ] || TOOL_ARGS+=(--allowedTools "$ALLOWED_TOOLS")
+# HIMMEL_API_ISOLATE=1 runs the call with no customization: --safe-mode turns off CLAUDE.md, installed plugins,
+# hooks and MCP servers, and --restricted ignores the user, project and local settings files and keeps the file
+# tools inside the working directory. No PreToolUse guard runs then, so an isolated call may name only read-only tools.
+ISOLATE_CEILING="Read,Glob,Grep"
+case "${HIMMEL_API_ISOLATE:-}" in
+  "") ;;
+  1) for t in ${ALLOWED_TOOLS//,/ }; do
+       case ",$ISOLATE_CEILING," in *",$t,"*) ;; *) refuse "HIMMEL_API_ISOLATE=1 allows only the read-only tools $ISOLATE_CEILING, not $t" ;; esac
+     done
+     EXTRA_ARGS+=(--safe-mode --restricted) ;;
+  *) refuse "HIMMEL_API_ISOLATE must be 1 or unset" ;;
+esac
 
 # the credit covers a print-mode call only when it is not a Claude Code session (Help Center 17154008).
 # A call launched from inside a session inherits its markers (CLAUDECODE, CLAUDE_CODE_ENTRYPOINT=cli, session
@@ -261,7 +272,7 @@ trap on_signal TERM INT HUP
 ANTHROPIC_API_KEY="$KEY" env -u CLAUDE_CODE_OAUTH_TOKEN -u ANTHROPIC_PROFILE -u ANTHROPIC_FEDERATION_RULE_ID \
   -u ANTHROPIC_ORGANIZATION_ID -u ANTHROPIC_AUTH_TOKEN -u HIMMEL_API_LANE -u HIMMEL_API_KEY_ID \
   -u ANTHROPIC_ORG_A_KEY -u ANTHROPIC_ORG_B_KEY -u HIMMEL_DOTENV_FILE -u HIMMEL_API_SNAPSHOT_OPTIONAL \
-  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL \
+  -u LQ_API_KEY -u LQ_API_ACCOUNT -u LQ_API_KEY_ID -u LQ_API_LANE -u HIMMEL_API_KIND -u HIMMEL_API_CACHE_TTL -u HIMMEL_API_ISOLATE \
   -u HIMMEL_API_BRANCH -u HIMMEL_API_HEAD -u HIMMEL_API_PR \
   ${SESSION_UNSET[@]+"${SESSION_UNSET[@]}"} \
   ANTHROPIC_BASE_URL=https://api.anthropic.com CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL="$CACHE_TTL" \

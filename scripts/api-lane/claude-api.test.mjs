@@ -144,12 +144,67 @@ test('HIMMEL-5625: a caller with no HIMMEL_API_TOOLS gets no tools (tool-free de
   assert.match(seen, /--permission-mode plan/);
 });
 
-test('HIMMEL-7622: every call runs --bare --restricted, so no settings, plugin hook or CLAUDE.md reaches it', () => {
+test('HIMMEL-7622: HIMMEL_API_ISOLATE=1 adds --safe-mode --restricted and keeps the read-only grant; a plain call has neither', () => {
   const f = fixture();
-  assert.equal(f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Grep,Glob' }).status, 0);
+  assert.equal(f.run(f.good, { HIMMEL_API_TOOLS: 'Read,Glob,Grep', HIMMEL_API_ISOLATE: '1' }).status, 0);
   const seen = readFileSync(f.paths.env, 'utf8');
-  assert.match(seen, / --bare( |$)/m);
-  assert.match(seen, / --restricted( |$)/m);
+  assert.match(seen, /--tools Read,Glob,Grep /);
+  assert.match(seen, / --safe-mode --restricted$/m);
+  assert.doesNotMatch(seen, /--bare/);
+  const plain = fixture();
+  assert.equal(plain.run(plain.good, { HIMMEL_API_TOOLS: 'Read,Glob,Grep' }).status, 0);
+  assert.doesNotMatch(readFileSync(plain.paths.env, 'utf8'), /--safe-mode|--restricted|--bare/);
+});
+
+test('HIMMEL-7622: an isolated call that names a mutating tool, or a bad switch value, is refused with no spawn or reservation', () => {
+  for (const [tools, isolate] of [['Read,Edit', '1'], ['Write', '1'], ['Grep,Bash', '1'], ['Read', 'yes']]) {
+    const f = fixture();
+    const r = f.run(f.good, { HIMMEL_API_TOOLS: tools, HIMMEL_API_ISOLATE: isolate });
+    assert.equal(r.status, 2, `${tools} ${isolate}`);
+    assert.match(r.stderr, /HIMMEL_API_ISOLATE/);
+    assert.equal(f.called(), false);
+    assert.equal(f.status().reserved_usd, '0.000000');
+  }
+});
+
+// The real CLI against a dead endpoint: SessionStart hooks and the init event come before the first request,
+// so the probe reads the effective tools and hook events from init and stops the call there. Nothing is billed.
+const REAL_CLAUDE = spawnSync('bash', ['-c', 'command -v claude'], { encoding: 'utf8' }).stdout.trim();
+const PROBE = `#!/bin/bash
+ANTHROPIC_BASE_URL=http://127.0.0.1:9 "$PROBE_REAL" "$@" --output-format stream-json --verbose --include-hook-events >"$PROBE_OUT" 2>/dev/null &
+pid=$!
+for _ in $(seq 1 600); do grep -q '"subtype":"init"' "$PROBE_OUT" 2>/dev/null && break; sleep 0.1; done
+kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null
+printf '%s' '{"type":"result","is_error":false,"total_cost_usd":0,"result":"probe"}'
+`;
+
+test('HIMMEL-7622: probe: an isolated call starts with Read, Glob and Grep and runs no hook; a plain call runs both canary hooks', { skip: REAL_CLAUDE ? false : 'no claude CLI on PATH' }, () => {
+  const probe = (isolate) => {
+    const f = fixture();
+    const cwd = join(f.dir, 'cwd');
+    mkdirSync(join(f.dir, '.claude'), { recursive: true });
+    mkdirSync(join(cwd, '.claude'), { recursive: true });
+    const hook = (name) => ({ hooks: [{ type: 'command', command: `touch ${join(f.dir, name)}` }] });
+    writeFileSync(join(f.dir, '.claude', 'settings.json'), JSON.stringify({ hooks: { SessionStart: [hook('user-hook')] } }));
+    writeFileSync(join(cwd, '.claude', 'settings.json'), JSON.stringify({ hooks: { SessionStart: [hook('project-hook')] } }));
+    writeFileSync(join(f.dir, 'probe'), PROBE, { mode: 0o700 });
+    const out = join(f.dir, 'probe.jsonl');
+    const r = spawnSync('bash', [LAUNCH, ...f.good], { cwd, encoding: 'utf8', env: { ...f.env, HIMMEL_API_CLAUDE_BIN: join(f.dir, 'probe'),
+      PROBE_REAL: REAL_CLAUDE, PROBE_OUT: out, HIMMEL_API_TOOLS: 'Read,Glob,Grep', ...(isolate ? { HIMMEL_API_ISOLATE: '1' } : {}) } });
+    assert.equal(r.status, 0, r.stderr);
+    const events = readFileSync(out, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l));
+    const init = events.find((e) => e.type === 'system' && e.subtype === 'init');
+    assert.ok(init, 'no init event');
+    return { tools: [...init.tools].sort(), hooks: events.filter((e) => /hook/.test(e.subtype || '')).length,
+      fired: ['user-hook', 'project-hook'].filter((n) => existsSync(join(f.dir, n))) };
+  };
+  const plain = probe(false);
+  assert.deepEqual(plain.fired, ['user-hook', 'project-hook']);
+  assert.ok(plain.hooks > 0);
+  const isolated = probe(true);
+  assert.deepEqual(isolated.tools, ['Glob', 'Grep', 'Read']);
+  assert.equal(isolated.hooks, 0);
+  assert.deepEqual(isolated.fired, []);
 });
 
 test('HIMMEL-5625: an opted-in caller gets exactly the named set; the full set is reachable only by naming it', () => {
