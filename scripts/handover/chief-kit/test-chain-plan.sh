@@ -75,6 +75,13 @@ has "H2: predecessor first despite the successor being ready" "$out" 'ORDER 20 2
 has "H2: HOLD line" "$out" 'HOLD 21 for 20'
 lacks "H2: no MERGE-FORWARD (the later node owns the conflict, not this reason)" "$out" 'MERGE-FORWARD'
 
+# 5b. an S2 pair never closes a cycle the hard edges do not: a hard path fixes the S2 direction
+graph "$W/s2hard.json" '#10' '#11' '#12' -- '#10' '#12' H1 '#12' '#11' H1 '#10' '#11' S2
+out="$(plan 1 --graph "$W/s2hard.json" --ready 11)"; rc=$?
+same "S2 across a hard path: exit 0, not a false cycle" "$rc" 0
+has "S2 across a hard path: the hard order wins over readiness" "$out" 'ORDER 10 12 11'
+has "S2 across a hard path: the later node merges forward after the first" "$out" 'MERGE-FORWARD 11 after 10'
+
 # 6. S1 and independent edges order nothing and merge-forward nothing
 graph "$W/s1.json" '#30' '#31' '#32' -- '#30' '#31' S1 '#31' '#32' independent
 out="$(plan 1 --graph "$W/s1.json")"

@@ -15,7 +15,8 @@
 # S1 and independent edges order nothing: those nodes merge as they go green.
 # Order: Kahn over the hard edges, and over each S2 pair (the first mergeable node first; if both are
 # mergeable, or neither, the one with more H1/H2 dependants; then the lower PR number). A green node is
-# never held for ordering: ready nodes sort first.
+# never held for ordering: ready nodes sort first. A hard path between an S2 pair fixes its direction,
+# so an S2 edge never closes a cycle the hard edges do not.
 #
 # Behind the flag chain_merge_plan (scripts/lib/flags.tsv, default off). Off prints one notice line and no
 # plan, so merge-forward-check.sh --chain-s2 has no evidence. The flag is read here, never in a gate.
@@ -75,9 +76,20 @@ END {
     if (!(ef[e] in known) || !(et[e] in known)) { print "edge names a node the graph does not list: " ef[e] " " et[e] > "/dev/stderr"; exit 2 }
     if (ek[e] == "H1" || ek[e] == "H2") dep[ef[e]]++
   }
+  for (e = 1; e <= ne; e++) if (ek[e] == "H1" || ek[e] == "H2") reach[ef[e], et[e]] = 1
+  for (k = 1; k <= n; k++) for (i = 1; i <= n; i++) for (j = 1; j <= n; j++)
+    if (reach[ids[i], ids[k]] && reach[ids[k], ids[j]]) reach[ids[i], ids[j]] = 1
   for (e = 1; e <= ne; e++) {
     if (ek[e] == "H1" || ek[e] == "H2") { nc++; cf[nc] = ef[e]; ct[nc] = et[e] }
-    else if (ek[e] == "S2") { nc++; if (before(ef[e], et[e])) { cf[nc] = ef[e]; ct[nc] = et[e] } else { cf[nc] = et[e]; ct[nc] = ef[e] } }
+    else if (ek[e] == "S2") {
+      a = ef[e]; b = et[e]
+      # a hard path between the pair fixes the direction; priority only orders an unrelated pair
+      if (reach[a, b] && !reach[b, a]) fwd = 1
+      else if (reach[b, a] && !reach[a, b]) fwd = 0
+      else fwd = before(a, b)
+      nc++
+      if (fwd) { cf[nc] = a; ct[nc] = b } else { cf[nc] = b; ct[nc] = a }
+    }
   }
   for (placed_n = 0; placed_n < n; placed_n++) {
     best = ""
