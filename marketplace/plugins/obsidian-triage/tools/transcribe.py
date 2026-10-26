@@ -19,6 +19,7 @@ import ctypes
 import glob
 import os
 import shutil
+import subprocess
 import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -73,14 +74,19 @@ def preload_cuda_libs():
 
 def reexec_with_cuda_lock():
     uv = shutil.which("uv")
-    if not uv:
-        return
-    env = dict(os.environ, **{CUDA_LOCK_MARKER: "1"})
-    argv = [uv, "run", "--python", "3.12",
-            "--with-requirements", os.path.join(HERE, "requirements-whisper.txt"),
-            "--with-requirements", os.path.join(HERE, "requirements-whisper-cuda.txt"),
-            "python", os.path.abspath(__file__)] + sys.argv[1:]
-    os.execve(uv, argv, env)
+    if uv:
+        env = dict(os.environ, **{CUDA_LOCK_MARKER: "1"})
+        argv = [uv, "run", "--python", "3.12",
+                "--with-requirements", os.path.join(HERE, "requirements-whisper.txt"),
+                "--with-requirements", os.path.join(HERE, "requirements-whisper-cuda.txt"),
+                "python", os.path.abspath(__file__)] + sys.argv[1:]
+        done = subprocess.run(argv, env=env, stdout=subprocess.PIPE)
+        if done.returncode == 0:
+            sys.stdout.buffer.write(done.stdout)
+            sys.exit(0)
+        print("transcribe: cuda environment unavailable (uv exited "
+              f"{done.returncode}); using cpu", file=sys.stderr)
+    os.environ["HIMMEL_WHISPER_DEVICE"] = "cpu"
 
 
 def route_model(device, language, probability, pinned):
@@ -91,7 +97,11 @@ def route_model(device, language, probability, pinned):
     return HEBREW_MODEL if language == "he" and probability >= ROUTE_MIN_PROB else default
 
 
-def load_model(device, compute, name):
+def cpu_model_name(model_arg):
+    return model_arg or os.environ.get("HIMMEL_WHISPER_MODEL") or DEFAULTS["cpu"][1]
+
+
+def load_model(device, compute, name, model_arg=None):
     """-> (model, device actually used)."""
     from faster_whisper import WhisperModel
     if device == "cuda":
@@ -102,7 +112,7 @@ def load_model(device, compute, name):
         except Exception as e:
             print(f"transcribe: cuda unusable ({type(e).__name__}: {e}); falling back to cpu",
                   file=sys.stderr)
-            compute, name = DEFAULTS["cpu"][0], DEFAULTS["cpu"][1]
+            compute, name = DEFAULTS["cpu"][0], cpu_model_name(model_arg)
     return WhisperModel(name, device="cpu", compute_type=compute), "cpu"
 
 
@@ -111,8 +121,9 @@ def run_model(wav, model_arg):
     pinned = bool(model_arg or os.environ.get("HIMMEL_WHISPER_MODEL"))
     device, compute, name = select_runtime(model_arg)
     if needs_cuda_lock(device):
-        reexec_with_cuda_lock()
-    model, device = load_model(device, compute, name)
+        reexec_with_cuda_lock()  # returns only when the cuda environment is unusable
+        device, compute, name = select_runtime(model_arg)
+    model, device = load_model(device, compute, name, model_arg)
     if device == "cuda":
         try:
             language = None
@@ -129,7 +140,7 @@ def run_model(wav, model_arg):
             print(f"transcribe: cuda failed ({type(e).__name__}: {e}); retrying on cpu",
                   file=sys.stderr)
             model = None
-            model, _ = load_model("cpu", *DEFAULTS["cpu"][:1], model_arg or DEFAULTS["cpu"][1])
+            model, _ = load_model("cpu", DEFAULTS["cpu"][0], cpu_model_name(model_arg))
     segments, _info = model.transcribe(wav)
     return list(segments)
 

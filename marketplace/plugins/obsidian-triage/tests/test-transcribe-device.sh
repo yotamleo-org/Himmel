@@ -81,5 +81,29 @@ class WhisperModel:
 STUB
 assert "cuda detect failure retries on cpu" "cpu-ok" "$(py "$tmp/failcuda" 'print(transcribe.run_model("x.wav", None)[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 | tail -n 1)"
 
+echo "== a failed uv install falls back to CPU; the CPU retry keeps the pinned model"
+mkdir -p "$tmp/namecuda/nvidia" "$tmp/bin"; : > "$tmp/namecuda/nvidia/__init__.py"
+cp "$tmp/cuda/ctranslate2.py" "$tmp/namecuda/ctranslate2.py"
+cat > "$tmp/namecuda/faster_whisper.py" <<'STUB'
+def decode_audio(p):
+    return p
+class Seg:
+    def __init__(self, text):
+        self.text = text; self.end = 1.0
+class WhisperModel:
+    def __init__(self, name, device, compute_type):
+        self.name = name; self.device = device
+    def detect_language(self, audio):
+        return "en", 0.99, {}
+    def transcribe(self, wav, language=None):
+        if self.device == "cuda":
+            raise RuntimeError("cuda decode failed")
+        return [Seg(self.device + ":" + self.name)], None
+STUB
+printf '#!/bin/sh\nexit 1\n' > "$tmp/bin/uv"; chmod +x "$tmp/bin/uv"
+assert "uv failure falls back to cpu base" "cpu:base" "$(py "$tmp/namecuda" 'print(transcribe.run_model("x.wav", None)[0].text)' PATH="$tmp/bin:$PATH" | tail -n 1)"
+assert "cpu retry keeps the env model" "cpu:small" "$(py "$tmp/namecuda" 'print(transcribe.run_model("x.wav", None)[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 HIMMEL_WHISPER_MODEL=small | tail -n 1)"
+assert "cpu retry keeps the argv model" "cpu:tiny" "$(py "$tmp/namecuda" 'print(transcribe.run_model("x.wav", "tiny")[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 | tail -n 1)"
+
 echo; echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]
