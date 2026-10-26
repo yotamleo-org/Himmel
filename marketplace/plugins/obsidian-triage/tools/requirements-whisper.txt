@@ -3,7 +3,7 @@
 # av 19 dropped the av.open(metadata_errors=) kwarg that faster-whisper 1.2.1's
 # decode_audio passes; unpinned, uv resolved 1.2.1 + av 19.0.1 and every reel
 # failed with "open() got an unexpected keyword argument 'metadata_errors'".
-# av 15.0.0 through 18.0.0 decode; 18.0.0 is the newest that does.
+# av 15.0.0 through 18.1.0 decode; 18.1.0 is the newest that does.
 # Direct pins: faster-whisper==1.2.1, av==18.1.0 (the rest is the hashed closure).
 # Regenerate: uv pip compile <a .in with those two pins> --python-version 3.12 --universal --generate-hashes -o requirements-whisper.txt
 # Bump the pair together, then prove it:
@@ -13,25 +13,25 @@ anyio==4.15.1 \
     --hash=sha256:9f28306018cbd6d329e64a36d58256edff76dd996fe423bc957326e578b82a94
     # via httpx
 av==18.1.0 \
-    --hash=sha256:0f65518a184613e41536f29e8758c8e3d8293e46bf5bef108f04f925bbfa3f44 \
-    --hash=sha256:149289d40e732a6e49c9530bc245b49d9964cfd1c8c9e06778703b7d5bba6b25 \
-    --hash=sha256:30404f53ca1ea7f350ac86ff22a2c04f903014758e9b33f398c5a62de34bd84f \
-    --hash=sha256:35274c20d2ad3b4774fe632bcef2e34af79858ddf899352339cc3babbc13a484 \
-    --hash=sha256:4d683b7747a0ba9222b8a5f81e41db5f796e7f64473454ec4fe2548e083c2fa0 \
-    --hash=sha256:4ef7e72c3d3a872584a1215173b16e0226811037f40dcdbf75992631098df1ba \
-    --hash=sha256:55a646e9afce9fdc5de5224205a8a12c7ed1ba9803145dcc876c40bfc03a109b \
-    --hash=sha256:613153e48cefc91700746dde0ad0282d4677b194cba22cc771de14c78411cf8b \
-    --hash=sha256:6882a48f7aec2863c96cddee3256ff2da98f7fb6cbed83cee9d7e70a8f186a6b \
-    --hash=sha256:88ce194c2201c6a6d40336adee8a5ddde46ed743eacb500e3ae9368d1c6d889e \
-    --hash=sha256:88dd8e35e9242662b409a6a05fd24a6775d949eb05da0ba31cab4f250eacbab5 \
-    --hash=sha256:96f594ff506a09475e5549359352332049a25d37a08f00b4623f7f6e92e45b9c \
-    --hash=sha256:aa15e567a018cc94a26b0ab45da676dee70c4146ace6e92e47d30cc9689cbfbe \
-    --hash=sha256:aaf4d354d2beaa6651e4f92e54409a578bde64f79c0beef9a30b388d06f7c629 \
-    --hash=sha256:adac2b3833b6cb9bd6cb52664a522b94db453615b3675b1dbb26e13fe1c80da6 \
-    --hash=sha256:ae56b40b6f8b067a8ad2dac664fbfbabac7f7a55b9a7bb031eb99289252bc017 \
-    --hash=sha256:ea2e8ebbce521f21b55df9400e00d721623c9020ef158f5a188a96130be0743f \
-    --hash=sha256:ef96dabb3e50dac249913145dff5424b302b257fd95dcb64be3c7b7a8aef16d1 \
-    --hash=sha256:f8f454349c402e2c8d6fa80b54eb2a3f86c00f414d2b399f01ae6dab075c6fd8
+    --hash=sha256:025f84494cb23278498f03b0d8117d3e47a1cbc9c44b97eb31875cf02251e46b \
+    --hash=sha256:08a9ae288299cfcbf739dba4ad0c53b9b71f45184303dd45947920d022fed695 \
+    --hash=sha256:191224788d87af06c31784a395bb73f14b72f33d7f4871ace0157de2abdc6276 \
+    --hash=sha256:3c8b1f8b46f99d52e2d8b0ed5d0cdadf172d24794d46e2077b16e44ed08e26ff \
+    --hash=sha256:47bfc286e1bc9de7ab4681fc2b575cd2460a66919d31ffe1bd5aa54fae531a28 \
+    --hash=sha256:5509ec12aaa19fd6601de13cfa6f4cdad450da07982118510592875d970454d6 \
+    --hash=sha256:5548b79e2bf1f59b3e9aedc918a72d9dc45b9adaac10ff9470d5dbdda0002e47 \
+    --hash=sha256:5cd9085028902c9880622bd37a12fd4b33060f06a52311f6f4867ca9f29a2c3b \
+    --hash=sha256:6fc837cc51adf80331ac850779cd53b5d4c4460b0ebe9057a02a921c6736f19d \
+    --hash=sha256:8a032e8d8ebc73dec079364b9b4a6837638a2d106e8472314e685ffbf163e700 \
+    --hash=sha256:ab5ac081bc9eaf54109120d4e56284674fecfbe520d9aa1707c7fa911ec5f4d2 \
+    --hash=sha256:ae75d8bb6467895ed1f8572ededf7ffa49eac07f6e483222f5d7d62a41d12f04 \
+    --hash=sha256:b30a4e8d934558e19602b68998a4d9ac9f250fa0dacef216f7e8e40153b13316 \
+    --hash=sha256:b36b0bae9e4c62f9487c99481ec15e4e3870fcc868522cd6d18fc2d6bfa04f01 \
+    --hash=sha256:cf8a17466bef07765dbdecc9e66ed9b25d20b4e14f654fbf35345a58ac45fa0c \
+    --hash=sha256:d49a5c542dfdc00f43c6cdb6cc41dac1781ee206fe180b56aa7433dfa816dfae \
+    --hash=sha256:e4d48b9f12cad009cc72fe4f4099107de5e819c95f82767f4fd01a01481c0661 \
+    --hash=sha256:e7ea063f6690193ea335a1d592d6e0274350d45e2ed6af83ee107cb90cbfd84f \
+    --hash=sha256:ea1480b7a8d5405cb5f382b344731bf125fd2c1c6fae3964f6c48595628387ff
     # via
     #   -r /tmp/claude-1000/-home-overlord-Documents-github-himmel/a3f87ebf-1155-4dd5-b127-8c0dfcdd5e68/scratchpad/whisper.in
     #   faster-whisper

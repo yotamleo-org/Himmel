@@ -292,6 +292,7 @@ scripts/docs/test-site-guides.sh	1
 scripts/docs/test-team-page.sh	0
 scripts/docs/test-troubleshooting-page.sh	1
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
+scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	3
 scripts/eval/friction/test-friction.sh	1
 scripts/eval/graphify-ab/test-graphify-ab.sh	5
 scripts/eval/guard-corpus/test-guard-corpus.sh	173
