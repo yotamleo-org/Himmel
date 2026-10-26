@@ -74,7 +74,8 @@ if [ "$phase" = cut ]; then
             [ -f "$out/$p/$arm/$r.summary.json" ] || die "$p has no $arm run $r; run --phase red first"
         done; done
     done
-    valid=" $(python3 "$CULL" valid --runs "$out" | tr '\n' ' ') "
+    vout="$(python3 "$CULL" valid --runs "$out")" || die "cull.py valid failed; rescore stale summaries with cull.py rescore --runs $out"
+    valid=" $(printf '%s\n' "$vout" | tr '\n' ' ') "
     keep=""
     for p in $ids; do case "$valid" in *" $p "*) keep="$keep $p" ;; esac; done
     ids="$keep"

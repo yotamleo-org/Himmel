@@ -46,7 +46,7 @@ eq "build: an unknown arm is refused" "$(python3 "$CULL" build --arm red-nope --
 # --- installer-owned text survives the cut ---
 graph_section() { python3 -c 'import sys; t=open(sys.argv[1]).read(); print(t[t.index("\n## graphify\n"):])' "$1"; }
 eq "installer text: the repo ## graphify section is byte-identical in CUT" \
-    "$(graph_section "$TMP/arm-cut/repo/CLAUDE.md" | sha256sum)" "$(graph_section "$HERE/fixtures/baseline/repo-CLAUDE.md" | sha256sum)"
+    "$(graph_section "$TMP/arm-cut/repo/CLAUDE.md")" "$(graph_section "$HERE/fixtures/baseline/repo-CLAUDE.md")"
 cut_user="$(cat "$TMP/arm-cut/CLAUDE.md" 2>/dev/null)"
 has "installer text: the user # graphify registration stays" "$cut_user" "When the user types \`/graphify\`"
 has "installer text: the @RTK.md import stays" "$cut_user" "@RTK.md"
@@ -203,6 +203,7 @@ cp -r "$TMP/out" "$TMP/stale"
 python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); s["checks_sha"]="0"; json.dump(s, open(sys.argv[1],"w"))' "$TMP/stale/r2-first-commit/baseline/1.summary.json"
 eq "report: a summary scored under other checks is refused until rescore" "$(python3 "$CULL" report --runs "$TMP/stale" --sessions "$TMP/sessions" --no-agents >/dev/null 2>&1; echo $?)" "2"
 eq "valid: so is the RED-first gate" "$(python3 "$CULL" valid --runs "$TMP/stale" >/dev/null 2>&1; echo $?)" "2"
+eq "run: the cut phase stops when the RED-first gate refuses" "$(SC_CLAUDE="$TMP/bin/claude" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase cut --out "$TMP/stale" --probes "$P" --reps 2 >/dev/null 2>&1; echo $?)" "2"
 python3 "$CULL" rescore --runs "$TMP/stale" >/dev/null 2>&1
 eq "report: a rescored run reports again" "$(python3 "$CULL" report --runs "$TMP/stale" --sessions "$TMP/sessions" --no-agents >/dev/null 2>&1; echo $?)" "0"
 
