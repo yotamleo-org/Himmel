@@ -3108,6 +3108,7 @@ cired_tick() { STUB_CIRED_OUT="$1" bash "$SUT" 2>/dev/null; }
 contains 'cired= prints the open ci-red issue count (HIMMEL-5596)' "$(cired_tick 3)" ' cired=3 '
 contains 'a failed ci-red read prints cired=unknown (HIMMEL-5596)' "$(STUB_CIRED_RC=1 bash "$SUT" 2>/dev/null)" ' cired=unknown '
 contains 'a non-count ci-red read prints cired=unknown (HIMMEL-5596)' "$(cired_tick 'oops')" ' cired=unknown '
+contains 'a ci-red count at the read cap prints cired=1000+' "$(cired_tick 1000)" ' cired=1000+ '
 not_contains "cired= is not in chief-wait's wake key (HIMMEL-5596)" "$cw_keys" ' cired'
 
 # --- dispatch=: in-flight workflow_dispatch runs on worker branches, one runs

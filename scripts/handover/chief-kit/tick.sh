@@ -2582,7 +2582,7 @@ cired_summary=unknown
 cired_bound="${TICK_CIQ_TIMEOUT:-45}"
 case "$cired_bound" in ''|*[!0-9]*) cired_bound=45 ;; esac
 cired_out="$(${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$cired_bound"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
-case "$cired_out" in ''|*[!0-9]*) ;; *) cired_summary="$cired_out" ;; esac
+case "$cired_out" in ''|*[!0-9]*) ;; 1000) cired_summary='1000+' ;; *) cired_summary="$cired_out" ;; esac
 
 # vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
 # FAILING: the himmel-vm self-hosted runner, one bounded `vm-runner.sh status
