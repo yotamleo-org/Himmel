@@ -19,7 +19,7 @@ mkbin() {
   for t in bash dirname mktemp rm sed grep cat sleep; do ln -s "$(command -v "$t")" "$bin/$t"; done
   cat > "$bin/curl" <<'EOF'
 #!/usr/bin/env bash
-n=$(( $(cat "$CURL_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CURL_COUNT"
+n=$(( $(cat "$CURL_COUNT" 2>/dev/null || echo 0) + 1 )); echo "$n" > "$CURL_COUNT" # read-sink-ok: hermetic test stub, counter file the test itself set under its mktemp dir
 [ "$n" -gt "${CURL_FAILS:-0}" ] || exit 7
 EOF
   chmod 755 "$bin/curl"
