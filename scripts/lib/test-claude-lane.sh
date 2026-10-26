@@ -40,6 +40,8 @@ check "unknown refusal names value + valid lanes" "ok" "$r"
 # refuses a non-native lane when the matrix forbids that backend for its corpus.
 W="$(mktemp -d "${TMPDIR:-/tmp}/test-claude-lane.XXXXXX")" || { echo "FAIL - mktemp"; exit 1; }
 trap 'rm -rf "$W"' EXIT
+# shellcheck disable=SC1091
+. "$REPO/scripts/lib/testlib-config-isolation.sh" && isolate_himmel_config "$W"
 mkdir -p "$W/phi" "$W/hand/sub" "$W/plain" "$W/vault/.obsidian/x" "$W/cfg"
 : > "$W/phi/.salus"
 egress() { # <lane|__unset__> <dir> -> prints "rc|CLAUDE_OPENROUTER_CWD|stderr-first-line"

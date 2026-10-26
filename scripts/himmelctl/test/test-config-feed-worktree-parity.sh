@@ -31,6 +31,8 @@ pass() { echo "PASS: $1"; }
 
 work=$(mktemp -d "${TMPDIR:-/tmp}/feed-parity.XXXXXX") || exit 1
 trap 'rm -rf "$work"' EXIT
+# shellcheck disable=SC1091
+. "$repo_root/scripts/lib/testlib-config-isolation.sh" && isolate_himmel_config "$work"
 
 primary="$work/primary"; wt="$work/wt"
 mkdir -p "$primary/scripts/install" "$primary/scripts/lanes" "$primary/scripts/lib"

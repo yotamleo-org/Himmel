@@ -18,6 +18,8 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 W="$(mktemp -d "${TMPDIR:-/tmp}/board-test.XXXXXX")" || exit 1
 trap 'rm -rf "$W"' EXIT
+# shellcheck disable=SC1091
+. "$HERE/../../lib/testlib-config-isolation.sh" && isolate_himmel_config "$W"
 fails=0
 
 pass() { printf 'ok - %s\n' "$1"; }
