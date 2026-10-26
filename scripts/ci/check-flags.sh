@@ -44,6 +44,18 @@ REG="$ROOT/scripts/lib/flags.tsv"
 SCRATCH="$(tmpdir)" || { echo "check-flags: cannot allocate scratch (fail-closed)" >&2; exit 2; }
 trap 'rm -rf "$SCRATCH"' EXIT
 findings=0
+# real_date YYYY-MM-DD: month 01-12 and a day that month has (leap years counted)
+real_date() {
+  local y="${1%%-*}" m d max
+  m=$((10#${1:5:2})); d=$((10#${1:8:2}))
+  [ "$m" -ge 1 ] && [ "$m" -le 12 ] && [ "$d" -ge 1 ] || return 1
+  case "$m" in
+    4|6|9|11) max=30 ;;
+    2) max=28; y=$((10#$y)); { [ $((y % 400)) = 0 ] || { [ $((y % 4)) = 0 ] && [ $((y % 100)) != 0 ]; }; } && max=29 ;;
+    *) max=31 ;;
+  esac
+  [ "$d" -le "$max" ]
+}
 finding() { printf 'FAIL %s\n' "$1"; findings=$((findings + 1)); }
 
 # --- registry ---
@@ -61,7 +73,7 @@ while IFS= read -r line || [ -n "$line" ]; do
      || { [ "$default" != on ] && [ "$default" != off ]; } \
      || { [ "$kind" != feature ] && [ "$kind" != content ]; } \
      || [ -z "$owner" ] || [ -z "$removal" ] \
-     || ! printf '%s' "$expires" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'; then
+     || ! printf '%s' "$expires" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$' || ! real_date "$expires"; then
     finding "malformed: ${name:-?} (want 7 tab-separated columns: name, default on|off, kind feature|content, owner, removal, expires YYYY-MM-DD, description)"
     continue
   fi
@@ -80,16 +92,21 @@ fi | grep -Ev '^scripts/lib/flags\.(sh|py|mjs|tsv)$|^scripts/ci/(check-flags|tes
 
 READS="$SCRATCH/reads"; : > "$READS"   # <name>\t<file>
 if [ -s "$FILES" ]; then
-  tr '\n' '\0' < "$FILES" | (cd "$ROOT" && xargs -0 grep -IHoE \
-    -e 'himmel_flag[[:space:]]+["'"'"']?[a-z][a-z0-9_]*' \
-    -e 'himmel_?[fF]lag\([[:space:]]*["'"'"'][a-z][a-z0-9_]*' \
-    -e 'HIMMEL_FLAG_[A-Z][A-Z0-9_]*' 2>/dev/null) \
-  | awk -F: '{
+  PATS="$SCRATCH/patterns"; RAW="$SCRATCH/raw"
+  printf '%s\n' \
+    'himmel_flag[[:space:]]+["'"'"']?[a-z][a-z0-9_]*' \
+    'himmel_?[fF]lag\([[:space:]]*["'"'"'][a-z][a-z0-9_]*' \
+    'HIMMEL_FLAG_[A-Z][A-Z0-9_]*' > "$PATS"
+  # grep exits 1 for "no match" (fine) and 2 for an error (unreadable file): only 2 fails the scan
+  # shellcheck disable=SC2016  # the sh -c body is literal; $0 and "$@" expand in the child
+  tr '\n' '\0' < "$FILES" | (cd "$ROOT" && xargs -0 sh -c 'grep -IHoE -f "$0" -- "$@"; [ "$?" -le 1 ]' "$PATS") > "$RAW" \
+    || { echo "check-flags: the source scan failed (an unreadable file?) (fail-closed)" >&2; exit 2; }
+  awk -F: '{
       file = $1; m = substr($0, length(file) + 2)
       if (m ~ /^HIMMEL_FLAG_/) { sub(/^HIMMEL_FLAG_/, "", m); n = tolower(m) }
       else { sub(/^himmel_?[fF]lag/, "", m); sub(/^[^a-z]+/, "", m); n = m }
       print n "\t" file
-    }' | sort -u > "$READS"
+    }' "$RAW" | sort -u > "$READS"
 fi
 
 TRUST="$SCRATCH/trust"

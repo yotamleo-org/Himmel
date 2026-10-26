@@ -107,6 +107,16 @@ rm -f "$t/scripts/hooks/flags.sh"
 printf 'himmel_flag("alpha")\n' > "$t/scripts/cr/flags.py"
 expect_rc "a reader-named file under scripts/cr/ is still a forbidden read" "$t" 1 "forbidden: alpha read in scripts/cr/flags.py"
 
+t="$(tree unreadable)"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/hooks/hidden.sh"
+chmod 000 "$t/scripts/hooks/hidden.sh"
+if [ -r "$t/scripts/hooks/hidden.sh" ]; then
+    pass "an unreadable source file fails closed (skipped: this user can read mode 000, e.g. root)"
+else
+    expect_rc "an unreadable source file fails closed (rc 2)" "$t" 2 "scan"
+fi
+chmod 600 "$t/scripts/hooks/hidden.sh"
+
 t="$(tree malformed)"
 printf 'alpha\toff\tfeature\tT-1\tT-2\tsoon\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "a malformed expiry date fails" "$t" 1 "malformed: alpha"
@@ -125,6 +135,12 @@ printf 'alpha\toff\tfeature\tT-1\t\t2026-11-09\ta flag\n' > "$t/scripts/lib/flag
 expect_rc "an empty removal ticket fails" "$t" 1 "malformed: alpha"
 printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-99-99\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "an impossible expiry date fails" "$t" 1 "malformed: alpha"
+printf 'alpha\toff\tfeature\tT-1\tT-2\t2026-04-31\ta flag\n' > "$t/scripts/lib/flags.tsv"
+expect_rc "April 31 fails" "$t" 1 "malformed: alpha"
+printf 'alpha\toff\tfeature\tT-1\tT-2\t2027-02-29\ta flag\n' > "$t/scripts/lib/flags.tsv"
+expect_rc "February 29 of a common year fails" "$t" 1 "malformed: alpha"
+printf 'alpha\toff\tfeature\tT-1\tT-2\t2028-02-29\ta flag\n' > "$t/scripts/lib/flags.tsv"
+expect_rc "February 29 of a leap year passes" "$t" 0
 
 t="$(tree noregistry)"
 rm -f "$t/scripts/lib/flags.tsv"
