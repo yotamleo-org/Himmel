@@ -136,5 +136,27 @@ check "text report carries the arm summary" 1 "$(grep -c '^arm summary' "$tmp/t.
 python3 -I "$SUT" >/dev/null 2>&1; rc=$?
 check "no legs is a usage error (rc 2)" 2 "$rc"
 
+# compaction-handoff/compaction-defects.py: defects in the turns after a
+# compaction, over one fixture leg with one planted case per class
+CD="$HERE/compaction-handoff/compaction-defects.py"
+CFX="$HERE/compaction-handoff/fixtures/projects"
+python3 -I "$CD" --projects "$CFX" --since-days 0 --json > "$tmp/cd.json" 2>"$tmp/cd.err"
+check "compaction-defects: planted post-compaction re-read counted once" 1 "$(jq '.compactions[0].defects.reread' "$tmp/cd.json")"
+check "compaction-defects: one leg, one compaction" "1 1" "$(jq -r '"\(.legs) \(.compactions | length)"' "$tmp/cd.json")"
+check "compaction-defects: the repeated denied call" 1 "$(jq '.compactions[0].defects.denied_repeat' "$tmp/cd.json")"
+check "compaction-defects: the misquoted token, not the cut-off summary quote" 1 "$(jq '.compactions[0].defects.nonce' "$tmp/cd.json")"
+check "compaction-defects: the repeated Results bullet, not the marker clear after an edit" 1 "$(jq '.compactions[0].defects.redo' "$tmp/cd.json")"
+check "compaction-defects: no judge re-asked" 0 "$(jq '.compactions[0].defects.verdict' "$tmp/cd.json")"
+check "compaction-defects: post window runs to the end of the transcript" 8 "$(jq '.compactions[0].post_turns' "$tmp/cd.json")"
+check "compaction-defects: re-prime is the first post turn's cache_create" 30000 "$(jq '.compactions[0].cost.reprime_cache_create' "$tmp/cd.json")"
+check "compaction-defects: compaction call priced from preTokens and the summary (170000 x 0.1 + 104 / 4 x 5)" 17130 "$(jq '.compactions[0].cost.compaction_est' "$tmp/cd.json")"
+python3 -I "$CD" --projects "$CFX" --since-days 0 --window 2 --json > "$tmp/cd2.json" 2>/dev/null
+check "compaction-defects: a control window of N turns with N turns of history" "2 0" "$(jq -r '.compactions[0] | "\(.control_turns) \(.control.reread)"' "$tmp/cd2.json")"
+check "compaction-defects: the post window is clipped to N" 2 "$(jq '.compactions[0].post_turns' "$tmp/cd2.json")"
+python3 -I "$CD" --projects "$CFX" --since-days 0 --simulate 100000 --json > "$tmp/cd3.json" 2>/dev/null
+check "compaction-defects: replay at 100k hands off once" 1 "$(jq '.simulate[0].legs[0].b.events' "$tmp/cd3.json")"
+python3 -I "$CD" --projects "$CFX" --since-days 0 > "$tmp/cd.txt" 2>/dev/null
+check "compaction-defects: text report" 1 "$(grep -c '^legs 1, transcripts 1, compactions 1' "$tmp/cd.txt")"
+
 if [ "$fails" -eq 0 ]; then echo "PASS - test-autocompact-ab.sh"; exit 0; fi
 echo "FAIL - test-autocompact-ab.sh ($fails failure(s))"; exit 1
