@@ -511,9 +511,10 @@ out=$(cd "$d" && CDPATH="$dd" bash "$INSTALLER" --target work --impl-family code
 
 echo "T32: --impl-family with a REFUSED install (foreign hook, no --force) writes no record"
 d="$TMP_ROOT/f29"; mk_foreign_repo "$d" || exit 1
+mkdir -p "$d/work/.git/hooks"
 printf '#!/bin/sh\necho foreign\n' > "$d/work/.git/hooks/pre-push"; chmod +x "$d/work/.git/hooks/pre-push"
 out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
-[ "$rc" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+[ -f "$d/work/.git/hooks/pre-push" ] && [ "$rc" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
     && grep -Fq "foreign" "$d/work/.git/hooks/pre-push" \
     && pass || fail "T32 rc=$rc out=$out"
 
