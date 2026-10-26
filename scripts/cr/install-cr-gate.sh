@@ -55,6 +55,7 @@ DO_REMOVE=0
 DO_STATUS=0
 FORCE=0
 IMPL_FAMILY=""
+WANT_FAMILY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         # `shift 2` with only one arg left FAILS (and `set -e` is off by
@@ -69,8 +70,8 @@ while [ $# -gt 0 ]; do
         --force) FORCE=1; shift ;;
         --impl-family)
             [ $# -ge 2 ] || { echo "install-cr-gate: --impl-family requires a value" >&2; usage >&2; exit 2; }
-            IMPL_FAMILY="$2"; shift 2 ;;
-        --impl-family=*) IMPL_FAMILY="${1#--impl-family=}"; shift ;;
+            IMPL_FAMILY="$2"; WANT_FAMILY=1; shift 2 ;;
+        --impl-family=*) IMPL_FAMILY="${1#--impl-family=}"; WANT_FAMILY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "install-cr-gate: unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -80,7 +81,12 @@ if [ -z "$TARGET" ]; then
     usage >&2
     exit 2
 fi
-if [ -n "$IMPL_FAMILY" ] && { [ "$DO_STATUS" -eq 1 ] || [ "$DO_REMOVE" -eq 1 ]; }; then
+if [ "$WANT_FAMILY" -eq 1 ] && [ -z "$IMPL_FAMILY" ]; then
+    echo "install-cr-gate: --impl-family requires a non-empty value" >&2
+    usage >&2
+    exit 2
+fi
+if [ "$WANT_FAMILY" -eq 1 ] && { [ "$DO_STATUS" -eq 1 ] || [ "$DO_REMOVE" -eq 1 ]; }; then
     echo "install-cr-gate: --impl-family applies to an install only, not --status/--remove" >&2
     exit 2
 fi
@@ -374,7 +380,7 @@ else
     # below happens after a successful install (fresh OR already-current).
     ( do_install ); install_rc=$?
     [ "$install_rc" -eq 0 ] || exit "$install_rc"
-    if [ -n "$IMPL_FAMILY" ]; then
+    if [ "$WANT_FAMILY" -eq 1 ]; then
         # set-impl-family.sh records for the CURRENT branch of the cwd repo.
         ( cd "$TARGET" && bash "$SCRIPT_DIR/set-impl-family.sh" "$IMPL_FAMILY" ) || exit $?
     fi

@@ -494,6 +494,12 @@ out3=$(bash "$INSTALLER" --target "$d/work" --remove --impl-family codex 2>&1); 
 [ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ "$rc3" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
     && pass || fail "T29 rc1=$rc1 rc2=$rc2 rc3=$rc3 out1=$out1 out2=$out2 out3=$out3"
 
+echo "T30: an EMPTY --impl-family value is refused, not read as 'no family requested'"
+out1=$(bash "$INSTALLER" --target "$d/work" --impl-family "" 2>&1); rc1=$?
+out2=$(bash "$INSTALLER" --target "$d/work" --impl-family= 2>&1); rc2=$?
+[ "$rc1" -ne 0 ] && [ "$rc2" -ne 0 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && pass || fail "T30 rc1=$rc1 rc2=$rc2 out1=$out1 out2=$out2"
+
 echo
 if [ "$SKIP" -gt 0 ]; then
     echo "install-cr-gate tests: $PASS passed, $FAIL failed, $SKIP skipped"
