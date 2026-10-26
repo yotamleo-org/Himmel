@@ -31,7 +31,6 @@ if [ "$rc" = 0 ]; then ok "requirements-whisper.txt resolves"; else no "requirem
 # A bump that edits only the `==` line leaves the previous version's --hash lines, which
 # `--require-hashes` refuses. Re-pin every `==` line of a lock, regenerate its hashes from the
 # index, and diff against the committed file: a stale hash on ANY package fails here.
-# (--python-version 3.11.5: the scrapling lock's soupsieve needs 3.11.5+; hashes do not depend on it.)
 fresh() { local lock=$1 py=$2 name=$3 rc=0 out
     grep -E '^[A-Za-z0-9_.-]+(\[[^]]*\])?==' "$lock" | sed 's/ *\\$//' > "$tmp/$name.in"
     out=$(uv pip compile --universal --python-version "$py" --generate-hashes --no-header --no-annotate -o "$tmp/$name.out" "$tmp/$name.in" 2>&1) || rc=$?
@@ -40,7 +39,7 @@ fresh() { local lock=$1 py=$2 name=$3 rc=0 out
     else no "$name lock is stale: committed hashes differ from the regenerated ones ($(grep -c '^[<>]' "$tmp/$name.diff") differing lines, first: $(grep -m1 '^[<>]' "$tmp/$name.diff"))"; fi
 }
 fresh "$tools/requirements-whisper.txt" 3.12 whisper
-fresh "$tools/requirements-scrapling.txt" 3.11.5 scrapling
+fresh "$tools/requirements-scrapling.txt" 3.11 scrapling
 
 # Control: a curl-cffi below the extra's floor resolves without the extra and is refused with it.
 sed 's/^curl-cffi==.*/curl-cffi==0.15.0 \\/' "$tools/requirements-scrapling.txt" > "$tmp/stale.txt"
