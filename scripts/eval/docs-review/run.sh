@@ -77,6 +77,7 @@ run_canary() { # dir fixture prompt
     for _ in $(seq 50); do [ -s "$d/canary/port" ] && break; sleep 0.1; done
     port="$(cat "$d/canary/port" 2>/dev/null)"
     [ -n "$port" ] || { kill "$srv" 2>/dev/null; echo "canary: fake API did not start" >&2; return 1; }
+    # launch-profile-ok: the canary pins its own --tools/--allowedTools and --strict-mcp-config against a fake API; a worker profile would change the measured condition
     ( cd "$2" && env -i "${BASE_ENV[@]}" ANTHROPIC_API_KEY=sk-ant-api03-docs-review-canary \
         ANTHROPIC_BASE_URL="http://127.0.0.1:$port" CLAUDE_CODE_SUBPROCESS_ENV_SCRUB=1 CLAUDE_CODE_PROMPT_CACHE_TTL=5m \
         "$TIMEOUT_BIN" 120 claude -p "$3" --effort high --model "$model" --permission-mode default \
