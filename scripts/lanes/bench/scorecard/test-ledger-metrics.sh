@@ -179,7 +179,7 @@ check_contains "main: crit stat excludes the artifact=code row (feat/alpha=1, fi
     "$OUT" "crit: n=2 sum=3 mean=1.50 median=1.5 max=2"
 check_contains "main: imp stat" "$OUT" "imp:  n=2 sum=2 mean=1.00 median=1.0 max=1"
 check_contains "main: sug stat" "$OUT" "sug:  n=2 sum=1 mean=0.50 median=0.5 max=1"
-check_contains "main: rounds stat excludes the amend row and the orphan/branch row (feat/alpha=2, fix/beta=4)" \
+check_contains "main: rounds stat excludes the amend row, the orphan/branch row and a skipped attempt (feat/alpha=2, fix/beta=4)" \
     "$OUT" "rounds: n=2 sum=6 mean=3.00 median=3.0 max=4"
 check_contains "main: crit+imp combined stat" "$OUT" "crit+imp: n=2 mean=2.50 median=2.5"
 check_contains "main: merged window excludes the at-until PR, strips fractional seconds" \

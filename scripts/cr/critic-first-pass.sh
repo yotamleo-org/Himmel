@@ -512,7 +512,8 @@ case "$provider" in api) provider="claude-api" ;; subscription) provider="claude
 # official claude binary read-only (Read,Glob,Grep, dontAsk, never
 # bypassPermissions) in a scratch cwd, not hermes. rc 5 = SKIPPED: no key, lane
 # off, credit or bank exhausted -- a clean no-op the panel records as unavailable,
-# never a failed review.
+# never a failed review. A gate that crashed instead (no bank verdict, no scratch
+# file, a reservation with no verdict) exits 1 behind a "claude critic BROKE" line.
 _cfp_claude_effort() {
     _cce_e="${CR_CLAUDE_CRITIC_EFFORT:-}"
     if [ -z "$_cce_e" ] && command -v node >/dev/null 2>&1; then
@@ -563,18 +564,29 @@ _cfp_claude_invoke() {
                 -p "Read ./review-prompt.md and follow it exactly. Reply with the review only." \
                 --model "$model" --permission-mode dontAsk --max-budget-usd "$_cc_budget" \
                 --output-format json --effort "$_cc_effort" 2>"$_cc_err")" || _cc_rc=$?
-            if grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
-                echo "critic-first-pass.sh: claude critic SKIPPED ($(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')) — clean no-op" >&2
+            # only the launcher's own exit 2 is a refusal; the same line behind any other rc is a failure
+            if [ "$_cc_rc" -eq 2 ] && grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
+                _cc_why="$(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')"
                 rm -rf "$_cc_dir"
+                # a gate that crashed (no scratch file, bank preflight BANK-UNKNOWN, a reservation with no verdict) is broke, not a decision
+                case "$_cc_why" in
+                    'reservation refused: '*'"verdict":'*) ;;
+                    'no scratch file'|'api bank gate said BANK-UNKNOWN'|'reservation refused: '*)
+                        echo "critic-first-pass.sh: claude critic BROKE ($_cc_why) — not a clean no-op" >&2
+                        return 1 ;;
+                esac
+                echo "critic-first-pass.sh: claude critic SKIPPED ($_cc_why) — clean no-op" >&2
                 return 5
             fi
             cat "$_cc_err" >&2
             ;;
         claude-subscription)
-            _cc_bank="$(CADENCE_USAGE_WORKER=claude-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
+            _cc_bank="$(CADENCE_USAGE_WORKER=claude-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is BROKE below, fail-closed
             case "$_cc_bank" in
                 PROCEED*) ;;
-                *) echo "critic-first-pass.sh: claude critic SKIPPED (${_cc_bank:-no bank verdict}) — clean no-op" >&2
+                '') echo "critic-first-pass.sh: claude critic BROKE (bank preflight gave no verdict) — not a clean no-op" >&2
+                    rm -rf "$_cc_dir"; return 1 ;;
+                *) echo "critic-first-pass.sh: claude critic SKIPPED ($_cc_bank) — clean no-op" >&2
                    rm -rf "$_cc_dir"; return 5 ;;
             esac
             # shellcheck source=../lib/native-auth-pin.sh
@@ -598,11 +610,23 @@ _cfp_claude_invoke() {
         [ "$_cc_rc" -eq 5 ] && return 1
         return "$_cc_rc"
     fi
-    printf '%s' "$_cc_out" | _cfp_claude_unwrap
+    _cc_urc=0
+    printf '%s' "$_cc_out" | _cfp_claude_unwrap || _cc_urc=$?
+    # 5 is the skip contract: it never comes from a crashed unwrap
+    [ "$_cc_urc" -eq 5 ] && return 1
+    return "$_cc_urc"
 }
 
 _cfp_invoke() {
     case "$provider" in claude-api|claude-subscription) _cfp_claude_invoke; return $? ;; esac
+    _ci_rc=0
+    _cfp_hermes_invoke || _ci_rc=$?
+    # 5 is the skip contract: it never comes from a crashed hermes invoke
+    [ "$_ci_rc" -eq 5 ] && return 1
+    return "$_ci_rc"
+}
+
+_cfp_hermes_invoke() {
     # --provider threads the registry row's provider to hermes so
     # model ids newer than hermes' catalog can't silently fall to its default
     # provider. Branching (not arrays) for the same bash-3.2 reason as --profile.

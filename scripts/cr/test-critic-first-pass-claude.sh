@@ -67,7 +67,7 @@ printf '%s\n' "$@" > "$REC/argv"
 pwd > "$REC/cwd"
 printf '%s\n' "HIMMEL_API_TOOLS=${HIMMEL_API_TOOLS:-}" "HIMMEL_API_KIND=${HIMMEL_API_KIND:-}" \
     "HIMMEL_API_BRANCH=${HIMMEL_API_BRANCH:-}" "HIMMEL_API_HEAD=${HIMMEL_API_HEAD:-}" "HIMMEL_API_PR=${HIMMEL_API_PR:-}" > "$REC/env"
-if [ -n "${FAKE_REFUSE:-}" ]; then echo "claude-api: refused: $FAKE_REFUSE" >&2; exit 2; fi
+if [ -n "${FAKE_REFUSE:-}" ]; then echo "claude-api: refused: $FAKE_REFUSE" >&2; exit "${FAKE_REFUSE_RC:-2}"; fi
 [ -z "${FAKE_FAIL:-}" ] || { echo "boom" >&2; exit 1; }
 [ -z "${FAKE_RC5:-}" ] || { echo "boom" >&2; exit 5; }
 cat "$ENVELOPE"
@@ -78,7 +78,7 @@ export ENVELOPE="$W/envelope.json" HIMMEL_CLAUDE_BIN="$FAKE" CFP_CLAUDE_API_LAUN
 fresh_rec() { REC="$W/rec.$1"; rm -rf "$REC"; mkdir -p "$REC"; export REC; }
 run_cfp() { # run_cfp <provider> [extra args]; stdout -> $W/out, stderr -> $W/err
     local p="$1"; shift
-    RC=0; printf '%s\n' "$DIFF" | bash "$CFP" --model claude-opus-5-5 --slug claude --provider "$p" "$@" >"$W/out" 2>"$W/err" || RC=$?
+    RC=0; printf '%s\n' "$DIFF" | bash "${CFP_RUN:-$CFP}" --model claude-opus-5-5 --slug claude --provider "$p" "$@" >"$W/out" 2>"$W/err" || RC=$?
 }
 
 # A readonly routing variable survives the pin: skip without leaking its scratch.
@@ -214,6 +214,68 @@ check "9 provider 'subscription' routes to the native claude" 0 "$RC"
 has "9 claude saw the call" "Read,Glob,Grep" "$REC/argv"
 
 _test_native_auth_skip
+
+# --- 10. broke is not disabled: a crashed gate exits 1 (BROKE), a decision exits 5 (SKIPPED) ---
+unset FAKE_REFUSE FAKE_REFUSE_RC
+broke_case() { # broke_case <id> <refusal text>: the launcher refuses with that text
+    fresh_rec "$1"; export FAKE_REFUSE="$2"
+    run_cfp claude-api
+    unset FAKE_REFUSE
+}
+broke_case 10a "no scratch file"
+check "10a a scratch-file refusal is broke: exits 1" 1 "$RC"
+has "10a stderr names BROKE" "claude critic BROKE" "$W/err"
+broke_case 10b 'reservation refused: '
+check "10b a reservation that returned no verdict is broke: exits 1" 1 "$RC"
+has "10b stderr names BROKE" "claude critic BROKE" "$W/err"
+broke_case 10c 'reservation refused: {"verdict":"HOLD","reason":"cap"}'
+check "10c a reservation that said HOLD is a decision: exits 5" 5 "$RC"
+has "10c stderr names SKIPPED" "claude critic SKIPPED" "$W/err"
+broke_case 10d "api bank gate said BANK-UNKNOWN"
+check "10d a bank preflight that crashed (BANK-UNKNOWN) is broke: exits 1" 1 "$RC"
+has "10d stderr names BROKE" "claude critic BROKE" "$W/err"
+broke_case 10e "api bank gate said HOLD"
+check "10e a bank gate that said HOLD is a decision: exits 5" 5 "$RC"
+# a refusal-shaped line from anything but the launcher's own exit 2 is not a skip
+fresh_rec 10f; export FAKE_REFUSE="api lane is OFF (set HIMMEL_API_LANE=on)" FAKE_REFUSE_RC=1
+run_cfp claude-api
+check "10f a refusal line with exit 1 (not the launcher's own exit 2) is a failure" 1 "$RC"
+unset FAKE_REFUSE FAKE_REFUSE_RC
+
+# a tree whose cfp is the real one but whose usage-preflight and hermes invoke are stubs
+mk_tree() { # mk_tree <name>
+    local T="$W/tree.$1" f
+    rm -rf "$T"; mkdir -p "$T/scripts/cr" "$T/scripts/lib" "$T/scripts/hermes"
+    for f in "$REPO"/scripts/cr/*; do ln -s "$f" "$T/scripts/cr/$(basename "$f")"; done
+    for f in "$REPO"/scripts/lib/*; do ln -s "$f" "$T/scripts/lib/$(basename "$f")"; done
+    rm "$T/scripts/cr/critic-first-pass.sh"; cp "$CFP" "$T/scripts/cr/critic-first-pass.sh"
+    CFP_RUN="$T/scripts/cr/critic-first-pass.sh"; TREE="$T"
+}
+fresh_rec 10g; bank 10; mk_tree 10g
+rm "$TREE/scripts/lib/usage-preflight.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'exit 3' > "$TREE/scripts/lib/usage-preflight.sh"
+run_cfp claude-subscription
+check "10g a subscription bank preflight that crashed (no verdict) is broke: exits 1" 1 "$RC"
+has "10g stderr names BROKE" "claude critic BROKE" "$W/err"
+check "10g claude is not launched" "no" "$([ -e "$REC/argv" ] && echo yes || echo no)"
+fresh_rec 10h; mk_tree 10h
+rm "$TREE/scripts/lib/usage-preflight.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo HOLD' > "$TREE/scripts/lib/usage-preflight.sh"
+run_cfp claude-subscription
+check "10h a subscription bank verdict that is not PROCEED is a decision: exits 5" 5 "$RC"
+
+# --- 11. an rc 5 from the hermes invoke or the envelope unwrap is a failure, never a skip ---
+fresh_rec 11a; mk_tree 11a
+printf '%s\n' '#!/usr/bin/env bash' 'echo "invoke crashed" >&2' 'exit 5' > "$TREE/scripts/hermes/invoke.sh"
+RC=0; printf '%s\n' "$DIFF" | bash "$CFP_RUN" --model qwen/qwen3-coder-480b-a35b-instruct >"$W/out" 2>"$W/err" || RC=$?
+check "11a a hermes invoke that exits 5 is a failure (1), not a skip" 1 "$RC"
+fresh_rec 11b; bank 10; mk_tree 11b
+mkdir -p "$W/shim11b"
+printf '%s\n' '#!/usr/bin/env bash' 'case "$*" in *"j.type"*) cat >/dev/null; exit 5 ;; esac' "exec $(command -v node) \"\$@\"" > "$W/shim11b/node"
+chmod +x "$W/shim11b/node"
+PATH="$W/shim11b:$PATH" run_cfp claude-subscription
+check "11b an envelope unwrap that exits 5 is a failure (1), not a skip" 1 "$RC"
+unset CFP_RUN
 
 echo "pass=$PASS fail=$FAIL"
 [ "$FAIL" -eq 0 ]

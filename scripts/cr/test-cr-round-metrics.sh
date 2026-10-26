@@ -153,6 +153,7 @@ check "huge --days exits 2" "$?" "2"
   cat "$L"
   echo '{"kind":"attempt","ts":"2026-10-01T02:30:00Z","branch":"fix/a","head":"a3","model":"claude","status":"ok","hour_utc":2,"artifact":"diff","perspective":"off","responding_model":"claude-opus-5-5","attempt":1,"duration_secs":20,"detail":"rc=0"}'
   echo '{"kind":"attempt","ts":"2026-10-05T03:30:00Z","branch":"fix/b","head":"b4","model":"claude","status":"error","hour_utc":3,"artifact":"diff","perspective":"off","responding_model":"claude-opus-5-5","attempt":1,"duration_secs":0,"detail":"rc=5: critic-first-pass.sh: claude critic SKIPPED (api lane is OFF (set HIMMEL_API_LANE=on)) - clean no-op"}'
+  echo '{"kind":"attempt","ts":"2026-10-05T03:30:30Z","branch":"fix/b","head":"b4","model":"claude","status":"skipped","hour_utc":3,"artifact":"diff","perspective":"off","responding_model":"claude-opus-5-5","attempt":1,"detail":"rc=5: critic-first-pass.sh: claude critic SKIPPED (api lane is OFF) - clean no-op"}'
   echo '{"kind":"attempt","ts":"2026-10-05T03:31:00Z","branch":"fix/b","head":"b4","model":"codex","status":"ok","hour_utc":3,"artifact":"diff","perspective":"off","attempt":1,"duration_secs":11,"detail":"rc=0"}'
 } > "$tmp/split.jsonl"
 LF="$tmp/launches.jsonl"
@@ -170,7 +171,7 @@ check "split critic cost total" "$(q critic_split.critic.cost_usd_total)" "0.4"
 check "split critic cost per PR" "$(q critic_split.critic.cost_usd_per_pr)" "0.4"
 check "split critic cost joined" "$(q critic_split.critic.cost_joined)" "1"
 check "split unjoined critic launches" "$(q critic_split.launches_unjoined)" "1"
-check "split failed attempts counted" "$(q critic_split.critic_attempts_failed)" "1"
+check "split failed attempts counted (a skipped attempt is not a failure)" "$(q critic_split.critic_attempts_failed)" "1"
 
 # a branch with two successful critic calls but one matched launch is not fully joined
 {
