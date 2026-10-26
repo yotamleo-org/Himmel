@@ -15,7 +15,8 @@
 # and test files (test-*, *.test.*, fixtures/, tests/): a suite sets a flag to exercise both states.
 #
 # ponytail: a text match, not data flow: a flag name built at run time is not seen, and a
-# comment that names a flag counts as a read; upgrade path is an AST rule in the swallowed-error lint family.
+# comment that names a flag counts as a read, a call split across lines is not seen, and `expires`
+# is checked as a date only (no birth column, so the 14-day cap is the author's); upgrade path is an AST rule in the swallowed-error lint family.
 #
 # Exit: 0 clean; 1 findings (one `FAIL <class>: ...` line each); 2 usage or unreadable registry.
 # Platform guard (gitbash-only): POSIX bash 3.2+, git or find, grep, awk, xargs.
@@ -53,11 +54,14 @@ while IFS= read -r line || [ -n "$line" ]; do
   ncols="$(printf '%s' "$line" | awk -F'\t' '{print NF}')"
   default="$(printf '%s' "$line" | cut -f2)"
   kind="$(printf '%s' "$line" | cut -f3)"
+  owner="$(printf '%s' "$line" | cut -f4)"
+  removal="$(printf '%s' "$line" | cut -f5)"
   expires="$(printf '%s' "$line" | cut -f6)"
-  if [ "$ncols" -lt 7 ] || ! printf '%s' "$name" | grep -Eq '^[a-z][a-z0-9_]*$' \
+  if [ "$ncols" -ne 7 ] || ! printf '%s' "$name" | grep -Eq '^[a-z][a-z0-9_]*$' \
      || { [ "$default" != on ] && [ "$default" != off ]; } \
      || { [ "$kind" != feature ] && [ "$kind" != content ]; } \
-     || ! printf '%s' "$expires" | grep -Eq '^[0-9]{4}-[0-9]{2}-[0-9]{2}$'; then
+     || [ -z "$owner" ] || [ -z "$removal" ] \
+     || ! printf '%s' "$expires" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'; then
     finding "malformed: ${name:-?} (want 7 tab-separated columns: name, default on|off, kind feature|content, owner, removal, expires YYYY-MM-DD, description)"
     continue
   fi
@@ -78,7 +82,7 @@ READS="$SCRATCH/reads"; : > "$READS"   # <name>\t<file>
 if [ -s "$FILES" ]; then
   tr '\n' '\0' < "$FILES" | (cd "$ROOT" && xargs -0 grep -IHoE \
     -e 'himmel_flag[[:space:]]+["'"'"']?[a-z][a-z0-9_]*' \
-    -e 'himmel_?[fF]lag\(["'"'"'][a-z][a-z0-9_]*' \
+    -e 'himmel_?[fF]lag\([[:space:]]*["'"'"'][a-z][a-z0-9_]*' \
     -e 'HIMMEL_FLAG_[A-Z][A-Z0-9_]*' 2>/dev/null) \
   | awk -F: '{
       file = $1; m = substr($0, length(file) + 2)

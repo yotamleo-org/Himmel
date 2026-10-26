@@ -35,7 +35,7 @@ _hf_conf_value() {
             case "$v" in
                 \"*\"*) v="${v#\"}"; v="${v%%\"*}" ;;
                 \'*\'*) v="${v#\'}"; v="${v%%\'*}" ;;
-                *' #'*) v="$(_hf_trim "${v%% #*}")" ;;
+                *[[:space:]]'#'*) v="$(_hf_trim "${v%%[[:space:]]#*}")" ;;
             esac
             [ -n "$v" ] || continue
             printf '%s' "$v"

@@ -55,6 +55,8 @@ for r in sh py mjs; do
     want "env beats himmel.conf.local" "$r" foo_off 0 HIMMEL_FLAG_FOO_OFF=1
     printf 'HIMMEL_FLAG_FOO_OFF="1"  # quoted, with a comment\n' > "$CONF/himmel.conf.local"
     want "a quoted conf value with a trailing comment is read" "$r" foo_off 0
+    printf 'HIMMEL_FLAG_FOO_OFF=1\t# tab-separated comment\n' > "$CONF/himmel.conf.local"
+    want "a tab before a trailing comment ends the value" "$r" foo_off 0
     printf '# HIMMEL_FLAG_FOO_OFF=1\nHIMMEL_FLAG_FOO_OFF=\n' > "$CONF/himmel.conf.local"
     printf 'HIMMEL_FLAG_FOO_OFF=1\n' > "$CONF/himmel.conf"
     want "a commented or empty local line falls through to himmel.conf" "$r" foo_off 0
