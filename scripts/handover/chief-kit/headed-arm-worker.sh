@@ -543,7 +543,7 @@ if [ "$CONSULT" -eq 1 ]; then
     while [ -n "$_consult_rest" ]; do
         _consult_m="${_consult_rest%%,*}"; _consult_rest="${_consult_rest#*,}"
         case "$_consult_m" in
-            operator|bare|chief|chief-relay|console-judge|release-manager)
+            operator|bare|chief|chief-relay|console|console-relay|console-judge|release-manager)
                 usage
                 echo "headed-arm-worker: --consult refuses profile \"$_consult_m\": non-additive or role profiles cannot back a consult (got: $PROFILE)" >&2
                 exit 2

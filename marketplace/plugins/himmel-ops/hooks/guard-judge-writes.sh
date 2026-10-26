@@ -129,7 +129,7 @@ case "$tool" in
 
         case "$cmd" in
             *HIMMEL_CONSOLE_JUDGE*) deny "marker-override" "command names HIMMEL_CONSOLE_JUDGE" ;;
-            *worker-pr-open*) deny "pr-open" "worker-pr-open" ;;
+            *leg-pr-open* | *worker-pr-open*) deny "pr-open" "worker-pr-open" ;;
             *merge-on-green*) deny "merge" "merge-on-green" ;;
             *console-kit/go.sh* | *chief-kit/go.sh*) deny "go" "chief-kit/go.sh" ;;
             *inbox-send*) deny "inbox-send" "inbox-send" ;;

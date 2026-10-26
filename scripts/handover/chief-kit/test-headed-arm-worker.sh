@@ -3827,7 +3827,7 @@ set41="$(cat "$d41/HIMMEL-4014-list.leg-settings.json" 2>/dev/null || true)"
 check "41a real launch: the settings enable a design-core id" "$(printf '%s' "$set41" | jq -r '.enabledPlugins["impeccable@himmel"]' 2>/dev/null)" "true"
 check "41a real launch: the settings enable a design-motion id" "$(printf '%s' "$set41" | jq -r '.enabledPlugins["gsap-skills@himmel"]' 2>/dev/null)" "true"
 
-for bad41 in operator bare chief chief-relay console-judge design,console-judge; do
+for bad41 in operator bare chief chief-relay console console-relay console-judge design,console-judge; do
   rc=0; out="$(bash "$SCRIPT" --dry-run --consult --profile "$bad41" HIMMEL-4014-c "$some_doc" /tmp/nosig 99999999999 /tmp/worker.log 2>&1)" || rc=$?
   check "41c --consult --profile $bad41 refuses (exit 2)" "$rc" "2"
   contains "41c --consult --profile $bad41: refusal says why" "$out" "--consult refuses"

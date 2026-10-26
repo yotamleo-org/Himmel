@@ -29,8 +29,8 @@
 #     skipping the guarded-path match; on a BSD readlink, detected by a
 #     one-time probe, a missing FINAL component alone is resolved through its
 #     parent, fail-closed); or the PHYSICALLY resolved path is under
-#     <handover_root>/inbox/, under a .../himmel-chief/... rundir, under
-#     ${TMPDIR:-/tmp}/himmel-chief-*, or its basename matches
+#     <handover_root>/inbox/, under a .../himmel-chief/... or .../himmel-console/... rundir,
+#     under ${TMPDIR:-/tmp}/himmel-chief-* or himmel-console-*, or its basename matches
 #     *-legN*-RESUME.md.
 #   Bash — the command text contains HIMMEL_CONSOLE_RELAY, HIMMEL_CONSOLE_LEG,
 #     SESSION_NAME_CMDLINE_FILE, CLAUDE_PID, CHIEF_SESSION_NAME or its old
@@ -41,7 +41,7 @@
 #     "rm", "rmdir", "rsync", "dd", "ddrescue", "truncate", "sed", "install",
 #     "chmod", "chown" —
 #     a word is bounded by the string edge or any char outside [[:alnum:]_])
-#     AND text naming "/inbox/", "himmel-chief", or both "-legN" and
+#     AND text naming "/inbox/", "himmel-chief", "himmel-console", or both "-legN" and
 #     "-RESUME.md".
 #
 # DEFAULT ACTION: with the marker unset this hook is a silent no-op — the
@@ -247,11 +247,11 @@ case "$tool" in
         esac
 
         case "$path_resolved" in
-            /run/user/*/himmel-chief/*) deny "chief-rundir-write" "$path" ;;
+            /run/user/*/himmel-console/* | /run/user/*/himmel-chief/*) deny "chief-rundir-write" "$path" ;;
         esac
 
         case "$path_resolved" in
-            "${TMPDIR:-/tmp}/himmel-chief-"*) deny "chief-rundir-write" "$path" ;;
+            "${TMPDIR:-/tmp}/himmel-console-"* | "${TMPDIR:-/tmp}/himmel-chief-"*) deny "chief-rundir-write" "$path" ;;
         esac
 
         case "$path_base" in
@@ -306,7 +306,7 @@ case "$tool" in
 
         if [ "$write_shaped" = "1" ]; then
             case "$cmd" in
-                *"/inbox"* | *himmel-chief*) deny "redirect-into-chief-state" "$cmd" ;;
+                *"/inbox"* | *himmel-console* | *himmel-chief*) deny "redirect-into-chief-state" "$cmd" ;;
             esac
             case "$cmd" in
                 *-legN*)
