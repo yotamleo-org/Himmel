@@ -24,7 +24,7 @@
 #   verdicts    --verdicts, else verdicts/ beside the first worker doc (judge_accuracy's reader)
 #   CR ledger   --cr-ledger, else cr_ledger_eval's default (findings folded by its fold)
 #   denials     --denials, else ~/.himmel/state/classifier-denials.jsonl, joined on the doc's
-#               resume_cwd worktree
+#               resume_cwd worktree; a doc that resumes in the primary checkout has none
 #   mirror      --mirror, else judge_accuracy's Jira mirror (caused-by bugs)
 #   clock       a bullet's HH:MM is read in --tz (default the local zone) on the launch day,
 #               rolling to the next day when the clock goes backwards
@@ -63,7 +63,10 @@ while [ $# -gt 0 ]; do
         --doc)
             [ $# -ge 2 ] || { echo "fleet-scorecard: --doc needs a value" >&2; exit 2; }
             args+=(--doc "$2" --label "$(worker_label "$(basename "$2" .md)")"); shift 2 ;;
-        --label) echo "fleet-scorecard: --label is derived from --doc" >&2; exit 2 ;;
+        --doc=*)
+            v="${1#--doc=}"
+            args+=(--doc "$v" --label "$(worker_label "$(basename "$v" .md)")"); shift ;;
+        --label|--label=*) echo "fleet-scorecard: --label is derived from --doc" >&2; exit 2 ;;
         *) args+=("$1"); shift ;;
     esac
 done
@@ -118,7 +121,7 @@ def read(path):
 
 
 def args():
-    ap = argparse.ArgumentParser(prog="fleet-scorecard.sh")
+    ap = argparse.ArgumentParser(prog="fleet-scorecard.sh", allow_abbrev=False)
     ap.add_argument("here")
     ap.add_argument("--manifest", action="append", default=[])
     ap.add_argument("--doc", action="append", default=[])
@@ -457,6 +460,9 @@ def score(leg, ctx):
         f["denials"] = na("no denial log: %s" % ctx["denials_path"])
     elif not leg.get("cwd"):
         f["denials"] = na("no resume_cwd")
+    elif "/.claude/worktrees/" not in leg["cwd"]:
+        # the primary checkout is shared by the chief and every session in it
+        f["denials"] = na("no worktree: %s" % leg["cwd"])
     else:
         wt = os.path.basename(leg["cwd"].rstrip("/"))
         v["denials"] = sum(1 for d in ctx["denials"] if (d.get("cwd") == leg["cwd"] or d.get("session_title") == wt)
@@ -597,6 +603,8 @@ def main():
            table(["lane", "legs", "merged", "in flight", "judge GO", "judge NO-GO", "blockers", "majors", "CR findings",
                   "median rounds to clean", "median launch to LIVE", "median launch to READY", "interventions",
                   "median interventions", "denials", "median cost-eq per merged PR"], lane_rows(scored)), "",
+           "- interventions: a ruling or nudge sent by SendMessage counts only when a doc logs it, "
+           "so a worker with message delivery shows a floor", "",
            "## Sources", "",
            "- manifests: %s" % (", ".join(a.manifest) or "none (bare --doc legs)"),
            "- chief docs: %s%s" % (", ".join(found) or na("none found"),
