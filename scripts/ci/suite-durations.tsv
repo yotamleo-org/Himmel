@@ -1135,3 +1135,4 @@ scripts/guardrails/test-settings-waiter-allow.sh	1
 scripts/ci/test-billed-optin.sh	10
 scripts/ci/test-ci-go-gate.sh	1
 scripts/lanes/bench/scorecard/test-review-rounds.sh	1
+marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	3

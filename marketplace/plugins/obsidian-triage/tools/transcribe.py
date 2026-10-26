@@ -27,6 +27,7 @@ DEFAULTS = {"cuda": ("float16", "large-v3-turbo"), "cpu": ("int8", "base")}
 CUDA_LOCK_MARKER = "HIMMEL_WHISPER_CUDA_LOCK"
 HEBREW_MODEL = "ivrit-ai/whisper-large-v3-turbo-ct2"
 ROUTE_MIN_PROB = 0.8
+USED = {}  # the model name that actually loaded, for the X_TRANSCRIBE_MODEL_FILE side channel
 
 
 def cuda_visible():
@@ -76,16 +77,18 @@ def reexec_with_cuda_lock():
     uv = shutil.which("uv")
     if uv:
         env = dict(os.environ, **{CUDA_LOCK_MARKER: "1"})
-        argv = [uv, "run", "--python", "3.12",
+        base = [uv, "run", "--python", "3.12",
                 "--with-requirements", os.path.join(HERE, "requirements-whisper.txt"),
                 "--with-requirements", os.path.join(HERE, "requirements-whisper-cuda.txt"),
-                "python", os.path.abspath(__file__)] + sys.argv[1:]
-        done = subprocess.run(argv, env=env, stdout=subprocess.PIPE)
-        if done.returncode == 0:
-            sys.stdout.buffer.write(done.stdout)
-            sys.exit(0)
+                "python"]
+        # Prove the CUDA environment installs before committing to it, so only an
+        # environment failure (never a bad wav) falls back to CPU.
+        probe = subprocess.run(base + ["-c", "import nvidia.cublas.lib, nvidia.cudnn.lib"],
+                               env=env, stdout=subprocess.DEVNULL)
+        if probe.returncode == 0:
+            os.execve(uv, base + [os.path.abspath(__file__)] + sys.argv[1:], env)
         print("transcribe: cuda environment unavailable (uv exited "
-              f"{done.returncode}); using cpu", file=sys.stderr)
+              f"{probe.returncode}); using cpu", file=sys.stderr)
     os.environ["HIMMEL_WHISPER_DEVICE"] = "cpu"
 
 
@@ -108,12 +111,16 @@ def load_model(device, compute, name, model_arg=None):
         try:
             if cuda_libs_present():
                 preload_cuda_libs()
-            return WhisperModel(name, device="cuda", compute_type=compute), "cuda"
+            model = WhisperModel(name, device="cuda", compute_type=compute)
+            USED["model"] = name
+            return model, "cuda"
         except Exception as e:
             print(f"transcribe: cuda unusable ({type(e).__name__}: {e}); falling back to cpu",
                   file=sys.stderr)
             compute, name = DEFAULTS["cpu"][0], cpu_model_name(model_arg)
-    return WhisperModel(name, device="cpu", compute_type=compute), "cpu"
+    model = WhisperModel(name, device="cpu", compute_type=compute)
+    USED["model"] = name
+    return model, "cpu"
 
 
 def run_model(wav, model_arg):
@@ -157,6 +164,11 @@ def main():
     if meta and segments:
         with open(meta, "w") as f:
             f.write(str(max(seg.end for seg in segments)))
+    # Optional side channel: the model that actually transcribed.
+    model_file = os.environ.get("X_TRANSCRIBE_MODEL_FILE")
+    if model_file and USED.get("model"):
+        with open(model_file, "w") as f:
+            f.write(USED["model"])
 
 if __name__ == "__main__":
     main()

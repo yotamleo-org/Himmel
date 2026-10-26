@@ -105,5 +105,53 @@ assert "uv failure falls back to cpu base" "cpu:base" "$(py "$tmp/namecuda" 'pri
 assert "cpu retry keeps the env model" "cpu:small" "$(py "$tmp/namecuda" 'print(transcribe.run_model("x.wav", None)[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 HIMMEL_WHISPER_MODEL=small | tail -n 1)"
 assert "cpu retry keeps the argv model" "cpu:tiny" "$(py "$tmp/namecuda" 'print(transcribe.run_model("x.wav", "tiny")[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 | tail -n 1)"
 
+echo "== a healthy uv probe hands the run to uv; a bad wav is never decoded twice"
+printf '#!/bin/sh\ncase "$*" in *" -c "*) exit 0 ;; esac\necho exec-ran\n' > "$tmp/bin/uv-ok"
+mkdir -p "$tmp/okbin"; cp "$tmp/bin/uv-ok" "$tmp/okbin/uv"; chmod +x "$tmp/okbin/uv"
+assert "probe ok: the run is handed to uv" "exec-ran" "$(py "$tmp/namecuda" 'transcribe.run_model("x.wav", None)' PATH="$tmp/okbin:$PATH" | tail -n 1)"
+
+echo "== an end-to-end GPU run routes Hebrew to the ivrit model"
+mkdir -p "$tmp/routecuda/nvidia"; : > "$tmp/routecuda/nvidia/__init__.py"
+cp "$tmp/cuda/ctranslate2.py" "$tmp/routecuda/ctranslate2.py"
+cat > "$tmp/routecuda/faster_whisper.py" <<'STUB'
+def decode_audio(p):
+    return p
+class Seg:
+    def __init__(self, text):
+        self.text = text; self.end = 1.0
+class WhisperModel:
+    def __init__(self, name, device, compute_type):
+        self.name = name; self.device = device
+    def detect_language(self, audio):
+        return "he", 0.9, {}
+    def transcribe(self, wav, language=None):
+        return [Seg(self.device + ":" + self.name + ":" + str(language))], None
+STUB
+assert "he at 0.9 loads the ivrit model" "cuda:ivrit-ai/whisper-large-v3-turbo-ct2:he" "$(py "$tmp/routecuda" 'print(transcribe.run_model("x.wav", None)[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 | tail -n 1)"
+assert "a pinned model stays unrouted" "cuda:small:None" "$(py "$tmp/routecuda" 'print(transcribe.run_model("x.wav", None)[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 HIMMEL_WHISPER_MODEL=small | tail -n 1)"
+
+echo "== the media fetchers pass no model unless --whisper-model was given"
+caller() {
+  python3 -I -c "import sys, importlib.util, subprocess, pathlib
+spec = importlib.util.spec_from_file_location('m', sys.argv[1]); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+seen = []
+class P:
+    returncode = 0; stdout = 'x'; stderr = ''
+subprocess.run = lambda cmd, **kw: (seen.append(cmd), P())[1]
+m.shutil.which = lambda n: '/bin/uv'
+m.whisper_transcribe(pathlib.Path('/tmp/a.wav'), $2)
+print(seen[0][-1])" "$TOOLS_DIR/$1" 2>&1 | tail -n 1
+}
+assert "ig default passes no model" "/tmp/a.wav" "$(caller ig-media-fetch.py None)"
+assert "x default passes no model" "/tmp/a.wav" "$(caller x-media-fetch.py None)"
+assert "ig explicit model is passed" "small" "$(caller ig-media-fetch.py "'small'")"
+assert "x explicit model is passed" "small" "$(caller x-media-fetch.py "'small'")"
+assert "the argparse default is None" "None None" "$(python3 -I -c "import sys, importlib.util
+out = []
+for f in sys.argv[1:]:
+    spec = importlib.util.spec_from_file_location('m', f); m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+    out.append(str(m.DEFAULT_WHISPER_MODEL))
+print(*out)" "$TOOLS_DIR/ig-media-fetch.py" "$TOOLS_DIR/x-media-fetch.py" 2>&1 | tail -n 1)"
+
 echo; echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

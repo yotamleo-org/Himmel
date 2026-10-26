@@ -128,7 +128,12 @@ ONCE per machine before the first `/ig-media-enrich` run.
    `ivrit-ai/whisper-large-v3-turbo-ct2` (loaded lazily; everything else stays on
    turbo; the CPU path never routes). Overrides: `HIMMEL_WHISPER_DEVICE=cpu|cuda`,
    `HIMMEL_WHISPER_MODEL=<name>` (pins the model, no routing),
-   `HIMMEL_WHISPER_ROUTE=0` (no routing), and an explicit `[model]` argument wins over both. On the
+   `HIMMEL_WHISPER_ROUTE=0` (no routing), and an explicit `[model]` argument wins over both.
+   `ig-media-fetch.py` and `x-media-fetch.py` pass no model unless `--whisper-model`
+   is given, so the device default and routing apply. The CUDA wheels are probed
+   first: only a failed install falls back to CPU, never a bad wav.
+   `HIMMEL_WHISPER_DEVICE=cuda` on a host with no GPU still triggers the ~1.3 GB
+   wheel download, so leave it unset there. On the
    4090 the turbo model transcribes about 7x faster than `small` on CPU and about
    halves Hebrew WER; VRAM is about 2.5 GB.
 
