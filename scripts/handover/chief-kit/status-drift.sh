@@ -282,7 +282,7 @@ if ! vers=$(ts_jira versions --project "$proj" 2>/dev/null); then
     add HEALTH - "jira: the version list is unreadable" jira "jira versions --project $proj"
     finish unknown
 fi
-cur=$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print ($3 == "" ? "9999-99-99" : $3) "\t" $1 }' | sort | head -n 1 | cut -f2)
+cur=$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { printf "%s\t%06d\t%s\n", ($3 == "" ? "9999-99-99" : $3), NR, $1 }' | sort | head -n 1 | cut -f3)
 if [ -n "$cur" ]; then
     vseen=""
     while IFS= read -r later; do
