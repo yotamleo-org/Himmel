@@ -140,8 +140,8 @@ write_yml_embed() {
 jina_gate_ok() {
     # intentional: the \\ alternative is conservative fail-closed detection (a config backslash only requires node and the gate); narrowing it is a security-logic change needing its own review
     local remote=0
-    case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *openai:*) remote=1 ;; esac
-    if [ "$remote" -eq 0 ] && ! grep -Eqs '^[^#]*(openai:|\\)' "$1"; then return 0; fi
+    case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *[Oo][Pp][Ee][Nn][Aa][Ii]:*) remote=1 ;; esac
+    if [ "$remote" -eq 0 ] && ! grep -Eqis '^[^#]*(openai:|\\)' "$1"; then return 0; fi
     command -v node >/dev/null 2>&1 || { warn "node is missing; cannot check the egress gate for $1"; return 1; }
     [ -f "$HERE/../qmd/qmd-jina-gate.mjs" ] || { warn "qmd-jina-gate.mjs is missing; refusing to write a remote model"; return 1; }
     node "$HERE/../qmd/qmd-jina-gate.mjs" "$1" "$2" >&2
