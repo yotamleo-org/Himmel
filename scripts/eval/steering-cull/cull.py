@@ -14,6 +14,8 @@
   report --runs OUT [cost options] [--ledger] [--json]
                                 the per-row table and verdicts; --ledger appends an eval-runs row,
                                 refused (2) when OUT ran on other probe or row text
+                                valid and report refuse (2) a summary scored under other checks
+                                until rescore
   inputs-sha                    hash of the text a child reads (run.sh pins it in run-config.json)
 
 Cost: tokens are UTF-8 bytes // 4 per side. ponytail: a bytes/4 estimate, not the tokenizer's
@@ -263,6 +265,14 @@ def probe_by_id(pid):
     return None
 
 
+def checks_sha(probe):
+    return hashlib.sha256(json.dumps([probe.get(k) for k in ("first", "must", "must_not", "in")]).encode()).hexdigest()[:16]
+
+
+class StaleScores(Exception):
+    pass
+
+
 def usage_cost(d):
     u = d.get("usage") if isinstance(d, dict) else None
     if not isinstance(u, dict):
@@ -272,7 +282,7 @@ def usage_cost(d):
 
 
 def summarize(raw, probe):
-    """An errored run still carries the cost-eq of any usage it reports, so run.sh can bill it."""
+    """Cost-eq is None when the reply reports no usage, so run.sh can tell unbilled from free."""
     d = None
     try:
         with open(raw, encoding="utf-8") as fh:
@@ -283,7 +293,8 @@ def summarize(raw, probe):
     except (OSError, ValueError, KeyError, TypeError, AttributeError):
         return {"file": raw, "probe": probe["id"], "error": True, "pass": None, "cost_eq": usage_cost(d), "reply": None}
     return {"file": raw, "probe": probe["id"], "error": False, "pass": score(probe, reply),
-            "cost_eq": usage_cost(d) or 0.0, "cost_usd": d.get("total_cost_usd"), "reply": reply[:600]}
+            "cost_eq": usage_cost(d), "cost_usd": d.get("total_cost_usd"), "reply": reply[:600],
+            "checks_sha": checks_sha(probe)}
 
 
 def cmd_summarize(a):
@@ -312,7 +323,7 @@ def cmd_rescore(a):
 
 def tallies(runs):
     """{probe: {arm: [passes, scored]}} from <runs>/<probe>/<arm>/<rep>.summary.json."""
-    out = {}
+    out, want = {}, {p["id"]: checks_sha(p) for p in probes_doc()["probes"]}
     for p in glob.glob(os.path.join(runs, "*", "*", "*.summary.json")):
         arm_dir = os.path.dirname(p)
         probe, arm = os.path.basename(os.path.dirname(arm_dir)), os.path.basename(arm_dir)
@@ -322,6 +333,8 @@ def tallies(runs):
             continue
         if s.get("error"):
             continue
+        if probe in want and s.get("checks_sha") != want[probe]:
+            raise StaleScores(p)
         t = out.setdefault(probe, {}).setdefault(arm, [0, 0])
         t[0] += 1 if s.get("pass") else 0
         t[1] += 1
@@ -503,9 +516,13 @@ def main():
         sub.add_parser(name).add_argument("--runs", required=True)
     sub.add_parser("inputs-sha")
     a = ap.parse_args()
-    return {"check": cmd_check, "build": cmd_build, "cost": cmd_cost, "summarize": cmd_summarize,
-            "valid": cmd_valid, "rescore": cmd_rescore, "report": cmd_report,
-            "inputs-sha": cmd_inputs_sha}[a.cmd](a)
+    try:
+        return {"check": cmd_check, "build": cmd_build, "cost": cmd_cost, "summarize": cmd_summarize,
+                "valid": cmd_valid, "rescore": cmd_rescore, "report": cmd_report,
+                "inputs-sha": cmd_inputs_sha}[a.cmd](a)
+    except StaleScores as e:
+        print("cull.py: %s was scored under other checks; run cull.py rescore --runs first" % e, file=sys.stderr)
+        return 2
 
 
 if __name__ == "__main__":

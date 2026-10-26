@@ -103,7 +103,7 @@ arm_dir() { # $1 arm -> its built tree, built once per sweep
     printf '%s\n' "$scratch/$1"
 }
 # Spent = the scored runs plus every errored call that reported usage (errored-spend.log). Under a
-# ceiling, a call that reports no usage (killed by --timeout, unparseable) stops the sweep.
+# ceiling, a call that reports no usage (a reply without it, killed by --timeout, unparseable) stops the sweep.
 spent() { python3 -c 'import json,sys,glob,os
 s = sum(json.load(open(p)).get("cost_eq") or 0 for p in glob.glob(sys.argv[1]+"/*/*/*.summary.json"))
 e = os.path.join(sys.argv[1], "errored-spend.log")
@@ -143,20 +143,18 @@ for p in $ids; do
                 --no-session-persistence --output-format json --max-budget-usd "$max_usd") \
                 </dev/null >"$stem.raw.json" 2>"$stem.stderr"
             python3 "$CULL" summarize "$stem.raw.json" --probe "$p" >"$stem.summary.json.tmp"
+            ce="$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])).get("cost_eq"); print("" if c is None else c)' \
+                "$stem.summary.json.tmp" 2>/dev/null)"
             if python3 -c 'import json,sys; sys.exit(1 if json.load(open(sys.argv[1]))["error"] else 0)' "$stem.summary.json.tmp"; then
                 mv "$stem.summary.json.tmp" "$stem.summary.json"
-            else
-                ce="$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1])).get("cost_eq"); print("" if c is None else c)' \
-                    "$stem.summary.json.tmp" 2>/dev/null)"
-                if [ -n "$ce" ]; then
-                    printf '%s\n' "$ce" >>"$out/errored-spend.log"
-                elif [ -n "$ceiling" ]; then
-                    rm -f "$stem.summary.json.tmp"
-                    echo "run.sh: $p $arm $r errored with no usage to bill against the ceiling - stopped" >&2
-                    exit 3
-                fi
+            elif [ -n "$ce" ]; then
+                printf '%s\n' "$ce" >>"$out/errored-spend.log"
             fi
             rm -f "$stem.summary.json.tmp"
+            if [ -z "$ce" ] && [ -n "$ceiling" ]; then
+                echo "run.sh: $p $arm $r reported no usage to bill against the ceiling - stopped" >&2
+                exit 3
+            fi
             echo "run.sh: $p $arm $r -> $(python3 -c 'import json,sys
 try: s=json.load(open(sys.argv[1])); print("pass" if s["pass"] else "fail", s["cost_eq"])
 except Exception: print("error, retried on the next run")' "$stem.summary.json")"

@@ -187,6 +187,25 @@ rc=$?
 eq "run: under a ceiling, a call with no usage to bill stops the sweep (exit 3)" "$rc" "3"
 eq "run: it stops after that call" "$(wc -l <"$STUB_LOG" | tr -d ' ')" "1"
 
+cat >"$TMP/bin/claude-nousage" <<'STUB'
+#!/usr/bin/env bash
+echo call >>"$STUB_LOG"
+echo '{"type":"result","is_error":false,"result":"ok"}'
+STUB
+chmod +x "$TMP/bin/claude-nousage"
+: >"$STUB_LOG"
+SC_CLAUDE="$TMP/bin/claude-nousage" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase red --out "$TMP/o7" --probes r2-first-commit --reps 2 --ceiling 100000 >/dev/null 2>&1
+rc=$?
+eq "run: under a ceiling, a reply with no usage to bill stops the sweep (exit 3)" "$rc" "3"
+eq "run: it stops after that reply" "$(wc -l <"$STUB_LOG" | tr -d ' ')" "1"
+
+cp -r "$TMP/out" "$TMP/stale"
+python3 -c 'import json,sys; s=json.load(open(sys.argv[1])); s["checks_sha"]="0"; json.dump(s, open(sys.argv[1],"w"))' "$TMP/stale/r2-first-commit/baseline/1.summary.json"
+eq "report: a summary scored under other checks is refused until rescore" "$(python3 "$CULL" report --runs "$TMP/stale" --sessions "$TMP/sessions" --no-agents >/dev/null 2>&1; echo $?)" "2"
+eq "valid: so is the RED-first gate" "$(python3 "$CULL" valid --runs "$TMP/stale" >/dev/null 2>&1; echo $?)" "2"
+python3 "$CULL" rescore --runs "$TMP/stale" >/dev/null 2>&1
+eq "report: a rescored run reports again" "$(python3 "$CULL" report --runs "$TMP/stale" --sessions "$TMP/sessions" --no-agents >/dev/null 2>&1; echo $?)" "0"
+
 python3 -c 'import json,sys; c=json.load(open(sys.argv[1])); c["inputs_sha"]="0"; json.dump(c, open(sys.argv[1],"w"))' "$TMP/part/run-config.json"
 before="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER" | tr -d ' ')"
 eq "ledger: a run under other probe or row text is refused" "$(python3 "$CULL" report --runs "$TMP/part" --sessions "$TMP/sessions" --no-agents --ledger >/dev/null 2>&1; echo $?)" "2"
