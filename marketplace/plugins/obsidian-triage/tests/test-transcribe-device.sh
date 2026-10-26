@@ -25,7 +25,7 @@ for d in cuda nocuda broken; do mkdir -p "$tmp/$d/nvidia"; : > "$tmp/$d/nvidia/_
 # py <stubdir> <expr> [ENV=val ...]
 py() {
   local stub="$1" expr="$2"; shift 2
-  env -u HIMMEL_WHISPER_MODEL -u HIMMEL_WHISPER_DEVICE -u HIMMEL_WHISPER_CUDA_LOCK "$@" \
+  env -u HIMMEL_WHISPER_MODEL -u HIMMEL_WHISPER_DEVICE -u HIMMEL_WHISPER_ROUTE -u HIMMEL_WHISPER_CUDA_LOCK "$@" \
     python3 -I -c "import sys; sys.path[:0]=[sys.argv[1], sys.argv[2]]
 import transcribe
 $expr" "$stub" "$TOOLS_DIR" 2>&1
