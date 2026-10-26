@@ -13,7 +13,7 @@ const BASE = '/Himmel';
 const ALLOW = readAllowlist(path.join(here, 'allowlist.txt'));
 const HTML_PASSTHROUGH = ['adoption-trail.html', 'guide/installer-journey.html', 'guide/loops-and-graphs.html', 'guide/dev-graph.html', 'guide/how-a-change-ships.html'];
 // The development graph page loads these next to itself.
-const GUIDE_ASSETS = ['guide/dev-graph/dev-graph.js', 'guide/dev-graph/dev-graph.css', 'guide/dev-graph/tokens.css', 'guide/dev-graph/graph.json'];
+const GUIDE_ASSETS = ['guide/dev-graph/dev-graph.js', 'guide/dev-graph/dev-graph.css', 'guide/dev-graph/tokens.css', 'guide/dev-graph/graph.json', 'guide/how-a-change-ships/how-a-change-ships.js', 'guide/how-a-change-ships/how-a-change-ships.css'];
 
 // Raw files that keep resolving at their docs/ paths: every allowlisted .md
 // plus the install JSON files the setup pages link to.
