@@ -69,7 +69,7 @@ while [ $# -gt 0 ]; do
         --status) DO_STATUS=1; shift ;;
         --force) FORCE=1; shift ;;
         --impl-family)
-            [ $# -ge 2 ] || { echo "install-cr-gate: --impl-family requires a value" >&2; usage >&2; exit 2; }
+            [ $# -ge 2 ] && [ "${2#-}" = "$2" ] || { echo "install-cr-gate: --impl-family requires a value" >&2; usage >&2; exit 2; }
             IMPL_FAMILY="$2"; WANT_FAMILY=1; shift 2 ;;
         --impl-family=*) IMPL_FAMILY="${1#--impl-family=}"; WANT_FAMILY=1; shift ;;
         -h|--help) usage; exit 0 ;;

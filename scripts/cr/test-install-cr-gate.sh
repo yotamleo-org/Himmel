@@ -518,6 +518,14 @@ out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
     && grep -Fq "foreign" "$d/work/.git/hooks/pre-push" \
     && pass || fail "T32 rc=$rc out=$out"
 
+echo "T33: --impl-family followed by an option is a missing value, not 'the family is --remove'"
+d="$TMP_ROOT/f30"; mk_foreign_repo "$d" || exit 1
+bash "$INSTALLER" --target "$d/work" >/dev/null 2>&1
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family --remove 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [ -x "$d/work/.git/hooks/pre-push" ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && grep -Fq "requires a value" <<< "$out" \
+    && pass || fail "T33 rc=$rc out=$out"
+
 echo
 if [ "$SKIP" -gt 0 ]; then
     echo "install-cr-gate tests: $PASS passed, $FAIL failed, $SKIP skipped"
