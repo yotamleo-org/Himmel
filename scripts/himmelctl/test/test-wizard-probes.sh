@@ -7223,4 +7223,24 @@ echo "$outCRp" | jq -e '.actual == "present"' >/dev/null \
   || fail "cadence-runs-graphmap: a publish armed every 6h last run 10h ago is not stale (got: $outCRp)"
 echo "ok: cadence-runs — the interval follows the armed cron, not the manifest default"
 
+# ── env-present: presence of a secret's name in ctx.env, never its value ────
+envp_item='{"name":"XAI_API_KEY","probe":{"type":"env-present"}}'
+envp_secret="sk-envpresent-test-DO-NOT-LEAK-7c1e"
+outEnvAbsent=$("$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+console.log(JSON.stringify(runProbe($envp_item, { repoRoot: '$repo_root_w', env: {} })));
+")
+echo "$outEnvAbsent" | jq -e '.actual == "absent"' >/dev/null \
+  || fail "env-present: an unset secret name must read absent (got: $outEnvAbsent)"
+outEnvPresent=$(XAI_API_KEY="$envp_secret" "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+console.log(JSON.stringify(runProbe($envp_item, { repoRoot: '$repo_root_w', env: { XAI_API_KEY: process.env.XAI_API_KEY } })));
+")
+echo "$outEnvPresent" | jq -e '.actual == "present"' >/dev/null \
+  || fail "env-present: a set secret name must read present (got: $outEnvPresent)"
+case "$outEnvPresent$outEnvAbsent" in
+  *"$envp_secret"*) fail "env-present: the secret VALUE leaked into probe output" ;;
+esac
+echo "ok: env-present — absent and present follow ctx.env, the value never reaches output"
+
 echo "PASS"
