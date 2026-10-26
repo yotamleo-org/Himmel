@@ -1261,6 +1261,8 @@ assert_rc "6347 graphql -F value"                0 "$(run_case "$(j_bash "gh api
 assert_rc "6347 graphql --raw-field value"       0 "$(run_case "$(j_bash "gh api graphql --raw-field 'query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
 assert_rc "6347 graphql --field value"           0 "$(run_case "$(j_bash "gh api graphql --field 'query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
 assert_rc "6347 graphql --raw-field=value"       0 "$(run_case "$(j_bash "gh api graphql --raw-field='query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
+assert_rc "6347 graphql -f attached value"       0 "$(run_case "$(j_bash "gh api graphql -f'query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
+assert_rc "6347 graphql -F attached value"       0 "$(run_case "$(j_bash "gh api graphql -F'query=mutation{a(input:{body:\"fix extra\"}){id}}'")")"
 assert_rc "6347 gh api positional x{,}trace"     2 "$(run_case "$(j_bash "gh api 'set -o x{,}trace'")")"
 assert_rc "6347 gh pr x{,}trace not a -f value"  2 "$(run_case "$(j_bash "gh pr view -f 'x{,}trace'")")"
 # A brace inside a quoted word never expands, so a GraphQL reply whose letters

@@ -989,7 +989,7 @@ g4_scan() {
             git:--message=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
             gh:--body=*|gh:--title=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
             gh:-f|gh:-F|gh:--raw-field|gh:--field) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then fv=1; fi ;;
-            gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then bx=1; fi ;;
+            gh:-f?*|gh:-F?*|gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then bx=1; fi ;;
         esac
         if [ "$xskip" = 0 ]; then
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
