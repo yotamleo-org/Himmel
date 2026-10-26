@@ -88,7 +88,8 @@ RATE_LIMIT_S = 0 if os.environ.get("X_MEDIA_NO_SLEEP") else 10
 DEFAULT_LIMIT = 10
 SLIDE_CAP = 20
 LONG_EDGE_MAX = 1600
-DEFAULT_WHISPER_MODEL = "base"
+DEFAULT_WHISPER_MODEL = None  # None: transcribe.py picks the model for the device
+FALLBACK_WHISPER_LABEL = "base"  # source label when the helper reports no model
 DOWNLOAD_TIMEOUT = 180
 MEDIA_MAX_BYTES = 500 * 1024 * 1024
 SCRAPLING_HINT = (
@@ -960,13 +961,15 @@ def whisper_transcribe(wav: Path, model: str, meta=None):
         return None
     cmd = [uv, "run", "--python", "3.12", "--with-requirements",
            str(Path(__file__).with_name("requirements-whisper.txt")),
-           "python", str(helper), str(wav), model]
+           "python", str(helper), str(wav)] + ([model] if model else [])
     meta_path = wav.with_suffix(".meta")
+    model_path = wav.with_suffix(".model")
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
                            timeout=WHISPER_TIMEOUT,
                            env={**os.environ,
-                                "X_TRANSCRIBE_META_FILE": str(meta_path)})
+                                "X_TRANSCRIBE_META_FILE": str(meta_path),
+                                "X_TRANSCRIBE_MODEL_FILE": str(model_path)})
     except subprocess.TimeoutExpired:
         return None
     if p.returncode != 0:
@@ -976,6 +979,10 @@ def whisper_transcribe(wav: Path, model: str, meta=None):
         try:
             meta["end_s"] = float(meta_path.read_text().strip())
         except (OSError, ValueError):
+            pass
+        try:
+            meta["model"] = model_path.read_text().strip() or None
+        except OSError:
             pass
     return p.stdout.strip() or None
 
@@ -1057,7 +1064,8 @@ def transcribe_videos(videos, model):
             text = whisper_transcribe(wav, model, meta)
             if text:
                 out.append({"index": idx, "text": text,
-                            "source": f"whisper-{model}",
+                            "source": "whisper-" + (meta.get("model") or model
+                                                    or FALLBACK_WHISPER_LABEL),
                             "end_s": meta.get("end_s")})
             else:
                 failed.append(idx)

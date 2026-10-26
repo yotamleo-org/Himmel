@@ -320,12 +320,12 @@ describe('release engine (HIMMEL-6796)', () => {
     expect(() => admit(q.req, { authority: { kind: 'operator', ref: o.id } })).toThrow(/does not cover K-2/);
   });
 
-  it('keeps operator acts and requests out of the RM and of console-spawned legs', () => {
+  it('keeps operator acts and requests out of the RM and of chief-spawned workers', () => {
     expect(() => declare(ctx({ HIMMEL_CONSOLE_LEG: '1' }), { project: 'HIMMEL', versions: ['v1'], decision: '1', verbatim: 'v', mode: 'observe' }))
-      .toThrow(/console-spawned leg/);
+      .toThrow(/chief-spawned worker/);
     declare(ctx(), { project: 'HIMMEL', versions: ['v1'], decision: '1', verbatim: 'v', mode: 'observe' });
     expect(() => request(ctx(rmEnv), { verb: 'INTAKE', key: 'K-2', from_v: null, to_v: 'v1', why: 'w', evidence: {}, from: 'rm' }))
-      .toThrow(/the console writes requests/);
+      .toThrow(/the chief writes requests/);
   });
 
   it('fences the lease: wrong epoch, held lease and takeover', async () => {
@@ -587,7 +587,7 @@ describe('release fold (HIMMEL-7158)', () => {
   it('is a console act on a declared version with a real PR number', async () => {
     await setup();
     mirror([{ key: 'K-3', fixVersions: ['v1'], ...closedDone }]);
-    expect(() => fold(ctx(rmEnv), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] })).toThrow(/console act/);
+    expect(() => fold(ctx(rmEnv), { to: 'v1', items: [{ key: 'K-3', pr: 12 }] })).toThrow(/chief act/);
     expect(() => fold(ctx(), { to: 'v9', items: [{ key: 'K-3', pr: 12 }] })).toThrow(/not a version/);
     expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 0 }] })).toThrow(/positive PR/);
     expect(() => fold(ctx(), { to: 'v1', items: [{ key: 'K-3', pr: 2 ** 60 }] })).toThrow(/positive PR/);
@@ -810,7 +810,7 @@ describe('release withdraw (HIMMEL-7434)', () => {
     expect(withdraw(ctx(), { req: q.req, reason: 'already removed', by: o.id }).state).toBe(`withdrawn:${o.id}`);
   });
 
-  it('refuses a ruled request, a missing reason, the release manager and a console leg', async () => {
+  it('refuses a ruled request, a missing reason, the release manager and a console worker', async () => {
     await setup();
     const q = ask('K-2', 'INTAKE', null, 'v1');
     expect(() => withdraw(ctx(), { req: q.req, reason: ' ' })).toThrow(/--reason/);

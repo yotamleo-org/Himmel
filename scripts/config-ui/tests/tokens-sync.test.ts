@@ -3,8 +3,8 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-// The docs site and the config console share one token file. The site holds the canonical
-// site/src/styles/tokens.css; the console serves only public/, so it carries a byte-identical copy. These pin the
+// The docs site and the config chief share one token file. The site holds the canonical
+// site/src/styles/tokens.css; the chief serves only public/, so it carries a byte-identical copy. These pin the
 // copy, the sync and the rule that theme.css reads its colours and fonts from the shared tokens.
 const PUBLIC = join(import.meta.dir, "../public");
 const TWIN = join(import.meta.dir, "../../../site/src/styles/tokens.css");

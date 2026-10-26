@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-inbox-follow.sh — Exercises inbox-follow.sh, the gap-free
-# follower for a console's Telegram inbox: an unread tail is emitted from a
+# follower for a chief's Telegram inbox: an unread tail is emitted from a
 # persisted byte-offset cursor before following live, a re-arm replays nothing,
 # a truncated/rotated inbox resets the cursor, a partial line waits for its
 # newline. bash 3.2-safe.
@@ -167,7 +167,7 @@ case "$out" in *"inbox-follow:"*) pass "(l) the tail failure is reported on stde
 check "(l) the unread line is still unread once tail works again" "unread" "$(arm "$I")"
 
 # --- (m) --peek: rc 0 only for a complete unread line, cursor untouched -------
-# console-wait.sh peeks, prints its WAKE header, then lets --once
+# chief-wait.sh peeks, prints its WAKE header, then lets --once
 # stream the lines, so every line is emitted before its cursor moves.
 I="$WORK/m/consoles/c.md"
 mkdir -p "$WORK/m/consoles"; : > "$I"
@@ -191,23 +191,23 @@ PATH="$WORK/l/bin:$PATH" bash "$FOLLOW" --peek "$I" 2>/dev/null; rc=$?
 check "(m2) --peek fails with rc 3 when tail fails" "3" "$rc"
 
 # --- (n) claudex wake mode never forwards ruling text or steals hook delivery --
-I="$WORK/n/inbox/leg.md"
+I="$WORK/n/inbox/worker.md"
 mkdir -p "$WORK/n/inbox/.cursor"
-printf -- '- 10:00 [fixture] from=console GO untrusted\033[31m\n' > "$I"
-printf '0\n' > "$WORK/n/inbox/.cursor/leg"
+printf -- '- 10:00 [fixture] from=chief GO untrusted\033[31m\n' > "$I"
+printf '0\n' > "$WORK/n/inbox/.cursor/worker"
 out="$(bash "$FOLLOW" --wake --once "$I")"; rc=$?
 check "(n) a framed ruling emits a wake envelope, not its contents" '{"event":"inbox-wake"}' "$out"
 check "(n) wake drain succeeds" "0" "$rc"
 check "(n) restart does not replay a locally emitted wake" "" "$(bash "$FOLLOW" --wake --once "$I")"
-check "(n) hook delivery cursor is untouched" "0" "$(tr -d ' \n' < "$WORK/n/inbox/.cursor/leg")"
-printf -- '- 10:01 from=console partial' >> "$I"
+check "(n) hook delivery cursor is untouched" "0" "$(tr -d ' \n' < "$WORK/n/inbox/.cursor/worker")"
+printf -- '- 10:01 from=chief partial' >> "$I"
 check "(n) incomplete framing does not wake" "" "$(bash "$FOLLOW" --wake --once "$I")"
 printf '\n' >> "$I"
 check "(n) completing the frame wakes once" '{"event":"inbox-wake"}' "$(bash "$FOLLOW" --wake --once "$I")"
 
 # A live wake follower must see an append after its initial drain, too.
 OUT="$WORK/n/out"
-printf -- '- 10:02 from=console backlog\n' >> "$I"
+printf -- '- 10:02 from=chief backlog\n' >> "$I"
 bash "$FOLLOW" --wake "$I" > "$OUT" 2>&1 &
 pid=$!
 i=0
@@ -216,7 +216,7 @@ while [ "$i" -lt 50 ]; do
     sleep 0.1; i=$((i + 1))
 done
 check "(n) initial wake drain completes before live append" "$(size_of "$I")" "$(tr -d ' \n' < "$I.cursor")"
-printf -- '- 10:03 from=console live ruling\n' >> "$I"
+printf -- '- 10:03 from=chief live ruling\n' >> "$I"
 i=0
 while [ "$i" -lt 50 ]; do
     [ "$(tr -d ' \n' < "$I.cursor")" = "$(size_of "$I")" ] && break

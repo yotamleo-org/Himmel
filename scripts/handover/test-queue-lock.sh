@@ -23,7 +23,7 @@ grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
 # _tq_bare_token <release-token-line-value> -- acquire now
 # prints the token backticked ("release-token: `<token>`"); this recovers
 # the bare token from either that shape or the pre-2910 bare one, the way
-# every real consumer (console.sh, the chief-kit) must.
+# every real consumer (chief.sh, the chief-kit) must.
 _tq_bare_token() {
     local t="$1"
     t="${t#\`}"
@@ -61,6 +61,10 @@ trap 'rm -rf "$TMPDIR_ROOT"' EXIT
 # the operator's real one.
 mkdir -p "$TMPDIR_ROOT/dotenv-cache"; : > "$TMPDIR_ROOT/dotenv-cache/.env"
 export HIMMELCTL_CACHE_DIR="$TMPDIR_ROOT/dotenv-cache"
+# himmel.conf (behaviour keys, HANDOVER_DIR included) lives outside .env; an
+# empty config dir keeps the unset-HANDOVER_DIR cases off the live vault.
+mkdir -p "$TMPDIR_ROOT/himmel-config"
+export HIMMEL_CONFIG_DIR="$TMPDIR_ROOT/himmel-config"
 
 HANDOVER_DIR="$TMPDIR_ROOT/handovers"
 mkdir -p "$HANDOVER_DIR"
@@ -218,7 +222,7 @@ fi
 # CONTRACT CHANGE: this used to be a silent rc=0 "idempotent"
 # release. Idempotency was indistinguishable from the failure it hid -- a
 # release that looked in the wrong handover root also found nothing and
-# also said 0, so six legs on 2026-09-09 reported a clean wrap over a lock
+# also said 0, so six workers on 2026-09-09 reported a clean wrap over a lock
 # that was still HELD. Nothing-released is now its own exit code.
 out="$(bash "$LIB" release "$HO1" "any-token" 2>&1)"
 rc=$?
@@ -1544,10 +1548,10 @@ fi
 rm -rf "$SPACE_LOCKDIR" "$NL_LOCKDIR"
 
 # --- T46-T52: cross-root release/heartbeat --------------------
-# Six legs on 2026-09-09 wrapped with `release <doc> <token>` reporting
+# Six workers on 2026-09-09 wrapped with `release <doc> <token>` reporting
 # nothing held (rc=0) while the lock they had acquired stayed HELD: the
 # acquire ran with HANDOVER_DIR exported, the release at wrap was issued
-# from the leg's WORKTREE cwd WITHOUT it, handover_root then resolved that
+# from the worker's WORKTREE cwd WITHOUT it, handover_root then resolved that
 # repo's inline handovers/ instead, and the lookup missed a root it never
 # looked in. T46b is that reproduction -- RED against the pre-fix script.
 X_STATE="$TMPDIR_ROOT/2861-state"          # the state repo holding the real root
@@ -1557,7 +1561,7 @@ X_DOC="$X_ROOT/yotamleo/himmel/HIMMEL-2861-legN114-RESUME.md"
 : > "$X_DOC"
 X_LOCKDIR="$X_ROOT/.locks/queue/yotamleo__himmel__HIMMEL-2861-legN114-RESUME.lock"
 
-# The leg's worktree: its OWN inline handovers/ is what handover_root
+# The worker's worktree: its OWN inline handovers/ is what handover_root
 # resolves to once HANDOVER_DIR is gone.
 X_WT="$TMPDIR_ROOT/2861-worktree"
 mkdir -p "$X_WT/handovers"
@@ -1572,7 +1576,7 @@ printf '{"repos":{"state":{"path":"%s","user":"yotamleo","branch_prefix":"handov
 X_REG_EMPTY="$TMPDIR_ROOT/2861-registry-empty.json"
 printf '{"repos":{}}\n' > "$X_REG_EMPTY"
 
-# release/heartbeat exactly as a leg issues them at wrap: from the worktree
+# release/heartbeat exactly as a worker issues them at wrap: from the worktree
 # cwd, HANDOVER_DIR gone, token in hand.
 x_from_worktree() {
     (
@@ -1640,7 +1644,7 @@ fi
 HANDOVER_DIR="$X_ROOT" bash "$LIB" release "$X_DOC" "$x_tok" >/dev/null 2>&1
 
 # --- T48: a genuine no-lock release exits NON-ZERO -------------------------
-# Pre-2861 this was a silent rc=0, which every leg and the console read as
+# Pre-2861 this was a silent rc=0, which every worker and the chief read as
 # "released cleanly" -- the exact reason six orphaned locks went unnoticed.
 out="$(HANDOVER_DIR="$X_ROOT" bash "$LIB" release "$X_DOC" "nobody-holds-this" 2>&1)"
 rc=$?
@@ -1685,7 +1689,7 @@ else
 fi
 
 # --- T51: the stdout contract survives -- release-token is the LAST line ---
-# The console kit greps this line out of the acquire output; a WARN or any
+# The chief kit greps this line out of the acquire output; a WARN or any
 # other addition must never land after it.
 HANDOVER_DIR="$X_ROOT" bash "$LIB" release "$X_DOC" "$x_tok" >/dev/null 2>&1
 out="$(HANDOVER_DIR="$X_ROOT" bash "$LIB" acquire "$X_DOC" "last-line" 2>/dev/null)"
@@ -1701,7 +1705,7 @@ fi
 # and left the lock held. The key is now a property of the DOC (the deepest
 # known root containing it), so the same force-release resolves to the doc's
 # own lock: it releases exactly THAT lock and logs it. Still rc=0 on
-# nothing-found, which is what the console's sweep-and-force loop reads.
+# nothing-found, which is what the chief's sweep-and-force loop reads.
 out="$(
     cd "$X_WT" || exit 9
     unset HANDOVER_DIR
@@ -1859,7 +1863,7 @@ rm -f "$X_WT_LOCKDIR/owner.json"
 rmdir "$X_WT_LOCKDIR" 2>/dev/null || true
 
 # --- T56-T64: per-session token persistence ------------------
-# Two certifier legs lost their release token to a mid-leg autocompact on
+# Two certifier workers lost their release token to a mid-worker autocompact on
 # 2026-09-07/08 and had to force-release, putting a routine wrap into
 # takeovers.log -- a file that is supposed to be the audit trail for genuine
 # takeovers. `acquire` now also writes the token to a per-user file, and a
@@ -2054,7 +2058,7 @@ XDG_RUNTIME_DIR="$P_XDG_BAD" HANDOVER_DIR="$P_ROOT" QUEUE_LOCK_FORCE_RELEASE=1 \
 # A real regression, reproduced before it was
 # fixed: keyed on the handover path alone, ANY process running as this user
 # could issue a token-less release and be handed the holder's token, which
-# is exactly the hole C1 exists to close. himmel runs many concurrent legs
+# is exactly the hole C1 exists to close. himmel runs many concurrent workers
 # as one user, so this is the normal case here, not a corner one.
 S_ROOT="$TMPDIR_ROOT/2813-scope-root"
 mkdir -p "$S_ROOT/yotamleo/himmel"
@@ -2072,8 +2076,8 @@ s_ql() {
         bash "$LIB" "$@"
 }
 
-s_ql leg-A acquire "$S_DOC" "scoped-A" >/dev/null 2>&1
-out="$(s_ql leg-B release "$S_DOC" 2>&1)"
+s_ql worker-A acquire "$S_DOC" "scoped-A" >/dev/null 2>&1
+out="$(s_ql worker-B release "$S_DOC" 2>&1)"
 rc=$?
 if [ "$rc" -eq 2 ] && [ -d "$S_LOCKDIR" ]; then
     pass "T65: a DIFFERENT session cannot recall the holder's token -- refused rc=2, lock intact"
@@ -2085,7 +2089,7 @@ if ! grepq "$out" 'token read from'; then
 else
     fail "T65: the other session was handed a token: $out"
 fi
-out="$(s_ql leg-A release "$S_DOC" 2>&1)"
+out="$(s_ql worker-A release "$S_DOC" 2>&1)"
 rc=$?
 if [ "$rc" -eq 0 ] && [ ! -d "$S_LOCKDIR" ] && grepq "$out" '^queue-lock: token read from '; then
     pass "T65: the ACQUIRING session still recalls its own token and releases"
@@ -2110,7 +2114,7 @@ chmod 700 "$T66_XDG"
 t66_call() {
     ( unset HANDOVER_DIR
       # shellcheck disable=SC2030,SC2031  # deliberately subshell-local: isolates this call's scope/XDG root from the rest of the suite
-      export QUEUE_LOCK_SESSION_SCOPE="leg-A" XDG_RUNTIME_DIR="$T66_XDG"
+      export QUEUE_LOCK_SESSION_SCOPE="worker-A" XDG_RUNTIME_DIR="$T66_XDG"
       # shellcheck source=queue-lock.sh
       . "$LIB"
       "$@" )
@@ -2147,19 +2151,19 @@ mkdir -p "$T68_ROOT/yotamleo/himmel"
 T68_DOC="$T68_ROOT/yotamleo/himmel/RACE-RESUME.md"
 : > "$T68_DOC"
 t68_ql() {
-    QUEUE_LOCK_SESSION_SCOPE="leg-2870" XDG_RUNTIME_DIR="$T68_XDG" HANDOVER_DIR="$T68_ROOT" \
+    QUEUE_LOCK_SESSION_SCOPE="worker-2870" XDG_RUNTIME_DIR="$T68_XDG" HANDOVER_DIR="$T68_ROOT" \
         bash "$LIB" "$@"
 }
 t68_call() {
     ( unset HANDOVER_DIR
       # shellcheck disable=SC2030,SC2031  # deliberately subshell-local: isolates this call's scope/XDG root from the rest of the suite
-      export QUEUE_LOCK_SESSION_SCOPE="leg-2870" XDG_RUNTIME_DIR="$T68_XDG"
+      export QUEUE_LOCK_SESSION_SCOPE="worker-2870" XDG_RUNTIME_DIR="$T68_XDG"
       # shellcheck source=queue-lock.sh
       . "$LIB"
       "$@" )
 }
 t68_ql acquire "$T68_DOC" "token-A" >/dev/null 2>&1
-QUEUE_LOCK_SESSION_SCOPE="leg-2870" XDG_RUNTIME_DIR="$T68_XDG" HANDOVER_DIR="$T68_ROOT" \
+QUEUE_LOCK_SESSION_SCOPE="worker-2870" XDG_RUNTIME_DIR="$T68_XDG" HANDOVER_DIR="$T68_ROOT" \
     QUEUE_LOCK_FORCE_RELEASE=1 bash "$LIB" release "$T68_DOC" >/dev/null 2>&1
 t68_ql acquire "$T68_DOC" "token-B" >/dev/null 2>&1
 t68_call _ql_token_forget "$T68_DOC" "token-A" >/dev/null 2>&1
@@ -2330,7 +2334,7 @@ rm -rf "$X_ROOT"
 
 # --- T71-T78: one doc path yields ONE lock key; sweep/status cannot miss a --
 # --- held lock ---------------------------------------------
-# Two live legs held locks under the WRONG key on 2026-09-20 and `status`
+# Two live workers held locks under the WRONG key on 2026-09-20 and `status`
 # answered `free` for both: N211b ran with HANDOVER_DIR naming the vault's
 # PARENT (root recorded = the vault, slug absorbed `handovers__`), N212 passed
 # a bare filename from the primary's cwd (right root, unprefixed slug). Both
@@ -2369,7 +2373,7 @@ else
     fail "T71: setup -- fixture incomplete (vault/.single-writer/primary/doc/registry)"
 fi
 
-# m_run <cwd> <HANDOVER_DIR|-> <args...> -- one queue-lock call as a leg would
+# m_run <cwd> <HANDOVER_DIR|-> <args...> -- one queue-lock call as a worker would
 # issue it: from <cwd>, HANDOVER_DIR exported (or unset for `-`), stdout+stderr.
 m_run() {
     local cwd="$1" hd="$2"
@@ -2464,11 +2468,11 @@ fi
 # recorded as the bare filename. Both must (1) read HELD from status, (2) show
 # in a sweep, (3) refuse a second writer, (4) release for their OWN token
 # under the canonical spelling, and (5) never for anyone else.
-M_LEG_C="$M_VAULT/.locks/queue/handovers__yotamleo__himmel__HIMMEL-3290-TC-RESUME.lock"
-M_LEG_D="$M_ROOT/.locks/queue/HIMMEL-3290-TD-RESUME.lock"
-m_legacy_lock "$M_LEG_C" legN211b "$M_DOC_C" "$M_VAULT"
-m_legacy_lock "$M_LEG_D" legN212 "HIMMEL-3290-TD-RESUME.md" "$M_ROOT"
-if [ -f "$M_LEG_C/owner.json" ] && [ -f "$M_LEG_D/owner.json" ] \
+M_WORKER_C="$M_VAULT/.locks/queue/handovers__yotamleo__himmel__HIMMEL-3290-TC-RESUME.lock"
+M_WORKER_D="$M_ROOT/.locks/queue/HIMMEL-3290-TD-RESUME.lock"
+m_legacy_lock "$M_WORKER_C" legN211b "$M_DOC_C" "$M_VAULT"
+m_legacy_lock "$M_WORKER_D" legN212 "HIMMEL-3290-TD-RESUME.md" "$M_ROOT"
+if [ -f "$M_WORKER_C/owner.json" ] && [ -f "$M_WORKER_D/owner.json" ] \
    && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TC-RESUME)" ] \
    && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TD-RESUME)" ]; then
     pass "T75: setup -- both legacy locks exist and NEITHER sits at its canonical key"
@@ -2510,31 +2514,31 @@ fi
 
 # T77: ownership -- nothing but the owner's token, for the owner's doc, ever moves a lock.
 out="$(m_run "$M_PRIMARY" "$M_ROOT" release "$M_DOC_C" wrongTok)"; rc=$?
-if [ "$rc" -ne 0 ] && [ -f "$M_LEG_C/owner.json" ] && [ -f "$M_LEG_D/owner.json" ]; then
+if [ "$rc" -ne 0 ] && [ -f "$M_WORKER_C/owner.json" ] && [ -f "$M_WORKER_D/owner.json" ]; then
     pass "T77: a wrong token releases nothing (rc=$rc), both legacy locks intact"
 else
     fail "T77: wrong token released or damaged a lock (rc=$rc): $out"
 fi
 out="$(m_run "$M_PRIMARY" "$M_ROOT" release "$M_DOC_D" legN211b)"; rc=$?
-if [ "$rc" -ne 0 ] && [ -f "$M_LEG_C/owner.json" ] && [ -f "$M_LEG_D/owner.json" ]; then
+if [ "$rc" -ne 0 ] && [ -f "$M_WORKER_C/owner.json" ] && [ -f "$M_WORKER_D/owner.json" ]; then
     pass "T77: N211b's token on N212's doc releases nothing (rc=$rc) -- token AND doc must both match"
 else
     fail "T77: a token released a lock for a DIFFERENT doc (rc=$rc): $out"
 fi
 out="$(m_run "$M_PRIMARY" - heartbeat "$M_DOC_C" legN211b)"; rc=$?
-if [ "$rc" -eq 0 ] && [ -f "$M_LEG_C/owner.json" ]; then
+if [ "$rc" -eq 0 ] && [ -f "$M_WORKER_C/owner.json" ]; then
     pass "T77: the owner's heartbeat reaches its legacy-keyed lock (rc=0)"
 else
     fail "T77: heartbeat of the legacy-keyed lock failed (rc=$rc): $out"
 fi
 out="$(m_run "$M_PRIMARY" "$M_ROOT" release "$M_DOC_D" legN212)"; rc=$?
-if [ "$rc" -eq 0 ] && [ ! -d "$M_LEG_D" ] && [ -f "$M_LEG_C/owner.json" ]; then
+if [ "$rc" -eq 0 ] && [ ! -d "$M_WORKER_D" ] && [ -f "$M_WORKER_C/owner.json" ]; then
     pass "T78: N212's token + canonical spelling releases ONLY its unprefixed lock; N211b's survives intact"
 else
-    fail "T78: release of the N212-shape lock (rc=$rc D=$([ -d "$M_LEG_D" ] && echo held || echo gone) C=$([ -f "$M_LEG_C/owner.json" ] && echo held || echo GONE)): $out"
+    fail "T78: release of the N212-shape lock (rc=$rc D=$([ -d "$M_WORKER_D" ] && echo held || echo gone) C=$([ -f "$M_WORKER_C/owner.json" ] && echo held || echo GONE)): $out"
 fi
 out="$(m_run "$M_PRIMARY" - release "$M_DOC_C" legN211b)"; rc=$?
-if [ "$rc" -eq 0 ] && [ ! -d "$M_LEG_C" ]; then
+if [ "$rc" -eq 0 ] && [ ! -d "$M_WORKER_C" ]; then
     pass "T78: N211b's token + canonical spelling releases its wrong-root lock, HANDOVER_DIR unset"
 else
     fail "T78: release of the N211b-shape lock failed (rc=$rc): $out"
@@ -2543,7 +2547,7 @@ fi
 # --- T79: a stale legacy lock never hides a fresh one -----
 # Acquire and status used to look only at the FIRST lock the scan returned, so
 # a stale first match (or a stale lock at the canonical key, which skipped the
-# scan entirely) let a second writer take a doc another leg still held.
+# scan entirely) let a second writer take a doc another worker still held.
 M_DOC_E="$M_BUCKET/HIMMEL-3290-TE-RESUME.md"
 M_DOC_F="$M_BUCKET/HIMMEL-3290-TF-RESUME.md"
 : > "$M_DOC_E"; : > "$M_DOC_F"
@@ -2556,13 +2560,13 @@ m_lock_at() {
     printf '%s\n' "$4" > "$1/root"
 }
 m_now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-M_LEG_E1="$M_ROOT/.locks/queue/aaa-stale-E.lock"
-M_LEG_E2="$M_ROOT/.locks/queue/zzz-fresh-E.lock"
-m_lock_at "$M_LEG_E1" legOldE "$M_DOC_E" "$M_ROOT" "2020-01-01T00:00:00Z"
-m_lock_at "$M_LEG_E2" legFreshE "$M_DOC_E" "$M_ROOT" "$m_now"
+M_WORKER_E1="$M_ROOT/.locks/queue/aaa-stale-E.lock"
+M_WORKER_E2="$M_ROOT/.locks/queue/zzz-fresh-E.lock"
+m_lock_at "$M_WORKER_E1" legOldE "$M_DOC_E" "$M_ROOT" "2020-01-01T00:00:00Z"
+m_lock_at "$M_WORKER_E2" legFreshE "$M_DOC_E" "$M_ROOT" "$m_now"
 out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "$M_DOC_E" tokX)"; rc=$?
 if [ "$rc" -eq 2 ] && [ ! -d "$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TE-RESUME)" ] \
-   && [ -f "$M_LEG_E2/owner.json" ]; then
+   && [ -f "$M_WORKER_E2/owner.json" ]; then
     pass "T79: acquire refuses when a STALE legacy lock sorts before a FRESH one (rc=2)"
 else
     fail "T79: a stale first legacy lock let a second writer in (rc=$rc): $out"
@@ -2574,11 +2578,11 @@ else
     fail "T79: status reported the wrong legacy holder (rc=$rc): $out"
 fi
 M_CANON_F="$M_ROOT/.locks/queue/$(m_key HIMMEL-3290-TF-RESUME)"
-M_LEG_F="$M_ROOT/.locks/queue/HIMMEL-3290-TF-RESUME.lock"
+M_WORKER_F="$M_ROOT/.locks/queue/HIMMEL-3290-TF-RESUME.lock"
 m_lock_at "$M_CANON_F" legOldF "$M_DOC_F" "$M_ROOT" "2020-01-01T00:00:00Z"
-m_lock_at "$M_LEG_F" legFreshF "$M_DOC_F" "$M_ROOT" "$m_now"
+m_lock_at "$M_WORKER_F" legFreshF "$M_DOC_F" "$M_ROOT" "$m_now"
 out="$(m_run "$M_PRIMARY" "$M_ROOT" acquire "$M_DOC_F" tokY)"; rc=$?
-if [ "$rc" -eq 2 ] && grepq "$(cat "$M_CANON_F/owner" 2>/dev/null)" 'legOldF' && [ -f "$M_LEG_F/owner.json" ]; then
+if [ "$rc" -eq 2 ] && grepq "$(cat "$M_CANON_F/owner" 2>/dev/null)" 'legOldF' && [ -f "$M_WORKER_F/owner.json" ]; then
     pass "T79: a stale lock at the canonical key is not taken over while a fresh legacy lock holds the doc"
 else
     fail "T79: stale-canonical takeover ran over a fresh legacy lock (rc=$rc owner=$(cat "$M_CANON_F/owner" 2>/dev/null)): $out"
@@ -2855,8 +2859,8 @@ else
     fail "T7036c: empty husk: rc=$rc out=$out lock=$(ls -d "$F_LK" 2>/dev/null || echo GONE)"
 fi
 
-# --- T88-T95: a live leg must not silently outrun the TTL. The
-# AGING warning used to live in `status` alone, which a leg never calls between
+# --- T88-T95: a live worker must not silently outrun the TTL. The
+# AGING warning used to live in `status` alone, which a worker never calls between
 # acquire and release; the harness now self-heartbeats the session's own locks
 # (PostToolUse hook -> `self-heartbeat`), and a lock whose holder's transcript
 # is still being written on this host is LIVE, not stale, whatever its age.
@@ -2879,7 +2883,7 @@ else
     fail "T88: heartbeat aging warning (rc=$rc err=$err hb=$(a_hb "$A_LK"))"
 fi
 
-# T89: release of an AGING lock says so -- the leg outran half its TTL unseen.
+# T89: release of an AGING lock says so -- the worker outran half its TTL unseen.
 a_backdate "$A_LK" "$OLD_HB"
 err="$(QUEUE_LOCK_TTL_SECONDS=300000000 bash "$LIB" release "$A_DOC" ager88 2>&1 1>/dev/null)"; rc=$?
 if [ "$rc" -eq 0 ] && grepq "$err" 'AGING' && [ ! -d "$A_LK" ]; then
@@ -3012,62 +3016,62 @@ d_lock() {
     printf '{"session":"%s","host":"%s","handover":"/x/%s.md","started":"%s","heartbeat":"%s"}\n' \
         "$2" "$3" "$4" "$D_OLD_HB" "$D_OLD_HB" > "$D_QDIR/$1.lock/owner.json"
 }
-d_lock dead-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-dead-leg"
-d_lock alive-leg "$D_HOST-pid$$" "$D_HOST" "HIMMEL-5541-fixture-alive-leg"
-d_lock otherhost-leg "other-host-pid$D_DEAD_PID" "other-host" "HIMMEL-5541-fixture-otherhost-leg"
-d_lock opaque-leg "legacy-opaque-token" "$D_HOST" "HIMMEL-5541-fixture-opaque-leg"
-d_lock claude-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-claude-leg"
+d_lock dead-worker "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-dead-worker"
+d_lock alive-worker "$D_HOST-pid$$" "$D_HOST" "HIMMEL-5541-fixture-alive-worker"
+d_lock otherhost-worker "other-host-pid$D_DEAD_PID" "other-host" "HIMMEL-5541-fixture-otherhost-worker"
+d_lock opaque-worker "legacy-opaque-token" "$D_HOST" "HIMMEL-5541-fixture-opaque-worker"
+d_lock claude-worker "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-claude-worker"
 # A live claude session whose command line names the doc: the owner pid is gone
 # but the session is not, so the lock is not provably dead.
-( exec -a claude bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-claude-leg ) &
+( exec -a claude bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-claude-worker ) &
 D_CLAUDE_PID=$!
 # Same for a wrapped session that is not named claude (node launcher, wrapper).
-d_lock wrapped-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-wrapped-leg"
-( exec -a node-wrapper bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-wrapped-leg ) &
+d_lock wrapped-worker "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-wrapped-worker"
+( exec -a node-wrapper bash -c 'sleep 60; :' _ HIMMEL-5541-fixture-wrapped-worker ) &
 D_WRAPPED_PID=$!
 # And one that carries the doc only in its environment, never on argv. Reading
 # another process's environment needs /proc, so macOS has no such lock to test.
 D_ENV_PID=""
 if [ -r /proc/self/environ ]; then
-    d_lock env-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-env-leg"
-    ( HIMMEL_5541_FIXTURE_DOC=HIMMEL-5541-fixture-env-leg exec sleep 60 ) &
+    d_lock env-worker "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-env-worker"
+    ( HIMMEL_5541_FIXTURE_DOC=HIMMEL-5541-fixture-env-worker exec sleep 60 ) &
     D_ENV_PID=$!
 fi
 sleep 0.3
 out="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep 2>/dev/null)"; rc=$?
-if grepq "$out" "slug=dead-leg .*status=STALE-DEAD" && [ "$rc" -eq 20 ]; then
+if grepq "$out" "slug=dead-worker .*status=STALE-DEAD" && [ "$rc" -eq 20 ]; then
     pass "T96: past-TTL lock with a dead owner pid and no claude session reads STALE-DEAD (rc 20)"
 else
     fail "T96: dead-owner lock not STALE-DEAD (rc=$rc out=$out)"
 fi
-if grepq "$out" "slug=alive-leg .*status=IDLE-HELD?" && ! grepq "$out" "slug=alive-leg .*STALE-DEAD"; then
+if grepq "$out" "slug=alive-worker .*status=IDLE-HELD?" && ! grepq "$out" "slug=alive-worker .*STALE-DEAD"; then
     pass "T97: past-TTL lock whose owner pid is ALIVE is never STALE-DEAD"
 else
     fail "T97: alive-owner lock misread (out=$out)"
 fi
-if ! grepq "$out" "slug=otherhost-leg .*STALE-DEAD" && ! grepq "$out" "slug=opaque-leg .*STALE-DEAD" \
-    && ! grepq "$out" "slug=claude-leg .*STALE-DEAD" && ! grepq "$out" "slug=wrapped-leg .*STALE-DEAD" \
-    && ! grepq "$out" "slug=env-leg .*STALE-DEAD"; then
+if ! grepq "$out" "slug=otherhost-worker .*STALE-DEAD" && ! grepq "$out" "slug=opaque-worker .*STALE-DEAD" \
+    && ! grepq "$out" "slug=claude-worker .*STALE-DEAD" && ! grepq "$out" "slug=wrapped-worker .*STALE-DEAD" \
+    && ! grepq "$out" "slug=env-worker .*STALE-DEAD"; then
     pass "T98: other-host, opaque-token, live-claude-session and env-only locks are not provably dead"
 else
     fail "T98: an unprovable lock read STALE-DEAD (out=$out)"
 fi
 cout="$(COLUMNS=20 HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep 2>/dev/null)"
-if grepq "$cout" "slug=claude-leg " && grepq "$cout" "slug=wrapped-leg " \
-    && ! grepq "$cout" "slug=claude-leg .*STALE-DEAD" && ! grepq "$cout" "slug=wrapped-leg .*STALE-DEAD"; then
+if grepq "$cout" "slug=claude-worker " && grepq "$cout" "slug=wrapped-worker " \
+    && ! grepq "$cout" "slug=claude-worker .*STALE-DEAD" && ! grepq "$cout" "slug=wrapped-worker .*STALE-DEAD"; then
     pass "T98b: a COLUMNS in the environment does not hide a live session's doc name from the dead-owner proof"
 else
     fail "T98b: COLUMNS=20 made a live session's lock read STALE-DEAD (out=$cout)"
 fi
 rout="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead 2>&1)"; rrc=$?
-if [ ! -d "$D_QDIR/dead-leg.lock" ] && [ -d "$D_QDIR/alive-leg.lock" ] && [ -d "$D_QDIR/otherhost-leg.lock" ] \
-    && [ -d "$D_QDIR/opaque-leg.lock" ] && [ -d "$D_QDIR/claude-leg.lock" ] \
-    && [ -d "$D_QDIR/wrapped-leg.lock" ] && { [ -z "$D_ENV_PID" ] || [ -d "$D_QDIR/env-leg.lock" ]; }; then
+if [ ! -d "$D_QDIR/dead-worker.lock" ] && [ -d "$D_QDIR/alive-worker.lock" ] && [ -d "$D_QDIR/otherhost-worker.lock" ] \
+    && [ -d "$D_QDIR/opaque-worker.lock" ] && [ -d "$D_QDIR/claude-worker.lock" ] \
+    && [ -d "$D_QDIR/wrapped-worker.lock" ] && { [ -z "$D_ENV_PID" ] || [ -d "$D_QDIR/env-worker.lock" ]; }; then
     pass "T99: --reap-dead releases only the provably dead lock (rc=$rrc)"
 else
     fail "T99: reap removed/kept the wrong locks (rc=$rrc out=$rout)"
 fi
-if grepq "$(cat "$D_QDIR/takeovers.log" 2>/dev/null)" "REAPED STALE-DEAD.*dead-leg"; then
+if grepq "$(cat "$D_QDIR/takeovers.log" 2>/dev/null)" "REAPED STALE-DEAD.*dead-worker"; then
     pass "T100: the reap is logged to the queue takeovers.log"
 else
     fail "T100: reap not logged (log=$(cat "$D_QDIR/takeovers.log" 2>/dev/null))"
@@ -3079,13 +3083,13 @@ F_QDIR="$F_ROOT/.locks/queue"
 mkdir -p "$F_QDIR" "$TMPDIR_ROOT/fold-bin"
 printf '#!/bin/sh\necho Ubuntu_VM.local\n' > "$TMPDIR_ROOT/fold-bin/hostname"
 chmod +x "$TMPDIR_ROOT/fold-bin/hostname"
-for f in "folded-leg ubuntu-vm-local" "raw-leg Ubuntu_VM.local"; do
+for f in "folded-worker ubuntu-vm-local" "raw-worker Ubuntu_VM.local"; do
     mkdir -p "$F_QDIR/${f%% *}.lock"
     printf '{"session":"%s-pid%s","host":"Ubuntu_VM.local","handover":"/x/HIMMEL-4999-fixture-%s.md","started":"%s","heartbeat":"%s"}\n' \
         "${f#* }" "$D_DEAD_PID" "${f%% *}" "$D_OLD_HB" "$D_OLD_HB" > "$F_QDIR/${f%% *}.lock/owner.json"
 done
 out="$(HANDOVER_DIR="$F_ROOT" PATH="$TMPDIR_ROOT/fold-bin:$PATH" bash "$LIB" status --sweep 2>/dev/null)"
-if grepq "$out" "slug=folded-leg .*status=STALE-DEAD" && grepq "$out" "slug=raw-leg .*status=STALE-DEAD"; then
+if grepq "$out" "slug=folded-worker .*status=STALE-DEAD" && grepq "$out" "slug=raw-worker .*status=STALE-DEAD"; then
     pass "T100b: folded and pre-fold release tokens on a folding hostname both read STALE-DEAD"
 else
     fail "T100b: a folding-host token is not provably dead (out=$out)"
@@ -3115,13 +3119,13 @@ else
 fi
 # T103: a takeover claim held on the slug blocks the reap (the lock stays and
 # the sweep says so); once the claim is gone the same lock is reaped.
-d_lock claimed-leg "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-claimed-leg"
-mkdir -p "$D_QDIR/claimed-leg.lock.claim"
+d_lock claimed-worker "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-claimed-worker"
+mkdir -p "$D_QDIR/claimed-worker.lock.claim"
 rout="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead 2>&1)"
-if [ -d "$D_QDIR/claimed-leg.lock" ] && grepq "$rout" "slug=claimed-leg .*reap=skipped-claimed"; then
-    rmdir "$D_QDIR/claimed-leg.lock.claim"
+if [ -d "$D_QDIR/claimed-worker.lock" ] && grepq "$rout" "slug=claimed-worker .*reap=skipped-claimed"; then
+    rmdir "$D_QDIR/claimed-worker.lock.claim"
     HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
-    if [ ! -d "$D_QDIR/claimed-leg.lock" ]; then
+    if [ ! -d "$D_QDIR/claimed-worker.lock" ]; then
         pass "T103: a held takeover claim blocks the reap; without it the lock is reaped"
     else
         fail "T103: lock survived the reap after the claim was released"
@@ -3138,7 +3142,7 @@ git -C "$P_REPO" init -q -b main && git -C "$P_REPO" config user.email t@t && gi
 echo base > "$P_REPO/shared.sh"; echo base > "$P_REPO/other.sh"
 git -C "$P_REPO" add . && git -C "$P_REPO" commit -q -m base
 echo edit >> "$P_REPO/shared.sh"   # the OTHER live session is mid-edit on shared.sh
-P_OTHER="$P_ROOT/q/other-leg.md"; P_MINE="$P_ROOT/q/my-leg.md"
+P_OTHER="$P_ROOT/q/other-worker.md"; P_MINE="$P_ROOT/q/my-worker.md"
 printf -- '---\nresume_cwd: %s\n---\n# other\n' "$P_REPO" > "$P_OTHER"
 printf -- '---\nresume_cwd: %s\n---\n# mine\n' "$TMPDIR_ROOT/no-such-worktree" > "$P_MINE"
 HANDOVER_DIR="$P_ROOT" bash "$LIB" acquire "$P_OTHER" pf-other-session >/dev/null 2>&1
@@ -3164,7 +3168,7 @@ fi
 P_REPO2="$TMPDIR_ROOT/pf-repo2"; mkdir -p "$P_REPO2"
 git -C "$P_REPO2" init -q -b main && git -C "$P_REPO2" config user.email t@t && git -C "$P_REPO2" config user.name t
 echo base > "$P_REPO2/shared.sh"; git -C "$P_REPO2" add . && git -C "$P_REPO2" commit -q -m base
-P_MINE2="$P_ROOT/q/my-other-repo-leg.md"
+P_MINE2="$P_ROOT/q/my-other-repo-worker.md"
 printf -- '---\nresume_cwd: %s\n---\n# mine\n' "$P_REPO2" > "$P_MINE2"
 out="$(HANDOVER_DIR="$P_ROOT" bash "$LIB" preflight "$P_MINE2" shared.sh 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && ! grepq "$out" "COLLISION"; then
@@ -3183,7 +3187,7 @@ fi
 # (the doc operand shifted away) must fail loudly -- rc 1, usage on stderr,
 # nothing on stdout -- never `free` and never a success line.
 T6_ROOT="$TMPDIR_ROOT/t6038"; mkdir -p "$T6_ROOT/q"
-T6_DOC="$T6_ROOT/q/held-leg.md"; : > "$T6_DOC"
+T6_DOC="$T6_ROOT/q/held-worker.md"; : > "$T6_DOC"
 T6_TOK="$(_tq_bare_token "$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" acquire "$T6_DOC" 2>/dev/null | sed -n 's/^release-token: //p')")"
 for tv in release status; do
     out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" "$tv" "$T6_TOK" 2>/dev/null)"; rc=$?
@@ -3207,8 +3211,8 @@ else
     fail "T6038c: never-locked status (rc=$rc out=$out)"
 fi
 # A bare doc name resolves under the known roots and is not a token.
-: > "$T6_ROOT/q/leg-6038-bare.md"
-out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status leg-6038-bare.md 2>&1)"; rc=$?
+: > "$T6_ROOT/q/worker-6038-bare.md"
+out="$(HANDOVER_DIR="$T6_ROOT" bash "$LIB" status worker-6038-bare.md 2>&1)"; rc=$?
 if [ "$rc" -eq 0 ] && [ "$out" = "free" ]; then
     pass "T6038d: status <bare doc name> still resolves and answers free"
 else

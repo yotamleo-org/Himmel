@@ -28,7 +28,7 @@ const MINI = {
 
 // Removing an opt-in/rule loses a deterministic gate permission;
 // widening a rule must fail registry load before any settings reach a child.
-const WORKER_SESSION_PROFILES = ['lane-impl', 'leg-impl', 'leg-bus', 'lane-review', 'lane-content', 'console-relay'];
+const WORKER_SESSION_PROFILES = ['lane-impl', 'worker-impl', 'worker-bus', 'lane-review', 'lane-content', 'chief-relay'];
 const GATE_RULES = [
   'Bash(bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh":*)',
   // Step 0's own invocation of pr-check-context.sh, the
@@ -46,7 +46,7 @@ const GATE_RULES = [
   'Bash(bash scripts/cr/clear-cr-marker.sh:*)',
   'Bash(bash scripts/cr/clear-review-marker.sh:*)',
   'Bash(bash scripts/cr/panel-first-pass.sh:*)',
-  // Operator ruling 2026-09-21: legs may send review diffs to Codex; these are
+  // Operator ruling 2026-09-21: workers may send review diffs to Codex; these are
   // the /pr-check external-critic steps. Exact literals except
   // docs-audit-panel, which takes --head/--branch like panel-first-pass.
   'Bash(bash scripts/cr/docs-audit-panel.sh:*)',
@@ -95,8 +95,8 @@ for (const tail of SUITE_TAILS) {
   });
 }
 
-// The headed leg profiles opt in to himmel-bus and also allow its tools, both name forms.
-const BUS_PROFILES = ['leg-impl', 'leg-bus', 'leg-vm', 'leg-e2e'];
+// The headed worker profiles opt in to himmel-bus and also allow its tools, both name forms.
+const BUS_PROFILES = ['worker-impl', 'worker-bus', 'worker-vm', 'worker-e2e'];
 const BUS_TOOL_ALLOW = ['mcp__himmel-bus__send', 'mcp__plugin_himmel-bus_himmel-bus__send', 'mcp__himmel-bus__read', 'mcp__plugin_himmel-bus_himmel-bus__read'];
 const busAllow = (name) => (BUS_PROFILES.includes(name) ? BUS_TOOL_ALLOW : []);
 const expectedAllow = (name) => [...REG.gateAllow, ...busAllow(name)];
@@ -111,7 +111,7 @@ for (const name of WORKER_SESSION_PROFILES) {
   });
 }
 for (const rule of [...GATE_RULES, ...SUITE_RULES]) {
-  test(`each leg emits the literal gate rule: ${rule}`, () => {
+  test(`each worker emits the literal gate rule: ${rule}`, () => {
     for (const name of WORKER_SESSION_PROFILES) {
       assert.ok(resolveProfile(REG, name).permissions?.allow.includes(rule), `${name}: missing ${rule}`);
     }
@@ -146,7 +146,7 @@ for (const name of ['operator', 'user', 'bare']) {
   });
 }
 
-test('leg settings leave pushes on the classifier path', () => {
+test('worker settings leave pushes on the classifier path', () => {
   // A trailing wildcard also covers options such as --no-verify; rejecting
   // that token in a rule string does not constrain the matched command.
   for (const name of WORKER_SESSION_PROFILES) {
@@ -154,13 +154,13 @@ test('leg settings leave pushes on the classifier path', () => {
   }
 });
 
-test('absent/false gateAllow does not inject permissions into a leg', () => {
+test('absent/false gateAllow does not inject permissions into a worker', () => {
   for (const value of [undefined, false]) {
     const registry = structuredClone(REG);
     registry.profiles['lane-impl'].gateAllow = value;
     assert.ok(!Object.hasOwn(resolveProfile(registry, 'lane-impl'), 'permissions'));
-    registry.profiles['leg-impl'].gateAllow = value;
-    assert.deepEqual(resolveProfile(registry, 'leg-impl').permissions, { allow: BUS_TOOL_ALLOW, deny: REG.profiles['leg-impl'].denyTools }, 'only the bus tools, no gate rule');
+    registry.profiles['worker-impl'].gateAllow = value;
+    assert.deepEqual(resolveProfile(registry, 'worker-impl').permissions, { allow: BUS_TOOL_ALLOW, deny: REG.profiles['worker-impl'].denyTools }, 'only the bus tools, no gate rule');
   }
 });
 
@@ -180,7 +180,7 @@ const BAD_GATE_RULES = [
   ['docs push wildcard absorbs hook-skipping options', 'Bash(git push -u origin docs/*)'],
   ['refactor push wildcard absorbs hook-skipping options', 'Bash(git push -u origin refactor/*)'],
   ['test push wildcard absorbs hook-skipping options', 'Bash(git push -u origin test/*)'],
-  ['leg-written GO', 'Bash(bash scripts/handover/chief-kit/go.sh:*)'],
+  ['worker-written GO', 'Bash(bash scripts/handover/chief-kit/go.sh:*)'],
   ['unlisted script', 'Bash(bash scripts/uninstall.sh:*)'],
   // The relative merge-on-green rule was retired — only the
   // anchored literal is admitted now.
@@ -294,7 +294,7 @@ for (const bad of [null, 'Bash(bash scripts/check-ci.sh:*)', [null], [42], []]) 
     assert.ok(validateRegistry(registry).some((e) => e.includes('gateAllow')));
   });
 }
-for (const [name, value] of [['leg-impl', 'true'], ['user', true], ['bare', true]]) {
+for (const [name, value] of [['worker-impl', 'true'], ['user', true], ['bare', true]]) {
   test(`gateAllow rejects invalid opt-in ${name}=${JSON.stringify(value)}`, () => {
     const registry = structuredClone(REG);
     registry.profiles[name].gateAllow = value;
@@ -304,7 +304,7 @@ for (const [name, value] of [['leg-impl', 'true'], ['user', true], ['bare', true
 
 test('an opted-in profile requires the registry gateAllow list', () => {
   const registry = structuredClone(REG);
-  registry.profiles['leg-impl'].gateAllow = true;
+  registry.profiles['worker-impl'].gateAllow = true;
   delete registry.gateAllow;
   assert.ok(validateRegistry(registry).some((e) => e.includes('gateAllow')));
 });
@@ -607,7 +607,7 @@ test('design profile enables the full design pack (HIMMEL-4012)', () => {
   for (const id of ['frontend-design@claude-plugins-official', 'ui-ux-pro-max@himmel', 'impeccable@himmel']) {
     assert.equal(p[id], true, `${id} must be enabled for design`);
   }
-  for (const name of ['user', 'leg-impl', 'lane-impl']) {
+  for (const name of ['user', 'worker-impl', 'lane-impl']) {
     const q = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     assert.notEqual(q['impeccable@himmel'], true, `${name} must not enable impeccable`);
   }
@@ -616,8 +616,8 @@ test('design profile enables the full design pack (HIMMEL-4012)', () => {
 // obsidian-second-brain was a user-scope skill that loaded in every
 // session. As a plugin it is catalogued (so every other profile resolves it
 // false) and enabled only where the vault is worked: vault-writing
-// `lane-content` legs and the `telegram` bridge (run.ts files attachments with
-// it). The `user` profile, lean legs and the console never load it; it can be
+// `lane-content` workers and the `telegram` bridge (run.ts files attachments with
+// it). The `user` profile, lean workers and the chief never load it; it can be
 // enabled on demand.
 const OSB_PROFILES = ['lane-content', 'telegram'];
 test('obsidian-second-brain@himmel is enabled exactly in the vault profiles (HIMMEL-4018)', () => {
@@ -628,7 +628,7 @@ test('obsidian-second-brain@himmel is enabled exactly in the vault profiles (HIM
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     assert.equal(p[id], OSB_PROFILES.includes(name), `${name}: ${id} enabled must be ${OSB_PROFILES.includes(name)}`);
   }
-  for (const name of ['bare', 'leg-impl', 'console']) {
+  for (const name of ['bare', 'worker-impl', 'console']) {
     assert.equal(resolveProfile(REG, name, { installed: [] }).enabledPlugins[id], false, `${name} must not enable ${id}`);
   }
 });
@@ -890,20 +890,21 @@ test('CLI: node plugin-profiles.mjs bare prints exactly the three shipped floor 
   assert.deepEqual(trueKeys, [...FLOOR].sort());
 });
 
-test('worker-* profile ids resolve exactly like their leg-* names', () => {
+test('old leg-* profile ids resolve exactly like their worker-* names', () => {
   for (const id of ['impl', 'bus', 'vm', 'e2e']) {
-    assert.equal(PP.canonicalProfileName(`worker-${id}`), `leg-${id}`);
-    assert.deepEqual(resolveProfile(REG, `worker-${id}`), resolveProfile(REG, `leg-${id}`));
-    assert.deepEqual(mcpServersForProfile(REG, `worker-${id}`), mcpServersForProfile(REG, `leg-${id}`));
-    assert.deepEqual(PP.contextForProfile(REG, `worker-${id}`), PP.contextForProfile(REG, `leg-${id}`));
+    assert.equal(PP.canonicalProfileName(`leg-${id}`), `worker-${id}`);
+    assert.deepEqual(resolveProfile(REG, `leg-${id}`), resolveProfile(REG, `worker-${id}`));
+    assert.deepEqual(mcpServersForProfile(REG, `leg-${id}`), mcpServersForProfile(REG, `worker-${id}`));
+    assert.deepEqual(PP.contextForProfile(REG, `leg-${id}`), PP.contextForProfile(REG, `worker-${id}`));
   }
-  assert.equal(PP.canonicalProfileName('worker-impl,lane-review'), 'leg-impl,lane-review');
+  assert.equal(PP.canonicalProfileName('leg-impl,lane-review'), 'worker-impl,lane-review');
   assert.equal(PP.canonicalProfileName('constructor'), 'constructor');
   assert.throws(() => resolveProfile(REG, 'worker-bogus'), /unknown profile "worker-bogus"/);
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const run = (name) => spawnSync(process.execPath, [cli, name, '--mcp-servers'], { encoding: 'utf8' });
   const worker = run('worker-vm'), leg = run('leg-vm');
   assert.equal(worker.status, 0, worker.stderr);
+  assert.equal(leg.status, 0, leg.stderr);
   assert.equal(worker.stdout, leg.stdout);
 });
 
@@ -941,7 +942,7 @@ test('validateRegistry: mcpCatalog shape + $VAR-reference rule (a literal is a c
 });
 
 // ── mcpServers ──────────────
-// A per-leg MCP-server allowlist, orthogonal to mcpCatalog (T3.1, still
+// A per-worker MCP-server allowlist, orthogonal to mcpCatalog (T3.1, still
 // schema-only): mcpServers names servers to COPY from an external source
 // (readEnabledPluginIds's caller resolves those files), never definitions
 // stored in the registry itself.
@@ -1076,7 +1077,7 @@ test('collectMcpServerDefs: a command-based def with no ${CLAUDE_PLUGIN_ROOT} re
 
 test('CLI: --mcp-servers prints the profile\'s allowlist, or null when the field is absent', () => {
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
-  const okRun = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-servers'], { encoding: 'utf8' });
+  const okRun = spawnSync(process.execPath, [cli, 'worker-impl', '--mcp-servers'], { encoding: 'utf8' });
   assert.equal(okRun.status, 0, okRun.stderr);
   assert.deepEqual(JSON.parse(okRun.stdout), ['qmd', 'himmel-bus']);
   const bareRun = spawnSync(process.execPath, [cli, 'bare', '--mcp-servers'], { encoding: 'utf8' });
@@ -1084,11 +1085,11 @@ test('CLI: --mcp-servers prints the profile\'s allowlist, or null when the field
   assert.equal(JSON.parse(bareRun.stdout), null);
 });
 
-test('CLI: --mcp-config resolves leg-impl\'s qmd definition from the marketplace plugin manifest', () => {
+test('CLI: --mcp-config resolves worker-impl\'s qmd definition from the marketplace plugin manifest', () => {
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const cwd = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'); // repo root: marketplace/plugins/qmd/.mcp.json lives here
   const home = makeTmpDir('pp-cli-mcp-home-');
-  const run = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-config'], { encoding: 'utf8', cwd, env: { ...process.env, HOME: home, USERPROFILE: home } });
+  const run = spawnSync(process.execPath, [cli, 'worker-impl', '--mcp-config'], { encoding: 'utf8', cwd, env: { ...process.env, HOME: home, USERPROFILE: home } });
   assert.equal(run.status, 0, run.stderr);
   // headersHelper is expanded to the plugin dir (a standalone --mcp-config has no ${CLAUDE_PLUGIN_ROOT}).
   const qmd = JSON.parse(run.stdout).mcpServers.qmd;
@@ -1100,10 +1101,10 @@ test('CLI: --mcp-servers / --mcp-config reject trailing argv instead of silently
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const home = makeTmpDir('pp-cli-mcp-trailing-home-');
   const env = { ...process.env, HOME: home, USERPROFILE: home };
-  const mcpConfigRun = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-config', '--add-plugins', 'x@y'], { encoding: 'utf8', env });
+  const mcpConfigRun = spawnSync(process.execPath, [cli, 'worker-impl', '--mcp-config', '--add-plugins', 'x@y'], { encoding: 'utf8', env });
   assert.equal(mcpConfigRun.status, 2);
   assert.match(mcpConfigRun.stderr, /unknown argument/);
-  const mcpServersRun = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-servers', 'extra'], { encoding: 'utf8', env });
+  const mcpServersRun = spawnSync(process.execPath, [cli, 'worker-impl', '--mcp-servers', 'extra'], { encoding: 'utf8', env });
   assert.equal(mcpServersRun.status, 2);
   assert.match(mcpServersRun.stderr, /unknown argument/);
 });
@@ -1112,13 +1113,13 @@ test('CLI: --mcp-config alone (no trailing argv) still succeeds', () => {
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const cwd = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
   const home = makeTmpDir('pp-cli-mcp-trailing-ok-home-');
-  const run = spawnSync(process.execPath, [cli, 'leg-impl', '--mcp-config'], { encoding: 'utf8', cwd, env: { ...process.env, HOME: home, USERPROFILE: home } });
+  const run = spawnSync(process.execPath, [cli, 'worker-impl', '--mcp-config'], { encoding: 'utf8', cwd, env: { ...process.env, HOME: home, USERPROFILE: home } });
   assert.equal(run.status, 0, run.stderr);
   assert.ok(JSON.parse(run.stdout).mcpServers);
 });
 
 test('CLI: --mcp-config resolves the repo placeholder from a non-git copy with HIMMEL_REPO unset', () => {
-  // A scratch checkout (no .git, e.g. test-console.sh's fixture) must resolve to its own
+  // A scratch checkout (no .git, e.g. test-chief.sh's fixture) must resolve to its own
   // absolute path, never refuse; the primary-checkout lookup only wins when git can find one.
   const here = dirname(fileURLToPath(import.meta.url));
   const copy = makeTmpDir('pp-cli-nongit-copy-');
@@ -1284,7 +1285,7 @@ test('golden baseline — resolveProfile output for shipped profiles is pinned (
   for (const name of GOLDEN_PROFILES) {
     actual[name] = resolveProfile(registry, name, { installed: [] });
     if (WORKER_SESSION_PROFILES.includes(name)) {
-      // The leg profiles deliberately add this field. Pin its exact rule set
+      // The worker profiles deliberately add this field. Pin its exact rule set
       // separately, keeping the historical plugin/output fixture unchanged.
       assert.deepEqual(actual[name].permissions, { allow: actual[name].permissions.allow });
       assert.deepEqual([...actual[name].permissions.allow].sort(), [...GATE_RULES, ...SUITE_RULES].sort());
@@ -1303,23 +1304,23 @@ test('golden baseline — resolveProfile output for shipped profiles is pinned (
   assert.deepEqual(actual, expected);
 });
 
-// ── console-relay ─────────────────────────────────────────────
-// Plugin-less profile for the Sonnet relay half of a split console. Not in
-// GOLDEN_PROFILES above (same reasoning as leg-impl, its sibling omission):
+// ── chief-relay ─────────────────────────────────────────────
+// Plugin-less profile for the Sonnet relay half of a split chief. Not in
+// GOLDEN_PROFILES above (same reasoning as worker-impl, its sibling omission):
 // resolveProfileByName/mcpServersForProfile coverage lives here instead.
-test('console-relay resolves via resolveProfileByName/resolveProfile to the floor only, no mcp servers', () => {
-  const settings = resolveProfileByName('console-relay', {}, REGISTRY_PATH);
+test('chief-relay resolves via resolveProfileByName/resolveProfile to the floor only, no mcp servers', () => {
+  const settings = resolveProfileByName('chief-relay', {}, REGISTRY_PATH);
   const enabled = Object.entries(settings.enabledPlugins).filter(([, v]) => v).map(([id]) => id);
   assert.deepEqual(enabled.sort(), [...REG.floor].sort());
-  assert.deepEqual(resolveProfile(REG, 'console-relay').enabledPlugins, settings.enabledPlugins);
-  assert.deepEqual(REG.profiles['console-relay'].enable, []);
-  assert.deepEqual(mcpServersForProfile(REG, 'console-relay'), []);
+  assert.deepEqual(resolveProfile(REG, 'chief-relay').enabledPlugins, settings.enabledPlugins);
+  assert.deepEqual(REG.profiles['chief-relay'].enable, []);
+  assert.deepEqual(mcpServersForProfile(REG, 'chief-relay'), []);
 });
 
 // ── console-judge ─────────────────────────────────────────────
-// Plugin-less profile for a judge session ("the judge is a leg", design
-// §3.2), launched via headed-arm-leg.sh --judge. Not in WORKER_SESSION_PROFILES: unlike
-// console-relay it carries no gateAllow — a judge's gate-shaped calls take
+// Plugin-less profile for a judge session ("the judge is a worker", design
+// §3.2), launched via headed-arm-worker.sh --judge. Not in WORKER_SESSION_PROFILES: unlike
+// chief-relay it carries no gateAllow — a judge's gate-shaped calls take
 // the ordinary classifier path — so it emits no permissions.allow at all.
 test('console-judge resolves via resolveProfileByName/resolveProfile to the floor plus qmd, no gateAllow', () => {
   const settings = resolveProfileByName('console-judge', {}, REGISTRY_PATH);
@@ -1333,7 +1334,7 @@ test('console-judge resolves via resolveProfileByName/resolveProfile to the floo
 });
 
 // ── release-manager ───────────────────────────────────────────
-// Judge-shaped role session (headed-arm-leg.sh --profile release-manager):
+// Judge-shaped role session (headed-arm-worker.sh --profile release-manager):
 // floor plus qmd, no gateAllow, never composed into a profile list.
 test('release-manager resolves to the floor plus qmd, no gateAllow, and requires himmel-ops', () => {
   const settings = resolveProfileByName('release-manager', {}, REGISTRY_PATH);
@@ -1345,25 +1346,25 @@ test('release-manager resolves to the floor plus qmd, no gateAllow, and requires
   assert.ok(enabled.includes('himmel-ops@himmel'), 'the guard ships in himmel-ops');
 });
 
-for (const list of ['release-manager,design', 'leg-impl,release-manager']) {
+for (const list of ['release-manager,design', 'worker-impl,release-manager']) {
   test(`release-manager refuses to compose in a profile list (${list})`, () => {
     assert.throws(() => resolveProfile(REG, list), /cannot be composed/);
   });
 }
 
-test('validateRegistry: the shipped registry (console-relay included) validates clean', () => {
+test('validateRegistry: the shipped registry (chief-relay included) validates clean', () => {
   assert.deepEqual(validateRegistry(REG), []);
 });
 
 // ── /pr-check external-critic call shape ──────────────────────
 // permissions.allow matches the LITERAL command text. The runbook spells every
 // himmel script as `bash "<himmel_dir>/scripts/cr/<x>.sh"`, and step 0 prints
-// himmel_dir as an ABSOLUTE worktree path — so a leg's real command never
+// himmel_dir as an ABSOLUTE worktree path — so a worker's real command never
 // matched the relative gateAllow rule and fell to the auto-mode classifier
 // ([Out-of-Place Publication], 47 denials over two days). On the himmel lane
 // himmel_dir == repo, and the runbook now tells the session to drop the
 // `"<himmel_dir>/` prefix there. This test applies that same substitution to
-// every external-critic call line and requires a leg-impl rule to match it.
+// every external-critic call line and requires a worker-impl rule to match it.
 // The matcher below models the documented rule forms only (`X:*` = X or X plus
 // a space-separated tail; `X` = exact); it is a model, not the harness matcher.
 const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -1415,18 +1416,18 @@ const criticCalls = (relPath) => runbookCodeLines(readRunbook(relPath))
 // its closing quote, leaving the cwd-relative literal.
 const HIMMEL_LANE = (line) => line.replace(/^bash "<himmel_dir>\/(scripts\/[^"\s]+)"/, 'bash $1');
 
-test('/pr-check (Claude twin): every external-critic call matches a leg-impl allow rule on the himmel lane', () => {
+test('/pr-check (Claude twin): every external-critic call matches a worker-impl allow rule on the himmel lane', () => {
   const calls = criticCalls('.claude/commands/pr-check.md');
   const seen = new Set(calls.map((l) => EXTERNAL_CRITICS.find((n) => l.includes(`/${n}.sh`))));
   assert.deepEqual([...seen].sort(), [...EXTERNAL_CRITICS].sort(), 'anti-vacuity: every external critic must have a call line');
   for (const line of calls) {
     const command = HIMMEL_LANE(line);
     assert.match(command, /^bash scripts\/cr\//, `substitution did not yield a relative literal: ${line}`);
-    assert.ok(allowRuleMatches(REG.gateAllow, command), `no leg-impl rule matches: ${command}`);
+    assert.ok(allowRuleMatches(REG.gateAllow, command), `no worker-impl rule matches: ${command}`);
   }
 });
 
-test('/pr-check (Codex twin): its external-critic calls name only scripts that have a leg-impl rule', () => {
+test('/pr-check (Codex twin): its external-critic calls name only scripts that have a worker-impl rule', () => {
   // The twin wraps panel-first-pass in `panel_out=$(...)` because its harness
   // runs each block as a separate process; Claude-side allow rules are not its
   // gate, so only the script NAMES are pinned here.
@@ -1434,7 +1435,7 @@ test('/pr-check (Codex twin): its external-critic calls name only scripts that h
   assert.ok(calls.length > 0, 'anti-vacuity: expected at least the panel-first-pass call');
   for (const line of calls) {
     const name = EXTERNAL_CRITICS.find((n) => line.includes(`/${n}.sh`));
-    assert.ok(REG.gateAllow.some((r) => r.includes(`scripts/cr/${name}.sh`)), `no leg-impl rule names ${name}`);
+    assert.ok(REG.gateAllow.some((r) => r.includes(`scripts/cr/${name}.sh`)), `no worker-impl rule names ${name}`);
   }
 });
 
@@ -1448,27 +1449,27 @@ for (const file of ['.claude/commands/pr-check.md', '.agents/skills/pr-check/SKI
   });
 }
 
-// A leg's merge is typed with the primary checkout's ABSOLUTE path
+// A worker's merge is typed with the primary checkout's ABSOLUTE path
 // (merge-on-green.sh runs from the anchor), and the permission
-// matcher compares literal text, so the leg settings must carry that exact
-// absolute literal. It must name the PRIMARY checkout — never a leg worktree,
-// whose bytes the leg controls — and it adds nothing beyond merge-on-green.sh:
+// matcher compares literal text, so the worker settings must carry that exact
+// absolute literal. It must name the PRIMARY checkout — never a worker worktree,
+// whose bytes the worker controls — and it adds nothing beyond merge-on-green.sh:
 // the GO gate (exit 17) stays the only authority on whether a merge happens.
 const ANCHOR = '/home/u/himmel';
 const ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/handover/merge-on-green.sh:*)';
 
 // clear-cr-marker.sh's own denial (guard-pr-check-literal.sh)
-// teaches a leg the identical absolute-anchor spelling once the relative
+// teaches a worker the identical absolute-anchor spelling once the relative
 // entry can't self-verify, and plugin-profiles.json's gateAllow comment
-// confirms that spelling matched no existing rule — so a leg running it fell
+// confirms that spelling matched no existing rule — so a worker running it fell
 // to the classifier and was denied [Out-of-Place Publication]. Mirror the
 // merge literal exactly: same anchor, same mechanism.
 const MARKER_ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/cr/clear-cr-marker.sh:*)';
 
-// N651 (leg-pr-open.sh) and N649 (panel-first-pass.sh) each fell
+// N651 (worker-pr-open.sh) and N649 (panel-first-pass.sh) each fell
 // to the classifier the same way merge-on-green/clear-cr-marker used to —
 // every OTHER wildcard-tail (GATE_SCRIPT_RE) ship-step allow needs the same
-// anchor-absolute twin, plus leg-pr-open.sh (its own relative allow lives in
+// anchor-absolute twin, plus worker-pr-open.sh (its own relative allow lives in
 // .claude/settings.json, not registry.gateAllow). Independent of the
 // production regex — a literal, hand-maintained expectation, same style as
 // GATE_RULES above — so this fails if the generator's coverage drifts either
@@ -1476,7 +1477,7 @@ const MARKER_ANCHOR_RULE = 'Bash(bash /home/u/himmel/scripts/cr/clear-cr-marker.
 // (doc-freshness-advisory.sh, pr-check-context.sh, pr-check-env.sh
 // CR_CLAUDE_AGENTS, known-findings.sh --diff, resolve-active-item.sh): those
 // hand off to the anchor's own copy internally rather than
-// being typed by a leg as an absolute Bash command.
+// being typed by a worker as an absolute Bash command.
 const SHIP_STEP_ANCHOR_RULES = [
   'Bash(bash /home/u/himmel/scripts/handover/queue-lock.sh:*)',
   'Bash(bash /home/u/himmel/scripts/handover/chief-kit/inbox-send.sh:*)',
@@ -1492,7 +1493,7 @@ const SHIP_STEP_ANCHOR_RULES = [
   'Bash(bash /home/u/himmel/scripts/cr/cr-scores.sh:*)',
   'Bash(bash /home/u/himmel/scripts/check-ci.sh:*)',
   ANCHOR_RULE,
-  'Bash(bash /home/u/himmel/scripts/lanes/leg-pr-open.sh:*)',
+  'Bash(bash /home/u/himmel/scripts/lanes/worker-pr-open.sh:*)',
 ];
 
 for (const name of WORKER_SESSION_PROFILES) {
@@ -1523,14 +1524,14 @@ for (const name of ['operator', 'user', 'bare']) {
 
 for (const bad of ['/home/u/himmel/.claude/worktrees/fix+x', '/home/u/himmel/.claude/worktrees/fix+x/', 'home/u/himmel', '/home/u/x/../himmel']) {
   test(`HIMMEL-3567: anchor ${JSON.stringify(bad)} is refused, never emitted`, () => {
-    assert.throws(() => resolveProfile(REG, 'leg-impl', { anchor: bad, installed: [] }), /anchor/);
+    assert.throws(() => resolveProfile(REG, 'worker-impl', { anchor: bad, installed: [] }), /anchor/);
   });
 }
 
 for (const odd of ['/home/u/him mel', '/home/u/*', '/home/u/a)b', '/home/u/$X']) {
   test(`HIMMEL-3567: anchor ${JSON.stringify(odd)} with a matcher-unsafe character adds no rule`, () => {
-    const { permissions } = resolveProfile(REG, 'leg-impl', { anchor: odd, installed: [] });
-    assert.deepEqual(permissions.allow, expectedAllow('leg-impl'));
+    const { permissions } = resolveProfile(REG, 'worker-impl', { anchor: odd, installed: [] });
+    assert.deepEqual(permissions.allow, expectedAllow('worker-impl'));
   });
 }
 
@@ -1577,7 +1578,7 @@ for (const key of ['GIT_DIR', 'GIT_COMMON_DIR']) {
     const { root, repo, wt } = primaryWithWorktree();
     const { repo: evil } = primaryWithWorktree();
     const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
-    const run = spawnSync(process.execPath, [cli, 'leg-impl'], {
+    const run = spawnSync(process.execPath, [cli, 'worker-impl'], {
       encoding: 'utf8', cwd: wt, env: { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt, [key]: join(evil, '.git') },
     });
     assert.equal(run.status, 0, run.stderr);
@@ -1587,10 +1588,10 @@ for (const key of ['GIT_DIR', 'GIT_COMMON_DIR']) {
   });
 }
 
-test('HIMMEL-3567: CLI run from a leg worktree emits the PRIMARY absolute merge literal, never the worktree', () => {
+test('HIMMEL-3567: CLI run from a worker worktree emits the PRIMARY absolute merge literal, never the worktree', () => {
   const { root, repo, wt } = primaryWithWorktree();
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
-  const run = spawnSync(process.execPath, [cli, 'leg-impl'], {
+  const run = spawnSync(process.execPath, [cli, 'worker-impl'], {
     encoding: 'utf8', cwd: wt, env: { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt },
   });
   assert.equal(run.status, 0, run.stderr);
@@ -1620,7 +1621,7 @@ test('HIMMEL-1033: the atlassian guard detects a profile that enables it (contro
 
 // The opt-in code kit. `code` (LSPs + code-simplifier, 0-150 listing tokens) and
 // `code-ui` (playwright MCP, the one meaningful delta) each stack on base only, so they compose
-// per task: `--profile leg-impl,code`. No profile enables them by default.
+// per task: `--profile worker-impl,code`. No profile enables them by default.
 const CODE_KIT = {
   code: ['typescript-lsp@claude-plugins-official', 'pyright-lsp@claude-plugins-official', 'code-simplifier@claude-plugins-official'],
   'code-ui': ['playwright@claude-plugins-official'],
@@ -1637,20 +1638,20 @@ test('HIMMEL-4024: each code kit profile enables its set on base and nothing els
   }
 });
 
-test('HIMMEL-4024: no non-kit profile enables a code kit plugin; the kit composes with leg-impl', () => {
+test('HIMMEL-4024: no non-kit profile enables a code kit plugin; the kit composes with worker-impl', () => {
   const kitIds = Object.values(CODE_KIT).flat();
   for (const [name, def] of Object.entries(REG.profiles)) {
     if (def === null || name in CODE_KIT) continue;
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     for (const id of kitIds) assert.notEqual(p[id], true, `${name} must not enable ${id}`);
   }
-  const both = resolveProfile(REG, 'leg-impl,code,code-ui', { installed: [] }).enabledPlugins;
+  const both = resolveProfile(REG, 'worker-impl,code,code-ui', { installed: [] }).enabledPlugins;
   for (const id of kitIds) assert.equal(both[id], true, id);
 });
 
-test('HIMMEL-4017: the code kit does not hand a leg its dropped base plugins back; other members keep them', () => {
+test('HIMMEL-4017: the code kit does not hand a worker its dropped base plugins back; other members keep them', () => {
   const dropped = ['i-have-adhd@himmel'];
-  for (const list of ['leg-impl,code', 'leg-impl,code-ui', 'leg-impl,code,code-ui', 'leg-e2e,code']) {
+  for (const list of ['worker-impl,code', 'worker-impl,code-ui', 'worker-impl,code,code-ui', 'worker-e2e,code']) {
     const p = resolveProfile(REG, list, { installed: [] }).enabledPlugins;
     for (const id of dropped) assert.notEqual(p[id], true, `${list} must not enable ${id}`);
   }
@@ -1660,7 +1661,7 @@ test('HIMMEL-4017: the code kit does not hand a leg its dropped base plugins bac
 });
 
 // Operator decision 52: the reading-style ruleset is for the operator's windows. A lane worker
-// is read by a console, not the operator, so lane-impl, lane-review and lane-content drop it
+// is read by a chief, not the operator, so lane-impl, lane-review and lane-content drop it
 // (measured 2430 first-turn tokens each); telegram's output is read by the operator and keeps it.
 test('lane-impl, lane-review and lane-content drop i-have-adhd; telegram and console keep it (HIMMEL-4017)', () => {
   for (const name of ['lane-impl', 'lane-review', 'lane-content']) {
@@ -1712,11 +1713,11 @@ test('HIMMEL-4024: code kit CLIs (ast-grep, shfmt, bats) have drift rows, a cata
   assert.ok(existsSync(join(root, 'scripts', 'machine-setup', 'install-code-kit-clis.sh')), 'install step');
 });
 
-// A headed e2e leg needs the Playwright MCP under --strict-mcp-config. The
+// A headed e2e worker needs the Playwright MCP under --strict-mcp-config. The
 // plugin's own .mcp.json is flat-form and lives in the plugin cache, so the server def is
 // resolved from the registry mcpCatalog, the tier after home / repo / marketplace manifest.
-test('leg-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL-4400)', () => {
-  assert.deepEqual(mcpServersForProfile(REG, 'leg-e2e'), ['qmd', 'playwright', 'himmel-bus']);
+test('worker-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL-4400)', () => {
+  assert.deepEqual(mcpServersForProfile(REG, 'worker-e2e'), ['qmd', 'playwright', 'himmel-bus']);
   const dir = makeTmpDir('pp-e2e-');
   const marketplaceDir = join(dir, 'marketplace', 'plugins');
   mkdirSync(join(marketplaceDir, 'qmd'), { recursive: true });
@@ -1726,20 +1727,20 @@ test('leg-e2e carries the Playwright MCP in its composed --mcp-config (HIMMEL-44
   assert.match(cfg.mcpServers.playwright.args.join(' '), /@playwright\/mcp@\d+\.\d+\.\d+/, 'pinned, never @latest');
 });
 
-test('leg-e2e matches leg-impl plugins and leaves the Playwright plugin OFF so only the catalog server exists (HIMMEL-4400)', () => {
-  const { enabledPlugins: p } = resolveProfile(REG, 'leg-e2e', { installed: [] });
+test('worker-e2e matches worker-impl plugins and leaves the Playwright plugin OFF so only the catalog server exists (HIMMEL-4400)', () => {
+  const { enabledPlugins: p } = resolveProfile(REG, 'worker-e2e', { installed: [] });
   assert.equal(p['qmd@himmel'], true, 'qmd@himmel');
   assert.notEqual(p['playwright@claude-plugins-official'], true, 'plugin ships only the MCP; enabling it risks a second server');
-  assert.deepEqual(resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins, p);
-  assert.equal(REG.profiles['leg-e2e'].gateAllow, true);
+  assert.deepEqual(resolveProfile(REG, 'worker-impl', { installed: [] }).enabledPlugins, p);
+  assert.equal(REG.profiles['worker-e2e'].gateAllow, true);
   assert.deepEqual(validateRegistry(REG), []);
 });
 
-// No profile listed himmel-bus and nothing could define it, so no leg ever registered.
-test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the plugin start script, no placeholder left (HIMMEL-5223)', () => {
-  assert.deepEqual(mcpServersForProfile(REG, 'leg-bus'), ['qmd', 'himmel-bus']);
-  assert.deepEqual(resolveProfile(REG, 'leg-bus', { installed: [] }).enabledPlugins, resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins, 'plugins are leg-impl\'s (HIMMEL-4830 adds none)');
-  assert.equal(REG.profiles['leg-bus'].gateAllow, true);
+// No profile listed himmel-bus and nothing could define it, so no worker ever registered.
+test('worker-bus is worker-impl plus a himmel-bus stdio def that starts through the plugin start script, no placeholder left (HIMMEL-5223)', () => {
+  assert.deepEqual(mcpServersForProfile(REG, 'worker-bus'), ['qmd', 'himmel-bus']);
+  assert.deepEqual(resolveProfile(REG, 'worker-bus', { installed: [] }).enabledPlugins, resolveProfile(REG, 'worker-impl', { installed: [] }).enabledPlugins, 'plugins are worker-impl\'s (HIMMEL-4830 adds none)');
+  assert.equal(REG.profiles['worker-bus'].gateAllow, true);
   const dir = makeTmpDir('pp-bus-');
   const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'marketplace', 'plugins'), mcpCatalog: REG.mcpCatalog, repoRoot: '/srv/himmel' });
   const def = cfg.mcpServers['himmel-bus'];
@@ -1749,8 +1750,8 @@ test('leg-bus is leg-impl plus a himmel-bus stdio def that starts through the pl
   assert.deepEqual(validateRegistry(REG), []);
 });
 
-// headed-arm-leg.sh registers a leg on the bus only when its profile lists himmel-bus.
-test('every headed leg profile opts in to himmel-bus and allows its tools (HIMMEL-4841)', () => {
+// headed-arm-worker.sh registers a worker on the bus only when its profile lists himmel-bus.
+test('every headed worker profile opts in to himmel-bus and allows its tools (HIMMEL-4841)', () => {
   for (const name of BUS_PROFILES) {
     assert.ok(mcpServersForProfile(REG, name)?.includes('himmel-bus'), `${name} must list himmel-bus`);
     const allow = resolveProfile(REG, name, { installed: [] }).permissions.allow;
@@ -1759,11 +1760,11 @@ test('every headed leg profile opts in to himmel-bus and allows its tools (HIMME
   assert.deepEqual(validateRegistry(REG), []);
 });
 
-// console.sh registers a console only when `plugin-profiles.mjs console --mcp-servers`
-// lists himmel-bus; the console profile had no mcpServers, so no console was ever on the bus and a
-// leg's send was refused with "no edge". Reads the real registry, the same one console.sh resolves.
-test('console profile opts in to himmel-bus so console.sh registers the console on launch (HIMMEL-5241)', () => {
-  assert.ok(mcpServersForProfile(REG, 'console')?.includes('himmel-bus'), 'console must list himmel-bus');
+// chief.sh registers a chief only when `plugin-profiles.mjs chief --mcp-servers`
+// lists himmel-bus; the chief profile had no mcpServers, so no chief was ever on the bus and a
+// worker's send was refused with "no edge". Reads the real registry, the same one chief.sh resolves.
+test('chief profile opts in to himmel-bus so console.sh registers the console on launch (HIMMEL-5241)', () => {
+  assert.ok(mcpServersForProfile(REG, 'console')?.includes('himmel-bus'), 'chief must list himmel-bus');
   assert.deepEqual(validateRegistry(REG), []);
 });
 
@@ -1829,7 +1830,7 @@ test('HIMMEL-4830: mcpAllow shape is validated (unknown server, bad tool name)',
   assert.ok(validateRegistry({ ...BUS_REG, mcpAllow: { 'fx-bus': ['a b'] } }).some((e) => /mcpAllow/.test(e)));
 });
 
-test('HIMMEL-4830: the real registry resolves himmel-bus to an absolute path and allows its tools on every headed leg and console', () => {
+test('HIMMEL-4830: the real registry resolves himmel-bus to an absolute path and allows its tools on every headed worker and console', () => {
   assert.deepEqual(validateRegistry(REG), []);
   const dir = makeTmpDir('pp-bus-real-');
   const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'm'), mcpCatalog: REG.mcpCatalog, repoRoot: '/srv/himmel' });
@@ -1841,9 +1842,9 @@ test('HIMMEL-4830: the real registry resolves himmel-bus to an absolute path and
   assert.ok(!(resolveProfile(REG, 'lane-impl', { installed: [] }).permissions?.allow ?? []).some((r) => r.includes('himmel-bus')), 'lane-impl opted out');
 });
 
-test('HIMMEL-4830: leg-bus enables no plugin beyond leg-impl (profile-manifest stays untouched)', () => {
-  const bus = resolveProfile(REG, 'leg-bus', { installed: [] }).enabledPlugins;
-  const impl = resolveProfile(REG, 'leg-impl', { installed: [] }).enabledPlugins;
+test('HIMMEL-4830: worker-bus enables no plugin beyond worker-impl (profile-manifest stays untouched)', () => {
+  const bus = resolveProfile(REG, 'worker-bus', { installed: [] }).enabledPlugins;
+  const impl = resolveProfile(REG, 'worker-impl', { installed: [] }).enabledPlugins;
   assert.deepEqual(bus, impl);
 });
 
@@ -1859,7 +1860,7 @@ test('HIMMEL-1071: --list and --validate reject trailing args; bare flags still 
 });
 
 // The himmel-owned design-core member (shadcn-mcp) carries a short
-// motion-budget skill so a plain `--profile design` leg sees the duration and
+// motion-budget skill so a plain `--profile design` worker sees the duration and
 // frequency rules without the design-motion add-on.
 test('design core carries the motion-budget note', () => {
   const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -1876,27 +1877,27 @@ test('design core carries the motion-budget note', () => {
   assert.notEqual(ver, '0.1.0', 'plugin version bumped for the new skill');
 });
 
-// Legs on our own registered forks get the classifier's
+// Workers on our own registered forks get the classifier's
 // autoMode.environment trust through the resolved --settings file, never blanket.
 test('forkNwos adds one exact autoMode.environment entry per fork on a gateAllow profile', () => {
-  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo-org/qmd', 'yotamleo-org/graphify'] });
+  const s = resolveProfile(REG, 'worker-impl', { forkNwos: ['yotamleo-org/qmd', 'yotamleo-org/graphify'] });
   assert.equal(s.autoMode.environment[0], '$defaults');
   assert.equal(s.autoMode.environment.length, 3);
   assert.match(s.autoMode.environment[1], /^Source control: github\.com\/yotamleo-org\/qmd /);
   assert.match(s.autoMode.environment[2], /^Source control: github\.com\/yotamleo-org\/graphify /);
 });
 test('no forkNwos, or a profile without gateAllow, emits no autoMode key', () => {
-  assert.equal(resolveProfile(REG, 'leg-impl').autoMode, undefined);
-  assert.equal(resolveProfile(REG, 'leg-impl', { forkNwos: [] }).autoMode, undefined);
+  assert.equal(resolveProfile(REG, 'worker-impl').autoMode, undefined);
+  assert.equal(resolveProfile(REG, 'worker-impl', { forkNwos: [] }).autoMode, undefined);
   assert.equal(resolveProfile(REG, 'bare', { forkNwos: ['yotamleo-org/qmd'] }).autoMode, undefined);
 });
 test('forkNwos refuses anything but an exact owner/repo under yotamleo-org', () => {
   for (const bad of ['yotamleo', 'yotamleo-org', 'yotamleo/qmd','yotamleo-org/', 'yotamleo-org/*', 'tobi/qmd', 'yotamleo-org/a b', 'github.com/yotamleo-org/qmd', 'yotamleo-org/../x', '']) {
-    assert.throws(() => resolveProfile(REG, 'leg-impl', { forkNwos: [bad] }), /fork nwo/, bad);
+    assert.throws(() => resolveProfile(REG, 'worker-impl', { forkNwos: [bad] }), /fork nwo/, bad);
   }
 });
 test('a composed profile list unions the autoMode entries once', () => {
-  const s = resolveProfile(REG, 'leg-impl,code-ui', { forkNwos: ['yotamleo-org/qmd'] });
+  const s = resolveProfile(REG, 'worker-impl,code-ui', { forkNwos: ['yotamleo-org/qmd'] });
   assert.deepEqual(s.autoMode.environment.filter((e) => e === '$defaults'), ['$defaults']);
   assert.equal(s.autoMode.environment.length, 2);
 });
@@ -1914,7 +1915,7 @@ test('registry-driven trust: three registered forks are trusted, an unregistered
   const f = join(dir, 'himmel-adapters.json');
   const row = (nwo) => ({ nwo, upstream: 'u/x', himmel_branch: 'b', pin_site: 'p', role: 'runtime-dependency', merge_allowed: true });
   writeFileSync(f, JSON.stringify([row('yotamleo-org/qmd'), row('yotamleo-org/graphify'), row('yotamleo-org/third-fork')]));
-  const s = resolveProfile(REG, 'leg-impl', { forkNwos: PP.forkNwosFromAdapters(f) });
+  const s = resolveProfile(REG, 'worker-impl', { forkNwos: PP.forkNwosFromAdapters(f) });
   const text = s.autoMode.environment.join('\n');
   for (const nwo of ['yotamleo-org/qmd', 'yotamleo-org/graphify', 'yotamleo-org/third-fork']) assert.ok(text.includes(`github.com/${nwo} `), nwo);
   assert.equal(s.autoMode.environment.length, 4);
@@ -1923,7 +1924,7 @@ test('registry-driven trust: three registered forks are trusted, an unregistered
   assert.ok(!/tobi\/qmd/.test(text), 'upstream is not trusted');
 });
 test('fork trust text names the destination and excludes upstream, parent, force-push, delete and publish', () => {
-  const s = resolveProfile(REG, 'leg-impl', { forkNwos: ['yotamleo-org/qmd'] });
+  const s = resolveProfile(REG, 'worker-impl', { forkNwos: ['yotamleo-org/qmd'] });
   const line = s.autoMode.environment.find((e) => e !== '$defaults');
   assert.match(line, /push only to the origin remote github\.com\/yotamleo-org\/qmd/);
   assert.match(line, /gh pr create --repo yotamleo-org\/qmd/);
@@ -1943,7 +1944,7 @@ test('CLI reads the fork registry from the anchor, never the worktree copy', () 
   const cli = join(dirname(fileURLToPath(import.meta.url)), '..', 'plugin-profiles.mjs');
   const env = { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt };
   delete env.PLUGIN_PROFILES_ADAPTERS;
-  const run = spawnSync(process.execPath, [cli, 'leg-impl'], { encoding: 'utf8', cwd: wt, env });
+  const run = spawnSync(process.execPath, [cli, 'worker-impl'], { encoding: 'utf8', cwd: wt, env });
   assert.equal(run.status, 0, run.stderr);
   const text = JSON.parse(run.stdout).autoMode.environment.join('\n');
   assert.ok(text.includes('github.com/yotamleo-org/qmd '), text);
@@ -1963,7 +1964,7 @@ test('PLUGIN_PROFILES_ADAPTERS reads the fork registry of the tree under test; u
     const env = { ...process.env, HOME: root, USERPROFILE: root, HIMMEL_REPO: wt };
     delete env.PLUGIN_PROFILES_ADAPTERS;
     if (override) env.PLUGIN_PROFILES_ADAPTERS = override;
-    return spawnSync(process.execPath, [cli, 'leg-impl'], { encoding: 'utf8', cwd: wt, env });
+    return spawnSync(process.execPath, [cli, 'worker-impl'], { encoding: 'utf8', cwd: wt, env });
   };
   const withOverride = run(treeRegistry);
   assert.equal(withOverride.status, 0, withOverride.stderr);
@@ -1973,18 +1974,18 @@ test('PLUGIN_PROFILES_ADAPTERS reads the fork registry of the tree under test; u
   assert.match(station.stderr, /fork nwo/);
 });
 
-// leg-vm: leg-impl plus ONE rule for the sanctioned guest-launch script.
+// worker-vm: worker-impl plus ONE rule for the sanctioned guest-launch script.
 const VM_LAUNCH_RULE = 'Bash(bash scripts/vm/launch-guest.sh:*)';
-test('leg-vm emits the guest-launch rule on top of every leg-impl rule; leg-impl lacks it', () => {
-  const vm = resolveProfile(REG, 'leg-vm', { installed: [] });
-  const impl = resolveProfile(REG, 'leg-impl', { installed: [] });
-  assert.ok(vm.permissions.allow.includes(VM_LAUNCH_RULE), 'leg-vm must carry the rule');
-  assert.ok(!impl.permissions.allow.includes(VM_LAUNCH_RULE), 'leg-impl must not carry the rule');
+test('worker-vm emits the guest-launch rule on top of every worker-impl rule; worker-impl lacks it', () => {
+  const vm = resolveProfile(REG, 'worker-vm', { installed: [] });
+  const impl = resolveProfile(REG, 'worker-impl', { installed: [] });
+  assert.ok(vm.permissions.allow.includes(VM_LAUNCH_RULE), 'worker-vm must carry the rule');
+  assert.ok(!impl.permissions.allow.includes(VM_LAUNCH_RULE), 'worker-impl must not carry the rule');
   assert.deepEqual(vm.permissions.allow.filter((r) => r !== VM_LAUNCH_RULE), impl.permissions.allow);
   assert.deepEqual(vm.enabledPlugins, impl.enabledPlugins);
 });
-test('no profile other than leg-vm carries a vm launch rule', () => {
-  for (const name of Object.keys(REG.profiles).filter((n) => n !== 'leg-vm' && REG.profiles[n] !== null)) {
+test('no profile other than worker-vm carries a vm launch rule', () => {
+  for (const name of Object.keys(REG.profiles).filter((n) => n !== 'worker-vm' && REG.profiles[n] !== null)) {
     const allow = resolveProfile(REG, name, { installed: [] }).permissions?.allow ?? [];
     assert.ok(!allow.some((r) => r.includes('launch-guest')), `${name} must not carry a launch-guest rule`);
   }
@@ -2003,23 +2004,23 @@ for (const [shape, rule] of [
     assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunchAllow')), rule);
   });
 }
-test('vmLaunch is restricted to leg-vm', () => {
+test('vmLaunch is restricted to worker-vm', () => {
   const registry = structuredClone(REG);
-  registry.profiles['leg-impl'].vmLaunch = true;
+  registry.profiles['worker-impl'].vmLaunch = true;
   assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
 });
 
-test('leg family drops i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
-  const legs = Object.keys(REG.profiles).filter((n) => n.startsWith('leg-'));
-  assert.deepEqual(legs.sort(), ['leg-bus', 'leg-e2e', 'leg-impl', 'leg-vm']);
-  for (const name of legs) {
+test('worker family drops i-have-adhd, keeps the floor and lean-skills (HIMMEL-4017)', () => {
+  const workers = Object.keys(REG.profiles).filter((n) => n.startsWith('worker-'));
+  assert.deepEqual(workers.sort(), ['worker-bus', 'worker-e2e', 'worker-impl', 'worker-vm']);
+  for (const name of workers) {
     const p = resolveProfile(REG, name, { installed: [] }).enabledPlugins;
     for (const id of ['i-have-adhd@himmel']) assert.equal(p[id], false, `${name}: ${id}`);
     for (const id of [...REG.floor, 'lean-skills@himmel']) assert.equal(p[id], true, `${name}: ${id}`);
-    assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills legs call`);
+    assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills workers call`);
   }
-  // The operator reads the console window, so the reading-style ruleset stays there.
-  assert.equal(resolveProfile(REG, 'console', { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, 'console keeps i-have-adhd');
+  // The operator reads the chief window, so the reading-style ruleset stays there.
+  assert.equal(resolveProfile(REG, 'console', { installed: [] }).enabledPlugins['i-have-adhd@himmel'], true, 'chief keeps i-have-adhd');
 });
 
 // graphify's skill was a user-scope copy written by himmel-update into
@@ -2036,23 +2037,23 @@ test('graphify@himmel is enabled only in the user profile (HIMMEL-6465)', () => 
 });
 
 // A profile with no required plugin gets no skillOverrides, so it lists about 7.4k more
-// first-turn tokens (leg-impl note in plugin-profiles.json). The 35000 budgets cannot be met
-// that way: the live probe measured console-judge and console-relay at 36886 before they
+// first-turn tokens (worker-impl note in plugin-profiles.json). The 35000 budgets cannot be met
+// that way: the live probe measured console-judge and chief-relay at 36886 before they
 // required the floor plugin whose skills they call, 29950 after.
 test('a profile on the 35000 budget requires a plugin, so skillOverrides engage (HIMMEL-4017)', () => {
   for (const [name, def] of Object.entries(REG.profiles)) {
     if (def === null || def.contextBudget > 35000) continue;
     assert.ok(ROLE_REQUIRES[name].length > 0, `${name}: contextBudget ${def.contextBudget} needs a ROLE_REQUIRES plugin`);
   }
-  for (const name of ['console-judge', 'console-relay']) {
+  for (const name of ['console-judge', 'chief-relay']) {
     assert.deepEqual(ROLE_REQUIRES[name], ['himmel-ops@himmel'], `${name}: requires the floor plugin whose skills it calls`);
   }
 });
 
-// A leg composes an add-on onto a leg profile (`leg-impl,design`); the composed list keeps the
-// leg member's allowlist, so the add-on legs register on the bus too.
-test('leg profiles composed with design, code and code-ui keep himmel-bus and its tool allow (HIMMEL-4841)', () => {
-  for (const list of ['leg-impl,design', 'leg-impl,code', 'leg-impl,code-ui']) {
+// A worker composes an add-on onto a worker profile (`worker-impl,design`); the composed list keeps the
+// worker member's allowlist, so the add-on workers register on the bus too.
+test('worker profiles composed with design, code and code-ui keep himmel-bus and its tool allow (HIMMEL-4841)', () => {
+  for (const list of ['worker-impl,design', 'worker-impl,code', 'worker-impl,code-ui']) {
     assert.ok(mcpServersForProfile(REG, list)?.includes('himmel-bus'), `${list} must list himmel-bus`);
     const allow = resolveProfile(REG, list, { installed: [] }).permissions.allow;
     for (const tool of BUS_TOOL_ALLOW) assert.ok(allow.includes(tool), `${list}: missing ${tool}`);
@@ -2060,11 +2061,11 @@ test('leg profiles composed with design, code and code-ui keep himmel-bus and it
 });
 
 // The claudex and openrouter lanes concatenate their preface after the standing one; both forbid
-// SendMessage, so a leg registered on the bus needs the preface to say the bus tools are fine.
-test('the claudex and openrouter lane prefaces let a registered leg use the bus tools beside the doc channel (HIMMEL-4841)', () => {
+// SendMessage, so a worker registered on the bus needs the preface to say the bus tools are fine.
+test('the claudex and openrouter lane prefaces let a registered worker use the bus tools beside the doc channel (HIMMEL-4841)', () => {
   const docs = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'docs', 'handover');
   for (const lane of ['claudex', 'openrouter']) {
-    const text = readFileSync(join(docs, `leg-preface-${lane}.md`), 'utf8').replace(/\s+/g, ' ');
+    const text = readFileSync(join(docs, `worker-preface-${lane}.md`), 'utf8').replace(/\s+/g, ' ');
     assert.match(text, /himmel-bus/, `${lane}: names himmel-bus`);
     assert.match(text, /HIMMEL_BUS_NAME/, `${lane}: gates the bus on the registered name`);
     assert.match(text, /handover document stays/i, `${lane}: the doc stays the fallback and the record`);
@@ -2093,7 +2094,7 @@ for (const name of BUS_PROFILES) {
   });
 }
 
-test('HIMMEL-4983: no shipped profile denies a tool a leg needs, and non-leg profiles carry no trim', () => {
+test('HIMMEL-4983: no shipped profile denies a tool a worker needs, and non-worker profiles carry no trim', () => {
   for (const [name, spec] of Object.entries(REG.profiles)) {
     for (const t of spec?.denyTools ?? []) assert.ok(!TRIM_NEVER.includes(t), `${name} denies ${t}`);
     if (!BUS_PROFILES.includes(name)) {
@@ -2101,7 +2102,7 @@ test('HIMMEL-4983: no shipped profile denies a tool a leg needs, and non-leg pro
       assert.equal(spec?.disableWorkflows, undefined, `${name} must not carry disableWorkflows`);
     }
   }
-  for (const name of ['console', 'console-relay', 'console-judge', 'release-manager', 'lane-impl']) {
+  for (const name of ['console', 'chief-relay', 'console-judge', 'release-manager', 'lane-impl']) {
     const settings = resolveProfile(REG, name, { installed: [] });
     assert.ok(!settings.permissions?.deny, `${name} must not emit permissions.deny`);
     assert.ok(!Object.hasOwn(settings, 'disableWorkflows'), `${name} must keep Workflow`);
@@ -2109,7 +2110,7 @@ test('HIMMEL-4983: no shipped profile denies a tool a leg needs, and non-leg pro
 });
 
 test('HIMMEL-4983: validateRegistry holds the denyTools / disableWorkflows contract', () => {
-  const errs = (spec, name = 'leg-impl') => {
+  const errs = (spec, name = 'worker-impl') => {
     const reg = structuredClone(REG);
     reg.profiles[name] = { ...reg.profiles[name], ...spec };
     return validateRegistry(reg);
@@ -2119,17 +2120,17 @@ test('HIMMEL-4983: validateRegistry holds the denyTools / disableWorkflows contr
   assert.ok(errs({ denyTools: ['Bash(rm *)'] }).some((e) => /denyTools must be an array of bare tool names/.test(e)), 'a scoped rule does not shrink the payload');
   for (const t of TRIM_NEVER) assert.ok(errs({ denyTools: [t] }).some((e) => new RegExp(`denyTools .*${t}`).test(e)), `${t} must be refused`);
   assert.ok(errs({ disableWorkflows: 'yes' }).some((e) => /disableWorkflows must be a boolean/.test(e)));
-  assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'user').some((e) => /"user" denyTools is restricted to leg-shaped profiles/.test(e)));
-  assert.ok(errs({ disableWorkflows: true }, 'console').some((e) => /"console" disableWorkflows is restricted to leg-shaped profiles/.test(e)));
+  assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'user').some((e) => /"user" denyTools is restricted to worker-shaped profiles/.test(e)));
+  assert.ok(errs({ disableWorkflows: true }, 'chief').some((e) => /"chief" disableWorkflows is restricted to worker-shaped profiles/.test(e)));
   assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'bare').some((e) => /"bare" must not declare denyTools/.test(e)));
   for (const v of [true, false]) assert.ok(errs({ disableWorkflows: v }, 'bare').some((e) => /"bare" must not declare disableWorkflows/.test(e)), `bare refuses disableWorkflows: ${v}`);
 });
 
 test('HIMMEL-4983: a profile list denies a tool only when every member does', () => {
-  const both = resolveProfile(REG, 'leg-impl,leg-bus', { installed: [] });
+  const both = resolveProfile(REG, 'worker-impl,worker-bus', { installed: [] });
   assert.deepEqual(both.permissions.deny, TRIM_DENY);
   assert.equal(both.disableWorkflows, true);
-  const mixed = resolveProfile(REG, 'leg-impl,design', { installed: [] });
+  const mixed = resolveProfile(REG, 'worker-impl,design', { installed: [] });
   assert.ok(!mixed.permissions?.deny, 'design may need Artifact: one member without the deny keeps every tool');
   assert.ok(!Object.hasOwn(mixed, 'disableWorkflows'));
 });

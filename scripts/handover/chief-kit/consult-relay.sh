@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # consult-relay.sh <consult-doc> <asker>
 #
-# Prints the text a console SendMessages to the asking leg once its consult is
+# Prints the text a chief SendMessages to the asking worker once its consult is
 # done: a `CONSULT-ANSWER <asker> <doc>` header plus every `ANSWER` bullet the
 # consult appended to its doc. Read-only: it never writes the doc and sends
-# nothing itself (the console does the SendMessage, so no new inbox channel).
+# nothing itself (the chief does the SendMessage, so no new inbox channel).
 # Exit 0 with the text; exit 3 if the consult has not finished answering (no
-# ANSWER bullet, or no WRAPPED after it) so the console can tell "still running"
+# ANSWER bullet, or no WRAPPED after it) so the chief can tell "still running"
 # from "answered"; exit 4 if
 # the consult ended `BLOCKED` without a complete answer (a BLOCKED after the last
 # ANSWER counts); exit 5 (nothing printed) if the
@@ -41,7 +41,7 @@ fi
 # The relayed body is ADVICE ONLY. The consult read the asker's world, so its text
 # is untrusted: refuse (exit 5, nothing on stdout) anything shaped like authority
 # - a RETASK, a nonce-shaped token, or a line opening with HALT / GO / READY - so a
-# poisoned consult cannot launder a revision, halt or GO through the console.
+# poisoned consult cannot launder a revision, halt or GO through the chief.
 if printf '%s\n' "$answers" | grep -q -i -E 'RETASK|[A-Z]+-N[0-9]+-[0-9a-f]{8}|^[[:space:]]*(HALT|GO|READY)([^A-Za-z]|$)'; then
     echo "consult-relay: refusing to relay: the answer carries authority-shaped text (RETASK, a token, or a HALT/GO/READY line); read $doc yourself" >&2
     exit 5

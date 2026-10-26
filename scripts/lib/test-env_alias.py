@@ -44,24 +44,25 @@ class Rows(unittest.TestCase):
 
     def test_function_and_cli(self):
         fns = {"restrict": env_alias.env_alias_restrict, "permit": env_alias.env_alias_permit}
-        for fn, nn, on, nv, ov, want in read_rows():
+        for fn, nn, on, nv, ov, want_on, want_off in read_rows():
             nn = "" if nn == "<empty>" else nn
             on = "" if on == "<empty>" else on
-            env = row_env(nn, on, nv, ov)
-            label = f"{fn} {nn!r}={nv} {on!r}={ov} -> {want}"
-            with self.subTest(label, via="function"):
-                if want == "2":
-                    with self.assertRaises(env_alias.InvalidName):
-                        fns[fn](nn, on, env)
-                else:
-                    self.assertEqual(fns[fn](nn, on, env), want == "0")
-            with self.subTest(label, via="cli"):
-                r = subprocess.run(
-                    [sys.executable, "-I", os.path.join(HERE, "env_alias.py"), fn, nn, on],
-                    env={"PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), **env},
-                    capture_output=True, text=True,
-                )
-                self.assertEqual(r.returncode, int(want), r.stderr)
+            for mode, want, knob in (("on", want_on, {}), ("off", want_off, {"HIMMEL_LEGACY_NAMES": "0"})):
+                env = {**knob, **row_env(nn, on, nv, ov)}
+                label = f"{mode}: {fn} {nn!r}={nv} {on!r}={ov} -> {want}"
+                with self.subTest(label, via="function"):
+                    if want == "2":
+                        with self.assertRaises(env_alias.InvalidName):
+                            fns[fn](nn, on, env)
+                    else:
+                        self.assertEqual(fns[fn](nn, on, env), want == "0")
+                with self.subTest(label, via="cli"):
+                    r = subprocess.run(
+                        [sys.executable, "-I", os.path.join(HERE, "env_alias.py"), fn, nn, on],
+                        env={"PATH": os.environ.get("PATH", ""), "SYSTEMROOT": os.environ.get("SYSTEMROOT", ""), **env},
+                        capture_output=True, text=True,
+                    )
+                    self.assertEqual(r.returncode, int(want), r.stderr)
 
     def test_cli_bad_usage_exits_2(self):
         for args in (["bogus", "A", "B"], ["restrict", "A"], []):

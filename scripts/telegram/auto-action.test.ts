@@ -11,7 +11,7 @@ import { handleInbound, handleAutoCommand } from "./poller";
 
 test("privileged typed ops never execute for non-operators, disabled ops or forwarded messages; attempts audit once", async () => {
   for (const [text, op, label] of [
-    ["/launch-bypass-leg /handovers/operator/himmel/leg.md HIMMEL_HOOK_INTEGRITY_BYPASS_OK", "launch-bypass-leg", "error"],
+    ["/launch-bypass-worker /handovers/operator/himmel/worker.md HIMMEL_HOOK_INTEGRITY_BYPASS_OK", "launch-bypass-worker", "error"],
     ["/cr-grant-delta 123 0123456789abcdef0123456789abcdef01234567", "cr-grant-delta", "delta-granted"],
   ]) {
     for (const [from, enabled, want] of [[2, true, false], [1, false, false], [1, true, true]] as const) {
@@ -34,7 +34,7 @@ test("privileged typed ops never execute for non-operators, disabled ops or forw
         reply: async () => {},
         audit: async (f) => { audits.push(f.result); },
       });
-      expect(ran).toBe(!forwarded && op !== "launch-bypass-leg");
+      expect(ran).toBe(!forwarded && op !== "launch-bypass-worker");
       expect(audits).toEqual([forwarded ? "refused-forwarded" : label]);
     }
   }
@@ -42,7 +42,7 @@ test("privileged typed ops never execute for non-operators, disabled ops or forw
 
 test("judge: retired launch dispatch refuses even a successful script seam", async () => {
   let ran = false;
-  const result = await dispatchAutoAction({ runScript: async () => { ran = true; return { code: 0, stdout: "log=/tmp/launch.log\n", stderr: "" }; } }, { op: "launch-bypass-leg", arg: "/tmp/leg.md", time: "HIMMEL_HOOK_INTEGRITY_BYPASS_OK" });
+  const result = await dispatchAutoAction({ runScript: async () => { ran = true; return { code: 0, stdout: "log=/tmp/launch.log\n", stderr: "" }; } }, { op: "launch-bypass-worker", arg: "/tmp/worker.md", time: "HIMMEL_HOOK_INTEGRITY_BYPASS_OK" });
   expect(result.ok).toBe(false);
   expect(result.rc).toBe(19);
   expect(result.message).toContain("station");
@@ -51,7 +51,7 @@ test("judge: retired launch dispatch refuses even a successful script seam", asy
 
 test("typed privileged ops require individual opt-in and reject forwarded/caption origins", async () => {
   for (const [text, op] of [
-    ["/launch-bypass-leg /handovers/operator/himmel/leg.md HIMMEL_HOOK_INTEGRITY_BYPASS_OK", "launch-bypass-leg"],
+    ["/launch-bypass-worker /handovers/operator/himmel/worker.md HIMMEL_HOOK_INTEGRITY_BYPASS_OK", "launch-bypass-worker"],
     ["/cr-grant-delta 123 0123456789abcdef0123456789abcdef01234567", "cr-grant-delta"],
   ]) {
     const route = classify(text);
@@ -64,14 +64,14 @@ test("typed privileged ops require individual opt-in and reject forwarded/captio
     expect(isExecutableAutoCommand(route, true, false)).toBe(false);
     expect(isExecutableAutoCommand(route, false, true)).toBe(false);
     const ok = await dispatchAutoAction({ runScript: async () => ({ code: 0, stdout: "log=/tmp/launch.log\n", stderr: "" }) }, route);
-    expect(ok.ok).toBe(op !== "launch-bypass-leg");
+    expect(ok.ok).toBe(op !== "launch-bypass-worker");
     expect(ok.message).not.toContain("armed");
     const refused = await dispatchAutoAction({ runScript: async () => ({ code: 15, stdout: "", stderr: "head moved" }) }, route);
     expect(refused.ok).toBe(false);
-    expect(refused.rc).toBe(op === "launch-bypass-leg" ? 19 : 15);
+    expect(refused.rc).toBe(op === "launch-bypass-worker" ? 19 : 15);
   }
   expect(classify("/cr-grant-delta 123 abcdef123456").kind).toBe("chat");
-  expect(classify("prose /launch-bypass-leg /x.md X").kind).toBe("chat");
+  expect(classify("prose /launch-bypass-worker /x.md X").kind).toBe("chat");
 });
 
 // Return the narrowed auto member of Route: assignable BOTH to Route (for
@@ -93,7 +93,7 @@ test("delta grant carries backup names through result and sanitized audit", asyn
 });
 
 test("OPS table seeds the closed op allow-list", () => {
-  expect([...KNOWN_OPS].sort()).toEqual(["allow-rule", "arm-resume", "close-wrapped", "cr-grant-delta", "cr-reset", "launch-bypass-leg", "launch-leg", "merge-public", "relaunch-console", "repin-hooks", "restart", "restart-bridge", "revert-main", "station-status"]);
+  expect([...KNOWN_OPS].sort()).toEqual(["allow-rule", "arm-resume", "close-wrapped", "cr-grant-delta", "cr-reset", "launch-bypass-worker", "launch-worker", "merge-public", "relaunch-chief", "repin-hooks", "restart", "restart-bridge", "revert-main", "station-status"]);
   expect(OPS["arm-resume"].script).toBe("arm-resume");
   expect(OPS["merge-public"].script).toBe("merge-public");
 });

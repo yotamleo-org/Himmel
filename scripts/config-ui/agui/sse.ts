@@ -87,7 +87,7 @@ export type StreamOpts = {
 // and toolu_ id into one; payload fields (deltas, results, messages, state) pass it.
 // `failure` (an enum) identifies too. `agent` / `subagent` (who acted) are identifiers except a subagent's
 // name, model and kind, which come from the Agent call's free-form input and so pass the redactor; the
-// session's own agent (id "main": its agent-name record, its API model) is kept, since a leg's name is often
+// session's own agent (id "main": its agent-name record, its API model) is kept, since a worker's name is often
 // 32+ chars and would be blanked.
 const ID_FIELDS = new Set(["type", "threadId", "runId", "messageId", "toolCallId", "parentMessageId", "toolCallName", "role", "timestamp", "failure"]);
 const AGENT_FIELDS = new Set(["agent", "subagent"]);
@@ -104,7 +104,7 @@ export function redactPayload(e: AguiEvent, redact: (value: unknown) => unknown)
 }
 
 // One followed file: the session journal, or one of its subagents' transcripts. The subagent discovery
-// and the line order are journal-merge.ts's, shared with the leg digest.
+// and the line order are journal-merge.ts's, shared with the worker digest.
 type Source = { path: string; fh?: FileHandle; offset: number; size: number; tail: string; utf8: TextDecoder; last: { ts: number }; backwards?: true };
 
 // Opens a validated realpath, then checks that the fd is still that file: the containment check in

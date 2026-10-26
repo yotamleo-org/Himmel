@@ -406,7 +406,7 @@ printf '%s' "$changelog_section"
 # Bucket: MORNING_REPORT_READY_DIR, else <handover root>/<USER_SLUG>/himmel. A scan that
 # cannot run renders "unavailable", never "None". ponytail: the repo bucket is fixed to
 # himmel and USER_SLUG must be set (env or .env); upgrade path is resolving the bucket
-# like tick.sh does from a console doc.
+# like tick.sh does from a chief doc.
 sec_ready_mismatch() {
     local dir="${MORNING_REPORT_READY_DIR:-}" repo="${MORNING_REPORT_READY_REPO:-$SCRIPT_DIR/../..}" out="" body root
     if [ -z "$dir" ] && root="$(handover_root 2>/dev/null)" && [ -n "${USER_SLUG:-}" ]; then dir="$root/$USER_SLUG/himmel"; fi

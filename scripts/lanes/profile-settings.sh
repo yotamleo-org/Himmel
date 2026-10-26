@@ -2,10 +2,10 @@
 # scripts/lanes/profile-settings.sh - resolve a named plugin profile to a stable
 # settings file and print its absolute path.
 #
-# For launch paths that are NOT headed-arm-leg.sh (console arm, arm-resume,
+# For launch paths that are NOT headed-arm-worker.sh (chief arm, arm-resume,
 # hop, schedule-resume, the CR critic, the morning-briefing --llm call): they
-# need `claude --settings <file>` and cannot run the per-leg resolution
-# headed-arm-leg.sh does. The file is written atomically to a per-user dir that
+# need `claude --settings <file>` and cannot run the per-worker resolution
+# headed-arm-worker.sh does. The file is written atomically to a per-user dir that
 # outlives the arming process (an `at`/cron relaunch fires hours later), so it
 # is NOT under /tmp.
 #

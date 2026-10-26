@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # retrieval-nudge.sh — PostToolUse advisory.
 #
-# WHY: legs are told to use leg-graph.sh and qmd, yet most never called either
+# WHY: workers are told to use worker-graph.sh and qmd, yet most never called either
 # while running several grep/find sweeps each. Prose drifted twice, so this is
 # the structural reminder: once a session has run 5 broad search sweeps and
 # made NO qmd or graphify call, emit ONE additionalContext line, once per session.
@@ -9,12 +9,12 @@
 # ADVISORY ONLY. Never a deny, never a block, always exit 0: an exact-symbol
 # grep stays the right tool, so the nudge only reminds. Fail OPEN on every
 # infrastructure problem (no jq, bad JSON, unwritable state dir).
-# Applies to legs, consoles and judges alike; none is exempt.
+# Applies to workers, chiefs and judges alike; none is exempt.
 #
 # Sweep = Grep/Glob tool call, or a Bash call with a segment that is `grep -r`,
 # `rg`, `git grep`, `git log -S`, or a `find` carrying a match predicate (a bare
 # `find DIR -type d` listing is not a search). Retrieval = any mcp__qmd__ tool,
-# qmd-bounded.sh / `qmd query|search|get…`, or graphify / leg-graph.sh
+# qmd-bounded.sh / `qmd query|search|get…`, or graphify / worker-graph.sh
 # query|explain|path. A retrieval call stops the nudge for the session.
 #
 # State: per-session files under $RETRIEVAL_NUDGE_DIR (default

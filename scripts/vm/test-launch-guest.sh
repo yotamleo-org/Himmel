@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()
 # scripts/vm/test-launch-guest.sh - suite for launch-guest.sh, the one sanctioned
-# way a leg starts a claude session on a himmel test VM.
+# way a worker starts a claude session on a himmel test VM.
 # Asserts: bad shape / unregistered VM / station VM refuse before any ssh; the
 # dry-run guest command carries an explicit --permission-mode acceptEdits and an
 # --allowedTools list, and never a skip-permissions flag.

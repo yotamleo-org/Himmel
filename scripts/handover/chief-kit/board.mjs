@@ -1,59 +1,59 @@
 #!/usr/bin/env node
-// board.mjs — Render the console's progress board: a self-contained
-// HTML page (console-board.html, next to the console doc) that shows the fleet,
-// every leg's phase, what needs the console, epic progress and the operator's
-// open decisions. The console republishes it as an artifact (that call is the
-// console's own; this script never publishes).
+// board.mjs — Render the chief's progress board: a self-contained
+// HTML page (chief-board.html, next to the chief doc) that shows the fleet,
+// every worker's phase, what needs the chief, epic progress and the operator's
+// open decisions. The chief republishes it as an artifact (that call is the
+// chief's own; this script never publishes).
 //
-//   node board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--changed]
+//   node board.mjs --doc <chief doc> [--workers "<worker doc> ..."] [--out <file>] [--repo <dir>] [--changed]
 //
 // --view user: the user shift board (board-user.mjs) instead of the operator board: running now,
-// waiting on you, shipped. Same reads, written to --out (default console-shift-board.html);
+// waiting on you, shipped. Same reads, written to --out (default chief-shift-board.html);
 // the operator board, its archive and its json are not written.
 //
 // --changed (Ask 1): still renders and writes the file, but prints
 // one line -- `CHANGED <path>` or `UNCHANGED <path>` -- instead of the bare
-// path, so a console can call this after every Live-state mutation (dispatch,
+// path, so a chief can call this after every Live-state mutation (dispatch,
 // verdict, GO, MERGED, WRAPPED) and grep the answer instead of diffing the
 // file itself. "Changed" compares the embedded fingerprint (below) against
 // what the file on disk carried before this render; the Artifact publish
 // itself stays a model step, never done here.
 //
-// Leg set: --legs wins; else the console's fleet manifest
-// (<console doc stem>.fleet.json, via fleet-manifest.sh list); else the Live-state scan.
+// Worker set: --workers wins; else the chief's fleet manifest
+// (<chief doc stem>.fleet.json, via fleet-manifest.sh list); else the Live-state scan.
 //
-// State comes from tick.sh (leg locks, tails, fleet, open PRs, and the board
-// fingerprint via --emit-fp), the console doc's `## Live state` block, the leg
-// docs' Results bullets, `gh` (open + merged PRs), and -- for a WRAPPED leg
+// State comes from tick.sh (worker locks, tails, fleet, open PRs, and the board
+// fingerprint via --emit-fp), the chief doc's `## Live state` block, the worker
+// docs' Results bullets, `gh` (open + merged PRs), and -- for a WRAPPED worker
 // only -- the SAME process census tick.sh's procs= builds from
 // (claude-sessions.sh), read independently because tick.sh's own procs= counts
-// only HELD legs. tick.sh's `board=` field compares the fingerprint embedded
+// only HELD workers. tick.sh's `board=` field compares the fingerprint embedded
 // here with a freshly recomputed one, so a stale board is structurally
 // visible. The published page is public-ish: nonces, lock tokens and token
 // spans are redacted from everything before it is escaped.
 //
-// Optional Live-state lines the console may keep (console-template.md):
+// Optional Live-state lines the chief may keep (chief-template.md):
 //   epics: HIMMEL-3332=4, HIMMEL-3340=2     declared totals; merged is counted from gh
 //   decisions: first?; second?              open operator decisions, ';'-separated
-//   decisions: specs/decisions/console-decisions-<date>.md (latest #<n>)
+//   decisions: specs/decisions/chief-decisions-<date>.md (latest #<n>)
 //                                           the `(N) ` entries of the named bucket file(s)
 //   versions: v1.0.0, v1.0.1                one `Release <v>` panel per Jira fixVersion
 //
-// The published page shows live work only. WRAPPED and MERGED legs and the merged PRs
-// go to <out>-archive.html beside it (console-board-archive.html by default): local,
+// The published page shows live work only. WRAPPED and MERGED workers and the merged PRs
+// go to <out>-archive.html beside it (chief-board-archive.html by default): local,
 // never published, one item per line so a grep finds a ticket key, a PR or a last bullet.
 //
 // ponytail: the archive is rebuilt from the fleet manifest and the 24 h merged-PR list each
-// render, so a merged PR older than 24 h survives there only as its leg's line; upgrade
+// render, so a merged PR older than 24 h survives there only as its worker's line; upgrade
 // path: merge the previous archive's PR lines into the new one.
 //
-// PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only (tick.sh
+// PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (tick.sh
 // reads pgrep, atq and the konsole launch logs). Node ESM, no dependencies.
 //
 // ponytail: the epic "merged" count is PRs whose title cites [KEY], from one
 // `gh pr list --search "KEY in:title"` (200 max); an epic whose PRs cite it only
 // in the branch name, or with more than 200 merged PRs, undercounts. The declared
-// total in `epics:` is the console's own number -- nothing derives it from Jira.
+// total in `epics:` is the chief's own number -- nothing derives it from Jira.
 //
 // ponytail: a Release panel is one Jira `list` per version (limit 1000; a version
 // with more tickets undercounts), a ticket is done when its status reads Done /
@@ -67,26 +67,28 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gitClean } from '../../lanes/git-clean.mjs';
 import { readToolHealth } from '../../eval/worker-digest/tool-health.mjs';
+import { legacyFlag, legacyNamesOn } from '../../lib/env-alias.mjs';
 import { redact } from './redact.mjs';
 import { collect as collectCloud } from './cloud-liveness.mjs';
 import { goalOf, renderUserBoard } from './board-user.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
-const USAGE = 'usage: board.mjs --doc <console doc> [--legs "<leg doc> ..."] [--out <file>] [--repo <dir>] [--json <file>] [--changed] [--view user]';
+const USAGE = 'usage: board.mjs --doc <console doc> [--workers "<leg doc> ..."] [--out <file>] [--repo <dir>] [--json <file>] [--changed] [--view user]';
 const rawArgs = process.argv.slice(2);
-// --changed (Ask 1) is the one console step that both re-renders
+// --changed (Ask 1) is the one chief step that both re-renders
 // and says whether the render moved: a boolean flag, pulled out before the
 // --opt pairs below so it never consumes the next pair's value.
 const changedFlag = rawArgs.includes('--changed');
 const args = rawArgs.filter((a) => a !== '--changed');
 const opt = {};
 for (let i = 0; i < args.length; i += 2) {
-    if (!['--doc', '--legs', '--out', '--repo', '--json', '--view'].includes(args[i]) || args[i + 1] === undefined) {
+    if (!['--doc', '--workers', '--legs', '--out', '--repo', '--json', '--view'].includes(args[i]) || args[i + 1] === undefined
+        || (args[i] === '--legs' && !legacyFlag('--legs', '--workers'))) {
         console.error(USAGE);
         process.exit(2);
     }
-    opt[args[i].slice(2)] = args[i + 1];
+    opt[args[i] === '--legs' ? 'workers' : args[i].slice(2)] = args[i + 1];
 }
 // The user page embeds no fingerprint and writes no json, so --changed and --json have nothing to act on.
 if (!opt.doc || (opt.view !== undefined && opt.view !== 'user') || (opt.view === 'user' && (changedFlag || opt.json !== undefined))) {
@@ -100,7 +102,7 @@ if (!existsSync(docPath)) {
 }
 const bucket = dirname(docPath);
 const repo = resolve(opt.repo || join(HERE, '..', '..', '..'));
-const outPath = resolve(opt.out || join(bucket, 'console-board.html'));
+const outPath = resolve(opt.out || join(bucket, 'chief-board.html'));
 
 // ---------------------------------------------------------------- redaction
 // Nonces, lock tokens and `token \`...\`` spans never reach a published page;
@@ -113,7 +115,7 @@ const clip = (s, n) => (s.length > n ? `${s.slice(0, n - 1)}…` : s);
 // fragment the patterns no longer match.
 const safe = (s, n = Infinity) => esc(clip(redact(String(s)), n));
 
-// ---------------------------------------------------------------- console doc
+// ---------------------------------------------------------------- chief doc
 const docText = readFileSync(docPath, 'utf8');
 const docLines = docText.split('\n');
 // A section runs from its heading to the next `## ` heading -- never past it. The
@@ -139,11 +141,11 @@ const liveField = (key) => {
 // field, or a list-marker / `>` / `#` line (a detail bullet may quote a span
 // freely). An entry is a backtick span of exactly four non-empty colon fields
 // `<label>:<nonce>:<lock-token>:<pid>`, no whitespace, the label all
-// WORKER_SESSION_LABEL_CLASS (scripts/lib/leg-identity.sh: letters, digits, `_`, `.`, `-`),
-// so a leg doc stem parses too. Only the label and the nonce are kept: the nonce
-// picks the leg's doc among docs sharing a label, and is never rendered.
+// WORKER_SESSION_LABEL_CLASS (scripts/lib/worker-identity.sh: letters, digits, `_`, `.`, `-`),
+// so a worker doc stem parses too. Only the label and the nonce are kept: the nonce
+// picks the worker's doc among docs sharing a label, and is never rendered.
 // ponytail: a malformed span (tick reports it MALFORMED by label) is not an entry
-// here, so a leg named only by one is missing from the board's Live-state set.
+// here, so a worker named only by one is missing from the board's Live-state set.
 const WORKER_SESSION_LABEL_CLASS = /^[A-Za-z0-9_.-]+$/;
 const liveEntries = [];
 {
@@ -187,7 +189,7 @@ const splitTopLevel = (s) => {
 const numberedEntries = (text) => text.split('\n')
     .flatMap((l) => l.split(/(?=\(\d+\) )/)).filter((e) => /^\(\d+\) /.test(e)).map((e) => e.trim());
 const decisionsLine = liveField('decisions');
-const decisionFiles = decisionsLine.match(/specs\/decisions\/console-decisions-[0-9-]+\.md/g) || [];
+const decisionFiles = decisionsLine.match(/specs\/decisions\/(?:chief|console)-decisions-[0-9-]+\.md/g) || [];
 const fileDecisions = [
     ...decisionFiles.flatMap((f) => (existsSync(join(bucket, f))
         ? numberedEntries(readFileSync(join(bucket, f), 'utf8')) : [`missing decisions file: ${f}`])),
@@ -199,12 +201,12 @@ const queueLine = liveField('queue');
 const lastGo = liveField('last GO').replace(/`/g, '');
 const consoleResults = section('## Results').filter((l) => l.startsWith('- ')).slice(-8);
 
-// ---------------------------------------------------------------- leg docs
-// A leg's label comes from leg-identity.sh, the ONE derivation the tick uses for
-// leg docs and its own legs= (a local regex here is how the two drift). One bash
+// ---------------------------------------------------------------- worker docs
+// A worker's label comes from worker-identity.sh, the ONE derivation the tick uses for
+// worker docs and its own workers= (a local regex here is how the two drift). One bash
 // call labels every name.
 // A lookup that fails, or labels fewer names than it was given, is not an empty
-// fleet: it is reported on stderr and the board renders "leg labels unavailable".
+// fleet: it is reported on stderr and the board renders "worker labels unavailable".
 const LEGID = process.env.BOARD_LEGID || join(HERE, '..', '..', 'lib', 'worker-identity.sh');
 const legLabel = new Map();
 let labelFailure = '';
@@ -213,7 +215,7 @@ const primeLabels = (names) => {
     if (!todo.length) return;
     let out = '';
     try {
-        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do leg_label "$s"; printf "\\n"; done', 'bash', LEGID, ...todo],
+        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do worker_label "$s"; printf "\\n"; done', 'bash', LEGID, ...todo],
             { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (e) { labelFailure ||= `the lookup failed (${e.status !== null && e.status !== undefined ? `rc=${e.status}` : e.code || e.signal || 'no exit status'})`; }
     const lines = out.split('\n');
@@ -224,39 +226,39 @@ const primeLabels = (names) => {
 const labelOf = (name) => legLabel.get(name) || '';
 const ticketOf = (file) => (/^([A-Z][A-Z0-9]*-\d+)/.exec(basename(file)) || [])[1] || '';
 const newer = (a, b) => (statSync(a).mtimeMs >= statSync(b).mtimeMs ? a : b);
-// with no --legs, the console's fleet manifest (<console doc stem>.fleet.json,
-// the file tick.sh --legs-from reads) IS the leg set. It is read through
+// with no --workers, the chief's fleet manifest (<chief doc stem>.fleet.json,
+// the file tick.sh --workers-from reads) IS the worker set. It is read through
 // fleet-manifest.sh list -- the one validation -- never a second parser here. No manifest
 // keeps the Live-state scan below; one that fails validation is reported and falls back.
 const manifestPath = join(bucket, `${basename(docPath).replace(/\.md$/, '')}.fleet.json`);
 let manifestDocs = null;
-if (opt.legs === undefined && existsSync(manifestPath)) {
+if (opt.workers === undefined && existsSync(manifestPath)) {
     try {
         manifestDocs = execFileSync('bash', [join(HERE, 'fleet-manifest.sh'), 'list', manifestPath],
             { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] }).split('\n').filter(Boolean);
     } catch { console.error(`board: warning: fleet manifest unreadable (${manifestPath}); falling back to the Live-state leg scan`); }
 }
-// --changed folds this in: the tick fingerprint only moves with a lock or tail, so a leg
+// --changed folds this in: the tick fingerprint only moves with a lock or tail, so a worker
 // added to the manifest before it holds a lock would otherwise read UNCHANGED.
 // A digest, not the paths: a fleet of 40 docs would put kilobytes of file names on the page.
 const manifestSig = manifestDocs ? createHash('sha256').update(manifestDocs.join(',')).digest('hex').slice(0, 16) : '';
 let legFiles;
-if (opt.legs !== undefined || manifestDocs) {
-    legFiles = (opt.legs !== undefined ? opt.legs.split(/[\s,]+/).filter(Boolean) : manifestDocs).map((f) => resolve(f));
+if (opt.workers !== undefined || manifestDocs) {
+    legFiles = (opt.workers !== undefined ? opt.workers.split(/[\s,]+/).filter(Boolean) : manifestDocs).map((f) => resolve(f));
     primeLabels([...liveEntries.map((e) => e.stem), ...legFiles.map((f) => basename(f))]);
 } else {
     const docs = readdirSync(bucket).filter((f) => f.endsWith('-RESUME.md'));
     primeLabels([...liveEntries.map((e) => e.stem), ...docs]);
-    // One doc per Live-state entry, from the leg's identity: the doc its stem names,
+    // One doc per Live-state entry, from the worker's identity: the doc its stem names,
     // else -- among docs sharing the label -- the one holding the entry's nonce,
-    // else the newest by mtime (a label alone cannot tell two consoles' N1 apart).
+    // else the newest by mtime (a label alone cannot tell two chiefs' N1 apart).
     const byLabel = new Map();
     for (const e of liveEntries) {
         const label = labelOf(e.stem);
         if (!label || byLabel.has(label)) continue;
         const exact = docs.find((f) => f === `${e.stem}.md` || f === `${e.stem}-RESUME.md`);
         const cands = docs.filter((f) => labelOf(f) === label).map((f) => join(bucket, f));
-        // The nonce must stand alone as a token: a longer token that merely starts with it is another leg's.
+        // The nonce must stand alone as a token: a longer token that merely starts with it is another worker's.
         const tokenRe = new RegExp(`(?<![A-Za-z0-9_.-])${e.nonce.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![A-Za-z0-9_.-])`);
         const holders = cands.filter((f) => tokenRe.test(readFileSync(f, 'utf8')));
         const pool = holders.length ? holders : cands;
@@ -274,10 +276,10 @@ for (const f of legFiles) {
     if (!label || !existsSync(f)) continue;
     const bullets = sectionOf(readFileSync(f, 'utf8').split('\n'), '## Results').filter((l) => l.startsWith('- '));
     let pr = null;
-    // A leg's PR comes only from the canonical grammar, anchored at the bullet's own
+    // A worker's PR comes only from the canonical grammar, anchored at the bullet's own
     // marker: `LIVE — PR <n> open`, `READY <pr> <head>`, `MERGED #<n>`. A FINDING or
     // prose that merely cites a PR (`#1039`, `PR 1039 merged`, a /pull/ URL) owns none.
-    // ponytail: a leg that opened a PR without ever writing one of these bullets has no
+    // ponytail: a worker that opened a PR without ever writing one of these bullets has no
     // PR here; the board does not join open PRs on headRefName to recover it.
     for (const b of bullets) {
         const m = /^- (?:\d{1,2}:\d{2}\s+)?(?:LIVE\s*[-–—:]?\s*PR\s*#?(\d{2,})\s+open\b|READY\s+#?(\d{2,})\s+[0-9a-f]{7,}|MERGED\s+#(\d{2,})\b)/.exec(b);
@@ -290,12 +292,12 @@ for (const f of legFiles) {
 // ---------------------------------------------------------------- tick
 const tickBin = process.env.BOARD_TICK || join(HERE, 'tick.sh');
 const tickArgs = ['--doc', docPath, '--repo', repo, '--emit-fp'];
-if (opt.legs !== undefined) tickArgs.push('--legs', opt.legs);
-else if (legFiles.length) tickArgs.push('--legs', legFiles.join(' '));
-// tick's own DOC/TOKEN/LEGS env must not leak in: a board render sends no
+if (opt.workers !== undefined) tickArgs.push('--workers', opt.workers);
+else if (legFiles.length) tickArgs.push('--workers', legFiles.join(' '));
+// tick's own DOC/TOKEN/WORKERS env must not leak in: a board render sends no
 // heartbeat (no token) and reads exactly the arm passed above.
 const tickEnv = { ...process.env };
-for (const k of ['DOC', 'TOKEN', 'LEGS']) delete tickEnv[k];
+for (const k of ['DOC', 'TOKEN', 'WORKERS']) delete tickEnv[k];
 let tickLine = '';
 let fp = '';
 try {
@@ -321,8 +323,8 @@ const fleetOk = Number.isFinite(fleetLive) && Number.isFinite(fleetCap) && fleet
 const idle = fleetOk ? Math.max(0, fleetCap - fleetLive) : 0;
 
 // ---------------------------------------------------------------- gh
-// A console always runs in himmel; the checkout it is FOR is recorded on the
-// doc's project line (console.sh writes it, `none — ...` for himmel itself).
+// A chief always runs in himmel; the checkout it is FOR is recorded on the
+// doc's project line (chief.sh writes it, `none — ...` for himmel itself).
 // Its PRs are the ones the board shows, so gh asks that checkout. A recorded
 // path that is gone reads `gh unavailable`, never himmel's PRs. tick.sh reads
 // the same line for prs=, so the board fingerprint stays in step.
@@ -360,7 +362,7 @@ const primaryRoot = () => {
     return resolve(HERE, '..', '..', '..');
 };
 const JIRA_CLI = process.env.BOARD_JIRA || (versionsDeclared.length || releaseDeclared ?join(primaryRoot(), 'scripts', 'jira', 'dist', 'index.js') : '');
-// the legs' Jira ladder, in the order a Release panel shows it.
+// the workers' Jira ladder, in the order a Release panel shows it.
 const WORKER_SESSION_STATUSES = ['To Do', 'In Progress', 'In Review', 'IN CI', 'Done'];
 const DONE_STATUS = /^(done|resolved)$/i;
 // Closed and won't do are out of every count, as the tracker has it.
@@ -418,10 +420,10 @@ const ciOf = (pr) => {
     return 'green';
 };
 const openByNum = new Map((openPrs || []).map((p) => [p.number, p]));
-// Merge state is asked of each PR a leg names (`gh pr view`), not read off the
-// 24 h merged panel: a leg whose PR merged yesterday must still read MERGED.
+// Merge state is asked of each PR a worker names (`gh pr view`), not read off the
+// 24 h merged panel: a worker whose PR merged yesterday must still read MERGED.
 // ponytail: a PR gh cannot answer for (gh down, not a PR of this repo) reads not
-// merged, so its leg falls back to LIVE / READY.
+// merged, so its worker falls back to LIVE / READY.
 const mergedNums = new Set((mergedPrs || []).map((p) => p.number));
 for (const n of new Set([...legInfo.values()].map((i) => i.pr).filter(Boolean))) {
     if (openByNum.has(n) || mergedNums.has(n)) continue;
@@ -456,12 +458,12 @@ const legs = labels.map((label) => {
 });
 
 // ------------------------------------------------- WRAPPED window still open
-// Ask 3: tick.sh's procs= counts only HELD (FRESH/STALE) legs,
-// so a leg whose lock/tail already reads WRAPPED (the normal end of a leg) can
+// Ask 3: tick.sh's procs= counts only HELD (FRESH/STALE) workers,
+// so a worker whose lock/tail already reads WRAPPED (the normal end of a worker) can
 // still own a live claude window nobody is watching -- invisible to tick.sh.
 // This reads the SAME process census tick.sh's procs= builds from
 // (claude-sessions.sh's claude_sessions()) and the SAME candidate-name
-// derivation (leg-identity.sh's leg_identity(), not leg_label() -- a label
+// derivation (worker-identity.sh's worker_identity(), not worker_label() -- a label
 // alone cannot be matched against a census row), independently of tick.sh, so
 // tick.sh itself is never touched. BOARD_SESSIONS overrides the sourced file
 // (test seam, mirrors BOARD_TICK/BOARD_LEGID); its absence from the census (or
@@ -473,7 +475,7 @@ try {
         { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
     censusNames = new Set(out.split('\n').filter((l) => l && !l.startsWith('#')).map((l) => l.split('\t')[1]).filter(Boolean));
 } catch { censusNames = null; }
-// The pre-close checks a hand-close needs: close-wrapped-leg.sh --check signals nothing,
+// The pre-close checks a hand-close needs: close-wrapped-worker.sh --check signals nothing,
 // exits 0 when safe, and otherwise names what is still running. A check that cannot run
 // reads as unknown, never as safe.
 const CLOSE_CHECK = process.env.BOARD_CLOSE_CHECK || join(HERE, 'close-wrapped-worker.sh');
@@ -490,13 +492,13 @@ const closeNote = (doc) => {
     if (r.status < 3 || r.status > 7) return 'close check failed (rc ' + r.status + ')';
     const lines = (r.stdout + '\n' + r.stderr).split('\n').map((x) => x.trim()).filter(Boolean);
     const what = lines.find((x) => x.startsWith('WITHHELD')) || lines[lines.length - 1] || 'close check refused (rc ' + r.status + ')';
-    return 'still running: ' + what.replace(/^close-wrapped-leg: /, '');
+    return 'still running: ' + what.replace(/^close-wrapped-worker: /, '');
 };
 const wrappedLegs = legs.filter((l) => l.phase === 'WRAPPED' && legInfo.get(l.label)?.file);
 if (censusNames && wrappedLegs.length) {
     let out = '';
     try {
-        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do leg_identity "$s"; done', 'bash', LEGID,
+        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do worker_identity "$s"; done', 'bash', LEGID,
             ...wrappedLegs.map((l) => basename(legInfo.get(l.label).file))],
             { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch { out = ''; }
@@ -517,7 +519,7 @@ if (censusNames && wrappedLegs.length) {
 // asking tick.sh to account for a read it never performs.
 const censusSig = legs.filter((l) => l.phase === 'WRAPPED, window still open').map((l) => l.label).sort().join(',');
 // tick keeps CI colour and fleet capacity out of board-fp on purpose (they
-// move without a console act), but the page shows them, so --changed must see them too.
+// move without a chief act), but the page shows them, so --changed must see them too.
 // board.mjs is the only reader that knows what it rendered; tick.sh stays untouched.
 const ciFleetSig = [fleetOk ? `${fleetLive}/${fleetCap}` : '', ...(openPrs || []).map((p) => `#${p.number}=${ciOf(p)}`), ...legs.filter((l) => l.ci).map((l) => `${l.label}=${l.ci}`)].join(',');
 
@@ -526,10 +528,10 @@ const now = new Date();
 const stamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 const consoleName = basename(docPath, '.md');
 
-// --view user (frame 15): the same reads, three sections, written to its own file. A leg waits on
-// the user for a GO (READY with its PR) or a question (BLOCKED, or a FINDING tail); a leg that
-// needs only the supervisor session (a lost lock, an unopened PR, an open window) is not the
-// user's to act on. A READY-TO-OPEN leg (no PR yet) and a PARKED-USAGE leg (waiting on the usage
+// --view user (frame 15): the same reads, three sections, written to its own file. A worker waits on
+// the user for a GO (READY with its PR) or a question (BLOCKED, or a FINDING tail); a worker that
+// needs only the chief (a lost lock, an unopened PR, an open window) is not the
+// user's to act on. A READY-TO-OPEN worker (no PR yet) and a PARKED-USAGE worker (waiting on the usage
 // budget) are in no section on purpose: neither is running, and neither is the user's to answer.
 // The operator board, its archive and its json are not touched.
 if (opt.view === 'user') {
@@ -546,7 +548,7 @@ if (opt.view === 'user') {
         ...decisions.map((d) => ({ tag: 'decision', text: d })),
     ];
     const shipped = (mergedPrs || []).map((p) => ({ ticket: (/\[([A-Z][A-Z0-9]*-\d+)\]/.exec(p.title) || [])[1] || '', goal: goalOf(p.title), tag: `PR #${p.number}` }));
-    const userOut = resolve(opt.out || join(bucket, 'console-shift-board.html'));
+    const userOut = resolve(opt.out || join(bucket, 'chief-shift-board.html'));
     const userTmp = `${userOut}.tmp${process.pid}`;
     writeFileSync(userTmp, renderUserBoard({ stamp, running, waiting, shipped, shippedNote: mergedPrs ? '' : 'merged PRs unavailable' }));
     renameSync(userTmp, userOut);
@@ -554,7 +556,7 @@ if (opt.view === 'user') {
     process.exit(0);
 }
 
-// One compact card per live leg: a 25-leg fleet must fit the 15 KB page.
+// One compact card per live leg: a 25-worker fleet must fit the 15 KB page.
 const legCard = (l) => `<li data-label="${esc(l.label)}" data-phase="${esc(l.phase)}"${l.ci ? ` data-ci="${l.ci}"` : ''}><b>${esc(l.label)}</b> <span class="tk">${esc(l.ticket)}</span> <span class="ph">${esc(l.phase)}</span>${l.prNum ? ` <span class="pr">PR #${l.prNum}${l.ci ? ` · ${l.ci}` : ''}</span>` : ''}<p>${l.last ? safe(l.last, 130) : '<i>no handover bullet yet</i>'}</p></li>`;
 const ladder = LADDER.map((p) => `<li data-ladder="${esc(p)}" data-count="${legs.filter((l) => l.phase === p).length}"><span>${esc(p)}</span><b>${legs.filter((l) => l.phase === p).length}</b></li>`).join('\n');
 const needRows = legs.filter((l) => l.needs).map((l) => {
@@ -565,14 +567,14 @@ const needRows = legs.filter((l) => l.needs).map((l) => {
                     : l.tail === 'FINDING' ? 'FINDING — needs a ruling'
                         : '';
     // A lost/stale lock is its own rendered signal, never displaced by the tail/phase
-    // why-text above (or hidden behind its truncation): a leg can be FINDING, BLOCKED,
-    // etc. AND lock-lost at once, and the lock is the one thing the console must never miss.
+    // why-text above (or hidden behind its truncation): a worker can be FINDING, BLOCKED,
+    // etc. AND lock-lost at once, and the lock is the one thing the chief must never miss.
     const lockWhy = l.lostLock ? `lock ${l.lock} — lost or stale` : '';
     const why = [tailWhy, lockWhy].filter(Boolean).join(' · ');
-    // The bullet itself is on the leg's own card below; repeating it here doubled the page.
+    // The bullet itself is on the worker's own card below; repeating it here doubled the page.
     return `<li data-need="${esc(l.label)}"><b>${esc(l.label)}</b> ${esc(why)}</li>`;
 }).join('\n');
-// orphans-wip=<n[:KEY,...]> from the tick: In Progress / In Review tickets with no leg and no
+// orphans-wip=<n[:KEY,...]> from the tick: In Progress / In Review tickets with no worker and no
 // open PR. Keys are named for n <= 5; above that only the count is known. 0, `?` and `skip` add no row.
 const orphanField = /(?:^|\s)orphans-wip=(\S*)/.exec(tickLine);
 const orphanMatch = orphanField && /^([1-9]\d*)(?::(\S+))?$/.exec(orphanField[1]);
@@ -601,7 +603,7 @@ const rmPanel = (s) => {
     return `<section data-rm-release="${esc(s.release)}" data-status="${esc(s.status)}"><h2>Release manager ${safe(s.release)} · ${safe(s.status)}</h2><ul>${[...bd, ...leaks, ...trend].join('\n')}</ul></section>`;
 };
 const prRows = (openPrs || []).map((p) => `<li data-ci="${ciOf(p)}"><b>#${p.number}</b> ${safe(p.title, 90)} <span class="pr">${ciOf(p)}${p.isDraft ? ' · draft' : ''}</span></li>`).join('\n');
-// Done work never reaches the published page: a WRAPPED or MERGED leg and the merged PRs
+// Done work never reaches the published page: a WRAPPED or MERGED worker and the merged PRs
 // go to a local archive file beside it (written below), one self-contained line each.
 const doneLegs = legs.filter((l) => l.phase === 'WRAPPED' || l.phase === 'MERGED');
 const liveLegs = legs.filter((l) => l.phase !== 'WRAPPED' && l.phase !== 'MERGED');
@@ -626,7 +628,7 @@ const cloudPanel = (() => {
 // BOARD_BANK_LIFT) overrides the script (test seam, mirrors BOARD_LEGID/BOARD_SESSIONS).
 // Reads the usage-lift: and the old bank-lift: prefix. Never renders the account or any
 // field but until/standing; not part of the fingerprint; never fatal.
-const USAGE_LIFT_BIN = process.env.BOARD_USAGE_LIFT || process.env.BOARD_BANK_LIFT || join(HERE, '..', '..', 'lib', 'usage-lift.sh');
+const USAGE_LIFT_BIN = process.env.BOARD_USAGE_LIFT || (legacyNamesOn() ? process.env.BOARD_BANK_LIFT : undefined) || join(HERE, '..', '..', 'lib', 'usage-lift.sh');
 const bankLiftLine = (() => {
     const row = (kind, text) => `<p class="sub" data-bank-lift="${kind}">weekly budget override: ${text}</p>`;
     try {
@@ -670,13 +672,13 @@ const bankLiftLine = (() => {
 const trend = { cost: null, exploration: null, failures: null };
 const archiveTables = [];
 
-// Cost today: one line from the leg cost ledger close-wrapped-leg.sh
+// Cost today: one line from the worker cost ledger close-wrapped-worker.sh
 // appends to (WORKER_SESSION_COST_LEDGER, else $HANDOVER_DIR/.ledger/leg-cost.jsonl). An absent
 // or unreadable ledger, or no usable row dated today, renders nothing and never fails
 // the render. Not part of the fingerprint: --changed does not move on a new ledger row.
 const costSection = (() => {
     try {
-        const ledger = (process.env.WORKER_SESSION_COST_LEDGER || process.env.LEG_COST_LEDGER)
+        const ledger = (process.env.WORKER_SESSION_COST_LEDGER || (legacyNamesOn() ? process.env.LEG_COST_LEDGER : undefined))
             || (process.env.HANDOVER_DIR ? join(process.env.HANDOVER_DIR, '.ledger', 'leg-cost.jsonl') : '');
         if (!ledger) return '';
         const d = new Date();
@@ -697,12 +699,12 @@ const costSection = (() => {
         const median = (a) => { const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
         trend.cost = { unit: 'cost-eq', sessions: n, total, median_by_class: Object.fromEntries(Object.keys(byClass).sort().map((c) => [redact(c), median(byClass[c])])) };
         const per = Object.keys(byClass).sort().map((c) => `${safe(c, 20)} ${fmt(median(byClass[c]))}`).join(', ');
-        return `<section data-cost-legs="${n}"><h2>Cost today</h2><p class="sub">${n} worker session${n === 1 ? '' : 's'} · ${fmt(total)} cost-eq · median ${per}</p></section>`;
+        return `<section data-cost-workers="${n}"><h2>Cost today</h2><p class="sub">${n} worker session${n === 1 ? '' : 's'} · ${fmt(total)} cost-eq · median ${per}</p></section>`;
     } catch { return ''; }
 })();
 
 // Exploration cost: the weighted tokens each session spent before its first
-// edit or commit, read from the digest markers leg_ledger.py leaves in
+// edit or commit, read from the digest markers worker_ledger.py leaves in
 // WORKER_SESSION_DIGEST_STATE_DIR (else ~/.himmel/state/leg-digest) -- the digest's own `exploration`
 // field, not tick data. Sessions that started in the last BOARD_EXPLORATION_HOURS (24) and
 // were cut by an edit or commit: fleet median, worst 5, and a FLAG on any session over
@@ -710,10 +712,10 @@ const costSection = (() => {
 // nothing and never fails the render; not part of the fingerprint.
 const explorationSection = (() => {
     try {
-        const dir = (process.env.WORKER_SESSION_DIGEST_STATE_DIR || process.env.LEG_DIGEST_STATE_DIR) || join(process.env.HOME || '', '.himmel', 'state', 'leg-digest');
+        const dir = (process.env.WORKER_SESSION_DIGEST_STATE_DIR || (legacyNamesOn() ? process.env.LEG_DIGEST_STATE_DIR : undefined)) || join(process.env.HOME || '', '.himmel', 'state', 'leg-digest');
         const hours = Number.parseInt(process.env.BOARD_EXPLORATION_HOURS || '', 10);
         const since = Date.now() - (hours > 0 ? hours : 24) * 3600 * 1000;
-        const limit = Number.parseInt((process.env.WORKER_SESSION_EXPLORATION_FLAG_TOKENS || process.env.LEG_EXPLORATION_FLAG_TOKENS) || '', 10);
+        const limit = Number.parseInt((process.env.WORKER_SESSION_EXPLORATION_FLAG_TOKENS || (legacyNamesOn() ? process.env.LEG_EXPLORATION_FLAG_TOKENS : undefined)) || '', 10);
         const flagAt = limit > 0 ? limit : 100000;
         const rows = [];
         for (const name of readdirSync(dir)) {
@@ -743,14 +745,14 @@ const explorationSection = (() => {
     } catch { return ''; }
 })();
 
-// Failure classes this shift: the leg-failures
-// ledger (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, the seam leg_ledger.py writes through) since
-// the console lock's `started`, grouped by class -- distinct legs, events (sum of
+// Failure classes this shift: the worker-failures
+// ledger (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, the seam worker_ledger.py writes through) since
+// the chief lock's `started`, grouped by class -- distinct workers, events (sum of
 // count), recovered share, and the failure router's latest decision for the class
 // from its log (HIMMEL_FAILURE_ROUTES_LOG; "signal" until P5 routes one). At most 10
-// rows, by legs then events. A line under the table counts the memory inbox's `- `
+// rows, by workers then events. A line under the table counts the memory inbox's `- `
 // lines (<bucket>/failure-loop/memory-inbox.md). No lock start or an unreadable
-// ledger reads "leg failures unavailable"; never fatal; not part of the fingerprint.
+// ledger reads "worker failures unavailable"; never fatal; not part of the fingerprint.
 const failuresSection = (() => {
     const title = '<h2>Failure classes — this shift</h2>';
     const unavailable = `<section data-failures="?">${title}<p class="none">leg failures unavailable</p></section>`;
@@ -773,7 +775,7 @@ const failuresSection = (() => {
         const start = (/"started":"([0-9TZ:-]+)"/.exec(lock) || [])[1];
         if (!start) return unavailable;
         const home = process.env.HOME || '';
-        const rows = jsonRows(process.env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || process.env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl'), start);
+        const rows = jsonRows(process.env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || (legacyNamesOn() ? process.env.HIMMEL_LEG_FAILURES_LEDGER : undefined) || join(home, '.himmel', 'leg-failures.jsonl'), start);
         const routes = jsonRows(process.env.HIMMEL_FAILURE_ROUTES_LOG || join(home, '.himmel', 'state', 'failure-routes.log.jsonl'), start);
         const byClass = new Map();
         for (const r of rows) {
@@ -984,7 +986,7 @@ const crLoopSection = (() => {
     return `<section class="wide" data-cr-loop="1"><h2>CR loop (7d)</h2><p class="sub">${esc(line)}</p>${rows ? `<ul class="crv">${rows}</ul>` : ''}</section>`;
 })();
 // Versions past the soft cap, folded into --changed (and the page's meta) so a cap over-run
-// wakes a console that waits on the board, as a CI or fleet move does; not part of board-fp.
+// wakes a chief that waits on the board, as a CI or fleet move does; not part of board-fp.
 const capSig = (trend.cr_loop.versions || []).filter((v) => v.over).map((v) => `${v.version}=${v.slots}`).join(',');
 
 // ICE-parked follow-ups: HIMMEL keys cited as follow-ups in the last 14 days of comments
@@ -1036,7 +1038,7 @@ const archiveHtml = `<!doctype html>
 <p>${safe(consoleName)} · rendered ${stamp} · local only, never published · one item per line: grep it</p>
 <h2>Done legs</h2>
 <ul>
-${doneLegs.map((l) => `<li data-archive-leg="${esc(l.label)}">${esc(l.label)} ${esc(l.ticket || '-')} ${esc(l.phase)}${l.prNum ? ` PR #${l.prNum}` : ''} — ${safe(l.last || 'no handover bullet', 400)}</li>`).join('\n')}
+${doneLegs.map((l) => `<li data-archive-worker="${esc(l.label)}">${esc(l.label)} ${esc(l.ticket || '-')} ${esc(l.phase)}${l.prNum ? ` PR #${l.prNum}` : ''} — ${safe(l.last || 'no handover bullet', 400)}</li>`).join('\n')}
 </ul>
 <h2>Merged PRs</h2>
 <ul>
@@ -1052,8 +1054,8 @@ const html = `<!doctype html>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Supervisor Session Board</title>
-${fp ? `<meta name="console-board-fp" content="${fp}">` : ''}
-${ciFleetSig ? `<meta name="console-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="console-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="console-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="console-board-manifest-fp" content="${esc(manifestSig)}">` : ''}${capSig ? `\n<meta name="console-board-cap-fp" content="${esc(capSig)}">` : ''}
+${fp ? `<meta name="chief-board-fp" content="${fp}">` : ''}
+${ciFleetSig ? `<meta name="chief-board-cifleet-fp" content="${esc(ciFleetSig)}">\n` : ''}${censusSig ? `<meta name="chief-board-census-fp" content="${safe(censusSig)}">` : ''}${releaseSig ? `\n<meta name="chief-board-versions-fp" content="${esc(releaseSig)}">` : ''}${manifestSig ? `\n<meta name="chief-board-manifest-fp" content="${esc(manifestSig)}">` : ''}${capSig ? `\n<meta name="chief-board-cap-fp" content="${esc(capSig)}">` : ''}
 <style>
 :root { --bg:#f6f7f9; --surface:#fff; --text:#1c2128; --muted:#5b6672; --line:#d9dee4; --accent:#2457c5; --ok:#1a7f37; --warn:#9a6700; --bad:#cf222e; }
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) { --bg:#0f1318; --surface:#181d24; --text:#e6e9ed; --muted:#96a1ad; --line:#2b333d; --accent:#7aa2ff; --ok:#3fb950; --warn:#d29922; --bad:#ff7b72; } }
@@ -1233,7 +1235,7 @@ const milestones = releases.map((r) => (r.unavailable ? { version: r.version, un
     : { version: r.version, done: r.done, total: r.total, open_blockers: r.blockers.map((b) => b.key) }));
 
 // Session transcripts: one jsonl per session under BOARD_TRANSCRIPTS (else this checkout's
-// ~/.claude/projects dir); line 1 names the session (custom-title = a console doc stem).
+// ~/.claude/projects dir); line 1 names the session (custom-title = a chief doc stem).
 // Only files touched in the last 48 h are opened. A message is counted once by id, in
 // Opus-eq: input + cache_read x0.1 + cache_write x2 + output x5. Unreadable reads empty.
 const txByTitle = new Map();
@@ -1285,8 +1287,8 @@ const consoleCost = (() => {
     return { unit: 'opus-eq', since: isoOf(consoleMsgs[0].ts), messages: consoleMsgs.length, eq, per_hour: Math.round(eq / Math.max(1, span)),
         hourly: [...hourly].sort((a, b) => a[0] - b[0]).map(([h, v]) => ({ hour: isoOf(h), eq: v })), fleet_eq: trend.cost ? Math.round(trend.cost.total) : null };
 })();
-// The succession into this console as a tool-eval row: the predecessor is the one the
-// live legs' `SUCCESSION accepted: <this console> replaces <pred>` bullets name. The window
+// The succession into this chief as a tool-eval row: the predecessor is the one the
+// live workers' `SUCCESSION accepted: <this chief> replaces <pred>` bullets name. The window
 // runs from this session's first message to its first `LIVE` Results bullet (the
 // `<code> LIVE sent to <pred>` line), for both sessions.
 const SUCCESSION_TARGET = { eq: 457000, turns: 20 };
@@ -1305,7 +1307,7 @@ const succession = (() => {
     const pass = liveAt !== null && eq <= SUCCESSION_TARGET.eq && turns <= SUCCESSION_TARGET.turns;
     const recommendation = liveAt === null ? 'succession still running: no LIVE bullet yet'
         : `${pass ? 'within target' : `over target (${Math.round(eq / 1e3)}k eq, ${turns} turns vs ${SUCCESSION_TARGET.eq / 1e3}k, ${SUCCESSION_TARGET.turns}): script the hand-off steps (HIMMEL-5969)`}${silent ? `; re-brief the ${silent} silent leg${silent === 1 ? '' : 's'} from the predecessor` : ''}`;
-    return [{ tool: 'console-succession', from: redact(pred), to: consoleName, started: isoOf(start), live_at: isoOf(liveAt ?? NaN), wall_min: liveAt === null ? null : Math.round((liveAt - start) / 60000),
+    return [{ tool: 'chief-succession', from: redact(pred), to: consoleName, started: isoOf(start), live_at: isoOf(liveAt ?? NaN), wall_min: liveAt === null ? null : Math.round((liveAt - start) / 60000),
         turns, eq, legs_quoted: accepts.length, legs_silent: silent, target: SUCCESSION_TARGET, pass, recommendation }];
 })();
 
@@ -1369,7 +1371,7 @@ const boardModel = {
 };
 
 // Ask 1: --changed reads the PREVIOUS render's embedded
-// fingerprint before overwriting it, so a console can call this after every
+// fingerprint before overwriting it, so a chief can call this after every
 // Live-state mutation and know from one line whether the render moved --
 // the Artifact publish itself stays a separate, deliberate model step.
 let oldFp = null;
@@ -1380,12 +1382,12 @@ let oldManifestSig = '';
 let oldCapSig = '';
 if (changedFlag && existsSync(outPath)) {
     const prev = readFileSync(outPath, 'utf8');
-    oldFp = (/<meta name="console-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
-    oldCensusSig = (/<meta name="console-board-census-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldCiFleetSig = (/<meta name="console-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldReleaseSig = (/<meta name="console-board-versions-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldManifestSig = (/<meta name="console-board-manifest-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldCapSig = (/<meta name="console-board-cap-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldFp = (/<meta name="(?:chief|console)-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
+    oldCensusSig = (/<meta name="(?:chief|console)-board-census-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldCiFleetSig = (/<meta name="(?:chief|console)-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldReleaseSig = (/<meta name="(?:chief|console)-board-versions-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldManifestSig = (/<meta name="(?:chief|console)-board-manifest-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldCapSig = (/<meta name="(?:chief|console)-board-cap-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
 }
 const tmp = `${outPath}.tmp${process.pid}`;
 writeFileSync(tmp, html);
@@ -1393,7 +1395,7 @@ renameSync(tmp, outPath);
 const archiveTmp = `${archivePath}.tmp${process.pid}`;
 writeFileSync(archiveTmp, archiveHtml);
 renameSync(archiveTmp, archivePath);
-// The AG-UI page reads <console doc>.board.json beside the doc, so every render also refreshes it.
+// The AG-UI page reads <chief doc>.board.json beside the doc, so every render also refreshes it.
 {
     const jsonPath = resolve(opt.json || join(bucket, `${basename(docPath, '.md')}.board.json`));
     const jsonTmp = `${jsonPath}.tmp${process.pid}`;

@@ -4,7 +4,7 @@
 # ONE `claude -p` sonnet run over compound-extract.sh's records, then deterministic
 # writes of what it returned. It PROPOSES: it writes only under the directory it is
 # given, never CLAUDE.md, MEMORY.md or specs/lessons/ (a recurring lesson is a line in
-# proposals-<week>.md for the operator or console to promote).
+# proposals-<week>.md for the operator or chief to promote).
 #
 # A real run draws the subscription bank, so it refuses without --billed or
 # HIMMEL_BILLED_OK=1. Order: arguments, opt-in, extract, measure the input and refuse
@@ -65,7 +65,7 @@ fi
 for d in "$OUTDIR" "$DEST"; do
   abs="$(python3 -I -c 'import os,sys; print(os.path.realpath(sys.argv[1]))' "$d")"
   case "$abs" in
-    */specs/lessons|*/specs/lessons/*) echo "compound-distill: '$d' is under specs/lessons, which only the operator or console writes" >&2; exit 2 ;;
+    */specs/lessons|*/specs/lessons/*) echo "compound-distill: '$d' is under specs/lessons, which only the operator or chief writes" >&2; exit 2 ;;
   esac
 done
 
@@ -257,7 +257,7 @@ for t in targets:
     if os.path.islink(t):
         die("%s is a symlink; refusing to write through it" % t)
     if LESSONS.search(os.path.realpath(t)):
-        die("%s resolves under specs/lessons, which only the operator or console writes" % t)
+        die("%s resolves under specs/lessons, which only the operator or chief writes" % t)
 
 os.makedirs(os.path.join(dest, "themes"), exist_ok=True)
 lines = ["---", "type: compounded-week", "week: %s" % week, "source: compound-distill.sh (HIMMEL-6915)", "---", "",

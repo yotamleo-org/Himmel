@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """scripts/eval/profile-openings.py - how big a session's opening is, per launch profile.
 
-Joins the launcher's per-session launch record (headed-arm-leg.sh: <cache>/launch-logs/<session>.log, one
+Joins the launcher's per-session launch record (headed-arm-worker.sh: <cache>/launch-logs/<session>.log, one
 line per launch with profile=, lane=, and session_id= when the launch minted one) to the session
 transcript under ~/.claude/projects, and reads that transcript's FIRST assistant request: its opening size
 is input + cache-creation + cache-read tokens. It reads local files only: no model call, no network.
@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.join(HERE, "lib"))
 import eval_runs  # noqa: E402
 
 SOURCE = "scripts/eval/profile-openings.py"
-LINE = re.compile(r"^headed-arm-leg: (.*)$")
+LINE = re.compile(r"^headed-arm-(?:worker|leg): (.*)$")
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 HEAD_LINES = 12
 SCAN_LINES = 2000

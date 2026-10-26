@@ -3,7 +3,7 @@
 #
 # Makes the durable local HTML copy of a published Artifact equal-by-construction
 # instead of by discipline: `record` stamps a content hash into a registry the
-# instant a leg publishes from a local path; `check` fails loudly if that local
+# instant a worker publishes from a local path; `check` fails loudly if that local
 # file ever drifts from what was recorded. `slice` is the other half — turning a
 # raw `Artifact action: read` dump (which carries a host-injected frame-runtime
 # preamble) back into a clean local copy safe to republish.
@@ -71,7 +71,7 @@ _af_file_hash() {
 # (codex panel finding: two concurrent `record` calls on the same registry
 # race and can drop each other's row). mkdir is atomic (like queue-lock.sh's
 # convention) and portable to git-bash, unlike flock. Retries for up to ~10s;
-# a leg-publish cadence is human-paced, so real contention is rare and brief.
+# a worker-publish cadence is human-paced, so real contention is rare and brief.
 # ponytail: a single registry-wide lock, not per-URL -- fine at this
 # operator's publish cadence; upgrade to per-URL locking if throughput ever
 # makes that a bottleneck.

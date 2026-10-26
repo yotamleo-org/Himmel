@@ -7,7 +7,7 @@
 # 5.5 high measured ~2.7x cheaper per verdict ($8.23 vs $21.94) at
 # comparable wall time and no missed finding, yet an in-process Agent call passing
 # `model: fable` silently overrides .claude/agents/judge.md's
-# `model: opus` (console O did it three times on 2026-09-29). Fable stays
+# `model: opus` (chief O did it three times on 2026-09-29). Fable stays
 # available as the CLAUDE.md escalation target for ONE hard call — the marker is
 # that lane.
 #
@@ -29,7 +29,7 @@
 # fail-closed"): fails OPEN on anything it cannot parse (missing jq, missing or
 # malformed policy file, an invalid policy regex, malformed or empty stdin,
 # non-string fields), matching the sibling per-tool guards
-# guard-leg-wakeup.sh / block-leg-askuserquestion.sh and the Agent watchdog
+# guard-worker-wakeup.sh / block-worker-askuserquestion.sh and the Agent watchdog
 # auto-arm-on-subagent-cap.sh (exit 0 on an unparseable or non-Agent payload).
 # The suite asserts the shipped policy file parses, so "fails open" cannot hide a
 # broken policy.
@@ -43,7 +43,7 @@
 #
 # Hook I/O: JSON on stdin. exit 0 = allow, exit 2 = deny (stderr plus a
 # structured hookSpecificOutput.permissionDecision on stdout — same
-# belt-and-braces idiom as guard-leg-wakeup.sh).
+# belt-and-braces idiom as guard-worker-wakeup.sh).
 #
 # ponytail: covers the Agent tool only — a Workflow script's agent() dispatches
 # run inside the one Workflow tool call and no per-dispatch hook seam is known,

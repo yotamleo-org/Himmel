@@ -6,6 +6,7 @@ README.md
 why-himmel.md
 getting-started.md
 setup/install.md
+setup/footprint.md
 setup/profiles/README.md
 setup/new-machine.md
 setup/updating.md
@@ -32,7 +33,8 @@ luna/pr-lane-guard.md
 jarvis-subsystems.md
 himmel-bus.md
 handover/afk-mode.md
-handover/running-a-console.md
+handover/running-a-chief.md
+team.md
 internals/handover-system.md
 orchestration-patterns.md
 token-economy.md

@@ -441,7 +441,7 @@ test("detectNonPrimaryCwd: drops primaryPath when it would resolve to the refuse
 // passes when the root is canonicalized the same way. This runs on Linux
 // precisely because it constructs the alias itself, rather than relying on
 // the host's tmpdir being aliased. Windows 8.3 behaviour proper is verified
-// only by the public CI windows-latest leg, not here. Capture real paths at
+// only by the public CI windows-latest worker, not here. Capture real paths at
 // registration time to match the alias control's Windows privilege SKIP;
 // finally removes the whole tree before the captured prefix checks run.
 {
@@ -1508,7 +1508,7 @@ test("claude-codex --preflight-only classifies REAL HTTP responses: 2xx->0, 503/
     expect(await run(403, "forbidden")).toBe(21);                     // fatal
     expect(await run(404, "not found")).toBe(21);                     // fatal
     // 408 is a probe TIMEOUT, not a deterministic auth failure —
-    // this was the actual bug (leg 7): a healthy lane got misclassified fatal.
+    // this was the actual bug (worker 7): a healthy lane got misclassified fatal.
     expect(await run(408, "stream closed before response.completed")).toBe(20);
     // a 400 whose body complains about the model/params (not auth)
     // PROVES the request reached the model layer through valid auth — reads healthy.

@@ -50,8 +50,8 @@
 # transcript shows a relative write that slipped through.
 # ponytail: macOS `readlink -m` is unavailable (HIMMEL-5352), so a dangling-symlink chain
 # resolves one readlink hop at a time; accepted ceiling.
-# ponytail: the PowerShell tool is not wired, Windows is parked under
-# HIMMEL-4102 — wire it when Windows legs resume.
+# ponytail: the PowerShell tool is not wired, Windows is parked (HIMMEL-4102);
+# wire it when Windows workers resume.
 #
 # Hook I/O: JSON on stdin; exit 0 = allow, exit 2 = block (stderr shown).
 # Platform guard: bash 3.2-safe (no mapfile, no associative arrays).

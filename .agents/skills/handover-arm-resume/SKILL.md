@@ -26,7 +26,7 @@ refusal or failure can no longer leave you with no arm at all.
 `--dedup-any` opts into the broad "any existing slot blocks" mode the
 unattended auto-arm watchdogs use. `--context 1m|standard` (HIMMEL-2658) is
 an arming-time choice, never inherited from the operator's model setting —
-defaults to `1m` on a `*-console.md` handover, `standard` on every other
+defaults to `1m` on a `*-chief.md` handover, `standard` on every other
 arm. This shells the SANCTIONED arm path —
 never hand-roll `schtasks`/`at`
 (blocked by block-rogue-claude-schedule). See

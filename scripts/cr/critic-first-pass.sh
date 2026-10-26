@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# billed-exempt: a /pr-check stage the PR leg runs deliberately; bank-preflight gated
+# billed-exempt: a /pr-check stage the PR worker runs deliberately; bank-preflight gated
 # scripts/cr/critic-first-pass.sh — generic model-parametrized first-pass CR reviewer.
 #
 # Reads a unified diff on stdin, reviews it via the hermes chokepoint
@@ -571,7 +571,7 @@ _cfp_claude_invoke() {
             cat "$_cc_err" >&2
             ;;
         claude-subscription)
-            _cc_bank="$(CADENCE_USAGE_LEG=claude-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
+            _cc_bank="$(CADENCE_USAGE_WORKER=claude-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is a SKIPPED, fail-closed
             case "$_cc_bank" in
                 PROCEED*) ;;
                 *) echo "critic-first-pass.sh: claude critic SKIPPED (${_cc_bank:-no bank verdict}) — clean no-op" >&2

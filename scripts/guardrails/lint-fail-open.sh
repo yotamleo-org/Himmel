@@ -59,7 +59,7 @@
 # matched (the lane grammar names things *pct*/usedPct); .ts files get
 # quota-zero only (the function-block scanner relies on the lanes .mjs
 # formatting); scripts/telegram/spawn-claudex.ts is owned by a parallel
-# worker this leg and is not scanned; the .sh AND .mjs/.ts surfaces under
+# worker in this session and is not scanned; the .sh AND .mjs/.ts surfaces under
 # scripts/guardrails, scripts/hooks, and scripts/lanes are all recursive
 # (excluding scripts/lanes/bench/, a self-contained benchmark harness whose
 # fixtures/lib are test data, not guard surfaces — closed panel rounds

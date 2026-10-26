@@ -25,11 +25,6 @@ framing lives in its CLAUDE.md and hooks, never inside a vendored SKILL.md.
 
 vendored_from=obra/superpowers@7.0.1 path=skills/<name>
 
-One exception to verbatim: four upstream lines that the old-term gate flags (subagent-driven-development
-SKILL.md line 322 and references/final-review.md lines 20, 21, 27) end in an HTML comment
-`old-term-ok: verbatim upstream wording`, so the check-old-terms commit gate accepts the
-re-vendor. A re-vendor copies upstream over them and re-adds the markers.
-
 The 4 skills himmel actually invokes: brainstorming, writing-plans,
 systematic-debugging, verification-before-completion — plus the 7 they hand
 off to, pulled in to close the `superpowers:<name>` reference closure

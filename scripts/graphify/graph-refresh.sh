@@ -53,16 +53,16 @@
 #   GRAPH_REFRESH_CADENCE_SCRIPT  graphmap-cadence.sh path (default: this
 #                                 repo's scripts/luna/graphmap-cadence.sh),
 #                                 whose `status` output is appended after the
-#                                 refresh legs so cadence drift is visible.
+#                                 refresh workers so cadence drift is visible.
 #
 # Exit codes:
 #   0  all selected corpora refreshed successfully
 #   1  usage error (unknown corpus / unknown flag)
 #   2  environment error (refresh-graph-map.sh not found, the API lane is off, or --vault is not a
 #      directory)
-#   3  one or more corpus refresh legs FAILED (runner exited non-zero, not a
+#   3  one or more corpus refresh workers FAILED (runner exited non-zero, not a
 #      bank skip) -- investigate
-#   4  no failures, but one or more legs were SKIPPED (bank at/over threshold,
+#   4  no failures, but one or more workers were SKIPPED (bank at/over threshold,
 #      runner exited 3) and nothing else failed -- benign, retry later
 #      (a skip is NOT success; it must never read as exit 0 "OK",
 #      the false-clean an unattended cadence cannot tell from a real refresh)
@@ -126,7 +126,7 @@ default_vault() {
 # --- vault preflight helpers -----------------------
 # The graphify-fence PreToolUse hook only matches `graphify` in COMMAND
 # POSITION, so it cannot see through this wrapper to classify the vault the
-# luna leg extracts (the wrapper shells refresh-graph-map.sh, not graphify
+# luna worker extracts (the wrapper shells refresh-graph-map.sh, not graphify
 # directly). A mistyped or hostile --vault (the salus PHI vault, a denylisted
 # root, a broad filesystem root) would therefore be copied + extracted to the
 # backend despite the egress matrix's salus hard-deny. The preflight_vault
@@ -344,9 +344,9 @@ preflight_refuse() {
 }
 
 # preflight_vault — run AFTER the [ -d "$VAULT" ] check (the sentinel + .salus
-# walk need the vault to exist) and BEFORE any leg fires (dry-run included).
+# walk need the vault to exist) and BEFORE any worker fires (dry-run included).
 # (a) canonicalize, (b) refuse roots + HOME, (c) hard-refuse PHI/denylisted,
-# (d) luna-vault sentinel (luna leg only).
+# (d) luna-vault sentinel (luna worker only).
 preflight_vault() {
     local canon ap home_canon name rc resolved class_path configured_root resolved_root vault_id home_id
     canon="$(_abs "$VAULT")"
@@ -431,9 +431,9 @@ preflight_vault() {
             preflight_refuse "vault ($VAULT -> $class_path) is under a $name entry (PHI/denylisted)"
         fi
     done
-    # (d) luna-vault sentinel (luna leg only): the wrapper publishes into
+    # (d) luna-vault sentinel (luna worker only): the wrapper publishes into
     # 60-Maps and only a real luna vault carries BOTH a 60-Maps/ directory (the
-    # publish target) AND an .obsidian/ directory. The himmel leg extracts the
+    # publish target) AND an .obsidian/ directory. The himmel worker extracts the
     # REPO (not the vault), so it skips this — mirror the cadence, which never
     # requires the sentinel either. Check the RESOLVED path's sentinels (same
     # tree the extraction reads; $VAULT and $class_path are the same dir on
@@ -457,7 +457,7 @@ preflight_vault() {
             # (e) configured-identity containment (codex-adv-1 r3): a corpus
             # class is EARNED by configured identity, never by directory shape
             # -- the sentinels above prove "an Obsidian vault", not "THE luna
-            # vault", and the luna leg labels the extraction luna-personal. So
+            # vault", and the luna worker labels the extraction luna-personal. So
             # the resolved vault must sit at/under the resolved CONFIGURED luna
             # root: LUNA_VAULT_PATH (the machine-config channel), else the
             # conventional <home>/Documents/luna. A mistyped --vault pointing
@@ -492,8 +492,8 @@ preflight_vault() {
     # re-verify identity at the moment it actually reads (see
     # --corpus-id/--maps-id below and refresh-graph-map.sh's _verify_fs_id).
     PREFLIGHT_VAULT_ID="$vault_id"
-    # --maps-dir is always $VAULT/60-Maps, for BOTH legs. On the luna/both
-    # leg PREFLIGHT_MAPS_ID was already pinned above, right next to the
+    # --maps-dir is always $VAULT/60-Maps, for BOTH workers. On the luna/both
+    # worker PREFLIGHT_MAPS_ID was already pinned above, right next to the
     # sentinel that guarantees 60-Maps exists --
     # never re-probe it here (a second probe would just reopen the same gap
     # this fix closes). On a himmel-only run there is no sentinel, so
@@ -512,7 +512,7 @@ preflight_vault() {
             # exist yet" case below; silently clearing PREFLIGHT_MAPS_ID here
             # would fail OPEN by disabling the runner's use-time check
             # exactly when something unexpected is happening. Fail CLOSED
-            # instead, matching the luna/both leg's posture above.
+            # instead, matching the luna/both worker's posture above.
             preflight_refuse "maps-dir exists but could not be identity-probed as a directory ($class_path/60-Maps) -- fail-closed"
         else
             PREFLIGHT_MAPS_ID=""   # legitimately absent -- first-ever publish
@@ -594,11 +594,11 @@ if [ ! -d "$VAULT" ]; then
 fi
 
 # Vault preflight: refuse PHI/root/non-vault paths
-# before ANY leg fires (dry-run included). See preflight_vault above.
+# before ANY worker fires (dry-run included). See preflight_vault above.
 preflight_vault
 # Consume the validated canonical path everywhere downstream (codex-adv-2 r3):
 # the runner's --corpus-root and --maps-dir, the dry-run preview, and the
-# per-leg messages all read $VAULT, so this single reassignment guarantees the
+# per-worker messages all read $VAULT, so this single reassignment guarantees the
 # extraction reads EXACTLY the tree the preflight classified (same bytes, no
 # symlink-retarget window at the wrapper layer, no lexical-form divergence).
 VAULT="${PREFLIGHT_CANONICAL_VAULT:-$VAULT}"
@@ -629,7 +629,7 @@ resolve_corpus_args() {
 
 # Render an argv as a single shell-safe, copy-pasteable command line (each
 # element printf %q-quoted). The --dry-run preview prints this so an operator can
-# copy-paste any leg verbatim.
+# copy-paste any worker verbatim.
 print_argv() {
     local first=1
     for a in "$@"; do
@@ -643,21 +643,21 @@ if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY graph-refresh: would refresh ${#CORPORA[@]} corpus(corpora) serially (${CORPORA[*]// / -> }) on backend $BACKEND"
     for c in "${CORPORA[@]}"; do
         resolve_corpus_args "$c"
-        # corpus-class is luna-leg-only: the luna leg extracts the vault, so
+        # corpus-class is luna-worker-only: the luna worker extracts the vault, so
         # pass --corpus-class luna-personal EXPLICITLY (the runner's default is
         # luna-personal, but the fence never sees this wrapper's invocation, so
         # the explicit class is defense-in-depth for corpus classification).
-        # The himmel leg extracts the repo and passes NO class — mirroring
+        # The himmel worker extracts the repo and passes NO class — mirroring
         # graphmap-cadence.sh exactly (the cadence passes no class for either).
         RUNNER_ARGV=(bash "$REFRESH_SCRIPT" \
             --name "$R_NAME" --corpus-root "$R_CORPUS_ROOT" --maps-dir "$VAULT/60-Maps" \
             --title "$R_TITLE" --slug "$R_SLUG" --backend "$BACKEND" --corpus-tag "$R_TAG")
         # --corpus-id is the vault's identity ONLY -- the himmel
-        # leg's corpus-root is $HIMMEL_ROOT, a different filesystem object the
+        # worker's corpus-root is $HIMMEL_ROOT, a different filesystem object the
         # vault preflight never classified, so pinning it here would always
-        # mismatch. --maps-id applies to both legs (both publish into the same
+        # mismatch. --maps-id applies to both workers (both publish into the same
         # $VAULT/60-Maps). --maps-parent-id is the vault's
-        # OWN identity again, forwarded for both legs whenever the preflight
+        # OWN identity again, forwarded for both workers whenever the preflight
         # has one: it lets the runner safely mkdir a not-yet-existing
         # 60-Maps from within a verified vault cwd, instead of silently
         # falling through to node's unguarded mkdirSync when --maps-id is
@@ -702,11 +702,11 @@ SKIPPED=0
 # operator can see WHY a paid run failed. Outside the repo and the vault; the
 # directory persists on purpose -- the log is the evidence.
 LOG_DIR="$(tmpdir)" || { echo "ERR graph-refresh: could not create the per-corpus log directory" >&2; exit 2; }
-FAILED_LEGS=()
+FAILED_WORKERS=()
 for c in "${CORPORA[@]}"; do
     resolve_corpus_args "$c"
-    # corpus-class is luna-leg-only (see the dry-run loop for the rationale);
-    # the himmel leg passes no class, mirroring graphmap-cadence.sh.
+    # corpus-class is luna-worker-only (see the dry-run loop for the rationale);
+    # the himmel worker passes no class, mirroring graphmap-cadence.sh.
     RUNNER_ARGV=(bash "$REFRESH_SCRIPT" \
             --name "$R_NAME" \
             --corpus-root "$R_CORPUS_ROOT" \
@@ -724,13 +724,13 @@ for c in "${CORPORA[@]}"; do
     R_OUT_ROOT="$(graphify_out_root_for "$c")"
     if [ -n "$R_OUT_ROOT" ]; then RUNNER_ARGV+=(--out-root "$R_OUT_ROOT"); fi
     echo "graph-refresh: [$c] refreshing (corpus-root $R_CORPUS_ROOT -> $VAULT/60-Maps/$R_SLUG.md)" >&2
-    # The `if` guards the runner call from set -e so a failed leg is REPORTED and
-    # the remaining legs still run (the operator wants the per-corpus summary for
+    # The `if` guards the runner call from set -e so a failed worker is REPORTED and
+    # the remaining workers still run (the operator wants the per-corpus summary for
     # BOTH, not a hard stop after the first failure).
     # when this corpus's resolver says
     # in-corpus (R_OUT_ROOT empty), scrub an ambient GRAPHIFY_OUT_ROOT so a
     # value the invoking shell happens to have exported (e.g. left over from
-    # testing luna's out-root) can't silently leak into this leg's child
+    # testing luna's out-root) can't silently leak into this worker's child
     # process and redirect it too -- refresh-graph-map.sh's own env fallback
     # would otherwise honour it.
     if [ -z "$R_OUT_ROOT" ]; then
@@ -752,21 +752,21 @@ for c in "${CORPORA[@]}"; do
             echo "graph-refresh: [$c] NEXT -- run /graph-publish to ship the refreshed graphify-out/"
         fi
     else
-        leg_rc=$?
-        if [ "$leg_rc" -eq 3 ]; then
+        worker_rc=$?
+        if [ "$worker_rc" -eq 3 ]; then
             echo "graph-refresh: [$c] SKIPPED -- bank at/over threshold, extraction skipped for corpus '$c' (refresh-graph-map.sh exited 3; graphify-out left untouched, nothing published)" >&2
             SKIPPED=$((SKIPPED + 1))
         else
-            leg_reason="$(grep '^refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"
-            echo "graph-refresh: [$c] FAIL -- ${leg_reason:-refresh-graph-map.sh exited $leg_rc} (log: $WORKER_SESSION_LOG)" >&2
+            worker_reason="$(grep '^refresh-graph-map:' "$WORKER_SESSION_LOG" | tail -n 1 || true)"
+            echo "graph-refresh: [$c] FAIL -- ${worker_reason:-refresh-graph-map.sh exited $worker_rc} (log: $WORKER_SESSION_LOG)" >&2
             FAILURES=$((FAILURES + 1))
-            FAILED_LEGS+=("$c $WORKER_SESSION_LOG")
+            FAILED_WORKERS+=("$c $WORKER_SESSION_LOG")
         fi
     fi
 done
 
 # --- cadence status: surface drift, advisory only ----------------------------
-# After the refresh legs, print `graphmap-cadence.sh status` so the operator sees
+# After the refresh workers, print `graphmap-cadence.sh status` so the operator sees
 # whether the daily cadence is armed (and how stale its last fire was) next to a
 # just-run ad-hoc refresh. Best-effort + advisory: the cadence status runs
 # against the OS scheduler (schtasks/crontab) and may exit non-zero (unsupported
@@ -787,10 +787,10 @@ else
 fi
 
 # --- summary -----------------------------------------------------------------
-# Three outcomes per leg (OK / SKIPPED-bank / FAILED) must stay distinguishable
-# here too -- the per-leg lines above already do this, but the final summary is
+# Three outcomes per worker (OK / SKIPPED-bank / FAILED) must stay distinguishable
+# here too -- the per-worker lines above already do this, but the final summary is
 # the line an operator is most likely to actually read, so it must never call a
-# skipped leg "refreshed" (same false-success class as the per-leg OK line).
+# skipped worker "refreshed" (same false-success class as the per-worker OK line).
 # REFRESHED is derived, not tracked,
 # same as FAILURES/SKIPPED already are -- it's just the remainder.
 REFRESHED=$(( ${#CORPORA[@]} - FAILURES - SKIPPED ))
@@ -801,16 +801,16 @@ SUMMARY=""
 [ "$FAILURES" -gt 0 ] && SUMMARY="${SUMMARY:+$SUMMARY, }$FAILURES failed"
 if [ "$FAILURES" -gt 0 ]; then
     echo "graph-refresh: $SUMMARY (of ${#CORPORA[@]} corpus(corpora)) -- FAILED" >&2
-    for leg in "${FAILED_LEGS[@]}"; do
-        echo "graph-refresh: failed corpus: ${leg%% *} (log: ${leg#* })" >&2
+    for worker in "${FAILED_WORKERS[@]}"; do
+        echo "graph-refresh: failed corpus: ${worker%% *} (log: ${worker#* })" >&2
     done
     exit 3
 fi
-# A skip-only outcome (no failures, but at least one leg skipped for the bank)
+# A skip-only outcome (no failures, but at least one worker skipped for the bank)
 # is NOT success: it must never print the OK token or exit 0 --
 # that reads as "refreshed" on an unattended cadence, indistinguishable from a
 # real success, which is exactly how a month of skipped refreshes went
-# unnoticed. Distinct exit code 4 (not 3 -- 3 means a leg FAILED, and the
+# unnoticed. Distinct exit code 4 (not 3 -- 3 means a worker FAILED, and the
 # cadence/operator must be able to tell "bank was hot, retry later, benign"
 # from "a refresh broke, investigate").
 if [ "$SKIPPED" -gt 0 ]; then

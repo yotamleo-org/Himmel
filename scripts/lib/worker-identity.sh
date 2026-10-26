@@ -1,31 +1,31 @@
 #!/usr/bin/env bash
-# worker-identity.sh — the ONE derivation of a leg's identity.
+# worker-identity.sh — the ONE derivation of a worker's identity.
 #
-# A console files a leg's brief as a handover doc and launches the leg under a
+# A chief files a worker's brief as a handover doc and launches the worker under a
 # session name (`claude -n <session>`). Every instrument that joins the two --
-# tick.sh's legs=/procs=/models=/livestate=, and any later reader that maps a
-# leg doc to a live session -- must derive the mapping HERE, never re-guess it
+# tick.sh's workers=/procs=/models=/livestate=, and any later reader that maps a
+# worker doc to a live session -- must derive the mapping HERE, never re-guess it
 # with a local regex: a guess that silently matches nothing reads as a
 # confident zero.
 #
-# Canonical (docs/handover/leg-brief-template.md):
+# Canonical (docs/handover/worker-brief-template.md):
 #   doc     <TICKET>-N<k>-<slug>-<date>-RESUME.md      (the -RESUME and the
 #   session <TICKET>-N<k>-<slug>                        -<date> are both optional)
-#   label   N<k>   -- the token docs/handover/console-template.md tells a console
+#   label   N<k>   -- the token docs/handover/chief-template.md tells a chief
 #                     to write in its `## Live state` legs: line.
 # Also accepted, because live and archived docs carry it: the legacy family
 #   <TICKET>[-<slug>]-leg[N]<k>-<date>-RESUME.md
-# (the older template spelled it -leg<k>-, older consoles -legN<k>-).
-# It yields the same N<k> label, and the session name the console derives
+# (the older template spelled it -leg<k>-, older chiefs -legN<k>-).
+# It yields the same N<k> label, and the session name the chief derives
 # for it: <TICKET>-N<k>[-<slug>]. Anything else falls back to the whole stem as
 # its own label, which is self-consistent but joins to no session.
 #
-# A SUCCESSOR leg carries its letters: N38b is a different session
+# A SUCCESSOR worker carries its letters: N38b is a different session
 # from N38, so the label keeps them -- a label that dropped them would let
 # tick.sh's livestate=/procs= conflate two live sessions. The base an instrument
-# that counts relaunches of ONE leg groups by is leg_base, below.
+# that counts relaunches of ONE worker groups by is worker_base, below.
 # A legacy doc's ticket key is <KEY>-<digits>, or -- for the
-# handful of drift/gh-named legs -- a bare UPPERCASE <KEY> alone, and then only
+# handful of drift/gh-named workers -- a bare UPPERCASE <KEY> alone, and then only
 # with the N spelling (HIMMEL-drift-graphify-0955-legN5). Lowercase prose
 # ("next-session-leg5") and an N-less fleet series (HIMMEL-linux-fleet-...-leg1,
 # a different numbering that would collide with the real N1) stay fallbacks.
@@ -37,12 +37,12 @@
 # same class, so a label this file emits is always one the parser accepts.
 WORKER_SESSION_LABEL_CLASS='A-Za-z0-9_.-'
 
-# leg_identity <leg doc path or stem>
+# worker_identity <worker doc path or stem>
 # Prints ONE line: <label><TAB><name>[,<name>...]
-# <name>s are every session name the leg may be running under (stem without
+# <name>s are every session name the worker may be running under (stem without
 # -RESUME, the same without its trailing date, and the derived session for a
-# legacy-family doc); a census row matching any of them belongs to this leg.
-leg_identity() {
+# legacy-family doc); a census row matching any of them belongs to this worker.
+worker_identity() {
     local stem="$1" session undated sfx derived="" label=""
     local re_canon='^[A-Za-z][A-Za-z]*-[0-9]+-(N[0-9]+[a-z]*)(-.*)?$'
     local re_legacy='^([A-Za-z][A-Za-z]*-[0-9]+)(-(.*))?-leg(N?)([0-9]+)([a-z]*)(-.*)?$'
@@ -55,7 +55,7 @@ leg_identity() {
         label="${BASH_REMATCH[1]}"
     elif [[ $stem =~ $re_legacy ]] || [[ $stem =~ $re_legacy_key ]]; then
         label="N${BASH_REMATCH[5]}${BASH_REMATCH[6]}"
-        # A slug AFTER the leg token (-legN3-worker-<date>) belongs in the session
+        # A slug AFTER the worker token (-legN3-worker-<date>) belongs in the session
         # too; the trailing -RESUME and -<date> do not.
         sfx="${BASH_REMATCH[7]%-RESUME}"
         sfx="$(printf '%s' "$sfx" | sed -E 's/-[0-9]{4}-[0-9]{2}-[0-9]{2}$//')"
@@ -70,21 +70,21 @@ leg_identity() {
     printf '%s\t%s\n' "$label" "$names"
 }
 
-# leg_label <leg doc path or stem> -- just the label, for callers that need no names.
-leg_label() {
+# worker_label <worker doc path or stem> -- just the label, for callers that need no names.
+worker_label() {
     local ident
-    ident="$(leg_identity "$1")"
+    ident="$(worker_identity "$1")"
     printf '%s' "${ident%%$'\t'*}"
 }
 
-# leg_base <leg doc path or stem> -- the leg a successor continues: the label with
+# worker_base <worker doc path or stem> -- the worker a successor continues: the label with
 # a trailing successor suffix dropped (N38b -> N38). A label with no suffix, and the
-# whole-stem fallback of a non-leg doc, come back unchanged. This is the metric's
+# whole-stem fallback of a non-worker doc, come back unchanged. This is the metric's
 # grouping key, never an identity: two live sessions N38 and N38b share a base and
 # must not share a label.
-leg_base() {
+worker_base() {
     local label
-    label="$(leg_label "$1")"
+    label="$(worker_label "$1")"
     if [[ $label =~ ^(N[0-9]+)[a-z]+$ ]]; then
         printf '%s' "${BASH_REMATCH[1]}"
     else
@@ -92,17 +92,17 @@ leg_base() {
     fi
 }
 
-# A leg's human description -- one plain-language line saying what
-# the leg is doing and why, shown NEXT TO the label (never instead: tooling keys
-# on the label). It lives in the leg doc's front matter as `description: <text>`
-# (docs/handover/leg-brief-template.md). Every reader goes through these
+# A worker's human description -- one plain-language line saying what
+# the worker is doing and why, shown NEXT TO the label (never instead: tooling keys
+# on the label). It lives in the worker doc's front matter as `description: <text>`
+# (docs/handover/worker-brief-template.md). Every reader goes through these
 # functions; none parses a doc for it itself.
 
-# leg_description_field <leg doc path> -- the front-matter `description:` value,
+# worker_description_field <worker doc path> -- the front-matter `description:` value,
 # trimmed, one pair of surrounding quotes dropped. Prints nothing when the doc
 # is unreadable, has no front matter or no such key, or the value is empty or
 # still the template's `<placeholder>`. Only the leading `---` block counts.
-leg_description_field() {
+worker_description_field() {
     local doc="$1" val
     [ -r "$doc" ] || return 0
     val="$(awk '
@@ -122,21 +122,21 @@ leg_description_field() {
     printf '%s' "$val"
 }
 
-# leg_description <leg doc path> -- the line a surface prints next to the label.
+# worker_description <worker doc path> -- the line a surface prints next to the label.
 # Fallback, never empty: the description field; then the brief's H1 scope
-# (`# <TICKET> — <scope> — leg N<k> (...)`, and the `# <TICKET>: <scope>. Leg
-# N<k> (...)` consoles also write, give <scope>; an H1 not led by a ticket key
+# (`# <TICKET> — <scope> — worker N<k> (...)`, and the `# <TICKET>: <scope>. Worker
+# N<k> (...)` chiefs also write, give <scope>; an H1 not led by a ticket key
 # is used whole);
 # then the doc stem.
 # ponytail: the ticket-title and PR-title fallbacks HIMMEL-4749 orders between
 # the field and the H1 need the tracker/forge seams; slot them in
 # here when WP2/WP4 land.
-leg_description() {
+worker_description() {
     local doc="$1" val stem
-    val="$(leg_description_field "$doc")"
+    val="$(worker_description_field "$doc")"
     if [ -z "$val" ] && [ -r "$doc" ]; then
         val="$(sed -n -E '/^# /{s/^# +//;p;q;}' "$doc" \
-            | sed -E '/^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) /{s/^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) //; s/( —|\.)? [Ll]eg N[0-9]+[a-z]*( \([^)]*\))?(,? [0-9]{4}-[0-9]{2}-[0-9]{2})?$//;}; s/[[:space:]]+$//')"
+            | sed -E '/^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) /{s/^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) //; s/( —|\.)? ([Ll]eg|[Ww]orker) N[0-9]+[a-z]*( \([^)]*\))?(,? [0-9]{4}-[0-9]{2}-[0-9]{2})?$//;}; s/[[:space:]]+$//')"
     fi
     if [ -z "$val" ]; then
         stem="${doc##*/}"
@@ -145,12 +145,12 @@ leg_description() {
     printf '%s' "$val"
 }
 
-# leg_doc_has_run <leg doc path> -- exit 0 when the doc's `## Results` section
-# already holds a `- ` bullet: the leg has been launched and has reported, so a
+# worker_doc_has_run <worker doc path> -- exit 0 when the doc's `## Results` section
+# already holds a `- ` bullet: the worker has been launched and has reported, so a
 # relaunch is a resume. A fresh brief's Results section is empty. A launch gate
 # that is new for fresh briefs uses this so a doc written before the gate
 # existed still resumes.
-leg_doc_has_run() {
+worker_doc_has_run() {
     [ -r "$1" ] || return 1
     awk '
         /^## Results/ { inr = 1; next }

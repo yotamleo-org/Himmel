@@ -14,59 +14,63 @@
 #   new_val   value of NEW in the env   (- = unset, <empty> = set to "")
 #   old_val   value of OLD in the env
 #   want_rc   0 = true, 1 = false, 2 = invalid name (the call fails closed)
+#   want_off  the same call with HIMMEL_LEGACY_NAMES=0 (legacy names off)
 #
 # A name is "set" when non-empty. It is "truthy" when set and not 0, false, no
 # or off (any case). restrict is true when either name is truthy. permit is true
 # only when at least one name is truthy and no set name is falsy.
+# With legacy names off, restrict still reads both names (a guard marker set
+# under its old name stays on), and permit is granted only by NEW while a falsy
+# OLD still vetoes it: OFF never widens what a call allows.
 #
 # restrict: the marker that switches a guard ON; a per-call NEW=0 must not lift OLD=1
-restrict	T_NEW	T_OLD	0	1	0
-restrict	T_NEW	T_OLD	1	0	0
-restrict	T_NEW	T_OLD	1	1	0
-restrict	T_NEW	T_OLD	1	-	0
-restrict	T_NEW	T_OLD	-	1	0
-restrict	T_NEW	T_OLD	yes	-	0
-restrict	T_NEW	T_OLD	-	anything	0
-restrict	T_NEW	T_OLD	OFF	1	0
-restrict	T_NEW	T_OLD	false	yes	0
-restrict	T_NEW	T_OLD	-	-	1
-restrict	T_NEW	T_OLD	0	-	1
-restrict	T_NEW	T_OLD	-	0	1
-restrict	T_NEW	T_OLD	0	0	1
-restrict	T_NEW	T_OLD	<empty>	<empty>	1
-restrict	T_NEW	T_OLD	<empty>	-	1
-restrict	T_NEW	T_OLD	false	-	1
-restrict	T_NEW	T_OLD	No	Off	1
-restrict	T_NEW	T_OLD	FALSE	-	1
+restrict	T_NEW	T_OLD	0	1	0	0
+restrict	T_NEW	T_OLD	1	0	0	0
+restrict	T_NEW	T_OLD	1	1	0	0
+restrict	T_NEW	T_OLD	1	-	0	0
+restrict	T_NEW	T_OLD	-	1	0	0
+restrict	T_NEW	T_OLD	yes	-	0	0
+restrict	T_NEW	T_OLD	-	anything	0	0
+restrict	T_NEW	T_OLD	OFF	1	0	0
+restrict	T_NEW	T_OLD	false	yes	0	0
+restrict	T_NEW	T_OLD	-	-	1	1
+restrict	T_NEW	T_OLD	0	-	1	1
+restrict	T_NEW	T_OLD	-	0	1	1
+restrict	T_NEW	T_OLD	0	0	1	1
+restrict	T_NEW	T_OLD	<empty>	<empty>	1	1
+restrict	T_NEW	T_OLD	<empty>	-	1	1
+restrict	T_NEW	T_OLD	false	-	1	1
+restrict	T_NEW	T_OLD	No	Off	1	1
+restrict	T_NEW	T_OLD	FALSE	-	1	1
 # permit: a widening switch (*_OK, lift, AFK); any set falsy name vetoes it
-permit	T_NEW	T_OLD	0	1	1
-permit	T_NEW	T_OLD	1	0	1
-permit	T_NEW	T_OLD	1	1	0
-permit	T_NEW	T_OLD	1	-	0
-permit	T_NEW	T_OLD	-	1	0
-permit	T_NEW	T_OLD	yes	-	0
-permit	T_NEW	T_OLD	1	<empty>	0
-permit	T_NEW	T_OLD	<empty>	1	0
-permit	T_NEW	T_OLD	-	-	1
-permit	T_NEW	T_OLD	0	-	1
-permit	T_NEW	T_OLD	-	0	1
-permit	T_NEW	T_OLD	0	0	1
-permit	T_NEW	T_OLD	<empty>	<empty>	1
-permit	T_NEW	T_OLD	1	false	1
-permit	T_NEW	T_OLD	No	1	1
-permit	T_NEW	T_OLD	1	OFF	1
+permit	T_NEW	T_OLD	0	1	1	1
+permit	T_NEW	T_OLD	1	0	1	1
+permit	T_NEW	T_OLD	1	1	0	0
+permit	T_NEW	T_OLD	1	-	0	0
+permit	T_NEW	T_OLD	-	1	0	1
+permit	T_NEW	T_OLD	yes	-	0	0
+permit	T_NEW	T_OLD	1	<empty>	0	0
+permit	T_NEW	T_OLD	<empty>	1	0	1
+permit	T_NEW	T_OLD	-	-	1	1
+permit	T_NEW	T_OLD	0	-	1	1
+permit	T_NEW	T_OLD	-	0	1	1
+permit	T_NEW	T_OLD	0	0	1	1
+permit	T_NEW	T_OLD	<empty>	<empty>	1	1
+permit	T_NEW	T_OLD	1	false	1	1
+permit	T_NEW	T_OLD	No	1	1	1
+permit	T_NEW	T_OLD	1	OFF	1	1
 # invalid names fail closed with 2, whatever the values are
-restrict	bad-name	T_OLD	-	1	2
-restrict	T_NEW	bad-name	1	-	2
-restrict	lower	T_OLD	1	1	2
-restrict	1BAD	T_OLD	1	1	2
-restrict	<empty>	T_OLD	-	1	2
-restrict	T_NEW	<empty>	1	-	2
-restrict	T_NEW;X	T_OLD	1	1	2
-restrict	T_NEW	T OLD	1	1	2
-permit	bad-name	T_OLD	-	1	2
-permit	T_NEW	bad-name	1	-	2
-permit	T_NEW	lower	1	1	2
-permit	<empty>	T_OLD	1	1	2
-permit	T_NEW	T_OLD$(id)	1	1	2
-permit	_UNDERSCORE_OK1	_ALSO_OK2	1	-	0
+restrict	bad-name	T_OLD	-	1	2	2
+restrict	T_NEW	bad-name	1	-	2	2
+restrict	lower	T_OLD	1	1	2	2
+restrict	1BAD	T_OLD	1	1	2	2
+restrict	<empty>	T_OLD	-	1	2	2
+restrict	T_NEW	<empty>	1	-	2	2
+restrict	T_NEW;X	T_OLD	1	1	2	2
+restrict	T_NEW	T OLD	1	1	2	2
+permit	bad-name	T_OLD	-	1	2	2
+permit	T_NEW	bad-name	1	-	2	2
+permit	T_NEW	lower	1	1	2	2
+permit	<empty>	T_OLD	1	1	2	2
+permit	T_NEW	T_OLD$(id)	1	1	2	2
+permit	_UNDERSCORE_OK1	_ALSO_OK2	1	-	0	0

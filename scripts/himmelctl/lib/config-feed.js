@@ -5,7 +5,7 @@
 // Read-only: composes the existing status engine (status-report.js, in-process),
 // `himmel-doctor.sh --json` (P1), the doctor-cadence state, the cadence scripts'
 // `status`, `plugin-profile.sh list --json`, the lane registry, the initiative
-// legs, the flag registry and the secrets manifest into ONE row grammar. It
+// workers, the flag registry and the secrets manifest into ONE row grammar. It
 // writes nothing and calls no mutating verb. Every string passes redact.js on
 // the way out (spec A14b).
 //
@@ -35,10 +35,10 @@ const SCHEMA = 'himmel-config-feed/1';
 const REPROBE_BUDGET_MS = 240000; // full doctor run measured 120s x2
 const CADENCE_STATUS_TIMEOUT_MS = 15000;
 
-// Mirrors bin.js INITIATIVE_LEGS (bin.js is not require()-able without side
+// Mirrors bin.js INITIATIVE_WORKERS (bin.js is not require()-able without side
 // effects). merge and public widen agent autonomy to merging and public pushes:
 // guard-class, display-only (spec §5.2 "removed from the table").
-const INITIATIVE_LEGS = ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'public', 'handover'];
+const INITIATIVE_WORKERS = ['execute', 'prcheck', 'pr', 'ticket', 'merge', 'public', 'handover'];
 const INITIATIVE_GUARD = new Set(['merge', 'public']);
 
 // The five cadences P2 reports (spec §5.2 target list). evidence = what proves
@@ -334,19 +334,19 @@ function initiativeRows(ctx) {
   let raw = '';
   try { raw = behaviourConfigLib.readConfigVar('HIMMEL_INITIATIVE', path.join(repoRoot(), '.env')).value; } catch { /* unreadable layer: rows read as off */ }
   const active = new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
-  return INITIATIVE_LEGS.map((leg) => {
-    const on = active.has(leg);
-    const guard = INITIATIVE_GUARD.has(leg);
+  return INITIATIVE_WORKERS.map((worker) => {
+    const on = active.has(worker);
+    const guard = INITIATIVE_GUARD.has(worker);
     return mkRow({
-      id: `initiative:${leg}`, source: 'initiative', group: 'core', title: `initiative.${leg}`,
+      id: `initiative:${worker}`, source: 'initiative', group: 'core', title: `initiative.${worker}`,
       declared: { where: '~/.himmel/himmel.conf#HIMMEL_INITIATIVE', desired: 'opt-in', profile: 'all' },
       installed: { state: on ? 'present' : 'absent', detail: on ? 'on' : 'off' },
       health: on ? 'ok' : 'off',
-      fix: { remedy: `himmelctl config set initiative.${leg} ${on ? 'off' : 'on'}`, owner: 'user' },
+      fix: { remedy: `himmelctl config set initiative.${worker} ${on ? 'off' : 'on'}`, owner: 'user' },
       probedAt: ctx.probedAt,
       control: guard
         ? { class: 'display-only', reason: 'widens agent autonomy (guard-class)' }
-        : { class: 'toggle', action: 'config.initiative', target: leg, consent: 'plain' },
+        : { class: 'toggle', action: 'config.initiative', target: worker, consent: 'plain' },
     });
   });
 }
@@ -583,4 +583,4 @@ function composeFeed({ manifest, scope, targetPath, answers, items, served, deep
   return out;
 }
 
-module.exports = { buildFeed, SCHEMA, REPROBE_BUDGET_MS, CADENCES, INITIATIVE_LEGS, DOCTOR_OWNER, PRESENCE_SOURCES, envFileHasKey, remedyFromDetail };
+module.exports = { buildFeed, SCHEMA, REPROBE_BUDGET_MS, CADENCES, INITIATIVE_WORKERS, DOCTOR_OWNER, PRESENCE_SOURCES, envFileHasKey, remedyFromDetail };

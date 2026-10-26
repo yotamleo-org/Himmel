@@ -54,7 +54,7 @@ if [ "$nudges" = 0 ]; then pass "4 sweeps give no nudge"; else fail "4 sweeps si
 
 # 4. GREEN control: one graphify query before the 5th sweep gives no nudge.
 sweeps s3 3
-call s3 Bash 'bash scripts/graphify/leg-graph.sh query "who calls foo"'
+call s3 Bash 'bash scripts/graphify/worker-graph.sh query "who calls foo"'
 sweeps s3 4
 if [ "$nudges" = 0 ]; then pass "graphify query before the 5th sweep gives no nudge"; else fail "graphify control (nudges=$nudges)"; fi
 sweeps s3w 3

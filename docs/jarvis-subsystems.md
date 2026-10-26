@@ -57,7 +57,7 @@ and `/escalations` (JSON) and `/events` (SSE).
 - **The chief** is one session that holds the plan. It writes a brief for
   each ticket, launches a worker, rules on the worker's questions, and merges.
   You start one with `/chief new`. Detail:
-  [handover/running-a-console.md](handover/running-a-console.md).
+  [handover/running-a-chief.md](handover/running-a-chief.md).
 - **Workers.** Each worker owns one ticket, one worktree and one PR. Its lane
   (native Claude, or a Codex lane) and its model come from
   `scripts/lanes/lanes.json`. Detail:

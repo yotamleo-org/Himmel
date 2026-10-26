@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # usage-preflight.sh — the bank guard and the fleet-size cap.
-# Pre-run guard for scheduled legs.
+# Pre-run guard for scheduled workers.
 #
 # Prints ONE verdict token to stdout; diagnostics to stderr; a row to the
 # ledger; ALWAYS exits 0. Callers branch on the TOKEN, never the exit code
@@ -19,7 +19,7 @@
 #
 # the fleet cap's REFUSAL (SKIPPED-FLEET) only fires when the
 # caller sets CADENCE_USAGE_LAUNCH=1, declaring an actual arm/launch intent
-# (arm-resume.sh, headed-arm-leg.sh). A plain bank READ — hermes-critic.sh's
+# (arm-resume.sh, headed-arm-worker.sh). A plain bank READ — hermes-critic.sh's
 # /pr-check pass, bank-monitor, the statusline/hook-smoke test suites — gets
 # the same bank verdict and the same informational FLEET line (printed
 # unconditionally either way), but is never itself refused by the fleet cap:
@@ -45,10 +45,13 @@ if ! { [ -r "$_csg_dir/env-alias.sh" ] && . "$_csg_dir/env-alias.sh"; }; then
     echo "usage-preflight.sh: cannot load $_csg_dir/env-alias.sh - refusing" >&2
     exit 96
 fi
-for _ua in PRODUCER MAX_AGE CACHE LEDGER LEG LAUNCH LANE CALLER_PID STATUS_CMD SKIP_REFRESH CODEX_TIMEOUT; do
+alias_env CADENCE_USAGE_WORKER CADENCE_USAGE_LEG
+alias_env CADENCE_USAGE_WORKER CADENCE_BANK_LEG
+for _ua in PRODUCER MAX_AGE CACHE LEDGER LAUNCH LANE CALLER_PID STATUS_CMD SKIP_REFRESH CODEX_TIMEOUT; do
     alias_env "CADENCE_USAGE_$_ua" "CADENCE_BANK_$_ua"
 done
 alias_env_cap CADENCE_USAGE_MAX_PCT CADENCE_BANK_MAX_PCT
+alias_env WORKER_SESSION_LANE LEG_LANE
 
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 PRODUCER="${CADENCE_USAGE_PRODUCER:-$REPO/scripts/statusline/usage-cache-producer.sh}"
@@ -65,21 +68,21 @@ case "$LEDGER" in
   */*) LEDGER_DIR=${LEDGER%/*}; [ -n "$LEDGER_DIR" ] || LEDGER_DIR=/ ;;
   *) LEDGER_DIR=. ;;
 esac
-LEG="${CADENCE_USAGE_LEG:-unknown}"
+WORKER="${CADENCE_USAGE_WORKER:-unknown}"
 # whether THIS call declares an actual arm/launch intent. The
 # fleet-size cap below exists to refuse a NEW arm when the fleet is already
 # at CAP — it has no business refusing a plain bank READ (a
 # `/pr-check` critic pass, a statusline probe, a hook-smoke test) that never
-# launches anything. Only a caller that is about to actually spawn a leg
-# (arm-resume.sh, headed-arm-leg.sh) sets this. The informational FLEET line
+# launches anything. Only a caller that is about to actually spawn a worker
+# (arm-resume.sh, headed-arm-worker.sh) sets this. The informational FLEET line
 # below still prints unconditionally either way — only the refusal is gated.
 LAUNCH_INTENT="${CADENCE_USAGE_LAUNCH:-}"
-# which bank this leg parks on. native (default) is the
+# which bank this worker parks on. native (default) is the
 # existing Claude five_hour/seven_day check below; claudex parks on the
 # codex weekly bank instead (scripts/lanes/usage-status.ts's "claudex" row) —
-# a claudex leg must never be refused by the Claude subscription bank, a
+# a claudex worker must never be refused by the Claude subscription bank, a
 # different bucket entirely.
-LANE="${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}"
+LANE="${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}"
 
 is_num() { case "$1" in ''|*[!0-9.]*) return 1 ;; *.*.*) return 1 ;; *[0-9]*) return 0 ;; *) return 1 ;; esac; }
 is_int() { case "$1" in ''|*[!0-9]*) return 1 ;; *) return 0 ;; esac; }
@@ -89,11 +92,11 @@ emit() {
   [ -d "$LEDGER_DIR" ] || mkdir -p "$LEDGER_DIR" 2>/dev/null
   degraded=false; [ "$usable" -eq 1 ] && degraded=true
   [ "$usable" -eq 0 ] && [ "$1" = BANK-UNKNOWN ] && degraded=true
-  # $LEG is caller-controlled and lands inside a JSON string — a
+  # $WORKER is caller-controlled and lands inside a JSON string — a
   # newline would split the record and a control character, quote or backslash
   # would make it invalid JSONL. Control characters become `?` (the ps view's own
   # convention), then `\` and `"` are escaped.
-  _leg_json="$(printf '%s' "$LEG" | LC_ALL=C tr -c '[:print:]' '?' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
+  _worker_json="$(printf '%s' "$WORKER" | LC_ALL=C tr -c '[:print:]' '?' | sed -e 's/\\/\\\\/g' -e 's/"/\\"/g')"
   # fh/sd come straight from the cache JSON and age from arithmetic: a value that
   # is not a plain number (a quote or brace from a hostile/corrupt cache) is
   # blanked so it cannot break the row. age is signed (a future stamp).
@@ -101,7 +104,7 @@ emit() {
   _sd_json="${sd:-}"; is_num "$_sd_json" || _sd_json=""
   _age_json="${age:-}"; is_int "${_age_json#-}" || _age_json=""
   printf '{"ts":"%s","leg":"%s","verdict":"%s","five_hour":"%s","seven_day":"%s","age":"%s","degraded":%s,"lift":%s}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_leg_json" "$1" "$_fh_json" "$_sd_json" "$_age_json" "$degraded" "${lift:-false}" \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_worker_json" "$1" "$_fh_json" "$_sd_json" "$_age_json" "$degraded" "${lift:-false}" \
     >> "$LEDGER" 2>/dev/null
   printf '%s\n' "$1"
   exit 0
@@ -109,10 +112,10 @@ emit() {
 fh=""; sd=""; age=""; usable=0
 
 # fleet-size cap. Concurrency, not bank exhaustion, burned the
-# fleet on 2026-09-07 (9-11 legs exhausted a week's bucket in
+# fleet on 2026-09-07 (9-11 workers exhausted a week's bucket in
 # under 48h) — this refuses a new arm when the fleet is already at CAP,
 # structurally, ahead of any bank fetch. Printed on EVERY call regardless of
-# outcome, so the console tick always shows FLEET n/CAP.
+# outcome, so the chief tick always shows FLEET n/CAP.
 #
 # CAP resolves from the environment first; falling back to the primary
 # checkout's .env (HIMMEL_FLEET_CAP), default 4 — a PROVISIONAL cap well
@@ -153,7 +156,7 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 # An argv-text match alone also matches a WRAPPER
 #     process (e.g. konsole, whose own argv literally embeds the full
 #     `claude ... -n NAME ...` command it launched as text — the exact
-#     shape headed-arm.sh uses) — double-counting one real leg as two and
+#     shape headed-arm.sh uses) — double-counting one real worker as two and
 #     refusing launches prematurely.
 # An up-front "does the procfs ROOT exist" check
 #     still silently drops EVERY candidate on a host where the directory
@@ -191,7 +194,7 @@ is_int "$FLEET_CAP" || FLEET_CAP=4
 # belongs to, for the FLEET line only — never gates the cap itself (that
 # stays total-count, below). Reads the candidate's own /proc/<pid>/environ
 # (NUL-separated) for the claudex launch env's CLAUDEX_LANE_OK=1 marker
-# (headed-arm-leg.sh --lane claudex exports it via HEADED_ARM_LAUNCHER_ENV,
+# (headed-arm-worker.sh --lane claudex exports it via HEADED_ARM_LAUNCHER_ENV,
 # which reaches the launched process's real environment through konsole's
 # `-e env ... NAME=VALUE ...`). An unreadable/missing environ (permissions,
 # a process that already exited) falls back to "native" — the safe default,
@@ -205,7 +208,7 @@ _fleet_lane_of() {
     return
   fi
   lane=$(printf '%s\n' "$envtxt" | sed -n 's/^WORKER_SESSION_LANE=//p' | tail -n 1)
-  [ -n "$lane" ] || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1) # old name, read both ways
+  [ -n "$lane" ] || ! legacy_names_on || lane=$(printf '%s\n' "$envtxt" | sed -n 's/^LEG_LANE=//p' | tail -n 1) # old name, read both ways
   if [ "$lane" = openrouter ]; then echo openrouter; else echo native; fi
 }
 
@@ -631,7 +634,7 @@ _fleet_census() {
     _fleet_ps_cmd="$FLEET_PS_CMD"
     _fc_raw="$("$FLEET_PS_CMD" 2>&1)"
   else
-    # -ww: with COLUMNS in the environment (a console's Stop hook inherits it)
+    # -ww: with COLUMNS in the environment (a chief's Stop hook inherits it)
     # a bare ps cuts every argv to that width and the `-n NAME` is lost.
     _fleet_ps_cmd="ps -ww -eo pid=,args="
     _fc_raw="$(ps -ww -eo pid=,args= 2>&1)" || { _fleet_ps_cmd="ps -eo pid=,args="; _fc_raw="$(ps -eo pid=,args= 2>&1)"; }
@@ -665,7 +668,7 @@ _fleet_census() {
     case "$_fleet_name" in *[[:cntrl:]]*) _fleet_name="" ;; esac
     [ -n "$_fleet_name" ] && _fc_names="$_fc_names
 $_fleet_name"
-    # a leg that has WRAPPED (queue lock released, last status
+    # a worker that has WRAPPED (queue lock released, last status
     # bullet WRAPPED) no longer needs the slot even while its process/window
     # is still alive — exclude it from the counts that gate FLEET_CAP. Its
     # name still went into _fc_names above so a pending reservation under
@@ -873,7 +876,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       #
       # matched on the directory name (every reservation, incl.
       # ones written by an older copy of this script that has no `name` file)
-      # OR the raw leg name in `name`, so a name hashed into its directory key
+      # OR the raw worker name in `name`, so a name hashed into its directory key
       # ('/', a leading '.', over NAME_MAX) is consumed instead of
       # double-counted until its TTL.
       # INVARIANT: the census may OVER-count (a launch is refused for at most
@@ -889,7 +892,7 @@ if [ "$_fleet_admitted" -eq 1 ]; then
       # stub) the census only has the FIRST whitespace token of the ps line, so
       # there the shared-first-token consumption stays: a
       # whitespace-name reservation is never consumed (its full name is never a
-      # first token), a plain one can still be consumed by another live leg that
+      # first token), a plain one can still be consumed by another live worker that
       # shares its first token.
       # BY DESIGN not matched: arm-resume.sh reserves under the flattened
       # handover path but launches under `-n <TICKET> <name> s<N>`, so its
@@ -950,7 +953,7 @@ echo "bank-preflight: FLEET native=$fleet_native claudex=$fleet_claudex openrout
 # only reaches the credit-state verdict below; it never reads the native bank.
 # Refuse before creating a fleet reservation for a launch that cannot happen.
 if [ "$LANE" = api ] && [ "$LAUNCH_INTENT" = "1" ] && [ "${HIMMEL_API_LANE:-}" != "on" ]; then
-  echo "bank-preflight: api dispatch is OFF (set by the reviewed api-lane launcher only) — leg=$LEG refusing" >&2
+  echo "bank-preflight: api dispatch is OFF (set by the reviewed api-lane launcher only) — worker=$WORKER refusing" >&2
   if [ "$_fleet_admitted" -eq 1 ]; then
     _fleet_release_admit "$SLOTS/.admit"
   fi
@@ -977,7 +980,7 @@ elif [ "$LANE" = api ] && [ "$fleet_api_reserved" -ge "$API_CAP" ]; then
   if [ "${FLEET_CAP_OK:-}" = "1" ]; then
     echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — FLEET_CAP_OK bypass in effect (launching shell only), proceeding" >&2
   elif [ "$LAUNCH_INTENT" = "1" ]; then
-    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — skipping leg=$LEG (HIMMEL_API_MAX_CONCURRENT)" >&2
+    echo "bank-preflight: api lane at/over its own cap ($fleet_api_reserved/$API_CAP) — skipping worker=$WORKER (HIMMEL_API_MAX_CONCURRENT)" >&2
     _fleet_release_admit "$SLOTS/.admit"
     emit SKIPPED-FLEET
   else
@@ -991,22 +994,22 @@ elif [ "$LANE" != api ] && [ "$fleet_n" -ge "$FLEET_CAP" ]; then
   if [ "${FLEET_CAP_OK:-}" = "1" ]; then
     echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — FLEET_CAP_OK bypass in effect (launching shell only), proceeding" >&2
   elif [ "$LAUNCH_INTENT" = "1" ]; then
-    echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — skipping leg=$LEG (bypass: FLEET_CAP_OK=1 in the LAUNCHING shell)" >&2
+    echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — skipping worker=$WORKER (bypass: FLEET_CAP_OK=1 in the LAUNCHING shell)" >&2
     _fleet_release_admit "$SLOTS/.admit"
     emit SKIPPED-FLEET
   else
     echo "bank-preflight: fleet at/over cap ($fleet_n/$FLEET_CAP) — not a declared launch (CADENCE_USAGE_LAUNCH unset), reporting only" >&2
   fi
-elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
+elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$WORKER" ] && [ "$WORKER" != unknown ]; then
   # '/', a leading '.', and
   # ENAMETOOLONG used to all "proceed without a reservation" — restoring,
   # for exactly those names, the concurrent over-admission race this whole
-  # mechanism exists to close. A deterministic, bounded hash of $LEG is
+  # mechanism exists to close. A deterministic, bounded hash of $WORKER is
   # always a valid mkdir target: two callers with the identical (unusable)
-  # $LEG hash to the identical key, so mkdir's own EEXIST still catches a
+  # $WORKER hash to the identical key, so mkdir's own EEXIST still catches a
   # genuine duplicate declared launch. Such a reservation is never
   # name-matched by a live session's census entry (its directory name isn't
-  # the leg name) — it just counts against the cap and expires by TTL, the
+  # the worker name) — it just counts against the cap and expires by TTL, the
   # same fallback arm-resume.sh's own flattened-path reservation already
   # relies on.
   #
@@ -1032,15 +1035,15 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
       if printf '%s\n' "$(( $(date +%s) + ${FLEET_RESERVE_TTL:-1800} ))" > "$dir/expires" 2>/dev/null &&
          printf '%s\n' "${CADENCE_USAGE_CALLER_PID:-$$}" > "$dir/pid" 2>/dev/null &&
          printf '%s\n' "$LANE" > "$dir/lane" 2>/dev/null; then
-        # the raw leg name, for the consume check in the prune
-        # pass — the directory name is a hash whenever $LEG cannot be one
+        # the raw worker name, for the consume check in the prune
+        # pass — the directory name is a hash whenever $WORKER cannot be one
         # directory component. One line, guaranteed by the
         # control-character refusal at the call below. Best-effort by design: it
         # only WIDENS what consumes the reservation, so a failed write falls
         # back to today's dir-name match rather than refusing the launch.
-        printf '%s\n' "$LEG" > "$dir/name" 2>/dev/null || true
+        printf '%s\n' "$WORKER" > "$dir/name" 2>/dev/null || true
         # `lane` (written above, refusing admission on failure) keys the
-        # api-vs-fleet split, never the leg name: an inherited CADENCE_USAGE_LEG could
+        # api-vs-fleet split, never the worker name: an inherited CADENCE_USAGE_WORKER could
         # escape both caps, and a lost lane file would under-count the api cap.
         return 0
       fi
@@ -1061,13 +1064,13 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
     _fleet_release_admit "$SLOTS/.admit"
     emit SKIPPED-FLEET
   }
-  # a newline (or any control character) in the leg name would make
+  # a newline (or any control character) in the worker name would make
   # the one-line `name` file read back as a different identity ("foo/bar<LF>other"
-  # as "foo/bar"). The census never lists such a live name either, so a leg named
+  # as "foo/bar"). The census never lists such a live name either, so a worker named
   # this could not be consumed anyway — refuse it before it takes a slot.
-  case "$LEG" in
+  case "$WORKER" in
     *[[:cntrl:]]*)
-      echo "bank-preflight: leg name contains a control character (newline/tab/...) — refusing rather than reserve a slot under an identity that cannot be matched" >&2
+      echo "bank-preflight: worker name contains a control character (newline/tab/...) — refusing rather than reserve a slot under an identity that cannot be matched" >&2
       _fleet_release_admit "$SLOTS/.admit"
       emit SKIPPED-FLEET
       ;;
@@ -1076,30 +1079,30 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
     echo "bank-preflight: the fleet admission lock ($SLOTS/.admit) was reclaimed before the reservation — refusing" >&2
     emit SKIPPED-FLEET
   fi
-  _fleet_resv_key="$(fleet_reservation_key "$LEG")"
+  _fleet_resv_key="$(fleet_reservation_key "$WORKER")"
   _fleet_reserve "$SLOTS/$_fleet_resv_key"
   _fleet_reserve_rc=$?
   if [ "$_fleet_reserve_rc" -eq 1 ]; then
     # `mkdir` failing does NOT mean
-    # "already exists" — a LEG name flattened from a long path can exceed
+    # "already exists" — a WORKER name flattened from a long path can exceed
     # the filesystem's per-component name limit (ENAMETOOLONG), which reads
     # here identically to EEXIST unless distinguished. Retry once with the
     # hashed key, which is always short and always a valid mkdir target. Still
     # reachable on a filesystem whose limit is below 255 bytes (e.g. 143 on
     # ecryptfs) — arm-resume.sh's release tries this key too.
-    _fleet_resv_key="$(fleet_hash_key "$LEG")"
+    _fleet_resv_key="$(fleet_hash_key "$WORKER")"
     _fleet_reserve "$SLOTS/$_fleet_resv_key"
     _fleet_reserve_rc=$?
   fi
   case "$_fleet_reserve_rc" in
     0) : ;;
     2)
-      echo "bank-preflight: a fleet reservation for leg=$LEG already exists — refusing as a duplicate declared launch" >&2
+      echo "bank-preflight: a fleet reservation for worker=$WORKER already exists — refusing as a duplicate declared launch" >&2
       _fleet_release_admit "$SLOTS/.admit"
       emit SKIPPED-FLEET
       ;;
     3)
-      echo "bank-preflight: failed to write reservation metadata (expires/pid) for leg=$LEG — refusing admission rather than proceed with an unprotected slot" >&2
+      echo "bank-preflight: failed to write reservation metadata (expires/pid) for worker=$WORKER — refusing admission rather than proceed with an unprotected slot" >&2
       _fleet_release_admit "$SLOTS/.admit"
       emit SKIPPED-FLEET
       ;;
@@ -1112,7 +1115,7 @@ elif [ "$LAUNCH_INTENT" = "1" ] && [ -n "$LEG" ] && [ "$LEG" != unknown ]; then
       # the over-admission race this mechanism exists to close. Refuse like
       # its siblings instead of silently proceeding on filesystem/permission
       # failures that mkdir cannot otherwise distinguish from "already taken".
-      echo "bank-preflight: could not create a fleet reservation directory for leg=$LEG even under a hashed key — refusing rather than proceed without a reservation" >&2
+      echo "bank-preflight: could not create a fleet reservation directory for worker=$WORKER even under a hashed key — refusing rather than proceed without a reservation" >&2
       _fleet_release_admit "$SLOTS/.admit"
       emit SKIPPED-FLEET
       ;;
@@ -1166,10 +1169,10 @@ if [ "$LANE" = openrouter ]; then
     *) _or_balance="" ;;
   esac
   if ! is_num "${_or_balance#-}"; then
-    echo "bank-preflight: openrouter effective balance unknown — leg=$LEG refusing" >&2
+    echo "bank-preflight: openrouter effective balance unknown — worker=$WORKER refusing" >&2
     emit BANK-UNKNOWN
   fi
-  echo "bank-preflight: openrouter balance=$_or_balance floor=$_or_floor leg=$LEG" >&2
+  echo "bank-preflight: openrouter balance=$_or_balance floor=$_or_floor worker=$WORKER" >&2
   if ! awk -v b="$_or_balance" -v f="$_or_floor" 'BEGIN{exit !(b>=f)}'; then
     emit SKIPPED-BANK
   fi
@@ -1178,7 +1181,7 @@ fi
 
 # claudex lane parks on the codex weekly bank instead of the
 # Claude five_hour/seven_day check below — that check governs a different
-# bucket entirely, and a claudex leg must never be refused by it. Reads
+# bucket entirely, and a claudex worker must never be refused by it. Reads
 # scripts/lanes/usage-status.ts's "claudex" row (lane id "claudex", bank
 # "codex" in lanes.json) rather than spawning scripts/lanes/codex-usage-probe.ts
 # itself (usage-status.ts's own documented contract: the probe is a leaky
@@ -1199,15 +1202,15 @@ if [ "$LANE" = claudex ]; then
   _claudex_state="$(printf '%s\n' "$_claudex_status_line" | awk '{print $2}')"
   case "$_claudex_state" in
     funded)
-      echo "bank-preflight: claudex lane funded ($_claudex_status_line) — leg=$LEG proceeding on the codex bank" >&2
+      echo "bank-preflight: claudex lane funded ($_claudex_status_line) — worker=$WORKER proceeding on the codex bank" >&2
       emit PROCEED
       ;;
     spent)
-      echo "bank-preflight: claudex lane spent ($_claudex_status_line) — skipping leg=$LEG" >&2
+      echo "bank-preflight: claudex lane spent ($_claudex_status_line) — skipping worker=$WORKER" >&2
       emit SKIPPED-BANK
       ;;
     *)
-      echo "bank-preflight: claudex lane state unmeasurable/unknown (codex-bank-probe failure or stale cache: run bun $REPO/scripts/lanes/codex-usage-probe.ts) — WARN, proceeding leg=$LEG" >&2
+      echo "bank-preflight: claudex lane state unmeasurable/unknown (codex-bank-probe failure or stale cache: run bun $REPO/scripts/lanes/codex-usage-probe.ts) — WARN, proceeding worker=$WORKER" >&2
       emit PROCEED
       ;;
   esac
@@ -1218,11 +1221,11 @@ is_int "$MAX_AGE" || { echo "bank-preflight: invalid CADENCE_USAGE_MAX_AGE '$MAX
 
 # Refresh first. USAGE_OAUTH_TTL=0 is load-bearing: the producer skips the
 # fetch when oauth_checked_at is younger than the default 3540s, and the
-# drift pair fires 30 min apart — without this, leg 2 is BANK-STALE every
+# drift pair fires 30 min apart — without this, worker 2 is BANK-STALE every
 # night. </dev/null is load-bearing too: the producer reads `input=$(cat)`
 # and blocks until EOF.
 if [ -z "${CADENCE_USAGE_SKIP_REFRESH:-}" ] && [ -f "$PRODUCER" ]; then
-  CLAUDE_USAGE_CACHE="$CACHE" USAGE_OAUTH_TTL=0 USAGE_PRODUCER_CALLER="bank-preflight/${LEG:-unknown}" \
+  CLAUDE_USAGE_CACHE="$CACHE" USAGE_OAUTH_TTL=0 USAGE_PRODUCER_CALLER="bank-preflight/${WORKER:-unknown}" \
     bash "$PRODUCER" </dev/null >/dev/null 2>&1 || true
 fi
 
@@ -1291,7 +1294,7 @@ fi
 
 [ "$usable" -eq 2 ] || echo "bank-preflight: degraded — one primary unusable" >&2
 
-# print the codex bank on the same line, so a console tick shows
+# print the codex bank on the same line, so a chief tick shows
 # which bucket is scarce. Informational ONLY — nothing below reads it, so no
 # codex state (missing, stale, failing, hung) can change a verdict or the rc.
 # Same source and spelling as tick.sh's `codex=` field: the cache-only claudex
@@ -1327,7 +1330,7 @@ _codex_bank_figure() {
 }
 codex_fig="$(_codex_bank_figure 2>/dev/null)" || codex_fig=""
 [ -n "$codex_fig" ] || codex_fig='?'
-echo "bank-preflight: leg=$LEG five_hour=${fh:-n/a} seven_day=${sd:-n/a} extra_usage=${xu:-n/a} age=${age}s codex=${codex_fig}" >&2
+echo "bank-preflight: worker=$WORKER five_hour=${fh:-n/a} seven_day=${sd:-n/a} extra_usage=${xu:-n/a} age=${age}s codex=${codex_fig}" >&2
 
 over() { is_num "$1" && awk -v a="$1" -v b="$MAX_PCT" 'BEGIN{exit !(a>=b)}'; }
 # per-window checks. A valid operator lift (usage-lift.sh) skips ONLY
@@ -1351,7 +1354,7 @@ else
   over "$sd" && over_sd=true
 fi
 if [ "$over_fh" = true ] || [ "$over_sd" = true ]; then
-  echo "bank-preflight: at/over ${MAX_PCT}% — skipping leg=$LEG" >&2
+  echo "bank-preflight: at/over ${MAX_PCT}% — skipping worker=$WORKER" >&2
   emit SKIPPED-BANK
 fi
 emit PROCEED

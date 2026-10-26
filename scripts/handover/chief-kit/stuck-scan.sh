@@ -3,12 +3,12 @@
 # holds, and records a disposition for each one. READ-ONLY apart from `dispose`.
 #
 #   stuck-scan.sh [--mirror DIR] [--version V] [--min N] [--repo owner/name]
-#   stuck-scan.sh dispose <KEY> RESUME <leg> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>
+#   stuck-scan.sh dispose <KEY> RESUME <worker> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>
 #
-# Scan: joins the Jira mirror (one <KEY>.md per issue), the live leg sessions
+# Scan: joins the Jira mirror (one <KEY>.md per issue), the live workers
 # (`pgrep -af 'claude .*-n HIMMEL-'`) and the open PRs (`gh pr list`). A ticket
 # in an in-work status, last updated more than --min minutes ago (default 30),
-# held by neither a live leg (session name HIMMEL-<n>-N...) nor an open PR
+# held by neither a live worker (session name HIMMEL-<n>-N...) nor an open PR
 # (key in its title or head branch) prints one line:
 #   STUCK <key> <status> <age>            age is Nm, Nh or Nd
 #   BLOCKED-BY <key> <ref>                its LATEST comment carries a line
@@ -32,15 +32,15 @@
 #
 # ponytail: an OPERATOR / PARKED / RESUME disposition does not silence the scan,
 # only the comment's own timestamp resets the --min clock; upgrade: honour them
-# until their ref or leg changes.
-# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only. needs
+# until their ref or worker changes.
+# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only. needs
 # gh, python3, and node for dispose.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
-    printf 'usage: stuck-scan.sh [--mirror DIR] [--version V] [--min N] [--repo owner/name]\n       stuck-scan.sh dispose <KEY> RESUME <leg> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>\n' >&2
+    printf 'usage: stuck-scan.sh [--mirror DIR] [--version V] [--min N] [--repo owner/name]\n       stuck-scan.sh dispose <KEY> RESUME <worker> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>\n' >&2
     exit 2
 }
 
@@ -56,7 +56,7 @@ if [ "${1:-}" = dispose ]; then
     fi
     body="$(mktemp "${TMPDIR:-/tmp}/stuck-scan-dispose.XXXXXX")" || exit 1
     trap 'rm -f "$body"' EXIT
-    printf 'DISPOSITION (%s): %s %s\n' "$(date +%Y-%m-%d)" "$verb" "$*" > "$body"  # gnu-ok: console kit is Linux-only
+    printf 'DISPOSITION (%s): %s %s\n' "$(date +%Y-%m-%d)" "$verb" "$*" > "$body"  # gnu-ok: chief kit is Linux-only
     # shellcheck disable=SC2086  # the command word-splits on purpose
     JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-${key%%-*}}" $STUCK_SCAN_JIRA_CMD comment "$key" --comment-file "$body"
     exit $?

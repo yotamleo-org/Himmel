@@ -10,7 +10,7 @@ HOP="$(cd "$(dirname "$0")" && pwd)/hop.sh"
 [ -x "$HOP" ] || chmod +x "$HOP"
 
 # hop infers its profile from the caller's role env; a test run
-# inside a console/leg must not inherit it.
+# inside a chief/worker must not inherit it.
 unset HOP_PROFILE HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_LEG
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
@@ -59,28 +59,28 @@ assert_contains "T1 embeds message in snapshot body" "test message" "$out"
 assert_contains "T1 operator command applies --settings" "claude --settings '" "$out"
 assert_contains "T1 default role profile is user" "/user.json'" "$out"
 out=$(env HIMMEL_CONSOLE_DOC=/x/doc.md bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
-assert_contains "T1 console hop uses the console profile" "/console.json'" "$out"
+assert_contains "T1 chief hop uses the chief profile" "/chief.json'" "$out"
 out=$(env HIMMEL_CONSOLE_LEG=1 bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
-assert_contains "T1 leg hop uses leg-impl" "/leg-impl.json'" "$out"
+assert_contains "T1 worker hop uses worker-impl" "/worker-impl.json'" "$out"
 out=$(env HOP_PROFILE=bare HIMMEL_CONSOLE_DOC=/x/doc.md bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
 assert_contains "T1 HOP_PROFILE overrides the inferred role" "/bare.json'" "$out"
 out=$(env HOP_PROFILE=no-such-profile bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
 rc=$?
 assert_rc "T1 unknown profile fails closed" 2 "$rc"
 out=$(env HIMMEL_CONSOLE_DOC=/x/doc.md bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --dry-run 2>&1)
-assert_contains "T2 schedule hop hands arm-resume the profile" "--profile console" "$out"
+assert_contains "T2 schedule hop hands arm-resume the profile" "--profile chief" "$out"
 
 # the profile is derived from the hopping session's handover doc
 # (role-profile.sh, as arm-resume does) when HOP_PROFILE is unset; env wins.
-printf '# leg\n> profile: design\nRETASK token T-x\n' > "$TMP/design-leg.md"
-printf '# leg\nRETASK token T-x\n' > "$TMP/plain-leg.md"
-out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/design-leg.md" --message m --print --dry-run 2>&1)
+printf '# worker\n> profile: design\nRETASK token T-x\n' > "$TMP/design-worker.md"
+printf '# worker\nRETASK token T-x\n' > "$TMP/plain-worker.md"
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/design-worker.md" --message m --print --dry-run 2>&1)
 assert_contains "T1b --doc with an explicit profile hops as design" "/design.json'" "$out"
-out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/plain-leg.md" --message m --print --dry-run 2>&1)
-assert_contains "T1b --doc leg doc hops as leg-impl" "/leg-impl.json'" "$out"
-out=$(env HIMMEL_CONSOLE_DOC="$TMP/design-leg.md" bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
+out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/plain-worker.md" --message m --print --dry-run 2>&1)
+assert_contains "T1b --doc worker doc hops as worker-impl" "/worker-impl.json'" "$out"
+out=$(env HIMMEL_CONSOLE_DOC="$TMP/design-worker.md" bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
 assert_contains "T1b HIMMEL_CONSOLE_DOC file is read for its role" "/design.json'" "$out"
-out=$(env HOP_PROFILE=bare bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/design-leg.md" --message m --print --dry-run 2>&1)
+out=$(env HOP_PROFILE=bare bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/design-worker.md" --message m --print --dry-run 2>&1)
 assert_contains "T1b HOP_PROFILE beats the doc" "/bare.json'" "$out"
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/no-such-doc.md" --message m --print --dry-run 2>&1)
 rc=$?

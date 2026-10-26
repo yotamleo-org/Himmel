@@ -13,7 +13,7 @@
 # remove-retired-plugin.sh already use, and the two leaking suites now pin it.
 #
 # WHY behavioral, not textual: a static grep for "does this suite mention
-# CLAUDE_CONFIG_DIR" has idiom blind spots — a sibling HIMMEL leg's own textual
+# CLAUDE_CONFIG_DIR" has idiom blind spots — a sibling HIMMEL worker's own textual
 # guard missed an in-process invocation this exact way. Instead, each suite
 # under test is run as a CHILD with HOME, USERPROFILE and CLAUDE_CONFIG_DIR all
 # pointed at a fresh sandbox holding a canary .claude/settings.json of known

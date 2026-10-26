@@ -61,7 +61,7 @@ scripts/lib/test-worktree-inuse.sh
 
 # --- handover + chief-kit (scripts/handover)
 # queue lock, merge gate and arm-resume are the load-bearing handover paths; flock is absent and /tmp is a symlink on macOS.
-scripts/handover/chief-kit/test-console-kit-e2e.sh
+scripts/handover/chief-kit/test-chief-kit-e2e.sh
 scripts/handover/chief-kit/test-cut-tag.sh
 scripts/handover/chief-kit/test-go.sh
 scripts/handover/chief-kit/test-ready-check.sh
@@ -70,7 +70,7 @@ scripts/handover/test-arm-resume-1879.sh
 scripts/handover/test-arm-resume-base.sh
 scripts/handover/test-arm-resume-wrapper-coverage.sh
 scripts/handover/test-handover-root-dotenv.sh
-scripts/handover/test-leg-handoff-threshold-docs.sh
+scripts/handover/test-worker-handoff-threshold-docs.sh
 scripts/handover/test-merge-forward-check.sh
 scripts/handover/test-merge-on-green.sh
 scripts/handover/test-pr-merge.sh

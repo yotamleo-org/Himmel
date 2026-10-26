@@ -12,7 +12,7 @@
 # inside it.
 #
 # Scope (matches the surfaces scripts/hooks/check-push-target.sh's own
-# ticket-ID scan covers, minus the fenced-off subtrees no leg may
+# ticket-ID scan covers, minus the fenced-off subtrees no worker may
 # edit): the STAGED `.pre-commit-config.yaml`'s `name:` fields, the STAGED
 # `.claude/commands/*.md` frontmatter `description:` line, and a STAGED
 # `scripts/hooks/*.sh`'s adopter-facing `echo`/`printf … >&2` deny messages

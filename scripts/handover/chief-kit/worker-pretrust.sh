@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # worker-pretrust.sh <lane> <dir>
 #
-# Pre-accept Claude Code's folder-trust state for a leg's working directory so a
-# headed leg does not park at the "Is this a project you trust?" prompt (the
+# Pre-accept Claude Code's folder-trust state for a worker's working directory so a
+# headed worker does not park at the "Is this a project you trust?" prompt (the
 # operator is not there to click it). Claude Code gates project hooks on the
 # same flag (hooksSkippedByTrust / hookModulesAwaitTrust read the trust state,
 # there is no separate hooks-approval key in the CLI), so the one
@@ -27,21 +27,28 @@ set -uo pipefail
 # shellcheck source=../../lib/git-clean.sh
 . "$(dirname "$0")/../../lib/git-clean.sh"
 git_env_scrub   # an inherited GIT_DIR would make the worktree check read the wrong repo
+# shellcheck source=scripts/lib/env-alias.sh
+. "$(dirname "$0")/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_PRETRUST_HOME LEG_PRETRUST_HOME
+alias_env WORKER_SESSION_PRETRUST_KEY LEG_PRETRUST_KEY
+alias_env WORKER_SESSION_PRETRUST_CONFIG LEG_PRETRUST_CONFIG
+alias_env WORKER_SESSION_PRETRUST_LOCK_TRIES LEG_PRETRUST_LOCK_TRIES
 
 lane="${1:-}"; dir="${2:-}"
 if [ -z "$lane" ] || [ -z "$dir" ]; then
-    echo "leg-pretrust: usage: worker-pretrust.sh <native|claudex|openrouter|deepseek> <dir>" >&2
+    echo "worker-pretrust: usage: worker-pretrust.sh <native|claudex|openrouter|deepseek> <dir>" >&2
     exit 2
 fi
-[ -d "$dir" ] || { echo "leg-pretrust: not a directory: $dir" >&2; exit 2; }
-command -v node >/dev/null 2>&1 || { echo "leg-pretrust: node not on PATH" >&2; exit 2; }
+[ -d "$dir" ] || { echo "worker-pretrust: not a directory: $dir" >&2; exit 2; }
+command -v node >/dev/null 2>&1 || { echo "worker-pretrust: node not on PATH" >&2; exit 2; }
 
 # The trailing "x" keeps $(...) from eating a newline that is part of the directory name.
-abs="$(cd -P "$dir" 2>/dev/null && pwd -P && printf x)" || { echo "leg-pretrust: cannot resolve: $dir" >&2; exit 2; }
+abs="$(cd -P "$dir" 2>/dev/null && pwd -P && printf x)" || { echo "worker-pretrust: cannot resolve: $dir" >&2; exit 2; }
 abs="${abs%x}"; abs="${abs%$'\n'}"   # drop the x, then the one newline pwd added
-home="$(cd -P "${WORKER_SESSION_PRETRUST_HOME:-${LEG_PRETRUST_HOME:-$HOME}}" 2>/dev/null && pwd -P)" || { echo "leg-pretrust: cannot resolve HOME" >&2; exit 2; }  # WORKER_SESSION_PRETRUST_HOME: test seam
+home="$(cd -P "${WORKER_SESSION_PRETRUST_HOME:-$HOME}" 2>/dev/null && pwd -P)" || { echo "worker-pretrust: cannot resolve HOME" >&2; exit 2; }  # WORKER_SESSION_PRETRUST_HOME: test seam
 
-refuse() { echo "leg-pretrust: REFUSED $abs: $1" >&2; exit 3; }
+refuse() { echo "worker-pretrust: REFUSED $abs: $1" >&2; exit 3; }
 
 case "$abs" in
     *$'\n'*|*/) refuse "path has a newline or ends in / (it would not round-trip as a projects key)" ;;
@@ -68,7 +75,7 @@ case "$lane" in
     claudex) cfg="$home/.claude-codex/.claude.json" ;;
     openrouter) cfg="$home/.claude-openrouter/.claude.json" ;;
     deepseek) cfg="$home/.claude-deepseek/.claude.json" ;;
-    *) echo "leg-pretrust: unknown lane: $lane" >&2; exit 2 ;;
+    *) echo "worker-pretrust: unknown lane: $lane" >&2; exit 2 ;;
 esac
 # Jailed rows: claude runs inside a bwrap jail where the
 # worktree is bound at another path and ~/.claude-<lane> is a per-row copy, so the
@@ -80,23 +87,23 @@ esac
 # config. The key is honoured only with the config, as <repo>/.claude/worktrees/<same
 # last component as the checked dir> with no empty or dot segment (the jail re-binds
 # the same worktree, it never trusts a different one).
-WORKER_SESSION_PRETRUST_KEY="${WORKER_SESSION_PRETRUST_KEY:-${LEG_PRETRUST_KEY:-}}"
-WORKER_SESSION_PRETRUST_CONFIG="${WORKER_SESSION_PRETRUST_CONFIG:-${LEG_PRETRUST_CONFIG:-}}"
+WORKER_SESSION_PRETRUST_KEY="${WORKER_SESSION_PRETRUST_KEY:-}"
+WORKER_SESSION_PRETRUST_CONFIG="${WORKER_SESSION_PRETRUST_CONFIG:-}"
 if [ -n "${WORKER_SESSION_PRETRUST_KEY}" ] && [ -z "${WORKER_SESSION_PRETRUST_CONFIG}" ]; then
     refuse "WORKER_SESSION_PRETRUST_KEY is honoured only together with WORKER_SESSION_PRETRUST_CONFIG"
 fi
 if [ -n "${WORKER_SESSION_PRETRUST_CONFIG}" ]; then
     case "$WORKER_SESSION_PRETRUST_CONFIG" in
         /*/.claude.json) cfg="$WORKER_SESSION_PRETRUST_CONFIG" ;;
-        *) echo "leg-pretrust: WORKER_SESSION_PRETRUST_CONFIG must be an absolute path ending in /.claude.json" >&2; exit 2 ;;
+        *) echo "worker-pretrust: WORKER_SESSION_PRETRUST_CONFIG must be an absolute path ending in /.claude.json" >&2; exit 2 ;;
     esac
     cfgdir="$(cd -P "$(dirname "$cfg")" 2>/dev/null && pwd -P)" || cfgdir=""
-    [ -n "$cfgdir" ] || { echo "leg-pretrust: lane config dir absent (launcher not seeded yet): $(dirname "$cfg")" >&2; exit 4; }
+    [ -n "$cfgdir" ] || { echo "worker-pretrust: lane config dir absent (launcher not seeded yet): $(dirname "$cfg")" >&2; exit 4; }
     case "$cfgdir" in
         "$home"|"$home/.claude-codex"|"$home/.claude-openrouter"|"$home/.claude-deepseek"|"$home/.claude-glm"|"$home/.claude-routed") refuse "WORKER_SESSION_PRETRUST_CONFIG is a real lane config" ;;
     esac
     [ -O "$cfgdir" ] || refuse "WORKER_SESSION_PRETRUST_CONFIG dir is not owned by the current user"
-    for f in "$cfg" "$cfg.lock" "$cfg.leg-pretrust.owner"; do
+    for f in "$cfg" "$cfg.lock" "$cfg.worker-pretrust.owner"; do
         [ ! -L "$f" ] || refuse "$f is a symlink (a jailed lane could point it outside the row)"
     done
 fi
@@ -109,7 +116,7 @@ if [ -n "${WORKER_SESSION_PRETRUST_KEY}" ]; then
 fi
 # Never create a lane config dir: the lane launcher seeds it, and a dir it did not
 # seed reads to it as a half-seeded one.
-[ -d "$(dirname "$cfg")" ] || { echo "leg-pretrust: lane config dir absent (launcher not seeded yet): $(dirname "$cfg")" >&2; exit 4; }
+[ -d "$(dirname "$cfg")" ] || { echo "worker-pretrust: lane config dir absent (launcher not seeded yet): $(dirname "$cfg")" >&2; exit 4; }
 
 # Take the lock claude itself takes when it saves this file (claude 2.1.295
 # saveConfigWithLock: proper-lockfile with lockfilePath "<cfg>.lock" - a mkdir
@@ -119,7 +126,7 @@ fi
 # ponytail: pid reuse can keep a dead owner "alive", a pid on another host is
 # not checked; upgrade path is a host+start-time stamp in the sidecar.
 lock="$cfg.lock"
-owner="$cfg.leg-pretrust.owner"
+owner="$cfg.worker-pretrust.owner"
 mtime_of() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
 # Stale = claude's own rule (no mtime refresh for >10 s) AND no live owner of ours.
 lock_reclaimable() {
@@ -130,7 +137,7 @@ lock_reclaimable() {
     [ -n "$opid" ] && kill -0 "$opid" 2>/dev/null && return 1
     return 0
 }
-tries="${WORKER_SESSION_PRETRUST_LOCK_TRIES:-${LEG_PRETRUST_LOCK_TRIES:-150}}"   # x 0.1 s; > a 10 s stale window. WORKER_SESSION_PRETRUST_LOCK_TRIES: test seam
+tries="${WORKER_SESSION_PRETRUST_LOCK_TRIES:-150}"   # x 0.1 s; > a 10 s stale window. WORKER_SESSION_PRETRUST_LOCK_TRIES: test seam
 waited=0
 until mkdir "$lock" 2>/dev/null; do
     # A reclaim that cannot remove the dir falls through to the timeout count below.
@@ -138,7 +145,7 @@ until mkdir "$lock" 2>/dev/null; do
         continue
     fi
     waited=$((waited + 1))
-    [ "$waited" -le "$tries" ] || { echo "leg-pretrust: lock timeout: $lock" >&2; exit 5; }
+    [ "$waited" -le "$tries" ] || { echo "worker-pretrust: lock timeout: $lock" >&2; exit 5; }
     sleep 0.1
 done
 # The sidecar may be stale or a planted symlink: drop it (rm never follows) and create
@@ -156,12 +163,12 @@ let p = process.env.WT_CONFIG;
 // Seam mode: the jailed lane can swap the config for a symlink after bash checked it, so
 // refuse a link here (lstat) and read through O_NOFOLLOW; the rename replaces a link, never follows it.
 const seam = process.env.WT_SEAM === "1";
-const refuseLink = () => { console.error("leg-pretrust: " + p + " is a symlink (seam mode) - refusing"); process.exit(3); };
+const refuseLink = () => { console.error("worker-pretrust: " + p + " is a symlink (seam mode) - refusing"); process.exit(3); };
 try { if (seam && fs.lstatSync(p).isSymbolicLink()) refuseLink(); } catch (e) { if (e.code !== "ENOENT") throw e; }
 // Seam mode never resolves the path (a second lstat or link resolution is itself a race window).
 if (!seam) try { if (fs.lstatSync(p).isSymbolicLink()) p = fs.realpathSync(p); } catch (e) {
-    if (e.code !== "ENOENT") { console.error("leg-pretrust: cannot resolve " + p + " (" + e.message + ")"); process.exit(4); }
-    try { fs.lstatSync(p); console.error("leg-pretrust: " + p + " is a dangling symlink - refusing to write"); process.exit(4); } catch (_) {}
+    if (e.code !== "ENOENT") { console.error("worker-pretrust: cannot resolve " + p + " (" + e.message + ")"); process.exit(4); }
+    try { fs.lstatSync(p); console.error("worker-pretrust: " + p + " is a dangling symlink - refusing to write"); process.exit(4); } catch (_) {}
 }
 const obj = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const sig = () => { try { const s = seam ? fs.lstatSync(p) : fs.statSync(p); return s.mtimeMs + ":" + s.size; } catch (_) { return "none"; } };
@@ -179,15 +186,15 @@ for (let attempt = 0; attempt < 5; attempt++) {
     } catch (e) {
         if (e.code === "ELOOP") refuseLink();
         if (e.code !== "ENOENT") {
-            console.error("leg-pretrust: cannot use " + p + " (" + e.message + ") - refusing to overwrite");
+            console.error("worker-pretrust: cannot use " + p + " (" + e.message + ") - refusing to overwrite");
             process.exit(4);
         }
     }
-    if (!obj(j)) { console.error("leg-pretrust: " + p + " is not a JSON object - refusing to overwrite"); process.exit(4); }
+    if (!obj(j)) { console.error("worker-pretrust: " + p + " is not a JSON object - refusing to overwrite"); process.exit(4); }
     // A present-but-non-object projects / projects[key] is data we do not own: refuse, never overwrite.
-    if (j.projects !== undefined && !obj(j.projects)) { console.error("leg-pretrust: " + p + " has a non-object projects - refusing to overwrite"); process.exit(4); }
+    if (j.projects !== undefined && !obj(j.projects)) { console.error("worker-pretrust: " + p + " has a non-object projects - refusing to overwrite"); process.exit(4); }
     if (j.projects === undefined) j.projects = {};
-    if (j.projects[key] !== undefined && !obj(j.projects[key])) { console.error("leg-pretrust: " + p + " has a non-object projects[" + key + "] - refusing to overwrite"); process.exit(4); }
+    if (j.projects[key] !== undefined && !obj(j.projects[key])) { console.error("worker-pretrust: " + p + " has a non-object projects[" + key + "] - refusing to overwrite"); process.exit(4); }
     if (j.projects[key] === undefined) j.projects[key] = {};
     // the deepseek lane (its own config dir, never approved) also stops at the
     // "Allow external CLAUDE.md imports?" prompt, so its project key gets those two flags too.
@@ -209,10 +216,10 @@ for (let attempt = 0; attempt < 5; attempt++) {
         process.exit(0);
     } catch (e) {
         try { fs.unlinkSync(tmp); } catch (_) {}
-        console.error("leg-pretrust: could not write " + p + ": " + e.message);
+        console.error("worker-pretrust: could not write " + p + ": " + e.message);
         process.exit(4);
     }
 }
-console.error("leg-pretrust: " + p + " kept changing under us - gave up without writing");
+console.error("worker-pretrust: " + p + " kept changing under us - gave up without writing");
 process.exit(4);
 '

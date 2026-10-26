@@ -4,17 +4,17 @@ Read on demand from `chief-template.md` `## Wrapping a worker`. Moved verbatim f
 
 ## Wrapping a worker
 
-**The waiter wraps workers; do not run `leg-event` / `close-wrapped-leg` by hand;
+**The waiter wraps workers; do not run `worker-event` / `close-wrapped-worker` by hand;
 run any other bounded script as `timeout 90` in the foreground.** A waiter armed
-with `--doc` and `--legs-from` runs `leg-event.sh` itself on every new `WRAPPED`
+with `--doc` and `--workers-from` runs `worker-event.sh` itself on every new `WRAPPED`
 or `MERGED` worker (`waiter.md`, the script relay) and wakes you only with
-`WAKE leg-event <line> out=<file>` when it could not. A `leg-event.sh` re-run on a
+`WAKE worker-event <line> out=<file>` when it could not. A `worker-event.sh` re-run on a
 worker already closed prints `HANDLED noop <label>`. The paths below are for that
-wake, or a chief armed without `--legs-from`.
+wake, or a chief armed without `--workers-from`.
 
 **One call per message.** Write the worker's `MERGED` or
 `WRAPPED` message to a file and run
-`bash scripts/handover/chief-kit/leg-event.sh --doc <console doc> --fleet <manifest> <message-file>`.
+`bash scripts/handover/chief-kit/worker-event.sh --doc <chief doc> --fleet <manifest> <message-file>`.
 It finds the worker doc by the message's `N<k>` label and runs
 `chief-kit/wrap-merged.sh` (PR state, close, pull, Results bullet, board). `HANDLED ...`
 means done; `ESCALATE <reason>` means do the steps below by hand. After a `MERGED` it
@@ -25,17 +25,17 @@ ends `station=pending log=<file>` at once; the tick carries the verdict as `stat
 until the next sync. A station-local edit against the shipped version is printed in the
 log as `LOCAL-DIFF <component> <file>` and the template apply is refused for it:
 upstream the edit or drop it, never discard it silently. You can run
-`wrap-merged.sh --doc <console doc> --fleet <manifest> <leg doc> [--pr <n>]`
+`wrap-merged.sh --doc <chief doc> --fleet <manifest> <worker doc> [--pr <n>]`
 directly when you already hold the worker doc. The hand sequence below is the
 fallback, not the default: a measured chief spent 7 to 9 full-context turns
 per MERGED/WRAPPED on it (HIMMEL-5592).
 
-For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-leg.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
+For a batch close, run `bash scripts/handover/chief-kit/close-wrapped-worker.sh --sweep --fleet <manifest>`: it closes only WRAPPED, lock-free workers, skips held or live workers, and continues after an already-pruned worktree.
 To close every finished window across chiefs, run
-`bash scripts/handover/chief-kit/close-wrapped-legs.sh [--check] [<manifest>...]`.
+`bash scripts/handover/chief-kit/close-wrapped-workers.sh [--check] [<manifest>...]`.
 It runs that sweep once per manifest and goes on after a failed one. With no
 manifest it sweeps every `*.fleet.json` in the bucket changed in the last 24 h
-(`CLOSE_WRAPPED_LEGS_MAX_AGE_MIN`), predecessor chiefs' manifests included.
+(`CLOSE_WRAPPED_WORKERS_MAX_AGE_MIN`), predecessor chiefs' manifests included.
 It ends with `sweeps: manifests=<n> failed=<n> gone=<n>`, where `gone` counts
 WRAPPED workers with no live session left to close.
 
@@ -46,7 +46,7 @@ never a chain or a `VAR=` prefix:
 
 | Instead of | Hand the operator |
 |---|---|
-| closing wrapped windows one by one | `! bash scripts/handover/chief-kit/close-wrapped-legs.sh` |
+| closing wrapped windows one by one | `! bash scripts/handover/chief-kit/close-wrapped-workers.sh` |
 | `HANDOVER_DIR=… JIRA_PROJECT_KEY=… node …/dist/index.js <op> …` | `! node <primary>/scripts/jira/dist/index.js <op> …`, run from any himmel checkout: the CLI resolves both keys itself from the primary checkout's config (its `.env` today) |
 | `for id in …; do gh run cancel $id; done` | `! bash scripts/handover/chief-kit/cancel-runs.sh --keep-pr <n> --live` (or `--all --live`; a dry run without `--live`) |
 | `cd <worktree> && bash scripts/<x>.sh …` | `! bash <worktree>/scripts/<x>.sh …` (the script finds its own checkout) |
@@ -56,8 +56,8 @@ A chain that skips a gate, such as a vault commit with `SKIP=gitleaks`, gets no
 wrapper: hand the operator the steps and the reason the gate refused.
 
 On `WRAPPED`: confirm the lock is free at the ROOT sweep, then close the
-worker's window with `bash scripts/handover/chief-kit/close-wrapped-leg.sh
-<leg-doc>` — it verifies the lock is free and the doc's last
+worker's window with `bash scripts/handover/chief-kit/close-wrapped-worker.sh
+<worker-doc>` — it verifies the lock is free and the doc's last
 Results marker is `WRAPPED`, signals the exactly-one live session that
 matches the worker (never a guess), and prunes ITS worktree once the PR is
 merged, all with no operator `!` step. Never run the
@@ -69,10 +69,10 @@ candidate. A worktree reported "in use" immediately after a wrap is the worker's
 own end-of-session hook still writing — re-run `--only` on it shortly.
 
 After the signal the close also digests the worker's session into the
-failure-loop ledgers (`chief-kit/leg-digest-step.sh`) and
+failure-loop ledgers (`chief-kit/worker-digest-step.sh`) and
 prints exactly one line about it. The line is informational: it never changes
 the close's exit code or any other output line, and it never delays the close
-past its hard timeout (`CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT`, default 120 s).
+past its hard timeout (`CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT`, default 120 s).
 
 | `digest=` line | Meaning |
 |---|---|
@@ -84,8 +84,8 @@ past its hard timeout (`CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT`, default 120 s).
 | `digest=skipped:no-session` | no session id could be read; nothing written |
 
 A worker closed without the script (or a failed digest you want retried) is
-digested afterwards with `bash scripts/handover/chief-kit/leg-digest-step.sh
---doc <leg-doc>` (spec §1.2 fallback): it finds the worker's sessions by name,
+digested afterwards with `bash scripts/handover/chief-kit/worker-digest-step.sh
+--doc <worker-doc>` (spec §1.2 fallback): it finds the worker's sessions by name,
 `resume_cwd` and the doc's LIVE..WRAPPED window and prints one
 `<session> digest=…` line per session, or `digest=skipped:no-chain`. The
 `traj=` fields are recorded only — `rbg` and `vbc` are unreliable,

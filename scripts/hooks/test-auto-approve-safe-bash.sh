@@ -873,7 +873,7 @@ isg -C "$IS_A" checkout -q main
 IS_OUT=$(j_bash_cwd "$IS_W" "$IS_REL $IS_R" | env -u HIMMEL_REPO bash "$HOOK" 2>/dev/null)
 assert "ctl: is HIMMEL_REPO unset"           PASS "$(grepq "$IS_OUT" '"permissionDecision":"allow"' && echo ALLOW || echo PASS)"
 assert "impacted-suites listing, anchor back on main" ALLOW "$(is_dec "$IS_W" "$IS_REL $IS_R")"
-# CONTROLS — console review of PR 1143. On POSIX a drive-letter or backslash
+# CONTROLS — chief review of PR 1143. On POSIX a drive-letter or backslash
 # word is checked as one path (`\`→`/`, resolved from the hook's cwd) but run
 # as another (a cwd-relative file bash finds by its literal name), so neither
 # spelling is in this grammar; and the root comes only from an absolute

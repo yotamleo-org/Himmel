@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# tick.sh — one wake-up-budgeted console snapshot.
+# tick.sh — one wake-up-budgeted chief snapshot.
 #
 # Default output is exactly one batched line. --verbose renders the same
 # snapshot as labelled human-readable lines. Configuration can come from env
-# (DOC, TOKEN, LEGS, HANDOVER_DIR, REPO) or the matching long options below;
-# no console document, token, leg, handover root, or checkout is embedded.
-# Relative DOC/LEGS values resolve under the handover root. When HANDOVER_DIR is
+# (DOC, TOKEN, WORKERS, HANDOVER_DIR, REPO) or the matching long options below;
+# no chief document, token, worker, handover root, or checkout is embedded.
+# Relative DOC/WORKERS values resolve under the handover root. When HANDOVER_DIR is
 # a global state root, include the bucket prefix (for example <user>/<repo>/...).
 #
-# PLATFORM GUARD: no .ps1 twin, by design. This console kit is Linux-only:
+# PLATFORM GUARD: no .ps1 twin, by design. This chief kit is Linux-only:
 # it observes pgrep, atq, /tmp suite locks, and the claudex/konsole lane.
 # Bash 3.2-compatible; no associative arrays or mapfile.
 set -uo pipefail
@@ -35,29 +35,38 @@ GH_READ_BIN="$HERE/../../lib/gh-read.sh"
 if . "$HERE/../../lib/load-dotenv.sh" 2>/dev/null; then load_dotenv HANDOVER_DIR 2>/dev/null || true; fi
 # shellcheck source=../../lib/handover-path.sh
 . "$HERE/../../lib/handover-path.sh"
-# shellcheck source=../../lib/leg-identity.sh
+# shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+alias_env WORKERS LEGS
+alias_env WORKERS_FROM LEGS_FROM
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CADENCE_USAGE_LANE CADENCE_BANK_LANE
+alias_env HIMMEL_WORKER_SESSION_FAILURES_LEDGER HIMMEL_LEG_FAILURES_LEDGER
+alias_env WORKER_SESSION_DIGEST_STATE_DIR LEG_DIGEST_STATE_DIR
+alias_env WORKER_SESSION_LANE LEG_LANE
 
 usage() {
     cat <<'USAGE'
 usage: tick.sh [--verbose] [--burn] [--emit-fp] [--doc PATH] [--token TOKEN]
-               [--legs "DOC ..."] [--legs-from MANIFEST] [--handover-dir DIR]
+               [--workers "DOC ..."] [--workers-from MANIFEST] [--handover-dir DIR]
                [--repo DIR]
 
-env equivalents: DOC TOKEN LEGS LEGS_FROM HANDOVER_DIR REPO
-Relative DOC/LEGS resolve under the handover root; include the bucket prefix
+env equivalents: DOC TOKEN WORKERS WORKERS_FROM HANDOVER_DIR REPO
+Relative DOC/WORKERS resolve under the handover root; include the bucket prefix
 when HANDOVER_DIR names a global state root.
 
---legs-from MANIFEST (HIMMEL-3748) reads the leg docs from a fleet manifest
+--workers-from MANIFEST (HIMMEL-3748) reads the leg docs from a fleet manifest
 (chief-kit/fleet-manifest.sh writes it) on every run, so a dispatch or wrap
 edits that file and a waiter forwarding the same argv needs no restart. Its
-legs join any --legs ones (a doc on both is judged once). A manifest that is
+legs join any --workers ones (a doc on both is judged once). A manifest that is
 missing or not valid schema-1 JSON fails the tick (rc 1, no TICK line) -- never
 an empty leg set that reads as every leg gone.
 
---legs accepts space- and/or comma-separated leg docs -- both spellings
-produce identical output: --legs "N1.md N2.md" and --legs "N1.md,N2.md" are
-the same list. A --legs entry that does not resolve to a readable file prints
+--workers accepts space- and/or comma-separated leg docs -- both spellings
+produce identical output: --workers "N1.md N2.md" and --workers "N1.md,N2.md" are
+the same list. A --workers entry that does not resolve to a readable file prints
 a "tick: no such leg doc: <path>" warning on stderr and is reported as
 NOTFOUND in workers=, never as MISSING -- MISSING is reserved for a lock that is
 actually gone.
@@ -76,7 +85,7 @@ HIMMEL-5116) took a row since the console lock's start: <rows> FLAKE rows,
 <suites> distinct suites, the suite flaked most and its repeat count (the
 per-row suite, case, sha and run: scripts/observability/suite-flake-summary.sh
 --format detail). flakes=? when the ledger is unreadable. Advisory: not in
-console-wait's action key, so it wakes nothing. Env seams: SUITE_FLAKE_LEDGER,
+chief-wait's action key, so it wakes nothing. Env seams: SUITE_FLAKE_LEDGER,
 SUITE_FLAKE_REPO_ID, SUITE_FLAKE_TAIL_ROWS.
 
 cachettl=<leg>[,<leg>] names live legs idle at least 50 minutes since the last
@@ -89,48 +98,48 @@ before spare= when present, and is ABSENT
 unless a leg's newest trust-ledger row (scripts/trust/shadow-ledger.mjs) is a
 permission prompt older than TICK_PARKED_MIN minutes (default 5): the leg is parked on
 the auto-mode confirmation dialog, which its fresh lock heartbeat hides. Names only
-wake console-wait.sh (a leg joining or leaving the set), never the age. Read via
+wake chief-wait.sh (a leg joining or leaving the set), never the age. Read via
 parked-on-prompt.sh; env seams HIMMEL_TRUST_LEDGER_DIR, TICK_PARKED_TAIL_BYTES.
 
 holds=<leg>:<age>m[,...] (HIMMEL-4949) follows acts= and is ABSENT unless a leg's newest
 Results marker is BLOCKED (or a FINDING whose bullet says it awaits the console, needs a
 ruling, or what the console owes) and its doc has not been written for TICK_HOLD_MIN minutes (default 20): a
 leg parked on a ruling the console may not know it owes, which a repeated BLOCKED bullet never
-shows in tails=. console-wait.sh keys on the names only, so each leg ENTERING the set wakes
+shows in tails=. chief-wait.sh keys on the names only, so each leg ENTERING the set wakes
 the console once; the age growing or a leg leaving never does.
 
 focus=<state> sdrift=<n>:<sig8> (HIMMEL-6829) follow wt-ceiling= and are ABSENT unless a
 focus-state file sits beside the console doc and --status does not read skip: focus= is
 focus-refresh.sh --status (FAILED:<stage> or DIRTY:<age>), sdrift= the drift line of the
 last good refresh. focus=ok and sdrift=0:* are elided; --verbose prints both. Read from
-the state file, no gh or Jira call. Advisory: not in console-wait's action key.
+the state file, no gh or Jira call. Advisory: not in chief-wait's action key.
 
 rm-queue=<n>,<oldest age>m[,run] (HIMMEL-7641) follows leaks= and is ABSENT unless the console doc has a
 `release:` line and a request is open (0 and skip are elided; ? = the state read failed). An oldest open
 request past TICK_RMRUN_MIN minutes (default 30) with the lease free launches one detached `jira release
 rm-run <R>` (at most one per TICK_RMRUN_MIN_SECS, default 600) and appends `,run`; its output goes to
 $TICK_STATE_DIR/tick-rm-run.log. Env seams: TICK_RMQ_PROBE, TICK_RMRUN_PROBE, TICK_RMRUN_LAUNCHER,
-TICK_RMQ_TIMEOUT. Not in console-wait's action key.
+TICK_RMQ_TIMEOUT. Not in chief-wait's action key.
 
 tmp=<pct>[!] (HIMMEL-4316) sits just before spare= and is ABSENT when df on
 TICK_TMP_DIR (default /tmp) is unreadable. ! marks TICK_TMP_WARN percent
-(default 80) or more. Read-only, never reaps, and not in console-wait's action
+(default 80) or more. Read-only, never reaps, and not in chief-wait's action
 key, so it wakes nothing. Env seams: TICK_TMP_DIR, TICK_TMP_WARN, TICK_DF.
 
 spare=<pct>@<h>h (HIMMEL-4421) is the very last field and is ABSENT unless the
 weekly quota the current burn leaves unspent at the reset (usage-monitor.sh
 --spare) is >= TICK_SPARE_MIN percent (default 10) and the reset is <=
-TICK_SPARE_HOURS hours away (default 24). Advisory: it is not in console-wait's
+TICK_SPARE_HOURS hours away (default 24). Advisory: it is not in chief-wait's
 action key and wakes nothing.
 
 fails=<n>/<legs>[@<top-class>*<k>][!<recur>][~<skipped>] (HIMMEL-4670) sits just
-before spare=: this shift's leg-failures ledger rows (since the console lock's
+before spare=: this shift's worker-failures ledger rows (since the console lock's
 start), distinct legs, the class most legs hit, the classes the failure router
 acted on this shift, and ~<skipped> the leg docs whose wrap digest was skipped
-this shift (HIMMEL-4786, leg-digest-step.sh's skips.jsonl; none~<k> with only
+this shift (HIMMEL-4786, worker-digest-step.sh's skips.jsonl; none~<k> with only
 skips). fails=none with no rows, fails=? when a ledger or the lock start is
 unreadable or the latest wrap digest failed, skip with no --doc. Advisory: not in
-console-wait's action key, so it wakes nothing. Env seams:
+chief-wait's action key, so it wakes nothing. Env seams:
 HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER, HIMMEL_FAILURE_ROUTES_LOG,
 WORKER_SESSION_DIGEST_STATE_DIR.
 
@@ -143,7 +152,7 @@ after gql: the REST core budget of the main token and of the read-only token
 (himmel_github_token_vm2) from `gh api rate_limit` (gh-read.sh gh_read_rates).
 Under 10 % remaining a field ends !LOW. Absent when a budget cannot be read or no
 read token is configured; the verbose view prints them as "rest main:" and
-"rest read:" lines. Advisory: not in console-wait's action key.
+"rest read:" lines. Advisory: not in chief-wait's action key.
 
 orphans=<owner>:<count>/<oldest>m (HIMMEL-2761) is the last field: shell-tool
 wrappers older than TICK_ORPHAN_MIN minutes (default 30), per owning session
@@ -158,14 +167,14 @@ deadwin=<label>:closed|held[,...] (HIMMEL-6118) follows closable= and is ABSENT
 unless a leg konsole (tabtitle HIMMEL-<n>-N<k>-...) has no child process and is
 older than TICK_DEADWIN_GRACE seconds (default 30): its session died. :closed =
 tick TERMed the window (the leg's lock is FREE/WRAPPED, or a live <tabtitle>-r<n>
-window exists); :held = reported only. console-wait.sh wakes when it appears or
+window exists); :held = reported only. chief-wait.sh wakes when it appears or
 changes. Env seam: TICK_KILL_BIN.
 
 workers= (legs= in an older tick) reads a worker's lock as FRESH or STALE (held; an idle-warned lock still reads
 FRESH/STALE here -- the IDLE-HELD? flag belongs to the sweep and the exit code),
 CLOSABLE (HIMMEL-3747: lock released, the tail says WRAPPED, AND the leg's own
 session process is still alive in the census -- the window is sitting there
-finished but not yet closed; console-wait.sh wakes on this the same way it
+finished but not yet closed; chief-wait.sh wakes on this the same way it
 wakes on any other workers= change, since it samples the whole field, so no
 change was needed there), WRAPPED (lock released and the tail says WRAPPED,
 but either no live session matched or the census itself could not be read --
@@ -180,7 +189,7 @@ it; HIMMEL-3290), CORRUPT, UNKNOWN (queue-lock status unreadable) or NOTFOUND
 (no such doc).
 
 workerset=<ok|STALE:unarmed=A+B;unlisted=C|unknown|skip> (legset= in an older tick; HIMMEL-3293) compares
-this console's `## Live state` legs with the --legs arm. unarmed = listed in
+this console's `## Live state` legs with the --workers arm. unarmed = listed in
 Live state but not in the arm; unlisted = in the arm, not held, and absent from
 Live state. STALE means the arm is out of date -- re-arm the tick with the
 current leg docs (absolute paths) -- and is never leg trouble. livestate=DRIFT
@@ -209,7 +218,7 @@ an accepted relay). UNCONFIRMED wins the field when both occur.
 unknown = the doc name carries no console letter or has no `legs:` line.
 
 board=<ok|STALE:<age>|MISSING|skip> (HIMMEL-3361) is the freshness of the
-console's progress board, console-board.html next to the console doc (rendered
+console's progress board, chief-board.html next to the console doc (rendered
 by board.mjs -- the ACTION ZERO board step + the standing rule: on every dispatch, GO,
 MERGED and WRAPPED, re-render and republish it). ok = the board's embedded
 fingerprint equals the one recomputed here from what a board shows (leg locks,
@@ -233,10 +242,10 @@ not reach Telegram, and how long ago. A delivered alert removes the marker. Foll
 vault=<ok|STALL:<age>,<n>|PUSH-LAG:<age>|skip|unknown> (HIMMEL-4911) is the luna
 vault's commit health, from vault-status.sh (git plumbing only, fail-soft): STALL =
 <n> staged/modified files, the oldest <age> old (the vault's auto-commit is stuck;
-reproduce with the vault's pre-commit hook run, see console-wait.sh), PUSH-LAG = local commits
+reproduce with the vault's pre-commit hook run, see chief-wait.sh), PUSH-LAG = local commits
 unpushed for <age>. skip = no vault configured (TICK_VAULT_DIR, else the handover
 root's parent). Thresholds: TICK_VAULT_STALL_MIN (20), TICK_VAULT_PUSHLAG_MIN (60).
-Sits between tracker= and denials=; console-wait.sh wakes on a class change to
+Sits between tracker= and denials=; chief-wait.sh wakes on a class change to
 STALL/PUSH-LAG only.
 
 cloud=<ok|STALL:<ticket>[,<ticket>...]|skip> (HIMMEL-5163) is the liveness of the
@@ -246,12 +255,12 @@ PR with no CLOUD-DONE and no commit for M min, or a CLOUD-DONE no live leg doc n
 skip = no tsv, no --doc, or the forge unreadable. ONE `gh pr list` (inside the gql
 budget) and one ls-remote, both timeout-bounded. Thresholds: CLOUD_LIVENESS_BRANCH_MIN
 (30), _PR_MIN (60), _DONE_MIN (15), _WINDOW_H (48). Sits after vault=;
-console-wait.sh wakes on a class change to STALL only. board.mjs lists each session.
+chief-wait.sh wakes on a class change to STALL only. board.mjs lists each session.
 
 stall=<pr>:<class>[,<pr>:<class>...] (HIMMEL-6049) is the open PRs pr-stall.sh calls stuck
 (conflict, no-ci, ci-slow, idle), himmel's own repo only. Absent when none is stuck; a failed
 probe reads the last cached value, else ?. The value (a failure too) is cached
-TICK_STALL_TTL_MIN minutes (default 5, 0 = off) in TICK_STALL_CACHE. console-wait.sh wakes once
+TICK_STALL_TTL_MIN minutes (default 5, 0 = off) in TICK_STALL_CACHE. chief-wait.sh wakes once
 per new conflict or no-ci token and keeps its saved set on ?.
 
 crfirst=#<pr>:<reason>:<age>[,...] is the non-fork PR heads whose heavy-CI `ci:go`
@@ -260,7 +269,7 @@ a head labelled by hand. The tick calls scripts/lib/cr-first-release.sh once per
 from the same `gh pr list` read as prs= (no second list); a head that passes is released right
 there. Absent when the CI_GO_GATE repository variable is off or unset, or nothing is held. A
 hard reviewer outage also prints one `ACTION cr-first ...` line per outage. Himmel's own repo
-only. console-wait.sh does not wake on it.
+only. chief-wait.sh does not wake on it.
 
 dispatch=<run>:<leg>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]
 (HIMMEL-7479) is the in-flight workflow_dispatch runs on a leg's branch (a run a leg started by
@@ -269,7 +278,7 @@ runs list per tick plus one jobs read per run, at most TICK_DISPATCH_MAX (5). la
 percent of the largest job timeout in the run's workflow file; idle = no job started or finished
 for TICK_DISPATCH_IDLE_MIN (30) min; orphan = no held leg on its ticket; stale-head = the open
 PR's head moved on (report-only). late, idle and orphan each print one `ACTION dispatch-stall`
-line; console-wait.sh keys on those runs only, so a healthy run's elapsed time never wakes it.
+line; chief-wait.sh keys on those runs only, so a healthy run's elapsed time never wakes it.
 
 denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK] (HIMMEL-3724) is classifier
 denials seen by scripts/hooks/log-classifier-denial.sh in a trailing window
@@ -297,7 +306,7 @@ probe per tick (bounded by TICK_CIQ_TIMEOUT seconds, default 45). SATURATED =
 jobs_in_progress at the cap on two consecutive probes: hold dispatches until it
 clears. ciq=unknown = the probe failed, timed out or is missing; it neither
 sets nor clears the saturation state ($TICK_STATE_DIR/tick-ciq-last, default
-~/.himmel/state). Not part of console-wait's wake key.
+~/.himmel/state). Not part of chief-wait's wake key.
 
 ciguard=ok|OVER:<metric>[,<metric>]|unknown (HIMMEL-6733) is one ci-guardrail.sh read
 per tick (TICK_CIGUARD_PROBE seam, bounded by TICK_CIQ_TIMEOUT), shown always. Each
@@ -305,7 +314,7 @@ per tick (TICK_CIGUARD_PROBE seam, bounded by TICK_CIQ_TIMEOUT), shown always. E
 `ACTION ci-guardrail <metric>=<count>><line> (<where>): …` line after the TICK line; the
 script remembers what it alerted ($TICK_STATE_DIR/tick-ciguard-state), so the next tick of
 the same crossing prints ciguard=OVER:… and no ACTION. unknown = the script is missing,
-timed out or printed no status line. Not part of console-wait's wake key.
+timed out or printed no status line. Not part of chief-wait's wake key.
 
 versionless-done=<n|unknown> (HIMMEL-6406) counts Done tickets with no fixVersion,
 from one bounded versionless-done.sh read; shown only when non-zero (skip = no Jira
@@ -317,12 +326,12 @@ or an UNKNOWN row (a gh read failed) or a zero count from a scan that skipped fi
 when there is no mirror. The waiter wakes on a
 positive value only; the console resets each row (version-status-audit.sh prints them).
 In compact output, a non-zero count also prints an `ACTION versionless-done=<n>: bash …/versionless-done.sh --backfill`
-line after the TICK line (HIMMEL-6416); console-wait reads only the TICK line.
+line after the TICK line (HIMMEL-6416); chief-wait reads only the TICK line.
 leaks=<n|?> (HIMMEL-7153) counts the LEAK lines of one bounded `jira release leaks <active version>`
 read (TICK_LEAKS_PROBE gets the version and the mirror directory as its arguments; TICK_LEAKS_TIMEOUT, default 30 s): open tickets
 in a frozen version with no frozen-set membership and no admissions-ledger row. Shown only when non-zero
 (then an `ACTION leaks=<n>: …` line names `--comment`), or ? when the read failed; hidden when there is no mirror,
-or the active version is not frozen. Read-only, and not part of console-wait's wake key.
+or the active version is not frozen. Read-only, and not part of chief-wait's wake key.
 
 pool-closed=<closed>/<total> (HIMMEL-6602) counts the keys on --doc's Live state
 `priority:` line that the Jira mirror reads closed (statusCategory Done); shown only when
@@ -341,11 +350,11 @@ With --doc, compact output also prints `ACTION handoff-over-budget=<bytes>/<limi
 when the console's own <doc stem>-HANDOFF.md is over HANDOFF_BUDGET_BYTES (6000), and
 `ACTION decisions-over-budget=<bytes>/<limit>` when its decisions: line is over
 DECISIONS_BUDGET_BYTES (4000). Each names the bucket's
-specs/decisions/console-decisions-<date>.md the superseded rulings move to verbatim
+specs/decisions/chief-decisions-<date>.md the superseded rulings move to verbatim
 (chief-sections/live-state.md).
 
---burn adds a per-leg context-burn field (first-turn/avg-ctx, via
-scripts/lanes/leg-burn.sh) for every doc in --legs. OPT-IN because it scans
+--burn adds a per-worker context-burn field (first-turn/avg-ctx, via
+scripts/lanes/worker-burn.sh) for every doc in --workers. OPT-IN because it scans
 the Claude Code transcript root, which a plain tick must never do: a tick runs
 on a wake-up budget and this reads every project's transcripts.
 USAGE
@@ -358,8 +367,8 @@ ready_mode=0
 ready_dir=""
 DOC="${DOC:-}"
 TOKEN="${TOKEN:-}"
-LEGS="${LEGS:-}"
-LEGS_FROM="${LEGS_FROM:-}"
+WORKERS="${WORKERS:-}"
+WORKERS_FROM="${WORKERS_FROM:-}"
 REPO="${REPO:-$(cd "$HERE/../../.." && pwd)}"
 
 while [ "$#" -gt 0 ]; do
@@ -368,13 +377,14 @@ while [ "$#" -gt 0 ]; do
         --burn) burn=1; shift ;;
         --emit-fp) emit_fp=1; shift ;;
         --ready-mismatch) ready_mode=1; shift ;;
-        --doc|--token|--legs|--legs-from|--handover-dir|--repo|--ready-dir)
+        --doc|--token|--workers|--workers-from|--legs|--legs-from|--handover-dir|--repo|--ready-dir)
+            case "$1" in --legs) legacy_flag --legs --workers || { usage >&2; exit 2; } ;; --legs-from) legacy_flag --legs-from --workers-from || { usage >&2; exit 2; } ;; esac
             [ "$#" -ge 2 ] || { usage >&2; exit 2; }
             case "$1" in
                 --doc) DOC="$2" ;;
                 --token) TOKEN="$2" ;;
-                --legs) LEGS="$2" ;;
-                --legs-from) LEGS_FROM="$2" ;;
+                --workers|--legs) WORKERS="$2" ;;
+                --workers-from|--legs-from) WORKERS_FROM="$2" ;;
                 --handover-dir) HANDOVER_DIR="$2" ;;
                 --repo) REPO="$2" ;;
                 --ready-dir) ready_dir="$2" ;;
@@ -392,10 +402,10 @@ done
 
 # the fleet manifest is re-read on every run. An unreadable one is
 # a failed tick (before the heartbeat or any other side effect), never an empty
-# fleet that reads as every leg gone.
+# fleet that reads as every worker gone.
 from_docs=""
-if [ -n "$LEGS_FROM" ] && ! from_docs="$(bash "$HERE/fleet-manifest.sh" list "$LEGS_FROM")"; then
-    printf 'tick: cannot read fleet manifest: %s\n' "$LEGS_FROM" >&2
+if [ -n "$WORKERS_FROM" ] && ! from_docs="$(bash "$HERE/fleet-manifest.sh" list "$WORKERS_FROM")"; then
+    printf 'tick: cannot read fleet manifest: %s\n' "$WORKERS_FROM" >&2
     exit 1
 fi
 
@@ -418,11 +428,11 @@ uniq_join() {
     printf '%s\n' "$2" | tr ',' '\n' | awk 'NF' | sort -u | tr '\n' "$1" | sed 's/.$//'
 }
 
-# a leg doc's label (N<k>) and the session names it may run under
-# come from ONE derivation, scripts/lib/leg-identity.sh (sourced above). The two
-# used to be separate local regexes -- leg_label() here, undated_stem() -- that
+# a worker doc's label (N<k>) and the session names it may run under
+# come from ONE derivation, scripts/lib/worker-identity.sh (sourced above). The two
+# used to be separate local regexes -- worker_label() here, undated_stem() -- that
 # no test ever tried against a name the harness produced, so a doc filed per
-# leg-brief-template.md joined to neither a session nor a legs: label.
+# worker-brief-template.md joined to neither a session nor a legs: label.
 
 csv_add() {
     if [ -n "$1" ]; then
@@ -432,10 +442,10 @@ csv_add() {
     fi
 }
 
-# leg_tail_status is shared with close-wrapped-leg.sh's WRAPPED
+# worker_tail_status is shared with close-wrapped-worker.sh's WRAPPED
 # gate, so the two readers can never accept different marker-bullet shapes.
-# shellcheck source=../../lib/leg-tail-status.sh
-. "$HERE/../../lib/leg-tail-status.sh"
+# shellcheck source=../../lib/worker-tail-status.sh
+. "$HERE/../../lib/worker-tail-status.sh"
 
 # ready_mismatch_scan <bucket-dir> -- READY claims a judge or the diff contradicts
 # Prints TSV: one `M1a|M1b|M1c <pr> <head12> <model>` row per flag,
@@ -453,7 +463,7 @@ csv_add() {
 # Changed-file lists come from the ready-files cache under TICK_STATE_DIR (keyed
 # <pr>-<head>, so a re-pushed head is a fresh row); a miss costs one `gh pr view`,
 # at most 20 per scan, and past that the READY is counted unchecked, never clean.
-# ponytail: window is the leg doc's mtime (TICK_READY_WINDOW_DAYS, default 1), a READY
+# ponytail: window is the worker doc's mtime (TICK_READY_WINDOW_DAYS, default 1), a READY
 # head repeated across docs counts once but a reworded one twice, the no-trust regex
 # reads a docs-only claim as "no trust path", and the model is the doc title's (claude-...)
 # token; a structured READY record would replace the regexes.
@@ -573,38 +583,38 @@ if [ -n "$console_doc" ] && [ -n "$TOKEN" ]; then
     fi
 fi
 
-# --legs accepts space- and/or comma-separated entries. `for leg
-# in $LEGS` word-splits on IFS whitespace only, so a comma-joined value was
+# --workers accepts space- and/or comma-separated entries. `for worker
+# in $WORKERS` word-splits on IFS whitespace only, so a comma-joined value was
 # silently one iteration over one nonexistent path. Normalize commas to
 # spaces once so both loops below (this one and the --burn loop) split
 # identically regardless of which separator was used.
-LEGS_SPLIT="${LEGS//,/ }"
-# --legs-from adds the fleet manifest's docs (read above, before
+WORKERS_SPLIT="${WORKERS//,/ }"
+# --workers-from adds the fleet manifest's docs (read above, before
 # any side effect). A doc named on both is judged once (first spelling wins),
-# compared by the path it resolves to, so a relative --legs entry matches its
+# compared by the path it resolves to, so a relative --workers entry matches its
 # absolute manifest entry.
-if [ -n "$LEGS_FROM" ]; then
+if [ -n "$WORKERS_FROM" ]; then
     legs_seen=" "
     legs_union=""
-    for leg in $LEGS_SPLIT $from_docs; do
+    for leg in $WORKERS_SPLIT $from_docs; do
         leg_key="$(resolve_doc "$leg")"
         case "$legs_seen" in *" $leg_key "*) continue ;; esac
         legs_seen="$legs_seen$leg_key "
         legs_union="$legs_union $leg"
     done
-    LEGS_SPLIT="$legs_union"
+    WORKERS_SPLIT="$legs_union"
 fi
 
-# a leg that never went LIVE (a backgrounded or forked launch that
+# a worker that never went LIVE (a backgrounded or forked launch that
 # lost its preface, so it never took its lock or wrote a bullet) holds the same
 # FREE a lost lock does, forever, so the waiter's key never moved and nothing
-# woke the console. NOLIVE is FREE plus a clock; FORKED is FREE plus a
-# transcript that ended in a continued-in record. Both are legs= labels only --
-# lock_status itself (procs=, closable, held_legs) is untouched.
+# woke the chief. NOLIVE is FREE plus a clock; FORKED is FREE plus a
+# transcript that ended in a continued-in record. Both are workers= labels only --
+# lock_status itself (procs=, closable, held_workers) is untouched.
 nolive_min="${TICK_NOLIVE_MIN:-10}"
 case "$nolive_min" in ''|*[!0-9]*) nolive_min=10 ;; esac
 nolive_min=$((10#$nolive_min))
-# the leg preface's GO-hold is 30 minutes; a READY older than that
+# the worker preface's GO-hold is 30 minutes; a READY older than that
 # with no GO file reads READY!stale in tails=.
 go_stale_min="${TICK_GO_STALE_MIN:-30}"
 case "$go_stale_min" in ''|*[!0-9]*) go_stale_min=30 ;; esac
@@ -613,24 +623,24 @@ hold_min="${TICK_HOLD_MIN:-20}"
 case "$hold_min" in ''|*[!0-9]*) hold_min=20 ;; esac
 hold_min=$((10#$hold_min))
 
-# launch_dir_default: the console work dir the <name>.launch.log files live in.
+# launch_dir_default: the chief work dir the <name>.launch.log files live in.
 launch_dir_default() {
     if [ -n "${TICK_LAUNCH_DIR:-}" ]; then
         printf '%s\n' "$TICK_LAUNCH_DIR"
-    elif [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR/himmel-console" ]; then
-        printf '%s\n' "$XDG_RUNTIME_DIR/himmel-console"
+    elif [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR/himmel-chief" ]; then
+        printf '%s\n' "$XDG_RUNTIME_DIR/himmel-chief"
     else
-        printf '%s\n' "${TMPDIR:-/tmp}/himmel-console-$(id -u)"
+        printf '%s\n' "${TMPDIR:-/tmp}/himmel-chief-$(id -u)"
     fi
 }
 
-# leg_start_epoch <leg doc> <candidate names, comma list> -- when the leg was
+# leg_start_epoch <worker doc> <candidate names, comma list> -- when the worker was
 # dispatched: the fleet manifest's `added` time, else the newest launch-log
 # `armed:` line naming the doc or a candidate session, else the doc's mtime.
 leg_start_epoch() {
     local doc="$1" cands="$2" t="" ts line armed
-    if [ -n "$LEGS_FROM" ] && [ -r "$LEGS_FROM" ]; then
-        ts="$(jq -r --arg d "$doc" '[.legs[] | select(.doc == $d) | .added][0] // empty' "$LEGS_FROM" 2>/dev/null)" || ts=""
+    if [ -n "$WORKERS_FROM" ] && [ -r "$WORKERS_FROM" ]; then
+        ts="$(jq -r --arg d "$doc" '[.legs[] | select(.doc == $d) | .added][0] // empty' "$WORKERS_FROM" 2>/dev/null)" || ts=""
         [ -z "$ts" ] || t="$(date -d "$ts" +%s 2>/dev/null)" || t=""  # gnu-ok: Linux-only kit
     fi
     if [ -z "$t" ]; then
@@ -666,7 +676,7 @@ leg_forked() {
 }
 
 # leg_cachettl <candidate names, comma list>: only warn on a known idle
-# transcript with no running wait. Mirror guard-leg-cache-ttl.sh's task signal;
+# transcript with no running wait. Mirror guard-worker-cache-ttl.sh's task signal;
 # factoring it out would change the Stop hook as well as this read-only view.
 leg_cachettl() {
     local dir cand f newest="" stamp epoch running
@@ -715,8 +725,8 @@ leg_cachettl() {
 }
 
 # leg_effort_mismatch <doc> <label>: succeeds only when the effort the
-# console asked for (the WORKER_SESSION_EFFORT export in the launch-<label>.sh gen-briefs.py
-# writes beside the leg doc) differs from the effort= token on the leg's newest LIVE
+# chief asked for (the WORKER_SESSION_EFFORT export in the launch-<label>.sh gen-briefs.py
+# writes beside the worker doc) differs from the effort= token on the worker's newest LIVE
 # bullet. A missing launcher, export or token leaves nothing to compare, so no flag.
 leg_effort_mismatch() {
     local doc="$1" label="$2" launch asked live
@@ -735,17 +745,17 @@ holds_summary=""
 effort_summary=""
 cachettl_summary=""
 leg_docmap=""
-# label<TAB>lock status<TAB>candidate session names, one line per leg (procs= below).
+# label<TAB>lock status<TAB>candidate session names, one line per worker (procs= below).
 leg_candmap=""
-# the census names the -n session the console actually passed
-# to `claude`, which is the leg doc's stem minus a -RESUME suffix (the same
+# the census names the -n session the chief actually passed
+# to `claude`, which is the worker doc's stem minus a -RESUME suffix (the same
 # string the --burn loop below matches on) -- collect it here so procs=/
-# models= can count against what THIS console dispatched instead of
-# guessing from a "-leg" spelling.
+# models= can count against what THIS chief dispatched instead of
+# guessing from a "-worker" spelling.
 leg_names=""
-for leg in $LEGS_SPLIT; do
+for leg in $WORKERS_SPLIT; do
     leg_doc="$(resolve_doc "$leg")"
-    ident="$(leg_identity "$leg")"
+    ident="$(worker_identity "$leg")"
     label="${ident%%$'\t'*}"
     leg_cands="${ident#*$'\t'}"
     for cand in ${leg_cands//,/ }; do
@@ -753,7 +763,7 @@ for leg in $LEGS_SPLIT; do
     done
     # NOTFOUND (file does not resolve) is a distinct status from
     # MISSING. MISSING means "the lock is gone" -- exactly the signal a
-    # console reads as "reclaim this leg's lock" -- and must never be used for
+    # chief reads as "reclaim this worker's lock" -- and must never be used for
     # "I could not find the file", which is a warning, not a lock verdict.
     lock_status=NOTFOUND
     tail_status="?"
@@ -761,8 +771,8 @@ for leg in $LEGS_SPLIT; do
         # a lockless manifest row (an eval/pilot row that never takes a
         # queue lock) reads NOLOCK, not FREE, and is judged by its tail marker alone.
         row_lockless=0
-        if [ -n "$LEGS_FROM" ] && [ -r "$LEGS_FROM" ] \
-            && jq -e --arg d "$leg_doc" 'any(.legs[]; .doc == $d and .lockless == true)' "$LEGS_FROM" >/dev/null 2>&1; then
+        if [ -n "$WORKERS_FROM" ] && [ -r "$WORKERS_FROM" ] \
+            && jq -e --arg d "$leg_doc" 'any(.legs[]; .doc == $d and .lockless == true)' "$WORKERS_FROM" >/dev/null 2>&1; then
             row_lockless=1
         fi
         if [ "$row_lockless" -eq 1 ]; then
@@ -779,21 +789,21 @@ for leg in $LEGS_SPLIT; do
                 *) lock_status=UNKNOWN ;;
             esac
         fi
-        tail_status="$(leg_tail_status "$leg_doc")"
+        tail_status="$(worker_tail_status "$leg_doc")"
         [ -n "$tail_status" ] || tail_status="?"
         # the newest READY / BLOCKED / FINDING / MERGED bullet + a count: a later LIVE,
         # RESOLVED or SUCCESSION bullet cannot bury it, and a repeat of the same marker moves it
-        act_status="$(leg_actionable_status "$leg_doc")"
+        act_status="$(worker_actionable_status "$leg_doc")"
         [ -z "$act_status" ] || acts_summary="$(csv_add "$acts_summary" "$label:$act_status")"
         # a BLOCKED tail, or a FINDING that awaits a ruling, in a doc nobody has written to
-        # for $hold_min minutes is a hold the console may not know it owes.
-        # ponytail: hold age is the leg doc's mtime (a held leg is idle, so its marker
+        # for $hold_min minutes is a hold the chief may not know it owes.
+        # ponytail: hold age is the worker doc's mtime (a held worker is idle, so its marker
         # bullet is the last write); upgrade = parse the bullet's HH:MM if a touched doc
         # ever hides an old hold.
         hold_age=""
         case "$tail_status" in
             BLOCKED) hold_age=1 ;;
-            FINDING) leg_actionable_bullet "$leg_doc" | grep -qiE 'awaiting (the |a )?(console|ruling)|needs? (a |the )?ruling|console owes' && hold_age=1 ;;  # pipefail-ok: one extracted line
+            FINDING) worker_actionable_bullet "$leg_doc" | grep -qiE 'awaiting (the |a )?(console|chief|ruling)|needs? (a |the )?ruling|(console|chief) owes' && hold_age=1 ;;  # pipefail-ok: one extracted line
         esac
         if [ -n "$hold_age" ]; then
             hold_age=""
@@ -804,8 +814,8 @@ for leg in $LEGS_SPLIT; do
             esac
             [ -z "$hold_age" ] || holds_summary="$(csv_add "$holds_summary" "$label:${hold_age}m")"
         fi
-        # a LIVE bullet that says the leg is holding at READY (`holding at READY`, or
-        # `READY <pr> <full head>`) is a READY: a claudex leg cannot SendMessage, so
+        # a LIVE bullet that says the worker is holding at READY (`holding at READY`, or
+        # `READY <pr> <full head>`) is a READY: a claudex worker cannot SendMessage, so
         # this bullet is its only channel. Only LIVE is promoted; any other leading
         # marker keeps its own word.
         if [ "$tail_status" = LIVE ]; then
@@ -821,8 +831,8 @@ for leg in $LEGS_SPLIT; do
         fi
         # a READY whose GO file (<root>/.locks/go/<pr>.<head>) is still
         # absent after $go_stale_min minutes reads READY!stale. tails= is in the
-        # console-wait action key, so the entry moving once wakes the console.
-        # ponytail: READY age is the leg doc's mtime (a READY leg is idle, so the
+        # chief-wait action key, so the entry moving once wakes the chief.
+        # ponytail: READY age is the worker doc's mtime (a READY worker is idle, so the
         # READY bullet is the last write); a READY bullet with no `<pr> <head>`
         # cannot name a GO file and never goes stale; upgrade = parse the
         # bullet's HH:MM if a doc touched after READY ever hides a stale one.
@@ -840,11 +850,11 @@ for leg in $LEGS_SPLIT; do
             fi
         fi
         # FREE used to cover both "released cleanly at wrap" and "the
-        # lock vanished while the leg worked", and only the second is a reason to
+        # lock vanished while the worker worked", and only the second is a reason to
         # act. A released lock whose doc's LAST status bullet is WRAPPED is the
         # clean wrap: it reads WRAPPED (tails= already says so); FREE is left to
         # mean a lock that is gone with no wrap behind it (lost, or never acquired).
-        # ponytail: WRAPPED is the leg's own last bullet, self-reported -- a leg
+        # ponytail: WRAPPED is the worker's own last bullet, self-reported -- a worker
         # that wrote WRAPPED and is somehow still working reads WRAPPED, not FREE.
         if [ "$lock_status" = FREE ] && [ "$tail_status" = WRAPPED ]; then
             lock_status=WRAPPED
@@ -852,10 +862,10 @@ for leg in $LEGS_SPLIT; do
     else
         printf 'tick: no such leg doc: %s\n' "$leg_doc" >&2
     fi
-    # FREE with no marker bullet ever (tails ?) is a leg that never
-    # went LIVE; that, or a transcript that ended in continued-in, shows in legs=
-    # in place of FREE. A wrapped or marker-bearing leg is never relabelled.
-    # ponytail: the clock is dispatch time, so a leg first listed after the
+    # FREE with no marker bullet ever (tails ?) is a worker that never
+    # went LIVE; that, or a transcript that ended in continued-in, shows in workers=
+    # in place of FREE. A wrapped or marker-bearing worker is never relabelled.
+    # ponytail: the clock is dispatch time, so a worker first listed after the
     # threshold baselines already NOLIVE and the waiter stays silent for it;
     # upgrade = wake on first sight of a NOLIVE, if that ever bites.
     leg_label_state="$lock_status"
@@ -890,7 +900,7 @@ done
 [ -n "$tails_summary" ] || tails_summary=none
 [ -n "$acts_summary" ] || acts_summary=none
 
-# cross-reference the console doc's own `## Live state`
+# cross-reference the chief doc's own `## Live state`
 # `legs:` line against the lock status just computed above (legs_summary),
 # the same way ceiling_summary below cross-references argv against a
 # separate invariant. "skip" (no --doc given, same as hb=skip above) and
@@ -907,19 +917,19 @@ list_has() {  # list_has <needle> <word> [word...]
 }
 
 # legs_label_shaped <token> -- is this the first field of an attempted entry
-# rather than a prose token? A label is what leg-identity.sh derives: the
-# canonical N<k>[letters], or the stem of a leg doc (which the derivation
+# rather than a prose token? A label is what worker-identity.sh derives: the
+# canonical N<k>[letters], or the stem of a worker doc (which the derivation
 # reduces to its N<k>, so its label differs from the stem). A token that
 # derivation leaves alone and that is not N<k> (`legs`, `procs`, `bank`) is prose.
-# A file name is a cite, never a label: leg_label strips `.md` from
+# A file name is a cite, never a label: worker_label strips `.md` from
 # a doc path, so `stuck-playbook.md` "reduces" to `stuck-playbook` and a
 # `stuck-playbook.md:408` cite read as a label-shaped span with a colon -- a
-# MALFORMED leg that never existed. A label leg_label emits never ends in `.md`.
+# MALFORMED worker that never existed. A label worker_label emits never ends in `.md`.
 legs_label_shaped() {
     local re_canon='^N[0-9]+[a-z]*$'
     [[ $1 =~ $re_canon ]] && return 0
     case "$1" in *.md) return 1 ;; esac
-    [ "$(leg_label "$1")" != "$1" ]
+    [ "$(worker_label "$1")" != "$1" ]
 }
 
 # legs_line_spans <entries|malformed> <legs: line> -- classify every backtick
@@ -972,47 +982,47 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     # written straight under `legs:` must not have its `x.md:408` cites read as
     # entries). Reading the
     # first line only made every span on a wrapped line invisible -- not MALFORMED,
-    # not FREE, just absent -- so a held leg read DRIFT and a stale one read ok.
-    # ponytail: the block ENDS at a blank, `word:` or list-marker line, so a leg
-    # span past any of them (a per-leg detail bullet, another field) is not an entry; a held
-    # leg named only there reads DRIFT, which is true -- the block never named it.
+    # not FREE, just absent -- so a held worker read DRIFT and a stale one read ok.
+    # ponytail: the block ENDS at a blank, `word:` or list-marker line, so a worker
+    # span past any of them (a per-worker detail bullet, another field) is not an entry; a held
+    # worker named only there reads DRIFT, which is true -- the block never named it.
     legs_line="$(printf '%s\n' "$live_state_body" | awk '
         /^legs:/ { f = 1; print; next }
         f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
         f { print }
     ')"
     if [ -n "$legs_line" ]; then
-        # Each leg is one backtick span `<label>:<nonce>:<lock-token>:<pid>`
+        # Each worker is one backtick span `<label>:<nonce>:<lock-token>:<pid>`
         # (Delta 2's format) -- take the label, the text before the first
-        # colon inside the span. The label class is leg-identity.sh's own
+        # colon inside the span. The label class is worker-identity.sh's own
         # (WORKER_SESSION_LABEL_CLASS, which includes "-" and "."): a narrower class here
-        # rejected every hyphenated label, so a span naming a leg by anything
+        # rejected every hyphenated label, so a span naming a worker by anything
         # but a bare N<k> never parsed and read as absent.
         # Prose on the line is tolerated: a backticked token is
         # an entry only if it is four non-empty fields under a label
-        # (legs_line_spans), so `legs:` in a note is not a leg. A span that
+        # (legs_line_spans), so `legs:` in a note is not a worker. A span that
         # LOOKS like an entry (label-shaped first field, a colon) but is not
         # four fields is reported MALFORMED by label, never dropped: dropping
-        # it would read the leg as absent and DRIFT would then blame the
-        # console for a leg that was written, just wrongly.
+        # it would read the worker as absent and DRIFT would then blame the
+        # chief for a worker that was written, just wrongly.
         live_spans="$(legs_line_spans entries "$legs_line")"
         live_legs="$(printf '%s\n' "$live_spans" | sed -E 's/:.*$//')"
         malformed_legs="$(legs_line_spans malformed "$legs_line")"
         held_legs="$(printf '%s\n' "$legs_summary" | tr ',' '\n' | awk -F: '$2 == "FRESH" || $2 == "STALE" { print $1 }')"
-        # the leg set this tick watches is the --legs arm, and Live
-        # state is the console's own record; the two are supplied separately and
-        # can disagree. A leg Live state names that the arm does not is UNARMED --
+        # the worker set this tick watches is the --workers arm, and Live
+        # state is the chief's own record; the two are supplied separately and
+        # can disagree. A worker Live state names that the arm does not is UNARMED --
         # this tick has no lock for it, so it can say nothing about its health --
         # and is reported under legset= as an input problem, never as DRIFT (which
-        # blamed a healthy leg for the console's stale arm). DRIFT keeps the two
-        # cases the tick CAN judge: an armed leg whose lock is not held that Live
-        # state still names, and a held leg Live state omits.
-        # Why not derive the leg set from Live state alone (the ticket's preferred
+        # blamed a healthy worker for the chief's stale arm). DRIFT keeps the two
+        # cases the tick CAN judge: an armed worker whose lock is not held that Live
+        # state still names, and a held worker Live state omits.
+        # Why not derive the worker set from Live state alone (the ticket's preferred
         # shape)? A span is `<label>:<nonce>:<lock-token>:<pid>` -- it names no doc,
         # so a label cannot be joined to a lock or a tail without trusting the
         # self-reported token or pid, and a wrong one would read as a lost lock.
-        # ponytail: the arm still decides which legs get lock/tail/nonce checks;
-        # an unarmed held leg is named but not verified until the console re-arms.
+        # ponytail: the arm still decides which workers get lock/tail/nonce checks;
+        # an unarmed held worker is named but not verified until the chief re-arms.
         armed_legs="$(printf '%s' "$leg_candmap" | awk -F'\t' 'NF { print $1 }')"
         drift_csv=""
         unarmed_csv=""
@@ -1028,8 +1038,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
                 unarmed_csv="$(csv_add "$unarmed_csv" "$l")"
             fi
         done
-        # An armed leg that holds no lock and is not in Live state is a wrapped leg
-        # the console already dropped: harmless, but the arm still names it.
+        # An armed worker that holds no lock and is not in Live state is a wrapped worker
+        # the chief already dropped: harmless, but the arm still names it.
         unlisted_csv=""
         for l in $armed_legs; do
             # shellcheck disable=SC2086  # word-split on purpose: list_has takes "$@"
@@ -1042,7 +1052,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         fi
         if [ -n "$legset_summary" ]; then legset_summary="STALE:$legset_summary"; else legset_summary=ok; fi
         for l in $held_legs; do
-            # A malformed span still NAMES its leg (badly): it reads MALFORMED,
+            # A malformed span still NAMES its worker (badly): it reads MALFORMED,
             # not also "held but unnamed".
             # shellcheck disable=SC2086  # word-split on purpose: list_has takes "$@"
             list_has "$l" $live_legs $malformed_legs || drift_csv="$(csv_add "$drift_csv" "$l")"
@@ -1055,23 +1065,23 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
             livestate_summary="${livestate_summary:+$livestate_summary;}DRIFT:${drift_csv}"
         fi
         [ -n "$livestate_summary" ] || livestate_summary=ok
-        # a HELD leg whose Live-state nonce (`<LETTER>-<leg>-<hex>`)
-        # still carries a previous console's letter is NOT necessarily
-        # stranded: a relay may keep the leg's token (leg-preface.md "Console
+        # a HELD worker whose Live-state nonce (`<LETTER>-<worker>-<hex>`)
+        # still carries a previous chief's letter is NOT necessarily
+        # stranded: a relay may keep the worker's token (worker-preface.md "Chief
         # succession"), so an unrotated nonce is the common, valid state. The
-        # leg's own handover doc says which it is -- the leg writes
-        # `- <time> SUCCESSION accepted: <console> replaces <old>` under
-        # Results when it takes a console over. That bullet naming THIS
-        # console = RELAYED (informational); none = UNCONFIRMED (this
-        # console cannot tell whether the leg was re-briefed). The letter is
-        # this console doc's own (`<prefix>-nextleg-<date><LETTER>-<name>.md`)
-        # and the console name in the bullet is that doc's stem; a wrapped leg
+        # worker's own handover doc says which it is -- the worker writes
+        # `- <time> SUCCESSION accepted: <chief> replaces <old>` under
+        # Results when it takes a chief over. That bullet naming THIS
+        # chief = RELAYED (informational); none = UNCONFIRMED (this
+        # chief cannot tell whether the worker was re-briefed). The letter is
+        # this chief doc's own (`<prefix>-nextleg-<date><LETTER>-<name>.md`)
+        # and the chief name in the bullet is that doc's stem; a wrapped worker
         # (lock not held) has nothing to rotate.
-        # ponytail: both reads are self-reported state, not proof. A leg that
+        # ponytail: both reads are self-reported state, not proof. A worker that
         # accepted but has not yet written its bullet reads UNCONFIRMED for a
-        # moment, and a console that rewrites a leg's Live-state nonce before
-        # that leg's quote-back reads ok while the leg is still unverified
-        # (the console template says: update the nonce only AFTER the
+        # moment, and a chief that rewrites a worker's Live-state nonce before
+        # that worker's quote-back reads ok while the worker is still unverified
+        # (the chief template says: update the nonce only AFTER the
         # quote-back). A doc name with no parseable letter reads unknown,
         # never a guess.
         console_letter="$(printf '%s\n' "${console_doc##*/}" | sed -n -E 's/.*-nextleg-[0-9]{4}-[0-9]{2}-[0-9]{2}([A-Z]{1,2})-.*/\1/p')"
@@ -1096,7 +1106,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
                 if [ -n "$span_doc" ] && [ -f "$span_doc" ]; then
                     # The LATEST acceptance bullet's INCOMING session (the first
                     # name after the colon, not the one after `replaces`) must
-                    # be exactly this console. Only the `## Results` section
+                    # be exactly this chief. Only the `## Results` section
                     # is read: an acceptance-shaped line quoted
                     # above it, or under a later `## ` heading, confirms
                     # nothing.
@@ -1128,8 +1138,8 @@ fi
 # line -- free-text argv (a -p/--append-system-prompt value containing the
 # literal substring "-n X") can no longer spoof procs=/models=.
 # #1335: resolved from $HERE (this script's own directory), not
-# $REPO -- $REPO names the repo THIS console manages (a different checkout
-# for every console but himmel's own), while claude-sessions.sh is a himmel
+# $REPO -- $REPO names the repo THIS chief manages (a different checkout
+# for every chief but himmel's own), while claude-sessions.sh is a himmel
 # lane helper that always ships beside tick.sh. $REPO-relative sourcing
 # silently failed for any non-himmel $REPO (source: No such file or
 # directory), leaving claude_sessions undefined while the tick still printed
@@ -1151,13 +1161,13 @@ if [ "$sessions_rc" -gt 1 ] && { [ "$sessions_rc" -ne 3 ] || [ -z "$sessions_out
     sessions_out=""
     census_failed=1
 fi
-# #1335: an empty --legs arm reads legs=none only when the census could
+# #1335: an empty --workers arm reads workers=none only when the census could
 # actually have told us otherwise. A working census (however lossy) that
-# simply finds nothing live is a genuine healthy empty fleet -- legs=none
+# simply finds nothing live is a genuine healthy empty fleet -- workers=none
 # stays accurate. A census that could not run at all (pgrep/ps themselves
 # broken, not merely lossy) leaves this tick with no way to back that claim
-# up, so legs=none would be a guess; legs=unsupported says so instead. A
-# non-empty --legs arm is unaffected: its legs_summary already comes from
+# up, so workers=none would be a guess; workers=unsupported says so instead. A
+# non-empty --workers arm is unaffected: its legs_summary already comes from
 # queue-lock, not the census.
 if [ -z "$legs_summary" ]; then
     if [ "$census_failed" -eq 1 ]; then
@@ -1175,25 +1185,25 @@ if [ "$sessions_rc" -eq 3 ]; then
     unreadable_n="$(printf '%s\n' "$sessions_out" | grep -c '^# unreadable ')"
 fi
 
-# count sessions the console actually dispatched (leg_names,
-# built from --legs above) against the census name, not a "-leg" spelling
+# count sessions the chief actually dispatched (leg_names,
+# built from --workers above) against the census name, not a "-worker" spelling
 # guess -- a filter that silently matches nothing must never render as 0.
 #
 # that guard only asked whether the filter EXISTS. A well-formed
 # leg_names that cannot match anything (a doc named one way, a session named
-# another) still rendered a confident 0 beside two live, lock-holding legs. The
-# test is population-level, over the HELD legs (FRESH/STALE lock): a wrapped or
-# missing leg expects no process, so its absence is a real zero, not a suspicion.
-#   - no held leg matches any census row -> the derivation itself is suspect:
+# another) still rendered a confident 0 beside two live, lock-holding workers. The
+# test is population-level, over the HELD workers (FRESH/STALE lock): a wrapped or
+# missing worker expects no process, so its absence is a real zero, not a suspicion.
+#   - no held worker matches any census row -> the derivation itself is suspect:
 #     procs=/models= read unknown, exactly like a failed census;
 #   - some do -> the derivation demonstrably works, so the rest are genuinely
 #     not running: count the live ones and name the rest as unmatched=<a>+<b>
 #     instead of blanking the whole field.
-# ponytail: a degraded census (rc=3, unreadable=<n>) can hide a live leg's row,
-# so an unmatched= name may be a leg whose cmdline was unreadable -- the
+# ponytail: a degraded census (rc=3, unreadable=<n>) can hide a live worker's row,
+# so an unmatched= name may be a worker whose cmdline was unreadable -- the
 # appended unreadable= flag is that caveat; unmatched= is not suppressed by it.
-# a relaunched leg runs as <name>-r<N>: list the base name too, so it
-# joins to its leg for procs=, unwatched= and CLOSABLE.
+# a relaunched worker runs as <name>-r<N>: list the base name too, so it
+# joins to its worker for procs=, unwatched= and CLOSABLE.
 census_names="$(printf '%s\n' "$sessions_out" | awk -F'\t' '$1 !~ /^#/ && NF >= 4 && $2 != "" { print $2; b = $2; if (sub(/-r[0-9]+$/, "", b)) print b }')"
 held_n=0
 matched_n=0
@@ -1218,9 +1228,9 @@ while IFS=$'\t' read -r m_label m_status m_cands; do
     fi
 done <<< "$leg_candmap"
 closable_n=0
-# a WRAPPED leg (lock free, tail says WRAPPED) whose own
+# a WRAPPED worker (lock free, tail says WRAPPED) whose own
 # session process is STILL alive in this same census is CLOSABLE -- the
-# window sitting there finished but not yet closed is exactly what a console
+# window sitting there finished but not yet closed is exactly what a chief
 # should wake up and act on. Never claimed when the census itself could not
 # be trusted (census_failed=1): fail closed to plain WRAPPED, same posture as
 # the matched_n/unmatched_csv derivation above.
@@ -1232,8 +1242,8 @@ if [ "$census_failed" -eq 0 ]; then
             if grep -Fxq -- "$w_cand" <<< "$census_names"; then
                 legs_summary="${legs_summary//$w_label:WRAPPED/$w_label:CLOSABLE}"
                 # closable=<n>: only a window that has sat finished for
-                # TICK_CLOSABLE_MIN minutes (the doc's mtime: a wrapped leg writes
-                # nothing more), so the close the console is doing right now never wakes it.
+                # TICK_CLOSABLE_MIN minutes (the doc's mtime: a wrapped worker writes
+                # nothing more), so the close the chief is doing right now never wakes it.
                 w_doc="$(printf '%s' "$leg_docmap" | sed -n "s/^$w_label=//p" | head -n 1)"
                 w_mt=""
                 [ -z "$w_doc" ] || w_mt="$(stat -c %Y "$w_doc" 2>/dev/null)" || w_mt=""  # gnu-ok: Linux-only kit
@@ -1247,24 +1257,24 @@ if [ "$census_failed" -eq 0 ]; then
     done <<< "$leg_candmap"
 fi
 leg_names_wrapped=",${leg_names},"
-# procs= counts only the sessions THIS arm names, so a live leg the
-# arm does not name (dispatched after it, or another console's) was dropped
-# without a word -- an unwatched leg is the state this instrument must never hide.
-# Every leg-shaped census row (a session whose name derives an N<k> label, which
-# excludes consoles and other non-leg sessions) that is not one of the arm's
+# procs= counts only the sessions THIS arm names, so a live worker the
+# arm does not name (dispatched after it, or another chief's) was dropped
+# without a word -- an unwatched worker is the state this instrument must never hide.
+# Every worker-shaped census row (a session whose name derives an N<k> label, which
+# excludes chiefs and other non-workers) that is not one of the arm's
 # candidate names is named here by label. orphans= cannot cover this: it lists
 # shell-tool wrappers older than TICK_ORPHAN_MIN minutes per owning session, so a
 # session with no aged wrapper never appears in it at all.
-# ponytail: with several consoles on one box another console's legs read here too;
-# the census carries no owner, so a label in neither this console's Live state nor
-# its arm is another console's or a leg this console lost track of -- the tick
+# ponytail: with several chiefs on one box another chief's workers read here too;
+# the census carries no owner, so a label in neither this chief's Live state nor
+# its arm is another chief's or a worker this chief lost track of -- the tick
 # cannot say which.
 unwatched_csv=""
 re_unwatched_label='^N[0-9]+[a-z]*$'
 while IFS= read -r u_name; do
     [ -n "$u_name" ] || continue
     case "$leg_names_wrapped" in *",$u_name,"*) continue ;; esac
-    u_label="$(leg_label "$u_name")"
+    u_label="$(worker_label "$u_name")"
     [[ $u_label =~ $re_unwatched_label ]] || continue
     unwatched_csv="$(csv_add "$unwatched_csv" "$u_label")"
 done <<< "$census_names"
@@ -1278,8 +1288,8 @@ fi
 if [ "$filter_unusable" -eq 1 ]; then
     # A field that cannot be computed must say so (NOTFOUND-vs-
     # MISSING, unreadable=): procs=0 and procs=unknown must be
-    # distinguishable, or a real scan failure reads as "no legs running".
-    # An empty --legs is the same case: there is no dispatch set to count
+    # distinguishable, or a real scan failure reads as "no workers running".
+    # An empty --workers is the same case: there is no dispatch set to count
     # against, so "0" would be a bare guess (and, worse, a matched-nothing
     # filter would print it as a clean 0 -- ",,".index(",name,") is always
     # 0), not a real count. procs= is only ever a count of the dispatched
@@ -1298,7 +1308,7 @@ NF < 4 { next }
 }
 END { print n+0 }')"
     # a degraded scan (rc=3) still counted every readable row
-    # above -- append how many pids it could NOT read so the console sees
+    # above -- append how many pids it could NOT read so the chief sees
     # the table is incomplete rather than reading procs= as a clean, complete
     # count.
     [ -z "$unmatched_csv" ] || procs="${procs},unmatched=${unmatched_csv}"
@@ -1306,17 +1316,17 @@ END { print n+0 }')"
     [ "$unreadable_n" -gt 0 ] && procs="${procs},unreadable=${unreadable_n}"
 fi
 
-# same session table and leg filter as procs= above, bucketed by
+# same session table and worker filter as procs= above, bucketed by
 # the tier its real --model argv names (opus/fable cost materially more per
 # turn than the sonnet default - CLAUDE.md "raise effort before tier"). Any
 # non-Claude id (e.g. a claudex gpt-* model) buckets under "other" rather than
-# one unbounded per-model list. A leg matched by the same filter but carrying
+# one unbounded per-model list. A worker matched by the same filter but carrying
 # no --model token at all buckets under "unknown"
 # rather than falling out of every bucket while still counted in
 # procs=.
 # same dispatched-name filter as procs= above, same
 # unknown-vs-empty distinction on a real census failure or an empty
-# dispatch set (no --legs -- see procs= above).
+# dispatch set (no --workers -- see procs= above).
 if [ "$filter_unusable" -eq 1 ]; then
     models_summary=unknown
 else
@@ -1353,7 +1363,7 @@ END {
 fi
 
 # the same ps table, scanned for --autocompact drift against the
-# leg invariant headed-arm.sh:391 refuses to launch without. The script's own
+# worker invariant headed-arm.sh:391 refuses to launch without. The script's own
 # last line is already "ceiling=ok" / "ceiling=DRIFT:<name,...>" so it drops
 # into the tick line unprefixed.
 ceiling_summary="$(bash "$REPO/scripts/lanes/ceiling-conformance.sh" 2>/dev/null | tail -n 1)" || ceiling_summary=""
@@ -1376,8 +1386,8 @@ for lock_dir in "$suite_tmp"/himmel-shell-suite-*.lock; do
 done
 suites="${suite_alive}alive/${suite_dead}dead"
 
-# Open PRs are the project's, not himmel's: a console always runs in himmel, and
-# console.sh records the checkout it is FOR on the doc's project line (`none --
+# Open PRs are the project's, not himmel's: a chief always runs in himmel, and
+# chief.sh records the checkout it is FOR on the doc's project line (`none --
 # ...` for himmel itself). board.mjs reads the same line, so board-fp stays in step.
 pr_repo="$REPO"
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
@@ -1388,12 +1398,12 @@ fi
 pr_out="$(cd "$pr_repo" 2>/dev/null && "$GH_READ_BIN" pr list --limit 200 --json number,headRefName,isDraft,author,isCrossRepository,updatedAt,statusCheckRollup,headRefOid,labels --jq '.[] | [.number, .headRefName, .isDraft, .author.login, .isCrossRepository, .updatedAt, ([.statusCheckRollup[]? | select((.conclusion // .state) | IN("FAILURE","ERROR","TIMED_OUT","STARTUP_FAILURE"))] | length), (.headRefOid // ""), ([.labels[]?.name] | join(","))] | @tsv' 2>/dev/null)" || { pr_out=""; pr_read_failed=1; }
 
 # unowned-prs= / ext-prs=: an open PR whose head branch names a ticket that
-# no leg this tick reads holds (a held or lockless lock), and no recent cloud session
+# no worker this tick reads holds (a held or lockless lock), and no recent cloud session
 # covers, has no one working it. Fork PRs are listed apart, drafts and PRs younger than
 # the grace period never. Built from the one gh read above: no per-PR call.
 # ponytail: ownership is the ticket key in the branch name, so a branch with no key reads
 # unowned (loud, not silent), and age is the PR's updatedAt, which a comment also moves;
-# upgrade = match the leg's own branch, or the last commit's date, if either bites.
+# upgrade = match the worker's own branch, or the last commit's date, if either bites.
 ticket_key() { printf '%s\n' "$1" | grep -oiE '[a-z][a-z0-9]*-[0-9]+' | head -n 1 | tr '[:lower:]' '[:upper:]'; }
 owner_keys=" "
 while IFS=$'\t' read -r o_label o_lock _; do
@@ -1430,7 +1440,7 @@ while IFS=$'\t' read -r pr pr_branch pr_draft _ pr_fork pr_updated pr_red pr_hea
     pr_at="$(date -d "$pr_updated" +%s 2>/dev/null)" || continue  # gnu-ok: Linux-only kit
     pr_age=$(( ($(date +%s) - pr_at) / 60 ))
     [ "$pr_age" -ge "$unowned_grace_min" ] || continue
-    # a failed check on an orphan: red CI has no other owner, so the console owes a resume leg
+    # a failed check on an orphan: red CI has no other owner, so the chief owes a resume worker
     pr_owed=""
     case "$pr_red" in ''|*[!0-9]*|0) ;; *) pr_owed=":dispatch-owed" ;; esac
     unowned_prs="$(csv_add "$unowned_prs" "#$pr:${pr_age}m$pr_owed")"
@@ -1441,16 +1451,16 @@ done <<< "$pr_out"
 # A failed read is not an all-clear: `?` lets the waiter keep its marker instead of counting it as none.
 [ -z "${pr_read_failed:-}" ] || { unowned_prs='?'; ext_prs='?'; }
 
-# dispatch=<run>:<leg>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
-# an in-flight workflow_dispatch run on a leg's branch (a run a leg started by hand never shows on
+# dispatch=<run>:<worker>:<elapsed>/<timeout>m:<jobs done>/<jobs>@<head7>[:late][:idle][:orphan][:stale-head]:
+# an in-flight workflow_dispatch run on a worker's branch (a run a worker started by hand never shows on
 # the PR page). One runs list per tick, then one jobs read per run (at most TICK_DISPATCH_MAX,
 # default 5). The timeout is the largest job-level timeout-minutes in the run's workflow file
 # (360, GitHub's own default, when it has none). late = past 80 % of it; idle = no job started
-# or finished for TICK_DISPATCH_IDLE_MIN (30) min; orphan = every leg on its ticket is no longer
+# or finished for TICK_DISPATCH_IDLE_MIN (30) min; orphan = every worker on its ticket is no longer
 # held (WRAPPED or FREE); stale-head = its head is not the open PR's head (report-only). late, idle
-# and orphan each raise one ACTION dispatch-stall line, and console-wait.sh keys on them.
-# dispatch=? = the runs list is unreadable; a branch no leg or open PR owns is not listed.
-# ponytail: the leg is matched by the ticket key in the branch name, as unowned-prs= does; a
+# and orphan each raise one ACTION dispatch-stall line, and chief-wait.sh keys on them.
+# dispatch=? = the runs list is unreadable; a branch no worker or open PR owns is not listed.
+# ponytail: the worker is matched by the ticket key in the branch name, as unowned-prs= does; a
 # healthy macOS shard set runs ~60 min with no job change, so idle can fire on a run that is
 # merely long, upgrade = key it on a step-level read if that proves noisy.
 dispatch_summary=none
@@ -1508,13 +1518,13 @@ if [ "$dispatch_summary" = none ] && [ -n "$dispatch_runs" ]; then
     [ -z "$dispatch_list" ] || dispatch_summary="$dispatch_list"
 fi
 
-# the board fingerprint -- what console-board.html shows that the
-# console authors or a tick already reads: leg locks, leg tails, open PRs, and
+# the board fingerprint -- what chief-board.html shows that the
+# chief authors or a tick already reads: worker locks, worker tails, open PRs, and
 # the queue:, last GO:, epics: and decisions: lines. Not the doc mtime (every
 # Results bullet bumps that). board.mjs embeds this exact value via --emit-fp.
 # ponytail: CI colour and fleet capacity are shown on the board but deliberately
-# outside the fingerprint -- they move without a console act, so including them
-# would read STALE for changes the console cannot republish for.
+# outside the fingerprint -- they move without a chief act, so including them
+# would read STALE for changes the chief cannot republish for.
 board_fp=""
 board_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
@@ -1523,11 +1533,11 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     board_epics="$(grep -m1 '^epics:' "$console_doc" 2>/dev/null)" || board_epics=""
     board_decisions="$(grep -m1 '^decisions:' "$console_doc" 2>/dev/null)" || board_decisions=""
     board_fp="$(printf '%s\n%s\n%s\n%s\n%s\n%s\n%s\n' "$legs_summary" "$tails_summary" "$prs" "$board_queue" "$board_lastgo" "$board_epics" "$board_decisions" | sha256sum | cut -c1-16)"
-    board_file="${console_doc%/*}/console-board.html"
+    board_file="${console_doc%/*}/chief-board.html"
     if [ ! -f "$board_file" ]; then
         board_summary=MISSING
     else
-        board_have="$(sed -n 's/.*name="console-board-fp" content="\([0-9a-f]*\)".*/\1/p' "$board_file" 2>/dev/null | head -n 1)"
+        board_have="$(sed -n 's/.*name="chief-board-fp" content="\([0-9a-f]*\)".*/\1/p' "$board_file" 2>/dev/null | head -n 1)"
         if [ -n "$board_have" ] && [ "$board_have" = "$board_fp" ]; then
             board_summary=ok
         else
@@ -1546,10 +1556,10 @@ fi
 # derivation (the mirror's newest updated + the plan files), the same value it
 # writes to <page>.fp when it renders; a tracker that moved past its render reads
 # STALE, aged by the page's mtime; a page newer than its `.published` stamp (touched by the
-# console after each publish) reads REPUBLISH:<age>. skip = no (or `none`) `tracker:` Live state line.
+# chief after each publish) reads REPUBLISH:<age>. skip = no (or `none`) `tracker:` Live state line.
 # ponytail: tracker=ok says the LOCAL page matches Jira + the plan; tick cannot see
 # whether the artifact was republished, and it reads the mirror on disk, so a stale
-# mirror reads ok until the console refreshes it (node scripts/jira/dist/index.js mirror).
+# mirror reads ok until the chief refreshes it (node scripts/jira/dist/index.js mirror).
 tracker_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     tracker_url="$(sed -n 's/^tracker:[[:space:]]*//p' "$console_doc" 2>/dev/null | head -n 1)"
@@ -1581,7 +1591,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         elif { [ -n "$tracker_focus_sha" ] && [ "$(cut -c1-8 "$tracker_file.vfp" | head -n 1)" = "$tracker_focus_sha" ]; } \
             || { [ -z "$tracker_focus_sha" ] && [ "$(cat "$tracker_file.fp" 2>/dev/null)" = "$tracker_want" ]; }; then
             tracker_summary=ok
-            # The console touches <page>.published after each Artifact publish; a page newer than that stamp is
+            # The chief touches <page>.published after each Artifact publish; a page newer than that stamp is
             # rendered but not republished. No stamp file, no verdict.
             if [ -f "$tracker_file.published" ] && [ "$tracker_file" -nt "$tracker_file.published" ]; then tracker_class=REPUBLISH; fi
         else
@@ -1600,7 +1610,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     esac
 fi
 
-# focus=<state> and sdrift=<n>:<sig8> read the focus-state file beside the console doc
+# focus=<state> and sdrift=<n>:<sig8> read the focus-state file beside the chief doc
 # (focus-refresh.sh writes it, --status reads it with no gh or Jira call). Both are absent
 # with no state file or when --status reads focus=skip.
 focus_summary="" sdrift_summary=""
@@ -1615,7 +1625,7 @@ if [ -n "$console_doc" ] && [ -f "${console_doc%/*}/focus-state" ]; then
 fi
 
 # cloud=<ok|STALL:<ticket>[,...]|skip>. cloud-liveness.mjs owns the derivation
-# (cloud-sessions.tsv next to the console doc against ONE `gh pr list --state all` and one
+# (cloud-sessions.tsv next to the chief doc against ONE `gh pr list --state all` and one
 # `git ls-remote`); a missing node or helper, a missing tsv, or an unreadable forge reads
 # skip, never a failed tick. The 60 s bound sits inside the waiter's tick timeout.
 cloud_summary=skip
@@ -1625,7 +1635,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -f "${console_doc%/*}/clo
 fi
 
 # orphans-wip=<n[:KEY,...]|?|skip>: In Progress / In Review / IN CI tickets with no
-# leg, cloud session or open PR holding them (an IN CI one a merged PR cites counts too). next-dispatchable.sh --resume-only owns the
+# worker, cloud session or open PR holding them (an IN CI one a merged PR cites counts too). next-dispatchable.sh --resume-only owns the
 # derivation from the Jira mirror (one `gh pr list`, no per-PR diff). Keys are named for
 # n <= 5. A failed PR read is `?` (not an all-clear); no mirror or helper reads skip.
 orphans_wip=skip
@@ -1633,7 +1643,7 @@ nd_mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMME
 if [ -d "$nd_mirror" ] && command -v python3 >/dev/null 2>&1; then
     if nd_out="$(timeout -k 5 60 bash "$HERE/next-dispatchable.sh" --resume-only --top 1000 --owners "$owner_keys" 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only
         case "$nd_out" in
-            *'open PRs unknown'*|*'live legs unknown'*|*'merged PRs unknown'*) orphans_wip='?' ;;
+            *'open PRs unknown'*|*'live workers unknown'*|*'merged PRs unknown'*) orphans_wip='?' ;;
             *)
                 nd_keys="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" || $1 == "MERGED-NOT-CLOSED" { print $2 }' | paste -sd, -)"
                 nd_n="$(printf '%s\n' "$nd_out" | awk -F'\t' '$1 == "RESUME" || $1 == "MERGED-NOT-CLOSED"' | wc -l | tr -d ' ')"
@@ -1647,7 +1657,7 @@ fi
 
 # versionless-done=<n|unknown|skip>: Done tickets with no fixVersion, from one
 # bounded versionless-done.sh read. skip = no Jira mirror on this
-# machine, so no Jira is called; unknown = the read failed. Not in console-wait's wake key.
+# machine, so no Jira is called; unknown = the read failed. Not in chief-wait's wake key.
 vdone_summary=skip
 vdone_probe="${TICK_VERSIONLESS_DONE_PROBE:-$HERE/versionless-done.sh}"
 if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}" ]; then
@@ -1659,9 +1669,9 @@ if [ -f "$vdone_probe" ] && [ -d "${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/
 fi
 
 # vmismatch=<n|?|skip>: RESET rows of one bounded version-status-audit.sh read on
-# the Jira mirror, owners = this tick's live legs. ? = the audit printed no count, an
+# the Jira mirror, owners = this tick's live workers. ? = the audit printed no count, an
 # UNKNOWN row (a gh read failed) or a zero count from a scan that skipped files; skip = no
-# mirror on this machine. In console-wait's wake key.
+# mirror on this machine. In chief-wait's wake key.
 vmismatch_summary=skip
 vm_probe="${TICK_VMISMATCH_PROBE:-$HERE/version-status-audit.sh}"
 if [ -f "$vm_probe" ] && [ -d "$nd_mirror" ]; then
@@ -1681,7 +1691,7 @@ fi
 # leaks=<n|?|skip>: LEAK lines of one `jira release leaks <active version>` read on the Jira
 # mirror (open tickets in a frozen version with no frozen-set membership and no admissions-ledger
 # row). skip = no mirror or versions file, no active version, or the active version is not frozen;
-# ? = the read failed or the built Jira CLI is missing. Read-only: the ACTION line names the --comment run, the tick never writes. Not in console-wait's wake key.
+# ? = the read failed or the built Jira CLI is missing. Read-only: the ACTION line names the --comment run, the tick never writes. Not in chief-wait's wake key.
 leaks_summary=skip
 leaks_version=""
 lk_vf="$nd_mirror.versions.tsv"
@@ -1714,13 +1724,13 @@ if [ -n "$leaks_version" ]; then
     fi
 fi
 
-# rm-queue=<n>,<oldest age>m[,run]: open placement requests of the console doc's `release:` release,
+# rm-queue=<n>,<oldest age>m[,run]: open placement requests of the chief doc's `release:` release,
 # from one `jira release state <R> --json` read; the age is the oldest open request's. When the oldest is
 # TICK_RMRUN_MIN minutes old (default 30), the lease is free and no run was launched inside TICK_RMRUN_MIN_SECS
 # (default 600), the tick launches ONE detached `jira release rm-run <R>` (it runs a model call, far past this
 # tick's budget; its lines go to $TICK_STATE_DIR/tick-rm-run.log) and appends `,run`. rm-run takes the lease itself,
 # so a run in flight blocks a second one. 0 = nothing open, ? = the read failed, skip = no `release:` line.
-# Not in console-wait's wake key.
+# Not in chief-wait's wake key.
 rm_queue=skip
 rm_rel=""
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
@@ -1795,7 +1805,7 @@ print(n, age, "held" if ls and not ls.get("released") else "free", d.get("status
 fi
 
 # pool-closed=<closed>/<total>: closed keys on --doc's Live state `priority:` line, from
-# the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in console-wait's wake key.
+# the Jira mirror on disk (no Jira call). skip = no doc, mirror or line. Not in chief-wait's wake key.
 pool_closed=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ] && [ -d "$nd_mirror" ]; then
     pool_closed="$(timeout -k 2 30 bash "$HERE/priority-prune.sh" --doc "$console_doc" --mirror "$nd_mirror" --count 2>/dev/null)" || pool_closed=skip  # gnu-ok: console kit is Linux-only; swallow-ok: a failed read reads skip
@@ -1832,7 +1842,7 @@ fi
 # open PR, nothing holding them) and the live worktree count once it reaches
 # HIMMEL_WORKTREE_ALARM, from one `worktree.sh prune --orphans` read. The read
 # takes ~20s on a 50-tree fleet, so its output is cached under TICK_STATE_DIR
-# for TICK_WT_ORPHANS_TTL minutes (default 30), one file per REPO so consoles
+# for TICK_WT_ORPHANS_TTL minutes (default 30), one file per REPO so chiefs
 # on different checkouts never share a reading. wt-ceiling is in the waiter's wake key.
 wto_summary=0
 wtc_summary=""
@@ -1864,9 +1874,9 @@ if [ -f "$wto_probe" ]; then
     wtc_summary=$(sed -n 's|^CEILING \([0-9]*/[0-9]*\) .*|\1|p' <<<"$wto_out")
 fi
 
-# This console's own HANDOFF (<doc stem>-HANDOFF.md, written by console.sh next)
+# This chief's own HANDOFF (<doc stem>-HANDOFF.md, written by chief.sh next)
 # over HANDOFF_BUDGET_BYTES, and its decisions: line over DECISIONS_BUDGET_BYTES.
-# Shown only as ACTION lines after the TICK line; not in console-wait's wake key.
+# Shown only as ACTION lines after the TICK line; not in chief-wait's wake key.
 handoff_bytes=0
 decisions_bytes=0
 handoff_budget="${HANDOFF_BUDGET_BYTES:-6000}"
@@ -1891,7 +1901,7 @@ vault_summary="$(HANDOVER_DIR="${HANDOVER_DIR:-$root}" bash "$HERE/vault-status.
 # inside the minimum interval since the last success (TICK_PLAN_INDEX_MIN_SECS, default
 # 900) so a busy mirror cannot cause back-to-back embeds; REFRESHING = launched or running;
 # FAIL:<why> = the last refresh failed (same interval backs off the relaunch); skip = no
-# plan dir. The console doc dir is NOT watched: its bucket changes on every Results bullet.
+# plan dir. The chief doc dir is NOT watched: its bucket changes on every Results bullet.
 # The wrapper takes OUT/.launch first, so an overlapping tick's duplicate exits before it can
 # clobber the live refresh's .run.log/.last-fail/.last-run.
 # ponytail: a SIGKILL mid-refresh leaves OUT/.lock or .launch, read as FAIL:lock-stuck after an hour
@@ -1906,7 +1916,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         pi_min="${TICK_PLAN_INDEX_MIN_SECS:-900}"
         case "$pi_min" in ''|*[!0-9]*) pi_min=900 ;; esac
         pi_args=(--plan-dir "$pi_plan" --out "$pi_out" --watch "${TICK_TRACKER_MIRROR_DIR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}")
-        [ -z "$LEGS_FROM" ] || pi_args+=(--watch "$LEGS_FROM")
+        [ -z "$WORKERS_FROM" ] || pi_args+=(--watch "$WORKERS_FROM")
         pi_age() { local m; m="$(stat -c %Y "$1" 2>/dev/null)" || m=""; case "$m" in ''|*[!0-9]*) echo 999999999 ;; *) echo $(( $(date +%s) - m )) ;; esac; }  # gnu-ok: console kit is Linux-only
         if bash "$HERE/../../roadmap/plan-index.sh" --check "${pi_args[@]}" >/dev/null 2>&1; then
             plan_index_summary=ok
@@ -1964,7 +1974,7 @@ bank="5h${fh}/wk${wk}/codex=${codex}"
 # spare=<pct>@<h>h -- weekly quota the current burn leaves unspent
 # at the reset (usage-monitor.sh --spare). Shown only when the spare is >=
 # TICK_SPARE_MIN percent (default 10) and the reset is <= TICK_SPARE_HOURS hours
-# away (default 24); otherwise the field is absent. Advisory only: console-wait's
+# away (default 24); otherwise the field is absent. Advisory only: chief-wait's
 # action key is a field whitelist that does not name spare=, so it never wakes.
 spare_min="${TICK_SPARE_MIN:-10}"
 spare_hours="${TICK_SPARE_HOURS:-24}"
@@ -1981,7 +1991,7 @@ fi
 
 # tmp=<pct>[!] -- how full the tmp filesystem is (read-only df on TICK_TMP_DIR,
 # default /tmp), with a trailing ! at TICK_TMP_WARN percent (default 80) or more.
-# Absent when df cannot be read. Advisory only: console-wait's action key is a
+# Absent when df cannot be read. Advisory only: chief-wait's action key is a
 # field whitelist that does not name tmp=, so a change never wakes the waiter.
 tmp_warn="${TICK_TMP_WARN:-80}"
 case "$tmp_warn" in ''|*[!0-9]*) tmp_warn=80 ;; esac
@@ -1992,22 +2002,22 @@ if [ -n "$tmp_pct" ]; then
     [ "$tmp_pct" -lt "$tmp_warn" ] || tmp_tail="$tmp_tail!"
 fi
 
-# fails=<n>/<legs>[@<top-class>*<k>][!<recur>][~<skipped>] -- this shift's
-# leg-failures ledger rows (ts >= the console lock's `started`): <n> rows, <legs>
-# distinct legs, the class with the most distinct legs (then events, then name),
+# fails=<n>/<workers>[@<top-class>*<k>][!<recur>][~<skipped>] -- this shift's
+# worker-failures ledger rows (ts >= the chief lock's `started`): <n> rows, <workers>
+# distinct workers, the class with the most distinct workers (then events, then name),
 # and !<recur> = distinct classes the failure router decided on this shift with a
 # decision other than skipped:* (its log, spec section 4.3; absent until P5 writes
 # one). fails=none with no row; fails=? when the lock start, the ledger or the
 # routes log is unreadable, or the latest leg-trajectory eval-runs row this shift
 # carries meta.digest_error (a failed read under pipefail reads ? too); skip with
-# no --doc. Whitespace in a class prints as _ so the TICK line stays one line. Advisory: console-wait.sh's
+# no --doc. Whitespace in a class prints as _ so the TICK line stays one line. Advisory: chief-wait.sh's
 # action key does not name it, so it wakes nothing. Each path honours the env
-# seam its writer uses (leg_ledger.py, eval_runs.py).
+# seam its writer uses (worker_ledger.py, eval_runs.py).
 fails_summary=skip
 if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fails_summary='?'
     fails_start="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$console_doc" 2>/dev/null | sed -n 's/.*"started":"\([0-9][0-9TZ:-]*\)".*/\1/p' | head -n 1)"
-    fl_ledger="${HIMMEL_WORKER_SESSION_FAILURES_LEDGER:-${HIMMEL_LEG_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}}"
+    fl_ledger="${HIMMEL_WORKER_SESSION_FAILURES_LEDGER:-$HOME/.himmel/leg-failures.jsonl}"
     fl_evals="${HIMMEL_EVAL_RUNS_LEDGER:-$HOME/.himmel/eval-runs.jsonl}"
     fl_routes="${HIMMEL_FAILURE_ROUTES_LOG:-$HOME/.himmel/state/failure-routes.log.jsonl}"
     # Readable-or-absent: an absent file is an empty one, anything else unreadable is ?.
@@ -2029,8 +2039,8 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
                 | "\(length)/\($legs)@\($top.c | gsub("[[:space:][:cntrl:]]"; "_"))*\($top.l)"
               end' 2>/dev/null)" || fl_counts=""
         # ~<k> = distinct docs whose wrap digest was skipped this
-        # shift (leg-digest-step.sh's skips.jsonl); unreadable reads ? too.
-        fl_skips_log="${WORKER_SESSION_DIGEST_STATE_DIR:-${LEG_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}}/skips.jsonl"
+        # shift (worker-digest-step.sh's skips.jsonl); unreadable reads ? too.
+        fl_skips_log="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}/skips.jsonl"
         fl_skips=""
         fl_ok "$fl_skips_log" && { fl_skips="$(fl_rows "$fl_skips_log" | jq -s -r 'map(.doc) | unique | length' 2>/dev/null)" || fl_skips=""; }
         case "$fl_recur" in ''|*[!0-9]*) fl_counts="" ;; esac
@@ -2044,11 +2054,11 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
 fi
 
 # flakes=<rows>/<suites>@<top-suite>*<k> -- this repo's suite-flake
-# ledger rows (run-shell-tests.sh) since the console lock's `started`
+# ledger rows (run-shell-tests.sh) since the chief lock's `started`
 # (the same shift boundary as fails=), read by scripts/observability/suite-flake-summary.sh
 # (bounded tail, repo-id filtered). ABSENT unless a row is new this shift (or `?`
 # when the ledger is unreadable), so a quiet shift changes no line. Advisory:
-# console-wait.sh's action key does not name it, so it wakes nothing. Env seams:
+# chief-wait.sh's action key does not name it, so it wakes nothing. Env seams:
 # SUITE_FLAKE_LEDGER, SUITE_FLAKE_REPO_ID, SUITE_FLAKE_TAIL_ROWS (the writer's).
 flakes_tail=""
 if [ -n "$console_doc" ] && [ -n "${fails_start:-}" ] && command -v jq >/dev/null 2>&1; then
@@ -2063,7 +2073,7 @@ fi
 
 # ready-mismatch=<flagged>/<ready>,nogo=<k>/<judged>[,ALERT]: READY claims a judge or
 # the diff contradicts (ready_mismatch_scan above). ABSENT unless something is flagged or
-# alerting, so a clean shift changes no line. Advisory: not in console-wait's action key.
+# alerting, so a clean shift changes no line. Advisory: not in chief-wait's action key.
 ready_tail=""
 if [ -n "$console_doc" ]; then
     rm_out="$(ready_mismatch_scan "${console_doc%/*}" 2>/dev/null)" || rm_out=""  # swallow-ok: no readable data omits the advisory field
@@ -2079,14 +2089,14 @@ if [ -n "$console_doc" ]; then
     fi
 fi
 
-# parked=<leg>:<age>m,...: a headed leg whose newest trust-ledger row is a
+# parked=<worker>:<age>m,...: a headed worker whose newest trust-ledger row is a
 # permission prompt nobody answered for TICK_PARKED_MIN minutes (default 5), i.e. it
 # is sitting on the auto-mode confirmation dialog while its lock heartbeat stays
-# fresh. ABSENT unless a leg is parked, so a quiet fleet changes no line. Read-only;
+# fresh. ABSENT unless a worker is parked, so a quiet fleet changes no line. Read-only;
 # parked-on-prompt.sh holds the rule and the seams (HIMMEL_TRUST_LEDGER_DIR).
 parked_tail=""
 parked_docs=()
-for leg in $LEGS_SPLIT; do parked_docs+=("$(resolve_doc "$leg")"); done
+for leg in $WORKERS_SPLIT; do parked_docs+=("$(resolve_doc "$leg")"); done
 if [ "${#parked_docs[@]}" -gt 0 ]; then
     parked_out="$(bash "$HERE/parked-on-prompt.sh" "${parked_docs[@]}" 2>/dev/null | head -n 1)" || parked_out=""
     case "$parked_out" in ''|parked=none|'parked=?') ;; *[!A-Za-z0-9._:,=+@-]*) ;; parked=*) parked_tail=" $parked_out" ;; esac
@@ -2139,7 +2149,7 @@ if [ "$prs" != none ] && { [ -n "${TICK_STALL_PROBE:-}" ] || [ "$pr_repo" = "$RE
     # swallow-ok: an unreadable cache reads as stale and the probe runs
     [ "$stall_ttl" -gt 0 ] && [ -f "$stall_cache" ] && [ -n "$(find "$stall_cache" -mmin "-$stall_ttl" 2>/dev/null)" ] && stall_fresh=1
     if [ -z "$stall_fresh" ]; then
-        if stall_rows="$(timeout -k 2 60 bash "$stall_probe" ${LEGS_FROM:+--manifest "$LEGS_FROM"} 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only; swallow-ok: a failed probe keeps the last cached value
+        if stall_rows="$(timeout -k 2 60 bash "$stall_probe" ${WORKERS_FROM:+--manifest "$WORKERS_FROM"} 2>/dev/null)"; then  # gnu-ok: console kit is Linux-only; swallow-ok: a failed probe keeps the last cached value
             stall_val="$(printf '%s\n' "$stall_rows" | awk '$1 == "STALL" && $2 ~ /^[0-9]+$/ && $3 ~ /^[a-z-]+$/ { printf "%s%s:%s", sep, $2, $3; sep = "," }')"
         fi
         if [ "$stall_ttl" -gt 0 ]; then
@@ -2164,11 +2174,11 @@ if [ -n "$crfirst_rows" ] && [ -z "${pr_read_failed:-}" ] && [ "$pr_repo" = "$RE
     case "$cf_val" in ""|*[!0-9A-Za-z:,._#-]*) ;; *) crfirst_tail=" crfirst=$cf_val" ;; esac
     crfirst_alerts="$(printf '%s\n' "$cf_out" | sed -n 's/^ALERT //p')"
 fi
-# busedge=MISSING:<label>[,...]: a held leg (lock FRESH or STALE) none of whose
-# session names has a himmel-bus peer record naming this console (the console doc's stem),
+# busedge=MISSING:<label>[,...]: a held worker (lock FRESH or STALE) none of whose
+# session names has a himmel-bus peer record naming this chief (the chief doc's stem),
 # so it has no bus edge to the live console: never registered, or never adopted it.
-# ABSENT when every held leg has a record, or when the bus has no peers dir (bus not in use).
-# console-wait.sh's wake key does not name it, so it wakes nothing. Env seam: TICK_BUS_PEERS_DIR.
+# ABSENT when every held worker has a record, or when the bus has no peers dir (bus not in use).
+# chief-wait.sh's wake key does not name it, so it wakes nothing. Env seam: TICK_BUS_PEERS_DIR.
 busedge_tail=""
 bus_peers_dir="${TICK_BUS_PEERS_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus/peers}"
 if [ -d "$bus_peers_dir" ]; then
@@ -2187,7 +2197,7 @@ if [ -d "$bus_peers_dir" ]; then
     done <<< "$leg_candmap"
     [ -z "$busedge_val" ] || busedge_tail=" busedge=MISSING:$busedge_val"
 fi
-# wakerstate=<label>:rc3|rc4[,...]: a held leg whose bus-idle-waker ended on
+# wakerstate=<label>:rc3|rc4[,...]: a held worker whose bus-idle-waker ended on
 # rc=3 (konsole refuses sendText) or rc=4 (the session is not the named claude), so
 # its mail wakes nothing. bus-idle-waker.sh leaves the state file; ABSENT when none.
 # Env seam: TICK_BUS_WAKER_DIR.
@@ -2206,10 +2216,10 @@ if [ -d "$bus_waker_dir" ]; then
     done <<< "$leg_candmap"
     [ -z "$wakerstate_val" ] || wakerstate_tail=" wakerstate=$wakerstate_val"
 fi
-# deadwin=<label>:closed|held[,...]: a leg konsole (tabtitle
+# deadwin=<label>:closed|held[,...]: a worker konsole (tabtitle
 # HIMMEL-<n>-N<k>-...) with no child process -- its session was killed (OOM)
 # and the window sits on "program crashed". ONE ps read, no per-window probe.
-# It is TERMed (:closed) only when the leg's lock is free (FREE/WRAPPED) or a
+# It is TERMed (:closed) only when the worker's lock is free (FREE/WRAPPED) or a
 # newer <tabtitle>-r<n> window with a live child is up; else :held (report only).
 # A konsole younger than TICK_DEADWIN_GRACE seconds (default 30) has not spawned
 # its child yet. ABSENT when none.
@@ -2218,7 +2228,7 @@ dw_grace="${TICK_DEADWIN_GRACE:-30}"
 case "$dw_grace" in ""|*[!0-9]*) dw_grace=30 ;; esac
 dw_ps="$(ps -ww -eo pid=,ppid=,etimes=,args= 2>/dev/null || ps -eo pid=,ppid=,etimes=,args= 2>/dev/null)" || dw_ps=""  # swallow-ok: an unreadable table reports no dead window, never a false one
 if [ -n "$dw_ps" ]; then
-    # one awk pass: per konsole leg window "<pid> <etimes> <tabtitle> <haschild>"
+    # one awk pass: per konsole worker window "<pid> <etimes> <tabtitle> <haschild>"
     dw_rows="$(printf '%s\n' "$dw_ps" | awk '
         { ppid_seen[$2] = 1 }
         $4 ~ /(^|\/)konsole$/ {
@@ -2240,7 +2250,7 @@ if [ -n "$dw_ps" ]; then
             case "$dw_s" in FREE|WRAPPED) dw_free=1 ;; esac
         done <<< "$leg_candmap"
         if [ "$dw_free" -eq 0 ]; then
-            # a live relaunch: another leg window titled <tabtitle>-r<n> that has a child
+            # a live relaunch: another worker window titled <tabtitle>-r<n> that has a child
             dw_base="$dw_tt"; dw_n=0
             if [[ "$dw_tt" =~ ^(.*)-r([0-9]+)$ ]]; then dw_base="${BASH_REMATCH[1]}"; dw_n="${BASH_REMATCH[2]}"; fi
             while read -r _ _ dw_rt dw_ra; do
@@ -2256,7 +2266,7 @@ if [ -n "$dw_ps" ]; then
     done <<< "$dw_rows"
 fi
 # A closed window leaves ps at once, so :closed is kept in a state file and
-# re-reported for TICK_DEADWIN_KEEP seconds (default 300): console-wait needs two
+# re-reported for TICK_DEADWIN_KEEP seconds (default 300): chief-wait needs two
 # consecutive samples off its saved key, and a one-tick report would be dropped.
 dw_state="${TICK_STATE_DIR:-$HOME/.himmel/state}/tick-deadwin-closed"
 dw_keep="${TICK_DEADWIN_KEEP:-300}"
@@ -2280,7 +2290,7 @@ fi
 [ -z "$deadwin_tail" ] || deadwin_tail=" deadwin=$deadwin_tail"
 
 # closable=<n>: finished windows still open past TICK_CLOSABLE_MIN minutes.
-# ABSENT when 0; run `close-wrapped-leg.sh --sweep --fleet <manifest>`.
+# ABSENT when 0; run `close-wrapped-worker.sh --sweep --fleet <manifest>`.
 closable_tail=""
 [ "$closable_n" -eq 0 ] || closable_tail=" closable=$closable_n"
 
@@ -2309,7 +2319,7 @@ if [ -n "$root" ] && [ -d "$root/inbox" ]; then
         # A partial final line is not deliverable by inbox-follow.sh yet.
         unread_lines="$(tail -c +$((10#$cursor + 1)) "$inbox_file" 2>/dev/null | tr -cd '\n' | wc -c | tr -d '[:space:]')"  # swallow-ok: unreadable inboxes are not proven unread and are omitted
         [ "${unread_lines:-0}" -gt 0 ] || continue
-        inbox_label="$(leg_label "$inbox_name")"
+        inbox_label="$(worker_label "$inbox_name")"
         inbox_summary="$(csv_add "$inbox_summary" "$inbox_label:$inbox_size/$cursor")"
     done
 fi
@@ -2326,7 +2336,7 @@ fi
 fleet_out="$(CADENCE_USAGE_LAUNCH='' CADENCE_BANK_LAUNCH='' CADENCE_USAGE_LEDGER=/dev/null bash "$REPO/scripts/lib/usage-preflight.sh" 2>&1)" || fleet_out=""
 # usage= uses the selected lane's own preflight verdict. Keep
 # or= below informational; it never stands in for the bank admission gate.
-if [ "${CADENCE_USAGE_LANE:-${CADENCE_BANK_LANE:-${WORKER_SESSION_LANE:-${LEG_LANE:-native}}}}" = openrouter ]; then
+if [ "${CADENCE_USAGE_LANE:-${WORKER_SESSION_LANE:-native}}" = openrouter ]; then
     or_verdict="$(printf '%s\n' "$fleet_out" | grep -E '^(PROCEED|SKIPPED-BANK|BANK-UNKNOWN|SKIPPED-FLEET)$' | tail -n 1)"
     bank="openrouter:${or_verdict:-BANK-UNKNOWN}"
 fi
@@ -2337,11 +2347,11 @@ if [ -n "$fleet_total" ]; then
     fleet_live="${fleet_total% *}"
     fleet_cap="${fleet_total#* }"
     fleet="$fleet_live/$fleet_cap"
-    # Last dispatch = newest <name>.launch.log under the console work dir: the
+    # Last dispatch = newest <name>.launch.log under the chief work dir: the
     # file's final write is the "konsole launched" line, so its mtime is the
     # real window start (the sig- file is touched again at release, and lock
     # dirs are re-stamped by every heartbeat). The dir is fleet-wide, like the
-    # census, so any console's recent launch counts as capacity being filled.
+    # census, so any chief's recent launch counts as capacity being filled.
     launch_dir="$(launch_dir_default)"
     recent_launch="$(find "$launch_dir" -maxdepth 2 -name '*.launch.log' -mmin "-$underfill_min" 2>/dev/null | head -n 1)"  # gnu-ok: console kit is Linux/KDE-only (headed-arm.sh); the launch logs it reads exist nowhere else
     if [ $((10#$fleet_live)) -ge $((10#$fleet_cap)) ] || [ -n "$recent_launch" ]; then
@@ -2355,8 +2365,8 @@ else
 fi
 
 # reuse the fleet census, never read the metered account when
-# no OpenRouter leg is live. This informational field is deliberately absent
-# from console-wait.sh's action key, so changing credit never wakes a waiter.
+# no OpenRouter worker is live. This informational field is deliberately absent
+# from chief-wait.sh's action key, so changing credit never wakes a waiter.
 openrouter='?'
 or_live="$(printf '%s\n' "$fleet_out" | sed -n 's/^bank-preflight: FLEET .*openrouter=\([0-9][0-9]*\) .*/\1/p' | tail -n 1)"
 case "$or_live" in
@@ -2376,14 +2386,14 @@ esac
 
 # orphans=: shell-tool wrappers older than TICK_ORPHAN_MIN minutes,
 # joined to the owning session name -- a poll loop that outlives its wrapped
-# leg (TaskStop on an agent does not reap the shell it spawned) surfaces at the
+# worker (TaskStop on an agent does not reap the shell it spawned) surfaces at the
 # next tick. Read-only; orphans=? when the process table cannot be read.
 orphans_line="$(REPO="$REPO" bash "$HERE/orphan-loops.sh" 2>/dev/null | tail -n 1)" || orphans_line=""
 orphans="${orphans_line#orphans=}"
 [ -n "$orphans" ] || orphans='?'
 
 # gql=<remaining>/<reset HH:MM>: the GitHub GraphQL budget, shared by
-# every leg on the box, so a console sees exhaustion coming instead of hitting it.
+# every worker on the box, so a chief sees exhaustion coming instead of hitting it.
 # ghb_read is ONE real `gh api -i graphql` call -- `gh api rate_limit` reports the
 # REST core bucket and misreports this one -- so a tick pays exactly
 # one extra request. gql=? when the headers are unreadable; never fails the tick.
@@ -2417,10 +2427,10 @@ rest_compact() { # <line> -> 4200/5000@14:05[!LOW]; nothing when the line is not
     case "$1" in [0-9]*) printf '%s' "$1" | sed -e 's/ reset /@/' -e 's/ LOW$/!LOW/' ;; esac
 }
 
-# denials=<leg>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK]: rows
+# denials=<worker>:<n>[:SHIP-STEP|REPEAT|PAUSE-RISK]: rows
 # scripts/hooks/log-classifier-denial.sh appended to the jsonl within the
 # trailing window, grouped by the hook's own session_title (the worktree
-# slug it captured) -- NOT reconciled against this tick's --legs labels.
+# slug it captured) -- NOT reconciled against this tick's --workers labels.
 # SHIP-STEP fires immediately on a denied ship-step command; PAUSE-RISK on 3+
 # in the window or an all-time total approaching the auto-mode pause
 # threshold (20); REPEAT on 2+ in the window with neither of the above.
@@ -2431,9 +2441,9 @@ rest_compact() { # <line> -> 4200/5000@14:05[!LOW]; nothing when the line is not
 # reason_tag classify HERE, on this host, and are never printed into the tick
 # line (or any later page) -- test-tick.sh and the hook's test pin it. Stateless like every other field here (no persisted
 # cross-tick cursor), so "since the last tick" is approximated by a trailing
-# window rather than a real cursor -- console-wait's own key-diffing is what
+# window rather than a real cursor -- chief-wait's own key-diffing is what
 # actually triggers a wake on a class change, not this field's count.
-# ponytail: HIMMEL-3724 - leg-label reconciliation and a same-session success/flip check
+# ponytail: HIMMEL-3724 - worker-label reconciliation and a same-session success/flip check
 # for REPEAT are Phase 2, not implemented here.
 denials_window_min="${TICK_DENIALS_WINDOW_MIN:-30}"
 case "$denials_window_min" in ''|*[!0-9]*) denials_window_min=30 ;; esac
@@ -2463,8 +2473,8 @@ if command -v jq >/dev/null 2>&1 && [ -f "$denials_log" ]; then
         # under-count and hide a PAUSE-RISK. (A missing .1 must not fail the
         # pipeline under pipefail, hence the -r guard, not a bare cat.)
         denials_summary="$( { [ -r "$denials_log.1" ] && cat "$denials_log.1"; cat "$denials_log"; } 2>/dev/null | tail -n "$denials_tail_max" | jq -R -c 'fromjson? | select(type == "object" and (.input_head | type) == "string")' 2>/dev/null | jq -s -r --arg cutoff "$denials_cutoff" '
-            # A worktree row is labelled by its slug (the leg identity). Any
-            # other cwd is a bare directory name a re-dispatched leg would
+            # A worktree row is labelled by its slug (the worker identity). Any
+            # other cwd is a bare directory name a re-dispatched worker would
             # share with its predecessor, so it is labelled <name>#<sid8>
             # instead: one session, one count.
             def leg:
@@ -2499,7 +2509,7 @@ if command -v jq >/dev/null 2>&1 && [ -f "$denials_log" ]; then
     fi
 elif command -v jq >/dev/null 2>&1 && [ ! -e "$denials_log" ]; then
     # No log yet = the hook never fired = no denials. "skip" would read as a
-    # broken monitor and flap the console-wait key against "none".
+    # broken monitor and flap the chief-wait key against "none".
     denials_summary=none
 fi
 
@@ -2513,8 +2523,8 @@ fi
 # errors, a missing probe, timeout or malformed output; unknown neither sets nor
 # clears state. TICK_CIQ_TIMEOUT bounds the probe (default 45 s); the probe also
 # bounds API waiting to 30 s and returns unknown without a timeout binary.
-# console-wait.sh's wake key deliberately does not carry ciq: a changing queue
-# count must not wake the console.
+# chief-wait.sh's wake key deliberately does not carry ciq: a changing queue
+# count must not wake the chief.
 ciq_summary=unknown
 ciq_probe="$REPO/scripts/ci/queue-latency.sh"
 if [ -f "$ciq_probe" ]; then
@@ -2545,7 +2555,7 @@ fi
 # once-per-crossing memory ($TICK_STATE_DIR/tick-ciguard-state), so each "ALERT ..." line it
 # prints is a NEW crossing and becomes one ACTION line below; ciguard=OVER alone repeats for
 # as long as the metric stays over. No status line = unknown, and its ALERT lines are dropped.
-# console-wait.sh's wake key does not carry ciguard: the ACTION line is what the console reads.
+# chief-wait.sh's wake key does not carry ciguard: the ACTION line is what the chief reads.
 ciguard_summary=unknown
 ciguard_alerts=""
 ciguard_probe="${TICK_CIGUARD_PROBE:-$HERE/ci-guardrail.sh}"
@@ -2571,7 +2581,7 @@ fi
 # over CACHE_TTL+60 s than GitHub reports himmel-vm runners online (a fresher
 # registration is still connecting and reads ok). Fewer online than units, with
 # every runner idle or finished, is normal and reads ok.
-# console-wait.sh wakes only on a move to DEAD or STUCK; FAILING and DISAGREE
+# chief-wait.sh wakes only on a move to DEAD or STUCK; FAILING and DISAGREE
 # are shown in the tick line but do not wake it. unknown = the probe is missing, failed or timed out.
 vmrun_summary=unknown
 vmrun_probe="${HIMMEL_VMRUN_PROBE:-$HERE/vm-runner.sh}"
@@ -2585,7 +2595,7 @@ if [ -f "$vmrun_probe" ]; then
 fi
 
 # tick=ARMED|MISSING|UNKNOWN: whether the periodic Monitor
-# call that is SUPPOSED to invoke this script every 60 min (the console
+# call that is SUPPOSED to invoke this script every 60 min (the chief
 # template's `## Monitors` tick row, armed in ACTION ZERO step 10) is
 # actually armed. F never armed it and its absence was invisible to F, to
 # this script, and to the handover -- the whole point of this field is to
@@ -2596,39 +2606,44 @@ fi
 # scheduled-job census above, which reads real OS state). tick.sh runs as a
 # plain subprocess with no access to that in-session state, so ARMED/MISSING
 # cannot be told apart from here; faking either would be worse than saying
-# so. A console confirms the arm itself, in ACTION ZERO step 10's first
+# so. A chief confirms the arm itself, in ACTION ZERO step 10's first
 # bullet -- this field exists so a HUMAN or a later script reading a run of
 # tick lines can see that no honest signal was available, rather than
 # silently assuming one of the other fields would have caught it.
 tick_status=UNKNOWN
 
-# --burn: what each leg is actually paying per API call. The
-# session name is the leg doc's stem without the -RESUME suffix - the same
-# string headed-arm-leg.sh passes to `claude -n`, which is what leg-burn.sh
-# matches on. A leg with no transcript yet (armed, not started) reports "?"
+# --burn: what each worker is actually paying per API call. The
+# session name is the worker doc's stem without the -RESUME suffix - the same
+# string headed-arm-worker.sh passes to `claude -n`, which is what worker-burn.sh
+# matches on. A worker with no transcript yet (armed, not started) reports "?"
 # rather than failing the tick.
 burn_summary=""
 if [ "$burn" -eq 1 ]; then
-    for leg in $LEGS_SPLIT; do
+    for leg in $WORKERS_SPLIT; do
         stem="${leg##*/}"; stem="${stem%.md}"; stem="${stem%-RESUME}"
-        burn_label="$(leg_label "$leg")"
-        burn_line="$(bash "$REPO/scripts/lanes/leg-burn.sh" "$stem" 2>/dev/null)" || burn_line=""
+        burn_label="$(worker_label "$leg")"
+        burn_line="$(bash "$REPO/scripts/lanes/worker-burn.sh" "$stem" 2>/dev/null)" || burn_line=""
         if [ -z "$burn_line" ]; then
             # the session name has no -YYYY-MM-DD suffix, and a
             # legacy-spelled doc's session is the derived <TICKET>-N<k> name; try
-            # every candidate leg_identity names until one has a transcript.
-            burn_ident="$(leg_identity "$leg")"
+            # every candidate worker_identity names until one has a transcript.
+            burn_ident="$(worker_identity "$leg")"
             burn_cands="${burn_ident#*$'\t'}"
             for burn_cand in ${burn_cands//,/ }; do
                 [ "$burn_cand" = "$stem" ] && continue
-                burn_line="$(bash "$REPO/scripts/lanes/leg-burn.sh" "$burn_cand" 2>/dev/null)" || burn_line=""
+                burn_line="$(bash "$REPO/scripts/lanes/worker-burn.sh" "$burn_cand" 2>/dev/null)" || burn_line=""
                 [ -z "$burn_line" ] || break
             done
         fi
         if [ -n "$burn_line" ]; then
             burn_ft="$(printf '%s\n' "$burn_line" | sed -n 's/.*first-turn=\([^ ]*\).*/\1/p')"
             burn_avg="$(printf '%s\n' "$burn_line" | sed -n 's/.*avg-ctx=\([^ ]*\).*/\1/p')"
-            burn_summary="$(csv_add "$burn_summary" "$burn_label:${burn_ft:-?}/${burn_avg:-?}")"
+            # !SOFT / !HARD when the worker's cost-eq passed its budget (worker-budget.sh);
+            # a line it cannot measure (rc 2) stays unmarked
+            burn_mark=""
+            bash "$HERE/worker-budget.sh" --from-line "$burn_line" >/dev/null 2>&1; burn_rc=$?  # swallow-ok: rc is the verdict; an unmeasurable line stays unmarked
+            case "$burn_rc" in 4) burn_mark="!SOFT" ;; 3) burn_mark="!HARD" ;; esac
+            burn_summary="$(csv_add "$burn_summary" "$burn_label:${burn_ft:-?}/${burn_avg:-?}$burn_mark")"
         else
             burn_summary="$(csv_add "$burn_summary" "$burn_label:?")"
         fi
@@ -2707,7 +2722,7 @@ if [ "$verbose" -eq 1 ]; then
     [ -z "$tmp_tail" ] || printf 'tmp: %s\n' "${tmp_tail# tmp=}"
     [ -z "$spare_tail" ] || printf 'spare: %s\n' "${spare_tail# spare=}"
 else
-    # Keep reader inputs even at their defaults: console-wait.sh rejects
+    # Keep reader inputs even at their defaults: chief-wait.sh rejects
     # missing required fields, and capacity/unowned-prs/tracker clear streaks.
     # Only unconsumed healthy/default values are elided; unknowns stay visible.
     compact_field() {
@@ -2791,13 +2806,13 @@ else
     esac
     case "$leaks_summary" in
         ''|0|skip|'?') ;;
-        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the console admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
+        *) printf 'ACTION leaks=%s: JIRA_PROJECT_KEY=%q node %q release leaks %q --mirror-root %q --comment  # posts one comment per leak (idempotent; without --comment it only lists them), the chief admits or removes each\n' "$leaks_summary" "${nd_mirror##*/}" "$lk_cli" "$leaks_version" "$nd_mirror" ;;
     esac
     if [ "$wto_summary" != "0" ] || [ -n "$wtc_summary" ]; then
         printf 'ACTION wt-orphans=%s%s: bash %q prune --orphans lists them; bash %q prune reclaims the merged and detached ones, the rest need a wrap or a salvage\n' \
             "$wto_summary" "${wtc_summary:+ wt-ceiling=$wtc_summary}" "$REPO/scripts/worktree.sh" "$REPO/scripts/worktree.sh"
     fi
-    decisions_file="${console_doc%/*}/specs/decisions/console-decisions-$(date +%F).md"
+    decisions_file="${console_doc%/*}/specs/decisions/chief-decisions-$(date +%F).md"
     if [ "$handoff_bytes" -gt "$handoff_budget" ]; then
         printf 'ACTION handoff-over-budget=%s/%s: trim %q: move superseded rulings verbatim to %q, then tighten the Live state (chief-sections/live-state.md)\n' "$handoff_bytes" "$handoff_budget" "$handoff_file" "$decisions_file"
     fi

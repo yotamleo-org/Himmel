@@ -6,7 +6,7 @@ const ISO_PREFIX = /^\[\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z\]$/;
 test("installTimestampedLogging prepends an ISO-8601 timestamp arg to log + error, preserving the original args", () => {
   const logCalls: unknown[][] = [];
   const errorCalls: unknown[][] = [];
-  // A fake target, not the real console — this must not touch global state
+  // A fake target, not the real chief — this must not touch global state
   // (other test files share the process and would leak the wrap otherwise).
   const target = {
     log: (...args: unknown[]) => { logCalls.push(args); },

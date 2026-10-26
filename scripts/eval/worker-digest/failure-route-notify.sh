@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# failure-route-notify.sh — the failure router's door to the running console and the release manager.
+# failure-route-notify.sh — the failure router's door to the running chief and the release manager.
 #
 # WHY: a ticket the daily failure review files (or a class it comments on) must never die silently in
-# Jira. failure_router.py calls this once per live run for the console line and once per filed ticket
+# Jira. failure_router.py calls this once per live run for the chief line and once per filed ticket
 # for its release-manager INTAKE; it files into the backlog, so the RM places it, never a fixVersion.
 #
-#   failure-route-notify.sh console <text>        one line into the live console's inbox
+#   failure-route-notify.sh chief <text>        one line into the live chief's inbox
 #   failure-route-notify.sh intake <key> <why>    `jira release request <R> --verb INTAKE`, backlog to <R>
 #
-# The live console is resolved at RUN time like cache-health-cadence.sh: the newest held `*-console`
-# queue lock from `queue-lock.sh status --sweep`. No live console, or a failed send, alerts through
+# The live chief is resolved at RUN time like cache-health-cadence.sh: the newest held `*-chief`
+# queue lock from `queue-lock.sh status --sweep`. No live chief, or a failed send, alerts through
 # cadence-alert.sh. <R> is the earliest unreleased Jira version (the declared release).
 #
 # Seams (tests): FAILURE_ROUTE_SWEEP_CMD, FAILURE_ROUTE_INBOX_SEND, FAILURE_ROUTE_JIRA, plus
@@ -25,7 +25,7 @@ LOG="${HOME:-}/.claude/failure-review-cadence/failure-review-cadence.log"
 alert() { bash "$ALERT" fail failure-review-route "$1" "$LOG" "$2" "$3" >/dev/null 2>&1 || true; }
 
 # live_console: newest held *-chief / *-console queue lock's session name ("" if none).
-live_console() {
+live_chief() {
     local line slug age st best="" best_age=-1
     while IFS= read -r line; do
         case "$line" in slug=*) ;; *) continue ;; esac
@@ -41,16 +41,16 @@ live_console() {
     printf '%s' "$best"
 }
 
-cmd_console() {
-    local text="${1:-}" console
-    [ -n "$text" ] || { echo "ERR failure-route-notify: console needs a text" >&2; return 64; }
-    console="$(live_console)"
-    if [ -z "$console" ]; then
-        alert "no console is live to tell: $text" "no held *-chief or *-console queue lock" "read the digest and the router log"
+cmd_chief() {
+    local text="${1:-}" chief
+    [ -n "$text" ] || { echo "ERR failure-route-notify: chief needs a text" >&2; return 64; }
+    chief="$(live_chief)"
+    if [ -z "$chief" ]; then
+        alert "no chief is live to tell: $text" "no held *-chief or *-console queue lock" "read the digest and the router log"
         return 1
     fi
-    if ! bash "${FAILURE_ROUTE_INBOX_SEND:-$ROOT/scripts/handover/chief-kit/inbox-send.sh}" "$console" "$text"; then
-        alert "the console line to $console was not sent: $text" "inbox-send failed" "read the digest"
+    if ! bash "${FAILURE_ROUTE_INBOX_SEND:-$ROOT/scripts/handover/chief-kit/inbox-send.sh}" "$chief" "$text"; then
+        alert "the chief line to $chief was not sent: $text" "inbox-send failed" "read the digest"
         return 1
     fi
 }
@@ -78,7 +78,7 @@ cmd_intake() {
 
 sub="${1:-}"; [ $# -gt 0 ] && shift
 case "$sub" in
-    console) cmd_console "$@" ;;
+    chief|console) cmd_chief "$@" ;;
     intake) cmd_intake "$@" ;;
-    *) echo "Usage: failure-route-notify.sh <console <text> | intake <key> <why>>" >&2; exit 64 ;;
+    *) echo "Usage: failure-route-notify.sh <chief <text> | intake <key> <why>>" >&2; exit 64 ;;
 esac

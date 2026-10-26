@@ -15,7 +15,7 @@
 #                  spec §5.2) degrades: nothing filed, findings warned.
 #   tracker=none   Local tickets / no remote tracker: nothing is filed; the
 #                  numbered batch is printed for the PR's Ticket coverage and
-#                  the console.
+#                  the chief.
 # Dedupe is content-hash based: re-running on the same review output is a
 # no-op (closed tickets/issues count too). On a Bitbucket repo whose tracker
 # is *enabled* there is no dedupe, so re-runs would duplicate.
@@ -351,7 +351,7 @@ batch_list=$(printf '%s\n' "$candidates" | awk '{printf "%d. %s\n", NR, $0}')
 batch_count=$(printf '%s\n' "$candidates" | grep -c .)
 
 if [ "$TRACKER_MODE" = none ]; then
-    echo "file-deferred-issues: no remote tracker is configured here — nothing filed. Put these ${batch_count} deferred finding(s) in the PR's Ticket coverage as 'deferred → <ticket>' and report them to the console (batch ${batch_short}):"
+    echo "file-deferred-issues: no remote tracker is configured here — nothing filed. Put these ${batch_count} deferred finding(s) in the PR's Ticket coverage as 'deferred → <ticket>' and report them to the chief (batch ${batch_short}):"
     printf '%s\n' "$batch_list"
     exit 0
 fi

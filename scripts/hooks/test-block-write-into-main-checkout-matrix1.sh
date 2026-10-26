@@ -29,7 +29,7 @@ echo "== HIMMEL-2592 round 9 (RETASK R-N1-SED-4b91d7) — POSITION x ARM: a redi
 # (where it was first found) — "re-ask the question per
 # arm rather than reasoning from cp," per the retask.
 #
-# `dd` is on the console's arm list but is NOT modelled by this fence at
+# `dd` is on the chief's arm list but is NOT modelled by this fence at
 # all — no verb-scan arm matches it (grep the five `grep -E
 # '^[[:space:]]*<verb>...'` anchors above: sed, cp|mv, rm|touch, ln, git —
 # no dd). No coverage is invented for it; this is the explicit "say so"

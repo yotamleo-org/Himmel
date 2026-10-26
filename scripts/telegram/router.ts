@@ -16,8 +16,8 @@ export type Route =
   | { kind: "auto"; op: "arm-resume"; arg: string; time: string }
   | { kind: "auto"; op: "merge-public"; arg: string; time: string }
   | { kind: "auto"; op: "restart"; arg: string; time: string }
-  | { kind: "auto"; op: "launch-bypass-leg" | "cr-grant-delta"; arg: string; time: string }
-  | { kind: "auto"; op: "station-status" | "revert-main" | "repin-hooks" | "launch-leg" | "cr-reset" | "close-wrapped" | "relaunch-console" | "restart-bridge" | "allow-rule" | "confirm"; arg: string; time: string }
+  | { kind: "auto"; op: "launch-bypass-worker" | "cr-grant-delta"; arg: string; time: string }
+  | { kind: "auto"; op: "station-status" | "revert-main" | "repin-hooks" | "launch-worker" | "cr-reset" | "close-wrapped" | "relaunch-chief" | "restart-bridge" | "allow-rule" | "confirm"; arg: string; time: string }
   | { kind: "console"; name: string; text: string }
   | { kind: "consoles" }
   | { kind: "fleet"; verb: "status" | "legs" | "go?" | "push" | "halt"; leg?: string }
@@ -73,23 +73,23 @@ const RESTART = /^\/restart(?:\s+(full))?$/i;
 
 // Operator -> running chief: `/chief <session-name> <text>` (`/console` is a quiet alias).
 // Slash-prefixed and anchored on the whole message like /arm, so prose such as
-// "console output: foo" never matches. The router only checks SHAPE (name charset,
+// "chief output: foo" never matches. The router only checks SHAPE (name charset,
 // non-empty text); the path-safety refusal and the sender gate live downstream
-// (console-route.ts, poller.ts handleInbound), where a non-operator's match falls
+// (chief-route.ts, poller.ts handleInbound), where a non-operator's match falls
 // back to ordinary chat.
 // the verb is case-insensitive and may carry Telegram's `/cmd@<bot>`
 // addressing; a suffix naming another bot (when `botUsername` is known) is chat.
 // Only the leading verb is matched, so a mid-text or trailing /chief stays chat.
 const CONSOLE_VERB = /^\/(consoles?|chiefs?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
 
-const FLEET_VERB = /^\/(lockdown|fleet|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
+const FLEET_VERB = /^\/(lockdown|fleet|workers|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
 
 export function classify(raw: string, botUsername?: string | null): Route {
   const t = raw.trim();
   // fleet verbs and /lockdown take the same case-insensitive verb and
   // `/cmd@<bot>` addressing as /chief; a suffix naming another bot (when
   // `botUsername` is known) is chat. With no known bot name an `@` suffix cannot
-  // be checked, so only the fail-safe verbs (/halt, /lockdown) accept it. The leg
+  // be checked, so only the fail-safe verbs (/halt, /lockdown) accept it. The worker
   // label stays case-exact. The auto ops below are deliberately NOT loosened.
   const fv = t.match(FLEET_VERB);
   const fvVerb = fv ? fv[1].toLowerCase() : "";
@@ -100,7 +100,7 @@ export function classify(raw: string, botUsername?: string | null): Route {
     if (rest === "") {
       if (verb === "lockdown") return { kind: "lockdown" };
       if (verb === "fleet") return { kind: "fleet", verb: "status" };
-      if (verb === "legs") return { kind: "fleet", verb: "legs" };
+      if (verb === "workers" || verb === "legs") return { kind: "fleet", verb: "legs" };
       if (verb === "halt") return { kind: "fleet", verb: "halt" };
     }
     const label = rest.match(/^ ([A-Za-z0-9_.-]{1,64})$/);
@@ -126,8 +126,8 @@ export function classify(raw: string, botUsername?: string | null): Route {
   // validation. arg (PR digits) has no case.
   if (mergepub) return { kind: "auto", op: "merge-public", arg: mergepub[1], time: mergepub[2].toLowerCase() };
   // Closed typed ops; the shell half validates containment and the live PR head.
-  const launch = t.match(/^\/launch-bypass-leg\s+(\S+)\s+([A-Z][A-Z0-9_]+)$/);
-  if (launch) return { kind: "auto", op: "launch-bypass-leg", arg: launch[1], time: launch[2] };
+  const launch = t.match(/^\/launch-bypass-(?:worker|leg)\s+(\S+)\s+([A-Z][A-Z0-9_]+)$/);
+  if (launch) return { kind: "auto", op: "launch-bypass-worker", arg: launch[1], time: launch[2] };
   const grant = t.match(/^\/cr-grant-delta\s+#?(\d{1,6})\s+([0-9a-f]{40})$/i);
   if (grant) return { kind: "auto", op: "cr-grant-delta", arg: grant[1], time: grant[2].toLowerCase() };
   // Break-glass ops: whole-message, closed shapes; "-" fills an
@@ -135,12 +135,12 @@ export function classify(raw: string, botUsername?: string | null): Route {
   if (/^\/(?:station-status|repin-hooks|restart-bridge)$/.test(t)) return { kind: "auto", op: t.slice(1) as "station-status", arg: "-", time: "-" };
   const pr = t.match(/^\/(revert-main|cr-reset)\s+#?(\d{1,6})$/);
   if (pr) return { kind: "auto", op: pr[1] as "revert-main" | "cr-reset", arg: pr[2], time: "-" };
-  const leg = t.match(/^\/launch-leg\s+(N\d+[a-z]*)(\s+--hook-bypass)?$/);
-  if (leg) return { kind: "auto", op: "launch-leg", arg: leg[1], time: leg[2] ? "bypass" : "-" };
+  const worker = t.match(/^\/launch-(?:worker|leg)\s+(N\d+[a-z]*)(\s+--hook-bypass)?$/);
+  if (worker) return { kind: "auto", op: "launch-worker", arg: worker[1], time: worker[2] ? "bypass" : "-" };
   const closeW = t.match(/^\/close-wrapped(?:\s+(N\d+[a-z]*))?$/);
   if (closeW) return { kind: "auto", op: "close-wrapped", arg: closeW[1] ?? "-", time: "-" };
-  const relaunch = t.match(/^\/relaunch-console(?:\s+([a-z0-9][a-z0-9-]{0,63}))?$/);
-  if (relaunch) return { kind: "auto", op: "relaunch-console", arg: relaunch[1] ?? "-", time: "-" };
+  const relaunch = t.match(/^\/relaunch-(?:chief|console)(?:\s+([a-z0-9][a-z0-9-]{0,63}))?$/);
+  if (relaunch) return { kind: "auto", op: "relaunch-chief", arg: relaunch[1] ?? "-", time: "-" };
   const allowRule = t.match(/^\/allow-rule\s+([a-z0-9][a-z0-9-]{0,63})$/);
   if (allowRule) return { kind: "auto", op: "allow-rule", arg: allowRule[1], time: "-" };
   const confirmCode = t.match(/^\/confirm\s+([0-9a-f]{8})$/);

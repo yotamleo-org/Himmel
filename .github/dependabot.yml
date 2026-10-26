@@ -30,9 +30,13 @@
 # guard is the per-PR check .github/workflows/lockfile-release-age.yml, which runs
 # scripts/ci/check-lockfile-release-age.mjs on every lockfile entry a PR adds; a
 # security fix younger than 3 days goes in scripts/ci/release-age-allow.txt.
+# Labels (HIMMEL-7663): every entry sets labels: [] so a Dependabot PR opens unlabeled;
+# its default labels would fire labeled-event CI runs that shadow the green run and
+# leave the PR BLOCKED. check-manifest-coverage.sh fails an entry without it.
 version: 2
 updates:
   - package-ecosystem: "npm"
+    labels: []
     commit-message:
       prefix: "chore(deps): [HIMMEL-7588]"
     directories:
@@ -64,6 +68,7 @@ updates:
           - "patch"
 
   - package-ecosystem: "github-actions"
+    labels: []
     commit-message:
       prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/"
@@ -75,6 +80,7 @@ updates:
   # Digest bumps of the CI image's ubuntu:24.04 base only: a release jump
   # (24.10, 26.04) is a deliberate Dockerfile change, not a weekly bump.
   - package-ecosystem: "docker"
+    labels: []
     commit-message:
       prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/.github/ci-image"
@@ -91,6 +97,7 @@ updates:
   # pins and their hashes together. A shellcheck-py bump must also move the
   # .pre-commit-config.yaml rev (check-ci-install-locks.sh fails until it does).
   - package-ecosystem: "pip"
+    labels: []
     commit-message:
       prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/.github/ci-image"
@@ -102,6 +109,7 @@ updates:
   # The obsidian-triage tools' hashed requirements (requirements-scrapling.txt,
   # requirements-whisper.txt), installed outside CI by the operator's venv / `uv run`.
   - package-ecosystem: "pip"
+    labels: []
     commit-message:
       prefix: "chore(deps): [HIMMEL-7588]"
     directory: "/marketplace/plugins/obsidian-triage/tools"

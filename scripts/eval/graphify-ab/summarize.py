@@ -26,7 +26,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 import truth as T  # noqa: E402
 
-# A tool call that really uses the graph: the CLI, the leg wrapper, or its output
+# A tool call that really uses the graph: the CLI, the worker wrapper, or its output
 # dir. A bare mention of 'graphify' (e.g. grepping for graphify-bin.sh) is not use.
 GRAPH_USE = re.compile(r"(?:leg|worker)-graph\.sh|graphify-out|(^|[^-\w/.])graphify\s+(query|explain|path)\b")
 

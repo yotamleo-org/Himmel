@@ -1,23 +1,23 @@
-// a fixture fleet — three live sessions (a console, a leg with a running subagent and one failure, an
-// idle interactive session) and one wrapped leg — laid out exactly where the real fleet census reads it: a stub
+// a fixture fleet — three live sessions (a chief, a worker with a running subagent and one failure, an
+// idle interactive session) and one wrapped worker — laid out exactly where the real fleet census reads it: a stub
 // pgrep and a fake /proc (claude-sessions.sh's own CLAUDE_SESSIONS_PGREP / CLAUDE_SESSIONS_PROC seams), the
-// harness's ~/.claude/sessions/<pid>.json, the session journals under ~/.claude/projects, and leg docs under
+// harness's ~/.claude/sessions/<pid>.json, the session journals under ~/.claude/projects, and worker docs under
 // HANDOVER_DIR. Shared by the route suite (agui-fleet.test.ts) and the page e2e (e2e/agui.e2e.ts).
 import { appendFileSync, chmodSync, mkdirSync, renameSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 
 // head = the doc's title tail and brief lines above Results (the graph link); autocompact = the
-// --autocompact argv. The console succeeded a console that is no longer live; the leg's brief names the console.
+// --autocompact argv. The chief succeeded a chief that is no longer live; the worker's brief names the chief.
 type Member = { pid: number; name: string; run: string; model: string; status: "busy" | "idle"; doc?: string[]; head?: string[]; autocompact?: string };
-export const PRIOR_CONSOLE = "HIMMEL-nextleg-2026-10-07ZY-roadmap-console";
+export const PRIOR_CHIEF = "HIMMEL-nextleg-2026-10-07ZY-roadmap-chief";
 export const FLEET = {
-  console: { pid: 4101, name: "HIMMEL-nextleg-2026-10-07ZZ-roadmap-console", run: "1a000000-0000-4000-8000-000000000001", model: "claude-opus-5-5[1m]", status: "busy",
-    autocompact: "auto", head: [`— CONSOLE — successor to ${PRIOR_CONSOLE}.md (fill signal 45 %)`], doc: [] },
-  leg: { pid: 4102, name: "HIMMEL-901-N9001-fleet-leg-2026-10-07", run: "1a000000-0000-4000-8000-000000000002", model: "opus", status: "busy",
-    autocompact: "200000", head: ["", "> **You are N9001.** Your console is **`HIMMEL-nextleg-2026-10-07ZZ-roadmap-console`**."],
+  console: { pid: 4101, name: "HIMMEL-nextleg-2026-10-07ZZ-roadmap-chief", run: "1a000000-0000-4000-8000-000000000001", model: "claude-opus-5-5[1m]", status: "busy",
+    autocompact: "auto", head: [`— CHIEF — successor to ${PRIOR_CHIEF}.md (fill signal 45 %)`], doc: [] },
+  leg: { pid: 4102, name: "HIMMEL-901-N9001-fleet-worker-2026-10-07", run: "1a000000-0000-4000-8000-000000000002", model: "opus", status: "busy",
+    autocompact: "200000", head: ["", "> **You are N9001.** Your console is **`HIMMEL-nextleg-2026-10-07ZZ-roadmap-chief`**."],
     doc: ["- 09:00 LIVE — started", "- 09:40 LIVE — PR 1901 open, watching CI"] },
   idle: { pid: 4103, name: "scratch-session", run: "1a000000-0000-4000-8000-000000000003", model: "sonnet", status: "idle" },
-  wrapped: { pid: 4104, name: "HIMMEL-903-N9003-done-leg-2026-10-07", run: "1a000000-0000-4000-8000-000000000004", model: "opus", status: "idle",
+  wrapped: { pid: 4104, name: "HIMMEL-903-N9003-done-worker-2026-10-07", run: "1a000000-0000-4000-8000-000000000004", model: "opus", status: "idle",
     doc: ["- 08:00 READY 1903 abc GREEN", "- 08:30 WRAPPED — merged"] },
 } satisfies Record<string, Member>;
 
@@ -66,14 +66,14 @@ export type FleetFixture = {
   gh: { calls: string; reply: string; rc: string };
 };
 
-// the cloud lane, opt-in ({ cloud: true }). The console's bucket carries cloud-route.jsonl (what
+// the cloud lane, opt-in ({ cloud: true }). The chief's bucket carries cloud-route.jsonl (what
 // cloud-route.mjs appends) and the briefs it wrote; GitHub is a stub gh (CONFIG_UI_GH) that logs each call's argv
 // and answers the batched search with gh-reply.json. Ticket 905 reported CLOUD-DONE on open PR 1905 and has a live
-// local shepherd leg; 906 has no PR yet; 907 merged. 908 was routed LOCAL-NATIVE, 909
+// local shepherd worker; 906 has no PR yet; 907 merged. 908 was routed LOCAL-NATIVE, 909
 // went CLOUD-OK too long ago, and 910's newest routing is BLOCKED: none of the three is a cloud session.
 export const CLOUD = {
   shepherd: { pid: 4105, name: "HIMMEL-905-N9005-cloud-shepherd-2026-10-07", run: "1a000000-0000-4000-8000-000000000005", model: "sonnet", status: "busy",
-    head: ["", "> **You are N9005.** Your console is **`HIMMEL-nextleg-2026-10-07ZZ-roadmap-console`**."], doc: ["- 10:00 LIVE — shepherding PR 1905"] } satisfies Member,
+    head: ["", "> **You are N9005.** Your console is **`HIMMEL-nextleg-2026-10-07ZZ-roadmap-chief`**."], doc: ["- 10:00 LIVE — shepherding PR 1905"] } satisfies Member,
   url: "https://claude.ai/code/session_01AbCdEfGhIjKlMnOpQrStUv",
 };
 const HOUR = 60 * 60 * 1000;

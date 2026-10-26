@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# scripts/handover/chief/chief.sh — start or hand over a console session
+# scripts/handover/chief/chief.sh — start or hand over a chief session
 #
-# A console is a long-running headed Claude session that holds a queue lock
+# A chief is a long-running headed Claude session that holds a queue lock
 # on its own handover document, runs monitors, dispatches implementation
-# legs, acts on the rulings on their questions, merges on GO, and arms its own
+# workers, acts on the rulings on their questions, merges on GO, and arms its own
 # successor when its context fills. This script packages what an operator used to do
 # by hand:
-#   chief.sh new  — write the console doc + acquire its queue lock, print
+#   chief.sh new  — write the chief doc + acquire its queue lock, print
 #                     the launch line.
 #   chief.sh next — write the successor's doc stub, write the predecessor's
 #                     HANDOFF skeleton, print the launch line.
@@ -16,8 +16,8 @@
 # Env seams: HANDOVER_DIR / USER_SLUG / JIRA_PROJECT_KEY (via .env, see
 # load-dotenv.sh); CHIEF_BUCKET, CHIEF_DOC, CHIEF_MODEL,
 # CHIEF_FILL_PERCENT, CHIEF_TEMPLATE_DIR, CHIEF_WORK_DIR (default:
-# $XDG_RUNTIME_DIR/himmel-console when set and owned by this uid, else
-# ${TMPDIR:-/tmp}/himmel-console-<uid>; an override is validated the same as
+# $XDG_RUNTIME_DIR/himmel-chief when set and owned by this uid, else
+# ${TMPDIR:-/tmp}/himmel-chief-<uid>; an override is validated the same as
 # the default — see below), CHIEF_HEADED_ARM, ACTION_ZERO_SCRIPT (the
 # action-zero.sh that `next` pre-computes into the successor doc),
 # ACTION_ZERO_SECS (its bound, default 300),
@@ -25,15 +25,15 @@
 # detaching it).
 # Each CHIEF_* env seam above, and CHIEF_CONTEXT and CHIEF_BUS_*, still reads
 # its old name, CONSOLE_*.
-# Flag seams: --name (both commands; on next it selects which console
+# Flag seams: --name (both commands; on next it selects which chief
 # succession to continue) --arm --dry-run --model --bucket --prefix --project
 # --deadline-min --doc
-# --project (both commands; plugin /console from any repo -- points at a repo
+# --project (both commands; plugin /chief from any repo -- points at a repo
 # that is NOT this himmel checkout, e.g. run from ~/Websites: bucket/prefix
 # derive from it instead of himmel's own repo basename/JIRA_PROJECT_KEY, and
 # an --arm session opens there, not in himmel)
 # --date (next only; overrides the day used for the SUCCESSOR's own name --
-# letting a 23:5x console pre-mint tomorrow's A without
+# letting a 23:5x chief pre-mint tomorrow's A without
 # waiting for midnight; passing --date always starts that day's succession at A,
 # while omitting it continues the predecessor's own bijective sequence (Z ->
 # AA -> ... -> ZZ) regardless of whether the calendar day rolled over since).
@@ -48,7 +48,7 @@
 # owned by this user, is group/other-writable, or could not be created; 4 `wrap` refused: this session has a live in-process
 # subagent, or live-subagents.sh could not prove it has none; 5 `wrap` refused:
 # this session has a live non-harness process (wrap-subtree-check.sh WITHHELD),
-# other than its own console-wait.sh waiter, or that check could not run;
+# other than its own chief-wait.sh waiter, or that check could not run;
 # 6 `next` refused: a Results bullet quotes an operator ruling (verbatim) that
 # the decisions: line does not hold; 7 `next` refused: the outgoing doc has no
 # real `## Current direction` block.
@@ -59,16 +59,16 @@
 set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/leg-tail-status.sh
-. "$HERE/../../lib/leg-tail-status.sh"
+# shellcheck source=../../lib/worker-tail-status.sh
+. "$HERE/../../lib/worker-tail-status.sh"
 
 # The launch line below is PASTED by an operator, and the terminal
 # they paste it into was itself spawned from a claude session -- so
 # CLAUDE_CODE_CHILD_SESSION=1, CLAUDE_PID and CLAUDE_CODE_SESSION_ID are live in
-# that shell. A console that adopts them writes no transcript and cannot read
+# that shell. A chief that adopts them writes no transcript and cannot read
 # its own context fill, which is the signal its handover contract runs on.
 # headed-arm.sh scrubs these on the --arm path; the printed line
-# was missed, so an un-armed console silently became a throwaway child session.
+# was missed, so an un-armed chief silently became a throwaway child session.
 # Keep this identical to headed-arm.sh's env prefix.
 CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
 # shellcheck source=../../lib/load-dotenv.sh
@@ -83,6 +83,9 @@ CHIEF_LAUNCH_ENV="env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_
 . "$HERE/../../lib/chief-context.sh"
 # shellcheck source=../../lib/env-alias.sh
 . "$HERE/../../lib/env-alias.sh"
+alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
+alias_env CHIEF_MODEL CONSOLE_MODEL
+alias_env CHIEF_WORK_DIR CONSOLE_WORK_DIR
 for _chief_seam in ARM_FOREGROUND BUCKET BUS_CLI BUS_PROFILES_MJS CONTEXT DOC \
     FILL_PERCENT HEADED_ARM MODEL TEMPLATE_DIR WORK_DIR; do
     alias_env "CHIEF_$_chief_seam" "CONSOLE_$_chief_seam"
@@ -108,7 +111,7 @@ usage: chief.sh new  [--name <slug>] [--arm] [--dry-run] [--model <m>]
                        [--arm] [--dry-run] [--model <m>] [--bucket <b>]
                        [--prefix <P>] [--project <dir>] [--deadline-min <n>]
                        [--context <1m|standard>] [--relay-on-live]
-       chief.sh wrap <console-doc> <release-token> [<text>]
+       chief.sh wrap <chief-doc> <release-token> [<text>]
        chief.sh -h|--help
 
 wrap (the predecessor's last step, run from its own session) writes the
@@ -119,7 +122,7 @@ Supervisor sessions (consoles) default to 1m. --context overrides CHIEF_CONTEXT 
 --context standard or CHIEF_CONTEXT=standard opts down to 200000.
 
 --relay-on-live (next only) leaves a marker beside the outgoing console's inbox; its
-console-wait.sh waiter then wakes the outgoing console ONCE, when the successor holds
+chief-wait.sh waiter then wakes the outgoing console ONCE, when the successor holds
 its queue lock, with relay-batch.sh's SENDMESSAGE lines, so the outgoing console need
 not ask before relaying. It sends nothing itself. A console with a bus identity
 (HIMMEL_BUS_NAME) gets the marker without the flag.
@@ -134,7 +137,7 @@ continues the predecessor's own bijective letter sequence (rolling past Z
 into AA, AB, ... as needed) regardless of whether the calendar day has
 rolled over since.
 --project points chief.sh at a repo that is NOT this himmel checkout
-(plugin /console from any repo); bucket/prefix derive from it instead of
+(plugin /chief from any repo); bucket/prefix derive from it instead of
 himmel's own repo basename/JIRA_PROJECT_KEY. The console session itself
 always stays in this himmel checkout -- --project is recorded as data in
 the console doc, and a worker session (leg) for the project is dispatched into it explicitly
@@ -154,7 +157,7 @@ slugify() {
 # resolve_repo -- the primary checkout root (parent of the shared git-common
 # dir), which resolves correctly from a plain checkout OR a linked worktree.
 # Anchored on THIS script's own location ($HERE), never the cwd: the plugin
-# /console runs it with the cwd in a FOREIGN repo, and the template, kit and
+# /chief runs it with the cwd in a FOREIGN repo, and the template, kit and
 # queue-lock.sh below must be himmel's, not that repo's.
 resolve_repo() {
     local common
@@ -231,7 +234,7 @@ render_template() {
     # One awk pass, literal index()/substr() replacement; the pairs travel in
     # the environment so no value needs escaping ('/', '&', backslash). NOT
     # bash ${var//pat/rep}: bash 3.2 (macOS /bin/bash) is quadratic on this
-    # 34 KB UTF-8 template (~60 s per render, 604 s across test-console.sh),
+    # 34 KB UTF-8 template (~60 s per render, 604 s across test-chief.sh),
     # it keeps a quoted replacement's inner quotes literal, and bash 5.2+
     # patsub treats '&' in the replacement as the match.
     while [ "$#" -gt 0 ]; do
@@ -292,18 +295,18 @@ console_name() {
     esac
 }
 
-# Discovery metadata for /consoles. Best-effort; no Telegram message is sent
-# until the new or successor console actually arms its waiter.
+# Discovery metadata for /chiefs. Best-effort; no Telegram message is sent
+# until the new or successor chief actually arms its waiter.
 console_metadata() {
     command -v bun >/dev/null 2>&1 || return 0
-    bun "$repo/scripts/telegram/console-route.ts" register "$1" "$bucket" "${project_dir:-$repo}" >/dev/null 2>&1 || true
+    bun "$repo/scripts/telegram/chief-route.ts" register "$1" "$bucket" "${project_dir:-$repo}" >/dev/null 2>&1 || true
 }
 
-# Set by cmd_next to the outgoing console's session name; assigned
+# Set by cmd_next to the outgoing chief's session name; assigned
 # here so an ambient value can never name a predecessor.
 CHIEF_BUS_PREDECESSOR=""
 
-# console_bus_opted_in -- the console profile lists himmel-bus in its MCP servers.
+# console_bus_opted_in -- the chief profile lists himmel-bus in its MCP servers.
 # Returns 0 opted in, 1 not opted in, 2 the profile probe itself failed (its
 # output is left in bus_probe_out): a broken probe is not an opt-out.
 bus_probe_out=""
@@ -318,7 +321,7 @@ console_bus_opted_in() {
 }
 
 # bus_warn <log> <text> -- a bus-chain problem goes to stderr AND the launch log,
-# which is the only place the operator looks after the console has detached.
+# which is the only place the operator looks after the chief has detached.
 bus_warn() {
     echo "chief.sh: WARN $2" >&2
     printf '%s WARN: %s\n' "$(date +%F_%T)" "$(printf '%s' "$2" | tr '\n' ' ')" >> "$1"
@@ -336,34 +339,34 @@ bus_note() {
 do_arm() {
     local session="$1" doc="$2" fill_signal="$3" log="$4" arm
     # CONSOLE_ROLE is retired (its only working value was the
-    # implicit default; a relay is a leg, armed via headed-arm-leg.sh --relay,
-    # never through this console path). A console is what chief.sh arms, so
+    # implicit default; a relay is a worker, armed via headed-arm-worker.sh --relay,
+    # never through this chief path). A chief is what chief.sh arms, so
     # nothing is forwarded to headed-arm.sh's --role; a stale CONSOLE_ROLE in
     # the environment is ignored.
     mkdir -p "$(dirname "$log")"
     arm="${CHIEF_HEADED_ARM:-$HERE/../headed-arm.sh}"
-    # This process itself may BE a leg (chief.sh next --arm run
-    # from inside one) -- a leg's own profile/launcher env stays live in its
-    # shell for its whole session (see console_context_leg_env_unset_names),
+    # This process itself may BE a worker (chief.sh next --arm run
+    # from inside one) -- a worker's own profile/launcher env stays live in its
+    # shell for its whole session (see chief_context_worker_env_unset_names),
     # and headed-arm.sh would otherwise resolve its ${HEADED_ARM_*:-default}
-    # fallbacks and leg-profile vars from that leaked env. Scrub the whole
+    # fallbacks and worker-profile vars from that leaked env. Scrub the whole
     # canonical set from THIS process's own environment before the launch
-    # lines below run, so a fresh console always arms clean regardless of
+    # lines below run, so a fresh chief always arms clean regardless of
     # what launched the process running this script -- do_arm is always the
     # last thing its caller does (end of cmd_new / cmd_next, script exits
     # right after), so nothing downstream in this process needs them back.
     local -a leg_env_names=()
     local leg_env_name
-    for leg_env_name in $(console_context_leg_env_unset_names); do
+    for leg_env_name in $(chief_context_worker_env_unset_names); do
         leg_env_names+=("$leg_env_name")
     done
     unset "${leg_env_names[@]}"
-    # The console's bus identity is registered here,
+    # The chief's bus identity is registered here,
     # by its launcher, and bound by headed-arm.sh once it confirms the claude
-    # pid. Whatever HIMMEL_BUS_* this process carries (a predecessor console's
+    # pid. Whatever HIMMEL_BUS_* this process carries (a predecessor chief's
     # own HIMMEL_BUS_NAME is live in its shell) never reaches the successor, and
-    # the console profile's opt-in decides whether anything is registered.
-    # Fail-open: a failed register warns and the console launches unbound.
+    # the chief profile's opt-in decides whether anything is registered.
+    # Fail-open: a failed register warns and the chief launches unbound.
     local bus_var bus_cli bus_args
     for bus_var in $(compgen -v HIMMEL_BUS_); do unset "$bus_var"; done
     unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI
@@ -377,8 +380,8 @@ do_arm() {
         [ -n "$CHIEF_BUS_PREDECESSOR" ] && bus_args+=(--predecessor "$CHIEF_BUS_PREDECESSOR")
         if bus_out="$("$bus_cli" "${bus_args[@]}" 2>&1)"; then
             export HIMMEL_BUS_NAME="$session" HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$bus_cli"
-            # Still the outgoing console here (identity is process ancestry):
-            # stamp the successor so each leg's adopt passes while this one is live.
+            # Still the outgoing chief here (identity is process ancestry):
+            # stamp the successor so each worker's adopt passes while this one is live.
             if [ -n "$CHIEF_BUS_PREDECESSOR" ]; then
                 if bus_out="$("$bus_cli" succeed "$session" 2>&1)"; then
                     bus_stamp=", stamped successor of $CHIEF_BUS_PREDECESSOR"
@@ -391,42 +394,42 @@ do_arm() {
             bus_warn "$log" "bus register failed for $session - launching unbound: $bus_out"
         fi
     fi
-    # plugin /console from any repo: a
+    # plugin /chief from any repo: a
     # foreign --project selects the bucket/prefix and is recorded in the
-    # doc as data (see project_doc_value below) -- the console session
+    # doc as data (see project_doc_value below) -- the chief session
     # itself ALWAYS opens in the himmel checkout, never HEADED_ARM_REPO'd
     # into the project. Himmel's own project-scoped hooks (the GO-file merge
-    # gate, block-leg-askuserquestion) and the chief-kit's relative paths
-    # only load there. Legs for the project are dispatched into it
-    # explicitly with WORKER_SESSION_REPO=<project> (headed-arm-leg.sh), never by the
-    # console inheriting a repo override.
+    # gate, block-worker-askuserquestion) and the chief-kit's relative paths
+    # only load there. Workers for the project are dispatched into it
+    # explicitly with WORKER_SESSION_REPO=<project> (headed-arm-worker.sh), never by the
+    # chief inheriting a repo override.
     if [ "$CONTEXT_GIVEN" -eq 1 ]; then
         export CHIEF_CONTEXT="$CHIEF_CONTEXT_RESOLVED_MODE"
     fi
     if [ "${CHIEF_ARM_FOREGROUND:-0}" = "1" ]; then
-        bash "$arm" --role console "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model"
+        bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model"
     elif command -v setsid >/dev/null 2>&1; then
-        setsid nohup bash "$arm" --role console "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &
+        setsid nohup bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &  # t13b-ok: one detached arm, bounded by its deadline epoch
     else
-        nohup bash "$arm" --role console "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &
+        nohup bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &  # t13b-ok: one detached arm, bounded by its deadline epoch
     fi
     echo "armed: name=$session doc=$doc signal=$fill_signal deadline=$deadline_epoch log=$log"
     echo "arm-log: $log"
 }
 
-# The predecessor's wrap. A console run inside its own session
+# The predecessor's wrap. A chief run inside its own session
 # ($CLAUDE_CODE_SESSION_ID) writes WRAPPED and releases its lock only when
 # live-subagents.sh proves it has no in-process subagent still running (a judge
 # call whose verdict would otherwise die with the session); a live child, or no
 # way to tell, refuses with exit 4 and writes nothing.
-# ponytail: a console can still hand-write WRAPPED with append-results.sh and
-# release by hand; close-wrapped-leg.sh's exit 7 is the backstop that refuses to
+# ponytail: a chief can still hand-write WRAPPED with append-results.sh and
+# release by hand; close-wrapped-worker.sh's exit 7 is the backstop that refuses to
 # TERM it then, so the child is never killed. Gate append-results.sh itself if
 # that path is seen in use.
 #
 # Same for a non-harness process (a CI watcher, a suite run, a Monitor): the
 # session's own wrap-subtree-check.sh must find none, or wrap refuses with exit 5
-# naming each one. The console's own console-wait.sh waiter (and what it forked)
+# naming each one. The chief's own chief-wait.sh waiter (and what it forked)
 # is the one exemption: it is stopped here, and only after nothing else blocks.
 wrap_subtree_gate() {
     local sub src=0 plan kills blocks pid subs sp cmd now
@@ -442,7 +445,7 @@ wrap_subtree_gate() {
                     pid[n] = p; par[n] = q; row[n] = $0 }
         function wrapper(r) { return r ~ /cmd=[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-/ }
         END {
-            for (a = 1; a <= n; a++) if (row[a] ~ /cmd=([^ ]*\/)?(bash|sh|zsh) ([^ ]*\/)?console-wait\.sh( |$)/) { ex[pid[a]] = 1; w[pid[a]] = 1 }
+            for (a = 1; a <= n; a++) if (row[a] ~ /cmd=([^ ]*\/)?(bash|sh|zsh) ([^ ]*\/)?chief-wait\.sh( |$)/) { ex[pid[a]] = 1; w[pid[a]] = 1 }
             for (pass = 0; pass < 8; pass++) for (a = 1; a <= n; a++) {
                 if (par[a] in ex) ex[pid[a]] = 1
                 if (wrapper(row[a])) {
@@ -464,8 +467,8 @@ wrap_subtree_gate() {
         exit 5
     fi
     for pid in $kills; do
-        # a recycled pid must not be TERMed: only a live console-wait.sh process is
-        if { ps -ww -o args= -p "$pid" 2>/dev/null || ps -o args= -p "$pid" 2>/dev/null; } | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?console-wait\.sh( |$)'; then
+        # a recycled pid must not be TERMed: only a live chief-wait.sh process is
+        if { ps -ww -o args= -p "$pid" 2>/dev/null || ps -o args= -p "$pid" 2>/dev/null; } | grep -Eq '^([^ ]*/)?(bash|sh|zsh) ([^ ]*/)?chief-wait\.sh( |$)'; then
             # its whole subtree first, deepest-first, each pid confirmed gone, so
             # no descendant outlives it as an orphan the re-check below can no
             # longer see
@@ -476,8 +479,8 @@ wrap_subtree_gate() {
                 now=$(ps -ww -o args= -p "$sp" 2>/dev/null || ps -o args= -p "$sp" 2>/dev/null) || now=""
                 [ -n "$now" ] || continue
                 # an empty snapshot cmd would match any live process at that pid
-                case "$now" in "$cmd"*) [ -n "$cmd" ] || { err "wrap refused: descendant $sp of the console-wait waiter has no recorded command - waiter left running, re-run"; exit 5; } ;; *)
-                    err "wrap refused: descendant $sp of the console-wait waiter changed since the check (now: $now) - waiter left running, re-run"
+                case "$now" in "$cmd"*) [ -n "$cmd" ] || { err "wrap refused: descendant $sp of the chief-wait waiter has no recorded command - waiter left running, re-run"; exit 5; } ;; *)
+                    err "wrap refused: descendant $sp of the chief-wait waiter changed since the check (now: $now) - waiter left running, re-run"
                     exit 5 ;;
                 esac
                 kill -TERM "$sp" 2>/dev/null || true
@@ -487,7 +490,7 @@ wrap_subtree_gate() {
                     sleep 0.2
                 fi
                 if kill -0 "$sp" 2>/dev/null; then
-                    err "wrap refused: descendant $sp of the console-wait waiter survived TERM and KILL - waiter left running, re-run once it exits"
+                    err "wrap refused: descendant $sp of the chief-wait waiter survived TERM and KILL - waiter left running, re-run once it exits"
                     exit 5
                 fi
             done <<EOS
@@ -502,13 +505,13 @@ EOS
         sleep 0.5
     done
     printf '%s\n' "$sub" >&2
-    err "wrap refused: processes are still alive after stopping the console-wait waiter (above) - re-run once they exit"
+    err "wrap refused: processes are still alive after stopping the chief-wait waiter (above) - re-run once they exit"
     exit 5
 }
 
 cmd_wrap() {
     if [ "$#" -lt 2 ] || [ "$#" -gt 3 ]; then
-        echo "usage: chief.sh wrap <console-doc> <release-token> [<text>]" >&2
+        echo "usage: chief.sh wrap <chief-doc> <release-token> [<text>]" >&2
         exit 1
     fi
     local doc="$1" token="$2" text="${3:-handed over}" out rc=0
@@ -543,10 +546,10 @@ judge_calls_now() {
     esac
 }
 
-# The HANDOFF's "Wrapped with open PR" section: every fleet-manifest leg
+# The HANDOFF's "Wrapped with open PR" section: every fleet-manifest worker
 # whose last marker is WRAPPED and whose doc still names a PR that is open, so
 # the successor cannot drop it when the carry-forward is hand-written prose.
-# ponytail: the PR is read off the leg doc's own text (READY/PR/# followed by a number),
+# ponytail: the PR is read off the worker doc's own text (READY/PR/# followed by a number),
 # so a wrap that never names its PR is invisible here; the tick's unowned-prs= still
 # catches it. Open set = handoff-facts.sh prs, so it shares that field's seam and limit.
 wrapped_open_prs_section() { # <predecessor doc>
@@ -558,7 +561,7 @@ wrapped_open_prs_section() { # <predecessor doc>
     if [ -f "$manifest" ] && [ -n "$open" ] && rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
         while IFS="$(printf '\t')" read -r label ldoc; do
             [ -f "$ldoc" ] || continue
-            [ "$(leg_tail_status "$ldoc")" = WRAPPED ] || continue
+            [ "$(worker_tail_status "$ldoc")" = WRAPPED ] || continue
             # shellcheck disable=SC2013 # the words are bare digits
             for n in $(grep -oE '(READY|PR|#)[ #]*[0-9]+' "$ldoc" | grep -oE '[0-9]+$' | sort -u); do
                 printf '%s\n' "$open" | grep -qx "$n" || continue
@@ -631,13 +634,13 @@ while [ "$#" -gt 0 ]; do
         --model) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; MODEL="$2"; shift 2 ;;
         --model=*) MODEL="${1#--model=}"; shift ;;
         --context)
-            if [ "$#" -lt 2 ] || ! console_context_valid "$2"; then
+            if [ "$#" -lt 2 ] || ! chief_context_valid "$2"; then
                 err "--context must be 1m or standard"; exit 2
             fi
             CONTEXT="$2"; CONTEXT_GIVEN=1; shift 2 ;;
         --context=*)
             CONTEXT="${1#--context=}"
-            console_context_valid "$CONTEXT" || { err "--context must be 1m or standard"; exit 2; }
+            chief_context_valid "$CONTEXT" || { err "--context must be 1m or standard"; exit 2; }
             CONTEXT_GIVEN=1; shift ;;
         --bucket) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; BUCKET="$2"; shift 2 ;;
         --bucket=*) BUCKET="${1#--bucket=}"; shift ;;
@@ -665,7 +668,7 @@ if ! root="$(handover_root)"; then
     exit 2
 fi
 # #1410: resolve from this script's OWN checkout, like load_dotenv above --
-# user_slug's forge/git-config fallbacks read the cwd, and the plugin console
+# user_slug's forge/git-config fallbacks read the cwd, and the plugin chief
 # runs from any directory, so a foreign cwd forked the chain into another slug.
 # The subshell also scrubs GIT_DIR & co (git-clean.sh): an inherited one would
 # void the cd, git answering about ITS repo instead.
@@ -747,7 +750,7 @@ fi
 # A `next` with no explicit
 # --project must not silently record the successor as running "in the
 # himmel checkout itself" for a chain that is FOR a foreign project -- the
-# console session always lives in $REPO by design, so the plugin /console
+# chief session always lives in $REPO by design, so the plugin /chief
 # wrapper never derives --project from cwd for `next` (only for `new`), and
 # without one this defaults PROJECT_ARG from the predecessor doc's own
 # recorded project line, feeding the SAME bucket/prefix/registry resolution
@@ -781,12 +784,12 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ]; then
     fi
     unset _predecessor_doc_early _predecessor_project_early
 fi
-# plugin /console from any repo -- himmel's own JIRA_PROJECT_KEY and repo
+# plugin /chief from any repo -- himmel's own JIRA_PROJECT_KEY and repo
 # aren't the project's. --project marks the session as being FOR a DIFFERENT
 # checkout than this one: when it resolves to somewhere other than $repo,
 # bucket/prefix below derive from the PROJECT instead of from himmel, and the
-# project is recorded as data in the console doc (see project_doc_value) --
-# the console session itself always stays in $repo (do_arm above never
+# project is recorded as data in the chief doc (see project_doc_value) --
+# the chief session itself always stays in $repo (do_arm above never
 # retargets it). Canonicalized with `pwd -P`: a symlink to himmel, or two spellings of the SAME real repo (a
 # trailing slash, a relative path), still compare equal and count as "not
 # foreign".
@@ -961,12 +964,12 @@ if [ -z "$name" ]; then
     err "--name resolved to an empty slug (got '$NAME')"
     exit 1
 fi
-# stop-console-idle-guard (*-chief.lock), guard-console-dispatch
-# (*-chief.md) and console-compact-reinject (-n name) all key on the -chief
+# stop-chief-idle-guard (*-chief.lock), guard-chief-dispatch
+# (*-chief.md) and chief-compact-reinject (-n name) all key on the -chief
 # suffix, so a chief armed without it silently loses them. The bare default
 # `chief` already yields the `…A-chief` doc. A pre-rename console name maps
 # to its chief spelling; old_name keeps that spelling for the lookups that
-# must still find a live console-named chain.
+# must still find a live chief-named chain.
 name="$(chief_name "$name")"
 case "$name" in
     chief|*-chief) ;;
@@ -977,8 +980,8 @@ esac
 old_name="$(console_name "$name")"
 date="$(date +%F)"
 # successor_date: the day used for `next`'s SUCCESSOR name only.
-# Defaults to today; --date overrides it so a 23:5x console can pre-mint
-# TOMORROW's console without waiting for midnight. Nothing else (predecessor
+# Defaults to today; --date overrides it so a 23:5x chief can pre-mint
+# TOMORROW's chief without waiting for midnight. Nothing else (predecessor
 # resolution, `new`) reads this — they keep using $date.
 successor_date="$date"
 if [ "$DATE_GIVEN" -eq 1 ]; then
@@ -996,21 +999,21 @@ if [ "$DATE_GIVEN" -eq 1 ]; then
     esac
 fi
 state_dir="$root/$slug/$bucket"
-# The console parent defaults to Opus (default parent tier);
+# The chief parent defaults to Opus (default parent tier);
 # Fable is the escalation target, reached only via --model / CHIEF_MODEL.
 model="${MODEL:-${CHIEF_MODEL:-claude-opus-5-5}}"
 fill_percent="${CHIEF_FILL_PERCENT:-45}"
 # Resolve once for both printed and armed launches. An explicit
-# --context overrides the console-only environment choice and 1m default.
+# --context overrides the chief-only environment choice and 1m default.
 if [ "$CONTEXT_GIVEN" -eq 1 ]; then
     CHIEF_CONTEXT_RESOLVED_MODE="$CONTEXT"
 else
-    console_context_default 1 "${CHIEF_CONTEXT:-}"
+    chief_context_default 1 "${CHIEF_CONTEXT:-}"
 fi
-console_autocompact="$(console_context_autocompact "$CHIEF_CONTEXT_RESOLVED_MODE")"
-launch_model="$(console_context_strip_1m_suffix "$model")"
-if [ "$CHIEF_CONTEXT_RESOLVED_MODE" = 1m ] && ! console_context_model_is_fable "$launch_model" \
-    && console_context_model_takes_1m_suffix "$launch_model"; then
+console_autocompact="$(chief_context_autocompact "$CHIEF_CONTEXT_RESOLVED_MODE")"
+launch_model="$(chief_context_strip_1m_suffix "$model")"
+if [ "$CHIEF_CONTEXT_RESOLVED_MODE" = 1m ] && ! chief_context_model_is_fable "$launch_model" \
+    && chief_context_model_takes_1m_suffix "$launch_model"; then
     launch_model="${launch_model}[1m]"
 fi
 # The launch line carries --autocompact and an Opus 5.5 id, which a
@@ -1021,20 +1024,20 @@ _floor_dry=1
 claude_floor_gate chief.sh "$_floor_dry" "${HEADED_ARM_CLAUDE_CLI:-claude}" || exit 2
 
 # launch_cmd <session> <doc> -- the command line printed for an operator to
-# paste. No launcher runs for it, so the console's durable launch
+# paste. No launcher runs for it, so the chief's durable launch
 # row is written by the command itself (record-launch.sh, then claude), never
-# when the line is merely printed -- a row for a console nobody started would
+# when the line is merely printed -- a row for a chief nobody started would
 # be indistinguishable from a real one. The row carries the mode/source/
 # autocompact resolved above, the same values the claude flags below carry.
-# `;` not `&&`: a row that cannot be written must not stop the console.
-# An --arm console is launched by headed-arm.sh, which writes its own row; the
+# `;` not `&&`: a row that cannot be written must not stop the chief.
+# An --arm chief is launched by headed-arm.sh, which writes its own row; the
 # line printed beside it is informational and is not pasted.
 # The line opens with `cd <himmel checkout> && { ...; }` because the
 # plugin prints it to an operator sitting in a FOREIGN repo, and the
-# console must start in himmel for its project hooks and GO gate. The group
+# chief must start in himmel for its project hooks and GO gate. The group
 # keeps a failed cd from falling through to claude in the wrong directory.
 launch_cmd() {
-    # The printed console line carries the `console` plugin profile
+    # The printed chief line carries the `console` plugin profile
     # (--settings), like the armed launch; fails closed (no profile, no line).
     local console_settings
     console_settings=$(bash "$HERE/../../lanes/profile-settings.sh" console) \
@@ -1048,20 +1051,20 @@ launch_cmd() {
     local claude_cmd
     claude_cmd="$(printf '%s claude --settings %q --model %q %s--autocompact %s -n %s "load %s and continue"' \
         "$CHIEF_LAUNCH_ENV" "$console_settings" "$launch_model" "$mcp_flags" "$console_autocompact" "$1" "$2")"
-    # No launcher binds a pasted console on the bus, so the line runs claude
-    # through console-bus-exec.sh, which registers and binds it first; a line
+    # No launcher binds a pasted chief on the bus, so the line runs claude
+    # through chief-bus-exec.sh, which registers and binds it first; a line
     # pasted after that file is gone runs claude directly.
     local bus_opt=0
     console_bus_opted_in || bus_opt=$?
     [ "$bus_opt" -ne 2 ] || err "WARN the console bus profile probe failed ($bus_probe_out); the printed console line runs claude unbound"
     if [ "$bus_opt" -eq 0 ]; then
         local bus_exec
-        bus_exec="$(printf 'bash %q %q ' "$HERE/console-bus-exec.sh" "$1")"
+        bus_exec="$(printf 'bash %q %q ' "$HERE/chief-bus-exec.sh" "$1")"
         [ -z "$CHIEF_BUS_PREDECESSOR" ] || bus_exec+="$(printf -- '--predecessor %q ' "$CHIEF_BUS_PREDECESSOR")"
-        claude_cmd="$(printf 'if [ -f %q ]; then %s-- %s; else %s; fi' "$HERE/console-bus-exec.sh" "$bus_exec" "$claude_cmd" "$claude_cmd")"
+        claude_cmd="$(printf 'if [ -f %q ]; then %s-- %s; else %s; fi' "$HERE/chief-bus-exec.sh" "$bus_exec" "$claude_cmd" "$claude_cmd")"
     fi
     printf 'cd %q && { bash %q %s %s %s %s; %s; }' \
-        "$repo" "$HERE/record-launch.sh" "$1" "$CHIEF_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
+        "$repo" "$HERE/record-launch.sh" "$1" "$CHIEF_CONTEXT_RESOLVED_MODE" "$(chief_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
         "$claude_cmd"
 }
 
@@ -1084,7 +1087,7 @@ _console_sha256_8() {
     fi
 }
 
-# Two consoles under DIFFERENT $HANDOVER_DIR roots that happen
+# Two chiefs under DIFFERENT $HANDOVER_DIR roots that happen
 # to agree on slug/bucket/prefix/date/letter/name would otherwise collide on
 # the same signal/log path — touching one chain's signal could arm the
 # other's successor. Folding a digest of the RESOLVED, CANONICALIZED root
@@ -1097,7 +1100,7 @@ root_digest="$(_console_sha256_8 "$root_canon")"
 
 # _console_group_or_world_writable <dir> -- true if <dir>'s own permission
 # bits allow group or other write. console_workdir_ensure only ever validates the CHILD it creates
-# ($XDG_RUNTIME_DIR/himmel-console); it never checks the PARENT
+# ($XDG_RUNTIME_DIR/himmel-chief); it never checks the PARENT
 # ($XDG_RUNTIME_DIR itself). Unix permission semantics mean write access to
 # a directory controls its entries regardless of the entries' own
 # permissions (absent a sticky bit, which /tmp has but an arbitrary
@@ -1119,11 +1122,11 @@ _console_group_or_world_writable() {
 }
 
 # The default work dir is a PREDICTABLE path
-# (${TMPDIR:-/tmp}/himmel-console-<uid>) another local user could pre-create
+# (${TMPDIR:-/tmp}/himmel-chief-<uid>) another local user could pre-create
 # — as a directory they own, or as a symlink elsewhere — before this
 # process's first run; `mkdir -p` silently accepts an existing directory
 # regardless of who made it or what it actually resolves to. Prefer
-# $XDG_RUNTIME_DIR/himmel-console (already a per-user 0700 directory on
+# $XDG_RUNTIME_DIR/himmel-chief (already a per-user 0700 directory on
 # systemd hosts) when it is set AND already owned by this uid AND not
 # itself group- or world-writable; otherwise fall back to the uid-qualified
 # /tmp path. Modeled directly on headed-arm.sh's LOCKDIR hardening:
@@ -1134,9 +1137,9 @@ _console_group_or_world_writable() {
 # unresolved-root/tooling errors above.
 if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "$XDG_RUNTIME_DIR" ] && [ -O "$XDG_RUNTIME_DIR" ] \
     && ! _console_group_or_world_writable "$XDG_RUNTIME_DIR"; then
-    _console_default_workdir="$XDG_RUNTIME_DIR/himmel-console"
+    _console_default_workdir="$XDG_RUNTIME_DIR/himmel-chief"
 else
-    _console_default_workdir="${TMPDIR:-/tmp}/himmel-console-$(id -u)"
+    _console_default_workdir="${TMPDIR:-/tmp}/himmel-chief-$(id -u)"
 fi
 # CHIEF_WORK_DIR is a durable test/operator seam, not an escape hatch from
 # this hardening: an override is exactly as reachable by another local user
@@ -1353,8 +1356,8 @@ chain_dir="$workdir/${slug}-${bucket}-${root_digest}"
 # and 8/9 are not valid octal digits.
 deadline_epoch=$(( $(date +%s) + 10#$DEADLINE_MIN * 60 ))
 template_dir="${CHIEF_TEMPLATE_DIR:-$repo/docs/handover}"
-console_template="$template_dir/console-template.md"
-handoff_template="$template_dir/console-handoff-template.md"
+console_template="$template_dir/chief-template.md"
+handoff_template="$template_dir/chief-handoff-template.md"
 kit="$repo/scripts/handover/chief-kit"
 
 # --- new --------------------------------------------------------------
@@ -1422,7 +1425,7 @@ cmd_new() {
     local fill_signal="$chain_dir/sig-$session"
     local log="$chain_dir/launch-$session.log"
 
-    # Resolve the launch line (and so the console profile) BEFORE
+    # Resolve the launch line (and so the chief profile) BEFORE
     # the lock and the render, as cmd_next does before clearing its cleanup
     # trap: a profile refusal must leave neither a rendered doc nor a held lock.
     # The doc claimed above is still the empty placeholder, so remove it.
@@ -1437,7 +1440,7 @@ cmd_new() {
     echo "session: $session"
     echo "kit: $kit"
 
-    # The lock is what makes a console single-writer — starting one without
+    # The lock is what makes a chief single-writer — starting one without
     # it is exactly the failure the lock exists to prevent. Abort before the
     # launch line and before any arm; the written doc is left in place
     # (harmless — a later `new` bumps the letter, and the letter claim above
@@ -1447,7 +1450,7 @@ cmd_new() {
     # token this prints is embedded into the document itself via
     # {{RELEASE_TOKEN}}, so ACTION ZERO can adopt it from the doc it already
     # loaded instead of depending on operator scrollback — and on --arm,
-    # nothing else could ever have delivered it to the launched console at
+    # nothing else could ever have delivered it to the launched chief at
     # all (do_arm's own argv carries no token, and the per-session
     # token file is keyed to THIS process, not the one `--arm` launches).
     # Only stdout is captured (not stderr): queue-lock.sh's own diagnostics
@@ -1580,7 +1583,7 @@ resolve_predecessor() {
 }
 
 # The text of every bucket decisions file a decisions: line names
-# (specs/decisions/console-decisions-<date>.md, relative to the bucket), one
+# (specs/decisions/chief-decisions-<date>.md, relative to the bucket), one
 # after another. Fails when the line names none, or one is not a readable file.
 # Args: line, bucket dir.
 decisions_files_text() {
@@ -1589,7 +1592,7 @@ decisions_files_text() {
         [ -f "$dir/$f" ] && [ -r "$dir/$f" ] || return 1
         cat "$dir/$f" || return 1
         n=$((n + 1))
-    done < <(printf '%s\n' "$line" | grep -o 'specs/decisions/console-decisions-[0-9-]*\.md')
+    done < <(printf '%s\n' "$line" | grep -oE 'specs/decisions/(chief|console)-decisions-[0-9-]*\.md')
     [ "$n" -gt 0 ]
 }
 
@@ -1611,7 +1614,7 @@ decisions_kept_verbatim() {
     printf '%s\n' "$have" | sed -n 's/^decisions:[[:space:]]*//p' | grep -Fx -e "$prev" >/dev/null && return 0
     need="$prev"
     case "$prev" in
-        *specs/decisions/console-decisions-*)
+        *specs/decisions/chief-decisions-*|*specs/decisions/console-decisions-*)
             need="$need"$'\n'"$(decisions_files_text "$prev" "$dir")" || return 1 ;;
     esac
     awk '
@@ -1641,7 +1644,7 @@ decisions_kept_verbatim() {
 # Refuse a handover whose <field>: Live-state line is missing or a
 # placeholder (for `decisions:`, also shorter or, once the predecessor's names
 # a decisions file, any length, unless decisions_kept_verbatim)
-# where the doc the outgoing console itself succeeded (named on its first line)
+# where the doc the outgoing chief itself succeeded (named on its first line)
 # had a real one, unless its Results carry a `<MARKER>: <reason>` bullet. No
 # predecessor, or one without a real line, passes. `priority:` shrinks as its
 # keys ship, so it is held to presence only, and a PRIORITY-PRUNE bullet
@@ -1663,7 +1666,7 @@ check_live_line_kept() {
     out_line="$(printf '%s\n' "$live" | sed -n "s/^$field:[[:space:]]*//p" | head -n 1)"
     case "$out_line" in
         ""|none|"none "*|"<"*) ;;
-        *) case "$field:$prev_line" in decisions:*specs/decisions/console-decisions-*) ;;
+        *) case "$field:$prev_line" in decisions:*specs/decisions/chief-decisions-*|decisions:*specs/decisions/console-decisions-*) ;;
                *) { [ "$field" != decisions ] || [ "${#out_line}" -ge "${#prev_line}" ]; } && return 0 ;; esac
            if [ "$field" = decisions ]; then
                why="$(decisions_kept_verbatim "$prev_line" "$out_line" "$(dirname "$outgoing")" 2>&1 >/dev/null)" && return 0
@@ -1675,7 +1678,7 @@ check_live_line_kept() {
     err "  predecessor: $field: $prev_line"
     [ -z "$why" ] || err "$why"
     err "  restore it, or record a Results bullet '$marker: <reason>' and retry"
-    [ "$field" != decisions ] || err "  or move rulings verbatim to specs/decisions/console-decisions-<date>.md in the bucket and name that file on the line"
+    [ "$field" != decisions ] || err "  or move rulings verbatim to specs/decisions/chief-decisions-<date>.md in the bucket and name that file on the line"
     return 1
 }
 
@@ -1762,7 +1765,7 @@ report_handoff_placeholders() {
 }
 
 # A decisions: line over CHIEF_DECISIONS_SPILL_BYTES (default 4096) is written
-# byte for byte to a fresh specs/decisions/console-decisions-<date>[-N].md under
+# byte for byte to a fresh specs/decisions/chief-decisions-<date>[-N].md under
 # <dir>, and a one-line pointer naming it, and every decisions file the line
 # names, is printed instead, so the successor's handover still finds each ruling
 # verbatim (decisions_kept_verbatim). A failed write prints the line unchanged.
@@ -1771,11 +1774,11 @@ spill_decisions() {
     local line="$1" dir="$2" from="$3" base rel n=1 bytes names
     bytes="$(printf '%s' "$line" | wc -c | tr -d ' ')"
     [ "$bytes" -gt "${CHIEF_DECISIONS_SPILL_BYTES:-4096}" ] || { printf '%s\n' "$line"; return 0; }
-    base="specs/decisions/console-decisions-$(date +%F)"
+    base="specs/decisions/chief-decisions-$(date +%F)"
     rel="$base.md"
     while [ -e "$dir/$rel" ]; do n=$((n + 1)); rel="$base-$n.md"; done
     if mkdir -p "$dir/specs/decisions" && (set -C; printf '%s\n' "$line" > "$dir/$rel") 2>/dev/null; then
-        names="$(printf '%s\n' "$line" | grep -o 'specs/decisions/console-decisions-[0-9-]*\.md' | sort -u | tr '\n' ' ')"
+        names="$(printf '%s\n' "$line" | grep -oE 'specs/decisions/(chief|console)-decisions-[0-9-]*\.md' | sort -u | tr '\n' ' ')"
         printf 'decisions: carried verbatim in %s (%s bytes from %s; read it before ruling)%s\n' "$rel" "$bytes" "$from" "${names:+; it names ${names% }}"
     else
         err "warning: could not spill the decisions: line to $dir/$rel; carried it unchanged"
@@ -1799,7 +1802,7 @@ carried_live_state() {
 
 # The predecessor doc's `residual-must <KEY>` rulings, each once, as bare lines
 # without the `- HH:MM` bullet prefix. next-dispatchable.sh reads them from the
-# console doc, and the successor starts without the predecessor's Results.
+# chief doc, and the successor starts without the predecessor's Results.
 # Arg: predecessor doc.
 carried_residual_must() {
     sed -nE 's/^[[:space:]]*([-*][[:space:]]+)?([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(residual-must[[:space:]]+(HIMMEL-)?[0-9]{3,5}([^0-9].*)?)$/\3/p' "$1" | awk '!seen[$0]++'
@@ -1873,7 +1876,7 @@ cmd_next() {
     # check inside resolve_predecessor (the auto-discovery branches already
     # only ever return a path that exists) — a typo with a plausible
     # basename must not be allowed to happily create a successor and a
-    # HANDOFF for a console that was never there.
+    # HANDOFF for a chief that was never there.
     if [ ! -f "$predecessor_doc" ]; then
         err "predecessor console doc does not exist: $predecessor_doc"
         exit 1
@@ -1882,7 +1885,7 @@ cmd_next() {
     # tokens, held queue, last GO) is seeded verbatim into the successor's own
     # Live state below, its one on-disk copy: the HANDOFF only points at it, so
     # the successor never re-copies authority-bearing state by hand and
-    # `action-zero.sh --render-legs` finds every nonce it keeps. Absent section
+    # `action-zero.sh --render-workers` finds every nonce it keeps. Absent section
     # -> empty string -> each field falls back to its template placeholder.
     predecessor_live_state="$(awk '
         $0 == "## Live state" { f = 1; print; next }
@@ -1897,7 +1900,7 @@ cmd_next() {
     # successor's block starts as the predecessor's (a stale one is not detected).
     local predecessor_direction
     predecessor_direction="$(direction_block "$predecessor_doc" | sed '/./,$!d')"
-    # The console board's artifact URL rides on the `board:` line
+    # The chief board's artifact URL rides on the `board:` line
     # of that Live state; the successor's own Live state starts from it, so it
     # updates the same artifact instead of minting a new one.
     predecessor_board="$(printf '%s\n' "$predecessor_live_state" | sed -n 's/^board:[[:space:]]*//p' | head -n 1)"
@@ -1923,7 +1926,7 @@ cmd_next() {
         exit 1
     fi
     # An explicit --date pre-mints a NEW day's chain (the whole point: a
-    # 23:5x console at letter Z mints tomorrow's console immediately) and
+    # 23:5x chief at letter Z mints tomorrow's chief immediately) and
     # starts that chain at "A". With no --date, the successor continues the
     # predecessor's own bijective sequence (Z -> AA -> ... -> ZZ) regardless
     # of whether the calendar day has actually rolled over since (case 15:
@@ -2021,18 +2024,18 @@ cmd_next() {
     # ACTION ZERO) — so, unlike `new`, there is no real token to carry here.
     # An honest, explicit placeholder rather than an empty string: the
     # successor's own ACTION ZERO acquires and records it, exactly as the
-    # console-template's own instructions already tell it to.
+    # chief-template's own instructions already tell it to.
     # Carry the predecessor's fleet manifest to the successor's
-    # stem so its waiter can start with --legs-from and keep watching the same
-    # legs. A COPY, not a rename: the outgoing console's waiter still reads
-    # its own until that console releases. No manifest = no-op.
+    # stem so its waiter can start with --workers-from and keep watching the same
+    # workers. A COPY, not a rename: the outgoing chief's waiter still reads
+    # its own until that chief releases. No manifest = no-op.
     local predecessor_manifest successor_manifest manifest_note
     predecessor_manifest="$predecessor_dir/${predecessor_stem}.fleet.json"
     successor_manifest="${doc%.md}.fleet.json"
     manifest_note="none carried (the predecessor had no manifest); create it with fleet-manifest.sh add"
     if [ -f "$predecessor_manifest" ]; then
         cp "$predecessor_manifest" "$successor_manifest" || { err "could not copy fleet manifest $predecessor_manifest to $successor_manifest"; exit 1; }
-        manifest_note="carried from the predecessor, already in place: start the waiter with --legs-from on it"
+        manifest_note="carried from the predecessor, already in place: start the waiter with --workers-from on it"
     fi
     render_template "$console_template" "$doc" \
         FLEET_MANIFEST "$successor_manifest" \
@@ -2075,7 +2078,7 @@ cmd_next() {
     if : 2>/dev/null > "$predecessor_handoff"; then
         set +C
         # Every mechanically derivable field is filled here so the
-        # outgoing console writes only its judgement notes (one Edit), not
+        # outgoing chief writes only its judgement notes (one Edit), not
         # ~18 turns of hand derivation. Each fact fails open to "unavailable".
         local facts="$HERE/../chief-kit/handoff-facts.sh"
         local hf_legs hf_prs hf_summary hf_slug hf_total hf_note hf_budget="${HANDOFF_BUDGET_BYTES:-6000}"
@@ -2153,19 +2156,19 @@ cmd_next() {
     trap - EXIT
     console_metadata "$inbox"
     echo "launch: $launch_line"
-    # Handover mode for the OUTGOING console's waiter, set only now
+    # Handover mode for the OUTGOING chief's waiter, set only now
     # that the successor doc, HANDOFF and launch line all validated. The marker
-    # sits beside the predecessor's inbox (console-wait.sh reads it): its waiter
+    # sits beside the predecessor's inbox (chief-wait.sh reads it): its waiter
     # keeps delivering Telegram lines but stops tick/bank/page sampling, so an
-    # outgoing console merely waiting for LIVE takes no tick wakes. Best-effort:
+    # outgoing chief merely waiting for LIVE takes no tick wakes. Best-effort:
     # a failed write leaves the waiter as it was.
     local pred_inbox
     pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
     if mkdir -p "$(dirname "$pred_inbox")" 2>/dev/null && printf '%s\n' "$session" > "$pred_inbox.handover" 2>/dev/null; then
         echo "handover-mode: $pred_inbox.handover"
-        # --relay-on-live: the outgoing waiter wakes its console once, when the successor
+        # --relay-on-live: the outgoing waiter wakes its chief once, when the successor
         # holds its lock, with the relay lines (line 1 successor session, line 2 its doc).
-        # A console with a bus identity always gets it: the legs' bus adopt needs the bus
+        # A chief with a bus identity always gets it: the workers' bus adopt needs the bus
         # record relay-batch.sh sends, which a hand relay never does.
         # Written to a temp name then renamed, so the waiter never reads half a marker.
         if { [ "$RELAY_ON_LIVE" -eq 1 ] || [ -n "${HIMMEL_BUS_NAME:-}" ]; } && printf '%s\n%s\n' "$session" "$doc" > "$pred_inbox.relay-on-live.tmp" 2>/dev/null \

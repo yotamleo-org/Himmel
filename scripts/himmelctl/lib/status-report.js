@@ -458,12 +458,12 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       // OWN probes (probes.js) each mark the ordinary "never turned on"
       // absence with an additive `cleanAbsence` field (cadence-armed:
       // luna.cadence.enabled=false with nothing armed; engine-allowlist: no
-      // luna cadence leg with a known engine requirement currently armed;
+      // luna cadence worker with a known engine requirement currently armed;
       // bridge-health: the Telegram token is entirely unconfigured AND
       // bridge.enabled is not true in ~/.himmel/config.json) — a fresh
       // adopter with no luna cadence / no bridge must not read a wall of red
       // for a subsystem they never opted into. A GENUINE problem (enabled:
-      // true with nothing armed; an armed leg missing an allow-list entry;
+      // true with nothing armed; an armed worker missing an allow-list entry;
       // bridge.enabled=true with the token still unconfigured; a
       // partially-configured or broken bridge) never carries this flag and
       // stays a loud red.
@@ -478,7 +478,7 @@ function statusReport({ manifest, scope, targetPath, answers, itemIds, state: pa
       }
       if (item.id === 'engine-allowlist' && probe.cleanAbsence) {
         severity = 'n/a';
-        detail = `${probe.detail} — opt-in (no luna cadence legs armed yet; run scripts/luna/pipeline-cadence.sh arm)`;
+        detail = `${probe.detail} — opt-in (no luna cadence workers armed yet; run scripts/luna/pipeline-cadence.sh arm)`;
       }
       if (item.id === 'bridge-health' && probe.cleanAbsence) {
         severity = 'n/a';

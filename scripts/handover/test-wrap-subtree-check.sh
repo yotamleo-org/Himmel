@@ -177,7 +177,7 @@ cat > "$W/mcp-children.txt" <<'FIX'
   124   123    04:59:59 /home/u/.cache/uv/builds-v0/.tmp/bin/python /home/u/.claude/skills/obsidian-second-brain/integrations/obsidian-mcp-server/server.py
 FIX
 cat "$W/base.txt" "$W/mcp-children.txt" > "$W/mcp-only.txt"
-# The same session, but the leg also left work behind: 203/205 a poll loop and
+# The same session, but the worker also left work behind: 203/205 a poll loop and
 # its sleep (a tool-call wrapper, late), 208 a NON-wrapper direct child forked
 # hours after the session, 209 a tool-call wrapper forked 2s after the session
 # (inside the window — a wrapper is never harness, whenever it started).
@@ -212,17 +212,17 @@ contains 'an ignored child says why' "$out" 'why=session-start'
 contains 'a grandchild of a session-started MCP launcher is ignored transitively (uvx child)' "$out" 'ignored pid=121 ppid=120 etime=04:59:59 why=session-start via=120 '
 contains 'a grandchild of a session-started MCP launcher is ignored transitively (uv run child)' "$out" 'ignored pid=124 ppid=123 etime=04:59:59 why=session-start via=123 '
 
-# THE CONTROL: one run, harness-shaped and leg-spawned children side by side.
+# THE CONTROL: one run, harness-shaped and worker-spawned children side by side.
 out="$(run "$W/mixed.txt" 101 2>&1)"; rc=$?
-eq 'mixed run (MCP servers + leg-left loop): rc 1 (3265)' 1 "$rc"
-contains 'mixed run withholds exactly the four leg-spawned processes (3265)' "$out" 'WITHHELD: 4 process(es) still alive under claude pid 101'
+eq 'mixed run (MCP servers + worker-left loop): rc 1 (3265)' 1 "$rc"
+contains 'mixed run withholds exactly the four worker-spawned processes (3265)' "$out" 'WITHHELD: 4 process(es) still alive under claude pid 101'
 lacks 'a withheld run never prints CLOSABLE (3265)' "$out" 'CLOSABLE:'
 # shellcheck disable=SC2086 # the pid lists are space-separated words on purpose
-if names_all "$out" $WORKER_SESSION_PIDS; then pass 'mixed run names the leg-left loop, its child, the late direct child and the early wrapper'; else fail "mixed run must name every leg-spawned pid ($WORKER_SESSION_PIDS): $out"; fi
+if names_all "$out" $WORKER_SESSION_PIDS; then pass 'mixed run names the worker-left loop, its child, the late direct child and the early wrapper'; else fail "mixed run must name every worker-spawned pid ($WORKER_SESSION_PIDS): $out"; fi
 # shellcheck disable=SC2086 # the pid lists are space-separated words on purpose
 if names_none "$out" $MCP_PIDS; then pass 'mixed run does not list any MCP server as a withheld process'; else fail "mixed run listed a harness MCP server as withheld: $out"; fi
 for p in $MCP_PIDS; do contains "mixed run still reports ignored MCP pid $p" "$out" "ignored pid=$p "; done
-contains 'the WITHHELD text says never to stop a process the leg did not start (3265)' "$out" 'did not start'
+contains 'the WITHHELD text says never to stop a process the worker did not start (3265)' "$out" 'did not start'
 
 # The exemption comes from the start-time rule, not from somewhere else: switch
 # it off and the same MCP-only table is withheld.
@@ -259,12 +259,12 @@ out="$(run "$W/pre-session.txt" 101 2>&1)"; rc=$?
 eq 'a child older than its session is not exempt: rc 1' 1 "$rc"
 contains 'the older-than-session child is pid 122' "$out" '  pid=122 ppid='
 
-# #1337: a harness-spawned tree macOS legs actually produce, that the
+# #1337: a harness-spawned tree macOS workers actually produce, that the
 # name/session-start matcher does not catch. The session keep-awake
 # (`caffeinate`) re-arms on a rolling cadence, so its etime never lands inside
 # the isearly() start window (proven here by a session that has run 5h against
 # a caffeinate that just (re)started); it must be exempt by name alone. A
-# stray node server and a leg's own sleep sit alongside it and must still
+# stray node server and a worker's own sleep sit alongside it and must still
 # withhold. (#1337 also reported a claude-hud statusline false WITHHELD; a
 # claude-hud-by-path exemption was tried and reverted on re-judge — so no claude-hud row is exempt here.)
 cat > "$W/harness-trees.txt" <<'FIX'
@@ -278,14 +278,14 @@ out="$(run "$W/harness-trees.txt" 101 2>&1)"; rc=$?
 eq 'harness caffeinate tree plus genuine leftovers: rc 1 (#1337)' 1 "$rc"
 contains 'only the genuine leftovers withhold (#1337)' "$out" 'WITHHELD: 2 process(es) still alive under claude pid 101'
 contains 'the stray node server is named (#1337)' "$out" 'pid=320 ppid='
-contains 'the leg'"'"'s own sleep is named (#1337)' "$out" 'pid=321 ppid='
+contains 'the worker'"'"'s own sleep is named (#1337)' "$out" 'pid=321 ppid='
 lacks 'a withheld run never prints CLOSABLE (#1337)' "$out" 'CLOSABLE:'
 contains 'harness pid 300 is ignored, not withheld (#1337)' "$out" 'ignored pid=300 '
 lacks 'harness pid 300 is not listed as withheld (#1337)' "$out" '  pid=300 ppid='
 contains 'the caffeinate keep-awake is name-matched (#1337)' "$out" 'ignored pid=300 ppid=101 etime=00:05 why=name-match cmd=/usr/bin/caffeinate'
 
 # The #1337 fix above matched `caffeinate` as a
-# WORD anywhere in argv, so a leg running a real job named
+# WORD anywhere in argv, so a worker running a real job named
 # `caffeinate ./long-job.sh`, or a `sleep` invocation that merely mentions the
 # word, got falsely exempted too. Anchor caffeinate to the PROGRAM position
 # (only flags may follow); the legit row from #1337 above (300) must stay
@@ -358,10 +358,10 @@ contains 'a hud descendant inherits the ignore (HIMMEL-4139)' "$out" 'ignored pi
 FIX
 } > "$W/hud-plus-leftovers.txt"
 out="$(run "$W/hud-plus-leftovers.txt" 101 2>&1)"; rc=$?
-eq 'hud subtree plus a leg sleep and loop still withholds: rc 1 (HIMMEL-4139)' 1 "$rc"
+eq 'hud subtree plus a worker sleep and loop still withholds: rc 1 (HIMMEL-4139)' 1 "$rc"
 contains 'exactly the two leftovers withhold (HIMMEL-4139)' "$out" 'WITHHELD: 2 process(es) still alive under claude pid 101'
-contains 'the leg sleep is named (HIMMEL-4139)' "$out" '  pid=410 ppid='
-contains 'the leg loop wrapper is named (HIMMEL-4139)' "$out" '  pid=411 ppid='
+contains 'the worker sleep is named (HIMMEL-4139)' "$out" '  pid=410 ppid='
+contains 'the worker loop wrapper is named (HIMMEL-4139)' "$out" '  pid=411 ppid='
 lacks 'the hud root is not listed as withheld (HIMMEL-4139)' "$out" '  pid=400 ppid='
 # Near-misses of the anchor must NOT be exempt: `..` segment, extra argv, a
 # non-absolute path, a different plugin dir, a different file, a non-node program.
@@ -380,10 +380,10 @@ out="$(run "$W/hud-decoys.txt" 101 2>&1)"; rc=$?
 eq 'near-miss hud paths all withhold: rc 1 (HIMMEL-4139)' 1 "$rc"
 contains 'all seven near-misses withhold (HIMMEL-4139)' "$out" 'WITHHELD: 7 process(es) still alive under claude pid 101'
 lacks 'a decoy never prints CLOSABLE (HIMMEL-4139)' "$out" 'CLOSABLE:'
-# The WITHHELD text does not order a leg to stop what it did not start.
+# The WITHHELD text does not order a worker to stop what it did not start.
 out="$(run "$W/dirty.txt" 101 2>&1)"
-lacks 'WITHHELD text does not tell the leg to TaskStop every process listed (HIMMEL-4139)' "$out" 'still alive under claude pid 101 — TaskStop every'
-contains 'WITHHELD text limits TaskStop to what the leg started (HIMMEL-4139)' "$out" 'TaskStop only what you started'
+lacks 'WITHHELD text does not tell the worker to TaskStop every process listed (HIMMEL-4139)' "$out" 'still alive under claude pid 101 — TaskStop every'
+contains 'WITHHELD text limits TaskStop to what the worker started (HIMMEL-4139)' "$out" 'TaskStop only what you started'
 
 # the whole per-render statusline chain is exempt as a subtree whose
 # EVERY member matches a tight install-path anchor — also when the claude-hud node
@@ -445,14 +445,14 @@ contains 'both the parent and the member are named (HIMMEL-4161)' "$out" 'WITHHE
 # (e) a git/other child the statusline chain itself spawns (claude-hud
 # runs `git status --porcelain` in the session cwd, new pid each render, etime
 # 00:00) is a DESCENDANT of an ignored chain node and inherits the ignore, matched
-# by the parent chain. A leg-owned git (child of a tool-call wrapper or of the
+# by the parent chain. A worker-owned git (child of a tool-call wrapper or of the
 # session) is not under a chain node and still withholds.
 { cat "$W/chain-full.txt"; printf '  540   500       00:00 git status --porcelain\n  541   507       00:00 git -C /home/u/w rev-parse HEAD\n'; } > "$W/chain-git-child.txt"
 out="$(run "$W/chain-git-child.txt" 101 2>&1)"; rc=$?
 eq 'a git child of the hud chain is harness: rc 0 (HIMMEL-4592)' 0 "$rc"
 contains 'the hud git children are counted as ignored (HIMMEL-4592)' "$out" 'CLOSABLE: no non-harness process under claude pid 101 (10 harness-owned children ignored)'
 contains 'the hud git child is listed via the chain top (HIMMEL-4592)' "$out" 'ignored pid=540 ppid=500 etime=00:00 why=statusline-chain via=500 cmd=git status --porcelain'
-cat > "$W/leg-git-child.txt" <<FIX
+cat > "$W/worker-git-child.txt" <<FIX
     1     0 40-00:00:01 /sbin/init
   101     1    05:00:00 claude --model claude-sonnet-5 -n HIMMEL-111-N61 work
   500   101       00:00 node $HUD
@@ -462,11 +462,11 @@ cat > "$W/leg-git-child.txt" <<FIX
   552   550    00:10:00 sleep 999
   553   101    00:10:00 git status --porcelain
 FIX
-out="$(run "$W/leg-git-child.txt" 101 2>&1)"; rc=$?
-eq 'leg-owned git children still withhold beside a hud git child: rc 1 (HIMMEL-4592)' 1 "$rc"
-contains 'exactly the four leg-owned processes withhold (HIMMEL-4592)' "$out" 'WITHHELD: 4 process(es) still alive under claude pid 101'
-contains 'a git under a leg wrapper is named (HIMMEL-4592)' "$out" '  pid=551 ppid='
-contains 'a leg sleep under a leg wrapper is named (HIMMEL-4592)' "$out" '  pid=552 ppid='
+out="$(run "$W/worker-git-child.txt" 101 2>&1)"; rc=$?
+eq 'worker-owned git children still withhold beside a hud git child: rc 1 (HIMMEL-4592)' 1 "$rc"
+contains 'exactly the four worker-owned processes withhold (HIMMEL-4592)' "$out" 'WITHHELD: 4 process(es) still alive under claude pid 101'
+contains 'a git under a worker wrapper is named (HIMMEL-4592)' "$out" '  pid=551 ppid='
+contains 'a worker sleep under a worker wrapper is named (HIMMEL-4592)' "$out" '  pid=552 ppid='
 contains 'a git directly under the session is named (HIMMEL-4592)' "$out" '  pid=553 ppid='
 lacks 'the hud git child is not withheld (HIMMEL-4592)' "$out" '  pid=540 ppid='
 # (d) look-alike paths all withhold.
@@ -508,12 +508,12 @@ contains "the job's own child withholds too (fx3)" "$out" '  pid=952 ppid='
 lacks 'a withheld run never prints CLOSABLE (fx3)' "$out" 'CLOSABLE:'
 
 # Weakening controls. Each weakened check must RUN
-# and lose the leg-left loop for the specific reason — a check that merely
+# and lose the worker-left loop for the specific reason — a check that merely
 # crashes would "fail" every assertion and prove nothing.
 # shellcheck disable=SC2086 # the pid lists are space-separated words on purpose
-leg_loop_kept() { names_all "$1" $WORKER_SESSION_PIDS && ! case "$1" in *'CLOSABLE:'*) true ;; *) false ;; esac; }
+worker_loop_kept() { names_all "$1" $WORKER_SESSION_PIDS && ! case "$1" in *'CLOSABLE:'*) true ;; *) false ;; esac; }
 out="$(run "$W/mixed.txt" 101 2>&1)"; rc=$?
-if [ "$rc" -eq 1 ] && leg_loop_kept "$out"; then pass 'control baseline: the real check keeps the leg-left loop'; else fail 'control baseline broken'; fi
+if [ "$rc" -eq 1 ] && worker_loop_kept "$out"; then pass 'control baseline: the real check keeps the worker-left loop'; else fail 'control baseline broken'; fi
 
 # (a) A start window wide enough to swallow the late direct child (208) drops it
 # — and only it: the wrappers (203 205 209) stay, so the check RAN.
@@ -523,7 +523,7 @@ if [ "$rc" -eq 1 ] && names_all "$out" 203 205 209 && names_none "$out" 208; the
 else
     fail "control (a) did not fail for the predicted reason (rc=$rc): $out"
 fi
-if leg_loop_kept "$out"; then fail 'control (a): the leg-loop assertion could not catch an over-wide window'; else pass 'control (a): the leg-loop assertion catches an over-wide window'; fi
+if worker_loop_kept "$out"; then fail 'control (a): the worker-loop assertion could not catch an over-wide window'; else pass 'control (a): the worker-loop assertion catches an over-wide window'; fi
 
 # (b) A check that never counts anything prints CLOSABLE over the same table.
 sed 's/^        n++$/        n += 0/' "$SUT" > "$W/never-counts.sh"
@@ -536,20 +536,20 @@ else
     else
         fail "control (b) did not fail for the predicted reason (rc=$rc): $out"
     fi
-    if leg_loop_kept "$out"; then fail 'control (b): the leg-loop assertion could not catch an always-CLOSABLE check'; else pass 'control (b): the leg-loop assertion catches an always-CLOSABLE check'; fi
+    if worker_loop_kept "$out"; then fail 'control (b): the worker-loop assertion could not catch an always-CLOSABLE check'; else pass 'control (b): the worker-loop assertion catches an always-CLOSABLE check'; fi
 fi
 
-# The wrap step points every leg/judge at this script instead of a hand-typed
+# The wrap step points every worker/judge at this script instead of a hand-typed
 # banner: pin the three docs that carry the HALT/WRAP line.
 DOCS="$HERE/../../docs/handover"
-for f in leg-preface.md judge-preface.md leg-brief-template.md; do
+for f in worker-preface.md judge-preface.md worker-brief-template.md; do
     if grep -q 'wrap-subtree-check.sh' "$DOCS/$f"; then
         pass "$f names wrap-subtree-check.sh"
     else
         fail "$f must name wrap-subtree-check.sh (HALT/WRAP line)"
     fi
 done
-for f in leg-preface.md leg-brief-template.md; do
+for f in worker-preface.md worker-brief-template.md; do
     if grep -q 'TaskStop EVERY background' "$DOCS/$f"; then
         pass "$f carries the TaskStop-every-background-task line"
     else
@@ -589,7 +589,7 @@ eq 'the long-prefix marketplace fetch beside a long-prefix push: rc 1 (HIMMEL-62
 contains 'long-prefix fetch pid=520 is ignored (HIMMEL-6259)' "$out" 'ignored pid=520 '
 contains 'its remote-https child pid=521 is ignored (HIMMEL-6259)' "$out" 'ignored pid=521 '
 contains 'long-prefix push pid=522 still withholds (HIMMEL-6259)' "$out" '  pid=522 ppid='
-# Anything broader still withholds: a leg push, a fetch without the three -c flags,
+# Anything broader still withholds: a worker push, a fetch without the three -c flags,
 # a non-github remote, a remote-https under a non-fetch parent, a wrapper that quotes it.
 cat > "$W/mkt-decoys.txt" <<'FIX'
     1     0 40-00:00:01 /sbin/init
@@ -683,11 +683,11 @@ for dp in 700 701 702 703 704 705 706 707 708 709 710 711 712 713 714 715; do
     contains "live-shape decoy pid=$dp withholds (HIMMEL-6335/5934)" "$out" "  pid=$dp ppid="
 done
 
-# --queue-doc <doc> withholds CLOSABLE while the leg's queue lock
+# --queue-doc <doc> withholds CLOSABLE while the worker's queue lock
 # is still held. Real queue-lock.sh over a scratch handover root.
 QL="$HERE/queue-lock.sh"
 Q6_ROOT="$W/q6038"; mkdir -p "$Q6_ROOT/q" "$W/xdg"; chmod 700 "$W/xdg"
-Q6_DOC="$Q6_ROOT/q/leg-6038.md"; : > "$Q6_DOC"
+Q6_DOC="$Q6_ROOT/q/worker-6038.md"; : > "$Q6_DOC"
 qenv() { HANDOVER_DIR="$Q6_ROOT" XDG_RUNTIME_DIR="$W/xdg" HANDOVER_REGISTRY="$W/none.json" "$@"; }
 Q6_TOK="$(qenv bash "$QL" acquire "$Q6_DOC" 2>/dev/null | sed -n 's/^release-token: //p')"
 Q6_TOK="${Q6_TOK#\`}"; Q6_TOK="${Q6_TOK%\`}"

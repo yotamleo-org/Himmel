@@ -447,7 +447,7 @@ HOME="$F27" CLIPROXY_API_KEY="stub-key-27" CLIPROXY_API_VERSION=$'8.0.23\nevil' 
 assert_rc "multiline-version exit code" 1 "$RC"
 
 # Transient codex 5xx (a 502, then the auth-cooldown 503 on the only
-# credential) ended a claudex leg's turn. CLIProxyAPI's request-retry runs extra
+# credential) ended a claudex worker's turn. CLIProxyAPI's request-retry runs extra
 # credential rounds on 403/408/429/500/502/503/504 and max-retry-interval bounds
 # the cooldown wait (config.example.yaml, v7.3.15). The fixture below is the
 # shape of the station's real ~/.cli-proxy-api/config.yaml (no retry keys).

@@ -1335,14 +1335,14 @@ run_trust "$PRIM_WT"
 assert_rc 0 "18c linked worktree equal to the trusted primary dispatches" "rc=$RC out=$OUT"
 # worktree edited, primary untouched and still trusted -> codex would run the
 # primary's hooks, not what this worktree carries: refused.
-sed 's/guard-leg-context-handoff.sh/guard-leg-context-handoff-v2.sh/' "$PRIM/.codex/hooks.json" > "$PRIM_WT/.codex/hooks.json"
+sed 's/guard-worker-context-handoff.sh/guard-worker-context-handoff-v2.sh/' "$PRIM/.codex/hooks.json" > "$PRIM_WT/.codex/hooks.json"
 : > "$LOG"
 run_trust "$PRIM_WT"
 assert_rc 2 "18d a worktree hooks.json edited away from the primary refuses" "rc=$RC out=$OUT"
 case "$OUT" in *"differs"*"primary"*) pass "18d refusal says the primary's hooks are the ones in effect";; *) fail "18d out: $OUT";; esac
 # primary edited after trust, worktree still the old copy -> refused (differs).
 cp "$REAL_HOOKS" "$PRIM_WT/.codex/hooks.json"
-sed 's/guard-leg-context-handoff.sh/guard-leg-context-handoff-v2.sh/' "$REAL_HOOKS" > "$PRIM/.codex/hooks.json"
+sed 's/guard-worker-context-handoff.sh/guard-worker-context-handoff-v2.sh/' "$REAL_HOOKS" > "$PRIM/.codex/hooks.json"
 : > "$LOG"
 run_trust "$PRIM_WT"
 assert_rc 2 "18e a primary edited under a stale worktree copy refuses" "rc=$RC out=$OUT"

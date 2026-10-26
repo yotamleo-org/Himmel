@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
-# handoff-facts.sh — The mechanical half of a console HANDOFF.
+# handoff-facts.sh — The mechanical half of a chief HANDOFF.
 #
-#   handoff-facts.sh <field> <console doc> [--repo <path>]
+#   handoff-facts.sh <field> <chief doc> [--repo <path>]
 #
-# `console.sh next` calls this once per field to pre-fill the predecessor's
-# HANDOFF, so the outgoing console writes only its judgement notes (one Edit)
+# `chief.sh next` calls this once per field to pre-fill the predecessor's
+# HANDOFF, so the outgoing chief writes only its judgement notes (one Edit)
 # instead of deriving each of these by hand over ~18 turns (measured).
-# Read-only: it never writes a file, takes a lock or contacts a leg.
+# Read-only: it never writes a file, takes a lock or contacts a worker.
 #
 # Fields:
 #   head     `<sha>` on `<branch>` at `<repo>`, remote `<url>`
 #   bank     5-hour / 7-day utilisation (usage-preflight.sh)
-#   legs     one line per fleet-manifest leg: label, last marker, last bullet
-#            (backtick spans stripped: a leg bullet may quote a token)
+#   workers     one line per fleet-manifest leg: label, last marker, last bullet
+#            (backtick spans stripped: a worker bullet may quote a token)
 #   prs      the open PR set (gh); `unavailable` when gh fails
-#   summary  the console's last HANDOFF_FACTS_BULLETS (12) Results bullets
+#   summary  the chief's last HANDOFF_FACTS_BULLETS (12) Results bullets
 #   queue    the Live state `queue:` line
 #   lastgo   the Live state `last GO:` line
 #
@@ -30,10 +30,10 @@ unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_DEFAULT="$(cd "$HERE/../../.." && pwd)"
-# shellcheck source=../../lib/leg-tail-status.sh
-. "$HERE/../../lib/leg-tail-status.sh"
+# shellcheck source=../../lib/worker-tail-status.sh
+. "$HERE/../../lib/worker-tail-status.sh"
 
-usage() { echo "usage: handoff-facts.sh <head|bank|legs|prs|summary|queue|lastgo> <console doc> [--repo <path>]" >&2; exit 2; }
+usage() { echo "usage: handoff-facts.sh <head|bank|workers|prs|summary|queue|lastgo> <chief doc> [--repo <path>]" >&2; exit 2; }
 [ "$#" -ge 2 ] || usage
 field="$1"; doc="$2"; shift 2
 repo="$REPO_DEFAULT"
@@ -75,7 +75,7 @@ case "$field" in
             echo "unavailable — run usage-preflight.sh"
         fi
         ;;
-    legs)
+    workers|legs)
         manifest="${doc%.md}.fleet.json"
         if [ ! -f "$manifest" ]; then echo "none — no fleet manifest"; exit 0; fi
         if ! rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
@@ -85,10 +85,10 @@ case "$field" in
         while IFS="$(printf '\t')" read -r label ldoc; do
             [ -n "$ldoc" ] || continue
             n=$((n + 1))
-            marker="$(leg_tail_status "$ldoc")"
+            marker="$(worker_tail_status "$ldoc")"
             last="$(sed -nE '/^- /p' "$ldoc" 2>/dev/null | tail -n 1 | sed 's/`[^`]*`/`…`/g' | cut -c1-200)"
             # a READY or BLOCKED a later LIVE / SUCCESSION bullet buries stays in the list
-            act="$(leg_actionable_bullet "$ldoc" | sed 's/`[^`]*`/`…`/g' | cut -c1-200)"
+            act="$(worker_actionable_bullet "$ldoc" | sed 's/`[^`]*`/`…`/g' | cut -c1-200)"
             note=""
             if [ -n "$act" ] && [ "$act" != "$last" ]; then
                 note=" [actionable: $(printf '%s' "$act" | sed -E 's/^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?//')]"
@@ -97,7 +97,7 @@ case "$field" in
         done <<EOF_ROWS
 $rows
 EOF_ROWS
-        [ "$n" -gt 0 ] || echo "none — manifest lists no legs"
+        [ "$n" -gt 0 ] || echo "none — manifest lists no workers"
         ;;
     prs)
         prs_limit="${HANDOFF_FACTS_PRS_LIMIT:-200}"

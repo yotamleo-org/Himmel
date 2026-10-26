@@ -195,7 +195,7 @@ _claude_sessions_from_cmdline() { # _claude_sessions_from_cmdline <proc-root> <p
 _tsv_field() { # _tsv_field <value>: a
                # field value carrying a literal TAB or newline would widen
                # or split the emitted row for every downstream awk -F'\t'
-               # reader; a leg/model/ceiling value never legitimately needs
+               # reader; a worker/model/ceiling value never legitimately needs
                # either byte, so both are replaced with a space.
     local v="$1"
     v="${v//$'\t'/ }"

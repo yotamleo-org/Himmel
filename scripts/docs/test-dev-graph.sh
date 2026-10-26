@@ -14,8 +14,8 @@
 #
 # Source basenames the real graph binds. impacted-suites.sh selects a suite by
 # basename, so each is named here literally (check-dev-graph.sh enforces it):
-#   chief.sh console-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
-#   headed-arm-worker.sh running-a-console.md worker-preface.md check-commit-msg.sh
+#   chief.sh chief-wait.sh tick.sh next-dispatchable.sh gen-briefs.py
+#   headed-arm-worker.sh running-a-chief.md worker-preface.md check-commit-msg.sh
 #   .pre-commit-config.yaml check-cr-before-push.sh pr-check.md
 #   panel-first-pass.sh review-round.sh glossary.md grant-round.sh
 #   check-cr-marker-on-pr-create.sh check-ci.sh ready-check.sh judge-ladder.sh
@@ -89,7 +89,7 @@ EOF
   cat > "$d/graph.json" <<'EOF'
 {
   "version": 1,
-  "lanes": [{"id": "console", "label": "Console"}],
+  "lanes": [{"id": "console", "label": "Chief"}],
   "nodes": [
     {"id": "n.a", "lane": "console", "phase": "dispatch", "label": "A", "summary": "a",
      "sources": [{"file": "bin/tool.sh", "anchor": "refused thing"}],
@@ -369,7 +369,7 @@ missing=$(jq -r '[.nodes[].id, .edges[].id] as $ids
 if [ -z "$missing" ]; then ok "ship loop: ticket, CodeRabbit, review gate, CI release and close are on the graph"; else bad "ship loop: missing from the graph: $missing"; fi
 
 # every basename the header comment promises is really named in this file
-for b in chief.sh console-wait.sh tick.sh merge-on-green.sh go.sh check-ci.sh ready-check.sh; do
+for b in chief.sh chief-wait.sh tick.sh merge-on-green.sh go.sh check-ci.sh ready-check.sh; do
   if grep -qF "$b" "$SELF"; then :; else bad "suite does not name $b"; fi
 done
 

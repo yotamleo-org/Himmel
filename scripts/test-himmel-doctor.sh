@@ -108,7 +108,7 @@ export DOCTOR_ORPHAN_SCAN_SKIP=1
 
 # Hermeticity: C29 scans the REAL /proc tree for claude
 # child-session launchers unless seamed -- this dev box routinely has several
-# such legs running right now, and every
+# such workers running right now, and every
 # unrelated case would otherwise pick up a WARN C29-child-session it is not
 # testing. Point at a nonexistent dir globally (check_c29's `[ ! -d ]` guard
 # reads that as a clean procfs-absent skip, never a false WARN); dedicated
@@ -1496,7 +1496,7 @@ EOF
 chmod +x "$t/bin/curl"
 # the assets were seeded from THIS tree, so judge this tree — the
 # doctor otherwise compares against the primary checkout, which
-# drifts from a leg worktree whose base predates the primary's head.
+# drifts from a worker worktree whose base predates the primary's head.
 out="$(HIMMEL_DOCTOR_ROOT="$REPO_ROOT" DOCTOR_OBSERVABILITY_SKIP=0 DOCTOR_OBSERVABILITY_DESIRED=1 DOCTOR_OBSERVABILITY_INSTALL_DIR="$t/install" DOCTOR_CURL_BIN="$t/bin/curl" \
     GRAFANA_TELEGRAM_BOT_TOKEN="test-token" GRAFANA_TELEGRAM_CHAT_ID="123" \
     DOCTOR_WORKTREE_ROOT="$C14_WT_ROOT" DOCTOR_MCP_PLUGINS_GLOB="$t/none/*.mcp.json" \
@@ -2688,9 +2688,9 @@ c29_mkproc() {
 echo "== C29: child-session marker with no persistence flag -> WARN, names the pid =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 positive: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
-c29_mkproc "$t/proc" 5001 "HIMMEL-2545-leg" claude 'CLAUDE_CODE_CHILD_SESSION=1'
+c29_mkproc "$t/proc" 5001 "HIMMEL-2545-worker" claude 'CLAUDE_CODE_CHILD_SESSION=1'
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/proc" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C29-child-session' && grepq "$out" 'pid 5001' && grepq "$out" 'HIMMEL-2545-leg'; then
+if grepq "$out" 'WARN C29-child-session' && grepq "$out" 'pid 5001' && grepq "$out" 'HIMMEL-2545-worker'; then
     pass "C29 -> WARN names pid 5001 and the session"
 else
     fail "C29 positive -> $(printf '%s' "$out" | grep C29)"
@@ -2700,7 +2700,7 @@ rm -rf "$t"
 echo "== C29 CONTROL: same marker WITH persistence forced -> no WARN =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 control-persistence: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
-c29_mkproc "$t/proc" 5002 "HIMMEL-2545-leg" claude 'CLAUDE_CODE_CHILD_SESSION=1' 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1'
+c29_mkproc "$t/proc" 5002 "HIMMEL-2545-worker" claude 'CLAUDE_CODE_CHILD_SESSION=1' 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1'
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/proc" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C29-child-session' && ! grepq "$out" 'WARN C29-child-session'; then
     pass "C29 -> OK (persistence already forced, no nag)"
@@ -2712,7 +2712,7 @@ rm -rf "$t"
 echo "== C29 CONTROL: claude process with NEITHER var -> no WARN =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 control-neither: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
-c29_mkproc "$t/proc" 5003 "HIMMEL-2545-leg" claude
+c29_mkproc "$t/proc" 5003 "HIMMEL-2545-worker" claude
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/proc" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C29-child-session' && ! grepq "$out" 'WARN C29-child-session'; then
     pass "C29 -> OK (a plain human-launched session, neither var set)"
@@ -2742,7 +2742,7 @@ echo "== C29 CONTROL: konsole LAUNCHER (not claude) whose cmdline quotes claude 
 # headed session via its own launcher.
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 control-launcher: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
-c29_mkproc "$t/proc" 5004 "HIMMEL-2545-leg" konsole 'CLAUDE_CODE_CHILD_SESSION=1'
+c29_mkproc "$t/proc" 5004 "HIMMEL-2545-worker" konsole 'CLAUDE_CODE_CHILD_SESSION=1'
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/proc" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'OK   C29-child-session' && ! grepq "$out" 'WARN C29-child-session'; then
     pass "C29 -> OK (konsole launcher, not claude, never flagged)"
@@ -2759,7 +2759,7 @@ echo "== C29: EMPTY persistence value is absent, not present -> still WARN (HIMM
 # bare existence match.
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 empty-persistence: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
-c29_mkproc "$t/proc" 5005 "HIMMEL-2545-leg" claude 'CLAUDE_CODE_CHILD_SESSION=1' 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE='
+c29_mkproc "$t/proc" 5005 "HIMMEL-2545-worker" claude 'CLAUDE_CODE_CHILD_SESSION=1' 'CLAUDE_CODE_FORCE_SESSION_PERSISTENCE='
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/proc" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" 'WARN C29-child-session' && grepq "$out" 'pid 5005'; then
     pass "C29 -> WARN fires on an empty persistence value"
@@ -2794,13 +2794,13 @@ rm -rf "$t"
 echo "== C29: UNNAMED session and an adopter's ticket key are both flagged (no HIMMEL- gate) =="
 t="$(mktemp -d "${TMPDIR:-/tmp}/himmel-doctor-c29.XXXXXX")" || { fail "C29 any-key: mktemp -d failed"; exit 1; }
 write_settings "$t/claude" "$WRAPPER"
-c29_mkproc "$t/proc" 5007 "ACME-7-leg" claude 'CLAUDE_CODE_CHILD_SESSION=1'
+c29_mkproc "$t/proc" 5007 "ACME-7-worker" claude 'CLAUDE_CODE_CHILD_SESSION=1'
 mkdir -p "$t/proc/5008"
 printf '%s\n' claude > "$t/proc/5008/comm"
 printf 'claude\0' > "$t/proc/5008/cmdline"
 printf 'CLAUDE_CODE_CHILD_SESSION=1\0' > "$t/proc/5008/environ"
 out="$(RESOLVE_NODE_PROBE_DIRS="$FAKENODE" HIMMEL_DOCTOR_PROC="$t/proc" CLAUDE_DIR="$t/claude" HOME="$t/home" bash "$DOC" --no-color 2>&1)"
-if grepq "$out" 'WARN C29-child-session: 2 running' && grepq "$out" 'pid 5007 (ACME-7-leg)' && grepq "$out" 'pid 5008 (unnamed)'; then
+if grepq "$out" 'WARN C29-child-session: 2 running' && grepq "$out" 'pid 5007 (ACME-7-worker)' && grepq "$out" 'pid 5008 (unnamed)'; then
     pass "C29 -> WARN names the ACME- session and the unnamed one"
 else
     fail "C29 any-key -> $(printf '%s' "$out" | grep -A3 C29)"
@@ -6629,7 +6629,7 @@ echo "== C61-codex-cli: codex absent -> INFO =="
 out="$(DOCTOR_CODEX_BIN="$c60_t/none" DOCTOR_CODEX_LATEST=0.162.1 CLAUDE_DIR="$c60_t/home/claude" HOME="$c60_t/home" bash "$DOC" --no-color 2>&1)"
 if grepq "$out" -F 'INFO C61-codex-cli' && ! grepq "$out" -F 'WARN C61-codex-cli'; then pass "C61 absent -> INFO"; else fail "C61 absent -> $(printf '%s' "$out" | grep -A1 C61)"; fi
 
-# --- C63-claude-cli: installed claude below the console-launch floor ---
+# --- C63-claude-cli: installed claude below the chief-launch floor ---
 # Fixture shape copied from this station's real `claude --version` output.
 printf '#!/usr/bin/env bash\necho "2.1.296 (Claude Code)"\n' > "$c60_t/claude-new"; chmod +x "$c60_t/claude-new"
 printf '#!/usr/bin/env bash\necho "2.1.200 (Claude Code)"\n' > "$c60_t/claude-old"; chmod +x "$c60_t/claude-old"

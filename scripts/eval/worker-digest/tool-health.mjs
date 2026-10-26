@@ -1,9 +1,11 @@
-// Shared read-only rollup for the Tool health page and console board.
-// Denominators live in eval-runs metadata; class/recovery rows come from leg-failures.
+// Shared read-only rollup for the Tool health page and chief board.
+// Denominators live in eval-runs metadata; class/recovery rows come from worker-failures.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { estimateProfileListing } from './profile-listing.mjs';
+import { legacyNamesOn } from '../../lib/env-alias.mjs';
+import { canonicalProfileName } from '../../lanes/plugin-profiles.mjs';
 
 export const LANES = ['native', 'claudex', 'openrouter', 'cloud', 'unknown'];
 const num = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -20,17 +22,21 @@ function readListing(path) {
   catch { return {}; }
 }
 // estimateListing: price each profile's Skill listing from the installed plugins (unbilled scan, cached in memory);
-// callers that only want failure rates (the console board) leave it off and skip the scan.
+// callers that only want failure rates (the chief board) leave it off and skip the scan.
 export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false } = {}) {
   const home = env.HOME || homedir();
   const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
     : estimateListing ? estimateProfileListing({ configDir: env.CLAUDE_CONFIG_DIR || join(home, '.claude') }) : {};
   return rollupToolHealth(readRows(env.HIMMEL_EVAL_RUNS_LEDGER || join(home, '.himmel', 'eval-runs.jsonl')),
-    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || env.HIMMEL_LEG_FAILURES_LEDGER || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing);
+    readRows(env.HIMMEL_WORKER_SESSION_FAILURES_LEDGER || (legacyNamesOn(env) ? env.HIMMEL_LEG_FAILURES_LEDGER : undefined) || join(home, '.himmel', 'leg-failures.jsonl')), query, now, listing);
 }
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
-const profileOf = (...candidates) => candidates.find((c) => typeof c === 'string' && PROFILE.test(c)) || 'unknown';
+// A row recorded before the rename carries the old profile id; it rolls up under the renamed one.
+const profileOf = (...candidates) => {
+  const c = candidates.find((x) => typeof x === 'string' && PROFILE.test(x));
+  return c ? canonicalProfileName(c) : 'unknown';
+};
 
 // listing: {profile: {tool: listing tokens}} from profile-listing.mjs; absent = no drop candidates.
 export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}) {

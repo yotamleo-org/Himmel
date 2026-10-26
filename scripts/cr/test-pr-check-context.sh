@@ -7,7 +7,7 @@
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCRIPT="$DIR/pr-check-context.sh"
-# A leg shell's FORCE_COLOR=3 makes node's console.log colour a
+# A worker shell's FORCE_COLOR=3 makes node's console.log colour a
 # bare boolean/number (T13); pin it on so the suite catches a regression.
 export FORCE_COLOR=3
 
@@ -377,10 +377,10 @@ cp "$DIR/anchor-handoff.sh" "$d/scripts/cr/anchor-handoff.sh"
   printf '#!/usr/bin/env bash\n' > "$d/scripts/check-ci.sh"
   printf '#!/usr/bin/env bash\n' > "$d/scripts/handover/resolve-active-item.sh"
   # ...and the files the critic panel, bridges and bank preflight run via a
-  # variable (console review of #1148): placeholders are enough, the rows
+  # variable (chief review of #1148): placeholders are enough, the rows
   # below only compare their bytes.
   mkdir -p "$d/scripts/guardrails" "$d/scripts/handover" "$d/scripts/hermes" "$d/scripts/lanes" "$d/scripts/observability" "$d/scripts/statusline" "$d/scripts/telegram"
-  for fp in scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json scripts/statusline/usage-cache-producer.sh scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs scripts/observability/quota-sources.ts scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts scripts/telegram/console-route.ts scripts/telegram/bus.ts scripts/telegram/console-heartbeat-watch.ts scripts/telegram/poller.ts scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts scripts/telegram/triage.ts scripts/telegram/transcribe.ts scripts/telegram/spawn-glm.ts scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-diff-guard.ts scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json; do
+  for fp in scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json scripts/statusline/usage-cache-producer.sh scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs scripts/observability/quota-sources.ts scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/chief-heartbeat-watch.ts scripts/telegram/poller.ts scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts scripts/telegram/triage.ts scripts/telegram/transcribe.ts scripts/telegram/spawn-glm.ts scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-diff-guard.ts scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json; do
     printf 'placeholder\n' > "$d/$fp"
   done
   (
@@ -1615,7 +1615,7 @@ check "$rc20" "0" "T26-30 re-affirm: T20 rc still 0"
 check "$rc21" "0" "T26-30 re-affirm: T21 rc still 0"
 
 # --- T35: the himmel-lane RELATIVE entry keeps the anchor ------
-# A leg enters step 0 as the bare literal `bash scripts/cr/pr-check-context.sh`
+# A worker enters step 0 as the bare literal `bash scripts/cr/pr-check-context.sh`
 # (the one shape an allow rule can match), which executes the BRANCH's copy
 # first. The branch copy must hand straight to the ANCHOR's copy, so the
 # delegation decision and its ledger row stay the anchor's. The fixture
@@ -1751,10 +1751,10 @@ check "$(get_kv "$out36" cr_diff_files)" "scripts/cr/critic-panel.sh" "T36 cr_di
 check "$((rows_after36 - rows_before36))" "1" "T36 exactly one new delegation ledger row for the uncommitted edit"
 check "$(cd "$wt36" && git diff --name-only HEAD -- scripts/cr/critic-panel.sh)" "scripts/cr/critic-panel.sh" "T36 the edit is still uncommitted after the run (this script never commits on the caller's behalf)"
 
-# T36 RED: a mutant that discards the working-tree diff leg (the pre-3382
+# T36 RED: a mutant that discards the working-tree diff worker (the pre-3382
 # committed-only shape) must NOT see this uncommitted edit at all - zero
 # delegation, zero new ledger rows - proving T36's assertions above actually
-# depend on that leg, not some other code path.
+# depend on that worker, not some other code path.
 mutant36="$tmp/pr-check-context.mutant-t36.sh"
 # shellcheck disable=SC2016  # literal match against pr-check-context.sh's own
 # source text.
@@ -1776,7 +1776,7 @@ red_control_assert --label "T36" \
   --observed     "delegated=$(get_kv "$RED_CONTROL_OUT" delegated) rows_added=$((rows_after36r - rows_before36r))" \
   --expect-wrong "delegated=no rows_added=0" \
   --correct      "delegated=yes rows_added=1" \
-  --note "HIMMEL-3382 - without the worktree-diff leg, an UNCOMMITTED scripts/cr/ edit is invisible to cr_diff_state, so no delegation row is ever written (the exact pre-fix gap)" \
+  --note "HIMMEL-3382 - without the worktree-diff worker, an UNCOMMITTED scripts/cr/ edit is invisible to cr_diff_state, so no delegation row is ever written (the exact pre-fix gap)" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
@@ -1938,14 +1938,14 @@ out39="$(cd "$wt39" && HIMMEL_REPO="$anchor13" GIT_LITERAL_PATHSPECS=1 bash "$an
 rc39=$?
 rows_after39="$(grep -c '"kind":"delegation"' "$ledger13" 2>/dev/null || echo 0)"
 check "$rc39" "0" "T39 rc (an inherited GIT_LITERAL_PATHSPECS=1 must not break this run)"
-check "$(get_kv "$out39" delegated)" "yes" "T39 delegated=yes (HIMMEL-3382 console adversarial delta review - GIT_LITERAL_PATHSPECS=1 must not fail the :(top) diff open)"
+check "$(get_kv "$out39" delegated)" "yes" "T39 delegated=yes (HIMMEL-3382 chief adversarial delta review - GIT_LITERAL_PATHSPECS=1 must not fail the :(top) diff open)"
 check "$(get_kv "$out39" cr_diff_files)" "scripts/cr/critic-panel.sh" "T39 cr_diff_files still names the committed file with GIT_LITERAL_PATHSPECS=1 inherited"
 check "$((rows_after39 - rows_before39))" "1" "T39 exactly one new delegation ledger row"
 
 # T39 RED: a mutant that reverts to the round-1 unset list (no
 # GIT_LITERAL_PATHSPECS/GIT_GLOB_PATHSPECS/GIT_NOGLOB_PATHSPECS/
 # GIT_ICASE_PATHSPECS) must fail cr_diff_state open under
-# GIT_LITERAL_PATHSPECS=1 - the exact fail-open the console adversarial delta
+# GIT_LITERAL_PATHSPECS=1 - the exact fail-open the chief adversarial delta
 # review flagged - proving T39's assertions above actually depend on this
 # fix, not some other code path.
 mutant39="$tmp/pr-check-context.mutant-t39.sh"
@@ -1975,7 +1975,7 @@ red_control_assert --label "T39" \
   --observed     "delegated=$(get_kv "$RED_CONTROL_OUT" delegated) rows_added=$((rows_after39r - rows_before39r))" \
   --expect-wrong "delegated=no rows_added=0" \
   --correct      "delegated=yes rows_added=1" \
-  --note "HIMMEL-3382 console adversarial delta review - without unsetting GIT_LITERAL_PATHSPECS, an inherited GIT_LITERAL_PATHSPECS=1 turns ':(top)scripts/cr/' into a literal, non-existent path, silently emptying all three diff/ls-files calls and fail-opening cr_diff_state to no on a branch that genuinely edited scripts/cr/" \
+  --note "HIMMEL-3382 chief adversarial delta review - without unsetting GIT_LITERAL_PATHSPECS, an inherited GIT_LITERAL_PATHSPECS=1 turns ':(top)scripts/cr/' into a literal, non-existent path, silently emptying all three diff/ls-files calls and fail-opening cr_diff_state to no on a branch that genuinely edited scripts/cr/" \
   || fail=1
 cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 
@@ -1983,7 +1983,7 @@ cp "$SCRIPT" "$anchor13/scripts/cr/pr-check-context.sh"
 # untracked file under scripts/cr/ - never `git add`ed, excluded from
 # ordinary untracked-file listings by .gitignore - proves the twins' pinned
 # recipe (test-pr-check-pair.sh check (ii)) and the script itself
-# decide on the SAME set: both must see it, because the untracked-files leg
+# decide on the SAME set: both must see it, because the untracked-files worker
 # deliberately omits --exclude-standard
 # so an unreviewed scripts/cr/ change cannot hide
 # behind .gitignore.
@@ -2017,9 +2017,9 @@ git -C "$anchor13" update-ref refs/remotes/origin/main refs/heads/main
 mb40="$(cd "$wt40" && git merge-base HEAD refs/remotes/origin/main)"
 recipe40="$(
   cd "$wt40" || exit 1
-  git diff --name-only "$mb40"..HEAD -- 'scripts/cr/' 'scripts/lib/' 'scripts/guardrails/lib.sh' 'scripts/check-ci.sh' 'scripts/handover/resolve-active-item.sh' 'scripts/handover/append-cr-findings.sh' 'scripts/handover/append-cr-bugs.sh' 'scripts/handover/bug.sh' 'scripts/hermes/invoke.sh' 'scripts/hermes/egress-gate.sh' 'scripts/guardrails/egress-matrix-eval.mjs' 'scripts/guardrails/egress-matrix.json' 'scripts/statusline/usage-cache-producer.sh' 'scripts/lanes/bank-status.ts' 'scripts/lanes/usage-status.ts' 'scripts/lanes/bank-status-core.mjs' 'scripts/lanes/funded-max-pct.mjs' 'scripts/lanes/resolve.mjs' 'scripts/lanes/check.mjs' 'scripts/lanes/probe.mjs' 'scripts/lanes/set-lane-override.mjs' 'scripts/lanes/profile-managed.cjs' 'scripts/observability/quota-sources.ts' 'scripts/telegram/alibaba-probe-once.ts' 'scripts/telegram/quota-gauge.ts' 'scripts/telegram/quota-gauge-alibaba.ts' 'scripts/telegram/console-route.ts' 'scripts/telegram/bus.ts' 'scripts/telegram/console-heartbeat-watch.ts' 'scripts/telegram/poller.ts' 'scripts/telegram/router.ts' 'scripts/telegram/auto-action.ts' 'scripts/telegram/telegram-api.ts' 'scripts/telegram/log-timestamp.ts' 'scripts/telegram/gate.ts' 'scripts/telegram/run.ts' 'scripts/telegram/triage.ts' 'scripts/telegram/transcribe.ts' 'scripts/telegram/spawn-glm.ts' 'scripts/telegram/glm-env.ts' 'scripts/telegram/grants.ts' 'scripts/telegram/huge-diff-guard.ts' 'scripts/telegram/lane-args.ts' 'scripts/telegram/phi-egress-guard.ts' 'scripts/telegram/round-guard.ts' 'scripts/lanes/plugin-profiles.mjs' 'scripts/lanes/plugin-profiles.json'
-  git diff --name-only HEAD -- 'scripts/cr/' 'scripts/lib/' 'scripts/guardrails/lib.sh' 'scripts/check-ci.sh' 'scripts/handover/resolve-active-item.sh' 'scripts/handover/append-cr-findings.sh' 'scripts/handover/append-cr-bugs.sh' 'scripts/handover/bug.sh' 'scripts/hermes/invoke.sh' 'scripts/hermes/egress-gate.sh' 'scripts/guardrails/egress-matrix-eval.mjs' 'scripts/guardrails/egress-matrix.json' 'scripts/statusline/usage-cache-producer.sh' 'scripts/lanes/bank-status.ts' 'scripts/lanes/usage-status.ts' 'scripts/lanes/bank-status-core.mjs' 'scripts/lanes/funded-max-pct.mjs' 'scripts/lanes/resolve.mjs' 'scripts/lanes/check.mjs' 'scripts/lanes/probe.mjs' 'scripts/lanes/set-lane-override.mjs' 'scripts/lanes/profile-managed.cjs' 'scripts/observability/quota-sources.ts' 'scripts/telegram/alibaba-probe-once.ts' 'scripts/telegram/quota-gauge.ts' 'scripts/telegram/quota-gauge-alibaba.ts' 'scripts/telegram/console-route.ts' 'scripts/telegram/bus.ts' 'scripts/telegram/console-heartbeat-watch.ts' 'scripts/telegram/poller.ts' 'scripts/telegram/router.ts' 'scripts/telegram/auto-action.ts' 'scripts/telegram/telegram-api.ts' 'scripts/telegram/log-timestamp.ts' 'scripts/telegram/gate.ts' 'scripts/telegram/run.ts' 'scripts/telegram/triage.ts' 'scripts/telegram/transcribe.ts' 'scripts/telegram/spawn-glm.ts' 'scripts/telegram/glm-env.ts' 'scripts/telegram/grants.ts' 'scripts/telegram/huge-diff-guard.ts' 'scripts/telegram/lane-args.ts' 'scripts/telegram/phi-egress-guard.ts' 'scripts/telegram/round-guard.ts' 'scripts/lanes/plugin-profiles.mjs' 'scripts/lanes/plugin-profiles.json'
-  git ls-files --others -- 'scripts/cr/' 'scripts/lib/' 'scripts/guardrails/lib.sh' 'scripts/check-ci.sh' 'scripts/handover/resolve-active-item.sh' 'scripts/handover/append-cr-findings.sh' 'scripts/handover/append-cr-bugs.sh' 'scripts/handover/bug.sh' 'scripts/hermes/invoke.sh' 'scripts/hermes/egress-gate.sh' 'scripts/guardrails/egress-matrix-eval.mjs' 'scripts/guardrails/egress-matrix.json' 'scripts/statusline/usage-cache-producer.sh' 'scripts/lanes/bank-status.ts' 'scripts/lanes/usage-status.ts' 'scripts/lanes/bank-status-core.mjs' 'scripts/lanes/funded-max-pct.mjs' 'scripts/lanes/resolve.mjs' 'scripts/lanes/check.mjs' 'scripts/lanes/probe.mjs' 'scripts/lanes/set-lane-override.mjs' 'scripts/lanes/profile-managed.cjs' 'scripts/observability/quota-sources.ts' 'scripts/telegram/alibaba-probe-once.ts' 'scripts/telegram/quota-gauge.ts' 'scripts/telegram/quota-gauge-alibaba.ts' 'scripts/telegram/console-route.ts' 'scripts/telegram/bus.ts' 'scripts/telegram/console-heartbeat-watch.ts' 'scripts/telegram/poller.ts' 'scripts/telegram/router.ts' 'scripts/telegram/auto-action.ts' 'scripts/telegram/telegram-api.ts' 'scripts/telegram/log-timestamp.ts' 'scripts/telegram/gate.ts' 'scripts/telegram/run.ts' 'scripts/telegram/triage.ts' 'scripts/telegram/transcribe.ts' 'scripts/telegram/spawn-glm.ts' 'scripts/telegram/glm-env.ts' 'scripts/telegram/grants.ts' 'scripts/telegram/huge-diff-guard.ts' 'scripts/telegram/lane-args.ts' 'scripts/telegram/phi-egress-guard.ts' 'scripts/telegram/round-guard.ts' 'scripts/lanes/plugin-profiles.mjs' 'scripts/lanes/plugin-profiles.json'
+  git diff --name-only "$mb40"..HEAD -- 'scripts/cr/' 'scripts/lib/' 'scripts/guardrails/lib.sh' 'scripts/check-ci.sh' 'scripts/handover/resolve-active-item.sh' 'scripts/handover/append-cr-findings.sh' 'scripts/handover/append-cr-bugs.sh' 'scripts/handover/bug.sh' 'scripts/hermes/invoke.sh' 'scripts/hermes/egress-gate.sh' 'scripts/guardrails/egress-matrix-eval.mjs' 'scripts/guardrails/egress-matrix.json' 'scripts/statusline/usage-cache-producer.sh' 'scripts/lanes/bank-status.ts' 'scripts/lanes/usage-status.ts' 'scripts/lanes/bank-status-core.mjs' 'scripts/lanes/funded-max-pct.mjs' 'scripts/lanes/resolve.mjs' 'scripts/lanes/check.mjs' 'scripts/lanes/probe.mjs' 'scripts/lanes/set-lane-override.mjs' 'scripts/lanes/profile-managed.cjs' 'scripts/observability/quota-sources.ts' 'scripts/telegram/alibaba-probe-once.ts' 'scripts/telegram/quota-gauge.ts' 'scripts/telegram/quota-gauge-alibaba.ts' 'scripts/telegram/chief-route.ts' 'scripts/telegram/bus.ts' 'scripts/telegram/chief-heartbeat-watch.ts' 'scripts/telegram/poller.ts' 'scripts/telegram/router.ts' 'scripts/telegram/auto-action.ts' 'scripts/telegram/telegram-api.ts' 'scripts/telegram/log-timestamp.ts' 'scripts/telegram/gate.ts' 'scripts/telegram/run.ts' 'scripts/telegram/triage.ts' 'scripts/telegram/transcribe.ts' 'scripts/telegram/spawn-glm.ts' 'scripts/telegram/glm-env.ts' 'scripts/telegram/grants.ts' 'scripts/telegram/huge-diff-guard.ts' 'scripts/telegram/lane-args.ts' 'scripts/telegram/phi-egress-guard.ts' 'scripts/telegram/round-guard.ts' 'scripts/lanes/plugin-profiles.mjs' 'scripts/lanes/plugin-profiles.json'
+  git diff --name-only HEAD -- 'scripts/cr/' 'scripts/lib/' 'scripts/guardrails/lib.sh' 'scripts/check-ci.sh' 'scripts/handover/resolve-active-item.sh' 'scripts/handover/append-cr-findings.sh' 'scripts/handover/append-cr-bugs.sh' 'scripts/handover/bug.sh' 'scripts/hermes/invoke.sh' 'scripts/hermes/egress-gate.sh' 'scripts/guardrails/egress-matrix-eval.mjs' 'scripts/guardrails/egress-matrix.json' 'scripts/statusline/usage-cache-producer.sh' 'scripts/lanes/bank-status.ts' 'scripts/lanes/usage-status.ts' 'scripts/lanes/bank-status-core.mjs' 'scripts/lanes/funded-max-pct.mjs' 'scripts/lanes/resolve.mjs' 'scripts/lanes/check.mjs' 'scripts/lanes/probe.mjs' 'scripts/lanes/set-lane-override.mjs' 'scripts/lanes/profile-managed.cjs' 'scripts/observability/quota-sources.ts' 'scripts/telegram/alibaba-probe-once.ts' 'scripts/telegram/quota-gauge.ts' 'scripts/telegram/quota-gauge-alibaba.ts' 'scripts/telegram/chief-route.ts' 'scripts/telegram/bus.ts' 'scripts/telegram/chief-heartbeat-watch.ts' 'scripts/telegram/poller.ts' 'scripts/telegram/router.ts' 'scripts/telegram/auto-action.ts' 'scripts/telegram/telegram-api.ts' 'scripts/telegram/log-timestamp.ts' 'scripts/telegram/gate.ts' 'scripts/telegram/run.ts' 'scripts/telegram/triage.ts' 'scripts/telegram/transcribe.ts' 'scripts/telegram/spawn-glm.ts' 'scripts/telegram/glm-env.ts' 'scripts/telegram/grants.ts' 'scripts/telegram/huge-diff-guard.ts' 'scripts/telegram/lane-args.ts' 'scripts/telegram/phi-egress-guard.ts' 'scripts/telegram/round-guard.ts' 'scripts/lanes/plugin-profiles.mjs' 'scripts/lanes/plugin-profiles.json'
+  git ls-files --others -- 'scripts/cr/' 'scripts/lib/' 'scripts/guardrails/lib.sh' 'scripts/check-ci.sh' 'scripts/handover/resolve-active-item.sh' 'scripts/handover/append-cr-findings.sh' 'scripts/handover/append-cr-bugs.sh' 'scripts/handover/bug.sh' 'scripts/hermes/invoke.sh' 'scripts/hermes/egress-gate.sh' 'scripts/guardrails/egress-matrix-eval.mjs' 'scripts/guardrails/egress-matrix.json' 'scripts/statusline/usage-cache-producer.sh' 'scripts/lanes/bank-status.ts' 'scripts/lanes/usage-status.ts' 'scripts/lanes/bank-status-core.mjs' 'scripts/lanes/funded-max-pct.mjs' 'scripts/lanes/resolve.mjs' 'scripts/lanes/check.mjs' 'scripts/lanes/probe.mjs' 'scripts/lanes/set-lane-override.mjs' 'scripts/lanes/profile-managed.cjs' 'scripts/observability/quota-sources.ts' 'scripts/telegram/alibaba-probe-once.ts' 'scripts/telegram/quota-gauge.ts' 'scripts/telegram/quota-gauge-alibaba.ts' 'scripts/telegram/chief-route.ts' 'scripts/telegram/bus.ts' 'scripts/telegram/chief-heartbeat-watch.ts' 'scripts/telegram/poller.ts' 'scripts/telegram/router.ts' 'scripts/telegram/auto-action.ts' 'scripts/telegram/telegram-api.ts' 'scripts/telegram/log-timestamp.ts' 'scripts/telegram/gate.ts' 'scripts/telegram/run.ts' 'scripts/telegram/triage.ts' 'scripts/telegram/transcribe.ts' 'scripts/telegram/spawn-glm.ts' 'scripts/telegram/glm-env.ts' 'scripts/telegram/grants.ts' 'scripts/telegram/huge-diff-guard.ts' 'scripts/telegram/lane-args.ts' 'scripts/telegram/phi-egress-guard.ts' 'scripts/telegram/round-guard.ts' 'scripts/lanes/plugin-profiles.mjs' 'scripts/lanes/plugin-profiles.json'
 )"
 check "$recipe40" "scripts/cr/ignored-file.sh" "T40 the twins' pinned recipe also names the gitignored file - same set as the script"
 
@@ -2032,7 +2032,7 @@ check "$recipe40_old" "" "T40 RED - the pre-3382 recipe (--exclude-standard, no 
 # --- T41-T50: a false cr_diff_state=no is a trust-root hole ---
 # On "no" himmel_dir stays at the BRANCH, so every later /pr-check fence runs
 # the branch's own scripts/cr/ with no delegation row. Each row below is one
-# way a leg could make git's diff read clean while the branch's bytes differ
+# way a worker could make git's diff read clean while the branch's bytes differ
 # from the anchor's. Every row gets a FRESH fake himmel (vector (a) moves a
 # shared ref, (b) writes refs/replace/, (d) writes shared config) so nothing
 # leaks into another row. fx_outcome names what happened:
@@ -2092,9 +2092,9 @@ fx_new t41-clean
 out41="$(fx_run)"
 check "$(fx_outcome "$out41")" "branch" "T41 control - an untouched branch still decides no"
 
-# T42 (vector a): the leg moves refs/remotes/origin/main to its own HEAD. The
+# T42 (vector a): the worker moves refs/remotes/origin/main to its own HEAD. The
 # merge base becomes HEAD, the committed diff is empty, and the scripts/cr/
-# edit it carries disappears. A leg can do this from its own worktree - the
+# edit it carries disappears. A worker can do this from its own worktree - the
 # ref is in the shared git-common-dir and no main-ref guard covers
 # refs/remotes/*.
 fx_new t42-moved-base
@@ -2209,7 +2209,7 @@ out49="$(fx_run)"
 check "$(fx_outcome "$out49")" "anchor" "T49 an edit through a symlinked scripts/cr is not read as no"
 
 # T50: run from a subdirectory,
-# the untracked leg must not print a cwd-relative path while both diff legs
+# the untracked worker must not print a cwd-relative path while both diff workers
 # print top-relative ones. cr_diff_files must spell every path from the top.
 fx_new t50-subdir
 (
@@ -2359,10 +2359,10 @@ fx_new t55-resolve
 out55="$(fx_run)"
 check "$(fx_outcome "$out55")" "delegated" "T55 a resolve-active-item.sh-only edit is a guarded diff, not a no"
 
-# T61 (console review of #1148): each file the critic panel, the handover
+# T61 (chief review of #1148): each file the critic panel, the handover
 # bridges and the bank preflight run through a variable is guarded: a
 # hidden edit to only that file is not read as no.
-for g61 in scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json scripts/statusline/usage-cache-producer.sh scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs scripts/observability/quota-sources.ts scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts scripts/telegram/console-route.ts scripts/telegram/bus.ts scripts/telegram/console-heartbeat-watch.ts scripts/telegram/poller.ts scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts scripts/telegram/triage.ts scripts/telegram/transcribe.ts scripts/telegram/spawn-glm.ts scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-diff-guard.ts scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json; do
+for g61 in scripts/handover/append-cr-findings.sh scripts/handover/append-cr-bugs.sh scripts/handover/bug.sh scripts/hermes/invoke.sh scripts/hermes/egress-gate.sh scripts/guardrails/egress-matrix-eval.mjs scripts/guardrails/egress-matrix.json scripts/statusline/usage-cache-producer.sh scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-status-core.mjs scripts/lanes/funded-max-pct.mjs scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs scripts/observability/quota-sources.ts scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/chief-heartbeat-watch.ts scripts/telegram/poller.ts scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts scripts/telegram/triage.ts scripts/telegram/transcribe.ts scripts/telegram/spawn-glm.ts scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-diff-guard.ts scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json; do
   fx_new "t61-$(basename "$g61" | tr . -)"
   (
     cd "$fx_wt" || exit 1
@@ -2412,7 +2412,7 @@ check "$(fx_outcome "$out59")" "delegated" "T59 a control-character file name un
 
 # T60: a symlinked scripts/lib in the branch cannot be compared file for
 # file - unknown, and the anchor's copy runs. The link is committed and then
-# hidden from git's working-tree leg the same way T44 hides an edit.
+# hidden from git's working-tree worker the same way T44 hides an edit.
 fx_new t60-lib-symlink
 (
   cd "$fx_wt" || exit 1
@@ -2433,7 +2433,7 @@ check "$(fx_outcome "$out60")" "anchor" "T60 a symlinked scripts/lib is not read
 # never the branch's, so the deleted guard never even runs for that
 # decision); T62b proves the runtime half holds even on a bare relative run
 # of the gutted copy itself - guard-pr-check-literal.sh (tested separately in
-# scripts/hooks/test-guard-pr-check-literal.sh) is what stops a leg from
+# scripts/hooks/test-guard-pr-check-literal.sh) is what stops a worker from
 # reaching that shape at all once a scripts/cr/ diff's bytes actually differ.
 fx_new t62-deleted-handoff
 cat > "$tmp/t62-old-handoff-guard.txt" <<'HANDOFF_GUARD_EOF'
@@ -2514,7 +2514,7 @@ out63="$(cd "$repo_main" && bash "$SCRIPT" 2>"$tmp/err63.txt")"
 rc63=$?
 check "$rc63" "4" "T63 rc (fail-closed, resolved branch is the default branch)"
 check "$out63" "" "T63 no stdout on the refusal path"
-grep -q "run it from the leg's own worktree branch" "$tmp/err63.txt" || { echo "FAIL: T63 missing default-branch diagnostic"; fail=1; }
+grep -q "run it from the worker's own worktree branch" "$tmp/err63.txt" || { echo "FAIL: T63 missing default-branch diagnostic"; fail=1; }
 
 # T64. Same refusal for a `master`-default fixture (both
 # protected names), proving T63 is not main-specific.
@@ -2532,7 +2532,7 @@ out64="$(cd "$repo_master63" && bash "$SCRIPT" 2>"$tmp/err64.txt")"
 rc64=$?
 check "$rc64" "4" "T64 rc (fail-closed, resolved branch is master)"
 check "$out64" "" "T64 no stdout on the refusal path"
-grep -q "run it from the leg's own worktree branch" "$tmp/err64.txt" || { echo "FAIL: T64 missing default-branch diagnostic (master)"; fail=1; }
+grep -q "run it from the worker's own worktree branch" "$tmp/err64.txt" || { echo "FAIL: T64 missing default-branch diagnostic (master)"; fail=1; }
 
 # T65. Detached HEAD is refused with its OWN clear diagnostic, not the
 # confusing write-verdicts.sh "cannot resolve the branch" message the
@@ -2651,7 +2651,7 @@ check "$(get_kv "$out67" anchor_lane)" "himmel" "T67 anchor_lane=himmel (a real 
 # T68: when the common-dir resolution genuinely cannot produce
 # an absolute value at all (not just the --path-format echo-back shape),
 # the fix must still fail CLOSED to the adopter lane -- and must say so
-# loudly on stderr, never silently (per the console's REDIRECT ruling).
+# loudly on stderr, never silently (per the chief's REDIRECT ruling).
 fakegit_dir68="$tmp/unresolvable-fake-git-bin"
 mkdir -p "$fakegit_dir68"
 cat > "$fakegit_dir68/git" <<GITSHIM68

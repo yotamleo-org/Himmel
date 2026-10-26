@@ -65,7 +65,7 @@ expect_green "T6  file-level exemption with a reason passes"   file-exempt.sh
 expect_red   "T7  file-level exemption with NO reason fails"   file-exempt-no-reason.sh
 expect_green "T8  case-pattern/string/comment 'git' is not a call" case-pattern-only.sh
 
-# ---- shell: shebang-less entry-point risk (console REDIRECT, 2026-09-24) ----
+# ---- shell: shebang-less entry-point risk (chief REDIRECT, 2026-09-24) ----
 expect_red   "T9  shebang-less .sh with an unmarked git call fails" sourced-lib-unmarked.sh
 expect_green "T10 shebang-less .sh marked '# sourced-lib' passes"   sourced-lib-marked.sh
 expect_green "T11 shebang-less .sh with no git call at all passes"  sourced-lib-no-invocation.sh
@@ -117,7 +117,7 @@ expect_red "T20 quoted multi-word command string ('git status') is caught" quote
 expect_red "T21 bare exec( ) (no Sync/File) is caught"                   exec-bare-unscrubbed.mjs
 expect_red "T22 scrub names in a COMMENT alone don't satisfy the window" comment-fake-scrub-unscrubbed.mjs
 
-# ---- should-fix round (console adversarial review, 2026-09-24) ----
+# ---- should-fix round (chief adversarial review, 2026-09-24) ----
 
 # T23 -- a --tree path that does not exist must fail, not report clean. Before
 # the fix, a nonexistent path matches neither `-f` nor `-d` and is silently

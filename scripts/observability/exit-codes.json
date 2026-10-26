@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "_doc": "HIMMEL-4853. script -> rc -> {class, meaning}. class: result (a state answer, not a failure), retry (try again later), refusal (a gate said no: counted as an error), error. The leg digest (scripts/eval/worker-digest) counts result/retry rcs apart from failures; an rc a script does not list here stays error. 'table': true = the script documents its rcs as '#   <n> - <meaning>' header rows and test-exit-codes.sh fails when a row is missing here; absent = documented in prose, seeded by hand. Basenames must be unique.",
+  "_doc": "HIMMEL-4853. script -> rc -> {class, meaning}. class: result (a state answer, not a failure), retry (try again later), refusal (a gate said no: counted as an error), error. The worker digest (scripts/eval/worker-digest) counts result/retry rcs apart from failures; an rc a script does not list here stays error. 'table': true = the script documents its rcs as '#   <n> - <meaning>' header rows and test-exit-codes.sh fails when a row is missing here; absent = documented in prose, seeded by hand. Basenames must be unique.",
   "scripts": {
     "scripts/quiet-run.sh": {
       "codes": {
@@ -39,10 +39,10 @@
     "scripts/handover/merge-on-green.sh": {
       "codes": {
         "16": { "class": "refusal", "meaning": "endpoint binding refuses (merged branch)" },
-        "17": { "class": "refusal", "meaning": "console-GO gate: no GO file for this head, or go-gate lib missing" },
+        "17": { "class": "refusal", "meaning": "chief-GO gate: no GO file for this head, or go-gate lib missing" },
         "19": { "class": "refusal", "meaning": "anchor unreadable: fails closed" },
-        "21": { "class": "result", "meaning": "trust-path gate: PR touches a trust path or cannot be proven not to; routed to the console" },
-        "22": { "class": "refusal", "meaning": "main-red gate: main's latest completed CI run is red (or unreadable) and the PR does not declare itself the fix (commit declaration or a console fix-GO for the current red run)" }
+        "21": { "class": "result", "meaning": "trust-path gate: PR touches a trust path or cannot be proven not to; routed to the chief" },
+        "22": { "class": "refusal", "meaning": "main-red gate: main's latest completed CI run is red (or unreadable) and the PR does not declare itself the fix (commit declaration or a chief fix-GO for the current red run)" }
       }
     },
     "scripts/handover/queue-lock.sh": {

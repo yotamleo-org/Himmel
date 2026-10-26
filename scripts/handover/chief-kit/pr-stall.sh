@@ -1,18 +1,18 @@
 #!/usr/bin/env bash
 # pr-stall.sh — lists open PRs that are stuck, with the class and the action,
-# and maps each to the leg that owns it through the fleet manifest.
+# and maps each to the worker that owns it through the fleet manifest.
 #
 #   pr-stall.sh [--repo owner/name] [--manifest fleet.json] [--conflict-min N]
 #               [--noci-min N] [--slow-min M] [--idle-h H] [--notify]
 #
 # Prints one line per stuck PR, then one summary line:
-#   STALL <pr> <class> <leg-label|-> <detail>
+#   STALL <pr> <class> <worker-label|-> <detail>
 #   STALL-SUMMARY stuck=<N> queue=<queued+in_progress runs>
 #
 # Classes, most actionable first (a PR carrying several prints the first and
 # lists the rest as `also=` in the detail):
 #   conflict  mergeable=CONFLICTING or mergeStateStatus=DIRTY. GitHub starts no
-#             pull_request CI on a conflicting PR, so the leg waits for CI that
+#             pull_request CI on a conflicting PR, so the worker waits for CI that
 #             never comes. Action: merge origin/main (merge commit, no rebase).
 #   no-ci     not conflicting, zero check runs, and the PR last updated (the
 #             push) more than --noci-min minutes ago (default 10). Action: empty
@@ -26,14 +26,14 @@
 # --conflict-min is accepted for symmetry with the ticket's wording but a
 # conflict is reported at once: its signal is not time-dependent.
 #
-# --notify sends the owning leg the action through inbox-send.sh, for conflict
-# and no-ci only (ci-slow and idle are for the console), ONE message per
-# (pr, class, head), recorded in ${XDG_RUNTIME_DIR:-/tmp}/himmel-console/
-# pr-stall.sent so a repeat run does not re-send. A PR with no leg in the
-# manifest is listed with leg `-` and never sent to.
+# --notify sends the owning worker the action through inbox-send.sh, for conflict
+# and no-ci only (ci-slow and idle are for the chief), ONE message per
+# (pr, class, head), recorded in ${XDG_RUNTIME_DIR:-/tmp}/himmel-chief/
+# pr-stall.sent so a repeat run does not re-send. A PR with no worker in the
+# manifest is listed with worker `-` and never sent to.
 #
-# PR to leg: a manifest leg owns a PR when its doc names the PR's head branch
-# or `PR <n>` / `pull/<n>`. Session name: leg-identity.sh's first name.
+# PR to leg: a manifest worker owns a PR when its doc names the PR's head branch
+# or `PR <n>` / `pull/<n>`. Session name: worker-identity.sh's first name.
 #
 # Exit: 0 (also when nothing is stuck); 3 when gh itself fails, with
 # `STALL-UNKNOWN gh failed` on stdout, never a silent empty list; 2 usage.
@@ -44,14 +44,14 @@
 # no-ci clock and delays detection; upgrade: read the head's push event from
 # the PR timeline.
 # tick.sh folds the STALL rows into a stall= field (cached, fail-soft) and
-# console-wait.sh wakes once per new conflict or no-ci token.
+# chief-wait.sh wakes once per new conflict or no-ci token.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only
+# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
 # (GNU date). needs gh and jq.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-# shellcheck source=../../lib/leg-identity.sh
+# shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
 
 usage() {
@@ -93,17 +93,17 @@ queue="$(printf '%s' "$runs" | jq '[.[] | select(.status == "queued" or .status 
 # swallow-ok: stderr only; a failed read exits 3 through unknown
 numbers="$(printf '%s' "$list" | jq -r '.[].number' 2>/dev/null)" || unknown
 
-# leg_for <pr> <branch> -> "<label>\t<session>" or empty
-leg_for() {
+# worker_for <pr> <branch> -> "<label>\t<session>" or empty
+worker_for() {
     [ -n "$manifest" ] && [ -r "$manifest" ] || return 0
     local doc label rows
-    # swallow-ok: an unreadable manifest leaves the PR unmapped (leg -), never mapped wrongly
+    # swallow-ok: an unreadable manifest leaves the PR unmapped (worker -), never mapped wrongly
     rows="$(jq -r '.legs[]? | [.doc, (.label // "-")] | @tsv' "$manifest" 2>/dev/null)"
     while IFS="$TAB" read -r doc label; do
         [ -r "$doc" ] || continue
         # whole branch token only: feat/foo must not match a doc naming feat/foo-extra
         if grep -oE '[A-Za-z0-9._/+-]+' "$doc" 2>/dev/null | grep -qxF -- "$2" || grep -Eq -- "(PR |pull/)#?$1([^0-9]|$)" "$doc" 2>/dev/null; then
-            printf '%s\t%s\n' "$label" "$(leg_identity "$doc" | cut -f2 | cut -d, -f1)"
+            printf '%s\t%s\n' "$label" "$(worker_identity "$doc" | cut -f2 | cut -d, -f1)"
             return 0
         fi
     done <<EOF
@@ -133,7 +133,7 @@ def conflicting: .mergeable == "CONFLICTING" or .mergeStateStatus == "DIRTY";
 
 TAB="$(printf '\t')"
 stuck=0
-sent_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-console"
+sent_dir="${XDG_RUNTIME_DIR:-/tmp}/himmel-chief"
 sent_file="$sent_dir/pr-stall.sent"
 send="${PR_STALL_INBOX_SEND:-$HERE/inbox-send.sh}"
 # one notifying run at a time, so check-send-record below cannot double-send
@@ -213,9 +213,9 @@ for n in $numbers; do
     class="${classes%%,*}"
     also=""; [ "$class" = "$classes" ] || also=" also=${classes#*,}"
     branch="$(printf '%s' "$pr" | jq -r '.headRefName')"; head="$(printf '%s' "$pr" | jq -r '.headRefOid')"
-    leg="$(leg_for "$n" "$branch")"
+    worker="$(worker_for "$n" "$branch")"
     label="-"; session=""
-    if [ -n "$leg" ]; then label="${leg%%"$TAB"*}"; session="${leg#*"$TAB"}"; fi
+    if [ -n "$worker" ]; then label="${worker%%"$TAB"*}"; session="${worker#*"$TAB"}"; fi
     stuck=$((stuck + 1))
     printf 'STALL %s %s %s %s%s\n' "$n" "$class" "$label" "$detail" "$also"
 

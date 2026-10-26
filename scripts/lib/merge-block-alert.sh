@@ -7,7 +7,7 @@
 # generic exit and silence — or, worse, a retry. Every such path now fails fast
 # and calls merge_block_alert ONCE, which prints one `MERGE-BLOCKED` line naming
 # the rule and sends ONE Telegram DM to the operator through the existing bridge
-# reply path (scripts/telegram/console-route.ts reply -> replyViaOutbox), so the
+# reply path (scripts/telegram/chief-route.ts reply -> replyViaOutbox), so the
 # alert lands in the same outbox every other bridge reply uses — no new session
 # format.
 #
@@ -29,10 +29,10 @@
 #
 # Under HIMMEL_TEST_FIXTURE=1 the DEFAULT sender refuses unless BRIDGE_ROOT names
 # a sandbox — a suite that reaches this by accident must not DM the operator
-# (same guard restart-bridge.sh carries). The console-
-# routing path (_mba_route_console) carries the same refusal, keyed on
+# (same guard restart-bridge.sh carries). The chief-
+# routing path (_mba_route_chief) carries the same refusal, keyed on
 # MERGE_WATCH_ALERT_BRIDGE_ROOT/BRIDGE_ROOT — a fixture suite must not write
-# into a real console's live bridge inbox either.
+# into a real chief's live bridge inbox either.
 #
 # ponytail: "operator" is access.json's first positive allowFrom entry, the same
 # rule operatorChatId() in scripts/telegram/gate.ts applies; an access.json
@@ -62,7 +62,7 @@ _mba_send() {
     fi
     command -v bun >/dev/null 2>&1 || return 1
     # shellcheck disable=SC2086  # $tmo is deliberately word-split ("" or "timeout N")
-    $tmo bun "$_MBA_LIB_DIR/../telegram/console-route.ts" reply "$chat" "$text" >/dev/null 2>&1
+    $tmo bun "$_MBA_LIB_DIR/../telegram/chief-route.ts" reply "$chat" "$text" >/dev/null 2>&1
 }
 
 merge_block_alert() {
@@ -101,7 +101,7 @@ merge_block_alert() {
 
 # shellcheck source=./go-gate.sh
 # shellcheck disable=SC1091
-. "$_MBA_LIB_DIR/go-gate.sh" 2>/dev/null || console_leg() {
+. "$_MBA_LIB_DIR/go-gate.sh" 2>/dev/null || chief_worker() {
     case "$(printf '%s' "${HIMMEL_CONSOLE_LEG:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ''|0|false|off|no) return 1 ;;
         *) return 0 ;;
@@ -109,38 +109,38 @@ merge_block_alert() {
 }
 
 # merge_watch_alert — the alert for a MID-WORK check-ci red (this
-# leg's own CI watch, not an actual merge attempt). merge_block_alert above is
+# worker's own CI watch, not an actual merge attempt). merge_block_alert above is
 # unchanged and still called directly by merge-on-green.sh/pr-merge.sh for a
 # genuinely refused merge, so those always DM the operator regardless of
-# console context.
+# chief context.
 #
-# The console route below applies ONLY post-GO
+# The chief route below applies ONLY post-GO
 # (MERGE_WATCH_POST_GO=1, set by merge-on-green.sh around its check-ci call). A
-# console-spawned leg's own pre-GO watch red prints the MERGE-BLOCKED line and
-# stops: the leg has the exit code and owns the fix, and nothing wakes the
-# console or pages the operator.
+# chief-spawned worker's own pre-GO watch red prints the MERGE-BLOCKED line and
+# stops: the worker has the exit code and owns the fix, and nothing wakes the
+# chief or pages the operator.
 #
-# When this leg is console-spawned (console_leg(), from go-gate.sh) AND its
-# console's session name is known (HIMMEL_CONSOLE_NAME — exported into every
-# leg by the launcher since the launcher gained that export), the alert is appended to that
-# console's own bridge inbox instead: the console is already watching the PR,
-# so an operator page mid-work is a false alarm. No console name, or the
-# console's inbox was never armed (routeToConsole's own rule in
-# scripts/telegram/console-route.ts: append only to a file that already
+# When this worker is chief-spawned (chief_worker(), from go-gate.sh) AND its
+# chief's session name is known (HIMMEL_CONSOLE_NAME — exported into every
+# worker by the launcher since the launcher gained that export), the alert is appended to that
+# chief's own bridge inbox instead: the chief is already watching the PR,
+# so an operator page mid-work is a false alarm. No chief name, or the
+# chief's inbox was never armed (routeToConsole's own rule in
+# scripts/telegram/chief-route.ts: append only to a file that already
 # exists, never create one) -> falls through to merge_block_alert, i.e.
 # today's behaviour, one operator DM.
 #
 #   merge_watch_alert <owner/repo> <pr-number> <head-sha> <rule text...>
 #
 # Always returns 0. Dedupe: a SEPARATE sentinel per (repo, PR, head) from
-# merge_block_alert's own (suffixed .watch), so a console-routed watch alert
+# merge_block_alert's own (suffixed .watch), so a chief-routed watch alert
 # never suppresses a later real merge-refusal operator DM for the same head,
 # and vice versa.
 #
-# Seam: MERGE_WATCH_ALERT_BRIDGE_ROOT overrides BRIDGE_ROOT for the console
+# Seam: MERGE_WATCH_ALERT_BRIDGE_ROOT overrides BRIDGE_ROOT for the chief
 # inbox path only (hermetic suites; a caller who can set this can already set
 # PATH).
-_mba_console_inbox_path() {
+_mba_chief_inbox_path() {
     local root="$1" name="$2"
     [ -n "$name" ] || return 1
     case "$name" in
@@ -189,18 +189,18 @@ _mba_append_if_exists() {
     ' 2>/dev/null
 }
 
-# Mirrors scripts/telegram/console-route.ts's consoleInboxPath + routeToConsole
+# Mirrors scripts/telegram/chief-route.ts's consoleInboxPath + routeToConsole
 # (bash-native: this lib is sourced by plain-bash callers, not bun). The open
 # itself is the existence check (see _mba_append_if_exists above) — there is
 # no separate check-then-act step left to race.
-_mba_route_console() {
+_mba_route_chief() {
     local repo="$1" pr="$2" name="$3" text="$4"
     local root file
     if [ "${HIMMEL_TEST_FIXTURE:-}" = "1" ] && [ -z "${MERGE_WATCH_ALERT_BRIDGE_ROOT:-}" ] && [ -z "${BRIDGE_ROOT:-}" ]; then
         return 0
     fi
     root="${MERGE_WATCH_ALERT_BRIDGE_ROOT:-${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}}"
-    file=$(_mba_console_inbox_path "$root" "$name") || return 1
+    file=$(_mba_chief_inbox_path "$root" "$name") || return 1
     local folded
     folded=$(printf '%s' "$text" | tr '\n' ' ')
     local line
@@ -220,12 +220,12 @@ merge_watch_alert() {
         return 0
     fi
 
-    if console_leg; then
-        # A red on the leg's OWN pre-GO watch is the leg's to fix —
-        # it already has check-ci's exit code, so neither the console inbox
-        # (which wakes a full-context console) nor the operator is told.
-        # merge-on-green.sh runs only after the console's GO and marks its
-        # check-ci call MERGE_WATCH_POST_GO=1: that red is the console's.
+    if chief_worker; then
+        # A red on the worker's OWN pre-GO watch is the worker's to fix —
+        # it already has check-ci's exit code, so neither the chief inbox
+        # (which wakes a full-context chief) nor the operator is told.
+        # merge-on-green.sh runs only after the chief's GO and marks its
+        # check-ci call MERGE_WATCH_POST_GO=1: that red is the chief's.
         if [ "${MERGE_WATCH_POST_GO:-}" != "1" ]; then
             echo "MERGE-BLOCKED ${repo}#${pr} @${short:-unknown-head}: ${rule}" >&2
             return 0
@@ -238,7 +238,7 @@ merge_watch_alert() {
         if [ -n "$dir" ] && mkdir -p "$dir" 2>/dev/null; then
             key="${repo//\//_}__${pr}__${head}.watch"
             if ( set -o noclobber; : > "$dir/$key" ) 2>/dev/null; then
-                if _mba_route_console "$repo" "$pr" "${HIMMEL_CONSOLE_NAME:-}" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}"; then
+                if _mba_route_chief "$repo" "$pr" "${HIMMEL_CONSOLE_NAME:-}" "MERGE-BLOCKED ${repo}#${pr} @${short}: ${rule}"; then
                     echo "MERGE-BLOCKED ${repo}#${pr} @${short:-unknown-head}: ${rule}" >&2
                     return 0
                 fi

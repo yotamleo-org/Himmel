@@ -336,7 +336,7 @@ if [ -z "$anchor" ]; then
     exit 2
 fi
 
-# The himmel-lane RELATIVE entry. A leg may start step 0 as the
+# The himmel-lane RELATIVE entry. A worker may start step 0 as the
 # bare literal `bash scripts/cr/pr-check-context.sh` (the one shape a
 # permission allow rule can match; the canonical fence is a compound no rule
 # can). That runs THIS copy - the branch's - so a copy that is not the
@@ -356,7 +356,7 @@ fi
 # rather than letting this copy decide for itself.
 # ponytail: this guard is defense in depth, NOT the trust root. It lives in
 # the branch's own bytes, so a branch that deletes it also deletes the
-# hand-off. The trust root is the runbook condition (console ruling): the bare
+# hand-off. The trust root is the runbook condition (chief ruling): the bare
 # literal is permitted only on a diff that touches no cr_guarded path
 # (scripts/cr/, scripts/lib/, scripts/guardrails/lib.sh, scripts/check-ci.sh,
 # scripts/handover/resolve-active-item.sh), and a branch that could delete
@@ -643,7 +643,7 @@ base=$(default_branch "$repo")
 # branch (main/master) or a detached HEAD. /pr-check resolves the repo and
 # branch from $PWD alone; a session sitting in the PRIMARY checkout (on main)
 # would otherwise review main itself and could clear MAIN's own CR marker
-# while certifying nothing about the leg's actual worktree branch
+# while certifying nothing about the worker's actual worktree branch
 # (N472 audit, release-pipeline integrity, v1-blocker). Checked here - after
 # default_branch is resolved, before any side effect (delegation capability,
 # verdict-file truncation) runs - and BEFORE the first byte of stdout, so a
@@ -652,11 +652,11 @@ base=$(default_branch "$repo")
 # refusal has its own code: diagnosable apart from every other failure
 # this script can report.
 if [ -z "$branch" ]; then
-    echo "pr-check-context: HEAD is detached - refusing to certify a detached checkout; check out the leg's own worktree branch and re-run" >&2
+    echo "pr-check-context: HEAD is detached - refusing to certify a detached checkout; check out the worker's own worktree branch and re-run" >&2
     exit 4
 fi
 if [ "$branch" = "$base" ]; then
-    echo "pr-check-context: resolved branch '$branch' is the default branch - refusing to run /pr-check from the primary checkout on $base; run it from the leg's own worktree branch instead" >&2
+    echo "pr-check-context: resolved branch '$branch' is the default branch - refusing to run /pr-check from the primary checkout on $base; run it from the worker's own worktree branch instead" >&2
     exit 4
 fi
 
@@ -699,7 +699,7 @@ fi
 # refuse to leave himmel_dir at the branch unlogged).
 #
 # The git diff alone can read clean while the branch's bytes
-# differ, and a false "no" leaves himmel_dir at the branch unlogged. A leg
+# differ, and a false "no" leaves himmel_dir at the branch unlogged. A worker
 # can move refs/remotes/origin/main to its own HEAD (the ref lives in the
 # shared git-common-dir), map the base's tree onto its own with a replace
 # ref, set assume-unchanged/skip-worktree index bits, configure a clean
@@ -711,7 +711,7 @@ fi
 # branch - hashed the way guard-pr-check-literal.sh does it: find + git
 # hash-object --no-filters, so no ref, index bit, filter, fsmonitor or
 # fileMode setting is consulted. The anchor tree is the base, not a ref,
-# because every ref is one update-ref away for a leg. The comparison only
+# because every ref is one update-ref away for a worker. The comparison only
 # refines a "no": a git "no" whose bytes differ becomes "unknown", never
 # "yes" - it cannot tell a hidden edit from a primary checkout that is behind
 # or ahead of the branch's base (T37: main's later scripts/cr/ commit is not
@@ -735,7 +735,7 @@ fi
 gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false "$@"; }
 #
 # The closure also follows script paths stored in a variable and run later
-# (console adversarial review of #1148): handover-bridge.sh hands
+# (chief adversarial review of #1148): handover-bridge.sh hands
 # append-cr-{findings,bugs}.sh (and bug.sh) to node, critic-panel.sh runs
 # ${CRITIC_INVOKE:-.../hermes/invoke.sh} (egress-gate.sh and the egress
 # matrix it evaluates, the alibaba quota probe under scripts/telegram/), and
@@ -744,9 +744,9 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # directory, so a branch touching an unrelated lane or telegram file keeps
 # its relative himmel-lane spelling. egress-matrix.json is data, not code,
 # but it is the egress policy invoke.sh enforces, so it is guarded too.
-# A red required check reaches the telegram bridge as well (second console
+# A red required check reaches the telegram bridge as well (second chief
 # review of #1148): check-ci.sh sources merge-block-alert.sh, which runs
-# bun scripts/telegram/console-route.ts reply; that imports bus.ts and
+# bun scripts/telegram/chief-route.ts reply; that imports bus.ts and
 # dynamically poller.ts, whose static imports load the rest of the
 # scripts/telegram files below and scripts/lanes/plugin-profiles.mjs.
 #
@@ -762,15 +762,15 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # scripts/lib/check-pr-title.sh (already guarded, under
 # scripts/lib/) sources scripts/hooks/check-commit-msg.sh to reuse its
 # conventional-commit regex rather than copy it - both merge-on-green.sh and
-# leg-pr-open.sh reach it through that one file, so check-commit-msg.sh is
+# worker-pr-open.sh reach it through that one file, so check-commit-msg.sh is
 # guarded too.
 #
 # anchorShipStepRules generalizes the merge-on-green.sh anchor literal above
 # and also emits an anchored gateAllow literal for
-# leg-pr-open.sh in plugin-profiles.mjs - the same over-matching fail-safe
-# makes the scanner read scripts/lanes/leg-pr-open.sh as an edge from
-# plugin-profiles.mjs. leg-pr-open.sh itself runs leg-burn.sh (to compute the
-# ship PR's leg-burn line) and sources leg-burn.sh's lib/burn-weights.sh, so
+# worker-pr-open.sh in plugin-profiles.mjs - the same over-matching fail-safe
+# makes the scanner read scripts/lanes/worker-pr-open.sh as an edge from
+# plugin-profiles.mjs. worker-pr-open.sh itself runs worker-burn.sh (to compute the
+# ship PR's worker-burn line) and sources worker-burn.sh's lib/burn-weights.sh, so
 # both join the guarded set too.
 # plugin-profiles.mjs lazily imports skill-listing.mjs / skill-cost.mjs
 # (and skill-listing.mjs imports role-requires.mjs), so the closure test reaches
@@ -779,12 +779,12 @@ gitd() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache
 # (guarded) reads it to resolve the bare profile hermes-critic.sh applies, so a
 # branch could rewrite the profile its own review runs under - guarded like
 # egress-matrix.json above.
-# leg-pr-open.sh runs chief-kit/leg-jira-status.sh to
+# worker-pr-open.sh runs chief-kit/worker-jira-status.sh to
 # move the ticket to In Review, so it is guarded. The Jira CLI it then runs is the
 # PRIMARY checkout's untracked scripts/jira/dist build, never branch bytes: the
 # closure test excludes scripts/jira/dist/.
 # merge-on-green.sh appends its PARTIAL line through chief-kit/append-results.sh,
-# which takes chief-kit/leg-doc-lock.sh and scans the bullet with
+# which takes chief-kit/worker-doc-lock.sh and scans the bullet with
 # chief-kit/bucket-gitleaks.sh (which runs chief-kit/vault-status.sh), so all
 # four are guarded.
 cr_guarded="scripts/cr scripts/lib scripts/api-lane scripts/guardrails/lib.sh scripts/check-ci.sh scripts/handover/resolve-active-item.sh
@@ -801,14 +801,14 @@ scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-st
 scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
-scripts/telegram/console-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
-scripts/telegram/console-heartbeat-watch.ts
+scripts/telegram/console-route.ts scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
+scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts
 scripts/telegram/triage.ts scripts/telegram/transcribe.ts scripts/telegram/spawn-glm.ts
 scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-diff-guard.ts
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
-scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/leg-pr-open.sh scripts/lanes/leg-burn.sh scripts/lanes/lib/burn-weights.sh
+scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/leg-pr-open.sh scripts/lanes/worker-pr-open.sh scripts/lanes/leg-burn.sh scripts/lanes/worker-burn.sh scripts/lanes/lib/burn-weights.sh
 scripts/handover/chief-kit/leg-jira-status.sh scripts/handover/chief-kit/worker-jira-status.sh
 marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
 scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/leg-doc-lock.sh scripts/handover/chief-kit/worker-doc-lock.sh
@@ -830,8 +830,8 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/observability/quota-sources.ts'
     ':(top)scripts/telegram/alibaba-probe-once.ts' ':(top)scripts/telegram/quota-gauge.ts'
     ':(top)scripts/telegram/quota-gauge-alibaba.ts'
-    ':(top)scripts/telegram/console-route.ts' ':(top)scripts/telegram/bus.ts'
-    ':(top)scripts/telegram/console-heartbeat-watch.ts'
+    ':(top)scripts/telegram/console-route.ts' ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
+    ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'
     ':(top)scripts/telegram/log-timestamp.ts' ':(top)scripts/telegram/gate.ts'
@@ -841,7 +841,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/telegram/huge-diff-guard.ts' ':(top)scripts/telegram/lane-args.ts'
     ':(top)scripts/telegram/phi-egress-guard.ts' ':(top)scripts/telegram/round-guard.ts'
     ':(top)scripts/lanes/plugin-profiles.mjs' ':(top)scripts/lanes/plugin-profiles.json' ':(top)scripts/lanes/role-requires.mjs' ':(top)scripts/lanes/skill-cost.mjs' ':(top)scripts/lanes/skill-listing.mjs' ':(top)scripts/lanes/profile-settings.sh'
-    ':(top)scripts/lanes/leg-pr-open.sh' ':(top)scripts/lanes/leg-burn.sh' ':(top)scripts/lanes/lib/burn-weights.sh'
+    ':(top)scripts/lanes/leg-pr-open.sh' ':(top)scripts/lanes/worker-pr-open.sh' ':(top)scripts/lanes/leg-burn.sh' ':(top)scripts/lanes/worker-burn.sh' ':(top)scripts/lanes/lib/burn-weights.sh'
     ':(top)scripts/handover/chief-kit/leg-jira-status.sh' ':(top)scripts/handover/chief-kit/worker-jira-status.sh'
     ':(top)marketplace/plugins/himmel-ops/scripts/humanizer-facts.py'
     ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/leg-doc-lock.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'
@@ -890,7 +890,7 @@ if [ "$anchor_lane" = "himmel" ] && [ "$himmel_dir_is_anchor" = no ]; then
     # scripts/cr/ change hidden behind .gitignore must not read as "no diff".
     # No replace refs, no repo-configured fsmonitor. --full-name
     # on the untracked leg: run from a subdirectory it otherwise prints
-    # cwd-relative paths while both diff legs print top-relative ones.
+    # cwd-relative paths while both diff workers print top-relative ones.
     if mb=$(gitd merge-base HEAD "$base_ref" 2>/dev/null); then
         if committed_files=$(gitd diff --name-only "$mb"..HEAD -- "${cr_pathspecs[@]}" 2>/dev/null); then
             if worktree_files=$(gitd diff --name-only HEAD -- "${cr_pathspecs[@]}" 2>/dev/null); then

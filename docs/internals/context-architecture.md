@@ -153,8 +153,8 @@ answer is rarely the root file. When reference detail already exists in a
 ## Rule tags — enforced vs prose
 
 Every rule line (a column-0 `-`/`*` bullet) of `CLAUDE.md` (outside the
-upstream-owned `## graphify` section), `docs/handover/leg-preface.md` and
-`docs/handover/console-template.md` ends with a tag on its last line:
+upstream-owned `## graphify` section), `docs/handover/worker-preface.md` and
+`docs/handover/chief-template.md` ends with a tag on its last line:
 `[enforced: <name>]` when a hook or gate backs it, else `[prose]`. A `[prose]`
 rule is the escalation backlog: its second drift moves it to a hook, gate or
 classifier. For an enforced rule the file keeps a one-line pointer; the detail

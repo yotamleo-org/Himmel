@@ -36,7 +36,7 @@ mk_bank_cache
 export CADENCE_BANK_CACHE="$BANK_CACHE"
 export CADENCE_BANK_SKIP_REFRESH=1
 export CADENCE_BANK_LEDGER="$W/bank-ledger.jsonl"
-# bank-preflight.sh now also counts live LEG sessions via a real
+# bank-preflight.sh now also counts live WORKER sessions via a real
 # `ps -eo args` by default - without this, every "happy path" case below
 # would call the REAL fleet count against THIS machine's own ambient process
 # table and could spuriously refuse (bank preflight refused dispatch:

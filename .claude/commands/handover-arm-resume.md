@@ -47,7 +47,7 @@ Common invocations:
 - `/handover-arm-resume --time auto --handover handovers/<USER_SLUG>/himmel/standalones/HIMMEL-44-windows-install-test/next-session.md --force`
 - `/handover-arm-resume --time 14:00 --handover handovers/<USER_SLUG>/status.md --dry-run`
 
-Exit codes: 0 armed, 1 usage error, 2 env unusable (includes a fail-closed dedup-listing error), 3 dedup block (same handover; or any slot under `--dedup-any`), 4 scheduler failed, 5 `--channels` refused while the bun Telegram bridge is live, 6 exact-minute time collision, 7 the handover's queue lock is FRESH (a session is live on it), 8 this handover already has a PENDING arm on another host, 20 a Fable-family `--model` on a non-console arm with no `--fable-ok`.
+Exit codes: 0 armed, 1 usage error, 2 env unusable (includes a fail-closed dedup-listing error), 3 dedup block (same handover; or any slot under `--dedup-any`), 4 scheduler failed, 5 `--channels` refused while the bun Telegram bridge is live, 6 exact-minute time collision, 7 the handover's queue lock is FRESH (a session is live on it), 8 this handover already has a PENDING arm on another host, 20 a Fable-family `--model` on a non-chief arm with no `--fable-ok`.
 
 **Scope:** This is the *arm* half of HIMMEL-122; `smart` (HIMMEL-204) is the
 usage-aware *detect* heuristic wired into the arm path.

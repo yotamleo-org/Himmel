@@ -33,7 +33,7 @@ TARGET_S=600
 
 n="${1:-}"
 case "$n" in ''|*[!0-9]*|0*) echo "usage: plan-shards.sh <n> [<root>] [-- <runner args>] (n is CI_MAX_SHARDS: a positive integer)" >&2; exit 2 ;; esac
-# A cap past MAX_SHARDS is clamped, not refused: a refusal sends the plan job to 8 legs.
+# A cap past MAX_SHARDS is clamped, not refused: a refusal sends the plan job to 8 workers.
 # 64 is a quarter of GitHub's 256-job limit for one matrix.
 MAX_SHARDS=64
 if [ "${#n}" -gt 3 ] || [ "$n" -gt "$MAX_SHARDS" ]; then

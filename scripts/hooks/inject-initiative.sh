@@ -5,12 +5,12 @@
 # — bypass convention per scripts/hooks/CLAUDE.md; a per-call prefix does NOT
 # reach the hook process). When active, the session is given a scoped "drive to
 # ship" directive so a normal session proactively advances the work through its
-# active legs at natural completion points, without the operator saying "ship
+# active workers at natural completion points, without the operator saying "ship
 # it" each time.
 #
-# Leg grammar (single source of truth: scripts/lib/initiative-legs.sh). The
+# Worker grammar (single source of truth: scripts/lib/initiative-workers.sh). The
 # value is either a master switch (1/true/on/yes/all) or a comma-separated
-# subset of the 8-leg vocabulary
+# subset of the 8-worker vocabulary
 # `plan,execute,prcheck,pr,ticket,merge,public,handover` (`plan` is a reserved
 # token with no behavior yet). Parsing is case-insensitive, whitespace-tolerant,
 # deduped; unknown tokens are ignored; steps always render in canonical order.
@@ -24,13 +24,13 @@
 # HIMMEL_INITIATIVE_AFK falls back to HIMMEL_INITIATIVE_OVERNIGHT when unset.
 #
 # Default: OFF. Exit silently when the env is unset, falsy, or resolves to no
-# recognized leg — behaviour then is byte-identical to a session without the
+# recognized worker — behaviour then is byte-identical to a session without the
 # directive.
 #
 # This is ADVISORY injected context, not a permission change: it cannot widen
 # what the hooks allow. The safety rails still HARD-block (check-cr-marker-on-
 # pr-create gates gh pr create; the persistence classifier vetoes reactive
-# --amend and settings.json self-edits; the `merge` leg is advisory — branch
+# --amend and settings.json self-edits; the `merge` worker is advisory — branch
 # protection still applies; the exfil classifier still blocks public push).
 #
 # Hook contract (SessionStart):
@@ -84,7 +84,7 @@ fi
 # --- Source ~/.himmel/himmel.conf, then the clone's .env, for the initiative vars -
 # The hook reads HIMMEL_INITIATIVE* from the process env, but a session launched
 # from a shell that never exported them (and without a settings.json `env` block)
-# would see no legs. Populate them from the himmel clone's .env — but ONLY for
+# would see no workers. Populate them from the himmel clone's .env — but ONLY for
 # vars not already set (process env / settings.json env still wins; load_dotenv is
 # non-clobbering). Resolve the himmel root EXPLICITLY (HIMMEL_REPO, else the git
 # toplevel of THIS hook script) and never trust the CWD: a session launched inside
@@ -100,17 +100,17 @@ if [ -n "$_ii_root" ]; then
         HIMMEL_OVERNIGHT HIMMEL_INITIATIVE_OVERNIGHT || true
 fi
 
-# --- Resolve the active legs via the shared resolver -----------
-# The leg grammar lives in ONE place: scripts/lib/initiative-legs.sh. We pass
+# --- Resolve the active workers via the shared resolver -----------
+# The worker grammar lives in ONE place: scripts/lib/initiative-workers.sh. We pass
 # the relevant env vars as named arguments (the resolver never reads ambient
-# env) and get back the normalized, canonical-ordered, deduped active leg set.
+# env) and get back the normalized, canonical-ordered, deduped active worker set.
 # Profile is selected by HIMMEL_AFK: truthy → read HIMMEL_INITIATIVE_AFK
-# (afk `all` = 6 legs), else HIMMEL_INITIATIVE (interactive `all` = legacy 4).
-# resolve_legs_env also reads the old overnight names.
+# (afk `all` = 6 workers), else HIMMEL_INITIATIVE (interactive `all` = legacy 4).
+# resolve_workers_env also reads the old overnight names.
 # shellcheck source=/dev/null
-. "$(dirname "${BASH_SOURCE[0]}")/../lib/initiative-legs.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/initiative-workers.sh"
 
-active=$(resolve_legs_env)
+active=$(resolve_workers_env)
 # Off when nothing resolved (unset / falsy / all-unknown subset).
 [ -n "$active" ] || exit 0
 
@@ -192,8 +192,8 @@ else
     _var="HIMMEL_INITIATIVE"
 fi
 
-# Membership test against the active leg set.
-has_leg() { case " $active " in *" $1 "*) return 0;; *) return 1;; esac; }
+# Membership test against the active worker set.
+has_worker() { case " $active " in *" $1 "*) return 0;; *) return 1;; esac; }
 
 # CSV of recognized tokens for the in-session echo (typo visibility).
 _steps_csv=$(printf '%s' "$active" | tr ' ' ',')
@@ -205,7 +205,7 @@ _steps_csv=$(printf '%s' "$active" | tr ' ' ',')
 # POINTER — the same treatment inject-where-are-we.sh gives its global digest.
 #
 # What stays INLINE is the safety-relevant part, and only that: the no-merge
-# guard (dropped only when the `merge` leg is explicitly active) and the
+# guard (dropped only when the `merge` worker is explicitly active) and the
 # enforcement sentence. Losing the step list to a file costs a read; losing
 # "this does not relax any rail" costs a rail. The `Active steps:` echo stays so
 # a typo'd token is still visible without opening the runbook.
@@ -253,7 +253,7 @@ fi
 printf '<system-reminder>\n%s is active. Active steps: %s\n' "$_var" "$_steps_csv"
 printf 'At a completion point (work finished AND verified), run them unasked.\n'
 printf 'Step bodies (read then; or now if handover-resumed): %s\n' "$_ii_runbook"
-has_leg merge || printf 'Do NOT merge.\n'
+has_worker merge || printf 'Do NOT merge.\n'
 printf 'This directive does NOT relax any safety rail.\n'
 printf '</system-reminder>\n'
 

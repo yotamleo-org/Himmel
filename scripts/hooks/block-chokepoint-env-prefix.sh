@@ -2144,7 +2144,7 @@ raw_obfuscated() {
         # The anchor-less arm needs stronger evidence than a write VERB: a glob
         # or regex beside printf/read/export is everyday text (the verb set
         # newly denied 7,777 of 261,405 real-history commands; this arm 615).
-        # So it denies on the console marker NAME anywhere, a seam NAME
+        # So it denies on the chief marker NAME anywhere, a seam NAME
         # written (below), an env-clearing option beside an `env` word, unset
         # or env -u of a non-literal name, an export/declare/let NAME= or
         # printf -v whose name is assembled ($n, `cmd`), export -n, declare
@@ -2257,7 +2257,7 @@ raw_obfuscated() {
     deny_text_layer "writes a seam variable beside an obfuscated (glob, brace, ANSI-C or \$var) path under scripts/ (it matched $tw)"
 }
 
-# raw_mention <text> <any> -- parse-independent backstop (console
+# raw_mention <text> <any> -- parse-independent backstop (chief
 # ruling at b8ae2143, after a new spelling surfaced every parser round). Deny
 # (deny_raw_mention) when <text> names a registered chokepoint's basename AND,
 # anywhere in the same text, an assignment to one of that chokepoint's own
@@ -2415,7 +2415,7 @@ raw_mention() {
         [ -n "$base" ] || continue
         names_base "$t" "$base" || continue
         [ "$any$env_s" = 00 ] || deny_raw_mention "$script_path"
-        # Seam arm = an ASSIGNMENT only (console X ruling 07:05): the whole
+        # Seam arm = an ASSIGNMENT only (chief X ruling 07:05): the whole
         # identifier followed by `=` (SEAM=1 cmd, export/declare -x SEAM=,
         # env SEAM=, empty SEAM=). A bare read, `unset SEAM` and `env -u SEAM`
         # were the legitimate clear-and-prove spellings and stay out of THIS
@@ -2435,7 +2435,7 @@ raw_mention() {
         # Beside a chokepoint word: bash startup state that runs
         # before the chokepoint's own first line (BASH_ENV, BASH_FUNC_*,
         # SHELLOPTS, BASHOPTS, extdebug) is refused on sight, and so is CLEARING
-        # a seam or the console marker (env -u / --unset / unset / export -n),
+        # a seam or the chief marker (env -u / --unset / unset / export -n),
         # which the assignment arm above does not see. A detached or
         # double-forked call has no claude ancestor, so the structural guard
         # cannot catch a removal there.
@@ -3470,7 +3470,7 @@ fi
 
 # Backstop, on the untouched command. It runs BEFORE scan_text
 # so a nounset abort or a hook timeout inside the parser cannot skip it
-# (console X ruling at 64bc44b1); where both would deny, the backstop's
+# (chief X ruling at 64bc44b1); where both would deny, the backstop's
 # message now fires instead of the parser's more specific one.
 raw_obfuscated "$raw_stripped"
 raw_mention "$raw_cmd" 0

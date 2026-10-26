@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-cache-health.sh - cache-health.py + cache-health-cadence.sh:
 # crossing, no-crossing, recovery, no-repeat, failed-send retry, session-low,
-# console/Telegram delivery and the cron arm/disarm.
+# chief/Telegram delivery and the cron arm/disarm.
 # Hermetic: transcripts, state, bridge, crontab and senders are stubs in a mktemp
 # dir. The transcript line shape (usage / cache_creation / id / timestamp,
 # custom-title, compact_boundary) is copied from a real Claude Code session
@@ -25,8 +25,8 @@ trap 'rm -rf "$W"' EXIT
 export HOME="$W/home"; mkdir -p "$HOME"
 NOW=1760000000
 
-# gen <dir> <leg-recent-read> <leg-recent-create>: baseline legs/console steady at
-# 98 % hit; the leg role's RECENT turns carry the given read/create (per 1M turn).
+# gen <dir> <worker-recent-read> <worker-recent-create>: baseline workers/chief steady at
+# 98 % hit; the worker role's RECENT turns carry the given read/create (per 1M turn).
 cat > "$W/gen.py" <<'PY'
 import json, os, sys, datetime
 _dump = json.dumps
@@ -52,9 +52,9 @@ def session(name, title, turns, comps=()):
 H = 3600
 base = [(now - 48 * H - k * H, 980000, 20000) for k in range(6)]
 steady = [(now - 2 * H - k * H, 980000, 20000) for k in range(6)]
-recent_leg = [] if extra == "legsilent" else [(now - 2 * H - k * H, rd, cr) for k in range(6)]
-session("c1", "HIMMEL-nextleg-console", base + steady)
-session("l1", "HIMMEL-5-foo-N12", base + recent_leg, comps=[now - H] * (9 if extra == "compactions" else 1))
+recent_worker = [] if extra == "legsilent" else [(now - 2 * H - k * H, rd, cr) for k in range(6)]
+session("c1", "HIMMEL-nextleg-chief", base + steady)
+session("l1", "HIMMEL-5-foo-N12", base + recent_worker, comps=[now - H] * (9 if extra == "compactions" else 1))
 if extra == "lowsession":
     session("l2", "HIMMEL-6-bar-N13", [(now - 3 * H - k * H, 850000, 150000) for k in range(2)])
 PY
@@ -83,7 +83,7 @@ ok = m["schema"]==1 and set(m["roles"])=={"console","leg","subagent","bridge","o
 sys.exit(0 if ok else 1)' "$STATE/metrics.json" && pass "metrics schema + deduped per-role numbers" || fail "metrics.json content wrong"
 [ "$(( $(wc -l < "$STATE/history.jsonl") ))" = 1 ] && pass "history has one row" || fail "history rows"
 
-# ---- 2. crossing: legs fall to 90 % -> exactly one alert ---------------------
+# ---- 2. crossing: workers fall to 90 % -> exactly one alert ---------------------
 rm -f "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 900000 100000
 run; check "crossing run exits 0" 0 $?
@@ -181,7 +181,7 @@ has "session over 1M tokens under 90 % alerts" "session HIMMEL-6-bar-N13: 85.0% 
 rm -rf "$STATE" "$W/sent" "$R"
 python3 -I "$W/gen.py" "$R" "$NOW" 980000 20000 compactions
 run
-has "legs above the compaction limit alert" "legs average 9.0 compactions" "$W/sent"
+has "workers above the compaction limit alert" "workers average 9.0 compactions" "$W/sent"
 
 # ---- 8. dry run prints, sends nothing, writes nothing ------------------------
 rm -rf "$STATE" "$W/sent" "$R"
@@ -190,19 +190,19 @@ run --dry-run
 has "dry run prints the would-send" "DRY notify:" "$W/run.out"
 [ ! -e "$W/sent" ] && [ ! -e "$STATE/metrics.json" ] && pass "dry run sends and writes nothing" || fail "dry run had side effects"
 
-# ---- 9. cadence: Telegram + live console inbox -------------------------------
+# ---- 9. cadence: Telegram + live chief inbox -------------------------------
 P="$W/primary"; mkdir -p "$P/scripts/eval" "$P/scripts/luna"
 git init -q "$P"
 cp "$DIR/cache-health-cadence.sh" "$DIR/cache-health.py" "$P/scripts/eval/"
 cp "$DIR/../luna/cadence-alert.sh" "$P/scripts/luna/"
 git -C "$P" add -A; git -C "$P" -c user.name=t -c user.email=t@t commit -q -m fixture
-BR="$W/bridge"; mkdir -p "$BR/consoles"; : > "$BR/consoles/live-console.md"
+BR="$W/bridge"; mkdir -p "$BR/consoles"; : > "$BR/consoles/live-chief.md"
 printf '#!/bin/sh\nexit 0\n' > "$W/sweep.sh"; chmod +x "$W/sweep.sh"
 cat > "$W/sweep.sh" <<'SH'
 #!/bin/sh
-echo "slug=u__r__old-console x age=900s status=OK"
-echo "slug=u__r__live-console x age=10s status=OK"
-echo "slug=u__r__some-leg x age=5s status=OK"
+echo "slug=u__r__old-chief x age=900s status=OK"
+echo "slug=u__r__live-chief x age=10s status=OK"
+echo "slug=u__r__some-worker x age=5s status=OK"
 SH
 cat > "$W/tg.sh" <<'SH'
 #!/bin/sh
@@ -215,9 +215,9 @@ export CADENCE_ALERT_FILE="$W/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$W/alert-sen
 bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" >"$W/cad.out" 2>&1
 check "cadence run exits 0" 0 $?
 has "Telegram got the alert" "cache-health ALERT" "$W/tg"
-has "newest live console inbox got the alert line" "[cache-health] cache-health ALERT" "$BR/consoles/live-console.md"
-[ ! -e "$BR/consoles/old-console.md" ] && pass "inbox is never created for another console" || fail "created a stray inbox"
-check "inbox got one line" 1 "$(( $(wc -l < "$BR/consoles/live-console.md") ))"
+has "newest live chief inbox got the alert line" "[cache-health] cache-health ALERT" "$BR/consoles/live-chief.md"
+[ ! -e "$BR/consoles/old-chief.md" ] && pass "inbox is never created for another chief" || fail "created a stray inbox"
+check "inbox got one line" 1 "$(( $(wc -l < "$BR/consoles/live-chief.md") ))"
 rm -f "$W/tg"
 # a dry run never touches the shared failure alert, even when the check fails
 CACHE_HEALTH_ROOT="$W/no-such-root" bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" --dry-run >"$W/cadd.out" 2>&1

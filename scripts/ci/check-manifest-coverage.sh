@@ -11,6 +11,7 @@
 #                 a package-lock.json has an .npmrc with min-release-age >= 3
 #                 (days), one with a pip requirements file has a uv.toml with
 #                 exclude-newer = "<N> days", N >= 3.
+#   3. labels     every updates entry sets labels: [].
 #
 # Buffer caveat: npm reads min-release-age from 11.10 on. CI runs node 22 (npm 10),
 # which ignores it, so on CI the guard is check-lockfile-release-age.mjs, not .npmrc.
@@ -39,6 +40,19 @@ EXEMPT=(
 
 failures=0
 err() { printf 'ERROR: %s\n' "$*"; failures=$((failures + 1)); }
+
+# Every updates entry sets labels: []: Dependabot's default labels fire a
+# labeled-event CI run per label, and those skipped runs shadow the green run.
+unlabeled=$(sed 's/^[[:space:]]*#.*$//' "$DEP" | awk '
+  function flush() { if (n && !ok) print n "\t" eco }
+  /^  - package-ecosystem:/ { flush(); n++; ok = 0; eco = $0; sub(/.*package-ecosystem:[ \t]*/, "", eco); gsub(/["\047 \t]/, "", eco); next }
+  /^    labels:[ \t]*\[\][ \t]*(#.*)?$/ { ok = 1 }
+  END { flush() }
+')
+while IFS=$'\t' read -r n eco; do
+  [ -n "$n" ] || continue
+  err ".github/dependabot.yml: updates entry $n ($eco) must set labels: []"
+done <<< "$unlabeled"
 
 # eco<TAB>/dir for every watched directory, from `directory:` and `directories:`.
 watched=$(sed 's/^[[:space:]]*#.*$//' "$DEP" | awk '

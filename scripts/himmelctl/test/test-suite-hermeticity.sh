@@ -50,7 +50,7 @@
 #      about CI cost now, not risk, since the sandbox never touches the real
 #      files at all).
 #
-# GUARD LIMITS (stated honestly, not implied away — Console Ruling 38): this
+# GUARD LIMITS (stated honestly, not implied away — Chief Ruling 38): this
 # guard, even with all three layers green, does NOT prove every path is
 # hermetic. It does not see in-process require() invocations (a suite that
 # requires helpers.js/luna-config.js directly instead of spawning bin.js —
@@ -140,7 +140,7 @@ fi
 # canary_snapshot <path1> <path2> <path3> — prints one sha256-or-ABSENT token
 # per path, one per line. ABSENT is a real, distinct state (never conflated
 # with any hash) so a suite that CREATES one of these files on a clean
-# machine — the "file didn't exist, guard has nothing to diff" trap Console
+# machine — the "file didn't exist, guard has nothing to diff" trap Chief
 # Ruling 38 flagged — is still caught: absent->present is a mismatch, exactly
 # like present->changed.
 canary_snapshot() {
@@ -262,7 +262,7 @@ real_home_dir() {
 # explicitly resets USERPROFILE back to the real profile, or hardcodes an
 # absolute operator-home path instead of using the seams this guard checks.
 # Such a suite mutates the REAL files while the sandbox trio reports no
-# drift at all: a fail-open in the layer the console designated the actual
+# drift at all: a fail-open in the layer the chief designated the actual
 # gate. This is NOT a return to the pre-codex-1 live-file design: the
 # sandbox stays the execution environment and the primary defense; hashing
 # the three real paths before/after each suite is a read-only ADDITION, a
@@ -498,7 +498,7 @@ for path in sorted(glob.glob(os.path.join(target, '*.sh'))):
     full_text = ''.join(raw_lines)
 
     # PRESENCE-OF-ASSIGNMENT-TEXT IS NOT PROOF OF A NON-EMPTY RUNTIME VALUE
-    # (Console Ruling 38, live incident): cacheDir()/configPath() are both
+    # (Chief Ruling 38, live incident): cacheDir()/configPath() are both
     # `process.env.X || <real homedir path>`, and an empty string is falsy in
     # JS, so `HIMMELCTL_CACHE_DIR="$(winpath ...)"` that resolves to "" is
     # INDISTINGUISHABLE, to this grep-based check, from one that resolves
@@ -726,7 +726,7 @@ echo "ok: case c — a bare \$wizard reference (existence check) is not mistaken
 
 # ── case c2 (POSITIVE CONTROL): $(winpath ...) used but neither sourced nor
 # locally defined must FAIL, even though the assignment TEXT looks complete --
-# the exact test-wizard-preflight.sh shape (Console Ruling 38: presence-of-text
+# the exact test-wizard-preflight.sh shape (Chief Ruling 38: presence-of-text
 # is not proof of a non-empty runtime value).
 mkdir -p "$work/nowinpath"
 cat > "$work/nowinpath/test-fake-nowinpath.sh" << 'EOF'
@@ -769,7 +769,7 @@ fakeReal="$work/canary-real"; mkdir -p "$fakeReal"
 p1="$fakeReal/config.json" p2="$fakeReal/state.json" p3="$fakeReal/install-profile.json"
 echo '{"seed":true}' > "$p1"
 echo '{"seed":true}' > "$p2"
-# p3 starts ABSENT -- proves absent->present is caught too (Console Ruling
+# p3 starts ABSENT -- proves absent->present is caught too (Chief Ruling
 # 38 refinement (b): a suite CREATING one of these files on a clean machine
 # is the same bug as one that overwrites an existing one).
 leaky_suite() { echo '{"leaked":"fixture-answer-set"}' > "$p3"; }
@@ -814,7 +814,7 @@ echo "ok: case g — a suite that fakes HOME without sourcing _hermetic-home.sh 
 # ── case g2 (POSITIVE CONTROL): a suite that STILL defines its own winpath()
 # must be flagged by check_no_local_winpath(), even though it also sources
 # the helper -- a leftover local copy is exactly the "consolidation didn't
-# fully hold" shape item 1 of Console Ruling 38 exists to prevent.
+# fully hold" shape item 1 of Chief Ruling 38 exists to prevent.
 mkdir -p "$work/dupwinpath"
 cat > "$work/dupwinpath/test-fake-dupwinpath.sh" << 'EOF'
 #!/usr/bin/env bash
@@ -859,7 +859,7 @@ grepq "$mentionOut" -F 'test-fake-mention-only.sh' \
 echo "ok: case g3 — positive control: a suite that fakes HOME and only MENTIONS the helper in a comment (never sources it) is flagged"
 
 # ── case h (POSITIVE CONTROL, codex-2): check_real_canary() must still fire
-# when HOME and USERPROFILE DIVERGE -- the exact condition Console Ruling 38's
+# when HOME and USERPROFILE DIVERGE -- the exact condition Chief Ruling 38's
 # whole premise rests on (os.homedir() follows USERPROFILE, not HOME, on
 # win32). This fixture sets HOME to a throwaway dir but deliberately leaves
 # USERPROFILE UNSET, inheriting whatever check_real_canary()'s own ambient

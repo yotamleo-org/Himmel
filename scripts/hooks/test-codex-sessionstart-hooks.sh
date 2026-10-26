@@ -63,7 +63,7 @@ wired_cmd() {
 #
 # Hermeticity: also strip the overnight-profile vars so an ambient
 # HIMMEL_OVERNIGHT in the launching shell can't flip inject-initiative's
-# resolve_legs onto HIMMEL_INITIATIVE_OVERNIGHT and turn the gate-ON case into a
+# resolve_workers onto HIMMEL_INITIATIVE_OVERNIGHT and turn the gate-ON case into a
 # false red (the .env load is non-clobbering, so this guards only process-env
 # leakage).
 HOOK_ENV_CLEAN="-u CLAUDE_PROJECT_DIR -u HIMMEL_OVERNIGHT -u HIMMEL_INITIATIVE_OVERNIGHT"
@@ -105,7 +105,7 @@ fi
 # guards already prove passthrough) but "Codex receives the directive as
 # context". Under Codex that channel is hookSpecificOutput.additionalContext, so
 # the adapter wraps an advisory SessionStart hook's exit-0 output into that JSON
-#. Gate ON: HIMMEL_INITIATIVE=all → resolve_legs yields a non-empty
+#. Gate ON: HIMMEL_INITIATIVE=all → resolve_workers yields a non-empty
 # interactive set → the directive is emitted as additionalContext JSON, exit 0.
 # CLAUDE_PROJECT_DIR is UNSET, so this also proves run-hook.sh re-derives the
 # repo root under Codex.

@@ -793,7 +793,7 @@ ver=$(CADENCE_RUNNER_PLATFORM_OS=windows cadence_runner_stamp "$tmp/cad-platform
 if [ "$ver" = "$((CADENCE_RUNNER_FORMAT_VERSION - 1))" ]; then echo "ok: Windows probe reads only the .bat twin (stale)"; else echo "FAIL: Windows probe got '$ver'"; fail=1; fi
 
 # Case 13: cadence_user_home — with USERPROFILE unset it echoes $HOME verbatim
-# (the POSIX leg; the Windows USERPROFILE/cygpath leg is exercised by real
+# (the POSIX worker; the Windows USERPROFILE/cygpath worker is exercised by real
 # Git-Bash runs where the two homes coincide).
 uh=$(USERPROFILE='' HOME="$tmp/fake-home" cadence_user_home)
 if [ "$uh" = "$tmp/fake-home" ]; then echo "ok: cadence_user_home falls back to HOME"; else echo "FAIL: cadence_user_home got '$uh'"; fail=1; fi

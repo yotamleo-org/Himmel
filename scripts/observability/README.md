@@ -338,7 +338,7 @@ Suites: `flow-exporter.test.ts`, `test-promtool-validation.sh`,
 
 Three session populations exist in this harness, with three different owners:
 
-1. **Pipeline-cadence legs** (harvest/synthesize/health/armed-resume/vitals) —
+1. **Pipeline-cadence workers** (harvest/synthesize/health/armed-resume/vitals) —
    `flow-runs.jsonl`, the Flows row above.
 2. **Dispatched lane workers** (GLM/claudex) — their own per-session
    `meta.json`/`outbox.jsonl` under the bridge root.
@@ -785,7 +785,7 @@ provider `*.yaml` appears under `provisioning/dashboards/`.
 
 | Gap | Wanted | Where it goes |
 |---|---|---|
-| G1 | Console legs and their cost | Machine-readable output is a planned follow-up; `/obs-report` shows it |
+| G1 | Chief workers and their cost | Machine-readable output is a planned follow-up; `/obs-report` shows it |
 | G4 | Advice per alert in the rules | The advice lives in the dashboard's `alertname` mapping instead |
 | G5 | Usage bank reset time | The exporter does not keep the usage cache's `resets_at` |
 | G6 | Windows auto-provisioning of this dashboard | `install-stack.ps1` copies only `provisioning/`; Windows is not supported, Linux via the Install on Linux section |

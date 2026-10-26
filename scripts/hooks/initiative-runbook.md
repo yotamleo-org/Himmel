@@ -52,7 +52,7 @@ Steps run in this canonical order; only the tokens on the pointer's
   `.git` that `git rev-parse --path-format=absolute --git-common-dir` prints —
   what the allow rule was built from; not `printenv HIMMEL_REPO`, which can
   name a worktree), typed as one bare command — no `$HIMMEL_REPO`, quotes, redirect or
-  compound (HIMMEL-3491: the entry runs from the anchor; HIMMEL-3567: a leg's
+  compound (HIMMEL-3491: the entry runs from the anchor; HIMMEL-3567: a worker's
   settings carry that exact literal as its allow rule) — it gates on
   `check-ci.sh` green + a certified head SHA and
   merges only then. It admits a NON-private repo only when that repo is the ONE
@@ -74,8 +74,8 @@ Steps run in this canonical order; only the tokens on the pointer's
   stays for what the flag cannot serve (a multi-key PR, a ticket completed by
   something other than this merge): the flag is the merge-time close, that step
   the fallback — never both for one ticket. Same rule as
-  `docs/handover/leg-preface.md` § Shipping.
-  `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the console-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action (HIMMEL-2887).
+  `docs/handover/worker-preface.md` § Shipping.
+  `merge-on-green.sh` exits 18 (GitHub-blocked, HIMMEL-3381) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is now the chief-GO refusal only); if no automation identity can satisfy the required review, the merge is a human admin action (HIMMEL-2887).
   A blocked gate on this branch parks it and moves to the next queue item —
   never retry-loop;
   see
@@ -105,7 +105,7 @@ shell and restart claude — env vars do not propagate into a running session.
 
 **Unsetting is not always enough:** the hook also reads the himmel clone's
 `.env` (non-clobbering — the process env only *wins*, it does not suppress). If
-the leg came from there, unsetting the shell variable just falls back to the
+the worker came from there, unsetting the shell variable just falls back to the
 `.env` value. Set it to `0` in the launching shell instead — that wins over
 `.env` without touching it. Changing the `.env` entry itself is an **operator**
 action: it is gitignored, secret-bearing, and outside what an agent edits.

@@ -11,7 +11,7 @@
 # claude session here at all — never `--model`, never a payload prompt — so
 # the headless-claude billing rule does not apply even indirectly, the
 # same reasoning qmd-cadence.sh's header gives for its own deterministic
-# runner. ONE leg, unlike drift-fix-cadence's two: upstream-watch.sh has no
+# runner. ONE worker, unlike drift-fix-cadence's two: upstream-watch.sh has no
 # "conflicted, a human must decide" branch that would need isolating from a
 # sibling repair — it either finds a delta or it doesn't, so nothing here can
 # get stuck the way a fork rebase can.
@@ -23,7 +23,7 @@
 # observability_register_cadence / observability_unregister_cadence call
 # sites below.
 #
-# Default fire time 06:00 local — after drift-fix-cadence's 05:00/05:30 legs
+# Default fire time 06:00 local — after drift-fix-cadence's 05:00/05:30 workers
 # (no overlap on the same machine) and still well before the workday.
 # StartWhenAvailable=true (Windows): a fire missed because the machine was
 # off/asleep catches up when it is next on.
@@ -174,7 +174,7 @@ Subcommands:
 
 Flags (arm only, except --dry-run):
   --time <HH:MM>  Daily fire time, 24h local (default 06:00 -- after
-                  drift-fix-cadence's 05:00/05:30 legs, well before the
+                  drift-fix-cadence's 05:00/05:30 workers, well before the
                   workday).
   --force         Replace an already-armed task.
   --dry-run       Print what would happen, touch nothing (honored by arm
@@ -696,10 +696,10 @@ emit_runner() {
     local q_flow_lib q_alert_lib
     q_flow_lib=$(posix_sh_quote "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")
     q_alert_lib=$(posix_sh_quote "$HIMMEL_ROOT/scripts/luna/cadence-alert.sh")
-    cadence_posix_leg_start "$q_flow_lib" upstream-watch HIMMEL-UpstreamWatch
+    cadence_posix_worker_start "$q_flow_lib" upstream-watch HIMMEL-UpstreamWatch
     printf '    %s\n' "$payload"
     printf '    _rc=$?\n'
-    cadence_posix_leg_end "$q_flow_lib" "$q_alert_lib" upstream-watch "0 10"
+    cadence_posix_worker_end "$q_flow_lib" "$q_alert_lib" upstream-watch "0 10"
     printf '    echo "[exit rc=$_rc]"\n'
     printf '} >> "$log" 2>&1\n'
     # rc=10 is upstream-watch.sh's own "delta found, handled" success code

@@ -70,7 +70,7 @@ LOG_OLD_PATH="${LOG_DIR}/${PROJECT_SLUG}.log.old"
 DEGRADED_MARKER_PATH="${LOG_DIR}/${PROJECT_SLUG}.degraded"
 # Per-session dedup marker: present ⟺ this session_id's note was
 # already captured (REST PUT or fs fallback) by SOME run of this hook. Guards
-# against a double write when close-wrapped-leg.sh's pre-signal capture and
+# against a double write when close-wrapped-worker.sh's pre-signal capture and
 # this hook's own normal SessionEnd invocation both fire for the same session.
 CAPTURED_DIR="${LOG_DIR}/captured"
 
@@ -154,7 +154,7 @@ _esw_sid_slug() {
 # claim_capture <session_id> — atomically test-and-set: returns success (and
 # takes ownership of the slot) only for the FIRST caller for this session_id.
 # A prior run of this hook (this invocation or a pre-signal capture from
-# close-wrapped-leg.sh) racing the same session_id must never both write the
+# close-wrapped-worker.sh) racing the same session_id must never both write the
 # note (a check-then-mark pair would leave a TOCTOU window between the two). `mkdir` is the atomic primitive:
 # exactly one concurrent caller sees it succeed. The claim IS the marker — no
 # separate mark step on the success path.
@@ -266,7 +266,7 @@ trap '__on_exit' EXIT
 # trap above (bash re-delivers on termination), which then logs the generic
 # "FAILED with exit N (unhandled - see prior log lines)" line with nothing
 # above it to explain — the hook was simply cancelled by its parent (e.g.
-# close-wrapped-leg.sh signalling a closed leg's claude process). Name the
+# close-wrapped-worker.sh signalling a closed worker's claude process). Name the
 # real cause and short-circuit __on_exit's generic log via HOOK_OK=1.
 # shellcheck disable=SC2317,SC2329  # invoked indirectly via `trap ... TERM/INT/HUP`
 __on_signal() {
@@ -367,7 +367,7 @@ SESSION_ID="$(echo "$PAYLOAD"      | jq -r '.session_id // empty')"
 REASON="$(echo "$PAYLOAD"          | jq -r '.reason // "other"')"
 
 # ---------- Dedup guard ----------------------------------------
-# A pre-signal capture (close-wrapped-leg.sh) and this hook's own normal
+# A pre-signal capture (close-wrapped-worker.sh) and this hook's own normal
 # SessionEnd run can both fire for the same session_id; skip the second one
 # rather than writing or PUTting the note twice.
 if ! claim_capture "$SESSION_ID"; then

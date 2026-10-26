@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# billed-exempt: a /pr-check stage the PR leg runs deliberately; bank-preflight gated
+# billed-exempt: a /pr-check stage the PR worker runs deliberately; bank-preflight gated
 # scripts/cr/hermes-critic.sh — Orchestrator-Critic reviewer over a branch diff
 # Claude implements, a fresh model family reviews: this script
 # assembles the final code changes (NEVER the orchestrator's plans/reasoning —
@@ -310,7 +310,7 @@ run_claude_review() {
     # a critic. Only SKIPPED-BANK refuses: BANK-STALE / BANK-UNKNOWN are the
     # helper's deliberate fail-open verdicts, and a missing helper yields no
     # token at all, which must not block an adopter who does not ship one.
-    bank="$(CADENCE_USAGE_LEG=hermes-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null)"
+    bank="$(CADENCE_USAGE_WORKER=hermes-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null)"
     if [ "$bank" = "SKIPPED-BANK" ]; then
         echo "hermes-critic.sh: claude route refused — bank preflight returned $bank; fall back to another review route" >&2
         return 1

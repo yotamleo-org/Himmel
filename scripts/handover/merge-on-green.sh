@@ -2,13 +2,13 @@
 # handover/merge-on-green.sh — sanctioned auto-merge chokepoint for armed chains.
 #
 # Armed/overnight chains build each ticket to a green, CR-clean PR
-# and STOP: the merge action the `merge` leg runs itself hits the Opus auto-mode
+# and STOP: the merge action the `merge` worker runs itself hits the Opus auto-mode
 # classifier ("Merge Without Review") and is denied. arm-resume does NOT relaunch
 # with --dangerously-skip-permissions (that would turn off ALL guards), so the
 # chain never merges.
 #
 # This is the narrow, self-gating merge path the operator authorizes via a
-# specific standing allow-rule. Legs invoke the relative spelling
+# specific standing allow-rule. Workers invoke the relative spelling
 # `bash scripts/handover/merge-on-green.sh` from their worktree root: it
 # matches the relative `Bash(bash scripts/handover/merge-on-green.sh:*)` rule
 # as plain text, guard-pr-check-literal.sh admits it when this copy equals the
@@ -54,7 +54,7 @@
 # by design: this wrapper IS the sanctioned gated path and embeds the same
 # (stronger, because it WATCHES) predicates via check-ci.sh.
 #
-# Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition] [--leg-doc PATH] [--go GOFILE]
+# Usage: merge-on-green.sh [<pr-selector>] [--dry-run] [--jira-transition] [--worker-doc PATH] [--go GOFILE]
 #   selector           optional PR number / branch / url; defaults to the
 #                      current branch
 #   --dry-run          run every gate, print the intended merge, then STOP
@@ -64,13 +64,13 @@
 #                      below; default is a PARTIAL merge: the ticket status is
 #                      left unchanged, and the PR body's `Remaining:` line is
 #                      posted to it as a comment, never Done)
-#   --go GOFILE        the console's GO file, <handover root>/.locks/go/<pr>.<head>.
-#                      A console leg MUST pass it, so the merge command itself names
+#   --go GOFILE        the chief's GO file, <handover root>/.locks/go/<pr>.<head>.
+#                      A chief worker MUST pass it, so the merge command itself names
 #                      the review it relies on; it must be the file for THIS PR at
 #                      the certified head (else exit 17), and the verified evidence
 #                      (file, pr, head, trust id) is printed. Any other caller may
 #                      pass it, and then it is checked the same way.
-#   --leg-doc PATH     the leg's brief doc (else $HIMMEL_WORKER_SESSION_DOC); its
+#   --worker-doc PATH     the worker's brief doc (else $HIMMEL_WORKER_SESSION_DOC); its
 #                      `> **Completes ticket:** yes|no` line above `## Results`
 #                      (any no wins; lines below Results are ignored) binds the merge:
 #                      no ignores --jira-transition with a warning, yes without
@@ -141,8 +141,8 @@
 #       an unproven outcome is reported as pending-unconfirmed, never REFUSED)
 #   16  audit sink not writable, or the MERGING record could not be written —
 #       refused (an unauditable merge must not proceed)
-#   17  policy-refused by the console-GO gate, in three cases: (1) HIMMEL_CONSOLE_LEG
-#       is truthy and the console's GO file for this PR at the certified head is
+#   17  policy-refused by the chief-GO gate, in three cases: (1) HIMMEL_CONSOLE_LEG
+#       is truthy and the chief's GO file for this PR at the certified head is
 #       missing, stale or unresolvable, or --go is absent or names a different
 #       file than that GO (another PR or head, or a missing file); (2) any caller
 #       passed --go and it fails the same checks; (3) solo mode (git config
@@ -150,7 +150,7 @@
 #       HIMMEL_CONSOLE_LEG or in the himmel clone (the PR's repo carries
 #       chief-kit/go.sh, or the anchor does and its origin does not name
 #       another github.com repo) — checked after check-ci, before any merge
-#       call, on --dry-run too (see the solo-mode and console-GO gates below). Before
+#       call, on --dry-run too (see the solo-mode and chief-GO gates below). Before
 #       this code also carried the GitHub-blocked refusals now reported as 18.
 #   18  GitHub-blocked — refused once, alerted once, never retried:
 #       check-ci exit 5 (a required check never reported, or the required set is
@@ -165,7 +165,7 @@
 #       own alert, not here.
 #   19  no anchor: HIMMEL_REPO is unset, empty, or does not resolve
 #       to a readable scripts/check-ci.sh — refused before any gate runs. This
-#       script runs from a leg's own worktree, so a missing anchor must never
+#       script runs from a worker's own worktree, so a missing anchor must never
 #       fall back to resolving check-ci.sh (or go-gate.sh / handover-path.sh,
 #       below) as its own sibling — that sibling is the branch under review.
 #       Set HIMMEL_REPO to the primary himmel checkout in the launching shell.
@@ -178,19 +178,19 @@
 #   21  trust-path gate: the PR changes a path matching the
 #       default branch's scripts/ci/ci-trust-paths.txt and carries no valid
 #       trust-reviewed GO (chief-kit/go.sh --trust-reviewed) for this PR at
-#       the certified head — for every caller, console leg or not. Also when
+#       the certified head — for every caller, chief worker or not. Also when
 #       the gate cannot prove the PR touches no trust path: the list unreadable,
 #       empty, invalid, or missing on the anchor's own repo; the file listing
 #       unreadable or short of changed_files; the head moving while listed; or,
 #       for a trust-path PR, the anchor behind origin and unable to
 #       fast-forward to it (an anchor that can is pulled and the gate re-runs). Checked after the
-#       console-GO gate, before any mutation, on --dry-run too.
+#       chief-GO gate, before any mutation, on --dry-run too.
 #   22  main-red gate: the newest COMPLETED, non-cancelled run
 #       of the CI workflow on the default branch is red and the PR is not its
 #       declared fix: a commit-message line `Fixes-main-red: run=<id>` or
 #       `suite=<a failed job name without spaces, or any .sh named on an
 #       ##[error] line of its log>` verified against that run (a job name with
-#       spaces needs run=<id>), or a console fix-GO for that run
+#       spaces needs run=<id>), or a chief fix-GO for that run
 #       (go.sh --fix-main-red). Also when the run list, the PR's
 #       commits or the red run's failed log cannot be read. No completed run at all is allowed (audited). The message
 #       names the run and the commit range it covered. After the trust-path
@@ -224,11 +224,11 @@
 #                          anything else leaves it on. The one off switch.
 #   MERGE_ON_GREEN_LOG     Audit-log path override. Default:
 #                          "$(git rev-parse --git-dir)/merge-on-green.log".
-#   HIMMEL_CONSOLE_LEG     Exported (=1) by chief-kit/headed-arm-leg.sh into
-#                          every console-spawned leg. Truthy => the merge needs
+#   HIMMEL_CONSOLE_LEG     Exported (=1) by chief-kit/headed-arm-worker.sh into
+#                          every chief-spawned worker. Truthy => the merge needs
 #                          <handover_root>/.locks/go/<pr>.<certified head sha>
 #                          containing head=<that sha> and a verifying mac=
-#                         written by the console via
+#                         written by the chief via
 #                          chief-kit/go.sh. Unset/falsy =>
 #                          no GO gate.
 #   HANDOVER_DIR           Where go_resolve_root (scripts/lib/go-gate.sh)
@@ -271,7 +271,7 @@
 # script is the only branch-controllable byte left. HIMMEL_REPO is a registered
 # chokepoint seam (scripts/chokepoints.json), so a per-call `HIMMEL_REPO=. bash …`
 # re-pointing it at the branch is denied.
-# Legs are told to invoke the anchored spelling,
+# Workers are told to invoke the anchored spelling,
 # `bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"`, which never runs a branch's own copy. The relative entry
 # (`bash scripts/handover/merge-on-green.sh`, still pre-approved, retirement planned) now hands off to the anchor's own copy on a
 # relative invocation too, the same one-hop, fail-closed pattern
@@ -283,7 +283,7 @@
 # can still defeat this hand-off by deleting the one `.` line that sources it,
 # and the relative literal still runs the (now hand-off-less) branch copy.
 # Closing that needs extending guard-pr-check-literal's TARGETS to
-# scripts/handover/, a scripts/hooks/ edit out of this leg's scope.
+# scripts/handover/, a scripts/hooks/ edit out of this worker's scope.
 # HIMMEL_REPO is the anchor the rest of the harness already trusts
 # (himmel-doctor.sh, luna-upgrade-all.sh, ...), set at install time by
 # setup.sh/adopt.sh, never by a branch under review; a missing or unreadable
@@ -311,6 +311,11 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/merge-on-green.sh || exit 96
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$_csg_dir/../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env HIMMEL_WORKER_SESSION_DOC HIMMEL_LEG_DOC
+
 GH="gh"
 # The ONE public repo armed auto-merge may target. Deliberately a
 # fixed literal, NOT environment-overridable: the GATE INTEGRITY paragraph above
@@ -336,17 +341,18 @@ selector=""
 DRY_RUN=0
 JIRA_TRANSITION_OPT_IN=0
 GO_FLAG=""
-# ponytail: the leg doc is supplied by the caller (--leg-doc, else HIMMEL_WORKER_SESSION_DOC); the console must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
-WORKER_SESSION_DOC="${HIMMEL_WORKER_SESSION_DOC:-${HIMMEL_LEG_DOC:-}}"
+# ponytail: the worker doc is supplied by the caller (--worker-doc, else HIMMEL_WORKER_SESSION_DOC); the chief must pass it, upgrade path: discover it from the PR branch through the fleet manifest (HIMMEL-5843 follow-up)
+WORKER_SESSION_DOC="${HIMMEL_WORKER_SESSION_DOC:-}"
 while [ $# -gt 0 ]; do
     case "$1" in
         --dry-run) DRY_RUN=1; shift ;;
         --jira-transition) JIRA_TRANSITION_OPT_IN=1; shift ;;
         --go)
-            if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --go needs the path of the console's GO file" >&2; exit 10; fi
+            if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --go needs the path of the chief's GO file" >&2; exit 10; fi
             GO_FLAG="$2"; shift 2 ;;
-        --leg-doc)
-            if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --leg-doc needs a path" >&2; exit 10; fi
+        --worker-doc|--leg-doc)
+            [ "$1" = --worker-doc ] || legacy_flag --leg-doc --worker-doc || { echo "merge-on-green: unknown option: $1" >&2; exit 10; }
+            if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then echo "merge-on-green: --worker-doc needs a path" >&2; exit 10; fi
             WORKER_SESSION_DOC="$2"; shift 2 ;;
         -h|--help)
             sed -n '2,/^set -uo pipefail/p' "${BASH_SOURCE[0]}" | sed '$d' | sed 's/^# \{0,1\}//'
@@ -361,7 +367,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-# _truthy — the same truthiness test the leg resolver uses.
+# _truthy — the same truthiness test the worker resolver uses.
 _truthy() {
     case "$(printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ''|0|false|off|no) return 1 ;;
@@ -558,10 +564,10 @@ fi
 command -v git >/dev/null 2>&1 || { echo "merge-on-green: required tool 'git' not on PATH" >&2; exit 11; }
 command -v "$GH" >/dev/null 2>&1 || { echo "merge-on-green: required tool 'gh' not on PATH" >&2; exit 11; }
 
-# Resolve the anchor. check-ci.sh (and, at the console-GO gate
+# Resolve the anchor. check-ci.sh (and, at the chief-GO gate
 # below, go-gate.sh / handover-path.sh) must come from $HIMMEL_REPO, never
 # from a sibling of THIS script's own BASH_SOURCE: this script runs from a
-# leg's own worktree, so a sibling resolution lets the branch under review
+# worker's own worktree, so a sibling resolution lets the branch under review
 # supply the bytes of its own merge gate (found live: PR #1115's branch was
 # merely behind main on scripts/check-ci.sh, and its own stale copy refused
 # its own green PR — the benign direction; the dangerous mirror is a branch
@@ -607,7 +613,7 @@ _status_event() {
     bash "$himmel_repo/scripts/handover/chief-kit/worker-jira-status.sh" "$1" --event "$2" --pr "$3" ${4:+--head "$4"} \
         ${nwo:+--repo "$nwo"} >/dev/null 2>&1 || true
 }
-# _focus_mark_dirty — a status the merge wrote leaves the console's FOCUS page
+# _focus_mark_dirty — a status the merge wrote leaves the chief's FOCUS page
 # behind: mark it dirty (HIMMEL_CONSOLE_DOC) so the waiter's next tick rebuilds
 # it. The mark is written here as focus-refresh.sh --mark-dirty writes it
 # (dirty=<epoch> in focus-state, plus focus-state.again), so the merge runs no
@@ -861,8 +867,8 @@ fi
 CR_STATE=$(cr_app_state "$PWD" 2>/dev/null) || CR_STATE=""
 CR_STATE=${CR_STATE:-unknown}
 
-# This script runs only after the console's GO, so a red here is
-# the console's (merge_watch_alert routes it to the console inbox); a leg's own
+# This script runs only after the chief's GO, so a red here is
+# the chief's (merge_watch_alert routes it to the chief inbox); a worker's own
 # pre-GO check-ci watch never sets MERGE_WATCH_POST_GO and is not routed.
 #
 # (J1660 C1): the saturated-queue loop. Only exit 7 — the deadline
@@ -927,7 +933,7 @@ if [ "$ci_rc" -ne 0 ]; then
     exit 14
 fi
 
-# Solo mode. An adopted project with one person and no console selects it with
+# Solo mode. An adopted project with one person and no chief selects it with
 # the project's own git config, `git config himmel.mergeMode solo`, read from the
 # local config of the PR's repo (the same-repo guard bound it to this checkout;
 # its primary checkout, never the anchor, which in an adopted project is the
@@ -935,8 +941,8 @@ fi
 # project: the green gate above, the trust path, main-red and privacy gates all
 # still run; the one skip is a static re-check whose script the merge result does
 # not carry, audited per check (see the static re-check gate). No GO file is asked for
-# because only a console leg or an explicit --go is ever bound to one. What it
-# adds is a refusal wherever a GO is the rule — a console leg, or the himmel
+# because only a chief worker or an explicit --go is ever bound to one. What it
+# adds is a refusal wherever a GO is the rule — a chief worker, or the himmel
 # clone (the PR's repo, or an anchor that is not another repo's harness, carries
 # chief-kit/go.sh) — and an unknown value fails
 # closed, so the config can never quietly stand in for a GO.
@@ -957,13 +963,13 @@ if [ "$solo_set" = 1 ]; then
     }
     [ "$solo_cfg" = solo ] || solo_refuse solo-invalid-mode "git config himmel.mergeMode is '$solo_cfg' (only 'solo' is a mode)"
     if [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then
-        # The anchor's console_leg reads the marker, as the console-GO gate below does.
-        unset -f go_gate _go_gate_verify console_leg go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
+        # The anchor's chief_worker reads the marker, as the chief-GO gate below does.
+        unset -f go_gate _go_gate_verify chief_worker go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
         # shellcheck source=scripts/lib/go-gate.sh
         # shellcheck disable=SC1091
-        { . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null && declare -F console_leg >/dev/null 2>&1; } \
-            || solo_refuse solo-console-leg "the console-leg marker cannot be read"
-        ! console_leg || solo_refuse solo-console-leg "a console leg merges only on its console's GO"
+        { . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null && declare -F chief_worker >/dev/null 2>&1; } \
+            || solo_refuse solo-chief-worker "the chief-worker marker cannot be read"
+        ! chief_worker || solo_refuse solo-chief-worker "a chief worker merges only on its chief's GO"
     fi
     [ ! -e "$pr_repo_root/scripts/handover/chief-kit/go.sh" ] || solo_refuse solo-himmel-clone "the himmel clone merges only on a GO"
     # The cwd is the caller's to choose, so a checkout posing as the PR's repo
@@ -988,50 +994,50 @@ if [ "$solo_set" = 1 ]; then
     SOLO_TAG=" mode=solo"
 fi
 
-# Console-GO gate. A console-spawned leg (headed-arm-leg.sh
-# exports HIMMEL_CONSOLE_LEG=1) merges ONLY on its console's GO: a file the
-# console writes with chief-kit/go.sh under the handover root, bound to THIS
+# Chief-GO gate. A chief-spawned worker (headed-arm-worker.sh
+# exports HIMMEL_CONSOLE_LEG=1) merges ONLY on its chief's GO: a file the
+# chief writes with chief-kit/go.sh under the handover root, bound to THIS
 # PR and to the head sha check-ci just certified — the same $sha
 # --match-head-commit pins below. The evidence is a file, never an env value
-# the leg could set on its own merge line. Placed before the marker clear so a
-# refused leg mutates nothing, and before the DRY_RUN branch so a dry run
+# the worker could set on its own merge line. Placed before the marker clear so a
+# refused worker mutates nothing, and before the DRY_RUN branch so a dry run
 # reports the refusal too. Unset marker: the go_root resolution and the GO
 # file read below are both skipped whole, so an operator session's
 # handover_root() failure never surfaces.
 #
-# Both the marker predicate (console_leg) and the file check (go_gate) live in
+# Both the marker predicate (chief_worker) and the file check (go_gate) live in
 # scripts/lib/go-gate.sh — shared with
 # block-unresolved-cr-merge.sh's own gh-pr-merge gate and go.sh's own
-# refusal, so none of the three can drift on either "is this a leg" or "what
-# the GO binds". A non-leg session (HIMMEL_CONSOLE_LEG unset/empty, by far the
+# refusal, so none of the three can drift on either "is this a worker" or "what
+# the GO binds". A non-worker (HIMMEL_CONSOLE_LEG unset/empty, by far the
 # common case) never sources go-gate.sh at all, so a missing/broken library
 # never blocks a merge this gate was never meant to bind — this outer check is
-# only "is the var non-empty", not a copy of console_leg's own five-spelling
+# only "is the var non-empty", not a copy of chief_worker's own five-spelling
 # interpretation, so an explicitly-set falsy value (e.g. HIMMEL_CONSOLE_LEG=0)
 # still sources go-gate.sh and gets the real, shared interpretation.
-# Drop any go_gate/console_leg already in scope (a PATH executable or an
+# Drop any go_gate/chief_worker already in scope (a PATH executable or an
 # inherited `export -f` would otherwise survive the source below undetected —
 # declare -F after sourcing can't tell "the file defined it" from "it was
 # already callable") before sourcing, so only the file's own definitions can
 # satisfy the declare -F checks that follow.
-is_leg=1
+is_worker=1
 if [ -n "${HIMMEL_CONSOLE_LEG:-}" ] || [ -n "$GO_FLAG" ]; then
-    unset -f go_gate _go_gate_verify console_leg go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
+    unset -f go_gate _go_gate_verify chief_worker go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
     # From the anchor, never this script's own worktree sibling —
-    # a malicious go-gate.sh here (e.g. console_leg() always returning false)
-    # would silently skip the console-GO requirement entirely.
+    # a malicious go-gate.sh here (e.g. chief_worker() always returning false)
+    # would silently skip the chief-GO requirement entirely.
     # shellcheck source=scripts/lib/go-gate.sh
     # shellcheck disable=SC1091
-    if ! . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1; then
-        echo "merge-on-green: cannot load scripts/lib/go-gate.sh — refusing (the console-leg marker check must fail closed, not silently no-op)" >&2
-        audit "REFUSED reason=policy-refused phase=console-go-lib-missing repo=$nwo pr=#$pr_num sha=$sha"
+    if ! . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1; then
+        echo "merge-on-green: cannot load scripts/lib/go-gate.sh — refusing (the chief-worker marker check must fail closed, not silently no-op)" >&2
+        audit "REFUSED reason=policy-refused phase=chief-go-lib-missing repo=$nwo pr=#$pr_num sha=$sha"
         exit 17
     fi
-    console_leg || is_leg=0
+    chief_worker || is_worker=0
 else
-    is_leg=0
+    is_worker=0
 fi
-if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
+if [ "$is_worker" -eq 1 ] || [ -n "$GO_FLAG" ]; then
     go_root=""
     # From the anchor — a malicious handover-path.sh in the
     # worktree could otherwise forge go_root onto an attacker-writable,
@@ -1046,8 +1052,8 @@ if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
     fi
     go_file="${go_root:-<unresolved handover root>}/.locks/go/$pr_num.$sha"
     if ! declare -F go_gate >/dev/null 2>&1 || ! declare -F _go_gate_verify >/dev/null 2>&1 || ! declare -F go_mac >/dev/null 2>&1; then
-        echo "merge-on-green: scripts/lib/go-gate.sh sourced but go_gate is not defined (truncated file?) — refusing (a console-spawned leg's GO gate must fail closed, not silently no-op)" >&2
-        audit "REFUSED reason=policy-refused phase=console-go-symbol-missing repo=$nwo pr=#$pr_num sha=$sha"
+        echo "merge-on-green: scripts/lib/go-gate.sh sourced but go_gate is not defined (truncated file?) — refusing (a chief-spawned worker's GO gate must fail closed, not silently no-op)" >&2
+        audit "REFUSED reason=policy-refused phase=chief-go-symbol-missing repo=$nwo pr=#$pr_num sha=$sha"
         exit 17
     fi
     go_reason=""
@@ -1058,13 +1064,13 @@ if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
     go_reason=$(_go_gate_verify "$pr_num" "$sha" "$go_root" "$nwo") || go_rc=$?
     if [ "$go_rc" -ne 0 ]; then
         if [ -z "$go_reason" ]; then
-            go_reason="go_gate for PR #$pr_num at $sha returned an unexpected exit code ($go_rc) — this is a console-spawned leg; send READY to your console and wait for GO"
+            go_reason="go_gate for PR #$pr_num at $sha returned an unexpected exit code ($go_rc) — this is a chief-spawned worker; send READY to your chief and wait for GO"
         fi
         echo "merge-on-green: $go_reason" >&2
-        audit "REFUSED reason=policy-refused phase=console-go repo=$nwo pr=#$pr_num sha=$sha go=$go_file"
+        audit "REFUSED reason=policy-refused phase=chief-go repo=$nwo pr=#$pr_num sha=$sha go=$go_file"
         exit 17
     fi
-    # The merge command must name the GO it relies on: a console leg always, any
+    # The merge command must name the GO it relies on: a chief worker always, any
     # other caller when it passed --go. Same directory (physically) and the exact
     # basename go_gate just verified, else a GO for another PR or head would pass.
     go_flag_ok=0
@@ -1086,9 +1092,9 @@ if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
         if [ -n "$GO_FLAG" ]; then
             echo "merge-on-green: --go $GO_FLAG is not the GO for PR #$pr_num at $sha — pass --go $go_file" >&2
         else
-            echo "merge-on-green: a console leg's merge needs --go $go_file (the GO file for PR #$pr_num at $sha); add it so the merge command names the review it relies on" >&2
+            echo "merge-on-green: a chief worker's merge needs --go $go_file (the GO file for PR #$pr_num at $sha); add it so the merge command names the review it relies on" >&2
         fi
-        audit "REFUSED reason=policy-refused phase=console-go-flag repo=$nwo pr=#$pr_num sha=$sha go=$go_file flag=${GO_FLAG:-<none>}"
+        audit "REFUSED reason=policy-refused phase=chief-go-flag repo=$nwo pr=#$pr_num sha=$sha go=$go_file flag=${GO_FLAG:-<none>}"
         exit 17
     fi
     go_trust="$go_reason"
@@ -1096,12 +1102,12 @@ if [ "$is_leg" -eq 1 ] || [ -n "$GO_FLAG" ]; then
 fi
 
 # Trust-path gate. PR CI runs
-# only the suites a PR's diff selects, and every leg pushes as the owner, so a
+# only the suites a PR's diff selects, and every worker pushes as the owner, so a
 # PR editing CI, the selector or the merge gate could narrow its own coverage
 # and merge. A PR whose changed files (renames' old names included) match any
 # pattern in scripts/ci/ci-trust-paths.txt merges only on a trust-reviewed GO
 # (chief-kit/go.sh --trust-reviewed) for this exact PR and certified head —
-# checked for EVERY caller, not only a console leg (HIMMEL_CONSOLE_LEG is an
+# checked for EVERY caller, not only a chief worker (HIMMEL_CONSOLE_LEG is an
 # env value the caller controls). A PR touching none is unaffected.
 # The detection (the default-branch list, the paginated file listing, every
 # fail-closed case and the anchor-behind-origin check) is trust_path_check in
@@ -1109,7 +1115,7 @@ fi
 # block-unresolved-cr-merge.sh so a direct `gh pr merge` asks the same
 # question. The library is loaded for EVERY caller here: without it the gate
 # cannot prove a PR touches no trust path, so it refuses.
-# Placed after the console-GO gate and before the marker clear and DRY_RUN, so
+# Placed after the chief-GO gate and before the marker clear and DRY_RUN, so
 # a refusal mutates nothing and a dry run reports it. Base-binding every PR to
 # the manifest is out of scope here.
 trust_refuse() {
@@ -1117,7 +1123,7 @@ trust_refuse() {
     audit "REFUSED reason=trust-path phase=$1 repo=$nwo pr=#$pr_num sha=$sha"
     exit 21
 }
-unset -f go_gate _go_gate_verify go_trust_gate go_trust_id_ok trust_path_check console_leg go_mac go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file 2>/dev/null || true
+unset -f go_gate _go_gate_verify go_trust_gate go_trust_id_ok trust_path_check chief_worker go_mac go_key_file go_resolve_root _go_in_harness go_fixred_gate go_fixred_file 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! . "$himmel_repo/scripts/lib/go-gate.sh" 2>/dev/null || ! declare -F trust_path_check >/dev/null 2>&1 \
@@ -1189,13 +1195,13 @@ esac
 #   - no completed non-cancelled run in the window at all → DECIDED: nothing
 #     red was observed, so proceed and audit `main-red=no-completed-run` —
 #     unless the list hit its --limit 50 cap, which proves nothing → exit 22.
-#   - a console-written FIX-GO (`go.sh --fix-main-red <run> <pr>
+#   - a chief-written FIX-GO (`go.sh --fix-main-red <run> <pr>
 #     <head>`) is the second way through: .locks/go/fix-main-red.<pr>.<head>.<run>,
 #     signed over repo, PR, head and run id (go-gate.sh's go_fixred_gate). It
 #     counts only when <run> is the CURRENT red run and the head is the one
 #     certified here, so a GO for an older red run, another PR or another head
-#     is no declaration; read for EVERY caller, not only a console leg.
-#     Audited `via=fix-go:run=<id>`. The ordinary console GO still applies.
+#     is no declaration; read for EVERY caller, not only a chief worker.
+#     Audited `via=fix-go:run=<id>`. The ordinary chief GO still applies.
 # Placed after the trust-path gate and before the marker clear / DRY_RUN, so a
 # refusal mutates nothing and a dry run reports it.
 main_red_refuse() {
@@ -1228,9 +1234,9 @@ if [ -z "$mr_run" ]; then
 elif [ "$mr_conc" != success ]; then
     mr_range="${mr_base:0:12}..${mr_head:0:12}"
     [ -n "$mr_base" ] || mr_range="(previous run outside the listed window)..${mr_head:0:12}"
-    mr_how="declare the fix with a commit-message line 'Fixes-main-red: run=$mr_run' (or 'suite=<a failed job name without spaces, or any .sh script named on an ##[error] line of its log>'; a job name with spaces needs run=<id>), or have the console write a fix-GO: go.sh --fix-main-red $mr_run $pr_num $sha"
+    mr_how="declare the fix with a commit-message line 'Fixes-main-red: run=$mr_run' (or 'suite=<a failed job name without spaces, or any .sh script named on an ##[error] line of its log>'; a job name with spaces needs run=<id>), or have the chief write a fix-GO: go.sh --fix-main-red $mr_run $pr_num $sha"
     mr_ok="" mr_log="" mr_log_rc=-1 mr_msgs="" mr_rc=0
-    # The console's fix-GO, for the current red run only.
+    # The chief's fix-GO, for the current red run only.
     mr_root=""
     if declare -F go_fixred_gate >/dev/null 2>&1 \
             && . "$himmel_repo/scripts/lib/handover-path.sh" 2>/dev/null && declare -F go_resolve_root >/dev/null 2>&1; then
@@ -1687,7 +1693,7 @@ if [ "$fresh_base" != "$fresh_default" ] || [ "$fresh_base" != "$pr_base" ]; the
 fi
 
 # 3c. Title re-verification — the squash merge below makes the
-# PR TITLE main's commit subject verbatim, but leg-pr-open.sh only checked it
+# PR TITLE main's commit subject verbatim, but worker-pr-open.sh only checked it
 # at open time; the title can still be edited in the GitHub UI any time up to
 # (and during) the check-ci.sh watch above. Re-query it fresh, right before
 # merging, same staleness class as fresh_base above, and refuse rather than
@@ -2050,7 +2056,7 @@ prune_merged_worktree() {
     # Removing the caller's own cwd is not a prune, it is a broken shell: on
     # Windows the directory is locked by the parent process anyway (so the
     # remove would fail and be reported as dirty), and an armed chain's
-    # remaining legs would run inside a deleted tree. Defer with the exact
+    # remaining workers would run inside a deleted tree. Defer with the exact
     # follow-up instead.
     local here
     here=$(git rev-parse --show-toplevel 2>/dev/null || true)
@@ -2122,7 +2128,7 @@ prune_merged_worktree() {
 # catch). scripts/chief/base-status.sh's live gh query is the authoritative
 # PENDING/RED detector; this is a durable LOCAL trace of the same gap at
 # merge time, same marker-dir shape as the cr-pending marker above, so a
-# console tick has a fallback even if this doesn't stay abreast of every
+# chief tick has a fallback even if this doesn't stay abreast of every
 # gh-side comment race. Best-effort — the exit code never depends on it — and
 # recorded on the MERGED audit line as `after-report=<result>`.
 AFTER_REPORT_RESULT="not-attempted"
@@ -2307,16 +2313,16 @@ _jira_close_on_merge() {
     # Opt-in per merge, not a heuristic (see the file header).
     # Without the opt-in the ticket's status is left alone, so a sliced
     # ticket is never closed by a merge that did not ask for it.
-    # The brief's `Completes ticket` line binds the merge: a leg cannot widen what the
-    # console scoped. The doc is read only when the caller names it; it never adds a transition.
+    # The brief's `Completes ticket` line binds the merge: a worker cannot widen what the
+    # chief scoped. The doc is read only when the caller names it; it never adds a transition.
     local opt_in="$JIRA_TRANSITION_OPT_IN" brief_completes=""
     if [ -n "$WORKER_SESSION_DOC" ]; then
         if [ -r "$WORKER_SESSION_DOC" ]; then
-            # Only the console's region above `## Results` binds, and any `no` there wins (sort puts
-            # `no` first): a leg appending its own line below Results cannot widen what the console scoped.
+            # Only the chief's region above `## Results` binds, and any `no` there wins (sort puts
+            # `no` first): a worker appending its own line below Results cannot widen what the chief scoped.
             brief_completes=$(sed -nE '/^## Results/q; s/^> \*\*Completes ticket:\*\* (yes|no)[[:space:]]*$/\1/p' "$WORKER_SESSION_DOC" | sort | head -n 1)
         else
-            echo "merge-on-green: cannot read leg doc '$WORKER_SESSION_DOC'; the brief's completes-ticket line is not applied" >&2
+            echo "merge-on-green: cannot read worker doc '$WORKER_SESSION_DOC'; the brief's completes-ticket line is not applied" >&2
         fi
     fi
     if [ "$brief_completes" = "no" ] && _truthy "$opt_in"; then

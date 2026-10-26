@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # Smoke test for scripts/luna/pipeline-cadence.sh (cron path,
-# daily harvest+triage leg, no-LLM fetch-health leg).
+# daily harvest+triage worker, no-LLM fetch-health worker).
 #
 # Four cadence tasks are armed: HIMMEL-Pipeline-FetchHealth (daily 01:30 ->
 # direct fetch-health.py), HIMMEL-Pipeline-Harvest (daily 02:00 ->
 # /harvest-clips + /triage-clips), HIMMEL-Pipeline-Synthesize (daily 03:00
 # -> /synthesize-clips + /archive-clips), and HIMMEL-Pipeline-Health (daily
 # 04:00 -> vault-lint / obsidian-triage:vault-lint).
-# The three Claude legs launch with explicit --model pins
+# The three Claude workers launch with explicit --model pins
 # (harvest/synth=claude-sonnet-5-5, health=haiku); fetch health is a plain
-# Python script. All four legs are exercised throughout the dry-run / arm /
+# Python script. All four workers are exercised throughout the dry-run / arm /
 # shape / status / dedup / force / disarm / rollback tests below.
 #
 # Strategy: replace the scheduler with a fake — crontab via the
@@ -148,7 +148,7 @@ export HIMMEL_PROVENANCE_DIR="$TMP_ROOT/provenance"
 # networked, and dependent on the arming machine's real bank state, which is
 # the opposite of hermetic. The helper's own seams neutralise it: no refresh,
 # a cache path that does not exist -> BANK-UNKNOWN, which is a FAIL-OPEN
-# verdict, so the leg proceeds exactly as it did before the guard existed.
+# verdict, so the worker proceeds exactly as it did before the guard existed.
 # The ledger is redirected into the temp tree so no test writes ~/.himmel.
 export CADENCE_BANK_SKIP_REFRESH=1
 export CADENCE_BANK_CACHE="$TMP_ROOT/no-such-usage-cache.json"
@@ -373,7 +373,7 @@ rc=0; out=$(run_cron arm --vault "$VAULT" --synth-day mon 2>&1) || rc=$?
 assert_rc "cron removed --synth-day -> rc 1 (HIMMEL-506)" 1 "$rc"
 assert_contains "cron --synth-day message points at daily" "daily now" "$out"
 # --health-day defaults to weekly (cadence audit 2026-08-23): four days of vault-lint moving
-# 363 -> 369 findings did not justify a daily health leg, so it is weekly again.
+# 363 -> 369 findings did not justify a daily health worker, so it is weekly again.
 # A lowercase spelling is accepted and canonicalised;
 # a non-DOW value is still rejected outright rather than silently ignored.
 # --dry-run on the valid case so the rejection block leaves nothing armed --
@@ -490,12 +490,12 @@ assert_not_contains "fetch-health runner invokes no claude" "claude --model" "$f
 assert_contains "fetch-health runner restores arming PATH (HIMMEL-1449 r2)" '; export PATH' "$fetch_health_sh"
 assert_contains "fetch-health runner guards the repo .env source (HIMMEL-1449 r2)" '] && . ' "$fetch_health_sh"
 assert_contains "fetch-health runner .env source targets the repo env file (HIMMEL-1449 r2)" '/.env' "$fetch_health_sh"
-# The leg writes the same flow-run ledger rows as the claude legs,
+# The worker writes the same flow-run ledger rows as the claude workers,
 # so a FetchHealth run that stops firing is detectable as a MISSING row rather
 # than being indistinguishable from a cadence that was never armed.
 assert_contains "fetch-health runner opens a flow-run ledger row (HIMMEL-1724)" '--append-start pipeline-fetch-health' "$fetch_health_sh"
 assert_contains "fetch-health runner closes the flow-run ledger row (HIMMEL-1724)" '--append-end pipeline-fetch-health' "$fetch_health_sh"
-assert_contains "fetch-health runner names the leg's task in the start row (HIMMEL-1724)" 'HIMMEL-Pipeline-FetchHealth' "$fetch_health_sh"
+assert_contains "fetch-health runner names the worker's task in the start row (HIMMEL-1724)" 'HIMMEL-Pipeline-FetchHealth' "$fetch_health_sh"
 # shellcheck disable=SC2016  # the runner's own $_rc, asserted as literal emitted text
 assert_contains "fetch-health runner derives the outcome from the probe rc (HIMMEL-1724)" '_flow_outcome=complete; [ "$_rc" = 0 ] || _flow_outcome=error' "$fetch_health_sh"
 
@@ -579,7 +579,7 @@ synth_sh_plain=${synth_sh//\\/}
 assert_contains "synth DONE: archive-clips (stuck) clips are structural backlog (HIMMEL-6433)" "archive-clips reports clips as (stuck)" "$synth_sh_plain"
 assert_contains "synth DONE: stuck clips still print the marker (HIMMEL-6433)" "report the stuck count and still print the marker" "$synth_sh_plain"
 assert_contains "synth DONE: a real step failure withholds it (HIMMEL-6433)" "Withhold the marker when a step itself failed or aborted" "$synth_sh_plain"
-assert_contains "synth DONE: blocked, parked or early-bailed still withholds it (HIMMEL-6433)" "or the leg was blocked, parked, or bailed early; do not withhold it only because stuck clips remain" "$synth_sh_plain"
+assert_contains "synth DONE: blocked, parked or early-bailed still withholds it (HIMMEL-6433)" "or the worker was blocked, parked, or bailed early; do not withhold it only because stuck clips remain" "$synth_sh_plain"
 assert_not_contains "synth DONE: no clause makes stuck clips withhold the marker (HIMMEL-6433)" "stuck clips remain, do not print" "$synth_sh_plain"
 # shellcheck disable=SC2016  # literal $log needles — the runner expands them at fire time
 assert_contains "synth runner rotates the log" 'mv -f "$log" "$log.prev"' "$synth_sh"
@@ -592,18 +592,18 @@ for what in harvest synth health; do
     body=$(eval "printf '%s' \"\$${what}_sh\"")
     body_plain=${body//\\/}
     assert_contains "$what runner requires foreground execution" "Run every command in the foreground. Never background a command or wait for a notification." "$body_plain"
-    assert_contains "$what runner carries the fail-closed bare marker instruction" "Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation." "$body_plain"
+    assert_contains "$what runner carries the fail-closed bare marker instruction" "Only if this cadence worker genuinely completed all of its work, print exactly PIPELINE-WORKER-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation." "$body_plain"
 done
 for what in harvest synth health; do
     body=$(eval "printf '%s' \"\$${what}_sh\"")
-    assert_contains "$what runner classifies against the completion marker" '"" PIPELINE-LEG-DONE 2>/dev/null' "$body"
+    assert_contains "$what runner classifies against the completion marker" '"" PIPELINE-WORKER-DONE 2>/dev/null' "$body"
     # shellcheck disable=SC2016  # emitted runner text, asserted literally
     assert_contains "$what runner fails closed when the classifier is silent" 'if [ "$_flow_outcome" = "" ]; then if [ "$_rc" = 0 ]; then _flow_outcome=parked; else _flow_outcome=error; fi; fi' "$body"
     assert_not_contains "$what runner has no complete-by-default fallback" '_flow_outcome=complete' "$body"
     # shellcheck disable=SC2016  # the runner's own $_flow_outcome/$_rc, asserted as literal emitted text
-    assert_contains "$what runner raises a no-op leg (rc 0, not complete) to exit 3" 'if [ "$_rc" = 0 ] && [ "$_flow_outcome" != complete ]; then exit 3; fi' "$body"
+    assert_contains "$what runner raises a no-op worker (rc 0, not complete) to exit 3" 'if [ "$_rc" = 0 ] && [ "$_flow_outcome" != complete ]; then exit 3; fi' "$body"
 done
-# Every CLAUDE leg (not just harvest) carries the bounded
+# Every CLAUDE worker (not just harvest) carries the bounded
 # retry/resume wrapper — same emitter, so all three or none.
 # shellcheck disable=SC2016  # literal $_attempt/$_rc needles — the runner expands them at fire time
 for what in harvest synth health; do
@@ -712,10 +712,10 @@ else
     pass "emitted runner PATH-snapshot env -i execution skipped (host lacks env -i / /bin/sh)"
 fi
 
-# Test C4c: per-leg --model pins — every runner carries an
+# Test C4c: per-worker --model pins — every runner carries an
 # explicit --model right after the binary so the cadence never inherits the
 # operator's saved default tier. Defaults: harvest/synth=claude-sonnet-5-5, health=haiku.
-echo "TEST: cron runners carry the per-leg --model pin (HIMMEL-506)"
+echo "TEST: cron runners carry the per-worker --model pin (HIMMEL-506)"
 assert_contains "harvest runner pins --model claude-sonnet-5-5" "--model claude-sonnet-5-5" "$harvest_sh"
 assert_contains "synth runner pins --model claude-sonnet-5-5"   "--model claude-sonnet-5-5" "$synth_sh"
 assert_contains "health runner pins --model haiku"    "--model haiku"  "$health_sh"
@@ -725,27 +725,27 @@ assert_not_contains "harvest runner omits bg-wait ceiling override" "CLAUDE_CODE
 assert_not_contains "synth runner omits bg-wait ceiling override"   "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$synth_sh"
 assert_not_contains "health runner omits bg-wait ceiling override"  "CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS" "$health_sh"
 
-# Test C4a2: every claude leg gates before it spends ------
+# Test C4a2: every claude worker gates before it spends ------
 # The audit finding this closes: `grep -c bank-preflight pipeline-cadence.sh`
-# was 0 while three claude legs fired nightly. These assertions are the reason
+# was 0 while three claude workers fired nightly. These assertions are the reason
 # a future refactor cannot quietly drop the guard again.
 
-echo "TEST: cron claude runners preflight the bank, attribute the leg, pin the mode"
-for _leg in harvest:pipeline-harvest synth:pipeline-synthesize health:pipeline-health; do
-    _name=${_leg%%:*}; _flow=${_leg#*:}
+echo "TEST: cron claude runners preflight the bank, attribute the worker, pin the mode"
+for _worker in harvest:pipeline-harvest synth:pipeline-synthesize health:pipeline-health; do
+    _name=${_worker%%:*}; _flow=${_worker#*:}
     _body=$(eval "printf '%s' \"\$${_name}_sh\"")
     assert_contains "$_name runner calls bank-preflight" "usage-preflight.sh" "$_body"
-    assert_contains "$_name runner sets CADENCE_USAGE_LEG=$_flow" "CADENCE_USAGE_LEG=$_flow" "$_body"
+    assert_contains "$_name runner sets CADENCE_USAGE_WORKER=$_flow" "CADENCE_USAGE_WORKER=$_flow" "$_body"
     assert_contains "$_name runner refuses on SKIPPED-BANK" "SKIPPED-BANK" "$_body"
     assert_contains "$_name runner pins --permission-mode" "--permission-mode" "$_body"
     assert_not_contains "$_name runner never bypasses permissions" "bypassPermissions" "$_body"
 done
-# Only the synthesize leg is input-gated: harvest drains an inbox that fills
+# Only the synthesize worker is input-gated: harvest drains an inbox that fills
 # every day, and health lints the whole vault regardless of clip flow.
 assert_contains "synth runner runs the input gate" "synth-input-check.sh" "$synth_sh"
 assert_contains "synth runner skips on NONE" "NONE" "$synth_sh"
-assert_contains "synth runner logs the skip marker" "PIPELINE-LEG-SKIPPED" "$synth_sh"
-assert_contains "synth runner stamps a completed leg" "--stamp" "$synth_sh"
+assert_contains "synth runner logs the skip marker" "PIPELINE-WORKER-SKIPPED" "$synth_sh"
+assert_contains "synth runner stamps a completed worker" "--stamp" "$synth_sh"
 assert_not_contains "harvest runner is not input-gated" "synth-input-check.sh" "$harvest_sh"
 assert_not_contains "health runner is not input-gated" "synth-input-check.sh" "$health_sh"
 
@@ -782,7 +782,7 @@ if command -v jq >/dev/null 2>&1; then
         fail "fragment PreToolUse hook order is wrong" "$hookorder"
     fi
     # Every hook above matches Bash only, so the PowerShell tool is
-    # an unguarded second shell in a cadence session — the health leg emitted the
+    # an unguarded second shell in a cadence session — the health worker emitted the
     # vault-lint engine through it and parked. A second matcher block denies it.
     pwshorder=$(printf '%s' "$frag_body" | jq -r '[.hooks.PreToolUse[] | select(.matcher == "PowerShell") | .hooks[].command | gsub("\"";"") | sub("^.*/"; "")] | join(",")' 2>/dev/null || echo "")
     if [ "$pwshorder" = "cadence-deny-powershell.sh" ]; then
@@ -837,7 +837,7 @@ fi
 
 # The 2026-10-03 harvest's Skill call came back
 # toolDenialKind=user-rejected. A headless cadence session has nobody to answer
-# a permission ask, so every obsidian-triage command a leg prompt names needs an
+# a permission ask, so every obsidian-triage command a worker prompt names needs an
 # explicit allow, plus Read of the plugin's command files as the fallback.
 for _allow in \
     'Skill(obsidian-triage:harvest-clips)' 'Skill(obsidian-triage:triage-clips)' \
@@ -915,7 +915,7 @@ assert_contains "cron status surfaces run log state" "run log" "$out"
 # Status parses the --model pin back out of each runner so an
 # armed-but-wrong-model cadence is visible. Scope each pin to its OWN status
 # line — harvest and synth are both [model: sonnet], so a whole-output check
-# would pass even if one leg's pin were wrong or missing.
+# would pass even if one worker's pin were wrong or missing.
 harvest_line=$(printf '%s\n' "$out" | grep 'HIMMEL-Pipeline-Harvest')
 synth_line=$(printf '%s\n' "$out"   | grep 'HIMMEL-Pipeline-Synthesize')
 health_line=$(printf '%s\n' "$out"  | grep 'HIMMEL-Pipeline-Health')
@@ -959,7 +959,7 @@ assert_rc "cron runner-missing status does not error" 0 "$rc"
 synth_line=$(printf '%s\n' "$out" | grep 'HIMMEL-Pipeline-Synthesize')
 assert_contains "cron synth runner-missing shows [runner missing]" "[runner missing]" "$synth_line"
 assert_not_contains "cron synth runner-missing has no [model:] suffix" "[model:" "$synth_line"
-# Other legs untouched — harvest still shows its pin, proving the pinned /
+# Other workers untouched — harvest still shows its pin, proving the pinned /
 # runner-missing states are distinguished in one status output.
 harvest_line=$(printf '%s\n' "$out" | grep 'HIMMEL-Pipeline-Harvest')
 assert_contains "cron harvest still pinned while synth runner missing" "[model: claude-sonnet-5-5]" "$harvest_line"
@@ -1211,7 +1211,7 @@ FIRE_VAULT="$TMP_ROOT/fire va&ult \$Z dir"
 FIRE_DIR="$TMP_ROOT/fire rnr"
 mkdir -p "$FIRE_VAULT"
 # The synthesize runner asks synth-input-check.sh whether anything
-# has been triaged since the last completed leg, and an EMPTY vault correctly
+# has been triaged since the last completed worker, and an EMPTY vault correctly
 # answers NONE — it would skip before reaching the claude stub these fire tests
 # exist to record. One triaged clip is the fixture that keeps the gate open.
 seed_triaged_clip() {
@@ -1222,7 +1222,7 @@ processed: true
 ---
 fixture
 ' > "$1/Clippings/fixture.md"
-    # Dated far forward on purpose. The runner STAMPS the vault after a leg
+    # Dated far forward on purpose. The runner STAMPS the vault after a worker
     # that completes, and these blocks fire the same runner several times to
     # exercise retry/parked/classifier paths — a normally-dated fixture would
     # fall behind the first fire's stamp and every later fire would correctly
@@ -1253,9 +1253,9 @@ cat >>"$TMP_ROOT/bin-rec/claude" <<'STUB'
     printf 'cwd=%s\n' "$(pwd)"
 } > "$REC"
 echo "claude-stub-ran"
-# A completed leg ends with the bare marker; the blocked-leg
+# A completed worker ends with the bare marker; the blocked-worker
 # twin below omits it and must surface as exit 3.
-echo "PIPELINE-LEG-DONE"
+echo "PIPELINE-WORKER-DONE"
 STUB
 chmod +x "$TMP_ROOT/bin-rec/claude"
 # A python3 stub for the no-LLM FetchHealth leg: arm resolves
@@ -1292,17 +1292,17 @@ log=$(cat "$FIRE_DIR/pipeline-synthesize.log" 2>/dev/null || echo MISSING)
 assert_contains "fire log captures claude output" "claude-stub-ran" "$log"
 assert_contains "fire log carries the [fired stamp" "[fired" "$log"
 # The same runner with a claude that exits 0 WITHOUT the bare
-# PIPELINE-LEG-DONE line (blocked on a prompt, parked, bailed) must exit 3 --
-# a parked leg may never read as a clean pass to the scheduler.
+# PIPELINE-WORKER-DONE line (blocked on a prompt, parked, bailed) must exit 3 --
+# a parked worker may never read as a clean pass to the scheduler.
 cat >"$TMP_ROOT/bin-rec/claude" <<'STUB'
 #!/usr/bin/env bash
 echo "claude-stub-ran"
-echo "**Cadence leg blocked:** needs permission approval"
+echo "**Cadence worker blocked:** needs permission approval"
 STUB
 chmod +x "$TMP_ROOT/bin-rec/claude"
 if grep -q "bin-rec" "$FIRE_DIR/pipeline-synthesize.sh"; then
     rc=0; sh "$FIRE_DIR/pipeline-synthesize.sh" || rc=$?
-    assert_rc "runner raises a parked leg (rc 0, no marker) to exit 3" 3 "$rc"
+    assert_rc "runner raises a parked worker (rc 0, no marker) to exit 3" 3 "$rc"
     log=$(cat "$FIRE_DIR/pipeline-synthesize.log" 2>/dev/null || echo MISSING)
     assert_contains "parked fire log still captures claude output" "claude-stub-ran" "$log"
 fi
@@ -1313,7 +1313,7 @@ fi
 cat >"$TMP_ROOT/bin-rec/claude" <<'STUB'
 #!/usr/bin/env bash
 echo "claude-stub-ran"
-echo "PIPELINE-LEG-DONE"
+echo "PIPELINE-WORKER-DONE"
 STUB
 chmod +x "$TMP_ROOT/bin-rec/claude"
 if grep -q "bin-rec" "$FIRE_DIR/pipeline-synthesize.sh"; then
@@ -1341,10 +1341,10 @@ cur=$(cat "$FIRE_DIR/pipeline-synthesize.log" 2>/dev/null || echo MISSING)
 assert_contains "second fire rotated first log to .log.prev" "RUN1-SENTINEL" "$prev"
 assert_not_contains "fresh log after rotation" "RUN1-SENTINEL" "$cur"
 assert_contains "fresh log captured the second fire" "claude-stub-ran" "$cur"
-# Test C15c: the FetchHealth leg actually LANDS ledger rows -------
+# Test C15c: the FetchHealth worker actually LANDS ledger rows -------
 # The text assertions above prove the runner CONTAINS the append calls; this
-# fires it and reads the ledger, which is the only thing that proves the leg is
-# now visible to stall / never-started detection (a leg that writes no row is
+# fires it and reads the ledger, which is the only thing that proves the worker is
+# now visible to stall / never-started detection (a worker that writes no row is
 # indistinguishable from one that was never armed — the bug this fixes).
 echo "TEST: armed fetch-health runner writes flow-run ledger start+end rows (HIMMEL-1724)"
 : > "$HIMMEL_FLOW_RUNS_LEDGER"
@@ -1357,7 +1357,7 @@ else
     fh_ledger=$(cat "$HIMMEL_FLOW_RUNS_LEDGER" 2>/dev/null || echo MISSING)
     assert_contains "fire wrote a fetch-health START row" '"ev":"start","flow":"pipeline-fetch-health"' "$fh_ledger"
     assert_contains "fire wrote a fetch-health END row" '"ev":"end","flow":"pipeline-fetch-health"' "$fh_ledger"
-    assert_contains "fetch-health start row carries the leg's task name" '"task_name":"HIMMEL-Pipeline-FetchHealth"' "$fh_ledger"
+    assert_contains "fetch-health start row carries the worker's task name" '"task_name":"HIMMEL-Pipeline-FetchHealth"' "$fh_ledger"
     assert_contains "a clean probe run closes as outcome=complete" '"outcome":"complete"' "$fh_ledger"
     # The other branch of the rc->outcome mapping: a failing probe must close
     # the row as `error`, never complete (a row that always says complete is
@@ -1370,12 +1370,12 @@ else
     assert_contains "the failing end row carries the true exit code" '"exit_code":3' "$fh_ledger"
 fi
 
-# Test C15e: a failed leg is never silent ----------------------
+# Test C15e: a failed worker is never silent ----------------------
 # Each pipeline family, forced to fail through stubs, must land exactly one
-# `<iso-ts> <leg> <reason> <log>` line in the alert file and exactly one send
+# `<iso-ts> <worker> <reason> <log>` line in the alert file and exactly one send
 # through the recorder; a repeat of the same failure appends again but does not
-# re-send; a completed leg clears the dedupe so the next failure sends again.
-echo "TEST: failed cadence legs alert once, through seams (HIMMEL-4181)"
+# re-send; a completed worker clears the dedupe so the next failure sends again.
+echo "TEST: failed cadence workers alert once, through seams (HIMMEL-4181)"
 reset_alerts() { rm -rf "$CADENCE_ALERT_DEDUPE_DIR"; : > "$CADENCE_ALERT_FILE"; : > "$ALERT_SENDS"; }
 count_lines() { grep -c . "$1" 2>/dev/null || true; }
 cat >"$TMP_ROOT/bin-rec/claude-parked" <<'STUB'
@@ -1386,7 +1386,7 @@ STUB
 cat >"$TMP_ROOT/bin-rec/claude-ok" <<'STUB'
 #!/usr/bin/env bash
 echo "claude-stub-ran"
-echo "PIPELINE-LEG-DONE"
+echo "PIPELINE-WORKER-DONE"
 STUB
 cat >"$TMP_ROOT/bin-rec/claude-rc5" <<'STUB'
 #!/usr/bin/env bash
@@ -1395,23 +1395,23 @@ exit 5
 STUB
 chmod +x "$TMP_ROOT/bin-rec/claude-parked" "$TMP_ROOT/bin-rec/claude-ok" "$TMP_ROOT/bin-rec/claude-rc5"
 use_claude() { cp "$TMP_ROOT/bin-rec/claude-$1" "$TMP_ROOT/bin-rec/claude"; }
-for _leg in harvest synthesize health; do
-    _runner="$FIRE_DIR/pipeline-$_leg.sh"
-    grep -q "bin-rec" "$_runner" || { fail "$_leg runner must reference the claude STUB"; continue; }
+for _worker in harvest synthesize health; do
+    _runner="$FIRE_DIR/pipeline-$_worker.sh"
+    grep -q "bin-rec" "$_runner" || { fail "$_worker runner must reference the claude STUB"; continue; }
     reset_alerts
     use_claude parked
     rc=0; sh "$_runner" || rc=$?
-    assert_rc "$_leg: a zero-rc leg without the marker exits non-zero" 3 "$rc"
-    assert_contains "$_leg: log names the no-op" "[PIPELINE-LEG-FAILED no-completion-marker]" "$(cat "$FIRE_DIR/pipeline-$_leg.log")"
-    assert_rc "$_leg: exactly one alert line" 1 "$(count_lines "$CADENCE_ALERT_FILE")"
-    assert_contains "$_leg: alert line is <ts> <leg> <reason> <log>" "pipeline-$_leg no-completion-marker $FIRE_DIR/pipeline-$_leg.log" "$(cat "$CADENCE_ALERT_FILE")"
+    assert_rc "$_worker: a zero-rc worker without the marker exits non-zero" 3 "$rc"
+    assert_contains "$_worker: log names the no-op" "[PIPELINE-WORKER-FAILED no-completion-marker]" "$(cat "$FIRE_DIR/pipeline-$_worker.log")"
+    assert_rc "$_worker: exactly one alert line" 1 "$(count_lines "$CADENCE_ALERT_FILE")"
+    assert_contains "$_worker: alert line is <ts> <worker> <reason> <log>" "pipeline-$_worker no-completion-marker $FIRE_DIR/pipeline-$_worker.log" "$(cat "$CADENCE_ALERT_FILE")"
     if grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z ' "$CADENCE_ALERT_FILE"; then
-        pass "$_leg: alert line starts with a UTC ISO timestamp"
+        pass "$_worker: alert line starts with a UTC ISO timestamp"
     else
-        fail "$_leg: alert line has no ISO timestamp" "$(cat "$CADENCE_ALERT_FILE")"
+        fail "$_worker: alert line has no ISO timestamp" "$(cat "$CADENCE_ALERT_FILE")"
     fi
-    assert_rc "$_leg: exactly one Telegram send" 1 "$(count_lines "$ALERT_SENDS")"
-    assert_contains "$_leg: the send names leg and reason" "pipeline-$_leg: no-completion-marker." "$(cat "$ALERT_SENDS")"
+    assert_rc "$_worker: exactly one Telegram send" 1 "$(count_lines "$ALERT_SENDS")"
+    assert_contains "$_worker: the send names worker and reason" "pipeline-$_worker: no-completion-marker." "$(cat "$ALERT_SENDS")"
 done
 # Dedupe and clear, on the harvest runner.
 reset_alerts
@@ -1422,18 +1422,18 @@ assert_rc "repeat failure appends a second alert line" 2 "$(count_lines "$CADENC
 assert_rc "repeat failure does not re-send" 1 "$(count_lines "$ALERT_SENDS")"
 use_claude ok
 rc=0; sh "$FIRE_DIR/pipeline-harvest.sh" || rc=$?
-assert_rc "a completed leg exits 0" 0 "$rc"
-assert_rc "a completed leg appends no alert" 2 "$(count_lines "$CADENCE_ALERT_FILE")"
-assert_not_contains "a completed leg logs no FAILED line" "PIPELINE-LEG-FAILED" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
+assert_rc "a completed worker exits 0" 0 "$rc"
+assert_rc "a completed worker appends no alert" 2 "$(count_lines "$CADENCE_ALERT_FILE")"
+assert_not_contains "a completed worker logs no FAILED line" "PIPELINE-WORKER-FAILED" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
 use_claude parked
 sh "$FIRE_DIR/pipeline-harvest.sh" || true
-assert_rc "after a completed leg the next failure sends again" 2 "$(count_lines "$ALERT_SENDS")"
+assert_rc "after a completed worker the next failure sends again" 2 "$(count_lines "$ALERT_SENDS")"
 # A non-zero rc (no transient signature, so no retry).
 reset_alerts
 use_claude rc5
 rc=0; sh "$FIRE_DIR/pipeline-harvest.sh" || rc=$?
-assert_rc "a non-zero leg keeps its rc" 5 "$rc"
-assert_contains "non-zero rc is logged as FAILED" "[PIPELINE-LEG-FAILED rc=5]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
+assert_rc "a non-zero worker keeps its rc" 5 "$rc"
+assert_contains "non-zero rc is logged as FAILED" "[PIPELINE-WORKER-FAILED rc=5]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
 assert_contains "non-zero rc alerts with reason rc-5" "pipeline-harvest rc-5 " "$(cat "$CADENCE_ALERT_FILE")"
 assert_rc "non-zero rc sends once" 1 "$(count_lines "$ALERT_SENDS")"
 # The truncated outcome: rc 0 plus the background-task truncation
@@ -1447,10 +1447,10 @@ chmod +x "$TMP_ROOT/bin-rec/claude-truncated"
 reset_alerts
 use_claude truncated
 rc=0; sh "$FIRE_DIR/pipeline-harvest.sh" || rc=$?
-assert_rc "a truncated leg (rc 0) exits 3" 3 "$rc"
-assert_contains "a truncated leg is logged as FAILED" "[PIPELINE-LEG-FAILED no-completion-marker]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
-assert_contains "a truncated leg alerts with reason no-completion-marker" "pipeline-harvest no-completion-marker " "$(cat "$CADENCE_ALERT_FILE")"
-assert_rc "a truncated leg sends once" 1 "$(count_lines "$ALERT_SENDS")"
+assert_rc "a truncated worker (rc 0) exits 3" 3 "$rc"
+assert_contains "a truncated worker is logged as FAILED" "[PIPELINE-WORKER-FAILED no-completion-marker]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
+assert_contains "a truncated worker alerts with reason no-completion-marker" "pipeline-harvest no-completion-marker " "$(cat "$CADENCE_ALERT_FILE")"
+assert_rc "a truncated worker sends once" 1 "$(count_lines "$ALERT_SENDS")"
 # A runner that dies at its cd into the vault alerts too, not only one that
 # reaches the claude launch.
 sed "s#^    cd [^ ]* #    cd $TMP_ROOT/no-such-vault #" "$FIRE_DIR/pipeline-harvest.sh" > "$FIRE_DIR/pipeline-harvest-novault.sh"
@@ -1458,7 +1458,7 @@ reset_alerts
 use_claude ok
 rc=0; sh "$FIRE_DIR/pipeline-harvest-novault.sh" || rc=$?
 assert_rc "a runner that cannot cd into the vault exits 1" 1 "$rc"
-assert_contains "a vault cd failure is logged as FAILED" "[PIPELINE-LEG-FAILED cd-vault]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
+assert_contains "a vault cd failure is logged as FAILED" "[PIPELINE-WORKER-FAILED cd-vault]" "$(cat "$FIRE_DIR/pipeline-harvest.log")"
 assert_contains "a vault cd failure alerts with reason cd-vault" "pipeline-harvest cd-vault " "$(cat "$CADENCE_ALERT_FILE")"
 assert_rc "a vault cd failure sends once" 1 "$(count_lines "$ALERT_SENDS")"
 # A bank skip alerts only on the SECOND night running: the runner rotates the
@@ -1489,7 +1489,7 @@ assert_rc "a clean probe clears the dedupe, so the next bad probe sends" 2 "$(co
 use_claude ok
 
 # Harvest and synthesize refresh the day note's timeline after the
-# leg, must-not-abort. `node` is stubbed AFTER arm (the runner's PATH snapshot
+# worker, must-not-abort. `node` is stubbed AFTER arm (the runner's PATH snapshot
 # already carries bin-rec), so no fire here touches a real vault note.
 echo "TEST: runners run daily-timeline.mjs, must-not-abort (HIMMEL-4182)"
 REAL_NODE=$(command -v node || true)
@@ -1502,27 +1502,27 @@ esac
 exec "$REAL_NODE" "\$@"
 STUB
 chmod +x "$TMP_ROOT/bin-rec/node"
-for _leg in harvest synthesize; do
-    _runner="$FIRE_DIR/pipeline-$_leg.sh"
-    assert_contains "$_leg runner calls the daily timeline" "obsidian-triage/tools/daily-timeline.mjs" "$(cat "$_runner")"
+for _worker in harvest synthesize; do
+    _runner="$FIRE_DIR/pipeline-$_worker.sh"
+    assert_contains "$_worker runner calls the daily timeline" "obsidian-triage/tools/daily-timeline.mjs" "$(cat "$_runner")"
     reset_alerts; : > "$TL_REC"; use_claude ok
     rc=0; sh "$_runner" || rc=$?
-    assert_rc "$_leg: a completed leg with a good timeline exits 0" 0 "$rc"
-    assert_contains "$_leg: timeline gets --vault and today's --date" "--vault $FIRE_VAULT --date $(date +%Y-%m-%d)" "$(cat "$TL_REC")"
+    assert_rc "$_worker: a completed worker with a good timeline exits 0" 0 "$rc"
+    assert_contains "$_worker: timeline gets --vault and today's --date" "--vault $FIRE_VAULT --date $(date +%Y-%m-%d)" "$(cat "$TL_REC")"
     # A failing timeline changes nothing about rc, outcome or alerts.
     reset_alerts; : > "$TL_REC"
     rc=0; TIMELINE_STUB_RC=1 sh "$_runner" || rc=$?
-    assert_rc "$_leg: a failing timeline leaves rc 0" 0 "$rc"
-    assert_contains "$_leg: the failure is logged" "[daily-timeline failed rc=1 - continuing]" "$(cat "$FIRE_DIR/pipeline-$_leg.log")"
-    assert_not_contains "$_leg: a failing timeline is not a LEG-FAILED" "PIPELINE-LEG-FAILED" "$(cat "$FIRE_DIR/pipeline-$_leg.log")"
-    assert_rc "$_leg: a failing timeline raises no alert" 0 "$(count_lines "$CADENCE_ALERT_FILE")"
+    assert_rc "$_worker: a failing timeline leaves rc 0" 0 "$rc"
+    assert_contains "$_worker: the failure is logged" "[daily-timeline failed rc=1 - continuing]" "$(cat "$FIRE_DIR/pipeline-$_worker.log")"
+    assert_not_contains "$_worker: a failing timeline is not a WORKER-FAILED" "PIPELINE-WORKER-FAILED" "$(cat "$FIRE_DIR/pipeline-$_worker.log")"
+    assert_rc "$_worker: a failing timeline raises no alert" 0 "$(count_lines "$CADENCE_ALERT_FILE")"
     use_claude parked
     rc=0; TIMELINE_STUB_RC=1 sh "$_runner" || rc=$?
-    assert_rc "$_leg: a parked leg still exits 3 beside a failing timeline" 3 "$rc"
-    assert_contains "$_leg: a parked leg still logs LEG-FAILED" "[PIPELINE-LEG-FAILED no-completion-marker]" "$(cat "$FIRE_DIR/pipeline-$_leg.log")"
+    assert_rc "$_worker: a parked worker still exits 3 beside a failing timeline" 3 "$rc"
+    assert_contains "$_worker: a parked worker still logs WORKER-FAILED" "[PIPELINE-WORKER-FAILED no-completion-marker]" "$(cat "$FIRE_DIR/pipeline-$_worker.log")"
     use_claude rc5
     rc=0; TIMELINE_STUB_RC=1 sh "$_runner" || rc=$?
-    assert_rc "$_leg: a failed leg keeps its own rc beside a failing timeline" 5 "$rc"
+    assert_rc "$_worker: a failed worker keeps its own rc beside a failing timeline" 5 "$rc"
 done
 : > "$TL_REC"; use_claude ok
 sh "$FIRE_DIR/pipeline-health.sh" || true
@@ -1551,15 +1551,15 @@ assert_rc "a failed send leaves no sentinel, so the next failure retries" 1 "$(c
 reset_alerts
 rm -f "$CADENCE_ALERT_SEND_FAILED_MARK"
 CADENCE_ALERT_SEND_CMD=false bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log 2>/dev/null
-assert_contains "a failed send writes the doctor marker naming leg and reason" "pipeline-harvest rc-1" "$(cat "$CADENCE_ALERT_SEND_FAILED_MARK" 2>/dev/null)"
+assert_contains "a failed send writes the doctor marker naming worker and reason" "pipeline-harvest rc-1" "$(cat "$CADENCE_ALERT_SEND_FAILED_MARK" 2>/dev/null)"
 bash "$SCRIPT_DIR/cadence-alert.sh" fail pipeline-harvest rc-1 /x.log
 assert_rc "a delivered send clears the doctor marker" 0 "$([ -e "$CADENCE_ALERT_SEND_FAILED_MARK" ] && echo 1 || echo 0)"
-# Clearing leg `a` must not re-arm leg `a.b`: `.` is the leg/reason delimiter.
+# Clearing worker `a` must not re-arm worker `a.b`: `.` is the worker/reason delimiter.
 reset_alerts
 bash "$SCRIPT_DIR/cadence-alert.sh" fail a.b rc-1 /x.log
 bash "$SCRIPT_DIR/cadence-alert.sh" clear a
 bash "$SCRIPT_DIR/cadence-alert.sh" fail a.b rc-1 /x.log
-assert_rc "clearing one leg leaves a dotted sibling's dedupe intact" 1 "$(count_lines "$ALERT_SENDS")"
+assert_rc "clearing one worker leaves a dotted sibling's dedupe intact" 1 "$(count_lines "$ALERT_SENDS")"
 
 # Test C15d: bounded retry/resume for a transient upstream API error
 # The 2026-07-17 harvest died 48 minutes in on `API Error: Server error
@@ -1586,7 +1586,7 @@ case "${RETRY_STUB_MODE:-}" in
             echo "API Error: Server error mid-response. The response above may be incomplete."
             exit 1
         fi
-        echo "PIPELINE-LEG-DONE"
+        echo "PIPELINE-WORKER-DONE"
         ;;
     transient-always)
         echo "API Error: 529 {\"type\":\"overloaded_error\"}"
@@ -1604,7 +1604,7 @@ if ! grep -q "bin-rec" "$FIRE_DIR/pipeline-synthesize.sh"; then
     fail "retry fixture: runner must reference the claude STUB (refusing to execute real claude)" \
         "baked: $(grep -m1 'claude' "$FIRE_DIR/pipeline-synthesize.sh")"
 else
-    # 1. Transient once -> retried, second attempt completes, leg exits clean.
+    # 1. Transient once -> retried, second attempt completes, worker exits clean.
     : > "$RETRY_COUNT"; : > "$HIMMEL_FLOW_RUNS_LEDGER"
     rc=0
     env RETRY_STUB_MODE=transient-once PIPELINE_CADENCE_SLEEP_CMD=: \
@@ -1617,7 +1617,7 @@ else
     assert_contains "the retry is logged with its backoff" "[retry 1/2 after transient upstream API error" "$log"
     assert_contains "attempt 1 lands its own ledger end row" '"note":"attempt=1/3"' "$ledger"
     assert_contains "attempt 2 lands its own ledger end row" '"note":"attempt=2/3"' "$ledger"
-    assert_not_contains "a leg that recovered never reaches attempt 3" '"note":"attempt=3/3"' "$ledger"
+    assert_not_contains "a worker that recovered never reaches attempt 3" '"note":"attempt=3/3"' "$ledger"
     assert_contains "the failed attempt is recorded as an error" '"outcome":"error"' "$ledger"
     assert_contains "the recovering attempt is recorded as complete" '"outcome":"complete"' "$ledger"
 

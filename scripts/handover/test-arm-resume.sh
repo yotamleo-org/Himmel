@@ -1584,7 +1584,7 @@ mkdir -p "$FAILOPEN/handover" "$FAILOPEN/lib"
 # as "the fail-open contract is broken". Copying the directories
 # wholesale means the next fail-closed sibling does not repeat this.
 cp "$(dirname "$ARM")"/*.sh "$FAILOPEN/handover/" 2>/dev/null || true
-cp "$(dirname "$ARM")/../lib"/*.sh "$FAILOPEN/lib/" 2>/dev/null || true
+cp "$(dirname "$ARM")/../lib"/*.sh "$(dirname "$ARM")/../lib"/*.mjs "$FAILOPEN/lib/" 2>/dev/null || true
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 mkdir -p "$FAILOPEN/lanes"
 cp "$(dirname "$ARM")/../lanes"/* "$FAILOPEN/lanes/" 2>/dev/null || true
@@ -1958,7 +1958,7 @@ assert_rc "T28c --dedup-any on empty scheduler arms (rc 0)" 0 "$rc"
 # EVERY resume job, so the --force replace loop reaped every HIMMEL-Resume-*
 # task on the box — two queued FOREIGN sibling arms (distinct handovers, not
 # this one) collapsed into the single new arm, and on a multi-chain box that
-# collateral-deleted another chain's armed resume (leg 44 deleted
+# collateral-deleted another chain's armed resume (worker 44 deleted
 # HIMMEL-Resume-trust-envelope-chain-06). narrows the --force reap
 # to THIS invocation's own identity only, so a cancel/replace can never touch a
 # task it did not create. The broad scope still governs the rc=3 refusal
@@ -2459,10 +2459,10 @@ out=$(SCHTASKS_CMD="$SCHED_STUB_T17/schtasks" PATH="$SCHED_STUB_T17:$PATH" ARM_I
 rc=$?
 assert_rc "W15 failed default worktree create exits 4" 4 "$rc"
 assert_contains "W15 names the failed branch" "worktree create failed for branch 'fix/himmel-9915-arm'" "$out"
-# W16: a console doc is excluded from the default.
-out=$(_w9_run "$(_w9_ho HIMMEL-1332-w16-console.md "$W9_ROOT")")
-assert_not_contains "W16 a console doc is untouched" "would create worktree" "$out"
-assert_not_contains "W16 a console doc prints no isolation WARN" "WITHOUT worktree isolation" "$out"
+# W16: a chief doc is excluded from the default.
+out=$(_w9_run "$(_w9_ho HIMMEL-1332-w16-chief.md "$W9_ROOT")")
+assert_not_contains "W16 a chief doc is untouched" "would create worktree" "$out"
+assert_not_contains "W16 a chief doc prints no isolation WARN" "WITHOUT worktree isolation" "$out"
 # W17: no seam, the script may sit in a linked worktree; the primary comes from the git common dir.
 W17_PRIMARY=$(git -C "$(dirname "$ARM")" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)
 W17_PRIMARY="${W17_PRIMARY%/.git}"
@@ -4128,23 +4128,23 @@ fi
 fi
 
 # ---------------------------------------------------------------------------
-# leg-header false positive: a chained handover's H1 follows
-# the epic's own "# Next Session — <leg-header>" convention (see
+# worker-header false positive: a chained handover's H1 follows
+# the epic's own "# Next Session — <worker-header>" convention (see
 # make_handover_chained / N9-N13 above), and when a project happens to have
-# an unrelated Done ticket numbered like the leg, _infer_ticket's src-3 (H1
+# an unrelated Done ticket numbered like the worker, _infer_ticket's src-3 (H1
 # scan) used to weld THAT ticket into $_ho_ticket, false-tripping the
 # shipped-work preflight (rc=11) against a handover that never
 # referenced the real ticket at all. Fix: (1) the preflight now reads
 # $_ho_ticket_strict (frontmatter-only), never the loose $_ho_ticket; (2)
 # src-3 itself now skips H1 scanning for chain files (basename
 # next-session-<N>.md) as defense-in-depth, so the loose ticket inference
-# doesn't carry the leg-header key either. Both effects are asserted below.
+# doesn't carry the worker-header key either. Both effects are asserted below.
 # ---------------------------------------------------------------------------
 if _sec_selected "2113c" "HIMMEL-2113"; then
 if command -v node >/dev/null 2>&1; then
     R2113C="$TMP/h2113c"
     mkdir -p "$R2113C/repo"
-    ( cd "$R2113C/repo" && git init -q -b feat/leg-header-thing . \
+    ( cd "$R2113C/repo" && git init -q -b feat/worker-header-thing . \
         && git config user.email t@t.t && git config user.name t \
         && git config commit.gpgsign false \
         && git commit -q --allow-empty -m seed ) >/dev/null 2>&1
@@ -4156,17 +4156,17 @@ if (args[0] === 'get') {
     console.log(args[1] + '\tsome summary\tDone');
 }
 EOF
-    # Chain file whose H1 is a leg header, NOT a ticket reference -- no
+    # Chain file whose H1 is a worker header, NOT a ticket reference -- no
     # frontmatter ticket, generic (non-ticket-prefixed) epic dir so src-4
     # cannot supply a key either. LUNA-64 here stands in for the incident's
-    # unrelated Done ticket that happens to share the leg number.
+    # unrelated Done ticket that happens to share the worker number.
     mkdir -p "$R2113C/epic-notes"
     HO_2113C="$R2113C/epic-notes/next-session-64.md"
     printf -- '---\nresume_cwd: %s\n---\n\n# Next Session — LUNA-64\n' "$R2113C/repo" > "$HO_2113C"
 
     # ARM_PROFILE=1 (seam, reused here): this
     # fixture's ticket resolves to EMPTY (that's the whole point -- the
-    # leg-header must NOT supply one), so the preflight's own Jira-status
+    # worker-header must NOT supply one), so the preflight's own Jira-status
     # branch never prints anything either way, refusal or not. Without an
     # independent "the preflight code path actually ran" signal, a rc=10
     # live-worker-census refusal upstream of the preflight would still read
@@ -4186,9 +4186,9 @@ EOF
         # unprobeable worker on the box would legitimately rc=10 BEFORE
         # reaching the preflight -- caught by the branch below, not here. The
         # one invariant this case actually pins, now that we KNOW the
-        # preflight ran, is "never rc=11" (the leg-header false positive).
-        assert_not_11 "2113c leg-header false positive no longer refuses (rc!=11)" "$rc"
-        assert_not_contains "2113c leg-header key not welded into the task name" "LUNA-64" "$out"
+        # preflight ran, is "never rc=11" (the worker-header false positive).
+        assert_not_11 "2113c worker-header false positive no longer refuses (rc!=11)" "$rc"
+        assert_not_contains "2113c worker-header key not welded into the task name" "LUNA-64" "$out"
     else
         echo "PASS 2113c skipped — shipped-work preflight never ran (blocked upstream, e.g. a live/unprobeable worker on this host, rc=$rc); host state, not a fixture bug"
     fi
@@ -4255,12 +4255,12 @@ fi
 # — a chain handover with NO frontmatter
 # `ticket:` must still resolve its ticket from the PARENT DIR name (src-4) for
 # the shipped-work preflight. The strict frontmatter-only narrowing (2113c)
-# over-corrected: it closed the H1 leg-header false positive but also dropped
+# over-corrected: it closed the H1 worker-header false positive but also dropped
 # this UNAMBIGUOUS signal, silently disabling the Jira-status half of the
 # preflight for every no-frontmatter chain handover. Parent dir here IS
 # ticket-shaped (KEY-9004-slug) -- the opposite of 2113c's deliberately
 # generic "epic-notes" dir -- so this pins the fallback without reopening the
-# leg-header false positive (2113c already pins that H1 stays ignored).
+# worker-header false positive (2113c already pins that H1 stays ignored).
 # ---------------------------------------------------------------------------
 if _sec_selected "2113f" "HIMMEL-2113"; then
 if command -v node >/dev/null 2>&1; then
@@ -4279,12 +4279,12 @@ if (args[0] === 'get') {
 }
 EOF
     # No `ticket:` frontmatter -- only the ticket-shaped parent dir name
-    # (src-4) names. H1 is a plain leg header, same convention as
+    # (src-4) names. H1 is a plain worker header, same convention as
     # 2113c, to prove this is the parent-dir fallback firing, not a stray H1
     # match (src-3 already skips H1 for chain files regardless).
     mkdir -p "$R2113F/HIMMEL-9004-parent-dir-thing"
     HO_2113F="$R2113F/HIMMEL-9004-parent-dir-thing/next-session-1.md"
-    printf -- '---\nresume_cwd: %s\n---\n\n# Next Session — leg 1\n' "$R2113F/repo" > "$HO_2113F"
+    printf -- '---\nresume_cwd: %s\n---\n\n# Next Session — worker 1\n' "$R2113F/repo" > "$HO_2113F"
 
     # ARM_PROFILE=1 + a marker check (codex-1, same guard 2113c got): closes
     # the vacuous-pass hole where a live/unprobeable host worker rc=10s the
@@ -4351,7 +4351,7 @@ EOF
     # report it Done.
     mkdir -p "$R2113G/HIMMEL-9004foo"
     HO_2113G="$R2113G/HIMMEL-9004foo/next-session-1.md"
-    printf -- '---\nresume_cwd: %s\n---\n\n# Next Session — leg 1\n' "$R2113G/repo" > "$HO_2113G"
+    printf -- '---\nresume_cwd: %s\n---\n\n# Next Session — worker 1\n' "$R2113G/repo" > "$HO_2113G"
 
     # ARM_PROFILE=1 + marker check (codex-1, same guard 2113c/2113f got): no
     # --force/ARM_SHIPPED_OK here, so this always takes the preflight-calling
@@ -4531,7 +4531,7 @@ fi
 # ---------------------------------------------------------------------------
 # --no-automerge decline flag + merge-gate/ARMAUTOMERGE grant
 # decoupling. --automerge raises the dotenv-derived ARMAUTOMERGE opt-in above;
-# until now there was no way to lower it back down for a single arm, so a leg
+# until now there was no way to lower it back down for a single arm, so a worker
 # armed specifically to park on every green PR silently inherited the
 # station's on-disk default instead. Separately (item 4, operator ruling): the
 # dotenv default used to grant CR_MERGE_GATE_OK=1 alongside ARMAUTOMERGE=1 --
@@ -4572,7 +4572,7 @@ assert_contains "3118c resolved state shows automerge=0 sourced from the flag" "
 assert_not_contains "3118c --no-automerge overrides the dotenv default -- no ARMAUTOMERGE=1 grant" "ARMAUTOMERGE=1 " "$out"
 assert_not_contains "3118c --no-automerge overrides the dotenv default -- no CR_MERGE_GATE_OK=1 grant" "CR_MERGE_GATE_OK=1" "$out"
 
-# (d) item 4, the console's second RED-control arm: the dotenv default (no
+# (d) item 4, the chief's second RED-control arm: the dotenv default (no
 # flags at all) grants ARMAUTOMERGE=1 ONLY -- CR_MERGE_GATE_OK=1 is no longer
 # bundled into a bare .env opt-in. Pre-fix code emits BOTH here (that is
 # exactly what item 4 rules out), so this assertion fails on the pre-fix
@@ -4657,15 +4657,15 @@ SCHED_DB_1329="$TMP/h1329-sched.db"; SCHED_DB_DIR_1329="$TMP/h1329-sched.atdir"
 # Each sub-case below gets its OWN handover file for the SAME ticket: re-
 # arming the SAME file would hit the per-handover dedup (rc 3) first and
 # never reach the ticket-level check this section is testing.
-HO_1329_A="$R1329/leg-a.md"
-HO_1329_B="$R1329/leg-b.md"
-HO_1329_D="$R1329/leg-d-force.md"
-HO_1329_E="$R1329/leg-e-env-override.md"
-HO_1329_C="$R1329/leg-c-unrelated.md"
-printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 leg A\n' "$R1329/repo" > "$HO_1329_A"
-printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 leg B\n' "$R1329/repo" > "$HO_1329_B"
-printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 leg D\n' "$R1329/repo" > "$HO_1329_D"
-printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 leg E\n' "$R1329/repo" > "$HO_1329_E"
+HO_1329_A="$R1329/worker-a.md"
+HO_1329_B="$R1329/worker-b.md"
+HO_1329_D="$R1329/worker-d-force.md"
+HO_1329_E="$R1329/worker-e-env-override.md"
+HO_1329_C="$R1329/worker-c-unrelated.md"
+printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 worker A\n' "$R1329/repo" > "$HO_1329_A"
+printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 worker B\n' "$R1329/repo" > "$HO_1329_B"
+printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 worker D\n' "$R1329/repo" > "$HO_1329_D"
+printf -- '---\nticket: HIMMEL-9003\nresume_cwd: %s\n---\n\n# HIMMEL-9003 worker E\n' "$R1329/repo" > "$HO_1329_E"
 printf -- '---\nticket: HIMMEL-9004\nresume_cwd: %s\n---\n\n# HIMMEL-9004 unrelated\n' "$R1329/repo" > "$HO_1329_C"
 
 _a1329() {
@@ -4676,10 +4676,10 @@ _a1329() {
 }
 
 _a1329 "$HO_1329_A"; rc=$?
-assert_rc "1329 first leg (handover A) arms cleanly (rc=0)" 0 "$rc"
+assert_rc "1329 first worker (handover A) arms cleanly (rc=0)" 0 "$rc"
 
 _a1329 "$HO_1329_B"; rc=$?
-assert_rc "1329 second leg (handover B, SAME ticket) refuses (rc=13)" 13 "$rc"
+assert_rc "1329 second worker (handover B, SAME ticket) refuses (rc=13)" 13 "$rc"
 assert_contains "1329 ERR names the ticket" "HIMMEL-9003" "$out"
 assert_contains "1329 ERR points at the override" "ARM_TICKET_DUP_OK=1" "$out"
 
@@ -4706,7 +4706,7 @@ fi
 # could spuriously refuse (rc 13) an unrelated handover that armed the same
 # ticket for real. Failure direction is spurious refusal only; --force /
 # ARM_TICKET_DUP_OK override still exists. This fix removes the noise.
-# Leg C (codex-adv r2): OPENED-but-UNTERMINATED frontmatter is a hard parse
+# Worker C (codex-adv r2): OPENED-but-UNTERMINATED frontmatter is a hard parse
 # error (rc 1, no arm) — silently yielding no ticket would let a REAL
 # frontmatter ticket whose closing `---` was lost bypass the mutex (fail-open),
 # the exact duplicate-resume race the mutex prevents.
@@ -4720,18 +4720,18 @@ mkdir -p "$R1640/repo"
     && git commit -q --allow-empty -m seed ) >/dev/null 2>&1
 SCHED_DB_1640="$TMP/h1640-sched.db"; SCHED_DB_DIR_1640="$TMP/h1640-sched.atdir"
 : > "$SCHED_DB_1640"; mkdir -p "$SCHED_DB_DIR_1640"
-# Leg A: a WELL-FORMED (closed) frontmatter that really carries the ticket —
+# Worker A: a WELL-FORMED (closed) frontmatter that really carries the ticket —
 # arms for real, so the ticket mutex records an armed slot for it.
-HO_1640_A="$R1640/leg-a-closed.md"
-printf -- '---\nticket: HIMMEL-9999\nresume_cwd: %s\n---\n\n# HIMMEL-9999 leg A (closed frontmatter)\n' \
+HO_1640_A="$R1640/worker-a-closed.md"
+printf -- '---\nticket: HIMMEL-9999\nresume_cwd: %s\n---\n\n# HIMMEL-9999 worker A (closed frontmatter)\n' \
     "$R1640/repo" > "$HO_1640_A"
-# Leg B: an UNCLOSED frontmatter block (only the opening `---`) whose BODY —
+# Worker B: an UNCLOSED frontmatter block (only the opening `---`) whose BODY —
 # not frontmatter — mentions the SAME ticket. With the bug this body line was
-# treated as frontmatter and the mutex keyed onto leg B too (rc 13).
+# treated as frontmatter and the mutex keyed onto worker B too (rc 13).
 # --cwd is passed because an unclosed frontmatter also defeats resume_cwd:
 # parsing (out of scope for item 2); it isolates this test to ticket inference.
-HO_1640_B="$R1640/leg-b-unclosed.md"
-printf -- '---\nsession_kind: test\nresume_cwd: %s\n\n# leg B (frontmatter never closes)\n\nticket: HIMMEL-9999\nsome unrelated body line\n' \
+HO_1640_B="$R1640/worker-b-unclosed.md"
+printf -- '---\nsession_kind: test\nresume_cwd: %s\n\n# worker B (frontmatter never closes)\n\nticket: HIMMEL-9999\nsome unrelated body line\n' \
     "$R1640/repo" > "$HO_1640_B"
 
 _a1640() {
@@ -4742,73 +4742,73 @@ _a1640() {
 }
 
 _a1640 "$HO_1640_A"; rc=$?
-assert_rc "1640 leg A (closed frontmatter, real ticket) arms cleanly (rc=0)" 0 "$rc"
-assert_contains "1640 leg A arm banner printed" "RESUME ARMED" "$out"
+assert_rc "1640 worker A (closed frontmatter, real ticket) arms cleanly (rc=0)" 0 "$rc"
+assert_contains "1640 worker A arm banner printed" "RESUME ARMED" "$out"
 
 _a1640 "$HO_1640_B" --cwd "$R1640/repo"; rc=$?
-assert_rc "1640 leg B (unclosed frontmatter) refuses with a parse error (rc=1), not a ticket-dup" 1 "$rc"
-assert_contains "1640 leg B names the unclosed frontmatter" "unclosed YAML frontmatter" "$out"
-assert_not_contains "1640 leg B is not refused as a ticket dup" "already has another armed resume slot" "$out"
-assert_not_contains "1640 leg B did not arm" "RESUME ARMED" "$out"
+assert_rc "1640 worker B (unclosed frontmatter) refuses with a parse error (rc=1), not a ticket-dup" 1 "$rc"
+assert_contains "1640 worker B names the unclosed frontmatter" "unclosed YAML frontmatter" "$out"
+assert_not_contains "1640 worker B is not refused as a ticket dup" "already has another armed resume slot" "$out"
+assert_not_contains "1640 worker B did not arm" "RESUME ARMED" "$out"
 
-# Leg C (codex-adv r2): a REAL frontmatter ticket whose closing `---` was
+# Worker C (codex-adv r2): a REAL frontmatter ticket whose closing `---` was
 # truncated. Silently yielding no strict ticket here would bypass the
-# mutex (leg A already holds an armed slot) and
+# mutex (worker A already holds an armed slot) and
 # schedule a duplicate resume — the fail-open direction. Must hard-refuse
 # (rc 1) with the parse error, before any scheduler mutation.
-HO_1640_C="$R1640/leg-c-truncated.md"
-printf -- '---\nticket: HIMMEL-9999\nresume_cwd: %s\n\n# HIMMEL-9999 leg C (closer lost)\n' \
+HO_1640_C="$R1640/worker-c-truncated.md"
+printf -- '---\nticket: HIMMEL-9999\nresume_cwd: %s\n\n# HIMMEL-9999 worker C (closer lost)\n' \
     "$R1640/repo" > "$HO_1640_C"
 _a1640 "$HO_1640_C" --cwd "$R1640/repo"; rc=$?
-assert_rc "1640 leg C (truncated REAL frontmatter ticket) hard-refuses (rc=1), never silently bypasses the mutex" 1 "$rc"
-assert_contains "1640 leg C names the unclosed frontmatter" "unclosed YAML frontmatter" "$out"
-assert_not_contains "1640 leg C did not arm" "RESUME ARMED" "$out"
+assert_rc "1640 worker C (truncated REAL frontmatter ticket) hard-refuses (rc=1), never silently bypasses the mutex" 1 "$rc"
+assert_contains "1640 worker C names the unclosed frontmatter" "unclosed YAML frontmatter" "$out"
+assert_not_contains "1640 worker C did not arm" "RESUME ARMED" "$out"
 
-# Leg D (codex-adv r3): a frontmatter-LESS handover (first line is a `#`
+# Worker D (codex-adv r3): a frontmatter-LESS handover (first line is a `#`
 # heading, not a `---` opener) whose BODY contains exactly ONE `---`
 # horizontal rule. Under the pre-r3 code the unanchored opener entered
 # frontmatter mode at that lone body rule and, never closing, tripped the
 # round-2 unclosed-frontmatter hard error (rc 1) -- a REGRESSION that blocked
 # perfectly valid plain-markdown handovers. With the line-1 anchor the body
 # rule is ordinary text: no frontmatter is entered, so no parse error.
-HO_1640_D="$R1640/leg-d-no-frontmatter-one-rule.md"
-printf -- '# leg D (no frontmatter, one body rule)\n\nIntro before the rule.\n\n---\n\nBody after the rule.\n' \
+HO_1640_D="$R1640/worker-d-no-frontmatter-one-rule.md"
+printf -- '# worker D (no frontmatter, one body rule)\n\nIntro before the rule.\n\n---\n\nBody after the rule.\n' \
     > "$HO_1640_D"
 _a1640 "$HO_1640_D" --cwd "$R1640/repo"; rc=$?
-assert_rc "1640 leg D (no frontmatter, one body --- rule) arms cleanly (rc=0), no false unclosed-block error" 0 "$rc"
-assert_contains "1640 leg D arm banner printed" "RESUME ARMED" "$out"
-assert_not_contains "1640 leg D not refused as unclosed frontmatter" "unclosed YAML frontmatter" "$out"
+assert_rc "1640 worker D (no frontmatter, one body --- rule) arms cleanly (rc=0), no false unclosed-block error" 0 "$rc"
+assert_contains "1640 worker D arm banner printed" "RESUME ARMED" "$out"
+assert_not_contains "1640 worker D not refused as unclosed frontmatter" "unclosed YAML frontmatter" "$out"
 
-# Leg E (codex-adv r3): a frontmatter-LESS handover whose BODY carries TWO
+# Worker E (codex-adv r3): a frontmatter-LESS handover whose BODY carries TWO
 # `---` horizontal rules surrounding `ticket: KEY-9999` -- the SAME ticket
-# leg A armed for real. Under the pre-r3 code the unanchored opener parsed
+# worker A armed for real. Under the pre-r3 code the unanchored opener parsed
 # these two body rules as a CLOSED frontmatter, inferred as a
-# STRICT ticket, and the mutex refused leg E as a duplicate of
-# leg A's slot (rc 13). With the line-1 anchor no frontmatter is inferred,
-# _ho_ticket_strict stays empty, the mutex gate is skipped, and leg E arms its
+# STRICT ticket, and the mutex refused worker E as a duplicate of
+# worker A's slot (rc 13). With the line-1 anchor no frontmatter is inferred,
+# _ho_ticket_strict stays empty, the mutex gate is skipped, and worker E arms its
 # own slot. --cwd isolates cwd resolution (there is no resume_cwd: to parse).
-HO_1640_E="$R1640/leg-e-no-frontmatter-two-rules.md"
-printf -- '# leg E (no frontmatter, two body rules)\n\nIntro.\n\n---\n\nticket: HIMMEL-9999\n\n---\n\nTrailer.\n' \
+HO_1640_E="$R1640/worker-e-no-frontmatter-two-rules.md"
+printf -- '# worker E (no frontmatter, two body rules)\n\nIntro.\n\n---\n\nticket: HIMMEL-9999\n\n---\n\nTrailer.\n' \
     > "$HO_1640_E"
 _a1640 "$HO_1640_E" --cwd "$R1640/repo"; rc=$?
-assert_rc "1640 leg E (no frontmatter, two body --- rules around a ticket) arms cleanly (rc=0), not a ticket dup" 0 "$rc"
-assert_contains "1640 leg E arm banner printed" "RESUME ARMED" "$out"
-assert_not_contains "1640 leg E not refused as a ticket dup" "already has another armed resume slot" "$out"
-assert_not_contains "1640 leg E not refused as unclosed frontmatter" "unclosed YAML frontmatter" "$out"
+assert_rc "1640 worker E (no frontmatter, two body --- rules around a ticket) arms cleanly (rc=0), not a ticket dup" 0 "$rc"
+assert_contains "1640 worker E arm banner printed" "RESUME ARMED" "$out"
+assert_not_contains "1640 worker E not refused as a ticket dup" "already has another armed resume slot" "$out"
+assert_not_contains "1640 worker E not refused as unclosed frontmatter" "unclosed YAML frontmatter" "$out"
 
-# Leg F: a UTF-8 BOM before the line-1 `---` opener. The BOM strip
+# Worker F: a UTF-8 BOM before the line-1 `---` opener. The BOM strip
 # must work in mawk too (an `\xHH` awk escape is a gawk extension and silently
-# skips there). The BOM'd frontmatter carries, the ticket leg A
+# skips there). The BOM'd frontmatter carries, the ticket worker A
 # armed, so it must parse as a STRICT ticket and the mutex refuse it (rc 13).
 # A skipped strip leaves line 1 as `<BOM>---`, no frontmatter is entered, no
 # ticket is inferred and the handover arms (rc 0) past the mutex.
-HO_1640_F="$R1640/leg-f-bom.md"
-printf -- '\357\273\277---\nticket: HIMMEL-9999\nresume_cwd: %s\n---\n\n# HIMMEL-9999 leg F (BOM frontmatter)\n' \
+HO_1640_F="$R1640/worker-f-bom.md"
+printf -- '\357\273\277---\nticket: HIMMEL-9999\nresume_cwd: %s\n---\n\n# HIMMEL-9999 worker F (BOM frontmatter)\n' \
     "$R1640/repo" > "$HO_1640_F"
 _a1640 "$HO_1640_F" --cwd "$R1640/repo"; rc=$?
-assert_rc "1654 leg F (BOM before frontmatter) parses the ticket and is refused as a dup (rc=13)" 13 "$rc"
-assert_contains "1654 leg F refused by the ticket mutex" "already has another armed resume slot" "$out"
-assert_not_contains "1654 leg F did not arm" "RESUME ARMED" "$out"
+assert_rc "1654 worker F (BOM before frontmatter) parses the ticket and is refused as a dup (rc=13)" 13 "$rc"
+assert_contains "1654 worker F refused by the ticket mutex" "already has another armed resume slot" "$out"
+assert_not_contains "1654 worker F did not arm" "RESUME ARMED" "$out"
 fi
 
 # ---------------------------------------------------------------------------
@@ -4891,7 +4891,7 @@ R2147="$TMP/h2147"
 mkdir -p "$R2147/vault/handovers/testuser/myrepo-bucket"
 git init -q "$R2147/vault" >/dev/null 2>&1
 touch "$R2147/vault/.single-writer"
-HO_2147_FB="$R2147/vault/handovers/testuser/myrepo-bucket/leg.md"
+HO_2147_FB="$R2147/vault/handovers/testuser/myrepo-bucket/worker.md"
 printf -- '---\nsession_kind: test\n---\n\n# bucket-shaped handover, no resume_cwd\n' > "$HO_2147_FB"
 
 mkdir -p "$R2147/regwork"
@@ -5513,7 +5513,7 @@ assert_rc "1879d a fired run that COMPLETED re-arms freely (rc=0)" 0 "$rc"
 assert_not_contains "1879d no refusal once the run ended" "ALREADY FIRED" "$out"
 
 # A DIFFERENT handover is untouched by another handover's fire -- the normal
-# chain (leg N arms handover N+1) must never trip this guard.
+# chain (worker N arms handover N+1) must never trip this guard.
 : > "$DB_1879"
 HO_1879D2="$(make_handover "$WORK_REPO")"
 out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_1879" \
@@ -5935,14 +5935,14 @@ done
 fi
 
 # ---------------------------------------------------------------------------
-# one file per leg: arming the second half of a split leg is
+# one file per leg: arming the second half of a split worker is
 # refused (rc 17).
 #
-# The 2026-08-17 incident: one leg wrote session-25 (state) AND session-26
+# The 2026-08-17 incident: one worker wrote session-25 (state) AND session-26
 # (orders) and armed on 26, so the relaunch loaded the orders half and the
 # state was orphaned. Refusal needs BOTH conditions — a sibling written inside
-# this leg window AND no relaunch ever made from it — so the allow cases below
-# pin one condition each; without them the check would refuse every short leg.
+# this worker window AND no relaunch ever made from it — so the allow cases below
+# pin one condition each; without them the check would refuse every short worker.
 # ---------------------------------------------------------------------------
 if _sec_selected "1830" "HIMMEL-1830"; then
 echo "--- 1830 ---"
@@ -5957,8 +5957,8 @@ _mk1830() {  # <path> <title>
 }
 HO_1830_A="$R1830/chain/EPIC-9830-dispatch-session-4.md"
 HO_1830_B="$R1830/chain/EPIC-9830-dispatch-session-5.md"
-_mk1830 "$HO_1830_A" "leg state half"
-_mk1830 "$HO_1830_B" "leg orders half"
+_mk1830 "$HO_1830_A" "worker state half"
+_mk1830 "$HO_1830_B" "worker orders half"
 _a1830() {  # <ledger> <handover>
     out=$(TMPDIR="$TMP" GH_CMD=/nonexistent/gh HIMMEL_FLOW_RUNS_LEDGER="$1" \
         win_env "$SCHED_STUB_T17" bash "$ARM" --time "$(future_time)" --handover "$2" --dry-run 2>&1)
@@ -5970,12 +5970,12 @@ E1830="$TMP/1830-empty.jsonl"; : > "$E1830"
 
 # (a) REFUSAL: both files just written, nothing ever relaunched from session-4.
 _a1830 "$E1830" "$HO_1830_B"; rc=$?
-assert_rc "1830 arming the second half of a split leg refuses (rc=17)" 17 "$rc"
+assert_rc "1830 arming the second half of a split worker refuses (rc=17)" 17 "$rc"
 assert_contains "1830 the ERR names the sibling it would orphan" "EPIC-9830-dispatch-session-4.md" "$out"
-assert_contains "1830 the ERR names the opt-out" "ARM_SPLIT_LEG_OK=1" "$out"
+assert_contains "1830 the ERR names the opt-out" "ARM_SPLIT_WORKER_OK=1" "$out"
 
 # (b) ALLOW: same pair, but a relaunch WAS made from session-4 — i.e. it was a
-# real leg's file, and this is a normal chain that simply moved fast. The
+# real worker's file, and this is a normal chain that simply moved fast. The
 # ledger row carries session-4's REAL arm identity, taken from arm-resume's own
 # banner: the evidence is matched on the sibling's canonical-path hash, so a
 # hand-written task name would prove nothing about this fixture.
@@ -5988,25 +5988,25 @@ _a1830 "$L1830" "$HO_1830_B"; rc=$?
 assert_rc "1830 a sibling that WAS a relaunch point still arms (rc=0)" 0 "$rc"
 
 # (b2) …but ANOTHER chain's row must not clear it (panel r1 [codex-1]): same
-# ticket, same leg number, different handover file. Evidence is per-path.
+# ticket, same worker number, different handover file. Evidence is per-path.
 L1830F="$TMP/1830-foreign.jsonl"
 printf '{"flow":"armed-resume","ev":"start","run_id":"r1","task_name":"HIMMEL-Resume-HIMMEL-9830-other-chain-s4-other_chain_session_4-h0123456789ab"}\n' > "$L1830F"
 _a1830 "$L1830F" "$HO_1830_B"; rc=$?
-assert_rc "1830 a DIFFERENT chain's leg-4 row does not clear the refusal (rc=17)" 17 "$rc"
+assert_rc "1830 a DIFFERENT chain's worker-4 row does not clear the refusal (rc=17)" 17 "$rc"
 
 # (c) ALLOW: no ledger evidence either, but the sibling is old — a previous
-# leg's file, not something this session just wrote.
+# worker's file, not something this session just wrote.
 touch -t 202601010000 "$HO_1830_A"
 _a1830 "$E1830" "$HO_1830_B"; rc=$?
-assert_rc "1830 an OLD sibling is a previous leg, not a split (rc=0)" 0 "$rc"
+assert_rc "1830 an OLD sibling is a previous worker, not a split (rc=0)" 0 "$rc"
 
 # (d) The escape hatch is real: re-make the sibling fresh, opt out explicitly.
-_mk1830 "$HO_1830_A" "leg state half"
+_mk1830 "$HO_1830_A" "worker state half"
 out=$(TMPDIR="$TMP" GH_CMD=/nonexistent/gh HIMMEL_FLOW_RUNS_LEDGER="$E1830" \
-    ARM_SPLIT_LEG_OK=1 win_env "$SCHED_STUB_T17" bash "$ARM" \
+    ARM_SPLIT_WORKER_OK=1 win_env "$SCHED_STUB_T17" bash "$ARM" \
     --time "$(future_time)" --handover "$HO_1830_B" --dry-run 2>&1)
 rc=$?
-assert_rc "1830 ARM_SPLIT_LEG_OK=1 opts out of the refusal (rc=0)" 0 "$rc"
+assert_rc "1830 ARM_SPLIT_WORKER_OK=1 opts out of the refusal (rc=0)" 0 "$rc"
 
 # (e) A ZERO-PADDED chain (panel r3 [codex-1]): `session-08.md` is a legal
 # filename but octal to bash arithmetic — `$((08 - 1))` is a fatal "value too
@@ -6017,7 +6017,7 @@ HO_1830_P8="$R1830/chain/EPIC-9830-dispatch-session-08.md"
 _mk1830 "$HO_1830_P7" "padded state half"
 _mk1830 "$HO_1830_P8" "padded orders half"
 _a1830 "$E1830" "$HO_1830_P8"; rc=$?
-assert_rc "1830 a zero-padded split leg refuses cleanly (rc=17, not an arithmetic abort)" 17 "$rc"
+assert_rc "1830 a zero-padded split worker refuses cleanly (rc=17, not an arithmetic abort)" 17 "$rc"
 assert_contains "1830 the padded sibling is the one named" "EPIC-9830-dispatch-session-07.md" "$out"
 fi
 
@@ -6085,21 +6085,21 @@ assert_contains "812 at: the job body CLEARS an ambient mark" "unset AUTO_ARM_SA
 fi
 
 # ---------------------------------------------------------------------------
-# a console arm exports HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
+# a chief arm exports HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
 # into the relaunch so the PreCompact snapshot hook
-# (scripts/hooks/console-precompact-snapshot.sh) can fire; any other arm gets
+# (scripts/hooks/chief-precompact-snapshot.sh) can fire; any other arm gets
 # neither, and BOTH runners always-clear an ambient pair first (`at` snapshots
-# the submitting env). "Console" = handover basename *-console.md, the same
+# the submitting env). "Chief" = handover basename *-chief.md, the same
 # test the model default uses. Windows/WSL bodies are deliberately not wired
 # (ponytail in arm-resume.sh), so only the crontab and `at` runners are pinned.
 # ---------------------------------------------------------------------------
 if _sec_selected "2973" "HIMMEL-2973"; then
 echo "--- 2973 ---"
 HO_2973="$(make_handover "$WORK_REPO")"
-HO_2973C="$HANDOVER_DIR/n46-console.md"
+HO_2973C="$HANDOVER_DIR/n46-chief.md"
 cp "$HO_2973" "$HO_2973C"
 CW_2973="$TMP/cw2973"
-_WD2973="$CW_2973/precompact-n46-console"
+_WD2973="$CW_2973/precompact-n46-chief"
 
 MACBIN_2973="$TMP/macbin-2973"; mkdir -p "$MACBIN_2973"
 printf '#!/bin/sh\nexit 0\n' > "$MACBIN_2973/claude"; chmod +x "$MACBIN_2973/claude"
@@ -6116,45 +6116,45 @@ esac
 CRONEOF2973
 chmod +x "$MACBIN_2973/crontab"
 
-# crontab runner: console arm exports the pair; a non-console arm only clears.
+# crontab runner: chief arm exports the pair; a non-chief arm only clears.
 out=$(env CHIEF_WORK_DIR="$CW_2973" PATH="$MACBIN_2973:$PATH" OSTYPE=darwin23 bash "$ARM" --time "$(future_time)" --handover "$HO_2973C" --dry-run 2>&1)
 rc=$?
-assert_rc "2973 cron: console arm dry-run exits 0" 0 "$rc"
+assert_rc "2973 cron: chief arm dry-run exits 0" 0 "$rc"
 assert_contains "2973 cron: the entry exports HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC=$HO_2973C" "$out"
 assert_contains "2973 cron: the entry exports HIMMEL_CONSOLE_WORKDIR (basename slug + path-hash suffix)" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
 _wd_c=$(printf '%s\n' "$out" | sed -n 's/.*\(HIMMEL_CONSOLE_WORKDIR=[^ ]*\).*/\1/p' | head -n 1)
 assert_contains "2973 cron: the entry CLEARS an ambient pair first" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_contains "2973 cron: the entry exports the HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
-assert_contains "2973 cron: the entry CLEARS an ambient console marker first (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
+assert_contains "2973 cron: the entry exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 cron: the entry CLEARS an ambient chief marker first (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
 out=$(env CHIEF_WORK_DIR="$CW_2973" PATH="$MACBIN_2973:$PATH" OSTYPE=darwin23 bash "$ARM" --time "$(future_time)" --handover "$HO_2973" --dry-run 2>&1)
-assert_not_contains "2973 cron: a non-console arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
-assert_contains "2973 cron: a non-console arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_not_contains "2973 cron: a non-console arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
-assert_contains "2973 cron: a non-console arm still CLEARS an ambient console marker (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
+assert_not_contains "2973 cron: a non-chief arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
+assert_contains "2973 cron: a non-chief arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
+assert_not_contains "2973 cron: a non-chief arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 cron: a non-chief arm still CLEARS an ambient chief marker (HIMMEL-6918)" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE" "$out"
 
-# Two console docs sharing a basename (different repos' handovers/) must not
+# Two chief docs sharing a basename (different repos' handovers/) must not
 # share a workdir: the checker picks the highest-numbered snap without checking
 # which document wrote it.
-mkdir -p "$TMP/other2973"; HO_2973D="$TMP/other2973/n46-console.md"; cp "$HO_2973" "$HO_2973D"
+mkdir -p "$TMP/other2973"; HO_2973D="$TMP/other2973/n46-chief.md"; cp "$HO_2973" "$HO_2973D"
 out=$(env CHIEF_WORK_DIR="$CW_2973" PATH="$MACBIN_2973:$PATH" OSTYPE=darwin23 bash "$ARM" --time "$(future_time)" --handover "$HO_2973D" --dry-run 2>&1)
-assert_contains "2973 cron: a same-basename console doc elsewhere still exports a workdir" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
-assert_not_contains "2973 cron: a same-basename console doc elsewhere gets a DIFFERENT workdir" "$_wd_c" "$out"
+assert_contains "2973 cron: a same-basename chief doc elsewhere still exports a workdir" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
+assert_not_contains "2973 cron: a same-basename chief doc elsewhere gets a DIFFERENT workdir" "$_wd_c" "$out"
 
 # linux/at runner: same contract, as job-body lines.
 DBD_2973="$TMP/h2973.atdir"; rm -rf "$DBD_2973"; mkdir -p "$DBD_2973"
 out=$(SCHED_DB="$TMP/h2973-sched.db" SCHED_DB_DIR="$DBD_2973" CHIEF_WORK_DIR="$CW_2973" PATH="$STATEFUL_STUB:$PATH" OSTYPE=linux-gnu \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2973C" --dry-run 2>&1)
 rc=$?
-assert_rc "2973 at: console arm dry-run exits 0" 0 "$rc"
+assert_rc "2973 at: chief arm dry-run exits 0" 0 "$rc"
 assert_contains "2973 at: the job body exports HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC=$HO_2973C" "$out"
 assert_contains "2973 at: the job body exports HIMMEL_CONSOLE_WORKDIR (basename slug + path-hash suffix)" "HIMMEL_CONSOLE_WORKDIR=$_WD2973-h" "$out"
 assert_contains "2973 at: the job body CLEARS an ambient pair first" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_contains "2973 at: the job body exports the HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_contains "2973 at: the job body exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
 out=$(SCHED_DB="$TMP/h2973-sched.db" SCHED_DB_DIR="$DBD_2973" CHIEF_WORK_DIR="$CW_2973" PATH="$STATEFUL_STUB:$PATH" OSTYPE=linux-gnu \
     bash "$ARM" --time "$(future_time)" --handover "$HO_2973" --dry-run 2>&1)
-assert_not_contains "2973 at: a non-console arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
-assert_contains "2973 at: a non-console arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
-assert_not_contains "2973 at: a non-console arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
+assert_not_contains "2973 at: a non-chief arm exports no HIMMEL_CONSOLE_DOC" "export HIMMEL_CONSOLE_DOC" "$out"
+assert_contains "2973 at: a non-chief arm still CLEARS an ambient pair" "unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR" "$out"
+assert_not_contains "2973 at: a non-chief arm exports no HIMMEL_CONSOLE=1 (HIMMEL-6918)" " HIMMEL_CONSOLE=1" "$out"
 fi
 
 # ---------------------------------------------------------------------------
@@ -6176,14 +6176,14 @@ mkdir -p "$R1636/repo"
     && git config user.email t@t.t && git config user.name t \
     && git config commit.gpgsign false \
     && git commit -q --allow-empty -m seed ) >/dev/null 2>&1
-# Leg B is a SECOND file for the same ticket: it is the positive control that
+# Worker B is a SECOND file for the same ticket: it is the positive control that
 # keeps every assert_not_contains below honest (the scan does find genuinely
-# foreign slots on this backend), and re-arming leg A would hit the rc-3
+# foreign slots on this backend), and re-arming worker A would hit the rc-3
 # per-handover dedup before the ticket scan is ever reached.
-HO_1636_A="$R1636/leg-a.md"
-HO_1636_B="$R1636/leg-b.md"
-printf -- '---\nticket: HIMMEL-9636\nresume_cwd: %s\n---\n\n# HIMMEL-9636 leg A\n' "$R1636/repo" > "$HO_1636_A"
-printf -- '---\nticket: HIMMEL-9636\nresume_cwd: %s\n---\n\n# HIMMEL-9636 leg B\n' "$R1636/repo" > "$HO_1636_B"
+HO_1636_A="$R1636/worker-a.md"
+HO_1636_B="$R1636/worker-b.md"
+printf -- '---\nticket: HIMMEL-9636\nresume_cwd: %s\n---\n\n# HIMMEL-9636 worker A\n' "$R1636/repo" > "$HO_1636_A"
+printf -- '---\nticket: HIMMEL-9636\nresume_cwd: %s\n---\n\n# HIMMEL-9636 worker B\n' "$R1636/repo" > "$HO_1636_B"
 _1636_WARN="already has another armed resume slot"
 
 # --- at backend (linux): list_existing returns `at-job-N` -------------------
@@ -6196,7 +6196,7 @@ _a1636_at() {
         bash "$ARM" --time "$(future_time)" --handover "$ho" "$@" 2>&1)
 }
 _a1636_at "$HO_1636_A"; rc=$?
-assert_rc "1636 at: leg A arms cleanly (rc=0)" 0 "$rc"
+assert_rc "1636 at: worker A arms cleanly (rc=0)" 0 "$rc"
 _a1636_at "$HO_1636_A" --force; rc=$?
 assert_rc "1636 at: --force re-arm of the SAME handover succeeds (rc=0)" 0 "$rc"
 assert_not_contains "1636 at: own at-job is NOT misread as a DIFFERENT handover" "$_1636_WARN" "$out"
@@ -6228,7 +6228,7 @@ _a1636_cron() {
         bash "$ARM" --time "$(future_time)" --handover "$ho" "$@" 2>&1)
 }
 _a1636_cron "$HO_1636_A"; rc=$?
-assert_rc "1636 cron: leg A arms cleanly (rc=0)" 0 "$rc"
+assert_rc "1636 cron: worker A arms cleanly (rc=0)" 0 "$rc"
 _a1636_cron "$HO_1636_A" --force; rc=$?
 assert_rc "1636 cron: --force re-arm of the SAME handover succeeds (rc=0)" 0 "$rc"
 assert_not_contains "1636 cron: own crontab LINE is NOT misread as a DIFFERENT handover" "$_1636_WARN" "$out"
@@ -6241,8 +6241,8 @@ fi
 # optional --model passthrough into the relaunch payload.
 #   Present -> flows into the generated .bat as `--model "<name>"`, right
 #   after the prompt/--channels, mirroring the --channels passthrough shape
-#   (T12/T13 above). Absent -> ruling 30 defaults a non-console
-#   arm to `--model "opus"`; a *-console.md handover is exempt (ruling 25,
+#   (T12/T13 above). Absent -> ruling 30 defaults a non-chief
+#   arm to `--model "opus"`; a *-chief.md handover is exempt (ruling 25,
 #   operator default) and stays free of any --model token.
 # ---------------------------------------------------------------------------
 if _sec_selected "2192" "HIMMEL-2192"; then
@@ -6255,15 +6255,15 @@ assert_contains "2192 --model flows into the .bat payload" '--model "opus"' "$ou
 out=$(win_env "$SCHED_STUB_T17" bash "$ARM" --time "$(future_time)" --handover "$HO_2192" --force --dry-run 2>&1)
 rc=$?
 assert_rc "2192 no-flag dry-run exits 0" 0 "$rc"
-assert_contains "2192 no --model given defaults a non-console arm to opus (ruling 30)" '--model "opus"' "$out"
-assert_contains "2192 no --model given names ruling 30 in the reason" "non-console arms default to opus -- ruling 30" "$out"
+assert_contains "2192 no --model given defaults a non-chief arm to opus (ruling 30)" '--model "opus"' "$out"
+assert_contains "2192 no --model given names ruling 30 in the reason" "non-chief arms default to opus -- ruling 30" "$out"
 
-HO_2192_CONSOLE="${HO_2192%.md}-console.md"
-cp -- "$HO_2192" "$HO_2192_CONSOLE"
-out=$(win_env "$SCHED_STUB_T17" bash "$ARM" --time "$(future_time)" --handover "$HO_2192_CONSOLE" --force --dry-run 2>&1)
+HO_2192_CHIEF="${HO_2192%.md}-chief.md"
+cp -- "$HO_2192" "$HO_2192_CHIEF"
+out=$(win_env "$SCHED_STUB_T17" bash "$ARM" --time "$(future_time)" --handover "$HO_2192_CHIEF" --force --dry-run 2>&1)
 rc=$?
-assert_rc "2192 no-flag console-named dry-run exits 0" 0 "$rc"
-assert_not_contains "2192 no --model token for a console-named handover (ruling 25)" "--model" "$out"
+assert_rc "2192 no-flag chief-named dry-run exits 0" 0 "$rc"
+assert_not_contains "2192 no --model token for a chief-named handover (ruling 25)" "--model" "$out"
 
 # crontab treats an unescaped % as end-of-command +
 # stdin even inside %q-quoting, so a MODEL containing % needed \%-escaping
@@ -6412,7 +6412,7 @@ fi
 # arithmetic syntax error spam from _minutes_from_midnight.
 # Root cause (NOT an empty comparand, despite the ticket's original hunch):
 # py_armor_capture's python round-trip writes through a Windows-native
-# python.exe to a redirected FILE (not a console), which text-mode-translates
+# python.exe to a redirected FILE (not a chief), which text-mode-translates
 # \n to \r\n; cat reads those bytes back raw, so a trailing \r rides along on
 # each HH:MM line list_collision_candidates()'s windows branch reads out of
 # $PY_ARMOR_OUT. _minutes_from_midnight() then glues that \r onto `mm`

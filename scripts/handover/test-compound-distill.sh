@@ -16,7 +16,7 @@ R="$W/handovers"; B="$R/u/himmel"; MIR="$W/mirror"
 mkdir -p "$B" "$R/.locks/queue" "$MIR" "$W/bin"
 SHA="0123456789abcdef0123456789abcdef01234567"
 printf '# HIMMEL-1\n\nBODYSECRET\n\n## Results\n\n- 10:00 LIVE — x\n- 10:10 FINDING — the guard over-denies\n- 10:40 WRAPPED — PR #3713 merged, sha %s\n' "$SHA" > "$B/HIMMEL-1-first-2026-10-20.md"
-printf '# HIMMEL-2\n\n## Results\n\n- 09:05 BLOCKED — the VM queue is full\n- 09:10 HALTED — console halted\n' > "$B/HIMMEL-2-second-2026-10-21.md"
+printf '# HIMMEL-2\n\n## Results\n\n- 09:05 BLOCKED — the VM queue is full\n- 09:10 HALTED — chief halted\n' > "$B/HIMMEL-2-second-2026-10-21.md"
 
 # the stub claude: records argv and stdin, prints the envelope in $STUB_ENV
 cat > "$W/bin/claude-stub" <<EOF

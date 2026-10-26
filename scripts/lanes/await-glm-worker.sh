@@ -5,13 +5,13 @@
 # will re-invoke me when the worker finishes"; that monitor can die silently
 # and the parent session strands (observed 2026-07-10: worker done at 10:15Z,
 # parent idled ~4h). This script is the structural replacement: a FOREGROUND,
-# bounded poll of the worker session's meta.json that the dispatcher repeats
+# bounded poll of the worker's meta.json that the dispatcher repeats
 # inside its own turn until the worker reaches a terminal status.
 #
 # Usage:
 #   await-glm-worker.sh [--session-dir <dir> | --slug <slug>] [--max-mins <n>]
 #
-#   --session-dir  exact worker session dir (contains meta.json)
+#   --session-dir  exact worker dir (contains meta.json)
 #   --slug         worker slug; resolves the NEWEST session dir matching
 #                  glm-<slug>-* under the glm-sessions root
 #                  (BRIDGE_ROOT or ~/.claude/handover/bridge, + /glm-sessions)
@@ -121,7 +121,7 @@ iso_to_epoch() {
 # Newest regular-file mtime under $1 as whole epoch seconds, .git excluded.
 #
 # `find -printf` is a GNU findutils extension. On BSD/macOS find
-# it is an unknown primary, so the leg used to error into 2>/dev/null, return
+# it is an unknown primary, so the worker used to error into 2>/dev/null, return
 # nothing, and the watchdog SILENTLY degraded to two liveness signals with no
 # indication. newest_mtime runs whichever path matches MTIME_TOOL (detected
 # once at startup): the GNU fast path that is verified working here, or a
@@ -187,9 +187,9 @@ GLM_SESSIONS_ROOT="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/glm-sessions"
 
 deadline=$(( $(date +%s) + max_mins * 60 ))
 
-# detect the mtime-leg toolchain ONCE (not per-poll). `find
+# detect the mtime-worker toolchain ONCE (not per-poll). `find
 # -printf` is a GNU findutils extension; on BSD/macOS find it is an unknown
-# primary, so the leg used to error into 2>/dev/null and silently degrade the
+# primary, so the worker used to error into 2>/dev/null and silently degrade the
 # watchdog to two liveness signals. Probe the REAL capability (not
 # `find --version`, whose flags also differ by platform) and remember it:
 #   gnu  -> GNU find -printf (the verified fast path on Linux / Git Bash)
@@ -312,7 +312,7 @@ while :; do
                         #
                         # newest_mtime runs the portable path for
                         # this host (MTIME_TOOL, detected once at startup). When
-                        # the leg has NO usable toolchain it emits ONE stderr
+                        # the worker has NO usable toolchain it emits ONE stderr
                         # note (mt_warned) and contributes nothing, rather than
                         # the old silent degrade to two signals. The digit-guard
                         # still handles an empty value at runtime either way.
@@ -323,7 +323,7 @@ while :; do
                                 *) [ "$mt" -gt "$last_epoch" ] && last_epoch="$mt" ;;
                             esac
                         elif [ -z "${mt_warned:-}" ]; then
-                            echo "await-glm-worker: mtime liveness leg unavailable on this host (no GNU 'find -printf' and no BSD 'stat -f %m'); degrading to output + commit signals" >&2
+                            echo "await-glm-worker: mtime liveness worker unavailable on this host (no GNU 'find -printf' and no BSD 'stat -f %m'); degrading to output + commit signals" >&2
                             mt_warned=1
                         fi
                         ct=$(git -C "$wt" log -1 --format=%ct "${br:-HEAD}" 2>/dev/null)

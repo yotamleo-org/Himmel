@@ -13,7 +13,7 @@ tool call:
 `CONSULT <profile-list> :: <one question> :: read: <paths the consult needs>`
 
 `<profile-list>` is one profile or a comma list (`design,design-motion`, no
-spaces); `operator`, `bare` and the console/relay/judge role profiles are refused.
+spaces); `operator`, `bare` and the chief/relay/judge role profiles are refused.
 `CONSULT` is **not a status marker**: it does not change your state (you stay
 `LIVE`) and the tick never reads it, so keep working on whatever does not depend
 on the answer. The chief decides whether to launch; the answer comes back as a

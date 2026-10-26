@@ -8,7 +8,7 @@
 # Hermetic: a stub gh on PATH logs the token and argv of every call; a fixture .env
 # root (GH_READ_ENV_ROOT) and a scratch HOME stand in for the real ones.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 

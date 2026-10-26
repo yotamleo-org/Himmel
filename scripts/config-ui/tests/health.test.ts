@@ -30,7 +30,7 @@ test("verdict counts and alert state come from their owners", () => {
   expect(verdict(feed(r("a", "ok")), prom(null)).alerts).toBeNull();
 });
 
-test("renderHealth escapes every feed, ledger, legs and alert string", () => {
+test("renderHealth escapes every feed, ledger, workers and alert string", () => {
   const evil = `<img src=x onerror=alert(1)>`;
   const f = feed(r(evil, "fail", { installed: { state: "present", detail: evil }, fix: { remedy: evil } }), r("job", "ok", { source: "cadence", id: `cadence:${evil}` }), r("q", "ok", { bundle: "search", id: evil }));
   const h = {

@@ -2,7 +2,7 @@
 # cadence-runner-exec.sh — test helper: fire a GENERATED POSIX cadence runner
 # against a stub payload and a stub alert sink. Sourced, not
 # executed; bash 3.2-safe. Used by the cadence arm suites to prove that a runner
-# of each kind alerts on a failed leg and clears on a completed one, without
+# of each kind alerts on a failed worker and clears on a completed one, without
 # running the real payload or arming anything on the station.
 #
 #   cadence_exec_runner <runner-file> <payload-path-in-runner> <payload-rc> <scratch-dir> [alert-path-in-runner]

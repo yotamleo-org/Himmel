@@ -2,7 +2,7 @@
 # Documented commands pass the real wired hook chain.
 #
 # Why: the guards each test their own allow rows alone, so a command the
-# harness's own docs tell a leg to run can be denied by a guard that sits
+# harness's own docs tell a worker to run can be denied by a guard that sits
 # beside the one that granted it, and no suite notices. 18 bugs in 30 days
 # had that shape (guard-pr-check-literal on pr-check.md's own fence, the
 # impacted-suites heredoc, a read-only grep on block-read-secrets).
@@ -11,7 +11,7 @@
 # is the HIMMEL_REPO anchor, a linked worktree), reads the Bash PreToolUse
 # chain members from .claude/settings.json, and feeds every row of
 # documented-commands.tsv through `run-hook-with-bash.js --chain <members>`
-# from the fixture worktree, as a console-spawned leg. A row passes when the
+# from the fixture worktree, as a chief-spawned worker. A row passes when the
 # chain does not deny it: ALLOW means a hook granted it, ask means no hook
 # objected (the permission flow decides). A DENY is never an expected
 # verdict; a row the docs document but the chain denies is recorded as
@@ -70,11 +70,11 @@ command -v node >/dev/null 2>&1 || { echo "FAIL fixture: node not found"; exit 1
 
 # ---- the docs whose fenced shell the lint covers, and the --keys authoring mode ---
 LINT_DOCS=(
-    docs/handover/leg-preface.md
-    docs/handover/leg-preface-claudex.md
-    docs/handover/leg-preface-openrouter.md
+    docs/handover/worker-preface.md
+    docs/handover/worker-preface-claudex.md
+    docs/handover/worker-preface-openrouter.md
     .claude/commands/pr-check.md
-    docs/handover/console-template.md
+    docs/handover/chief-template.md
     docs/internals/enforcement.md
 )
 while IFS= read -r f; do LINT_DOCS+=("${f#"$SRC/"}"); done < <(ls "$SRC"/scripts/cr/pr-check-ref/*.md 2>/dev/null)

@@ -5,7 +5,7 @@
 # redirected, and that a settings fixture lacking the guard flips deny to allow.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE
-# A leg may run with a bypass exported; the probe must see the guards un-bypassed.
+# A worker may run with a bypass exported; the probe must see the guards un-bypassed.
 unset EDIT_ON_MAIN_OK EDIT_LIVE_SETTINGS_OK
 
 # grepq <text> [grep-args...] — here-string grep, no pipeline.

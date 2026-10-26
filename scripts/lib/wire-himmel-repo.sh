@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # wire-himmel-repo.sh -- set env.HIMMEL_REPO in a Claude Code settings.json to
-# the himmel clone path. The leg resolver + minerva transport anchor
-# to HIMMEL_REPO (marketplace/plugins/himmel-ops/scripts/legs.sh); setup.sh and
+# the himmel clone path. The worker resolver + minerva transport anchor
+# to HIMMEL_REPO (marketplace/plugins/himmel-ops/scripts/workers.sh); setup.sh and
 # adopt.sh call this so it is set without a manual export. Sibling of
 # wire-statusline.sh -- same shape, different key.
 #

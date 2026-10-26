@@ -1,8 +1,8 @@
 // lane.ts — a session's lane, what it is priced against, and how it scored.
 //
-// The lane comes from the launch record (WORKER_SESSION_LANE or the old LEG_LANE, the launcher's HIMMEL_SESSION_LANE, the config dir, the leg doc),
+// The lane comes from the launch record (WORKER_SESSION_LANE or the old LEG_LANE, the launcher's HIMMEL_SESSION_LANE, the config dir, the worker doc),
 // never guessed from the model string. A claudex session is priced from the codex weekly bank (the used% delta across
-// the leg's window), never at Claude leg-burn weights; the eval row is the per-lane quality measure (CR rounds, judge
+// the worker's window), never at Claude worker-burn weights; the eval row is the per-lane quality measure (CR rounds, judge
 // NO-GO rate, red-before-green, LIVE→READY, denials). Read-only: nothing here writes.
 import type { View } from "../agui-web/src/reducer.ts";
 import { readCodexBankCache } from "../../lanes/bank-status-core.mjs";
@@ -55,7 +55,7 @@ export function codexStartOf(launch: Record<string, string>): { pct: number; at:
   return m && Number.isFinite(pct) && pct <= 100 && Number.isSafeInteger(at) && at > 0 ? { pct, at } : null;
 }
 
-// scripts/lanes/lib/burn-weights.sh's defaults: the price-weighted token-equivalent leg-burn.sh reports.
+// scripts/lanes/lib/burn-weights.sh's defaults: the price-weighted token-equivalent worker-burn.sh reports.
 export const W = { input: 1, cacheRead: 0.1, cacheCreate: 1.25, output: 5 };
 type Ids = { session: string; leg: string; ticket: string | null; model: string | null };
 export type Tally = { calls: number; input: number; output: number; cacheRead: number; cacheCreate: number };

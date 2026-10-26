@@ -1,6 +1,6 @@
 // journal-merge.ts — a session's journal plus its subagent transcripts, as one stream of lines in time
 // order. The order rule is defined here once: journalStream (sse.ts) applies it to the
-// lines it has read so far, and mergeJournalFiles applies it to whole files for a batch reader (the leg
+// lines it has read so far, and mergeJournalFiles applies it to whole files for a batch reader (the worker
 // digest), so the page and the digest interleave subagent lines the same way.
 //
 // Order: by the record's "timestamp"; a line with none, or older than its file's last, takes that last one; ties

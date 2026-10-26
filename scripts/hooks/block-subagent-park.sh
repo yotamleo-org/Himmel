@@ -8,7 +8,7 @@
 # ENDS ITS TURN "waiting for the notification", stalling until a
 # human/controller notices and nudges it awake. One wasted round-trip and a
 # wall-clock stall per occurrence; five occurrences in one 2026-08-26
-# overnight leg, and prose in briefs reduced but never eliminated it. Per
+# overnight worker, and prose in briefs reduced but never eliminated it. Per
 # CLAUDE.md's "Adding a rule — pick the cheapest layer": first drift is
 # signal, on the SECOND escalate to a hook, never to stronger prose — this is
 # drift five.
@@ -127,7 +127,7 @@ than ending it, so it cannot cause a park.)"
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
     || reason='"block-subagent-park: subagent backgrounding/Monitor denied — run in the foreground instead"'
 # Belt-and-braces deny: structured permissionDecision:"deny" on stdout PLUS
-# exit 2 + stderr (same idiom as orchestrator-inline-guard.sh / guard-console-
+# exit 2 + stderr (same idiom as orchestrator-inline-guard.sh / guard-chief-
 # dispatch.sh).
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
 printf '%s\n' "$deny_msg" >&2

@@ -1,5 +1,5 @@
 // scripts/lanes/lane-readiness.mjs
-// Lane READINESS probe, the third leg of the guard's lane
+// Lane READINESS probe, the third worker of the guard's lane
 // qualification (scripts/hooks/guard-implementor-dispatch.sh):
 //   lane_runnable() proves a lane is INVOCABLE (bun + dispatcher on disk);
 //   lane_funded()  (bank-status.ts) proves its BANK has quota;

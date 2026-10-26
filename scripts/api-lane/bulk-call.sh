@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# billed-exempt: API-lane bridge; the console or a leg invokes it for one class sweep and the API-credit ledger meters it
+# billed-exempt: API-lane bridge; the chief or a worker invokes it for one class sweep and the API-credit ledger meters it
 # Haiku bulk-child process bridge on the API lane, for ONE task class: read-only class-sweep site
 # enumeration. The caller gives a defect-class description and absolute file paths; one Haiku call returns the
 # sites (file:line) where the class occurs, as a bounded JSON artifact. It is a trusted-dispatch caller of
@@ -14,9 +14,9 @@
 #        status OK (exit 0) | DENIED | ERROR | INVALID | REFUSED | TIMEOUT | CANCELLED (exit 3);
 #        exit 2 = a usage refusal before any call; exit 4 = not a trusted dispatch. A refusal is final: there is
 #        no subscription fallback.
-# Trusted dispatch: refused from a console-spawned leg (HIMMEL_CONSOLE_LEG) and a console relay
-# (HIMMEL_CONSOLE_RELAY), as write-verdict.sh and go.sh refuse them: a leg cannot spend the API credit on its own
-# authority, its console launches the call.
+# Trusted dispatch: refused from a chief-spawned worker (HIMMEL_CONSOLE_LEG) and a chief relay
+# (HIMMEL_CONSOLE_RELAY), as write-verdict.sh and go.sh refuse them: a worker cannot spend the API credit on its own
+# authority, its chief launches the call.
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -57,9 +57,9 @@ kill_tree() {
   for p in $pids; do kill -KILL "$p" 2>/dev/null; done
 }
 
-# cancel is trusted dispatch too: a leg cannot stop a call its console launched
+# cancel is trusted dispatch too: a worker cannot stop a call its chief launched
 [ -z "${HIMMEL_CONSOLE_LEG:-}" ] && [ -z "${HIMMEL_CONSOLE_RELAY:-}" ] ||
-  { echo "bulk-call: refusing - a console leg or relay does not launch or cancel API calls on its own authority; ask your console" >&2; exit 4; }
+  { echo "bulk-call: refusing - a chief worker or relay does not launch or cancel API calls on its own authority; ask your chief" >&2; exit 4; }
 
 if [ "${1:-}" = "--cancel" ]; then
   [ "$#" -eq 2 ] || usage "--cancel needs exactly one task id"

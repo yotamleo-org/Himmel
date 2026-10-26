@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/eval/test-session-retro.sh - hermetic suite for session-retro.py.
-# Fixture rows are real leg-failures rows (scripts/eval/fixtures/session-retro-ledger.jsonl).
+# Fixture rows are real worker-failures rows (scripts/eval/fixtures/session-retro-ledger.jsonl).
 # Never ~/.himmel. No model call, no bank.
-#  1. classes rank by distinct sessions, then count, and name example legs;
+#  1. classes rank by distinct sessions, then count, and name example workers;
 #  2. --days/--now bound the window by row ts (rows before the cutoff drop out);
 #  3. trajectory metrics (traj/*) are not stalls and are excluded unless asked for;
 #  4. --top caps the list; the ledger is read-only; a missing ledger exits 2.
@@ -21,11 +21,11 @@ bad() { FAIL=$((FAIL + 1)); echo "  FAIL $1"; }
 check() { if eval "$2"; then ok "$1"; else bad "$1"; fi; }
 sr() { python3 "$SR" --ledger "$FX" "$@"; }
 
-echo "1. ranking and example legs"
+echo "1. ranking and example workers"
 sr --now 2026-10-09T00:00:00Z >"$TMP/all.out" 2>"$TMP/all.err"; rc=$?
 check "exits 0" '[ "$rc" = 0 ]'
 check "the most-recurring class is first, with 3 sessions, 9 occurrences" 'sed -n 2p "$TMP/all.out" | grep -qE "^1[[:space:]]+3[[:space:]]+9[[:space:]]+denied/guard-pr-check-literal"'
-check "example legs are named" 'sed -n 2p "$TMP/all.out" | grep -q "N1375"'
+check "example workers are named" 'sed -n 2p "$TMP/all.out" | grep -q "N1375"'
 check "ties on sessions break on count (quiet-run 2 sessions / 4 before single-session classes)" 'sed -n 3p "$TMP/all.out" | grep -qE "denied/require-quiet-run"'
 
 echo "2. window"
@@ -54,16 +54,16 @@ python3 "$SR" --ledger "$TMP/none.jsonl" >"$TMP/miss.out" 2>&1; mrc=$?
 check "a missing ledger exits 2 with a message" '[ "$mrc" = 2 ] && grep -q "cannot read" "$TMP/miss.out"'
 
 printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":{"x":1},"count":1}' >"$TMP/leg.jsonl"
-python3 "$SR" --ledger "$TMP/leg.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/leg.out" 2>&1; lrc=$?
-check "a non-string leg is skipped, not a crash" '[ "$lrc" = 0 ] && grep -q "skipped=1" "$TMP/leg.out"'
+python3 "$SR" --ledger "$TMP/leg.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/worker.out" 2>&1; lrc=$?
+check "a non-string worker is skipped, not a crash" '[ "$lrc" = 0 ] && grep -q "skipped=1" "$TMP/worker.out"'
 python3 "$SR" --ledger "$FX" --now not-a-date >"$TMP/now.out" 2>&1; nrc=$?
 check "an invalid --now is a usage error (exit 2)" '[ "$nrc" = 2 ]'
 python3 "$SR" --ledger "$FX" --top -1 >"$TMP/neg.out" 2>&1; trc=$?
 check "a non-positive --top is a usage error (exit 2)" '[ "$trc" = 2 ]'
 
 printf '%s\n' '{"ts":"2026-10-08T00:00:00Z","session":"s","class":"c","leg":"N1","count":1}' '{"ts":"2026-10-08T00:00:01Z","session":"s","class":"c","leg":"N2","count":10}' >"$TMP/legs.jsonl"
-python3 "$SR" --ledger "$TMP/legs.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/legs.out" 2>&1
-check "example legs rank by leg occurrences within one session" 'grep -qE "c[[:space:]]+N2,N1$" "$TMP/legs.out"'
+python3 "$SR" --ledger "$TMP/legs.jsonl" --now 2026-10-09T00:00:00Z >"$TMP/workers.out" 2>&1
+check "example workers rank by worker occurrences within one session" 'grep -qE "c[[:space:]]+N2,N1$" "$TMP/workers.out"'
 python3 "$SR" --ledger "$TMP/legs.jsonl" --now 2026-10-09T02:00:00+02:00 >"$TMP/off.out" 2>&1
 check "an offset --now is shown as the UTC instant" 'grep -q ".. 2026-10-09T00:00Z" "$TMP/off.out"'
 python3 "$SR" --ledger "$FX" --days -1 >"$TMP/days.out" 2>&1; drc=$?

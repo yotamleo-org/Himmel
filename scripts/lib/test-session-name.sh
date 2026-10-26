@@ -84,9 +84,9 @@ fi
 
 # --- Case 5b: glob metacharacters refused (find -name treats them as
 # wildcards, not literal characters, so an unsanitized name can cross-match
-# another session's console doc under resolve_console_doc's find -name
+# another session's chief doc under resolve_chief_doc's find -name
 # "${name}.md") -----------------------------------
-fake_cmdline claude -n "*-console" load doc.md
+fake_cmdline claude -n "*-chief" load doc.md
 out="$(current_session_name)"; rc=$?
 if [ "$rc" -ne 0 ] && [ -z "$out" ]; then
     pass "glob star in name refused"

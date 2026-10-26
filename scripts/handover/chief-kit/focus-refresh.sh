@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/focus-refresh.sh - refresh the FOCUS page after a
-# ship event, so the page the console republishes shows what Jira, the PRs and
+# ship event, so the page the chief republishes shows what Jira, the PRs and
 # the worker records say now. Best effort for the caller: it prints one line and
 # the caller never fails on it.
 #
-# Usage: focus-refresh.sh --doc <console doc> [--mirror-fresh <dir>] [--repo <owner/repo>]
-#        focus-refresh.sh --doc <console doc> --status
-#        focus-refresh.sh --doc <console doc> --mark-dirty
-# The console doc's `focus-version: <version>` line pins the page to that version;
+# Usage: focus-refresh.sh --doc <chief doc> [--mirror-fresh <dir>] [--repo <owner/repo>]
+#        focus-refresh.sh --doc <chief doc> --status
+#        focus-refresh.sh --doc <chief doc> --mark-dirty
+# The chief doc's `focus-version: <version>` line pins the page to that version;
 # `auto`, or no line beside a `release: <R>` line, follows the current (first)
 # version of release R (`release state`; a failed read is `focus=FAILED:release`).
 # `none`, or no line and no release: `focus=skip`. `focus-plan: <file>` names the plan carrying the `priority:`
@@ -68,7 +68,7 @@ export LC_ALL=C
 . "$HERE/../../lib/env-value.sh"
 
 usage() {
-    echo "usage: focus-refresh.sh --doc <console doc> [--mirror-fresh <dir>] [--repo <owner/repo>] | --status | --mark-dirty" >&2
+    echo "usage: focus-refresh.sh --doc <chief doc> [--mirror-fresh <dir>] [--repo <owner/repo>] | --status | --mark-dirty" >&2
     exit 2
 }
 ORIG=("$@")
@@ -201,7 +201,7 @@ bounded() {
 # exit 3 is the CLI's not-OK status and still prints the state). A failed read is loud, never a stale version.
 if [ "$VER" = auto ]; then
     rel_fail() { echo "focus-refresh: WARN: focus-version: auto: $1; the page is not rendered" >&2; failed release; }
-    [[ "$REL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || rel_fail "no release: line in the console doc"
+    [[ "$REL" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] || rel_fail "no release: line in the chief doc"
     rc=0
     # swallow-ok: stderr is dropped, the exit code is checked on the next line and rel_fail names it
     rs=$(JIRA_PROJECT_KEY="${JIRA_PROJECT_KEY:-HIMMEL}" bounded 60 "${JIRA[@]}" release state "$REL" --json 2>/dev/null) || rc=$?

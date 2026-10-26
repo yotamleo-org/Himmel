@@ -4,7 +4,7 @@
 # WHY THIS EXISTS: `git checkout -- <path>` is a settings.json `deny` entry
 # (.claude/settings.json:108) and `git restore` falls through unmatched to
 # the classifier, resolving as a silent headless DENY. Neither
-# is a sanctioned way for a leg to run the RED half of a TDD control (restore
+# is a sanctioned way for a worker to run the RED half of a TDD control (restore
 # a tracked file to HEAD, run the suite, expect the predicted failure).
 # restore-to-head.sh is the sanctioned shape: it does the same restore but
 # saves the outgoing content first (a plain copy, not a diff), so the discard is
@@ -62,7 +62,7 @@ mkdir -p "$PRIMARY" "$BACKUPS"
     git worktree add -q -b work "$WT" main
 ) || { echo "test-restore-to-head: repo setup failed" >&2; exit 2; }
 
-# --- (h) documented RED control: the deny pattern matches a LEG's command
+# --- (h) documented RED control: the deny pattern matches a WORKER's command
 # line, not this script's own internal call. Assert the actual checkout
 # invocation is present as EXECUTABLE code (not merely mentioned in a
 # comment, which the header itself does for documentation purposes).

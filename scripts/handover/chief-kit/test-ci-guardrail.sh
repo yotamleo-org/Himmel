@@ -4,7 +4,7 @@
 # cycle, and the fetch path (budget gate, slice assembly, cache). No network: gh is never
 # called; the fetch rows drive a stub standing in for ci-metrics.sh --slice.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
 # shellcheck disable=SC2015  # `[ cond ] && pass || fail`: pass() cannot fail, so A && B || C is if-then-else here
 set -uo pipefail
 

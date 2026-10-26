@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # smoke-consult-sandbox.sh - OPT-IN live check of the --consult Bash sandbox.
 #
-# The suite (test-headed-arm-leg.sh) asserts the GENERATED settings JSON; it cannot
+# The suite (test-headed-arm-worker.sh) asserts the GENERATED settings JSON; it cannot
 # prove Claude Code honours the sandbox block. This runs headless `claude -p` from the
 # primary checkout (whose committed settings grant additionalDirectories on the luna
-# vault) through the REAL shim (leg-claude-launcher.sh) with the settings and
-# env headed-arm-leg.sh really generates, and checks the ARTIFACTS on disk:
+# vault) through the REAL shim (worker-claude-launcher.sh) with the settings and
+# env headed-arm-worker.sh really generates, and checks the ARTIFACTS on disk:
 #   0. RED control: the same settings WITHOUT `--setting-sources ""` let a sandboxed
 #      write reach a SIBLING bucket file (else this smoke could not catch a leak: FAIL);
 #   1. the append to the consult doc (append-results.sh) lands;
@@ -45,7 +45,7 @@ case "$(printf '%s\n' "$pf" | tail -n 1)" in
     *) echo "SKIP-BANK smoke-consult-sandbox: bank preflight did not say PROCEED: $(printf '%s\n' "$pf" | tail -n 1)"; exit 3 ;;
 esac
 
-# The consult runs from the console's own (primary) checkout, never a worktree.
+# The consult runs from the chief's own (primary) checkout, never a worktree.
 primary="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir)"
 primary="$(cd -P "$primary/.." && pwd -P)"
 root="$(handover_root)"
@@ -57,7 +57,7 @@ work="$(tmpdir)" || { echo "FAIL smoke-consult-sandbox: tmpdir failed"; exit 1; 
 probe="$primary/.smoke-consult-probe-$$"
 # shellcheck disable=SC2317,SC2329  # invoked via the EXIT trap
 cleanup() { rm -rf "$scratch" "$work"; rm -f "$probe"; }
-SHIM="$HERE/../../lanes/leg-claude-launcher.sh"
+SHIM="$HERE/../../lanes/worker-claude-launcher.sh"
 trap cleanup EXIT
 
 mkdir -p "$scratch" || { echo "FAIL smoke-consult-sandbox: cannot create $scratch"; exit 1; }
@@ -91,7 +91,7 @@ IMPL_GUARD_OK='' HIMMEL_CONSOLE_LEG='' CONSULT_SETTINGS_HOME="$work/home" \
 HEADED_ARM_WORKER_TARGET="$HERE/../headed-arm.sh" \
 KONSOLE_CMD="$work/konsole" PGREP_CMD="$work/pgrep" \
 WORKER_SESSION_REPO="$primary" HEADED_ARM_LOCK_DIR="$work/locks" HEADED_ARM_PROC="$work/proc" \
-    bash "$HERE/headed-arm-worker.sh" --consult --profile design-motion --console SMOKE-console \
+    bash "$HERE/headed-arm-worker.sh" --consult --profile design-motion --chief SMOKE-chief \
         SMOKE-consult "$doc" "$work/signal-never" "$(( $(date +%s) - 100 ))" "$work/log" >"$work/launch.out" 2>&1 &
 launch_pid=$!
 settings="$work/SMOKE-consult.leg-settings.json"

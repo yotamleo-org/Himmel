@@ -1,10 +1,10 @@
 // fleet-cloud.ts — cloud sessions as fleet nodes, for fleet.ts's readFleet.
 //
 // A cloud session (`claude --cloud`) has no local process, ~/.claude/sessions entry or journal, so the census never
-// sees it. Its node comes from two reads: the console bucket's cloud-route.jsonl (cloud-route.mjs appends one
+// sees it. Its node comes from two reads: the chief bucket's cloud-route.jsonl (cloud-route.mjs appends one
 // {ticket, class, reason, brief, time} per routing; a ticket's newest CLOUD-OK inside CLOUD_RECENT_MS is a cloud
 // session) and its PR on GitHub (the PR whose title cites the ticket, and the CLOUD-DONE / CLOUD-BLOCKED comment the
-// cloud brief makes it post, whose first line carries the session URL). Its local shepherd leg (a leg on the same
+// cloud brief makes it post, whose first line carries the session URL). Its local shepherd worker (a worker on the same
 // ticket) is its child. No source exposes a cloud session's token usage, so its usage is null: "not measured".
 //
 // GitHub shares one API quota with the whole fleet, so it is read in ONE batched GraphQL query per poll at most,
@@ -54,7 +54,7 @@ export function cloudRoutes(logs: { lines: string[]; bucket: string }[], now: nu
     .map(([ticket, v]) => ({ ticket, brief: v.brief, at: v.at, bucket: v.bucket })).sort((a, b) => a.ticket.localeCompare(b.ticket));
 }
 
-// The console the brief names (`cloud-pilot: <KEY> (console <name>)`), read from the bucket the log sits in only.
+// The chief the brief names (`cloud-pilot: <KEY> (chief <name>)`), read from the bucket the log sits in only.
 export async function consoleOf(r: CloudRoute): Promise<string | null> {
   if (!r.brief || basename(r.brief) !== `cloud-brief-${r.ticket}.md`) return null;
   let text = "";

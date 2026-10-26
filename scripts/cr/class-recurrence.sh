@@ -55,7 +55,7 @@ BUILTIN_MEMBERS="eval-tokenizer-split HIMMEL-5061
 hook-adhoc-parse HIMMEL-5061
 gnu-only-utility HIMMEL-5062
 bash32-portability HIMMEL-5062
-console-kit-lock-helper HIMMEL-5063"
+chief-kit-lock-helper HIMMEL-5063"
 
 usage() { sed -n '2,32p' "$0" | sed 's/^# \{0,1\}//' >&2; }
 die() { echo "class-recurrence: $*" >&2; exit 2; }

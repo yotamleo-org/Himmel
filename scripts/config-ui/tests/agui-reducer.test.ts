@@ -48,7 +48,7 @@ test("timeline: the turn, text, a lone call, three parallel calls, the critics' 
     { kind: "text", id: "m2" },
     { kind: "tools", ids: ["t5"] },
   ]);
-  // A subagent's call that starts while the leg's Agent calls run is its own entry, never joined to theirs.
+  // A subagent's call that starts while the worker's Agent calls run is its own entry, never joined to theirs.
   expect(end.entries).toContainEqual({ kind: "tools", ids: ["c3a"] });
 });
 

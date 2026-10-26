@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # version-status-audit.sh — Fails loudly when a ticket's status and fixVersion
-# disagree. READ-ONLY: it prints rows, it never writes to Jira (the console
+# disagree. READ-ONLY: it prints rows, it never writes to Jira (the chief
 # resets each RESET row to To Do with a reason comment by hand).
 #
-#   version-status-audit.sh [--mirror DIR] [--legs-from MANIFEST] [--owners "KEY ..."]
+#   version-status-audit.sh [--mirror DIR] [--workers-from MANIFEST] [--owners "KEY ..."]
 #
 # Source: the Jira mirror (one <KEY>.md per issue) and its HIMMEL.versions.tsv.
 # The active version is the earliest unreleased, unarchived one (natural order;
@@ -12,12 +12,12 @@
 #   RELEASED-NOT-DONE   every fixVersion is released and the status category is not Done
 #   NO-VERSION          a Task, Story or Bug with no fixVersion is started (Epics exempt)
 #   BLOCKER-NO-VERSION  an open Task, Story or Bug with no fixVersion blocks an open ticket in the
-#                       active version; the `backlog` label opts out. The console gives it
+#                       active version; the `backlog` label opts out. The chief gives it
 #                       the active version (never reset: it is not started)
 #
-# Ownership: a LATER-VERSION, NO-VERSION or BLOCKER-NO-VERSION row held by a live leg (--legs-from
-# manifest, leg doc not WRAPPED, or --owners) or an open PR (gh title or head
-# branch names the key) is OWNED and not to be reset; the console moves it into
+# Ownership: a LATER-VERSION, NO-VERSION or BLOCKER-NO-VERSION row held by a live worker (--workers-from
+# manifest, worker doc not WRAPPED, or --owners) or an open PR (gh title or head
+# branch names the key) is OWNED and not to be reset; the chief moves it into
 # the active version. A RELEASED-NOT-DONE row is always RESET.
 #
 # Output, one row per ticket, tab-separated:
@@ -30,19 +30,27 @@
 # Exit: 0 no RESET row; 1 at least one RESET row; 2 usage; 4 versions file
 # unreadable; 3 not fully audited
 # (mirror unreadable or empty, versions file missing, a mirror file without
-# front matter, or the leg manifest unreadable: its unowned rows print UNKNOWN).
-# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
+# front matter, or the worker manifest unreadable: its unowned rows print UNKNOWN).
+# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
 set -u
-mirror="${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL"; legs_from="${LEGS_FROM:-}"; owners=""
+# Old names, read only while HIMMEL_LEGACY_NAMES is on.
+case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+if { [ -r "$_ea_dir/../../lib/env-alias.sh" ] && . "$_ea_dir/../../lib/env-alias.sh"; } 2>/dev/null; then
+    alias_env WORKERS_FROM LEGS_FROM
+fi
+unset _ea_dir
+mirror="${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL"; workers_from="${WORKERS_FROM:-}"; owners=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
-        --legs-from) legs_from="${2:-}"; shift 2 || exit 2 ;;
+        --workers-from|--legs-from) [ "$1" = --workers-from ] || legacy_flag --legs-from --workers-from || exit 2; workers_from="${2:-}"; shift 2 || exit 2 ;;
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
-        *) echo 'usage: version-status-audit.sh [--mirror DIR] [--legs-from MANIFEST] [--owners "KEY ..."]' >&2; exit 2 ;;
+        *) echo 'usage: version-status-audit.sh [--mirror DIR] [--workers-from MANIFEST] [--owners "KEY ..."]' >&2; exit 2 ;;
     esac
 done
-export VSA_MIRROR="$mirror" VSA_LEGS_FROM="$legs_from" VSA_OWNERS="$owners"
+export VSA_MIRROR="$mirror" VSA_WORKERS_FROM="$workers_from" VSA_OWNERS="$owners"
 
 exec python3 -I - <<'PY'
 import json, os, re, subprocess, sys
@@ -95,17 +103,17 @@ if not known:
 unreleased.sort(key=vkey)
 active = unreleased[0] if unreleased else None  # None: no LATER-VERSION row can exist
 
-# owners: live legs and open PRs
+# owners: live workers and open PRs
 owner = {}
 for k in os.environ.get('VSA_OWNERS', '').split():
     owner.setdefault(k, 'leg:' + k)
-legs_from = os.environ.get('VSA_LEGS_FROM', '')
+workers_from = os.environ.get('VSA_WORKERS_FROM', '')
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
-legs_unknown = (bool(legs_from) and not os.path.isfile(legs_from)) or (not legs_from and not os.environ.get('VSA_OWNERS', '').split())  # manifest named but missing, or neither manifest nor owners: ownership coverage unknown
-if legs_from and os.path.isfile(legs_from):
+workers_unknown = (bool(workers_from) and not os.path.isfile(workers_from)) or (not workers_from and not os.environ.get('VSA_OWNERS', '').split())  # manifest named but missing, or neither manifest nor owners: ownership coverage unknown
+if workers_from and os.path.isfile(workers_from):
     try:
-        for leg in json.load(open(legs_from)).get('legs', []):
-            doc = leg.get('doc', '')
+        for worker in json.load(open(workers_from)).get('legs', []):
+            doc = worker.get('doc', '')
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
                 unverified = ''
@@ -115,9 +123,9 @@ if legs_from and os.path.isfile(legs_from):
             if marks and marks[-1] == 'WRAPPED':
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
-                owner.setdefault(k, 'leg:%s%s' % (leg.get('label', '?'), unverified))
+                owner.setdefault(k, 'leg:%s%s' % (worker.get('label', '?'), unverified))
     except (OSError, ValueError, AttributeError):
-        legs_unknown = True
+        workers_unknown = True
 gh = os.environ.get('VSA_GH_CMD', 'gh')
 gh_unknown = False
 try:
@@ -134,7 +142,7 @@ try:
 except (OSError, subprocess.SubprocessError):
     print('version-status-audit: open PRs unknown (gh read failed); OWNED rows may be missing')
     gh_unknown = True
-if legs_unknown or gh_unknown:
+if workers_unknown or gh_unknown:
     print('version-status-audit: ownership unknown; unowned started rows print UNKNOWN, not RESET')
 
 rows, audited, skipped, badver = [], 0, 0, []
@@ -171,7 +179,7 @@ for n in names:
     info[key] = (typ, status, done, vers, fm_val(fm, 'labels'), link_keys(fm, 'blocks'), link_keys(fm, 'blocked_by'))
     if cls:
         own = owner.get(key) if cls != 'RELEASED-NOT-DONE' else None
-        rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if (legs_unknown or gh_unknown) and cls != 'RELEASED-NOT-DONE' else 'RESET')))
+        rows.append((cls, key, status, ','.join(vers) or '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if (workers_unknown or gh_unknown) and cls != 'RELEASED-NOT-DONE' else 'RESET')))
 
 if not audited:
     print('version-status-audit: no ticket in %s has front matter' % mirror, file=sys.stderr); sys.exit(3)
@@ -187,7 +195,7 @@ if active:
         if done or vers or typ not in ('Task', 'Story', 'Bug') or 'backlog' in re.findall(r'"([^"]+)"', labels):
             continue
         own = owner.get(key)
-        rows.append(('BLOCKER-NO-VERSION', key, status, '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if legs_unknown or gh_unknown else 'RESET')))
+        rows.append(('BLOCKER-NO-VERSION', key, status, '-', own or 'none', 'OWNED' if own else ('UNKNOWN' if workers_unknown or gh_unknown else 'RESET')))
 rows.sort(key=lambda r: (r[0], int(r[1].split('-')[1])))
 for r in rows:
     print('\t'.join(r))
@@ -196,7 +204,7 @@ if skipped:
     print('version-status-audit: %d mirror file(s) lack front matter and were not audited' % skipped, file=sys.stderr)
 for b in badver:
     print('version-status-audit: %s' % b, file=sys.stderr)
-if skipped or badver or legs_unknown or gh_unknown:
+if skipped or badver or workers_unknown or gh_unknown:
     sys.exit(3)
 sys.exit(1 if any(r[5] == 'RESET' for r in rows) else 0)
 PY

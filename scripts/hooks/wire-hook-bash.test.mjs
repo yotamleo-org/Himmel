@@ -538,7 +538,7 @@ test('rewrites the correct slots when a foreign event key precedes an owned one'
     assert.ok(preCommands[0].includes('/scripts/hooks/run-hook-with-bash.js'),
       'the first OWNED command was rewritten to its resolver');
     const stopCommand = after.hooks.Stop[0].hooks[0].command;
-    assert.match(stopCommand, /stop-console-idle-guard\.sh/);
+    assert.match(stopCommand, /stop-chief-idle-guard\.sh/);
     // BYTE-IDENTICAL is the actual invariant. Asserting the absence of the
     // resolver was a proxy for it, and it stops meaning that once the Stop
     // slot legitimately NAMES the resolver as an argument.

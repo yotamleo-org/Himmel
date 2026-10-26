@@ -38,6 +38,11 @@ assert_eq_fp() {
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# himmel.conf (behaviour keys, HANDOVER_DIR included) is read from the config
+# dir; an empty one keeps every row off the operator's real ~/.himmel.
+mkdir -p "$TMP/himmel-config"
+export HIMMEL_CONFIG_DIR="$TMP/himmel-config"
+
 # Stub keyring. load_dotenv asks scripts/lib/himmel-secrets for secret-class
 # keys, so every row runs with a stub secret-tool and busctl first on PATH and
 # never reaches a real keyring. The stub store is one `attrs<TAB>value` line per
@@ -566,7 +571,37 @@ kreset
 printf 'service=himmel key=TEST_KR_TOKEN scope=user\tfake-keyring-value\n' >"$KSTUB_STORE"
 got=$( cd "$K8LIB" && unset TEST_KR_TOKEN && . load-dotenv.sh && load_dotenv --root "$REPO" TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
 assert_eq "K8 a slash-less source still reaches the resolver" "fake-keyring-value" "$got"
+
+# K9: an unlocked keyring holding none of the requested secrets must fall
+# through to .env, even under a caller's set -e.
+kreset
+printf 'TEST_KR_TOKEN=env-value\n' >"$REPO/.env"
+got=$( unset TEST_KR_TOKEN; set -euo pipefail; cd "$REPO" && load_dotenv --root "$REPO" TEST_KR_TOKEN 2>/dev/null; printf '%s' "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "K9 set -e caller survives a keyring miss and reads .env" "env-value" "$got"
+rm -f "$REPO/.env"
 fi
+
+# C1: HIMMEL_CONFIG_DIR redirects the himmel.conf read; with it unset the
+# default is $HOME/.himmel.
+mkdir -p "$TMP/c1-config"
+printf 'HANDOVER_DIR=/c1/from-conf\n' >"$TMP/c1-config/himmel.conf"
+rm -f "$REPO/.env"
+got=$( cd "$REPO" && unset HANDOVER_DIR && HIMMEL_CONFIG_DIR="$TMP/c1-config" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "C1 HIMMEL_CONFIG_DIR redirects the himmel.conf read" "/c1/from-conf" "$got"
+got=$( cd "$REPO" && unset HANDOVER_DIR && load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "C1 an empty config dir leaves HANDOVER_DIR unset" "<unset>" "$got"
+got=$( unset HIMMEL_CONFIG_DIR; _himmel_config_dir )
+assert_eq "C1 the default config dir is \$HOME/.himmel" "$HOME/.himmel" "$got"
+
+# C2: HIMMEL_CONFIG_DIR never redirects the gate-policy file; load_policy and
+# the policy layer of load_dotenv read $HOME/.himmel/config.json only.
+mkdir -p "$TMP/c2-home/.himmel" "$TMP/c2-config"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1"}}\n' >"$TMP/c2-home/.himmel/config.json"
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' >"$TMP/c2-config/config.json"
+got=$( cd "$REPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/c2-home" HIMMEL_CONFIG_DIR="$TMP/c2-config" load_policy --root "$REPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
+assert_eq "C2 load_policy ignores HIMMEL_CONFIG_DIR" "1" "$got"
+got=$( cd "$REPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/c2-home" HIMMEL_CONFIG_DIR="$TMP/c2-config" load_dotenv CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
+assert_eq "C2 load_dotenv policy layer ignores HIMMEL_CONFIG_DIR" "1" "$got"
 
 echo
 if [ "$FAILED" -eq 0 ]; then

@@ -48,7 +48,7 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 HIMMEL_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# the himmel-lane RELATIVE entry. A leg may run this as the
+# the himmel-lane RELATIVE entry. A worker may run this as the
 # fixed literal `bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS` (the one
 # shape a permission allow rule can match), which runs THIS copy - the
 # branch's. What it prints steers gate policy (CR_REQUIRE_CROSS_MODEL,

@@ -4,7 +4,7 @@ How to read tool usage per launch profile and decide which tool to drop from a p
 
 ## What is recorded
 
-`scripts/eval/worker-digest/leg-digest.ts --profile <launch profile>` stamps the profile on the digest and on every `tool_health[]` row. Without the flag the profile is `unknown`: the recorder's environment says nothing about the profile of the session it digests. The recorder (`leg_ledger.py record --launch-name <session name>`, passed by `leg-digest-step.sh` and by backfill) reads the launched profile from the launcher's per-session launch record and stamps it on the row's `tool_health[]` and `meta.profile`. A session with no launch record, or whose launch lines disagree on the profile, stays `unknown`; rows recorded before this read `unknown` too.
+`scripts/eval/worker-digest/worker-digest.ts --profile <launch profile>` stamps the profile on the digest and on every `tool_health[]` row. Without the flag the profile is `unknown`: the recorder's environment says nothing about the profile of the session it digests. The recorder (`worker_ledger.py record --launch-name <session name>`, passed by `worker-digest-step.sh` and by backfill) reads the launched profile from the launcher's per-session launch record and stamps it on the row's `tool_health[]` and `meta.profile`. A session with no launch record, or whose launch lines disagree on the profile, stays `unknown`; rows recorded before this read `unknown` too.
 
 ## How it is rolled up
 

@@ -83,7 +83,7 @@ export default defineConfig({
   integrations: [
     starlight({
       title: 'himmel',
-      // tokens.css is the canonical palette (the console serves a byte copy); the map points Starlight's --sl-* at it.
+      // tokens.css is the canonical palette (the chief serves a byte copy); the map points Starlight's --sl-* at it.
       customCss: ['./src/styles/tokens.css', './src/styles/starlight-map.css'],
       // The tree is frame 1 of docs-mockup-v5.html; test-site-build.sh compares it with scripts/docs-site/sidebar-v5-frame1.txt.
       sidebar: [
@@ -94,6 +94,7 @@ export default defineConfig({
             { label: 'Quickstart', slug: 'getting-started' },
             { label: 'The adoption trail', link: '/adoption-trail.html' },
             { label: 'Install on your project', slug: 'setup/install' },
+            { label: 'What changes on your machine', slug: 'setup/footprint' },
             { label: 'Install profiles', slug: 'setup/profiles' },
             { label: 'Updating, or undoing the install', slug: 'setup/updating' },
             { label: 'Moving from an older install', slug: 'setup/migrating' },
@@ -135,7 +136,8 @@ export default defineConfig({
           label: 'Run many sessions',
           items: [
             { label: 'AFK (unattended) runs', slug: 'handover/afk-mode' },
-            { label: 'The chief and its workers', slug: 'handover/running-a-console' },
+            { label: 'The chief and its workers', slug: 'handover/running-a-chief' },
+            { label: 'Meet the team', slug: 'team' },
             { label: 'Handover notes', slug: 'internals/handover-system' },
             { label: 'Usage and cost', slug: 'token-economy' },
           ],

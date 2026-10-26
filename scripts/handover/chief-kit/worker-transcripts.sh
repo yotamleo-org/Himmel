@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/worker-transcripts.sh - sourced library: resolve a
-# leg's transcript by its session names, shared by close-wrapped-leg.sh and the
-# leg-digest-step --doc fallback so both use one matcher.
+# worker's transcript by its session names, shared by close-wrapped-worker.sh and the
+# worker-digest-step --doc fallback so both use one matcher.
 #
 #   match_transcripts <files> <head-window> <candidates>
 #       Every file (newline list) whose `"customTitle":"<candidate>"` appears in
 #       its first <head-window> lines (0 = the whole file), sorted and unique.
-#   resolve_leg_transcripts <dir> <candidates> [mtime-days] [head-window]
-#       The two-pass search close-wrapped-leg.sh has always used: *.jsonl under
+#   resolve_worker_transcripts <dir> <candidates> [mtime-days] [head-window]
+#       The two-pass search close-wrapped-worker.sh has always used: *.jsonl under
 #       <dir> changed in the last [mtime-days] (default 1), first [head-window]
 #       lines (default 40); on no MATCH, the whole tree, whole files.
 #   transcript_sid <journal>
 #       The session id a journal belongs to: its basename without .jsonl
-#       (close-wrapped-leg.sh's cap_sid and the digest step's members).
+#       (close-wrapped-worker.sh's cap_sid and the digest step's members).
 #
 # <candidates> is a newline list of session names. Never guesses: callers
 # treat anything but exactly one match as unresolved.
 #
-# Platform guard: Linux bash 3.2+ (console kit; no .ps1 twin).
+# Platform guard: Linux bash 3.2+ (chief kit; no .ps1 twin).
 
 match_transcripts() {
     local files="$1" hw="$2" candidates="$3" matches="" f hit cand
@@ -58,11 +58,11 @@ EOF
     printf '%s\n' "$matches" | sed '/^$/d' | sort -u
 }
 
-resolve_leg_transcripts() {
+resolve_worker_transcripts() {
     local dir="$1" candidates="$2" mtime_window="${3:-1}" head_window="${4:-40}" scan_files found
     # a plain `grep -rlF ... "$dir"` reads every byte of every
     # transcript ever written across the whole projects tree (5.6 GB) -
-    # minutes per close. A wrapped leg's own transcript is always from TODAY,
+    # minutes per close. A wrapped worker's own transcript is always from TODAY,
     # and customTitle (when set) is near the top of the file, so bound both
     # axes: only today's files (mtime), only their first N lines (head).
     scan_files=$(find "$dir" -type f -name '*.jsonl' -mtime "-${mtime_window}" 2>/dev/null)

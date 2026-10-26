@@ -20,14 +20,14 @@
 #     wrong NONE is unbounded silence.
 #
 # REFERENCE POINT, in order of preference:
-#   1. <stamp-file>, written by the runner ONLY after a leg that actually
+#   1. <stamp-file>, written by the runner ONLY after a worker that actually
 #      completed. This is the load-bearing one: on a night where synthesis
 #      legitimately wrote 0 pages, the newest _synthesis/ page does NOT move,
 #      so keying off that page alone would re-fire every night forever on the
 #      same already-considered clips — the exact waste this script exists to
 #      stop.
 #   2. the newest Clippings/_synthesis/*.md page, when no stamp exists yet
-#      (a freshly armed cadence that has never completed a leg).
+#      (a freshly armed cadence that has never completed a worker).
 #   3. nothing — then any triaged clip at all counts as new.
 #
 # WHAT COUNTS AS INPUT: a top-level Clippings/*.md carrying `triaged_at:` and
@@ -39,7 +39,7 @@
 # Usage:
 #   synth-input-check.sh [vault-root] [stamp-file]   -> print NEW | NONE
 #   synth-input-check.sh --stamp [vault-root] [stamp-file]
-#                                                   -> record "a leg completed"
+#                                                   -> record "a worker completed"
 #
 # The runner calls it as `synth-input-check.sh .` because it has already cd'd
 # into the vault: the cadence crosses a cmd.exe -> bash boundary on Windows,
@@ -57,7 +57,7 @@ fi
 
 VAULT="${1:-.}"
 STAMP="${2:-$VAULT/Clippings/_synthesis/.cadence-last-synth}"
-# The stamp records when the GATE ran, not when the leg finished. A synthesis
+# The stamp records when the GATE ran, not when the worker finished. A synthesis
 # session takes 8-39 minutes, and a clip triaged inside that window is older
 # than a completion-time stamp but was never part of what the session read --
 # so a completion-time stamp would skip it on the next gate. The gate writes
@@ -75,21 +75,21 @@ _stamp_dir() {
 # Same-directory `mv` preserves the pending mark's mtime.
 promote_pending_mark() { [ -f "$PENDING" ] && mv -f "$PENDING" "$STAMP" 2>/dev/null; }
 
-# Recorded at gate time, so the reference is the check instant, not leg end.
+# Recorded at gate time, so the reference is the check instant, not worker end.
 write_pending_mark() { date -u +%Y-%m-%dT%H:%M:%SZ > "$PENDING" 2>/dev/null || true; }
 
 if [ "$STAMP_MODE" -eq 1 ]; then
     _stamp_dir
     if promote_pending_mark; then
-        echo "synth-input-check: stamped $STAMP (at the gate instant, not leg end)" >&2
+        echo "synth-input-check: stamped $STAMP (at the gate instant, not worker end)" >&2
     else
         # NO fallback to `now`. Without a pending mark there is no evidence of
-        # WHEN this leg's gate ran, and stamping completion time would advance
+        # WHEN this worker's gate ran, and stamping completion time would advance
         # the reference past every clip triaged during the session — the exact
         # window the pending mark exists to close, reintroduced on the degraded
         # path. Leaving the reference where it is costs at most one redundant
         # session next night; advancing it blind drops clips no session read.
-        # Never fatal either way: a leg that just succeeded is not failed over
+        # Never fatal either way: a worker that just succeeded is not failed over
         # a stamp.
         echo "synth-input-check: no pending gate mark — reference left unchanged (next run re-checks against the previous stamp / newest synthesis page)" >&2
     fi
@@ -103,7 +103,7 @@ fi
 # narrows it to a single tick. Unconditional, so every path — including the two
 # fail-open NEWs above the scan — leaves a mark, with no per-call-site rule to
 # forget. A NONE night writes one too, which is harmless: --stamp only ever runs
-# after a leg, and a leg only runs after NEW.
+# after a worker, and a worker only runs after NEW.
 # (Residual, accepted: a clip triaged inside that one tick is still excluded.
 # It is not lost — this gate is a TRIGGER, not a filter, and /synthesize-clips
 # reads the whole inbox — so the next night with any new input picks it up.)
@@ -127,7 +127,7 @@ REF=""
 REF_KIND=""
 if [ -f "$STAMP" ]; then
     REF="$STAMP"
-    REF_KIND="last completed leg"
+    REF_KIND="last completed worker"
 else
     # Newest synthesis page. `ls -t` over one small directory; a glob that
     # matches nothing expands to the literal pattern, which `ls` reports as
@@ -217,5 +217,5 @@ if [ -n "$_found" ]; then
     echo "synth-input-check: new triaged input since the reference (first: $_found)" >&2
     emit NEW
 fi
-echo "synth-input-check: no triaged clip newer than the reference — skipping the leg" >&2
+echo "synth-input-check: no triaged clip newer than the reference — skipping the worker" >&2
 emit NONE

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# billed-exempt: a /pr-check stage the PR leg runs deliberately; bank-preflight gated
+# billed-exempt: a /pr-check stage the PR worker runs deliberately; bank-preflight gated
 # claude-floor-review.sh — the CONTEXT-FREE Claude floor review.
 #
 # When CR_REQUIRE_CROSS_MODEL=1 + CR_FLOOR_FALLBACK=claude-only and every

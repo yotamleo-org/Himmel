@@ -33,7 +33,7 @@ export type RoutingInputs = {
 
 export type RoutingDecision = { lane: LaneName; reason: string } | { lane: "defer"; reason: string };
 
-// act-exec is eligible for a job iff: the job's OS leg is linux, the matrix entry
+// act-exec is eligible for a job iff: the job's OS worker is linux, the matrix entry
 // exists and is not gha-only, the lane is up, and it is under its concurrency cap.
 function actEligible(inp: RoutingInputs): boolean {
   const { job, lanes, actMatrix } = inp;

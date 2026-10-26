@@ -51,7 +51,7 @@
     {
       "name": "himmel-bus",
       "source": "./plugins/himmel-bus",
-      "description": "Local chained message bus between himmel sessions (console, legs, paired judge): send and read tools over a stdio MCP server plus the `bus` CLI. Ships no .mcp.json: the server is defined in the plugin-profiles mcpCatalog and only profiles that opt in load it (HIMMEL-4830).",
+      "description": "Local chained message bus between himmel sessions (chief, workers, paired judge): send and read tools over a stdio MCP server plus the `bus` CLI. Ships no .mcp.json: the server is defined in the plugin-profiles mcpCatalog and only profiles that opt in load it (HIMMEL-4830).",
       "author": {
         "name": "yotamleo"
       },
@@ -144,7 +144,7 @@
     {
       "name": "pstack",
       "source": "./plugins/pstack",
-      "description": "[himmel vendor] Seven opt-in skills from cursor/plugins pstack, pinned at 99743e9c151c8537cbbf1f98bb38f34ef3368453 (/correct, /blast-radius, /create-verification-skill, /maintain-verification-skill, /benchmark-checklist, principle-explain-the-number, /in-your-own-words). All disable-model-invocation; no hooks, agents or autonomy. On for interactive sessions only, off in every leg profile; one-step disable. See marketplace/plugins/pstack/README.md.",
+      "description": "[himmel vendor] Seven opt-in skills from cursor/plugins pstack, pinned at 99743e9c151c8537cbbf1f98bb38f34ef3368453 (/correct, /blast-radius, /create-verification-skill, /maintain-verification-skill, /benchmark-checklist, principle-explain-the-number, /in-your-own-words). All disable-model-invocation; no hooks, agents or autonomy. On for interactive sessions only, off in every worker profile; one-step disable. See marketplace/plugins/pstack/README.md.",
       "author": {
         "name": "Lauren Tan (upstream) / yotamleo (vendor)"
       },
@@ -575,7 +575,7 @@
         "url": "https://github.com/yotamleo-org/obsidian-second-brain.git",
         "sha": "e42dac7976cdf1466f4a6d90f2de96f92e41c1f4"
       },
-      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution, himmel fork carrying lockfile advisory bumps and a no-auto-open test guard over upstream v0.18.1] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to the himmel fork commit e42dac7976cdf1466f4a6d90f2de96f92e41c1f4, which patches the uv.lock Critical and High advisories upstream has not fixed (HIMMEL-7226), stops the test run from launching the real Obsidian app (HIMMEL-7240) and carries upstream #338 -fps_mode for ffmpeg 9, per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean legs and the console resolve it off.",
+      "description": "[eugeniughelbur/obsidian-second-brain, MIT, vendor + attribution, himmel fork carrying lockfile advisory bumps and a no-auto-open test guard over upstream v0.18.1] Obsidian vault memory: 47 slash commands plus a `vault` MCP server (uv, no key). Replaces the user-scope ~/.claude/skills/obsidian-second-brain copy, which ignored enabledPlugins and loaded ~2.2k tok of listing into every session including bare (HIMMEL-4018). Explicit HTTPS git url (HIMMEL-549), pinned to the himmel fork commit e42dac7976cdf1466f4a6d90f2de96f92e41c1f4, which patches the uv.lock Critical and High advisories upstream has not fixed (HIMMEL-7226), stops the test run from launching the real Obsidian app (HIMMEL-7240) and carries upstream #338 -fps_mode for ffmpeg 9, per himmel supply-chain policy (HIMMEL-3069). strict:true: upstream plugin.json declares the commands dir and the MCP server. Enabled by the vault profiles only (user, lane-content, telegram) plus the operator profile; lean workers and the chief resolve it off.",
       "strict": true,
       "author": {
         "name": "Eugeniu Ghelbur",

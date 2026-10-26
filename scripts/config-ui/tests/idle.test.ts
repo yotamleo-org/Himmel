@@ -14,7 +14,7 @@ async function launch() {
   const reader = p.stdout.getReader();
   const line = new TextDecoder().decode((await reader.read()).value);
   const url = line.trim();
-  // the one URL lands on the fleet (/agui/) when its page is built, else on the console.
+  // the one URL lands on the fleet (/agui/) when its page is built, else on the chief.
   expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/(?:agui\/)?#t=[0-9a-f]{64}$/);
   const [base, frag] = url.split(/\/(?:agui\/)?#t=/);
   return { p, base, token: frag, started: Date.now() };

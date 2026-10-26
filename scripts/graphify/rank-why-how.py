@@ -16,7 +16,7 @@ A why/how question starts with why, "how <word>", what for or for what reason, o
 "why|how does|do|is|..."; "how-to docs" and "reason codes" are not. Any other question passes
 through byte for byte.
 
-Usage: <leg-graph query output> | python3 rank-why-how.py <graph.json> <question> [<budget>]
+Usage: <worker-graph query output> | python3 rank-why-how.py <graph.json> <question> [<budget>]
 
 Fails open: an unreadable graph or any error prints the input as-is and says so on stderr.
 ponytail: word overlap, not meaning; upgrade path is graphify scoring rationale itself (HIMMEL-6056).

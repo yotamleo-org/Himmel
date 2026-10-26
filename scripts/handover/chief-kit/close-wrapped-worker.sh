@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/close-wrapped-worker.sh - console-run wrapped-leg
-# window close. A console's `kill <konsole pid>` is
+# scripts/handover/chief-kit/close-wrapped-worker.sh - chief-run wrapped-worker
+# window close. A chief's `kill <konsole pid>` is
 # classifier-denied [Interfere With Workloads] when typed as a bare literal -
 # this script wraps the same TERM under a literal the classifier allowlists,
-# but ONLY after verifying the leg is actually done: the queue lock on its
+# but ONLY after verifying the worker is actually done: the queue lock on its
 # doc is free AND its own last Results marker-bullet is WRAPPED. It never
-# kills a pid it cannot independently prove belongs to that leg.
+# kills a pid it cannot independently prove belongs to that worker.
 #
-# Usage: close-wrapped-worker.sh [--check] [--console | --fleet <manifest>] <leg-doc>
+# Usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <worker-doc>
 #        close-wrapped-worker.sh [--check] --sweep --fleet <manifest>
 # --sweep runs this script on every doc in the fleet manifest and closes each one
 # that is finished (lock free, tail WRAPPED); an unfinished doc is skipped, a
@@ -19,38 +19,38 @@
 # prune. It prints SAFE-TO-CLOSE (rc 0) or the refusal a real close would
 # print, with the same exit code, so an operator closing a window by hand can
 # ask first. Exit 0 means safe to close.
-# --console closes a wrapped PREDECESSOR console's window: the
+# --chief closes a wrapped PREDECESSOR chief's window: the
 # same lock/WRAPPED/one-session checks and subtree check, then TERM - no cost
 # row, /tmp reap, digest or worktree prune. Run it right after your own LIVE.
 # --fleet removes the doc after a successful close, including benign prune skips.
 # A manifest update failure returns 1 after the session has already closed.
 #
 # Refuses (nothing signaled) unless:
-#   - `queue-lock.sh status <leg-doc>` reports free (rc=0);
+#   - `queue-lock.sh status <worker-doc>` reports free (rc=0);
 #   - the doc's last `## Results` marker-bullet (one of LIVE/FINDING/
 #     RESOLVED/READY/BLOCKED/HALTED/WRAPPED, leading token of the newest
 #     such bullet) is WRAPPED;
 #   - exactly one live `claude` session's real argv (via
 #     scripts/lanes/lib/claude-sessions.sh's claude_sessions, /proc-argv
 #     based, never a flattened pgrep -af scan) carries a `-n <name>` naming
-#     the leg (names derived by scripts/lib/leg-identity.sh's leg_identity -
+#     the worker (names derived by scripts/lib/worker-identity.sh's worker_identity -
 #     the doc stem, its undated form, and any legacy-family derived name; a
-#     relaunched leg's trailing -r<N> on the session name is accepted).
+#     relaunched worker's trailing -r<N> on the session name is accepted).
 # ponytail: name-only window match, upgrade path HIMMEL-5928: the launch record
-# (launch-logs/<name>.log) holds no pid and a finished leg's lock is free, so
-# there is no recorded pid to resolve by. Upgrade path: have headed-arm-leg.sh
+# (launch-logs/<name>.log) holds no pid and a finished worker's lock is free, so
+# there is no recorded pid to resolve by. Upgrade path: have headed-arm-worker.sh
 # record the claude pid, then resolve by it first, name as fallback.
 # TERM goes to that one pid only - it never signals a non-matching pid, and
 # 0 or >1 matches is a refusal, not a best guess.
 #
-# After the signal, the leg's own /tmp scratch (its judge dirs, and its session
-# scratch dir) is archived then reaped via tmp-reap.sh, scoped to this leg only
+# After the signal, the worker's own /tmp scratch (its judge dirs, and its session
+# scratch dir) is archived then reaped via tmp-reap.sh, scoped to this worker only
 # a reap failure warns and never fails the close.
 #
 # Then the failure-loop digest: the session id is read from
 # ~/.claude/sessions/<pid>.json BEFORE the TERM, and after it
-# leg-digest-step.sh digests that session into the leg-failures and eval-runs
-# ledgers under a hard timeout (CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT, default 120).
+# worker-digest-step.sh digests that session into the worker-failures and eval-runs
+# ledgers under a hard timeout (CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT, default 120).
 # It prints exactly one stdout line, `digest=ok|partial ...`,
 # `digest=failed:<reason>` or `digest=skipped:<reason>`, and never changes the
 # exit code or any other output line.
@@ -65,15 +65,15 @@
 # with no MERGED/READY bullet at all, since the branch lookup does not depend
 # on one), OR the PR is CLOSED unmerged or there is no PR, the working tree is
 # clean, and the branch's head is either pushed to origin or carries no
-# commits beyond main. An OPEN PR (a parked leg) or an unresolvable PR state
+# commits beyond main. An OPEN PR (a parked worker) or an unresolvable PR state
 # (gh/cache failure) are never pruned. Never guesses a worktree: 0 or >1
 # candidates in the doc skips the prune with a report.
 #
 # Before signalling, reuses scripts/handover/wrap-subtree-check.sh
-# on the matched pid: a non-harness descendant still alive (a leg mid an
+# on the matched pid: a non-harness descendant still alive (a worker mid an
 # operator command, a tool call in flight) refuses the TERM rather than
 # killing it out from under that work - never guessed, never overridden.
-# A withheld subtree is not a failure: the console re-runs this script later,
+# A withheld subtree is not a failure: the chief re-runs this script later,
 # same as any other "retry shortly" refusal here.
 #
 # Exit codes:
@@ -82,19 +82,31 @@
 #   2  usage (missing/unreadable doc)
 #   3  refused - the queue lock is not free
 #   4  refused - the doc's last marker-bullet is not WRAPPED
-#   5  refused - 0 or >1 live sessions matched the leg's names
+#   5  refused - 0 or >1 live sessions matched the worker's names
 #   6  refused - the matched session still has a non-harness process alive
 #      (wrap-subtree-check.sh reported WITHHELD, or could not prove CLOSABLE)
 #   7  refused - the matched session still has a live in-process subagent (an
-#      Agent-tool child, e.g. a console's judge call), or live-subagents.sh
+#      Agent-tool child, e.g. a chief's judge call), or live-subagents.sh
 #      could not prove it has none; retry once they finish
 #
 # Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh;
-# no .ps1 twin - konsole legs are Linux/KDE-only, same guard as
-# headed-arm-leg.sh's konsole launch path).
+# no .ps1 twin - konsole workers are Linux/KDE-only, same guard as
+# headed-arm-worker.sh's konsole launch path).
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/env-alias.sh
+. "$HERE/../../lib/env-alias.sh"
+alias_env CLOSE_WRAPPED_WORKER_CUSTOMTITLE_HEAD CLOSE_WRAPPED_LEG_CUSTOMTITLE_HEAD
+alias_env CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT
+alias_env CLOSE_WRAPPED_WORKER_MTIME_DAYS CLOSE_WRAPPED_LEG_MTIME_DAYS
+alias_env CLOSE_WRAPPED_WORKER_PROJECTS_DIR CLOSE_WRAPPED_LEG_PROJECTS_DIR
+alias_env CLOSE_WRAPPED_WORKER_PRUNE_RETRIES CLOSE_WRAPPED_LEG_PRUNE_RETRIES
+alias_env CLOSE_WRAPPED_WORKER_PRUNE_WAIT CLOSE_WRAPPED_LEG_PRUNE_WAIT
+alias_env CLOSE_WRAPPED_WORKER_REAP_WAIT CLOSE_WRAPPED_LEG_REAP_WAIT
+alias_env CLOSE_WRAPPED_WORKER_SESSIONS_DIR CLOSE_WRAPPED_LEG_SESSIONS_DIR
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_DIGEST_STEP_BIN LEG_DIGEST_STEP_BIN
 KILL="${KILL_BIN:-kill}"
 CLEAN_SH="${CLEAN_SH_BIN:-$HERE/../../clean.sh}"
 WRAP_SUBTREE_CHECK="${WRAP_SUBTREE_CHECK_BIN:-$HERE/../wrap-subtree-check.sh}"
@@ -102,7 +114,7 @@ TMP_REAP="${TMP_REAP_BIN:-$HERE/../../tmp-reap.sh}"
 LIVE_SUBAGENTS="${LIVE_SUBAGENTS_BIN:-$HERE/live-subagents.sh}"
 
 usage() {
-    echo "usage: close-wrapped-worker.sh [--check] [--console | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
+    echo "usage: close-wrapped-worker.sh [--check] [--chief | --fleet <manifest>] <doc> | [--check] --sweep --fleet <manifest>" >&2
 }
 
 FLEET_MANIFEST=""
@@ -118,26 +130,28 @@ fi
 if [ "${1:-}" = --fleet ]; then
     if [ "$#" -lt 2 ] || [ -z "${2:-}" ]; then usage; exit 2; fi
     FLEET_MANIFEST="$2"; shift 2
-elif [ "${1:-}" = --console ]; then
+elif [ "${1:-}" = --chief ]; then
+    CHIEF_MODE=1; shift
+elif [ "${1:-}" = --console ] && legacy_flag --console --chief; then
     CHIEF_MODE=1; shift
 fi
 
-# Only successful close exits retire the leg; refusals and failed pruning keep it.
+# Only successful close exits retire the worker; refusals and failed pruning keep it.
 close_success() {
     if [ -n "$FLEET_MANIFEST" ] && ! bash "$HERE/fleet-manifest.sh" remove "$FLEET_MANIFEST" "$DOC"; then
-        echo "close-wrapped-leg: session closed but fleet manifest update failed: $FLEET_MANIFEST" >&2
+        echo "close-wrapped-worker: session closed but fleet manifest update failed: $FLEET_MANIFEST" >&2
         exit 1
     fi
     exit 0
 }
 
-# ---------- --sweep: close every finished leg in the manifest ----------
+# ---------- --sweep: close every finished worker in the manifest ----------
 if [ "$SWEEP_MODE" -eq 1 ]; then
     if [ -z "$FLEET_MANIFEST" ] || [ "$#" -ne 0 ] || [ ! -r "$FLEET_MANIFEST" ]; then
         usage
         exit 2
     fi
-    sweep_docs=$(jq -r '.legs[]?.doc // empty' "$FLEET_MANIFEST" 2>/dev/null) || { echo "close-wrapped-leg: cannot read fleet manifest $FLEET_MANIFEST" >&2; exit 1; }
+    sweep_docs=$(jq -r '.legs[]?.doc // empty' "$FLEET_MANIFEST" 2>/dev/null) || { echo "close-wrapped-worker: cannot read fleet manifest $FLEET_MANIFEST" >&2; exit 1; }
     sw_check=""
     [ "$CHECK_MODE" -eq 1 ] && sw_check="--check"
     sw_closed=0; sw_refused=0; sw_skipped=0
@@ -164,51 +178,51 @@ fi
 DOC="$1"
 if [ ! -f "$DOC" ] || [ ! -r "$DOC" ]; then
     usage
-    echo "close-wrapped-leg: cannot read doc '$DOC'" >&2
+    echo "close-wrapped-worker: cannot read doc '$DOC'" >&2
     exit 2
 fi
 
 if ! bash "$HERE/../queue-lock.sh" status "$DOC" >/dev/null 2>&1; then
-    echo "close-wrapped-leg: refusing - the queue lock on $DOC is not free" >&2
+    echo "close-wrapped-worker: refusing - the queue lock on $DOC is not free" >&2
     exit 3
 fi
 
-# shellcheck source=scripts/lib/leg-tail-status.sh
+# shellcheck source=scripts/lib/worker-tail-status.sh
 # shellcheck disable=SC1091
-if ! . "$HERE/../../lib/leg-tail-status.sh"; then
-    echo "close-wrapped-leg: cannot load scripts/lib/leg-tail-status.sh" >&2
+if ! . "$HERE/../../lib/worker-tail-status.sh"; then
+    echo "close-wrapped-worker: cannot load scripts/lib/worker-tail-status.sh" >&2
     exit 1
 fi
 
-last_marker=$(leg_tail_status "$DOC")
+last_marker=$(worker_tail_status "$DOC")
 if [ "$last_marker" != "WRAPPED" ]; then
-    echo "close-wrapped-leg: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
+    echo "close-wrapped-worker: refusing - the doc's last Results marker-bullet is '${last_marker:-<none>}', not WRAPPED" >&2
     exit 4
 fi
 
-# shellcheck source=scripts/lib/leg-identity.sh
+# shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/worker-identity.sh"; then
-    echo "close-wrapped-leg: cannot load scripts/lib/worker-identity.sh" >&2
+    echo "close-wrapped-worker: cannot load scripts/lib/worker-identity.sh" >&2
     exit 1
 fi
 # shellcheck source=scripts/lanes/lib/claude-sessions.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lanes/lib/claude-sessions.sh"; then
-    echo "close-wrapped-leg: cannot load scripts/lanes/lib/claude-sessions.sh" >&2
+    echo "close-wrapped-worker: cannot load scripts/lanes/lib/claude-sessions.sh" >&2
     exit 1
 fi
-# shellcheck source=scripts/handover/chief-kit/leg-transcripts.sh
+# shellcheck source=scripts/handover/chief-kit/worker-transcripts.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/worker-transcripts.sh"; then
-    echo "close-wrapped-leg: cannot load scripts/handover/chief-kit/worker-transcripts.sh" >&2
+    echo "close-wrapped-worker: cannot load scripts/handover/chief-kit/worker-transcripts.sh" >&2
     exit 1
 fi
 
-ident=$(leg_identity "$DOC")
-# leg_identity's names strip -RESUME, but a
-# console may launch a leg's session under the FULL doc stem (-RESUME and
-# date intact) - accept that shape too, locally here (not in leg-identity.sh,
+ident=$(worker_identity "$DOC")
+# worker_identity's names strip -RESUME, but a
+# chief may launch a worker's session under the FULL doc stem (-RESUME and
+# date intact) - accept that shape too, locally here (not in worker-identity.sh,
 # which other callers rely on for the stripped forms).
 doc_stem="$(basename "$DOC" .md)"
 names=",${ident#*$'\t'},${doc_stem},"
@@ -216,7 +230,7 @@ names=",${ident#*$'\t'},${doc_stem},"
 sessions=$(claude_sessions)
 census_rc=$?
 if [ "$census_rc" -gt 1 ]; then
-    echo "close-wrapped-leg: claude_sessions census failed (rc=$census_rc)" >&2
+    echo "close-wrapped-worker: claude_sessions census failed (rc=$census_rc)" >&2
     exit 1
 fi
 
@@ -227,7 +241,7 @@ while IFS=$'\t' read -r pid name _model _ac; do
     case "$name" in
         '#'*) continue ;;
     esac
-    # a relaunched leg runs as <name>-r<N>; the original and its relaunch both
+    # a relaunched worker runs as <name>-r<N>; the original and its relaunch both
     # live is an ambiguity the exactly-one rule below refuses
     base_name=$(printf '%s' "$name" | sed -E 's/-r[0-9]+$//')
     case "$names" in
@@ -240,65 +254,65 @@ $sessions
 EOF
 
 if [ "$match_count" -ne 1 ]; then
-    echo "close-wrapped-leg: refusing - $match_count live session(s) matched leg names [${ident#*$'\t'}] (need exactly 1)" >&2
+    echo "close-wrapped-worker: refusing - $match_count live session(s) matched worker names [${ident#*$'\t'}] (need exactly 1)" >&2
     exit 5
 fi
 
 # ---------- Pre-signal session-note capture --------------------
-# A wrapped leg's SessionEnd hook never runs: Claude Code cancels it the
+# A wrapped worker's SessionEnd hook never runs: Claude Code cancels it the
 # instant our TERM below lands, so no luna session note is written. Reproduce
-# the hook's input here, from what we already resolved above (the leg's
+# the hook's input here, from what we already resolved above (the worker's
 # session names) - never a guess: resolve those names to EXACTLY ONE
-# transcript file (same customTitle-grep precedent as leg-burn.sh's
+# transcript file (same customTitle-grep precedent as worker-burn.sh's
 # session-name lookup, but refusing instead of picking "newest" on
 # ambiguity), pull cwd straight from that transcript (every row carries a
 # "cwd" field), derive session_id from the transcript's own filename, and
 # feed end-session-wiki.sh the same SessionEnd JSON shape Claude Code would
 # have. 0 or >1 matching transcripts: say so on stderr and still close -
 # never guess which one. The hook itself dedups by session_id,
-# so it is harmless if the leg's own SessionEnd ALSO manages to fire.
+# so it is harmless if the worker's own SessionEnd ALSO manages to fire.
 TRANSCRIPT=""
 END_SESSION_WIKI="${END_SESSION_WIKI_BIN:-$HERE/../../hooks/end-session-wiki.sh}"
-# a claudex leg runs with CLAUDE_CONFIG_DIR=~/.claude-codex, so its
-# sessions/<pid>.json and projects/ are NOT under the console's config dir. Read
+# a claudex worker runs with CLAUDE_CONFIG_DIR=~/.claude-codex, so its
+# sessions/<pid>.json and projects/ are NOT under the chief's config dir. Read
 # the matched pid's own CLAUDE_CONFIG_DIR from /proc/<pid>/environ; failing that,
-# the fleet manifest's lane (claudex -> ~/.claude-codex); else the console's.
-# The explicit CLOSE_WRAPPED_LEG_*_DIR overrides below still win.
-leg_cfg=""
+# the fleet manifest's lane (claudex -> ~/.claude-codex); else the chief's.
+# The explicit CLOSE_WRAPPED_WORKER_*_DIR overrides below still win.
+worker_cfg=""
 if [ -r "${CLAUDE_SESSIONS_PROC:-/proc}/$matched/environ" ]; then
-    leg_cfg=$(tr '\0' '\n' < "${CLAUDE_SESSIONS_PROC:-/proc}/$matched/environ" 2>/dev/null \
+    worker_cfg=$(tr '\0' '\n' < "${CLAUDE_SESSIONS_PROC:-/proc}/$matched/environ" 2>/dev/null \
         | sed -n 's/^CLAUDE_CONFIG_DIR=//p' | head -n 1)
 fi
-if [ -z "$leg_cfg" ] && [ -n "$FLEET_MANIFEST" ] && [ -r "$FLEET_MANIFEST" ] \
+if [ -z "$worker_cfg" ] && [ -n "$FLEET_MANIFEST" ] && [ -r "$FLEET_MANIFEST" ] \
     && [ "$(jq -r --arg d "$DOC" '[.legs[]? | select(.doc == $d) | .lane // "unknown"] | first // empty' "$FLEET_MANIFEST" 2>/dev/null)" = claudex ]; then
-    leg_cfg="$HOME/.claude-codex"
+    worker_cfg="$HOME/.claude-codex"
 fi
-WORKER_SESSION_CONFIG_DIR="${leg_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
-PROJECTS_DIR="${CLOSE_WRAPPED_LEG_PROJECTS_DIR:-$WORKER_SESSION_CONFIG_DIR/projects}"
+WORKER_SESSION_CONFIG_DIR="${worker_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+PROJECTS_DIR="${CLOSE_WRAPPED_WORKER_PROJECTS_DIR:-$WORKER_SESSION_CONFIG_DIR/projects}"
 if [ "$CHECK_MODE" -eq 0 ] && [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
-    # The two-pass customTitle search lives in leg-transcripts.sh,
-    # shared with leg-digest-step.sh --doc: same "exactly one" semantics.
+    # The two-pass customTitle search lives in worker-transcripts.sh,
+    # shared with worker-digest-step.sh --doc: same "exactly one" semantics.
     candidates=$(printf '%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" | tr ',' '\n' | sed '/^$/d')
-    transcript_matches=$(resolve_leg_transcripts "$PROJECTS_DIR" "$candidates" \
-        "${CLOSE_WRAPPED_LEG_MTIME_DAYS:-1}" "${CLOSE_WRAPPED_LEG_CUSTOMTITLE_HEAD:-40}")
+    transcript_matches=$(resolve_worker_transcripts "$PROJECTS_DIR" "$candidates" \
+        "${CLOSE_WRAPPED_WORKER_MTIME_DAYS:-1}" "${CLOSE_WRAPPED_WORKER_CUSTOMTITLE_HEAD:-40}")
     tcount=$(printf '%s\n' "$transcript_matches" | grep -c . || true)
     if [ "$tcount" -eq 1 ]; then
         TRANSCRIPT="$transcript_matches"
         cap_cwd=$(jq -r 'select(.cwd != null) | .cwd' "$TRANSCRIPT" 2>/dev/null | head -1)
         cap_sid=$(transcript_sid "$TRANSCRIPT")
         if [ -n "$cap_cwd" ]; then
-            cap_payload=$(jq -n --arg t "$TRANSCRIPT" --arg s "$cap_sid" --arg c "$cap_cwd" --arg r "leg-close" \
+            cap_payload=$(jq -n --arg t "$TRANSCRIPT" --arg s "$cap_sid" --arg c "$cap_cwd" --arg r "worker-close" \
                 '{transcript_path:$t, session_id:$s, cwd:$c, reason:$r}')
             if printf '%s' "$cap_payload" | bash "$END_SESSION_WIKI" >/dev/null 2>&1; then
-                echo "close-wrapped-leg: captured session note for $cap_sid before signalling"
+                echo "close-wrapped-worker: captured session note for $cap_sid before signalling"
             else
-                echo "close-wrapped-leg: end-session-wiki failed for $cap_sid - closing anyway, never blocking on it" >&2
+                echo "close-wrapped-worker: end-session-wiki failed for $cap_sid - closing anyway, never blocking on it" >&2
             fi
         else
-            echo "close-wrapped-leg: resolved transcript $TRANSCRIPT has no 'cwd' field - skipping the pre-signal capture, never guessing" >&2
+            echo "close-wrapped-worker: resolved transcript $TRANSCRIPT has no 'cwd' field - skipping the pre-signal capture, never guessing" >&2
         fi
     else
-        echo "close-wrapped-leg: $tcount transcript(s) matched leg names [${ident#*$'\t'}] - cannot resolve unambiguously, skipping the pre-signal capture, never guessing" >&2
+        echo "close-wrapped-worker: $tcount transcript(s) matched worker names [${ident#*$'\t'}] - cannot resolve unambiguously, skipping the pre-signal capture, never guessing" >&2
     fi
 fi
 
@@ -306,7 +320,7 @@ subtree_out=$(bash "$WRAP_SUBTREE_CHECK" "$matched" 2>&1)
 subtree_rc=$?
 if [ "$subtree_rc" -ne 0 ]; then
     echo "$subtree_out"
-    echo "close-wrapped-leg: refusing to signal pid $matched - wrap-subtree-check.sh did not report CLOSABLE (see above); retry shortly" >&2
+    echo "close-wrapped-worker: refusing to signal pid $matched - wrap-subtree-check.sh did not report CLOSABLE (see above); retry shortly" >&2
     exit 6
 fi
 
@@ -314,9 +328,9 @@ fi
 # Captured BEFORE the TERM, while the session's own record still exists: the
 # live pid's ~/.claude/sessions/<pid>.json names its sessionId. Unreadable or
 # not a UUID: the transcript resolved above supplies it. The subagent gate
-# below and the leg's digest step both use it.
+# below and the worker's digest step both use it.
 digest_sid=""
-sessions_json="${CLOSE_WRAPPED_LEG_SESSIONS_DIR:-$WORKER_SESSION_CONFIG_DIR/sessions}/$matched.json"
+sessions_json="${CLOSE_WRAPPED_WORKER_SESSIONS_DIR:-$WORKER_SESSION_CONFIG_DIR/sessions}/$matched.json"
 digest_sid=$(jq -r '.sessionId // empty' "$sessions_json" 2>/dev/null)
 case "$digest_sid" in
     ????????-????-????-????-????????????) ;;
@@ -325,7 +339,7 @@ esac
 
 # ---------- Live in-process subagents ----------------------------
 # An Agent-tool child is not a process, so the subtree check above cannot see
-# it: TERMing its parent kills it and loses its result (a console's judge
+# it: TERMing its parent kills it and loses its result (a chief's judge
 # verdict). live-subagents.sh reads the session's subagent registry against its
 # transcript; anything but "none running" (a live child, or no way to tell)
 # refuses - retry once the children finish, like exit 6.
@@ -334,70 +348,70 @@ subagents_rc=$?
 if [ "$subagents_rc" -ne 0 ]; then
     echo "$subagents_out"
     if [ "$subagents_rc" -eq 1 ]; then
-        echo "close-wrapped-leg: refusing to signal pid $matched - session $digest_sid has live subagents (above); retry once they finish" >&2
+        echo "close-wrapped-worker: refusing to signal pid $matched - session $digest_sid has live subagents (above); retry once they finish" >&2
     else
-        echo "close-wrapped-leg: refusing to signal pid $matched - cannot prove session '$digest_sid' has no live subagents (above); retry shortly" >&2
+        echo "close-wrapped-worker: refusing to signal pid $matched - cannot prove session '$digest_sid' has no live subagents (above); retry shortly" >&2
     fi
     exit 7
 fi
 
 # ---------- --check: every refusal above ran, nothing was signalled ----
 if [ "$CHECK_MODE" -eq 1 ]; then
-    echo "SAFE-TO-CLOSE: pid $matched ($(leg_label "$DOC")) has no live subtree or subagent; nothing was signalled"
+    echo "SAFE-TO-CLOSE: pid $matched ($(worker_label "$DOC")) has no live subtree or subagent; nothing was signalled"
     exit 0
 fi
 
-# ---------- --console: a wrapped predecessor console -------------
-# Every check above ran unchanged. A console has no worktree, cost row, scratch
-# or failure digest of its own, so the leg-only steps below are skipped: TERM
+# ---------- --chief: a wrapped predecessor chief -------------
+# Every check above ran unchanged. A chief has no worktree, cost row, scratch
+# or failure digest of its own, so the worker-only steps below are skipped: TERM
 # the one proven pid and stop.
 if [ "$CHIEF_MODE" -eq 1 ]; then
     if ! "$KILL" -TERM "$matched"; then
-        echo "close-wrapped-leg: failed to send TERM to pid $matched" >&2
+        echo "close-wrapped-worker: failed to send TERM to pid $matched" >&2
         exit 1
     fi
-    echo "close-wrapped-leg: sent TERM to pid $matched (console $(leg_label "$DOC"))"
+    echo "close-wrapped-worker: sent TERM to pid $matched (chief $(worker_label "$DOC"))"
     exit 0
 fi
 
-# ---------- Leg cost ledger ----------------------------------------
-# One JSONL row per wrapped leg, from the transcript resolved above. Never
+# ---------- Worker cost ledger ----------------------------------------
+# One JSONL row per wrapped worker, from the transcript resolved above. Never
 # fatal: a meter or ledger failure WARNs and the close proceeds. A retry of the
 # same transcript (a refused or failed close re-run) never writes a second row.
 if [ -n "$TRANSCRIPT" ]; then
-    if ! . "$HERE/../../lanes/lib/leg-cost-row.sh"; then
-        echo "close-wrapped-leg: WARN cannot load leg-cost-row.sh - no cost ledger row" >&2
-    elif ! ledger=$(leg_cost_ledger_path "$DOC"); then
-        echo "close-wrapped-leg: WARN cannot resolve the cost ledger path - no cost ledger row" >&2
+    if ! . "$HERE/../../lanes/lib/worker-cost-row.sh"; then
+        echo "close-wrapped-worker: WARN cannot load worker-cost-row.sh - no cost ledger row" >&2
+    elif ! ledger=$(worker_cost_ledger_path "$DOC"); then
+        echo "close-wrapped-worker: WARN cannot resolve the cost ledger path - no cost ledger row" >&2
     elif [ -f "$ledger" ] && grep -qF "\"session\":\"$(transcript_sid "$TRANSCRIPT")\"" "$ledger"; then
-        echo "close-wrapped-leg: cost ledger already has a row for this transcript"
-    elif ! row=$(leg_cost_row "$TRANSCRIPT" "$DOC"); then
-        echo "close-wrapped-leg: WARN leg-burn failed - no cost ledger row" >&2
+        echo "close-wrapped-worker: cost ledger already has a row for this transcript"
+    elif ! row=$(worker_cost_row "$TRANSCRIPT" "$DOC"); then
+        echo "close-wrapped-worker: WARN worker-burn failed - no cost ledger row" >&2
     elif mkdir -p "$(dirname "$ledger")" 2>/dev/null && printf '%s\n' "$row" >> "$ledger" 2>/dev/null; then
-        echo "close-wrapped-leg: cost ledger row appended to $ledger"
+        echo "close-wrapped-worker: cost ledger row appended to $ledger"
     else
-        echo "close-wrapped-leg: WARN cannot write $ledger - no cost ledger row" >&2
+        echo "close-wrapped-worker: WARN cannot write $ledger - no cost ledger row" >&2
     fi
 fi
 
 if ! "$KILL" -TERM "$matched"; then
-    echo "close-wrapped-leg: failed to send TERM to pid $matched" >&2
+    echo "close-wrapped-worker: failed to send TERM to pid $matched" >&2
     exit 1
 fi
-echo "close-wrapped-leg: sent TERM to pid $matched (leg $(leg_label "$DOC"))"
+echo "close-wrapped-worker: sent TERM to pid $matched (worker $(worker_label "$DOC"))"
 
-# ---------- Wrapped leg's own /tmp scratch ----------------------
-# Archive-then-reap THIS leg's judge dirs (j<N>, j<N>[a-z]) and its session
+# ---------- Wrapped worker's own /tmp scratch ----------------------
+# Archive-then-reap THIS worker's judge dirs (j<N>, j<N>[a-z]) and its session
 # scratch dir, scoped through tmp-reap.sh --judge <pr>/--session: never a fleet-wide
-# sweep (other legs are live). Dry-run first; apply only after a clean dry-run.
+# sweep (other workers are live). Dry-run first; apply only after a clean dry-run.
 # Never fatal: any failure WARNs and the close carries on.
-reap_leg_scratch() {
+reap_worker_scratch() {
     local pr sid args=() i PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
-    # judge dirs are named for the PR they judged, never the leg label: take the
+    # judge dirs are named for the PR they judged, never the worker label: take the
     # PR from the doc's newest READY/MERGED bullet; no PR means no judge scope
     pr="$(grep -E '^- [0-9:]+ (READY|MERGED)' "$DOC" | grep -oE '(READY|MERGED)[ #-]+(PR[ #]+)?[0-9]+' | tail -n 1 | grep -oE '[0-9]+$')"
     if [ -n "$pr" ]; then args+=(--judge "$pr")
-    else echo "close-wrapped-leg: no PR in the leg doc - reaping no judge dir, never guessing"; fi
+    else echo "close-wrapped-worker: no PR in the worker doc - reaping no judge dir, never guessing"; fi
     if [ -n "$TRANSCRIPT" ]; then
         sid="$(transcript_sid "$TRANSCRIPT")"
         case "$sid" in
@@ -405,34 +419,34 @@ reap_leg_scratch() {
         esac
     fi
     if [ "${#args[@]}" -eq 0 ]; then
-        echo "close-wrapped-leg: no judge number or session id for this leg - skipping the /tmp reap, never guessing"
+        echo "close-wrapped-worker: no judge number or session id for this worker - skipping the /tmp reap, never guessing"
         return 0
     fi
     # the TERM is asynchronous: give the session a moment to exit so its scratch is not "live"
-    for ((i = 0; i < ${CLOSE_WRAPPED_LEG_REAP_WAIT:-5}; i++)); do  # read-sink-ok: the < is an arithmetic comparison, not a redirect
+    for ((i = 0; i < ${CLOSE_WRAPPED_WORKER_REAP_WAIT:-5}; i++)); do  # read-sink-ok: the < is an arithmetic comparison, not a redirect
         [ -d "$PROC_ROOT/$matched" ] || break
         sleep 1
     done
     # a session that outlives the TERM still owns its scratch: reap nothing now
     if [ -d "$PROC_ROOT/$matched" ]; then
-        echo "close-wrapped-leg: pid $matched still running after TERM - leaving its /tmp scratch for a later reap"
+        echo "close-wrapped-worker: pid $matched still running after TERM - leaving its /tmp scratch for a later reap"
         return 0
     fi
     if ! bash "$TMP_REAP" "${args[@]}"; then
-        echo "close-wrapped-leg: WARN tmp-reap dry-run failed for ${args[*]} - not applying; close continues" >&2
+        echo "close-wrapped-worker: WARN tmp-reap dry-run failed for ${args[*]} - not applying; close continues" >&2
         return 0
     fi
-    bash "$TMP_REAP" --apply "${args[@]}" || echo "close-wrapped-leg: WARN tmp-reap --apply failed for ${args[*]} - close continues" >&2
+    bash "$TMP_REAP" --apply "${args[@]}" || echo "close-wrapped-worker: WARN tmp-reap --apply failed for ${args[*]} - close continues" >&2
     return 0
 }
-reap_leg_scratch || echo "close-wrapped-leg: WARN /tmp reap errored - close continues" >&2
+reap_worker_scratch || echo "close-wrapped-worker: WARN /tmp reap errored - close continues" >&2
 
 # ---------- Failure-loop digest --------------------
-# One `digest=` line and nothing else: leg-digest-step.sh's stderr is dropped,
+# One `digest=` line and nothing else: worker-digest-step.sh's stderr is dropped,
 # its rc is ignored, and a hard outer timeout bounds it, so a digest crash,
 # hang or missing journal changes no other output and never the close's rc.
-# It never writes the leg's doc, so its tail stays WRAPPED.
-digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_LEG_DIGEST_TIMEOUT:-120}" bash "${WORKER_SESSION_DIGEST_STEP_BIN:-${LEG_DIGEST_STEP_BIN:-$HERE/worker-digest-step.sh}}" \
+# It never writes the worker's doc, so its tail stays WRAPPED.
+digest_line=$(timeout -k 5 "${CLOSE_WRAPPED_WORKER_DIGEST_TIMEOUT:-120}" bash "${WORKER_SESSION_DIGEST_STEP_BIN:-$HERE/worker-digest-step.sh}" \
     --session "$digest_sid" --transcript "$TRANSCRIPT" --doc "$DOC" --pid "$matched" --projects "$PROJECTS_DIR" 2>/dev/null \
     | grep -m 1 '^digest=')
 echo "${digest_line:-digest=failed:step}"
@@ -440,17 +454,17 @@ echo "${digest_line:-digest=failed:step}"
 worktrees=$(grep -oE "/[^\` ]*/\.claude/worktrees/[^\`) ]+" "$DOC" | sort -u)
 wt_count=$(printf '%s\n' "$worktrees" | grep -c . || true)
 if [ "$wt_count" -ne 1 ]; then
-    echo "close-wrapped-leg: doc names $wt_count worktree path(s) - skipping the prune, never guessing" >&2
+    echo "close-wrapped-worker: doc names $wt_count worktree path(s) - skipping the prune, never guessing" >&2
     close_success
 fi
 WT="$worktrees"
 
 # the TERM'd session may still be inside the worktree when the
 # first prune runs ("in use"). Retry quietly a bounded number of times (a few
-# seconds in all) so a leg that exits promptly is pruned now, not left for a
+# seconds in all) so a worker that exits promptly is pruned now, not left for a
 # manual --only later. Only the "in use" skip retries; every other outcome is
 # final on the first pass.
-prune_tries=${CLOSE_WRAPPED_LEG_PRUNE_RETRIES:-3}
+prune_tries=${CLOSE_WRAPPED_WORKER_PRUNE_RETRIES:-3}
 prune_try=0
 while :; do
     out=$(bash "$CLEAN_SH" --only "$WT" --only-allow-unmerged 2>&1)
@@ -459,7 +473,7 @@ while :; do
     [ "$rc" -ne 0 ] || break
     [ "$prune_try" -lt "$prune_tries" ] || break
     prune_try=$((prune_try + 1))
-    sleep "${CLOSE_WRAPPED_LEG_PRUNE_WAIT:-1}"
+    sleep "${CLOSE_WRAPPED_WORKER_PRUNE_WAIT:-1}"
 done
 echo "$out"
 if [ "$rc" -ne 0 ]; then
@@ -480,19 +494,19 @@ if [ "$rc" -ne 0 ]; then
         esac
     fi
     # A worktree that is unregistered AND absent on disk was already pruned
-    # (by the leg, a sweep, or an earlier close): nothing is left to remove.
+    # (by the worker, a sweep, or an earlier close): nothing is left to remove.
     case "$out" in
         *'is not a registered worktree'*)
             if [ ! -e "$WT" ]; then
-                echo "close-wrapped-leg: worktree $WT already gone - nothing to prune"
+                echo "close-wrapped-worker: worktree $WT already gone - nothing to prune"
                 close_success
             fi ;;
     esac
     if [ "$benign" -eq 1 ]; then
-        echo "close-wrapped-leg: worktree $WT not pruned (see message above) - not a failure, retry --only shortly"
+        echo "close-wrapped-worker: worktree $WT not pruned (see message above) - not a failure, retry --only shortly"
         close_success
     fi
-    echo "close-wrapped-leg: clean.sh --only $WT --only-allow-unmerged failed (rc=$rc)" >&2
+    echo "close-wrapped-worker: clean.sh --only $WT --only-allow-unmerged failed (rc=$rc)" >&2
     exit 1
 fi
 close_success

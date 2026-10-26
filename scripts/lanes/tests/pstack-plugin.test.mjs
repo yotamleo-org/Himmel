@@ -1,7 +1,7 @@
 // scripts/lanes/tests/pstack-plugin.test.mjs
 // pstack ships as ONE opt-in himmel marketplace plugin, vendored at a
 // pinned upstream commit, enabled for interactive sessions only and absent from
-// every lean leg/lane profile, so removing it is a single disable.
+// every lean worker/lane profile, so removing it is a single disable.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, existsSync, readdirSync } from 'node:fs';
@@ -30,11 +30,11 @@ test('pstack@himmel is on only in the interactive `user` profile and off in ever
   }
 });
 
-test('pstack@himmel is never in base or floor, which every lean leg profile inherits', () => {
-  assert.ok(!REG.base.includes(ID), 'base would put it in every leg');
-  assert.ok(!REG.floor.includes(ID), 'floor would put it in every leg');
-  for (const leg of ['leg-impl', 'leg-bus', 'leg-e2e', 'lane-impl', 'lane-review', 'lane-content', 'console-relay', 'console-judge', 'console']) {
-    assert.ok(!(REG.profiles[leg].enable ?? []).includes(ID), `${leg} must not enable ${ID}`);
+test('pstack@himmel is never in base or floor, which every lean worker profile inherits', () => {
+  assert.ok(!REG.base.includes(ID), 'base would put it in every worker');
+  assert.ok(!REG.floor.includes(ID), 'floor would put it in every worker');
+  for (const worker of ['worker-impl', 'worker-bus', 'worker-e2e', 'lane-impl', 'lane-review', 'lane-content', 'chief-relay', 'console-judge', 'chief']) {
+    assert.ok(!(REG.profiles[worker].enable ?? []).includes(ID), `${worker} must not enable ${ID}`);
   }
 });
 

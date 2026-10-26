@@ -4,7 +4,7 @@
 #
 # Drives one canned PR through: open; a posted review finding blocks
 # (ready-check check 3); the CR ledger row lands (check 4); resolving the thread
-# clears it; ready-check PASSes; merge-on-green --dry-run, run as a console leg,
+# clears it; ready-check PASSes; merge-on-green --dry-run, run as a chief worker,
 # REFUSES and the PR stays OPEN. The shell suites only ever see stubbed gh; this
 # is the one run against the real API.
 #
@@ -21,8 +21,8 @@
 #
 # Known ceiling: on a free-plan private repo both required-check reads return
 # HTTP 403, so merge-on-green refuses at check-ci (exit 18) before its GO gate;
-# the GO leg is therefore not reachable here (follow-up tickets in the PR).
-# ponytail: refusal leg only, merge-with-GO needs a plan that can read rules.
+# the GO worker is therefore not reachable here (follow-up tickets in the PR).
+# ponytail: refusal worker only, merge-with-GO needs a plan that can read rules.
 # Platform guard: bash 3.2+; Linux/macOS only.
 set -uo pipefail
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
@@ -149,7 +149,7 @@ done
 echo "mergeStateStatus=$mss, settled after $((n * 5))s"
 ready "$PR" "$HEAD_SHA"; expect "ready-check after resolve" 0 $?
 
-step "merge-on-green as a console leg with no GO: must refuse and leave the PR open"
+step "merge-on-green as a chief worker with no GO: must refuse and leave the PR open"
 # merge-on-green's MERGE-BLOCKED alert would DM the operator (a refusal on a
 # throwaway PR is the expected outcome, not an incident). MERGE_BLOCK_ALERT_CMD
 # replaces the sender: point it at a recorder so the alert is intercepted, never

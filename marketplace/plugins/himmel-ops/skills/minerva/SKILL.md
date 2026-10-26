@@ -31,8 +31,8 @@ section (keep both copies byte-identical):
 # >>> himmel-ops scripts resolver (CLAUDE_PLUGIN_ROOT is empty in a Codex skill shell)
 S="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
 if [ -z "${S:-}" ] || [ ! -f "$S/autonomy-mode.sh" ]; then
-  R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/lib/initiative-legs.sh" ] || R="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-  [ -f "$R/scripts/lib/initiative-legs.sh" ] || R="$HOME/Documents/github/himmel"
+  R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$HOME/Documents/github/himmel"
   S="$R/marketplace/plugins/himmel-ops/scripts"
   [ -f "$S/autonomy-mode.sh" ] || for d in "$HOME"/.codex/plugins/cache/himmel/himmel-ops/*/scripts; do
     [ -f "$d/autonomy-mode.sh" ] && { S="$d"; break; }
@@ -283,15 +283,15 @@ byte-identical):
 # >>> himmel-ops scripts resolver (CLAUDE_PLUGIN_ROOT is empty in a Codex skill shell)
 S="${CLAUDE_PLUGIN_ROOT:+$CLAUDE_PLUGIN_ROOT/scripts}"
 if [ -z "${S:-}" ] || [ ! -f "$S/autonomy-mode.sh" ]; then
-  R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/lib/initiative-legs.sh" ] || R="$(git rev-parse --show-toplevel 2>/dev/null || true)"
-  [ -f "$R/scripts/lib/initiative-legs.sh" ] || R="$HOME/Documents/github/himmel"
+  R="${HIMMEL_REPO:-}"; [ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+  [ -f "$R/scripts/lib/initiative-workers.sh" ] || R="$HOME/Documents/github/himmel"
   S="$R/marketplace/plugins/himmel-ops/scripts"
   [ -f "$S/autonomy-mode.sh" ] || for d in "$HOME"/.codex/plugins/cache/himmel/himmel-ops/*/scripts; do
     [ -f "$d/autonomy-mode.sh" ] && { S="$d"; break; }
   done
 fi
 # <<< himmel-ops scripts resolver
-bash "$S/legs.sh" 2>/dev/null || true
+bash "$S/workers.sh" 2>/dev/null || true
 ```
 
 **Lint first (HIMMEL-4375).** Run `bash "$S/minerva-trace-lint.sh" <spec-file> <plan-file>`

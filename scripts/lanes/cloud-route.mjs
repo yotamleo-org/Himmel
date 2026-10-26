@@ -4,7 +4,7 @@
 //
 // A sibling of fanout-plan.mjs, not an extension of it: /fanout routes an
 // abstract work item to a model tier through a pure function, while this gates a
-// real Jira ticket (live Jira + gh reads) and writes files into the console
+// real Jira ticket (live Jira + gh reads) and writes files into the chief
 // bucket. It NEVER launches a session — `claude --cloud` needs a TTY in the
 // operator's terminal and spends credit, so the tool only prints the line.
 //
@@ -13,7 +13,7 @@
 //                file it touches is held (one writer per file), a directory it names included: any held file
 //                under it blocks, and the reason names the file and its holder
 //   HOOK-BYPASS  touches scripts/hooks/ (hooks do not run in the cloud, and the
-//                integrity guard locks hook edits out of a normal leg)
+//                integrity guard locks hook edits out of a normal worker)
 //   LOCAL-NATIVE a trust path (needs a trust-reviewed GO), a run-time need the
 //                cloud lacks by design (luna, a vault, handover state, the state repo
 //                or its specs: private data never leaves the station), more than 3 asks, or no file
@@ -28,7 +28,7 @@
 //                and a named file the tree at the base cannot place
 //   VERIFY-LOCAL a merged PR cites the ticket key, or touches a
 //                file it names, after the ticket was created: it may already be
-//                fixed on main, so a local leg verifies it first (a cloud session
+//                fixed on main, so a local worker verifies it first (a cloud session
 //                cannot tell, and spends credit on a no-op)
 //   CLOUD-OK     everything else
 import { readFileSync, appendFileSync, writeFileSync, mkdirSync, existsSync } from 'node:fs';
@@ -36,6 +36,7 @@ import { execFileSync } from 'node:child_process';
 import { gitClean } from './git-clean.mjs';
 import { dirname, join, resolve, posix } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { legacyFlag } from '../lib/env-alias.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const REPO = resolve(HERE, '..', '..');
@@ -180,7 +181,7 @@ export function reservedFiles(text, ctx = {}) {
 
 // fixedBy(ticket, files, ctx) -> [{number, why, mergedAt}]: merged PRs that cite the key
 // (not a longer key sharing its prefix) or touch a named file, merged after the ticket was
-// created. Jira's `get` carries no creation date, so without ticket.created (console spec)
+// created. Jira's `get` carries no creation date, so without ticket.created (chief spec)
 // the cutoff is the last STALE_DAYS days. ponytail: a PR that merely lists the key as a
 // deferral also matches, which only costs a local verify; narrow when it becomes noise.
 export function fixedBy(t, files, ctx) {
@@ -200,7 +201,7 @@ export function fixedBy(t, files, ctx) {
 }
 
 // classifyTicket(ticket, {trust, held, heldUnknown, merged, mergedUnknown, tree, treeUnknown, now}) -> {class, reason, files, asks, prs?}. Pure.
-// held is [{file, why}]; ticket.files (console-supplied) overrides text extraction.
+// held is [{file, why}]; ticket.files (chief-supplied) overrides text extraction.
 export function classifyTicket(t, ctx) {
   const text = `${t.title}\n${t.description}`;
   const named = t.files?.length ? t.files : [...extractFiles(text), ...bareNames(text, ctx.tree ?? [])];
@@ -364,18 +365,18 @@ function main(argv) {
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--bucket') opt.bucket = argv[++i];
-    else if (a === '--console') opt.console = argv[++i];
+    else if (a === '--chief' || (a === '--console' && legacyFlag('--console', '--chief'))) opt.console = argv[++i];
     else if (a === '--held') opt.held = argv[++i];
     else if (a === '--spec') opt.spec = argv[++i];
     else if (a === '--classify-only') opt.classifyOnly = true;
     else keys.push(a);
   }
   if (!keys.length || (!opt.classifyOnly && (!opt.bucket || !opt.console))) {
-    process.stderr.write('usage: cloud-route.mjs [--classify-only] --bucket <dir> --console <id> [--held <file>] [--spec <json>] HIMMEL-<n>...\n');
+    process.stderr.write('usage: cloud-route.mjs [--classify-only] --bucket <dir> --chief <id> [--held <file>] [--spec <json>] HIMMEL-<n>...\n');
     return 2;
   }
   const spec = opt.spec ? JSON.parse(readFileSync(opt.spec, 'utf8')) : {};
-  const held = opt.held ? readFileSync(opt.held, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).map((file) => ({ file, why: 'console held list' })) : [];
+  const held = opt.held ? readFileSync(opt.held, 'utf8').split('\n').map((l) => l.trim()).filter(Boolean).map((file) => ({ file, why: 'chief held list' })) : [];
   let heldUnknown = false;
   try { held.push(...openPrFiles()); } catch (e) { heldUnknown = true; process.stderr.write(`cloud-route: gh failed, open-PR files unknown — ${e.message.split('\n')[0]}\n`); }
   let merged = [];

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/compacted-check.sh - G11: prove a
-# console's post-compaction COMPACTED bullet matches the snapshot the
-# PreCompact hook (scripts/hooks/console-precompact-snapshot.sh) took at the
+# chief's post-compaction COMPACTED bullet matches the snapshot the
+# PreCompact hook (scripts/hooks/chief-precompact-snapshot.sh) took at the
 # moment of compaction.
 #
-# Usage: compacted-check.sh <console-doc> <snap-dir>
+# Usage: compacted-check.sh <chief-doc> <snap-dir>
 #
 # Exit codes:
 #   0  `G11 ok`           the doc's last COMPACTED bullet matches the newest snap
@@ -14,10 +14,10 @@
 #                         the gate treats as a loss (plan Task 11 Step 3)
 #   64 usage
 #
-# The bullet format is the one docs/handover/console-template.md ships under
+# The bullet format is the one docs/handover/chief-template.md ships under
 # `## Compact instructions`:
 #   - COMPACTED <HH:MM> — legs: <..>, queue: <..>, last GO: <..>[, acked: <..>]
-# Compared fields: legs, queue, last-go always; acked only when the bullet
+# Compared fields: workers, queue, last-go always; acked only when the bullet
 # carries the trailer. Values are compared as exact strings after stripping
 # backticks (the template mandates one backtick span per token, and anything
 # comparing them strips backticks first).
@@ -25,15 +25,15 @@
 # ponytail: the snap also records `lock` and `go-file` (the queue-lock token
 # and the newest .locks/go/ file) but the shipped bullet format carries
 # neither, so they are NOT compared here - they exist for forensics and for a
-# successor that needs the lock token the compacted console held. Adding
-# `lock:` to the bullet would need a console-template.md edit plus a one-line
+# successor that needs the lock token the compacted chief held. Adding
+# `lock:` to the bullet would need a chief-template.md edit plus a one-line
 # addition to FIELDS below.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+, sha256sum or shasum.
 set -uo pipefail
 
 if [ "$#" -ne 2 ]; then
-    echo "usage: compacted-check.sh <console-doc> <snap-dir>" >&2
+    echo "usage: compacted-check.sh <chief-doc> <snap-dir>" >&2
     exit 64
 fi
 DOC="$1"; SNAPDIR="$2"
@@ -84,7 +84,7 @@ if [ -z "$bullet" ]; then
 fi
 
 rest="${bullet#* legs: }"
-b_legs="${rest%%, queue: *}"
+b_workers="${rest%%, queue: *}"
 rest="${rest#*, queue: }"
 b_queue="${rest%%, last GO: *}"
 rest="${rest#*, last GO: }"
@@ -105,7 +105,7 @@ compare() {
         rc=1
     fi
 }
-compare legs "$b_legs"
+compare workers "$b_workers"
 compare queue "$b_queue"
 compare last-go "$b_lastgo"
 [ "$has_acked" -eq 1 ] && compare acked "$b_acked"

@@ -16,7 +16,7 @@
 // manifests (run_id != the manifest's own task/cell/rep), and runs whose
 // transcript usage cannot be resolved render as a "Data completeness"
 // section plus per-run UNKNOWN cells, so an in-flight corpus (e.g. the
-// committed leg-15 runs) still renders. Only structurally WRONG input fails
+// committed worker-15 runs) still renders. Only structurally WRONG input fails
 // the render: a prompt-hash mismatch, or an unexpected manifest that is off
 // the canonical matrix, not marked `probe`, and internally consistent
 // (usually a wrong --runs-dir — failing there is the point of the gate).

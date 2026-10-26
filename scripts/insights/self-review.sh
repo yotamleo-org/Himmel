@@ -9,7 +9,7 @@
 #   merges: <n>                                  subjects ending in (#<pr>)
 #   fix-share: fix=<n> feat=<n> share=<pct>%     fix subjects / merges
 #   guard-churn: <n>                             fix(hooks) or "guard" subjects
-#   compaction-share: compacted=<n> runs=<n> share=<pct>%   leg-burn compactions=
+#   compaction-share: compacted=<n> runs=<n> share=<pct>%   worker-burn compactions=
 #   sprawl: <KEY> merges=<n> | none              the ticket with the most merges
 #   red-main: <n>                                merges whose body names a red main
 set -uo pipefail

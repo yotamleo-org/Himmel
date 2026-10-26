@@ -77,7 +77,7 @@ Read on demand from `chief-template.md` `## Standing rules`. Moved verbatim from
   `cr-disposition.sh check <pr> <head>` and refuses (exit 9) while any
   Critical/Important on the PR's branch is deferred with no valid row at that head.
   The judge rules one of two, which the chief (never the worker) records with
-  `bash scripts/handover/chief-kit/cr-disposition.sh record <pr> <head> <fid>@<finding head> fix-here|follow-up:<KEY> --source judge:<qid>|console [--attest ci-green --attest no-data-loss --attest no-weakened-guard]`:
+  `bash scripts/handover/chief-kit/cr-disposition.sh record <pr> <head> <fid>@<finding head> fix-here|follow-up:<KEY> --source judge:<qid>|chief [--attest ci-green --attest no-data-loss --attest no-weakened-guard]`:
   (a) **fix-here**: fixed in this PR, so the finding's own ledger verdict must
   read fixed or disproved; (b) **follow-up:<KEY>**: merge now with the follow-up
   ticket already filed, and only if the merge cannot break main. The record must

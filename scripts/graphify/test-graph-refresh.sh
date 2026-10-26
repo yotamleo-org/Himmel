@@ -28,7 +28,7 @@
 #   7. himmel-only -> exactly one invocation, /graph-publish hint appears.
 #   8. vault override -> luna corpus-root + maps-dir reflect --vault.
 #   9. failure propagation -> FAIL_REFRESH=himmel: luna OK + himmel FAIL,
-#      both legs still ran (serial continues), rc=3.
+#      both workers still ran (serial continues), rc=3.
 set -euo pipefail
 
 # grepq <text> [grep-args...] — `grep -q` against <text> with NO pipeline, so a
@@ -104,7 +104,7 @@ HIMMEL_ROOT_EXP="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
 # Stub vault carries the luna-vault sentinels the preflight now requires
 #: a 60-Maps/ dir (the publish target) + an .obsidian/
-# dir (luna vault marker). Every test pointing a luna leg at $VAULT relies on
+# dir (luna vault marker). Every test pointing a luna worker at $VAULT relies on
 # these; $VAULT2 below is upgraded the same way.
 VAULT="$TMP_ROOT/vault"
 mkdir -p "$VAULT/60-Maps" "$VAULT/.obsidian"
@@ -214,18 +214,18 @@ reset_runner_log
 rc=0; out=$(run_refresh both --vault "$VAULT" --dry-run 2>&1) || rc=$?
 assert_rc "dry-run rc 0" 0 "$rc"
 assert_contains "dry-run names the backend" "backend claude-api" "$out"
-assert_contains "dry-run plan has luna leg" "--name luna" "$out"
-assert_contains "dry-run plan has himmel leg" "--name himmel" "$out"
+assert_contains "dry-run plan has luna worker" "--name luna" "$out"
+assert_contains "dry-run plan has himmel worker" "--name himmel" "$out"
 assert_contains "dry-run plan has luna slug" "--slug graphify-luna-map" "$out"
 assert_contains "dry-run plan has himmel slug" "--slug graphify-himmel-map" "$out"
 assert_contains "dry-run plan has luna tag" "--corpus-tag luna" "$out"
 assert_contains "dry-run plan has himmel tag" "--corpus-tag himmel" "$out"
-# corpus-class is luna-leg-only (mirrors graphmap-cadence.sh, which passes no
-# class for himmel): the luna dry-run leg carries it, the himmel leg does not.
-assert_contains "dry-run luna leg has explicit corpus-class" "--corpus-class luna-personal" "$out"
+# corpus-class is luna-worker-only (mirrors graphmap-cadence.sh, which passes no
+# class for himmel): the luna dry-run worker carries it, the himmel worker does not.
+assert_contains "dry-run luna worker has explicit corpus-class" "--corpus-class luna-personal" "$out"
 himmel_dry=$(printf '%s\n' "$out" | grep '\[himmel\]' || true)
-assert_not_contains "dry-run himmel leg has no corpus-class" "--corpus-class" "$himmel_dry"
-assert_contains "dry-run himmel leg merges into the live graph" "--merge-into-live" "$himmel_dry"
+assert_not_contains "dry-run himmel worker has no corpus-class" "--corpus-class" "$himmel_dry"
+assert_contains "dry-run himmel worker merges into the live graph" "--merge-into-live" "$himmel_dry"
 # printf %q-escapes spaces in the title -> strip backslashes before asserting.
 out_plain=${out//\\/}
 assert_contains "dry-run plan has luna title" "Graphify Luna Map" "$out_plain"
@@ -235,46 +235,46 @@ assert_eq "dry-run invoked the runner zero times" "" "$(cat "$RUNNER_LOG")"
 
 # ============================================================================
 # Test 4b: GRAPHIFY_LUNA_OUT_ROOT threads --out-root into the
-# luna leg only -- himmel's own graphify-out stays in-corpus, so
-# graph-out-root.sh resolves it to empty and the himmel leg must never see
+# luna worker only -- himmel's own graphify-out stays in-corpus, so
+# graph-out-root.sh resolves it to empty and the himmel worker must never see
 # the flag.
 # ============================================================================
-echo "TEST: GRAPHIFY_LUNA_OUT_ROOT adds --out-root to the luna leg only"
+echo "TEST: GRAPHIFY_LUNA_OUT_ROOT adds --out-root to the luna worker only"
 reset_runner_log
 rc=0; out=$(GRAPHIFY_LUNA_OUT_ROOT="/out/root" run_refresh both --vault "$VAULT" --dry-run 2>&1) || rc=$?
 assert_rc "out-root dry-run rc 0" 0 "$rc"
 luna_dry=$(printf '%s\n' "$out" | grep '\[luna\]' || true)
 himmel_dry_or=$(printf '%s\n' "$out" | grep '\[himmel\]' || true)
-assert_contains "out-root dry-run luna leg carries --out-root" "--out-root /out/root" "$luna_dry"
-assert_not_contains "out-root dry-run himmel leg has no --out-root" "--out-root" "$himmel_dry_or"
+assert_contains "out-root dry-run luna worker carries --out-root" "--out-root /out/root" "$luna_dry"
+assert_not_contains "out-root dry-run himmel worker has no --out-root" "--out-root" "$himmel_dry_or"
 
 # ============================================================================
 # Test 4c: a REAL (non-dry-run) both invocation
 # must not let an AMBIENT GRAPHIFY_OUT_ROOT (left over in the invoking shell from
-# some unrelated prior call) leak into the himmel leg's runner process just
+# some unrelated prior call) leak into the himmel worker's runner process just
 # because himmel's own resolver says stay in-corpus. The dry-run-only Test 4b
 # above cannot catch this: the leak only happens on the real exec path.
 # ============================================================================
-echo "TEST: ambient GRAPHIFY_OUT_ROOT does not leak into the himmel leg (real run)"
+echo "TEST: ambient GRAPHIFY_OUT_ROOT does not leak into the himmel worker (real run)"
 reset_runner_log
 rc=0; out=$(GRAPHIFY_OUT_ROOT="/ambient/leftover" run_refresh both --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "ambient out-root real-run rc 0" 0 "$rc"
 line1=$(sed -n '1p' "$RUNNER_LOG")
 line2=$(sed -n '2p' "$RUNNER_LOG")
-assert_contains "luna leg still runs" "--name luna" "$line1"
-assert_contains "himmel leg still runs" "--name himmel" "$line2"
-assert_not_contains "himmel leg does not see the ambient GRAPHIFY_OUT_ROOT" "GRAPHIFY_OUT_ROOT=/ambient/leftover" "$line2"
+assert_contains "luna worker still runs" "--name luna" "$line1"
+assert_contains "himmel worker still runs" "--name himmel" "$line2"
+assert_not_contains "himmel worker does not see the ambient GRAPHIFY_OUT_ROOT" "GRAPHIFY_OUT_ROOT=/ambient/leftover" "$line2"
 
 # ============================================================================
 # Test 4d: the dry-run print must mirror the real run's
-# conditional `env -u GRAPHIFY_OUT_ROOT` wrapper -- shown for an in-corpus leg
-# (R_OUT_ROOT empty), omitted for a leg with a resolved --out-root. Without
+# conditional `env -u GRAPHIFY_OUT_ROOT` wrapper -- shown for an in-corpus worker
+# (R_OUT_ROOT empty), omitted for a worker with a resolved --out-root. Without
 # this, a copy-pasted dry-run command can behave differently from what the
 # real run actually executes whenever the invoking shell has an ambient
 # GRAPHIFY_OUT_ROOT exported. himmel's resolver always returns empty
-# (in-corpus by design) so its leg always needs the scrub; luna's
+# (in-corpus by design) so its worker always needs the scrub; luna's
 # resolver always returns a value (default or override, graph-out-root.sh) so
-# its leg never does.
+# its worker never does.
 # ============================================================================
 echo "TEST: dry-run print shows the env -u GRAPHIFY_OUT_ROOT wrapper exactly where the real run applies it"
 reset_runner_log
@@ -282,20 +282,20 @@ rc=0; out=$(run_refresh both --vault "$VAULT" --dry-run 2>&1) || rc=$?
 assert_rc "dry-run wrapper-check rc 0" 0 "$rc"
 luna_dry_d=$(printf '%s\n' "$out" | grep '\[luna\]' || true)
 himmel_dry_d=$(printf '%s\n' "$out" | grep '\[himmel\]' || true)
-assert_not_contains "dry-run luna leg (out-root default) has NO env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$luna_dry_d"
-assert_contains "dry-run himmel leg (in-corpus) shows the env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$himmel_dry_d"
+assert_not_contains "dry-run luna worker (out-root default) has NO env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$luna_dry_d"
+assert_contains "dry-run himmel worker (in-corpus) shows the env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$himmel_dry_d"
 
 reset_runner_log
 rc=0; out=$(GRAPHIFY_LUNA_OUT_ROOT="/out/root" run_refresh both --vault "$VAULT" --dry-run 2>&1) || rc=$?
 assert_rc "dry-run wrapper-check with out-root rc 0" 0 "$rc"
 luna_dry_d2=$(printf '%s\n' "$out" | grep '\[luna\]' || true)
 himmel_dry_d2=$(printf '%s\n' "$out" | grep '\[himmel\]' || true)
-assert_not_contains "dry-run luna leg with --out-root has NO env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$luna_dry_d2"
-assert_contains "dry-run himmel leg (still in-corpus) shows the env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$himmel_dry_d2"
+assert_not_contains "dry-run luna worker with --out-root has NO env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$luna_dry_d2"
+assert_contains "dry-run himmel worker (still in-corpus) shows the env -u scrub" "env -u GRAPHIFY_OUT_ROOT" "$himmel_dry_d2"
 
 # ============================================================================
 # Test 4b: the default backend is claude-api, so a real run with the API lane
-# unset refuses (rc 2, one ERR line) before any leg runs; --dry-run is unaffected
+# unset refuses (rc 2, one ERR line) before any worker runs; --dry-run is unaffected
 # ============================================================================
 echo "TEST: real run with no API lane refuses, runner never called"
 reset_runner_log
@@ -322,8 +322,8 @@ assert_rc "both rc 0" 0 "$rc"
 # Order: first invocation luna, second himmel.
 line1=$(sed -n '1p' "$RUNNER_LOG")
 line2=$(sed -n '2p' "$RUNNER_LOG")
-assert_contains "first leg is luna"   "--name luna"   "$line1"
-assert_contains "second leg is himmel" "--name himmel" "$line2"
+assert_contains "first worker is luna"   "--name luna"   "$line1"
+assert_contains "second worker is himmel" "--name himmel" "$line2"
 assert_eq "exactly two invocations" "2" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
 # Canonical per-corpus arg sets (identical literals to the cadence payloads).
 assert_contains "luna corpus-root is the vault"          "--corpus-root $VAULT"      "$line1"
@@ -332,17 +332,17 @@ assert_contains "luna slug"                              "--slug graphify-luna-m
 assert_contains "luna corpus-tag"                        "--corpus-tag luna"          "$line1"
 assert_contains "luna fixed claude-api backend"          "--backend claude-api"       "$line1"
 assert_contains "luna title"                             "Graphify Luna Map"          "$line1"
-assert_contains "luna leg passes explicit corpus-class" "--corpus-class luna-personal" "$line1"
+assert_contains "luna worker passes explicit corpus-class" "--corpus-class luna-personal" "$line1"
 assert_contains "himmel corpus-root is the himmel repo"  "--corpus-root $HIMMEL_ROOT_EXP" "$line2"
 assert_contains "himmel maps-dir is the vault 60-Maps"   "--maps-dir $VAULT/60-Maps"  "$line2"
 assert_contains "himmel slug"                            "--slug graphify-himmel-map" "$line2"
 assert_contains "himmel corpus-tag"                      "--corpus-tag himmel"        "$line2"
 assert_contains "himmel fixed claude-api backend"        "--backend claude-api"       "$line2"
-assert_not_contains "no leg passes claude-cli"                "claude-cli"                 "$line1$line2"
+assert_not_contains "no worker passes claude-cli"                "claude-cli"                 "$line1$line2"
 assert_contains "himmel title"                           "Graphify Himmel Map"        "$line2"
-assert_not_contains "himmel leg passes no corpus-class"  "--corpus-class"             "$line2"
-assert_contains "himmel leg merges into the live graph"  "--merge-into-live"          "$line2"
-assert_not_contains "luna leg promotes plainly"          "--merge-into-live"          "$line1"
+assert_not_contains "himmel worker passes no corpus-class"  "--corpus-class"             "$line2"
+assert_contains "himmel worker merges into the live graph"  "--merge-into-live"          "$line2"
+assert_not_contains "luna worker promotes plainly"          "--merge-into-live"          "$line1"
 # Summary + next-step hint + cadence status delegation.
 assert_contains "luna OK summary"   "[luna] OK"   "$out"
 assert_contains "himmel OK summary" "[himmel] OK" "$out"
@@ -351,12 +351,12 @@ assert_contains "cadence status appended" "CADENCE-STATUS-STUB" "$out"
 # Reworked (codex/glm-2): the OLD assert grepped $line1 (the runner argv log),
 # which could never carry the wrapper's /graph-publish hint, so it was vacuous.
 # Assert against the wrapper's actual combined stdout/stderr ($out): the hint
-# is printed ONLY on the himmel leg (the luna leg extracts the vault, which has
+# is printed ONLY on the himmel worker (the luna worker extracts the vault, which has
 # no tracked graphify-out/ to ship), so it must be [himmel]-anchored and there
 # must be NO [luna] NEXT line.
 hint_lines=$(printf '%s\n' "$out" | grep '/graph-publish' || true)
-assert_contains "publish hint anchored to the himmel leg" "[himmel]" "$hint_lines"
-assert_not_contains "no luna-leg publish hint" "[luna] NEXT" "$out"
+assert_contains "publish hint anchored to the himmel worker" "[himmel]" "$hint_lines"
+assert_not_contains "no luna-worker publish hint" "[luna] NEXT" "$out"
 
 # ============================================================================
 # Test 6: luna-only -> exactly one invocation, no himmel, no publish hint
@@ -367,7 +367,7 @@ rc=0; out=$(run_refresh luna --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "luna-only rc 0" 0 "$rc"
 assert_eq "exactly one invocation" "1" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
 assert_contains "the one invocation is luna" "--name luna" "$(sed -n '1p' "$RUNNER_LOG")"
-assert_not_contains "no himmel leg ran" "--name himmel" "$(cat "$RUNNER_LOG")"
+assert_not_contains "no himmel worker ran" "--name himmel" "$(cat "$RUNNER_LOG")"
 assert_not_contains "no /graph-publish hint on luna-only" "/graph-publish" "$out"
 
 # ============================================================================
@@ -400,24 +400,24 @@ assert_contains "luna corpus-root is the override vault (canonical form)" "--cor
 assert_contains "luna maps-dir is the override vault 60-Maps (canonical form)" "--maps-dir $V2_CANON/60-Maps" "$line1"
 
 # ============================================================================
-# Test 9: failure propagation -> both legs run, rc=3
+# Test 9: failure propagation -> both workers run, rc=3
 # ============================================================================
-echo "TEST: himmel failure propagates rc=3; luna leg still ran (serial continues)"
+echo "TEST: himmel failure propagates rc=3; luna worker still ran (serial continues)"
 reset_runner_log
 rc=0; out=$(FAIL_REFRESH=himmel run_refresh both --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "failure-propagation rc 3" 3 "$rc"
 assert_contains "luna OK despite himmel failure" "[luna] OK" "$out"
 assert_contains "himmel FAIL reported" "[himmel] FAIL" "$out"
-assert_eq "both legs still ran (serial continues)" "2" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
+assert_eq "both workers still ran (serial continues)" "2" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
 assert_contains "summary names the failure count" "1 failed (of 2 corpus(corpora)) -- FAILED" "$out"
-# A failed himmel leg must NOT print the publish hint (nothing to publish).
-assert_not_contains "no publish hint on failed himmel leg" "[himmel] NEXT" "$out"
+# A failed himmel worker must NOT print the publish hint (nothing to publish).
+assert_not_contains "no publish hint on failed himmel worker" "[himmel] NEXT" "$out"
 
 # ============================================================================
-# Test 9a: a failed leg prints the runner's last 'refresh-graph-map:' reason
+# Test 9a: a failed worker prints the runner's last 'refresh-graph-map:' reason
 # line and a log path that exists; the end summary lists the failed corpus.
 # ============================================================================
-echo "TEST: failed leg carries its reason and an existing log path"
+echo "TEST: failed worker carries its reason and an existing log path"
 reset_runner_log
 rc=0; out=$(FAIL_REFRESH=himmel FAIL_REASON="promote shrink guard: 2734 nodes < 90 percent of live 34907" run_refresh both --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "reason: rc 3" 3 "$rc"
@@ -434,7 +434,7 @@ assert_not_contains "OK line unchanged (no log noise)" "(log:" "$ok_line"
 
 # ============================================================================
 # Test 9b: bank-skip only (no failures) -> exit 4, summary carries no OK token
-# (a skipped leg must not read as success on an unattended cadence).
+# (a skipped worker must not read as success on an unattended cadence).
 # ============================================================================
 echo "TEST: bank-skip only (no failures) -> exit 4, summary has no OK token"
 reset_runner_log
@@ -442,7 +442,7 @@ rc=0; out=$(SKIP_REFRESH=himmel run_refresh both --vault "$VAULT" 2>&1) || rc=$?
 assert_rc "skip-only rc 4" 4 "$rc"
 assert_contains "luna OK despite himmel skip" "[luna] OK" "$out"
 assert_contains "himmel SKIPPED reported" "[himmel] SKIPPED" "$out"
-assert_eq "both legs still ran (serial continues)" "2" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
+assert_eq "both workers still ran (serial continues)" "2" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
 summary_line=$(printf '%s\n' "$out" | grep 'corpus(corpora)' | tail -1)
 assert_not_contains "summary line has no OK token" "OK" "$summary_line"
 assert_contains "summary line names the skip" "1 skipped" "$summary_line"
@@ -450,7 +450,7 @@ assert_contains "summary line names the skip" "1 skipped" "$summary_line"
 # ============================================================================
 # Test 10: vault preflight — refuse a salus/PHI-marked vault (codex-adv-1)
 # ============================================================================
-echo "TEST: salus-marked vault refused before any leg fires (rc=2)"
+echo "TEST: salus-marked vault refused before any worker fires (rc=2)"
 SALUS_TREE="$TMP_ROOT/salus-tree"
 mkdir -p "$SALUS_TREE/vault"
 touch "$SALUS_TREE/.salus"   # PHI marker on an ancestor of the vault
@@ -458,12 +458,12 @@ reset_runner_log
 rc=0; out=$(run_refresh luna --vault "$SALUS_TREE/vault" 2>&1) || rc=$?
 assert_rc "salus-marked vault -> rc 2" 2 "$rc"
 assert_contains "salus refuse message names salus/PHI" "salus" "$out"
-assert_eq "salus refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
+assert_eq "salus refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 
 # ============================================================================
 # Test 11: vault preflight — refuse a vault under a stubbed phi-roots entry
 # ============================================================================
-echo "TEST: phi-roots-listed vault refused before any leg fires (rc=2)"
+echo "TEST: phi-roots-listed vault refused before any worker fires (rc=2)"
 PHI_ZONE="$TMP_ROOT/phi-zone"
 mkdir -p "$PHI_ZONE/vault"
 printf '%s\n' "$PHI_ZONE" > "$CLAUDE_GLM_CONFIG_DIR/phi-roots"
@@ -471,7 +471,7 @@ reset_runner_log
 rc=0; out=$(run_refresh luna --vault "$PHI_ZONE/vault" 2>&1) || rc=$?
 assert_rc "phi-roots vault -> rc 2" 2 "$rc"
 assert_contains "phi-roots refuse message names the list" "phi-roots" "$out"
-assert_eq "phi-roots refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
+assert_eq "phi-roots refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 rm -f "$CLAUDE_GLM_CONFIG_DIR/phi-roots"
 
 # same list, indented + between #-comment lines (the fence's
@@ -483,7 +483,7 @@ reset_runner_log
 rc=0; out=$(run_refresh luna --vault "$PHI_ZONE/vault" 2>&1) || rc=$?
 assert_rc "indented phi-roots vault -> rc 2" 2 "$rc"
 assert_contains "indented phi-roots refuse message names the list" "phi-roots" "$out"
-assert_eq "indented phi-roots refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
+assert_eq "indented phi-roots refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 rm -f "$CLAUDE_GLM_CONFIG_DIR/phi-roots"
 
 # ============================================================================
@@ -513,7 +513,7 @@ reset_runner_log
 rc=0; out=$(run_refresh luna --vault "$OTHER_VAULT" 2>&1) || rc=$?   # configured root = $VAULT
 assert_rc "non-luna sentinel vault -> rc 2" 2 "$rc"
 assert_contains "containment refuse names the configured root" "configured luna root" "$out"
-assert_eq "containment refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
+assert_eq "containment refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 reset_runner_log
 rc=0; out=$(TEST_LUNA_ROOT="$OTHER_VAULT" run_refresh luna --vault "$OTHER_VAULT" 2>&1) || rc=$?
 assert_rc "ratified via LUNA_VAULT_PATH -> rc 0" 0 "$rc"
@@ -527,12 +527,12 @@ reset_runner_log
 rc=0; out=$(run_refresh luna --vault "C:relative-vault" 2>&1) || rc=$?
 assert_rc "drive-relative vault -> rc 2" 2 "$rc"
 assert_contains "drive-relative refuse names the hazard" "drive-relative" "$out"
-assert_eq "drive-relative refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
+assert_eq "drive-relative refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 
 # ============================================================================
-# Test 13: vault preflight — refuse a non-vault dir (luna leg needs sentinels)
+# Test 13: vault preflight — refuse a non-vault dir (luna worker needs sentinels)
 # ============================================================================
-echo "TEST: missing-sentinel vault refused on the luna leg (rc=2)"
+echo "TEST: missing-sentinel vault refused on the luna worker (rc=2)"
 NO_SENTINEL="$TMP_ROOT/no-sentinel"
 mkdir -p "$NO_SENTINEL"   # plain dir: no 60-Maps, no .obsidian
 reset_runner_log
@@ -540,8 +540,8 @@ rc=0; out=$(run_refresh luna --vault "$NO_SENTINEL" 2>&1) || rc=$?
 assert_rc "missing-sentinel luna -> rc 2" 2 "$rc"
 assert_contains "sentinel message names 60-Maps" "60-Maps" "$out"
 assert_contains "sentinel message names .obsidian" ".obsidian" "$out"
-assert_eq "missing-sentinel fired no runner leg" "" "$(cat "$RUNNER_LOG")"
-# The sentinel is LUNA-leg-only: a himmel-only run extracts the repo (not the
+assert_eq "missing-sentinel fired no runner worker" "" "$(cat "$RUNNER_LOG")"
+# The sentinel is LUNA-worker-only: a himmel-only run extracts the repo (not the
 # vault), so a non-vault maps-dir is accepted -- the root/PHI checks still ran
 # and passed (NO_SENTINEL is a plain temp dir); only the sentinel is skipped.
 reset_runner_log
@@ -569,7 +569,7 @@ if ln -s "$SALUS_REAL/phizone/vault" "$SALUS_LINK" 2>/dev/null && [ -L "$SALUS_L
     rc=0; out=$(run_refresh luna --vault "$SALUS_LINK" 2>&1) || rc=$?
     assert_rc "symlinked-salus vault -> rc 2" 2 "$rc"
     assert_contains "symlink salus refuse names salus/PHI" "salus" "$out"
-    assert_eq "symlink salus refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
+    assert_eq "symlink salus refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 else
     skip "symlink creation unavailable on this platform (ln -s made a copy or failed) -- symlink-into-salus preflight not exercised"
 fi
@@ -578,7 +578,7 @@ fi
 # Test 15: vault preflight — a symlinked vault pointing at a LEGIT stub vault
 # (60-Maps/.obsidian sentinels at the TARGET) is ACCEPTED via the resolved path
 #. Proves resolution does not over-refuse: a safe
-# symlinked target passes and the luna leg still fires.
+# symlinked target passes and the luna worker still fires.
 # ============================================================================
 echo "TEST: symlinked vault at a legit stub vault accepted via the resolved path (rc=0)"
 GOOD_REAL="$TMP_ROOT/good-real"
@@ -597,8 +597,8 @@ if ln -s "$GOOD_REAL" "$GOOD_LINK" 2>/dev/null && [ -L "$GOOD_LINK" ]; then
     # exercises the symlink-follow acceptance (mirrors Test 8's ratify prefix).
     rc=0; out=$(TEST_LUNA_ROOT="$GOOD_LINK" run_refresh luna --vault "$GOOD_LINK" 2>&1) || rc=$?
     assert_rc "symlinked legit vault -> rc 0" 0 "$rc"
-    assert_contains "symlinked legit vault ran the luna leg" "--name luna" "$(sed -n '1p' "$RUNNER_LOG")"
-    assert_eq "symlinked legit vault fired exactly one leg" "1" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
+    assert_contains "symlinked legit vault ran the luna worker" "--name luna" "$(sed -n '1p' "$RUNNER_LOG")"
+    assert_eq "symlinked legit vault fired exactly one worker" "1" "$(wc -l < "$RUNNER_LOG" | tr -d ' ')"
 else
     skip "symlink creation unavailable on this platform (ln -s made a copy or failed) -- symlink-accept preflight not exercised"
 fi
@@ -624,7 +624,7 @@ reset_runner_log
 rc=0; out=$(run_refresh himmel --vault "$DV_HOME" 2>&1) || rc=$?
 assert_rc "16a HOME itself -> rc 2" 2 "$rc"
 assert_contains "16a HOME refuse names HOME" "HOME" "$out"
-assert_eq "16a HOME refusal fired no runner leg" "" "$(cat "$RUNNER_LOG")"
+assert_eq "16a HOME refusal fired no runner worker" "" "$(cat "$RUNNER_LOG")"
 
 # 16b (case 2): a symlink pointing at HOME -> REFUSED (the new coverage over a
 # pure-text guard). Build a SMALL temp stand-in HOME and symlink THAT -- never
@@ -665,7 +665,7 @@ mkdir -p "$NORMAL_ROOT"
 reset_runner_log
 rc=0; out=$(run_refresh himmel --vault "$NORMAL_ROOT" 2>&1) || rc=$?
 assert_rc "16d non-HOME root -> rc 0 (allowed)" 0 "$rc"
-assert_contains "16d non-HOME root ran the himmel leg" "--name himmel" "$(sed -n '1p' "$RUNNER_LOG")"
+assert_contains "16d non-HOME root ran the himmel worker" "--name himmel" "$(sed -n '1p' "$RUNNER_LOG")"
 
 # 16e (case 5): the identity probe failing -> REFUSED (fail-closed). Force the
 # operator HOME to a non-existent path and clear USERPROFILE so resolve_user_home

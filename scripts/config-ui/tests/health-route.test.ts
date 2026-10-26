@@ -1,4 +1,4 @@
-// GET /api/health — bank / legs / monitoring, each degrading alone.
+// GET /api/health — bank / workers / monitoring, each degrading alone.
 import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -80,7 +80,7 @@ test("bank: a row that starts exactly at the 64 KiB tail boundary is kept", asyn
   expect((await body(s.port)).bank.row.seven_day).toBe("3.0");
 });
 
-test("legs: absent with no manifest, ok with one (real fleet-manifest.sh and leg_tail_status)", async () => {
+test("legs: absent with no manifest, ok with one (real fleet-manifest.sh and worker_tail_status)", async () => {
   const s = boot();
   expect((await body(s.port)).legs.state).toBe("absent");
   const doc = join(s.root, "HIMMEL-1-N1-x-RESUME.md");

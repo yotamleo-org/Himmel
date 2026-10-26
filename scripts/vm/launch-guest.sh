@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# billed-exempt: launcher into a test VM; the operator or console arming it is the billed act
+# billed-exempt: launcher into a test VM; the operator or chief arming it is the billed act
 # scripts/vm/launch-guest.sh - start ONE claude session on a himmel test VM.
 #
-# The sanctioned guest launch for the leg-vm profile: the profile's
-# only extra allow rule names this script, so a leg never types ssh or a claude
+# The sanctioned guest launch for the worker-vm profile: the profile's
+# only extra allow rule names this script, so a worker never types ssh or a claude
 # launch itself. The guest session runs on the guest's own claude login with an
 # explicit --permission-mode acceptEdits and a fixed --allowedTools list, never a
 # skip-permissions flag (docs/internals/enforcement.md, Claude invocation billing).

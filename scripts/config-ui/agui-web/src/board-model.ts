@@ -1,5 +1,5 @@
-// The console board on the Fleet page: himmel.board/1 (board.mjs --json, served by /api/agui/board) joined to the
-// fleet rows by leg label, the drawer's keyboard reducer and the deep-link fragment. Dependency-free, like fleet-model.
+// The chief board on the Fleet page: himmel.board/1 (board.mjs --json, served by /api/agui/board) joined to the
+// fleet rows by worker label, the drawer's keyboard reducer and the deep-link fragment. Dependency-free, like fleet-model.
 import { fleetSections, type Filters, type Row } from "./fleet-model";
 
 export const STAGES = ["dispatch", "live", "pr", "ready", "go", "merged"] as const;
@@ -39,7 +39,7 @@ export type Board = {
 export type Joined = { leg: BoardLeg; row: Row | null; need: Need | null };
 // A board card per board leg: its fleet row (null when the census has no live session for it) and what it needs.
 export function joinBoard(rows: Row[], board: Board): Joined[] {
-  // the board labels a leg by its number (N2339); a fleet row is its doc stem, whose -N2339[b]- names the same leg.
+  // the board labels a worker by its number (N2339); a fleet row is its doc stem, whose -N2339[b]- names the same worker.
   const label = (name: string) => /-(N\d+)[a-z]?-/.exec(name)?.[1] ?? name;
   const byLabel = new Map<string, Row>();
   // a live hop beats a finished one; of several live hops the newest start wins, whatever the input order.
@@ -52,7 +52,7 @@ export function joinBoard(rows: Row[], board: Board): Joined[] {
   return board.legs.map((leg) => ({ leg, row: byLabel.get(leg.leg) ?? null, need: need.get(leg.leg) ?? null }));
 }
 
-// The needs-you cards the rail's filters leave: a leg shows when its fleet row is on the page (a leg with no row
+// The needs-you cards the rail's filters leave: a worker shows when its fleet row is on the page (a worker with no row
 // hides once any filter is on, as it cannot match one).
 export function needsShown(joined: Joined[], rows: Row[], filters: Filters): Joined[] {
   const needing = joined.filter((j) => j.need);
@@ -81,7 +81,7 @@ export type Drawer = { leg: string; stage: Stage; back: { leg: string; stage: St
 export const openAt = (from: Drawer | null, leg: string, stage: Stage): Drawer =>
   from && (from.leg !== leg || from.stage !== stage) ? { leg, stage, back: [...from.back, { leg: from.leg, stage: from.stage }].slice(-20) } : from ?? { leg, stage, back: [] };
 
-// left/right move between stages, up/down between legs (the order the page lists them), Esc closes (null), Backspace goes back.
+// left/right move between stages, up/down between workers (the order the page lists them), Esc closes (null), Backspace goes back.
 export function applyKey(d: Drawer, key: string, legs: string[]): Drawer | null {
   if (key === "Escape") return null;
   if (key === "Backspace") {
@@ -96,7 +96,7 @@ export function applyKey(d: Drawer, key: string, legs: string[]): Drawer | null 
   return to ? openAt(d, to.leg, to.stage) : d;
 }
 
-// #t=<token>&console=<doc>&tab=trends&k=s.<leg>.<stage>; a leg label holds no dot, so the stage is after the last one.
+// #t=<token>&console=<doc>&tab=trends&k=s.<worker>.<stage>; a worker label holds no dot, so the stage is after the last one.
 export function viewHash(token: string, console: string | null, tab: "fleet" | "trends", k: { leg: string; stage: Stage } | null): string {
   const p = new URLSearchParams({ t: token });
   if (console) p.set("console", console);

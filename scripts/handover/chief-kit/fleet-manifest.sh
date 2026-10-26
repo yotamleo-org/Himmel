@@ -1,35 +1,35 @@
 #!/usr/bin/env bash
-# fleet-manifest.sh — The one writer for a console's fleet
-# manifest: the JSON file `tick.sh --legs-from` (and so console-wait.sh) reads
-# on every sample, so a dispatch or a wrap edits one file instead of the console
-# restarting its waiter with a new 10-15 path --legs argv.
+# fleet-manifest.sh — The one writer for a chief's fleet
+# manifest: the JSON file `tick.sh --workers-from` (and so chief-wait.sh) reads
+# on every sample, so a dispatch or a wrap edits one file instead of the chief
+# restarting its waiter with a new 10-15 path --workers argv.
 #
-#   fleet-manifest.sh add    <manifest> <leg doc>... [--lane <lane>] [--lockless] [--arm 200k|400k]
-#   fleet-manifest.sh remove <manifest> <leg doc | label>...
+#   fleet-manifest.sh add    <manifest> <worker doc>... [--lane <lane>] [--lockless] [--arm 200k|400k]
+#   fleet-manifest.sh remove <manifest> <worker doc | label>...
 #   fleet-manifest.sh list   <manifest>                      one doc per line
 #
-# Location: next to the console doc, named after it —
-# <console doc stem>.fleet.json.
+# Location: next to the chief doc, named after it —
+# <chief doc stem>.fleet.json.
 #
 # Schema 1:
 #   {"schema": 1,
-#    "legs": [{"doc": "<absolute leg doc>", "label": "N<k>", "added": "<ISO-8601>"}]}
+#    "legs": [{"doc": "<absolute worker doc>", "label": "N<k>", "added": "<ISO-8601>"}]}
 # add also stores `lane` (native|claudex|deepseek|api|...; a missing
 # --lane is stored `unknown`, never guessed) and, with --lockless, `lockless: true`
 # (an eval/pilot row that holds no queue lock: tick reports NOLOCK and judges it by
 # tail marker only). A manifest written before this carries neither key and reads
 # as lane `unknown`, not lockless. A doc already listed is left alone, flags and all.
 # add also stores an optional `arm` (200k|400k, the autocompact A/B
-# arm the leg launched on); a leg added with no --arm carries no `arm` key.
-# Only `legs[].doc` drives tick; label (leg-identity.sh's N<k>) is what remove
-# matches and what a human reads. Any other key, top-level or per leg, is
-# carried through every rewrite untouched, so a wider leg manifest
+# arm the worker launched on); a worker added with no --arm carries no `arm` key.
+# Only `workers[].doc` drives tick; label (worker-identity.sh's N<k>) is what remove
+# matches and what a human reads. Any other key, top-level or per worker, is
+# carried through every rewrite untouched, so a wider worker manifest
 # (chains, lanes, write-sets) can grow in the same object.
 #
-# add is idempotent (a doc already listed is left alone); removing a leg that is
+# add is idempotent (a doc already listed is left alone); removing a worker that is
 # not listed is not an error. A doc must be absolute: tick resolves a relative
 # one against the handover root, the writer's cwd would be a different one. It
-# must also carry no whitespace or glob character, which tick's word-split leg
+# must also carry no whitespace or glob character, which tick's word-split worker
 # list cannot hold.
 #
 # Writes hold an exclusive flock on <manifest>.lock and replace the file with a
@@ -40,7 +40,7 @@
 #
 # Exit: 0 ok; 1 missing/invalid manifest, lock or write failure; 2 usage.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only
+# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only
 # (util-linux flock). bash 3.2-safe; needs jq.
 set -uo pipefail
 
@@ -48,19 +48,19 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/prim.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/prim.sh" || exit 2
-# shellcheck source=../../lib/leg-identity.sh
+# shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
 
 usage() {
     cat <<'USAGE'
-usage: fleet-manifest.sh add    <manifest> <leg doc>... [--lane <lane>] [--lockless] [--arm 200k|400k]
-       fleet-manifest.sh remove <manifest> <leg doc | label>...
+usage: fleet-manifest.sh add    <manifest> <worker doc>... [--lane <lane>] [--lockless] [--arm 200k|400k]
+       fleet-manifest.sh remove <manifest> <worker doc | label>...
        fleet-manifest.sh list   <manifest>
 USAGE
 }
 
-# Every leg's doc is an absolute path with no whitespace or glob character:
-# tick word-splits its leg list, so anything else would silently shrink the
+# Every worker's doc is an absolute path with no whitespace or glob character:
+# tick word-splits its worker list, so anything else would silently shrink the
 # fleet it judges. Run with `jq -s`: the file must hold exactly one top-level
 # value — jq reads a stream, so two concatenated objects would
 # otherwise pass per value and list/add would act on a multi-object file.
@@ -107,7 +107,7 @@ if [ "$verb" = add ]; then
                 shift 2 ;;
             *)
                 case "$1" in
-                    *$'\n'*) echo "fleet-manifest: leg doc must not contain a newline: $1" >&2; exit 2 ;;
+                    *$'\n'*) echo "fleet-manifest: worker doc must not contain a newline: $1" >&2; exit 2 ;;
                 esac
                 docs_only="$docs_only$1"$'\n'; shift ;;
         esac
@@ -120,11 +120,11 @@ EOD
     for doc in "$@"; do
         case "$doc" in
             /*) ;;
-            *) echo "fleet-manifest: leg doc must be an absolute path: $doc" >&2; exit 2 ;;
+            *) echo "fleet-manifest: worker doc must be an absolute path: $doc" >&2; exit 2 ;;
         esac
         case "$doc" in
             *[[:space:]]*|*'*'*|*'?'*|*'['*)
-                echo "fleet-manifest: leg doc must not contain whitespace or a glob character (tick word-splits it): $doc" >&2
+                echo "fleet-manifest: worker doc must not contain whitespace or a glob character (tick word-splits it): $doc" >&2
                 exit 2 ;;
         esac
     done
@@ -149,7 +149,7 @@ fi
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 for arg in "$@"; do
     if [ "$verb" = add ]; then
-        label="$(leg_label "$arg")"
+        label="$(worker_label "$arg")"
         # Re-adding a listed doc never rewrites its row: flags that would change the
         # stored lane or lockless are refused, not silently ignored.
         conflict="$(printf '%s\n' "$cur" | jq -r --arg d "$arg" --arg ln "$lane" --argjson lg "$lane_given" --argjson ll "$lockless" --arg ar "$arm" \

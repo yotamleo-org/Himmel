@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# test-tick-nolive.sh — tick.sh reads a leg that never went LIVE as
-# `<N>:NOLIVE` and a leg whose session transcript ends in a `continued-in`
-# record as `<N>:FORKED`; console-wait.sh then wakes on the workers= change.
+# test-tick-nolive.sh — tick.sh reads a worker that never went LIVE as
+# `<N>:NOLIVE` and a worker whose session transcript ends in a `continued-in`
+# record as `<N>:FORKED`; chief-wait.sh then wakes on the workers= change.
 # Hermetic: stubs for every external probe, scratch HOME / handover / projects.
 # Its own file because test-tick.sh is being edited by another open PR.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/tick.sh"
-WAIT="$HERE/console-wait.sh"
+WAIT="$HERE/chief-wait.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tick-nolive-test.XXXXXX")" || exit 1
 trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$W"' EXIT
 fails=0
@@ -21,7 +21,7 @@ check() { # <name> <want> <got>
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
 }
 
-mkdir -p "$W/repo/scripts/handover" "$W/repo/scripts/lib" "$W/repo/scripts/lanes/lib" "$W/handover/inbox/.cursor" "$W/bin" "$W/proc" "$W/home" "$W/projects/p" "$W/console-work/chain"
+mkdir -p "$W/repo/scripts/handover" "$W/repo/scripts/lib" "$W/repo/scripts/lanes/lib" "$W/handover/inbox/.cursor" "$W/bin" "$W/proc" "$W/home" "$W/projects/p" "$W/chief-work/chain"
 
 cat > "$W/repo/scripts/handover/queue-lock.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -56,10 +56,10 @@ export PATH="$W/bin:$PATH"
 export HOME="$W/home"
 export HANDOVER_DIR="$W/handover" REPO="$W/repo" TICK_TMPDIR="$W" PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json" TICK_STATE_DIR="$W/state" CLAUDE_SESSIONS_PROC="$W/proc"
-export TICK_LAUNCH_DIR="$W/console-work" TICK_PROJECTS_DIR="$W/projects"
-export DOC="$W/handover/console.md" TOKEN=t LEGS=''
+export TICK_LAUNCH_DIR="$W/chief-work" TICK_PROJECTS_DIR="$W/projects"
+export DOC="$W/handover/chief.md" TOKEN=t WORKERS=''
 
-# mkleg <id-slug> [bullet...]: a leg doc whose marker bullets are the args.
+# mkleg <id-slug> [bullet...]: a worker doc whose marker bullets are the args.
 mkleg() {
     local f="$W/handover/HIMMEL-9$1.md"; shift
     printf '# leg\n' > "$f"
@@ -67,9 +67,9 @@ mkleg() {
     for b in "$@"; do printf '%s\n' "$b" >> "$f"; done
     printf '%s' "$f"
 }
-# manifest <doc:minutes-ago>...: a fleet manifest with each leg added N min ago.
+# manifest <doc:minutes-ago>...: a fleet manifest with each worker added N min ago.
 manifest() {
-    local m="$W/handover/console.fleet.json" legs="" e d t
+    local m="$W/handover/chief.fleet.json" legs="" e d t
     for e in "$@"; do
         d="${e%%:*}"; t="$(/bin/date -u -d "${e##*:} minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
         legs="$legs${legs:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\"}"
@@ -80,7 +80,7 @@ manifest() {
 field() { # <field> <tick output>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
-run_from() { bash "$SUT" --legs-from "$1" 2>/dev/null; }
+run_from() { bash "$SUT" --workers-from "$1" 2>/dev/null; }
 
 # --- NOLIVE: at / before the threshold -------------------------------------
 old="$(mkleg 901-N901-old)"; young="$(mkleg 902-N902-young)"
@@ -113,13 +113,13 @@ check 'WRAPPED / READY / LIVE / BLOCKED / held-lock legs are never NOLIVE' 'N903
 # --- start time fallbacks: launch log armed line, then doc mtime ------------
 nm="$(mkleg 907-N907-nomanifest)"
 touch -d '30 minutes ago' "$nm"
-check 'no manifest, no launch log: the doc mtime starts the clock (old = NOLIVE)' 'N907:NOLIVE' "$(field workers "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
+check 'no manifest, no launch log: the doc mtime starts the clock (old = NOLIVE)' 'N907:NOLIVE' "$(field workers "$(bash "$SUT" --workers "$nm" 2>/dev/null)")"
 touch "$nm"
-check 'no manifest, no launch log: a fresh doc is still FREE' 'N907:FREE' "$(field workers "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
+check 'no manifest, no launch log: a fresh doc is still FREE' 'N907:FREE' "$(field workers "$(bash "$SUT" --workers "$nm" 2>/dev/null)")"
 ts="$(/bin/date -d '40 minutes ago' +%F_%T)"  # gnu-ok: Linux-only kit
-printf '%s armed: name=HIMMEL-9907-N907-nomanifest doc=%s signal=x deadline=y role=leg\n' "$ts" "$nm" > "$W/console-work/chain/a.launch.log"
-check 'the launch log armed: line (older than the fresh doc) starts the clock' 'N907:NOLIVE' "$(field workers "$(bash "$SUT" --legs "$nm" 2>/dev/null)")"
-rm -f "$W/console-work/chain/a.launch.log"
+printf '%s armed: name=HIMMEL-9907-N907-nomanifest doc=%s signal=x deadline=y role=leg\n' "$ts" "$nm" > "$W/chief-work/chain/a.launch.log"
+check 'the launch log armed: line (older than the fresh doc) starts the clock' 'N907:NOLIVE' "$(field workers "$(bash "$SUT" --workers "$nm" 2>/dev/null)")"
+rm -f "$W/chief-work/chain/a.launch.log"
 
 # --- FORKED ------------------------------------------------------------------
 fk="$(mkleg 908-N908-forked)"; nf="$(mkleg 909-N909-notforked)"; nt="$(mkleg 911-N911-notranscript)"
@@ -136,11 +136,11 @@ printf '%s\n' '{"type":"custom-title","customTitle":"HIMMEL-9908-N908-forked","s
 touch -d '1 minute ago' "$W/projects/p/s1.jsonl"
 check 'the newest transcript under the title decides: a live continuation is not FORKED' 'N908:NOLIVE' "$(field workers "$(run_from "$(manifest "$fk:30")")")"
 rm -f "$W/projects/p/s2.jsonl"
-# a forked leg that has since wrapped reads WRAPPED
+# a forked worker that has since wrapped reads WRAPPED
 printf '%s\n' '- 10:00 WRAPPED — done' >> "$fk"
 check 'a wrapped leg is never FORKED' 'N908:WRAPPED' "$(field workers "$(run_from "$(manifest "$fk:30")")")"
 
-# a leg that has written any marker bullet is never relabelled FORKED
+# a worker that has written any marker bullet is never relabelled FORKED
 mk="$(mkleg 912-N912-markerfork '- 10:00 LIVE — working')"
 printf '%s\n' '{"type":"custom-title","customTitle":"HIMMEL-9912-N912-markerfork","sessionId":"s5"}' '{"type":"continued-in","sessionId":"s5"}' > "$W/projects/p/s5.jsonl"
 check 'a LIVE leg whose transcript ended in continued-in is not relabelled FORKED' 'N912:FREE' "$(field workers "$(run_from "$(manifest "$mk:1")")")"
@@ -158,19 +158,19 @@ touch -d '30 minutes ago' "$ln"
 {
     printf '%s armed: name=HIMMEL-9914-N914-logorder doc=%s signal=x deadline=y role=leg\n' "$(/bin/date -d '40 minutes ago' +%F_%T)" "$ln"  # gnu-ok: Linux-only kit
     printf '%s armed: name=HIMMEL-9914-N914-logorder doc=%s signal=x deadline=y role=leg\n' "$(/bin/date -d '2 minutes ago' +%F_%T)" "$ln"  # gnu-ok: Linux-only kit
-} > "$W/console-work/chain/b.launch.log"
-check 'the newest armed: timestamp wins over an older one (2 min ago is FREE)' 'N914:FREE' "$(field workers "$(bash "$SUT" --legs "$ln" 2>/dev/null)")"
-rm -f "$W/console-work/chain/b.launch.log"
+} > "$W/chief-work/chain/b.launch.log"
+check 'the newest armed: timestamp wins over an older one (2 min ago is FREE)' 'N914:FREE' "$(field workers "$(bash "$SUT" --workers "$ln" 2>/dev/null)")"
+rm -f "$W/chief-work/chain/b.launch.log"
 
-# --- the waiter wakes when legs= moves FREE -> NOLIVE / FREE -> FORKED -------
+# --- the waiter wakes when workers= moves FREE -> NOLIVE / FREE -> FORKED -------
 STUB="$W/stub"; mkdir -p "$STUB"
 cat > "$STUB/tick.sh" <<'EOF'
 #!/usr/bin/env bash
 cat "$STUB/tick.line"
 EOF
 printf '#!/usr/bin/env bash\ncat "$STUB/bank"\n' > "$STUB/bank.sh"
-export STUB CONSOLE_WAIT_TICK="$STUB/tick.sh" CONSOLE_WAIT_BANK="$STUB/bank.sh"
-export CONSOLE_WAIT_INTERVAL=1 CONSOLE_WAIT_POLL_SEC=0.2 CONSOLE_WAIT_FAIL_WAKE=1000
+export STUB CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
+export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 printf 'PROCEED\n' > "$STUB/bank"
 tick_line() {
     printf 'TICK 03:00 hb=1m legs=%s livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:? inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip\n' "$1" > "$STUB/tick.line"
@@ -181,7 +181,7 @@ waiter_case() { # <name> <baseline legs> <new legs>
     inbox="$W/in-${#1}-$2-$3/consoles/c.md"
     mkdir -p "$(dirname "$inbox")"; : > "$inbox"
     tick_line "$2"
-    bash "$WAIT" "$inbox" --legs "N1.md" > "$W/w.out" 2>/dev/null &
+    bash "$WAIT" "$inbox" --workers "N1.md" > "$W/w.out" 2>/dev/null &
     pid=$!
     wait_hb "$inbox" || fail "$1: waiter never took its baseline"
     tick_line "$3"

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# test-friction-gate-docs.sh — Pins the leg-preface wording that
+# test-friction-gate-docs.sh — Pins the worker-preface wording that
 # cuts two friction rows:
-#   1. console-ruling latency: a brief may state `default-if-no-ruling (N min)`;
+#   1. chief-ruling latency: a brief may state `default-if-no-ruling (N min)`;
 #      the default is NARROWING only and never stands in for GO / a merge / a
 #      token-quoting message;
 #   2. one-push-per-session (claudex lane): ONE push per head, with a same-head
 #      fixup (fast-forward over the already-pushed head) allowed; a rewritten or
 #      different-base head stays refused;
 #   3. CI-queue orphans (claudex lane): a pending CI is never an external
-#      blocker; the leg re-runs check-ci until green or red and triages a red,
+#      blocker; the worker re-runs check-ci until green or red and triages a red,
 #      bounded: past 3 re-runs or 90 min (or zero checks) it posts BLOCKED
 #      ci-pending and takes the bounded inbox hold.
 # Docs-only reads. PLATFORM GUARD: no .ps1 twin — Bash 3.2, grep/tr only.
@@ -16,9 +16,9 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DOCS="${DOCS:-$HERE/../../docs}"
-PREFACE="$DOCS/handover/leg-preface.md"
-CLAUDEX="$DOCS/handover/leg-preface-claudex.md"
-TEMPLATE="$DOCS/handover/leg-brief-template.md"
+PREFACE="$DOCS/handover/worker-preface.md"
+CLAUDEX="$DOCS/handover/worker-preface-claudex.md"
+TEMPLATE="$DOCS/handover/worker-brief-template.md"
 fails=0
 pass() { printf 'ok - %s\n' "$1"; }
 fail() { printf 'FAIL - %s\n' "$1"; fails=$((fails + 1)); }
@@ -101,9 +101,9 @@ else
     fail "claudex preface: DEADLINE-PENDING re-runs check-ci until green or red"
 fi
 if has "$CLAUDEX" 'red is yours to triage[^.]*ci-red\.md'; then
-    pass "claudex preface: a red CI is the leg's to triage per ci-red.md"
+    pass "claudex preface: a red CI is the worker's to triage per ci-red.md"
 else
-    fail "claudex preface: a red CI is the leg's to triage per ci-red.md"
+    fail "claudex preface: a red CI is the worker's to triage per ci-red.md"
 fi
 # shellcheck disable=SC2016 # the backticks are literal regex text
 if has "$CLAUDEX" 'at most 3 +`?DEADLINE-PENDING`? re-runs or 90 minutes[^.]*BLOCKED ci-pending: <pr> <head> <pending checks>'; then

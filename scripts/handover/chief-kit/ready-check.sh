@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/ready-check.sh — mechanize the console's READY
-# verification. Console A ran this same
+# scripts/handover/chief-kit/ready-check.sh — mechanize the chief's READY
+# verification. Chief A ran this same
 # checklist by hand ~12 times on 2026-09-18 with zero variance; the fleet cap
 # doubling (4 -> 8) doubles the READYs per hour, so it is worth a script.
 #
 # Read-only except the shared PR snapshot cache, which it refreshes (TTL 0:
 # every run reads the PR live, never a same-head cached snapshot). Prints one
 # line per check, then READY-CHECK PASS|FAIL. It does
-# NOT read the three-dot diff — that judgement call stays the console's own,
+# NOT read the three-dot diff — that judgement call stays the chief's own,
 # and the script says so on its last line.
 #
 # Usage: ready-check.sh <pr-number> <full-40-hex-head-sha>
 #        ready-check.sh --only 7 <pr-number>
-#   --only 7 runs ONLY check 7 — a leg's own pre-READY lint of its
-#   PR body, the same code the console runs. Prints COVERAGE-LINT PASS|FAIL.
+#   --only 7 runs ONLY check 7 — a worker's own pre-READY lint of its
+#   PR body, the same code the chief runs. Prints COVERAGE-LINT PASS|FAIL.
 #
 # Checks:
 #   1. Shared snapshot: headRefOid == <head-sha> (full 40 chars); mergeStateStatus
@@ -50,7 +50,7 @@
 #   6. Every commit subject in the PR carries a ticket ID, using the same
 #      pattern scripts/hooks/check-commit-msg.sh derives (TICKET_ID_PATTERN,
 #      else "${JIRA_PROJECT_KEY}-[0-9]+", else a bare "#123" reference) —
-#      except a commit with more than one parent (a real merge, e.g. a leg's
+#      except a commit with more than one parent (a real merge, e.g. a worker's
 #      `Merge remote-tracking branch 'origin/main' into <branch>`), mirroring
 #      scripts/ci/check-commit-range.sh's `git rev-list --no-merges`. Parent
 #      count, not subject text, is the exemption signal.
@@ -123,14 +123,14 @@ set -u
 
 usage() {
     echo "usage: ready-check.sh <pr-number> <full-40-hex-head-sha>" >&2
-    echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a leg before READY)" >&2
+    echo "       ready-check.sh --only 7 <pr-number>   (ticket-coverage lint, for a worker before READY)" >&2
 }
 
 ONLY7=0
 if [ "${1:-}" = "--only" ]; then
     if [ "$#" -ne 3 ] || [ "$2" != "7" ]; then
         usage
-        echo "ready-check: --only takes exactly '7 <pr-number>' (the only check a leg can run alone)" >&2
+        echo "ready-check: --only takes exactly '7 <pr-number>' (the only check a worker can run alone)" >&2
         exit 2
     fi
     ONLY7=1
@@ -464,7 +464,7 @@ fi  # ONLY7 == 0: checks 1-6
 # A PR can close its ticket Done with asks undone. The
 # body must carry a `## Ticket coverage` section, one list line per ask of each
 # cited ticket, each marked `done` or `deferred → <KEY>` (`->` also accepted).
-# Whether a line's "done" is TRUE stays the console's diff read; this check
+# Whether a line's "done" is TRUE stays the chief's diff read; this check
 # makes an unaccounted ask structurally visible and a deferral real: every
 # deferred key must exist and still be open, and the deferral keys must equal
 # the CR ledger's deferred_to rows for the PR head, or for the reviewed head a
@@ -1085,7 +1085,7 @@ TRUST_PATH=""
 if [ "$ONLY7" -eq 0 ]; then
 # ── 12. trust path, computed from the PR diff ──
 # The same question merge-on-green asks (trust_path_check in scripts/lib/go-gate.sh:
-# the default branch's list against the PR's REST file listing). The leg's READY
+# the default branch's list against the PR's REST file listing). The worker's READY
 # text is never consulted. A refusal (unreadable list, head moved, listing cut
 # short, stale anchor) FAILs and prints no TRUST-PATH line: it never reads as "no".
 tp_anchor="${READY_CHECK_ANCHOR:-$(cd "$(dirname "$0")/../../.." && pwd)}"
@@ -1122,7 +1122,7 @@ if [ "$ONLY7" -eq 1 ]; then
 fi
 
 echo "---"
-echo "The three-dot diff read (git diff origin/main...HEAD) stays the console's own judgement — this script does not read it."
+echo "The three-dot diff read (git diff origin/main...HEAD) stays the chief's own judgement — this script does not read it."
 [ -z "$TRUST_PATH" ] || echo "TRUST-PATH: $TRUST_PATH"
 if [ "$RESULT" -eq 0 ]; then
     echo "READY-CHECK PASS"

@@ -16,7 +16,7 @@
 # the subscription budget): one on
 # the `/drift-fix` runbook (bump what is mechanically bumpable), one on the
 # `/fork-resync` runbook (rebase the carried fork against upstream). The drift
-# leg opens an ordinary PR against origin and stops; the resync leg's
+# worker opens an ordinary PR against origin and stops; the resync worker's
 # unattended run stops at the audit and opens nothing — an operator-run
 # resync may go further, per its own runbook. The origin squash-merge stays
 # human-authorized, unchanged.
@@ -31,9 +31,9 @@
 # `synced_base` without moving the in-repo pin with it.
 #
 # TWO tasks, daily, default 05:00 (drift) / 05:30 (resync) local — after
-# pipeline-cadence's 02:00/03:00/04:00 legs (no overlap on the same machine)
-# and before the workday, so the drift leg's PR is already waiting when the
-# operator checks (the resync leg's unattended run opens nothing — see
+# pipeline-cadence's 02:00/03:00/04:00 workers (no overlap on the same machine)
+# and before the workday, so the drift worker's PR is already waiting when the
+# operator checks (the resync worker's unattended run opens nothing — see
 # above). StartWhenAvailable=true: a fire missed because the machine was
 # off/asleep catches up when it is next on. See the WORKER_SESSION_DRIFT/WORKER_SESSION_RESYNC
 # block below for why this is two tasks in one script rather than one task or
@@ -66,10 +66,10 @@
 #   0  done (armed / status printed / disarmed / dry-run complete)
 #   1  usage or input error (bad subcommand, flag, --time, --resync-time, --model)
 #   2  env unusable (no scheduler, no claude, unknown platform, missing payload)
-#   3  dedup block — either leg already armed; --force replaces
+#   3  dedup block — either worker already armed; --force replaces
 #   4  scheduler invocation failed (create/delete/query), or the post-arm
-#      verify failed (Windows: both legs are deleted before exiting, so arm
-#      is all-or-nothing — never one leg live and the other missing)
+#      verify failed (Windows: both workers are deleted before exiting, so arm
+#      is all-or-nothing — never one worker live and the other missing)
 set -euo pipefail
 
 SCHTASKS_BIN="${DRIFTFIX_SCHTASKS:-schtasks}"
@@ -136,14 +136,14 @@ MODEL="sonnet"
 DRY_RUN=0
 FORCE=0
 
-# TWO legs, because upstream drift has two genuinely different repairs and one
-# must not block the other. The `drift` leg is mechanical and lands nightly
-# (a version pin moves, a vendor CLI upgrades). The `resync` leg is a fork
+# TWO workers, because upstream drift has two genuinely different repairs and one
+# must not block the other. The `drift` worker is mechanical and lands nightly
+# (a version pin moves, a vendor CLI upgrades). The `resync` worker is a fork
 # REBASE — it is a no-op most nights (upstream tags rarely) and, when it does
 # fire, it can legitimately end in "conflicted, a human must decide". Folding
-# that into the drift leg would let a stuck fork re-sync block routine pin
+# that into the drift worker would let a stuck fork re-sync block routine pin
 # bumps. They are separate scheduled tasks for the same reason pipeline-cadence
-# arms its legs separately.
+# arms its workers separately.
 #
 # Deliberately ONE script rather than a second near-identical cadence file: the
 # arm/status/disarm/dedup/rollback machinery below is the part that is hard to
@@ -159,15 +159,15 @@ WORKER_SESSION_RESYNC="HIMMEL-ForkResync"
 PROMPT_DRIFT="Run /drift-fix to completion. This is the scheduled nightly upstream-drift repair cadence (HIMMEL-1323) - fully autonomous, no user prompts; follow the runbook exactly, STOP at the open PR, and report what landed."
 PROMPT_RESYNC="Run /fork-resync to completion. This is the scheduled nightly carried-fork re-sync cadence (HIMMEL-1323/HIMMEL-1435) - fully autonomous, no user prompts; audit every BEHIND scripts/upstreams.json entry with a fork block (each entry's own note says whether a non-additive result is a regression to report or an expected known gap), then STOP at the end of step 3; NEVER run resync-fork.sh --push and do not open a branch or PR; report every result."
 
-# leg_prompt / leg_log / leg_runner <task-name> — the per-leg lookups, kept as
+# worker_prompt / worker_log / worker_runner <task-name> — the per-worker lookups, kept as
 # functions rather than an associative array (bash 3.2 has none; macOS ships 3.2).
-leg_prompt() {
+worker_prompt() {
     if [ "$1" = "$WORKER_SESSION_RESYNC" ]; then printf '%s' "$PROMPT_RESYNC"; else printf '%s' "$PROMPT_DRIFT"; fi
 }
-leg_slug() {
+worker_slug() {
     if [ "$1" = "$WORKER_SESSION_RESYNC" ]; then printf 'fork-resync'; else printf 'drift-fix'; fi
 }
-leg_time() {
+worker_time() {
     if [ "$1" = "$WORKER_SESSION_RESYNC" ]; then printf '%s' "$RESYNC_TIME"; else printf '%s' "$FIRE_TIME"; fi
 }
 
@@ -186,7 +186,7 @@ nothing (an operator-run resync may go further, per its own runbook).
 Subcommands:
   arm      Register both daily tasks. Dedup-guarded: refuses (rc=3) if
            EITHER task is already armed, naming which; --force replaces.
-  status   Show whether each leg is armed (+ next run time + run-log
+  status   Show whether each worker is armed (+ next run time + run-log
            evidence from its last fire).
   disarm   Remove both tasks and their runners (idempotent; rc=0 if
            nothing was armed).
@@ -194,14 +194,14 @@ Subcommands:
 Flags (arm only, except --dry-run):
   --time <HH:MM>         Daily fire time for HIMMEL-DriftFix, 24h local
                          (default 05:00 -- clear of pipeline-cadence's
-                         02:00/03:00/04:00 legs, and early enough that the
+                         02:00/03:00/04:00 workers, and early enough that the
                          PR is waiting by the workday).
   --resync-time <HH:MM>  Daily fire time for HIMMEL-ForkResync, 24h local
-                         (default 05:30 -- right after the drift leg).
+                         (default 05:30 -- right after the drift worker).
   --model <name>  claude --model pin for BOTH sessions (default sonnet --
                   the runbooks are well-specified; never inherit the
                   operator's saved default tier).
-  --force         Replace an already-armed leg (either or both).
+  --force         Replace an already-armed worker (either or both).
   --dry-run       Print what would happen, touch nothing (honored by
                   arm AND disarm).
 EOF
@@ -457,9 +457,9 @@ emit_task_xml() {
     local bat_win="$1" start_time="$2" vbs_win vbs_args
     # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
     # The earlier hidden-powershell wrapper (-WindowStyle Hidden) was MEASURED to
-    # still allocate visible consoles; wscript //B hosting the .vbs shim (which
+    # still allocate visible chiefs; wscript //B hosting the .vbs shim (which
     # runs the .bat hidden via WScript.Shell.Run and forwards its exit code via
-    # WScript.Quit) allocates zero consoles. The shim path is derived from the
+    # WScript.Quit) allocates zero chiefs. The shim path is derived from the
     # .bat path through cadence_vbs_path — the SAME helper cmd_arm writes the
     # file with — so the referenced path and the written file can never disagree.
     # //B is the WSH batch-mode flag (no error/prompt UI); the path is quoted so
@@ -551,25 +551,25 @@ query_task() {
     return 2
 }
 
-# Roll back BOTH legs, best-effort (a leg that was never created simply errors
+# Roll back BOTH workers, best-effort (a worker that was never created simply errors
 # on /delete, which is ignored) — arm is all-or-nothing, so any failure past
 # the dedup gate rolls back whatever the run may have already created.
 # Rollback also removes the $slug.vbs shims this
 # arm may have published — a failed arm must not leave orphaned shims behind
-# for a later disarm to trip over. Only once the leg's task is confirmed GONE,
+# for a later disarm to trip over. Only once the worker's task is confirmed GONE,
 # though (query_task rc 1, trusted not-found): if the /delete itself failed,
 # that task is still armed and pointing at its shim, and removing the shim
 # THEN would leave an armed task referencing nothing — the exact state this
 # file's publish/registration ordering exists to prevent. A query error
 # (rc 2) keeps the shim for the same fail-safe reason; disarm removes both.
 win_rollback_both() {
-    local leg rc
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        run_schtasks /delete /tn "$leg" /f >/dev/null 2>&1 || true
+    local worker rc
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        run_schtasks /delete /tn "$worker" /f >/dev/null 2>&1 || true
         rc=0
-        query_task "$leg" 2>/dev/null || rc=$?
+        query_task "$worker" 2>/dev/null || rc=$?
         if [ "$rc" -eq 1 ]; then
-            rm -f "$BAT_DIR/$(leg_slug "$leg").vbs"
+            rm -f "$BAT_DIR/$(worker_slug "$worker").vbs"
         fi
     done
 }
@@ -591,20 +591,20 @@ cmd_arm() {
         exit 2
     fi
 
-    # Dedup guard, both legs. No /delete here: `/create /xml <file> /f` already
+    # Dedup guard, both workers. No /delete here: `/create /xml <file> /f` already
     # force-overwrites IN PLACE, so --force just skips the rc=3 refusal and lets
     # the replacement happen atomically AFTER all prep below has succeeded —
     # deleting first would leave no cadence at all if a later step failed.
-    local leg leg_rc dedup_names=""
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        leg_rc=0
-        query_task "$leg" || leg_rc=$?
-        case "$leg_rc" in
+    local worker worker_rc dedup_names=""
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        worker_rc=0
+        query_task "$worker" || worker_rc=$?
+        case "$worker_rc" in
             0)
                 if [ "$FORCE" -eq 1 ]; then
-                    echo "drift-fix-cadence: --force set; existing task $leg will be replaced by /create /f" >&2
+                    echo "drift-fix-cadence: --force set; existing task $worker will be replaced by /create /f" >&2
                 else
-                    if [ -z "$dedup_names" ]; then dedup_names="$leg"; else dedup_names="$dedup_names, $leg"; fi
+                    if [ -z "$dedup_names" ]; then dedup_names="$worker"; else dedup_names="$dedup_names, $worker"; fi
                 fi
                 ;;
             1) : ;;
@@ -670,13 +670,13 @@ cmd_arm() {
     claude_esc=$(cadence_cmd_escape "$claude_win")
     model_esc=$(cadence_cmd_escape "$MODEL")
 
-    # One iteration per leg. Dry-run only previews; the real path writes the
-    # .bat, creates the task, and verifies it — rolling back BOTH legs on any
-    # failure so arm never leaves one leg live and the other missing.
+    # One iteration per worker. Dry-run only previews; the real path writes the
+    # .bat, creates the task, and verifies it — rolling back BOTH workers on any
+    # failure so arm never leaves one worker live and the other missing.
     local slug time bat_file vbs_file bat_win log_file log_win prompt_esc log_esc err_file verify_rc
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(leg_slug "$leg")
-        time=$(leg_time "$leg")
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        slug=$(worker_slug "$worker")
+        time=$(worker_time "$worker")
         bat_file="$BAT_DIR/$slug.bat"
         # wscript //B shim lives beside the .bat; rollback + disarm
         # remove both. The Windows path cadence_vbs_path derives from $bat_win is
@@ -691,7 +691,7 @@ cmd_arm() {
             echo "ERR drift-fix-cadence: cygpath -w failed for $slug log file: $log_win" >&2
             win_rollback_both; exit 4
         fi
-        prompt_esc=$(cadence_cmd_escape "$(leg_prompt "$leg")")
+        prompt_esc=$(cadence_cmd_escape "$(worker_prompt "$worker")")
         log_esc=$(cadence_cmd_escape "$log_win")
 
         if [ "$DRY_RUN" -eq 1 ]; then
@@ -699,7 +699,7 @@ cmd_arm() {
             emit_bat "$root_esc" "$claude_esc" "$prompt_esc" "$log_esc" "$model_esc" | sed 's/^/    /'
             echo "DRY drift-fix-cadence: would write $vbs_file:"
             cadence_vbs_wrapper "$bat_win" | sed 's/^/    /'
-            echo "DRY drift-fix-cadence: would schtasks /create /tn $leg /xml <daily $time, StartWhenAvailable=true, InteractiveToken/LeastPrivilege> /f"
+            echo "DRY drift-fix-cadence: would schtasks /create /tn $worker /xml <daily $time, StartWhenAvailable=true, InteractiveToken/LeastPrivilege> /f"
             emit_task_xml "$bat_win" "$time" | sed 's/^/    /'
             continue
         fi
@@ -749,8 +749,8 @@ cmd_arm() {
         rm -f "$bat_tmp" "$vbs_tmp"
 
         err_file=$(mktemp -t drift-fix-cadence.err.XXXXXX)
-        if ! schtasks_create_xml "$leg" "$time" "$bat_win" "$err_file"; then
-            echo "ERR drift-fix-cadence: schtasks /create $leg failed:" >&2
+        if ! schtasks_create_xml "$worker" "$time" "$bat_win" "$err_file"; then
+            echo "ERR drift-fix-cadence: schtasks /create $worker failed:" >&2
             cat "$err_file" >&2
             rm -f "$err_file"
             win_rollback_both
@@ -760,11 +760,11 @@ cmd_arm() {
 
         # Post-arm verify: a /create that "succeeded" but produced a task with no
         # live next-run time is not armed in any useful sense. Roll back BOTH
-        # legs — arm is all-or-nothing — rather than report a half-armed cadence.
+        # workers — arm is all-or-nothing — rather than report a half-armed cadence.
         verify_rc=0
-        query_task "$leg" || verify_rc=$?
+        query_task "$worker" || verify_rc=$?
         if [ "$verify_rc" -ne 0 ] || ! printf '%s' "$QUERY_OUT" | grep -qi 'Next Run Time'; then
-            echo "ERR drift-fix-cadence: post-arm verify failed for $leg — rolling back both legs." >&2
+            echo "ERR drift-fix-cadence: post-arm verify failed for $worker — rolling back both workers." >&2
             win_rollback_both
             echo "    Re-arm with: bash scripts/upstreams/drift-fix-cadence.sh arm --time $FIRE_TIME --resync-time $RESYNC_TIME --model $MODEL" >&2
             exit 4
@@ -784,17 +784,17 @@ cmd_status() {
         exit 2
     }
     echo "drift-fix-cadence status:"
-    local leg slug rc next status_rc=0
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(leg_slug "$leg")
+    local worker slug rc next status_rc=0
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        slug=$(worker_slug "$worker")
         rc=0
-        query_task "$leg" || rc=$?
+        query_task "$worker" || rc=$?
         case "$rc" in
             0)
                 next=$(printf '%s' "$QUERY_OUT" | grep -i 'Next Run Time' | head -1 | sed 's/^[^:]*: *//' | tr -d '\r') || true
-                cadence_registered_status "$leg" " (next run: ${next:-?})" || status_rc=2
+                cadence_registered_status "$worker" " (next run: ${next:-?})" || status_rc=2
                 ;;
-            1) echo "not armed  $leg" ;;
+            1) echo "not armed  $worker" ;;
             *) exit 2 ;;
         esac
         echo "  runner     $BAT_DIR/$slug.bat"
@@ -808,11 +808,11 @@ cmd_disarm() {
         echo "ERR drift-fix-cadence: '$SCHTASKS_BIN' not on PATH (required on Windows)" >&2
         exit 2
     }
-    local leg slug rc any_armed=0 err_file
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(leg_slug "$leg")
+    local worker slug rc any_armed=0 err_file
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        slug=$(worker_slug "$worker")
         rc=0
-        query_task "$leg" || rc=$?
+        query_task "$worker" || rc=$?
         case "$rc" in
             1)
                 if [ "$DRY_RUN" -eq 0 ]; then rm -f "$BAT_DIR/$slug.bat" "$BAT_DIR/$slug.vbs"; fi
@@ -822,13 +822,13 @@ cmd_disarm() {
         esac
         any_armed=1
         if [ "$DRY_RUN" -eq 1 ]; then
-            echo "DRY drift-fix-cadence: would schtasks /delete /tn $leg /f"
+            echo "DRY drift-fix-cadence: would schtasks /delete /tn $worker /f"
             echo "DRY drift-fix-cadence: would remove $BAT_DIR/$slug.bat + $BAT_DIR/$slug.vbs"
             continue
         fi
         err_file=$(mktemp -t drift-fix-cadence.err.XXXXXX)
-        if ! run_schtasks /delete /tn "$leg" /f >/dev/null 2>"$err_file"; then
-            echo "ERR drift-fix-cadence: schtasks /delete $leg failed:" >&2
+        if ! run_schtasks /delete /tn "$worker" /f >/dev/null 2>"$err_file"; then
+            echo "ERR drift-fix-cadence: schtasks /delete $worker failed:" >&2
             cat "$err_file" >&2
             rm -f "$err_file"
             exit 4
@@ -899,11 +899,11 @@ cron_install() {
     rm -f "$err_file" "$tab_file"
 }
 
-# Marker-tagged line for one leg (empty if not armed). Two literal greps, never
+# Marker-tagged line for one worker (empty if not armed). Two literal greps, never
 # a shared "HIMMEL-" prefix filter (unlike pipeline-cadence's TASK_PREFIX) —
 # other himmel cadences share that prefix in the same crontab, and a prefix
 # filter here would silently sweep entries this script does not own.
-leg_existing() { printf '%s\n' "$CRON_TAB" | grep -F "# $1" || true; }
+worker_existing() { printf '%s\n' "$CRON_TAB" | grep -F "# $1" || true; }
 
 # The .sh runner mirrors the .bat: rotate the log, stamp the fire, cd into the
 # checkout, bounded interactive claude run. All values arrive pre-quoted with
@@ -952,15 +952,15 @@ cron_arm() {
     if node_bin=$(command -v node 2>/dev/null); then node_dir=$(dirname "$node_bin"); fi
 
     cron_read
-    local leg existing dedup_names=""
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        existing=$(leg_existing "$leg")
+    local worker existing dedup_names=""
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        existing=$(worker_existing "$worker")
         if [ -n "$existing" ]; then
             if [ "$FORCE" -eq 1 ]; then
                 echo "drift-fix-cadence: --force set; replacing existing entry:" >&2
                 printf '%s\n' "$existing" | sed 's/^/  /' >&2
             else
-                if [ -z "$dedup_names" ]; then dedup_names="$leg"; else dedup_names="$dedup_names, $leg"; fi
+                if [ -z "$dedup_names" ]; then dedup_names="$worker"; else dedup_names="$dedup_names, $worker"; fi
             fi
         fi
     done
@@ -984,14 +984,14 @@ cron_arm() {
 
     local slug time runner q_prompt q_log hh mm entry_line
     if [ "$DRY_RUN" -eq 1 ]; then
-        for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-            slug=$(leg_slug "$leg")
-            time=$(leg_time "$leg")
+        for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+            slug=$(worker_slug "$worker")
+            time=$(worker_time "$worker")
             runner="$BAT_DIR/$slug.sh"
-            q_prompt=$(printf '%q' "$(leg_prompt "$leg")")
+            q_prompt=$(printf '%q' "$(worker_prompt "$worker")")
             q_log=$(printf '%q' "$BAT_DIR/$slug.log")
             hh="${time%:*}"; mm="${time#*:}"
-            entry_line="$mm $hh * * * $(cron_escape "$runner") # $leg"
+            entry_line="$mm $hh * * * $(cron_escape "$runner") # $worker"
             echo "DRY drift-fix-cadence: would write $runner:"
             emit_runner "$q_root" "$q_claude" "$q_prompt" "$q_log" "$q_model" "$q_node_dir" | sed 's/^/    /'
             echo "DRY drift-fix-cadence: would install crontab entry:"
@@ -1003,9 +1003,9 @@ cron_arm() {
 
     mkdir -p "$BAT_DIR"
 
-    # ONE rewrite: snapshot -> filter out any prior entry for EITHER leg ->
+    # ONE rewrite: snapshot -> filter out any prior entry for EITHER worker ->
     # append BOTH new entries -> install once. There is no half-armed state
-    # to roll back — either the whole rewrite lands or neither leg does.
+    # to roll back — either the whole rewrite lands or neither worker does.
     # No blank-line strip here (CR glm-2): blank lines are valid crontab
     # syntax (cron_install just pipes this to `crontab -`), and stripping
     # them ate the operator's own formatting on every arm/disarm cycle while
@@ -1040,9 +1040,9 @@ cron_arm() {
     # BOTH failure paths below (a write/chmod failure mid-loop, and a failed
     # cron_install) so the discipline is identical whichever one fires.
     restore_runner_snapshots() {
-        local _leg _slug
-        for _leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-            _slug=$(leg_slug "$_leg")
+        local _worker _slug
+        for _worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+            _slug=$(worker_slug "$_worker")
             if [ -f "$snap_dir/$_slug.sh" ]; then
                 cp "$snap_dir/$_slug.sh" "$BAT_DIR/$_slug.sh"
                 chmod +x "$BAT_DIR/$_slug.sh"
@@ -1050,15 +1050,15 @@ cron_arm() {
         done
     }
 
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(leg_slug "$leg")
-        time=$(leg_time "$leg")
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        slug=$(worker_slug "$worker")
+        time=$(worker_time "$worker")
         runner="$BAT_DIR/$slug.sh"
-        q_prompt=$(printf '%q' "$(leg_prompt "$leg")")
+        q_prompt=$(printf '%q' "$(worker_prompt "$worker")")
         q_log=$(printf '%q' "$BAT_DIR/$slug.log")
         [ -f "$runner" ] && cp "$runner" "$snap_dir/$slug.sh"
         # Under set -e (line 59) a write/chmod failure here (e.g. disk full on
-        # leg 2 after leg 1 was already overwritten) would otherwise exit
+        # worker 2 after worker 1 was already overwritten) would otherwise exit
         # WITHOUT the restore below — a pre-existing armed runner silently
         # mutated while the crontab still points at it (the same class
         # win_arm's emit_bat guards against on Windows).
@@ -1071,7 +1071,7 @@ cron_arm() {
             exit 4
         fi
         hh="${time%:*}"; mm="${time#*:}"
-        printf '%s\n' "$mm $hh * * * $(cron_escape "$runner") # $leg" >> "$newtab"
+        printf '%s\n' "$mm $hh * * * $(cron_escape "$runner") # $worker" >> "$newtab"
     done
     if ! cron_install "$newtab"; then
         restore_runner_snapshots
@@ -1092,18 +1092,18 @@ cron_status() {
     }
     cron_read
     echo "drift-fix-cadence status:"
-    local leg slug entry sched n_entries dup
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        slug=$(leg_slug "$leg")
-        entry=$(leg_existing "$leg" | head -1)
+    local worker slug entry sched n_entries dup
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        slug=$(worker_slug "$worker")
+        entry=$(worker_existing "$worker" | head -1)
         if [ -n "$entry" ]; then
             sched=$(printf '%s' "$entry" | awk '{print $1, $2, $3, $4, $5}')
-            n_entries=$(leg_existing "$leg" | grep -c . || true)
+            n_entries=$(worker_existing "$worker" | grep -c . || true)
             dup=""
             [ "$n_entries" -gt 1 ] && dup=" [DUPLICATE: $n_entries cron entries]"
-            echo "ARMED      $leg (cron: $sched)$dup"
+            echo "ARMED      $worker (cron: $sched)$dup"
         else
-            echo "not armed  $leg"
+            echo "not armed  $worker"
         fi
         echo "  runner     $BAT_DIR/$slug.sh"
         status_log "$BAT_DIR/$slug.log"
@@ -1116,22 +1116,22 @@ cron_disarm() {
         exit 2
     }
     cron_read
-    local leg existing any_existing=0
-    for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-        existing=$(leg_existing "$leg")
+    local worker existing any_existing=0
+    for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+        existing=$(worker_existing "$worker")
         [ -n "$existing" ] && any_existing=1
     done
     if [ "$any_existing" -eq 0 ]; then
         # Trusted-empty read (cron_read exits 2 otherwise) — safe to sweep.
         if [ "$DRY_RUN" -eq 0 ]; then
-            rm -f "$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").sh" "$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").sh"
+            rm -f "$BAT_DIR/$(worker_slug "$WORKER_SESSION_DRIFT").sh" "$BAT_DIR/$(worker_slug "$WORKER_SESSION_RESYNC").sh"
         fi
         echo "drift-fix-cadence: nothing armed — disarm is a no-op"
         return 0
     fi
     if [ "$DRY_RUN" -eq 1 ]; then
-        for leg in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
-            existing=$(leg_existing "$leg")
+        for worker in "$WORKER_SESSION_DRIFT" "$WORKER_SESSION_RESYNC"; do
+            existing=$(worker_existing "$worker")
             [ -n "$existing" ] && printf '%s\n' "$existing" | sed 's/^/DRY drift-fix-cadence: would remove crontab entry: /'
         done
         echo "DRY drift-fix-cadence: no changes made"
@@ -1144,7 +1144,7 @@ cron_disarm() {
     # removed — a failed install leaves the entries live and they must keep
     # pointing at files that exist.
     cron_install "$newtab" || exit 4
-    rm -f "$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").sh" "$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").sh"
+    rm -f "$BAT_DIR/$(worker_slug "$WORKER_SESSION_DRIFT").sh" "$BAT_DIR/$(worker_slug "$WORKER_SESSION_RESYNC").sh"
     echo "drift-fix-cadence: cadence disarmed"
 }
 
@@ -1153,10 +1153,10 @@ cron_disarm() {
 arm_summary() {
     local kind="$1" ext runner_drift runner_resync log_drift log_resync
     if [ "$PLATFORM" = "windows" ]; then ext="bat"; else ext="sh"; fi
-    runner_drift="$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").$ext"
-    runner_resync="$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").$ext"
-    log_drift="$BAT_DIR/$(leg_slug "$WORKER_SESSION_DRIFT").log"
-    log_resync="$BAT_DIR/$(leg_slug "$WORKER_SESSION_RESYNC").log"
+    runner_drift="$BAT_DIR/$(worker_slug "$WORKER_SESSION_DRIFT").$ext"
+    runner_resync="$BAT_DIR/$(worker_slug "$WORKER_SESSION_RESYNC").$ext"
+    log_drift="$BAT_DIR/$(worker_slug "$WORKER_SESSION_DRIFT").log"
+    log_resync="$BAT_DIR/$(worker_slug "$WORKER_SESSION_RESYNC").log"
     cat <<EOF
 ================================================================
 drift-fix-cadence ARMED
@@ -1167,7 +1167,7 @@ drift-fix-cadence ARMED
   Repo:   $HIMMEL_ROOT
   Logs:   $log_drift
           $log_resync
-          (one prior run kept as .log.prev, per leg)
+          (one prior run kept as .log.prev, per worker)
 
   Each night:
     - $WORKER_SESSION_DRIFT runs /drift-fix: upgrade the installed vendor CLIs whose
@@ -1180,7 +1180,7 @@ drift-fix-cadence ARMED
       non-additive alike): it never pushes or opens anything, leaving that
       for a human instead.
 
-  The squash-merge stays yours — neither leg ever merges it.
+  The squash-merge stays yours — neither worker ever merges it.
 
   Status / disarm anytime:
       bash scripts/upstreams/drift-fix-cadence.sh status

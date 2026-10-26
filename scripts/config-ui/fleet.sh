@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # fleet.sh — read-only session census for the AG-UI fleet page.
-# Composes the existing owners and parses nothing itself, like legs.sh: the live
+# Composes the existing owners and parses nothing itself, like workers.sh: the live
 # claude processes from claude-sessions.sh's claude_sessions() (the census
 # tick.sh's procs= and board.mjs read), the handover root from
-# `load_dotenv HANDOVER_DIR` + `handover_root` (anchored as legs.sh does), each
-# session's leg doc (<root>/**/<session name>.md) and its status from
-# leg_tail_status. Prints one JSON object:
+# `load_dotenv HANDOVER_DIR` + `handover_root` (anchored as workers.sh does), each
+# session's worker doc (<root>/**/<session name>.md) and its status from
+# worker_tail_status. Prints one JSON object:
 #   {"census": "ok"|"degraded"|"unavailable", "sessions": [{"pid": "<pid>",
 #    "name": "<-n value>", "model": "<--model value>", "doc": "<path>"|"",
 #    "status": "<marker>"|"", "autocompact": "<--autocompact value>"|""}],
 #    "cloudRoutes": ["<bucket>/cloud-route.jsonl", ...]}
-# cloudRoutes = every console bucket's cloud-route.jsonl under the
+# cloudRoutes = every chief bucket's cloud-route.jsonl under the
 # handover root, the routing log fleet-cloud.ts reads the cloud sessions from.
 # census: degraded = some live pid's argv was unreadable (claude_sessions rc 3),
 # unavailable = the scan itself failed. No handover root is not an error: the
@@ -23,8 +23,8 @@ common=$(git -C "$self" rev-parse --path-format=absolute --git-common-dir 2>/dev
 . "$self/../lib/load-dotenv.sh"
 # shellcheck source=../lib/handover-path.sh
 . "$self/../lib/handover-path.sh"
-# shellcheck source=../lib/leg-tail-status.sh
-. "$self/../lib/leg-tail-status.sh"
+# shellcheck source=../lib/worker-tail-status.sh
+. "$self/../lib/worker-tail-status.sh"
 # shellcheck source=../lanes/lib/claude-sessions.sh
 . "$self/../lanes/lib/claude-sessions.sh"
 
@@ -65,7 +65,7 @@ while IFS="$sep" read -r pid name model autocompact _; do
     case "$name" in ''|*[!A-Za-z0-9._+-]*) plain="" ;; *) plain=1 ;; esac
     if [ -n "$root" ] && [ -n "$plain" ]; then
         doc=$(find "$root" -maxdepth 4 -type f -name "$name.md" 2>/dev/null | head -1) # gnu-ok: BSD find also supports -maxdepth
-        [ -n "$doc" ] && status=$(leg_tail_status "$doc")
+        [ -n "$doc" ] && status=$(worker_tail_status "$doc")
     fi
     started=""
     elapsed=$(ps -o etimes= -p "$pid" 2>/dev/null | tr -d '[:space:]')
@@ -77,9 +77,9 @@ $out
 EOF
 routes=""
 [ -n "$root" ] && routes=$(find "$root" -maxdepth 4 -type f -name cloud-route.jsonl 2>/dev/null) # gnu-ok: BSD find also supports -maxdepth
-manifests="" consoles=""
+manifests="" chiefs=""
 if [ -n "$root" ]; then
     manifests=$(find "$root" -maxdepth 4 -type f -name '*.fleet.json' 2>/dev/null) # gnu-ok: BSD find supports -maxdepth
-    consoles=$(find "$root" -maxdepth 4 -type f \( -name '*-console.md' -o -name '*-chief.md' \) 2>/dev/null) # gnu-ok: BSD find supports -maxdepth
+    chiefs=$(find "$root" -maxdepth 4 -type f \( -name '*-console.md' -o -name '*-chief.md' \) 2>/dev/null) # gnu-ok: BSD find supports -maxdepth
 fi
-jq -n --arg census "$census" --arg rows "$rows" --arg routes "$routes" --arg manifests "$manifests" --arg consoles "$consoles" '{census: $census, sessions: [$rows | split("\n")[] | select(length > 0) | split("\t") | {pid: .[0], name: .[1], model: .[2], doc: .[3], status: (.[4] // ""), autocompact: (.[5] // ""), startedAt: (if (.[6] // "") == "" then null else (.[6] | tonumber) * 1000 end)}], cloudRoutes: [$routes | split("\n")[] | select(length > 0)], manifests: [$manifests | split("\n")[] | select(length > 0)], consoleDocs: [$consoles | split("\n")[] | select(length > 0)]}'
+jq -n --arg census "$census" --arg rows "$rows" --arg routes "$routes" --arg manifests "$manifests" --arg chiefs "$chiefs" '{census: $census, sessions: [$rows | split("\n")[] | select(length > 0) | split("\t") | {pid: .[0], name: .[1], model: .[2], doc: .[3], status: (.[4] // ""), autocompact: (.[5] // ""), startedAt: (if (.[6] // "") == "" then null else (.[6] | tonumber) * 1000 end)}], cloudRoutes: [$routes | split("\n")[] | select(length > 0)], manifests: [$manifests | split("\n")[] | select(length > 0)], consoleDocs: [$chiefs | split("\n")[] | select(length > 0)]}'

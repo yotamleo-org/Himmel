@@ -5,8 +5,8 @@
 # Claude Code runs every Bash-tool call as `<shell> -c source
 # ~/.claude/shell-snapshots/snapshot-<shell>-….sh … && eval '<command>'`.
 # TaskStop on an agent does NOT reap the background shell that agent spawned
-# (fleet halt 2026-09-07: a poll loop outlived its wrapped leg by 2h10m), and a
-# console cannot kill it, so the only defence is to SEE it at the next tick
+# (fleet halt 2026-09-07: a poll loop outlived its wrapped worker by 2h10m), and a
+# chief cannot kill it, so the only defence is to SEE it at the next tick
 # instead of at reboot time. Default output is one line, `orphans=<summary>`:
 #   orphans=none                         no wrapper older than the floor
 #   orphans=<owner>:<count>/<oldest>m,…  wrappers per owning session name
@@ -18,11 +18,11 @@
 # only a wrapper older than TICK_ORPHAN_MIN (or --min) counts.
 #
 # --list prints one `pid=<pid> owner=<name> age=<n>m` row per counted wrapper
-# instead of the summary, so the console has a pid to hand to the leg.
+# instead of the summary, so the chief has a pid to hand to the worker.
 #
 # READ-ONLY: this script never signals a process. Bash 3.2-compatible.
 # PLATFORM GUARD: no .ps1 twin, by design — Linux-only (procps ps, /proc), like
-# the rest of the console kit.
+# the rest of the chief kit.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -97,13 +97,13 @@ BEGIN {
     a = $0
     for (i = 0; i < 3; i++) sub(/^[ \t]*[^ \t]+[ \t]+/, "", a)
     # Anchored on the wrapper shape so a command that merely MENTIONS a
-    # snapshot path (a grep for this very thing) is not counted. The console
-    # own waiter (the whole eval is one bash .../console-wait.sh call, with
+    # snapshot path (a grep for this very thing) is not counted. The chief
+    # own waiter (the whole eval is one bash .../chief-wait.sh call, with
     # plain-word args, no shell operators, ending the command) is intentional, not an orphan
     # a command that merely mentions the name still is. The real
     # shell-tool shape double-quotes the path and args and ends with
     # `< /dev/null && pwd -P >| /tmp/claude-<id>-cwd`.
-    if (a ~ /^[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-(bash|zsh)-/ && a !~ /&& eval [\047"]bash [\047"]?([^ ]*\/)?console-wait\.sh[\047"]?( [A-Za-z0-9_.\/=:" +-]*)?[\047"]?( < \/dev\/null)?( && pwd -P >[|] \/tmp\/claude-[A-Za-z0-9]+-cwd)?$/) wrap[++nw] = pid
+    if (a ~ /^[^ ]*(bash|zsh|sh) -c (source|\.) [^ ]*shell-snapshots\/snapshot-(bash|zsh)-/ && a !~ /&& eval [\047"]bash [\047"]?([^ ]*\/)?chief-wait\.sh[\047"]?( [A-Za-z0-9_.\/=:" +-]*)?[\047"]?( < \/dev\/null)?( && pwd -P >[|] \/tmp\/claude-[A-Za-z0-9]+-cwd)?$/) wrap[++nw] = pid
 }
 END {
     for (i = 1; i <= nw; i++) {

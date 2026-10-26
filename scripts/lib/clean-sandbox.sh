@@ -30,7 +30,7 @@
 # purpose (the point is not to inherit the operator's PATH).
 #
 # Platform guard (linux/macos-only): POSIX bash 3.2+ (no associative arrays, no
-# ${var,,}), like headed-arm-leg.sh - no .ps1 twin; on Windows the observation
+# ${var,,}), like headed-arm-worker.sh - no .ps1 twin; on Windows the observation
 # has no equivalent (os.homedir() reads USERPROFILE - see
 # scripts/himmelctl/test/_hermetic-home.sh).
 #

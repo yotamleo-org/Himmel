@@ -236,7 +236,7 @@ test("glmChildEnv: diet values override an operator-exported gate", () => {
   }
 });
 
-// the operator's guard-override for a hooks-touching leg
+// the operator's guard-override for a hooks-touching worker
 // (HIMMEL_HOOK_INTEGRITY_BYPASS_OK) must never ride the parent's env into a
 // dispatched worker — the worker would inherit a lever that disables its own
 // pin-dir and anchor fences. Every worker-env builder strips it, ambient or not.

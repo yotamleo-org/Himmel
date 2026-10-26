@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 // cloud-liveness.mjs — Is each claude.ai cloud session still alive?
 //
-// A cloud session cannot message the console, so nothing told it that one
+// A cloud session cannot message the chief, so nothing told it that one
 // session stopped after one commit or that another never produced a branch
 // (both found only because the operator asked). This reads the bucket's
-// cloud-sessions.tsv (launch time, ticket, session; written when the console
+// cloud-sessions.tsv (launch time, ticket, session; written when the chief
 // launches a session) against the forge and says, per session:
 //
 //   no-branch      no branch and no PR for the ticket, N min after launch
 //   pr-silent      an open PR, no CLOUD-DONE/CLOUD-BLOCKED comment, no commit for M min
-//   unshepherded   CLOUD-DONE/CLOUD-BLOCKED posted, no live leg doc names the PR
+//   unshepherded   CLOUD-DONE/CLOUD-BLOCKED posted, no live worker doc names the PR
 //   ok states      working / done-pending / shepherded / branch / merged / closed / pending
 //
 // One tick field (tick.sh cloud=) and one board panel (board.mjs) read it.
@@ -96,7 +96,7 @@ export function evaluate({ sessions, prs, heads, legDocs = [], now, cfg = defaul
     if (done !== undefined) {
       const named = legDocs.some((d) => !d.wrapped && new RegExp(`(?:#|PR\\s*#?|pull/)${literal(open.number)}(?!\\d)`, 'i').test(d.text));
       if (named) row('shepherded', false, { pr: open.number });
-      else if ((now - done) / MIN >= cfg.doneMin) row('unshepherded', true, { pr: open.number, detail: `CLOUD-DONE ${Math.round((now - done) / MIN)} min ago, no live leg doc names PR ${open.number}` });
+      else if ((now - done) / MIN >= cfg.doneMin) row('unshepherded', true, { pr: open.number, detail: `CLOUD-DONE ${Math.round((now - done) / MIN)} min ago, no live worker doc names PR ${open.number}` });
       else row('done-pending', false, { pr: open.number });
       continue;
     }
@@ -115,7 +115,7 @@ export const summarize = (states) => {
 };
 
 // ---- I/O ----
-// Live leg docs: the bucket's `<TICKET>-...md` files touched inside the window whose last
+// Live worker docs: the bucket's `<TICKET>-...md` files touched inside the window whose last
 // `- ` bullet is not WRAPPED (the same "last bullet decides" rule the tick's tails= uses).
 function readLegDocs(bucket, sinceMs) {
   const out = [];
@@ -127,7 +127,7 @@ function readLegDocs(bucket, sinceMs) {
       const text = readFileSync(file, 'utf8');
       const last = text.split('\n').filter((l) => l.startsWith('- ')).pop() ?? '';
       out.push({ wrapped: /^-\s+(?:\d{2}:\d{2}\s+)?WRAPPED\b/.test(last), text });
-    } catch { /* unreadable doc: not evidence of a live leg */ }
+    } catch { /* unreadable doc: not evidence of a live worker */ }
   }
   return out;
 }
