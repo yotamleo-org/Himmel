@@ -1,6 +1,6 @@
 ---
 name: docs-reviewer
-description: Review a docs PR against the operator's own remarks, name the code each finding implies, learn new remarks.
+description: Review a docs PR's changed lines against the operator's own remarks, name the code a finding implies, learn new remarks.
 ---
 
 # docs-reviewer — the operator's remarks as the bar
@@ -23,51 +23,105 @@ and workstream-code checks; do not repeat them.
   (`git diff <base>...<head>`).
 - `remarks.tsv`: every row whose `state` is `active` or `candidate`.
 
+## Scope: the diff, not the page
+
+A PR review is diff-scoped. A finding sits on a changed line: a line the diff
+adds or rewrites. A breach on a line the PR did not touch is pre-existing: it
+counts toward one line per page and is never a must-fix item. A review with no
+diff (a named page, an audit) treats every line as changed.
+
 ## Procedure
 
 1. Read the whole remarks table first.
 2. List the changed docs pages. Read each one in full at the head
-   (`git show <head>:<path>`), not only its hunks: "no clear bottom line" is a
-   remark about the page, not a line.
-3. **Remark pass, first.** Take the remarks one at a time, in table order. For
-   each, read every changed page in full (tables and lists too) and ask only
-   that remark's question of it. Write one list per remark:
-   `### <id> — <rule>` then one line per page that breaks it,
-   `- <file>:<line>[, <line>…] — <what breaks it, one sentence>`, or `- none`.
+   (`git show <head>:<path>`), and mark which lines the diff changed.
+3. **Page verdict, first and never capped.** For each changed page: its type
+   (tutorial, how-to, reference, explanation, or map), its audience, whether
+   its form fits that type, and one verdict word:
+   - `keep`: right as it is;
+   - `polish`: fix lines, keep the shape;
+   - `restructure`: the content is right but the form is not (a list that
+     should be a table, a page that mixes two types);
+   - `generate-from-data`: the page restates data the code already holds;
+   - `move-to-ADR`: it is history or a decision record, not a reader page;
+   - `drop`: nothing on it is still true or needed.
+   The verdict is about the whole page, so it may rest on unchanged lines.
+4. **Remark pass.** Take the remarks one at a time, in table order, and ask
+   only that remark's question of every changed page (tables and lists too).
    A remark about a kind of thing (an integration we will not have, a dropped
-   lane, an unexplained term) covers every instance of that kind on the page,
-   not only the one its quote names. Do not check correctness in this pass.
-4. **Correctness pass, second.** Check every claim the page makes about the
-   system against the code at the head (`git grep`, read the script or file it
-   names): a page that describes code that does not exist, or behaves
-   otherwise, is a finding. At most 10, one line each:
-   `- <file>:<line> — <the claim> is false: <what the code does>`.
-5. Write the findings, at most 30, one line each, the remark-pass findings
-   first (in remark order), then the correctness ones:
-   `- [BLOCKING|SHOULD|NIT] <file>:<line> — <what is wrong, one sentence> (<remark id>: "<short verbatim quote>")`
-   - BLOCKING: the page states something false, or breaks a remark the
-     operator has made more than once: the same remark, repeated, so that more
-     than one row of the table quotes it. A finding that also touches a second,
-     different remark is not a repeat and stays SHOULD.
+   lane, an unexplained term) covers every instance of that kind, not only the
+   one its quote names. Keep these lists as notes; they are not the output.
+5. **Correctness pass.** List every claim the changed lines make about the
+   system and check each against the code at the head (`git grep`, read the
+   script or file it names). A changed line that describes code that does not
+   exist, or behaves otherwise, is a finding. Do not sample: check them all.
+6. **Gate each finding before you keep it.** It needs an exact changed line,
+   the failure in one sentence, the code or remark you read for it, and a
+   severity you can defend; otherwise demote it or drop it. One defect is one
+   finding, even when several remarks touch it. Zero findings is a valid
+   result.
+   - BLOCKING: the changed line states something false, or breaks a remark the
+     operator has made more than once (the same remark, repeated, so that more
+     than one row of the table quotes it). A finding that also touches a
+     second, different remark is not a repeat and stays SHOULD.
    - SHOULD: it clearly breaks one remark.
-   - NIT: taste; also any finding no remark backs, marked `(no remark)`.
-   Group repeats: one finding per page per remark, naming the other lines.
-6. Read the PR's CodeRabbit comments and any judge findings on it.
-7. Write the required section below. Never skip it.
-8. End with one line:
-   `docs-review: <N> findings (<B> blocking, <S> should, <K> nit); code changes implied: <M>`.
+   - NIT: taste, or a finding no remark backs, marked `(no remark)`.
+   An honest caveat stays on the page: a sentence that truthfully says what
+   does not work yet is not a breach of the remark it touches. Its gap goes to
+   the code section.
+7. Read the PR's CodeRabbit comments and any judge findings on it.
+8. Write the code section, then the output below.
 
 ## Code changes implied (required)
 
-For every finding above, and for every CodeRabbit comment and judge finding on
-the PR, ask: is the page only describing code that is itself wrong, missing or
-confusing? If so, the fix is in the code, not the words (decision 299). A
-caveat such as "for now, run it from your clone" or "delete it yourself" is a
-gap to close in code. One line each:
+A finding implies a code change in exactly three cases (decision 299):
 
-`- <code file> — <the change the code needs> (from: <remark id | CR comment | judge finding>)`
+1. the page is true and the behaviour is the gap: the page honestly describes
+   something the code does badly or not at all. A caveat such as "for now, run
+   it from your clone" or "delete it yourself" is this case;
+2. the page is generated and the error is in the generator's logic or in the
+   data it reads;
+3. the page is true only because of a known bug, so fixing the bug will make
+   it false.
 
-Write `none — <why>` only after checking each one.
+Everything else is not a code change:
+
+- The code is right and the page is wrong: a docs fix. It goes in the
+  must-fix list, never here. Page copy that lives inside a generator is a docs
+  fix made in that file.
+- A change that only makes the docs easier to maintain (derive a list, add a
+  check, print a hint) goes under "declined to judge" at most.
+
+Test every finding, CodeRabbit comment and judge finding against the three
+cases. Write at most 5 entries, one line each:
+
+`- <code file> — <the change the code needs>; removes: <the reader's problem> (case <1|2|3>; from: <remark id | CR comment | judge finding>)`
+
+With none, write `none — <why, in one sentence>`.
+
+## Output (3 KB or less)
+
+The whole answer, appendix included, is 3,072 bytes or less. Write it in this
+order and nothing else:
+
+1. `## Page verdicts`: one line per changed page,
+   `- <file> — <type> for <audience>; form fits: <yes|no, why>; verdict: <word>`.
+2. `## Must fix`: at most 7 findings on changed lines, BLOCKING first, then
+   SHOULD, in remark order. One per line:
+   `- [BLOCKING|SHOULD] <file>:<line> — <the problem> (<remark id | correctness>) → "<replacement text>"`.
+   Under it, one line per page that has pre-existing breaches:
+   `- <file>: <N> pre-existing (see appendix)`.
+3. `## Code changes implied`: the code section above.
+4. `## Declined to judge`: one line each, what you did not rule on and why.
+   Write `none` when there is nothing.
+5. The summary line:
+   `docs-review: <N> findings (<B> blocking, <S> should, <K> nit); <P> pre-existing; code changes implied: <M>`.
+6. `<details><summary>Appendix</summary>` … `</details>`: NIT findings,
+   SHOULD findings past the seventh, and the pre-existing breaches, one short
+   line each, until the 3 KB limit.
+
+When the answer would pass 3 KB, cut appendix lines first, then the last
+must-fix items; the summary line still counts every finding.
 
 ## Learn step
 
