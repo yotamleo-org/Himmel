@@ -42,7 +42,7 @@ git_repo() { # <dir> <files...> — a git repo with one commit holding the named
 # gcount <graph> <python predicate over n> — how many nodes match
 gcount() { python3 -I -c 'import json,sys; g=json.load(open(sys.argv[1])); print(sum(1 for n in g["nodes"] if eval(sys.argv[2])))' "$1" "$2" 2>/dev/null; }
 
-OLD="docs/handover/console-sections/waiter.md"  # old-term-ok: the pre-rename path is the fixture
+OLD="docs/handover/console-sections/waiter.md"
 NEW="docs/handover/chief-sections/waiter.md"
 
 # --- ast-update: the stub `graphify update` rewrites graph.json AST-only, as a topology rebuild does ---

@@ -1,7 +1,7 @@
 # rename-aliases.tsv — registry of old-term identifiers (the rename plans alias registry).
-# Read by scripts/docs/check-old-terms.sh: an identifier listed here may still be used;
-# any other identifier fails on an added line that has LEG_ or CONSOLE_ at a word start, BANK, OVERNIGHT, a bare WAVE or _WAVE, SEQUENCE_,
-# or HIMMEL_WORKER_ not followed by SESSION_. A direction of keep marks a name owned elsewhere that is never renamed.
+# Read by scripts/handover/move-renamed-dirs.sh, scripts/setup/migrate-renamed-names.py, scripts/qmd/vocab-expand.py,
+# scripts/handover/chief-kit/next-dispatchable.sh and scripts/lib/test-rename-aliases.sh.
+# A direction of keep marks a name owned elsewhere that is never renamed.
 # Columns (tab-separated): old, new, kind, direction, slice, remove-at.
 # new/slice/remove-at read pending-N2892 until the polished plan fixes the new names.
 # remove-at X is the removal release after v1.1.3, which deletes the read-both path.
@@ -373,7 +373,7 @@ leg-transcripts.sh	worker-transcripts.sh	identifier	old-to-new	V4b	X
 overnight-mode.md	afk-mode.md	identifier	old-to-new	V3	X
 overnight-shift	afk-shift	identifier	old-to-new	V3	X
 # Slice M: the moved directories (kind directory: git mv and rewrite) and their short spellings (kind path: rewrite
-# only), applied by scripts/handover/move-renamed-dirs.sh. check-old-terms.sh fails an added line naming an old one.
+# only); move-renamed-dirs.sh --slice M --handover-root rewrites them in handover docs.
 scripts/handover/console-kit	scripts/handover/chief-kit	directory	fail	M	never
 scripts/handover/console	scripts/handover/chief	directory	fail	M	never
 scripts/console	scripts/chief	directory	fail	M	never

@@ -17,14 +17,14 @@ fixed before merge.
 If the final whole-branch review returns findings, dispatch ONE fix subagent
 with the complete findings list — not one fixer per finding.
 Per-finding fixers each rebuild context and re-run suites; a real
-session's final-review fix wave cost more than all its tasks combined. <!-- old-term-ok: verbatim upstream wording -->
-Then run exactly one scoped re-review of the fix wave <!-- old-term-ok: verbatim upstream wording -->
+session's final-review fix wave cost more than all its tasks combined.
+Then run exactly one scoped re-review of the fix wave
 (`bash scripts/review-package PLAN_FILE FIX_BASE HEAD` over the fix range,
 [re-review-prompt.md](../re-review-prompt.md)).
 Adjudicate any residual findings as in the fix loop's breaker
 (references/fix-loop.md): park with rulings, or rule on the load-bearing
 ones and ledger what you decided. Only the four things that stop a running
-plan (top of SKILL.md) stop you here. There is no second fix wave — <!-- old-term-ok: verbatim upstream wording -->
+plan (top of SKILL.md) stop you here. There is no second fix wave —
 residual load-bearing findings surface to your human partner when
 finishing-a-development-branch presents the options.
 

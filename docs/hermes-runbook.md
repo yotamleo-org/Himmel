@@ -466,7 +466,7 @@ is a PAYG 90-day trial with **per-model** free quotas (not every model gets
 
 A `403 AccessDenied.Unpurchased` from the API means **the Model Studio
 service has not been activated**. It is not an identity, key, URL, or region
-problem. Fix it in the Singapore-pinned Model Studio console <!-- old-term-ok: Alibaba Cloud product console -->
+problem. Fix it in the Singapore-pinned Model Studio console
 (`https://modelstudio.console.alibabacloud.com/ap-southeast-1`):
 
 1. Accept the service agreement; this auto-activates the service **and**

@@ -75,7 +75,7 @@ in the launching shell; the flag wins) — same profile injection, model and
   outermost claude ancestor, which for a `--bg` session is the
   `claude daemon run` service. It deliberately ignores the per-worker settings
   file, because a session can write to that file. Any registered seam that
-  differs from the daemon's env therefore exits 96 with "headless (--bg) legs <!-- old-term-ok: quotes the guard message text until V5 -->
+  differs from the daemon's env therefore exits 96 with "headless (--bg) legs
   cannot pass seams to chokepoints". This includes `ARMAUTOMERGE` for
   `merge-on-green.sh`. Ship from a headed worker. The design for a headless
   equivalent is a planned follow-up.

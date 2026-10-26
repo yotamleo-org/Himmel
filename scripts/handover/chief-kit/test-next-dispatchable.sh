@@ -839,8 +839,8 @@ DD="$HERE/fixtures/dispatch-disposition"
 export DD_DIR="$WORK/dd"; mkdir -p "$DD_DIR"
 MD="$WORK/jira-mirror-dd/HIMMEL"; mkdir -p "$MD"
 M_SAVE="$M"; M="$MD"
-mk HIMMEL-901 "To Do" Medium '[]' '["v1.0.1"]' '[]' "pre-rename path, the new spelling is held" "Edit scripts/handover/console-kit/dd-old.sh only." # old-term-ok: the pre-rename spelling is the input under test
-mk HIMMEL-902 "To Do" Medium '[]' '["v1.0.1"]' '[]' "stale pre-rename path nobody holds" "Edit scripts/handover/console-kit/dd-stale.sh only." # old-term-ok: the pre-rename spelling is the input under test
+mk HIMMEL-901 "To Do" Medium '[]' '["v1.0.1"]' '[]' "pre-rename path, the new spelling is held" "Edit scripts/handover/console-kit/dd-old.sh only."
+mk HIMMEL-902 "To Do" Medium '[]' '["v1.0.1"]' '[]' "stale pre-rename path nobody holds" "Edit scripts/handover/console-kit/dd-stale.sh only."
 mk HIMMEL-903 "To Do" Medium '[]' '["v1.0.1"]' '[]' "new path, the old spelling is held" "Edit scripts/handover/chief-kit/dd-newn.sh only."
 mk HIMMEL-904 "To Do" Medium '[]' '["v1.0.1"]' '["blocked by HIMMEL-910"]' "blocker is Done live, In Progress in the mirror" "Edit scripts/lib/dd-904.sh only."
 mk HIMMEL-905 "To Do" Medium '[]' '["v1.0.1"]' '["blocked by HIMMEL-911"]' "blocker is live" "Edit scripts/lib/dd-905.sh only."
@@ -911,7 +911,7 @@ printf 'scripts/handover/chief-kit/dd-old.sh\nscripts/handover/chief-kit/dd-newn
 rundd() { NEXT_DISPATCH_MIRROR="$MD" NEXT_DISPATCH_GH_CMD="$WORK/gh-dd" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify-dd" NEXT_DISPATCH_JIRA_CMD="$WORK/jira-dd" bash "$SUT" --top 50 --held "$WORK/dd-held.txt" --workers-from "$WORK/dd-fleet.json" "$@" 2>"$WORK/dd.err"; }
 dd_out="$(rundd --dispositions)"
 # (c) the rename registry
-has "dispositions: a pre-rename path collides with its new spelling, naming the holder" "$dd_out" "# disposition HIMMEL-901 collision scripts/handover/console-kit/dd-old.sh held by held list" # old-term-ok: the pre-rename spelling is the input under test
+has "dispositions: a pre-rename path collides with its new spelling, naming the holder" "$dd_out" "# disposition HIMMEL-901 collision scripts/handover/console-kit/dd-old.sh held by held list"
 has "dispositions: a new path collides with the old spelling held" "$dd_out" "# disposition HIMMEL-903 collision scripts/handover/chief-kit/dd-newn.sh held by held list"
 has "dispositions: a stale pre-rename path nobody holds is listed" "$dd_out" "LOCAL	HIMMEL-902"
 # (b) the live blocker re-check

@@ -41,7 +41,7 @@ The gate keys on a directory and a filename and never reads shell text. A
 ratchet renamed to dodge the `test-no-*` key is still a new suite. A new suite
 needs a `suite-tiers.tsv` row, and that file is a trust path, so the
 trust-reviewed GO sees the ratchet before it ships. Ongoing invariants are not
-removal ratchets and stay as gates: the rename check (`check-old-terms.sh`),
+removal ratchets and stay as gates:
 `check-mcp-sdk-v1.sh`, swallowed-errors and shell-lint.
 
 ## Corpus/replay containment

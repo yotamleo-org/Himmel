@@ -78,7 +78,7 @@ message to an armed chief that is busy is queued rather than dropped. `/chief`, 
 case and the `/verb@botname` form; the auto ops stay
 strict. The older `/console` and `/consoles` still work as aliases of `/chief` and `/chiefs`.
 
-Each chief's first waiter arm queues a DM: “Console <name> is live — just <!-- old-term-ok: quotes the DM text the bridge sends until V5 -->
+Each chief's first waiter arm queues a DM: “Console <name> is live — just
 send /chief <text>”. A successor announces its new identity on its first arm;
 restarting the same waiter does not repeat the announcement. Replying to an
 announcement, chief acknowledgement, or chief answer routes to that

@@ -209,7 +209,7 @@ The cost rule:
 Enforced by `scripts/hooks/guard-worker-cache-ttl.sh`, a Stop hook in the worker
 profile. It refuses, once per stop, the stop of a worker that holds its queue lock
 while no background task or Monitor is running. Bound:
-`HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS` (default 3000). Leg rule: <!-- old-term-ok: only the env name changed, prose is pre-existing -->
+`HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS` (default 3000). Leg rule:
 [`docs/handover/worker-sections/cache-keepalive.md`](../handover/worker-sections/cache-keepalive.md).
 Re-measure with the `idle-gap` command below over the worker transcripts of the
 24 h after it ships.

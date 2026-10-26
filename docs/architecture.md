@@ -63,13 +63,13 @@ flowchart TD
     end
 
     subgraph S2["2 · git commit"]
-        PC["pre-commit stage — 62 hook ids<br/>.pre-commit-config.yaml<br/>shellcheck · gitleaks · worktree-isolation<br/>guardrail-matrices · artifact-leakage<br/>fail-open-lint · check-old-terms · oxlint ratchets"]
+        PC["pre-commit stage — 61 hook ids<br/>.pre-commit-config.yaml<br/>shellcheck · gitleaks · worktree-isolation<br/>guardrail-matrices · artifact-leakage<br/>fail-open-lint · oxlint ratchets"]
         CM["commit-msg stage — 1 hook id<br/>scripts/hooks/check-commit-msg.sh<br/>conventional commit + ticket ID"]
         PC --> CM
     end
 
     subgraph S3["3 · git push"]
-        PP["pre-push stage — 14 hook ids<br/>no-push-to-main · no-force-push<br/>platforms-tested · security-reviewed<br/>pr-mergeable-gate · code-review-before-push<br/>check-old-terms · npm audit / licenses / signatures"]
+        PP["pre-push stage — 13 hook ids<br/>no-push-to-main · no-force-push<br/>platforms-tested · security-reviewed<br/>pr-mergeable-gate · code-review-before-push<br/>npm audit / licenses / signatures"]
     end
 
     subgraph S4["4 · CI — .github/workflows/ci.yml, on the pushed branch"]

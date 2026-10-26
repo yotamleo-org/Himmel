@@ -320,7 +320,7 @@ need_in_err "deny names chief-wait.sh" "scripts/handover/chief-kit/chief-wait.sh
 g -C "$WT" checkout -q -- scripts/handover/chief-kit/chief-wait.sh
 
 # ---- the two kit layouts: console-kit/ before the move, chief-kit/ after ----
-# A tree keeps its kit writers in exactly one real directory: console-kit/ on a # old-term-ok: the layout before the move
+# A tree keeps its kit writers in exactly one real directory: console-kit/ on a
 # branch cut before the move, chief-kit/ after it. The same bytes get the same
 # verdict on either layout; an old-layout worktree is checked against a
 # new-layout anchor's chief-kit/ copy. A symlink at either path, both
@@ -332,7 +332,7 @@ WT2OLD="$TMP/wt2old"
 H2="$ORIGIN2/scripts/handover"
 cp -R "$ORIGIN" "$ORIGIN2"
 rm -rf "$ORIGIN2/.git"
-[ -d "$H2/chief-kit" ] && mv "$H2/chief-kit" "$H2/console-kit" # old-term-ok: the fixture's old layout
+[ -d "$H2/chief-kit" ] && mv "$H2/chief-kit" "$H2/console-kit"
 g init -q "$ORIGIN2"
 g -C "$ORIGIN2" add -A
 g -C "$ORIGIN2" commit -qm base
@@ -343,7 +343,7 @@ g clone -q "$ORIGIN2" "$PRIMARY2"
 g -C "$PRIMARY2" worktree add -q -b feat/y "$WT2" refs/remotes/origin/main
 g -C "$PRIMARY2" worktree add -q -b feat/old "$WT2OLD" "$old_layout"
 HR2="HIMMEL_REPO=$PRIMARY2"
-OLDKIT=scripts/handover/console-kit # old-term-ok: the old layout's kit path
+OLDKIT=scripts/handover/console-kit
 NEWKIT=scripts/handover/chief-kit
 for s in go write-verdict chief-wait himmel-gate; do
     run "new layout, clean tree, bash $NEWKIT/$s.sh -> allow" 0 "$(payload "bash $NEWKIT/$s.sh" "$WT2")" "$HR2"

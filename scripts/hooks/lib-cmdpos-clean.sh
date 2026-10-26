@@ -41,7 +41,7 @@ scripts/handover/console-kit/write-verdict.sh scripts/handover/chief-kit/write-v
 scripts/handover/console-kit/chief-wait.sh scripts/handover/chief-kit/chief-wait.sh'
 PR_READERS=' grep egrep fgrep cat head tail wc ls cut tr uniq nl jq '
 PR_GIT_UNSAFE=0 PR_TOKFAIL=0 PR_GIT_EXEC=0
-GATE_REL=scripts/handover/console-kit/himmel-gate.sh # old-term-ok: the layout before the move
+GATE_REL=scripts/handover/console-kit/himmel-gate.sh
 GATE_REL_NEW=scripts/handover/chief-kit/himmel-gate.sh
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
 _c_unquote() { local LC_ALL=C; REPLY=${1//[\'\"\\]/}; }

@@ -1622,7 +1622,7 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     return "$rc"
 }
 
-GATE_REL=scripts/handover/console-kit/himmel-gate.sh # old-term-ok: the layout before the move
+GATE_REL=scripts/handover/console-kit/himmel-gate.sh
 GATE_REL_NEW=scripts/handover/chief-kit/himmel-gate.sh
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
@@ -2191,7 +2191,7 @@ for word in $scan_flat; do
 done
 entries=""
 hentries=""
-KIT_OLD=scripts/handover/console-kit # old-term-ok: the layout before the move
+KIT_OLD=scripts/handover/console-kit
 KIT_NEW=scripts/handover/chief-kit
 kit_new_spelled=0 kit_old_spelled=0
 _c_ops_eq_to_nl "$scan_flat"
@@ -2737,9 +2737,9 @@ prefix=$(gitq rev-parse --show-prefix 2>/dev/null) \
 # spelling can run bytes the manifest never hashed.
 kit_of() {
     local h=$1/scripts/handover
-    [ ! -L "$h/chief-kit" ] && [ ! -L "$h/console-kit" ] || return 1 # old-term-ok: the layout before the move
+    [ ! -L "$h/chief-kit" ] && [ ! -L "$h/console-kit" ] || return 1
     if [ -d "$h/console-kit" ] && [ ! -e "$h/chief-kit" ]; then
-        echo console-kit # old-term-ok: the layout before the move
+        echo console-kit
     elif [ -d "$h/chief-kit" ] && [ ! -e "$h/console-kit" ]; then
         echo chief-kit
     else
@@ -2758,7 +2758,7 @@ kit_words() {
 }
 # An awk canon(): a path under the old kit read as its chief-kit/ path, so the
 # manifests of two roots on different layouts compare path for path.
-KIT_CANON_AWK='function canon(p) { if (index(p, "scripts/handover/console-kit/") == 1) return "scripts/handover/chief-kit/" substr(p, 30); return p }' # old-term-ok: the layout before the move
+KIT_CANON_AWK='function canon(p) { if (index(p, "scripts/handover/console-kit/") == 1) return "scripts/handover/chief-kit/" substr(p, 30); return p }'
 manifest() { # manifest <root> <kit> - "<mode> <blob-id> <path>" per regular file, sorted
     local root=$1 kit=$2 odd files execs oids modes prune_dirs g
     # scripts/ and scripts/cr/ themselves must be real directories: a per-file
@@ -2840,7 +2840,7 @@ case "$have" in ODD\ *) deny "a non-regular file or a control-character name sit
 # or scripts/lib/load-dotenv.sh moved on main still refuses at run time -
 # merge main forward in that case.
 behind_main_entries_ok() {
-    local wt_head mb mkit=console-kit base e s mentries rest_have rest_want # old-term-ok: the layout before the move
+    local wt_head mb mkit=console-kit base e s mentries rest_have rest_want
     [ "$GUARDED" != "$FULL_GUARDED" ] || return 1
     mentries=$hentries
     for e in $entries; do mentries="$mentries scripts/cr/$e"; done

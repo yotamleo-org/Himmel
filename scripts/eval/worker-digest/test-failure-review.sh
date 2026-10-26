@@ -208,14 +208,14 @@ check "a class first seen today is new" 'digest "$C6" | grep -q "blocked/merge-h
 check "a new class sends one line naming it" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 new class first seen today .*: blocked/merge-hold (1 failure)"'
 # the line is the plain shape; four new classes show the top three with counts and "1 more".
 C6p="$TMP/c6p"; mkdir -p "$C6p"
-for i in 1 2 3 4 5; do row "$C6p/ledger.jsonl" "N5$i" error/Bash:usage:check-old-terms; done
+for i in 1 2 3 4 5; do row "$C6p/ledger.jsonl" "N5$i" error/Bash:usage:check-doc-links; done
 for i in 1 2 3 4; do row "$C6p/ledger.jsonl" "N6$i" error/Edit; done
 for i in 1 2 3; do row "$C6p/ledger.jsonl" "N7$i" blocked/merge-hold; done
 row "$C6p/ledger.jsonl" N81 error/Read
 review "$C6p" >/dev/null 2>&1
 plain="$(tail -n 1 "$STUB/notify.log")"
 check "the line is the plain shape" 'printf "%s\n" "$plain" | grep -qE "^failure review $DAY \(dry-run\): 13 failures in 4 classes over 24 h; dry run, nothing filed \([0-9]+ would be\)\. Cause: .* Do: .* Log: $C6p/out/failure-review-$DAY\.md$"'
-check "the top three new classes carry their counts" 'printf "%s\n" "$plain" | grep -q "error/Bash:usage:check-old-terms (5 failures), error/Edit (4 failures), blocked/merge-hold (3 failures) and 1 more"'
+check "the top three new classes carry their counts" 'printf "%s\n" "$plain" | grep -q "error/Bash:usage:check-doc-links (5 failures), error/Edit (4 failures), blocked/merge-hold (3 failures) and 1 more"'
 check "the line gives a next step and drops the word routed" 'printf "%s\n" "$plain" | grep -q "Do: open the digest and file a ticket" && ! printf "%s\n" "$plain" | grep -qi "routed"'
 # suite rows carry final_red: false = red inside the worker then green, true = left red at wrap.
 C6d="$TMP/c6d"; mkdir -p "$C6d"
