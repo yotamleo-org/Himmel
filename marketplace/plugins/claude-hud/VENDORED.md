@@ -14,10 +14,10 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        3bb6835f08df13e5f13f988d1a5623a14196558f  # v0.13.0, 12 commits past a759168 (HIMMEL-7388)
-pinned_upstream_tree: 9a7a616fb3ed7b456383ff50a294b868d21a6e85  # git tree of pinned_commit (provenance)
-vendored_tree_hash:   c6fc7aab26ef20978d26fc1b9bdaa6bd396aa9642f4fc3f1b95c0accccfbeae5  # sha256 over VENDORED.manifest
-vendored_at:          2026-10-24
+pinned_commit:        cf95a322afd18db045175d28962650ae7392ed77  # v0.13.1 + 2 docs commits, 5 commits past 3bb6835 (HIMMEL-7394)
+pinned_upstream_tree: 766b96c41249f4a185dd8a14cf3cc4d0127d11e6  # git tree of pinned_commit (provenance)
+vendored_tree_hash:   6d3808640c542bad279b148f87334f96e959804b2d03a6dd088aa70e5179bf4c  # sha256 over VENDORED.manifest
+vendored_at:          2026-10-26
 ```
 
 `pinned_commit` points at the **current upstream** base `3bb6835` (v0.13.0); the vendored
@@ -71,6 +71,17 @@ protected: editing it without bumping the pin trips the guard.
   0.11.3) so `claude plugin update` picks the config up. The re-vendors below
   superseded that bump (version equalled upstream's version); `plugin.json` stays at
   `0.12.1` until a release cut changes it (plugin versions move only in the release-cut PR).
+
+- **Re-vendored to upstream v0.13.1 `cf95a32` (HIMMEL-7394, 2026-10-26, fork-drift
+  issue #2809):** +5 commits past `3bb6835`. Upstream work: every untrusted label
+  is cut on a grapheme boundary (`src/utils/sanitize.ts` and the callers in
+  `src/auth.ts`, `src/external-usage.ts`, `src/jj.ts`, `src/model-source.ts`,
+  `src/render/*`, `src/stdin.ts`, `src/transcript.ts`), the v0.13.1 release prep,
+  and two README notes on short refresh intervals on Windows. Applied as the
+  upstream `3bb6835..cf95a32` diff minus `dist/` and `.claude-plugin/` onto the
+  vendored tree, all hunks clean. `plugin.json` stays `0.12.1` (the release-cut
+  rule owns the version). No himmel delta was dropped. `dist/` rebuilt from source
+  (`npm ci --ignore-scripts && npm test`): 446 tests, 441 pass, 0 fail, 5 skipped.
 
 - **Re-vendored to upstream v0.13.0 `3bb6835` (HIMMEL-7388, 2026-10-24, fork-drift
   issue #2809, HIMMEL-6806):** +12 commits past `a759168`. Upstream work: grapheme

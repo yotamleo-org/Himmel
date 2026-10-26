@@ -1,7 +1,8 @@
 import * as fs from 'node:fs';
 import * as os from 'node:os';
 import { getClaudeConfigJsonPath } from './claude-config-dir.js';
-import { sanitizeDisplayText } from './utils/sanitize.js';
+import { displayLabel } from './utils/sanitize.js';
+import { truncateString } from './utils/truncate.js';
 
 /**
  * Authentication info for the current Claude Code login, derived from the
@@ -24,19 +25,9 @@ function hasApiKey(env: NodeJS.ProcessEnv): boolean {
   return typeof env.ANTHROPIC_API_KEY === 'string' && env.ANTHROPIC_API_KEY.trim().length > 0;
 }
 
-// Strip ANSI sequences and control/bidi characters so values from
-// claude.json can never smuggle escape sequences into the terminal.
-function sanitizeValue(value: string): string {
-  return sanitizeDisplayText(value).trim().slice(0, AUTH_VALUE_MAX_LEN);
-}
-
+// Values from claude.json are sanitized so they can never smuggle escape sequences into the terminal.
 function readString(obj: Record<string, unknown>, key: string): string | null {
-  const value = obj[key];
-  if (typeof value !== 'string') {
-    return null;
-  }
-  const sanitized = sanitizeValue(value);
-  return sanitized.length > 0 ? sanitized : null;
+  return displayLabel(obj[key], AUTH_VALUE_MAX_LEN) || null;
 }
 
 /**
@@ -121,7 +112,7 @@ export function truncateUser(user: string, maxLength: number): string {
   if (maxLength <= 0 || user.length <= maxLength) {
     return user;
   }
-  return `${user.slice(0, maxLength)}…`;
+  return `${truncateString(user, maxLength, '')}…`;
 }
 
 /**

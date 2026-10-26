@@ -5,6 +5,7 @@ import { expandHomeDirPrefix, getClaudeConfigDir, getHudPluginDir } from './clau
 import { createDebug } from './debug.js';
 import { MAX_TERMINAL_WIDTH } from './utils/terminal.js';
 import { sanitizeDisplayText } from './utils/sanitize.js';
+import { truncateString } from './utils/truncate.js';
 const debug = createDebug('config');
 const MAX_CONFIG_FILE_BYTES = 64 * 1024;
 const MAX_CONFIG_NESTING_DEPTH = 8;
@@ -185,7 +186,7 @@ const oneOf = (allowed) => (value, fallback) => (allowed.includes(value) ? value
 const clamp = (min, max) => (value, fallback) => (isNumber(value) ? Math.max(min, Math.min(max, value)) : fallback);
 const floorAtLeastZero = (value, fallback) => (isNumber(value) ? Math.max(0, Math.floor(value)) : fallback);
 const count = (value, fallback) => (Number.isInteger(value) && value >= 0 ? value : fallback);
-const text = (maxLength) => (value, fallback) => (typeof value === 'string' ? sanitizeDisplayText(value).slice(0, maxLength) : fallback);
+const text = (maxLength) => (value, fallback) => (typeof value === 'string' ? truncateString(sanitizeDisplayText(value), maxLength, '') : fallback);
 // Keeps known names once each, in order. An empty result falls back only when `nonEmpty`.
 const names = (known, nonEmpty) => (value, fallback) => {
     if (!Array.isArray(value))

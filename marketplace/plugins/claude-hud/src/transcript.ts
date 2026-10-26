@@ -5,7 +5,7 @@ import { createHash } from 'node:crypto';
 import { getHudPluginDir } from './claude-config-dir.js';
 import { createDebug } from './debug.js';
 import type { AgentEntry, SessionTokenUsage, TodoItem, ToolEntry, TranscriptData } from './types.js';
-import { sanitizeDisplayText } from './utils/sanitize.js';
+import { displayLabel, sanitizeDisplayText } from './utils/sanitize.js';
 import { truncateString } from './utils/truncate.js';
 import { sanitizeTranscriptModel } from './model-source.js';
 
@@ -67,12 +67,7 @@ function addUsage(total: SessionTokenUsage, usage: SessionTokenUsage): void {
   for (const field of USAGE_FIELDS) total[field] += usage[field];
 }
 
-function name(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const text = sanitizeDisplayText(value).trim();
-  if (!text) return undefined;
-  return truncateString(text, NAME_MAX_LEN, '…');
-}
+const name = (value: unknown): string | undefined => displayLabel(value, NAME_MAX_LEN, '…') || undefined;
 
 const mcpServer = (toolName: string): string | undefined => name(MCP_TOOL.exec(toolName)?.[1]);
 
@@ -212,7 +207,7 @@ class Parser {
   private assistant(entry: Entry, at: Date | null): void {
     if (at) this.data.lastAssistantResponseAt = at;
     if (typeof entry.advisorModel === 'string' && entry.advisorModel) {
-      this.data.advisorModel = entry.advisorModel.slice(0, ADVISOR_MODEL_MAX_LEN);
+      this.data.advisorModel = truncateString(entry.advisorModel, ADVISOR_MODEL_MAX_LEN, '');
     }
     const model = sanitizeTranscriptModel(entry.message?.model);
     // Claude Code writes '<synthetic>' on assistant records it generates locally.

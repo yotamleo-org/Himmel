@@ -124,6 +124,10 @@ test('getJjStatus sanitizes terminal controls and caps the chosen label', async 
     assert.equal(result.branch.includes('\x1b'), false);
     assert.equal(result.branch.includes('\u202E'), false);
     assert.equal(result.conflict, true);
+
+    // A flag straddling the cap is dropped whole, not left as one regional indicator.
+    const flagged = await getJjStatus(dir, async () => ({ stdout: `qpvuntsm\x1f${'x'.repeat(63)}🇬🇧\x1f0\x1f0` }));
+    assert.equal(flagged?.branch, 'x'.repeat(63));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }

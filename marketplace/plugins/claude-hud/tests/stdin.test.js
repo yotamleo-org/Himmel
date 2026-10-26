@@ -128,6 +128,16 @@ test('stdinText sanitizes and bounds free text', () => {
   assert.equal(stdinText(42), undefined);
 });
 
+test('stdinText cuts free text on a grapheme boundary', () => {
+  const emoji = '😀';
+  // A session name long enough for the emoji to straddle the 80-unit cap.
+  assert.equal(stdinText('A'.repeat(79) + emoji + 'B'.repeat(5)), 'A'.repeat(79));
+  assert.equal(stdinText('A'.repeat(78) + emoji, 80), 'A'.repeat(78) + emoji);
+  // A flag is two regional indicators, so it must not be cut either.
+  assert.equal(stdinText('A'.repeat(78) + '🇬🇧', 80), 'A'.repeat(78));
+  assert.equal(stdinText('A'.repeat(79) + emoji, 80), 'A'.repeat(79));
+});
+
 test('getNativeCostUsd hides routed providers unless opted in', () => {
   const cost = (total, id) => ({ cost: { total_cost_usd: total }, model: { id } });
   assert.equal(getNativeCostUsd(cost(1.5, 'claude-opus-5-5')), 1.5);

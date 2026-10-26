@@ -260,6 +260,8 @@ Context █████░░░░░ 45% │ Usage ██░░░░░░░
 
 Claude Code 会在每条消息、`/compact`、权限或 vim 模式变化、使用率窗口重置以及 prompt cache 失效之后重新运行状态栏。若想在会话空闲时让倒计时和时长继续走动，在 `~/.claude/settings.json` 的 `statusLine` 中加上 `refreshInterval`（秒）。
 
+**Windows（Git Bash/MSYS2）：** 刷新间隔过短（尤其是同时打开多个 Claude Code 会话时）可能导致 Git Bash 持续报错 `add_item ... failed, errno 1`。建议不设置 `refreshInterval`，或使用 30 秒或更长的间隔（会话较多时应更长）。无需重启即可恢复：关闭所有 Claude Code 会话和 Git Bash 窗口。
+
 ### 临时关闭
 
 ```bash
