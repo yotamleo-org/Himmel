@@ -1,11 +1,12 @@
-# Updating himmel
+# Updating, or undoing the install
 
 Audience: newcomer, after the first install. Owner of the rewrite: HIMMEL-7212.
 
 **The task:** bring one himmel install up to a newer version and confirm it
 landed. Six steps: choose your route, confirm the target, preview, update,
-verify, and recover if a step failed. The reference below the steps explains
-each part of the update in depth.
+verify, and recover if a step failed. To take himmel back out instead, see
+[Undo the install](#undo). The reference below both explains each part of the
+update in depth.
 
 Marketplace `autoUpdate` does **not** deliver himmel updates on its own: the
 hooks and commands run out of your himmel checkout, so only a pull changes them
@@ -179,6 +180,141 @@ release yet reads `n/a` and does not change the exit code. Then:
   `ln -sfn <previous-version> ~/.local/share/himmel/current` rolls back.
 - **A project-scope re-install replaced a copy you had edited.** Restore it
   from `provenance-backups/`, then commit.
+
+<a id="undo"></a>
+
+## Undo the install
+
+One command from the same project folder. It shows its plan and asks before it
+acts.
+
+```bash
+# preview: prints the footprint, changes nothing
+node ~/himmel/scripts/himmelctl/bin.js uninstall --dry-run
+# the real thing (asks Proceed? [y/N])
+node ~/himmel/scripts/himmelctl/bin.js uninstall
+```
+
+**Undo first, then delete the download:** the uninstaller lives in it. The
+install also keeps a copy in `~/.himmel/uninstall/`, so undo still works if
+the download is already gone. Run the copy from the same project folder:
+`node ~/.himmel/uninstall/standalone.js uninstall` (add `--dry-run` to
+preview). The `himmelctl` launcher on your `PATH` switches to that copy by
+itself.
+
+**Removed:**
+
+- The three git hooks (your own are restored).
+- himmel's wiring in project and user `settings.json`; your own keys stay.
+- Plugins and marketplaces the install recorded as its own.
+- The status-line config, the `himmelctl` launcher, the cache and the trust
+  entry it created.
+
+**Kept on purpose:**
+
+- Telegram pairing, your settings in `~/.himmel` and the install record (add
+  `--purge-state`).
+- The himmel download, its `.env`, your worktrees and handover notes.
+- Copied scripts the install record cannot prove are its own.
+
+The `himmel` alias in `~/.local/bin` also stays; delete it yourself. Every
+item, with its path and owner:
+[What changes on your machine](footprint.md).
+
+This is the plan the preview printed on the trial project: a clean starter
+install at project scope on a test VM, on 2026-10-21. It is copied from that
+run; only the throwaway home folder is shortened to `~`.
+
+```text
+==> himmel uninstall (offboard)
+
+This will:
+  1. stop the telegram bun bridge (if running)
+     and disable + remove the telegram-bridge systemd unit the ledger recorded (linger only if it was not already on)
+  2. KEEP telegram pairing + bridge state (pass --purge-state to remove it):
+       ~/.claude/channels/telegram
+       ~/.claude/handover/bridge
+  3. remove HIMMEL-Resume-* scheduled jobs (+ HimmelTelegramBridge logon task)
+     and the cron/at jobs the ledger recorded a cadence arm adding (exact recorded names only)
+  4. uninstall installed Claude plugins from himmel-owned marketplaces
+     (project/local: current project only; USER-SCOPE: affects every repo on this machine; fallback scope: project)
+  5. uninstall this repo's git hooks (pre-commit/pre-push/commit-msg)
+     and restore any of your own hooks himmel displaced (<hook>.himmel-backup -> <hook>)
+  6. unwire ~/.claude/settings.json (statusLine, HIMMEL_REPO,
+     LUNA_VAULT_PATH, HANDOVER_DIR, UNIVERSAL hooks — non-himmel keys untouched)
+     and current-project settings: ~/himmel-trial/.claude/settings.json (himmel's own checkout excluded)
+     and every other project's settings the ledger recorded (himmel's own checkout excluded)
+     and strip himmel's working-principles block from ~/.claude/CLAUDE.md (your own text untouched)
+     and strip himmel's working-principles block from ~/.codex/AGENTS.md (your own text untouched)
+     and remove himmel's claude-hud config: ~/.claude/claude-hud.json
+  7. remove Claude marketplaces with no remaining installed plugins
+  8. REMOVE the himmelctl cache + state: ~/.claude/himmel
+     (install-profile.json, state.json — a re-install would otherwise
+     start from the previous install's profile)
+```
+
+**Staying? Change a setting or an install profile instead:**
+[install profiles](profiles/README.md) and [settings](../configuration.md).
+
+<a id="uninstalling--offboarding"></a>
+
+### Flags, exit codes and the eight steps
+
+`himmelctl uninstall --yes` confirms without prompting; `--dry-run` (`-n`)
+runs the teardown script's own `--dry-run`, so the preview is exactly what a
+real run would do, and changes nothing. By default only himmel's **code**
+wiring is removed and operator **state** (your Telegram pairing + bridge state)
+is kept; `--purge-state` removes that too, unless the bridge is still running
+(a guarded purge is refused and leaves the state intact). `himmelctl` does not
+take `--keep-telegram-state`; `scripts/uninstall.sh` still accepts it as the
+older spelling of the default, and it contradicts `--purge-state`. Exit codes: `0` = torn down (or preview complete),
+`2` = non-interactive refusal without `--yes`, `3` = operator declined;
+otherwise the teardown script's own code is returned. For `uninstall.sh`,
+`2` also means bad usage or an incomplete teardown (any failed step halts
+later steps), and `3` means the live-HOME safety fence refused a wet run.
+
+Under the hood it derives + confirms, then execs
+[`scripts/uninstall.sh`](../../scripts/uninstall.sh), a symmetric eight-step teardown of what `setup.sh`/`adopt` onboard:
+stops the Telegram bridge, removes its pairing + bridge state (only with
+`--purge-state`, and never while the bridge is still running), deletes the
+`HIMMEL-Resume-*` scheduled jobs, uninstalls the installed Claude plugins at
+their own scope, uninstalls the repo's git hooks (and restores a hook that
+install displaced to `<hook>.himmel-backup` when its target is free; otherwise
+it keeps both the current hook and the backup), unwires the user-scope
+`~/.claude/settings.json` keys himmel added, removes the Claude marketplaces
+(only those no installed plugin still needs), and removes the himmelctl
+cache + state dir. A provenance ledger, when install wrote one, decides
+ownership of the six overwrite-prone rows: your own pre-existing statusLine,
+`env.HANDOVER_DIR`, plugins, marketplaces, the claude-hud config and
+adopter-script copies are kept with a printed hand command rather than
+guessed at by template; with no ledger, those same six rows are kept the same
+way (hand command, never guessed) while everything else still falls back to
+template ownership. It is destructive and fail-closed
+(a non-interactive run aborts without `--yes`). Invoke `uninstall.sh` directly
+for the manual or CI path; preview any run with `--dry-run`, and skip
+individual steps with `--skip-plugins` / `--skip-hooks` / `--skip-tasks` /
+`--skip-settings`. A real run on a home folder that holds your Claude login,
+an SSH key or `~/.gitconfig` refuses (exit 3) unless
+`HIMMEL_UNINSTALL_REAL_HOME=1` is set; `himmelctl uninstall` sets it for you
+after you confirm:
+
+```bash
+bash scripts/uninstall.sh --dry-run    # preview; nothing is executed
+HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh --yes        # remove code wiring, keep operator state
+HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh --yes --purge-state   # ...and remove operator state + the provenance ledger too
+HIMMEL_UNINSTALL_REAL_HOME=1 bash scripts/uninstall.sh --yes --purge-state --keep-backups   # ...but keep the ledger's backup copies
+```
+
+The paths it acts on are listed in
+[`scripts/install/uninstall-manifest.tsv`](../../scripts/install/uninstall-manifest.tsv)
+(the script reads it); after the settings step it re-reads the file and prints
+`verified: no himmel wiring left in <file>`.
+
+It deliberately leaves the himmel clone, your `.env`, worktrees, handover state
+outside the bridge root, and non-himmel `settings.json` keys untouched. **hermes
+is not torn down**: it installs outside the repo (`~/.hermes` or
+`$HERMES_HOME`); stop its gateway and remove that directory by hand if you are
+decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
 
 ## Reference
 
@@ -664,67 +800,6 @@ same `~/.claude/settings.json`. (The codex lane uses a different plugin model: i
 leanness is governed by what `install-himmel-codex.sh` provisions, not an
 `enabledPlugins` map, and himmelctl's full-set enable stays a deliberate opt-in
 that `settings.local.json` protects.)
-
-### Uninstalling / offboarding
-
-The inverse of install is the wizard's `uninstall` subcommand:
-
-```bash
-node scripts/himmelctl/bin.js uninstall --dry-run    # preview; nothing is executed
-node scripts/himmelctl/bin.js uninstall              # actually offboard
-```
-
-`himmelctl uninstall --yes` confirms without prompting; `--dry-run` (`-n`)
-runs the teardown script's own `--dry-run`, so the preview is exactly what a
-real run would do, and changes nothing. By default only himmel's **code**
-wiring is removed and operator **state** (your Telegram pairing + bridge state)
-is kept; `--purge-state` removes that too, unless the bridge is still running
-(a guarded purge is refused and leaves the state intact) (`--keep-telegram-state`
-is the older spelling of the default and contradicts `--purge-state`). Exit codes: `0` = torn down (or preview complete),
-`2` = non-interactive refusal without `--yes`, `3` = operator declined;
-otherwise the teardown script's own code is returned. For `uninstall.sh`,
-`2` also means bad usage or an incomplete teardown (any failed step halts
-later steps), and `3` means the live-HOME safety fence refused a wet run.
-
-Under the hood it derives + confirms, then execs
-[`scripts/uninstall.sh`](../../scripts/uninstall.sh), a symmetric eight-step teardown of what `setup.sh`/`adopt` onboard:
-stops the Telegram bridge, removes its pairing + bridge state (only with
-`--purge-state`, and never while the bridge is still running), deletes the
-`HIMMEL-Resume-*` scheduled jobs, uninstalls the installed Claude plugins at
-their own scope, uninstalls the repo's git hooks (and restores a hook that
-install displaced to `<hook>.himmel-backup` when its target is free; otherwise
-it keeps both the current hook and the backup), unwires the user-scope
-`~/.claude/settings.json` keys himmel added, removes the Claude marketplaces
-(only those no installed plugin still needs), and removes the himmelctl
-cache + state dir. A provenance ledger, when install wrote one, decides
-ownership of the six overwrite-prone rows: your own pre-existing statusLine,
-`env.HANDOVER_DIR`, plugins, marketplaces, the claude-hud config and
-adopter-script copies are kept with a printed hand command rather than
-guessed at by template; with no ledger, those same six rows are kept the same
-way (hand command, never guessed) while everything else still falls back to
-template ownership. It is destructive and fail-closed
-(a non-interactive run aborts without `--yes`). Invoke `uninstall.sh` directly
-for the manual or CI path; preview any run with `--dry-run`, and skip
-individual steps with `--skip-plugins` / `--skip-hooks` / `--skip-tasks` /
-`--skip-settings`:
-
-```bash
-bash scripts/uninstall.sh --dry-run    # preview; nothing is executed
-bash scripts/uninstall.sh --yes        # remove code wiring, keep operator state
-bash scripts/uninstall.sh --yes --purge-state   # ...and remove operator state + the provenance ledger too
-bash scripts/uninstall.sh --yes --purge-state --keep-backups   # ...but keep the ledger's backup copies
-```
-
-The paths it acts on are listed in
-[`scripts/install/uninstall-manifest.tsv`](../../scripts/install/uninstall-manifest.tsv)
-(the script reads it); after the settings step it re-reads the file and prints
-`verified: no himmel wiring left in <file>`.
-
-It deliberately leaves the himmel clone, your `.env`, worktrees, handover state
-outside the bridge root, and non-himmel `settings.json` keys untouched. **hermes
-is not torn down**: it installs outside the repo (`~/.hermes` or
-`$HERMES_HOME`); stop its gateway and remove that directory by hand if you are
-decommissioning it (see the [hermes runbook](../hermes-runbook.md)).
 
 ### Notes
 

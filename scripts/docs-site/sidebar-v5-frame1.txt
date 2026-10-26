@@ -6,7 +6,7 @@ Get started
   Quickstart
   The adoption trail
   Install on your project
-  What changes on your machine [pending]
+  What changes on your machine
   Install profiles
   Updating, or undoing the install
   Moving from an older install
@@ -25,7 +25,7 @@ Use it
 Run many sessions
   AFK (unattended) runs
   The chief and its workers
-  Meet the team [pending]
+  Meet the team
   Working with the team [pending]
   Add a team member [pending]
   Handover notes

@@ -260,6 +260,7 @@ scripts/docs/test-check-llms-links.sh	pr	static-gate
 scripts/docs/test-check-old-terms.sh	local	behaviour suite, backfilled HIMMEL-6716
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
 scripts/docs/test-docs-current-version.sh	pr	static-gate
+scripts/docs/test-footprint-page.sh	pr	static-gate
 scripts/docs/test-generate-credits.sh	pr	static-gate
 scripts/docs/test-how-a-change-ships.sh	pr	static-gate
 scripts/docs/test-install-profiles-page.sh	pr	static-gate
@@ -267,6 +268,7 @@ scripts/docs/test-luna-page.sh	local	new since the audit, behaviour suite
 scripts/docs/test-readme-hygiene.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-second-model-review-page.sh	pr	static-gate
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/docs/test-team-page.sh	pr	static-gate
 scripts/docs/test-troubleshooting-page.sh	pr	static-gate
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
 scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	local	behaviour suite, new HIMMEL-7330
@@ -396,6 +398,7 @@ scripts/handover/chief-kit/test-inbox-send.sh	local	behaviour suite, 0 catches i
 scripts/handover/chief-kit/test-json-writers-final-newline.sh	local	behaviour suite, new for HIMMEL-6767
 scripts/handover/chief-kit/test-judge-ladder.sh	pr	trust-path
 scripts/handover/chief-kit/test-launch-cloud.sh	pr	trust-path
+scripts/handover/chief-kit/test-leg-budget.sh	pr	static-gate
 scripts/handover/chief-kit/test-leg-doc-lock.sh	pr	trust-path
 scripts/handover/chief-kit/test-leg-event.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-leg-jira-status.sh	pr	trust-path

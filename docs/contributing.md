@@ -119,6 +119,8 @@ bash scripts/handover/test-auto-commit.sh
 # etc.
 ```
 
+After editing any file a team card reads (the role definitions and shared sources named in the `ROLES` list of `scripts/docs/gen-team-page.sh`), run `bash scripts/docs/gen-team-page.sh` to rebuild the Meet the team page; `scripts/docs/test-team-page.sh` fails until you do.
+
 ## Where to find things
 
 | Concern                        | Doc                                                |

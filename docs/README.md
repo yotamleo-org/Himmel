@@ -46,6 +46,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [internals/stuck-playbook.md](internals/stuck-playbook.md) — guardrail-recovery escape hatches.
 - [handover/afk-mode.md](handover/afk-mode.md) — the unattended overnight pipeline (11 phases, attestation, block criteria).
 - [handover/running-a-console.md](handover/running-a-console.md) — starting and handing over a chief with `/console new|next`; the chief + worker-brief templates.
+- [team.md](team.md) — Meet the team: one card per role (chief, workers, reviewers, judge, release manager), generated from the role definitions.
 - [internals/context-architecture.md](internals/context-architecture.md) — the lean-surface doctrine: where knowledge lives (layering model, the nesting trap, memory-as-map).
 - [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses: the compatibility matrix + per-feature port/guard/accept decisions.
 - [internals/environment-gotchas.md](internals/environment-gotchas.md) — git-worktree / scheduler / Bash-tool / content-filter environment traps (Windows sections kept as history).

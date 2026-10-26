@@ -97,6 +97,17 @@ repeats as `WAKE handover-budget repeat ...` every `CHIEF_WAIT_BUDGET_REPEAT_MIN
 (default 30), so a wake absorbed mid-turn is not lost. When the doc's title resolves to no
 transcript the waiter says so once on stderr. Run it by hand in an ordinary Bash call.
 
+**Worker cost budget.** `<kit>/leg-budget.sh [--title <worker session name>]` prints
+`leg-budget calls=<n> cost-eq=<k>k soft=<k>k hard=<k>k verdict=OK|SOFT|HARD` from the
+worker's own transcript, with the `cost-eq` of the PR body's `leg-burn:` line (exit 0 OK,
+4 SOFT, 3 HARD, 2 unmeasurable, which never prints `verdict=OK`). The defaults are
+`WORKER_COST_SOFT_K=3000` (p80) and `WORKER_COST_HARD_K=7000` (about p92) of the cost-eq
+of the last 50 merged worker PRs (p50 1485k, p95 7545k). A worker at `SOFT` sends the
+chief a `FINDING` quoting the line; at `HARD` it `WRAP`s with a resume brief. On the chief
+side, `tick.sh --burn` suffixes a worker's `burn=` token with `!SOFT` or `!HARD`
+(`burn=N77:32.3k/100.0k!SOFT`); a plain tick is unchanged. Treat `!HARD` like any wrap
+request: ask the worker to hand off.
+
 **Stuck PRs.** The tick's `prs=` field does not say why a PR is stuck. When a worker
 waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR
 sits for hours, run `<kit>/pr-stall.sh --manifest <fleet manifest>` by hand: one

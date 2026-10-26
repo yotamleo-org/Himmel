@@ -2628,7 +2628,12 @@ if [ "$burn" -eq 1 ]; then
         if [ -n "$burn_line" ]; then
             burn_ft="$(printf '%s\n' "$burn_line" | sed -n 's/.*first-turn=\([^ ]*\).*/\1/p')"
             burn_avg="$(printf '%s\n' "$burn_line" | sed -n 's/.*avg-ctx=\([^ ]*\).*/\1/p')"
-            burn_summary="$(csv_add "$burn_summary" "$burn_label:${burn_ft:-?}/${burn_avg:-?}")"
+            # !SOFT / !HARD when the worker's cost-eq passed its budget (leg-budget.sh);
+            # a line it cannot measure (rc 2) stays unmarked
+            burn_mark=""
+            bash "$HERE/leg-budget.sh" --from-line "$burn_line" >/dev/null 2>&1; burn_rc=$?  # swallow-ok: rc is the verdict; an unmeasurable line stays unmarked
+            case "$burn_rc" in 4) burn_mark="!SOFT" ;; 3) burn_mark="!HARD" ;; esac
+            burn_summary="$(csv_add "$burn_summary" "$burn_label:${burn_ft:-?}/${burn_avg:-?}$burn_mark")"
         else
             burn_summary="$(csv_add "$burn_summary" "$burn_label:?")"
         fi

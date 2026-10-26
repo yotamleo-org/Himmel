@@ -92,6 +92,10 @@ case "$1" in
     printf 'leg-burn x.jsonl: calls=4 avg-ctx=128.1k first-turn=74.3k out=185 compactions=2 text-only=2\n' ;;
   HIMMEL-555-N41-thing)
     printf 'leg-burn y.jsonl: calls=9 avg-ctx=90.0k first-turn=60.0k out=100 compactions=0 text-only=1\n' ;;
+  HIMMEL-777-legN77)
+    printf 'leg-burn s.jsonl: calls=90 avg-ctx=100.0k first-turn=32.3k out=900 compactions=2 text-only=0 cost-eq=3100.5k floor-share=9.0%%\n' ;;
+  HIMMEL-888-legN88)
+    printf 'leg-burn h.jsonl: calls=400 avg-ctx=106.0k first-turn=32.3k out=900 compactions=7 text-only=0 cost-eq=7689.4k floor-share=9.0%%\n' ;;
   *) printf 'leg-burn: no transcript found for session name: %s\n' "$1" >&2; exit 2 ;;
 esac
 STUB
@@ -1004,6 +1008,14 @@ case "$burn_out" in *'no transcript found'*) fail '--burn leaks leg-burn stderr 
 # And without the flag the field is absent entirely, not empty.
 noburn_out="$(bash "$SUT" --legs 'HIMMEL-111-legN61')"
 case "$noburn_out" in *burn=*) fail 'burn= appears without --burn' ;; *) pass 'burn= is absent without --burn' ;; esac
+
+# A worker past its cost budget carries !SOFT / !HARD on its burn token; one under it,
+# or whose leg-burn line has no cost-eq, keeps the plain token.
+budget_out="$(bash "$SUT" --burn --legs 'HIMMEL-111-legN61 HIMMEL-777-legN77 HIMMEL-888-legN88')"
+contains '--burn marks a leg past the soft cost budget' "$budget_out" 'N77:32.3k/100.0k!SOFT'
+contains '--burn marks a leg past the hard cost budget' "$budget_out" 'N88:32.3k/106.0k!HARD'
+contains '--burn leaves a leg with no cost-eq unmarked' "$budget_out" 'N61:74.3k/128.1k,'
+case "$noburn_out" in *'!SOFT'*|*'!HARD'*) fail 'a budget mark appears without --burn' ;; *) pass 'no budget mark without --burn' ;; esac
 contains '--verbose --burn labels the burn line' "$(bash "$SUT" --verbose --burn --legs 'HIMMEL-111-legN61')" 'worker-session burn (first-turn/avg-ctx): N61:74.3k/128.1k'
 
 # --- current-convention leg names (<TICKET>-N<k>-<slug>, no
