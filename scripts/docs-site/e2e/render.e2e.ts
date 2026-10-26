@@ -27,7 +27,7 @@ function builtPages(dir = DIST, rel = ""): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
     if (e.isDirectory()) return builtPages(join(dir, e.name), `${rel}${e.name}/`);
     if (!e.name.endsWith(".html") || (rel === "" && e.name === "404.html")) return [];
-    if (readFileSync(join(dir, e.name), "utf8").includes('http-equiv="refresh"')) return [];
+    if (/<meta[^>]+http-equiv="refresh"/i.test(readFileSync(join(dir, e.name), "utf8"))) return [];
     return [e.name === "index.html" ? rel : `${rel}${e.name}`];
   });
 }
@@ -67,9 +67,12 @@ test.describe("render: every built page", () => {
       const assets = await page.$$eval("script[src], link[rel~=stylesheet][href], img[src]", (els) =>
         els.map((el) => el.getAttribute("src") ?? el.getAttribute("href") ?? ""),
       );
+      const pageOrigin = new URL(page.url()).origin;
       for (const a of new Set(assets)) {
-        if (!a || /^(?:[a-z][a-z0-9+.-]*:|\/\/|data:)/i.test(a) || NOT_SHIPPED.test(a)) continue;
-        const r = await request.get(new URL(a, page.url()).toString());
+        if (!a || NOT_SHIPPED.test(a)) continue;
+        const url = new URL(a, page.url());
+        if (url.origin !== pageOrigin) continue;
+        const r = await request.get(url.toString());
         expect(r.status(), `asset ${a} of ${p.url}`).toBe(200);
       }
 
