@@ -938,35 +938,13 @@ g4_segments() {
     done
 }
 
-# g4_bare_brace WORD: does WORD hold a `{` outside single quotes, double
-# quotes and backslash escapes, i.e. one the shell would brace-expand?
-g4_bare_brace() {
-    local s="$1" c q="" i bs=$'\\'
-    for ((i = 0; i < ${#s}; i++)); do
-        c="${s:i:1}"
-        if [ "$q" = "'" ]; then
-            if [ "$c" = "'" ]; then q=""; fi
-        elif [ "$q" = '"' ]; then
-            if [ "$c" = "$bs" ]; then i=$((i + 1))
-            elif [ "$c" = '"' ]; then q=""; fi
-        else
-            case "$c" in
-                "$bs") i=$((i + 1)) ;;
-                "'"|'"') q="$c" ;;
-                '{') return 0 ;;
-            esac
-        fi
-    done
-    return 1
-}
-
 # g4_scan: scan the words in g4w (set by the caller) for ONE clause.
 g4_scan() {
     local w d cmd="" wrap="" wrap_val=0 need_dur=0 redir=0
     local nargs=0 nflags=0 pflag=0 nnames=0 hit=0 note="" cls=""
     local last_secret=0 tdir=0 skip_out=0 skipv=0 a1="" a2="" showtok=0 rest name
     local herecred=0 zc=0 zsec=0 xt=0 xo=0 xend=0 dsc=0 msgv=0 xskip=0 gmsg=0 gcfg=0 gsub=0 gskip=0 rdr=0
-    local gsc="" kflag=0
+    local gsc="" kflag=0 fv=0 bx=0
     local re='\$\{?([A-Za-z_][A-Za-z0-9_]*)'
     set -f
     local nw i nx
@@ -984,6 +962,7 @@ g4_scan() {
         # Nor any operand of a reader that runs no program (grep, cat, ls, an
         # inert sed, ...): its pattern or file name is data, not a shell option.
         xskip=$((dsc | rdr))
+        bx=$fv; fv=0
         if [ "$msgv" = 1 ]; then msgv=0; xskip=1; fi
         # git/gh message flags are data only for the positional subcommand (the
         # first non-option word, past the values of -C/--git-dir/--work-tree/
@@ -1009,16 +988,18 @@ g4_scan() {
             gh:-b|gh:--body|gh:-t|gh:--title) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then msgv=1; fi ;;
             git:--message=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
             gh:--body=*|gh:--title=*) if [ "$gmsg" = 1 ] && [ "$gcfg" = 0 ]; then xskip=1; fi ;;
+            gh:-f|gh:-F|gh:--raw-field|gh:--field) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then fv=1; fi ;;
+            gh:--raw-field=*|gh:--field=*) if [ "$gsc" = api ] && [ "$gcfg" = 0 ]; then bx=1; fi ;;
         esac
         if [ "$xskip" = 0 ]; then
         case "${d//_/}" in *[xX][tT][rR][aA][cC][eE]*) xt=1 ;; esac
         # brace expansion splits the word (`shopt -os x{,}trace`), so a
         # word with an unquoted `{` matches xtrace as an in-order subsequence.
-        # A `{` inside quotes or after a backslash does not expand (a GraphQL
-        # `query=mutation{...}` argument), so only a bare one counts.
-        # The tokenizer's glob flag marks an unquoted one; the raw split reads
-        # the quotes itself.
-        case "$w" in *'{'*) if [ "${g4raw:-0}" = 1 ]; then g4_bare_brace "$w"; else [ "${g4g[i]:-0}" = 1 ]; fi && case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
+        # Only the value of a `gh api` field flag (`-f query=mutation{...}`) is
+        # exempt: gh takes it as data, never as shell code.
+        if [ "$bx" = 0 ]; then
+        case "$w" in *'{'*) case "${d//_/}" in *[xX]*[tT]*[rR]*[aA]*[cC]*[eE]*) xt=1 ;; esac ;; esac
+        fi
         fi
         # Redirect and fd skips run on the RAW split only. Tokenized, a real
         # redirect is already out of the words (GU_SR), so a `>` word there is
