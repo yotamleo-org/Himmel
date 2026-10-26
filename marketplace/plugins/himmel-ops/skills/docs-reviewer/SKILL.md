@@ -46,6 +46,22 @@ diff (a named page, an audit) treats every line as changed.
    - `move-to-ADR`: it is history or a decision record, not a reader page;
    - `drop`: nothing on it is still true or needed.
    The verdict is about the whole page, so it may rest on unchanged lines.
+   The form fits when the page does what good docs do (the T3 Code, gstack
+   and hermes docs are the exemplars):
+   - its first sentence says what the thing does for the reader, not how the
+     page is built;
+   - it is one type; mechanism the reader never acts on belongs on an
+     internals page;
+   - items with the same fields sit in a table, one fact per cell, defaults
+     stated;
+   - each step of a how-to or tutorial says what the reader should see;
+     a troubleshooting row goes symptom, cause, fix;
+   - a caveat is in place and exact (what does not work, where), not vague;
+   - a generated page names its source where an editor sees it, not in the
+     reader's text;
+   - it ends by pointing to the next page the reader needs.
+   These shape the verdict only; a finding still needs a remark or a false
+   claim.
 4. **Remark pass.** Take the remarks one at a time, in table order, and ask
    only that remark's question of every changed page (tables and lists too).
    A remark about a kind of thing (an integration we will not have, a dropped
@@ -101,8 +117,9 @@ With none, write `none — <why, in one sentence>`.
 
 ## Output (3 KB or less)
 
-The whole answer, appendix included, is 3,072 bytes or less. Write it in this
-order and nothing else:
+The whole answer, appendix included, is 3,072 bytes or less; aim for 2,500 so
+the limit holds. Start with `## Page verdicts`: no preamble, no closing note.
+A replacement text is one sentence. Write it in this order and nothing else:
 
 1. `## Page verdicts`: one line per changed page,
    `- <file> — <type> for <audience>; form fits: <yes|no, why>; verdict: <word>`.
