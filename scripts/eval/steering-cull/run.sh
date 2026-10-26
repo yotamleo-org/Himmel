@@ -16,7 +16,7 @@
 #   --ceiling  stop before the next call once the summed cost-eq of <out> reaches it.
 # Env: SC_CLAUDE (default claude), SC_PREFLIGHT (default scripts/lib/usage-preflight.sh) - the
 #      test seams.
-# Exit: 0 done; 2 usage; 3 stopped (bank refusal, ceiling, or an unsummable spend).
+# Exit: 0 done; 2 usage or an arm that cannot be built; 3 stopped (bank refusal, ceiling, or an unsummable spend).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -98,7 +98,7 @@ for p in $ids; do
         [ -f "$out/$p/$arm/$r.summary.json" ] || todo=1
     done; done
     [ "$todo" = 1 ] || continue
-    if ! pf="$(bash "$PREFLIGHT" 2>&1)" || ! printf '%s\n' "$pf" | grep -qx PROCEED; then
+    if ! pf="$(bash "$PREFLIGHT" 2>&1)" || ! grep -qx PROCEED <<<"$pf"; then
         echo "run.sh: usage-preflight did not PROCEED before $p - stopped" >&2
         printf '%s\n' "$pf" >&2
         exit 3
