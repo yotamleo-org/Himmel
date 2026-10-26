@@ -10,6 +10,7 @@
 set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LIB="${FLAGS_LIB_DIR:-$HERE}"
+case "$LIB" in /*) ;; *) LIB="$PWD/$LIB" ;; esac  # absolute: the .env row runs from another directory
 
 fails=0
 pass() { printf 'PASS: %s\n' "$1"; }
@@ -64,8 +65,14 @@ for r in sh py mjs; do
 
     # the legacy .env is never a flag layer
     mkdir -p "$WORK/repo"; printf 'HIMMEL_FLAG_FOO_OFF=1\n' > "$WORK/repo/.env"
-    want "a flag in .env is ignored" "$r" foo_off 1
+    got="$(cd "$WORK/repo" && export HOME="$WORK/repo" && rd "$r" foo_off)"
+    [ "$got" = 1 ] && pass "a flag in .env is ignored [$r]" || fail "a flag in .env is ignored [$r] (want rc 1, got '$got')"
 done
+
+# a symlinked checkout path still enters the CLI (no silent exit 0 for an unknown name)
+mkdir -p "$WORK/real"; cp "$LIB/flags.mjs" "$WORK/real/flags.mjs"; ln -s "$WORK/real" "$WORK/link"
+got="$(export HIMMEL_FLAGS_TSV="$WORK/flags.tsv" HIMMEL_CONFIG_DIR="$CONF"; node "$WORK/link/flags.mjs" nope 2>/dev/null; echo $?)"
+[ "$got" = 2 ] && pass "flags.mjs: a symlinked path still runs the CLI" || fail "flags.mjs: a symlinked path (want rc 2, got '$got')"
 
 # unknown-name stderr is loud and names the flag
 ( rd sh nope >/dev/null ); grep -q "unknown flag 'nope'" "$WORK/err" && pass "unknown name: stderr names the flag" || fail "unknown name: stderr was '$(cat "$WORK/err")'"

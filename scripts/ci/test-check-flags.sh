@@ -93,6 +93,10 @@ mkdir -p "$t/scripts/hooks/lib"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/hooks/lib/y.sh"
 expect_rc "a read on a ci-trust-paths-core.txt path fails" "$t" 1 "forbidden: alpha read in scripts/hooks/lib/y.sh"
 
+t="$(tree notrust)"
+rm -f "$t/scripts/ci/ci-trust-paths-core.txt"
+expect_rc "an unreadable ci-trust-paths file fails closed" "$t" 2 "cannot read"
+
 t="$(tree readers)"
 printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/lib/flags.sh"
 printf 'himmel_flag zeta\n' > "$t/scripts/ci/check-flags.sh"

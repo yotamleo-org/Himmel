@@ -7,7 +7,7 @@
 // Same rules as flags.sh: HIMMEL_FLAG_<NAME> in the environment, then himmel.conf.local, then
 // himmel.conf under HIMMEL_CONFIG_DIR (default ~/.himmel), then the registry default; never .env.
 // HIMMEL_FLAGS_TSV points at another registry. An unknown name throws.
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -62,7 +62,7 @@ export function himmelFlag(name) {
   throw new Error(`${name} has the value '${val}' (want 1, 0, on or off)`);
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (process.argv[1] && fileURLToPath(import.meta.url) === realpathSync(process.argv[1])) {
   try {
     process.exit(himmelFlag(process.argv[2] || '') ? 0 : 1);
   } catch (e) {

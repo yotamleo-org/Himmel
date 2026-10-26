@@ -111,7 +111,8 @@ fi
 
 TRUST="$SCRATCH/trust"
 { for f in "$ROOT/scripts/ci/ci-trust-paths.txt" "$ROOT/scripts/ci/ci-trust-paths-core.txt"; do
-    [ -r "$f" ] && grep -Ev '^[[:space:]]*(#|$)' "$f"
+    [ -r "$f" ] || { echo "check-flags: cannot read $f (fail-closed)" >&2; exit 2; }
+    grep -Ev '^[[:space:]]*(#|$)' "$f"
   done; } > "$TRUST"
 GATE_RE='^scripts/hooks/|^scripts/cr/|(^|/)merge-on-green\.sh$|(^|/)go\.sh$'
 
