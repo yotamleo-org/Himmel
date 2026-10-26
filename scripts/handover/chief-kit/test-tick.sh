@@ -131,8 +131,11 @@ if [ "${1:-}" = api ] && [ "${2:-}" = rate_limit ]; then
   if [ -n "${GH_TOKEN:-}" ]; then printf '%s\n' "${STUB_RATE_READ_OUT:-}"; else printf '%s\n' "${STUB_RATE_OUT:-}"; fi
   exit 0
 fi
-# cired= reads `gh issue list --label ci-red`: STUB_CIRED_OUT (default empty = unknown), STUB_CIRED_RC exit.
+# cired= reads `gh issue list --label ci-red --state open`: STUB_CIRED_OUT (default empty = unknown), STUB_CIRED_RC exit.
+# A query without the ci-red label or the open state fails the stub, so a mutated read reads unknown.
 if [ "${1:-}" = issue ] && [ "${2:-}" = list ]; then
+  case " $* " in *" --label ci-red "*) ;; *) exit 7 ;; esac
+  case " $* " in *" --state open "*) ;; *) exit 7 ;; esac
   [ -z "${STUB_CIRED_RC:-}" ] || exit "$STUB_CIRED_RC"
   printf '%s\n' "${STUB_CIRED_OUT:-}"
   exit 0
