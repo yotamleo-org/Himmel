@@ -191,6 +191,7 @@ config_seed_stale() { # rc=0 when the dedicated profile must be rebuilt
 
   if [ -f "$SOURCE_DIR/.credentials.json" ]; then
     [ "$SOURCE_DIR/.credentials.json" -nt "$CONFIG_DIR/.seeded" ] && return 0
+    cmp -s "$SOURCE_DIR/.credentials.json" "$CONFIG_DIR/.credentials.json" || return 0
   else
     keychain_credentials | cmp -s - "$CONFIG_DIR/.credentials.json" || return 0
   fi

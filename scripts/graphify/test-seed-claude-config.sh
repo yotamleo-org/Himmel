@@ -300,12 +300,12 @@ printf '#!/usr/bin/env bash\necho Darwin\n' > "$KC_BIN/uname"
 cat > "$KC_BIN/security" <<'SH'
 #!/usr/bin/env bash
 [ "$1" = "find-generic-password" ] || exit 2
-svc=""; want_pw=0
+svc=""; acct=""; acct_n=0; want_pw=0
 while [ "$#" -gt 0 ]; do
-  case "$1" in -s) svc="$2"; shift ;; -w) want_pw=1 ;; esac
+  case "$1" in -s) svc="$2"; shift ;; -a) acct="$2"; acct_n=$((acct_n + 1)); shift ;; -w) want_pw=1 ;; esac
   shift
 done
-[ "$svc" = "Claude Code-credentials" ] && [ "$want_pw" -eq 1 ] || exit 44
+[ "$svc" = "Claude Code-credentials" ] && [ "$acct_n" -eq 1 ] && [ "$acct" = "$KC_USER" ] && [ "$want_pw" -eq 1 ] || exit 44
 [ -f "$KC_FIXTURE" ] || exit 44
 cat "$KC_FIXTURE"
 SH
@@ -314,7 +314,7 @@ KC_FIXTURE="$WS/keychain-blob"
 printf '{"claudeAiOauth":{"accessToken":"kc-v1"}}\n' > "$KC_FIXTURE"
 run_kc_seed() {
   HOME="$KC_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$KC_HOME/.claude-graphify" \
-    PATH="$KC_BIN:$PATH" KC_FIXTURE="$KC_FIXTURE" bash "$HELPER"
+    PATH="$KC_BIN:$PATH" KC_FIXTURE="$KC_FIXTURE" KC_USER="${USER:-$(id -un)}" bash "$HELPER"
 }
 
 KC_HOME="$WS/kc-home"
@@ -352,6 +352,17 @@ if [ "$kc_rotate_rc" -eq 0 ] && cmp -s "$KC_FIXTURE" "$KC_HOME/.claude-graphify/
 else
   fail "rotated Keychain credentials were not re-seeded"
 fi
+
+printf '{"claudeAiOauth":{"accessToken":"file-restored"}}\n' > "$KC_HOME/.claude/.credentials.json"
+touch -t 200001010000 "$KC_HOME/.claude/.credentials.json"
+kc_restore_rc=0
+run_kc_seed > /dev/null 2>&1 || kc_restore_rc=$?
+if [ "$kc_restore_rc" -eq 0 ] && cmp -s "$KC_HOME/.claude/.credentials.json" "$KC_HOME/.claude-graphify/.credentials.json"; then
+  pass "a restored credentials file with an old mtime replaces Keychain-seeded credentials"
+else
+  fail "a restored credentials file with an old mtime was ignored (rc=$kc_restore_rc)"
+fi
+rm -f "$KC_HOME/.claude/.credentials.json"
 
 KC_EMPTY_HOME="$WS/kc-empty-home"
 setup_home "$KC_EMPTY_HOME"
