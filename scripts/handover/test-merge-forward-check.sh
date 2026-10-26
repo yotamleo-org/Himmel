@@ -520,7 +520,12 @@ git -C "$tmp/cs" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "fe
 LOCAL="$(git -C "$tmp/cs" rev-parse HEAD)"
 cs "chain-s2: the sha is not on origin/main: REFUSE" 1 'REFUSE.*origin/main' --chain-after-sha "$LOCAL" --pr-sha "$LOCAL"
 git -C "$tmp/cs" reset -q --hard "$CSHEAD"
-cs "chain-s2: the predecessor is already in HEAD: nothing to merge forward (exit 3)" 3 'nothing to merge forward' --chain-after-sha "$CSHEAD"
+cs "chain-s2: an ancestor of HEAD that is not the predecessor's merge: REFUSE, never 'already merged'" 1 'REFUSE.*#10' --chain-after-sha "$CSHEAD"
+git -C "$tmp/cs" fetch -q origin
+git -C "$tmp/cs" -c user.name=t -c user.email=t@t merge -q --no-edit "$PRED" 2>/dev/null
+MERGED="$(git -C "$tmp/cs" rev-parse HEAD)"
+cs "chain-s2: the predecessor is already in HEAD: nothing to merge forward (exit 3)" 3 'nothing to merge forward' --pr-sha "$MERGED"
+git -C "$tmp/cs" reset -q --hard "$CSHEAD"
 printf 'a\tsuccess\nb\tfailure\n' > "$tmp/cs-red"
 cs "chain-s2: a red on the PR is the inherited-red path, not this reason: REFUSE" 1 'REFUSE.*red' --pr "$tmp/cs-red"
 cs "chain-s2: the PR run is for another head: REFUSE" 1 'REFUSE.*HEAD' --pr-sha "$PRED"

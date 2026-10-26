@@ -156,14 +156,14 @@ chain_s2() {
     echo "REFUSE — --chain-after-sha $after is not a commit on origin/main ($tip): the predecessor's merge must be there. Do not merge forward."
     exit 1
   fi
-  if git merge-base --is-ancestor "$rafter" "$head" 2>/dev/null; then
-    echo "nothing to merge forward — $rafter (PR #$pred's merge) is already in HEAD"
-    exit 3
-  fi
   subj="$(git log -1 --format=%s "$rafter")"
   if [[ "$subj" != *"(#$pred)" ]]; then
     echo "REFUSE — $rafter is '$subj', not the merge of PR #$pred (the subject must end (#$pred)): the plan names #$pred as PR $cpr's predecessor. Do not merge forward."
     exit 1
+  fi
+  if git merge-base --is-ancestor "$rafter" "$head" 2>/dev/null; then
+    echo "nothing to merge forward — $rafter (PR #$pred's merge) is already in HEAD"
+    exit 3
   fi
   echo "ALLOW chain-s2 $cpr — chain-plan.sh orders PR $cpr after #$pred (merged as $rafter, on origin/main and not yet in HEAD) and the PR run is all green. One 'git merge $tip' (the origin/main tip just fetched; CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), then re-run impacted-suites.sh over the merged diff, regenerate generated files, ONE push, citing the plan line ($line) in a Results bullet."
   exit 0
