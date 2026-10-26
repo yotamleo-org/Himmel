@@ -41,7 +41,7 @@ const REVERT_RE = /^revert(:|\b|\s*")/i;
 // merely a URL.
 const OUTCOME_ACCEPTANCE_RE =
   /curl\s+-\w*[iI]\b|gh api repos\/\S+\/pages|Settings\s*(?:→|->)\s*Pages|operator (?:flips|enables)|\brepo setting\b|publish the release/i;
-const WORKER_SESSION_OPERATOR_SPLIT_RE = /\bthe worker (?:prepares|scopes|verifies)\b[^.]*\bthe operator\b|\boperator-only\b/i;
+const WORKER_SESSION_OPERATOR_SPLIT_RE = /\bthe (?:leg|worker) (?:prepares|scopes|verifies)\b[^.]*\bthe operator\b|\boperator-only\b/i;
 
 export function hasOutcomeAcceptance(descriptionText) {
   const text = descriptionText ?? '';

@@ -147,7 +147,7 @@ check_contains "memory-join: an unmatched trap is DORMANT" \
 check_contains "memory-join: an empty-pattern trap is UNMATCHABLE" \
     "$OUT" "trap=trap-bad status=UNMATCHABLE"
 check_contains "memory-join: a Read under SCORECARD_MEMORY_DIR is counted by basename" \
-    "$OUT" "memory-file-read: worker-lifecycle.md reads=1 sessions=1"
+    "$OUT" "memory-file-read: leg-lifecycle.md reads=1 sessions=1"
 check_contains "memory-join: eval-candidates table carries the recurring trap" \
     "$OUT" "trap-hit"
 check_contains "memory-join: eval-candidates table names a proposed eval" \

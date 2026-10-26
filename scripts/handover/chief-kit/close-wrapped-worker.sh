@@ -287,7 +287,7 @@ if [ -z "$worker_cfg" ] && [ -n "$FLEET_MANIFEST" ] && [ -r "$FLEET_MANIFEST" ] 
     && [ "$(jq -r --arg d "$DOC" '[.legs[]? | select(.doc == $d) | .lane // "unknown"] | first // empty' "$FLEET_MANIFEST" 2>/dev/null)" = claudex ]; then
     worker_cfg="$HOME/.claude-codex"
 fi
-WORKER_SESSION_CONFIG_DIR="${leg_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
+WORKER_SESSION_CONFIG_DIR="${worker_cfg:-${CLAUDE_CONFIG_DIR:-$HOME/.claude}}"
 PROJECTS_DIR="${CLOSE_WRAPPED_WORKER_PROJECTS_DIR:-$WORKER_SESSION_CONFIG_DIR/projects}"
 if [ "$CHECK_MODE" -eq 0 ] && [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
     # The two-pass customTitle search lives in worker-transcripts.sh,

@@ -137,7 +137,7 @@ fleet() {
     mkdir -p "$WORK/$1/consoles"; I="$WORK/$1/consoles/c.md"; : > "$I"
     D="$WORK/$1/chief.md"; printf '# chief\n' > "$D"
     L="$WORK/$1/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L"
-    M="$WORK/$1/console.fleet.json"
+    M="$WORK/$1/chief.fleet.json"
     printf '{"schema":1,"legs":[{"doc":"%s","label":"N1"}]}\n' "$L" > "$M"
     export HB_FILE="$I.wait"
 }

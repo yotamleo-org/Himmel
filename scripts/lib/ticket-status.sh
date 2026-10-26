@@ -425,7 +425,7 @@ ts_worker_comment() {
     [ "$hash" != "$TS_CHASH" ] || return 0
     body=$(mktemp "${TMPDIR:-/tmp}/ts-worker-comment.XXXXXX") || return 1
     printf 'WORKER %s (%s)\n\nPRs: %s\n\nJira status: %s\n\nlast move: %s\n' \
-        "${leg:-?}" "$TS_WORKER_STATE" "${heads:-none}" "$status" "${move:-none}" > "$body"
+        "${worker:-?}" "$TS_WORKER_STATE" "${heads:-none}" "$status" "${move:-none}" > "$body"
     if [ -n "$TS_CID" ]; then
         out=$(ts_jira comment "$key" --edit "$TS_CID" --comment-file "$body" --print-id 2>&1) && rc=0
         case "$out" in *"HTTP 404:"*) [ "$rc" -eq 0 ] || TS_CID="" ;; esac

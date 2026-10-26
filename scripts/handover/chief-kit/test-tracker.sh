@@ -52,7 +52,7 @@ write_caps() {  # write_caps <bugs cap>
 }
 write_meta 20 0.6
 write_caps 0.30
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
     HIMMEL-1 v1.0.1 bugs 1 committed '' 'P1; pinned to v1.0.1 (ruling)' > "$plan/stage3/placement.tsv"
@@ -149,7 +149,7 @@ contains 'readiness reads in words (HIMMEL-3990)' "$html" '"fix named, not yet c
 contains 'impact is a secondary 5-dot tag (HIMMEL-3990)' "$html" '"impact "+n+" of 5"'
 contains 'the notes list is labelled vault notes (HIMMEL-3990)' "$html" 'Vault notes that mention it:'
 # Ask 2: the terms name every scale.
-for s in 'Status' 'Worker chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
+for s in 'Status' 'Leg chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
     contains "the terms name $s (HIMMEL-3990)" "$html" "[\"$s\","
 done
 contains 'the size scale comes from the plan (HIMMEL-3957)' "$html" 'XS 0.44 · S 1 · M 2.2 · L 5 · XL 11.1'
@@ -287,7 +287,7 @@ not_contains 'a released lock clears the live worker (HIMMEL-3990)' "$(cat "$out
 
 # --- expansion: trail versions (<version>b, c, ...) and the effort model's P90 (cautious load).
 # versions.tsv lists them out of order on purpose; the plan's order is v1.0.1 < v1.0.1b < v1.0.2 < v1.0.10.
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.2 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.10 0 0 0 0 0 0 0 v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 \
     > "$plan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort HIMMEL-1 v1.0.1 bugs 1 committed '' \
@@ -333,7 +333,7 @@ else
     printf 'skip - node not available: model checks\n'
 fi
 # --- trail versions (v1.0.1a, v1.0.2b) stay in the train, in train order.
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2 0 0 0 0 0 0 0 v1.0.2b 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 12 'To Do' '["v1.0.1a"]' 'trail a ticket'
 mk 13 'To Do' '["v1.0.2b"]' 'trail b ticket'
@@ -347,7 +347,7 @@ contains 'the JS train test accepts a trail suffix (HIMMEL-4026)' "$thtml" '\d+[
 
 # --- the v1.1.x line (ex v1.0.2b..h) is train, sorted right after v1.0.2 and before v1.0.3.
 cp "$plan/stage3/versions.tsv" "$W/versions.tsv.keep"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2 0 0 0 0 0 0 0 v1.0.3 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 14 'To Do' '["v1.1.0"]' 'minor line ticket'
 tstdout="$(render)"
@@ -358,7 +358,7 @@ contains 'the whole-train ledger counts v1.1.x (HIMMEL-4872)' "$tstdout" 'Plan r
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-14.md"
 
 # --- the milestone minors v1.2.0..v1.7.0 are train too, in numeric order after the v1.1.x line.
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2b 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v1.7.0 0 0 0 0 0 0 0 v1.2.0 0 0 0 0 0 0 0 v1.2.0a 0 0 0 0 0 0 0 v1.2.1000000 0 0 0 0 0 0 0 v1.2.999999 0 0 0 0 0 0 0 v1.10.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 15 'To Do' '["v1.2.0"]' 'milestone minor ticket'
 tstdout="$(render)"
@@ -543,7 +543,7 @@ if [[ "$kfp1" =~ ^[0-9a-f]{16}$ ]] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanb
 bplan="$W/bplan" bmir="$W/bmirror" bh="$W/bluna/handovers/tester/himmel"
 cp -r "$plan" "$bplan"
 mkdir -p "$bmir" "$bh"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 > "$bplan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason HIMMEL-100 v1.0.1 features 2.2 committed '' '' \
     > "$bplan/stage3/placement.tsv"
@@ -595,7 +595,7 @@ contains 'A to B to C rolls up to the first planned ancestor; a worker-filed and
     "$(bcol HIMMEL-100 members)" 'HIMMEL-101,HIMMEL-102,HIMMEL-103,HIMMEL-108'
 contains 'the bundle counts open and done (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_n) $(bcol HIMMEL-100 bundle_open) $(bcol HIMMEL-100 bundle_done)" '4 2 2'
 contains 'the bundle folds into the item total (HIMMEL-5453)' "$(bcol HIMMEL-100 own_wall_min) $(bcol HIMMEL-100 bundle_wall_min) $(bcol HIMMEL-100 total_wall_min)" '1500 45 1545'
-contains 'the bundle coverage counts its dated workers (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_workers) $(bcol HIMMEL-100 bundle_dated)" '2 1'
+contains 'the bundle coverage counts its dated workers (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated)" '2 1'
 contains 'a ratio over partly undated workers is left blank (HIMMEL-5453)' "$(bcol HIMMEL-100 est_seq) [$(bcol HIMMEL-100 min_per_seq)] [$(bcol HIMMEL-100 ratio)]" '2.2 [] []'
 contains 'the dated span is printed in UTC (HIMMEL-5453)' "$(bcol HIMMEL-100 first_utc) $(bcol HIMMEL-100 end_utc)" '2026-10-01T20:00Z 2026-10-02T21:00Z'
 contains 'the operator bundle holds labelled, backfilled and their spawned tickets (HIMMEL-5453)' \
@@ -612,7 +612,7 @@ if [ -n "$bfp1" ] && [ "$bfp1" != "$bfp2" ]; then pass 'a new OPERATOR filing mo
 mv "$bh/HIMMEL-102-N94-no-date.md" "$bh/HIMMEL-102-N94-now-dated-2026-10-02.md"
 brender >/dev/null
 contains 'the ratio sits beside its raw inputs once every worker is dated (HIMMEL-5453)' \
-    "$(bcol HIMMEL-100 bundle_workers) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
+    "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
 
 # a Jira `theme-<slug>` label is no longer a theme: the page groups by the Jira Sector field.
 printf '%s\t%s\t%s\n' key theme impact HIMMEL-10 legacy 2 HIMMEL-11 'Build Tools' 2 > "$plan/stage1/C02.tsv"
@@ -747,7 +747,7 @@ not_contains 'the lane leaves out an unversioned To Do ticket (HIMMEL-5217)' "$j
 cu="$W/cu"
 mkdir -p "$cu"
 cp -r "$plan" "$W/plan4"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.2 0.1 0 0 0 0 0.1 1 > "$W/plan4/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
     HIMMEL-1 v1.0.1 bugs 1 committed '' 'P1; pinned to v1.0.1 (ruling)' \
@@ -835,7 +835,7 @@ splan="$W/splan"
 smir="$W/smirror"
 cp -R "$plan" "$splan"
 mkdir -p "$smir"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
     v1.1.1 0.1 0 0 0 0 0.1 1 v1.1.3 0.1 0 0 0 0 0.1 1 v1.1.4 0.1 0 0 0 0 0.1 1 > "$splan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
     HIMMEL-801 v1.1.3 bugs 1 committed '' 'P1' HIMMEL-802 v1.1.3 bugs 1 committed '' 'P1' \

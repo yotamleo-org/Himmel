@@ -105,7 +105,7 @@ block_awk='
             if (!seen) exit 1
             if (status) print status
             if (head) print head
-            print (workers ? legs : "legs: unavailable")
+            print (workers ? workers : "legs: unavailable")
             print (queue ? queue : "queue: unavailable")
             if (lock) print lock
             print "open rulings: " count + 0

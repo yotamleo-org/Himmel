@@ -275,7 +275,8 @@ def filings():
                 for k in filed_keys(l):
                     if k > n:  # an origin is always the older ticket
                         leg.setdefault(k, n)
-    for p in sorted(glob.glob(os.path.join(HANDOVERS, '*console*.md')) + glob.glob(os.path.join(HANDOVERS, 'logs', '*console*.md'))):
+    for p in sorted({p for d in (HANDOVERS, os.path.join(HANDOVERS, 'logs')) for w in ('console', 'chief')
+                     for p in glob.glob(os.path.join(d, '*%s*.md' % w))}):
         try:
             ls = open(p, encoding='utf-8', errors='replace').read().splitlines()
         except OSError:

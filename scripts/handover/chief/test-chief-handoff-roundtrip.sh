@@ -48,7 +48,7 @@ release
 rm
 focus-version
 focus-plan"
-seeded_fields="workers
+seeded_fields="legs
 queue
 last GO
 acked"
@@ -120,7 +120,7 @@ awk -v live="$fixture_live" '
     skip { next }
     { print }' "$docA" > "$docA.new" && mv "$docA.new" "$docA"
 check "2 fixture doc carries every field" \
-    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(workers\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\|release\|rm\|focus-version\|focus-plan\):')" "15"
+    "$(awk '$0 == "## Live state" { f = 1; next } f && /^## / { exit } f' "$docA" | grep -c '^\(legs\|queue\|last GO\|acked\|board\|tracker\|epics\|decisions\|priority\|versions\|tracker-plan\|release\|rm\|focus-version\|focus-plan\):')" "15"
 
 rc=0
 chief next --bucket rtdst --doc "$docA" >/dev/null 2>&1 || rc=$?

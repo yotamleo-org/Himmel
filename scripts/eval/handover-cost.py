@@ -25,7 +25,7 @@ Pieces per handover (turns/cost):
 
 gross = every turn in the four pieces (the HIMMEL-6491 method, an upper bound: overlap turns include work
 that would have happened anyway). net = only the turns that touch the handover machinery (their tool
-input or text names chief.sh, action-zero, chief-wait, live-state, HANDOFF, SUCCESSION, RELAYED,
+input or text names chief.sh, action-zero, chief-wait (or console-wait), live-state, HANDOFF, SUCCESSION, RELAYED,
 ListAgents or succession.md).
 Mechanical columns (not priced): p_after_s = P's turns from S's first turn on; s_to_marker = S's
 turns up to and including its first `append-results.sh` call ("-" when S made none).
@@ -59,9 +59,9 @@ WORKER_SESSION_TURN_CAP = 4
 NEXT_RE = re.compile(r'(?:console|chief)\.sh(?:\\"|")?\s+next\b')
 MARKER_RE = re.compile(r"\bbash\s+\S*append-results\.sh")
 MECH_RE = re.compile(
-    r"(?:console|chief)\.sh|action-zero|chief-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
+    r"(?:console|chief)\.sh|action-zero|(?:console|chief)-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
 )
-PIECES = ("prep", "relay", "az", "leg")
+PIECES = ("prep", "relay", "az", "worker")
 
 
 def parse_ts(s):
@@ -177,7 +177,7 @@ def handover(p, s, workers, workers_after):
     marked = [i for i, t in enumerate(s["turns"]) if t[5]]
     out["p_after_s"] = out["relay"][0]
     out["s_to_marker"] = marked[0] + 1 if marked else None
-    out["leg"] = piece(worker_turns)
+    out["worker"] = piece(worker_turns)
     out["legs"] = nlegs
     out["skipped"] = skipped
     return out

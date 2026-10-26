@@ -60,7 +60,7 @@ check "the WRAPPED doc reads WRAPPED (not vacuous)" WRAPPED "$(printf '%s' "$out
 empty="$W/empty"; mkdir -p "$empty"
 out=$(HANDOVER_DIR="$empty" bash "$WORKERS"); rc=$?
 check "an empty root exits 0" 0 "$rc"
-check "an empty root prints no manifest and no workers" '{"manifest":null,"legs":[]}' "$(printf '%s' "$out" | jq -c '{manifest, workers}')"
+check "an empty root prints no manifest and no workers" '{"manifest":null,"legs":[]}' "$(printf '%s' "$out" | jq -c '{manifest, legs}')"
 
 # No HANDOVER_DIR in the env: the root comes from the checkout's own .env.
 printf 'HANDOVER_DIR=%s\n' "$root" > "$co/.env"

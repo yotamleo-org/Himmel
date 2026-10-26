@@ -219,7 +219,7 @@ while IFS= read -r line; do
             worker_count=$((worker_count + 1))
             worker_slug="${line#slug=}"
             worker_slug="${worker_slug%% *}"
-            worker_names="${leg_names:+$worker_names, }$worker_slug"
+            worker_names="${worker_names:+$worker_names, }$worker_slug"
             ;;
     esac
 done <<SWEEP

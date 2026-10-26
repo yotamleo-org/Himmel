@@ -121,7 +121,7 @@ REPO_ROOT="$(cd "$HERE/../../.." && pwd)"
 if command -v flock >/dev/null 2>&1; then
 printf '%s\n' "$out" | grep '^bash scripts/handover/chief-kit/fleet-manifest.sh add ' > "$WORK/adds.txt"
 while IFS= read -r addline; do (cd "$REPO_ROOT" && eval "$addline" >/dev/null 2>&1); done < "$WORK/adds.txt"
-cp "$WORK/fleet.json" "$WORK/console.fleet.json" 2>/dev/null
+cp "$WORK/fleet.json" "$WORK/chief.fleet.json" 2>/dev/null
 # shellcheck disable=SC2016  # the backticks are literal markers in the Live state
 printf '## Live state\nlegs: `N901:tok1:lock:1` `N902:tok2:lock:2`\n' > "$WORK/chief.md"
 cat > "$WORK/census.sh" <<'EOC'

@@ -2000,7 +2000,7 @@ check "68d --project --arm does NOT export HEADED_ARM_REPO for the chief" \
     "$(printf '%s\n' "$out68d" | grep -c "^stub-arm-68: HEADED_ARM_REPO=<unset>\$")" "1"
 doc68="$root/tester/web-sites68/WEBSITES68-nextleg-${today}A-chief.md"
 check "68d the doc records the project (not just the dry-run line)" \
-    "$(grep -c "The project this chief is FOR is \*\*\`$proj68\`\*\*" "$doc68" 2>/dev/null)" "1"
+    "$(grep -c "The project this console is FOR is \*\*\`$proj68\`\*\*" "$doc68" 2>/dev/null)" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$doc68" "$(token_of "$out68d")" >/dev/null 2>&1
 
 # --- 68e/68f (change 4): project -> bucket/prefix through the handover
@@ -2124,7 +2124,7 @@ check "70b the foreign repo's queue-lock.sh is never executed" "$([ -e "$tmp/evi
 doc70b="$root/tester/c1evil/DEMO-nextleg-${today}A-chief.md"
 check "70b the doc is rendered from himmel's template, not the foreign one" "$(grep -c 'EVIL-TEMPLATE' "$doc70b" 2>/dev/null)" "0"
 check "70b the doc points at the himmel checkout" \
-    "$(grep -c "^> \*\*\`$fixture_repo\`\*\*\. The project this chief is FOR" "$doc70b" 2>/dev/null)" "1"
+    "$(grep -c "^> \*\*\`$fixture_repo\`\*\*\. The project this console is FOR" "$doc70b" 2>/dev/null)" "1"
 check "70b the doc never names the foreign cwd" "$(grep -c "$evil70" "$doc70b" 2>/dev/null)" "0"
 HANDOVER_DIR="$root" bash "$QL" release "$doc70b" "$(token_of "$out70b")" >/dev/null 2>&1
 
@@ -2172,13 +2172,13 @@ proj72="$tmp/Proj 72"; mkdir -p "$proj72"
 printf '{"repos":{}}\n' > "$reg72"
 out72="$( HANDOVER_REGISTRY="$reg72" chief new --project "$proj72" 2>&1 )"
 doc72="$root/tester/proj-72/PROJ72-nextleg-${today}A-chief.md"
-check "72 setup: a foreign chain doc records its project" "$(grep -c "The project this chief is FOR is \*\*\`$proj72\`\*\*" "$doc72" 2>/dev/null)" "1"
+check "72 setup: a foreign chain doc records its project" "$(grep -c "The project this console is FOR is \*\*\`$proj72\`\*\*" "$doc72" 2>/dev/null)" "1"
 touch "$tmp/a-file-72"
 rc72p=0; HANDOVER_REGISTRY="$reg72" chief new --project "$tmp/a-file-72" --dry-run >/dev/null 2>&1 || rc72p=$?
 check "72 (control) --project on a file is refused" "$rc72p" "1"
 cp "$doc72" "$doc72.orig"
 for bad72 in "$tmp/no-such-dir-72" "." "$tmp/a-file-72"; do
-    sed "s|The project this chief is FOR is \*\*\`$proj72\`\*\*|The project this chief is FOR is **\`$bad72\`**|" "$doc72.orig" > "$doc72"
+    sed "s|The project this console is FOR is \*\*\`$proj72\`\*\*|The project this console is FOR is **\`$bad72\`**|" "$doc72.orig" > "$doc72"
     rc72=0; out72n="$( HANDOVER_REGISTRY="$reg72" chief next --doc "$doc72" --dry-run 2>&1 )" || rc72=$?
     check "72 next refuses a recorded project of '$bad72' (rc=1, like --project)" "$rc72" "1"
     check "72 the refusal is --project's own message for '$bad72'" \
@@ -2227,10 +2227,10 @@ out74_new="$( HANDOVER_REGISTRY="$reg74" chief_root "$root74" new --project "$pr
 token74_new="$(token_of "$out74_new")"
 doc74A="$root74/tester/proj-74/PROJ74-nextleg-${today}A-chief.md"
 check "74 setup: a foreign chain doc records its project" \
-    "$(grep -c "The project this chief is FOR is \*\*\`$proj74\`\*\*" "$doc74A" 2>/dev/null)" "1"
+    "$(grep -c "The project this console is FOR is \*\*\`$proj74\`\*\*" "$doc74A" 2>/dev/null)" "1"
 HANDOVER_DIR="$root74" bash "$QL" release "$doc74A" "$token74_new" >/dev/null 2>&1
 cp "$doc74A" "$doc74A.orig"
-sed "s|The project this chief is FOR is \*\*\`$proj74\`\*\*|The project this chief is FOR is **\`$tmp/no-such-dir-74\`**|" "$doc74A.orig" > "$doc74A"
+sed "s|The project this console is FOR is \*\*\`$proj74\`\*\*|The project this console is FOR is **\`$tmp/no-such-dir-74\`**|" "$doc74A.orig" > "$doc74A"
 rc74=0; out74="$( HANDOVER_REGISTRY="$reg74" chief_root "$root74" next --dry-run 2>&1 )" || rc74=$?
 check "74 a bare next refuses a poisoned recorded project (rc=1, like --project)" "$rc74" "1"
 check "74 the refusal is --project's own message" \
@@ -2342,14 +2342,14 @@ check "79 opted-in new: register --role chief, no predecessor" "$(cat "$bus79/ca
 check "79 opted-in new: armed env carries only the registered name + the bind flag" \
     "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "^bus_name=$session79a extra=<unset> bind=1\$")" "1"
 check "79 opted-in new: the launch log records the registration" \
-    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as chief\$")" "1"
+    "$(cat "$tmp/work79"/*/launch-"$session79a".log 2>/dev/null | grep -c "bus: registered $session79a as console\$")" "1"
 rm -f "$bus79/calls"
 out79b="$(run79 in next bus79in)"
 session79b="DEMO-nextleg-${today}B-bus79-chief"
 check "79 opted-in next: register carries --predecessor <outgoing session>" "$(cat "$bus79/calls" 2>/dev/null)" "register $session79b --role console --predecessor $session79a
 succeed $session79b"
 check "79 opted-in next: the launch log records the registration and the stamp" \
-    "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as chief, stamped successor of $session79a\$")" "1"
+    "$(cat "$tmp/work79"/*/launch-"$session79b".log 2>/dev/null | grep -c "bus: registered $session79b as console, stamped successor of $session79a\$")" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79b.md" "$(token_of "$out79b")" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79in/$session79a.md" "$(token_of "$out79a")" >/dev/null 2>&1
 rm -f "$bus79/calls"
@@ -2374,7 +2374,7 @@ session79f="DEMO-nextleg-${today}B-bus79-chief"
 check "79 failed succeed: chief still arms" "$(printf '%s\n' "$out79f" | grep -c '^armed: ')" "1"
 check "79 failed succeed: warned on stderr" "$(printf '%s\n' "$out79f" | grep -c 'WARN bus succeed failed')" "1"
 check "79 failed succeed: the warning lands in the launch log" \
-    "$(cat "$tmp/work79"/*/launch-"$session79f".log 2>/dev/null | grep -c 'WARN: bus succeed failed for .* workers adopt only once')" "1"
+    "$(cat "$tmp/work79"/*/launch-"$session79f".log 2>/dev/null | grep -c 'WARN: bus succeed failed for .* legs adopt only once')" "1"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/$session79f.md" "$(token_of "$out79f")" >/dev/null 2>&1
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus79stamp/DEMO-nextleg-${today}A-bus79-chief.md" "$(token_of "$out79e")" >/dev/null 2>&1
 # a profile probe that errors is not "opted out": the chief arms unbound and the launch log says why
@@ -2892,7 +2892,7 @@ HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88fail/$s88a.md" "$(tok
 out88e="$(print88 broken new bus88probe)"
 paste88 "$out88e"
 check "88 broken profile probe: chief.sh warns the printed line runs unbound" \
-    "$(printf '%s\n' "$out88e" | grep -c 'the printed chief line runs claude unbound')" "1"
+    "$(printf '%s\n' "$out88e" | grep -c 'the printed console line runs claude unbound')" "1"
 check "88 broken profile probe: bus never called, claude still starts" \
     "$([ -e "$b88/calls" ] && echo called || echo none)|$([ -s "$b88/seen" ] && echo started || echo not-started)" "none|started"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/bus88probe/$s88a.md" "$(token_of "$out88e")" >/dev/null 2>&1
@@ -3040,32 +3040,32 @@ doc92A="$root/tester/chief92/DEMO-nextleg-${today}A-chief.md"
 check "92 new names the chief doc *-chief" "$([ -f "$doc92A" ] && echo yes)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$doc92A" "$token92" >/dev/null 2>&1
 mkdir -p "$root/tester/chief92b"
-stub_doc predecessor > "$root/tester/chief92b/DEMO-nextleg-${today}A-roadmap-chief.md"
-chief next --bucket chief92b --name roadmap-chief >/dev/null 2>&1
+stub_doc predecessor > "$root/tester/chief92b/DEMO-nextleg-${today}A-roadmap-console.md"
+chief next --bucket chief92b --name roadmap-console >/dev/null 2>&1
 doc92bB="$root/tester/chief92b/DEMO-nextleg-${today}B-roadmap-chief.md"
 check "92 next from a console-named predecessor arms a chief-named successor" "$([ -f "$doc92bB" ] && echo yes)" "yes"
 check "92 the successor's inbox carries the chief name" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-roadmap-chief.md" "$doc92bB" 2>/dev/null)" "3"
-check "92 the chief-named predecessor's inbox still gets the handover marker" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-roadmap-chief.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-roadmap-chief"
+check "92 the console-named predecessor's inbox still gets the handover marker" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-roadmap-console.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-roadmap-chief"
 mkdir -p "$root/tester/chief92c"
-stub_doc predecessor > "$root/tester/chief92c/DEMO-nextleg-${today}A-chief.md"
+stub_doc predecessor > "$root/tester/chief92c/DEMO-nextleg-${today}A-console.md"
 chief next --bucket chief92c >/dev/null 2>&1
-check "92 next with the default name finds a chief-named predecessor" "$([ -f "$root/tester/chief92c/DEMO-nextleg-${today}B-chief.md" ] && echo yes)" "yes"
+check "92 next with the default name finds a console-named predecessor" "$([ -f "$root/tester/chief92c/DEMO-nextleg-${today}B-chief.md" ] && echo yes)" "yes"
 mkdir -p "$root/tester/chief92d"
-stub_doc predecessor > "$root/tester/chief92d/DEMO-nextleg-${today}A-roadmap-chief.md"
-chief next --bucket chief92d --doc "$root/tester/chief92d/DEMO-nextleg-${today}A-roadmap-chief.md" >/dev/null 2>&1
-check "92 next --doc on a chief-named doc names the successor *-chief" "$([ -f "$root/tester/chief92d/DEMO-nextleg-${today}B-roadmap-chief.md" ] && echo yes)" "yes"
+stub_doc predecessor > "$root/tester/chief92d/DEMO-nextleg-${today}A-roadmap-console.md"
+chief next --bucket chief92d --doc "$root/tester/chief92d/DEMO-nextleg-${today}A-roadmap-console.md" >/dev/null 2>&1
+check "92 next --doc on a console-named doc names the successor *-chief" "$([ -f "$root/tester/chief92d/DEMO-nextleg-${today}B-roadmap-chief.md" ] && echo yes)" "yes"
 mkdir -p "$root/tester/chief92e"
-: > "$root/tester/chief92e/DEMO-nextleg-${today}A-chief.md"
+: > "$root/tester/chief92e/DEMO-nextleg-${today}A-console.md"
 out92e="$(chief new --bucket chief92e)"
 token92e="$(token_of "$out92e")"
-check "92 new skips a letter a chief-named doc already holds" "$([ -f "$root/tester/chief92e/DEMO-nextleg-${today}B-chief.md" ] && echo yes)" "yes"
+check "92 new skips a letter a console-named doc already holds" "$([ -f "$root/tester/chief92e/DEMO-nextleg-${today}B-chief.md" ] && echo yes)" "yes"
 HANDOVER_DIR="$root" bash "$QL" release "$root/tester/chief92e/DEMO-nextleg-${today}B-chief.md" "$token92e" >/dev/null 2>&1
 mkdir -p "$root/tester/chief92f"
-stub_doc predecessor > "$root/tester/chief92f/DEMO-nextleg-${today}A-chief.md"
-: > "$root/tester/chief92f/DEMO-nextleg-${today}B-chief.md"
+stub_doc predecessor > "$root/tester/chief92f/DEMO-nextleg-${today}A-console.md"
+: > "$root/tester/chief92f/DEMO-nextleg-${today}B-console.md"
 rc92f=0
-chief next --bucket chief92f --doc "$root/tester/chief92f/DEMO-nextleg-${today}A-chief.md" >/dev/null 2>&1 || rc92f=$?
-check "92 next refuses a successor letter a chief-named doc already holds" "$rc92f:$([ -e "$root/tester/chief92f/DEMO-nextleg-${today}B-chief.md" ] && echo dup || echo none)" "1:none"
+chief next --bucket chief92f --doc "$root/tester/chief92f/DEMO-nextleg-${today}A-console.md" >/dev/null 2>&1 || rc92f=$?
+check "92 next refuses a successor letter a console-named doc already holds" "$rc92f:$([ -e "$root/tester/chief92f/DEMO-nextleg-${today}B-chief.md" ] && echo dup || echo none)" "1:none"
 
 # --- 93: a bare `next` (no --name/--doc/CHIEF_DOC/--bucket/--prefix) never
 # resolves an older doc of the default name when the bucket holds a NEWER

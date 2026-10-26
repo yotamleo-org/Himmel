@@ -99,7 +99,7 @@ Run these, in order, and write the result as the first bullet under
 ## Live state
 
 > **Authority-bearing state, not a summary:** update on every dispatch, ruling, wrap and GO; a nonce changes **only after** its worker's quote-back.
-> Span per worker `<worker>:<nonce>:<lock-token>:<pid>`; rules: `chief-sections/live-state.md`.
+> Span `<worker>:<nonce>:<lock-token>:<pid>`; rules: `chief-sections/live-state.md`.
 
 legs: <none dispatched yet — else one entry per leg, in the format above>
 queue: <held queue-lock docs in launch order, or "none">
@@ -130,7 +130,7 @@ rows run inside the step-10 waiter, never as `Monitor` loops.
 
 | Monitor | Cadence | What it is |
 |---|---|---|
-| tick | 180 s, wakes on change | **Runs inside the step-10 waiter, not here.** `tick.sh` args: `--doc "<this file>" --token <your token> --workers "{{STATE_DIR}}/<leg1>.md {{STATE_DIR}}/<leg2>.md"` (absolute: a bare doc name resolves against the handover ROOT, `NOTFOUND`). One batched line; worker states and fields: `chief-sections/monitors.md` |
+| tick | 180 s, wakes on change | **Runs inside the step-10 waiter, not here.** `tick.sh` args: `--doc "<this file>" --token <your token> --workers "{{STATE_DIR}}/<leg1>.md {{STATE_DIR}}/<leg2>.md"` (absolute: a bare doc name resolves against the handover ROOT, `NOTFOUND`). One batched line; states and fields: `chief-sections/monitors.md` |
 | usage | 300 s | poll `usage-preflight.sh`, emit on a state-word change |
 | CI | 600 s | poll `gh run list -R <owner/repo> --limit 20 --json databaseId,status`, emit newly-completed runs |
 | notes repo | 300 s | the vault is the tick's `vault=`; only a second state repo needs a loop |
@@ -151,7 +151,7 @@ bullet `OPERATOR: <ask>. Filed HIMMEL-n`.
    >/dev/null 2>&1 &` — headed (no TTY exits at the first idle message);
    `--profile` is required (else exit 2; `--no-profile` when the brief
    pastes the preface). The launcher exports
-   `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) so alerts route back here.
+   `HIMMEL_CONSOLE_NAME` (or `--chief <name>`) to route alerts here.
 5. Record the launch log path (window pid).
 
 ## Rulings — the RETASK channel

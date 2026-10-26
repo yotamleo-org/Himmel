@@ -166,7 +166,7 @@ def identity(doc):
     res, why = None, None
     try:
         p = subprocess.run(
-            ["bash", "-c", 'source "$1"; leg_identity "$2"; leg_base "$2"', "_", WORKER_SESSION_IDENTITY, doc],
+            ["bash", "-c", 'source "$1"; worker_identity "$2"; worker_base "$2"', "_", WORKER_SESSION_IDENTITY, doc],
             capture_output=True, text=True, timeout=30)
         out = p.stdout.split("\n")
         label, _, names = out[0].partition("\t")
@@ -186,7 +186,7 @@ def identity(doc):
 
 
 def chain_key(doc, base):
-    """One leg = TICKET-N<k>: the ticket key of the stem plus leg_base."""
+    """One leg = TICKET-N<k>: the ticket key of the stem plus worker_base."""
     stem = os.path.basename(doc)
     m = re.match(r"^([A-Za-z][A-Za-z0-9]*-\d+)-", stem)
     return (m.group(1) if m else "", base)

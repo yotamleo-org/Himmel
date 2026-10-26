@@ -82,7 +82,7 @@ expect 'HIMMEL-v1-installer-cadence-2026-09-05-leg2-evidence.md' \
 expect 'HIMMEL-1899-public-propagation-legG10-2026-09-05.md' \
     'HIMMEL-1899-public-propagation-legG10-2026-09-05' 'HIMMEL-1899-public-propagation-legG10-2026-09-05,HIMMEL-1899-public-propagation-legG10'
 
-# leg_base: the worker a successor continues. The label keeps N38 and N38b apart;
+# worker_base: the worker a successor continues. The label keeps N38 and N38b apart;
 # the base is what a metric that counts relaunches of ONE worker groups by.
 check_base() {
     local got

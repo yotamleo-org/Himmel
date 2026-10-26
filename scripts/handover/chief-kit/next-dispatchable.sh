@@ -585,7 +585,7 @@ if workers_from and os.path.isfile(workers_from):
                 print('next-dispatchable: live worker %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (worker.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
     except (OSError, ValueError):
         workers_unknown = True
-if pool_only and not workers_from and not leg_keys:
+if pool_only and not workers_from and not worker_keys:
     workers_unknown = True
     print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
 # cloud sessions own their ticket too: the same file and 48h window tick reads
@@ -677,7 +677,7 @@ for i in issues.values():
         continue
     if i['key'] in worker_keys or i['key'] in pr_keys:
         continue
-    if pr_unknown or pr_files_unknown or legs_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner
+    if pr_unknown or pr_files_unknown or workers_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner
         continue
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)

@@ -150,17 +150,17 @@ import json, sys
 def node(i, label, src):
     return {"id": i, "label": label, "norm_label": label.lower(), "file_type": "code", "source_file": src, "source_location": "L1"}
 nodes = [
-    node("arm_worker", "headed-arm-worker.sh", "scripts/handover/chief-kit/headed-arm-worker.sh"),
+    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
     node("chief_relay", "chief-relay.sh", "scripts/handover/chief-relay.sh"),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
 ]
 json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
 PY
 aseeds() { python3 -I "$ANCHOR" seeds "$T/alias.json" "$1" | tr '\n' ' '; }
-got="$(aseeds "how does headed-arm-worker.sh start a session")|$(aseeds "what does chief-relay.sh send")"
-if [ "$got" = "arm_worker |chief_relay " ]; then pass "A11 a name in either vocabulary resolves through the registry"
+got="$(aseeds "how does headed-arm-worker.sh start a session")|$(aseeds "what does console-relay.sh send")"
+if [ "$got" = "arm_leg |chief_relay " ]; then pass "A11 a name in either vocabulary resolves through the registry"
 else fail "A11 got='$got'"; fi
-got="$(aseeds "what does stop-worker.sh do")"
+got="$(aseeds "what does stop-leg.sh do")"
 if [ "$got" = "" ]; then pass "A12 a renamed word never resolves onto an other-sense lane-worker file"
 else fail "A12 got='$got'"; fi
 got="$(aseeds "how does stop-worker.sh stop a lane worker")"

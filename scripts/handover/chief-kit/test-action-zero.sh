@@ -172,7 +172,7 @@ CDOC="$ROOT/plain-chief.md"
 printf '# chief\n\n## Live state\nlegs: `N61:nonce:lock:7`\nqueue: none\n\n## Results\n' > "$CDOC"
 cdigest="$(bash "$AZ" --doc "$CDOC" --root "$ROOT" 2>&1 | awk '/^== DOC$/ {s=1; next} /^== / {s=0} s')"
 check "DOC digest of a chief doc prints no unavailable field" "0" "$(printf '%s\n' "$cdigest" | grep -c 'unavailable')"
-check "DOC digest still prints the legs: and queue: lines" "2" "$(printf '%s\n' "$cdigest" | grep -cE '^(workers|queue): ')"
+check "DOC digest still prints the legs: and queue: lines" "2" "$(printf '%s\n' "$cdigest" | grep -cE '^(legs|queue): ')"
 
 # A flagged lock makes the sweep exit 20: its lines are the result, not a failure.
 SROOT="$WORK/sweeproot"; mkdir -p "$SROOT/.locks/queue/stale.lock"

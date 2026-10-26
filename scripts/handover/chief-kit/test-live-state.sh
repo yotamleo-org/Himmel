@@ -107,7 +107,7 @@ check '6. --print prints the legs: line' yes "$r"
 
 # 7. no legs: line.
 printf '# c\n\n## Live state\n\nqueue: none\n' > "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md"
-bash "$FM" add "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-console.fleet.json" "$d1" >/dev/null 2>&1
+bash "$FM" add "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md" --nonce N61=x >/dev/null 2>&1; rc=$?
 check '7. a doc with no legs: line is refused' 1 "$rc"
 

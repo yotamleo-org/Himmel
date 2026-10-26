@@ -74,9 +74,9 @@ mkleg() {
 }
 # manifest <doc>...: a fleet manifest of those workers, added 60 minutes ago.
 manifest() {
-    local m="$W/handover/console.fleet.json" workers="" d t
+    local m="$W/handover/chief.fleet.json" workers="" d t
     t="$(/bin/date -u -d "60 minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
-    for d in "$@"; do workers="$workers${legs:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\"}"; done
+    for d in "$@"; do workers="$workers${workers:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\"}"; done
     printf '{"schema":1,"legs":[%s]}\n' "$workers" > "$m"
     printf '%s' "$m"
 }

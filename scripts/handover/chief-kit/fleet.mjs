@@ -538,7 +538,7 @@ const buildSnapshot = async () => {
         fleet: bankInfo ? bankInfo.fleet : null,
         bank: bankInfo ? bankInfo.bank : null,
         warnings,
-        workers,
+        legs: workers,
     });
 };
 

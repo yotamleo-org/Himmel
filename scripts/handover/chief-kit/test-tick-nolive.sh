@@ -69,7 +69,7 @@ mkleg() {
 }
 # manifest <doc:minutes-ago>...: a fleet manifest with each worker added N min ago.
 manifest() {
-    local m="$W/handover/console.fleet.json" legs="" e d t
+    local m="$W/handover/chief.fleet.json" legs="" e d t
     for e in "$@"; do
         d="${e%%:*}"; t="$(/bin/date -u -d "${e##*:} minutes ago" +%Y-%m-%dT%H:%M:%SZ)"
         legs="$legs${legs:+,}{\"doc\":\"$d\",\"label\":\"x\",\"added\":\"$t\"}"

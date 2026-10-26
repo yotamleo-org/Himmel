@@ -74,8 +74,9 @@ fi
 # Copied/mutant renderers get a sibling resolver like the real tree; ambient
 # HEADED_ARM_WORKER_PROFILES is deliberately ignored by direct chief arms.
 fixture_profiles() {
-  mkdir -p "$1/lanes"
+  mkdir -p "$1/lanes" "$1/lib"
   cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/"
+  cp "$HERE/../lib/env-alias.mjs" "$HERE/../lib/is-main.mjs" "$1/lib/"
 }
 fails=0
 grepq() { local _t="$1"; shift; grep -q "$@" <<< "$_t"; }
@@ -466,7 +467,7 @@ wait_record "$d1e" || true
 check "durable record, default: exit 0 (precondition: the launch happened)" "$rc1e" "0"
 if [ -s "$d1e/record" ]; then echo "ok - durable record, default: konsole IS invoked (precondition)"
 else echo "FAIL - durable record, default: konsole IS invoked (precondition)"; fails=$((fails+1)); fi
-rec1e="$(cat "$d1e/cache/launch-logs/HIMMEL-9999e-console.log" 2>/dev/null || true)"
+rec1e="$(cat "$d1e/cache/launch-logs/HIMMEL-9999e-chief.log" 2>/dev/null || true)"
 contains "durable record, default: names the role"    "$rec1e" "headed-arm: role=chief session=HIMMEL-9999e-chief "
 contains "durable record, default: records the mode"  "$rec1e" " context=1m "
 contains "durable record, default: records the source" "$rec1e" " source=default "
@@ -477,7 +478,7 @@ rc1f=0
 run_chief_arm "$d1f" "HIMMEL-9999f-chief" CHIEF_CONTEXT=1m >/dev/null 2>&1 || rc1f=$?
 wait_record "$d1f" || true
 check "durable record, 1m opt-in: exit 0 (precondition: the launch happened)" "$rc1f" "0"
-rec1f="$(cat "$d1f/cache/launch-logs/HIMMEL-9999f-console.log" 2>/dev/null || true)"
+rec1f="$(cat "$d1f/cache/launch-logs/HIMMEL-9999f-chief.log" 2>/dev/null || true)"
 contains "durable record, 1m opt-in: records the mode"   "$rec1f" " context=1m "
 contains "durable record, 1m opt-in: records the source" "$rec1f" " source=explicit "
 contains "durable record, 1m opt-in: records autocompact" "$rec1f" " autocompact=auto "
@@ -1855,7 +1856,7 @@ rc39=$?
 check "39 --dry-run: exit 0" "$rc39" "0"
 contains "39 --dry-run: reports the session name" "$out39" "HIMMEL-dry39"
 contains "39 --dry-run: reports the doc" "$out39" "doc39.md"
-contains "39 --dry-run: reports role=chief" "$out39" "console"
+contains "39 --dry-run: reports role=chief" "$out39" "role=chief"
 if [ -e "$d39/konsole-calls" ]; then echo "FAIL - 39 --dry-run: konsole must NOT be invoked"; fails=$((fails+1))
 else echo "ok - 39 --dry-run: konsole must NOT be invoked"; fi
 if [ -e "$d39/pgrep-calls" ]; then echo "FAIL - 39 --dry-run: pgrep must NOT be invoked"; fails=$((fails+1))
@@ -2275,7 +2276,7 @@ for _m43 in headed headless; do
     bash "$SCRIPT" --dry-run --role chief "HIMMEL-mc43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1) || rc43b=$?
   check "43b $_m43 chief --dry-run: exit 0" "$rc43b" "0"
   contains "43b $_m43 console: argv carries --strict-mcp-config (HIMMEL-5310)" "$out43b" "--strict-mcp-config"
-  contains "43b $_m43 console: argv carries the chief --mcp-config file" "$out43b" "console.mcp.json"
+  contains "43b $_m43 console: argv carries the chief --mcp-config file" "$out43b" "chief.mcp.json"
 done
 
 # --- 43d: the chief's MCP allowlist names an undefined server

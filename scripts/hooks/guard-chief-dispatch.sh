@@ -123,7 +123,7 @@ log_override() {
     warn "$override=1 — allowing by explicit session override; audit log: $log"
 }
 
-# Each escape hatch reads its old CHIEF_* name too; a set falsy value of
+# Each escape hatch reads its old CONSOLE_* name too; a set falsy value of
 # either name keeps the guard on. An unloadable helper lifts nothing.
 alias_lib="$(dirname "${BASH_SOURCE[0]}")/../lib/env-alias.sh"
 # shellcheck source=../lib/env-alias.sh

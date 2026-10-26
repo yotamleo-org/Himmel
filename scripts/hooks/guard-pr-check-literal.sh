@@ -2770,7 +2770,7 @@ manifest() { # manifest <root> <kit> - "<mode> <blob-id> <path>" per regular fil
     prune_dirs='scripts scripts/cr'
     case " $GUARDED " in
         *" $KIT_NEW/"*)
-            [ -n "$kit" ] || { printf 'ODD %s\n' "scripts/handover/chief-kit or chief-kit (not exactly one real kit directory)"; return 0; }
+            [ -n "$kit" ] || { printf 'ODD %s\n' "scripts/handover/chief-kit or console-kit (not exactly one real kit directory)"; return 0; }
             prune_dirs="$prune_dirs scripts/handover scripts/handover/$kit" ;;
         *' scripts/handover/merge-on-green.sh '*) prune_dirs="$prune_dirs scripts/handover" ;;
     esac

@@ -129,7 +129,7 @@ not ask before relaying. It sends nothing itself. A console with a bus identity
 --name on next selects which supervisor-session succession to continue; defaults to the name
 implied by --doc's own basename when --doc is given and --name is not,
 else "chief". A name must be "chief" or end in "-chief"; a pre-rename
-"console" / "*-chief" name maps to its chief spelling, and every lookup
+"console" / "*-console" name maps to its chief spelling, and every lookup
 still finds a predecessor doc that carries the console spelling.
 --date on next overrides the day used for the successor's own name and
 starts that day's succession at letter A; without --date the successor
@@ -280,17 +280,17 @@ find_free_letter() {
 chief_name() {
     case "$1" in
         console) printf 'chief' ;;
-        *-chief) printf '%s-chief' "${1%-chief}" ;;
+        *-console) printf '%s-chief' "${1%-console}" ;;
         *) printf '%s' "$1" ;;
     esac
 }
 
-# chief_name -- the pre-rename spelling of a chief chain name, which the
+# console_name -- the pre-rename spelling of a chief chain name, which the
 # docs and inboxes of a chain armed before the rename still carry.
 console_name() {
     case "$1" in
         chief) printf 'console' ;;
-        *-chief) printf '%s-chief' "${1%-chief}" ;;
+        *-chief) printf '%s-console' "${1%-chief}" ;;
         *) printf '%s' "$1" ;;
     esac
 }
@@ -306,7 +306,7 @@ console_metadata() {
 # here so an ambient value can never name a predecessor.
 CHIEF_BUS_PREDECESSOR=""
 
-# chief_bus_opted_in -- the chief profile lists himmel-bus in its MCP servers.
+# console_bus_opted_in -- the chief profile lists himmel-bus in its MCP servers.
 # Returns 0 opted in, 1 not opted in, 2 the profile probe itself failed (its
 # output is left in bus_probe_out): a broken probe is not an opt-out.
 bus_probe_out=""
@@ -357,7 +357,7 @@ do_arm() {
     # right after), so nothing downstream in this process needs them back.
     local -a leg_env_names=()
     local leg_env_name
-    for leg_env_name in $(console_context_leg_env_unset_names); do
+    for leg_env_name in $(chief_context_worker_env_unset_names); do
         leg_env_names+=("$leg_env_name")
     done
     unset "${leg_env_names[@]}"
@@ -561,7 +561,7 @@ wrapped_open_prs_section() { # <predecessor doc>
     if [ -f "$manifest" ] && [ -n "$open" ] && rows="$(jq -r '.legs[] | "\(.label)\t\(.doc)"' "$manifest" 2>/dev/null)"; then
         while IFS="$(printf '\t')" read -r label ldoc; do
             [ -f "$ldoc" ] || continue
-            [ "$(leg_tail_status "$ldoc")" = WRAPPED ] || continue
+            [ "$(worker_tail_status "$ldoc")" = WRAPPED ] || continue
             # shellcheck disable=SC2013 # the words are bare digits
             for n in $(grep -oE '(READY|PR|#)[ #]*[0-9]+' "$ldoc" | grep -oE '[0-9]+$' | sort -u); do
                 printf '%s\n' "$open" | grep -qx "$n" || continue
@@ -634,13 +634,13 @@ while [ "$#" -gt 0 ]; do
         --model) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; MODEL="$2"; shift 2 ;;
         --model=*) MODEL="${1#--model=}"; shift ;;
         --context)
-            if [ "$#" -lt 2 ] || ! console_context_valid "$2"; then
+            if [ "$#" -lt 2 ] || ! chief_context_valid "$2"; then
                 err "--context must be 1m or standard"; exit 2
             fi
             CONTEXT="$2"; CONTEXT_GIVEN=1; shift 2 ;;
         --context=*)
             CONTEXT="${1#--context=}"
-            console_context_valid "$CONTEXT" || { err "--context must be 1m or standard"; exit 2; }
+            chief_context_valid "$CONTEXT" || { err "--context must be 1m or standard"; exit 2; }
             CONTEXT_GIVEN=1; shift ;;
         --bucket) [ "$#" -ge 2 ] || { usage >&2; exit 1; }; BUCKET="$2"; shift 2 ;;
         --bucket=*) BUCKET="${1#--bucket=}"; shift ;;
@@ -718,7 +718,7 @@ if [ "$CMD" = next ] && [ -z "$PROJECT_ARG" ] && [ -z "$DOC_ARG" ] && [ -z "${CH
             fi
         done
         # A newer nextleg doc of ANOTHER name (the live chain is roadmap-chief, the
-        # default name matches only a weeks-old bare -chief doc) means the default
+        # default name matches only a weeks-old bare -console doc) means the default
         # name is the wrong chain: refuse and list, never take the old doc.
         if [ "$NAME_GIVEN" -ne 1 ]; then
             _auto_newer=""
@@ -967,7 +967,7 @@ fi
 # stop-chief-idle-guard (*-chief.lock), guard-chief-dispatch
 # (*-chief.md) and chief-compact-reinject (-n name) all key on the -chief
 # suffix, so a chief armed without it silently loses them. The bare default
-# `chief` already yields the `…A-chief` doc. A pre-rename chief name maps
+# `chief` already yields the `…A-chief` doc. A pre-rename console name maps
 # to its chief spelling; old_name keeps that spelling for the lookups that
 # must still find a live chief-named chain.
 name="$(chief_name "$name")"
@@ -1008,12 +1008,12 @@ fill_percent="${CHIEF_FILL_PERCENT:-45}"
 if [ "$CONTEXT_GIVEN" -eq 1 ]; then
     CHIEF_CONTEXT_RESOLVED_MODE="$CONTEXT"
 else
-    console_context_default 1 "${CHIEF_CONTEXT:-}"
+    chief_context_default 1 "${CHIEF_CONTEXT:-}"
 fi
-console_autocompact="$(console_context_autocompact "$CHIEF_CONTEXT_RESOLVED_MODE")"
-launch_model="$(console_context_strip_1m_suffix "$model")"
-if [ "$CHIEF_CONTEXT_RESOLVED_MODE" = 1m ] && ! console_context_model_is_fable "$launch_model" \
-    && console_context_model_takes_1m_suffix "$launch_model"; then
+console_autocompact="$(chief_context_autocompact "$CHIEF_CONTEXT_RESOLVED_MODE")"
+launch_model="$(chief_context_strip_1m_suffix "$model")"
+if [ "$CHIEF_CONTEXT_RESOLVED_MODE" = 1m ] && ! chief_context_model_is_fable "$launch_model" \
+    && chief_context_model_takes_1m_suffix "$launch_model"; then
     launch_model="${launch_model}[1m]"
 fi
 # The launch line carries --autocompact and an Opus 5.5 id, which a
@@ -1064,11 +1064,11 @@ launch_cmd() {
         claude_cmd="$(printf 'if [ -f %q ]; then %s-- %s; else %s; fi' "$HERE/chief-bus-exec.sh" "$bus_exec" "$claude_cmd" "$claude_cmd")"
     fi
     printf 'cd %q && { bash %q %s %s %s %s; %s; }' \
-        "$repo" "$HERE/record-launch.sh" "$1" "$CHIEF_CONTEXT_RESOLVED_MODE" "$(console_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
+        "$repo" "$HERE/record-launch.sh" "$1" "$CHIEF_CONTEXT_RESOLVED_MODE" "$(chief_context_source_label "$CONTEXT_GIVEN")" "$console_autocompact" \
         "$claude_cmd"
 }
 
-# _chief_sha256_8 <string> -- first 8 hex chars of sha256(<string>). Small
+# _console_sha256_8 <string> -- first 8 hex chars of sha256(<string>). Small
 # per-script helper, matching the repo's own convention of duplicating this
 # rather than centralizing it (already inlined the same way in
 # queue-lock.sh's _ql_digest_of, artifact-sync.sh's sha256_of, and
@@ -1098,8 +1098,8 @@ _console_sha256_8() {
 root_canon="$(_arm_realpath "$root")"
 root_digest="$(_console_sha256_8 "$root_canon")"
 
-# _chief_group_or_world_writable <dir> -- true if <dir>'s own permission
-# bits allow group or other write. chief_workdir_ensure only ever validates the CHILD it creates
+# _console_group_or_world_writable <dir> -- true if <dir>'s own permission
+# bits allow group or other write. console_workdir_ensure only ever validates the CHILD it creates
 # ($XDG_RUNTIME_DIR/himmel-chief); it never checks the PARENT
 # ($XDG_RUNTIME_DIR itself). Unix permission semantics mean write access to
 # a directory controls its entries regardless of the entries' own
@@ -1107,7 +1107,7 @@ root_digest="$(_console_sha256_8 "$root_canon")"
 # XDG_RUNTIME_DIR is not guaranteed to), so a group- or world-writable
 # parent lets another local user swap the child out from under this
 # process even after the child passed its own validation. A separate
-# helper (rather than folding this into chief_workdir_ensure) keeps that
+# helper (rather than folding this into console_workdir_ensure) keeps that
 # already-tested function's exact error-message wording untouched.
 _console_group_or_world_writable() {
     local mode
@@ -1147,9 +1147,9 @@ fi
 # SAME validation rather than being trusted outright.
 workdir="${CHIEF_WORK_DIR:-$_console_default_workdir}"
 
-# _chief_dir_component_unsafe <dir> -- true if <dir> is group- or
+# _console_dir_component_unsafe <dir> -- true if <dir> is group- or
 # world-writable AND (lacks the sticky bit OR the sticky bit is present but
-# <dir> is owned by neither root nor us). chief_workdir_ensure (below) validates only $workdir
+# <dir> is owned by neither root nor us). console_workdir_ensure (below) validates only $workdir
 # itself, in every one of its three origins -- the XDG_RUNTIME_DIR default,
 # a CHIEF_WORK_DIR override, or the TMPDIR fallback. The XDG_RUNTIME_DIR
 # case alone got a parent check (the `if` above deciding whether to prefer
@@ -1200,8 +1200,8 @@ _console_dir_component_unsafe() {
     [ "$sticky" -eq 1 ] && return 1  # trusted owner + sticky: non-owners can't rename/unlink our entry: safe
     return 0  # trusted owner but group/world-writable without sticky: other non-owning local users could tamper
 }
-# _chief_ancestor_unsafe <dir> -- true if <dir> or any of its existing
-# ancestors is unsafe per _chief_dir_component_unsafe. Checking only the immediate parent leaves the
+# _console_ancestor_unsafe <dir> -- true if <dir> or any of its existing
+# ancestors is unsafe per _console_dir_component_unsafe. Checking only the immediate parent leaves the
 # REST of the ancestor chain unchecked -- a local user with write access to
 # a GRANDPARENT (or higher) can rename/replace that ancestor, substituting
 # the entire subtree beneath it (including an immediate parent that, in
@@ -1242,7 +1242,7 @@ fi
 # already-validated canonical path for every subsequent use closes that
 # window: what was checked is exactly what gets used. This MUST run before
 # the reassignment below: `realpath -m` resolves a symlink at $workdir's own
-# last component away entirely, so chief_workdir_ensure's own -L check
+# last component away entirely, so console_workdir_ensure's own -L check
 # would never see it once $workdir has already been replaced by its
 # resolved form (case 27's pre-created-symlink-as-workdir regression).
 if [ -L "$workdir" ]; then
@@ -1251,10 +1251,10 @@ if [ -L "$workdir" ]; then
 fi
 workdir="$_console_workdir_abs"
 
-# _chief_mkdir_chain_safe <dir> -- create <dir> and every missing ancestor
+# _console_mkdir_chain_safe <dir> -- create <dir> and every missing ancestor
 # ONE COMPONENT AT A TIME (never a single `mkdir -p`), validating ownership
 # of each component the instant it exists -- whether because this call just
-# created it or because it was already there. `_chief_ancestor_unsafe` above only walks EXISTING
+# created it or because it was already there. `_console_ancestor_unsafe` above only walks EXISTING
 # ancestors -- a missing one is skipped on the assumption that `mkdir -p`
 # will create it safely -- but `mkdir -p` silently adopts any ancestor an
 # attacker races into existence between that walk and this create step, with
@@ -1298,7 +1298,7 @@ _console_mkdir_chain_safe() {
         fi
     done
 }
-# chief_workdir_ensure <dir> -- create at 0700 if absent, then ALWAYS
+# console_workdir_ensure <dir> -- create at 0700 if absent, then ALWAYS
 # validate what actually exists at $d afterward -- never return early on a
 # bare mkdir success. `mkdir -p` is a documented no-op on a path that already
 # exists (including one whose last component is a symlink resolving to a

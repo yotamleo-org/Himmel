@@ -85,7 +85,7 @@ mkdir -p "$W/primary"
 fixture() {
     : > "$WM_CALLS"
     CHIEF="$W/2026-roadmap-chief.md"
-    MANIFEST="$W/2026-roadmap-console.fleet.json"
+    MANIFEST="$W/2026-roadmap-chief.fleet.json"
     WORKER="$W/HIMMEL-5594-N2034-wrap-merged-2026-10-14.md"
     rm -f "$MANIFEST" "$MANIFEST.lock"
     printf '# chief\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE chief\n' > "$CHIEF"
@@ -257,7 +257,7 @@ if command -v python3 >/dev/null 2>&1; then
     TR="$W/tracker"; TPLAN="$TR/plan"; TMIR="$TR/mirror"
     mkdir -p "$TPLAN/stage1" "$TPLAN/stage3" "$TMIR"
     printf '%s\n' '{"main_sha_at_build":"abcdef123456"}' > "$TPLAN/stage3/meta.json"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
         v1.0.1 0.1 0 0 0 0 0.1 1 > "$TPLAN/stage3/versions.tsv"
     printf '%s\t%s\t%s\t%s\n' key version layer effort_mid HIMMEL-1 v1.0.1 bugs 1 > "$TPLAN/stage3/placement.tsv"
     printf '%s\t%s\t%s\n' key close_flag close_evidence > "$TPLAN/stage3/closures.tsv"

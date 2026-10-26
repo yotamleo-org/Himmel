@@ -512,14 +512,14 @@ contains '--verbose labels worker models (HIMMEL-2976, HIMMEL-3145)' "$verbose" 
 # only from GH_STUB_CWD, so prs= is populated only when gh ran in that checkout.
 mkdir -p "$W/project"
 # shellcheck disable=SC2016  # backtick spans, literal fixture text
-printf '%s\n' '> the repo you ship from is **`x`**. The project this chief is FOR is **`'"$W/project"'`** — you' \
+printf '%s\n' '> the repo you ship from is **`x`**. The project this console is FOR is **`'"$W/project"'`** — you' \
     > "$W/handover/chief-project.md"
 proj_out="$(TOKEN='' GH_STUB_CWD="$W/project" bash "$SUT" --doc "$W/handover/chief-project.md")"
 contains 'a foreign chief lists its project PRs (gh runs in the project)' "$proj_out" ' prs=#2247,#2250 '
 proj_out="$(TOKEN='' bash "$SUT" --doc "$W/handover/chief-project.md")"
 contains 'a foreign chief never lists the himmel REPO PRs' "$proj_out" ' prs=none '
 # shellcheck disable=SC2016  # backtick spans, literal fixture text
-printf '%s\n' '> The project this chief is FOR is **`none — this chief runs in the himmel checkout itself`** — you' \
+printf '%s\n' '> The project this console is FOR is **`none — this console runs in the himmel checkout itself`** — you' \
     > "$W/handover/chief-himmel.md"
 proj_out="$(TOKEN='' bash "$SUT" --doc "$W/handover/chief-himmel.md")"
 contains 'a himmel chief (project line reads none) lists the REPO PRs' "$proj_out" ' prs=#2247,#2250 '
@@ -604,7 +604,7 @@ fi
 # tick reads it on every run, so a dispatch or wrap edits the file and the
 # waiter needs no restart. RED control (tick.sh before this change): every
 # --workers-from run below exited 2 with the usage text (unknown option).
-fm="$W/handover/console.fleet.json"
+fm="$W/handover/chief.fleet.json"
 fm_n61="$W/handover/HIMMEL-111-legN61.md"
 fm_n65="$W/handover/HIMMEL-222-legN65.md"
 printf '{"schema":1,"legs":[{"doc":"%s","label":"N61"},{"doc":"%s","label":"N65"}]}\n' "$fm_n61" "$fm_n65" > "$fm"
@@ -984,7 +984,7 @@ fi
 # -- a bare, unwarned MISSING for a typo'd/unresolvable doc.
 contains 'unresolvable worker has NOTFOUND, not MISSING, as its lock status' "$out" 'workers=N61:FRESH,N66:NOTFOUND'
 contains 'unresolvable worker has an explicit tail status' "$out" 'tails=N61:LIVE,N66:?'
-contains 'an unresolvable worker doc emits a named warning on stderr' "$(cat "$W/notfound-stderr.txt")" 'tick: no such worker doc:'
+contains 'an unresolvable worker doc emits a named warning on stderr' "$(cat "$W/notfound-stderr.txt")" 'tick: no such leg doc:'
 case "$out" in *MISSING*) fail 'an unresolvable worker doc never prints bare MISSING' ;; *) pass 'an unresolvable worker doc never prints bare MISSING' ;; esac
 contains 'context-fill rc=3 becomes unknown' "$out" 'fill=?'
 case "$out" in *FILL_RC*) fail 'context-fill failure does not print FILL_RC chatter' ;; *) pass 'context-fill failure does not print FILL_RC chatter' ;; esac
@@ -2090,7 +2090,7 @@ if command -v python3 >/dev/null 2>&1; then
     t3933_out="$W/handover/roadmap-tracker.html"
     mkdir -p "$t3933_plan/stage1" "$t3933_plan/stage3" "$t3933_mir"
     printf '%s\n' '{"main_sha_at_build":"abcdef123456"}' > "$t3933_plan/stage3/meta.json"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
         v1.0.1 0.1 0 0 0 0 0.1 1 > "$t3933_plan/stage3/versions.tsv"
     printf '%s\t%s\t%s\t%s\n' key version layer effort_mid HIMMEL-1 v1.0.1 bugs 1 > "$t3933_plan/stage3/placement.tsv"
     printf '%s\t%s\t%s\n' key close_flag close_evidence > "$t3933_plan/stage3/closures.tsv"
@@ -2699,7 +2699,7 @@ fknbsp=$'test-x\xc2\xa0legs=9\xe2\x80\xa8fleet=9.sh'
 fkrow $((fk0 + 60)) "$fknbsp" tick-test-repo > "$SUITE_FLAKE_LEDGER"
 fk_out="$(TOKEN='' bash "$SUT" --doc "$d4670" 2>/dev/null)"
 case "$fk_out" in *$'\xc2\xa0'*|*$'\xe2\x80\xa8'*) fail "flakes= carries Unicode whitespace from a suite name (out='$fk_out')" ;; *) pass 'flakes= strips Unicode whitespace from the top suite name (HIMMEL-5131)' ;; esac
-same 'a forged key in a suite name stays inside the flakes= value (HIMMEL-5131)' "$(flakes_of "$d4670")" '1/1@test-x_workers_9_fleet_9.sh*1'
+same 'a forged key in a suite name stays inside the flakes= value (HIMMEL-5131)' "$(flakes_of "$d4670")" '1/1@test-x_legs_9_fleet_9.sh*1'
 rm -f "$SUITE_FLAKE_LEDGER"; mkdir -p "$SUITE_FLAKE_LEDGER"
 same 'flakes=? when the ledger is unreadable (HIMMEL-5131)' "$(flakes_of "$d4670")" '?'
 rmdir "$SUITE_FLAKE_LEDGER"
@@ -2958,11 +2958,11 @@ contains 'verbose labels the field' "$(TOKEN='' bash "$SUT" --doc "$RMD/chief.md
 rm -f "$W/rm-gh.calls"
 rm -f "$RMD"/worker[1245].md
 same 'ready-mismatch= is absent when every READY is clean' "$(rm_of)" ''
-rm -f "$RMD/leg3.md"
+rm -f "$RMD/worker3.md"
 for n in $(seq 201 224); do rm_worker "$n" claude-sonnet-5-5 "$n" '- trust path: none'; done
 rm_of >/dev/null
 [ "$(wc -l < "$W/rm-gh.calls" | tr -d ' ')" -le 20 ] && pass 'at most 20 uncached gh calls per tick' || fail "gh was called $(wc -l < "$W/rm-gh.calls" | tr -d ' ') times"
-rm -f "$RMD"/leg2*.md "$W/rm-gh.calls"
+rm -f "$RMD"/worker2*.md "$W/rm-gh.calls"
 rm -rf "$TICK_STATE_DIR/ready-files"
 mkdir -p "$TICK_STATE_DIR/ready-files"
 # shellcheck disable=SC2016  # $RM_GH_OID expands in the generated stub, not here
@@ -3034,7 +3034,7 @@ rm -rf "$RMD" "$W/rm-gh.calls" "$W/rm-gh.pwd"
 # its decisions: line over DECISIONS_BUDGET_BYTES, prints an ACTION line.
 # The decisions: text and the HANDOFF note are copied from live chief docs.
 d6603="$W/handover/HIMMEL-6603-chief.md"
-printf '%s\n' '# chief' '' '## Live state' 'decisions: OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; WORKER_SESSION_EFFORT high on claudex workers.' > "$d6603"
+printf '%s\n' '# console' '' '## Live state' 'decisions: OPERATOR 10-17 afternoon (BINDING, carry verbatim to every successor): (3) Residuals 6102-6108, 6110 deferred (out of v1.1.3). Windows/WSL support work is NEVER dispatched. (4) qmd fork: version with tags + main (bump main too, tag releases). (6) Use more fleet + Claude API + claudex budget; WORKER_SESSION_EFFORT high on claudex legs.' > "$d6603"
 printf '%s\n' '> HANDOFF over budget: 46253 bytes (limit 12000); Live state 41637 bytes, wrapped-PR list 198 bytes — tighten the Live state' > "$W/handover/HIMMEL-6603-chief-HANDOFF.md"
 hb_small="$(TOKEN='' bash "$SUT" --doc "$d6603" 2>/dev/null)"
 not_contains 'a HANDOFF and decisions: line under their budgets print no ACTION (HIMMEL-6603)' "$hb_small" 'over-budget'

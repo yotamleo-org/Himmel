@@ -634,7 +634,7 @@ launch_dir_default() {
     fi
 }
 
-# worker_start_epoch <worker doc> <candidate names, comma list> -- when the worker was
+# leg_start_epoch <worker doc> <candidate names, comma list> -- when the worker was
 # dispatched: the fleet manifest's `added` time, else the newest launch-log
 # `armed:` line naming the doc or a candidate session, else the doc's mtime.
 leg_start_epoch() {
@@ -656,7 +656,7 @@ leg_start_epoch() {
     printf '%s' "$t"
 }
 
-# worker_forked <candidate names, comma list> -- succeeds when the newest session
+# leg_forked <candidate names, comma list> -- succeeds when the newest session
 # transcript whose custom-title IS one of the names ends in a continued-in
 # record. The title is the only link (the harness writes it from `claude -n`);
 # no transcript found = not forked, never a guess.
@@ -675,7 +675,7 @@ leg_forked() {
     grep -v '"type":"cost-state"' "$newest" 2>/dev/null | tail -n 1 | grep -q '"type":"continued-in"'  # pipefail-ok: tail reads its input to EOF and grep -q sees one line, so no SIGPIPE upstream
 }
 
-# worker_cachettl <candidate names, comma list>: only warn on a known idle
+# leg_cachettl <candidate names, comma list>: only warn on a known idle
 # transcript with no running wait. Mirror guard-worker-cache-ttl.sh's task signal;
 # factoring it out would change the Stop hook as well as this read-only view.
 leg_cachettl() {
@@ -724,7 +724,7 @@ leg_cachettl() {
     [ "$running" = 0 ]
 }
 
-# worker_effort_mismatch <doc> <label>: succeeds only when the effort the
+# leg_effort_mismatch <doc> <label>: succeeds only when the effort the
 # chief asked for (the WORKER_SESSION_EFFORT export in the launch-<label>.sh gen-briefs.py
 # writes beside the worker doc) differs from the effort= token on the worker's newest LIVE
 # bullet. A missing launcher, export or token leaves nothing to compare, so no flag.
@@ -732,7 +732,7 @@ leg_effort_mismatch() {
     local doc="$1" label="$2" launch asked live
     launch="${doc%/*}/launch-$label.sh"
     [ -r "$launch" ] || return 1
-    asked="$(sed -nE 's/^export (WORKER_SESSION|WORKER)_EFFORT=(low|medium|high|xhigh|max)$/\2/p' "$launch" | tail -n 1)"  # pipefail-ok: tail reads sed to EOF
+    asked="$(sed -nE 's/^export (WORKER_SESSION|LEG)_EFFORT=(low|medium|high|xhigh|max)$/\2/p' "$launch" | tail -n 1)"  # pipefail-ok: tail reads sed to EOF
     live="$(grep -E '^- ([0-9]{1,2}:[0-9]{2}[[:space:]]+)?(\*\*)?LIVE([^A-Za-z0-9_]|$)' "$doc" 2>/dev/null | tail -n 1 \
         | sed -nE 's/^(.*[[:space:]])?effort=(low|medium|high|xhigh|max)([^A-Za-z0-9_].*)?$/\2/p')"  # pipefail-ok: tail reads grep to EOF
     [ -n "$asked" ] && [ -n "$live" ] && [ "$asked" != "$live" ]
@@ -755,7 +755,7 @@ leg_candmap=""
 leg_names=""
 for leg in $WORKERS_SPLIT; do
     leg_doc="$(resolve_doc "$leg")"
-    ident="$(leg_identity "$leg")"
+    ident="$(worker_identity "$leg")"
     label="${ident%%$'\t'*}"
     leg_cands="${ident#*$'\t'}"
     for cand in ${leg_cands//,/ }; do
@@ -781,7 +781,7 @@ for leg in $WORKERS_SPLIT; do
             lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" status "$leg_doc" 2>&1)" || true
             case "$lock_out" in
                 *'status: FRESH'*) lock_status=FRESH ;;
-                *'status: STALE-DEAD'*) lock_status=STALE-DEAD ;;   # HIMMEL-5541: not held; held_workers / held_n skip it
+                *'status: STALE-DEAD'*) lock_status=STALE-DEAD ;;   # HIMMEL-5541: not held; held_legs / held_n skip it
                 *'status: STALE'*) lock_status=STALE ;;
                 *UNVERIFIED*) lock_status=UNVERIFIED ;;
                 free*) lock_status=FREE ;;
@@ -789,11 +789,11 @@ for leg in $WORKERS_SPLIT; do
                 *) lock_status=UNKNOWN ;;
             esac
         fi
-        tail_status="$(leg_tail_status "$leg_doc")"
+        tail_status="$(worker_tail_status "$leg_doc")"
         [ -n "$tail_status" ] || tail_status="?"
         # the newest READY / BLOCKED / FINDING / MERGED bullet + a count: a later LIVE,
         # RESOLVED or SUCCESSION bullet cannot bury it, and a repeat of the same marker moves it
-        act_status="$(leg_actionable_status "$leg_doc")"
+        act_status="$(worker_actionable_status "$leg_doc")"
         [ -z "$act_status" ] || acts_summary="$(csv_add "$acts_summary" "$label:$act_status")"
         # a BLOCKED tail, or a FINDING that awaits a ruling, in a doc nobody has written to
         # for $hold_min minutes is a hold the chief may not know it owes.
@@ -803,7 +803,7 @@ for leg in $WORKERS_SPLIT; do
         hold_age=""
         case "$tail_status" in
             BLOCKED) hold_age=1 ;;
-            FINDING) leg_actionable_bullet "$leg_doc" | grep -qiE 'awaiting (the |a )?(console|ruling)|needs? (a |the )?ruling|console owes' && hold_age=1 ;;  # pipefail-ok: one extracted line
+            FINDING) worker_actionable_bullet "$leg_doc" | grep -qiE 'awaiting (the |a )?(console|chief|ruling)|needs? (a |the )?ruling|(console|chief) owes' && hold_age=1 ;;  # pipefail-ok: one extracted line
         esac
         if [ -n "$hold_age" ]; then
             hold_age=""
@@ -894,14 +894,14 @@ for leg in $WORKERS_SPLIT; do
     fi
 done
 [ -n "$effort_summary" ] || effort_summary=ok
-# #1335: workers_summary's "none" default is resolved further down, once
+# #1335: legs_summary's "none" default is resolved further down, once
 # the census (below) says whether it can back that up -- see the comment
 # there.
 [ -n "$tails_summary" ] || tails_summary=none
 [ -n "$acts_summary" ] || acts_summary=none
 
 # cross-reference the chief doc's own `## Live state`
-# `legs:` line against the lock status just computed above (workers_summary),
+# `legs:` line against the lock status just computed above (legs_summary),
 # the same way ceiling_summary below cross-references argv against a
 # separate invariant. "skip" (no --doc given, same as hb=skip above) and
 # "unknown" (doc given but no `## Live state`/`legs:` line found -- e.g. a
@@ -916,7 +916,7 @@ list_has() {  # list_has <needle> <word> [word...]
     return 1
 }
 
-# workers_label_shaped <token> -- is this the first field of an attempted entry
+# legs_label_shaped <token> -- is this the first field of an attempted entry
 # rather than a prose token? A label is what worker-identity.sh derives: the
 # canonical N<k>[letters], or the stem of a worker doc (which the derivation
 # reduces to its N<k>, so its label differs from the stem). A token that
@@ -929,10 +929,10 @@ legs_label_shaped() {
     local re_canon='^N[0-9]+[a-z]*$'
     [[ $1 =~ $re_canon ]] && return 0
     case "$1" in *.md) return 1 ;; esac
-    [ "$(leg_label "$1")" != "$1" ]
+    [ "$(worker_label "$1")" != "$1" ]
 }
 
-# workers_line_spans <entries|malformed> <legs: line> -- classify every backtick
+# legs_line_spans <entries|malformed> <legs: line> -- classify every backtick
 # span on the line. `entries` prints each well-formed
 # `<label>:<nonce>:<lock-token>:<pid>` span, one per line, backticks stripped
 # (exactly four non-empty fields, first one all WORKER_SESSION_LABEL_CLASS). `malformed`
@@ -1000,7 +1000,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
         # but a bare N<k> never parsed and read as absent.
         # Prose on the line is tolerated: a backticked token is
         # an entry only if it is four non-empty fields under a label
-        # (workers_line_spans), so `legs:` in a note is not a worker. A span that
+        # (legs_line_spans), so `legs:` in a note is not a worker. A span that
         # LOOKS like an entry (label-shaped first field, a colon) but is not
         # four fields is reported MALFORMED by label, never dropped: dropping
         # it would read the worker as absent and DRIFT would then blame the
@@ -1167,7 +1167,7 @@ fi
 # stays accurate. A census that could not run at all (pgrep/ps themselves
 # broken, not merely lossy) leaves this tick with no way to back that claim
 # up, so workers=none would be a guess; workers=unsupported says so instead. A
-# non-empty --workers arm is unaffected: its workers_summary already comes from
+# non-empty --workers arm is unaffected: its legs_summary already comes from
 # queue-lock, not the census.
 if [ -z "$legs_summary" ]; then
     if [ "$census_failed" -eq 1 ]; then
@@ -1185,12 +1185,12 @@ if [ "$sessions_rc" -eq 3 ]; then
     unreadable_n="$(printf '%s\n' "$sessions_out" | grep -c '^# unreadable ')"
 fi
 
-# count sessions the chief actually dispatched (worker_names,
+# count sessions the chief actually dispatched (leg_names,
 # built from --workers above) against the census name, not a "-worker" spelling
 # guess -- a filter that silently matches nothing must never render as 0.
 #
 # that guard only asked whether the filter EXISTS. A well-formed
-# worker_names that cannot match anything (a doc named one way, a session named
+# leg_names that cannot match anything (a doc named one way, a session named
 # another) still rendered a confident 0 beside two live, lock-holding workers. The
 # test is population-level, over the HELD workers (FRESH/STALE lock): a wrapped or
 # missing worker expects no process, so its absence is a real zero, not a suspicion.
@@ -1274,7 +1274,7 @@ re_unwatched_label='^N[0-9]+[a-z]*$'
 while IFS= read -r u_name; do
     [ -n "$u_name" ] || continue
     case "$leg_names_wrapped" in *",$u_name,"*) continue ;; esac
-    u_label="$(leg_label "$u_name")"
+    u_label="$(worker_label "$u_name")"
     [[ $u_label =~ $re_unwatched_label ]] || continue
     unwatched_csv="$(csv_add "$unwatched_csv" "$u_label")"
 done <<< "$census_names"
@@ -2319,7 +2319,7 @@ if [ -n "$root" ] && [ -d "$root/inbox" ]; then
         # A partial final line is not deliverable by inbox-follow.sh yet.
         unread_lines="$(tail -c +$((10#$cursor + 1)) "$inbox_file" 2>/dev/null | tr -cd '\n' | wc -c | tr -d '[:space:]')"  # swallow-ok: unreadable inboxes are not proven unread and are omitted
         [ "${unread_lines:-0}" -gt 0 ] || continue
-        inbox_label="$(leg_label "$inbox_name")"
+        inbox_label="$(worker_label "$inbox_name")"
         inbox_summary="$(csv_add "$inbox_summary" "$inbox_label:$inbox_size/$cursor")"
     done
 fi
@@ -2621,13 +2621,13 @@ burn_summary=""
 if [ "$burn" -eq 1 ]; then
     for leg in $WORKERS_SPLIT; do
         stem="${leg##*/}"; stem="${stem%.md}"; stem="${stem%-RESUME}"
-        burn_label="$(leg_label "$leg")"
+        burn_label="$(worker_label "$leg")"
         burn_line="$(bash "$REPO/scripts/lanes/worker-burn.sh" "$stem" 2>/dev/null)" || burn_line=""
         if [ -z "$burn_line" ]; then
             # the session name has no -YYYY-MM-DD suffix, and a
             # legacy-spelled doc's session is the derived <TICKET>-N<k> name; try
             # every candidate worker_identity names until one has a transcript.
-            burn_ident="$(leg_identity "$leg")"
+            burn_ident="$(worker_identity "$leg")"
             burn_cands="${burn_ident#*$'\t'}"
             for burn_cand in ${burn_cands//,/ }; do
                 [ "$burn_cand" = "$stem" ] && continue

@@ -400,7 +400,7 @@ lacks 'a failing lookup with no tick legs does not claim no legs' "$failemptyhtm
 
 # One label for three names: the first worker still renders, the shortfall is reported.
 # shellcheck disable=SC2016  # the helper body is literal, evaluated by the board's bash
-printf '%s\n' 'leg_label() { [ "$1" = N1 ] && printf N1; }' > "$W/legid-short.sh"
+printf '%s\n' 'worker_label() { [ "$1" = N1 ] && printf N1; }' > "$W/legid-short.sh"
 BOARD_LEGID="$W/legid-short.sh" run --out "$W/short-board.html" >/dev/null; rc=$?
 shorthtml="$(cat "$W/short-board.html" 2>/dev/null)"
 shorterr="$(cat "$W/stderr.log")"
@@ -680,7 +680,7 @@ mkdir -p "$M"
 printf '%s\n' '# console' '## Live state' 'epics: none' '' '## Results' > "$M/chief-m.md"
 for n in 901 902; do printf '%s\n' "# leg N$n" '## Results' '- 10:00 LIVE — working' > "$M/HIMMEL-9$n-N$n-x-RESUME.md"; done
 MDOC="$M/chief-m.md"
-MFLEET="$M/console-m.fleet.json"
+MFLEET="$M/chief-m.fleet.json"
 mrun() {
     PATH="$W/bin:$PATH" BOARD_TICK="$W/bin/tick-stub" TICK_ARGV_LOG="$W/argv.log" \
         BOARD_SESSIONS="$W/bin/sessions-empty.sh" \
@@ -1049,7 +1049,7 @@ for n in $(seq 801 815); do
     printf '%s\n' "# judge j$n" '## Results' '- 11:00 LIVE — reading the diff' "$tailb" > "$f"
     mf="$mf{\"doc\":\"$f\",\"label\":\"j$n\"},"
 done
-printf '{"schema":1,"legs":[%s]}\n' "${mf%,}" > "$S/console-s.fleet.json"
+printf '{"schema":1,"legs":[%s]}\n' "${mf%,}" > "$S/chief-s.fleet.json"
 # This fleet's own tick: the 25 workers held and FINDING, the fleet full.
 slocks=''; stails=''
 for n in $(seq 701 725); do slocks="${slocks}N$n:FRESH,"; stails="${stails}N$n:FINDING,"; done
@@ -1334,7 +1334,7 @@ lacks 'overdue-classes html: an unreadable ladder renders no panel' "$(cat "$CL/
 # --- the operator board is byte-identical: golden of the base render on the main fixture
 # (html + archive, the minute stamp normalised, a hermetic env: no operator ledger, HOME or
 # handover root). A deliberate operator-board change updates GOLDEN_OPERATOR_SHA.
-GOLDEN_OPERATOR_SHA='9a06641d93ff6e42b2a592f1d402903b2aa8204e5f2b85a1a291afb9b32f622f'
+GOLDEN_OPERATOR_SHA='f24cd57dca4cfa05c111e988bd7c9f36e4fea3b3b7ebb7f293464c0283ce0097'
 mkdir -p "$W/home"
 ( unset HANDOVER_DIR CR_TUNE_DIR; export HOME="$W/home"; run --out "$W/golden.html" >/dev/null )
 golden_sha="$(cat "$W/golden.html" "$W/golden-archive.html" | sed 's/rendered [0-9-]* [0-9:]*/rendered STAMP/' | sha256sum | cut -d' ' -f1)"

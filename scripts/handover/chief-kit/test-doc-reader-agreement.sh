@@ -194,7 +194,7 @@ if [ "$rows" = $((N_CHIEF + N_WORKER)) ]; then pass "generated $rows docs (seed 
 # ---- run every reader (parallel; a serial run blows the time budget) --------
 CONS=(); WORKERS=()
 while IFS=$'\t' read -r kind file _; do
-    if [ "$kind" = chief ]; then CONS+=("$B/$file"); else WORKERS+=("$B/$file"); fi
+    if [ "$kind" = console ]; then CONS+=("$B/$file"); else WORKERS+=("$B/$file"); fi
 done < "$EXPECT"
 
 t0=$SECONDS
@@ -249,11 +249,11 @@ for row in csv.reader(open(expect), delimiter="\t"):
         _, doc, workers, mal = row
         n += 1
         for key in ("tick-workers", "board-workers", "fleet-workers"):
-            if {"board-legs": "board.mjs", "fleet-legs": "fleet.mjs"}.get(key) in absent:
+            if {"board-workers": "board.mjs", "fleet-workers": "fleet.mjs"}.get(key) in absent:
                 continue
             got = read.get((key, doc), "<no output>")
             want = workers
-            if key != "tick-legs":
+            if key != "tick-workers":
                 want = ",".join(sorted({re.sub(r'^[A-Za-z]+-\d+-(N\d+[a-z]*)(?:-.*)?$', r'\1', lab)
                                         for lab in workers.split(',') if lab}))
             if got != want:

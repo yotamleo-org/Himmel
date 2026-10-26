@@ -69,8 +69,6 @@ Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it);
 import argparse, hashlib, json, os, re, secrets, shlex, subprocess, sys
 from datetime import date as _date, datetime
 
-sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
-import env_alias  # noqa: E402
 
 REQUIRED = ['label', 'keys', 'slug', 'branch', 'title', 'desc', 'why', 'prior', 'scope', 'scope_short', 'commit']
 RM_REQUIRED = ['label', 'keys', 'slug', 'release', 'versions', 'state_dir', 'mode']
@@ -552,6 +550,8 @@ def main():
     except SystemExit as e:
         sys.exit(2 if e.code else 0)
     if a.console_old is not None:
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+        import env_alias
         if not env_alias.legacy_flag('--console', '--chief'):
             ap.error('unrecognized arguments: --console')
         a.chief = a.chief or a.console_old

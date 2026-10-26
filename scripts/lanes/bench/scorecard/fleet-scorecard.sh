@@ -62,7 +62,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --doc)
             [ $# -ge 2 ] || { echo "fleet-scorecard: --doc needs a value" >&2; exit 2; }
-            args+=(--doc "$2" --label "$(leg_label "$(basename "$2" .md)")"); shift 2 ;;
+            args+=(--doc "$2" --label "$(worker_label "$(basename "$2" .md)")"); shift 2 ;;
         --label) echo "fleet-scorecard: --label is derived from --doc" >&2; exit 2 ;;
         *) args+=("$1"); shift ;;
     esac

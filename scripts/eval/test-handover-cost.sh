@@ -25,7 +25,7 @@ row() { grep -E "^HANDOVER " "$1" | head -1; }
 echo "1. per-piece counts, workers launched after 09:30"
 hc --workers-after 2026-10-19T09:30:00Z >"$TMP/a.out" 2>"$TMP/a.err"; rc=$?
 check "exits 0" '[ "$rc" = 0 ]'
-check "names the pair" 'row "$TMP/a.out" | grep -q "HIMMEL-nextleg-2026-10-19A-roadmap-chief->HIMMEL-nextleg-2026-10-19B-roadmap-chief"'
+check "names the pair" 'row "$TMP/a.out" | grep -q "HIMMEL-nextleg-2026-10-19A-roadmap-console->HIMMEL-nextleg-2026-10-19B-roadmap-console"'
 check "prep is 2 turns, 500" 'row "$TMP/a.out" | grep -q " prep=2/500 "'
 check "relay+wrap is 3 turns, 750 (the repeated message id counts once)" 'row "$TMP/a.out" | grep -q " relay=3/750 "'
 check "action zero is 4 turns, 1000 (the turn after the predecessor wrapped is out)" 'row "$TMP/a.out" | grep -q " az=4/1000 "'
@@ -79,7 +79,7 @@ if ! python3 - "$TMP/q" <<'PYEOF'
 import json, sys
 open(sys.argv[1] + "/leg-late.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in [
     {"type": "agent-name", "agentName": "HIMMEL-4-N4-worker-late", "timestamp": "2026-10-19T10:05:00Z"},
-    {"type": "attachment", "timestamp": "2026-10-19T10:18:00Z", "attachment": {"type": "queued_command", "prompt": "SUCCESSION from HIMMEL-nextleg-2026-10-19A-roadmap-chief"}},
+    {"type": "attachment", "timestamp": "2026-10-19T10:18:00Z", "attachment": {"type": "queued_command", "prompt": "SUCCESSION from HIMMEL-nextleg-2026-10-19A-roadmap-console"}},
     {"type": "assistant", "timestamp": "2026-10-19T10:18:10Z", "message": {"id": "mq1", "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "SUCCESSION accepted"}]}},
 ]))
 PYEOF
@@ -94,7 +94,7 @@ if ! python3 - "$TMP/bus" <<'PYEOF'
 import json, sys
 open(sys.argv[1] + "/leg-bus.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in [
     {"type": "agent-name", "agentName": "HIMMEL-5-N5-worker-bus", "timestamp": "2026-10-19T10:05:00Z"},
-    {"type": "attachment", "timestamp": "2026-10-19T10:18:00Z", "attachment": {"type": "hook_additional_context", "content": ["bus #1 from HIMMEL-nextleg-2026-10-19A-roadmap-chief: | SUCCESSION relay from HIMMEL-nextleg-2026-10-19A-roadmap-chief"]}},
+    {"type": "attachment", "timestamp": "2026-10-19T10:18:00Z", "attachment": {"type": "hook_additional_context", "content": ["bus #1 from HIMMEL-nextleg-2026-10-19A-roadmap-console: | SUCCESSION relay from HIMMEL-nextleg-2026-10-19A-roadmap-console"]}},
     {"type": "assistant", "timestamp": "2026-10-19T10:18:10Z", "message": {"id": "mb1", "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "SUCCESSION accepted"}]}},
 ]))
 PYEOF
@@ -127,10 +127,10 @@ python3 "$HC" --dir "$FX" --workers-after not-a-date >"$TMP/d.out" 2>&1; drc=$?
 check "an invalid --workers-after is a usage error (exit 2)" '[ "$drc" = 2 ]'
 python3 "$HC" --dir "$FX" --name-re '(' >"$TMP/r.out" 2>&1; rrc=$?
 check "an invalid --name-re is a usage error (exit 2), not a traceback" '[ "$rrc" = 2 ] && grep -q "^usage:" "$TMP/r.out" && grep -q "argument --name-re" "$TMP/r.out" && ! grep -q Traceback "$TMP/r.out"'
-if ! { mkdir "$TMP/n" && cp "$FX"/*.jsonl "$TMP/n/" && sed -e 's/chief\.sh next/chief.sh nope/' "$FX/console-p.jsonl" >"$TMP/n/console-p.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+if ! { mkdir "$TMP/n" && cp "$FX"/*.jsonl "$TMP/n/" && sed -e 's/console\.sh next/console.sh nope/' "$FX/console-p.jsonl" >"$TMP/n/console-p.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 python3 "$HC" --dir "$TMP/n" >"$TMP/n.out" 2>&1; nrc=$?
 check "two chiefs with no measurable handover exit 2 with a message, no silent 0" '[ "$nrc" = 2 ] && grep -q "no measurable handover" "$TMP/n.out" && ! grep -q "^HANDOVER " "$TMP/n.out" && ! grep -q "^MEAN " "$TMP/n.out"'
-if ! { mkdir "$TMP/ch" && cp "$FX"/*.jsonl "$TMP/ch/" && sed -e 's/chief\.sh next/chief.sh next/' "$FX/console-p.jsonl" >"$TMP/ch/console-p.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+if ! { mkdir "$TMP/ch" && cp "$FX"/*.jsonl "$TMP/ch/" && sed -e 's/console\.sh next/chief.sh next/' "$FX/console-p.jsonl" >"$TMP/ch/console-p.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 python3 "$HC" --dir "$TMP/ch" >"$TMP/ch.out" 2>&1; chrc=$?
 check "a chief.sh next call marks the handover the same as console.sh next" '[ "$chrc" = 0 ] && grep -q "^HANDOVER " "$TMP/ch.out"'
 

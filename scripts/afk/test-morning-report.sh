@@ -670,17 +670,17 @@ assert_contains "READY whose head a judge NO-GO-ed is flagged" "M1a** PR 104" "$
 if grepq "$report" -F "PR 103"; then fail "clean READY with a GO verdict was flagged" "$report"; else pass "clean READY with a GO verdict is not flagged"; fi
 assert_contains "NO-GO rate line is rendered" "NO-GO at head: 1 of 2 judged" "$report"
 assert_contains "trust mismatch raises the alert" "ALERT" "$report"
-rm -f "$RMB/leg1.md" "$RMB/leg2.md" "$RMB/leg4.md"
+rm -f "$RMB/worker1.md" "$RMB/worker2.md" "$RMB/worker4.md"
 rm -rf "$RMB/verdicts/j104"
 report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "a clean window renders None" "every READY in the window matches" "$report"
-rm -f "$RMB/leg3.md"
+rm -f "$RMB/worker3.md"
 report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "a window with no READY renders no READYs found" "no READYs found" "$report"
 if grepq "$report" -F "every READY in the window matches"; then fail "zero READYs rendered the vacuous clean line" "$report"; else pass "zero READYs is not the clean line"; fi
 mkdir -p "$TMP_ROOT/rm-root/slug/himmel"
 rm_worker 3 103 '- no trust path touched'
-mv "$RMB/leg3.md" "$TMP_ROOT/rm-root/slug/himmel/leg3.md"
+mv "$RMB/worker3.md" "$TMP_ROOT/rm-root/slug/himmel/worker3.md"
 report=$(HANDOVER_DIR="$TMP_ROOT/rm-root" USER_SLUG=slug MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "the default bucket is the handover root's user/himmel folder" "NO-GO at head: 0 of 0 judged (1 READY" "$report"
 report=$(MORNING_REPORT_READY_DIR="$TMP_ROOT/no-such-bucket" bash "$SCRIPT" --rows "$ROWS" --dry-run)

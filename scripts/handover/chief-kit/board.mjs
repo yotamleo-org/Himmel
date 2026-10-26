@@ -215,7 +215,7 @@ const primeLabels = (names) => {
     if (!todo.length) return;
     let out = '';
     try {
-        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do leg_label "$s"; printf "\\n"; done', 'bash', LEGID, ...todo],
+        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do worker_label "$s"; printf "\\n"; done', 'bash', LEGID, ...todo],
             { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch (e) { labelFailure ||= `the lookup failed (${e.status !== null && e.status !== undefined ? `rc=${e.status}` : e.code || e.signal || 'no exit status'})`; }
     const lines = out.split('\n');
@@ -498,7 +498,7 @@ const wrappedLegs = legs.filter((l) => l.phase === 'WRAPPED' && legInfo.get(l.la
 if (censusNames && wrappedLegs.length) {
     let out = '';
     try {
-        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do leg_identity "$s"; done', 'bash', LEGID,
+        out = execFileSync('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do worker_identity "$s"; done', 'bash', LEGID,
             ...wrappedLegs.map((l) => basename(legInfo.get(l.label).file))],
             { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
     } catch { out = ''; }
@@ -1382,12 +1382,12 @@ let oldManifestSig = '';
 let oldCapSig = '';
 if (changedFlag && existsSync(outPath)) {
     const prev = readFileSync(outPath, 'utf8');
-    oldFp = (/<meta name="chief-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
-    oldCensusSig = (/<meta name="chief-board-census-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldCiFleetSig = (/<meta name="chief-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldReleaseSig = (/<meta name="chief-board-versions-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldManifestSig = (/<meta name="chief-board-manifest-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
-    oldCapSig = (/<meta name="chief-board-cap-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldFp = (/<meta name="(?:chief|console)-board-fp" content="([0-9a-f]{16})">/.exec(prev) || [])[1] || null;
+    oldCensusSig = (/<meta name="(?:chief|console)-board-census-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldCiFleetSig = (/<meta name="(?:chief|console)-board-cifleet-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldReleaseSig = (/<meta name="(?:chief|console)-board-versions-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldManifestSig = (/<meta name="(?:chief|console)-board-manifest-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
+    oldCapSig = (/<meta name="(?:chief|console)-board-cap-fp" content="([^"]*)">/.exec(prev) || [])[1] || '';
 }
 const tmp = `${outPath}.tmp${process.pid}`;
 writeFileSync(tmp, html);
