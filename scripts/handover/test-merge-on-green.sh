@@ -4713,6 +4713,117 @@ assert_audit_has "7656-e: audited as the declared fix" "main-red-declared"
 STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=cancelled \
     run_mog 0 "7656-f: re-run of a cancelled attempt falls back to the older green run → merged"
 
+# ── a cap-timeout-only red in suites the PR does not reach passes ──
+# The real failed log (gh run view --log-failed, 2026-10-25) of run 40226871918:
+# shard 2 lost two suites to the runner's watchdog with their assertions passing,
+# a third was a flake that passed on retry, and the rollup job failed with it.
+# Fields are job, step, "timestamp message".
+mog7658_row() { printf '%s\t%s\t%s\n' "$1" 'Run bash scripts/ci/home-canary.sh --shard 2/8 .' "2026-10-25T20:19:12.9906759Z $2"; }
+# mog7658_log <file> <Failed-suites line>... — the shard's summary block, then the rollup.
+mog7658_log() {
+    local f="$1" l; shift
+    {
+        mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'Flaked suites (ledger: failed-suite-logs/flake-ledger.jsonl):'
+        mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' '  scripts/test-adopt-sequences.sh (first run rc=124, passed on retry)'
+        mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' ' TIMED OUT: 2 (counted in FAIL)'
+        mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'Failed suites:'
+        for l in "$@"; do mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' "$l"; done
+        mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'Disposition order for a red suite:'
+        mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' '##[error]Process completed with exit code 1.'
+        mog7658_row 'shell-unit (dispatch verify) (ubuntu-latest)' '##[error]shell-unit shards did not all pass (matrix rollup: failure)'
+    } > "$f"
+}
+MOG7658_S1=scripts/cr/test-pr-check-rounds.sh
+MOG7658_S2=scripts/hooks/test-block-write-into-main-checkout-forms.sh
+MOG7658_CAP1="  $MOG7658_S1 (CAP EXCEEDED after 1203s, cap 1200s — no exit status observed, assertions passing)"
+MOG7658_CAP2="  $MOG7658_S2 (CAP EXCEEDED after 603s, cap 600s — no exit status observed, assertions passing)"
+MOG7658_RUN='[{"attempt":1,"conclusion":"failure","createdAt":"2026-10-25T19:37:01Z","databaseId":40226871918,"event":"workflow_dispatch","headSha":"be152579752f51ff26575c459654b1245d0f5abd","status":"completed"},{"attempt":1,"conclusion":"success","createdAt":"2026-10-25T15:45:05Z","databaseId":40208416958,"event":"schedule","headSha":"3f196bdadad920756c87caec0838ece0205b863c","status":"completed"}]'
+MOG7658_LOG_CAP="$(mktemp "${TMPDIR:-/tmp}/mog-7658-cap.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+MOG7658_LOG_ASSERT="$(mktemp "${TMPDIR:-/tmp}/mog-7658-assert.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+MOG7658_LOG_CAPFAIL="$(mktemp "${TMPDIR:-/tmp}/mog-7658-capfail.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+MOG7658_LOG_APT="$(mktemp "${TMPDIR:-/tmp}/mog-7658-apt.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+mog7658_log "$MOG7658_LOG_CAP" "$MOG7658_CAP1" "$MOG7658_CAP2"
+mog7658_log "$MOG7658_LOG_ASSERT" "$MOG7658_CAP1" "  $MOG7658_S2 (rc=1)"
+mog7658_log "$MOG7658_LOG_CAPFAIL" "$MOG7658_CAP1" "  $MOG7658_S2 (CAP EXCEEDED after 603s, cap 600s — no exit status observed)"
+# The shard that died in apt-get before any suite ran (run 37964772913): no Failed-suites block.
+printf '%s\t%s\t%s\n' \
+    'shell-unit-shard (ubuntu-latest, 8)' 'UNKNOWN STEP' '2026-10-09T17:44:06.7905525Z Run apt-get install at' \
+    'shell-unit-shard (ubuntu-latest, 8)' 'UNKNOWN STEP' '2026-10-09T17:54:35.0819579Z ##[error]Process completed with exit code 124.' \
+    'shell-unit (ubuntu-latest)' 'UNKNOWN STEP' '2026-10-09T18:24:30.5567074Z ##[error]shell-unit shards did not all pass (matrix rollup: failure)' > "$MOG7658_LOG_APT"
+# cap_setup <anchor> — base on origin main (the real impacted-suites selector, one
+# suite per capped test, each driving one tool), the PR head at refs/pull/77/head.
+# MOG_CAP_TOUCH=doc|tool picks what the PR changes (a doc nobody reads, or the
+# tool the first suite drives); MOG_CAP_NOPULL=1 leaves the PR ref off origin.
+MOG_CAP_ROOT="$(git -C "$(dirname "$0")" rev-parse --show-toplevel)"
+cap_setup() {
+    local a="$1"
+    local g="git -c user.name=t -c user.email=t@example.invalid -c commit.gpgsign=false -c core.hooksPath=/dev/null"
+    mkdir -p "$a/scripts/cr" "$a/scripts/hooks" "$a/scripts/lib" "$a/docs" || return 1
+    cp "$MOG_CAP_ROOT/scripts/cr/impacted-suites.sh" "$MOG_CAP_ROOT/scripts/cr/anchor-handoff.sh" "$a/scripts/cr/" || return 1
+    printf '#!/usr/bin/env bash\nbash scripts/lib/tool-a.sh\n' > "$a/$MOG7658_S1"
+    printf '#!/usr/bin/env bash\nbash scripts/lib/tool-b.sh\n' > "$a/$MOG7658_S2"
+    printf '#!/usr/bin/env bash\necho a\n' > "$a/scripts/lib/tool-a.sh"
+    printf '#!/usr/bin/env bash\necho b\n' > "$a/scripts/lib/tool-b.sh"
+    printf 'base\n' > "$a/docs/note.md"
+    $g -C "$a" add scripts docs && $g -C "$a" commit -qm base && $g -C "$a" push -q origin HEAD:main || return 1
+    case "${MOG_CAP_TOUCH:-doc}" in
+        tool) printf '# changed\n' >> "$a/scripts/lib/tool-a.sh" ;;
+        *) printf 'pr\n' > "$a/docs/note.md" ;;
+    esac
+    $g -C "$a" add scripts docs && $g -C "$a" commit -qm pr || return 1
+    MOG_SETUP_SHA="$($g -C "$a" rev-parse HEAD)"
+    if [ "${MOG_CAP_NOPULL:-0}" != 1 ]; then $g -C "$a" push -q origin HEAD:refs/pull/77/head || return 1; fi
+    return 0
+}
+cap_run() {
+    MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=cap_setup STUB_RUN_LIST_JSON="$MOG7658_RUN" \
+        STUB_PR_FILES_JSON='[{"filename":"docs/note.md"}]' run_mog "$@"
+}
+# 7658-a (RED, real window) — both red suites hit the watchdog with assertions
+# passing and the PR changes only a doc: the gate passes and prints why.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-a: cap-timeout-only red, PR reaches neither suite → merged"
+assert_err_has "7658-a: prints the class and both suites" "main-red: cap-only ($MOG7658_S1, $MOG7658_S2)"
+assert_err_has "7658-a: prints the reason it passes" "passes"
+assert_err_lacks "7658-a: the flake that passed on retry is not a red suite" "test-adopt-sequences.sh"
+assert_audit_has "7658-a: audited as a cap-only pass" "main-red-cap-only"
+assert_audit_has "7658-a: audited with the cap-only route" "via=cap-only"
+assert_merge_has "7658-a: the merge ran" "--squash"
+if [ -z "$(git -C "$LAST_TMP" for-each-ref refs/himmel-mog-mr)" ]; then pass; else fail "7658-a: the private refs were deleted again"; fi
+# 7658-b — one failed suite is a real assertion failure (rc=1): blocks.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_ASSERT" cap_run 22 "7658-b: a cap timeout plus an assertion failure → exit 22"
+assert_err_has "7658-b: prints the class and the suites" "main-red: assertion ($MOG7658_S1, $MOG7658_S2)"
+assert_audit_has "7658-b: audited as a red-main refusal" "REFUSED reason=main-red"
+no_merge_call "7658-b: no merge call"
+# 7658-c — a cap exceeded WITHOUT assertions passing is not a clean cap: blocks.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_CAPFAIL" cap_run 22 "7658-c: a cap timeout that did not have its assertions passing → exit 22"
+assert_err_has "7658-c: prints the class" "main-red: assertion ("
+no_merge_call "7658-c: no merge call"
+# 7658-d — cap-only, but the PR changes a tool the first capped suite drives.
+MOG_CAP_TOUCH=tool STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-d: cap-timeout-only red in a suite the PR reaches → exit 22"
+assert_err_has "7658-d: prints the class and only the reached suite" "main-red: cap-overlap ($MOG7658_S1)"
+if [ -z "$(git -C "$LAST_TMP" for-each-ref refs/himmel-mog-mr)" ]; then pass; else fail "7658-d: the private refs were deleted again"; fi
+assert_audit_has "7658-d: audited as a red-main refusal" "REFUSED reason=main-red"
+no_merge_call "7658-d: no merge call"
+# 7658-e — fail closed: the PR head cannot be fetched, so what it reaches is unknown.
+MOG_CAP_NOPULL=1 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-e: cap-only red but the PR head is unfetchable → exit 22"
+assert_err_has "7658-e: prints the class" "main-red: cap-unverified ($MOG7658_S1, $MOG7658_S2)"
+no_merge_call "7658-e: no merge call"
+# 7658-f — fail closed: the failed log cannot be read.
+STUB_RUN_VIEW_FAIL=1 cap_run 22 "7658-f: unreadable failed log → exit 22"
+assert_err_has "7658-f: prints the class" "main-red: unclassified ()"
+no_merge_call "7658-f: no merge call"
+# 7658-g — a red with no Failed-suites block (the apt-get exit-124 log of run
+# 37964772913, 5115) is no cap timeout: blocks.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_APT" cap_run 22 "7658-g: a red whose log names no failed suite → exit 22"
+assert_err_has "7658-g: prints the class" "main-red: unclassified ()"
+no_merge_call "7658-g: no merge call"
+# 7658-h — a declared fix still wins over the classifier and is not a cap pass.
+STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: run=40226871918')" \
+    cap_run 0 "7658-h: the declared fix for the run → merged by the declaration"
+assert_audit_has "7658-h: audited as the declared fix" "via=run=40226871918"
+assert_audit_lacks "7658-h: not audited as a cap-only pass" "main-red-cap-only"
+rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT"
+
 # ── merge-time plugin version-bump recheck ──────────────────────
 # Plugin versions change only in a release cut (a change to the root VERSION
 # file). Two cuts that raise a plugin to the same version both go green in CI;

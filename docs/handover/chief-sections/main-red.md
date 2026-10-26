@@ -6,7 +6,9 @@ blocks every merge, so classify it first, using steps 1-3 below:
 
 - **Test-only red** (a flake, a cap timeout, a fragile case; the code under
   test is fine): quarantine the case and file its ticket at once. The fleet
-  keeps merging.
+  keeps merging. A cap timeout with assertions passing, in suites a PR does
+  not reach, already lets that PR through the merge gate (`main-red: cap-only`);
+  the ticket and the fix are still owed.
 - **Real blocker** (main's code is broken): HOLD merges until the fix lands.
 - **Complex** (no clear class, or more than one cause): escalate to a
   higher tier, a judge or the operator.

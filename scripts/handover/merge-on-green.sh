@@ -193,7 +193,10 @@
 #       spaces needs run=<id>), or a chief fix-GO for that run
 #       (go.sh --fix-main-red). Also when the run list, the PR's
 #       commits or the red run's failed log cannot be read. No completed run at all is allowed (audited). The message
-#       names the run and the commit range it covered. After the trust-path
+#       names the run and the commit range it covered. A red whose every failed
+#       suite hit the runner's cap with its assertions passing, in suites the
+#       PR's diff does not reach, passes with `main-red: cap-only (<suites>)`;
+#       any other class is refused with `main-red: <class> (<suites>)`. After the trust-path
 #       gate, before any mutation, on --dry-run too.
 #   23  plugin-bump recheck: the PR changes a file under
 #       marketplace/plugins/ and `check-plugin-drift.sh --bump-required`, run
@@ -1195,7 +1198,11 @@ esac
 #     fragment — or, when it ends in .sh, appear on a `##[error]` line). The
 #     line is read from the commit subject or body.
 #     Verified against the run, never trusted: an unrelated name is refused.
-#   - red and undeclared, or the run list / commits / log unreadable → exit 22.
+#   - red and undeclared: the failed log is classified (main_red_classify). A cap-only
+#     red (every failed suite hit the runner's cap with assertions passing, in
+#     suites the PR does not reach) proceeds, audited `via=cap-only`; an assertion
+#     failure, a reached suite or an unclassifiable log → exit 22.
+#   - the run list / commits / log unreadable → exit 22.
 #   - no completed non-cancelled run in the window at all → DECIDED: nothing
 #     red was observed, so proceed and audit `main-red=no-completed-run` —
 #     unless the list hit its --limit 50 cap, which proves nothing → exit 22.
@@ -1212,6 +1219,87 @@ main_red_refuse() {
     echo "merge-on-green: main-red gate: $1 — not merging." >&2
     audit "REFUSED reason=main-red repo=$nwo pr=#$pr_num sha=$sha $2"
     exit 22
+}
+# main_red_classify — sorts an undeclared red run by its failed log (`gh run view
+# --log-failed`): the `Failed suites:` block each shell-unit shard job prints, one
+# `  <suite> (...)` line per suite. Sets mr_cls and mr_list (comma-joined suites):
+#   cap-only      every failed suite hit the runner's watchdog at its cap with its
+#                 assertions passing, and every failed job is a shell-unit job
+#   assertion     a failed suite exited non-zero, or hit its cap without its
+#                 assertions passing
+#   unclassified  the log is unreadable, names no failed suite, or a failed job is
+#                 not a shell-unit job (a shard that died before any suite ran)
+# A cap-only red passes (mr_ok=cap-only) only when none of the capped suites is
+# reached by the PR's diff, per scripts/cr/impacted-suites.sh over the fetched base
+# tip and PR head (private refs, deleted again); a reached suite is cap-overlap and
+# a diff that cannot be computed is cap-unverified, both refused.
+# ponytail: the selector is text references and source/import closures, so a suite
+# that reaches a changed file another way is not seen; upgrade path is the
+# selector's own miss ledger (--selector-miss).
+main_red_classify() {
+    mr_cls="" mr_list=""
+    if [ "$mr_log_rc" -lt 0 ]; then
+        mr_log_rc=0
+        mr_log=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed) || mr_log_rc=$?
+    fi
+    if [ "$mr_log_rc" -ne 0 ]; then mr_cls=unclassified; return 0; fi
+    local mr_res
+    mr_res=$(printf '%s\n' "$mr_log" | awk -F'\t' '
+        { job = $1; msg = $0
+          sub(/^[^\t]*\t[^\t]*\t/, "", msg); sub(/\r$/, "", msg); sub(/^[0-9][0-9T:.Z-]* /, "", msg)
+          if (!(job in seen)) { seen[job] = 1; jobs[++nj] = job }
+          if (msg == "Failed suites:") { open[job] = 1; next }
+          if (open[job] && msg ~ /^  [^ ]+\.sh \(.*\)$/) {
+              s = msg; sub(/^  /, "", s); sub(/ \(.*$/, "", s)
+              n[job]++
+              if (index(msg, "(CAP EXCEEDED after ") == 0) k = "fail"
+              else if (msg ~ /assertions passing\)$/) k = "cap"
+              else k = "capfail"
+              if (!(s in kind)) { order[++ns] = s; kind[s] = k } else if (k != "cap") kind[s] = k
+              next
+          }
+          open[job] = 0 }
+        END {
+          if (nj == 0) { print "unclassified|"; exit }
+          bad = 0; cap = 0; other = 0; list = ""
+          for (i = 1; i <= ns; i++) {
+              list = list (i > 1 ? "," : "") order[i]
+              if (kind[order[i]] == "cap") cap++; else bad = 1
+          }
+          for (j = 1; j <= nj; j++) {
+              if (jobs[j] !~ /^shell-unit(-shard)? \(/) other = 1
+              else if (jobs[j] ~ /^shell-unit-shard \(/ && n[jobs[j]] == 0) other = 1
+          }
+          print (bad ? "assertion" : (other || !cap) ? "unclassified" : "cap-only") "|" list
+        }') || { mr_cls=unclassified; return 0; }
+    mr_cls=${mr_res%%|*} mr_list=${mr_res#*|}
+    [ "$mr_cls" = cap-only ] || return 0
+    local mr_ns="refs/himmel-mog-mr/$pr_num" mr_b="" mr_h="" mr_imp="" mr_fetch_rc=0 mr_unsure="" mr_to="" mr_over="" mr_one
+    git -C "$himmel_repo" fetch --no-tags --quiet origin \
+        "+refs/heads/$default_branch:$mr_ns/base" "+refs/pull/$pr_num/head:$mr_ns/head" >/dev/null || mr_fetch_rc=$?
+    if [ "$mr_fetch_rc" -ne 0 ]; then
+        mr_unsure=1
+    else
+        mr_b=$(git -C "$himmel_repo" rev-parse --verify --quiet "$mr_ns/base^{commit}") || mr_b=""
+        mr_h=$(git -C "$himmel_repo" rev-parse --verify --quiet "$mr_ns/head^{commit}") || mr_h=""
+        if [ -z "$mr_b" ] || [ "$mr_h" != "$sha" ] || [ ! -f "$himmel_repo/scripts/cr/impacted-suites.sh" ]; then
+            mr_unsure=1
+        else
+            if command -v timeout >/dev/null 2>&1; then mr_to="timeout -k 10 120"
+            elif command -v gtimeout >/dev/null 2>&1; then mr_to="gtimeout -k 10 120"; fi
+            mr_imp=$(cd "$himmel_repo" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+                ${mr_to:+$mr_to} bash "$himmel_repo/scripts/cr/impacted-suites.sh" "$mr_b..$mr_h" --shell) || mr_unsure=1
+        fi
+    fi
+    git -C "$himmel_repo" update-ref -d "$mr_ns/base" >/dev/null 2>&1 || true
+    git -C "$himmel_repo" update-ref -d "$mr_ns/head" >/dev/null 2>&1 || true
+    if [ -n "$mr_unsure" ]; then mr_cls=cap-unverified; return 0; fi
+    while IFS= read -r mr_one; do
+        [ -n "$mr_one" ] || continue
+        case $'\n'"$mr_imp"$'\n' in *$'\n'"$mr_one"$'\n'*) mr_over="${mr_over:+$mr_over,}$mr_one" ;; esac
+    done <<< "${mr_list//,/$'\n'}"
+    if [ -n "$mr_over" ]; then mr_cls=cap-overlap mr_list=$mr_over; return 0; fi
+    mr_ok=cap-only
 }
 mr_rc=0
 mr_rows=$("$GH" run list --repo "$nwo" --branch "$default_branch" --workflow CI --limit 50 \
@@ -1292,8 +1380,16 @@ elif [ "$mr_conc" != success ]; then
                 fi ;;
         esac
     done <<< "$mr_msgs"
-    [ -n "$mr_ok" ] || main_red_refuse "$mr_what, covering commits $mr_range, and PR #$pr_num does not declare itself the fix — $mr_how; merge the fix first, or wait for the next green sweep" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att}"
-    audit "MAIN-RED main-red-declared repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=$mr_ok${mr_att:+ attempt=$mr_att}"
+    mr_cls="" mr_list=""
+    [ -n "$mr_ok" ] || main_red_classify
+    if [ "$mr_ok" = cap-only ]; then
+        echo "main-red: cap-only (${mr_list//,/, }) — passes: the red is runner-watchdog cap timeouts with assertions passing, in suites PR #$pr_num does not reach" >&2
+        audit "MAIN-RED main-red-cap-only repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=cap-only suites=$mr_list${mr_att:+ attempt=$mr_att}"
+    else
+        [ -z "$mr_cls" ] || echo "main-red: $mr_cls (${mr_list//,/, })" >&2
+        [ -n "$mr_ok" ] || main_red_refuse "$mr_what, covering commits $mr_range, and PR #$pr_num does not declare itself the fix — $mr_how; merge the fix first, or wait for the next green sweep" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att}${mr_cls:+ class=$mr_cls}"
+        audit "MAIN-RED main-red-declared repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=$mr_ok${mr_att:+ attempt=$mr_att}"
+    fi
 fi
 
 # PLUGIN-BUMP RECHECK GATE — CI's plugin-version-bump job went

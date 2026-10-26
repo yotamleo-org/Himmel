@@ -35,7 +35,11 @@ occasionally and is handled by the next section, not by tightening the gate.
 Main-red must stay rare and be fixed fast. The merge gate backs this up:
 `merge-on-green.sh` refuses (exit 22) while the newest completed `CI` run on main is red,
 unless the PR is the declared fix (`Fixes-main-red:` line or a fix-GO; see the
-[stuck-playbook](stuck-playbook.md)).
+[stuck-playbook](stuck-playbook.md)). A run that is being re-run counts by its previous
+attempt, so a red under re-run still blocks. The gate reads the failed log and prints
+`main-red: <class> (<suites>)`; a red made only of runner cap timeouts with assertions
+passing (`cap-only`), in suites the PR does not reach per `scripts/cr/impacted-suites.sh`,
+passes. An `assertion`, `cap-overlap`, `cap-unverified` or `unclassified` red still blocks.
 
 First classify the red, then act:
 

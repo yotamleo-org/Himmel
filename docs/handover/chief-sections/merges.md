@@ -55,6 +55,20 @@ reviewed merge, the worker sends `BLOCKED`; do not run the denied merge for it
 (that launders the denial) and do not loosen any rule. The fallback is the
 claudex path above, tracked as a follow-up.
 
+**A red main and the merge gate.** `merge-on-green.sh` exits 22 while the
+newest `CI` run on main is red, and a run that is being re-run counts as red
+until its new attempt completes. It prints `main-red: <class> (<suites>)` on
+every red it classifies. A red whose every failed suite hit the runner's cap
+timeout with assertions passing (`cap-only`), in suites the PR does not reach
+(`scripts/cr/impacted-suites.sh`), passes on its own: no FIX-GO. For the PR
+that fixes the red, with no `Fixes-main-red:` line, you still write a FIX-GO
+with `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>` (beside the
+ordinary GO) whenever the gate prints another class: `assertion` (a suite
+failed an assertion), `cap-overlap` (a cap-timed-out suite is one the PR
+reaches), `cap-unverified` (the gate could not read the PR's reach) or
+`unclassified` (a red job that is not a shell-unit job, or a log the gate
+could not parse).
+
 **Trust-path PRs.** A PR whose diff touches a pattern in
 `scripts/ci/ci-trust-paths.txt` (CI workflows, `scripts/ci/`, the suite
 selector and shared libs, the merge gate and GO writer — the list is read
