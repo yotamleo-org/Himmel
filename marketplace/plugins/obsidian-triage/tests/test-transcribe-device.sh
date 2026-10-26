@@ -49,5 +49,16 @@ assert "cpu forced: cuda lock not requested" "False" "$(py "$tmp/cuda" 'print(tr
 assert "cuda, libs absent: cuda lock requested" "True" "$(py "$tmp/cuda" 'print(transcribe.needs_cuda_lock(transcribe.select_runtime(None)[0]))')"
 assert "re-exec marker stops a second request" "False" "$(py "$tmp/cuda" 'print(transcribe.needs_cuda_lock("cuda"))' HIMMEL_WHISPER_CUDA_LOCK=1)"
 
+echo "== Hebrew/English routing on the GPU path"
+route() { py "$tmp/cuda" "print(transcribe.route_model($1))" "${@:2}"; }
+assert "hebrew at 0.80 picks ivrit" "ivrit-ai/whisper-large-v3-turbo-ct2" "$(route '"cuda", "he", 0.80, False')"
+assert "hebrew at 0.99 picks ivrit" "ivrit-ai/whisper-large-v3-turbo-ct2" "$(route '"cuda", "he", 0.99, False')"
+assert "hebrew at 0.79 picks turbo" "large-v3-turbo" "$(route '"cuda", "he", 0.79, False')"
+assert "english picks turbo" "large-v3-turbo" "$(route '"cuda", "en", 0.99, False')"
+assert "another language picks turbo" "large-v3-turbo" "$(route '"cuda", "ar", 0.95, False')"
+assert "cpu never routes" "base" "$(route '"cpu", "he", 0.99, False')"
+assert "a pinned model never routes" "large-v3-turbo" "$(route '"cuda", "he", 0.99, True')"
+assert "HIMMEL_WHISPER_ROUTE=0 turns routing off" "large-v3-turbo" "$(route '"cuda", "he", 0.99, False' HIMMEL_WHISPER_ROUTE=0)"
+
 echo; echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

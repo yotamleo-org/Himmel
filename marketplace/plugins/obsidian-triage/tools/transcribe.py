@@ -10,6 +10,9 @@ performs on first use (cached under the HF cache dir thereafter).
 Device: CUDA float16 (large-v3-turbo) when a CUDA device is visible, else CPU int8
 (base). When CUDA is usable but the cuBLAS/cuDNN wheels are not in the environment,
 the script re-execs itself once under uv with requirements-whisper-cuda.txt added.
+On CUDA with no pinned model, turbo detects the language first and Hebrew at
+probability >= 0.8 is transcribed by the ivrit-ai fine-tune (HIMMEL_WHISPER_ROUTE=0
+turns that off; the CPU path never routes).
 HIMMEL_WHISPER_DEVICE (cpu|cuda) and HIMMEL_WHISPER_MODEL override; an explicit
 [model] argument wins over both."""
 import ctypes
@@ -21,6 +24,8 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 DEFAULTS = {"cuda": ("float16", "large-v3-turbo"), "cpu": ("int8", "base")}
 CUDA_LOCK_MARKER = "HIMMEL_WHISPER_CUDA_LOCK"
+HEBREW_MODEL = "ivrit-ai/whisper-large-v3-turbo-ct2"
+ROUTE_MIN_PROB = 0.8
 
 
 def cuda_visible():
@@ -78,21 +83,27 @@ def reexec_with_cuda_lock():
     os.execve(uv, argv, env)
 
 
-def load_model(model_arg):
+def route_model(device, language, probability, pinned):
+    """GPU only: Hebrew detected with confidence goes to the Hebrew fine-tune, all else to turbo."""
+    default = DEFAULTS[device][1]
+    if device != "cuda" or pinned or os.environ.get("HIMMEL_WHISPER_ROUTE") == "0":
+        return default
+    return HEBREW_MODEL if language == "he" and probability >= ROUTE_MIN_PROB else default
+
+
+def load_model(device, compute, name):
+    """-> (model, device actually used)."""
     from faster_whisper import WhisperModel
-    device, compute, name = select_runtime(model_arg)
-    if needs_cuda_lock(device):
-        reexec_with_cuda_lock()
     if device == "cuda":
         try:
             if cuda_libs_present():
                 preload_cuda_libs()
-            return WhisperModel(name, device="cuda", compute_type=compute)
+            return WhisperModel(name, device="cuda", compute_type=compute), "cuda"
         except Exception as e:
             print(f"transcribe: cuda unusable ({type(e).__name__}: {e}); falling back to cpu",
                   file=sys.stderr)
-            device, compute, name = "cpu", DEFAULTS["cpu"][0], model_arg or DEFAULTS["cpu"][1]
-    return WhisperModel(name, device=device, compute_type=compute)
+            compute, name = DEFAULTS["cpu"][0], DEFAULTS["cpu"][1]
+    return WhisperModel(name, device="cpu", compute_type=compute), "cpu"
 
 
 def main():
@@ -100,8 +111,20 @@ def main():
         print("usage: transcribe.py <wav> [model]", file=sys.stderr)
         sys.exit(1)
     wav = sys.argv[1]
-    model = load_model(sys.argv[2] if len(sys.argv) > 2 else None)
-    segments, _info = model.transcribe(wav)
+    model_arg = sys.argv[2] if len(sys.argv) > 2 else None
+    pinned = bool(model_arg or os.environ.get("HIMMEL_WHISPER_MODEL"))
+    device, compute, name = select_runtime(model_arg)
+    if needs_cuda_lock(device):
+        reexec_with_cuda_lock()
+    model, device = load_model(device, compute, name)
+    language = None
+    if device == "cuda" and not pinned:
+        from faster_whisper import decode_audio
+        language, prob, _ = model.detect_language(decode_audio(wav))
+        target = route_model(device, language, prob, pinned)
+        if target != name:
+            model = load_model(device, compute, target)[0]
+    segments, _info = model.transcribe(wav, language=language)
     segments = list(segments)
     text = " ".join(seg.text.strip() for seg in segments).strip()
     sys.stdout.write(text + "\n")
