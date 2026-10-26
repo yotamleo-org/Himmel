@@ -260,20 +260,27 @@ def probe_by_id(pid):
     return None
 
 
+def usage_cost(d):
+    u = d.get("usage") if isinstance(d, dict) else None
+    if not isinstance(u, dict):
+        return None
+    return round(u.get("input_tokens", 0) * W_IN + u.get("cache_creation_input_tokens", 0) * W_CC
+                 + u.get("cache_read_input_tokens", 0) * W_CR + u.get("output_tokens", 0) * W_OUT, 1)
+
+
 def summarize(raw, probe):
+    """An errored run still carries the cost-eq of any usage it reports, so run.sh can bill it."""
+    d = None
     try:
         with open(raw, encoding="utf-8") as fh:
             d = json.load(fh)
         reply = d["result"]
         if d.get("is_error") or not isinstance(reply, str):
             raise ValueError("error result")
-    except (OSError, ValueError, KeyError, TypeError):
-        return {"file": raw, "probe": probe["id"], "error": True, "pass": None, "cost_eq": None, "reply": None}
-    u = d.get("usage") or {}
-    ce = (u.get("input_tokens", 0) * W_IN + u.get("cache_creation_input_tokens", 0) * W_CC
-          + u.get("cache_read_input_tokens", 0) * W_CR + u.get("output_tokens", 0) * W_OUT)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return {"file": raw, "probe": probe["id"], "error": True, "pass": None, "cost_eq": usage_cost(d), "reply": None}
     return {"file": raw, "probe": probe["id"], "error": False, "pass": score(probe, reply),
-            "cost_eq": round(ce, 1), "cost_usd": d.get("total_cost_usd"), "reply": reply[:600]}
+            "cost_eq": usage_cost(d) or 0.0, "cost_usd": d.get("total_cost_usd"), "reply": reply[:600]}
 
 
 def cmd_summarize(a):
@@ -322,18 +329,33 @@ def passes(t):
     return t is not None and t[1] > 0 and t[0] * 2 > t[1]
 
 
-def probe_state(p, t):
+def run_config(runs):
+    path = os.path.join(runs, "run-config.json")
+    return json.load(open(path)) if os.path.exists(path) else {}
+
+
+def want_reps(runs, tl):
+    """The reps every arm needs before it counts: run.sh's --reps, else the most any arm has."""
+    return run_config(runs).get("reps") or max([x[1] for t in tl.values() for x in t.values()] or [1])
+
+
+def complete(t, want):
+    return bool(t) and t[1] >= want
+
+
+def probe_state(p, t, want):
     """valid | invalid | pending for the RED-first gate."""
     base, red = t.get("baseline"), t.get("red-" + p["row"])
-    if not base or not red or not base[1] or not red[1]:
+    if not complete(base, want) or not complete(red, want):
         return "pending"
     return "valid" if passes(base) and not passes(red) else "invalid"
 
 
 def cmd_valid(a):
     tl = tallies(a.runs)
+    want = want_reps(a.runs, tl)
     for p in sorted(probes_doc()["probes"], key=lambda x: x["id"]):
-        if probe_state(p, tl.get(p["id"], {})) == "valid":
+        if probe_state(p, tl.get(p["id"], {}), want) == "valid":
             print(p["id"])
     return 0
 
@@ -344,6 +366,7 @@ def frac(t):
 
 def verdicts(runs):
     tl = tallies(runs)
+    want = want_reps(runs, tl)
     probes = probes_doc()["probes"]
     out = {}
     for r in rows_doc()["rows"]:
@@ -352,10 +375,10 @@ def verdicts(runs):
         states = []
         for p in mine:
             t = tl.get(p["id"], {})
-            st = probe_state(p, t)
+            st = probe_state(p, t, want)
             cut = t.get("cut")
             if st == "valid":
-                if not cut or not cut[1]:
+                if not complete(cut, want):
                     st = "pending"
                 else:
                     st = "worse" if cut[0] / cut[1] < t["baseline"][0] / t["baseline"][1] else "held"
@@ -403,6 +426,7 @@ def write_ledger(a, c, vd, tl):
     for v in vd.values():
         counts[v["verdict"]] = counts.get(v["verdict"], 0) + 1
     cases = {}
+    want = want_reps(a.runs, tl)
     for p in probes_doc()["probes"]:
         t = tl.get(p["id"])
         if not t:
@@ -410,9 +434,8 @@ def write_ledger(a, c, vd, tl):
         cases[p["id"]] = {"baseline": round(t["baseline"][0] / t["baseline"][1], 3) if t.get("baseline", [0, 0])[1] else None,
                           "red": round(t["red-" + p["row"]][0] / t["red-" + p["row"]][1], 3) if t.get("red-" + p["row"], [0, 0])[1] else None,
                           "cut": round(t["cut"][0] / t["cut"][1], 3) if t.get("cut", [0, 0])[1] else None,
-                          "valid": probe_state(p, t) == "valid"}
-    meta_path = os.path.join(a.runs, "run-config.json")
-    rc = json.load(open(meta_path)) if os.path.exists(meta_path) else {}
+                          "valid": probe_state(p, t, want) == "valid"}
+    rc = run_config(a.runs)
     reps = max([x[1] for t in tl.values() for x in t.values()] or [0])
     metrics = {"tokens_saved": c["total"]["tokens_saved"], "cost_eq_per_session_saved": c["total"]["cost_eq_per_session"],
                "per_turn_share_saved": c["total"]["per_turn_share"],

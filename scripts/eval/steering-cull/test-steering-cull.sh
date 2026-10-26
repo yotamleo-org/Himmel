@@ -153,6 +153,28 @@ eq "ledger: one steering-cull row" "$(python3 -c 'import json,sys
 r=[json.loads(l) for l in open(sys.argv[1])]; print(len(r), r[0]["eval"], r[0]["status"], sorted(r[0]["cases"])[0])' "$HIMMEL_EVAL_RUNS_LEDGER" 2>&1)" "1 steering-cull partial l65-spec-home"
 eq "ledger: the row validates" "$(python3 "$HERE/../lib/eval_runs.py" validate "$HIMMEL_EVAL_RUNS_LEDGER" >/dev/null 2>&1; echo $?)" "0"
 
+cp -r "$TMP/out" "$TMP/part"
+rm -f "$TMP/part/r2-first-commit/cut/2.summary.json" "$TMP/part/l65-spec-home/baseline/2.summary.json"
+rep="$(python3 "$CULL" report --runs "$TMP/part" --sessions "$TMP/sessions" --no-agents 2>/dev/null)"
+eq "verdict: a CUT arm short of its configured reps -> PENDING" "$(verdict r2-trailers)" "PENDING"
+eq "valid: a BASELINE arm short of its configured reps is not valid yet" "$(python3 "$CULL" valid --runs "$TMP/part" | tr '\n' ' ')" "r2-first-commit r5-one-writer "
+
+: >"$STUB_LOG"
+eq "run: a resume with another model is refused" "$(SC_CLAUDE="$TMP/bin/claude" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase red --out "$TMP/out" --probes "$P" --reps 2 --model opus >/dev/null 2>&1; echo $?)" "2"
+has "run: the refused resume keeps the original config" "$(cat "$TMP/out/run-config.json" 2>&1)" '"model": "sonnet"'
+
+cat >"$TMP/bin/claude-err" <<'STUB'
+#!/usr/bin/env bash
+echo call >>"$STUB_LOG"
+echo '{"type":"result","is_error":true,"result":"boom","usage":{"input_tokens":1000}}'
+STUB
+chmod +x "$TMP/bin/claude-err"
+: >"$STUB_LOG"
+SC_CLAUDE="$TMP/bin/claude-err" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase red --out "$TMP/o4" --probes r2-first-commit --reps 2 --ceiling 500 >/dev/null 2>&1
+rc=$?
+eq "run: an errored call's spend counts toward the ceiling (exit 3)" "$rc" "3"
+eq "run: the ceiling stops after the first errored call" "$(wc -l <"$STUB_LOG" | tr -d ' ')" "1"
+
 : >"$STUB_LOG"
 SC_CLAUDE="$TMP/bin/claude" SC_PREFLIGHT="$TMP/bin/pf-ok" bash "$RUN" --phase red --out "$TMP/o3" --probes "$P" --reps 2 --ceiling 1 >/dev/null 2>&1
 rc=$?
