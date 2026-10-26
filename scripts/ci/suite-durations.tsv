@@ -133,6 +133,7 @@ scripts/ci/test-check-ci-install-locks.sh	5
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
 scripts/ci/test-check-docs-decision-records.sh	0
+scripts/ci/test-check-flags.sh	1
 scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
@@ -819,6 +820,7 @@ scripts/lib/test-env-alias.sh	0
 scripts/lib/test-env-append.sh	0
 scripts/lib/test-fix-qmd-stub.sh	1
 scripts/lib/test-fixture-trap-clean.sh	144
+scripts/lib/test-flags.sh	1
 scripts/lib/test-fleet-reservation-key.sh	0
 scripts/lib/test-fleet-slots-shield.sh	0
 scripts/lib/test-flow-run-ledger-path.sh	0

@@ -101,6 +101,7 @@ scripts/ci/test-check-ci-install-locks.sh	pr	static-gate
 scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
 scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
+scripts/ci/test-check-flags.sh	pr	trust-path
 scripts/ci/test-check-hardcoded-env-values.sh	pr	trust-path
 scripts/ci/test-check-hooks-on-pr-range.sh	pr	trust-path
 scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
@@ -820,6 +821,7 @@ scripts/lib/test-env-append.sh	pr	trust-path
 scripts/lib/test-env-value.sh	pr	trust-path
 scripts/lib/test-fix-qmd-stub.sh	pr	trust-path
 scripts/lib/test-fixture-trap-clean.sh	pr	trust-path
+scripts/lib/test-flags.sh	pr	trust-path
 scripts/lib/test-fleet-reservation-key.sh	pr	trust-path
 scripts/lib/test-fleet-slots-shield.sh	pr	trust-path
 scripts/lib/test-flow-run-ledger-path.sh	pr	static-gate

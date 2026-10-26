@@ -616,6 +616,7 @@ jobs:
           bash scripts/ci/check-no-secrets.sh
           bash scripts/ci/check-actions-pinned.sh
           bash scripts/ci/check-ci-install-locks.sh
+          bash scripts/ci/check-flags.sh
       - id: bwk-awk-mktemp-gate
         if: ${{ !cancelled() && !(needs.plan.result == 'success' && needs.plan.outputs.run_bwk_gate == 'false') }}
         timeout-minutes: 10
