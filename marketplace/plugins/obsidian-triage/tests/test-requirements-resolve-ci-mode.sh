@@ -44,7 +44,9 @@ if [ "$rc" != 0 ] && grep -q "index" <<< "$out"; then ok "index down, HIMMEL_REQ
 run withuv "" 99
 if [ "$rc" = 0 ] && grep -q "^SKIP: package index" <<< "$out"; then ok "index down, no flag: SKIP"; else no "index down, no flag: SKIP (rc=$rc: $out)"; fi
 run withuv 1 1
-if [ "$(cat "$tmp/curl-calls")" = 2 ] && ! grep -q "SKIP\|index" <<< "$out"; then ok "one index miss is retried"; else no "one index miss is retried (rc=$rc calls=$(cat "$tmp/curl-calls"): $out)"; fi
+# The stub uv writes no lock, so the suite's freshness rows fail: rc is 1, never 0, and the
+# Results line proves the run got past the retry to the resolve rows instead of dying early.
+if [ "$(cat "$tmp/curl-calls")" = 2 ] && [ "$rc" = 1 ] && grep -q "^Results: " <<< "$out" && ! grep -q "SKIP\|index" <<< "$out"; then ok "one index miss is retried"; else no "one index miss is retried (rc=$rc calls=$(cat "$tmp/curl-calls"): $out)"; fi
 
 echo ""
 echo "Results: $pass passed, $fail failed"
