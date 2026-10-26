@@ -9,6 +9,6 @@
   },
   "dependencies": {
     "grammy": "^1.46.0",
-    "@modelcontextprotocol/server": "2.3.1"
+    "@modelcontextprotocol/server": "2.4.0"
   }
 }
