@@ -268,10 +268,14 @@ else
   fail "reseeding exposed partial config or left temp files (seed=$atomic_seed_rc settings=$atomic_settings_rc temps=$atomic_temp_count)"
 fi
 
+NOKC_BIN="$WS/nokc-bin"
+mkdir -p "$NOKC_BIN"
+printf '#!/usr/bin/env bash\nexit 44\n' > "$NOKC_BIN/security"
+chmod +x "$NOKC_BIN/security"
 MISSING_HOME="$WS/missing-home"
 mkdir -p "$MISSING_HOME/.claude"
 printf '{}\n' > "$MISSING_HOME/.claude/settings.json"
-if HOME="$MISSING_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$MISSING_HOME/.claude-graphify" bash "$HELPER" >/dev/null 2>&1; then
+if HOME="$MISSING_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$MISSING_HOME/.claude-graphify" PATH="$NOKC_BIN:$PATH" bash "$HELPER" >/dev/null 2>&1; then
   fail "missing subscription credentials should fail closed"
 else
   if [ ! -f "$MISSING_HOME/.claude-graphify/.seeded" ]; then
@@ -279,6 +283,101 @@ else
   else
     fail "failed seed left a .seeded sentinel"
   fi
+fi
+
+HOME="$MISSING_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$MISSING_HOME/.claude-graphify" PATH="$NOKC_BIN:$PATH" bash "$HELPER" > "$WS/missing-creds.log" 2>&1
+if grep -q 'Keychain' "$WS/missing-creds.log" && grep -q '\.credentials\.json' "$WS/missing-creds.log"; then
+  pass "missing credentials message names the Keychain and the file alternative"
+else
+  fail "missing credentials message does not name the Keychain: $(cat "$WS/missing-creds.log")"
+fi
+
+# macOS: Claude Code keeps the subscription login in the login Keychain, so the
+# source config has no .credentials.json. Stub uname=Darwin and a security CLI.
+KC_BIN="$WS/kc-bin"
+mkdir -p "$KC_BIN"
+printf '#!/usr/bin/env bash\necho Darwin\n' > "$KC_BIN/uname"
+cat > "$KC_BIN/security" <<'SH'
+#!/usr/bin/env bash
+[ "$1" = "find-generic-password" ] || exit 2
+svc=""; acct=""; acct_n=0; want_pw=0
+while [ "$#" -gt 0 ]; do
+  case "$1" in -s) svc="$2"; shift ;; -a) acct="$2"; acct_n=$((acct_n + 1)); shift ;; -w) want_pw=1 ;; esac
+  shift
+done
+[ "$svc" = "Claude Code-credentials" ] && [ "$acct_n" -eq 1 ] && [ "$acct" = "$KC_USER" ] && [ "$want_pw" -eq 1 ] || exit 44
+[ -f "$KC_FIXTURE" ] || exit 44
+cat "$KC_FIXTURE"
+SH
+chmod +x "$KC_BIN/uname" "$KC_BIN/security"
+KC_FIXTURE="$WS/keychain-blob"
+printf '{"claudeAiOauth":{"accessToken":"kc-v1"}}\n' > "$KC_FIXTURE"
+run_kc_seed() {
+  HOME="$KC_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$KC_HOME/.claude-graphify" \
+    PATH="$KC_BIN:$PATH" KC_FIXTURE="$KC_FIXTURE" KC_USER="${USER:-$(id -un)}" bash "$HELPER"
+}
+
+KC_HOME="$WS/kc-home"
+setup_home "$KC_HOME"
+rm -f "$KC_HOME/.claude/.credentials.json"
+kc_rc=0
+run_kc_seed > "$WS/kc-seed.log" 2>&1 || kc_rc=$?
+kc_mode="$(stat -c %a "$KC_HOME/.claude-graphify/.credentials.json" 2>/dev/null || stat -f %Lp "$KC_HOME/.claude-graphify/.credentials.json" 2>/dev/null)"
+if [ "$kc_rc" -eq 0 ] \
+   && cmp -s "$KC_FIXTURE" "$KC_HOME/.claude-graphify/.credentials.json" \
+   && [ "$kc_mode" = "600" ] \
+   && [ -f "$KC_HOME/.claude-graphify/.seeded" ] \
+   && [ ! -e "$KC_HOME/.claude/.credentials.json" ]; then
+  pass "macOS Keychain credentials seed the dedicated config at mode 600"
+else
+  fail "Keychain seed failed (rc=$kc_rc mode=$kc_mode): $(cat "$WS/kc-seed.log")"
+fi
+
+touch -t 203101010000 "$KC_HOME/.claude-graphify/.seeded"
+kc_noop_before="$(stat -c %Y "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null)"
+kc_noop_rc=0
+run_kc_seed > /dev/null 2>&1 || kc_noop_rc=$?
+kc_noop_after="$(stat -c %Y "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null || stat -f %m "$KC_HOME/.claude-graphify/.seeded" 2>/dev/null)"
+if [ "$kc_noop_rc" -eq 0 ] && [ "$kc_noop_before" = "$kc_noop_after" ]; then
+  pass "unchanged Keychain credentials do not trigger reseed churn"
+else
+  fail "unchanged Keychain credentials reseeded or failed (rc=$kc_noop_rc $kc_noop_before -> $kc_noop_after)"
+fi
+
+printf '{"claudeAiOauth":{"accessToken":"kc-v2"}}\n' > "$KC_FIXTURE"
+kc_rotate_rc=0
+run_kc_seed > /dev/null 2>&1 || kc_rotate_rc=$?
+if [ "$kc_rotate_rc" -eq 0 ] && cmp -s "$KC_FIXTURE" "$KC_HOME/.claude-graphify/.credentials.json"; then
+  pass "rotated Keychain credentials trigger a reseed"
+else
+  fail "rotated Keychain credentials were not re-seeded"
+fi
+
+printf '{"claudeAiOauth":{"accessToken":"file-restored"}}\n' > "$KC_HOME/.claude/.credentials.json"
+touch -t 200001010000 "$KC_HOME/.claude/.credentials.json"
+kc_restore_rc=0
+run_kc_seed > /dev/null 2>&1 || kc_restore_rc=$?
+if [ "$kc_restore_rc" -eq 0 ] && cmp -s "$KC_HOME/.claude/.credentials.json" "$KC_HOME/.claude-graphify/.credentials.json"; then
+  pass "a restored credentials file with an old mtime replaces Keychain-seeded credentials"
+else
+  fail "a restored credentials file with an old mtime was ignored (rc=$kc_restore_rc)"
+fi
+rm -f "$KC_HOME/.claude/.credentials.json"
+
+KC_EMPTY_HOME="$WS/kc-empty-home"
+setup_home "$KC_EMPTY_HOME"
+rm -f "$KC_EMPTY_HOME/.claude/.credentials.json"
+rm -f "$KC_FIXTURE"
+kc_empty_rc=0
+HOME="$KC_EMPTY_HOME" GRAPHIFY_CLAUDE_CONFIG_DIR="$KC_EMPTY_HOME/.claude-graphify" \
+  PATH="$KC_BIN:$PATH" KC_FIXTURE="$KC_FIXTURE" bash "$HELPER" > "$WS/kc-empty.log" 2>&1 || kc_empty_rc=$?
+if [ "$kc_empty_rc" -eq 4 ] \
+   && grep -q 'Keychain' "$WS/kc-empty.log" \
+   && [ ! -f "$KC_EMPTY_HOME/.claude-graphify/.seeded" ] \
+   && [ ! -f "$KC_EMPTY_HOME/.claude-graphify/.credentials.json" ]; then
+  pass "empty Keychain fails closed with an actionable Keychain message"
+else
+  fail "empty Keychain did not fail closed (rc=$kc_empty_rc): $(cat "$WS/kc-empty.log")"
 fi
 
 LEADING_ZERO_LOCK_HOME="$WS/leading-zero-lock-home"

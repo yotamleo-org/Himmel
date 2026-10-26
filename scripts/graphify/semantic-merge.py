@@ -444,7 +444,7 @@ def cmd_merge(a):
     # SHRINK_RATIO of its old semantic nodes is refused like a failed chunk --
     # old items kept, file unstamped, retried next run. A model that returns a
     # thin subset must not silently erase real facts (pr-check doc 25 to 1).
-    # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there.
+    # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there. A file omitted every run is retried up to MAX_ATTEMPTS, then backed off until its content changes, see HIMMEL-4199.
     #
     # A file refused on the same content MAX_ATTEMPTS times is not a model fluke:
     # the file really is that thin (a page cut down to a pointer), so the last
