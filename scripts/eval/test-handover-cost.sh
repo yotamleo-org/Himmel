@@ -109,6 +109,24 @@ WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSIO
 check "the empty-prompt run exits 0" '[ "$busprc" = 0 ]'
 check "the empty-prompt bus record is a worker (workers=2, worker=3/750)" 'row "$TMP/busp.out" | grep -q " worker=3/750 workers=2 "'
 
+echo "3g. a compaction summary or a tool result naming the chief is not a relay delivery"
+if ! { mkdir "$TMP/fp" && cp "$FX"/*.jsonl "$TMP/fp/"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
+if ! python3 - "$TMP/fp" <<'PYEOF'
+import json, sys
+turn = lambda i, ts: {"type": "assistant", "timestamp": ts, "message": {"id": i, "usage": {"input_tokens": 100, "cache_read_input_tokens": 1000, "output_tokens": 10}, "content": [{"type": "text", "text": "work"}]}}
+open(sys.argv[1] + "/leg-fp.jsonl", "w").write("".join(json.dumps(r) + "\n" for r in [
+    {"type": "agent-name", "agentName": "HIMMEL-6-N6-worker-fp", "timestamp": "2026-10-19T10:05:00Z"},
+    {"type": "user", "timestamp": "2026-10-19T10:18:00Z", "isCompactSummary": True, "message": {"role": "user", "content": "This session is being continued. SUCCESSION from HIMMEL-nextleg-2026-10-19A-roadmap-console"}},
+    turn("mf1", "2026-10-19T10:18:10Z"),
+    {"type": "user", "timestamp": "2026-10-19T10:18:20Z", "message": {"role": "user", "content": [{"type": "tool_result", "tool_use_id": "t1", "content": "- 10:00 SUCCESSION accepted: HIMMEL-nextleg-2026-10-19A-roadmap-console"}]}},
+    turn("mf2", "2026-10-19T10:18:30Z"), turn("mf3", "2026-10-19T10:18:40Z"), turn("mf4", "2026-10-19T10:18:50Z"),
+]))
+PYEOF
+then echo "test-handover-cost: fixture modification failed" >&2; exit 1; fi
+WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/fp" --workers-after 2026-10-19T09:30:00Z >"$TMP/fp.out" 2>&1; fprc=$?
+check "the false-delivery run exits 0" '[ "$fprc" = 0 ]'
+check "neither a compaction summary nor a tool result is a worker (workers=1, worker=2/500)" 'row "$TMP/fp.out" | grep -q " worker=2/500 workers=1 "'
+
 echo "3d. mechanical columns"
 if ! { mkdir "$TMP/m" && cp "$FX"/*.jsonl "$TMP/m/" && sed -e 's/bash action-zero.sh --acquire/bash append-results.sh d x/' -e 's/ListAgents check/will run append-results.sh later/' "$FX/console-s.jsonl" >"$TMP/m/console-s.jsonl"; }; then echo "test-handover-cost: fixture copy failed" >&2; exit 1; fi
 WORKER_SESSION_BURN_W_INPUT=1 WORKER_SESSION_BURN_W_CACHE_READ=0.1 WORKER_SESSION_BURN_W_CACHE_CREATE=1.25 WORKER_SESSION_BURN_W_OUTPUT=5 python3 "$HC" --dir "$TMP/m" >"$TMP/m2.out" 2>&1; mrc2=$?
