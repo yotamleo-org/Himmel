@@ -60,7 +60,8 @@ export type FleetRow = {
 // unbound: registered with the bus but never bound to a process.
 export type BusCounts = { unacked: number; undelivered: number; unbound: boolean };
 export type BusEdge = { from: string; to: string; n: number; unacked: number; lastAt: number; kinds: Record<string, number> };
-export type ProcessOrphan = { pid: number; owner: string; ageMin: number };
+// kind: orphan = no live session owns it; wait = a live session's own long-running call; stuck = its pgrep -f wait matches itself.
+export type ProcessOrphan = { pid: number; owner: string; ageMin: number; kind: "orphan" | "wait" | "stuck" };
 export type Usage = {
   calls: number; input: number; output: number; cacheRead: number; cacheCreate: number; costEq: number | null;
   resident: number | null; ceiling: number; ceilingFrom: "autocompact" | "window"; fill: number | null;
@@ -148,19 +149,29 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
 
 // the shell-tool wrappers tick reports as orphans, from the chief kit's own inventory (`--list`: one
 // `pid=<pid> owner=<session> age=<n>m` row each); read-only, and null when it failed rather than an empty list.
-// a wrapper owned by a live session is that session's own long-running call, not an orphan.
+// a wrapper owned by a live session is that session's own long-running call: a "wait", not an orphan.
+// ponytail: a wait is stuck only when a `until ! pgrep -f` / `while pgrep -f` pattern matches the wrapper's own
+// argv (the shape require-quiet-run.sh refuses, ERE read as a JS RegExp); other never-ending waits read as waits, upgrade path: add their shapes here.
+const SELF_PGREP = /(?:until\s+!\s+|while\s+)pgrep\s+(?:-\w+\s+)*?-\w*f\w*\s+(\S+)/g;
+async function selfMatches(pid: number, env: Record<string, string | undefined>): Promise<boolean> {
+  try {
+    const argv = (await readFile(join(env.CLAUDE_SESSIONS_PROC || "/proc", String(pid), "cmdline"), "utf8")).split("\0").join(" ");
+    return [...argv.matchAll(SELF_PGREP)].some((m) => {
+      try { return new RegExp(m[1].replace(/^[\\'"]+|[\\'"]+$/g, "")).test(argv); } catch { return false; }
+    });
+  } catch { return false; }
+}
 async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set()): Promise<ProcessOrphan[] | null> {
   const script = opts.env.CONFIG_UI_ORPHAN_LOOPS || join(dirname(opts.script), "../handover/chief-kit/orphan-loops.sh");
-  return new Promise((ok) => {
-    execFile("bash", [script, "--list"], { env: opts.env as NodeJS.ProcessEnv, timeout: 10_000, maxBuffer: 256 * 1024 }, (err, stdout) => {
-      if (err) return ok(null);
-      ok(stdout.split("\n").flatMap((l) => {
-        const m = /^pid=(\d+) owner=(\S+) age=(\d+)m$/.exec(l.trim());
-        const owner = m && plain(m[2]);
-        return m && owner && !live.has(owner) ? [{ pid: Number(m[1]), owner, ageMin: Number(m[3]) }] : [];
-      }));
-    });
+  const listed = await new Promise<string | null>((ok) => {
+    execFile("bash", [script, "--list"], { env: opts.env as NodeJS.ProcessEnv, timeout: 10_000, maxBuffer: 256 * 1024 }, (err, stdout) => ok(err ? null : stdout));
   });
+  if (listed === null) return null;
+  return Promise.all(listed.split("\n").flatMap((l) => {
+    const m = /^pid=(\d+) owner=(\S+) age=(\d+)m$/.exec(l.trim());
+    const owner = m && plain(m[2]);
+    return m && owner ? [{ pid: Number(m[1]), owner, ageMin: Number(m[3]) }] : [];
+  }).map(async (p): Promise<ProcessOrphan> => ({ ...p, kind: (await selfMatches(p.pid, opts.env)) ? "stuck" : live.has(p.owner) ? "wait" : "orphan" })));
 }
 
 // the GitHub repo a PR number belongs to — CONFIG_UI_GITHUB_REPO (owner/name), else this checkout's
