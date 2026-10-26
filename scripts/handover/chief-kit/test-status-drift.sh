@@ -707,6 +707,10 @@ printf 'v1.1.3\tfalse\t2026-10-20\tfalse\nv1.2 beta\tfalse\t2026-11-01\tfalse\n'
 printf 'HIMMEL-90023\tTask\tDone\tsummary\n' > "$FX/list.fv.v1.2 beta"
 drift
 contains "3b: a version name with a space is shell-quoted in the INTAKE command" "$(drows VERSION-DRIFT)" "--from v1.2\\ beta --to v1.1.3"
+reset "To Do"
+printf 'v1.1.3\tfalse\t2026-10-20\tfalse\nv1.3"x\tfalse\t2026-11-01\tfalse\n' > "$FX/versions.tsv"
+drift
+contains "3b: a quote in a version name is escaped in the JQL" "$(cat "$STUB_LOG")" 'fixVersion = "v1.3\"x"'
 reset "To Do"; vd_versions
 drift
 check "3b: no ticket in a later version is no VERSION-DRIFT" "$(dcount VERSION-DRIFT)" 0

@@ -287,7 +287,8 @@ if [ -n "$cur" ]; then
     vseen=""
     while IFS= read -r later; do
         [ -n "$later" ] && [ "$later" != "$cur" ] || continue
-        vjql="project = $proj AND status in (\"In Progress\",\"In Review\",\"IN CI\",\"Done\") AND fixVersion = \"$later\" AND fixVersion != \"$cur\""
+        jlater=$(printf '%s' "$later" | sed 's/[\\"]/\\&/g') jcur=$(printf '%s' "$cur" | sed 's/[\\"]/\\&/g')
+        vjql="project = $proj AND status in (\"In Progress\",\"In Review\",\"IN CI\",\"Done\") AND fixVersion = \"$jlater\" AND fixVersion != \"$jcur\""
         # swallow-ok: a failed search becomes a HEALTH row and sdrift=unknown
         if ! vrows=$(ts_jira list --jql "$vjql" --limit 300 2>/dev/null); then
             add HEALTH - "jira: the later-version search is unreadable" jira "jira list --jql '$vjql'"
