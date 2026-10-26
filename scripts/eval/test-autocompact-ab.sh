@@ -141,13 +141,13 @@ check "no legs is a usage error (rc 2)" 2 "$rc"
 CD="$HERE/compaction-handoff/compaction-defects.py"
 CFX="$HERE/compaction-handoff/fixtures/projects"
 python3 -I "$CD" --projects "$CFX" --since-days 0 --json > "$tmp/cd.json" 2>"$tmp/cd.err"
-check "compaction-defects: planted post-compaction re-read counted once" 1 "$(jq '.compactions[0].defects.reread' "$tmp/cd.json")"
+check "compaction-defects: planted post-compaction re-read counted once (not a retried failed Read, nor a file a compound command wrote)" 1 "$(jq '.compactions[0].defects.reread' "$tmp/cd.json")"
 check "compaction-defects: one leg, one compaction" "1 1" "$(jq -r '"\(.legs) \(.compactions | length)"' "$tmp/cd.json")"
 check "compaction-defects: the repeated denied call" 1 "$(jq '.compactions[0].defects.denied_repeat' "$tmp/cd.json")"
 check "compaction-defects: the misquoted token, not the cut-off summary quote" 1 "$(jq '.compactions[0].defects.nonce' "$tmp/cd.json")"
-check "compaction-defects: the repeated Results bullet, not the marker clear after an edit nor the push after a sed -i" 1 "$(jq '.compactions[0].defects.redo' "$tmp/cd.json")"
+check "compaction-defects: the repeated Results bullet, not the marker clear after an edit, the push after a sed -i, nor a call that never got a result" 1 "$(jq '.compactions[0].defects.redo' "$tmp/cd.json")"
 check "compaction-defects: no judge re-asked" 0 "$(jq '.compactions[0].defects.verdict' "$tmp/cd.json")"
-check "compaction-defects: post window runs to the end of the transcript" 11 "$(jq '.compactions[0].post_turns' "$tmp/cd.json")"
+check "compaction-defects: post window runs to the end of the transcript" 15 "$(jq '.compactions[0].post_turns' "$tmp/cd.json")"
 check "compaction-defects: re-prime is the first post turn's cache_create" 30000 "$(jq '.compactions[0].cost.reprime_cache_create' "$tmp/cd.json")"
 check "compaction-defects: compaction call priced from preTokens and the summary (170000 x 0.1 + 104 / 4 x 5)" 17130 "$(jq '.compactions[0].cost.compaction_est' "$tmp/cd.json")"
 python3 -I "$CD" --projects "$CFX" --since-days 0 --window 2 --json > "$tmp/cd2.json" 2>/dev/null
@@ -155,7 +155,7 @@ check "compaction-defects: a control window of N turns with N turns of history" 
 check "compaction-defects: the post window is clipped to N" 2 "$(jq '.compactions[0].post_turns' "$tmp/cd2.json")"
 python3 -I "$CD" --projects "$CFX" --since-days 0 --simulate 100000 --json > "$tmp/cd3.json" 2>/dev/null
 check "compaction-defects: replay at 100k hands off once" 1 "$(jq '.simulate[0].legs[0].b.events' "$tmp/cd3.json")"
-check "compaction-defects: the split row's last usage is the message's (out 900, not 1)" 8546 "$(jq '.compactions[0].cost.post_turn' "$tmp/cd.json")"
+check "compaction-defects: the split row's last usage is the message's (out 900, not 1)" 7841 "$(jq '.compactions[0].cost.post_turn' "$tmp/cd.json")"
 check "compaction-defects: paired rates are per 100 turns" "50.0 0.0 2 2" "$(jq -r '.summary.all | "\(.paired_post_per100.reread) \(.paired_control_per100.reread) \(.paired_post_turns) \(.paired_control_turns)"' "$tmp/cd2.json")"
 # a resumed transcript repeats its parent's turns and boundary: the replay walks
 # the whole transcript, so the boundary lands on the turn it follows, and charges
@@ -168,6 +168,10 @@ check "compaction-defects: parent hands off at its boundary, resume does not re-
 check "compaction-defects: resume charges only its own turns" "3 5" "$(jq -r '[.simulate[0].legs[].turns] | join(" ")' "$tmp/rs.json")"
 check "compaction-defects: the boundary is scored on the copy that runs furthest past it" "6 s-resume.jsonl" "$(jq -r '.compactions[0] | "\(.post_turns) \(.transcript)"' "$tmp/rs.json")"
 check "compaction-defects: the model is read from the JSON, spaced or not" claude-fx-1 "$(jq -r '.compactions[0].model' "$tmp/rs.json")"
+# a cache-miss turn that also crosses the ceiling: the restart pays to create
+# its context once (2651 + 2751 + 2851 + 50001.25 hand-off + 3251)
+python3 -I "$CD" --projects "$HERE/compaction-handoff/fixtures/projects-miss" --since-days 0 --simulate 100000 --json > "$tmp/ms.json" 2>/dev/null
+check "compaction-defects: a restart on a cache-miss turn is not charged twice" "61505 1" "$(jq -r '.simulate[0].legs[0].b | "\(.cost_eq) \(.events)"' "$tmp/ms.json")"
 python3 -I "$CD" --projects "$CFX" --since-days 0 > "$tmp/cd.txt" 2>/dev/null
 check "compaction-defects: text report" 1 "$(grep -c '^legs 1, transcripts 1, compactions 1' "$tmp/cd.txt")"
 

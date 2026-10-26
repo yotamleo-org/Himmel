@@ -266,7 +266,23 @@ def score(turns, lo, hi, evidence):
             cmd = inp.get("command") or "" if name == "Bash" else ""
             # reads
             rpaths = read_spans(name, inp, t["cwd"])
-            for p, span in rpaths:
+            # done = a result came back and it was not an error
+            ok = c.get("result") is not None and not c["error"]
+            # writes invalidate reads, before this call's own reads count
+            if name in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
+                p = inp.get("file_path") or inp.get("notebook_path")
+                if p:
+                    reads[norm(p, t["cwd"])] = {}
+                since_write += 1
+            elif name == "Bash":
+                if GIT_RESET.search(cmd):
+                    reads = {}
+                else:
+                    own = {p for p, _ in rpaths}
+                    for p in list(reads):
+                        if p not in own and os.path.basename(p) in cmd:
+                            reads[p] = {}
+            for p, span in rpaths if ok else []:
                 if GROWING.search(p):
                     continue
                 got = reads.setdefault(p, {})
@@ -277,19 +293,6 @@ def score(turns, lo, hi, evidence):
                     for s in got:
                         got[s] = "win"
                 got[span] = "win" if live else "pre"
-            # writes invalidate reads
-            if name in ("Edit", "Write", "MultiEdit", "NotebookEdit"):
-                p = inp.get("file_path") or inp.get("notebook_path")
-                if p:
-                    reads[norm(p, t["cwd"])] = {}
-                since_write += 1
-            elif name == "Bash" and not rpaths:
-                if GIT_RESET.search(cmd):
-                    reads = {}
-                else:
-                    for p in list(reads):
-                        if os.path.basename(p) in cmd:
-                            reads[p] = {}
             # denied repeats
             if c["denied"]:
                 if live and key in denied:
@@ -302,7 +305,7 @@ def score(turns, lo, hi, evidence):
                 carries = name in ("SendMessage", "Write") or PAYLOAD.search(cmd)
                 if live and prev is not None and (carries or prev == since_write):
                     hit("redo", i, key.replace("\x00", " "))
-                if not c["error"] and not BACKGROUNDED.search(c.get("result", "")):
+                if ok and not BACKGROUNDED.search(c["result"]):
                     done[key] = since_write
             if name == "Bash" and (BASH_WRITE.search(cmd) or (MUTATE.search(cmd) and re.search(r"\bgit\s+commit\b", cmd))):
                 since_write += 1
@@ -371,7 +374,8 @@ def simulate(turns, bounds, ceiling, resume_tokens, post_median, priced=None):
             dropped += drop_at.get(i, 0)
             x = t["ctx"] + dropped - off
             charge = t["id"] in priced
-            if x >= trigger:
+            restarted = x >= trigger
+            if restarted:
                 off += x - restart
                 x = restart
                 if charge:
@@ -383,8 +387,9 @@ def simulate(turns, bounds, ceiling, resume_tokens, post_median, priced=None):
             peak = max(peak, x)
             if not charge:
                 continue
-            miss = t["cc"] > 0.5 * t["ctx"] and i not in first
-            cc = x if miss else (g_med if i in first else min(t["cc"], x))
+            # the restart already paid to create its context: never twice
+            miss = t["cc"] > 0.5 * t["ctx"] and i not in first and not restarted
+            cc = x if miss else min(g_med if i in first or restarted else t["cc"], x)
             cost += t["in"] * ab.W_IN + t["out"] * ab.W_OUT + cc * ab.W_CC + max(0, x - cc - t["in"]) * ab.W_CR
         res[arm] = {"cost_eq": round(cost), "events": events, "peak": peak}
     return res
