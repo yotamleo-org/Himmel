@@ -9,7 +9,7 @@ cat >"$WORK/p.sh" <<'EOF'
 ck() { if [ "$2" = 0 ]; then echo "CHECK $1 PASS"; else echo "CHECK $1 FAIL ${3:-}"; fi; }
 export PATH="$HOME/.bun/bin:$PATH"
 cd ~/scratch-6983 || exit 1
-nohup node scripts/himmelctl/bin.js ui --port 0 >/tmp/ui.log 2>&1 </dev/null &
+nohup node scripts/himmelctl/bin.js ui --port 0 >/tmp/ui.log 2>&1 </dev/null & # t13b-ok: guest-side UI under test on a throwaway VM, killed at the end
 for _ in $(seq 1 20); do grep -q '#t=' /tmp/ui.log && break; sleep 1; done
 U="$(head -1 /tmp/ui.log)"; P="$(printf '%s' "$U" | sed 's#.*:\([0-9]*\)/.*#\1#')"; K="${U##*#t=}"
 api() { curl -s -H "X-Himmel-Token: $K" "http://127.0.0.1:$P/api/setup"; }

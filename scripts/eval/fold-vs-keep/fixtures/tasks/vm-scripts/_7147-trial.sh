@@ -14,7 +14,7 @@ chk() { if [ "$2" = "$3" ]; then ok "$1"; else no "$1 (expected '$3', got '$2')"
 
 printf 'guest: %s uid=%s head=%s\n' "$(uname -sr)" "$(id -u)" "$(git -C "$H" rev-parse HEAD 2>/dev/null)"
 [ -x "$HS" ] || { no "resolver present at $HS"; exit 1; }
-for t in secret-tool busctl timeout gnome-keyring-daemon dbus-daemon; do
+for t in secret-tool busctl timeout gnome-keyring-daemon dbus-daemon; do # t13b-ok: guest-side tool presence probe, starts nothing
     command -v "$t" >/dev/null 2>&1 && printf 'tool %s: yes\n' "$t" || printf 'tool %s: NO\n' "$t"
 done
 
@@ -24,7 +24,7 @@ done
 inner() {
     set -u
     rt="$W/rt"
-    printf 'trial-pw-7147' | gnome-keyring-daemon --unlock --components=secrets >/dev/null 2>&1
+    printf 'trial-pw-7147' | gnome-keyring-daemon --unlock --components=secrets >/dev/null 2>&1 # t13b-ok: guest-side keyring unlock for the trial, throwaway VM
     sleep 1
 
     out=$("$HS" status 2>&1 | head -1)
@@ -70,7 +70,7 @@ export H HS W fails
 # real login keyring.
 mkdir -p "$W/data" "$W/xrt" "$W/rt" && chmod 700 "$W/xrt" "$W/rt"
 export XDG_DATA_HOME="$W/data" XDG_RUNTIME_DIR="$W/xrt"
-bus_pid=$(dbus-daemon --session --fork --print-pid --address="unix:path=$W/rt/bus") || { no "private session bus starts"; exit 1; }
+bus_pid=$(dbus-daemon --session --fork --print-pid --address="unix:path=$W/rt/bus") || { no "private session bus starts"; exit 1; } # t13b-ok: private trial bus on a throwaway VM, killed after the trial
 [ -S "$W/rt/bus" ] && ok "0 private session bus listens at <rt>/bus" || no "0 bus socket at <rt>/bus"
 DBUS_SESSION_BUS_ADDRESS="unix:path=$W/rt/bus" bash -c 'inner; exit $fails'
 rc=$(( $? + fails ))
