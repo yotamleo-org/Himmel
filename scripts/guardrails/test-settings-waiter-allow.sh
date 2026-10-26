@@ -68,9 +68,9 @@ if [ -z "$line" ]; then
   exit 1
 fi
 kit="/srv/tester/himmel/scripts/handover/chief-kit"
-cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/chiefs/x-chief.md#g' \
+cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-chief.md#g' \
   -e 's#{{SESSION_NAME}}#x-chief#g' -e 's# \[--succession [^]]*\]##')
-cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/chiefs/x-chief.md#g' \
+cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-chief.md#g' \
   -e 's#{{SESSION_NAME}}#x-chief#g' -e 's#\[--succession \([^]]*\)\]#--succession \1#')
 
 waiter_rule='Bash(bash scripts/handover/chief-kit/chief-wait.sh:*)'

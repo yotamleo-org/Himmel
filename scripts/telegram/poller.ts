@@ -1435,12 +1435,13 @@ const TELEGRAM_PROFILE = "telegram";
 // cache only grows on a real on-disk change, never per-request — and every
 // function (loadRegistry/validateRegistry/mcpServersForProfile/
 // collectMcpServerDefs) comes from the SAME fresh import, so they can never
-// drift out of sync with each other. plugin-profiles.mjs's only STATIC imports are
-// node:* builtins; its LAZY local graph (loadListingLib() ->
+// drift out of sync with each other. plugin-profiles.mjs's STATIC local import is
+// ../lib/env-alias.mjs (-> is-main.mjs); its LAZY local graph (loadListingLib() ->
 // skill-listing.mjs -> role-requires.mjs + skill-cost.mjs) is needed because
 // the dispatch's --settings resolution (opts.skillEntries) is
-// routed through here too, so those siblings are copied beside it under their own
-// names (the relative imports must resolve) and their mtimes join the cache key.
+// routed through here too, so the copy sits in a lanes/ dir and every file of that
+// graph is copied to its own relative path beside it (the relative imports must
+// resolve), and their mtimes join the cache key.
 //
 // A `?v=<mtime>` query-string on the specifier does NOT bust Bun's dynamic
 // import() cache (measured: two imports of the same path differing only by
@@ -1454,9 +1455,9 @@ const pluginProfilesModuleCache = new Map<string, Promise<PluginProfilesModule>>
 // cacheKey -> its cachebust tmp dir, so a later successful import for the SAME
 // modulePath can clean up the now-unreachable prior one (otherwise every distinct mtime leaks its tmp dir for the bridge's lifetime).
 const pluginProfilesTempDirs = new Map<string, string>();
-// plugin-profiles.mjs's lazy local import graph, copied beside it when present
-// (a single-file fixture has none) — see the lazy-graph note above.
-const PLUGIN_PROFILES_LAZY_GRAPH = ["skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs"];
+// plugin-profiles.mjs's local import graph, relative to its dir, copied beside it
+// when present (a single-file fixture has none) — see the lazy-graph note above.
+const PLUGIN_PROFILES_LAZY_GRAPH = ["skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs", "../lib/env-alias.mjs", "../lib/is-main.mjs"];
 export async function loadPluginProfilesModule(modulePath: string = join(REPO_ROOT, "scripts", "lanes", "plugin-profiles.mjs")): Promise<PluginProfilesModule> {
   const mtimeMs = (await stat(modulePath)).mtimeMs;
   const siblings: [string, number][] = [];
@@ -1470,9 +1471,15 @@ export async function loadPluginProfilesModule(modulePath: string = join(REPO_RO
     cached = (async () => {
       const dir = await mkdtemp(join(tmpdir(), "plugin-profiles-cachebust-"));
       pluginProfilesTempDirs.set(cacheKey, dir);
-      const dest = join(dir, `plugin-profiles.${mtimeMs}.mjs`);
+      const lanes = join(dir, "lanes");
+      const dest = join(lanes, `plugin-profiles.${mtimeMs}.mjs`);
+      await mkdir(lanes);
       await copyFile(modulePath, dest);
-      for (const [name] of siblings) await copyFile(join(dirname(modulePath), name), join(dir, name));
+      for (const [name] of siblings) {
+        const to = join(lanes, name);
+        await mkdir(dirname(to), { recursive: true });
+        await copyFile(join(dirname(modulePath), name), to);
+      }
       return import(pathToFileURL(dest).href) as Promise<PluginProfilesModule>;
     })().catch((err) => {
       // A failed copy/import must NOT stick — evict the
@@ -2477,7 +2484,7 @@ export async function main(): Promise<void> {
   const flushTimer = setInterval(guarded(() => flushOutboxes(root, send)), FLUSH_MS);
   if (typeof flushTimer.unref === "function") flushTimer.unref();
   // Stale chief-waiter heartbeat alert. chief-wait.sh
-  // rewrites chiefs/<name>.md.wait on every poll; a gap past
+  // rewrites consoles/<name>.md.wait on every poll; a gap past
   // HEARTBEAT_STALE_MS while the chief's own session is still alive means
   // its background waiter may have died silently (an unreproduced
   // harness low-memory kill) — a SIGKILL alone re-invokes the chief, so

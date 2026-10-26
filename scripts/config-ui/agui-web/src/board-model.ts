@@ -5,7 +5,7 @@ import { fleetSections, type Filters, type Row } from "./fleet-model";
 export const STAGES = ["dispatch", "live", "pr", "ready", "go", "merged"] as const;
 export type Stage = (typeof STAGES)[number];
 export const BOARD_URL = (console: string) => `/api/agui/board?console=${encodeURIComponent(console)}`;
-export const BRIEF_URL = (leg: string) => `/api/agui/brief?leg=${encodeURIComponent(worker)}`;
+export const BRIEF_URL = (leg: string) => `/api/agui/brief?leg=${encodeURIComponent(leg)}`;
 
 export type Legend = Record<string, Record<string, { color: string; label: string }>>;
 export type TimelineBullet = { at: string | null; stage: string; marker: string; text: string };
@@ -49,7 +49,7 @@ export function joinBoard(rows: Row[], board: Board): Joined[] {
     if (!cur || (r.live !== false && (cur.live === false || start(r) >= start(cur)))) byLabel.set(label(r.name), r);
   }
   const need = new Map(board.needs_you.map((n) => [n.leg, n]));
-  return board.legs.map((worker) => ({ worker, row: byLabel.get(worker.leg) ?? null, need: need.get(worker.leg) ?? null }));
+  return board.legs.map((leg) => ({ leg, row: byLabel.get(leg.leg) ?? null, need: need.get(leg.leg) ?? null }));
 }
 
 // The needs-you cards the rail's filters leave: a worker shows when its fleet row is on the page (a worker with no row
@@ -79,7 +79,7 @@ export function stageSegments(l: BoardLeg, now: number): { stage: Stage; from: n
 // The drawer: where it is, and the places it left (its own history, so Back stays inside the panel).
 export type Drawer = { leg: string; stage: Stage; back: { leg: string; stage: Stage }[] };
 export const openAt = (from: Drawer | null, leg: string, stage: Stage): Drawer =>
-  from && (from.leg !== worker || from.stage !== stage) ? { worker, stage, back: [...from.back, { leg: from.leg, stage: from.stage }].slice(-20) } : from ?? { worker, stage, back: [] };
+  from && (from.leg !== leg || from.stage !== stage) ? { leg, stage, back: [...from.back, { leg: from.leg, stage: from.stage }].slice(-20) } : from ?? { leg, stage, back: [] };
 
 // left/right move between stages, up/down between workers (the order the page lists them), Esc closes (null), Backspace goes back.
 export function applyKey(d: Drawer, key: string, legs: string[]): Drawer | null {
@@ -88,11 +88,11 @@ export function applyKey(d: Drawer, key: string, legs: string[]): Drawer | null 
     const p = d.back[d.back.length - 1];
     return p ? { leg: p.leg, stage: p.stage, back: d.back.slice(0, -1) } : d;
   }
-  const si = STAGES.indexOf(d.stage), li = workers.indexOf(d.leg);
+  const si = STAGES.indexOf(d.stage), li = legs.indexOf(d.leg);
   const to = key === "ArrowRight" ? { leg: d.leg, stage: STAGES[Math.min(STAGES.length - 1, si + 1)] }
     : key === "ArrowLeft" ? { leg: d.leg, stage: STAGES[Math.max(0, si - 1)] }
-      : key === "ArrowDown" && li >= 0 ? { leg: workers[Math.min(workers.length - 1, li + 1)], stage: d.stage }
-        : key === "ArrowUp" && li >= 0 ? { leg: workers[Math.max(0, li - 1)], stage: d.stage } : null;
+      : key === "ArrowDown" && li >= 0 ? { leg: legs[Math.min(legs.length - 1, li + 1)], stage: d.stage }
+        : key === "ArrowUp" && li >= 0 ? { leg: legs[Math.max(0, li - 1)], stage: d.stage } : null;
   return to ? openAt(d, to.leg, to.stage) : d;
 }
 

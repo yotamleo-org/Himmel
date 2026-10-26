@@ -258,7 +258,7 @@ def validate(worker, i, repo):
             die('worker %s: %s names a dropped platform (%r); Windows and WSL are dropped, so only a removal worker may touch them (platform_removal true plus a remove/drop/delete/retire/sweep/clean title)' % (worker['label'], k, m.group(0)))
     if re.search(r'<[^<>\s]+>', worker['prior']) or worker['prior'].strip().lower().rstrip('.') == 'none':
         die('worker %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % worker['label'])
-    if 'grants' in leg:
+    if 'grants' in worker:
         validate_grants(worker, repo)
 
 
@@ -574,7 +574,7 @@ def main():
         workers = json.load(open(a.legs))
     except (OSError, ValueError) as e:
         die('cannot read %s: %s' % (a.legs, e), 2)
-    if not isinstance(workers, list) or not legs:
+    if not isinstance(workers, list) or not workers:
         die('%s must be a non-empty JSON list' % a.legs, 2)
     for i, l in enumerate(workers):
         validate(l, i, a.repo)
@@ -595,7 +595,7 @@ def main():
     os.makedirs(a.bucket, exist_ok=True)
 
     # Validate and reserve names for every worker before touching a worktree.
-    for l in legs:
+    for l in workers:
         check_lane_reads(l, a.handover_root)
         l['hook'] = bool(l.get('hook'))
         l['judge'] = bool(l.get('judge'))
@@ -620,7 +620,7 @@ def main():
                 die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the workers after it. Create it from %s first: bash scripts/worktree.sh new %s --no-prune' % (l['wt'], l['label'], a.repo, l['branch']))
 
     wt_cmd = os.environ.get('GEN_BRIEFS_WORKTREE_CMD')
-    for l in legs:
+    for l in workers:
         if not a.no_worktree and l.get('kind') != 'rm':
             argv = [wt_cmd, l['branch']] if wt_cmd else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
             r = subprocess.run(argv, cwd=a.repo, capture_output=True, text=True)
@@ -651,11 +651,11 @@ def main():
     with open(a.legs + '.out', 'w') as f:
         json.dump(workers, f, indent=1)
         f.write('\n')
-    for l in legs:
+    for l in workers:
         doc = os.path.join(a.bucket, l['stem'] + '.md')
         print('%s %s %s' % (l['label'], l['nonce'], doc))
     if a.manifest:
-        for l in legs:
+        for l in workers:
             # a missing --lane is stored `unknown` and relay-batch refuses it; the
             # launchers written above are native headed-arm-worker launches unless the worker says otherwise.
             arm = (' --arm ' + l['ab_arm']) if l.get('ab_arm') else ''

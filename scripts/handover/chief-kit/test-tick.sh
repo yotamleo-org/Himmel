@@ -2431,11 +2431,11 @@ same 'fails= counts this shift only: rows, distinct workers, top class by worker
     printf '%s\n' '{"ts":"2026-10-07T02:00:00Z","class":"denied/guard-b","legs":3,"decision":"commented","ticket":"HIMMEL-9002"}'
 } > "$HIMMEL_FAILURE_ROUTES_LOG"
 same 'fails= !<recur> = distinct classes the router did not skip this shift (HIMMEL-4670)' "$(fails_of "$d4670")" '3/2@denied/guard-a*2!2'
-printf '%s\n' '{"ts":"2026-10-07T03:20:00Z","eval":"worker-trajectory","status":"inconclusive","meta":{"digest_error":"timeout"}}' > "$HIMMEL_EVAL_RUNS_LEDGER"
+printf '%s\n' '{"ts":"2026-10-07T03:20:00Z","eval":"leg-trajectory","status":"inconclusive","meta":{"digest_error":"timeout"}}' > "$HIMMEL_EVAL_RUNS_LEDGER"
 same 'fails=? when the latest wrap digest this shift failed (HIMMEL-4670)' "$(fails_of "$d4670")" '?'
-printf '%s\n' '{"ts":"2026-10-07T03:30:00Z","eval":"worker-trajectory","status":"ok","meta":{}}' >> "$HIMMEL_EVAL_RUNS_LEDGER"
+printf '%s\n' '{"ts":"2026-10-07T03:30:00Z","eval":"leg-trajectory","status":"ok","meta":{}}' >> "$HIMMEL_EVAL_RUNS_LEDGER"
 same 'a later good digest clears fails=? (HIMMEL-4670)' "$(fails_of "$d4670")" '3/2@denied/guard-a*2!2'
-printf '%s\n' '{"ts":"2026-10-07T02:30:00Z","eval":"worker-trajectory","status":"inconclusive","meta":{"digest_error":"crash"}}' > "$HIMMEL_EVAL_RUNS_LEDGER"
+printf '%s\n' '{"ts":"2026-10-07T02:30:00Z","eval":"leg-trajectory","status":"inconclusive","meta":{"digest_error":"crash"}}' > "$HIMMEL_EVAL_RUNS_LEDGER"
 same 'a failed digest from before this shift does not read ? (HIMMEL-4670)' "$(fails_of "$d4670")" '3/2@denied/guard-a*2!2'
 rm -f "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"; mkdir -p "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 same 'fails=? when the ledger is unreadable (HIMMEL-4670)' "$(fails_of "$d4670")" '?'

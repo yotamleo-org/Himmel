@@ -71,7 +71,7 @@ export CHIEF_WAIT_DISPATCH="$STUB/dispatch.sh"
 calls() { if [ -f "$STUB/calls" ]; then wc -l < "$STUB/calls" | tr -d ' '; else echo 0; fi; }
 wakes() { grep -c '^WAKE underfilled' "$1" 2>/dev/null; }
 
-new_inbox() { mkdir -p "$WORK/$1/chiefs"; : > "$WORK/$1/chiefs/c.md"; printf '%s' "$WORK/$1/chiefs/c.md"; }
+new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
 # arm <inbox> <outfile> <seconds>: one foreground arm that exits on a wake or after <seconds> (rc 124)
 arm() { timeout "$3" bash "$WAIT" "$1" --workers "N1.md" > "$2" 2>/dev/null; rc=$?; }  # gnu-ok: Linux-only kit; pipefail-ok: none set
 

@@ -8,7 +8,7 @@
 # (dir 0700, files 0600), one pair of files per worker key:
 #   <key>.page   written by chief-wait.sh when it pages a SHIP-STEP/PAUSE-RISK rise
 #   <key>.ack    written by ack-denial.sh when the operator has looked
-# Both are `name=value` lines: worker=, count=, class=, ts= (epoch seconds).
+# Both are `name=value` lines: leg=, count=, class=, ts= (epoch seconds).
 #
 # The records hold the worker label, count and class ONLY -- exactly what the
 # Telegram page carries. Nothing here reads the classifier-denial log (its
@@ -67,7 +67,7 @@ denial_record_write() {
     # Created 0700; an existing dir is left as the operator set it.
     [ -d "$dir" ] || { ( umask 077; mkdir -p "$dir" ) 2>/dev/null && chmod 700 "$dir" 2>/dev/null; } || return 1
     tmp="$( umask 077; mktemp "$dir/.rec.XXXXXX" 2>/dev/null )" || return 1
-    if printf 'worker=%s\ncount=%s\nclass=%s\nts=%s\n' "$2" "$3" "$4" "$5" > "$tmp" 2>/dev/null \
+    if printf 'leg=%s\ncount=%s\nclass=%s\nts=%s\n' "$2" "$3" "$4" "$5" > "$tmp" 2>/dev/null \
         && chmod 600 "$tmp" 2>/dev/null \
         && mv -f "$tmp" "$1" 2>/dev/null; then
         return 0

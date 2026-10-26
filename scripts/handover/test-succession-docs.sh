@@ -341,7 +341,7 @@ done
 # lines on every re-arm. Pin both, plus the authority limit the operator ruled.
 step11="$(awk '/^11\. \*\*/ { f = 1 } /^## Live state/ { f = 0 } f' "$CHIEF")"
 mons="$(section "$CHIEF" '^## Monitors')"
-contains 'ACTION ZERO step 11 creates the inbox before the bridge will write' "$(flat "$step11")" 'chiefs/{{SESSION_NAME}}.md'
+contains 'ACTION ZERO step 11 creates the inbox before the bridge will write' "$(flat "$step11")" 'consoles/{{SESSION_NAME}}.md'
 # the inbox is read by the step-10 event waiter, not a 30-min
 # Monitor re-arm loop (every expiry cost a full-context turn).
 absent 'ACTION ZERO step 11 no longer re-arms a Monitor on expiry (HIMMEL-3509)' "$(flat "$step11")" 're-armed on every expiry notice'
@@ -352,7 +352,7 @@ contains 'ACTION ZERO step 11: GO verification is never skipped' "$(flat "$step1
 contains '## Monitors names five monitors' "$mons" 'Five, and no more'
 contains '## Monitors telegram row arms inbox-follow.sh (persisted cursor: no gap, no replay)' "$mons" 'inbox-follow.sh'
 # shellcheck disable=SC2016  # literal doc text: the ${...} must NOT expand
-retired_tail='`tail -n0 -F "${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/chiefs/{{SESSION_NAME}}.md"`'
+retired_tail='`tail -n0 -F "${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/{{SESSION_NAME}}.md"`'
 if [ "$(printf '%s\n' "$retired_tail" | grep -icE -- 'tail -n0 -F')" = 1 ]; then
     pass 'control: the bare-tail pattern matches the retired telegram monitor command'
 else

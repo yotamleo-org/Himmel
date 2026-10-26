@@ -3521,9 +3521,11 @@ test("loadPluginProfilesModule serves the SAME cached import when the file's mti
 // validator fails every dispatch with "gateAllow is restricted to worker-shaped
 // profiles"; a fresh import validates and picks up the new registry.
 test("cold runFn: a registry + validator change under a running poller still validates, with no restart", async () => {
-  const lanes = mkdtempSync(join(tmpdir(), "lanes-fixture-"));
+  const fixture = mkdtempSync(join(tmpdir(), "lanes-fixture-"));
+  const lanes = join(fixture, "lanes");
+  mkdirSync(join(fixture, "lib")); mkdirSync(lanes);
   const src = join(import.meta.dir, "..", "lanes");
-  for (const f of ["plugin-profiles.mjs", "plugin-profiles.json", "skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs"]) {
+  for (const f of ["plugin-profiles.mjs", "plugin-profiles.json", "skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs", "../lib/env-alias.mjs", "../lib/is-main.mjs"]) {
     await writeFile(join(lanes, f), await readFile(join(src, f), "utf8"));
   }
   const t0 = new Date(Date.now() - 60_000);
@@ -3541,7 +3543,7 @@ test("cold runFn: a registry + validator change under a running poller still val
   expect(JSON.parse(captured[0]!).enabledPlugins["obsidian-second-brain@himmel"]).toBe(true);
 
   const reg = JSON.parse(await readFile(join(lanes, "plugin-profiles.json"), "utf8"));
-  reg.profiles["leg-x4687"] = reg.profiles["leg-e2e"];
+  reg.profiles["worker-x4687"] = reg.profiles["worker-e2e"];
   reg.profiles.telegram.enable = reg.profiles.telegram.enable.filter((id: string) => id !== "obsidian-second-brain@himmel");
   await writeFile(join(lanes, "plugin-profiles.json"), JSON.stringify(reg, null, 2));
   const mjs = await readFile(join(lanes, "plugin-profiles.mjs"), "utf8");

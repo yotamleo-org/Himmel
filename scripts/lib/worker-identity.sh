@@ -14,8 +14,8 @@
 #   label   N<k>   -- the token docs/handover/chief-template.md tells a chief
 #                     to write in its `## Live state` legs: line.
 # Also accepted, because live and archived docs carry it: the legacy family
-#   <TICKET>[-<slug>]-worker[N]<k>-<date>-RESUME.md
-# (the older template spelled it -worker<k>-, older chiefs -legN<k>-).
+#   <TICKET>[-<slug>]-leg[N]<k>-<date>-RESUME.md
+# (the older template spelled it -leg<k>-, older chiefs -legN<k>-).
 # It yields the same N<k> label, and the session name the chief derives
 # for it: <TICKET>-N<k>[-<slug>]. Anything else falls back to the whole stem as
 # its own label, which is self-consistent but joins to no session.
@@ -45,8 +45,8 @@ WORKER_SESSION_LABEL_CLASS='A-Za-z0-9_.-'
 worker_identity() {
     local stem="$1" session undated sfx derived="" label=""
     local re_canon='^[A-Za-z][A-Za-z]*-[0-9]+-(N[0-9]+[a-z]*)(-.*)?$'
-    local re_legacy='^([A-Za-z][A-Za-z]*-[0-9]+)(-(.*))?-worker(N?)([0-9]+)([a-z]*)(-.*)?$'
-    local re_legacy_key='^([A-Z][A-Z]*)(-(.*))?-worker(N)([0-9]+)([a-z]*)(-.*)?$'
+    local re_legacy='^([A-Za-z][A-Za-z]*-[0-9]+)(-(.*))?-leg(N?)([0-9]+)([a-z]*)(-.*)?$'
+    local re_legacy_key='^([A-Z][A-Z]*)(-(.*))?-leg(N)([0-9]+)([a-z]*)(-.*)?$'
     stem="${stem##*/}"
     stem="${stem%.md}"
     session="${stem%-RESUME}"

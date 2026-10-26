@@ -59,7 +59,7 @@ export type AlertedState = Map<string, boolean>;
 
 const WAIT_SUFFIX = ".md.wait";
 
-// Scans <root>/chiefs/*.md.wait — the heartbeat files chief-wait.sh
+// Scans <root>/consoles/*.md.wait — the heartbeat files chief-wait.sh
 // writes next to each chief's own file inbox (consoleInboxPath in
 // chief-route.ts). Never touches the inbox .md files themselves.
 export async function checkStaleHeartbeats(

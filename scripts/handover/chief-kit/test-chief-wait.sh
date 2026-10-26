@@ -105,7 +105,7 @@ wait_exit() {
     done
     rc=running
 }
-new_inbox() { mkdir -p "$WORK/$1/chiefs"; : > "$WORK/$1/chiefs/c.md"; printf '%s' "$WORK/$1/chiefs/c.md"; }
+new_inbox() { mkdir -p "$WORK/$1/consoles"; : > "$WORK/$1/consoles/c.md"; printf '%s' "$WORK/$1/consoles/c.md"; }
 start() { # <inbox> <outfile> [tick args...]
     local inbox="$1" out="$2"; shift 2
     bash "$WAIT" "$inbox" "$@" > "$out" 2>"$out.err" &
@@ -481,11 +481,11 @@ kill -0 "$P2" 2>/dev/null && alive=$((alive + 1))
 check "(p) exactly one of two simultaneous waiters is still running" "1" "$alive"
 kill "$P1" "$P2" 2>/dev/null; wait "$P1" "$P2" 2>/dev/null
 
-# --- (q) a first start with no chiefs/ directory yet still arms -----------
+# --- (q) a first start with no consoles/ directory yet still arms -----------
 reset_stub
-I="$WORK/q/chiefs/c.md"
+I="$WORK/q/consoles/c.md"
 start "$I" "$WORK/q.out" --workers "N1.md"
-wait_hb "$I" || fail "(q) no baseline heartbeat when chiefs/ was absent"
+wait_hb "$I" || fail "(q) no baseline heartbeat when consoles/ was absent"
 check "(q) the waiter created the inbox" "yes" "$([ -f "$I" ] && echo yes)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
@@ -799,20 +799,20 @@ wait_exit "$WPID"
 check "(y4) a tick line with no cloud= field is still a valid sample" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# --- (sec) an inbox outside the */chiefs/<name>.md layout is refused before
+# --- (sec) an inbox outside the */consoles/<name>.md layout is refused before
 # a byte of it is read: the waiter streams the inbox's lines to stdout, so a
 # secret path would print the secret. A symlink into the layout is judged by
 # where it lands. RED control (chief-wait.sh before this change): both
 # print the secret line under WAKE telegram and exit 0.
 reset_stub
-mkdir -p "$WORK/sec/.himmel" "$WORK/sec/chiefs"
+mkdir -p "$WORK/sec/.himmel" "$WORK/sec/consoles"
 printf 'SECRET-HMAC-KEY\n' > "$WORK/sec/.himmel/go-hmac.key"
 timeout 5 bash "$WAIT" "$WORK/sec/.himmel/go-hmac.key" --workers "N1.md" > "$WORK/sec.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
 check "(sec) a secret-shaped inbox path is refused" "2" "$rc"
 check "(sec) the refused secret is never printed" "0" "$(grep -c SECRET "$WORK/sec.out")"
-ln -s "$WORK/sec/.himmel/go-hmac.key" "$WORK/sec/chiefs/c.md"
-timeout 5 bash "$WAIT" "$WORK/sec/chiefs/c.md" --workers "N1.md" > "$WORK/sec-ln.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
-check "(sec) a chiefs/ symlink onto a secret is refused" "2" "$rc"
+ln -s "$WORK/sec/.himmel/go-hmac.key" "$WORK/sec/consoles/c.md"
+timeout 5 bash "$WAIT" "$WORK/sec/consoles/c.md" --workers "N1.md" > "$WORK/sec-ln.out" 2>/dev/null; rc=$?  # gnu-ok: Linux-only kit
+check "(sec) a consoles/ symlink onto a secret is refused" "2" "$rc"
 check "(sec) the symlinked secret is never printed" "0" "$(grep -c SECRET "$WORK/sec-ln.out")"
 # An inbox swapped for a link onto a secret after the start check is refused
 # at the next drain, never printed.

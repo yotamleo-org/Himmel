@@ -7,7 +7,7 @@ import { basename, join } from "node:path";
 import type { Section } from "./health-sources";
 import type { GhIssue } from "./tracker-sources";
 
-export const SYNC_LABEL = "worker-blocked";
+export const SYNC_LABEL = "leg-blocked";
 const TRAIN_RE = /^v1\.\d+\.\d+[a-z]?$/;
 const TAIL_BYTES = 64 * 1024;
 const TREND_ROWS = 30;
@@ -258,7 +258,7 @@ export function legSync(tickets: Ticket[]): SyncOp[] {
   for (const t of tickets) {
     if (!t.leg) continue;
     const { label, marker, reason } = t.leg, key = `HIMMEL-${t.k}`;
-    const line = `[worker-sync] ${label} ${marker}${reason ? `: ${reason}` : ""}`;
+    const line = `[leg-sync] ${label} ${marker}${reason ? `: ${reason}` : ""}`;
     const noted = (t.noted ?? "").includes(line);
     const has = t.labels.includes(SYNC_LABEL);
     if (STUCK.has(marker)) {

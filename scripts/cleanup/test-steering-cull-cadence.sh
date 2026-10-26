@@ -66,8 +66,8 @@ export CADENCE_ALERT_SEND_CMD="$W/send.sh"
 printf '#!/bin/sh\nexit 0\n' > "$W/send.sh"; chmod +x "$W/send.sh"
 
 PROP="$W/proposals"
-INBOX_ROOT="$W/bridge"; mkdir -p "$INBOX_ROOT/chiefs"
-INBOX="$INBOX_ROOT/chiefs/test-chief.md"; : > "$INBOX"
+INBOX_ROOT="$W/bridge"; mkdir -p "$INBOX_ROOT/consoles"
+INBOX="$INBOX_ROOT/consoles/test-chief.md"; : > "$INBOX"
 export BRIDGE_ROOT="$INBOX_ROOT"
 
 TODAY="2026-10-14"
@@ -165,7 +165,7 @@ exit 20
 SH
 chmod +x "$W/sweep.sh"
 export STEERING_CULL_SWEEP_CMD="$W/sweep.sh"
-INB_A="$INBOX_ROOT/chiefs/old-chief.md"; INB_B="$INBOX_ROOT/chiefs/new-chief.md"
+INB_A="$INBOX_ROOT/consoles/old-chief.md"; INB_B="$INBOX_ROOT/consoles/new-chief.md"
 : > "$INB_A"; : > "$INB_B"
 cat > "$W/sweep.txt" <<'EOF'
 slug=u__himmel__HIMMEL-5000-worker-2026-10-14 session=s host=h age=5s status=OK

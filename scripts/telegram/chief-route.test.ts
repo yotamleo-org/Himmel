@@ -274,7 +274,7 @@ test("HIMMEL-7573: the pick-a-chief prompts tell the operator to send /chief, ne
     heartbeat(r); heartbeat(r, "HIMMEL-second-chief");
     await handleInbound(r, say(text), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
     expect(replies.join("\n")).toContain("choose /chief <name> <text>");
-    expect(replies.join("\n")).not.toContain("/chief");
+    expect(replies.join("\n")).not.toContain("/console");
   }
 });
 
@@ -382,7 +382,7 @@ test("a console with no armed inbox gets an error reply, no file, and no cold se
   expect(replies[0]).toContain(NAME);
 });
 
-test("a traversal-shaped console name is refused: nothing written outside chiefs/, no cold session", async () => {
+test("a traversal-shaped console name is refused: nothing written outside consoles/, no cold session", async () => {
   const r = root(); const replies: string[] = []; const ran: string[] = [];
   mkdirSync(join(r, "consoles"), { recursive: true });
   writeFileSync(join(r, "escape.md"), "");
@@ -439,7 +439,7 @@ test("first waiter arm queues one announcement per identity, including successor
   const out = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").map(l => JSON.parse(l));
   expect(out.map(m => m.console)).toEqual([NAME, "successor"]);
   expect(out[0].text).toContain(`/chief <text>`);
-  expect(out.map(m => m.text).join("\n")).not.toContain("/chief");
+  expect(out.map(m => m.text).join("\n")).not.toContain("/console");
   expect(out[1].text).toContain("successor");
 });
 
@@ -623,7 +623,7 @@ test("HIMMEL-5125: a fleet verb queues to a busy console", async () => {
 
 test("HIMMEL-5125: a unique name fragment routes to its console and is stripped from the text", async () => {
   const r = root(); const a = heartbeat(r, "HIMMEL-nextleg-2026-10-10CO-roadmap-chief"); const b = heartbeat(r, "HIMMEL-nextleg-2026-10-10V-other-chief", "waiting", 900);
-  for (const frag of ["CO", "roadmap-conso", "ROADMAP"]) {
+  for (const frag of ["CO", "roadmap-chi", "ROADMAP"]) {
     writeFileSync(a, ""); writeFileSync(b, "");
     const reply = await routeText(r, `/chief ${frag} do the thing`);
     expect(readFileSync(a, "utf8")).toContain("] do the thing");

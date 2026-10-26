@@ -147,7 +147,7 @@ _mba_chief_inbox_path() {
         *[/\\]*|*..*) return 1 ;;
         *[[:space:]]*) return 1 ;;
     esac
-    printf '%s/chiefs/%s.md' "$root" "$name"
+    printf '%s/consoles/%s.md' "$root" "$name"
 }
 
 # Append $2 (no trailing newline) to file $1 ONLY if it already

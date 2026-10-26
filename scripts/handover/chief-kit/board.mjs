@@ -189,7 +189,7 @@ const splitTopLevel = (s) => {
 const numberedEntries = (text) => text.split('\n')
     .flatMap((l) => l.split(/(?=\(\d+\) )/)).filter((e) => /^\(\d+\) /.test(e)).map((e) => e.trim());
 const decisionsLine = liveField('decisions');
-const decisionFiles = decisionsLine.match(/specs\/decisions\/chief-decisions-[0-9-]+\.md/g) || [];
+const decisionFiles = decisionsLine.match(/specs\/decisions\/(?:chief|console)-decisions-[0-9-]+\.md/g) || [];
 const fileDecisions = [
     ...decisionFiles.flatMap((f) => (existsSync(join(bucket, f))
         ? numberedEntries(readFileSync(join(bucket, f), 'utf8')) : [`missing decisions file: ${f}`])),
@@ -705,7 +705,7 @@ const costSection = (() => {
 
 // Exploration cost: the weighted tokens each session spent before its first
 // edit or commit, read from the digest markers worker_ledger.py leaves in
-// WORKER_SESSION_DIGEST_STATE_DIR (else ~/.himmel/state/worker-digest) -- the digest's own `exploration`
+// WORKER_SESSION_DIGEST_STATE_DIR (else ~/.himmel/state/leg-digest) -- the digest's own `exploration`
 // field, not tick data. Sessions that started in the last BOARD_EXPLORATION_HOURS (24) and
 // were cut by an edit or commit: fleet median, worst 5, and a FLAG on any session over
 // WORKER_SESSION_EXPLORATION_FLAG_TOKENS (100000). No such session, or an unreadable dir, renders

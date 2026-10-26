@@ -72,7 +72,7 @@ printf 'cache-probe first-turn\nsession\tstart\tinput\tcache_read\tcache_create\
 
 # ── Fixture eval-runs ledger ────────────────────────────────────────────────
 # pdd-share: an older row (2.5 %) and the newest row, 13 of 120 = 10.8 %, Wilson 6.4-17.7.
-# worker-trajectory: one version 1 row (never counted), two version 2 rows of which one has no verdict:
+# leg-trajectory: one version 1 row (never counted), two version 2 rows of which one has no verdict:
 #                 test-first n = 1, under the 30-session floor, so "not measured yet".
 E="$TMP/eval-runs.jsonl"
 mkrow() { # ts eval config-json metrics-json ci-json - one valid eval-runs row, built by the ledger's own writer
@@ -89,7 +89,7 @@ pdd_row() { # ts k pct lo hi
     "{\"pdd.pct\":{\"lo\":$4,\"hi\":$5},\"ticket_first.pct\":{\"lo\":0.1313,\"hi\":0.2712},\"red_green.pct\":{\"lo\":0.4856,\"hi\":0.6598}}"
 }
 traj_row() { # ts trajectory_v red_before_green
-  mkrow "$1" worker-trajectory "{\"trajectory_v\":$2}" "{\"red_before_green\":$3}" '{}'
+  mkrow "$1" leg-trajectory "{\"trajectory_v\":$2}" "{\"red_before_green\":$3}" '{}'
 }
 {
   pdd_row 2026-10-23T10:00:00Z 3 0.025 0.0085 0.0711

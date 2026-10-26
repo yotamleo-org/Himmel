@@ -177,8 +177,8 @@ tick_line() {
 }
 wait_hb() { local n=0; while [ "$n" -lt 50 ]; do grep -q 'key=[0-9a-f]' "$1.wait" 2>/dev/null && return 0; sleep 0.1; n=$((n+1)); done; return 1; }
 waiter_case() { # <name> <baseline legs> <new legs>
-    local inbox="$W/in-$1/chiefs/c.md" n=0 pid
-    inbox="$W/in-${#1}-$2-$3/chiefs/c.md"
+    local inbox="$W/in-$1/consoles/c.md" n=0 pid
+    inbox="$W/in-${#1}-$2-$3/consoles/c.md"
     mkdir -p "$(dirname "$inbox")"; : > "$inbox"
     tick_line "$2"
     bash "$WAIT" "$inbox" --workers "N1.md" > "$W/w.out" 2>/dev/null &

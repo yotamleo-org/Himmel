@@ -58,10 +58,10 @@ XDG_RUNTIME_DIR="$TMP/xdg"
 mkdir -p "$HANDOVER_DIR" "$XDG_RUNTIME_DIR"
 export HANDOVER_DIR XDG_RUNTIME_DIR
 # the chief's waiter heartbeat lives next to its Telegram inbox,
-# <bridge>/chiefs/<chief doc name>.wait (chief.sh's own inbox path).
+# <bridge>/consoles/<chief doc name>.wait (chief.sh's own inbox path).
 BRIDGE_ROOT="$TMP/bridge"
-WAIT_HB="$BRIDGE_ROOT/chiefs/FIXTURE-nextleg-chief.md.wait"
-mkdir -p "$BRIDGE_ROOT/chiefs"
+WAIT_HB="$BRIDGE_ROOT/consoles/FIXTURE-nextleg-chief.md.wait"
+mkdir -p "$BRIDGE_ROOT/consoles"
 export BRIDGE_ROOT
 
 SESSION_ID="test-session-himmel-3144"
@@ -88,7 +88,7 @@ cleanup() {
     rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" 2>/dev/null
     rmdir "$XDG_RUNTIME_DIR" 2>/dev/null
     rm -f "$WAIT_HB" 2>/dev/null
-    rmdir "$BRIDGE_ROOT/chiefs" "$BRIDGE_ROOT" 2>/dev/null
+    rmdir "$BRIDGE_ROOT/consoles" "$BRIDGE_ROOT" 2>/dev/null
     rm -f "$TMP/bank-preflight-stub.sh" 2>/dev/null
     rm -f "$TMP/prefix-repo-himmel-3148/scripts/hooks/stop-chief-idle-guard.sh" 2>/dev/null
     rm -f "$TMP/prefix-repo-himmel-3148/scripts/hooks/stop-chief-idle-guard.pre4567.sh" 2>/dev/null

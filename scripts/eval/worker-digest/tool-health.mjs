@@ -46,7 +46,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const matches = (r, withLane = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!selected.profile || r.profile === selected.profile) && (!withLane || !selected.lane || r.lane === selected.lane);
   const sessions = new Map();
   for (const r of evals) {
-    if (r.eval !== 'worker-trajectory' || typeof r.run_id !== 'string' || !['ok', 'partial', 'inconclusive'].includes(r.status)) continue;
+    if (r.eval !== 'leg-trajectory' || typeof r.run_id !== 'string' || !['ok', 'partial', 'inconclusive'].includes(r.status)) continue;
     const prev = sessions.get(r.run_id);
     if (!prev || prev.status !== 'ok' || r.status === 'ok') sessions.set(r.run_id, r);
   }

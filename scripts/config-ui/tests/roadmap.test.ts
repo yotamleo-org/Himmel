@@ -34,7 +34,7 @@ function station() {
   put(4, issue(4, "To Do", "To Do", ["v1.1.1"], "Left behind"));
   put(5, issue(5, "To Do", "To Do", ["v1.1.2"], "Resumed work", ["product", SYNC_LABEL]));
   put(6, issue(6, "To Do", "To Do", ["v1.1.3"], "Roadmap in the UI!"));
-  put(7, issue(7, "In Review", "In Progress", ["v1.1.2"], "Ready work", [], "### bot — 2026-10-08\n\n[worker-sync] N3 READY: PR #9\n"));
+  put(7, issue(7, "In Review", "In Progress", ["v1.1.2"], "Ready work", [], "### bot — 2026-10-08\n\n[leg-sync] N3 READY: PR #9\n"));
   writeFileSync(join(d, "jira-mirror", "HIMMEL.versions.tsv"), "v1.1.1\ttrue\t2026-10-01\nv1.1.2\tfalse\t\nv1.1.3\tfalse\t\n");
   const plan = join(d, "plan");
   mkdirSync(join(plan, "stage3"), { recursive: true }); mkdirSync(join(plan, "stage1"), { recursive: true });
@@ -50,9 +50,9 @@ function station() {
   writeFileSync(live, "## Results\n- 03:00 BLOCKED — waiting\n- 05:00 RESUMED — going again\n");
   const ready = join(legsDir, "HIMMEL-7-N3-ready-RESUME.md");
   writeFileSync(ready, "## Results\n- 06:00 READY: PR #9\n");
-  const workers = { state: "ok" as const, manifest: join(legsDir, "x.fleet.json"), legs: [
+  const legs = { state: "ok" as const, manifest: join(legsDir, "x.fleet.json"), legs: [
     { doc: blocked, status: "BLOCKED" }, { doc: live, status: "RESUMED" }, { doc: ready, status: "READY" }] };
-  return { d, mirror, plan, drift, workers };
+  return { d, mirror, plan, drift, legs };
 }
 const read = (s: ReturnType<typeof station>, o: Record<string, unknown> = {}) =>
   readRoadmap({ mirrorDir: s.mirror, planDir: s.plan, driftLog: s.drift, legs: s.legs, ...o });
@@ -135,7 +135,7 @@ test("worker -> Jira sync: flag a stuck worker with the reason, clear the flag o
   const of = (k: number) => ops.filter((o) => o.k === k);
   expect(of(1).map((o) => o.argv)).toEqual([
     ["edit", "HIMMEL-1", "--add-labels", SYNC_LABEL],
-    ["comment", "HIMMEL-1", "[worker-sync] N1466b BLOCKED: classifier permission hold"],
+    ["comment", "HIMMEL-1", "[leg-sync] N1466b BLOCKED: classifier permission hold"],
   ]);
   // resume: the flag goes, every other label stays (--labels is a full replace)
   expect(of(5).map((o) => o.argv)).toEqual([["edit", "HIMMEL-5", "--labels", "product"]]);

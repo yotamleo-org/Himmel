@@ -210,7 +210,7 @@
 #                        CHIEF_WAIT_LOCK_STATUS, CHIEF_WAIT_RELAY (tests).
 #
 # Exit: 0 = a WAKE block was printed; 1 = the inbox could not be drained;
-# 2 = usage or an inbox outside the */chiefs/<name>.md layout; 3 = another waiter is already live on this inbox (its pid is named).
+# 2 = usage or an inbox outside the */consoles/<name>.md layout; 3 = another waiter is already live on this inbox (its pid is named).
 #
 # Env: CHIEF_WAIT_INTERVAL tick interval in seconds (default 180);
 # CHIEF_WAIT_POLL_SEC inbox poll (default 1); CHIEF_WAIT_TICK_TIMEOUT
@@ -274,7 +274,7 @@ fi
 inbox="$1"; shift
 # The inbox's lines are printed to stdout, so only the bridge's inbox layout
 # is read: its canonical path (symlinks resolved) must be
-# */chiefs/<name>.md, and an existing inbox a regular file with one link.
+# */consoles/<name>.md, and an existing inbox a regular file with one link.
 # A secret (the GO key, .env) never sits at that shape. Checked at start and
 # again before each drain, so an inbox swapped for a link mid-wait is refused.
 # ponytail: a swap between the check and inbox-follow.sh's open still reads
@@ -285,15 +285,15 @@ inbox_fence() {
     canon="$(realpath -m -- "$inbox")" || canon=""  # gnu-ok: Linux-only kit (PLATFORM GUARD)
     name="${canon##*/}"
     case "$canon" in
-        */chiefs/*.md) ;;
+        */consoles/*.md) ;;
         *) name="" ;;
     esac
     case "${name%.md}" in
         "" | *[!A-Za-z0-9._-]*) name="" ;;
     esac
-    if [ -z "$name" ] || [ "${canon%/chiefs/*}/chiefs/$name" != "$canon" ] \
+    if [ -z "$name" ] || [ "${canon%/consoles/*}/consoles/$name" != "$canon" ] \
         || { [ -e "$inbox" ] && { [ ! -f "$canon" ] || [ "$(stat -c %h -- "$canon")" != 1 ]; }; }; then  # gnu-ok: Linux-only kit
-        echo "chief-wait: refusing inbox '$inbox' - it must be a */chiefs/<name>.md bridge inbox (a regular file with one link, no symlink out of the layout)" >&2
+        echo "chief-wait: refusing inbox '$inbox' - it must be a */consoles/<name>.md bridge inbox (a regular file with one link, no symlink out of the layout)" >&2
         return 1
     fi
 }

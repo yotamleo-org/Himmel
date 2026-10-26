@@ -233,7 +233,7 @@ chief_doc_name="${chief_doc##*/}"
 # wake source for Telegram lines and tick changes, and it exits after every
 # WAKE, so a chief that ends its turn without re-arming it stays deaf
 # whatever its worker count. Its heartbeat sits next to the chief's inbox,
-# <bridge>/chiefs/<session>.md.wait, the path chief.sh renders (the
+# <bridge>/consoles/<session>.md.wait, the path chief.sh renders (the
 # session name is the chief doc's basename). Live = state waiting|sampling,
 # heartbeat under WAITER_MAX_AGE_SECS (one sample may take 2 x 125 s), and its
 # pid alive. No bridge root to look in (HOME and BRIDGE_ROOT both unset)
@@ -245,7 +245,7 @@ bridge_root="${BRIDGE_ROOT:-}"
 [ -n "$bridge_root" ] || [ -z "${HOME:-}" ] || bridge_root="$HOME/.claude/handover/bridge"
 if [ -n "$bridge_root" ]; then
     waiter_live=0
-    hb_file="$bridge_root/chiefs/$chief_doc_name.wait"
+    hb_file="$bridge_root/consoles/$chief_doc_name.wait"
     hb_epoch=""; hb_pid=""; hb_state=""
     if [ -r "$hb_file" ]; then   # unreadable = no waiter = block (restrictive)
         read -r -a hb_words < "$hb_file"

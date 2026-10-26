@@ -813,7 +813,7 @@ contains 'failures panel: numeric columns right-aligned, nowrap (HIMMEL-5374)' "
 contains 'ladder: one row per phase, label left and count right (HIMMEL-5374)' "$fhtml" '.ladder li { display:flex; justify-content:space-between;'
 lacks 'ladder: no longer a wrapping chip row (HIMMEL-5374)' "$fhtml" '.ladder { display:flex; flex-wrap:wrap;'
 cat > "$HIMMEL_EVAL_RUNS_LEDGER" <<'RATES'
-{"eval":"worker-trajectory","run_id":"s1","status":"ok","ts":"2026-10-07T03:01:00Z","lane":"claudex","model":"gpt-6.1-sol","meta":{"leg":"N1","tool_health":[{"agent":{"id":"main","model":"gpt-6.1-sol"},"tool":"Bash","calls":50,"failures":5,"errors":0,"denials":5,"classes":{"denied/guard-a":5}}]}}
+{"eval":"leg-trajectory","run_id":"s1","status":"ok","ts":"2026-10-07T03:01:00Z","lane":"claudex","model":"gpt-6.1-sol","meta":{"leg":"N1","tool_health":[{"agent":{"id":"main","model":"gpt-6.1-sol"},"tool":"Bash","calls":50,"failures":5,"errors":0,"denials":5,"classes":{"denied/guard-a":5}}]}}
 RATES
 printf '%s\n' '{"ts":"2026-10-07T03:01:00Z","session":"s1","agent":{"id":"main"},"leg":"N1","class":"denied/guard-a","failure":"denied","count":5,"recovered":true}' > "$FL"
 QL_STUB_STARTED=2026-10-07T03:00:00Z mrun >/dev/null

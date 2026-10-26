@@ -2008,7 +2008,7 @@ fi
 # and !<recur> = distinct classes the failure router decided on this shift with a
 # decision other than skipped:* (its log, spec section 4.3; absent until P5 writes
 # one). fails=none with no row; fails=? when the lock start, the ledger or the
-# routes log is unreadable, or the latest worker-trajectory eval-runs row this shift
+# routes log is unreadable, or the latest leg-trajectory eval-runs row this shift
 # carries meta.digest_error (a failed read under pipefail reads ? too); skip with
 # no --doc. Whitespace in a class prints as _ so the TICK line stays one line. Advisory: chief-wait.sh's
 # action key does not name it, so it wakes nothing. Each path honours the env
@@ -2025,7 +2025,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
     fl_rows() { [ ! -e "$1" ] || jq -R -c --arg s "$fails_start" 'fromjson? | select(type == "object" and (.ts | type) == "string" and .ts >= $s)' "$1"; }
     if [ -n "$fails_start" ] && command -v jq >/dev/null 2>&1 \
        && fl_ok "$fl_ledger" && fl_ok "$fl_evals" && fl_ok "$fl_routes"; then
-        fl_digest="$(fl_rows "$fl_evals" | jq -s -r 'map(select(.eval == "worker-trajectory")) | if length > 0 and (last.meta.digest_error? // null) != null then "failed" else "ok" end' 2>/dev/null)" || fl_digest=""
+        fl_digest="$(fl_rows "$fl_evals" | jq -s -r 'map(select(.eval == "leg-trajectory")) | if length > 0 and (last.meta.digest_error? // null) != null then "failed" else "ok" end' 2>/dev/null)" || fl_digest=""
         fl_recur="$(fl_rows "$fl_routes" | jq -s -r 'map(select((.class | type) == "string" and (.decision | type) == "string" and (.decision | startswith("skipped") | not))) | map(.class) | unique | length' 2>/dev/null)" || fl_recur=""
         fl_counts="$(fl_rows "$fl_ledger" | jq -s -r '
             map(select((.class | type) == "string"))
@@ -2040,7 +2040,7 @@ if [ -n "$console_doc" ] && [ -f "$console_doc" ]; then
               end' 2>/dev/null)" || fl_counts=""
         # ~<k> = distinct docs whose wrap digest was skipped this
         # shift (worker-digest-step.sh's skips.jsonl); unreadable reads ? too.
-        fl_skips_log="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/worker-digest}/skips.jsonl"
+        fl_skips_log="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}/skips.jsonl"
         fl_skips=""
         fl_ok "$fl_skips_log" && { fl_skips="$(fl_rows "$fl_skips_log" | jq -s -r 'map(.doc) | unique | length' 2>/dev/null)" || fl_skips=""; }
         case "$fl_recur" in ''|*[!0-9]*) fl_counts="" ;; esac

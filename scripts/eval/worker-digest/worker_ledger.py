@@ -4,7 +4,7 @@
 Turns one P1 digest (worker-digest.ts) into two ledger writes, then a marker:
   1. one worker-failures row per digest failures row (registered in
      scripts/observability/ledgers.json as `worker-failures`);
-  2. one eval-runs row with eval "worker-trajectory" and meta.observational
+  2. one eval-runs row with eval "leg-trajectory" and meta.observational
      true (spec 3.1: a series, never a regression verdict);
   3. the digest itself at <state-dir>/<session>.json, LAST, as the commit marker.
 
@@ -12,7 +12,7 @@ Turns one P1 digest (worker-digest.ts) into two ledger writes, then a marker:
   else ~/.himmel/leg-failures.jsonl.
 
 WORKER-FAILURES ROW (v 1) -- closed-list categories only, never journal text:
-  v, ts, host, source, kind "worker-failure"       registry envelope
+  v, ts, host, source, kind "leg-failure"       registry envelope
   session     the worker's session uuid
   worker, chief, ticket, pr                      who the row belongs to, or null
   agent       {id, role, kind, model} from the digest
@@ -67,7 +67,7 @@ import eval_runs  # noqa: E402
 SOURCE = "scripts/eval/worker-digest/worker_ledger.py"
 LEDGER_ENV = "HIMMEL_WORKER_SESSION_FAILURES_LEDGER"
 LEDGER_ENV_OLD = "HIMMEL_LEG_FAILURES_LEDGER"  # old name, read both ways
-EVAL_ID = "worker-trajectory"
+EVAL_ID = "leg-trajectory"
 METRICS = ("tool_calls", "subagents", "turns", "fail_denied", "fail_suite", "fail_blocked", "fail_error",
            "run_errors", "interrupts", "red_before_green", "denial_recovery", "identical_denied_retries",
            "verify_before_claim")
@@ -93,7 +93,7 @@ def ledger_path(path=None):
 
 
 def default_state_dir():
-    return os.path.expanduser("~/.himmel/state/worker-digest")
+    return os.path.expanduser("~/.himmel/state/leg-digest")
 
 
 def _int(x, lo):
@@ -115,7 +115,7 @@ def validate(row):
     if row["v"] != 1:
         p.append("v must be 1")
     if row["kind"] != "leg-failure":
-        p.append("kind must be worker-failure")
+        p.append("kind must be leg-failure")
     for k in ("ts", "host", "source"):
         if not isinstance(row[k], str) or not row[k]:
             p.append("%s must be a non-empty string" % k)
@@ -302,7 +302,7 @@ def launch_lane(digest, who):
 
 PROFILE = re.compile(r"^[a-z0-9][a-z0-9-]{0,40}$")
 LAUNCH_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$")
-LAUNCH_LINE = re.compile(r"^headed-arm-worker: profile=(\S+) ")
+LAUNCH_LINE = re.compile(r"^headed-arm-(?:worker|leg): profile=(\S+) ")
 
 
 def launch_profile(who):
@@ -336,7 +336,7 @@ def build_rows(digest, who):
     host = socket.gethostname()
     frows = []
     for f in digest.get("failures") or []:
-        r = {"v": 1, "ts": now, "host": host, "source": SOURCE, "kind": "worker-failure", "session": session,
+        r = {"v": 1, "ts": now, "host": host, "source": SOURCE, "kind": "leg-failure", "session": session,
              "leg": who["leg"], "console": who["console"], "ticket": who["ticket"], "pr": who["pr"],
              "agent": f.get("agent"), "class": f.get("class"), "failure": f.get("failure"),
              "count": f.get("count"), "identical_retry": f.get("identical_retry"),

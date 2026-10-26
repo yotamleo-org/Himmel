@@ -21,7 +21,7 @@
 # THIS script classifies, not the model: a cut counts as LOW only when the model
 # said LOW and <path> is repo-relative (not a live ~/.claude or memory file);
 # every other cut is ESCALATED. The chief inbox line
-# (`<bridge root>/chiefs/<session>.md`, append-only, never created) carries
+# (`<bridge root>/consoles/<session>.md`, append-only, never created) carries
 # the proposal path and the two counts. --chief is an OVERRIDE; without it
 # the run resolves the live chief at RUN time: the newest held
 # `*-chief` queue lock from `queue-lock.sh status --sweep`, since chief
@@ -199,7 +199,7 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
         return 1
     fi
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
-    inbox="$root/chiefs/$chief.md"
+    inbox="$root/consoles/$chief.md"
     if [ -f "$inbox" ] && printf -- '- %s [steering-cull] proposal %s: %s low, %s escalated\n' "$(date +%H:%M)" "$doc" "$low" "$esc" >> "$inbox"; then
         bash "$ALERT" clear steering-cull
         return 0

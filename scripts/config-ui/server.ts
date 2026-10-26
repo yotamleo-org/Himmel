@@ -525,14 +525,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       }
       if (path === "/api/health") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        const [bank, workers, monitoring] = await Promise.all([
+        const [bank, legs, monitoring] = await Promise.all([
           Promise.resolve(readBank(env)),
           readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs),
           readMonitoring(env),
         ]);
         let raw = "";
         try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-        return json(redactOut({ bank, workers, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) }) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
+        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) }) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
       }
       // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
       if (path === "/api/bank") {
@@ -564,9 +564,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           const r = readRoadmap({ mirrorDir, github: issues ?? [], legs: { state: "absent" } });
           return json(redactOut({ ...r, ...(issues ? {} : { reason: "gh issue list failed" }), truncated: (issues?.length ?? 0) >= ISSUE_LIMIT, sync: [] }));
         }
-        const workers = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs);
+        const legs = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs);
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
-        const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers });
+        const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, legs });
         return json(redactOut({ ...r, sync: legSync(r.tickets) }));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.

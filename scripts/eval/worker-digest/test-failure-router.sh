@@ -287,7 +287,7 @@ for c in error/Bash:usage:impacted-suites error/Bash:zsh-nomatch error/Bash:no-s
   row N1 "$c"; row N2 "$c"; row N3 "$c"
 done
 for n in N1 N2 N3 N4 N5; do row "$n" error/Bash:cr-gate-exit-14; done
-row N1 denied/guard-worker-context-handoff 1; row N2 denied/guard-worker-context-handoff 1
+row N1 denied/guard-leg-context-handoff 1; row N2 denied/guard-leg-context-handoff 1
 LED="$SAVE"
 DRY10="$TMP/dry10.out"
 jq '.daily_cap = 99' "$HERE/failure-routes.table.json" >"$F10/table.json"
@@ -298,7 +298,7 @@ check "the usage ticket names the script and the fix, not just Bash errors" 'jq 
 check "every error/Bash:* row carries its own summary, none is the generic one" '[ "$(jq "[.routes[] | select(.match | startswith(\"error/Bash:\")) | .summary] | map(select(contains(\"errors recur\"))) | length" "$HERE/failure-routes.table.json")" = 0 ] && [ "$(jq "[.routes[] | select(.match | startswith(\"error/Bash:\"))] | length" "$HERE/failure-routes.table.json")" -ge 4 ]'
 check "the sub-class rows sit before the generic error/* row" '[ "$(jq "[.routes[].match] | (index(\"error/Bash:usage:*\") != null) and index(\"error/Bash:usage:*\") < index(\"error/*\")" "$HERE/failure-routes.table.json")" = true ]'
 check "a plain error/Bash and error/Edit still route through the generic row" 'wf10 error/Bash && wf10 error/Edit'
-check "the context-guard denial is routed as its own named hook" 'wf10 denied/guard-worker-context-handoff'
+check "the context-guard denial is routed as its own named hook" 'wf10 denied/guard-leg-context-handoff'
 check "ok/no-match is never a routable class: the ledger refuses it and the table has no ticket row for it" '! grep -q "\"ok/" "$DRY10" && ! python3 -c "import sys; sys.path.insert(0, sys.argv[1]); import failure_router as f, json; t = json.load(open(sys.argv[2])); sys.exit(0 if any(r[\"route\"] == \"ticket\" and f.fits(r[\"match\"], \"ok/no-match\") for r in t[\"routes\"]) else 1)" "$HERE" "$HERE/failure-routes.table.json"'
 
 echo "HIMMEL-4741: two classes sharing one fl-<slug> label never adopt each other's ticket"

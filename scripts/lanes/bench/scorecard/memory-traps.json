@@ -1,13 +1,13 @@
 [
-  {"id": "askuserquestion-parks-worker", "kind": "pattern", "pattern": "AskUserQuestion", "source": "worker-lifecycle.md"},
+  {"id": "askuserquestion-parks-worker", "kind": "pattern", "pattern": "AskUserQuestion", "source": "leg-lifecycle.md"},
   {"id": "read-clamp-line-limit", "kind": "pattern", "pattern": "read-clamp", "source": "shell-and-gate-traps.md"},
   {"id": "block-edit-on-main", "kind": "pattern", "pattern": "block-edit-on-main", "source": "himmel-harness-traps.md"},
   {"id": "block-edit-live-settings", "kind": "pattern", "pattern": "block-edit-live-settings", "source": "himmel-harness-traps.md"},
-  {"id": "bare-git-stash-shared-stack", "kind": "pattern", "pattern": "git stash", "source": "worker-lifecycle.md"},
+  {"id": "bare-git-stash-shared-stack", "kind": "pattern", "pattern": "git stash", "source": "leg-lifecycle.md"},
   {"id": "check-ci-exit0-not-mergeable", "kind": "pattern", "pattern": "mergeStateStatus", "source": "himmel-ship-flow.md"},
   {"id": "coderabbit-absent-is-note", "kind": "pattern", "pattern": "CodeRabbit", "source": "coderabbit-gate.md"},
   {"id": "classifier-out-of-place-publication", "kind": "pattern", "pattern": "Out-of-Place Publication", "source": "cr-gate-lessons.md"},
-  {"id": "guard-worker-wakeup-denial", "kind": "pattern", "pattern": "guard-worker-wakeup", "source": "worker-preface.md"},
+  {"id": "guard-worker-wakeup-denial", "kind": "pattern", "pattern": "guard-(worker|leg)-wakeup", "source": "worker-preface.md"},
   {"id": "hook-integrity-blocks-hook-edits", "kind": "pattern", "pattern": "HOOK_INTEGRITY_BYPASS_OK", "source": "hook-integrity-guard-blocks-hook-edits.md"},
-  {"id": "worker-session-memory-false-kill", "kind": "pattern", "pattern": "low memory", "source": "worker-session-memory-false-kill.md"}
+  {"id": "worker-session-memory-false-kill", "kind": "pattern", "pattern": "low memory", "source": "leg-session-memory-false-kill.md"}
 ]

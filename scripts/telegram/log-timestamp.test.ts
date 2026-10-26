@@ -12,7 +12,7 @@ test("installTimestampedLogging prepends an ISO-8601 timestamp arg to log + erro
     log: (...args: unknown[]) => { logCalls.push(args); },
     error: (...args: unknown[]) => { errorCalls.push(args); },
   };
-  installTimestampedLogging(target as unknown as Chief);
+  installTimestampedLogging(target as unknown as Console);
   target.log("[poller] hello", 42);
   target.error("[poller] boom");
 
@@ -29,7 +29,7 @@ test("installTimestampedLogging does not touch the real global console (opt-in t
   const originalLog = console.log;
   const originalError = console.error;
   const target = { log: () => {}, error: () => {} };
-  installTimestampedLogging(target as unknown as Chief);
+  installTimestampedLogging(target as unknown as Console);
   expect(console.log).toBe(originalLog);
   expect(console.error).toBe(originalError);
 });

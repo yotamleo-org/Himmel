@@ -141,20 +141,20 @@ docB="$root/tester/demorepo/DEMO-nextleg-${today}B-chief.md"
 
 out1="$(chief new --bucket demorepo)"
 check "1 new writes the chief doc" "$([ -f "$docA" ] && echo yes)" "yes"
-check "1 Telegram metadata records the chief bucket" "$(grep -c '"bucket":"demorepo"' "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}A-chief.md.meta.json" 2>/dev/null || true)" "1"
+check "1 Telegram metadata records the chief bucket" "$(grep -c '"bucket":"demorepo"' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.meta.json" 2>/dev/null || true)" "1"
 check "2 doc has no surviving placeholder" "$(grep -c '{{' "$docA" 2>/dev/null)" "0"
 # The step-10/11 commands carry the RESOLVED literal inbox path,
 # never a ${BRIDGE_ROOT:-...} expansion guard-pr-check-literal denies.
 check "2b doc has no BRIDGE_ROOT expansion" "$(grep -c 'BRIDGE_ROOT' "$docA" 2>/dev/null)" "0"
 # shellcheck disable=SC2016  # literal, unexpanded on purpose
 check "2b step-10/11 commands carry no \${ expansion" "$(grep -E 'chief-wait.sh|`: >> ' "$docA" 2>/dev/null | grep -cF '${')" "0"
-check "2b doc names the BRIDGE_ROOT override inbox literally" "$(grep -cF "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}A-chief.md" "$docA" 2>/dev/null)" "3"
+check "2b doc names the BRIDGE_ROOT override inbox literally" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md" "$docA" 2>/dev/null)" "3"
 docInboxDefault="$root/tester/inboxdefault/DEMO-nextleg-${today}A-chief.md"
 outInbox="$( unset BRIDGE_ROOT; HOME="$tmp/inboxhome" chief new --bucket inboxdefault 2>&1 )"
 tokenInbox="$(token_of "$outInbox")"
 # Release now: a held lock's owner files carry the host name (case 8 leak scan).
 HANDOVER_DIR="$root" bash "$QL" release "$docInboxDefault" "$tokenInbox" >/dev/null 2>&1
-check "2c unset BRIDGE_ROOT renders the HOME default inbox literally" "$(grep -cF "$tmp/inboxhome/.claude/handover/bridge/chiefs/DEMO-nextleg-${today}A-chief.md" "$docInboxDefault" 2>/dev/null)" "3"
+check "2c unset BRIDGE_ROOT renders the HOME default inbox literally" "$(grep -cF "$tmp/inboxhome/.claude/handover/bridge/consoles/DEMO-nextleg-${today}A-chief.md" "$docInboxDefault" 2>/dev/null)" "3"
 
 check "3 new prints release-token" "$(printf '%s\n' "$out1" | grep -c '^release-token: ')" "1"
 token1="$(token_of "$out1")"
@@ -294,12 +294,12 @@ printf '%s\n' '# worker' '## Results' '- 10:00 READY 77 bbbb GREEN' '- 10:05 WRA
 printf '{"legs":[{"label":"N9","doc":"%s"},{"label":"N8","doc":"%s"}]}\n' "$root/tester/nextrepo/DEMO-1-N9-wrapped.md" "$root/tester/nextrepo/DEMO-2-N8-closed.md" > "$root/tester/nextrepo/DEMO-nextleg-${today}A-chief.fleet.json"
 chief next --bucket nextrepo >/dev/null
 check "6 next writes successor stub" "$([ -f "$doc6B" ] && echo yes)" "yes"
-check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
+check "6 Telegram metadata records the successor bucket" "$(grep -c '"bucket":' "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md.meta.json" 2>/dev/null || true)" "1"
 check "6 next writes predecessor HANDOFF" "$([ -f "$handoff6A" ] && echo yes)" "yes"
 check "6 successor stub names the predecessor" "$(grep -c "DEMO-nextleg-${today}A-chief.md" "$doc6B")" "1"
 check "6 successor has no surviving placeholder" "$(grep -c '{{' "$doc6B" 2>/dev/null)" "0"
 check "6 successor has no BRIDGE_ROOT expansion" "$(grep -c 'BRIDGE_ROOT' "$doc6B" 2>/dev/null)" "0"
-check "6 successor names its inbox literally" "$(grep -cF "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}B-chief.md" "$doc6B" 2>/dev/null)" "3"
+check "6 successor names its inbox literally" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-chief.md" "$doc6B" 2>/dev/null)" "3"
 check "6 handoff has no surviving placeholder" "$(grep -c '{{' "$handoff6A" 2>/dev/null)" "0"
 # The mechanical fields are pre-filled by handoff-facts.sh (the
 # bank and PR commands are stubbed above), so the chief writes only judgement
@@ -311,7 +311,7 @@ check "6 handoff carries a WRAPPED worker whose PR is still open (HIMMEL-5542)" 
 check "6 handoff omits a WRAPPED worker whose PR is closed (HIMMEL-5542)" "$(grep -c '^- PR #77' "$handoff6A")" "0"
 check "6 handoff section tells the successor to disposition before dispatch (HIMMEL-5542)" "$(grep -c '^## Wrapped with open PR' "$handoff6A")" "1"
 check "6 handoff leaves one judgement-notes block" "$(grep -c '^## Rulings and judgement notes' "$handoff6A")" "1"
-check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}A-chief.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
+check "6 next puts the predecessor waiter in handover mode" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
 
 # --- 6c: the GENERATED stub and HANDOFF must not tell the
 # successor to mint and rotate a fresh nonce per worker -- worker-preface.md (the
@@ -336,10 +336,10 @@ out6da="$(chief new --bucket reldemo)"
 token6da="$(token_of "$out6da")"
 doc6dA="$root/tester/reldemo/DEMO-nextleg-${today}A-chief.md"
 doc6dB="$root/tester/reldemo/DEMO-nextleg-${today}B-chief.md"
-mark6d="$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}A-chief.md.relay-on-live"
+mark6d="$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.relay-on-live"
 chief next --bucket reldemo >/dev/null
 check "6d plain next leaves no relay-on-live marker" "$([ -f "$mark6d" ] && echo yes || echo no)" "no"
-rm -f "$doc6dB" "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}A-chief.md.handover"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover"
 chief next --bucket reldemo --relay-on-live >/dev/null
 check "6d next --relay-on-live writes the successor session on line 1" "$(sed -n 1p "$mark6d" 2>/dev/null)" "DEMO-nextleg-${today}B-chief"
 check "6d next --relay-on-live writes the successor doc on line 2" "$(sed -n 2p "$mark6d" 2>/dev/null)" "$doc6dB"
@@ -347,7 +347,7 @@ check "6d --relay-on-live is next-only" "$(chief new --bucket reldemo2 --relay-o
 # 6e: a chief with a bus identity gets the marker without the flag, so its waiter runs
 # relay-batch.sh (bus record + SendMessage lines) instead of a hand relay that leaves the
 # workers with no bus edge to the successor.
-rm -f "$doc6dB" "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}A-chief.md.handover" "$mark6d"
+rm -f "$doc6dB" "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-chief.md.handover" "$mark6d"
 rc6e=0
 HIMMEL_BUS_NAME="DEMO-nextleg-${today}A-chief" chief next --bucket reldemo >/dev/null || rc6e=$?
 check "6e bus-identified next succeeds" "$rc6e" "0"
@@ -3044,8 +3044,8 @@ stub_doc predecessor > "$root/tester/chief92b/DEMO-nextleg-${today}A-roadmap-chi
 chief next --bucket chief92b --name roadmap-chief >/dev/null 2>&1
 doc92bB="$root/tester/chief92b/DEMO-nextleg-${today}B-roadmap-chief.md"
 check "92 next from a console-named predecessor arms a chief-named successor" "$([ -f "$doc92bB" ] && echo yes)" "yes"
-check "92 the successor's inbox carries the chief name" "$(grep -cF "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}B-roadmap-chief.md" "$doc92bB" 2>/dev/null)" "3"
-check "92 the chief-named predecessor's inbox still gets the handover marker" "$(cat "$BRIDGE_ROOT/chiefs/DEMO-nextleg-${today}A-roadmap-chief.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-roadmap-chief"
+check "92 the successor's inbox carries the chief name" "$(grep -cF "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}B-roadmap-chief.md" "$doc92bB" 2>/dev/null)" "3"
+check "92 the chief-named predecessor's inbox still gets the handover marker" "$(cat "$BRIDGE_ROOT/consoles/DEMO-nextleg-${today}A-roadmap-chief.md.handover" 2>/dev/null)" "DEMO-nextleg-${today}B-roadmap-chief"
 mkdir -p "$root/tester/chief92c"
 stub_doc predecessor > "$root/tester/chief92c/DEMO-nextleg-${today}A-chief.md"
 chief next --bucket chief92c >/dev/null 2>&1

@@ -2980,7 +2980,7 @@ function parseCadenceStatus(stdout) {
 function runLogFailed(lastLine, okRcs) {
   const m = /^\[(?:[a-z]+ )?exit rc=(\d+)\]$/.exec(lastLine);
   if (m) return !(okRcs || [0]).includes(Number(m[1]));
-  return /^\[PIPELINE-WORKER-FAILED\b[^\]]*\]$/.test(lastLine);
+  return /^\[PIPELINE-(?:WORKER|LEG)-FAILED\b[^\]]*\]$/.test(lastLine);
 }
 
 function intervalLabel(hours) {

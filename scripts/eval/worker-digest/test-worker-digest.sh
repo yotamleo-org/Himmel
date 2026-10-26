@@ -156,7 +156,7 @@ check "a usage error is keyed by the tracked script, one row per script" '[ "$(b
 check "clear-cr-marker exit 14 is error/Bash:cr-gate-exit-14, another script at 14 is not" '[ "$(berow error/Bash:cr-gate-exit-14 | jq -c "[.count, .tool_call_ids]")" = "[1,[\"toolu_cr1\"]]" ]'
 check "a zsh nomatch is error/Bash:zsh-nomatch, not no-match" '[ "$(berow error/Bash:zsh-nomatch | jq -c .tool_call_ids)" = "[\"toolu_z1\"]" ]'
 check "a missing path is error/Bash:no-such-file in both spellings" '[ "$(berow error/Bash:no-such-file | jq -c .tool_call_ids)" = "[\"toolu_f1\",\"toolu_f2\"]" ]'
-check "a context-guard refusal is its own denied/ class, three spellings" '[ "$(berow denied/guard-worker-context-handoff | jq -c .tool_call_ids)" = "[\"toolu_c1\",\"toolu_c2\",\"toolu_c3\"]" ]'
+check "a context-guard refusal is its own denied/ class, three spellings" '[ "$(berow denied/guard-leg-context-handoff | jq -c .tool_call_ids)" = "[\"toolu_c1\",\"toolu_c2\",\"toolu_c3\"]" ]'
 check "an unknown hook is still denied/other" '[ "$(berow denied/other | jq -c .tool_call_ids)" = "[\"toolu_c4\"]" ]'
 check "every sub-class key passes the router alphabet" 'jq -r ".failures[].class" "$TMP/be.json" | grep -Ev "^(denied|suite|blocked|error|run_error|traj)/[A-Za-z0-9._:+-]{1,80}$" | wc -l | tr -d " " | grep -qx 0'
 
@@ -232,7 +232,7 @@ PROLL "profile=chief" >"$TMP/prof-c.json" 2>/dev/null || bad "the profile-filter
 check "profile=chief keeps only that profile's sessions in the existing tools too" 'jq -e "(.tools | map(select(.tool == \"Bash\")) | .[0].calls) == 15 and (.profiles | map(.profile) == [\"chief\"]) and .selected.profile == \"chief\"" "$TMP/prof-c.json" >/dev/null'
 check "rows with no profile read unknown, so legacy history still rolls up" 'node --input-type=module -e "
 import { rollupToolHealth } from \"$HERE/tool-health.mjs\";
-const r = { eval: \"worker-trajectory\", run_id: \"s1\", status: \"ok\", lane: \"native\", model: \"m\", meta: { leg: \"N1\", started_ts: Date.parse(\"2026-10-21T12:00:00Z\"), tool_health: [{ agent: { id: \"main\", model: \"m\" }, tool: \"Bash\", calls: 3, failures: 0, errors: 0, denials: 0 }] } };
+const r = { eval: \"leg-trajectory\", run_id: \"s1\", status: \"ok\", lane: \"native\", model: \"m\", meta: { leg: \"N1\", started_ts: Date.parse(\"2026-10-21T12:00:00Z\"), tool_health: [{ agent: { id: \"main\", model: \"m\" }, tool: \"Bash\", calls: 3, failures: 0, errors: 0, denials: 0 }] } };
 const o = rollupToolHealth([r], [], new URLSearchParams(), Date.parse(\"2026-10-22T12:00:00Z\"));
 process.exit(o.profiles.length === 1 && o.profiles[0].profile === \"unknown\" && o.profiles[0].tools[0].calls === 3 ? 0 : 1);"'
 

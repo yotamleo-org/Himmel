@@ -32,7 +32,7 @@ sys.path.insert(0, os.path.join(HERE, "lib"))
 import eval_runs  # noqa: E402
 
 SOURCE = "scripts/eval/profile-openings.py"
-LINE = re.compile(r"^headed-arm-worker: (.*)$")
+LINE = re.compile(r"^headed-arm-(?:worker|leg): (.*)$")
 UUID = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
 HEAD_LINES = 12
 SCAN_LINES = 2000

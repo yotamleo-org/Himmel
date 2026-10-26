@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/eval/worker-digest/test-worker-ledger.sh - hermetic suite for the worker ledgers.
 # Scratch ledgers only; never ~/.himmel. No model call, no bank.
-#  1. record writes one worker-failures row per digest class and one worker-trajectory eval-runs row; both validate;
+#  1. record writes one worker-failures row per digest class and one leg-trajectory eval-runs row; both validate;
 #  2. idempotence by session: a second run, and a run after a crash between writes, append only what is missing;
 #  3. the worker-failures validator refuses unknown keys, free-text keys, a bad class and more than five ids;
 #  4. canary: no journal text reaches either ledger or the digest file (spec 6.1);
@@ -35,7 +35,7 @@ cp "$FX/classes.jsonl" "$TMP/$SID.jsonl"
 bun "$DIG" --transcript "$TMP/$SID.jsonl" --denials-ledger "$FX/classifier-denials.jsonl" >"$TMP/digest.json" 2>/dev/null || bad "the P1 digest exits 0"
 rec() { python3 "$LL" record --failures-ledger "$FL" --eval-ledger "$EL" --state-dir "$ST" "$@"; }
 
-echo "1. record: worker-failures rows and the worker-trajectory eval-runs row"
+echo "1. record: worker-failures rows and the leg-trajectory eval-runs row"
 rec --digest "$TMP/digest.json" --worker N1373 --ticket HIMMEL-4670 --chief demo-chief --pr 1990 --doc himmel/x.md >"$TMP/rec1.out" 2>&1 || bad "record exits 0: $(head -c 300 "$TMP/rec1.out")"
 check "one worker-failures row per digest class" '[ "$(lines "$FL")" = "$(jq ".failures | length" "$TMP/digest.json")" ] && [ "$(lines "$FL")" -gt 10 ]'
 check "one eval-runs row" '[ "$(lines "$EL")" = 1 ]'
@@ -43,7 +43,7 @@ check "validate passes on the worker-failures ledger" 'python3 "$LL" validate "$
 check "validate passes on the eval-runs ledger" 'python3 "$EVR" validate "$EL" >/dev/null'
 check "a worker-failures row carries the envelope and the worker fields" 'jq -e "select(.class == \"denied/guard-pr-check-literal\") | .v == 1 and .kind == \"worker-failure\" and .source == \"scripts/eval/worker-digest/worker_ledger.py\" and (.host | length > 0) and (.ts | length > 0) and .session == \"$SID\" and .leg == \"N1373\" and .ticket == \"HIMMEL-4670\" and .console == \"demo-chief\" and .pr == 1990 and .count == 2 and .identical_retry == 1 and .recovered == false" "$FL" >/dev/null'
 check "a suite row keeps final_red" 'jq -e "select(.class == \"suite/test-eval-runs.sh\") | .final_red == true" "$FL" >/dev/null'
-check "the eval-runs row is the observational worker-trajectory row keyed by session" 'jq -e ".eval == \"worker-trajectory\" and .run_id == \"$SID\" and .status == \"ok\" and .meta.observational == true and .meta.leg == \"N1373\" and .meta.pr == 1990 and .n == 3 and .reps == 1 and .cases == null and .config.digest_v == 2 and .model == \"claude-opus-5-5\"" "$EL" >/dev/null'
+check "the eval-runs row is the observational leg-trajectory row keyed by session" 'jq -e ".eval == \"leg-trajectory\" and .run_id == \"$SID\" and .status == \"ok\" and .meta.observational == true and .meta.leg == \"N1373\" and .meta.pr == 1990 and .n == 3 and .reps == 1 and .cases == null and .config.digest_v == 2 and .model == \"claude-opus-5-5\"" "$EL" >/dev/null'
 check "its metrics are the digest metrics, booleans as 1/0" 'jq -e ".metrics | .fail_denied == 10 and .turns == 3 and .identical_denied_retries == 1 and has(\"red_before_green\") and has(\"verify_before_claim\")" "$EL" >/dev/null'
 check "the digest file is written last and the row points at it" '[ -f "$ST/$SID.json" ] && [ "$(jq -r .artifact "$EL")" = "$ST/$SID.json" ]'
 

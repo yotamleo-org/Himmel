@@ -1,5 +1,5 @@
 // scripts/telegram/chief-heartbeat-watch.test.ts
-// Hermetic: fixture dirs only, never the live chiefs/ inbox.
+// Hermetic: fixture dirs only, never the live consoles/ inbox.
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";

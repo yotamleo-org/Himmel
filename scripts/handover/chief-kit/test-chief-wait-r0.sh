@@ -134,7 +134,7 @@ wait_exit() {
 }
 # fleet <case>: a chief doc, a worker doc and a one-worker manifest; sets I, D, L, M.
 fleet() {
-    mkdir -p "$WORK/$1/chiefs"; I="$WORK/$1/chiefs/c.md"; : > "$I"
+    mkdir -p "$WORK/$1/consoles"; I="$WORK/$1/consoles/c.md"; : > "$I"
     D="$WORK/$1/chief.md"; printf '# chief\n' > "$D"
     L="$WORK/$1/HIMMEL-1-N1-a.md"; printf '# worker\n\n## Results\n- 09:00 LIVE — started\n' > "$L"
     M="$WORK/$1/console.fleet.json"

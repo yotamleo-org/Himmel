@@ -155,7 +155,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   useDrawerKeys(drawer, panel, legOrder, setDrawer, closeDrawer);
   const ctx: BoardCtx = useMemo(() => ({
     board, cards: new Map(joined.flatMap((j) => (j.row ? [[j.row.name, j] as const] : []))),
-    open: (worker, stage = "live") => { setDrawer((d) => openAt(d, worker, stage as Stage)); setPanel({ kind: "leg" }); },
+    open: (leg, stage = "live") => { setDrawer((d) => openAt(d, leg, stage as Stage)); setPanel({ kind: "leg" }); },
   }), [board, joined]);
   return (
     <BoardContext.Provider value={ctx}>
@@ -262,9 +262,9 @@ function NameLink({ row, token, className = "" }: { row: Row; token: string; cla
 function Attention({ items, needs, token, now }: { items: ReturnType<typeof fleetSections>["attention"]; needs: ReturnType<typeof joinBoard>; token: string; now: number }) {
   const ctx = useBoardCtx();
   return <ul className="fleet-attn-list" aria-label="Needs attention">
-    {needs.map(({ worker, need }) => ctx.board && need && <li key={`need:${worker.leg}`} className="fleet-attn bd-need-row">
+    {needs.map(({ leg, need }) => ctx.board && need && <li key={`need:${leg.leg}`} className="fleet-attn bd-need-row">
       <Swatch board={ctx.board} group="verb" k={need.verb} />
-      {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(worker.leg, worker.stage)}>{worker.leg}</button>
+      {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(leg.leg, leg.stage)}>{leg.leg}</button>
       {` · ${need.action}`}
       {need.since && <span className="fleet-age">{` · ${ago(now - Date.parse(need.since))}`}</span>}
     </li>)}
@@ -406,7 +406,7 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
         </span>
         {card && bctx.board && <span className="bd-goalcell">
           <button type="button" className="bd-link" onClick={() => bctx.open(card.leg.leg, card.leg.stage)} title="open the worker's stages">{card.leg.goal || card.leg.ticket}</button>
-          <StageDots worker={card.leg} board={bctx.board} onPick={(s) => bctx.open(card.leg.leg, s)} />
+          <StageDots leg={card.leg} board={bctx.board} onPick={(s) => bctx.open(card.leg.leg, s)} />
           <StateChip board={bctx.board} state={card.leg.state} />
         </span>}
         <span className="fleet-act">

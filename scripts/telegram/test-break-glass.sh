@@ -119,16 +119,16 @@ assert_contains "S5 it reports the last tick age" "last tick:" "$out"
 [ "$(git -C "$PRIMARY" rev-parse HEAD)" = "$before" ] && echo "PASS S6 station-status changes nothing" || { echo "FAIL S6 station-status moved the primary"; FAILED=$((FAILED + 1)); }
 
 # --- /station-status is bounded -------------------------------
-export BRIDGE_ROOT="$TMP/bridge"; mkdir -p "$BRIDGE_ROOT/chiefs" "$PRIMARY/scripts/telegram"
+export BRIDGE_ROOT="$TMP/bridge"; mkdir -p "$BRIDGE_ROOT/consoles" "$PRIMARY/scripts/telegram"
 NOW="$(date +%s)"
 i=0; while [ "$i" -lt 50 ]; do
-    echo "hb=$((NOW - 900000 - i)) pid=1 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/chiefs/stale-$i.md.wait"; i=$((i + 1))
+    echo "hb=$((NOW - 900000 - i)) pid=1 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/stale-$i.md.wait"; i=$((i + 1))
 done
-echo "hb=$((NOW - 5)) pid=2 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/chiefs/live-chief.md.wait"
-echo "hb=$((NOW + 100000)) pid=3 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/chiefs/future.md.wait" # clock rollback: never live
-echo "hb=0$((NOW - 5)) pid=4 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/chiefs/zero-pad.md.wait" # leading zero: decimal, not octal
+echo "hb=$((NOW - 5)) pid=2 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/live-chief.md.wait"
+echo "hb=$((NOW + 100000)) pid=3 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/future.md.wait" # clock rollback: never live
+echo "hb=0$((NOW - 5)) pid=4 key=k tick=ok state=waiting" > "$BRIDGE_ROOT/consoles/zero-pad.md.wait" # leading zero: decimal, not octal
 i=0; while [ "$i" -lt 9 ]; do # 11 live in all: the display cap (8) must bite
-    echo "hb=$((NOW - 3)) pid=5 key=k tick=ok state=sampling" > "$BRIDGE_ROOT/chiefs/live-extra-$i.md.wait"; i=$((i + 1))
+    echo "hb=$((NOW - 3)) pid=5 key=k tick=ok state=sampling" > "$BRIDGE_ROOT/consoles/live-extra-$i.md.wait"; i=$((i + 1))
 done
 printf '%s\n' '#!/usr/bin/env bash' "printf '11\\tnamed-chief\\topus\\t200000\\n12\\t\\t\\t\\n'" > "$PRIMARY/scripts/telegram/chief-census.sh"
 out=$(bg station-status - -); rc=$?

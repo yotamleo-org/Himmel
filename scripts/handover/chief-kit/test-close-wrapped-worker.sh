@@ -928,7 +928,7 @@ doc_sum=$(cksum < "$DOC")
 rc=0; out_a=$(dg_close "$DG_SID") || rc=$?
 check "digest-a: close rc 0" "$rc" "0"
 contains "digest-a: one digest=ok line" "$out_a" "digest=ok fails="
-check "digest-a: one worker-trajectory eval-runs row for the session" "$(jq -r 'select(.eval == "worker-trajectory") | .run_id' "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "$DG_SID"
+check "digest-a: one leg-trajectory eval-runs row for the session" "$(jq -r 'select(.eval == "leg-trajectory") | .run_id' "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "$DG_SID"
 check "digest-a: one worker-failures row per digest class" "$(dg_rows "$HIMMEL_WORKER_SESSION_FAILURES_LEDGER")" "$DG_N"
 check "digest-a: the row names the worker, ticket and PR from the doc" "$(jq -r '"\(.meta.leg) \(.meta.ticket) \(.meta.pr)"' "$HIMMEL_EVAL_RUNS_LEDGER" 2>/dev/null)" "N1 HIMMEL-9 4321"
 check "digest-d: the worker doc is byte-identical" "$(cksum < "$DOC")" "$doc_sum"

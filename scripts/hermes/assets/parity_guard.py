@@ -1810,7 +1810,7 @@ SKILL_TOOL = "skill_manage"
 SKILL_ACTIONS = ("create", "edit", "patch", "delete", "write_file", "remove_file")
 SCAN_TOOLS = (
     "annotate_preview", "apply_layout", "browser_back", "browser_click",
-    "browser_chief", "browser_dialog", "browser_get_images",
+    "browser_console", "browser_dialog", "browser_get_images",
     "browser_navigate", "browser_press", "browser_scroll", "browser_snapshot",
     "browser_type", "browser_vault_enter_code", "browser_vault_fill",
     "browser_vault_list", "browser_vault_save_login", "browser_vault_unlock",

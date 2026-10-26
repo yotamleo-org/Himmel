@@ -1421,7 +1421,7 @@ cmd_new() {
     local session="${prefix}-nextleg-${date}${letter}-${name}"
     # The Telegram inbox, resolved here (same default as
     # arm-resume.sh / bus.ts) so step 10/11 print a literal, runnable path.
-    local inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/chiefs/${session}.md"
+    local inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${session}.md"
     local fill_signal="$chain_dir/sig-$session"
     local log="$chain_dir/launch-$session.log"
 
@@ -1592,7 +1592,7 @@ decisions_files_text() {
         [ -f "$dir/$f" ] && [ -r "$dir/$f" ] || return 1
         cat "$dir/$f" || return 1
         n=$((n + 1))
-    done < <(printf '%s\n' "$line" | grep -o 'specs/decisions/chief-decisions-[0-9-]*\.md')
+    done < <(printf '%s\n' "$line" | grep -oE 'specs/decisions/(chief|console)-decisions-[0-9-]*\.md')
     [ "$n" -gt 0 ]
 }
 
@@ -1614,7 +1614,7 @@ decisions_kept_verbatim() {
     printf '%s\n' "$have" | sed -n 's/^decisions:[[:space:]]*//p' | grep -Fx -e "$prev" >/dev/null && return 0
     need="$prev"
     case "$prev" in
-        *specs/decisions/chief-decisions-*)
+        *specs/decisions/chief-decisions-*|*specs/decisions/console-decisions-*)
             need="$need"$'\n'"$(decisions_files_text "$prev" "$dir")" || return 1 ;;
     esac
     awk '
@@ -1666,7 +1666,7 @@ check_live_line_kept() {
     out_line="$(printf '%s\n' "$live" | sed -n "s/^$field:[[:space:]]*//p" | head -n 1)"
     case "$out_line" in
         ""|none|"none "*|"<"*) ;;
-        *) case "$field:$prev_line" in decisions:*specs/decisions/chief-decisions-*) ;;
+        *) case "$field:$prev_line" in decisions:*specs/decisions/chief-decisions-*|decisions:*specs/decisions/console-decisions-*) ;;
                *) { [ "$field" != decisions ] || [ "${#out_line}" -ge "${#prev_line}" ]; } && return 0 ;; esac
            if [ "$field" = decisions ]; then
                why="$(decisions_kept_verbatim "$prev_line" "$out_line" "$(dirname "$outgoing")" 2>&1 >/dev/null)" && return 0
@@ -1778,7 +1778,7 @@ spill_decisions() {
     rel="$base.md"
     while [ -e "$dir/$rel" ]; do n=$((n + 1)); rel="$base-$n.md"; done
     if mkdir -p "$dir/specs/decisions" && (set -C; printf '%s\n' "$line" > "$dir/$rel") 2>/dev/null; then
-        names="$(printf '%s\n' "$line" | grep -o 'specs/decisions/chief-decisions-[0-9-]*\.md' | sort -u | tr '\n' ' ')"
+        names="$(printf '%s\n' "$line" | grep -oE 'specs/decisions/(chief|console)-decisions-[0-9-]*\.md' | sort -u | tr '\n' ' ')"
         printf 'decisions: carried verbatim in %s (%s bytes from %s; read it before ruling)%s\n' "$rel" "$bytes" "$from" "${names:+; it names ${names% }}"
     else
         err "warning: could not spill the decisions: line to $dir/$rel; carried it unchanged"
@@ -1942,7 +1942,7 @@ cmd_next() {
     local session="${prefix}-nextleg-${successor_date}${successor_letter}-${name}"
     # The Telegram inbox, resolved here (same default as
     # arm-resume.sh / bus.ts) so step 10/11 print a literal, runnable path.
-    local inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/chiefs/${session}.md"
+    local inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${session}.md"
     # HANDOFF sits beside the predecessor's OWN doc, not in $state_dir — a
     # --doc pointing outside $state_dir (a different bucket, a different
     # root entirely) must still get its HANDOFF written next to it.
@@ -2163,7 +2163,7 @@ cmd_next() {
     # outgoing chief merely waiting for LIVE takes no tick wakes. Best-effort:
     # a failed write leaves the waiter as it was.
     local pred_inbox
-    pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/chiefs/${predecessor_stem}.md"
+    pred_inbox="${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/consoles/${predecessor_stem}.md"
     if mkdir -p "$(dirname "$pred_inbox")" 2>/dev/null && printf '%s\n' "$session" > "$pred_inbox.handover" 2>/dev/null; then
         echo "handover-mode: $pred_inbox.handover"
         # --relay-on-live: the outgoing waiter wakes its chief once, when the successor

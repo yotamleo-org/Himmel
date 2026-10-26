@@ -390,7 +390,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     const live = role === "console" ? lock === "held" : !wrapped;
     const status = role === "console" ? (wrapped ? "WRAPPED" : live && c.status !== "WRAPPED" ? c.status : "") : c.status;
     // Accepted succession in the doc overrides the original launch environment.
-    const parent = role === "console" ? null : graph.parent ?? plain(launch.HIMMEL_CONSOLE_NAME) ?? edges.get(c.doc)?.chief ?? null;
+    const parent = role === "console" ? null : graph.parent ?? plain(launch.HIMMEL_CONSOLE_NAME) ?? edges.get(c.doc)?.console ?? null;
     return {
       run, pid: Number(c.pid), name, role, model: c.model || null,
       ticket, pr: role === "leg" ? prOf(doc) : null,

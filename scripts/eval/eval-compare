@@ -16,7 +16,7 @@ moves the wrong way past its noise band: the CI bound when the ledger has one
 (below the baseline's lower bound, or the two intervals apart), else the band
 in eval-compare.json. A metric with no direction there is printed as info and
 never gated.
-A candidate with meta.observational true (worker-trajectory, HIMMEL-4670) is
+A candidate with meta.observational true (leg-trajectory, HIMMEL-4670) is
 listed as a series with no verdict, and exits 3.
 Against a single baseline row (not --best-of), each per-case metric named
 under "_cases" is also compared paired, case by case over the case ids both

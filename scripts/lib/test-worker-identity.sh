@@ -3,7 +3,7 @@
 #
 # Every row uses a name the harness really produces: docs filed per
 # docs/handover/worker-brief-template.md, sessions as chief.sh / headed-arm-worker.sh
-# name them, and the legacy -worker<k>- / -legN<k>- spellings live handover buckets
+# name them, and the legacy -leg<k>- / -legN<k>- spellings live handover buckets
 # still carry. The point of the suite is that a derivation is only trusted once
 # it has been shown to MATCH a real name, not merely to agree with itself.
 set -u

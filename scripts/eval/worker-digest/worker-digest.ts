@@ -390,7 +390,7 @@ async function main() {
       if (!cat) { const b = BRACKET.exec(text)?.[1]; if (b && CLASSIFIER_CATEGORIES.has(slug(b))) cat = slug(b); }
       return `classifier:${cat ?? "other"}`;
     }
-    if (CONTEXT_GUARD.test(text.slice(0, 2000))) return "guard-worker-context-handoff";
+    if (CONTEXT_GUARD.test(text.slice(0, 2000))) return "guard-leg-context-handoff";
     const pre = HOOK_PREFIX.exec(text);
     if (!pre) return "permission-prompt";
     let rest = text.slice(pre[0].length);

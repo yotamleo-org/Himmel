@@ -81,7 +81,7 @@ rc=0
 unavailable() { echo "UNAVAILABLE: $1 -- $2"; rc=3; }
 one() { awk -v v="$1" 'BEGIN { printf "%.1f", v }'; }
 
-FOUND_BY='operator|worker|chief|tick|ci-pr|ci-main|review|user'
+FOUND_BY='operator|worker|leg|chief|console|tick|ci-pr|ci-main|review|user'
 CLASSES='contract|merge-skew|platform|guard|flake'
 
 # --- 1. Escapes ---------------------------------------------------------------

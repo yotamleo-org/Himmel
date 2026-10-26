@@ -106,7 +106,7 @@ test("filters: lane, state and text narrow every section; the counts say how man
   expect(attention.running.flatMap((g) => g.rows.map((r) => r.name)).sort()).toEqual(["blocked", "cloud-HIMMEL-1", "running-new"]);
   expect(attention.finished).toEqual([]);
   const orphaned = fleetSections(rows, null, { lanes: [], states: ["orphaned"], text: "" });
-  expect(orphaned.orphans.map((o) => o.row.name)).toEqual(["orphan-leg"]);
+  expect(orphaned.orphans.map((o) => o.row.name)).toEqual(["orphan-worker"]);
   expect(orphaned.running).toEqual([]);
   expect(fleetSections(rows, null, { lanes: [], states: [], text: "IDLE-N" }).running.flatMap((g) => g.rows.map((r) => r.name))).toEqual(["idle-new"]);
   expect(laneOf(rows.find((r) => r.name === "cloud-HIMMEL-4"))).toBe("cloud");
@@ -151,7 +151,7 @@ test("an orphan's own alarm (BLOCKED, high context) still reaches Needs attentio
   const withAlarm = rows.map((r) => (r.name === "orphan-worker" ? { ...r, marker: "BLOCKED" } : r));
   const s = fleetSections(withAlarm);
   expect(s.attention.map((a) => [a.row.name, a.why])).toContainEqual(["orphan-worker", "BLOCKED"]);
-  expect(s.orphans.map((o) => o.row.name)).toEqual(["orphan-leg"]);
+  expect(s.orphans.map((o) => o.row.name)).toEqual(["orphan-worker"]);
 });
 
 test("a filter chip's badge counts exactly what that filter shows: idle chiefs and idle orphans included", () => {

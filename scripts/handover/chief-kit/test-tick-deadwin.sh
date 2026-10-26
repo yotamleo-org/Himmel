@@ -162,7 +162,7 @@ printf 'PROCEED\n' > "$STUB/bank"
 tick_line() {
     printf 'TICK 03:00 hb=1m workers=N1:FREE livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:? inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip%s\n' "$1" > "$STUB/tick.line"
 }
-inbox="$W/in/chiefs/c.md"; mkdir -p "$(dirname "$inbox")"; : > "$inbox"
+inbox="$W/in/consoles/c.md"; mkdir -p "$(dirname "$inbox")"; : > "$inbox"
 tick_line ''
 bash "$WAIT" "$inbox" --workers "N1.md" > "$W/w.out" 2>/dev/null &
 wpid=$!

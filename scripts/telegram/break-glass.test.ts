@@ -262,8 +262,8 @@ test("an allow-rule issues no confirm code for a rule containing U+2028 or U+202
 
 test("a mutating op issues a code and runs nothing; the matching /confirm runs it once", async () => {
   for (const text of BREAK_GLASS.filter((op) => op !== "station-status").map((op) => ({
-    "revert-main": "/revert-main 2202", "repin-hooks": "/repin-hooks", "launch-leg": "/launch-worker N7 --hook-bypass",
-    "cr-reset": "/cr-reset 9", "close-wrapped": "/close-wrapped", "relaunch-console": "/relaunch-chief", "restart-bridge": "/restart-bridge", "allow-rule": "/allow-rule merge-forward-check",
+    "revert-main": "/revert-main 2202", "repin-hooks": "/repin-hooks", "launch-worker": "/launch-worker N7 --hook-bypass",
+    "cr-reset": "/cr-reset 9", "close-wrapped": "/close-wrapped", "relaunch-chief": "/relaunch-chief", "restart-bridge": "/restart-bridge", "allow-rule": "/allow-rule merge-forward-check",
   } as Record<string, string>)[op])) {
     const root = await mkdtemp(join(tmpdir(), "bg-ok-"));
     const h = harness(0, "done=1\n");

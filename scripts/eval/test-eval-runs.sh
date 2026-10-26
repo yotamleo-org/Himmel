@@ -302,42 +302,42 @@ O="$TMP/obs.jsonl"
 cat >"$TMP/obs-th.json" <<'EOF'
 {"leg-trajectory": {"fail_denied": {"higher_is_better": false, "band": 0}}}
 EOF
-orow() { python3 "$LIB" append --ledger "$O" --eval worker-trajectory --run-id "$1" --source s --config-json '{"digest_v":1}' \
+orow() { python3 "$LIB" append --ledger "$O" --eval leg-trajectory --run-id "$1" --source s --config-json '{"digest_v":1}' \
   --metrics-json "$2" --meta-json '{"observational":true,"leg":"N1"}' ${3:+--status "$3"} >/dev/null 2>&1 || fail "fixture row $1 not written"; }
 orow s1 '{"fail_denied":1,"verify_before_claim":1}'
 orow s2 '{"fail_denied":3,"verify_before_claim":0}'
 orow s3 '{"fail_denied":9,"verify_before_claim":null}'
-out=$(python3 "$CMP" worker-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
+out=$(python3 "$CMP" leg-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
 eq "compare: an observational series is not a pass (exit 3)" "$rc" "3"
-has "compare: lists the worker-trajectory series" "$out" "observational series"
+has "compare: lists the leg-trajectory series" "$out" "observational series"
 has "compare: the series names its runs" "$out" "3 runs"
 has "compare: per-metric line for the series" "$out" "fail_denied"
 case "$out" in *REGRESSION*|*better*) fail "compare: an observational series printed a verdict: $out";; *) pass "compare: an observational series prints no verdict";; esac
-out=$(python3 "$CMP" worker-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" --baseline s1 2>&1); rc=$?
+out=$(python3 "$CMP" leg-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" --baseline s1 2>&1); rc=$?
 eq "compare: --baseline on an observational series still gives no verdict" "$rc" "3"
 orow s4 '{"fail_denied":2}' partial
-out=$(python3 "$CMP" worker-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
+out=$(python3 "$CMP" leg-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
 eq "compare: a partial newest observational row still lists the series" "$rc" "3"
 has "compare: the series counts ok runs only" "$out" "3 runs"
 orow s5 '{"fail_denied":5}'
 orow s1 '{"fail_denied":7}'
-out=$(python3 "$CMP" worker-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" 2>&1)
+out=$(python3 "$CMP" leg-trajectory --ledger "$O" --thresholds "$TMP/obs-th.json" 2>&1)
 eq "compare: a superseding row for an older run_id becomes the latest" "$(printf '%s\n' "$out" | awk '$1 == "fail_denied" {print $4}')" "7"
 
 # The cohort is the newest row's configuration. A newest row of another
 # configuration that is not ok leaves an empty series, never the older cohort's.
 O2="$TMP/obs2.jsonl"
-orow2() { python3 "$LIB" append --ledger "$O2" --eval worker-trajectory --run-id "$1" --source s --config-json "$2" \
+orow2() { python3 "$LIB" append --ledger "$O2" --eval leg-trajectory --run-id "$1" --source s --config-json "$2" \
   --metrics-json "$3" --meta-json '{"observational":true,"leg":"N1"}' ${4:+--status "$4"} >/dev/null 2>&1 || fail "fixture row $1 not written"; }
 orow2 c1 '{"digest_v":1}' '{"fail_denied":1}'
 orow2 c2 '{"digest_v":1}' '{"fail_denied":3}'
 orow2 c3 '{"digest_v":2}' '{"fail_denied":9}' partial
-out=$(python3 "$CMP" worker-trajectory --ledger "$O2" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
+out=$(python3 "$CMP" leg-trajectory --ledger "$O2" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
 eq "compare: a partial newest row of another configuration is still exit 3" "$rc" "3"
 has "compare: that series is empty" "$out" "0 runs (confighash -)"
 case "$out" in *fail_denied*) fail "compare: the older cohort's series was shown: $out";; *) pass "compare: no metric line for the older cohort";; esac
 orow2 c4 '{"digest_v":2}' '{"fail_denied":4}'
-out=$(python3 "$CMP" worker-trajectory --ledger "$O2" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
+out=$(python3 "$CMP" leg-trajectory --ledger "$O2" --thresholds "$TMP/obs-th.json" 2>&1); rc=$?
 eq "compare: a newest ok row of the new configuration is exit 3" "$rc" "3"
 has "compare: lists only the newest row's cohort" "$out" "1 runs"
 

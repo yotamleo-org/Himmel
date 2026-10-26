@@ -46,7 +46,7 @@ def classify(path, title, first):
     t = title or ""
     if "-console" in t or t.endswith("-chief"):
         return "console"
-    if re.search(r"HIMMEL-\d+-.*N\d+|worker[A-Z]?\d+|-N\d+", t):
+    if re.search(r"HIMMEL-\d+-.*N\d+|leg[A-Z]?\d+|-N\d+", t):
         return "leg"
     if first.startswith("You are Telegram bridge session"):
         return "bridge"

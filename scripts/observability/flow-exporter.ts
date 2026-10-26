@@ -1983,7 +1983,7 @@ function defaultLanesPath(): string {
 // scripts/eval/eval-compare makes. The regression gauge ports eval-compare's
 // verdict (CI bounds when the ledger has them, else the band in
 // scripts/eval/eval-compare.json), so the alert and the CLI cannot disagree.
-// A meta.observational row (worker-trajectory) gets no delta and no verdict, as
+// A meta.observational row (leg-trajectory) gets no delta and no verdict, as
 // in eval-compare.
 type EvalRunRow = {
   eval: string;

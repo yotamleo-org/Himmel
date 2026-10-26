@@ -162,7 +162,7 @@ above `at`, a `HEADROOM` line points to the target metrics (such as cost and
 latency): quality near its ceiling cannot show much gain. The line is
 advisory; it does not skip regression checks.
 
-A candidate whose `meta.observational` is true (the `worker-trajectory` rows) is
+A candidate whose `meta.observational` is true (the `leg-trajectory` rows) is
 not compared at all: eval-compare lists the series (the latest `ok` row per
 `run_id`, same `confighash`) with runs, mean and latest per metric, prints no
 verdict and exits 3. The exporter likewise emits no `baseline_delta` or
@@ -456,9 +456,9 @@ on the server; the page is read-only. Overrides are
    (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
    row carries closed-list categories only; unknown keys are refused, so no
    journal text can ride in;
-2. one eval-runs row, `eval: worker-trajectory`, `run_id` = the session uuid,
+2. one eval-runs row, `eval: leg-trajectory`, `run_id` = the session uuid,
    `meta.observational: true`;
-3. the digest at `~/.himmel/state/worker-digest/<session>.json`, last, as the
+3. the digest at `~/.himmel/state/leg-digest/<session>.json`, last, as the
    commit marker.
 
 It is idempotent by session, under a per-session flock: a marker with status

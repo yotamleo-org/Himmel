@@ -20,7 +20,7 @@ export type Route =
   | { kind: "auto"; op: "station-status" | "revert-main" | "repin-hooks" | "launch-worker" | "cr-reset" | "close-wrapped" | "relaunch-chief" | "restart-bridge" | "allow-rule" | "confirm"; arg: string; time: string }
   | { kind: "console"; name: string; text: string }
   | { kind: "consoles" }
-  | { kind: "fleet"; verb: "status" | "legs" | "go?" | "push" | "halt"; worker?: string }
+  | { kind: "fleet"; verb: "status" | "legs" | "go?" | "push" | "halt"; leg?: string }
   | { kind: "fleet-malformed" }
   | { kind: "lockdown" }
   | { kind: "chat"; text: string };
@@ -82,7 +82,7 @@ const RESTART = /^\/restart(?:\s+(full))?$/i;
 // Only the leading verb is matched, so a mid-text or trailing /chief stays chat.
 const CONSOLE_VERB = /^\/(consoles?|chiefs?)(?:@([A-Za-z0-9_]+))?(?=\s|$)/i;
 
-const FLEET_VERB = /^\/(lockdown|fleet|workers|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
+const FLEET_VERB = /^\/(lockdown|fleet|workers|legs|halt|go|push)(?:@([A-Za-z0-9_]+))?(?![A-Za-z0-9_@])/i;
 
 export function classify(raw: string, botUsername?: string | null): Route {
   const t = raw.trim();
@@ -100,7 +100,7 @@ export function classify(raw: string, botUsername?: string | null): Route {
     if (rest === "") {
       if (verb === "lockdown") return { kind: "lockdown" };
       if (verb === "fleet") return { kind: "fleet", verb: "status" };
-      if (verb === "legs") return { kind: "fleet", verb: "legs" };
+      if (verb === "workers" || verb === "legs") return { kind: "fleet", verb: "legs" };
       if (verb === "halt") return { kind: "fleet", verb: "halt" };
     }
     const label = rest.match(/^ ([A-Za-z0-9_.-]{1,64})$/);

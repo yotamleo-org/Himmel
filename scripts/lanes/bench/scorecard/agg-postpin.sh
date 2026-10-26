@@ -123,7 +123,7 @@ cohort_ok() {
     log="$LAUNCH_LOG_DIR/$1.log"
     [ -f "$log" ] || { COHORT_WHY=no-launch-record; return 1; }
     # whole fields only: `other-profile=worker-impl` must not read as profile=worker-impl
-    profiles=$(awk '/^headed-arm-worker:/ {for(i=1;i<=NF;i++) if($i ~ /^profile=/) print $i}' "$log" | sort -u)
+    profiles=$(awk '/^headed-arm-(worker|leg):/ {for(i=1;i<=NF;i++) if($i ~ /^profile=/) print $i}' "$log" | sort -u)
     [ -n "$profiles" ] || { COHORT_WHY=no-launch-record; return 1; }
     if [ "$(printf '%s\n' "$profiles" | wc -l | tr -d ' ')" -gt 1 ]; then
         COHORT_WHY=ambiguous-profile; return 1
@@ -169,7 +169,7 @@ while IFS= read -r f; do
     name=$(title_of "$f"); role=$(role_of "$name")
     # an untitled session is counted by name, never folded into other-role
     [ "$role" != unattributed ] || { sc_cov unattributed; continue; }
-    case "$role" in worker|chief) ;; *) sc_cov other-role; continue ;; esac
+    case "$role" in worker|chief|leg|console) ;; *) sc_cov other-role; continue ;; esac
     if [ -n "$ROLE_FILTER" ] && [ "$role" != "$ROLE_FILTER" ]; then sc_cov role-filter; continue; fi
 
     first_ts=$(ts_of "$f" head)

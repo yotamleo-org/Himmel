@@ -15,7 +15,7 @@ import { legacyFlag } from "../lib/env-alias.mjs";
 // explicit `/chief <name> <text>` and Telegram reply receipts pin a chief;
 // `/chief` is a quiet alias of the same verb.
 //
-// The inbox lives in the bridge's own non-git state dir (<bridge root>/chiefs/),
+// The inbox lives in the bridge's own non-git state dir (<bridge root>/consoles/),
 // NOT under the handover root: that root is a git repo that auto-commits and
 // pushes, which would publish Telegram text and stall its gitleaks pre-commit.
 // It is also NOT <handover root>/inbox/<name>.md: the name-keyed claudex-inbox

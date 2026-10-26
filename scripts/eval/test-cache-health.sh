@@ -196,7 +196,7 @@ git init -q "$P"
 cp "$DIR/cache-health-cadence.sh" "$DIR/cache-health.py" "$P/scripts/eval/"
 cp "$DIR/../luna/cadence-alert.sh" "$P/scripts/luna/"
 git -C "$P" add -A; git -C "$P" -c user.name=t -c user.email=t@t commit -q -m fixture
-BR="$W/bridge"; mkdir -p "$BR/chiefs"; : > "$BR/chiefs/live-chief.md"
+BR="$W/bridge"; mkdir -p "$BR/consoles"; : > "$BR/consoles/live-chief.md"
 printf '#!/bin/sh\nexit 0\n' > "$W/sweep.sh"; chmod +x "$W/sweep.sh"
 cat > "$W/sweep.sh" <<'SH'
 #!/bin/sh
@@ -215,9 +215,9 @@ export CADENCE_ALERT_FILE="$W/alerts.log" CADENCE_ALERT_DEDUPE_DIR="$W/alert-sen
 bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" >"$W/cad.out" 2>&1
 check "cadence run exits 0" 0 $?
 has "Telegram got the alert" "cache-health ALERT" "$W/tg"
-has "newest live chief inbox got the alert line" "[cache-health] cache-health ALERT" "$BR/chiefs/live-chief.md"
-[ ! -e "$BR/chiefs/old-chief.md" ] && pass "inbox is never created for another chief" || fail "created a stray inbox"
-check "inbox got one line" 1 "$(( $(wc -l < "$BR/chiefs/live-chief.md") ))"
+has "newest live chief inbox got the alert line" "[cache-health] cache-health ALERT" "$BR/consoles/live-chief.md"
+[ ! -e "$BR/consoles/old-chief.md" ] && pass "inbox is never created for another chief" || fail "created a stray inbox"
+check "inbox got one line" 1 "$(( $(wc -l < "$BR/consoles/live-chief.md") ))"
 rm -f "$W/tg"
 # a dry run never touches the shared failure alert, even when the check fails
 CACHE_HEALTH_ROOT="$W/no-such-root" bash "$P/scripts/eval/cache-health-cadence.sh" run --repo "$P" --dry-run >"$W/cadd.out" 2>&1

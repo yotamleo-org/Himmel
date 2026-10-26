@@ -16,7 +16,7 @@
 # The live chief is resolved at RUN time: the newest held
 # `*-chief` queue lock from `queue-lock.sh status --sweep`; --chief pins one.
 # Delivery: Telegram via vault-stall-alert.sh and the inbox
-# `<bridge root>/chiefs/<session>.md` (append-only, never created). `notify`
+# `<bridge root>/consoles/<session>.md` (append-only, never created). `notify`
 # exits 0 when EITHER channel delivered; a failed run alerts via cadence-alert.sh.
 #
 # ponytail: one delivered channel counts as delivered, so a Telegram outage with a live inbox is not retried on Telegram, upgrade path: per-channel sentinels if outages recur.
@@ -80,7 +80,7 @@ cmd_notify() {
     [ -n "$chief" ] || { [ -z "$repo" ] || chief="$(live_chief "$repo")"; }
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
     if [ -n "$chief" ]; then
-        inbox="$root/chiefs/$chief.md"
+        inbox="$root/consoles/$chief.md"
         if [ -f "$inbox" ] && printf -- '- %s [cache-health] %s\n' "$(date +%H:%M)" "$(printf '%s' "$msg" | tr '\n' ' ')" >> "$inbox"; then
             ok=0
         else

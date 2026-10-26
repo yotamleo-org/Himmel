@@ -23,7 +23,7 @@ export HIMMEL_DENIAL_ACK_DIR="$WORK/acks"
 # A page record as chief-wait writes it (denial_page_write in the lib).
 mkpage() { # <label> <count> <class> <ts>
     [ -d "$HIMMEL_DENIAL_ACK_DIR" ] || { ( umask 077; mkdir -p "$HIMMEL_DENIAL_ACK_DIR" ); }  # as the real writer creates it
-    printf 'worker=%s\ncount=%s\nclass=%s\nts=%s\n' "$1" "$2" "$3" "$4" > "$HIMMEL_DENIAL_ACK_DIR/$1.page"
+    printf 'leg=%s\ncount=%s\nclass=%s\nts=%s\n' "$1" "$2" "$3" "$4" > "$HIMMEL_DENIAL_ACK_DIR/$1.page"
 }
 field() { sed -n "s/^$2=//p" "$1" | head -n 1; }
 mode() { stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1" 2>/dev/null; }  # gnu-ok: Linux-only kit, BSD fallback

@@ -183,7 +183,7 @@ op_station_status() {
         | awk -F'\t' '{ if ($2 == "") $2 = "(unnamed)"; print $1 " " $2 " " $3 " " $4 }' | sed 's/^/  /'
     echo "last tick: $(age_of "$HOME/.himmel/state/tick-ciq-last") ago"
     now="$(date +%s)"
-    for f in "${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}"/chiefs/*.md.wait; do
+    for f in "${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}"/consoles/*.md.wait; do
         [ -e "$f" ] || continue
         hb="$(sed -n 's/^hb=\([0-9][0-9]*\) .*/\1/p' "$f" 2>/dev/null | head -n 1)"
         st="$(sed -n 's/.* state=\([a-z]*\).*/\1/p' "$f" 2>/dev/null | head -n 1)"
