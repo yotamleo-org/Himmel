@@ -102,6 +102,13 @@ test('a new fork requires a licence attribution, then regenerates successfully',
   assert.match(read(pagePath), /\| fixture-org\/new-fork \|/);
 });
 
+test('a first-party row (upstream null) is not a third-party credit', () => {
+  json(registryPath, [fork, { ...fork, nwo: 'fixture-org/own', upstream: null, role: 'first-party', merge_allowed: true }]);
+  green(run());
+  assert.doesNotMatch(read(pagePath), /fixture-org\/own/);
+  green(run('--check'));
+});
+
 test('local plugins and standalone skill families use audited attribution metadata', () => {
   json(manifestPath, { plugins: [{ name: 'local', source: './plugins/local', author: { name: 'Maintainer' } }] });
   metadata(forkMetadata + '\n| plugin:local | https://github.com/example/local | — | MIT | in-tree |\n| skill:solo | https://github.com/example/solo | Solo author | BSD-2-Clause | abc123 |');

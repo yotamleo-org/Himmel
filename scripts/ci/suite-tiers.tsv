@@ -1161,3 +1161,4 @@ scripts/ci/test-ci-go-gate.sh	pr	trust-path
 scripts/lanes/bench/scorecard/test-review-rounds.sh	local	behaviour suite, new in HIMMEL-7636
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/steering-cull/test-steering-cull.sh	local	behaviour suite, new HIMMEL-7694
+scripts/handover/chief-kit/test-chain-render.sh	local	behaviour suite, hermetic renderer, no gate role

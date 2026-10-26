@@ -18,7 +18,7 @@ dir="${p%/*}"
 for base in "${1:-}" "${2:-}"; do
   [ -n "$base" ] && [ "$dir" = "$base/lq-work" ] || continue
   [ -d "$dir" ] && [ ! -L "$dir" ] && [ -f "$p" ] && [ ! -L "$p" ] || exit 0
-  [ "$(realpath -- "$p")" = "$(realpath -- "$base")/lq-work/$name" ] || exit 0
+  [ "$(realpath -- "$p")" = "$(realpath -- "$base")/lq-work/$name" ] || exit 0  # prim-ok: resolves a file leaf in a jail-registered single-file hook; canon_path takes a directory only
   printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":"HIMMEL-5077: the eval row'"'"'s own lq-work test script"}}'
   exit 0
 done
