@@ -16,13 +16,13 @@ cannot widen it. Shape and coverage are checked by
 | `himmel_branch` | the one branch a chief merge may land on; the fork's default branch where himmel carries no delta |
 | `pin_site` | the himmel file that pins the fork, or `null` |
 | `role` | `runtime-dependency`, `upstream-contribution`, `vendored-source`, `dormant` or `first-party` |
-| `merge_allowed` | `true` only for a fork himmel carries a delta on and merges into itself |
+| `merge_allowed` | `true` only for a fork himmel carries a delta on and merges into itself, or a first-party repo himmel merges into |
 
 Roles: a runtime dependency is installed or loaded by himmel; an upstream
 contribution keeps the upstream PR flow (no upstream PRs where there are no
 external contributors); a vendored source is copied into himmel; a dormant fork
 is listed and marked, never deleted. Every fork is registered, archived or
-not; only a fork himmel carries a delta on and merges into has `merge_allowed`
+not; only a fork himmel carries a delta on and merges into, or a first-party repo, has `merge_allowed`
 true, so an archived or contribution-only fork stays false. A first-party repo
 is a `yotamleo-org` repo that is not a fork (for example `himmel-voice`): it
 follows the same himmel flow, has `upstream: null` and role `first-party`, and
