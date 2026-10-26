@@ -14,7 +14,7 @@ contributions; it exists so himmel controls the pin and can carry a small delta.
 ```
 fork_repo:            https://github.com/yotamleo/claude-hud   # public fork (HIMMEL-718)
 upstream_repo:        https://github.com/jarrodwatts/claude-hud
-pinned_commit:        cf95a322afd18db045175d28962650ae7392ed77  # v0.13.1 + 2 docs commits, 5 commits past 3bb6835 (HIMMEL-7394)
+pinned_commit:        cf95a322afd18db045175d28962650ae7392ed77  # v0.13.1 + 2 docs commits, 6 commits past 3bb6835 (HIMMEL-7394)
 pinned_upstream_tree: 766b96c41249f4a185dd8a14cf3cc4d0127d11e6  # git tree of pinned_commit (provenance)
 vendored_tree_hash:   6d3808640c542bad279b148f87334f96e959804b2d03a6dd088aa70e5179bf4c  # sha256 over VENDORED.manifest
 vendored_at:          2026-10-26
@@ -73,7 +73,7 @@ protected: editing it without bumping the pin trips the guard.
   `0.12.1` until a release cut changes it (plugin versions move only in the release-cut PR).
 
 - **Re-vendored to upstream v0.13.1 `cf95a32` (HIMMEL-7394, 2026-10-26, fork-drift
-  issue #2809):** +5 commits past `3bb6835`. Upstream work: every untrusted label
+  issue #2809):** +6 commits past `3bb6835`. Upstream work: every untrusted label
   is cut on a grapheme boundary (`src/utils/sanitize.ts` and the callers in
   `src/auth.ts`, `src/external-usage.ts`, `src/jj.ts`, `src/model-source.ts`,
   `src/render/*`, `src/stdin.ts`, `src/transcript.ts`), the v0.13.1 release prep,

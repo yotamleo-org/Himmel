@@ -132,7 +132,7 @@ mut=$'  lint:\n    defaults:\n      run:\n        working-directory: .\n    step
 if k1_shell_ok "$mut"; then bad "K1 a step-level shell: bash passes for defaults.run.shell"
 else ok "K1 a step-level shell: bash is not defaults.run.shell"; fi
 if [ "$(sort -u <<< "$refs" | grep -c .)" -eq 1 ]; then ok "K2 every job names the same default ref"; else bad "K2 the jobs name different default refs: $(sort -u <<< "$refs" | tr '\n' ' ')"; fi
-# K7: every job pins the rebuilt CI image; run 39896301894's log names this digest.
+# K7: every job pins the rebuilt CI image; run 40304856073's log names this digest.
 if [ "$(sort -u <<< "$refs" | grep .)" = "ghcr.io/yotamleo-org/himmel-ci@sha256:a11f0fdca4ebb2f1aaa9bfa9e6517bd12b9de96ab7dd0348f11c8b0aef303162" ]; then ok "K7 every job pins the rebuilt CI image digest"; else bad "K7 the jobs pin $(sort -u <<< "$refs" | tr '\n' ' ') instead of the rebuilt image digest"; fi
 
 # K4: the evaluator is not vacuous -- the old form lets a fork into the image.
