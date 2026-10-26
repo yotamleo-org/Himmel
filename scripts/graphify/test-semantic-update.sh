@@ -947,6 +947,8 @@ for i in (2, 3, 4):
 json.dump(g, open(sys.argv[1], "w"))
 PY
 for i in 1 2; do GRAPHIFY_STUB_SKIP=a.md run --name t81 --corpus-root "$C81" --corpus-class himmel-code >/dev/null; done
+python3 -c 'import json,sys;r=json.load(open(sys.argv[1]))["stuck"]["a.md"];sys.exit(0 if r["attempts"]==2 and r["reason"].startswith("not extracted") else 1)' "$C81/graphify-out/semantic-manifest.json" \
+  && pass "T82 setup: two omitted runs recorded two not-extracted attempts" || fail "T82 setup: $(cat "$C81/graphify-out/semantic-manifest.json")"
 out=$(run --name t81 --corpus-root "$C81" --corpus-class himmel-code); rc=$?
 [ "$rc" -eq 0 ] && [[ "$(ids "$C81")" == *stale_a4* ]] && ! [[ "$(ids "$C81")" == *sem_a.md_alpha* ]] \
   && pass "T82 the thin extraction is refused: no shrink refusal came before it" || fail "T82 (rc=$rc): $(ids "$C81") :: $out"
