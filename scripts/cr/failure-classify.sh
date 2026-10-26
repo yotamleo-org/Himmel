@@ -90,7 +90,8 @@ $(cat "$_cf_err" 2>/dev/null)"
     # reservation that returned nothing) exits 1 behind cfp's own BROKE line,
     # whole-line anchored so provider text cannot spell it. A broken critic
     # is critic-broke, never critic-skipped (a decision) or generic-rc-1.
-    if printf '%s' "$_cf_blob" | grep -q '^critic-first-pass.sh: claude critic BROKE ('; then echo critic-broke; return 0; fi
+    _cf_broke="$(printf '%s' "$_cf_blob" | grep '^critic-first-pass.sh: claude critic BROKE (')"
+    if [ -n "$_cf_broke" ]; then echo critic-broke; return 0; fi
 
     # quota-5h: the existing exhaustion table, the Z.ai 5-hour
     # sentinel (tests/fixtures/glm-cap/cli-tail-0b.txt: "Usage limit reached
