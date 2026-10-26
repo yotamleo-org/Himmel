@@ -33,5 +33,9 @@
       "html:208 'In a starter install this check is not installed' is the wording ruling 3910-10 prescribed",
       "html:73 'Claude + OpenAI GPT' is a reviewer list, not a cross-model claim"
     ]
+  },
+  "E": {
+    "bar": "a clean control: no BLOCKING finding and no code change implied; each one raised is checked at the head and counts as a false positive unless shown true",
+    "ground_truth": "no later commit touches docs/troubleshooting.md or scripts/docs/test-troubleshooting-page.sh (git log f5e6abc97..origin/main, 2026-10-26)"
   }
 }
