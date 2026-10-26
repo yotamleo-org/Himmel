@@ -214,6 +214,24 @@ newlog
 HIMMEL_VM_LOCK_DIR="$TMP/locks" STUB_sonnet='PROOF: PASS' run f --class vm --out "$TMP/o6" --reps 1 --arms keep >/dev/null 2>"$TMP/o6.err"
 has "vm: a head without tags is bundled alone" "$(cat "$STUB_LOG/argv.1")" "branch \`eval\` at $B)"
 eq "vm: a task without tags errors nowhere" "$(cat "$TMP/o6.err")" ""
+newlog
+FVK_VM=himmel-ar-9 run g --class vm --out "$TMP/o7" --reps 1 --arms keep >/dev/null 2>&1; rc=$?
+eq "vm: the keep arm refuses a VM its briefs do not name" "$rc" "2"
+eq "vm: no claude call on another VM" "$(cat "$STUB_LOG/count" 2>/dev/null || echo 0)" "0"
+
+# --- the proof scripts' helpers, the VM stubbed out ---
+LIB="$HERE/fixtures/tasks/vm-scripts/_lib.sh"
+# shellcheck disable=SC2016 # the inner shell expands it
+has "lib: a failed VM restore is no PASS" "$(TMPDIR="$TMP" bash -c '. "$1"; sdk() { return 1; }; vm_fresh' _ "$LIB")" "PROOF: FAIL"
+# shellcheck disable=SC2016 # the inner shell expands it
+no_stage='. "$1"; cd "$2" || exit 1; sdk() { :; }; g() { :; }; z=0123456789abcdef0123456789abcdef01234567; out="$(stage $z /x)"; expect head "$out" $z; final'
+has "lib: a head that cannot be staged is no PASS" "$(TMPDIR="$TMP" bash -c "$no_stage" _ "$LIB" "$R" 2>/dev/null)" "PROOF: FAIL"
+# shellcheck disable=SC2016 # the inner shell expands it
+cut_off='. "$1"; sdk() { :; }; g() { echo "CHECK a PASS"; return 124; }; echo x >"$WORK/p.sh"; tally "$(guest_script p.sh)"; final'
+has "lib: a guest script cut off after a passing check is no PASS" "$(TMPDIR="$TMP" bash -c "$cut_off" _ "$LIB")" "PROOF: FAIL"
+# shellcheck disable=SC2016 # the inner shell expands it
+finished='. "$1"; sdk() { :; }; g() { echo "CHECK a PASS"; case "$2" in *FVK-GUEST-END*) echo FVK-GUEST-END ;; esac; }; echo x >"$WORK/p.sh"; tally "$(guest_script p.sh)"; final'
+has "lib: a guest script that finishes is scored on its checks" "$(TMPDIR="$TMP" bash -c "$finished" _ "$LIB")" "PROOF: PASS"
 
 # --- fvk.py: historic subagent transcripts ---
 python3 -c 'import json,sys
@@ -225,6 +243,12 @@ with open(sys.argv[1], "w") as f:
 python3 "$FVK" summarize "$TMP/h.jsonl" --class judge >"$TMP/h.json"
 eq "fvk: the handback message is the reply" "$(jget "$TMP/h.json" outcome)" "NO-GO"
 eq "fvk: usage deduped by message id" "$(jget "$TMP/h.json" cost_eq)" "45"
+python3 -c 'import json,sys
+with open(sys.argv[1], "w") as f:
+    f.write(json.dumps({"type":"system","subtype":"init","session_id":"s"}) + "\n")
+    f.write(json.dumps({"type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":1},"content":[{"type":"text","text":"**GO**"}]}}) + "\n")' "$TMP/cut.jsonl"
+python3 "$FVK" summarize "$TMP/cut.jsonl" --class judge >"$TMP/cut.json"
+eq "fvk: a claude -p stream cut off before its result is an error" "$(jget "$TMP/cut.json" error)" "true"
 python3 "$FVK" summarize "$TMP/nope.jsonl" >/dev/null 2>&1; rc=$?
 eq "fvk: a missing file is refused" "$rc" "2"
 

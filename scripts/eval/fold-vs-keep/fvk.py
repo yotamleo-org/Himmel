@@ -157,7 +157,7 @@ def summarize(path, cls):
                         reply = (b.get("input") or {}).get("message", reply)
         s.update(cost_eq=round(sum(cost_eq(u) for u in msgs.values())),
                  wall_s=round(max(ts) - min(ts)) if len(ts) > 1 else 0, turns=len(msgs), cost_usd=None,
-                 reply=reply, error=not msgs)
+                 reply=reply, error=not msgs or any(d.get("type") == "system" and d.get("subtype") == "init" for d in ev))
     s["outcome"] = outcome_of(cls, s["reply"])
     s["reply"] = s["reply"][:400]
     return s

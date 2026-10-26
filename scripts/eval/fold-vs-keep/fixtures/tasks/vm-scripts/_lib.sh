@@ -3,11 +3,12 @@
 # Each proof script runs from the primary checkout root (run.sh does the cd), drives
 # one himmel-ar clone through vmsdk.py and guest-exec.sh only, and ends with one
 # `PROOF: PASS|FAIL` line. run.sh holds the vm-lock for the VM around the call.
-# ponytail: one fixed VM per run, set FVK_VM for another clone.
+# ponytail: one fixed VM per run, set FVK_VM for another clone (fold arm only: the keep
+# briefs name himmel-ar-2 and suite-ready-v4, so the snapshot is fixed for both arms).
 set -uo pipefail
 
 VM="${FVK_VM:-himmel-ar-2}"
-SNAP="${FVK_SNAP:-suite-ready-v4}"
+SNAP=suite-ready-v4
 # shellcheck source=../../../../../lib/prim.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../../../../lib/prim.sh" || exit 2
 WORK="$(tmpdir)" || { echo "PROOF: FAIL (no work dir)"; exit 2; }
@@ -21,8 +22,8 @@ sdk() {
 g() { local t="$1"; shift; bash scripts/vm/guest-exec.sh "$VM" --timeout "$t" -- "$@"; }
 
 vm_fresh() {
-    sdk restore "$SNAP" || { echo "CHECK vm-restore FAIL"; final; }
-    sdk up || { echo "CHECK vm-up FAIL"; final; }
+    sdk restore "$SNAP" || { check vm-restore 1; final; }
+    sdk up || { check vm-up 1; final; }
     trap vm_off EXIT
 }
 
@@ -33,7 +34,7 @@ stage() {
     local sha="$1" dest="$2"; shift 2
     local bare="$WORK/stage.git" refs=(refs/heads/eval) r
     git init -q --bare "$bare"
-    git -C "$bare" fetch -q --no-tags "$PWD" "$sha:refs/heads/eval" || { echo "CHECK stage-fetch FAIL $sha"; return 1; }
+    git -C "$bare" fetch -q --no-tags "$PWD" "$sha:refs/heads/eval" || { echo "CHECK stage-fetch FAIL"; return 1; }
     for r in "$@"; do
         git -C "$bare" fetch -q --no-tags "$PWD" "refs/tags/$r:refs/tags/$r" && refs+=("refs/tags/$r")
     done
@@ -43,11 +44,14 @@ stage() {
     g 300 "rm -rf $dest && git clone -q /tmp/fvk-stage.bundle $dest && git -C $dest checkout -q --detach $sha && git -C $dest rev-parse HEAD"
 }
 
-# guest_script <name> - push $WORK/<name> to the guest and run it under bash
+# guest_script <name> - push $WORK/<name> to the guest and run it under bash; a run cut
+# off before its end (a timeout, a dropped session) adds a failing CHECK line
 guest_script() {
-    local name="$1" t="${2:-600}"
+    local name="$1" t="${2:-600}" out
     sdk push "$WORK/$name" "/tmp/$name" >/dev/null || { echo "CHECK push-$name FAIL"; return 1; }
-    g "$t" "bash /tmp/$name"
+    out="$(g "$t" "bash /tmp/$name; echo FVK-GUEST-END")"
+    printf '%s\n' "$out"
+    case "$out" in *FVK-GUEST-END*) ;; *) echo "CHECK guest-$name FAIL the guest script did not finish" ;; esac
 }
 
 # check <name> <0|nonzero> [detail] - one expectation, as a CHECK line

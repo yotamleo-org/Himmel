@@ -17,7 +17,8 @@
 #          the task's proof script (fixtures/tasks/vm-scripts/<id>.sh), whose run costs its
 #          authoring cost-eq (fixtures/tasks/vm.json author_cost_eq). The historic child run is
 #          written as keep rep `historic` with the recorded verdict (no model call).
-#          Each call of either arm holds the vm-lock for $FVK_VM (default himmel-ar-2).
+#          Each call of either arm holds the vm-lock for $FVK_VM (default himmel-ar-2); the
+#          keep arm refuses any other VM, since its briefs name himmel-ar-2.
 #          The keep child cannot run gh or git push: a replayed brief may ask it to post.
 #   --ceiling  stop before the next call once the class's summed cost-eq reaches it.
 # Before each task's calls bank-preflight must print PROCEED, else the sweep stops (exit 3).
@@ -190,6 +191,7 @@ print(json.dumps({"file":sys.argv[1],"leaks":[],"error":m is None,"outcome":m.gr
 
 if [ "$cls" = vm ]; then
     export FVK_VM="${FVK_VM:-himmel-ar-2}"
+    case ",$arms," in *,keep,*) [ "$FVK_VM" = himmel-ar-2 ] || die "the keep briefs name himmel-ar-2, not FVK_VM=$FVK_VM" ;; esac
     HIMMEL_VM_LOCK_WAIT="${HIMMEL_VM_LOCK_WAIT:-3600}"
     # shellcheck source=../../vm/vm-lock.sh
     source "$HERE/../../vm/vm-lock.sh"
