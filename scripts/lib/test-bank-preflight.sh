@@ -9,7 +9,7 @@ W="$(mktemp -d -t bank-preflight.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
 # a launching shell that exports the 95 workaround must not move the ceiling under test.
 export CADENCE_BANK_MAX_PCT=85 CADENCE_BANK_MAX_AGE=600
-# the rows below set the old CADENCE_USAGE_* names inline; an exported new name would win over them.
+# the rows below set the old CADENCE_BANK_* names inline; an exported new name would win over them.
 for _v in $(compgen -v CADENCE_USAGE_); do unset "$_v"; done
 
 # NO_FLEET: an empty-output ps stub, isolating every bank-only case below
@@ -52,7 +52,7 @@ fx() {
 verdict() {
   printf '%s' "$(stamp_account "$1")" > "$W/c.json"
   CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
   FLEET_PS_CMD="$NO_FLEET" \
     bash "$SUT" </dev/null 2>"$W/err.log"
 }
@@ -191,7 +191,7 @@ check "oversized stamp (wraps to now) -> BANK-STALE" BANK-STALE \
 rm -f "$W/ledger.jsonl"
 printf '%s' "$(stamp_account "$(fx 10 20 "$NOW")")" > "$W/c.json"
 CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" \
-  CADENCE_USAGE_WORKER="$(printf 'worker\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
+  CADENCE_BANK_LEG="$(printf 'leg\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
 # jq silently repairs invalid UTF-8, so decode strictly. Positive control: the
 # same decoder must reject a raw invalid byte.
 strict_utf8() { python3 -I -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' < "$1" >/dev/null 2>&1 && echo true || echo false; }
@@ -310,7 +310,7 @@ fleet_verdict() {
   local dir="$1"; shift
   printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
   # a FRESH slot dir per call - these cases share the fixed
-  # CADENCE_USAGE_WORKER=testleg name and run under cap (creating a reservation)
+  # CADENCE_BANK_LEG=testleg name and run under cap (creating a reservation)
   # repeatedly; a shared/real slot dir would carry a reservation from one
   # call into the next call's "duplicate" refusal, and would pollute this
   # machine's real fleet slots besides.
@@ -324,7 +324,7 @@ fleet_verdict() {
   _slots="$(mktemp -d "$W/slots.XXXXXX")" || { echo "fleet_verdict: mktemp -d failed" >&2; return 1; }
   env -u FLEET_CAP_OK "$@" CADENCE_BANK_LAUNCH="${FLEET_VERDICT_LAUNCH-1}" \
     CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
+    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
     FLEET_PS_CMD="$dir/ps" FLEET_PROC="$dir/proc" \
     HIMMEL_FLEET_SLOTS="$_slots" \
     bash -o pipefail "$SUT" </dev/null 2>"$W/err.log"
@@ -491,7 +491,7 @@ fleet_verdict_no_procfs() {
   _slots="$(mktemp -d "$W/slots.XXXXXX")" || { echo "fleet_verdict_no_procfs: mktemp -d failed" >&2; return 1; }
   env -u FLEET_CAP_OK "$@" CADENCE_BANK_LAUNCH="${FLEET_VERDICT_LAUNCH-1}" \
     CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
+    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
     FLEET_PS_CMD="$dir/ps" FLEET_PROC="$dir/no-such-proc-dir" \
     HIMMEL_FLEET_SLOTS="$_slots" \
     bash "$SUT" </dev/null 2>"$W/err.log"
@@ -581,7 +581,7 @@ claudex_verdict() {
   chmod +x "$stub"
   printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
   CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
   FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_LANE=claudex CADENCE_BANK_STATUS_CMD="$stub" \
     bash "$SUT" </dev/null 2>"$W/err.log"
 }
@@ -623,7 +623,7 @@ chmod +x "$SPACE_STUB"
 printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
 check "claudex lane, CADENCE_BANK_STATUS_CMD path contains a space -> SKIPPED-BANK (not word-split into a bogus command)" SKIPPED-BANK \
   "$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-     CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
+     CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
      FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_LANE=claudex CADENCE_BANK_STATUS_CMD="$SPACE_STUB" \
        bash "$SUT" </dev/null 2>"$W/err.log")"
 
@@ -638,7 +638,7 @@ check "claudex lane, CADENCE_BANK_STATUS_CMD path contains a space -> SKIPPED-BA
 native_codex_run() {
   if [ -n "${2:-}" ]; then printf '%s' "$(stamp_account "$2")" > "$W/c.json"; else printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; fi
   CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
   FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_STATUS_CMD="$1" \
     ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} bash "$SUT" </dev/null 2>"$W/err.log"
 }
@@ -707,7 +707,7 @@ for _t in bash env cat grep head sed awk date jq mkdir dirname tr rm ps printf s
 done
 printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
 _noto_verdict="$(PATH="$NOTO_BIN" CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg FLEET_PS_CMD="$NO_FLEET" \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg FLEET_PS_CMD="$NO_FLEET" \
   CADENCE_BANK_STATUS_CMD="$S_BOTH" "$NOTO_BIN/bash" "$SUT" </dev/null 2>"$W/err.log")"
 check "no timeout binary -> PROCEED, codex read skipped (never unbounded)" PROCEED "$_noto_verdict"
 case "$(bank_line)" in *' codex=?') PASS=$((PASS+1)); echo "ok - no timeout binary -> codex=?" ;;
@@ -812,7 +812,7 @@ check "valid lift, cache without resets_at -> SKIPPED-BANK" SKIPPED-BANK \
 printf '%s' "$(stamp_account "$(lfx 10 98 "$NOW" "")")" > "$W/c.json"
 sed -i.bak 's/"resets_at":[0-9]*/"resets_at":"not-a-date"/' "$W/c.json"
 check "valid lift, unparseable resets_at -> SKIPPED-BANK" SKIPPED-BANK \
- "$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null 2>/dev/null)"
+ "$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null 2>/dev/null)"
 # The preflight's own identity gate refuses a mismatched cache earlier (BANK-UNKNOWN),
 # so the lift's own account/identity branches are exercised through usage_lift_valid.
 lift_rc() { ( . "$REPO/scripts/lib/usage-lift.sh"; usage_lift_valid "$1" >/dev/null 2>&1; echo $? ); }

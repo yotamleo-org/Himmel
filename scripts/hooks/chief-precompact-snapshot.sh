@@ -147,7 +147,7 @@ EOF
 
     local body
     body="lock=$lock
-workers=$(live_field workers)
+workers=$(live_field legs)
 queue=$(live_field queue)
 last-go=$(live_field 'last GO')
 go-file=$gofile

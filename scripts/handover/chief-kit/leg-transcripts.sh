@@ -7,8 +7,8 @@ case "${HIMMEL_LEGACY_NAMES:-}" in
     return 127 ;;
 esac
 case "${BASH_SOURCE[0]}" in */*) _leg_transcripts_alias_dir="${BASH_SOURCE[0]%/*}" ;; *) _leg_transcripts_alias_dir=. ;; esac
+# Old function names, for a caller that still sources this path.
+resolve_leg_transcripts() { resolve_worker_transcripts "$@"; }
 # shellcheck source=scripts/handover/chief-kit/worker-transcripts.sh
 # shellcheck disable=SC1091
 . "$_leg_transcripts_alias_dir/worker-transcripts.sh"
-# Old function names, for a caller that still sources this path.
-resolve_leg_transcripts() { resolve_worker_transcripts "$@"; }

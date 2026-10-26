@@ -38,7 +38,7 @@ HTARGETS='scripts/handover/merge-on-green.sh
 scripts/handover/console-kit/go.sh scripts/handover/chief-kit/go.sh
 scripts/handover/console-kit/himmel-gate.sh scripts/handover/chief-kit/himmel-gate.sh
 scripts/handover/console-kit/write-verdict.sh scripts/handover/chief-kit/write-verdict.sh
-scripts/handover/chief-kit/chief-wait.sh scripts/handover/chief-kit/chief-wait.sh'
+scripts/handover/console-kit/chief-wait.sh scripts/handover/chief-kit/chief-wait.sh'
 PR_READERS=' grep egrep fgrep cat head tail wc ls cut tr uniq nl jq '
 PR_GIT_UNSAFE=0 PR_TOKFAIL=0 PR_GIT_EXEC=0
 GATE_REL=scripts/handover/console-kit/himmel-gate.sh # old-term-ok: the layout before the move
@@ -83,10 +83,12 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]onsole-kit/console-wait*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/chief-wait*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/console-wait*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/chief-wait*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"

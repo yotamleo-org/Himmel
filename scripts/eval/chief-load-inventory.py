@@ -6,7 +6,7 @@ transcripts and attributes every API request to a trigger class (the last
 non-tool-result user turn: a worker message, a task notification, the operator)
 and an action class (what its tool calls did), then costs it.
 
-  chief-load-inventory.py [--projects DIR] [--suffix -roadmap-chief,-roadmap-chief]
+  chief-load-inventory.py [--projects DIR] [--suffix -roadmap-chief,-roadmap-console]
                             [--match REGEX] [--last N] [--json]
 
 Cost per API request (deduped by message id; assistant entries are split per
@@ -154,7 +154,7 @@ def parse(path):
                     for s in SCRIPTS:
                         if re.search(r"(?<![\w-])" + re.escape(s), cmd):
                             script_calls[s] += 1
-                    if ("close-wrapped-worker.sh" in cmd or "close-wrapped-worker.sh" in cmd) and "wrap-merged.sh" not in cmd:
+                    if ("close-wrapped-leg.sh" in cmd or "close-wrapped-worker.sh" in cmd) and "wrap-merged.sh" not in cmd:
                         hand_wraps += 1
                 elif x["name"] == "SendMessage":
                     r["cmds"].append("SendMessage")
@@ -173,7 +173,7 @@ def parse(path):
 def main(argv=None):
     ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     ap.add_argument("--projects", default=os.path.expanduser("~/.claude/projects/-home-overlord-Documents-github-himmel"))
-    ap.add_argument("--suffix", default="-roadmap-chief,-roadmap-chief")
+    ap.add_argument("--suffix", default="-roadmap-chief,-roadmap-console")
     ap.add_argument("--match", default="")
     ap.add_argument("--last", type=int, default=0)
     ap.add_argument("--json", action="store_true")

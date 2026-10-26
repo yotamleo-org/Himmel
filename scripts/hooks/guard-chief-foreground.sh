@@ -7,7 +7,7 @@
 # twice, so per root CLAUDE.md's "Adding a rule" it is a hook.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_DOC is set (a cheap first gate, before stdin is
-# read) AND the session's own `-n` name ends in `-chief` or `-chief` (a worker launched from
+# read) AND the session's own `-n` name ends in `-chief` or `-console` (a worker launched from
 # a chief inherits the env var, so the name is the real identity) AND the Bash command runs a script named in
 # scripts/handover/chief-kit/long-running.txt AND tool_input.run_in_background
 # is not true. "Runs" means the name follows an interpreter (bash, sh, node,
@@ -60,7 +60,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // empty' 2>/dev/null) |
 [ -n "$cmd" ] || exit 0
 
 # A worker launched from a chief's Bash inherits HIMMEL_CONSOLE_DOC as ambient env,
-# so the env var alone cannot tell them apart: only a session named `*-chief`/`*-chief`
+# so the env var alone cannot tell them apart: only a session named `*-chief`/`*-console`
 # is a chief (the chief-compact-reinject.sh rule). Unresolvable name: allow.
 lib="$HERE/../lib/session-name.sh"
 # shellcheck source=scripts/lib/session-name.sh
@@ -95,7 +95,7 @@ done < "$list"
 # ponytail: a textual check; an argument holding one of ;&|`$( denies a bounded run and the
 # chief re-issues it in the background — revisit if that is observed.
 case "$hit:$cmd" in
-    chief-wait.sh:*|run-suite.sh:*) ;;
+    chief-wait.sh:*|console-wait.sh:*|run-suite.sh:*) ;;
     *[\;\&\|\`\$\(]*|*"
 "*) ;;
     *)

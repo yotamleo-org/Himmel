@@ -349,6 +349,9 @@ for s in go write-verdict chief-wait himmel-gate; do
     run "new layout, clean tree, bash $NEWKIT/$s.sh -> allow" 0 "$(payload "bash $NEWKIT/$s.sh" "$WT2")" "$HR2"
     run "old layout, clean tree, bash $OLDKIT/$s.sh -> allow" 0 "$(payload "bash $OLDKIT/$s.sh" "$WT2OLD")" "$HR2"
 done
+# The old console-wait.sh name forwards to chief-wait.sh beside it, which the guard
+# would not check, so the old name is refused with the anchor remedy.
+run "new layout, bash $NEWKIT/console-wait.sh -> deny" 2 "$(payload "bash $NEWKIT/console-wait.sh" "$WT2")" "$HR2"
 for wt in "$WT2" "$WT2OLD"; do
     run "anchor's dispatcher from ${wt##*/} -> allow" 0 \
         "$(payload "bash \"\$HIMMEL_REPO/$NEWKIT/himmel-gate.sh\" orphan-check 12" "$wt")" "$HR2"

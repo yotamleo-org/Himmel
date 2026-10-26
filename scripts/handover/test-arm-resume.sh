@@ -1584,7 +1584,7 @@ mkdir -p "$FAILOPEN/handover" "$FAILOPEN/lib"
 # as "the fail-open contract is broken". Copying the directories
 # wholesale means the next fail-closed sibling does not repeat this.
 cp "$(dirname "$ARM")"/*.sh "$FAILOPEN/handover/" 2>/dev/null || true
-cp "$(dirname "$ARM")/../lib"/*.sh "$FAILOPEN/lib/" 2>/dev/null || true
+cp "$(dirname "$ARM")/../lib"/*.sh "$(dirname "$ARM")/../lib"/*.mjs "$FAILOPEN/lib/" 2>/dev/null || true
 # arm-resume resolves its plugin profile through ../lanes (fail-closed).
 mkdir -p "$FAILOPEN/lanes"
 cp "$(dirname "$ARM")/../lanes"/* "$FAILOPEN/lanes/" 2>/dev/null || true

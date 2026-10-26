@@ -94,7 +94,10 @@ HTARGETS='scripts/handover/merge-on-green.sh
 scripts/handover/console-kit/go.sh scripts/handover/chief-kit/go.sh
 scripts/handover/console-kit/himmel-gate.sh scripts/handover/chief-kit/himmel-gate.sh
 scripts/handover/console-kit/write-verdict.sh scripts/handover/chief-kit/write-verdict.sh
-scripts/handover/chief-kit/chief-wait.sh scripts/handover/chief-kit/chief-wait.sh'
+scripts/handover/console-kit/chief-wait.sh scripts/handover/chief-kit/chief-wait.sh'
+# Old names that forward to an HTARGETS writer. The forwarder runs its target from
+# the tree, which is never compared, so a forwarder name is refused, never resolved.
+HFORWARDERS='scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/console-wait.sh'
 # shellcheck disable=SC2016 # printed verbatim as the remedy, never expanded
 FENCE='if himmel_repo=$(printenv HIMMEL_REPO | grep .); then
     bash "$himmel_repo/scripts/cr/pr-check-context.sh"
@@ -760,10 +763,12 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     case "$1" in *[cC]onsole-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]onsole-kit/console-wait*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/chief-wait*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/write-verdict*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/console-wait*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/chief-wait*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"
@@ -1605,7 +1610,7 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     # below makes before trusting it.
     local p t rc=1
     shopt -s nocasematch
-    for p in $HTARGETS; do
+    for p in $HTARGETS $HFORWARDERS; do
         t=${p##*/}
         case "$1" in "$t") rc=0 ;; esac
         # shellcheck disable=SC2254 # $1 IS the pattern: a glob operand

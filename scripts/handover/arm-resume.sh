@@ -435,7 +435,7 @@ Optional:
                      resolved mode, its source (explicit vs. default) and
                      the effective autocompact value are always echoed to
                      the arm log.
-  --tier worker         Mark this as a worker-worker arm. The resolved launch argv
+  --tier worker      Mark this as a worker arm. The resolved launch argv
                      must carry the exact --autocompact 200000 ceiling;
                      --context 1m is refused with exit 2. Omit for existing
                      chief/ordinary arm behavior.
@@ -1034,7 +1034,7 @@ fi
 # fable unless theres a good reason" / "make sure this is STRUCTURAL
 # otherwise it won't work". The --model passthrough is opt-in,
 # so an arm that omits it relaunches on the operator's default model, which
-# is the Fable tier -- expensive. Two worker workers got armed unpinned on
+# is the Fable tier -- expensive. Two workers got armed unpinned on
 # 2026-08-31 and landed on Fable parents where Opus was right.
 #
 # Placed HERE, deliberately: right after the required-args check and before
@@ -1164,7 +1164,7 @@ echo "arm-resume: $CONTEXT_REASON (autocompact=$AUTOCOMPACT)"
 # says why. Refuse before any scheduler work (a dry run only warns).
 claude_floor_gate arm-resume "$DRY_RUN" "${HEADED_ARM_CLAUDE_CLI:-claude}" || exit 2
 
-# worker workers are capped by the explicit CLI argv pair, not by a
+# workers are capped by the explicit CLI argv pair, not by a
 # model suffix (Fable-family launches can silently strip [1m]). Refuse before
 # any preflight or scheduler work when context resolution chose another value.
 if [ "$TIER" = "worker" ] && [ "$AUTOCOMPACT" != "200000" ]; then

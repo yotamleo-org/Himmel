@@ -13,8 +13,8 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '../../..');
 const registry = () => ({
   floor: ['qmd@himmel'], catalog: ['qmd@himmel'], profiles: {
     operator: null,
-    'leg-impl': { enable: [], contextBudget: 35000, contextMode: 'standard', autocompact: 200000 },
-    console: { enable: [], contextBudget: 50000, contextMode: 'standard', autocompact: 200000 },
+    'worker-impl': { enable: [], contextBudget: 35000, contextMode: 'standard', autocompact: 200000 },
+    chief: { enable: [], contextBudget: 50000, contextMode: 'standard', autocompact: 200000 },
     design: { enable: [], contextBudget: 50000, contextMode: '1m', autocompact: 400000 },
   },
 });
@@ -41,8 +41,8 @@ function launch(f, profile, extra = {}) {
 
 test('context resolver keeps legacy defaults without widening settings JSON', () => {
   const r = registry();
-  delete r.profiles['leg-impl'].autocompact;
-  delete r.profiles['leg-impl'].contextMode;
+  delete r.profiles['worker-impl'].autocompact;
+  delete r.profiles['worker-impl'].contextMode;
   assert.equal(typeof PP.contextForProfile, 'function');
   assert.deepEqual(PP.contextForProfile(r, 'worker-impl'), { contextMode: 'standard', autocompact: 200000 });
   assert.deepEqual(PP.contextForProfile(r, 'operator'), { contextMode: 'standard', autocompact: 200000 });
@@ -57,7 +57,7 @@ test('composed profile ceiling takes the explicitly declared 1m member', () => {
 for (const [field, value] of [['autocompact', '400000'], ['autocompact', 200001],
   ['autocompact', 199999], ['autocompact', null], ['autocompact', 200000.5], ['contextMode', 'auto'], ['contextMode', null]]) {
   test(`validator refuses unsafe standard ${field}=${JSON.stringify(value)}`, () => {
-    const r = registry(); r.profiles['leg-impl'][field] = value;
+    const r = registry(); r.profiles['worker-impl'][field] = value;
     assert.ok(PP.validateRegistry(r).some((e) => e.includes(field)), 'invalid context field was accepted');
   });
 }
@@ -127,7 +127,7 @@ for (const extra of [
 }
 
 test('headed console launcher validates the profile before rendering argv', (t) => {
-  const r = registry(); r.profiles.console.autocompact = '200000';
+  const r = registry(); r.profiles.chief.autocompact = '200000';
   const f = fixture(t, r);
   const result = spawnSync(BASH_BIN, [join(ROOT, 'scripts/handover/headed-arm.sh'), '--dry-run',
     'HIMMEL-4021-chief-fixture', join(f.dir, 'brief.md'), join(f.dir, 'signal'),

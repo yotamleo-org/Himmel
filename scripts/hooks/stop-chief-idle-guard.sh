@@ -51,7 +51,7 @@
 # token file written on every acquire/heartbeat/release THIS session made
 # (queue-lock.sh's own comment on `_ql_token_persist`: "best-effort ON
 # PURPOSE"). Recomputing that digest for the Stop payload's `session_id`
-# against every held `*-chief` / `*-chief` lock and checking whether the file exists
+# against every held `*-chief` / `*-console` lock and checking whether the file exists
 # is the same best-effort signal, one layer up — a false negative here just
 # allows the stop (fail-open), it never blocks one it should not.
 #
@@ -140,7 +140,7 @@ _hp_json_field "$payload" session_id
 session_id="$_HP_FIELD"
 [ -n "$session_id" ] || exit 0
 
-# --- is the stopping session holding a *-chief.md / *-chief.md queue-lock? -
+# --- is the stopping session holding a *-chief.md / *-console.md queue-lock? -
 # shellcheck disable=SC2016  # $1 is meant for the inner bash -c, not this shell
 root="$(_bounded bash -c '. "$1/../lib/handover-path.sh" 2>/dev/null && handover_root 2>/dev/null' _ "$HERE")" || exit 0
 [ -n "$root" ] || exit 0

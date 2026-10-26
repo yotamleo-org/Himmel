@@ -386,7 +386,7 @@ scripts/handover/chief-kit/test-grant-round.sh	pr	trust-path
 scripts/handover/chief-kit/test-handoff-facts.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-handover-token-grammar.sh	local	new since the audit, behaviour suite
 scripts/handover/chief-kit/test-headed-arm-worker.sh	pr	trust-path
-scripts/handover/chief-kit/test-headed-arm-worker-worker-env.sh	pr	trust-path
+scripts/handover/chief-kit/test-headed-arm-worker-env.sh	pr	trust-path
 scripts/handover/chief-kit/test-himmel-gate.sh	pr	trust-path
 scripts/handover/chief-kit/test-hook-copy-reaper.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ice-followups.sh	local	new since the audit, behaviour suite

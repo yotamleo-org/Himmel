@@ -395,7 +395,7 @@ contains "gate avail row for '@'-branch" "$out" "avail codex"
 matches "'@'-branch shown intact in gate run" "$out" 'feat/x@y.*run='
 
 # a worker whose shared_branch contains '@' must match its gate
-# branch for wait-to-first. The worker worker is the RAW branch (no @<head>), so
+# branch for wait-to-first. The worker row is the RAW branch (no @<head>), so
 # only the gate label may be suffix-stripped; cutting the worker's last '@' too
 # turned feat/x@y into feat/x and printed n/a. dispatch 02:00, first gate 02:01.
 mkdir -p "$ROOT/at-claudex/at-1"

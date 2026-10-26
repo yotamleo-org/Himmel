@@ -34,7 +34,7 @@
 #     *-legN*-RESUME.md.
 #   Bash — the command text contains HIMMEL_CONSOLE_RELAY, HIMMEL_CONSOLE_LEG,
 #     SESSION_NAME_CMDLINE_FILE, CLAUDE_PID, CHIEF_SESSION_NAME or its old
-#     name CHIEF_SESSION_NAME (an
+#     name CONSOLE_SESSION_NAME (an
 #     env-prefix override, `unset`, or `env -u` of an identity/marker
 #     variable); or contains "inbox-send" AND "--token"; or contains a
 #     write-shaped verb (">", or the command WORD "tee", "cp", "cpio", "mv",

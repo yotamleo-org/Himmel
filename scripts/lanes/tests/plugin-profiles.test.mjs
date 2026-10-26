@@ -159,8 +159,8 @@ test('absent/false gateAllow does not inject permissions into a worker', () => {
     const registry = structuredClone(REG);
     registry.profiles['lane-impl'].gateAllow = value;
     assert.ok(!Object.hasOwn(resolveProfile(registry, 'lane-impl'), 'permissions'));
-    registry.profiles['leg-impl'].gateAllow = value;
-    assert.deepEqual(resolveProfile(registry, 'worker-impl').permissions, { allow: BUS_TOOL_ALLOW, deny: REG.profiles['leg-impl'].denyTools }, 'only the bus tools, no gate rule');
+    registry.profiles['worker-impl'].gateAllow = value;
+    assert.deepEqual(resolveProfile(registry, 'worker-impl').permissions, { allow: BUS_TOOL_ALLOW, deny: REG.profiles['worker-impl'].denyTools }, 'only the bus tools, no gate rule');
   }
 });
 
@@ -304,7 +304,7 @@ for (const [name, value] of [['worker-impl', 'true'], ['user', true], ['bare', t
 
 test('an opted-in profile requires the registry gateAllow list', () => {
   const registry = structuredClone(REG);
-  registry.profiles['leg-impl'].gateAllow = true;
+  registry.profiles['worker-impl'].gateAllow = true;
   delete registry.gateAllow;
   assert.ok(validateRegistry(registry).some((e) => e.includes('gateAllow')));
 });
@@ -1313,7 +1313,7 @@ test('chief-relay resolves via resolveProfileByName/resolveProfile to the floor 
   const enabled = Object.entries(settings.enabledPlugins).filter(([, v]) => v).map(([id]) => id);
   assert.deepEqual(enabled.sort(), [...REG.floor].sort());
   assert.deepEqual(resolveProfile(REG, 'chief-relay').enabledPlugins, settings.enabledPlugins);
-  assert.deepEqual(REG.profiles['console-relay'].enable, []);
+  assert.deepEqual(REG.profiles['chief-relay'].enable, []);
   assert.deepEqual(mcpServersForProfile(REG, 'chief-relay'), []);
 });
 
@@ -1732,7 +1732,7 @@ test('worker-e2e matches worker-impl plugins and leaves the Playwright plugin OF
   assert.equal(p['qmd@himmel'], true, 'qmd@himmel');
   assert.notEqual(p['playwright@claude-plugins-official'], true, 'plugin ships only the MCP; enabling it risks a second server');
   assert.deepEqual(resolveProfile(REG, 'worker-impl', { installed: [] }).enabledPlugins, p);
-  assert.equal(REG.profiles['leg-e2e'].gateAllow, true);
+  assert.equal(REG.profiles['worker-e2e'].gateAllow, true);
   assert.deepEqual(validateRegistry(REG), []);
 });
 
@@ -1740,7 +1740,7 @@ test('worker-e2e matches worker-impl plugins and leaves the Playwright plugin OF
 test('worker-bus is worker-impl plus a himmel-bus stdio def that starts through the plugin start script, no placeholder left (HIMMEL-5223)', () => {
   assert.deepEqual(mcpServersForProfile(REG, 'worker-bus'), ['qmd', 'himmel-bus']);
   assert.deepEqual(resolveProfile(REG, 'worker-bus', { installed: [] }).enabledPlugins, resolveProfile(REG, 'worker-impl', { installed: [] }).enabledPlugins, 'plugins are worker-impl\'s (HIMMEL-4830 adds none)');
-  assert.equal(REG.profiles['leg-bus'].gateAllow, true);
+  assert.equal(REG.profiles['worker-bus'].gateAllow, true);
   const dir = makeTmpDir('pp-bus-');
   const cfg = collectMcpServerDefs(['himmel-bus'], { homeConfigPath: join(dir, 'home.json'), repoMcpPath: join(dir, '.mcp.json'), marketplaceDir: join(dir, 'marketplace', 'plugins'), mcpCatalog: REG.mcpCatalog, repoRoot: '/srv/himmel' });
   const def = cfg.mcpServers['himmel-bus'];
@@ -2006,7 +2006,7 @@ for (const [shape, rule] of [
 }
 test('vmLaunch is restricted to worker-vm', () => {
   const registry = structuredClone(REG);
-  registry.profiles['leg-impl'].vmLaunch = true;
+  registry.profiles['worker-impl'].vmLaunch = true;
   assert.ok(validateRegistry(registry).some((e) => e.includes('vmLaunch')));
 });
 
@@ -2121,7 +2121,7 @@ test('HIMMEL-4983: validateRegistry holds the denyTools / disableWorkflows contr
   for (const t of TRIM_NEVER) assert.ok(errs({ denyTools: [t] }).some((e) => new RegExp(`denyTools .*${t}`).test(e)), `${t} must be refused`);
   assert.ok(errs({ disableWorkflows: 'yes' }).some((e) => /disableWorkflows must be a boolean/.test(e)));
   assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'user').some((e) => /"user" denyTools is restricted to worker-shaped profiles/.test(e)));
-  assert.ok(errs({ disableWorkflows: true }, 'console').some((e) => /"console" disableWorkflows is restricted to worker-shaped profiles/.test(e)));
+  assert.ok(errs({ disableWorkflows: true }, 'chief').some((e) => /"chief" disableWorkflows is restricted to worker-shaped profiles/.test(e)));
   assert.ok(errs({ denyTools: ['NotebookEdit'] }, 'bare').some((e) => /"bare" must not declare denyTools/.test(e)));
   for (const v of [true, false]) assert.ok(errs({ disableWorkflows: v }, 'bare').some((e) => /"bare" must not declare disableWorkflows/.test(e)), `bare refuses disableWorkflows: ${v}`);
 });

@@ -45,7 +45,9 @@ if ! { [ -r "$_csg_dir/env-alias.sh" ] && . "$_csg_dir/env-alias.sh"; }; then
     echo "usage-preflight.sh: cannot load $_csg_dir/env-alias.sh - refusing" >&2
     exit 96
 fi
-for _ua in PRODUCER MAX_AGE CACHE LEDGER WORKER LAUNCH LANE CALLER_PID STATUS_CMD SKIP_REFRESH CODEX_TIMEOUT; do
+alias_env CADENCE_USAGE_WORKER CADENCE_USAGE_LEG
+alias_env CADENCE_USAGE_WORKER CADENCE_BANK_LEG
+for _ua in PRODUCER MAX_AGE CACHE LEDGER LAUNCH LANE CALLER_PID STATUS_CMD SKIP_REFRESH CODEX_TIMEOUT; do
     alias_env "CADENCE_USAGE_$_ua" "CADENCE_BANK_$_ua"
 done
 alias_env_cap CADENCE_USAGE_MAX_PCT CADENCE_BANK_MAX_PCT

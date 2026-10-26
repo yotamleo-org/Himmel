@@ -117,7 +117,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/headed-arm-worker.sh"
 # The bare tool names worker-impl denies from the registry, ahead of the launcher's own deny rules.
-TRIM_DENY="$(jq -c '.profiles["leg-impl"].denyTools' "$HERE/../../lanes/plugin-profiles.json")"
+TRIM_DENY="$(jq -c '.profiles["worker-impl"].denyTools' "$HERE/../../lanes/plugin-profiles.json")"
 HEADED_ARM="$HERE/../headed-arm.sh"
 export HEADED_ARM_WORKER_PROFILES="$HERE/../../lanes/plugin-profiles.mjs"
 export PLUGIN_PROFILES_ADAPTERS="$HERE/../../guardrails/himmel-adapters.json"

@@ -12,5 +12,6 @@ ready-check.sh
 verdict-go.sh
 action-zero.sh
 board.mjs
+console-wait.sh
 chief-wait.sh
 run-suite.sh

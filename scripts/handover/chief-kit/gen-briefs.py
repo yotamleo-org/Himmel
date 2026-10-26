@@ -401,7 +401,7 @@ def render_rm_brief(l, ctx):
         ('<absolute release/<R>/ dir>', l['state_dir']),
         ('<absolute $HOME>', os.path.expanduser('~')),
         ('<versions, current first>', l['versions']),
-        ('<chief session name>', ctx['console']),
+        ('<chief session name>', ctx['chief']),
         ('<HANDOVER_DIR>', ctx['hroot']),
         ('<observe|live>', l['mode']),
         ('<versions>', l['versions']),
@@ -427,7 +427,7 @@ def render_rm_brief(l, ctx):
 def render_brief(l, ctx):
     n, keys = l['label'], l['keys']
     gets =' and '.join('`JIRA_PROJECT_KEY=%s node %s/scripts/jira/dist/index.js get %s`' % (k.split('-')[0], ctx['repo'], k) for k in keys)
-    others = ', '.join('%s (%s)' % (x['label'], x['scope_short']) for x in ctx['legs'] if x['label'] != n and x.get('kind') != 'rm')
+    others = ', '.join('%s (%s)' % (x['label'], x['scope_short']) for x in ctx['workers'] if x['label'] != n and x.get('kind') != 'rm')
     also = ('; ' + ctx['also_live']) if ctx['also_live'] else ''
     return """---
 resume_cwd: {wt}
@@ -465,7 +465,7 @@ template_version: 3
 
 ## Results (newest at the bottom)
 """.format(wt=l['wt'], desc=l['desc'], keystr=' + '.join(keys), title=l['title'], n=n, model=l['model'], lane=l.get('lane', 'native'), date=ctx['date'],
-           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], chief=ctx['console'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
+           branch=l['branch'], base=ctx['base'], nonce=l['nonce'], chief=ctx['chief'], hroot=ctx['hroot'], doc=shlex.quote(os.path.join(ctx['bucket'], l['stem'] + '.md')),
            hookline=HOOK_LINE if l['hook'] else PLAIN_LINE, gets=gets, why=l['why'], prior=l['prior'],
            extra=l.get('extra', ''), envline=(' ' + ENV_LINE) if l.get('env') else '', commit=l['commit'], judge=JUDGE_LINE if l['judge'] else TRUST_LINE,
            scope=l['scope'], scope_line=write_paths(l['scope']), others=others, also=also,
@@ -490,7 +490,7 @@ def render_rm_launcher(l, ctx, doc):
         'mkdir -p "$W"',
         # The RM brief has no Prior art line, and headed-arm-worker.sh sets the RM env itself.
         'setsid nohup bash %s --profile release-manager --rm-release %s --no-prior-art-check --chief %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: prints the chief's launch line, nothing starts here
-            q(ctx['repo'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), q(l['release']), q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
+            q(ctx['repo'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), q(l['release']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,
@@ -522,7 +522,7 @@ def render_launcher(l, ctx, doc):
         'W=%s' % q(w),
         'mkdir -p "$W"',
         'setsid nohup bash %s%s --profile worker-impl --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (
-            q(ctx['repo'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(ctx['console']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
+            q(ctx['repo'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,

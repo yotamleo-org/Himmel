@@ -496,7 +496,7 @@ node -e '
     for (const [br, g] of order){
       const run = fmt(g[1] - g[0]);
       // wait = first gate - earliest worker dispatch of that same branch
-      // A worker worker is the RAW shared_branch (no @<head> suffix), so compare it
+      // A worker row is the RAW shared_branch (no @<head> suffix), so compare it
       // as-is; only gate labels carry the suffix branch() strips.
       let waitStr = "n/a";
       let best = null;

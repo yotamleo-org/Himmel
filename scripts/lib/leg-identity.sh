@@ -7,9 +7,6 @@ case "${HIMMEL_LEGACY_NAMES:-}" in
     return 127 ;;
 esac
 case "${BASH_SOURCE[0]}" in */*) _leg_identity_alias_dir="${BASH_SOURCE[0]%/*}" ;; *) _leg_identity_alias_dir=. ;; esac
-# shellcheck source=scripts/lib/worker-identity.sh
-# shellcheck disable=SC1091
-. "$_leg_identity_alias_dir/worker-identity.sh"
 # Old function names, for a caller that still sources this path.
 leg_identity() { worker_identity "$@"; }
 leg_label() { worker_label "$@"; }
@@ -17,3 +14,6 @@ leg_base() { worker_base "$@"; }
 leg_description_field() { worker_description_field "$@"; }
 leg_description() { worker_description "$@"; }
 leg_doc_has_run() { worker_doc_has_run "$@"; }
+# shellcheck source=scripts/lib/worker-identity.sh
+# shellcheck disable=SC1091
+. "$_leg_identity_alias_dir/worker-identity.sh"

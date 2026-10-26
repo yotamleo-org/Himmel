@@ -771,12 +771,15 @@ if [ -z "$PROFILE" ] && [ "$NO_PROFILE" -eq 0 ] && [ -f "$DOC" ]; then
     PROFILE="$(head -n 60 "$DOC" | sed -n -E 's/^[>* -]*profile:[[:space:]]*`?([A-Za-z0-9._,-]+)`?[[:space:]]*$/\1/p' | head -n 1)"  # read-sink-ok: DOC is the handover doc this launcher was asked to arm
 fi
 
-# worker-* profile ids are the new names of the leg-* registry keys
-# (plugin-profiles.mjs PROFILE_ALIASES); map them here so the worker-vm check
-# below and every profile consumer see one name.
+# leg-*, console and console-relay are the old names of the worker-*, chief and
+# chief-relay registry keys (plugin-profiles.mjs PROFILE_ALIASES); map them here
+# so the worker-vm check below and every profile consumer see one name. With
+# legacy names off an old id stays as typed and fails as an unknown profile.
 case "$PROFILE" in
-    *worker-*)
-        PROFILE="$(printf '%s' "$PROFILE" | sed -E 's/(^|,)worker-(impl|bus|vm|e2e)(,|$)/\1leg-\2\3/g; s/(^|,)worker-(impl|bus|vm|e2e)(,|$)/\1leg-\2\3/g')"
+    *leg-*|*console*)
+        if legacy_names_on; then
+            PROFILE="$(printf '%s' "$PROFILE" | sed -E 's/(^|,)leg-(impl|bus|vm|e2e)(,|$)/\1worker-\2\3/g; s/(^|,)leg-(impl|bus|vm|e2e)(,|$)/\1worker-\2\3/g; s/(^|,)console-relay(,|$)/\1chief-relay\2/g; s/(^|,)console(,|$)/\1chief\2/g; s/(^|,)console(,|$)/\1chief\2/g')"
+        fi
         ;;
 esac
 

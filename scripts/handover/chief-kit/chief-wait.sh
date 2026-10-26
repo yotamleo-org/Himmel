@@ -94,7 +94,7 @@
 #                               broken. Once per streak; the re-arm stays quiet
 #                               until a sample succeeds.
 #
-# The action key is the tick fields a chief acts on: workers= (an older tick's workers=),
+# The action key is the tick fields a chief acts on: workers= (an older tick's legs=),
 # livestate=, prs=, tails=, acts= (a worker's newest READY, BLOCKED, FINDING or MERGED bullet and a count:
 # a repeat or a later LIVE bullet cannot hide it; absent when a worker has none), workerset= (an older
 # tick's legset=), board= and tracker= (class only, the STALE
@@ -414,7 +414,7 @@ field() { # <name> <tick line>
     printf '%s\n' "$2" | tr ' ' '\n' | sed -n "s/^$1=//p" | head -n 1
 }
 
-# old_key_names: a key saved under the old field names (workers=, legset=, bank=) reads
+# old_key_names: a key saved under the old field names (legs=, legset=, bank=) reads
 # as the same key under the new ones, so a restart over it is no change.
 old_key_names() {
     printf '%s\n' "$1" | sed -E 's/(^|\|)legs=/\1workers=/; s/(^|\|)legset=/\1workerset=/; s/(^|\|)bank=/\1usage=/'
@@ -434,7 +434,7 @@ sample() {
     cap_val="$(field capacity "$tick_line")"
     for f in workers livestate prs tails acts holds workerset board tracker vault cloud orphans-wip wt-ceiling vmismatch vmrun parked stall dispatch denials closable deadwin; do
         v="$(field "$f" "$tick_line")"
-        # An older tick.sh prints workers= and legset=; field() matches whole tokens, so max_workers= is never workers=.
+        # An older tick.sh prints legs= and legset=; field() matches whole tokens, so max_workers= is never workers=.
         if [ -z "$v" ]; then
             case "$f" in
                 workers) v="$(field legs "$tick_line")" ;;

@@ -801,14 +801,14 @@ scripts/lanes/bank-status.ts scripts/lanes/usage-status.ts scripts/lanes/bank-st
 scripts/lanes/resolve.mjs scripts/lanes/check.mjs scripts/lanes/probe.mjs scripts/lanes/set-lane-override.mjs scripts/lanes/profile-managed.cjs
 scripts/observability/quota-sources.ts
 scripts/telegram/alibaba-probe-once.ts scripts/telegram/quota-gauge.ts scripts/telegram/quota-gauge-alibaba.ts
-scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
+scripts/telegram/console-route.ts scripts/telegram/chief-route.ts scripts/telegram/bus.ts scripts/telegram/poller.ts
 scripts/telegram/chief-heartbeat-watch.ts
 scripts/telegram/router.ts scripts/telegram/auto-action.ts scripts/telegram/telegram-api.ts
 scripts/telegram/log-timestamp.ts scripts/telegram/gate.ts scripts/telegram/run.ts
 scripts/telegram/triage.ts scripts/telegram/transcribe.ts scripts/telegram/spawn-glm.ts
 scripts/telegram/glm-env.ts scripts/telegram/grants.ts scripts/telegram/huge-diff-guard.ts
 scripts/telegram/lane-args.ts scripts/telegram/phi-egress-guard.ts scripts/telegram/round-guard.ts
-scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/worker-pr-open.sh scripts/lanes/worker-burn.sh scripts/lanes/lib/burn-weights.sh
+scripts/lanes/plugin-profiles.mjs scripts/lanes/plugin-profiles.json scripts/lanes/role-requires.mjs scripts/lanes/skill-cost.mjs scripts/lanes/skill-listing.mjs scripts/lanes/profile-settings.sh scripts/lanes/leg-pr-open.sh scripts/lanes/worker-pr-open.sh scripts/lanes/leg-burn.sh scripts/lanes/worker-burn.sh scripts/lanes/lib/burn-weights.sh
 scripts/handover/chief-kit/leg-jira-status.sh scripts/handover/chief-kit/worker-jira-status.sh
 marketplace/plugins/himmel-ops/scripts/humanizer-facts.py
 scripts/handover/chief-kit/append-results.sh scripts/handover/chief-kit/leg-doc-lock.sh scripts/handover/chief-kit/worker-doc-lock.sh
@@ -830,7 +830,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/observability/quota-sources.ts'
     ':(top)scripts/telegram/alibaba-probe-once.ts' ':(top)scripts/telegram/quota-gauge.ts'
     ':(top)scripts/telegram/quota-gauge-alibaba.ts'
-    ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
+    ':(top)scripts/telegram/console-route.ts' ':(top)scripts/telegram/chief-route.ts' ':(top)scripts/telegram/bus.ts'
     ':(top)scripts/telegram/chief-heartbeat-watch.ts'
     ':(top)scripts/telegram/poller.ts' ':(top)scripts/telegram/router.ts'
     ':(top)scripts/telegram/auto-action.ts' ':(top)scripts/telegram/telegram-api.ts'
@@ -841,7 +841,7 @@ cr_pathspecs=(':(top)scripts/cr/' ':(top)scripts/lib/' ':(top)scripts/api-lane/'
     ':(top)scripts/telegram/huge-diff-guard.ts' ':(top)scripts/telegram/lane-args.ts'
     ':(top)scripts/telegram/phi-egress-guard.ts' ':(top)scripts/telegram/round-guard.ts'
     ':(top)scripts/lanes/plugin-profiles.mjs' ':(top)scripts/lanes/plugin-profiles.json' ':(top)scripts/lanes/role-requires.mjs' ':(top)scripts/lanes/skill-cost.mjs' ':(top)scripts/lanes/skill-listing.mjs' ':(top)scripts/lanes/profile-settings.sh'
-    ':(top)scripts/lanes/worker-pr-open.sh' ':(top)scripts/lanes/worker-burn.sh' ':(top)scripts/lanes/lib/burn-weights.sh'
+    ':(top)scripts/lanes/leg-pr-open.sh' ':(top)scripts/lanes/worker-pr-open.sh' ':(top)scripts/lanes/leg-burn.sh' ':(top)scripts/lanes/worker-burn.sh' ':(top)scripts/lanes/lib/burn-weights.sh'
     ':(top)scripts/handover/chief-kit/leg-jira-status.sh' ':(top)scripts/handover/chief-kit/worker-jira-status.sh'
     ':(top)marketplace/plugins/himmel-ops/scripts/humanizer-facts.py'
     ':(top)scripts/handover/chief-kit/append-results.sh' ':(top)scripts/handover/chief-kit/leg-doc-lock.sh' ':(top)scripts/handover/chief-kit/worker-doc-lock.sh'

@@ -250,7 +250,7 @@ contains 'a READY-TO-OPEN leg awaits the console' "$html" 'data-need="N6"'
 # tail === 'FINDING' before lostLock, so the lock text never rendered.
 contains 'a FINDING leg with a lost lock still shows the lock (issue #1336)' "$html" '<b>N12</b> FINDING — needs a ruling · lock STALE — lost or stale'
 contains 'the Live-state decisions: line renders as open operator decisions' "$html" 'widen the fleet cap to 20?'
-# The tick names the usage budget usage= and the worker set workers=; the older bank=/workers= still read.
+# The tick names the usage budget usage= and the worker set workers=; the older bank=/legs= still read.
 cat > "$W/bin/tick-stub-new" <<'STUB'
 #!/usr/bin/env bash
 "$(dirname "$0")/tick-stub" "$@" | sed -e 's/ bank=/ usage=/' -e 's/ legs=/ workers=/'

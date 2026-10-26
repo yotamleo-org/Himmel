@@ -34,7 +34,7 @@
 # fires on every compaction fleet-wide, and a worker or ad-hoc session dumping
 # a chief's authority state would be the exact failure this hook exists to
 # prevent, not a feature. Detection: THE SESSION'S OWN `-n` NAME must be a
-# `*-chief` or `*-chief` name first — never a parent process, never inherited env — and
+# `*-chief` or `*-console` name first — never a parent process, never inherited env — and
 # only then is `HIMMEL_CONSOLE_DOC` trusted, and only when it names exactly
 # `<own name>.md` (`HIMMEL_CONSOLE_DOC`/`HIMMEL_CONSOLE_WORKDIR`
 # are ambient env — a chief's own launch sets them on ITS process, but a
@@ -83,7 +83,7 @@ resolve_chief_doc() {
     # ever trusts — resolved BEFORE looking at HIMMEL_CONSOLE_DOC, never
     # skipped by it. A worker or judge launched from a chief's own Bash
     # subprocess can inherit that chief's HIMMEL_CONSOLE_DOC/WORKDIR as
-    # ordinary ambient env; only a name that is itself `*-chief`/`*-chief` may ever
+    # ordinary ambient env; only a name that is itself `*-chief`/`*-console` may ever
     # cash that env var in.
     # shellcheck source=scripts/lib/session-name.sh
     . "$REPO/scripts/lib/session-name.sh" || return 1

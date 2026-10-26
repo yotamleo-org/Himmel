@@ -397,7 +397,7 @@ scripts/handover/chief-kit/test-gh-read.sh	1
 scripts/handover/chief-kit/test-go.sh	13
 scripts/handover/chief-kit/test-grant-round.sh	7
 scripts/handover/chief-kit/test-handoff-facts.sh	0
-scripts/handover/chief-kit/test-headed-arm-worker-worker-env.sh	2
+scripts/handover/chief-kit/test-headed-arm-worker-env.sh	2
 scripts/handover/chief-kit/test-headed-arm-worker.sh	117
 scripts/handover/chief-kit/test-himmel-gate.sh	0
 scripts/handover/chief-kit/test-hook-copy-reaper.sh	0
