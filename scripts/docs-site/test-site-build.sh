@@ -326,6 +326,10 @@ check "criterion 4: pele's font points at Starlight's font" grep -q -- '--pele-f
 for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
+# every standalone docs/ page is listed in HTML_PASSTHROUGH: one missing from it 404s here, not only in J1
+while IFS= read -r p; do
+  check "criterion 4: ${p#"$repo/docs/"} byte-identical" cmp "$p" "$dist/${p#"$repo/docs/"}"
+done < <(find "$repo/docs" -name '*.html')
 
 # --- IA: sidebar groups equal the F1 list and the v5 frame 1 tree, hero Home with the F2 copy and CTA
 groups=$(node --input-type=module -e "

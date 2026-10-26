@@ -11,7 +11,7 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const DOCS = path.resolve(here, '../docs');
 const BASE = '/Himmel';
 const ALLOW = readAllowlist(path.join(here, 'allowlist.txt'));
-const HTML_PASSTHROUGH = ['adoption-trail.html', 'guide/installer-journey.html', 'guide/loops-and-graphs.html', 'guide/dev-graph.html'];
+const HTML_PASSTHROUGH = ['adoption-trail.html', 'guide/installer-journey.html', 'guide/loops-and-graphs.html', 'guide/dev-graph.html', 'guide/how-a-change-ships.html'];
 // The development graph page loads these next to itself.
 const GUIDE_ASSETS = ['guide/dev-graph/dev-graph.js', 'guide/dev-graph/dev-graph.css', 'guide/dev-graph/tokens.css', 'guide/dev-graph/graph.json'];
 
