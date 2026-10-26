@@ -326,14 +326,15 @@ check "criterion 4: pele's font points at Starlight's font" grep -q -- '--pele-f
 for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json guide/how-a-change-ships/how-a-change-ships.js guide/how-a-change-ships/how-a-change-ships.css; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
-# every standalone docs/ page is listed in HTML_PASSTHROUGH: one missing from it 404s here, not only in J1
+# every standalone docs/ page and the site routes render headless from astro preview: 200, every referenced asset 200,
+# the page's h1 from its docs/ source, no uncaught console error. A page missing from HTML_PASSTHROUGH 404s here.
 standalone=$(find "$repo/docs" -name '*.html') || standalone=''
 check "criterion 4: the docs/ standalone pages were listed" test -n "$standalone"
-while IFS= read -r p; do
-  check "criterion 4: ${p#"$repo/docs/"} byte-identical" cmp "$p" "$dist/${p#"$repo/docs/"}"
-done <<PAGES
-$standalone
-PAGES
+pw="$repo/scripts/config-ui/tests/e2e/node_modules/.bin/playwright"
+check "criterion 4: the playwright binary is present" test -x "$pw"
+# the file filter is a regex: pass the bare name, a worktree path holds '+' (fix+himmel-…)
+render() { NODE_PATH="$repo/scripts/config-ui/tests/e2e/node_modules" "$pw" test -c "$repo/scripts/docs-site/e2e/j1.config.ts" render.e2e.ts; }
+check "criterion 4: every standalone docs/ page and site route renders headless (render.e2e.ts)" render
 
 # --- IA: sidebar groups equal the F1 list and the v5 frame 1 tree, hero Home with the F2 copy and CTA
 groups=$(node --input-type=module -e "
