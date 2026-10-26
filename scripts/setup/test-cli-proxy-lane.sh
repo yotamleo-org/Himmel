@@ -514,6 +514,29 @@ else
     fail "spaced-colon keys are not duplicated" "$CFG31"
 fi
 
+echo "TEST 32: the unit pins UMask=0077 so a token the server refreshes is born owner-only"
+if [ -f "$UNIT3" ]; then
+    assert_contains "unit sets UMask=0077" "UMask=0077" "$(cat "$UNIT3")"
+else
+    fail "unit sets UMask=0077" "no unit at $UNIT3"
+fi
+
+echo "TEST 33: --login runs the exe under umask 077 -> the OAuth file it writes is 0600 even from umask 022"
+F33="$(fixture login-umask --with-exe-config)"
+printf '#!/bin/sh\n: > "$HOME/.cli-proxy-api/codex-stub@example.com.json"\n' > "$F33/.cli-proxy-api/cli-proxy-api"
+(umask 022; HOME="$F33" run --login; exit "$RC") || RC=$?
+assert_rc "login exit code" 0 "$RC"
+# shellcheck source=../lib/host-caps.sh
+. "$SCRIPT_DIR/../lib/host-caps.sh"
+TOK33="$F33/.cli-proxy-api/codex-stub@example.com.json"
+if [ ! -f "$TOK33" ]; then
+    fail "login wrote the stub OAuth file" "not found at $TOK33"
+elif host_modes_stick; then
+    assert_rc "login-created OAuth file mode is 0600" "600" "$(host_mode_of "$TOK33")"
+else
+    host_skip "login-created OAuth file mode: chmod does not stick on this host"
+fi
+
 echo
 echo "===================================="
 echo "test summary: $PASS passed, $FAIL failed"
