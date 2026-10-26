@@ -149,6 +149,8 @@ grep -qE '\.ps1|\.exe' "$manifest" && fail "manifest: a row still names a .ps1 o
 for k in GEMINI_API_KEY PERPLEXITY_API_KEY XAI_API_KEY; do
   jq -e --arg k "$k" '.secrets[] | select(.name == $k and .collect == "card")' "$manifest" >/dev/null \
     || fail "manifest: no card row for $k"
+  grep -qE "^  $k: \{ kind: 'process-env' \}," "$repo_root/scripts/himmelctl/lib/config-feed.js" \
+    || fail "config-feed: no presence source for $k"
 done
 echo "ok: manifest — plan 3.4 card rows present, no Windows wording"
 echo "ALL PASS"
