@@ -2789,6 +2789,12 @@ run_5763 "python3 heredoc, then a gate run on the next line -> deny" 2 \
     "python3 - <<'PY'${NL}print('scripts/cr/write-verdicts.sh')${NL}PY${NL}bash scripts/cr/write-verdicts.sh"
 run_5763 "python3 heredoc printing a shell invocation -> deny" 2 \
     "python3 - <<'PY'${NL}print('bash scripts/cr/write-verdicts.sh')${NL}PY"
+run_5763 "python3 heredoc with an unquoted delimiter -> deny" 2 \
+    "python3 - <<PY${NL}print('scripts/cr/write-verdicts.sh')${NL}PY"
+run_5763 "python3 -c with extra argv after the code -> deny" 2 \
+    "python3 -c \"print('scripts/cr/write-verdicts.sh')\" extra"
+run_5763 "env-prefixed python3 -c -> deny" 2 \
+    "PYTHONPATH=x python3 -c \"print('scripts/cr/write-verdicts.sh')\""
 run_5763 "gate behind an env prefix -> deny" 2 "FOO=1 bash scripts/cr/write-verdicts.sh"
 run_5763 "gate behind env -> deny" 2 "env FOO=1 bash scripts/cr/write-verdicts.sh"
 run_5763 "gate behind timeout -> deny" 2 "timeout 9 bash scripts/cr/write-verdicts.sh" # gnu-ok: payload text fed to the hook, never executed
