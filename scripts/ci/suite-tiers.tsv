@@ -269,6 +269,7 @@ scripts/docs/test-second-model-review-page.sh	pr	static-gate
 scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/docs/test-troubleshooting-page.sh	pr	static-gate
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
+scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	local	behaviour suite, new HIMMEL-7330
 scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
 scripts/eval/guard-corpus/test-guard-corpus.sh	local	behaviour suite, 0 catches in the 400-PR audit window
