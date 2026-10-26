@@ -1401,20 +1401,24 @@ if [ "$PR_TOKENIZED" = 1 ]; then
 fi
 # python/node run their text as code, so a gate path is only a mention to one
 # when the whole command is that one interpreter run (`python3 -c CODE`,
-# `node -e CODE`, `python3 - <<'PY'`) and the code spawns nothing and names no
-# shell word: print('scripts/cr/x.sh') names a path, os.system('bash
-# scripts/cr/x.sh') runs one. The command word is the only position that runs a
-# file, so everything else in the line is text.
-# ponytail: the code is read by a text deny-list of spawn and shell words, so a
-# spawn spelled by concatenation is not seen (no allow rule matches an
-# interpreter command, the classifier still decides); upgrade path: parse the
-# interpreter's own AST.
-INTERP_SPAWN_RE='system|popen|exec|eval|spawn|fork|subprocess|child_process|import|require|__|getattr|open|compile|function|constructor|process|globals|builtins|os\.'
+# `node -e CODE`, `python3 - <<'PY'`) and every line of the code only prints one
+# plain string literal that spells no shell word: print('scripts/cr/x.sh')
+# names a path, os.system('bash scripts/cr/x.sh') runs one. The command word is
+# the only position that runs a file, so everything else in the line is text.
+# ponytail: the allow-list is print(LIT) / console.log(LIT) lines, one escape-free
+# string literal each, so any other code reaches the classifier and is denied
+# when it names a gate; upgrade path: parse the interpreter's own AST to admit
+# more than printing.
+INTERP_PRINT_RE='^[[:space:]]*(print|console\.log)\(('"'"'[^'"'"'\]*'"'"'|"[^"\]*")\);?[[:space:]]*$'
 INTERP_SHELL_RE='(^|[^[:alnum:]_.-])(bash|sh|zsh|dash|ksh|source)[[:space:]]'
-interp_code_inert() { # interp_code_inert <code> - no spawn word and no shell word
+interp_code_inert() { # interp_code_inert <code> - only print(LIT) lines, no shell word in them
+    local line
     st_lower "$1"
-    [[ $ST_LOWER =~ $INTERP_SPAWN_RE ]] && return 1
     [[ $ST_LOWER =~ $INTERP_SHELL_RE ]] && return 1
+    while IFS= read -r line; do
+        case "$line" in *[![:space:]]*) ;; *) continue ;; esac
+        [[ $line =~ $INTERP_PRINT_RE ]] || return 1
+    done <<<"$1"
     return 0
 }
 interp_data_only() { # true when the whole command is one interpreter run whose code is inert
