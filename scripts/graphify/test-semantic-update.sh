@@ -92,6 +92,8 @@ python3 - "\$2" <<'PY'
 import json, os, sys
 root = sys.argv[1]
 nodes, links = [], []
+gi = os.path.join(root, ".graphifyignore")
+ignored = set(open(gi).read().split()) if os.path.exists(gi) else set()
 for dp, dn, fn in os.walk(root):
     if "graphify-out" in os.path.relpath(dp, root).split(os.sep):
         continue
@@ -100,6 +102,8 @@ for dp, dn, fn in os.walk(root):
             continue
         full = os.path.join(dp, f)
         rel = os.path.relpath(full, root)
+        if rel in ignored:
+            continue  # graphify honours .graphifyignore: no nodes for an ignored file
         if rel == os.environ.get("GRAPHIFY_STUB_SKIP"):
             continue  # the model omitted this file: no nodes for it
         src = full  # absolute, as a scratch extraction may write it: the merge normalizes it
@@ -890,6 +894,13 @@ out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --co
 [ "$rc" -eq 2 ] && [[ "$out" == *"a batch is pending"* ]] && [ "$(ids "$C77")" = "$before" ] && [ -f "$C77/graphify-out/semantic-batch/batch.json" ] \
   && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "T77 exit 2, the pending batch and the graph are untouched, nothing extracted" || fail "T77 (rc=$rc): $out / $(cat "$WS/calls.log")"
+
+echo "T78: a .graphifyignore naming a planned file strands nothing: the planner is the only selector"
+C78="$WS/c78"; new_corpus "$C78"; printf 'b.md\n' > "$C78/.graphifyignore"
+out=$(run --name t78 --corpus-root "$C78" --corpus-class himmel-code); rc=$?
+python3 -c 'import json,sys;sys.exit("b.md" not in json.load(open(sys.argv[1]))["files"])' "$C78/graphify-out/semantic-manifest.json"; stamped=$?
+[ "$rc" -eq 0 ] && [ "$(lastrun "$C78" failed)" = 0 ] && [ "$stamped" -eq 0 ] && [[ "$(ids "$C78")" == *sem_b.md_beta* ]] \
+  && pass "T78 failed=0, b.md has nodes and is stamped despite .graphifyignore" || fail "T78 (rc=$rc) failed=$(lastrun "$C78" failed) stamped_rc=$stamped: $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

@@ -2086,10 +2086,13 @@ cmd_next() {
         hf_prs="$(bash "$facts" prs "$predecessor_doc" --repo "$repo")"
         hf_summary="$(bash "$facts" summary "$predecessor_doc" --repo "$repo")"
         # ponytail: the cap trims only the re-derivable fact sections; the rulings and the wrapped-PR list stay inline even over budget, an oversized wrapped-PR list needs its own pointer.
-        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_chain hf_direction
+        local hf_pass=1 hf_wrapped hf_wrapped_bytes hf_chain hf_direction hf_lastgo
         hf_chain="$(chain_order_line "$predecessor_dir")"
+        # The direction block is already carried into the successor doc; the HANDOFF points at it.
         hf_direction="${hf_chain:+$hf_chain
-}$predecessor_direction"
+
+}The outgoing direction is carried verbatim in \`$successor_doc_ref\` ## Current direction."
+        hf_lastgo="$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")"
         hf_wrapped="$(wrapped_open_prs_section "$predecessor_doc")"
         hf_wrapped_bytes="$(printf '%s\n' "$hf_wrapped" | wc -c | tr -d ' ')"
         while :; do
@@ -2101,7 +2104,7 @@ cmd_next() {
                 OPEN_PRS "$hf_prs" \
                 SHIFT_SUMMARY "$hf_summary" \
                 QUEUE_LINE "$(bash "$facts" queue "$predecessor_doc" --repo "$repo")" \
-                LAST_GO "$(bash "$facts" lastgo "$predecessor_doc" --repo "$repo")" \
+                LAST_GO "$hf_lastgo" \
                 JUDGE_CALLS "$(judge_calls_now)" \
                 PREDECESSOR_LETTER "$predecessor_letter" \
                 LETTER "$successor_letter" \
@@ -2119,6 +2122,7 @@ cmd_next() {
             hf_slug="$(git_clean -C "$repo" remote get-url origin 2>/dev/null | sed -E 's#^(git@[^:]+:|[a-z+]+://[^/]+/)##; s#\.git$##')" || hf_slug=""  # swallow-ok: an unreadable remote falls back to the <owner/repo> placeholder in the pointer
             hf_prs="over the HANDOFF size budget — run: gh pr list -R ${hf_slug:-<owner/repo>} --state open"
             hf_summary="over the HANDOFF size budget — read the tail of $predecessor_doc ## Results"
+            hf_lastgo="over the HANDOFF size budget — read \`last GO:\` in the Live state of \`$successor_doc_ref\`"
         done
         [ -z "$hf_wrapped" ] || printf '%s\n' "$hf_wrapped" >> "$predecessor_handoff"
         # Still over budget after the pointer pass: the remainder is the rulings
