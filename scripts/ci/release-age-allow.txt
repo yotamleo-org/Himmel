@@ -1,4 +1,12 @@
 # release-age-allow.txt — HIMMEL-7173. One `name@version  reason` per line: a lockfile
-# entry younger than 3 days that check-lockfile-release-age.mjs accepts because it is
-# a security fix (name the advisory). Remove the line once the release is 3 days old.
+# entry younger than 3 days that check-lockfile-release-age.mjs accepts. Two reasons are
+# allowed: a security fix (name the advisory), or an operator-approved timeboxed exception.
+# A timeboxed exception MUST carry `until=YYYY-MM-DD` (UTC) as its second field, no more
+# than 3 days ahead: `name@version  until=2026-10-28  reason`. On or after that date the
+# entry is ignored with a WARN and the young entry fails again. Remove the line once the
+# release is 3 days old.
 # Blank lines and # comments are ignored.
+@modelcontextprotocol/server@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971
+@modelcontextprotocol/client@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971
+@modelcontextprotocol/core@2.4.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971
+pele@1.10.0  until=2026-10-28  operator timeboxed exception 10-26, HIMMEL-7394, supply-chain table in PR 3971

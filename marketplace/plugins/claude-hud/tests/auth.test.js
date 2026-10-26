@@ -125,6 +125,7 @@ test('truncateUser truncates with ellipsis and honors 0 = full', () => {
   assert.equal(truncateUser('yukinoshita.reimu', 8), 'yukinosh…');
   assert.equal(truncateUser('short', 8), 'short');
   assert.equal(truncateUser('yukinoshita.reimu', 0), 'yukinoshita.reimu');
+  assert.equal(truncateUser('Jarrod 😀x', 8), 'Jarrod …');
 });
 
 test('formatAuthSegment joins method and truncated user', () => {

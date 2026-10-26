@@ -197,6 +197,9 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
           <Section id="orphans" title="Orphans" count={counts.orphaned} initial={true} className="fleet-orphans">
             <Orphans sessions={s.orphans} procs={s.processOrphans} unread={fleet.processOrphans === null} token={token} now={now} />
           </Section>}
+        {fleet && s.waits.length > 0 && <Section id="waits" title="Long-lived waits" count={s.waits.length} initial={false} className="fleet-waits">
+          <Waits waits={s.waits} />
+        </Section>}
         {fleet && !unavailable && <Section id="running" title="Running" count={s.running.reduce((n, g) => n + g.rows.length + (g.showConsole ? 1 : 0), 0)} initial={true}>
           {s.running.length === 0 && <p className="quiet">{`No running sessions${filtering(filters) ? " match the filters" : ""}.${counts.finished > 0 ? ` ${counts.finished} finished below.` : ""}`}</p>}
           {s.running.map((g) => <ConsoleGroup key={g.console?.name ?? "-"} group={g} all={all} hops={s.hops} token={token} now={now} />)}
@@ -300,14 +303,22 @@ function Orphans({ sessions, procs, unread, token, now }: { sessions: ReturnType
       <thead><tr><th>pid</th><th>owner</th><th>age</th><th>action</th></tr></thead>
       <tbody>{procs.map((p) => <tr key={p.pid}>
         <td>{p.pid}</td>
-        <td className={p.owner === "orphan" ? "fleet-why fail" : ""}>{p.owner === "orphan" ? "no live session above it" : shortName(p.owner)}</td>
+        <td className={p.owner === "orphan" || p.kind === "stuck" ? "fleet-why fail" : ""}>{p.kind === "stuck" && <b>STUCK </b>}{p.owner === "orphan" ? "no live session above it" : shortName(p.owner)}</td>
         <td>{mins(p.ageMin)}</td>
-        <td className="fleet-action">{p.owner === "orphan" ? `close: kill ${p.pid}` : "ask the owning session to TaskStop"}</td>
+        <td className="fleet-action">{p.kind === "stuck" ? "its pgrep -f pattern matches this wrapper, so the wait never ends; " : ""}{p.owner === "orphan" ? `close: kill ${p.pid}` : "ask the owning session to TaskStop"}</td>
       </tr>)}</tbody>
     </table>}
     {procs.length > 0 && <p className="quiet">Shell-tool wrappers older than 30 minutes (TICK_ORPHAN_MIN), as the supervisor-session tick reports them.</p>}
     {unread && <p className="quiet">The process-orphan inventory could not be read this poll.</p>}
   </>;
+}
+
+// a live session's own wrapper older than the orphan floor: its own call still running, so no action is owed.
+function Waits({ waits }: { waits: ProcessOrphan[] }) {
+  return <table className="fleet-procs" aria-label="Long-lived waits">
+    <thead><tr><th>pid</th><th>owner</th><th>age</th></tr></thead>
+    <tbody>{waits.map((p) => <tr key={p.pid}><td>{p.pid}</td><td>{shortName(p.owner)}</td><td>{mins(p.ageMin)}</td></tr>)}</tbody>
+  </table>;
 }
 
 const FINISHED_PAGE = 20;

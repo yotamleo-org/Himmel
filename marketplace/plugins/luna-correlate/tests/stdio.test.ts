@@ -8,7 +8,7 @@ import pkg from "../package.json";
 const ROOT = join(import.meta.dir, "..");
 
 test("pilot pins stable SDK v2 without the v1 monolith", () => {
-  expect(pkg.dependencies).toEqual({ "@modelcontextprotocol/server": "2.3.1" });
+  expect(pkg.dependencies).toEqual({ "@modelcontextprotocol/server": "2.4.0" });
 });
 
 test("stdio start refreshes an old dependency directory and preserves the v1 contract", async () => {

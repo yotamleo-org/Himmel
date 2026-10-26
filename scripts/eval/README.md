@@ -17,6 +17,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `review-page.py` | the reviewers in plain words: how often the critics catch planted bugs and are right, how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
 | `deferred-outcome.py` | what became of each deferred CR-ledger finding: its follow-up ticket in the Jira mirror is done (fixed later), open, or closed Won't Do (disproved), overall and per critic | ledger row `deferred-outcome` |
 | `escapes.py` | bugs found after merge (a revert, a caused-by bug, a later fix naming the PR) per merged PR, then per critic that reviewed it and per judge that passed it; reads a `gh pr list` snapshot | ledger row `escapes` |
+| `steering-cull/` | each approved cut of the always-on steering text (repo and user `CLAUDE.md`): tokens and cost-eq saved per session, and whether a RED-first probe still passes on the cut text; a SHIP or KEEP verdict per row | `report` table on stdout; ledger row `steering-cull` |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
 ## What each number means

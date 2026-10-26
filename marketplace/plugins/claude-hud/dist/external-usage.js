@@ -1,8 +1,7 @@
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createDebug } from './debug.js';
-import { sanitizeDisplayText } from './utils/sanitize.js';
-import { truncateString } from './utils/truncate.js';
+import { displayLabel } from './utils/sanitize.js';
 const debug = createDebug('external-usage');
 export const EXTERNAL_USAGE_WRITE_THROTTLE_MS = 30_000;
 const MAX_BALANCE_LABEL_LENGTH = 50;
@@ -13,10 +12,7 @@ function parseUsagePercent(value) {
     return typeof value === 'number' && Number.isFinite(value) ? Math.round(Math.min(100, Math.max(0, value))) : null;
 }
 function parseBalanceLabel(value) {
-    const label = typeof value === 'string' ? sanitizeDisplayText(value).trim() : '';
-    if (!label)
-        return null;
-    return truncateString(label, MAX_BALANCE_LABEL_LENGTH);
+    return displayLabel(value, MAX_BALANCE_LABEL_LENGTH, '...') || null;
 }
 // Epoch seconds or milliseconds, or an ISO-8601 string.
 function parseDate(value) {
@@ -39,9 +35,7 @@ function parseScopedWindows(value) {
     for (const entry of value) {
         if (windows.length >= SCOPED_WINDOWS_MAX)
             break;
-        const label = typeof entry?.display_name === 'string'
-            ? sanitizeDisplayText(entry.display_name).trim().slice(0, SCOPED_LABEL_MAX_LENGTH)
-            : '';
+        const label = displayLabel(entry?.display_name, SCOPED_LABEL_MAX_LENGTH);
         const percent = entry?.utilization === null ? null : parseUsagePercent(entry?.utilization);
         if (!label || (entry?.utilization !== null && percent === null))
             continue;

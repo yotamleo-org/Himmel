@@ -61,8 +61,12 @@ not a blocking outage. Re-auth with the DEVICE flow (`-codex-login` plain
 OAuth needs a localhost callback; the device flow does not):
 
 ```shell
-cd ~/.cli-proxy-api && ./cli-proxy-api -config ./config.yaml -codex-device-login
+cd ~/.cli-proxy-api && (umask 077; ./cli-proxy-api -config ./config.yaml -codex-device-login)
 ```
+
+Run every `-*-login` under `umask 077`: upstream's Claude login creates
+`claude-<id>.json` with `os.Create` (0644 under the usual umask 022), while its
+refresh path rewrites at 0600. `--login` and the `--register` unit already set it.
 
 After ~2–4 seconds it prints
 `Codex device URL: https://auth.openai.com/codex/device` plus a 9-character

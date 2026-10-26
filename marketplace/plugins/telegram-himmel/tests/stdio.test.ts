@@ -16,7 +16,7 @@ import pkg from '../package.json'
 const serverPath = join(import.meta.dir, '..', 'server.ts')
 
 test('server pins stable SDK v2 without the v1 monolith', () => {
-  expect(pkg.dependencies['@modelcontextprotocol/server' as keyof typeof pkg.dependencies]).toBe('2.3.1')
+  expect(pkg.dependencies['@modelcontextprotocol/server' as keyof typeof pkg.dependencies]).toBe('2.4.0')
   expect('@modelcontextprotocol/sdk' in pkg.dependencies).toBe(false)
 })
 

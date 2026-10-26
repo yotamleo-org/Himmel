@@ -2625,7 +2625,8 @@ for i in $(seq 1 30); do
 done
 printf '{"legs":[%s]}\n' "$legs82" > "$root/tester/cap82/DEMO-nextleg-${today}A-chief.fleet.json"
 for i in $(seq 1 20); do printf '%s\n' "- 11:$i LIVE — $(printf 'y%.0s' $(seq 1 200))" >> "$doc82A"; done
-awk '/^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
+go82="last GO: \`82:abc\` KEEP-82-GO$(printf ', prior 8:abcdef12%.0s' $(seq 1 150))"
+awk -v go="$go82" '/^last GO:/ { print go; next } /^queue:/ { print "queue: KEEP-82-MARKER"; next } /^decisions:/ { print "decisions: KEEP-82-DEC"; print "priority: KEEP-82-PRI"; next } { print }' "$doc82A" > "$doc82A.new" && mv "$doc82A.new" "$doc82A"
 HANDOFF_FACTS_PRS="$tmp/facts-prs82.sh" chief next --bucket cap82dst --doc "$doc82A" >/dev/null 2>&1
 doc82B="$root/tester/cap82dst/DEMO-nextleg-${today}B-chief.md"
 check "82 HANDOFF is at most 6000 bytes" "$([ "$(wc -c < "$handoff82A")" -le 6000 ] && echo yes || echo no)" "yes"
@@ -2633,6 +2634,8 @@ check "82 over budget: open PRs become a pointer" "$(grep -c 'over the HANDOFF s
 check "82 the Live state content survives the fallback" "$(grep -c "^queue: KEEP-82-MARKER" "$doc82B")" "1"
 check "82 the decisions line survives the fallback" "$(grep -c '^decisions: KEEP-82-DEC' "$doc82B")" "1"
 check "82 the priority line survives the fallback" "$(grep -c '^priority: KEEP-82-PRI' "$doc82B")" "1"
+check "82 over budget: last GO becomes a pointer to the successor's Live state" "$(grep -c "^\*\*Last GO:\*\* over the HANDOFF size budget — read \`last GO:\` in the Live state of \`[^\`]*DEMO-nextleg-${today}B-chief.md\`$" "$handoff82A")" "1"
+check "82 the last GO line survives the fallback" "$(grep -cF "$go82" "$doc82B")" "1"
 check "82 the rulings section stays" "$(grep -c '^## Rulings and judgement notes' "$handoff82A")" "1"
 check "82 the open-PR pointer names the repo" "$(grep -c 'gh pr list -R example/himmel --state open' "$handoff82A")" "1"
 check "82 under budget: no over-budget note" "$(grep -c '^> HANDOFF over budget' "$handoff82A")" "0"
@@ -3005,7 +3008,8 @@ check "91 a doc with no Current direction block refuses (exit 7)" "$rc91" "7"
 mk91 dir91d "(46) other ruling" "-" "$dir91"; printf '[{"name":"0 — CI blocker","steps":[]},{"name":"1 — audit tickets","steps":[]}]\n' > "$root/tester/dir91d/focus-chains.json"; run91 dir91d
 h91="$root/tester/dir91d/DEMO-nextleg-${today}B-chief-HANDOFF.md"
 check "91 a real block passes" "$rc91" "0"
-check "91 the HANDOFF carries the outgoing direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF "$dir91")" "1"
+check "91 the HANDOFF points at the successor doc's direction block, not a second copy" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF "$dir91")" "0"
+check "91 the HANDOFF direction pointer names the successor doc" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF "carried verbatim in \`DEMO-nextleg-${today}C-chief.md\` ## Current direction")" "1"
 check "91 the HANDOFF direction block lists the chain order from focus-chains.json" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$h91" | grep -cF 'Chain order (focus-chains.json): 0 — CI blocker; 1 — audit tickets')" "1"
 check "91 the successor doc carries the direction block" "$(sed -n '/^## Current direction$/,/^## [^C]/p' "$root/tester/dir91d/DEMO-nextleg-${today}C-chief.md" | grep -cF "$dir91")" "1"
 check "91 a fresh HANDOFF reports its facts-header placeholders" "$(printf '%s\n' "$out91" | grep -c 'HANDOFF still has template placeholders')" "1"

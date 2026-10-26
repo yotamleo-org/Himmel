@@ -3,8 +3,7 @@ import * as path from 'node:path';
 import type { HudConfig } from './config.js';
 import { createDebug } from './debug.js';
 import type { ExternalUsageSnapshot, ScopedUsageWindow, UsageData } from './types.js';
-import { sanitizeDisplayText } from './utils/sanitize.js';
-import { truncateString } from './utils/truncate.js';
+import { displayLabel } from './utils/sanitize.js';
 
 const debug = createDebug('external-usage');
 
@@ -25,9 +24,7 @@ function parseUsagePercent(value: unknown): number | null {
 }
 
 function parseBalanceLabel(value: unknown): string | null {
-  const label = typeof value === 'string' ? sanitizeDisplayText(value).trim() : '';
-  if (!label) return null;
-  return truncateString(label, MAX_BALANCE_LABEL_LENGTH);
+  return displayLabel(value, MAX_BALANCE_LABEL_LENGTH, '...') || null;
 }
 
 // Epoch seconds or milliseconds, or an ISO-8601 string.
@@ -50,9 +47,7 @@ function parseScopedWindows(value: unknown): ScopedUsageWindow[] {
   const windows: ScopedUsageWindow[] = [];
   for (const entry of value) {
     if (windows.length >= SCOPED_WINDOWS_MAX) break;
-    const label = typeof entry?.display_name === 'string'
-      ? sanitizeDisplayText(entry.display_name).trim().slice(0, SCOPED_LABEL_MAX_LENGTH)
-      : '';
+    const label = displayLabel(entry?.display_name, SCOPED_LABEL_MAX_LENGTH);
     const percent = entry?.utilization === null ? null : parseUsagePercent(entry?.utilization);
     if (!label || (entry?.utilization !== null && percent === null)) continue;
     const resetAt = typeof entry?.resets_at === 'string' && !Number.isNaN(Date.parse(entry.resets_at))

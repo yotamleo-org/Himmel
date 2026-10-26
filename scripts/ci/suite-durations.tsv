@@ -134,6 +134,7 @@ scripts/ci/test-check-ci-install-locks.sh	5
 scripts/ci/test-check-claude-md-budget.sh	0
 scripts/ci/test-check-commit-range.sh	3
 scripts/ci/test-check-docs-decision-records.sh	0
+scripts/ci/test-check-flags.sh	1
 scripts/ci/test-check-hardcoded-env-values.sh	0
 scripts/ci/test-check-hooks-on-pr-range.sh	3
 scripts/ci/test-check-host-file-read-sinks.sh	1
@@ -379,6 +380,7 @@ scripts/handover/chief-kit/test-action-zero.sh	4
 scripts/handover/chief-kit/test-append-results.sh	0
 scripts/handover/chief-kit/test-board.sh	15
 scripts/handover/chief-kit/test-brief-lint.sh	3
+scripts/handover/chief-kit/test-chain-graph.sh	3
 scripts/handover/chief-kit/test-ci-guardrail.sh	3
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	20
 scripts/handover/chief-kit/test-compacted-check.sh	0
@@ -820,6 +822,7 @@ scripts/lib/test-env-alias.sh	0
 scripts/lib/test-env-append.sh	0
 scripts/lib/test-fix-qmd-stub.sh	1
 scripts/lib/test-fixture-trap-clean.sh	144
+scripts/lib/test-flags.sh	1
 scripts/lib/test-fleet-reservation-key.sh	0
 scripts/lib/test-fleet-slots-shield.sh	0
 scripts/lib/test-flow-run-ledger-path.sh	0
@@ -1138,3 +1141,4 @@ scripts/ci/test-billed-optin.sh	10
 scripts/ci/test-ci-go-gate.sh	1
 scripts/lanes/bench/scorecard/test-review-rounds.sh	1
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	3
+scripts/eval/steering-cull/test-steering-cull.sh	13

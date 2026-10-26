@@ -1631,6 +1631,23 @@ printf 'a.sh\tmktemp\t20\ta new reason for this raise\n' > "$GR5/$GRB"
 OUT24N="$(cd "$GR5" && bash scripts/lint/shell-lint.sh --staged --baseline "$GRB" 2>&1)"; EC24N=$?
 if [ "$EC24N" -eq 0 ]; then pass "24n a raised count with a changed reason passes"; else fail "24n expected exit 0, got $EC24N" "$OUT24N"; fi
 
+# 25. The migrated prim-canon callers carry no prim-canon baseline row and lint
+# clean against the real baseline.
+for _pc in scripts/codex/bump-codex-sessionend-timeout.sh \
+    scripts/eval/lane-quality/pilot-4869/lq-allow-hook.sh \
+    scripts/eval/lane-quality/pilot-4869/pilot.sh \
+    scripts/eval/lane-quality/pilot-4869/sandbox.sh \
+    scripts/eval/lane-quality/run.sh \
+    scripts/telegram/auto-action.sh; do
+    if grepq "$(cat "$REPO_ROOT/scripts/lint/shell-lint-baseline.tsv")" -F "$_pc	prim-canon	"; then
+        fail "25 $_pc still has a prim-canon baseline row"
+    else
+        pass "25 $_pc has no prim-canon baseline row"
+    fi
+    OUT25="$(cd "$REPO_ROOT" && bash scripts/lint/shell-lint.sh --baseline scripts/lint/shell-lint-baseline.tsv "$_pc" 2>&1)"; EC25=$?
+    if [ "$EC25" -eq 0 ]; then pass "25 $_pc lints clean against the baseline"; else fail "25 $_pc expected lint exit 0, got $EC25" "$OUT25"; fi
+done
+
 # ---------------------------------------------------------------------------
 printf '\n====================================\n'
 printf 'test summary: %d passed, %d failed\n' "$PASS" "$FAIL"

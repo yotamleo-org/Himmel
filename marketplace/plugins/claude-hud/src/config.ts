@@ -6,6 +6,7 @@ import { createDebug } from './debug.js';
 import type { Language } from './i18n/types.js';
 import { MAX_TERMINAL_WIDTH } from './utils/terminal.js';
 import { sanitizeDisplayText } from './utils/sanitize.js';
+import { truncateString } from './utils/truncate.js';
 
 const debug = createDebug('config');
 const MAX_CONFIG_FILE_BYTES = 64 * 1024;
@@ -340,7 +341,7 @@ const clamp = (min: number, max: number): Rule => (value, fallback) => (
 const floorAtLeastZero: Rule = (value, fallback) => (isNumber(value) ? Math.max(0, Math.floor(value)) : fallback);
 const count: Rule = (value, fallback) => (Number.isInteger(value) && (value as number) >= 0 ? value : fallback);
 const text = (maxLength: number): Rule => (value, fallback) => (
-  typeof value === 'string' ? sanitizeDisplayText(value).slice(0, maxLength) : fallback
+  typeof value === 'string' ? truncateString(sanitizeDisplayText(value), maxLength, '') : fallback
 );
 
 // Keeps known names once each, in order. An empty result falls back only when `nonEmpty`.

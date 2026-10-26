@@ -81,6 +81,15 @@ fs.writeFileSync(process.argv[3], JSON.stringify(settings, null, 2) + "\n");
 ' "$1" "$2" "$3"
 }
 
+keychain_available() { # rc=0 on macOS with the security CLI
+  [ "$(uname -s 2>/dev/null)" = "Darwin" ] && command -v security >/dev/null 2>&1
+}
+
+keychain_credentials() { # prints the login-Keychain subscription credentials; rc!=0 when absent
+  keychain_available || return 1
+  security find-generic-password -s "Claude Code-credentials" -a "${USER:-$(id -un)}" -w 2>/dev/null
+}
+
 seed_config_dir() {
   local resolved_config_dir resolved_source_dir
   resolved_config_dir="$(resolve_seed_path "$CONFIG_DIR")" \
@@ -104,8 +113,9 @@ seed_config_dir() {
   # hook policy, and the bare plugin profile have all landed successfully.
   rm -f "$CONFIG_DIR/.seeded" || seed_fail "clear the stale .seeded sentinel"
   mkdir -p "$CONFIG_DIR/plugins" || seed_fail "create $CONFIG_DIR/plugins"
-  [ -f "$SOURCE_DIR/.credentials.json" ] \
-    || seed_fail "find subscription credentials at $SOURCE_DIR/.credentials.json"
+  if [ ! -f "$SOURCE_DIR/.credentials.json" ] && ! keychain_credentials > /dev/null; then
+    seed_fail "find subscription credentials at $SOURCE_DIR/.credentials.json or in the macOS login Keychain (service \"Claude Code-credentials\"); log in with Claude Code on this machine, or copy the credentials JSON to $SOURCE_DIR/.credentials.json"
+  fi
 
   umask 077
   # A same-directory mv is atomic on POSIX. MSYS cannot promise the same
@@ -113,8 +123,11 @@ seed_config_dir() {
   # live credentials or settings file in place.
   CREDENTIALS_TMP="$(mktemp "$CONFIG_DIR/.credentials.json.tmp.XXXXXX")" \
     || seed_fail "create a subscription credentials temp file"
-  cp "$SOURCE_DIR/.credentials.json" "$CREDENTIALS_TMP" \
-    || seed_fail "stage subscription credentials"
+  if [ -f "$SOURCE_DIR/.credentials.json" ]; then
+    cp "$SOURCE_DIR/.credentials.json" "$CREDENTIALS_TMP"
+  else
+    keychain_credentials > "$CREDENTIALS_TMP"
+  fi || seed_fail "stage subscription credentials"
   chmod 600 "$CREDENTIALS_TMP" \
     || seed_fail "restrict staged subscription credentials"
   atomic_write "$CONFIG_DIR/.credentials.json" < "$CREDENTIALS_TMP" \
@@ -176,8 +189,12 @@ config_seed_stale() { # rc=0 when the dedicated profile must be rebuilt
   [ -f "$CONFIG_DIR/settings.json" ] || return 0
   [ ! -d "$CONFIG_DIR/hooks" ] || return 0
 
-  [ -f "$SOURCE_DIR/.credentials.json" ] || return 0
-  [ "$SOURCE_DIR/.credentials.json" -nt "$CONFIG_DIR/.seeded" ] && return 0
+  if [ -f "$SOURCE_DIR/.credentials.json" ]; then
+    [ "$SOURCE_DIR/.credentials.json" -nt "$CONFIG_DIR/.seeded" ] && return 0
+    cmp -s "$SOURCE_DIR/.credentials.json" "$CONFIG_DIR/.credentials.json" || return 0
+  else
+    keychain_credentials | cmp -s - "$CONFIG_DIR/.credentials.json" || return 0
+  fi
   if [ -f "$SOURCE_DIR/settings.json" ] \
      && [ "$SOURCE_DIR/settings.json" -nt "$CONFIG_DIR/.seeded" ]; then
     return 0

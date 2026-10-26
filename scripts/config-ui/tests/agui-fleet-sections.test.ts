@@ -87,6 +87,17 @@ test("counts: running and waiting are by state; orphaned counts session and proc
   expect(s.processOrphans).toEqual([{ pid: 7, owner: "orphan", ageMin: 45 }]);
 });
 
+test("waits: a long-lived wait is its own list, never counted as an orphan; a stuck wrapper is an orphan row", () => {
+  const procs = [{ pid: 7, owner: "idle-new", ageMin: 45, kind: "wait" as const }, { pid: 8, owner: "idle-new", ageMin: 90, kind: "stuck" as const }, { pid: 9, owner: "orphan", ageMin: 31, kind: "orphan" as const }];
+  const s = fleetSections(rows, null, NO_FILTERS, procs);
+  expect(s.waits.map((p) => p.pid)).toEqual([7]);
+  expect(s.processOrphans.map((p) => p.pid)).toEqual([8, 9]);
+  expect(s.counts.orphaned).toBe(s.orphans.length + 2);
+  const orphaned = { lanes: [], states: ["orphaned"], text: "" };
+  expect(fleetSections(rows, null, orphaned, procs).waits).toEqual([]);
+  expect(filterCount(rows, orphaned, procs)).toBe(filterCount(rows, orphaned, []) + 2);
+});
+
 test("a console filter scopes every section, and its process orphans, to that console", () => {
   const procs = [{ pid: 7, owner: "idle-new", ageMin: 45 }, { pid: 8, owner: "orphan", ageMin: 90 }, { pid: 9, owner: "elsewhere", ageMin: 31 }];
   const s = fleetSections(rows, BT, NO_FILTERS, procs);

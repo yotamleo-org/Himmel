@@ -126,7 +126,7 @@ if [ "$OP" = "cr-grant-delta" ]; then
         exit 15
     fi
     COMMON=$(git rev-parse --path-format=absolute --git-common-dir) || exit 3
-    COMMON=$(realpath "$COMMON") || exit 3
+    COMMON=$(canon_path "$COMMON") || exit 3
     STATE="$COMMON/cr-review-rounds/$BRANCH"
     LOCK_LIB="$SCRIPT_DIR/../lib/shared-branch-lock.sh"
     SHARED_BRANCH_LOCK_NS=himmel-cr-review-round SHARED_BRANCH_LOCK_HOLDER_PID=$$ \
@@ -142,7 +142,7 @@ if [ "$OP" = "cr-grant-delta" ]; then
     for SUFFIX in round head delta; do
         FILE="$STATE.$SUFFIX"
         if [ -e "$FILE" ] || [ -L "$FILE" ]; then
-            [ -f "$FILE" ] && [ "$(realpath "$FILE")" = "$FILE" ] || exit 3
+            [ -f "$FILE" ] && [ "$(realpath "$FILE")" = "$FILE" ] || exit 3  # prim-ok: a leaf symlink must be refused, and canon_path takes a directory only
         elif [ "$SUFFIX" != "delta" ]; then
             echo "ERR auto-action: missing branch .$SUFFIX state" >&2
             exit 3
@@ -235,7 +235,7 @@ if ! ROOT=$(handover_root); then
     echo "ERR auto-action: handover_root unresolved (set HANDOVER_DIR or create handovers/)" >&2
     exit 3
 fi
-ROOT=$(realpath "$ROOT" 2>/dev/null) || ROOT=$(cd "$ROOT" && pwd)
+ROOT=$(canon_path "$ROOT" 2>/dev/null) || ROOT=$(cd "$ROOT" && pwd)
 
 RESOLVED=""
 if printf '%s' "$ARG" | grep -Eq '^[A-Z][A-Z0-9]+-[0-9]+$'; then
@@ -275,7 +275,7 @@ else
         echo "ERR auto-action: path not found: $ARG" >&2
         exit 3
     fi
-    if ! _real=$(realpath "$ARG" 2>/dev/null) || [ -z "$_real" ]; then
+    if ! _real=$(realpath "$ARG" 2>/dev/null) || [ -z "$_real" ]; then  # prim-ok: ARG may be a file whose leaf symlink must resolve for containment; canon_path takes a directory only
         echo "ERR auto-action: could not canonicalize path (containment unverifiable): $ARG" >&2
         exit 3
     fi

@@ -1,3 +1,5 @@
+import { truncateString } from './truncate.js';
+
 // C0 and C1 controls, DEL, and the bidi marks, embeddings, overrides, and isolates.
 const CONTROL_AND_BIDI = /[\u0000-\u001F\u007F-\u009F؜‎‏‪-‮⁦-⁩⁪-⁯]/g;
 
@@ -8,4 +10,9 @@ export function sanitizeDisplayText(input: string): string {
     .replace(/\x1B\][^\x07\x1B]*(?:\x07|\x1B\\)/g, '')
     .replace(/\x1B[@-Z\\-_]/g, '')
     .replace(CONTROL_AND_BIDI, '');
+}
+
+/** An untrusted value as a printable label: sanitized, trimmed, and cut on a grapheme boundary. '' if not a string. */
+export function displayLabel(value: unknown, maxLength: number, suffix = ''): string {
+  return typeof value === 'string' ? truncateString(sanitizeDisplayText(value).trim(), maxLength, suffix) : '';
 }

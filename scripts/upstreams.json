@@ -18,6 +18,8 @@
     ]
   },
   "forks": [
+    { "fork_repo": "yotamleo-org/effective-html", "branch": "himmel-main", "hold-reason": "env-literal-ok: fork identity registry; pinned by marketplace.json at e4b08eb as the carrier of upstream plannotator/effective-html#31 (next 16.4.1); re-pin to upstream once #31 merges (HIMMEL-7170)" },
+    { "fork_repo": "yotamleo/effective-html", "hold-reason": "env-literal-ok: fork identity registry; head repo of upstream plannotator/effective-html#31, keep until it merges or closes (HIMMEL-7170)" },
     { "fork_repo": "yotamleo/claude-obsidian", "hold-reason": "de-forked (HIMMEL-2925): upstream absorbed our carried delta at v2.2.0 and marketplace.json pins AgriciDaniel/claude-obsidian directly; the fork is a retired archive, not consumed (HIMMEL-6126)" },
     { "fork_repo": "yotamleo/claude-squad", "hold-reason": "fork archived and the cs integration removed (HIMMEL-929); nothing consumes it (HIMMEL-6126)" }
   ],
@@ -36,9 +38,9 @@
       "kind": "commit_head",
       "mode": "pin",
       "tracked_repo": "jarrodwatts/claude-hud",
-      "pinned_commit": "3bb6835f08df13e5f13f988d1a5623a14196558f",
+      "pinned_commit": "cf95a322afd18db045175d28962650ae7392ed77",
       "tier": "A",
-      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = v0.13.0 commit 3bb6835 (HIMMEL-7388; previously v0.12.0 a759168, HIMMEL-6774; v0.11.3 5621429, HIMMEL-5929; v0.11.2 02d73c4, HIMMEL-5505; v0.11.1 45b5885, HIMMEL-5440). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
+      "note": "Vendored at marketplace/plugins/claude-hud (VENDORED.md); pin = cf95a32, v0.13.1 plus two docs commits (HIMMEL-7394; previously v0.13.0 3bb6835, HIMMEL-7388; v0.12.0 a759168, HIMMEL-6774; v0.11.3 5621429, HIMMEL-5929; v0.11.2 02d73c4, HIMMEL-5505; v0.11.1 45b5885, HIMMEL-5440). The local vendored-tree drift (our own edits) is separately guarded by scripts/statusline/check-hud-drift.sh (himmel-dev pre-commit); this entry guards UPSTREAM advance. Not in marketplace.json by design — it is the statusline renderer (wired via node), not a marketplace plugin."
     },
     {
       "name": "hermes-agent",
@@ -190,7 +192,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "router-for-me/CLIProxyAPI",
-      "synced_base": "8.0.38",
+      "synced_base": "8.0.43",
       "version_pin": { "file": "scripts/setup/cli-proxy-lane.sh", "template": "VERSION=\"{version}\"" },
       "companion_pins": [
         { "file": "scripts/setup/cli-proxy-lane.sh", "template": "ASSET_SHA256=\"{sha256}\"" }
@@ -254,7 +256,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "anthropics/claude-code",
-      "synced_base": "2.1.307",
+      "synced_base": "2.1.310",
       "latest_source": "release",
       "version_pin": {
         "file": "scripts/machine-setup/installer-pins.sh",

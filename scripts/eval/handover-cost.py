@@ -19,7 +19,7 @@ Pieces per handover (turns/cost):
   worker    per non-chief session that received a SUCCESSION message naming P at or after P's last
          `chief.sh next` (no upper bound: a relay drained after P wrapped is the normal case),
          as a user message, a queued_command attachment or a himmel-bus record (a hook_additional_context
-         attachment): the turns after the delivery up to and
+         attachment), never a compaction summary or a tool result: the turns after the delivery up to and
          including the one that says `SUCCESSION accepted`, at most 4. --workers-after drops workers whose first record is
          earlier than the cutoff (count only workers launched after the fast path merged).
 
@@ -119,6 +119,11 @@ def load(path):
         elif ts and (t == "user" or (t == "attachment" and (d.get("attachment") or {}).get("type")
                                                   in ("queued_command", "hook_additional_context"))):
             att = d.get("attachment") or {}
+            content = (d.get("message") or {}).get("content") if t == "user" else None
+            # a compaction summary or a tool result can quote a relay; neither delivers one
+            if d.get("isCompactSummary") or (isinstance(content, list) and any(
+                    isinstance(b, dict) and b.get("type") == "tool_result" for b in content)):
+                continue
             body = json.dumps(d.get("message", "") if t == "user" else (att.get("prompt") or att.get("content", "")))
             if "SUCCESSION" in body:
                 deliveries.append((ts, body))

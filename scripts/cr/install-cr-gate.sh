@@ -44,7 +44,9 @@ to_native_path() {
 
 usage() {
     cat <<'USAGE'
-Usage: install-cr-gate.sh --target <path> [--remove] [--status] [--force] [-h|--help]
+Usage: install-cr-gate.sh --target <path> [--remove] [--status] [--force] [--impl-family <family>] [-h|--help]
+  --impl-family  also record the target's current branch as implemented by <family>
+                 (scripts/cr/set-impl-family.sh), turning on review gate 3c there
 USAGE
 }
 
@@ -52,6 +54,8 @@ TARGET=""
 DO_REMOVE=0
 DO_STATUS=0
 FORCE=0
+IMPL_FAMILY=""
+WANT_FAMILY=0
 while [ $# -gt 0 ]; do
     case "$1" in
         # `shift 2` with only one arg left FAILS (and `set -e` is off by
@@ -64,6 +68,10 @@ while [ $# -gt 0 ]; do
         --remove) DO_REMOVE=1; shift ;;
         --status) DO_STATUS=1; shift ;;
         --force) FORCE=1; shift ;;
+        --impl-family)
+            [ $# -ge 2 ] && [ "${2#-}" = "$2" ] || { echo "install-cr-gate: --impl-family requires a value" >&2; usage >&2; exit 2; }
+            IMPL_FAMILY="$2"; WANT_FAMILY=1; shift 2 ;;
+        --impl-family=*) IMPL_FAMILY="${1#--impl-family=}"; WANT_FAMILY=1; shift ;;
         -h|--help) usage; exit 0 ;;
         *) echo "install-cr-gate: unknown argument: $1" >&2; usage >&2; exit 2 ;;
     esac
@@ -71,6 +79,15 @@ done
 if [ -z "$TARGET" ]; then
     echo "install-cr-gate: --target <path> is required" >&2
     usage >&2
+    exit 2
+fi
+if [ "$WANT_FAMILY" -eq 1 ] && [ -z "$IMPL_FAMILY" ]; then
+    echo "install-cr-gate: --impl-family requires a non-empty value" >&2
+    usage >&2
+    exit 2
+fi
+if [ "$WANT_FAMILY" -eq 1 ] && { [ "$DO_STATUS" -eq 1 ] || [ "$DO_REMOVE" -eq 1 ]; }; then
+    echo "install-cr-gate: --impl-family applies to an install only, not --status/--remove" >&2
     exit 2
 fi
 
@@ -359,5 +376,12 @@ if [ "$DO_STATUS" -eq 1 ]; then
 elif [ "$DO_REMOVE" -eq 1 ]; then
     do_remove
 else
-    do_install
+    # do_install exits on every path; run it in a subshell so the family record
+    # below happens after a successful install (fresh OR already-current).
+    ( do_install ); install_rc=$?
+    [ "$install_rc" -eq 0 ] || exit "$install_rc"
+    if [ "$WANT_FAMILY" -eq 1 ]; then
+        # set-impl-family.sh records for the CURRENT branch of the cwd repo.
+        ( CDPATH='' cd -P -- "$TARGET" && bash "$SCRIPT_DIR/set-impl-family.sh" "$IMPL_FAMILY" ) || exit $?
+    fi
 fi

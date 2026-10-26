@@ -260,6 +260,8 @@ Set `jjStatus.enabled` to `true` to show jj status, such as `jj:(mybookmark*)` o
 
 Claude Code re-runs the status line after each message, `/compact`, a permission or vim mode change, a rate-limit reset, and a prompt-cache expiry. To keep countdowns and durations ticking while a session is idle, add `refreshInterval` (seconds) to the `statusLine` entry in `~/.claude/settings.json`.
 
+**Windows (Git Bash/MSYS2):** Short intervals, especially with several Claude Code sessions open, can leave Git Bash failing with `add_item ... failed, errno 1`. Leave `refreshInterval` unset, or use 30 seconds or more (longer with several sessions). To recover without rebooting, close every Claude Code session and Git Bash window.
+
 ### Turning It Off for a Session
 
 ```bash

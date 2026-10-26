@@ -65,12 +65,13 @@ const finishedOrder = (a: Row, b: Row) => newest(ended(a), ended(b)) || byName(b
 
 export const CONTEXT_ATTENTION = 85;
 export type Attention = { row: Row; why: string };
-export type ProcessOrphan = { pid: number; owner: string; ageMin: number };
+// kind: wait = a live session's own long-running call, stuck = its pgrep -f wait matches itself; absent/orphan = no live owner.
+export type ProcessOrphan = { pid: number; owner: string; ageMin: number; kind?: "orphan" | "wait" | "stuck" };
 // Empty lists filter nothing. states: running | waiting | idle | attention | orphaned (a finished row is "finished").
 export type Filters = { lanes: string[]; states: string[]; text: string };
 export const NO_FILTERS: Filters = { lanes: [], states: [], text: "" };
 export type FleetSections = {
-  attention: Attention[]; orphans: Attention[]; processOrphans: ProcessOrphan[];
+  attention: Attention[]; orphans: Attention[]; processOrphans: ProcessOrphan[]; waits: ProcessOrphan[];
   running: { console: Row | null; showConsole: boolean; rows: Row[] }[];
   finished: { row: Row; hops: Row[] }[]; hops: Record<string, Row[]>;
   counts: { running: number; waiting: number; attention: number; orphaned: number; finished: number; shown: number; live: number; total: number };
@@ -164,13 +165,15 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   // A wrapper follows the same filters as its owning session; one with no live owner has no lane and matches by pid.
   const owners = new Set(rows.filter(mine).map((r) => r.name));
   const ownerOf = (p: ProcessOrphan) => rows.find((r) => r.name === p.owner);
-  const processOrphans = procs.filter((p) => (!selected || p.owner === "orphan" || owners.has(p.owner))
-    && (!filters.states.length || filters.states.includes("orphaned"))
+  const procShown = (p: ProcessOrphan) => (!selected || p.owner === "orphan" || owners.has(p.owner))
     && (!filters.lanes.length || (!!ownerOf(p) && filters.lanes.includes(laneOf(ownerOf(p)!))))
-    && (!text || [p.owner, shortName(p.owner), String(p.pid)].some((s) => s.toLowerCase().includes(text))));
+    && (!text || [p.owner, shortName(p.owner), String(p.pid)].some((s) => s.toLowerCase().includes(text)));
+  // A long-lived wait is its owner's own call, not an orphan: it has no state filter and is never counted as one.
+  const processOrphans = procs.filter((p) => p.kind !== "wait" && procShown(p) && (!filters.states.length || filters.states.includes("orphaned")));
+  const waits = procs.filter((p) => p.kind === "wait" && procShown(p) && !filters.states.length);
   const live = groups.flatMap((g) => [...(g.showConsole && g.console ? [g.console] : []), ...g.rows]);
   return {
-    attention, orphans, processOrphans, running: groups, finished: finishedEntries, hops,
+    attention, orphans, processOrphans, waits, running: groups, finished: finishedEntries, hops,
     counts: {
       running: live.filter((r) => r.state === "running").length, waiting: live.filter((r) => r.state === "waiting for GO").length,
       attention: attention.length, orphaned: orphans.length + processOrphans.length, finished: finishedEntries.length,

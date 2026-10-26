@@ -69,7 +69,7 @@ function generate(root) {
       pin: remote ? (remote.sha || remote.ref || 'Not pinned in marketplace') : (extra.pin || 'In-tree'),
     });
   });
-  const forkRows = forks.map(fork => {
+  const forkRows = forks.filter(fork => fork.upstream !== null).map(fork => {
     const extra = take(`fork:${fork.nwo}`);
     const pin = fork.pin_site ? `branch ${fork.himmel_branch}; [pin site](../${fork.pin_site})` : `branch ${fork.himmel_branch}; no pin site registered`;
     return complete({

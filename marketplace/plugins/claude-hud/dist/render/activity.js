@@ -1,6 +1,6 @@
 import { effortInfo, formatEffort } from '../effort.js';
 import { t } from '../i18n/index.js';
-import { sanitizeDisplayText } from '../utils/sanitize.js';
+import { displayLabel, sanitizeDisplayText } from '../utils/sanitize.js';
 import { truncateString } from '../utils/truncate.js';
 import { cyan, green, label, magenta, yellow } from './colors.js';
 function shortenToolName(rawName, maxLength) {
@@ -50,10 +50,7 @@ const ACTIVITY_NAME_MAX = 64;
 /** `✓ Skills (5): a, b, c, d, +1 more`. */
 function namesLine(f, title, names, maxVisible) {
     const colors = f.config?.colors;
-    const safe = names
-        .map((name) => sanitizeDisplayText(name).trim())
-        .filter(Boolean)
-        .map((name) => truncateString(name, ACTIVITY_NAME_MAX, '…'));
+    const safe = names.map((name) => displayLabel(name, ACTIVITY_NAME_MAX, '…')).filter(Boolean);
     if (safe.length === 0)
         return null;
     const shown = (maxVisible === 0 ? safe : safe.slice(0, maxVisible)).map((name) => cyan(name));
@@ -110,7 +107,7 @@ function agentsLine(f) {
     const shown = shownAgents(f.transcript.agents, f.now);
     if (shown.length === 0)
         return null;
-    const clean = (value, max) => (typeof value === 'string' ? truncateString(sanitizeDisplayText(value).trim(), max) : '');
+    const clean = (value, max) => displayLabel(value, max, '...');
     const display = f.config?.display;
     return shown.map((agent) => {
         const icon = agent.status === 'running' ? yellow('◐') : green('✓');

@@ -205,10 +205,10 @@
       "name": "plannotator-effective-html",
       "source": {
         "source": "url",
-        "url": "https://github.com/plannotator/effective-html.git",
-        "sha": "975b047f6da6874e176db54f048c0c31c30e9f65"
+        "url": "https://github.com/yotamleo-org/effective-html.git",
+        "sha": "e4b08eb3168a14d6c3957ea13ba71376c6a9448e"
       },
-      "description": "[plannotator, vendor + attribution only, no carried delta] Effective HTML annotation/plugin tooling. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH and fails host-key verification on a fresh machine with no github.com in ~/.ssh/known_hosts — HIMMEL-2837, same class as HIMMEL-549). Pinned to an upstream commit SHA per himmel supply-chain policy. Upstream companion PR merged: https://github.com/plannotator/effective-html/pull/26 (their own marketplace.json now uses the same explicit-url source; pin includes it, HIMMEL-3046).",
+      "description": "[plannotator, himmel fork yotamleo-org/effective-html pending upstream PR https://github.com/plannotator/effective-html/pull/31 (next 16.4.1 bump); no other carried delta] Effective HTML annotation/plugin tooling. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH and fails host-key verification on a fresh machine with no github.com in ~/.ssh/known_hosts — HIMMEL-2837, same class as HIMMEL-549). Pinned to a fork commit SHA per himmel supply-chain policy; re-pin to upstream once #31 merges (HIMMEL-7170). Upstream companion PR merged: https://github.com/plannotator/effective-html/pull/26 (their own marketplace.json now uses the same explicit-url source; pin includes it, HIMMEL-3046).",
       "author": {
         "name": "plannotator",
         "url": "https://github.com/plannotator"
@@ -265,9 +265,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/Leonxlnx/taste-skill.git",
-        "sha": "6010f91a9935f1c167dfc500fb1a475681892e6b"
+        "sha": "12af471f627f866411b4bd785b19646d3672784c"
       },
-      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything (HIMMEL-4067). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 6010f91a9935 per himmel supply-chain policy (HIMMEL-3069). Design kit, design profile (HIMMEL-4012).",
+      "description": "[Leonxlnx/taste-skill, MIT, vendor + attribution only, no carried delta] Taste Skill: all 13 upstream skills (taste-skill, redesign-skill, output-skill, soft/minimalist/brutalist, imagegen and image-to-code sets, brandkit, stitch). strict:true because upstream ships a plugin.json: with strict:false plus a marketplace skills list Claude Code reports a manifest conflict and loads nothing, and the upstream default skills/ directory always loads in full, so a skills subset never restricted anything (HIMMEL-4067). Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 12af471f627f per himmel supply-chain policy (HIMMEL-3069). Design kit, design profile (HIMMEL-4012).",
       "strict": true,
       "author": {
         "name": "Leonxlnx",
@@ -358,9 +358,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/youmind-openlab/ai-image-prompts-skill.git",
-        "sha": "b5f54b132f3e69d20e153d78f6f0b9378861e896"
+        "sha": "b28402f1fda1adeb37babce8dcb999cfbd5df894"
       },
-      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha b5f54b132f3e69d20e153d78f6f0b9378861e896 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
+      "description": "[youmind-openlab/ai-image-prompts-skill, MIT, vendor + attribution only, no carried delta] Offline AI image prompt library lookups (312 MB clone, no key). Root-skill shape UNPROVEN: add-on profile only. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha b28402f1fda1adeb37babce8dcb999cfbd5df894 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen profile (HIMMEL-4012).",
       "strict": false,
       "skills": [
         "./"
@@ -391,9 +391,9 @@
       "source": {
         "source": "url",
         "url": "https://github.com/cathrynlavery/diagram-design.git",
-        "sha": "0b9b10cab3dbf695642fa1a6c4b4f60df9083689"
+        "sha": "b8f36171da6e1bce05c3eb984969e5d4e7cb3a20"
       },
-      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 0b9b10cab3dbf695642fa1a6c4b4f60df9083689 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
+      "description": "[cathrynlavery/diagram-design, MIT, vendor + attribution only, no carried delta] Diagram design skill + 5 slash commands (upstream plugin manifest). On-demand python scripts export SVG/PNG. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha b8f36171da6e1bce05c3eb984969e5d4e7cb3a20 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-diagram profile (HIMMEL-4012).",
       "author": {
         "name": "cathrynlavery",
         "url": "https://github.com/cathrynlavery"
