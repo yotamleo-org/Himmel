@@ -477,7 +477,7 @@ out=$(bash "$INSTALLER" --target "$d/work" --impl-family Codex 2>&1); rc=$?
 before="$(cksum "$hook" "$rec")"
 out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
 after="$(cksum "$hook" "$rec")"
-[ "$rc" -eq 0 ] && printf '%s' "$out" | grep -Fq "already-current" && [ "$before" = "$after" ] \
+[ "$rc" -eq 0 ] && grep -Fq "already-current" <<< "$out" && [ "$before" = "$after" ] \
     && pass || fail "T27b rc=$rc out=$out"
 
 echo "T28: --impl-family with a bad value -> non-zero, no record written"
