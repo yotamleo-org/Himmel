@@ -3631,6 +3631,31 @@ python3 - <<'PY'\nimport os\nvars(os)['un'+'link'](os.path.expanduser('~/.claude
 python3 - <<'PY'\nwith ｏｐｅｎ('@H@/.claude/settings.json', 'w') as f:\n    f.ｗｒｉｔｅ('x')\nPY
 ROWS
 
+# 9700-9703: read-only and mention-only commands the live guard refused. A quoted `$` anchor (`'^$'`, `'\.py$'`) beside
+# a path that carries `claude` is text when a `${VAR}` expansion or a gh read
+# sits in the command; a quoted regex bracket after a heredoc is no glob.
+rows_both 9700 0 "quoted dollar anchor beside a claude path allowed" <<'ROWS'
+H=69351d3aa4d2; git show "${H}:scripts/ci/ci-trust-paths.txt" | grep -v '^#' | grep -v '^$' > /tmp/claude-1000/x/scratchpad/tp.txt; git diff --name-only origin/main...${H} | grep -E -f /tmp/claude-1000/x/scratchpad/tp.txt
+D=/tmp/claude-1000/x/scratchpad/tree; sed -n 96,134p $D/../vault.py; gh api "repos/o/r/git/trees/$S?recursive=1" --jq '.tree[]|select(.type=="blob")|.path' > $D/../paths.txt; grep -E '\.py$' $D/../paths.txt | wc -l
+gh api repos/o/r/contents/f.lock?ref=abc -H 'Accept: application/vnd.github.raw' > /tmp/claude-1000/x/scratchpad/f.lock; grep -c 'x$' /tmp/claude-1000/x/scratchpad/f.lock
+ROWS
+rows_both 9703 0 "quoted regex bracket after a heredoc is no glob" <<'ROWS'
+bash scripts/x.sh /tmp/doc.md "note"; python3 - <<'EOF'\np='/tmp/doc.md'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF\ngrep -o 'N3412:[^`]*' /tmp/doc.md | head -2
+ROWS
+# 9710-9716: the controls stay denied — a `$'` inside an open parameter
+# expansion, a gh or git write into the live file, a live glob after the
+# heredoc, a glob in the heredoc body.
+rows_both 9710 2 "write shapes beside the relaxed forms stay denied" <<'ROWS'
+H=1; echo "${H:-$'\x41'}" > /tmp/claude-1000/x/claude.txt
+H=1; echo "${H:-${G}$'\x41'}" > /tmp/claude-1000/x/claude.txt
+H=69351d3aa4d2; git show "${H}:x" | grep -v '^$' > @P@/.claude/settings.json
+gh api repos/o/r/contents/x --jq .content > @P@/.claude/settings.json
+gh api repos/o/r/contents/x | grep -v 'a$' | tee @P@/.claude/settings.json
+python3 - <<'EOF'\nprint(1)\nEOF\ncp /tmp/x @P@/.cl*ude/
+python3 - <<'EOF'\nimport os\nos.system("cp /tmp/x @P@/.cl*ude/")\nEOF\ngrep -o 'a:[^x]*' /tmp/f
+python3 - <<'EOF'\nopen('@P@/.claude/settings.json','w')\nEOF\ngrep -o 'a:[^x]*' /tmp/f
+ROWS
+
 # Clean up worktree registrations before removing the sandbox (avoids
 # dangling `git worktree` admin records under SANDBOX/primary).
 git -C "$SANDBOX/primary" worktree remove --force "$SANDBOX/primary/.claude/worktrees/feat+x" 2>/dev/null || true

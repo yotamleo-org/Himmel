@@ -2103,7 +2103,8 @@ _tok_lit_name() {
 # segment's command word (after plain, non-sensitive, unexported
 # assignments) a plain word naming a program below that runs no text it is
 # given — git only as `git [-C DIR] <sub>` with a sub that runs no command
-# string (and git grep without its pager option), sed only with inert
+# string (and git grep without its pager option), gh only as `gh api|pr|issue|
+# run|release|repo|search`, sed only with inert
 # scripts, sort without --compress-program, printf without -v or %n.
 # ponytail: an allowlist — a program not listed (awk, find, xargs, python,
 # bash, …) keeps the old any-`$'` reading, fail-closed; upgrade path: add a
@@ -2152,6 +2153,8 @@ _tok_no_shell_ok() {
                     [ -n "$sub" ] || sub=x$lw
                 fi
                 if [ "$sub" = xgrep ]; then _tok_gg_word "$w" || return 1; fi
+            elif [ "$first" = gh ]; then
+                [ -n "$sub" ] || sub=g$lw
             fi
         fi
         k=$((k + 1))
@@ -2174,9 +2177,40 @@ _tok_ns_segment() {
                 *) return 1 ;;
             esac
             ;;
+        gh)
+            # Only the subcommand families that talk to the GitHub API; alias
+            # (`--shell`), extension and `gh <ext>` words stay fail-closed.
+            case "$sub" in
+                gapi|gpr|gissue|grun|grelease|grepo|gsearch) ;;
+                *) return 1 ;;
+            esac
+            ;;
         *) return 1 ;;
     esac
     return 0
+}
+
+# _ansi_in_param_brace TEXT — 0 when a `$'` sits inside a brace group that is
+# still open and TEXT has a `${` (bash extquote decodes the `$'…'` of a
+# double-quoted `${x:-$'\x41'}`). Every `{` opens and every `}` closes, quoted
+# or not: a stray count only leans toward 0, the deny.
+_ansi_in_param_brace() {
+    local t=$1 i=0 n=${#1} depth=0 sdb=0 c
+    while [ "$i" -lt "$n" ]; do
+        c=${t:i:1}
+        case "$c" in
+            '$')
+                case "${t:i+1:1}" in
+                    '{') sdb=1 ;;
+                    "'") if [ "$depth" -gt 0 ] && [ "$sdb" = 1 ]; then return 0; fi ;;
+                esac
+                ;;
+            '{') depth=$((depth + 1)) ;;
+            '}') if [ "$depth" -gt 0 ]; then depth=$((depth - 1)); fi ;;
+        esac
+        i=$((i + 1))
+    done
+    return 1
 }
 
 # _tok_exported NAME — NAME is in this hook's environment (what `printenv
@@ -2898,6 +2932,87 @@ _dc_data_bodies() {
         [ "$s" = 1 ] || set +f
     fi
     _DCNB=$out _DCBD=$bd
+}
+
+# _dc_split_heredoc TEXT — _DCSK is TEXT's lines outside every heredoc body,
+# _DCHB the body lines with their terminators. 1 when TEXT has no heredoc or
+# a `<<` is not a plain opener (`<<[-] [\]['"]WORD['"]`, one per line, no other
+# `<` on it): fail closed, the caller keeps its full fold. Bodies are never
+# read as data, quoted or not.
+_dc_split_heredoc() {
+    local line l end='' dash='' hre l2 sk='' hb='' any=''
+    _DCKIND=''
+    hre='^[^<]*<<(-?)[[:space:]]*\\?['"'"'"]?([A-Za-z0-9_]+)['"'"'"]?([[:space:];&|)>][^<]*)?$'
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ -n "$end" ]; then
+            l2=$line
+            [ -z "$dash" ] || l2=${l2#"${l2%%[!$'\t']*}"}
+            [ "$l2" != "$end" ] || end=''
+            hb+=$line$'\n'
+            _DCKIND+=b
+            continue
+        fi
+        _DCKIND+=s
+        l=${line//<<</}
+        case "$l" in
+            *'<<'*)
+                [[ $l =~ $hre ]] || return 1
+                dash=${BASH_REMATCH[1]} end=${BASH_REMATCH[2]} any=1
+                ;;
+        esac
+        sk+=$line$'\n'
+    done <<< "$1"
+    [ -n "$any" ] || return 1
+    _DCSK=${sk%$'\n'} _DCHB=${hb%$'\n'}
+}
+
+# _dc_join_heredoc TEXT FOLDED — _DCJ is TEXT with each line _dc_split_heredoc
+# (last run on TEXT) put in the body replaced by the next line of FOLDED, so
+# the order a later check reads (`cat <<EOF` … `EOF`, then the next command)
+# is kept. 1 when FOLDED has not one line per body line.
+_dc_join_heredoc() {
+    local line out='' i=0 bi=0 nb=0 nf=0
+    local -a fb=()
+    while IFS= read -r line || [ -n "$line" ]; do
+        fb[nf]=$line
+        nf=$((nf + 1))
+    done <<< "$2"
+    nb=${_DCKIND//[!b]/}
+    [ "$nf" = "${#nb}" ] || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [ "${_DCKIND:i:1}" = b ]; then
+            out+=${fb[bi]}$'\n'
+            bi=$((bi + 1))
+        else
+            out+=$line$'\n'
+        fi
+        i=$((i + 1))
+    done <<< "$1"
+    _DCJ=${out%$'\n'}
+}
+
+# _dc_skeleton_clean RAWLOWER STRIPPED RAW — 0 when the lines of STRIPPED
+# (the quote-stripped command text) outside every heredoc body fold to
+# nothing new once their quotes are read from RAWLOWER (_dc_unquoted's text,
+# where a quoted span is `*`): a quoted regex such as `grep -o 'a:[^`]*'` is
+# no `.claude` glob. Sets _DCSK/_DCHB from STRIPPED. A `\`-newline in RAW
+# or a line count that differs between the two readings fails closed.
+_dc_skeleton_clean() {
+    local sk n1 n2
+    case "$3" in *\\$'\n'*) return 1 ;; esac
+    _dc_split_heredoc "$1" || return 1
+    sk=$_DCSK
+    _dc_split_heredoc "$2" || return 1
+    n1=${sk//[!$'\n']/} n2=${_DCSK//[!$'\n']/}
+    [ "${#n1}" = "${#n2}" ] || return 1
+    _dc_unquoted "$sk"
+    # an unquoted group, glob-with-group or `$(…)` name still goes to the
+    # full fold (dc_zre, set by the caller)
+    [[ ! $_DCU =~ $dc_zre ]] || return 1
+    _DC_QU=1
+    _dc_name_fold "$_DCU"
+    _DC_QU=0
+    [ "$_DCF" = "$_DCU" ]
 }
 
 # _dc_unquoted TEXT — _DCU is TEXT with each quoted span ('…', "…" and a
@@ -3974,6 +4089,13 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
             dc_mf=$_DCF
             _dc_name_fold "$_DCNB"
             cmd_lc=$(paste -d '\0' <(printf '%s\n' "$dc_mf") <(printf '%s\n' "$_DCF"))
+        elif [ "$TOK" = 0 ] && [ "$tool_name" = Bash ] && [ "$ST_HEREDOC" = 1 ] \
+            && [ "$ST_ANSIC" = 0 ] && _dc_skeleton_clean "$ST_LOWER" "$cmd_lc" "$cmd" \
+            && { _dc_name_fold "$_DCHB"; _dc_join_heredoc "$cmd_lc" "$_DCF"; }; then
+            # the lines outside every heredoc body spell no `.claude` once
+            # their quotes are read, so only the bodies (which an interpreter
+            # may run) fold in full; the skeleton keeps its stripped text
+            cmd_lc=$_DCJ
         else
             _dc_name_fold "$cmd_lc"
             cmd_lc=$_DCF
@@ -4012,9 +4134,11 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
                     # unjoined text, so a line continuation (`$\<NL>'`)
                     # keeps the old reading. bash extquote decodes a `$'…'`
                     # inside a double-quoted `${…}`, which the tokenizer
-                    # does not flag, so any `${` before the `$'` keeps it too.
+                    # does not flag, so a `$'` inside a still-open `${` keeps
+                    # it too (a closed `"${H}:path"` before a quoted `'^$'`
+                    # does not).
                     if [ "$TOK" = 1 ] && [ "$cmd_j" = "$cmd" ] \
-                        && case "$cmd" in *"\${"*"\$'"*) false ;; *) true ;; esac \
+                        && ! _ansi_in_param_brace "$cmd" \
                         && _tok_no_shell_ok; then
                         :
                     else
