@@ -56,7 +56,7 @@ RATE_LIMIT_S = 0 if os.environ.get("IG_MEDIA_NO_SLEEP") else 10
 DEFAULT_LIMIT = 10
 SLIDE_CAP = 20
 LONG_EDGE_MAX = 1600
-DEFAULT_WHISPER_MODEL = "base"
+DEFAULT_WHISPER_MODEL = None  # None: transcribe.py picks the model for the device
 # an audio stream at or below this mean_volume (ffmpeg
 # volumedetect) is near-digital-silence - soundless in every way that
 # matters, so it takes the same screenshot fallback as a video
@@ -484,7 +484,7 @@ def whisper_transcribe(wav: Path, model: str):
         return None, "error"
     cmd = [uv, "run", "--python", "3.12", "--with-requirements",
            str(Path(__file__).with_name("requirements-whisper.txt")),
-           "python", str(helper), str(wav), model]
+           "python", str(helper), str(wav)] + ([model] if model else [])
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
                            timeout=_t(WHISPER_TIMEOUT))

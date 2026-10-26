@@ -1,0 +1,233 @@
+{
+ "cls": "judge",
+ "arms": {
+  "keep": "opus judge-ro",
+  "fold": "sonnet judge-ro"
+ },
+ "tasks": [
+  {
+   "id": "BE-j3342-2",
+   "pr": 3342,
+   "head": "7ef781606dfe7115494a02010d2626b51bb47a97",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/fa76bb73-6927-4468-bb02-dd447b411a4b/subagents/agent-a779b314fb982d418.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/BE-j3342-2/judge.md",
+   "historic": {
+    "judged": "NO-GO",
+    "cost_eq": 31508,
+    "wall_s": 79
+   },
+   "brief": "Judge qid BE-j3342-2. Repo {HOME}/Documents/github/himmel, GitHub yotamleo-org/Himmel. PR #3342 (HIMMEL-6375, lint-corpus-sandbox fail-closed) is at head 7ef781606dfe7115494a02010d2626b51bb47a97. It is a trust path (scripts/ci/).\n\nThe prior judge, BE-j3342-1 at ccbbfca3, ruled NO-GO. Its Important finding was that the operand pattern at scripts/ci/lint-corpus-sandbox.py:112-114 accepted only an all-bare or an all-double-quoted token. These mixed tokens escaped: `exec -a \"x\"y \"$TARGET\"`, `exec -a x\"y\" \"$TARGET\"`, `exec 2>\"/dev/null\" \"$TARGET\"`, `env FOO=\"a b\" \"$TARGET\"`. The leg says the fix makes the operand a run of segments (bare, or \"...\" with no $) and adds RED rows for all 4 shapes (90 pass / 4 fail before, all green after). It also says the comment now names the verbs it does not scan (eval, command, timeout, nohup, xargs, bare \"$T\"), with the residual filed as HIMMEL-6799. Commit 982e005b in the range masks single quotes only outside double quotes and escapes, which fixes a CodeRabbit fail-open.\n\n`git fetch origin pull/3342/head`. Read the .py and test-corpus-sandbox.sh at 7ef78160, and run `git diff ccbbfca3 7ef78160`.\n\nQuestions:\n(1) Does the segment-run regex now catch all 4 shapes plus near variants? Try `exec -a 'x'\"y\"`, `exec -a \"a\"\"b\"`, an escaped quote, and a `$` inside the quotes, which must still flag.\n(2) Is the regex free of catastrophic backtracking (ReDoS) on a long line?\n(3) Is the single-quote masking from 982e005b correct for `\"it's\"`, `'a\"b'` and `\\'`, with no new fail-open?\n(4) Do the RED rows fail on ccbbfca3's logic?\n\nRead only: no suites, no CI polling. If a guard blocks a command, stop that line of checking and say so. Return a first line `VERDICT: GO` or `VERDICT: NO-GO`, then `class:` on NO-GO (one of option-parsing, cwd-indirection, shell-parsing, tool-defaults, reader-allowlist, other, with `class-reason:` if other), then numbered findings, then residuals marked Critical/Important/Minor. Under 300 words."
+  },
+  {
+   "id": "BE-j3365-1",
+   "pr": 3365,
+   "head": "965a5e4daa150af2430af73c977a7d9eb3c07d5e",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/fa76bb73-6927-4468-bb02-dd447b411a4b/subagents/agent-a76d0a5af076c72b6.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/BE-j3365-1/judge.md",
+   "historic": {
+    "judged": "NO-GO",
+    "cost_eq": 87995,
+    "wall_s": 95
+   },
+   "brief": "Judge qid BE-j3365-1. Repo {HOME}/Documents/github/himmel, GitHub yotamleo-org/Himmel. PR #3365 (HIMMEL-6580, reviewer modes and rate limits) is at head 965a5e4daa150af2430af73c977a7d9eb3c07d5e, a trust path. Files: scripts/lib/cr-merge-gate.sh, scripts/lib/cr-signal.sh, the new scripts/lib/critics-config.sh, scripts/cr/failure-classify.sh and scripts/cr/critics.json.\n\nConsole rulings bind this PR (decision 59 and Q1-Q4):\n- When CodeRabbit is rate-limited or absent, that is a NOTE, never a wait.\n- Heavy CI releases on CR clean (zero unresolved threads) or, when CR is limited or absent, on a clean critic at the head.\n- The critic set is Claude AND Codex, and it is config.\n- The claude critic counts as absent when the API lane is off, and codex is required.\n- CR_PROFILE=none means no_code_review.\n- An unarmed read fails open.\n- A late CR finding still blocks the merge.\n\nRead `gh pr diff 3365 -R yotamleo-org/Himmel`.\n\nQuestions:\n(1) Can the merge gate pass with NO review at all, meaning CR absent AND no codex critic verdict at the head, outside the explicit CR_PROFILE=none case?\n(2) Does critics.json or critics-config.sh let a leg or PR edit the config to drop a required critic? Is the config read from main or the anchor, rather than the PR's own tree?\n(3) Does a posted CodeRabbit finding still block the merge?\n(4) Does the \"unarmed read fails open\" scope stay as narrow as ruled?\n\nRead only: no suites, no CI polling. If a guard blocks a command, stop that line of checking. Return a first line `VERDICT: GO` or `VERDICT: NO-GO`, then `class:` on NO-GO (one of option-parsing, cwd-indirection, shell-parsing, tool-defaults, reader-allowlist, other, with `class-reason:` if other), then numbered findings with file:line, then residuals marked Critical/Important/Minor with a ticket or no-ticket reason. Under 350 words."
+  },
+  {
+   "id": "CC-j3461-1",
+   "pr": 3461,
+   "head": "31325d7e8f1d60d4bcf6b1d28e13c6a1c4a918d0",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/8bdc60a8-5e5d-4f39-a317-a88e3481b3c2/subagents/agent-a59fdbfd817b6ee20.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/CC-j3461-1/judge.md",
+   "historic": {
+    "judged": "NO-GO",
+    "cost_eq": 107135,
+    "wall_s": 112
+   },
+   "brief": "Judge call, qid CC-j3461-1. Repo {HOME}/Documents/github/himmel (remote yotamleo-org/Himmel). Question: is PR 3461 at head 31325d7e8 (resolve the full sha with `gh pr view 3461 -R yotamleo-org/Himmel --json headRefOid,commits,files,body`) \u2014 HIMMEL-5913 SkillSpector Stage 1 advisory scan in the luna-ingest / harvest-clips flow of marketplace/plugins/obsidian-triage \u2014 sound to merge, GO or NO-GO? The worker's /pr-check rounds are capped (rounds 1-3 + delta round 4 clean at cf5487eaa); the final commit after round 4 fixed one CodeRabbit finding (Phase 3.7 wrote reports before Phase 4's target-exists check) with a 1-line doc rule and plugin version bump to 0.2.129. Your GO stands in for the review of that post-cap delta and the PR overall.\n\nRead `gh pr diff 3461 -R yotamleo-org/Himmel` and `git diff cf5487eaa 31325d7e8` (fetch origin first only via `git -C {HOME}/Documents/github/himmel fetch origin` if the commits are absent; if fetch is not permitted, use `gh api repos/yotamleo-org/Himmel/compare/cf5487eaa...31325d7e8`). Do not run suites or poll CI.\n\nRulings it must honour: advisory only (never blocks an ingest), runs --no-llm, refuses cleanly when no provider is configured; VM capture used UserKnownHostsFile=/dev/null and never edits ~/.ssh/known_hosts. Check: the delta fix is correct and complete (no other phase writes before the target-exists check); scan results cannot be silently dropped or misreported as clean when the scanner is missing/fails (an advisory must say \"not scanned\", never \"clean\"); no secrets or env values leak into reports; fixture skills under tests/fixtures/skillspector cannot be picked up as real skills by any plugin loader; plugin version bumped consistently; trailers in the FIRST commit.\n\nReturn: first line `VERDICT: GO` or `VERDICT: NO-GO`, then `findings:` (severity, file:line, required fix), then `residuals:` (or none). Under 400 words."
+  },
+  {
+   "id": "BG-j3341-4",
+   "pr": 3341,
+   "head": "d5c1438296b59fa7cc0e0ca5ec21146ebec7e0e1",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/73e28c5b-0419-4a8c-bfa4-6637d13a363c/subagents/agent-a4db350816bc8de13.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/BG-j3341-4/judge.md",
+   "historic": {
+    "judged": "NO-GO",
+    "cost_eq": 121366,
+    "wall_s": 290
+   },
+   "brief": "Judge qid BG-j3341-4. grade: call. prior: GO.\n\nPR #3341 in yotamleo-org/Himmel (HIMMEL-6525, hermes parity guard residuals), new head d5c1438296b59fa7cc0e0ca5ec21146ebec7e0e1. This is a delta re-judge after BF-j3341-3 ruled NO-GO. Prior verdicts are in {HOME}/Documents/luna/handovers/yotamleo/himmel/verdicts/BF-j3341-3/ and BF-j3341-2/ (read them first). Primary checkout (main, read-only): {HOME}/Documents/github/himmel. Diff: `gh pr diff 3341 -R yotamleo-org/Himmel`. Files at head: `gh api repos/yotamleo-org/Himmel/contents/<path>?ref=d5c1438296b59fa7cc0e0ca5ec21146ebec7e0e1 --jq .content | base64 -d`.\n\nThe console ruled after BF-j3341-3: \"main's whole lock pipeline as arm 1 plus the new logic as arm 2, block if either; after that only a regression vs main is grounds for NO-GO.\" This guard is on its LAST structural round (policy: guards stay, but we don't chase every bash escape; one structural round, then accept and file one residual ticket).\n\nThe leg deviated, saying a literal always-on arm 1 fails two ticket-DoD rows that expect ALLOW where main BLOCKS: (a) `gh pr create # --head feat/y` and (b) the two-repo chain row. So its arm 1 = main's pipeline verbatim, copied as *_main functions, but GATED: it runs only when a hash comment ends in backslash-newline. A ValueError from the base scanner defers to arm 2 instead of blocking. The leg says the BF-j3341-3 inputs now BLOCK: the ANSI-C `$'a\\'b\"'` prefix and the heredoc `a\"b` prefix, each followed by `# c \\<NL>gh pr create --head feat/y`.\n\nRule on:\n1. Are the BF-j3341-3 bypasses really closed at this head? Cite code and test rows.\n2. Regression vs main: find any input that main's guard BLOCKS and the new guard ALLOWS, other than the two intentional DoD relaxations (a) and (b). Focus on: inputs with no hash-backslash-newline (arm 1 off, so arm 2 alone must cover what main covered); the ValueError-defers-to-arm-2 path (is that fail-open where main would block?); quoting, heredoc, continuation and subshell shapes.\n3. Is the gating a sound reading of the ruling, given the DoD rows? Or should arm 1 be ungated (losing those two rows)?\n\nDo not run suites or poll CI. Return `answer: GO|NO-GO for head d5c1438296b59fa7cc0e0ca5ec21146ebec7e0e1`, numbered evidence with file:line, any concrete bypass input string, and a Residuals line with severity. Under 500 words. Never write, comment or push.",
+   "subs": [
+    [
+     "{HOME}/Documents/luna/handovers/yotamleo/himmel/verdicts/",
+     "{w}/prior/"
+    ]
+   ],
+   "evidence": {
+    "prior/BF-j3341-3/judge.md": "# VERDICT BF-j3341-3 - judge\n\nwriter-session: f9018a7a-9b58-439c-81a7-c7e04a6ff647\nwritten-at: 2026-10-20T22:42:35Z\n\n## Verdict\n\n**NO-GO** for head `211f8b48f10a81ce4e15c35f61f367c9201c0184`.\n\npr: 3341\nprior: GO\nflipped: y\n\nJudge BF-j3341-3 (console-judge-ro, opus high), delta re-judge of PR 3341 (HIMMEL-6525) df97e70f..211f8b48f10a81ce4e15c35f61f367c9201c0184 after NO-GO BF-j3341-2.\nclass: shell-parsing\n\nBF-j3341-2 is closed by the union of joins, and BF-j3341-1 stays closed. A regression vs main remains: the head's `#` cut in _unquoted_segment also applies under main's join. A `\"` that bash doesn't treat as a quote (inside $'a\\'b\"' or a heredoc body) leaves the commented joiner in a false double-quote state, so it joins a comment's continuation exactly as main's join does. Both joins then cut at `#`, and `echo $'a\\'b\"'; gh pr create --head feat/w # c \\<NL>gh pr create --head feat/y` is ALLOWED, where main (no `#` cut, all-calls heads) BLOCKS. The heredoc `a\"b` variant behaves the same.\n\nStructural fix (ruled): keep main's ENTIRE lock pipeline unchanged as one arm (main's join, main's _unquoted_segment without the `#` cut, main's all-calls _pr_head_branches), add the new logic as a second arm, and block if EITHER arm blocks. Then the guard is at least as strict as main by construction. Add RED rows for both inputs above.\nmac: e653d5803beb4c6f7993857a24c6e8686f6f134499d8a39e27945eb4cb86ff3f\n",
+    "prior/BF-j3341-2/judge.md": "# VERDICT BF-j3341-2 - judge\n\nwriter-session: f9018a7a-9b58-439c-81a7-c7e04a6ff647\nwritten-at: 2026-10-20T22:36:17Z\n\n## Verdict\n\n**NO-GO** for head `df97e70f0feb85b6f919c82356d24e61c806d456`.\n\npr: 3341\nprior: GO\nflipped: y\n\nJudge BF-j3341-2 (console-judge-ro, opus high), delta re-judge of PR 3341 (HIMMEL-6525) d079c9c4..df97e70f0feb85b6f919c82356d24e61c806d456 after NO-GO BF-j3341-1.\nclass: shell-parsing\n\nBoth BF-j3341-1 instances are closed: the comment newline is kept by _join_continuations_commented (parity_guard.py:1604-1630), and `#` after ( ; | & raises in _skip_process_substitution (:816).\n\nNew fail-open (a regression vs main): the joiner treats a backslash as literal inside a single quote it believes is open, and models neither $'...' nor heredoc bodies, so its quote state can get out of step with bash's. `echo $'it\\'s'; gh pr create --title t \\<NL>--head feat/y` is left unjoined, shlex yields '\\n--head', heads=[], and the command is ALLOWED; main's quote-blind _LINE_CONT join blocks it. The heredoc-apostrophe variant behaves the same. Fix (structural, last round): take the union of the calls and heads from BOTH joins (main's _join_continuations and the commented one) and block if either finds a pending branch; add RED rows for the $'..' and heredoc prefixes.\n\nResiduals (pre-existing, for HIMMEL-6789): a comment after `)`; backtick command position; wrappers; gh paths.\nmac: e3dd8df91efdbac922dbb5a0368506282cd696a71b1ba45ae11402c15cc4c3d1\n"
+   }
+  },
+  {
+   "id": "DQ-j3636-1",
+   "pr": 3636,
+   "head": "e5cbfdbe8709e6ee681001ead79bdc3efd7279f7",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/1a495c5b-7004-44da-8323-b4841075d519/subagents/agent-ac04c614c0bbb932a.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/DQ-j3636-1/judge.md",
+   "historic": {
+    "judged": "NO-GO",
+    "cost_eq": 186850,
+    "wall_s": 170
+   },
+   "brief": "Trust judge call DQ-j3636-1 (grade: call, adversarial: the PR touches a CI trust path, scripts/lib/graphify-bin.sh and upstreams.json). Question: is PR 3636 in yotamleo-org/Himmel (checkout {HOME}/Documents/github/himmel, read-only) fit to merge at head e5cbfdbe8709e6ee681001ead79bdc3efd7279f7? Answer GO or NO-GO with a fix list.\n\nTicket HIMMEL-7187: pin the graphify fork release with patched dependency floors. Fork SHAs b49a55f8 and 03b95c88; tag v0.9.94-himmel.2 is the pin. After merge the console (not this PR) runs a sample graphify update and a station reinstall; ready-check item 7 was waived for that post-merge step \u2014 do not rule on it.\n\nRules: confirm `gh pr view 3636 -R yotamleo-org/Himmel --json headRefOid` equals the head and `git cat-file -t e5cbfdbe` prints commit (else a bare `git fetch origin`, never a refspec fetch). Read with `git diff origin/main...e5cbfdbe8709e6ee681001ead79bdc3efd7279f7` and `git show <sha>:<path>`, never FETCH_HEAD. Do not run suites or poll CI. Adversarially check: the pin is exact (tag AND sha, not a floating ref), the pinned sha really is what the tag points to on the fork (use `gh api repos/<fork>/git/ref/tags/v0.9.94-himmel.2` and the commits API; find the fork slug in upstreams.json), the dependency floors named are actually raised in the fork at that sha (gh api contents at that ref for pyproject/lock), no install path fetches unpinned code, no checksum/verification step removed or weakened, tests cover the new pin. Indexes may be stale: confirm claims with grep/git.\n\nReturn exactly: `verdict: GO|NO-GO`, `head: <sha>`, `findings:` bullets with file:line, `fix-list:` (none if GO), `residuals:` (each `no-ticket: ...` or `HIMMEL-n: ...`)."
+  },
+  {
+   "id": "BP-j3402-1",
+   "pr": 3402,
+   "head": "8e8df5bafee4e57b20f64895d2b9e52c7b40471f",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/de3c8239-2a45-4957-a303-f16b98e7c6b8/subagents/agent-a390544b8f157590a.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/BP-j3402-1/judge.md",
+   "historic": {
+    "judged": "NO-GO",
+    "cost_eq": 235048,
+    "wall_s": 220
+   },
+   "brief": "Judge call BP-j3402-1 (grade: call, trust path). Question: GO or NO-GO for PR yotamleo-org/Himmel#3402 at head 8e8df5bafee4e57b20f64895d2b9e52c7b40471f?\n\nPR: feat(ci) [HIMMEL-2872] [HIMMEL-6493] runs the Linux CI jobs inside the prebuilt CI container image (ghcr.io/yotamleo-org, public), pinned by digest sha256:45bb292ab7f578ad3082ec19707a9e468848af8e0dc2f4bdd02874a9c741ea7f at 7 sites. That image was rebuilt on main by ci-image.yml after PR 3412 (added python-is-python3 + python3-yaml). Leg reports: CI fully green at this head (in-image runs pass); /pr-check round 3 of 3 done, codex-1 (Windows leg reach) disproved since the matrix is ubuntu-latest only and ci.yml has no workflow_call; 234 impacted suites each with a verdict; one CodeRabbit Minor (test-ci-image.sh:157, unanchored sha256sum -c row) is being DEFERRED to a backlog residual, not fixed here (console ruling, past round cap).\n\nRead-only checks (gh pr diff 3402 -R yotamleo-org/Himmel; gh pr view 3402 -R yotamleo-org/Himmel --json headRefOid,files,commits; repo at {HOME}/Documents/github/himmel; gh api for the image digest/workflow runs if useful):\n1. Head matches.\n2. Every container: reference is digest-pinned to the same digest, and that digest is the one ci-image.yml published from main (not a PR or fork build). Image is pulled from ghcr.io/yotamleo-org only.\n3. No widened permissions, no pull_request_target, no secrets exposed to the container, no new credentialed steps; fork PR behaviour not weakened.\n4. Jobs that need host tools not in the image (docker, VM, GPU, Windows) are not moved into the container, or are handled.\n5. No test, gate or required check silently skipped or removed by the move (compare job names / needs / required checks before vs after).\n6. Nothing unrelated.\nDo not run suites or poll CI beyond reading results.\n\nOutput exactly: first line `VERDICT: GO` or `VERDICT: NO-GO`, then `HEAD: <sha>`, then up to 10 findings tagged Critical/Important/Minor with file:line, then a one-line summary. Residuals needing a ticket: `RESIDUAL: <line>`."
+  },
+  {
+   "id": "ER-j3733-2",
+   "pr": 3733,
+   "head": "f7644ae3d65327c4c0e0e9dfd236adcb04653687",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/ed2c6452-3e1d-4b8e-8e42-15750dc33c1d/subagents/agent-af80b70bdabec7a53.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/ER-j3733-2/judge.md",
+   "historic": {
+    "judged": "GO",
+    "cost_eq": 92269,
+    "wall_s": 67
+   },
+   "brief": "Judge question ER-j3733-2 (delta re-judge). Return a verdict GO or NO-GO with reasons. Do not act.\n\nContext: PR 3733 (HIMMEL-7210) in {HOME}/Documents/github/himmel adds a docs-site check that built-site links resolve to built routes (scripts/docs-site/check-built-links.mjs), with tests in scripts/docs-site/test-site-build.sh. Prior judge EQ-j3733-1 said NO-GO at be665ca0 for one reason: the \"links-escape\" control row was VACUOUS. It was meant to prove the guard that fails a root link outside the site base, but the row would pass even with the guard removed.\n\nThe leg's fix is at head f7644ae3d65327c4c0e0e9dfd236adcb04653687. The delta be665ca0..f7644ae3 is pre-generated at /tmp/claude-1000/-home-overlord-Documents-github-himmel/ed2c6452-3e1d-4b8e-8e42-15750dc33c1d/scratchpad/j3733-2.diff (57 lines, only test-site-build.sh). The leg claims:\n- The links-escape control now links /Others/page/#sec. RED was proven on a copy of check-built-links.mjs with the guard replaced by `if (false)`: exactly that row failed.\n- It adds rows \"a query string is not part of the route\" and \"a protocol-relative link is external\"; each fails alone when the `?` split or the `//` skip is removed.\n- Every control row asserts exit 1, and the empty-dist row asserts exit 2.\n\nRead the diff file, and read the PR-head version of check-built-links.mjs via `git -C {HOME}/Documents/github/himmel show f7644ae3d65327c4c0e0e9dfd236adcb04653687:scripts/docs-site/check-built-links.mjs` (single commands only, no compound shell). Questions:\n(1) Does the new links-escape row really exercise the outside-base guard, i.e. would it pass with the guard removed?\n(2) Are the two new rows non-vacuous in the same sense?\n(3) Does the delta introduce any regression?\nYou may run the suite (`bash scripts/docs-site/test-site-build.sh` from a scratch copy) only if it is cheap; reasoning from code is acceptable.\n\nReturn the four fields: question id, verdict, evidence (file:line), residuals (if any).",
+   "subs": [
+    [
+     "/tmp/claude-1000/-home-overlord-Documents-github-himmel/ed2c6452-3e1d-4b8e-8e42-15750dc33c1d/scratchpad/j3733-2.diff",
+     "{w}/j3733-2.diff"
+    ]
+   ],
+   "diffs": [
+    [
+     "be665ca0",
+     "f7644ae3d65327c4c0e0e9dfd236adcb04653687",
+     "j3733-2.diff"
+    ]
+   ]
+  },
+  {
+   "id": "DU-j3603-4",
+   "pr": 3603,
+   "head": "16c931a983b891bacd2ee2e04c8d8f4d60c91d21",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/a94000d1-b7b3-4d90-8eb9-ed99942660de/subagents/agent-a62dafa839575392e.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/DU-j3603-4/judge.md",
+   "historic": {
+    "judged": "GO",
+    "cost_eq": 116204,
+    "wall_s": 112
+   },
+   "brief": "Question id DU-j3603-4. You are a read-only judge. Answer ONE question and return a verdict; do not edit, push, run suites or poll CI.\n\nRepo: {HOME}/Documents/github/himmel (primary checkout, GitHub yotamleo-org/Himmel). PR #3603 (HIMMEL-7111, API credit reset dates / paid API-lane launcher), head 16c931a983b891bacd2ee2e04c8d8f4d60c91d21. First check that `gh pr view 3603 -R yotamleo-org/Himmel --json headRefOid` equals that sha and that `git cat-file -t <sha>` prints commit (if not, run a bare `git fetch origin`; never a refspec fetch). Read with `git diff origin/main...<sha>` and `git show <sha>:<path>`. Never use FETCH_HEAD. Indexes may be stale: confirm claims with grep/git.\n\nFiles: scripts/api-lane/claude-api.sh, scripts/lib/api-credit-state.mjs (plus tests). A prior verdict (DU-j3603-3) ruled a related stop_call finding (TERM-ignoring descendant survives a watchdog-timeout stop) to be stray-process only and deferred it to HIMMEL-7115. This is a different finding.\n\nFinding: a CodeRabbit outside-diff Major, ledger id cr-od-2570c3236cbf, at api-credit-state.mjs:166-168 (CodeRabbit's review body on PR 3603 has the exact text). Claim as relayed: sweep() releases a reservation once reserved_at + timeout_s + KILL_GRACE (5 s) has passed. The launcher's watchdog starts a little AFTER reserve, and stop_call waits up to 5 s after TERM. So a sweep run by a concurrent reserve/status inside that final window, while a timed-out call is still terminating, settles the reservation at zero. The launcher's later verified settle then gets already-settled, and the verified cost is lost. The leg's read: real but narrow; the effect is under-recorded spend for that one call, and that matches the settle-at-zero outcome the design already accepts for a launcher killed hard.\n\nDecide: is the race real at this head (trace the timing from reserve to watchdog start to stop_call to settle, versus sweep's deadline)? What exactly is lost: a verified cost that would otherwise be recorded (ledger under-count, i.e. a spend-accounting data loss) or only a cost that would never have been verified anyway? Is it a regression from main? How small is a correct fix (e.g. a larger sweep margin than KILL_GRACE, recording the watchdog start, or settle accepting a verified cost for an already-released reservation)?\n\nPolicy: a deferred Critical/Important is never dropped. (a) fix-here, or (b) follow-up:<KEY>, merge now. (b) is allowed ONLY if merging cannot break main: no red CI, no data loss (losing a verified spend record in the credit ledger counts as data loss unless you show it cannot happen or is not a regression), no weakened guard or gate. If you rule (b), say whether HIMMEL-7115 fits or a new ticket is needed, and give a fu-class (hardening|...) and a one-line fu-why. If you rule (a), give the minimal fix and the RED test that proves it.\n\nReturn exactly:\nVERDICT: GO follow-up:<KEY or NEW> | NO-GO fix-here\nfinding-real: yes|no|partly, with one line\nimpact: one line\nregression: yes|no, with one line\nfix: minimal fix in 1-3 lines, plus a RED test line\nfu-class / fu-why: (only for GO)\nevidence: 3-6 bullets with file:line at that sha\nclass: (only for NO-GO) a finding class, and class-reason: one line"
+  },
+  {
+   "id": "AZ-j3299-1",
+   "pr": 3299,
+   "head": "1b122619fd1f15151c7392c6f891945711052a56",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/63ff4fc0-5082-4026-b27b-bd42d5171ccb/subagents/agent-ab4f2951b27cf80ca.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/AZ-j3299-1/judge.md",
+   "historic": {
+    "judged": "GO",
+    "cost_eq": 56559,
+    "wall_s": 61
+   },
+   "brief": "Judge call AZ-j3299-1 (grade: call, TRUST-PATH adversarial review). Read-only. Do NOT run gh commands (a hook false-positives on gh text containing \"merge\"). The evidence files are below. You may read files under {HOME}/Documents/github/himmel (main at 170a616a) for context. Use plain Read or grep with absolute paths, never a `cd`.\n\nPR #3299 (HIMMEL-6514, yotamleo-org/Himmel), \"feat(console-kit): tracker splits Done and future versions into their own pages\". Head 1b122619fd1f15151c7392c6f891945711052a56. Files: docs/handover/console-sections/board-tracker.md, scripts/handover/console-kit/{tracker.py,test-tracker.sh,wrap-merged.sh,test-wrap-merged.sh}. The console granted an EXPANSION to wrap-merged.sh tracker_refresh + test-wrap-merged.sh after CodeRabbit found that a MERGED refresh would undo the tracker split. CR rounds 1-3 ran. The final 58-line delta c634e1335..1b122619f is over the panel delta cap, so this judge GO stands in for that review AND is the trust-path review of the whole PR.\n\nRead: full PR diff /tmp/claude-1000/-home-overlord-Documents-github-himmel/63ff4fc0-5082-4026-b27b-bd42d5171ccb/scratchpad/d3299.txt (428 lines); delta /tmp/claude-1000/-home-overlord-Documents-github-himmel/63ff4fc0-5082-4026-b27b-bd42d5171ccb/scratchpad/d3299-delta.txt (54 lines).\n\nRule on: (1) the delta does what it claims: tracker_refresh reads tracker-done:/tracker-future:, passes the split flags, and reports UNCHANGED only when all three pages exist; the test case 16b pins it and would fail on a revert. (2) No weakened guard or gate anywhere in the PR: console-kit is a trust path, so look for fail-open paths, unquoted vars, writes outside the bucket, swallowed errors that hide a failed refresh. (3) Nothing breaks a MERGED wrap for a console doc with no tracker-done/tracker-future lines (backward compatibility).\n\nReturn exactly: `answer: GO` or `answer: NO-GO`, then 3-6 evidence lines (no `prior:`/`flipped:` lines), then residual lines, each `residual: ...`.",
+   "subs": [
+    [
+     "/tmp/claude-1000/-home-overlord-Documents-github-himmel/63ff4fc0-5082-4026-b27b-bd42d5171ccb/scratchpad/d3299-delta.txt",
+     "{w}/d3299-delta.txt"
+    ],
+    [
+     "/tmp/claude-1000/-home-overlord-Documents-github-himmel/63ff4fc0-5082-4026-b27b-bd42d5171ccb/scratchpad/d3299.txt",
+     "{w}/pr.diff"
+    ]
+   ],
+   "diffs": [
+    [
+     "c634e1335",
+     "1b122619fd1f15151c7392c6f891945711052a56",
+     "d3299-delta.txt"
+    ]
+   ]
+  },
+  {
+   "id": "CH-j3472-1",
+   "pr": 3472,
+   "head": "39124f6774d9c9be28815ab1bc69bec68ddad161",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/aa915469-3b38-44aa-ae03-775a59a66d6b/subagents/agent-ad6be420a119202f3.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/CH-j3472-1/judge.md",
+   "historic": {
+    "judged": "GO",
+    "cost_eq": 109474,
+    "wall_s": 95
+   },
+   "brief": "qid: CH-j3472-1. grade: call. prior (console, written before asking): GO.\n\nQUESTION: Does PR 3472 (yotamleo-org/Himmel, HIMMEL-6957) at head 39124f6774d9c9be28815ab1bc69bec68ddad161 deserve a trust-reviewed GO? Answer GO or NO-GO. You read and reason only: you run no suites, poll no CI and edit nothing.\n\nRead the diff with `gh pr diff 3472 -R yotamleo-org/Himmel`. Read the files at head with `gh api repos/yotamleo-org/Himmel/contents/<path>?ref=39124f6774d9c9be28815ab1bc69bec68ddad161 -q .content` piped to `base64 -d`, or use the Read tool on the primary checkout {HOME}/Documents/github/himmel for the main versions. Ticket mirror: ~/.himmel/state/jira-mirror/HIMMEL/HIMMEL-6957.md. Use one simple command per Bash call: compound commands and redirects into files get refused by guards.\n\nClaim: scripts/hooks/guard-agent-model.sh now pins every console-judge-* agent type (console-judge-ro, plugin-namespaced forms such as `<plugin>:console-judge-ro`, and future console-judge-* names) to opus, while `console-judgement` (a different, non-judge name) stays allowed. 9 new rows in scripts/hooks/test-guard-agent-model.sh: RED was 68 pass / 3 fail, now all pass. The ticket named a wrong suite (test-guard-subagent-model.sh). The rows went to test-guard-agent-model.sh with console approval.\n\nCheck:\n(1) The match is anchored. A name like `console-judgement` or `my-console-judge-thing` does not get pinned wrongly, and a namespaced `x:console-judge-ro` IS pinned.\n(2) The guard weakens nothing that was enforced before: no other agent type loses a pin, and there's no new fail-open path such as a missing jq, an empty subagent_type, a missing model field, or a parse error.\n(3) It denies, not exit 2, per house convention, and the deny text is accurate.\n(4) The new rows actually exercise each claim, and a revert would turn them red.\n(5) Is it consistent with .claude/agents/console-judge*.md frontmatter (model: opus?) and the CLAUDE.md rule that judge calls name opus?\n\nPersist your verdict: you have no Write tool, and heredoc writes are guarded. So include in your final report the full evidence text (asked / read / reasoning / residuals) for the console to persist, and do NOT try to write a file. Return: the verdict line, residual lines (each with a suggested ticket), and 3-6 lines of reasoning.",
+   "subs": [
+    [
+     "~/.himmel/state/jira-mirror/HIMMEL/HIMMEL-6957.md",
+     "(not available in this replay)"
+    ]
+   ]
+  },
+  {
+   "id": "DS-j3644-1",
+   "pr": 3644,
+   "head": "708dadb856cb46b871250df4b232b9ad266229de",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/5959ce4b-f61c-4e2f-aaad-38c666aae5a0/subagents/agent-a057c7f669fb1952c.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/DS-j3644-1/judge.md",
+   "historic": {
+    "judged": "GO",
+    "cost_eq": 154173,
+    "wall_s": 128
+   },
+   "brief": "Judge question DS-j3644-1 (grade: call). Repo: {HOME}/Documents/github/himmel (yotamleo-org/Himmel). PR 3644 \"feat(release): [HIMMEL-7201] rule release requests in an on-demand batch\". Question: is head 708dadb856cb46b871250df4b232b9ad266229de GO or NO-GO to merge, judged as a DELTA from b1e7e116 (the head that answered the earlier NO-GO fix list)?\n\nBackground: an earlier judge DQ-j3644-1 ruled NO-GO at af4df2b6 with this fix list: (1) release.ts judgeEnv also drops HIMMEL_CONSOLE_*, HIMMEL_RELEASE_MANAGER, HIMMEL_RM_*, HIMMEL_L\u0045G_*, CLAUDE_PROJECT_DIR, with a test asserting HIMMEL_CONSOLE_LEG and HIMMEL_CONSOLE_DOC are removed; (2) the claude launch in release.ts uses --settings from scripts/lanes/profile-settings.sh bare (refuse if empty) plus a native-auth pin (drop/refuse ANTHROPIC_* and CLAUDE_CODE_USE_*), or a launch-profile-ok marker and corrected comment; (3) docs/handover/console-sections/release-manager.md says a partly applied ruling stays PENDING until fixed by hand. Head b1e7e116 was the fix head. The leg reports since then:\n- 008129176: fixes 2 CodeRabbit Minor findings: parseDecisions validates every Decision field (op enum, from/to string|null, optional ref/supersedes/authority in rm|operator|import); rm-run finally block is non-fatal (failed leaseRelease or record write becomes a PENDING line) and mkdirs the --doc parent.\n- 708dadb85: merges origin/main to resolve a conflict with HIMMEL-7153 (commit 001a933a2) in release.ts and release.test.ts, keeping both sides (rm-run block plus main's admissionBudgets).\n\nDo:\n1. Check `gh pr view 3644 -R yotamleo-org/Himmel --json headRefOid` equals 708dadb856cb46b871250df4b232b9ad266229de. Check `git cat-file -t 708dadb856cb46b871250df4b232b9ad266229de` prints commit; if not, run a bare `git fetch origin` (never a refspec fetch). Never use FETCH_HEAD.\n2. Read `git diff b1e7e116 008129176` and the merge resolution: `git show 708dadb85` / compare the merged release.ts and release.test.ts with `git show 001a933a2:<path>` and `git show 008129176:<path>`. Confirm nothing from either side was lost, the three DQ-j3644-1 fixes are still present at the head, and the new validation and finally-block code is correct (no swallowed fatal error that should fail closed, no lease left held silently).\n3. You read and reason only: do not run suites, do not poll CI, do not edit anything.\n\nReply in exactly this shape:\nVERDICT: GO|NO-GO\nfindings: (bullets with file:line)\nfix-list: (numbered, only if NO-GO)\nresiduals: (bullets, or none)"
+  },
+  {
+   "id": "EZ-j3769-1",
+   "pr": 3769,
+   "head": "76ac60dec1489bff156076d80a8ffc3f3c9dfd26",
+   "repo": "{HOME}/Documents/github/himmel",
+   "source": "~/.claude/projects/-home-overlord-Documents-github-himmel/ddce2fa1-d1bc-4f3f-ba3c-798a062cd74e/subagents/agent-af19ec3f27171f0c9.jsonl",
+   "verdict_file": "~/Documents/luna/handovers/yotamleo/himmel/verdicts/EZ-j3769-1/judge.md",
+   "historic": {
+    "judged": "GO",
+    "cost_eq": 171350,
+    "wall_s": 88
+   },
+   "brief": "Judge question EZ-j3769-1 (trust-path review, FULL PR). Repo: {HOME}/Documents/github/himmel (primary checkout, read only). PR #3769 \"fix(tests): [HIMMEL-7101] suites resolve the portable timeout and the physical temp path on macOS\", head 76ac60dec1489bff156076d80a8ffc3f3c9dfd26. This is PR 2 of a split to make the macOS cadence CI green. It is test-side only and does not complete the ticket.\n\nQuestion: is it safe to merge at that head? GO or NO-GO.\n\nInputs (pre-generated): full diff vs origin/main at /tmp/claude-1000/-home-overlord-Documents-github-himmel/ddce2fa1-d1bc-4f3f-ba3c-798a062cd74e/scratchpad/pr3769.diff (7 files, +21/-24); PR body at /tmp/claude-1000/-home-overlord-Documents-github-himmel/ddce2fa1-d1bc-4f3f-ba3c-798a062cd74e/scratchpad/pr3769.body. Read whole files at the head with `git show 76ac60dec1489bff156076d80a8ffc3f3c9dfd26:<path>` or `git grep <pattern> 76ac60dec1489bff156076d80a8ffc3f3c9dfd26 -- <path>`: ONE plain command each, with no pipes, redirects, cd &&, $(...) or --output, and never FETCH_HEAD. Do not run suites. Linux CI is green; macOS suites-only dispatches 40105200384/40106280632 are green for the touched suites.\n\nTrust paths touched: scripts/lib/fixture-tempdir.sh (a shared helper sourced by many suites), scripts/hooks/test-block-glm-bypass-scope.sh, scripts/hooks/test-block-unresolved-cr-merge.sh. Check:\n1. fixture-tempdir.sh: the physical-path change (/private/tmp resolution, e.g. pwd -P) is correct on Linux and macOS. It must not change the Linux behaviour of any suite sourcing it (git grep -l fixture-tempdir.sh at the head) and must not loosen any cleanup or safety check (for example an rm -rf guard on the temp root).\n2. test-block-glm-bypass-scope.sh (-24 lines): the rewrite keeps every deny/allow assertion. No case is dropped or weakened, and the hook under test is unchanged.\n3. test-block-unresolved-cr-merge.sh and the other 4 suites: the portable timeout resolution (gtimeout/timeout) cannot make a suite pass vacuously (for example skipping its body when no timeout binary exists).\n4. Only test files and the test helper change: no hook or production script.\n\nReply exactly:\nVERDICT: GO|NO-GO\nHEAD: 76ac60dec1489bff156076d80a8ffc3f3c9dfd26\nEVIDENCE: 3 to 8 lines with file:line.\nRESIDUALS: lines `HIMMEL-<n>: ...` / `no-ticket: <reason>: ...`, or exactly \"The judge reported no residuals.\"\nA NO-GO must name the defect and the fix.",
+   "subs": [
+    [
+     "/tmp/claude-1000/-home-overlord-Documents-github-himmel/ddce2fa1-d1bc-4f3f-ba3c-798a062cd74e/scratchpad/pr3769.diff",
+     "{w}/pr.diff"
+    ],
+    [
+     "/tmp/claude-1000/-home-overlord-Documents-github-himmel/ddce2fa1-d1bc-4f3f-ba3c-798a062cd74e/scratchpad/pr3769.body",
+     "(not available in this replay)"
+    ]
+   ]
+  }
+ ]
+}

@@ -118,6 +118,25 @@ ONCE per machine before the first `/ig-media-enrich` run.
    uv run --python 3.12 --with-requirements tools/requirements-whisper.txt python -c "from faster_whisper import WhisperModel; WhisperModel('base')"
    ```
 
+   **GPU (HIMMEL-7680).** `tools/transcribe.py` picks CUDA float16 with
+   `large-v3-turbo` when a CUDA device is visible, else CPU int8 with `base`.
+   When CUDA is usable but the cuBLAS/cuDNN wheels are not installed it re-execs
+   once under `uv` with `tools/requirements-whisper-cuda.txt` added (~1.3 GB, hashed,
+   linux x86_64; CPU-only hosts never fetch it). If CUDA then fails to load, it
+   falls back to CPU `base`. On CUDA with no pinned model, turbo detects the
+   language first and Hebrew at probability >= 0.8 is transcribed by
+   `ivrit-ai/whisper-large-v3-turbo-ct2` (loaded lazily; everything else stays on
+   turbo; the CPU path never routes). Overrides: `HIMMEL_WHISPER_DEVICE=cpu|cuda`,
+   `HIMMEL_WHISPER_MODEL=<name>` (pins the model, no routing),
+   `HIMMEL_WHISPER_ROUTE=0` (no routing), and an explicit `[model]` argument wins over both.
+   `ig-media-fetch.py` and `x-media-fetch.py` pass no model unless `--whisper-model`
+   is given, so the device default and routing apply. The CUDA wheels are probed
+   first: only a failed install falls back to CPU, never a bad wav.
+   `HIMMEL_WHISPER_DEVICE=cuda` on a host with no GPU still triggers the ~1.3 GB
+   wheel download, so leave it unset there. On the
+   4090 the turbo model transcribes about 7x faster than `small` on CPU and about
+   halves Hebrew WER; VRAM is about 2.5 GB.
+
 3. **Run the one-shot historical backfill.** `--include-evidence` extends the
    scan into `Clippings/_evidence/` (still skipping `_evidence/_rejected/`) so
    already-parked IG clips get enriched too:

@@ -1,0 +1,94 @@
+{
+ "judge": {
+  "BE-j3342-2": {
+   "truth": "NO-GO",
+   "why": "fix pushed, later GO at 09537929"
+  },
+  "BE-j3365-1": {
+   "truth": "NO-GO",
+   "why": "fix pushed, later GO at 0fdd3946"
+  },
+  "CC-j3461-1": {
+   "truth": "NO-GO",
+   "why": "fix pushed, later GO at 172d95ba"
+  },
+  "BG-j3341-4": {
+   "truth": "NO-GO",
+   "why": "fix pushed, later GO at 2de773f6"
+  },
+  "DQ-j3636-1": {
+   "truth": "NO-GO",
+   "why": "fix pushed, later GO at 3366e8b2"
+  },
+  "BP-j3402-1": {
+   "truth": "NO-GO",
+   "why": "fix pushed, later GO at 9e1a7ca3"
+  },
+  "ER-j3733-2": {
+   "truth": "GO",
+   "why": "merged at judged head, no S/P escape"
+  },
+  "DU-j3603-4": {
+   "truth": "GO",
+   "why": "merged at judged head, no S/P escape"
+  },
+  "AZ-j3299-1": {
+   "truth": "GO",
+   "why": "merged at judged head, no S/P escape"
+  },
+  "CH-j3472-1": {
+   "truth": "GO",
+   "why": "merged at judged head, no S/P escape"
+  },
+  "DS-j3644-1": {
+   "truth": "GO",
+   "why": "merged at judged head, no S/P escape"
+  },
+  "EZ-j3769-1": {
+   "truth": "GO",
+   "why": "merged at judged head, no S/P escape"
+  }
+ },
+ "vm": {
+  "vm-6958": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-6972": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-6985": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-6976": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-6972b": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-7004": {
+   "truth": "FAIL",
+   "why": "step h finds no digest in Daily under the brief's literal expectation"
+  },
+  "vm-6983": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-6965": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-7034": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  },
+  "vm-7147": {
+   "truth": "PASS",
+   "why": "historic runner and the merged fix agree"
+  }
+ }
+}

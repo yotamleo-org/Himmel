@@ -1,0 +1,356 @@
+{
+ "cls": "publisher",
+ "arms": {
+  "keep": "haiku publisher child",
+  "fold": "inline Artifact publish in the console"
+ },
+ "selection": "per page, the latest 6 publisher-child runs and the latest 6 inline attempts (an attempt = one console session's publishes of the page up to and including the first success); task k pairs runs 2k-1 and 2k of each arm",
+ "tasks": [
+  {
+   "id": "console-board-1",
+   "page": "console-board.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/e01c1f48-e9b8-4135-9da3-21329d4e4212/subagents/agent-ad4dbb2bc9bca0dcd.jsonl",
+    "-home-overlord-Documents-github-himmel/ed2c6452-3e1d-4b8e-8e42-15750dc33c1d/subagents/agent-aad2be95de18526a9.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/05b1fc24-e3f4-4922-9e59-c633d0c9fbc3.jsonl",
+     "first": 0,
+     "attempts": 1
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/404cdccb-5144-49c7-903d-afb1de52d505.jsonl",
+     "first": 0,
+     "attempts": 1
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-24T05:17:46.560Z",
+     "2026-10-24T05:43:37.836Z"
+    ],
+    "inline": [
+     "2026-10-21T02:17:29.436Z",
+     "2026-10-22T01:25:29.219Z"
+    ]
+   }
+  },
+  {
+   "id": "console-board-2",
+   "page": "console-board.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/a245c0ab-92ed-4b0a-b871-324a8b1474b5/subagents/agent-acd12cf73085f1432.jsonl",
+    "-home-overlord-Documents-github-himmel/26c21c6b-4e7f-474c-b3d4-cba97696e561/subagents/agent-ab3873e5f3d174479.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/3aa5f9b8-0a88-465a-9454-5eec7acdab69.jsonl",
+     "first": 0,
+     "attempts": 1
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/e01c1f48-e9b8-4135-9da3-21329d4e4212.jsonl",
+     "first": 0,
+     "attempts": 3
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-24T06:53:05.260Z",
+     "2026-10-24T07:51:40.379Z"
+    ],
+    "inline": [
+     "2026-10-22T23:21:59.489Z",
+     "2026-10-24T05:18:21.625Z"
+    ]
+   }
+  },
+  {
+   "id": "console-board-3",
+   "page": "console-board.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/44cc67c3-a300-4a6d-ab09-72e8929fc29d/subagents/agent-aa8b99826ecdb353c.jsonl",
+    "-home-overlord-Documents-github-himmel/a51d72fd-7076-4fd3-9e0c-cf6bd21ab094/subagents/agent-a316157fddfa6ac12.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/a245c0ab-92ed-4b0a-b871-324a8b1474b5.jsonl",
+     "first": 0,
+     "attempts": 3
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/a245c0ab-92ed-4b0a-b871-324a8b1474b5.jsonl",
+     "first": 3,
+     "attempts": 1
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-24T10:39:50.435Z",
+     "2026-10-24T11:35:37.617Z"
+    ],
+    "inline": [
+     "2026-10-24T07:14:59.585Z",
+     "2026-10-24T07:33:44.875Z"
+    ]
+   }
+  },
+  {
+   "id": "roadmap-tracker-1",
+   "page": "roadmap-tracker.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/e01c1f48-e9b8-4135-9da3-21329d4e4212/subagents/agent-a89f84fdab2823f20.jsonl",
+    "-home-overlord-Documents-github-himmel/ed2c6452-3e1d-4b8e-8e42-15750dc33c1d/subagents/agent-a3dda6f46f7ca9d5a.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/3a4e5ea2-fb79-4bdb-b173-ac4a9f310df7.jsonl",
+     "first": 4,
+     "attempts": 1
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/72ebfa01-34e2-4029-aab8-e02dd06ba17f.jsonl",
+     "first": 0,
+     "attempts": 3
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-24T05:29:05.190Z",
+     "2026-10-24T06:19:12.290Z"
+    ],
+    "inline": [
+     "2026-10-13T12:56:32.386Z",
+     "2026-10-17T21:12:28.599Z"
+    ]
+   }
+  },
+  {
+   "id": "roadmap-tracker-2",
+   "page": "roadmap-tracker.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/ed2c6452-3e1d-4b8e-8e42-15750dc33c1d/subagents/agent-ad2fecbd4986479ba.jsonl",
+    "-home-overlord-Documents-github-himmel/a245c0ab-92ed-4b0a-b871-324a8b1474b5/subagents/agent-a99c2cf10f360d188.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/a88c1eb7-d25f-4d40-b22c-01b3d2e8eb3d.jsonl",
+     "first": 0,
+     "attempts": 1
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/25a1e352-255a-4da7-988a-6b785e89f494.jsonl",
+     "first": 0,
+     "attempts": 1
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-24T06:47:14.226Z",
+     "2026-10-24T07:36:25.761Z"
+    ],
+    "inline": [
+     "2026-10-17T22:47:40.751Z",
+     "2026-10-18T03:48:21.588Z"
+    ]
+   }
+  },
+  {
+   "id": "roadmap-tracker-3",
+   "page": "roadmap-tracker.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/26c21c6b-4e7f-474c-b3d4-cba97696e561/subagents/agent-a42be025e3ad24b6d.jsonl",
+    "-home-overlord-Documents-github-himmel/44cc67c3-a300-4a6d-ab09-72e8929fc29d/subagents/agent-a9259bd4dd04c875b.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/5e24b64a-2282-489d-b40f-cd6f6abf12da.jsonl",
+     "first": 0,
+     "attempts": 3
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/912fc785-68ec-40dc-b0ef-419d6b1b9c41.jsonl",
+     "first": 0,
+     "attempts": 1
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-24T08:20:02.174Z",
+     "2026-10-24T11:14:02.157Z"
+    ],
+    "inline": [
+     "2026-10-20T19:58:58.193Z",
+     "2026-10-24T04:42:26.770Z"
+    ]
+   }
+  },
+  {
+   "id": "v113-focus-1",
+   "page": "v113-focus.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/5ffd221b-2645-485d-9e04-e2fc4e846506/subagents/agent-ae17372bb06fe7596.jsonl",
+    "-home-overlord-Documents-github-himmel/bf6e55f7-04e0-479f-bc1c-6d25a1945a07/subagents/agent-ae18e46db83a9f456.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/4bf63c69-5689-417d-b0f2-0ecec6c6ae52.jsonl",
+     "first": 0,
+     "attempts": 1
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/6590c5b3-00e7-451b-8802-ce1c5fa012ff.jsonl",
+     "first": 0,
+     "attempts": 3
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-22T16:57:27.715Z",
+     "2026-10-22T22:29:44.474Z"
+    ],
+    "inline": [
+     "2026-10-19T20:22:28.971Z",
+     "2026-10-19T23:41:24.083Z"
+    ]
+   }
+  },
+  {
+   "id": "v113-focus-2",
+   "page": "v113-focus.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/2c9b3bb3-efbc-4bcc-b7c2-4af1844118c8/subagents/agent-a013298877869182a.jsonl",
+    "-home-overlord-Documents-github-himmel/694f5833-505a-42fb-95cc-d7add4202b1a/subagents/agent-a45dabcc87daaf241.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/118cd861-2519-4266-bdb7-61156ef27f88.jsonl",
+     "first": 0,
+     "attempts": 1
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/e47e6045-d65d-4ef4-bdf5-673324969193.jsonl",
+     "first": 0,
+     "attempts": 1
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-23T02:30:30.898Z",
+     "2026-10-23T21:25:08.008Z"
+    ],
+    "inline": [
+     "2026-10-20T05:33:20.110Z",
+     "2026-10-20T07:41:04.072Z"
+    ]
+   }
+  },
+  {
+   "id": "v113-focus-3",
+   "page": "v113-focus.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/afea3365-20f2-4201-91f9-744f52429459/subagents/agent-a742ffd8cb2fa1900.jsonl",
+    "-home-overlord-Documents-github-himmel/912fc785-68ec-40dc-b0ef-419d6b1b9c41/subagents/agent-af2eb56a2e6e0e9d2.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/5e24b64a-2282-489d-b40f-cd6f6abf12da.jsonl",
+     "first": 0,
+     "attempts": 3
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/05b1fc24-e3f4-4922-9e59-c633d0c9fbc3.jsonl",
+     "first": 0,
+     "attempts": 1
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-23T21:55:40.655Z",
+     "2026-10-24T04:11:01.532Z"
+    ],
+    "inline": [
+     "2026-10-20T19:46:16.283Z",
+     "2026-10-21T02:27:42.568Z"
+    ]
+   }
+  },
+  {
+   "id": "v114-focus-1",
+   "page": "v114-focus.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/5ffd221b-2645-485d-9e04-e2fc4e846506/subagents/agent-ae17372bb06fe7596.jsonl",
+    "-home-overlord-Documents-github-himmel/bf6e55f7-04e0-479f-bc1c-6d25a1945a07/subagents/agent-ae18e46db83a9f456.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/6590c5b3-00e7-451b-8802-ce1c5fa012ff.jsonl",
+     "first": 0,
+     "attempts": 3
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/118cd861-2519-4266-bdb7-61156ef27f88.jsonl",
+     "first": 0,
+     "attempts": 1
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-22T16:57:27.715Z",
+     "2026-10-22T22:29:44.474Z"
+    ],
+    "inline": [
+     "2026-10-19T23:41:25.433Z",
+     "2026-10-20T05:40:51.529Z"
+    ]
+   }
+  },
+  {
+   "id": "v114-focus-2",
+   "page": "v114-focus.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/2c9b3bb3-efbc-4bcc-b7c2-4af1844118c8/subagents/agent-a013298877869182a.jsonl",
+    "-home-overlord-Documents-github-himmel/694f5833-505a-42fb-95cc-d7add4202b1a/subagents/agent-a45dabcc87daaf241.jsonl"
+   ],
+   "inline": [
+    {
+     "file": "-home-overlord-Documents-github-himmel/e47e6045-d65d-4ef4-bdf5-673324969193.jsonl",
+     "first": 0,
+     "attempts": 1
+    },
+    {
+     "file": "-home-overlord-Documents-github-himmel/5e24b64a-2282-489d-b40f-cd6f6abf12da.jsonl",
+     "first": 0,
+     "attempts": 3
+    }
+   ],
+   "window": {
+    "subagent": [
+     "2026-10-23T02:30:30.898Z",
+     "2026-10-23T21:25:08.008Z"
+    ],
+    "inline": [
+     "2026-10-20T07:40:57.110Z",
+     "2026-10-20T19:46:29.307Z"
+    ]
+   }
+  },
+  {
+   "id": "v114-focus-3",
+   "page": "v114-focus.html",
+   "subagent": [
+    "-home-overlord-Documents-github-himmel/afea3365-20f2-4201-91f9-744f52429459/subagents/agent-a742ffd8cb2fa1900.jsonl",
+    "-home-overlord-Documents-github-himmel/912fc785-68ec-40dc-b0ef-419d6b1b9c41/subagents/agent-af2eb56a2e6e0e9d2.jsonl"
+   ],
+   "inline": [],
+   "window": {
+    "subagent": [
+     "2026-10-23T21:55:40.655Z",
+     "2026-10-24T04:11:01.532Z"
+    ],
+    "inline": []
+   }
+  }
+ ]
+}

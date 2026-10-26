@@ -270,6 +270,7 @@ scripts/docs/test-site-guides.sh	local	behaviour suite, 0 catches in the 400-PR 
 scripts/docs/test-team-page.sh	pr	static-gate
 scripts/docs/test-troubleshooting-page.sh	pr	static-gate
 scripts/eval/cr-ledger/test-cr-ledger.sh	pr	static-gate
+scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	local	behaviour suite, new HIMMEL-7330
 scripts/eval/friction/test-friction.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/graphify-ab/test-graphify-ab.sh	pr	guard
 scripts/eval/guard-corpus/test-guard-corpus.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -1153,3 +1154,4 @@ scripts/guardrails/test-settings-waiter-allow.sh	pr	guard
 scripts/ci/test-billed-optin.sh	pr	trust-path
 scripts/ci/test-ci-go-gate.sh	pr	trust-path
 scripts/lanes/bench/scorecard/test-review-rounds.sh	local	behaviour suite, new in HIMMEL-7636
+marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	local	behaviour suite, 0 catches in the 400-PR audit window

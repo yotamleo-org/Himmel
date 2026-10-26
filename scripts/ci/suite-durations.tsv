@@ -292,6 +292,7 @@ scripts/docs/test-site-guides.sh	1
 scripts/docs/test-team-page.sh	0
 scripts/docs/test-troubleshooting-page.sh	1
 scripts/eval/cr-ledger/test-cr-ledger.sh	1
+scripts/eval/fold-vs-keep/test-fold-vs-keep.sh	3
 scripts/eval/friction/test-friction.sh	1
 scripts/eval/graphify-ab/test-graphify-ab.sh	5
 scripts/eval/guard-corpus/test-guard-corpus.sh	173
@@ -1086,7 +1087,7 @@ scripts/test-user-slug-resolve.sh	0
 scripts/test-vm-e2e-mode-guard.sh	1
 scripts/test-worktree-verbs.sh	7
 scripts/testing/test-added-unwired-prepush.sh	0
-scripts/testing/test-documented-commands.sh	66
+scripts/testing/test-documented-commands.sh	225
 scripts/testing/test-unwired-hooks.sh	1
 scripts/tests/test-setup-hooks-guardrail.sh	0
 scripts/upstream/test-run-target-tests.sh	0
@@ -1135,3 +1136,4 @@ scripts/guardrails/test-settings-waiter-allow.sh	1
 scripts/ci/test-billed-optin.sh	10
 scripts/ci/test-ci-go-gate.sh	1
 scripts/lanes/bench/scorecard/test-review-rounds.sh	1
+marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	3

@@ -1,0 +1,5 @@
+{"type":"custom-title","customTitle":"HIMMEL-9103-N9103-fx-miss-2026-10-20","sessionId":"s-miss"}
+{"type":"assistant","cwd":"/w","timestamp":"2026-10-20T13:01:00Z","message":{"id":"q1","role":"assistant","usage":{"input_tokens":1,"cache_read_input_tokens":9000,"cache_creation_input_tokens":1000,"output_tokens":100},"content":[{"type":"text","text":"one"}]}}
+{"type":"assistant","cwd":"/w","timestamp":"2026-10-20T13:02:00Z","message":{"id":"q2","role":"assistant","usage":{"input_tokens":1,"cache_read_input_tokens":10000,"cache_creation_input_tokens":1000,"output_tokens":100},"content":[{"type":"text","text":"two"}]}}
+{"type":"assistant","cwd":"/w","timestamp":"2026-10-20T13:03:00Z","message":{"id":"q3","role":"assistant","usage":{"input_tokens":1,"cache_read_input_tokens":11000,"cache_creation_input_tokens":1000,"output_tokens":100},"content":[{"type":"text","text":"three"}]}}
+{"type":"assistant","cwd":"/w","timestamp":"2026-10-20T13:30:00Z","message":{"id":"q4","role":"assistant","usage":{"input_tokens":1,"cache_read_input_tokens":0,"cache_creation_input_tokens":120000,"output_tokens":100},"content":[{"type":"text","text":"after a cache expiry"}]}}
