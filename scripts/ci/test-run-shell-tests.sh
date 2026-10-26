@@ -1231,8 +1231,9 @@ else
   # cap and manufacture the exact false CAP EXCEEDED the table exists to
   # delete. Asserted rather than merely deleted so that re-adding one is a
   # deliberate act with a measurement behind it.
-  for p2267 in test-run-shell-tests \
-               test-run-shell-tests-timing \
+  # (test-run-shell-tests.sh itself keeps 600 on Linux but has a Darwin arm: its
+  # rows are with the other Darwin arms below, on a stubbed uname.)
+  for p2267 in test-run-shell-tests-timing \
                test-run-shell-tests-discovery \
                test-run-shell-tests-rotation \
                test-run-shell-tests-rotation-guards \
@@ -1247,8 +1248,7 @@ else
   check_timeout_2267 "scripts/ci/test-not-in-any-arm-2895.sh" "600"
 
   # Ticket-cited pristine standalone figure: 799s, rc=0, genuine
-  # PASS (measured on overlord8, Windows/Git-Bash).
-  # A fresh scratch-HOME re-measurement here (Linux
+  # PASS (measured on overlord8, Windows/Git-Bash).  # A fresh scratch-HOME re-measurement here (Linux
   # CachyOS, 2026-09-26, via scripts/lib/clean-sandbox.sh) completed in ~27s,
   # rc=0, PASS -- the ~30x gap is Windows/Git-Bash node-spawn overhead on this
   # heavily node-spawning suite (winpath/hermetic-path.sh throughout), not a
@@ -1280,11 +1280,20 @@ else
   check_os_timeout_2267 Darwin "/repo/scripts/ci/test-tier-replay.sh" "1800"
   check_os_timeout_2267 Darwin "scripts/cr/test-pr-check-rounds.sh" "3400"
   check_os_timeout_2267 Darwin "/repo/scripts/cr/test-pr-check-rounds.sh" "3400"
+  # The core file of the split family: every assertion green but killed at 603s
+  # on both attempts of macOS run 40408566333 (129s on the Linux ledger, so the
+  # last case was still pending). Its five siblings measured under the cap there
+  # or are unmeasured on macOS, so they keep the default.
+  check_os_timeout_2267 Linux "scripts/ci/test-run-shell-tests.sh" "600"
+  check_os_timeout_2267 Linux "/repo/scripts/ci/test-run-shell-tests.sh" "600"
+  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests.sh" "1800"
+  check_os_timeout_2267 Darwin "/repo/scripts/ci/test-run-shell-tests.sh" "1800"
+  check_os_timeout_2267 Darwin "scripts/ci/test-run-shell-tests-timing.sh" "600"
   # A suite in no Darwin arm keeps its table value on macOS.
   check_os_timeout_2267 Darwin "scripts/test-adopt.sh" "1200"
   check_os_timeout_2267 Darwin "scripts/ci/test-not-in-any-arm-2895.sh" "600"
   # Headroom: the Darwin cap clears the measured macOS duration by the loaded x2 rule.
-  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700"; do
+  for m2267 in "scripts/ci/test-tier-replay.sh 874" "scripts/cr/test-pr-check-rounds.sh 1700" "scripts/ci/test-run-shell-tests.sh 603"; do
     s2267=${m2267% *}; d2267=${m2267#* }
     # shellcheck disable=SC2034,SC2329 # SUITE_* and the uname stub are used by the eval-defined _suite_timeout_for
     cap2267=$(eval "$fn2267"; uname() { printf 'Darwin\n'; }; SUITE_TIMEOUT=600; SUITE_TIMEOUT_EXPLICIT=''; SUITE_TIER_MODE=all; GUARD_CORPUS_TIER=''; _suite_timeout_for "$s2267")

@@ -353,6 +353,12 @@ _suite_timeout_for() {
         # Same run: PASS at 1700s against the 1200s Linux arm below. 3400s is
         # that x2; the Linux arm is untouched.
         printf '3400'; return 0 ;;
+      scripts/ci/test-run-shell-tests.sh|*/scripts/ci/test-run-shell-tests.sh)
+        # macOS run 40408566333: killed at 603s on both attempts with every
+        # assertion passing (129s on the Linux ledger), the last case still
+        # pending, so 603s is a truncation floor. 1800s is ~3x the floor; the
+        # Linux default is untouched.
+        printf '1800'; return 0 ;;
     esac
   fi
 
@@ -424,7 +430,8 @@ _suite_timeout_for() {
       # pass. 3600s covers the worst figure ever observed with headroom;
       # SUITE_RUN_BUDGET stays the runaway backstop.
       printf '3600' ;;
-    # NO ARM for scripts/ci/test-run-shell-tests*.sh. It used to
+    # NO ARM here for scripts/ci/test-run-shell-tests*.sh (the one macOS-only
+    # arm for the core file is in the Darwin block above). It used to
     # carry a 1200s arm (712s measured standalone on
     # 2026-08-30, x ~1.5). Splitting that one
     # 3086-line file into six suites and measured each standalone on linux
