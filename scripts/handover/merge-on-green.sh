@@ -1227,11 +1227,16 @@ main_red_refuse() {
 # --log-failed`): the `Failed suites:` block each shell-unit shard job prints, one
 # `  <suite> (...)` line per suite. Sets mr_cls and mr_list (comma-joined suites):
 #   cap-only      every failed suite hit the runner's watchdog at its cap with its
-#                 assertions passing, and every failed job is a shell-unit job
+#                 assertions passing, every failed job is a shell-unit job, and every
+#                 shard failed only through the runner: its Failed-suites rows, then
+#                 scripts/ci/home-canary.sh's `home-canary: FAIL runner exited rc=1`
 #   assertion     a failed suite exited non-zero, or hit its cap without its
 #                 assertions passing
-#   unclassified  the log is unreadable, names no failed suite, or a failed job is
-#                 not a shell-unit job (a shard that died before any suite ran)
+#   unclassified  the log is unreadable, names no failed suite, a failed job is not a
+#                 shell-unit job or a shard that has no rows or no runner exit line
+#                 (died before any suite ran, stopped on its budget), a Failed-suites
+#                 line the row pattern cannot parse, or any other `home-canary: FAIL`
+#                 (a honeytoken leak or read, a timeout, atime not tracked)
 # A cap-only red passes (mr_ok=cap-only) only when none of the capped suites is
 # reached by the PR's diff, per scripts/cr/impacted-suites.sh over the fetched base
 # tip and PR head (private refs, deleted again); a reached suite is cap-overlap and
@@ -1252,16 +1257,24 @@ main_red_classify() {
           sub(/^[^\t]*\t[^\t]*\t/, "", msg); sub(/\r$/, "", msg); sub(/^[0-9][0-9T:.Z-]* /, "", msg)
           if (!(job in seen)) { seen[job] = 1; jobs[++nj] = job }
           if (msg == "Failed suites:") { open[job] = 1; next }
-          if (open[job] && msg ~ /^  [^ ]+\.sh \(.*\)$/) {
-              s = msg; sub(/^  /, "", s); sub(/ \(.*$/, "", s)
-              n[job]++
-              if (index(msg, "(CAP EXCEEDED after ") == 0) k = "fail"
-              else if (msg ~ /assertions passing\)$/) k = "cap"
-              else k = "capfail"
-              if (!(s in kind)) { order[++ns] = s; kind[s] = k } else if (k != "cap") kind[s] = k
+          if (open[job]) {
+              if (msg ~ /^  [^ ]+\.sh \(.*\)$/) {
+                  s = msg; sub(/^  /, "", s); sub(/ \(.*$/, "", s)
+                  n[job]++
+                  if (index(msg, "(CAP EXCEEDED after ") == 0) k = "fail"
+                  else if (msg ~ /assertions passing\)$/) k = "cap"
+                  else k = "capfail"
+                  if (!(s in kind)) { order[++ns] = s; kind[s] = k } else if (k != "cap") kind[s] = k
+                  next
+              }
+              if (msg != "Disposition order for a red suite:") odd[job] = 1
+              open[job] = 0
               next
           }
-          open[job] = 0 }
+          if (msg ~ /^home-canary: FAIL/) {
+              if (msg == "home-canary: FAIL runner exited rc=1") ran[job] = 1
+              else odd[job] = 1
+          } }
         END {
           if (nj == 0) { print "unclassified|"; exit }
           bad = 0; cap = 0; other = 0; list = ""
@@ -1270,8 +1283,8 @@ main_red_classify() {
               if (kind[order[i]] == "cap") cap++; else bad = 1
           }
           for (j = 1; j <= nj; j++) {
-              if (jobs[j] !~ /^shell-unit(-shard)? \(/) other = 1
-              else if (jobs[j] ~ /^shell-unit-shard \(/ && n[jobs[j]] == 0) other = 1
+              if (jobs[j] !~ /^shell-unit(-shard)? \(/ || odd[jobs[j]]) other = 1
+              else if (jobs[j] ~ /^shell-unit-shard \(/ && (n[jobs[j]] == 0 || !ran[jobs[j]])) other = 1
           }
           print (bad ? "assertion" : (other || !cap) ? "unclassified" : "cap-only") "|" list
         }') || { mr_cls=unclassified; return 0; }

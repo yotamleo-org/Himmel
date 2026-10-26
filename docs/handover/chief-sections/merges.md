@@ -66,8 +66,9 @@ with `chief-kit/go.sh --fix-main-red <red-run-id> <pr> <head>` (beside the
 ordinary GO) whenever the gate prints another class: `assertion` (a suite
 failed an assertion), `cap-overlap` (a cap-timed-out suite is one the PR
 reaches), `cap-unverified` (the gate could not read the PR's reach) or
-`unclassified` (a red job that is not a shell-unit job, or a log the gate
-could not parse). After a merge on the declared-fix or fix-GO path the script
+`unclassified` (a red job that is not a shell-unit job, a shard that failed
+for more than its suite rows such as a honeytoken leak or a shard with no
+rows, or a log the gate could not parse). After a merge on the declared-fix or fix-GO path the script
 dispatches one `ci.yml` run on main and prints `MAIN-RECHECK dispatched
 run=<id>` (`run=unknown` when the new run is not listed yet; a failed dispatch
 is a WARN, the merge stands): read that run's `headSha` and `conclusion` before
