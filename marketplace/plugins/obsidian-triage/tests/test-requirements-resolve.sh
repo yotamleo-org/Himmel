@@ -29,19 +29,18 @@ rc=0; out=$(resolve 3.12 "$tools/requirements-whisper.txt") || rc=$?
 if [ "$rc" = 0 ]; then ok "requirements-whisper.txt resolves"; else no "requirements-whisper.txt resolves (rc=$rc: $out)"; fi
 
 # A bump that edits only the `==` line leaves the previous version's --hash lines, which
-# `--require-hashes` refuses: every av --hash must be a digest PyPI publishes for the pinned version.
-cat > "$tmp/hashes.py" <<'PY'
-import json, re, sys, urllib.request
-text = open(sys.argv[1]).read()
-m = re.search(r"^av==([0-9.]+) \\\n((?:    --hash=sha256:[0-9a-f]+(?: \\)?\n)+)", text, re.M)
-ver, locked = m.group(1), set(re.findall(r"sha256:([0-9a-f]+)", m.group(2)))
-with urllib.request.urlopen(f"https://pypi.org/pypi/av/{ver}/json", timeout=20) as r:
-    pypi = {u["digests"]["sha256"] for u in json.load(r)["urls"]}
-print(f"av=={ver} locked={len(locked)} matching={len(locked & pypi)}")
-sys.exit(0 if locked and locked <= pypi else 1)
-PY
-rc=0; out=$(python3 -I "$tmp/hashes.py" "$tools/requirements-whisper.txt" 2>&1) || rc=$?
-if [ "$rc" = 0 ]; then ok "requirements-whisper.txt av hashes match the pinned version ($out)"; else no "requirements-whisper.txt av hashes match the pinned version (rc=$rc: $out)"; fi
+# `--require-hashes` refuses. Re-pin every `==` line of a lock, regenerate its hashes from the
+# index, and diff against the committed file: a stale hash on ANY package fails here.
+# (--python-version 3.11.5: the scrapling lock's soupsieve needs 3.11.5+; hashes do not depend on it.)
+fresh() { local lock=$1 py=$2 name=$3 rc=0 out
+    grep -E '^[A-Za-z0-9_.-]+(\[[^]]*\])?==' "$lock" | sed 's/ *\\$//' > "$tmp/$name.in"
+    out=$(uv pip compile --universal --python-version "$py" --generate-hashes --no-header --no-annotate -o "$tmp/$name.out" "$tmp/$name.in" 2>&1) || rc=$?
+    if [ "$rc" != 0 ]; then no "$name lock regenerates (rc=$rc: $out)"; return; fi
+    if diff <(grep -vE '^[[:space:]]*#' "$lock") "$tmp/$name.out" > "$tmp/$name.diff"; then ok "$name lock is fresh: committed hashes equal the regenerated ones"
+    else no "$name lock is stale: committed hashes differ from the regenerated ones ($(grep -c '^[<>]' "$tmp/$name.diff") differing lines, first: $(grep -m1 '^[<>]' "$tmp/$name.diff"))"; fi
+}
+fresh "$tools/requirements-whisper.txt" 3.12 whisper
+fresh "$tools/requirements-scrapling.txt" 3.11.5 scrapling
 
 # Control: a curl-cffi below the extra's floor resolves without the extra and is refused with it.
 sed 's/^curl-cffi==.*/curl-cffi==0.15.0 \\/' "$tools/requirements-scrapling.txt" > "$tmp/stale.txt"
