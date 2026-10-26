@@ -1177,6 +1177,10 @@ esac
 # state, so this reads main's CI directly: the newest run of the CI workflow
 # on the default branch that has COMPLETED, skipping cancelled/skipped ones (a
 # superseded run says nothing about main) and falling back to the next older.
+# A run that is not completed but is on attempt 2+ is a RE-RUN (it keeps its
+# run id): its previous attempt is read with `gh run view --attempt`, so a red
+# run being re-run still counts as red; an unreadable attempt refuses with
+# `main-pending`. A fresh first-attempt run in progress is skipped, as before.
 # Since main CI is a cron/dispatch sweep, not a per-push run, so
 # that run covers a RANGE of commits: the refusal names it (the run behind it
 # in the list is the previous sweep's head).
@@ -1211,20 +1215,30 @@ main_red_refuse() {
 }
 mr_rc=0
 mr_rows=$("$GH" run list --repo "$nwo" --branch "$default_branch" --workflow CI --limit 50 \
-    --json databaseId,conclusion,status,event,headSha,createdAt \
-    --jq '.[] | "\(.databaseId)|\(.status)|\(.conclusion)|\(.event)|\(.headSha)"' 2>/dev/null) || mr_rc=$?
+    --json databaseId,conclusion,status,event,headSha,createdAt,attempt \
+    --jq '.[] | "\(.databaseId)|\(.status)|\(.conclusion)|\(.event)|\(.headSha)|\(.attempt // 1)"' 2>/dev/null) || mr_rc=$?
 [ "$mr_rc" -eq 0 ] || main_red_refuse "cannot read $nwo's $default_branch CI runs (gh run list exit $mr_rc), so main's state is unverified" "phase=run-list rc=$mr_rc"
-mr_run="" mr_conc="" mr_head="" mr_base="" mr_seen=0 mr_limit=50
-while IFS='|' read -r mr_id mr_status mr_c mr_ev mr_sha; do
+mr_run="" mr_conc="" mr_head="" mr_base="" mr_att="" mr_seen=0 mr_limit=50
+while IFS='|' read -r mr_id mr_status mr_c mr_ev mr_sha mr_attn; do
     [ -n "$mr_id" ] || continue
     mr_seen=$((mr_seen + 1))
     # `--branch main` also matches pull_request runs from a fork whose branch
     # is named main; only runs OF the default branch (push, cron, dispatch) count.
     case "$mr_ev" in schedule | workflow_dispatch | push) ;; *) continue ;; esac
-    [ "$mr_status" = completed ] || continue
+    mr_prev=""
+    if [ "$mr_status" != completed ]; then
+        # A re-run keeps the run id and bumps the attempt, so a run still in
+        # progress on attempt 2+ is a re-run of an attempt that already ended:
+        # that attempt, not an older green run, is what main looked like.
+        [ -z "$mr_run" ] || continue
+        case "$mr_attn" in "" | *[!0-9]* | 0 | 1) continue ;; esac
+        mr_prev=$((mr_attn - 1)) mr_prc=0
+        mr_c=$("$GH" run view "$mr_id" --repo "$nwo" --attempt "$mr_prev" --json conclusion --jq .conclusion) || mr_prc=$?
+        [ "$mr_prc" -eq 0 ] || main_red_refuse "main-pending: CI run $mr_id is being re-run and its previous attempt $mr_prev cannot be read (gh run view exit $mr_prc), so main's state is unverified" "run=$mr_id attempt=$mr_prev phase=attempt rc=$mr_prc"
+    fi
     case "$mr_c" in cancelled | skipped | null | "") continue ;; esac
     if [ -n "$mr_run" ]; then mr_base=$mr_sha; break; fi
-    mr_run=$mr_id mr_conc=$mr_c mr_head=$mr_sha
+    mr_run=$mr_id mr_conc=$mr_c mr_head=$mr_sha mr_att=$mr_prev
 done <<< "$mr_rows"
 if [ -z "$mr_run" ] && [ "$mr_seen" -ge "$mr_limit" ]; then
     main_red_refuse "the last $mr_seen $default_branch CI runs hold no completed non-cancelled run, so main's state is unverified" "phase=run-list seen=$mr_seen"
@@ -1234,6 +1248,8 @@ if [ -z "$mr_run" ]; then
 elif [ "$mr_conc" != success ]; then
     mr_range="${mr_base:0:12}..${mr_head:0:12}"
     [ -n "$mr_base" ] || mr_range="(previous run outside the listed window)..${mr_head:0:12}"
+    mr_what="main's latest completed CI run $mr_run is $mr_conc"
+    [ -z "$mr_att" ] || mr_what="main's CI run $mr_run is being re-run and its previous attempt $mr_att ended $mr_conc"
     mr_how="declare the fix with a commit-message line 'Fixes-main-red: run=$mr_run' (or 'suite=<a failed job name without spaces, or any .sh script named on an ##[error] line of its log>'; a job name with spaces needs run=<id>), or have the chief write a fix-GO: go.sh --fix-main-red $mr_run $pr_num $sha"
     mr_ok="" mr_log="" mr_log_rc=-1 mr_msgs="" mr_rc=0
     # The chief's fix-GO, for the current red run only.
@@ -1247,7 +1263,7 @@ elif [ "$mr_conc" != success ]; then
     else
         mr_msgs=$("$GH" pr view "$pr_num" --repo "$nwo" --json commits --jq '.commits[] | .messageHeadline, .messageBody' 2>/dev/null) || mr_rc=$?
     fi
-    [ "$mr_rc" -eq 0 ] || main_red_refuse "main's latest completed CI run $mr_run is $mr_conc (covers $mr_range) and the PR's commits are unreadable, so no fix declaration can be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range phase=commits"
+    [ "$mr_rc" -eq 0 ] || main_red_refuse "$mr_what (covers $mr_range) and the PR's commits are unreadable, so no fix declaration can be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att} phase=commits"
     while IFS= read -r mr_line; do
         mr_line=${mr_line%$'\r'}
         case "$mr_line" in "Fixes-main-red:"*) ;; *) continue ;; esac
@@ -1263,9 +1279,9 @@ elif [ "$mr_conc" != success ]; then
                 [ "${#mr_tok}" -ge 4 ] || continue
                 if [ "$mr_log_rc" -lt 0 ]; then
                     mr_log_rc=0
-                    mr_log=$("$GH" run view "$mr_run" --repo "$nwo" --log-failed 2>/dev/null) || mr_log_rc=$?
+                    mr_log=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed 2>/dev/null) || mr_log_rc=$?
                 fi
-                [ "$mr_log_rc" -eq 0 ] || main_red_refuse "main's latest completed CI run $mr_run is $mr_conc (covers $mr_range) and its failed log is unreadable, so the declared suite $mr_tok cannot be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range phase=run-log"
+                [ "$mr_log_rc" -eq 0 ] || main_red_refuse "$mr_what (covers $mr_range) and its failed log is unreadable, so the declared suite $mr_tok cannot be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att} phase=run-log"
                 if printf '%s\n' "$mr_log" | awk -F'\t' -v t="$mr_tok" '
                         $1 == t || (index($1, t) == 1 && substr($1, length(t) + 1, 2) == " (") { f = 1 }
                         t ~ /\.sh$/ && index($0, "##[error]") && (p = index($0, t)) > 0 &&
@@ -1276,8 +1292,8 @@ elif [ "$mr_conc" != success ]; then
                 fi ;;
         esac
     done <<< "$mr_msgs"
-    [ -n "$mr_ok" ] || main_red_refuse "main's latest completed CI run $mr_run is $mr_conc, covering commits $mr_range, and PR #$pr_num does not declare itself the fix — $mr_how; merge the fix first, or wait for the next green sweep" "run=$mr_run conclusion=$mr_conc range=$mr_range"
-    audit "MAIN-RED main-red-declared repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=$mr_ok"
+    [ -n "$mr_ok" ] || main_red_refuse "$mr_what, covering commits $mr_range, and PR #$pr_num does not declare itself the fix — $mr_how; merge the fix first, or wait for the next green sweep" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att}"
+    audit "MAIN-RED main-red-declared repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=$mr_ok${mr_att:+ attempt=$mr_att}"
 fi
 
 # PLUGIN-BUMP RECHECK GATE — CI's plugin-version-bump job went

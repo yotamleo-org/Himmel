@@ -366,8 +366,8 @@ repo_arg="${3:-}"
 api_path="${2:-}"
 json=""
 jqexpr=""
-run_branch="" run_workflow=""
-while [ $# -gt 0 ]; do case "$1" in --json) json="${2:-}";; --jq) jqexpr="${2:-}";; --branch) run_branch="${2:-}";; --workflow) run_workflow="${2:-}";; esac; shift; done
+run_branch="" run_workflow="" run_attempt=""
+while [ $# -gt 0 ]; do case "$1" in --json) json="${2:-}";; --jq) jqexpr="${2:-}";; --branch) run_branch="${2:-}";; --workflow) run_workflow="${2:-}";; --attempt) run_attempt="${2:-}";; esac; shift; done
 nwo="${STUB_NWO:-owner/repo}"
 def_files='[{"filename":"README.md"}]'
 case "$verb" in
@@ -551,6 +551,17 @@ case "$verb" in
         printf '%s' "${STUB_RUN_LIST_JSON-${STUB_RUN_LIST_JSON_DEFAULT:-[]}}" | jq -r "$jqexpr" ;;
     "run view")
         [ "${STUB_RUN_VIEW_FAIL:-0}" = "1" ] && { echo "gh: run view failed" >&2; exit 1; }
+        # `run view <id> --attempt N --json conclusion --jq ...`: the conclusion
+        # of an earlier attempt of a run that is being re-run (a re-run keeps
+        # the run id). STUB_RUN_ATTEMPT_CONCLUSION answers it, through the
+        # script's own --jq and real jq.
+        if [ "$json" = conclusion ]; then
+            [ "${STUB_RUN_ATTEMPT_FAIL:-0}" = "1" ] && { echo "gh: run view --attempt failed" >&2; exit 1; }
+            [ -n "$jqexpr" ] || { echo "gh stub: 'run view --json conclusion' missing --jq" >&2; exit 93; }
+            [ -n "$run_attempt" ] || { echo "gh stub: 'run view --json conclusion' missing --attempt" >&2; exit 96; }
+            printf '{"conclusion":"%s"}' "${STUB_RUN_ATTEMPT_CONCLUSION-failure}" | jq -r "$jqexpr"
+            exit 0
+        fi
         cat "${STUB_RUN_LOG_FILE:-/dev/null}" ;;
     "api repos/"*)
         # public_origin_merge_allowed's branch-protection read.
@@ -4663,6 +4674,44 @@ STUB_RUN_LIST_JSON="$MOG_RUN_RED" STUB_RUN_LOG_FILE="$MOG_RUN_LOG4" \
     STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: suite=check-foo.sh')" \
     run_mog 0 "5135-b: a non-test- .sh named on an error line → merged"
 rm -f "$MOG_RUN_LOG4"
+
+# ── a re-run of a red main run still counts as red ─────────────
+# Real window (gh run view, 2026-10-25): dispatch run 40226871918 at be152579
+# failed on shard 2; while the chief re-ran it (attempt 2, in progress) the newest
+# COMPLETED run was the older green schedule run 40208416958, and PR 3937
+# merged through the gate. A re-run keeps its run id, so the gate reads the
+# previous attempt of a run that is not completed and has attempt > 1.
+MOG_RUN_RERUN='[{"attempt":2,"conclusion":"","createdAt":"2026-10-25T19:37:01Z","databaseId":40226871918,"event":"workflow_dispatch","headSha":"be152579752f51ff26575c459654b1245d0f5abd","status":"in_progress"},{"attempt":1,"conclusion":"success","createdAt":"2026-10-25T15:45:05Z","databaseId":40208416958,"event":"schedule","headSha":"3f196bdadad920756c87caec0838ece0205b863c","status":"completed"}]'
+# 7656-a (RED) — red run being re-run, older green completed: refused.
+STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=failure \
+    run_mog 22 "7656-a: red run being re-run, older green behind it → exit 22"
+assert_audit_has "7656-a: audited as a red-main refusal" "REFUSED reason=main-red"
+assert_err_has "7656-a: stderr names the re-run run" "40226871918"
+assert_err_has "7656-a: stderr says it is being re-run" "re-run"
+assert_gh_has "7656-a: the previous attempt was read" "run view 40226871918"
+no_merge_call "7656-a: no merge call"
+# 7656-b — the previous attempt of the re-run was green: main is green.
+STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=success \
+    run_mog 0 "7656-b: re-run of a green attempt → merged"
+# 7656-c — a FRESH run in progress (attempt 1) is not a re-run: the older
+# completed green run still decides, as before.
+STUB_RUN_LIST_JSON='[{"attempt":1,"conclusion":"","createdAt":"2026-10-25T19:37:01Z","databaseId":40226871918,"event":"workflow_dispatch","headSha":"be152579752f51ff26575c459654b1245d0f5abd","status":"in_progress"},{"attempt":1,"conclusion":"success","createdAt":"2026-10-25T15:45:05Z","databaseId":40208416958,"event":"schedule","headSha":"3f196bdadad920756c87caec0838ece0205b863c","status":"completed"}]' \
+    run_mog 0 "7656-c: a fresh first-attempt run in progress falls back to the older green run → merged"
+assert_gh_lacks "7656-c: no attempt lookup for a first attempt" "run view"
+# 7656-d — the previous attempt cannot be read: main's state is unverified.
+STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_FAIL=1 \
+    run_mog 22 "7656-d: unreadable previous attempt → exit 22"
+assert_err_has "7656-d: stderr says main is pending" "main-pending"
+no_merge_call "7656-d: no merge call"
+# 7656-e — the PR declares itself the fix for the re-run run: merged.
+STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=failure \
+    STUB_PR_COMMITS_JSON="$(mog5115_commits 'Fixes-main-red: run=40226871918')" \
+    run_mog 0 "7656-e: valid run= declaration for the re-run run → merged"
+assert_audit_has "7656-e: audited as the declared fix" "main-red-declared"
+# 7656-f — the previous attempt was cancelled: it says nothing, so the older
+# completed run decides, as for a cancelled completed run.
+STUB_RUN_LIST_JSON="$MOG_RUN_RERUN" STUB_RUN_ATTEMPT_CONCLUSION=cancelled \
+    run_mog 0 "7656-f: re-run of a cancelled attempt falls back to the older green run → merged"
 
 # ── merge-time plugin version-bump recheck ──────────────────────
 # Plugin versions change only in a release cut (a change to the root VERSION
