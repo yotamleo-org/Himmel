@@ -467,6 +467,33 @@ else
     fail "T19 push_rc=$push_rc push_out=$push_out (no marker at $marker)"
 fi
 
+echo "T27: --impl-family installs the gate AND records the family; a re-run changes nothing"
+d="$TMP_ROOT/f24"; mk_foreign_repo "$d" || exit 1
+hook="$d/work/.git/hooks/pre-push"
+rec="$d/work/.git/cr-impl-family/feat/x"
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family Codex 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -x "$hook" ] && [ "$(cat "$rec" 2>/dev/null)" = "codex" ] \
+    && pass || fail "T27a rc=$rc out=$out"
+before="$(cksum "$hook" "$rec")"
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
+after="$(cksum "$hook" "$rec")"
+[ "$rc" -eq 0 ] && printf '%s' "$out" | grep -Fq "already-current" && [ "$before" = "$after" ] \
+    && pass || fail "T27b rc=$rc out=$out"
+
+echo "T28: --impl-family with a bad value -> non-zero, no record written"
+d="$TMP_ROOT/f25"; mk_foreign_repo "$d" || exit 1
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family 'bad family' 2>&1); rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$d/work/.git/cr-impl-family/feat/x" ] \
+    && pass || fail "T28 rc=$rc out=$out"
+
+echo "T29: --impl-family without a value, or with --status/--remove -> exit 2"
+d="$TMP_ROOT/f26"; mk_foreign_repo "$d" || exit 1
+out1=$(bash "$INSTALLER" --target "$d/work" --impl-family 2>&1); rc1=$?
+out2=$(bash "$INSTALLER" --target "$d/work" --status --impl-family codex 2>&1); rc2=$?
+out3=$(bash "$INSTALLER" --target "$d/work" --remove --impl-family codex 2>&1); rc3=$?
+[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ "$rc3" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && pass || fail "T29 rc1=$rc1 rc2=$rc2 rc3=$rc3 out1=$out1 out2=$out2 out3=$out3"
+
 echo
 if [ "$SKIP" -gt 0 ]; then
     echo "install-cr-gate tests: $PASS passed, $FAIL failed, $SKIP skipped"
