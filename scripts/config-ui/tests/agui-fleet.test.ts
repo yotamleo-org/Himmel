@@ -269,9 +269,11 @@ test("a wrapper waiting on a pgrep -f pattern its own command spells is STUCK, l
   wrapper(4247, "until ! pgrep -f [w]aited-job.sh; do sleep 5; done");
   wrapper(4249, "while pgrep -f 'worker [j]ob'; do sleep 5; done");
   wrapper(4250, `until ! pgrep -f "waited job.sh"; do sleep 5; done`);
-  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.leg.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.leg.name} age=60m\\npid=4248 owner=orphan age=60m\\npid=4249 owner=orphan age=60m\\npid=4250 owner=orphan age=60m\\n'\n`);
+  wrapper(4251, "while pgrep -fx 'worker job'; do sleep 5; done");
+  wrapper(4252, "while pgrep -x -f 'worker job'; do sleep 5; done");
+  writeFileSync(join(dir, "orphan-loops.sh"), `#!/bin/sh\n[ "$1" = --list ] || exit 2\nprintf 'pid=4245 owner=${FLEET.leg.name} age=60m\\npid=4246 owner=orphan age=60m\\npid=4247 owner=${FLEET.leg.name} age=60m\\npid=4248 owner=orphan age=60m\\npid=4249 owner=orphan age=60m\\npid=4250 owner=orphan age=60m\\npid=4251 owner=orphan age=60m\\npid=4252 owner=orphan age=60m\\n'\n`);
   const b = await (await fleet(port)).json();
-  expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4245, "stuck"], [4246, "stuck"], [4247, "wait"], [4248, "orphan"], [4249, "orphan"], [4250, "stuck"]]);
+  expect(b.processOrphans.map((p: any) => [p.pid, p.kind])).toEqual([[4245, "stuck"], [4246, "stuck"], [4247, "wait"], [4248, "orphan"], [4249, "orphan"], [4250, "stuck"], [4251, "orphan"], [4252, "orphan"]]);
 });
 
 test("a console whose operating contract names --lane claudex still reads lane native", async () => {
