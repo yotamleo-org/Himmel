@@ -175,7 +175,8 @@ the review runs once per PR, on the judge side:
 1. The docs worker does not run it. Its READY message names the docs pages
    the PR changes (`docs/handover/worker-brief-template.md`); the
    deterministic docs checks already run in CI.
-2. The chief's judge runs it on the READY head, holds the answer to 3 KB with
+2. The docs judge dispatched on `JUDGE-REQUEST` runs it on that head (the head
+   that goes `READY`), holds the answer to 3 KB with
    `fit_answer.py`, and sends a BLOCKING finding back as a NO-GO line
    (`docs/handover/judge-brief-template.md`).
 3. The chief lists every merged docs change in its report for the operator's

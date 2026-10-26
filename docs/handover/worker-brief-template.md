@@ -198,7 +198,7 @@ template_version: 3
 >    try to dispatch them). **A PR that changes a docs page** (`README.md`,
 >    `site/`, a reader-facing `.md` or `.html` under `docs/`) names those pages
 >    in its READY message. Do not run the `docs-reviewer` skill yourself: the
->    judge runs it once at the READY head, and a BLOCKING finding comes back
+>    judge runs it once at your `JUDGE-REQUEST` head, and a BLOCKING finding comes back
 >    as a NO-GO line to fix.
 >    <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
