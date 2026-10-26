@@ -205,10 +205,10 @@
       "name": "plannotator-effective-html",
       "source": {
         "source": "url",
-        "url": "https://github.com/plannotator/effective-html.git",
-        "sha": "975b047f6da6874e176db54f048c0c31c30e9f65"
+        "url": "https://github.com/yotamleo-org/effective-html.git",
+        "sha": "e4b08eb3168a14d6c3957ea13ba71376c6a9448e"
       },
-      "description": "[plannotator, vendor + attribution only, no carried delta] Effective HTML annotation/plugin tooling. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH and fails host-key verification on a fresh machine with no github.com in ~/.ssh/known_hosts — HIMMEL-2837, same class as HIMMEL-549). Pinned to an upstream commit SHA per himmel supply-chain policy. Upstream companion PR merged: https://github.com/plannotator/effective-html/pull/26 (their own marketplace.json now uses the same explicit-url source; pin includes it, HIMMEL-3046).",
+      "description": "[plannotator, himmel fork yotamleo-org/effective-html pending upstream PR https://github.com/plannotator/effective-html/pull/31 (next 16.4.1 bump); no other carried delta] Effective HTML annotation/plugin tooling. Sourced via an explicit HTTPS git url (NOT the `github` shorthand, which clones over SSH and fails host-key verification on a fresh machine with no github.com in ~/.ssh/known_hosts — HIMMEL-2837, same class as HIMMEL-549). Pinned to a fork commit SHA per himmel supply-chain policy; re-pin to upstream once #31 merges (HIMMEL-7170). Upstream companion PR merged: https://github.com/plannotator/effective-html/pull/26 (their own marketplace.json now uses the same explicit-url source; pin includes it, HIMMEL-3046).",
       "author": {
         "name": "plannotator",
         "url": "https://github.com/plannotator"
