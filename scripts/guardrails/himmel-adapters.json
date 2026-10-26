@@ -15,5 +15,6 @@
   {"nwo": "yotamleo-org/caveman", "upstream": "JuliusBrussee/caveman", "himmel_branch": "main", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
   {"nwo": "yotamleo-org/codex", "upstream": "openai/codex", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
   {"nwo": "yotamleo-org/core", "upstream": "home-assistant/core", "himmel_branch": "dev", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
-  {"nwo": "yotamleo-org/home-assistant.io", "upstream": "home-assistant/home-assistant.io", "himmel_branch": "current", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false}
+  {"nwo": "yotamleo-org/home-assistant.io", "upstream": "home-assistant/home-assistant.io", "himmel_branch": "current", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
+  {"nwo": "yotamleo-org/himmel-voice", "upstream": null, "himmel_branch": "main", "pin_site": null, "role": "first-party", "merge_allowed": true}
 ]

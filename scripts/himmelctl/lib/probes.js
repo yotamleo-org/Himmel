@@ -4350,6 +4350,18 @@ function probeObservabilityStack(item, ctx) {
   };
 }
 
+// ── env-present ──────────────────────────────────────────────────────────
+
+// A secret whose key is read from the process environment. Reports only
+// whether the name is set in ctx.env; the value is never read into detail.
+function probeEnvPresent(item, ctx) {
+  const env = ctx.env || process.env;
+  const set = typeof env[item.name] === 'string' && env[item.name].length > 0;
+  return set
+    ? { actual: 'present', detail: `${item.name} is set` }
+    : { actual: 'absent', detail: `${item.name} is not set` };
+}
+
 // ── dispatch ─────────────────────────────────────────────────────────────
 
 const PROBES = {
@@ -4375,6 +4387,7 @@ const PROBES = {
   'cmd:python_interpreter': probePythonInterpreter,
   'distinct-tokens': probeDistinctTokens,
   'luna-sources': probeLunaSources,
+  'env-present': probeEnvPresent,
   'cadence-coherence': probeCadenceCoherence,
   'cadence-runs': probeCadenceRuns,
   'phi-coherence': probePhiCoherence,

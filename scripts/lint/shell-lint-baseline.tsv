@@ -144,7 +144,6 @@ scripts/cloud/setup-env.sh	prim-tmpdir	1
 scripts/codex/bump-codex-sessionend-timeout.sh	errexit	1
 scripts/codex/bump-codex-sessionend-timeout.sh	gnu-flag	1
 scripts/codex/bump-codex-sessionend-timeout.sh	prim-atomic	1
-scripts/codex/bump-codex-sessionend-timeout.sh	prim-canon	1
 scripts/codex/companion-liveness.sh	errexit	1
 scripts/codex/install-himmel-codex.sh	errexit	1
 scripts/codex/sanitize-plugin-hooks.sh	errexit	1
@@ -199,13 +198,9 @@ scripts/docs/check-dev-graph.sh	prim-tmpdir	1
 scripts/docs/check-doc-terms.sh	errexit	1
 scripts/docs/check-llms-links.sh	errexit	1
 scripts/eval/ci-metrics.sh	prim-tmpdir	1
-scripts/eval/lane-quality/pilot-4869/lq-allow-hook.sh	prim-canon	1
-scripts/eval/lane-quality/pilot-4869/pilot.sh	prim-canon	1
-scripts/eval/lane-quality/pilot-4869/sandbox.sh	prim-canon	2
 scripts/eval/lane-quality/pilot-4869/sandbox.sh	prim-tmpdir	1
 scripts/eval/lane-quality/pilot-4869/test-pilot.sh	gnu-flag	1
 scripts/eval/lane-quality/prune-history.sh	prim-tmpdir	1
-scripts/eval/lane-quality/run.sh	prim-canon	2
 scripts/eval/lane-quality/run.sh	prim-tmpdir	1
 scripts/eval/lane-quality/tasks/class-sweep/accept.sh	prim-tmpdir	1
 scripts/eval/lane-quality/tasks/cr-fix/accept.sh	prim-tmpdir	1
@@ -913,7 +908,6 @@ scripts/setup/test-onboard-telegram.sh	mktemp	1
 scripts/setup/test-setup-preflight.sh	mktemp	1
 scripts/skill-index/build-skill-index.sh	bash32	1
 scripts/skill-index/build-skill-index.sh	mktemp	1
-scripts/telegram/auto-action.sh	prim-canon	4
 scripts/telegram/dispatch-lane.sh	kill-after	1
 scripts/telegram/dispatch-lane.sh	prim-tmpdir	1
 scripts/telegram/restart-bridge.sh	errexit	1

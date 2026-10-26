@@ -376,7 +376,7 @@ cmd_login() {
   assert_exe; assert_config
   echo "codex device-login: open the printed URL on any browser, enter the code,"
   echo "and sign in with your codex / ChatGPT account. Writes ~/.cli-proxy-api/codex-<email>.json."
-  "$EXE" -config "$CFG" -codex-device-login
+  ( umask 077; exec "$EXE" -config "$CFG" -codex-device-login )
   local rc=$?
   [ "$rc" -eq 0 ] || die "codex device-login failed (exit $rc)"
 }
@@ -402,6 +402,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+UMask=0077
 ExecStart="${exe_unit}" -config "${cfg_unit}"
 Restart=on-failure
 RestartSec=10

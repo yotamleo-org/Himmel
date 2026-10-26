@@ -28,6 +28,21 @@ eq "probes: every probe names a known row" "$(python3 -c 'import json,sys
 rows={r["id"] for r in json.load(open(sys.argv[1]))["rows"]}
 print(",".join(p["id"] for p in json.load(open(sys.argv[2]))["probes"] if p["row"] not in rows) or "ok")' "$HERE/rows.json" "$HERE/probes.json")" "ok"
 
+# --- the ruled cull as applied to the live repo CLAUDE.md ---
+LIVE="$HERE/../../../CLAUDE.md"
+eq "live cull: the git-workflow rule requires at least one approval" \
+    "$(grep -c -x -F -- '- Land changes via PR with ≥1 approval, never a direct push. [enforced: no-push-to-main]' "$LIVE")" "1"
+kept_missing() { python3 -c 'import json,sys
+rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
+t=open(sys.argv[2]).read()
+print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] not in t) or "none")' "$HERE/rows.json" "$1" \
+    r4-billing r5-invariants l65-specs-location l71-qmd-graphify 2>&1; }
+eq "live cull: the kept rows' spans are byte-present in CLAUDE.md" "$(kept_missing "$LIVE")" "none"
+python3 -c 'import json,sys
+r=[x for x in json.load(open(sys.argv[1]))["rows"] if x["id"]=="r4-billing"][0]
+open(sys.argv[3],"w").write(open(sys.argv[2]).read().replace(r["old"], ""))' "$HERE/rows.json" "$LIVE" "$TMP/kept-red.md"
+eq "live cull: a kept span deleted from a copy is reported" "$(kept_missing "$TMP/kept-red.md")" "r4-billing"
+
 # --- the arm builder ---
 python3 "$CULL" build --arm baseline --dest "$TMP/arm-baseline" >/dev/null 2>&1
 python3 "$CULL" build --arm cut --dest "$TMP/arm-cut" >/dev/null 2>&1

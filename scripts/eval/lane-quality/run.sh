@@ -583,8 +583,8 @@ apply_config() {
   [ -n "$EFFORT" ] || EFFORT="$ef"
   [ -n "$JUDGE_EFFORT" ] || JUDGE_EFFORT="$jef"
   if [ -n "$td" ]; then
-    root="$(realpath -m "$HERE")"
-    td="$(realpath -m "$HERE/$td")"
+    root="$(realpath -m "$HERE")"  # prim-ok: paired with the -m line below, run.sh does not source prim.sh
+    td="$(realpath -m "$HERE/$td")"  # prim-ok: -m folds a not-yet-existing tasks_dir so the containment check below reports it; canon_path needs an existing directory
     case "$td" in "$root"/*) ;; *) die "--config: tasks_dir must stay under $root" ;; esac
     [ -d "$td" ] || die "--config: tasks_dir '$td' is not a directory"
     TASKS="$td"
