@@ -65,7 +65,13 @@ case "$1" in
     list)
         [ -e "$FX/list.sleep" ] && sleep "$(cat "$FX/list.sleep")"
         [ -e "$FX/list.fail" ] && { echo "boom" >&2; exit 1; }
+        fv=$(printf '%s' "$*" | sed -n 's/.*fixVersion = "\([^"]*\)".*/\1/p')
+        [ -z "$fv" ] || { [ -e "$FX/list.fv.fail" ] && { echo "boom" >&2; exit 1; }; cat "$FX/list.fv.$fv" 2>/dev/null; exit 0; }
         cat "$FX/list.tsv" 2>/dev/null
+        exit 0 ;;
+    versions)
+        [ -e "$FX/versions.fail" ] && { echo "boom" >&2; exit 1; }
+        cat "$FX/versions.tsv" 2>/dev/null
         exit 0 ;;
     comment)
         file=""; edit=""
@@ -682,6 +688,30 @@ check "3b: and finds the same rows" "$(grep -v '^sdrift=' "$tmp/dout")" "$live"
 reset "To Do"; touch "$FX/pr-list.fail"; rm -rf "$tmp/snap"
 bash "$SWEEP" --snapshot-out "$tmp/snap" >/dev/null 2>&1
 check "3b: an unknown sweep keeps no snapshot" "$([ -e "$tmp/snap/prs.json" ] && echo kept || echo none)" none
+
+# a worked or Done ticket held in a later unreleased version than the current one is VERSION-DRIFT
+vd_versions() {
+    printf 'v1.1.2\ttrue\t2026-10-10\tfalse\nv1.1.3\tfalse\t2026-10-20\tfalse\nv1.1.4\tfalse\t2026-10-27\tfalse\nv1.0.9\tfalse\t2026-09-01\ttrue\n' > "$FX/versions.tsv"
+}
+reset "To Do"; vd_versions
+printf 'HIMMEL-90021\tTask\tDone\tsummary\nHIMMEL-90022\tTask\tIn Progress\tsummary\n' > "$FX/list.fv.v1.1.4"
+drift
+contains "3b: a Done ticket in a later unreleased version is VERSION-DRIFT" "$(drows VERSION-DRIFT)" "VERSION-DRIFT HIMMEL-90021 status=Done in=v1.1.4 current=v1.1.3"
+contains "3b: an In Progress ticket in a later version is VERSION-DRIFT" "$(drows VERSION-DRIFT)" "VERSION-DRIFT HIMMEL-90022 status=In Progress in=v1.1.4 current=v1.1.3"
+contains "3b: the row names the INTAKE that fixes it" "$(drows VERSION-DRIFT)" "release request v1.1.3 --verb INTAKE --key HIMMEL-90021 --from v1.1.4 --to v1.1.3"
+check "3b: the later-version search skips tickets that also carry the current version" "$(grep -c 'fixVersion != "v1.1.3"' "$STUB_LOG")" 1
+check "3b: only the one later unreleased version is searched (not released, archived or current)" "$(grep -c 'fixVersion = ' "$STUB_LOG")" 1
+check "3b: the version drift check writes nothing" "$(nwrites)" 0
+reset "To Do"; vd_versions
+drift
+check "3b: no ticket in a later version is no VERSION-DRIFT" "$(dcount VERSION-DRIFT)" 0
+reset "To Do"; vd_versions; touch "$FX/list.fv.fail"
+drift
+contains "3b: an unreadable later-version search is a HEALTH row" "$(drows HEALTH)" "HEALTH - jira: the later-version search is unreadable"
+check "3b: and the signature is unknown" "$(dlast)" "sdrift=unknown"
+reset "To Do"; touch "$FX/versions.fail"
+drift
+contains "3b: an unreadable version list is a HEALTH row" "$(drows HEALTH)" "HEALTH - jira: the version list is unreadable"
 
 # --- 3c: the FOCUS refresh (focus-refresh.sh) ----------------------------------------
 FOCUS="$HERE/focus-refresh.sh"

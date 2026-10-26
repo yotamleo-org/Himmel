@@ -25,6 +25,8 @@
 #   TWO-OWNERS        two live docs claim one key
 #   UNOWNED           started, no open PR, no live owner
 #   HELD-IN-WORK      labelled held, with a live owner or an open PR
+#   VERSION-DRIFT    Done or worked (In Progress / In Review / IN CI), held only in a later unreleased
+#                     version than the current one; the fix is an INTAKE request to the current version
 #   HEALTH            an input is unreadable or saturated, the log is unwritable
 #                     or carries a disabled row, or a status is unknown
 # The last line is `sdrift=<n>:<sig8>` (n rows, sig8 over the sorted rows), or
@@ -267,6 +269,43 @@ while IFS= read -r key; do
         fi
     fi
 done <<<"$keys"
+
+# --- version drift -----------------------------------------------------------------
+# A Done or worked ticket held only in a later unreleased version than the current one (the earliest
+# unreleased, unarchived by date) is drift: the release manager's INTAKE request folds it in. One search
+# per later version; a ticket that also carries the current version is left out by the JQL itself.
+# ponytail: the release is named after the version, upgrade path = a release lookup in the CLI once a
+# release declares several versions.
+proj="${JIRA_PROJECT_KEY:-HIMMEL}"
+# swallow-ok: a failed version read becomes a HEALTH row and sdrift=unknown
+if ! vers=$(ts_jira versions --project "$proj" 2>/dev/null); then
+    add HEALTH - "jira: the version list is unreadable" jira "jira versions --project $proj"
+    finish unknown
+fi
+cur=$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print ($3 == "" ? "9999-99-99" : $3) "\t" $1 }' | sort | head -n 1 | cut -f2)
+if [ -n "$cur" ]; then
+    vseen=""
+    while IFS= read -r later; do
+        [ -n "$later" ] && [ "$later" != "$cur" ] || continue
+        vjql="project = $proj AND status in (\"In Progress\",\"In Review\",\"IN CI\",\"Done\") AND fixVersion = \"$later\" AND fixVersion != \"$cur\""
+        # swallow-ok: a failed search becomes a HEALTH row and sdrift=unknown
+        if ! vrows=$(ts_jira list --jql "$vjql" --limit 300 2>/dev/null); then
+            add HEALTH - "jira: the later-version search is unreadable" jira "jira list --jql '$vjql'"
+            finish unknown
+        fi
+        vrows=$(printf '%s\n' "$vrows" | awk -F'\t' '$1 ~ /^[A-Za-z][A-Za-z0-9]*-[0-9]+$/ && NF >= 3 { print $1 "\t" $3 }')
+        if [ "$(printf '%s\n' "$vrows" | grep -c .)" -ge 300 ]; then
+            add HEALTH - "jira: the later-version search hit its limit (300)" jira "narrow the search in status-drift.sh"
+            finish unknown
+        fi
+        while IFS=$'\t' read -r vk vst; do
+            [ -n "$vk" ] || continue
+            case " $vseen " in *" $vk "*) continue ;; esac
+            vseen="$vseen $vk"
+            add VERSION-DRIFT "$vk" "status=$vst in=$later current=$cur" release-manager "jira release request $cur --verb INTAKE --key $vk --from $later --to $cur --why \"worked ticket held in a later version\""
+        done <<<"$vrows"
+    done <<<"$(printf '%s\n' "$vers" | awk -F'\t' '$2 == "false" && $4 != "true" { print $1 }')"
+fi
 
 # --- from the outcome log ----------------------------------------------------------
 if [ -n "$logtail" ]; then

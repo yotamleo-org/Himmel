@@ -145,7 +145,9 @@ Read on demand from `chief-template.md` step 12. `<kit>` is the kit path in step
     `focus=ok|busy|FAILED:<stage>|skip` and never fails on it. `focus-refresh.sh --doc <doc> --status` prints the same state
     (`chief-wait.sh` wakes on `FAILED` or `DIRTY` for 10 min or more). Republish the page
     with the `Artifact` tool as above. Each card also shows its worker (owner, PR, state).
-    `status-drift.sh` is the report-only drift check (last line `sdrift=<n>:<sig8>`);
+    `status-drift.sh` is the report-only drift check (last line `sdrift=<n>:<sig8>`); its
+    `VERSION-DRIFT` row lists a Done or started ticket held only in a later unreleased version than
+    the current one, with the INTAKE request that folds it in (the wrap prints it as `drift:`);
     `ticket-hold.sh <KEY> --reason <r> --owner <o>` (or `--release`) sets and clears the `held` label.
 
     The bucket `render-focus.py` and the split focus, Done and future pages
