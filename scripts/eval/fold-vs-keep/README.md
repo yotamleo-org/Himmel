@@ -27,7 +27,7 @@ fold only when no task does worse in the fold arm.
 each task `bank-preflight` must print `PROCEED`, and `--ceiling <cost-eq>` stops the
 sweep before the call that would pass it.
 
-```
+```bash
 HIMMEL_BILLED_OK=1 bash scripts/eval/fold-vs-keep/run.sh --class judge --out ~/.himmel/eval/fold-vs-keep/<date> --ceiling 6000000
 HIMMEL_BILLED_OK=1 bash scripts/eval/fold-vs-keep/run.sh --class vm --out ~/.himmel/eval/fold-vs-keep/<date> \
     --repo <primary checkout> --arms fold --reps 2

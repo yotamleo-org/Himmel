@@ -63,7 +63,7 @@ tally() {
     printf '%s\n' "$1"
     local n; n="$(printf '%s\n' "$1" | grep -c '^CHECK .* FAIL')"
     FAILS=$((FAILS + n))
-    printf '%s\n' "$1" | grep -q '^CHECK ' || { echo "CHECK guest-output FAIL no CHECK lines"; FAILS=$((FAILS + 1)); }
+    grep -q '^CHECK ' <<<"$1" || { echo "CHECK guest-output FAIL no CHECK lines"; FAILS=$((FAILS + 1)); }
 }
 
 final() {

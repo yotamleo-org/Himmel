@@ -14,15 +14,16 @@
 #          settings only; fvk.py marks a run that touched a leak path.
 #   vm     keep = a fresh sonnet child on the task's brief, from the repo root, handed a
 #          host bundle of the task's head (and tags), as the fold arm's `stage` builds; fold =
-#          the task's proof script (tasks/vm-scripts/<id>.sh), whose run costs its
-#          authoring cost-eq (tasks/vm.json author_cost_eq). The historic child run is
+#          the task's proof script (fixtures/tasks/vm-scripts/<id>.sh), whose run costs its
+#          authoring cost-eq (fixtures/tasks/vm.json author_cost_eq). The historic child run is
 #          written as keep rep `historic` with the recorded verdict (no model call).
 #          Each call of either arm holds the vm-lock for $FVK_VM (default himmel-ar-2).
+#          The keep child cannot run gh or git push: a replayed brief may ask it to post.
 #   --ceiling  stop before the next call once the class's summed cost-eq reaches it.
 # Before each task's calls bank-preflight must print PROCEED, else the sweep stops (exit 3).
 # Env: FVK_CLAUDE (default claude), FVK_PREFLIGHT (default scripts/lib/bank-preflight.sh),
-#      FVK_SCRATCH (default a fresh mktemp -d) - the test seams.
-# Exit: 0 done; 2 usage; 3 stopped (bank refusal or ceiling).
+#      FVK_SCRATCH (default a fresh tmpdir) - the test seams.
+# Exit: 0 done; 2 usage; 3 stopped (bank refusal, ceiling, or no vm-lock for a vm call).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
