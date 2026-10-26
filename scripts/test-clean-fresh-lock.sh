@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Hermetic test for option B: clean-garden.sh's fleet-wide prune
-# skips a merged worktree whose leg still holds a FRESH
+# skips a merged worktree whose worker still holds a FRESH
 # scripts/handover/queue-lock.sh lock on its own handover doc (resume_cwd:
 # frontmatter naming that worktree). Temp git repo + real worktrees + a fake
 # handover root + real queue-lock.sh locks. Pattern follows
@@ -186,11 +186,11 @@ lock_fresh "$DOC_ONLY"
 lock_fresh "$DOC_QUOTED_DQ"
 lock_fresh "$DOC_QUOTED_SQ"
 
-# ── case 1: a merged worktree whose leg holds a FRESH lock is skipped ────────
+# ── case 1: a merged worktree whose worker holds a FRESH lock is skipped ────────
 echo "CASE 1: FRESH lock blocks the fleet-wide sweep"
 out=$(run_clean --prune-only)
 expect "1: FRESH-locked worktree survives" "$out" is_dir "$WT_FRESH"
-expect "1: reason names the leg doc" "$out" grepq "$out" "FRESH queue lock"
+expect "1: reason names the worker doc" "$out" grepq "$out" "FRESH queue lock"
 expect "1: reason line cites the doc path" "$out" grepq "$out" -F "$DOC_FRESH"
 
 # ── case 1q: a quoted resume_cwd: value still matches (codex-1) ──────────────

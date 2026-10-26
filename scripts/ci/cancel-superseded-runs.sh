@@ -17,7 +17,7 @@
 #
 # Usage: cancel-superseded-runs.sh [--dry-run] [--branch <b>]
 # One API call for the PR list + one per workflow; cancels are asynchronous
-# (~20 s to take effect). Console-run only, not wired into any hook or workflow.
+# (~20 s to take effect). Chief-run only, not wired into any hook or workflow.
 set -uo pipefail
 
 WORKFLOWS="ci.yml codeowner-review-gate.yml"

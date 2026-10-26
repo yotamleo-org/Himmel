@@ -34,7 +34,7 @@ mk_state() {
     printf '{"schema":1,"generated_at":%s,"overall":{"hit_pct":96.0},"roles":{}}\n' "$2" > "$1/metrics.json"
     : > "$1/history.jsonl"
 }
-# add_day DIR DAYS_AGO OVERALL CONSOLE LEG SUBAGENT — one history row for that day.
+# add_day DIR DAYS_AGO OVERALL CHIEF WORKER SUBAGENT — one history row for that day.
 add_day() {
     printf '{"ts":%s,"overall":%s,"roles":{"console":%s,"leg":%s,"subagent":%s,"bridge":null,"other":null}}\n' \
         "$((NOW - $2 * DAY - 3600))" "$3" "$4" "$5" "$6" >> "$1/history.jsonl"

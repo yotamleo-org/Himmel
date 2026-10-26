@@ -7,7 +7,7 @@
 # (luna-config.js's own env-override seam, mirroring HIMMELCTL_CACHE_DIR in
 # lib/state.js) so nothing ever touches the real ~/.himmel/config.json.
 #
-# Covers design §7 V7 (all four mandatory) + the console's validator ruling:
+# Covers design §7 V7 (all four mandatory) + the chief's validator ruling:
 #   A. round-trip — save() then load() returns an equivalent document.
 #   B. atomic-write interruption — a deterministic fs.renameSync failure
 #      (monkey-patched, NOT a real signal) between the temp write and the

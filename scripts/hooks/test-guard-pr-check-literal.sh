@@ -63,7 +63,7 @@ echo 'echo mog' >"$ORIGIN/scripts/handover/merge-on-green.sh"
 echo 'echo go' >"$ORIGIN/scripts/handover/chief-kit/go.sh"
 echo 'echo gate' >"$ORIGIN/scripts/handover/chief-kit/himmel-gate.sh"
 echo 'echo verdict' >"$ORIGIN/scripts/handover/chief-kit/write-verdict.sh"
-echo 'echo wait' >"$ORIGIN/scripts/handover/chief-kit/console-wait.sh"
+echo 'echo wait' >"$ORIGIN/scripts/handover/chief-kit/chief-wait.sh"
 echo ': go-gate' >"$ORIGIN/scripts/lib/go-gate.sh"
 echo ': handover-path' >"$ORIGIN/scripts/lib/handover-path.sh"
 echo 'echo bullet' >"$ORIGIN/scripts/handover/chief-kit/append-results.sh"
@@ -293,11 +293,11 @@ ln -s handover-real "$WT/scripts/handover"
 run "symlinked scripts/handover dir, merge-on-green -> deny" 2 "$(payload "$MOG" "$WT")" "$HR"
 rm "$WT/scripts/handover"
 mv "$WT/scripts/handover-real" "$WT/scripts/handover"
-mv "$WT/scripts/handover/chief-kit" "$WT/scripts/handover/console-kit-real"
-ln -s console-kit-real "$WT/scripts/handover/chief-kit"
+mv "$WT/scripts/handover/chief-kit" "$WT/scripts/handover/chief-kit-real"
+ln -s chief-kit-real "$WT/scripts/handover/chief-kit"
 run "symlinked chief-kit dir, go.sh -> deny" 2 "$(payload "$GO" "$WT")" "$HR"
 rm "$WT/scripts/handover/chief-kit"
-mv "$WT/scripts/handover/console-kit-real" "$WT/scripts/handover/chief-kit"
+mv "$WT/scripts/handover/chief-kit-real" "$WT/scripts/handover/chief-kit"
 run "handover writers restored, merge-on-green -> allow" 0 "$(payload "$MOG" "$WT")" "$HR"
 run "handover writers restored, go.sh -> allow" 0 "$(payload "$GO" "$WT")" "$HR"
 # chief-kit/write-verdict.sh mints a GO-key-signed verdict, so a relative
@@ -309,18 +309,18 @@ echo ': edited' >>"$WT/scripts/handover/chief-kit/write-verdict.sh"
 run "tampered worktree write-verdict.sh -> deny" 2 "$(payload "$WV" "$WT")" "$HR"
 need_in_err "deny names write-verdict.sh" "scripts/handover/chief-kit/write-verdict.sh"
 g -C "$WT" checkout -q -- scripts/handover/chief-kit/write-verdict.sh
-# chief-kit/console-wait.sh runs under a :* allow rule too, so a relative
+# chief-kit/chief-wait.sh runs under a :* allow rule too, so a relative
 # run gets the same byte-compare. RED control (the guard before this change):
 # the tampered copy is allowed.
-CW='bash scripts/handover/chief-kit/console-wait.sh'
-run "clean tree, bash scripts/handover/chief-kit/console-wait.sh -> allow" 0 "$(payload "$CW" "$WT")" "$HR"
-echo ': edited' >>"$WT/scripts/handover/chief-kit/console-wait.sh"
-run "tampered worktree console-wait.sh -> deny" 2 "$(payload "$CW" "$WT")" "$HR"
-need_in_err "deny names console-wait.sh" "scripts/handover/chief-kit/console-wait.sh"
-g -C "$WT" checkout -q -- scripts/handover/chief-kit/console-wait.sh
+CW='bash scripts/handover/chief-kit/chief-wait.sh'
+run "clean tree, bash scripts/handover/chief-kit/chief-wait.sh -> allow" 0 "$(payload "$CW" "$WT")" "$HR"
+echo ': edited' >>"$WT/scripts/handover/chief-kit/chief-wait.sh"
+run "tampered worktree chief-wait.sh -> deny" 2 "$(payload "$CW" "$WT")" "$HR"
+need_in_err "deny names chief-wait.sh" "scripts/handover/chief-kit/chief-wait.sh"
+g -C "$WT" checkout -q -- scripts/handover/chief-kit/chief-wait.sh
 
 # ---- the two kit layouts: console-kit/ before the move, chief-kit/ after ----
-# A tree keeps its kit writers in exactly one real directory: console-kit/ on a # old-term-ok: the layout before the move
+# A tree keeps its kit writers in exactly one real directory: console-kit/ on a
 # branch cut before the move, chief-kit/ after it. The same bytes get the same
 # verdict on either layout; an old-layout worktree is checked against a
 # new-layout anchor's chief-kit/ copy. A symlink at either path, both
@@ -332,7 +332,7 @@ WT2OLD="$TMP/wt2old"
 H2="$ORIGIN2/scripts/handover"
 cp -R "$ORIGIN" "$ORIGIN2"
 rm -rf "$ORIGIN2/.git"
-[ -d "$H2/chief-kit" ] && mv "$H2/chief-kit" "$H2/console-kit" # old-term-ok: the fixture's old layout
+[ -d "$H2/chief-kit" ] && mv "$H2/chief-kit" "$H2/console-kit"
 g init -q "$ORIGIN2"
 g -C "$ORIGIN2" add -A
 g -C "$ORIGIN2" commit -qm base
@@ -343,12 +343,15 @@ g clone -q "$ORIGIN2" "$PRIMARY2"
 g -C "$PRIMARY2" worktree add -q -b feat/y "$WT2" refs/remotes/origin/main
 g -C "$PRIMARY2" worktree add -q -b feat/old "$WT2OLD" "$old_layout"
 HR2="HIMMEL_REPO=$PRIMARY2"
-OLDKIT=scripts/handover/console-kit # old-term-ok: the old layout's kit path
+OLDKIT=scripts/handover/console-kit
 NEWKIT=scripts/handover/chief-kit
-for s in go write-verdict console-wait himmel-gate; do
+for s in go write-verdict chief-wait himmel-gate; do
     run "new layout, clean tree, bash $NEWKIT/$s.sh -> allow" 0 "$(payload "bash $NEWKIT/$s.sh" "$WT2")" "$HR2"
     run "old layout, clean tree, bash $OLDKIT/$s.sh -> allow" 0 "$(payload "bash $OLDKIT/$s.sh" "$WT2OLD")" "$HR2"
 done
+# The old console-wait.sh name forwards to chief-wait.sh beside it, which the guard
+# would not check, so the old name is refused with the anchor remedy.
+run "new layout, bash $NEWKIT/console-wait.sh -> deny" 2 "$(payload "bash $NEWKIT/console-wait.sh" "$WT2")" "$HR2"
 for wt in "$WT2" "$WT2OLD"; do
     run "anchor's dispatcher from ${wt##*/} -> allow" 0 \
         "$(payload "bash \"\$HIMMEL_REPO/$NEWKIT/himmel-gate.sh\" orphan-check 12" "$wt")" "$HR2"
@@ -389,13 +392,13 @@ lacks=$OLDKIT
 [ -d "$WT/$OLDKIT" ] && lacks=$NEWKIT
 run "first fixture, go.sh via the kit path it lacks -> deny" 2 "$(payload "bash $lacks/go.sh" "$WT")" "$HR"
 
-# ---- console-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
+# ---- chief-O NO-GO finding 1: the $HIMMEL_REPO-prefixed anchor spelling -----
 # The documented anchored spelling for merge-on-green.sh, gate-
 # allowed at scripts/lanes/plugin-profiles.json:7 and .claude/settings.json,
 # is a LITERAL `$HIMMEL_REPO` (or `${HIMMEL_REPO}`) prefix - never evaluated
 # by this hook (it only sees the raw command text), so it is exactly as
 # trusted as any other absolute path once resolved: the shell, not a branch,
-# picks the anchor. Denying it left a leg with no allow-listed way to merge.
+# picks the anchor. Denying it left a worker with no allow-listed way to merge.
 # shellcheck disable=SC2016 # the literal `$HIMMEL_REPO` text, never expanded here
 run 'literal $HIMMEL_REPO/ prefix, clean tree -> allow' 0 \
     "$(payload 'bash "$HIMMEL_REPO/scripts/handover/merge-on-green.sh"' "$WT")" "$HR"
@@ -508,7 +511,7 @@ run 'traversal plus a second $ after the prefix -> deny' 2 \
     "$(payload 'bash "$HIMMEL_REPO/../../../../../../..$PWD/scripts/cr/pr-check-context.sh"' "$WT")" "$HR"
 
 # ---- the merge-on-green remedy must not loop --------
-# F1 denies ANY quote/backslash anywhere in the command, so a leg that reaches
+# F1 denies ANY quote/backslash anywhere in the command, so a worker that reaches
 # for the remedy with a quoted argument (`--branch 'x'`) would trip F1 again.
 # The remedy text itself must say so, and name a fallback that never needs
 # quoting args at all.
@@ -517,7 +520,7 @@ run 'quoted arg on the anchored spelling -> deny (would loop without the fix)' 2
 need_in_err "remedy says args must be unquoted" "unquoted"
 need_in_err "remedy offers the himmel_dir fallback" "<himmel_dir>/scripts/handover/merge-on-green.sh"
 
-# ---- console-O NO-GO finding 2: go.sh's own sibling-sourced libs -------------
+# ---- chief-O NO-GO finding 2: go.sh's own sibling-sourced libs -------------
 # go.sh sources scripts/lib/go-gate.sh and scripts/lib/handover-path.sh via a
 # branch-relative $HERE, so they must be in its GUARDED set too - a byte-equal
 # go.sh (+ anchor-handoff.sh) with an edited sibling lib must still deny.
@@ -904,7 +907,7 @@ done <<'OTHERWRITER'
 echo 'bash scripts/cr/write-verdicts.sh' | dd of=/tmp/f
 echo 'bash scripts/cr/write-verdicts.sh' | $'t\145e' /tmp/f
 OTHERWRITER
-# The Results-bullet case the console ruling measured: an arrow in the text of a
+# The Results-bullet case the chief ruling measured: an arrow in the text of a
 # bullet naming a guarded writer denies, and the deny names the remedy.
 run "3917: [append-results bullet naming merge-on-green with an arrow] -> deny" 2 \
     "$(payload "bash scripts/handover/chief-kit/append-results.sh /tmp/d.md 'MERGED via scripts/handover/merge-on-green.sh -> abc'" "$WT")" "$HR"
@@ -985,7 +988,7 @@ need_in_err "deny names the canonical anchored fence" 'bash "$himmel_repo/script
 run "branch-edited + surrounding whitespace -> deny" 2 "$(payload "  $LITERAL  " "$WT")" "$HR"
 
 # ---- review C1: the anchor's working tree is forgeable by a git write -------
-# A leg can copy its edit into the primary (checkout <branch> -- <path>, a
+# A worker can copy its edit into the primary (checkout <branch> -- <path>, a
 # detached HEAD, another branch); the anchor then equals the branch, so the
 # anchor must itself be main's committed bytes.
 g -C "$PRIMARY" checkout -q feat/x -- scripts/cr/pr-check-context.sh
@@ -1133,7 +1136,7 @@ run "find -execdir sed -i (never allowlisted) -> deny (HIMMEL-3517, codex-1 roun
 # earlier version of this fix allowlisted sed/awk without -i/--in-place as
 # "read-only". That is false - sed's `e` command and awk's `system()` can
 # execute an arbitrary command, including a guarded relative script, from
-# find's changed cwd with no in-place flag at all. Per the console's ruling
+# find's changed cwd with no in-place flag at all. Per the chief's ruling
 # on K-N431-7980c9b9 (option 2), sed and awk are dropped from the allowlist
 # ENTIRELY - they now stay chdir-gated the same as every other bare word,
 # in-place or not.
@@ -1233,7 +1236,7 @@ run "the fence with a \$ in its message -> deny" 2 \
 run "a second himmel_repo= beside the fence -> deny" 2 \
     "$(payload "$FENCE_TEXT"'; himmel_repo=.; bash "$himmel_repo/scripts/cr/pr-check-context.sh"' "$WT")" "$HR"
 
-# C2: a leg can move its own refs/remotes/origin/main onto the edit; the base
+# C2: a worker can move its own refs/remotes/origin/main onto the edit; the base
 # is the anchor's bytes, which that does not reach.
 base_oid=$(g -C "$WT" rev-parse refs/remotes/origin/main)
 g -C "$WT" update-ref refs/remotes/origin/main HEAD
@@ -2435,7 +2438,7 @@ run "4932: control [pr-check script name] -> deny" 2 "$(payload 'bash scripts/cr
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 
 # ---- a branch behind main runs its relative handover writer ---------------
-# main moved merge-on-green.sh after the leg's branch was cut. The branch never
+# main moved merge-on-green.sh after the worker's branch was cut. The branch never
 # touched it, so its copy is the merge-base's - main-reviewed bytes whose
 # hand-off execs the anchor's copy. The hand-off itself must still equal the
 # anchor's, and a branch edit (committed, dirty, or grafted into main's

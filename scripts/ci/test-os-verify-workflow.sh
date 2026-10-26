@@ -3,7 +3,7 @@
 # The workflow exists to verify impacted suites on ONE chosen OS on demand, so
 # three properties must hold or it is worse than what it replaces:
 #   1. it can only ever be DISPATCHED (a pull_request/push/schedule trigger
-#      would put the paid macOS/Windows legs back on every PR);
+#      would put the paid macOS/Windows workers back on every PR);
 #   2. every job name carries the `os-verify / ` prefix, so a dispatch on a PR
 #      head can never post a check-run that satisfies (or shadows) one of the
 #      required contexts by name;
@@ -151,7 +151,7 @@ if grep -q 'type: choice' <<< "$os_in" && grep -q 'default: macos' <<< "$os_in" 
   ok "input os is a choice of macos alone, default macos (Windows is dropped)"
 else bad "input os is not a macos-only choice defaulting to macos"; fi
 if grep -qi 'windows' <<< "$(strip_comments "$WF")"; then bad "os-verify.yml still names Windows outside comments"
-else ok "os-verify.yml names no Windows leg outside comments"; fi
+else ok "os-verify.yml names no Windows worker outside comments"; fi
 if grep -q 'type: choice' <<< "$suites_in" && grep -q 'default: impacted' <<< "$suites_in" \
    && grep -q -- '- impacted' <<< "$suites_in" && grep -q -- '- all' <<< "$suites_in"; then
   ok "input suites is a choice of impacted|all, default impacted"
@@ -263,9 +263,9 @@ scripts/ci/test-shard-manifest-verify.sh
 scripts/cr/test-impacted-suites.sh
 scripts/eval/worker-digest/test-failure-review.sh
 scripts/eval/worker-digest/test-failure-router.sh
-scripts/eval/worker-digest/test-leg-digest.sh
+scripts/eval/worker-digest/test-worker-digest.sh
 scripts/handover/chief-kit/test-append-results.sh
-scripts/handover/chief-kit/test-close-wrapped-leg.sh
+scripts/handover/chief-kit/test-close-wrapped-worker.sh
 scripts/handover/chief-kit/test-live-subagents.sh
 scripts/handover/chief-kit/test-wrap-merged.sh
 scripts/handover/test-arm-resume-fast.sh

@@ -275,7 +275,7 @@ run_hook() {
     # the guard honours IMPL_GUARD_OK / IMPL_GUARD_DISABLE as
     # explicit session overrides that short-circuit it before any of the
     # policy this suite exercises runs. If either is set in the environment
-    # of the shell running this suite (e.g. a leg armed with
+    # of the shell running this suite (e.g. a worker armed with
     # IMPL_GUARD_OK=1), it leaks into the hook's env and every assertion
     # reads the override line instead of the verdict it expects. Strip both
     # here so the suite tests the guard, not its own escape hatch; RC12
@@ -315,7 +315,7 @@ assert_rc "x-judge-ro does not match the judge-ro exemption" 2 "$RC1JX"
 JRW_ROOT="$TMP/judge-ro-write-repo"
 mkdir -p "$JRW_ROOT/scripts/hooks" "$JRW_ROOT/scripts/lib" "$JRW_ROOT/.claude/agents"
 cp "$HOOK" "$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
-cp "$REPO_ROOT/scripts/lib/py-armor.sh" "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$REPO_ROOT/scripts/lib/env-alias.sh" "$JRW_ROOT/scripts/lib/"
+cp "$REPO_ROOT/scripts/lib/py-armor.sh" "$REPO_ROOT/scripts/lib/usage-lift.sh" "$REPO_ROOT/scripts/lib/usage-cache-identity.sh" "$REPO_ROOT/scripts/lib/env-alias.sh" "$REPO_ROOT/scripts/lib/legacy-names.sh" "$JRW_ROOT/scripts/lib/"
 printf -- '---\nname: judge-ro\ntools: Read, Grep, Glob, Bash, Write\nmodel: opus\n---\n' > "$JRW_ROOT/.claude/agents/judge-ro.md"
 REAL_HOOK="$HOOK"
 HOOK="$JRW_ROOT/scripts/hooks/guard-implementor-dispatch.sh"
@@ -1382,7 +1382,7 @@ echo "=== HIMMEL-1568: round guard at the Agent dispatch chokepoint ==="
 # are built against the REAL predicate's actual thresholds rather than the
 # brief's shorthand, since guard PRs never relax an existing DENY and this
 # ticket forbids changing round-guard.ts's decision semantics; flagged to the
-# console as a FINDING.
+# chief as a FINDING.
 
 mk_round_repo() {
     local dir="$1" branch="$2"
@@ -1429,7 +1429,7 @@ assert_rc "(a) 3 blocking rounds, no INVARIANT: implementor dispatch refuses" 2 
 assert_contains "(a) refusal names the ticket" "HIMMEL-9001" "$(combined_output round-3-no-invariant)"
 assert_contains "(a) refusal cites the round guard" "round guard" "$(combined_output round-3-no-invariant)"
 
-# --- (a2), console ruling 2026-09-26: pin the escalate threshold through this
+# --- (a2), chief ruling 2026-09-26: pin the escalate threshold through this
 # chokepoint too. At ROUND_ESCALATE_THRESHOLD (3) checkRoundGuard refuses
 # BEFORE it ever looks for an INVARIANT section, and this chokepoint does not
 # wire --rounds-override — so a substantive INVARIANT must NOT unblock a
@@ -1505,7 +1505,7 @@ FILES:
 RC_RG_E=$(run_hook round-avail-nonok-excluded "$REG_NONE" "$(payload_cwd general-purpose sonnet 'Implement HIMMEL-9004' "$RG_INVARIANT_E" "$RG_REPO_E")" IMPL_GUARD_CACHE_PATH="$TMP/does-not-exist.json" PATH="$PATH")
 assert_rc "(e) a non-ok avail row does not count toward the trailing round total" 0 "$RC_RG_E"
 
-# --- (g), console ruling 2026-09-26: pin "2 blocking
+# --- (g), chief ruling 2026-09-26: pin "2 blocking
 # rounds, no INVARIANT -> refuse" through THIS chokepoint. checkRoundGuard
 # already does this (round-guard.test.ts covers it directly); nothing here
 # exercised it through the hook until now.
@@ -1522,7 +1522,7 @@ RC_RG_G=$(run_hook round-2-no-invariant "$REG_NONE" "$(payload_cwd general-purpo
 assert_rc "(g) 2 blocking rounds, no INVARIANT: refuses (self-serviceable)" 2 "$RC_RG_G"
 assert_contains "(g) refusal tells the dispatcher to add an INVARIANT: section" "INVARIANT:" "$(combined_output round-2-no-invariant)"
 
-# --- (h), console ruling 2026-09-26: pin fail-CLOSED
+# --- (h), chief ruling 2026-09-26: pin fail-CLOSED
 # on a runtime failure of the predicate itself. Stub `bun` via PATH (never an
 # env seam -- IMPL_GUARD_ROUND_CMD was removed for exactly this reason) to
 # exit 1 unconditionally, standing in for a throwing round-guard.ts; this must

@@ -19,7 +19,7 @@
 #      writers cannot both pass the scan, and names its owner and recovery
 #   7. the writer's session is stamped in the file, restricted to
 #      [A-Za-z0-9-] (a newline cannot inject a verdict line)
-#   8. a console leg (HIMMEL_CONSOLE_LEG, not a judge) and a console relay
+#   8. a chief worker (HIMMEL_CONSOLE_LEG, not a judge) and a chief relay
 #      (HIMMEL_CONSOLE_RELAY) are refused
 #   9. the writer's command text passes the live Bash guards (each guard
 #      script fed a PreToolUse payload, as their own suites do; rc and the
@@ -73,7 +73,7 @@ fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: output does not contain [$3]"; fails=$((fails+1)) ;; esac; }
 
-# The writer under a judge call's environment: not a leg, a fixed root/user.
+# The writer under a judge call's environment: not a worker, a fixed root/user.
 # shellcheck disable=SC2086  # WV_NOPR is a deliberate argument list
 wv() {
     env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY \
@@ -235,13 +235,13 @@ check "7: no injected verdict line" "$(grep -c '^\*\*GO\*\*' "$f7")" 0
 rc=0; verdict_rc q10 "$SHA_B" || rc=$?
 check "7: the real NO-GO is what the parser reads" "$rc" 2
 
-# --- 8. a console leg is refused -----------------------------------------
+# --- 8. a chief worker is refused -----------------------------------------
 rc=0; env HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q8 GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
-check "8: a console leg is refused rc 3" "$rc" 3
+check "8: a chief worker is refused rc 3" "$rc" 3
 rc=0; env -u HIMMEL_CONSOLE_JUDGE HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_JUDGE=1 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q8 GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
-check "8: a judge session (leg + judge marker) may write" "$rc" 0
+check "8: a judge session (worker + judge marker) may write" "$rc" 0
 rc=0; env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY=1 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q11 NO-GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
-check "8: a console relay is refused rc 3" "$rc" 3
+check "8: a chief relay is refused rc 3" "$rc" 3
 check "8: nothing written for the relay" "$([ -e "$scope_dir/q11" ] && echo yes || echo no)" no
 rc=0; env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY=0 HANDOVER_DIR="$root" USER_SLUG=tuser bash "$SCRIPT" q11 NO-GO "$SHA_A" --evidence-file "$ev" --pr 501 >/dev/null 2>&1 || rc=$?
 check "8: HIMMEL_CONSOLE_RELAY=0 is not a relay" "$rc" 0

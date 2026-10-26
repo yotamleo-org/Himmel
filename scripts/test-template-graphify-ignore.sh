@@ -66,7 +66,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# 1b. .gitignore: judge/leg scratch dirs are ignored, verdicts
+# 1b. .gitignore: judge/worker scratch dirs are ignored, verdicts
 # themselves are not.
 # ---------------------------------------------------------------------------
 if git -C "$WORK/repo" check-ignore -q handovers/u/b/verdicts/J1/scratch/x.sh; then

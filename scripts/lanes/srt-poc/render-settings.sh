@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # render-settings.sh — POC. Print one-line srt settings JSON for a
-# leg. Profiles (operator rulings):
+# worker. Profiles (operator rulings):
 #   impl      base allow list only (github, npm, PyPI, model gateway)
 #   research  base list + a curated docs/reference list; writes still confined to the same roots
-# Writable roots are always the leg worktree, its scratchpad and the handover
-# bucket. Extra domains (a console-approved request) are appended to the list.
+# Writable roots are always the worker worktree, its scratchpad and the handover
+# bucket. Extra domains (a chief-approved request) are appended to the list.
 #
 #   [SRT_SCRATCH_HOME=<dir>] render-settings.sh <impl|research> <worktree> <scratch> <handover> [extra-domain...]
 set -eu

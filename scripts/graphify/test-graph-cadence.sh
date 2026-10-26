@@ -497,7 +497,7 @@ assert_contains "ledger action=published on a non-landing merge-on-green" '"acti
 # Test 3b (PR-B panel r1, codex-7): merge-on-green fails with an EXECUTION
 # failure code (12, repo/base misconfigured -- NOT a time-resolving
 # deferral) -> action=failed, rc!=0. Before this fix EVERY non-zero
-# merge-on-green rc read as "published" -- a permanently broken merge leg
+# merge-on-green rc read as "published" -- a permanently broken merge worker
 # (missing gh, misconfigured base, unwritable audit sink) would have reported
 # healthy forever.
 # =============================================================================
@@ -1242,7 +1242,7 @@ rm -rf "$LOCK_L"
 # Test 9: the semantic step is OFF by default and runs only with
 # --semantic, after the structural refresh, on the dedicated worktree with the
 # local ollama backend. A failure alerts through cadence-alert.sh
-# and fails the run; a success clears the leg's alert. Under --semantic the
+# and fails the run; a success clears the worker's alert. Under --semantic the
 # worktree's graphify-out survives the per-run clean, so the semantic manifest
 # (the change gate) persists between fires.
 # =============================================================================
@@ -1379,7 +1379,7 @@ for brc in 3 4; do
     assert_eq "benign semantic rc=$brc appends no alert line" "" "$(cat "$TMP_ROOT/t9-$tag-alerts.log" 2>/dev/null)"
     assert_contains "benign semantic rc=$brc is reported as a skip" "semantic step skipped (rc=$brc" "$out"
 done
-# (e2) a file backed off by the merge alerts once, on its own leg, and the run stays green.
+# (e2) a file backed off by the merge alerts once, on its own worker, and the run stays green.
 tag=backoff; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
 seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 : > "$FAKE_SEND_LOG"
@@ -1393,7 +1393,7 @@ assert_eq "a backed-off file sends one alert across two runs" "1" "$(grep -c bac
 rc=0; out=$(run_sem "$tag" --semantic) || rc=$?
 rc=0; out=$(FAKE_SEM_OUT="semantic-merge: BACKED OFF b.md after 3 attempts (r)" run_sem "$tag" --semantic) || rc=$?
 assert_eq "a later back-off after a clean run alerts again" "2" "$(grep -c backoff "$FAKE_SEND_LOG")"
-# (e3) a back-off printed before a later non-zero exit still alerts on its own leg.
+# (e3) a back-off printed before a later non-zero exit still alerts on its own worker.
 tag=backoffrc; mkdir -p "$TMP_ROOT/t9-$tag-home" "$TMP_ROOT/t9-$tag-ledger"
 seed_repo "$TMP_ROOT/t9-$tag-primary" "$TMP_ROOT/t9-$tag-origin.git" 20
 : > "$FAKE_SEND_LOG"; rc=0
@@ -1451,7 +1451,7 @@ assert_eq "lane-off never calls semantic-update" "" "$(cat "$FAKE_SEM_LOG")"
 # =============================================================================
 # Test 10: a successful semantic step promotes the cadence worktree's merged
 # graph (graph.json, semantic-manifest.json, semantic-runs.jsonl) into the
-# PRIMARY checkout's graphify-out, which legs and the session-start advisory
+# PRIMARY checkout's graphify-out, which workers and the session-start advisory
 # read, under the same promote lock ast-update.sh takes -- including on the
 # retired-path fixture where publish/merge no-op.
 # =============================================================================
@@ -1482,7 +1482,7 @@ for kind in nograph graph; do
     rc=0; out=$(FAKE_SEM_RUNS="$RUNS10" run_sem "$tag" --semantic) || rc=$?
     assert_eq "[$kind] semantic run with a promote rc=0" "0" "$rc"
     WT10=$(wt_of "$tag")
-    # The publish leg rewrites the worktree's graph.json after the promote, so the graph is
+    # The publish worker rewrites the worktree's graph.json after the promote, so the graph is
     # recognised by what the fake graphify built (v2), not by comparing with the worktree's end state.
     if grep -qF '"v":2' "$PRIM10/graph.json"; then pass "[$kind] primary graph.json is the cadence worktree's merged graph"; else fail "[$kind] primary graph.json was not promoted" "$(cat "$PRIM10/graph.json")"; fi
     if cmp -s "$WT10/graphify-out/semantic-manifest.json" "$PRIM10/semantic-manifest.json"; then pass "[$kind] primary semantic-manifest.json promoted"; else fail "[$kind] primary semantic-manifest.json was not promoted" "$(cat "$PRIM10/semantic-manifest.json")"; fi

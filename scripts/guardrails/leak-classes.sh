@@ -146,7 +146,7 @@
 #
 # Skips: binary files (grep -I), graphify-out/, and any path prefix listed in
 # .leak-classes-ignore at the repo root (absent/empty by default — an escape
-# hatch for paths a PARALLEL leg is mid-removal on, not the design). --staged
+# hatch for paths a PARALLEL worker is mid-removal on, not the design). --staged
 # reads that file's STAGED content (git index), not the working tree, so an
 # unstaged local edit can never suppress a leak in the commit being made.
 # --tree reads it off disk, matching what --tree itself scans.

@@ -28,7 +28,7 @@ function profileTable(data) {
 }
 export function renderToolHealth(data, token = "") {
   const header = `<h2>Tool health</h2><p class="sub">Read-only · daily model / lane / worker-vs-supervisor-session rollups · missing denominators are —, never 0 %. <a href="#/toolhealth">Tool health</a> · <a href="/#${esc(new URLSearchParams({ t: token, page: "toolhealth" }).toString())}">Link to this page</a></p>`;
-  if (!data || data.state !== "ok") return `<section>${header}<div>${filters(data || { selected: { days: 7 } })}</div><p class="nodata">${data?.state === "error" ? "Tool health unavailable: endpoint unreachable" : "No data: no leg digest ledger rows in this period"}</p><button data-act="refresh-toolhealth">Refresh</button></section>`;
+  if (!data || data.state !== "ok") return `<section>${header}<div>${filters(data || { selected: { days: 7 } })}</div><p class="nodata">${data?.state === "error" ? "Tool health unavailable: endpoint unreachable" : "No data: no worker digest ledger rows in this period"}</p><button data-act="refresh-toolhealth">Refresh</button></section>`;
   const tools = (data.tools || []).map((r) => `<tr><td>${esc(r.tool)}</td><td>${count(r.calls)}</td><td>${count(r.failures)}</td><td>${pct(r.rate)}</td><td>${pct(r.error_rate)}</td><td>${pct(r.recovery_rate)}</td><td>${spark(r.trend)}</td><td>${(r.classes || []).slice(0, 3).map((c) => `${esc(c.class)} (${count(c.count)})`).join("<br>") || "—"}</td><td>${drill(r, token)}</td></tr>`);
   const hooks = (data.hooks || []).map((r) => `<tr><td>${esc(r.class)}</td><td>${count(r.calls)}</td><td>${count(r.failures)}</td><td>${pct(r.rate)}</td><td>${pct(r.recovery_rate)}</td><td>${drill(r, token)}</td></tr>`);
   const lanes = data.filters?.lanes || [];

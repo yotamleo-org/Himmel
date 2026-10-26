@@ -108,7 +108,7 @@ export STUB_KEEP_SHA="$KEEP" STUB_KEEP2_SHA="$KEEP2"
 export CANCEL_RUNS_FAKE_CLOCK="$WORK/clock" STUB_TIME_LOG="$WORK/times.log" CANCEL_RUNS_PACE_STATE="$WORK/pace"
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
 
-# run <args>: dry by default. T_LEG=1 / T_RELAY=1 set the leg / relay markers; T_DIR the cwd.
+# run <args>: dry by default. T_WORKER=1 / T_RELAY=1 set the worker / relay markers; T_DIR the cwd.
 run() {
     : > "$STUB_CANCEL_LOG"
     : > "$STUB_TIME_LOG"
@@ -118,7 +118,7 @@ run() {
     printf '%s' "${T_PACE_SEED:-}" | tr ' ' '\n' | grep . > "$CANCEL_RUNS_PACE_STATE" || : > "$CANCEL_RUNS_PACE_STATE"
     (
         unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY
-        [ -n "${T_LEG:-}" ] && export HIMMEL_CONSOLE_LEG=1
+        [ -n "${T_WORKER:-}" ] && export HIMMEL_CONSOLE_LEG=1
         [ -n "${T_RELAY:-}" ] && export HIMMEL_CONSOLE_RELAY=1
         cd "${T_DIR:-$WORK/repo}" || exit 99
         bash "${T_CR:-$CR}" "$@" 2>&1
@@ -202,21 +202,21 @@ out="$(STUB_GH_FAIL=1 live --keep-pr 3221)"; rc=$?
 check "gh down refuses, exit 1" "1" "$rc"
 check "gh down cancels nothing" "" "$(cancelled)"
 
-# a console-spawned leg or a relay never cancels (same predicate go.sh uses), dry or live
-out="$(T_LEG=1 live --keep-pr 3221)"; rc=$?
-check "a console-spawned leg is refused, exit 3" "3" "$rc"
-check "the leg refusal cancels nothing" "" "$(cancelled)"
-has "the leg refusal names HIMMEL_CONSOLE_LEG" "HIMMEL_CONSOLE_LEG" "$out"
+# a chief-spawned worker or a relay never cancels (same predicate go.sh uses), dry or live
+out="$(T_WORKER=1 live --keep-pr 3221)"; rc=$?
+check "a chief-spawned worker is refused, exit 3" "3" "$rc"
+check "the worker refusal cancels nothing" "" "$(cancelled)"
+has "the worker refusal names HIMMEL_CONSOLE_LEG" "HIMMEL_CONSOLE_LEG" "$out"
 
-out="$(T_LEG=1 run --keep-pr 3221)"; rc=$?
-check "a leg is refused on a dry run too, exit 3" "3" "$rc"
+out="$(T_WORKER=1 run --keep-pr 3221)"; rc=$?
+check "a worker is refused on a dry run too, exit 3" "3" "$rc"
 
 out="$(T_RELAY=1 live --keep-pr 3221)"; rc=$?
-check "a console relay is refused, exit 3" "3" "$rc"
+check "a chief relay is refused, exit 3" "3" "$rc"
 check "the relay refusal cancels nothing" "" "$(cancelled)"
 has "the relay refusal names HIMMEL_CONSOLE_RELAY" "HIMMEL_CONSOLE_RELAY" "$out"
 
-# the leg check fails closed: a tree without scripts/lib/go-gate.sh refuses
+# the worker check fails closed: a tree without scripts/lib/go-gate.sh refuses
 mkdir -p "$WORK/k/scripts/handover/chief-kit" "$WORK/k/scripts/lib"
 cp "$CR" "$WORK/k/scripts/handover/chief-kit/cancel-runs.sh"
 cp "$HERE/../../lib/git-clean.sh" "$WORK/k/scripts/lib/git-clean.sh"

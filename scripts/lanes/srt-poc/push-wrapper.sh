@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# push-wrapper.sh — POC. The only path by which a sandboxed leg's
+# push-wrapper.sh — POC. The only path by which a sandboxed worker's
 # commits reach a remote. It runs OUTSIDE the sandbox (it is the holder of the
-# push credential) and pushes ONE branch, the leg's own, as a plain
+# push credential) and pushes ONE branch, the worker's own, as a plain
 # fast-forward push.
 #
-#   push-wrapper.sh --leg-branch <branch> -- <git push args...>
+#   push-wrapper.sh --worker-branch <branch> -- <git push args...>
 #
-# --leg-branch comes from the launcher that started the leg, never from the
-# request, so a leg cannot name a different branch for itself. Refused, exit 20
+# --worker-branch comes from the launcher that started the worker, never from the
+# request, so a worker cannot name a different branch for itself. Refused, exit 20
 # (nothing is pushed): any force flag, a +refspec, a delete (--delete, :ref),
-# --mirror/--all/--prune/--tags, main/master, any branch but --leg-branch, and
+# --mirror/--all/--prune/--tags, main/master, any branch but --worker-branch, and
 # a URL or path as the remote (only a configured remote name).
 #
 # ponytail: argument-shape policy only; it does not see the remote's own
@@ -31,12 +31,18 @@ refuse() {
     exit "$REFUSE_RC"
 }
 
-leg_branch=""
+worker_branch=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
-        --leg-branch)
-            [ "$#" -ge 2 ] || refuse "--leg-branch needs a value"
-            leg_branch="$2"
+        --worker-branch|--leg-branch)
+            if [ "$1" = --leg-branch ]; then
+                case "${BASH_SOURCE[0]}" in */*) _pw_dir="${BASH_SOURCE[0]%/*}" ;; *) _pw_dir=. ;; esac
+                # shellcheck source=scripts/lib/legacy-names.sh
+                # shellcheck disable=SC1091
+                { [ -r "$_pw_dir/../../lib/legacy-names.sh" ] && . "$_pw_dir/../../lib/legacy-names.sh" && legacy_flag --leg-branch --worker-branch; } || refuse "unexpected wrapper argument: $1"
+            fi
+            [ "$#" -ge 2 ] || refuse "--worker-branch needs a value"
+            worker_branch="$2"
             shift 2
             ;;
         --) shift; break ;;
@@ -44,9 +50,9 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-[ -n "$leg_branch" ] || refuse "no --leg-branch"
-case "$leg_branch" in
-    main|master|HEAD|"") refuse "leg branch is protected: $leg_branch" ;;
+[ -n "$worker_branch" ] || refuse "no --worker-branch"
+case "$worker_branch" in
+    main|master|HEAD|"") refuse "worker branch is protected: $worker_branch" ;;
 esac
 
 remote=""
@@ -86,12 +92,12 @@ for spec in $refspecs; do
     case "$dst" in
         main|master) refuse "push to protected branch: $dst" ;;
     esac
-    [ "$dst" = "$leg_branch" ] || refuse "branch is not this leg's own ($leg_branch): $dst"
+    [ "$dst" = "$worker_branch" ] || refuse "branch is not this worker's own ($worker_branch): $dst"
 done
 
 # shellcheck disable=SC2086 # flags and refspecs are validated words
-# Hooks are disabled because this runs OUTSIDE the sandbox in a leg-writable
+# Hooks are disabled because this runs OUTSIDE the sandbox in a worker-writable
 # worktree. Config-injected commands (core.sshCommand, credential helpers,
-# includeIf) in the leg's .git/config are NOT closed here: the production
+# includeIf) in the worker's .git/config are NOT closed here: the production
 # broker must push from a launcher-owned clone instead.
 exec git -c core.hooksPath=/dev/null push $flags "$remote" $refspecs

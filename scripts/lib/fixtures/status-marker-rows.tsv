@@ -11,7 +11,7 @@
 #   line  a results-doc line, exactly as written
 #   want  the canonical marker the parse prints, or - when the line carries none
 #
-# The vocabulary and the line shape follow scripts/lib/leg-tail-status.sh. The
+# The vocabulary and the line shape follow scripts/lib/worker-tail-status.sh. The
 # one addition is PARKED-USAGE, the new spelling of PARKED-BANK (HIMMEL-5689
 # slice V1): both are accepted and both parse to PARKED-USAGE.
 - 23:47 PARKED-BANK — committed, waiting for RESUME	PARKED-USAGE

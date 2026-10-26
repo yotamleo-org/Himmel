@@ -3,7 +3,7 @@
 
 graphify seeds on the question's words matched against node labels, so a plain-language question
 that names no file or identifier ("who closes the ticket after a merge") starts from one-word labels
-such as Need or Token and the file that answers it is missing. leg-graph.sh uses these verbs:
+such as Need or Token and the file that answers it is missing. worker-graph.sh uses these verbs:
 
   seeds <graph.json> <question>
       Prints one node id per line: the file node of each of the TOP_FILES files that score best
@@ -14,7 +14,7 @@ such as Need or Token and the file that answers it is missing. leg-graph.sh uses
       vocabulary (scripts/qmd/vocab-expand.py swaps console/chief, leg/worker, ... from the rename
       registry) and a file keeps its best score over the versions. A swapped version only
       re-ranks a file that already shares a non-registry word with the question, so swapped-in
-      words alone never bring a file in ("wave of legs" never seeds a worker thread). A file the
+      words alone never bring a file in ("wave of workers" never seeds a worker thread). A file the
       registry marks other-sense (stop-worker.sh: a lane worker, not a renamed leg) earns no path
       bonus from a registry word, so "worker" in either sense never seeds it by its name alone.
 

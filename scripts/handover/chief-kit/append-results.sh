@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/append-results.sh - append a
-# leg's marker bullet at a handover doc's true EOF, so it can never land
-# mid-doc. Twice in one shift a leg's WRAPPED bullet, written with the Edit
+# worker's marker bullet at a handover doc's true EOF, so it can never land
+# mid-doc. Twice in one shift a worker's WRAPPED bullet, written with the Edit
 # tool anchored on an earlier bullet, landed ABOVE later bullets instead of
-# at the true end of the doc; close-wrapped-leg.sh and tick.sh both read the
-# doc's LAST `- ` line (scripts/lib/leg-tail-status.sh) as the leg's current
+# at the true end of the doc; close-wrapped-worker.sh and tick.sh both read the
+# doc's LAST `- ` line (scripts/lib/worker-tail-status.sh) as the worker's current
 # status, so the misordered WRAPPED bullet was invisible to them and the
 # wrap was refused. This script always appends at the literal end of the
-# file, so a leg calling it can never repeat that mistake.
+# file, so a worker calling it can never repeat that mistake.
 #
 # Usage: append-results.sh <doc> <text>
 #
@@ -50,6 +50,11 @@ fi
 DOC="$1"
 TEXT="$2"
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$(dirname "${BASH_SOURCE[0]}")/../../lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
+
 if [ ! -f "$DOC" ] || [ ! -r "$DOC" ] || [ ! -w "$DOC" ]; then
     echo "append-results: cannot read/write doc '$DOC'" >&2
     exit 3
@@ -67,17 +72,17 @@ fi
 # chars (WIP, OK, PR are refused); every real marker is 4+ chars, and a 1-char
 # lead is prose.
 #
-# Leg docs only: a leg doc carries its brief's "RETASK token" line. A console doc
-# (name ends -chief.md or -console.md) or a doc with no leg brief takes any bullet, since
-# console-template.md has the console log MERGED / VERDICT / OPERATOR / free text
+# Worker docs only: a worker doc carries its brief's "RETASK token" line. A chief doc
+# (name ends -chief.md or -console.md) or a doc with no worker brief takes any bullet, since
+# chief-template.md has the chief log MERGED / VERDICT / OPERATOR / free text
 # through this script.
 lead="${TEXT%%[!ABCDEFGHIJKLMNOPQRSTUVWXYZ-]*}"  # a bash 3.2 range follows the locale collation and takes lowercase
-is_leg=0
+is_worker=0
 case "${DOC##*/}" in
     *-console.md|*-chief.md) ;;
-    *) grep -q 'RETASK token' "$DOC" && is_leg=1 ;;
+    *) grep -q 'RETASK token' "$DOC" && is_worker=1 ;;
 esac
-case "$is_leg:$lead" in
+case "$is_worker:$lead" in
     1:??*)
         case "$lead" in
             LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED|CONSULT|CONSULT-ANSWER|ANSWER|SUCCESSION|MAIN-RED|PARK-BANK) ;;
@@ -90,22 +95,22 @@ esac
 stamp="$(date +%H:%M)"
 bullet="- ${stamp} ${TEXT}"
 
-# A leg's exact SUCCESSION acknowledgement also moves its himmel-bus console edge
+# A worker's exact SUCCESSION acknowledgement also moves its himmel-bus chief edge
 # (`bus adopt`, which checks the succession itself). The result lands as a
 # non-status bullet above it, so the acknowledgement stays the newest line; a
-# refusal never blocks the acknowledgement. Only a leg with a bus identity
+# refusal never blocks the acknowledgement. Only a worker with a bus identity
 # (HIMMEL_BUS_NAME) adopts. APPEND_RESULTS_BUS replaces the CLI;
 # APPEND_RESULTS_BUS_TIMEOUT bounds the adopt (seconds, default 15). Without an
 # override the adopt runs the anchor checkout's bus, falling back to this
-# worktree's own copy: a leg cut before a bus fix would otherwise run the stale
+# worktree's own copy: a worker cut before a bus fix would otherwise run the stale
 # adopt. The bullet ends `[via anchor]` or `[via worktree]` to say which ran.
 # Every later marker bullet re-runs the adopt for the doc's newest accepted
-# successor, so a leg whose adopt was refused while its old console was still
-# live heals once that console is gone. adopt is idempotent: an unchanged
-# console never earns a bullet, and a refused re-adopt stays silent.
+# successor, so a worker whose adopt was refused while its old chief was still
+# live heals once that chief is gone. adopt is idempotent: an unchanged
+# chief never earns a bullet, and a refused re-adopt stays silent.
 succ_re='^SUCCESSION accepted: ([A-Za-z0-9][A-Za-z0-9._-]*) replaces [A-Za-z0-9][A-Za-z0-9._-]*$'
 adopt_to=""; readopt=0
-if [ "$is_leg" -eq 1 ] && [ -n "${HIMMEL_BUS_NAME:-}" ]; then
+if [ "$is_worker" -eq 1 ] && [ -n "${HIMMEL_BUS_NAME:-}" ]; then
     if [[ $TEXT =~ $succ_re ]]; then
         adopt_to="${BASH_REMATCH[1]}"
     else
@@ -135,7 +140,7 @@ if [ -n "$adopt_to" ]; then
     wait_for=""; command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
     if adopted="$($wait_for "$bus" adopt "$adopt_to" 2>&1)"; then
         adopted="${adopted%%$'\n'*}"
-        [[ $adopted =~ ^adopted:\ [^\ ]+\ console\ ([^\ ]+)\ -\>\ ([^\ ]+)$ ]] \
+        [[ $adopted =~ ^adopted:\ [^\ ]+\ chief\ ([^\ ]+)\ -\>\ ([^\ ]+)$ ]] \
             && [ "${BASH_REMATCH[1]}" = "${BASH_REMATCH[2]}" ] && adopted=""
     else
         [ "$?" -eq 124 ] && [ -n "$wait_for" ] && adopted="timed out after ${limit}s"
@@ -160,12 +165,12 @@ if [ -n "$scan" ]; then
     fi
 fi
 
-# append under the lock every doc writer shares (leg-doc-lock.sh),
+# append under the lock every doc writer shares (worker-doc-lock.sh),
 # so a rewrite in flight (the launcher's session_ids:, inbox-send.sh,
 # live-state.sh) finishes its mv first and this bullet lands on the new doc,
 # never on the replaced one. A lock that cannot be taken (rc 1) or no flock
 # (rc 3) appends unlocked, as before: the bullet matters more than the race.
-# shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
+# shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
 . "$(dirname "${BASH_SOURCE[0]}")/worker-doc-lock.sh"
 locked=0
 doc_lock "$DOC" append-results && locked=1
@@ -184,14 +189,14 @@ fi
 echo "append-results: appended to $DOC"
 
 # a LIVE or WRAPPED bullet records the doc as the ticket's owner (the key in
-# the doc name) and re-derives its Jira status. Best-effort - leg-jira-status.sh
+# the doc name) and re-derives its Jira status. Best-effort - worker-jira-status.sh
 # warns and exits 0 on any Jira failure, and WORKER_SESSION_JIRA_STATUS=0 opts out.
 event=""
 case "$TEXT" in
     LIVE|LIVE[!A-Za-z0-9]*) event=live ;;
     WRAPPED|WRAPPED[!A-Za-z0-9]*) event=wrapped ;;
 esac
-if [ -n "$event" ] && [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
+if [ -n "$event" ] && [ "${WORKER_SESSION_JIRA_STATUS:-1}" != "0" ]; then
     base="${DOC##*/}"
     if [[ $base =~ ^([A-Za-z][A-Za-z0-9]*-[0-9]+)- ]]; then
         bash "$(dirname "${BASH_SOURCE[0]}")/worker-jira-status.sh" "${BASH_REMATCH[1]}" --event "$event" --doc "$DOC" || true

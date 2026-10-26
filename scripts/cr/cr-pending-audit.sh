@@ -6,8 +6,8 @@
 # blocked by a stale CR marker, and two tools printed the exact remedy
 # ("re-run /pr-check on this HEAD"). The orchestrator instead reasoned to the
 # conclusion "structurally unopenable", wrote that into the append-only ledger
-# AND the next leg's handover, and the false conclusion propagated as inherited
-# fact for FOUR legs. The actual unblock was three commands and worked first
+# AND the next worker's handover, and the false conclusion propagated as inherited
+# fact for FOUR workers. The actual unblock was three commands and worked first
 # try.
 #
 # This script is the structural counter: it RE-DERIVES, from the marker + the

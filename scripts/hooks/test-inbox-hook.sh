@@ -28,7 +28,7 @@ trap 'rm -rf "$WORK"' EXIT
 HANDOVER_DIR="$WORK/handover-root"
 mkdir -p "$HANDOVER_DIR/inbox"
 export HANDOVER_DIR
-SESSION="HIMMEL-2788-test-leg"
+SESSION="HIMMEL-2788-test-worker"
 INBOX="$HANDOVER_DIR/inbox/$SESSION.md"
 
 # Direct callers own delivery and commit; the race test below also covers the
@@ -138,7 +138,7 @@ fi
 
 # Fresh session + fresh bullet so this is independent of the PostToolUse runs
 # above (same cursor file would otherwise already be caught up).
-SESSION2="HIMMEL-2788-test-leg-sessionstart"
+SESSION2="HIMMEL-2788-test-worker-sessionstart"
 INBOX2="$HANDOVER_DIR/inbox/$SESSION2.md"
 printf -- '- 09:15 sessionstart ruling\n' >> "$INBOX2"
 CMDLINE_FILE4="$WORK/cmdline-ss"
@@ -302,7 +302,7 @@ fi
 # a corrupted/hand-recovered cursor file holding a
 # leading-zero, digit-only value (e.g. "08") must not be misparsed as an
 # invalid octal literal by inbox_peek's arithmetic expansion.
-SESSION_OCTAL="HIMMEL-2788-octal-leg"
+SESSION_OCTAL="HIMMEL-2788-octal-worker"
 INBOX_OCTAL="$HANDOVER_DIR/inbox/$SESSION_OCTAL.md"
 printf -- '- octal cursor ruling\n' > "$INBOX_OCTAL"
 printf '08' > "$HANDOVER_DIR/inbox/.cursor/$SESSION_OCTAL"

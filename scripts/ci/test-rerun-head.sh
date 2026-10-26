@@ -81,17 +81,17 @@ reruns() { if [ -s "$TMP/fx/reruns" ]; then awk '{print $1}' "$TMP/fx/reruns" | 
 if bash -n "$SRC"; then ok "syntax (bash -n)"; else bad "syntax"; fi
 
 # --- incident replay: records copied verbatim from the live repo -------------
-# Branch feat/himmel-6476-leg-api-lane-switch: head 7fca3b1a has a live (pending)
+# Branch feat/himmel-6476-worker-api-lane-switch: head 7fca3b1a has a live (pending)
 # run; the older head f9caebf0 has a CANCELLED run. Rerunning the cancelled
 # stale run is what held 34 of 61 slots and cancelled the head runs.
 reset
 cat > "$TMP/fx/prs.json" <<'EOF'
-[{"headRefName":"feat/himmel-6476-leg-api-lane-switch","headRefOid":"7fca3b1a25e954a4d03f97a735247542f1fe3e61","isCrossRepository":false,"number":3213},
+[{"headRefName":"feat/himmel-6476-worker-api-lane-switch","headRefOid":"7fca3b1a25e954a4d03f97a735247542f1fe3e61","isCrossRepository":false,"number":3213},
  {"headRefName":"fix/himmel-6502-merge-on-green-org-slug","headRefOid":"2b4bad1f47b58418f2f32d2f1dfb03b6c8ba779a","isCrossRepository":false,"number":3221}]
 EOF
 cat > "$TMP/fx/runs.json" <<'EOF'
-[{"attempt":1,"conclusion":"","databaseId":39294318233,"event":"pull_request","headBranch":"feat/himmel-6476-leg-api-lane-switch","headSha":"7fca3b1a25e954a4d03f97a735247542f1fe3e61","status":"pending","workflowName":"CI"},
- {"attempt":1,"conclusion":"cancelled","databaseId":39293174291,"event":"pull_request","headBranch":"feat/himmel-6476-leg-api-lane-switch","headSha":"f9caebf069caad7436eb20038f914d45c5aec18e","status":"completed","workflowName":"CI"},
+[{"attempt":1,"conclusion":"","databaseId":39294318233,"event":"pull_request","headBranch":"feat/himmel-6476-worker-api-lane-switch","headSha":"7fca3b1a25e954a4d03f97a735247542f1fe3e61","status":"pending","workflowName":"CI"},
+ {"attempt":1,"conclusion":"cancelled","databaseId":39293174291,"event":"pull_request","headBranch":"feat/himmel-6476-worker-api-lane-switch","headSha":"f9caebf069caad7436eb20038f914d45c5aec18e","status":"completed","workflowName":"CI"},
  {"attempt":1,"conclusion":"","databaseId":39294601937,"event":"pull_request","headBranch":"fix/himmel-6502-merge-on-green-org-slug","headSha":"2b4bad1f47b58418f2f32d2f1dfb03b6c8ba779a","status":"queued","workflowName":"CI"}]
 EOF
 out="$(run --run 39293174291)"; rc=$?

@@ -73,7 +73,7 @@ snapshot() {
 
 # Guard the fixture builder itself: a malformed fixture silently weakens every
 # assertion built on it (this exact `,}` bug hid for five review rounds).
-fixture_probe="$(snapshot 42 500000 58 1788089693000 "leg-A")"
+fixture_probe="$(snapshot 42 500000 58 1788089693000 "worker-A")"
 not_contains "fixture builder: no ,} malformation" "$fixture_probe" ',}"'
 contains     "fixture builder: closes current_usage then commas" "$fixture_probe" '},"context_window_size"'
 
@@ -108,14 +108,14 @@ check "missing snapshot: --percent exit 4"        "$rcp" "4"
 check "missing snapshot: --percent stdout EMPTY"  "$outp" ""
 
 # --- 2. fresh snapshot -> the exact number ----------------------------------
-place "$SID_A" "$(snapshot 42 500000 58 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 42 500000 58 "$(now_ms)" "worker-A")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1)"; rc=$?
 check "fresh snapshot: exit 0" "$rc" "0"
 contains "fresh: reports 42%"                "$out" "42% of the CONTEXT WINDOW used"
 contains "fresh: reports the window size"    "$out" "500000-token window"
 contains "fresh: reports free percent"       "$out" "58% free"
 contains "fresh: sums resident tokens"       "$out" "100 tokens resident"
-contains "fresh: names the session"          "$out" "leg-A"
+contains "fresh: names the session"          "$out" "worker-A"
 contains "fresh: disclaims the spend budget" "$out" "NOT the <total_tokens> spend budget"
 fresh_stdout="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>/dev/null)"
 fresh_first_line="${fresh_stdout%%$'\n'*}"
@@ -144,11 +144,11 @@ if [ "$outp" -ge 40 ]; then echo "ok - --percent is usable in an arithmetic thre
 else echo "FAIL - --percent not usable as a number"; fails=$((fails+1)); fi
 
 # --- 3. wrong-session snapshot is never returned ----------------------------
-place "$SID_B" "$(snapshot 91 500000 9 "$(now_ms)" "leg-B")" > /dev/null
+place "$SID_B" "$(snapshot 91 500000 9 "$(now_ms)" "worker-B")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1)"
 contains     "isolation: session A still reads its own 42%" "$out" "42%"
 not_contains "isolation: session A never sees B's 91%"      "$out" "91%"
-not_contains "isolation: session A never sees B's name"     "$out" "leg-B"
+not_contains "isolation: session A never sees B's name"     "$out" "worker-B"
 outb="$(CLAUDE_CODE_SESSION_ID="$SID_B" bash "$SCRIPT" --percent 2>/dev/null)"
 check "isolation: session B reads its own 91" "$outb" "91"
 outb_human="$(CLAUDE_CODE_SESSION_ID="$SID_B" bash "$SCRIPT" 2>/dev/null)"
@@ -163,7 +163,7 @@ not_contains "isolation: session B never reads A's 69,000-turn input" "$outb_hum
 now_s="$(date +%s)"
 stale_ms="$(awk -v s="$now_s" 'BEGIN{printf "%.0f", (s-4000)*1000}')"
 backdate "$CFG/projects/C--fixture-repo/$SID_A.jsonl" "$((now_s - 4000))"
-place "$SID_A" "$(snapshot 42 500000 58 "$stale_ms" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 42 500000 58 "$stale_ms" "worker-A")" > /dev/null
 # a stale snapshot with usable transcript usage is no longer a bare
 # STALE. The latest assistant turn's input tokens (69000) over the snapshot's
 # window (500000) give a labelled ESTIMATE on stdout, exit 5 - never exit 0, so
@@ -187,16 +187,16 @@ SID_N="dddddddd-0000-1111-2222-333333333333"
 printf '%s\n' '{"type":"user","message":{"content":"no usage here"}}' \
   > "$CFG/projects/C--fixture-repo/$SID_N.jsonl"
 backdate "$CFG/projects/C--fixture-repo/$SID_N.jsonl" "$((now_s - 4000))"
-place "$SID_N" "$(snapshot 42 500000 58 "$stale_ms" "leg-N")" > /dev/null
+place "$SID_N" "$(snapshot 42 500000 58 "$stale_ms" "worker-N")" > /dev/null
 outn="$(CLAUDE_CODE_SESSION_ID="$SID_N" bash "$SCRIPT" --percent 2>/dev/null)"; rcn=$?
 check "stale, no transcript usage: --percent exit 3"     "$rcn" "3"
 check "stale, no transcript usage: --percent stdout EMPTY" "$outn" ""
 # A snapshot without a usable window cannot turn tokens into a percent either.
-place "$SID_A" "$(snapshot 42 0 58 "$stale_ms" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 42 0 58 "$stale_ms" "worker-A")" > /dev/null
 outn="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --percent 2>/dev/null)"; rcn=$?
 check "stale, window 0: --percent exit 3"       "$rcn" "3"
 check "stale, window 0: --percent stdout EMPTY" "$outn" ""
-place "$SID_A" "$(snapshot 42 500000 58 "$stale_ms" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 42 500000 58 "$stale_ms" "worker-A")" > /dev/null
 
 # The freshness window is tunable, and the SAME snapshot reads fresh under a
 # wider one - so exit 3 is a staleness verdict, not an unrelated failure.
@@ -245,7 +245,7 @@ not_contains "unanchored key inside braces: never reports the fragment as curren
 # Two concatenated objects must never report either one - a greedy extractor
 # would silently take the LAST occurrence of a key, i.e. a real number from
 # the wrong snapshot.
-printf '%s%s' "$(snapshot 42 500000 58 "$(now_ms)" "leg-A")" "$(snapshot 99 500000 1 "$(now_ms)" "leg-B")" > "$pa"
+printf '%s%s' "$(snapshot 42 500000 58 "$(now_ms)" "worker-A")" "$(snapshot 99 500000 1 "$(now_ms)" "worker-B")" > "$pa"
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>/dev/null)"; rc=$?
 check "concatenated objects: exit 4"          "$rc" "4"
 check "concatenated objects: stdout is EMPTY" "$out" ""
@@ -255,19 +255,19 @@ not_contains "concatenated objects: never reports the first object's number"  "$
 not_contains "concatenated objects: never reports the second object's number" "$out" "99"
 
 # A snapshot with no current_usage still yields the percent, minus the token sum.
-place "$SID_A" "$(snapshot 7 200000 93 "$(now_ms)" "leg-A" "")" > /dev/null
+place "$SID_A" "$(snapshot 7 200000 93 "$(now_ms)" "worker-A" "")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1)"; rc=$?
 check "no current_usage: exit 0" "$rc" "0"
 contains     "no current_usage: percent still reported" "$out" "7% of the CONTEXT WINDOW used"
 not_contains "no current_usage: no partial token sum"   "$out" "tokens resident"
 
 # A fractional used_percentage rounds to a usable integer.
-place "$SID_A" "$(snapshot 64.6 200000 35.4 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 64.6 200000 35.4 "$(now_ms)" "worker-A")" > /dev/null
 outp="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --percent 2>/dev/null)"
 check "fractional percent rounds to an integer" "$outp" "65"
 
 # Trailing junk on a number is rejected, not truncated to a plausible prefix.
-printf '%s' '{"used_percentage":42junk,"remaining_percentage":58,"context_window_size":500000,"saved_at":'"$(now_ms)"',"session_name":"leg-A"}' > "$pa"
+printf '%s' '{"used_percentage":42junk,"remaining_percentage":58,"context_window_size":500000,"saved_at":'"$(now_ms)"',"session_name":"worker-A"}' > "$pa"
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>/dev/null)"; rc=$?
 check "trailing junk on a number: exit 4"          "$rc" "4"
 check "trailing junk on a number: stdout is EMPTY" "$out" ""
@@ -275,7 +275,7 @@ err="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1 >/dev/null)"
 contains "trailing junk on a number: says malformed" "$err" "malformed"
 
 # An out-of-range percentage is not a fill measurement, whatever the file says.
-place "$SID_A" "$(snapshot 150 500000 58 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 150 500000 58 "$(now_ms)" "worker-A")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>/dev/null)"; rc=$?
 check "out-of-range percentage: exit 4"          "$rc" "4"
 check "out-of-range percentage: stdout is EMPTY" "$out" ""
@@ -284,7 +284,7 @@ contains "out-of-range percentage: says implausible" "$err" "implausible"
 
 # A snapshot with no saved_at can never be certified fresh - UNKNOWN, never a
 # happy-path readout of the number it happens to carry.
-printf '%s' '{"used_percentage":42,"remaining_percentage":58,"context_window_size":500000,"session_name":"leg-A"}' > "$pa"
+printf '%s' '{"used_percentage":42,"remaining_percentage":58,"context_window_size":500000,"session_name":"worker-A"}' > "$pa"
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>/dev/null)"; rc=$?
 check "no saved_at: exit 4"          "$rc" "4"
 check "no saved_at: stdout is EMPTY" "$out" ""
@@ -295,7 +295,7 @@ not_contains "no saved_at: never reports the number as current" "$out" "42"
 # A non-numeric freshness window falls back to the default rather than
 # silently disabling staleness detection.
 stale_ms="$(awk -v s="$(date +%s)" 'BEGIN{printf "%.0f", (s-4000)*1000}')"
-place "$SID_A" "$(snapshot 42 500000 58 "$stale_ms" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 42 500000 58 "$stale_ms" "worker-A")" > /dev/null
 outp="$(CLAUDE_CODE_SESSION_ID="$SID_A" CONTEXT_FILL_MAX_AGE_SECONDS=abc bash "$SCRIPT" --percent 2>/dev/null)"; rcp=$?
 check "non-numeric freshness window: still STALE (estimate, exit 5)" "$rcp" "5"
 check "non-numeric freshness window: stdout is the labelled estimate" "$outp" "~14% (est)"
@@ -304,7 +304,7 @@ contains "non-numeric freshness window: falls back to 900" "$err" "900"
 
 # A future saved_at is clock skew or a corrupt timestamp, not a fresh reading.
 future_ms="$(awk -v s="$(date +%s)" 'BEGIN{printf "%.0f", (s+4000)*1000}')"
-place "$SID_A" "$(snapshot 42 500000 58 "$future_ms" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 42 500000 58 "$future_ms" "worker-A")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>/dev/null)"; rc=$?
 check "future saved_at: exit 4"          "$rc" "4"
 check "future saved_at: stdout is EMPTY" "$out" ""
@@ -314,7 +314,7 @@ not_contains "future saved_at: never reports the number as current" "$out" "42"
 
 # A saved_at with trailing junk (e.g. a doubled decimal) is malformed, not a
 # plausible-looking timestamp prefix awk would happily parse.
-printf '%s' '{"used_percentage":42,"remaining_percentage":58,"context_window_size":500000,"saved_at":'"$(now_ms)"'.1.2,"session_name":"leg-A"}' > "$pa"
+printf '%s' '{"used_percentage":42,"remaining_percentage":58,"context_window_size":500000,"saved_at":'"$(now_ms)"'.1.2,"session_name":"worker-A"}' > "$pa"
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>/dev/null)"; rc=$?
 check "malformed saved_at: exit 4"          "$rc" "4"
 check "malformed saved_at: stdout is EMPTY" "$out" ""
@@ -323,7 +323,7 @@ contains "malformed saved_at: says saved_at" "$err" "saved_at"
 
 # An out-of-range remaining_percentage falls back to 100-used rather than
 # being printed as-is.
-place "$SID_A" "$(snapshot 40 500000 999 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 40 500000 999 "$(now_ms)" "worker-A")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1)"; rc=$?
 check "out-of-range remaining_percentage: exit 0" "$rc" "0"
 contains     "out-of-range remaining_percentage: falls back to 100-used" "$out" "60% free"
@@ -412,7 +412,7 @@ not_contains "2545 no procfs entry: NO hint"      "$err" "$HINT_MARK"
 
 # (f) The hint belongs to the UNRESOLVABLE path only - a healthy session that
 # reads its snapshot must never see it.
-place "$SID_A" "$(snapshot 55 200000 45 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 55 200000 45 "$(now_ms)" "worker-A")" > /dev/null
 err="$(env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_CODE_FORCE_SESSION_PERSISTENCE CLAUDE_CODE_SESSION_ID="$SID_A" CONTEXT_FILL_PROC="$PROC" CLAUDE_PID=4242 bash "$SCRIPT" 2>&1 >/dev/null)"
 not_contains "2545 resolvable session: NO hint" "$err" "$HINT_MARK"
 
@@ -469,7 +469,7 @@ check "relative CONTEXT_FILL_TRANSCRIPT resolves to the same key as absolute" "$
 # against the transcript's own mtime exposes the freeze.
 touch -m "$CFG/projects/C--fixture-repo/$SID_A.jsonl"
 lag_ms="$(awk -v s="$(date +%s)" 'BEGIN{printf "%.0f", (s-300)*1000}')"
-place "$SID_A" "$(snapshot 38 200000 62 "$lag_ms" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 38 200000 62 "$lag_ms" "worker-A")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --percent 2>/dev/null)"; rc=$?
 check "frozen snapshot: --percent exit 5 (estimate)" "$rc" "5"
 contains "frozen snapshot: --percent stdout is a labelled estimate" "$out" "(est)"
@@ -484,26 +484,26 @@ contains "frozen snapshot: reports the transcript lag" "$err" "lag"
 # Negative control: a snapshot whose saved_at is AT/after the transcript's
 # mtime must NOT trip the guard - a healthy session must still read.
 fresh_ms="$(now_ms)"
-place "$SID_A" "$(snapshot 55 200000 45 "$fresh_ms" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 55 200000 45 "$fresh_ms" "worker-A")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --percent 2>/dev/null)"; rc=$?
 check "healthy snapshot: --percent exit 0"    "$rc" "0"
 check "healthy snapshot: --percent prints 55" "$out" "55"
 
 # --- 8a. --warn-at handover nudge ------------------------------
 # fill 55 (>= default 50) -> the warning line appears in human mode.
-place "$SID_A" "$(snapshot 55 200000 45 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 55 200000 45 "$(now_ms)" "worker-A")" > /dev/null
 err="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1 >/dev/null)"
 contains "warn-at: fill 55 warns at default threshold" "$err" "WARNING - 55% of the context window used (>= 50% handover threshold)"
 contains "warn-at: names the handover rule" "$err" "hand over to a fresh session at 50% fill"
 
 # fill 45 (< default 50) -> no warning line.
-place "$SID_A" "$(snapshot 45 200000 55 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 45 200000 55 "$(now_ms)" "worker-A")" > /dev/null
 err="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" 2>&1 >/dev/null)"
 not_contains "warn-at: fill 45 stays silent" "$err" "WARNING"
 
 # fill 55 with --percent: stdout is exactly the number, and stderr gains
 # NOTHING relative to the pre-change baseline (no lag line and no warning).
-place "$SID_A" "$(snapshot 55 200000 45 "$(now_ms)" "leg-A")" > /dev/null
+place "$SID_A" "$(snapshot 55 200000 45 "$(now_ms)" "worker-A")" > /dev/null
 outp="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --percent 2>/dev/null)"
 check "warn-at: --percent stdout is exactly 55" "$outp" "55"
 errp="$(CLAUDE_CODE_SESSION_ID="$SID_A" bash "$SCRIPT" --percent 2>&1 >/dev/null)"
@@ -533,7 +533,7 @@ printf '%s\n' \
   'null' \
   '{"type":"assistant","message":{"usage":{"input_tokens":12000,"output_tokens":888888,"cache_creation_input_tokens":23000,"cache_read_input_tokens":34000}}}' \
   > "$CFG/projects/C--fixture-repo/$SID_C.jsonl"
-place "$SID_C" "$(snapshot 55 200000 45 "$(now_ms)" "leg-C")" > /dev/null
+place "$SID_C" "$(snapshot 55 200000 45 "$(now_ms)" "worker-C")" > /dev/null
 out="$(CLAUDE_CODE_SESSION_ID="$SID_C" bash "$SCRIPT" --warn-at 69000 2>/dev/null)"; rc=$?
 check "warn-at 69000 with a null transcript line: does not crash (exit 0)" "$rc" "0"
 err="$(CLAUDE_CODE_SESSION_ID="$SID_C" bash "$SCRIPT" --warn-at 69000 2>&1 >/dev/null)"

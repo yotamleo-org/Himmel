@@ -216,7 +216,7 @@ check "git log --all in the task repo shows one commit, nothing after the base" 
 check "the fix commit is not in the task repo" '! git -C "$WT" cat-file -e "$C2^{commit}" 2>/dev/null'
 check "git show of the fix fails in the task repo" '! git -C "$WT" show "$C2:lib/greet.sh" >/dev/null 2>&1'
 check "no ref in the task repo carries the fix" 'nogrep -q LQ-FIX-MARKER <(git -C "$WT" log --all -p 2>/dev/null; git -C "$WT" show main:lib/greet.sh 2>/dev/null)'
-check "the agent works in a linked worktree on its own branch, as a leg does" '[ -f "$WT/.git" ] && [ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" = lq-task ]'
+check "the agent works in a linked worktree on its own branch, as a worker does" '[ -f "$WT/.git" ] && [ "$(git -C "$WT" rev-parse --abbrev-ref HEAD)" = lq-task ]'
 check "the agent session writes no end-session vault note" '[ "$(sort -u "$TMP/fake.log.env")" = wiki=0 ]'
 check "the task repo has a default branch at the base, so the hook guards can vouch its libs" '[ "$(git -C "$WT" rev-parse -q --verify refs/remotes/origin/main)" = "$(git -C "$WT" rev-parse HEAD)" ]'
 git -C "$TMP/src" worktree add -q --detach "$TMP/ctl-wt" "$C1"

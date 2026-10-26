@@ -143,7 +143,7 @@ new_case c7b
     MERGE_BLOCK_ALERT_DIR="$CASE/sentinels" TELEGRAM_ACCESS_PATH="$ACCESS" \
     merge_block_alert octo/demo 42 aaaaaaaaaaaa "rule" 2>>"$CASE/err"
 )
-if grep -q 'console-route.ts reply 555 MERGE-BLOCKED octo/demo#42' "$CASE/bun.log"; then pass; else fail "7: control — with a sandbox BRIDGE_ROOT the default sender runs bun console-route.ts reply <chat> (got: $(cat "$CASE/bun.log"))"; fi
+if grep -q 'chief-route.ts reply 555 MERGE-BLOCKED octo/demo#42' "$CASE/bun.log"; then pass; else fail "7: control — with a sandbox BRIDGE_ROOT the default sender runs bun chief-route.ts reply <chat> (got: $(cat "$CASE/bun.log"))"; fi
 
 # --- 7c. a hung MERGE_BLOCK_ALERT_CMD is bounded ---------------
 # The seam runs under the same bound as the bun send, so a sender that never
@@ -179,27 +179,27 @@ run_watch_alert() {
         merge_watch_alert "$@" 2>>"$c/err"
     )
 }
-console_case() { mkdir -p "$1/bridge/consoles"; : > "$1/bridge/consoles/$2.md"; }
+chief_case() { mkdir -p "$1/bridge/consoles"; : > "$1/bridge/consoles/$2.md"; }
 
-# --- 8. post-GO console-leg red (MERGE_WATCH_POST_GO=1, set by
-#        merge-on-green) -> NO operator DM, one console-inbox line (row a) ----
+# --- 8. post-GO chief-worker red (MERGE_WATCH_POST_GO=1, set by
+#        merge-on-green) -> NO operator DM, one chief-inbox line (row a) ----
 new_case c8
-console_case "$CASE" opsdesk
+chief_case "$CASE" opsdesk
 MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests"
 rc=$?
 eq "8: returns 0" 0 "$rc"
 eq "8: no operator DM" 0 "$(count "$CASE/alerts.log")"
-eq "8: exactly one console-inbox line" 1 "$(count "$CASE/bridge/consoles/opsdesk.md")"
-if grep -q '\[merge-watch octo/demo#42\] MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests' "$CASE/bridge/consoles/opsdesk.md"; then pass; else fail "8: console line carries the merge-watch tag and text (got: $(cat "$CASE/bridge/consoles/opsdesk.md" 2>/dev/null))"; fi
+eq "8: exactly one chief-inbox line" 1 "$(count "$CASE/bridge/consoles/opsdesk.md")"
+if grep -q '\[merge-watch octo/demo#42\] MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests' "$CASE/bridge/consoles/opsdesk.md"; then pass; else fail "8: chief line carries the merge-watch tag and text (got: $(cat "$CASE/bridge/consoles/opsdesk.md" 2>/dev/null))"; fi
 
 # --- 9. merge_block_alert (a refused merge) still DMs the operator even in a
-#        console-leg context -- merge-on-green.sh/pr-merge.sh call this
+#        chief-worker context -- merge-on-green.sh/pr-merge.sh call this
 #        directly, unchanged, so a genuine merge refusal always pages (row b)
 new_case c9
 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "gh pr merge refused"
-eq "9: merge_block_alert ignores console context, DMs the operator" 1 "$(count "$CASE/alerts.log")"
+eq "9: merge_block_alert ignores chief context, DMs the operator" 1 "$(count "$CASE/alerts.log")"
 
-# --- 10. no console resolvable -> check-ci red still DMs the operator (row c,
+# --- 10. no chief resolvable -> check-ci red still DMs the operator (row c,
 #          today's behaviour) -----------------------------------------------
 new_case c10
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_NAME
@@ -208,19 +208,19 @@ eq "10a: HIMMEL_CONSOLE_LEG unset -> operator DM" 1 "$(count "$CASE/alerts.log")
 new_case c10b
 unset HIMMEL_CONSOLE_NAME
 MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests"
-eq "10b: console-leg but no HIMMEL_CONSOLE_NAME -> operator DM" 1 "$(count "$CASE/alerts.log")"
+eq "10b: chief-worker but no HIMMEL_CONSOLE_NAME -> operator DM" 1 "$(count "$CASE/alerts.log")"
 new_case c10c
 MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=ghost run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests"
-eq "10c: console name set but its inbox was never armed -> operator DM" 1 "$(count "$CASE/alerts.log")"
+eq "10c: chief name set but its inbox was never armed -> operator DM" 1 "$(count "$CASE/alerts.log")"
 eq "10c: the never-armed inbox is NOT created (HIMMEL-3440)" "absent" "$([ -e "$CASE/bridge/consoles/ghost.md" ] && echo present || echo absent)"
 
 # --- 11. dedupe holds for the watch channel, independent of the operator
 #          channel (row d) ---------------------------------------------------
 new_case c11
-console_case "$CASE" opsdesk
+chief_case "$CASE" opsdesk
 MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "rule"
 MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "rule again"
-eq "11: repeated watch alerts for the same (repo,PR,head) -> ONE console line" 1 "$(count "$CASE/bridge/consoles/opsdesk.md")"
+eq "11: repeated watch alerts for the same (repo,PR,head) -> ONE chief line" 1 "$(count "$CASE/bridge/consoles/opsdesk.md")"
 eq "11: still no operator DM" 0 "$(count "$CASE/alerts.log")"
 # a prior watch alert must not suppress a later genuine merge-refusal DM for
 # the SAME (repo, PR, head) -- separate sentinel domains.
@@ -235,15 +235,15 @@ eq "11: a later merge_block_alert for the same head still DMs (separate sentinel
 #          (6 bytes shorter) still fits -- a real, not simulated, create
 #          failure that is not "already exists" ------------------------------
 new_case c12
-console_case "$CASE" opsdesk
+chief_case "$CASE" opsdesk
 LONGHEAD=$(printf '%235s' '' | tr ' ' 'a')
 MERGE_WATCH_POST_GO=1 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 "$LONGHEAD" "rule"
 eq "12: watch-sentinel name-too-long falls back to operator DM" 1 "$(count "$CASE/alerts.log")"
-eq "12: no console-inbox line" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
+eq "12: no chief-inbox line" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
 
 # --- 13. _mba_append_if_exists: O_CREAT-free append -- appends
 #          to a file that already exists, and never creates one that doesn't
-#          (the primitive behind _mba_route_console; the previous separate
+#          (the primitive behind _mba_route_chief; the previous separate
 #          `[ -f ]` check followed by `>>` had a TOCTOU window where a file
 #          deleted between the two was silently recreated by the append) -----
 new_case c13
@@ -275,9 +275,9 @@ rc2=$?
 eq "13: a missing file returns nonzero" 1 "$rc2"
 eq "13: a missing file is NOT created" "absent" "$([ -e "$f2" ] && echo present || echo absent)"
 
-# --- 14. HIMMEL_TEST_FIXTURE=1 with no bridge root named -> the console route
+# --- 14. HIMMEL_TEST_FIXTURE=1 with no bridge root named -> the chief route
 #         refuses the DEFAULT $HOME inbox (test-check-ci.sh once wrote
-#         fixture lines into the live console inbox). Case 8 is the control.
+#         fixture lines into the live chief inbox). Case 8 is the control.
 new_case c14
 mkdir -p "$CASE/home/.claude/handover/bridge/consoles"
 : > "$CASE/home/.claude/handover/bridge/consoles/opsdesk.md"
@@ -291,20 +291,20 @@ mkdir -p "$CASE/home/.claude/handover/bridge/consoles"
 )
 rc=$?
 eq "14: returns 0" 0 "$rc"
-eq "14: the default-path console inbox gains no line" 0 "$(count "$CASE/home/.claude/handover/bridge/consoles/opsdesk.md")"
+eq "14: the default-path chief inbox gains no line" 0 "$(count "$CASE/home/.claude/handover/bridge/consoles/opsdesk.md")"
 eq "14: no operator DM" 0 "$(count "$CASE/alerts.log")"
 
-# --- 15. a PRE-GO console-leg red (no MERGE_WATCH_POST_GO) never
-#         reaches the console inbox or the operator: the leg owns it, it has
+# --- 15. a PRE-GO chief-worker red (no MERGE_WATCH_POST_GO) never
+#         reaches the chief inbox or the operator: the worker owns it, it has
 #         the exit code. Case 8 is the control (same call, post-GO).
 new_case c15
-console_case "$CASE" opsdesk
+chief_case "$CASE" opsdesk
 HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=opsdesk run_watch_alert "$CASE" octo/demo 42 aaaaaaaaaaaa "required check(s) FAILED: tests"
 rc=$?
 eq "15: returns 0" 0 "$rc"
-eq "15: no console-inbox line pre-GO" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
+eq "15: no chief-inbox line pre-GO" 0 "$(count "$CASE/bridge/consoles/opsdesk.md")"
 eq "15: no operator DM pre-GO" 0 "$(count "$CASE/alerts.log")"
-if grep -q 'MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests' "$CASE/err"; then pass; else fail "15: the MERGE-BLOCKED line still prints on stderr for the leg"; fi
+if grep -q 'MERGE-BLOCKED octo/demo#42 @aaaaaaaaaaaa: required check(s) FAILED: tests' "$CASE/err"; then pass; else fail "15: the MERGE-BLOCKED line still prints on stderr for the worker"; fi
 
 echo
 echo "merge-block-alert: $PASS passed, $FAIL failed"

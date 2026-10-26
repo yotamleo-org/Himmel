@@ -62,9 +62,9 @@ deny "clear-review-marker piped to tail" \
      'bash scripts/cr/clear-review-marker.sh x | tail -20'
 deny "a scripts/*/test-*.sh suite piped to head with 2>&1" \
      'bash scripts/handover/test-merge-on-green.sh 2>&1 | head -50'
-# The leg-12 incident verbatim — the shape a bolded, worked-example brief failed
+# The worker-12 incident verbatim — the shape a bolded, worked-example brief failed
 # to prevent, which is why this hook exists.
-deny "run-shell-tests piped to tail (the leg-12 incident)" \
+deny "run-shell-tests piped to tail (the worker-12 incident)" \
      'bash scripts/ci/run-shell-tests.sh scripts/handover 2>&1 | tail -80'
 deny "check-ci piped to tail" 'bash scripts/check-ci.sh | tail'
 deny "merge-on-green piped to head" 'bash scripts/handover/merge-on-green.sh | head -5'
@@ -1063,7 +1063,7 @@ fi
 # --- additionalDirectories guard ------------------------------
 # The operator hand-authored permissions.additionalDirectories in the primary
 # checkout's settings.json to close outside-cwd Read/Grep/Glob prompts that
-# hang an unattended overnight leg (docs/handover/overnight-mode.md). Pin the
+# hang an unattended overnight worker (docs/handover/overnight-mode.md). Pin the
 # four entries exactly; SKIP (not fail) mirrors the wiring-contract block
 # above — settings.json is a PRIVATE_PATH absent on public-mirror checkouts.
 if [ ! -f "$SETTINGS" ]; then

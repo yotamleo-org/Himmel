@@ -135,7 +135,7 @@ check_both "72c (( x = y << z )) ALLOWS (same shift-by-name shape, arithmetic CO
 # (backtick nested inside $(...)) and introduced a new false DENY on the
 # fleet's own `git commit -m "$(cat <<'EOF' … EOF)"` / `gh pr create --body`
 # idiom whenever the message has an apostrophe, a lone `(` or a `"`. 3622
-# goes back to To Do for its own leg; rows 74a-74g below pin that this PR
+# goes back to To Do for its own worker; rows 74a-74g below pin that this PR
 # does not regress that idiom (ALLOW, ground-truthed against the real
 # interpreter in a scratch worktree).
 

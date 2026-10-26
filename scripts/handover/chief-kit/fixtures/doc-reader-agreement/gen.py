@@ -14,7 +14,7 @@ expect.tsv, one row per doc:
   leg     <file> <label> <tail marker or ?> <pr or ->
 
 The reference parser (ref_console, ref_leg) reads the written TEXT, from the
-grammar in docs/handover/leg-preface.md and scripts/lib/leg-tail-status.sh's
+grammar in docs/handover/leg-preface.md and scripts/lib/worker-tail-status.sh's
 header, never from a reader's code. gen also keeps what each generated doc was
 BUILT to mean (intent_*) and refuses to emit a doc the reference parser reads
 differently, so a drifting reference fails here and not as a reader disagreement.

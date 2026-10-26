@@ -47,7 +47,7 @@ Graph-extraction data egress is fenced by `scripts/guardrails/egress-matrix.json
 - [docs/architecture.md](docs/architecture.md) — the enforcement, handover, fleet and observability diagrams.
 - [docs/handover/afk-mode.md](docs/handover/afk-mode.md) — unattended end-to-end execution of a scoped ticket.
 - [docs/commands-catalog.md](docs/commands-catalog.md) · [docs/tooling-catalog.md](docs/tooling-catalog.md) — the slash commands, and every tool/script/plugin in use.
-- [docs/ui.md](docs/ui.md) — the UI surfaces: the `himmelctl ui` config console (needs bun), the console board (`board.mjs`), the roadmap tracker (`tracker.py`).
+- [docs/ui.md](docs/ui.md) — the UI surfaces: the `himmelctl ui` config chief (needs bun), the chief board (`board.mjs`), the roadmap tracker (`tracker.py`).
 - [docs/setup/new-machine.md](docs/setup/new-machine.md) — fresh-machine setup and the contributor path.
 - [.env.example](.env.example) — every operator flag, grouped by how it reaches code.
 - [marketplace/plugins/handover/README.md](marketplace/plugins/handover/README.md) — cross-session handover state.

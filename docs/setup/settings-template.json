@@ -134,10 +134,10 @@
       "neededBy": "/luna-ingest and the luna clip pipeline. The pipeline does NOT need it enabled here: scripts/luna/pipeline-cadence.sh force-enables it per run via a settings fragment (HIMMEL-1036), which is why it is safe on this tier."
     },
     "telegram-himmel@himmel": {
-      "neededBy": "The telegram MCP behind /telegram-clip and the Telegram connector legs. Disabling the plugin is what disables that MCP."
+      "neededBy": "The telegram MCP behind /telegram-clip and the Telegram connector workers. Disabling the plugin is what disables that MCP."
     },
     "himmel-bus@himmel": {
-      "neededBy": "The himmel-bus skill and MCP server (send/read) for the leg-bus and console lane profiles (HIMMEL-4830). Opt-in is per profile via mcpServers; installed but disabled by default."
+      "neededBy": "The himmel-bus skill and MCP server (send/read) for the worker-bus and chief lane profiles (HIMMEL-4830). Opt-in is per profile via mcpServers; installed but disabled by default."
     },
     "humanizer@himmel": {
       "neededBy": "/humanizer, the opt-in rewrite pass for AI-sounding prose. Installed but disabled by default; enable with /profile enable humanizer@himmel."

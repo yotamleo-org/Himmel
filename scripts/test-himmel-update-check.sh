@@ -719,7 +719,7 @@ esac
 
 # ─── Test 23: an uninspectable repo must NOT be pulled ────────
 # is_dirty_tracked() returning "clean" on a `git status` it could not even run
-# would let the pull gate below wave a repo it never actually inspected
+# would let the pull gate below parallel wave a repo it never actually inspected
 # through to `git pull --ff-only` — the exact silent-mix-in failure the dirty
 # guard exists to prevent. A PATH-stub intercepts ONLY the is_dirty_tracked
 # call shape (`status --porcelain --untracked-files=no`) and fails it; every

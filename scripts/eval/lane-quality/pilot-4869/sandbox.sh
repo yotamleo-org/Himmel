@@ -30,7 +30,7 @@
 #                                          config, no key, no network, the eval kit read-only
 #   sandbox.sh launch <row-env> <args...>  run the lane launcher in the jail with its tunnel
 # The row's <row>.sandbox wrapper (written by `pilot.sh prepare`) calls
-# `launch`; headed-arm-leg.sh reaches it through HEADED_ARM_WORKER_<LANE>_BIN.
+# `launch`; headed-arm-worker.sh reaches it through HEADED_ARM_WORKER_<LANE>_BIN.
 # Test seam: PILOT_SANDBOX_TUNNEL_TARGET replaces the host side of the tunnel.
 set -u
 die() { echo "pilot-sandbox: $*" >&2; exit 1; }
@@ -213,7 +213,7 @@ done
 # The environment: only the terminal basics and the harness and lane families
 # reach the jail, minus anything credential-shaped except the lane key itself
 # (and not even that in the acceptor jail). Names go in the argv, never values.
-KEEP='^(PATH|HOME|USER|LOGNAME|SHELL|TERM|COLORTERM|LANG|LANGUAGE|LC_[A-Z]+|TZ|NO_COLOR|FORCE_COLOR|(HIMMEL|LEG|HANDOVER|CLAUDE|ANTHROPIC|CODEX|DEEPSEEK|HEADED_ARM_LEG|LUNA_VAULT)[A-Z0-9_]*)$'
+KEEP='^(PATH|HOME|USER|LOGNAME|SHELL|TERM|COLORTERM|LANG|LANGUAGE|LC_[A-Z]+|TZ|NO_COLOR|FORCE_COLOR|(HIMMEL|WORKER|HANDOVER|CLAUDE|ANTHROPIC|CODEX|DEEPSEEK|HEADED_ARM_WORKER|LUNA_VAULT)[A-Z0-9_]*)$'
 SECRET='TOKEN|SECRET|PASSW|CREDENTIAL|COOKIE|API_KEY|AUTH'
 while IFS= read -r v; do
   [ "$mode" != check ] && [ "$v" = "$KEY" ] && continue

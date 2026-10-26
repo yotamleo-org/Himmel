@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# bucket-gitleaks.sh — Leg-side pre-check of a handover-bucket file
+# bucket-gitleaks.sh — Worker-side pre-check of a handover-bucket file
 # BEFORE it is written/committed: the luna vault's pre-commit runs gitleaks, and
 # a generic-api-key false positive on prose stalls the vault's auto-commit for
 # every session until someone notices. Usage:
@@ -10,7 +10,7 @@
 # else the vault's .gitleaks.toml (vault-status.sh --path), else the vault
 # template's (templates/luna-second-brain/.gitleaks.toml), else gitleaks' defaults.
 # On a FINDING reword the prose (break the key=value shape) and re-run.
-# bash 3.2-safe; no .ps1 twin (the console kit is Linux-only).
+# bash 3.2-safe; no .ps1 twin (the chief kit is Linux-only).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cfg=""

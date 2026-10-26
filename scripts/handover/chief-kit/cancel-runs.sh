@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/cancel-runs.sh - console-run CI queue drain
-# A console's own `gh run cancel` loop is refused by the auto-mode classifier
-# (Interfere With Workloads); this named verb is the console's gated way to drain
+# scripts/handover/chief-kit/cancel-runs.sh - chief-run CI queue drain
+# A chief's own `gh run cancel` loop is refused by the auto-mode classifier
+# (Interfere With Workloads); this named verb is the chief's gated way to drain
 # the hosted queue on an operator order.
 #
 # Usage:
@@ -12,7 +12,7 @@
 # `origin` remote's and is not overridable; --repo is accepted only when it
 # equals origin. Only a github.com origin (https, ssh://, scp-style) is accepted;
 # an ssh-config alias or an ssh.github.com:443 origin refuses (fail closed).
-# Refuses (exit 3) in a console-spawned leg or a console relay,
+# Refuses (exit 3) in a chief-spawned worker or a chief relay,
 # the same predicate go.sh uses.
 #
 # Cancels every non-completed Actions run whose head sha is not on the keep-list.
@@ -37,7 +37,7 @@
 # Exit codes: 0 done; 1 gh failure, unresolvable keep, a failed cancel, a listing
 # that hit the cap, or the cancel cap reached (cancelled what it could; re-run);
 # 2 usage, a non-integer CANCEL_RUNS_FAKE_CLOCK, or a pacing state file that
-# cannot be written; 3 refused as a leg or relay.
+# cannot be written; 3 refused as a worker or relay.
 #
 # Literal `gh` only (no variable command name) so guard-pr-check-literal can
 # verify the bytes. Linux/macOS bash 3.2+ (gh + jq).
@@ -50,22 +50,22 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 git_env_scrub   # not a git hook - safe to scrub GIT_INDEX_FILE too
 
 # Same shared predicate go.sh and merge-on-green.sh enforce with. Fail closed: a
-# broken or missing lib must never be read as "not a leg".
-unset -f console_leg 2>/dev/null || true
+# broken or missing lib must never be read as "not a worker".
+unset -f chief_worker 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
-if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1; then
-    echo "cancel-runs: cannot load scripts/lib/go-gate.sh - refusing (the console-leg marker check must fail closed, not silently no-op)" >&2
+if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1; then
+    echo "cancel-runs: cannot load scripts/lib/go-gate.sh - refusing (the chief-worker marker check must fail closed, not silently no-op)" >&2
     exit 1
 fi
-if console_leg; then
-    echo "cancel-runs: refusing - this is a console-spawned leg (HIMMEL_CONSOLE_LEG is set); only the console drains CI. Send the request to your console." >&2
+if chief_worker; then
+    echo "cancel-runs: refusing - this is a chief-spawned worker (HIMMEL_CONSOLE_LEG is set); only the chief drains CI. Send the request to your chief." >&2
     exit 3
 fi
 case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
     ''|0|false|off|no) ;;
     *)
-        echo "cancel-runs: refusing - this is a console relay (HIMMEL_CONSOLE_RELAY is set); only the console drains CI. Escalate to your console." >&2
+        echo "cancel-runs: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); only the chief drains CI. Escalate to your chief." >&2
         exit 3 ;;
 esac
 

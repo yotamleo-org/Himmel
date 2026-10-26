@@ -5,10 +5,10 @@
 # "make sure this is STRUCTURAL otherwise it won't work". arm-resume.sh's
 # --model passthrough is opt-in, so an unpinned arm relaunches
 # on the operator's default model (Fable) — expensive, and wrong outside the
-# judgment lane. This suite exercises the guard: an unpinned non-console arm
-# now defaults to opus; an explicit Fable-family --model on a non-console arm
-# is refused (rc=20) unless paired with --fable-ok; a *-console.md handover
-# (ruling 25 — a console arm may pin Fable) is exempt from both.
+# judgment lane. This suite exercises the guard: an unpinned non-chief arm
+# now defaults to opus; an explicit Fable-family --model on a non-chief arm
+# is refused (rc=20) unless paired with --fable-ok; a *-chief.md handover
+# (ruling 25 — a chief arm may pin Fable) is exempt from both.
 #
 # Uses --dry-run throughout so no real scheduler job is ever created. Harness
 # shields, helpers, and the scheduler stub are copied from
@@ -157,8 +157,8 @@ future_time() {
 }
 
 # make_handover [basename] — writes a minimal valid handover file. Default
-# basename is randomized (non-console); pass an explicit basename ending in
-# -console.md (any case) to fabricate a console arm.
+# basename is randomized (non-chief); pass an explicit basename ending in
+# -chief.md (any case) to fabricate a chief arm.
 make_handover() {
     local base="${1:-handover-$RANDOM.md}"
     local path="$HANDOVER_DIR/$base"
@@ -237,13 +237,13 @@ run_arm() {
 }
 
 # ---------------------------------------------------------------------------
-# (a) unpinned NON-console arm -> defaults to opus, no fable token.
+# (a) unpinned NON-chief arm -> defaults to opus, no fable token.
 # ---------------------------------------------------------------------------
 HO_A=$(make_handover)
 out=$(run_arm --time "$(future_time)" --handover "$HO_A" --dry-run 2>&1)
 rc=$?
-assert_rc "a: unpinned non-console arm exits 0" 0 "$rc"
-assert_contains "a: guard line reports opus default" "arm-resume: model=opus (no --model given; non-console arms default to opus -- ruling 30)" "$out"
+assert_rc "a: unpinned non-chief arm exits 0" 0 "$rc"
+assert_contains "a: guard line reports opus default" "arm-resume: model=opus (no --model given; non-chief arms default to opus -- ruling 30)" "$out"
 # this suite's PATH-stubbed `at` (SCHED_STUB, above) is found on
 # this Linux station, so schedule_arm renders the model passthrough via the
 # POSIX `at`-heredoc branch (arm-resume.sh's `linux)` case, ~5140-5152), NOT
@@ -261,7 +261,7 @@ assert_model_flag "a: relaunch command carries --model opus" opus "$out"
 assert_not_contains "a: relaunch command carries no fable token" 'fable' "$out"
 
 # ---------------------------------------------------------------------------
-# (b) Fable-family --model on a non-console arm, no --fable-ok -> rc=20,
+# (b) Fable-family --model on a non-chief arm, no --fable-ok -> rc=20,
 #     refused before anything is armed. Two sub-cases prove FAMILY match
 #     (substring), not a literal string: "claude-fable-5" and bare "fable".
 # ---------------------------------------------------------------------------
@@ -309,16 +309,16 @@ assert_rc "c2: --fable-ok= spelling exits 0" 0 "$rc"
 assert_model_flag "c2: relaunch command carries the fable model" fable "$out"
 
 # ---------------------------------------------------------------------------
-# (d) *-console.md handover: unpinned -> NO --model flag at all (operator
-#     default stands; arm-resume itself names no model -- unlike console.sh /
+# (d) *-chief.md handover: unpinned -> NO --model flag at all (operator
+#     default stands; arm-resume itself names no model -- unlike chief.sh /
 #     headed-arm.sh, whose own default is Opus since #836).
 #     Fable-pinned + no --fable-ok -> exempt, rc=0 (ruling 25).
 # ---------------------------------------------------------------------------
-HO_D1=$(make_handover "arm-guard-console.md")
+HO_D1=$(make_handover "arm-guard-chief.md")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D1" --dry-run 2>&1)
 rc=$?
-assert_rc "d1: unpinned console arm exits 0" 0 "$rc"
-assert_contains "d1: guard line reports operator default kept" "arm-resume: model=<operator default> (console arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable)" "$out"
+assert_rc "d1: unpinned chief arm exits 0" 0 "$rc"
+assert_contains "d1: guard line reports operator default kept" "arm-resume: model=<operator default> (chief arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable)" "$out"
 # Negative control for the bare/unquoted rendering above (see case a's
 # comment): with MODEL unset, q_model is never built at all, so NO spelling
 # of --model appears here -- this proves the case-a/c/c2/d2/e1/e2 assertions
@@ -332,26 +332,26 @@ assert_contains "d1: guard line reports operator default kept" "arm-resume: mode
 # false-positive.
 assert_not_matches "d1: relaunch command carries no --model flag" '(^|[[:space:]])--model([[:space:]=]|$)' "$out"
 
-HO_D2=$(make_handover "arm-guard-CONSOLE.MD")
+HO_D2=$(make_handover "arm-guard-CHIEF.MD")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D2" --model claude-fable-5 --dry-run 2>&1)
 rc=$?
-assert_rc "d2: console arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
-assert_contains "d2: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; console arm -- ruling 25, exempt)" "$out"
+assert_rc "d2: chief arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
+assert_contains "d2: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; chief arm -- ruling 25, exempt)" "$out"
 # bare/unquoted POSIX %q rendering -- see case (a) above.
 assert_model_flag "d2: relaunch command carries the fable model" claude-fable-5 "$out"
 
-# A *-chief.md handover is a console arm too: unpinned keeps the operator
+# A *-chief.md handover is a chief arm too: unpinned keeps the operator
 # default, a Fable pin is exempt.
 HO_D3=$(make_handover "arm-guard-chief.md")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D3" --dry-run 2>&1)
 rc=$?
 assert_rc "d3: unpinned chief arm exits 0" 0 "$rc"
-assert_contains "d3: guard line reports operator default kept" "arm-resume: model=<operator default> (console arm, unpinned" "$out"
+assert_contains "d3: guard line reports operator default kept" "arm-resume: model=<operator default> (chief arm, unpinned" "$out"
 HO_D4=$(make_handover "arm-guard-chief.md")
 out=$(run_arm --time "$(future_time)" --handover "$HO_D4" --model claude-fable-5 --dry-run 2>&1)
 rc=$?
 assert_rc "d4: chief arm with fable pin, no --fable-ok, is exempt" 0 "$rc"
-assert_contains "d4: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; console arm -- ruling 25, exempt)" "$out"
+assert_contains "d4: guard line names the ruling-25 exemption" "arm-resume: model=claude-fable-5 (fable pinned; chief arm -- ruling 25, exempt)" "$out"
 
 # ---------------------------------------------------------------------------
 # (e) unregressed existing behavior.

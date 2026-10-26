@@ -1032,7 +1032,7 @@ echo "$outSK4d" | jq -e '.actual == "degraded"' >/dev/null \
 
 # (e) RED: an EXTRA enabled plugin beyond the recorded set, which IS
 # installed, must stay present — the template is a floor, not an exact
-# match (console ruling) — and must be named in the detail.
+# match (chief ruling) — and must be named in the detail.
 sk4_home_e="$work/sk4-home-e"
 write_sk4_ledger "$sk4_home_e" "$sk4_target_w" "$sk4_cache_foo_w" "baz@qux" "$sk4_cache_baz_w"
 outSK4e=$(run_sk4 "$sk4_home_e" "$sk4_target_w" '{"enabledPlugins":{"foo@bar":true,"baz@qux":true}}')
@@ -4643,7 +4643,7 @@ echo "ok: cadence-coherence — enabled:false with a scheduler task surviving re
 rm -f "$cc_sched_state/tasks/HIMMEL-Pipeline-Harvest"
 
 # ── the CR round-10 finding itself: RED then GREEN ──────────────────────────
-# A generated runner file for the harvest leg exists on disk, but the (fake)
+# A generated runner file for the harvest worker exists on disk, but the (fake)
 # scheduler has NOTHING registered for it. Before this fix, this exact shape
 # read present (the false green); it must now read a genuine fail.
 : > "$cc_bat/pipeline-harvest.bat"
@@ -4961,7 +4961,7 @@ rm -f "$phi_tildebs_home/.config/claude-glm/phi-roots"
 # ── engine-allowlist — status item S4 ───────────────────
 # Exercised against the REAL repo + the REAL cadence-approve-engines.sh
 # script (never a copied literal), only PIPELINE_BAT_DIR is faked — proving
-# the real manifest's `legs[].requiredSuffixes` genuinely stay covered by the
+# the real manifest's `workers[].requiredSuffixes` genuinely stay covered by the
 # real hook's live ENGINE_LIST (a drift here is a real bug, not a fixture
 # artifact). The MISSING-suffix (fail) case below uses a deliberately
 # fabricated item descriptor (never the real one) naming a suffix the real
@@ -4977,14 +4977,14 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outEAnone" | jq -e '.actual == "absent" and .cleanAbsence == true' >/dev/null \
-  || fail "engine-allowlist: no known leg armed should read absent, cleanAbsence:true (got: $outEAnone)"
-echo "ok: engine-allowlist — no luna cadence leg with a known engine requirement armed reads absent, cleanAbsence:true"
+  || fail "engine-allowlist: no known worker armed should read absent, cleanAbsence:true (got: $outEAnone)"
+echo "ok: engine-allowlist — no luna cadence worker with a known engine requirement armed reads absent, cleanAbsence:true"
 
 # armedPipelineSchedules (probes.js) keys the runner-file
 # extension on `ctx.platform || process.platform` — `.bat` on win32, `.sh`
 # everywhere else — and this ctx never sets ctx.platform, so it resolves
 # against the REAL host running the suite. A `.bat`-only fixture reads
-# "no leg armed" (a false cleanAbsence) on any non-Windows host. Creating
+# "no worker armed" (a false cleanAbsence) on any non-Windows host. Creating
 # both extensions makes the case host-independent, same as this suite's
 # other cross-platform fixtures.
 : > "$ea_bat/pipeline-health.bat"
@@ -4998,7 +4998,7 @@ console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outEAok" | jq -e '.actual == "present"' >/dev/null \
   || fail "engine-allowlist: health armed, its real required suffix present in the live allow-list, should read present (got: $outEAok)"
-echo "ok: engine-allowlist — an armed leg whose required engine(s) ARE present in the real cadence-approve-engines.sh allow-list reads present"
+echo "ok: engine-allowlist — an armed worker whose required engine(s) ARE present in the real cadence-approve-engines.sh allow-list reads present"
 
 outEAmissing=$(PIPELINE_BAT_DIR="$(winpath "$ea_bat")" "$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
@@ -5013,10 +5013,10 @@ const ctx = { repoRoot: '$repo_root_w', targetPath: '$repo_root_w', scope: 'user
 console.log(JSON.stringify(require('$probes_lib_w').runProbe(item, ctx)));
 ")
 echo "$outEAmissing" | jq -e '.actual == "absent" and (.cleanAbsence // false) == false' >/dev/null \
-  || fail "engine-allowlist: an armed leg missing its required suffix from the live allow-list should read absent, a genuine fail (got: $outEAmissing)"
+  || fail "engine-allowlist: an armed worker missing its required suffix from the live allow-list should read absent, a genuine fail (got: $outEAmissing)"
 echo "$outEAmissing" | jq -e '.detail | contains("health") and contains("no/such/engine-script-exists.py")' >/dev/null \
-  || fail "engine-allowlist: missing-suffix detail should name the leg + the missing suffix (got: $outEAmissing)"
-echo "ok: engine-allowlist — an armed leg missing a required engine from the live allow-list reads absent (the silent-04:00-stall class), never cleanAbsence"
+  || fail "engine-allowlist: missing-suffix detail should name the worker + the missing suffix (got: $outEAmissing)"
+echo "ok: engine-allowlist — an armed worker missing a required engine from the live allow-list reads absent (the silent-04:00-stall class), never cleanAbsence"
 rm -f "$ea_bat"/*.bat "$ea_bat"/*.sh
 
 # ── bridge-health — status item S5 ──────────────────────

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # Smoke suite for scripts/hooks/guard-worker-wakeup.sh: a
-# console-spawned leg (HIMMEL_CONSOLE_LEG=1, set by headed-arm-leg.sh) calling
-# ScheduleWakeup is denied — each self-scheduled wake re-reads the leg's whole
-# context to find "not yet". Covers: marker+tool -> deny with a `leg wakeup-deny:`
+# chief-spawned worker (HIMMEL_CONSOLE_LEG=1, set by headed-arm-worker.sh) calling
+# ScheduleWakeup is denied — each self-scheduled wake re-reads the worker's whole
+# context to find "not yet". Covers: marker+tool -> deny with a `worker wakeup-deny:`
 # reason, marker unset / not "1" -> allow with ZERO output (context cost 0 for a
-# non-leg), marker+other tool -> allow with zero output, malformed/empty stdin ->
+# non-worker), marker+other tool -> allow with zero output, malformed/empty stdin ->
 # allow (fail-open; a hook crash must never lock an operator out). The old
-# path guard-leg-wakeup.sh forwards here and denies the same; HIMMEL_WORKER=1
-# alone is not the leg marker.
+# path guard-worker-wakeup.sh forwards here and denies the same; HIMMEL_WORKER=1
+# alone is not the worker marker.
 #
 # HIMMEL_CONSOLE_LEG is set/unset explicitly per case (this suite itself is
-# usually run from inside a leg, which already exports it): every case runs under
+# usually run from inside a worker, which already exports it): every case runs under
 # `env -u HIMMEL_CONSOLE_LEG` first, so an inherited marker never leaks in.
 #
 # bash 3.2-safe. Platform guard (gitbash-only): plain env var + jq checks, no
@@ -57,8 +57,8 @@ check "marker + ScheduleWakeup -> deny" block "$WAKE" HIMMEL_CONSOLE_LEG=1
 out="$(env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_LEG=1 bash "$HOOK" <<< "$WAKE" 2>/dev/null)"
 reason="$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // empty' 2>/dev/null)"
 case "$reason" in
-    "leg wakeup-deny: "*) ok "stdout JSON reason starts with 'leg wakeup-deny: '" ;;
-    *) bad "stdout JSON reason not 'leg wakeup-deny: ...' - got: $out" ;;
+    "worker wakeup-deny: "*) ok "stdout JSON reason starts with 'worker wakeup-deny: '" ;;
+    *) bad "stdout JSON reason not 'worker wakeup-deny: ...' - got: $out" ;;
 esac
 case "$reason" in
     *"check-ci.sh <pr> --max-wait"*) ok "reason names the foreground replacement" ;;
@@ -69,8 +69,8 @@ if [ "$decision" = "deny" ]; then ok "permissionDecision is deny"; else
     bad "permissionDecision not deny - got: $decision"; fi
 err="$(env -u HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_LEG=1 bash "$HOOK" <<< "$WAKE" 2>&1 >/dev/null)"
 case "$err" in
-    "leg wakeup-deny: "*) ok "stderr carries the same deny text" ;;
-    *) bad "stderr not 'leg wakeup-deny: ...' - got: $err" ;;
+    "worker wakeup-deny: "*) ok "stderr carries the same deny text" ;;
+    *) bad "stderr not 'worker wakeup-deny: ...' - got: $err" ;;
 esac
 
 echo "== marker unset / not 1 -> allow, zero output (context cost 0) =="
@@ -97,12 +97,12 @@ check "marker + malformed JSON -> allow" allow '{not json' HIMMEL_CONSOLE_LEG=1
 check "marker + empty stdin -> allow" allow '' HIMMEL_CONSOLE_LEG=1
 silent "marker + malformed JSON -> no output" '{not json' HIMMEL_CONSOLE_LEG=1
 
-echo "== HIMMEL_WORKER=1 is not the leg marker =="
+echo "== HIMMEL_WORKER=1 is not the worker marker =="
 check "HIMMEL_WORKER=1 alone + ScheduleWakeup -> allow" allow "$WAKE" HIMMEL_WORKER=1
 silent "HIMMEL_WORKER=1 alone + ScheduleWakeup -> no output" "$WAKE" HIMMEL_WORKER=1
 
 echo "== the old path forwards to this hook =="
-HOOK="$HOOKS/guard-leg-wakeup.sh"
+HOOK="$HOOKS/guard-worker-wakeup.sh"
 check "old path: marker + ScheduleWakeup -> deny" block "$WAKE" HIMMEL_CONSOLE_LEG=1
 silent "old path: no marker + ScheduleWakeup -> no output" "$WAKE"
 

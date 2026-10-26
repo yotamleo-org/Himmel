@@ -185,6 +185,11 @@
 # verdict line keeps the real status readable in any captured output.
 set -uo pipefail
 
+# shellcheck source=scripts/lib/env-alias.sh
+. "$(cd "$(dirname "$0")" && pwd)/lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
+
 usage() {
     cat >&2 <<'EOF'
 usage: check-ci.sh [<pr-number|branch|url>] [--grace <sec>] [--settle <sec>] [--max-wait <sec>] [--threads-only]
@@ -222,7 +227,7 @@ env: CR_PROFILE=none skips reading CodeRabbit's status + body findings entirely 
      CHECK_CI_MAX_WAIT sets --max-wait's default (default 900 seconds, 0 = unbounded; HIMMEL-2062, raised in HIMMEL-2907)
      CHECK_CI_DISTINCT_DEADLINE=1 makes a DEADLINE-PENDING verdict exit 7 instead of 2 (HIMMEL-4136)
      CHECK_CI_WATCH_INTERVAL / CHECK_CI_PROBE_INTERVAL set the watch poll (default 30 s) and the early-stop probe (default 60 s)
-       cadence — the GitHub GraphQL budget is shared by every leg on the box (HIMMEL-3190)
+       cadence — the GitHub GraphQL budget is shared by every worker on the box (HIMMEL-3190)
      GraphQL budget exhausted: check-ci sleeps until X-Ratelimit-Reset (bounded by --max-wait) instead of failing; exit
        codes keep their meaning (a reset beyond what is left of --max-wait is exit 2). GH_BUDGET_PREFLIGHT=0 skips the one preflight call.
 note: "armed" above means CodeRabbit's status + body findings are read at the head — DISARMED by default. On a
@@ -251,7 +256,7 @@ SETTLE="${CHECK_CI_SETTLE:-30}"
 # 12m16s-12m45s, over the prior 540s default.
 MAX_WAIT="${CHECK_CI_MAX_WAIT:-900}"
 POLL="${CHECK_CI_POLL_INTERVAL:-10}"
-# The GraphQL budget (5000/h) is shared by every leg on the box and
+# The GraphQL budget (5000/h) is shared by every worker on the box and
 # ~7 watchers each spending ~30 calls/min ran it dry twice in three hours. Both
 # cadences are per-watcher GraphQL spend, so they are knobs — defaults chosen so
 # a watcher costs ~6 calls/min: gh's own poll (3 setup + 1 status per poll) every
@@ -707,7 +712,7 @@ _status_only() {
     printf '%s' "$hit"
 }
 
-# _job_log_hint — the pre-READY red is the LEG's to fix, so name each
+# _job_log_hint — the pre-READY red is the WORKER's to fix, so name each
 # failed GitHub Actions job's log command the moment a red is known (job id from
 # the check's link; `gh run view --log-failed` refuses until the whole run ends).
 # Best effort: an unreadable read or a non-Actions link (an external status)
@@ -1288,7 +1293,7 @@ if [ "$THREADS_ONLY" -eq 0 ]; then
     # Best-effort: the funnel warns and exits 0 on any Jira failure, each call
     # is bounded by a fixed 30s timeout and skipped when no timeout binary
     # exists, and the verdict exit code is unchanged. WORKER_SESSION_JIRA_STATUS=0 opts out.
-    if [ "${WORKER_SESSION_JIRA_STATUS:-${LEG_JIRA_STATUS:-1}}" != "0" ]; then
+    if [ "${WORKER_SESSION_JIRA_STATUS:-1}" != "0" ]; then
         # shellcheck source=scripts/lib/ticket-status.sh
         # shellcheck disable=SC1091
         . "$(dirname "$0")/lib/ticket-status.sh"

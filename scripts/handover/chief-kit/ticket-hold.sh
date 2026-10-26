@@ -16,7 +16,7 @@
 # Every outcome appends one row to status-events.jsonl (event hold | hold-release).
 #
 # ponytail: the Jira calls run unbounded, upgrade path = the re-exec under a
-# timeout that leg-jira-status.sh uses.
+# timeout that worker-jira-status.sh uses.
 #
 # Platform guard: POSIX bash 3.2+, no .ps1 twin by design (shell-only harness).
 set -u

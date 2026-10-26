@@ -201,9 +201,9 @@ EOF
     if [ "${#_ld_secret[@]}" -gt 0 ]; then
         local _ld_got _ld_rest=()
         if [ -n "$_ld_root" ]; then
-            _ld_got=$("$_ld_resolver" get --no-dotenv --root "$_ld_root" "${_ld_secret[@]}")
+            _ld_got=$("$_ld_resolver" get --no-dotenv --root "$_ld_root" "${_ld_secret[@]}") || _ld_got=""
         else
-            _ld_got=$("$_ld_resolver" get --no-dotenv "${_ld_secret[@]}")
+            _ld_got=$("$_ld_resolver" get --no-dotenv "${_ld_secret[@]}") || _ld_got=""
         fi
         while IFS= read -r _ld_line; do
             [ -n "$_ld_line" ] || continue

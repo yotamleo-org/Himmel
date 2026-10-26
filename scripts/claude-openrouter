@@ -81,6 +81,10 @@ CONFIG_DIR="${HOME}/.claude-openrouter"   # per-lane isolation (own seeded confi
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HERE/.." && pwd)"   # launcher lives in <repo>/scripts -> repo root (himmel-code corpus)
+# shellcheck source=lib/env-alias.sh
+. "$HERE/lib/env-alias.sh"
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env WORKER_SESSION_LANE LEG_LANE
 # shellcheck source=lib/load-dotenv.sh
 # Sourcing only DEFINES load_dotenv(); it must be CALLED with the key name.
 # --root pins the .env to the LAUNCHER's repo (himmel), not the CWD repo —
@@ -296,13 +300,13 @@ SEED_LOCK_TIMEOUT="${CLAUDE_LANE_SEED_LOCK_TIMEOUT:-60}"
 # shellcheck disable=SC2034 # State consumed by the sourced mirror-seed library.
 SEED_LOCK_STALE="${CLAUDE_LANE_SEED_LOCK_STALE:-120}"
 
-seed_leg_trust() {
+seed_worker_trust() {
   # The dispatch authorizes only this launcher's primary checkout, not an
   # arbitrary inherited cwd. The existing seed lock serializes this update.
   # shellcheck source=lib/git-clean.sh
   . "$HERE/lib/git-clean.sh"
   or_common="$(git_clean -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
-    || seed_fail "resolve the primary checkout for leg trust"
+    || seed_fail "resolve the primary checkout for worker trust"
   or_primary="$(dirname "$or_common")"
   node -e '
 const fs=require("fs"), p=process.argv[1], root=process.argv[2];
@@ -320,15 +324,15 @@ try {
   const temp=p+".tmp."+process.pid;
   fs.writeFileSync(temp,JSON.stringify(j,null,2)+"\n",{mode:0o600});
   fs.renameSync(temp,p);
-} catch(e) { console.error("claude-openrouter: leg onboarding seed failed: "+e.message); process.exit(4); }
-' "$CONFIG_DIR/.claude.json" "$or_primary" || seed_fail "seed leg onboarding and primary-root trust"
+} catch(e) { console.error("claude-openrouter: worker onboarding seed failed: "+e.message); process.exit(4); }
+' "$CONFIG_DIR/.claude.json" "$or_primary" || seed_fail "seed worker onboarding and primary-root trust"
 }
 
 seed_after_mirror() {
-  [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" != openrouter ] || seed_leg_trust
+  [ "${WORKER_SESSION_LANE:-}" != openrouter ] || seed_worker_trust
 }
 
-if [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" = openrouter ] || [ ! -f "$CONFIG_DIR/.seeded" ] || [ "$RESEED" -eq 1 ] || config_seed_stale; then
+if [ "${WORKER_SESSION_LANE:-}" = openrouter ] || [ ! -f "$CONFIG_DIR/.seeded" ] || [ "$RESEED" -eq 1 ] || config_seed_stale; then
   seed_with_lock
 fi
 
@@ -416,7 +420,7 @@ export ANTHROPIC_BASE_URL="$OPENROUTER_ANTHROPIC_BASE_URL"
 export ANTHROPIC_AUTH_TOKEN="$OPENROUTER_API_KEY"
 export ANTHROPIC_API_KEY=""
 export ANTHROPIC_MODEL="$OPENROUTER_MODEL"
-if [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" = openrouter ]; then
+if [ "${WORKER_SESSION_LANE:-}" = openrouter ]; then
   # Use an alias only when it resolves to the exact session pin.
   case "$OPENROUTER_MODEL" in
     anthropic/claude-sonnet-*) [ "$OPENROUTER_MODEL" != "$OPENROUTER_SONNET" ] || export ANTHROPIC_MODEL=sonnet ;;
@@ -455,7 +459,7 @@ export CLAUDE_CODE_AUTO_MODE_SERVER=0
 if [ -z "${CLAUDE_CODE_EXTRA_BODY:-}" ]; then
   export CLAUDE_CODE_EXTRA_BODY='{"thinking":{"type":"enabled","budget_tokens":2048}}'
 fi
-if [ "${WORKER_SESSION_LANE:-${LEG_LANE:-}}" = openrouter ]; then
+if [ "${WORKER_SESSION_LANE:-}" = openrouter ]; then
   echo "claude-openrouter: lane=openrouter slug=$OPENROUTER_MODEL alias=$ANTHROPIC_MODEL labels=$or_label" >&2
 fi
 export CLAUDE_CODE_AUTO_COMPACT_WINDOW="$OPENROUTER_CONTEXT_WINDOW"

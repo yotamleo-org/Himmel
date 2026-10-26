@@ -5,7 +5,7 @@
 # both available under git bash unchanged; the ledger it reads is a plain
 # JSONL file.
 #
-# Adapted from the baseline Appendix B (ledger-metrics.sh, leg
+# Adapted from the baseline Appendix B (ledger-metrics.sh, worker
 # N207, 2026-09-12): per merged branch in the window, crit/imp/sug findings
 # and rounds (distinct heads with any finding/attempt row) off the primary
 # ledger. Read-only. The baseline read a pre-fetched "$S/merged.json"; this
@@ -37,7 +37,7 @@ LEDGER="${SCORECARD_LEDGER:-$HOME/Documents/github/himmel/.git/cr-critic-scores.
 [ -f "$LEDGER" ] || { echo "ledger-metrics: no ledger at $LEDGER" >&2; exit 2; }
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as
-# leg-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
+# worker-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
 to_epoch() {
     date -d "$1" +%s 2>/dev/null && return 0
     date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$(printf '%s' "$1" | sed 's/\.[0-9]*Z$/Z/')" +%s 2>/dev/null

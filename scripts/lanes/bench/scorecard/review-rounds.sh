@@ -14,7 +14,7 @@
 #
 # ponytail: the counter lives on the station that ran the reviews, so a PR
 # reviewed from another checkout reads as unmeasured here; upgrade path is a
-# rounds= field on the PR's leg-burn line once leg-burn.sh owns the count.
+# rounds= field on the PR's worker-burn line once worker-burn.sh owns the count.
 # ponytail: the counter is keyed by branch name, so a cr-reset undercounts and
 # a reused branch name can read the earlier branch's count; upgrade path is the
 # same per-PR rounds= field.

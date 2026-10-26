@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # test-fleet.sh — Hermetic tests for fleet.mjs, the local fleet status
 # UI (`--serve` page + `--json` / `--out` snapshot). Every external source is a
-# fixture or a stub: the console doc, leg docs and launch logs are files under a
+# fixture or a stub: the chief doc, worker docs and launch logs are files under a
 # temp handover root; /proc is a fixture tree (FLEET_PROC); queue-lock.sh,
 # bank-preflight.sh, gh and `claude agents --json` are stubs (FLEET_QUEUE_LOCK /
 # FLEET_BANK / FLEET_GH / FLEET_AGENTS). The
-# suite reads no live queue, process table or GitHub state. Leg identity is the REAL
-# scripts/lib/leg-identity.sh.
+# suite reads no live queue, process table or GitHub state. Worker identity is the REAL
+# scripts/lib/worker-identity.sh.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only (fleet.mjs
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (fleet.mjs
 # reads /proc and the konsole/launch logs); this suite exercises a kit script.
 # shellcheck disable=SC2016  # the fixture bullets carry literal backticks, not expansions
 set -uo pipefail
@@ -45,12 +45,12 @@ JS
 q() { node "$W/q.mjs" "$1"; }
 
 # ------------------------------------------------------------------ fixtures
-# Leg docs. Each carries a nonce and a lock token in its own text: neither may
+# Worker docs. Each carries a nonce and a lock token in its own text: neither may
 # ever reach an output.
 mkleg() {  # mkleg <stem> <model> <results-bullets...>
     local stem="$1" model="$2"; shift 2
     {
-        printf '# %s — leg (%s, native)\n\n> Your RETASK token is `%s`.\n\n## Results (newest at the bottom)\n\n' "$stem" "$model" "Z-${stem%%-2026*}-abcdef12"
+        printf '# %s — worker (%s, native)\n\n> Your RETASK token is `%s`.\n\n## Results (newest at the bottom)\n\n' "$stem" "$model" "Z-${stem%%-2026*}-abcdef12"
         for b in "$@"; do printf '%s\n' "$b"; done
     } > "$B/$stem-RESUME.md"
 }
@@ -58,7 +58,7 @@ mkleg HIMMEL-9001-N1-alpha-2026-09-22 claude-opus-5 \
     '- 10:00 LIVE — started, release-token `cachyos-x8664-pid7001`' \
     '- 10:30 LIVE — building, nonce `Z-N1-a1a1a1a1` is secret'
 mkleg HIMMEL-9002-N2-beta-2026-09-22 claude-sonnet-5 \
-    '- 10:10 LIVE — headless leg working'
+    '- 10:10 LIVE — headless worker working'
 mkleg HIMMEL-9003-N3-gamma-2026-09-22 claude-opus-5 \
     '- 10:20 LIVE — working on it'
 mkleg HIMMEL-9004-N4-delta-2026-09-22 claude-opus-5 \
@@ -74,27 +74,27 @@ mkleg HIMMEL-9007-N7-eta-2026-09-22 claude-opus-5 \
     '- 11:00 WRAPPED — merged, lock released'
 mkleg HIMMEL-9008-N8-theta-2026-09-22 claude-opus-5 \
     '- 10:25 LIVE — lock was lost'
-# N9 is not in the console's Live state, but holds a lock: it must still get a row.
+# N9 is not in the chief's Live state, but holds a lock: it must still get a row.
 mkleg HIMMEL-9009-N9-iota-2026-09-22 claude-opus-5 \
-    '- 10:26 LIVE — unlisted leg'
-# N10 is a background-mode leg the daemon runs: its process comm is the version string, its
+    '- 10:26 LIVE — unlisted worker'
+# N10 is a background-mode worker the daemon runs: its process comm is the version string, its
 # Live-state pid is the (dead) launcher wrapper, and no launch log exists. Only the
 # `claude agents --json` row identifies it.
 mkleg HIMMEL-9010-N10-kappa-2026-09-22 claude-sonnet-5 \
-    '- 10:27 LIVE — background leg via the daemon'  # t13b-ok: literal fixture text for a mocked leg row, not real automation
+    '- 10:27 LIVE — background worker via the daemon'  # t13b-ok: literal fixture text for a mocked worker row, not real automation
 # N11 is unlisted (not in Live state) and held only by the sweep, with no launch log
 # and a lock session that carries no pid: the ONLY pid source is a FINISHED bg agents
 # row whose pid (1011) happens to alias a live /proc entry — a stale/reused pid must
 # not resurrect it.
 mkleg HIMMEL-9011-N11-mu-2026-09-22 claude-sonnet-5 \
-    '- 10:28 LIVE — unlisted, bg-finished'  # t13b-ok: literal fixture text for a mocked leg row, not real automation
+    '- 10:28 LIVE — unlisted, bg-finished'  # t13b-ok: literal fixture text for a mocked worker row, not real automation
 # N13 is unlisted, held only by the sweep, with a launch log whose pid= line lands
 # past the first 8192 bytes.
 mkleg HIMMEL-9013-N13-nu-2026-09-22 claude-sonnet-5 \
-    '- 10:29 LIVE — unlisted, pid past 8192 bytes'  # t13b-ok: literal fixture text for a mocked leg row, not real automation
+    '- 10:29 LIVE — unlisted, pid past 8192 bytes'  # t13b-ok: literal fixture text for a mocked worker row, not real automation
 
-cat > "$B/HIMMEL-nextleg-2026-09-22Z-console.md" <<'DOC'
-# console
+cat > "$B/HIMMEL-nextleg-2026-09-22Z-chief.md" <<'DOC'
+# chief
 
 ## Live state
 
@@ -122,7 +122,7 @@ mkproc() {  # mkproc <pid> <startticks> <argv...>
     printf '%s (my (proc)) S 1 1 1 0 -1 0 0 0 0 0 0 0 0 0 20 0 1 0 %s 0 0\n' "$pid" "$start" > "$W/proc/$pid/stat"
 }
 printf '5000.00 4000.00\n' > "$W/proc/uptime"
-mkproc 1001 100000 konsole --separate -p tabtitle=HIMMEL-9001-N1-alpha -e env leg-claude --model 'claude-opus-5[1m]'
+mkproc 1001 100000 konsole --separate -p tabtitle=HIMMEL-9001-N1-alpha -e env worker-claude --model 'claude-opus-5[1m]'
 mkproc 1002 480000 claude --bg -n HIMMEL-9002-N2-beta --model claude-sonnet-5
 mkproc 1004 490000 konsole -e claude
 mkproc 1005 490000 konsole -e claude
@@ -169,7 +169,7 @@ case "$*" in
         echo "slug=${p}-9010-N10-kappa-2026-09-22-RESUME session=cachyos-x8664-pid7010 host=h age=12s status=OK"
         echo "slug=${p}-9011-N11-mu-2026-09-22-RESUME session=host-nopid host=h age=15s status=OK"
         echo "slug=${p}-9013-N13-nu-2026-09-22-RESUME session=host-nopid host=h age=15s status=OK"
-        echo "slug=${p}-nextleg-2026-09-22Z-console session=cachyos-x8664-pid7100 host=h age=5s status=OK"
+        echo "slug=${p}-nextleg-2026-09-22Z-chief session=cachyos-x8664-pid7100 host=h age=5s status=OK"
         ;;
     *) exit 2 ;;
 esac
@@ -177,7 +177,7 @@ STUB
 cat > "$W/bin/bank" <<'STUB'
 #!/usr/bin/env bash
 echo "bank-preflight: FLEET native=10 claudex=0 reserved=0 total=10/15" >&2
-echo "bank-preflight: leg=unknown five_hour=28.0 seven_day=61.0 extra_usage=n/a age=7s codex=?"
+echo "bank-preflight: worker=unknown five_hour=28.0 seven_day=61.0 extra_usage=n/a age=7s codex=?"
 echo PROCEED
 STUB
 cat > "$W/bin/gh" <<'STUB'
@@ -222,7 +222,7 @@ run() {  # run <args...> — the SUT under the full stub environment
         FLEET_PROC="$W/proc" GH_OPEN="$W/open.json" HANDOVER_DIR="$ROOT" \
         node "$SUT" "$@"
 }
-DOC="$B/HIMMEL-nextleg-2026-09-22Z-console.md"
+DOC="$B/HIMMEL-nextleg-2026-09-22Z-chief.md"
 COMMON=(--doc "$DOC" --logs "$LOGS" --handover-root "$ROOT")
 
 # ------------------------------------------------------------------ RED marker
@@ -239,7 +239,7 @@ run --serve --out "$W/x.html" "${COMMON[@]}" >/dev/null 2>&1; eq "--serve with -
 
 # ------------------------------------------------------------------ snapshot
 J="$(run --json "${COMMON[@]}" 2>"$W/err")"
-eq "snapshot is valid JSON with 12 leg rows (9 listed + 3 unlisted held)" "$(printf '%s' "$J" | q 's.legs.length')" "12"
+eq "snapshot is valid JSON with 12 worker rows (9 listed + 3 unlisted held)" "$(printf '%s' "$J" | q 's.legs.length')" "12"
 eq "fleet is 10/15" "$(printf '%s' "$J" | q 's.fleet.live+"/"+s.fleet.cap')" "10/15"
 eq "bank 5h/7d" "$(printf '%s' "$J" | q 's.bank.fiveHour+"/"+s.bank.sevenDay')" "28.0/61.0"
 eq "headed leg: mode" "$(printf '%s' "$J" | q 'L("N1").mode')" "headed"
@@ -259,23 +259,23 @@ eq "an ACTION_REQUIRED check is not green" "$(printf '%s' "$J" | q 'L("N3").pr.n
 eq "READY leg: PR from the READY bullet, CI green" "$(printf '%s' "$J" | q 'L("N6").pr.number+":"+L("N6").pr.ci')" "2001:green"
 eq "WRAPPED leg: lock state WRAPPED" "$(printf '%s' "$J" | q 'L("N7").lock.state')" "WRAPPED"
 eq "lost lock: FREE" "$(printf '%s' "$J" | q 'L("N8").lock.state')" "FREE"
-eq "unlisted held leg gets a row" "$(printf '%s' "$J" | q 'L("N9").listed')" "false"
+eq "unlisted held worker gets a row" "$(printf '%s' "$J" | q 'L("N9").listed')" "false"
 eq "idle-held lock still reads FRESH, flagged idle" "$(printf '%s' "$J" | q 'L("N4").lock.state+":"+L("N4").lock.idle')" "FRESH:true"
 eq "agents source: bg row makes N10 headless (no launch log, comm is a version string)" "$(printf '%s' "$J" | q 'L("N10").mode')" "headless"
 eq "agents source: the bg row's pid beats the dead launcher pid in Live state" "$(printf '%s' "$J" | q 'L("N10").pid+":"+L("N10").alive')" "1010:true"
 eq "agents source: N10 uptime from /proc (5000s up - start 3000s)" "$(printf '%s' "$J" | q 'L("N10").uptimeSec')" "2000"
 eq "agents source: the bg state is carried" "$(printf '%s' "$J" | q 'L("N10").agent.kind+":"+L("N10").agent.state')" "background:running"
-eq "agents source: an interactive row does not turn a konsole leg headless" "$(printf '%s' "$J" | q 'L("N1").mode+":"+L("N1").pid')" "headed:1001"
+eq "agents source: an interactive row does not turn a konsole worker headless" "$(printf '%s' "$J" | q 'L("N1").mode+":"+L("N1").pid')" "headed:1001"
 eq "agents source: a finished bg row does not overrule the launcher pid" "$(printf '%s' "$J" | q 'L("N7").pid')" "1007"
-eq "agents source: a finished bg row leaves a konsole leg headed" "$(printf '%s' "$J" | q 'L("N7").mode')" "headed"
+eq "agents source: a finished bg row leaves a konsole worker headed" "$(printf '%s' "$J" | q 'L("N7").mode')" "headed"
 printf '%s\n' '[{"id":"g","kind":"background","startedAt":1790000000000,"name":"HIMMEL-9003-N3-gamma","state":"running"}]' > "$W/agents-nopid.json"
 J5="$(AG_JSON="$W/agents-nopid.json" run --json "${COMMON[@]}" 2>/dev/null)"
 eq "agents source: a running bg row with no pid is alive by its state (no proc-dead)" "$(printf '%s' "$J5" | q 'L("N3").mode+":"+L("N3").alive+":"+L("N3").attention.length')" "headless:true:0"
 eq "agents source: healthy headless N10 needs nothing" "$(printf '%s' "$J" | q 'L("N10").attention.length')" "0"
 eq "agents source available: no agents warning" "$(printf '%s' "$J" | q 's.warnings.some(w=>/agents/.test(w))')" "false"
-eq "HIMMEL-3412(a): a finished bg row's stale/reused pid does not resurrect the leg" "$(printf '%s' "$J" | q 'L("N11").alive')" "false"
+eq "HIMMEL-3412(a): a finished bg row's stale/reused pid does not resurrect the worker" "$(printf '%s' "$J" | q 'L("N11").alive')" "false"
 eq "HIMMEL-3412(c): a launch-log pid= past byte 8192 is still read from the tail" "$(printf '%s' "$J" | q 'L("N13").pid')" "1013"
-eq "HIMMEL-3412(c): that tail-read pid makes the leg alive" "$(printf '%s' "$J" | q 'L("N13").alive')" "true"
+eq "HIMMEL-3412(c): that tail-read pid makes the worker alive" "$(printf '%s' "$J" | q 'L("N13").alive')" "true"
 
 # ------------------------------------------------------------------ attention
 att() { printf '%s' "$J" | q "L(\"$1\").attention.map(a=>a.code).join(',')"; }
@@ -321,7 +321,7 @@ done
 
 # ------------------------------------------------------------------ readSweep rc contract
 # A sweep that dies with an rc other than 0/20 is not a complete sweep, even if it
-# printed some slug= rows before it died: legs go UNKNOWN, not a partial trust.
+# printed some slug= rows before it died: workers go UNKNOWN, not a partial trust.
 cat > "$W/bin/queue-lock-partial" <<'STUB'
 #!/usr/bin/env bash
 case "$*" in
@@ -338,7 +338,7 @@ chmod +x "$W/bin/queue-lock-partial"
 J6="$(FLEET_QUEUE_LOCK="$W/bin/queue-lock-partial" run --json "${COMMON[@]}" 2>/dev/null)"
 eq "sweep rc=1 with partial rows: sweep unavailable warning" "$(printf '%s' "$J6" | q 's.warnings.some(w=>/queue-lock sweep unavailable/.test(w))')" "true"
 eq "sweep rc=1 with partial rows: N1 lock falls back to UNKNOWN, not the partial row" "$(printf '%s' "$J6" | q 'L("N1").lock.state')" "UNKNOWN"
-eq "sweep rc=1: unlisted-held legs (need the sweep to be found) drop out" "$(printf '%s' "$J6" | q 's.legs.length')" "9"
+eq "sweep rc=1: unlisted-held workers (need the sweep to be found) drop out" "$(printf '%s' "$J6" | q 's.legs.length')" "9"
 
 # rc=20 (a flagged lock) is a COMPLETE sweep, not a failure.
 cat > "$W/bin/queue-lock-flagged" <<'STUB'
@@ -357,7 +357,7 @@ case "$*" in
         echo "slug=${p}-9010-N10-kappa-2026-09-22-RESUME session=cachyos-x8664-pid7010 host=h age=12s status=OK"
         echo "slug=${p}-9011-N11-mu-2026-09-22-RESUME session=host-nopid host=h age=15s status=OK"
         echo "slug=${p}-9013-N13-nu-2026-09-22-RESUME session=host-nopid host=h age=15s status=OK"
-        echo "slug=${p}-nextleg-2026-09-22Z-console session=cachyos-x8664-pid7100 host=h age=5s status=OK"
+        echo "slug=${p}-nextleg-2026-09-22Z-chief session=cachyos-x8664-pid7100 host=h age=5s status=OK"
         exit 20
         ;;
     *) exit 2 ;;

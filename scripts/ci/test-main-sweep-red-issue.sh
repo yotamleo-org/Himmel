@@ -275,13 +275,13 @@ else
   ok "SKIP cron-anchor case (jq not installed)"
 fi
 
-# 15. The nightly is also swept now: its windows legs (continue-on-error by
+# 15. The nightly is also swept now: its windows workers (continue-on-error by
 # design) and the schedule-only guard-corpus-full job are not main's health.
 newcase nightly-only-jobs
 printf 'failure%sshell-unit (windows-latest)\nfailure%sbun-suites (windows-latest)\nfailure%sguard-corpus-full\nsuccess%sshell-unit (ubuntu-latest)\n' "$tab" "$tab" "$tab" "$tab" > "$STUB/jobs.tsv"
 sweep
 if [ "$rc" -eq 0 ]; then ok "nightly-only reds exit 0"; else bad "nightly-only reds exit=$rc; out: $out"; fi
-hasnt "gh issue create" "$log" "a red windows leg / guard-corpus-full opens no main-red issue"
+hasnt "gh issue create" "$log" "a red windows worker / guard-corpus-full opens no main-red issue"
 
 # 16. The nightly (any `(windows-latest` job, or a
 # non-skipped guard-corpus-full) runs the tier=all shell-unit, whose extended-only
@@ -622,7 +622,7 @@ printf 'failure%slint (dispatch verify)\n' "$tab" > "$STUB/jobs.tsv"
 sweep
 has "failed: lint (dispatch verify)" "$out" "a non-aggregate job named '(dispatch verify)' is not rewritten"
 
-# ... and the aggregate's OS survives the normalisation on a non-ubuntu leg.
+# ... and the aggregate's OS survives the normalisation on a non-ubuntu worker.
 newcase dispatch-aggregate-macos-kept
 printf 'failure%sshell-unit (dispatch verify) (macos-latest)\n' "$tab" > "$STUB/jobs.tsv"
 sweep

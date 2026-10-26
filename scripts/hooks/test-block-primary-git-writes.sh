@@ -3,7 +3,7 @@
 # a git command that rewrites the PRIMARY checkout's working tree, index,
 # HEAD, refs or config — aimed at it via -C, --git-dir/--work-tree,
 # GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE env, or a `cd` earlier in the command —
-# is denied; read-only git and the console's wrap-flow `pull --ff-only` /
+# is denied; read-only git and the chief's wrap-flow `pull --ff-only` /
 # `fetch` on the primary keep working. Platform guard: Git Bash on Windows /
 # any POSIX bash 3.2+.
 #
@@ -48,7 +48,7 @@ mkrepo() {  # mkrepo <dir> <branch>
 
 P="$FIX/primary"                 # the PRIMARY checkout, on main
 mkrepo "$P" main
-W="$FIX/wt"                      # a leg's linked worktree off it
+W="$FIX/wt"                      # a worker's linked worktree off it
 git -C "$P" worktree add -q -b feat/x "$W" >/dev/null 2>&1
 mkdir -p "$W/sub"
 S="$FIX/swrepo"                  # a single-writer repo on main
@@ -126,15 +126,15 @@ allow_direct() {
     if [ "$got" = allow ]; then ok "$1 [direct]"; else bad "$1 [direct] — expected allow got $got"; fi
 }
 
-echo "== DENY: the ticket's shapes, from a leg worktree cwd =="
-deny "checkout <leg-branch> -- <file>"      "$W" "git -C $P checkout feat/x -- README.md"
+echo "== DENY: the ticket's shapes, from a worker worktree cwd =="
+deny "checkout <worker-branch> -- <file>"      "$W" "git -C $P checkout feat/x -- README.md"
 deny "restore --source"                     "$W" "git -C $P restore --source=HEAD~1 README.md"
 deny "checkout <sha>"                       "$W" "git -C $P checkout 0123abc"
-deny "merge <leg>"                          "$W" "git -C $P merge feat/x"
-deny "pull . <leg>"                         "$W" "git -C $P pull . feat/x"
+deny "merge <worker>"                          "$W" "git -C $P merge feat/x"
+deny "pull . <worker>"                         "$W" "git -C $P pull . feat/x"
 deny "read-tree -u -m"                      "$W" "git -C $P read-tree -u -m HEAD"
 deny "--git-dir/--work-tree = primary"      "$W" "git --git-dir=$P/.git --work-tree=$P checkout feat/x -- README.md"
-deny "--work-tree = primary (repo = leg)"   "$W" "git --work-tree=$P checkout feat/x -- README.md"
+deny "--work-tree = primary (repo = worker)"   "$W" "git --work-tree=$P checkout feat/x -- README.md"
 deny "--work-tree <p> two-token form"       "$W" "git --work-tree $P checkout feat/x -- README.md"
 deny "cd <primary> && git checkout <sha>"   "$W" "cd $P && git checkout 0123abc"
 
@@ -159,7 +159,7 @@ done
 
 deny_any "git -C <primary> commit -m x"   "$W" "git -C $P commit -m x"
 
-echo "== DENY: ref/config writes that would poison the console's own pull =="
+echo "== DENY: ref/config writes that would poison the chief's own pull =="
 deny "branch --set-upstream-to"             "$W" "git -C $P branch --set-upstream-to=origin/feat/x main"
 deny "branch -u"                            "$W" "git -C $P branch -u origin/feat/x"
 deny "branch -f"                            "$W" "git -C $P branch -f other feat/x"
@@ -170,8 +170,8 @@ deny "remote add"                           "$W" "git -C $P remote add evil $W"
 deny_any "remote set-url"                     "$W" "git -C $P remote set-url origin $W"
 
 echo "== DENY: the carve-outs are shape-bounded =="
-deny "pull --ff-only . <leg>"               "$W" "git -C $P pull --ff-only . feat/x"
-deny "pull --ff-only origin <leg-branch>"   "$W" "git -C $P pull --ff-only origin feat/x"
+deny "pull --ff-only . <worker>"               "$W" "git -C $P pull --ff-only . feat/x"
+deny "pull --ff-only origin <worker-branch>"   "$W" "git -C $P pull --ff-only origin feat/x"
 deny "pull --ff-only <path> main"           "$W" "git -C $P pull --ff-only $W main"
 deny "pull --ff-only <url> main"            "$W" "git -C $P pull --ff-only https://example.invalid/r.git main"
 deny "pull (no --ff-only)"                  "$W" "git -C $P pull"
@@ -180,7 +180,7 @@ deny "pull --ff-only --rebase"              "$W" "git -C $P pull --ff-only --reb
 deny "pull --ff-only --autostash"           "$W" "git -C $P pull --ff-only --autostash"
 deny "fetch --update-head-ok"               "$W" "git -C $P fetch --update-head-ok origin main:main"
 deny "fetch -u"                             "$W" "git -C $P fetch -u origin main:main"
-deny "fetch . <leg>:main"                   "$W" "git -C $P fetch . feat/x:main"
+deny "fetch . <worker>:main"                   "$W" "git -C $P fetch . feat/x:main"
 deny "fetch <path>"                         "$W" "git -C $P fetch $W"
 deny "fetch <remote> <src>:<dst>"           "$W" "git -C $P fetch origin feat/x:refs/remotes/origin/main"
 deny "fetch --refmap"                       "$W" "git -C $P fetch origin --refmap=refs/heads/feat/x:refs/remotes/origin/main"
@@ -199,15 +199,15 @@ deny "GIT_WORK_TREE= prefix"                "$W" "GIT_WORK_TREE=$P git checkout 
 deny "GIT_DIR= prefix"                      "$W" "GIT_DIR=$P/.git git reset --hard"
 deny "env GIT_DIR="                         "$W" "env GIT_DIR=$P/.git git switch -c y"
 deny "env -C <primary>"                     "$W" "env -C $P git checkout 0123abc"
-deny "export leg GIT_DIR; env -u GIT_DIR"   "$W" "export GIT_DIR=$W/.git; env -u GIT_DIR git -C $P merge feat/x"
-deny "export leg GIT_DIR; env -uGIT_DIR"    "$W" "export GIT_DIR=$W/.git; env -uGIT_DIR git -C $P merge feat/x"
-deny "export leg GIT_DIR; env --unset="     "$W" "export GIT_DIR=$W/.git; env --unset=GIT_DIR git -C $P merge feat/x"
-deny "export leg GIT_DIR; env -i"           "$W" "export GIT_DIR=$W/.git; env -i git -C $P merge feat/x"
-deny "export leg GIT_DIR; env -"            "$W" "export GIT_DIR=$W/.git; env - git -C $P merge feat/x"
+deny "export worker GIT_DIR; env -u GIT_DIR"   "$W" "export GIT_DIR=$W/.git; env -u GIT_DIR git -C $P merge feat/x"
+deny "export worker GIT_DIR; env -uGIT_DIR"    "$W" "export GIT_DIR=$W/.git; env -uGIT_DIR git -C $P merge feat/x"
+deny "export worker GIT_DIR; env --unset="     "$W" "export GIT_DIR=$W/.git; env --unset=GIT_DIR git -C $P merge feat/x"
+deny "export worker GIT_DIR; env -i"           "$W" "export GIT_DIR=$W/.git; env -i git -C $P merge feat/x"
+deny "export worker GIT_DIR; env -"            "$W" "export GIT_DIR=$W/.git; env - git -C $P merge feat/x"
 deny "env -iC<primary> attached"            "$W" "env -iC$P git merge feat/x"
 deny "env -a name git (argv0 operand)"      "$W" "env -a foo git -C $P merge feat/x"
 deny_any "env -S 'git …' split string"      "$W" "env -S 'git -C $P merge feat/x'"
-allow "env -u GIT_DIR git in the leg"       "$W" "env -u GIT_DIR git -C $W merge feat/x"
+allow "env -u GIT_DIR git in the worker"       "$W" "env -u GIT_DIR git -C $W merge feat/x"
 
 # A config override can repoint the remote or refspec pull/fetch act on, so
 # it voids their carve-out.
@@ -309,7 +309,7 @@ allow_direct "push -c advice.*=false origin" "$W" "git -c advice.pushUpdateRejec
 # validated that the C1-a repoint+netop COMBO doesn't fire without a paired
 # push — it never claimed the sourced/fence lane's own, unrelated verdict).
 # now denies it too: adding ANY remote, even a harmless new name,
-# still writes the leg worktree's SHARED $GIT_COMMON_DIR/config, and the
+# still writes the worker worktree's SHARED $GIT_COMMON_DIR/config, and the
 # existing -C <primary> rows already deny `remote add` unconditionally — the
 # implicit-cwd form should not be a back door to the same write.
 deny_direct "remote add alone"              "$W" "git remote add up https://example.invalid/r.git"
@@ -333,7 +333,7 @@ deny "git \\-C <primary> checkout"          "$W" "git \\-C $P checkout feat/x --
 deny "git -C <primary> check\\out"          "$W" "git -C $P check\\out feat/x -- README.md"
 allow "git -C <primary> st\\atus"           "$W" "git -C $P st\\atus"
 
-echo "== ALLOW: the console's wrap-flow carve-out on the primary =="
+echo "== ALLOW: the chief's wrap-flow carve-out on the primary =="
 allow "pull --ff-only"                      "$P" "git -C $P pull --ff-only"
 allow "pull --ff-only origin"               "$W" "git -C $P pull --ff-only origin"
 allow "pull --ff-only origin main"          "$W" "git -C $P pull --ff-only origin main"
@@ -359,22 +359,22 @@ allow "cd <primary> && git status"          "$W" "cd $P && git status"
 allow "cd <primary> && git log"             "$W" "cd $P && git log -1"
 allow "cd <primary> && git -C <wt> checkout" "$W" "cd $P && git -C $W checkout feat/x -- README.md"
 
-echo "== ALLOW: leg-local git is unaffected =="
+echo "== ALLOW: worker-local git is unaffected =="
 # "config core.x y" used to be ALLOW here; a later guard moved it to the DENY
-# section below (an ordinary `git config` from a leg worktree always writes
+# section below (an ordinary `git config` from a worker worktree always writes
 # the shared config anyway — accepted cost, named in the ticket's proposed fix).
 for sub in "checkout feat/x -- README.md" "reset --hard HEAD" "merge main" "stash pop" "commit -m x" \
            "restore README.md" "rebase main" "pull --rebase" "co x"; do
-    allow "git $sub (cwd = leg worktree)" "$W" "git $sub"
+    allow "git $sub (cwd = worker worktree)" "$W" "git $sub"
 done
 allow "git -C <wt> checkout (cwd = primary)" "$P" "git -C $W checkout feat/x -- README.md"
 # A cd may not have run, so a write is also checked from the cwd it left: the
 # primary here. Deliberate over-deny, named in the hook.
 deny "cd <wt>/sub && git checkout (cwd = primary)" "$P" "cd $W/sub && git checkout feat/x -- README.md"
-deny "false && cd <leg>; git merge"         "$P" "false && cd $W; git merge feat/x"
-deny "cd <leg>; cd <leg>/sub; git merge"    "$P" "cd $W; cd sub; git merge feat/x"
-allow "cd <leg>/sub && git merge (cwd = leg)" "$W" "cd $W/sub && git merge feat/x"
-allow "cd <primary>; cd <leg>; git status"  "$W" "cd $P; cd $W; git status"
+deny "false && cd <worker>; git merge"         "$P" "false && cd $W; git merge feat/x"
+deny "cd <worker>; cd <worker>/sub; git merge"    "$P" "cd $W; cd sub; git merge feat/x"
+allow "cd <worker>/sub && git merge (cwd = worker)" "$W" "cd $W/sub && git merge feat/x"
+allow "cd <primary>; cd <worker>; git status"  "$W" "cd $P; cd $W; git status"
 
 # Ref-writing subcommands that used to sit on the read list.
 deny "reflog delete on the primary"         "$W" "git -C $P reflog delete refs/heads/main@{0}"
@@ -394,8 +394,8 @@ allow "GIT_WORK_TREE=<wt> git checkout"     "$W" "GIT_WORK_TREE=$W git checkout 
 allow "single-writer repo: checkout"        "$W" "git -C $S checkout 0123abc"
 allow "single-writer repo: cwd + merge"     "$S" "git merge x"
 
-echo "== DENY: HIMMEL-3407 — config/remote/branch-upstream/main-ref writes from a LEG'S OWN cwd (no -C) reach the primary's shared common dir =="
-# The gap this ticket names: the git arm judges the leg's own repo root, and a
+echo "== DENY: HIMMEL-3407 — config/remote/branch-upstream/main-ref writes from a WORKER'S OWN cwd (no -C) reach the primary's shared common dir =="
+# The gap this ticket names: the git arm judges the worker's own repo root, and a
 # feature worktree's own root allows — but git config/remote and the shared
 # refs/heads namespace live in $GIT_COMMON_DIR, which the worktree shares
 # with the primary. Every row below carries NO -C/--git-dir at all; the
@@ -447,7 +447,7 @@ deny "checkout -Bmain attached, no -C"      "$W" "git checkout -Bmain"
 echo "== DENY: HIMMEL-3407 adversarial review round 2 =="
 # N1 (bypass): a glued -f<path> is a real git invocation and was not
 # recognised as the file flag at all, so its value was never checked.
-# cwd is a NON-repo directory (/tmp), not the leg worktree: the glued form
+# cwd is a NON-repo directory (/tmp), not the worker worktree: the glued form
 # must be recognised and checked by ITS OWN resolved path regardless of cwd,
 # not fall through to the (here, repo-less and fail-open) common-owner check.
 deny "config -f<glued primary path>, cwd=/tmp" "/tmp" "git config -f$P/.git/config core.hooksPath /x"
@@ -492,7 +492,7 @@ allow "remote show origin, no -C"           "$W" "git remote show origin"
 echo "== ALLOW: HIMMEL-3407 adversarial review round 2 -- N4 false-deny fixes =="
 # N4 (false deny): -u/--set-upstream*/-f/-M/-C implicitly target the CURRENT
 # branch when no branch-name operand is given — in a linked worktree that is
-# always the leg's own feature branch (git refuses to check main out in two
+# always the worker's own feature branch (git refuses to check main out in two
 # worktrees at once), never main. Only an EXPLICIT main/master operand makes
 # any of these dangerous, matching update-ref/symbolic-ref's own scoping.
 allow "branch -u origin/other (implicit target, not main)" "$W" "git branch -u origin/other"
@@ -573,8 +573,8 @@ allow "branch -D main, no -C (git itself refuses; not modelled)" "$W" "git branc
 
 echo "== HIMMEL-4365: work-tree / index rewrites aimed at the primary, every spelling of the target =="
 # `restore --staged` writes only the primary's INDEX; it is denied like `add`
-# and `update-index` above (the console's next commit on the primary would
-# carry the leg's staging). HOME here is the fixture's $FIX/home, so
+# and `update-index` above (the chief's next commit on the primary would
+# carry the worker's staging). HOME here is the fixture's $FIX/home, so
 # ~/../primary and $HOME/../primary resolve to the fixture primary.
 for sub in "apply x.patch" "apply --index x.patch" "apply --3way x.patch" "apply -R x.patch" \
            "apply --cached x.patch" "reset --hard" "reset --hard origin/main" "reset --merge HEAD~1" \
@@ -644,7 +644,7 @@ deny "xargs -I{} git diff --output={}"           "$W" "xargs -I{} git diff --out
 # --output's SEPARATE operand picks the target too (codex-1).
 deny "xargs -I{} git -C <primary> diff --output {}" "$W" "printf x | xargs -I{} git -C $P diff --output {}"
 deny "xargs -i git -C <primary> log -p --output {}" "$W" "xargs -i git -C $P log -p --output {}"
-deny "xargs -I{} git diff --output {}, cwd=leg"  "$W" "printf x | xargs -I{} git diff --output {}"
+deny "xargs -I{} git diff --output {}, cwd=worker"  "$W" "printf x | xargs -I{} git diff --output {}"
 deny "xargs --replace=Q git show --output Q"      "$W" "xargs --replace=Q git show HEAD --output Q"
 deny "xargs -I{} git archive --output {}"         "$W" "xargs -I{} git archive --output {} HEAD"
 # Stdin words land among the subcommand's arguments: an
@@ -678,18 +678,18 @@ deny "xargs -I{} git log {} --end-of-options"     "$W" "xargs -I{} git log {} --
 allow "xargs -I{} git -C <primary> diff -- {}"    "$W" "xargs -I{} git -C $P diff -- {}"
 allow "xargs -I{} git merge-base --is-ancestor {} HEAD" "$W" "xargs -I{} git merge-base --is-ancestor {} HEAD"
 allow "xargs -I{} git -C <primary> ls-tree -r {}" "$W" "xargs -I{} git -C $P ls-tree -r {} --name-only"
-allow "git ls-files | xargs git status, cwd=leg"  "$W" "git ls-files | xargs git status"
-allow "xargs -n1 git checkout --, cwd=leg"        "$W" "git ls-files | xargs -n1 git checkout --"
-allow "xargs git add, cwd=leg"                    "$W" "xargs git add"
-allow "xargs -0 git add, cwd=leg"                 "$W" "xargs -0 git add"
-allow "xargs -a /tmp/f git rm, cwd=leg"           "$W" "xargs -a /tmp/f git rm"
-allow "xargs -I{} git commit, {} unused, cwd=leg" "$W" "echo x | xargs -I{} git commit -m msg"
-allow "xargs -I{} git add {} (pathspec), cwd=leg" "$W" "xargs -I{} git add {}"
+allow "git ls-files | xargs git status, cwd=worker"  "$W" "git ls-files | xargs git status"
+allow "xargs -n1 git checkout --, cwd=worker"        "$W" "git ls-files | xargs -n1 git checkout --"
+allow "xargs git add, cwd=worker"                    "$W" "xargs git add"
+allow "xargs -0 git add, cwd=worker"                 "$W" "xargs -0 git add"
+allow "xargs -a /tmp/f git rm, cwd=worker"           "$W" "xargs -a /tmp/f git rm"
+allow "xargs -I{} git commit, {} unused, cwd=worker" "$W" "echo x | xargs -I{} git commit -m msg"
+allow "xargs -I{} git add {} (pathspec), cwd=worker" "$W" "xargs -I{} git add {}"
 # archive/format-patch/bundle output operands are write targets.
-deny "git archive -o <primary>/x.tar, cwd=leg"    "$W" "git archive -o $P/x.tar HEAD"
-deny "git archive -o<primary>/x.tar, cwd=leg"     "$W" "git archive -o$P/x.tar HEAD"
+deny "git archive -o <primary>/x.tar, cwd=worker"    "$W" "git archive -o $P/x.tar HEAD"
+deny "git archive -o<primary>/x.tar, cwd=worker"     "$W" "git archive -o$P/x.tar HEAD"
 deny "git archive --output=<primary>/x.tar"       "$W" "git archive --output=$P/x.tar HEAD"
-deny "git format-patch -o <primary>/p, cwd=leg"   "$W" "git format-patch -1 -o $P/p"
+deny "git format-patch -o <primary>/p, cwd=worker"   "$W" "git format-patch -1 -o $P/p"
 deny "git format-patch --output-directory <primary>/p" "$W" "git format-patch -1 --output-directory $P/p"
 deny "git format-patch --output-directory=<primary>/p" "$W" "git format-patch -1 --output-directory=$P/p"
 deny "git format-patch -ko <primary>/p (bundled)" "$W" "git format-patch -1 -ko $P/p"
@@ -698,43 +698,43 @@ deny "git bundle create <primary>/x.bundle"       "$W" "git bundle create $P/x.b
 deny "git bundle create -q <primary>/x.bundle"    "$W" "git bundle create -q $P/x.bundle --all"
 deny "git bundle create -- <primary>/x.bundle"    "$W" "git bundle create -- $P/x.bundle HEAD"
 deny "git bundle create -q -- <primary>/x.bundle" "$W" "git bundle create -q -- $P/x.bundle HEAD"
-deny "git -C <leg> archive -o <primary>/x.tar, cwd=primary" "$P" "git -C $W archive -o $P/x.tar HEAD"
-deny "git -C <leg> format-patch -o <primary>/p"   "$W" "git -C $W format-patch -1 -o $P/p"
-deny "git -C <leg> bundle create <primary>/x"     "$P" "git -C $W bundle create $P/x.bundle HEAD"
+deny "git -C <worker> archive -o <primary>/x.tar, cwd=primary" "$P" "git -C $W archive -o $P/x.tar HEAD"
+deny "git -C <worker> format-patch -o <primary>/p"   "$W" "git -C $W format-patch -1 -o $P/p"
+deny "git -C <worker> bundle create <primary>/x"     "$P" "git -C $W bundle create $P/x.bundle HEAD"
 deny "git -C <primary> archive -o x.tar"          "$W" "git -C $P archive -o x.tar HEAD"
 deny "git -C <primary> format-patch -o p"         "$W" "git -C $P format-patch -1 -o p"
 deny "git -C <primary> bundle create x.bundle"    "$W" "git -C $P bundle create x.bundle HEAD"
 deny "xargs -I{} git archive -o {}"               "$W" "echo $P/x.tar | xargs -I{} git archive -o {} HEAD"
 deny "xargs -I{} git format-patch -o {}"          "$W" "echo $P/p | xargs -I{} git format-patch -1 -o {}"
 deny "xargs -I{} git bundle create {}"            "$W" "echo $P/x | xargs -I{} git bundle create {} HEAD"
-allow "git archive -o /tmp/x.tar, cwd=leg"        "$W" "git archive -o /tmp/x.tar HEAD"
-allow "git archive -o x.tar, cwd=leg"             "$W" "git archive -o x.tar HEAD"
-allow "git format-patch -o /tmp/p, cwd=leg"       "$W" "git format-patch -1 -o /tmp/p"
-allow "git format-patch --output-directory=out, cwd=leg" "$W" "git format-patch -1 --output-directory=out"
-allow "git format-patch --stdout, cwd=leg"        "$W" "git format-patch --stdout -1"
-allow "git bundle create /tmp/x.bundle, cwd=leg"  "$W" "git bundle create /tmp/x.bundle HEAD"
-allow "git bundle create x.bundle, cwd=leg"       "$W" "git bundle create x.bundle HEAD"
-allow "git bundle create -- /tmp/x.bundle, cwd=leg" "$W" "git bundle create -- /tmp/x.bundle HEAD"
+allow "git archive -o /tmp/x.tar, cwd=worker"        "$W" "git archive -o /tmp/x.tar HEAD"
+allow "git archive -o x.tar, cwd=worker"             "$W" "git archive -o x.tar HEAD"
+allow "git format-patch -o /tmp/p, cwd=worker"       "$W" "git format-patch -1 -o /tmp/p"
+allow "git format-patch --output-directory=out, cwd=worker" "$W" "git format-patch -1 --output-directory=out"
+allow "git format-patch --stdout, cwd=worker"        "$W" "git format-patch --stdout -1"
+allow "git bundle create /tmp/x.bundle, cwd=worker"  "$W" "git bundle create /tmp/x.bundle HEAD"
+allow "git bundle create x.bundle, cwd=worker"       "$W" "git bundle create x.bundle HEAD"
+allow "git bundle create -- /tmp/x.bundle, cwd=worker" "$W" "git bundle create -- /tmp/x.bundle HEAD"
 allow "git bundle verify <primary>/x (a read)"    "$W" "git bundle verify $P/x.bundle"
-allow "git -C <leg> archive -o x.tar, cwd=primary" "$P" "git -C $W archive -o x.tar HEAD"
+allow "git -C <worker> archive -o x.tar, cwd=primary" "$P" "git -C $W archive -o x.tar HEAD"
 allow "timeout 5 git -C <primary> status"        "$W" "timeout 5 git -C $P status"
 allow "sudo -u nobody git -C <primary> log -1"   "$W" "sudo -u nobody git -C $P log -1"
 allow "timeout 60 git -C <primary> pull --ff-only" "$W" "timeout 60 git -C $P pull --ff-only"
-allow "nice git -C <leg> reset --hard"           "$W" "nice git -C $W reset --hard"
-allow "nice git reset --hard, cwd=leg"           "$W" "nice git reset --hard"
-allow "git ls-files | xargs git add, cwd=leg"    "$W" "git ls-files | xargs git add"
+allow "nice git -C <worker> reset --hard"           "$W" "nice git -C $W reset --hard"
+allow "nice git reset --hard, cwd=worker"           "$W" "nice git reset --hard"
+allow "git ls-files | xargs git add, cwd=worker"    "$W" "git ls-files | xargs git add"
 allow "nice git status, cwd=primary"             "$P" "nice git status"
 allow "timeout 5 git worktree remove, cwd=primary" "$P" "timeout 5 git worktree remove $W"
 
 echo "== HIMMEL-4476: git archive read into /tmp is not a write =="
-allow "-C <primary> archive -o /tmp/x.tar, cwd=leg"      "$W" "git -C $P archive -o /tmp/x4476.tar HEAD"
+allow "-C <primary> archive -o /tmp/x.tar, cwd=worker"      "$W" "git -C $P archive -o /tmp/x4476.tar HEAD"
 allow "archive -o /tmp/x.tar, cwd=primary"               "$P" "git archive -o /tmp/x4476.tar HEAD"
 allow "archive --output=/tmp/x.tar, cwd=primary"         "$P" "git archive --output=/tmp/x4476.tar HEAD"
-allow "-C <primary> archive | tar -x -C /tmp/d, cwd=leg" "$W" "git -C $P archive HEAD README.md | tar -x -C /tmp/d4476"
+allow "-C <primary> archive | tar -x -C /tmp/d, cwd=worker" "$W" "git -C $P archive HEAD README.md | tar -x -C /tmp/d4476"
 allow "archive | tar -x -C /tmp/d, cwd=primary"          "$P" "git archive HEAD README.md | tar -x -C /tmp/d4476"
 allow "archive | tar -xf - -C /tmp/d, cwd=primary"       "$P" "git archive HEAD | tar -xf - -C /tmp/d4476"
-allow "archive | tar -x --directory=/tmp/d, cwd=leg"     "$W" "git -C $P archive HEAD | tar -xv --directory=/tmp/d4476"
-deny "archive | tar -x -C <primary>/sub, cwd=leg"        "$W" "git -C $P archive HEAD | tar -x -C $P/sub"
+allow "archive | tar -x --directory=/tmp/d, cwd=worker"     "$W" "git -C $P archive HEAD | tar -xv --directory=/tmp/d4476"
+deny "archive | tar -x -C <primary>/sub, cwd=worker"        "$W" "git -C $P archive HEAD | tar -x -C $P/sub"
 deny "archive | tar -x -C <primary>, cwd=primary"        "$P" "git archive HEAD | tar -x -C $P"
 deny "archive | tar -x -C sub (relative), cwd=primary"   "$P" "git archive HEAD | tar -x -C sub"
 deny "archive | tar -x (no -C), cwd=primary"             "$P" "git archive HEAD | tar -x"
@@ -748,8 +748,8 @@ deny "archive -o /tmp/x; tar -xf /tmp/x -C <primary>"    "$P" "git archive -o /t
 deny "archive -o /tmp/x; python3 extracts"               "$P" "git archive -o /tmp/x.tar HEAD; python3 -m tarfile -e /tmp/x.tar ."
 deny "archive -o <primary>/x.tar, cwd=primary"           "$P" "git archive -o $P/x.tar HEAD"
 deny "-C <primary> archive --out=<primary>/x.tar"        "$W" "git -C $P archive --out=$P/x.tar HEAD"
-deny "-C <leg> archive --out=<primary>/x.tar"            "$P" "git -C $W archive --out=$P/x.tar HEAD"
-deny "-C <leg> archive --outp <primary>/x.tar"           "$P" "git -C $W archive --outp $P/x.tar HEAD"
+deny "-C <worker> archive --out=<primary>/x.tar"            "$P" "git -C $W archive --out=$P/x.tar HEAD"
+deny "-C <worker> archive --outp <primary>/x.tar"           "$P" "git -C $W archive --outp $P/x.tar HEAD"
 deny "-C <primary> archive --remote=. --exec=/tmp/evil"  "$W" "git -C $P archive --remote=. --exec=/tmp/evil HEAD"
 deny "-C <primary> archive --ex=/tmp/evil"               "$W" "git -C $P archive --ex=/tmp/evil HEAD"
 deny "-C <primary> -c tar.tgz.command archive"           "$W" "git -C $P -c tar.tgz.command=/tmp/evil archive --format=tgz -o /tmp/x.tgz HEAD"
@@ -760,24 +760,24 @@ deny "archive --format=tgz -o /tmp/x.tgz, cwd=primary"    "$P" "git archive --fo
 deny "archive --fo zip -o /tmp/x.tar, cwd=primary"        "$P" "git archive --fo zip -o /tmp/x4476.tar HEAD"
 deny "-C <primary> archive -o /tmp/x.zip (by extension)"  "$W" "git -C $P archive -o /tmp/x4476.zip HEAD"
 deny "archive --output=/tmp/x.xyz, cwd=primary"           "$P" "git archive --output=/tmp/x4476.xyz HEAD"
-deny "archive --format=xyz | tar -x -C /tmp/d, cwd=leg"   "$W" "git -C $P archive --format=xyz HEAD | tar -x -C /tmp/d4476"
+deny "archive --format=xyz | tar -x -C /tmp/d, cwd=worker"   "$W" "git -C $P archive --format=xyz HEAD | tar -x -C /tmp/d4476"
 deny "archive -vo /tmp/x.tar (bundled -o), cwd=primary"   "$P" "git archive -vo /tmp/x4476.tar HEAD"
-allow "archive --format tar | tar -x -C /tmp/d, cwd=leg"  "$W" "git -C $P archive --format tar HEAD | tar -x -C /tmp/d4476"
+allow "archive --format tar | tar -x -C /tmp/d, cwd=worker"  "$W" "git -C $P archive --format tar HEAD | tar -x -C /tmp/d4476"
 
 echo "== HIMMEL-4365: --output <file> on a read subcommand writes that file =="
 deny "-C <primary> diff --output=<rel>"          "$W" "git -C $P diff --output=.claude/settings.json"
 deny "-C <primary> diff --output <rel>"          "$W" "git -C $P diff --output .claude/settings.json"
 deny "-C <primary> log -p --output=README.md"    "$W" "git -C $P log -p --output=README.md"
 deny "-C <primary> show --output=README.md"      "$W" "git -C $P show --output=README.md HEAD"
-deny "diff --output=<primary>/<f>, cwd=leg"      "$W" "git diff --output=$P/.claude/settings.json"
+deny "diff --output=<primary>/<f>, cwd=worker"      "$W" "git diff --output=$P/.claude/settings.json"
 deny "--work-tree=<primary> diff --output=<rel>" "$W" "git --work-tree=$P --git-dir=$P/.git diff --output=README.md"
 allow "diff --output=/tmp/x.diff"                "$W" "git diff --output=/tmp/x.diff"
-allow "diff --output=<rel>, cwd=leg"             "$W" "git diff --output=out.diff"
+allow "diff --output=<rel>, cwd=worker"             "$W" "git diff --output=out.diff"
 allow "-C <primary> diff --output=/tmp/x.diff"   "$W" "git -C $P diff --output=/tmp/x.diff"
 allow "-C <primary> log -- --output=x (pathspec)" "$W" "git -C $P log -- --output=x"
 
 echo "== HIMMEL-4504: a read-shaped git clause that runs a program is a write =="
-# Each shape runs from a leg cwd with -C <primary>, and from cwd=primary with
+# Each shape runs from a worker cwd with -C <primary>, and from cwd=primary with
 # no -C. The program runs with the primary as its cwd, so it can write there.
 for pre in "-C $P " ""; do
     if [ -n "$pre" ]; then cwd="$W"; tag="-C <primary>"; else cwd="$P"; tag="cwd=primary"; fi
@@ -878,11 +878,11 @@ allow "PAGER=cat git log, cwd=primary"             "$P" "PAGER=cat git log -1"
 allow "GIT_CONFIG_GLOBAL=/dev/null git -C <primary> log" "$W" "GIT_CONFIG_GLOBAL=/dev/null git -C $P log -1"
 allow "worktree add <ignored dir>, cwd=primary"    "$P" "git worktree add ignored/nwt -b nwt"
 allow "worktree add <outside>, -C <primary>"       "$W" "git -C $P worktree add $FIX/w3 -b w3"
-# The program runs in the LEG, whose own repo the fence does not guard.
-allow "-c core.pager=<cmd> log, cwd=leg"           "$W" "git -c core.pager='sh -c x' log -1"
-allow "-c diff.external=<cmd> diff --ext-diff, cwd=leg" "$W" "git -c diff.external=x diff --ext-diff"
-allow "grep -O<cmd>, cwd=leg"                      "$W" "git grep -Ox foo"
-allow "--exec-path=<dir> status, cwd=leg"          "$W" "git --exec-path=/tmp/x status"
+# The program runs in the WORKER, whose own repo the fence does not guard.
+allow "-c core.pager=<cmd> log, cwd=worker"           "$W" "git -c core.pager='sh -c x' log -1"
+allow "-c diff.external=<cmd> diff --ext-diff, cwd=worker" "$W" "git -c diff.external=x diff --ext-diff"
+allow "grep -O<cmd>, cwd=worker"                      "$W" "git grep -Ox foo"
+allow "--exec-path=<dir> status, cwd=worker"          "$W" "git --exec-path=/tmp/x status"
 
 echo "== HIMMEL-4504 J1950: program env behind a wrapper, two-step exports, worktree --, transport programs =="
 for pre in "-C $P " ""; do
@@ -980,11 +980,11 @@ deny "X=1 nice git -C <primary> reset --hard"         "$W" "X=1 nice git -C $P r
 deny "GIT_DIR=; export GIT_DIR; … git reset --hard"   "$W" "GIT_DIR=$P/.git; export GIT_DIR; GIT_WORK_TREE=$P; export GIT_WORK_TREE; git reset --hard"
 deny "declare -x GIT_DIR= GIT_WORK_TREE=; reset"      "$W" "declare -x GIT_DIR=$P/.git GIT_WORK_TREE=$P; git reset --hard"
 deny "set -a; GIT_DIR=; GIT_WORK_TREE=; reset"        "$W" "set -a; GIT_DIR=$P/.git; GIT_WORK_TREE=$P; git reset --hard"
-# The program runs in the LEG: no primary write.
-allow "GIT_EXTERNAL_DIFF= nice git diff, cwd=leg"     "$W" "GIT_EXTERNAL_DIFF=x nice git diff"
-allow "HOME=<dir> git status, cwd=leg"                "$W" "HOME=/tmp/h git status"
-allow "LD_PRELOAD=<so> git status, cwd=leg"           "$W" "LD_PRELOAD=/tmp/x.so git status"
-allow "ls-remote --upload-pack=<cmd> ., cwd=leg"      "$W" "git ls-remote --upload-pack=x ."
+# The program runs in the WORKER: no primary write.
+allow "GIT_EXTERNAL_DIFF= nice git diff, cwd=worker"     "$W" "GIT_EXTERNAL_DIFF=x nice git diff"
+allow "HOME=<dir> git status, cwd=worker"                "$W" "HOME=/tmp/h git status"
+allow "LD_PRELOAD=<so> git status, cwd=worker"           "$W" "LD_PRELOAD=/tmp/x.so git status"
+allow "ls-remote --upload-pack=<cmd> ., cwd=worker"      "$W" "git ls-remote --upload-pack=x ."
 
 echo "== DENY: a temp-shaped HOME does not loosen the fence for a non-temp primary =="
 # The sandbox HOME shape scripts/ci/home-canary.sh builds.

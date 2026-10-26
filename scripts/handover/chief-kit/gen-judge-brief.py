@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """gen-judge-brief.py — HIMMEL-3746. Fill docs/handover/judge-brief-template.md for one judge
 session from a spec, so a judge dispatch is one call instead of the ad-hoc mk_j*.py script every
-console rewrites. It NEVER launches: it writes the brief and prints its path and nonce.
+chief rewrites. It NEVER launches: it writes the brief and prints its path and nonce.
 
-  gen-judge-brief.py <spec.json> --console <session> --bucket <dir>
+  gen-judge-brief.py <spec.json> --chief <session> --bucket <dir>
                      [--date YYYY-MM-DD] [--letter Z] [--handover-root <dir>]
                      [--scratch-root <dir>] [--template <file>]
 
@@ -12,7 +12,7 @@ spec.json keys. Required: qid (kebab/alnum, e.g. j2599a), ticket (the doc's key)
 refused, as brief-lint.sh refuses it), tier {category, reason} (design|unverified-finding|
 tier-return|operator-ruling; the launcher refuses an opus/fable judge without the line).
 Optional: pr + head (a 40-hex sha; the change under review), tickets (ticket keys), author_doc
-(the leg's own handover doc), attack (list of lines of attack to try, NOT conclusions),
+(the worker's own handover doc), attack (list of lines of attack to try, NOT conclusions),
 evidence (list of {item, for}), completion (default: the PR merge-question shape),
 description, model (default claude-opus-5-5), do_not.
 
@@ -28,6 +28,9 @@ Exit: 0 ok; 1 invalid spec, template drift or an existing brief; 2 usage.
 """
 import argparse, json, os, re, secrets, sys
 from datetime import date as _date
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
+import env_alias  # noqa: E402
 
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-opus-5-5'
@@ -137,7 +140,7 @@ def evidence_text(s):
              '(`JIRA_PROJECT_KEY=%s node <primary checkout>/scripts/jira/dist/index.js get %s`, comments included).'
              % (k, k.split('-')[0], k))
     if s.get('author_doc'):
-        item('Author handover doc `%s`: the leg\'s own account of what it did; read it for its claims, '
+        item('Author handover doc `%s`: the worker\'s own account of what it did; read it for its claims, '
              'then check them against the diff.' % s['author_doc'])
     for e in s.get('evidence') or []:
         item('`%s`: %s.' % (e['item'], e['for'].rstrip('.')))
@@ -164,7 +167,7 @@ def render(s, a, template):
     sub_para(paras, '> **You are the judge for', paras[judge_at[0]].replace('<model>', model))
     sub_para(paras, '> **Tier:**', '> **Tier:** %s — %s: %s' % (gate, s['tier']['category'], s['tier']['reason']))
     sub_para(paras, '> **The question (verbatim', '> **The question (verbatim, one line):** %s' % s['question'])
-    sub_para(paras, '> **Reason (why', '> **Reason (why this needs a judge, not the console\'s own read):** %s' % s['reason'])
+    sub_para(paras, '> **Reason (why', '> **Reason (why this needs a judge, not the chief\'s own read):** %s' % s['reason'])
     sub_para(paras, '> **Prior art (required):**', '> **Prior art (required):** %s' % s['prior'])
     sub_para(paras, '<Every file, diff,', evidence_text(s))
     default_completion = ('GO or NO-GO on head `%s`, one paragraph of reason citing at least one Evidence item by number; '
@@ -176,11 +179,11 @@ def render(s, a, template):
     sub_para(paras, '> **Completion condition:**', '> **Completion condition:** %s' % completion)
     sub_para(paras, '> **Do not:**', '> **Do not:** %s' % (s.get('do_not') or DEFAULT_DO_NOT))
     text = '\n\n'.join(paras)
-    text = text.replace('<console session name>', a.console)
-    text = text.replace('<console letter>-<qid>-<hex>', s['_nonce'])
+    text = text.replace('<chief session name>', a.chief)
+    text = text.replace('<chief letter>-<qid>-<hex>', s['_nonce'])
     text = text.replace('<HANDOVER_DIR>', a.handover_root)
     text = text.replace('<qid>', s['qid'])
-    left = re.findall(r'<(?:console letter|console session name|TICKET|model|category|free text|HANDOVER_DIR|date|one-line question)[^>]*>', text)
+    left = re.findall(r'<(?:chief letter|chief session name|TICKET|model|category|free text|HANDOVER_DIR|date|one-line question)[^>]*>', text)
     if left:
         die('template drift: unfilled placeholder(s) left: %s' % ', '.join(sorted(set(left))))
     return text + '\n'
@@ -189,7 +192,8 @@ def render(s, a, template):
 def main():
     ap = argparse.ArgumentParser(add_help=True)
     ap.add_argument('spec')
-    ap.add_argument('--console', required=True)
+    ap.add_argument('--chief')
+    ap.add_argument('--console', dest='console_old', help=argparse.SUPPRESS)
     ap.add_argument('--bucket', required=True)
     ap.add_argument('--date', default=_date.today().isoformat())
     ap.add_argument('--letter', default=None)
@@ -201,6 +205,12 @@ def main():
         a = ap.parse_args()
     except SystemExit as e:
         sys.exit(2 if e.code else 0)
+    if a.console_old is not None:
+        if not env_alias.legacy_flag('--console', '--chief'):
+            ap.error('unrecognized arguments: --console')
+        a.chief = a.chief or a.console_old
+    if a.chief is None:
+        ap.error('the following arguments are required: --chief')
     if not re.fullmatch(r'\d{4}-\d\d-\d\d', a.date):
         die('--date must be YYYY-MM-DD', 2)
     if not a.handover_root:
@@ -216,15 +226,15 @@ def main():
     validate(spec)
     letter = a.letter
     if letter is None:
-        m = re.search(r'\d{4}-\d\d-\d\d([A-Z]+)-', a.console)
+        m = re.search(r'\d{4}-\d\d-\d\d([A-Z]+)-', a.chief)
         letter = m.group(1) if m else 'X'
     if not re.fullmatch(r'[A-Z]{1,3}', letter):
-        die('console letter %r must be 1-3 upper-case letters (the vault token grammar); pass --letter' % (letter,))
+        die('chief letter %r must be 1-3 upper-case letters (the vault token grammar); pass --letter' % (letter,))
     spec['_nonce'] = '%s-%s-%s' % (letter, spec['qid'], secrets.token_hex(4))
     scratch = os.path.abspath(os.path.join(a.scratch_root, spec['qid'], 'scratch'))
     root = os.path.realpath(a.handover_root)
     if os.path.realpath(scratch) == root or os.path.realpath(scratch).startswith(root + os.sep):
-        die('the scratch dir %s is under the handover root; headed-arm-leg.sh refuses it (exit 15)' % scratch)
+        die('the scratch dir %s is under the handover root; headed-arm-worker.sh refuses it (exit 15)' % scratch)
     spec['_scratch'] = scratch
     text = render(spec, a, template)
     doc = os.path.join(a.bucket, '%s-judge-%s-%s-RESUME.md' % (spec['ticket'], spec['qid'], a.date))

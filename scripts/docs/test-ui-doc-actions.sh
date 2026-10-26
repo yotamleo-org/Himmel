@@ -28,7 +28,7 @@ for r in $routes; do
   if grep -E '^\|' "$DOC" | grep -F "\`$r\`" >/dev/null; then ok; else bad "docs/ui.md action table has no row for the write route $r"; fi
 done
 
-if grep -qiE 'every page is read-only|read-only except|only the settings switches|(console|ui|interface) is (entirely |fully |completely )?read-only' "$DOC"; then
+if grep -qiE 'every page is read-only|read-only except|only the settings switches|(chief|ui|interface) is (entirely |fully |completely )?read-only' "$DOC"; then
   bad "docs/ui.md still carries a blanket read-only claim"
 else
   ok

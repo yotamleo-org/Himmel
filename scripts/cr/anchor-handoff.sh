@@ -13,7 +13,7 @@
 # known-findings, ledger-append, and the later review-round,
 # orphan-check, impacted-suites, cr-scores), and also
 # scripts/handover/merge-on-green.sh and scripts/handover/chief-kit/go.sh.
-# From a leg's worktree that literal runs the BRANCH's copy, so a branch that
+# From a worker's worktree that literal runs the BRANCH's copy, so a branch that
 # edits its own gate writer would run it unseen under the allow rule. Every
 # writer resolves the reviewed repo from cwd (git-common-dir / show-toplevel)
 # and uses its own directory only for helper libs, so running the anchor's
@@ -45,7 +45,7 @@
 # still not the anchor refuses instead of looping.
 # ponytail: (HIMMEL-3437) this file and the one line sourcing it are branch bytes. For every
 # gate-allowed scripts/cr/ writer (its TARGETS) and for merge-on-green.sh,
-# chief-kit/go.sh, himmel-gate.sh, write-verdict.sh and console-wait.sh (its HTARGETS),
+# chief-kit/go.sh, himmel-gate.sh, write-verdict.sh and chief-wait.sh (its HTARGETS),
 # guard-pr-check-literal.sh denies a relative run unless the entry script and
 # this file equal the anchor's byte for byte, so a branch that deletes either
 # is refused before it runs.
@@ -58,7 +58,7 @@
 # structural control is the narrowed allow list: no prefix rule reaches
 # scripts/cr/, but per-script `:*` prefix rules do reach scripts/handover/.
 # The gate writers among them are the hook's HTARGETS above; cut-tag,
-# close-wrapped-leg, launch-cloud, vm-runner and gcp-runners have no hand-off yet.
+# close-wrapped-worker, launch-cloud, vm-runner and gcp-runners have no hand-off yet.
 
 _ah_self="${BASH_SOURCE[1]:-$0}"
 case "$_ah_self" in

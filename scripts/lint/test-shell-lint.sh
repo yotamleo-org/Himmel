@@ -601,7 +601,7 @@ fi
 # a single-quoted awk program ends the shell string early. The motivating
 # incident broke a live hook in the WORKTREE (it then denied every command
 # fleet-wide) and never reached a commit, so no commit-time gate ever saw it;
-# only the leg's probe harness NEGATIVE controls went red. Both broken fixtures
+# only the worker's probe harness NEGATIVE controls went red. Both broken fixtures
 # below are BUILT with printf from a $Q apostrophe rather than written
 # literally, so this suite's own source stays parseable and Case 18's
 # self-check stays clean.

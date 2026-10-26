@@ -466,7 +466,7 @@ assert_rc "T35 untracked+gitignored critics.local.json still allows after carve-
 
 # T36: stub ONLY check-ignore to fail (rc=128) while ls-files stays REAL and
 # returns rc=1 (untracked) -> must still BLOCK. Locks the &&-short-circuit
-# fail-closed guarantee: T32 fails ls-files first, so the check-ignore leg
+# fail-closed guarantee: T32 fails ls-files first, so the check-ignore worker
 # of the conjunction was never actually reached by a test until now.
 CIONLY_BIN=$(mktemp -d)
 REAL_GIT=$(command -v git)

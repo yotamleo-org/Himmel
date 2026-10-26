@@ -3070,7 +3070,7 @@ its script (`test-` plus the new name) in the same rename PR; the rename PR conf
 | `scripts/graphify/test-leg-graph-rationale.sh` | `test-worker-graph-rationale.sh` | N16 |
 | `scripts/graphify/test-leg-graph.sh` | `test-worker-graph.sh` | N16 |
 | `scripts/handover/console-kit/test-close-wrapped-leg.sh` | `test-close-wrapped-worker.sh` | N18 |
-| `scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh` | `test-headed-arm-worker-worker-env.sh` | N15 |
+| `scripts/handover/console-kit/test-headed-arm-leg-worker-env.sh` | `test-headed-arm-worker-env.sh` | N15 |
 | `scripts/handover/console-kit/test-headed-arm-leg.sh` | `test-headed-arm-worker.sh` | N15 |
 | `scripts/handover/console-kit/test-leg-doc-lock.sh` | `test-worker-doc-lock.sh` | N16 |
 | `scripts/handover/console-kit/test-leg-event.sh` | `test-worker-event.sh` | N16 |

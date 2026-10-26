@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains()
 # scripts/handover/test-headed-arm-tabs.sh - suite for headed-arm.sh's tab mode
-# (HIMMEL_WORKER_SESSION_TABS=1): worker launches under one console land as tabs in one
+# (HIMMEL_WORKER_SESSION_TABS=1): worker launches under one chief land as tabs in one
 # konsole window instead of one --separate window each.
 #
 # The stubs model the real konsole closely enough for the lifecycle to be real:
@@ -161,7 +161,7 @@ check "1c default: one window per launch" "$(konsole_count "$d1")" 2
 contains "1d default: windows are --separate" "$(cat "$d1/konsole-record")" "--separate"
 check "1e default: qdbus never called" "$([ -e "$d1/qdbus-record" ] && echo called || echo none)" none
 
-# --- 2. tab mode: three launches under one console land in ONE window.
+# --- 2. tab mode: three launches under one chief land in ONE window.
 d2="$tmp/c2"; mk_env "$d2"
 export CLAUDE_CODE_CHILD_SESSION=1
 arm "$d2" HIMMEL-2-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A ONLY_A=1; rc2a=$?
@@ -189,7 +189,7 @@ contains "2n tabs: tab forces session persistence" "$envb" "CLAUDE_CODE_FORCE_SE
 contains "2o tabs: tab runs in the repo" "$envb" "PWD=$REPO"
 lacks "2p tabs: the tab script is gone once the launch is confirmed" "$(ls "$d2/locks")" ".lock"
 
-# --- 3. closing ONE worker (close-wrapped-leg TERMs the claude pid) leaves the
+# --- 3. closing ONE worker (close-wrapped-worker TERMs the claude pid) leaves the
 # window and the other tabs alive.
 pa="$(pid_of "$d2" HIMMEL-2-N1-a)"; pb="$(pid_of "$d2" HIMMEL-2-N2-b)"; pc="$(pid_of "$d2" HIMMEL-2-N3-c)"
 signal TERM "$pb"
@@ -210,7 +210,7 @@ check "4c crash: the next launch exit 0" "$rc4" 0
 check "4d crash: the next launch is a tab, not a new window" "$(konsole_count "$d2")" 1
 check "4e crash: the next launch is tracked in the same window" "$(window_of "$d2" HIMMEL-2-N4-d)" "${w2a:-unset}"
 
-# --- 5. a different console gets its own window.
+# --- 5. a different chief gets its own window.
 arm "$d2" HIMMEL-2-N5-e HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-B; rc5=$?
 check "5a other console: exit 0" "$rc5" 0
 check "5b other console: opens its own window" "$(konsole_count "$d2")" 2
@@ -237,12 +237,12 @@ check "7a qdbus fails: launch exit 0" "$rc7" 0
 check "7b qdbus fails: falls back to a new window" "$(konsole_count "$d7")" 2
 contains "7c qdbus fails: the fallback is logged" "$(cat "$d7/log")" "WARN: tab launch for HIMMEL-7-N2-b failed"
 
-# --- 8. a console arm and a launch with no console name never tab.
+# --- 8. a chief arm and a launch with no chief name never tab.
 d8="$tmp/c8"; mk_env "$d8"
 arm "$d8" HIMMEL-8-N1-a HIMMEL_WORKER_SESSION_TABS=1 HIMMEL_CONSOLE_NAME=CHIEF-A
 arm "$d8" HIMMEL-8-N2-b HIMMEL_WORKER_SESSION_TABS=1; rc8=$?
-check "8a no console name: exit 0" "$rc8" 0
-check "8b no console name: own window" "$(konsole_count "$d8")" 2
+check "8a no chief name: exit 0" "$rc8" 0
+check "8b no chief name: own window" "$(konsole_count "$d8")" 2
 
 # --- 9. the idle waker targets the tab's own session and the worker's pid.
 d9="$tmp/c9"; mk_env "$d9"

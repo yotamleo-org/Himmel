@@ -111,19 +111,19 @@ worktree_in_use() {
     # ..., up to pid 1). A process in that chain is not a hazard sitting in
     # the tree; it IS the chain that asked for this removal, and refusing on
     # it would break the exact auto-prune this whole mechanism
-    # exists to make safe -- merge-on-green's own armed chain leg sits in the
-    # tree it just merged, and that leg is this process's own ancestor.
+    # exists to make safe -- merge-on-green's own armed chain worker sits in the
+    # tree it just merged, and that worker is this process's own ancestor.
     #
     # This is a BROADER exclusion than "skip this shell's own pid/cwd" (an
     # earlier draft of this fix): {self} is a subset of the ancestry chain,
     # so ancestry excludes more processes, not fewer. The exclusion was
-    # once unneeded because a merge was always LEG-run, so the merge
-    # process's own ancestry naturally included the leg holding the tree.
-    # Merges are now CONSOLE-run while the leg still holds its tree, which
+    # once unneeded because a merge was always WORKER-run, so the merge
+    # process's own ancestry naturally included the worker holding the tree.
+    # Merges are now CHIEF-run while the worker still holds its tree, which
     # shows why the scan must exist at all -- a FOREIGN holder OUTSIDE the merge
     # process's ancestry must still block the prune, or it removes a tree
-    # out from under a live leg -- not why ancestry beats self-only. The
-    # real reason: merge-on-green's own armed chain leg holds the tree as
+    # out from under a live worker -- not why ancestry beats self-only. The
+    # real reason: merge-on-green's own armed chain worker holds the tree as
     # this process's ANCESTOR, and a self-only exclusion would misclassify
     # that ancestor as foreign, refusing the prune and breaking
     # the auto-prune. T10 and 11k14 pin that case; T9 covers the
@@ -215,7 +215,7 @@ worktree_in_use() {
                     esac
                     WORKTREE_INUSE_RESULT="in-use-confirmed"
                     # Name the holder's command, so a long-lived
-                    # daemon (VBoxSVC, qmd.js mcp) reads differently from a leg.
+                    # daemon (VBoxSVC, qmd.js mcp) reads differently from a worker.
                     inuse_comm=$(tr '\0' ' ' < "$inuse_entry/cmdline" 2>/dev/null | cut -c1-80)
                     [ -n "$inuse_comm" ] || inuse_comm=$(cat "$inuse_entry/comm" 2>/dev/null)
                     WORKTREE_INUSE_DETAIL="Process $inuse_pid has its working directory at '$inuse_cwd', inside '$path' -- confirmed via /proc, not inferred from a blocked rename. Holder command: (${inuse_comm:-unknown})."

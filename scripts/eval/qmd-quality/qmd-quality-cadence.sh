@@ -72,7 +72,7 @@ cmd_run() {
             *) echo "ERR qmd-quality-cadence: unknown arg: $1" >&2; return 64 ;;
         esac
     done
-    # A golden set or index gone since `arm` is a failed leg, not a quiet log line.
+    # A golden set or index gone since `arm` is a failed worker, not a quiet log line.
     if [ ! -f "$golden" ] || [ ! -f "$index" ]; then
         echo "ERR qmd-quality-cadence: --golden (or QMD_QUALITY_GOLDEN) and --index must name files" >&2
         bash "$ALERT" fail qmd-quality missing-input "golden=$golden index=$index"

@@ -56,7 +56,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": ".codex/run-hook.sh --sandbox guard-leg-context-handoff.sh",
+            "command": ".codex/run-hook.sh --sandbox guard-worker-context-handoff.sh",
             "timeout": 15
           }
         ]

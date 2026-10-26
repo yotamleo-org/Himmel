@@ -1,21 +1,21 @@
 // fleet.ts — every live session on one page, for GET /api/agui/fleet.
 //
-// The census is fleet.sh's (claude_sessions + each session's leg doc and its leg_tail_status); this joins each
+// The census is fleet.sh's (claude_sessions + each session's worker doc and its worker_tail_status); this joins each
 // census pid to the harness's ~/.claude/sessions/<pid>.json (its sessionId and busy/idle status), finds the
 // session's journal with sse.ts's resolveJournal, and folds the journal and its subagent transcripts through the
 // same mapper and reducer the per-run page uses, so a row's subagents and failures are the counts that page shows.
 // A session whose journal has not been written for RECENT_MS is not live and is left out; one with no journal
 // yet is listed bare. Read-only: nothing here writes.
 //
-// a row also carries its place in the agent graph (graphOf: the parent console its own handover doc
-// names, and a console's predecessor) with its in-process subagents, and its token usage (usageOf: the journal's
-// API usage records, per call, priced with the leg-burn weights and filled against its --autocompact ceiling).
+// a row also carries its place in the agent graph (graphOf: the parent chief its own handover doc
+// names, and a chief's predecessor) with its in-process subagents, and its token usage (usageOf: the journal's
+// API usage records, per call, priced with the worker-burn weights and filled against its --autocompact ceiling).
 //
-// cloud sessions join as rows of role "cloud" (fleet-cloud.ts: the console bucket's cloud-route.jsonl
-// plus one cached GitHub read), each under the console its brief names, with its local shepherd leg under it.
+// cloud sessions join as rows of role "cloud" (fleet-cloud.ts: the chief bucket's cloud-route.jsonl
+// plus one cached GitHub read), each under the chief its brief names, with its local shepherd worker under it.
 //
 // a row carries its lane and how it was found (laneOf: the launch record, never the model string), the
-// backend model, a cost row (a claudex leg priced from the codex weekly bank delta, never at Claude weights) and an
+// backend model, a cost row (a claudex worker priced from the codex weekly bank delta, never at Claude weights) and an
 // eval row (the per-lane quality measure); the fleet carries the one codex bank reading they were priced against.
 //
 // the himmel-bus traffic comes from the one collector (busEvents, metadata only): Fleet.edges counts the messages
@@ -35,6 +35,7 @@ import { backendModelOf, codexStartOf, costRowOf, evalRowOf, laneOf, readCodexBa
 import { busRootOf, registerConfigRoot, resolveJournal } from "./sse.ts";
 import { busEvents } from "../../../marketplace/plugins/himmel-bus/lib/agui.mjs";
 import { loadPeers } from "../../../marketplace/plugins/himmel-bus/lib/identity.mjs";
+import { legacyNamesOn } from "../../lib/env-alias.mjs";
 
 export const RECENT_MS = 60 * 60 * 1000;
 const SCRIPT_TIMEOUT_MS = 30_000;
@@ -51,7 +52,7 @@ export type FleetRow = {
   runtime: { startedAt: number; endedAt: number | null; elapsedMs: number } | null;
   console: string | null; live: boolean; lock: "held" | "released" | "unknown";
   lane: Lane; laneFrom: LaneFrom | null; backendModel: string | null; cost: CostRow | null; eval: EvalRow | null;
-  // the doc's last Results marker (leg_tail_status), the doc's last write, and the PR's URL.
+  // the doc's last Results marker (worker_tail_status), the doc's last write, and the PR's URL.
   marker: string | null; lastSeenAt: number | null; prUrl: string | null;
   bus: BusCounts;
 };
@@ -73,22 +74,22 @@ type Census = { census: Fleet["census"]; sessions: CensusRow[]; cloudRoutes?: st
 const SESSION = /^[A-Za-z0-9._+-]{1,160}$/;
 const plain = (s: string | undefined) => (s && SESSION.test(s) ? s : null);
 
-// Where a session sits, read from its own doc only. A leg's console is the one its brief names, or the newest
-// console it accepted in a `SUCCESSION accepted: <new> replaces <old>` bullet; a judge's is the console that
-// dispatched it; a console hangs under the operator (parent null) and names the console it succeeded.
+// Where a session sits, read from its own doc only. A worker's chief is the one its brief names, or the newest
+// chief it accepted in a `SUCCESSION accepted: <new> replaces <old>` bullet; a judge's is the chief that
+// dispatched it; a chief hangs under the operator (parent null) and names the chief it succeeded.
 export function graphOf(role: FleetRow["role"], doc: string): { parent: string | null; predecessor: string | null } {
   if (role === "console") return { parent: null, predecessor: plain(/successor to `?([^\s`]+?)(?:\.md)?`?[\s(]/.exec(doc)?.[1]) };
   let parent = plain(/your console is\W*`([^`]+)`/i.exec(doc)?.[1]);
   if (role === "judge" || role === "consult") parent ??= plain(/dispatched by\s*(?:>\s*)?`([^`]+)`/.exec(doc)?.[1]);
   if (role === "leg" || role === "judge" || role === "consult") {
-    // canonical `accepted: <new> replaces <old>`, or the relay wording `accepted — relay from <old>, new console <new>`
+    // canonical `accepted: <new> replaces <old>`, or the relay wording `accepted — relay from <old>, new chief <new>`
     for (const m of doc.matchAll(/^- (?:[\d:]+ )?(?:LIVE — )?SUCCESSION accepted(?:: `?([^\s`]+)`? replaces| — relay from \S+, new console `?([^\s`,]+))/gm)) parent = plain(m[1] ?? m[2]) ?? parent;
   }
   return { parent, predecessor: null };
 }
 
-// A console's own wrap is the line console.sh wrap writes (`WRAPPED — <text>`) under `## Results`, as the shell
-// reader scopes it; `WRAPPED N2470 (#2951 → …)` is a note about a leg, and a quoted wrap above Results is prose.
+// A chief's own wrap is the line chief.sh wrap writes (`WRAPPED — <text>`) under `## Results`, as the shell
+// reader scopes it; `WRAPPED N2470 (#2951 → …)` is a note about a worker, and a quoted wrap above Results is prose.
 const ownWrap = (doc: string) => {
   const at = doc.search(/^## Results/m);
   return at >= 0 && /^- (?:[\d:]+ )?WRAPPED —/m.test(doc.slice(at));
@@ -145,7 +146,7 @@ function runScript(script: string, env: Record<string, string | undefined>): Pro
   });
 }
 
-// the shell-tool wrappers tick reports as orphans, from the console kit's own inventory (`--list`: one
+// the shell-tool wrappers tick reports as orphans, from the chief kit's own inventory (`--list`: one
 // `pid=<pid> owner=<session> age=<n>m` row each); read-only, and null when it failed rather than an empty list.
 // a wrapper owned by a live session is that session's own long-running call, not an orphan.
 async function processOrphansOf(opts: { script: string; env: Record<string, string | undefined> }, live: Set<string> = new Set()): Promise<ProcessOrphan[] | null> {
@@ -163,8 +164,8 @@ async function processOrphansOf(opts: { script: string; env: Record<string, stri
 }
 
 // the GitHub repo a PR number belongs to — CONFIG_UI_GITHUB_REPO (owner/name), else this checkout's
-// origin. ponytail: every leg's PR is linked into this checkout's repo; a leg working another repo's PR gets a wrong
-// link, upgrade path: resolve the repo per handover bucket from the registry once legs routinely ship elsewhere.
+// origin. ponytail: every worker's PR is linked into this checkout's repo; a worker working another repo's PR gets a wrong
+// link, upgrade path: resolve the repo per handover bucket from the registry once workers routinely ship elsewhere.
 const slugs = new Map<string, string | null>();
 async function repoSlugOf(checkout: string, env: Record<string, string | undefined>): Promise<string | null> {
   const SLUG = /^[\w.-]+\/[\w.-]+$/;
@@ -179,7 +180,7 @@ async function repoSlugOf(checkout: string, env: Record<string, string | undefin
 }
 const prUrlOf = (slug: string | null, pr: number | null) => (slug && pr !== null ? `https://github.com/${slug}/pull/${pr}` : null);
 
-// The cloud sessions the console buckets' routing logs name, each a row under the console its brief names; a GitHub
+// The cloud sessions the chief buckets' routing logs name, each a row under the chief its brief names; a GitHub
 // read that failed leaves every one unknown (no PR, no URL) rather than failing the fleet.
 const CLOUD_STATE: Record<CloudPhase, FleetState> = { working: "running", done: "idle", blocked: "idle", merged: "wrapped", closed: "wrapped", unknown: "unknown" };
 async function cloudRows(logs: string[], env: Record<string, string | undefined>, now: number): Promise<FleetRow[]> {
@@ -237,14 +238,14 @@ async function busOf(root: string): Promise<{ edges: BusEdge[]; of: (name: strin
   return { edges: [...edges.values()], of: (name) => ({ ...(rows.get(name) ?? NO_BUS), unbound: !!peers[name] && peers[name].pid === undefined }) };
 }
 
-// where a console doc records its release token: a backticked lock bullet, or the fenced block ACTION ZERO fills in
+// where a chief doc records its release token: a backticked lock bullet, or the fenced block ACTION ZERO fills in
 // under "Its release token is:" (a block still reading `none yet — …` has spaces, so it is no token)
 const RECORDED_LOCK = [/^- .*\b(?:lock|release-token)\b.*`[^`]+`/m, /release token is:\s*\n\s*```[^\n]*\n\s*[^\s`]+\s*\n\s*```/i];
 
 const roleOf = (name: string, doc: string): FleetRow["role"] =>
   /-(console|chief)$/.test(name) ? "console" : /(^|-)consult(-|$)/i.test(name) ? "consult" : /(^|-)judge(-|$)|(^|-)J\d+(-|$)/i.test(name) ? "judge" : doc ? "leg" : "interactive";
 
-// The PR a leg doc names last: `READY <pr> ...` or `PR <n>` / `PR #<n>` in its bullets.
+// The PR a worker doc names last: `READY <pr> ...` or `PR <n>` / `PR #<n>` in its bullets.
 function prOf(text: string): number | null {
   let pr: number | null = null;
   for (const m of text.matchAll(/^- .*?\b(?:READY|PR) #?(\d+)\b/gm)) pr = Number(m[1]);
@@ -310,10 +311,10 @@ async function fold(journal: string): Promise<Folded> {
 export async function readFleet(opts: { script: string; env: Record<string, string | undefined>; home: string; now: number; redact: (s: string) => string }): Promise<Fleet> {
   const census = await runScript(opts.script, opts.env);
   // the codex probe's cache, read once per request; unreadable, stale or reset is null.
-  const ttl = Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS) > 0 ? Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS) : Number(opts.env.CODEX_BANK_CACHE_TTL_SECONDS);
+  const ttl = Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS) > 0 ? Number(opts.env.CODEX_USAGE_CACHE_TTL_SECONDS) : Number(legacyNamesOn(opts.env) ? opts.env.CODEX_BANK_CACHE_TTL_SECONDS : undefined);
   let codex: CodexBank | null = null;
   try {
-    codex = readCodexBank(await readFile(opts.env.CODEX_USAGE_CACHE || opts.env.CODEX_BANK_CACHE || join(opts.home, ".himmel", "cache", "codex-bank.json"), "utf8"), opts.now, ttl > 0 ? ttl : undefined);
+    codex = readCodexBank(await readFile(opts.env.CODEX_USAGE_CACHE || (legacyNamesOn(opts.env) ? opts.env.CODEX_BANK_CACHE : undefined) || join(opts.home, ".himmel", "cache", "codex-bank.json"), "utf8"), opts.now, ttl > 0 ? ttl : undefined);
   } catch { /* no probe cache: unmeasured */ }
   const banks = { codex };
   if (census.census === "unavailable") return { census: "unavailable", generatedAt: opts.now, sessions: [], edges: [], processOrphans: await processOrphansOf(opts), banks };
@@ -372,17 +373,17 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     // A session started without -n still has the name the harness gave it.
     const name = c.name || (typeof rec.name === "string" ? rec.name : "") || `pid ${c.pid}`;
     const role = roleOf(name, c.doc);
-    // a console's doc is its operating contract and names other lanes in prose: only its launch record says its lane
+    // a chief's doc is its operating contract and names other lanes in prose: only its launch record says its lane
     const { lane, laneFrom } = laneOf(launch, role === "console" ? "" : doc);
     const backendModel = backendModelOf(lane, launch, c.model || null);
     const tools = view ? Object.values(view.tools).sort((a, b) => b.start - a.start) : [];
     const subs = view ? view.agentOrder.filter((id) => id !== "main") : [];
     const t0 = view?.t0;
     const ticket = /^([A-Z][A-Z0-9]+-\d+)\b/.exec(name)?.[1] ?? null;
-    // A wrapped leg's window is closed: its codex price must not grow with later account usage (priced only while live).
+    // A wrapped worker's window is closed: its codex price must not grow with later account usage (priced only while live).
     const ids = { session: run ?? `pid ${c.pid}`, leg: name, ticket, model: backendModel };
     const graph = graphOf(role, doc);
-    // a console is live only while its lock is held and wrapped only by its own wrap line once the lock is free (an
+    // a chief is live only while its lock is held and wrapped only by its own wrap line once the lock is free (an
     // unreadable lock is neither); every other role's state is the last bullet's marker
     const lock = role === "console" ? await lockOf(c.doc, doc) : "unknown";
     const wrapped = role === "console" ? ownWrap(doc) && lock === "released" : c.status === "WRAPPED";
@@ -427,7 +428,7 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     } catch { /* archived console moved or unreadable */ }
   }
   const cloud = await cloudRows(census.cloudRoutes ?? [], opts.env, opts.now);
-  // A local leg on a cloud session's ticket is its shepherd: it hangs under the cloud node, not the console.
+  // A local worker on a cloud session's ticket is its shepherd: it hangs under the cloud node, not the chief.
   for (const r of rows) {
     const c = r?.role === "leg" && cloud.find((x) => x.ticket === r.ticket);
     if (r && c && r.console === c.console) r.parent = c.name;

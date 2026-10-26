@@ -13,7 +13,7 @@
 # (scripts/release/test-tarball-vs-clone.sh: the convergence assertion against a
 # stub himmelctl, with a divergent RED control; this driver's fail-soft path).
 # ponytail: both installs go into a fake HOME under /tmp, and there is no uninstall
-# leg nor a vm_guest_assert_clean AFTER the run -- the real-HOME uninstall round trip
+# worker nor a vm_guest_assert_clean AFTER the run -- the real-HOME uninstall round trip
 # is covered by the clone path (scripts/test-install-symmetry-vm.sh), not here.
 #
 # Guest needs: bash, git, node+npm, jq, python3, sha256sum, tar.

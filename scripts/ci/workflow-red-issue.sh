@@ -12,7 +12,7 @@
 #   run green       -> close that issue if open. A later green run of the SAME
 #                      workflow on the SAME branch is the only thing that closes it.
 #   anything else   -> (cancelled, skipped, ...) no verdict: no-op.
-#   pull_request    -> never tracked: a leg owns its own PR's CI.
+#   pull_request    -> never tracked: a worker owns its own PR's CI.
 #   not in the list -> ignored.
 #
 # Identity: labels `ci-red` + `wf:<slug>` find the workflow's issues; the body
@@ -62,7 +62,7 @@ IFS="$tab" read -r WF EVENT BRANCH SHA CONCLUSION RUN_URL <<< "$run_line"
 
 case "$EVENT" in
   pull_request|pull_request_target)
-    echo "workflow-red-issue: run $RUN_ID is a $EVENT run -- legs own PR CI; not tracked."
+    echo "workflow-red-issue: run $RUN_ID is a $EVENT run -- workers own PR CI; not tracked."
     exit 0 ;;
 esac
 

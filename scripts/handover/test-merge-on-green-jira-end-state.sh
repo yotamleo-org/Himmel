@@ -42,7 +42,7 @@ SUITE_TMP=$(mktemp -d "${TMPDIR:-/tmp}/mog-jira-end.XXXXXX") || { echo "FAIL: mk
 if [ -z "$SUITE_TMP" ] || [ ! -d "$SUITE_TMP" ]; then echo "FAIL: no suite tmp" >&2; exit 1; fi
 trap 'chmod -R u+rwX "$SUITE_TMP"; rm -rf "$SUITE_TMP"' EXIT
 export TMPDIR="$SUITE_TMP"
-# the console-GO key lives under $HOME/.config/himmel: keep it off the real HOME
+# the chief-GO key lives under $HOME/.config/himmel: keep it off the real HOME
 export HOME="$SUITE_TMP/home"; mkdir -p "$HOME"
 
 PASS=0; FAIL=0
@@ -159,11 +159,11 @@ new_case() {
     : > "$TMP/gh.log"; : > "$TMP/jira.log"; : > "$TMP/clear.log"
 }
 
-# own_ticket <marker> - the leg doc owning the fixture ticket gets a newest <marker>
+# own_ticket <marker> - the worker doc owning the fixture ticket gets a newest <marker>
 # bullet, and the worker record names it with PR 42 (the stub's PR).
 own_ticket() {
     OWNER_DOC="$TMP/HIMMEL-9001-N1-thing.md"
-    [ -e "$OWNER_DOC" ] || printf '# leg\n\n## Results\n' > "$OWNER_DOC"
+    [ -e "$OWNER_DOC" ] || printf '# worker\n\n## Results\n' > "$OWNER_DOC"
     printf -- '- 10:%02d %s — x\n' "$(grep -c '^- ' "$OWNER_DOC")" "$1" >> "$OWNER_DOC"
     mkdir -p "$TMP/ts/workers"
     [ -e "$TMP/ts/workers/HIMMEL-9001.json" ] || printf '{"key":"HIMMEL-9001","doc":"%s","prs":{"42":{"open":true}}}\n' "$OWNER_DOC" \
@@ -222,8 +222,8 @@ assert_comment_has "2 partial merge: Remaining line on the ticket" "Remaining: s
 # --- 2b the brief says completes-ticket: no, so --jira-transition is ignored -----------------
 export STUB_PR_BODY="Remaining: slice 2 of 3"
 new_case "In Review" "v1.1.3"
-printf '> **Completes ticket:** no\n\n## Results\n' > "$TMP/leg-doc.md"
-run_merge 0 --jira-transition --leg-doc "$TMP/leg-doc.md"
+printf '> **Completes ticket:** no\n\n## Results\n' > "$TMP/worker-doc.md"
+run_merge 0 --jira-transition --worker-doc "$TMP/worker-doc.md"
 assert_eq "2b brief completes-ticket: no: status left alone" "$(state_status)" "In Review"
 assert_eq "2b brief completes-ticket: no: fixVersion left alone" "$(state_versions)" "v1.1.3"
 assert_comment_has "2b brief completes-ticket: no: Remaining line on the ticket" "Remaining: slice 2 of 3"
@@ -306,7 +306,7 @@ STUB_NUM=42 run_merge 0
 assert_eq "6 partial merge, second PR in CI" "$(state_status)" "IN CI"
 unset STUB_PR_BODY
 
-# --- 7 the Done write fails, then the leg WRAPPED: done-pending, never To Do ---------------
+# --- 7 the Done write fails, then the worker WRAPPED: done-pending, never To Do ---------------
 new_case "In Review" "v1.1.3"
 own_ticket LIVE
 : > "$TMP/state/transition.fail"

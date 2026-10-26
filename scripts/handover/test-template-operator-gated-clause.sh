@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Every emitted next-session / mission doc must carry the
 # operator-gated wrap clause. A second canonical clause,
-# Console Rulings, rides on the same "one source, tested presence" mechanism.
+# Chief Rulings, rides on the same "one source, tested presence" mechanism.
 #
 # Why a test and not just prose: an earlier incident showed that the same paragraph
 # copied into N templates silently drifts — the launch preamble lost its copy
@@ -33,18 +33,18 @@ CLAUSE=$(cat <<'CLAUSE_EOF'
 If your only remaining dependency is an operator action, **wrap at once** — do
 not idle-wait. Append a RESUME BRIEF to this file (worktree, branch, base SHA,
 dirty paths, the verbatim operator block, the ordered remaining steps), release
-the queue lock, message the console `OPERATOR-GATED, wrapped, safe to close`,
-and end the turn. **Never idle-wait for the operator** — an idle leg holds the
+the queue lock, message the chief `OPERATOR-GATED, wrapped, safe to close`,
+and end the turn. **Never idle-wait for the operator** — an idle worker holds the
 queue lock, burns its prompt cache and emits no signal, so it is
-indistinguishable from a crashed one. The console resumes it from that brief
-(`bash scripts/handover/leg-resume-brief.sh <this file>` regenerates the
+indistinguishable from a crashed one. The chief resumes it from that brief
+(`bash scripts/handover/worker-resume-brief.sh <this file>` regenerates the
 skeleton from git) instead of waking a cold session to ask.
 
 "End the turn" means the session actually **ends** — the harness exits. A
-message announcing that you are closing is not closing: a leg that says
+message announcing that you are closing is not closing: a worker that says
 "safe to close" and stays resident holds its RAM, keeps its queue lock, and
 still reads as live in `ListAgents`. If you cannot end your own session,
-say exactly that in your final message so the console can list you for the
+say exactly that in your final message so the chief can list you for the
 operator instead of assuming you are gone.
 CLAUSE_EOF
 )
@@ -52,14 +52,14 @@ CLAUSE_EOF
 # Second canonical clause: the claudex inbox-hook preface,
 # byte-identical in every *-next-session.md template alongside CLAUSE above.
 CLAUSE2=$(cat <<'CLAUSE2_EOF'
-## Console Rulings
+## Chief Rulings
 
-A claudex leg (`scripts/claude-codex`) has no `ListAgents`/`SendMessage` reach
+A claudex worker (`scripts/claude-codex`) has no `ListAgents`/`SendMessage` reach
 — its rulings arrive via the inbox hook instead
 (`scripts/hooks/claudex-inbox-hook.sh`, fed by `inbox-send.sh`), delivered as
-`additionalContext` on the next tool result, no operator paste. A native leg
+`additionalContext` on the next tool result, no operator paste. A native worker
 gets rulings the normal way, via a direct `SendMessage`. Either way, this
-doc's own **## Console Rulings** section (appended below as rulings land) is
+doc's own **## Chief Rulings** section (appended below as rulings land) is
 the record — check it, don't wait on it.
 CLAUSE2_EOF
 )
@@ -77,9 +77,9 @@ fi
 
 clause2_lines=$(printf '%s\n' "$CLAUSE2" | wc -l)
 if [ "$clause2_lines" -ge 8 ]; then
-  ok "canonical Console Rulings clause loaded ($clause2_lines lines)"
+  ok "canonical Chief Rulings clause loaded ($clause2_lines lines)"
 else
-  ko "canonical Console Rulings clause did not load ($clause2_lines lines) — every check below would be vacuous"
+  ko "canonical Chief Rulings clause did not load ($clause2_lines lines) — every check below would be vacuous"
   echo "Total: pass=$pass fail=$fail"
   exit 1
 fi
@@ -120,9 +120,9 @@ carries_clause2() {
 for t in "${templates[@]}"; do
   rel="${t#"$ROOT"/}"
   if carries_clause2 "$t"; then
-    ok "$rel carries the Console Rulings clause"
+    ok "$rel carries the Chief Rulings clause"
   else
-    ko "$rel is MISSING the Console Rulings clause (or it has drifted from the canonical text in this suite)"
+    ko "$rel is MISSING the Chief Rulings clause (or it has drifted from the canonical text in this suite)"
   fi
 done
 
@@ -144,9 +144,9 @@ else
   ok "negative control: clause-free file correctly reported as missing the operator-gated wrap clause"
 fi
 if carries_clause2 "$tmp"; then
-  ko "negative control: a clause-free file was reported as carrying the Console Rulings clause"
+  ko "negative control: a clause-free file was reported as carrying the Chief Rulings clause"
 else
-  ok "negative control: clause-free file correctly reported as missing the Console Rulings clause"
+  ok "negative control: clause-free file correctly reported as missing the Chief Rulings clause"
 fi
 # Mutation control: one word changed in a copy of the clause must fail the check.
 mut=$(mktemp "${TMPDIR:-/tmp}/clause-mutctrl.XXXXXX") || { ko "mutation control: mktemp failed"; echo "Total: pass=$pass fail=$fail"; exit 1; }

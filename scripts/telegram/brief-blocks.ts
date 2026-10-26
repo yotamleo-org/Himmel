@@ -45,7 +45,7 @@ export function composeRetaskBlock(nonce: string): string {
 }
 
 // The worker prompt must tell the model about the
-// hang shape. Root-cause evidence (a leg-8 worker stalled for the full
+// hang shape. Root-cause evidence (a worker-8 worker stalled for the full
 // RUN_TIMEOUT_MS producing ZERO bytes of output on even a trivial task):
 // Claude Code's NATIVE permission matcher bails to an interactive prompt on
 // certain Bash command shapes ($var/$(...)/backticks/compound operators) even
@@ -63,8 +63,8 @@ export function composeBashShapeWarning(outbox: string): string {
   return `BASH SHAPE (HIMMEL-203/1378): this session runs under --permission-mode dontAsk with a narrow allow-list (worktree file access, a curated set of literal commands) — a Bash command shaped with $var/$(...)/backticks/pipes/redirects/compound operators, or ANY command outside the allow-list, is auto-DENIED FAST (check run.log/outbox for the deny message) rather than prompted. Prefer literal single commands for everything inside your worktree; for ${outbox} and other session-dir files, see the OUTBOX WRITE note below — do not retry a denied step blindly, note it and move on.`;
 }
 
-// The leg-14 waiter protocol, stated in full — this is
-// the rule that failed 5 times in one leg (phantom-parks) despite being
+// The worker-14 waiter protocol, stated in full — this is
+// the rule that failed 5 times in one worker (phantom-parks) despite being
 // written down elsewhere, so it must be self-contained prose a dispatched
 // worker (or a judge itself) can follow without cross-referencing anything
 // else. Reasoning, in the order a stuck agent needs it:
@@ -84,7 +84,7 @@ export function composeBashShapeWarning(outbox: string): string {
 //      the background: chunk it, or run it in the foreground instead.
 export function composeWaiterBlock(): string {
   return [
-    `WAITER PROTOCOL (HIMMEL-1734, leg-14 lesson — 5 phantom-parks in one leg):`,
+    `WAITER PROTOCOL (HIMMEL-1734, worker-14 lesson — 5 phantom-parks in one worker):`,
     `- Verify liveness against a LIVE CLOCK: artifact mtime advancing PLUS the`,
     `  child process actually present. A block-buffered log file repeating the`,
     `  same line is NOT evidence of life.`,

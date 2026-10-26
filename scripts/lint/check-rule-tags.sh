@@ -16,8 +16,8 @@
 #
 # Usage:
 #   check-rule-tags.sh [--enforced-list <file>] [<file>...]
-#     no files            the tagged set: CLAUDE.md, docs/handover/leg-preface.md,
-#                         docs/handover/console-template.md
+#     no files            the tagged set: CLAUDE.md, docs/handover/worker-preface.md,
+#                         docs/handover/chief-template.md
 #     --enforced-list     newline-separated names instead of the generated ones (tests)
 # Exit: 0 clean · 1 findings (file:line: text) · 2 cannot evaluate (fail-closed)
 
@@ -37,7 +37,7 @@ while [ $# -gt 0 ]; do
 done
 
 if [ "${#FILES[@]}" -eq 0 ]; then
-    FILES=("$REPO_ROOT/CLAUDE.md" "$REPO_ROOT/docs/handover/leg-preface.md" "$REPO_ROOT/docs/handover/console-template.md")
+    FILES=("$REPO_ROOT/CLAUDE.md" "$REPO_ROOT/docs/handover/worker-preface.md" "$REPO_ROOT/docs/handover/chief-template.md")
 fi
 for f in "${FILES[@]}"; do
     [ -f "$f" ] || { echo "check-rule-tags: no such file: $f" >&2; exit 2; }

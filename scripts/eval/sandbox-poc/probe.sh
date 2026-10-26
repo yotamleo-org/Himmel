@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/eval/sandbox-poc/probe.sh - one-row-per-item probe for the Claude Code
-# sandbox (bwrap) as defence in depth for legs. POC kit: nothing
+# sandbox (bwrap) as defence in depth for workers. POC kit: nothing
 # here touches live settings; it works on a fixture tree under a root you give it.
 #
 #   probe.sh setup <root>                       build the fixture tree
@@ -18,7 +18,7 @@
 #   home/.config/himmel/token        the hidden config
 #   handovers/u/verdicts/a.txt       the read-only verdicts dir
 #   anchor/scripts/go.sh             stand-in for the primary checkout's writer
-#   work/                            the leg's writable worktree analog
+#   work/                            the worker's writable worktree analog
 set -u
 
 MODE="${1:-}"; ROOT="${2:-}"
@@ -89,8 +89,8 @@ out=$(sort -o "$VERD/d.txt" ./in.txt 2>&1); escape R4-option-write "$EXPECT" "$(
 # R5 a write outside the writable set
 out=$( { echo z > "$ROOT/home/outside.txt"; } 2>&1 ); escape R5-write-outside "$EXPECT" "$([ -f "$ROOT/home/outside.txt" ] && echo 0 || echo 1)" "$(printf '%s' "$out" | head -c 60)"
 
-# R6 the leg cannot rewrite an anchored writer (the excludedCommands hazard:
-# an excluded command runs unsandboxed, so its script must not be leg-writable)
+# R6 the worker cannot rewrite an anchored writer (the excludedCommands hazard:
+# an excluded command runs unsandboxed, so its script must not be worker-writable)
 out=$( { echo '# tampered' >> "$ANCHOR"; } 2>&1 ); escape R6-anchor-script "$EXPECT" "$([ "$(cat "$ANCHOR" 2>/dev/null)" != "$anchor_before" ] && echo 0 || echo 1)" "$(printf '%s' "$out" | head -c 60)"
 
 # C1 git worktree flow: init, commit, with a hook that must fire

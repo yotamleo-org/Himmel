@@ -202,13 +202,13 @@ fi
 
 briefing_forge=$(forge_detect 2>/dev/null || true)
 
-# Docs drift — advisory; gated by HIMMEL_DOC_FRESHNESS morning leg. A project
+# Docs drift — advisory; gated by HIMMEL_DOC_FRESHNESS morning worker. A project
 # without the doc-freshness lib has no such section.
 docs_drift=""
 docs_drift_present=0
 if [ -f "$SCRIPT_DIR/../lib/doc-freshness.sh" ]; then
     docs_drift_present=1
-    # Source the clone's .env so the morning leg activates when himmel turned it on
+    # Source the clone's .env so the morning worker activates when himmel turned it on
     # there (mirrors inject-where-are-we.sh; the cadence/skill may not export it).
     if [ -f "$repo_root/.env" ]; then
         load_dotenv --root "$repo_root" HIMMEL_DOC_FRESHNESS || true
@@ -216,7 +216,7 @@ if [ -f "$SCRIPT_DIR/../lib/doc-freshness.sh" ]; then
     # shellcheck source=../lib/doc-freshness.sh
     # shellcheck disable=SC1091
     . "$SCRIPT_DIR/../lib/doc-freshness.sh"
-    if [ "$since_all" -eq 0 ] && df_leg_active morning; then
+    if [ "$since_all" -eq 0 ] && df_worker_active morning; then
         docs_drift="$(df_detect "${SINCE_SHA}..HEAD" "" "$repo_root" 2>/dev/null || true)"
     fi
 fi
@@ -588,7 +588,7 @@ EOF_WIP
     # Docs drift -------------------------------------------------
     if [ "$docs_drift_present" -eq 1 ]; then
         printf '\n## 📄 Docs drift\n\n'
-        if ! df_leg_active morning; then
+        if ! df_worker_active morning; then
             # shellcheck disable=SC2016  # backticks here are markdown literal, not subshell
             printf '_Doc-freshness off (set HIMMEL_DOC_FRESHNESS to include `morning`)._\n'
         elif [ "$since_all" -eq 1 ]; then

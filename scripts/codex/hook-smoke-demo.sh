@@ -9,7 +9,7 @@
 # and stops with zero hook failures. This is that proof, and it runs on a THROW-
 # AWAY clone so a broken hook set can never touch the real checkout.
 #
-# Four legs (each independently skippable when its binary is absent):
+# Four workers (each independently skippable when its binary is absent):
 #   codex-exec     `codex exec` with a trivial read-only prompt -> exit 0, DONE
 #                  in the reply, and no hook-failure banner in stdout/stderr or
 #                  the session rollout.
@@ -29,7 +29,7 @@
 # is the main intended use: smoke a branch BEFORE it merges.
 #
 # TRUST BOUNDARY - read this before pointing --from anywhere. Running the hook
-# chain IS the job, so every leg executes the hook commands of the checkout it
+# chain IS the job, so every worker executes the hook commands of the checkout it
 # was given, unsandboxed, on this host. The disposable clone protects the real
 # CHECKOUT from a broken hook set; it is not a sandbox and never claimed to be
 # one. Point --from only at a branch you would open interactively - the same
@@ -45,10 +45,10 @@ set -u
 REPO="$(cd "$(dirname "$0")/../.." && pwd)"
 
 # `timeout` is a GNU coreutil; stock macOS has none, so a bare `timeout` call
-# exits 127 and fails every leg. Resolve it once and degrade to unbounded when
+# exits 127 and fails every worker. Resolve it once and degrade to unbounded when
 # absent (a missing lib does the same).
-# ponytail: without a GNU timeout a hung leg or hook is not bounded, so it stalls
-# the run instead of reporting a failed leg; upgrade path is requiring coreutils on
+# ponytail: without a GNU timeout a hung worker or hook is not bounded, so it stalls
+# the run instead of reporting a failed worker; upgrade path is requiring coreutils on
 # the macOS runners.
 _TIMEOUT_BIN=""
 # shellcheck source=scripts/lib/timeout-bin.sh
@@ -68,18 +68,18 @@ Usage: hook-smoke-demo.sh [--from <repo-or-worktree>] [--keep] [--timeout <sec>]
   --from PATH     Clone this checkout instead of the primary (smoke a branch
                   before it merges). Default: the repo this script lives in.
   --keep          Keep the demo dir for post-mortem (default: remove it).
-  --timeout SEC   Per-agent-leg timeout (default 180).
-  --codex-only    Skip the two Claude legs.
-  --claude-only   Skip the two Codex legs.
+  --timeout SEC   Per-agent-worker timeout (default 180).
+  --codex-only    Skip the two Claude workers.
+  --claude-only   Skip the two Codex workers.
 
 Env:
-  HOOK_SMOKE_REPLAY_TIMEOUT   per-hook bound for the claude-replay leg
+  HOOK_SMOKE_REPLAY_TIMEOUT   per-hook bound for the claude-replay worker
                               (default 30, the largest timeout any
                               .claude/settings.json entry declares).
 
-Exit: 0 all ran legs passed, 1 a leg FAILED, 2 a usage/setup error or a
-      vacuous pass - nothing ran at all, or an agent leg ran without the
-      replay leg that proves its hooks actually fired.
+Exit: 0 all ran workers passed, 1 a worker FAILED, 2 a usage/setup error or a
+      vacuous pass - nothing ran at all, or an agent worker ran without the
+      replay worker that proves its hooks actually fired.
 USAGE
 }
 
@@ -96,11 +96,11 @@ while [ $# -gt 0 ]; do
 done
 
 # Positive, not merely numeric: GNU `timeout 0` DISABLES the bound, so a 0 here
-# would quietly turn a hung leg into an indefinite stall - the opposite of what
+# would quietly turn a hung worker into an indefinite stall - the opposite of what
 # a timeout flag is for.
 case "$WORKER_SESSION_TIMEOUT" in ''|*[!0-9]*) WORKER_SESSION_TIMEOUT=0 ;; esac
 [ "$WORKER_SESSION_TIMEOUT" -ge 1 ] 2>/dev/null || { echo "hook-smoke-demo: --timeout must be a positive integer" >&2; exit 2; }
-# Per-hook bound for the claude-replay leg; 30s is the largest timeout any entry
+# Per-hook bound for the claude-replay worker; 30s is the largest timeout any entry
 # in .claude/settings.json declares. Overridable so the pinning suite can prove
 # the bound without a 30s sleep.
 REPLAY_TIMEOUT="${HOOK_SMOKE_REPLAY_TIMEOUT:-30}"
@@ -110,7 +110,7 @@ case "$REPLAY_TIMEOUT" in ''|*[!0-9]*) REPLAY_TIMEOUT=0 ;; esac
 [ -n "$FROM" ] || { echo "hook-smoke-demo: --from needs a path" >&2; exit 2; }
 [ -d "$FROM" ] || { echo "hook-smoke-demo: --from '$FROM' is not a directory" >&2; exit 2; }
 # billed-opt-in: HIMMEL_BILLED_OK
-[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "hook-smoke-demo: runs real, billed codex exec and headless claude legs; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
+[ "${HIMMEL_BILLED_OK:-}" = 1 ] || { echo "hook-smoke-demo: runs real, billed codex exec and headless claude workers; set HIMMEL_BILLED_OK=1 (on-demand only)" >&2; exit 2; }
 # A worktree has .git as a FILE (a gitdir pointer); both shapes clone fine.
 [ -e "$FROM/.git" ] || { echo "hook-smoke-demo: --from '$FROM' is not a git checkout" >&2; exit 2; }
 
@@ -170,7 +170,7 @@ rm -r -f "$DEMO/.claude/rules" 2>/dev/null || true
 # happened, and that is what makes "no hook banner" mean anything - a model that
 # just answers DONE fires no hooks at all.
 SMOKE_SHA="$(git -C "$DEMO" rev-parse --short HEAD 2>/dev/null || true)"
-# No sha means no shell-call proof for either agent leg. Fail here rather than
+# No sha means no shell-call proof for either agent worker. Fail here rather than
 # quietly running with one of the two proofs disabled.
 [ -n "$SMOKE_SHA" ] || { echo "hook-smoke-demo: cannot read HEAD in the clone" >&2; exit 2; }
 SMOKE_TOKEN="smk-$(date +%s)-${RANDOM}${RANDOM}"
@@ -192,7 +192,7 @@ EOF
 # construction: .env is gitignored, so the clone carries NO Jira/Telegram
 # credentials at all, and scripts/jira/dist/ (an untracked build artifact) does
 # not exist in the clone either.
-#   HIMMEL_INITIATIVE/_AFK/_OVERNIGHT  empty -> inject-initiative + jira-nudge legs off
+#   HIMMEL_INITIATIVE/_AFK/_OVERNIGHT  empty -> inject-initiative + jira-nudge workers off
 #   HIMMEL_JIRA_NUDGE=0           jira-nudge-on-end.sh gate (default OFF anyway)
 #   CLAUDE_END_SESSION_WIKI=0     end-session-wiki.sh documented env opt-out
 #   AUTO_ARM_DISABLE=1            auto-arm-on-cap.sh kill switch - nothing this
@@ -221,7 +221,7 @@ INERT_ENV=(
 # out of scope by design - see TRUST BOUNDARY at the top.
 #
 # CLAUDE_*/ANTHROPIC_* are deliberately excluded. Blanking CLAUDE_CODE_OAUTH_TOKEN
-# would break the very lane the claude leg needs, and an EMPTY ANTHROPIC_API_KEY
+# would break the very lane the claude worker needs, and an EMPTY ANTHROPIC_API_KEY
 # is itself a load-bearing routed-auth shape (native-auth-pin.sh) - that family
 # is native_auth_pin_env's job, and it UNSETS rather than empties.
 while IFS='=' read -r _name _; do
@@ -262,14 +262,14 @@ row() { # name result hooks failures seconds note
     return 0
 }
 
-# assert_agent_leg <name> <rc> <logfile> <reply-file> <seconds>
+# assert_agent_worker <name> <rc> <logfile> <reply-file> <seconds>
 #                  [<extra-failures> <extra-note>]
 #
 # The DONE check reads the REPLY file only, never the log: the prompt itself
 # ends in the word DONE, and both the codex transcript and the folded-in
 # rollout echo the prompt back - a log-wide grep would pass on a turn that
 # produced no answer at all.
-assert_agent_leg() {
+assert_agent_worker() {
     _name=$1; _rc=$2; _log=$3; _reply=$4; _secs=$5
     _fails=0; _note=""
     if [ "$_rc" -ne 0 ]; then _fails=$((_fails + 1)); _note="exit $_rc"; fi
@@ -306,7 +306,7 @@ assert_agent_leg() {
 
 # ============================================================ codex-exec =====
 if [ "$RUN_CODEX" = "1" ] && command -v codex >/dev/null 2>&1; then
-    echo "hook-smoke-demo: codex-exec leg (timeout ${WORKER_SESSION_TIMEOUT}s)"
+    echo "hook-smoke-demo: codex-exec worker (timeout ${WORKER_SESSION_TIMEOUT}s)"
     CX_LOG="$DEMO/.smoke-codex.log"
     CX_REPLY="$DEMO/.smoke-codex-reply.txt"
     : > "$CX_REPLY"
@@ -355,9 +355,9 @@ if [ "$RUN_CODEX" = "1" ] && command -v codex >/dev/null 2>&1; then
     CX_NROLL=$(grep -c . "$CX_ROLLS" 2>/dev/null || true)
     case "$CX_NROLL" in ''|*[!0-9]*) CX_NROLL=0 ;; esac
     if [ "$CX_NROLL" -gt 0 ]; then
-        assert_agent_leg codex-exec "$CX_RC" "$CX_LOG" "$CX_REPLY" "$CX_SECS"
+        assert_agent_worker codex-exec "$CX_RC" "$CX_LOG" "$CX_REPLY" "$CX_SECS"
     else
-        assert_agent_leg codex-exec "$CX_RC" "$CX_LOG" "$CX_REPLY" "$CX_SECS" 1 "no session rollout matched - banner scan covered stdout only"
+        assert_agent_worker codex-exec "$CX_RC" "$CX_LOG" "$CX_REPLY" "$CX_SECS" 1 "no session rollout matched - banner scan covered stdout only"
     fi
 elif [ "$RUN_CODEX" = "1" ]; then
     row codex-exec SKIP - 0 0 "codex not on PATH"
@@ -365,7 +365,7 @@ fi
 
 # ========================================================== codex-replay =====
 if [ "$RUN_CODEX" = "1" ] && command -v pwsh >/dev/null 2>&1 && command -v jq >/dev/null 2>&1; then
-    echo "hook-smoke-demo: codex-replay leg"
+    echo "hook-smoke-demo: codex-replay worker"
     RP_LOG="$DEMO/.smoke-codex-replay.log"
     RP_JSON="$DEMO/.smoke-codex-replay.json"
     RP_START=$(date +%s)
@@ -404,7 +404,7 @@ if [ "$RUN_CODEX" = "1" ] && command -v pwsh >/dev/null 2>&1 && command -v jq >/
     elif [ "$RP_RAN" -lt "$RP_HOOKS" ]; then
         # Every enumerated project hook must have an EXECUTION result. A short
         # replayResults list means hooks were listed but never run, and an
-        # unexecuted hook contributes zero failures - the vacuous pass this leg
+        # unexecuted hook contributes zero failures - the vacuous pass this worker
         # exists to rule out.
         row codex-replay FAIL "$RP_HOOKS" $((RP_HOOKS - RP_RAN)) "$RP_SECS" "only $RP_RAN/$RP_HOOKS project hooks replayed"
     elif [ "$RP_FAIL" -eq 0 ]; then
@@ -422,7 +422,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq
     # Ambient proxy exports must not redirect this Max-plan launch
     # FAIL CLOSED: an unpinned launch can be routed through a
     # local proxy - wrong auth, wrong billing, no error - so if the pin cannot
-    # be applied the leg is SKIPPED rather than spent, never silently launched.
+    # be applied the worker is SKIPPED rather than spent, never silently launched.
     PIN_OK=1
     # shellcheck source=scripts/lib/native-auth-pin.sh
     # shellcheck disable=SC1091
@@ -433,12 +433,12 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq
     if [ "$PIN_OK" != "1" ]; then
         row claude-print SKIP - 0 0 "native-auth pin unavailable"
     elif [ "$BANK" = "PROCEED" ] || [ "$BANK" = "BANK-UNKNOWN" ]; then
-        echo "hook-smoke-demo: claude-print leg (bank=$BANK, timeout ${WORKER_SESSION_TIMEOUT}s)"
+        echo "hook-smoke-demo: claude-print worker (bank=$BANK, timeout ${WORKER_SESSION_TIMEOUT}s)"
         CL_LOG="$DEMO/.smoke-claude.log"
         CL_START=$(date +%s)
         # The demo dir is a workspace Claude has never trusted, so it prints
         # "Ignoring N permissions.allow entries ... not been trusted" and runs
-        # with NO allow-list. That makes this leg self-verifying: the only thing
+        # with NO allow-list. That makes this worker self-verifying: the only thing
         # left that can approve the `git rev-parse` call is auto-approve-safe-bash,
         # so a reply carrying the HEAD sha is itself proof the PreToolUse chain
         # fired. Do NOT "fix" the trust warning - it is the positive control.
@@ -464,7 +464,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v claude >/dev/null 2>&1 && command -v jq
         CL_REPLY="$DEMO/.smoke-claude-reply.txt"
         sed -n '/^{/,$p' "$CL_LOG" | jq -r '.result // empty' > "$CL_REPLY" 2>/dev/null \
             || : > "$CL_REPLY"
-        assert_agent_leg claude-print "$CL_RC" "$CL_LOG" "$CL_REPLY" "$CL_SECS"
+        assert_agent_worker claude-print "$CL_RC" "$CL_LOG" "$CL_REPLY" "$CL_SECS"
     else
         row claude-print SKIP - 0 0 "bank verdict $BANK"
     fi
@@ -474,23 +474,23 @@ fi
 
 # ======================================================== claude-replay ======
 # The Claude-side positive control. Scope is deliberate and asymmetric with the
-# codex side: this leg replays the PreToolUse chain only - that is where every
+# codex side: this worker replays the PreToolUse chain only - that is where every
 # guardrail lives, and it is the one event whose payload can be synthesised
 # without side effects (a Stop/SessionEnd replay would drive the wiki writer
 # against a fabricated session). The OTHER Claude events are not
 # untested: claude-print is a real session, so SessionStart, PostToolUse, Stop
 # and SessionEnd all fire there for real and any failure banner is caught by the
-# same scan. What this leg adds is determinism for the guardrail chain.
+# same scan. What this worker adds is determinism for the guardrail chain.
 #
 # Every PreToolUse hook that routes through run-hook-with-bash.js is handed a
 # canned benign payload and must exit 0.
 # ONLY 0: the payload is a read-only `git rev-parse`, and measured against the
 # live hook set all 15 return 0, so a 2 here is a guardrail blocking something
-# benign - the same break the agent legs fail on - and anything else (a crash, a
+# benign - the same break the agent workers fail on - and anything else (a crash, a
 # missing runner, a broken $CLAUDE_PROJECT_DIR substitution) is the
 # runner-wiring one.
 if [ "$RUN_CLAUDE" = "1" ] && command -v jq >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
-    echo "hook-smoke-demo: claude-replay leg"
+    echo "hook-smoke-demo: claude-replay worker"
     CR_START=$(date +%s)
     # Built with jq, not a heredoc: $DEMO can be a Windows path with backslashes
     # (the no-cygpath fallback), and those are escape sequences inside a JSON
@@ -507,7 +507,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v jq >/dev/null 2>&1 && command -v node >
     CR_HOOKS=$(grep -c . "$CR_CMDS" 2>/dev/null || true)
     case "$CR_HOOKS" in ''|*[!0-9]*) CR_HOOKS=0 ;; esac
     # Subshell so the exported CLAUDE_PROJECT_DIR (the hook commands expand it
-    # themselves) cannot leak past this leg; the failure tally comes back on fd 1.
+    # themselves) cannot leak past this worker; the failure tally comes back on fd 1.
     CR_NOTE=$(
         # cd into the demo, matching what the probe does on the codex side and
         # what a real session does: a hook that resolves a RELATIVE path would
@@ -522,7 +522,7 @@ if [ "$RUN_CLAUDE" = "1" ] && command -v jq >/dev/null 2>&1 && command -v node >
             # on live initiative/Jira/arm state inherited from the caller.
             # Bounded, because a hook that HANGS is one of the breaks this
             # smoke is looking for - unbounded, it would stall the runner
-            # instead of reporting a failed leg. The default matches the largest
+            # instead of reporting a failed worker. The default matches the largest
             # timeout any entry in .claude/settings.json declares.
             env "${INERT_ENV[@]}" ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$REPLAY_TIMEOUT"} bash -c "$cmd" < "$CR_PAYLOAD" >/dev/null 2>&1
             _rc=$?
@@ -551,7 +551,7 @@ fi
 # --- table ------------------------------------------------------------------
 echo
 echo "HOOK-CHAIN SMOKE - source: $FROM"
-printf '%-15s %-7s %-7s %-9s %-7s %s\n' LEG RESULT HOOKS FAILURES TIME NOTE
+printf '%-15s %-7s %-7s %-9s %-7s %s\n' WORKER RESULT HOOKS FAILURES TIME NOTE
 for r in ${ROWS[@]+"${ROWS[@]}"}; do
     IFS='|' read -r n res h f t note <<EOF
 $r
@@ -565,11 +565,11 @@ if [ "$RAN" -eq 0 ]; then
     exit 2
 fi
 
-# An agent leg without its replay leg is not a result. `codex-exec` on its own
+# An agent worker without its replay worker is not a result. `codex-exec` on its own
 # says a turn finished with no banner - it cannot distinguish that from a hook
-# set that never fired; the replay leg is what executes the hooks and proves
+# set that never fired; the replay worker is what executes the hooks and proves
 # they run. Same for claude-print / claude-replay.
-leg_ran() {
+worker_ran() {
     for _r in ${ROWS[@]+"${ROWS[@]}"}; do
         case "$_r" in
             "$1|SKIP|"*) return 1 ;;
@@ -578,16 +578,16 @@ leg_ran() {
     done
     return 1
 }
-require_control() {  # require_control <agent-leg> <replay-leg>
-    leg_ran "$1" && ! leg_ran "$2" || return 0
+require_control() {  # require_control <agent-worker> <replay-worker>
+    worker_ran "$1" && ! worker_ran "$2" || return 0
     echo "hook-smoke-demo: $1 ran without its positive control $2 - not a pass" >&2
     exit 2
 }
 require_control codex-exec codex-replay
 require_control claude-print claude-replay
 if [ "$FAILED" -gt 0 ]; then
-    echo "hook-smoke-demo: $FAILED leg(s) FAILED" >&2
+    echo "hook-smoke-demo: $FAILED worker(s) FAILED" >&2
     exit 1
 fi
-echo "hook-smoke-demo: all $RAN leg(s) clean"
+echo "hook-smoke-demo: all $RAN worker(s) clean"
 exit 0

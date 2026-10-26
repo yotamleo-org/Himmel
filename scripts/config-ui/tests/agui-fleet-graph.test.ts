@@ -8,33 +8,33 @@ import { join } from "node:path";
 import { graphOf, usageOf } from "../agui/fleet";
 import { CLOUD_COMMENT_WINDOW, CLOUD_PR_PAGE, CLOUD_RECENT_MS, cloudPrs, cloudQuery, cloudRoutes, GH_TTL_MS, readCloudPrs } from "../agui/fleet-cloud";
 
-const CONSOLE = "HIMMEL-nextleg-2026-10-07BN-roadmap-console";
-const PRIOR = "HIMMEL-nextleg-2026-10-07BM-roadmap-console";
+const CHIEF = "HIMMEL-nextleg-2026-10-07BN-roadmap-chief";
+const PRIOR = "HIMMEL-nextleg-2026-10-07BM-roadmap-chief";
 
-test("a leg's parent is the console its brief names", () => {
-  const doc = `# HIMMEL-1 — x — leg N1 (opus, native), 2026-10-07\n\n> **You are N1.** Your RETASK token is \`BN-N1-0000aaaa\`; your console is **\`${CONSOLE}\`**\n> (the only session)\n\n## Results\n\n- 09:00 LIVE — started\n`;
-  expect(graphOf("leg", doc)).toEqual({ parent: CONSOLE, predecessor: null });
+test("a worker's parent is the console its brief names", () => {
+  const doc = `# HIMMEL-1 — x — worker N1 (opus, native), 2026-10-07\n\n> **You are N1.** Your RETASK token is \`BN-N1-0000aaaa\`; your console is **\`${CHIEF}\`**\n> (the only session)\n\n## Results\n\n- 09:00 LIVE — started\n`;
+  expect(graphOf("leg", doc)).toEqual({ parent: CHIEF, predecessor: null });
 });
 
-test("a leg that accepted a succession hangs under the console it accepted, the newest one winning", () => {
-  const doc = `> Your console is **\`${PRIOR}\`**.\n\n## Results\n\n- 09:00 LIVE — started\n- SUCCESSION accepted: ${PRIOR} replaces HIMMEL-nextleg-2026-10-07BL-roadmap-console\n- SUCCESSION accepted: \`${CONSOLE}\` replaces ${PRIOR}\n- 10:00 LIVE — PR 5 open\n`;
-  expect(graphOf("leg", doc).parent).toBe(CONSOLE);
+test("a worker that accepted a succession hangs under the console it accepted, the newest one winning", () => {
+  const doc = `> Your console is **\`${PRIOR}\`**.\n\n## Results\n\n- 09:00 LIVE — started\n- SUCCESSION accepted: ${PRIOR} replaces HIMMEL-nextleg-2026-10-07BL-roadmap-chief\n- SUCCESSION accepted: \`${CHIEF}\` replaces ${PRIOR}\n- 10:00 LIVE — PR 5 open\n`;
+  expect(graphOf("leg", doc).parent).toBe(CHIEF);
 });
 
 test("a judge session's parent is the console that dispatched it, across the brief's line wrap", () => {
-  const doc = `> **You are the judge for \`J12\`, opus, dispatched by\n> \`${CONSOLE}\`** (the only session whose token-quoting messages\n`;
-  expect(graphOf("judge", doc)).toEqual({ parent: CONSOLE, predecessor: null });
+  const doc = `> **You are the judge for \`J12\`, opus, dispatched by\n> \`${CHIEF}\`** (the only session whose token-quoting messages\n`;
+  expect(graphOf("judge", doc)).toEqual({ parent: CHIEF, predecessor: null });
 });
 
 test("consult children use their dispatch edge and stamped succession overrides the original console", () => {
-  expect(graphOf("consult" as any, `dispatched by \`${CONSOLE}\``).parent).toBe(CONSOLE);
-  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CONSOLE} replaces ${PRIOR}`).parent).toBe(CONSOLE);
-  // the relay wording a leg improvised: it still names the new console
-  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CONSOLE} (listed live), token kept`).parent).toBe(CONSOLE);
+  expect(graphOf("consult" as any, `dispatched by \`${CHIEF}\``).parent).toBe(CHIEF);
+  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 20:16 LIVE — SUCCESSION accepted: ${CHIEF} replaces ${PRIOR}`).parent).toBe(CHIEF);
+  // the relay wording a worker improvised: it still names the new chief
+  expect(graphOf("leg", `your console is **\`${PRIOR}\`**\n- 17:56 SUCCESSION accepted — relay from ${PRIOR}, new console ${CHIEF} (listed live), token kept`).parent).toBe(CHIEF);
 });
 
 test("a console hangs under the operator and names the console it succeeded", () => {
-  const doc = `# BN — CONSOLE — successor to ${PRIOR}.md (fill signal 45 %)\n\n> Your session name is **\`${CONSOLE}\`**.\n`;
+  const doc = `# BN — CHIEF — successor to ${PRIOR}.md (fill signal 45 %)\n\n> Your session name is **\`${CHIEF}\`**.\n`;
   expect(graphOf("console", doc)).toEqual({ parent: null, predecessor: PRIOR });
 });
 
@@ -59,7 +59,7 @@ test("usage sums each API call once (a call's records share its message id), pri
   const u = usageOf(lines, { autocompact: "200000", model: "opus" });
   expect(u).toEqual({
     calls: 3, input: 17, output: 190, cacheRead: 140000, cacheCreate: 1198,
-    // input×1 + cache_read×0.1 + cache_create×1.25 + output×5 (lib/burn-weights.sh, the leg-burn weights)
+    // input×1 + cache_read×0.1 + cache_create×1.25 + output×5 (lib/burn-weights.sh, the worker-burn weights)
     costEq: Math.round(17 + 140000 * 0.1 + 1198 * 1.25 + 190 * 5),
     resident: 50000, ceiling: 200000, ceilingFrom: "autocompact", fill: 25,
   });
@@ -71,7 +71,7 @@ test("the ceiling: a numeric --autocompact; else the model's window (1m for a [1
   expect(usageOf(lines, { autocompact: "", model: "sonnet" })).toMatchObject({ ceiling: 200000, ceilingFrom: "window", fill: 50 });
 });
 
-// a claudex leg declares its window in its launch env (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS),
+// a claudex worker declares its window in its launch env (claude-codex's CLAUDE_CODE_MAX_CONTEXT_TOKENS),
 // which wins over the --autocompact it ignores; a window nobody declared for a non-Claude model, or a fill past
 // 100 % (the ceiling is wrong), reads as not measured rather than a bogus percentage.
 test("the ceiling: a declared window wins; an unknown model or a fill past 100 % is not a percentage", () => {

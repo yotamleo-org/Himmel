@@ -1126,7 +1126,7 @@ _CLAUDE_REROUTE_VARS="CLAUDE_CODE_USE_BEDROCK CLAUDE_CODE_USE_VERTEX CLAUDE_CODE
 #   env claude_code_use_bedrock=1 node -e 'process.env.CLAUDE_CODE_USE_BEDROCK' -> "1"
 #   env claude_code_use_bedrock=1 bash -c 'echo ${CLAUDE_CODE_USE_BEDROCK:-unset}' -> unset
 # So a lower/mixed-case selector reroutes the CLI to Bedrock while an exact-case
-# bash check reads "not set" and waves the run through as anthropic - the exact
+# bash check reads "not set" and parallel waves the run through as anthropic - the exact
 # fail-open class this whole fix exists to close, reintroduced through casing.
 _claude_reroute_var() {
     # LC_ALL=C for THIS function only: both nocasematch and [A-Za-z0-9_] are

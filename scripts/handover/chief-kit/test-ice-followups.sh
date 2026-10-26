@@ -2,7 +2,7 @@
 # test-ice-followups.sh — Hermetic tests for ice-followups.sh over a fixture Jira
 # mirror (never the operator's own). Today is pinned with ICE_FOLLOWUPS_TODAY.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

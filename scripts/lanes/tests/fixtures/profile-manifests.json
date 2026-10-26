@@ -142,7 +142,7 @@
     ],
     "contextBudget": 45000
   },
-  "leg-impl": {
+  "worker-impl": {
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
@@ -151,7 +151,7 @@
     ],
     "contextBudget": 55000
   },
-  "leg-bus": {
+  "worker-bus": {
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
@@ -160,7 +160,7 @@
     ],
     "contextBudget": 53000
   },
-  "leg-vm": {
+  "worker-vm": {
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
@@ -169,7 +169,7 @@
     ],
     "contextBudget": 35000
   },
-  "leg-e2e": {
+  "worker-e2e": {
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
@@ -218,7 +218,7 @@
     ],
     "contextBudget": 45000
   },
-  "console": {
+  "chief": {
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",
@@ -228,7 +228,7 @@
     ],
     "contextBudget": 50000
   },
-  "console-relay": {
+  "chief-relay": {
     "enabled": [
       "handover@himmel",
       "himmel-ops@himmel",

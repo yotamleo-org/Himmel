@@ -197,7 +197,7 @@ test("a dist newer than its source has no banner and no warning; assets never ge
   expect(await (await fetch(`${bootWeb(old.dir, old.web)}/agui/index-abc.js`)).text()).toBe("console.log(1)");
 });
 
-// the page bundles the console's rail and theme from public/, so a newer one of those is a newer source.
+// the page bundles the chief's rail and theme from public/, so a newer one of those is a newer source.
 test("a dist older than public/nav.js or public/theme.css is stale", () => {
   for (const f of ["nav.js", "theme.css"]) {
     const { dir, web: w } = web(3600, 7200);

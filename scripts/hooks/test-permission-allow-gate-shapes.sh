@@ -21,9 +21,9 @@ T="$(mktemp -d "${TMPDIR:-/tmp}/gate-shapes.XXXXXX")" || exit 1
 trap 'rm -rf "$T"' EXIT
 git init -q -b main "$T/repo" && git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init || exit 1
 mkdir -p "$T/repo/.claude/worktrees" "$T/plain"
-git -C "$T/repo" worktree add -q "$T/repo/.claude/worktrees/leg" -b leg 2>/dev/null || exit 1
+git -C "$T/repo" worktree add -q "$T/repo/.claude/worktrees/worker" -b worker 2>/dev/null || exit 1
 git -C "$T/repo" worktree add -q "$T/outside-wt" -b outside 2>/dev/null || exit 1
-WT="$T/repo/.claude/worktrees/leg"
+WT="$T/repo/.claude/worktrees/worker"
 # The hook only trusts worktrees of the repository it lives in, so run a copy placed inside the throwaway repo.
 mkdir -p "$T/repo/scripts/hooks/data" "$T/repo/scripts/lib"
 cp "$HOOK" "$T/repo/scripts/hooks/permission-allow-gate-shapes.sh" || exit 1
@@ -37,14 +37,14 @@ done
 chmod +x "$T/repo/scripts/cr/write-verdicts.sh"
 # The hook reads the table from the default branch's object store, so publish it there.
 git -C "$T/repo" add scripts && git -C "$T/repo" -c user.email=t@t -c user.name=t commit -q -m table || exit 1
-mkdir -p "$T/repo/.claude/worktrees/leg/scripts" && cp -Rp "$T/repo/scripts/cr" "$T/repo/.claude/worktrees/leg/scripts/cr" || exit 1
+mkdir -p "$T/repo/.claude/worktrees/worker/scripts" && cp -Rp "$T/repo/scripts/cr" "$T/repo/.claude/worktrees/worker/scripts/cr" || exit 1
 git -C "$T/repo" update-ref refs/remotes/origin/main HEAD || exit 1
 TABLE_COMMIT="$(git -C "$T/repo" rev-parse HEAD)"
 cp "$(dirname "$HOOK")/../lib/git-clean.sh" "$T/repo/scripts/lib/" || exit 1
 HOOK="$T/repo/scripts/hooks/permission-allow-gate-shapes.sh"
 git init -q "$T/other" && git -C "$T/other" -c user.email=t@t -c user.name=t commit -q --allow-empty -m init || exit 1
 mkdir -p "$T/other/.claude/worktrees"
-git -C "$T/other" worktree add -q "$T/other/.claude/worktrees/leg" -b leg 2>/dev/null || exit 1
+git -C "$T/other" worktree add -q "$T/other/.claude/worktrees/worker" -b worker 2>/dev/null || exit 1
 SHA="$(printf 'a%.0s' $(seq 1 40))"
 DOC="/home/u/handovers/x/HIMMEL-1-N1-foo.md"
 
@@ -76,7 +76,7 @@ expect "non-registered dir passes through" pass "$T/plain" Bash "bash scripts/cr
 expect "linked worktree outside .claude/worktrees passes through" pass "$T/outside-wt" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 mkdir -p "$WT/sub"
 expect "worktree subdirectory passes through" pass "$WT/sub" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
-expect "worktree of a different repository passes through" pass "$T/other/.claude/worktrees/leg" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
+expect "worktree of a different repository passes through" pass "$T/other/.claude/worktrees/worker" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 expect "non-Bash tool passes through" pass "$WT" Edit "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 expect "unlisted SKIP hook passes through" pass "$WT" Bash "SKIP=check-commit-msg git commit -F .tmp/msg.txt"
 expect "chained command passes through" pass "$WT" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt; rm -rf /"
@@ -118,7 +118,7 @@ printf 'echo drift\n' >> "$T/repo/scripts/cr/write-verdicts.sh"
 cp -p "$T/repo/scripts/cr/write-verdicts.sh" "$WT/scripts/cr/write-verdicts.sh"
 expect "anchor working copy that differs from main passes through" pass "$WT" Bash "$VW"
 git -C "$T/repo" checkout -q -- scripts/cr/write-verdicts.sh; cp -p "$T/repo/scripts/cr/write-verdicts.sh" "$WT/scripts/cr/write-verdicts.sh"
-# A leg that commits tampered bytes and moves BOTH refs/heads/main and refs/remotes/origin/main to
+# A worker that commits tampered bytes and moves BOTH refs/heads/main and refs/remotes/origin/main to
 # them makes the worktree copy equal "main"; only the anchor working-copy check in anchor-bytes.sh
 # still refuses, because the primary checkout's files are not the moved main's.
 printf 'echo pwned\n' >> "$WT/scripts/cr/write-verdicts.sh"
@@ -129,7 +129,7 @@ EVIL_COMMIT="$(git -C "$T/repo" -c user.email=t@t -c user.name=t commit-tree -p 
 unset GIT_INDEX_FILE
 git -C "$T/repo" update-ref refs/remotes/origin/main "$EVIL_COMMIT" || exit 1
 git -C "$T/repo" update-ref refs/heads/main "$EVIL_COMMIT" || exit 1
-expect "leg-moved main and origin/main do not legitimise its bytes" pass "$WT" Bash "$VW"
+expect "worker-moved main and origin/main do not legitimise its bytes" pass "$WT" Bash "$VW"
 git -C "$T/repo" update-ref refs/heads/main "$TABLE_COMMIT"
 git -C "$T/repo" update-ref refs/remotes/origin/main "$TABLE_COMMIT"
 cp -p "$T/repo/scripts/cr/write-verdicts.sh" "$WT/scripts/cr/write-verdicts.sh"
@@ -150,7 +150,7 @@ expect "shape not in the data file passes through" pass "$WT" Bash "bash scripts
 expect "shape added to the data file is allowed" allow "$WT" Bash "bash scripts/hello.sh"
 git -C "$T/repo" update-ref refs/remotes/origin/main "$TABLE_COMMIT" || exit 1
 
-# The table is trusted only from the default branch: a leg's own worktree copy, an env override
+# The table is trusted only from the default branch: a worker's own worktree copy, an env override
 # and a missing default branch all leave the table as it was.
 mkdir -p "$WT/scripts/hooks/data"
 printf 'x\t^.*$\t-\n' > "$WT/scripts/hooks/data/gate-shapes.tsv"
@@ -159,7 +159,7 @@ expect "tampered worktree table allows nothing new" pass "$WT" Bash "rm -rf /tmp
 expect "tampered worktree table leaves listed shapes allowed" allow "$WT" Bash "bash scripts/cr/write-verdicts.sh aggregate --branch b --from-file .tmp/v.txt"
 out="$(jq -n --arg cwd "$WT" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"rm -rf /tmp/x"}}' | HIMMEL_GATE_SHAPES_FILE="$T/evil.tsv" bash "$HOOK" 2>/dev/null)"
 [ -z "$out" ] && ok "HIMMEL_GATE_SHAPES_FILE is not honoured" || bad "HIMMEL_GATE_SHAPES_FILE is not honoured"
-# The real attack: the leg runs ITS OWN copy of the hook beside its own edited table.
+# The real attack: the worker runs ITS OWN copy of the hook beside its own edited table.
 mkdir -p "$WT/scripts/lib"
 cp "$HOOK" "$WT/scripts/hooks/permission-allow-gate-shapes.sh"; cp "$T/repo/scripts/lib/git-clean.sh" "$WT/scripts/lib/"
 out="$(jq -n --arg cwd "$WT" '{cwd:$cwd,tool_name:"Bash",tool_input:{command:"rm -rf /tmp/x"}}' | bash "$WT/scripts/hooks/permission-allow-gate-shapes.sh" 2>/dev/null)"

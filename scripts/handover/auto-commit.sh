@@ -34,23 +34,23 @@
 #   5  push failed (commit landed locally, push didn't)
 #   6  branch create/checkout failed
 #   7  single-writer repo parked off its default branch — refused
-#   8  leg-split refused — this commit would add a SECOND never-committed
-#      numbered handover file for the same leg series.
-#      Override: HANDOVER_LEG_SPLIT_OK=1.
+#   8  worker-split refused — this commit would add a SECOND never-committed
+#      numbered handover file for the same worker series.
+#      Override: HANDOVER_WORKER_SPLIT_OK=1.
 #
 # .single-writer marker at the handover repo root → commit
 # directly on the default branch (no per-ticket branch, no PR), the same
 # path as HANDOVER_DIRECT_MAIN. Refuses (exit 7) if the repo is parked on a
 # non-default branch rather than entangle handover state onto a feature branch.
 #
-# Leg-split guard: refuses (exit 8) when the staged *.md
+# Worker-split guard: refuses (exit 8) when the staged *.md
 # additions include TWO never-committed files sharing the same session stem
 # (e.g. "foo-25.md" + "foo-26.md", or "foo.md" + "foo-2.md") — the shape
 # that orphaned session-25's STATE behind session-26's ORDERS. Keyed on the
 # normalized parent directory plus FULL stem, so same-named series in parallel
 # ticket directories do not collide. Renames/deletions are excluded by the
-# index's diff-filter=A. HANDOVER_LEG_SPLIT_OK=1 overrides for a genuinely
-# deliberate two-file leg.
+# index's diff-filter=A. HANDOVER_WORKER_SPLIT_OK=1 overrides for a genuinely
+# deliberate two-file worker.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -93,7 +93,7 @@ Environment:
   HANDOVER_DIRECT_MAIN=1    Skip branching; commit on the current branch
                             (v1 behavior). Default opt-out kept until the
                             branched path is fully validated.
-  HANDOVER_LEG_SPLIT_OK=1   Override the leg-split guard
+  HANDOVER_WORKER_SPLIT_OK=1   Override the worker-split guard
                             (exit 8): allow committing two never-committed
                             numbered files for the same series in one commit.
 
@@ -432,24 +432,24 @@ if [ "${#mdchange_paths[@]}" -eq 0 ] && [ "$DRY_RUN" -eq 0 ]; then
     exit 0
 fi
 
-# Leg-split guard collector. Paths arrive NUL-delimited and
+# Worker-split guard collector. Paths arrive NUL-delimited and
 # stay in Bash arrays, so a legal newline inside a path cannot split one index
 # entry into two. Bash 3.2 has no associative arrays; parallel indexed arrays
 # keep the parent-dir + stem key paired with each staged path.
-leg_split_keys=()
-leg_split_paths=()
-leg_split_dupe_keys=()
-leg_split_found=0
+worker_split_keys=()
+worker_split_paths=()
+worker_split_dupe_keys=()
+worker_split_found=0
 
-_leg_split_reset() {
-    leg_split_keys=()
-    leg_split_paths=()
-    leg_split_dupe_keys=()
-    leg_split_found=0
+_worker_split_reset() {
+    worker_split_keys=()
+    worker_split_paths=()
+    worker_split_dupe_keys=()
+    worker_split_found=0
 }
 
 # shellcheck disable=SC2329,SC2317  # invoked indirectly via _hp_collect_or_die's "$_cb" "$f"
-_leg_split_add_path() {
+_worker_split_add_path() {
     local f="$1" base parent key i j
     case "$f" in
         *.md) ;;
@@ -465,40 +465,40 @@ _leg_split_add_path() {
     key="${parent}/${_HP_STEM}"
 
     i=0
-    while [ "$i" -lt "${#leg_split_keys[@]}" ]; do
-        if [ "${leg_split_keys[$i]}" = "$key" ]; then
-            leg_split_found=1
+    while [ "$i" -lt "${#worker_split_keys[@]}" ]; do
+        if [ "${worker_split_keys[$i]}" = "$key" ]; then
+            worker_split_found=1
             j=0
-            while [ "$j" -lt "${#leg_split_dupe_keys[@]}" ]; do
-                [ "${leg_split_dupe_keys[$j]}" = "$key" ] && break
+            while [ "$j" -lt "${#worker_split_dupe_keys[@]}" ]; do
+                [ "${worker_split_dupe_keys[$j]}" = "$key" ] && break
                 j=$(( j + 1 ))
             done
-            if [ "$j" -eq "${#leg_split_dupe_keys[@]}" ]; then
-                leg_split_dupe_keys[${#leg_split_dupe_keys[@]}]="$key"
+            if [ "$j" -eq "${#worker_split_dupe_keys[@]}" ]; then
+                worker_split_dupe_keys[${#worker_split_dupe_keys[@]}]="$key"
             fi
             break
         fi
         i=$(( i + 1 ))
     done
-    leg_split_keys[${#leg_split_keys[@]}]="$key"
-    leg_split_paths[${#leg_split_paths[@]}]="$f"
+    worker_split_keys[${#worker_split_keys[@]}]="$key"
+    worker_split_paths[${#worker_split_paths[@]}]="$f"
 }
 
-_leg_split_print() {
+_worker_split_print() {
     local key i
-    for key in "${leg_split_dupe_keys[@]}"; do
+    for key in "${worker_split_dupe_keys[@]}"; do
         printf "    series '%s':\n" "$key"
         i=0
-        while [ "$i" -lt "${#leg_split_keys[@]}" ]; do
-            if [ "${leg_split_keys[$i]}" = "$key" ]; then
-                printf '      - %q\n' "${leg_split_paths[$i]}"
+        while [ "$i" -lt "${#worker_split_keys[@]}" ]; do
+            if [ "${worker_split_keys[$i]}" = "$key" ]; then
+                printf '      - %q\n' "${worker_split_paths[$i]}"
             fi
             i=$(( i + 1 ))
         done
     done
 }
 
-# _leg_split_unstage_all -- unstages EVERYTHING under $rel_root on a
+# _worker_split_unstage_all -- unstages EVERYTHING under $rel_root on a
 # refusal. A narrower cleanup that unstaged only the two colliding paths
 # still left every OTHER *.md file this invocation staged
 # sitting in the index, where a later unrelated commit could sweep them in
@@ -507,26 +507,26 @@ _leg_split_print() {
 # THIS run's `git add -A` or from before it (the retry shape, T-ls6). Warns
 # rather than silently swallowing a reset failure: the guard's refusal message promises nothing gets committed,
 # and a failed reset would leave that promise only half true.
-_leg_split_unstage_all() {
+_worker_split_unstage_all() {
     if ! git -C "$handover_repo" reset HEAD -- "$rel_root" >/dev/null 2>&1; then
-        echo "WARN auto-commit: could not unstage '$rel_root' after the leg-split refusal -- check 'git status' before committing anything else here." >&2
+        echo "WARN auto-commit: could not unstage '$rel_root' after the worker-split refusal -- check 'git status' before committing anything else here." >&2
     fi
 }
 
 # Dry-run cannot stage, so preview the union that `git add -A` would turn into
 # additions: additions already in the index plus untracked files under root.
 # The real commit path below always rebuilds this set from the post-stage index.
-if [ "${HANDOVER_LEG_SPLIT_OK:-}" != "1" ] && [ "$DRY_RUN" -eq 1 ]; then
-    _hp_collect_or_die _leg_split_add_path diff --cached --name-only --diff-filter=A
-    _hp_collect_or_die _leg_split_add_path ls-files --others --exclude-standard
+if [ "${HANDOVER_WORKER_SPLIT_OK:-}" != "1" ] && [ "$DRY_RUN" -eq 1 ]; then
+    _hp_collect_or_die _worker_split_add_path diff --cached --name-only --diff-filter=A
+    _hp_collect_or_die _worker_split_add_path ls-files --others --exclude-standard
 fi
 
 if [ "$DRY_RUN" -eq 1 ]; then
     echo "DRY auto-commit: mode=B root=$root repo=$handover_repo"
-    if [ "$leg_split_found" -eq 1 ]; then
-        echo "DRY auto-commit: would REFUSE (exit 8): second never-committed handover file for the same leg series:"
-        _leg_split_print
-        echo "DRY auto-commit: override with HANDOVER_LEG_SPLIT_OK=1 if this is a deliberate two-file leg"
+    if [ "$worker_split_found" -eq 1 ]; then
+        echo "DRY auto-commit: would REFUSE (exit 8): second never-committed handover file for the same worker series:"
+        _worker_split_print
+        echo "DRY auto-commit: override with HANDOVER_WORKER_SPLIT_OK=1 if this is a deliberate two-file worker"
         exit 0
     fi
     if [ "$sw_parked" -eq 1 ]; then
@@ -577,7 +577,7 @@ git -C "$handover_repo" add -A -- "$rel_root"
 
 # Filter to only *.md changes — if the operator scribbled non-md files,
 # unstage them so this commit stays handover-scoped. Runs BEFORE the
-# leg-split guard below (CR finding, codex-1 Important): the guard's own
+# worker-split guard below (CR finding, codex-1 Important): the guard's own
 # exit 8 refusal happens right after `git add -A`, so if this ran AFTER the
 # guard, a refusal would leave unrelated non-.md files sitting staged in
 # the index even though nothing gets committed.
@@ -602,19 +602,19 @@ _unstage_if_non_md() {
 }
 _hp_collect_or_die _unstage_if_non_md diff --cached --name-only
 
-# Leg-split guard: inspect the REAL post-stage additions,
+# Worker-split guard: inspect the REAL post-stage additions,
 # including files that were already staged before this invocation. `-z` plus
 # read -d '' preserves every legal path byte except Git's NUL separator.
-if [ "${HANDOVER_LEG_SPLIT_OK:-}" != "1" ]; then
-    _leg_split_reset
-    _hp_collect_or_die _leg_split_add_path diff --cached --name-only --diff-filter=A
-    if [ "$leg_split_found" -eq 1 ]; then
+if [ "${HANDOVER_WORKER_SPLIT_OK:-}" != "1" ]; then
+    _worker_split_reset
+    _hp_collect_or_die _worker_split_add_path diff --cached --name-only --diff-filter=A
+    if [ "$worker_split_found" -eq 1 ]; then
         echo "ERR auto-commit: refusing — this commit would create a SECOND handover file for the same leg:" >&2
-        _leg_split_print >&2
-        echo "    One leg writes ONE file (state first, then orders, in the SAME doc)." >&2
-        echo "    If these genuinely are two separate legs' work, commit them separately." >&2
-        echo "    Override (rare, deliberate two-file leg): HANDOVER_LEG_SPLIT_OK=1" >&2
-        _leg_split_unstage_all
+        _worker_split_print >&2
+        echo "    One worker writes ONE file (state first, then orders, in the SAME doc)." >&2
+        echo "    If these genuinely are two separate workers' work, commit them separately." >&2
+        echo "    Override (rare, deliberate two-file worker): HANDOVER_WORKER_SPLIT_OK=1" >&2
+        _worker_split_unstage_all
         exit 8
     fi
 fi

@@ -29,7 +29,7 @@
 #   PS23 ci.yml's plan step asks its --list under SUITE_TIER_MODE=pr, the shards' PR tier
 #   PS24 ci.yml's plan step asks its --list with a SUITE_MANIFEST, as the shards do
 #   PS21 n of 0 or a negative value is a usage error naming CI_MAX_SHARDS, and
-#        ci.yml's plan step then falls back to its empty output (8 legs)
+#        ci.yml's plan step then falls back to its empty output (8 workers)
 #
 # Platform guard: bash-only, no .ps1 twin; Linux CI is the caller.
 #
@@ -317,13 +317,13 @@ if STUB_LIST="$PS/small.list" STUB_LIST_MODE=ok SUITE_DURATIONS="$PS/real-ledger
    && [ "$(sort -u "$PS/manifest.log")" = manifest ]; then pass "PS24 the plan step lists with a SUITE_MANIFEST, like the shards"; else fail "PS24 plan step failed or no SUITE_MANIFEST: got [$(cat "$PS/manifest.log")] rc $(cat "$real_dir/step.rc")"; fi
 
 # PS21: 0 and a negative value are refused (rc 2, message names CI_MAX_SHARDS); the plan
-# step swallows the refusal into an empty output, which the shard job reads as 8 legs.
+# step swallows the refusal into an empty output, which the shard job reads as 8 workers.
 for bad in 0 -3; do
   if STUB_ANSWERS="" bash "$PS/plan-shards.sh" "$bad" . >"$PS/bad.out" 2>"$PS/bad.err"; then rc=0; else rc=$?; fi
   if [ "$rc" -eq 2 ] && [ ! -s "$PS/bad.out" ]; then pass "PS21 n=$bad is a usage error with no plan"; else fail "PS21 n=$bad: rc $rc [$(cat "$PS/bad.out")]"; fi
   if grep -q 'CI_MAX_SHARDS' "$PS/bad.err"; then pass "PS21 n=$bad message names CI_MAX_SHARDS"; else fail "PS21 n=$bad message: [$(cat "$PS/bad.err")]"; fi
   got=$(run_real_step "$bad")
-  if [ -z "$got" ] && [ "$(cat "$real_dir/step.rc")" = 0 ]; then pass "PS21 plan step with CI_MAX_SHARDS=$bad succeeds and leaves no shard_total (8 legs)"; else fail "PS21 plan step $bad: got [$got] rc $(cat "$real_dir/step.rc")"; fi
+  if [ -z "$got" ] && [ "$(cat "$real_dir/step.rc")" = 0 ]; then pass "PS21 plan step with CI_MAX_SHARDS=$bad succeeds and leaves no shard_total (8 workers)"; else fail "PS21 plan step $bad: got [$got] rc $(cat "$real_dir/step.rc")"; fi
 done
 
 rst_tally

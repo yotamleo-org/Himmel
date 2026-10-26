@@ -105,11 +105,11 @@ assert() {
 # stands in for "the vault the cadence session is running in".
 assert "absolute engine path (win)"  ALLOW "$(decide_with_hook "$HOOK" "$(j_bash_cwd "python \"${ABS}\" \"${VAULT_FIXTURE_MIXED}\"" "$VAULT_FIXTURE_MIXED")")"
 assert "backslash engine path (win)" ALLOW "$(decide "$(j_bash "python \"${ABS_BS}\" vault")")"
-# Regression: the EXACT shape the 2026-08-20 04:00 health leg
+# Regression: the EXACT shape the 2026-08-20 04:00 health worker
 # emitted — Windows BACKSLASH absolute engine path AND a backslash ABSOLUTE
 # vault arg, with the session cwd arriving in backslash form too (the cadence
 # runner's `cd /d` leaves it that way). This hook grants that command
-# byte-for-byte; the leg parked because the model routed it through the
+# byte-for-byte; the worker parked because the model routed it through the
 # PowerShell TOOL, which no cadence hook matches — closed separately by
 # cadence-deny-powershell.sh. Pin the shape so a future path-normalisation
 # change cannot silently stop granting what the cadence actually emits.
@@ -518,7 +518,7 @@ assert "gh api endpoint with an embedded quoted separator -> still judged consis
 # == plugin-cache root anchor ==
 # obsidian-triage actually RUNS from the Claude Code plugin cache
 # (~/.claude/plugins/cache/himmel/obsidian-triage/<version>/...), not just
-# this checkout -- a leg session's emitted engine path legitimately resolves
+# this checkout -- a worker's emitted engine path legitimately resolves
 # there. A fake HOME fixture stands in for the cache tree; decide_with_hook_home
 # invokes the hook with that HOME so PLUGIN_CACHE_BASE resolves into it.
 FAKE_HOME=$(mktemp -d "${TMPDIR:-/tmp}/cadence-fake-home.XXXXXX")

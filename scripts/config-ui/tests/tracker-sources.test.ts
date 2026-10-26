@@ -46,7 +46,7 @@ esac
   return { d, env, ghCalls: () => (existsSync(ghLog) ? readFileSync(ghLog, "utf8").split("\n").filter(Boolean) : []), jiraCalls: () => existsSync(jiraLog) };
 }
 const serve = (env: Record<string, string>, root: string) => {
-  const srv = startServer({ port: 0, token: TOKEN, root, env, legsScript: join(root, "no-legs.sh") });
+  const srv = startServer({ port: 0, token: TOKEN, root, env, legsScript: join(root, "no-workers.sh") });
   cleanups.push(() => srv.stop());
   const get = async (p: string) => (await fetch(`http://127.0.0.1:${srv.port}${p}`, { headers: { "X-Himmel-Token": TOKEN } })).json();
   return { srv, get };

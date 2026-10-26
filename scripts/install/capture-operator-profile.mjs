@@ -269,7 +269,7 @@ function isHimmelRelevantTask(name) {
 }
 
 // ── cadence-registry schema boundary ────────────────────────────────────
-// Schema ruling (locked, console-approved): the v2
+// Schema ruling (locked, chief-approved): the v2
 // profile's `cadences` section carries ONLY ids from
 // scripts/himmelctl/lib/cadence-registry.json (pipeline|qmd|graphmap|
 // and the rest, read from the file — never hardcoded — since

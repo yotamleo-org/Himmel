@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/chief/base-status.sh — base verification.
 #
-# Console ruling 66: arm a leg on a fence only when every merged PR that
+# Chief ruling 66: arm a worker on a fence only when every merged PR that
 # touched it already carries its after-report SUMMARY comment. This lists the
 # merged PRs on the repo's default branch that touched a given fence and are
 # NOT clean: PENDING (no after-report SUMMARY comment yet) or RED (a SUMMARY
@@ -251,7 +251,7 @@ while [ "$i" -lt "$count" ]; do
     # NOT author-bound: binding to "whoever gh is currently"
     # authenticated as" assumes the SAME identity posts the report and later
     # checks it, which this system does not guarantee — merge-on-green.sh,
-    # run-shell-tests.sh --pr, and any console/leg session running
+    # run-shell-tests.sh --pr, and any chief/worker running
     # base-status.sh can each authenticate as a different account across
     # different machines (this repo's whole architecture is multi-session,
     # multi-machine). Author-binding would silently and PERMANENTLY reject a

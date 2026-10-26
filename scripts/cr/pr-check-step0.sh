@@ -6,7 +6,7 @@
 # the single highest-rate classifier-denial shape: the
 # permission matcher splits a compound on its shell separators and matches
 # each simple command independently, so no exact-literal allow rule for the
-# whole `if...fi` string ever fires, and legs fell through to the classifier.
+# whole `if...fi` string ever fires, and workers fell through to the classifier.
 #
 # This script IS the fence's logic, moved inside a file the guard trusts by
 # its anchor-prefixed invocation alone (guard-pr-check-literal.sh's

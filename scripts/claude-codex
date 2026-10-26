@@ -83,7 +83,7 @@ if [ -n "${CLAUDE_CODEX_SRT_PROFILE:-}" ]; then
     esac
     _srt_bin="${CLAUDE_CODEX_SRT_BIN:-srt}"
     command -v "$_srt_bin" >/dev/null 2>&1 || _srt_refuse "'$_srt_bin' not found; install sandbox-runtime (pinned 0.0.79) or unset CLAUDE_CODEX_SRT_PROFILE"
-    [ -d "${CLAUDE_CODEX_SRT_SCRATCH:-}" ] || _srt_refuse "CLAUDE_CODEX_SRT_SCRATCH must name the leg's existing scratchpad directory"
+    [ -d "${CLAUDE_CODEX_SRT_SCRATCH:-}" ] || _srt_refuse "CLAUDE_CODEX_SRT_SCRATCH must name the worker's existing scratchpad directory"
     [ -d "${HANDOVER_DIR:-}" ] || _srt_refuse "HANDOVER_DIR must name the existing handover bucket"
     _srt_wt="$(pwd -P)"
     _srt_scratch="$(cd "$CLAUDE_CODEX_SRT_SCRATCH" && pwd -P)"
@@ -894,10 +894,10 @@ export ENABLE_TOOL_SEARCH=false
 export CLAUDE_CODE_EFFORT_LEVEL="${CLAUDE_CODE_EFFORT_LEVEL:-medium}"
 export CLAUDE_CONFIG_DIR="$CONFIG_DIR"
 # HIMMEL-4817 launch record: the AG-UI fleet reads the lane and backend model from this process's environ rather than
-# guessing from the model string, and prices a claudex leg from the codex weekly used% delta between this launch
-# reading and the current probe cache (codex-bank-probe.ts). WORKER_SESSION_LANE is deliberately NOT exported: headed-arm-leg.sh
-# reads it as the default lane for legs a claudex session arms, and bank-preflight.sh reads it too.
-# ponytail: no launch-time codex-bank reading yet (a bash-only node block breaks the .ps1 twin parity pin), so fleet prices a claudex leg only when HIMMEL_CODEX_BANK_START is in its launch env; upgrade path: the HIMMEL-4817 follow-up adds it to both twins.
+# guessing from the model string, and prices a claudex worker from the codex weekly used% delta between this launch
+# reading and the current probe cache (codex-bank-probe.ts). WORKER_SESSION_LANE is deliberately NOT exported: headed-arm-worker.sh
+# reads it as the default lane for workers a claudex session arms, and bank-preflight.sh reads it too.
+# ponytail: no launch-time codex-bank reading yet (a bash-only node block breaks the .ps1 twin parity pin), so fleet prices a claudex worker only when HIMMEL_CODEX_BANK_START is in its launch env; upgrade path: the HIMMEL-4817 follow-up adds it to both twins.
 export HIMMEL_SESSION_LANE=claudex
 HIMMEL_SESSION_MODEL="$(codex_stanza_model)"
 export HIMMEL_SESSION_MODEL

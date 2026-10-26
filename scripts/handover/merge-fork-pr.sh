@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/handover/merge-fork-pr.sh - the console's one way to merge a PR on a
+# scripts/handover/merge-fork-pr.sh - the chief's one way to merge a PR on a
 # himmel adapter (a fork we own, scripts/guardrails/himmel-adapters.json).
 #
 # Usage: merge-fork-pr.sh <owner/repo> <pr-number> <full-40-hex-head-sha>
 #
-# Console only: refuses (exit 3) from a console-spawned leg or a console relay,
+# Chief only: refuses (exit 3) from a chief-spawned worker or a chief relay,
 # like go.sh. Merges only on the trust-reviewed GO that go.sh --repo wrote for
 # THIS repo, PR and head (the mac signs all three, plus the judge's qid), then
 # re-reads the live PR and runs
@@ -16,7 +16,7 @@
 #   0  merged
 #   1  handover root unresolvable, or scripts/lib/go-gate.sh failed to load
 #   2  usage
-#   3  refused: run from a console-spawned leg or a console relay
+#   3  refused: run from a chief-spawned worker or a chief relay
 #   6  refused: <owner/repo> is not an allowlisted himmel adapter (merge_allowed)
 #   7  refused: the live PR is not OPEN at <head> on the adapter's himmel_branch,
 #      is not CLEAN (checks green) with every review thread resolved, or the
@@ -58,23 +58,23 @@ esac
 [ "${#SHA}" -eq 40 ] || { usage; echo "merge-fork-pr: head sha must be the full 40-char lowercase hex sha (got '$SHA')" >&2; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-# Fail closed: a broken shared lib must never read as "not a leg".
+# Fail closed: a broken shared lib must never read as "not a worker".
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
-if ! . "$HERE/../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1 \
+if ! . "$HERE/../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1 \
         || ! declare -F go_trust_gate >/dev/null 2>&1 || ! declare -F go_adapter_entry >/dev/null 2>&1 \
         || ! declare -F go_resolve_root >/dev/null 2>&1 || ! declare -F go_fork_ready >/dev/null 2>&1; then
     echo "merge-fork-pr: cannot load scripts/lib/go-gate.sh - refusing" >&2
     exit 1
 fi
-if console_leg; then
-    echo "merge-fork-pr: refusing - this is a console-spawned leg (HIMMEL_CONSOLE_LEG is set); only the console merges a fork PR. Send READY to your console." >&2
+if chief_worker; then
+    echo "merge-fork-pr: refusing - this is a chief-spawned worker (HIMMEL_CONSOLE_LEG is set); only the chief merges a fork PR. Send READY to your chief." >&2
     exit 3
 fi
 case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
     ''|0|false|off|no) ;;
     *)
-        echo "merge-fork-pr: refusing - this is a console relay (HIMMEL_CONSOLE_RELAY is set); only the console merges a fork PR." >&2
+        echo "merge-fork-pr: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); only the chief merges a fork PR." >&2
         exit 3 ;;
 esac
 
@@ -95,7 +95,7 @@ if ! HBRANCH=$(go_adapter_entry "$ANCHOR" "$NWO"); then
     exit 6
 fi
 if ! REASON=$(go_trust_gate "$PR" "$SHA" "$ROOT" "$NWO"); then
-    echo "merge-fork-pr: refusing $NWO PR #$PR at $SHA - $REASON (the console writes it with go.sh --repo $NWO --trust-reviewed <judge-qid> $PR $SHA)" >&2
+    echo "merge-fork-pr: refusing $NWO PR #$PR at $SHA - $REASON (the chief writes it with go.sh --repo $NWO --trust-reviewed <judge-qid> $PR $SHA)" >&2
     exit 8
 fi
 

@@ -22,23 +22,23 @@ WORK="$(mktemp -d "${TMPDIR:-/tmp}/gen-judge-brief-test.XXXXXX")" || exit 1
 trap 'rm -rf "$WORK"' EXIT
 BUCKET="$WORK/bucket"
 HEAD40="0123456789abcdef0123456789abcdef01234567"
-CONSOLE="HIMMEL-nextleg-2026-10-13Z-roadmap-console"
+CHIEF="HIMMEL-nextleg-2026-10-13Z-roadmap-chief"
 
 cat > "$WORK/spec.json" <<EOF
 {"qid": "j2599a", "ticket": "HIMMEL-3746", "pr": 2599, "head": "$HEAD40",
  "tickets": ["HIMMEL-3746", "HIMMEL-3254"],
  "author_doc": "$WORK/author-doc.md",
  "question": "Does PR 2599 parse the SUCCESSION bullet strictly enough that an ambiguous line reads missing?",
- "reason": "Disputed review finding: the leg and the reviewer disagree on a trailing-text bullet.",
+ "reason": "Disputed review finding: the worker and the reviewer disagree on a trailing-text bullet.",
  "prior": "HIMMEL-3254 (tick nonces=RELAYED). Source: qmd jira-himmel succession tracker.",
  "description": "Rule on whether the succession tracker's bullet parse is strict",
- "tier": {"category": "unverified-finding", "reason": "a finding the console could not verify at Sonnet"},
+ "tier": {"category": "unverified-finding", "reason": "a finding the chief could not verify at Sonnet"},
  "attack": ["a bullet with trailing prose after the replaces clause", "two bullets, the older one naming the successor"],
  "evidence": [{"item": "$WORK/extra.txt", "for": "the reviewer's finding text"}],
  "do_not": "everything except reading and the verdict file"}
 EOF
 
-run() { python3 "$SUT" "$WORK/spec.json" --console "$CONSOLE" --bucket "$BUCKET" --date 2026-10-13 \
+run() { python3 "$SUT" "$WORK/spec.json" --chief "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 \
     --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" 2>&1; }
 
 out="$(run)"; rc=$?
@@ -52,33 +52,33 @@ bash "$HERE/brief-lint.sh" "$DOC" 2>"$WORK/lint.err"; rc=$?
 [ "$rc" = 0 ] && pass "the brief passes brief-lint.sh" || fail "brief-lint rc=$rc: $(cat "$WORK/lint.err")"
 
 has "the question is carried verbatim" "$b" "Does PR 2599 parse the SUCCESSION bullet strictly enough that an ambiguous line reads missing?"
-has "the nonce is in the console letter's shape" "$b" "Z-j2599a-"
-has "the console is named" "$b" "$CONSOLE"
+has "the nonce is in the chief letter's shape" "$b" "Z-j2599a-"
+has "the chief is named" "$b" "$CHIEF"
 has "the handover root is named" "$b" "$WORK/handovers"
-has "the Tier line is exact" "$b" "> **Tier:** opus — unverified-finding: a finding the console could not verify at Sonnet"
+has "the Tier line is exact" "$b" "> **Tier:** opus — unverified-finding: a finding the chief could not verify at Sonnet"
 has "the PR head is evidence" "$b" "$HEAD40"
 has "the ticket is evidence" "$b" "HIMMEL-3254"
 has "the author doc is evidence" "$b" "$WORK/author-doc.md"
 has "an attack-list item is carried" "$b" "a bullet with trailing prose after the replaces clause"
-has "a console-supplied evidence item is carried" "$b" "the reviewer's finding text"
+has "a chief-supplied evidence item is carried" "$b" "the reviewer's finding text"
 has "the Lifecycle rule from the template survives" "$b" "**Lifecycle — the one rule.**"
 has "the front matter has the description" "$b" "description: \"Rule on whether the succession tracker's bullet parse is strict\""
 has "resume_cwd is the scratch dir outside the handover root" "$b" "resume_cwd: $WORK/verdicts/j2599a/scratch"
 lacks "no <qid> placeholder is left" "$b" "<qid>"
-lacks "no <console session name> placeholder is left" "$b" "<console session name>"
-lacks "no <hex> placeholder is left" "$b" "<console letter>"
+lacks "no <chief session name> placeholder is left" "$b" "<chief session name>"
+lacks "no <hex> placeholder is left" "$b" "<chief letter>"
 lacks "no <TICKET> placeholder is left" "$b" "# <TICKET>"
 lacks "no unfilled <free text> tier is left" "$b" "<category>: <free text>"
-lacks "the console's own conclusion field never appears" "$b" "conclusion"
+lacks "the chief's own conclusion field never appears" "$b" "conclusion"
 
-# the launcher's own Tier gate: a copy arms through headed-arm-leg.sh --dry-run
+# the launcher's own Tier gate: a copy arms through headed-arm-worker.sh --dry-run
 printf '%s\n' '#!/usr/bin/env bash' 'echo PROCEED' > "$WORK/preflight.sh"
 mkdir -p "$WORK/arm" "$WORK/handovers" "$WORK/verdicts/j2599a/scratch"
-rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" HANDOVER_DIR="$WORK/handovers" bash "$HERE/headed-arm-worker.sh" --dry-run --judge --console "$CONSOLE" HIMMEL-3746-judge-j2599a "$DOC" "$WORK/sig" 9999999999 "$WORK/arm.log" claude-opus-5-5 2>&1)" || rc=$?
-if [ "$rc" = 0 ] && case "$arm_out" in *"headed-arm-leg: would exec:"*) true ;; *) false ;; esac; then
-    pass "headed-arm-leg --judge's Tier and prior-art gates accept the generated brief (dry-run completed, rc 0)"
+rc=0; arm_out="$(HEADED_ARM_WORKER_PREFLIGHT="$WORK/preflight.sh" WORKER_SESSION_REPO="$WORK" HANDOVER_DIR="$WORK/handovers" bash "$HERE/headed-arm-worker.sh" --dry-run --judge --chief "$CHIEF" HIMMEL-3746-judge-j2599a "$DOC" "$WORK/sig" 9999999999 "$WORK/arm.log" claude-opus-5-5 2>&1)" || rc=$?
+if [ "$rc" = 0 ] && case "$arm_out" in *"headed-arm-worker: would exec:"*) true ;; *) false ;; esac; then
+    pass "headed-arm-worker --judge's Tier and prior-art gates accept the generated brief (dry-run completed, rc 0)"
 else
-    fail "headed-arm-leg --judge did not complete a dry run on the generated brief (rc=$rc): $arm_out"
+    fail "headed-arm-worker --judge did not complete a dry run on the generated brief (rc=$rc): $arm_out"
 fi
 
 # refusals: nothing written
@@ -92,7 +92,7 @@ mutate() { # <name> <python expr over d> -> $WORK/<name>.json
 }
 refuse() { # <label> <name> <stderr fragment>
     rm -rf "$BUCKET"
-    python3 "$SUT" "$WORK/$2.json" --console "$CONSOLE" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/$2.err"; rc=$?
+    python3 "$SUT" "$WORK/$2.json" --chief "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/$2.err"; rc=$?
     if [ "$rc" = 1 ] && grep -q "$3" "$WORK/$2.err" && ! ls "$BUCKET"/*.md >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$rc, err: $(cat "$WORK/$2.err"))"; fi
 }
 mutate bare 'd["prior"]="none"';                          refuse "a bare none prior art is refused" bare "prior"
@@ -120,13 +120,26 @@ jletter() { # <label> <stderr fragment> <args...>: refused, rc 1, nothing writte
     python3 "$SUT" "$WORK/spec.json" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" "$@" >/dev/null 2>"$WORK/jl.err"; rc=$?
     if [ "$rc" = 1 ] && grep -q "$frag" "$WORK/jl.err" && ! ls "$BUCKET"/*.md >/dev/null 2>&1; then pass "$n"; else fail "$n (rc=$rc, err: $(cat "$WORK/jl.err"))"; fi
 }
-jletter "a 4-letter --letter is refused" "letter" --console "$CONSOLE" --letter ABCD
-jletter "a lower-case --letter is refused" "letter" --console "$CONSOLE" --letter z
-jletter "an explicitly empty --letter is refused" "letter" --console "$CONSOLE" --letter ""
-jletter "a letter derived from the console name that is 4 letters long is refused" "letter" --console HIMMEL-nextleg-2026-10-13ABCD-roadmap-console
+jletter "a 4-letter --letter is refused" "letter" --chief "$CHIEF" --letter ABCD
+jletter "a lower-case --letter is refused" "letter" --chief "$CHIEF" --letter z
+jletter "an explicitly empty --letter is refused" "letter" --chief "$CHIEF" --letter ""
+jletter "a letter derived from the chief name that is 4 letters long is refused" "letter" --chief HIMMEL-nextleg-2026-10-13ABCD-roadmap-chief
 rm -rf "$BUCKET"
-python3 "$SUT" "$WORK/spec.json" --console "$CONSOLE" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1; rc=$?
+python3 "$SUT" "$WORK/spec.json" --chief "$CHIEF" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && grep -q 'ABC-j2599a-' "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && pass "a 3-letter --letter is accepted and minted" || fail "3-letter letter rc=$rc"
+
+# the old --console is the same flag as --chief
+rm -rf "$BUCKET"
+python3 "$SUT" "$WORK/spec.json" --console "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/old.err"; rc=$?
+[ "$rc" = 0 ] && grep -q "$CHIEF" "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && grep -q 'Z-j2599a-' "$BUCKET"/HIMMEL-3746-judge-j2599a-*.md && pass "the old --console writes the same brief as --chief" || fail "old --console rc=$rc: $(cat "$WORK/old.err")"
+[ "$(grep -c '^--console is deprecated: use --chief$' "$WORK/old.err")" = 1 ] && pass "the old --console prints one deprecation line" || fail "no single deprecation line: $(cat "$WORK/old.err")"
+rm -rf "$BUCKET"
+HIMMEL_LEGACY_NAMES=0 python3 "$SUT" "$WORK/spec.json" --console "$CHIEF" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/off.err"; rc=$?
+[ "$rc" = 2 ] && grep -q 'unrecognized arguments: --console' "$WORK/off.err" && ! ls "$BUCKET"/*.md >/dev/null 2>&1 && pass "legacy names off: --console is an unknown option (rc 2, nothing written)" || fail "off --console rc=$rc: $(cat "$WORK/off.err")"
+rm -rf "$BUCKET"
+python3 "$SUT" "$WORK/spec.json" --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>"$WORK/none.err"; rc=$?
+[ "$rc" = 2 ] && grep -q 'required: --chief' "$WORK/none.err" && pass "no chief flag at all is still refused (rc 2)" || fail "missing chief rc=$rc: $(cat "$WORK/none.err")"
+python3 "$SUT" "$WORK/spec.json" --chief "$CHIEF" --letter ABC --bucket "$BUCKET" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" >/dev/null 2>&1
 
 # the judge reads pin to the PR head sha directly, never FETCH_HEAD
 REPO_ROOT="$(cd "$HERE/../../.." && pwd)"

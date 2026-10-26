@@ -1,0 +1,447 @@
+#!/usr/bin/env bash
+# Smoke suite for scripts/hooks/stop-chief-idle-guard.sh: a
+# Stop hook that blocks a CHIEF session's stop, once per turn, when it
+# still holds the queue-lock on its own *-chief.md document (D1: no wake
+# path existed, so a chief that ended its turn there just stayed dead).
+#
+# RED CONTROL FIRST (below): the hook genuinely did not exist on the base
+# commit this ticket cut from — proving D1 had nothing to block a chief's
+# stop with, before this suite exercises the fix that now does.
+#
+# Cases covered after the RED control: (a) chief stop -> block once, with
+# a non-empty, next-action-naming reason; (b) the SAME payload with
+# stop_hook_active:true -> allow (the loop guard); (c) a worker's stop payload
+# (no chief lock held) -> allow; (d) two SEPARATE induced faults, each
+# with its own asserted precondition -> allow: (i) the held lock's
+# owner.json made unreadable, (ii) a stubbed usage-preflight.sh that exits
+# non-zero.
+#
+# Isolated fixture: its own HANDOVER_DIR/XDG_RUNTIME_DIR under mktemp -d, a
+# real queue-lock.sh acquire against a fabricated *-chief.md doc, scoped
+# via QUEUE_LOCK_SESSION_SCOPE (queue-lock.sh's own documented test-caller
+# convention) rather than the ambient CLAUDE_CODE_SESSION_ID, so this suite
+# is deterministic regardless of what session runs it.
+#
+# Cleanup avoids `rm -rf` on purpose (himmel's own block-destructive-
+# commands.sh refuses recursive+force rm, including from inside a test run
+# under this repo's hooks) — every removal below is a non-recursive `rm -f`
+# on a path this suite created itself, plus bottom-up `rmdir`.
+#
+# bash 3.2-safe.
+set -uo pipefail
+
+HOOKS="$(cd "$(dirname "$0")" && pwd)"
+REPO="$(cd "$HOOKS/../.." && pwd)"
+HOOK="$HOOKS/stop-chief-idle-guard.sh"
+[ -f "$HOOK" ] || { echo "hook not found: $HOOK" >&2; exit 1; }
+if ! command -v sha256sum >/dev/null 2>&1 && ! command -v shasum >/dev/null 2>&1; then
+    echo "SKIP: no sha256 tool on PATH"
+    exit 0
+fi
+
+pass=0; fail=0
+ok()   { pass=$((pass+1)); printf '  ok   %s\n' "$1"; }
+bad()  { fail=$((fail+1)); printf '  FAIL %s\n' "$1"; }
+skip() { printf '  SKIP %s\n' "$1"; }
+
+# shellcheck source=scripts/lib/canon-path.sh
+# shellcheck disable=SC1091
+. "$HOOKS/../lib/canon-path.sh"
+
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/stop-chief-idle-guard-test.XXXXXX")" || { echo "setup: mktemp -d failed" >&2; exit 1; }
+# queue-lock.sh derives the lock slug from the handover doc's path
+# under the CANONICAL handover root, so the fixture root must be canonical too
+# (macOS TMPDIR = /var/folders/../T/ - trailing "/" and the /var -> /private/var link).
+TMP="$(canon_path "$TMP")" || { echo "setup: canon_path failed for the fixture root" >&2; exit 1; }
+HANDOVER_DIR="$TMP/handover"
+XDG_RUNTIME_DIR="$TMP/xdg"
+mkdir -p "$HANDOVER_DIR" "$XDG_RUNTIME_DIR"
+export HANDOVER_DIR XDG_RUNTIME_DIR
+# the chief's waiter heartbeat lives next to its Telegram inbox,
+# <bridge>/consoles/<chief doc name>.wait (chief.sh's own inbox path).
+BRIDGE_ROOT="$TMP/bridge"
+WAIT_HB="$BRIDGE_ROOT/consoles/FIXTURE-nextleg-chief.md.wait"
+mkdir -p "$BRIDGE_ROOT/consoles"
+export BRIDGE_ROOT
+
+SESSION_ID="test-session-himmel-3144"
+CHIEF_DOC="$HANDOVER_DIR/FIXTURE-nextleg-chief.md"
+printf 'fixture chief doc\n' > "$CHIEF_DOC"
+
+WORKER_SESSION_DOC="$HANDOVER_DIR/FIXTURE-worker-N1.md"
+
+RELEASE_TOKEN=""
+cleanup() {
+    if [ -n "$RELEASE_TOKEN" ]; then
+        chmod 644 "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json 2>/dev/null
+        bash "$REPO/scripts/handover/queue-lock.sh" release "$CHIEF_DOC" "$RELEASE_TOKEN" >/dev/null 2>&1
+    fi
+    for f in "$HANDOVER_DIR"/.locks/queue/*.lock/*; do rm -f "$f" 2>/dev/null; done
+    for d in "$HANDOVER_DIR"/.locks/queue/*.lock; do rmdir "$d" 2>/dev/null; done
+    rm -f "$HANDOVER_DIR/.locks/queue/takeovers.log" 2>/dev/null
+    rmdir "$HANDOVER_DIR/.locks/queue" 2>/dev/null
+    rmdir "$HANDOVER_DIR/.locks" 2>/dev/null
+    rm -f "$CHIEF_DOC" 2>/dev/null
+    rm -f "$WORKER_SESSION_DOC" 2>/dev/null
+    rmdir "$HANDOVER_DIR" 2>/dev/null
+    for f in "$XDG_RUNTIME_DIR/himmel-queue-lock"/*; do rm -f "$f" 2>/dev/null; done
+    rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" 2>/dev/null
+    rmdir "$XDG_RUNTIME_DIR" 2>/dev/null
+    rm -f "$WAIT_HB" 2>/dev/null
+    rmdir "$BRIDGE_ROOT/consoles" "$BRIDGE_ROOT" 2>/dev/null
+    rm -f "$TMP/bank-preflight-stub.sh" 2>/dev/null
+    rm -f "$TMP/prefix-repo-himmel-3148/scripts/hooks/stop-chief-idle-guard.sh" 2>/dev/null
+    rm -f "$TMP/prefix-repo-himmel-3148/scripts/hooks/stop-chief-idle-guard.pre4567.sh" 2>/dev/null
+    rm -f "$TMP/prefix-repo-himmel-3148/scripts/lib/handover-path.sh" 2>/dev/null
+    rmdir "$TMP/prefix-repo-himmel-3148/scripts/hooks" 2>/dev/null
+    rmdir "$TMP/prefix-repo-himmel-3148/scripts/lib" 2>/dev/null
+    rmdir "$TMP/prefix-repo-himmel-3148/scripts" 2>/dev/null
+    rmdir "$TMP/prefix-repo-himmel-3148" 2>/dev/null
+    rmdir "$TMP" 2>/dev/null
+}
+trap cleanup EXIT
+
+lock_out="$(QUEUE_LOCK_SESSION_SCOPE="$SESSION_ID" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$CHIEF_DOC")" \
+    || { echo "setup: could not acquire the fixture chief lock" >&2; exit 1; }
+# shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
+RELEASE_TOKEN="$(printf '%s\n' "$lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+[ -n "$RELEASE_TOKEN" ] || { echo "setup: acquire printed no release token" >&2; exit 1; }
+
+CHIEF_PAYLOAD="$(printf '{"session_id":"%s","stop_hook_active":false,"hook_event_name":"Stop"}' "$SESSION_ID")"
+CHIEF_PAYLOAD_ACTIVE="$(printf '{"session_id":"%s","stop_hook_active":true,"hook_event_name":"Stop"}' "$SESSION_ID")"
+WORKER_SESSION_PAYLOAD='{"session_id":"a-worker-session-not-a-chief","stop_hook_active":false,"hook_event_name":"Stop"}'
+
+is_block() { local out; out="$(printf '%s' "$1" | grep '"decision":"block"')"; [ -n "$out" ]; }
+
+# write_hb <age-seconds> <pid> <state> — a chief-wait.sh heartbeat line.
+write_hb() {
+    printf 'hb=%s pid=%s key=- tick=ok state=%s\n' \
+        "$(( $(date +%s) - $1 ))" "$2" "$3" > "$WAIT_HB"
+}
+
+run_guard() {   # run_guard <payload> [ENV=val ...]
+    local payload="$1"; shift
+    printf '%s' "$payload" | env "$@" bash "$HOOK"
+}
+
+run_guard_hook() {   # run_guard_hook <hook_path> <payload> [ENV=val ...]
+    local hookpath="$1" payload="$2"; shift 2
+    printf '%s' "$payload" | env "$@" bash "$hookpath"
+}
+
+# --- RED control: no wake path existed at the base this ticket cut from ---
+BASE_SHA="ac9253f154287f2c276af7c86177a76f7169931f"
+if git -C "$REPO" cat-file -e "$BASE_SHA:scripts/hooks/stop-chief-idle-guard.sh" 2>/dev/null; then
+    bad "RED control: stop-chief-idle-guard.sh already existed at $BASE_SHA — D1's premise (no wake path) does not hold for this base"
+else
+    ok "RED control: stop-chief-idle-guard.sh did not exist at base $BASE_SHA — D1 had nothing to block a chief's stop with"
+fi
+
+# --- (a) chief session + outstanding work -> block once ------------------
+out="$(run_guard "$CHIEF_PAYLOAD")"
+if is_block "$out"; then ok "(a) chief stop, lock held -> block"; else bad "(a) chief stop -> expected block, got: $out"; fi
+reason="$(printf '%s' "$out" | sed -n 's/.*"reason":"\(.*\)"}$/\1/p')"
+if [ -n "$reason" ]; then ok "(a) reason is non-empty"; else bad "(a) reason is empty"; fi
+case "$reason" in
+    *'/chief next --arm'*) ok "(a) reason names a concrete next action" ;;
+    *) bad "(a) reason does not name a concrete next action — got: $reason" ;;
+esac
+
+# --- (b) same payload, stop_hook_active:true -> allow (loop guard) --------
+out="$(run_guard "$CHIEF_PAYLOAD_ACTIVE")"
+if is_block "$out"; then bad "(b) stop_hook_active=true -> expected allow, got: $out"; else ok "(b) stop_hook_active=true -> allow"; fi
+
+# --- (c) a worker's stop payload (no chief lock held) -> allow -------------
+out="$(run_guard "$WORKER_SESSION_PAYLOAD")"
+if is_block "$out"; then bad "(c) worker stop -> expected allow, got: $out"; else ok "(c) worker stop -> allow"; fi
+
+# --- (d)(i) induced fault: the held lock's owner.json is unreadable -------
+chmod 000 "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json 2>/dev/null
+readable=1
+for f in "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json; do
+    [ -r "$f" ] && readable=0
+done
+out="$(run_guard "$CHIEF_PAYLOAD")"
+chmod 644 "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json 2>/dev/null
+if [ "$readable" -eq 0 ]; then
+    skip "(d-i) owner.json is still readable after chmod 000 (running as root?) — precondition not engaged"
+else
+    if is_block "$out"; then bad "(d-i) unreadable owner.json -> expected allow, got: $out"; else ok "(d-i) unreadable owner.json -> allow"; fi
+fi
+
+# --- (d)(ii) induced fault: usage-preflight.sh exits non-zero --------------
+STUB="$TMP/bank-preflight-stub.sh"
+{
+    printf '#!/usr/bin/env bash\n'
+    printf 'echo "stub: refusing on purpose (test fault injection)" >&2\n'
+    printf 'exit 7\n'
+} > "$STUB"
+chmod +x "$STUB"
+out="$(run_guard "$CHIEF_PAYLOAD" HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$STUB")"
+if is_block "$out"; then bad "(d-ii) usage-preflight.sh exit!=0 -> expected allow, got: $out"; else ok "(d-ii) usage-preflight.sh exit!=0 -> allow"; fi
+out="$(run_guard "$CHIEF_PAYLOAD" HIMMEL_STOP_GUARD_USAGE_PREFLIGHT="$STUB")"
+if is_block "$out"; then bad "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> expected allow, got: $out"; else ok "(d-ii) HIMMEL_STOP_GUARD_USAGE_PREFLIGHT is the preflight run -> allow"; fi
+# Prove the stub's precondition was real, not a no-op: case (a) already
+# showed the REAL usage-preflight.sh path blocks — re-run it here once more
+# so a future refactor that stops calling BANK_PREFLIGHT_SH at all can't
+# silently turn (d-ii) into a vacuous control.
+out="$(run_guard "$CHIEF_PAYLOAD")"
+if is_block "$out"; then ok "(d-ii) control: the real usage-preflight.sh still blocks (stub was exercised, not bypassed)"; else bad "(d-ii) control: the real usage-preflight.sh no longer blocks — got: $out"; fi
+
+# --- a held worker lock IS the wake path -------------------------
+# The base this ticket cut from blocked UNCONDITIONALLY whenever a chief
+# session held its lock, regardless of the fleet/worker state it had just
+# gathered (bank PROCEED, worker locks fresh, fleet at cap all made no
+# difference — every state-gathering success reached the same block). The
+# fix: block iff worker_count == 0 (D1 verbatim — chief F, empty fleet, 58
+# min dead); one or more held worker locks means a worker's own SendMessage is a
+# structural wake path, so the stop is allowed.
+#
+# PREDICATE_BASE_SHA names the commit this ticket cut from (the shipped,
+# always-blocks hook) for provenance only -- the pre-fix hook
+# itself comes from a committed fixtures/red-control/ snapshot, not a live
+# `git show` of that historical ref, which fails FATAL on a shallow clone or
+# a source archive even though the commit is a reachable main ancestor
+# (same fix pattern as #810).
+PREDICATE_BASE_SHA="5e58a2f3fa30ee6b44d5df2ebee19a2cba418e34"
+PREFIX_ROOT="$TMP/prefix-repo-himmel-3148"
+PREFIX_HOOK=""
+mkdir -p "$PREFIX_ROOT/scripts/hooks" "$PREFIX_ROOT/scripts/lib"
+if cp "$HOOKS/fixtures/red-control/stop-chief-idle-guard.pre-himmel3148.sh" \
+        "$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.sh" 2>/dev/null; then
+    # A copy, not a symlink into $REPO -- the prefix hook's OWN "$HERE/../.."
+    # must resolve to $PREFIX_ROOT (a hook with no seam for its handover-path.sh
+    # source), so this file has to physically exist under the copied tree
+    # rather than pull in the real REPO root as a side effect of following a
+    # symlink.
+    if cp "$REPO/scripts/lib/handover-path.sh" "$PREFIX_ROOT/scripts/lib/handover-path.sh" 2>/dev/null; then
+        PREFIX_HOOK="$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.sh"
+    fi
+fi
+
+if [ -n "$PREFIX_HOOK" ]; then
+    ok "HIMMEL-3148 setup: extracted the pre-fix hook from $PREDICATE_BASE_SHA"
+else
+    skip "HIMMEL-3148 setup: could not extract the pre-fix hook from $PREDICATE_BASE_SHA — RED control skipped"
+fi
+
+if ! worker_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="worker-fixture-session" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC" 2>&1)"; then
+    echo "setup: could not acquire the fixture worker lock: $worker_lock_out" >&2
+    exit 1
+fi
+WORKER_SESSION_LOCKDIR="$HANDOVER_DIR/.locks/queue/FIXTURE-worker-N1.lock"
+[ -d "$WORKER_SESSION_LOCKDIR" ] || { echo "setup: fixture worker lock dir not found at $WORKER_SESSION_LOCKDIR" >&2; exit 1; }
+# shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
+WORKER_SESSION_RELEASE_TOKEN="$(printf '%s\n' "$worker_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+[ -n "$WORKER_SESSION_RELEASE_TOKEN" ] || { echo "setup: worker acquire printed no release token" >&2; exit 1; }
+
+# (e)-(h) isolate the worker count, so a live waiter is armed throughout
+# (without one the stop blocks whatever the worker count).
+write_hb 0 "$$" waiting
+
+# --- (e) RED control: the PRE-FIX hook still blocks with a worker held -------
+if [ -n "$PREFIX_HOOK" ]; then
+    out="$(run_guard_hook "$PREFIX_HOOK" "$CHIEF_PAYLOAD" \
+        HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
+        HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
+    rc=$?
+    if [ "$rc" -ne 0 ]; then
+        bad "(e) RED: pre-fix hook exited $rc (a crash proves nothing)"
+    elif is_block "$out"; then
+        ok "(e) RED: pre-fix hook ($PREDICATE_BASE_SHA) still blocks with a worker held — bug reproduced"
+    else
+        bad "(e) RED: pre-fix hook did not block with a worker held (expected block to prove the bug) — got: $out"
+    fi
+fi
+
+# --- (f) fixed hook allows once a worker lock is held -------------------------
+out="$(run_guard "$CHIEF_PAYLOAD")"
+if is_block "$out"; then bad "(f) chief + worker held -> expected allow, got: $out"; else ok "(f) chief + worker held -> allow"; fi
+
+# --- (g) trap: a STALE/IDLE-HELD? worker lock must still allow (
+# chief ruling: IDLE-HELD? is heartbeat age, not death; a worker parked on an
+# external event makes no tool calls and must still count as held) --------
+# Fixed literal, not `date -d @<epoch>` arithmetic: `-d` is GNU-only and has
+# no macOS equivalent, which would leave $stale_hb empty there. Any old
+# timestamp works -- the sweep's IDLE-HELD? classification has no upper
+# bound (queue-lock.sh) -- and this exact %Y-%m-%dT%H:%M:%SZ shape parses on
+# all three platforms via _ql_epoch_of_iso's GNU/BSD/python fallbacks.
+stale_hb="2000-01-01T00:00:00Z"
+printf '{"session":"worker-fixture-session","host":"h","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
+    "$WORKER_SESSION_DOC" "$stale_hb" "$stale_hb" > "$WORKER_SESSION_LOCKDIR/owner.json"
+sweep_check="$(bash "$REPO/scripts/handover/queue-lock.sh" status --sweep "$HANDOVER_DIR" 2>/dev/null)"
+case "$sweep_check" in
+    *'FIXTURE-worker-N1'*'IDLE-HELD?'*) ok "(g) precondition: fixture sweep shows the worker lock as IDLE-HELD?" ;;
+    *) bad "(g) precondition: fixture sweep did not flag the worker lock IDLE-HELD? — got: $sweep_check" ;;
+esac
+out="$(run_guard "$CHIEF_PAYLOAD")"
+if is_block "$out"; then bad "(g) stale/IDLE-HELD? worker lock -> expected allow, got: $out"; else ok "(g) stale/IDLE-HELD? worker lock -> allow (age is not death)"; fi
+
+# --- (h) paired control: release the worker lock -> back to block -------------
+# A manual rm of owner.json alone leaves the mkdir-CAS arbiter file (`owner`)
+# behind, so the lock DIR survives and the sweep still reports the slug
+# (as INDETERMINATE) -- that undercounts as "still held", not "gone". Use
+# the real release path so this control actually removes the lock. (g) just
+# overwrote owner.json's session field to the fabricated "worker-fixture-session"
+# identity, which no longer matches the real acquire token -- force the
+# release rather than re-deriving a token for an identity the test invented.
+if ! release_out="$(QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" "$WORKER_SESSION_RELEASE_TOKEN" 2>&1)"; then
+    bad "(h) setup: could not release the fixture worker lock: $release_out"
+fi
+out="$(run_guard "$CHIEF_PAYLOAD")"
+if is_block "$out"; then ok "(h) paired control: worker lock removed -> block again (same fixture, worker count is the only variable)"; else bad "(h) paired control: expected block once the worker lock is gone, got: $out"; fi
+
+# --- a worker lock past its TTL whose owner is PROVABLY dead is not a
+# held worker -- nothing will message this chief from it -- so the stop blocks.
+# RED control (pre-fix hook): this fixture allowed. Paired: the same lock with
+# an owner pid that is ALIVE (this test shell) still allows, whatever its age.
+dead_pid_sh="$(sh -c 'echo $$')"   # the shell exits at once: a pid that is gone
+fixture_host="$(hostname 2>/dev/null)"
+if ! worker_lock_out="$(bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC" 2>&1)"; then
+    echo "setup: could not acquire the dead-owner fixture lock: $worker_lock_out" >&2
+    exit 1
+fi
+rm -f "$WORKER_SESSION_LOCKDIR/liveness"
+printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
+    "$fixture_host" "$dead_pid_sh" "$fixture_host" "$WORKER_SESSION_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$WORKER_SESSION_LOCKDIR/owner.json"
+out="$(run_guard "$CHIEF_PAYLOAD")"
+if is_block "$out"; then ok "(DEAD) past-TTL worker lock with a dead owner is not counted as held -> block"; else bad "(DEAD) dead-owner worker lock -> expected block, got: $out"; fi
+printf '{"session":"%s-pid%s","host":"%s","handover":"%s","started":"%s","heartbeat":"%s"}\n' \
+    "$fixture_host" "$$" "$fixture_host" "$WORKER_SESSION_DOC" "2000-01-01T00:00:00Z" "2000-01-01T00:00:00Z" > "$WORKER_SESSION_LOCKDIR/owner.json"
+out="$(run_guard "$CHIEF_PAYLOAD")"
+if is_block "$out"; then bad "(ALIVE) past-TTL worker lock with a live owner pid -> expected allow, got: $out"; else ok "(ALIVE) past-TTL worker lock with a live owner pid is still held -> allow"; fi
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" >/dev/null 2>&1
+
+# --- no live chief-wait.sh waiter blocks, whatever the workers --
+# chief-wait.sh is the chief's one wake source and exits after each WAKE,
+# so a chief that ends its turn without re-arming it stays deaf even with
+# workers held. A worker lock is held for every case below, so the pre-fix hook
+# allows all of them; only the waiter heartbeat varies.
+if ! worker_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="worker-fixture-session-2" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$WORKER_SESSION_DOC" 2>&1)"; then
+    echo "setup: could not re-acquire the fixture worker lock: $worker_lock_out" >&2
+    exit 1
+fi
+# shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
+WORKER_SESSION_RELEASE_TOKEN="$(printf '%s\n' "$worker_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+
+# A pid that is certainly dead: a finished, reaped child of this shell.
+( exit 0 ) &
+DEAD_PID=$!
+wait "$DEAD_PID"
+
+PRE4567_HOOK=""
+if [ -n "$PREFIX_HOOK" ] && cp "$HOOKS/fixtures/red-control/stop-chief-idle-guard.pre-himmel4567.sh" \
+        "$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.pre4567.sh" 2>/dev/null; then
+    PRE4567_HOOK="$PREFIX_ROOT/scripts/hooks/stop-chief-idle-guard.pre4567.sh"
+else
+    skip "HIMMEL-4567 setup: could not stage the pre-fix hook — RED rows skipped"
+fi
+
+# check_waiter <label> <expect block|allow> <hb setup: absent | age pid state>
+check_waiter() {
+    local label="$1" expect="$2"; shift 2
+    case "$1" in
+        absent) rm -f "$WAIT_HB" ;;
+        raw) printf '%s\n' "$2" > "$WAIT_HB" ;;
+        *) write_hb "$1" "$2" "$3" ;;
+    esac
+    if [ -n "$PRE4567_HOOK" ] && [ "$expect" = block ]; then
+        out="$(run_guard_hook "$PRE4567_HOOK" "$CHIEF_PAYLOAD" \
+            HIMMEL_STOP_GUARD_BANK_PREFLIGHT="$REPO/scripts/lib/usage-preflight.sh" \
+            HIMMEL_STOP_GUARD_QUEUE_LOCK="$REPO/scripts/handover/queue-lock.sh")"
+        rc=$?
+        if [ "$rc" -ne 0 ]; then bad "$label RED: pre-fix hook exited $rc (a crash proves nothing)"
+        elif is_block "$out"; then bad "$label RED: pre-fix hook already blocks — got: $out"
+        else ok "$label RED: pre-fix hook allows (bug reproduced)"; fi
+    fi
+    out="$(run_guard "$CHIEF_PAYLOAD")"
+    rc=$?
+    # A crashed hook prints nothing, which reads as allow: require rc 0 first.
+    if [ "$rc" -ne 0 ]; then
+        bad "$label -> hook exited $rc (a crash, not a decision): $out"
+    elif [ "$expect" = block ]; then
+        if is_block "$out"; then ok "$label -> block"; else bad "$label -> expected block, got: $out"; fi
+        case "$out" in
+            *'waiter is armed ()'*) bad "$label -> the reason names no waiter cause: $out" ;;
+        esac
+    else
+        if is_block "$out"; then bad "$label -> expected allow, got: $out"; else ok "$label -> allow"; fi
+    fi
+}
+
+check_waiter "(i) fresh waiting heartbeat, pid alive, worker held"   allow 0 "$$" waiting
+check_waiter "(j) fresh sampling heartbeat, pid alive, worker held"  allow 0 "$$" sampling
+check_waiter "(k) no heartbeat file, worker held"                    block absent
+check_waiter "(l) stale heartbeat (1000 s), pid alive, worker held"  block 1000 "$$" waiting
+check_waiter "(m) fresh heartbeat, state=exited, worker held"        block 0 "$$" exited
+check_waiter "(n) fresh heartbeat, dead pid, worker held"            block 0 "$DEAD_PID" waiting
+# Malformed heartbeats must block, not crash the hook into a silent allow.
+check_waiter "(q) heartbeat epoch with an embedded colon"         block raw "hb=1:2 pid=$$ key=- tick=ok state=waiting"
+check_waiter "(r) heartbeat epoch with a leading zero (09)"       block raw "hb=09 pid=$$ key=- tick=ok state=waiting"
+check_waiter "(s) heartbeat epoch an hour in the future"          block -3600 "$$" waiting
+# an epoch past 12 digits (or 0) must be refused before the arithmetic.
+check_waiter "(t) heartbeat epoch of 20 digits (overflows 64-bit)" block raw "hb=99999999999999999999 pid=$$ key=- tick=ok state=waiting"
+check_waiter "(u) heartbeat epoch of 13 digits"                   block raw "hb=1234567890123 pid=$$ key=- tick=ok state=waiting"
+check_waiter "(v) heartbeat epoch of 0"                           block raw "hb=0 pid=$$ key=- tick=ok state=waiting"
+# ...and refused as malformed (no valid heartbeat), not left to the age arithmetic.
+for hb in 99999999999999999999 1234567890123 0; do
+    printf 'hb=%s pid=%s key=- tick=ok state=waiting\n' "$hb" "$$" > "$WAIT_HB"
+    out="$(run_guard "$CHIEF_PAYLOAD")"
+    case "$out" in
+        *'no valid waiter heartbeat'*) ok "(w) epoch $hb -> refused as malformed" ;;
+        *) bad "(w) epoch $hb -> not refused as malformed: $out" ;;
+    esac
+done
+
+rm -f "$WAIT_HB"
+out="$(run_guard "$CHIEF_PAYLOAD")"
+case "$out" in
+    *chief-wait.sh*) ok "(o) the no-waiter reason names chief-wait.sh" ;;
+    *) bad "(o) the no-waiter reason does not name chief-wait.sh — got: $out" ;;
+esac
+out="$(run_guard "$WORKER_SESSION_PAYLOAD")"
+if is_block "$out"; then bad "(p) non-chief stop with no waiter -> expected allow, got: $out"; else ok "(p) non-chief stop with no waiter -> allow"; fi
+
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$WORKER_SESSION_DOC" "$WORKER_SESSION_RELEASE_TOKEN" >/dev/null 2>&1
+
+# --- (x) the FLEET census must not depend on the hook's COLUMNS -------------
+# A chief launched from a terminal passes COLUMNS to its Stop hook; plain
+# `ps -eo args` then truncates every argv to that width, the `-n HIMMEL-...`
+# name is cut off and the census reads native=0 with live workers.
+FAKE_CLAUDE="$TMP/claude"
+cp "$(command -v bash)" "$FAKE_CLAUDE" 2>/dev/null
+"$FAKE_CLAUDE" -c 'sleep 60; :' -n HIMMEL-fixture-live-worker-himmel-7430 </dev/null >/dev/null 2>&1 &
+FAKE_PID=$!
+sleep 1
+kill -0 "$FAKE_PID" 2>/dev/null || bad "(x) fixture worker did not start; the count below would not prove the fix"
+base_out="$(run_guard "$CHIEF_PAYLOAD")"
+out="$(run_guard "$CHIEF_PAYLOAD" COLUMNS=20)"
+pkill -P "$FAKE_PID" 2>/dev/null
+kill "$FAKE_PID" 2>/dev/null
+rm -f "$FAKE_CLAUDE" 2>/dev/null
+base_n="$(printf '%s\n' "$base_out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+cols_n="$(printf '%s\n' "$out" | sed -n 's/.*FLEET native=\([0-9][0-9]*\) .*/\1/p' | head -n 1)"
+if [ -z "$cols_n" ] || [ -z "$base_n" ]; then
+    bad "(x) no FLEET native= line in the reason: base=$base_out cols=$out"
+elif [ "$base_n" -ge 1 ] && [ "$cols_n" -ge "$base_n" ]; then
+    ok "(x) COLUMNS=20 in the hook env -> census counts the same live workers as without it (native=$cols_n vs $base_n)"
+else
+    bad "(x) COLUMNS=20 in the hook env -> census read native=$cols_n against native=$base_n without it"
+fi
+
+# --- (y) a chief-named doc gets the same verdict as a console-named one -----
+CHIEF_NAMED_DOC="$HANDOVER_DIR/FIXTURE-nextleg-roadmap-chief.md"
+printf 'fixture chief doc\n' > "$CHIEF_NAMED_DOC"
+chief_session="test-session-himmel-7505"
+chief_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="$chief_session" bash "$REPO/scripts/handover/queue-lock.sh" acquire "$CHIEF_NAMED_DOC")" \
+    || { echo "setup: could not acquire the fixture chief lock" >&2; exit 1; }
+# shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
+chief_token="$(printf '%s\n' "$chief_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"
+out="$(run_guard "$(printf '{"session_id":"%s","stop_hook_active":false,"hook_event_name":"Stop"}' "$chief_session")")"
+if is_block "$out"; then ok "(y) chief-named doc, lock held, no workers -> block like a chief"; else bad "(y) chief-named doc -> expected block, got: $out"; fi
+QUEUE_LOCK_FORCE_RELEASE=1 bash "$REPO/scripts/handover/queue-lock.sh" release "$CHIEF_NAMED_DOC" "$chief_token" >/dev/null 2>&1
+rm -f "$CHIEF_NAMED_DOC"
+
+echo
+printf '%d passed, %d failed\n' "$pass" "$fail"
+[ "$fail" -eq 0 ]

@@ -8,7 +8,7 @@
 #
 # Detection (all must hold, else silent exit 0 — no nudge):
 #   1. Gate HIMMEL_JIRA_NUDGE is truthy (default OFF).
-#   2. The `ticket` initiative leg is NOT active (when ON it already injects the
+#   2. The `ticket` initiative worker is NOT active (when ON it already injects the
 #      same reminder at SessionStart — suppress to avoid a double-nudge).
 #   3. The transcript yields a parseable first-timestamp (session-start epoch).
 #   4. git committed at least one commit in the session window (read-only
@@ -140,12 +140,12 @@ _truthy() {
 }
 _truthy "${HIMMEL_JIRA_NUDGE:-}" || exit 0
 
-# --- Suppress when the `ticket` initiative leg is already active -------------
-if [ -r "$HOOK_LIB/initiative-legs.sh" ]; then
+# --- Suppress when the `ticket` initiative worker is already active -------------
+if [ -r "$HOOK_LIB/initiative-workers.sh" ]; then
     # shellcheck source=/dev/null
-    . "$HOOK_LIB/initiative-legs.sh"
-    LEGS="$(resolve_legs_env)"
-    case " $LEGS " in *" ticket "*) exit 0 ;; esac
+    . "$HOOK_LIB/initiative-workers.sh"
+    WORKERS="$(resolve_workers_env)"
+    case " $WORKERS " in *" ticket "*) exit 0 ;; esac
 fi
 
 # --- Session-start epoch from the transcript's first timestamp --------------

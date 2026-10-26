@@ -86,7 +86,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .alert{padding:8px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
 .card{border:1px solid var(--line);background:var(--panel);padding:10px 14px;margin:8px 0;overflow-wrap:anywhere}
 .card h3{margin:0 0 6px;font-size:13px}
-.leg{display:flex;gap:12px;padding:3px 0;overflow-wrap:anywhere}.leg .mk{min-width:76px;font-weight:600}
+.worker{display:flex;gap:12px;padding:3px 0;overflow-wrap:anywhere}.worker .mk{min-width:76px;font-weight:600}
 .nodata{color:var(--dim);font-style:italic;padding:4px 0}
 /* Roadmap page. Existing tokens only. */
 .rm-bar{display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;margin:8px 0}
@@ -98,7 +98,7 @@ h2{font:600 13px var(--mono);letter-spacing:.06em;text-transform:uppercase;margi
 .rm-card[draggable]{cursor:grab}
 .rm-theme{max-width:100%;font:inherit}
 .rm-card{background:var(--panel);border:1px solid var(--line);padding:6px 8px;margin-bottom:6px;overflow-wrap:anywhere}
-.rm-leg{margin-top:4px;color:var(--warn)}
+.rm-worker{margin-top:4px;color:var(--warn)}
 .rm-rel.cur{border-color:var(--accent)}
 .rm-sync{width:100%;border-collapse:collapse}
 .rm-sync th,.rm-sync td{text-align:left;padding:4px 8px;border-bottom:1px solid var(--line);overflow-wrap:anywhere;vertical-align:top}

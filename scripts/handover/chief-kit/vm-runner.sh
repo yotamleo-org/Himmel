@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# vm-runner.sh — the console's ONE entry point for the himmel-vm self-hosted
+# vm-runner.sh — the chief's ONE entry point for the himmel-vm self-hosted
 # Actions runner. The host loop is scripts/vm/ci-runner.sh;
 # this wraps it in one user-level systemd unit per VM and the repo kill switch.
 #

@@ -224,7 +224,7 @@ else
 fi
 
 if grep -q -E '<b>lane</b>|Parallel lanes' "$PAGE"; then
-  bad "Level 7 defines 'lane' as a work session; docs/glossary.md calls that a leg" "$(grep -n -E '<b>lane</b>|Parallel lanes' "$PAGE" | head -3)"
+  bad "Level 7 defines 'lane' as a work session; docs/glossary.md calls that a worker" "$(grep -n -E '<b>lane</b>|Parallel lanes' "$PAGE" | head -3)"
 else
   ok "Level 7 uses the glossary's words for a work session"
 fi

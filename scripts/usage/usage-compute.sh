@@ -154,9 +154,9 @@ def addz($a; $b): reduce (zero | keys[]) as $f ($a; .[$f] += ($b[$f] // 0));
             else (.turns += $r.n | .input += $r.i | .cache_read += $r.cr | .cache_create += $r.cc | .output += $r.o) end))
   | to_entries
   | map(. as $e | $e.key as $name
-        | (if ($name | test("console"; "i")) then "console" elif ($name | test("judge"; "i")) then "judge" else "leg" end) as $kind
+        | (if ($name | test("console|chief"; "i")) then "console" elif ($name | test("judge"; "i")) then "judge" else "leg" end) as $kind
         | (keyof($name)) as $k
-        | ({name: $name, kind: $kind, ticket: (if $k != null then $k elif $kind == "console" then "_console" else "_unattributed" end)} + $e.value))
+        | ({name: $name, kind: $kind, ticket: (if $k != null then $k elif $kind == "console" then "_chief" else "_unattributed" end)} + $e.value))
 ) as $sessions
 
 # CR ledger: findings (dedup head+id, amends applied), rounds, est tokens
@@ -173,7 +173,7 @@ def addz($a; $b): reduce (zero | keys[]) as $f ($a; .[$f] += ($b[$f] // 0));
     | group_by(.t) | map({key: .[0].t, value: {rounds: ([.[].head] | unique | length), est_tokens: ([.[].est] | add)}}) | from_entries ) as $crt
 
 | ( ([$sessions[] | select(.ticket | startswith("_") | not) | .ticket] + [$crt | keys[]]) | unique | map(select(selected(.))) ) as $tickets
-| ( $tickets + ["_console", "_unattributed"] ) as $all
+| ( $tickets + ["_chief", "_unattributed"] ) as $all
 | [ $all[] as $t
     | ($sessions | map(select(.ticket == $t)) | sort_by(.name)) as $ss
     | select(($ss | length) > 0 or ($crt[$t] != null))

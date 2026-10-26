@@ -1,10 +1,10 @@
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 import { request, severityField } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
 import { appendAdmission } from './admissions-ledger.js';
 import { readBodyFile } from './body-file.js';
-import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
+import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, INTAKE_GATES } from './intake-gate.js';
 import { nextResidualDepth, queueBacklogIntake } from './create.js';
 import { parseLabels } from './labels.js';
 import { requireSectorField, resolveSector, sectorOf, sectorOptions } from './sector.js';
@@ -325,10 +325,11 @@ export function registerEdit(program: Command): void {
       `Required to move a ticket into a frozen version (${INTAKE_GATES}); recorded in the admissions ledger`,
     )
     .option(
-      '--console-override <reason>',
-      'Console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
+      '--chief-override <reason>',
+      'Chief session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; consoleOverride?: string; residualOf?: string }) => {
+    .addOption(new Option('--console-override <reason>').hideHelp())
+    .action(async (key: string, options: EditOptions & { desc?: string; descFile?: string; gate?: string; chiefOverride?: string; consoleOverride?: string; residualOf?: string }) => {
       // `--desc` and `--description` are aliases; whichever the operator
       // passed wins (and if both, --description wins because it's parsed
       // last by commander's option-order). `--desc-file` overrides both — it
@@ -352,9 +353,10 @@ export function registerEdit(program: Command): void {
       const target = options.fixVersion ?? options.addFixVersion;
       if (options.gate !== undefined) assertIntakeGate(options.gate);
       let overrideReason: string | undefined;
-      if (options.consoleOverride !== undefined) {
-        overrideReason = checkConsoleOverride(options.consoleOverride);
-        if (target === undefined) throw new Error('--console-override needs the --fix-version or --add-fix-version to admit into');
+      const override = chiefOverrideOf(options);
+      if (override !== undefined) {
+        overrideReason = checkConsoleOverride(override);
+        if (target === undefined) throw new Error('--chief-override needs the --fix-version or --add-fix-version to admit into');
       }
       const admission =
         target === undefined

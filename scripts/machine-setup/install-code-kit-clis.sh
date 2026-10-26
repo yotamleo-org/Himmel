@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Install step for the CLIs of the opt-in `code` kit (ast-grep, shfmt, bats).
 # Opt-in, never run by the base bootstrap: these cost 0 listing tokens but are only needed
-# by legs that restructure code or touch shell. The `code` / `code-ui` plugin profiles
+# by workers that restructure code or touch shell. The `code` / `code-ui` plugin profiles
 # (scripts/lanes/plugin-profiles.json) cover the plugin half of the kit.
 #   ast-grep  npm @ast-grep/cli, pinned below (drift row `ast-grep` in scripts/upstreams.json
 #             rewrites the pin literal on a bump, version_pin)

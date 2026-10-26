@@ -196,16 +196,36 @@ describe('fix-version --add into a frozen version (HIMMEL-7153)', () => {
     expect(mockRequest).not.toHaveBeenCalled();
   });
 
-  it('--console-override needs the console marker', async () => {
-    await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'operator ruled'])).rejects.toThrow(/HIMMEL_CONSOLE=1 is not set/);
+  it('--chief-override needs the console marker', async () => {
+    await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--chief-override', 'operator ruled'])).rejects.toThrow(/HIMMEL_CONSOLE=1 is not set/);
     expect(puts()).toHaveLength(0);
   });
 
-  it('--console-override with the marker adds the version and records an override row', async () => {
+  it('--chief-override with the marker adds the version and records an override row', async () => {
     process.env.HIMMEL_CONSOLE = '1';
-    await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'operator ruled']);
+    await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--chief-override', 'operator ruled']);
     expect(puts()).toHaveLength(1);
     expect(rows()).toEqual([expect.objectContaining({ version: 'v1.1.3', key: 'HIM-9', kind: 'override', reason: 'operator ruled' })]);
+  });
+
+  it('the old --console-override is the same flag with one deprecation line; HIMMEL_LEGACY_NAMES=0 makes it an unknown option', async () => {
+    process.env.HIMMEL_CONSOLE = '1';
+    const err = vi.spyOn(process.stderr, 'write').mockImplementation(() => true);
+    const savedLegacy = process.env.HIMMEL_LEGACY_NAMES;
+    try {
+      await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'operator ruled']);
+      expect(rows()).toEqual([expect.objectContaining({ version: 'v1.1.3', key: 'HIM-9', kind: 'override', reason: 'operator ruled' })]);
+      await run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'again']);
+      expect(err.mock.calls.filter((c) => c[0] === '--console-override is deprecated: use --chief-override\n')).toHaveLength(1);
+      process.env.HIMMEL_LEGACY_NAMES = '0';
+      const before = rows().length;
+      await expect(run(['fix-version', 'HIM-9', '--add', 'v1.1.3', '--console-override', 'off'])).rejects.toThrow(/unknown option '--console-override'/);
+      expect(rows()).toHaveLength(before);
+    } finally {
+      err.mockRestore();
+      if (savedLegacy === undefined) delete process.env.HIMMEL_LEGACY_NAMES;
+      else process.env.HIMMEL_LEGACY_NAMES = savedLegacy;
+    }
   });
 
   it('writes no ledger row when the read-back shows the version did not land', async () => {

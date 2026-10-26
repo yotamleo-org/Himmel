@@ -1,34 +1,34 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/worker-event.sh - route one leg message to the
+# scripts/handover/chief-kit/worker-event.sh - route one worker message to the
 # one-shot that handles it, or say ESCALATE. A script, never a model: the
-# console runs it once per leg message instead of spending the several
+# chief runs it once per worker message instead of spending the several
 # full-context turns the hand sequence takes.
 #
-# Usage: worker-event.sh --doc <console doc> --fleet <manifest> <message-file | ->
+# Usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->
 #
-#   MERGED / WRAPPED  -> wrap-merged.sh --doc <doc> --fleet <manifest> <leg doc> [--pr <n>]
-#                        The leg doc is the manifest entry whose name carries the
+#   MERGED / WRAPPED  -> wrap-merged.sh --doc <doc> --fleet <manifest> <worker doc> [--pr <n>]
+#                        The worker doc is the manifest entry whose name carries the
 #                        message's N<k> label; <n> is the PR in a `MERGED #<n>` line.
 #                        A WRAPPED line that mentions deferred, follow-up or residual with
 #                        no HIMMEL-<n> key or `no-ticket: <reason>` (residual-lines.sh)
 #                        is ESCALATE unfiled-residual: <line>, before wrap-merged runs.
-#                        A WRAPPED whose leg doc names no PR (a research leg) skips wrap-merged:
-#                        close-wrapped-leg.sh --fleet <manifest> <leg doc> closes it, which
-#                        itself refuses unless the leg's queue lock is free and its tail is WRAPPED.
-#   anything else     -> ESCALATE (READY and FINDING need a judge or the console)
+#                        A WRAPPED whose worker doc names no PR (a research worker) skips wrap-merged:
+#                        close-wrapped-worker.sh --fleet <manifest> <worker doc> closes it, which
+#                        itself refuses unless the worker's queue lock is free and its tail is WRAPPED.
+#   anything else     -> ESCALATE (READY and FINDING need a judge or the chief)
 #
 #   after a MERGED with a PR, station-sync.sh --pr <n> runs detached to bring the
 #   station back to main: ` station=pending log=<file>` is appended at once, its
 #   output goes to the log and its verdict to the state file tick.sh shows.
 #
-# The leg is found by its N<k> label, else by its session name (the leg doc's
+# The worker is found by its N<k> label, else by its session name (the worker doc's
 # stem) quoted in the message. After a handled event the script runs
 # live-state.sh <doc>, which rewrites the `## Live state` legs: line; its failure
 # is appended as ` live-state=failed <why>` (the wrap is done, so rc stays 0).
 #
 # Output: one line. `HANDLED wrap-merged|close-wrapped <label>[ station=pending log=<file>][ live-state=failed <why>]` (rc 0),
-# `HANDLED noop <label>` (rc 0) when the leg is out of the manifest and the console doc
-# already records `<label> WRAPPED, window closed.` (a re-run on a closed leg), or
+# `HANDLED noop <label>` (rc 0) when the worker is out of the manifest and the chief doc
+# already records `<label> WRAPPED, window closed.` (a re-run on a closed worker), or
 # `ESCALATE <reason>` (rc 10), the reason being no-label, not-in-manifest,
 # marker-<X>, unfiled-residual: <line>, or wrap-merged-failed / close-wrapped-failed rc=<n> with that script's stderr after it.
 # Usage errors exit 2 before anything runs.
@@ -46,7 +46,7 @@ if [ -n "${LE_STATION:-}" ]; then STATION=("$LE_STATION"); else STATION=(bash "$
 if [ -n "${LE_LIVE:-}" ]; then LIVE=("$LE_LIVE"); else LIVE=(bash "$HERE/live-state.sh"); fi
 if [ -n "${LE_LIST:-}" ]; then LIST=("$LE_LIST"); else LIST=(bash "$HERE/fleet-manifest.sh" list); fi
 
-usage() { echo "usage: worker-event.sh --doc <console doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
+usage() { echo "usage: worker-event.sh --doc <chief doc> --fleet <manifest> <message-file | ->" >&2; exit 2; }
 escalate() { echo "ESCALATE $1"; exit 10; }
 
 DOC=""; FLEET=""; MSG=""
@@ -75,7 +75,7 @@ case "$marker" in
 esac
 
 if [ "$marker" = WRAPPED ]; then
-    mf="$(mktemp "${TMPDIR:-/tmp}/leg-event-msg.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
+    mf="$(mktemp "${TMPDIR:-/tmp}/worker-event-msg.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
     printf '%s\n' "$body" > "$mf"
     unfiled="$(unfiled_residual_mention_lines "$mf")"
     rm -f "$mf"
@@ -84,35 +84,35 @@ if [ "$marker" = WRAPPED ]; then
     fi
 fi
 
-# the leg is named by its N<k> label, or failing that by its session name (the
-# leg doc's stem, which a wrap message may quote without any N<k>)
+# the worker is named by its N<k> label, or failing that by its session name (the
+# worker doc's stem, which a wrap message may quote without any N<k>)
 labels="$(printf '%s\n' "$body" | grep -oE '\<N[0-9]+\>' | sort -u)" || labels=""
 if [ -n "$labels" ]; then
     [ "$(printf '%s\n' "$labels" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
     label="$labels"
-    leg="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || leg=""
-    # a leg already wrapped has left the manifest; wrap-merged's console-doc bullet
+    worker="$("${LIST[@]}" "$FLEET" 2>/dev/null | grep -F -- "-${label}-" | head -n 1)" || worker=""
+    # a worker already wrapped has left the manifest; wrap-merged's chief-doc bullet
     # (`<label> WRAPPED, window closed.`) says so, and a re-run is then a noop.
-    # ponytail: a leg closed by close-wrapped (no such bullet) or named only by its
-    # stem still escalates, upgrade to a closed-legs record if such a re-run ever wakes a console
-    if [ -z "$leg" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
+    # ponytail: a worker closed by close-wrapped (no such bullet) or named only by its
+    # stem still escalates, upgrade to a closed-workers record if such a re-run ever wakes a chief
+    if [ -z "$worker" ] && grep -qE "(^|[^A-Za-z0-9_])$label WRAPPED, window closed\." "$DOC" 2>/dev/null; then
         echo "HANDLED noop $label"; exit 0
     fi
-    [ -n "$leg" ] || escalate "not-in-manifest $label"
+    [ -n "$worker" ] || escalate "not-in-manifest $label"
 else
-    legs=""
+    workers=""
     while IFS= read -r cand; do
         [ -n "$cand" ] || continue
         stem="${cand##*/}"; stem="${stem%.md}"
         # the stem must stand alone: a longer, unlisted session name never matches a listed one
-        [[ $body =~ (^|[^A-Za-z0-9_-])"$stem"([^A-Za-z0-9_-]|$) ]] && legs="$legs$cand"$'\n'
+        [[ $body =~ (^|[^A-Za-z0-9_-])"$stem"([^A-Za-z0-9_-]|$) ]] && workers="$workers$cand"$'\n'
     done <<EOF
 $("${LIST[@]}" "$FLEET" 2>/dev/null)
 EOF
-    [ -n "$legs" ] || escalate "no-label"
-    [ "$(printf '%s' "$legs" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
-    leg="${legs%$'\n'}"
-    stem="${leg##*/}"; stem="${stem%.md}"
+    [ -n "$workers" ] || escalate "no-label"
+    [ "$(printf '%s' "$workers" | wc -l)" -eq 1 ] || escalate "ambiguous-label"
+    worker="${workers%$'\n'}"
+    stem="${worker##*/}"; stem="${stem%.md}"
     label="$stem"
     [[ $stem =~ -(N[0-9]+)- ]] && label="${BASH_REMATCH[1]}"
 fi
@@ -122,21 +122,21 @@ if [ "$marker" = MERGED ]; then
     pr="$(printf '%s\n' "$line" | grep -oE 'MERGED #?[0-9]+' | grep -oE '[0-9]+' | head -n 1)" || pr=""
 fi
 
-# a WRAPPED leg whose doc names no PR (a research leg) has nothing to merge-check:
-# close its window directly. close-wrapped-leg.sh itself refuses unless the leg's
+# a WRAPPED worker whose doc names no PR (a research worker) has nothing to merge-check:
+# close its window directly. close-wrapped-worker.sh itself refuses unless the worker's
 # queue lock is free and its tail marker is WRAPPED.
 close_only=""
-if [ "$marker" = WRAPPED ] && [ -r "$leg" ] \
-    && ! grep -qE '^- .*(READY|PR) #?[0-9]+' "$leg"; then
+if [ "$marker" = WRAPPED ] && [ -r "$worker" ] \
+    && ! grep -qE '^- .*(READY|PR) #?[0-9]+' "$worker"; then
     close_only=1
 fi
 
-errf="$(mktemp "${TMPDIR:-/tmp}/leg-event.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
+errf="$(mktemp "${TMPDIR:-/tmp}/worker-event.XXXXXX")" || escalate "wrap-merged-failed rc=1 mktemp"
 if [ -n "$close_only" ]; then
-    "${CLOSE[@]}" --fleet "$FLEET" "$leg" >/dev/null 2>"$errf"; rc=$?
+    "${CLOSE[@]}" --fleet "$FLEET" "$worker" >/dev/null 2>"$errf"; rc=$?
     what=close-wrapped
 else
-    args=(--doc "$DOC" --fleet "$FLEET" "$leg")
+    args=(--doc "$DOC" --fleet "$FLEET" "$worker")
     [ -z "$pr" ] || args+=(--pr "$pr")
     "${WRAP[@]}" "${args[@]}" >/dev/null 2>"$errf"; rc=$?
     what=wrap-merged
@@ -164,7 +164,7 @@ if [ -n "$pr" ]; then
     fi
     station=" station=pending log=$slog"
 fi
-# re-render the legs: line so a wrapped leg is dropped by the script, not by a console Edit turn
+# re-render the legs: line so a wrapped worker is dropped by the script, not by a chief Edit turn
 live=""
 if ! lerr="$("${LIVE[@]}" "$DOC" 2>&1 >/dev/null)"; then
     live=" live-state=failed $(printf '%s' "$lerr" | tr '\n' ' ')"

@@ -13,7 +13,7 @@ unsure which one, ask the user in plain text. Write it to a scratchpad file (Wri
 hold secrets; the script redacts it, so do not paste it anywhere else.
 
 **Step 2 — resolve the himmel checkout and draft.** This command runs from any directory, with the same
-resolution order as `marketplace/plugins/himmel-ops/scripts/legs.sh` (`$HIMMEL_REPO` → git toplevel → canonical
+resolution order as `marketplace/plugins/himmel-ops/scripts/workers.sh` (`$HIMMEL_REPO` → git toplevel → canonical
 install paths → error):
 
 ```bash

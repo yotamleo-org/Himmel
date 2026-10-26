@@ -33,7 +33,7 @@ import { spawnSync } from "node:child_process";
 
 // Spread into spawn options so the child leads its own process group:
 //   spawn(cmd, { ...SPAWN_OWN_GROUP, stdout: "pipe", ... })
-// POSIX only. On Windows `detached` means a new console and a child that
+// POSIX only. On Windows `detached` means a new chief and a child that
 // outlives its parent, buys nothing (taskkill /T already walks the tree), and
 // would be a behaviour change on the one platform where this all works today.
 //

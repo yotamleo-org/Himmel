@@ -105,7 +105,7 @@ done
 # which the stock BSD `sort` on macOS does not support at all (this suite
 # deliberately forces the Linux code path onto every host OS, macOS CI
 # runners included, per the header comment above), so a GNU-only flag here
-# broke the suite on that leg. Same discipline upgrade-rtk.ps1's Test-IsNewer
+# broke the suite on that worker. Same discipline upgrade-rtk.ps1's Test-IsNewer
 # uses, so the two platforms cannot quietly diverge on a suffixed tag.
 is_newer() {
   [ "$1" = "$2" ] && return 1

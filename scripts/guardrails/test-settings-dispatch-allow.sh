@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # the gcp-runners down and status literals the auto-mode classifier denied must
-# be pre-approved in the project allow list, spelled exactly as a console types
+# be pre-approved in the project allow list, spelled exactly as a chief types
 # them. gcp-runners `up` spawns billable VMs and stays un-approved.
 #
 # Usage: bash scripts/guardrails/test-settings-dispatch-allow.sh

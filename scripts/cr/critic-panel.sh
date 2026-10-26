@@ -1370,7 +1370,7 @@ _rc_completed() { [ "$1" -eq 0 ] || [ "$1" -eq 4 ]; }
 # ledger's --detail field (avail rows below, and the attempt rows a fallback
 # chain queues). ledger-append.sh applies its OWN scrub_secrets() + 200-char
 # cap downstream — this is belt-and-suspenders so the stderr
-# line this file echoes to the console, and the argv it hands to
+# line this file echoes to the chief, and the argv it hands to
 # ledger-append.sh, are already safe and short, never multi-KB of raw
 # provider text. 160 chars leaves room for a "reason=...: " prefix a caller
 # prepends before ledger-append.sh's own cap lands.

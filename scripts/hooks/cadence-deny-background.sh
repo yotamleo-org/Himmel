@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cadence-scoped PreToolUse Bash DENY hook for run_in_background.
 #
-# WHY: unattended cadence legs have twice elected to background a slow step
+# WHY: unattended cadence workers have twice elected to background a slow step
 # ("find is slow on this filesystem", "waiting for the media fetch") and then
 # wait for a task notification that an unattended run can never act on — parking
 # forever and recording a vacuous "complete". Decisive evidence: a
@@ -30,7 +30,7 @@
 #     interactive sessions keep their run_in_background capability.
 #
 # No bypass env var — there is nothing legitimate to bypass in a cadence run
-# (cadence legs are foreground-by-design). To DISABLE, remove from
+# (cadence workers are foreground-by-design). To DISABLE, remove from
 # cadence-settings.json. bash 3.2-compatible.
 set -uo pipefail
 
@@ -48,7 +48,7 @@ if printf '%s' "$input" | jq -e '.tool_input.run_in_background == true' >/dev/nu
     echo "cadence-deny-background: run_in_background is denied in a cadence session" \
          "— unattended runs cannot act on a background-task notification." \
          "Re-run this command synchronously in the FOREGROUND (run_in_background=false);" \
-         "cadence legs are foreground-by-design." >&2
+         "cadence workers are foreground-by-design." >&2
     exit 2
 fi
 

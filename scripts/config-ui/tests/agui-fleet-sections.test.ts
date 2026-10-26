@@ -1,5 +1,5 @@
-// the fleet page's sections (needs attention, orphans, running per live console, finished), their order,
-// leg and console chains, the filters, and the short names, over plain rows: the model is dependency-free, so this runs
+// the fleet page's sections (needs attention, orphans, running per live chief, finished), their order,
+// worker and chief chains, the filters, and the short names, over plain rows: the model is dependency-free, so this runs
 // without an install.
 import { expect, test } from "bun:test";
 import { chainKey, cloudPhase, filterCount, fleetSections, laneOf, NO_FILTERS, orphanReason, shortName, siblingOrder } from "../agui-web/src/fleet-model";
@@ -14,9 +14,9 @@ const at = (t: number) => ({ activity: { tool: "Bash", summary: "x", at: t } });
 const fill = (f: number) => ({ usage: { calls: 1, input: 0, output: 0, cacheRead: 0, cacheCreate: 0, costEq: 0, resident: 0, ceiling: 200000, ceilingFrom: "autocompact", fill: f } });
 const cloud = (phase: string, extra: any = {}) => ({ pid: null, run: null, lane: "cloud", cloud: { phase, url: null }, ...extra });
 
-const BU = "HIMMEL-nextleg-2026-10-08BU-roadmap-console";
-const BT = "HIMMEL-nextleg-2026-10-08BT-roadmap-console";
-const BS = "HIMMEL-nextleg-2026-10-08BS-roadmap-console";
+const BU = "HIMMEL-nextleg-2026-10-08BU-roadmap-chief";
+const BT = "HIMMEL-nextleg-2026-10-08BT-roadmap-chief";
+const BS = "HIMMEL-nextleg-2026-10-08BS-roadmap-chief";
 const rows: any[] = [
   row(BU, "console", BU, { state: "running", predecessor: BT, ...at(50) }),
   row(BT, "console", BT, { state: "wrapped", live: false, lock: "released", predecessor: BS }),
@@ -31,8 +31,8 @@ const rows: any[] = [
   row("cloud-HIMMEL-2", "cloud", BT, cloud("done", { state: "idle" })),
   row("cloud-HIMMEL-3", "cloud", BU, cloud("unknown", { state: "unknown" })),
   row("cloud-HIMMEL-4", "cloud", BU, cloud("working", { state: "running" })),
-  row("wrapped-leg", "leg", BU, { state: "wrapped", live: false, marker: "WRAPPED", runtime: { startedAt: 0, endedAt: 100, elapsedMs: 100 } }),
-  row("orphan-leg", "leg", "gone-console", { state: "running", ...at(3) }),
+  row("wrapped-worker", "leg", BU, { state: "wrapped", live: false, marker: "WRAPPED", runtime: { startedAt: 0, endedAt: 100, elapsedMs: 100 } }),
+  row("orphan-worker", "leg", "gone-chief", { state: "running", ...at(3) }),
   row("scratch-session", "interactive", null, { state: "idle", ...at(4) }),
 ];
 
@@ -48,15 +48,15 @@ test("running: one group per live console, siblings by state rank then recency; 
 
 test("orphans: live sessions no live console watches, with their reason; a cloud session never is one", () => {
   const s = fleetSections(rows);
-  expect(s.orphans.map((o) => [o.row.name, o.why])).toEqual([["orphan-leg", "console process gone"]]);
+  expect(s.orphans.map((o) => [o.row.name, o.why])).toEqual([["orphan-worker", "chief process gone"]]);
   expect(orphanReason(rows.find((r) => r.name === "cloud-HIMMEL-1"), rows)).toBeNull();
   expect(orphanReason(rows.find((r) => r.name === "scratch-session"), rows)).toBeNull();
 });
 
-test("finished: wrapped and dead consoles fold into one chain, wrapped legs, cloud rows under a finished console", () => {
+test("finished: wrapped and dead chiefs fold into one chain, wrapped workers, cloud rows under a finished console", () => {
   const s = fleetSections(rows);
   expect(s.finished.map((e) => [e.row.name, e.hops.map((h) => h.name)])).toEqual([
-    ["wrapped-leg", []],
+    ["wrapped-worker", []],
     ["cloud-HIMMEL-2", []],
     [BT, [BS]],
   ]);
@@ -106,13 +106,13 @@ test("filters: lane, state and text narrow every section; the counts say how man
   expect(attention.running.flatMap((g) => g.rows.map((r) => r.name)).sort()).toEqual(["blocked", "cloud-HIMMEL-1", "running-new"]);
   expect(attention.finished).toEqual([]);
   const orphaned = fleetSections(rows, null, { lanes: [], states: ["orphaned"], text: "" });
-  expect(orphaned.orphans.map((o) => o.row.name)).toEqual(["orphan-leg"]);
+  expect(orphaned.orphans.map((o) => o.row.name)).toEqual(["orphan-worker"]);
   expect(orphaned.running).toEqual([]);
   expect(fleetSections(rows, null, { lanes: [], states: [], text: "IDLE-N" }).running.flatMap((g) => g.rows.map((r) => r.name))).toEqual(["idle-new"]);
   expect(laneOf(rows.find((r) => r.name === "cloud-HIMMEL-4"))).toBe("cloud");
 });
 
-test("leg chains: the live hop carries its finished hops, which leave the Finished list", () => {
+test("worker chains: the live hop carries its finished hops, which leave the Finished list", () => {
   const chain = [
     row(BU, "console", BU, { state: "running" }),
     row("HIMMEL-4904-N1494-api-lane-core-2026-10-08", "leg", BU, { state: "wrapped", live: false, runtime: { startedAt: 0, endedAt: 10, elapsedMs: 10 } }),
@@ -148,14 +148,14 @@ test("filters apply to every section alike: a hidden live hop leaves its finishe
 });
 
 test("an orphan's own alarm (BLOCKED, high context) still reaches Needs attention, beside its Orphans row", () => {
-  const withAlarm = rows.map((r) => (r.name === "orphan-leg" ? { ...r, marker: "BLOCKED" } : r));
+  const withAlarm = rows.map((r) => (r.name === "orphan-worker" ? { ...r, marker: "BLOCKED" } : r));
   const s = fleetSections(withAlarm);
-  expect(s.attention.map((a) => [a.row.name, a.why])).toContainEqual(["orphan-leg", "BLOCKED"]);
-  expect(s.orphans.map((o) => o.row.name)).toEqual(["orphan-leg"]);
+  expect(s.attention.map((a) => [a.row.name, a.why])).toContainEqual(["orphan-worker", "BLOCKED"]);
+  expect(s.orphans.map((o) => o.row.name)).toEqual(["orphan-worker"]);
 });
 
-test("a filter chip's badge counts exactly what that filter shows: idle consoles and idle orphans included", () => {
-  const idle = rows.map((r) => (r.name === BU ? { ...r, state: "idle" } : r.name === "orphan-leg" ? { ...r, state: "idle" } : r));
+test("a filter chip's badge counts exactly what that filter shows: idle chiefs and idle orphans included", () => {
+  const idle = rows.map((r) => (r.name === BU ? { ...r, state: "idle" } : r.name === "orphan-worker" ? { ...r, state: "idle" } : r));
   const shownBy = (states: string[]) => fleetSections(idle, null, { lanes: [], states, text: "" });
   expect(filterCount(idle, { lanes: [], states: ["idle"], text: "" })).toBe(shownBy(["idle"]).counts.shown);
   expect(filterCount(idle, { lanes: [], states: ["idle"], text: "" })).toBe(8);
@@ -170,7 +170,7 @@ test("a lane chip counts the live sessions it shows, never the finished ones fol
   const s = fleetSections(only, null, f);
   expect(s.running.flatMap((g) => g.rows)).toHaveLength(0);
   expect(filterCount(only, f)).toBe(0);
-  // with one cloud session still working under a live console, the chip equals the Running rows
+  // with one cloud session still working under a live chief, the chip equals the Running rows
   const live = [...only, row(BU, "console", BU, { state: "running" }), row("cloud-live", "cloud", BU, cloud("working", { state: "running" }))];
   expect(filterCount(live, f)).toBe(fleetSections(live, null, f).running.flatMap((g) => g.rows).length);
   expect(filterCount(live, f)).toBe(1);
@@ -181,11 +181,11 @@ test("sibling order: running, waiting, idle, unknown; newest first; then name", 
   expect(order.sort(siblingOrder as any).map((r) => r.name)).toEqual(["w", "a", "b", "u"]);
 });
 
-test("short names drop the ticket and date: a leg keeps its id and slug, a console its sequence", () => {
+test("short names drop the ticket and date: a worker keeps its id and slug, a console its sequence", () => {
   expect(shortName("HIMMEL-4912-N1497-sandbox-runner-2026-10-08")).toBe("N1497 sandbox-runner");
   expect(shortName("HIMMEL-4904-N1494b-api-lane-core-2026-10-08-RESUME")).toBe("N1494b api-lane-core (resume)");
   expect(shortName("HIMMEL-4643-N1466b-backend-tier-live-connector-RESUME")).toBe("N1466b backend-tier-live-connector (resume)");
-  expect(shortName(BU)).toBe("BU-roadmap-console");
+  expect(shortName(BU)).toBe("BU-roadmap-chief");
   expect(shortName("cloud-HIMMEL-4728")).toBe("cloud-HIMMEL-4728");
   expect(shortName("scratch-session")).toBe("scratch-session");
 });

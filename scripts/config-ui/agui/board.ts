@@ -1,11 +1,11 @@
-// board.ts — the console board for the Fleet page: GET /api/agui/board (the himmel.board/1 JSON from board.mjs --json)
-// and GET /api/agui/brief (a leg doc, so a brief link stays inside the UI). Read-only: board.mjs writes only
+// board.ts — the chief board for the Fleet page: GET /api/agui/board (the himmel.board/1 JSON from board.mjs --json)
+// and GET /api/agui/brief (a worker doc, so a brief link stays inside the UI). Read-only: board.mjs writes only
 // into a private temp dir, and a doc is found by NAME under the handover root, never by a path from the request.
 //
-// The console writes the board JSON beside its doc (board.mjs, <doc>.board.json); readBoardFile serves that file, re-read
+// The chief writes the board JSON beside its doc (board.mjs, <doc>.board.json); readBoardFile serves that file, re-read
 // whenever its mtime moves, so a change reaches the next poll with no rebuild.
 // ponytail: with no such file the board is built by running board.mjs, cached BOARD_TTL_MS and shared by every poller
-// (it reads gh, Jira and transcripts: seconds); retire this fallback once every console has written the file.
+// (it reads gh, Jira and transcripts: seconds); retire this fallback once every chief has written the file.
 import { execFile } from "node:child_process";
 import { mkdtemp, readdir, readFile, realpath, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -37,7 +37,7 @@ export async function findDoc(root: string, name: string): Promise<string | null
   return null;
 }
 
-// <doc>.md → <doc>.board.json. null when the console has not written one (or it does not parse): the caller builds instead.
+// <doc>.md → <doc>.board.json. null when the chief has not written one (or it does not parse): the caller builds instead.
 const fileCache = new Map<string, { mtimeMs: number; size: number; body: unknown }>();
 export async function readBoardFile(doc: string): Promise<{ body: unknown } | null> {
   const p = doc.replace(/\.md$/, "") + ".board.json";
@@ -52,7 +52,7 @@ export async function readBoardFile(doc: string): Promise<{ body: unknown } | nu
   } catch { return null; }
 }
 
-// every string in the model passes the console's own redactor (nonces, lock tokens, keys), then the server's.
+// every string in the model passes the chief's own redactor (nonces, lock tokens, keys), then the server's.
 export const scrub = (v: unknown, extra: (v: unknown) => unknown = (x) => x): unknown =>
   extra(JSON.parse(JSON.stringify(v), (_k, x) => (typeof x === "string" ? redact(x) : x)));
 

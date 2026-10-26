@@ -500,10 +500,10 @@ else
 fi
 assert_contains "sw7: warns about unresolvable origin/HEAD" "could not resolve origin/HEAD" "$out"
 
-# leg-split guard (exit 8). Own fresh repo + bare origin,
+# worker-split guard (exit 8). Own fresh repo + bare origin,
 # same shape as the single-writer block above, to keep these cases isolated.
 
-echo "TEST: HIMMEL-1830/1831 leg-split guard"
+echo "TEST: HIMMEL-1830/1831 worker-split guard"
 
 LS_ORIGIN="$TMP_ROOT/ls-origin.git"
 LS_REPO="$TMP_ROOT/ls"
@@ -542,7 +542,7 @@ ls_prepare
 echo "state" > "$LS_REPO/handovers/$SLUG/HIMMEL-654-dispatch-session-25.md"
 echo "orders" > "$LS_REPO/handovers/$SLUG/HIMMEL-654-dispatch-session-26.md"
 ls1_before=$(git -C "$LS_REPO" rev-parse HEAD)
-rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 leg split" 2>&1) || rc=$?
+rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 worker split" 2>&1) || rc=$?
 printf '%s\n' "$out" | awk '{print "  > "$0}'
 assert_rc "ls1: two never-committed siblings refuses with exit 8" "8" "$rc"
 assert_contains "ls1: names both files" "session-25.md" "$out"
@@ -551,9 +551,9 @@ assert_eq "ls1: no commit created (HEAD unchanged)" "$ls1_before" "$(git -C "$LS
 
 # T-ls2: the SAME two files, but the guard is overridden -> commits normally.
 ls2_before=$(git -C "$LS_REPO" rev-parse HEAD)
-rc=0; out=$(run_ls_auto_commit env HANDOVER_LEG_SPLIT_OK=1 bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 leg split override" 2>&1) || rc=$?
+rc=0; out=$(run_ls_auto_commit env HANDOVER_WORKER_SPLIT_OK=1 bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 worker split override" 2>&1) || rc=$?
 printf '%s\n' "$out" | awk '{print "  > "$0}'
-assert_rc "ls2: HANDOVER_LEG_SPLIT_OK=1 overrides, commits (exit 0)" "0" "$rc"
+assert_rc "ls2: HANDOVER_WORKER_SPLIT_OK=1 overrides, commits (exit 0)" "0" "$rc"
 if [ "$ls2_before" != "$(git -C "$LS_REPO" rev-parse HEAD)" ]; then
     echo "  PASS: ls2: commit landed"; PASS=$((PASS+1))
 else
@@ -561,12 +561,12 @@ else
 fi
 
 # T-ls3: one BRAND NEW file whose sibling was already committed in a prior
-# leg (the normal 95-legs-out-of-96 shape) -> commits fine, no refusal.
+# worker (the normal 95-workers-out-of-96 shape) -> commits fine, no refusal.
 ls_prepare
-echo "leg n-1, already closed" > "$LS_REPO/handovers/$SLUG/foo-1.md"
-run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 leg n-1" >/dev/null 2>&1
-echo "leg n" > "$LS_REPO/handovers/$SLUG/foo-2.md"
-rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 leg n" 2>&1) || rc=$?
+echo "worker n-1, already closed" > "$LS_REPO/handovers/$SLUG/foo-1.md"
+run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 worker n-1" >/dev/null 2>&1
+echo "worker n" > "$LS_REPO/handovers/$SLUG/foo-2.md"
+rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 worker n" 2>&1) || rc=$?
 printf '%s\n' "$out" | awk '{print "  > "$0}'
 assert_rc "ls3: sibling with commit history never trips the guard" "0" "$rc"
 
@@ -605,15 +605,15 @@ assert_contains "ls6: staged retry names first file" "retry-session-25.md" "$out
 assert_contains "ls6: staged retry names second file" "retry-session-26.md" "$out"
 assert_eq "ls6: staged retry creates no commit" "$ls6_before" "$(git -C "$LS_REPO" rev-parse HEAD)"
 
-# T-ls7: supported unnumbered leg-1 spelling and numbered leg 2 are one series.
+# T-ls7: supported unnumbered worker-1 spelling and numbered worker 2 are one series.
 ls_prepare
-echo "leg one" > "$LS_REPO/handovers/$SLUG/unnumbered-series.md"
-echo "leg two" > "$LS_REPO/handovers/$SLUG/unnumbered-series-2.md"
-rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 unnumbered leg one" 2>&1) || rc=$?
+echo "worker one" > "$LS_REPO/handovers/$SLUG/unnumbered-series.md"
+echo "worker two" > "$LS_REPO/handovers/$SLUG/unnumbered-series-2.md"
+rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-654 unnumbered worker one" 2>&1) || rc=$?
 printf '%s\n' "$out" | awk '{print "  > "$0}'
-assert_rc "ls7: unnumbered leg 1 plus leg 2 refuses" "8" "$rc"
-assert_contains "ls7: names unnumbered leg 1" "unnumbered-series.md" "$out"
-assert_contains "ls7: names numbered leg 2" "unnumbered-series-2.md" "$out"
+assert_rc "ls7: unnumbered worker 1 plus worker 2 refuses" "8" "$rc"
+assert_contains "ls7: names unnumbered worker 1" "unnumbered-series.md" "$out"
+assert_contains "ls7: names numbered worker 2" "unnumbered-series-2.md" "$out"
 
 # T-ls8: identical basenames/stems in different ticket directories are
 # unrelated series and must not collide.
@@ -646,7 +646,7 @@ ls_prepare
 echo "unrelated vault note" > "$LS_REPO/foo.md"
 echo "unrelated vault note, later" > "$LS_REPO/foo-2.md"
 git -C "$LS_REPO" add -- foo.md foo-2.md
-echo "real leg" > "$LS_REPO/handovers/$SLUG/HIMMEL-1839-real-leg.md"
+echo "real worker" > "$LS_REPO/handovers/$SLUG/HIMMEL-1839-real-worker.md"
 ls10_before=$(git -C "$LS_REPO" rev-parse HEAD)
 rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "HIMMEL-1839 out-of-root collision" 2>&1) || rc=$?
 printf '%s\n' "$out" | awk '{print "  > "$0}'
@@ -677,7 +677,7 @@ assert_eq "ls11: no commit created (HEAD unchanged)" "$ls11_before" "$(git -C "$
 # T-ls12 (CR finding, codex-1 Important): two bare ticket-ID filenames
 # must NOT collide. A bare all-caps
 # stem ("HIMMEL") looks like nothing but a JIRA project key, so both parse
-# as stem="HIMMEL" (the ticket's own number gets mistaken for a leg number)
+# as stem="HIMMEL" (the ticket's own number gets mistaken for a worker number)
 # unless the guard specifically excludes that shape -- two unrelated
 # tickets' one-off notes would otherwise false-refuse a commit with no
 # actual split.
@@ -700,10 +700,10 @@ fi
 # fix would have silently stopped catching this; only all-caps bare stems
 # (ticket-key shaped) are excluded, not every single-token stem.
 ls_prepare
-echo "leg 25" > "$LS_REPO/handovers/$SLUG/foo-25.md"
-echo "leg 26" > "$LS_REPO/handovers/$SLUG/foo-26.md"
+echo "worker 25" > "$LS_REPO/handovers/$SLUG/foo-25.md"
+echo "worker 26" > "$LS_REPO/handovers/$SLUG/foo-26.md"
 ls13_before=$(git -C "$LS_REPO" rev-parse HEAD)
-rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "foo split leg" 2>&1) || rc=$?
+rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "foo split worker" 2>&1) || rc=$?
 printf '%s\n' "$out" | awk '{print "  > "$0}'
 assert_rc "ls13: lowercase bare-stem siblings still refuse with exit 8" "8" "$rc"
 assert_contains "ls13: names first bare-stem file" "foo-25.md" "$out"
@@ -711,15 +711,15 @@ assert_contains "ls13: names second bare-stem file" "foo-26.md" "$out"
 assert_eq "ls13: no commit created (HEAD unchanged)" "$ls13_before" "$(git -C "$LS_REPO" rev-parse HEAD)"
 
 # T-ls14: the guard's other documented minimal example -- the unnumbered
-# leg-1 spelling ("foo.md") plus a never-committed leg 2 ("foo-2.md") --
+# worker-1 spelling ("foo.md") plus a never-committed worker 2 ("foo-2.md") --
 # must also still trip the guard.
 ls_prepare
-echo "leg 1" > "$LS_REPO/handovers/$SLUG/foo.md"
-echo "leg 2" > "$LS_REPO/handovers/$SLUG/foo-2.md"
+echo "worker 1" > "$LS_REPO/handovers/$SLUG/foo.md"
+echo "worker 2" > "$LS_REPO/handovers/$SLUG/foo-2.md"
 ls14_before=$(git -C "$LS_REPO" rev-parse HEAD)
-rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "foo unnumbered split leg" 2>&1) || rc=$?
+rc=0; out=$(run_ls_auto_commit bash "$SCRIPT_UNDER_TEST" --no-push "foo unnumbered split worker" 2>&1) || rc=$?
 printf '%s\n' "$out" | awk '{print "  > "$0}'
-assert_rc "ls14: unnumbered leg-1 plus leg-2 bare stem still refuses" "8" "$rc"
+assert_rc "ls14: unnumbered worker-1 plus worker-2 bare stem still refuses" "8" "$rc"
 assert_eq "ls14: no commit created (HEAD unchanged)" "$ls14_before" "$(git -C "$LS_REPO" rev-parse HEAD)"
 
 # Summary --------------------------------------------------------------

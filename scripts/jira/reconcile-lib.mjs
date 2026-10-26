@@ -23,7 +23,7 @@ const PARTIAL_DELIVERY_RE =
 
 const REVERT_RE = /^revert(:|\b|\s*")/i;
 
-// A merged commit proves the LEG's slice of work landed. It does not prove
+// A merged commit proves the WORKER's slice of work landed. It does not prove
 // the TICKET is done when the ticket's own acceptance criterion is an
 // outcome outside the repository — a flipped repo setting, a served URL,
 // a published package/release, a DNS/dashboard change, an enabled
@@ -31,7 +31,7 @@ const REVERT_RE = /^revert(:|\b|\s*")/i;
 // merged commit delivered a content audit + Pages config prep, but the
 // ticket's acceptance was the live URL (`curl -sI ... -> 200`), and
 // enabling Pages is an operator-only repo setting the description reserves
-// explicitly ("the leg prepares and verifies, the operator flips it"). It
+// explicitly ("the worker prepares and verifies, the operator flips it"). It
 // was closed, then reopened when the URL 404'd. This check runs against the
 // ticket's own DESCRIPTION text (never the commit) and can only ever
 // downgrade a would-be CLOSE to RESCOPE — never used to justify closing.
@@ -41,7 +41,7 @@ const REVERT_RE = /^revert(:|\b|\s*")/i;
 // merely a URL.
 const OUTCOME_ACCEPTANCE_RE =
   /curl\s+-\w*[iI]\b|gh api repos\/\S+\/pages|Settings\s*(?:→|->)\s*Pages|operator (?:flips|enables)|\brepo setting\b|publish the release/i;
-const WORKER_SESSION_OPERATOR_SPLIT_RE = /\bthe leg (?:prepares|scopes|verifies)\b[^.]*\bthe operator\b|\boperator-only\b/i;
+const WORKER_SESSION_OPERATOR_SPLIT_RE = /\bthe (?:leg|worker) (?:prepares|scopes|verifies)\b[^.]*\bthe operator\b|\boperator-only\b/i;
 
 export function hasOutcomeAcceptance(descriptionText) {
   const text = descriptionText ?? '';
@@ -284,7 +284,7 @@ export function buildEvidenceComment({ key, disposition, reason, evidence, detai
   if (reason === 'outcome-acceptance' && detail) {
     lines.push('');
     lines.push(`Unverified external outcome (from the ticket's own description): ${detail}`);
-    lines.push('A merged commit proves the leg\'s slice landed, not that this outcome occurred — left open pending that check.');
+    lines.push('A merged commit proves the worker\'s slice landed, not that this outcome occurred — left open pending that check.');
   }
   if (reason === 'multi-task-ticket' && detail) {
     lines.push('');

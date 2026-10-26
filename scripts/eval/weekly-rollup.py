@@ -14,14 +14,14 @@ the change of every series against the previous row of the same kind.
 
 Row (v1): kind week|version, key (2026-W37 | v1.1.0), since, until (UTC),
 partial, days, merges, tickets, fix_share_pct, red_main, cost_eq,
-cost_eq_per_ticket (cost_eq over the tickets that carry a leg-burn line), legs, cache_hit_pct, flake_rows, delta, sources, no_source. A series with no
+cost_eq_per_ticket (cost_eq over the tickets that carry a worker-burn line), workers, cache_hit_pct, flake_rows, delta, sources, no_source. A series with no
 data is null, never 0.
 
 Sources, none of them a new pipeline:
   merges, fix share, red main  scripts/insights/self-review.sh (HIMMEL-6865), one
                                call per window; SELF_REVIEW_SCRIPT overrides the
                                path; absent or failing -> those columns are null
-  tickets, cost_eq             first-parent merge subjects and the `leg-burn:`
+  tickets, cost_eq             first-parent merge subjects and the `worker-burn:`
                                PR-body lines (`cost-eq=` summed, `k` = x1000)
   cache_hit_pct                mean `overall` of the cache-health rolling history
                                (CACHE_HEALTH_HISTORY, default
@@ -53,7 +53,7 @@ SERIES = ("merges", "tickets", "fix_share_pct", "cost_eq_per_ticket",
 NO_SOURCE = ["failure_rate_pct", "denial_rate_pct", "ship_stage_median_min"]
 STABLE_TAG = re.compile(r"^v(\d+)\.(\d+)\.(\d+)$")
 TICKET = re.compile(r"\[([A-Z][A-Z0-9]*-\d+)\]")
-COST_EQ = re.compile(r"^leg-burn\b(?:(?![^\n]*cost-eq=)[^\n]*\n)?[^\n]*?\bcost-eq=([0-9]+(?:\.[0-9]+)?)(k?)", re.M)
+COST_EQ = re.compile(r"^(?:worker|leg)-burn\b(?:(?![^\n]*cost-eq=)[^\n]*\n)?[^\n]*?\bcost-eq=([0-9]+(?:\.[0-9]+)?)(k?)", re.M)
 HERE = Path(__file__).resolve().parent
 ROOT = HERE.parent.parent
 
@@ -168,14 +168,14 @@ def build_row(kind, key, t0, t1, a):
     since, until = stamp(t0), stamp(t1)
     ref = key if kind == "version" else a.ref
     sr, sr_state = self_review(a.self_review, a.repo, ref, since, until)
-    tickets, costed, cost, ticket_cost, legs = set(), set(), 0.0, 0.0, 0
+    tickets, costed, cost, ticket_cost, workers = set(), set(), 0.0, 0.0, 0
     for subject, rec in merge_bodies(a.repo, ref, since, until):
         m = TICKET.search(subject)
         if m:
             tickets.add(m.group(1))
         for v, k in COST_EQ.findall(rec):
             cost += float(v) * (1000 if k else 1)
-            legs += 1
+            workers += 1
             if m:
                 costed.add(m.group(1))
                 ticket_cost += float(v) * (1000 if k else 1)
@@ -192,14 +192,14 @@ def build_row(kind, key, t0, t1, a):
         "days": num((t1 - t0).total_seconds() / 86400) if t0.year > 2000 else None,
         "fix_share_pct": num(100.0 * sr["fix"] / sr["merges"]) if sr and sr["merges"] else None,
         "red_main": sr["red_main"] if sr else None,
-        "cost_eq": num(cost) if legs else None,
+        "cost_eq": num(cost) if workers else None,
         "cost_eq_per_ticket": num(ticket_cost / n_t) if n_t else None,
-        "legs": legs,
+        "legs": workers,
         "cache_hit_pct": cache,
         "flake_rows": flakes,
         "failure_rate_pct": None, "denial_rate_pct": None, "ship_stage_median_min": None,
         "no_source": NO_SOURCE,
-        "sources": {"self_review": sr_state, "cost": "ok" if legs else "no-burn-lines",
+        "sources": {"self_review": sr_state, "cost": "ok" if workers else "no-burn-lines",
                     "cache": cache_state, "flake": flake_state},
     }
 
@@ -331,7 +331,7 @@ def cmd_review(a):
     print("velocity: merges=%s (%s%s) tickets=%s (%s) fix-share=%s (%s) window=%s" % (
         sfmt(r["merges"]), dfmt(d["merges"], plain), vs, sfmt(r["tickets"]), dfmt(d["tickets"], plain),
         sfmt(r["fix_share_pct"], "%"), dfmt(d["fix_share_pct"], plain), sfmt(r["days"], "d")))
-    print("cost: cost-eq=%s legs=%s per-ticket=%s (%s%s)" % (
+    print("cost: cost-eq=%s workers=%s per-ticket=%s (%s%s)" % (
         kfmt(r["cost_eq"]), r["legs"], kfmt(r["cost_eq_per_ticket"]), dfmt(d["cost_eq_per_ticket"], kfmt), vs))
     print("health: red-main=%s (%s) cache-hit=%s (%s) flakes=%s (%s); failure and denial rates: no source yet" % (
         sfmt(r["red_main"]), dfmt(d["red_main"], plain), sfmt(r["cache_hit_pct"], "%"), dfmt(d["cache_hit_pct"], plain),

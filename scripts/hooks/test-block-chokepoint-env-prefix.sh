@@ -122,7 +122,7 @@ assert_deny "HIMMEL_FLEET_CAP= on usage-preflight.sh" "$(j "HIMMEL_FLEET_CAP=99 
 assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-worker.sh" "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 assert_deny "HEADED_ARM_LEG_PREFLIGHT= (old name) on headed-arm-worker.sh" "$(j "HEADED_ARM_LEG_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 assert_deny "HIMMEL_FLEET_CAP= on headed-arm-worker.sh"            "$(j "HIMMEL_FLEET_CAP=99 bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
-assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-leg.sh"    "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-leg.sh --dry-run")"
+assert_deny "HEADED_ARM_WORKER_PREFLIGHT= on headed-arm-worker.sh"    "$(j "HEADED_ARM_WORKER_PREFLIGHT=/tmp/p.sh bash scripts/handover/chief-kit/headed-arm-worker.sh --dry-run")"
 
 # --- DENIED: the named ticket shapes + wrapper/compound variants ---
 assert_deny "env wrapper on $MERGE_ON_GREEN"            "$(j "env ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
@@ -152,7 +152,7 @@ fi
 # predicate above never fires -- same defect class as VAR=x, inside the
 # registered set. HIMMEL_CONSOLE_LEG is a registered seam of
 # merge-on-green.sh (chokepoints.json) and, since #630, is what makes
-# merge-on-green.sh require the console's GO file -- clearing it unguarded
+# merge-on-green.sh require the chief's GO file -- clearing it unguarded
 # silently disarms that gate. `unset`/`export -n` are cross-segment
 # by design (the shell effect crosses segments too), so the chokepoint's
 # segment can come later in the same payload. ---
@@ -193,7 +193,7 @@ assert_deny "export NAME=1 (no -n): also denies (arming-direction over-deny)" "$
 assert_deny "export bare NAME (already-set, no =): recorded fail-closed" "$(j "export HIMMEL_CONSOLE_LEG; bash $MERGE_ON_GREEN 1")"
 # Over-match controls: unaffected.
 assert_allow "unrelated bare assignment; then the chokepoint"     "$(j "OTHER_VAR=0; bash $MERGE_ON_GREEN 1")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): chokepoint FIRST; bare assignment in a LATER segment" "$(j "bash $MERGE_ON_GREEN 1; HIMMEL_CONSOLE_LEG=0")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): chokepoint FIRST; bare assignment in a LATER segment" "$(j "bash $MERGE_ON_GREEN 1; HIMMEL_CONSOLE_LEG=0")"
 
 # Ruling: unset/export option-VALIDITY
 # modelling is GONE. Three CR rounds each found the next edge a validity
@@ -332,13 +332,13 @@ assert_allow "echo mapfile NAME (word, not the command) stays allowed"  "$(j "ec
 # AND "assignment found anywhere" over the whole compound, which false-denied
 # (assignment in a different segment -- finding 1) and evaded (separator
 # defeating the path's end-of-string boundary -- finding 2) as one weakness.
-assert_deny "1813 backstop over-deny (console X ruling 07:05): finding 1: seam var on OTHER segment (;)"   "$(j "${MOG_VAR}=x echo ok; bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): finding 1: seam var on OTHER segment (&&)"  "$(j "${MOG_VAR}=x echo ok && bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): finding 1: seam var on OTHER segment (||)"  "$(j "${MOG_VAR}=x echo ok || bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): finding 1: seam var on OTHER segment (|)"   "$(j "${MOG_VAR}=x echo ok | bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): finding 1: seam var on OTHER segment (nl)"  "$(j "${MOG_VAR}=x echo ok
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): finding 1: seam var on OTHER segment (;)"   "$(j "${MOG_VAR}=x echo ok; bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): finding 1: seam var on OTHER segment (&&)"  "$(j "${MOG_VAR}=x echo ok && bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): finding 1: seam var on OTHER segment (||)"  "$(j "${MOG_VAR}=x echo ok || bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): finding 1: seam var on OTHER segment (|)"   "$(j "${MOG_VAR}=x echo ok | bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): finding 1: seam var on OTHER segment (nl)"  "$(j "${MOG_VAR}=x echo ok
 bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): chokepoint, THEN unrelated assignment segment" "$(j "bash $MERGE_ON_GREEN; ${MOG_VAR}=x echo ok")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): chokepoint, THEN unrelated assignment segment" "$(j "bash $MERGE_ON_GREEN; ${MOG_VAR}=x echo ok")"
 assert_deny "finding 2: separator AFTER env-prefixed chokepoint (;)"  "$(j "${MOG_VAR}=x bash $MERGE_ON_GREEN; echo ok")"
 assert_deny "finding 2: separator AFTER env-prefixed chokepoint (&&)" "$(j "${MOG_VAR}=x bash $MERGE_ON_GREEN && echo ok")"
 assert_deny "finding 2: separator AFTER env-prefixed chokepoint (||)" "$(j "${MOG_VAR}=x bash $MERGE_ON_GREEN || echo ok")"
@@ -361,8 +361,8 @@ assert_deny  "finding 3: attached stdout redirection"      "$(j "${MOG_VAR}=1 ba
 assert_deny  "finding 3: attached append redirection"      "$(j "${MOG_VAR}=1 bash $MERGE_ON_GREEN>>/tmp/h.log")"
 assert_deny  "finding 3: attached stderr redirection"      "$(j "${MOG_VAR}=1 bash $MERGE_ON_GREEN 2>/dev/null")"
 assert_deny  "finding 3 kin: redirect interleaved before interpreter" "$(j "${MOG_VAR}=1 >/tmp/h.log bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): finding 4: path in ARGUMENT position (echo)" "$(j "${MOG_VAR}=1 echo $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): finding 4: path in ARGUMENT position (cat)"  "$(j "${MOG_VAR}=1 cat $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): finding 4: path in ARGUMENT position (echo)" "$(j "${MOG_VAR}=1 echo $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): finding 4: path in ARGUMENT position (cat)"  "$(j "${MOG_VAR}=1 cat $MERGE_ON_GREEN")"
 
 # --- Invariant probes past the four findings: word identity and command
 # position come from the tokenizer, so quote/escape splits, continuations,
@@ -376,8 +376,8 @@ assert_deny  "substitution inside double quotes"   "$(j "echo \"\$(${MOG_VAR}=1 
 assert_deny  "eval with a quoted command string"   "$(j "eval \"${MOG_VAR}=1 bash $MERGE_ON_GREEN\"")"
 assert_deny  "exec wrapper"                        "$(j "${MOG_VAR}=1 exec bash $MERGE_ON_GREEN")"
 assert_deny  "bash -c string carrying the invocation" "$(j "${MOG_VAR}=1 bash -c 'bash $MERGE_ON_GREEN'")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): bash -c: path in \$0 position is not invoked" "$(j "${MOG_VAR}=1 bash -c 'echo hi' $MERGE_ON_GREEN")"
-assert_allow "6015 command position, no execution (was deny): 1813 backstop over-deny (console X ruling 07:05): double-quoted literal text is not an invocation" "$(j "echo \"${MOG_VAR}=1 bash $MERGE_ON_GREEN\"")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): bash -c: path in \$0 position is not invoked" "$(j "${MOG_VAR}=1 bash -c 'echo hi' $MERGE_ON_GREEN")"
+assert_allow "6015 command position, no execution (was deny): 1813 backstop over-deny (chief X ruling 07:05): double-quoted literal text is not an invocation" "$(j "echo \"${MOG_VAR}=1 bash $MERGE_ON_GREEN\"")"
 
 # --- The env -S split-string seam. `env -S 'VAR=x cmd'`
 # re-tokenizes the operand into the whole command line (GNU env's documented
@@ -391,9 +391,9 @@ assert_deny  "env -S attached operand"                 "$(j "env -S'${MOG_VAR}=x
 assert_deny  "env --split-string long form"            "$(j "env --split-string '${MOG_VAR}=x bash $MERGE_ON_GREEN'")"
 assert_deny  "env -S behind a -u flag"                 "$(j "env -u FOO -S '${MOG_VAR}=x bash $MERGE_ON_GREEN'")"
 assert_deny  "env -S: seam on the OUTER env words"     "$(j "env ${MOG_VAR}=x -S 'bash $MERGE_ON_GREEN'")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S string WITHOUT a seam var"        "$(j "env -S 'bash $MERGE_ON_GREEN'")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S: words after the string are appended args" "$(j "env -S 'echo hi' bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S: path at \$0 inside the string"   "$(j "env -S '${MOG_VAR}=x bash -c \"echo hi\" $MERGE_ON_GREEN'")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -S string WITHOUT a seam var"        "$(j "env -S 'bash $MERGE_ON_GREEN'")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -S: words after the string are appended args" "$(j "env -S 'echo hi' bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -S: path at \$0 inside the string"   "$(j "env -S '${MOG_VAR}=x bash -c \"echo hi\" $MERGE_ON_GREEN'")"
 
 # --- The CLUSTERED short-option spelling. Flags
 # clustered ahead of S ("-vS", "-iS", "-ivS") are ONE option word, and env
@@ -410,10 +410,10 @@ assert_deny  "env -vS attached operand"                "$(j "env -vS'${MOG_VAR}=
 assert_deny  "env -ivS attached operand"               "$(j "env -ivS'${MOG_VAR}=x bash $MERGE_ON_GREEN'")"
 assert_deny  "env -vS: seam on the OUTER env words"    "$(j "env ${MOG_VAR}=x -vS 'bash $MERGE_ON_GREEN'")"
 assert_deny  "env -vu PATH cluster (operand consumed)" "$(j "env -vu PATH ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -vS string WITHOUT a seam var"       "$(j "env -vS 'bash $MERGE_ON_GREEN'")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -vS: words after the string are appended args" "$(j "env -vS 'echo hi' bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -iS: path at \$0 inside the string"  "$(j "env -iS '${MOG_VAR}=x bash -c \"echo hi\" $MERGE_ON_GREEN'")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -vSu: mid-cluster S consumes u; rest are appended args" "$(j "env -vSu '${MOG_VAR}=x bash $MERGE_ON_GREEN'")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -vS string WITHOUT a seam var"       "$(j "env -vS 'bash $MERGE_ON_GREEN'")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -vS: words after the string are appended args" "$(j "env -vS 'echo hi' bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -iS: path at \$0 inside the string"  "$(j "env -iS '${MOG_VAR}=x bash -c \"echo hi\" $MERGE_ON_GREEN'")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -vSu: mid-cluster S consumes u; rest are appended args" "$(j "env -vSu '${MOG_VAR}=x bash $MERGE_ON_GREEN'")"
 
 # --- The OPTION-TABLE class closure. Three CR
 # rounds each found a spelling the hand-written option list missed; the
@@ -448,9 +448,9 @@ assert_deny  "env - (lone dash) ends options; seam still binds" "$(j "env - ${MO
 assert_deny  "unrecognised option: seam collected BEFORE it"   "$(j "env ${MOG_VAR}=x --not-an-env-option FOO bash $MERGE_ON_GREEN")"
 assert_deny  "unrecognised option: operand does not park command position" "$(j "env --not-an-env-option FOO ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny  "ambiguous abbreviation (--ig) uses the default too" "$(j "env --ig FOO ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): after --, an option WORD is the command, not an option"      "$(j "env -- --unset ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): after -, an option WORD is the command, not an option"       "$(j "env - --unset ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): optarg long (--ignore-signal) takes no separate word"        "$(j "env --ignore-signal INT ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): after --, an option WORD is the command, not an option"      "$(j "env -- --unset ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): after -, an option WORD is the command, not an option"       "$(j "env - --unset ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): optarg long (--ignore-signal) takes no separate word"        "$(j "env --ignore-signal INT ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny  "nested env carries the seam through its own -S"              "$(j "env ${MOG_VAR}=x env -S 'bash $MERGE_ON_GREEN'")"
 assert_deny  "env after --: inner env option parsing restarts"             "$(j "env -- ${MOG_VAR}=x env -S 'bash $MERGE_ON_GREEN'")"
 
@@ -485,7 +485,7 @@ assert_deny  "env -S string: leading -C consumes its word" "$(j "env -S '-C /tmp
 assert_deny  "env -S string: leading -- ends its options"  "$(j "env -S '-- ${MOG_VAR}=x bash $MERGE_ON_GREEN'")"
 assert_deny  "env -S option-only string; command rides the outer words" "$(j "env -S '-i' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny  "env -S: \_ is the argument separator"        "$(j "env -S '${MOG_VAR}=x bash\\_$MERGE_ON_GREEN'")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): env -S option state, no seam var"            "$(j "env -S '-u X bash $MERGE_ON_GREEN'")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): env -S option state, no seam var"            "$(j "env -S '-u X bash $MERGE_ON_GREEN'")"
 # (The former "; inside the string is a word character" ALLOW moved to the
 # deny-on-unresolvable block below, now a deny: see the note there.)
 
@@ -503,7 +503,7 @@ assert_deny  "env -S: escaped \# stays literal before a later comment" "$(j "env
 # '$') denies when the split string or its appended words MENTION a
 # registered chokepoint. Outside that intersection the guard stays
 # fail-open; the pinned ALLOWs below are resolvable and keep their verdict. ---
-# The raw backstop runs before the parser (console X ruling at 64bc44b1), so
+# The raw backstop runs before the parser (chief X ruling at 64bc44b1), so
 # where both deny, its message fires instead: either message counts.
 assert_deny_unres() {  # assert_deny_unres <label> <json>
     local label="$1"; shift
@@ -573,15 +573,15 @@ assert_deny "1813: source /dev/stdin reads a heredoc"         "$(j "source /dev/
 assert_deny "1813: a reader's herestring piped to a shell"     "$(j "cat <<< \"env -S '${SW_VAR}=1 bash $STOP_WORKER\\c'\" | bash")"
 assert_deny "1813: a reader's herestring in a substitution"   "$(j "bash -c \"\$(cat <<< \"env -S '${SW_VAR}=1 bash $STOP_WORKER\\c'\")\"")"
 assert_deny "1813: a reader's herestring via <(...)"          "$(j "source <(cat <<< \"env -S '${SW_VAR}=1 bash $STOP_WORKER\\c'\")")"
-assert_allow "6015 command position, no execution (was deny): 1813 backstop over-deny (console X ruling 07:05): 1813: cat of a herestring is data"              "$(j "cat <<< \"env -S '${SW_VAR}=1 bash $STOP_WORKER\\c'\"")"
+assert_allow "6015 command position, no execution (was deny): 1813 backstop over-deny (chief X ruling 07:05): 1813: cat of a herestring is data"              "$(j "cat <<< \"env -S '${SW_VAR}=1 bash $STOP_WORKER\\c'\"")"
 assert_allow "1813: a redirect before a plain env command"    "$(j "env >/dev/null FOO=1 ls")"
-assert_allow "6015 command position, no execution (was deny): 1813 backstop over-deny (console X ruling 07:05): 1813: herestring fed to a non-shell is data"     "$(j "grep x <<< \"env -S '${MOG_VAR}=1 bash $MERGE_ON_GREEN\\c'\"")"
+assert_allow "6015 command position, no execution (was deny): 1813 backstop over-deny (chief X ruling 07:05): 1813: herestring fed to a non-shell is data"     "$(j "grep x <<< \"env -S '${MOG_VAR}=1 bash $MERGE_ON_GREEN\\c'\"")"
 assert_allow "1813: 2>&1 after a plain command stays allowed"  "$(j "bash $MERGE_ON_GREEN 2>&1")"
 assert_deny "1813: an escaped > before & still separates"     "$(j "echo \\>& ${MOG_VAR}=1 bash $MERGE_ON_GREEN")"
 assert_allow "1813: unresolvable -S not mentioning a chokepoint" "$(j "env -S '${MOG_VAR}=1 bash scripts/not-registered.sh\\c'")"
 assert_allow "1813: \\c outside env -S is shell text"        "$(j "printf '%s\\c' $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): 1813: resolvable -S keeps the simulation verdict" "$(j "env -S 'bash\\_$MERGE_ON_GREEN'")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): 1813 pinned: bash -c 'str' <path> (path at \$0)" "$(j "${MOG_VAR}=1 bash -c 'echo hi' $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): 1813: resolvable -S keeps the simulation verdict" "$(j "env -S 'bash\\_$MERGE_ON_GREEN'")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): 1813 pinned: bash -c 'str' <path> (path at \$0)" "$(j "${MOG_VAR}=1 bash -c 'echo hi' $MERGE_ON_GREEN")"
 assert_allow "1813 pinned: an UNREGISTERED variable"         "$(j "HM_1813_UNREGISTERED=1 bash $MERGE_ON_GREEN")"
 assert_allow "1813 pinned: a bare invocation"                "$(j "bash $MERGE_ON_GREEN")"
 
@@ -609,11 +609,11 @@ assert_deny  "r6: plain env -a with quoted-empty operand"         "$(j "env -a '
 assert_deny  "r6: plain env -u with quoted-empty operand"         "$(j "env -u '' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny  "r6: --split-string= empty attached operand"         "$(j "env --split-string= ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
 assert_deny  "r6: -S '' empty separate operand"                   "$(j "env -S '' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): r6: empty word IS env's command (exec fails)"       "$(j "env '' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): r6: empty word IS the shell command"                "$(j "${MOG_VAR}=x '' bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): r6: empty word at command position inside -S"       "$(j "env -S \"${MOG_VAR}=x '' bash $MERGE_ON_GREEN\"")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): r6: -S string of only a quoted empty"               "$(j "env -S \"''\" ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): r6: quoted-empty word attached to a redirect is a word, not an IO number" "$(j "${MOG_VAR}=x ''>/tmp/h.log bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): r6: empty word IS env's command (exec fails)"       "$(j "env '' ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): r6: empty word IS the shell command"                "$(j "${MOG_VAR}=x '' bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): r6: empty word at command position inside -S"       "$(j "env -S \"${MOG_VAR}=x '' bash $MERGE_ON_GREEN\"")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): r6: -S string of only a quoted empty"               "$(j "env -S \"''\" ${MOG_VAR}=x bash $MERGE_ON_GREEN")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): r6: quoted-empty word attached to a redirect is a word, not an IO number" "$(j "${MOG_VAR}=x ''>/tmp/h.log bash $MERGE_ON_GREEN")"
 
 # --- Round-3 grammar probes (INFORMATIONAL -- echo only, never counted,
 # never FAIL): the hook's option table is derived from env's real
@@ -667,7 +667,7 @@ probe_env "'' as the command word (exec fails)"               env '' HM_1803_PRO
 # even when the closing paren would drop it (documented over-deny, deny-leaning).
 assert_deny "subshell-scoped unset (dropped at the closing paren)"        "$(j "(unset HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1")"
 assert_deny "subshell-scoped export -n (dropped at the closing paren)"    "$(j "(export -n HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): subshell-scoped bare assignment (dropped at the closing paren)" "$(j "(HIMMEL_CONSOLE_LEG=0); bash $MERGE_ON_GREEN 1")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): subshell-scoped bare assignment (dropped at the closing paren)" "$(j "(HIMMEL_CONSOLE_LEG=0); bash $MERGE_ON_GREEN 1")"
 assert_deny "subshell-scoped unset then && chokepoint"                    "$(j "(unset HIMMEL_CONSOLE_LEG) && bash $MERGE_ON_GREEN 1")"
 # A kind-tracking model that tried to tell `((`/`$(` apart from a real
 # subshell paren-by-paren gave false ALLOWs (an adjacent `((` run misread as
@@ -715,7 +715,7 @@ assert_deny "eval string recursion: paren-scoped clear+chokepoint inside the str
 # word before the paren already consumed command position, not because they
 # are special-cased. Rows below are the 20-row probe corpus (RESUME doc);
 # literal duplicates of assertions already above are omitted.
-assert_deny "1813 backstop over-deny (console X ruling 07:05): whitespace-padded genuine subshell (spaces inside the parens)" "$(j "( HIMMEL_CONSOLE_LEG=0 ); bash $MERGE_ON_GREEN 1")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): whitespace-padded genuine subshell (spaces inside the parens)" "$(j "( HIMMEL_CONSOLE_LEG=0 ); bash $MERGE_ON_GREEN 1")"
 assert_deny "prior assignment segment, then a genuine subshell"            "$(j "x=1; (unset HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1")"
 assert_deny "genuine subshell after && following an unrelated command"    "$(j "true && (unset HIMMEL_CONSOLE_LEG) && bash $MERGE_ON_GREEN 1")"
 assert_deny "\$( ) as an argument to a preceding command word stays denied" "$(j "echo \$(unset HIMMEL_CONSOLE_LEG); bash $MERGE_ON_GREEN 1")"
@@ -725,17 +725,17 @@ assert_deny "legacy \$[(...)] arithmetic paren is not a subshell"           "$(j
 # unquoted `;`/`&`/`|`/NEWLINE was split into segments by segment_cmd before
 # scan_segment's `$[` guard could see it -- and a `(` on the far side of that
 # split read as a real subshell, scoping the seam assignment out of the deny
-# set. Reproduced 4x (Q, N193, N8, console): `main` DENIES, the branch head
+# set. Reproduced 4x (Q, N193, N8, chief): `main` DENIES, the branch head
 # ALLOWED. Fix: `$[` opens an OPAQUE span to its matching `]` (bracket-depth
 # balanced, like `$((...))`), so it never splits and never opens scope. The
 # whole class stays DENY; the genuine narrowing (a `$[...]` assign INSIDE a
 # real closed subshell) stays ALLOW -- verified against real bash (the seam
 # never survives the subshell). ---
-assert_deny "legacy \$[ ] with an embedded NEWLINE before its paren (the N193/console bypass)" "$(j "$(printf 'echo $[1 +\n(HIMMEL_CONSOLE_LEG=0)]; bash %s 1' "$MERGE_ON_GREEN")")"
+assert_deny "legacy \$[ ] with an embedded NEWLINE before its paren (the N193/chief bypass)" "$(j "$(printf 'echo $[1 +\n(HIMMEL_CONSOLE_LEG=0)]; bash %s 1' "$MERGE_ON_GREEN")")"
 assert_deny "legacy \$[ ] with a NEWLINE before its closing bracket" "$(j "$(printf 'echo $[HIMMEL_CONSOLE_LEG=0\n]; bash %s 1' "$MERGE_ON_GREEN")")"
 assert_deny "legacy \$[ ] with an embedded semicolon before its paren" "$(j "echo \$[1 ;(HIMMEL_CONSOLE_LEG=0)]; bash $MERGE_ON_GREEN 1")"
 assert_deny "second \$[ ] after a newline smuggles the seam"          "$(j "$(printf 'echo $[0]$[\nHIMMEL_CONSOLE_LEG=0]; bash %s 1' "$MERGE_ON_GREEN")")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): a \$[ ] assign INSIDE a real closed subshell is genuinely scoped" "$(j "(echo \$[HIMMEL_CONSOLE_LEG=0]); bash $MERGE_ON_GREEN 1")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): a \$[ ] assign INSIDE a real closed subshell is genuinely scoped" "$(j "(echo \$[HIMMEL_CONSOLE_LEG=0]); bash $MERGE_ON_GREEN 1")"
 assert_deny "let '(...)' quoted arithmetic paren is not a subshell"        "$(j "let '(HIMMEL_CONSOLE_LEG=0)'; bash $MERGE_ON_GREEN 1")"
 assert_deny "array-assignment paren (declare -a a=(...)) is not a subshell" "$(j "declare -a a=( HIMMEL_CONSOLE_LEG=0 ); bash $MERGE_ON_GREEN 1")"
 assert_deny "[[ ( ) ]] grouping paren is not a subshell"                    "$(j "[[ ( HIMMEL_CONSOLE_LEG=0 ) ]]; bash $MERGE_ON_GREEN 1")"
@@ -796,7 +796,7 @@ diff_row() {  # diff_row <leak|noleak> <label> <payload with @P@ = the chokepoin
             echo "FAIL $label -- oracle: real bash DID change a seam ($line) -- use a leak row"
             return
         fi
-        assert_deny "$label [oracle: no leak; 1813 backstop over-deny (console X ruling 07:05)]" "$(j "$payload")"
+        assert_deny "$label [oracle: no leak; 1813 backstop over-deny (chief X ruling 07:05)]" "$(j "$payload")"
     else
         if [ "$line" != "$ORACLE_EXPECT" ]; then
             CASES=$((CASES + 1)); FAILED=$((FAILED + 1))
@@ -908,7 +908,7 @@ diff_row noleak "non-seam \$(( )) assignment as the chokepoint argument" '@P@ $(
 # env). Real bash clears the seam; the guard ALLOWS. Same class as the header's
 # string-reconstruction residual. If a future change closes this, flip the row
 # to `leak` deliberately. The raw backstop now denies the literal
-# `SEAM=` text (1813 backstop over-deny (console X ruling 07:05)). ---
+# `SEAM=` text (1813 backstop over-deny (chief X ruling 07:05)). ---
 diff_row leak "indirect: x=SEAM=0; (( x )) assigns via the VALUE (HIMMEL-3195)" 'x=HIMMEL_CONSOLE_LEG=0; (( x )); @P@'
 rm -rf "$ORACLE_DIR"
 
@@ -921,7 +921,7 @@ assert_deny "HIMMEL_SUITE_SLOTS= prefix on run-shell-tests"     "$(j "HIMMEL_SUI
 assert_allow "SUITE_LOCK_WAIT= prefix on quiet-run suite"      "$(j "SUITE_LOCK_WAIT=60 bash $QR suite -- bash scripts/test-quiet-run.sh")"
 assert_allow "run-shell-tests.sh (the CI chokepoint)"          "$(j "bash scripts/ci/run-shell-tests.sh --shard 1/8 .")"
 
-# --- Raw-string backstop (console X ruling at b8ae2143): before
+# --- Raw-string backstop (chief X ruling at b8ae2143): before
 # any parsing, a raw command naming a registered chokepoint AND, anywhere in
 # the same raw string, that chokepoint's seam var or an env -S /
 # --split-string denies. Comments, quotes, functions and depth do not matter.
@@ -950,7 +950,7 @@ assert_allow "1813 backstop control: env -S naming no chokepoint"      "$(j "env
 # not abort the hook under nounset (rc=1 is a hook error, not a deny).
 assert_allow "1813 redirect-only here-string (no command word)"       "$(j "<<< hello")"
 assert_deny  "1813 redirect-only here-string, then a seam segment"    "$(j "<<< hello; ${SW_VAR}=1 bash $STOP_WORKER")"
-# NAME+= is a real prefix assignment too (judge r5, console X NO-GO at 64bc44b1).
+# NAME+= is a real prefix assignment too (judge r5, chief X NO-GO at 64bc44b1).
 assert_deny  "1813 append-assignment SEAM+= prefix"                   "$(j "STOP_WORKER_GRACE_SECS+=1 bash scripts/lanes/stop-worker.sh")"
 assert_deny  "1813 append-assignment SEAM+= prefix through env"       "$(j "HIMMEL_CONSOLE_LEG+=1 env bash $MERGE_ON_GREEN 1")"
 assert_allow "1813 backstop control: bare chokepoint, no seam, no -S"  "$(j "bash $STOP_WORKER")"
@@ -1010,7 +1010,7 @@ assert_allow "registered var, UNREGISTERED script"       "$(j "${SW_VAR}=9 bash 
 assert_allow "UNREGISTERED var, registered chokepoint"   "$(j "TOTALLY_UNRELATED_VAR=1 bash $MERGE_ON_GREEN")"
 assert_allow "seam var of a DIFFERENT chokepoint"        "$(j "${MOG_VAR}=1 bash $STOP_WORKER --list")"
 assert_allow "longer var name sharing a prefix"          "$(j "${MOG_VAR}X=1 bash $MERGE_ON_GREEN")"
-assert_deny "1813 backstop over-deny (console X ruling 07:05): assignment as an ARGUMENT, not a prefix"   "$(j "bash $STOP_WORKER --dry-run ${SW_VAR}=9")"
+assert_deny "1813 backstop over-deny (chief X ruling 07:05): assignment as an ARGUMENT, not a prefix"   "$(j "bash $STOP_WORKER --dry-run ${SW_VAR}=9")"
 assert_allow "non-Bash/PowerShell tool"                  '{"tool_name":"Read","tool_input":{"file_path":"/tmp/x"}}'
 assert_allow "bypass: ENV_PREFIX_GUARD_OK=1 in the hook env" "$(j "${MOG_VAR}=1 bash $MERGE_ON_GREEN")" "ENV_PREFIX_GUARD_OK=1"
 
@@ -1082,7 +1082,7 @@ assert_deny "3921 clear: unset marker then detached merge"        "$(j "unset HI
 assert_deny "3921 clear: env --unset=seam inside at"              "$(j "echo 'env --unset=HIMMEL_CONSOLE_LEG bash $GOK/go.sh' | at now")"
 assert_allow "3921 literal merge, no seam write"                  "$(j "bash $MERGE_ON_GREEN")"
 assert_allow "3921 literal merge --jira-transition"               "$(j "bash $MERGE_ON_GREEN --jira-transition")"
-assert_allow "3921 literal go.sh as the console kit calls it"     "$(j "bash $GOK/go.sh 1515 0123456789abcdef0123456789abcdef01234567")"
+assert_allow "3921 literal go.sh as the chief kit calls it"     "$(j "bash $GOK/go.sh 1515 0123456789abcdef0123456789abcdef01234567")"
 assert_allow "3921 setsid -f literal merge"                       "$(j "setsid -f bash $MERGE_ON_GREEN")"
 assert_allow "3921 at literal merge"                              "$(j "echo 'bash $MERGE_ON_GREEN' | at now")"
 assert_allow "3921 a glob over scripts with no seam write"        "$(j "ls scripts/handover/*.sh")"
@@ -1095,7 +1095,7 @@ assert_allow "3921 C1 printf with an ANSI-C tab/newline"      "$(j 'printf $'"'"
 # shellcheck disable=SC2016
 assert_allow "3921 C1 IFS=ANSI-C tab in a read loop"         "$(j 'while IFS=$'"'"'\t'"'"' read -r a b; do echo $a; done < f')"
 assert_allow "3921 C1 cut -d ANSI-C tab then export"          "$(j 'cut -d$'"'"'\t'"'"' -f1 f; export LC_ALL=C')"
-# r11 (console ruling): the prefix compare is gone, so a scripts/ glob beside a
+# r11 (chief ruling): the prefix compare is gone, so a scripts/ glob beside a
 # write verb now denies even when unrelated to a chokepoint (over-deny).
 assert_allow "6015 command position, no execution (was deny): 3921 r11 (was C1 allow) printf over a scripts glob"  "$(j "printf '%s\\n' scripts/hooks/*.sh")"
 assert_allow "3921 r11 (was C1 allow) grep env over a scripts glob" "$(j "grep -ln env scripts/hooks/*.sh")"
@@ -1112,7 +1112,7 @@ assert_deny "3921 I1 export -n \${!PREFIX@}"         "$(j "export -n \${!HIMMEL_
 assert_deny "3921 I1 exec -c"                        "$(j "( (exec -c bash $MERGE_ON_GREEN) & )")"
 assert_deny "3921 r5 detached exec -c beside a globbed kit path" "$(j "setsid -f exec -c bash scripts/handover/chief-kit/g*.sh")"
 # 3921 judge r2: any unset, and long-option / bare-dash env spellings.
-assert_deny "3921 r2 I-A unset of an ANSI-C-split name"   "$(j "setsid -f bash -c 'unset HIMMEL_CON\$'\"'\"'SOLE_LEG'\"'\"'; bash $MERGE_ON_GREEN'")"
+assert_deny "3921 r2 I-A unset of an ANSI-C-split name"   "$(j "setsid -f bash -c 'unset HIMMEL_CON\$'\"'\"'SOLE_WORKER'\"'\"'; bash $MERGE_ON_GREEN'")"
 assert_deny "3921 r2 I-A unset of a command-substituted name" "$(j "unset \$(echo HIMMEL_CONSOLE_LEG); setsid -f bash $MERGE_ON_GREEN")"
 assert_deny "3921 r2 I-A unset of a concatenated name"    "$(j "n=HIMMEL_CONSOLE; unset \${n}_LEG; setsid -f bash $MERGE_ON_GREEN")"
 assert_deny "3921 r2 I-B globbed env --ignore-environment" "$(j "/usr/bin/en? --ignore-environment bash $MERGE_ON_GREEN")"
@@ -1300,7 +1300,7 @@ assert_deny "3955 env name split by backslash-newline" "$(j "/usr/bin/e${BSNL}nv
 assert_deny "3955 seam arm after 2>/dev/null --debug" "$(j '/usr/bin/en? 2>/dev/null --debug ARMAUTOMERGE=1 bash scripts/h*/m*.sh')"
 # The relief also needs a read-only first program (grep diff ls cat ...): other
 # env-clearing launchers keep main's anywhere-match deny.
-assert_deny "3955 bwrap --unsetenv leg var" "$(j 'bwrap --unsetenv HIMMEL_CONSOLE_LEG --dev-bind / / bash scripts/handover/chief-kit/go.sh')"
+assert_deny "3955 bwrap --unsetenv worker var" "$(j 'bwrap --unsetenv HIMMEL_CONSOLE_LEG --dev-bind / / bash scripts/handover/chief-kit/go.sh')"
 assert_deny "3955 bwrap --unsetenv seam"    "$(j "bwrap --unsetenv ${MOG_VAR} --dev-bind / / bash $MERGE_ON_GREEN")"
 assert_deny "3955 flatpak-spawn --unset-env" "$(j 'flatpak-spawn --unset-env=HIMMEL_CONSOLE_LEG bash scripts/handover/chief-kit/go.sh')"
 assert_deny "3955 systemd-run --unset-environment" "$(j 'systemd-run --user --unset-environment=HIMMEL_CONSOLE_LEG bash scripts/handover/chief-kit/go.sh')"
@@ -1341,7 +1341,7 @@ assert_deny "3955 env, \$(true; true), -i" "$(j '/usr/bin/en? $(true; true) -i b
 assert_deny "3955 seam in \$( ) after long option" "$(j 'echo --flag $(ARMAUTOMERGE=1 bash scripts/h*/m*.sh)')"
 
 # A long option merely STARTING with i or u is not env-clearing.
-# The leg N997 shape (unchanged environment) was denied as --impacted = --i*.
+# The worker N997 shape (unchanged environment) was denied as --impacted = --i*.
 assert_allow "4095 quiet-run suite -- run-shell-tests.sh --impacted" "$(j "bash $QR suite -- bash scripts/ci/run-shell-tests.sh --impacted 5b0decc27..HEAD")"
 assert_allow "4095 run-shell-tests.sh --impacted (bare)"            "$(j "bash scripts/ci/run-shell-tests.sh --impacted origin/main..HEAD")"
 assert_allow "4095 --update beside a chokepoint word"               "$(j "bash $QR suite -- bash scripts/x.sh --update")"
@@ -1538,8 +1538,8 @@ assert_allow "4157 CR10 interpreter in \$( ), no glob word, beside the seam name
 assert_deny "4157 queue-lock sweep piped to a sed regex (HIMMEL-3930)" "$(j "HANDOVER_DIR=/home/u/handovers bash /home/u/himmel/scripts/handover/queue-lock.sh status --sweep /home/u/handovers | sed 's/.*session=//'")"
 assert_allow "4157 export seam then ls glob" "$(j 'export HANDOVER_DIR=/tmp/h; ls docs/*.md')"
 # shellcheck disable=SC2016 # $HIMMEL_CONSOLE_LEG is probe text, not an expansion
-assert_allow "4157 echo the leg marker then ls glob" "$(j 'echo $HIMMEL_CONSOLE_LEG; ls src/*.ts')"
-assert_allow "4157 grep the leg marker, grep -v a quoted pattern" "$(j "grep -rn HIMMEL_CONSOLE_LEG docs/ | grep -v '^./docs/'")"
+assert_allow "4157 echo the worker marker then ls glob" "$(j 'echo $HIMMEL_CONSOLE_LEG; ls src/*.ts')"
+assert_allow "4157 grep the worker marker, grep -v a quoted pattern" "$(j "grep -rn HIMMEL_CONSOLE_LEG docs/ | grep -v '^./docs/'")"
 assert_deny "4157 awk program with a path regex (HIMMEL-3930)" "$(j "unset HIMMEL_CONSOLE_LEG; awk '/x\\/(y|z)*/ {print}' f")"
 SWEEP="HANDOVER_DIR=/home/u/handovers bash /home/u/himmel/scripts/handover/queue-lock.sh status --sweep /home/u/handovers"
 assert_allow "4157 sweep, grep -oE a quoted alternation" "$(j "$SWEEP 2>&1 | grep -oE 'N1(4[89]|5[0-4])[^ ]* session=[^ ]+'")"
@@ -2131,7 +2131,7 @@ done
 if [ -n "$U8" ]; then
     SP3=$(printf '\343\200\200')
     export LC_ALL="$U8"
-    assert_deny "4729 U+3000 IFS: export -n of the console marker, then the chokepoint" "$(j "IFS='${SP3}'; c='export${SP3}-n${SP3}HIMMEL_CONSOLE_LEG'; \$c; bash $STOP_WORKER --list")"
+    assert_deny "4729 U+3000 IFS: export -n of the chief marker, then the chokepoint" "$(j "IFS='${SP3}'; c='export${SP3}-n${SP3}HIMMEL_CONSOLE_LEG'; \$c; bash $STOP_WORKER --list")"
     assert_deny "4729 U+3000 IFS: declare +x of a seam, then the chokepoint"            "$(j "IFS='${SP3}'; c='declare${SP3}+x${SP3}${MOG_VAR}'; \$c; bash $MERGE_ON_GREEN 1")"
     assert_deny "4729 U+3000 IFS: exec -c with the chokepoint"                          "$(j "IFS='${SP3}'; c='exec${SP3}-c${SP3}bash $STOP_WORKER --list'; \$c")"
     unset LC_ALL
@@ -2146,9 +2146,9 @@ fi
 export LC_ALL=C
 for hex in '\0302\0240:U+00A0' '\0302\0205:U+0085' '\0342\0200\0213:U+200B' '\0357\0273\0277:U+FEFF'; do
     SPX=$(printf '%b' "${hex%%:*}")
-    assert_deny "5152 ${hex##*:} IFS: export -n of the console marker, then the chokepoint" "$(j "IFS='${SPX}'; c='export${SPX}-n${SPX}HIMMEL_CONSOLE_LEG'; \$c; bash $STOP_WORKER --list")"
+    assert_deny "5152 ${hex##*:} IFS: export -n of the chief marker, then the chokepoint" "$(j "IFS='${SPX}'; c='export${SPX}-n${SPX}HIMMEL_CONSOLE_LEG'; \$c; bash $STOP_WORKER --list")"
 done
-assert_deny "5152 ANSI-C tab IFS: export -n of the console marker, then the chokepoint" "$(j "IFS=\$'\\t'; c=\$'export\\t-n\\tHIMMEL_CONSOLE_LEG'; \$c; bash $STOP_WORKER --list")"
+assert_deny "5152 ANSI-C tab IFS: export -n of the chief marker, then the chokepoint" "$(j "IFS=\$'\\t'; c=\$'export\\t-n\\tHIMMEL_CONSOLE_LEG'; \$c; bash $STOP_WORKER --list")"
 assert_deny "5152 IFS+= append beside a chokepoint word"                                "$(j "IFS+=x; bash $MERGE_ON_GREEN 1")"
 assert_deny "5152 IFS= built from quoted fragments beside a chokepoint word"             "$(j "I'F'S=x; bash $MERGE_ON_GREEN 1")"
 assert_allow "5152 IFS assignment with no chokepoint word stays allowed"                  "$(j "IFS=: read -r a b <<< 'x:y'; echo \$a")"
@@ -2221,7 +2221,7 @@ for F in "rg --pr\\e='$OBF' needle" \
     assert_deny "4402 backslash option voided: $F" "$(j "unset HIMMEL_CONSOLE_LEG; $F")"
 done
 assert_allow "4402 control: rg --pretty with no escapes keeps relief" "$(j "unset HIMMEL_CONSOLE_LEG; rg --pretty needle -- '$OBF'")"
-# Console ruling on 2346: getopt_long and git parse-options accept any
+# Chief ruling on 2346: getopt_long and git parse-options accept any
 # unambiguous long-option prefix, so any prefix of a program-running option
 # voids relief (an ambiguous one is a usage error; fail closed on all).
 for F in "sort --compr='$OBF' needle" \
@@ -2505,13 +2505,13 @@ assert_allow "6015 printf with no %n conversion keeps the relief" "$(j "printf '
 # hands it to write-verdict.sh. A body line opening with a verb word beside a
 # glob path under scripts/ is prose, not a seam write.
 EV=/tmp/claude-1000/j3611/evidence.md
-WV="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high" # old-term-ok: the rows below cover both kit paths
+WV="bash /srv/himmel/scripts/handover/console-kit/write-verdict.sh q1 GO a12735b67a5e763806f7407125f91372168d63b2 --pr 3611 --evidence-file $EV --model claude-opus-5-5 --effort high"
 EVH="cat > $EV <<'EOF2'"
 assert_allow "7009 evidence heredoc, line-start read beside a glob scripts/ path" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh before judging; all unchanged."$'\n'"EOF2")"
 assert_allow "7009 evidence heredoc, verb line after a glob mention" "$(j "$EVH"$'\n'"- checked scripts/hooks/*.sh"$'\n'"export the notes."$'\n'"EOF2")"
 assert_allow "7009 evidence heredoc then the literal write-verdict.sh call" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"$WV")"
 assert_allow "7009 the literal write-verdict.sh call alone" "$(j "$WV")"
-assert_allow "7009 evidence heredoc then write-verdict.sh through chief-kit" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"${WV/console-kit/chief-kit}")"
+assert_allow "7009 evidence heredoc then write-verdict.sh through chief-kit" "$(j "$EVH"$'\n'"read scripts/{hooks,cr}/*.sh"$'\n'"EOF2"$'\n'"${WV/chief-kit/chief-kit}")"
 assert_deny "7009 control: a registered chokepoint env prefix beside the evidence heredoc" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"HIMMEL_REPO=/tmp bash $MERGE_ON_GREEN")"
 assert_deny "7009 control: a verb line AFTER the heredoc closes still denies" "$(j "$EVH"$'\n'"prose"$'\n'"EOF2"$'\n'"read scripts/hooks/*.sh")"
 assert_deny "7009 control: an evidence file that is then run still denies" "$(j "$EVH"$'\n'"read scripts/hooks/*.sh"$'\n'"EOF2"$'\n'"bash $EV")"
@@ -2656,7 +2656,7 @@ else
     CASES=$((CASES - 1))
 fi
 
-# 7371: the text-layer deny names the allowed replacement for a leg that was
+# 7371: the text-layer deny names the allowed replacement for a worker that was
 # only editing or searching a file that mentions a seam, unset or -u.
 run "$(j "unset HIMMEL_CONSOLE_LEG; setsid -f bash $GOK/g*.sh")"
 CASES=$((CASES + 1))

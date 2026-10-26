@@ -5,7 +5,7 @@
 # run-shell-tests.sh's SUITE_TIER_DEFAULT `extended` suites (currently
 # test-check-ci.sh, test-arm-resume-identity.sh and
 # test-arm-resume-1879.sh) only execute under SUITE_TIER_MODE=all, which
-# ci.yml sets only on the schedule (nightly) leg of shell-unit-shard. A red
+# ci.yml sets only on the schedule (nightly) worker of shell-unit-shard. A red
 # extended suite therefore only ever reddens the `shell-unit` aggregating job
 # on that nightly run — a run nobody is watching interactively — so
 # without this script the failure is silent even though the job itself goes
@@ -132,12 +132,12 @@ build_body() {
   {
     echo "**Automated shell extended-tier nightly report** — maintained in"
     echo "place by the \`shell-unit\` aggregating gate job's schedule"
-    echo "(nightly) leg. Do not open duplicates; this issue is refreshed"
-    echo "each run and auto-closed once the leg goes green again."
+    echo "(nightly) worker. Do not open duplicates; this issue is refreshed"
+    echo "each run and auto-closed once the worker goes green again."
     echo ""
     echo "The SUITE_TIER_DEFAULT \`extended\` suites (run-shell-tests.sh) only"
     echo "run under SUITE_TIER_MODE=all, i.e. only on this nightly"
-    echo "leg — never per-PR — so this issue is the only signal that one of"
+    echo "worker — never per-PR — so this issue is the only signal that one of"
     echo "them broke."
     echo ""
     echo "_Last red run: $(now)._"

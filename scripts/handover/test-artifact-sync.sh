@@ -91,7 +91,7 @@ else
 fi
 
 local1b="$TMP_ROOT/board-v2.html"
-printf '<html><body>board v2 (leg 04g)</body></html>\n' > "$local1b"
+printf '<html><body>board v2 (worker 04g)</body></html>\n' > "$local1b"
 bash "$SCRIPT" record "https://claude.ai/artifact/aaa" "$local1b" --title "Chain Board" >/dev/null 2>"$TMP_ROOT/rec2.err"
 rows=$(grep -cF '"url":"https://claude.ai/artifact/aaa"' "$REGISTRY" 2>/dev/null || echo 0)
 if [ "$rows" -eq 1 ] && grep -qF "board-v2.html" "$REGISTRY"; then

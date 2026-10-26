@@ -2,7 +2,7 @@
 # scripts/lib/usage-attribution.sh -- per-session token/turn attribution table
 # from Claude Code transcript JSONL. Read-only: attributes bank
 # burn (turns x context size) to named sessions so it can be traced back to a
-# leg/console instead of showing up as an unexplained account drain
+# worker/chief instead of showing up as an unexplained account drain
 #
 # Platform guard (gitbash-only): pure bash 3.2-safe + jq, no python/node/
 # network; git-bash on Windows carries a working jq, so no .ps1 twin needed.

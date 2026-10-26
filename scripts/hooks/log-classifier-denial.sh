@@ -4,15 +4,15 @@
 # classifier denial as an operator-visible event instead of a silent
 # re-dispatch.
 #
-# WHY: classifier denials currently surface only when a leg happens to report
-# them, and consoles were re-dispatching fresh legs on the same denial
+# WHY: classifier denials currently surface only when a worker happens to report
+# them, and chiefs were re-dispatching fresh workers on the same denial
 # repeatedly. This is the capture half of §4c; detection (tick.sh `denials=`)
 # and action (page + re-dispatch refusal) are separate, later steps.
 #
 # This is an OBSERVABILITY TAP, same contract as scripts/trust/shadow-ledger.mjs
 # on the same event: it must NEVER block, delay, or `ask` on a tool call, so it
 # fails open on every error path (missing jq, unparseable JSON, unwritable
-# state dir) and always exits 0. A hook bug here must never park a leg.
+# state dir) and always exits 0. A hook bug here must never park a worker.
 #
 # HARD RULE: input_head and reason_tag NEVER leave this host. They are
 # redacted best-effort, not scrubbed -- tick.sh reads them locally only to
@@ -149,7 +149,7 @@ input_head=$(printf '%s' "$redacted" | tr '\n\r' '  ' | cut -c1-200)
 input_sha=$(printf '%s' "$normalized" | sha256sum 2>/dev/null | cut -d' ' -f1)
 [ -n "$input_sha" ] || exit 0
 
-# Best-effort leg name: a worktree cwd carries its own slug
+# Best-effort worker name: a worktree cwd carries its own slug
 # (.claude/worktrees/<slug>); anything else falls back to the cwd's basename.
 # No lookup against the session registry — this tap must stay cheap and fail
 # open, never shell out to something that can hang.
@@ -174,7 +174,7 @@ chmod 600 "$OUT" "$OUT.1" 2>/dev/null || true
 # generation, so at most two files ever exist) and a fresh log starts with
 # this row. Best-effort: a failed rename never skips the append. tick.sh reads
 # <log>.1 then the live file, so a window straddling a rotation still counts.
-# ponytail: unlocked, so two legs rotating in the same instant can drop one
+# ponytail: unlocked, so two workers rotating in the same instant can drop one
 # generation's rows, upgrade: flock (not on macOS) if that ever shows up as a
 # missed PAUSE-RISK.
 max_bytes="${HIMMEL_CLASSIFIER_DENIALS_MAX_BYTES:-1048576}"
@@ -191,7 +191,7 @@ fi
 # case: input_head, reason_tag, cwd, session_id and tool are all explicitly
 # capped above (not just "usually short" — denial_reason and cwd are
 # classifier/session text, not bounded by us), so a plain O_APPEND >> is
-# atomic against concurrent legs without needing a lock.
+# atomic against concurrent workers without needing a lock.
 # ponytail: the caps count characters, so a row of pure 4-byte characters can
 # pass 4096 bytes; O_APPEND on a regular file is still one atomic write on
 # Linux, so this only matters on a filesystem that splits it, upgrade: byte

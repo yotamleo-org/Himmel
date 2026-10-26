@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# parked-on-prompt.sh — name the legs whose newest trust-ledger row is an
+# parked-on-prompt.sh — name the workers whose newest trust-ledger row is an
 # unanswered permission prompt.
 #
-# A headed leg that trips the auto-mode "3 consecutive actions were blocked"
+# A headed worker that trips the auto-mode "3 consecutive actions were blocked"
 # dialog sits on a modal nobody can see: its lock heartbeat stays fresh and
 # ListAgents reads it as busy. The PermissionRequest / Notification hooks
 # (scripts/trust/shadow-ledger.mjs) already write a row when the dialog
@@ -10,8 +10,8 @@
 # is a prompt and is older than the floor is parked on it.
 #
 # usage: parked-on-prompt.sh [--min MINUTES] [--ledger FILE] WORKER_SESSION_DOC...
-# output (one line): parked=none | parked=<leg>:<age>m[,<leg>:<age>m...]
-# <leg> is the doc's basename without .md. A leg is matched by the session ids
+# output (one line): parked=none | parked=<worker>:<age>m[,<worker>:<age>m...]
+# <worker> is the doc's basename without .md. A worker is matched by the session ids
 # in its doc's frontmatter (`session_ids:`); a doc without any is skipped.
 # env: TICK_PARKED_MIN (default 5), TICK_PARKED_TAIL_BYTES (ledger tail
 # read, default 16777216), HIMMEL_TRUST_LEDGER_DIR (the ledger's own seam).
@@ -20,7 +20,7 @@
 # not parked, bump TICK_PARKED_TAIL_BYTES, or index the ledger by session.
 #
 # READ-ONLY. Bash 3.2-compatible. PLATFORM GUARD: no .ps1 twin, by design —
-# Linux-only console kit (GNU date -d).
+# Linux-only chief kit (GNU date -d).
 set -uo pipefail
 
 min="${TICK_PARKED_MIN:-5}"
@@ -54,7 +54,7 @@ for doc in "${docs[@]}"; do
     sids="$(awk 'NR==1&&$0!="---"{exit} NR>1&&$0=="---"{exit} /^session_ids:/{print;exit}' "$doc" 2>/dev/null | grep -oE '[0-9a-fA-F]{8}(-[0-9a-fA-F]{4}){3}-[0-9a-fA-F]{12}')"
     [ -n "$sids" ] || continue
     # session_ids is oldest-first (a relaunch appends): judge only the newest id
-    # that has rows, so an old session's stale prompt never parks a live leg.
+    # that has rows, so an old session's stale prompt never parks a live worker.
     for sid in $(printf '%s\n' "$sids" | tac); do
         last="$(grep -F "\"session_id\":\"$sid\"" "$window" | tail -n 1)"
         [ -n "$last" ] || continue

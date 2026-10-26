@@ -658,18 +658,18 @@ describe('edit into a frozen version (HIMMEL-6918)', () => {
 
   it('lets the console override with a reason, and records an override row', async () => {
     process.env.HIMMEL_CONSOLE = '1';
-    await edit('--add-fix-version', 'v1.1.3', '--console-override', 'fixes the broken console flow');
+    await edit('--add-fix-version', 'v1.1.3', '--chief-override', 'fixes the broken console flow');
     expect(puts()).toHaveLength(1);
     expect(ledger()).toMatchObject([
       { key: 'HIMMEL-1', version: 'v1.1.3', kind: 'override', reason: 'fixes the broken console flow' },
     ]);
   });
 
-  it('refuses --console-override without HIMMEL_CONSOLE=1, a reason, or a fix-version flag', async () => {
-    await expect(edit('--fix-version', 'v1.1.3', '--console-override', 'why')).rejects.toThrow(/HIMMEL_CONSOLE=1/);
+  it('refuses --chief-override without HIMMEL_CONSOLE=1, a reason, or a fix-version flag', async () => {
+    await expect(edit('--fix-version', 'v1.1.3', '--chief-override', 'why')).rejects.toThrow(/HIMMEL_CONSOLE=1/);
     process.env.HIMMEL_CONSOLE = '1';
-    await expect(edit('--fix-version', 'v1.1.3', '--console-override', ' ')).rejects.toThrow(/needs a reason/);
-    await expect(edit('--priority', 'High', '--console-override', 'why')).rejects.toThrow(/--fix-version/);
+    await expect(edit('--fix-version', 'v1.1.3', '--chief-override', ' ')).rejects.toThrow(/needs a reason/);
+    await expect(edit('--priority', 'High', '--chief-override', 'why')).rejects.toThrow(/--fix-version/);
     expect(puts()).toHaveLength(0);
   });
 

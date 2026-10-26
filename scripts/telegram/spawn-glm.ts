@@ -18,6 +18,7 @@ import { parseGrantFlag, composeGrantLine, nextGrantId, authorityGate, classifyS
 // runs lean while the operator's shared ~/.claude stays full.
 import { resolveProfileByName, parseAddPlugins, readEnabledPluginIds, loadListingLib } from "../lanes/plugin-profiles.mjs";
 import { scanSkillCosts } from "../lanes/skill-cost.mjs";
+import { legacyNamesOn } from "../lib/env-alias.mjs";
 await loadListingLib();
 // symptom-brief loop breaker, two-stage — at 2 reviewed rounds
 // the brief must carry an INVARIANT section; at 3+ this cheap lane is refused
@@ -209,7 +210,7 @@ export function mintSpawnStamp(): string {
 // differs per dispatch.
 // ~50 worktrees of the primary checkout share ONE `refs/stash`, so
 // a worker's `git stash pop`/`drop` reaches into a PARALLEL session's entries.
-// Measured twice in a single leg (2026-08-12): a drop destroyed another
+// Measured twice in a single worker (2026-08-12): a drop destroyed another
 // session's stash, recovered only because it had been tagged.
 // scripts/hooks/block-git-stash.sh refuses the mutations structurally; this line
 // is the brief-level twin, so a worker reaches for the sanctioned alternative
@@ -235,7 +236,7 @@ export function composeRetaskBlock(nonce: string): string {
 }
 
 // the worker prompt never told the model about the
-// hang shape. Root-cause evidence (a leg-8 worker stalled for the full
+// hang shape. Root-cause evidence (a worker-8 worker stalled for the full
 // RUN_TIMEOUT_MS producing ZERO bytes of output on even a trivial task):
 // Claude Code's NATIVE permission matcher bails to an interactive prompt on
 // certain Bash command shapes ($var/$(...)/backticks/compound operators) even
@@ -682,7 +683,7 @@ function isHimmelCheckout(d: string): boolean {
 // fresh worktree/branch NESTED inside it, based off that worktree's branch
 // HEAD instead of main — any diff-vs-main gate on the result would have
 // carried the whole unrelated delta. The "spawn from the PRIMARY checkout"
-// rule was prose in the orchestrator handover for 12+ legs and still bit
+// rule was prose in the orchestrator handover for 12+ workers and still bit
 // live; per CLAUDE.md's structural>instructional doctrine (second drift =
 // escalate to structural), this is a HARD REFUSE — the ticket's smaller,
 // safer option (a). Transparent re-anchoring (option (b)) is deliberately
@@ -1120,7 +1121,7 @@ export function checkpointWorktree(
 // would clobber whichever one just fired and flip the run back to "running".
 // Fail-open on every branch: a meta that cannot be read or written must not
 // change the run's outcome, so the worst case is a checkpoint that exists on
-// disk but is not advertised in meta.json (the console line below still names it).
+// disk but is not advertised in meta.json (the chief line below still names it).
 export function mergeMetaCheckpoint(metaPath: string, checkpoint: Record<string, unknown>): boolean {
   try {
     const prior = JSON.parse(readFileSync(metaPath, "utf8"));
@@ -1707,7 +1708,7 @@ async function main(): Promise<void> {
     // a write-shaped grant — recording a pending operator escalation instead of a
     // grant. accumulated feeds nextGrantId so repeated --grant flags get distinct
     // ids (g1, g2, …) rather than all colliding on g1 against the empty file.
-    const autonomousEff = autonomous || !!process.env.HIMMEL_AFK || !!process.env.HIMMEL_OVERNIGHT;
+    const autonomousEff = autonomous || !!process.env.HIMMEL_AFK || (legacyNamesOn() && !!process.env.HIMMEL_OVERNIGHT);
     const grantsPath = join(sessionDir, "grants.jsonl");
     const seedOutbox = join(sessionDir, "outbox.jsonl");
     const accumulated: string[] = [];

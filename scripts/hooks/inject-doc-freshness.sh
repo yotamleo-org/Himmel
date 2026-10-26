@@ -3,7 +3,7 @@
 # freshness nudge over origin/main...HEAD on the current feature branch.
 #
 # ADVISORY injected context, not a guard. Gated by HIMMEL_DOC_FRESHNESS (session
-# leg); set it in the repo `.env` (loaded below) OR export from the launching
+# worker); set it in the repo `.env` (loaded below) OR export from the launching
 # shell — process env wins. An EMPTY value does NOT disable it (`load_dotenv`
 # treats empty as unset, so a non-empty `.env` value still loads); use `off`/`0`
 # to disable. Default OFF (adopters see no change). Fail-OPEN — never blocks
@@ -35,7 +35,7 @@ fi
 # --- Gate + detector --------------------------------------------------------
 # shellcheck source=/dev/null
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/doc-freshness.sh"
-df_leg_active session || exit 0
+df_worker_active session || exit 0
 
 _df_branch="$(git -C "$_df_root" branch --show-current 2>/dev/null || true)"
 [ -n "$_df_branch" ] || exit 0          # detached HEAD → no feature range

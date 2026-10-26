@@ -464,7 +464,7 @@ test("ingest passes chat_id to the gate so an allowed group accepts a non-allowl
   expect(await loadOffset(r)).toBe(3);
 });
 
-test("makeAllow: the REAL composed gate — DM leg scoped to positive chat_ids", async () => {
+test("makeAllow: the REAL composed gate — DM worker scoped to positive chat_ids", async () => {
   const access = { allowFrom: ["1"], groups: { "-50": {} } };
   const allow = makeAllow(access);
   expect(allow(1, 1)).toBe(true);       // allowFrom sender DM (chat_id == sender id)
@@ -3516,14 +3516,16 @@ test("loadPluginProfilesModule serves the SAME cached import when the file's mti
 // --- repeated identical dispatch failure alerts the operator once ----------
 
 // The 10-05 incident, replayed under a running poller: a merge changes BOTH
-// plugin-profiles.json (a new leg-shaped profile with gateAllow) and the
+// plugin-profiles.json (a new worker-shaped profile with gateAllow) and the
 // validator (WORKER_SESSION_PROFILES learns its name). A poller still holding the OLD
-// validator fails every dispatch with "gateAllow is restricted to leg-shaped
+// validator fails every dispatch with "gateAllow is restricted to worker-shaped
 // profiles"; a fresh import validates and picks up the new registry.
 test("cold runFn: a registry + validator change under a running poller still validates, with no restart", async () => {
-  const lanes = mkdtempSync(join(tmpdir(), "lanes-fixture-"));
+  const fixture = mkdtempSync(join(tmpdir(), "lanes-fixture-"));
+  const lanes = join(fixture, "lanes");
+  mkdirSync(join(fixture, "lib")); mkdirSync(lanes);
   const src = join(import.meta.dir, "..", "lanes");
-  for (const f of ["plugin-profiles.mjs", "plugin-profiles.json", "skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs"]) {
+  for (const f of ["plugin-profiles.mjs", "plugin-profiles.json", "skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs", "../lib/env-alias.mjs", "../lib/is-main.mjs"]) {
     await writeFile(join(lanes, f), await readFile(join(src, f), "utf8"));
   }
   const t0 = new Date(Date.now() - 60_000);
@@ -3541,12 +3543,12 @@ test("cold runFn: a registry + validator change under a running poller still val
   expect(JSON.parse(captured[0]!).enabledPlugins["obsidian-second-brain@himmel"]).toBe(true);
 
   const reg = JSON.parse(await readFile(join(lanes, "plugin-profiles.json"), "utf8"));
-  reg.profiles["leg-x4687"] = reg.profiles["leg-e2e"];
+  reg.profiles["worker-x4687"] = reg.profiles["worker-e2e"];
   reg.profiles.telegram.enable = reg.profiles.telegram.enable.filter((id: string) => id !== "obsidian-second-brain@himmel");
   await writeFile(join(lanes, "plugin-profiles.json"), JSON.stringify(reg, null, 2));
   const mjs = await readFile(join(lanes, "plugin-profiles.mjs"), "utf8");
-  expect(mjs).toContain("'console-relay']);");
-  await writeFile(join(lanes, "plugin-profiles.mjs"), mjs.replace("'console-relay']);", "'console-relay', 'leg-x4687']);"));
+  expect(mjs).toContain("'chief-relay']);");
+  await writeFile(join(lanes, "plugin-profiles.mjs"), mjs.replace("'chief-relay']);", "'chief-relay', 'worker-x4687']);"));
 
   await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"after" }));
   await runFn("HIMMEL-4687");
@@ -3767,9 +3769,9 @@ test("require-mention drop log redacts the group_<chat_id> session name (HIMMEL-
 test("poller.ts logs no raw chat id or session name (HIMMEL-1308)", () => {
   const src = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("\n");
   const offenders = src.map((l, i) => ({ l, n: i + 1 }))
-    .filter(({ l }) => /console\.error\(|logRedacted\(/.test(l))
+    .filter(({ l }) => /chief\.error\(|logRedacted\(/.test(l))
     .filter(({ l }) => /\$\{(?:rec|msg|i)\.chat_id\}|\$\{chatId\}/.test(l)
-      || (/console\.error\(/.test(l) && /\$\{session\}|"\s*\+\s*session\b|"\s*\+\s*s\b/.test(l)))
+      || (/chief\.error\(/.test(l) && /\$\{session\}|"\s*\+\s*session\b|"\s*\+\s*s\b/.test(l)))
     .filter(({ l }) => !l.includes("gated out chat"))
     .map(({ n, l }) => `${n}: ${l.trim().slice(0, 100)}`);
   expect(offenders).toEqual([]);

@@ -25,8 +25,8 @@ HOOK="$(cd "$(dirname "$0")" && pwd)/cadence-deny-powershell.sh"
 
 FAILED=0
 
-# The exact 2026-08-20 04:00 health-leg invocation, verbatim from the session
-# transcript — the shape that parked the leg.
+# The exact 2026-08-20 04:00 health-worker invocation, verbatim from the session
+# transcript — the shape that parked the worker.
 PWSH_CMD='python "C:\Users\<user>\Documents\github\himmel\marketplace\plugins\obsidian-triage\skills\vault-lint\vault_lint.py" "C:\Users\<user>\Documents\luna"'
 
 # Runs the hook, echoes "<rc>|<stderr>". The env is scrubbed of the bypass so a
@@ -60,7 +60,7 @@ j_tool() { printf '{"tool_name":%s,"tool_input":{"command":%s}}' "$(printf '%s' 
 
 # --- DENY: the PowerShell tool, whatever it carries ---
 res=$(run_hook "$(j_tool PowerShell "$PWSH_CMD")")
-assert "08-20 health-leg engine call via PowerShell -> deny" 2 "${res%%|*}"
+assert "08-20 health-worker engine call via PowerShell -> deny" 2 "${res%%|*}"
 if grepq "${res#*|}" -F 'Bash tool'; then
     echo "PASS deny reason redirects to the Bash tool"
 else

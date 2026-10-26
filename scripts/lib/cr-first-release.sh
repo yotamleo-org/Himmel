@@ -5,7 +5,7 @@
 # for the `ci:go` label; this releases it at the moment the reviewer gate
 # passes at the PR head, from the events that change the answer (a verdict
 # written, a thread resolved, a CodeRabbit read, the cheap run settling, the
-# console tick) — no timer, no background process.
+# chief tick) — no timer, no background process.
 #
 #   cr_first_release <pr> <head> [<owner/name>]
 #     Quiet (no output, rc 0): switch off or unset, fork PR, PR closed or head
@@ -47,7 +47,7 @@
 # CR_FIRST_LEDGER / CR_FIRST_ALERTS (see cr-trigger-ledger.sh),
 # CR_FIRST_READONLY=1 (a passing gate prints `CR-FIRST PENDING-RELEASE ...` and
 # writes no label, no ledger line and no alert: ready-check.sh is a read-only script),
-# HIMMEL_CONSOLE_DOC (extra alert sink: a console doc named *-console.md).
+# HIMMEL_CONSOLE_DOC (extra alert sink: a chief doc named *-chief.md).
 #
 # Sourceable (cr_first_release) and executable:
 #   bash scripts/lib/cr-first-release.sh [--pr N] [--head SHA] [--repo OWNER/NAME]
@@ -107,7 +107,7 @@ _crf_reviewers_json() {
                 cost_usd: null })' 2>/dev/null || echo '[]'
 }
 
-# _crf_alert <slug> <reason> <head> — one console alert per (slug, reason).
+# _crf_alert <slug> <reason> <head> — one chief alert per (slug, reason).
 _crf_alert() {
     local slug="$1" reason="$2" text
     [ "${CR_FIRST_READONLY:-0}" = 1 ] && return 0
@@ -369,7 +369,7 @@ cr_first_release() {
     _crf_do_release "$repo" "$pr" "$head" "reviewer gate passed at $head" "$state_line" "$csettled"
 }
 
-# cr_first_sweep <owner/name> — the console tick's event (point 5). Reads
+# cr_first_sweep <owner/name> — the chief tick's event (point 5). Reads
 # `<pr><TAB><head><TAB><labels csv>` rows on stdin (the tick's one `gh pr list`
 # pass: non-fork, non-draft PRs), reads the switch once, calls cr_first_release
 # for every head not already released by this station (a `ci:go` label plus a

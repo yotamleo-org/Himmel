@@ -3,7 +3,7 @@
 // `codeowner-review-gate` status check.
 //
 // Intent: code-owner review is mandatory for OUTSIDE pull requests only. The
-// repository owner's own PRs (every console leg PR) keep merging through
+// repository owner's own PRs (every chief worker PR) keep merging through
 // merge-on-green.sh. A ruleset cannot scope a review rule by author, so this is
 // a status check instead. It PASSES when
 //   (a) the PR author has write/maintain/admin permission on the repo, and is

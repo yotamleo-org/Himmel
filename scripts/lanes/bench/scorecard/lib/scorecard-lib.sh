@@ -9,23 +9,23 @@
 # transcript reader must agree on, because a copy that drifts is how a metric
 # ends up reported over an input set it never had:
 #   1. which transcript roots a default run reads       (sc_transcript_roots)
-#   2. which session title is a leg / relay / console   (role_of, leg identity
-#      derived from scripts/lib/leg-identity.sh; untitled = unattributed)
+#   2. which session title is a worker / relay / chief   (role_of, worker identity
+#      derived from scripts/lib/worker-identity.sh; untitled = unattributed)
 #   3. how much of the discovered input a number covers (sc_cov / sc_cov_line)
 #
-# Users: agg-burn.sh, agg-postpin.sh, extra-metrics.sh, leg-over-by-day.sh
-# (all three parts); leg-relaunch.sh, ready-go-latency.sh (part 3 only).
+# Users: agg-burn.sh, agg-postpin.sh, extra-metrics.sh, worker-over-by-day.sh
+# (all three parts); worker-relaunch.sh, ready-go-latency.sh (part 3 only).
 # ledger-metrics.sh and merged-count.sh read `gh`/git, not transcripts, and print
 # their own `coverage:` lines in the same shape.
 
-# shellcheck source=../../../../lib/leg-identity.sh
+# shellcheck source=../../../../lib/worker-identity.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../../../../lib/worker-identity.sh"
 
 # The transcript roots, one per line; the FIRST is the one that must exist.
 #
 # An explicit SCORECARD_PROJECTS_DIR is an explicit scope choice: exactly that
 # one root, never widened. The default is the primary himmel project dir UNION
-# every `<primary>--claude-worktrees-<slug>` sibling. Legs run in worktrees by
+# every `<primary>--claude-worktrees-<slug>` sibling. Workers run in worktrees by
 # design and each worktree gets its own project dir, so a primary-only default
 # silently drops the session class the program is trying to make cheaper (253
 # dirs, 21-29 % of ctx x calls measured on 2026-09-20). The glob is anchored on
@@ -68,12 +68,12 @@ EOF
 
 title_of() { grep -o '"customTitle":"[^"]*"' "$1" 2>/dev/null | tail -1 | sed 's/.*:"//; s/"$//'; }
 
-# Session title -> role. A leg's identity is scripts/lib/leg-identity.sh's call,
-# not a substring guess here: a title that leg_identity reads as
-# a leg is a leg whatever its slug contains, so a leg working on console tooling
-# (<TICKET>-N186-console-stub-nonce-text) is never counted into the console
+# Session title -> role. A worker's identity is scripts/lib/worker-identity.sh's call,
+# not a substring guess here: a title that worker_identity reads as
+# a worker is a worker whatever its slug contains, so a worker working on chief tooling
+# (<TICKET>-N186-chief-stub-nonce-text) is never counted into the chief
 # cohort. Only titles it does NOT recognise reach the substring
-# arms below, which is where a genuine console (`<PREFIX>-nextleg-<date>-console`)
+# arms below, which is where a genuine chief (`<PREFIX>-nextleg-<date>-chief`)
 # lands.
 #
 # An empty title (a session that was never named) is `unattributed`, not `other`:
@@ -81,44 +81,44 @@ title_of() { grep -o '"customTitle":"[^"]*"' "$1" 2>/dev/null | tail -1 | sed 's
 # hides how much of the input no role could be assigned to. Callers count it by
 # name (sc_cov unattributed).
 #
-# The two leg-title schemes are the early `...legN<k>...` and the current
+# The two worker-title schemes are the early `...legN<k>...` and the current
 # `<TICKET>-N<k>-<slug>` (e.g. <TICKET>-N189-launch-logs-writer); the arms
-# below still cover the shapes leg_identity does not, so no title that was a leg
-# before is one no longer. A recognised leg keeps the relay precedence it always
+# below still cover the shapes worker_identity does not, so no title that was a worker
+# before is one no longer. A recognised worker keeps the relay precedence it always
 # had (a `...legN..-relay` title is a relay).
 #
-# ponytail: the older `leg<Letter><k>` titles (legG3, legS1 ...) still fall to
+# ponytail: the older `worker<Letter><k>` titles (legG3, legS1 ...) still fall to
 # `other`; widening to them would move the 2026-09-05 control window's numbers.
-# ponytail: a leg-shaped title leg_identity does not recognise still races on the
-# substring arms, and `-relay` keeps its precedence over a recognised leg - so a
-# work leg whose slug says `relay` (<TICKET>-N82-relay-guard-verb-substring)
+# ponytail: a worker-shaped title worker_identity does not recognise still races on the
+# substring arms, and `-relay` keeps its precedence over a recognised worker - so a
+# work worker whose slug says `relay` (<TICKET>-N82-relay-guard-verb-substring)
 # is still counted as a relay, the same defect class already removed for
 # `console`, left alone here because no relay has a canonical identity to derive.
 role_of() {
     [ -n "$1" ] || { echo unattributed; return 0; }
-    if _sc_is_leg_title "$1"; then
-        case "$1" in *-relay*) echo relay ;; *) echo leg ;; esac
+    if _sc_is_worker_title "$1"; then
+        case "$1" in *-relay*) echo relay ;; *) echo worker ;; esac
         return 0
     fi
     case "$1" in
-        *-console*|*-chief) echo console ;;
+        *-console*|*-chief) echo chief ;;
         *-relay*) echo relay ;;
-        *legN*) echo leg ;;
-        *) if [[ $1 =~ -N[0-9]+- ]]; then echo leg; else echo other; fi ;;
+        *legN*) echo worker ;;
+        *) if [[ $1 =~ -N[0-9]+- ]]; then echo worker; else echo other; fi ;;
     esac
 }
 
-# _sc_is_leg_title <title>: true when leg_identity reads the title as a leg.
-# leg_identity's contract is a label of the shape N<k>[<letters>] for a leg and
+# _sc_is_worker_title <title>: true when worker_identity reads the title as a worker.
+# worker_identity's contract is a label of the shape N<k>[<letters>] for a worker and
 # the whole (sanitised) stem for anything else, so the label shape is the test.
-_sc_is_leg_title() {
-    [[ $(leg_label "$1") =~ ^N[0-9]+[a-z]*$ ]]
+_sc_is_worker_title() {
+    [[ $(worker_label "$1") =~ ^N[0-9]+[a-z]*$ ]]
 }
 
 # sc_launch_context <launch-log-dir> <session-title>: prints the launch context
 # mode the session actually received, `1m` or `standard`, read from the DURABLE
-# console launch record (written by headed-arm.sh and by
-# arm-resume.sh, both via console_context_write_record; the shared
+# chief launch record (written by headed-arm.sh and by
+# arm-resume.sh, both via chief_context_write_record; the shared
 # `headed-arm:` prefix is deliberate - this asks what the SESSION received, not
 # which launcher armed it) - or `unknown`. Never a
 # proxy from the session's own token counts (a pinned session that never grew
@@ -141,7 +141,7 @@ sc_launch_context() {
 
 # Coverage: every discovered input is either parsed into the metric or skipped
 # for a NAMED reason, so a reader can tell an honest exclusion (out-of-window,
-# other-role) from a loss (unreadable, bad-timestamp, leg-burn-failed).
+# other-role) from a loss (unreadable, bad-timestamp, worker-burn-failed).
 SC_COV=""
 sc_cov_init() { SC_COV=$(mktemp "${TMPDIR:-/tmp}/scorecard-cov.XXXXXX") || { echo "scorecard: mktemp failed" >&2; return 1; }; }
 sc_cov() { printf '%s\n' "$1" >> "$SC_COV"; }

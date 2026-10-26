@@ -21,7 +21,7 @@ contains now is `partial`; do not read its delta as a trend.
 | Series | Columns | Source |
 |---|---|---|
 | Velocity | `merges`, `tickets`, `fix_share_pct` | `scripts/insights/self-review.sh` (HIMMEL-6865) for the window; tickets from the merge subjects |
-| Cost | `cost_eq`, `cost_eq_per_ticket`, `legs` | the `leg-burn:` PR-body lines (`cost-eq=`); per ticket is over the tickets that carry a burn line |
+| Cost | `cost_eq`, `cost_eq_per_ticket`, `legs` | the `worker-burn:` PR-body lines (`cost-eq=`); per ticket is over the tickets that carry a burn line |
 | Health | `red_main`, `cache_hit_pct`, `flake_rows` | self-review red-main; the cache-health rolling history (HIMMEL-5672); the run-shell-tests FLAKE ledger |
 
 `failure_rate_pct`, `denial_rate_pct` and `ship_stage_median_min` have no

@@ -11,7 +11,7 @@ primary checkout. `allow-thread-resolve.sh` auto-allows exactly that shape for
 any variation (chained, redirected, another repo, an extra flag, a branch copy of
 the CLI) gets no allow. When the call is denied anyway the worker sends
 `BLOCKED resolve <pr> <thread ids>`, and the waiter wakes you with
-`WAKE resolve <leg> pr=<n> threads=<ids>`. **The operator is never asked to
+`WAKE resolve <worker> pr=<n> threads=<ids>`. **The operator is never asked to
 resolve a thread:** it is yours, never an operator item. For each thread, check the fix, ticket or
 rejection against the PR head, then run the same CLI with the matching reason,
 one literal call per thread. A thread you cannot verify goes back to the worker as
@@ -34,10 +34,10 @@ classifier refuses merge-path actions, HIMMEL-4097). On that READY run, from
 the primary checkout and in this order: `ready-check.sh <pr> <head>`, the
 judge or trust review the PR needs, then
 `chief-kit/go.sh [--trust-reviewed <qid>] <pr> <head>`, then
-`bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --leg-doc <leg doc>`.
+`bash scripts/handover/merge-on-green.sh <pr> [--jira-transition] --worker-doc <worker doc>`.
 Pass `--jira-transition` unless the worker doc's `Completes ticket:` line says no
 (a brief whose scope states neither value has no such line and takes the yes
-wording, as the worker's own Ship step does); the `--leg-doc` line binds it either way.
+wording, as the worker's own Ship step does); the `--worker-doc` line binds it either way.
 Then send the worker `MERGED #<pr> → <sha>` by SendMessage quoting its token;
 the worker `cd`s out, sends `WRAPPED` and releases its lock. A merge that exits
 non-zero is not `MERGED`: send the worker the exit and reason instead, and it

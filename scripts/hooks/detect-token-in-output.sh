@@ -123,7 +123,7 @@ case "$session" in *[!A-Za-z0-9_.-]*) session="" ;; esac
 what="a GitHub token"
 if [ "${#tokens[@]}" -gt 1 ]; then what="${#tokens[@]} GitHub tokens"; fi
 msg="TOKEN-IN-OUTPUT: ${what} (${desc}) appeared in a ${tool} tool call or result${session:+ in session ${session}}. It is now in the transcript: rotate it."
-ctx="SECURITY: ${msg} Do not repeat, quote or re-read that output. Report it to your console or the operator now (tool ${tool}; ${desc}; never the value)."
+ctx="SECURITY: ${msg} Do not repeat, quote or re-read that output. Report it to your chief or the operator now (tool ${tool}; ${desc}; never the value)."
 
 if command -v jq >/dev/null 2>&1; then
     # Wired for PostToolUse and PostToolUseFailure: answer with the event it fired on.

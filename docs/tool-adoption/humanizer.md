@@ -81,7 +81,7 @@ The pilot run: `/humanizer` in file mode over the user-facing docs pages, one PR
 | B3 | `luna/google-health-connector-setup.md` | 13 | 0 | 15 → 1 | 0 → 0 | 0 → 0 |
 | B3 | `luna/pr-lane-guard.md` | 4 | 0 | 6 → 1 | 0 → 0 | 0 → 0 |
 | B3 | `handover/afk-mode.md` | 72 | 2 | 134 → 31 | 3 → 3 | 5 → 5 |
-| B3 | `handover/running-a-console.md` | 38 | 0 | 52 → 1 | 4 → 4 | 6 → 6 |
+| B3 | `handover/running-a-chief.md` | 38 | 0 | 52 → 1 | 4 → 4 | 6 → 6 |
 | B5 setup and reference | `README.md` | 0 | 0 | 0 → 0 | 1 → 1 | 0 → 0 |
 | B5 | `docs/README.md` | 5 | 0 | 62 → 57 | 1 → 1 | 2 → 2 |
 | B5 | `license-audit.md` | 6 | 0 | 9 → 3 | 0 → 0 | 0 → 0 |

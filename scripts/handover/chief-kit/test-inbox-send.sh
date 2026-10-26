@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-inbox-send.sh — Exercises inbox-send.sh: append-only
-# writes, --doc mirroring into "## Console Rulings", traversal/whitespace
+# writes, --doc mirroring into "## Chief Rulings", traversal/whitespace
 # refusal, and --pending listing. bash 3.2-safe.
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight — this tests
@@ -35,7 +35,7 @@ HANDOVER_DIR="$WORK/handover-root"
 mkdir -p "$HANDOVER_DIR"
 export HANDOVER_DIR
 
-SESSION="HIMMEL-2788-test-leg"
+SESSION="HIMMEL-2788-test-worker"
 INBOX="$HANDOVER_DIR/inbox/$SESSION.md"
 
 # fixture cmdline for the SENDER's own session (current_session_name).
@@ -67,31 +67,31 @@ else
     fail "--token embeds the RETASK token in the bullet"
 fi
 
-# --- Case 4: --doc mirrors into an existing "## Console Rulings" section ---
-DOC="$WORK/leg-doc.md"
-printf '# Leg doc\n\n## Console Rulings (newest at the bottom)\n- 08:00 existing bullet\n\n## Results\nsome text\n' > "$DOC"
+# --- Case 4: --doc mirrors into an existing "## Chief Rulings" section ---
+DOC="$WORK/worker-doc.md"
+printf '# Worker doc\n\n## Chief Rulings (newest at the bottom)\n- 08:00 existing bullet\n\n## Results\nsome text\n' > "$DOC"
 bash "$SCRIPT" "$SESSION" "mirrored ruling" --doc "$DOC" >/dev/null
 if grep -qF 'mirrored ruling' "$DOC"; then
     pass "--doc mirrors the bullet into the doc"
 else
     fail "--doc mirrors the bullet into the doc"
 fi
-# must land inside the Console Rulings section, before ## Results
-before_results="$(awk '/^## Console Rulings/{f=1} f&&/mirrored ruling/{print "yes"} /^## Results/{exit}' "$DOC")"
+# must land inside the Chief Rulings section, before ## Results
+before_results="$(awk '/^## Chief Rulings/{f=1} f&&/mirrored ruling/{print "yes"} /^## Results/{exit}' "$DOC")"
 if [ "$before_results" = "yes" ]; then
-    pass "--doc mirror lands inside the Console Rulings section, not after it"
+    pass "--doc mirror lands inside the Chief Rulings section, not after it"
 else
-    fail "--doc mirror lands inside the Console Rulings section, not after it"
+    fail "--doc mirror lands inside the Chief Rulings section, not after it"
 fi
 
 # --- Case 5: --doc creates the section when absent --------------------------
-DOC2="$WORK/leg-doc-no-section.md"
-printf '# Leg doc\n\n## Results\nsome text\n' > "$DOC2"
+DOC2="$WORK/worker-doc-no-section.md"
+printf '# Worker doc\n\n## Results\nsome text\n' > "$DOC2"
 bash "$SCRIPT" "$SESSION" "created-section ruling" --doc "$DOC2" >/dev/null
-if grep -qF '## Console Rulings' "$DOC2" && grep -qF 'created-section ruling' "$DOC2"; then
-    pass "--doc creates a Console Rulings section when none exists"
+if grep -qF '## Chief Rulings' "$DOC2" && grep -qF 'created-section ruling' "$DOC2"; then
+    pass "--doc creates a Chief Rulings section when none exists"
 else
-    fail "--doc creates a Console Rulings section when none exists"
+    fail "--doc creates a Chief Rulings section when none exists"
 fi
 
 # --- Case 6: session-name traversal refused ---------------------------------
@@ -117,7 +117,7 @@ else
 fi
 
 # --- Case 7: --pending lists only sessions with undelivered content --------
-SESSION_PENDING="HIMMEL-2788-pending-leg"
+SESSION_PENDING="HIMMEL-2788-pending-worker"
 bash "$SCRIPT" "$SESSION_PENDING" "not yet delivered" >/dev/null
 mkdir -p "$HANDOVER_DIR/inbox/.cursor"
 # Mark $SESSION fully delivered (cursor == current size) so it must NOT
@@ -140,25 +140,25 @@ fi
 # --- author line + relay --token refusal -----------------------
 SESSION23="HIMMEL-2975-relay-test"
 INBOX23="$HANDOVER_DIR/inbox/$SESSION23.md"
-CMDLINE_CONSOLE="$WORK/cmdline-console"
-printf 'claude\0-n\0HIMMEL-sender-console\0' > "$CMDLINE_CONSOLE"
+CMDLINE_CHIEF="$WORK/cmdline-chief"
+printf 'claude\0-n\0HIMMEL-sender-chief\0' > "$CMDLINE_CHIEF"
 
 # Case 8: a token bullet carries the sender's own session name as from=.
-out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CONSOLE" bash "$SCRIPT" "$SESSION23" hello --token t1 2>&1)"; rc=$?
+out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" bash "$SCRIPT" "$SESSION23" hello --token t1 2>&1)"; rc=$?
 last="$(tail -n1 "$INBOX23" 2>/dev/null)"
-if [ "$rc" -eq 0 ] && printf '%s' "$last" | grep -Eq '^- [0-9]{2}:[0-9]{2} \[t1\] from=HIMMEL-sender-console hello$'; then
+if [ "$rc" -eq 0 ] && printf '%s' "$last" | grep -Eq '^- [0-9]{2}:[0-9]{2} \[t1\] from=HIMMEL-sender-chief hello$'; then
     pass "token bullet carries from=<sender session>"
 else
     fail "token bullet carries from=<sender session> (rc=$rc last='$last' out='$out')"
 fi
 
-# Case 9: CONSOLE_SESSION_NAME is ignored -- author is process-derived only.
-out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CONSOLE" CONSOLE_SESSION_NAME=forged bash "$SCRIPT" "$SESSION23" hello2 --token t2 2>&1)"; rc=$?
+# Case 9: CHIEF_SESSION_NAME is ignored -- author is process-derived only.
+out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" CHIEF_SESSION_NAME=forged bash "$SCRIPT" "$SESSION23" hello2 --token t2 2>&1)"; rc=$?
 last="$(tail -n1 "$INBOX23" 2>/dev/null)"
-if [ "$rc" -eq 0 ] && printf '%s' "$last" | grep -Eq '^- [0-9]{2}:[0-9]{2} \[t2\] from=HIMMEL-sender-console hello2$'; then
-    pass "CONSOLE_SESSION_NAME cannot forge the author"
+if [ "$rc" -eq 0 ] && printf '%s' "$last" | grep -Eq '^- [0-9]{2}:[0-9]{2} \[t2\] from=HIMMEL-sender-chief hello2$'; then
+    pass "CHIEF_SESSION_NAME cannot forge the author"
 else
-    fail "CONSOLE_SESSION_NAME cannot forge the author (rc=$rc last='$last' out='$out')"
+    fail "CHIEF_SESSION_NAME cannot forge the author (rc=$rc last='$last' out='$out')"
 fi
 
 # Case 10: --token with no resolvable author (no CLAUDE_PID) is refused.
@@ -173,20 +173,20 @@ fi
 
 # Case 11: a relay cannot send --token, even with a resolvable author.
 before="$(wc -c < "$INBOX23" 2>/dev/null | tr -d '[:space:]')"
-out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CONSOLE" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" "$SESSION23" hello4 --token t4 2>&1)"; rc=$?
+out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" "$SESSION23" hello4 --token t4 2>&1)"; rc=$?
 after="$(wc -c < "$INBOX23" 2>/dev/null | tr -d '[:space:]')"
 if [ "$rc" -eq 3 ] && [ "$before" = "$after" ] && printf '%s' "$out" | grep -qi relay \
-    && printf '%s' "$out" | grep -qF 'only the console sends token-quoting messages' \
+    && printf '%s' "$out" | grep -qF 'only the chief sends token-quoting messages' \
     && ! printf '%s' "$out" | grep -qi judge; then
-    pass "relay refuses --token (names the console, not the judge, as the token sender: HIMMEL-3136)"
+    pass "relay refuses --token (names the chief, not the judge, as the token sender: HIMMEL-3136)"
 else
     fail "relay refuses --token (rc=$rc before=$before after=$after out='$out')"
 fi
 
 # Case 12: a relay CAN send a no-token bullet, carrying its own author.
-out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CONSOLE" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" "$SESSION23" halt 2>&1)"; rc=$?
+out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" "$SESSION23" halt 2>&1)"; rc=$?
 last="$(tail -n1 "$INBOX23" 2>/dev/null)"
-if [ "$rc" -eq 0 ] && printf '%s' "$last" | grep -Eq '^- [0-9]{2}:[0-9]{2} from=HIMMEL-sender-console halt$'; then
+if [ "$rc" -eq 0 ] && printf '%s' "$last" | grep -Eq '^- [0-9]{2}:[0-9]{2} from=HIMMEL-sender-chief halt$'; then
     pass "relay's no-token bullet carries from=<sender session>"
 else
     fail "relay's no-token bullet carries from=<sender session> (rc=$rc last='$last' out='$out')"
@@ -241,7 +241,7 @@ wait_race_file() {
     return 1
 }
 DOC_RACE_FILE="$WORK/concurrent.md"
-printf '# Leg\n## Console Rulings\n- existing\n## Results\nkeep this\n' > "$DOC_RACE_FILE"
+printf '# Worker\n## Chief Rulings\n- existing\n## Results\nkeep this\n' > "$DOC_RACE_FILE"
 PATH="$WORK/race-bin:$PATH" RACE_WRITER=one bash "$SCRIPT" race-one 'writer one' --doc "$DOC_RACE_FILE" > "$WORK/one" &
 pid1=$!
 wait_race_file "$DOC_RACE/ready" || fail "doc race: first writer reached mv"
@@ -266,8 +266,8 @@ LOCK_DIR="${TMPDIR:-/tmp}/himmel-inbox-doc-$UID"
 mkdir -p "$LOCK_DIR"
 chmod 755 "$LOCK_DIR"
 DOC_PERM="$WORK/perm.md"
-printf '# Leg\n## Console Rulings\n- existing\n' > "$DOC_PERM"
-bash "$SCRIPT" perm-leg 'perm ruling' --doc "$DOC_PERM" >/dev/null
+printf '# Worker\n## Chief Rulings\n- existing\n' > "$DOC_PERM"
+bash "$SCRIPT" perm-worker 'perm ruling' --doc "$DOC_PERM" >/dev/null
 lock_mode="$(stat -c '%a' "$LOCK_DIR" 2>/dev/null || stat -f '%Lp' "$LOCK_DIR")"
 if [ "$lock_mode" = "700" ]; then
     pass "pre-existing lock directory is tightened to 700"
@@ -275,17 +275,17 @@ else
     fail "pre-existing lock directory left at $lock_mode instead of 700"
 fi
 
-# --- console-side inbox sent-record -----------------------------
+# --- chief-side inbox sent-record -----------------------------
 RUNDIR="$WORK/rundir"
 export HIMMEL_CONSOLE_RUNDIR="$RUNDIR"
-LEDGER="$RUNDIR/HIMMEL-sender-console/inbox-sent.log"
+LEDGER="$RUNDIR/HIMMEL-sender-chief/inbox-sent.log"
 
 SESSION28="HIMMEL-2980-ledger-test"
 INBOX28="$HANDOVER_DIR/inbox/$SESSION28.md"
 
 # Case 14: a --token send writes exactly one ledger line whose 4th field is
 # the sha256 of the bullet as appended.
-out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CONSOLE" bash "$SCRIPT" "$SESSION28" ledgered --token lt1 2>&1)"; rc=$?
+out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" bash "$SCRIPT" "$SESSION28" ledgered --token lt1 2>&1)"; rc=$?
 bullet_line="$(tail -n1 "$INBOX28" 2>/dev/null)"
 # shellcheck disable=SC2119 # sha256_hex reads stdin here, by design
 expected_sha="$(printf '%s' "$bullet_line" | sha256_hex)"
@@ -321,7 +321,7 @@ fi
 
 # Case 16: a relay-refused --token send (rc 3) writes no ledger line.
 before_lines="$(wc -l < "$LEDGER" 2>/dev/null | tr -d '[:space:]')"
-out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CONSOLE" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" "$SESSION28" relay-toked --token lt2 2>&1)"; rc=$?
+out="$(CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$CMDLINE_CHIEF" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" "$SESSION28" relay-toked --token lt2 2>&1)"; rc=$?
 after_lines="$(wc -l < "$LEDGER" 2>/dev/null | tr -d '[:space:]')"
 if [ "$rc" -eq 3 ] && [ "$after_lines" = "$before_lines" ]; then
     pass "a relay-refused --token send writes no ledger line"
@@ -330,7 +330,7 @@ else
 fi
 
 # Case 17: the ledger directory is created at mode 700.
-ledger_mode="$(stat -c '%a' "$RUNDIR/HIMMEL-sender-console" 2>/dev/null || stat -f '%Lp' "$RUNDIR/HIMMEL-sender-console" 2>/dev/null)"
+ledger_mode="$(stat -c '%a' "$RUNDIR/HIMMEL-sender-chief" 2>/dev/null || stat -f '%Lp' "$RUNDIR/HIMMEL-sender-chief" 2>/dev/null)"
 if [ "$ledger_mode" = "700" ]; then
     pass "ledger directory is created at mode 700"
 else
@@ -342,8 +342,8 @@ fi
 ML_FILE="$WORK/multiline-ruling.txt"
 printf 'GO line one\nline two\n\nline three\nline four\nline five\n' > "$ML_FILE"
 ML_DOC="$WORK/ml-doc.md"
-printf '# Leg doc\n\n## Console Rulings (newest at the bottom)\n- 08:00 existing bullet\n\n## Results\nsome text\n' > "$ML_DOC"
-ML_SESSION="HIMMEL-5408-ml-leg"
+printf '# Worker doc\n\n## Chief Rulings (newest at the bottom)\n- 08:00 existing bullet\n\n## Results\nsome text\n' > "$ML_DOC"
+ML_SESSION="HIMMEL-5408-ml-worker"
 ML_INBOX="$HANDOVER_DIR/inbox/$ML_SESSION.md"
 out="$(bash "$SCRIPT" "$ML_SESSION" --file "$ML_FILE" --doc "$ML_DOC" 2>&1)"; rc=$?
 ml_ok=1

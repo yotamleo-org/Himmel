@@ -117,7 +117,7 @@ hook inventory has unexpected event(s): PostToolUseFailure, PermissionDenied,
 PermissionRequest, Notification
 ```
 
-Nothing invokes that script today (verified across five chain legs — only its
+Nothing invokes that script today (verified across five chain workers — only its
 own test references it), so the incompatibility is latent rather than blocking.
 If you do need it, `himmelctl trust off` restores the file. The real fix is
 own-only validation plus a lock shared by both writers, which is a planned follow-up.

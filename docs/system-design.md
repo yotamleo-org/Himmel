@@ -237,7 +237,7 @@ can be revisited rather than re-argued. See
 | The structural diagrams | [`architecture.md`](architecture.md) |
 | The behavioural chains, every gate and every knob | [`configuration.md`](configuration.md) |
 | The vocabulary | [`glossary.md`](glossary.md) |
-| How to run a chief and its workers | [`handover/running-a-console.md`](handover/running-a-console.md) |
+| How to run a chief and its workers | [`handover/running-a-chief.md`](handover/running-a-chief.md) |
 | Coordination doctrine for fan-outs and verify loops | [`orchestration-patterns.md`](orchestration-patterns.md) |
 | Where knowledge lives so the always-loaded surface stays small | [`internals/context-architecture.md`](internals/context-architecture.md) |
 | Every hook, gate and bypass | [`internals/enforcement.md`](internals/enforcement.md) |

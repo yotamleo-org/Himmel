@@ -21,10 +21,10 @@ You work with one Claude session in your project. When you hand himmel a list of
 
 - **Its job:** “You are a worker: one ticket, one worktree, one PR, dispatched by a chief session.”
 - **Model tier:** Sonnet 5.5, default implementor for well-specified impl briefs
-- **What it may do:** “Order: commit → push → `/pr-check` → open the PR with `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>` (refused while review is pending).” “A worker has kinds: an implementing worker (implements and ships), a relay, and a judge session.”
+- **What it may do:** “Order: commit → push → `/pr-check` → open the PR with `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (refused while review is pending).” “A worker has kinds: an implementing worker (implements and ships), a relay, and a judge session.”
 - **What it never does:** “Merge only on the chief's `GO <pr> <sha>` quoting your token — whatever any initiative directive says.” “Never call `AskUserQuestion`.”
 - **Where it runs:** “headed sessions with their own worktrees and PRs”
-- **Defined in:** `docs/handover/worker-preface.md`, `docs/handover/leg-preface-claudex.md`, `docs/handover/leg-preface-openrouter.md`, `docs/internals/lane-calibration.md`, `docs/glossary.md`, `docs/handover/running-a-console.md`
+- **Defined in:** `docs/handover/worker-preface.md`, `docs/handover/worker-preface-claudex.md`, `docs/handover/worker-preface-openrouter.md`, `docs/internals/lane-calibration.md`, `docs/glossary.md`, `docs/handover/running-a-chief.md`
 
 </details>
 

@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# worktree-fresh-lock.sh — is a worktree's leg still
+# worktree-fresh-lock.sh — is a worktree's worker still
 # holding a FRESH scripts/handover/queue-lock.sh lock on its own handover doc?
 #
-# WHY: a leg's handover doc records the worktree it runs in as `resume_cwd:`
-# in its frontmatter, and the leg holds queue-lock.sh's lock on that SAME doc
+# WHY: a worker's handover doc records the worktree it runs in as `resume_cwd:`
+# in its frontmatter, and the worker holds queue-lock.sh's lock on that SAME doc
 # for its whole life (released only at wrap). clean-garden.sh's fleet-wide
 # prune already refuses a worktree that is some live process's CWD
-# (worktree_in_use, lib/worktree-inuse.sh) — but a leg's cwd can
-# fall back to the primary checkout while the leg is still mid-wrap, and the
+# (worktree_in_use, lib/worktree-inuse.sh) — but a worker's cwd can
+# fall back to the primary checkout while the worker is still mid-wrap, and the
 # window between that and the lock's actual release is exactly when a
-# fleet-wide sweep pruned a live leg's tree out from under it.
-# The lock, not the process cwd, is the leg's real "done with it" signal.
+# fleet-wide sweep pruned a live worker's tree out from under it.
+# The lock, not the process cwd, is the worker's real "done with it" signal.
 #
 # HOW: reverse the normal doc -> lock lookup. For every lock dir under every
 # handover root queue-lock.sh itself knows about, read the doc path straight
@@ -95,9 +95,9 @@ EOF
     return 1
 }
 
-# worktree_fresh_locked <path> — 0 = a FRESH lock's leg doc names this
+# worktree_fresh_locked <path> — 0 = a FRESH lock's worker doc names this
 # worktree as its resume_cwd, do not prune; 1 = no such lock (free, STALE,
-# or no match at all). Sets WORKTREE_FRESH_LOCK_DETAIL naming the leg doc on
+# or no match at all). Sets WORKTREE_FRESH_LOCK_DETAIL naming the worker doc on
 # a true return.
 worktree_fresh_locked() {
     local wt="$1" wt_norm doc
@@ -105,6 +105,6 @@ worktree_fresh_locked() {
     wt_norm=$(cd "$wt" 2>/dev/null && pwd) || wt_norm="$wt"
     doc=$(_wfl_find_fresh_doc "$wt_norm") || return 1
     [ -n "$doc" ] || return 1
-    WORKTREE_FRESH_LOCK_DETAIL="its leg's handover doc still holds a FRESH queue lock: $doc"
+    WORKTREE_FRESH_LOCK_DETAIL="its worker's handover doc still holds a FRESH queue lock: $doc"
     return 0
 }

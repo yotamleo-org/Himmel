@@ -44,12 +44,12 @@ test('HIMMEL-4014: a one-name call is unchanged by composition support', () => {
 });
 
 test('HIMMEL-4014: gateAllow permissions are the de-duplicated union', () => {
-  const s = resolveProfile(REG, 'leg-impl,design');
+  const s = resolveProfile(REG, 'worker-impl,design');
   assert.deepEqual(s.permissions.allow, [...new Set(s.permissions.allow)]);
   for (const rule of REG.gateAllow) assert.ok(s.permissions.allow.includes(rule), rule);
 });
 
-for (const bad of ['operator,design', 'design,bare', 'design,console', 'design,console-relay', 'console-judge,design']) {
+for (const bad of ['operator,design', 'design,bare', 'design,console', 'design,chief-relay', 'console-judge,design']) {
   test(`HIMMEL-4014: refuses a role/non-additive profile in a list (${bad})`, () => {
     assert.throws(() => resolveProfile(REG, bad), /cannot be composed/);
   });
@@ -85,7 +85,7 @@ test('HIMMEL-4014: the --mcp-servers list path refuses duplicate members like re
   assert.throws(() => mcpServersForProfile(REG, 'design,design'), /malformed profile list/);
 });
 
-for (const bad of ['operator', 'bare', 'console', 'console-relay', 'console-judge']) {
+for (const bad of ['operator', 'bare', 'console', 'chief-relay', 'console-judge']) {
   test(`HIMMEL-4014: the --mcp-servers list path refuses a non-additive member (${bad})`, () => {
     assert.throws(() => mcpServersForProfile(REG, `design,${bad}`), /cannot be composed/);
   });

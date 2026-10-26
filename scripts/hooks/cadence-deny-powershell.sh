@@ -7,13 +7,13 @@
 # tool is therefore an UNGUARDED second shell in a cadence session: no
 # background deny, no enumerated-engine grant, no safe-command auto-approve.
 #
-# Decisive evidence: the HIMMEL-Pipeline-Health leg emitted the
+# Decisive evidence: the HIMMEL-Pipeline-Health worker emitted the
 # vault-lint engine call through the PowerShell tool on 2026-08-20 04:00 —
 #   python "C:\...\vault-lint\vault_lint.py" "C:\Users\<user>\Documents\luna"
 # — a command cadence-approve-engines.sh grants byte-for-byte when it arrives as
-# a Bash call (it did on 08-19, and that night's leg completed). Because it
+# a Bash call (it did on 08-19, and that night's worker completed). Because it
 # arrived as PowerShell, no hook saw it, the model got an approval-required
-# reply, read it as "the operator must authorise this", and parked the leg with
+# reply, read it as "the operator must authorise this", and parked the worker with
 # nobody awake to answer. The tool choice is not stable across nights, so this
 # is a shape the cadence hits at random — a structural control, not a prompt
 # line, is what closes it (house doctrine: structural > instructional).
@@ -35,7 +35,7 @@
 #     safe-command auto-approve reaches a PowerShell call), and the matcher is
 #     independent evidence that the tool IS PowerShell. Failing open here would
 #     re-open exactly the unattended approval stall this control exists to
-#     prevent. Denying costs nothing: no cadence leg needs the tool.
+#     prevent. Denying costs nothing: no cadence worker needs the tool.
 #   * NEVER allows. exit 2 is the deny form whose precedence is guaranteed,
 # so nothing downstream can re-grant a PowerShell call.
 #   * CADENCE_POWERSHELL_OK=1 -> exit 0, no decision (see BYPASS below).

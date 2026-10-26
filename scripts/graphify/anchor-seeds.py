@@ -2,8 +2,8 @@
 """anchor-seeds.py -- start a graph query from the files and identifiers the question names.
 
 graphify seeds on the question's words: it drops tokens of two letters or fewer (go.sh becomes
-nothing), and a one-word label such as tail() or status() outranks the leg_tail_status the
-question asked about. leg-graph.sh uses the two verbs below to fix that from outside graphify:
+nothing), and a one-word label such as tail() or status() outranks the worker_tail_status the
+question asked about. worker-graph.sh uses the two verbs below to fix that from outside graphify:
 
   seeds <graph.json> <question>
       Prints one node id per line for each anchor that resolves. An anchor is a question token

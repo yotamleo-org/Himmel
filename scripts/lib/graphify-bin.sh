@@ -18,7 +18,7 @@
 # put on PATH for uv/pre-commit/jira.
 #
 # Fork: the fork carries one delta over upstream, `graphify query|explain
-# --rationale` (upstream PR #4576), which leg-graph.sh passes. Each fork build stamps its
+# --rationale` (upstream PR #4576), which worker-graph.sh passes. Each fork build stamps its
 # version `<upstream base>+himmel.N` in pyproject.toml, a PEP 440 local version that sorts
 # above the same base, so the installed-vs-pinned compares below see a fork build as newer
 # than the upstream release it is cut from. A pin bump is a change to _graphify_fork_ref()
@@ -240,7 +240,7 @@ graphify_install() {
 # import the `mcp` package (its startup dependency).
 # Interpreter resolution, most-specific first (CR: a PATH-based foreign
 # install -- pip/pipx/brew -- must probe ITS interpreter, not the uv venv):
-#   1. the resolved graphify-mcp console script's shebang python (posix;
+#   1. the resolved graphify-mcp chief script's shebang python (posix;
 #      Windows .exe launchers carry no readable shebang -- falls through);
 #   2. the uv tool venv's python (bin/ posix, Scripts/ windows layouts).
 # rc 0 = import OK; rc 1 = import FAILS (the known missing-dep defect);

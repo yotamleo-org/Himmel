@@ -26,7 +26,7 @@
 #
 # SINGLE-WRITER: this script never edits a branch. The parent owns dispatch +
 # merge/synthesis; each fix subagent writes ONLY its own branch. Merge stays an
-# operator/leg action. No run is stopped on the first failure — every record is
+# operator/worker action. No run is stopped on the first failure — every record is
 # processed (the failures are DATA, not control flow; hence `set -uo pipefail`,
 # not `set -e`).
 #

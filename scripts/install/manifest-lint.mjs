@@ -553,12 +553,12 @@ function checkProbeShape(probe, label, errors) {
       if (!Array.isArray(probe.legs) || probe.legs.length === 0) {
         errors.push(`${label}: probe type 'engine-allowlist' requires 'legs' (non-empty array)`);
       } else {
-        probe.legs.forEach((leg, i) => {
-          if (!leg || typeof leg !== 'object' || typeof leg.schedule !== 'string' || !isNonEmptyStringArray(leg.requiredSuffixes)) {
-            errors.push(`${label}: probe type 'engine-allowlist' legs[${i}] must be {schedule: string, requiredSuffixes: non-empty string[]}`);
+        probe.legs.forEach((worker, i) => {
+          if (!worker || typeof worker !== 'object' || typeof worker.schedule !== 'string' || !isNonEmptyStringArray(worker.requiredSuffixes)) {
+            errors.push(`${label}: probe type 'engine-allowlist' workers[${i}] must be {schedule: string, requiredSuffixes: non-empty string[]}`);
           } else {
-            const extraLegKeys = Object.keys(leg).filter((k) => k !== 'schedule' && k !== 'requiredSuffixes');
-            if (extraLegKeys.length > 0) errors.push(`${label}: probe type 'engine-allowlist' legs[${i}] has unexpected field(s) [${extraLegKeys.join(', ')}]`);
+            const extraLegKeys = Object.keys(worker).filter((k) => k !== 'schedule' && k !== 'requiredSuffixes');
+            if (extraLegKeys.length > 0) errors.push(`${label}: probe type 'engine-allowlist' workers[${i}] has unexpected field(s) [${extraLegKeys.join(', ')}]`);
           }
         });
       }

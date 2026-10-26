@@ -2,21 +2,21 @@
 # scripts/lanes/ceiling-conformance.sh - does every live claude
 # session carry the --autocompact ceiling its kind requires?
 #
-# WHY. A leg that loses --autocompact 200000 silently runs the 1m window at
+# WHY. A worker that loses --autocompact 200000 silently runs the 1m window at
 # ~250k context/turn (the cost audit that opened this ticket) instead of
-# refusing at launch (headed-arm.sh:391 makes the leg invariant explicit;
+# refusing at launch (headed-arm.sh:391 makes the worker invariant explicit;
 # this script is the runtime-side check that nothing already running has
-# drifted from it). A console is exempt by design (1m/auto is
-# the console's own context tier, not a leak).
+# drifted from it). A chief is exempt by design (1m/auto is
+# the chief's own context tier, not a leak).
 #
 # PLATFORM GUARD: no .ps1 twin, by design -- Linux-only, reads real argv the
 # same way tick.sh does. Bash 3.2-compatible; no associative arrays or
 # mapfile.
 #
 # Verdict rule, per live `-n <name>` claude session:
-#   - a leg (the real -n name contains -leg and does not end -console or -chief) must
+#   - a worker (the real -n name contains -worker and does not end -console or -chief) must
 #     carry --autocompact 200000; anything else is DRIFT.
-#   - a console (-n name ends -console or -chief) is exempt -- 1m/auto is its design.
+#   - a chief (-n name ends -console or -chief) is exempt -- 1m/auto is its design.
 #   - anything else (an operator relaunch, any other -n name) is DRIFT if
 #     its ceiling is auto or unset.
 # A process with no -n token is not a tracked session and is skipped.
@@ -70,11 +70,11 @@ NF < 4 { next }
     ceiling = $4
     if (ceiling == "") ceiling = "unset"
 
-    is_console = (name ~ /-(console|chief)$/)
-    is_leg = (name ~ /-leg/) && !is_console
+    is_chief = (name ~ /-(console|chief)$/)
+    is_worker = (name ~ /-worker/) && !is_chief
 
-    if (is_leg)          { drift = (ceiling != "200000") }
-    else if (is_console) { drift = 0 }
+    if (is_worker)          { drift = (ceiling != "200000") }
+    else if (is_chief) { drift = 0 }
     else                 { drift = (ceiling == "auto" || ceiling == "unset") }
 
     print name, ceiling

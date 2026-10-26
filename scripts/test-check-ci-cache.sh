@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Tests for the shared per-PR CI status cache, the adaptive watch helper and the
 # API-budget wait (the fleet exhausted the shared GitHub quota by
-# every waiting leg polling `gh pr checks --watch` on its own).
+# every waiting worker polling `gh pr checks --watch` on its own).
 #
 #   scripts/lib/gh-ci-cache.sh   cic_init / cic_get: one file per PR, head-tagged,
 #                                mkdir-locked, TTL; budget wait through `gh api rate_limit`

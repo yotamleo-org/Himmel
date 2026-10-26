@@ -1,4 +1,4 @@
-// GET /api/agui/board (the himmel.board/1 JSON from board.mjs --json) and GET /api/agui/brief (a leg doc, read-only).
+// GET /api/agui/board (the himmel.board/1 JSON from board.mjs --json) and GET /api/agui/brief (a worker doc, read-only).
 // board.mjs is replaced by a stub through the `boardScript` seam; the real one needs gh and Jira.
 import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
@@ -9,8 +9,8 @@ import { startServer } from "../server";
 
 const TOKEN = "t".repeat(64);
 const STUB = join(import.meta.dir, "stub-himmelctl.js");
-const CONSOLE = "HIMMEL-nextleg-2026-10-16BE-roadmap-console";
-const LEG = "HIMMEL-5968-N2368-agui-fleet-board-2026-10-16";
+const CHIEF = "HIMMEL-nextleg-2026-10-16BE-roadmap-chief";
+const WORKER = "HIMMEL-5968-N2368-agui-fleet-board-2026-10-16";
 const NONCE = "BE-N2368-8eba92e8", LOCK = "cachyos-x8664-pid392282";
 const cleanups: (() => void)[] = [];
 afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
@@ -20,15 +20,15 @@ function boot() {
   const handovers = join(dir, "handovers");
   const bucket = join(handovers, "op", "himmel");
   mkdirSync(bucket, { recursive: true });
-  writeFileSync(join(bucket, `${CONSOLE}.md`), "# console\n");
-  writeFileSync(join(bucket, `${LEG}.md`), `# leg\n- 10:00 LIVE — token ${NONCE} and lock ${LOCK}\n`);
+  writeFileSync(join(bucket, `${CHIEF}.md`), "# console\n");
+  writeFileSync(join(bucket, `${WORKER}.md`), `# worker\n- 10:00 LIVE — token ${NONCE} and lock ${LOCK}\n`);
   // the stub writes a board whose bullet still carries a nonce, to prove the route redacts on its own
   const script = join(dir, "board.mjs");
   writeFileSync(script, `import { writeFileSync } from "node:fs";
 const a = process.argv.slice(2);
 const at = (f) => a[a.indexOf(f) + 1];
 writeFileSync(at("--json"), JSON.stringify({ schema: "himmel.board/1", console: { name: "seen:" + at("--doc").split("/").pop() },
-  legs: [{ leg: "${LEG}", timeline: [{ text: "RETASK ${NONCE} lock ${LOCK}" }] }] }));
+  legs: [{ leg: "${WORKER}", timeline: [{ text: "RETASK ${NONCE} lock ${LOCK}" }] }] }));
 `);
   const s = startServer({ port: 0, token: TOKEN, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
@@ -39,20 +39,20 @@ const get = (port: number, path: string, headers: Record<string, string> = { "X-
 
 test("board: token-gated, read-only, console must be a known doc", async () => {
   const { port } = boot();
-  expect((await get(port, `/api/agui/board?console=${CONSOLE}`, {})).status).toBe(401);
-  expect((await get(port, `/api/agui/board?console=${CONSOLE}`, { "X-Himmel-Token": TOKEN }, "POST")).status).toBe(405);
+  expect((await get(port, `/api/agui/board?console=${CHIEF}`, {})).status).toBe(401);
+  expect((await get(port, `/api/agui/board?console=${CHIEF}`, { "X-Himmel-Token": TOKEN }, "POST")).status).toBe(405);
   expect((await get(port, `/api/agui/board`)).status).toBe(400);
   expect((await get(port, `/api/agui/board?console=..%2F..%2Fetc%2Fpasswd`)).status).toBe(400);
-  expect((await get(port, `/api/agui/board?console=HIMMEL-nope-console`)).status).toBe(404);
+  expect((await get(port, `/api/agui/board?console=HIMMEL-nope-chief`)).status).toBe(404);
 });
 
 test("board: serves the model of the named console's doc, with no nonce and no lock token", async () => {
   const { port } = boot();
-  const r = await get(port, `/api/agui/board?console=${CONSOLE}`);
+  const r = await get(port, `/api/agui/board?console=${CHIEF}`);
   expect(r.status).toBe(200);
   const b = await r.json();
   expect(b.schema).toBe("himmel.board/1");
-  expect(b.console.name).toBe(`seen:${CONSOLE}.md`);
+  expect(b.console.name).toBe(`seen:${CHIEF}.md`);
   const text = JSON.stringify(b);
   expect(text).not.toContain(NONCE);
   expect(text).not.toContain(LOCK);
@@ -90,13 +90,13 @@ test("board: a build that fails before it starts is not cached", async () => {
   expect("body" in (await readBoard({ ...o, env: { PATH: process.env.PATH }, now: 1 }))).toBe(true); // the next poll retries
 });
 
-test("brief: a leg doc, token-gated, read-only, redacted, names only", async () => {
+test("brief: a worker doc, token-gated, read-only, redacted, names only", async () => {
   const { port } = boot();
-  expect((await get(port, `/api/agui/brief?leg=${LEG}`, {})).status).toBe(401);
-  expect((await get(port, `/api/agui/brief?leg=${LEG}`, { "X-Himmel-Token": TOKEN }, "POST")).status).toBe(405);
+  expect((await get(port, `/api/agui/brief?leg=${WORKER}`, {})).status).toBe(401);
+  expect((await get(port, `/api/agui/brief?leg=${WORKER}`, { "X-Himmel-Token": TOKEN }, "POST")).status).toBe(405);
   expect((await get(port, `/api/agui/brief?leg=..%2F..%2Fetc%2Fpasswd`)).status).toBe(400);
   expect((await get(port, `/api/agui/brief?leg=HIMMEL-0-N1-none`)).status).toBe(404);
-  const r = await get(port, `/api/agui/brief?leg=${LEG}`);
+  const r = await get(port, `/api/agui/brief?leg=${WORKER}`);
   expect(r.status).toBe(200);
   const t = await r.text();
   expect(t).toContain("LIVE");

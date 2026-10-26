@@ -361,7 +361,7 @@ rows = [json.loads(l) for l in open(sys.argv[1]) if l.strip()]
 g = lambda sp: any(r.get("gold1") for r in rows if r.get("split", "insample") == sp)
 print(g("insample"), g("heldout"))' "$HERE/questions.jsonl")"
 
-# 11. census: a qmd call that errors, then a grep, is a fallback; graphify via leg-graph counts.
+# 11. census: a qmd call that errors, then a grep, is a fallback; graphify via worker-graph counts.
 P="$W/projects/-home-x-himmel"; mkdir -p "$P"
 cat > "$P/s1.jsonl" <<'EOF'
 {"type":"custom-title","customTitle":"HIMMEL-1-N1-x"}
@@ -369,7 +369,7 @@ cat > "$P/s1.jsonl" <<'EOF'
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a","is_error":true,"content":"The operation timed out."}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Bash","input":{"command":"git grep -n foo"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b","content":"docs/a.md:1:foo"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"bash scripts/graphify/leg-graph.sh query \"how\""}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"bash scripts/graphify/worker-graph.sh query \"how\""}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"c","content":"NODE a [src=docs/a.md loc=L1]"}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"d","name":"Read","input":{"file_path":"/r/docs/a.md"}}]}}
 EOF
@@ -401,7 +401,7 @@ cat > "$P3/s3.jsonl" <<'EOF'
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"a","content":"{\"results\":[{\"file\":\"himmel/docs/a/README.md\"}]}"}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"b","name":"Read","input":{"file_path":"/r/docs/b/README.md"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b","content":"x"}]}}
-{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"bash scripts/graphify/leg-graph.sh query \"hooks\""}}]}}
+{"type":"assistant","message":{"content":[{"type":"tool_use","id":"c","name":"Bash","input":{"command":"bash scripts/graphify/worker-graph.sh query \"hooks\""}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"c","is_error":false,"content":"NODE h [src=docs/h.md loc=L1] error: handler not found, request denied"}]}}
 {"type":"assistant","message":{"content":[{"type":"tool_use","id":"d","name":"Read","input":{"file_path":"/r/docs/h.md"}}]}}
 {"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"d","content":"x"}]}}

@@ -12,7 +12,7 @@ marketplace/plugins/himmel-ops/hooks/test-block-agent-native-egress.sh	mktemp	1
 marketplace/plugins/himmel-ops/scripts/autonomy-mode.sh	errexit	1
 marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	errexit	1
 marketplace/plugins/himmel-ops/scripts/test-himmel-update-cmd-resolution.sh	mktemp	1
-marketplace/plugins/himmel-ops/scripts/test-legs.sh	mktemp	3
+marketplace/plugins/himmel-ops/scripts/test-workers.sh	mktemp	3
 marketplace/plugins/himmel-ops/scripts/test-minerva-scripts-resolution.sh	mktemp	1
 marketplace/plugins/lean-skills/skills/systematic-debugging/find-polluter.sh	errexit	1
 marketplace/plugins/obsidian-triage/evals/telegram-clip-basic/fixture.sh	errexit	1
@@ -288,8 +288,8 @@ scripts/handover/artifact-sync.sh	prim-lock	1
 scripts/handover/auto-commit.sh	errexit	1
 scripts/handover/auto-commit.sh	mktemp	1
 scripts/handover/cap-reset-time.sh	errexit	1
-scripts/handover/chief-kit/console-wait.sh	prim-atomic	2
-scripts/handover/chief-kit/console-wait.sh	prim-lock	1
+scripts/handover/chief-kit/chief-wait.sh	prim-atomic	2	renamed from console-wait.sh
+scripts/handover/chief-kit/chief-wait.sh	prim-lock	1	renamed from console-wait.sh
 scripts/handover/chief-kit/denial-ack-lib.sh	prim-atomic	1
 scripts/handover/chief-kit/go.sh	prim-atomic	2
 scripts/handover/chief-kit/grant-round.sh	prim-atomic	2
@@ -302,9 +302,9 @@ scripts/handover/chief-kit/worker-doc-lock.sh	prim-atomic	1
 scripts/handover/chief-kit/worker-doc-lock.sh	prim-lock	1
 scripts/handover/chief-kit/worker-pretrust.sh	prim-lock	1
 scripts/handover/chief-kit/ops-run.sh	gnu-flag	1
-scripts/handover/chief-kit/test-close-wrapped-leg.sh	gnu-flag	1
+scripts/handover/chief-kit/test-close-wrapped-worker.sh	gnu-flag	1
 scripts/handover/chief-kit/test-go.sh	mktemp	1
-scripts/handover/chief-kit/test-headed-arm-leg.sh	gnu-flag	2
+scripts/handover/chief-kit/test-headed-arm-worker.sh	gnu-flag	2
 scripts/handover/chief-kit/test-inbox-send.sh	gnu-flag	1
 scripts/handover/chief-kit/test-next-dispatchable.sh	gnu-flag	1
 scripts/handover/chief-kit/test-ops-run.sh	gnu-flag	1
@@ -313,8 +313,8 @@ scripts/handover/chief-kit/wrap-merged.sh	prim-atomic	1
 scripts/handover/chief-kit/write-verdict.sh	prim-atomic	1
 scripts/handover/chief-kit/write-verdict.sh	prim-lock	1
 scripts/handover/chief/chief.sh	errexit	1
-scripts/handover/chief/console-bus-exec.sh	kill-after	1
-scripts/handover/chief/test-console.sh	gnu-flag	2
+scripts/handover/chief/chief-bus-exec.sh	kill-after	1
+scripts/handover/chief/test-chief.sh	gnu-flag	2
 scripts/handover/flush.sh	errexit	1
 scripts/handover/generate-morning-briefing.sh	errexit	1
 scripts/handover/headed-arm.sh	prim-atomic	1
@@ -541,7 +541,7 @@ scripts/hooks/install-single-writer-floor.sh	prim-atomic	1
 scripts/hooks/lib-test-write-fence-matrix.sh	gnu-flag	3
 scripts/hooks/lib-test-write-fence-matrix.sh	prim-atomic	3
 scripts/hooks/lib-test-write-fence.sh	prim-tmpdir	2
-scripts/hooks/notify-console-on-prompt.sh	gnu-flag	1
+scripts/hooks/notify-chief-on-prompt.sh	gnu-flag	1	renamed from notify-console-on-prompt.sh
 scripts/hooks/qmd-staleness-notice.sh	prim-atomic	1
 scripts/hooks/qmd-staleness-notice.sh	prim-lock	1
 scripts/hooks/record-hook-integrity.sh	prim-atomic	1
@@ -671,11 +671,11 @@ scripts/lanes/bench/scorecard/agg-postpin.sh	gnu-flag	1
 scripts/lanes/bench/scorecard/dead-parts.sh	gnu-flag	1
 scripts/lanes/bench/scorecard/extra-metrics.sh	gnu-flag	1
 scripts/lanes/bench/scorecard/ledger-metrics.sh	gnu-flag	1
-scripts/lanes/bench/scorecard/leg-over-by-day.sh	gnu-flag	1
-scripts/lanes/bench/scorecard/leg-relaunch.sh	gnu-flag	1
+scripts/lanes/bench/scorecard/worker-over-by-day.sh	gnu-flag	1
+scripts/lanes/bench/scorecard/worker-relaunch.sh	gnu-flag	1
 scripts/lanes/bench/scorecard/tool-usage.sh	gnu-flag	1
 scripts/lanes/lane-canary.sh	kill-after	1
-scripts/lanes/leg-pr-open.sh	errexit	1
+scripts/lanes/worker-pr-open.sh	errexit	1	renamed from leg-pr-open.sh
 scripts/lanes/srt-poc/render-settings.sh	errexit	1
 scripts/lanes/srt-poc/test-recorded-run.sh	mktemp	2
 scripts/lanes/stop-worker.sh	gnu-flag	1

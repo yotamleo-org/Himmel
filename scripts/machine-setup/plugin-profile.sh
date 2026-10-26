@@ -15,7 +15,7 @@
 # through `claude plugin enable|disable <spec> --scope user`. It never opens a
 # settings.json.
 #
-# Cadences do NOT use this script: an unattended leg that needs an on-demand
+# Cadences do NOT use this script: an unattended worker that needs an on-demand
 # plugin force-enables it per run via a settings fragment
 # (scripts/luna/pipeline-cadence.sh) so the machine's own profile
 # stays lean between runs.

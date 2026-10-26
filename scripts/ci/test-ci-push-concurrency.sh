@@ -33,7 +33,7 @@ else bad "ci.yml has no workflow-level concurrency: block"; fi
 group="$(sed -n 's/^  group:[[:space:]]*//p' <<< "$block")"
 cancel="$(sed -n 's/^  cancel-in-progress:[[:space:]]*//p' <<< "$block")"
 
-# A pull_request run groups on its PR number (so a leg's newer push meets its own
+# A pull_request run groups on its PR number (so a worker's newer push meets its own
 # older run, and nothing else)...
 case "$group" in
   *"github.event_name == 'pull_request' && (("*"&& format('pr-{0}', github.event.pull_request.number)"*)

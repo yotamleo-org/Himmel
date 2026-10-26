@@ -378,7 +378,7 @@ for (const config of CONFIGS) {
 // and `Bash|Monitor` (block-subagent-park.sh) — each its own cold node
 // process, so the real per-Bash-call cost is 4 process starts, not the 1 a
 // reader of only the `Bash` chain would assume. A second `*`
-// group (guard-leg-context-handoff.sh) — its own process because
+// group (guard-worker-context-handoff.sh) — its own process because
 // auto-arm-on-cap.sh stays out of every chain — so the count is now 5. Docs:
 // the hook-cost baseline. Pins the count so a future matcher
 // edit that silently drops or adds Bash coverage is caught here.

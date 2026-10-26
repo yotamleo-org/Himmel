@@ -5,7 +5,7 @@
 # mangled Windows path) unless MSYS_NO_PATHCONV=1 is set — git then fails
 # with an unrelated "fatal: Path ... does not exist" on stderr, and a
 # downstream `grep -c` on the resulting empty stdout silently counts 0,
-# indistinguishable from a genuine miss (the judge/console
+# indistinguishable from a genuine miss (the judge/chief
 # incident). Sourced, not run.
 #
 # git_show_safe <ref> <path> — prints the blob to stdout on success. On

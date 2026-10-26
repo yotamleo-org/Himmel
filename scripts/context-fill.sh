@@ -3,7 +3,7 @@
 #
 # WHAT THIS IS: the fraction of the model's context window the current Claude
 # Code session has consumed. WHAT THIS IS NOT: the <total_tokens> spend budget
-# visible in-session (a multi-million-token account allowance). Four legs
+# visible in-session (a multi-million-token account allowance). Four workers
 # conflated the two on 2026-08-29, which is why every readout here says so.
 #
 # Source of truth is the claude-hud statusline's per-session snapshot
@@ -184,7 +184,7 @@ resolve_transcript() {
 }
 
 # name the cause when resolution fails, instead of leaving the
-# reader with "fill is blind on this station" (five console handovers carried
+# reader with "fill is blind on this station" (five chief handovers carried
 # that note through one night; it was never a station property).
 #
 # THE TRAP: claude exports CLAUDE_CODE_CHILD_SESSION=1 into EVERY process it
@@ -299,7 +299,7 @@ NODE
 # not a dead end when the session transcript still carries usage. Estimate the
 # fill as the latest assistant turn's resident input tokens over the snapshot's
 # context_window_size, print it labelled "~NN% (est)" on stdout and exit 5 - a
-# distinct code, never 0, so a caller that treats rc 0 as "measured" (the leg
+# distinct code, never 0, so a caller that treats rc 0 as "measured" (the worker
 # context guard, tick, /context-hop) never mistakes it for a measurement. When
 # the estimate cannot be formed (no window, no transcript, no complete usage
 # counters) it returns and the caller falls through to the plain STALE exit 3
@@ -497,7 +497,7 @@ then
     lag=0
   fi
   # Informational only - the human-readable (no-flag) readout, not --percent:
-  # a leg polling --percent in a loop must not gain a stderr line on every
+  # a worker polling --percent in a loop must not gain a stderr line on every
   # healthy call. The STALE message below already carries both age and lag in
   # every mode, so that audit trail is not lost when this is skipped.
   if [ "$mode" = "human" ]; then
@@ -545,8 +545,8 @@ printf '\n'
 printf '  session: %s | snapshot age: %ss\n' "${session_name:-unnamed}" "$age"
 printf '  NOTE: this is context-window FILL, NOT the <total_tokens> spend budget.\n'
 
-# name the crossing so a leg reads it without doing
-# the arithmetic itself. Human mode only - a leg polling --percent in a loop
+# name the crossing so a worker reads it without doing
+# the arithmetic itself. Human mode only - a worker polling --percent in a loop
 # must not gain a line (mirrors the lag-diagnostic printf above).
 if [ "$WARN_AT_KIND" = "percent" ] && [ "$used_pct" -ge "$WARN_AT" ]; then
   printf 'context-fill: WARNING - %s%% of the context window used (>= %s%% handover threshold). himmel'"'"'s rule is to hand over to a fresh session at %s%% fill; every later turn re-reads this whole context.\n' \

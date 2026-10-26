@@ -24,7 +24,7 @@ test("a firing alert becomes one `fail` call with the alertname as the reason", 
   expect(calls).toEqual([["fail", "grafana-HimmelFlowRunStalled", "HimmelFlowRunStalled", "flow stalled http://127.0.0.1:3000/x"]]);
 });
 
-test("a resolved alert becomes a `clear` call for its own leg only", () => {
+test("a resolved alert becomes a `clear` call for its own worker only", () => {
   const calls = alertCalls(JSON.parse(payload([{ status: "resolved", labels: { alertname: "HimmelFlowRunStalled" } }])));
   expect(calls).toEqual([["clear", "grafana-HimmelFlowRunStalled"]]);
 });
@@ -72,8 +72,8 @@ test("shell metacharacters and control bytes stay inert, sanitized argv", async 
     { status: "firing", labels: { alertname: "A;$(touch /tmp/pwn)`id`/../x" }, annotations: { summary: evil } },
   ])));
   expect(res.status).toBe(200);
-  const [, leg, reason, log] = ran[0];
-  expect(leg).toMatch(/^grafana-[A-Za-z0-9_.-]+$/);
+  const [, worker, reason, log] = ran[0];
+  expect(worker).toMatch(/^grafana-[A-Za-z0-9_.-]+$/);
   expect(reason).toMatch(/^[A-Za-z0-9_.-]+$/);
   expect(log).not.toMatch(/[\u0000-\u001f]/);
   expect(log.length).toBeLessThanOrEqual(300);

@@ -1,12 +1,12 @@
 // Grafana webhook contact point -> scripts/luna/cadence-alert.sh.
 //
 // WHY: the Linux Grafana tier must alert through the ONE existing sink
-// (cadence-alert.sh: console-readable log + a deduped Telegram DM), not a second
+// (cadence-alert.sh: chief-readable log + a deduped Telegram DM), not a second
 // Telegram path of its own. Grafana can only POST a webhook, so this small
 // receiver turns each alert of a webhook payload into one cadence-alert call:
 //   firing   -> cadence-alert.sh fail grafana-<alertname> <alertname> <summary url>
 //   resolved -> cadence-alert.sh clear grafana-<alertname>
-// The leg is per alertname so a resolve re-arms only that alert's dedupe.
+// The worker is per alertname so a resolve re-arms only that alert's dedupe.
 //
 // It is a listening service, so: loopback only (the host is a constant, never
 // configurable), POST /alert needs a bearer token read from a 0600 file (never
@@ -31,7 +31,7 @@ type GrafanaAlert = {
 };
 type Runner = (args: string[]) => void;
 
-// argv-only, but the leg name still lands in a log filename/sentinel: keep it to a safe charset.
+// argv-only, but the worker name still lands in a log filename/sentinel: keep it to a safe charset.
 const safeName = (s: unknown): string => String(s ?? "").replace(/[^A-Za-z0-9_.-]/g, "_").slice(0, 64) || "unknown";
 const safeText = (s: unknown): string =>
   // eslint-disable-next-line no-control-regex
@@ -41,12 +41,12 @@ export function alertCalls(body: { alerts?: GrafanaAlert[] }): string[][] {
   const calls: string[][] = [];
   for (const a of Array.isArray(body.alerts) ? body.alerts : []) {
     const name = safeName(a?.labels?.alertname);
-    const leg = `grafana-${name}`;
+    const worker = `grafana-${name}`;
     if (a?.status === "resolved") {
-      calls.push(["clear", leg]);
+      calls.push(["clear", worker]);
     } else {
       const log = [a?.annotations?.summary, a?.generatorURL].filter(Boolean).map(safeText).join(" ").slice(0, 300);
-      calls.push(["fail", leg, name, log]);
+      calls.push(["fail", worker, name, log]);
     }
   }
   return calls;
@@ -96,7 +96,7 @@ export function createHandler(opts: { token: string; run: Runner; now?: () => nu
         if (prev !== undefined && t - prev < DEDUPE_MS) continue;
         if (++windowCalls > MAX_CALLS_PER_MINUTE) return new Response("rate limited", { status: 429 });
         opts.run(call); // a throw skips the dedupe record, so Grafana's retry runs it again
-        // an opposite-state call for the same leg ends the old dedupe run
+        // an opposite-state call for the same worker ends the old dedupe run
         const other = `${call[0] === "clear" ? "fail" : "clear"}\u0000${call[1]}`;
         for (const k of [...seen.keys()]) if (k === other || k.startsWith(`${other}\u0000`)) seen.delete(k);
         seen.set(key, t);

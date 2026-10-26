@@ -1,7 +1,7 @@
 // the Health page. Pure rendering, no DOM: renderHealth(feed, health) → HTML.
-// feed = the doctor feed (null until it lands); health = GET /api/health ({bank, legs, monitoring, mode}),
+// feed = the doctor feed (null until it lands); health = GET /api/health ({bank, workers, monitoring, mode}),
 // null while loading. Every value shown comes from its owner (I1): the feed's rows, the bank ledger
-// row, legs.sh, Prometheus. The one verdict lives here (I6) and only counts what those sources say.
+// row, workers.sh, Prometheus. The one verdict lives here (I6) and only counts what those sources say.
 import { esc } from "./render.js";
 
 const isTriage = (r) => r.health === "fail" || r.health === "warn";
@@ -117,7 +117,7 @@ function legsHtml(health) {
   if (!health) body = nodata("loading");
   else if (l.state === "ok") {
     body = l.legs.length ? l.legs.map((x) => `<div class="leg"><span class="mk">${esc(x.status)}</span><span class="doc" title="${esc(x.doc)}">${esc(String(x.doc).split("/").pop())}</span>${x.description ? `<span class="det">${esc(x.description)}</span>` : ""}</div>`).join("") : `<div class="empty">The fleet manifest lists no worker sessions.</div>`;
-  } else body = nodata(l.state === "absent" ? `no fleet manifest (${l.reason || "none found"})` : l.reason || "legs view failed");
+  } else body = nodata(l.state === "absent" ? `no fleet manifest (${l.reason || "none found"})` : l.reason || "workers view failed");
   return `<div class="card" id="legs"><h3>Worker sessions</h3>${body}</div>`;
 }
 
@@ -173,7 +173,7 @@ export function renderHealth(feed, health) {
     section("verdict", "Is himmel healthy?", "One word, from the doctor feed and any firing alerts.", verdictHtml(feed, health) + modeHtml(health)),
     section("broken", "What is broken, and what do I do", "Failing and drifting rows, worst first, with the fix to run in your terminal.", brokenHtml(feed, health)),
     section("jobs", "Scheduled jobs", "Cadence jobs as the doctor reports them.", jobsHtml(feed)),
-    section("legs-bank", "Worker sessions and the subscription usage budget", "Read-only: the newest bank-preflight ledger row and each worker session's last marker.", bankHtml(health) + quotaHtml(health) + legsHtml(health)),
+    section("workers-bank", "Worker sessions and the subscription usage budget", "Read-only: the newest bank-preflight ledger row and each worker session's last marker.", bankHtml(health) + quotaHtml(health) + legsHtml(health)),
     section("trends", "Trends", "Velocity, cost and health by week, from the weekly roll-up; read-only.", trendsHtml(health)),
     section("reviewers", "How good are our reviewers?", "The critics on planted bugs and the judges on merged PRs, from the weekly review page; read-only.", reviewersHtml(health)),
     section("search", "Search and graph freshness", "From the doctor's search rows.", searchHtml(feed)),

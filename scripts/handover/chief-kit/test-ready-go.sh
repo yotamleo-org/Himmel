@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
 # scripts/handover/chief-kit/test-ready-go.sh - suite for ready-go.sh, the
-# console's one-call READY turn. One row per output line:
+# chief's one-call READY turn. One row per output line:
 #   1. usage: bad pr / sha / half a --to,--token pair -> exit 2.
 #   2. clean PR: ready-check lines, READY-GO PASS, COVERAGE, TRUST: none, TICKET,
 #      NEXT go.sh, and the exact SENDMESSAGE GO line.
@@ -10,7 +10,7 @@
 #   5. trust-path hit: TRUST: hit <path>, no plain GO line, the --trust-reviewed route.
 #   6. trust list unreadable: TRUST: refused, exit 5, no GO line.
 #   7. ticket: a Done ticket and an unreadable one print their state, a key-less title prints none.
-#   8. --ledger appends one bullet to a console doc; a failing run appends nothing.
+#   8. --ledger appends one bullet to a chief doc; a failing run appends nothing.
 #   9. read-only: no GO file is written under the handover root.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+.
@@ -105,14 +105,14 @@ run() { OUT=$(bash "$SCRIPT" "$@" 2>&1); RC=$?; }
 
 # --- 1. usage --------------------------------------------------------------
 for args in "" "77" "x1 $SHA" "077 $SHA" "77 ${SHA%?}" "77 ${SHA}0" "77 0123456789ABCDEF0123456789abcdef01234567" \
-            "--to leg 77 $SHA" "--token t 77 $SHA" "--to a/b --token t 77 $SHA"; do
+            "--to worker 77 $SHA" "--token t 77 $SHA" "--to a/b --token t 77 $SHA"; do
     # shellcheck disable=SC2086  # word-splitting the args string IS the point
     run $args
     check "usage: [$args] -> exit 2" "$RC" "2"
 done
 
 # --- 2. clean PR -------------------------------------------------------------
-run --to HIMMEL-9-leg --token BE-N1-abc 77 "$SHA"
+run --to HIMMEL-9-worker --token BE-N1-abc 77 "$SHA"
 check "clean: exit 0" "$RC" "0"
 contains "clean: ready-check lines pass through" "$OUT" "[PASS] 4. CR ledger"
 contains "clean: READY-GO PASS" "$OUT" "READY-GO PASS"
@@ -120,7 +120,7 @@ contains "clean: COVERAGE line" "$OUT" "COVERAGE: [PASS] 7."
 contains "clean: TRUST none" "$OUT" "TRUST: none"
 contains "clean: TICKET key and status" "$OUT" "TICKET: HIMMEL-1 In Review"
 contains "clean: NEXT names go.sh" "$OUT" "NEXT: bash $(printf '%q' "$HERE")/go.sh 77 $SHA"
-contains "clean: exact GO line" "$OUT" "SENDMESSAGE to=HIMMEL-9-leg :: GO 77 $SHA, token BE-N1-abc"
+contains "clean: exact GO line" "$OUT" "SENDMESSAGE to=HIMMEL-9-worker :: GO 77 $SHA, token BE-N1-abc"
 
 # --- 3. no pair -> no guessed line -------------------------------------------
 run 77 "$SHA"
@@ -130,7 +130,7 @@ contains "no pair: says it skipped" "$OUT" "SENDMESSAGE skipped"
 
 # --- 4. no CR-ledger row at the head -------------------------------------------
 export READY_STUB_HEAD="$SHA2"
-run --to leg --token tok 77 "$SHA2"
+run --to worker --token tok 77 "$SHA2"
 check "no CR row: exit 4" "$RC" "4"
 contains "no CR row: ready-check names check 4" "$OUT" "[FAIL] 4."
 contains "no CR row: READY-GO FAIL" "$OUT" "READY-GO FAIL"
@@ -140,7 +140,7 @@ export READY_STUB_HEAD="$SHA"
 
 # --- 5. trust-path hit ---------------------------------------------------------
 export STUB_FILE=scripts/ci/ci-trust-paths.txt
-run --to leg --token tok 77 "$SHA"
+run --to worker --token tok 77 "$SHA"
 check "trust hit: exit 0" "$RC" "0"
 contains "trust hit: TRUST names the path" "$OUT" "TRUST: hit scripts/ci/ci-trust-paths.txt"
 lacks "trust hit: no plain GO line" "$OUT" "SENDMESSAGE"
@@ -149,7 +149,7 @@ unset STUB_FILE
 
 # --- 6. trust list unreadable: ready-check fails it before the trust step --------------------------------------------------
 export STUB_TRUST_LIST_FAIL=1
-run --to leg --token tok 77 "$SHA"
+run --to worker --token tok 77 "$SHA"
 check "trust refused: exit 4" "$RC" "4"
 contains "trust refused: ready-check names check 12" "$OUT" "[FAIL] 12."
 lacks "trust refused: no GO line" "$OUT" "SENDMESSAGE"
@@ -157,28 +157,28 @@ unset STUB_TRUST_LIST_FAIL
 
 # --- 7. ticket ----------------------------------------------------------------
 export STUB_JIRA_STATUS=Done
-run --to leg --token tok 77 "$SHA"
+run --to worker --token tok 77 "$SHA"
 contains "ticket: a Done ticket shows Done" "$OUT" "TICKET: HIMMEL-1 Done"
 unset STUB_JIRA_STATUS
 export STUB_JIRA_FAIL=1
-run --to leg --token tok 77 "$SHA"
+run --to worker --token tok 77 "$SHA"
 contains "ticket: unreadable shows UNKNOWN" "$OUT" "TICKET: HIMMEL-1 UNKNOWN"
 unset STUB_JIRA_FAIL
 export STUB_TITLE="chore: no key here"
-run --to leg --token tok 77 "$SHA"
+run --to worker --token tok 77 "$SHA"
 contains "ticket: a key-less title shows none" "$OUT" "TICKET: none"
 unset STUB_TITLE
 
 # --- 8. --ledger ---------------------------------------------------------------
-DOC="$tmp/x-console.md"
+DOC="$tmp/x-chief.md"
 printf '# c\n\n## Results\n- 10:00 LIVE - start\n' > "$DOC"
-run --ledger "$DOC" --to leg --token tok 77 "$SHA"
+run --ledger "$DOC" --to worker --token tok 77 "$SHA"
 check "ledger: exit 0" "$RC" "0"
 contains "ledger: LEDGER line printed" "$OUT" "LEDGER: appended"
 contains "ledger: bullet in the doc" "$(cat "$DOC")" "ready-go PR 77 $SHA: ready-check PASS, trust none, ticket HIMMEL-1"
 before=$(wc -l < "$DOC")
 export READY_STUB_HEAD="$SHA2"
-run --ledger "$DOC" --to leg --token tok 77 "$SHA2"
+run --ledger "$DOC" --to worker --token tok 77 "$SHA2"
 export READY_STUB_HEAD="$SHA"
 check "ledger: a failing run appends nothing" "$(wc -l < "$DOC")" "$before"
 run --ledger "$tmp/missing.md" 77 "$SHA"

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# a console launched with --strict-mcp-config registers qmd as
+# a chief launched with --strict-mcp-config registers qmd as
 # mcp__qmd__* (not the plugin-scoped mcp__plugin_qmd_qmd__*), so the project
 # allow list must pre-approve BOTH spellings of the read-only query/get tools.
 #

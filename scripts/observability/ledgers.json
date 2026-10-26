@@ -212,10 +212,10 @@
       "grandfathered": false
     },
     {
-      "id": "leg-failures",
+      "id": "worker-failures",
       "default_path": "~/.himmel/leg-failures.jsonl",
       "override_env": "HIMMEL_WORKER_SESSION_FAILURES_LEDGER",
-      "writer": "scripts/eval/worker-digest/leg_ledger.py",
+      "writer": "scripts/eval/worker-digest/worker_ledger.py",
       "readers": ["scripts/eval/worker-digest/tool-health.mjs"],
       "format": "jsonl",
       "rotation": "none",

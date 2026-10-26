@@ -52,14 +52,14 @@ else
   ok "ci.yml reads no inputs.* context"
 fi
 
-# 3. Windows is gone from ci.yml -- no leg, no repo-variable
+# 3. Windows is gone from ci.yml -- no worker, no repo-variable
 # switch, no nightly-issue step -- and the two matrix jobs run ubuntu only.
 job_block() { awk -v j="$1" '$0 == "  " j ":" {f=1; next} f && /^  [a-zA-Z_-]+:/ {f=0} f' <<< "$stripped"; }
 
 if grep -qiE 'windows|WINDOWS_NIGHTLY' <<< "$stripped"; then
   bad "ci.yml still runs or reads Windows: $(grep -iE -m1 'windows|WINDOWS_NIGHTLY' <<< "$stripped")"
 else
-  ok "no Windows leg, WINDOWS_NIGHTLY switch or windows-nightly-issue step in the executable part of ci.yml"
+  ok "no Windows worker, WINDOWS_NIGHTLY switch or windows-nightly-issue step in the executable part of ci.yml"
 fi
 for job in shell-unit-shard bun-suites; do
   if grep -qE '^        os: \[ubuntu-latest\]$' <<< "$(job_block "$job")"; then
@@ -88,7 +88,7 @@ n_if="$(grep -c "github.event.schedule == '17 7 \* \* \*'" <<< "$agg")"
 if [ "$n_if" -ge 2 ]; then ok "shell-unit's extended-tier issue steps are gated on schedule ($n_if if:s)"
 else bad "shell-unit has only $n_if schedule-gated steps (expected >= 2)"; fi
 
-# 5b. macOS is not in ci.yml at all -- no matrix leg, no health
+# 5b. macOS is not in ci.yml at all -- no matrix worker, no health
 # step -- it runs on macos-cadence.yml, so a macOS red can never redden `CI`.
 if grep -qi 'macos' <<< "$stripped"; then
   bad "ci.yml still runs or reads a macOS job: $(grep -i -m1 'macos' <<< "$stripped")"
@@ -101,7 +101,7 @@ for job in shell-unit-shard bun-suites; do
   if grep -q 'continue-on-error' <<< "$(job_block "$job")"; then
     bad "$job: still carries continue-on-error"
   else
-    ok "$job: no continue-on-error (ubuntu is the only leg)"
+    ok "$job: no continue-on-error (ubuntu is the only worker)"
   fi
 done
 

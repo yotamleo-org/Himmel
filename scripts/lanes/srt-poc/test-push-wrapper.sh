@@ -38,7 +38,7 @@ git init -q "$WT"
 origin_ref() { git --git-dir="$ORIGIN" rev-parse -q --verify "refs/heads/$1" 2>/dev/null || echo none; }
 MAIN_BEFORE="$(origin_ref main)"
 
-run() { (cd "$WT" && bash "$SUT" --leg-branch feat/mine -- "$@") >"$TMP/out" 2>&1; }
+run() { (cd "$WT" && bash "$SUT" --worker-branch feat/mine -- "$@") >"$TMP/out" 2>&1; }
 
 # allowed: own branch
 if run origin feat/mine && [ "$(origin_ref feat/mine)" = "$(git -C "$WT" rev-parse HEAD)" ]; then
