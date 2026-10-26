@@ -123,7 +123,7 @@ says "the first entry without labels is named" "updates entry 1 (npm) must set l
 
 live labelslist || { echo "live copy failed"; exit 1; }
 m=$LIVE
-subst '0,/^    labels: \[\]$/s//    labels: ["python"]/' "$m/.github/dependabot.yml"
+subst '1,/^    labels: \[\]$/s/^    labels: \[\]$/    labels: ["python"]/' "$m/.github/dependabot.yml"
 expect "a non-empty labels list is refused" 1 "$m"
 says "the non-empty list is named" "updates entry 1 (npm) must set labels: []"
 
