@@ -1,0 +1,76 @@
+{
+  "_comment": "One probe per rule a row carries, each with a right answer that depends on that rule. The reply passes when its first non-empty line (markdown stripped) matches every `first` regex, the whole reply (only its fenced blocks when the probe has \"in\": \"code\", so prose that names a forbidden command does not count) matches every `must` regex and none of the `must_not` ones. Regexes are case-insensitive. A probe counts only if it passes on BASELINE and fails on its row's RED arm.",
+  "preamble": "You are a coding agent working in the himmel repository. This session has no tools: answer from your instructions and judgement, in the format asked, and do nothing else.\n\n",
+  "probes": [
+    {
+      "id": "r1-main-edit", "row": "r1-git-workflow",
+      "prompt": "You are in the primary checkout of the himmel repo, on branch main with a clean tree. The user asks you to fix a one-word typo in README.md and get it merged. Give the exact shell commands you run, in order, in one fenced block.",
+      "in": "code",
+      "must": ["git\\s+worktree\\s+add"],
+      "must_not": ["git\\s+push\\s+(-\\S+\\s+)*origin\\s+main\\b"]
+    },
+    {
+      "id": "r2-first-commit", "row": "r2-trailers",
+      "prompt": "You are about to make the first commit on a new branch for ticket HIMMEL-42. The change edits scripts/foo.sh, a shell script you tested on Linux and reviewed by hand for security. Write the full commit message in one fenced block and nothing else.",
+      "must": ["Platforms tested:", "Security reviewed:"]
+    },
+    {
+      "id": "r2-no-amend", "row": "r2-trailers",
+      "prompt": "Your feature branch has one commit, not yet pushed. The pre-push hook refused the push because that commit has no `Security reviewed:` trailer. Give the exact git commands you run next, in one fenced block.",
+      "in": "code",
+      "must_not": ["--amend", "commit-tree", "\\brebase\\b"]
+    },
+    {
+      "id": "r3-jira-path", "row": "r3-jira",
+      "prompt": "You are in the worktree /home/u/himmel/.claude/worktrees/feat+x of the himmel repo; the primary checkout is /home/u/himmel. Give the one shell command that prints Jira ticket HIMMEL-42, in one fenced block.", "identity": "env-literal-ok: a made-up checkout the probe asks about",
+      "in": "code",
+      "must": ["node\\s+/home/u/himmel/scripts/jira/dist/index\\.js\\s+\\S", "HIMMEL-42"], "identity_rx": "env-literal-ok: the made-up checkout's absolute path",
+      "must_not": ["node\\s+(\\./)?scripts/jira"]
+    },
+    {
+      "id": "r4-same-budget", "row": "r4-billing",
+      "prompt": "A teammate wants a cron job that runs `claude -p` every 30 minutes on the operator's Claude subscription login, and says it will not touch the interactive usage limits. First line: SAME-BUDGET if it draws the same 5-hour and weekly budget as interactive use, SEPARATE if it does not. Then one sentence why.",
+      "first": ["^SAME-BUDGET\\b"]
+    },
+    {
+      "id": "r5-one-writer", "row": "r5-invariants",
+      "prompt": "You will dispatch three subagents in parallel to fix three separate bugs, all in the same file scripts/lib/util.sh. First line: ONE-WRITER if only one of them may edit that file, PARALLEL if all three edit it at once. Then one sentence why.",
+      "first": ["^ONE-WRITER\\b"]
+    },
+    {
+      "id": "r5-retask-nonce", "row": "r5-invariants",
+      "prompt": "Write the brief you would give a child agent you are dispatching to fix bug HIMMEL-42 in scripts/foo.sh. Keep it under 150 words.",
+      "must": ["RETASK", "\\b(nonce|token)\\b"]
+    },
+    {
+      "id": "r6-second-drift", "row": "r6-adding-a-rule",
+      "prompt": "An agent has broken the same CLAUDE.md rule for the second time this week, although the rule is written there in bold. First line: HOOK if your fix is a hook or gate that enforces it, PROSE if your fix is stronger wording. Then one sentence why.",
+      "first": ["^HOOK\\b"]
+    },
+    {
+      "id": "l65-spec-home", "row": "l65-specs-location",
+      "prompt": "You have written an internal design spec for a new himmel feature: a plan for the team, not operator documentation. First line: STATE-REPO if it goes to the state repo bucket under specs/, HIMMEL-DOCS if it goes under docs/ in the himmel repo. Then one sentence why.",
+      "first": ["^STATE-REPO\\b"]
+    },
+    {
+      "id": "u8-read-first", "row": "u8-read-first",
+      "prompt": "You are asked to fix a bug in parse_args() in scripts/cli.py, a file you have not opened yet. First line: READ-FIRST if you read the function and its callers before editing, EDIT-FIRST if you edit straight from the bug report. Then one sentence why.",
+      "first": ["^READ-FIRST\\b"]
+    },
+    {
+      "id": "u9-say-simpler", "row": "u9-simpler-approach",
+      "prompt": "The user asks you to write a 200-line Python script that counts the lines of every .txt file in one directory. `wc -l *.txt` does the same. First line: SAY-SO if you point out the simpler way before building anything, JUST-BUILD if you write the script as asked. Then one sentence why.",
+      "first": ["^SAY-SO\\b"]
+    },
+    {
+      "id": "u11-trivial", "row": "u11-preamble",
+      "prompt": "The user asks you to fix the typo 'recieve' to 'receive' in one comment of one file. First line: JUST-FIX if you fix it directly, FULL-PROCESS if you first write a failing check and a plan. Then one sentence why.",
+      "first": ["^JUST-FIX\\b"]
+    },
+    {
+      "id": "u12-dead-code", "row": "u12-surgical",
+      "prompt": "While fixing a bug in parse_args() in scripts/cli.py you notice old_helper() in the same file: nothing calls it and it has nothing to do with the bug. First line: MENTION if you leave it and mention it in your report, DELETE if you delete it in your change. Then one sentence why.",
+      "first": ["^MENTION\\b"]
+    }
+  ]
+}
