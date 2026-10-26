@@ -891,5 +891,33 @@ out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --co
   && ! grep -q '^graphify extract' "$WS/calls.log" \
   && pass "T77 exit 2, the pending batch and the graph are untouched, nothing extracted" || fail "T77 (rc=$rc): $out / $(cat "$WS/calls.log")"
 
+echo "T78: a directory the repo's .graphifyignore lists is not corpus (graphify never extracts it, so it would fail every run)"
+C78="$WS/c78"; new_corpus "$C78"; mkdir -p "$C78/archive/voice/docs"; printf 'voice\n' > "$C78/archive/voice/docs/voice.md"
+printf '# Voice is archived until it returns for Linux/macOS.\narchive/voice/\n' > "$C78/.graphifyignore"
+out=$(run --name t78 --corpus-root "$C78" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C78/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "a.md b.md sub/c.md" ] && pass "T78 archive/voice/docs/voice.md left out of the corpus" || fail "T78 (rc=$rc) '$n': $out"
+
+echo "T79: a thin extraction of unchanged content that the shrink guard refused MAX_ATTEMPTS times is accepted, not stuck forever"
+C79="$WS/c79"; new_corpus "$C79"
+python3 - "$C79/graphify-out/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+for i in (2, 3, 4):
+    g["nodes"].append({"id": "stale_a%d" % i, "label": "old", "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+for i in 1 2; do
+  out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
+  [ "$rc" -eq 0 ] && [[ "$(ids "$C79")" == *stale_a4* ]] && ! [[ "$(ids "$C79")" == *sem_a.md_alpha* ]] \
+    && pass "T79 attempt $i: shrink guard refuses, the old nodes stay" || fail "T79 attempt $i (rc=$rc): $(ids "$C79") :: $out"
+done
+out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
+got=$(ids "$C79")
+[ "$rc" -eq 0 ] && [[ "$got" == *sem_a.md_alpha* ]] && ! [[ "$got" == *stale_a4* ]] \
+  && pass "T79 attempt 3: the thin extraction replaces the old nodes" || fail "T79 attempt 3 (rc=$rc): $got :: $out"
+python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "a.md" in m["files"] and "a.md" not in m.get("stuck", {}) else 1)' "$C79/graphify-out/semantic-manifest.json" \
+  && pass "T79 a.md is stamped and no longer stuck" || fail "T79 manifest: $(cat "$C79/graphify-out/semantic-manifest.json")"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
