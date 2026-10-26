@@ -194,6 +194,7 @@ test('the advisor shows a readable model name or the override, capped', () => {
   assert.equal(advisor('claude-custom-x'), 'Advisor: custom-x');
   assert.equal(advisor('claude-opus-4-7', { advisorOverride: 'Reviewer' }), 'Advisor: Reviewer');
   assert.equal(advisor('x'.repeat(80)), `Advisor: ${'x'.repeat(64)}`);
+  assert.equal(advisor('claude-opus-4-7', { advisorOverride: 'A'.repeat(63) + '😀' + 'B' }), `Advisor: ${'A'.repeat(63)}`);
   assert.equal(advisor(undefined), 'my-project');
 });
 
@@ -354,6 +355,14 @@ test('the environment line names failing MCP servers and respects environmentThr
   assert.equal(lines(ctx({ ...counts, transcript, config: { display: { showConfigCounts: true } } }))[2], '2 CLAUDE.md | 3 rules | 4 MCPs ⚠ github, linear, slack +1 | 1 hooks');
   assert.equal(lines(ctx({ claudeMdCount: 2, config: { display: { showConfigCounts: true, environmentThreshold: 5 } } })).length, 2);
   assert.equal(lines(ctx({ transcript: { mcpErrors: ['github'] }, config: { display: { showMcp: true } } }))[2], '⚠ github');
+});
+
+test('a failing MCP server name is cut on a grapheme boundary', () => {
+  const name = 'A'.repeat(63) + '😀' + 'B';
+  assert.equal(
+    lines(ctx({ transcript: { mcpErrors: [name] }, config: { display: { showMcp: true } } }))[2],
+    `⚠ ${'A'.repeat(63)}`,
+  );
 });
 
 test('the session time line shows the start date and how long ago the last reply was', () => {

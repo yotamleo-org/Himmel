@@ -1029,3 +1029,37 @@ suite's test runner is installed in the owning package (e.g.
 vitest. If the runner is missing, run `npm ci` in that package
 (`--ignore-scripts` where a postinstall downloads browsers) and re-run the
 suite.
+
+## Claude Code: "SessionEnd hook … failed: Hook cancelled" at exit
+
+Claude Code gives SessionEnd hooks one shared **1.5 s** budget on exit, `/clear`
+and interactive `/resume`, and cancels whatever has not returned (docs:
+<https://code.claude.com/docs/en/hooks>, SessionEnd section). A per-hook
+`timeout` raises the budget (up to 60 s) only when it is set in your own
+settings files; timeouts declared by a **plugin** hook do not raise it, and
+`CLAUDE_CODE_SESSIONEND_HOOKS_TIMEOUT_MS` (set in the launching shell) overrides
+it explicitly. Hooks for one event run in parallel.
+
+So the himmel-ops `SessionEnd` entries (declared `timeout: 3`) really run under
+1.5 s. Their parents full-body detach (`__himmel_detached` + `lib/detach.sh`) and
+return in about 50 ms each (measured 40–70 ms over 5 runs per hook, on a host at
+load ~24 from other sessions; `test-session-end-timeout-budget.sh` pins the
+detach with an injected 10 s child delay). A cancel means the hook did not
+return before the shared budget; under severe load that can include failing to
+start or return from the detached parent. The lost work is classified:
+
+| hook | class | a cancel costs |
+|---|---|---|
+| `refresh-where-are-we-on-end.sh` | next-start catch-up | stale digest; `inject-where-are-we.sh` re-spawns the refresh at the next SessionStart when the ledger is older than `HIMMEL_WHERE_ARE_WE_STALE_HOURS` |
+| `jira-nudge-on-end.sh` | best-effort | one advisory Jira line |
+| `telegram-session-end.sh` | best-effort | one Telegram end message |
+| `session-lifecycle-hook.mjs` (openai-codex plugin, not ours) | best-effort | the Codex broker and job state are not torn down; nothing himmel reads (no ledger, no HUD, no `HimmelSessionDead` input). `bump-codex-sessionend-timeout.sh` cannot raise it, because plugin timeouts do not raise the budget |
+
+Guaranteed regardless of a cancel: the armed-resume launcher's own end path
+(flow-run ledger `--classify` / `--append-end`, `scripts/handover/arm-resume.sh`)
+runs from the launcher, not a hook, so the flow ledger is intact. Not guaranteed:
+the session-runs end row (`session-run-hook.ts`, enqueued through
+`stop-queue.mjs` from `.claude/settings.json`). A cancel there leaves a ghost
+session that `session_dead_total` / `HimmelSessionDead` (severity `warn`) counts
+as dead; `stop-queue.mjs` writes its `attempt` row first, so the cancel is
+visible in `queue.jsonl`.

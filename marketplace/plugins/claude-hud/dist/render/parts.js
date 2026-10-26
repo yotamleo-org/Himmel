@@ -6,7 +6,7 @@ import { formatModelName, getProviderLabel, isClaudexLane, resolveModelName } fr
 import { t } from '../i18n/index.js';
 import { formatTokens } from '../utils/format.js';
 import { getFileHref, safeHyperlink } from '../utils/hyperlinks.js';
-import { sanitizeDisplayText } from '../utils/sanitize.js';
+import { displayLabel, sanitizeDisplayText } from '../utils/sanitize.js';
 import { truncateString } from '../utils/truncate.js';
 import { custom, dim, label, model as modelColor, project as projectColor } from './colors.js';
 import { claudeCodeVersion, effort, sessionCostUsd, sessionDuration, sessionName } from './derive.js';
@@ -110,7 +110,7 @@ export function advisorPart(f) {
     const display = f.config?.display;
     if (display?.showAdvisor !== true)
         return null;
-    const clean = (value) => (typeof value === 'string' ? sanitizeDisplayText(value.trim()).slice(0, ADVISOR_MAX_LENGTH) : '');
+    const clean = (value) => displayLabel(value, ADVISOR_MAX_LENGTH);
     const override = clean(display.advisorOverride);
     const name = override || clean(prettifyAdvisorId(clean(f.transcript?.advisorModel)));
     return name ? `${label(`${t('label.advisor')}:`, f.config?.colors)} ${name}` : null;

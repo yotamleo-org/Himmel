@@ -64,6 +64,7 @@ marketplace/plugins/obsidian-triage/tests/test-luna-upgrade-skill.sh	local	behav
 marketplace/plugins/obsidian-triage/tests/test-migrate-clip-lifecycle.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-playwright-crawl.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-repo-security-scan.sh	pr	guard
+marketplace/plugins/obsidian-triage/tests/test-requirements-resolve-ci-mode.sh	pr	static-gate
 marketplace/plugins/obsidian-triage/tests/test-requirements-resolve.sh	pr	static-gate
 marketplace/plugins/obsidian-triage/tests/test-roadmap-aggregate.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/obsidian-triage/tests/test-scrape-backends.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -361,6 +362,7 @@ scripts/handover/chief-kit/test-action-zero.sh	local	behaviour suite, 0 catches 
 scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
+scripts/handover/chief-kit/test-chain-graph.sh	local	behaviour suite, hermetic report script, no gate role
 scripts/handover/chief-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ci-guardrail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
@@ -1155,3 +1157,4 @@ scripts/ci/test-billed-optin.sh	pr	trust-path
 scripts/ci/test-ci-go-gate.sh	pr	trust-path
 scripts/lanes/bench/scorecard/test-review-rounds.sh	local	behaviour suite, new in HIMMEL-7636
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/steering-cull/test-steering-cull.sh	local	behaviour suite, new HIMMEL-7694

@@ -1126,12 +1126,15 @@ JIRA_BASE_URL=https://example.atlassian.net
 JIRA_EMAIL=me@example.com
 JIRA_PROJECT_KEY=HIMMEL
 ENV
+# an empty HOME for every jira-env-keys row: the probe also reads
+# $HOME/.himmel/himmel.conf, and these rows must never see the operator's own.
+sk3_home="$work/sk3-home"; mkdir -p "$sk3_home"
 
 outSK3p=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'jira-env-keys');
-const ctx = { repoRoot: '$(winpath "$sk3_repo_present")', targetPath: '$repo_root_w', scope: 'project', env: process.env };
+const ctx = { repoRoot: '$(winpath "$sk3_repo_present")', targetPath: '$repo_root_w', scope: 'project', env: { ...process.env, HOME: '$(winpath "$sk3_home")' } };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK3p" | jq -e '.actual == "present"' >/dev/null || fail "settings-key .env all-keys present: (got: $outSK3p)"
@@ -1139,13 +1142,51 @@ outSK3a=$("$node_bin" -e "
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'jira-env-keys');
-const ctx = { repoRoot: '$(winpath "$sk3_repo_missing")', targetPath: '$repo_root_w', scope: 'user', env: process.env };
+const ctx = { repoRoot: '$(winpath "$sk3_repo_missing")', targetPath: '$repo_root_w', scope: 'user', env: { ...process.env, HOME: '$(winpath "$sk3_home")' } };
 console.log(JSON.stringify(runProbe(item, ctx)));
 ")
 echo "$outSK3a" | jq -e '.actual == "absent"' >/dev/null || fail "settings-key .env missing-one-key absent: (got: $outSK3a)"
 echo "$outSK3a" | jq -e '.detail | contains("JIRA_API_TOKEN")' >/dev/null \
   || fail "settings-key .env absent detail should name the missing key JIRA_API_TOKEN (got: $outSK3a)"
 echo "ok: settings-key .env ALL-keys-required (jira-env-keys), resolves against repoRoot for both scopes"
+
+# The Jira CLI reads JIRA_EMAIL and JIRA_PROJECT_KEY from
+# $HOME/.himmel/himmel.conf (then himmel.conf.local first), so an .env without
+# them is a working setup. The conf fixture is the real himmel.conf shape.
+sk3_conf_repo="$work/sk3-conf-repo"; mkdir -p "$sk3_conf_repo"
+cat > "$sk3_conf_repo/.env" <<'ENV'
+JIRA_BASE_URL=https://example.atlassian.net
+JIRA_API_TOKEN=tok123
+ENV
+sk3_conf_home="$work/sk3-conf-home"; mkdir -p "$sk3_conf_home/.himmel"
+cat > "$sk3_conf_home/.himmel/himmel.conf" <<'CONF'
+TRACKER=jira
+TICKET_ID_REQUIRED=1
+HIMMEL_WHERE_ARE_WE=1
+USER_SLUG=someone
+JIRA_EMAIL=me@example.com
+JIRA_PROJECT_KEY=HIMMEL
+JIRA_CLOUD_ID=00000000-0000-0000-0000-000000000000
+JIRA_PROJECTS=HIMMEL,LUNA
+CONF
+sk3_confhalf_home="$work/sk3-confhalf-home"; mkdir -p "$sk3_confhalf_home/.himmel"
+printf 'JIRA_EMAIL=me@example.com\n' > "$sk3_confhalf_home/.himmel/himmel.conf"
+sk3_conf_probe() {  # sk3_conf_probe <repo dir> <home dir> -> prints the probe JSON
+  "$node_bin" -e "
+const { runProbe } = require('$probes_lib_w');
+const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
+const item = manifest.items.find((i) => i.id === 'jira-env-keys');
+const ctx = { repoRoot: '$(winpath "$1")', targetPath: '$repo_root_w', scope: 'project', env: { ...process.env, HOME: '$(winpath "$2")' } };
+console.log(JSON.stringify(runProbe(item, ctx)));
+"
+}
+out=$(sk3_conf_probe "$sk3_conf_repo" "$sk3_conf_home")
+echo "$out" | jq -e '.actual == "present"' >/dev/null \
+  || fail "HIMMEL-7712: JIRA_EMAIL/JIRA_PROJECT_KEY in ~/.himmel/himmel.conf must satisfy jira-env-keys (got: $out)"
+out=$(sk3_conf_probe "$sk3_conf_repo" "$sk3_confhalf_home")
+echo "$out" | jq -e '.actual == "absent" and (.detail | contains("JIRA_PROJECT_KEY")) and (.detail | contains("JIRA_EMAIL") | not)' >/dev/null \
+  || fail "HIMMEL-7712: a himmel.conf holding only JIRA_EMAIL must still name JIRA_PROJECT_KEY as missing (got: $out)"
+echo "ok: HIMMEL-7712 jira-env-keys reads JIRA_EMAIL and JIRA_PROJECT_KEY from ~/.himmel/himmel.conf"
 
 # `cleanAbsence` marks a jira-env-keys that was NEVER set up (no
 # .env at all, or an .env defining none of the four keys) so status-report can
@@ -1162,7 +1203,7 @@ sk3_clean_flag() {  # sk3_clean_flag <repo dir> -> prints the probe JSON
 const { runProbe } = require('$probes_lib_w');
 const manifest = JSON.parse(require('fs').readFileSync('$manifest_w', 'utf8'));
 const item = manifest.items.find((i) => i.id === 'jira-env-keys');
-const ctx = { repoRoot: '$(winpath "$1")', targetPath: '$repo_root_w', scope: 'project', env: process.env };
+const ctx = { repoRoot: '$(winpath "$1")', targetPath: '$repo_root_w', scope: 'project', env: { ...process.env, HOME: '$(winpath "$sk3_home")' } };
 console.log(JSON.stringify(runProbe(item, ctx)));
 "
 }

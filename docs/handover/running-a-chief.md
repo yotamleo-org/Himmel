@@ -250,6 +250,9 @@ collisions, draft specs for the next priority items, else idle);
 itself). A bare `--bucket himmel` resolves to `<handover-root>/<user>/himmel`;
 `--no-worktree` refuses a worker whose worktree does not exist and prints the
 `worktree.sh new` line to run.
+Before dispatching a chain of PRs, `python3 scripts/handover/chief-kit/chain-graph.py --prs <n>,<n>,...`
+prints the pairwise hard and soft edges between them (read-only; `--json` for scripts, `--head PR=SHA`
+to pin a PR to an older head).
 `capacity=unknown` (`fleet=?`) means the census could not be read, not that
 capacity is fine.
 

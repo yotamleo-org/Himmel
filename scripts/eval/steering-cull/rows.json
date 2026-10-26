@@ -1,0 +1,90 @@
+{
+  "_comment": "The approved steering-cull rows (decision 345, specs/proposal/steering-cull-2026-10-26.md). num is the operator's row number from the review batches; lines are the proposal's line ranges in the baseline fixture. Each row edits one span of one file: CUT replaces old with cut, RED deletes old entirely. Rows ruled no (10, 13) and the installer-owned rows (repo ## graphify, user # graphify, @RTK.md) are not here.",
+  "files": {
+    "repo": "fixtures/baseline/repo-CLAUDE.md",
+    "user": "fixtures/baseline/user-CLAUDE.md",
+    "rtk": "fixtures/baseline/RTK.md"
+  },
+  "rows": [
+    {
+      "id": "r1-git-workflow", "num": "1", "scope": "repo", "lines": "CLAUDE.md:12-13", "ruling": "yes: one line plus the enforced tags",
+      "old": "- Feature work in git worktrees; never edit or commit on main. [enforced: block-edit-on-main]\n- All changes via PR, ≥1 approval, no direct push. [enforced: no-push-to-main]\n",
+      "cut": "- Work in a worktree and land via PR; never edit, commit or push on main. [enforced: block-edit-on-main, no-push-to-main]\n"
+    },
+    {
+      "id": "r2-trailers", "num": "2", "scope": "repo", "lines": "CLAUDE.md:16-18", "ruling": "yes: one line plus the stuck-playbook pointer",
+      "old": "- Attestation trailers (`Platforms tested: <os>`, `Security reviewed: <token>`)\n  go in the **FIRST commit**; never `git commit --amend`. Recovery:\n  `docs/internals/stuck-playbook.md`. [enforced: security-reviewed]\n",
+      "cut": "- Trailers `Platforms tested: <os>` and `Security reviewed: <token>` go in the FIRST commit; never `--amend` (recovery: `docs/internals/stuck-playbook.md`). [enforced: security-reviewed]\n"
+    },
+    {
+      "id": "r3-jira", "num": "3", "scope": "repo", "lines": "CLAUDE.md:20-26", "ruling": "yes: keep the absolute-path gotcha, cut the MCP and shim lines",
+      "old": "### Jira — prefer plugin over MCP\nNever reach for the Atlassian MCP first. Invoke by ABSOLUTE path from the\nprimary checkout — `node <repo-root>/scripts/jira/dist/index.js <op>` — never\nrelative from a worktree (`dist/` is an untracked build artifact; a worktree\nlacks it → MODULE_NOT_FOUND), never the global `jira` shim.\n`JIRA_PROJECT_KEY` is required. CLI-over-MCP routing is enforced by\n`block-backend-tier.sh`; ops + op↔MCP mapping: `docs/internals/jira-plugin.md`.\n",
+      "cut": "### Jira\nRun `node <primary-checkout>/scripts/jira/dist/index.js <op>` by ABSOLUTE path, never\nrelative from a worktree (`dist/` is untracked there); `JIRA_PROJECT_KEY` is required.\nOps: `docs/internals/jira-plugin.md`.\n"
+    },
+    {
+      "id": "r4-billing", "num": "4", "scope": "repo", "lines": "CLAUDE.md:28-33", "ruling": "yes: the one-line same-budget fact plus the pointer",
+      "old": "### Claude invocation billing\nSubscription-authenticated `claude -p`/`--print`/`--bg` draws the SAME 5-hour /\nweekly budget as interactive use. Unattended sites preflight with\n`scripts/lib/bank-preflight.sh`, parse `--output-format json`, and declare an\nexplicit `--permission-mode` (never `bypassPermissions`).\nDetail: `docs/internals/enforcement.md#claude-invocation-billing`.\n",
+      "cut": "### Claude invocation billing\nSubscription `claude -p` draws the SAME 5-hour / weekly budget as interactive use:\n`docs/internals/enforcement.md#claude-invocation-billing`.\n"
+    },
+    {
+      "id": "r5-invariants", "num": "5", "scope": "repo", "lines": "CLAUDE.md:45-53", "ruling": "partial: keep single-writer and the RETASK nonce line, the rest behind retask-channel.md and lane-calibration.md",
+      "old": "Invariants: spawn depth and concurrency are capped by\n`CLAUDE_CODE_MAX_SUBAGENT_SPAWN_DEPTH` / `CLAUDE_CODE_MAX_CONCURRENT_SUBAGENTS`;\nhaiku does NOT spawn; single-writer (many readers, ONE writer); salus dev/impl\nwork routes to Claude tiers + Codex lanes only (never GLM), while salus PHI\negress is governed by `scripts/guardrails/egress-matrix.json`. Every dispatch\ncarries a RETASK block with a fresh nonce; a revision arrives only as a direct\nmessage quoting it (a narrowing or halt needs no token), never widens\npermissions. Tiers, cost, live inventory:\n`docs/internals/lane-calibration.md`, `/lanes`, `docs/internals/retask-channel.md`.\n",
+      "cut": "Invariants: single-writer (many readers, ONE writer); every dispatch carries a RETASK\nblock with a fresh nonce, and a revision counts only as a direct message quoting it.\nDetail: `docs/internals/retask-channel.md`, `docs/internals/lane-calibration.md`.\n"
+    },
+    {
+      "id": "r6-adding-a-rule", "num": "6", "scope": "repo", "lines": "CLAUDE.md:55-59", "ruling": "partial: keep the second-drift line",
+      "old": "### Adding a rule — pick the cheapest layer\nDefault to lean-invoke (a slash command). Escalate to always-on only for\nsafety-critical (hook/gate) or frame-shaping (this file). **Structural >\ninstructional**: on the second drift escalate to a hook or gate, never stronger\nprose. `docs/internals/context-architecture.md`.\n",
+      "cut": "### Adding a rule\n**Structural > instructional**: on the second drift escalate to a hook or gate, never\nstronger prose. `docs/internals/context-architecture.md`.\n"
+    },
+    {
+      "id": "l64-history-comments", "num": "LOW", "scope": "repo", "lines": "CLAUDE.md:64", "ruling": "LOW, folded in by default: enforced by no-history-comments",
+      "old": "- Other code comments: keep list only, no ticket/review history. [enforced: no-history-comments]\n",
+      "cut": ""
+    },
+    {
+      "id": "l65-specs-location", "num": "LOW", "scope": "repo", "lines": "CLAUDE.md:65-67", "ruling": "LOW, folded in by default: duplicated by the memory index",
+      "old": "- Operator reference docs → the owning repo's `docs/`; internal specs, plans\n  and decision records → the state repo bucket `specs/<type>/`, never himmel\n  `docs/`; vault content stays in luna. [prose]\n",
+      "cut": ""
+    },
+    {
+      "id": "l70-memory-routes", "num": "LOW", "scope": "repo", "lines": "CLAUDE.md:70-71", "ruling": "LOW, folded in by default: duplicates the MEMORY.md header",
+      "old": "`MEMORY.md` routes, it does not store: on a surprising symptom read the theme\nfile its keyword names. ",
+      "cut": ""
+    },
+    {
+      "id": "l71-qmd-graphify", "num": "LOW", "scope": "repo", "lines": "CLAUDE.md:71-73", "ruling": "LOW, folded in by default: restates the graphify section and the memory routing",
+      "old": "qmd finds content (scope with `-c <name>`; a miss is\nnot proof of absence). graphify explains structure (`graphify query|explain|path`).\n",
+      "cut": ""
+    },
+    {
+      "id": "l88-enforcement-inventory", "num": "LOW", "scope": "repo", "lines": "CLAUDE.md:88-89", "ruling": "LOW, folded in by default: the [enforced] tags already say it",
+      "old": "Hooks plus pre-commit/commit-msg/pre-push gates; the live inventory is\n`.claude/settings.json` and `.pre-commit-config.yaml`. ",
+      "cut": ""
+    },
+    {
+      "id": "l98-reference-index", "num": "LOW", "scope": "repo", "lines": "CLAUDE.md:98-100", "ruling": "LOW, folded in by default: keep only the claude-md-detail.md pointer",
+      "old": "All under `docs/`: `internals/claude-md-detail.md` (full wording of every\nrule condensed above), `internals/harness-compat.md`, `internals/testing.md`,\n`handover/afk-mode.md`, `glossary.md`, `handover/running-a-chief.md`,\n`internals/prompt-cache.md`, `internals/headless-modes.md`.\n",
+      "cut": "`docs/internals/claude-md-detail.md`: the full wording of every rule condensed above.\n"
+    },
+    {
+      "id": "u8-read-first", "num": "8", "scope": "user", "lines": "~/.claude/CLAUDE.md:8-9", "ruling": "yes: keep only the second-bug reason",
+      "old": "- Read the code the change touches before editing it. Trace the real flow end\n  to end; the smallest change in the wrong place is a second bug.\n",
+      "cut": "- The smallest change in the wrong place is a second bug.\n"
+    },
+    {
+      "id": "u9-simpler-approach", "num": "9", "scope": "user", "lines": "~/.claude/CLAUDE.md:13", "ruling": "yes: cut, section 2 covers simplicity",
+      "old": "- If a simpler approach exists, say so and take it unless told otherwise.\n",
+      "cut": ""
+    },
+    {
+      "id": "u11-preamble", "num": "11", "scope": "user", "lines": "~/.claude/CLAUDE.md:3-4", "ruling": "partial: keep 'Use judgement on trivial tasks'",
+      "old": "General engineering defaults for every project. A project's own CLAUDE.md adds\nits invariants; it does not repeat these. Use judgement on trivial tasks.\n",
+      "cut": "Use judgement on trivial tasks.\n"
+    },
+    {
+      "id": "u12-surgical", "num": "12", "scope": "user", "lines": "~/.claude/CLAUDE.md:23-26", "ruling": "yes: keep the dead-code and changed-line lines",
+      "old": "Touch only what the task requires. Match the existing style, even where you\nwould do it differently. Do not refactor what is not broken. Remove only the\norphans your own change created; mention unrelated dead code rather than\ndeleting it. Every changed line traces to the request.\n",
+      "cut": "Mention unrelated dead code rather than deleting it. Every changed line traces to\nthe request.\n"
+    }
+  ]
+}

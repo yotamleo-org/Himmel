@@ -378,6 +378,7 @@ scripts/handover/chief-kit/test-action-zero.sh	4
 scripts/handover/chief-kit/test-append-results.sh	0
 scripts/handover/chief-kit/test-board.sh	15
 scripts/handover/chief-kit/test-brief-lint.sh	3
+scripts/handover/chief-kit/test-chain-graph.sh	3
 scripts/handover/chief-kit/test-ci-guardrail.sh	3
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	20
 scripts/handover/chief-kit/test-compacted-check.sh	0
@@ -1137,3 +1138,4 @@ scripts/ci/test-billed-optin.sh	10
 scripts/ci/test-ci-go-gate.sh	1
 scripts/lanes/bench/scorecard/test-review-rounds.sh	1
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	3
+scripts/eval/steering-cull/test-steering-cull.sh	13

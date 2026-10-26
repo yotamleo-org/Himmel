@@ -1,4 +1,4 @@
-import { sanitizeDisplayText } from './utils/sanitize.js';
+import { displayLabel } from './utils/sanitize.js';
 export const TRANSCRIPT_MODEL_MAX_LEN = 80;
 /**
  * Normalize model IDs read from transcripts or their cache before display.
@@ -6,10 +6,6 @@ export const TRANSCRIPT_MODEL_MAX_LEN = 80;
  * OSC, control, and bidi sequences and keep the retained value bounded.
  */
 export function sanitizeTranscriptModel(value) {
-    if (typeof value !== 'string') {
-        return undefined;
-    }
-    const sanitized = sanitizeDisplayText(value).trim().slice(0, TRANSCRIPT_MODEL_MAX_LEN);
-    return sanitized || undefined;
+    return displayLabel(value, TRANSCRIPT_MODEL_MAX_LEN) || undefined;
 }
 //# sourceMappingURL=model-source.js.map

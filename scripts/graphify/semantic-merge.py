@@ -98,6 +98,20 @@ def ignored_dirs(root):
                     print("semantic-merge: ignoring unsafe .graphify-corpus-ignore entry '%s'" % line, file=sys.stderr)
                     continue
                 dirs.append(line + "/")
+    # graphify itself drops what .graphifyignore lists, so a .md under one of its
+    # plain directory entries would be planned on every run and never extracted.
+    # ponytail: plain `dir/` entries only (no glob), and none at all once the file holds a `!` re-include; a .md under a glob pattern still backs off.
+    path = os.path.join(root, ".graphifyignore")
+    if os.path.exists(path):
+        with open(path, encoding="utf-8") as f:
+            lines = [line.strip() for line in f]
+        if not any(line.startswith("!") for line in lines):
+            for line in lines:
+                if not line.endswith("/") or line.startswith("#") or any(c in line for c in "*?["):
+                    continue
+                line = line.strip("/")
+                if line and ".." not in line.split("/"):
+                    dirs.append(line + "/")
     return dirs
 
 
@@ -431,8 +445,20 @@ def cmd_merge(a):
     # old items kept, file unstamped, retried next run. A model that returns a
     # thin subset must not silently erase real facts (pr-check doc 25 to 1).
     # ponytail: nodes between 50 and 100 percent of the old count still replace the file's items, add a per-node union if semantic-runs.jsonl shows losses there. A file omitted every run is retried up to MAX_ATTEMPTS, then backed off until its content changes, see HIMMEL-4199.
+    #
+    # A file refused on the same content MAX_ATTEMPTS times is not a model fluke:
+    # the file really is that thin (a page cut down to a pointer), so the last
+    # attempt is accepted instead of pinning the stale nodes forever.
+    m = load_manifest(a.out)
+    files, stuck = m.get("files", {}), m.get("stuck", {})
+
+    def last_attempt(f):
+        rec = stuck.get(f)
+        return (bool(rec) and rec.get("hash") == sha256(os.path.join(a.scratch, f))
+                and rec.get("reason", "").startswith("shrink guard") and rec.get("attempts", 0) >= MAX_ATTEMPTS - 1)
+
     produced = {n.get("source_file") for n in new_nodes}
-    refused = sorted(f for f in batch & produced if shrinks(g["nodes"], new_nodes, f))
+    refused = sorted(f for f in batch & produced if shrinks(g["nodes"], new_nodes, f) and not last_attempt(f))
     reasons = {}
     for f in refused:
         reasons[f] = "shrink guard: new %d vs old %d semantic nodes" % (count_semantic(new_nodes, f), count_semantic(g["nodes"], f))
@@ -486,8 +512,6 @@ def cmd_merge(a):
     # manifest: a file is stamped only once its graph content landed, and a
     # crash between the two leaves it unstamped, so the next run re-replaces it
     # by source_file (idempotent).
-    m = load_manifest(a.out)
-    files, stuck = m.get("files", {}), m.get("stuck", {})
     ts = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     for rel in plan["deleted"]:
         files.pop(rel, None)
