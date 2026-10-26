@@ -1288,7 +1288,7 @@ mkdir -p "$REAL_WT/.codex"
 git -C "$REAL_WT" init -q -b main
 cat > "$REAL_WT/.codex/hooks.json" <<'EOF'
 {"hooks":{
-"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":".codex/run-hook.sh --sandbox guard-worker-context-handoff.sh","commandWindows":".codex/run-hook.cmd --sandbox guard-worker-context-handoff.sh","timeout":15}]}],
+"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":".codex/run-hook.sh --sandbox guard-leg-context-handoff.sh","commandWindows":".codex/run-hook.cmd --sandbox guard-leg-context-handoff.sh","timeout":15}]}],
 "PostToolUse":[{"matcher":"Bash","hooks":[
 {"type":"command","command":".codex/run-hook.sh --sandbox detect-dirty-primary.sh","commandWindows":".codex/run-hook.cmd --sandbox detect-dirty-primary.sh","timeout":15},
 {"type":"command","command":".codex/run-hook.sh --sandbox memory-bash-line-check.sh","commandWindows":".codex/run-hook.cmd --sandbox memory-bash-line-check.sh","timeout":15}]}],

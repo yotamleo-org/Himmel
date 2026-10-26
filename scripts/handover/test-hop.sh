@@ -59,9 +59,9 @@ assert_contains "T1 embeds message in snapshot body" "test message" "$out"
 assert_contains "T1 operator command applies --settings" "claude --settings '" "$out"
 assert_contains "T1 default role profile is user" "/user.json'" "$out"
 out=$(env HIMMEL_CONSOLE_DOC=/x/doc.md bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
-assert_contains "T1 chief hop uses the chief profile" "/console.json'" "$out"
+assert_contains "T1 chief hop uses the chief profile" "/chief.json'" "$out"
 out=$(env HIMMEL_CONSOLE_LEG=1 bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
-assert_contains "T1 worker hop uses worker-impl" "/leg-impl.json'" "$out"
+assert_contains "T1 worker hop uses worker-impl" "/worker-impl.json'" "$out"
 out=$(env HOP_PROFILE=bare HIMMEL_CONSOLE_DOC=/x/doc.md bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
 assert_contains "T1 HOP_PROFILE overrides the inferred role" "/bare.json'" "$out"
 out=$(env HOP_PROFILE=no-such-profile bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
@@ -77,7 +77,7 @@ printf '# worker\nRETASK token T-x\n' > "$TMP/plain-worker.md"
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/design-worker.md" --message m --print --dry-run 2>&1)
 assert_contains "T1b --doc with an explicit profile hops as design" "/design.json'" "$out"
 out=$(bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/plain-worker.md" --message m --print --dry-run 2>&1)
-assert_contains "T1b --doc worker doc hops as worker-impl" "/leg-impl.json'" "$out"
+assert_contains "T1b --doc worker doc hops as worker-impl" "/worker-impl.json'" "$out"
 out=$(env HIMMEL_CONSOLE_DOC="$TMP/design-worker.md" bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --message m --print --dry-run 2>&1)
 assert_contains "T1b HIMMEL_CONSOLE_DOC file is read for its role" "/design.json'" "$out"
 out=$(env HOP_PROFILE=bare bash "$HOP" --handover-root "$TMP/handovers/$SLUG" --doc "$TMP/design-worker.md" --message m --print --dry-run 2>&1)

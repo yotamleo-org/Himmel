@@ -57,7 +57,7 @@ check "dot branch has no lease dir" "$rc" "1"
 export RENDER_LEASE_DIR="$tmp/reg-lifecycle"
 rc=0; render_lease_claim 'feat/worker' "$tmp/wt" 2>/dev/null || rc=$?
 check "fresh claim acquires" "$rc" "0"
-lease_dir="$RENDER_LEASE_DIR/feat+2Fleg"
+lease_dir="$RENDER_LEASE_DIR/feat+2Fworker"
 check "claim writes branch field" "$(render_lease_field "$lease_dir" branch)" "feat/worker"
 check "claim writes worktree field" "$(render_lease_field "$lease_dir" worktree)" "$tmp/wt"
 check "claim records launching status" "$(render_lease_field "$lease_dir" status)" "launching"

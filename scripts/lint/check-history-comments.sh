@@ -58,7 +58,7 @@ function in_scope(p) {
 function output_segment(p, code, text) {
     if (p ~ /\.(sh|bash|zsh)$/ && match(code, /(^|[(){}])[ \t]*((then|do|else)[ \t]+)?([0-9]*>&[0-9]+[ \t]*)?(echo|printf|die|warn|say)[ \t]+/))
         return substr(text, RSTART) ~ /HIMMEL-[0-9]+/
-    if (p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/ && match(code, /(^|[{}])[ \t]*(chief\.(log|error|warn)|process\.(stdout|stderr)\.write)[ \t]*\(/))
+    if (p ~ /\.(js|mjs|cjs|ts|tsx|mts|cts)$/ && match(code, /(^|[{}])[ \t]*(console\.(log|error|warn)|process\.(stdout|stderr)\.write)[ \t]*\(/))
         return substr(text, RSTART) ~ /HIMMEL-[0-9]+/
     if (p ~ /\.py$/ && match(code, /(^|:)[ \t]*(print|sys\.stderr\.write)[ \t]*\(/))
         return substr(text, RSTART) ~ /HIMMEL-[0-9]+/

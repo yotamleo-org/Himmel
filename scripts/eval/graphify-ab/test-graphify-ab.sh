@@ -22,8 +22,8 @@ sizes="$(py "$HERE/truth.py" compute | py -c 'import json,sys; d=json.load(sys.s
 eq "truth sizes (go,graphify-bin,mustrun,qmd-profiles,trust)" "6,6,16,3,7" "$sizes"
 
 # 2. scorer: exact, near-miss (RED control), unparsed.
-printf 'blah\nANSWER: ["console-judge", "worker-impl", "telegram"]\n' > "$W/ok.txt"
-printf 'ANSWER: ["worker-impl", "telegram"]\n' > "$W/miss.txt"
+printf 'blah\nANSWER: ["console-judge", "leg-impl", "telegram"]\n' > "$W/ok.txt"
+printf 'ANSWER: ["leg-impl", "telegram"]\n' > "$W/miss.txt"
 printf 'no answer line here\n' > "$W/none.txt"
 c() { py "$HERE/truth.py" score --truth qmd-only-profiles --answer "$1" | py -c 'import json,sys; d=json.load(sys.stdin); print(d["correct"], d["parsed"], round(d["recall"],2))'; }
 eq "scorer: exact set is correct" "True True 1.0" "$(c "$W/ok.txt")"
@@ -40,7 +40,7 @@ cat > "$W/claude" <<'STUB'
 sp=""; while [ $# -gt 0 ]; do [ "$1" = "--append-system-prompt" ] && sp="$2"; shift; done
 case "$sp" in
   *worker-graph*) ans='ANSWER: ["wrong"]' ;;
-  *) ans='ANSWER: ["console-judge", "worker-impl", "telegram"]' ;;
+  *) ans='ANSWER: ["console-judge", "leg-impl", "telegram"]' ;;
 esac
 printf '{"result":"%s","is_error":false,"session_id":"s","num_turns":3,"total_cost_usd":0.1,"usage":{"input_tokens":10,"output_tokens":20,"cache_creation_input_tokens":100,"cache_read_input_tokens":1000}}\n' "$(printf '%s' "$ans" | sed 's/"/\\"/g')"
 STUB
@@ -95,7 +95,7 @@ bash "$HERE/run.sh" plan --tasks no-such-task > /dev/null 2>&1
 eq "unknown --tasks id is refused (exit 2)" "2" "$?"
 bash "$HERE/run.sh" plan --reps 0 > /dev/null 2>&1
 eq "--reps 0 is refused (exit 2)" "2" "$?"
-printf 'ANSWER: ["console-judge", "worker-impl", "telegram"]\nANSWER: not-json\n' > "$W/late-bad.txt"
+printf 'ANSWER: ["console-judge", "leg-impl", "telegram"]\nANSWER: not-json\n' > "$W/late-bad.txt"
 eq "malformed final ANSWER line is unparsed, not the earlier answer" "False False 0.0" "$(c "$W/late-bad.txt")"
 T="$W/projects/-tmp-x"; mkdir -p "$T"
 printf '%s\n%s\n' \

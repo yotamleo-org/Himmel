@@ -246,7 +246,7 @@ check_contains "coverage: an out-of-window transcript is counted as skipped with
 # session is its own `unattributed` row, not folded into `other`. Reuses
 # test-scorecard.sh's role-chief-slug fixture (a real worker name whose slug
 # contains `console`, a genuine chief, an untitled and a titled non-participant).
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-chief-slug"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-console-slug"
 RCS_OUT=$("$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check "role-chief-slug: the worker with 'console' in its slug is a worker row, not chief" \
     "$(session_count "$RCS_OUT" worker)" "1"

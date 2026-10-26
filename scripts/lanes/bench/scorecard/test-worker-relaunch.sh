@@ -55,7 +55,7 @@ check() {
 }
 
 # --- (a) usage: missing --since -> exit 2
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/main"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/main"
 "$RELAUNCH" >/dev/null 2>&1
 check_exit "usage: missing --since exits 2" "$?" "2"
 
@@ -64,19 +64,19 @@ check_exit "usage: missing --since exits 2" "$?" "2"
 check_exit "usage: unknown argument exits 2" "$?" "2"
 
 # --- (c) SCORECARD_HANDOVER_DIR pointed at a nonexistent path -> exit 2
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/does-not-exist"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/does-not-exist"
 "$RELAUNCH" --since 2026-01-01T00:00:00Z >/dev/null 2>&1
 check_exit "handover dir: nonexistent SCORECARD_HANDOVER_DIR exits 2" "$?" "2"
 
 # --- (d)-(h) main: an original doc (no RUN block, one BLOCKED bullet) and its
 # "b"-successor (RUN 2 NOTE, one WRAPPED...BLOCKED bullet)
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/main"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/main"
 MAIN_OUT=$("$RELAUNCH" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "main: exits 0" "$?" "0"
 check_contains "main: no RUN block defaults to runs=1, relaunches=0" \
-    "$MAIN_OUT" "$(printf 'legN9200\t1\t0\t1\t0\t')"
+    "$MAIN_OUT" "$(printf 'workerN9200\t1\t0\t1\t0\t')"
 check_contains "main: a RUN 2 NOTE block yields runs=2, relaunches=1" \
-    "$MAIN_OUT" "$(printf 'legN9200\t2\t1\t0\t1\t')"
+    "$MAIN_OUT" "$(printf 'workerN9200\t2\t1\t0\t1\t')"
 check_contains "main: TOTAL row aggregates n/relaunches/blocked/wrapped across both docs" \
     "$MAIN_OUT" "$(printf 'TOTAL(n=2)\t-\t1 (mean 0.50)\t1 (mean 0.50)\t1\t-')"
 check_contains "main: coverage triple beside the TOTAL row" \
@@ -85,35 +85,35 @@ check_contains "main: coverage triple beside the TOTAL row" \
 # --- (i) doc_date is the LAST YYYY-MM-DD substring in the filename, not the
 # first: a --since after the (wrong) first date but before the (right) last
 # date only includes the doc if the last date is what's actually used
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/two-dates"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/two-dates"
 TWO_DATES_OUT=$("$RELAUNCH" --since 2026-08-01T00:00:00Z 2>/dev/null)
 check_exit "two-dates: exits 0" "$?" "0"
 check_contains "two-dates: doc_date uses the LAST date in the filename" \
-    "$TWO_DATES_OUT" "legN9210"
+    "$TWO_DATES_OUT" "workerN9210"
 
 # --- (j) since-edge: doc_epoch >= SINCE_EPOCH is the inclusive lower edge
 # (day-truncated)
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/since-edge"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/since-edge"
 SINCE_OUT=$("$RELAUNCH" --since 2026-08-03T00:00:00Z 2>/dev/null)
 check_exit "since-edge: exits 0" "$?" "0"
 check "since-edge: only the doc dated exactly at --since's day is included" \
-    "$(printf '%s\n' "$SINCE_OUT" | grep -c '^legN')" "1"
-check_contains "since-edge: the surviving doc is the one at the boundary" "$SINCE_OUT" "legN9221"
+    "$(printf '%s\n' "$SINCE_OUT" | grep -c '^workerN')" "1"
+check_contains "since-edge: the surviving doc is the one at the boundary" "$SINCE_OUT" "workerN9221"
 
 # --- (k) until-edge: doc_epoch >= UNTIL_EPOCH is the exclusive upper edge
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/until-edge"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/until-edge"
 UNTIL_OUT=$("$RELAUNCH" --since 2026-01-01T00:00:00Z --until 2026-08-06T00:00:00Z 2>/dev/null)
 check_exit "until-edge: exits 0" "$?" "0"
 check "until-edge: a doc dated exactly at --until's day is excluded" \
-    "$(printf '%s\n' "$UNTIL_OUT" | grep -c '^legN')" "1"
-check_contains "until-edge: the surviving doc is the one before the boundary" "$UNTIL_OUT" "legN9230"
+    "$(printf '%s\n' "$UNTIL_OUT" | grep -c '^workerN')" "1"
+check_contains "until-edge: the surviving doc is the one before the boundary" "$UNTIL_OUT" "workerN9230"
 
 # --- (l) the handover-doc glob ignores filenames with no legN token/no date
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/ignore-nonmatching"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/ignore-nonmatching"
 IGNORE_OUT=$("$RELAUNCH" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "ignore-nonmatching: exits 0" "$?" "0"
 check "ignore-nonmatching: an undated filename is not picked up, and both worker spellings are" \
-    "$(printf '%s\n' "$IGNORE_OUT" | grep -c '^legN')" "2"
+    "$(printf '%s\n' "$IGNORE_OUT" | grep -c '^workerN')" "2"
 # The current `<TICKET>-N<k>-` naming is a worker doc, counted parsed;
 # only the undated file stays outside the discovered set
 check "ignore-nonmatching: the coverage triple counts the current-scheme doc as parsed" \
@@ -122,30 +122,30 @@ check "ignore-nonmatching: the coverage triple counts the current-scheme doc as 
 # --- (p) every spelling of a worker doc the harness produces is parsed
 # via scripts/lib/worker-identity.sh, and a doc that is not a worker doc stays skipped
 # with a named reason. canonical <TICKET>-N<k>-, no-N -worker<k>-, legacy -legN<k>-.
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/worker-spellings"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/leg-spellings"
 SPELL_OUT=$("$RELAUNCH" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "worker-spellings: exits 0" "$?" "0"
 check_contains "worker-spellings: canonical <TICKET>-N<k>- doc parsed (RUN 3 NOTE -> runs=3, blocked=1)" \
-    "$SPELL_OUT" "$(printf 'legN9500\t3\t2\t1\t0\t')"
+    "$SPELL_OUT" "$(printf 'workerN9500\t3\t2\t1\t0\t')"
 check_contains "worker-spellings: -worker<k>- doc with no N parsed" \
-    "$SPELL_OUT" "$(printf 'legN9501\t1\t0\t0\t0\t')"
+    "$SPELL_OUT" "$(printf 'workerN9501\t1\t0\t0\t0\t')"
 check_contains "worker-spellings: legacy -legN<k>- doc parsed (wrapped_blocked=1)" \
-    "$SPELL_OUT" "$(printf 'legN9502\t2\t1\t0\t1\t')"
+    "$SPELL_OUT" "$(printf 'workerN9502\t2\t1\t0\t1\t')"
 check "worker-spellings: the non-worker doc is not a row" \
     "$(printf '%s\n' "$SPELL_OUT" | grep -c 'mission-relaunch')" "0"
 check_contains "worker-spellings: a drift-keyed legacy doc (no <KEY>-<digits>) parsed" \
-    "$SPELL_OUT" "$(printf 'legN9503\t1\t0\t0\t0\t')"
+    "$SPELL_OUT" "$(printf 'workerN9503\t1\t0\t0\t0\t')"
 check "worker-spellings: parsed rises to 4 and the non-worker doc is still skipped with a named reason" \
     "$(printf '%s\n' "$SPELL_OUT" | grep '^coverage:')" "coverage: discovered=5 parsed=4 skipped=1 (no-worker-token=1)"
 
 # --- (m) worker numbers of differing digit counts sort numerically, not
 # lexicographically (legN9 < legN10 < legN207 < legN1000)
-export SCORECARD_HANDOVER_DIR="$HERE/fixtures/worker-relaunch/sort-order"
+export SCORECARD_HANDOVER_DIR="$HERE/fixtures/leg-relaunch/sort-order"
 SORT_OUT=$("$RELAUNCH" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "sort-order: exits 0" "$?" "0"
-WORKER_SESSION_ORDER=$(printf '%s\n' "$SORT_OUT" | grep -oE '^legN[0-9]+' | tr '\n' ',')
+WORKER_SESSION_ORDER=$(printf '%s\n' "$SORT_OUT" | grep -oE '^workerN[0-9]+' | tr '\n' ',')
 check "sort-order: workers are ordered numerically by worker number, not lexicographically" \
-    "$WORKER_SESSION_ORDER" "legN9,legN10,legN207,legN1000,"
+    "$WORKER_SESSION_ORDER" "workerN9,workerN10,workerN207,workerN1000,"
 
 # --- (n) portability guard: GNU-only `sort -V` must not appear in a script
 # whose header declares POSIX bash 3.2+
@@ -156,7 +156,7 @@ check "portability: worker-relaunch.sh does not use GNU-only sort -V" "$SORT_V_C
 # coverage line, not counted as parsed with a default run count.
 # Skipped when chmod cannot make a file unreadable (running as root).
 UNR_DIR=$(mktemp -d "${TMPDIR:-/tmp}/relaunch-unreadable.XXXXXX") || { echo "FAIL - unreadable: mktemp -d"; exit 1; }
-cp "$HERE"/fixtures/worker-relaunch/main/* "$UNR_DIR"/ || { echo "FAIL - unreadable: cp fixture"; exit 1; }
+cp "$HERE"/fixtures/leg-relaunch/main/* "$UNR_DIR"/ || { echo "FAIL - unreadable: cp fixture"; exit 1; }
 UNR_FILE=$(find "$UNR_DIR" -type f | sort | head -1)
 [ -n "$UNR_FILE" ] || { echo "FAIL - unreadable: no fixture file copied"; exit 1; }
 chmod 000 "$UNR_FILE" || { echo "FAIL - unreadable: chmod 000"; exit 1; }

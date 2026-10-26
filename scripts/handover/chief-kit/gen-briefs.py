@@ -519,7 +519,7 @@ def render_launcher(l, ctx, doc):
     lines += [
         'W=%s' % q(w),
         'mkdir -p "$W"',
-        'setsid nohup bash %s%s --profile worker-impl --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (
+        'setsid nohup bash %s%s --profile worker-impl --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: emitted launch line for one worker, bounded by its deadline
             q(ctx['repo'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,

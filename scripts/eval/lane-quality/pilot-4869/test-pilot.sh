@@ -97,7 +97,7 @@ check 'B=3.20 gives A=0.00' '[ "$(a_for 3.20)" = 0.00 ]'
 rm -rf "$TMP/root"; echo 43.77 >"$FAKE_BAL"
 evil="c 1;touch $TMP/pwned"
 bash "$P" init --chief "$evil" >/dev/null 2>&1
-check 'pilot.env round-trips a chief name with shell metacharacters' '[ "$(bash -c ". \"\$1/pilot.env\"; printf %s \"\$PILOT_CHIEF\"" _ "$TMP/root")" = "$evil" ] && [ ! -e "$TMP/pwned" ]'
+check 'pilot.env round-trips a chief name with shell metacharacters' '[ "$(bash -c ". \"\$1/pilot.env\"; printf %s \"\$PILOT_CONSOLE\"" _ "$TMP/root")" = "$evil" ] && [ ! -e "$TMP/pwned" ]'
 bash "$P" prepare p02 >/dev/null 2>&1
 elaunch="$(cat "$TMP/root/rows/p02.launch" 2>/dev/null)"
 check 'the launch wrapper shell-quotes the chief name' 'printf "%s" "$elaunch" | grep -qF -- "--chief $(printf %q "$evil") "'

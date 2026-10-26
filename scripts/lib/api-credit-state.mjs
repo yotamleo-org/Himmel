@@ -37,7 +37,7 @@ const KILL_GRACE = 5;
 // ponytail: the cost report cannot separate promotional from card spend, so
 // 'automatic-snapshot' treats all spend since the grant start as grant spend; upgrade
 // path: a promotional-credit balance endpoint, if Anthropic exposes one.
-const SOURCES = ['operator-chief-snapshot', 'automatic-snapshot'];
+const SOURCES = ['operator-console-snapshot', 'automatic-snapshot'];
 // parallel admissions queue on the ledger lock instead of failing; the
 // wait is bounded so a crashed holder still refuses, never admits.
 const LOCK_WAIT_MS = 5000;
@@ -414,17 +414,17 @@ export function pickAccount(budget, env = process.env) {
   }
 }
 
-// operator snapshot refresh from a Chief reading. The reading
+// operator snapshot refresh from a Console reading. The reading
 // already includes every job the provider has billed, so the watermark moves up
 // with it; without that the billed spend counts twice. It moves by the smaller
 // of the local spend and the billed spend added since the previous reading, so
-// spend billed earlier (outside the ledger) never hides a settlement the Chief
+// spend billed earlier (outside the ledger) never hides a settlement the Console
 // does not show yet. A new grant row starts the watermark at zero (conservative).
 // ponytail: billed spend from outside the ledger that lands in the same window
 // as an unbilled settlement is read as that settlement (exclusive_org attests
 // there is none), upgrade path: the Admin cost_report collector (task 6 of the
 // plan).
-export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-chief-snapshot', expect, pulled = false }) {
+export function refreshSnapshot(env, account, { remaining, grant, starts, expires, source = 'operator-console-snapshot', expect, pulled = false }) {
   let lock = null;
   try {
     if (!['A', 'B'].includes(account)) refuse('account-required');
@@ -559,7 +559,7 @@ export async function pullSnapshot(env, account, { fetchImpl = globalThis.fetch 
           redirect: 'error', signal: AbortSignal.timeout(15000) });
         if (!res.ok) {
           detail = res.status === 403
-            ? 'http-403: the cost report needs an Admin API key, which individual Chief accounts do not have'
+            ? 'http-403: the cost report needs an Admin API key, which individual Console accounts do not have'
             : `http-${res.status}`;
           throw new Error('http');
         }

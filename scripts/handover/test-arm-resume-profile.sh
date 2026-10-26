@@ -64,13 +64,13 @@ WORKER=$(make_doc handover-worker.md '# worker doc' 'Your RETASK token is `M-X-1
 out=$(arm --handover "$WORKER"); rc=$?
 assert_rc "T1 worker doc dry-run" 0 "$rc"
 assert_contains "T1 relaunch carries --settings" "--settings " "$out"
-assert_contains "T1 worker doc -> worker-impl profile file" "/leg-impl.json" "$out"
+assert_contains "T1 worker doc -> worker-impl profile file" "/worker-impl.json" "$out"
 
 # T2: a chief doc resumes under chief.
 CON=$(make_doc handover-chief.md '# CHIEF handover' 'body')
 out=$(arm --handover "$CON"); rc=$?
 assert_rc "T2 chief doc dry-run" 0 "$rc"
-assert_contains "T2 chief doc -> chief profile file" "/console.json" "$out"
+assert_contains "T2 chief doc -> chief profile file" "/chief.json" "$out"
 
 # T3: an explicit `profile:` line in the doc wins over the inferred role.
 # shellcheck disable=SC2016  # backticks are literal doc text
@@ -78,7 +78,7 @@ EXP=$(make_doc handover-explicit.md '# worker doc' 'profile: design' 'Your RETAS
 out=$(arm --handover "$EXP"); rc=$?
 assert_rc "T3 explicit-profile doc dry-run" 0 "$rc"
 assert_contains "T3 doc profile line selects design" "/design.json" "$out"
-assert_not_contains "T3 not the inferred worker-impl" "/leg-impl.json" "$out"
+assert_not_contains "T3 not the inferred worker-impl" "/worker-impl.json" "$out"
 
 # T4: --profile on the command line wins over the doc.
 out=$(arm --handover "$EXP" --profile bare); rc=$?
@@ -98,7 +98,7 @@ assert_rc "T6 plain doc dry-run" 0 "$rc"
 assert_contains "T6 plain doc -> user profile file" "/user.json" "$out"
 
 # T7: the resolved settings file is real and is a complete enabledPlugins map.
-LEGF=$(find "$TMP/profiles" -name leg-impl.json -type f | head -1)   # written by the arm calls above, not regenerated here
+LEGF=$(find "$TMP/profiles" -name worker-impl.json -type f | head -1)   # written by the arm calls above, not regenerated here
 # shellcheck disable=SC2015  # echo cannot fail; A && B || C is the intended guard
 [ -f "$LEGF" ] && grep -q '"enabledPlugins"' "$LEGF" \
     && echo "PASS T7 resolved settings file written" \

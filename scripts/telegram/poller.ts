@@ -1023,7 +1023,7 @@ export function makeRestart(deps: { exit?: (code: number) => never; spawnSync?: 
     }
     // spawnSync THROWS (it does not return a non-zero exitCode) when the binary
     // cannot be launched at all — no schtasks on PATH, EACCES. Unhandled, that
-    // escapes deps.restart() into autoFire's .catch(), which only chief.errors:
+    // escapes deps.restart() into autoFire's .catch(), which only console.errors:
     // the operator would be left holding the ack with the bridge still up and no
     // failure message — the precise silent no-op the rc handling below exists to
     // prevent. Same failure shape, so it takes the same path.

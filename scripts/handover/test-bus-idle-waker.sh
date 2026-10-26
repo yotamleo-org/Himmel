@@ -194,7 +194,7 @@ QPID=4646 BUS_N=2 run 3 0
 QPID_LATER=4444 BUS_N=2 run 3 0
 [ "$RUN_RC" -eq 4 ] && [ ! -s "$QLOG" ] && pass "a session whose process changed after startup is refused before the wake, rc=4" || fail "replaced target: rc=$RUN_RC, qlog: $(cat "$QLOG")"
 # A real worker's claude argv, read from /proc/<processId>/cmdline.
-mkdir -p "$tmp/proc/4545" && cp "$FIX/cmdline-worker" "$tmp/proc/4545/cmdline"
+mkdir -p "$tmp/proc/4545" && cp "$FIX/cmdline-leg" "$tmp/proc/4545/cmdline"
 : > "$QLOG"
 QPID=4545 BUS_N=2 BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" bash "$WAKER" --name HIMMEL-6343-N2734-write-verdict-affects-version-2026-10-19 \
   --service org.kde.konsole-1 --session /Sessions/3 --poll 0.2 --grace 0 --rewake 100 --max-polls 3 >/dev/null 2>&1

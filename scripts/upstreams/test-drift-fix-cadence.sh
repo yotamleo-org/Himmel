@@ -491,7 +491,7 @@ if command -v cygpath >/dev/null 2>&1; then
   assert_has "$out" "/drift-fix" "drift runner fires the /drift-fix runbook"
   assert_has "$out" "/fork-resync" "resync runner fires the /fork-resync runbook"
   # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
-  # The hidden-powershell shape still allocated chiefs; wscript allocates zero.
+  # The hidden-powershell shape still allocated consoles; wscript allocates zero.
   assert_has "$out" "<Command>wscript.exe</Command>" "task XML Exec Command is wscript.exe, not the bare .bat"
   assert_has "$out" "//B" "task XML Exec Arguments carries //B batch mode"
   assert_has "$out" "drift-fix.vbs" "drift task XML Exec Arguments references the runner shim"

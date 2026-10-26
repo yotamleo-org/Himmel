@@ -790,6 +790,8 @@ cp_crgate_deps "$RED_NOTB_ROOT/scripts/lib"
 cp "$SCRIPT_DIR/../lib/ci-green-gate.sh" "$RED_NOTB_ROOT/scripts/lib/ci-green-gate.sh"
 cp "$SCRIPT_DIR/../lib/handover-path.sh" "$RED_NOTB_ROOT/scripts/lib/handover-path.sh"
 cp "$SCRIPT_DIR/../lib/go-gate.sh" "$RED_NOTB_ROOT/scripts/lib/go-gate.sh"
+# the frozen pre-fix hook still calls go-gate.sh's old console_leg name
+printf 'console_leg() { chief_worker; }\n' >> "$RED_NOTB_ROOT/scripts/lib/go-gate.sh"
 cp "$SCRIPT_DIR/../lib/timeout-bin.sh" "$RED_NOTB_ROOT/scripts/lib/timeout-bin.sh"
 cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-himmel-3585.sh" \
     "$RED_NOTB_ROOT/scripts/hooks/block-unresolved-cr-merge.sh"
@@ -1409,6 +1411,8 @@ HOOK="$TRUST_ANCHOR/scripts/hooks/block-unresolved-cr-merge.sh"
 # RED control first: the base hook (e902b6c8, before this ticket) lets both
 # trust-path merges through — the gap this ticket closes.
 cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-himmel-3910.sh" "$HOOK"
+# the frozen pre-fix hook still calls go-gate.sh's old console_leg name
+printf 'console_leg() { chief_worker; }\n' >> "$TRUST_ANCHOR/scripts/lib/go-gate.sh"
 write_ordinary_go
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t red-control-3910-pre-fix-worker-ordinary-go-allowed 0 Bash "$PIN"

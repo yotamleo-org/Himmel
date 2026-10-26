@@ -54,7 +54,7 @@ check() {
 }
 
 # --- (a) usage: missing --since -> exit 2
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/worker-over-by-day/boundary"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/boundary"
 "$OVER_BY_DAY" >/dev/null 2>&1
 check_exit "usage: missing --since exits 2" "$?" "2"
 
@@ -63,12 +63,12 @@ check_exit "usage: missing --since exits 2" "$?" "2"
 check_exit "usage: unknown argument exits 2" "$?" "2"
 
 # --- (c) usage: missing transcript root dir -> exit 2
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/worker-over-by-day/does-not-exist"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/does-not-exist"
 "$OVER_BY_DAY" --since 2026-01-01T00:00:00Z >/dev/null 2>&1
 check_exit "usage: missing SCORECARD_PROJECTS_DIR exits 2" "$?" "2"
 
 # --- (d) --threshold-k: non-numeric -> exit 2
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/worker-over-by-day/boundary"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/boundary"
 "$OVER_BY_DAY" --since 2026-01-01T00:00:00Z --threshold-k abc >/dev/null 2>&1
 check_exit "threshold-k: non-numeric value exits 2" "$?" "2"
 
@@ -101,7 +101,7 @@ check "threshold-k custom: coverage triple sits beside the table (HIMMEL-3269)" 
 # never bucketed; the two worker-titled transcripts survive - one in the old
 # `...legN<k>...` scheme, one in the current `<TICKET>-N<k>-<slug>` scheme
 # (the legN pattern alone matched 0 of the current workers)
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/worker-over-by-day/exclusion"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/exclusion"
 EXCLUSION_OUT=$("$OVER_BY_DAY" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "exclusion: exits 0" "$?" "0"
 check "exclusion: only the worker-titled (both schemes), non-subagent transcripts are bucketed" \
@@ -116,28 +116,28 @@ check "exclusion: coverage names what was skipped and why" \
 # and an untitled session is named `unattributed`, not folded into `not-worker`.
 # Reuses test-scorecard.sh's role-chief-slug fixture: the N186 worker is the one
 # parsed session; the genuine chief and the titled non-participant are not-worker.
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-chief-slug"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-console-slug"
 RCS_OUT=$("$OVER_BY_DAY" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check "role-chief-slug: coverage counts the chief-slug worker as parsed and the untitled as unattributed" \
     "$(printf '%s\n' "$RCS_OUT" | grep '^coverage:')" \
     "coverage: roots=1 discovered=4 parsed=1 skipped=3 (not-worker=2 unattributed=1)"
 
 # --- (i) since-edge: last_epoch >= SINCE_EPOCH is inclusive
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/worker-over-by-day/since-edge"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/since-edge"
 SINCE_OUT=$("$OVER_BY_DAY" --since 2026-08-05T00:00:00Z 2>/dev/null)
 check_exit "since-edge: exits 0" "$?" "0"
 check "since-edge: only the session whose last activity is exactly at --since is included" \
     "$(printf '%s\n' "$SINCE_OUT" | awk '{s+=$1} END{print s+0}')" "1"
 
 # --- (j) until-edge: first_epoch >= UNTIL_EPOCH is exclusive
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/worker-over-by-day/until-edge"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/until-edge"
 UNTIL_OUT=$("$OVER_BY_DAY" --since 2026-01-01T00:00:00Z --until 2026-08-06T00:00:00Z 2>/dev/null)
 check_exit "until-edge: exits 0" "$?" "0"
 check "until-edge: a session whose first activity is exactly at --until is excluded" \
     "$(printf '%s\n' "$UNTIL_OUT" | awk '{s+=$1} END{print s+0}')" "1"
 
 # --- (k) worker-burn.sh failure -> FAILS + WARNING, run still exits 0
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/worker-over-by-day/malformed"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/leg-over-by-day/malformed"
 MALFORMED_ERR=$("$OVER_BY_DAY" --since 2026-01-01T00:00:00Z 2>&1 >/dev/null)
 "$OVER_BY_DAY" --since 2026-01-01T00:00:00Z >/dev/null 2>&1
 MALFORMED_EXIT=$?
@@ -151,7 +151,7 @@ check_exit "malformed: a skipped transcript still exits 0" "$MALFORMED_EXIT" "0"
 # looked like a non-worker). Skipped when chmod cannot make a file
 # unreadable (running as root).
 UNR_DIR=$(mktemp -d "${TMPDIR:-/tmp}/lod-unreadable.XXXXXX") || { echo "FAIL - unreadable: mktemp -d"; exit 1; }
-cp "$HERE"/fixtures/worker-over-by-day/boundary/*.jsonl "$UNR_DIR"/ || { echo "FAIL - unreadable: cp fixture"; exit 1; }
+cp "$HERE"/fixtures/leg-over-by-day/boundary/*.jsonl "$UNR_DIR"/ || { echo "FAIL - unreadable: cp fixture"; exit 1; }
 UNR_FILE=$(find "$UNR_DIR" -name '*.jsonl' | sort | head -1)
 [ -n "$UNR_FILE" ] || { echo "FAIL - unreadable: no fixture file copied"; exit 1; }
 chmod 000 "$UNR_FILE" || { echo "FAIL - unreadable: chmod 000"; exit 1; }

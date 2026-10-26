@@ -395,7 +395,7 @@ node -e '
   if (!nr) throw new Error("a MISSING field should be reported as notRecorded, got: " + JSON.stringify(data.notRecorded));
 ' <<< "$outKjson" || fail "case k: --json missing-field assertions failed (got: $outKjson)"
 outKtext=$(run_gaps "$cacheK")
-grepq "$outKtext" -i 'not recorded' || fail "case k: expected a not-recorded section in chief output (got: $outKtext)"
+grepq "$outKtext" -i 'not recorded' || fail "case k: expected a not-recorded section in console output (got: $outKtext)"
 echo "ok: case k — a profile missing a field entirely is reported as not recorded, never as a choice"
 
 # ── case l: 3 — a non-operator --preset omits the

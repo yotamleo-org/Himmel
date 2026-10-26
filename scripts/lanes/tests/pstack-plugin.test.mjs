@@ -33,7 +33,7 @@ test('pstack@himmel is on only in the interactive `user` profile and off in ever
 test('pstack@himmel is never in base or floor, which every lean worker profile inherits', () => {
   assert.ok(!REG.base.includes(ID), 'base would put it in every worker');
   assert.ok(!REG.floor.includes(ID), 'floor would put it in every worker');
-  for (const worker of ['worker-impl', 'worker-bus', 'worker-e2e', 'lane-impl', 'lane-review', 'lane-content', 'chief-relay', 'console-judge', 'console']) {
+  for (const worker of ['worker-impl', 'worker-bus', 'worker-e2e', 'lane-impl', 'lane-review', 'lane-content', 'chief-relay', 'console-judge', 'chief']) {
     assert.ok(!(REG.profiles[worker].enable ?? []).includes(ID), `${worker} must not enable ${ID}`);
   }
 });

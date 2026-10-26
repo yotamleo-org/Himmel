@@ -193,7 +193,7 @@ while IFS= read -r f; do
     model=$(grep -o '"model":"claude-[^"]*"' "$f" | sort | uniq -c | sort -rn | head -1 | sed 's/.*"model":"//; s/"$//')
 
     counted=1
-    if [ "$role" = "console" ] && [ "${calls:-0}" -lt 100 ]; then counted=0; fi
+    if [ "$role" = "chief" ] && [ "${calls:-0}" -lt 100 ]; then counted=0; fi
 
     printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$role" "${model:-unknown}" "$calls" "$(kn "$avg")" "$(kn "$first")" "$comp" "$counted" >> "$ROWS"
 done < "$FILES"

@@ -160,7 +160,7 @@ GR_ARGS=(501 "$SHA_A" qgood)
 # --- 2. worker / relay callers --------------------------------------------------
 rc=0; out=$(run HIMMEL_CONSOLE_LEG=1 2>&1) || rc=$?
 check "worker caller refuses" "$rc" 3
-contains "worker refusal says why" "$out" "leg"
+contains "worker refusal says why" "$out" "worker"
 rc=0; out=$(run HIMMEL_CONSOLE_RELAY=1 2>&1) || rc=$?
 check "relay caller refuses" "$rc" 3
 check "worker/relay change nothing" "$(snap_state)" "$before"

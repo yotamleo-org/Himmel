@@ -50,7 +50,7 @@ WITH_STRADDLE=$("$POSTPIN" --since 2026-09-03T00:00:00Z --exclude-straddle 2026-
 check "straddle: with --exclude-straddle counts 1 session" \
     "$(session_count "$WITH_STRADDLE" worker)" "1"
 
-# --- (b) cohort: worker-impl pair, --cohort counts 1 of 2
+# --- (b) cohort: leg-impl pair, --cohort counts 1 of 2
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/cohort"
 export SCORECARD_LAUNCH_LOG_DIR="$HERE/fixtures/cohort/launch-logs"
 
@@ -58,27 +58,27 @@ WITHOUT_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker 2>/dev/nu
 check "cohort: without --cohort counts 3 sessions" \
     "$(session_count "$WITHOUT_COHORT" worker)" "3"
 
-WITH_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort worker-impl 2>/dev/null)
-check "cohort: --cohort worker-impl counts 1 of 3 (excludes no-log and worker-impl-other)" \
+WITH_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort leg-impl 2>/dev/null)
+check "cohort: --cohort leg-impl counts 1 of 3 (excludes no-log and worker-impl-other)" \
     "$(session_count "$WITH_COHORT" worker)" "1"
 
 # --- (b2) cohort-substring: a launch-log line whose field is a DIFFERENT
-# key that merely contains "profile=worker-impl" as a substring
-# (other-profile=worker-impl) must NOT match --cohort worker-impl: the match is
+# key that merely contains "profile=leg-impl" as a substring
+# (other-profile=leg-impl) must NOT match --cohort leg-impl: the match is
 # exact-field via awk, not substring grep.
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/cohort-substring"
 export SCORECARD_LAUNCH_LOG_DIR="$HERE/fixtures/cohort-substring/launch-logs"
 
-SUBSTRING_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort worker-impl 2>/dev/null)
-check "cohort-substring: other-profile=worker-impl does not false-positive match --cohort worker-impl" \
+SUBSTRING_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort leg-impl 2>/dev/null)
+check "cohort-substring: other-profile=leg-impl does not false-positive match --cohort leg-impl" \
     "$(session_count "$SUBSTRING_COHORT" worker)" "0"
 
 # --- (b3) cohort-nscheme: the REAL worker titles
 # (<TICKET>-N<k>-<slug>), UUID-named transcripts, and launch logs in the real
 # line format under the himmelctl cache dir. Five sessions:
-#   single    one profile=worker-impl line                    -> in the cohort
-#   agree     two lines, both profile=worker-impl             -> in the cohort
-#   ambiguous two lines, profile=worker-impl then profile=none -> excluded
+#   single    one profile=leg-impl line                    -> in the cohort
+#   agree     two lines, both profile=leg-impl             -> in the cohort
+#   ambiguous two lines, profile=leg-impl then profile=none -> excluded
 #   unlogged  no launch-log file                           -> excluded
 #   noprofile profile=none                                 -> excluded
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/cohort-nscheme/projects"
@@ -89,7 +89,7 @@ NS_ALL=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker 2>/dev/null)
 check "cohort-nscheme: --role worker counts the N-scheme titles (was 0: role_of matched only legN)" \
     "$(session_count "$NS_ALL" worker)" "5"
 
-NS_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort worker-impl 2>/dev/null)
+NS_COHORT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort leg-impl 2>/dev/null)
 check "cohort-nscheme: join is by session title on a UUID-named transcript, default dir via HIMMELCTL_CACHE_DIR" \
     "$(session_count "$NS_COHORT" worker)" "2"
 check "cohort-nscheme: coverage triple names every exclusion (ambiguous, unlogged, other profile)" \
@@ -98,12 +98,12 @@ check "cohort-nscheme: coverage triple names every exclusion (ambiguous, unlogge
 
 # an explicit SCORECARD_LAUNCH_LOG_DIR still wins over the cache-dir default
 NS_EXPLICIT=$(HIMMELCTL_CACHE_DIR=/nonexistent SCORECARD_LAUNCH_LOG_DIR="$HERE/fixtures/cohort-nscheme/cache/launch-logs" \
-    "$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort worker-impl 2>/dev/null)
+    "$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort leg-impl 2>/dev/null)
 check "cohort-nscheme: explicit SCORECARD_LAUNCH_LOG_DIR overrides the cache-dir default" \
     "$(session_count "$NS_EXPLICIT" worker)" "2"
 
 # an absent launch-log dir must read as "no record", not as an empty-cohort success
-COH_OUT_NOLOG=$(HIMMELCTL_CACHE_DIR=/nonexistent "$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort worker-impl 2>/dev/null)
+COH_OUT_NOLOG=$(HIMMELCTL_CACHE_DIR=/nonexistent "$POSTPIN" --since 2026-01-01T00:00:00Z --role worker --cohort leg-impl 2>/dev/null)
 check "cohort-nscheme: a missing launch-log dir excludes everything (no profile on record)" \
     "$(printf '%s\n' "$COH_OUT_NOLOG" | grep '^coverage:')" \
     "coverage: roots=1 discovered=5 parsed=0 skipped=5 (no-launch-record=5)"
@@ -130,13 +130,13 @@ CTX_ALL=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role chief 2>/dev/null)
 check "context-record: precondition, all six chiefs are counted without --context" \
     "$(session_count "$CTX_ALL" chief)" "6"
 check "context-record: precondition, 9206 has one row with two context= fields" \
-    "$(grep -c '^headed-arm:.* context=standard context=1m ' "$CTX_LOGS/HIMMEL-9206-fixture-chief-2026-09-20.log")" "1"
+    "$(grep -c '^headed-arm:.* context=standard context=1m ' "$CTX_LOGS/HIMMEL-9206-fixture-console-2026-09-20.log")" "1"
 check "context-record: precondition, 9205 has a valid standard row AND a malformed headed-arm row" \
-    "$(grep -c '^headed-arm:' "$CTX_LOGS/HIMMEL-9205-fixture-chief-2026-09-20.log") $(grep -c 'context=standard ' "$CTX_LOGS/HIMMEL-9205-fixture-chief-2026-09-20.log") $(grep -c 'context=1$' "$CTX_LOGS/HIMMEL-9205-fixture-chief-2026-09-20.log")" "2 1 1"
+    "$(grep -c '^headed-arm:' "$CTX_LOGS/HIMMEL-9205-fixture-console-2026-09-20.log") $(grep -c 'context=standard ' "$CTX_LOGS/HIMMEL-9205-fixture-console-2026-09-20.log") $(grep -c 'context=1$' "$CTX_LOGS/HIMMEL-9205-fixture-console-2026-09-20.log")" "2 1 1"
 check "context-record: precondition, 9201 has a durable record" \
-    "$(grep -c 'context=standard' "$CTX_LOGS/HIMMEL-9201-fixture-chief-2026-09-20.log")" "1"
+    "$(grep -c 'context=standard' "$CTX_LOGS/HIMMEL-9201-fixture-console-2026-09-20.log")" "1"
 check "context-record: precondition, 9203 has no record" \
-    "$([ -e "$CTX_LOGS/HIMMEL-9203-fixture-chief-2026-09-20.log" ] && echo present || echo absent)" "absent"
+    "$([ -e "$CTX_LOGS/HIMMEL-9203-fixture-console-2026-09-20.log" ] && echo present || echo absent)" "absent"
 
 CTX_STD=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role chief --context standard 2>/dev/null)
 check "context-record: --context standard attributes 1 session FROM its record" \
@@ -163,7 +163,7 @@ export SCORECARD_PROJECTS_DIR="$HERE/fixtures/shift"
 unset SCORECARD_LAUNCH_LOG_DIR
 
 SHIFT_OUT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role chief 2>/dev/null)
-COUNTED=$(printf '%s\n' "$SHIFT_OUT" | awk -F'\t' '$1=="console" && $2=="ALL" {print $NF}')
+COUNTED=$(printf '%s\n' "$SHIFT_OUT" | awk -F'\t' '$1=="chief" && $2=="ALL" {print $NF}')
 check "shift: >=100 chief-role calls -> counted_shifts=1" "$COUNTED" "1"
 
 # --- (d) shift: 10 chief-role calls (< 100) -> counted_shifts=0, disproving
@@ -172,7 +172,7 @@ export SCORECARD_PROJECTS_DIR="$HERE/fixtures/shift-under"
 unset SCORECARD_LAUNCH_LOG_DIR
 
 SHIFT_UNDER_OUT=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role chief 2>/dev/null)
-COUNTED_UNDER=$(printf '%s\n' "$SHIFT_UNDER_OUT" | awk -F'\t' '$1=="console" && $2=="ALL" {print $NF}')
+COUNTED_UNDER=$(printf '%s\n' "$SHIFT_UNDER_OUT" | awk -F'\t' '$1=="chief" && $2=="ALL" {print $NF}')
 check "shift: <100 chief-role calls -> counted_shifts=0" "$COUNTED_UNDER" "0"
 
 # --- (e0) role-relay: a title matching both *legN* and *-relay* must be
@@ -193,7 +193,7 @@ check "role-relay: a legN+relay title is not counted into the worker cohort" \
 #   2222  HIMMEL-nextleg-2026-09-20K-chief        a genuine chief -> chief
 #   3333  no customTitle                             -> unattributed, counted by name
 #   4444  <TICKET>-3299-scratch-notes                  titled non-participant -> other-role
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-chief-slug"
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-console-slug"
 unset SCORECARD_LAUNCH_LOG_DIR
 
 RCS_WORKER=$("$POSTPIN" --since 2026-01-01T00:00:00Z --role worker 2>/dev/null)

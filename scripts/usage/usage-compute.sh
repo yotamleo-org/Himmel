@@ -154,7 +154,7 @@ def addz($a; $b): reduce (zero | keys[]) as $f ($a; .[$f] += ($b[$f] // 0));
             else (.turns += $r.n | .input += $r.i | .cache_read += $r.cr | .cache_create += $r.cc | .output += $r.o) end))
   | to_entries
   | map(. as $e | $e.key as $name
-        | (if ($name | test("console"; "i")) then "console" elif ($name | test("judge"; "i")) then "judge" else "leg" end) as $kind
+        | (if ($name | test("console|chief"; "i")) then "console" elif ($name | test("judge"; "i")) then "judge" else "leg" end) as $kind
         | (keyof($name)) as $k
         | ({name: $name, kind: $kind, ticket: (if $k != null then $k elif $kind == "console" then "_chief" else "_unattributed" end)} + $e.value))
 ) as $sessions

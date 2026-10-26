@@ -110,7 +110,7 @@ def parse_verdict(path):
         "effort": None if effort in (None, "", "unknown") else effort,
         "classes": sorted(classes - {"", "none", "n/a"}),
         "at": when(header(text, "written-at") or ""),
-        "console": name.startswith("console"),
+        "console": name.startswith(("console", "chief")),
         "procedural": m.group(1) == "NO-GO" and PROCEDURAL.search(text) is not None,
     }
 

@@ -5091,7 +5091,7 @@ $headed_launch_body"
     # Headed launch on macOS (fold of Goomal's fix/arm-resume-macos-cron):
     # cron gives no TTY, so even a complete, resolvable launch starts claude
     # headless and invisible -- parity with the Windows branch, where schtasks
-    # opens a chief window. Resolved HERE, at arm time, so a bad
+    # opens a console window. Resolved HERE, at arm time, so a bad
     # ARM_TERMINAL_APP or a missing app is caught before the entry is even
     # installed. ARM_TERMINAL_APP=none opts out to the headless inline launch,
     # the shape the Linux crontab fallback always uses (no TTY story to fix

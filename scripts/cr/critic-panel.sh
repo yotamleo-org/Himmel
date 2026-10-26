@@ -1643,7 +1643,7 @@ process_member() {
             # print CFP's own preamble instead of the reason. Redaction +
             # bound now shared via _pm_redact_detail (same anchored secret
             # patterns ledger-append.sh's --detail scrub uses —
-            # this line reaches the stderr chief BEFORE that scrub would
+            # this line reaches the stderr console BEFORE that scrub would
             # ever see it).
             _pm_detail="$(_pm_redact_detail "$(_pm_err_line "$_pm_err_file")")"
             echo "panel-availability: $_pm_slug unavailable (rc=$_pm_rc) reason=$_pm_reason${_pm_detail:+: $_pm_detail}" >&2

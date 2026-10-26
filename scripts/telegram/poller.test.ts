@@ -2741,7 +2741,7 @@ test("makeRestart rung 2 refuses on non-Windows rather than pretending", async (
 test("makeRestart rung 2: a spawn that THROWS is reported, not left as a silent no-op (HIMMEL-1272 CR)", async () => {
   // Bun.spawnSync throws (rather than returning a non-zero exitCode) when the
   // binary cannot be launched at all — no schtasks on PATH, EACCES. Unhandled it
-  // escapes into autoFire's .catch(), which only chief.errors, leaving the
+  // escapes into autoFire's .catch(), which only console.errors, leaving the
   // operator with an ack and a bridge that never went away.
   let exited = false;
   const restart = makeRestart({

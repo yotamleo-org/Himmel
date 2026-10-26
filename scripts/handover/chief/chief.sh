@@ -409,9 +409,9 @@ do_arm() {
     if [ "${CHIEF_ARM_FOREGROUND:-0}" = "1" ]; then
         bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model"
     elif command -v setsid >/dev/null 2>&1; then
-        setsid nohup bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &
+        setsid nohup bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &  # t13b-ok: one detached arm, bounded by its deadline epoch
     else
-        nohup bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &
+        nohup bash "$arm" --role chief "$session" "$doc" "$fill_signal" "$deadline_epoch" "$log" "$model" >/dev/null 2>&1 &  # t13b-ok: one detached arm, bounded by its deadline epoch
     fi
     echo "armed: name=$session doc=$doc signal=$fill_signal deadline=$deadline_epoch log=$log"
     echo "arm-log: $log"

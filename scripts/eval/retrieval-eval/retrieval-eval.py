@@ -718,7 +718,7 @@ def role_of(title, path, side):
     t = (title or "").lower()
     if "judge" in t:
         return "judge"
-    if "console" in t:
+    if "console" in t or "chief" in t:
         return "console"
     if "/subagents/" in path or side:
         return "subagent"

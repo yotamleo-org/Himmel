@@ -142,7 +142,7 @@ recs = {}
 cands = []
 for e in os.scandir(bucket):
     n = e.name
-    if not e.is_file(follow_symlinks=False) or not n.endswith(".md") or "console" in n.lower():
+    if not e.is_file(follow_symlinks=False) or not n.endswith(".md") or "console" in n.lower() or "chief" in n.lower():
         continue
     m = KEY.match(n)
     if not m:

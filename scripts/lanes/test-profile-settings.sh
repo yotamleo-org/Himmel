@@ -46,7 +46,7 @@ bash "$PS" no-such-profile >/dev/null 2>&1; rc=$?
 # content-addressed --mcp-config file; a profile with no allowlist prints nothing.
 M=$(bash "$PS" chief --mcp-config); rc=$?
 [ "$rc" = 0 ] && ok "T6 chief --mcp-config rc=0" || bad "T6 rc=$rc"
-case "$M" in */console.mcp.json) ok "T6 basename is <profile>.mcp.json" ;; *) bad "T6 basename: $M" ;; esac
+case "$M" in */chief.mcp.json) ok "T6 basename is <profile>.mcp.json" ;; *) bad "T6 basename: $M" ;; esac
 if [ -f "$M" ] && grep -q '"qmd"' "$M" && grep -q '"himmel-bus"' "$M" && ! grep -q '"graphify"' "$M"; then
     ok "T6 file holds exactly the profile's servers (qmd, himmel-bus; no graphify)"
 else bad "T6 file content wrong: $M"; fi

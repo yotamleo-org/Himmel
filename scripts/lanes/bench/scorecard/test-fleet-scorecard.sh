@@ -134,7 +134,7 @@ mkdir -p "$TMP/m" "$TMP/mirror/HIMMEL-1.md"
 cp "$FX/FT-roadmap-chief.fleet.json" "$TMP/m/legs.json"
 OTHER=$(run --manifest "$TMP/m/legs.json" 2>/dev/null)
 check "(b) a manifest not named *.fleet.json is not read as its own chief doc" \
-    "$(printf '%s\n' "$OTHER" | grep '^- chief docs:')" "- chief docs: $FX/FT-roadmap-chief.md (missing: $TMP/m/workers.md)"
+    "$(printf '%s\n' "$OTHER" | grep '^- chief docs:')" "- chief docs: $FX/FT-roadmap-chief.md (missing: $TMP/m/legs.md)"
 BADMIRROR=$(run --mirror "$TMP/mirror" 2>/dev/null); RC=$?
 check "(b) an unreadable Jira mirror still exits 0" "$RC" "0"
 check "(b) an unreadable Jira mirror is n/a with its reason" \

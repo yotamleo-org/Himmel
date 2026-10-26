@@ -85,7 +85,7 @@ scenario s2
 printf 'HIMMEL-9001\tBug\tDone\tguard let a thing through\tfound-by:worker,escape:guard,standalone\nHIMMEL-9002\tBug\tTo Do\tflaky thing\tfound-by:ci-main,escape:flake\nHIMMEL-9003\tBug\tTo Do\thalf labelled\tfound-by:operator\n' > "$FX/jira.tsv"
 echo '[{"number":9100,"title":"fix(x): [HIMMEL-9001] guard","body":"just prose","mergedAt":"2026-10-20T00:00:00Z","files":[{"path":"docs/x.md"},{"path":"scripts/hooks/guard-x.sh"}]}]' > "$FX/pr-HIMMEL-9001.json"
 report --since 2026-10-15 --out "$TMP/r2.md"
-has "found-by:worker counted" "$TMP/r2.md" "- found-by:leg: 1"
+has "found-by:worker counted" "$TMP/r2.md" "- found-by:worker: 1"
 has "found-by:ci-main counted" "$TMP/r2.md" "- found-by:ci-main: 1"
 has "escape:guard counted" "$TMP/r2.md" "- escape:guard: 1"
 has "half-labelled bug is UNLABELLED" "$TMP/r2.md" "UNLABELLED (1):"

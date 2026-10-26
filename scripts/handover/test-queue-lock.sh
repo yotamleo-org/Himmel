@@ -3064,9 +3064,9 @@ else
     fail "T98b: COLUMNS=20 made a live session's lock read STALE-DEAD (out=$cout)"
 fi
 rout="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead 2>&1)"; rrc=$?
-if [ ! -d "$D_QDIR/dead-leg.lock" ] && [ -d "$D_QDIR/alive-leg.lock" ] && [ -d "$D_QDIR/otherhost-leg.lock" ] \
-    && [ -d "$D_QDIR/opaque-leg.lock" ] && [ -d "$D_QDIR/claude-leg.lock" ] \
-    && [ -d "$D_QDIR/wrapped-leg.lock" ] && { [ -z "$D_ENV_PID" ] || [ -d "$D_QDIR/env-leg.lock" ]; }; then
+if [ ! -d "$D_QDIR/dead-worker.lock" ] && [ -d "$D_QDIR/alive-worker.lock" ] && [ -d "$D_QDIR/otherhost-worker.lock" ] \
+    && [ -d "$D_QDIR/opaque-worker.lock" ] && [ -d "$D_QDIR/claude-worker.lock" ] \
+    && [ -d "$D_QDIR/wrapped-worker.lock" ] && { [ -z "$D_ENV_PID" ] || [ -d "$D_QDIR/env-worker.lock" ]; }; then
     pass "T99: --reap-dead releases only the provably dead lock (rc=$rrc)"
 else
     fail "T99: reap removed/kept the wrong locks (rc=$rrc out=$rout)"
@@ -3120,12 +3120,12 @@ fi
 # T103: a takeover claim held on the slug blocks the reap (the lock stays and
 # the sweep says so); once the claim is gone the same lock is reaped.
 d_lock claimed-worker "$D_HOST-pid$D_DEAD_PID" "$D_HOST" "HIMMEL-5541-fixture-claimed-worker"
-mkdir -p "$D_QDIR/claimed-leg.lock.claim"
+mkdir -p "$D_QDIR/claimed-worker.lock.claim"
 rout="$(HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead 2>&1)"
-if [ -d "$D_QDIR/claimed-leg.lock" ] && grepq "$rout" "slug=claimed-worker .*reap=skipped-claimed"; then
-    rmdir "$D_QDIR/claimed-leg.lock.claim"
+if [ -d "$D_QDIR/claimed-worker.lock" ] && grepq "$rout" "slug=claimed-worker .*reap=skipped-claimed"; then
+    rmdir "$D_QDIR/claimed-worker.lock.claim"
     HANDOVER_DIR="$D_ROOT" bash "$LIB" status --sweep --reap-dead >/dev/null 2>&1
-    if [ ! -d "$D_QDIR/claimed-leg.lock" ]; then
+    if [ ! -d "$D_QDIR/claimed-worker.lock" ]; then
         pass "T103: a held takeover claim blocks the reap; without it the lock is reaped"
     else
         fail "T103: lock survived the reap after the claim was released"

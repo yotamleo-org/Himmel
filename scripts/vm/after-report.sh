@@ -93,7 +93,7 @@
 # from the guest side because the host has no VBoxGuestAdditions.iso to
 # attach); bidirectional clipboard AND drag-and-drop set as MACHINE CONFIG
 # (draganddrop moved disabled -> bidirectional; clipboard was already
-# bidirectional); a tty1 auto-login drop-in so an operator has a chief to
+# bidirectional); a tty1 auto-login drop-in so an operator has a console to
 # reach the guest at all; and node 24.20.0 + npm 11.19.0 + bun 1.4.2 + unzip
 # + Claude Code 2.1.263, which closes the runtime-skew precondition
 # (v3 shipped node 18.19.1 against this repo's `.nvmrc` pin of 24, and no bun

@@ -610,7 +610,7 @@ powershell -ExecutionPolicy Bypass -File scripts/observability/install-stack.ps1
 ```
 
 By default the four exporter tasks run as Interactive logon tasks, which pop a
-chief window per process in your session. To run them hidden (S4U, session 0,
+console window per process in your session. To run them hidden (S4U, session 0,
 no windows), pass `-Hidden` — this registers an S4U principal and **requires an
 elevated PowerShell**:
 

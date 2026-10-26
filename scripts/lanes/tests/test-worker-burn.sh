@@ -114,7 +114,7 @@ has "first-turn is the first call's context" "$out" "first-turn=1.2k"
 # --- session-name resolution ------------------------------------------------
 mkdir -p "$TMP/projects/-some-repo"
 cp "$FIXTURE" "$TMP/projects/-some-repo/fixture-0000.jsonl"
-out2=$(WORKER_SESSION_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" worker-burn-fixture-legN000); rc2=$?
+out2=$(WORKER_SESSION_BURN_PROJECTS_DIR="$TMP/projects" bash "$BURN" leg-burn-fixture-legN000); rc2=$?
 eq "a bare session name resolves via the custom-title row" "$rc2" "0"
 has "resolved transcript reports the same numbers" "$out2" "calls=4 avg-ctx=963"
 

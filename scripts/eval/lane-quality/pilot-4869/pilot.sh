@@ -225,7 +225,7 @@ cmd_prepare() {
   doc="$DOCS/$row/HIMMEL-4869-pilot-$row.md"; run="$ROOT/run/$row"; tx="$ROOT/tx/$row"; conf="$ROOT/conf/$row"
   mkdir -p "$DOCS/$row" "$run" "$tx" "$conf" || die "cannot create the $row dirs"
   ensure_export
-  write_brief "$row" "$wt" "$task" "$nonce" "$PILOT_CHIEF" >"$doc"
+  write_brief "$row" "$wt" "$task" "$nonce" "$PILOT_CONSOLE" >"$doc"
   printf 'LANE=%q\nMODEL=%q\nEFFORT=%q\nTASK=%q\nWT=%q\nFIX=%q\nDOC=%q\nSNAP0=%q\nT0=%q\nREPO=%q\nRUN=%q\nTX=%q\nROWCONF=%q\nEXPORT=%q\nGITOBJ=%q\nGITDIR=%q\n' \
     "$lane" "$model" "$effort" "$task" "$wt" "$fix" "$doc" "$snap" "$(date +%s)" "$REPO" "$run" "$tx" "$conf" \
     "$ROOT/repo" "$ROOT/gitobj/$row" "$gitdir" >"$ROOT/rows/$row.env"
@@ -244,7 +244,7 @@ cmd_prepare() {
   # The row's whole launch, sandbox prefix included, lives in one wrapper, so
   # the chief's line carries nothing that could be dropped from it.
   printf '#!/usr/bin/env bash\n%sHANDOVER_DIR=%q WORKER_SESSION_REPO=%q exec bash %q --lane %q --profile chief-relay --chief %q %q %q %q 1 %q %q\n' \
-    "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" "$lane" "$PILOT_CHIEF" \
+    "$prefix" "$ROOT/handovers" "$wt" "$REPO/scripts/handover/chief-kit/headed-arm-worker.sh" "$lane" "$PILOT_CONSOLE" \
     "HIMMEL-4869-pilot-$row" "$doc" "$ROOT/rows/$row.signal" "$run/$row.log" "$model" >"$ROOT/rows/$row.launch"
   chmod +x "$ROOT/rows/$row.launch"
   # The chief runs this line, so every value is shell-quoted.

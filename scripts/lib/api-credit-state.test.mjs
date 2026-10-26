@@ -29,7 +29,7 @@ function fixture() {
     cycle_id: config.accounts[account].cycle_id,
     grant_usd: '2.00', remaining_usd: '2.00', reconciled_spent_usd: '0',
     starts_at: now - 1000, expires_at: now + 3600, observed_at: now,
-    source: 'operator-chief-snapshot', exclusive_org: true, discrepancy: false,
+    source: 'operator-console-snapshot', exclusive_org: true, discrepancy: false,
   }])) };
   const paths = { config: join(dir, 'config.json'), snapshot: join(dir, 'snapshot.json'), state: join(dir, 'ledger.json') };
   config.ledger_path = paths.state;
@@ -103,7 +103,7 @@ test('funded account reports precise estimated headroom without writing spend', 
   assert.equal(row.grant_usd, '2.000000');
   assert.equal(row.reserved_usd, '0.000000');
   assert.equal(row.spent_est_usd, '0.000000');
-  assert.equal(row.source, 'operator-chief-snapshot');
+  assert.equal(row.source, 'operator-console-snapshot');
 });
 
 const invalid = [
@@ -428,7 +428,7 @@ test('pull derives remaining from cost-report spend since the grant start, acros
   assert.equal(r.remaining_usd, '1.200000');
   const row = JSON.parse(readFileSync(f.paths.snapshot)).accounts.A;
   // A pull keeps the row's source, so the operator reading stays the fallback past 600 s.
-  assert.equal(row.source, 'operator-chief-snapshot');
+  assert.equal(row.source, 'operator-console-snapshot');
   assert.equal(row.pulled_at, row.observed_at);
   assert.equal(row.remaining_usd, '1.200000');
   assert.equal(seen.length, 2);
@@ -463,7 +463,7 @@ test('HIMMEL-7264: a failed pull names the HTTP status or the network failure, n
   assert.equal(denied.reason, 'cost-report-unavailable');
   assert.equal(denied.detail, 'http-401');
   const forbidden = await pullSnapshot(env, 'A', { fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({}) }) });
-  assert.match(forbidden.detail, /^http-403: .*Admin API key.*individual Chief accounts/);
+  assert.match(forbidden.detail, /^http-403: .*Admin API key.*individual Console accounts/);
   const down = await pullSnapshot(env, 'A', { fetchImpl: async () => { throw new Error(`boom ${FIXTURE_KEY}`); } });
   assert.equal(down.reason, 'cost-report-unavailable');
   assert.equal(down.detail, 'network');

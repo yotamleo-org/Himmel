@@ -324,7 +324,7 @@ cadence_vbs_path() {
 # This replaces the superseded pwsh -WindowStyle Hidden wrapper:
 # that shape was MEASURED to still allocate visible chiefs despite Hidden,
 # while wscript //B hosting this shim allocates zero (wscript.exe is a
-# windowless host; the .bat's cmd.exe chief is launched with SW_HIDE).
+# windowless host; the .bat's cmd.exe console is launched with SW_HIDE).
 #
 # WScript.Shell.Run(cmd, 0, True) launches <bat_win> with a HIDDEN window
 # (intWindowStyle=0), WAITS for it, and RETURNS its exit code; WScript.Quit

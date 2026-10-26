@@ -8,7 +8,7 @@
 # Usage: measure-credit.sh <A|B> <key-id> <key-source> <remaining-usd-before>
 #   key-source: an op:// reference (read with `op read`) or a private env file
 #               holding one ANTHROPIC_API_KEY=<key> line (never sourced).
-#   remaining-usd-before: the Chief's Promotional credits figure, read just now;
+#   remaining-usd-before: the Console's Promotional credits figure, read just now;
 #               it refreshes the account's snapshot (the gate refuses one older than 600s).
 # Prints only the launcher's verdict, the run's outcome fields and its cost.
 set -u
@@ -25,8 +25,8 @@ case "$SOURCE" in
 esac
 [ -n "$KEY" ] || { echo "measure-credit: no ANTHROPIC_API_KEY in the key source" >&2; exit 2; }
 
-# Refresh the operator snapshot with the figure just read from the Chief; the refresh also moves the
-# reconciled-spend watermark, so spend the Chief already shows is not counted again.
+# Refresh the operator snapshot with the figure just read from the Console; the refresh also moves the
+# reconciled-spend watermark, so spend the Console already shows is not counted again.
 node "$REPO/scripts/api-lane/grant-snapshot.mjs" "$ACCOUNT" "$BEFORE" || exit 2
 
 # An empty scratch cwd keeps the call small: no project CLAUDE.md or hooks load.

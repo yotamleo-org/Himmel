@@ -35,7 +35,7 @@ Nothing writes to `50-Vitals/` automatically.
 Do this once per Google account. Estimated time: 15 minutes.
 
 **1. Create a Google Cloud project.**
-Go to [chief.cloud.google.com](https://chief.cloud.google.com), create a new project
+Go to [console.cloud.google.com](https://console.cloud.google.com), create a new project
 (e.g. `my-health-connector`).
 
 **2. Enable the Google Health API.**

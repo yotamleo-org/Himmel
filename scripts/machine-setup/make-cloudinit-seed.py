@@ -112,11 +112,11 @@ def _read_password_file(path):
 
 def _require_nonblank_password(plaintext, source_desc):
     """Refuse an empty/whitespace-only plaintext — hashing it would
-    provision the NOPASSWD-sudo user with a blank chief password.
+    provision the NOPASSWD-sudo user with a blank console password.
     Exits 2 (a distinct, specific error) on a blank value."""
     if plaintext is None or plaintext.strip() == "":
         print(f"make-cloudinit-seed: {source_desc} is empty — refusing to "
-              "provision a blank chief password", file=sys.stderr)
+              "provision a blank console password", file=sys.stderr)
         sys.exit(2)
     return plaintext
 
@@ -125,11 +125,11 @@ def _require_no_embedded_newlines(plaintext, source_desc):
     """A password with an embedded newline hashes differently through the
     openssl -stdin fallback (which only sees its first line) than through
     stdlib crypt (which hashes the whole string) — never an intended
-    chief password. Checked after the one trailing-newline strip, so
+    console password. Checked after the one trailing-newline strip, so
     only an INTERNAL newline trips this. Exits 2."""
     if "\n" in plaintext or "\r" in plaintext:
         print(f"make-cloudinit-seed: {source_desc} contains an embedded "
-              "newline — refusing (a chief password must be one line)",
+              "newline — refusing (a console password must be one line)",
               file=sys.stderr)
         sys.exit(2)
     return plaintext

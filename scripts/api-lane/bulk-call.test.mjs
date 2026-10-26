@@ -47,7 +47,7 @@ function fixture() {
     organization_id: config.accounts[account].organization_id, cycle_id: config.accounts[account].cycle_id,
     grant_usd: '2.00', remaining_usd: '2.00', reconciled_spent_usd: '0',
     starts_at: now - 1000, expires_at: now + 3600, observed_at: now,
-    source: 'operator-chief-snapshot', exclusive_org: true, discrepancy: false,
+    source: 'operator-console-snapshot', exclusive_org: true, discrepancy: false,
   }])) };
   const p = { config: join(dir, 'config.json'), snapshot: join(dir, 'snapshot.json'), state,
     stub: join(dir, 'claude-stub'), log: join(dir, 'stub.log'), env: join(dir, 'stub.env'), ps: join(dir, 'ps'),

@@ -34,7 +34,7 @@
 #   clone's OWN baseline snapshot must be taken AFTER its first boot, not
 #   before — a rule v4 inherits unchanged. v4 adds Guest
 #   Additions, bidirectional clipboard AND drag-and-drop as machine config, a
-#   tty1 auto-login chief, and node 24.20.0 + npm 11.19.0 + bun 1.4.2 +
+#   tty1 auto-login console, and node 24.20.0 + npm 11.19.0 + bun 1.4.2 +
 #   Claude Code 2.1.263 on top, closing the runtime-skew gap (v3
 #   shipped node 18.19.1 against this repo's .nvmrc pin of 24). See
 #   after-report.sh's own header for the full image-level explanation and

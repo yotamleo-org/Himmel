@@ -206,7 +206,7 @@ def plan_group(primary, reason, ticket):
 
 seen = set()
 for n in bucket_files:
-    if not n.endswith(".md") or "console" in n.lower() or n in seen:
+    if not n.endswith(".md") or ("console" in n.lower() or "chief" in n.lower()) or n in seen:
         continue
     sub_m = re.match(r"(.+?)-(?:RESUME|HANDOFF|judge-)", n)
     if sub_m and sub_m.group(1) + ".md" in bucket_files:
@@ -371,7 +371,7 @@ if apply:
     # 3. rewrite links in the bucket-root docs that point at a moved doc
     for n in bucket_files:
         p = os.path.join(bucket, n)
-        if not n.endswith(".md") or p in done_map or "console" in n.lower():
+        if not n.endswith(".md") or p in done_map or ("console" in n.lower() or "chief" in n.lower()):
             continue
         s = read(p)
         if "](" not in s:
