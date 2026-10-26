@@ -13,7 +13,7 @@ check(){ [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fa
 
 td="$(mktemp -d)"
 # shellcheck disable=SC1091
-. "$here/testlib-config-isolation.sh" && isolate_himmel_config "$td"
+{ . "$here/testlib-config-isolation.sh" && isolate_himmel_config "$td"; } || { echo "FAIL - config isolation unavailable" >&2; exit 1; }
 # the wire writes provenance rows; keep them out of the real ~/.himmel.
 export HIMMEL_PROVENANCE_DIR="$td/prov"
 

@@ -34,7 +34,7 @@ FAILED=0
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 # shellcheck disable=SC1091
-. "$(dirname "$0")/testlib-config-isolation.sh" && isolate_himmel_config "$TMP"
+{ . "$(dirname "$0")/testlib-config-isolation.sh" && isolate_himmel_config "$TMP"; } || { echo "FAIL - config isolation unavailable" >&2; exit 1; }
 
 # expected_inline_root <repo> -- <repo>/handovers spelled the way handover_root
 # derives it (git toplevel), NOT the logical mktemp spelling: they differ on

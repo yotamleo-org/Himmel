@@ -41,7 +41,7 @@ check "unknown refusal names value + valid lanes" "ok" "$r"
 W="$(mktemp -d "${TMPDIR:-/tmp}/test-claude-lane.XXXXXX")" || { echo "FAIL - mktemp"; exit 1; }
 trap 'rm -rf "$W"' EXIT
 # shellcheck disable=SC1091
-. "$REPO/scripts/lib/testlib-config-isolation.sh" && isolate_himmel_config "$W"
+{ . "$REPO/scripts/lib/testlib-config-isolation.sh" && isolate_himmel_config "$W"; } || { echo "FAIL - config isolation unavailable" >&2; exit 1; }
 mkdir -p "$W/phi" "$W/hand/sub" "$W/plain" "$W/vault/.obsidian/x" "$W/cfg"
 : > "$W/phi/.salus"
 egress() { # <lane|__unset__> <dir> -> prints "rc|CLAUDE_OPENROUTER_CWD|stderr-first-line"
