@@ -2582,7 +2582,7 @@ cired_summary=unknown
 . "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
 cired_bound="${TICK_CIRED_TIMEOUT:-15}"
 case "$cired_bound" in ''|*[!0-9]*) cired_bound=15 ;; esac
-[ "$((10#$cired_bound))" -gt 0 ] || cired_bound=15
+[ "$((10#$cired_bound))" -gt 0 ] && [ "$((10#$cired_bound))" -le 15 ] || cired_bound=15
 cired_out="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$cired_bound"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
 case "$cired_out" in ''|*[!0-9]*) ;; 1000) cired_summary='1000+' ;; *) cired_summary="$cired_out" ;; esac
 
