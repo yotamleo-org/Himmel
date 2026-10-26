@@ -38,6 +38,7 @@ esac
 STUB
 cat > "$W/bin/jira" <<'STUB'
 #!/usr/bin/env bash
+pwd -P > "$CG_FIX/jira-cwd"
 f="$CG_FIX/links-$1.txt"
 [ -f "$f" ] && cat "$f"
 exit 0
@@ -171,6 +172,7 @@ if (cd "$W" && env -u CHAIN_GRAPH_JIRA python3 "$SUT" --prs 1,2 --base main --re
 else
     fail 'jira CLI discovery must not depend on the cwd'
 fi
+same 'the jira CLI runs in the repo, not the caller cwd' "$(cat "$F/jira-cwd")" "$(cd "$R" && pwd -P)"
 
 # the files cache is keyed on the base: a moved base re-reads the PR files
 rm -rf "$W/cache"; mkdir "$W/cache"
@@ -195,6 +197,8 @@ printf '1\tBlocks\tinward=HIMMEL-901\toutward=HIMMEL-902\tHIMMEL-901 blocks HIMM
 printf '1\tBlocks\tinward=HIMMEL-902\toutward=HIMMEL-901\tHIMMEL-902 blocks HIMMEL-901\n' > "$F/links-HIMMEL-902.txt"
 out="$(python3 "$SUT" --prs 1,2 --base main --repo-dir "$R" --cache-dir "$W/cache" 2>&1)"
 contains 'a mutual Jira Blocks link is named a cycle' "$out" 'cycle'
+cyc="$(python3 "$SUT" --prs 1,2 --base main --repo-dir "$R" --cache-dir "$W/cache" --json | python3 -c 'import json,sys; print(json.load(sys.stdin)["edges"][0]["cycle"])')"
+same 'the JSON edge carries cycle for a mutual Blocks link' "$cyc" 'True'
 rm -f "$F/links-HIMMEL-901.txt" "$F/links-HIMMEL-902.txt"
 
 [ "$fails" -eq 0 ] && printf 'PASS - test-chain-graph.sh\n' || printf 'FAIL - test-chain-graph.sh (%d)\n' "$fails"

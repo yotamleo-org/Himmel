@@ -171,17 +171,18 @@ def trust_patterns(a):
 
 def jira_blocks(keys, repo_dir):
     """{(blocker, blocked)} among keys, from `links <key>`. Empty (and noted) when Jira is unreadable."""
+    common = git(repo_dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']).stdout.strip()
+    anchor = os.path.dirname(common)
     base = os.environ.get('CHAIN_GRAPH_JIRA')
     if base:
         cmd = shlex.split(base)
     else:
-        common = git(repo_dir, ['rev-parse', '--path-format=absolute', '--git-common-dir']).stdout.strip()
-        cmd = ['node', os.path.join(os.path.dirname(common), 'scripts/jira/dist/index.js'), 'links']
+        cmd = ['node', os.path.join(anchor, 'scripts/jira/dist/index.js'), 'links']
     env = dict(os.environ)
     env.setdefault('JIRA_PROJECT_KEY', 'HIMMEL')
     found, unreadable = set(), False
     for k in sorted(set(x for x in keys if x)):
-        p = subprocess.run(cmd + [k], capture_output=True, text=True, env=env)
+        p = subprocess.run(cmd + [k], capture_output=True, text=True, env=env, cwd=anchor)
         if p.returncode != 0:
             unreadable = True
             continue
@@ -354,7 +355,7 @@ def build(a):
                 fwd = (p == x['key'])
             frm, to = (x, y) if fwd else (y, x)
             edges.append({'from': frm['id'], 'to': to['id'], 'kind': kind, 'det': det, 'evidence': ev,
-                          'files': files, 'source': src})
+                          'files': files, 'source': src, 'cycle': len(declared) > 1})
     red = main_red(a)
     for n in nodes:
         n['gates'] = {'trust_judge': bool(n['trust_files']), 'main_red': red}
