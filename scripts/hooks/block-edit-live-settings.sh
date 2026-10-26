@@ -2104,7 +2104,7 @@ _tok_lit_name() {
 # assignments) a plain word naming a program below that runs no text it is
 # given — git only as `git [-C DIR] <sub>` with a sub that runs no command
 # string (and git grep without its pager option), gh only as `gh api|pr|issue|
-# run|release|repo|search`, sed only with inert
+# run|release|search` (never `repo`, which forwards git flags), sed only with inert
 # scripts, sort without --compress-program, printf without -v or %n.
 # ponytail: an allowlist — a program not listed (awk, find, xargs, python,
 # bash, …) keeps the old any-`$'` reading, fail-closed; upgrade path: add a
@@ -2181,7 +2181,7 @@ _tok_ns_segment() {
             # Only the subcommand families that talk to the GitHub API; alias
             # (`--shell`), extension and `gh <ext>` words stay fail-closed.
             case "$sub" in
-                gapi|gpr|gissue|grun|grelease|grepo|gsearch) ;;
+                gapi|gpr|gissue|grun|grelease|gsearch) ;;
                 *) return 1 ;;
             esac
             ;;
