@@ -2791,7 +2791,7 @@ run_5763 "python3 heredoc printing a shell invocation -> deny" 2 \
     "python3 - <<'PY'${NL}print('bash scripts/cr/write-verdicts.sh')${NL}PY"
 run_5763 "gate behind an env prefix -> deny" 2 "FOO=1 bash scripts/cr/write-verdicts.sh"
 run_5763 "gate behind env -> deny" 2 "env FOO=1 bash scripts/cr/write-verdicts.sh"
-run_5763 "gate behind timeout -> deny" 2 "timeout 9 bash scripts/cr/write-verdicts.sh"
+run_5763 "gate behind timeout -> deny" 2 "timeout 9 bash scripts/cr/write-verdicts.sh" # gnu-ok: payload text fed to the hook, never executed
 echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh"
 run "5763 differing tree: relative spelling of the gate -> deny" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh" "$WT")" "$HR"
