@@ -14,7 +14,7 @@ Metrics (see docs/internals/cache-health.md for the metrics.json schema):
   window (default 24h) and a BASELINE window (the 7 days before it).
 
 Alert rules (every default is a flag):
-  role-drop        (roles in --alert-roles, default chief,worker) a role's recent hit rate is more than --drop-pts (3) below its baseline
+  role-drop        (roles in --alert-roles, default console,leg) a role's recent hit rate is more than --drop-pts (3) below its baseline
   session-low      (same roles) a session over --session-min-tokens (1M) with hit below --session-hit (90 %)
   compactions      mean compactions per active worker above --compactions-max (4)
 Hysteresis: a crossing is notified once; it stays quiet while it stays crossed; a
@@ -200,7 +200,7 @@ def evaluate(metrics, offenders, a):
             holding["role-drop:" + role] = True
     worker = metrics["roles"]["leg"]
     if worker["sessions"] and worker["compactions_per_session"] is not None and worker["compactions_per_session"] > a.compactions_max:
-        cross["compactions:worker"] = "workers average %.1f compactions each (limit %g) over %d sessions" % (
+        cross["compactions:leg"] = "workers average %.1f compactions each (limit %g) over %d sessions" % (
             worker["compactions_per_session"], a.compactions_max, worker["sessions"])
     for o in offenders:
         if o["role"] in a.alert_roles.split(",") and o["tokens"] >= a.session_min_tokens and o["hit_pct"] is not None and o["hit_pct"] < a.session_hit:
@@ -328,7 +328,7 @@ def main():
     p.add_argument("--session-min-tokens", type=float, default=1e6)
     p.add_argument("--session-hit", type=float, default=90.0)
     p.add_argument("--compactions-max", type=float, default=4.0)
-    p.add_argument("--alert-roles", default="chief,worker")  # subagent/other/bridge hit rates swing with cold starts: metrics only
+    p.add_argument("--alert-roles", default="console,leg")  # subagent/other/bridge hit rates swing with cold starts: metrics only
     p.add_argument("--top", type=int, default=10)
     a = p.parse_args()
     now = a.now if a.now is not None else time.time()

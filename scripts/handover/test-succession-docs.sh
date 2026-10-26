@@ -435,10 +435,10 @@ absent 'ACTION ZERO step 1: action-zero.sh is never run_in_background' "$step1fl
 # --- 10. the operator types /chief, on Telegram and in Claude Code ------------
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'template step 11: the operator writes the Telegram verb /chief' "$(cat "$CHIEF")" '`/chief {{SESSION_NAME}} <text>`'
-absent 'template step 11: the Telegram verb is no longer /chief' "$(cat "$CHIEF")" '`/chief [{][{]SESSION_NAME'
+absent 'template step 11: the Telegram verb is no longer /console' "$(cat "$CHIEF")" '`/console [{][{]SESSION_NAME'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'running-a-chief: the operator writes the Telegram verb /chief' "$(cat "$RUNNING")" '`/chief <session> <text>`'
-absent 'running-a-chief: the Telegram verb is no longer /chief' "$(cat "$RUNNING")" '`/chief <session>'
+absent 'running-a-chief: the Telegram verb is no longer /console' "$(cat "$RUNNING")" '`/console <session>'
 absent 'template: the start and handover commands are /chief new and /chief next --arm' "$(cat "$CHIEF")" '/console (new|next --arm)( |`)'
 absent 'running-a-chief: the start and handover commands are /chief new and /chief next' "$(cat "$RUNNING")" '/console (new|next)( |`)'
 

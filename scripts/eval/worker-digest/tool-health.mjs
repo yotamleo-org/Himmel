@@ -5,6 +5,7 @@ import { homedir } from 'node:os';
 import { join } from 'node:path';
 import { estimateProfileListing } from './profile-listing.mjs';
 import { legacyNamesOn } from '../../lib/env-alias.mjs';
+import { canonicalProfileName } from '../../lanes/plugin-profiles.mjs';
 
 export const LANES = ['native', 'claudex', 'openrouter', 'cloud', 'unknown'];
 const num = (n) => Number.isSafeInteger(n) && n >= 0;
@@ -31,7 +32,11 @@ export function readToolHealth(env = process.env, query = new URLSearchParams(),
 }
 
 const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
-const profileOf = (...candidates) => candidates.find((c) => typeof c === 'string' && PROFILE.test(c)) || 'unknown';
+// A row recorded before the rename carries the old profile id; it rolls up under the renamed one.
+const profileOf = (...candidates) => {
+  const c = candidates.find((x) => typeof x === 'string' && PROFILE.test(x));
+  return c ? canonicalProfileName(c) : 'unknown';
+};
 
 // listing: {profile: {tool: listing tokens}} from profile-listing.mjs; absent = no drop candidates.
 export function rollupToolHealth(evals, failures, query = new URLSearchParams(), now = Date.now(), listing = {}) {
@@ -56,7 +61,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const day = dayOf(ts);
     if (!day) continue;
     const lane = LANES.includes(r.lane) ? r.lane : 'unknown';
-    const role = r.meta?.worker ? 'leg' : 'console';
+    const role = r.meta?.leg ? 'leg' : 'console';
     const health = Array.isArray(r.meta?.tool_health) ? r.meta.tool_health : [];
     const addSlot = (agent, model, cohort = day, profile = profileOf(r.meta?.profile, r.config?.profile)) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;

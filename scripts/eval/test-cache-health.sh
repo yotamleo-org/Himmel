@@ -88,9 +88,9 @@ rm -f "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 900000 100000
 run; check "crossing run exits 0" 0 $?
 check "crossing sends exactly one message" 1 "$(sends)"
-has "alert names the role" "worker hit rate 90.0%" "$W/sent"
+has "alert names the role" "leg hit rate 90.0%" "$W/sent"
 has "alert names the baseline" "98.0% baseline" "$W/sent"
-has "active state holds the crossing" "role-drop:worker" "$STATE/alert-state.json"
+has "active state holds the crossing" "role-drop:leg" "$STATE/alert-state.json"
 
 # ---- 3. no repeat: still crossed -> silent -----------------------------------
 rm -f "$W/sent"
@@ -101,7 +101,7 @@ check "still-crossed run sends nothing" 0 "$(sends)"
 python3 -I "$W/gen.py" "$R" "$NOW" 980000 20000
 run
 check "recovery sends exactly one message" 1 "$(sends)"
-has "recovery message" "cache-health RECOVERED: role-drop worker" "$W/sent"
+has "recovery message" "cache-health RECOVERED: role-drop leg" "$W/sent"
 rm -f "$W/sent"
 run
 check "after recovery nothing repeats" 0 "$(sends)"
@@ -112,7 +112,7 @@ run; rm -f "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 955000 45000   # 95.5 % = 2.5 below 98
 run
 check "inside the clear margin: no recovery yet" 0 "$(sends)"
-has "still active inside the margin" "role-drop:worker" "$STATE/alert-state.json"
+has "still active inside the margin" "role-drop:leg" "$STATE/alert-state.json"
 
 # ---- 6. failed send keeps the crossing pending (retry next run) --------------
 rm -rf "$STATE" "$W/sent"
@@ -120,7 +120,7 @@ python3 -I "$W/gen.py" "$R" "$NOW" 900000 100000
 echo 1 > "$W/send.rc"
 run; check "failed send exits non-zero" 3 $?
 check "failed send tried once" 1 "$(sends)"
-hasnt "failed send is not recorded as active" "role-drop:worker" "$STATE/alert-state.json"
+hasnt "failed send is not recorded as active" "role-drop:leg" "$STATE/alert-state.json"
 rm -f "$W/send.rc" "$W/sent"
 run
 check "retry after the failure delivers" 1 "$(sends)"
@@ -129,7 +129,7 @@ check "retry after the failure delivers" 1 "$(sends)"
 python3 -I "$PY" check --root "$W/no-such-root" --state-dir "$STATE" --now "$NOW" --notify-cmd "$SEND" >"$W/run.out" 2>&1
 check "missing root exits 2" 2 $?
 has "missing root names the path" "transcript root not found" "$W/run.out"
-has "missing root leaves the active alert alone" "role-drop:worker" "$STATE/alert-state.json"
+has "missing root leaves the active alert alone" "role-drop:leg" "$STATE/alert-state.json"
 
 # ---- 6c. input and invocation guards ------------------------------------------
 python3 -I "$PY" check --root "$R" --state-dir "$STATE" --now "$NOW" >"$W/run.out" 2>&1
@@ -153,7 +153,7 @@ rm -f "$W/sent"
 python3 -I "$W/gen.py" "$R" "$NOW" 980000 20000 legsilent
 run
 check "thin data sends no recovery" 0 "$(sends)"
-has "thin data keeps the active alert" "role-drop:worker" "$STATE/alert-state.json"
+has "thin data keeps the active alert" "role-drop:leg" "$STATE/alert-state.json"
 
 # ---- 6e. an unreadable directory is incomplete data: exit 2 ------------------
 mkdir -p "$R/locked"; cp "$R/c1.jsonl" "$R/locked/x.jsonl"; chmod 000 "$R/locked"

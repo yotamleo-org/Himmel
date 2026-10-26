@@ -40,7 +40,7 @@ out="$(bash "$ACK" feat+worker-a 2>&1)"; rc=$?
 check "(b) ack of a paged worker exits 0" "0" "$rc"
 af="$HIMMEL_DENIAL_ACK_DIR/feat+worker-a.ack"
 check "(b) the ack file exists" "yes" "$([ -f "$af" ] && echo yes)"
-check "(b) it records the worker" "feat+worker-a" "$(field "$af" worker)"
+check "(b) it records the worker" "feat+worker-a" "$(field "$af" leg)"
 check "(b) it records the paged class" "SHIP-STEP" "$(field "$af" class)"
 check "(b) it records the paged count" "2" "$(field "$af" count)"
 ats="$(field "$af" ts)"

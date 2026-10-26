@@ -120,7 +120,7 @@ status` that the lock is held, and acquiring one only if it reports `free`)
 and tells its predecessor it is live.
 
 It also opens a **Telegram inbox**: it creates
-`<bridge root>/chiefs/<session>.md` and watches it with its one event waiter,
+`<bridge root>/consoles/<session>.md` and watches it with its one event waiter,
 `chief-kit/chief-wait.sh`, run with Bash `run_in_background` (no `Monitor` re-arm loop, so an idle chief takes no turns; a persisted read
 cursor means a line appended while no waiter ran is delivered on the next
 start; at-least-once, so a waiter killed mid-emit can repeat one line), so

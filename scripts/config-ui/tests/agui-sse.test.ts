@@ -492,7 +492,7 @@ test("a subagent's name, model and kind come from free-form Agent input: they pa
 test("a long agent name is an identifier, not a secret: it is not redacted", async () => {
   const h = home();
   const name = "HIMMEL-4669-N1363-agui-agent-design-and-more";
-  journal(h, "-proj", RUN, readFileSync(join(FIX, "agents.jsonl"), "utf8").replace("HIMMEL-4669-roadmap-chief", name));
+  journal(h, "-proj", RUN, readFileSync(join(FIX, "agents.jsonl"), "utf8").replace("HIMMEL-4669-roadmap-console", name));
   const { port } = boot(h);
   const events = parse(await (await get(port, RUN)).text());
   expect((events.find((e) => e.type === "TOOL_CALL_START") as any).agent).toMatchObject({ name, role: "leg" });

@@ -659,7 +659,7 @@ page_denials() {
     end=$(( $(date +%s) + page_timeout ))  # one budget for the whole batch, not one per leg
     denial_pages "$1" "$2" | while read -r leg cls n; do
         denial_page_write "$leg" "$n" "$cls" || true
-        page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this leg. Review it, then: ack-denial.sh $leg" "$end"
+        page_send "DENIAL-PAGE $leg $cls x$n - a classifier denial parked this worker. Review it, then: ack-denial.sh $leg" "$end"
     done
 }
 

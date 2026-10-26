@@ -340,7 +340,7 @@ def main(argv=None):
         print("failure-review: --now %r is not an ISO time" % a.now, file=sys.stderr)
         return 2
     day = a.now.astimezone().strftime("%Y-%m-%d")
-    ledger = failure_router.leg_ledger.ledger_path(a.ledger)
+    ledger = failure_router.worker_ledger.ledger_path(a.ledger)
     since = a.now - timedelta(hours=24)
     try:
         rows = failure_router.read_ledger(ledger, since, a.now)

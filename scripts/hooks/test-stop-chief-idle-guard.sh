@@ -73,7 +73,7 @@ WORKER_SESSION_DOC="$HANDOVER_DIR/FIXTURE-worker-N1.md"
 RELEASE_TOKEN=""
 cleanup() {
     if [ -n "$RELEASE_TOKEN" ]; then
-        chmod 644 "$HANDOVER_DIR"/.locks/queue/*-console.lock/owner.json 2>/dev/null
+        chmod 644 "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json 2>/dev/null
         bash "$REPO/scripts/handover/queue-lock.sh" release "$CHIEF_DOC" "$RELEASE_TOKEN" >/dev/null 2>&1
     fi
     for f in "$HANDOVER_DIR"/.locks/queue/*.lock/*; do rm -f "$f" 2>/dev/null; done
@@ -156,13 +156,13 @@ out="$(run_guard "$WORKER_SESSION_PAYLOAD")"
 if is_block "$out"; then bad "(c) worker stop -> expected allow, got: $out"; else ok "(c) worker stop -> allow"; fi
 
 # --- (d)(i) induced fault: the held lock's owner.json is unreadable -------
-chmod 000 "$HANDOVER_DIR"/.locks/queue/*-console.lock/owner.json 2>/dev/null
+chmod 000 "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json 2>/dev/null
 readable=1
-for f in "$HANDOVER_DIR"/.locks/queue/*-console.lock/owner.json; do
+for f in "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json; do
     [ -r "$f" ] && readable=0
 done
 out="$(run_guard "$CHIEF_PAYLOAD")"
-chmod 644 "$HANDOVER_DIR"/.locks/queue/*-console.lock/owner.json 2>/dev/null
+chmod 644 "$HANDOVER_DIR"/.locks/queue/*-chief.lock/owner.json 2>/dev/null
 if [ "$readable" -eq 0 ]; then
     skip "(d-i) owner.json is still readable after chmod 000 (running as root?) — precondition not engaged"
 else
@@ -229,7 +229,7 @@ if ! worker_lock_out="$(QUEUE_LOCK_SESSION_SCOPE="worker-fixture-session" bash "
     echo "setup: could not acquire the fixture worker lock: $worker_lock_out" >&2
     exit 1
 fi
-WORKER_SESSION_LOCKDIR="$HANDOVER_DIR/.locks/queue/FIXTURE-leg-N1.lock"
+WORKER_SESSION_LOCKDIR="$HANDOVER_DIR/.locks/queue/FIXTURE-worker-N1.lock"
 [ -d "$WORKER_SESSION_LOCKDIR" ] || { echo "setup: fixture worker lock dir not found at $WORKER_SESSION_LOCKDIR" >&2; exit 1; }
 # shellcheck disable=SC2016  # backtick span pattern, not a shell expansion
 WORKER_SESSION_RELEASE_TOKEN="$(printf '%s\n' "$worker_lock_out" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"

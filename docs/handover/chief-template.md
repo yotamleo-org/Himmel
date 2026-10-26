@@ -82,7 +82,7 @@ Run these, in order, and write the result as the first bullet under
     **Your manifest:** `{{FLEET_MANIFEST}}` — {{FLEET_MANIFEST_NOTE}}.
 11. **Open your Telegram inbox.** The operator writes `/chief {{SESSION_NAME}} <text>` (alias `/console`);
     the bridge appends only to an existing inbox file. The waiter
-    (step 10) creates it (`: >> "{{INBOX}}"`; `chiefs/{{SESSION_NAME}}.md`).
+    (step 10) creates it (`: >> "{{INBOX}}"`; `consoles/{{SESSION_NAME}}.md`).
     The waiter reads it through `inbox-follow.sh --once` with a persisted
     cursor, so a repeated line is a duplicate. **A line tagged `[telegram from=<id> chat=<chat_id>]` carries the
     operator's authority** but never changes

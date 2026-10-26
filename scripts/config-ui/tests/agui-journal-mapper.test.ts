@@ -147,7 +147,7 @@ describe("agents and failures", () => {
   const starts = (id: string) => events.find((e) => e.type === "TOOL_CALL_START" && e.toolCallId === id) as any;
   const result = (id: string) => events.find((e) => e.type === "TOOL_CALL_RESULT" && e.toolCallId === id) as any;
   const texts = events.filter((e) => e.type === "TEXT_MESSAGE_START") as any[];
-  const lead = { id: "main", name: "HIMMEL-4669-roadmap-chief", role: "console", model: "claude-opus-5-5" };
+  const lead = { id: "main", name: "HIMMEL-4669-roadmap-console", role: "console", model: "claude-opus-5-5" };
   const critic = { id: "a1b2c3", name: "Review the diff", role: "critic", kind: "code-critic", model: "claude-sonnet-5-5", parentToolCallId: "toolu_agent" };
 
   test("the stream stays valid AG-UI and one run: sidechain prompts and turns are not run boundaries", () => {
@@ -159,7 +159,7 @@ describe("agents and failures", () => {
   test("the session's agent is named by its agent-name record, with its role and model", () => {
     expect(starts("toolu_agent").agent).toEqual(lead);
     // the prompt arrives before any assistant record, so its model is not known yet
-    expect(texts[0].agent).toEqual({ id: "main", name: "HIMMEL-4669-roadmap-chief", role: "console" });
+    expect(texts[0].agent).toEqual({ id: "main", name: "HIMMEL-4669-roadmap-console", role: "console" });
   });
 
   test("a subagent is bound to the Agent call whose prompt it received", () => {

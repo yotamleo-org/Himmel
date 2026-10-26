@@ -1011,13 +1011,13 @@ wait_exit "$WPID"
 check "(od5c) nor does a tick line going back to legs= with the same value" "running" "$rc"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
-# A baseline an older waiter saved under workers=/legset=/bank= is the same key, not a change.
+# A baseline an older waiter saved under legs=/legset=/bank= is the same key, not a change.
 reset_stub
 I="$(new_inbox od5d)"
 start "$I" "$WORK/od5d.out" --workers "N1.md"
 wait_hb "$I" || fail "(od5d) no baseline heartbeat"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
-sed -i -e '2s/workers=/workers=/' -e '2s/workerset=/legset=/' -e '2s/usage=/bank=/' "$I.wait.state"  # gnu-ok: Linux-only kit
+sed -i -e '2s/workers=/legs=/' -e '2s/workerset=/legset=/' -e '2s/usage=/bank=/' "$I.wait.state"  # gnu-ok: Linux-only kit
 check "(od5d) the saved key now carries the old names" "1" "$(sed -n 2p "$I.wait.state" | grep -c 'legs=.*legset=.*bank=')"
 : > "$I.wait"
 start "$I" "$WORK/od5d.out" --workers "N1.md"

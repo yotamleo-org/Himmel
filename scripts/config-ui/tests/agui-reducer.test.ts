@@ -193,7 +193,7 @@ describe("agents and failures", () => {
 
   test("agents register in order of appearance with name, role and model", () => {
     expect(v.agentOrder).toEqual(["main", "a1b2c3"]);
-    expect(v.agents.main).toMatchObject({ name: "HIMMEL-4669-roadmap-chief", role: "console", model: "claude-opus-5-5" });
+    expect(v.agents.main).toMatchObject({ name: "HIMMEL-4669-roadmap-console", role: "console", model: "claude-opus-5-5" });
     expect(v.agents.a1b2c3).toMatchObject({ name: "Review the diff", role: "critic", kind: "code-critic", model: "claude-sonnet-5-5", parentToolCallId: "toolu_agent" });
   });
 

@@ -252,7 +252,7 @@ wait_for "$RECORD"; rec="$(cat "$RECORD" 2>/dev/null)"
 assert_contains "L3 every other *_OK is scrubbed" "other=unset" "$rec"
 assert_contains "L4 the bot token is scrubbed" "token=unset" "$rec"
 assert_contains "L5 it launches in the worker's own worktree" "legrepo=$TMP/wt" "$rec"
-assert_contains "L6 with the doc's model, session name and fleet/chief" "--fleet $FLEET --chief HIMMEL-nextleg-2026-10-09ZZ-roadmap-chief HIMMEL-1-N7-x-2026-10-09 $BUCKET/HIMMEL-1-N7-x-2026-10-09.md" "$rec"
+assert_contains "L6 with the doc's model, session name and fleet/chief" "--fleet $FLEET --chief HIMMEL-nextleg-2026-10-09ZZ-roadmap-console HIMMEL-1-N7-x-2026-10-09 $BUCKET/HIMMEL-1-N7-x-2026-10-09.md" "$rec"
 assert_contains "L7 and the model named in the doc" "claude-opus-5-5" "$rec"
 rm -f "$RECORD"; bg launch-worker N7 - >/dev/null; wait_for "$RECORD"
 assert_contains "L8 without --hook-bypass nothing is exported" "bypass=unset" "$(cat "$RECORD" 2>/dev/null)"
@@ -339,7 +339,7 @@ assert_contains "K3 from the primary" "pwd=$PRIMARY" "$rec"
 assert_contains "K4 with no hook-integrity bypass" "bypass=unset" "$rec"
 assert_contains "K5 and every *_OK scrubbed" "other=unset" "$rec"
 bg relaunch-chief - - >/dev/null
-assert_contains "K6 the default name is chief" "--name chief" "$(cat "$RECORD")"
+assert_contains "K6 the default name is console" "--name console" "$(cat "$RECORD")"
 bg relaunch-chief 'Bad;Name' - >/dev/null; assert_rc "K7 a bad chief name is bad input" 1 "$?"
 
 # --- /restart-bridge -----------------------------------------------------------

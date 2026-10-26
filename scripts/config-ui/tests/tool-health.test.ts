@@ -215,21 +215,21 @@ function seedProfiles() {
   rows.forEach((r: any, i: number) => { if (i < 2) for (const h of r.meta.tool_health) h.profile = i === 0 ? "leg-impl" : "judge"; });
   writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
   const listing = join(dirs[dirs.length - 1], "listing.json");
-  writeFileSync(listing, JSON.stringify({ "leg-impl": { Bash: 0, mcp__qmd__query: 900 }, judge: { Read: 0 } }));
+  writeFileSync(listing, JSON.stringify({ "worker-impl": { Bash: 0, mcp__qmd__query: 900 }, judge: { Read: 0 } }));
   return { ...env, HIMMEL_PROFILE_LISTING: listing };
 }
 
 test("the payload carries a per-profile table, listing cost and drop candidates; unlabelled sessions stay unknown", () => {
   const data = read(seedProfiles());
-  expect(data.profiles.map((p: any) => p.profile)).toEqual(["judge", "worker-impl", "unknown"]);
+  expect(data.profiles.map((p: any) => p.profile)).toEqual(["judge", "unknown", "worker-impl"]);
   expect(data.profiles.find((p: any) => p.profile === "worker-impl").tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, listing_tokens: 0, verdict: "keep" });
   expect(data.drop_candidates).toEqual([expect.objectContaining({ profile: "worker-impl", tool: "mcp__qmd__query", listing_tokens: 900, calls: 0, window_days: 7 })]);
   expect(read(seed()).drop_candidates).toEqual([]);
 });
 
-test("the default path prices the Skill listing of the real worker-impl, console-judge and console profiles without a file or a claude run", async () => {
+test("the default path prices the Skill listing of the real worker-impl, console-judge and chief profiles without a file or a claude run", async () => {
   const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
-  const registry = loadRegistry(), profiles = ["worker-impl", "console-judge", "console"];
+  const registry = loadRegistry(), profiles = ["worker-impl", "console-judge", "chief"];
   const env: any = seed();
   const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
   rows.forEach((r: any, i: number) => { for (const h of r.meta.tool_health) h.profile = profiles[i]; });
@@ -245,7 +245,7 @@ test("the default path prices the Skill listing of the real worker-impl, console
   const data = read(env);
   const skill = (p: string) => data.profiles.find((x: any) => x.profile === p).tools.find((t: any) => t.tool === "Skill");
   for (const p of profiles) expect(skill(p).listing_tokens).toBeGreaterThan(0);
-  expect(skill("console-judge").listing_tokens).toBeLessThan(skill("console").listing_tokens);
+  expect(skill("console-judge").listing_tokens).toBeLessThan(skill("chief").listing_tokens);
   expect(data.drop_candidates.map((d: any) => d.profile).sort()).toEqual([...profiles].sort());
 });
 
