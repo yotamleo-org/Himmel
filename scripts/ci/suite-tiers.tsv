@@ -361,6 +361,7 @@ scripts/handover/chief-kit/test-action-zero.sh	local	behaviour suite, 0 catches 
 scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
+scripts/handover/chief-kit/test-chain-graph.sh	local	behaviour suite, hermetic report script, no gate role
 scripts/handover/chief-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ci-guardrail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path

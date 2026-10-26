@@ -378,6 +378,7 @@ scripts/handover/chief-kit/test-action-zero.sh	4
 scripts/handover/chief-kit/test-append-results.sh	0
 scripts/handover/chief-kit/test-board.sh	15
 scripts/handover/chief-kit/test-brief-lint.sh	3
+scripts/handover/chief-kit/test-chain-graph.sh	3
 scripts/handover/chief-kit/test-ci-guardrail.sh	3
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	20
 scripts/handover/chief-kit/test-compacted-check.sh	0
