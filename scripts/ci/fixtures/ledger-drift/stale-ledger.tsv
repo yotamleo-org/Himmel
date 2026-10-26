@@ -124,7 +124,6 @@ scripts/ci/test-suite-concurrency.sh	110
 scripts/ci/test-suite-lock-brand-gap.sh	70
 scripts/ci/test-tmp-sweep.sh	0
 scripts/ci/test-windows-nightly-issue.sh	0
-scripts/cleanup/test-codex-sweep-cadence.sh	0
 scripts/codex/test-codex-arg-filter.sh	0
 scripts/codex/test-codex-hook-parity.sh	0
 scripts/codex/test-companion-liveness.sh	1

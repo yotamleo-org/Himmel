@@ -529,7 +529,6 @@ scripts/himmelctl/test/test-luna-config-migration.sh	7
 scripts/himmelctl/test/test-provenance-js.sh	3
 scripts/himmelctl/test/test-provenance-session.sh	2
 scripts/himmelctl/test/test-report-deep.sh	1
-scripts/himmelctl/test/test-resolve-powershell.sh	0
 scripts/himmelctl/test/test-secret-store.sh	0
 scripts/himmelctl/test/test-standalone-bundle-closure.sh	0
 scripts/himmelctl/test/test-standalone-bundle.sh	3
@@ -869,12 +868,10 @@ scripts/lib/test-rename-aliases.sh	0
 scripts/lib/test-render-lease.sh	4
 scripts/lib/test-resolve-hermes-py.sh	5
 scripts/lib/test-resolve-node.sh	0
-scripts/lib/test-resolve-powershell.sh	0
 scripts/lib/test-resolve-user-home.sh	0
 scripts/lib/test-result.sh	3
 scripts/lib/test-run-bun.sh	0
 scripts/lib/test-run-node.sh	1
-scripts/lib/test-run-pwsh.sh	0
 scripts/lib/test-runtime-preflight.sh	1
 scripts/lib/test-sandbox-run.sh	139
 scripts/lib/test-scheduler-backend.sh	0
@@ -952,7 +949,6 @@ scripts/macos/test-macos-lane.sh	5
 scripts/mcp/test-build-mcp-profiles.sh	0
 scripts/measurements/test-prose-audit.sh	1
 scripts/memory/test-audit-memory-capture.sh	0
-scripts/observability/test-agent-runtime-census.sh	0
 scripts/observability/test-dashboard-lint.sh	1
 scripts/observability/test-exit-codes.sh	1
 scripts/observability/test-install-grafana.sh	1
@@ -1114,7 +1110,6 @@ scripts/vm/test-provenance-roundtrip-dry.sh	39
 scripts/vm/test-upgrade-path-stage.sh	4
 scripts/vm/test-vm-clone-lib.sh	0
 scripts/vm/test-vm-lock.sh	22
-scripts/vm/test-win-vm.sh	6
 scripts/web/research/test-research-path.sh	23
 scripts/web/test-fetch-url.sh	2
 scripts/where-are-we/test-statusline-rollup.sh	0

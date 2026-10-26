@@ -2,7 +2,6 @@
 
 > **Platform tier:** Linux and macOS are the **Supported** tier, see the
 > [README support matrix](../../README.md#support-matrix).
-> Notes for unsupported platforms: [archive](../archive/windows-wsl-gotchas.md).
 
 Platform and harness-tool traps that bite when running himmel or when
 authoring himmel shell scripts. These are generic (no machine-specific

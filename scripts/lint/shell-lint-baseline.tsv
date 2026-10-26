@@ -388,8 +388,6 @@ scripts/himmel-update.sh	errexit	1
 scripts/himmel-update.sh	prim-tmpdir	1
 scripts/himmelctl/bootstrap.sh	errexit	1
 scripts/himmelctl/test/_hermetic-home.sh	prim-tmpdir	1
-scripts/himmelctl/test/test-resolve-powershell.sh	errexit	1
-scripts/himmelctl/test/test-resolve-powershell.sh	mktemp	1
 scripts/himmelctl/test/test-standalone-bundle-closure.sh	errexit	1
 scripts/himmelctl/test/test-update-autostash.sh	errexit	1
 scripts/himmelctl/test/test-update-autostash.sh	mktemp	1
@@ -751,10 +749,8 @@ scripts/lib/test-qmd-bin.sh	mktemp	1
 scripts/lib/test-register-auto-arm-hook.sh	mktemp	2
 scripts/lib/test-resolve-hermes-py.sh	mktemp	6
 scripts/lib/test-resolve-node.sh	mktemp	8
-scripts/lib/test-resolve-powershell.sh	mktemp	6
 scripts/lib/test-run-bun.sh	mktemp	4
 scripts/lib/test-run-node.sh	echo-e	3
-scripts/lib/test-run-pwsh.sh	mktemp	2
 scripts/lib/test-runtime-preflight.sh	mktemp	1
 scripts/lib/test-scheduler-backend.sh	mktemp	13
 scripts/lib/test-setup-wire.sh	mktemp	1
@@ -989,7 +985,6 @@ scripts/vm/ci-runner/egress-refresh.sh	errexit	1
 scripts/vm/ci-runner/guest-provision.sh	errexit	1
 scripts/vm/lib/seed-provenance.sh	errexit	1
 scripts/vm/provenance-roundtrip.sh	gnu-flag	1
-scripts/vm/win-smoke-cell.sh	prim-tmpdir	1
 scripts/web/research/test-research-path.sh	errexit	1
 scripts/where-are-we/statusline-rollup.sh	prim-atomic	1
 scripts/where-are-we/statusline-rollup.sh	prim-lock	1

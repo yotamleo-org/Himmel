@@ -49,7 +49,7 @@ Map of the `docs/` tree. New here? Start at **[getting-started.md](getting-start
 - [team.md](team.md) — Meet the team: one card per role (chief, workers, reviewers, judge, release manager), generated from the role definitions.
 - [internals/context-architecture.md](internals/context-architecture.md) — the lean-surface doctrine: where knowledge lives (layering model, the nesting trap, memory-as-map).
 - [internals/harness-compat.md](internals/harness-compat.md) — running himmel under Codex / other harnesses: the compatibility matrix + per-feature port/guard/accept decisions.
-- [internals/environment-gotchas.md](internals/environment-gotchas.md) — git-worktree / scheduler / Bash-tool / content-filter environment traps (Windows sections kept as history).
+- [internals/environment-gotchas.md](internals/environment-gotchas.md) — git-worktree / scheduler / Bash-tool / content-filter environment traps.
 - [internals/egress-matrix.md](internals/egress-matrix.md) — the data-egress policy (owned corpus × provider × purpose) enforced by `scripts/guardrails/egress-matrix.json`.
 - [internals/lesson-audit.md](internals/lesson-audit.md) · [internals/lesson-provenance.md](internals/lesson-provenance.md) — the self-evolving lessons-loop precision gate + provenance schema.
 

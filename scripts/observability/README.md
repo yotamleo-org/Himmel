@@ -1,8 +1,8 @@
 # himmel observability Phase A
 
-Phase A is a local, passive Prometheus/Grafana stack for the Windows host. The
-flow exporter is a tiny Bun HTTP server bound to `127.0.0.1:9877`; Prometheus
-scrapes it every 60s and also scrapes `windows_exporter` on `127.0.0.1:9182`.
+Phase A is a local, passive Prometheus/Grafana stack. The flow exporter is a
+tiny Bun HTTP server bound to `127.0.0.1:9877`; Prometheus scrapes it every
+60s.
 
 ## Passivity invariant
 
@@ -592,164 +592,12 @@ run as three systemd **user** units, all bound to loopback:
 | `himmel-observability-grafana.service` | 3000 | serves the provisioned `himmel-health` dashboard (anonymous Viewer; random admin password in a 0600 file) |
 | `himmel-observability-grafana-alert-hook.service` | 9878 | Bun receiver: Grafana can only POST webhooks, so this turns a firing/resolved alert into `cadence-alert.sh fail\|clear grafana-<alertname>` |
 
-Differences from the Windows stack: the contact point is the webhook above (one
-dedupe path and one log through `cadence-alert`, no Telegram variables), the
-`windows_exporter` scrape job is stripped (its target never exists on Linux, so
-`up == 0` would alert forever), and Grafana telemetry, update checks, news and
-external snapshots are off. Doctor C19 checks this stack only when the item is
-desired, comparing the stripped `prometheus.yml`, `alerts.rules.yml` and
+The contact point is the webhook above (one dedupe path and one log through
+`cadence-alert`, no Telegram variables), and Grafana telemetry, update checks,
+news and external snapshots are off. Doctor C19 checks this stack only when the
+item is desired, comparing `prometheus.yml`, `alerts.rules.yml` and
 `dashboards/` against the install dir. `uninstall` disables and removes the
 units and the data dir.
-
-## Install on Windows
-
-From a PowerShell session in the repo:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File scripts/observability/install-stack.ps1
-```
-
-By default the four exporter tasks run as Interactive logon tasks, which pop a
-console window per process in your session. To run them hidden (S4U, session 0,
-no windows), pass `-Hidden` — this registers an S4U principal and **requires an
-elevated PowerShell**:
-
-```powershell
-# from an Administrator PowerShell
-powershell -ExecutionPolicy Bypass -File scripts/observability/install-stack.ps1 -Hidden
-```
-
-Without `-Hidden`, a fresh install stays elevation-free and windowed. That
-stops being true once any of the four exporter tasks is already registered
-S4U from an earlier `-Hidden` run: touching it again — even to flip it back
-to windowed — needs elevation too, the same as registering S4U in the first
-place, since rolling it back means re-registering that same S4U XML. The
-installer checks every exporter task it's about to touch for an existing S4U
-principal up front, before any downloads, and refuses with a clear message
-if the shell isn't elevated, rather than stopping a running S4U task and
-then failing Access Denied mid-registration or mid-rollback.
-
-Re-running the script (with or without `-Hidden`) against tasks previously
-registered the other way flips them immediately — the installer stops any running
-instance of each exporter task and waits for it to exit before swapping the
-task definition, since `Register-ScheduledTask -Force` alone only replaces
-the definition and leaves an already-running process alone. Either direction
-is a plain re-run (no separate uninstall step needed). The stop is
-fail-closed — a stop failure or 30s stop-timeout aborts the run before
-touching the task definition, rather than risking two instances fighting
-over the same window/session/port. Before replacing an existing exporter
-task, the installer exports its current definition; if a later step in the
-same run fails — a sibling task's registration throws, or the replacement
-registers but never actually starts (`Register-ScheduledTask -Force`
-overwrites the definition unconditionally, so a bare restart would just
-retry the new, possibly-broken one) — it restores that saved definition
-and, only if that task was running before this run (StartAfterRestore),
-starts it again and confirms it reaches Running, so an aborted run doesn't leave
-a previously-working exporter offline running a broken replacement. The
-final "Scheduled tasks" listing reports each exporter's actual state
-(`started`, `RESTORED`, `RECOVERED`, `INDETERMINATE`, `REMOVED`, or `NOT
-STARTED`/live state as appropriate) —
-registration succeeding doesn't guarantee the process launched; S4U in
-particular can fail on missing "Log on as a batch job" rights or
-EFS/network access under the S4U token.
-
-The exit code's contract: **0 only when every exporter the run touched is
-verifiably running under the definition this run requested.** A `RESTORED`
-task counts as a failure even though the stack stayed up — the stack being
-alive is not the same as the requested `-Hidden` flip having actually
-applied, and the script must not report success over a flip that silently
-didn't happen. Non-zero covers: any exporter not verifiably running (fresh
-install or otherwise), any exporter restored to its previous definition
-instead of the requested one, and a run that aborted partway through. Check
-the warnings and the final listing for which. (`-Hidden` is an interim
-measure; the durable single-service, cross-platform replacement is a planned
-follow-up. The `luna-sync-alert` interval task is unaffected.)
-
-"Verifiably running" is checked twice, not once: a task that enters Running
-and then dies during its own init (a port conflict, an S4U resource-access
-failure that only bites once the process tries to use something) is
-re-sampled after a short stability window before being trusted, and every
-exporter the run believes it started is re-checked once more in a final
-sweep after the whole batch finishes, since a later exporter's startup can
-still take an earlier one down. Every scheduled-task lookup across all three
-verification sites (the stop-confirmation poll, the start-confirmation poll,
-and the final sweep) distinguishes a task genuinely not existing/not running
-from the lookup itself failing (an RPC/Task Scheduler hiccup) — the former is
-a real answer; the latter isn't, and is never silently read as one. During
-the two polls that means "not yet confirmed, keep polling" rather than an
-immediate false conclusion; the final sweep has no poll to fall back into (a
-single, one-shot re-check), so a failed lookup there is reported as
-`INDETERMINATE` instead — loud, and counted toward a non-zero exit, rather
-than triggering a rollback of a task that may well be perfectly healthy.
-
-The final sweep's Running check also confirms the task's registered
-principal matches the one THIS run requested, not just that it's Running —
-two installs running against the same tasks in opposite modes at once could
-otherwise cross-confirm each other's flip as this run's own success. Running
-under the wrong principal is treated as not (yet) started rather than
-silently trusted. True cross-process serialization (so two installs can't
-interleave against the same tasks at all) is deferred to the supervisor
-follow-up — running two installs against the same stack concurrently is
-still not supported, this just stops one from mis-reporting success over it.
-
-Restoring a saved definition follows that exact same stop-first discipline,
-not just the initial registration: if the current replacement instance is
-actually live when a restore runs, it is stopped and confirmed stopped
-before the old definition is swapped back in, never swapped in underneath a
-still-running process. And a restore is never partial across a batch — if
-any exporter isn't verifiably running by the time the run finishes, the
-whole batch is treated as failed and every pre-existing exporter this run
-touched rolls back uniformly to its prior definition, including one that had
-already reached Running under the newly-requested definition moments
-earlier — whether the trigger was a literal exception (a sibling's
-registration throwing) or just one exporter individually never reaching
-Running (the common async-S4U case, which doesn't throw at all). The
-alternative — a mixed stack where some exporters keep the requested
-definition and others get rolled back — would silently contradict the "an
-aborted run guarantees no regression" story above.
-
-A stop can also succeed for real while its own confirmation can't — the
-polls that would confirm it hit their own lookup failures for the whole
-30-second window, not because the process is genuinely stuck. That still
-aborts (the definition is never swapped in underneath an unconfirmed
-instance), but the task's actual state is re-checked once more before the
-run gives up on it: if a fresh lookup now confirms it's stopped, restarting
-it under its own untouched definition is the entire recovery (nothing was
-ever replaced, so there's nothing to restore) — reported as `RECOVERED`. If
-even that retry can't tell, it's reported loudly as `INDETERMINATE` rather
-than silently left out of every rollback set — check Task Scheduler
-manually in that case.
-
-Rollback symmetry covers both directions a task can enter this run:
-pre-existing exporters roll back to their saved XML (started only if they
-were running before); an exporter this run created from scratch has no
-prior definition to fall back to, so on an aborted batch it is stopped (if
-running) and unregistered instead — removed, not left behind registered (and
-possibly running under -Hidden/S4U) while its pre-existing siblings revert
-to their old, Interactive definitions. The final listing reports this
-explicitly as `REMOVED`.
-
-The script installs or verifies Prometheus, Grafana OSS, `windows_exporter`, and
-Bun, copies `prometheus.yml` under `%LOCALAPPDATA%\himmel\observability`, and
-registers user-level logon scheduled tasks:
-
-- `himmel-observability-prometheus`
-- `himmel-observability-grafana`
-- `himmel-observability-windows-exporter`
-- `himmel-observability-flow-exporter`
-- `himmel-observability-luna-sync-alert` (every 10 minutes — see Alerting below)
-
-URLs after the tasks are running:
-
-- Prometheus: `http://127.0.0.1:9090`
-- Grafana: `http://127.0.0.1:3000`
-- Flow exporter: `http://127.0.0.1:9877/metrics`
-- windows_exporter: `http://127.0.0.1:9182/metrics`
-
-Import `dashboards/war-room-system.json` into Grafana. The
-`${DS_PROMETHEUS}` variable auto-binds to the provisioned Prometheus
-datasource (`provisioning/datasources/prometheus.yaml`, fixed `uid:
-prometheus`) — no manual bind step.
 
 ## Health dashboard
 
@@ -788,7 +636,6 @@ provider `*.yaml` appears under `provisioning/dashboards/`.
 | G1 | Chief workers and their cost | Machine-readable output is a planned follow-up; `/obs-report` shows it |
 | G4 | Advice per alert in the rules | The advice lives in the dashboard's `alertname` mapping instead |
 | G5 | Usage bank reset time | The exporter does not keep the usage cache's `resets_at` |
-| G6 | Windows auto-provisioning of this dashboard | `install-stack.ps1` copies only `provisioning/`; Windows is not supported, Linux via the Install on Linux section |
 | G7 | Daily health check (himmel-doctor results) | `/obs-report` |
 | G8 | Machine setup (`himmelctl status`) | `/obs-report` |
 | G9 | qmd search index age | `/obs-report` |

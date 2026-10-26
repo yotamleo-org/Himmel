@@ -16,8 +16,7 @@ Two processes make it up:
 **Single-owner constraint:** Telegram allows exactly ONE `getUpdates` consumer
 per bot token. A second poller (stale proc, or a `claude --channels
 telegram-himmel` plugin session) causes `409 Conflict` storms and the bridge
-goes deaf. Run exactly one. `restart-bridge.ps1` (Windows) enforces this;
-`restart-bridge.sh` (POSIX — Linux/macOS, Stage-1) is its sibling launcher,
+goes deaf. Run exactly one. `restart-bridge.sh` (Linux/macOS) enforces this,
 see below.
 
 ---
@@ -131,42 +130,19 @@ registry that is not one BOM-free JSON document is refused (rc 26). Add a rule
 by PR to `allow-rules.json`: that review is the control.
 The name is `allow-rule` in `TELEGRAM_AUTO_ACTIONS`, like the other break-glass ops.
 
-## Human — quick commands (Windows / PowerShell)
+## Human — quick commands (Linux, macOS)
 
-```powershell
-# Start (or restart) the bridge — kills any stale bridge procs, starts ONE
-# supervisor, settles 35s, verifies no 409 AND real progress (offset advanced
-# or a poll heartbeat logged). This is the canonical Windows
-# launcher.
-pwsh -File scripts/telegram/restart-bridge.ps1
-
-# Status only — report procs + 409 count, touch nothing.
-pwsh -File scripts/telegram/restart-bridge.ps1 -StatusOnly
-
-# Point at a non-default repo root.
-pwsh -File scripts/telegram/restart-bridge.ps1 -Repo C:/path/to/himmel
-```
-
-Exit codes: `0` = up + clean · `1` = usage/env error · `2` = started but still
-seeing 409 (investigate).
-
-## Human — quick commands (POSIX / Linux, macOS)
-
-`restart-bridge.sh` is the Stage-1 POSIX sibling of `restart-bridge.ps1`. It
-covers happy-path start/run/stop/status, the stale-lock recovery `flock` gives
-for free, and a pidfile ledger used as an identity source
+`restart-bridge.sh` covers happy-path start/run/stop/status, the stale-lock
+recovery `flock` gives for free, and a pidfile ledger used as an identity source
 with a **staleness refusal** (a recorded pid whose process started after the
-ledger was written is refused, the same class of guard as the PS1's
-`Test-LedgerPidValid`). Unlike the PS1 it still does **not** ship the
-`-FromLedger` verb itself, orphan `bun server.ts` detection, or the
-offset/heartbeat progress-proof verify — so it does not prove no-409/real
-progress after launch. Those remaining gaps are a known limitation, not
-silently dropped; see the script's own header comment for the full honesty
-note.
+ledger was written is refused). It does **not** ship the `-FromLedger` verb
+itself, orphan `bun server.ts` detection, or the offset/heartbeat
+progress-proof verify — so it does not prove no-409/real progress after launch.
+Those remaining gaps are a known limitation, not silently dropped; see the
+script's own header comment for the full honesty note.
 
 One platform caveat inside that: the stale-lock recovery is what `flock` gives
-for free, and **stock macOS ships no `flock`** (nor does this repo's Windows
-Git Bash). The script does not fail there — it prints a named WARNING and
+for free, and **stock macOS ships no `flock`**. The script does not fail there — it prints a named WARNING and
 proceeds without the lock, so start/stop/status still work and only the
 serialization of two CONCURRENT starts is lost. Install `flock` (Homebrew's
 `util-linux`) if you want that back.
@@ -201,8 +177,7 @@ A ledger entry counts only while it is **not stale** — i.e. the process did no
 start *after* the pidfile was written. That single check is what lets both
 identity sources coexist: without it, honouring the ledger across checkouts
 would license killing another checkout's supervisor that merely inherited a
-recycled pid (the same guard `restart-bridge.ps1`'s `Test-LedgerPidValid` has
-always applied). When a timestamp cannot be read at all the check reports
+recycled pid. When a timestamp cannot be read at all the check reports
 *undeterminable* rather than guessing, and that licenses ownership only where
 the cwd is unreadable too (the macOS/no-`lsof` host, which must still be able
 to stop its own bridge) — a readable but mismatching cwd is evidence and is not
@@ -252,7 +227,7 @@ three-part rule.
 
 ### Stop the bridge
 
-```powershell
+```sh
 # Graceful: reads supervisor.pid, kills supervisor first (so it can't respawn
 # the poller in the gap), then the poller.
 bun --cwd scripts/telegram supervisor.ts --kill
@@ -269,8 +244,8 @@ token-scoped lock `start` uses.
 
 ### Logs
 
-```powershell
-Get-Content "$env:USERPROFILE\.claude\channels\telegram\supervisor.log" -Tail 20
+```sh
+tail -n 20 ~/.claude/channels/telegram/supervisor.log
 ```
 
 A **clean, idle** poller logs nothing (the 30s long-poll is silent on success).
@@ -282,21 +257,9 @@ second poller is alive — restart to reclaim single ownership.
 
 ## Human — survive a reboot (manual, one-time)
 
-The bridge is a detached process; nothing relaunches it after a Windows reboot.
-To auto-start it at logon, register the `HimmelTelegramBridge` scheduled task
-**yourself** (Claude's auto-mode blocks creating persistence on your behalf —
-by design):
-
-```powershell
-# Register (idempotent — re-run safely; -Status to report, -Remove to unregister)
-pwsh -File scripts/telegram/install-logon-task.ps1
-```
-
-The task runs as you, only while you're logged on (the bounded claude runs need
-your user session: bun, claude auth, and the bot token in
-`~/.claude/channels/telegram/.env`). It invokes `restart-bridge.ps1`, which is
-idempotent, so the logon task safely no-ops / reclaims if a bridge is already
-up. Remove it with `pwsh -File scripts/telegram/install-logon-task.ps1 -Remove`.
+The bridge is a detached process; nothing relaunches it after a reboot unless
+you register the unit **yourself** (Claude's auto-mode blocks creating
+persistence on your behalf — by design).
 
 ### Linux (systemd user unit + linger)
 
@@ -350,17 +313,17 @@ When asked to "start the telegram bridge":
 
 1. **Check first** — never blind-start (a second poller = 409 storm):
    ```
-   pwsh -File scripts/telegram/restart-bridge.ps1 -StatusOnly
+   bash scripts/telegram/restart-bridge.sh status
    ```
 2. **Start / restart** — the launcher is idempotent (kills stale, starts one):
    ```
-   pwsh -File scripts/telegram/restart-bridge.ps1
+   bash scripts/telegram/restart-bridge.sh start
    ```
-   Treat exit `0` as success, `2` as "still 409 — investigate", `1` as env error.
+   Treat exit `0` as success.
 3. **Verify health** — tail `~/.claude/channels/telegram/supervisor.log`. An
    empty / silent log after start = healthy (long-poll is silent on success).
    `Bad Gateway` = Telegram 502, transient. `409` = second poller still alive.
-4. **Do NOT** `taskkill /IM bun.exe` (nukes unrelated bun work — the auto-mode
+4. **Do NOT** `pkill bun` (nukes unrelated bun work — the auto-mode
    classifier refuses it anyway). The launcher already scopes its kills to the
    bridge procs only.
 5. **Do NOT** open a `claude --channels telegram-himmel` session while the bun
@@ -485,7 +448,7 @@ to make it, the alternative is to turn "Remain anonymous" off for that group.
 
 **Deploying it:** `access.json` is read at poller startup, so the flag takes
 effect only after a bridge restart —
-`pwsh -File scripts/telegram/restart-bridge.ps1`. Verify with a real post from
+`bash scripts/telegram/restart-bridge.sh start`. Verify with a real post from
 that group: `supervisor.log` should show
 `[poller] triage <verdict> → spawn-low (operator floor) for group_<chat_id>`, or
 no triage line at all if the classifier already said spawn. A fresh
@@ -577,7 +540,7 @@ Rules worth knowing before you edit that line:
   | `armed` / `already-armed` / `ambiguous` / `no-match` | `/arm` outcomes |
   | `merged` / `not-green` / `head-moved` / `no-open-pr` | `/mergepub` outcomes |
   | `restarting` | `/restart` accepted and fired |
-  | `restart-unsupported` | `/restart full` on non-Windows (rc 20), or a build with no restart dep wired |
+  | `restart-unsupported` | `/restart full` (rc 20), or a build with no restart dep wired |
   | `refused-forwarded` | the injection kill-switch — any op, forwarded |
   | `error` | any op, any other non-zero rc |
 
@@ -599,37 +562,17 @@ difference is the **environment freeze**:
 | | `/restart` (rung 1) | `/restart full` (rung 2) |
 |---|---|---|
 | What restarts | the poller only | supervisor + poller |
-| Mechanism | poller exits 0, `supervisor.ts` respawns it | fires the registered `HimmelTelegramBridge` scheduled task |
-| Picks up | anything re-read from a FILE at startup — incl. `TELEGRAM_AUTO_ACTIONS` | that, **plus** changed User/Machine env vars |
-| Cost | ~instant | a few seconds |
+| Mechanism | poller exits 0, `supervisor.ts` respawns it | unsupported on Linux and macOS (rc 20) |
+| Picks up | anything re-read from a FILE at startup — incl. `TELEGRAM_AUTO_ACTIONS` | n/a |
+| Cost | ~instant | n/a |
 
 Rung 1's respawn inherits the supervisor's environment, frozen when the operator's
-shell launched it — so it will **not** see a `[Environment]::SetEnvironmentVariable(…, 'User')`
-change. Only a process created by the Task Scheduler service reads the current User
-environment at fire time, which is what rung 2 uses. That is also why rung 2 is not
-just "run `restart-bridge.ps1`": that script's `Get-BridgeProcs` matches
-`scripts[\/]+telegram`, which includes the calling poller, so an in-process call
-kills its own caller mid-command. The scheduled task is launched by the scheduler
-service and is fully detached.
-
-Caveats for rung 2, both from the task's registration:
-
-- **Logon mode is "Interactive only"** — it can only run while you are logged ON.
-  Locked is fine; logged off is not. A failed `schtasks /run` is reported back to
-  you with its rc rather than swallowed.
-- **Trigger is "At logon time"**, so there is no periodic trigger and no watchdog.
-  If a restart fails, nothing retries it for you.
-- The ack is written to the outbox **before** the restart fires — the firing is
-  what kills the transport. Expect the confirmation to arrive from the *new*
-  bridge, a second or two later.
-- `schtasks /run` exiting 0 only means the task was **launched**. If
-  `restart-bridge.ps1` then fails, the old poller just keeps running — so rung 2
-  arms a 90s watchdog: if the bridge is still alive when it fires, you get a
-  second message saying the relaunch did not take effect, and an `error` audit
-  line. Silence after the ack means it worked.
+shell launched it. Rung 2 fires a Windows scheduled task, which is gone with
+Windows support: on Linux and macOS `/restart full` answers `restart-unsupported`
+(rc 20), so use rung 1 or `bash scripts/telegram/restart-bridge.sh start`.
 
 **Bootstrap, once:** enabling `/restart` for the first time requires a restart, by
-hand, because the flag is read at poller startup. `pwsh -File scripts/telegram/restart-bridge.ps1`.
+hand, because the flag is read at poller startup. `bash scripts/telegram/restart-bridge.sh start`.
 After that the bridge can bounce itself.
 
 Semantics + threat model: [`docs/internals/enforcement.md`](../../docs/internals/enforcement.md).
@@ -692,22 +635,18 @@ session as `[voice transcript] <text>`. Transcription failure replies an
 explicit "couldn't transcribe" to the chat — never a silent drop. Without the
 setup below every voice note gets that error reply (graceful degrade).
 
-```powershell
-# 1. ffmpeg (OGG/Opus → 16kHz WAV conversion; must be on PATH)
-winget install Gyan.FFmpeg.Essentials
+```sh
+# 1. ffmpeg (OGG/Opus → 16kHz WAV conversion; must be on PATH): install it with
+#    your package manager (pacman -S ffmpeg, apt install ffmpeg, brew install ffmpeg)
 
-# 2. whisper.cpp prebuilt binary + multilingual model → ~/.himmel/whisper/
-mkdir $HOME\.himmel\whisper
-curl.exe -sL -o $HOME\.himmel\whisper\whisper-bin-x64.zip https://github.com/ggml-org/whisper.cpp/releases/download/v1.8.6/whisper-bin-x64.zip
-Expand-Archive $HOME\.himmel\whisper\whisper-bin-x64.zip $HOME\.himmel\whisper -Force
-# the zip nests everything under Release\ — flatten so whisper-cli.exe (and the
-# DLLs it needs beside it) sit directly in ~/.himmel/whisper/ where the code looks
-Move-Item $HOME\.himmel\whisper\Release\* $HOME\.himmel\whisper\ -Force
-curl.exe -sL -o $HOME\.himmel\whisper\ggml-small.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin   # ~488MB, multilingual
+# 2. whisper.cpp binary (build or package; no prebuilt Linux/macOS release) and
+#    the multilingual model → ~/.himmel/whisper/
+mkdir -p ~/.himmel/whisper
+curl -sL -o ~/.himmel/whisper/ggml-small.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin   # ~488MB, multilingual
 
 # 3. smoke test
 ffmpeg -version
-& $HOME\.himmel\whisper\whisper-cli.exe --help
+whisper-cli --help
 ```
 
 Overrides (poller env): `WHISPER_DIR` (install dir), `WHISPER_CLI`,
@@ -724,21 +663,21 @@ so medium is the recommended model for he/en and is the one configured in use
 
 Upgrade small → medium (the configuration currently in use):
 
-```powershell
+```sh
 # ~1.53 GB; ~1.3x realtime on CPU. Download, point WHISPER_MODEL at the FULL
 # path (the env var is used verbatim — a bare filename would not resolve), restart.
-curl.exe -sL -o $HOME\.himmel\whisper\ggml-medium.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin
-[Environment]::SetEnvironmentVariable("WHISPER_MODEL", "$HOME\.himmel\whisper\ggml-medium.bin", "User")
-pwsh -File scripts/telegram/restart-bridge.ps1
+curl -sL -o ~/.himmel/whisper/ggml-medium.bin https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin
+export WHISPER_MODEL="$HOME/.himmel/whisper/ggml-medium.bin"   # also persist it in the poller's launch env
+bash scripts/telegram/restart-bridge.sh start
 ```
 
 For long notes (>90s of audio), medium on CPU can approach the 120s
 `TRANSCRIBE_TIMEOUT_MS` — raise it (user env) or evaluate `large-v3-turbo`
 (faster + better multilingual than medium).
 
-**Platform note:** the `WHISPER_CLI` default resolves to `whisper-cli.exe`
-(Windows only). On macOS/Linux set `WHISPER_CLI` to the binary path
-(e.g. `/usr/local/bin/whisper-cli`).
+**Platform note:** the built-in `WHISPER_CLI` default is a Windows-era
+`whisper-cli.exe` path that does not exist here, so always set `WHISPER_CLI` to the
+binary path (e.g. `/usr/local/bin/whisper-cli`).
 
 **Claude model pin:** every bounded run spawns
 `claude --model <m> …` with an explicit model — it never inherits the
@@ -752,16 +691,15 @@ terminal) inherits that terminal's model and is intentionally NOT pinned.
 
 **Restart required:** all env vars above are read at poller start, not
 per-message. After changing any of them, restart the bridge:
-`pwsh -File scripts/telegram/restart-bridge.ps1`
+`bash scripts/telegram/restart-bridge.sh start`
 
 **Acceptance test:** after install, verify end-to-end with the
 sample WAV shipped alongside the binary:
 
-```powershell
+```sh
 # Verify ffmpeg + whisper-cli work together on the JFK sample
-$env:WHISPER_INTEGRATION_TEST = "1"; bun test scripts/telegram/transcribe-integration.test.ts
+WHISPER_INTEGRATION_TEST=1 bun test scripts/telegram/transcribe-integration.test.ts
 # Expected: "1 pass" — transcript contains "ask" + "country"
-# (Git Bash: WHISPER_INTEGRATION_TEST=1 bun test scripts/telegram/transcribe-integration.test.ts)
 ```
 
 ## Tests
@@ -791,11 +729,9 @@ measured history of failing purely with ambient load.
 | `router.ts` | session classification (ticket vs chat) |
 | `transcribe.ts` | whisper.cpp voice-note transcription |
 | `transcribe-integration.test.ts` | live acceptance test (real binaries; needs `WHISPER_INTEGRATION_TEST=1`) |
-| `restart-bridge.ps1` | **the canonical Windows launcher** |
-| `restart-bridge.sh` | the Stage-1 POSIX launcher (Linux/macOS); parity gaps vs. the PS1 a known limitation |
+| `restart-bridge.sh` | the POSIX launcher (Linux/macOS) |
 | `onboard.ts` | bounded onboarding run (`bun scripts/telegram/onboard.ts`) — reports chat.id/from.id for `access.json`; never writes it |
-| `install-logon-task.ps1` | register/remove/report the `HimmelTelegramBridge` reboot-persistence task |
-| `systemd/telegram-bridge.service` | systemd **user** unit template (`@HIMMEL_REPO@` placeholder) — Linux reboot-persistence twin of the logon task |
+| `systemd/telegram-bridge.service` | systemd **user** unit template (`@HIMMEL_REPO@` placeholder), Linux reboot-persistence |
 | `run-prompt.md` | the prompt contract handed to each bounded run |
 | `fixture-repo.ts` | real-git test fixtures + the registry-gated teardown the spawn suites use |
 

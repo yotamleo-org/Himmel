@@ -204,8 +204,7 @@ check "detail scrubs a Bearer token" "$(contains_json_detail RH7 'sk-abcdefghij0
 
 # Modern keys are HYPHENATED (`sk-proj-…`, `sk-ant-…`) - the bare
 # alphanumeric class this scrub started with stopped at the first hyphen and let
-# the whole key through. Keep in lockstep with Get-ScrubbedToken in
-# scripts/observability/agent-runtime-census.ps1.
+# the whole key through.
 CR_LEDGER="$LR" bash "$LA" avail --branch b --head RHA --model m --status unavailable --reason auth --detail "401: incorrect api key sk-proj-FAKEFAKEFAKEFAKEFAKE0000"  # gitleaks:allow (fake fixture for the scrub test)
 check "detail scrubs a hyphenated sk- key" "$(contains_json_detail RHA 'sk-proj-FAKEFAKEFAKEFAKEFAKE0000')" "false"  # gitleaks:allow (fake fixture)
 check "the hyphenated-key scrub leaves a marker" "$(contains_json_detail RHA '[REDACTED]')" "true"

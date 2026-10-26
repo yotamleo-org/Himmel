@@ -555,11 +555,7 @@ CURRENT platform actually executes — `.sh` on Linux/macOS; the `.bat` twin is 
 leftover of the dropped Windows support (HIMMEL-5729) and is never read. A cadence copied between stations leaves a dormant,
 never-regenerated twin on whichever platform doesn't arm it; that twin is
 invisible to the staleness probe on purpose, so it can never pin a false-stale
-floor on the platform that actually runs the cadence. `codex-sweep-cadence`
-is Windows-only (`scripts/cleanup/codex-sweep-cadence.sh` refuses `arm` on
-Linux and macOS by design), so the advisory reports it `Windows-only, n/a on
-this platform` instead of a `bash ... arm --force` recipe that would itself
-refuse.
+floor on the platform that actually runs the cadence.
 
 Prints a severity-grouped report (FAIL/WARN/INFO); `--file-issue
 [--repo owner/name]` files ONE deduped consolidated public GitHub issue (resolves
@@ -1860,7 +1856,7 @@ private repo has Actions off by design.
   `HIMMEL_UPDATE_CLAUDE_BIN`; hermetic test: `test-update-marketplaces.sh`.
 - `scripts/upstreams/drift-fix-cadence.sh arm|status|disarm` — arms TWO daily
   local scheduled tasks (crontab on Linux/macOS; sibling of
-  `codex-sweep-cadence.sh` / `pipeline-cadence.sh`), each firing an INTERACTIVE
+  `pipeline-cadence.sh`), each firing an INTERACTIVE
   `claude --model <M>` session (never `-p`/`--print`):
   `HIMMEL-DriftFix` at 05:00 on the `/drift-fix` runbook, and
   `HIMMEL-ForkResync` at 05:30 on `/fork-resync`. Two jobs rather than one

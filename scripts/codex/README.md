@@ -44,11 +44,6 @@ bash scripts/codex/install-himmel-codex.sh --plugins=himmel-ops,handover
 bash scripts/codex/install-himmel-codex.sh --dry-run    # report intended changes, change nothing
 ```
 
-```powershell
-pwsh -NoProfile -File scripts\codex\install-himmel-codex.ps1 -DryRun
-pwsh -NoProfile -File scripts\codex\install-himmel-codex.ps1 -All
-```
-
 Env override: `CODEX_BIN` (path to the `codex` CLI). After a change, restart
 Codex so the plugins load; new project hooks are trust-hashed on first use.
 
@@ -58,10 +53,6 @@ a plugin update re-adds a `description`) — env override `CODEX_HOME` (default 
 ```sh
 bash scripts/codex/sanitize-plugin-hooks.sh              # strip in place
 bash scripts/codex/sanitize-plugin-hooks.sh --dry-run    # report, change nothing
-```
-
-```powershell
-pwsh -NoProfile -File scripts\codex\sanitize-plugin-hooks.ps1 -DryRun
 ```
 
 ## bump-codex-sessionend-timeout.sh — stop the SessionEnd "Hook cancelled" noise
@@ -78,42 +69,6 @@ bash scripts/codex/bump-codex-sessionend-timeout.sh              # patch in plac
 bash scripts/codex/bump-codex-sessionend-timeout.sh --dry-run    # report, change nothing
 ```
 
-## probe-codex-hooks.ps1 — Windows pwsh-runner hook lint
-
-codex-cli on Windows runs every hook command as
-`pwsh.exe -NoProfile -Command "<command>"`. Two traps follow: a command
-starting with bare `bash` resolves via the **Machine** PATH to the WSL
-launcher stub at `C:\Windows\System32\bash.exe` (`Git\usr\bin` is only on the
-User PATH, which comes later) — when WSL is wedged the hook hangs to Codex's
-default 600s hook timeout; and a command that **starts with a quoted path**
-(a quoted `.cmd`, or a `${CLAUDE_PLUGIN_ROOT}`-substituted path) is parsed by
-pwsh as a string *expression*, not a command invocation, so it errors out
-immediately (`ParserError`, exit 1). The fix differs per trap: bare-bash needs
-a **path-qualified Git Bash exe** (`& "C:\Program Files\Git\bin\bash.exe" <rest>`
-— a bare leading `& ` alone still resolves `bash` via PATH to the same WSL
-stub); quoted-path-start just needs a leading `& ` (the executable is already
-a full path; `&` makes pwsh invoke it instead of parsing it as a string).
-
-`probe-codex-hooks.ps1` enumerates the EFFECTIVE hook set for a project —
-`<CodexHome>/hooks.json` (global), `<Project>/.codex/hooks.json` (project),
-and the `hooks.json` of every plugin enabled in `<CodexHome>/config.toml` —
-substitutes `${CLAUDE_PLUGIN_ROOT}` the same way Codex does, and statically
-lints each command for the two traps above (plus an advisory WARN for a
-bash/sh invocation with no `timeout`, and an INFO for `$CLAUDE_PROJECT_DIR`,
-which Codex does not substitute under pwsh). `-Replay` actually EXECUTES
-every effective hook the way Codex would — side effects included; use it only
-against hooks you trust.
-
-```powershell
-pwsh -NoProfile -File scripts\codex\probe-codex-hooks.ps1                 # static lint, current project
-pwsh -NoProfile -File scripts\codex\probe-codex-hooks.ps1 -Project C:\repo -NoFail
-pwsh -NoProfile -File scripts\codex\probe-codex-hooks.ps1 -Replay -Arm gitbash -TimeoutSec 10
-```
-
-Wired as an advisory (non-fatal) phase 4 of `install-himmel-codex.ps1`.
-Tests: `scripts/codex/test-probe-codex-hooks.ps1` (hermetic; never touches
-the real `~/.codex`).
-
 ## Dispatching codex impl workers (lane chokepoint)
 
 The `codex-exec` impl lane (`scripts/lanes/lanes.json`) dispatches codex CLI
@@ -124,42 +79,35 @@ sandbox workers into git worktrees **only through the chokepoint wrapper**
 bash scripts/codex/dispatch-codex-exec.sh --worktree <worktree-path> [--reasoning-effort <none|low|medium|high|xhigh|max>] [codex exec args...]
 ```
 
-The wrapper enforces the three invariants from the original diagnosis:
+The wrapper enforces these invariants:
 
-1. **ACL preflight, fail-closed.** It runs
-   `normalize-worktree-acl.sh <worktree>` before the codex CLI is invoked
-   (after the argument checks) and aborts the dispatch if
-   that fails. Aged worktrees under `.claude\worktrees\` develop
-   subdirectories that missed the sandbox SID inheritance; the sandbox then
-   fails with access denials that look like a broken `codex exec`. The
-   preflight is a no-op on non-Windows platforms.
-2. **Model follows the codex critic in `scripts/cr/critics.json`.**
+1. **Model follows the codex critic in `scripts/cr/critics.json`.**
    The registry is read with Node.js; only an unreadable file uses the named
    fallback (`gpt-6.1-sol`). Readable but invalid data refuses the dispatch.
    `CODEX_CRITICS_FILE` overrides the registry path for tests. A caller-named
    `--model` bypasses registry lookup and wins unchanged; only `-codex`-suffixed
    variant names warn about HTTP 400 under ChatGPT-plan auth.
-3. **`--background` refused.** Companion background jobs die silently
+2. **`--background` refused.** Companion background jobs die silently
    (upstream bug); use the default wait behavior and pair long runs with
    `scripts/codex/companion-liveness.sh`.
-4. **Workspace-redirect and sandbox-widening flags refused.** `-C`/`--cd`,
+3. **Workspace-redirect and sandbox-widening flags refused.** `-C`/`--cd`,
    `--add-dir`, `-s`/`--sandbox danger-full-access`, the approval-bypass
    flags, and the config/profile overrides (`-c`/`--config`,
    `-p`/`--profile` — either can rewrite `sandbox_permissions`) would point
-   codex at a directory the ACL preflight never touched or drop the sandbox
+   codex at another directory or drop the sandbox
    entirely — the wrapper rejects them all.
-5. **`--reasoning-effort <value>` passthrough (opt-in).** The
+4. **`--reasoning-effort <value>` passthrough (opt-in).** The
    codex CLI has no native flag for this; pass
    `--reasoning-effort <none|low|medium|high|xhigh|max>` (or
    `--reasoning-effort=<value>`) and the wrapper validates the enum, strips
    the raw flag from the passthrough, and translates it into a trusted
    `-c model_reasoning_effort="<value>"` override (the caller's own raw
-   `-c`/`--config` stays refused per invariant 4 above). Does **not** change
+   `-c`/`--config` stays refused per invariant 3 above). Does **not** change
    model selection. Accepted values remain the shared filter's enum; model-
    specific effort compatibility is a separate concern.
 
 Tests: `scripts/codex/test-dispatch-codex-exec.sh` (hermetic; stubs the codex
-CLI via `CODEX_BIN` and the preflight via `CODEX_ACL_NORMALIZE`).
+CLI via `CODEX_BIN`).
 
 ### `--shared-branch` (opt-in)
 
@@ -226,8 +174,8 @@ A raw `codex exec` outside this chokepoint gets none of it, which is why
 
 The codex-exec **CLI sandbox** (this dispatcher) leaks its own MCP-server
 fleet - plain `npx <mcp-server>` under `cmd.exe` wrappers - that
-`reap-mcp-fleet.ps1`'s fingerprint cannot see: those processes
-carry no codex path marker of their own once the `codex.exe` supervisor is
+the app-server fingerprint cannot see: those processes
+carry no codex path marker of their own once the `codex` supervisor is
 gone, so they are structurally invisible to that app-server-only
 fingerprint. The dispatcher closes the gap itself instead of relying on a
 periodic sweep:
@@ -249,7 +197,7 @@ periodic sweep:
 
 If the dispatcher itself is killed before its own EXIT trap can run (e.g.
 SIGKILL), the registry entry survives as evidence of the leak.
-`reap-mcp-fleet.{sh,ps1}`'s default (no-args) **report mode** additionally
+`reap-mcp-fleet.sh`'s default (no-args) **report mode** additionally
 scans `CODEX_JOBS_DIR` for entries whose `codex_pid` is dead and reports
 their remaining descendants (`-Kill`/`--kill` reaps them and removes the
 entry); it also prints a summary line (jobs live/dead, dead-job fleet count,
@@ -258,71 +206,16 @@ processes with a dead direct parent that carry no lineage evidence at all -
 counted, never reaped). `-RootPid`/`--root-pid` is a general primitive (not
 codex-exec-specific): report/reap every live descendant of one given
 (possibly dead) root pid, with a `CreationDate`/start-time pid-reuse guard.
-On Windows the `.sh` forwards to the `.ps1` (`Get-CimInstance Win32_Process`
-is the authoritative source there); on mac/Linux the `.sh` walks `ps -eo
-pid,ppid[,etimes]` directly - real logic, not a thin shim, since the
-dispatcher's own EXIT trap needs this primitive on every platform it runs on.
+The `.sh` walks `ps -eo pid,ppid[,etimes]` directly, since the dispatcher's own
+EXIT trap needs this primitive on every platform it runs on.
 
-Tests: `scripts/codex/test-reap-mcp-fleet.{sh,ps1}` (pure descendant-walk
+Tests: `scripts/codex/test-reap-mcp-fleet.sh` (pure descendant-walk
 fixtures, incl. a codex-exec sandbox fleet alongside a live-claude MCP fleet
 in the same table to assert the latter is spared); `test-dispatch-codex-exec.sh`
 asserts the registry file appears during the run and is gone after, and that
 the reap primitive is invoked with the codex **child's** pid (env overrides
 `CODEX_JOBS_DIR` / `CODEX_REAP_HELPER` inject a tmpdir and a stub - no real
 process table or `$HOME` state is touched).
-
-### Superseded fleets under a LIVE app-server
-
-Both reapers above skip anything under a **live** app-server, because that
-fleet is "legitimately in use". That is right for one fleet and wrong for N
-duplicates: a long-lived app-server spawns a fresh MCP fleet **per client
-connection** and never reaps the previous one, so each duplicate looks in-use
-individually while collectively leaking. One app-server accumulated **45**
-`luna-correlate` pairs on 2026-07-27; the armed sweep correctly judged its
-tree LIVE and skipped it. `reap-superseded-fleets.ps1` is the third check.
-
-A **fleet root** is a direct child of a live `codex.exe app-server`; its
-**fleet key** is the launcher's `--cwd <plugin>` path when present, else its
-command line minus the leading executable token (so `bun`, `uvx`,
-`node_repl`, `cmd`/`npx` and `tokensave` roots are all keyed, not just bun).
-Within one `(app-server, key)` group the newest roots are current and older
-ones are **superseded**. Three gates then narrow the kill set, and each can
-only ever REMOVE targets:
-
-- `-KeepNewest <n>` (default 1) — newest n per group are never candidates.
-- `-MinAgeMinutes <n>` (default 30) — a younger superseded root is kept. This
-  is the **primary** protection: genuinely-concurrent parallel tool calls are
-  seconds-to-minutes apart, so the gate is what separates "duplicate
-  generation" from "parallel call".
-- CPU-idle veto — the candidate's subtree is sampled twice `-SampleSeconds`
-  apart and kept if its processor time advanced >50 ms. A net, not a
-  guarantee: a superseded-but-in-use server that is idle during the window is
-  not protected by this gate; the age gate is.
-
-What keeps the operator's own processes safe is **lineage, not shape**: a
-target must descend from a live app-server, and the v2 telegram bridge, the
-operator's qmd MCP server and the live claude session never do. Note the
-tripwire deliberately does NOT list qmd — codex spawns its own qmd MCP server
-as a plugin fleet member, and a shape-based entry protected exactly the
-duplicates this tool exists to reap.
-
-Deliberately out of scope: **app-server accumulation** (reported as a census,
-never reaped — a live app-server whose pipe a client holds is in use by
-definition) and **unkeyable roots** whose CommandLine WMI will not show us
-(counted blind, never reaped). Kill safety is not reimplemented: the script
-dot-sources `sweep-codex-orphans.ps1 -AsLibrary` and reuses its descendant
-walk plus both pid-reuse gates verbatim.
-
-```sh
-pwsh -NoProfile -File scripts/codex/reap-superseded-fleets.ps1          # dry run
-pwsh -NoProfile -File scripts/codex/reap-superseded-fleets.ps1 -Kill
-```
-
-Tests: `scripts/codex/test-reap-superseded-fleets.ps1` (hermetic; the fixture
-mirrors the live reproduction — two app-servers, a young burst that must
-survive, cross-type keys, and a codex-owned qmd fleet that must stay
-reapable). Fires last in the `HIMMEL-CodexOrphanSweep` cadence, after both
-orphan sweeps have removed everything whose supervisor is already gone.
 
 ## Context-probe chunk reader
 
@@ -355,7 +248,6 @@ from the Claude `setup.sh` `[N/10]` flow. Wiring it into the broader setup /
   via `CODEX_BIN`, asserts marketplace-register-when-absent, per-plugin enable,
   idempotency, `--dry-run`, missing-CLI exit, non-destructiveness, `--plugins`.
   Auto-discovered by `scripts/ci/run-shell-tests.sh`.
-- `scripts/codex/test-install-himmel-codex.ps1` — the Windows twin.
 
 > Not to be confused with the project-local Codex **guardrail** wiring in the
 > repo's `.codex/` dir (hooks adapter). That fires guardrails
