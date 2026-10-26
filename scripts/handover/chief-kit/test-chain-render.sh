@@ -89,12 +89,20 @@ python3 -I - "$W/graph.json" "$W/cycle.json" <<'PY'
 import json, sys
 g = json.load(open(sys.argv[1]))
 g['edges'].append({'from': '#3', 'to': '#2', 'kind': 'H2', 'det': 'D4', 'evidence': 'conflict', 'files': [], 'source': 'derived', 'cycle': False})
+g['edges'].append({'from': '#3', 'to': '#4', 'kind': 'H2', 'det': 'D4', 'evidence': 'conflict', 'files': [], 'source': 'derived', 'cycle': False})
 json.dump(g, open(sys.argv[2], 'w'))
 PY
 HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/cycle.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/cyc-out.json" >/dev/null 2>&1
 same 'a cycle keeps every open step' "$(keys "$W/cyc-out.json" | tr ' ' '\n' | grep -c '^[0-9]*\[\|:[0-9]*\[')" 4
 
-same 'a cycle shares one last wave, in ticket order' "$(keys "$W/cyc-out.json")" 'Rename chain:9004[0] 9005[0] 9002[1] 9003[1]'
+same 'a cycle shares one wave after the free steps, and its successor stays after it' "$(keys "$W/cyc-out.json")" 'Rename chain:9005[0] 9002[1] 9003[1] 9004[2]'
+
+# --- a graph that parses as JSON but has the wrong shape exits 2, not a traceback
+for body in null '{"nodes": null, "edges": []}'; do
+    printf '%s' "$body" > "$W/shape.json"
+    HIMMEL_FLAG_CHAIN_RENDER=1 python3 -I "$SUT" --graph "$W/shape.json" --mirror "$MIR" --chain "$CHAIN" --out "$W/shape-out.json" >/dev/null 2>&1; rc=$?
+    same "a wrong-shaped graph ($body) exits 2" "$rc" 2
+done
 
 # --- a mirror that cannot be read is not "every ticket is open"
 cp "$W/stale.json" "$W/out.json"

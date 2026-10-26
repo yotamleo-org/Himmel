@@ -17,7 +17,8 @@ are listed by wave, then ticket number, which is the order tracker.py prints the
 tracker derives it from the Jira mirror on every render.
 
 A ticket that is Done in the mirror (tracker.py's bucket 'done') is not a step and does not hold its successors, so a
-Done ticket is never rendered as next. A hard cycle puts its tickets in the last wave rather than dropping them.
+Done ticket is never rendered as next. The tickets of a hard cycle share one wave after every step that is not stuck,
+and whatever waits on them comes after; they are never dropped.
 A ticket missing from the mirror stays a step (the tracker shows it unknown).
 
 --mirror defaults to $NEXT_DISPATCH_MIRROR or ~/.himmel/state/jira-mirror/HIMMEL. Exit 0 rendered or flag off;
@@ -57,15 +58,31 @@ def waves(keys, edges):
     wave, left = {}, set(keys)
     while left:
         ready = {k for k in left if pred[k] <= set(wave)}
-        if not ready:  # a hard cycle: its tickets go last
-            last = 1 + max(wave.values(), default=-1)
-            for k in left:
-                wave[k] = last
-            break
-        for k in ready:
-            wave[k] = 1 + max((wave[p] for p in pred[k]), default=-1)
-        left -= ready
+        if ready:
+            for k in ready:
+                wave[k] = 1 + max((wave[p] for p in pred[k]), default=-1)
+            left -= ready
+            continue
+        # stuck: every step waits on another. The cycles with no predecessor outside themselves share the next wave
+        # and their successors keep waiting on them.
+        anc = {k: ancestors(k, pred, left) for k in left}
+        core = {k for k in left if anc[k] and all(k in anc[j] for j in anc[k])}
+        last = 1 + max(wave.values(), default=-1)
+        for k in core:
+            wave[k] = last
+        left -= core
     return wave
+
+
+def ancestors(k, pred, within):
+    """Every step in `within` that k waits on, directly or through others."""
+    seen, todo = set(), [k]
+    while todo:
+        for p in pred[todo.pop()] & within:
+            if p not in seen:
+                seen.add(p)
+                todo.append(p)
+    return seen
 
 
 def render(graph, chains, mirror):
@@ -110,7 +127,7 @@ def main():
     try:
         graph = json.load(open(a.graph, encoding='utf-8'))
         res = render(graph, chains, a.mirror)
-    except (OSError, ValueError, KeyError) as e:
+    except (OSError, ValueError, KeyError, TypeError, AttributeError) as e:
         print('chain-render: cannot read the graph %s or the mirror %s (%s)' % (a.graph, a.mirror, e), file=sys.stderr)
         return 2
     tmp = a.out + '.tmp'
