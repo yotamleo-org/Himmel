@@ -254,7 +254,7 @@
       "kind": "tag_release",
       "mode": "base",
       "tracked_repo": "anthropics/claude-code",
-      "synced_base": "2.1.307",
+      "synced_base": "2.1.310",
       "latest_source": "release",
       "version_pin": {
         "file": "scripts/machine-setup/installer-pins.sh",

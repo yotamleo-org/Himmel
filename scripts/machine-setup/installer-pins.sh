@@ -27,8 +27,8 @@ UV_VERSION="0.13.5"
 UV_SHA256="f68d291c75783122dad58ab77def0e13f3233f358731db5d6d7e8715603b928f"
 
 # Claude Code — the native binary, checksum from the release manifest.
-CLAUDE_VERSION="2.1.307"
-CLAUDE_LINUX_X64_SHA256="6021eb72d20d0682b720bdc63acd2a5cd2270895d1f10d9ca2a88cbfa7b9dd0e"
+CLAUDE_VERSION="2.1.310"
+CLAUDE_LINUX_X64_SHA256="b73676430af12f97316a798b8371f81d640f90a58bdcb8f3ce56a835bb47df56"
 
 # RTK — the versioned .deb, never the mutable rtk_amd64.deb alias.
 RTK_VERSION="1.0.1"
