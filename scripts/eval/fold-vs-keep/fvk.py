@@ -133,7 +133,7 @@ def outcome_of(cls, text):
 
 
 def summarize(path, cls):
-    """One run: a claude -p stream-json file (its `result` event carries usage and the reply)
+    """One run: a headless stream-json file (its `result` event carries usage and the reply)
     or a historic subagent transcript (usage summed over deduped messages)."""
     ev = read_events(path)
     res = [d for d in ev if d.get("type") == "result"]
