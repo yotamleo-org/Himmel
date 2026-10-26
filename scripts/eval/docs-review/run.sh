@@ -38,7 +38,10 @@ done
 # billed-opt-in: HIMMEL_BILLED_OK
 [ "$canary_only" = 1 ] || [ "${HIMMEL_BILLED_OK:-}" = 1 ] ||
     { echo "run.sh: one billed api-lane call per case; set HIMMEL_BILLED_OK=1 (on-demand only), or pass --canary-only" >&2; exit 2; }
+seen=" "
 for c in "${cases[@]}"; do
+    case "$seen" in *" $c "*) echo "run.sh: case $c is repeated; name each case once" >&2; exit 2 ;; esac
+    seen="$seen$c "
     [ "$c" != C ] || { echo "run.sh: case C needs Edit for its learn step; this runner grants Read/Glob/Grep only" >&2; exit 2; }
     jq -e --arg c "$c" '.cases[$c]' "$HERE/cases.json" >/dev/null || { echo "run.sh: no case $c in cases.json" >&2; exit 2; }
 done

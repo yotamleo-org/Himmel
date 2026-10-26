@@ -37,7 +37,9 @@ diff (a named page, an audit) treats every line as changed.
 
 1. Read the whole remarks table first.
 2. List the changed docs pages. Read each one in full at the head
-   (`git show <head>:<path>`), and mark which lines the diff changed.
+   (`git show <head>:<path>`), and mark which lines the diff changed. A page
+   the PR deletes has no head copy: it gets no page verdict and no finding,
+   but a changed page that still links to it is a correctness finding.
 3. **Page verdict, first and never capped.** For each changed page: its type
    (tutorial, how-to, reference, explanation, or map), its audience, whether
    its form fits that type, and one verdict word:

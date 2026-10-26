@@ -89,5 +89,8 @@ has "generic layer: the repo overrides it" "$skill" 'The repo overrides it'
 has "generic layer: error messages (gstack agent-ready-errors)" "$skill" 'gstack agent-ready-errors'
 has "generic layer: inline # command comments (hermes)" "$skill" 'hermes quickstart'
 has "eval: the reviewer gets the vendored skill" "$root/scripts/eval/docs-review/run.sh" 'REVIEW-INPUT/technical-writing.md'
+has "procedure: a deleted page is not read at the head" "$skill" 'the PR deletes has no head copy'
+check "eval: a repeated case exits 2" "$(bash "$root/scripts/eval/docs-review/run.sh" --canary-only --cap-usd 0 --out "$td/dup" A A 2>"$td/dup.err"; echo $?)" 2
+has "eval: a repeated case is refused before any call" "$td/dup.err" 'run.sh: case A is repeated'
 
 [ "$fails" = 0 ] && echo "PASS test-docs-reviewer-fit" || { echo "FAIL test-docs-reviewer-fit ($fails)"; exit 1; }
