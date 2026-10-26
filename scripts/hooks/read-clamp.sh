@@ -2,18 +2,18 @@
 # read-clamp.sh — PreToolUse hook (matchers "Read|Grep" and "Bash"): denies a
 # whole-file Read/cat/sed/head of a file over HIMMEL_READ_CLAMP_LINES lines,
 # and denies a repeated Read of the exact same (path, offset, limit) triple,
-# inside a console-spawned leg-impl session.
+# inside a chief-spawned worker-impl session.
 #
-# WHY: measured over 12 merged-PR leg sessions, repeated Reads of the same
+# WHY: measured over 12 merged-PR workers, repeated Reads of the same
 # file cost ~4.5% of a PR's token bill and whole-file reads ~2.2% (6.7%
 # together, the #2/#3 levers). The instructional layer
 # (preface read-range sentence, #692) already exists; this is the structural
 # step (root CLAUDE.md "second drift -> hook").
 #
-# Scope: HIMMEL_CONSOLE_LEG=1 only (headed-arm-leg.sh's launcher export) --
-# never gates a console or an interactive session.
+# Scope: HIMMEL_CONSOLE_LEG=1 only (headed-arm-worker.sh's launcher export) --
+# never gates a chief or an interactive session.
 #
-# Platform guard: bash-only, no .ps1 twin -- leg-impl sessions run under the
+# Platform guard: bash-only, no .ps1 twin -- worker-impl sessions run under the
 # .claude/settings.json Bash launcher (Linux/macOS/Git-Bash), never PowerShell.
 #
 # Workflow nudge, not a security fence (scripts/hooks/CLAUDE.md "Fail-open vs
@@ -28,12 +28,12 @@
 # runtime dir allows the call through with no state written -- this hook
 # never fails closed on its own infrastructure.
 #
-# Bypass: set HIMMEL_READ_CLAMP_OK=1 in the shell that launched the leg to
+# Bypass: set HIMMEL_READ_CLAMP_OK=1 in the shell that launched the worker to
 # allow one session past the clamp (e.g. re-reading a file after an external
 # edit invalidated the recorded range). Logged to stderr each time it fires.
 #
 # Hook I/O: JSON on stdin. exit 0 = allow, exit 2 = deny (stderr message,
-# same convention as block-read-secrets.sh / block-leg-askuserquestion.sh).
+# same convention as block-read-secrets.sh / block-worker-askuserquestion.sh).
 set -uo pipefail
 
 [ "${HIMMEL_CONSOLE_LEG:-0}" = "1" ] || exit 0

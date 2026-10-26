@@ -335,7 +335,7 @@ if grep -qF 'variant=(profile=all uninstall=purge-state)' <<<"$OUT"; then
 else
     fail_case "D7c purge variant tag"; dump
 fi
-# D7d — the install argv per profile (console ruling): core = `install --scope
+# D7d — the install argv per profile (chief ruling): core = `install --scope
 # <s>` with no --profile/--yes; all = `--from-profile` of a profile the guest
 # derives from the shipped adopter-<s> file by the printed jq overlay
 # shellcheck disable=SC2016 # $v is jq's
@@ -359,7 +359,7 @@ else
 fi
 
 # =====================================================================
-# D8 — the pass-through D7 relies on (console ruling): the CURRENT tree's
+# D8 — the pass-through D7 relies on (chief ruling): the CURRENT tree's
 # himmelctl `uninstall --yes --purge-state` reaches scripts/uninstall.sh with
 # both flags and no prompt; without --yes a non-interactive run aborts rc 2
 # before uninstall.sh runs. A stub uninstall.sh under HIMMELCTL_REPO_ROOT
@@ -463,7 +463,7 @@ else
 fi
 
 # =====================================================================
-# D14 — a halted uninstall is a result (console ruling): its rc and halt step
+# D14 — a halted uninstall is a result (chief ruling): its rc and halt step
 # print as their own line, the run continues to inventory C, and a witness
 # owned by a step after the halt ([8/8] ~/.claude/himmel, the post-teardown
 # PATH launchers) is post-halt and does not count toward the two directions
@@ -647,7 +647,7 @@ fi
 # D17 — --clone-gone --purge-state must leave nothing beyond baseline A's
 # ~/.himmel/config.json (never the whole directory — config.json is the
 # user's own file, untouched by design); the check runs AFTER invdiff/assert
-# so a legitimate failure still preserves their output (console ruling,
+# so a legitimate failure still preserves their output (chief ruling,
 # 2026-09-23)
 # =====================================================================
 FAKE_HIMMEL_CONTENTS=config run_rt "$ALL_PASS" f73a62f1 --clone-gone --purge-state

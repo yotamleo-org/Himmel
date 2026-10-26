@@ -152,6 +152,7 @@ if [ -z "$PROMPT_FILE" ]; then
   cat > "$PROMPT_FILE"
   PROMPT_FILE_IS_TEMP=1
 fi
+alias_env CADENCE_USAGE_WORKER CADENCE_USAGE_LEG
 
 now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
@@ -595,8 +596,8 @@ mkdir -p "$LIVE_DIR" || die "could not create registry dir: $LIVE_DIR"
 
 # --- bank preflight (mandatory, before anything is dispatched) ---
 # old names, read only while HIMMEL_LEGACY_NAMES is on
-alias_env CADENCE_USAGE_LEG CADENCE_BANK_LEG
-BANK_VERDICT="$(CADENCE_USAGE_LEG="${CADENCE_USAGE_LEG:-claude-headless:$ROLE}" bash "$REPO_ROOT/scripts/lib/usage-preflight.sh")"
+alias_env CADENCE_USAGE_WORKER CADENCE_BANK_LEG
+BANK_VERDICT="$(CADENCE_USAGE_WORKER="${CADENCE_USAGE_WORKER:-claude-headless:$ROLE}" bash "$REPO_ROOT/scripts/lib/usage-preflight.sh")"
 [ "$BANK_VERDICT" = "PROCEED" ] || die "bank preflight refused dispatch (verdict: $BANK_VERDICT); refusing to spend"
 
 # --- capture the artifact's pre-dispatch state, so a stale pre-existing

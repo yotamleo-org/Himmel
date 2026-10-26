@@ -1,23 +1,23 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/verdict-go.sh - one call from a
 # judge's verdict to the persisted verdict, the GO, the Results bullet and the
-# board. The console used to spend 8 to 9 full-context turns on that
+# board. The chief used to spend 8 to 9 full-context turns on that
 # bookkeeping per verdict; this runs the same sanctioned
-# steps in order and prints the message to send the leg.
+# steps in order and prints the message to send the worker.
 #
 # Usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path>
-#                      [--trust] [--leg <label>] [--doc <console doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]
+#                      [--trust] [--worker <label>] [--doc <chief doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]
 #
 #   1. write-verdict.sh <qid> <answer> <head> --pr <n> --evidence-file <path> [--prior <GO|NO-GO>] [--residual-of <KEY>]
 #      [--model <id>] [--effort <level>]   (the judge's; write-verdict.sh refuses a verdict without both)
 #   2. GO only: go.sh [--trust-reviewed <qid>] <n> <head>   (--trust adds the flag;
-#      go.sh's own ready-check is never bypassed; it also persists the console GO as a record)
+#      go.sh's own ready-check is never bypassed; it also persists the chief GO as a record)
 #   3. with --doc: append-results.sh <doc> "<qid> answer: <answer> · GO <n> <head8>"
 #   4. GO with --doc: node board.mjs --doc <doc> --changed. A render failure only
 #      warns: the GO is already written.
-#   5. GO: prints the leg message (GO <n> <head> and the merge command). The
-#      script never sends it: SendMessage is the console's, and the leg's token
-#      is quoted by the console in that message.
+#   5. GO: prints the worker message (GO <n> <head> and the merge command). The
+#      script never sends it: SendMessage is the chief's, and the worker's token
+#      is quoted by the chief in that message.
 #
 # A NO-GO runs steps 1 and 3 only. Without --doc steps 3 and 4 are skipped.
 # An evidence line that leaves a residual unfiled (residual-lines.sh) is refused
@@ -27,30 +27,32 @@
 # with that step's own exit code (go.sh's 3, 4, 5 and write-verdict.sh's 2 to 5
 # pass through unchanged). Its own usage errors exit 2, before anything runs.
 #
-# Run it as the console, from the checkout /pr-check wrote the ledger in (go.sh's
+# Run it as the chief, from the checkout /pr-check wrote the ledger in (go.sh's
 # ready-check reads the cwd), exactly where go.sh is run by hand.
 #
-# Platform guard: POSIX bash 3.2+; the console kit is Linux-only (needs node for the board).
+# Platform guard: POSIX bash 3.2+; the chief kit is Linux-only (needs node for the board).
 # git-env-ok: the one git call is a read-only rev-parse whose path only fills a printed message; it decides nothing
 set -u
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=scripts/lib/legacy-names.sh
+. "$HERE/../../lib/legacy-names.sh"
 
 usage() {
-    echo "usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--trust] [--leg <label>] [--doc <console doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]" >&2
+    echo "usage: verdict-go.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> [--trust] [--worker <label>] [--doc <chief doc>] [--prior <GO|NO-GO>] [--residual-of <KEY>] [--model <id>] [--effort <level>]" >&2
     exit 2
 }
 
 [ "$#" -ge 3 ] || usage
 QID="$1"; ANSWER="$2"; HEAD_SHA="$3"; shift 3
-PR=""; EVIDENCE=""; TRUST=0; LEG=""; DOC=""; PRIOR=""; RESIDUAL_OF=""; MODEL=""; EFFORT=""
+PR=""; EVIDENCE=""; TRUST=0; WORKER=""; DOC=""; PRIOR=""; RESIDUAL_OF=""; MODEL=""; EFFORT=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --model)         [ "$#" -ge 2 ] || usage; MODEL="$2"; shift 2 ;;
         --effort)        [ "$#" -ge 2 ] || usage; EFFORT="$2"; shift 2 ;;
         --pr)            [ "$#" -ge 2 ] || usage; PR="$2"; shift 2 ;;
         --evidence-file) [ "$#" -ge 2 ] || usage; EVIDENCE="$2"; shift 2 ;;
-        --leg)           [ "$#" -ge 2 ] || usage; LEG="$2"; shift 2 ;;
+        --worker|--leg)     [ "$1" = --worker ] || legacy_flag --leg --worker || usage; [ "$#" -ge 2 ] || usage; WORKER="$2"; shift 2 ;;
         --doc)           [ "$#" -ge 2 ] || usage; DOC="$2"; shift 2 ;;
         --prior)         [ "$#" -ge 2 ] || usage; PRIOR="$2"; shift 2 ;;
         --residual-of)   [ "$#" -ge 2 ] || usage; RESIDUAL_OF="$2"; shift 2 ;;
@@ -96,7 +98,7 @@ bash "$HERE/write-verdict.sh" "$QID" "$ANSWER" "$HEAD_SHA" --pr "$PR" --evidence
 
 GO_FILE=""
 if [ "$ANSWER" = "GO" ]; then
-    # go.sh prints the GO file it wrote as its last stdout line; the leg's merge
+    # go.sh prints the GO file it wrote as its last stdout line; the worker's merge
     # names that file with --go.
     if [ "$TRUST" -eq 1 ]; then
         GO_OUT=$(bash "$HERE/go.sh" ${MODEL:+--model "$MODEL"} ${EFFORT:+--effort "$EFFORT"} --trust-reviewed "$QID" "$PR" "$HEAD_SHA") || step_fail go.sh $?
@@ -118,13 +120,13 @@ if [ -n "$DOC" ]; then
 fi
 
 if [ "$ANSWER" = "GO" ]; then
-    # The primary checkout holds the merge script the leg's allow rule names; a
+    # The primary checkout holds the merge script the worker's allow rule names; a
     # worktree copy of this file still resolves it through the git common dir.
     ANCHOR="$(git -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
     ANCHOR="${ANCHOR%/.git}"
     [ -n "$ANCHOR" ] || ANCHOR="$(cd "$HERE/../../.." && pwd)"
     echo
-    echo "--- leg message (send to ${LEG:-the leg}; add its token) ---"
+    echo "--- worker message (send to ${WORKER:-the worker}; add its token) ---"
     printf 'GO %s %s - merge with: bash %q --jira-transition' "$PR" "$HEAD_SHA" "$ANCHOR/scripts/handover/merge-on-green.sh"
     if [ -n "$GO_FILE" ]; then printf ' --go %q\n' "$GO_FILE"; else printf '\n'; fi
 fi

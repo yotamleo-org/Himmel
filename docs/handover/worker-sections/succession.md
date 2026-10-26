@@ -44,10 +44,10 @@ which is leaving), on a token chain (2) it is the sender. Adopt a fresh token as
 token if one came. If none did (a relay may omit it), keep the one you hold and
 you are fully authenticated to the new chief: a fresh token adds no
 authentication, so its absence is not a gap and needs no rotation. If you hold a himmel-bus identity, `append-results.sh` writing the bullet below
-runs `bus adopt <new console>` for you, so the new chief has an edge to you
+runs `bus adopt <new chief>` for you, so the new chief has an edge to you
 (without it `bus send` to you is refused: `no edge to <you>`). Its printed line
 (`adopted: …`) or refusal text (`identity unbound`, or
-`old console … is not gone and sent no relay naming …`)
+`old chief … is not gone and sent no relay naming …`)
 lands as a `bus-adopt:` bullet just above, ending `[via anchor]` (the primary
 checkout's bus CLI, so a worktree cut before a bus fix still adopts with the
 fixed code) or `[via worktree]` (no primary checkout's CLI was found, so your own
@@ -61,8 +61,8 @@ is a recorded fact, not a reason to park: its text names the refused hop, a
 chief on the token chain that never stamped this successor or stamped a different
 one (an unstamped live chief is still refused, also after the old chief is
 gone); once every unstamped chief on the token chain but the target is gone,
-run `bus adopt <new console>` as the worker yourself. Write
-`- SUCCESSION accepted: <new console session> replaces <old>` under
+run `bus adopt <new chief>` as the worker yourself. Write
+`- SUCCESSION accepted: <new chief session> replaces <old>` under
 `## Results` (names and grammar only, no token), with **nothing after it on that
 line** — no explanation, punctuation, or bus output after the old chief's name.
 **That bullet is the quote-back:** the new chief's `succession-tracker.sh` tallies it and its

@@ -65,7 +65,7 @@
 set -uo pipefail
 
 TASK_NAME="HIMMEL-VaultStall"
-LEG="vault-stall"
+WORKER="vault-stall"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/observability-registry.sh
 . "$SCRIPT_DIR/../lib/observability-registry.sh"
@@ -262,7 +262,7 @@ alert() {
     reason="${reason:0:160}"
     if [ "$dry" -eq 1 ]; then echo "vault-stall: would alert: $reason"; return 0; fi
     echo "vault-stall: ALERT $reason"
-    bash "$ALERT" fail "$LEG" "$reason" "$STATE_DIR/last-run.log"
+    bash "$ALERT" fail "$WORKER" "$reason" "$STATE_DIR/last-run.log"
 }
 
 # A remediation runs as four phases that share cmd_run's vault, dry, now, classes,
@@ -372,7 +372,7 @@ commit_edits() {
     rm -rf "$work"
     for c in $classes; do printf '%s\t%s\t%s\n' "$now" "$c" "$vault" >> "$STATE_DIR/remediated.tsv"; done
     echo "vault-stall: REMEDIATED $classes - committed $files; the next sync flushes the backlog"
-    bash "$ALERT" clear "$LEG"
+    bash "$ALERT" clear "$WORKER"
 }
 
 run_phases() {
@@ -413,7 +413,7 @@ cmd_run() {
     thr="${VAULT_STALL_MIN:-25}"; case "$thr" in '' | *[!0-9]*) thr=25 ;; esac
     if [ "$staged" -eq 0 ] || [ "$age" -lt "$((10#$thr))" ]; then
         echo "vault-stall: ok ($staged staged, newest commit ${age}m old)"
-        [ "$dry" -eq 1 ] || bash "$ALERT" clear "$LEG"
+        [ "$dry" -eq 1 ] || bash "$ALERT" clear "$WORKER"
         return 0
     fi
     echo "vault-stall: STALL ($staged staged, newest commit ${age}m old)"
@@ -522,7 +522,7 @@ cmd_arm() {
     chmod +x "$runner" || { echo "ERR vault-stall: cannot chmod the runner $runner" >&2; return 4; }
     { printf '%s\n' "$CRON_TAB" | { grep -vF "# $TASK_NAME" || true; } | sed '/^$/d'; printf '%s\n' "$entry"; } | "$CRONTAB_BIN" - \
         || { echo "ERR vault-stall: crontab install failed" >&2; return 4; }
-    observability_register_cadence "$LEG" 900 "$TASK_NAME"
+    observability_register_cadence "$WORKER" 900 "$TASK_NAME"
     echo "vault-stall ARMED: every 15 min — $runner (status: bash scripts/luna/vault-stall-cadence.sh status)"
 }
 
@@ -562,7 +562,7 @@ cmd_disarm() {
     if [ "$dry" -eq 1 ]; then echo "DRY vault-stall: would remove the $TASK_NAME crontab entry"; return 0; fi
     { printf '%s\n' "$CRON_TAB" | grep -vF "# $TASK_NAME" || true; } | "$CRONTAB_BIN" - || return 4
     rm -f "$RUNNER_DIR/vault-stall-cadence.sh"
-    observability_unregister_cadence "$LEG" "$TASK_NAME"
+    observability_unregister_cadence "$WORKER" "$TASK_NAME"
     echo "vault-stall: disarmed"
 }
 

@@ -14,8 +14,8 @@ layers enforce each invariant. Per-hook behaviour lives in
 
 Each headword is the plain name people read in the docs and UI. The repo's own
 name, the one that ids, env vars, file names, flags and command names use, is
-the alias in brackets. Keep repo identifiers in code spans (`/console`,
-`HIMMEL_CONSOLE_LEG`, `headed-arm-leg.sh`, `go.sh`). Repo identifiers are being
+the alias in brackets. Keep repo identifiers in code spans (`/chief`,
+`HIMMEL_CONSOLE_LEG`, `headed-arm-worker.sh`, `go.sh`). Repo identifiers are being
 renamed to the plain names (HIMMEL-5689). That migration is a known breaking
 change: the old names stop working when their rename PR lands, with no alias
 (the four slices that merged before that ruling keep aliases until HIMMEL-6647 removes them).
@@ -33,13 +33,13 @@ In prose, say the plain name, and the old name once in brackets the first time.
 | **Chief** [supervisor session, console] | The operator's chief of staff: a persistent, operator-facing session that owns the shift. It holds the queue lock on its own document, the GO authority and the token (nonce) mint. It dispatches workers, watches the fleet, acts on rulings and merges on GO, and does no implementation itself. `/chief new` starts one; `/supervisor-session` stays as a permanent alias. In prose say "the chief"; never "chief session" and never a bare "supervisor": `scripts/telegram/supervisor.ts` is a process keeper. |
 | **Judge session** / **judge subagent** [judge, judge call] | A clean session, headed or headless, spawned for one question, sometimes on a deliberately thin brief. **Advisory: it rules, the chief acts.** Several may run in parallel on one question with different scopes. A judge session is a worker of the judge kind; a judge subagent is an in-process child. See [Judge: call and session](#judge-call-and-session). A judge verdict stays "judge verdict". |
 | **Consolidator** | Combines several judges' outputs into one reconciled answer, so the chief does not absorb N judgments. A lexicon term only: nothing in the repo implements it yet. |
-| **Relay** [communicator] | Transport. Receives and moves messages and owns the machine wakes. Also called the *communicator* in the design spec; the code name is `relay`. It is launched as a worker of the chief (`headed-arm-leg.sh --relay`), never as a chief. |
+| **Relay** [communicator] | Transport. Receives and moves messages and owns the machine wakes. Also called the *communicator* in the design spec; the code name is `relay`. It is launched as a worker of the chief (`headed-arm-worker.sh --relay`), never as a chief. |
 | **Worker** [worker session, leg] | A working item: one ticket, one worktree, one brief, one PR. The chief starts workers and each reports back to its chief. A worker has *kinds*: an implementing worker (implements and ships), a relay, and a judge session. `HIMMEL_CONSOLE_LEG` marks every chief-spawned worker of any kind. Fleet sense only: a bare "worker" is this one; a lane worker or a dispatched subagent worker is always qualified (see [Same word, different thing](#same-word-different-thing)). |
-| **Dependency chain** [chain, ticket sequence] | A set of workers that must run in order, because each needs the one before it to merge (the Jira "is blocked by" link; GitHub Actions jobs joined by `needs:`). Fleet sense only; the hook chain and the token chain keep "chain". |
-| **Parallel wave** [wave, batch] | A group of workers dispatched together: the unit that collision-checking, single-writer and `HIMMEL_FLEET_CAP` apply to. Argo CD's sync waves are the closest industry precedent. `batch mode` in a cadence script and a ledger batch row are other senses. |
-| **Arming** [scheduled launch] | Launching a headed or headless session on a schedule (`/console new --arm`, `arm-resume.sh`, `headed-arm.sh`). |
+| **Dependency chain** [chain, dependency chain] | A set of workers that must run in order, because each needs the one before it to merge (the Jira "is blocked by" link; GitHub Actions jobs joined by `needs:`). Fleet sense only; the hook chain and the token chain keep "chain". |
+| **Parallel wave** [parallel wave, batch] | A group of workers dispatched together: the unit that collision-checking, single-writer and `HIMMEL_FLEET_CAP` apply to. Argo CD's sync parallel waves are the closest industry precedent. `batch mode` in a cadence script and a ledger batch row are other senses. |
+| **Arming** [scheduled launch] | Launching a headed or headless session on a schedule (`/chief new --arm`, `arm-resume.sh`, `headed-arm.sh`). |
 | **Side session** [manual override] | An ad-hoc operator-side session: a whiteboard. It passes work to the chief as a ticket and a brief, never as a relayed ruling. |
-| **Succession** [shift handoff] | One chief handing over to the next: the outgoing one arms its successor and writes a HANDOFF (`/console next`). Not a dependency chain: a dependency chain is workers. |
+| **Succession** [shift handoff] | One chief handing over to the next: the outgoing one arms its successor and writes a HANDOFF (`/chief next`). Not a dependency chain: a dependency chain is workers. |
 | **himmel-bus** | The local, hash-chained message bus between a chief and its workers (`marketplace/plugins/himmel-bus`). Delivery is by hook (`bus-deliver-hook`), and a message is a ruling only under a `from` header from the receiver's registered chief (see [RETASK §3b](internals/retask-channel.md)). It is not the Telegram bridge (`scripts/telegram/bus.ts` is that bridge's own store, which himmel-bus reuses for storage only) and not the file inbox (`inbox-send.sh`, the `handovers/inbox/` files), which stays the fallback transport. |
 
 **Not roles.** *Orchestrator* is a rule (`orchestrator-inline-guard`: a
@@ -58,8 +58,8 @@ the plain name, and say the old name once, the first time, in brackets.
 
 | Plain name | Old name (alias) | Notes |
 |---|---|---|
-| **auto-ship step** | leg (initiative sense) | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
-| **usage** | bank | `PARKED-BANK` and the `CADENCE_BANK_*` variables were renamed by HIMMEL-5689 slice V1; the old names still work until HIMMEL-6647. |
+| **auto-ship step** | worker (initiative sense) | A step `HIMMEL_INITIATIVE` takes by itself, such as prcheck or merge. |
+| **usage** | bank | `PARKED-BANK` and the `CADENCE_USAGE_*` variables were renamed by HIMMEL-5689 slice V1; the old names still work until HIMMEL-6647. |
 | **weekly limit override** | bank lift | Renamed by slice V1; the old names still work until HIMMEL-6647. |
 | **review-owed marker** | CR marker | |
 | **finding status** | verdict (of a CR finding) | A judge verdict stays "judge verdict". |
@@ -105,24 +105,24 @@ changelog (HIMMEL-7006) names the breaking change.
 |---|---|---|---|
 | F1 | `HIMMEL_CONSOLE_LEG`, `_RELAY`, `_JUDGE` | kept (OD-1): historical prefix, set only by launchers; the chief and its workers carry it | — |
 | F1b | `HIMMEL_CONSOLE_{DOC,NAME,WORKDIR,RUNDIR}`, `HIMMEL_CONSOLE_JUDGE_{DOC,QID,EFFORT}` | kept (OD-1) | — |
-| F1c | operator-typed `CONSOLE_*` (`CONSOLE_FG_OK`, `CONSOLE_DISPATCH_OK`, `CONSOLE_DISPATCH_DISABLE`, `CONSOLE_CONTEXT`, …) | `CHIEF_*` | V5 |
+| F1c | operator-typed `CONSOLE_*` (`CHIEF_FG_OK`, `CHIEF_DISPATCH_OK`, `CHIEF_DISPATCH_DISABLE`, `CHIEF_CONTEXT`, …) | `CHIEF_*` | V5 |
 | F2 | `HIMMEL_LEG_*`, `HIMMEL_LEAN_LEG`, `LEG_*`, `HEADED_ARM_LEG_*` | `HIMMEL_WORKER_SESSION_*`, `HIMMEL_LEAN_WORKER_SESSION`, `WORKER_SESSION_*`, `HEADED_ARM_WORKER_*` (never `HIMMEL_WORKER_*`) | V4a |
 | F3 | `CADENCE_BANK_*`, `BANK_LIFT_*`, `CODEX_BANK_*`, `CLAUDEX_BANK_*`, `PARKED-BANK` | `CADENCE_USAGE_*`, `USAGE_LIFT_*`, `CODEX_USAGE_*`, `CLAUDEX_USAGE_*`, `PARKED-USAGE` (usage, not budget) | V1 |
 | F4 | `bank-preflight.sh`, `bank-lift.sh` (+ `bank-lift.json`), `bank-monitor.sh`, `bank-attribution.sh`, `bank-status` | `usage-preflight.sh`, `usage-lift.sh` (+ `usage-lift.json`), `usage-monitor.sh`, `usage-attribution.sh`, `usage-status` | V1 |
 | F5 | `clear-cr-marker.sh`, `cr-*.sh`, `CR_MARKER*` | `clear-review-marker.sh`, `review-*.sh` (the CodeRabbit scripts to `coderabbit-*`), `REVIEW_MARKER*`; the `<git-dir>/cr-pending/` dir keeps its name (OD-3) | V2 |
 | F6 | `headed-arm-leg.sh` | `headed-arm-worker.sh` | V4b |
-| F7 | `leg-*.sh` helpers, `leg-digest*`, `close-wrapped-leg.sh`; profiles `leg-impl`, `leg-bus`, `leg-vm` | `worker-*`, `close-wrapped-worker.sh`; profiles `worker-impl`, `worker-bus`, `worker-vm` | V4b; V4a (profiles) |
-| F8 | `scripts/handover/console-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
+| F7 | `worker-*.sh` helpers, `worker-digest*`, `close-wrapped-leg.sh`; profiles `leg-impl`, `leg-bus`, `leg-vm` | `worker-*`, `close-wrapped-worker.sh`; profiles `worker-impl`, `worker-bus`, `worker-vm` | V4b; V4a (profiles) |
+| F8 | `scripts/handover/chief-kit/`, `leg-preface*.md`, `console-template.md`, `leg-brief-template.md` | the former `chief-kit/` directory, `worker-preface*.md`, `chief-template.md`, `worker-brief-template.md` | T; M (the directory) |
 | F9 | `/console`, `console.sh`; skill `himmel-ops:console` | `/chief` canonical, `chief.sh`, `chief-context.sh`; skill `himmel-ops:chief`; agents `judge`, `judge-ro` (never `chief-judge*`). `/supervisor-session` and `himmel-ops:supervisor-session` stay permanent aliases (OD-6) | V5 |
 | F10 | `overnight-shift`, `overnight-mode.md`, `OVERNIGHT_*`, `HIMMEL_OVERNIGHT`, `HIMMEL_INITIATIVE_OVERNIGHT` | `afk-shift`, `afk-mode.md`, `AFK_*`, `HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK` | V3 |
 | F11 | `watchdog` (auto-arm hooks only) | `auto-relaunch` in prose; ids deferred until a new id name is ruled | — |
 | F13 | `class-sweep`, `missing-class-sweep` (the `SWEEP` ledger keyword is unchanged) | `variant-sweep`, `missing-variant-sweep` | V2 |
 | F14 | `speed bump` (message text) | `soft block` | D |
-| F15 | fleet-sense `chain`, `wave` (and the interim `ticket sequence`, `batch`) | dependency chain, parallel wave: glossary and prose only; no fleet-sense identifier exists. Reserved forms: `DEPENDENCY_CHAIN_*`, `PARALLEL_WAVE_*` | R2, T, D |
+| F15 | fleet-sense `chain`, `parallel wave` (and the interim `dependency chain`, `batch`) | dependency chain, parallel wave: glossary and prose only; no fleet-sense identifier exists. Reserved forms: `DEPENDENCY_CHAIN_*`, `PARALLEL_WAVE_*` | R2, T, D |
 | F16 | tick fields `legs=`, `legset=`, `bank=` | `workers=`, `workerset=`, `usage=`; `tails=` and `parked=` keep their names | T |
-| F17 | hooks `block-leg-askuserquestion.sh`, `guard-leg-wakeup.sh`, `console-compact-reinject.sh`, `guard-console-foreground.sh` | `block-worker-askuserquestion.sh`, `guard-worker-wakeup.sh`, `chief-*` | V4a; V5 |
+| F17 | hooks `block-leg-askuserquestion.sh`, `guard-leg-wakeup.sh`, `chief-compact-reinject.sh`, `guard-chief-foreground.sh` | `block-worker-askuserquestion.sh`, `guard-worker-wakeup.sh`, `chief-*` | V4a; V5 |
 
-F12 (`chokepoint-*`, docs-only) is on hold. Session-name suffixes (`-console`,
+F12 (`chokepoint-*`, docs-only) is on hold. Session-name suffixes (`-chief`,
 `-relay`, `-N<k>-`, `-judge-<qid>`) are data contracts and are not renamed;
 `-chief` may only be accepted in addition.
 
@@ -136,11 +136,11 @@ Names that stay as they are, and why. A rename slice and the old-term lint skip 
 | **`HIMMEL_WORKER`** | The dispatched-lane security marker (hook integrity, the GLM write fence, the claudex spawner). A worker does not carry it, so a worker name must never start with `HIMMEL_WORKER_` unless `SESSION_` follows. |
 | The `<git-dir>/cr-pending/` dir (OD-3) | An on-disk name nobody types, with readers in three languages; one missed reader fails open on `gh pr create`. |
 | The `RETASK` block keyword | Code parses it. Prose says "revision". |
-| The `leg-burn:` PR-body line, `SWEEP` ledger rows, tick `tails=` and `parked=` | Data contracts. |
+| The `worker-burn:` PR-body line, `SWEEP` ledger rows, tick `tails=` and `parked=` | Data contracts. |
 | The Results markers (`LIVE`, `WRAPPED`, …) | Data contract; `PARKED-BANK` was renamed to `PARKED-USAGE` by slice V1; handover docs already written keep the old spelling. |
 | `2026-07-28-chain-ledger.md`, frozen fixtures (`*/fixtures/**`) | Recorded data. |
 | The session-name suffix `-console` | A data contract (`-chief` is accepted in addition). |
-| The initiative chain `legs.sh` / `resolve_legs` | The auto-ship step sense, not the fleet sense. |
+| The initiative chain `workers.sh` / `resolve_workers` | The auto-ship step sense, not the fleet sense. |
 | The hook chain (`RUN_HOOK_CHAIN_*`, `--chain`) and `/himmel-update`'s "dependency chain" | Other senses of chain. |
 | Lane-worker files (`stop-worker.sh`, `await-glm-worker.sh`, `reconcile-workers.sh`) | Other sense of worker. |
 | `/supervisor-session` | The command is a permanent alias. |
@@ -167,7 +167,7 @@ under `HIMMEL_CONSOLE_RELAY`; `inbox-send.sh` refuses `--token` under
 ## Judge: call and session
 
 A judge is a **worker kind**: a *judge session*. A judge session is launched by
-the worker launcher (`chief-kit/headed-arm-leg.sh --judge`), runs under the
+the worker launcher (`chief-kit/headed-arm-worker.sh --judge`), runs under the
 worker guards, and carries the same `HIMMEL_CONSOLE_LEG` identity variable as any worker, plus a
 `HIMMEL_CONSOLE_JUDGE` identity variable that `scripts/hooks/guard-judge-writes.sh` reads
 to confine its writes to its own doc and qid; it cannot write its
@@ -179,7 +179,7 @@ does not implement, push or merge.
 | judge **session** | a judge worker with its own worktree, queue lock and lifecycle; survives past one turn | [`handover/judge-brief-template.md`](handover/judge-brief-template.md), verdict per [`handover/verdict-template.md`](handover/verdict-template.md) |
 | judge **subagent** [judge call] | an in-process child (`.claude/agents/judge-ro.md`, or `judge.md`) for one question that fits in one dispatch | the dispatch prompt |
 
-The chief template (`console-template.md`) records which shape asked each question as
+The chief template (`chief-template.md`) records which shape asked each question as
 `grade: call|session`.
 `grade: call|session`.
 
@@ -191,12 +191,12 @@ Session names carry the role, and tooling reads it back:
 |---|---|
 | `-console` | a chief (`<PREFIX>-nextleg-<date><letter>-console`); `-chief` may be accepted in addition |
 | `-relay` | a relay |
-| `-N<k>-` | a worker (session `<TICKET>-N<k>-<slug>`, doc `<TICKET>-N<k>-<slug>-<date>-RESUME.md`, label `N<k>`, a successor `N<k>b` is a distinct session; the legacy `…-leg[N]<k>-…` doc spelling is still read — `scripts/lib/leg-identity.sh`) |
+| `-N<k>-` | a worker (session `<TICKET>-N<k>-<slug>`, doc `<TICKET>-N<k>-<slug>-<date>-RESUME.md`, label `N<k>`, a successor `N<k>b` is a distinct session; the legacy `…-worker[N]<k>-…` doc spelling is still read — `scripts/lib/worker-identity.sh`) |
 | `-judge-<qid>` | a judge session (`HIMMEL-<ticket>-judge-<qid>`) |
 
 The scorecard classifiers (`scripts/lanes/bench/scorecard/`) read a worker from
-`scripts/lib/leg-identity.sh` (so a worker whose slug says `console` is still a
-worker), key a chief and a relay on the `-console` and `-relay` substrings, and
+`scripts/lib/worker-identity.sh` (so a worker whose slug says `console` is still a
+worker), key a chief and a relay on the `-chief` and `-relay` substrings, and
 count an untitled session as `unattributed`; `verdict-template.md` keys on
 `-judge-<qid>`. Renaming a suffix silently misclassifies burn data.
 
@@ -256,14 +256,14 @@ exists, the code word last.
 | **Follow-up** (code word: residual) | Work a review or a PR found and left for later, filed as its own ticket linked to the parent. Example: a review finding deferred at round 3. Used in `jira create --follow-up-of`, the `residual` label and `ledger-append.sh --verdict deferred`. Docs say "follow-up"; labels and flags keep "residual". |
 | **Follow-up depth** | 1 for a follow-up of shipped work, 2 for a follow-up of a follow-up, and so on. Depth 2 or more goes to the backlog. Label `residual-depth-N`. |
 | **Escape** (industry: escaped defect) | A real flow is broken today: a wrong result, lost or corrupted data, a flow that cannot finish, or a guard that refuses (or fails open on) an ordinary command someone typed. Fixed in the version in progress, which is not done while it is open. Example: every bash-AST guard failed closed under jq 1.7 (HIMMEL-6893). Flag `--fu-class escape`, label `fu-escape`. |
-| **Hardening** | The maturity-ladder step from Proven to Hardened (decision 112), never software-security hardening. The feature works, but nothing would tell us if it broke or decayed: no test goes red, the board shows nothing, the console is not told. The hardening fix adds the alarm. Every hardening follow-up carries one reason code. Example: a checksum row that cannot fail (HIMMEL-6887). Flag `--fu-class hardening --fu-why <code>`, labels `fu-hardening` and `fu-why-<code>`. |
+| **Hardening** | The maturity-ladder step from Proven to Hardened (decision 112), never software-security hardening. The feature works, but nothing would tell us if it broke or decayed: no test goes red, the board shows nothing, the chief is not told. The hardening fix adds the alarm. Every hardening follow-up carries one reason code. Example: a checksum row that cannot fail (HIMMEL-6887). Flag `--fu-class hardening --fu-why <code>`, labels `fu-hardening` and `fu-why-<code>`. |
 | **Reason code** | Why a follow-up is hardening, one of five: `unseen-failure` (a failure exits 0, is swallowed, or never reaches the board, the tick or the chief), `no-check` (nothing automated goes red if it breaks), `vacuous-check` (a check exists but cannot fail), `no-recovery` (a failure has no bounded recovery: no timeout, a non-atomic write, no retry, a lock that can strand), `silent-rot` (state degrades over time with no signal). Flag `--fu-why`, label `fu-why-<code>`. After R1' (HIMMEL-6919) a hardening filing without a code is a usage error. |
 | **Polish** | It works, and an existing check would catch it breaking. It could just be nicer: wording, tidier code, a cleaner screen, an extra figure, or a guard closed against a trick nobody types by accident. Backlog by default; polish never holds a version back. Example: leftover wording in an old doc (HIMMEL-6813). Flag `--fu-class polish`, label `fu-polish`. |
 | **Deferred escape** | A follow-up that was deferred and later caused an escape. Counted per version as claim B, "deferral lets bad bugs through". Recorded by `scripts/cr/mark-deferred-escape.sh`, label `deferred-escape`; read by the stability scorecard and `scripts/release/followup-report.sh`. |
 | **Frozen scope** (industry: scope freeze; code word: frozen set) | The tickets a version holds on its freeze date (`frozen: <date>` in the version description). After the freeze, new work enters only through the intake gate. |
 | **Intake gate** | The check a filing into a frozen version must pass, naming one of four kinds: `critical`, `regression`, `must:<decision>` (industry: release blocker) or `receipt`. Flag `jira create --gate`; the same flag is required to move a ticket into a frozen version. |
 | **Receipt** | A ticket filed to record work being dispatched now and closed within a day. It enters a frozen version through `--gate receipt`. |
-| **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a console override is recorded as such). |
+| **Admission** | The ledger record that a ticket entered a frozen version, with its gate and who admitted it (`kind: rm-admit`; a chief override is recorded as such). |
 | **Follow-up budget** (code word: residual budget) | How many open follow-ups a version holds before new ones compete on rank: 15 unless a `residual-budget:N` line in the version description says otherwise. A monitor, not a quota. See Cap gate above for what a filing over it does today and after R6' (HIMMEL-6924). Labels `over-cap`, `residual-overflow`, `residual-displaced`. |
 | **Backlog** / **icebox** | Backlog: no version, waiting for planning. Icebox: parked indefinitely in the ICE project and out of every count (`ice-followups.sh`). |
 | **Ad hoc** / **station ad hoc** | Ad hoc: a quick fix for our own setup, filed with no version. Station ad hoc: a reversible change made on the station before its repo fix, recorded under the label `station-adhoc` so the repo fix is never dropped (plan 10.4). |
@@ -286,7 +286,7 @@ redefining it.
 | AFK | A session left unattended. Overnight mode and arming are two ways to start one. |
 | Subagent | A judge call or an `Agent` dispatch. In the dictionary a subagent cannot spawn another; himmel allows deeper trees under the spawn-depth cap in the environment. |
 | Progressive disclosure | Lean-invoke: a slash command run on demand instead of an always-loaded rule. |
-| Smart zone, attention degradation | Why a worker hands off before its context is full (`internals/leg-context-guard.md`). |
+| Smart zone, attention degradation | Why a worker hands off before its context is full (`internals/worker-context-guard.md`). |
 | Primary source, secondary source | The code and tests are primary. A handover doc or a memory line is secondary. |
 | Software factory | What himmel is: sessions started by triggers, with at least one human approval per PR. It is not a dark factory, which has no human step. |
 | AX | `internals/context-architecture.md`: what a session sees, what loads always and what loads on demand. |
@@ -295,7 +295,7 @@ redefining it.
 | Orchestrator-workers (Anthropic, "Building effective agents") | The chief and its workers: one session splits the job, workers do the parts, the chief synthesizes. Not himmel's "orchestrator", which is a rule (`orchestrator-inline-guard`). |
 | Handoff (OpenAI Agents SDK) | There a handoff passes a conversation to another agent. himmel keeps "handover" for the command, the directory and the doc, because "handoff" already has four senses here (see Same word, different thing). |
 | LLM-as-a-judge (Zheng et al., 2023) | A judge session or subagent: a clean model that rules on one question. |
-| Sync wave (Argo CD) | A parallel wave: ordered groups whose members run together. |
+| Sync parallel wave (Argo CD) | A parallel wave: ordered groups whose members run together. |
 | Variant analysis (CodeQL) | The variant sweep: find every variant of a fixed bug. |
 
 ## Same word, different thing
@@ -310,12 +310,12 @@ collision are not listed: they now use the new wording.
 | **chief** | The session that runs the shift (formerly supervisor session, console). | "Chief judge", a real title for the head judge. | The fleet docs and `/chief` mean the session. A title means the other, which is why the judge agent ids are `judge` and `judge-ro`, never `chief-judge*`. |
 | **worker** | A worker: one ticket, one worktree, one PR (formerly worker session, leg). | A lane worker (a process on a dispatch backend: `scripts/lanes/stop-worker.sh`, `await-glm-worker.sh`), a dispatched subagent worker (`internals/worker-spawn-matrix.md`), a Codex lane worker, `reconcile-workers.sh` and `max_workers`. Also `HIMMEL_WORKER`, the dispatched-lane marker, which a worker does not carry. | A bare "worker" is the fleet sense; every other sense is qualified (lane, subagent, Codex lane). Worker env names are `HIMMEL_WORKER_SESSION_*`, never `HIMMEL_WORKER_*`. |
 | **chain** | A **dependency chain**: workers that must run in order. A bare "chain" is never the fleet sense in new prose. | A serial hook chain and the hook runner's `--chain` flag; the token chain of a succession (`worker-sections/succession.md`); the handover skill's chain files (`next-session-N.md`, read by `arm-resume.sh`); `/himmel-update`'s six-item dependency chain; the dependency supply chain of package security (see the overlap map); the pin chain (`PIN_CHAIN_*`). | "Dependency chain" next to tickets or workers means the fleet sense. The `/himmel-update` docs and package security use the same two words for the other senses. Hooks, tokens and chain files always carry their qualifier. The hook sense is in `architecture.md` and `harness-compat.md`. |
-| **wave** | A **parallel wave**: a group of workers started together. | The idiom "wave … through" ("a guard must not wave it through"); a subagent wave (`MID-AGENT-WAVE` in `auto-arm-on-subagent-cap.sh`, `FIRST_WAVE` in `lane-readiness.mjs`); Argo CD sync waves. | "Parallel wave", or a wave of workers or tickets, means the fleet sense. The idiom is a verb. A subagent wave is a burst of `Agent` dispatches inside one session. |
+| **parallel wave** | A **parallel wave**: a group of workers started together. | The idiom "parallel wave … through" ("a guard must not parallel wave it through"); a subagent parallel wave (`MID-AGENT-WAVE` in `auto-arm-on-subagent-cap.sh`, `FIRST_WAVE` in `lane-readiness.mjs`); Argo CD sync waves. | "Parallel wave", or a parallel wave of workers or tickets, means the fleet sense. The idiom is a verb. A subagent parallel wave is a burst of `Agent` dispatches inside one session. |
 | **batch** | Not a fleet term any more: a group of workers started together is a parallel wave ("batch" was the 10-17 interim name). | `batch mode` in a scheduled script, a ledger batch row, a panel batch spec. | A fleet doc means a parallel wave. A script flag or a ledger means the other. |
-| **armed** | Arming (scheduled launch): launching a session on a schedule. | Opt-in auto-merge (`ARMAUTOMERGE`). That use of "armed" is kept on purpose. Starting a Monitor loop is no longer called arming, and the tick now runs in `console-wait.sh`. | A session or a schedule means arming. A PR merge means the other. |
+| **armed** | Arming (scheduled launch): launching a session on a schedule. | Opt-in auto-merge (`ARMAUTOMERGE`). That use of "armed" is kept on purpose. Starting a Monitor loop is no longer called arming, and the tick now runs in `chief-wait.sh`. | A session or a schedule means arming. A PR merge means the other. |
 | **orchestrator** / **coordinator** | Not session roles. Orchestrator is a rule, `orchestrator-inline-guard`. | The external pattern catalog's names for the parent session. The CI orchestrator daemon. | A hook name means the rule. A pattern description means the catalog. A CI run means the daemon. The catalog is `orchestration-patterns.md` and the daemon is `scripts/ci-orchestrator`. |
 | **GO** | The chief's GO file that authorises one merge. | A judge verdict `GO` or `NO-GO`, written by `write-verdict.sh`. It is one input the chief reads before it signs a GO file. | In prose write "judge verdict GO" for the verdict and "GO file" for the merge authorisation. The verdict format is in `handover/verdict-template.md`. |
-| **supervisor** | The industry word for the chief ("supervisor session" is an accepted alias, and `/supervisor-session` stays a permanent alias of `/chief`). Never a bare "supervisor" in himmel prose. | `scripts/telegram/supervisor.ts`, the process that keeps the Telegram poller alive. Also a generic "external timeout or supervisor" in the shell docs. | A session means the chief. A bun process or a restart loop means the other. |
+| **supervisor** | The industry word for the chief ("chief" is an accepted alias, and `/supervisor-session` stays a permanent alias of `/chief`). Never a bare "supervisor" in himmel prose. | `scripts/telegram/supervisor.ts`, the process that keeps the Telegram poller alive. Also a generic "external timeout or supervisor" in the shell docs. | A session means the chief. A bun process or a restart loop means the other. |
 | **handoff** | A session passing its work to another: a handover doc, a RESUME doc, a HANDOFF file. | A scope handoff, a launch handoff, and the anchor handoff (`anchor-handoff.sh`). | The fleet docs mean the document. A launcher or a gate script means the other. |
 
 ## Harness wiring lexicon
@@ -333,7 +333,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Wirer / inventory** | The two scripts that write hook entries, each from its own hand-kept ordered list (the inventory): `wire-hook-bash.mjs` (`EXPECTED_SCRIPT_ORDER`, into `.claude/settings.json`) and `wire-plugin-hook-bash.mjs` (`EXPECTED_HOOKS`, into the himmel-ops `hooks.json`). A wirer run installs an inventory entry its target lacks. | hook list |
 | **Impostor** | A `scripts/hooks/*.sh` call under an event the wirer owns (`PreToolUse`, `PostToolUse`, `SessionStart`) that its inventory does not list; `wire-hook-bash.mjs` refuses it (HIMMEL-1552). | — |
 | **Hook runner** | `run-hook-with-bash.js`: runs one hook, or a `--chain` of them in one process, under the right bash on every platform. The Codex twin is `.codex/run-hook.sh`. | wrapper |
-| **Guard** | A PreToolUse hook that can deny a tool call before it runs (`block-*`, `guard-*`). It judges the call's text, not its effect. A `guard-` prefix or a "guard" in a file name does not mean this role: `stop-console-idle-guard.sh` is a Stop hook, `check-doc-guard.sh` is a pre-commit and pre-push gate, and `parity_guard.py` is a Hermes hook. | gate (for a session hook) |
+| **Guard** | A PreToolUse hook that can deny a tool call before it runs (`block-*`, `guard-*`). It judges the call's text, not its effect. A `guard-` prefix or a "guard" in a file name does not mean this role: `stop-chief-idle-guard.sh` is a Stop hook, `check-doc-guard.sh` is a pre-commit and pre-push gate, and `parity_guard.py` is a Hermes hook. | gate (for a session hook) |
 | **Gate** | A check that stops work moving to its next stage: a git hook (commit, push), a CI job, or a precondition inside a chokepoint (the CR gate, the CI-green gate, the GO gate). | guard (for a git or CI check) |
 | **Fence** | A guard that confines writes or egress to an allowed set and that the session cannot lift (the terminal write-fence, the egress fences, the judge write fence). It fails closed. | wall |
 | **Speed bump** | A guard documented as stopping only the accidental shape; a determined caller can route around it (`block-himmel-config-writes.sh`, `guard-bus-store.sh`). Its header says so. | fence |
@@ -342,7 +342,7 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 | **Reviewer mode** | A reviewer's row in `scripts/cr/critics.json` says `hard` or `best-effort`. A hard reviewer that cannot review the head holds the merge; a best-effort one is relaxed (a NOTE) when it cannot review. A finding it did post must be resolved either way. Walkthrough: [daily-loop step 7a](daily-loop.md#7a-review-on-the-pull-request-coderabbit-and-the-review-gate). | soft gate |
 | **CI release** | Planned (HIMMEL-6581, HIMMEL-6582), opt-in per repo. The station adds the `ci:go` label once the review gate passes at a head, and that label event starts the heavy CI jobs. It never lets anything merge on its own. | CR-first trigger |
 | **Advisory** | A hook or check that prints and never blocks (exit 0): `scripts/cr/doc-freshness-advisory.sh`, `graphify-freshness-advisory.sh`, `jira-nudge-on-end.sh`, the `api` backend tier. | soft gate |
-| **Nudge** | A hook that steers a habit rather than protecting a secret or a checkout (`require-quiet-run.sh`, `guard-leg-wakeup.sh`, `jira-nudge-on-end`, `inject-worktree-nudge`). Advisory-only versus may-deny is a separate axis, so both kinds count: some only print, some deny. A denying nudge fails open on its own errors (missing `jq`, unparsed input). Its opposite is a security fence, which fails closed. | — |
+| **Nudge** | A hook that steers a habit rather than protecting a secret or a checkout (`require-quiet-run.sh`, `guard-worker-wakeup.sh`, `jira-nudge-on-end`, `inject-worktree-nudge`). Advisory-only versus may-deny is a separate axis, so both kinds count: some only print, some deny. A denying nudge fails open on its own errors (missing `jq`, unparsed input). Its opposite is a security fence, which fails closed. | — |
 | **Watchdog** | A hook that watches a resource and acts on its own, deliberately fail-open: `auto-arm-on-cap.sh` and `auto-arm-on-subagent-cap.sh` arm a resume as a usage cap nears and block once to force a handover (off with `AUTO_ARM_DISABLE=1`). | monitor |
 | **Chokepoint** | The one sanctioned script for a privileged action, registered with its seam variables in `scripts/chokepoints.json` (`merge-on-green.sh`, `clear-cr-marker.sh`, the codex dispatchers). Agents run it by its literal path. | wrapper, helper |
 | **Seam variable** | An environment variable a chokepoint reads as a test seam or opt-in. Set only in the launching shell; a per-call `VAR=` prefix on a chokepoint is denied (`block-chokepoint-env-prefix.sh`). | override |
@@ -388,12 +388,12 @@ canonical term. Script names without a directory live in `scripts/hooks/`.
 |---|---|---|
 | **Bank** [usage] | The subscription usage budget (5-hour and 7-day). `scripts/lib/bank-preflight.sh` prints one verdict token (`PROCEED`, …) and always exits 0. | quota |
 | **Bank lift** [weekly limit override] | `~/.himmel/state/bank-lift.json`, which relaxes the 7-day bank check. Setting it is operator-only; `block-bank-lift-writes.sh` denies every agent write. | — |
-| **Plugin profile** | A plugin set a worker launches with (`headed-arm-leg.sh --profile <name>`, defined in `scripts/lanes/plugin-profiles.json`). | — |
-| **Preface** | [`handover/leg-preface.md`](handover/leg-preface.md): the rules appended to every worker's system prompt at launch. Five prefaces exist (worker, worker claudex, worker openrouter, judge, consult), so write "worker preface" or "judge preface", never a bare "preface". | system prompt |
+| **Plugin profile** | A plugin set a worker launches with (`headed-arm-worker.sh --profile <name>`, defined in `scripts/lanes/plugin-profiles.json`). | — |
+| **Preface** | [`handover/worker-preface.md`](handover/worker-preface.md): the rules appended to every worker's system prompt at launch. Five prefaces exist (worker, worker claudex, worker openrouter, judge, consult), so write "worker preface" or "judge preface", never a bare "preface". | system prompt |
 | **Brief** | In this glossary, the per-worker header of a handover document, not a task prompt (`brief.md` and `--brief-file` name whole task prompts). It holds: ticket, worktree, base sha, token, chief, contract. The brief wins over the preface where they disagree. | — |
 | **Nonce** [token] | The RETASK token minted per child; a revision must quote it ([`internals/retask-channel.md`](internals/retask-channel.md)). | password |
 | **Tick** | `scripts/handover/chief-kit/tick.sh`: one batched snapshot line of the fleet, read from each worker's newest status-marker bullet. | poll |
-| **Waiter** | `scripts/handover/chief-kit/console-wait.sh`: the chief's one background command, silent until the first real event, then it exits. | monitor loop |
+| **Waiter** | `scripts/handover/chief-kit/chief-wait.sh`: the chief's one background command, silent until the first real event, then it exits. | monitor loop |
 | **Board** | The chief's board: a generated HTML page of fleet state and worker phases (HIMMEL-3361). | dashboard |
 | **Tracker** | The ticket backend a run uses, `TRACKER=jira\|local\|none` ([configuration](configuration.md); HIMMEL-4759). | — |
 | **Status marker** | The leading word of a worker's Results bullet (`LIVE`, `FINDING`, `RESOLVED`, `READY`, `BLOCKED`, `HALTED`, `WRAPPED`, `PARKED-BANK`, `RESUMED`), written by `scripts/handover/chief-kit/append-results.sh`. | state |
@@ -450,9 +450,9 @@ A cell names the script; `—` means the layer does not enforce it. Columns:
 | Lesson and enforcement files not agent-written | — | `block-lesson-enforcement-writes` | `block-lesson-enforcement-writes` | — | — | — |
 | No commit onto a merged PR's branch | — | `block-merged-pr-commit` | `block-merged-pr-commit` | pc `check-merged-branch` (warns) | — | — |
 | Chokepoints called bare | `block-chokepoint-env-prefix`, `guard-pr-check-literal` | `block-rogue-codex-exec` | `guard-pr-check-literal` | — | — | — |
-| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model and a `judge` tier override; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-console-dispatch` | — | — | — | — |
+| Agent dispatch names a model and the right lane | `guard-agent-model` (blocks a Fable model and a `judge` tier override; allows a missing model) | `guard-subagent-model` (denies a missing model unless a fork; `SUBAGENT_MODEL_OK=1`), `guard-implementor-dispatch`, `guard-chief-dispatch` | — | — | — | — |
 | Egress stays inside policy | `mcp-policy`, `block-backend-tier` | `block-graphify-egress`, `block-agent-native-egress`, `block-glm-external-writes` | `mcp-policy`, `block-backend-tier`, `block-terminal-write-fence` | — | — | — |
-| Worker session discipline | `block-leg-askuserquestion`, `guard-leg-wakeup`, `guard-leg-context-handoff` (+ PreCompact), `block-subagent-park` | — | `guard-leg-context-handoff` | — | — | — |
+| Worker discipline | `block-worker-askuserquestion`, `guard-worker-wakeup`, `guard-worker-context-handoff` (+ PreCompact), `block-subagent-park` | — | `guard-worker-context-handoff` | — | — | — |
 | Judge and relay writes confined | `guard-relay-writes` | `guard-judge-writes` | — | — | — | `go.sh` refuses under `HIMMEL_CONSOLE_LEG` / `HIMMEL_CONSOLE_RELAY` |
 | Guard scripts intact | Post `check-hook-file-parse` | `record-hook-integrity` | — | pc `fail-open-lint`, `hook-lib-node-suites`, `guardrail-matrices` | `guardrail-matrices`, `lanes-and-trust-suites` (`check-hook-lib-suites.sh`) | `ci-trust-paths.txt` lists `scripts/hooks/lib/` |
 | Test suites run through `quiet-run` | `require-quiet-run`, `block-tail-pipe-on-gates` | — | `require-quiet-run` | — | — | — |
@@ -485,7 +485,7 @@ Facts only; nothing here is a proposed change.
    workflow files.
 6. **Agent dispatch** — four `Agent` PreToolUse guards in two files
    (`guard-agent-model` in settings; `guard-subagent-model`,
-   `guard-implementor-dispatch`, `guard-console-dispatch` in the plugin).
+   `guard-implementor-dispatch`, `guard-chief-dispatch` in the plugin).
 7. **Attestation trailers** — pre-push `check-platforms-tested` and
    `check-security-reviewed`, the same two gates re-run over the PR range in CI
    `commit-lint`, and ready-check item 5.

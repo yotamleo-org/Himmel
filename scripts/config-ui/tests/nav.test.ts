@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DOCS_URL, fleetDot, healthDot, navLinks, pageHref, parseLanding } from "../public/nav.js";
 import { LANDING, launchUrl, startServer } from "../server";
 
-// the config console and the AG-UI pages are one app with one rail. These pin the page list, the
+// the config chief and the AG-UI pages are one app with one rail. These pin the page list, the
 // token-in-fragment rule, the landing switch and the status dot.
 const TOKEN = "a".repeat(64);
 const RUN = "0b6e1c2a-3f4d-4e5f-8a9b-0c1d2e3f4a5b";
@@ -90,7 +90,7 @@ test("himmelctl ui prints ONE URL: the landing switch picks the fleet or the con
   expect(["fleet", "config"]).toContain(LANDING);
   expect(launchUrl(BASE, TOKEN, { landing: "fleet", built: true })).toBe(`${BASE}/agui/#t=${TOKEN}`);
   expect(launchUrl(BASE, TOKEN, { landing: "config", built: true })).toBe(`${BASE}/#t=${TOKEN}`);
-  // An unbuilt page cannot be the landing: the console, which links to the fleet's build steps.
+  // An unbuilt page cannot be the landing: the chief, which links to the fleet's build steps.
   expect(launchUrl(BASE, TOKEN, { landing: "fleet", built: false })).toBe(`${BASE}/#t=${TOKEN}`);
   // --agui asks for the AG-UI page outright: the fleet, or one run.
   expect(launchUrl(BASE, TOKEN, { landing: "config", built: true, agui: "fleet" })).toBe(`${BASE}/agui/#t=${TOKEN}`);

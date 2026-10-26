@@ -3,7 +3,7 @@
 //
 // The `act` compatibility matrix classifies every job in .github/workflows/ci.yml
 // by whether nektos/act can run it faithfully in Docker, its OS set, and whether
-// it's a heavy leg. Consumed by routing.ts (act-exec eligibility) and dedup.ts.
+// it's a heavy worker. Consumed by routing.ts (act-exec eligibility) and dedup.ts.
 //
 // SCOPE (this P2 slice): the TYPES, the committed `act-matrix.json` (authored
 // from static analysis of ci.yml), and `loadMatrix()` (reads the committed JSON,
@@ -23,7 +23,7 @@ export type OsName = "linux" | "windows" | "macos";
 // Keyed by "workflow:job" (workflow = the ci.yml file basename `ci`). `os` is an
 // ARRAY because one job (shell-unit-shard) fans to linux+windows+macos via
 // `runs-on: ${{ matrix.os }}` — the superset it can produce (B4). Routing then
-// decides each OS leg independently (act-exec is eligible only for the linux leg
+// decides each OS worker independently (act-exec is eligible only for the linux worker
 // AND when fidelity !== "gha-only").
 export type ActMatrixEntry = { fidelity: ActFidelity; os: OsName[]; heavy: boolean; shim?: string };
 export type ActMatrix = Record<string, ActMatrixEntry>;

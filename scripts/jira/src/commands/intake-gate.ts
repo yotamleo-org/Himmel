@@ -14,17 +14,37 @@ export function assertIntakeGate(gate: string): void {
   if (!valid) throw new Error(`--gate must be one of ${INTAKE_GATES} (got "${gate}")`);
 }
 
+const warnedLegacy = new Set<string>();
+
 /**
- * A console override needs a reason, the console marker and a ledger location.
+ * The value of --chief-override, from either spelling. The old --console-override
+ * keeps working with one stderr line per process, unless HIMMEL_LEGACY_NAMES is
+ * 0, false, no or off; then it is an unknown option.
+ */
+export function chiefOverrideOf<T>(o: { chiefOverride?: T; consoleOverride?: T }): T | undefined {
+  if (o.consoleOverride === undefined) return o.chiefOverride;
+  if (/^(0|false|no|off)$/i.test(process.env['HIMMEL_LEGACY_NAMES'] ?? '')) {
+    process.stderr.write('--console-override was renamed to --chief-override; legacy names are off\n');
+    throw new Error("error: unknown option '--console-override'");
+  }
+  if (!warnedLegacy.has('--console-override')) {
+    warnedLegacy.add('--console-override');
+    process.stderr.write('--console-override is deprecated: use --chief-override\n');
+  }
+  return o.chiefOverride ?? o.consoleOverride;
+}
+
+/**
+ * A chief override needs a reason, the chief marker and a ledger location.
  * Returns the trimmed reason; the ledger probe throws when no location is set
  * or the ledger cannot take an append, so no ticket is filed or moved without its row.
  */
 export function checkConsoleOverride(reason: string): string {
   const trimmed = reason.trim();
-  if (!trimmed) throw new Error('--console-override needs a reason');
+  if (!trimmed) throw new Error('--chief-override needs a reason');
   // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
   if (process.env['HIMMEL_CONSOLE'] !== '1') {
-    throw new Error('--console-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
+    throw new Error('--chief-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
   }
   assertAdmissionsWritable();
   return trimmed;
@@ -33,7 +53,7 @@ export function checkConsoleOverride(reason: string): string {
 /**
  * Holds a filing into a frozen version to --gate. Returns the ledger row to
  * append once the ticket exists, or undefined when no gate applies: no frozen
- * version, or a console override (which writes its own row).
+ * version, or a chief override (which writes its own row).
  */
 export async function checkIntakeGate(
   project: string,

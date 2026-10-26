@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is intentional in check(); backtick spans are literal
 # scripts/handover/chief-kit/test-live-state.sh - suite for live-state.sh
-# which renders a console doc's `## Live state` `legs:` entries
-# from its fleet manifest + the held leg locks:
-#   1. a held manifest leg gets `<label>:<nonce>:<lock-token>:<pid>`, the lock
-#      token read from the lock, the nonce from --nonce (a new leg)
-#   2. a rerun with no flags keeps the console-written nonce and pid
-#   3. a manifest leg that holds no lock is left out; a leg off the manifest drops
-#   4. a new leg with no --nonce is refused and the doc is untouched
+# which renders a chief doc's `## Live state` `legs:` entries
+# from its fleet manifest + the held worker locks:
+#   1. a held manifest worker gets `<label>:<nonce>:<lock-token>:<pid>`, the lock
+#      token read from the lock, the nonce from --nonce (a new worker)
+#   2. a rerun with no flags keeps the chief-written nonce and pid
+#   3. a manifest worker that holds no lock is left out; a worker off the manifest drops
+#   4. a new worker with no --nonce is refused and the doc is untouched
 #   5. prose on the legs: line survives; other fields and sections are untouched
 #   6. --print writes nothing; the rendered line is what tick.sh's parser reads
-#   7. a console doc with no `legs:` line is refused
+#   7. a chief doc with no `legs:` line is refused
 #
 # Hermetic: temp dir + its own HANDOVER_DIR. PLATFORM GUARD: Linux-only kit.
 set -uo pipefail
@@ -21,7 +21,7 @@ LOCK="$HERE/../queue-lock.sh"
 FM="$HERE/fleet-manifest.sh"
 
 if ! command -v flock >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
-    echo "skip - test-live-state.sh: needs flock and jq (the console kit is Linux-only)"
+    echo "skip - test-live-state.sh: needs flock and jq (the chief kit is Linux-only)"
     exit 0
 fi
 
@@ -33,7 +33,7 @@ mkdir -p "$HANDOVER_DIR/b"
 fails=0
 check() { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
 
-con="$HANDOVER_DIR/b/HIMMEL-nextleg-X-console.md"
+con="$HANDOVER_DIR/b/HIMMEL-nextleg-X-chief.md"
 m="${con%.md}.fleet.json"
 d1="$HANDOVER_DIR/b/HIMMEL-1-N61-a-2026-09-30-RESUME.md"
 d2="$HANDOVER_DIR/b/HIMMEL-2-N65-b-2026-09-30-RESUME.md"
@@ -44,7 +44,7 @@ bash "$LOCK" acquire "$d2" tok-two >/dev/null 2>&1
 bash "$FM" add "$m" "$d1" "$d2" "$d3" >/dev/null 2>&1   # d3 holds no lock
 
 cat > "$con" <<'DOC'
-# console
+# chief
 
 ## Live state
 
@@ -56,10 +56,10 @@ last GO: none
 - legs: `N61:not:an:entry` in a bullet below the section
 DOC
 
-# 4. a new leg without --nonce is refused, doc untouched.
+# 4. a new worker without --nonce is refused, doc untouched.
 before="$(cat "$con")"
 bash "$SCRIPT" "$con" >/dev/null 2>&1; rc=$?
-check '4. a new leg with no nonce is refused' 1 "$rc"
+check '4. a new worker with no nonce is refused' 1 "$rc"
 check '4. the refused run leaves the doc untouched' "$before" "$(cat "$con")"
 
 # 1. nonce supplied; token from the lock.
@@ -71,9 +71,9 @@ check '1. N61 entry carries its nonce, the lock token and pid' yes "$r"
 case "$line" in *'`N65:nonce-65:tok-two:222`'*) r=yes ;; *) r=no ;; esac
 check '1. N65 entry carries its own lock token' yes "$r"
 case "$line" in *N66*) r=has ;; *) r=none ;; esac
-check '3. a manifest leg holding no lock is left out' none "$r"
+check '3. a manifest worker holding no lock is left out' none "$r"
 case "$line" in *N99*) r=has ;; *) r=none ;; esac
-check '3. a leg off the manifest drops' none "$r"
+check '3. a worker off the manifest drops' none "$r"
 case "$line" in *'(N50 WRAPPED earlier)'*) r=kept ;; *) r=lost ;; esac
 check '5. prose on the legs: line survives' kept "$r"
 check '5. the queue: field is untouched' 'queue: none' "$(grep '^queue:' "$con")"
@@ -92,11 +92,11 @@ bash "$SCRIPT" "$con" >/dev/null 2>&1
 case "$(grep '^legs:' "$con")" in *'`N65:nonce-65:tok-two-b:222`'*) r=yes ;; *) r=no ;; esac
 check '2b. a re-acquired lock updates the token, keeps nonce and pid' yes "$r"
 
-# 3b. removing a leg from the manifest drops it.
+# 3b. removing a worker from the manifest drops it.
 bash "$FM" remove "$m" N65 >/dev/null 2>&1
 bash "$SCRIPT" "$con" >/dev/null 2>&1
 case "$(grep '^legs:' "$con")" in *N65*) r=has ;; *) r=none ;; esac
-check '3b. a leg removed from the manifest drops' none "$r"
+check '3b. a worker removed from the manifest drops' none "$r"
 
 # 6. --print writes nothing.
 cp "$con" "$tmp/after2"
@@ -106,9 +106,9 @@ case "$out" in 'legs: `N61:nonce-61:tok-one:111`'*) r=yes ;; *) r=no ;; esac
 check '6. --print prints the legs: line' yes "$r"
 
 # 7. no legs: line.
-printf '# c\n\n## Live state\n\nqueue: none\n' > "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-console.md"
+printf '# c\n\n## Live state\n\nqueue: none\n' > "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md"
 bash "$FM" add "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-console.fleet.json" "$d1" >/dev/null 2>&1
-bash "$SCRIPT" "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-console.md" --nonce N61=x >/dev/null 2>&1; rc=$?
+bash "$SCRIPT" "$HANDOVER_DIR/b/HIMMEL-nextleg-Y-chief.md" --nonce N61=x >/dev/null 2>&1; rc=$?
 check '7. a doc with no legs: line is refused' 1 "$rc"
 
 # 8. a backslash in a nonce is refused (awk -v would interpret it).
@@ -118,7 +118,7 @@ check '8. a backslash in --nonce is refused' 2 "$rc"
 check '8. the refused run leaves the doc untouched' "$before8" "$(cat "$con")"
 
 # 9. the `none` placeholder is not carried into a rendered line.
-con9="$HANDOVER_DIR/b/HIMMEL-nextleg-Z-console.md"
+con9="$HANDOVER_DIR/b/HIMMEL-nextleg-Z-chief.md"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\n' > "$con9"
 bash "$FM" add "${con9%.md}.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$con9" --nonce N61=n9 --pid N61=9 >/dev/null 2>&1
@@ -129,7 +129,7 @@ bash "$SCRIPT" "$con9" >/dev/null 2>&1
 check '9. an empty render is a stable single none' 'legs: none' "$(grep '^legs:' "$con9")"
 
 # 10. a backslash in the preserved prose survives the rewrite (not awk-interpreted).
-con10="$HANDOVER_DIR/b/HIMMEL-nextleg-W-console.md"
+con10="$HANDOVER_DIR/b/HIMMEL-nextleg-W-chief.md"
 printf '# c\n\n## Live state\n\nlegs: `N61:n10:tok-one:10` note a\\nb \\t end\nqueue: none\n' > "$con10"
 bash "$FM" add "${con10%.md}.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$con10" >/dev/null 2>&1
@@ -137,7 +137,7 @@ check '10. backslashes in prose are written verbatim' 'legs: `N61:n10:tok-one:10
 check '10. the doc keeps its line count' 6 "$(wc -l < "$con10" | tr -d ' ')"
 
 # 11. a lock status failure (not "free") refuses and leaves the doc untouched.
-con11="$HANDOVER_DIR/b/HIMMEL-nextleg-V-console.md"
+con11="$HANDOVER_DIR/b/HIMMEL-nextleg-V-chief.md"
 printf '# c\n\n## Live state\n\nlegs: `N61:n11:tok-one:11`\n' > "$con11"
 bash "$FM" add "${con11%.md}.fleet.json" "$d1" >/dev/null 2>&1
 before11="$(cat "$con11")"
@@ -165,18 +165,18 @@ for bad14 in 'a:b' 'a`b' 'a b'; do
 done
 
 # 13. end to end: tick.sh reads the rendered doc as livestate=ok.
-e2e="$HANDOVER_DIR/b/HIMMEL-nextleg-T-console.md"
+e2e="$HANDOVER_DIR/b/HIMMEL-nextleg-T-chief.md"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\nlast GO: none\nacked: none\n' > "$e2e"
 bash "$FM" add "${e2e%.md}.fleet.json" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" "$e2e" --nonce N61=n13 --pid N61=13 >/dev/null 2>&1
 mkdir -p "$tmp/tickstate"
-tick_out="$(TICK_WORKTREE_ORPHANS_PROBE="$tmp/no-wt-orphans-probe" TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="$tmp" bash "$HERE/tick.sh" --doc "$e2e" --token test-token --legs "$d1" 2>/dev/null)"
+tick_out="$(TICK_WORKTREE_ORPHANS_PROBE="$tmp/no-wt-orphans-probe" TICK_STATE_DIR="$tmp/tickstate" TICK_TMPDIR="$tmp" TICK_LAUNCH_DIR="$tmp" bash "$HERE/tick.sh" --doc "$e2e" --token test-token --workers "$d1" 2>/dev/null)"
 case "$tick_out" in *'livestate=ok'*) r=ok ;; *) r="[$tick_out]" ;; esac
 check '13. tick.sh reads the rendered Live state as livestate=ok' ok "$r"
 
 # 15. a lockless manifest row gets its own `lockless:` line, not a
 # "holds no lock" omission, and a rerun replaces the line instead of stacking it.
-lk="$HANDOVER_DIR/b/HIMMEL-nextleg-L-console.md"
+lk="$HANDOVER_DIR/b/HIMMEL-nextleg-L-chief.md"
 lkd="$HANDOVER_DIR/b/HIMMEL-4869-N90-pilot.md"
 : > "$lkd"
 printf '# c\n\n## Live state\n\nlegs: none\nlockless: stale (x) /old; \nqueue: none\n\n## Results\n' > "$lk"
@@ -186,8 +186,8 @@ lk_err="$(bash "$SCRIPT" "$lk" --nonce N61=n14 --pid N61=14 2>&1 >/dev/null)"
 check '15. the lockless row is listed with its lane and doc' "lockless: N90 (deepseek) $lkd" "$(grep '^lockless:' "$lk")"
 check '15. the stale lockless line is replaced, not stacked' 1 "$(grep -c '^lockless:' "$lk")"
 case "$lk_err" in *N90*) r=noise ;; *) r=quiet ;; esac
-check '15. a lockless row is not reported as a leg that holds no lock' quiet "$r"
-check '15. the legs: line carries only the locked leg' 'legs: `N61:n14:tok-one:14`' "$(grep '^legs:' "$lk")"
+check '15. a lockless row is not reported as a worker that holds no lock' quiet "$r"
+check '15. the legs: line carries only the locked worker' 'legs: `N61:n14:tok-one:14`' "$(grep '^legs:' "$lk")"
 check '15. the queue: field is untouched' 'queue: none' "$(grep '^queue:' "$lk")"
 bash "$FM" remove "${lk%.md}.fleet.json" N90 >/dev/null 2>&1
 bash "$SCRIPT" "$lk" >/dev/null 2>&1
@@ -195,7 +195,7 @@ check '15. with no lockless row the line is dropped' 0 "$(grep -c '^lockless:' "
 
 # 16. an empty lane reads unknown (not the next field), and only the
 # boolean true is lockless: the string "true" stays a locked, visible row.
-lk2="$HANDOVER_DIR/b/HIMMEL-nextleg-M-console.md"
+lk2="$HANDOVER_DIR/b/HIMMEL-nextleg-M-chief.md"
 lk2d="$HANDOVER_DIR/b/HIMMEL-4869-N91-pilot.md"; lk2s="$HANDOVER_DIR/b/HIMMEL-4869-N92-str.md"
 : > "$lk2d"; : > "$lk2s"
 printf '# c\n\n## Live state\n\nlegs: none\nqueue: none\n\n## Results\n' > "$lk2"
@@ -211,7 +211,7 @@ cat > "$digest_doc" <<'DOC'
 ---
 status: LIVE
 ---
-# console
+# chief
 ## Live state
 head: abc123
 legs: `N61:nonce:held-lock:13`
@@ -231,7 +231,7 @@ PRIVATE body
 1. PRIVATE numbered body list
 
 ## Results
-legs: `N99:not:a:leg`
+legs: `N99:not:a:worker`
 PRIVATE history
 DOC
 before_digest="$(cat "$digest_doc")"
@@ -245,7 +245,7 @@ lock: own-lock
 open rulings: 2
 - Next slice
 - Lane choice'
-check '17. digest keeps wrapped legs and only open ruling titles' "$want_digest" "$digest_out"
+check '17. digest keeps wrapped workers and only open ruling titles' "$want_digest" "$digest_out"
 check '17. digest does not write the document' "$before_digest" "$(cat "$digest_doc")"
 check '17. digest creates no sibling files' 1 "$(find "$tmp" -name 'digest*' | wc -l | tr -d ' ')"
 awk '/^## Results$/ {for (i=1;i<=200;i++) print "- [ ] Ruling " i} {print}' "$digest_doc" > "$tmp/long.md"
@@ -253,7 +253,7 @@ long_digest="$(bash "$SCRIPT" "$tmp/long.md" --digest 2>/dev/null)"
 case "$long_digest" in *'open rulings: 202'*'additional ruling titles omitted'*) r=yes ;; *) r=no ;; esac
 check '18. digest counts all rulings but bounds displayed titles' yes "$r"
 check '18. digest stays under 60 lines' yes "$([ "$(printf '%s\n' "$long_digest" | wc -l)" -lt 60 ] && echo yes || echo no)"
-printf '# console\n## Results\n' > "$tmp/no-state.md"
+printf '# chief\n## Results\n' > "$tmp/no-state.md"
 bash "$SCRIPT" "$tmp/no-state.md" --digest >/dev/null 2>&1; rc=$?
 check '19. digest refuses a missing Live state block' 1 "$rc"
 bash "$SCRIPT" "$tmp/absent.md" --digest >/dev/null 2>&1; rc=$?

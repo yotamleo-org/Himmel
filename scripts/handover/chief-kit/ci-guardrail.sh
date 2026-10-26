@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/ci-guardrail.sh
 #
-# CI guardrail monitor for the console tick: are the fleet's GitHub Actions
+# CI guardrail monitor for the chief tick: are the fleet's GitHub Actions
 # runs starting to look abusive (plan section 1.3, operator decision 80)?
 #   ciguard=ok | ciguard=OVER:<metric>[,<metric>...] | ciguard=unknown
 #   ALERT <metric>=<value>><line> (<where>)      one per NEW crossing, after the first line

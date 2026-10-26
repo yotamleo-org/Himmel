@@ -15,7 +15,7 @@ runs a shift, and each **worker** owns one ticket, one worktree and one pull
 request. Many identifiers still carry the older names until their rename slice
 lands (HIMMEL-5689). The chief's command, script and directories are already
 `/chief`, `chief.sh` and `chief-kit/`, but its markers say `console`
-(`HIMMEL_CONSOLE_*`), and a worker's say `leg` (`headed-arm-leg.sh`,
+(`HIMMEL_CONSOLE_*`), and a worker's say `leg` (`headed-arm-worker.sh`,
 `HIMMEL_CONSOLE_LEG`). A box shows the new word first and the identifier as it
 is today.
 
@@ -49,7 +49,7 @@ flowchart TD
         TC["Claude tool call<br/>Bash · Edit · Read · Agent · MCP"]
         H1[".claude/settings.json — 33 PreToolUse hook scripts,<br/>run as ONE chained dispatch per matcher; the first refusal wins<br/>block-edit-on-main · block-read-secrets · block-destructive-commands<br/>block-git-stash · block-jira-compound-write · block-tail-pipe-on-gates<br/>block-rogue-claude-schedule · block-chokepoint-env-prefix<br/>block-edit-live-settings · block-write-into-main-checkout<br/>require-quiet-run · read-clamp · guard-pr-check-literal<br/>orchestrator-inline-guard · guard-memory-capture · guard-agent-model<br/>block-backend-tier · mcp-policy · check-cr-marker-on-pr-create<br/>auto-approve-safe-bash · auto-arm-on-cap · …"]
         subgraph PLUG["plugin hook files"]
-            H2["marketplace/plugins/himmel-ops/<br/>hooks/hooks.json — 15 PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-console-dispatch<br/>guard-subagent-model · guard-console-foreground · guard-judge-writes · guard-rm-writes"]
+            H2["marketplace/plugins/himmel-ops/<br/>hooks/hooks.json — 15 PreToolUse guards<br/>block-docker-privesc · block-infra-destroy · block-merged-pr-commit<br/>block-unresolved-cr-merge · block-glm-external-writes<br/>block-graphify-egress · block-rogue-codex-exec<br/>block-lesson-enforcement-writes · block-agent-native-egress<br/>guard-implementor-dispatch · guard-chief-dispatch<br/>guard-subagent-model · guard-chief-foreground · guard-judge-writes · guard-rm-writes"]
             HG["marketplace/plugins/himmel-guard/<br/>hooks/hooks.json<br/>block-destructive-commands for adopter projects<br/>(on in the settings template, so adopter projects get it by default)"]
             H2 ~~~ HG
         end
@@ -186,7 +186,7 @@ workers that must run in order, because each needs the one before it to merge.
 flowchart TD
     OP["operator"] --> CON["the chief<br/>runs the shift; holds no worktree<br/>(chief.sh, chief-kit/)"]
 
-    CON -->|"SendMessage / ListAgents"| P1["worker<br/>one ticket · one worktree · one PR<br/>(launched by headed-arm-leg.sh)"]
+    CON -->|"SendMessage / ListAgents"| P1["worker<br/>one ticket · one worktree · one PR<br/>(launched by headed-arm-worker.sh)"]
     CON -->|"SendMessage / ListAgents"| P2["worker<br/>one ticket · one worktree · one PR"]
     CON -.->|"a parallel wave: started together,<br/>collision-checked, capped by HIMMEL_FLEET_CAP"| P2
 

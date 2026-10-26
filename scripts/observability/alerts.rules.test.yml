@@ -8,7 +8,7 @@
 # promtool ships inside the Prometheus release install-stack.ps1 downloads, so
 # no separate install is needed on a station that has run the stack installer
 # once — but it is NOT placed on PATH. `command -v promtool` therefore returns
-# nothing on a station where it is present and working. Three separate legs
+# nothing on a station where it is present and working. Three separate workers
 # concluded "promtool is absent, this file has never been executable here" from
 # exactly that check and skipped validation; it was installed the whole time.
 # Probe the install path above, never PATH.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # vault-status.sh — One-token health of the luna vault's commit
-# path, for tick.sh's vault= field and console-wait.sh's wake:
+# path, for tick.sh's vault= field and chief-wait.sh's wake:
 #   ok               nothing staged/dirty past the threshold, nothing unpushed past it
 #   STALL:<age>,<n>  <n> staged/modified tracked files, the oldest <age> old (the
 #                    auto-commit is stuck: reproduce with `git -C <vault> hook run pre-commit`)
@@ -15,7 +15,7 @@
 # Git plumbing only, no index refresh, read-only (--no-optional-locks), bounded.
 # ponytail: age is the oldest file mtime / oldest unpushed commit time, not the
 # moment the hook began failing; the thresholds absorb that, a stage-time ledger is overkill.
-# bash 3.2-safe; no .ps1 twin (the console kit is Linux-only).
+# bash 3.2-safe; no .ps1 twin (the chief kit is Linux-only).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/timeout-bin.sh
@@ -65,7 +65,7 @@ if [ -n "$files" ]; then
     while IFS= read -r f; do
         n=$((n + 1))
         # a deleted path has no mtime of its own: the index's stands in for it
-        m="$(stat -c %Y "$vault/$f" 2>/dev/null)" || m="$(stat -c %Y "$idx" 2>/dev/null)" || continue  # gnu-ok: console kit is Linux-only
+        m="$(stat -c %Y "$vault/$f" 2>/dev/null)" || m="$(stat -c %Y "$idx" 2>/dev/null)" || continue  # gnu-ok: chief kit is Linux-only
         if [ -z "$oldest" ] || [ "$m" -lt "$oldest" ]; then oldest="$m"; fi
     done <<EOF
 $files

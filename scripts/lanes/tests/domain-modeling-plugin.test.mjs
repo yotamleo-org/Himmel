@@ -17,8 +17,8 @@ const ID = 'domain-modeling@himmel';
 const PIN = '49dd158d1076134a641b33efb035946536778336';
 
 test('domain-modeling@himmel is enabled by the design profile and no other profile, base or floor', () => {
-  assert.ok(!REG.base.includes(ID), 'base would put it in every leg');
-  assert.ok(!REG.floor.includes(ID), 'floor would put it in every leg');
+  assert.ok(!REG.base.includes(ID), 'base would put it in every worker');
+  assert.ok(!REG.floor.includes(ID), 'floor would put it in every worker');
   const on = Object.entries(REG.profiles).filter(([, p]) => (p?.enable ?? []).includes(ID)).map(([n]) => n);
   assert.deepEqual(on, ['design']);
   assert.ok(REG.catalog.includes(ID), 'catalog must list it so other profiles resolve it false');

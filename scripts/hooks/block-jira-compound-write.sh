@@ -1026,7 +1026,7 @@ EOF
 }
 
 # --- variable-binary, loop and xargs shapes ---
-# Incident (BP console, 2026-10-07): `for k in …; do node $J fix-version HIMMEL-$k
+# Incident (BP chief, 2026-10-07): `for k in …; do node $J fix-version HIMMEL-$k
 # …; done` was not bounced — the loop bailed out of has_jira_write and `$J` never
 # matched the CLI path — so it fell through to the classifier, which denied it cold
 # as "[External System Writes]" and said not to retry in pieces. The same writes as
@@ -1411,7 +1411,7 @@ esac
     # j2061: dropping a targeting prefix silently retargets the write.
     printf '  The prefix %s targets Jira itself (instance, board or field):\n' "$DETECTED_JIRA_PREFIX"
     printf '  do NOT drop it — the write would land somewhere else. Instead stop and ask\n'
-    printf '  your console/operator how to run it'
+    printf '  your chief/operator how to run it'
     case " $DETECTED_JIRA_PREFIX " in
         *' JIRA_BOARD_ID '*) printf ' (JIRA_BOARD_ID: pass --board <id> if the verb takes it)' ;;
     esac

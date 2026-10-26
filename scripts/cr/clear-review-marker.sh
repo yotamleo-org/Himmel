@@ -281,7 +281,7 @@ fi
 
 # Clearing writes shared per-branch state (the marker, and the
 # ledger through review-round.sh promote, which refuses a foreign branch too),
-# and a relative run is auto-allowed from any leg's worktree - so only the
+# and a relative run is auto-allowed from any worker's worktree - so only the
 # branch checked out in cwd may be cleared. Say so here rather than let the
 # promote refusal surface as a broken-ledger exit.
 current_branch=$(git branch --show-current 2>/dev/null || true)
@@ -705,7 +705,7 @@ verdict=$(JG_FIXED_OK="$jg_fixed_ok" IMPL_FAMILY="$impl_family" LEDGER="$ledger"
   // the branch this gate run is judging (e.BRANCH). A finding raised on
   // feat/x is amended by an escalation recorded FOR feat/x - that amend must
   // apply while judging feat/x even when e.BRANCH happens to be something
-  // else (e.g. a console-side re-check run against a different checkout).
+  // else (e.g. a chief-side re-check run against a different checkout).
   // The legacy "" bucket is still checked unconditionally as the back-compat
   // fallback.
   const amendSetFor = (branch, head, id, artifact, perspective) => {
@@ -1146,7 +1146,7 @@ exhausted_lanes=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("d
 # other diff never unlocks the floor - AND its ed25519 stamp verifies against
 # the floor signing PUBLIC key (claude-floor.mjs verify), so a
 # hand-written artifact (correct hash, invented session id) is refused.
-# ponytail: the signer runs as the authoring leg's uid, so any same-uid process
+# ponytail: the signer runs as the authoring worker's uid, so any same-uid process
 # can still sign a forgery: run `claude-floor.mjs sign` with a registry row it
 # wrote itself, read the private key (~/.himmel/cr-floor-key/signing.key), or
 # swap the key pair. Even the headless reviewer is kept from the key only by
@@ -1154,7 +1154,7 @@ exhausted_lanes=$(printf '%s' "$verdict" | node -e 'let s="";process.stdin.on("d
 # acceptEdits), not by OS isolation, and that is unproven without a live
 # run. The stamp stops the hand-written
 # artifact, not a determined same-uid forger; the real fix is a signer on a
-# separate uid legs cannot become (verification here is public-key only, so
+# separate uid workers cannot become (verification here is public-key only, so
 # that move needs no gate change). Trust boundary: scripts/cr/claude-floor.mjs.
 floor_provenance_ok() {
     local _art="$git_dir/cr-floor/$tip.json" _fields _base _want _got
@@ -1492,7 +1492,7 @@ if [ "$marker_lane" = "full" ]; then
             echo "clear-cr-marker: $branch has critic score rows but no pre-round lessons pass — /pr-check step 2.8 (the known-findings preflight) was skipped, so known finding classes reached the panel. Refusing." >&2
             echo "  Run: bash scripts/cr/known-findings.sh --diff --area   (close every hit: fixed, waived or checked)" >&2
             echo "  Then record it: bash scripts/cr/ledger-append.sh preflight --head $tip --duration-secs <s> --hit <class>=fixed|checked|waived:<reason>   (a clean pass is the same call with no --hit)" >&2
-            echo "  The row must be stamped BEFORE the branch's first score row. If a panel round already ran without it, a row recorded now does not satisfy this gate: ask the console." >&2
+            echo "  The row must be stamped BEFORE the branch's first score row. If a panel round already ran without it, a row recorded now does not satisfy this gate: ask the chief." >&2
             audit "REFUSED reason=missing-preflight branch=$branch sha=$tip"
             exit 14 ;;
         *)
@@ -1563,17 +1563,17 @@ fi
 # 4c. Branch-wide still-open gate. Gate 4b above only sees the
 # TIP; a finding left unadjudicated (or un-re-raised after an `agreed`) at an
 # EARLIER round head on this branch is still unresolved CR business. Run the
-# SAME check the console runs before promote/merge so the two verdicts can
+# SAME check the chief runs before promote/merge so the two verdicts can
 # never drift apart.
 #
 # `review-round.sh promote` itself WRITES: any `agreed`-disposed row it finds
 # is amended to verdict=fixed as part of computing still-open (coderabbitai,
 # PR #743) — fine on a real run (a real run's whole job is to converge the
-# ledger, and the console's own pre-merge check makes this exact call), but
+# ledger, and the chief's own pre-merge check makes this exact call), but
 # `--dry-run`'s contract is "run every gate, report the verdict, never write".
 # `review-round.sh` has no check-only mode to ask for instead (out of scope
 # to add one here, since a check-only mode would touch review-round.sh), and the
-# ledger it amends is a single shared file other branches/legs append to
+# ledger it amends is a single shared file other branches/workers append to
 # concurrently, so a snapshot-and-restore around the call would risk
 # clobbering a concurrent writer's row. Skip the mutating call under
 # --dry-run instead: the branch-wide verdict is simply not previewed, same as

@@ -74,15 +74,15 @@ ROLES = [
     {
         "title": "Workers",
         "claims": ["docs/handover/worker-preface.md",
-                   "docs/handover/leg-preface-claudex.md",
-                   "docs/handover/leg-preface-openrouter.md"],
+                   "docs/handover/worker-preface-claudex.md",
+                   "docs/handover/worker-preface-openrouter.md"],
         "job": s("docs/handover/worker-preface.md", "You are a worker:"),
         "tier": r(LANES, r"\| (Sonnet [0-9.]+) \| [^|]*?(default implementor for [^|;]*?) \|"),
         "may": [s("docs/handover/worker-preface.md", "Order: commit"),
                 s(GLOSSARY, "an implementing worker (implements and ships)")],
         "never": [s("docs/handover/worker-preface.md", "Merge only on the chief's"),
                   s("docs/handover/worker-preface.md", "Never call `AskUserQuestion`")],
-        "runs": [r("docs/handover/running-a-console.md", r"\| Children \| [^|]* \| (headed sessions with their own worktrees and PRs) \|")],
+        "runs": [r("docs/handover/running-a-chief.md", r"\| Children \| [^|]* \| (headed sessions with their own worktrees and PRs) \|")],
     },
     {
         "title": "The reviewers",

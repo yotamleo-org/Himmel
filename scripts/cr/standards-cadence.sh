@@ -12,7 +12,7 @@
 #   kind checklist -> standard line · kind rebuttal -> CodeRabbit rule when its source is a CodeRabbit
 #   learning, else critic rule.
 # Approval: CodeRabbit rule and critic rule (.coderabbit.yaml, critics.json) = operator; every other target
-#   = console GO with an opus judge.
+#   = chief GO with an opus judge.
 # Expiry: a proposal lasts 14 days. A class listed in an older file (>= 14 days) that is proposed again is
 #   REFIRED; one that is not is EXPIRED; one promoted (rung_since) or removed since is BUILT.
 # Promoted classes (`rung_since` set) show real findings per week before and after promotion; a class whose
@@ -96,7 +96,7 @@ const targetOf = (c, p) => {
   if (c.kind === "checklist") return "standard line";
   return /coderabbit/.test(c.source || "") ? "CodeRabbit rule" : "critic rule";
 };
-const approvalOf = (t) => (t === "CodeRabbit rule" || t === "critic rule") ? "operator" : "console GO + opus judge";
+const approvalOf = (t) => (t === "CodeRabbit rule" || t === "critic rule") ? "operator" : "chief GO + opus judge";
 
 const lines = [];
 for (const id of Object.keys(proposed)) {

@@ -254,7 +254,7 @@ contains "green: check 3 passes" "$out" "[PASS] 3."
 contains "green: check 4 passes" "$out" "[PASS] 4."
 contains "green: check 5 passes" "$out" "[PASS] 5."
 contains "green: check 6 passes" "$out" "[PASS] 6."
-contains "green: names the diff read as the console's job" "$out" "stays the console's own judgement"
+contains "green: names the diff read as the chief's job" "$out" "stays the chief's own judgement"
 
 # An unreadable shared snapshot must fail every dependent check, not just head.
 reset_stubs
@@ -537,7 +537,7 @@ contains "missing-security: check 5 fails" "$out" "missing 'Security reviewed:'"
 
 # --- 5c. docs-only PR needs neither trailer ------------------------------
 reset_stubs
-STUB_FILES="docs/handover/running-a-console.md"
+STUB_FILES="docs/handover/running-a-chief.md"
 STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""}]'
 rc=0; out="$(run)" || rc=$?
 check "docs-only: exit 0" "$rc" "0"
@@ -597,7 +597,7 @@ contains "missing-ticket: names the offending subject" "$out" "tweak with no tic
 # even though its subject carries no ticket ID -------------------------
 reset_stubs
 MERGE_OID=deadbeefdeadbeefdeadbeefdeadbeefdeadbeef
-STUB_FILES="docs/handover/running-a-console.md"
+STUB_FILES="docs/handover/running-a-chief.md"
 STUB_COMMITS='[{"oid":"'"$MERGE_OID"'","messageHeadline":"Merge remote-tracking branch '"'"'origin/main'"'"' into fix/x","messageBody":""},{"oid":"111111111111111111111111111111111111111a","messageHeadline":"fix(x): [HIMMEL-1] tweak","messageBody":""}]'
 rc=0; out="$(run)" || rc=$?
 check "merge-commit unexempt (no STUB_MERGE_OIDS): exit 1" "$rc" "1"
@@ -768,7 +768,7 @@ rc=0; out="$(run)" || rc=$?
 check "coverage malformed jira reply: exit 1" "$rc" "1"
 contains "coverage malformed jira reply: reads UNKNOWN" "$out" "UNKNOWN"
 
-# --- 7b. `--only 7 <pr>` runs just the coverage check, so a leg
+# --- 7b. `--only 7 <pr>` runs just the coverage check, so a worker
 # lints its own PR body before READY with item 7's exact logic (no second copy).
 run7() {
     (cd "$REPO" && env -u TICKET_ID_PATTERN \
@@ -1577,7 +1577,7 @@ cat > "$RUNDIR/wiring.patch" <<'PATCH'
 @@ -65,11 +82,26 @@ jobs:
          run: python -m pip install --disable-pip-version-check --require-hashes -r .github/ci-image/requirements-ci.txt
        # SUITE_TIER_MODE=all: the whole corpus, extended tier included -- the
-       # coverage the nightly's macOS legs had.
+       # coverage the nightly's macOS workers had.
 +      # A `suites` dispatch: the input reaches the shell through SUITES (never
 +      # interpolated into the script), each word is checked to be a plain
 +      # repo-relative path, and --only-list runs just those suites.

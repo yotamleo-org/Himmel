@@ -27,7 +27,7 @@ Arms (all read-only):
   qmd-hybrid  qmd lex + vec with rerank true, sent explicitly (the server default is off)
   qmd-hybrid-norerank  the same lex + vec searches with rerank off; opt-in via
               --arms, not in the default seven and not fused into combined
-  graphify    scripts/graphify/leg-graph.sh query (the primary checkout's graph)
+  graphify    scripts/graphify/worker-graph.sh query (the primary checkout's graph)
   combined    reciprocal-rank fusion of grep, qmd-hybrid and graphify (not the
               path and ident-grep baselines); its tokens and time are the sum
               of the three
@@ -175,7 +175,7 @@ def arm_grep(q, repo, timeout, k):
 
 def arm_path(q, repo, timeout, k):
     kws = []
-    for w in words(q):  # leg_tail_status names leg-tail-status.sh: match its parts
+    for w in words(q):  # worker_tail_status names worker-tail-status.sh: match its parts
         for p in re.split(r"[_.\-]", w):
             if len(p) >= 3 and p not in STOP and p not in kws:
                 kws.append(p)

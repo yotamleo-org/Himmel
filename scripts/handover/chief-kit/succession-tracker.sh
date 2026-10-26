@@ -1,38 +1,38 @@
 #!/usr/bin/env bash
-# succession-tracker.sh — The successor console's tally of its inherited legs'
+# succession-tracker.sh — The successor chief's tally of its inherited workers'
 # quote-backs, so it reads one table instead of counting ~26 SendMessage replies by hand.
 #
-#   succession-tracker.sh <console doc> --successor <session> [--relayed <label>[,<label>...]]
+#   succession-tracker.sh <chief doc> --successor <session> [--relayed <label>[,<label>...]]
 #
-# The inherited set is the console doc's `## Live state` `legs:` entries (the same parse
-# relay-batch.sh uses). Each leg's doc comes from the fleet manifest next to the console doc
-# (<console doc stem>.fleet.json). Per leg it prints one state:
-#   quoted-back  the leg's LATEST `SUCCESSION accepted:` Results bullet names --successor as
-#                the incoming console (the leg took this console over)
-#   relayed      no such bullet yet, but the leg is listed in --relayed (the predecessor's
+# The inherited set is the chief doc's `## Live state` `legs:` entries (the same parse
+# relay-batch.sh uses). Each worker's doc comes from the fleet manifest next to the chief doc
+# (<chief doc stem>.fleet.json). Per worker it prints one state:
+#   quoted-back  the worker's LATEST `SUCCESSION accepted:` Results bullet names --successor as
+#                the incoming chief (the worker took this chief over)
+#   relayed      no such bullet yet, but the worker is listed in --relayed (the predecessor's
 #                relay-batch.sh output, which a script cannot observe being sent)
-#   missing      anything else: no bullet, a bullet naming another console, an ambiguous
-#                line, a leg with no manifest row. An ambiguous line is never accepted.
-#   own          the leg's brief names --successor as its console: the successor dispatched it,
+#   missing      anything else: no bullet, a bullet naming another chief, an ambiguous
+#                line, a worker with no manifest row. An ambiguous line is never accepted.
+#   own          the worker's brief names --successor as its console: the successor dispatched it,
 #                so it is not inherited and is left out of the tally
 # The bullet grammar is strict, one whole line:
 #   - [HH:MM ][LIVE — ]SUCCESSION accepted: [`]<incoming>[`] replaces [`]<outgoing>[`]
 # and it must be a `- ` bullet, so a prose line or a mirrored relay quoting it confirms nothing.
 # It is read from `## Results` to the end of the doc: append-results.sh writes at EOF, which on
-# a claudex leg is inside the `## Console Rulings` section inbox-send.sh opened. The latest
+# a claudex worker is inside the `## Chief Rulings` section inbox-send.sh opened. The latest
 # bullet that starts the handshake decides, so a newer ambiguous one outranks an older clean one.
 #
-# When every leg is quoted-back it prints `COMPLETE n/n` and the exact append-results.sh
+# When every worker is quoted-back it prints `COMPLETE n/n` and the exact append-results.sh
 # command that writes the LIVE bullet. PRINT ONLY: it never sends a message, never edits a
-# doc, never rotates a token; the console runs the printed line itself. An empty leg set is
+# doc, never rotates a token; the chief runs the printed line itself. An empty worker set is
 # INCOMPLETE, never complete.
 #
-# Exit: 0 complete; 1 incomplete (or no legs); 2 usage.
-# PLATFORM GUARD: no .ps1 twin, by design (the console kit is Linux-only, as its siblings).
+# Exit: 0 complete; 1 incomplete (or no workers); 2 usage.
+# PLATFORM GUARD: no .ps1 twin, by design (the chief kit is Linux-only, as its siblings).
 # bash 3.2-safe; needs jq.
 set -uo pipefail
 
-usage() { echo "usage: succession-tracker.sh <console doc> --successor <session> [--relayed <label>[,<label>...]]" >&2; exit 2; }
+usage() { echo "usage: succession-tracker.sh <chief doc> --successor <session> [--relayed <label>[,<label>...]]" >&2; exit 2; }
 [ "$#" -ge 3 ] || usage
 doc="$1"; shift
 successor=""; relayed=","
@@ -96,15 +96,15 @@ for word in $rest; do
 done
 set +f
 if [ -n "$malformed" ]; then
-    echo "INCOMPLETE 0/0 (malformed legs entry in $doc ## Live state: $malformed)"
+    echo "INCOMPLETE 0/0 (malformed workers entry in $doc ## Live state: $malformed)"
     exit 1
 fi
 entries="$(printf '%s' "$entries" | awk 'NF && !seen[$0]++')"
-# A manifest leg the Live state does not list still counts as inherited (relay-batch.sh reports
-# the same legs as NOT-IN-LIVE-STATE), so a dropped entry cannot make the set read complete.
+# A manifest worker the Live state does not list still counts as inherited (relay-batch.sh reports
+# the same workers as NOT-IN-LIVE-STATE), so a dropped entry cannot make the set read complete.
 if [ -n "$entries" ] && [ -f "$manifest" ]; then
     if ! mlabels="$(jq -r '.legs[] | select(.lockless == true | not) | .label' "$manifest" 2>/dev/null)"; then
-        echo "INCOMPLETE 0/0 (fleet manifest $manifest is unreadable: cannot cross-check the legs)"
+        echo "INCOMPLETE 0/0 (fleet manifest $manifest is unreadable: cannot cross-check the workers)"
         exit 1
     fi
     for ml in $mlabels; do
@@ -113,13 +113,13 @@ if [ -n "$entries" ] && [ -f "$manifest" ]; then
     done
 fi
 
-# state of one leg doc: prints own, quoted-back or missing
-leg_state() {
+# state of one worker doc: prints own, quoted-back or missing
+worker_state() {
     local ldoc="$1" line inc brief
     [ -f "$ldoc" ] || { echo missing; return; }
     brief="$(awk '/^## Results/ { exit } { print }' "$ldoc")"
     # shellcheck disable=SC2016
-    if grep -Fq -- "your console is **\`$successor\`**" <<< "$brief"; then
+    if grep -Fq -- "your chief is **\`$successor\`**" <<< "$brief"; then
         echo own; return
     fi
     # the latest handshake bullet from the Results section on decides; the same text in the
@@ -141,7 +141,7 @@ while IFS= read -r label; do
     if [ -f "$manifest" ]; then
         ldoc="$(jq -r --arg l "$label" '[.legs[] | select(.label == $l)][0].doc // empty' "$manifest" 2>/dev/null)"
     fi
-    state="$(leg_state "$ldoc")"
+    state="$(worker_state "$ldoc")"
     if [ "$state" = own ]; then
         echo "$label own (dispatched by $successor, not inherited)"
         continue
@@ -157,12 +157,12 @@ $entries
 EOF
 
 if [ "$total" -eq 0 ]; then
-    echo "INCOMPLETE 0/0 (no leg entries in $doc ## Live state)"
+    echo "INCOMPLETE 0/0 (no worker entries in $doc ## Live state)"
     exit 1
 fi
 if [ "$ok" -eq "$total" ]; then
     echo "COMPLETE $ok/$total"
-    printf 'bash scripts/handover/chief-kit/append-results.sh %q "LIVE — succession complete: all %s inherited legs quoted back to %s"\n' "$doc" "$total" "$successor"
+    printf 'bash scripts/handover/chief-kit/append-results.sh %q "LIVE — succession complete: all %s inherited workers quoted back to %s"\n' "$doc" "$total" "$successor"
     exit 0
 fi
 echo "INCOMPLETE $ok/$total (waiting on: $pending)"

@@ -818,7 +818,7 @@ echo "==== RED20 (HIMMEL-3332 slice3): install-created qmd kept by default, remo
 # symlink` row (--post-text stores the target string's SHA, never the
 # literal), the collection is a `register collection` row (path arg `-`,
 # ownership by unit name), and the stub patch is a `replace file` row with
-# --backup that NEVER gates a removal (console ruling, 2026-09-23).
+# --backup that NEVER gates a removal (chief ruling, 2026-09-23).
 new_case red20a
 CASE_QMD_FORK_DIR="$CASE_DIR/qmd-fork"
 CASE_BUN_INSTALL="$CASE_DIR/bun"
@@ -966,7 +966,7 @@ check "RED22: no-ledger kept message printed" \
 check "RED22: stub kept line printed" \
   "$(printf '%s\n' "$out22" | grep -c 'qmd plugin stub himmel patched')" "1"
 
-echo "==== RED23 (HIMMEL-3332 slice3 console ruling 1): a redirected/tampered fork-checkout stamp path is refused, never rm -rf'd ===="
+echo "==== RED23 (HIMMEL-3332 slice3 chief ruling 1): a redirected/tampered fork-checkout stamp path is refused, never rm -rf'd ===="
 # The ledger's recorded path for the qmd-fork file-create row resolves
 # OUTSIDE the expected fork dir (QMD_FORK_DIR at record time != at uninstall
 # time, or a tampered row) -- qmd_unwire_fork_checkout must refuse rather
@@ -989,7 +989,7 @@ check "RED23: the decoy stamp survives byte-identical" "$(cat "$STAMP23" 2>/dev/
 check "RED23: a refusal warning is printed" \
   "$(printf '%s\n' "$out23" | grep -c 'refusing to remove unexpected path')" "1"
 
-echo "==== RED24 (HIMMEL-3332 slice3 console ruling 1): a noop (not create) fork-checkout row keeps the dir even under --purge-state ===="
+echo "==== RED24 (HIMMEL-3332 slice3 chief ruling 1): a noop (not create) fork-checkout row keeps the dir even under --purge-state ===="
 new_case red24
 CASE_QMD_FORK_DIR="$CASE_DIR/qmd-fork"
 CASE_BUN_INSTALL="$CASE_DIR/bun"
@@ -1006,7 +1006,7 @@ check "RED24: a noop row keeps the stamp byte-identical" "$(cat "$STAMP24" 2>/de
 check "RED24: a noop row is reported kept, not removed" \
   "$(printf '%s\n' "$out24" | grep -c 'removed:.*qmd fork checkout')" "0"
 
-echo "==== RED25 (HIMMEL-3332 slice3 console ruling 1): a file-create row under a DIFFERENT row id is never touched by qmd dirname-removal ===="
+echo "==== RED25 (HIMMEL-3332 slice3 chief ruling 1): a file-create row under a DIFFERENT row id is never touched by qmd dirname-removal ===="
 # prov_read_units --row qmd-fork scopes the whole qmd unwire loop; a row filed
 # under any other id must never reach qmd_unwire_fork_checkout, no matter its
 # kind or ops. Prove it with a decoy dir that a matching bug WOULD remove.
@@ -1659,7 +1659,7 @@ check "RED41 wet uninstall #2: exits 0, no halt on a pruned backup in the F1 bra
 AFTER41_BYTES=$([ -f "$HUD_LEGACY41" ] && cat "$HUD_LEGACY41" || echo "ABSENT")
 check "RED41 uninstall #2: legacy path stays absent (no resurrection, no halt)" "$AFTER41_BYTES" "ABSENT"
 
-echo "==== RED42 (HIMMEL-3334 I2, console ruling on judge J1269C): a no-ledger legacy config the operator edited (not byte-identical to himmel's template) survives ===="
+echo "==== RED42 (HIMMEL-3334 I2, chief ruling on judge J1269C): a no-ledger legacy config the operator edited (not byte-identical to himmel's template) survives ===="
 # Scenario (JJ): no ledger at all; a himmel-shaped legacy config (its
 # customLineCommand matches himmel's pattern) with an operator-added key
 # alongside it. Before this fix, the no-ledger branch's pattern-gated rm
@@ -1683,7 +1683,7 @@ AFTER42_BYTES=$([ -f "$HUD_LEGACY42" ] && cat "$HUD_LEGACY42" || echo "ABSENT")
 check "RED42 uninstall: no-ledger legacy config edited by the operator (not byte-identical to himmel's template) survives" \
   "$AFTER42_BYTES" "$EDITED42_BYTES"
 
-echo "==== RED43 (HIMMEL-3334 I2, console ruling on judge J1269C): a no-ledger legacy config byte-identical to himmel's own template is removed ===="
+echo "==== RED43 (HIMMEL-3334 I2, chief ruling on judge J1269C): a no-ledger legacy config byte-identical to himmel's own template is removed ===="
 # Scenario (JJ2): the mirror of RED42 -- no ledger at all, but the legacy
 # file is exactly himmel's own shipped template (same source RED42 must be
 # told apart from). This must still be removed; only an edited/non-template

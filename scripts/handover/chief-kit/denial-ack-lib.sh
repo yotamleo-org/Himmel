@@ -1,32 +1,32 @@
 #!/usr/bin/env bash
-# denial-ack-lib.sh — Sourced by console-wait.sh (writes a
+# denial-ack-lib.sh — Sourced by chief-wait.sh (writes a
 # page record when it pages a denial), ack-denial.sh (writes an ack record) and
-# headed-arm-leg.sh (refuses a re-dispatch while a page is un-acked). Never
+# headed-arm-worker.sh (refuses a re-dispatch while a page is un-acked). Never
 # executed directly. bash 3.2-safe.
 #
 # Records live in ONE directory, ${HIMMEL_DENIAL_ACK_DIR:-~/.himmel/state/denial-acks}
-# (dir 0700, files 0600), one pair of files per leg key:
-#   <key>.page   written by console-wait.sh when it pages a SHIP-STEP/PAUSE-RISK rise
+# (dir 0700, files 0600), one pair of files per worker key:
+#   <key>.page   written by chief-wait.sh when it pages a SHIP-STEP/PAUSE-RISK rise
 #   <key>.ack    written by ack-denial.sh when the operator has looked
-# Both are `name=value` lines: leg=, count=, class=, ts= (epoch seconds).
+# Both are `name=value` lines: worker=, count=, class=, ts= (epoch seconds).
 #
-# The records hold the leg label, count and class ONLY -- exactly what the
+# The records hold the worker label, count and class ONLY -- exactly what the
 # Telegram page carries. Nothing here reads the classifier-denial log (its
 # command and reason fields stay on the host, in the four files the reader-pin
 # test allows); the class arrives from tick.sh's `denials=` field via
-# console-wait.sh, which is the only writer of a page record.
+# chief-wait.sh, which is the only writer of a page record.
 #
-# A leg is un-acked when its .page ts is newer than its .ack ts (or no .ack
+# A worker is un-acked when its .page ts is newer than its .ack ts (or no .ack
 # exists) and the page class is SHIP-STEP or PAUSE-RISK. Every reader FAILS OPEN:
 # a missing dir, a missing or garbled record, a non-numeric ts = not un-acked.
 #
 # ponytail: 1 s timestamp granularity (a page landing in the same second as an
 #   ack reads as acked), and a page is only recorded for a rise a RUNNING
-#   console-wait saw; upgrade path: a page sequence number in both records if a
+#   chief-wait saw; upgrade path: a page sequence number in both records if a
 #   same-second miss is ever observed, HIMMEL-3724.
-# ponytail: a leg keyed `<dir>#<sid8>` (a non-worktree cwd) can be paged and
+# ponytail: a worker keyed `<dir>#<sid8>` (a non-worktree cwd) can be paged and
 #   acked but never matched to a launch, because a launch has no session id
-#   yet; upgrade path: key launches by the resume_cwd's dir label if such legs
+#   yet; upgrade path: key launches by the resume_cwd's dir label if such workers
 #   appear, HIMMEL-3724.
 
 denial_ack_dir() { printf '%s' "${HIMMEL_DENIAL_ACK_DIR:-$HOME/.himmel/state/denial-acks}"; }
@@ -41,7 +41,7 @@ denial_key() {
     printf '%s' "$k"
 }
 
-# denial_doc_label <handover-doc>: the leg's worktree slug from the doc's
+# denial_doc_label <handover-doc>: the worker's worktree slug from the doc's
 # frontmatter `resume_cwd:` (the segment after /worktrees/, else the cwd's
 # basename). rc 1 when the doc is unreadable or names no resume_cwd.
 denial_doc_label() {
@@ -67,7 +67,7 @@ denial_record_write() {
     # Created 0700; an existing dir is left as the operator set it.
     [ -d "$dir" ] || { ( umask 077; mkdir -p "$dir" ) 2>/dev/null && chmod 700 "$dir" 2>/dev/null; } || return 1
     tmp="$( umask 077; mktemp "$dir/.rec.XXXXXX" 2>/dev/null )" || return 1
-    if printf 'leg=%s\ncount=%s\nclass=%s\nts=%s\n' "$2" "$3" "$4" "$5" > "$tmp" 2>/dev/null \
+    if printf 'worker=%s\ncount=%s\nclass=%s\nts=%s\n' "$2" "$3" "$4" "$5" > "$tmp" 2>/dev/null \
         && chmod 600 "$tmp" 2>/dev/null \
         && mv -f "$tmp" "$1" 2>/dev/null; then
         return 0

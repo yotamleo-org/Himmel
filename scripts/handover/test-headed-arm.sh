@@ -31,10 +31,10 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"; SCRIPT="$HERE/headed-arm.sh"
 # Case 36's "unset" rows assert the default (no launcher override) path; a
-# claudex-launched leg exports these ambiently, which would silently flip
+# claudex-launched worker exports these ambiently, which would silently flip
 # those rows green-from-default to green-from-override. Clear them so the
 # suite's own per-case overrides are the only source, same as
-# chief-kit/test-headed-arm-leg.sh:40.
+# chief-kit/test-headed-arm-worker.sh:40.
 unset HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER 2>/dev/null || true
 # A real macOS host reads uname=Darwin, which picks the macOS shim
 # and its ~7 minute session-visibility budget; every case that launches but
@@ -53,9 +53,9 @@ trap 'rm -rf "$tmp"' EXIT
 # Marker for the end-of-suite check that no case left a launch
 # record in the operator's real launch-record dir (see case 40).
 : > "$tmp/suite-start-marker"
-# headed-arm.sh writes a console arm's launch row to
+# headed-arm.sh writes a chief arm's launch row to
 # ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs. Pin it under $tmp for
-# the whole suite, as chief-kit/test-headed-arm-leg.sh does, so a --role console
+# the whole suite, as chief-kit/test-headed-arm-worker.sh does, so a --role chief
 # case that forgets its own dir (38a-38l did) lands here, not in production data.
 # Cases 1e-1h still pass a per-case dir, which overrides this.
 export HIMMELCTL_CACHE_DIR="$tmp/pinned-himmelctl-cache"
@@ -72,7 +72,7 @@ if ! host_modes_stick; then
   exit 0
 fi
 # Copied/mutant renderers get a sibling resolver like the real tree; ambient
-# HEADED_ARM_WORKER_PROFILES is deliberately ignored by direct console arms.
+# HEADED_ARM_WORKER_PROFILES is deliberately ignored by direct chief arms.
 fixture_profiles() {
   mkdir -p "$1/lanes"
   cp "$HERE/../lanes/plugin-profiles.mjs" "$HERE/../lanes/plugin-profiles.json" "$1/lanes/"
@@ -276,9 +276,9 @@ FUTURE=$(( $(date +%s) + 100000 ))
 # the session name, the default model, and the doc inside the prompt. This
 # is also the POSITIVE CONTROL for case 4 - it proves konsole IS invoked when
 # nothing dedups it, so case 4's "konsole not invoked" means something.
-d1="$tmp/c1"; mk_stub "$d1" 1 alive "HIMMEL-9999-leg"
+d1="$tmp/c1"; mk_stub "$d1" 1 alive "HIMMEL-9999-worker"
 rc=0
-run_headed_arm "$d1" "$REPO" "HIMMEL-9999-leg" "some/handover-doc.md" "$d1/signal-never" "$PAST" >/dev/null 2>&1 || rc=$?
+run_headed_arm "$d1" "$REPO" "HIMMEL-9999-worker" "some/handover-doc.md" "$d1/signal-never" "$PAST" >/dev/null 2>&1 || rc=$?
 wait_record "$d1" || true
 rec1="$(cat "$d1/record" 2>/dev/null || true)"
 check "happy path: exit 0" "$rc" "0"
@@ -289,11 +289,11 @@ contains "happy path: clears CLAUDE_PID"                "$rec1" "-u CLAUDE_PID"
 contains "happy path: clears CLAUDE_CODE_SESSION_ID"    "$rec1" "-u CLAUDE_CODE_SESSION_ID"
 contains "happy path: passes --separate (own process, not a hand-off)" "$rec1" "--separate"
 contains "happy path: forces session persistence"       "$rec1" "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"
-contains "happy path: carries the session name via -n"  "$rec1" "-n HIMMEL-9999-leg"
+contains "happy path: carries the session name via -n"  "$rec1" "-n HIMMEL-9999-worker"
 contains     "happy path: carries the default model (Opus parent, HIMMEL-3079)" "$rec1" "claude-opus-5-5"
 not_contains "happy path: default model is not Fable"   "$rec1" "claude-fable-5-1"
 contains "happy path: doc reaches the prompt"            "$rec1" "load some/handover-doc.md and continue"
-# Direct consoles default to 1m/auto with honest provenance.
+# Direct chiefs default to 1m/auto with honest provenance.
 contains     "happy path: default context passes autocompact auto" "$rec1" "--autocompact auto"
 not_contains "happy path: default context has no autocompact 200000" "$rec1" "--autocompact 200000"
 # Opus 5.5 is native-1M, so the suffix is NOT appended to it.
@@ -302,9 +302,9 @@ log1="$(cat "$d1/log" 2>/dev/null || true)"
 contains "happy path: log records the default context (1m)" "$log1" "context=1m (default)"
 
 # --- 1b. CHIEF_CONTEXT=1m opts into 1m without a positional -
-d1b="$tmp/c1b"; mk_stub "$d1b" 1 alive "HIMMEL-9999b-leg"
+d1b="$tmp/c1b"; mk_stub "$d1b" 1 alive "HIMMEL-9999b-worker"
 rc1b=0
-CHIEF_CONTEXT=1m run_headed_arm "$d1b" "$REPO" "HIMMEL-9999b-leg" "some/handover-doc.md" "$d1b/signal-never" "$PAST" >/dev/null 2>&1 || rc1b=$?
+CHIEF_CONTEXT=1m run_headed_arm "$d1b" "$REPO" "HIMMEL-9999b-worker" "some/handover-doc.md" "$d1b/signal-never" "$PAST" >/dev/null 2>&1 || rc1b=$?
 wait_record "$d1b" || true
 rec1b="$(cat "$d1b/record" 2>/dev/null || true)"
 check "CHIEF_CONTEXT=1m: exit 0" "$rc1b" "0"
@@ -317,32 +317,32 @@ contains     "CHIEF_CONTEXT=1m: log spells the source (explicit)" "$log1b" "cont
 not_contains "CHIEF_CONTEXT=1m: log no longer spells the mechanism as the source" "$log1b" "(CHIEF_CONTEXT=1m)"
 
 # --- 1b-old. the old name CONSOLE_CONTEXT=1m still opts in -
-d1bo="$tmp/c1bo"; mk_stub "$d1bo" 1 alive "HIMMEL-9999bo-leg"
+d1bo="$tmp/c1bo"; mk_stub "$d1bo" 1 alive "HIMMEL-9999bo-worker"
 rc1bo=0
-CONSOLE_CONTEXT=1m run_headed_arm "$d1bo" "$REPO" "HIMMEL-9999bo-leg" "some/handover-doc.md" "$d1bo/signal-never" "$PAST" >/dev/null 2>&1 || rc1bo=$?
+CHIEF_CONTEXT=1m run_headed_arm "$d1bo" "$REPO" "HIMMEL-9999bo-worker" "some/handover-doc.md" "$d1bo/signal-never" "$PAST" >/dev/null 2>&1 || rc1bo=$?
 wait_record "$d1bo" || true
 rec1bo="$(cat "$d1bo/record" 2>/dev/null || true)"
 check "CONSOLE_CONTEXT=1m (old name): exit 0" "$rc1bo" "0"
 contains "CONSOLE_CONTEXT=1m (old name): passes autocompact auto" "$rec1bo" "--autocompact auto"
 
 # --- 1b-conflict. the two names disagree: standard wins, never 1m -
-d1bx="$tmp/c1bx"; mk_stub "$d1bx" 1 alive "HIMMEL-9999bx-leg"
+d1bx="$tmp/c1bx"; mk_stub "$d1bx" 1 alive "HIMMEL-9999bx-worker"
 rc1bx=0
-CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_headed_arm "$d1bx" "$REPO" "HIMMEL-9999bx-leg" "some/handover-doc.md" "$d1bx/signal-never" "$PAST" >/dev/null 2>&1 || rc1bx=$?
+CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard run_headed_arm "$d1bx" "$REPO" "HIMMEL-9999bx-worker" "some/handover-doc.md" "$d1bx/signal-never" "$PAST" >/dev/null 2>&1 || rc1bx=$?
 wait_record "$d1bx" || true
 rec1bx="$(cat "$d1bx/record" 2>/dev/null || true)"
 check "CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard: exit 0" "$rc1bx" "0"
 not_contains "CHIEF_CONTEXT=1m CONSOLE_CONTEXT=standard: no autocompact auto" "$rec1bx" "--autocompact auto"
 
 # --- 1c. positional 1m needs no environment workaround ----
-d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "HIMMEL-9999c-leg"
+d1c="$tmp/c1c"; mk_stub "$d1c" 1 alive "HIMMEL-9999c-worker"
 outc1c=$(env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT KONSOLE_CMD="$d1c/konsole" PGREP_CMD="$d1c/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1c/locks" HEADED_ARM_PROC="$d1c/proc" \
-    bash "$SCRIPT" --dry-run "HIMMEL-9999c-leg" "some/handover-doc.md" "$d1c/signal-never" "$PAST" "$d1c/log" claude-opus-5 1m 2>&1)
+    bash "$SCRIPT" --dry-run "HIMMEL-9999c-worker" "some/handover-doc.md" "$d1c/signal-never" "$PAST" "$d1c/log" claude-opus-5 1m 2>&1)
 rcc1c=$?
 check "positional 1m without env: exit 0" "$rcc1c" "0"
 contains "positional 1m without env: explicit source" "$outc1c" "context=1m (explicit)"
 contains "positional 1m without env: auto" "$outc1c" "--autocompact auto"
-outc1c=$(CHIEF_CONTEXT=standard run_headed_arm "$d1c" "$REPO" "HIMMEL-9999c-leg" "some/handover-doc.md" "$d1c/signal-never" "$PAST" claude-opus-5 standard 2>&1)
+outc1c=$(CHIEF_CONTEXT=standard run_headed_arm "$d1c" "$REPO" "HIMMEL-9999c-worker" "some/handover-doc.md" "$d1c/signal-never" "$PAST" claude-opus-5 standard 2>&1)
 check "positional standard: exit 0" "$?" "0"
 wait_record "$d1c" || true
 contains "positional standard: argv opts down" "$(cat "$d1c/record" 2>/dev/null || true)" "--autocompact 200000"
@@ -372,11 +372,11 @@ contains     "suffix: a native-1M id still passes --autocompact auto" "$(sfx_run
 
 # --- 1x. Claude Code version floor ----------------------------
 # Fixture shape copied from the real `claude --version`: "2.1.296 (Claude Code)".
-dfl="$tmp/cfl"; mk_stub "$dfl" 1 alive "HIMMEL-floor-leg"
+dfl="$tmp/cfl"; mk_stub "$dfl" 1 alive "HIMMEL-floor-worker"
 printf '#!/bin/sh\necho "2.1.200 (Claude Code)"\n' > "$dfl/claude-old"; chmod 755 "$dfl/claude-old"
 printf '#!/bin/sh\necho "2.1.296 (Claude Code)"\n' > "$dfl/claude-new"; chmod 755 "$dfl/claude-new"
 rcfl=0
-outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-old" run_headed_arm "$dfl" "$REPO" "HIMMEL-floor-leg" "doc.md" "$dfl/signal-never" "$PAST" 2>&1) || rcfl=$?
+outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-old" run_headed_arm "$dfl" "$REPO" "HIMMEL-floor-worker" "doc.md" "$dfl/signal-never" "$PAST" 2>&1) || rcfl=$?
 check "below the floor: armed launch exits 2" "$rcfl" "2"
 contains "below the floor: message names the installed version" "$outfl" "2.1.200"
 contains "below the floor: message names the remedy" "$outfl" "claude update"
@@ -384,14 +384,14 @@ if [ -s "$dfl/record" ]; then echo "FAIL - below the floor: konsole must NOT be 
 else echo "ok - below the floor: konsole is never invoked"; fi
 rcfl=0
 outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-old" KONSOLE_CMD="$dfl/konsole" PGREP_CMD="$dfl/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$dfl/locks" HEADED_ARM_PROC="$dfl/proc" \
-  bash "$SCRIPT" --dry-run "HIMMEL-floor-leg" "doc.md" "$dfl/signal-never" "$PAST" "$dfl/log" 2>&1) || rcfl=$?
+  bash "$SCRIPT" --dry-run "HIMMEL-floor-worker" "doc.md" "$dfl/signal-never" "$PAST" "$dfl/log" 2>&1) || rcfl=$?
 check "below the floor: --dry-run only warns (exit 0)" "$rcfl" "0"
 contains "below the floor: --dry-run still names the remedy" "$outfl" "claude update"
 rcfl=0
-outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-new" run_headed_arm "$dfl" "$REPO" "HIMMEL-floor-leg" "doc.md" "$dfl/signal-never" "$PAST" 2>&1) || rcfl=$?
+outfl=$(HEADED_ARM_CLAUDE_CLI="$dfl/claude-new" run_headed_arm "$dfl" "$REPO" "HIMMEL-floor-worker" "doc.md" "$dfl/signal-never" "$PAST" 2>&1) || rcfl=$?
 check "at the floor: armed launch proceeds (exit 0)" "$rcfl" "0"
 
-# Ambient leg profiles cannot override a console opt-down.
+# Ambient worker profiles cannot override a chief opt-down.
 for ambient in profile resolver both stale; do
   ambient_env=(-u HEADED_ARM_CONTEXT_PROFILE -u HEADED_ARM_WORKER_PROFILES -u HEADED_ARM_CONTEXT_PID)
   case "$ambient" in
@@ -402,9 +402,9 @@ for ambient in profile resolver both stale; do
   esac
   rc=0
   out="$(env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT "${ambient_env[@]}" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
-    bash "$SCRIPT" --dry-run HIMMEL-4094-console some/doc.md /tmp/nosig 99999999999 "$tmp/ambient-$ambient.log" claude-sonnet-5 standard 2>&1)" || rc=$?
+    bash "$SCRIPT" --dry-run HIMMEL-4094-chief some/doc.md /tmp/nosig 99999999999 "$tmp/ambient-$ambient.log" claude-sonnet-5 standard 2>&1)" || rc=$?
   check "ambient profile inputs ($ambient): direct standard arm succeeds" "$rc" "0"
-  contains "ambient profile inputs ($ambient): console opt-down wins" "$out" "--autocompact 200000"
+  contains "ambient profile inputs ($ambient): chief opt-down wins" "$out" "--autocompact 200000"
   not_contains "ambient profile inputs ($ambient): no profile 1m ceiling" "$out" "--autocompact 600000"
 done
 
@@ -419,9 +419,9 @@ ab_run() { # <pid-mode: paired|stale|none> <context> <value> <tag>
     stale)  pidx='export HEADED_ARM_CONTEXT_PID=1' ;;
     *)      pidx=':' ;;
   esac
-  env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT HEADED_ARM_CONTEXT_PROFILE=leg-impl HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
+  env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT HEADED_ARM_CONTEXT_PROFILE=worker-impl HEADED_ARM_WORKER_PROFILES="$HERE/../lanes/plugin-profiles.mjs" \
     HEADED_ARM_AB_AUTOCOMPACT="$val" KONSOLE_CMD="$BASH" PGREP_CMD="$BASH" \
-    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-leg" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" claude-sonnet-5 "$ctx" 2>&1
+    bash -c "$pidx"'; exec bash "$@"' _ "$SCRIPT" --dry-run "HIMMEL-5193-$tag-worker" some/doc.md /tmp/nosig 99999999999 "$tmp/ab-$tag.log" claude-sonnet-5 "$ctx" 2>&1
 }
 rc=0; out="$(ab_run paired standard 400000 ok)" || rc=$?
 check "A/B arm (paired pid, standard, 400000): exit 0" "$rc" "0"
@@ -442,39 +442,39 @@ check "A/B arm (value 300000): refused exit 2" "$rc" "2"
 not_contains "A/B arm (value 300000): no launch argv" "$out" "--autocompact 300000"
 
 # --- 1d. positional 1m WITH the env is accepted ---------------
-d1d="$tmp/c1d"; mk_stub "$d1d" 1 alive "HIMMEL-9999d-leg"
+d1d="$tmp/c1d"; mk_stub "$d1d" 1 alive "HIMMEL-9999d-worker"
 rc1d=0
-CHIEF_CONTEXT=1m run_headed_arm "$d1d" "$REPO" "HIMMEL-9999d-leg" "some/handover-doc.md" "$d1d/signal-never" "$PAST" claude-opus-5 1m >/dev/null 2>&1 || rc1d=$?
+CHIEF_CONTEXT=1m run_headed_arm "$d1d" "$REPO" "HIMMEL-9999d-worker" "some/handover-doc.md" "$d1d/signal-never" "$PAST" claude-opus-5 1m >/dev/null 2>&1 || rc1d=$?
 wait_record "$d1d" || true
 rec1d="$(cat "$d1d/record" 2>/dev/null || true)"
 check "positional 1m with env: exit 0" "$rc1d" "0"
 contains "positional 1m with env: passes autocompact auto" "$rec1d" "--autocompact auto"
 
-# --- 1e. a console arm records its launch context DURABLY, at
+# --- 1e. a chief arm records its launch context DURABLY, at
 # launch, in the launch-logs dir (btrfs) - the tmpfs arm log
-# ($LOG) is cleared at every reboot. A non-console arm writes nothing here
-# (headed-arm-leg.sh owns a leg's own one-line record in the same file).
-run_console_arm() {
+# ($LOG) is cleared at every reboot. A non-chief arm writes nothing here
+# (headed-arm-worker.sh owns a worker's own one-line record in the same file).
+run_chief_arm() {
   local stubdir="$1" name="$2"; shift 2
   env "$@" KONSOLE_CMD="$stubdir/konsole" PGREP_CMD="$stubdir/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$stubdir/locks" HEADED_ARM_PROC="$stubdir/proc" HIMMELCTL_CACHE_DIR="$stubdir/cache" \
-    bash "$SCRIPT" --role console "$name" "some/handover-doc.md" "$stubdir/signal-never" "$PAST" "$stubdir/log"
+    bash "$SCRIPT" --role chief "$name" "some/handover-doc.md" "$stubdir/signal-never" "$PAST" "$stubdir/log"
 }
-d1e="$tmp/c1e"; mk_stub "$d1e" 1 alive "HIMMEL-9999e-console"; mkdir -p "$d1e/cache"
+d1e="$tmp/c1e"; mk_stub "$d1e" 1 alive "HIMMEL-9999e-chief"; mkdir -p "$d1e/cache"
 rc1e=0
-run_console_arm "$d1e" "HIMMEL-9999e-console" -u CHIEF_CONTEXT -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1e=$?
+run_chief_arm "$d1e" "HIMMEL-9999e-chief" -u CHIEF_CONTEXT -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1e=$?
 wait_record "$d1e" || true
 check "durable record, default: exit 0 (precondition: the launch happened)" "$rc1e" "0"
 if [ -s "$d1e/record" ]; then echo "ok - durable record, default: konsole IS invoked (precondition)"
 else echo "FAIL - durable record, default: konsole IS invoked (precondition)"; fails=$((fails+1)); fi
 rec1e="$(cat "$d1e/cache/launch-logs/HIMMEL-9999e-console.log" 2>/dev/null || true)"
-contains "durable record, default: names the role"    "$rec1e" "headed-arm: role=console session=HIMMEL-9999e-console "
+contains "durable record, default: names the role"    "$rec1e" "headed-arm: role=chief session=HIMMEL-9999e-chief "
 contains "durable record, default: records the mode"  "$rec1e" " context=1m "
 contains "durable record, default: records the source" "$rec1e" " source=default "
 contains "durable record, default: records autocompact" "$rec1e" " autocompact=auto "
 
-d1f="$tmp/c1f"; mk_stub "$d1f" 1 alive "HIMMEL-9999f-console"; mkdir -p "$d1f/cache"
+d1f="$tmp/c1f"; mk_stub "$d1f" 1 alive "HIMMEL-9999f-chief"; mkdir -p "$d1f/cache"
 rc1f=0
-run_console_arm "$d1f" "HIMMEL-9999f-console" CHIEF_CONTEXT=1m >/dev/null 2>&1 || rc1f=$?
+run_chief_arm "$d1f" "HIMMEL-9999f-chief" CHIEF_CONTEXT=1m >/dev/null 2>&1 || rc1f=$?
 wait_record "$d1f" || true
 check "durable record, 1m opt-in: exit 0 (precondition: the launch happened)" "$rc1f" "0"
 rec1f="$(cat "$d1f/cache/launch-logs/HIMMEL-9999f-console.log" 2>/dev/null || true)"
@@ -482,20 +482,20 @@ contains "durable record, 1m opt-in: records the mode"   "$rec1f" " context=1m "
 contains "durable record, 1m opt-in: records the source" "$rec1f" " source=explicit "
 contains "durable record, 1m opt-in: records autocompact" "$rec1f" " autocompact=auto "
 
-# a non-console arm (no --role) writes no durable context record
-d1g="$tmp/c1g"; mk_stub "$d1g" 1 alive "HIMMEL-9999g-leg"; mkdir -p "$d1g/cache"
+# a non-chief arm (no --role) writes no durable context record
+d1g="$tmp/c1g"; mk_stub "$d1g" 1 alive "HIMMEL-9999g-worker"; mkdir -p "$d1g/cache"
 rc1g=0
 env -u CHIEF_CONTEXT -u CONSOLE_CONTEXT KONSOLE_CMD="$d1g/konsole" PGREP_CMD="$d1g/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d1g/locks" HEADED_ARM_PROC="$d1g/proc" HIMMELCTL_CACHE_DIR="$d1g/cache" \
-    bash "$SCRIPT" "HIMMEL-9999g-leg" "some/handover-doc.md" "$d1g/signal-never" "$PAST" "$d1g/log" >/dev/null 2>&1 || rc1g=$?
+    bash "$SCRIPT" "HIMMEL-9999g-worker" "some/handover-doc.md" "$d1g/signal-never" "$PAST" "$d1g/log" >/dev/null 2>&1 || rc1g=$?
 wait_record "$d1g" || true
 check "no --role: exit 0 (precondition: the launch happened)" "$rc1g" "0"
-if [ -e "$d1g/cache/launch-logs/HIMMEL-9999g-leg.log" ]; then echo "FAIL - no --role: a non-console arm wrote a durable context record"; fails=$((fails+1))
-else echo "ok - no --role: a non-console arm writes no durable context record"; fi
+if [ -e "$d1g/cache/launch-logs/HIMMEL-9999g-worker.log" ]; then echo "FAIL - no --role: a non-chief arm wrote a durable context record"; fails=$((fails+1))
+else echo "ok - no --role: a non-chief arm writes no durable context record"; fi
 
 # a launch record that cannot be written never stops the launch, and says so
-d1h="$tmp/c1h"; mk_stub "$d1h" 1 alive "HIMMEL-9999h-console"; : > "$d1h/cache"
+d1h="$tmp/c1h"; mk_stub "$d1h" 1 alive "HIMMEL-9999h-chief"; : > "$d1h/cache"
 rc1h=0
-run_console_arm "$d1h" "HIMMEL-9999h-console" -u CHIEF_CONTEXT -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1h=$?
+run_chief_arm "$d1h" "HIMMEL-9999h-chief" -u CHIEF_CONTEXT -u CONSOLE_CONTEXT >/dev/null 2>&1 || rc1h=$?
 wait_record "$d1h" || true
 check "unwritable launch-logs: launch still exits 0" "$rc1h" "0"
 contains "unwritable launch-logs: WARN names the gap in the arm log" "$(cat "$d1h/log" 2>/dev/null || true)" "WARN context record NOT written"
@@ -1605,8 +1605,8 @@ contains "HEADED_ARM_LAUNCHER_ENV without RECORDER: env tokens still reach the k
 
 # 36d: HEADED_ARM_LAUNCHER_ENV is read
 # into LAUNCHER_ENV and must then be unset, like HEADED_ARM_HEADLESS. konsole
-# inherits headed-arm.sh's environment and hands it to the leg's claude, so a
-# leaked list would make any arm spawned from that leg prepend the PARENT's
+# inherits headed-arm.sh's environment and hands it to the worker's claude, so a
+# leaked list would make any arm spawned from that worker prepend the PARENT's
 # profile tokens - first token wins - ahead of its own.
 d36d="$tmp/c36d"; mk_stub "$d36d" 1 alive "HIMMEL-launcher4"
 cat > "$d36d/konsole" <<'KONSOLE_EOF'
@@ -1625,7 +1625,7 @@ KONSOLE_CMD="$d36d/konsole" PGREP_CMD="$d36d/pgrep" HEADED_ARM_REPO="$REPO" HEAD
 wait_record "$d36d" || true
 check "36d LAUNCHER_ENV: exit 0" "$rc36d" "0"
 contains "36d LAUNCHER_ENV: the tokens still reach the konsole argv" "$(cat "$d36d/record" 2>/dev/null || true)" "WORKER_SESSION_PROFILE_SETTINGS=/parent/settings.json"
-check "36d LAUNCHER_ENV: konsole (and so the leg) does not inherit HEADED_ARM_LAUNCHER_ENV" "$(cat "$d36d/launcher-env" 2>/dev/null || echo MISSING)" "UNSET"
+check "36d LAUNCHER_ENV: konsole (and so the worker) does not inherit HEADED_ARM_LAUNCHER_ENV" "$(cat "$d36d/launcher-env" 2>/dev/null || echo MISSING)" "UNSET"
 
 d36b="$tmp/c36b"; mk_stub "$d36b" 1 alive "HIMMEL-launcher2"
 rc36b=0
@@ -1683,41 +1683,41 @@ else
   fails=$((fails+1))
 fi
 
-# --- 38. --role console (the
-# only accepted value) on the console arm path --------------------------------
-# 38a. --role console unsets HIMMEL_CONSOLE_RELAY in the child env and stamps
-# role=console on the armed: log line.
+# --- 38. --role chief (the
+# only accepted value) on the chief arm path --------------------------------
+# 38a. --role chief unsets HIMMEL_CONSOLE_RELAY in the child env and stamps
+# role=chief on the armed: log line.
 d38a="$tmp/c38a"; mk_stub "$d38a" 1 alive "HIMMEL-role38a"
 rc38a=0
 KONSOLE_CMD="$d38a/konsole" PGREP_CMD="$d38a/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38a/locks" HEADED_ARM_PROC="$d38a/proc" \
-  bash "$SCRIPT" --role console "HIMMEL-role38a" "doc38a.md" "$d38a/signal-never" "$PAST" "$d38a/log" >/dev/null 2>&1 || rc38a=$?
+  bash "$SCRIPT" --role chief "HIMMEL-role38a" "doc38a.md" "$d38a/signal-never" "$PAST" "$d38a/log" >/dev/null 2>&1 || rc38a=$?
 wait_record "$d38a" || true
 rec38a="$(cat "$d38a/record" 2>/dev/null || true)"
 log38a="$(cat "$d38a/log" 2>/dev/null || true)"
 check "38a --role console: exit 0" "$rc38a" "0"
-contains "38a --role console: armed log line stamps role=console" "$log38a" "role=console"
+contains "38a --role console: armed log line stamps role=chief" "$log38a" "role=chief"
 contains "38a --role console: konsole record clears HIMMEL_CONSOLE_RELAY" "$rec38a" "-u HIMMEL_CONSOLE_RELAY"
 
-# 38b. the console clear is UNCONDITIONAL: an inherited HIMMEL_CONSOLE_RELAY=1
+# 38b. the chief clear is UNCONDITIONAL: an inherited HIMMEL_CONSOLE_RELAY=1
 # in the arming shell's own env never reaches the child.
 d38b="$tmp/c38b"; mk_stub "$d38b" 1 alive "HIMMEL-role38b"
 rc38b=0
 HIMMEL_CONSOLE_RELAY=1 \
   KONSOLE_CMD="$d38b/konsole" PGREP_CMD="$d38b/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38b/locks" HEADED_ARM_PROC="$d38b/proc" \
-  bash "$SCRIPT" --role console "HIMMEL-role38b" "doc38b.md" "$d38b/signal-never" "$PAST" "$d38b/log" >/dev/null 2>&1 || rc38b=$?
+  bash "$SCRIPT" --role chief "HIMMEL-role38b" "doc38b.md" "$d38b/signal-never" "$PAST" "$d38b/log" >/dev/null 2>&1 || rc38b=$?
 wait_record "$d38b" || true
 rec38b="$(cat "$d38b/record" 2>/dev/null || true)"
-check "38b --role console with inherited HIMMEL_CONSOLE_RELAY=1: exit 0" "$rc38b" "0"
-contains "38b --role console with inherited HIMMEL_CONSOLE_RELAY=1: still cleared in the child argv" "$rec38b" "-u HIMMEL_CONSOLE_RELAY"
+check "38b --role chief with inherited HIMMEL_CONSOLE_RELAY=1: exit 0" "$rc38b" "0"
+contains "38b --role chief with inherited HIMMEL_CONSOLE_RELAY=1: still cleared in the child argv" "$rec38b" "-u HIMMEL_CONSOLE_RELAY"
 
 # 38c. --role relay is no longer a value at all: it is refused
-# by the same "must be console" branch as any other unknown value, and neither
+# by the same "must be chief" branch as any other unknown value, and neither
 # the error nor the usage line advertises relay as valid.
 outc38c=$(bash "$SCRIPT" --role relay "HIMMEL-role38c" "doc38c.md" "$tmp/signal-never-38c" "$PAST" "$tmp/log38c" 2>&1)
 rc38c=$?
 check "38c --role relay: exit 2" "$rc38c" "2"
-contains "38c --role relay: error names 'console' as the only valid role" "$outc38c" "--role must be console, got: relay"
-not_contains "38c --role relay: usage does not advertise relay as a valid role" "$outc38c" "relay|console"
+contains "38c --role relay: error names 'console' as the only valid role" "$outc38c" "--role must be chief, got: relay"
+not_contains "38c --role relay: usage does not advertise relay as a valid role" "$outc38c" "relay|chief"
 
 # 38d. --role bogus: exit 2 + usage. The unknown-role message must name the
 # New spelling -- a passing exit code alone doesn't prove the
@@ -1726,8 +1726,8 @@ outd38d=$(bash "$SCRIPT" --role bogus "HIMMEL-role38d" "doc38d.md" "$tmp/signal-
 rc38d=$?
 check "38d --role bogus: exit 2" "$rc38d" "2"
 contains "38d --role bogus: usage text" "$outd38d" "usage: headed-arm.sh"
-contains "38d --role bogus: error names 'console' as the valid role" "$outd38d" "--role must be console, got: bogus"
-not_contains "38d --role bogus: error does not advertise relay as valid" "$outd38d" "relay or console"
+contains "38d --role bogus: error names 'console' as the valid role" "$outd38d" "--role must be chief, got: bogus"
+not_contains "38d --role bogus: error does not advertise relay as valid" "$outd38d" "relay or chief"
 
 # 38e. --role with no value: exit 2.
 oute38e=$(bash "$SCRIPT" --role 2>&1)
@@ -1747,44 +1747,44 @@ check "38f no --role: exit 0" "$rc38f" "0"
 contains "38f no --role: armed log line stamps role=unsplit" "$log38f" "role=unsplit"
 not_contains "38f no --role: konsole record carries no HIMMEL_CONSOLE_RELAY clear" "$rec38f" "HIMMEL_CONSOLE_RELAY"
 not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE_DOC (HIMMEL-2973)" "$rec38f" "HIMMEL_CONSOLE_DOC"
-not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" "$rec38f" "HIMMEL_CONSOLE=1"
+not_contains "38f no --role: konsole record exports no HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" "$rec38f" "HIMMEL_CONSOLE=1"
 
-# 38g. --role console exports HIMMEL_CONSOLE_DOC (the console
-# doc) and HIMMEL_CONSOLE_WORKDIR (dirname of the signal file = the console's
+# 38g. --role chief exports HIMMEL_CONSOLE_DOC (the chief
+# doc) and HIMMEL_CONSOLE_WORKDIR (dirname of the signal file = the chief's
 # chain dir) into the launched session, so the PreCompact hook can snapshot;
-# a session that is not a console gets neither (38f).
+# a session that is not a chief gets neither (38f).
 d38g="$tmp/c38g"; mk_stub "$d38g" 1 alive "HIMMEL-role38g"
 rc38g=0
 KONSOLE_CMD="$d38g/konsole" PGREP_CMD="$d38g/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38g/locks" HEADED_ARM_PROC="$d38g/proc" \
-  bash "$SCRIPT" --role console "HIMMEL-role38g" "doc38g.md" "$d38g/chain/sig-HIMMEL-role38g" "$PAST" "$d38g/log" >/dev/null 2>&1 || rc38g=$?
+  bash "$SCRIPT" --role chief "HIMMEL-role38g" "doc38g.md" "$d38g/chain/sig-HIMMEL-role38g" "$PAST" "$d38g/log" >/dev/null 2>&1 || rc38g=$?
 wait_record "$d38g" || true
 rec38g="$(cat "$d38g/record" 2>/dev/null || true)"
 check "38g --role console: exit 0" "$rc38g" "0"
 contains "38g --role console: a repo-relative DOC is exported ABSOLUTE (against REPO, where the session runs)" "$rec38g" "HIMMEL_CONSOLE_DOC=$REPO/doc38g.md"
 contains "38g --role console: konsole record exports HIMMEL_CONSOLE_WORKDIR=dirname(signal)" "$rec38g" "HIMMEL_CONSOLE_WORKDIR=$d38g/chain"
-contains "38g --role console: konsole record exports the HIMMEL_CONSOLE=1 console marker (HIMMEL-6918)" "$rec38g" "HIMMEL_CONSOLE=1"
+contains "38g --role console: konsole record exports the HIMMEL_CONSOLE=1 chief marker (HIMMEL-6918)" "$rec38g" "HIMMEL_CONSOLE=1"
 d38h="$tmp/c38h"; mk_stub "$d38h" 1 alive "HIMMEL-role38h"
 rc38h=0
 KONSOLE_CMD="$d38h/konsole" PGREP_CMD="$d38h/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38h/locks" HEADED_ARM_PROC="$d38h/proc" \
-  bash "$SCRIPT" --role console "HIMMEL-role38h" "/abs/doc38h.md" "$d38h/chain/sig-HIMMEL-role38h" "$PAST" "$d38h/log" >/dev/null 2>&1 || rc38h=$?
+  bash "$SCRIPT" --role chief "HIMMEL-role38h" "/abs/doc38h.md" "$d38h/chain/sig-HIMMEL-role38h" "$PAST" "$d38h/log" >/dev/null 2>&1 || rc38h=$?
 wait_record "$d38h" || true
 rec38h="$(cat "$d38h/record" 2>/dev/null || true)"
-check "38h --role console (absolute DOC): exit 0" "$rc38h" "0"
+check "38h --role chief (absolute DOC): exit 0" "$rc38h" "0"
 contains "38h --role console: an absolute DOC is exported unchanged" "$rec38h" "HIMMEL_CONSOLE_DOC=/abs/doc38h.md"
 
-# 38i/38j. The console clear survives HEADED_ARM_LAUNCHER_ENV:
+# 38i/38j. The chief clear survives HEADED_ARM_LAUNCHER_ENV:
 # `env -u FOO FOO=1` ends with FOO=1, so a HIMMEL_CONSOLE_RELAY=<v> token carried
-# in the launcher env must be stripped for --role console, in BOTH konsole
+# in the launcher env must be stripped for --role chief, in BOTH konsole
 # branches (38i default exec, 38j RECORDER=1), while the sibling tokens still
 # reach the argv and the -u clear stays.
 d38i="$tmp/c38i"; mk_stub "$d38i" 1 alive "HIMMEL-role38i"
 rc38i=0
 KONSOLE_CMD="$d38i/konsole" PGREP_CMD="$d38i/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38i/locks" HEADED_ARM_PROC="$d38i/proc" \
   HEADED_ARM_LAUNCHER_ENV="HIMMEL_CONSOLE_RELAY=1 CLAUDEX_LANE_OK=1 HIMMEL_CONSOLE_RELAY=2" \
-  bash "$SCRIPT" --role console "HIMMEL-role38i" "doc38i.md" "$d38i/signal-never" "$PAST" "$d38i/log" >/dev/null 2>&1 || rc38i=$?
+  bash "$SCRIPT" --role chief "HIMMEL-role38i" "doc38i.md" "$d38i/signal-never" "$PAST" "$d38i/log" >/dev/null 2>&1 || rc38i=$?
 wait_record "$d38i" || true
 rec38i="$(cat "$d38i/record" 2>/dev/null || true)"
-check "38i --role console + LAUNCHER_ENV HIMMEL_CONSOLE_RELAY=1: exit 0" "$rc38i" "0"
+check "38i --role chief + LAUNCHER_ENV HIMMEL_CONSOLE_RELAY=1: exit 0" "$rc38i" "0"
 contains "38i --role console: the -u HIMMEL_CONSOLE_RELAY clear stays" "$rec38i" "-u HIMMEL_CONSOLE_RELAY"
 not_contains "38i --role console: no HIMMEL_CONSOLE_RELAY=<v> re-set after the clear (default branch)" "$rec38i" "HIMMEL_CONSOLE_RELAY="
 contains "38i --role console: the sibling LAUNCHER_ENV token still reaches the argv" "$rec38i" "CLAUDEX_LANE_OK=1"
@@ -1794,17 +1794,17 @@ rc38j=0
 KONSOLE_CMD="$d38j/konsole" PGREP_CMD="$d38j/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38j/locks" HEADED_ARM_PROC="$d38j/proc" \
   HEADED_ARM_LAUNCHER_ENV="HIMMEL_CONSOLE_RELAY=1 CLAUDEX_LANE_OK=1" \
   HEADED_ARM_RECORDER=1 HEADED_ARM_UNAME=Linux \
-  bash "$SCRIPT" --role console "HIMMEL-role38j" "doc38j.md" "$d38j/signal-never" "$PAST" "$d38j/log" >/dev/null 2>&1 || rc38j=$?
+  bash "$SCRIPT" --role chief "HIMMEL-role38j" "doc38j.md" "$d38j/signal-never" "$PAST" "$d38j/log" >/dev/null 2>&1 || rc38j=$?
 wait_record "$d38j" || true
 rec38j="$(cat "$d38j/record" 2>/dev/null || true)"
-check "38j --role console + LAUNCHER_ENV HIMMEL_CONSOLE_RELAY=1 + RECORDER=1: exit 0" "$rc38j" "0"
+check "38j --role chief + LAUNCHER_ENV HIMMEL_CONSOLE_RELAY=1 + RECORDER=1: exit 0" "$rc38j" "0"
 contains "38j RECORDER branch reached (script(1) wrapper present)" "$rec38j" "script -q -a -f"
 contains "38j --role console: the -u HIMMEL_CONSOLE_RELAY clear stays (recorder branch)" "$rec38j" "-u HIMMEL_CONSOLE_RELAY"
 not_contains "38j --role console: no HIMMEL_CONSOLE_RELAY=<v> re-set after the clear (recorder branch)" "$rec38j" "HIMMEL_CONSOLE_RELAY="
 contains "38j --role console: the sibling LAUNCHER_ENV token still reaches the argv (recorder branch)" "$rec38j" "CLAUDEX_LANE_OK=1"
 
 # 38k. control: with NO --role the launcher env is passed through untouched --
-# the strip is console-only (a relay LEG legitimately carries the marker).
+# the strip is chief-only (a relay WORKER legitimately carries the marker).
 d38k="$tmp/c38k"; mk_stub "$d38k" 1 alive "HIMMEL-role38k"
 rc38k=0
 KONSOLE_CMD="$d38k/konsole" PGREP_CMD="$d38k/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38k/locks" HEADED_ARM_PROC="$d38k/proc" \
@@ -1821,10 +1821,10 @@ d38l="$tmp/c38l"; mk_stub "$d38l" 1 alive "HIMMEL-role38l"
 rc38l=0
 KONSOLE_CMD="$d38l/konsole" PGREP_CMD="$d38l/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d38l/locks" HEADED_ARM_PROC="$d38l/proc" \
   HEADED_ARM_LAUNCHER_ENV="HIMMEL_CONSOLE_RELAY_X=1 HIMMEL_CONSOLE_RELAY=1" \
-  bash "$SCRIPT" --role console "HIMMEL-role38l" "doc38l.md" "$d38l/signal-never" "$PAST" "$d38l/log" >/dev/null 2>&1 || rc38l=$?
+  bash "$SCRIPT" --role chief "HIMMEL-role38l" "doc38l.md" "$d38l/signal-never" "$PAST" "$d38l/log" >/dev/null 2>&1 || rc38l=$?
 wait_record "$d38l" || true
 rec38l="$(cat "$d38l/record" 2>/dev/null || true)"
-check "38l --role console + prefix-sharing token: exit 0" "$rc38l" "0"
+check "38l --role chief + prefix-sharing token: exit 0" "$rc38l" "0"
 contains "38l --role console: HIMMEL_CONSOLE_RELAY_X=1 (prefix-sharing) is NOT stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY_X=1"
 not_contains "38l --role console: the exact HIMMEL_CONSOLE_RELAY=1 beside it IS stripped" "$rec38l" "HIMMEL_CONSOLE_RELAY="
 
@@ -1850,12 +1850,12 @@ exit 1
 PGREP_EOF
 chmod 755 "$d39/pgrep"
 out39=$(KONSOLE_CMD="$d39/konsole" PGREP_CMD="$d39/pgrep" HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d39/locks" \
-    bash "$SCRIPT" --dry-run --role console "HIMMEL-dry39" "doc39.md" "$d39/signal-never" "$PAST" "$d39/log" 2>&1)
+    bash "$SCRIPT" --dry-run --role chief "HIMMEL-dry39" "doc39.md" "$d39/signal-never" "$PAST" "$d39/log" 2>&1)
 rc39=$?
 check "39 --dry-run: exit 0" "$rc39" "0"
 contains "39 --dry-run: reports the session name" "$out39" "HIMMEL-dry39"
 contains "39 --dry-run: reports the doc" "$out39" "doc39.md"
-contains "39 --dry-run: reports role=console" "$out39" "console"
+contains "39 --dry-run: reports role=chief" "$out39" "console"
 if [ -e "$d39/konsole-calls" ]; then echo "FAIL - 39 --dry-run: konsole must NOT be invoked"; fails=$((fails+1))
 else echo "ok - 39 --dry-run: konsole must NOT be invoked"; fi
 if [ -e "$d39/pgrep-calls" ]; then echo "FAIL - 39 --dry-run: pgrep must NOT be invoked"; fails=$((fails+1))
@@ -1874,14 +1874,14 @@ bash "$SCRIPT" --dry-run "session" "doc.md" "$tmp/signal-never" "$PAST" "$tmp/lo
 rcc39b=$?
 check "39b --dry-run placeholder name 'session': exit 2" "$rcc39b" "2"
 
-# --- 40. the --role console cases must not write into the
-# operator's real launch-record dir. headed-arm.sh records every console arm in
+# --- 40. the --role chief cases must not write into the
+# operator's real launch-record dir. headed-arm.sh records every chief arm in
 # ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs, and the 38a-38l
 # cases pass no HIMMELCTL_CACHE_DIR, so each run left HIMMEL-role38* rows there:
-# role=console lines with a plausible context=standard autocompact=200000 that
-# no real console wrote -- the only console rows in the production dataset.
+# role=chief lines with a plausible context=standard autocompact=200000 that
+# no real chief wrote -- the only chief rows in the production dataset.
 # The read is of the default dir ($HOME-derived, HIMMELCTL_CACHE_DIR ignored) and
-# is limited to the session-name families this suite uses, so a real leg
+# is limited to the session-name families this suite uses, so a real worker
 # launching meanwhile cannot trip it.
 real_ll="${HOME:-}/.claude/himmel/launch-logs"
 polluted=""
@@ -1893,8 +1893,8 @@ fi
 check "40a no HIMMEL-role*/9999*/red* launch record was written into the real launch-record dir" "$polluted" ""
 # The rows did land somewhere: the suite's pinned dir. Without this a suite that
 # stopped writing them at all would pass 40a.
-check "40b the --role console rows landed in the suite's pinned record dir" \
-  "$(grep -c '^headed-arm: role=console session=HIMMEL-role38a ' "${HIMMELCTL_CACHE_DIR:-/nonexistent}/launch-logs/HIMMEL-role38a.log" 2>/dev/null || true)" "1"
+check "40b the --role chief rows landed in the suite's pinned record dir" \
+  "$(grep -c '^headed-arm: role=chief session=HIMMEL-role38a ' "${HIMMELCTL_CACHE_DIR:-/nonexistent}/launch-logs/HIMMEL-role38a.log" 2>/dev/null || true)" "1"
 
 # --- 43. with KONSOLE_CMD unset, the konsole default resolves
 # per-platform. On macOS it must point at the konsole-macos.sh shim BESIDE
@@ -2202,7 +2202,7 @@ check "46 not_contains reports a grep error as a failure, not as absence" "$nc46
 
 # --- 42. the recorder branch uses util-linux
 # `script -f/-c`, which BSD script rejects ("illegal option -- f"). Since
-# chief-kit/headed-arm-leg.sh exports HEADED_ARM_RECORDER=1 unconditionally
+# chief-kit/headed-arm-worker.sh exports HEADED_ARM_RECORDER=1 unconditionally
 # for --lane claudex, a Mac must refuse with the real reason rather than fail
 # as a mystery FAILED after the window is already open.
 #
@@ -2241,7 +2241,7 @@ contains "42 macOS + RECORDER=1: names BSD script as the reason" "$out42" "BSD s
 # case depends on: an explicit KONSOLE_CMD on a Mac is NOT refused. Those
 # cases hand the `script ...` argv to a recording stub that never executes it,
 # so refusing on the platform alone would turn a working launch into exit 2
-# (it did: 8 cases in chief-kit/test-headed-arm-leg.sh).
+# (it did: 8 cases in chief-kit/test-headed-arm-worker.sh).
 d42b="$tmp/c42b"; mk_stub "$d42b" 1 alive "HIMMEL-rec42b"
 rc42b=0
 HEADED_ARM_RECORDER=1 HEADED_ARM_UNAME=Darwin KONSOLE_CMD="$d42b/konsole" PGREP_CMD="$d42b/pgrep" \
@@ -2252,47 +2252,47 @@ rec42b="$(cat "$d42b/record" 2>/dev/null || true)"
 check "42b macOS + RECORDER=1 + explicit KONSOLE_CMD: exit 0, not the refusal" "$rc42b" "0"
 contains "42b explicit KONSOLE_CMD: the util-linux script(1) wrapper still reaches the argv" "$rec42b" "script -q -a -f $d42b/log -c"
 
-# --- 43: a headless console arm keeps the console profile. The
+# --- 43: a headless chief arm keeps the chief profile. The
 # HEADED_ARM_HEADLESS=1 argv rebuild used to drop --settings.
 d43="$tmp/c43"; mkdir -p "$d43"
 rc43=0
 out43=$(HEADED_ARM_HEADLESS=1 WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
   KONSOLE_CMD="$d43/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43/locks" HEADED_ARM_PROC="$d43/proc" \
-  bash "$SCRIPT" --dry-run --role console "HIMMEL-hl43" "doc43.md" "$d43/signal-never" "$PAST" "$d43/log" 2>&1) || rc43=$?
-check "43 headless console --dry-run: exit 0" "$rc43" "0"
+  bash "$SCRIPT" --dry-run --role chief "HIMMEL-hl43" "doc43.md" "$d43/signal-never" "$PAST" "$d43/log" 2>&1) || rc43=$?
+check "43 headless chief --dry-run: exit 0" "$rc43" "0"
 contains "43 headless console: argv is the background launch" "$out43" "--bg"
-contains "43 headless console: argv keeps the console --settings (HIMMEL-4052)" "$out43" "--settings"
+contains "43 headless console: argv keeps the chief --settings (HIMMEL-4052)" "$out43" "--settings"
 
-# --- 43b: a console arm launches with only the console profile's
+# --- 43b: a chief arm launches with only the chief profile's
 # MCP servers: --mcp-config <file> + --strict-mcp-config, so a user-level server
-# (graphify) never reaches the console. Both the headed and the headless argv.
+# (graphify) never reaches the chief. Both the headed and the headless argv.
 for _m43 in headed headless; do
   d43b="$tmp/c43b-$_m43"; mk_stub "$d43b" 1 alive
   _hl43=0; [ "$_m43" = headless ] && _hl43=1
   rc43b=0
   out43b=$(HEADED_ARM_HEADLESS="$_hl43" WORKER_SESSION_PROFILE_SETTINGS=/dev/null HEADED_ARM_CLAUDE_CLI=true \
     KONSOLE_CMD="$d43b/konsole" PGREP_CMD=true HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43b/locks" HEADED_ARM_PROC="$d43b/proc" \
-    bash "$SCRIPT" --dry-run --role console "HIMMEL-mc43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1) || rc43b=$?
-  check "43b $_m43 console --dry-run: exit 0" "$rc43b" "0"
+    bash "$SCRIPT" --dry-run --role chief "HIMMEL-mc43b" "doc43b.md" "$d43b/signal-never" "$PAST" "$d43b/log" 2>&1) || rc43b=$?
+  check "43b $_m43 chief --dry-run: exit 0" "$rc43b" "0"
   contains "43b $_m43 console: argv carries --strict-mcp-config (HIMMEL-5310)" "$out43b" "--strict-mcp-config"
-  contains "43b $_m43 console: argv carries the console --mcp-config file" "$out43b" "console.mcp.json"
+  contains "43b $_m43 console: argv carries the chief --mcp-config file" "$out43b" "console.mcp.json"
 done
 
-# --- 43d: the console's MCP allowlist names an undefined server
+# --- 43d: the chief's MCP allowlist names an undefined server
 # (the settings still resolve): refuse, exit 2, konsole never invoked.
 d43d="$tmp/c43d"; mk_stub "$d43d" 1 alive
 python3 - "$HERE/../lanes/plugin-profiles.json" "$d43d/registry.json" <<'PYE'
 import json, sys
 d = json.load(open(sys.argv[1]))
-d["profiles"]["console"]["mcpServers"] = ["qmd", "no-such-server-5310"]
+d["profiles"]["chief"]["mcpServers"] = ["qmd", "no-such-server-5310"]
 json.dump(d, open(sys.argv[2], "w"))
 PYE
 rc43d=0
 out43d=$(PLUGIN_PROFILES_REGISTRY="$d43d/registry.json" KONSOLE_CMD="$d43d/konsole" PGREP_CMD=true HEADED_ARM_CLAUDE_CLI=true \
   HEADED_ARM_REPO="$REPO" HEADED_ARM_LOCK_DIR="$d43d/locks" HEADED_ARM_PROC="$d43d/proc" \
-  bash "$SCRIPT" --dry-run --role console "HIMMEL-mc43d" "doc43d.md" "$d43d/signal-never" "$PAST" "$d43d/log" 2>&1) || rc43d=$?
-check "43d unresolvable MCP allowlist: console --dry-run exits 2" "$rc43d" "2"
-contains "43d unresolvable MCP allowlist: names the MCP allowlist refusal" "$out43d" "console MCP allowlist did not resolve"
+  bash "$SCRIPT" --dry-run --role chief "HIMMEL-mc43d" "doc43d.md" "$d43d/signal-never" "$PAST" "$d43d/log" 2>&1) || rc43d=$?
+check "43d unresolvable MCP allowlist: chief --dry-run exits 2" "$rc43d" "2"
+contains "43d unresolvable MCP allowlist: names the MCP allowlist refusal" "$out43d" "chief MCP allowlist did not resolve"
 [ ! -e "$d43d/record" ] && echo "ok - 43d konsole never invoked" \
   || { echo "FAIL - 43d konsole was invoked despite the refusal"; fails=$((fails+1)); }
 
@@ -2326,7 +2326,7 @@ BUS_STUB_FAIL=1 HEADED_ARM_BUS=1 HEADED_ARM_BUS_CLI="$dbbc/bus" run_headed_arm "
 wait_record "$dbbc" || true
 check "bbe failed bind: launch still exits 0" "$rcbbc" "0"
 contains "bbf failed bind: warned into the arm log" "$(cat "$dbbc/log" 2>/dev/null)" "bus bind of HIMMEL-busbbc to pid 9001 failed"
-# a launch that is never confirmed never binds: the arm log says the console stays unbound
+# a launch that is never confirmed never binds: the arm log says the chief stays unbound
 dbbd="$tmp/cbbd"; mk_stub "$dbbd" 1 alive "HIMMEL-busbbd"
 cp "$dbb/bus" "$dbbd/bus"
 cat > "$dbbd/pgrep" <<'PGREP_EOF'

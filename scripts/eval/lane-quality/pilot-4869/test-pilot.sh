@@ -62,7 +62,7 @@ cat >"$TMP/fake-deepseek" <<'EOF'
 echo "claude-deepseek: lane=deepseek model=sonnet labels=x/y balance=$(cat "$FAKE_BAL") USD (start snapshot; session cost is balance delta)" >&2
 echo "2.1.0 (Claude Code)"
 EOF
-printf '#!/usr/bin/env bash\necho "bank-preflight: leg=unknown five_hour=4.0 seven_day=20.0 extra_usage=n/a"\necho PROCEED\n' >"$TMP/fake-preflight"
+printf '#!/usr/bin/env bash\necho "bank-preflight: worker=unknown five_hour=4.0 seven_day=20.0 extra_usage=n/a"\necho PROCEED\n' >"$TMP/fake-preflight"
 export FAKE_BAL="$TMP/bal"
 export PILOT_REPO="$TMP/repo" PILOT_BASE_SHA="$BASE" PILOT_ROOT="$TMP/root"
 mkdir -p "$TMP/vault"; echo note >"$TMP/vault/hot.md"
@@ -90,20 +90,20 @@ check 'untouched input fails' '! bash "$HERE/tasks/bench-t4/accept.sh" "$TMP/t4r
 check 'expected output passes' 'bash "$HERE/tasks/bench-t4/accept.sh" "$TMP/t4green" x >/dev/null 2>&1'
 
 echo "3. init sizes the DeepSeek allocation from the launcher read"
-a_for() { rm -rf "$TMP/root"; echo "$1" >"$FAKE_BAL"; bash "$P" init --console c1-console >/dev/null 2>&1; sed -n 's/^PILOT_A=//p' "$TMP/root/pilot.env"; }
+a_for() { rm -rf "$TMP/root"; echo "$1" >"$FAKE_BAL"; bash "$P" init --chief c1-chief >/dev/null 2>&1; sed -n 's/^PILOT_A=//p' "$TMP/root/pilot.env"; }
 check 'B=43.77 gives A=3.00' '[ "$(a_for 43.77)" = 3.00 ]'
 check 'B=5.00 gives A=1.50' '[ "$(a_for 5.00)" = 1.50 ]'
 check 'B=3.20 gives A=0.00' '[ "$(a_for 3.20)" = 0.00 ]'
 rm -rf "$TMP/root"; echo 43.77 >"$FAKE_BAL"
 evil="c 1;touch $TMP/pwned"
-bash "$P" init --console "$evil" >/dev/null 2>&1
-check 'pilot.env round-trips a console name with shell metacharacters' '[ "$(bash -c ". \"\$1/pilot.env\"; printf %s \"\$PILOT_CONSOLE\"" _ "$TMP/root")" = "$evil" ] && [ ! -e "$TMP/pwned" ]'
+bash "$P" init --chief "$evil" >/dev/null 2>&1
+check 'pilot.env round-trips a chief name with shell metacharacters' '[ "$(bash -c ". \"\$1/pilot.env\"; printf %s \"\$PILOT_CHIEF\"" _ "$TMP/root")" = "$evil" ] && [ ! -e "$TMP/pwned" ]'
 bash "$P" prepare p02 >/dev/null 2>&1
 elaunch="$(cat "$TMP/root/rows/p02.launch" 2>/dev/null)"
-check 'the launch wrapper shell-quotes the console name' 'printf "%s" "$elaunch" | grep -qF -- "--console $(printf %q "$evil") "'
+check 'the launch wrapper shell-quotes the chief name' 'printf "%s" "$elaunch" | grep -qF -- "--chief $(printf %q "$evil") "'
 rm -rf "$TMP/root"
-bash "$P" init --console c1-console >/dev/null 2>&1
-check 'a second init refuses' '! bash "$P" init --console c1-console >/dev/null 2>&1'
+bash "$P" init --chief c1-chief >/dev/null 2>&1
+check 'a second init refuses' '! bash "$P" init --chief c1-chief >/dev/null 2>&1'
 
 echo "4. prepare"
 line="$(bash "$P" prepare p01 2>"$TMP/prep.err")"; rc=$?
@@ -119,7 +119,7 @@ check 'brief carries the frozen prompt' 'grep -qF "semver-cmp.sh A B" "$doc"'
 check 'brief names no vault or operator path' '! grep -qiE "luna|salus|Documents/" "$doc"'
 L1="$TMP/root/rows/p01.launch"
 check 'the launch line runs only the row wrapper' '[ "$line" = "setsid nohup bash $L1 >/dev/null 2>&1 &" ] && [ -x "$L1" ]'
-check 'the wrapper is the deepseek lane, empty-MCP profile' 'grep -q -- "--lane deepseek --profile console-relay --console c1-console" "$L1"'
+check 'the wrapper is the deepseek lane, empty-MCP profile' 'grep -q -- "--lane deepseek --profile chief-relay --chief c1-chief" "$L1"'
 check 'the wrapper carries the opt-in and the pilot handover root' 'grep -q "^HIMMEL_DEEPSEEK_INFERENCE_OK=1 .*HANDOVER_DIR=$TMP/root/handovers WORKER_SESSION_REPO=$wt exec bash " "$L1"'
 check 'a second deepseek row waits for p01 to finish' '! bash "$P" prepare p06 >/dev/null 2>&1'
 line2="$(bash "$P" prepare p02 2>/dev/null)"

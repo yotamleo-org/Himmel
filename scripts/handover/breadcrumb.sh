@@ -11,8 +11,8 @@
 # ("DEGRADED — confirm before proceeding") instead of silently degrading to
 # whatever the repo happens to look like now.
 #
-# There is no per-leg dispatch runtime to hook (inject-initiative is
-# SessionStart-only; the legs are self-paced prose) — so `write` is invoked from
+# There is no per-worker dispatch runtime to hook (inject-initiative is
+# SessionStart-only; the workers are self-paced prose) — so `write` is invoked from
 # the seams that ALREADY run between stages (the /afk-shift post-fanout
 # step, /pr-check, the handover writer). The breadcrumb root reuses the
 # single-root resolver (scripts/lib/handover-path.sh) — never a hardcoded path.
@@ -250,7 +250,7 @@ cmd_resolve() {
         jira_line="(skipped — --no-jira)"
     else
         if [ "$jira_set" -ne 1 ]; then
-            # Primary checkout's dist via the git common dir (same idiom as chief-kit/leg-jira-status.sh); script-relative outside git.
+            # Primary checkout's dist via the git common dir (same idiom as chief-kit/worker-jira-status.sh); script-relative outside git.
             local jira_js common
             if common="$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"; then
                 jira_js="$(dirname "$common")/scripts/jira/dist/index.js"

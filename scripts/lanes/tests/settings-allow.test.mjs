@@ -17,7 +17,7 @@ const REPO_ROOT = join(dirname(fileURLToPath(import.meta.url)), '..', '..', '..'
 const SETTINGS = JSON.parse(readFileSync(join(REPO_ROOT, '.claude', 'settings.json'), 'utf8'));
 const REG = JSON.parse(readFileSync(join(REPO_ROOT, 'scripts', 'lanes', 'plugin-profiles.json'), 'utf8'));
 const ALLOW = SETTINGS.permissions.allow.filter((r) => r.startsWith('Bash('));
-// What a leg-profile session sees: the project list plus the profile's gateAllow.
+// What a worker-profile session sees: the project list plus the profile's gateAllow.
 const WORKER_SESSION_ALLOW = [...ALLOW, ...REG.gateAllow];
 
 const STEP0 = [
@@ -26,7 +26,7 @@ const STEP0 = [
 ];
 
 // Exact (no wildcard-tail) per-script literals beyond STEP0 —
-// each is a genuinely fixed invocation (no leg-supplied variable argument),
+// each is a genuinely fixed invocation (no worker-supplied variable argument),
 // so the LITERAL_FILE wildcard-tail shape below does not apply to them.
 // scripts/cr/cr-scores.sh is deliberately NOT here — its
 // gateAllow grant is a `:*`-tail rule (args vary by call site), modeled the
@@ -38,7 +38,7 @@ const EXACT_LITERALS = [
   'bash scripts/cr/known-findings.sh --diff',
 ];
 
-// The PROJECT and leg-profile relative merge-on-green rules
+// The PROJECT and worker-profile relative merge-on-green rules
 // were retired — only the anchored spelling (ANCHOR_LITERALS below) is
 // pre-approved by those registries now. A user-scope settings rule (outside
 // this repo, per-station) may still admit the relative spelling; this test
@@ -97,7 +97,7 @@ const TRUST_SPELLINGS = [
   // review-round.sh:* are granted via plugin-profiles.json's gateAllow (safety rationale
   // in the PR body), never in .claude/settings.json itself (TRUST_DIR forbids
   // a wildcard-tail trust-root rule there) — so a bare/space-tailed
-  // invocation of any of the three is sanctioned for a LEG session only, see
+  // invocation of any of the three is sanctioned for a WORKER session only, see
   // WORKER_SESSION_SANCTIONED below. These two prove the wildcard tail cannot be ridden
   // past the granted script's own filename into a trust-root escape.
   'bash scripts/cr/impacted-suites.sh/../clear-cr-marker.sh',
@@ -128,9 +128,9 @@ for (const command of TRUST_SPELLINGS) {
 }
 
 // The gateAllow scripts/cr/ writers are literal `:*` rules, so only a
-// spelling that is not their literal prefix must stay unmatched for a leg.
+// spelling that is not their literal prefix must stay unmatched for a worker.
 for (const command of TRUST_SPELLINGS.filter((c) => !/^bash scripts\/cr\/(clear-cr-marker|write-verdicts|ledger-append|panel-first-pass|docs-audit-panel)\.sh( |$)/.test(c))) {
-  test(`no leg-profile allow rule matches: ${command}`, () => {
+  test(`no worker-profile allow rule matches: ${command}`, () => {
     assert.deepEqual(matching(WORKER_SESSION_ALLOW, command), []);
   });
 }
@@ -145,7 +145,7 @@ for (const command of TRUST_SPELLINGS.filter((c) => !/^bash scripts\/cr\/(clear-
 // denies any command naming them that is not one simple command - no
 // `;`/`&`/`|`/backtick/`()`/redirect/embedded newline - BEFORE gateAllow is
 // ever consulted, IN A HIMMEL-PROJECT SESSION (the hook is registered only
-// in this repo's own hook chain, not at user scope - a leg launched against
+// in this repo's own hook chain, not at user scope - a worker launched against
 // a non-himmel target repo does not load it) - so
 // within a himmel-project session a rider can never actually reach these
 // scripts' wildcard tail. This is a MODEL claim, not proof:
@@ -164,8 +164,8 @@ for (const literal of [...STEP0, ...EXACT_LITERALS].filter((c) => c.startsWith('
   }
 }
 
-// Controls: the sanctioned literals and the common non-trust families a leg
-// and a console run every session still auto-allow.
+// Controls: the sanctioned literals and the common non-trust families a worker
+// and a chief run every session still auto-allow.
 const SANCTIONED = [
   ...STEP0,
   ...EXACT_LITERALS,
@@ -175,8 +175,8 @@ const SANCTIONED = [
   'bash scripts/handover/queue-lock.sh acquire /abs/doc.md',
   'bash scripts/handover/wrap-subtree-check.sh',
   'bash scripts/handover/chief-kit/go.sh 1090 abc',
-  'bash scripts/lanes/leg-burn.sh HIMMEL-1-N1-x',
-  'bash scripts/lanes/leg-pr-open.sh /t/title /t/body',
+  'bash scripts/lanes/worker-burn.sh HIMMEL-1-N1-x',
+  'bash scripts/lanes/worker-pr-open.sh /t/title /t/body',
   'bash scripts/lib/bank-preflight.sh',
   'bash scripts/git/restore-to-head.sh scripts/x.sh',
   'git push',
@@ -198,8 +198,8 @@ for (const command of RETIRED_LITERALS) {
 
 // These six are wildcard-tail trust-root grants that live ONLY in
 // plugin-profiles.json's gateAllow (TRUST_DIR forbids them in the project
-// .claude/settings.json), so a leg session sees them via WORKER_SESSION_ALLOW but a bare
-// console/user session does not.
+// .claude/settings.json), so a worker sees them via WORKER_SESSION_ALLOW but a bare
+// chief/user session does not.
 const WORKER_SESSION_SANCTIONED = [
   'bash scripts/cr/docs-audit-panel.sh --head abc1234 --branch fix/x',
   'bash scripts/cr/panel-first-pass.sh --head abc1234 --branch fix/x',
@@ -213,8 +213,8 @@ const WORKER_SESSION_SANCTIONED = [
 ];
 
 for (const command of WORKER_SESSION_SANCTIONED) {
-  test(`a leg-profile allow rule matches: ${command}`, () => {
-    assert.ok(matching(WORKER_SESSION_ALLOW, command).length > 0, `no leg rule matches ${command}`);
+  test(`a worker-profile allow rule matches: ${command}`, () => {
+    assert.ok(matching(WORKER_SESSION_ALLOW, command).length > 0, `no worker rule matches ${command}`);
   });
 }
 
@@ -229,8 +229,8 @@ const LITERAL_FILE = /^(bash|bun|nohup bun) [A-Za-z0-9_./-]+\.(sh|ts|mjs|js):\*$
 // tail), distinct from the wider gateAllow `:*`-tail grant for the same
 // script (deliberately left out of EXACT_LITERALS above; see the RIDERS
 // comment). This list is ONLY for the structural check below, which scans
-// project-level ALLOW, not the leg-profile gateAllow the RIDERS check scans.
-// The vm-runner console control, five exact literals (no `:*`).
+// project-level ALLOW, not the worker-profile gateAllow the RIDERS check scans.
+// The vm-runner chief control, five exact literals (no `:*`).
 const PROJECT_EXACT_LITERALS = [
   'bash scripts/cr/cr-scores.sh',
   'bash scripts/handover/chief-kit/vm-runner.sh on',
@@ -263,7 +263,7 @@ test('vm-runner.sh is allowed by exactly its five literals and never a wildcard 
   for (const r of rules) assert.ok(!/[*:]/.test(r.replace(/^Bash\(/, '')), `wildcard in vm-runner rule: ${r}`);
 });
 
-test('the project list carries every gateAllow quiet-run suite rule, so a console runs suites as a leg does', () => {
+test('the project list carries every gateAllow quiet-run suite rule, so a console runs suites as a worker does', () => {
   for (const rule of REG.gateAllow.filter((r) => r.includes('quiet-run.sh suite'))) {
     assert.ok(ALLOW.includes(rule), `missing from .claude/settings.json: ${rule}`);
   }

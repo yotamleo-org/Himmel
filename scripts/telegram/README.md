@@ -37,9 +37,9 @@ caller provenance. A caller able to remove that marker is outside this check's
 protection. Signed operator approvals via the bus are the planned design
 upgrade; delta grants stay default-off, with an independent Opus judge before merge.
 
-- `/launch-bypass-leg …` is **retired**: always refuses with
+- `/launch-bypass-worker …` is **retired**: always refuses with
   rc=19, even when explicitly enabled and without an agent marker. Start hook
-  legs at the station; a Telegram line never authorizes a hook-bypass launch.
+  workers at the station; a Telegram line never authorizes a hook-bypass launch.
 - `/cr-grant-delta <pr> <full-reviewed-head-sha>` grants the operator's
   **post-cap fix delta**, not fresh full review rounds. The SHA must be a prior
   ancestor of the live PR head, with a successful critic review and a fixed
@@ -60,8 +60,8 @@ local I/O/lock failures 6, PR query/fork refusal 13, non-ancestor/equal or moved
 head 15, and agent-session refusal 19. Enabling delta grants is an operator
 step after security review; adding the name to the dispatch table does not
 enable it. The launch op always returns 19 with station migration instructions.
-Slash console requests, staleness refusal, emergency `/lockdown` and its
-station-only reset are documented in [the adopter guide](../../docs/telegram-bridge.md#slash-console-requests-and-emergency-lockdown).
+Slash chief requests, staleness refusal, emergency `/lockdown` and its
+station-only reset are documented in [the adopter guide](../../docs/telegram-bridge.md#slash-chief-requests-and-emergency-lockdown).
 
 ### Break-glass ops
 
@@ -72,7 +72,7 @@ and one `auto-action-audit.log` line per attempt. `auto-action.sh` hands them to
 `break-glass.sh`, which owns their rc space. Every op is off by default and
 **must be named individually** in `TELEGRAM_AUTO_ACTIONS`; the `=1`/`all`
 aliases never enable one. The names are: `station-status`, `revert-main`,
-`repin-hooks`, `launch-leg`, `cr-reset`, `close-wrapped`, `relaunch-console`,
+`repin-hooks`, `launch-worker`, `cr-reset`, `close-wrapped`, `relaunch-chief`,
 `restart-bridge`, `allow-rule`.
 
 Every op except `/station-status` is **confirm-coded**. The bridge replies with
@@ -88,13 +88,13 @@ written to the audit log (results: `confirm-issued`, `confirm-refused`,
 
 | Command | Effect |
 |---|---|
-| `/station-status` | Read-only: host, load, memory, primary branch/sha/clean, bank, console census (unnamed rows labelled), last tick, and live waiters (heartbeat under 10 min) plus one stale-waiter summary line. Bounded well under 40 lines. |
+| `/station-status` | Read-only: host, load, memory, primary branch/sha/clean, usage, chief census (unnamed rows labelled), last tick, and live waiters (heartbeat under 10 min) plus one stale-waiter summary line. Bounded well under 40 lines. |
 | `/revert-main <pr>` | Only for the PR whose merge commit is the default branch's current HEAD (any other PR is refused, naming the HEAD PR, and it is checked again before every merge attempt, retries included: if main moved, the revert PR is left open). Opens GitHub's revert PR, squash-merges it with `--admin`, then fast-forwards the primary. A repeat for the same PR never reverts again: it only re-syncs, and a failed sync says "already reverted, sync failed". |
 | `/repin-hooks` | Fast-forwards the primary checkout to origin (clean, on the default branch, no divergence), then checks `scripts/hooks` and `scripts/guardrails` match origin (rc 24 if not). |
-| `/launch-leg <N-label> [--hook-bypass]` | Resumes the one fleet-manifest leg with that label in its own linked worktree, or starts a fresh one from the `launch-<label>.sh` that `<fleet>.launchers.sha256` records (`gen-briefs.py` writes that line when it writes the launcher into its bucket). A launcher runs only if its sha256 still matches, and only a linked worktree of the primary checkout is resumed. `--hook-bypass` is accepted only for a sha256-recorded launcher; a manifest leg is refused with it. |
+| `/launch-worker <N-label> [--hook-bypass]` | Resumes the one fleet-manifest worker with that label in its own linked worktree, or starts a fresh one from the `launch-<label>.sh` that `<fleet>.launchers.sha256` records (`gen-briefs.py` writes that line when it writes the launcher into its bucket). A launcher runs only if its sha256 still matches, and only a linked worktree of the primary checkout is resumed. `--hook-bypass` is accepted only for a sha256-recorded launcher; a manifest worker is refused with it. |
 | `/cr-reset <pr>` | Runs `scripts/cr/cr-reset.sh`. For an open, same-repo PR, under the review-counter lock, it backs up `.head`, `.round` and `.delta` with timestamp suffixes, and that is the reset. |
-| `/close-wrapped [<N-label>]` | Runs `close-wrapped-leg.sh` for that leg, or for every fleet leg. That script's own checks (lock free, tail `WRAPPED`) still decide; no pids are taken. |
-| `/relaunch-console [<name>]` | `console.sh next --arm --name <name>` (default `console`) from the primary. |
+| `/close-wrapped [<N-label>]` | Runs `close-wrapped-worker.sh` for that worker, or for every fleet worker. That script's own checks (lock free, tail `WRAPPED`) still decide; no pids are taken. |
+| `/relaunch-chief [<name>]` | `chief.sh next --arm --name <name>` (default `console`) from the primary. |
 | `/restart-bridge` | Restarts `telegram-bridge.service` (systemd user unit) from a detached transient timer, 3 s later, so the reply goes out first. |
 | `/allow-rule <id>` | Adds the one rule `allow-rules.json` maps `<id>` to into the primary's untracked local settings file; idempotent, backed up. |
 
@@ -102,16 +102,16 @@ written to the audit log (results: `confirm-issued`, `confirm-refused`,
 revert PR. It is operator-initiated, confirm-coded and audited, and it reverts
 only the merged PR that is the default branch's HEAD.
 
-**`--hook-bypass` narrowly reverses the earlier bypass retirement for legs.** `/launch-leg` with
+**`--hook-bypass` narrowly reverses the earlier bypass retirement for workers.** `/launch-worker` with
 `--hook-bypass` exports only `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1`. Every other
 `*_OK` variable, `TELEGRAM_BOT_TOKEN` and `TELEGRAM_OWN_POLLER` is scrubbed from
 every child. It cannot name a path: only a label that resolves to a
-sha256-recorded launcher (a manifest leg is refused with it). `/relaunch-console` takes no bypass, and
-`/launch-bypass-leg` stays retired.
+sha256-recorded launcher (a manifest worker is refused with it). `/relaunch-chief` takes no bypass, and
+`/launch-bypass-worker` stays retired.
 
 **Lockout recovery** (a merged hook change locks every tool, as #2202 did):
 send `/revert-main <pr>`, then `/repin-hooks`, then relaunch what died with
-`/launch-leg` or `/relaunch-console`.
+`/launch-worker` or `/relaunch-chief`.
 
 **`/allow-rule <id>`** applies ONE pre-reviewed permission rule
 for a command shape the classifier keeps denying. The id is looked up in the
@@ -774,7 +774,7 @@ The REAL-GIT cases build their throwaway repos under the OS temp dir through
 removes a path only if that helper created it, so a worktree you are working in
 is refused and named on stderr rather than reaped.
 
-When a case fails during a busy dispatch leg, run the same suite on `main`
+When a case fails during a busy dispatch worker, run the same suite on `main`
 under the same load before concluding the branch broke it — this family has a
 measured history of failing purely with ambient load.
 

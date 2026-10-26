@@ -507,7 +507,7 @@ unrefused (measured in N418: rc=0, `anchor_lane=himmel`). The anchor still
 decides whether to hand off to the branch's copy, so nothing about the anchor
 trust changes.
 
-**The fix.** `headed-arm-leg.sh` writes `permissions.deny: ["EnterWorktree"]`
+**The fix.** `headed-arm-worker.sh` writes `permissions.deny: ["EnterWorktree"]`
 into every profiled worker's generated `<name>.leg-settings.json` (all lanes,
 not the relay). The tool is then absent from the worker's tool list. A worker works
 in its worktree by `cd <worktree path>` from its launch directory. Writes into
@@ -631,7 +631,7 @@ head:
 - `gh pr create` / `gh pr comment` — pass the body via `--body-file` instead
   of inline, so the retry is not byte-identical to the denied call. Better
   still, first choice before any retry: publish with
-  `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>` (ruling H2) — the body never enters the command at all, so
+  `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>` (ruling H2) — the body never enters the command at all, so
   there is nothing in the invocation for the classifier to react to.
 - `git push` — there is no body flag to vary; the delay and the intervening
   read are themselves what makes the retry non-identical (a different point
@@ -662,7 +662,7 @@ the worker's window via `!`.
 
 A worker's writes to its own handover doc are a common source of
 this symptom, since the resolved handover root sits outside the worker's working
-directories. `headed-arm-leg.sh --profile` now grants every generated worker
+directories. `headed-arm-worker.sh --profile` now grants every generated worker
 settings file (native and claudex) only the worker **doc's own directory** as a
 `permissions.additionalDirectories` entry — never the whole handover root —
 so a Results write no longer falls to the classifier on a fresh launch. The
@@ -759,16 +759,16 @@ have not controlled for.
 
 ---
 
-## Symptom: `leg-burn.sh` is denied `[Session Transcript Tampering]`
+## Symptom: `worker-burn.sh` is denied `[Session Transcript Tampering]`
 
-`bash scripts/lanes/leg-burn.sh <session>` only READS the session's
-transcript JSONL to price its token usage for the PR body's `leg-burn:` line,
+`bash scripts/lanes/worker-burn.sh <session>` only READS the session's
+transcript JSONL to price its token usage for the PR body's `worker-burn:` line,
 but the auto-mode classifier can read "a script opening session transcripts"
 as tampering and deny it, twice in a row for the same worker (2026-09-24).
 
 **What to do:** do not reshape the command or read the JSONL another way.
 Report `BLOCKED` to the chief, which routes it to the operator, who runs
-`! bash scripts/lanes/leg-burn.sh <session>` in the worker's tab; paste the
+`! bash scripts/lanes/worker-burn.sh <session>` in the worker's tab; paste the
 printed line into the PR body. The rest of the ship flow is not blocked by
 it, so keep working while you wait.
 

@@ -1,4 +1,4 @@
-// The console board inside the Fleet page: the legend, a leg's stage dots, the Trends tab (four cards, each opening
+// The chief board inside the Fleet page: the legend, a worker's stage dots, the Trends tab (four cards, each opening
 // its table in the drawer) and the per-stage drill-in drawer. Everything here renders himmel.board/1; the colours and
 // their labels come from its `legend`, the recommendations from its `cards`. Read-only.
 import { createContext, useContext, useEffect, useMemo, useReducer, useRef, useState, type ReactNode } from "react";
@@ -67,11 +67,11 @@ export function Legend({ board, groups }: { board: Board; groups: string[] }) {
   </details>;
 }
 
-export function StageDots({ leg, board, onPick }: { leg: BoardLeg; board: Board; onPick?: (s: Stage) => void }) {
+export function StageDots({ worker, board, onPick }: { leg: BoardLeg; board: Board; onPick?: (s: Stage) => void }) {
   return <span className="bd-dots" role="group" aria-label="stages">{STAGES.map((s) => {
-    const reached = leg.stages[s] !== null;
-    return <button key={s} type="button" disabled={!onPick} className={`bd-dot${reached ? " on" : ""}${leg.stage === s ? " cur" : ""}`}
-      style={{ ["--c" as string]: tone(board, "stage", s) }} title={`${label(board, "stage", s)}${reached ? ` ${hm(leg.stages[s])}` : ""}`} aria-label={`${label(board, "stage", s)}${reached ? ", reached" : ""}`}
+    const reached = worker.stages[s] !== null;
+    return <button key={s} type="button" disabled={!onPick} className={`bd-dot${reached ? " on" : ""}${worker.stage === s ? " cur" : ""}`}
+      style={{ ["--c" as string]: tone(board, "stage", s) }} title={`${label(board, "stage", s)}${reached ? ` ${hm(worker.stages[s])}` : ""}`} aria-label={`${label(board, "stage", s)}${reached ? ", reached" : ""}`}
       onClick={() => onPick?.(s)} />;
   })}</span>;
 }
@@ -86,10 +86,10 @@ const failKind = (cls: string) => (cls.startsWith("denied/") ? "denial" : "error
 
 function Gantt({ board }: { board: Board }) {
   const today = board.trends.leg_time.today.filter((l) => l.live_at && l.merged_at);
-  if (!today.length) return <p className="quiet">No leg merged today yet.</p>;
+  if (!today.length) return <p className="quiet">No worker merged today yet.</p>;
   const t0 = Math.min(...today.map((l) => Date.parse(l.live_at!))), t1 = Math.max(...today.map((l) => Date.parse(l.merged_at!)));
   const x = (t: number) => `${((t - t0) / Math.max(1, t1 - t0)) * 100}%`;
-  return <div className="bd-gantt" role="img" aria-label="today's merged legs on a clock axis">
+  return <div className="bd-gantt" role="img" aria-label="today's merged workers on a clock axis">
     {today.map((l) => {
       const a = Date.parse(l.live_at!), z = Date.parse(l.merged_at!), pr = a + (l.to_pr_min ?? 0) * 60000, rd = z - (l.ready_to_merged_min ?? 0) * 60000;
       return <div key={l.leg} className="bd-grow"><span>{l.leg}</span><div className="bd-gtrack">
@@ -134,7 +134,7 @@ export function Trends({ board, rollup, onCard }: { board: Board; rollup: Rollup
   const t = board.trends, cc = t.console_cost;
   const states = [...new Set(board.legs.map((l) => l.state))].map((s) => ({ s, n: board.legs.filter((l) => l.state === s).length }));
   const budget = (pct: number | null) => (pct === null ? "ok" : pct >= 85 ? "critical" : pct >= 70 ? "high" : "ok");
-  const sess = t.tools.find((x) => x.tool === "console-succession");
+  const sess = t.tools.find((x) => x.tool === "chief-succession");
   const classes = t.failures?.classes ?? [];
   const card = (id: CardId, body: ReactNode) => <section className="bd-card" aria-label={TITLE[id]}>
     <header><h3>{TITLE[id]}</h3><button type="button" className="btn" onClick={() => onCard(id)}>table →</button></header>
@@ -163,10 +163,10 @@ export function Trends({ board, rollup, onCard }: { board: Board; rollup: Rollup
       {t.exploration && <><p className="bd-sub">Exploration before the first edit</p>
         <p className="bd-line">{`median ${k1(Number(t.exploration.median_tokens ?? 0))} tokens · ${t.exploration.over_flag ?? 0} of ${t.exploration.sessions ?? 0} sessions over ${k1(Number(t.exploration.flag_tokens ?? 0))}`}</p>
         <Bar parts={[{ n: Number(t.exploration.over_flag ?? 0), color: TOKEN.warn, title: "over the flag" }, { n: Number(t.exploration.sessions ?? 0) - Number(t.exploration.over_flag ?? 0), color: TOKEN.ok, title: "under it" }]} /></>}
-      {sess && <div className="bd-succ"><p className="bd-sub">Console succession</p>
+      {sess && <div className="bd-succ"><p className="bd-sub">Chief succession</p>
         <p className="bd-line"><span className="bd-chip" style={{ ["--c" as string]: sess.pass ? TOKEN.ok : TOKEN.bad }}>{sess.pass ? "within target" : "over target"}</span>
           {` ${sess.turns} turns · ${k1(sess.eq)} eq before LIVE, all work (indicative target ≤ ${sess.target.turns} turns, ${k1(sess.target.eq)} eq)`}</p>
-        <p className="bd-line">{`${sess.from} → ${sess.to}${sess.wall_min !== null ? ` · ${sess.wall_min} min to LIVE` : ""} · ${sess.legs_quoted} legs quoted the token, ${sess.legs_silent} silent`}</p></div>}
+        <p className="bd-line">{`${sess.from} → ${sess.to}${sess.wall_min !== null ? ` · ${sess.wall_min} min to LIVE` : ""} · ${sess.legs_quoted} workers quoted the token, ${sess.legs_silent} silent`}</p></div>}
     </>)}
     {card("roadmap", board.milestones.length === 0 ? <p className="quiet">No milestone tracked: add a versions: line to the console's Live state.</p> :
       <ul className="bd-list">{board.milestones.map((m) => <li key={m.version}><b>{m.version}</b>{m.unavailable ? " unavailable" : <>
@@ -176,7 +176,7 @@ export function Trends({ board, rollup, onCard }: { board: Board; rollup: Rollup
 
 function Spark({ values }: { values: number[] }) {
   const max = Math.max(...values, 1);
-  return <svg className="bd-spark" width={values.length * 12} height={28} viewBox={`0 0 ${values.length * 10} 24`} preserveAspectRatio="none" role="img" aria-label="console cost per hour">
+  return <svg className="bd-spark" width={values.length * 12} height={28} viewBox={`0 0 ${values.length * 10} 24`} preserveAspectRatio="none" role="img" aria-label="chief cost per hour">
     {values.map((v, i) => <rect key={i} x={i * 10 + 1} width={8} y={24 - (v / max) * 22} height={(v / max) * 22} fill="var(--accent)" />)}</svg>;
 }
 
@@ -199,11 +199,11 @@ export function useDrawerKeys(drawer: Drawer | null, panel: Panel | null, legs: 
       if (e.target instanceof HTMLElement && /^(input|textarea|select)$/i.test(e.target.tagName)) return;
       if (e.key === "Escape") { close(); return; }
       if (!drawer || panel?.kind !== "leg") return;
-      if (/^Arrow|^Backspace$/.test(e.key)) { e.preventDefault(); set(applyKey(drawer, e.key, legs)); }
+      if (/^Arrow|^Backspace$/.test(e.key)) { e.preventDefault(); set(applyKey(drawer, e.key, workers)); }
     };
     addEventListener("keydown", on);
     return () => removeEventListener("keydown", on);
-  }, [drawer, panel, legs, set, close]);
+  }, [drawer, panel, workers, set, close]);
 }
 
 function Brief({ token, row }: { token: string; row: string }) {
@@ -223,17 +223,17 @@ export function DrawerView({ token, board, joined, drawer, panel, now, set, setP
   token: string; board: Board; joined: Joined[]; drawer: Drawer | null; panel: Panel | null; now: number;
   set: (d: Drawer | null) => void; setPanel: (p: Panel | null) => void; close: () => void;
 }) {
-  const legs = joined.map((j) => j.leg.leg);
+  const workers = joined.map((j) => j.leg.leg);
   const cur = drawer ? joined.find((j) => j.leg.leg === drawer.leg) : undefined;
   const segs = useMemo(() => (cur ? stageSegments(cur.leg, now) : []), [cur, now]);
   if (!panel) return null;
   const back = drawer && drawer.back.length > 0 && panel.kind === "leg";
-  const idx = cur ? legs.indexOf(cur.leg.leg) : -1;
-  const go = (leg: string) => drawer && set(openAt(drawer, leg, drawer.stage));
-  return <aside className="bd-drawer" role="dialog" aria-label="Leg detail" aria-modal="false">
+  const idx = cur ? workers.indexOf(cur.leg.leg) : -1;
+  const go = (leg: string) => drawer && set(openAt(drawer, worker, drawer.stage));
+  return <aside className="bd-drawer" role="dialog" aria-label="Worker detail" aria-modal="false">
     <div className="bd-dhead">
       {panel.kind !== "leg" && drawer ? <button type="button" className="btn" onClick={() => setPanel({ kind: "leg" })}>← Back</button>
-        : back ? <button type="button" className="btn" onClick={() => set(applyKey(drawer!, "Backspace", legs))}>← Back</button> : <span />}
+        : back ? <button type="button" className="btn" onClick={() => set(applyKey(drawer!, "Backspace", workers))}>← Back</button> : <span />}
       <button type="button" className="btn" onClick={close} aria-label="Close (Esc)">✕</button>
     </div>
     {panel.kind === "card" && <CardTable board={board} card={panel.card} />}
@@ -248,8 +248,8 @@ export function DrawerView({ token, board, joined, drawer, panel, now, set, setP
           : cur.leg.links.brief?.startsWith("https://") && <a className="bd-link" href={cur.leg.links.brief} target="_blank" rel="noreferrer">brief ↗</a>}
         {cur.row?.run && <a className="bd-link" href={runHash(token, cur.row.run)}>open run page →</a>}
       </p>
-      <div className="bd-nav"><button type="button" className="btn" disabled={idx <= 0} onClick={() => go(legs[idx - 1])}>↑ previous leg</button>
-        <button type="button" className="btn" disabled={idx < 0 || idx >= legs.length - 1} onClick={() => go(legs[idx + 1])}>next leg ↓</button></div>
+      <div className="bd-nav"><button type="button" className="btn" disabled={idx <= 0} onClick={() => go(workers[idx - 1])}>↑ previous worker</button>
+        <button type="button" className="btn" disabled={idx < 0 || idx >= workers.length - 1} onClick={() => go(workers[idx + 1])}>next worker ↓</button></div>
       {cur.need && <div className="bd-need"><b>{cur.need.action}</b><p>{cur.need.detail}</p>{cur.need.command && <code>{cur.need.command}</code>}</div>}
       <div className="bd-strip" aria-label="Stage strip">
         {segs.length === 0 ? <span className="quiet">no stage reached yet</span> : segs.map((s) => {
@@ -258,20 +258,20 @@ export function DrawerView({ token, board, joined, drawer, panel, now, set, setP
             style={{ left: `${((s.from - t0) / span) * 100}%`, width: `${Math.max(2, ((s.to - s.from) / span) * 100)}%`, background: tone(board, "stage", s.stage) }} title={`${label(board, "stage", s.stage)} ${dur(s.from, s.to)}`} />;
         })}
       </div>
-      <StageDots leg={cur.leg} board={board} onPick={(s) => set(openAt(drawer, drawer.leg, s))} />
-      <Transcript board={board} leg={cur.leg} stage={drawer.stage} segs={segs} />
+      <StageDots worker={cur.leg} board={board} onPick={(s) => set(openAt(drawer, drawer.leg, s))} />
+      <Transcript board={board} worker={cur.leg} stage={drawer.stage} segs={segs} />
     </>}
-    {panel.kind === "leg" && !cur && <p className="quiet">This leg is not on the board any more.</p>}
+    {panel.kind === "leg" && !cur && <p className="quiet">This worker is not on the board any more.</p>}
   </aside>;
 }
 
-function Transcript({ board, leg, stage, segs }: { board: Board; leg: BoardLeg; stage: Stage; segs: { stage: Stage; from: number; to: number }[] }) {
-  const groups = STAGES.filter((s) => leg.timeline.some((b) => b.stage === s) || leg.stages[s]);
+function Transcript({ board, worker, stage, segs }: { board: Board; leg: BoardLeg; stage: Stage; segs: { stage: Stage; from: number; to: number }[] }) {
+  const groups = STAGES.filter((s) => worker.timeline.some((b) => b.stage === s) || worker.stages[s]);
   const root = useRef<HTMLDivElement>(null);
-  // scroll only when the stage or the leg changes, not on every poll or clock render
-  useEffect(() => { root.current?.querySelector(".sel")?.scrollIntoView?.({ block: "nearest" }); }, [leg.leg, stage]);
+  // scroll only when the stage or the worker changes, not on every poll or clock render
+  useEffect(() => { root.current?.querySelector(".sel")?.scrollIntoView?.({ block: "nearest" }); }, [worker.leg, stage]);
   return <div className="bd-transcript" ref={root}>{groups.map((s) => {
-    const at = leg.stages[s], bullets = leg.timeline.filter((b) => b.stage === s), seg = segs.find((g) => g.stage === s);
+    const at = worker.stages[s], bullets = worker.timeline.filter((b) => b.stage === s), seg = segs.find((g) => g.stage === s);
     return <section key={s} className={s === stage ? "sel" : ""}>
       <h4 style={{ ["--c" as string]: tone(board, "stage", s) }}>{label(board, "stage", s)}<small>{` ${hm(at)}${seg ? ` · ${dur(seg.from, seg.to)}` : ""}`}</small></h4>
       {bullets.map((b, i) => <p key={i} className="bd-bullet"><span className="bd-chip" style={{ ["--c" as string]: tone(board, "marker", b.marker) }}>{label(board, "marker", b.marker)}</span>{` ${b.text}`}</p>)}

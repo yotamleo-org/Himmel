@@ -15,13 +15,13 @@
 # Match: project Done, no fixVersion, not an Epic, resolved on/after the last
 # release date (every Done ticket when nothing is released yet). The current
 # version is the earliest unreleased one by release date, like jira create's
-# Bug default. The backfill never runs from tick.sh; the console runs it
+# Bug default. The backfill never runs from tick.sh; the chief runs it
 # after reading the list.
 # Env: JIRA_PROJECT_KEY (default HIMMEL), HIMMEL_JIRA_CLI (a command line,
 # default: the primary checkout's dist/index.js).
 # ponytail: a Done ticket moved out through `jira move` is not excluded, so a
 # moved source in the project would count; exclude moves once one shows up.
-# bash 3.2-safe; no .ps1 twin (the console kit is Linux-only).
+# bash 3.2-safe; no .ps1 twin (the chief kit is Linux-only).
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../../lib/git-clean.sh

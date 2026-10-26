@@ -96,7 +96,7 @@ bump merges while the host still runs the old build.
   (native: `claude update`; npm: `npm install -g @anthropic-ai/claude-code@latest`;
   brew/pacman installs print the needs-you command and are never run), then
   re-checked. Still below the floor fails the step loudly (`--check` stays
-  read-only). The same floor makes every armed console/leg launch refuse with
+  read-only). The same floor makes every armed chief/worker launch refuse with
   `claude update` named; doctor check C63 WARNs below it.
 - **qmd daemon restart** — installing a new qmd build does NOT reload the
   running daemon on :8181, and stopping that process is termination an agent may
@@ -117,8 +117,8 @@ claude session recovers.
 
 This command can run from **any directory** (HIMMEL-459), so first resolve the
 himmel checkout using the same checkout-resolution order as
-`marketplace/plugins/himmel-ops/scripts/legs.sh` (here it fails closed with an
-error; legs.sh fails open): `$HIMMEL_REPO` → the current git toplevel →
+`marketplace/plugins/himmel-ops/scripts/workers.sh` (here it fails closed with an
+error; workers.sh fails open): `$HIMMEL_REPO` → the current git toplevel →
 canonical install paths → error. Run the resolver, then ONE of the update forms:
 
 ```bash

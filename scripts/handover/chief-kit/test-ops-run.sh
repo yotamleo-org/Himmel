@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/test-ops-run.sh - suite for ops-run.sh, the
 # allowlisted runner an ops session (the relay role) uses to run a mechanical
-# chief-kit script and hand the console ONE verdict line. Hermetic: the kit
+# chief-kit script and hand the chief ONE verdict line. Hermetic: the kit
 # dir is a stub dir (the OPS_KIT_DIR seam).
 #
 # Cases:
@@ -29,7 +29,7 @@ contains() { case "$2" in *"$3"*) echo "ok - $1" ;; *) echo "FAIL - $1: [$2] doe
 lacks()    { case "$2" in *"$3"*) echo "FAIL - $1: [$2] contains [$3]"; fails=$((fails+1)) ;; *) echo "ok - $1" ;; esac; }
 
 mkdir -p "$W/kit"
-for s in ready-check.sh leg-event.sh action-zero.sh go.sh inbox-send.sh write-verdict.sh; do
+for s in ready-check.sh worker-event.sh action-zero.sh go.sh inbox-send.sh write-verdict.sh; do
     cat > "$W/kit/$s" <<'STUB'
 #!/usr/bin/env bash
 echo "ran $(basename "$0") $*" >> "$OPS_CALLS"
@@ -63,7 +63,7 @@ contains "3 args" "$(cat "$OPS_CALLS")" "ran ready-check.sh 12 abc"
 f="$(printf '%s' "$out" | sed -n 's/.* out=\([^ ]*\) .*/\1/p')"
 contains "3 out file holds full output" "$(cat "$f" 2>/dev/null)" "hello"
 
-STUB_RC=10 run leg-event.sh x; check "4 rc10 rc" "$rc" 10; contains "4 rc10" "$out" "ESCALATE"
+STUB_RC=10 run worker-event.sh x; check "4 rc10 rc" "$rc" 10; contains "4 rc10" "$out" "ESCALATE"
 STUB_RC=1 run ready-check.sh 1 a; check "4 rc1 rc" "$rc" 1; contains "4 rc1" "$out" "rc=1 FAIL"
 STUB_SLEEP=5 OPS_TIMEOUT=1 run ready-check.sh 1 a; check "4 timeout rc" "$rc" 124; contains "4 timeout" "$out" "TIMEOUT"
 

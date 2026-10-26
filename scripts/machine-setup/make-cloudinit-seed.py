@@ -24,7 +24,7 @@ exists only so the .env loader can feed it in-process. Never prints or logs
 the plaintext password or the derived hash — `--dry-run` redacts the passwd
 line in its printed user-data.
 
-The generated user's password is for the VirtualBox console (and cloud-init
+The generated user's password is for the VirtualBox chief (and cloud-init
 bring-up) only: `ssh_pwauth` stays off, so SSH accepts key auth alone unless
 `--allow-password-ssh` is passed.
 
@@ -112,11 +112,11 @@ def _read_password_file(path):
 
 def _require_nonblank_password(plaintext, source_desc):
     """Refuse an empty/whitespace-only plaintext — hashing it would
-    provision the NOPASSWD-sudo user with a blank console password.
+    provision the NOPASSWD-sudo user with a blank chief password.
     Exits 2 (a distinct, specific error) on a blank value."""
     if plaintext is None or plaintext.strip() == "":
         print(f"make-cloudinit-seed: {source_desc} is empty — refusing to "
-              "provision a blank console password", file=sys.stderr)
+              "provision a blank chief password", file=sys.stderr)
         sys.exit(2)
     return plaintext
 
@@ -125,11 +125,11 @@ def _require_no_embedded_newlines(plaintext, source_desc):
     """A password with an embedded newline hashes differently through the
     openssl -stdin fallback (which only sees its first line) than through
     stdlib crypt (which hashes the whole string) — never an intended
-    console password. Checked after the one trailing-newline strip, so
+    chief password. Checked after the one trailing-newline strip, so
     only an INTERNAL newline trips this. Exits 2."""
     if "\n" in plaintext or "\r" in plaintext:
         print(f"make-cloudinit-seed: {source_desc} contains an embedded "
-              "newline — refusing (a console password must be one line)",
+              "newline — refusing (a chief password must be one line)",
               file=sys.stderr)
         sys.exit(2)
     return plaintext
@@ -303,7 +303,7 @@ def parse_args(argv=None):
     p.add_argument("--instance-id", default=DEFAULT_INSTANCE_ID)
     p.add_argument("--allow-password-ssh", action="store_true",
                     help="also enable SSH password auth (ssh_pwauth). Off by "
-                         "default — the password is for the VirtualBox console "
+                         "default — the password is for the VirtualBox chief "
                          "only; SSH stays key-only via --pubkey")
     p.add_argument("--dry-run", action="store_true",
                     help="print the user-data (passwd line redacted) instead of "

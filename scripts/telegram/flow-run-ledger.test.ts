@@ -258,36 +258,36 @@ test("classifier: complete and missing log -> complete", () => {
 
 test("classifier: required marker present as a bare line -> complete", () => {
   const p = join(tmp, "run.log");
-  writeFileSync(p, "work...\nAll done.\nPIPELINE-LEG-DONE\n");
-  expect(classifyOutcome(0, p, undefined, "PIPELINE-LEG-DONE")).toBe("complete");
+  writeFileSync(p, "work...\nAll done.\nPIPELINE-WORKER-DONE\n");
+  expect(classifyOutcome(0, p, undefined, "PIPELINE-WORKER-DONE")).toBe("complete");
 });
 
-test("classifier: required marker absent (blocked/parked leg, rc 0) -> parked", () => {
+test("classifier: required marker absent (blocked/parked worker, rc 0) -> parked", () => {
   const p = join(tmp, "run.log");
-  writeFileSync(p, "[fired]\n**Cadence leg blocked:** needs permission approval\n");
-  expect(classifyOutcome(0, p, undefined, "PIPELINE-LEG-DONE")).toBe("parked");
+  writeFileSync(p, "[fired]\n**Cadence worker blocked:** needs permission approval\n");
+  expect(classifyOutcome(0, p, undefined, "PIPELINE-WORKER-DONE")).toBe("parked");
   // A mention of the marker inside prose is NOT the bare terminal line.
-  writeFileSync(p, "I would print PIPELINE-LEG-DONE if it were complete\n");
-  expect(classifyOutcome(0, p, undefined, "PIPELINE-LEG-DONE")).toBe("parked");
+  writeFileSync(p, "I would print PIPELINE-WORKER-DONE if it were complete\n");
+  expect(classifyOutcome(0, p, undefined, "PIPELINE-WORKER-DONE")).toBe("parked");
   // Missing log + required marker -> no evidence of completion -> parked.
-  expect(classifyOutcome(0, join(tmp, "missing.log"), undefined, "PIPELINE-LEG-DONE")).toBe("parked");
+  expect(classifyOutcome(0, join(tmp, "missing.log"), undefined, "PIPELINE-WORKER-DONE")).toBe("parked");
   // An invalid extra regex must not short-circuit the marker check (coderabbit #1762).
-  expect(classifyOutcome(0, p, "[", "PIPELINE-LEG-DONE")).toBe("parked");
+  expect(classifyOutcome(0, p, "[", "PIPELINE-WORKER-DONE")).toBe("parked");
   // Non-zero rc still wins as error; no marker requirement -> unchanged complete.
-  expect(classifyOutcome(1, p, undefined, "PIPELINE-LEG-DONE")).toBe("error");
+  expect(classifyOutcome(1, p, undefined, "PIPELINE-WORKER-DONE")).toBe("error");
   expect(classifyOutcome(0, p)).toBe("complete");
 });
 
 test.skipIf(!BASH_RUNS)("bash classifier mirrors the required-marker cases", () => {
   const p = join(tmp, "run.log").replaceAll("\\", "/");
   writeFileSync(p, "[fired]\nblocked on a prompt\n");
-  const parked = Bun.spawnSync([BASH_BIN, BASH_LIB, "--classify", "0", p, "", "PIPELINE-LEG-DONE"], { stdout: "pipe", stderr: "pipe" });
+  const parked = Bun.spawnSync([BASH_BIN, BASH_LIB, "--classify", "0", p, "", "PIPELINE-WORKER-DONE"], { stdout: "pipe", stderr: "pipe" });
   // BASH_RUNS already proved this bash can execute; a nonzero --classify
   // here is a real classifier failure, not an environment gap — fail it.
   expect(parked.exitCode, `bash --classify rc=${parked.exitCode}`).toBe(0);
   expect(parked.stdout.toString().trim()).toBe("parked");
-  writeFileSync(p, "done\r\nPIPELINE-LEG-DONE\r\n");
-  const done = Bun.spawnSync([BASH_BIN, BASH_LIB, "--classify", "0", p, "", "PIPELINE-LEG-DONE"], { stdout: "pipe", stderr: "pipe" });
+  writeFileSync(p, "done\r\nPIPELINE-WORKER-DONE\r\n");
+  const done = Bun.spawnSync([BASH_BIN, BASH_LIB, "--classify", "0", p, "", "PIPELINE-WORKER-DONE"], { stdout: "pipe", stderr: "pipe" });
   expect(done.exitCode, `bash --classify rc=${done.exitCode}`).toBe(0);
   expect(done.stdout.toString().trim()).toBe("complete");
 });

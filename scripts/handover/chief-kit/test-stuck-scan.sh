@@ -48,7 +48,7 @@ mk() { # <key> <status> <updated> <fixver> [comment-body ...]  (one ### block pe
 
 OLD="2026-10-19T15:00:00.000+0000"   # 5h before NOW
 mk HIMMEL-9001 "In Progress" "$OLD" v1.1.3                 # orphan
-mk HIMMEL-9002 "In Progress" "$OLD" v1.1.3                 # owned by a leg
+mk HIMMEL-9002 "In Progress" "$OLD" v1.1.3                 # owned by a worker
 mk HIMMEL-9003 "In Review"   "$OLD" v1.1.3                 # owned by an open PR
 mk HIMMEL-9004 "IN CI"       "$OLD" v1.1.3 'DISPOSITION (2026-10-19): BLOCKED-BY 3206'          # blocker PR open
 mk HIMMEL-9005 "IN CI"       "$OLD" v1.1.3 'DISPOSITION (2026-10-19): BLOCKED-BY PR 3207'       # blocker PR merged
@@ -88,7 +88,7 @@ cat > "$WORK/prs.json" <<'JSON'
  {"number":3206,"title":"feat(y): [HIMMEL-6000] other","headRefName":"feat/himmel-6000-b","body":"mentions HIMMEL-9001 only in passing"}
 ]
 JSON
-printf '1234 claude --session x -n HIMMEL-9002-N2900-thing-2026-10-19\n1235 claude -n HIMMEL-nextleg-2026-10-19AA-roadmap-console\n' > "$WORK/pgrep.txt"
+printf '1234 claude --session x -n HIMMEL-9002-N2900-thing-2026-10-19\n1235 claude -n HIMMEL-nextleg-2026-10-19AA-roadmap-chief\n' > "$WORK/pgrep.txt"
 
 export PATH="$WORK/bin:$PATH"
 export STUCK_SCAN_NOW="$NOW" STUCK_SCAN_MIRROR="$M" STUB_PRS="$WORK/prs.json" STUB_PGREP="$WORK/pgrep.txt"
@@ -97,7 +97,7 @@ export STUCK_SCAN_JIRA_CMD="$WORK/jira-stub" STUB_JIRA_LOG="$WORK/jira.log"
 out="$(bash "$SS" 2>&1)"; rc=$?
 check "scan exits 0" 0 "$rc"
 has   "orphan In Progress is STUCK with its age" '^STUCK HIMMEL-9001 In Progress 5h$' "$out"
-hasnt "ticket owned by a live leg is quiet" 'HIMMEL-9002' "$out"
+hasnt "ticket owned by a live worker is quiet" 'HIMMEL-9002' "$out"
 hasnt "ticket owned by an open PR (title/branch) is quiet" 'HIMMEL-9003' "$out"
 has   "BLOCKED-BY an open PR prints BLOCKED-BY" '^BLOCKED-BY HIMMEL-9004 3206$' "$out"
 has   "BLOCKED-BY a merged PR is re-flagged STUCK" '^STUCK HIMMEL-9005 IN CI 5h$' "$out"

@@ -51,6 +51,22 @@ def legacy_names_on(env=None):
     return not _falsy(env.get("HIMMEL_LEGACY_NAMES") or "")
 
 
+_WARNED_FLAGS = set()
+
+
+def legacy_flag(old, new, env=None):
+    """A parser calls it when it matched the renamed flag OLD. On: one stderr
+    deprecation line per process, True (parse OLD as NEW). Off: one stderr line,
+    False (treat OLD as an unknown option). Twin of legacy_flag in legacy-names.sh."""
+    if not legacy_names_on(env):
+        print(f"{old} was renamed to {new}; legacy names are off", file=sys.stderr)
+        return False
+    if old not in _WARNED_FLAGS:
+        _WARNED_FLAGS.add(old)
+        print(f"{old} is deprecated: use {new}", file=sys.stderr)
+    return True
+
+
 def env_alias_restrict(new, old, env=None):
     return any(not _falsy(v) for v in _set_values(new, old, env))
 

@@ -9,7 +9,7 @@
 # salus content.
 #
 # Why a plugin-shipped hook, not a scripts/hooks/ one wired in
-# .claude/settings.json: a design leg on salus runs with CLAUDE_PROJECT_DIR =
+# .claude/settings.json: a design worker on salus runs with CLAUDE_PROJECT_DIR =
 # the salus checkout. Project settings and the plugin's
 # $CLAUDE_PROJECT_DIR/scripts/hooks/... entries (--optional) never fire
 # there. A hook under ${CLAUDE_PLUGIN_ROOT} fires in every repo, because

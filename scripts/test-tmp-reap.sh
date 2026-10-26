@@ -283,7 +283,7 @@ want=0; for n in old a b c; do want=$((want + $(du -sk "$ROOT/mog-run.$n" | cut 
 out="$(PATH="$T/onebatch:$PATH" reap)"
 contains "17. reported fixture size is the sum of all batches" "$out" "REAP fixture  mog-run.*: 4 dir(s), ${want}K;"
 
-echo "== 12. scoped to one leg (HIMMEL-4235): --judge / --session =="
+echo "== 12. scoped to one worker (HIMMEL-4235): --judge / --session =="
 build_tree
 touch -t 200001010000 "$ROOT/claude-$(id -u)/j9001"
 out="$(reap --apply --judge 9001)"; rc=$?
@@ -295,7 +295,7 @@ exists "12. a just-touched judge dir (maybe still running) is kept even when nam
 mkdir -p "$ROOT/claude-$(id -u)/j9004"; : > "$ROOT/claude-$(id -u)/j9004/f"; touch -d '2 hours ago' "$ROOT/claude-$(id -u)/j9004"
 out="$(reap --apply --judge 9004)"; rc=$?
 exists "12. a judge dir under the 6 h floor is kept in scoped mode too" "$ROOT/claude-$(id -u)/j9004"
-exists "12. another leg's old judge dir untouched" "$ROOT/claude-$(id -u)/j9002"
+exists "12. another worker's old judge dir untouched" "$ROOT/claude-$(id -u)/j9002"
 exists "12. fixture untouched by a scoped run" "$ROOT/mog-run.old"
 exists "12. dead session untouched by a judge-only scope" "$CL/$DEAD"
 build_tree

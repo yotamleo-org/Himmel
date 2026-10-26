@@ -1,8 +1,8 @@
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 import { request, projectKey } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { appendAdmission } from './admissions-ledger.js';
-import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, INTAKE_GATES } from './intake-gate.js';
+import { assertIntakeGate, checkConsoleOverride, checkIntakeGate, chiefOverrideOf, INTAKE_GATES } from './intake-gate.js';
 
 // Jira project versions (the fixVersions pick-list) mirror the
 // GitHub release tags. REST v3: GET /project/{key}/versions is unpaginated (a
@@ -281,16 +281,17 @@ export async function setFixVersion(
 }
 
 /**
- * `fix-version --add`: a frozen target needs --gate or a console override, and
+ * `fix-version --add`: a frozen target needs --gate or a chief override, and
  * the ledger row lands once the read-back proves the version is on the issue.
  */
 export async function addFixVersionGated(
   key: string,
   name: string,
-  o: { gate?: string; consoleOverride?: string },
+  o: { gate?: string; chiefOverride?: string; consoleOverride?: string },
 ): Promise<string> {
   if (o.gate !== undefined) assertIntakeGate(o.gate);
-  const overrideReason = o.consoleOverride === undefined ? undefined : checkConsoleOverride(o.consoleOverride);
+  const override = chiefOverrideOf(o);
+  const overrideReason = override === undefined ? undefined : checkConsoleOverride(override);
   const admission = await checkIntakeGate(projectFromKey(key), [{ name }], {
     gate: o.gate,
     override: overrideReason !== undefined,
@@ -424,15 +425,16 @@ export function registerVersions(program: Command): void {
       `With --add: required to move a ticket into a frozen version (${INTAKE_GATES}); recorded in the admissions ledger`,
     )
     .option(
-      '--console-override <reason>',
+      '--chief-override <reason>',
       'With --add, console session only (HIMMEL_CONSOLE=1): admit into a frozen version without a gate; the reason is recorded in the admissions ledger',
     )
-    .action(async (key: string, options: { add?: string; remove?: string; gate?: string; consoleOverride?: string }) => {
+    .addOption(new Option('--console-override <reason>').hideHelp())
+    .action(async (key: string, options: { add?: string; remove?: string; gate?: string; chiefOverride?: string; consoleOverride?: string }) => {
       if ((options.add === undefined) === (options.remove === undefined)) {
         throw new Error('fix-version needs exactly one of --add <name> or --remove <name>');
       }
-      if (options.add === undefined && (options.gate !== undefined || options.consoleOverride !== undefined)) {
-        throw new Error('--gate and --console-override go with --add');
+      if (options.add === undefined && (options.gate !== undefined || chiefOverrideOf(options) !== undefined)) {
+        throw new Error('--gate and --chief-override go with --add');
       }
       console.log(
         options.add !== undefined

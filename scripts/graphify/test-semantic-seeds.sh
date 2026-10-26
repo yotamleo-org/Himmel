@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # test-semantic-seeds.sh -- a plain-language query that names no file starts graphify from the
 # files whose content matches its meaning. graphify seeds on the question's words against node
-# labels, so "how does a console hand work to a leg" started from one-word labels and the file that
-# answers it (the glossary) was missing. leg-graph.sh adds semantic-seeds.py's files as --seed
+# labels, so "how does a chief hand work to a worker" started from one-word labels and the file that
+# answers it (the glossary) was missing. worker-graph.sh adds semantic-seeds.py's files as --seed
 # after any anchor seeds. Stub graphify; every row runs everywhere.
 set -u
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -28,9 +28,9 @@ def node(i, label, src, ft="code", **kw):
     return n
 nodes = [
     node("glossary", "glossary.md", "docs/glossary.md", "document"),
-    node("gl_console", "Console", "docs/glossary.md", "concept", rationale="A console dispatches legs and never does the ticket work itself."),
-    node("gl_leg", "Leg", "docs/glossary.md", "concept", rationale="One ticket, one worktree, one PR."),
-    node("runc", "running-a-console.md", "docs/handover/running-a-console.md", "document"),
+    node("gl_chief", "Chief", "docs/glossary.md", "concept", rationale="A chief dispatches workers and never does the ticket work itself."),
+    node("gl_worker", "Worker", "docs/glossary.md", "concept", rationale="One ticket, one worktree, one PR."),
+    node("runc", "running-a-chief.md", "docs/handover/running-a-chief.md", "document"),
     node("tok", "Token", "scripts/auth/token.ts"),
     node("need", "Need", "scripts/auth/need.ts"),
     node("pc", "prompt-cache.md", "docs/internals/prompt-cache.md", "document"),
@@ -42,20 +42,20 @@ PY
 seeds() { python3 -I "$SEM" seeds "$G" "$1" | tr '\n' ' '; }
 
 # S1: a plain-language question resolves to the file about it, not to one-word code labels.
-got="$(seeds "how does a console hand work to a leg")"
-case "$got" in glossary\ *) pass "S1 console and leg question leads with the glossary" ;; *) fail "S1 got='$got'" ;; esac
+got="$(seeds "how does a chief hand work to a worker")"
+case "$got" in glossary\ *) pass "S1 chief and worker question leads with the glossary" ;; *) fail "S1 got='$got'" ;; esac
 
 # S2: a path-word match beats a test copy of it unless the question names tests.
 got="$(seeds "how long does the prompt cache keep a prefix warm")"
 case "$got" in pc\ *) pass "S2 prompt cache question leads with the doc, not the test file" ;; *) fail "S2 got='$got'" ;; esac
 
 # S3: a question sharing no word with the graph, and an unreadable graph, seed nothing.
-got="$(seeds "what colour are the planets") $(python3 -I "$SEM" seeds "$T/missing.json" "how does a console hand work to a leg" 2>/dev/null | tr '\n' ' ')"
+got="$(seeds "what colour are the planets") $(python3 -I "$SEM" seeds "$T/missing.json" "how does a chief hand work to a worker" 2>/dev/null | tr '\n' ' ')"
 if [ "$got" = " " ]; then pass "S3 no match or unreadable graph seeds nothing"
 else fail "S3 got='$got'"; fi
 
-# S3b: plural and singular forms tokenize alike ("consoles" matches the Console label).
-got="$(seeds "how do consoles and legs relate")"
+# S3b: plural and singular forms tokenize alike ("consoles" matches the Chief label).
+got="$(seeds "how do chiefs and workers relate")"
 case "$got" in glossary\ *) pass "S3b plural question matches singular labels" ;; *) fail "S3b got='$got'" ;; esac
 
 cat > "$T/bin/graphify" <<STUB
@@ -76,27 +76,27 @@ STUB
 chmod +x "$T/bin/graphify"
 run() { rm -f "$T/calls"; (cd "$P" && PATH="$T/bin:$PATH" bash "$SCRIPT" "$@" 2>"$T/err"); }
 
-# S4: with no anchor, leg-graph.sh runs a given-seed query from the semantic file plus the keyword query.
-out="$(run query "how does a console hand work to a leg")"; rc=$?
+# S4: with no anchor, worker-graph.sh runs a given-seed query from the semantic file plus the keyword query.
+out="$(run query "how does a chief hand work to a worker")"; rc=$?
 calls="$(cat "$T/calls")"
 if [ "$rc" = 0 ] && [ "$(wc -l < "$T/calls")" -eq 2 ] \
-  && grep -qx -- "query how does a console hand work to a leg --rationale --seed glossary --seed runc --budget 4000" <<<"$calls" \
-  && grep -qx -- "query how does a console hand work to a leg --rationale --budget 4000" <<<"$calls"; then
+  && grep -qx -- "query how does a chief hand work to a worker --rationale --seed glossary --seed runc --budget 4000" <<<"$calls" \
+  && grep -qx -- "query how does a chief hand work to a worker --rationale --budget 4000" <<<"$calls"; then
   pass "S4 semantic seed passed to graphify query"
 else fail "S4 rc=$rc calls='$calls'"; fi
 if grep -m1 '^NODE ' <<<"$out" | grep -q '^NODE glossary.md ' && grep -q '^NODE Need ' <<<"$out"; then pass "S4b merged answer leads with the glossary, keeps the keyword node"
 else fail "S4b out='$out'"; fi
 
 # S5: an anchor stays first: go.sh precedes the semantic seeds.
-run query "how does go.sh relate a console and a leg" >/dev/null
+run query "how does go.sh relate a chief and a worker" >/dev/null
 first="$(grep -m1 -o -- '--seed [a-z_]*' "$T/calls" | head -1)"
 if [ "$first" = "--seed go_sh" ]; then pass "S5 anchor seed precedes semantic seeds"
 else fail "S5 first='$first' calls='$(cat "$T/calls")'"; fi
 
 # S6: a caller's own --seed is left alone.
-run query "how does a console hand work to a leg" --seed need >/dev/null; rc=$?
+run query "how does a chief hand work to a worker" --seed need >/dev/null; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && [ "$calls" = "query how does a console hand work to a leg --rationale --seed need --budget 8000" ]; then pass "S6 explicit --seed runs unchanged"
+if [ "$rc" = 0 ] && [ "$calls" = "query how does a chief hand work to a worker --rationale --seed need --budget 8000" ]; then pass "S6 explicit --seed runs unchanged"
 else fail "S6 calls='$calls'"; fi
 
 # S7: a question matching nothing runs as before: one call.
@@ -163,7 +163,7 @@ else fail "S9 eval question text found in:$hits (git grep errors:$grepbad)"; fi
 # S10: a weak seed (one shared word, a low score for this corpus) gets 2000 tokens, not 8000, and a header naming the seed.
 out="$(run query "$WEAKQ" --graph "$T/weak.json")"; rc=$?
 calls="$(cat "$T/calls")"
-if [ "$rc" = 0 ] && grep -q '^leg-graph: LOW CONFIDENCE seed plugins/hud/src/effort.ts' <<<"$out" \
+if [ "$rc" = 0 ] && grep -q '^worker-graph: LOW CONFIDENCE seed plugins/hud/src/effort.ts' <<<"$out" \
   && [ "$(grep -c -- '--budget 1000$' <<<"$calls")" = 2 ] && ! grep -q -- '--budget [48]000' <<<"$calls"; then
   pass "S10 weak seed: low-confidence header, 2000-token budget split in halves"
 else fail "S10 rc=$rc calls='$calls' out='$out'"; fi
@@ -189,7 +189,7 @@ if [ "$rc" = 0 ] && ! grep -q 'LOW CONFIDENCE' <<<"$out" && grep -q -- '--seed l
   pass "S13 an anchored query keeps the full budget"
 else fail "S13 rc=$rc calls='$calls' out='$out'"; fi
 
-# A: a fleet corpus written in the old vocabulary (leg, console) beside lane-worker files whose
+# A: a fleet corpus written in the old vocabulary (worker, chief) beside lane-worker files whose
 # names already say worker in another sense; the registry marks those other-sense.
 python3 -I - "$T/alias.json" <<'PY'
 import json, sys
@@ -198,10 +198,10 @@ def node(i, label, src, ft="code", **kw):
     n.update(kw)
     return n
 nodes = [
-    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
-    node("arm_fn", "start_leg_session()", "scripts/handover/chief-kit/headed-arm-leg.sh", rationale="The console starts a leg in its own window."),
-    node("preface", "leg-preface.md", "docs/handover/leg-preface.md", "document"),
-    node("pf_rule", "Report to the console", "docs/handover/leg-preface.md", "concept", rationale="A leg reports a blocker to its console first."),
+    node("arm_worker", "headed-arm-worker.sh", "scripts/handover/chief-kit/headed-arm-worker.sh"),
+    node("arm_fn", "start_worker_session()", "scripts/handover/chief-kit/headed-arm-worker.sh", rationale="The chief starts a worker in its own window."),
+    node("preface", "worker-preface.md", "docs/handover/worker-preface.md", "document"),
+    node("pf_rule", "Report to the chief", "docs/handover/worker-preface.md", "concept", rationale="A worker reports a blocker to its chief first."),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
     node("stop_fn", "stop_lane_worker()", "scripts/lanes/stop-worker.sh", rationale="Stops a lane worker process."),
     node("rec_w", "reconcile-workers.sh", "scripts/handover/reconcile-workers.sh"),
@@ -216,13 +216,13 @@ aseeds() { python3 -I "$SEM" seeds "$T/alias.json" "$1" | tr '\n' ' '; }
 
 # S14: a new-vocabulary question seeds the file written in the old one, not a lane-worker file.
 got="$(aseeds "how does the chief start a worker")"
-case "$got" in arm_leg\ *) pass "S14 chief/worker question leads with headed-arm-leg.sh" ;; *) fail "S14 got='$got'" ;; esac
+case "$got" in arm_worker\ *) pass "S14 chief/worker question leads with headed-arm-worker.sh" ;; *) fail "S14 got='$got'" ;; esac
 got="$(aseeds "how does the chief arm a worker")"
-case "$got" in arm_leg\ *) pass "S14b the arm phrasing leads with headed-arm-leg.sh" ;; *) fail "S14b got='$got'" ;; esac
+case "$got" in arm_worker\ *) pass "S14b the arm phrasing leads with headed-arm-worker.sh" ;; *) fail "S14b got='$got'" ;; esac
 
-# S15: the same for a doc: the leg preface answers how a worker reports to the chief.
+# S15: the same for a doc: the worker preface answers how a worker reports to the chief.
 got="$(aseeds "how does a worker report a blocker to the chief")"
-case "$got" in preface\ *) pass "S15 worker/chief question leads with the leg preface" ;; *) fail "S15 got='$got'" ;; esac
+case "$got" in preface\ *) pass "S15 worker/chief question leads with the worker preface" ;; *) fail "S15 got='$got'" ;; esac
 
 # S16: a question about the lane worker itself still leads with it.
 got="$(aseeds "how does stop-worker.sh stop a lane worker")"
@@ -230,7 +230,7 @@ case "$got" in stop_w\ *) pass "S16 a lane-worker question keeps stop-worker.sh 
 
 # S17: registry words alone never bring a file in: an old-term question asked in the new
 # vocabulary seeds no file whose only match is "worker" in another sense.
-got="$(aseeds "what is a wave of legs")"
+got="$(aseeds "what is a wave of workers")"
 case "$got" in *_w\ *) fail "S17 got='$got'" ;; *) pass "S17 swapped-in words alone seed no worker-sense file" ;; esac
 
 if [ "$FAILS" -ne 0 ]; then echo "$FAILS FAILURES"; exit 1; fi

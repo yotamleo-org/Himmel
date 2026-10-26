@@ -10,13 +10,13 @@ real threshold crossing.
 
 Metrics (see docs/internals/cache-health.md for the metrics.json schema):
   hit = cache_read / (cache_read + cache_creation + input), rows deduped by
-  message id. Per role (console, leg, subagent, bridge, other), over a RECENT
+  message id. Per role (chief, worker, subagent, bridge, other), over a RECENT
   window (default 24h) and a BASELINE window (the 7 days before it).
 
 Alert rules (every default is a flag):
-  role-drop        (roles in --alert-roles, default console,leg) a role's recent hit rate is more than --drop-pts (3) below its baseline
+  role-drop        (roles in --alert-roles, default chief,worker) a role's recent hit rate is more than --drop-pts (3) below its baseline
   session-low      (same roles) a session over --session-min-tokens (1M) with hit below --session-hit (90 %)
-  compactions      mean compactions per active leg above --compactions-max (4)
+  compactions      mean compactions per active worker above --compactions-max (4)
 Hysteresis: a crossing is notified once; it stays quiet while it stays crossed; a
 role-drop clears only once it is back within --clear-pts (2) of baseline, and a
 single recovery message goes out. Session-low keys expire silently when the
@@ -46,7 +46,7 @@ def classify(path, title, first):
     t = title or ""
     if "-console" in t or t.endswith("-chief"):
         return "console"
-    if re.search(r"HIMMEL-\d+-.*N\d+|leg[A-Z]?\d+|-N\d+", t):
+    if re.search(r"HIMMEL-\d+-.*N\d+|worker[A-Z]?\d+|-N\d+", t):
         return "leg"
     if first.startswith("You are Telegram bridge session"):
         return "bridge"
@@ -198,10 +198,10 @@ def evaluate(metrics, offenders, a):
                 role, r["hit_pct"], -d, r["baseline_hit_pct"])
         elif d < -a.clear_pts:
             holding["role-drop:" + role] = True
-    leg = metrics["roles"]["leg"]
-    if leg["sessions"] and leg["compactions_per_session"] is not None and leg["compactions_per_session"] > a.compactions_max:
-        cross["compactions:leg"] = "legs average %.1f compactions each (limit %g) over %d sessions" % (
-            leg["compactions_per_session"], a.compactions_max, leg["sessions"])
+    worker = metrics["roles"]["leg"]
+    if worker["sessions"] and worker["compactions_per_session"] is not None and worker["compactions_per_session"] > a.compactions_max:
+        cross["compactions:worker"] = "workers average %.1f compactions each (limit %g) over %d sessions" % (
+            worker["compactions_per_session"], a.compactions_max, worker["sessions"])
     for o in offenders:
         if o["role"] in a.alert_roles.split(",") and o["tokens"] >= a.session_min_tokens and o["hit_pct"] is not None and o["hit_pct"] < a.session_hit:
             cross["session-low:" + o["session"]] = "%s session %s: %.1f%% hit over %.1fM tokens" % (
@@ -328,7 +328,7 @@ def main():
     p.add_argument("--session-min-tokens", type=float, default=1e6)
     p.add_argument("--session-hit", type=float, default=90.0)
     p.add_argument("--compactions-max", type=float, default=4.0)
-    p.add_argument("--alert-roles", default="console,leg")  # subagent/other/bridge hit rates swing with cold starts: metrics only
+    p.add_argument("--alert-roles", default="chief,worker")  # subagent/other/bridge hit rates swing with cold starts: metrics only
     p.add_argument("--top", type=int, default=10)
     a = p.parse_args()
     now = a.now if a.now is not None else time.time()

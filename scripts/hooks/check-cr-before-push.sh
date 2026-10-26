@@ -140,7 +140,7 @@ push_remote_url="${2:-}"
 #
 # The property that makes a working-tree lint meaningful is not "same branch
 # NAME" but "the commit on the wire IS this worktree's HEAD", so that is what
-# is compared. Keying on the name would still wave through
+# is compared. Keying on the name would still parallel wave through
 # `git push origin <sha>:refs/heads/b`, `HEAD~3:refs/heads/b`, or a tag pushed
 # onto a branch — every one of them lints a tree the push does not carry.
 # Ceiling (deliberate): UNCOMMITTED changes in this worktree still differ from
@@ -1101,7 +1101,7 @@ if [ -n "${PRE_COMMIT_REMOTE_BRANCH:-}" ]; then
     pc_remote_ref="$PRE_COMMIT_REMOTE_BRANCH"
     # In this shape the remote identity arrives via env, not argv: pre-commit
     # sets PRE_COMMIT_REMOTE_NAME and PRE_COMMIT_REMOTE_BRANCH together under
-    # one conjunction (run.py), so it is always present on this branch. Leg-44
+    # one conjunction (run.py), so it is always present on this branch. Worker-44
     # regression: reading only argv here refused EVERY framework-shaped push
     # with a false "no remote identity". argv still wins when a caller set it.
     if [ -z "$push_remote_name" ]; then

@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./console-route";
+import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendChatAction, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -14,7 +14,7 @@ import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, 
 import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
-import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./console-heartbeat-watch";
+import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./chief-heartbeat-watch";
 // resolve the bridge's own plugin profile per dispatch (lever-b)
 // instead of a hardcoded `undefined` (no --settings
 // => full operator ~/.claude injected into every cold bridge run, unlean).
@@ -124,7 +124,7 @@ export function safeExt(file_path: string, fallback = ".jpg"): string {
   return /^\.[A-Za-z0-9]+$/.test(ext) ? ext : fallback;
 }
 
-// The composed ingest gate. The DM leg is scoped to positive chat_ids: an
+// The composed ingest gate. The DM worker is scoped to positive chat_ids: an
 // allowFrom sender posting in a NON-allowed group must NOT open it (the reply
 // would land in that group). Telegram DM chat_id == sender user id, so DMs
 // from an allowFrom sender still pass. Group/channel chats pass only via the
@@ -491,7 +491,7 @@ function lockdownEnabled(root: string): boolean {
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
 }
 
-// Closed console verbs never fall through to an agent; lockdown also closes
+// Closed chief verbs never fall through to an agent; lockdown also closes
 // ordinary chat and the auto path. Keep the policy together before dispatch.
 async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route, tagged: boolean, fromOperator: boolean, consoleRoute?: ConsoleRouteGate, auto?: AutoGate, notifyChat?: NotifyChatFn): Promise<boolean> {
   const eligible = !tagged && consoleRoute && consoleRoute.authorize(msg.from, msg.chat_id) && msg.caption === false && !msg.forwarded;
@@ -528,9 +528,9 @@ async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route
     await routeFleetCommand(root, msg, route, consoleRoute);
     return true;
   }
-  if (route.kind === "auto" && route.op === "launch-bypass-leg") {
+  if (route.kind === "auto" && route.op === "launch-bypass-worker") {
     await appendAuditLine(root)({ chat_id: msg.chat_id, user: msg.from, forwarded: false, op: route.op, arg: route.arg, time: route.time, rc: 19, result: "refused-legacy-bypass" });
-    await reply(msg.chat_id, "Telegram hook-bypass launch refused — start hook legs at the station.");
+    await reply(msg.chat_id, "Telegram hook-bypass launch refused — start hook workers at the station.");
     return true;
   }
   if (route.kind === "console" || route.kind === "consoles") {
@@ -771,7 +771,7 @@ function auditResult(op: string, rc: number): string {
       default: return "error";
     }
   }
-  if (op === "launch-bypass-leg") return "error";
+  if (op === "launch-bypass-worker") return "error";
   if (BREAK_GLASS_OPS.has(op)) return rc === 0 ? "break-glass-ok" : rc === 19 ? "refused-agent" : "error";
   if (op === "cr-grant-delta") {
     if (rc === 15) return "head-moved";
@@ -1023,7 +1023,7 @@ export function makeRestart(deps: { exit?: (code: number) => never; spawnSync?: 
     }
     // spawnSync THROWS (it does not return a non-zero exitCode) when the binary
     // cannot be launched at all — no schtasks on PATH, EACCES. Unhandled, that
-    // escapes deps.restart() into autoFire's .catch(), which only console.errors:
+    // escapes deps.restart() into autoFire's .catch(), which only chief.errors:
     // the operator would be left holding the ack with the bridge still up and no
     // failure message — the precise silent no-op the rc handling below exists to
     // prevent. Same failure shape, so it takes the same path.
@@ -1524,7 +1524,7 @@ async function resolveTelegramMcpConfig(cwd: string, lanesDir: string): Promise<
 // the bridge's --settings payload, resolved through the SAME
 // fresh-import loader as resolveTelegramMcpConfig. It used to go through
 // spawn-glm's resolveProfileSettings, whose plugin-profiles.mjs is a STATIC
-// import: after leg-e2e was added to both files, the running
+// import: after worker-e2e was added to both files, the running
 // bridge validated the new json with its startup-time validator and failed
 // every AI TODO dispatch until a restart. Same output as resolveProfileSettings
 // (no overlay, the live plugin universe as the deny-by-default baseline, the
@@ -2446,7 +2446,7 @@ export async function main(): Promise<void> {
   // the operator in a DM or an allowlisted group arms; a non-operator group member or a
   // non-allowlisted chat is refused. Self-sufficient — re-asserts the chat gate (CR S1).
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire };
-  // Operator -> console routing. Same authorize as /arm — global
+  // Operator -> chief routing. Same authorize as /arm — global
   // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
   const consoleGate: ConsoleRouteGate = { authorize: autoGate.authorize, reply: (chat, text, name, replyTo) => replyViaOutbox(root, chat, text, name, replyTo) };
@@ -2476,11 +2476,11 @@ export async function main(): Promise<void> {
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
   const flushTimer = setInterval(guarded(() => flushOutboxes(root, send)), FLUSH_MS);
   if (typeof flushTimer.unref === "function") flushTimer.unref();
-  // Stale console-waiter heartbeat alert. console-wait.sh
-  // rewrites consoles/<name>.md.wait on every poll; a gap past
-  // HEARTBEAT_STALE_MS while the console's own session is still alive means
+  // Stale chief-waiter heartbeat alert. chief-wait.sh
+  // rewrites chiefs/<name>.md.wait on every poll; a gap past
+  // HEARTBEAT_STALE_MS while the chief's own session is still alive means
   // its background waiter may have died silently (an unreproduced
-  // harness low-memory kill) — a SIGKILL alone re-invokes the console, so
+  // harness low-memory kill) — a SIGKILL alone re-invokes the chief, so
   // this alert only fires for the silent case. heartbeatAlerted persists
   // across ticks so a stale episode alerts exactly once until re-armed.
   const HEARTBEAT_STALE_MS = intervalEnvMs(process.env.TELEGRAM_HEARTBEAT_STALE_MS, DEFAULT_STALE_MS);

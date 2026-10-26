@@ -2,15 +2,15 @@
 # scripts/handover/chief-kit/cr-disposition.sh - the disposition record for a
 # deferred Critical or Important CR finding, and the check go.sh runs on it.
 # A Critical or Important finding is never dropped: it ends fixed, disproved,
-# or deferred with a disposition a judge (or the console) recorded:
+# or deferred with a disposition a judge (or the chief) recorded:
 #   fix-here            the fix lands in this PR (a deferral it covers stays open)
 #   follow-up:<KEY>     the PR merges and <KEY> carries the fix; needs all three
 #                       risk attests: ci-green, no-data-loss, no-weakened-guard
-# A leg writing `deferred -> KEY` itself no longer clears the finding.
+# A worker writing `deferred -> KEY` itself no longer clears the finding.
 #
 # Usage:
 #   cr-disposition.sh record <pr> <head-sha> <finding_id>@<finding_head> \
-#       fix-here|follow-up:<KEY> --source judge:<qid>|console \
+#       fix-here|follow-up:<KEY> --source judge:<qid>|chief \
 #       [--attest ci-green,no-data-loss,no-weakened-guard]
 #   cr-disposition.sh check <pr> <head-sha> [--trust-path yes|no]
 #
@@ -20,7 +20,7 @@
 #    "source":"judge:<qid>"|"console:<name>","attest":[...],"pr","head","mac"}
 # The mac is go_msg_mac himmel-disposition-v1 over pr|head|branch|finding_id|
 # target_head|disposition|source|attest (the GO key), so an edited row fails.
-# It refuses a console-spawned leg or relay (exit 3), as go.sh does.
+# It refuses a chief-spawned worker or relay (exit 3), as go.sh does.
 #
 # check reads every finding on the PR's head branch, at any head, with amends
 # applied. A crit/imp whose verdict is deferred (or that carries deferred_to and
@@ -32,13 +32,13 @@
 # JIRA_CMD and GH_CMD replace the CLIs (tests).
 #
 # Exit codes: 0 recorded / PASS, 1 check refused, 2 usage or cannot evaluate,
-#             3 record from a console leg or relay.
+#             3 record from a chief worker or relay.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+.
 set -u
 
 usage() {
-    echo "usage: cr-disposition.sh record <pr> <head-sha> <finding_id>@<finding_head> fix-here|follow-up:<KEY> --source judge:<qid>|console [--attest ci-green,no-data-loss,no-weakened-guard]" >&2
+    echo "usage: cr-disposition.sh record <pr> <head-sha> <finding_id>@<finding_head> fix-here|follow-up:<KEY> --source judge:<qid>|chief [--attest ci-green,no-data-loss,no-weakened-guard]" >&2
     echo "       cr-disposition.sh check <pr> <head-sha> [--trust-path yes|no]" >&2
 }
 ATTEST_ALL="ci-green,no-data-loss,no-weakened-guard"
@@ -60,7 +60,7 @@ GH="${GH_CMD:-gh}"
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! . "$HERE/../../lib/go-gate.sh" 2>/dev/null || ! declare -F go_msg_mac >/dev/null 2>&1 \
-        || ! declare -F console_leg >/dev/null 2>&1 || ! declare -F go_trust_verdict >/dev/null 2>&1; then
+        || ! declare -F chief_worker >/dev/null 2>&1 || ! declare -F go_trust_verdict >/dev/null 2>&1; then
     echo "cr-disposition: cannot load scripts/lib/go-gate.sh" >&2
     exit 2
 fi
@@ -87,13 +87,13 @@ if [ "$VERB" = record ]; then
             *) usage; exit 2 ;;
         esac
     done
-    if console_leg; then
-        echo "cr-disposition: refusing - this is a console-spawned leg; a judge or the console records a disposition" >&2
+    if chief_worker; then
+        echo "cr-disposition: refusing - this is a chief-spawned worker; a judge or the chief records a disposition" >&2
         exit 3
     fi
     case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
         ''|0|false|off|no) ;;
-        *) echo "cr-disposition: refusing - this is a console relay; only the console records a disposition" >&2; exit 3 ;;
+        *) echo "cr-disposition: refusing - this is a chief relay; only the chief records a disposition" >&2; exit 3 ;;
     esac
     FID="${FKEY%@*}"; FHEAD="${FKEY##*@}"
     case "$FKEY" in *@*) ;; *) usage; exit 2 ;; esac
@@ -110,7 +110,7 @@ if [ "$VERB" = record ]; then
         *) usage; exit 2 ;;
     esac
     case "$SRC" in
-        console)
+        chief|console)
             SRC="console:$(printf '%s' "${CHIEF_SESSION_NAME:-${USER:-unknown}@$(hostname 2>/dev/null || uname -n)}" | tr -c 'A-Za-z0-9._@-' '_')" ;;  # swallow-ok: hostname is only a label fallback
         judge:*) go_trust_id_ok "${SRC#judge:}" || { usage; exit 2; } ;;
         *) usage; exit 2 ;;
@@ -216,7 +216,7 @@ while IFS="$TAB" read -r fid fhead sev disp src attest mac; do
     n=$((n + 1))
     why=""
     if [ "$disp" = "-" ]; then
-        why="deferred with no judge or console disposition at this head (cr-disposition.sh record)"
+        why="deferred with no judge or chief disposition at this head (cr-disposition.sh record)"
     elif ! want=$(disp_mac "$fid" "$fhead" "$disp" "$src" "$attest") || [ "$want" != "$mac" ]; then
         why="its disposition row carries no valid mac"
     elif [ "$disp" = fix-here ]; then
@@ -235,9 +235,9 @@ while IFS="$TAB" read -r fid fhead sev disp src attest mac; do
                 fi ;;
             console:*)
                 if [ "$sev" = crit ]; then
-                    why="a Critical follow-up needs a judge, not the console"
+                    why="a Critical follow-up needs a judge, not the chief"
                 elif [ "$TRUST" = yes ]; then
-                    why="an Important on a trust path PR needs the trust judge, not the console"
+                    why="an Important on a trust path PR needs the trust judge, not the chief"
                 fi ;;
             *) why="unknown source '$src'" ;;
         esac

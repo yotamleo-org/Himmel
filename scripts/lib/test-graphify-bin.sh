@@ -1802,7 +1802,7 @@ assert "update foreign non-uv: left as-is" grep -qi 'leaves it as-is' <<<"$out"
 assert "update foreign non-uv: no install call" bash -c '! grep -q "tool install" "$1"' _ "$guf_log"
 
 echo "[test-graphify-bin] _graphify_mcp_import_ok probes the ENTRYPOINT's interpreter (HIMMEL-996)"
-# A console script's shebang python is the most-specific env (covers pip/
+# A chief script's shebang python is the most-specific env (covers pip/
 # pipx foreign installs, not just the uv venv). Fake pythons: exit 0 = mcp
 # importable, exit 1 = the missing-dep defect. rc 2 = nothing resolvable.
 probe_dir="$tmpdir/mcp-probe"; mkdir -p "$probe_dir"

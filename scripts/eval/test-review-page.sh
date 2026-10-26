@@ -175,14 +175,14 @@ def row(ev, ts, m, tv=None, **kw):
     r = eval_runs.make_row(ev, "t", cfg, m, n=kw.pop("n", 1), gitsha="0" * 40, **kw)
     r["ts"] = ts
     return r
-rows = [row("leg-trajectory", "2026-10-20T00:00:00Z", {"red_before_green": 1}, tv=2),
-        row("leg-trajectory", "2026-10-21T00:00:00Z", {"red_before_green": 0}, tv=2),
-        row("leg-trajectory", "2026-10-21T01:00:00Z", {"red_before_green": None}, tv=2),
-        row("leg-trajectory", "2026-10-23T00:00:00Z", {"red_before_green": 1}, tv=2),
-        row("leg-trajectory", "2026-10-23T01:00:00Z", {"red_before_green": 1}, tv=2),
-        row("leg-trajectory", "2026-10-22T00:00:00Z", {"red_before_green": 1}, tv=2),
-        row("leg-trajectory", "2026-10-20T12:00:00Z", {"red_before_green": 0}, tv=1),
-        row("leg-trajectory", "2026-10-23T12:00:00Z", {"red_before_green": 0}, tv=1),
+rows = [row("worker-trajectory", "2026-10-20T00:00:00Z", {"red_before_green": 1}, tv=2),
+        row("worker-trajectory", "2026-10-21T00:00:00Z", {"red_before_green": 0}, tv=2),
+        row("worker-trajectory", "2026-10-21T01:00:00Z", {"red_before_green": None}, tv=2),
+        row("worker-trajectory", "2026-10-23T00:00:00Z", {"red_before_green": 1}, tv=2),
+        row("worker-trajectory", "2026-10-23T01:00:00Z", {"red_before_green": 1}, tv=2),
+        row("worker-trajectory", "2026-10-22T00:00:00Z", {"red_before_green": 1}, tv=2),
+        row("worker-trajectory", "2026-10-20T12:00:00Z", {"red_before_green": 0}, tv=1),
+        row("worker-trajectory", "2026-10-23T12:00:00Z", {"red_before_green": 0}, tv=1),
         row("friction", "2026-10-22T00:00:00Z", {"refusals": 100, "unclear": 40}),
         row("friction", "2026-10-24T12:00:00Z", {"refusals": 100, "unclear": 30}),
         row("judge-accuracy", "2026-10-24T12:00:00Z", {"model.claude-opus-5-5.n": 9, "model.sonnet.n": 1, "model.unknown.n": 4})]

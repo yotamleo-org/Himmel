@@ -20,7 +20,7 @@ mkdir -p "$T/root"
 unset OPENROUTER_API_KEY DEEPSEEK_API_KEY
 
 # Fake launcher: the doc is the 6th argv (--profile P --lane L <name> <doc> ...).
-# The two bullets are the exact lines the real native canary leg wrote (live
+# The two bullets are the exact lines the real native canary worker wrote (live
 # POC, 2026-10-11, lane-canary-native-poc1.md).
 cat > "$T/launcher.sh" <<'EOF'
 #!/usr/bin/env bash
@@ -55,21 +55,21 @@ run() { # run <mode> <timeout> [extra args...]
         bash "$RUNNER" --timeout "$to" --out "$T/report.json" "$@"
 }
 
-# T1: a leg that wraps passes, and its window is closed.
+# T1: a worker that wraps passes, and its window is closed.
 out="$(run ok 10 --lanes native)"; rc=$?
-if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "native *PASS"; then ok "T1 wrapping leg is PASS, exit 0"; else bad "T1 rc=$rc out=$out"; fi
+if [ "$rc" -eq 0 ] && printf '%s' "$out" | grep -q "native *PASS"; then ok "T1 wrapping worker is PASS, exit 0"; else bad "T1 rc=$rc out=$out"; fi
 grep -q '"native":{"result":"PASS"' "$T/report.json" 2>/dev/null && ok "T1 report.json carries PASS" || bad "T1 report: $(cat "$T/report.json" 2>/dev/null)"
 [ -s "$T/closed.log" ] && ok "T1 window closed" || bad "T1 closer not called"
 
-# T2 (control): a leg that never writes a bullet FAILs although the brief text
+# T2 (control): a worker that never writes a bullet FAILs although the brief text
 # itself names WRAPPED, and the runner wraps + closes it.
 out="$(run silent 3 --lanes native)"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "native *FAIL.*no first bullet"; then ok "T2 silent leg is FAIL (not fooled by brief text), exit 1"; else bad "T2 rc=$rc out=$out"; fi
-[ -s "$T/closed.log" ] && [ -s "$T/released.log" ] && ok "T2 timed-out leg is closed and its lock released" || bad "T2 leftovers: closed=$(cat "$T/closed.log" 2>/dev/null) released=$(cat "$T/released.log" 2>/dev/null)"
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "native *FAIL.*no first bullet"; then ok "T2 silent worker is FAIL (not fooled by brief text), exit 1"; else bad "T2 rc=$rc out=$out"; fi
+[ -s "$T/closed.log" ] && [ -s "$T/released.log" ] && ok "T2 timed-out worker is closed and its lock released" || bad "T2 leftovers: closed=$(cat "$T/closed.log" 2>/dev/null) released=$(cat "$T/released.log" 2>/dev/null)"
 
 # T3: first bullet but no WRAPPED.
 out="$(run liveonly 3 --lanes native)"; rc=$?
-if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "no WRAPPED\|but no WRAPPED"; then ok "T3 live-only leg is FAIL"; else bad "T3 rc=$rc out=$out"; fi
+if [ "$rc" -eq 1 ] && printf '%s' "$out" | grep -q "no WRAPPED\|but no WRAPPED"; then ok "T3 live-only worker is FAIL"; else bad "T3 rc=$rc out=$out"; fi
 
 # T4: launcher dies before any bullet.
 out="$(run crash 10 --lanes native)"; rc=$?
@@ -85,13 +85,13 @@ run ok 10 --lanes native,claudex >/dev/null
 if grep -q "claude-haiku-5-5" "$T/launched.log" && [ "$(grep -c -- '--lane claudex' "$T/launched.log")" -eq 1 ] && ! grep -- '--lane claudex' "$T/launched.log" | grep -q haiku; then ok "T6 cheapest model per lane"; else bad "T6 launches: $(cat "$T/launched.log")"; fi
 
 # T7: the rendered brief passes brief-lint and names no placeholder; the
-# canary leg's cwd is the repo it was given, never a worktree path. A PASS
-# prunes its files, so render through a failing leg, which keeps its doc.
+# canary worker's cwd is the repo it was given, never a worktree path. A PASS
+# prunes its files, so render through a failing worker, which keeps its doc.
 run liveonly 2 --lanes claudex >/dev/null
 doc="$(ls "$T/root"/lane-canary-claudex-*.md 2>/dev/null | head -1)"
 if [ -n "$doc" ] && bash "$REPO/scripts/handover/chief-kit/brief-lint.sh" "$doc" 2>/dev/null && ! grep -q '@[A-Z]*@' "$doc" && grep -q "^resume_cwd: $T$" "$doc"; then ok "T7 rendered brief lints and has no placeholders"; else bad "T7 doc=$doc"; fi
 
-# T8: the leg is launched from the repo it was given, not the caller's cwd.
+# T8: the worker is launched from the repo it was given, not the caller's cwd.
 if [ -s "$T/cwd.log" ] && [ "$(sort -u "$T/cwd.log")" = "$(cd "$T" && pwd -P)" ]; then ok "T8 launched from the primary repo"; else bad "T8 cwd: $(cat "$T/cwd.log" 2>/dev/null)"; fi
 
 # T9: a PASS prunes its generated files; a FAIL keeps its doc for diagnosis.

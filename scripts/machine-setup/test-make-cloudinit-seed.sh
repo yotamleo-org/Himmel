@@ -109,7 +109,7 @@ fi
 assert_not_contains "password-file run never leaks the plaintext password" "$OUT2" "$PLAIN_PASSWORD"
 
 # T2b: an empty (or whitespace-only) --password-file is rejected with rc=2
-# instead of being hashed and used to provision a blank console password.
+# instead of being hashed and used to provision a blank chief password.
 EMPTY_PW_FILE="$TMP/empty-pw.txt"
 printf '\n' > "$EMPTY_PW_FILE"
 OUT2B=$(python3 "$SCRIPT" \

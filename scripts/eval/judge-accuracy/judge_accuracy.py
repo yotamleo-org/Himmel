@@ -24,7 +24,7 @@ Join.
              GO at the same head. Each goes once to the adjudication queue; a judge-ro call
              (opus, high) rules it S / P / N with `rule`, and a ruled id is never asked again.
   procedural a NO-GO that only buys a delta round; left out of every rate.
-  overridden a NO-GO whose PR merged at that head with no GO for it: a console decision, never "wrong".
+  overridden a NO-GO whose PR merged at that head with no GO for it: a chief decision, never "wrong".
   cause      an escape through a failed main run or a main-red Bug is ci-selection, else review.
 Per class (the PR's GO records' class lines) and per model (the last GO's model): n, escapes,
 escape_rate with a Wilson 95 % interval, and escape_excess = the interval's low end minus the overall

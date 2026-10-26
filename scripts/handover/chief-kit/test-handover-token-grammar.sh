@@ -6,7 +6,7 @@
 # .gitleaks.toml passes a bucket file quoting it. Real secret shapes in a
 # bucket file still fail. A new token shape fails here, not in the vault.
 #   1. queue-lock.sh acquire (real hostname, plus stubbed odd hostnames)
-#   2. gen-briefs.py leg nonces (derived letters and --letter)
+#   2. gen-briefs.py worker nonces (derived letters and --letter)
 #   3. gen-judge-brief.py judge nonces (qids the validator accepts)
 #   4. git shas and sha256 digests (base/head shas, GO mac= lines)
 #   5. RED rows: AWS key, GitHub PAT, generic api key, grammar-prefixed secrets
@@ -40,7 +40,7 @@ fullmatch() { python3 -I -c 'import re,sys; sys.exit(0 if re.fullmatch(sys.argv[
 scan() { gitleaks dir "$1" --config "$CONFIG" --no-banner --redact --exit-code 42 >/dev/null 2>&1; }
 
 # allowed <site> <token>: the token is in the grammar and a bucket file
-# quoting it the ways legs and consoles write it scans clean.
+# quoting it the ways workers and chiefs write it scans clean.
 allowed() {
     local f="$WORK/bucket.md"
     if [ -n "$GRAMMAR" ] && fullmatch "$2"; then pass "$1: $2 is in the grammar"
@@ -75,14 +75,14 @@ for host in fv-az123-456 DESKTOP-7F3K2LQ Ubuntu_VM.local runner--x; do
     [ -n "$tok" ] && allowed "queue-lock (hostname $host)" "$tok" || fail "queue-lock minted no token for hostname $host"
 done
 
-# --- 2. gen-briefs.py leg nonces --------------------------------------------
+# --- 2. gen-briefs.py worker nonces --------------------------------------------
 printf '#!/usr/bin/env bash\necho "created worktree $1"\n' > "$WORK/wt.sh"; chmod +x "$WORK/wt.sh"
 printf '%s\n' '[{"label":"N901","keys":["HIMMEL-9001"],"slug":"plain-fix","branch":"fix/himmel-9001-plain-fix","title":"a plain fix","desc":"fix the plain thing","why":"it is broken","prior":"HIMMEL-9000 (the earlier fix). Source: `git log -3 -- scripts/x`.","scope":"`scripts/x/`","scope_short":"scripts/x","commit":"fix(x): [HIMMEL-9001] fix the plain thing"}]' > "$WORK/legs.json"
 n=0
 for letter in "" ABC; do
     n=$((n + 1)); mkdir -p "$WORK/repo$n"
     out="$(GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh" GEN_BRIEFS_NO_WT_CHECK=1 python3 "$HERE/gen-briefs.py" "$WORK/legs.json" \
-        --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console \
+        --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief \
         --bucket "$WORK/briefs$n" --date 2026-10-08 --repo "$WORK/repo$n" --handover-root "$WORK/handovers" \
         --work-dir "$WORK/w$n" --deadline 1791475000 ${letter:+--letter "$letter"} 2>/dev/null)"
     tok="$(printf '%s\n' "$out" | awk '$1 == "N901" && $2 != "worktree:" { print $2 }')"
@@ -94,7 +94,7 @@ n=0
 for qid_letter in j2599a: HIMMEL-4999: J12_tune: jX3206m: J12A: legN9b: j2599a:ABC; do
     n=$((n + 1)); qid="${qid_letter%%:*}"; letter="${qid_letter#*:}"
     printf '{"qid": "%s", "ticket": "HIMMEL-3746", "pr": 2599, "head": "0123456789abcdef0123456789abcdef01234567", "question": "Is it?", "reason": "a dispute", "prior": "HIMMEL-3254. Source: qmd.", "tier": {"category": "design", "reason": "a design call"}}\n' "$qid" > "$WORK/spec$n.json"
-    out="$(python3 "$HERE/gen-judge-brief.py" "$WORK/spec$n.json" --console HIMMEL-nextleg-2026-10-13Z-roadmap-console \
+    out="$(python3 "$HERE/gen-judge-brief.py" "$WORK/spec$n.json" --chief HIMMEL-nextleg-2026-10-13Z-roadmap-chief \
         --bucket "$WORK/judge$n" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" \
         ${letter:+--letter "$letter"} 2>/dev/null)"
     tok="$(printf '%s\n' "$out" | awk -v q="$qid" '$1 == q { print $2 }')"
@@ -105,7 +105,7 @@ done
 allowed "git commit sha" "$(git -C "$ROOT" rev-parse HEAD)"
 allowed "sha256 digest (GO mac= line)" "$(printf 'go' | sha256sum | cut -d' ' -f1)"
 allowed "legacy 6-hex RETASK nonce" "Y-N204-a68d71"
-allowed "fresh-leg recovery nonce" "V-N236b-1d281f74"
+allowed "fresh-worker recovery nonce" "V-N236b-1d281f74"
 # Copied from the live handover corpus (yotamleo/himmel/resume-himmelctl-A-close-5.md):
 # a one-segment station hostname, which the old two-segment lock-token rule missed.
 allowed "release token from the yotamasus station" "yotamasus-pid11439"
@@ -139,7 +139,7 @@ for t in "S-N2802-7023775e$gen" "ab-$gen-pid1" "$aws" "$pat" "S-$gen-abcd" "Z-$s
 done
 # the judge-brief qid validator refuses the same label-slot secret
 printf '{"qid": "%s", "ticket": "HIMMEL-3746", "pr": 2599, "head": "0123456789abcdef0123456789abcdef01234567", "question": "Is it?", "reason": "a dispute", "prior": "HIMMEL-3254. Source: qmd.", "tier": {"category": "design", "reason": "a design call"}}\n' "$gen" > "$WORK/spec-secret.json"
-err="$(python3 "$HERE/gen-judge-brief.py" "$WORK/spec-secret.json" --console HIMMEL-nextleg-2026-10-13Z-roadmap-console \
+err="$(python3 "$HERE/gen-judge-brief.py" "$WORK/spec-secret.json" --chief HIMMEL-nextleg-2026-10-13Z-roadmap-chief \
     --bucket "$WORK/judge-secret" --date 2026-10-13 --handover-root "$WORK/handovers" --scratch-root "$WORK/verdicts" 2>&1 >/dev/null)"
 case "$err" in *"qid '$gen' must be"*) pass "RED gen-judge-brief refuses a high-entropy qid" ;;
     *) fail "RED gen-judge-brief did not refuse the high-entropy qid (stderr: ${err:-none})" ;; esac

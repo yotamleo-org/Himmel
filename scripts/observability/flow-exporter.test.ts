@@ -880,7 +880,7 @@ test("HIMMEL-2211: defaultPidLiveness (win32) self-pid sentinel — a PARTIAL pa
     // incomplete — every candidate must report alive.
     Bun.spawnSync = (() => ({
       exitCode: 0,
-      stdout: Buffer.from('"System Idle Process","0","Services","0","8 K"\r\n"node.exe","10","Console","1","12,345 K"\r\n"node.exe","30","Console","1","6,789 K"\r\n'),
+      stdout: Buffer.from('"System Idle Process","0","Services","0","8 K"\r\n"node.exe","10","Chief","1","12,345 K"\r\n"node.exe","30","Chief","1","6,789 K"\r\n'),
     })) as typeof Bun.spawnSync;
     const partial = defaultPidLiveness([10, 20, 30], "win32");
     expect(partial.has(10)).toBe(true);
@@ -899,7 +899,7 @@ test("HIMMEL-2211: defaultPidLiveness (win32) — a COMPLETE snapshot (contains 
     // liveness detection still downgrades the pid tasklist doesn't list.
     Bun.spawnSync = (() => ({
       exitCode: 0,
-      stdout: Buffer.from(`"System Idle Process","0","Services","0","8 K"\r\n"node.exe","10","Console","1","12,345 K"\r\n"node.exe","30","Console","1","6,789 K"\r\n"bun.exe","${process.pid}","Console","1","1,234 K"\r\n`),
+      stdout: Buffer.from(`"System Idle Process","0","Services","0","8 K"\r\n"node.exe","10","Chief","1","12,345 K"\r\n"node.exe","30","Chief","1","6,789 K"\r\n"bun.exe","${process.pid}","Chief","1","1,234 K"\r\n`),
     })) as typeof Bun.spawnSync;
     const complete = defaultPidLiveness([10, 20, 30], "win32");
     expect(complete.has(10)).toBe(true);
@@ -2194,8 +2194,8 @@ test("eval-runs observational rows export values but no baseline delta or regres
   writeFileSync(thresholds, JSON.stringify({ "leg-trajectory": { fail_denied: { higher_is_better: false, band: 0 } } }));
   const ledger = join(tmp, "eval-runs.jsonl");
   writeFileSync(ledger, [
-    evalRow({ run_id: "s1", eval: "leg-trajectory", confighash: "dddd", ts: "2026-07-10T00:00:00Z", metrics: { fail_denied: 1 }, meta: { observational: true } }),
-    evalRow({ run_id: "s2", eval: "leg-trajectory", confighash: "dddd", ts: "2026-07-12T00:00:00Z", metrics: { fail_denied: 9 }, meta: { observational: true } }),
+    evalRow({ run_id: "s1", eval: "worker-trajectory", confighash: "dddd", ts: "2026-07-10T00:00:00Z", metrics: { fail_denied: 1 }, meta: { observational: true } }),
+    evalRow({ run_id: "s2", eval: "worker-trajectory", confighash: "dddd", ts: "2026-07-12T00:00:00Z", metrics: { fail_denied: 9 }, meta: { observational: true } }),
     evalRow({ run_id: "a1", ts: "2026-07-10T00:00:00Z", metrics: { accept_rate: 0.8 } }),
     evalRow({ run_id: "a2", ts: "2026-07-12T00:00:00Z", metrics: { accept_rate: 0.5 } }),
   ].join("\n") + "\n");
@@ -2209,10 +2209,10 @@ test("eval-runs observational rows export values but no baseline delta or regres
     evalRunsLedgerPath: ledger,
     evalThresholdsPath: thresholds,
   });
-  expect(body).toContain('himmel_eval_metric_value{eval="leg-trajectory",metric="fail_denied"} 9');
-  expect(body).toContain('himmel_eval_last_run_ok{eval="leg-trajectory"} 1');
-  expect(body).not.toContain('himmel_eval_metric_baseline_delta{eval="leg-trajectory"');
-  expect(body).not.toContain('himmel_eval_metric_regression{eval="leg-trajectory"');
+  expect(body).toContain('himmel_eval_metric_value{eval="worker-trajectory",metric="fail_denied"} 9');
+  expect(body).toContain('himmel_eval_last_run_ok{eval="worker-trajectory"} 1');
+  expect(body).not.toContain('himmel_eval_metric_baseline_delta{eval="worker-trajectory"');
+  expect(body).not.toContain('himmel_eval_metric_regression{eval="worker-trajectory"');
   // a controlled eval beside it keeps its delta
   expect(body).toContain('himmel_eval_metric_baseline_delta{eval="lane-quality",metric="accept_rate"} -0.3');
 });

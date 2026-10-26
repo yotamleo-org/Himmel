@@ -35,7 +35,7 @@ outside the tree.
 - A session whose title contains `console` is kind `console`; `judge` is kind
   `judge`; everything else is `leg`.
 - A chief spans many tickets, so its title does not name one. Chief
-  sessions with no `KEY-n` prefix go to the pseudo-ticket `_console` as a pool,
+  sessions with no `KEY-n` prefix go to the pseudo-ticket `_chief` as a pool,
   **with no allocation to tickets** (an allocation rule would change every
   ticket's record whenever the range changes). Sessions with no key and no
   `console` go to `_unattributed`. A chief titled with a ticket key stays
@@ -46,8 +46,8 @@ outside the tree.
 | Field | Meaning |
 |---|---|
 | `schema` | `1` |
-| `ticket` | `KEY-n`, `_console` or `_unattributed` |
-| `legs[]` | per session: `name`, `kind`, `turns`, `input`, `cache_read`, `cache_create`, `output`, `sub_*` (same five for its subagents) |
+| `ticket` | `KEY-n`, `_chief` or `_unattributed` |
+| `workers[]` | per session: `name`, `kind`, `turns`, `input`, `cache_read`, `cache_create`, `output`, `sub_*` (same five for its subagents) |
 | `totals.leg`, `totals.console`, `totals.judge` | the same ten counters summed per kind, as separate fields |
 | `cr` | `rounds` (distinct reviewed heads), `findings` (count by final verdict after amends; `open` when none), `est_tokens` (the ledger's estimated critic tokens) |
 | `digest` | sha256 of the record without this field |
@@ -59,7 +59,7 @@ Numbers and ids only: the store never holds message text.
 Opt-in: without `--repo` records carry no `pr`/`ci` and nothing calls gh. The
 repo is never inferred from the cwd; every call is `gh ... -R OWNER/NAME`. `--gh`
 is ONE executable path (default `gh`; a path with a space works, arguments do
-not). Real tickets only; `_console` and `_unattributed` get no `pr`/`ci`.
+not). Real tickets only; `_chief` and `_unattributed` get no `pr`/`ci`.
 
 | Field | Values |
 |---|---|
@@ -107,7 +107,7 @@ for token questions, not for a stored record you mean to compare across runs.
 A whole compute-then-append run holds a `<store>/.lock` directory, so an older
 snapshot never publishes after a newer one. Table parsing assumes session
 titles contain no ` | `. Sessions are keyed by title, so distinct sessions
-sharing a title merge into one `legs[]` entry. Judge subagents are counted as
+sharing a title merge into one `workers[]` entry. Judge subagents are counted as
 `judge`-titled sessions only. An explicit `--projects` or `--ledger` that is
 missing or unreadable exits non-zero before anything is written; the default
 projects dir and default ledger may be absent (a note on stderr, treated as

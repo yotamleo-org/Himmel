@@ -4,7 +4,7 @@
 # `sha256sum` is a GNU coreutil: stock macOS has neither `sha256sum` nor
 # `gsha256sum` (brew's coreutils installs the latter under `g`-prefixes, but
 # `shasum -a 256` ships on every macOS by default, so it is the fallback, not
-# a third resolver leg). Sourcing this sets:
+# a third resolver worker). Sourcing this sets:
 #
 #   _SHA256_CMD  the resolved hasher invocation ("sha256sum" or
 #                "shasum -a 256"); EMPTY when neither is on PATH.

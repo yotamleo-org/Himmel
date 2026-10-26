@@ -13,7 +13,7 @@ calibration: HIMMEL-3992 (variant B). Every number lives in
 
 **Status: PILOT-MEASURE** (`docs/tool-adoption/rubric.md`, measure-during
 protocol). The estimate is recorded at dispatch, the actual comes from the PR
-body's `leg-burn: ... cost-eq=`. Adopt only at n >= 60 shipped-ticket pairs AND
+body's `worker-burn: ... cost-eq=`. Adopt only at n >= 60 shipped-ticket pairs AND
 two versions shipped under the model; the KPI is outcome per version (within one
 usage window, no mid-version replan, P90 not exceeded), not a lower fitted sigma. Until
 then treat sigma as a floor: the calibration set was 24 merged tickets and

@@ -2,7 +2,7 @@
 // while the page is open (a live stream over the real SSE path). Needs agui-web/dist
 // (`cd scripts/config-ui/agui-web && bun install && bun run build`); skipped, loudly, when absent.
 import { test, expect } from "@playwright/test";
-import { CLOUD, FLEET, PRIOR_CONSOLE } from "../agui-fleet-fixture";
+import { CLOUD, FLEET, PRIOR_CHIEF } from "../agui-fleet-fixture";
 import { aguiBuilt, bootAgui, denseRun, J, play, type AguiHarness } from "./agui-fixtures";
 import { shortName } from "../../agui-web/src/fleet-model";
 import type { Page } from "@playwright/test";
@@ -111,7 +111,7 @@ for (const scheme of ["dark", "light"] as const) {
   }
 }
 
-// the leg's /pr-check round with a critic subagent (SCENE), its transcript in a separate file.
+// the worker's /pr-check round with a critic subagent (SCENE), its transcript in a separate file.
 // Steps are a few ms apart so the server's timestamp merge interleaves the two files as they were written.
 const spaced = (h: AguiHarness) => play(h, undefined, () => new Promise((r) => setTimeout(r, 15)));
 
@@ -126,7 +126,7 @@ test("4. each agent is named with its role and model, its work under its name, a
   await expect(agents.nth(0)).toContainText("worker session · opus 5.5");
   await expect(agents.nth(1)).toContainText("correctness critic");
   await expect(agents.nth(1)).toContainText("judge · sonnet 5.5");
-  // the critic's Read sits in a block headed by the critic, one step in; the leg's calls do not
+  // the critic's Read sits in a block headed by the critic, one step in; the worker's calls do not
   const critic = page.locator(".block.sub", { hasText: "correctness critic" });
   await critic.locator(".fold-head").click();
   await expect(critic.locator(".call", { hasText: "Read" })).toBeVisible();
@@ -203,7 +203,7 @@ test("8. a running subagent shows running with its current call, then flips to d
   h.append(J.tool("toolu_agent", "Agent", { description: "diff critic", subagent_type: "judge", prompt: "Read check-ci.sh" }));
   h.appendSub("b4d2f1", J.prompt("Read check-ci.sh", sub));
   h.appendSub("b4d2f1", J.tool("toolu_r", "Read", { file_path: "scripts/check-ci.sh" }, sub));
-  // by its name: the leg's own row also names the critic, in the Agent call it is running
+  // by its name: the worker's own row also names the critic, in the Agent call it is running
   const critic = page.locator(".agents li", { has: page.locator(".agent-name", { hasText: "diff critic" }) });
   await expect(critic.locator(".agent-state")).toHaveText("running");
   await expect(critic.locator(".agent-now")).toContainText("Read scripts/check-ci.sh");
@@ -248,7 +248,7 @@ test("8b. a running subagent is listed in the Now panel; once finished its block
 });
 
 // `himmelctl ui --agui` with no session id opens the fleet landing over the fixture fleet (3 live +
-// 1 wrapped); the wrapped leg sits in the closed section, never in the live list; a row opens its run's stream.
+// 1 wrapped); the wrapped worker sits in the closed section, never in the live list; a row opens its run's stream.
 test("archived and released consoles show zero live sessions", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
   await page.route("**/api/agui/fleet", async (route) => {
@@ -256,15 +256,15 @@ test("archived and released consoles show zero live sessions", async ({ page }) 
     const fleet = await response.json();
     const console = fleet.sessions.find((r: any) => r.role === "console");
     fleet.sessions = [
-      { ...console, name: "archived-console", console: "archived-console", live: false, state: "unknown" },
-      { ...console, name: "released-console", console: "released-console", lock: "released" },
+      { ...console, name: "archived-chief", console: "archived-chief", live: false, state: "unknown" },
+      { ...console, name: "released-chief", console: "released-chief", lock: "released" },
     ];
     await route.fulfill({ response, json: fleet });
   });
   await page.goto(h.url);
   await expect(page.locator(".top .meta")).toContainText("0 running");
   await expect(page.getByText(/^No running sessions\. 2 finished below\.$/)).toBeVisible();
-  // both consoles sit in the Finished section, closed by default.
+  // both chiefs sit in the Finished section, closed by default.
   const finished = page.locator("details.fleet-closed");
   await expect(finished).not.toHaveAttribute("open", "");
   await expect(finished.locator(".fleet-finished .fleet-row")).toHaveCount(2);
@@ -276,7 +276,7 @@ test("a wrapped session with no console retains a collapsed sidebar drill-in", a
     const response = await route.fetch();
     const fleet = await response.json();
     const wrapped = fleet.sessions.find((r: any) => r.state === "wrapped");
-    fleet.sessions = [{ ...wrapped, console: "gone-console", parent: "gone-console" }];
+    fleet.sessions = [{ ...wrapped, console: "gone-chief", parent: "gone-chief" }];
     await route.fulfill({ response, json: fleet });
   });
   await page.goto(h.url);
@@ -309,11 +309,11 @@ test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row op
   await expect(leg.locator(".state")).toHaveText("running");
   await expect(card(page, FLEET.idle.name).locator(".state")).toHaveText("idle");
   await expect(live.filter({ has: page.locator(`[title="${FLEET.wrapped.name}"]`) })).toHaveCount(0);
-  // the leg sits in its console's subtree; each row says where it hangs and what it has spent.
+  // the worker sits in its chief's subtree; each row says where it hangs and what it has spent.
   await expect(page.getByRole("list", { name: `Under ${FLEET.console.name}` }).locator(".fleet-row")).toHaveText([new RegExp(shortName(FLEET.leg.name))]);
   await expect(leg.locator(".fleet-lineage .fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(FLEET.leg.name)}`);
   await expect(live.nth(0).locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)}`);
-  await expect(live.nth(0).locator(".fleet-succession")).toHaveText(`succeeds ${shortName(PRIOR_CONSOLE)} (not live)`);
+  await expect(live.nth(0).locator(".fleet-succession")).toHaveText(`succeeds ${shortName(PRIOR_CHIEF)} (not live)`);
   await expect(leg.locator(".fleet-context")).toHaveText("context 20% of 200.0k");
   await expect(leg.locator(".fleet-usage")).toHaveText("context 20% of 200.0k (autocompact) · 3 calls · in 30 · out 300 · cache read 120.0k · cache write 0 · cost-eq 13.5k");
   await expect(leg.locator(".fleet-agent")).toHaveCount(1);
@@ -335,7 +335,7 @@ test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row op
   await expect(page.locator(".call", { hasText: "Push" })).toBeVisible();
 });
 
-// one app across two documents. The console's rail reaches the fleet, a fleet row reaches its run view,
+// one app across two documents. The chief's rail reaches the fleet, a fleet row reaches its run view,
 // the rail there reaches back to Config and Health, and the token never rides a request line.
 test("10. console to Fleet to a run view and back: one rail, the token in the fragment only", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
@@ -379,10 +379,10 @@ test("10. console to Fleet to a run view and back: one rail, the token in the fr
   for (const u of lines) expect(new URL(u).pathname + new URL(u).search).not.toContain(tok);
 });
 
-// a lineage link reveals its target even when the target's console group is collapsed.
+// a lineage link reveals its target even when the target's chief group is collapsed.
 test("a succession link opens the collapsed console group it points into", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
-  const next = "HIMMEL-nextleg-2026-10-07ZZZ-roadmap-console";
+  const next = "HIMMEL-nextleg-2026-10-07ZZZ-roadmap-chief";
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
@@ -391,7 +391,7 @@ test("a succession link opens the collapsed console group it points into", async
     await route.fulfill({ response, json: body });
   });
   await page.goto(h.url);
-  const group = page.locator(`details.fleet-console[aria-label="${next}"]`);
+  const group = page.locator(`details.fleet-chief[aria-label="${next}"]`);
   await group.locator("> summary").click();
   await expect(group).not.toHaveAttribute("open", "");
   await expand(page, FLEET.console.name);
@@ -407,7 +407,7 @@ test("orphans section, and a lane filter that narrows the page and is kept", asy
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
-    Object.assign(body.sessions.find((r: any) => r.name === FLEET.leg.name), { console: "gone-console", parent: "gone-console" });
+    Object.assign(body.sessions.find((r: any) => r.name === FLEET.leg.name), { console: "gone-chief", parent: "gone-chief" });
     body.processOrphans = [{ pid: 4242, owner: "orphan", ageMin: 95 }];
     await route.fulfill({ response, json: body });
   });
@@ -431,9 +431,9 @@ test("orphans section, and a lane filter that narrows the page and is kept", asy
   await expect(page.locator(".fleet .fleet-row:not(.finished)")).toHaveCount(2);
 });
 
-test("12. two-console side menu, deep-linked page, and identical menu/row drill-in", async ({ page }) => {
+test("12. two-chief side menu, deep-linked page, and identical menu/row drill-in", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
-  const other = "HIMMEL-project-console";
+  const other = "HIMMEL-project-chief";
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
@@ -445,13 +445,13 @@ test("12. two-console side menu, deep-linked page, and identical menu/row drill-
   });
   await page.goto(`${h.url}&console=${other}`);
   await expect(page.locator(".top .run")).toHaveText(other);
-  await expect(page.locator(".fleet-console h2")).toHaveText(other);
+  await expect(page.locator(".fleet-chief h2")).toHaveText(other);
   await expect(page.locator(".fleet")).toContainText(FLEET.idle.name);
   await expect(page.locator(".fleet")).not.toContainText(FLEET.leg.name);
   const menu = page.getByRole("navigation", { name: "Supervisor sessions" });
-  await expect(menu.locator("a.console-page")).toHaveCount(2);
-  await menu.locator("a.console-page", { hasText: FLEET.console.name }).click();
-  await expect(page.locator(".fleet-console h2")).toHaveText(FLEET.console.name);
+  await expect(menu.locator("a.chief-page")).toHaveCount(2);
+  await menu.locator("a.chief-page", { hasText: FLEET.console.name }).click();
+  await expect(page.locator(".fleet-chief h2")).toHaveText(FLEET.console.name);
   const leg = card(page, FLEET.leg.name);
   const rowHref = await leg.locator("a.fleet-head").getAttribute("href");
   const menuLeg = menu.getByRole("link", { name: FLEET.leg.name, exact: true });
@@ -463,7 +463,7 @@ test("12. two-console side menu, deep-linked page, and identical menu/row drill-
   await expect(page.locator(".top .run")).toHaveText(`run ${FLEET.console.run}`);
 });
 
-// a cloud session is a node under its console with its shepherd leg under it; it links its session,
+// a cloud session is a node under its chief with its shepherd worker under it; it links its session,
 // says its phase, and says its tokens are not measured (never a zero). A merged one sits with the wrapped.
 test("11. cloud sessions: a node under the console, its shepherd under it, tokens not measured", async ({ page }) => {
   h = await bootAgui("", { fleet: true, cloud: true });
@@ -493,7 +493,7 @@ test("11. cloud sessions: a node under the console, its shepherd under it, token
   await expect(page.getByRole("list", { name: "Finished sessions" }).locator('[id="fleet-cloud-HIMMEL-907"] .fleet-meta')).toHaveText("PR merged · PR 1907");
 });
 
-// the console board: the leg card's goal cell, the Trends cost chart and the stage-dot drawer, measured in a real render.
+// the chief board: the worker card's goal cell, the Trends cost chart and the stage-dot drawer, measured in a real render.
 for (const [width, tallest] of [[1280, 120], [390, 180]] as const) {
   test(`13. the leg card's goal cell is wide, whole and inside its card at ${width}px`, async ({ page }) => {
     h = await bootAgui("", { fleet: true });
@@ -583,7 +583,7 @@ test("J2. the AG-UI rail's Docs link opens the public site in a new tab, no sess
 
 // beside the fixture's chief and worker: a second worker waiting for GO with two subagents, and a judge, both under the
 // chief. Each row's usage is distinct per column (priced with lane.ts's weights), so a dropped or swapped column shows.
-const WORKER2 = "HIMMEL-902-N9002-second-leg-2026-10-07", JUDGE = "HIMMEL-901-J9001-judge-2026-10-07";
+const WORKER2 = "HIMMEL-902-N9002-second-worker-2026-10-07", JUDGE = "HIMMEL-901-J9001-judge-2026-10-07";
 const usage = (calls: number, input: number, output: number, cacheRead: number, cacheCreate: number, ceiling: number, ceilingFrom: string, fill: number, costEq: number | null) =>
   ({ calls, input, output, cacheRead, cacheCreate, costEq, resident: Math.round((fill / 100) * ceiling), ceiling, ceilingFrom, fill });
 async function withTeam(page: Page) {
@@ -607,7 +607,7 @@ test("16. the tree under the operator: the chief, its two workers and its judge,
   h = await bootAgui("", { fleet: true });
   await withTeam(page);
   await page.goto(h.url);
-  const tree = page.locator(`details.fleet-console[aria-label="${FLEET.console.name}"] > .fleet-tree`);
+  const tree = page.locator(`details.fleet-chief[aria-label="${FLEET.console.name}"] > .fleet-tree`);
   await expect(tree.locator("> li > .fleet-row .fleet-line .fleet-name")).toHaveText(shortName(FLEET.console.name));
   // siblings by state: running, then waiting for GO, then idle.
   await expect(page.getByRole("list", { name: `Under ${FLEET.console.name}` }).locator("> li > .fleet-row > .fleet-line .fleet-name"))
@@ -617,7 +617,7 @@ test("16. the tree under the operator: the chief, its two workers and its judge,
     await expect(card(page, name).locator(".fleet-graph")).toHaveText(`operator › ${shortName(FLEET.console.name)} › ${shortName(name)}`);
   await expect(card(page, JUDGE).locator(".fleet-role")).toHaveText("judge · opus · native usage budget");
 
-  // a subagent is an entry in its session's row; its calls count in that row (the leg's two main-thread calls and its subagent's one).
+  // a subagent is an entry in its session's row; its calls count in that row (the worker's two main-thread calls and its subagent's one).
   await expect(card(page, FLEET.leg.name).locator(".fleet-agent")).toHaveText(["subagent: census critic (running)"]);
   await expect(card(page, FLEET.leg.name).locator(".fleet-usage")).toContainText(" · 3 calls · ");
   await expect(card(page, WORKER2).locator(".fleet-agent")).toHaveText(["judge: correctness critic (done)", "Explore: diff reader (running)"]);
@@ -640,7 +640,7 @@ test("16. the tree under the operator: the chief, its two workers and its judge,
 // the successor's "succeeds" link is live too: it jumps back to the chief it replaced.
 test("17. a live successor chief links back to its predecessor's row, and the predecessor names both sides", async ({ page }) => {
   h = await bootAgui("", { fleet: true });
-  const next = "HIMMEL-nextleg-2026-10-07ZZZ-roadmap-console";
+  const next = "HIMMEL-nextleg-2026-10-07ZZZ-roadmap-chief";
   await page.route("**/api/agui/fleet", async (route) => {
     const response = await route.fetch();
     const body = await response.json();
@@ -651,7 +651,7 @@ test("17. a live successor chief links back to its predecessor's row, and the pr
   await page.goto(h.url);
   await expand(page, next);
   await expand(page, FLEET.console.name);
-  await expect(card(page, FLEET.console.name).locator(".fleet-succession")).toHaveText(`succeeds ${shortName(PRIOR_CONSOLE)} (not live) · succeeded by ${shortName(next)}`);
+  await expect(card(page, FLEET.console.name).locator(".fleet-succession")).toHaveText(`succeeds ${shortName(PRIOR_CHIEF)} (not live) · succeeded by ${shortName(next)}`);
   const back = card(page, next).locator(".fleet-succession");
   await expect(back).toHaveText(`succeeds ${shortName(FLEET.console.name)}`);
   await back.locator(".fleet-rel").click();

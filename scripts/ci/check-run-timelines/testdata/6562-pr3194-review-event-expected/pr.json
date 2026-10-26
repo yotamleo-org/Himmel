@@ -4,5 +4,5 @@
   "baseRefName": "main",
   "mergeStateStatus": "BLOCKED",
   "reviewDecision": null,
-  "source": "HIMMEL-6562: codeowner-review-gate Expected, PR BLOCKED until the console re-ran the cancelled pull_request run"
+  "source": "HIMMEL-6562: codeowner-review-gate Expected, PR BLOCKED until the chief re-ran the cancelled pull_request run"
 }

@@ -3,7 +3,7 @@
 # One extended regex (grep -E) per line, matched against every path a PR
 # changes — both the new filename and, for a rename, the previous one. A PR
 # touching ANY match cannot merge through scripts/handover/merge-on-green.sh
-# without a trust-reviewed console GO (chief-kit/go.sh --trust-reviewed).
+# without a trust-reviewed chief GO (chief-kit/go.sh --trust-reviewed).
 #
 # merge-on-green reads THIS FILE FROM THE REPO'S DEFAULT BRANCH via the GitHub
 # API (never the PR head, the worktree or a local ref), so a PR that edits it
@@ -48,7 +48,7 @@
 ^scripts/hooks/test-(check-(commit-msg|cr-|security-reviewed|platforms-tested|push-target|no-force-push|main-ref|merged-branch|pr-mergeable|single-writer|pr-lane|worktree-isolation|hookspath|lockfile|settings-portability|fail-open|trust-suites|guardrail)|trigger-cr-on-|install-(single-writer-floor|main-ref-transaction|cr-pre-push-legacy)).*\.sh$
 # RED suites for the integrity launcher and its canonical/plugin wiring.
 ^scripts/hooks/test-(hook-rewrite-integrity|launcher-lifecycle-integrity|plugin-hook-bash-wiring|wired-hooks-integrity-resolution)\.sh$
-# Verdict, GO and leg-launch authority in the kit.
+# Verdict, GO and worker-launch authority in the kit.
 ^scripts/handover/(console|chief)-kit/(verdict-go|write-verdict|delta-class|ready-check|ready-go|judge-ladder|himmel-gate|grant-round|leg-pretrust|worker-pretrust|headed-arm-leg|headed-arm-worker|close-wrapped-leg|close-wrapped-worker|wrap-merged|bucket-gitleaks|leg-doc-lock|worker-doc-lock|leg-jira-status|worker-jira-status|run-suite|launch-cloud|succession-tracker|compacted-check|consult-relay|brief-lint|ack-denial|denial-ack-lib|cr-disposition)\.
 # The review gate's verdict writers and deciders.
 ^scripts/cr/(write-verdicts|ledger-append|d1-verdict|triviality-gate|known-findings|residue-scan|orphan-check|review-round|base-resolver|install-cr-gate|cr-pending-audit|cr-reset|pr-check-|emit-gate-fail|failure-classify|lane-classify|handover-bridge|claude-floor|critics\.json|file-deferred-issues|live-gate-e2e)

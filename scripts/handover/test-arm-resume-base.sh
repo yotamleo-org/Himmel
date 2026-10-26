@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-arm-resume-base.sh — base verification arm guard.
 #
-# Console ruling 66: a leg must not be armed on a fence whose merged PRs
+# Chief ruling 66: a worker must not be armed on a fence whose merged PRs
 # still have a pending or red after-report. arm-resume.sh reads the
 # handover's own `fence:` frontmatter key and, when present, shells out to
 # scripts/chief/base-status.sh (through the REAL production script — it

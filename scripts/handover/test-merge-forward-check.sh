@@ -152,15 +152,15 @@ run "PR job 01 vs base job 1: REFUSE (string compare)" 1 'REFUSE.*01'
 # the merge-base run was cancelled (a newer merge replaced the pending
 # sweep), so the verdict comes from the next completed sweep covering it. History
 # P -- S -- C -- T on main: P the previous completed sweep, S the merge-base
-# (cancelled run), C the covering sweep, T the tip; HEAD is a leg branch off S.
+# (cancelled run), C the covering sweep, T the tip; HEAD is a worker branch off S.
 git init -q --bare -b main "$tmp/cov-origin.git"
 git init -q -b main "$tmp/cov"
 cc() { git -C "$tmp/cov" -c user.name=t -c user.email=t@t commit -q --allow-empty -m "$1"; git -C "$tmp/cov" rev-parse HEAD; }
 CP="$(cc p)"; CS="$(cc s)"; CC="$(cc c)"; CT="$(cc t)"
 git -C "$tmp/cov" remote add origin "$tmp/cov-origin.git"
 git -C "$tmp/cov" push -q origin main 2>/dev/null
-git -C "$tmp/cov" checkout -q -b leg "$CS"
-CH="$(cc leg)"
+git -C "$tmp/cov" checkout -q -b worker "$CS"
+CH="$(cc worker)"
 # runcov <desc> <rc> <ere> [args] -- the cov repo, valid sha flags for S and T
 runcov() {
   local d="$1" want="$2" re="$3" out rc
@@ -188,7 +188,7 @@ runcov "cancelled merge-base run, no covering sweep given: REFUSE" 1 'REFUSE.*no
 # main CI is a cron, so the latest completed run is behind the tip and the covering run may be it
 runcov "latest run is the covering run, behind the tip: ALLOW" 0 "ALLOW.*covering main run at $CC" \
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP" --latest-sha "$CC"
-runcov "latest run resolves and descends from the base but is OFF origin/main (the leg's own commit): REFUSE" 1 'REFUSE.*not on origin/main' \
+runcov "latest run resolves and descends from the base but is OFF origin/main (the worker's own commit): REFUSE" 1 'REFUSE.*not on origin/main' \
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP" --latest-sha "$CH"
 runcov "latest run predates the covering run: REFUSE" 1 'REFUSE.*does not descend.*'"$CC" \
   --base-cover "$tmp/cover" --base-cover-conclusion failure --base-cover-sha "$CC" --base-cover-from "$CP" --latest-sha "$CS"

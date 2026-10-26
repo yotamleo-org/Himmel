@@ -38,14 +38,14 @@
 // dispatch id and session id. The verifier needs only the public key, so the
 // gate holds no secret: moving the private key to another uid later changes
 // the signer alone.
-// ponytail: the signer runs as the authoring leg's uid, so any same-uid
+// ponytail: the signer runs as the authoring worker's uid, so any same-uid
 // process can still stamp a forged artifact: run `sign` with a registry row it
 // wrote itself, read signing.key, or replace the key pair. The stamp stops the
 // hand-written artifact (correct hash, invented session id); it is not
-// cryptographically out of a same-uid leg's reach. `sign` checking the
+// cryptographically out of a same-uid worker's reach. `sign` checking the
 // registry row and block-read-secrets.sh refusing Read/cat of *.key catch the
 // accidental path, not a determined one. The real fix is a signer running as
-// a SEPARATE uid that legs cannot become; the gate side needs no change then.
+// a SEPARATE uid that workers cannot become; the gate side needs no change then.
 import { spawnSync } from "node:child_process";
 import crypto from "node:crypto";
 import fs from "node:fs";
@@ -164,7 +164,7 @@ function snapshot(head, dest) {
     }
 }
 
-// init-key — the OPERATOR's one-time provisioning step (never run by a leg or
+// init-key — the OPERATOR's one-time provisioning step (never run by a worker or
 // a test against the real key dir). Idempotent: an existing key pair is left
 // untouched, never overwritten.
 function initKey() {

@@ -296,8 +296,8 @@ catch (e) { console.log('threw: ' + e.message); }")
 case "$broken" in threw:*broken\ link*) ok "criterion 2: a broken link fails the build ($broken)" ;; *) ko "criterion 2: a broken link fails the build (got: $broken)" ;; esac
 
 # --- criterion 3: bare <placeholder> stays visible text
-check "criterion 3: bare <name> renders as visible text" grep -qE 'Console (&#x3C;|&lt;)name(>|&gt;) is live' "$(route_of telegram-bridge.md)"
-check "criterion 3: no <name> element swallowed into the DOM" absent 'Console <name>' "$(route_of telegram-bridge.md)"
+check "criterion 3: bare <name> renders as visible text" grep -qE 'Chief (&#x3C;|&lt;)name(>|&gt;) is live' "$(route_of telegram-bridge.md)"
+check "criterion 3: no <name> element swallowed into the DOM" absent 'Chief <name>' "$(route_of telegram-bridge.md)"
 
 # --- criterion 4: every diagram block reaches its page, pele draws them + byte-identical standalone HTML
 diagram_pages=0

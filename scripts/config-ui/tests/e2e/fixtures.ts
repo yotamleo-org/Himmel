@@ -63,7 +63,7 @@ export function buildFeed(v: Variant = {}) {
 
 export type Alert = { labels: Record<string, string>; annotations: Record<string, string> };
 // Seams. ledger: rows written to $HOME/.himmel/cadence-ledger.jsonl. handover: a temp root
-// with one fleet manifest + one leg doc ending in the given bullet. prom: a loopback stub of /api/v1/alerts
+// with one fleet manifest + one worker doc ending in the given bullet. prom: a loopback stub of /api/v1/alerts
 // (absent: an unused port, so Prometheus is refused). feedDelayMs: the feed stub sleeps before answering.
 // tracker: the source Roadmap and Kanban read. "jira" (default) seeds a one-ticket Jira mirror, "github" a gh stub answering fake
 // issues, "local" and "none" neither; TRACKER is always set so the operator's own git config never decides.
@@ -92,10 +92,10 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
   writeFileSync(argv, "");
   const ledger = join(home, ".himmel", "cadence-ledger.jsonl");
   if (o.ledger) writeRows(ledger, o.ledger);
-  // HANDOVER_DIR always names a temp root: legs.sh falls back to the primary checkout's .env (the real luna root) when it is unset.
-  const hroot = join(dir, "handover"), legDoc = join(hroot, "himmel", "HIMMEL-9999-N1-e2e-leg-RESUME.md");
+  // HANDOVER_DIR always names a temp root: workers.sh falls back to the primary checkout's .env (the real luna root) when it is unset.
+  const hroot = join(dir, "handover"), legDoc = join(hroot, "himmel", "HIMMEL-9999-N1-e2e-worker-RESUME.md");
   mkdirSync(join(hroot, "himmel"), { recursive: true });
-  const setBullet = (b: string) => writeFileSync(legDoc, `# leg\n\n## Results\n- 02:00 LIVE — started\n${b}\n`);
+  const setBullet = (b: string) => writeFileSync(legDoc, `# worker\n\n## Results\n- 02:00 LIVE — started\n${b}\n`);
   if (o.handover) {
     setBullet(o.handover.bullet);
     writeFileSync(join(hroot, "himmel", "c.fleet.json"), JSON.stringify({ schema: 1, legs: [{ doc: legDoc, label: "N1", added: "2026-10-05T00:00:00Z" }] }));
@@ -138,7 +138,7 @@ export async function boot(v: Variant = {}, o: BootOpts = {}): Promise<Harness> 
     child.stderr!.on("data", (d) => (err += d));
     child.stdout!.on("data", (d) => {
       buf += d;
-      // the one printed URL may land on the fleet (/agui/); these tests open the console.
+      // the one printed URL may land on the fleet (/agui/); these tests open the chief.
       const m = /(http:\/\/127\.0\.0\.1:\d+)\/(?:agui\/)?(#t=[0-9a-f]{64})/.exec(buf);
       if (m) ok(`${m[1]}/${m[2]}`);
     });

@@ -23,7 +23,7 @@ function emit(k) {
 // config-feed.js is required by cmdReport right before buildFeed: the report starts here.
 function begin(feed) {
   cadences = feed.CADENCES.map((c) => c.name);
-  steps = ['install items', 'doctor checks', ...cadences.map((c) => `${c} cadence`), 'plugin profile', 'lanes, initiative legs, flags and secrets'];
+  steps = ['install items', 'doctor checks', ...cadences.map((c) => `${c} cadence`), 'plugin profile', 'lanes, initiative workers, flags and secrets'];
   emit(0);
 }
 

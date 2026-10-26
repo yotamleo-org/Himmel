@@ -87,7 +87,7 @@ payload() {  # payload <command> <file>
 prose() {  # prose <lines>
     local i out="python3 - <<'PYEOF'"$'\n'
     for ((i = 0; i < $1; i++)); do
-        out+="print('line $i — the console hands the leg a brief; see the doc é')"$'\n'
+        out+="print('line $i — the chief hands the worker a brief; see the doc é')"$'\n'
     done
     printf '%sPYEOF' "$out"
 }
@@ -98,7 +98,7 @@ payload "$(prose 640)" "$SANDBOX/big.json"
 
 MS=0
 BAD_RC=''
-# The role flags switch on the members gated to a leg or a relay session
+# The role flags switch on the members gated to a worker or a relay session
 # (read-clamp.sh, guard-relay-writes.sh), so their real path is timed rather
 # than their first-line exit.
 # A member answers 0 (allow / no opinion) or 2 (deny). Any other status is a

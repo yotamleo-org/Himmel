@@ -138,7 +138,7 @@ type DisplayResult =
   | { kind: "flat-rate" };
 
 // a stale or missing codex cache is refreshed by ONE bounded probe
-// run, so the console's bank line stops reading codex=? for days. Guards:
+// run, so the chief's bank line stops reading codex=? for days. Guards:
 //   - one refresher at a time (mkdir lock beside the cache); a concurrent
 //     caller waits inside the same box, then re-reads the cache;
 //   - the whole attempt is time-boxed (CODEX_USAGE_REFRESH_BOX_MS, default 30s);

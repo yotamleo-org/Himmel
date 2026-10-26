@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Claude Code CLI version floor -- the ONE place the minimum lives.
 #
-# WHY: every console / leg launch passes `--autocompact` and an Opus 5.5 id. An
+# WHY: every chief / worker launch passes `--autocompact` and an Opus 5.5 id. An
 # older CLI rejects the flag (needs 2.1.221+) or the model (needs 2.1.280+) at
 # parse time, so the session never starts and nothing says why. The launch
-# scripts (headed-arm.sh, arm-resume.sh, console.sh), himmel update and
+# scripts (headed-arm.sh, arm-resume.sh, chief.sh), himmel update and
 # himmel-doctor all read the floor from here so they cannot drift apart.
 #
 # Bash 3.2-compatible, no python (adopters and the Windows twin may lack it).
@@ -92,6 +92,6 @@ claude_floor_gate() {
 }
 
 claude_floor_message() {
-    printf 'Claude Code %s is below the minimum %s that console and leg launches need (--autocompact and the Opus 5.5 model id are rejected at parse time). Run: claude update\n' \
+    printf 'Claude Code %s is below the minimum %s that chief and worker launches need (--autocompact and the Opus 5.5 model id are rejected at parse time). Run: claude update\n' \
         "${1:-unknown}" "$CLAUDE_MIN_VERSION"
 }

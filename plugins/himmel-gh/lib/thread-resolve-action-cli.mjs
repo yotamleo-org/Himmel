@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // thread-resolve-action-cli.mjs — forge-routed PR review-thread resolve (spec
-// §5.3), the one sanctioned resolve path for legs and the console. Every
+// §5.3), the one sanctioned resolve path for workers and the chief. Every
 // resolve carries a reason, which is posted as a thread reply BEFORE the
 // thread is resolved; a failed reply resolves nothing. The thread is named by
 // a 6-char cache prefix (--prefix, after /gh-pr-comments) or by its full id

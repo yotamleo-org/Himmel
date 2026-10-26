@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-headed-arm-leg.sh
+# shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-headed-arm-worker.sh
 # scripts/handover/chief-kit/test-go.sh - suite for go.sh, the
-# console's GO-evidence writer that merge-on-green.sh's console-GO gate reads.
+# chief's GO-evidence writer that merge-on-green.sh's chief-GO gate reads.
 # test-merge-on-green.sh drives the reader end to end with GO files written by
 # THIS script; this suite pins the writer's own contract:
 #   1. usage: arg count, non-digit / leading-zero PR, sha not 40 lowercase hex -> exit 2.
 #   2. write: path printed, file fields pr= / head= / by= / at= (ISO-8601 UTC).
-#   3. by= falls back to <user>@<host> without CONSOLE_SESSION_NAME.
+#   3. by= falls back to <user>@<host> without CHIEF_SESSION_NAME.
 #   4. idempotent: a re-run overwrites in place, no temp file left behind.
-#   5. HIMMEL_CONSOLE_LEG set -> exit 3, nothing written (a leg never writes its own GO;
-#      this covers a --judge leg too - same marker, no separate one).
-#   6. HIMMEL_CONSOLE_RELAY set -> exit 3, and its message names the console, never
+#   5. HIMMEL_CONSOLE_LEG set -> exit 3, nothing written (a worker never writes its own GO;
+#      this covers a --judge worker too - same marker, no separate one).
+#   6. HIMMEL_CONSOLE_RELAY set -> exit 3, and its message names the chief, never
 #      a judge, as the writer.
 #   7. unresolvable handover root -> exit 1.
 #   13. --trust-reviewed <id>: id validated, signed into the mac.
@@ -119,13 +119,13 @@ done
 check "usage: nothing written" "$(ls -A "$ROOT")" ""
 
 # --- 2. write ----------------------------------------------------------------
-rc=0; out="$(HANDOVER_DIR="$ROOT" CONSOLE_SESSION_NAME=console-x bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
+rc=0; out="$(HANDOVER_DIR="$ROOT" CHIEF_SESSION_NAME=chief-x bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
 check "write: exit 0" "$rc" "0"
 check "write: prints the GO path" "$out" "$GO"
 body="$(cat "$GO" 2>/dev/null || true)"
 contains "write: pr= field" "$body" "pr=77"
 contains "write: head= field" "$body" "head=$SHA"
-contains "write: by= is the console session name" "$body" "by=console-x"
+contains "write: by= is the chief session name" "$body" "by=chief-x"
 grepq "$body" -Ex 'at=[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z' \
   && echo "ok - write: at= is ISO-8601 UTC" || { echo "FAIL - write: at= not ISO-8601 UTC: [$body]"; fails=$((fails+1)); }
 
@@ -140,7 +140,7 @@ contains "write: by= is CHIEF_SESSION_NAME when both names are set" "$(cat "$ROO
 # the reads fall back to the main token and a GO is still written, never refused.
 mkdir -p "$tmp/no-read-token"; : > "$tmp/no-read-token/.env"
 ROOT2B="$tmp/root2b"; mkdir -p "$ROOT2B"
-rc=0; out="$(GH_READ_ENV_ROOT="$tmp/no-read-token" HANDOVER_DIR="$ROOT2B" CONSOLE_SESSION_NAME=console-x bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
+rc=0; out="$(GH_READ_ENV_ROOT="$tmp/no-read-token" HANDOVER_DIR="$ROOT2B" CHIEF_SESSION_NAME=chief-x bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
 check "6837: read token unset -> go.sh still exits 0" "$rc" "0"
 check "6837: read token unset -> the GO is written" "$(test -f "$ROOT2B/.locks/go/77.$SHA" && echo yes)" "yes"
 
@@ -151,53 +151,53 @@ grepq "$(cat "$ROOT/.locks/go/78.$SHA" 2>/dev/null)" -Ex 'by=[^@]+@.+' \
   && echo "ok - fallback: by=<user>@<host>" || { echo "FAIL - fallback: by= not <user>@<host>"; fails=$((fails+1)); }
 
 # --- 4. idempotent rewrite ---------------------------------------------------
-rc=0; HANDOVER_DIR="$ROOT" CONSOLE_SESSION_NAME=console-y bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
+rc=0; HANDOVER_DIR="$ROOT" CHIEF_SESSION_NAME=chief-y bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
 check "rewrite: exit 0" "$rc" "0"
-contains "rewrite: overwritten in place" "$(cat "$GO" 2>/dev/null)" "by=console-y"
+contains "rewrite: overwritten in place" "$(cat "$GO" 2>/dev/null)" "by=chief-y"
 check "rewrite: one head= line, not appended" "$(grep -c '^head=' "$GO" 2>/dev/null)" "1"
 leftover=0
 for f in "$ROOT/.locks/go"/.go.*; do [ -e "$f" ] && leftover=$((leftover+1)); done
 check "rewrite: no temp file left behind" "$leftover" "0"
 
-# --- 5. a console-spawned leg cannot write its own GO ------------------------
+# --- 5. a chief-spawned worker cannot write its own GO ------------------------
 LEGROOT="$tmp/legroot"; mkdir -p "$LEGROOT"
 # HIMMEL_CONSOLE_LEG is a Claude Code marker (any value): from an anchor checkout
 # with no claude ancestor (CI) and HANDOVER_DIR set, go.sh refuses 96
-# A leg always runs under its claude session, so these rows
+# A worker always runs under its claude session, so these rows
 # run under a fake one.
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 rc=0; out="$(HANDOVER_DIR="$LEGROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
-check "leg marker: exit 3" "$rc" "3"
-contains "leg marker: names the reason" "$out" "console-spawned leg"
-check "leg marker: nothing written" "$(ls -A "$LEGROOT")" ""
-# a leg must not mint (or even create) the GO key either.
+check "worker marker: exit 3" "$rc" "3"
+contains "worker marker: names the reason" "$out" "chief-spawned worker"
+check "worker marker: nothing written" "$(ls -A "$LEGROOT")" ""
+# a worker must not mint (or even create) the GO key either.
 LEGHOME="$tmp/leghome"; mkdir -p "$LEGHOME"
 rc=0; HOME="$LEGHOME" HANDOVER_DIR="$LEGROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
-check "leg marker: exit 3 with a fresh HOME" "$rc" "3"
-check "leg marker: no GO key minted" "$(find "$LEGHOME" -type f | wc -l | tr -d ' ')" "0"
+check "worker marker: exit 3 with a fresh HOME" "$rc" "3"
+check "worker marker: no GO key minted" "$(find "$LEGHOME" -type f | wc -l | tr -d ' ')" "0"
 rc=0; HANDOVER_DIR="$LEGROOT" HIMMEL_CONSOLE_LEG=0 _as_claude bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
-check "leg marker: a falsy marker is no marker" "$rc" "0"
+check "worker marker: a falsy marker is no marker" "$rc" "0"
 
 # --- 6. HIMMEL_CONSOLE_RELAY refuses on its own, nothing written.
 ROOT6="$(mktemp -d)" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 rc=0; out="$(env -u HIMMEL_CONSOLE_LEG HANDOVER_DIR="$ROOT6" HIMMEL_CONSOLE_RELAY=1 bash "$SCRIPT" 77 "$SHA" 2>&1)" || rc=$?
 check    "relay: exit 3" "$rc" "3"
-contains "relay: names the relay" "$out" "console relay"
+contains "relay: names the relay" "$out" "chief relay"
 check    "relay: no GO file written" "$(find "$ROOT6" -type f | wc -l | tr -d ' ')" "0"
 rm -rf "$ROOT6"
 
-# --- 7. "the judge is a leg" - go.sh's own gate is the leg
+# --- 7. "the judge is a worker" - go.sh's own gate is the worker
 # marker (HIMMEL_CONSOLE_JUDGE, only feeds guard-judge-writes.sh),
 # so nothing anywhere in go.sh's output should still claim
-# "only the judge writes a GO" (stale pre-3133 wording: only the CONSOLE does,
-# whether the caller is a plain leg, a --judge leg, or a relay).
+# "only the judge writes a GO" (stale pre-3133 wording: only the CHIEF does,
+# whether the caller is a plain worker, a --judge worker, or a relay).
 if grepq "$out" -F -e "the judge writes"; then
   echo "FAIL - relay refusal still claims a judge writes the GO (pre-3133 wording)"
   fails=$((fails+1))
 else
   echo "ok - relay refusal does not claim a judge writes the GO"
 fi
-contains "relay: correctly names the console as the GO writer" "$out" "only the console writes a GO"
+contains "relay: correctly names the chief as the GO writer" "$out" "only the chief writes a GO"
 
 # --- 8. unresolvable handover root -------------------------------------------
 rc=0; HANDOVER_DIR="$tmp/absent" bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
@@ -241,7 +241,7 @@ rc=0; (cd "$G3437_WT" && env -u CR_ANCHOR_HANDED_OFF -u HIMMEL_REPO bash scripts
 check "3437: unset HIMMEL_REPO exits 2" "$rc" "2"
 
 # --- 10. go.sh writes where merge-on-green reads ---------
-# A console whose env has no HANDOVER_DIR (or has the harness repo's own
+# A chief whose env has no HANDOVER_DIR (or has the harness repo's own
 # handovers/ stub) used to get rc=0 and a GO under <repo>/handovers, while the
 # gate reads the root the repo's .env configures. Fixture: a git tree carrying
 # go.sh + scripts/lib + anchor-handoff.sh, a handovers/ stub, and a .env
@@ -360,7 +360,7 @@ check "3895: a GO swapped between reads never yields a trust id" "$rc" "2"
 rm -f "$GO13.forged"
 
 # --- 14. no GO for a head ready-check does not pass ------------
-# The console ran ready-check by convention only; go.sh signed any head. It
+# The chief ran ready-check by convention only; go.sh signed any head. It
 # now runs ready-check itself (check 4 is the CR-ledger ok row at the head)
 # and refuses, exit 4 and nothing written, on anything but PASS.
 mkdir -p "$ROOT14"
@@ -567,12 +567,12 @@ rc=0; HANDOVER_DIR="$ROOT20" bash "$SCRIPT" --fix-main-red 37964772913 --trust-r
 check "5134: --fix-main-red with --trust-reviewed -> exit 2" "$rc" "2"
 ROOT20B="$tmp/root20b"; mkdir -p "$ROOT20B"
 rc=0; HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$ROOT20B" _as_claude bash "$SCRIPT" --fix-main-red 37964772913 97 "$SHA" >/dev/null 2>&1 || rc=$?
-check "5134: a console-spawned leg cannot write a fix-GO -> exit 3" "$rc" "3"
-check "5134: nothing written by the refused leg" "$(find "$ROOT20B" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
+check "5134: a chief-spawned worker cannot write a fix-GO -> exit 3" "$rc" "3"
+check "5134: nothing written by the refused worker" "$(find "$ROOT20B" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"
 
 # --- 21. a plain GO on a computed trust path is refused ------------
 # ready-check prints TRUST-PATH: yes from the PR diff and the default branch's list;
-# the leg's READY prose is never read. A plain GO then exits 8 with nothing written;
+# the worker's READY prose is never read. A plain GO then exits 8 with nothing written;
 # --trust-reviewed with the judge's GO verdict still writes it. A fixture anchor with
 # a local origin keeps trust_path_check's anchor-is-current test offline.
 # not $tmp: section 13 sourced go-gate.sh, which reassigns it
@@ -606,11 +606,11 @@ check    "6033: unreadable trust list -> nothing written for 87" "$(compgen -G "
 unset READY_CHECK_ANCHOR
 
 # --- 22. every merge GO is persisted as a verdict record ----------
-# a plain GO writes verdicts/go-pr-<n>/console-go-<head>.md through write-verdict.sh,
+# a plain GO writes verdicts/go-pr-<n>/chief-go-<head>.md through write-verdict.sh,
 # beside no judge's file; the GO is never blocked by logging
 ROOT22="$tmp/root22"; mkdir -p "$ROOT22"
-REC22="$ROOT22/$VSCOPE/verdicts/go-pr-77/console-go-$SHA.md"
-rc=0; out="$(HANDOVER_DIR="$ROOT22" CONSOLE_SESSION_NAME=console-x bash "$SCRIPT" --model claude-opus-5-5 --effort high 77 "$SHA" 2>&1)" || rc=$?
+REC22="$ROOT22/$VSCOPE/verdicts/go-pr-77/chief-go-$SHA.md"
+rc=0; out="$(HANDOVER_DIR="$ROOT22" CHIEF_SESSION_NAME=chief-x bash "$SCRIPT" --model claude-opus-5-5 --effort high 77 "$SHA" 2>&1)" || rc=$?
 check "22: a plain GO exits 0" "$rc" "0"
 check "22: the GO file is still written" "$(test -f "$ROOT22/.locks/go/77.$SHA" && echo yes)" "yes"
 check "22: the GO leaves a persisted record" "$(test -f "$REC22" && echo yes)" "yes"
@@ -628,12 +628,12 @@ check "22: the printed path is still the GO file" "$(printf '%s\n' "$out" | tail
 ROOT22B="$tmp/root22b"; mkdir -p "$ROOT22B"
 rc=0; HANDOVER_DIR="$ROOT22B" HIMMEL_VERDICT_MODEL=env-model HIMMEL_VERDICT_EFFORT=low bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
 check "22: a GO with the env model exits 0" "$rc" "0"
-contains "22: the env model is recorded" "$(cat "$ROOT22B/$VSCOPE/verdicts/go-pr-77/console-go-$SHA.md" 2>/dev/null)" "model: env-model"
+contains "22: the env model is recorded" "$(cat "$ROOT22B/$VSCOPE/verdicts/go-pr-77/chief-go-$SHA.md" 2>/dev/null)" "model: env-model"
 ROOT22C="$tmp/root22c"; mkdir -p "$ROOT22C"
 rc=0; env -u HIMMEL_VERDICT_MODEL -u HIMMEL_VERDICT_EFFORT -u CLAUDE_CODE_EFFORT_LEVEL HANDOVER_DIR="$ROOT22C" bash "$SCRIPT" 77 "$SHA" >/dev/null 2>&1 || rc=$?
 check "22: a GO with no model or effort anywhere still exits 0" "$rc" "0"
 check "22: that GO file is written" "$(test -f "$ROOT22C/.locks/go/77.$SHA" && echo yes)" "yes"
-rec22c="$(cat "$ROOT22C/$VSCOPE/verdicts/go-pr-77/console-go-$SHA.md" 2>/dev/null || true)"
+rec22c="$(cat "$ROOT22C/$VSCOPE/verdicts/go-pr-77/chief-go-$SHA.md" 2>/dev/null || true)"
 contains "22: model falls back to unknown" "$rec22c" "model: unknown"
 contains "22: effort falls back to unknown" "$rec22c" "effort: unknown"
 # a record that cannot be written warns and the GO still goes through
@@ -655,7 +655,7 @@ check "22: a repeated --model -> exit 2" "$rc" "2"
 rc=0; HANDOVER_DIR="$ROOT22F" bash "$SCRIPT" --effort high --effort low 78 "$SHA" >/dev/null 2>&1 || rc=$?
 check "22: a repeated --effort -> exit 2" "$rc" "2"
 check "22: a repeated option writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA" && echo yes || echo no)" "no"
-# a persisted console GO (qid go-pr-<n>) is not a judge: --trust-reviewed refuses that namespace
+# a persisted chief GO (qid go-pr-<n>) is not a judge: --trust-reviewed refuses that namespace
 rc=0; out="$(HANDOVER_DIR="$ROOT22F" bash "$SCRIPT" --trust-reviewed go-pr-78 78 "$SHA" 2>&1)" || rc=$?
 check "22: --trust-reviewed go-pr-78 -> exit 2" "$rc" "2"
 contains "22: the refusal names the reserved namespace" "$out" "go-pr-"
@@ -715,7 +715,7 @@ rc=0; out=$(go_trust_gate 88 "$SHA" "$ROOT23" acme/widget) || rc=$?
 check    "7392 R3: go_trust_gate accepts it for acme/widget" "$rc:$out" "0:W1"
 rc=0; go_trust_gate 88 "$SHA" "$ROOT23" o/r >/dev/null || rc=$?
 check    "7392 R3: the GO signs acme/widget, not the harness repo" "$rc" "2"
-REC23="$ROOT23/u/acme--widget/verdicts/go-pr-88/console-go-$SHA.md"
+REC23="$ROOT23/u/acme--widget/verdicts/go-pr-88/chief-go-$SHA.md"
 contains "7392 R3: the persisted GO record names the repo" "$(cat "$REC23" 2>/dev/null)" "repo: acme/widget"
 # R4: the same PR on a plain GO stays refused - go.sh will not write one, and
 # a plain GO signed for acme/widget fails the trust gate.

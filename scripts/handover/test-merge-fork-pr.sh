@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
-# scripts/handover/test-merge-fork-pr.sh - suite for the console's fork-merge path:
+# scripts/handover/test-merge-fork-pr.sh - suite for the chief's fork-merge path:
 # chief-kit/go.sh --repo (writes a GO for an allowlisted fork PR) and
 # merge-fork-pr.sh (the only chokepoint that merges one). gh is a stub.
 #   1. go.sh --repo: usage, allowlist (absent / merge_allowed false), PR state
-#      (head, MERGEABLE, OPEN, base = himmel_branch), judge verdict, leg refused,
+#      (head, MERGEABLE, OPEN, base = himmel_branch), judge verdict, worker refused,
 #      and a valid write.
-#   2. merge-fork-pr.sh: usage, leg/relay refused, non-allowlisted repo refused,
+#   2. merge-fork-pr.sh: usage, worker/relay refused, non-allowlisted repo refused,
 #      missing / forged / stale / other-repo / non-judged GO refused, head moved
 #      after the GO refused, and an allowlisted repo with a valid GO merges.
 #
@@ -96,8 +96,8 @@ write_go() {
 go() { HANDOVER_DIR="$ROOT" bash "$GO_SH" "$@"; }
 merge() { HANDOVER_DIR="$ROOT" bash "$MERGE_SH" "$@"; }
 merged() { grep -c '^MERGE ' "$STUB_LOG"; }
-# A leg always runs under its claude session; without a claude ancestor the
-# chokepoint seam guard refuses a leg marker with 96 before the leg check runs.
+# A worker always runs under its claude session; without a claude ancestor the
+# chokepoint seam guard refuses a worker marker with 96 before the worker check runs.
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
 
 # --- 1. go.sh --repo ---------------------------------------------------------
@@ -142,7 +142,7 @@ verdict j2 GO "$SHA" 19
 rc=0; go --repo "$FORK" --trust-reviewed j2 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "go --repo verdict names another PR -> exit 5" "$rc" 5
 rc=0; HANDOVER_DIR="$ROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$GO_SH" --repo "$FORK" --trust-reviewed j1 18 "$SHA" >/dev/null 2>&1 || rc=$?
-check "go --repo from a leg -> exit 3" "$rc" 3
+check "go --repo from a worker -> exit 3" "$rc" 3
 check "go --repo refusals wrote nothing" "$(ls -A "$ROOT/.locks/go" 2>/dev/null)" ""
 rc=0; out="$(go --repo "$FORK" --trust-reviewed j1 18 "$SHA" 2>&1)" || rc=$?
 check "go --repo valid -> exit 0" "$rc" 0
@@ -171,7 +171,7 @@ for args in "" "$FORK" "$FORK 18" "$FORK 18 $SHA x" "$FORK x18 $SHA" "$FORK 018 
 done
 write_go "$FORK" 18 "$SHA" j1
 rc=0; HANDOVER_DIR="$ROOT" HIMMEL_CONSOLE_LEG=1 _as_claude bash "$MERGE_SH" "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
-check "merge from a leg -> exit 3" "$rc" 3
+check "merge from a worker -> exit 3" "$rc" 3
 rc=0; HIMMEL_CONSOLE_RELAY=1 merge "$FORK" 18 "$SHA" >/dev/null 2>&1 || rc=$?
 check "merge from a relay -> exit 3" "$rc" 3
 rc=0; merge other/repo 18 "$SHA" >/dev/null 2>&1 || rc=$?

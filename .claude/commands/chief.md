@@ -6,7 +6,7 @@ argument-hint: new|next [--bucket <slug>] [--name <slug>] [--arm] [--dry-run] [-
 Starts or hands over a chief (defined in
 [`docs/glossary.md`](../../docs/glossary.md)). Background + the operating
 contract:
-[`docs/handover/running-a-console.md`](../../docs/handover/running-a-console.md).
+[`docs/handover/running-a-chief.md`](../../docs/handover/running-a-chief.md).
 The himmel-ops plugin ships its own copy of this command that runs from any
 repo, resolving the himmel checkout and passing `--project` at that project's
 cwd — see `marketplace/plugins/himmel-ops/commands/chief.md`.
@@ -18,7 +18,7 @@ bash scripts/handover/chief/chief.sh $ARGUMENTS
 ```
 
 - `/chief new` — write `<handover-root>/<user>/<bucket>/<PREFIX>-nextleg-<date>A-chief.md`
-  from `docs/handover/console-template.md`, acquire the queue lock on it, and
+  from `docs/handover/chief-template.md`, acquire the queue lock on it, and
   print the launch line. A second `new` the same day bumps the letter; it never
   overwrites.
 - `/chief next` — from a running chief, write the successor stub (letter
@@ -29,7 +29,7 @@ bash scripts/handover/chief/chief.sh $ARGUMENTS
   on a signal file plus a deadline; prints the arm log path. Launches with
   1m context with `--autocompact auto` by default (HIMMEL-3884).
 - `--context 1m|standard` — on `new` or `next`, override the default and
-  environment choice. `--context standard` (or `CONSOLE_CONTEXT=standard`
+  environment choice. `--context standard` (or `CHIEF_CONTEXT=standard`
   in the launching shell) opts down to `--autocompact 200000`.
   Non-chief arms keep their standard default.
 - `--dry-run` — print what it would write, prefixed `would-`, and touch nothing.

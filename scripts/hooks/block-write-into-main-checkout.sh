@@ -5177,8 +5177,8 @@ _bwimc_fsmut=""
 # WHY: every arm above resolves a FILE operand. A git subcommand writes the
 # working tree, index, HEAD, refs or config of whatever repository it is
 # aimed at without naming a single file — `git -C <primary> checkout
-# <leg-branch> -- f`, `restore --source=…`, `merge`, `pull . <leg>`,
-# `read-tree -u -m` — so a worktree-pinned leg could rewrite the PRIMARY
+# <worker-branch> -- f`, `restore --source=…`, `merge`, `pull . <worker>`,
+# `read-tree -u -m` — so a worktree-pinned worker could rewrite the PRIMARY
 # checkout (the trust anchor: /pr-check hand-off, the byte compare
 # and the live hooks all run from it) and every guard returned rc 0.
 #
@@ -5194,8 +5194,8 @@ _bwimc_fsmut=""
 # TARGETS: the repository (cumulative -C from the effective cwd, then
 # --git-dir / GIT_DIR resolved against the final -C dir, per git(1)), plus
 # the work tree (--work-tree / GIT_WORK_TREE) and GIT_INDEX_FILE when given —
-# `--work-tree=<primary>` from a leg's own repo writes the primary's files
-# even though HEAD moves in the leg's repo. The effective cwd MODELS `cd` /
+# `--work-tree=<primary>` from a worker's own repo writes the primary's files
+# even though HEAD moves in the worker's repo. The effective cwd MODELS `cd` /
 # `pushd` / `env -C` for THIS arm only (the file-operand arms still resolve
 # against the payload cwd, per the header's Known limitations): `cd
 # <primary> && git checkout <sha>` is one of the ticket's shapes. A `cd` or
@@ -5213,7 +5213,7 @@ _bwimc_fsmut=""
 # worktree's SHARED $GIT_COMMON_DIR, which the PRIMARY checkout also reads.
 # For exactly those subcommands/flags, the target's OWNING primary checkout
 # (`primary_checkout_root`; a no-op for an ordinary non-worktree repo) is
-# checked too (`_bwimc_git_check_common_owner`) — so a leg cwd'd into its own
+# checked too (`_bwimc_git_check_common_owner`) — so a worker cwd'd into its own
 # worktree can no longer repoint the primary's upstream/HEAD-tracked refs by
 # omitting `-C <primary>`. Narrowed the other way (adversarial review round
 # 1): `config --global/--system/--worktree` write a DIFFERENT file, not the
@@ -5229,20 +5229,20 @@ _bwimc_fsmut=""
 # `--stdin` (refs arrive on stdin, invisible to this scanner) is denied
 # outright rather than silently passed.
 #
-# CARVE-OUT (the console's wrap flow, `git -C <primary> pull --ff-only` +
-# `fetch`), shape-bounded so it cannot be steered at a leg's commits:
+# CARVE-OUT (the chief's wrap flow, `git -C <primary> pull --ff-only` +
+# `fetch`), shape-bounded so it cannot be steered at a worker's commits:
 #   pull  — read only with `--ff-only`, flags from a closed list (no
 #           --rebase/--autostash), and operands: none (the configured
 #           upstream), `<remote>`, or `<remote> main|master`, where <remote>
 #           is a bare remote NAME (not `.`, a path or a URL).
-#           `pull --ff-only . <leg>` and `pull --ff-only origin <leg-branch>`
-#           fast-forward the anchor onto leg commits, so both deny.
+#           `pull --ff-only . <worker>` and `pull --ff-only origin <worker-branch>`
+#           fast-forward the anchor onto worker commits, so both deny.
 #   fetch — read unless -u/--update-head-ok, --upload-pack, --refmap, a
 #           non-name repository (`.`, a path, a URL) or a `<src>:<dst>`
 #           refspec (which could repoint refs/remotes/origin/main).
 # The configured upstream is itself protected: `branch -u/--set-upstream-to`,
 # `config` writes and `remote add|set-url|…` are write-shaped here, so the
-# console's bare `pull --ff-only` cannot be redirected first.
+# chief's bare `pull --ff-only` cannot be redirected first.
 #
 # Mode parity: destination-based in BOTH lanes (main_checkout_verdict), like
 # every file-operand arm — EXCEPT `commit` on the sourced/codex lane, which
@@ -5258,15 +5258,15 @@ _bwimc_fsmut=""
 # xargs, see _bwimc_git_wrapped) or inside an interpreter body is missed, the
 # same residual as every other arm. A `cd` inside a conditional (`false && cd <primary>`) is assumed
 # to have run, and a write is ALSO checked from every cwd a cd left, so
-# `false && cd <leg>; git merge x` from the primary is still caught; the cost
-# is that `cd <leg> && git merge x` typed from the primary is denied too.
-# Shared-ref writes from the leg's own worktree (no -C) are checked against
+# `false && cd <worker>; git merge x` from the primary is still caught; the cost
+# is that `cd <worker> && git merge x` typed from the primary is denied too.
+# Shared-ref writes from the worker's own worktree (no -C) are checked against
 # the common dir's owning primary for `config`/`remote`/`branch
 # -u|--unset-upstream|-M|-C|-f`/`checkout -B`/`switch -C`/`update-ref`/
 # `symbolic-ref` on refs/heads/main|master (above); `tag`,
 # `reflog expire|delete`, and any other branch create/delete/plain-rename are
 # still reachable that way — narrower residual, same ticket. `git -c alias.x=…` and repo-level
-# hooks are code execution in the leg's own process, not a primary-state
+# hooks are code execution in the worker's own process, not a primary-state
 # write, and are out of scope. `worktree move|remove` of the primary is left
 # to git itself, which refuses to move or remove a main working tree.
 # a read aimed at the primary that RUNS A PROGRAM there (a -c /
@@ -5277,7 +5277,7 @@ _bwimc_fsmut=""
 # command (~/.gitconfig, the primary's own config) or reached via a foreign
 # --git-dir is not seen, and plain `git diff` runs diff.external by default;
 # revisit if a config-provenance check lands (follow-up).
-# `git clone`/`init` into a path INSIDE the primary from a leg cwd is not
+# `git clone`/`init` into a path INSIDE the primary from a worker cwd is not
 # modelled. `push` is write-shaped only by DESTINATION: a local path, `.`, a
 # `file://` URL or a `--repo=` path that resolves into the primary is denied,
 # and so is any `--receive-pack`/`--exec` (it names a program run on the
@@ -6058,7 +6058,7 @@ _bwimc_git_clause() {
 
     # cd / pushd / popd: move the modelled cwd for later clauses. The cwd it
     # leaves is kept as an alternative: the cd may not have run (`false && cd
-    # <leg>; git merge x`) or may have failed, and a write is checked from each.
+    # <worker>; git merge x`) or may have failed, and a write is checked from each.
     case "$tu" in
         cd|pushd|popd)
             [ "$_bwimc_gcwd_unres" = 1 ] || _bwimc_gcwd_alts+="$_bwimc_gcwd"$'\n' ;;
@@ -6142,7 +6142,7 @@ _bwimc_git_clause() {
                     env)
                         i=$((i+1))
                         # -i / `-` and -u NAME drop the modelled GIT_* values
-                        # (a stale GIT_DIR would point the check at the leg
+                        # (a stale GIT_DIR would point the check at the worker
                         # while git runs on the -C dir); -a/-u/-C take an
                         # operand, attached or not, in any short cluster; -S
                         # re-splits a string we do not re-parse, so a git
@@ -6340,7 +6340,7 @@ _bwimc_git_clause() {
     # the same holds for `archive -o <f>`, `format-patch -o
     # <dir>` / `--output-directory[=]<dir>` (-o also ends a bundled cluster
     # such as `-ko <dir>`, the rest being its operand) and the `bundle create
-    # <file>` operand, whose repo check alone passes from a leg cwd.
+    # <file>` operand, whose repo check alone passes from a worker cwd.
     local ow=0 of="" owt="${wtree:-$e_wt}" bc=0
     for v in ${args[@]+"${args[@]}"}; do
         if [ "$ow" = 1 ]; then
@@ -6564,7 +6564,7 @@ _bwimc_git_clause() {
             # -u/--set-upstream*
             # implicitly targets the CURRENT branch when no branch-name
             # operand is given — from a linked worktree that is always the
-            # leg's OWN feature branch (git refuses to check main out in two
+            # worker's OWN feature branch (git refuses to check main out in two
             # worktrees at once), never main, so `branch -u origin/x` and
             # `branch -f other start` are ordinary and must allow, matching
             # `push -u`. N5: `--forc` (an unambiguous abbreviation of

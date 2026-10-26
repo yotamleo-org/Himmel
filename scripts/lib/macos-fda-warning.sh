@@ -7,13 +7,13 @@
 # ~/Desktop, ~/Downloads, iCloud Drive). arm/status/disarm all SUCCEED
 # regardless — the adopter (himmel#771, macOS 26) verified with a probe
 # crontab entry that the identical `ls` fails under cron and succeeds from an
-# interactive terminal. Every vault leg then fails on every fire with
+# interactive terminal. Every vault worker then fails on every fire with
 # "Operation not permitted" and nothing at arm time says so.
 #
 # cron's TCC grant state cannot be probed synchronously from an interactive
 # shell — no API answers "does cron have FDA" without a live disk read, and
 # the adopter already established that. So this is a warning at arm time, not
-# a check: `himmel-doctor` is the reader-side half, probing a leg's first-fire
+# a check: `himmel-doctor` is the reader-side half, probing a worker's first-fire
 # log for "Operation not permitted".
 #
 # Callers gate this ENTIRELY on their own PLATFORM var (set by each script's
@@ -66,6 +66,6 @@ ${targets}  /usr/sbin/cron itself needs Full Disk Access, or every fire of this
   Grant it: System Settings -> Privacy & Security -> Full Disk Access ->
   add /usr/sbin/cron.
   cron's TCC grant state cannot be probed from here — 'himmel-doctor' checks
-  a leg's first-fire log for "Operation not permitted" instead of a live probe.
+  a worker's first-fire log for "Operation not permitted" instead of a live probe.
 EOF
 }

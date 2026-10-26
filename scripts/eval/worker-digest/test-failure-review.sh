@@ -75,19 +75,19 @@ cat >"$STUB/route-notify" <<'EOF'
 printf '%s\n' "$*" >>"$(dirname "$0")/route-notify.log"
 EOF
 chmod +x "$STUB/jira" "$STUB/notify" "$STUB/route-notify"
-# The router's console line and INTAKE request: never the real notifier.
+# The router's chief line and INTAKE request: never the real notifier.
 export FAILURE_ROUTER_NOTIFY_CMD="$STUB/route-notify"
 calls() { if [ -f "$STUB/calls.log" ]; then grep -c "^$1 " "$STUB/calls.log"; else echo 0; fi; }
 sends() { if [ -f "$STUB/notify.log" ]; then grep -c . "$STUB/notify.log"; else echo 0; fi; }
 
-# row <ledger> <leg> <class> [identical_retry] [ts]
+# row <ledger> <worker> <class> [identical_retry] [ts]
 SEQ=0
 row() {
   SEQ=$((SEQ + 1))
-  jq -nc --arg leg "$2" --arg cls "$3" --argjson ir "${4:-0}" --arg ts "${5:-2026-10-07T08:00:00Z}" \
+  jq -nc --arg worker "$2" --arg cls "$3" --argjson ir "${4:-0}" --arg ts "${5:-2026-10-07T08:00:00Z}" \
     --arg sid "$(printf '4713c1a5-0000-4000-8000-%012d' "$SEQ")" '
-    {v:1, ts:$ts, host:"h", source:"scripts/eval/worker-digest/leg_ledger.py", kind:"leg-failure", session:$sid,
-     leg:$leg, console:"c", ticket:"HIMMEL-4713", pr:2030, agent:{id:"main", role:"leg", kind:"k", model:"claude-opus-5-5"},
+    {v:1, ts:$ts, host:"h", source:"scripts/eval/worker-digest/worker_ledger.py", kind:"worker-failure", session:$sid,
+     leg:$worker, console:"c", ticket:"HIMMEL-4713", pr:2030, agent:{id:"main", role:"leg", kind:"k", model:"claude-opus-5-5"},
      class:$cls, failure:($cls | split("/")[0]), count:1, identical_retry:$ir, recovered:false,
      first_ts:1, last_ts:2, tool_call_ids:["t"]}' >>"$1"
 }
@@ -124,8 +124,8 @@ check "no Jira call at all, the search included" '[ ! -f "$STUB/calls.log" ]'
 check "no router state, log or inbox written" '[ ! -e "$C2/state.json" ] && [ ! -e "$C2/log.jsonl" ] && [ ! -e "$C2/inbox.md" ]'
 check "the digest names the mode dry-run" 'digest "$C2" | grep -q "mode: dry-run"'
 check "the digest shows the would-be routing" 'digest "$C2" | grep -q "would-file denied/guard-pr-check-literal"'
-check "the top classes list the class with its legs" 'digest "$C2" | grep -q "denied/guard-pr-check-literal: 2 rows, legs N100, N200"'
-check "the header names the 24 h window and the routing names the 14 d one" 'digest "$C2" | grep -q "^- window: .* (24 h), mode: dry-run" && digest "$C2" | grep -q "would-file denied/guard-pr-check-literal (legs 2 in 14 d)"'
+check "the top classes list the class with its workers" 'digest "$C2" | grep -q "denied/guard-pr-check-literal: 2 rows, workers N100, N200"'
+check "the header names the 24 h window and the routing names the 14 d one" 'digest "$C2" | grep -q "^- window: .* (24 h), mode: dry-run" && digest "$C2" | grep -q "would-file denied/guard-pr-check-literal (workers 2 in 14 d)"'
 
 echo "HIMMEL-7354: a live search error is said with its cause in the digest"
 C3e="$TMP/c3e"; mkdir -p "$C3e"; cp "$C2/ledger.jsonl" "$C3e/ledger.jsonl"
@@ -200,11 +200,11 @@ row "$C6/ledger.jsonl" N100 error/Edit 0 2026-10-03T08:00:00Z
 row "$C6/ledger.jsonl" N200 error/Edit
 s0="$(sends)"
 review "$C6" >/dev/null 2>&1
-check "a class seen before the window is recurring" 'digest "$C6" | grep -q "error/Edit: 1 rows, legs N200 (recurring)"'
+check "a class seen before the window is recurring" 'digest "$C6" | grep -q "error/Edit: 1 rows, workers N200 (recurring)"'
 check "a quiet day (no new class, nothing routed) sends nothing" '[ "$(sends)" = "$s0" ]'
 row "$C6/ledger.jsonl" N300 blocked/merge-hold
 review "$C6" >/dev/null 2>&1
-check "a class first seen today is new" 'digest "$C6" | grep -q "blocked/merge-hold: 1 rows, legs N300 (new)"'
+check "a class first seen today is new" 'digest "$C6" | grep -q "blocked/merge-hold: 1 rows, workers N300 (new)"'
 check "a new class sends one line naming it" '[ "$(sends)" = "$((s0 + 1))" ] && tail -n 1 "$STUB/notify.log" | grep -q "1 new class first seen today .*: blocked/merge-hold (1 failure)"'
 # the line is the plain shape; four new classes show the top three with counts and "1 more".
 C6p="$TMP/c6p"; mkdir -p "$C6p"
@@ -217,7 +217,7 @@ plain="$(tail -n 1 "$STUB/notify.log")"
 check "the line is the plain shape" 'printf "%s\n" "$plain" | grep -qE "^failure review $DAY \(dry-run\): 13 failures in 4 classes over 24 h; dry run, nothing filed \([0-9]+ would be\)\. Cause: .* Do: .* Log: $C6p/out/failure-review-$DAY\.md$"'
 check "the top three new classes carry their counts" 'printf "%s\n" "$plain" | grep -q "error/Bash:usage:check-old-terms (5 failures), error/Edit (4 failures), blocked/merge-hold (3 failures) and 1 more"'
 check "the line gives a next step and drops the word routed" 'printf "%s\n" "$plain" | grep -q "Do: open the digest and file a ticket" && ! printf "%s\n" "$plain" | grep -qi "routed"'
-# suite rows carry final_red: false = red inside the leg then green, true = left red at wrap.
+# suite rows carry final_red: false = red inside the worker then green, true = left red at wrap.
 C6d="$TMP/c6d"; mkdir -p "$C6d"
 row "$C6d/ledger.jsonl" N400 suite/test-green-again.sh
 row "$C6d/ledger.jsonl" N400 suite/test-left-red.sh
@@ -225,14 +225,14 @@ jq -c 'if .class == "suite/test-left-red.sh" then . + {final_red:true} else . + 
 review "$C6d" >/dev/null 2>&1
 rc=$?
 check "the suite fixture review exits 0" '[ "$rc" -eq 0 ]'
-check "a suite class that went red then green is not new" 'digest "$C6d" | grep -q "suite/test-green-again.sh: 1 rows, legs N400 (recurring)"'
-check "a suite class left red at wrap is new" 'digest "$C6d" | grep -q "suite/test-left-red.sh: 1 rows, legs N400 (new)"'
+check "a suite class that went red then green is not new" 'digest "$C6d" | grep -q "suite/test-green-again.sh: 1 rows, workers N400 (recurring)"'
+check "a suite class left red at wrap is new" 'digest "$C6d" | grep -q "suite/test-left-red.sh: 1 rows, workers N400 (new)"'
 check "only the ended-red class is named as new" 'tail -n 1 "$STUB/notify.log" | grep -q "1 new class first seen today .*: suite/test-left-red.sh (1 failure)\. Do: " && ! tail -n 1 "$STUB/notify.log" | grep -q test-green-again'
 C6c="$TMP/c6c"; mkdir -p "$C6c"
 row "$C6c/ledger.jsonl" N100 error/Read 0 2026-10-06T11:59:59.500000Z
 row "$C6c/ledger.jsonl" N200 error/Read
 review "$C6c" >/dev/null 2>&1
-check "a row in the last second before the window still makes the class recurring" 'digest "$C6c" | grep -q "error/Read: 1 rows, legs N200 (recurring)"'
+check "a row in the last second before the window still makes the class recurring" 'digest "$C6c" | grep -q "error/Read: 1 rows, workers N200 (recurring)"'
 printf '#!/usr/bin/env bash\nexit 1\n' >"$STUB/notify-fail"; chmod +x "$STUB/notify-fail"
 C6b="$TMP/c6b"; mkdir -p "$C6b"
 row "$C6b/ledger.jsonl" N400 error/Bash

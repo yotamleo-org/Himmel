@@ -37,7 +37,7 @@ set -uo pipefail
 # Case 16 — CAP EXCEEDED renders distinctly from a genuine rc=124.
 # Before this fix a suite the watchdog killed for exceeding its wall-clock cap
 # rendered identically to a suite that failed its own assertions and merely
-# happened to exit 124 — a leg reading a red run could not tell "the runner's
+# happened to exit 124 — a worker reading a red run could not tell "the runner's
 # clock ran out" from "the suite is broken" without re-running it, costing
 # 10-30 minutes of adjudication per occurrence (4 of 10 failures in the
 # 2026-08-29 run were this). The fix keys the rendering off `capped`, set only
@@ -149,7 +149,7 @@ fi
 # Case 20 — a watchdog-killed suite with every OBSERVED
 # assertion passing renders distinctly from a genuine failure in the same
 # run. Before this fix both cases rendered identically as FAIL: 1, which is
-# what cost a leg two extra full runs to disposition (a green 195/195 suite
+# what cost a worker two extra full runs to disposition (a green 195/195 suite
 # read exactly like a broken one). Red-first: a fixture that sleeps past a
 # tiny cap while printing only "ok" lines must get the new wording; a
 # fixture that prints a "not ok" line before the cap must NOT.

@@ -4,7 +4,7 @@
 // crit, verdict disproved/fixed/deferred, a deferred_to ticket, or a head
 // re-key) counts only when it is signed: ledger-append.sh, the ledger's single
 // writer, stamps every amend it writes with src and amend_mac, an HMAC-SHA256
-// under the console's GO key (~/.config/himmel/go-hmac.key, the key
+// under the chief's GO key (~/.config/himmel/go-hmac.key, the key
 // scripts/lib/go-gate.sh go_msg_mac signs with) over domain himmel-amend-v1,
 // branch, target_head, finding_id, artifact, perspective, the set and src.
 // A hand-appended row has no valid mac, so every gate reader drops it.
@@ -13,11 +13,11 @@
 // are honoured unsigned. File position, not the row ts, decides: an appended
 // row cannot backdate itself. A station with no readable GO key has nothing to
 // verify against, so every row is honoured, as before.
-// ponytail: (HIMMEL-6772) same-uid ceiling and sanctioned writer - a leg runs
-// as the console's user, so it can read the key through a helper or run
+// ponytail: (HIMMEL-6772) same-uid ceiling and sanctioned writer - a worker runs
+// as the chief's user, so it can read the key through a helper or run
 // ledger-append.sh amend itself, which signs any lowering it validates; this
 // closes hand-written rows only. Upgrade path: a separate-uid signer that only
-// a judge or the console can drive.
+// a judge or the chief can drive.
 //
 // Readers: filterLines(lines) / filterRows(rows) before collecting amends.
 // Writer: sign(rec) just before the row is appended.

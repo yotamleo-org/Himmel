@@ -82,10 +82,10 @@ if grep -q 'issuetype = Bug' "$FX/jira-calls"; then ok "jira JQL filters Bugs"; 
 
 # --- grouping by found-by and class -----------------------------------------
 scenario s2
-printf 'HIMMEL-9001\tBug\tDone\tguard let a thing through\tfound-by:leg,escape:guard,standalone\nHIMMEL-9002\tBug\tTo Do\tflaky thing\tfound-by:ci-main,escape:flake\nHIMMEL-9003\tBug\tTo Do\thalf labelled\tfound-by:operator\n' > "$FX/jira.tsv"
+printf 'HIMMEL-9001\tBug\tDone\tguard let a thing through\tfound-by:worker,escape:guard,standalone\nHIMMEL-9002\tBug\tTo Do\tflaky thing\tfound-by:ci-main,escape:flake\nHIMMEL-9003\tBug\tTo Do\thalf labelled\tfound-by:operator\n' > "$FX/jira.tsv"
 echo '[{"number":9100,"title":"fix(x): [HIMMEL-9001] guard","body":"just prose","mergedAt":"2026-10-20T00:00:00Z","files":[{"path":"docs/x.md"},{"path":"scripts/hooks/guard-x.sh"}]}]' > "$FX/pr-HIMMEL-9001.json"
 report --since 2026-10-15 --out "$TMP/r2.md"
-has "found-by:leg counted" "$TMP/r2.md" "- found-by:leg: 1"
+has "found-by:worker counted" "$TMP/r2.md" "- found-by:leg: 1"
 has "found-by:ci-main counted" "$TMP/r2.md" "- found-by:ci-main: 1"
 has "escape:guard counted" "$TMP/r2.md" "- escape:guard: 1"
 has "half-labelled bug is UNLABELLED" "$TMP/r2.md" "UNLABELLED (1):"
@@ -119,7 +119,7 @@ if grep -q 'schedule failure' "$TMP/r4.md"; then ok "scheduled sweep listed with
 
 # --- CI catches: S2 rule on a synthetic failed-then-fixed branch -------------
 scenario s5
-printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:worker,escape:guard\n' > "$FX/jira.tsv"
 cat > "$FX/runs.json" <<'EOF'
 [
  {"databaseId":9001,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T10:00:00Z","startedAt":"2026-10-20T10:00:05Z","updatedAt":"2026-10-20T10:20:00Z","headBranch":"feat/a","headSha":"aaa"},
@@ -160,7 +160,7 @@ if grep -q '^UNAVAILABLE: ' "$TMP/r7.md"; then ok "report names the unavailable 
 
 # --- a later push that fails the same job family is not a catch ---------------
 scenario s8
-printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:worker,escape:guard\n' > "$FX/jira.tsv"
 cat > "$FX/runs.json" <<'EOF'
 [
  {"databaseId":9101,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T10:00:00Z","startedAt":"2026-10-20T10:00:05Z","updatedAt":"2026-10-20T10:20:00Z","headBranch":"feat/c","headSha":"ccc"},
@@ -187,14 +187,14 @@ has "a run still going or a skipped job is no evidence of a fix" "$TMP/r8.md" "F
 
 # --- a Jira result at its row cap is flagged, not presented as complete -------
 scenario s10
-awk 'BEGIN { for (i = 1; i <= 200; i++) printf "HIMMEL-%d\tBug\tTo Do\tbug %d\tfound-by:leg,escape:guard\n", 8000 + i, i }' > "$FX/jira.tsv"
+awk 'BEGIN { for (i = 1; i <= 200; i++) printf "HIMMEL-%d\tBug\tTo Do\tbug %d\tfound-by:worker,escape:guard\n", 8000 + i, i }' > "$FX/jira.tsv"
 report --since 2026-10-15 --out "$TMP/r10.md"
 is "a capped Jira list exits 3" 3 "$rc"
 if grep -q '^UNAVAILABLE: the full Bug list' "$TMP/r10.md"; then ok "capped Jira list is flagged as a sample"; else bad "no cap warning"; fi
 
 # --- unreadable job times degrade the cost section and fail the run -----------
 scenario s9
-printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:worker,escape:guard\n' > "$FX/jira.tsv"
 cat > "$FX/runs.json" <<'EOF'
 [
  {"databaseId":9201,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"2026-10-20T10:00:00Z","startedAt":"2026-10-20T10:00:05Z","updatedAt":"2026-10-20T10:20:00Z","headBranch":"feat/e","headSha":"hhh"},
@@ -217,14 +217,14 @@ is "no report written into the directory" 0 "$(find "$TMP/outdir" -mindepth 1 | 
 
 # --- a Done escape with several merged PRs: any of them may hold the test ------
 scenario s12
-printf 'HIMMEL-9001\tBug\tDone\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+printf 'HIMMEL-9001\tBug\tDone\tx\tfound-by:worker,escape:guard\n' > "$FX/jira.tsv"
 echo '[{"number":9102,"title":"docs: [HIMMEL-9001] follow-up","body":"prose","mergedAt":"2026-10-21T00:00:00Z","files":[{"path":"docs/x.md"}]},{"number":9101,"title":"fix: [HIMMEL-9001] guard","body":"RED: failed before the fix","mergedAt":"2026-10-20T00:00:00Z","files":[{"path":"scripts/hooks/test-guard-x.sh"}]}]' > "$FX/pr-HIMMEL-9001.json"
 report --since 2026-10-15 --out "$TMP/r12.md"
 has "every matching PR is read for the test and the RED line" "$TMP/r12.md" "- HIMMEL-9001: PRs #9102 #9101, test in fix: yes, RED recorded: yes"
 
 # --- statistics that cannot be computed degrade sections 3 and 4, not read as zero
 scenario s13
-printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:leg,escape:guard\n' > "$FX/jira.tsv"
+printf 'HIMMEL-9001\tBug\tTo Do\tx\tfound-by:worker,escape:guard\n' > "$FX/jira.tsv"
 echo '[{"databaseId":9301,"event":"pull_request","status":"completed","conclusion":"failure","createdAt":"garbage","startedAt":"garbage","updatedAt":"garbage","headBranch":"feat/g","headSha":"ggg"}]' > "$FX/runs.json"
 echo '{"jobs":[{"name":"lint","status":"completed","conclusion":"failure","startedAt":"2026-10-20T10:00:30Z","completedAt":"2026-10-20T10:01:30Z"}]}' > "$FX/jobs-9301.json"
 report --since 2026-10-15 --out "$TMP/r13.md"

@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # run-suite.sh — Run ONE scan root of the shell-suite tree per
-# call, then return. A leg blocked in one long foreground command cannot read
-# its inbox, so a console HALT queues until the command ends; calling this once
+# call, then return. A worker blocked in one long foreground command cannot read
+# its inbox, so a chief HALT queues until the command ends; calling this once
 # per root turns every root boundary into a turn boundary, where the inbox is
-# drained. The leg types each call as its own Bash command and follows `next=`.
+# drained. The worker types each call as its own Bash command and follows `next=`.
 #
 # Usage:
 #   bash scripts/handover/chief-kit/run-suite.sh --plan   # print the roots, run nothing
@@ -25,7 +25,7 @@
 # ponytail: the checkpoint is one scan root, so the unreachable window is the
 # largest root (scripts/hooks, ~140 suites), not a single suite; shard the big
 # roots with run-shell-tests.sh --shard if a window that size proves too long.
-# Platform guard: console kit is Linux-only by design; bash 3.2-safe.
+# Platform guard: chief kit is Linux-only by design; bash 3.2-safe.
 set -uo pipefail
 
 RUNNER=""

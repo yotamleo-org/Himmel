@@ -3,8 +3,8 @@
 # window with a real TTY) when a signal file appears OR a hard deadline passes,
 # whichever comes first.
 #
-# WHY HEADED: a leg launched through `at` has no TTY, and such a
-# session exits at the first idle cross-session message - five legs were lost
+# WHY HEADED: a worker launched through `at` has no TTY, and such a
+# session exits at the first idle cross-session message - five workers were lost
 # that way on 2026-09-05. A headed window survives, and the operator can watch
 # the context threshold.
 #
@@ -12,7 +12,7 @@
 # CLAUDE_PID into every process it spawns, so a session launched from inside a
 # claude tool call inherits a THROWAWAY-CHILD marker: transcript saving off,
 # `scripts/context-fill.sh` blind (rc=4), no armed-resume archaeology, nothing
-# for the luna session-capture hook. Every console and leg of the 2026-09-05
+# for the luna session-capture hook. Every chief and worker of the 2026-09-05
 # night run was launched that way. The launch below clears both and forces
 # persistence ON. CLAUDE_PID is a sibling: the launched session
 # must not inherit the launcher's pid either. CLAUDE_CODE_SESSION_ID is a
@@ -30,9 +30,9 @@
 # context-window choice, same two measured levers as
 # scripts/handover/arm-resume.sh's --context (the [1m] model-id suffix,
 # silently a no-op on a Fable-family model, and the actual cost-driving
-# --autocompact auto|200000). Direct consoles default to `1m` (auto),
-# a console-class exemption from the general 200000 default. A positional
-# `standard` or CHIEF_CONTEXT=standard opts down to 200000. Leg-wrapper
+# --autocompact auto|200000). Direct chiefs default to `1m` (auto),
+# a chief-class exemption from the general 200000 default. A positional
+# `standard` or CHIEF_CONTEXT=standard opts down to 200000. Worker-wrapper
 # launches retain their profile mode and existing ceiling guard.
 # Run detached, so it outlives the session that armed it:
 #   setsid nohup bash scripts/handover/headed-arm.sh ... >/dev/null 2>&1 &
@@ -252,19 +252,19 @@
 # extra tty layer.
 #
 # HIMMEL_WORKER_SESSION_TABS=1 (operator switch, default off; "Worker tabs" in
-# docs/handover/running-a-console.md):
+# docs/handover/running-a-chief.md):
 # a worker arm whose HIMMEL_CONSOLE_NAME is set opens as a tab in that
-# console's one konsole window instead of a --separate window of its own; see
+# chief's one konsole window instead of a --separate window of its own; see
 # tab_launch below. HEADED_ARM_QDBUS (default qdbus6) pins the D-Bus client
 # that opens the tab, so a suite can shim it.
 #
 # --role: an optional
-# leading `--role console` flag, ahead of the positionals, for the console arm
+# leading `--role chief` flag, ahead of the positionals, for the chief arm
 # path only. `console` clears HIMMEL_CONSOLE_RELAY from the child env (so a
-# console session never inherits a relay marker from whatever armed it) and
-# stamps `role=console` on the `armed:` log line. It is the ONLY accepted
-# value: a relay is a LEG, armed via headed-arm-leg.sh --relay,
-# never through this console-oriented launcher, so it is not a role
+# chief session never inherits a relay marker from whatever armed it) and
+# stamps `role=chief` on the `armed:` log line. It is the ONLY accepted
+# value: a relay is a WORKER, armed via headed-arm-worker.sh --relay,
+# never through this chief-oriented launcher, so it is not a role
 # here. Omitting --role keeps the unsplit behaviour byte-identical
 # (`role=unsplit` on the log line, no env change).
 #
@@ -281,7 +281,7 @@
 set -u
 
 usage() {
-    echo "usage: headed-arm.sh [--dry-run] [--role console] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model] [context: 1m|standard]" >&2
+    echo "usage: headed-arm.sh [--dry-run] [--role chief] <session-name> <handover-doc> <signal-file> <deadline-epoch> <log> [model] [context: 1m|standard]" >&2
 }
 
 ROLE=""
@@ -296,10 +296,18 @@ while :; do
             fi
             ROLE="$2"
             case "$ROLE" in
-                console) : ;;
+                chief) : ;;
+                console)
+                    case "${HIMMEL_LEGACY_NAMES:-}" in
+                        0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff])
+                            usage
+                            echo "headed-arm.sh: --role console was renamed to --role chief; legacy names are off" >&2
+                            exit 2 ;;
+                    esac
+                    ROLE=chief ;;
                 *)
                     usage
-                    echo "headed-arm.sh: --role must be console, got: $ROLE" >&2
+                    echo "headed-arm.sh: --role must be chief, got: $ROLE" >&2
                     exit 2
                     ;;
             esac
@@ -333,31 +341,31 @@ CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
 # shellcheck source=../lib/dedupe-path.sh
 . "$(cd "$(dirname "$0")" && pwd)/../lib/dedupe-path.sh"
 
-# The console parent defaults to Opus (default parent tier);
+# The chief parent defaults to Opus (default parent tier);
 # Fable is the escalation target, reached only via an explicit [model].
 NAME="$1"; DOC="$2"; SIGNAL="$3"; DEADLINE="$4"; LOG="$5"; MODEL="${6:-claude-opus-5-5}"
 # --context resolution (shared via scripts/lib/chief-context.sh), arming-time
-# only (see the header comment above). Direct consoles default to 1m/auto;
-# non-console wrapper profiles retain their configured mode. A positional
+# only (see the header comment above). Direct chiefs default to 1m/auto;
+# non-chief wrapper profiles retain their configured mode. A positional
 # choice overrides CHIEF_CONTEXT and the default. $#-ge 7 (not just
 # "${7:-}" non-empty) is what distinguishes
 # an explicit empty-string 7th positional from "omitted" for the log line
 # below -- nothing currently passes an empty string here, but the
 # distinction costs nothing and matches how arm-resume.sh tells explicit
-# from default. This launcher is always console-class (is_console=1) --
-# it has no non-console callers, unlike arm-resume.sh's handover-name test.
-# The profile is validated before any wait/claim/launch. Legs
-# supply their selected profile; a direct console arm resolves console.
-_context_profile="console"
+# from default. This launcher is always chief-class (is_chief=1) --
+# it has no non-chief callers, unlike arm-resume.sh's handover-name test.
+# The profile is validated before any wait/claim/launch. Workers
+# supply their selected profile; a direct chief arm resolves chief.
+_context_profile="chief"
 _context_profiles="$(dirname "$0")/../lanes/plugin-profiles.mjs"
-# The leg wrapper execs this renderer in the same process. An inherited marker
+# The worker wrapper execs this renderer in the same process. An inherited marker
 # belongs to a different PID, so ambient profile/resolver variables cannot opt
-# a direct console arm into 1m. This guards ambient leakage, not a hostile shell.
+# a direct chief arm into 1m. This guards ambient leakage, not a hostile shell.
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
-    _context_profile="${HEADED_ARM_CONTEXT_PROFILE:-console}"
+    _context_profile="${HEADED_ARM_CONTEXT_PROFILE:-chief}"
     _context_profiles="${HEADED_ARM_WORKER_PROFILES:-$_context_profiles}"
 fi
-# The audited 400k A/B arm marker, set only by headed-arm-leg.sh.
+# The audited 400k A/B arm marker, set only by headed-arm-worker.sh.
 # Same PID pairing as above, so an ambient value from another process is ignored.
 _ab_autocompact=""
 if [ "${HEADED_ARM_CONTEXT_PID:-}" = "$$" ]; then
@@ -376,51 +384,51 @@ if [ "$_profile_mode" = "standard" ] && [ "$_profile_autocompact" != "200000" ];
 fi
 if [ "$#" -ge 7 ]; then
     CONTEXT="$7"
-    _headed_context_source=$(console_context_source_label 1)
+    _headed_context_source=$(chief_context_source_label 1)
 else
-    console_context_default 1 "${CHIEF_CONTEXT:-}"
+    chief_context_default 1 "${CHIEF_CONTEXT:-}"
     CONTEXT="$CHIEF_CONTEXT_RESOLVED_MODE"
-    if [ "$_context_profile" != "console" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ]; then
+    if [ "$_context_profile" != "chief" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ]; then
         CONTEXT="$_profile_mode"
     fi
     # The source word (an env opt-in spells `explicit` too)
     # is the shared one arm-resume.sh emits, so the two paths cannot disagree.
-    _headed_context_source=$(console_context_source_label 0)
+    _headed_context_source=$(chief_context_source_label 0)
 fi
-if ! console_context_valid "$CONTEXT"; then
+if ! chief_context_valid "$CONTEXT"; then
     usage
     echo "headed-arm: context must be 1m or standard, got: $CONTEXT" >&2
     exit 2
 fi
-# Direct consoles may select 1m without an env opt-in.
-# Keep the existing non-console profile guard for leg-wrapper launches.
-if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ] && [ "$_profile_mode" != "1m" ]; then
+# Direct chiefs may select 1m without an env opt-in.
+# Keep the existing non-chief profile guard for worker-wrapper launches.
+if [ "$_context_profile" != "chief" ] && [ "$CONTEXT" = "1m" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ] && [ "$_profile_mode" != "1m" ]; then
     usage
     echo "headed-arm: refusing 1m context: set CHIEF_CONTEXT=1m in the launching shell to opt in; omit [context] or pass standard for the --autocompact 200000 default." >&2
     exit 2
 fi
-if [ -n "$_ab_autocompact" ] && { [ "$_ab_autocompact" != "400000" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "console" ]; }; then
-    echo "headed-arm: refusing HEADED_ARM_AB_AUTOCOMPACT=$_ab_autocompact: only 400000 on a standard-context leg arm is accepted" >&2
+if [ -n "$_ab_autocompact" ] && { [ "$_ab_autocompact" != "400000" ] || [ "$CONTEXT" != "standard" ] || [ "$_context_profile" = "chief" ]; }; then
+    echo "headed-arm: refusing HEADED_ARM_AB_AUTOCOMPACT=$_ab_autocompact: only 400000 on a standard-context worker arm is accepted" >&2
     exit 2
 fi
-# Fable-family match (shared with arm-resume.sh via console_context_model_is_fable)
+# Fable-family match (shared with arm-resume.sh via chief_context_model_is_fable)
 # -- only an explicit Fable [model] takes this branch now (the default MODEL
 # is Opus).
 _headed_model_is_fable=0
-if console_context_model_is_fable "$MODEL"; then
+if chief_context_model_is_fable "$MODEL"; then
     _headed_model_is_fable=1
 fi
 # Strip any [1m] suffix the caller may have typed into MODEL directly, so
 # `standard` can guarantee its absence and `1m` never doubles it.
-MODEL="$(console_context_strip_1m_suffix "$MODEL")"
-if [ "$_context_profile" != "console" ] && [ "$CONTEXT" = "1m" ] && [ "$_profile_mode" = "1m" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ]; then
+MODEL="$(chief_context_strip_1m_suffix "$MODEL")"
+if [ "$_context_profile" != "chief" ] && [ "$CONTEXT" = "1m" ] && [ "$_profile_mode" = "1m" ] && [ "${CHIEF_CONTEXT:-}" != "1m" ]; then
     _headed_context_source="profile $_context_profile contextMode 1m"
 fi
 AUTOCOMPACT="$_profile_autocompact"
 if [ "$CONTEXT" = "standard" ]; then
     AUTOCOMPACT="200000"
     [ "$_ab_autocompact" != "400000" ] || AUTOCOMPACT="400000"
-elif [ "$_context_profile" = "console" ] || [ "${CHIEF_CONTEXT:-}" = "1m" ]; then
+elif [ "$_context_profile" = "chief" ] || [ "${CHIEF_CONTEXT:-}" = "1m" ]; then
     AUTOCOMPACT="auto"
 fi
 if [ "$CONTEXT" = "1m" ]; then
@@ -428,7 +436,7 @@ if [ "$CONTEXT" = "1m" ]; then
         # Measured fact: the CLI silently strips [1m] for Fable-family
         # models -- never claim to have set 1m context on one.
         CONTEXT_REASON="context=1m ($_headed_context_source); model=$MODEL is Fable-family -- the CLI silently strips a [1m] suffix there, so it is NOT applied (autocompact=$AUTOCOMPACT still is)"
-    elif ! console_context_model_takes_1m_suffix "$MODEL"; then
+    elif ! chief_context_model_takes_1m_suffix "$MODEL"; then
         # Native-1M and non-Anthropic ids launch bare.
         CONTEXT_REASON="context=1m ($_headed_context_source); model=$MODEL runs 1M without a suffix -- [1m] NOT applied (autocompact=$AUTOCOMPACT still is)"
     else
@@ -471,7 +479,7 @@ elif [ "$HEADED_ARM_UNAME" = "Darwin" ]; then
         # on PATH" (below); this is a different failure (can't even resolve
         # this script's own directory) and needs its own code, not a collision.
         echo "headed-arm: could not resolve this script's own directory to locate the macOS konsole shim" >&2
-        # 13, not 10: headed-arm-leg.sh execs into this
+        # 13, not 10: headed-arm-worker.sh execs into this
         # script and already owns 10-12 and 17 for its own refusals.
         exit 13
     fi
@@ -499,13 +507,13 @@ INIT="execute,prcheck,pr,ticket,merge,public,handover"
 LAUNCHER="${HEADED_ARM_LAUNCHER:-claude}"
 LAUNCHER_ENV="${HEADED_ARM_LAUNCHER_ENV:-}"
 # Konsole inherits this environment and hands it to the
-# leg's claude. A leaked list would make any arm spawned from that leg prepend
+# worker's claude. A leaked list would make any arm spawned from that worker prepend
 # the PARENT's profile tokens (first token wins) ahead of its own.
 unset HEADED_ARM_LAUNCHER_ENV
 RECORDER="${HEADED_ARM_RECORDER:-0}"
 REQUIRED_AUTOCOMPACT="${HEADED_ARM_REQUIRED_AUTOCOMPACT:-}"
 unset HEADED_ARM_REQUIRED_AUTOCOMPACT
-# Headed-arm-leg.sh --headless sets these. HEADLESS launches the
+# Headed-arm-worker.sh --headless sets these. HEADLESS launches the
 # session in the background (no konsole) and confirms it through
 # `$CLAUDE_CLI agents --json` - a background session's process comm is the
 # CLI version string, not `claude`, so the pgrep census below never sees it.
@@ -525,31 +533,31 @@ case "$BUS_BIND_SECS" in
     ''|*[!0-9]*) BUS_BIND_SECS=15 ;;
 esac
 unset HEADED_ARM_BUS HEADED_ARM_BUS_CLI HEADED_ARM_BUS_BIND_SECS
-# headed-arm-leg.sh names the bus-idle-waker to start once the konsole pid is
+# headed-arm-worker.sh names the bus-idle-waker to start once the konsole pid is
 # known. Read once and cleared, so it never rides into the launched session.
 WAKER="${HEADED_ARM_WAKER:-}"
 unset HEADED_ARM_WAKER
 QDBUS="${HEADED_ARM_QDBUS:-qdbus6}"
 unset HEADED_ARM_QDBUS
 SESSION_PID=""
-# A console session must never inherit a
+# A chief session must never inherit a
 # relay marker from whatever armed it -- ROLE_ENV_UNSET is an extra `-u`
 # token added to BOTH konsole launch branches' env -u list below,
 # unconditional (not merely "if set"), so a HIMMEL_CONSOLE_RELAY already
 # present in the arming shell's own env is cleared the same way
 # CLAUDE_CODE_CHILD_SESSION etc already are.
 ROLE_ENV_UNSET=""
-# A console also gets HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
+# A chief also gets HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
 # exported, which is what switches on the PreCompact snapshot hook
-# (scripts/hooks/console-precompact-snapshot.sh); every other session gets
+# (scripts/hooks/chief-precompact-snapshot.sh); every other session gets
 # neither, so that hook stays a silent no-op fleet-wide. The workdir is
-# dirname(SIGNAL) -- console.sh's chain dir, 0700 and non-symlink. An array,
+# dirname(SIGNAL) -- chief.sh's chain dir, 0700 and non-symlink. An array,
 # not a word-split string, so a path with a space survives.
-# ponytail: keyed on --role console only. A console armed without --role (a
+# ponytail: keyed on --role chief only. A chief armed without --role (a
 # hand-pasted headed-arm.sh line) gets no export and so no snapshot; G11
 # (compacted-check.sh) reports that as `no snapshot` rc 2, never a false pass.
 CHIEF_ENV=()
-if [ "$ROLE" = "console" ]; then
+if [ "$ROLE" = "chief" ]; then
     ROLE_ENV_UNSET="-u HIMMEL_CONSOLE_RELAY"
     # The `-u` above sits BEFORE $LAUNCHER_ENV in both konsole
     # branches, and `env -u FOO FOO=1` ends with FOO=1 -- so a
@@ -570,55 +578,55 @@ if [ "$ROLE" = "console" ]; then
     LAUNCHER_ENV="$_kept_env"
     # A relative DOC resolves against REPO (the session's --workdir, see the
     # DOC note below), but the PreCompact hook runs in whatever cwd the session
-    # has by then -- export it absolute so the hook opens the file the console
+    # has by then -- export it absolute so the hook opens the file the chief
     # was actually told to load.
     case "$DOC" in
-        /*) _console_doc="$DOC" ;;
-        *)  _console_doc="$REPO/$DOC" ;;
+        /*) _chief_doc="$DOC" ;;
+        *)  _chief_doc="$REPO/$DOC" ;;
     esac
-    # HIMMEL_CONSOLE=1 is the console marker the jira admission overrides
-    # (create --console-override, version-admit/-defer/-ready) check; legs never
-    # get it (headed-arm-leg.sh scrubs it).
-    CHIEF_ENV=("HIMMEL_CONSOLE_DOC=$_console_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")" "HIMMEL_CONSOLE=1")
+    # HIMMEL_CONSOLE=1 is the chief marker the jira admission overrides
+    # (create --chief-override, version-admit/-defer/-ready) check; workers never
+    # get it (headed-arm-worker.sh scrubs it).
+    CHIEF_ENV=("HIMMEL_CONSOLE_DOC=$_chief_doc" "HIMMEL_CONSOLE_WORKDIR=$(dirname -- "$SIGNAL")" "HIMMEL_CONSOLE=1")
 fi
 # This argv carries --autocompact and an Opus 5.5 id, which a CLI
 # below the floor rejects at parse time -- refuse here, naming the version,
 # instead of arming a session that never starts.
 claude_floor_gate headed-arm.sh "$DRY_RUN" "$CLAUDE_CLI" || exit 2
 LAUNCH_ARGV=("$LAUNCHER" --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
-# A console arm runs under the `console` plugin profile (the
-# floor plus lean-skills; no review toolkit). A leg arm reaches here through
-# leg-claude-launcher.sh, which already prepends its own --settings, so only
-# --role console adds one. Fails closed: no profile, no console launch.
-if [ "$ROLE" = "console" ]; then
-    _console_profile_settings=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console) || {
-        echo "headed-arm.sh: the console plugin profile did not resolve; refusing to launch a console with the full plugin set" >&2
+# A chief arm runs under the `console` plugin profile (the
+# floor plus lean-skills; no review toolkit). A worker arm reaches here through
+# worker-claude-launcher.sh, which already prepends its own --settings, so only
+# --role chief adds one. Fails closed: no profile, no chief launch.
+if [ "$ROLE" = "chief" ]; then
+    _chief_profile_settings=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" chief) || {
+        echo "headed-arm.sh: the chief plugin profile did not resolve; refusing to launch a chief with the full plugin set" >&2
         exit 2
     }
-    # The console loads only the servers its profile names. Without
+    # The chief loads only the servers its profile names. Without
     # --strict-mcp-config every user-level server (graphify, ...) leaks in and its
     # tool schemas are paid on every turn. Empty output = no allowlist declared.
-    _console_profile_mcp=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" console --mcp-config) || {
-        echo "headed-arm.sh: the console MCP allowlist did not resolve; refusing to launch a console with every user-level MCP server" >&2
+    _chief_profile_mcp=$(bash "$(dirname "$0")/../lanes/profile-settings.sh" chief --mcp-config) || {
+        echo "headed-arm.sh: the chief MCP allowlist did not resolve; refusing to launch a chief with every user-level MCP server" >&2
         exit 2
     }
-    _console_profile_args=(--settings "$_console_profile_settings")
-    [ -z "$_console_profile_mcp" ] || _console_profile_args+=(--mcp-config "$_console_profile_mcp" --strict-mcp-config)
-    LAUNCH_ARGV=("$LAUNCHER" "${_console_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
+    _chief_profile_args=(--settings "$_chief_profile_settings")
+    [ -z "$_chief_profile_mcp" ] || _chief_profile_args+=(--mcp-config "$_chief_profile_mcp" --strict-mcp-config)
+    LAUNCH_ARGV=("$LAUNCHER" "${_chief_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
 fi
 if [ "$HEADLESS" = "1" ]; then
-    # auto is what a headed leg runs in (defaultMode=auto in the operator's
+    # auto is what a headed worker runs in (defaultMode=auto in the operator's
     # user settings), declared here because an unattended launch must never
     # rely on the default (CLAUDE.md "Claude invocation billing").
-    # Console-armed leg; headed-arm-leg.sh ran the bank/fleet preflight
+    # Chief-armed worker; headed-arm-worker.sh ran the bank/fleet preflight
     LAUNCH_ARGV=("$LAUNCHER" --bg --permission-mode auto --model "$MODEL" --autocompact "$AUTOCOMPACT" -n "$NAME" "load $DOC and continue")
-    # The rebuild above would drop the console profile --settings.
-    if [ "$ROLE" = "console" ]; then
-        LAUNCH_ARGV=("$LAUNCHER" "${_console_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
+    # The rebuild above would drop the chief profile --settings.
+    if [ "$ROLE" = "chief" ]; then
+        LAUNCH_ARGV=("$LAUNCHER" "${_chief_profile_args[@]}" "${LAUNCH_ARGV[@]:1}")
     fi
 fi
 
-# Headed-arm-leg.sh sets this required value. Validate the same
+# Headed-arm-worker.sh sets this required value. Validate the same
 # argv array both launch branches consume, so a future renderer cannot drop or
 # change the cost-driving pair while the wrapper still reports standard mode.
 if [ -n "$REQUIRED_AUTOCOMPACT" ]; then
@@ -634,7 +642,7 @@ if [ -n "$REQUIRED_AUTOCOMPACT" ]; then
         _headed_i=$((_headed_i + 1))
     done
     if [ "$_headed_required_found" -ne 1 ]; then
-        echo "headed-arm-leg: refusing leg launch: resolved argv lacks --autocompact $REQUIRED_AUTOCOMPACT. Retry with standard leg context; use a console arm for 1m context." >&2
+        echo "headed-arm-worker: refusing worker launch: resolved argv lacks --autocompact $REQUIRED_AUTOCOMPACT. Retry with standard worker context; use a chief arm for 1m context." >&2
         exit 2
     fi
 fi
@@ -684,7 +692,7 @@ case "$NAME" in
     */*) echo "headed-arm: session name must not contain '/': '$NAME'" >&2; exit 2 ;;
 esac
 
-# No legitimate caller (console.sh, headed-arm-leg.sh) ever
+# No legitimate caller (chief.sh, headed-arm-worker.sh) ever
 # passes one of the usage string's own placeholder tokens - both build a
 # real session name first. The likeliest way one of these reaches NAME is a
 # human copy-pasting the usage line verbatim (including the angle brackets)
@@ -702,7 +710,7 @@ case "$DEADLINE" in
 esac
 if [ "$HEADLESS" = "1" ]; then
     if [ -z "${WORKER_SESSION_PROFILE_SETTINGS:-}" ]; then
-        echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the leg's env rides in that settings file) - launch through headed-arm-worker.sh --headless --profile <name>" >&2
+        echo "headed-arm: a headless launch needs WORKER_SESSION_PROFILE_SETTINGS (the worker's env rides in that settings file) - launch through headed-arm-worker.sh --headless --profile <name>" >&2
         exit 2
     fi
     for _hl_need in "$CLAUDE_CLI" jq; do
@@ -971,13 +979,13 @@ fi
 # process the first background launch spawned, from whatever shell ran it),
 # not ours. Measured: a session launched with FOO=second read FOO=first, the
 # daemon spawner's value. The one per-session channel is the settings file's
-# `env` block, which reaches every tool and hook subprocess. So the leg's
-# env is written there. Every leg var in our own env is mirrored; the vars a
+# `env` block, which reaches every tool and hook subprocess. So the worker's
+# env is written there. Every worker var in our own env is mirrored; the vars a
 # headed launch passes through konsole's env are set explicitly; every
-# leg-shaped var the daemon carries that the leg should not have is set to
+# worker-shaped var the daemon carries that the worker should not have is set to
 # "", which every gate reading these vars treats as unset. Values of
 # secret-named vars are never copied into the file.
-_hl_leg_var() {
+_hl_worker_var() {
     case "$1" in
         HIMMEL_*|LEG_*|WORKER_SESSION_*|CHIEF_*|CONSOLE_*|HANDOVER_*|IMPL_*|*_OK|CR_*|ARM*|JIRA_PROJECT_KEY) return 0 ;;
     esac
@@ -1034,17 +1042,17 @@ headless_fail() { # headless_fail <rc> <message>
 }
 # ponytail: the daemon env is read once, just before the launch. A daemon
 # that exits and is respawned by some other shell in between would hand the
-# leg vars this scan never saw. The window is the few ms between this read
+# worker vars this scan never saw. The window is the few ms between this read
 # and the launch call.
-# ponytail: only leg-shaped names (the case list in _hl_leg_var) are
+# ponytail: only worker-shaped names (the case list in _hl_worker_var) are
 # overridden. Anything else the daemon spawner had - PATH, CLAUDE_CODE_*,
 # the CLAUDE_PID / CLAUDE_CODE_SESSION_ID a headed launch clears with env -u -
-# still reaches the leg from the daemon.
+# still reaches the worker from the daemon.
 headless_launch() {
     local name val tok pid pids pg_rc settings="$WORKER_SESSION_PROFILE_SETTINGS" tmp_settings pair
     [ -f "$settings" ] || headless_fail 2 "headless: settings file $settings is missing - it must exist before the launch"
     for name in $(compgen -e); do
-        _hl_leg_var "$name" || continue
+        _hl_worker_var "$name" || continue
         _hl_secret_var "$name" && continue
         [ "$name" = HIMMEL_HOOK_INTEGRITY_BYPASS_OK ] && continue
         _hl_set "$name" "${!name}"
@@ -1069,7 +1077,7 @@ headless_launch() {
     _hl_set HIMMEL_HOOK_INTEGRITY_BYPASS_OK "$val"
     pids="$("$PGREP" -u "$(id -u)" -f '[c]laude daemon run' 2>/dev/null)"  # t13b-ok: read-only pgrep lookup of the Claude Code service, starts nothing; scoped to the launching user, never host-wide
     pg_rc=$?
-    [ "$pg_rc" -gt 1 ] && headless_fail 9 "headless: pgrep scan for the claude background service failed - its env decides what the leg inherits, refusing to launch blind"
+    [ "$pg_rc" -gt 1 ] && headless_fail 9 "headless: pgrep scan for the claude background service failed - its env decides what the worker inherits, refusing to launch blind"
     local qualified=0
     for pid in $pids; do
         _hl_service_pid "$pid" 2>/dev/null || continue
@@ -1077,7 +1085,7 @@ headless_launch() {
         [ -r "$PROC/$pid/environ" ] || headless_fail 9 "headless: cannot read the claude background service's env (pid $pid) - refusing to launch blind"
         while IFS= read -r -d '' pair; do
             name="${pair%%=*}"
-            _hl_leg_var "$name" || continue
+            _hl_worker_var "$name" || continue
             _hl_has "$name" || _hl_set "$name" ""
         done < "$PROC/$pid/environ"
     done
@@ -1092,7 +1100,7 @@ headless_launch() {
     if ! ( umask 077 && jq --args '.env = ((.env // {}) + ($ARGS.positional as $a | reduce range(0; $a | length; 2) as $i ({}; . + {($a[$i]): $a[$i + 1]})))' \
             "${jq_args[@]}" < "$settings" > "$tmp_settings" ) || ! mv -f "$tmp_settings" "$settings"; then
         rm -f "$tmp_settings" 2>/dev/null
-        headless_fail 1 "headless: could not write the leg env into $settings"
+        headless_fail 1 "headless: could not write the worker env into $settings"
     fi
     chmod 600 "$settings" 2>/dev/null || true
 
@@ -1116,7 +1124,7 @@ headless_launch() {
     row="$(printf '%s' "$out" | jq -r --arg n "$NAME" '[.[] | select(.name == $n and .pid != null)][0] | "\(.pid) \(.sessionId // "-") \(.id // "-")"' 2>/dev/null)"
     # shellcheck disable=SC2086  # deliberately split: "<pid> <session-id> <short-id>".
     set -- $row
-    # The line the fleet UI and the console read. out= is where the launch
+    # The line the fleet UI and the chief read. out= is where the launch
     # call's own output went; the session's screen is `claude logs <short-id>`.
     local line
     line="headless=1 pid=${1:--} session-id=${2:--} short-id=${3:--} name=$NAME settings=$settings out=$LOG argv=$(printf '%q ' "${LAUNCH_ARGV[@]}")"
@@ -1443,7 +1451,7 @@ fi
 # unaffected - what was polluted is the claude process's environ itself,
 # exactly the surface this ticket taught people to inspect
 # (/proc/<claude pid>/environ), so a stale id there actively misled that
-# diagnostic and is how one console came to see another's session id.
+# diagnostic and is how one chief came to see another's session id.
 # `--separate` (equivalently `--nofork`) forces konsole to run
 # in its own process rather than handing this invocation off to an
 # ALREADY-RUNNING konsole instance and letting the pid backgrounded below
@@ -1455,7 +1463,7 @@ fi
 # `script -q -a -f "$LOG" -c "$LAUNCH_CMD"`, which is util-linux syntax. BSD
 # script (macOS) has neither -f nor -c ("illegal option -- f"; it takes the
 # file positionally and the command as trailing argv), so on a Mac the branch
-# dies in milliseconds. That is not a rare seam: chief-kit/headed-arm-leg.sh
+# dies in milliseconds. That is not a rare seam: chief-kit/headed-arm-worker.sh
 # exports HEADED_ARM_RECORDER=1 unconditionally for --lane claudex. Refuse
 # with the real reason instead of letting the lane fail as a mystery FAILED.
 # Gated on KONSOLE_IS_RESOLVED_SHIM, not the platform: with an explicit
@@ -1522,16 +1530,16 @@ else
 fi
 
 # tab_launch - HIMMEL_WORKER_SESSION_TABS=1: open this worker as a new tab in its
-# console's one window (konsole's D-Bus /Windows/1 newSession) instead of a
+# chief's one window (konsole's D-Bus /Windows/1 newSession) instead of a
 # --separate window of its own, and point KPID at that window. The tab's
 # process is the worker itself (runCommand execs it over the tab's shell),
-# so closing a worker - close-wrapped-leg TERMs its claude pid - closes only
+# so closing a worker - close-wrapped-worker TERMs its claude pid - closes only
 # its tab, and a crashed worker leaves only its own tab dead.
-# Returns 1 to open a window instead: the switch is off, this is a console
+# Returns 1 to open a window instead: the switch is off, this is a chief
 # arm, the macOS shim, no valid HIMMEL_CONSOLE_NAME to group by, or no live
-# window recorded for the console or its predecessor chief yet (TAB_RECORD=1:
+# window recorded for the chief or its predecessor chief yet (TAB_RECORD=1:
 # the window this arm opens, or adopts from a live konsole predecessor, becomes
-# the console's window). A D-Bus failure also returns 1, with a WARN:
+# the chief's window). A D-Bus failure also returns 1, with a WARN:
 # a worker is never lost to a tab.
 # The tab's shell inherits the WINDOW's environment (the first worker's), not
 # this arm's, so the tab runs a one-shot script that rebuilds this arm's env
@@ -1539,11 +1547,11 @@ fi
 # holds this env (secrets included) for the second it takes the tab to start:
 # it is written 0600 inside this arm's claim lock (under the validated 0700
 # lock root), deletes itself first thing, and goes with the lock either way.
-# ponytail: two concurrent first arms of one console can open two windows
+# ponytail: two concurrent first arms of one chief can open two windows
 # (the record keeps the later one), a recycled window pid that is another
 # konsole would take the tab, /Windows/1 is assumed, and tick.sh's deadwin
 # sweep never closes a dead tab in a window that still has live ones; a
-# per-console flock is the upgrade path. A successor finds its predecessor by
+# per-chief flock is the upgrade path. A successor finds its predecessor by
 # the previous letter of the -nextleg-<date><LETTERS> name part only, so a
 # hand-over that changes the date or the naming opens a window; chief.sh next
 # exporting the predecessor's name is the upgrade path. The konsole check is
@@ -1551,7 +1559,7 @@ fi
 TAB_SESSION=""
 TAB_WINDOW_FILE=""
 TAB_RECORD=0
-# tab_predecessor_name <console name> - print the name of the chief this one
+# tab_predecessor_name <chief name> - print the name of the chief this one
 # succeeded: the previous letter of its -nextleg-<date><LETTERS> part (FY -> FX,
 # AA -> Z), same date and suffix. Returns 1 when the name has no such part or
 # the letter is A (the first of the day has no predecessor).
@@ -1575,13 +1583,13 @@ tab_predecessor_name() {
 tab_launch() {
     local wpid sid tab_sh kv pred
     [ "${HIMMEL_WORKER_SESSION_TABS:-0}" = "1" ] || return 1
-    [ "$ROLE" != "console" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
+    [ "$ROLE" != "chief" ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] || return 1
     case "${HIMMEL_CONSOLE_NAME:-}" in ''|*[!A-Za-z0-9._-]*) return 1 ;; esac
     TAB_WINDOW_FILE="$LOCKDIR/tabs-$HIMMEL_CONSOLE_NAME.window"
     wpid="$(cat "$TAB_WINDOW_FILE" 2>/dev/null)"  # swallow-ok: no readable record means no window yet, so this arm opens one and records it
     case "$wpid" in ''|*[!0-9]*|0|1) wpid="" ;; esac
     if [ -z "$wpid" ] || ! kill -0 "$wpid" 2>/dev/null; then
-        # No live window of this console's own: a successor chief adopts its
+        # No live window of this chief's own: a successor chief adopts its
         # predecessor's live konsole window and records it as its own.
         TAB_RECORD=1; wpid=""
         if pred="$(tab_predecessor_name "$HIMMEL_CONSOLE_NAME")"; then
@@ -1637,23 +1645,23 @@ if ! tab_launch; then
 fi
 
 # The arm log ($LOG) lives on tmpfs under /run/user and is gone
-# at the next reboot, and it is the only place a console's launch context was
+# at the next reboot, and it is the only place a chief's launch context was
 # recorded - so the context attribution was unrecoverable for every
-# console before the last boot. Write the mode durably, at launch (retention
+# chief before the last boot. Write the mode durably, at launch (retention
 # on a timer would still lose whatever was written since its last copy), as a
 # row in the launch record dir (btrfs, already the cost cohort's
 # source, already removed by uninstall): one more line format in the same
-# per-session file, keyed `headed-arm:` so it cannot read as a leg's
-# `headed-arm-leg:` profile line. Console arms only - a leg's own record is
-# headed-arm-leg.sh's, and it is always `standard`. Best-effort like that
+# per-session file, keyed `headed-arm:` so it cannot read as a worker's
+# `headed-arm-worker:` profile line. Chief arms only - a worker's own record is
+# headed-arm-worker.sh's, and it is always `standard`. Best-effort like that
 # one: a record that cannot be written is noted in $LOG, never stops the
 # launch (the reader then says `unknown`, never a proxy). The row itself comes
-# from console_context_write_record (scripts/lib/chief-context.sh), the same
+# from chief_context_write_record (scripts/lib/chief-context.sh), the same
 # function arm-resume.sh calls, so the two arming paths write one
 # shape.
-if [ "$ROLE" = "console" ]; then
-    if ! console_context_write_record "$NAME" "$CONTEXT" "$_headed_context_source" "$AUTOCOMPACT"; then
-        echo "$(date +%F_%T) WARN context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context is unrecoverable after a reboot)" >> "$LOG"
+if [ "$ROLE" = "chief" ]; then
+    if ! chief_context_write_record "$NAME" "$CONTEXT" "$_headed_context_source" "$AUTOCOMPACT"; then
+        echo "$(date +%F_%T) WARN context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this chief's launch context is unrecoverable after a reboot)" >> "$LOG"
     fi
 fi
 
@@ -1777,7 +1785,7 @@ if [ "$sv_seen" -eq 1 ]; then
         waker_pid="$SESSION_PID"
         echo "$(date +%F_%T) tab session pid=$SESSION_PID for $NAME" >> "$LOG"
     fi
-    # One waker per headed leg, detached from this script and the leg (own
+    # One waker per headed worker, detached from this script and the worker (own
     # session, no stdio held), bound to this konsole: it stops itself once the
     # window's pid (a tab's worker pid) is gone. Best-effort like the bind above.
     if [ -n "$WAKER" ] && [ "$sv_alive" -eq 1 ] && [ "$KONSOLE_IS_MACOS_SHIM" != "1" ] && [ -f "$WAKER" ]; then

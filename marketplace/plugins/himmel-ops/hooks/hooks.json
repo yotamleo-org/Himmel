@@ -101,7 +101,7 @@
           },
           {
             "type": "command",
-            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_CONSOLE=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-console-dispatch.sh\"",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_CONSOLE=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-chief-dispatch.sh\"",
             "timeout": 15
           },
           {
@@ -116,7 +116,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_CONSOLE=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-console-foreground.sh\"",
+            "command": "command -p sh \"${CLAUDE_PLUGIN_ROOT}/hooks/run-node.sh\" \"${CLAUDE_PLUGIN_ROOT}/hooks/run-hook-with-bash.js\" --optional --fail-closed-when \"HIMMEL_CONSOLE=1\" \"$CLAUDE_PROJECT_DIR/scripts/hooks/guard-chief-foreground.sh\"",
             "timeout": 15
           }
         ]

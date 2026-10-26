@@ -1,24 +1,24 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/worker-digest-step.sh - the wrap step of the
-# failure loop: one leg session's P1 digest
-# (scripts/eval/worker-digest/leg-digest.ts) handed to the P2 ledger writer
-# (scripts/eval/worker-digest/leg_ledger.py record). Zero model calls.
+# failure loop: one worker's P1 digest
+# (scripts/eval/worker-digest/worker-digest.ts) handed to the P2 ledger writer
+# (scripts/eval/worker-digest/worker_ledger.py record). Zero model calls.
 #
 # Usage:
-#   worker-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>]
-#                      [--pid <pid>] [--projects <dir>] [--console <name>]
-#       The close mode, run by close-wrapped-leg.sh after the TERM. Waits,
+#   worker-digest-step.sh --session <uuid> --doc <worker-doc> [--transcript <journal>]
+#                      [--pid <pid>] [--projects <dir>] [--chief <name>]
+#       The close mode, run by close-wrapped-worker.sh after the TERM. Waits,
 #       bounded, for <pid> to be gone and the journal and its subagent files to
 #       stop changing (spec 1.2); if they never settle the row is `partial`.
-#   worker-digest-step.sh --doc <leg-doc> [--projects <dir>]
-#       For a leg not closed by close-wrapped-leg.sh. When the front matter
-#       carries `session_ids:` (headed-arm-leg.sh's record) each
+#   worker-digest-step.sh --doc <worker-doc> [--projects <dir>]
+#       For a worker not closed by close-wrapped-worker.sh. When the front matter
+#       carries `session_ids:` (headed-arm-worker.sh's record) each
 #       id is digested directly, one line each prefixed with its id (an id
 #       with no journal reads `<id> digest=skipped:no-journal`). Then, for
-#       the sessions no id names (a leg launched before the ids existed),
-#       the spec 1.2 fallback finds the leg's chain in the project dir of the
-#       doc's `resume_cwd` with the close's own matcher (leg-transcripts.sh). A journal is a member when
-#       it matches the leg's names, its first `cwd` is `resume_cwd`, and its
+#       the sessions no id names (a worker launched before the ids existed),
+#       the spec 1.2 fallback finds the worker's chain in the project dir of the
+#       doc's `resume_cwd` with the close's own matcher (worker-transcripts.sh). A journal is a member when
+#       it matches the worker's names, its first `cwd` is `resume_cwd`, and its
 #       first timestamp falls in the doc's first-LIVE .. last-WRAPPED window
 #       (date from the doc name; WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN minutes before LIVE,
 #       default 30, because a session starts before it writes its LIVE bullet).
@@ -35,15 +35,15 @@
 #                              $WORKER_SESSION_DIGEST_STATE_DIR/skips.jsonl, which
 #                              tick.sh's fails= counts
 # Always exits 0 (2 on a usage error): the caller's rc never depends on it.
-# Idempotence and write order belong to leg_ledger.py (per-session flock,
+# Idempotence and write order belong to worker_ledger.py (per-session flock,
 # marker last), so a re-run or a racing backfill appends nothing new.
 #
-# Seams: WORKER_SESSION_DIGEST_BIN (replaces `bun leg-digest.ts`), WORKER_SESSION_DIGEST_STATE_DIR,
+# Seams: WORKER_SESSION_DIGEST_BIN (replaces `bun worker-digest.ts`), WORKER_SESSION_DIGEST_STATE_DIR,
 # WORKER_SESSION_DIGEST_TIMEOUT (60), WORKER_SESSION_DIGEST_SETTLE_MAX (15), WORKER_SESSION_DIGEST_SETTLE_QUIET
-# (5), CLAUDE_SESSIONS_PROC (/proc). Ledgers follow leg_ledger.py's own env
+# (5), CLAUDE_SESSIONS_PROC (/proc). Ledgers follow worker_ledger.py's own env
 # (HIMMEL_WORKER_SESSION_FAILURES_LEDGER, HIMMEL_EVAL_RUNS_LEDGER).
 #
-# Platform guard: Linux bash 3.2+ (console kit; /proc, GNU date and timeout;
+# Platform guard: Linux bash 3.2+ (chief kit; /proc, GNU date and timeout;
 # no .ps1 twin - Windows is parked).
 set -u
 
@@ -58,17 +58,17 @@ alias_env WORKER_SESSION_DIGEST_BIN LEG_DIGEST_BIN
 alias_env WORKER_SESSION_DIGEST_TIMEOUT LEG_DIGEST_TIMEOUT
 alias_env WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN LEG_DIGEST_CHAIN_SLACK_MIN
 LD_DIR="$HERE/../../eval/worker-digest"
-STATE_DIR="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/leg-digest}"
+STATE_DIR="${WORKER_SESSION_DIGEST_STATE_DIR:-$HOME/.himmel/state/worker-digest}"
 PROC_ROOT="${CLAUDE_SESSIONS_PROC:-/proc}"
 UUID_RE='^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
 
 usage() {
-    echo "usage: worker-digest-step.sh --session <uuid> --doc <leg-doc> [--transcript <journal>] [--pid <pid>] [--projects <dir>] [--console <name>]" >&2
-    echo "       worker-digest-step.sh --doc <leg-doc> [--projects <dir>]" >&2
+    echo "usage: worker-digest-step.sh --session <uuid> --doc <worker-doc> [--transcript <journal>] [--pid <pid>] [--projects <dir>] [--chief <name>]" >&2
+    echo "       worker-digest-step.sh --doc <worker-doc> [--projects <dir>]" >&2
     exit 2
 }
 
-SID="" SID_SET=0 DOC="" JOURNAL="" PID="" CONSOLE=""
+SID="" SID_SET=0 DOC="" JOURNAL="" PID="" CHIEF=""
 PROJECTS="${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects"
 while [ "$#" -gt 0 ]; do
     [ "$#" -ge 2 ] || usage
@@ -78,7 +78,7 @@ while [ "$#" -gt 0 ]; do
         --transcript) JOURNAL="$2" ;;
         --pid) PID="$2" ;;
         --projects) PROJECTS="$2" ;;
-        --console) CONSOLE="$2" ;;
+        --chief|--console) [ "$1" = --chief ] || legacy_flag --console --chief || usage; CHIEF="$2" ;;
         *) usage ;;
     esac
     shift 2
@@ -95,13 +95,13 @@ skip() {
     exit 0
 }
 
-# shellcheck source=scripts/lib/leg-identity.sh
+# shellcheck source=scripts/lib/worker-identity.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/worker-identity.sh" || skip no-lib
 # shellcheck source=scripts/lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$HERE/../../lib/handover-path.sh" 2>/dev/null || true
-# shellcheck source=scripts/handover/chief-kit/leg-transcripts.sh
+# shellcheck source=scripts/handover/chief-kit/worker-transcripts.sh
 # shellcheck disable=SC1091
 . "$HERE/worker-transcripts.sh" || skip no-lib
 
@@ -111,20 +111,20 @@ skip() {
 WORK="$(tmpdir)" || skip no-tmp
 trap 'rm -rf "$WORK"' EXIT
 
-# ---------- who: closed-shape fields only (leg_ledger.py refuses anything else)
+# ---------- who: closed-shape fields only (worker_ledger.py refuses anything else)
 who_args() {
-    local stem leg ticket pr console doc_rel root lane
+    local stem worker ticket pr chief doc_rel root lane
     stem="$(basename "$DOC" .md)"
-    leg="$(leg_label "$DOC" 2>/dev/null)"
-    printf '%s' "$leg" | grep -qE '^N[0-9]+[a-z]?$' && printf '%s\n' --leg "$leg"
+    worker="$(worker_label "$DOC" 2>/dev/null)"
+    printf '%s' "$worker" | grep -qE '^N[0-9]+[a-z]?$' && printf '%s\n' --worker "$worker"
     ticket="$(printf '%s' "$stem" | grep -oE '^[A-Z][A-Z0-9]+-[0-9]+')"
     [ -n "$ticket" ] && printf '%s\n' --ticket "$ticket"
     pr="$(grep -E '^- [0-9:]+ (READY|MERGED)' "$DOC" | grep -oE '(READY|MERGED)[ #-]+(PR[ #]+)?[0-9]+' | tail -n 1 | grep -oE '[0-9]+$')"
     [ -n "$pr" ] && printf '%s\n' --pr "$pr"
-    console="$CONSOLE"
+    chief="$CHIEF"
     # shellcheck disable=SC2016 # literal backticks in the pattern, not an expansion
-    [ -n "$console" ] || console="$(grep -oE 'Your console is[^`]*`[^`]+`' "$DOC" | head -n 1 | sed -E 's/.*`([^`]+)`$/\1/')"
-    printf '%s' "$console" | grep -qE '^[A-Za-z0-9._-]{1,120}$' && printf '%s\n' --console "$console"
+    [ -n "$chief" ] || chief="$(grep -oE 'Your chief is[^`]*`[^`]+`' "$DOC" | head -n 1 | sed -E 's/.*`([^`]+)`$/\1/')"
+    printf '%s' "$chief" | grep -qE '^[A-Za-z0-9._-]{1,120}$' && printf '%s\n' --chief "$chief"
     lane="$(grep -m1 -oE '\((opus|sonnet|haiku|fable)[^)]*, (native|claudex|codex|openrouter|cloud)\)' "$DOC" | sed -E 's/.*, ([a-z]+)\)$/\1/')"
     [ -n "$lane" ] && printf '%s\n' --lane "$lane"
     root="$(handover_root 2>/dev/null)"
@@ -133,7 +133,7 @@ who_args() {
         *) doc_rel="$(basename "$DOC")" ;;
     esac
     printf '%s\n' --doc "$doc_rel"
-    # a leg's session name is its doc's stem; the launcher's record is filed under it
+    # a worker's session name is its doc's stem; the launcher's record is filed under it
     if [[ "$stem" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,199}$ ]]; then
         printf '%s\n' --launch-name "$stem"
     fi
@@ -173,7 +173,7 @@ record() { # record <digest-file> [<digest-error>]
 $(who_args)
 EOF
     [ -z "${2:-}" ] || args+=(--digest-error "$2")
-    timeout -k 5 30 python3 "$LD_DIR/leg_ledger.py" record --digest "$1" --state-dir "$STATE_DIR" "${args[@]}" >/dev/null 2>&1
+    timeout -k 5 30 python3 "$LD_DIR/worker_ledger.py" record --digest "$1" --state-dir "$STATE_DIR" "${args[@]}" >/dev/null 2>&1
 }
 failed_digest() { # failed_digest <sid> <reason>
     printf '{"digest_v":1,"mapper_v":1,"trajectory_v":null,"session":"%s","status":"inconclusive","model":null,"metrics":{},"failures":[]}\n' "$1" > "$WORK/failed.json"
@@ -186,7 +186,7 @@ digest_one() { # digest_one <sid> <journal> <pid-or-empty> <wait:0|1>
     if [ -n "${WORKER_SESSION_DIGEST_BIN:-}" ]; then
         nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-60}" "$WORKER_SESSION_DIGEST_BIN" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
     else
-        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-60}" bun "$LD_DIR/leg-digest.ts" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
+        nice -n 10 timeout -k 5 "${WORKER_SESSION_DIGEST_TIMEOUT:-60}" bun "$LD_DIR/worker-digest.ts" --transcript "$j" > "$WORK/digest.json" 2>/dev/null
     fi
     rc=$?
     case "$rc" in
@@ -218,12 +218,12 @@ if [ "$SID_SET" = 1 ]; then
 fi
 
 # ---------- the launcher's record: session_ids: in the front matter ----------
-# headed-arm-leg.sh appends each launch's uuid, so a relaunched
-# leg or a doc with no resume_cwd is still found. Digested directly, any window.
-# the doc is writable by the leg it describes, so a leg can list
-# another session's uuid here and that session is then digested under this leg.
+# headed-arm-worker.sh appends each launch's uuid, so a relaunched
+# worker or a doc with no resume_cwd is still found. Digested directly, any window.
+# the doc is writable by the worker it describes, so a worker can list
+# another session's uuid here and that session is then digested under this worker.
 # Documented, not guarded: the digest is attribution only (no gate, merge or
-# permission reads it), and the same leg already writes its own Results
+# permission reads it), and the same worker already writes its own Results
 # bullets, so an id check would not make the doc any more trustworthy.
 ids=""
 [ "$(head -n 1 "$DOC")" != "---" ] \
@@ -238,7 +238,7 @@ while IFS= read -r sid; do
 done <<EOF
 $ids
 EOF
-# The search below still runs: a leg launched before the ids existed and
+# The search below still runs: a worker launched before the ids existed and
 # relaunched after records only the relaunch. Its outcome is a skip only when
 # the ids found nothing either.
 fb_skip() {
@@ -246,7 +246,7 @@ fb_skip() {
     if [ -n "$ids" ]; then skip no-journal; else skip "$1"; fi
 }
 
-# ---------- fallback: the leg's chain from its doc (spec 1.2) ----------------
+# ---------- fallback: the worker's chain from its doc (spec 1.2) ----------------
 cwd="$(sed -n '1,/^---$/{s/^resume_cwd: *//p;}' "$DOC" | head -n 1)"
 [ -n "$cwd" ] || fb_skip no-resume-cwd
 day="$(basename "$DOC" .md | grep -oE '[0-9]{4}-[0-9]{2}-[0-9]{2}' | tail -n 1)"
@@ -275,7 +275,7 @@ wall_after() {
 # Walk the HH:MM bullets, first LIVE .. last WRAPPED, as real instants: LIVE is
 # its earliest reading on the doc's day, each later bullet the first instant at
 # or after the one before it.
-# ponytail: a >24h gap with no bullet in between still counts as one day, upgrade path: full dates in the Results bullets if such a leg is seen
+# ponytail: a >24h gap with no bullet in between still counts as one day, upgrade path: full dates in the Results bullets if such a worker is seen
 lo="$(date -d "$day $live" +%s)"
 cur="" hi=""
 while read -r _ hm word _; do
@@ -292,11 +292,11 @@ EOF
 [ -n "$hi" ] || hi="$(date -d "$day $wrapped" +%s)"
 lo=$(( lo - ${WORKER_SESSION_DIGEST_CHAIN_SLACK_MIN:-30} * 60 ))
 hi=$(( hi + 60 ))
-ident="$(leg_identity "$DOC")"
+ident="$(worker_identity "$DOC")"
 candidates="$(printf '%s\n%s\n' "${ident#*$'\t'}" "$(basename "$DOC" .md)" | tr ',' '\n' | sed '/^$/d')"
 slug="$(printf '%s' "$cwd" | sed 's/[^A-Za-z0-9]/-/g')"
 [ -d "$PROJECTS/$slug" ] || fb_skip no-chain
-# Every file of the leg's own project dir, whole: a chain spans days and
+# Every file of the worker's own project dir, whole: a chain spans days and
 # renames, so the close's recent-and-head-bounded first pass would hide members.
 while IFS= read -r j; do
     [ -n "$j" ] || continue

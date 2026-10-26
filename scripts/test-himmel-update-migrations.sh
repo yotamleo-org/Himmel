@@ -24,24 +24,34 @@ cp "$SOURCE_ROOT/scripts/lib/timeout-bin.sh" "$ROOT/scripts/lib/"
 mkdir -p "$ROOT/scripts/handover"
 cp "$SOURCE_ROOT/scripts/lib/git-clean.sh" "$SOURCE_ROOT/scripts/lib/rename-aliases.tsv" "$ROOT/scripts/lib/"
 cp "$SOURCE_ROOT/scripts/handover/move-renamed-dirs.sh" "$ROOT/scripts/handover/"
+mkdir -p "$ROOT/scripts/setup" "$HOME/.claude"
+cp "$SOURCE_ROOT/scripts/setup/migrate-renamed-names.py" "$ROOT/scripts/setup/"
 cp "$SOURCE_ROOT/marketplace/plugins/handover/scripts/migrate-v1-to-v2.sh" "$ROOT/marketplace/plugins/handover/scripts/"
 cp "$SOURCE_ROOT/marketplace/plugins/obsidian-triage/tools/migrate-clip-lifecycle.mjs" "$ROOT/marketplace/plugins/obsidian-triage/tools/"
 cp "$SOURCE_ROOT/marketplace/plugins/obsidian-triage/tools/lib/evidence-kind.mjs" "$ROOT/marketplace/plugins/obsidian-triage/tools/lib/"
-printf 'marketplace/\n' >> "$ROOT/.git/info/exclude"
+printf 'marketplace/\n.env\n' >> "$ROOT/.git/info/exclude"
 export HANDOVER_DIR="$TMP/state repo/handovers" LUNA_VAULT_PATH="$TMP/vault sample"
 mkdir -p "$HANDOVER_DIR/tester/standalones/#7-legacy" "$LUNA_VAULT_PATH/Clippings"
 printf '%s\n' '---' 'template_version: 1' 'jira: TEST-7' '---' > "$HANDOVER_DIR/tester/standalones/#7-legacy/brief.md"
 printf '%s\n' '---' 'processed: true' '---' 'legacy clip' > "$LUNA_VAULT_PATH/Clippings/legacy.md"
 printf '%s\n' 'run scripts/handover/console-kit/go.sh' > "$HANDOVER_DIR/tester/moved-dir.md" # old-term-ok: a fixture line
+printf '%s\n' 'open it with bash scripts/lanes/leg-pr-open.sh t b' > "$HANDOVER_DIR/tester/moved-path.md" # old-term-ok: a fixture line
+printf '%s\n' 'CONSOLE_CONTEXT=1m' > "$ROOT/.env" # old-term-ok: a fixture line
+SETTINGS="$HOME/.claude/settings.json"
+printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-console-foreground.sh"}]}]}}' > "$SETTINGS" # old-term-ok: a fixture line
 case "${1:-}" in
     --real-clip) cp "$2" "$LUNA_VAULT_PATH/Clippings/legacy.md" ;;
     --real-vault) cp -R "$2/." "$LUNA_VAULT_PATH/" ;;
 esac
 
 snapshot() {
-    python3 -I - "$HANDOVER_DIR" "$LUNA_VAULT_PATH" <<'PY'
+    python3 -I - "$HANDOVER_DIR" "$LUNA_VAULT_PATH" "$ROOT/.env" "$SETTINGS" <<'PY'
 import hashlib, os, sys
 for root in sys.argv[1:]:
+    if os.path.isfile(root):
+        with open(root, 'rb') as f:
+            print(root, hashlib.sha256(f.read()).hexdigest())
+        continue
     for base, dirs, files in os.walk(root):
         dirs.sort()
         print(os.path.relpath(base, root), 'directory')
@@ -81,7 +91,10 @@ assert_eq 'check: exits successfully' 0 "$rc"
 assert_warning handover "$HANDOVER_DIR" 'migrate-v1-to-v2.sh'
 assert_warning clip-lifecycle "$LUNA_VAULT_PATH" 'migrate-clip-lifecycle.mjs'
 assert_warning 'handover directory-rename' "$HANDOVER_DIR" 'move-renamed-dirs.sh --slice M'
-assert_unchanged 'check: both fixture trees byte-identical' "$before"
+assert_warning 'handover directory-rename' "$HANDOVER_DIR" 'move-renamed-dirs.sh --slice W'
+assert_warning 'renamed-names' "$ROOT/.env" 'migrate-renamed-names.py --dry-run'
+assert_warning 'renamed-names' "$SETTINGS" 'migrate-renamed-names.py --dry-run'
+assert_unchanged 'check: fixture trees and files byte-identical' "$before"
 
 # The printed commands must actually target these installs, even with spaces.
 if [ "$fail" -eq 0 ]; then
@@ -90,12 +103,12 @@ if [ "$fail" -eq 0 ]; then
         rc=0
         preview="$(bash -c "$command" 2>&1)" || rc=$?
         assert_eq 'printed preview command: rc 0' 0 "$rc"
-        if grep -Eq 'rename:|PLAN |^total: ' <<< "$preview"; then
+        if grep -Eq 'rename:|PLAN |^total: |^[+].*(CHIEF_CONTEXT|guard-chief-foreground)' <<< "$preview"; then
             assert_pass 'printed preview command: finds legacy data'
         else
             assert_fail "printed preview command: no plan ($preview)"
         fi
-    done < <(grep -E '(handover|handover directory-rename|clip-lifecycle) migration needed' <<< "$out")
+    done < <(grep -E '(handover|handover directory-rename|clip-lifecycle|renamed-names) migration needed' <<< "$out")
     assert_unchanged 'printed previews: fixture trees byte-identical' "$before"
 fi
 
@@ -106,12 +119,17 @@ assert_eq 'apply: updater succeeds' 0 "$rc"
 assert_warning handover "$HANDOVER_DIR" 'migrate-v1-to-v2.sh'
 assert_warning clip-lifecycle "$LUNA_VAULT_PATH" 'migrate-clip-lifecycle.mjs'
 assert_warning 'handover directory-rename' "$HANDOVER_DIR" 'move-renamed-dirs.sh --slice M'
-assert_unchanged 'apply: both fixture trees byte-identical' "$before"
+assert_warning 'handover directory-rename' "$HANDOVER_DIR" 'move-renamed-dirs.sh --slice W'
+assert_warning 'renamed-names' "$SETTINGS" 'migrate-renamed-names.py --dry-run'
+assert_unchanged 'apply: fixture trees and files byte-identical' "$before"
 printf '%s\n' "$out" | grep -E '(handover|clip-lifecycle) migration needed' || true
 
 mv "$HANDOVER_DIR/tester/standalones/#7-legacy" "$HANDOVER_DIR/tester/standalones/TEST-7-legacy"
 mkdir -p "$LUNA_VAULT_PATH/Clippings/_evidence"
 printf '%s\n' 'run scripts/handover/chief-kit/go.sh' > "$HANDOVER_DIR/tester/moved-dir.md"
+printf '%s\n' 'open it with bash scripts/lanes/worker-pr-open.sh t b' > "$HANDOVER_DIR/tester/moved-path.md"
+printf '%s\n' 'CHIEF_CONTEXT=1m' > "$ROOT/.env"
+printf '%s\n' '{"hooks": {"PreToolUse": [{"hooks": [{"type": "command", "command": "bash scripts/hooks/guard-chief-foreground.sh"}]}]}}' > "$SETTINGS"
 mv "$LUNA_VAULT_PATH/Clippings/legacy.md" "$LUNA_VAULT_PATH/Clippings/_evidence/legacy.md"
 mkdir -p "$LUNA_VAULT_PATH/Clippings/month/deep"
 printf '%s\n' '---' 'processed: true' 'ig_media_pending: true' '---' > "$LUNA_VAULT_PATH/Clippings/pending.md"

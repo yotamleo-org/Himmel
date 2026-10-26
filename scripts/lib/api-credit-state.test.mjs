@@ -29,7 +29,7 @@ function fixture() {
     cycle_id: config.accounts[account].cycle_id,
     grant_usd: '2.00', remaining_usd: '2.00', reconciled_spent_usd: '0',
     starts_at: now - 1000, expires_at: now + 3600, observed_at: now,
-    source: 'operator-console-snapshot', exclusive_org: true, discrepancy: false,
+    source: 'operator-chief-snapshot', exclusive_org: true, discrepancy: false,
   }])) };
   const paths = { config: join(dir, 'config.json'), snapshot: join(dir, 'snapshot.json'), state: join(dir, 'ledger.json') };
   config.ledger_path = paths.state;
@@ -58,7 +58,7 @@ test('API dispatch is OFF even when no native evidence exists', () => {
     ...f.env, HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(f.dir, 'slots'),
     FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_BANK_LANE: 'api',
     CADENCE_BANK_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_BANK_LAUNCH: '1',
-    CADENCE_BANK_LEG: 'HIMMEL-test-api', CADENCE_BANK_SKIP_REFRESH: '1',
+    CADENCE_USAGE_WORKER: 'HIMMEL-test-api', CADENCE_BANK_SKIP_REFRESH: '1',
     CADENCE_BANK_CACHE: join(f.dir, 'no-native-cache'),
   } });
   assert.equal(r.status, 0, r.stderr);
@@ -72,7 +72,7 @@ function bankApi(f, extra = {}) {
     ...f.env, HIMMEL_FLEET_CAP: '4', HIMMEL_FLEET_SLOTS: join(f.dir, 'slots'),
     FLEET_PS_CMD: join(f.dir, 'ps'), FLEET_PROC: f.dir, CADENCE_BANK_LANE: 'api',
     CADENCE_BANK_LEDGER: join(f.dir, 'bank-ledger'), CADENCE_BANK_LAUNCH: '1',
-    CADENCE_BANK_LEG: 'HIMMEL-test-api', CADENCE_BANK_SKIP_REFRESH: '1',
+    CADENCE_USAGE_WORKER: 'HIMMEL-test-api', CADENCE_BANK_SKIP_REFRESH: '1',
     CADENCE_BANK_CACHE: join(f.dir, 'no-native-cache'), ...extra,
   } });
 }
@@ -103,7 +103,7 @@ test('funded account reports precise estimated headroom without writing spend', 
   assert.equal(row.grant_usd, '2.000000');
   assert.equal(row.reserved_usd, '0.000000');
   assert.equal(row.spent_est_usd, '0.000000');
-  assert.equal(row.source, 'operator-console-snapshot');
+  assert.equal(row.source, 'operator-chief-snapshot');
 });
 
 const invalid = [
@@ -386,7 +386,7 @@ test('an API launch does not move the subscription FLEET count and has its own c
   const f = fixture();
   const launch = (job) => bankApi(f, {
     HIMMEL_API_LANE: 'on', HIMMEL_FLEET_CAP: '1', HIMMEL_API_MAX_CONCURRENT: '2',
-    CADENCE_BANK_LEG: `claude-api:${job}`, CADENCE_BANK_CALLER_PID: String(process.pid),
+    CADENCE_USAGE_WORKER: `claude-api:${job}`, CADENCE_BANK_CALLER_PID: String(process.pid),
   });
   const one = launch('j1');
   assert.equal(one.stdout.trim(), 'PROCEED', one.stderr);
@@ -428,7 +428,7 @@ test('pull derives remaining from cost-report spend since the grant start, acros
   assert.equal(r.remaining_usd, '1.200000');
   const row = JSON.parse(readFileSync(f.paths.snapshot)).accounts.A;
   // A pull keeps the row's source, so the operator reading stays the fallback past 600 s.
-  assert.equal(row.source, 'operator-console-snapshot');
+  assert.equal(row.source, 'operator-chief-snapshot');
   assert.equal(row.pulled_at, row.observed_at);
   assert.equal(row.remaining_usd, '1.200000');
   assert.equal(seen.length, 2);
@@ -463,7 +463,7 @@ test('HIMMEL-7264: a failed pull names the HTTP status or the network failure, n
   assert.equal(denied.reason, 'cost-report-unavailable');
   assert.equal(denied.detail, 'http-401');
   const forbidden = await pullSnapshot(env, 'A', { fetchImpl: async () => ({ ok: false, status: 403, json: async () => ({}) }) });
-  assert.match(forbidden.detail, /^http-403: .*Admin API key.*individual Console accounts/);
+  assert.match(forbidden.detail, /^http-403: .*Admin API key.*individual Chief accounts/);
   const down = await pullSnapshot(env, 'A', { fetchImpl: async () => { throw new Error(`boom ${FIXTURE_KEY}`); } });
   assert.equal(down.reason, 'cost-report-unavailable');
   assert.equal(down.detail, 'network');

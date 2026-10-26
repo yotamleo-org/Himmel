@@ -49,7 +49,7 @@ const FEED_TIMEOUT_MS = 300_000;
 const FEED_WAIT_MS = 8_000;
 const FEED_CACHE_MS = 30_000;
 // with backgroundFeed the report starts at boot and is refreshed every FEED_REFRESH_MS, but only
-// while the console is in use (an authenticated request within the last FEED_REFRESH_MS), so a closed UI idles out.
+// while the chief is in use (an authenticated request within the last FEED_REFRESH_MS), so a closed UI idles out.
 const FEED_REFRESH_MS = 10 * 60 * 1000;
 // The progress line probe-progress.cjs writes; anything else on the report's stderr is ignored.
 const PROBE_LINE = "himmel-probe ";
@@ -118,7 +118,7 @@ function aguiStale(dist: string, web: string): { built: Date; changed: Date } | 
   const gone = aguiSourceGone(dist, web);
   try {
     const src = readdirSync(join(web, "src"), { recursive: true }).map((f) => join(web, "src", String(f)));
-    // the page also bundles the console's rail and theme from public/.
+    // the page also bundles the chief's rail and theme from public/.
     const shared = ["nav.js", "theme.css", "tokens.css"].map((f) => join(web, "..", "public", f)).filter((f) => existsSync(f));
     const stats = [join(web, "index.html"), ...src, ...shared].map((f) => statSync(f));
     const newest = (sts: typeof stats) => sts.map((st) => st.mtime).reduce((a, b) => (b > a ? b : a));
@@ -316,7 +316,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
   };
   // The child's process group is recorded in the lock, so the lock outlives a server crash while it runs.
   // `config set` writes .env and lanes.local.json under himmelctl's repo root; the feed and the live hooks read the
-  // station anchor, so a worktree-served console points the config children there (an operator override wins).
+  // station anchor, so a worktree-served chief points the config children there (an operator override wins).
   const stationEnv = env.HIMMELCTL_REPO_ROOT ? env : { ...env, HIMMELCTL_REPO_ROOT: stationRoot(root) };
   const capEnvFile = () => envFileOf(env.HIMMELCTL_REPO_ROOT || stationRoot(root));
   const childOpts = (p: Resolved, lock: Lock) => ({ cwd: p.cwd, env: p.action.startsWith("config.") ? stationEnv : env, timeoutMs: opts.actionTimeoutMs ?? p.timeoutMs, onSpawn: lock.setGroup });
@@ -500,7 +500,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
     if (run.body !== undefined) return feedBody(run.body);
     return json({ state: "error", reason: run.error }, 502);
   }
-  // background loading (backgroundFeed): refresh on each tick while the console is in use.
+  // background loading (backgroundFeed): refresh on each tick while the chief is in use.
   let lastSeen = -Infinity;
   const refreshMs = opts.feedRefreshMs ?? FEED_REFRESH_MS;
   const refresher = opts.backgroundFeed ? setInterval(() => { if (now() - lastSeen < refreshMs) feedStart(true); }, refreshMs) : undefined;
@@ -525,14 +525,14 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
       }
       if (path === "/api/health") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
-        const [bank, legs, monitoring] = await Promise.all([
+        const [bank, workers, monitoring] = await Promise.all([
           Promise.resolve(readBank(env)),
-          readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/legs.sh"), env, opts.legsTimeoutMs),
+          readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs),
           readMonitoring(env),
         ]);
         let raw = "";
         try { raw = readFileSync(join(root, ".env"), "utf8"); } catch { /* no .env */ }
-        return json(redactOut({ bank, legs, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) }) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
+        return json(redactOut({ bank, workers, monitoring, mode: readMode(root, { ...parseDotEnv(raw), ...readConfLayers(env), ...Object.fromEntries(Object.entries(env).filter(([, v]) => v !== "")) }) })); // as the CLI: the checkout's .env, himmel.conf, the non-empty process env winning
       }
       // the Claude and Codex bank windows, read from the two cache files bank-preflight reads. Never probes.
       if (path === "/api/bank") {
@@ -554,8 +554,8 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         return json({ sources: await trackerSources(env, root) });
       }
-      // the roadmap, read live from the Jira mirror, the plan dir, the drift log and the legs on every request, or from the
-      // GitHub issues when that is the only source. Read-only: the sync list is a plan the console kit executes, never run here.
+      // the roadmap, read live from the Jira mirror, the plan dir, the drift log and the workers on every request, or from the
+      // GitHub issues when that is the only source. Read-only: the sync list is a plan the chief kit executes, never run here.
       if (path === "/api/roadmap") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         const mirrorDir = jiraMirrorDir(env);
@@ -564,9 +564,9 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           const r = readRoadmap({ mirrorDir, github: issues ?? [], legs: { state: "absent" } });
           return json(redactOut({ ...r, ...(issues ? {} : { reason: "gh issue list failed" }), truncated: (issues?.length ?? 0) >= ISSUE_LIMIT, sync: [] }));
         }
-        const legs = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/legs.sh"), env, opts.legsTimeoutMs);
+        const workers = await readLegs(opts.legsScript ?? join(CHECKOUT, "scripts/config-ui/workers.sh"), env, opts.legsTimeoutMs);
         const driftLog = env.HIMMEL_ROADMAP_DRIFT_LOG || (env.TRACKER_HANDOVERS_DIR ? join(env.TRACKER_HANDOVERS_DIR, "roadmap-drift.tsv") : undefined);
-        const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, legs });
+        const r = readRoadmap({ mirrorDir, planDir: env.HIMMEL_ROADMAP_PLAN_DIR || undefined, driftLog, workers });
         return json(redactOut({ ...r, sync: legSync(r.tickets) }));
       }
       // every live session, for the fleet landing at /agui/ with no run. Read-only.
@@ -580,12 +580,12 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
           redact: (v) => String(redactDeep(v, { literals })),
         }));
       }
-      // the console board (board.mjs --json, schema himmel.board/1) for the Fleet page, and a leg's doc for its brief link.
+      // the chief board (board.mjs --json, schema himmel.board/1) for the Fleet page, and a worker's doc for its brief link.
       if (path === "/api/agui/board" || path === "/api/agui/brief") {
         if (req.method !== "GET") return new Response("method not allowed", { status: 405 });
         const q = new URL(req.url).searchParams, board = path.endsWith("board");
         const name = q.get(board ? "console" : "leg");
-        if (!validName(name)) return new Response(board ? "bad console" : "bad leg", { status: 400 });
+        if (!validName(name)) return new Response(board ? "bad console" : "bad worker", { status: 400 });
         const doc = await findDoc(env.HANDOVER_DIR || "", name);
         if (!doc) return new Response("no such doc", { status: 404 });
         if (!board) return new Response(String(scrub(readFileSync(doc, "utf8").slice(0, 200_000), (v) => redactOut(v))), { headers: { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" } });
@@ -679,7 +679,7 @@ export function startServer(opts: ServerOpts = {}): { server: import("bun").Serv
 
 // `himmelctl ui` prints ONE URL. LANDING is the operator's switch: "fleet" lands on the fleet
 // (Config and Health one click away in the rail), "config" on the config page. The fleet is the landing only
-// when agui-web/dist is built; else the console, whose Fleet link answers with the build steps.
+// when agui-web/dist is built; else the chief, whose Fleet link answers with the build steps.
 export const LANDING: "fleet" | "config" = "fleet";
 export function launchUrl(base: string, token: string, o: { landing: "fleet" | "config"; built: boolean; agui?: string }): string {
   if (o.agui && o.agui !== "fleet") return `${base}/agui/#t=${token}&run=${o.agui}`;

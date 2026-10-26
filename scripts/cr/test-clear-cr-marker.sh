@@ -16,7 +16,7 @@ set -uo pipefail
 # below pins today's insensitivity.
 unset ARMAUTOMERGE CR_MERGE_GATE_OK CR_REQUIRE_CROSS_MODEL
 
-# A leg shell carries FORCE_COLOR=3, which makes node's
+# A worker shell carries FORCE_COLOR=3, which makes node's
 # console.log colour a bare number/boolean (\e[33m0\e[39m) in the values the
 # gate parses. Pin it on so the suite catches a regression in any environment.
 export FORCE_COLOR=3

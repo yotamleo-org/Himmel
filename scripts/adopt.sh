@@ -630,7 +630,7 @@ wire_statusline_core() {
 
 # env.HIMMEL_REPO — default-by-install. Sibling of
 # wire_statusline_core: write THIS himmel clone's path into the scope-appropriate
-# settings.json so the leg resolver + minerva anchor get it without a manual set.
+# settings.json so the worker resolver + minerva anchor get it without a manual set.
 wire_himmel_repo_core() {
   local settings
   if [[ "$SCOPE" == "project" ]]; then
@@ -1523,8 +1523,8 @@ do_core() {
     echo "  worktree commands: bash $TARGET/scripts/worktree.sh feat/slug"
   else
     # user scope: reference this himmel clone, don't copy per-repo. Wire the full
-    # UNIVERSAL set — the PreToolUse trio AND the SessionStart leg-injector — so a
-    # session launched anywhere gets the legs (parity with setup.sh / R3).
+    # UNIVERSAL set — the PreToolUse trio AND the SessionStart worker-injector — so a
+    # session launched anywhere gets the workers (parity with setup.sh / R3).
     wire_pretooluse_hooks "$HOME/.claude/settings.json" "$HIMMEL_ROOT" "$DRY_RUN"
     wire_sessionstart_hook "$HOME/.claude/settings.json" "$HIMMEL_ROOT" "inject-initiative.sh" "$DRY_RUN"
     echo "  worktree commands run from the himmel clone: bash $HIMMEL_ROOT/scripts/worktree.sh feat/slug"

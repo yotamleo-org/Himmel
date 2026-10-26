@@ -260,44 +260,44 @@ describe('version-freeze / version-ready / version-defer', () => {
     expect(out()).toMatch(/FAIL\s+frozen-set.*not frozen/);
   });
 
-  it('--console-override with a reason turns a FAIL row into an overridden PASS and writes a ledger row', async () => {
+  it('--chief-override with a reason turns a FAIL row into an overridden PASS and writes a ledger row', async () => {
     world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new')] });
-    await run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set', 'HIM-2 ships in v1.1.4']);
+    await run(['version-ready', 'v1.1.3', '--chief-override', 'frozen-set', 'HIM-2 ships in v1.1.4']);
     expect(out()).toMatch(/PASS\s+frozen-set.*overridden.*HIM-2 ships in v1.1.4/);
     expect(mockAppend).toHaveBeenCalledWith(
       expect.objectContaining({ version: 'v1.1.3', key: 'frozen-set', kind: 'override', reason: 'HIM-2 ships in v1.1.4' }),
     );
   });
 
-  it('--console-override overrules only the named row; it is repeatable, one ledger row each', async () => {
+  it('--chief-override overrules only the named row; it is repeatable, one ledger row each', async () => {
     probes.mainCi = () => ({ ok: false, detail: 'ci red' });
     world({ description: FROZEN_DESC, frozen: [issue('HIM-1', 'done'), issue('HIM-2', 'new')], blockers: [issue('HIM-9', 'new')] });
-    await run(['version-ready', 'v1.1.3', '--console-override', 'main-ci', 'flaky', '--console-override', 'frozen-set', 'moves']);
+    await run(['version-ready', 'v1.1.3', '--chief-override', 'main-ci', 'flaky', '--chief-override', 'frozen-set', 'moves']);
     expect(out()).toMatch(/PASS\s+main-ci.*flaky/);
     expect(out()).toMatch(/PASS\s+frozen-set.*moves/);
     expect(out()).toMatch(/FAIL\s+no-blocker-bug/);
     expect(mockAppend).toHaveBeenCalledTimes(2);
   });
 
-  it('--console-override without the console marker stays FAIL and writes no ledger row', async () => {
+  it('--chief-override without the console marker stays FAIL and writes no ledger row', async () => {
     delete process.env.HIMMEL_CONSOLE;
     world({ description: FROZEN_DESC, frozen: [issue('HIM-2', 'new')] });
-    await run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set', 'because']);
+    await run(['version-ready', 'v1.1.3', '--chief-override', 'frozen-set', 'because']);
     expect(out()).toMatch(/FAIL\s+frozen-set/);
-    expect(out()).toMatch(/console marker/);
+    expect(out()).toMatch(/chief marker/);
     expect(mockAppend).not.toHaveBeenCalled();
   });
 
-  it('--console-override with a blank reason stays FAIL and writes no ledger row', async () => {
+  it('--chief-override with a blank reason stays FAIL and writes no ledger row', async () => {
     world({ description: FROZEN_DESC, frozen: [issue('HIM-2', 'new')] });
-    await run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set', '   ']);
+    await run(['version-ready', 'v1.1.3', '--chief-override', 'frozen-set', '   ']);
     expect(out()).toMatch(/FAIL\s+frozen-set/);
     expect(mockAppend).not.toHaveBeenCalled();
   });
 
-  it('--console-override with an odd number of values is refused', async () => {
+  it('--chief-override with an odd number of values is refused', async () => {
     world({ description: FROZEN_DESC, frozen: [issue('HIM-2', 'new')] });
-    await expect(run(['version-ready', 'v1.1.3', '--console-override', 'frozen-set'])).rejects.toThrow(/pairs/);
+    await expect(run(['version-ready', 'v1.1.3', '--chief-override', 'frozen-set'])).rejects.toThrow(/pairs/);
   });
 
   it('version-ready prints no time-box roll date', async () => {
@@ -412,7 +412,7 @@ describe('version-freeze / version-ready / version-defer', () => {
     await expect(run([...argv, '--reason', 'r'])).rejects.toThrow(/--by/);
     await expect(run([...argv, '--by', 'rm'])).rejects.toThrow(/--reason/);
     delete process.env.HIMMEL_CONSOLE;
-    await expect(run([...argv, '--reason', 'r', '--by', 'rm'])).rejects.toThrow(/console marker/);
+    await expect(run([...argv, '--reason', 'r', '--by', 'rm'])).rejects.toThrow(/chief marker/);
     expect(mockAppend).not.toHaveBeenCalled();
   });
 
@@ -515,7 +515,7 @@ describe('version-freeze / version-ready / version-defer', () => {
     delete process.env.HIMMEL_CONSOLE;
     await expect(
       run(['version-defer', 'HIM-2', '--version', 'v1.1.3', '--reason', 'x']),
-    ).rejects.toThrow(/console marker/);
+    ).rejects.toThrow(/chief marker/);
     expect(mockRequest).not.toHaveBeenCalled();
     expect(mockAppend).not.toHaveBeenCalled();
   });

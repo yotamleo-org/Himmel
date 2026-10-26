@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-anchor-seeds.sh -- a query that names a file or identifier starts graphify from that node.
 # graphify seeds on the question's words, drops tokens of two letters or fewer (go.sh is "go" and
-# "sh") and favours one-word labels, so the named file never seeded. leg-graph.sh resolves the
+# "sh") and favours one-word labels, so the named file never seeded. worker-graph.sh resolves the
 # names with anchor-seeds.py and merges a given-seed answer with graphify's own. Stub rows run
 # everywhere; the real-graphify row is skipped when graphify is not installed.
 set -u
@@ -31,8 +31,8 @@ nodes = [
     node("write_ts", "Write", "scripts/tools.ts", "L9"),
     node("file_ts", "File", "scripts/tools.ts", "L12"),
     node("deferred", "file-deferred-issues.sh", "scripts/file-deferred-issues.sh"),
-    node("lts_sh", "leg-tail-status.sh", "scripts/lib/leg-tail-status.sh"),
-    node("lts_fn", "leg_tail_status()", "scripts/lib/leg-tail-status.sh", "L8"),
+    node("lts_sh", "worker-tail-status.sh", "scripts/lib/worker-tail-status.sh"),
+    node("lts_fn", "worker_tail_status()", "scripts/lib/worker-tail-status.sh", "L8"),
     node("ql_sh", "queue-lock.sh", "scripts/handover/queue-lock.sh"),
     node("ql_test", "queue-lock.sh", "scripts/handover/tests/queue-lock.sh"),
     node("tail_fn", "tail()", "scripts/lib/text.sh", "L2"),
@@ -53,8 +53,8 @@ if [ "$got" = "go_sh " ]; then pass "A1 go.sh resolves to its file node"
 else fail "A1 got='$got'"; fi
 
 # A2: a snake_case identifier resolves to the symbol, not to tail() or status().
-got="$(seeds "which file defines leg_tail_status")"
-if [ "$got" = "lts_fn " ]; then pass "A2 leg_tail_status resolves to its function"
+got="$(seeds "which file defines worker_tail_status")"
+if [ "$got" = "lts_fn " ]; then pass "A2 worker_tail_status resolves to its function"
 else fail "A2 got='$got'"; fi
 
 # A3: a kebab stem resolves to the file; a test copy loses to the real file.
@@ -63,7 +63,7 @@ if [ "$got" = "ql_sh " ]; then pass "A3 queue-lock resolves to the non-test file
 else fail "A3 got='$got'"; fi
 
 # A4: plain words, and a name that matches nothing, give no seeds.
-got="$(seeds "how does a console hand work to a leg") $(seeds "what does foo-bar do")"
+got="$(seeds "how does a chief hand work to a worker") $(seeds "what does foo-bar do")"
 if [ "$got" = " " ]; then pass "A4 no name, or an unknown name, seeds nothing"
 else fail "A4 got='$got'"; fi
 
@@ -150,17 +150,17 @@ import json, sys
 def node(i, label, src):
     return {"id": i, "label": label, "norm_label": label.lower(), "file_type": "code", "source_file": src, "source_location": "L1"}
 nodes = [
-    node("arm_leg", "headed-arm-leg.sh", "scripts/handover/chief-kit/headed-arm-leg.sh"),
+    node("arm_worker", "headed-arm-worker.sh", "scripts/handover/chief-kit/headed-arm-worker.sh"),
     node("chief_relay", "chief-relay.sh", "scripts/handover/chief-relay.sh"),
     node("stop_w", "stop-worker.sh", "scripts/lanes/stop-worker.sh"),
 ]
 json.dump({"nodes": nodes, "links": []}, open(sys.argv[1], "w"))
 PY
 aseeds() { python3 -I "$ANCHOR" seeds "$T/alias.json" "$1" | tr '\n' ' '; }
-got="$(aseeds "how does headed-arm-worker.sh start a session")|$(aseeds "what does console-relay.sh send")"
-if [ "$got" = "arm_leg |chief_relay " ]; then pass "A11 a name in either vocabulary resolves through the registry"
+got="$(aseeds "how does headed-arm-worker.sh start a session")|$(aseeds "what does chief-relay.sh send")"
+if [ "$got" = "arm_worker |chief_relay " ]; then pass "A11 a name in either vocabulary resolves through the registry"
 else fail "A11 got='$got'"; fi
-got="$(aseeds "what does stop-leg.sh do")"
+got="$(aseeds "what does stop-worker.sh do")"
 if [ "$got" = "" ]; then pass "A12 a renamed word never resolves onto an other-sense lane-worker file"
 else fail "A12 got='$got'"; fi
 got="$(aseeds "how does stop-worker.sh stop a lane worker")"

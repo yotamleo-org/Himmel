@@ -483,7 +483,7 @@ out="$(bash "$IS" --runner scripts/observability/new-thing.test.mjs 2>&1)"
 if grepq "$out" 'node --test'; then pass "--runner maps a new observability .test.mjs to node --test"; else fail "--runner observability mjs: $out"; fi
 
 # --- 17. --run: a fresh worktree's missing npm deps install before the
-# suite runs (worktrees are created with --no-install, so a leg
+# suite runs (worktrees are created with --no-install, so a worker
 # running an impacted suite raw sees a false SKIP/FAIL it mislabels
 # "pre-existing" — N441/N440/N446 in one shift). -----------------------------
 mkdir -p "$FX/pkg-npm"
@@ -792,7 +792,7 @@ mkf scripts/guardrails/test-lint-fail-open.sh 'bash "$d/lint-fail-open.sh"'
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: scan-roots fixtures"
 mkdir -p "$FX/scripts/lanes/lib" "$FX/docs/scan-31"
-change scripts/lanes/lib/leg-cost-row.sh
+change scripts/lanes/lib/worker-cost-row.sh
 out="$(run_is "$range")"
 if grepq "$out" '^scripts/guardrails/test-lint-fail-open\.sh$'; then pass "a new file under scripts/lanes/ -> test-lint-fail-open.sh (scan root)"; else fail "scan-root miss on the PR-1734 shape: $out"; fi
 change docs/scan-31/new.sh
@@ -909,24 +909,24 @@ else
 fi
 
 # --- 34. A change to the CR guarded closure selects
-# test-cr-guarded-closure.sh (#1851: leg-jira-status.sh, reached from the
-# guarded scripts/lanes/leg-pr-open.sh, was added without selecting it). --------
+# test-cr-guarded-closure.sh (#1851: worker-jira-status.sh, reached from the
+# guarded scripts/lanes/worker-pr-open.sh, was added without selecting it). --------
 GC=scripts/cr/test-cr-guarded-closure\\.sh
 mkf scripts/cr/test-cr-guarded-closure.sh 'echo gc'
 mkf scripts/cr/pr-check-context.sh 'cr_guarded="scripts/cr scripts/lib
-scripts/lanes/leg-pr-open.sh"'
-mkf scripts/lanes/leg-pr-open.sh 'bash "$d/../handover/chief-kit/leg-jira-status.sh"'
+scripts/lanes/worker-pr-open.sh"'
+mkf scripts/lanes/worker-pr-open.sh 'bash "$d/../handover/chief-kit/worker-jira-status.sh"'
 mkf scripts/lanes/unrelated.sh 'echo unrelated'
-mkf scripts/handover/chief-kit/leg-jira-status.sh 'echo jira'
+mkf scripts/handover/chief-kit/worker-jira-status.sh 'echo jira'
 mkf scripts/handover/chief-kit/tracker.py 'print(1)'
 mkf scripts/cr/test-names-tracker.sh 'grep -q tracker.py x'
 mkf .agents/skills/pr-check/SKILL.md 'runbook'
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: guarded-closure fixtures"
-change scripts/lanes/leg-pr-open.sh
+change scripts/lanes/worker-pr-open.sh
 out="$(run_is "$range")"
-if grepq "$out" "^${GC}\$"; then pass "a guarded file (leg-pr-open.sh) -> test-cr-guarded-closure.sh"; else fail "guarded file missed: $out"; fi
-change scripts/handover/chief-kit/leg-jira-status.sh
+if grepq "$out" "^${GC}\$"; then pass "a guarded file (worker-pr-open.sh) -> test-cr-guarded-closure.sh"; else fail "guarded file missed: $out"; fi
+change scripts/handover/chief-kit/worker-jira-status.sh
 out="$(run_is "$range")"
 if grepq "$out" "^${GC}\$"; then pass "the #1851 shape: an unguarded file a guarded file names -> test-cr-guarded-closure.sh"; else fail "#1851 shape missed: $out"; fi
 change .agents/skills/pr-check/SKILL.md
@@ -954,7 +954,7 @@ if grepq "$out" "^${GC}\$"; then pass "arm 1 alone: a file inside a guarded dir 
 mkf scripts/lanes/names-tg.sh 'bash "$d/../telegram/status.sh"'
 mkf scripts/telegram/status.sh 'echo status'
 mkf scripts/cr/pr-check-context.sh 'cr_guarded="scripts/cr scripts/lib
-scripts/lanes/leg-pr-open.sh scripts/lanes/names-tg.sh"'
+scripts/lanes/worker-pr-open.sh scripts/lanes/names-tg.sh"'
 git -C "$FX" add -A
 git -C "$FX" commit -q -m "chore: telegram fixtures"
 change scripts/telegram/status.sh

@@ -1,13 +1,13 @@
 // roadmap.ts — the read-side behind GET /api/roadmap. The Jira mirror, the plan dir, the drift log and the
-// legs are read LIVE on every request; nothing here writes or executes anything. Semantics are a port of
+// workers are read LIVE on every request; nothing here writes or executes anything. Semantics are a port of
 // scripts/handover/chief-kit/tracker.py (read_mirror, read_versions, bucket, jira_view, drift_log), which stays the
-// CLI/offline renderer and the drift log's only writer. legSync only PLANS Jira CLI argv: the console kit is the one writer.
+// CLI/offline renderer and the drift log's only writer. legSync only PLANS Jira CLI argv: the chief kit is the one writer.
 import { closeSync, fstatSync, openSync, readdirSync, readFileSync, readSync } from "node:fs";
 import { basename, join } from "node:path";
 import type { Section } from "./health-sources";
 import type { GhIssue } from "./tracker-sources";
 
-export const SYNC_LABEL = "leg-blocked";
+export const SYNC_LABEL = "worker-blocked";
 const TRAIN_RE = /^v1\.\d+\.\d+[a-z]?$/;
 const TAIL_BYTES = 64 * 1024;
 const TREND_ROWS = 30;
@@ -23,10 +23,10 @@ const BUCKETS: Record<string, string> = { "to do": "todo", backlog: "todo", "in 
 const SHIPPED = new Set(["", "done", "fixed"]); // a Done ticket resolved any other way (Won't Do, Duplicate, ...) shipped nothing
 
 export type Bucket = "todo" | "prog" | "rev" | "ci" | "done" | "wont";
-export type Leg = { label: string; marker: string; reason: string };
+export type Worker = { label: string; marker: string; reason: string };
 export type Ticket = {
   k: number; id?: string; t: string; s: string; b: Bucket; v: number; theme: number; pv: string | null; drift: 0 | 1 | 2; // id: the shown id when it is not HIMMEL-<k> (a GitHub issue's #<k>)
-  labels: string[]; leg: Leg | null; noted?: string; // noted: the mirror body, for the sync dedupe; non-enumerable, never shipped
+  labels: string[]; leg: Worker | null; noted?: string; // noted: the mirror body, for the sync dedupe; non-enumerable, never shipped
 };
 export type Version = { n: string; rel: boolean; date: string; counts: Record<Bucket, number>; open: number[] };
 export type Proposal = { k: number; title: string; proposal: string; needsApproval: true };
@@ -191,12 +191,12 @@ export function readRoadmap(o: Opts): Roadmap {
   const themes = [...new Set([NO_THEME, ...themeOf.values()])].sort();
   const themeSlugs = themes.map((t) => (t === NO_THEME ? "" : slugOf(t)));
 
-  // Legs: ticket number -> the last leg listed for it.
-  const legs = new Map<number, Leg>();
+  // Workers: ticket number -> the last worker listed for it.
+  const workers = new Map<number, Worker>();
   if (o.legs.state === "ok" && Array.isArray(o.legs.legs)) {
     for (const l of o.legs.legs as { doc: string; status: string }[]) {
       const m = /^HIMMEL-(\d+)-(N\d+[a-z]?)-.*\.md$/.exec(basename(String(l.doc)));
-      if (m) legs.set(Number(m[1]), { label: m[2], marker: String(l.status), reason: legReason(String(l.doc), String(l.status)) });
+      if (m) workers.set(Number(m[1]), { label: m[2], marker: String(l.status), reason: legReason(String(l.doc), String(l.status)) });
     }
   }
 
@@ -209,7 +209,7 @@ export function readRoadmap(o: Opts): Roadmap {
     const b = bucketOf(m), pv = place?.get(m.k) ?? null;
     const drift = !place ? 0 : pv !== null ? (pv !== v ? 1 : 0) : isOpen(b) ? 2 : 0;
     const t: Ticket = { k: m.k, ...(gh ? { id: `#${m.k}` } : {}), t: clip(m.title, 90), s: m.sn || m.cat, b, v: vi.get(v)!, theme: themes.indexOf(themeOf.get(m.k) ?? NO_THEME), pv, drift: drift as 0 | 1 | 2,
-      labels: m.labels, leg: isOpen(b) ? legs.get(m.k) ?? null : null };
+      labels: m.labels, leg: isOpen(b) ? workers.get(m.k) ?? null : null };
     Object.defineProperty(t, "noted", { value: m.body, enumerable: false });
     tickets.push(t);
   }
@@ -235,7 +235,7 @@ export function readRoadmap(o: Opts): Roadmap {
   for (const t of open) { const n = normTitle(t.t); if (n) byTitle.set(n, [...(byTitle.get(n) ?? []), t]); }
   const librarian = {
     staleInProgress: tickets.filter((t) => ["prog", "rev", "ci"].includes(t.b) && (!t.leg || t.leg.marker === "WRAPPED" || t.leg.marker === "HALTED"))
-      .map((t) => prop(t, t.leg ? `${t.s} but its leg is ${t.leg.marker}: confirm the state, then move it back to To Do or close it` : `${t.s} with no leg: confirm someone is on it, else move it back to To Do`)),
+      .map((t) => prop(t, t.leg ? `${t.s} but its worker is ${t.leg.marker}: confirm the state, then move it back to To Do or close it` : `${t.s} with no leg: confirm someone is on it, else move it back to To Do`)),
     drift: tickets.filter((t) => t.drift === 1).map((t) => prop(t, `Jira says ${versions[t.v].n}, the plan says ${t.pv}: move fixVersion to ${t.pv} or re-plan`)),
     unthemed: unthemed.map((t) => prop(t, "assign a theme in the plan (stage1 overlay)")),
     releasedOpen: open.filter((t) => versions[t.v].rel).map((t) => prop(t, `${versions[t.v].n} is released but this is still open: move to ${run ?? "the running version"}`)),
@@ -251,22 +251,22 @@ export function readRoadmap(o: Opts): Roadmap {
   };
 }
 
-// The Jira CLI argv that mirrors each leg's marker onto its ticket. Planned only: the console kit is the one writer,
-// legs never write Jira, and this page never does. `--labels` is a full replace in the jira CLI; a status is never moved.
+// The Jira CLI argv that mirrors each worker's marker onto its ticket. Planned only: the chief kit is the one writer,
+// workers never write Jira, and this page never does. `--labels` is a full replace in the jira CLI; a status is never moved.
 export function legSync(tickets: Ticket[]): SyncOp[] {
   const ops: SyncOp[] = [];
   for (const t of tickets) {
     if (!t.leg) continue;
     const { label, marker, reason } = t.leg, key = `HIMMEL-${t.k}`;
-    const line = `[leg-sync] ${label} ${marker}${reason ? `: ${reason}` : ""}`;
+    const line = `[worker-sync] ${label} ${marker}${reason ? `: ${reason}` : ""}`;
     const noted = (t.noted ?? "").includes(line);
     const has = t.labels.includes(SYNC_LABEL);
     if (STUCK.has(marker)) {
-      if (!has) ops.push({ k: t.k, marker, argv: ["edit", key, "--add-labels", SYNC_LABEL], why: `leg ${label} is ${marker}: flag the ticket` });
-      if (!noted) ops.push({ k: t.k, marker, argv: ["comment", key, line], why: `record why leg ${label} is ${marker}` });
+      if (!has) ops.push({ k: t.k, marker, argv: ["edit", key, "--add-labels", SYNC_LABEL], why: `worker ${label} is ${marker}: flag the ticket` });
+      if (!noted) ops.push({ k: t.k, marker, argv: ["comment", key, line], why: `record why worker ${label} is ${marker}` });
     } else if (CLEARING.has(marker)) {
-      if (has) ops.push({ k: t.k, marker, argv: ["edit", key, "--labels", t.labels.filter((l) => l !== SYNC_LABEL).join(",")], why: `leg ${label} is ${marker}: clear the flag` });
-      if (NOTED.has(marker) && !noted) ops.push({ k: t.k, marker, argv: ["comment", key, line], why: `note once that leg ${label} is ${marker}` });
+      if (has) ops.push({ k: t.k, marker, argv: ["edit", key, "--labels", t.labels.filter((l) => l !== SYNC_LABEL).join(",")], why: `worker ${label} is ${marker}: clear the flag` });
+      if (NOTED.has(marker) && !noted) ops.push({ k: t.k, marker, argv: ["comment", key, line], why: `note once that worker ${label} is ${marker}` });
     }
   }
   return ops;

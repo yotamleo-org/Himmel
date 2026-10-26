@@ -141,7 +141,7 @@ router, jira CLI and breadcrumb writer stay in the himmel clone at `$HIMMEL_REPO
      A ticket that adds or aggregates a status, report, doctor, health, probe,
      check or inventory surface is routed through `/minerva` instead. It needs
      a lint-clean Fact ownership matrix before dispatch (HIMMEL-4375; the
-     leg-brief-template's item (g)).
+     worker-brief-template's item (g)).
    - `model`: the `model` `fanout-plan.mjs` resolved for this ticket's item id.
    - `isolation`: `worktree` (each subagent gets its own copy of the
      repo on the target branch).

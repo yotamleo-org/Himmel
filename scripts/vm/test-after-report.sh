@@ -822,7 +822,7 @@ fi
 # checking for a guest secret must REFUSE, not be read as "the secret is
 # absent" — today (pre-fix) `if guest_ssh "test -e ..."; then fail; fi`
 # treats EVERY nonzero ssh exit (255 = transport failure, exactly like 1 =
-# file absent) as proof of absence, so a broken check silently waves the
+# file absent) as proof of absence, so a broken check silently parallel waves the
 # run through. The distinction under test is "the check could not run" vs
 # "the secret is not there" — not merely "some non-zero exit happened".
 # =====================================================================
@@ -1233,7 +1233,7 @@ echo
 # are SKIPPED (see the SKIP lines), yet this used to still print "ALL
 # PASS" and exit 0 whenever the few python-free cases passed — a
 # vacuously green suite reporting the STRONGEST verdict while having
-# verified almost nothing. Every leg of this review is gated on grepping
+# verified almost nothing. Every worker of this review is gated on grepping
 # "ALL PASS" out of exactly this kind of log, so this suite must never say
 # it without having actually run. Matches test-dry-run-restore.sh's own
 # fix: a missing prerequisite is UNVERIFIED, not a pass, and gets

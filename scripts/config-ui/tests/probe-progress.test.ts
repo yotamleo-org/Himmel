@@ -30,7 +30,7 @@ test("the preload emits one step per probed source, in order, n of N", () => {
   expect(r.status).toBe(0);
   expect(r.stdout).toBe("{}\n"); // the report's own output is untouched
   const steps = r.stderr.split("\n").filter((l) => l.startsWith("himmel-probe ")).map((l) => JSON.parse(l.slice("himmel-probe ".length)));
-  const names = ["install items", "doctor checks", "pipeline cadence", "doctor cadence", "plugin profile", "lanes, initiative legs, flags and secrets"];
+  const names = ["install items", "doctor checks", "pipeline cadence", "doctor cadence", "plugin profile", "lanes, initiative workers, flags and secrets"];
   const want = names.map((source, k) => ({ i: k + 1, n: names.length, source }));
   expect(steps).toEqual(want);
 });

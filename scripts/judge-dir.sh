@@ -79,7 +79,7 @@ if [ -s "$DIR/.holder" ]; then
         [ "$op" != "$holder" ] && [ "$os" != "-" ] && [ "$(pstart "$op")" = "$os" ] \
             && die "$DIR is held by live pid $op; use another suffix"
     ;; esac
-    # the SAME live holder asking again (two in-process judges under one console
+    # the SAME live holder asking again (two in-process judges under one chief
     # share its pid) must not share a dir that already has contents: the first verdict's
     # release marker would delete the second judge's evidence. An empty dir is still reusable.
     if [ "$op" = "$holder" ] && [ "$os" != "-" ] && [ "$os" = "$start" ]; then

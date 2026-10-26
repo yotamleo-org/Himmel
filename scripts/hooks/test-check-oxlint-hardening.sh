@@ -305,7 +305,7 @@ assert_eq "jq absent with bunx present → gate blocks" "1" "$rc"
 assert_says "jq absent → loud WARN" "WARN check-oxlint-hardening: jq not found" "$out"
 
 # --- plain fixture nested in a parent git repo → lint fixture, never parent --
-# This reproduces the authenticated-console hypothesis deterministically: a bare
+# This reproduces the authenticated-chief hypothesis deterministically: a bare
 # git rev-parse from this directory resolves the worktree parent. The gate must
 # instead select this repo-shaped fixture root (or refuse); this suite chooses
 # and pins the useful behavior: lint it.

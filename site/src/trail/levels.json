@@ -269,7 +269,7 @@
       "turn_off": "Close the chief and its workers; Ctrl-C stops the fleet view. Nothing keeps running on its own.",
       "docs": [
         { "label": "The local UI", "href": "ui/" },
-        { "label": "Running a chief", "href": "handover/running-a-console/" },
+        { "label": "Running a chief", "href": "handover/running-a-chief/" },
         { "label": "Orchestration patterns", "href": "orchestration-patterns/" }
       ]
     }

@@ -52,8 +52,8 @@ export function denseRun(): string {
   return rows.map((row, i) => JSON.stringify({ ...JSON.parse(row), timestamp: new Date(1792281600000 + i * 100).toISOString() }) + "\n").join("");
 }
 
-// The console's himmel.board/1 file (<doc>.board.json, which /api/agui/board serves): one live leg joined to the fixture
-// fleet's leg by its N-label, with a goal of its own, and two hourly cost points (the live case that stretched the spark).
+// The chief's himmel.board/1 file (<doc>.board.json, which /api/agui/board serves): one live worker joined to the fixture
+// fleet's worker by its N-label, with a goal of its own, and two hourly cost points (the live case that stretched the spark).
 const STAGE_AT = (m: number) => `2026-10-07T${String(9 + Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}+02:00`;
 export function boardFixture(): object {
   const color = (c: string) => ({ color: c });
@@ -89,19 +89,19 @@ export type AguiHarness = {
 
 // `fleet` boots `himmelctl ui --agui` with no session id over the fixture fleet (agui-fleet-fixture.ts:
 // its stub census, sessions and journals under this HOME), and waits for the fleet URL (the token, no run).
-// `cloud` adds the fixture's cloud lane (routing log, briefs, stub gh, the shepherd leg).
+// `cloud` adds the fixture's cloud lane (routing log, briefs, stub gh, the shepherd worker).
 export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: boolean } = {}): Promise<AguiHarness> {
   const dir = mkdtempSync(join(tmpdir(), "agui-e2e-"));
   const fleet = opts.fleet ? fleetFixture(dir, { cloud: opts.cloud }) : null;
   const home = join(dir, "home");
-  // A live console holds its queue lock; the process fixture alone is not live.
+  // A live chief holds its queue lock; the process fixture alone is not live.
   if (fleet) {
     const root = fleet.env.HANDOVER_DIR;
     const doc = join(root, "yotam", "himmel", `${FLEET.console.name}.md`);
-    execFileSync("bash", [join(__dirname, "../../../handover/queue-lock.sh"), "acquire", doc, "fixture-console"], {
+    execFileSync("bash", [join(__dirname, "../../../handover/queue-lock.sh"), "acquire", doc, "fixture-chief"], {
       env: { PATH: process.env.PATH, HOME: home, HANDOVER_DIR: root },
     });
-    appendFileSync(doc, "- 09:00 LIVE — lock `fixture-console`\n");
+    appendFileSync(doc, "- 09:00 LIVE — lock `fixture-chief`\n");
     writeFileSync(doc.replace(/\.md$/, ".board.json"), JSON.stringify(boardFixture()));
   }
   const slug = join(home, ".claude", "projects", "e2e-project");
@@ -159,7 +159,7 @@ export async function bootAgui(initial = "", opts: { fleet?: boolean; cloud?: bo
   };
 }
 
-// a leg's /pr-check round: the critic panel reports three findings (the Review panel fills), a
+// a worker's /pr-check round: the critic panel reports three findings (the Review panel fills), a
 // correctness critic subagent checks the critical one while the suite runs, verdicts are recorded, and four
 // kinds of failure land (a red suite, a guardrail denial, a BLOCKED report by message and by text). Records
 // are built when played, so each carries the time it was appended; `pause` is the recorder's wait after a step
@@ -205,7 +205,7 @@ export const SCENE: { sub?: string; rec: () => string; pause: number }[] = [
   { rec: () => J.result("toolu_verdicts", "write-verdicts: 3 verdicts recorded"), pause: 900 },
   { rec: () => J.tool("toolu_push", "Bash", { command: "git push origin HEAD:main", description: "Push the fix" }, OPUS), pause: 500 },
   { rec: () => J.result("toolu_push", "PreToolUse:Bash hook error: check-push-target: refusing a direct push to main", { error: true }), pause: 700 },
-  { rec: () => J.tool("toolu_msg", "SendMessage", { to: "HIMMEL-roadmap-console", message: "BLOCKED suite red and the push guard refused; need a ruling" }, OPUS), pause: 400 },
+  { rec: () => J.tool("toolu_msg", "SendMessage", { to: "HIMMEL-roadmap-chief", message: "BLOCKED suite red and the push guard refused; need a ruling" }, OPUS), pause: 400 },
   { rec: () => J.result("toolu_msg", "Message sent."), pause: 600 },
   { rec: () => J.text("BLOCKED: the suite is red and the push guard refused. Holding for the console.", "end_turn", OPUS), pause: 600 },
   { rec: () => J.end(), pause: 0 },

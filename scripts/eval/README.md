@@ -10,7 +10,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
 | `retrieval-eval/answer-ab.py` | tokens to a correct answer, end to end: a haiku answerer on the questions it fails closed-book, with no retrieval, grep, path + ident-grep, graphify or fused output pasted in; total session tokens per correct answer per arm | `table.tsv`, `results.jsonl` (no ledger row) |
-| `handover-cost.py` | the per-handover console price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and leg-relay turns and cost, gross and net (HIMMEL-6491 method); `--legs-after` counts only newer legs | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
+| `handover-cost.py` | the per-handover chief price from session JSONLs: prep, relay+wrap, successor ACTION ZERO and worker-relay turns and cost, gross and net (HIMMEL-6491 method); `--workers-after` counts only newer workers | one `HANDOVER` row per pair plus a `MEAN` row on stdout (no ledger row) |
 | `weekly-rollup.py` | velocity, cost and health per ISO week and per stable version, with the change against the previous row; `review` prints the three version-review lines ([`docs/release/version-review.md`](../../docs/release/version-review.md)) | `~/.himmel/state/rollup/weekly.jsonl` (`WEEKLY_ROLLUP_FILE`; ledger row `weekly-rollup`) |
 | `review-page.py` | the reviewers in plain words: how often the critics catch planted bugs and are right, how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
 | `deferred-outcome.py` | what became of each deferred CR-ledger finding: its follow-up ticket in the Jira mirror is done (fixed later), open, or closed Won't Do (disproved), overall and per critic | ledger row `deferred-outcome` |
@@ -162,7 +162,7 @@ above `at`, a `HEADROOM` line points to the target metrics (such as cost and
 latency): quality near its ceiling cannot show much gain. The line is
 advisory; it does not skip regression checks.
 
-A candidate whose `meta.observational` is true (the `leg-trajectory` rows) is
+A candidate whose `meta.observational` is true (the `worker-trajectory` rows) is
 not compared at all: eval-compare lists the series (the latest `ok` row per
 `run_id`, same `confighash`) with runs, mean and latest per metric, prints no
 verdict and exits 3. The exporter likewise emits no `baseline_delta` or
@@ -258,7 +258,7 @@ The ledger row carries:
 - **Ledger:** it appends one `lane-quality-calibration` row unless you pass
   `--no-ledger`.
 
-The first real multi-rep sweep is a console step. Run it on a quiet fleet: 3
+The first real multi-rep sweep is a chief step. Run it on a quiet fleet: 3
 repeats of the 4 tasks on one native lane. That is about 12 agent runs plus
 their judge calls. For scale, one stored native haiku sweep of the 4 tasks
 cost about 0.57 USD API-equivalent. Note the bank reading before and after.
@@ -369,16 +369,16 @@ per denied call, and `trajectory_v`. `identical` counts each later identical
 call against the most recent identical denial before it, so the counts sum to
 `identical_denied_retries`. Without the flag the output is unchanged.
 
-## leg-digest: one leg session's failures as class keys
+## worker-digest: one worker's failures as class keys
 
-`worker-digest/leg-digest.ts` (Bun) reads a worker's journal and its subagent
+`worker-digest/worker-digest.ts` (Bun) reads a worker's journal and its subagent
 transcripts, merged in the order the AG-UI page uses. It maps them with the
 AG-UI mapper and prints one digest JSON. It is read-only, makes no model call
-and writes nothing; `leg_ledger.py` (below) turns a digest into ledger rows.
+and writes nothing; `worker_ledger.py` (below) turns a digest into ledger rows.
 
 ```bash
-bun scripts/eval/worker-digest/leg-digest.ts --transcript ~/.claude/projects/<slug>/<session>.jsonl
-bun scripts/eval/worker-digest/leg-digest.ts --session <uuid>   # resolved under ~/.claude/projects
+bun scripts/eval/worker-digest/worker-digest.ts --transcript ~/.claude/projects/<slug>/<session>.jsonl
+bun scripts/eval/worker-digest/worker-digest.ts --session <uuid>   # resolved under ~/.claude/projects
 ```
 
 - **Class key** `<failure>/<sub>`. `<sub>` comes from closed vocabularies,
@@ -401,13 +401,13 @@ bun scripts/eval/worker-digest/leg-digest.ts --session <uuid>   # resolved under
   tracked-test lookup failed), or
   `inconclusive` (no journal, or over 200 MB).
 - **Cross-check:** `stats.denial_divergence` lists the main-agent denials that
-  only one detector saw. `test-leg-digest.sh` fails on any divergence not
+  only one detector saw. `test-worker-digest.sh` fails on any divergence not
   enumerated in `worker-digest/denial-exceptions.txt`.
 - **Cost:** measured 2026-10-06, 3 runs each:
-  - 0.11–0.21 s wall on three recent leg journals of 3.6–6.5 MB;
+  - 0.11–0.21 s wall on three recent worker journals of 3.6–6.5 MB;
   - 1.50 s wall on the station's largest journal (58 MB).
 
-  The budget is 5 s per leg.
+  The budget is 5 s per worker.
 
 ### Tool health
 
@@ -419,18 +419,18 @@ use `other`. Arguments and result text never become tool keys. Text-only
 blocked reports and trajectory findings are not tool failures; a grep
 no-match remains a successful call.
 
-`leg_ledger.py` stores these rows in the existing registered eval-runs
+`worker_ledger.py` stores these rows in the existing registered eval-runs
 ledger's `meta.tool_health`, with the session's first timestamp in
 `meta.started_ts`. No new ledger or writer is introduced. The recorder stamps
 the persisted digest and its tool rows with launch provenance: explicit
-`--lane`, else the assigned leg's title in the leg doc, else the extractor's
+`--lane`, else the assigned worker's title in the worker doc, else the extractor's
 `WORKER_SESSION_LANE`; missing provenance is `unknown`. Canonical environment lanes are
 native, claudex, openrouter, cloud and unknown; the recorder normalizes the
 historical codex label in explicit recorder input or document titles to claudex.
 Backfill never borrows its own launcher's lane or guesses from a model.
 
-`worker-digest/tool-health.mjs` reads eval-runs and leg-failures and computes UTC
-calendar-day rollups by model, lane and leg-vs-console role. Rates use summed
+`worker-digest/tool-health.mjs` reads eval-runs and worker-failures and computes UTC
+calendar-day rollups by model, lane and worker-vs-chief role. Rates use summed
 counts, never averages of session percentages. Deny-hook rates divide by
 Bash calls across the selected population. Recovery is count-weighted over
 known class outcomes (the ledger's boolean describes the entire class row);
@@ -442,23 +442,23 @@ denominators either.
 A `since` cutoff uses day cohorts; a partial first UTC day has unknown
 call denominators because daily data cannot certify an intraday shift rate.
 
-The config-ui Tool health page and console board share this reader. The
+The config-ui Tool health page and chief board share this reader. The
 page shows 7/30-day trends, top classes and session/tool-call-id drill-down,
 plus per-lane comparisons and deltas relative to native. All rate math stays
 on the server; the page is read-only. Overrides are
 `HIMMEL_EVAL_RUNS_LEDGER` and `HIMMEL_WORKER_SESSION_FAILURES_LEDGER`.
 
-## leg_ledger: digests into the leg ledgers
+## leg_ledger: digests into the worker ledgers
 
-`worker-digest/leg_ledger.py` writes one digest as:
+`worker-digest/worker_ledger.py` writes one digest as:
 
-1. one `leg-failures` row per digest failures row
+1. one `worker-failures` row per digest failures row
    (`$HIMMEL_WORKER_SESSION_FAILURES_LEDGER`, else `~/.himmel/leg-failures.jsonl`). The
    row carries closed-list categories only; unknown keys are refused, so no
    journal text can ride in;
-2. one eval-runs row, `eval: leg-trajectory`, `run_id` = the session uuid,
+2. one eval-runs row, `eval: worker-trajectory`, `run_id` = the session uuid,
    `meta.observational: true`;
-3. the digest at `~/.himmel/state/leg-digest/<session>.json`, last, as the
+3. the digest at `~/.himmel/state/worker-digest/<session>.json`, last, as the
    commit marker.
 
 It is idempotent by session, under a per-session flock: a marker with status
@@ -467,13 +467,13 @@ agent and class), and a later `ok` digest supersedes a `partial` or
 `inconclusive` one with one more eval-runs row.
 
 ```bash
-python3 scripts/eval/worker-digest/leg_ledger.py record --digest d.json --leg N1 --ticket PROJ-1 [--console C --pr N --doc D]
-python3 scripts/eval/worker-digest/leg_ledger.py backfill --since 2026-10-01 [--projects ~/.claude/projects]
-python3 scripts/eval/worker-digest/leg_ledger.py validate ~/.himmel/leg-failures.jsonl
+python3 scripts/eval/worker-digest/worker_ledger.py record --digest d.json --worker N1 --ticket PROJ-1 [--chief C --pr N --doc D]
+python3 scripts/eval/worker-digest/worker_ledger.py backfill --since 2026-10-01 [--projects ~/.claude/projects]
+python3 scripts/eval/worker-digest/worker_ledger.py validate ~/.himmel/leg-failures.jsonl
 ```
 
 `backfill` digests every main journal whose first timestamp is on or after
-`--since` and whose `customTitle` names a leg (`<TICKET>-N<n>-...`), reading
+`--since` and whose `customTitle` names a worker (`<TICKET>-N<n>-...`), reading
 the journals only. It refuses a journal whose cwd sits under a salus root (a
 `.salus` marker on an ancestor, or a root in `~/.config/claude-glm/phi-roots`
 or `egress-denylist`). Every ledger and the state directory take a flag, so a

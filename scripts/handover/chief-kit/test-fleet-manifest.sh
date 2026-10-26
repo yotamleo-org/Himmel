@@ -1,27 +1,27 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-append-results.sh
 # scripts/handover/chief-kit/test-fleet-manifest.sh - suite for
-# fleet-manifest.sh, the console's one writer for its fleet
-# manifest (the JSON `tick.sh --legs-from` reads every sample):
+# fleet-manifest.sh, the chief's one writer for its fleet
+# manifest (the JSON `tick.sh --workers-from` reads every sample):
 #   1. add to a missing manifest creates it (schema 1, doc + N-label entry)
-#   2. add is idempotent; a second leg appends in order; list prints docs
-#   3. remove by label and by doc; removing an absent leg is not an error
+#   2. add is idempotent; a second worker appends in order; list prints docs
+#   3. remove by label and by doc; removing an absent worker is not an error
 #   4. a relative doc is refused (tick would resolve it against a different root)
-#   5. keys the writer does not own survive a rewrite (room for a wider leg manifest)
-#   6. list on a missing or invalid manifest fails (a bad leg entry included);
+#   5. keys the writer does not own survive a rewrite (room for a wider worker manifest)
+#   6. list on a missing or invalid manifest fails (a bad worker entry included);
 #      add refuses to clobber an invalid one
 #   6b. add refuses a doc with whitespace or a glob character (tick word-splits)
 #   7. concurrent adds (two dispatches at once) lose no entry
 #
 # Hermetic: temp dir only. PLATFORM GUARD: no .ps1 twin, by design -- the
-# console kit is Linux-only (util-linux flock). bash 3.2-safe.
+# chief kit is Linux-only (util-linux flock). bash 3.2-safe.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SCRIPT="$HERE/fleet-manifest.sh"
 
 if ! command -v flock >/dev/null 2>&1 || ! command -v jq >/dev/null 2>&1; then
-    echo "skip - test-fleet-manifest.sh: needs flock and jq (the console kit is Linux-only)"
+    echo "skip - test-fleet-manifest.sh: needs flock and jq (the chief kit is Linux-only)"
     exit 0
 fi
 
@@ -40,25 +40,25 @@ bash "$SCRIPT" add "$m" "$d1" >/dev/null 2>&1; rc=$?
 check '1. add to a missing manifest succeeds' 0 "$rc"
 check '1. the new manifest is schema 1' 1 "$(jq -r '.schema' "$m" 2>/dev/null)"
 check '1. the entry carries the absolute doc' "$d1" "$(jq -r '.legs[0].doc' "$m" 2>/dev/null)"
-check '1. the entry carries the leg-identity label' N61 "$(jq -r '.legs[0].label' "$m" 2>/dev/null)"
+check '1. the entry carries the worker-identity label' N61 "$(jq -r '.legs[0].label' "$m" 2>/dev/null)"
 check '1. the entry carries an added timestamp' yes "$(jq -e '.legs[0].added | test("^[0-9]{4}-")' "$m" >/dev/null 2>&1 && echo yes)"
 
 # 2. idempotent add, order, list.
 bash "$SCRIPT" add "$m" "$d1" >/dev/null 2>&1
 bash "$SCRIPT" add "$m" "$d2" >/dev/null 2>&1
-check '2. a repeated add does not duplicate a leg' 2 "$(jq '.legs | length' "$m" 2>/dev/null)"
+check '2. a repeated add does not duplicate a worker' 2 "$(jq '.legs | length' "$m" 2>/dev/null)"
 check '2. list prints the docs in manifest order' "$d1
 $d2" "$(bash "$SCRIPT" list "$m" 2>/dev/null)"
 
 # 3. remove.
 bash "$SCRIPT" remove "$m" N61 >/dev/null 2>&1; rc=$?
 check '3. remove by label succeeds' 0 "$rc"
-check '3. remove by label drops only that leg' "$d2" "$(bash "$SCRIPT" list "$m" 2>/dev/null)"
+check '3. remove by label drops only that worker' "$d2" "$(bash "$SCRIPT" list "$m" 2>/dev/null)"
 bash "$SCRIPT" remove "$m" "$d2" >/dev/null 2>&1
-check '3. remove by doc empties the leg set' 0 "$(jq '.legs | length' "$m" 2>/dev/null)"
+check '3. remove by doc empties the worker set' 0 "$(jq '.legs | length' "$m" 2>/dev/null)"
 check '3. an empty manifest lists nothing and succeeds' "0:" "$(out="$(bash "$SCRIPT" list "$m" 2>/dev/null)"; echo "$?:$out")"
 bash "$SCRIPT" remove "$m" N99 >/dev/null 2>&1; rc=$?
-check '3. removing a leg that is not listed is not an error' 0 "$rc"
+check '3. removing a worker that is not listed is not an error' 0 "$rc"
 
 # 4. relative doc refused.
 bash "$SCRIPT" add "$m" relative/HIMMEL-3-N70-c.md >/dev/null 2>&1; rc=$?
@@ -69,7 +69,7 @@ check '4. and writes nothing' 0 "$(jq '.legs | length' "$m" 2>/dev/null)"
 printf '{"schema":1,"chains":{"c1":["N61"]},"legs":[{"doc":"%s","label":"N61","lane":"opus"}]}\n' "$d1" > "$m"
 bash "$SCRIPT" add "$m" "$d2" >/dev/null 2>&1
 check '5. a top-level key the writer does not own survives' '["N61"]' "$(jq -c '.chains.c1' "$m" 2>/dev/null)"
-check '5. a per-leg key the writer does not own survives' opus "$(jq -r '.legs[0].lane' "$m" 2>/dev/null)"
+check '5. a per-worker key the writer does not own survives' opus "$(jq -r '.legs[0].lane' "$m" 2>/dev/null)"
 
 # 6. missing / invalid.
 bash "$SCRIPT" list "$tmp/none.fleet.json" >/dev/null 2>&1; rc=$?
@@ -86,10 +86,10 @@ check '6. an unknown schema version is refused' 1 "$rc"
 for bad in '{"doc":""}' '{"doc":"rel/x.md"}' '{"doc":7}' '{}' '{"doc":"/a b.md"}' '{"doc":"/a*.md"}'; do
     printf '{"schema":1,"legs":[%s]}\n' "$bad" > "$tmp/leg.fleet.json"
     bash "$SCRIPT" list "$tmp/leg.fleet.json" >/dev/null 2>&1; rc=$?
-    check "6. a leg entry $bad is refused (tick would read it as a smaller fleet)" 1 "$rc"
+    check "6. a worker entry $bad is refused (tick would read it as a smaller fleet)" 1 "$rc"
 done
 
-# 6b. tick splits leg paths on whitespace, so the writer refuses what tick cannot carry.
+# 6b. tick splits worker paths on whitespace, so the writer refuses what tick cannot carry.
 for bad in "$tmp/a b.md" "$tmp/a*.md" "$tmp/a?.md" "$tmp/a[1].md"; do
     bash "$SCRIPT" add "$m" "$bad" >/dev/null 2>&1; rc=$?
     check "6b. a doc tick cannot carry is a usage error (rc 2): $bad" 2 "$rc"
@@ -105,13 +105,13 @@ while [ "$i" -le 12 ]; do
     i=$((i + 1))
 done
 for p in $pids; do wait "$p"; done
-check '7. twelve concurrent adds keep all twelve legs' 12 "$(jq '.legs | length' "$c" 2>/dev/null)"
+check '7. twelve concurrent adds keep all twelve workers' 12 "$(jq '.legs | length' "$c" 2>/dev/null)"
 check '7. no temp file is left behind' 0 "$(find "$tmp" -name 'race.fleet.json.*' ! -name '*.lock' | wc -l | tr -d ' ')"
 
 # 7b. two concatenated schema-1 objects are not one manifest
 # (jq reads a stream, so a per-value check would pass it).
 s="$tmp/stream.fleet.json"
-printf '%s\n%s\n' "{\"schema\":1,\"legs\":[{\"doc\":\"$d1\"}]}" "{\"schema\":1,\"legs\":[{\"doc\":\"$d2\"}]}" > "$s"
+printf '%s\n%s\n' "{\"schema\":1,\"workers\":[{\"doc\":\"$d1\"}]}" "{\"schema\":1,\"workers\":[{\"doc\":\"$d2\"}]}" > "$s"
 before="$(cat "$s")"
 bash "$SCRIPT" list "$s" >/dev/null 2>&1; rc=$?
 check '7b. list refuses a multi-object stream (rc 1)' 1 "$rc"
@@ -173,7 +173,7 @@ bash "$SCRIPT" add "$m9" --arm 400k "$l1" >/dev/null 2>&1; rc=$?
 check '7e. add --arm 400k (rc 0)' 0 "$rc"
 check '7e. the arm is stored' 400k "$(jq -r '.legs[0].arm' "$m9")"
 bash "$SCRIPT" add "$m9" "$l2" >/dev/null 2>&1
-check '7e. a leg added with no --arm carries no arm key' false "$(jq '.legs[1] | has("arm")' "$m9")"
+check '7e. a worker added with no --arm carries no arm key' false "$(jq '.legs[1] | has("arm")' "$m9")"
 bash "$SCRIPT" add "$m9" --arm 300k "$l3" >/dev/null 2>&1; rc=$?
 check '7e. a bad --arm value is a usage error (rc 2)' 2 "$rc"
 bash "$SCRIPT" add "$m9" --arm 200k "$l1" >/dev/null 2>&1; rc=$?

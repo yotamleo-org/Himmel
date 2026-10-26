@@ -83,8 +83,8 @@
 # claude-cli draws the operator's own interactive bank rather than a metered
 # API, so these times are a quiet-hours default, not a provider off-peak
 # window. WHY :05 / :15 PAST THE HOUR for the structural pair (10 min
-# apart, tighter than the semantic stagger — these legs are seconds-to-minutes,
-# not the semantic legs' LLM-bound runtime): same overlap-reduction rationale,
+# apart, tighter than the semantic stagger — these workers are seconds-to-minutes,
+# not the semantic workers' LLM-bound runtime): same overlap-reduction rationale,
 # scaled to how fast a local AST re-parse actually is. The backend/day/hour
 # offsets are fixed as BACKEND/WEEKLY_DAY_*/AST_*_TIME in this script — not
 # flags; edit + re-arm to change them.
@@ -154,7 +154,7 @@ resolve_user_home() {
 # tasks recur daily and %TEMP% / /tmp are subject to cleanup sweeps that would
 # silently kill the cadence (same rationale as pipeline-cadence's BAT_DIR).
 BAT_DIR="${GRAPHMAP_BAT_DIR:-$(resolve_user_home)/.claude/graphmap-cadence}"
-# touch "$BAT_DIR/$SEMANTIC_PAUSE_MARKER" pauses the publish leg's semantic pass; rm resumes it.
+# touch "$BAT_DIR/$SEMANTIC_PAUSE_MARKER" pauses the publish worker's semantic pass; rm resumes it.
 SEMANTIC_PAUSE_MARKER="semantic.paused"
 
 # Resolve the himmel root from this script's own location (scripts/luna/..),
@@ -165,7 +165,7 @@ REFRESH_SCRIPT="$HIMMEL_ROOT/scripts/graphify/refresh-graph-map.sh"
 # graph-out-root.sh for why (Obsidian hangs on the vault-internal
 # graphify-out/ churn). Empty for himmel (its graphify-out/ stays tracked +
 # in-corpus). Used by both the semantic pair (cron_payload --out-root) and
-# the structural pair (ast_cron_payload GRAPHIFY_OUT=) below, so the two legs
+# the structural pair (ast_cron_payload GRAPHIFY_OUT=) below, so the two workers
 # that share one promote lock keep resolving the SAME directory.
 # shellcheck source=../graphify/graph-out-root.sh
 # shellcheck disable=SC1091
@@ -177,7 +177,7 @@ AST_UPDATE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/ast-update.sh"
 # Publish leg: fires by absolute path, same rationale as
 # AST_UPDATE_SCRIPT/REFRESH_SCRIPT above.
 PUBLISH_CADENCE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/graph-cadence.sh"
-# Luna semantic leg: graph-cadence.sh only wires himmel, so this leg calls semantic-update.sh directly.
+# Luna semantic leg: graph-cadence.sh only wires himmel, so this worker calls semantic-update.sh directly.
 SEMANTIC_UPDATE_SCRIPT="$HIMMEL_ROOT/scripts/graphify/semantic-update.sh"
 # The observability-registry FLOW NAME must be DERIVED from the same
 # corpus-slug computation graph-cadence.sh itself uses (basename(HIMMEL_ROOT),
@@ -207,12 +207,12 @@ PUBLISH_FLOW_NAME="graph-publish-${PUBLISH_CORPUS_SLUG}"
 # shellcheck disable=SC1091
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/macos-fda-warning.sh"
 
-# Off-peak defaults for the WEEKLY semantic legs (see the header for the
+# Off-peak defaults for the WEEKLY semantic workers (see the header for the
 # Sunday 13:00 / 13:20 local rationale).
 LUNA_TIME="13:00"
 HIMMEL_TIME="13:20"
-# Weekly day-of-week, semantic legs only. Sunday: quiet, low odds
-# of colliding with weekday operator work; ONE fixed day shared by both legs
+# Weekly day-of-week, semantic workers only. Sunday: quiet, low odds
+# of colliding with weekday operator work; ONE fixed day shared by both workers
 # (the 20-min stagger still separates them within that day).
 WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
 
@@ -222,7 +222,7 @@ WEEKLY_DAY_CRON="0"        # cron day-of-week field (0 = Sunday)
 # corpora's `graphify update` calls never start in the same instant.
 #
 # CADENCE IS ASYMMETRIC: himmel fires
-# HOURLY, luna only DAILY. Both legs are free either way — the asymmetry is
+# HOURLY, luna only DAILY. Both workers are free either way — the asymmetry is
 # about the artifact, not the cost. luna is a live personal vault with an
 # auto-committer, so an hourly in-place `graphify update` meant ~24 commits a
 # day of graph churn in it; himmel has no auto-committer (/graph-publish owns
@@ -233,17 +233,17 @@ AST_LUNA_TIME="00:05"
 AST_HIMMEL_TIME="00:15"
 
 # Publish leg: every 6 hours, anchored at :35 past. Stagger
-# rationale, extending the header's WHY :05/:15-PAST-THE-HOUR note: this leg
+# rationale, extending the header's WHY :05/:15-PAST-THE-HOUR note: this worker
 # is NOT free like the AST pair -- it can run ast-update.sh, open/refresh a
 # PR, and drive merge-on-green.sh's own check-ci watch, all in one fire, so
-# it gets the WIDEST offset of any leg on this file (20 min clear of
+# it gets the WIDEST offset of any worker on this file (20 min clear of
 # AST_HIMMEL_TIME's :15, vs the AST pair's own 10-min mutual stagger) to
 # minimize the odds of overlapping a concurrent AST_HIMMEL fire on the SAME
 # corpus (both would otherwise contend for ast-update.sh's
-# promote lock — skip-not-wait, so a collision just means the publish leg's
+# promote lock — skip-not-wait, so a collision just means the publish worker's
 # refresh is skipped-and-retried next fire, not a failure, but the wider
 # offset makes that the exception rather than the rule). :35 keeps it inside
-# the same hour as the other himmel legs (readable in `status`) without
+# the same hour as the other himmel workers (readable in `status`) without
 # landing on either one's own minute.
 GRAPH_PUBLISH_TIME="00:35"
 # Luna semantic leg: every 2h at :50 (publish is :35), capped per fire. ponytail: the cap and the 2.00 USD run
@@ -268,17 +268,17 @@ FORCE=0
 DRY_RUN=0
 # --ast-only: arm/dedup-check ONLY the free structural (AST)
 # pair, leaving the weekly semantic pair (and its backend credential
-# requirement) untouched/absent. Lets the free legs re-arm independently of
+# requirement) untouched/absent. Lets the free workers re-arm independently of
 # an operator ruling on the semantic pair's backend/egress. arm-only flag;
 # ignored by status/disarm (both already report/remove per-task).
 AST_ONLY=0
 
-# --with-publish: the publish leg
+# --with-publish: the publish worker
 # (HIMMEL-GraphPublish-Himmel) opens graph-refresh PRs on a schedule, so
 # `arm` registers it only when asked for explicitly. disarm still removes
 # it unconditionally if present (idempotent either way).
 WITH_PUBLISH=0
-# --publish-every-hours N / --publish-semantic: the publish leg's cron interval
+# --publish-every-hours N / --publish-semantic: the publish worker's cron interval
 # (default 6) and the claude-api semantic pass on top of it.
 PUBLISH_EVERY_HOURS=6
 PUBLISH_SEMANTIC=0
@@ -292,7 +292,7 @@ LUNA_TAG="luna"
 HIMMEL_TITLE="Graphify Himmel Map"
 HIMMEL_SLUG="graphify-himmel-map"
 HIMMEL_TAG="himmel"
-# The semantic legs run WEEKLY on the `claude-cli` backend: a semantic leg once
+# The semantic workers run WEEKLY on the `claude-cli` backend: a semantic worker once
 # a week, gated by usage-preflight.sh inside refresh-graph-map.sh (SKIPPED-BANK
 # stops the run instead of draining the bank unattended), avoids a daily-drain
 # failure mode without needing a second provider. claude-cli authenticates via
@@ -304,8 +304,8 @@ BACKEND="claude-cli"
 
 # Resolved by validate_arm_inputs (both arm paths call it): `graphify` itself,
 # and its directory. ALL FIVE tasks need it on PATH at fire time — the
-# semantic legs (refresh-graph-map.sh shells graphify with --backend
-# $BACKEND) and the structural/publish legs (ast-update.sh shells `graphify
+# semantic workers (refresh-graph-map.sh shells graphify with --backend
+# $BACKEND) and the structural/publish workers (ast-update.sh shells `graphify
 # update`) — the scheduler's minimal PATH carries
 # neither node nor graphify by default. Both runner formats prepend the
 # directory to PATH — see the note in validate_arm_inputs.
@@ -339,9 +339,9 @@ Subcommands:
 
 Flags (arm only, except --dry-run):
   --luna-time <HH:MM>    Weekly luna-map time, 24h local   (default 13:00,
-                         semantic leg only)
+                         semantic worker only)
   --himmel-time <HH:MM>  Weekly himmel-map time, 24h local (default 13:20,
-                         semantic leg only; staggered 20min after luna to
+                         semantic worker only; staggered 20min after luna to
                          reduce the chance of the two extraction jobs
                          overlapping — different corpora/out-dirs, so no
                          shared lock serializes them)
@@ -356,19 +356,19 @@ Flags (arm only, except --dry-run):
                          absent/untouched and its backend credential is not
                          required. Re-arm without --ast-only later to add the
                          semantic pair back in (--force to replace).
-  --with-publish         Also register the publish leg
+  --with-publish         Also register the publish worker
                          (HIMMEL-GraphPublish-Himmel, every 6h). Opt-in:
                          arm leaves it out by default.
-  --publish-every-hours N  Publish leg interval in hours (1,2,3,4,6,8,12;
+  --publish-every-hours N  Publish worker interval in hours (1,2,3,4,6,8,12;
                          default 6). Cron only.
-  --publish-semantic     With --with-publish: the publish leg also runs the
+  --publish-semantic     With --with-publish: the publish worker also runs the
                          claude-api semantic pass (graph-cadence --semantic).
                          Cron only. Arms PAUSED: arm writes the
                          semantic.paused marker; rm it to resume.
   --semantic-active      With --publish-semantic or --with-luna-semantic: arm
                          without the marker, so the semantic pass runs from the
                          first fire.
-  --with-luna-semantic   Also register the luna semantic leg
+  --with-luna-semantic   Also register the luna semantic worker
                          (HIMMEL-GraphSemantic-Luna, every 2h): capped
                          claude-api semantic-update over the vault. Cron only.
                          Arms PAUSED: arm writes semantic-luna.paused; rm it
@@ -642,7 +642,7 @@ validate_arm_inputs() {
     # --ast-only: the semantic pair is not being armed, so
     # neither its backend credential nor its `claude` resolution is
     # relevant here -- requiring either would defeat the whole point of the
-    # flag (arm the free legs without the semantic pair's egress/credential
+    # flag (arm the free workers without the semantic pair's egress/credential
     # ruling).
     if [ "$AST_ONLY" -eq 0 ]; then
         validate_backend_credential
@@ -916,8 +916,8 @@ cron_payload() {
     local q_bash="$1" q_script="$2" name="$3" q_corpus="$4" q_maps="$5" q_title="$6" slug="$7" tag="$8" q_out_root="${9:-}"
     # refresh-graph-map.sh falls back to
     # GRAPHIFY_OUT_ROOT from the environment when --out-root is absent -- clear
-    # it whenever this leg omits --out-root, so an ambient value left over from
-    # the OTHER leg's out-of-corpus run can't redirect this one.
+    # it whenever this worker omits --out-root, so an ambient value left over from
+    # the OTHER worker's out-of-corpus run can't redirect this one.
     if [ -z "$q_out_root" ]; then printf 'unset GRAPHIFY_OUT_ROOT; '; fi
     printf '%s %s --name %s --corpus-root %s --maps-dir %s --title %s --slug %s --backend %s --corpus-tag %s' \
         "$q_bash" "$q_script" "$name" "$q_corpus" "$q_maps" "$q_title" "$slug" "$BACKEND" "$tag"
@@ -935,13 +935,13 @@ ast_cron_payload() {
     # this is the FULL out dir (out-root/graphify-out), not just the root, to
     # land on the same directory refresh-graph-map.sh's --out-root resolves to.
     # Mirror cron_payload's unset -- clear
-    # an ambient GRAPHIFY_OUT whenever this leg omits its own GRAPHIFY_OUT=.
+    # an ambient GRAPHIFY_OUT whenever this worker omits its own GRAPHIFY_OUT=.
     if [ -z "$q_out_dir" ]; then printf 'unset GRAPHIFY_OUT; '; fi
     if [ -n "$q_out_dir" ]; then printf 'GRAPHIFY_OUT=%s ' "$q_out_dir"; fi
     printf '%s %s %s' "$q_bash" "$q_script" "$q_corpus"
 }
 
-# Publish leg payload builder, POSIX form: unlike ast-update.sh,
+# Publish worker payload builder, POSIX form: unlike ast-update.sh,
 # graph-cadence.sh takes its corpus root via an explicit --corpus-root flag,
 # not a bare positional.
 publish_cron_payload() {
@@ -953,14 +953,14 @@ publish_cron_payload() {
         return 0
     fi
     # The pause marker is read at fire time: while it exists the fire runs the
-    # publish leg without --semantic and without the api-lane env.
+    # publish worker without --semantic and without the api-lane env.
     local q_pause
     q_pause=$(printf '%q' "$BAT_DIR/$SEMANTIC_PAUSE_MARKER")
     printf 'if [ -e %s ]; then echo "[semantic paused: marker present]"; %s; else echo "[semantic active]"; HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPH_CADENCE_SEMANTIC_BACKEND=claude-api %s --semantic; fi' "$q_pause" "$base" "$base"
 }
 
-# Luna semantic leg payload, POSIX form: semantic-update.sh on the live luna graph (GRAPHIFY_OUT, the same
-# out dir the luna AST leg writes), batch- and spend-capped, behind its own pause marker read at fire time.
+# Luna semantic worker payload, POSIX form: semantic-update.sh on the live luna graph (GRAPHIFY_OUT, the same
+# out dir the luna AST worker writes), batch- and spend-capped, behind its own pause marker read at fire time.
 luna_semantic_cron_payload() {
     local q_bash="$1" q_script="$2" q_corpus="$3" q_out_dir="${4:-}"
     local q_pause base
@@ -996,7 +996,7 @@ emit_runner() {
     if [ -n "$q_claude_dir" ]; then
         printf 'export PATH=%s:$PATH\n' "$q_claude_dir"
     fi
-    # Luna's structural leg only — see emit_bat's identical
+    # Luna's structural worker only — see emit_bat's identical
     # rationale: satisfies the fence's LLM-free-subcommand backend declaration
     # requirement in-policy (ollama -> local-ollama, luna-personal x
     # local-ollama = allow, zero egress).
@@ -1011,19 +1011,19 @@ emit_runner() {
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
     printf '    cd %s || exit 1\n' "$q_himmel"
     # Shared emitter (runner format v22): a flow-run row for the
-    # leg and a cadence-alert fail/clear on its outcome. An empty flow name (the
-    # publish leg) skips it: graph-cadence.sh alerts and writes its own rows.
+    # worker and a cadence-alert fail/clear on its outcome. An empty flow name (the
+    # publish worker) skips it: graph-cadence.sh alerts and writes its own rows.
     # skip_rcs are the payload's benign non-failures (semantic rc 3 = bank
     # skip, structural rc 4 = promote lock busy): neither page nor clear.
     local q_flow_lib q_alert_lib
     if [ -n "$flow" ]; then
         q_flow_lib=$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")
         q_alert_lib=$(printf '%q' "$HIMMEL_ROOT/scripts/luna/cadence-alert.sh")
-        cadence_posix_leg_start "$q_flow_lib" "$flow" "$name"
+        cadence_posix_worker_start "$q_flow_lib" "$flow" "$name"
     fi
     printf '    _rc=0; %s || _rc=$?\n' "$payload"
     if [ -n "$flow" ]; then
-        cadence_posix_leg_end "$q_flow_lib" "$q_alert_lib" "$flow" 0 "$skip_rcs"
+        cadence_posix_worker_end "$q_flow_lib" "$q_alert_lib" "$flow" 0 "$skip_rcs"
     fi
     printf '    echo "[exit rc=$_rc]"\n'
     printf '} >> "$log" 2>&1\n'
@@ -1116,7 +1116,7 @@ cmd_arm() {
     local existing
     existing=$(cron_existing)
     # --ast-only: see cmd_arm's identical
-    # comment -- the publish leg is grouped with the AST pair here too, but
+    # comment -- the publish worker is grouped with the AST pair here too, but
     # only when --with-publish is also asking for it this run.
     if [ "$AST_ONLY" -eq 1 ]; then
         local ast_scope_re="${TASK_AST_LUNA}|${TASK_AST_HIMMEL}"
@@ -1173,7 +1173,7 @@ cmd_arm() {
     q_log_semantic_luna=$(printf '%q' "$BAT_DIR/graphmap-semantic-luna.log")
 
     # luna's out-of-corpus destination, resolved ONCE and shared
-    # by both the semantic (--out-root) and structural (GRAPHIFY_OUT=) legs
+    # by both the semantic (--out-root) and structural (GRAPHIFY_OUT=) workers
     # below -- see graph-out-root.sh. Empty when no override is configured
     # (today's in-corpus default, byte-for-byte unchanged).
     local luna_out_root q_out_root_luna q_out_dir_ast_luna
@@ -1195,7 +1195,7 @@ cmd_arm() {
     payload_ast_himmel=$(ast_cron_payload "$q_bash" "$q_ast_script" "$q_himmel")
     # Publish leg: himmel repo only (v1).
     payload_publish_himmel=$(publish_cron_payload "$q_bash" "$q_publish_script" "$q_himmel")
-    # Luna semantic leg: writes the same out dir the luna AST leg does.
+    # Luna semantic leg: writes the same out dir the luna AST worker does.
     payload_semantic_luna=$(luna_semantic_cron_payload "$q_bash" "$q_semantic_script" "$q_vault" "$q_out_dir_ast_luna")
 
     local luna_hh luna_mm himmel_hh himmel_mm
@@ -1365,7 +1365,7 @@ cmd_arm() {
     cadence_prov_record "$TASK_AST_HIMMEL"
     # Publish leg: opt-in via --with-publish.
     # $PUBLISH_FLOW_NAME ("graph-publish-<slug>"), NOT the
-    # "graphmap-*.sh/.log" runner-file naming this file's OTHER legs use --
+    # "graphmap-*.sh/.log" runner-file naming this file's OTHER workers use --
     # it must match graph-cadence.sh's OWN FLOW_NAME byte-for-byte, or the
     # observability registry's .flows[] entry can never be joined against the
     # flow-run-ledger rows the runner actually emits (both sides DERIVE the name from

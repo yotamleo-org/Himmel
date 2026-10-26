@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # A && B || C is intentional in the pass/fail lines; the gh stub body is deliberately single-quoted
 # test-version-status-audit.sh — Exercises version-status-audit.sh on a fixture
-# Jira mirror, a fixture fleet manifest + leg doc and a stubbed gh
+# Jira mirror, a fixture fleet manifest + worker doc and a stubbed gh
 # (VSA_GH_CMD): no real mirror, Jira or gh is touched. VSA overrides the script
 # under test (the RED control: a missing script fails every row). bash 3.2-safe.
 #
 # Run: bash scripts/handover/chief-kit/test-version-status-audit.sh
 set -u
-unset LEGS_FROM
+unset WORKERS_FROM
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="${VSA:-$HERE/version-status-audit.sh}"
 
@@ -54,15 +54,15 @@ mkl HIMMEL-25 Task "Done" "Done" '[]' '[]' '["HIMMEL-22"]' '[]'
 mkl HIMMEL-26 Task "To Do" "To Do" '[]' '[]' '["HIMMEL-8","HIMMEL-5"]' '[]'
 mkl HIMMEL-28 Task "To Do" "To Do" '["v1.0.2"]' '[]' '["HIMMEL-22"]' '[]'
 
-mkdir -p "$WORK/legs"
-printf '# leg\n\n## Results\n- 10:00 LIVE — up\n' > "$WORK/legs/HIMMEL-7-N1-x.md"
-printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$WORK/legs/HIMMEL-7-N1-x.md" > "$WORK/fleet.json"
+mkdir -p "$WORK/workers"
+printf '# worker\n\n## Results\n- 10:00 LIVE — up\n' > "$WORK/workers/HIMMEL-7-N1-x.md"
+printf '{"legs":[{"label":"N1","doc":"%s"}]}\n' "$WORK/workers/HIMMEL-7-N1-x.md" > "$WORK/fleet.json"
 printf '#!/usr/bin/env bash\nif [ -f "$GH_FAIL" ]; then exit 1; fi\ncase " $* " in *" --state open "*) ;; *) exit 1 ;; esac\nprintf "9999\\tfeat: [HIMMEL-1] x\\tfeat/himmel-1-x\\n"\n' > "$WORK/gh"
 chmod +x "$WORK/gh"
 
 run() { VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$M" "$@" 2>&1; }
 
-out="$(run --legs-from "$WORK/fleet.json")"; rc=$?
+out="$(run --workers-from "$WORK/fleet.json")"; rc=$?
 has "later-version started ticket without an owner is a RESET row" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	RESET"
 has "released-version open ticket yields a row" "$out" "RELEASED-NOT-DONE	HIMMEL-2	To Do	v1.0.0	none	RESET"
 has "versionless started Bug yields a row" "$out" "NO-VERSION	HIMMEL-3	IN CI	-	none	RESET"
@@ -72,7 +72,7 @@ lacks "a Closed row in a released version yields no row" "$out" "HIMMEL-9	"
 lacks "a To Do row in a later version yields no row" "$out" "HIMMEL-8	"
 lacks "a started row in the earliest unreleased version yields no row" "$out" "HIMMEL-6	"
 has "later-version ticket owned by an open PR is OWNED" "$out" "HIMMEL-1	In Progress	v1.0.2	PR:9999	OWNED"
-has "later-version ticket owned by a live leg is OWNED" "$out" "HIMMEL-7	In Review	v1.0.2	leg:N1	OWNED"
+has "later-version ticket owned by a live worker is OWNED" "$out" "HIMMEL-7	In Review	v1.0.2	leg:N1	OWNED"
 has "versionless open blocker (target lists it as blocked_by) is a row" "$out" "BLOCKER-NO-VERSION	HIMMEL-20	To Do	-	none	RESET"
 has "versionless open blocker (blocker lists the target in blocks) is a row" "$out" "BLOCKER-NO-VERSION	HIMMEL-21	To Do	-	none	RESET"
 lacks "a backlog-labelled blocker yields no row" "$out" "HIMMEL-23	"
@@ -85,20 +85,20 @@ has "a started versionless blocker is still a NO-VERSION row" "$out" "NO-VERSION
 has "count line counts every row" "$out" "vmismatch=7"
 [ "$rc" = 1 ] && pass "exit 1 when a RESET row exists" || fail "exit 1 when a RESET row exists (rc=$rc)"
 
-printf '# leg\n\n## Results\n- 10:00 LIVE — up\n- 11:00 WRAPPED — merged\n- 12:00 PARKED-USAGE — relaunched, waiting for RESUME\n' > "$WORK/legs/HIMMEL-10-N2-x.md"
-printf '{"legs":[{"label":"N2","doc":"%s"}]}\n' "$WORK/legs/HIMMEL-10-N2-x.md" > "$WORK/fleet-parked.json"
-has "a PARKED-USAGE tail after an old WRAPPED still owns its ticket" "$(run --legs-from "$WORK/fleet-parked.json")" "HIMMEL-10	In Progress	v1.0.2	leg:N2	OWNED"
+printf '# worker\n\n## Results\n- 10:00 LIVE — up\n- 11:00 WRAPPED — merged\n- 12:00 PARKED-USAGE — relaunched, waiting for RESUME\n' > "$WORK/workers/HIMMEL-10-N2-x.md"
+printf '{"legs":[{"label":"N2","doc":"%s"}]}\n' "$WORK/workers/HIMMEL-10-N2-x.md" > "$WORK/fleet-parked.json"
+has "a PARKED-USAGE tail after an old WRAPPED still owns its ticket" "$(run --workers-from "$WORK/fleet-parked.json")" "HIMMEL-10	In Progress	v1.0.2	leg:N2	OWNED"
 
 # clean mirror
 C="$WORK/clean/HIMMEL"; mkdir -p "$C"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/clean/HIMMEL.versions.tsv"
 cp "$M/HIMMEL-5.md" "$M/HIMMEL-4.md" "$M/HIMMEL-8.md" "$M/HIMMEL-6.md" "$C/"
-out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$C" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$C" --workers-from "$WORK/fleet.json" 2>&1)"; rc=$?
 has "clean mirror prints vmismatch=0" "$out" "vmismatch=0"
 [ "$rc" = 0 ] && pass "clean mirror exits 0" || fail "clean mirror exits 0 (rc=$rc)"
 
 # gh failure must not hide rows as owned or clean
 : > "$WORK/gh-fail"
-out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/gh-fail" bash "$SUT" --mirror "$M" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/gh-fail" bash "$SUT" --mirror "$M" --workers-from "$WORK/fleet.json" 2>&1)"; rc=$?
 has "unreadable open-PR set is reported" "$out" "open PRs unknown"
 has "rows still print when gh fails" "$out" "HIMMEL-10"
 has "unowned started row is UNKNOWN when gh fails" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
@@ -116,7 +116,7 @@ out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$E" 2>
 # no unreleased version: RELEASED-NOT-DONE and NO-VERSION still report
 A="$WORK/allrel/HIMMEL"; mkdir -p "$A"; printf 'v1.0.0\ttrue\t2026-01-01\tfalse\n' > "$WORK/allrel/HIMMEL.versions.tsv"
 cp "$M/HIMMEL-2.md" "$M/HIMMEL-3.md" "$A/"
-out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$A" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$A" --workers-from "$WORK/fleet.json" 2>&1)"; rc=$?
 has "released-not-done still reported with no unreleased version" "$out" "RELEASED-NOT-DONE	HIMMEL-2"
 has "no-version still reported with no unreleased version" "$out" "NO-VERSION	HIMMEL-3"
 [ "$rc" = 1 ] && pass "exit 1 with no unreleased version" || fail "exit 1 with no unreleased version (rc=$rc)"
@@ -127,14 +127,14 @@ printf 'no front matter\n' > "$B/HIMMEL-1.md"
 out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$B" 2>&1)"; rc=$?
 [ "$rc" = 3 ] && pass "mirror with no parsable ticket exits 3" || fail "mirror with no parsable ticket exits 3 (rc=$rc: $out)"
 
-# an unreadable leg doc stays OWNED but is marked unverified
-printf '{"legs":[{"label":"N9","doc":"%s/legs/HIMMEL-10-N9-gone.md"}]}\n' "$WORK" > "$WORK/fleet-gone.json"
-out="$(run --legs-from "$WORK/fleet-gone.json")"
-has "unreadable leg doc is OWNED with an unverified marker" "$out" "HIMMEL-10	In Progress	v1.0.2	leg:N9?	OWNED"
+# an unreadable worker doc stays OWNED but is marked unverified
+printf '{"legs":[{"label":"N9","doc":"%s/workers/HIMMEL-10-N9-gone.md"}]}\n' "$WORK" > "$WORK/fleet-gone.json"
+out="$(run --workers-from "$WORK/fleet-gone.json")"
+has "unreadable worker doc is OWNED with an unverified marker" "$out" "HIMMEL-10	In Progress	v1.0.2	leg:N9?	OWNED"
 
 # the open-PR read is capped at 200: a full page is reported
 printf '#!/usr/bin/env bash\nfor i in $(seq 1 200); do printf "%%s\\tt\\tb\\n" "$i"; done\n' > "$WORK/gh-many"; chmod +x "$WORK/gh-many"
-out="$(VSA_GH_CMD="$WORK/gh-many" bash "$SUT" --mirror "$M" --legs-from "$WORK/fleet.json" 2>&1)"
+out="$(VSA_GH_CMD="$WORK/gh-many" bash "$SUT" --mirror "$M" --workers-from "$WORK/fleet.json" 2>&1)"
 has "a full 200-PR page is reported as unknown coverage" "$out" "200-PR cap reached"
 
 # a mirror file without front matter among parsable ones fails non-zero
@@ -144,9 +144,9 @@ out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$S" 2>
 has "a skipped mirror file is warned about" "$out" "1 mirror file(s) lack front matter"
 [ "$rc" = 3 ] && pass "a skipped mirror file exits 3" || fail "a skipped mirror file exits 3 (rc=$rc)"
 
-# an unreadable leg manifest never yields RESET for an unowned started row
+# an unreadable worker manifest never yields RESET for an unowned started row
 printf 'not json' > "$WORK/fleet-bad.json"
-out="$(run --legs-from "$WORK/fleet-bad.json")"; rc=$?
+out="$(run --workers-from "$WORK/fleet-bad.json")"; rc=$?
 has "unreadable manifest is reported" "$out" "ownership unknown"
 has "released-not-done stays RESET with an unreadable manifest" "$out" "RELEASED-NOT-DONE	HIMMEL-2	To Do	v1.0.0	none	RESET"
 has "unowned started row is UNKNOWN, not RESET" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
@@ -160,13 +160,13 @@ has "no manifest prints UNKNOWN for an unowned started row" "$out" "LATER-VERSIO
 [ "$rc" = 3 ] && pass "no manifest exits 3" || fail "no manifest exits 3 (rc=$rc)"
 
 # a missing manifest stays unknown even when --owners is also given
-out="$(run --legs-from "$WORK/absent-fleet.json" --owners HIMMEL-7)"; rc=$?
+out="$(run --workers-from "$WORK/absent-fleet.json" --owners HIMMEL-7)"; rc=$?
 has "missing manifest with --owners is still ownership unknown" "$out" "LATER-VERSION	HIMMEL-10	In Progress	v1.0.2	none	UNKNOWN"
 [ "$rc" = 3 ] && pass "missing manifest with --owners exits 3" || fail "missing manifest with --owners exits 3 (rc=$rc)"
 
 # the open-PR read targets the org slug
 printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" > "%s/gh.args"\n' "$WORK" > "$WORK/gh-args"; chmod +x "$WORK/gh-args"
-VSA_GH_CMD="$WORK/gh-args" bash "$SUT" --mirror "$M" --legs-from "$WORK/fleet.json" > /dev/null 2>&1
+VSA_GH_CMD="$WORK/gh-args" bash "$SUT" --mirror "$M" --workers-from "$WORK/fleet.json" > /dev/null 2>&1
 has "gh reads the yotamleo-org/Himmel slug" "$(cat "$WORK/gh.args" 2>/dev/null)" "--repo yotamleo-org/Himmel"
 
 # versions.tsv that cannot be trusted must not read as clean
@@ -174,7 +174,7 @@ vmir() { # <dir> <tsv body> <ticket fixVersions json>
     mkdir -p "$1/HIMMEL"; printf '%b' "$2" > "$1/HIMMEL.versions.tsv"
     printf -- '---\nkey: "HIMMEL-1"\ntype: "Task"\nstatus: "In Progress"\nstatusCategory: "In Progress"\nfixVersions: %s\n---\n' "$3" > "$1/HIMMEL/HIMMEL-1.md"
 }
-vrun() { VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$1/HIMMEL" --legs-from "$WORK/fleet.json" 2>&1; }
+vrun() { VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$1/HIMMEL" --workers-from "$WORK/fleet.json" 2>&1; }
 vmir "$WORK/v-empty" '' '[]'
 out="$(vrun "$WORK/v-empty")"; rc=$?
 [ "$rc" = 3 ] && pass "empty versions file exits 3" || fail "empty versions file exits 3 (rc=$rc: $out)"
@@ -212,7 +212,7 @@ has "unreadable versions file is warned about" "$out" "versions file unreadable"
 P="$WORK/partial/HIMMEL"; mkdir -p "$P"; cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/partial/HIMMEL.versions.tsv"
 cp "$M/HIMMEL-6.md" "$P/"
 printf -- '---\nkey: "HIMMEL-1"\ntype: "Task"\nfixVersions: ["v1.0.2"]\n---\n' > "$P/HIMMEL-1.md"
-out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$P" --legs-from "$WORK/fleet.json" 2>&1)"; rc=$?
+out="$(VSA_GH_CMD="$WORK/gh" GH_FAIL="$WORK/nofail" bash "$SUT" --mirror "$P" --workers-from "$WORK/fleet.json" 2>&1)"; rc=$?
 has "front matter without status is warned about" "$out" "1 mirror file(s) lack front matter"
 [ "$rc" = 3 ] && pass "front matter without status exits 3" || fail "front matter without status exits 3 (rc=$rc)"
 

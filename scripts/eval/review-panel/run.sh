@@ -15,7 +15,7 @@
 # Env: REVIEW_PANEL_CMD (default scripts/cr/critic-panel.sh; the test seam),
 #      REVIEW_PANEL_SCRATCH (default a fresh mktemp -d).
 # Exit: 0 scored; 2 usage, refused lint or bad dirs; else score.py's exit.
-# Draws codex bank per fixture: the console runs it, never a test (README).
+# Draws codex bank per fixture: the chief runs it, never a test (README).
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"

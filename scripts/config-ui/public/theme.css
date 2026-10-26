@@ -1,4 +1,4 @@
-/* the one theme and rail of config-ui. The config console links it before app.css; the AG-UI page
+/* the one theme and rail of config-ui. The config chief links it before app.css; the AG-UI page
    (agui-web) bundles it before styles.css. The colours and fonts are the docs site's shared tokens (tokens.css);
    the short names below are the ones app.css and the AG-UI styles read. Light by default, dark by preference or data-theme. */
 @import "./tokens.css";

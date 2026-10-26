@@ -203,7 +203,7 @@ fi
 CURRENT_JSONL="$TMP/current.jsonl"
 : > "$CURRENT_JSONL"
 
-# aggregate check-runs into one ci_conclusion string, per the method the Leg F
+# aggregate check-runs into one ci_conclusion string, per the method the Worker F
 # upstream-sweep report used: read at the PR's CURRENT head SHA, never a
 # possibly-stale rollup field.
 ci_conclusion_from_runs() {

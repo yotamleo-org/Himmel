@@ -27,7 +27,7 @@
 # in every session forever. Output only when a rule is broken.
 #
 # FAILS OPEN, ALWAYS. This runs on every session on the machine, including
-# consoles and legs; a memory advisory that could block a session from
+# chiefs and workers; a memory advisory that could block a session from
 # starting would be a far worse failure than the ceiling being exceeded. No
 # `set -e`, every step is guarded, and the only exit is 0. A missing or
 # unreadable MEMORY.md, no git, no awk, a garbage env knob: silent, session

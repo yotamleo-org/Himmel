@@ -1,30 +1,30 @@
 #!/usr/bin/env bash
-# live-state.sh — Renders a console doc's `## Live state` `legs:`
-# entries from its fleet manifest (<console doc stem>.fleet.json,
-# fleet-manifest.sh) instead of the console hand-editing them on every dispatch
+# live-state.sh — Renders a chief doc's `## Live state` `legs:`
+# entries from its fleet manifest (<chief doc stem>.fleet.json,
+# fleet-manifest.sh) instead of the chief hand-editing them on every dispatch
 # and wrap.
 #
-#   live-state.sh <console doc> [--print] [--nonce <label>=<nonce>]... [--pid <label>=<pid>]...
-#   live-state.sh <console doc> --digest
+#   live-state.sh <chief doc> [--print] [--nonce <label>=<nonce>]... [--pid <label>=<pid>]...
+#   live-state.sh <chief doc> --digest
 #
-# --digest is read-only, needs no manifest, and prints status, head, legs,
+# --digest is read-only, needs no manifest, and prints status, head, workers,
 # queue, lock and open ruling titles (at most 55 lines, never ruling bodies).
-# status, head and lock print only when present: a console doc carries none.
+# status, head and lock print only when present: a chief doc carries none.
 # Open rulings are ### headings or unchecked top-level checklist entries.
 #
-# An entry is `<label>:<nonce>:<lock-token>:<pid>` (console-template.md). Where
+# An entry is `<label>:<nonce>:<lock-token>:<pid>` (chief-template.md). Where
 # each field comes from:
-#   label       the manifest's `legs[].label` (leg-identity.sh's N<k>)
-#   lock-token  the leg's held queue lock (`queue-lock.sh status <doc>` owner.json
+#   label       the manifest's `workers[].label` (worker-identity.sh's N<k>)
+#   lock-token  the worker's held queue lock (`queue-lock.sh status <doc>` owner.json
 #               `session`): read from the lock on every render, never typed
-#   nonce       AUTHORITY-BEARING and console-only: kept from the entry already on
-#               the legs: line, or given with --nonce for a leg not yet listed.
-#               Never read from the leg doc or the manifest, which a leg or a
+#   nonce       AUTHORITY-BEARING and chief-only: kept from the entry already on
+#               the legs: line, or given with --nonce for a worker not yet listed.
+#               Never read from the worker doc or the manifest, which a worker or a
 #               manifest edit could set
 #   pid         informational: kept from the existing entry, else --pid, else the
 #               `pid<digits>` suffix of the lock token
-# A manifest leg that holds no lock is left out (tick reads a listed leg whose
-# lock is gone as livestate=DRIFT); a leg off the manifest drops. A new leg
+# A manifest worker that holds no lock is left out (tick reads a listed worker whose
+# lock is gone as livestate=DRIFT); a worker off the manifest drops. A new worker
 # with no nonce is refused and the doc is not touched.
 #
 # Only the legs: block (the `legs:` line plus the lines wrapped under it, ended
@@ -34,11 +34,11 @@
 # tick.sh is unchanged: livestate=DRIFT/MALFORMED and nonces= read the result as
 # they read a hand-written line.
 #
-# a manifest row marked lockless (an eval/pilot row) is not a leg that
+# a manifest row marked lockless (an eval/pilot row) is not a worker that
 # lost its lock: it is listed on its own `lockless: <label> (<lane>) <doc>; ...` line
 # right after the legs: line (replaced on every render), for succession to carry.
 #
-# Exit: 0 ok; 1 refused (no manifest, no legs: line, new leg without a nonce);
+# Exit: 0 ok; 1 refused (no manifest, no legs: line, new worker without a nonce);
 # 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe; needs jq.
 # shellcheck disable=SC2016  # backtick spans and awk programs are literal, not expansions
 set -uo pipefail
@@ -46,7 +46,7 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 usage() {
-    echo "usage: live-state.sh <console doc> [--digest | [--print] [--nonce <label>=<nonce>]... [--pid <label>=<pid>]...]" >&2
+    echo "usage: live-state.sh <chief doc> [--digest | [--print] [--nonce <label>=<nonce>]... [--pid <label>=<pid>]...]" >&2
 }
 
 [ "$#" -ge 1 ] || { usage; exit 2; }
@@ -72,9 +72,9 @@ while [ "$#" -gt 0 ]; do
 done
 
 if [ "$digest" -eq 1 ] && { [ "$print_only" -ne 0 ] || [ -n "$nonces$pids" ]; }; then usage; exit 2; fi
-[ -f "$doc" ] || { echo "live-state: no such console doc: $doc" >&2; exit 1; }
+[ -f "$doc" ] || { echo "live-state: no such chief doc: $doc" >&2; exit 1; }
 
-# Rendering and digest share tick.sh's section and wrapped-legs boundaries.
+# Rendering and digest share tick.sh's section and wrapped-workers boundaries.
 block_awk='
     digest && !status && tolower($0) ~ /^(status:|\*\*status:\*\*)/ { status = $0 }
     digest && /^## / { rulings = (tolower($0) == "## open rulings") }
@@ -94,10 +94,10 @@ block_awk='
     digest && s && /^head:/ && !head { head = $0 }
     digest && s && /^queue:/ && !queue { queue = $0 }
     digest && s && /^lock:/ && !lock { lock = $0 }
-    s && /^legs:/ { f = 1; if (digest) legs = $0; else print; next }
+    s && /^legs:/ { f = 1; if (digest) workers = $0; else print; next }
     f && (/^[[:space:]]*$/ || /^[A-Za-z][A-Za-z ]*:/ || /^[[:space:]]*([-*+]|[0-9]+[.)])[[:space:]]/ || /^[[:space:]]*[>#]/) { f = 0 }
     f {
-        if (digest) { line = $0; sub(/^[[:space:]]+/, "", line); legs = legs " " line }
+        if (digest) { line = $0; sub(/^[[:space:]]+/, "", line); workers = workers " " line }
         else print
     }
     END {
@@ -105,7 +105,7 @@ block_awk='
             if (!seen) exit 1
             if (status) print status
             if (head) print head
-            print (legs ? legs : "legs: unavailable")
+            print (workers ? legs : "legs: unavailable")
             print (queue ? queue : "queue: unavailable")
             if (lock) print lock
             print "open rulings: " count + 0
@@ -134,7 +134,7 @@ lockless_rows=""
 while IFS=$'\t' read -r label ldoc llane llockless; do
     [ -n "$label" ] || continue
     # a lockless row (eval/pilot) holds no lock by design: it is carried
-    # in its own `lockless:` line, never left out as a leg that lost its lock.
+    # in its own `lockless:` line, never left out as a worker that lost its lock.
     if [ "$llockless" = true ]; then
         lockless_rows="$lockless_rows$label ($llane) $ldoc; "
         continue
@@ -166,7 +166,7 @@ done <<EOF
 $rows
 EOF
 if [ -n "$missing" ]; then
-    echo "live-state: new leg(s) need --nonce <label>=<nonce> (and --pid when the lock token has no pid suffix):$missing" >&2
+    echo "live-state: new worker(s) need --nonce <label>=<nonce> (and --pid when the lock token has no pid suffix):$missing" >&2
     exit 1
 fi
 
@@ -181,11 +181,11 @@ if [ "$print_only" -eq 1 ]; then
     exit 0
 fi
 
-# rewrite under the lock every doc writer shares, so a console
+# rewrite under the lock every doc writer shares, so a chief
 # bullet append-results.sh appends meanwhile waits for the mv instead of landing
 # on the replaced doc. The awk below re-reads the whole doc under the lock. No
 # flock (rc 3) or a lock that cannot be taken (rc 1) rewrites unlocked, as before.
-# shellcheck source=scripts/handover/chief-kit/leg-doc-lock.sh
+# shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
 . "$HERE/worker-doc-lock.sh"
 doc_lock "$doc" live-state || true
 tmp="$(mktemp "$doc.XXXXXX")" || { echo "live-state: cannot create a temp file next to $doc" >&2; exit 1; }

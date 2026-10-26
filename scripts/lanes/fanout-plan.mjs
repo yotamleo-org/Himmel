@@ -68,12 +68,12 @@ export function buildFanoutPlan(items, liveLanes) {
     }
 
     // An effort record, when supplied, may refuse an implementation
-    // leg (sigma too wide) and adds advisory fields; no record = no change.
+    // worker (sigma too wide) and adds advisory fields; no record = no change.
     let rec = null;
     if (item?.estimate) {
       rec = recommend(item.estimate, loadConfig());
       if (type === 'implementation' && rec.action === 'plan-first') {
-        errors.push(`${id}: estimate says plan-first — ${describe(rec)}. Dispatch a plan-first or split leg, not implementation.`);
+        errors.push(`${id}: estimate says plan-first — ${describe(rec)}. Dispatch a plan-first or split worker, not implementation.`);
         continue;
       }
     }

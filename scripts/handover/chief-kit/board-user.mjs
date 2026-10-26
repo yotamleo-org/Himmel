@@ -1,7 +1,7 @@
 // board-user.mjs — The user shift board (v5 frame 15): what is running now, what waits for
 // you, what shipped. A second renderer over the reads board.mjs already makes (`--view user`);
 // it takes plain rows and returns one self-contained page: no network, one column, phone width.
-// It leaves out everything operator-side: failure classes, the phase ladder, leg ids, lanes,
+// It leaves out everything operator-side: failure classes, the phase ladder, worker ids, lanes,
 // the fleet and the usage budget, and it redacts like the operator board does.
 import { redact } from './redact.mjs';
 

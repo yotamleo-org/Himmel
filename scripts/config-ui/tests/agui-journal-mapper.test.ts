@@ -147,7 +147,7 @@ describe("agents and failures", () => {
   const starts = (id: string) => events.find((e) => e.type === "TOOL_CALL_START" && e.toolCallId === id) as any;
   const result = (id: string) => events.find((e) => e.type === "TOOL_CALL_RESULT" && e.toolCallId === id) as any;
   const texts = events.filter((e) => e.type === "TEXT_MESSAGE_START") as any[];
-  const lead = { id: "main", name: "HIMMEL-4669-roadmap-console", role: "console", model: "claude-opus-5-5" };
+  const lead = { id: "main", name: "HIMMEL-4669-roadmap-chief", role: "console", model: "claude-opus-5-5" };
   const critic = { id: "a1b2c3", name: "Review the diff", role: "critic", kind: "code-critic", model: "claude-sonnet-5-5", parentToolCallId: "toolu_agent" };
 
   test("the stream stays valid AG-UI and one run: sidechain prompts and turns are not run boundaries", () => {
@@ -159,7 +159,7 @@ describe("agents and failures", () => {
   test("the session's agent is named by its agent-name record, with its role and model", () => {
     expect(starts("toolu_agent").agent).toEqual(lead);
     // the prompt arrives before any assistant record, so its model is not known yet
-    expect(texts[0].agent).toEqual({ id: "main", name: "HIMMEL-4669-roadmap-console", role: "console" });
+    expect(texts[0].agent).toEqual({ id: "main", name: "HIMMEL-4669-roadmap-chief", role: "console" });
   });
 
   test("a subagent is bound to the Agent call whose prompt it received", () => {
@@ -232,13 +232,13 @@ describe("bus delivery", () => {
   const deltas = (evs: AguiEvent[]) => evs.filter((e) => e.type === "STATE_DELTA");
 
   test("a console delivery maps to STATE_DELTA add /bus/msgs/<n>/delivered", () => {
-    const evs = run(meta("bus: 2 new\nbus #7 from some-console re #3:\n| ruling text\n"));
+    const evs = run(meta("bus: 2 new\nbus #7 from some-chief re #3:\n| ruling text\n"));
     expect(deltas(evs)).toEqual([{ type: "STATE_DELTA", delta: [{ op: "add", path: "/bus/msgs/7/delivered", value: ms }], timestamp: ms }]);
     valid(evs);
   });
 
   test("a data delivery and a batch map one delta per header", () => {
-    const evs = run(meta("bus #8 data from leg-a:\n| x\nbus #9 from some-console:\n| y"));
+    const evs = run(meta("bus #8 data from worker-a:\n| x\nbus #9 from some-chief:\n| y"));
     expect(deltas(evs).flatMap((e) => (e as { delta: { path: string }[] }).delta.map((d) => d.path))).toEqual(["/bus/msgs/8/delivered", "/bus/msgs/9/delivered"]);
   });
 
@@ -308,9 +308,9 @@ describe("a session with no agent-name record is named from its branch, cwd or f
 
   test("an agent-name record wins whether it comes before or after, and still sets the role", () => {
     const rec = user({ gitBranch: "fix/x", cwd: "/w/r" });
-    expect(mainName([nameRec("HIMMEL-1-roadmap-console"), rec])).toMatchObject({ name: "HIMMEL-1-roadmap-console", role: "console" });
-    const evs = mapJournal([rec, nameRec("HIMMEL-1-N2-leg"), user({ gitBranch: "fix/y" }, "later", "u2")].join("\n") + "\n").events as any[];
-    expect(evs.filter((e) => e.agent?.id === "main").at(-1).agent).toMatchObject({ name: "HIMMEL-1-N2-leg", role: "leg" });
+    expect(mainName([nameRec("HIMMEL-1-roadmap-chief"), rec])).toMatchObject({ name: "HIMMEL-1-roadmap-chief", role: "console" });
+    const evs = mapJournal([rec, nameRec("HIMMEL-1-N2-worker"), user({ gitBranch: "fix/y" }, "later", "u2")].join("\n") + "\n").events as any[];
+    expect(evs.filter((e) => e.agent?.id === "main").at(-1).agent).toMatchObject({ name: "HIMMEL-1-N2-worker", role: "leg" });
   });
 
   test("the name is stable: later records do not rename, and a second pass agrees", () => {

@@ -629,7 +629,7 @@ function isDirectory(p) {
 // the recorded FLOOR (scripts/machine-setup/reconcile-enabled-plugins.sh's
 // WHITELIST model already treats it as authoritative), not an exact-match
 // ceiling — a MISSING recorded plugin degrades, but an EXTRA enabled plugin
-// beyond that floor is legitimate and stays present (console ruling);
+// beyond that floor is legitimate and stays present (chief ruling);
 // it is still subject to the installed-ledger check below like
 // every other enabled plugin, and is named in the detail as information.
 // ~/.claude/plugins/installed_plugins.json is that ledger.
@@ -2976,11 +2976,11 @@ function parseCadenceStatus(stdout) {
 // A last line is a failed run when it is an exit stamp ("[exit rc=N]", or a
 // payload's own "[sweep exit rc=N]") that is not one of the row's success
 // codes (0, plus e.g. upstream-watch's rc=10 "delta found, handled"), or the
-// pipeline's own leg-failed stamp.
+// pipeline's own worker-failed stamp.
 function runLogFailed(lastLine, okRcs) {
   const m = /^\[(?:[a-z]+ )?exit rc=(\d+)\]$/.exec(lastLine);
   if (m) return !(okRcs || [0]).includes(Number(m[1]));
-  return /^\[PIPELINE-LEG-FAILED\b[^\]]*\]$/.test(lastLine);
+  return /^\[PIPELINE-WORKER-FAILED\b[^\]]*\]$/.test(lastLine);
 }
 
 function intervalLabel(hours) {
@@ -3279,25 +3279,25 @@ function probePhiCoherence(item, ctx) {
 
 // ── engine-allowlist ─────────────────────────────────────────────────────
 
-// a luna cadence leg
+// a luna cadence worker
 // (harvest, health, ...) runs an interactive claude session whose Bash tool
 // calls are gated by scripts/hooks/cadence-approve-engines.sh's own
-// ENGINE_LIST — an armed leg whose invoked engine script ISN'T on that
+// ENGINE_LIST — an armed worker whose invoked engine script ISN'T on that
 // allow-list stalls silently at its scheduled hour waiting for a permission
 // prompt nobody is there to answer (the exact failure class this
 // hook exists to prevent). `--print-engine-list` (A18, landed in PR-A) is
 // the ONE sanctioned way to read the live list — this probe shells out to it
 // rather than copying its values or re-deriving them with a JS regex over
 // the hook's own source (the hook stays the single source of truth, per its
-// own header comment). The leg-to-required-engine-suffix PAIRING itself
+// own header comment). The worker-to-required-engine-suffix PAIRING itself
 // (which schedule needs which engine) is NOT derivable from the live list
 // output — it lives in this item's own manifest descriptor (`legs`),
 // declarative data alongside the manifest, the same way qmd-index declares
 // its own `collections` or luna-sources its own `sources`.
 //
-// `cleanAbsence: true` marks "no leg with a known engine requirement is
+// `cleanAbsence: true` marks "no worker with a known engine requirement is
 // currently armed" (nothing to check) — status-report.js downgrades that
-// case to n/a; an armed leg actually missing a required suffix stays red.
+// case to n/a; an armed worker actually missing a required suffix stays red.
 function probeEngineAllowlist(item, ctx) {
   const env = ctx.env || process.env;
   const scriptPath = path.resolve(ctx.repoRoot, item.probe.script);
@@ -3312,20 +3312,20 @@ function probeEngineAllowlist(item, ctx) {
   const platform = ctx.platform || process.platform;
   const armedSchedules = armedPipelineSchedules(Object.keys(PIPELINE_RUNNER_BASE), batDir, platform);
 
-  const legs = item.probe.legs || [];
-  const armedLegs = legs.filter((leg) => armedSchedules.indexOf(leg.schedule) !== -1);
+  const workers = item.probe.legs || [];
+  const armedLegs = workers.filter((worker) => armedSchedules.indexOf(worker.schedule) !== -1);
   if (armedLegs.length === 0) {
     return {
       actual: 'absent',
-      detail: `no luna cadence leg with a known engine requirement is currently armed under ${batDir}`,
+      detail: `no luna cadence worker with a known engine requirement is currently armed under ${batDir}`,
       cleanAbsence: true,
     };
   }
   const problems = [];
-  for (const leg of armedLegs) {
-    const missing = leg.requiredSuffixes.filter((s) => !suffixes.has(s));
+  for (const worker of armedLegs) {
+    const missing = worker.requiredSuffixes.filter((s) => !suffixes.has(s));
     if (missing.length > 0) {
-      problems.push(`${leg.schedule}: armed but missing from cadence-approve-engines.sh's allow-list (would silently stall waiting for approval): ${missing.join(', ')}`);
+      problems.push(`${worker.schedule}: armed but missing from cadence-approve-engines.sh's allow-list (would silently stall waiting for approval): ${missing.join(', ')}`);
     }
   }
   if (problems.length > 0) {
@@ -3333,7 +3333,7 @@ function probeEngineAllowlist(item, ctx) {
   }
   return {
     actual: 'present',
-    detail: `every armed leg's required engine(s) are present in cadence-approve-engines.sh's allow-list (${armedLegs.map((l) => l.schedule).join(', ')})`,
+    detail: `every armed worker's required engine(s) are present in cadence-approve-engines.sh's allow-list (${armedLegs.map((l) => l.schedule).join(', ')})`,
   };
 }
 

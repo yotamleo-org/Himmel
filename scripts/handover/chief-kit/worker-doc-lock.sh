@@ -3,9 +3,9 @@
 # script that writes a handover doc, so a rewrite never drops a concurrent
 # append:
 #   append-results.sh   appends a bullet (>>)
-#   headed-arm-leg.sh   rewrites the front matter (session_ids:)
-#   inbox-send.sh --doc rewrites the doc's "## Console Rulings" section
-#   live-state.sh       rewrites a console doc's `legs:` line
+#   headed-arm-worker.sh   rewrites the front matter (session_ids:)
+#   inbox-send.sh --doc rewrites the doc's "## Chief Rulings" section
+#   live-state.sh       rewrites a chief doc's `legs:` line
 # A rewrite reads the doc, writes a temp file and mv's it over the doc. An
 # append that lands after the read and before the mv is lost with the old
 # inode, unless the appender waits for the same lock as the rewriter.
@@ -34,7 +34,7 @@
 doc_lock() {
     local _dl_doc _dl_dir _dl_key
     # ponytail: no flock (macOS) = unlocked writes, the pre-HIMMEL-4795
-    # behaviour; upgrade path: a mkdir spin lock if a macOS console ever runs legs.
+    # behaviour; upgrade path: a mkdir spin lock if a macOS chief ever runs workers.
     command -v flock >/dev/null 2>&1 || return 3
     # realpath -e is GNU-only; check existence, then canonicalize without it.
     [ -e "$1" ] || { printf '%s: cannot lock %s: no such file\n' "$2" "$1" >&2; return 1; }
@@ -63,19 +63,19 @@ doc_unlock() {
     exec 9>&-
 }
 
-# leg_doc_add_session_id <doc> <uuid>: append <uuid> to the doc's front-matter
+# worker_doc_add_session_id <doc> <uuid>: append <uuid> to the doc's front-matter
 # `session_ids:` line (comma-separated, one per launch), adding the line when
 # absent. The doc must open on `---`. rc 0 recorded, rc 1 not recorded (doc
 # unchanged). Held under doc_lock, so no locked append is lost; the cksum
 # re-check still refuses the mv when an unlocked writer (a hand edit) changed
 # the doc meanwhile. The temp file is a mktemp beside the doc (a fixed
 # `$DOC.sid.$$` name was predictable), and cp -p first gives it the doc's mode.
-leg_doc_add_session_id() {
+worker_doc_add_session_id() {
     local _ls_doc="$1" _ls_sid="$2" _ls_sum _ls_tmp="" _ls_rc=1 _ls_lock=0
     # pipefail-ok: a 36-byte printf is fully written before grep can exit, so no SIGPIPE
     printf '%s' "$_ls_sid" | grep -qE '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$' || return 1
     # rc 3 (no flock) writes unlocked, as before locking existed; rc 1 records nothing.
-    doc_lock "$_ls_doc" leg-doc-lock || _ls_lock=$?
+    doc_lock "$_ls_doc" worker-doc-lock || _ls_lock=$?
     [ "$_ls_lock" -eq 1 ] && return 1
     _ls_sum="$(cksum < "$_ls_doc" 2>/dev/null)"  # read-sink-ok: the handover doc the caller holds the lock on
     if _ls_tmp="$(mktemp "$_ls_doc.sid.XXXXXX")" \

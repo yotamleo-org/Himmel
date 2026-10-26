@@ -9,7 +9,7 @@
 # unchecked-mktemp.sh that only failed under BWK (macOS /usr/bin/awk) —
 # `gawk --posix`/`--lint=fatal` both accept the broken regex,
 # so a lint substitute would not have caught it. Only a real BWK run does.
-# The only prior BWK coverage was the nightly macOS shell-unit-shard leg,
+# The only prior BWK coverage was the nightly macOS shell-unit-shard worker,
 # which is continue-on-error (advisory). This gives the gate a PR-time,
 # gating BWK run on ubuntu.
 #

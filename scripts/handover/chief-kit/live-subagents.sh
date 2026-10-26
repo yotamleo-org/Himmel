@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/live-subagents.sh - list a Claude
 # Code session's in-process subagents (Agent-tool children) that are still
-# running, from OUTSIDE that session, so a console never wraps, and a successor
+# running, from OUTSIDE that session, so a chief never wraps, and a successor
 # never closes it, while a judge call's result is still in flight.
 #
 # Usage: live-subagents.sh [--session <session-id>] [--projects <dir>]
 #   --session   defaults to $CLAUDE_CODE_SESSION_ID (the caller's own session:
-#               the wrap gate a console runs on itself)
+#               the wrap gate a chief runs on itself)
 #   --projects  defaults to ${CLAUDE_CONFIG_DIR:-$HOME/.claude}/projects
 #
 # The signal (chosen 2026-10-09, evidence in the PR body that introduced this):

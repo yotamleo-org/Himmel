@@ -2,7 +2,7 @@
 // scripts/himmelctl/lib/ui-service.js — `himmelctl ui --service install|uninstall|status|url`: the AG-UI fleet page
 // as a systemd USER unit (himmel-ui.service), modelled on telegram-bridge.service (bridge-persistence.js).
 // The unit runs scripts/config-ui/server.ts --service on a fixed 127.0.0.1 port: no idle exit, a stable token in
-// ~/.himmel/state/ui-token (mode 600, created once), HANDOVER_DIR set so the console board works, Restart=on-failure.
+// ~/.himmel/state/ui-token (mode 600, created once), HANDOVER_DIR set so the chief board works, Restart=on-failure.
 // Every verb returns { ok, lines } instead of throwing on an expected failure; zero npm deps, systemctl via spawnSync.
 
 const fs = require('fs');
@@ -73,7 +73,7 @@ function ensureToken() {
   return p;
 }
 
-// page: a console page id (config, setup, ...) to land on; omitted, the fleet page.
+// page: a chief page id (config, setup, ...) to land on; omitted, the fleet page.
 function url(page) {
   const port = installedPort();
   if (port === null) return { ok: false, lines: [`${UNIT_NAME} is not installed (run: himmelctl ui --service install)`] };
@@ -140,7 +140,7 @@ function install({ repoRoot, port, dryRun }) {
   const bun = which('bun');
   if (!bun) return { ok: false, lines: ['bun is required (https://bun.sh)'] };
   const handoverDir = process.env.HANDOVER_DIR;
-  if (!handoverDir) return { ok: false, lines: ['HANDOVER_DIR is not set; the console board needs it (see docs/handover/running-a-console.md)'] };
+  if (!handoverDir) return { ok: false, lines: ['HANDOVER_DIR is not set; the console board needs it (see docs/handover/running-a-chief.md)'] };
   if (!which('systemctl')) return noSystemctl;
   const unit = renderUnit({ repoRoot, bun, handoverDir, envPath: process.env.PATH || '/usr/bin:/bin', port: port === null ? DEFAULT_PORT : port });
   if (dryRun) return { ok: true, lines: [`dry-run: would write ${unitPath()}`, `dry-run: would write ${tokenPath()} (mode 600) if absent`, 'dry-run: would run systemctl --user daemon-reload, enable --now ' + UNIT_NAME] }; // t13b-ok: dry-run message text only, starts no process

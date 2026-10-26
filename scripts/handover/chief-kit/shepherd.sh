@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/shepherd.sh — one deterministic pass over a
-# CLOUD-DONE PR. Ten native shepherd legs cost ~$2 each,
+# CLOUD-DONE PR. Ten native shepherd workers cost ~$2 each,
 # almost all cache reads, for mechanical work with a clean panel every time.
 # This runs the mechanical part in one foreground pass and prints ONE block, so
 # a model turn is spent only on a finding, a failed suite or a coverage gap.
@@ -11,13 +11,13 @@
 # <repo>/.claude/worktrees/shepherd-<pr> (git, not _new-worktree.sh: that helper
 # cuts a NEW branch from origin/main, and a shepherd needs the PR head as is).
 # A tree it created is removed on exit when clean; a modified one is kept.
-# The console still reads the diff, GOs and merges.
+# The chief still reads the diff, GOs and merges.
 #
 # Usage: shepherd.sh <pr-number>
 #
 # Steps, in order:
 #   1. resolve the PR head + base                       (gh pr view)
-#   2. CLOUD-DONE posted?  no -> steering is due, stop  (NEEDS-LEG steering-required)
+#   2. CLOUD-DONE posted?  no -> steering is due, stop  (NEEDS-WORKER steering-required)
 #   3. detached worktree of the PR head
 #   4. ticket-coverage lint                             (ready-check.sh --only 7)
 #   5. impacted suites, each run in the worktree        (impacted-suites.sh --shell)
@@ -34,12 +34,12 @@
 #
 # Output (stable):
 #   SHEPHERD <pr> <head> READY-CANDIDATE
-#   SHEPHERD <pr> <head> NEEDS-LEG <reason>[,<reason>...]
+#   SHEPHERD <pr> <head> NEEDS-WORKER <reason>[,<reason>...]
 #   then one `  <step>: <verdict> ...` line per step run.
 #
 # Exit codes:
 #   0 — READY-CANDIDATE
-#   1 — NEEDS-LEG (at least one reason; the block names them)
+#   1 — NEEDS-WORKER (at least one reason; the block names them)
 #   2 — usage or infra error (gh/jq/git missing, PR unreadable, worktree failed)
 #
 # Env (tests inject stubs): GH_CMD, SHEPHERD_READY_CHECK, SHEPHERD_CHECK_CI,
@@ -88,11 +88,11 @@ LINES=""
 add_line() { LINES="${LINES}  $1
 "; }
 add_reason() { if [ -z "$REASONS" ]; then REASONS="$1"; else REASONS="$REASONS,$1"; fi; }
-emit() { # <READY-CANDIDATE|NEEDS-LEG> [reasons]
+emit() { # <READY-CANDIDATE|NEEDS-WORKER> [reasons]
     if [ "$1" = "READY-CANDIDATE" ]; then
         printf 'SHEPHERD %s %s READY-CANDIDATE\n' "$PR" "$HEAD_SHA"
     else
-        printf 'SHEPHERD %s %s NEEDS-LEG %s\n' "$PR" "$HEAD_SHA" "$2"
+        printf 'SHEPHERD %s %s NEEDS-WORKER %s\n' "$PR" "$HEAD_SHA" "$2"
     fi
     printf '%s' "$LINES"
 }
@@ -104,7 +104,7 @@ if printf '%s' "$pr_json" | jq -e '[.comments[]? | select((.body // "") | starts
     add_line "steering: skipped (CLOUD-DONE posted, the cloud session has ended)"
 else
     add_line "steering: DUE (no CLOUD-DONE comment; the cloud session may still push — send CLOUD-ACK steering before anything else)"
-    emit NEEDS-LEG steering-required
+    emit NEEDS-WORKER steering-required
     exit 1
 fi
 
@@ -214,5 +214,5 @@ if [ -z "$REASONS" ]; then
     emit READY-CANDIDATE
     exit 0
 fi
-emit NEEDS-LEG "$REASONS"
+emit NEEDS-WORKER "$REASONS"
 exit 1

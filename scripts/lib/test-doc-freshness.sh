@@ -119,27 +119,27 @@ run_test "three-dot range: main-side feat commit is NOT a false positive (critic
   [ -z "$out" ] || exit 1
 '
 
-run_test "leg gate: HIMMEL_DOC_FRESHNESS grammar" '
+run_test "worker gate: HIMMEL_DOC_FRESHNESS grammar" '
   ( . "$LIB"
-    HIMMEL_DOC_FRESHNESS="" df_leg_active advise && exit 1
-    HIMMEL_DOC_FRESHNESS=1 df_leg_active advise || exit 1
-    HIMMEL_DOC_FRESHNESS=all df_leg_active morning || exit 1
-    HIMMEL_DOC_FRESHNESS="advise,morning" df_leg_active session && exit 1
-    HIMMEL_DOC_FRESHNESS="advise,morning" df_leg_active advise || exit 1
-    HIMMEL_DOC_FRESHNESS=off df_leg_active advise && exit 1
+    HIMMEL_DOC_FRESHNESS="" df_worker_active advise && exit 1
+    HIMMEL_DOC_FRESHNESS=1 df_worker_active advise || exit 1
+    HIMMEL_DOC_FRESHNESS=all df_worker_active morning || exit 1
+    HIMMEL_DOC_FRESHNESS="advise,morning" df_worker_active session && exit 1
+    HIMMEL_DOC_FRESHNESS="advise,morning" df_worker_active advise || exit 1
+    HIMMEL_DOC_FRESHNESS=off df_worker_active advise && exit 1
     exit 0 )
 '
 
-run_test "df_leg_active extra grammar: 0/false/no off, true/on/yes on, UPPERCASE normalised" '
+run_test "df_worker_active extra grammar: 0/false/no off, true/on/yes on, UPPERCASE normalised" '
   ( . "$LIB"
-    HIMMEL_DOC_FRESHNESS=0     df_leg_active advise   && exit 1   # 0 → off
-    HIMMEL_DOC_FRESHNESS=false df_leg_active advise   && exit 1   # false → off
-    HIMMEL_DOC_FRESHNESS=no    df_leg_active advise   && exit 1   # no → off
-    HIMMEL_DOC_FRESHNESS=true  df_leg_active advise   || exit 1   # true → on
-    HIMMEL_DOC_FRESHNESS=on    df_leg_active advise   || exit 1   # on → on
-    HIMMEL_DOC_FRESHNESS=yes   df_leg_active morning  || exit 1   # yes → on
-    HIMMEL_DOC_FRESHNESS=ALL   df_leg_active morning  || exit 1   # uppercase ALL → on (_df_norm lowers)
-    HIMMEL_DOC_FRESHNESS=OFF   df_leg_active advise   && exit 1   # uppercase OFF → off
+    HIMMEL_DOC_FRESHNESS=0     df_worker_active advise   && exit 1   # 0 → off
+    HIMMEL_DOC_FRESHNESS=false df_worker_active advise   && exit 1   # false → off
+    HIMMEL_DOC_FRESHNESS=no    df_worker_active advise   && exit 1   # no → off
+    HIMMEL_DOC_FRESHNESS=true  df_worker_active advise   || exit 1   # true → on
+    HIMMEL_DOC_FRESHNESS=on    df_worker_active advise   || exit 1   # on → on
+    HIMMEL_DOC_FRESHNESS=yes   df_worker_active morning  || exit 1   # yes → on
+    HIMMEL_DOC_FRESHNESS=ALL   df_worker_active morning  || exit 1   # uppercase ALL → on (_df_norm lowers)
+    HIMMEL_DOC_FRESHNESS=OFF   df_worker_active advise   && exit 1   # uppercase OFF → off
     exit 0 )
 '
 

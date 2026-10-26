@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """scripts/eval/worker-digest/failure_router.py - the failure router (HIMMEL-4670 P5).
 
-Reads the leg-failures ledger (leg_ledger.py writes it), finds the class keys that
-recur across distinct legs, and routes each through failure-routes.table.json
+Reads the worker-failures ledger (worker_ledger.py writes it), finds the class keys that
+recur across distinct workers, and routes each through failure-routes.table.json
 (spec 4.2, as data): a Jira ticket on recurrence, a comment on a later one, a
 memory-inbox candidate for classifier denials. Deterministic, local, no model.
 
@@ -10,22 +10,22 @@ memory-inbox candidate for classifier denials. Deterministic, local, no model.
                           [--table P] [--now ISO] [--jira-bin P]
   failure_router.py check-body <file>     the body alphabet check, exit 1 on a refusal
 
-RECURRENCE (spec 4.1): a class recurs at the table row's threshold in DISTINCT legs
-within window_days. A leg label is counted with a trailing [a-z] stripped, so a
-resume chain (N100 + N100b) is one leg; a row with no leg is not counted. Agent-
-behaviour classes count only rows whose agent.role is leg or whose agent.id is
+RECURRENCE (spec 4.1): a class recurs at the table row's threshold in DISTINCT workers
+within window_days. A worker label is counted with a trailing [a-z] stripped, so a
+resume chain (N100 + N100b) is one worker; a row with no worker is not counted. Agent-
+behaviour classes count only rows whose agent.role is worker or whose agent.id is
 main; a row marked any_role (suite/*) counts every role. Rows that fail the
-leg_ledger.py validator are ignored.
+worker_ledger.py validator are ignored.
 
 DECISIONS, one decision-log line each (P4 contract): filed | commented | capped |
-recurred-after-done | skipped:<why>. A class whose window legs were all acted on
+recurred-after-done | skipped:<why>. A class whose window workers were all acted on
 before makes no decision; a decision equal to the class's last one on
-the same legs writes no second line. Never-routed and signal-only rows (the
+the same workers writes no second line. Never-routed and signal-only rows (the
 traj/red-before-green and traj/claim-unverified classes among them) decide nothing.
 
   log    $HIMMEL_FAILURE_ROUTES_LOG, else ~/.himmel/state/failure-routes.log.jsonl
-         {ts, class, legs, decision, ticket}, one O_APPEND write per line. Before a Jira
-         comment or create a kind=route-intent row {class, legs, intent} (no decision key,
+         {ts, class, workers, decision, ticket}, one O_APPEND write per line. Before a Jira
+         comment or create a kind=route-intent row {class, workers, intent} (no decision key,
          so readers skip it) is written first; if that write fails nothing is sent and the
          decision is skipped:log-error. JIRA_PROJECT_KEY is required (no default) unless --dry-run.
   state  $HIMMEL_FAILURE_ROUTES_STATE, else ~/.himmel/state/failure-routes.json
@@ -61,7 +61,7 @@ from datetime import datetime, timedelta, timezone
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
-import leg_ledger  # noqa: E402
+import worker_ledger  # noqa: E402
 
 TABLE = os.path.join(HERE, "failure-routes.table.json")
 PLAYBOOK = os.path.join(HERE, "..", "..", "..", "docs", "internals", "stuck-playbook.md")
@@ -71,24 +71,24 @@ NOTIFY_ENV = "FAILURE_ROUTER_NOTIFY_CMD"
 NOTIFY = os.path.join(HERE, "failure-route-notify.sh")
 DONE = ("done", "closed", "resolved", "won't do", "cancelled", "canceled")
 JIRA_TIMEOUT = 60
-MAX_BODY_LEGS = 500  # Jira refuses a body past its text limit; the count line still names every leg
+MAX_BODY_WORKERS = 500  # Jira refuses a body past its text limit; the count line still names every worker
 MAX_BODY_REFS = 200  # the same cap for the ticket and PR lists; a "not listed" line counts the cut
 
 CLASS = re.compile(r"^(denied|suite|blocked|error|run_error|traj)/[A-Za-z0-9._:+-]{1,80}$")
 SUB = r"[A-Za-z0-9._:+-]{1,80}"
-LEGS = re.compile(r"^N\d+(, N\d+)*$")
+WORKERS = re.compile(r"^N\d+(, N\d+)*$")
 KEYS = re.compile(r"^(none|[A-Z][A-Z0-9]+-\d+(, [A-Z][A-Z0-9]+-\d+)*)$")
 PRS = re.compile(r"^(none|#\d+(, #\d+)*)$")
 TICKET = re.compile(r"^[A-Z][A-Z0-9]+-\d+$")
 PROJECT = re.compile(r"^[A-Z][A-Z0-9]+$")
-SHAPE = ("## Impact", "Legs lost time to the same failure class, so the harness repeats a defect.",
-         "## What", "The daily failure review found this class recurring in distinct legs.",
-         "## Why", "A failure that recurs across legs is a harness defect, not one leg's mistake.",
+SHAPE = ("## Impact", "Workers lost time to the same failure class, so the harness repeats a defect.",
+         "## What", "The daily failure review found this class recurring in distinct workers.",
+         "## Why", "A failure that recurs across workers is a harness defect, not one worker's mistake.",
          "## Plan", "1. Find the cause of the recurring failure class and fix it at the source.",
          "## DoD", "- The class stops recurring in the failure review.",
          "## Agent detail")
 HEADS = ("Failure-loop recurrence (HIMMEL-4670 router).", "Failure-loop recurrence update.", "") + SHAPE
-INBOX_LINE = re.compile(r"^- \d{4}-\d{2}-\d{2} (denied|suite|blocked|error|run_error|traj)/%s legs=\d+ "
+INBOX_LINE = re.compile(r"^- \d{4}-\d{2}-\d{2} (denied|suite|blocked|error|run_error|traj)/%s workers=\d+ "
                         r"topic=[a-z0-9-]+\.md: candidate line, classifier denials recurred, check the allow-rule shape$"
                         % SUB)
 
@@ -108,7 +108,7 @@ def slug(cls):
     return re.sub(r"[^a-z0-9-]", "-", cls.lower())[:60]
 
 
-def leg_of(label):
+def worker_of(label):
     return re.sub(r"[a-z]$", "", label) if isinstance(label, str) else None
 
 
@@ -146,7 +146,7 @@ def read_ledger(path, cutoff, now):
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if leg_ledger.validate(r):
+            if worker_ledger.validate(r):
                 continue
             try:
                 if not cutoff <= now_utc(r["ts"]) <= now:
@@ -158,7 +158,7 @@ def read_ledger(path, cutoff, now):
 
 
 def firing(table, cls, rows):
-    """(route row, sorted distinct legs, the counted rows) when the class fires, else None."""
+    """(route row, sorted distinct workers, the counted rows) when the class fires, else None."""
     for t in table["routes"]:
         if not fits(t["match"], cls):
             continue
@@ -169,17 +169,17 @@ def firing(table, cls, rows):
             continue
         counted = [r for r in rows if keep(r, when) and (t.get("any_role") or r["agent"]["role"] == "leg"
                                                           or r["agent"]["id"] == "main")]
-        legs = sorted({leg_of(r["leg"]) for r in counted if r["leg"]}, key=lambda x: int(x[1:]))
-        if len(legs) >= t["threshold"]:
-            return t, legs, counted
+        workers = sorted({worker_of(r["leg"]) for r in counted if r["leg"]}, key=lambda x: int(x[1:]))
+        if len(workers) >= t["threshold"]:
+            return t, workers, counted
         if when is None:
             return None
     return None
 
 
 def summary_rx(template):
-    parts = re.split(r"(\{sub\}|\{legs\})", template)
-    return re.compile("^" + "".join(SUB if p == "{sub}" else r"\d+" if p == "{legs}" else re.escape(p)
+    parts = re.split(r"(\{sub\}|\{workers\})", template)
+    return re.compile("^" + "".join(SUB if p == "{sub}" else r"\d+" if p == "{workers}" else re.escape(p)
                                     for p in parts) + "$")
 
 
@@ -193,11 +193,11 @@ def check_body(text, table=None):
             continue
         m = re.match(r"^- ([A-Za-z ()0-9]+): (.*)$", line)
         label, val = (m.group(1), m.group(2)) if m else (None, None)
-        good = {"class": lambda v: CLASS.match(v), "legs": lambda v: LEGS.match(v),
+        good = {"class": lambda v: CLASS.match(v), "legs": lambda v: WORKERS.match(v),
                 "tickets": lambda v: KEYS.match(v), "PRs": lambda v: PRS.match(v),
                 "not listed": lambda v: re.match(r"^\d+ more tickets or PRs, see the digest$", v),
                 "route": lambda v: v in rows, "playbook entry names the hook": lambda v: v in ("yes", "no")}
-        if label and re.match(r"^distinct legs \(\d+ d\)$", label):
+        if label and re.match(r"^distinct workers \(\d+ d\)$", label):
             ok = re.match(r"^\d+$", val)
         else:
             ok = label in good and good[label](val)
@@ -206,7 +206,7 @@ def check_body(text, table=None):
     return p
 
 
-def build_body(table, t, cls, legs, counted, update):
+def build_body(table, t, cls, workers, counted, update):
     tickets = sorted({r["ticket"] for r in counted if r["ticket"]})
     prs = sorted({r["pr"] for r in counted if r["pr"]})
     out = [HEADS[1], ""]
@@ -216,8 +216,8 @@ def build_body(table, t, cls, legs, counted, update):
             out += [line] if line.startswith("## ") else [line, ""]
         out += [HEADS[0], ""]
     out += ["- class: %s" % cls,
-           "- distinct legs (%d d): %d" % (table["window_days"], len(legs)),
-           "- legs: %s" % ", ".join(legs[:MAX_BODY_LEGS])]
+           "- distinct workers (%d d): %d" % (table["window_days"], len(workers)),
+           "- legs: %s" % ", ".join(workers[:MAX_BODY_WORKERS])]
     if not update:
         cut = max(len(tickets) - MAX_BODY_REFS, 0) + max(len(prs) - MAX_BODY_REFS, 0)
         tickets, prs = tickets[:MAX_BODY_REFS], prs[:MAX_BODY_REFS]
@@ -323,7 +323,7 @@ def append_inbox(path, line):
 
 
 def notify(a, *args):
-    """Run the notifier (console <text> | intake <key> <why>); a failure is said on stderr, never fatal."""
+    """Run the notifier (chief <text> | intake <key> <why>); a failure is said on stderr, never fatal."""
     try:
         cmd = shlex.split(a.notify_cmd) if a.notify_cmd else ["bash", NOTIFY]
         r = subprocess.run(cmd + list(args), capture_output=True, text=True, timeout=JIRA_TIMEOUT)
@@ -352,18 +352,18 @@ def search(jbin, project, cls):
     return hits
 
 
-def acted(c, legs):
-    """Record the legs a decision acted on, so the same legs never fire twice but new ones do."""
-    c["acted"] = sorted(set(c.get("acted", [])) | set(legs))
+def acted(c, workers):
+    """Record the workers a decision acted on, so the same workers never fire twice but new ones do."""
+    c["acted"] = sorted(set(c.get("acted", [])) | set(workers))
 
 
-def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, project, intent, collide=False):
+def decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent, collide=False):
     """(decision, ticket). Mutates the class entry c and the state's create count.
 
     intent(kind) logs the send before it happens and returns False when the log write failed:
     no Jira write is made without it."""
     global JIRA_ERR
-    n = len(legs)
+    n = len(workers)
     if not state_ok:
         return "skipped:state-unreadable", None
     if c.get("ticket") and c.get("last_comment_day") == today:
@@ -390,16 +390,16 @@ def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, pro
     if key:
         c["ticket"] = key
         if dict(hits)[key] in DONE:
-            acted(c, legs)
+            acted(c, workers)
             return "recurred-after-done", key
-        body = build_body(table, t, cls, legs, counted, True)
+        body = build_body(table, t, cls, workers, counted, True)
         if check_body(body, table):
             return "skipped:alphabet", key
         if not intent("comment"):
             return "skipped:log-error", key
         if with_file(body, lambda f: jira(jbin, ["comment", key, "--comment-file", f])) is None:
             return "skipped:jira-error", key
-        acted(c, legs)
+        acted(c, workers)
         c["last_comment_day"] = today
         return "commented", key
     if state["created"].get("day") != today:
@@ -407,8 +407,8 @@ def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, pro
     if state["created"]["n"] >= table["daily_cap"]:
         return "capped", None
     sub = cls.partition("/")[2]
-    title = t["summary"].replace("{sub}", sub).replace("{legs}", str(n))
-    body = build_body(table, t, cls, legs, counted, False)
+    title = t["summary"].replace("{sub}", sub).replace("{workers}", str(n))
+    body = build_body(table, t, cls, workers, counted, False)
     if check_body(body, table) or not summary_rx(t["summary"]).match(title):
         return "skipped:alphabet", None
     if not intent("file"):
@@ -424,7 +424,7 @@ def decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, pro
         return "skipped:jira-error", None
     state["created"]["n"] += 1
     c["ticket"] = m.group(1)
-    acted(c, legs)
+    acted(c, workers)
     return "filed", m.group(1)
 
 
@@ -460,14 +460,14 @@ def route(a):
         fires = {cls: firing(table, cls, by[cls]) for cls in sorted(by)}
         # The daily cap stops the walk, so the widest classes go first, not the alphabetical ones.
         for cls in sorted((c for c in fires if fires[c]), key=lambda c: (-len(fires[c][1]), c)):
-            t, legs, counted = fires[cls]
-            n = len(legs)
+            t, workers, counted = fires[cls]
+            n = len(workers)
             c = state["classes"].setdefault(cls, {}) if state_ok else {}
-            if set(legs) <= set(c.get("acted", [])):
+            if set(workers) <= set(c.get("acted", [])):
                 continue
             inbox = a.inbox if t.get("inbox") and state_ok and not c.get("inbox") else None
             if inbox and not a.dry_run:
-                line = ("- %s %s legs=%d topic=%s: candidate line, classifier denials recurred, check the "
+                line = ("- %s %s workers=%d topic=%s: candidate line, classifier denials recurred, check the "
                         "allow-rule shape" % (today, cls, n, t["inbox"]))
                 if INBOX_LINE.match(line):
                     append_inbox(inbox, line)
@@ -475,7 +475,7 @@ def route(a):
             def intent(kind, cls=cls, n=n):
                 # The intent line is written before the Jira call; the decision line after it confirms.
                 try:
-                    leg_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(),
+                    worker_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(),
                                                 "source": SOURCE, "kind": "route-intent", "class": cls,
                                                 "legs": n, "intent": kind}])
                     return True
@@ -483,32 +483,32 @@ def route(a):
                     print("failure-router: cannot log the intent, nothing sent: %s" % e, file=sys.stderr)
                     return False
 
-            dec, ticket = decide(a, table, cls, t, legs, counted, c, state, state_ok, today, jbin, project, intent,
+            dec, ticket = decide(a, table, cls, t, workers, counted, c, state, state_ok, today, jbin, project, intent,
                                  len(slugs[slug(cls)]) > 1)
             if a.dry_run:
                 print(json.dumps({"class": cls, "legs": n, "decision": dec, "ticket": ticket,
                                   "inbox": bool(inbox)}, separators=(",", ":")))
                 continue
-            if (dec, legs) == (c.get("last_decision"), c.get("last_legs")):
+            if (dec, workers) == (c.get("last_decision"), c.get("last_legs")):
                 if state_ok:
                     save_state(a.state, state)
                 continue
             # Log before saving the state: a failed log write must leave the class unacted, not a silent send.
-            leg_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(), "source": SOURCE,
+            worker_ledger._append(a.log, [{"v": 1, "ts": iso(now), "host": socket.gethostname(), "source": SOURCE,
                                         "kind": "route-decision", "class": cls, "legs": n, "decision": dec,
                                         "ticket": ticket}])
             if state_ok:
-                c["last_decision"], c["last_legs"] = dec, legs
+                c["last_decision"], c["last_legs"] = dec, workers
                 save_state(a.state, state)
             decisions += 1
-            print("failure-router: %s legs=%d %s%s" % (cls, n, dec, " " + ticket if ticket else ""))
+            print("failure-router: %s workers=%d %s%s" % (cls, n, dec, " " + ticket if ticket else ""))
             if dec in ("skipped:search-error", "skipped:jira-error") and JIRA_ERR:
                 print("failure-router: %s reason: %s" % (cls, JIRA_ERR))
             if dec in ("filed", "commented"):
                 sent.append((dec, cls, ticket))
         for dec, cls, ticket in sent:
             if dec == "filed":
-                notify(a, "intake", ticket, "the daily failure review filed it: class %s recurred in distinct legs" % cls)
+                notify(a, "intake", ticket, "the daily failure review filed it: class %s recurred in distinct workers" % cls)
         if sent:
             notify(a, "console", "failure-router: " + ", ".join("%s %s (%s)" % (dec, ticket, cls) for dec, cls, ticket in sent))
         if not a.dry_run:
@@ -544,7 +544,7 @@ def main(argv=None):
             print("check-body: %s" % p, file=sys.stderr)
         print("check-body: %s" % ("refused" if problems else "ok"))
         return 1 if problems else 0
-    a.ledger = leg_ledger.ledger_path(a.ledger)
+    a.ledger = worker_ledger.ledger_path(a.ledger)
     try:
         return route(a)
     except (OSError, ValueError, KeyError) as e:

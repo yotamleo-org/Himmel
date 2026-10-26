@@ -100,10 +100,10 @@ describe('jira release (HIMMEL-6796)', () => {
     await expect(run('fold', 'R1', '--to', 'v1', '--key', 'K-1', '--pr', '0x10', '--mirror-root', mir)).rejects.toThrow(/decimal PR number/);
   });
 
-  it('refuses an operator act from a console-spawned leg', async () => {
+  it('refuses an operator act from a chief-spawned worker', async () => {
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
     await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt')))
-      .rejects.toThrow(/console-spawned leg/);
+      .rejects.toThrow(/chief-spawned worker/);
   });
 });
 
@@ -356,7 +356,7 @@ describe('jira release request refuses junk (HIMMEL-7434)', () => {
     for (const why of ['w', 'tbd', 'filed to the backlog: x', 'filed to the backlog: test']) {
       await expect(ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', why)).rejects.toThrow(/placeholder/);
     }
-    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: the console loses a leg');
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: the console loses a worker');
     expect(out.at(-1)).toBe('REQ Q-R1-0001');
   });
 

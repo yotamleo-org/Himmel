@@ -1,43 +1,43 @@
 #!/usr/bin/env bash
-# relay-batch.sh — The outgoing console's succession relay to every
-# inherited leg in ONE command instead of one hand-written message per leg.
+# relay-batch.sh — The outgoing chief's succession relay to every
+# inherited worker in ONE command instead of one hand-written message per worker.
 #
-#   relay-batch.sh <console doc> --successor <session> [--claudex <label>[,<label>...]]
+#   relay-batch.sh <chief doc> --successor <session> [--claudex <label>[,<label>...]]
 #
-# Reads the console doc's `## Live state` `legs:` entries (`<label>:<nonce>:<lock>:<pid>`)
-# and its fleet manifest (label -> leg doc -> leg session name). Per leg it builds
-# ONE relay message — "your console is now <successor>; token `<nonce>`; quote back
-# to <successor>" — which is exactly the S1 relay of docs/handover/leg-preface.md
-# ("Console succession"): sent by the outgoing console, naming its successor and
-# quoting the leg's CURRENT token.
-#   claudex legs (--claudex): delivered now through inbox-send.sh --token, the
-#     console's existing authorised channel (it refuses outside a console).
-#   native legs, when the console has a bus identity (HIMMEL_BUS_NAME): the relay IS
+# Reads the chief doc's `## Live state` `legs:` entries (`<label>:<nonce>:<lock>:<pid>`)
+# and its fleet manifest (label -> worker doc -> worker name). Per worker it builds
+# ONE relay message — "your chief is now <successor>; token `<nonce>`; quote back
+# to <successor>" — which is exactly the S1 relay of docs/handover/worker-preface.md
+# ("Chief succession"): sent by the outgoing chief, naming its successor and
+# quoting the worker's CURRENT token.
+#   claudex workers (--claudex): delivered now through inbox-send.sh --token, the
+#     chief's existing authorised channel (it refuses outside a chief).
+#   native workers, when the chief has a bus identity (HIMMEL_BUS_NAME): the relay IS
 #     a token-free himmel-bus record. The bus proves the sender, so a trusted record
-#     from the leg's named console is an S1 relay with no token; the leg quotes back
-#     in a Results bullet, so the console sends nothing per leg (`BUS-RELAY <label> ok`).
+#     from the worker's named chief is an S1 relay with no token; the worker quotes back
+#     in a Results bullet, so the chief sends nothing per worker (`BUS-RELAY <label> ok`).
 #     A record that fails (`BUS-RELAY-FAIL <label> (<reason>)`, never an error) falls
-#     back to the printed SendMessage below, after every bus send. A manifest leg the
+#     back to the printed SendMessage below, after every bus send. A manifest worker the
 #     Live state does not list needs no token this way, so it is bus-relayed too.
-#   native legs with no bus identity, or a failed record: the SendMessage payload is
-#     PRINTED, one `SENDMESSAGE to=<leg session> :: <text>` line per leg, for the
-#     console to send. A SendMessage cannot be issued from a script; the console's
+#   native workers with no bus identity, or a failed record: the SendMessage payload is
+#     PRINTED, one `SENDMESSAGE to=<worker> :: <text>` line per worker, for the
+#     chief to send. A SendMessage cannot be issued from a script; the chief's
 #     `from` is what authenticates it.
-#   claudex legs also get a token-free bus record naming the successor: their `bus
-#     adopt` needs it while the outgoing console is still live; a hand relay leaves none.
-# What it never does: mint a token or nonce, rotate one, adopt one, write a leg's
-# Live state entry, or send LIVE. It copies the nonce the console already holds
+#   claudex workers also get a token-free bus record naming the successor: their `bus
+#     adopt` needs it while the outgoing chief is still live; a hand relay leaves none.
+# What it never does: mint a token or nonce, rotate one, adopt one, write a worker's
+# Live state entry, or send LIVE. It copies the nonce the chief already holds
 # and the successor sends LIVE on this run's RELAYED line; the quote-back tally is informational.
-# A leg with no manifest row has no doc to resolve: it is listed as
-# `SKIPPED <label> (no manifest row)` for a hand relay. A leg whose session is not
+# A worker with no manifest row has no doc to resolve: it is listed as
+# `SKIPPED <label> (no manifest row)` for a hand relay. A worker whose session is not
 # exactly one live `claude -n <name>` process (candidates: its full doc stem, then
-# leg_identity's names) is `UNRESOLVED <label> (candidates: ...)`: nothing is sent
+# worker_identity's names) is `UNRESOLVED <label> (candidates: ...)`: nothing is sent
 # and SENT / SENDMESSAGE are never printed without a resolved session.
 #
-# A WRAPPED leg (queue lock free and its newest marker bullet WRAPPED) is finished: it is
+# A WRAPPED worker (queue lock free and its newest marker bullet WRAPPED) is finished: it is
 # neither relayed nor counted, whether or not the Live state still lists it. The run ends
-# with `RELAYED <n> of <m>`: n legs delivered, m the manifest's non-lockless, non-wrapped
-# legs (the live fleet), so a tick can flag drift.
+# with `RELAYED <n> of <m>`: n workers delivered, m the manifest's non-lockless, non-wrapped
+# workers (the live fleet), so a tick can flag drift.
 #
 # Seams (tests): INBOX_SEND replaces inbox-send.sh; RELAY_BATCH_CENSUS is a script
 # printing claude_sessions-format census lines; RELAY_BATCH_BUS replaces the bus CLI;
@@ -47,7 +47,7 @@
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-usage() { echo "usage: relay-batch.sh <console doc> --successor <session> [--claudex <label>[,<label>...]]" >&2; exit 2; }
+usage() { echo "usage: relay-batch.sh <chief doc> --successor <session> [--claudex <label>[,<label>...]]" >&2; exit 2; }
 [ "$#" -ge 3 ] || usage
 doc="$1"; shift
 successor=""; claudex=""
@@ -59,31 +59,31 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 if [ -z "$successor" ] || [ ! -f "$doc" ]; then usage; fi
-# A console's session is its doc stem, so a successor given as its doc path is named by that.
+# A chief's session is its doc stem, so a successor given as its doc path is named by that.
 case "$successor" in */*|*.md) successor="$(basename "$successor" .md)" ;; esac
 sender="$(basename "$doc" .md)"
 send="${INBOX_SEND:-$HERE/inbox-send.sh}"
-# shellcheck source=../../lib/leg-identity.sh
+# shellcheck source=../../lib/worker-identity.sh
 . "$HERE/../../lib/worker-identity.sh"
-# shellcheck source=../../lib/leg-tail-status.sh
-. "$HERE/../../lib/leg-tail-status.sh"
+# shellcheck source=../../lib/worker-tail-status.sh
+. "$HERE/../../lib/worker-tail-status.sh"
 # shellcheck source=../../lib/prim.sh
 . "$HERE/../../lib/prim.sh"
-# wrapped <leg doc>: lock free and newest marker WRAPPED (close-wrapped-leg.sh's gate).
-wrapped() { bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(leg_tail_status "$1")" = WRAPPED ]; }
+# wrapped <worker doc>: lock free and newest marker WRAPPED (close-wrapped-worker.sh's gate).
+wrapped() { bash "$HERE/../queue-lock.sh" status "$1" >/dev/null 2>&1 && [ "$(worker_tail_status "$1")" = WRAPPED ]; }
 manifest="${doc%.md}.fleet.json"
 bus="${RELAY_BATCH_BUS:-$HERE/../../../marketplace/plugins/himmel-bus/bin/bus}"
-# relay_text [<nonce>]: the relay; the SendMessage form quotes the leg's token, the bus
+# relay_text [<nonce>]: the relay; the SendMessage form quotes the worker's token, the bus
 # form carries none.
 relay_text() {
     local tok=""
     [ -z "${1:-}" ] || tok=" Your current token \`$1\`."
-    printf 'SUCCESSION relay from %s: your console is now %s.%s This is an S1 relay: accept it and keep working your sealed scope. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: %s replaces %s\n' "$sender" "$successor" "$tok" "$successor" "$sender"
+    printf 'SUCCESSION relay from %s: your chief is now %s.%s This is an S1 relay: accept it and keep working your sealed scope. Your quote-back (no reply needed) is a Results bullet containing exactly the following, with nothing after it on that line: SUCCESSION accepted: %s replaces %s\n' "$sender" "$successor" "$tok" "$successor" "$sender"
 }
 not_in_live() { echo "NOT-IN-LIVE-STATE $1 ($2) — in the fleet manifest, not in ## Live state legs:; relay by hand if it is live"; }
-# relay_bus: sends each queued `<kind> <label> <session> <nonce> <leg doc>` line's bus
-# record: kind relay (a Live-state native leg) and offlive (a native leg missing from
-# Live state) get the relay itself; notice (a claudex leg, already relayed by inbox)
+# relay_bus: sends each queued `<kind> <label> <session> <nonce> <worker doc>` line's bus
+# record: kind relay (a Live-state native worker) and offlive (a native worker missing from
+# Live state) get the relay itself; notice (a claudex worker, already relayed by inbox)
 # gets the record its `bus adopt` needs. The sends run together under one deadline, so
 # a stalled store cannot outlast relay-on-live's kill. Fail-soft: a failed relay record
 # prints the SendMessage fallback; a failed offlive record is left for a hand relay.
@@ -93,7 +93,7 @@ relay_bus() {
     command -v timeout >/dev/null 2>&1 && wait_for="timeout $limit"
     if dir="$(tmpdir)"; then
         relay_text "" > "$dir/relay"; cp "$dir/relay" "$dir/offlive"
-        printf 'SUCCESSION bus record from %s: your console is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor" > "$dir/notice"
+        printf 'SUCCESSION bus record from %s: your chief is now %s (no token here; the S1 relay quoting your token is the instruction).\n' "$sender" "$successor" > "$dir/notice"
         while read -r kind label session nonce ldoc; do
             [ -n "$label" ] || continue
             i=$((i + 1))
@@ -127,14 +127,14 @@ $bus_queue
 EOB
     [ -z "$dir" ] || rm -rf "$dir"
 }
-# resolve_session <leg doc>: the session name is read from the live census, never
-# guessed: a leg launches under its full doc stem (dated, even -RESUME) or an undated
-# name. Candidates: the full stem first, then leg_identity's names; exactly one live
+# resolve_session <worker doc>: the session name is read from the live census, never
+# guessed: a worker launches under its full doc stem (dated, even -RESUME) or an undated
+# name. Candidates: the full stem first, then worker_identity's names; exactly one live
 # match (hits=1) is the session.
 resolve_session() {
     local lnames
     lstem="$(basename "$1" .md)"
-    lnames="$(leg_identity "$1")"; lnames="${lnames#*$'\t'}"
+    lnames="$(worker_identity "$1")"; lnames="${lnames#*$'\t'}"
     cands=",$lstem,$lnames,"
     hits=0; lsession=""
     while IFS=$'\t' read -r _cpid cname _rest; do
@@ -165,13 +165,13 @@ entries="$(awk '
     b { print }
 ' "$doc" | grep -oE '`[A-Za-z0-9_.-]+:[^`:[:space:]]+:[^`:[:space:]]+:[^`:[:space:]]+`' | tr -d '`')"
 if [ -z "$entries" ]; then
-    echo "relay-batch: no leg entries in $doc ## Live state" >&2
-    # manifest legs missing from Live state are still relayed or reported below.
+    echo "relay-batch: no worker entries in $doc ## Live state" >&2
+    # manifest workers missing from Live state are still relayed or reported below.
     if [ -f "$manifest" ] && jq -e '.legs | length > 0' "$manifest" >/dev/null 2>&1; then :; else exit 0; fi
 fi
 
-# the claudex set comes from the manifest's per-leg lane. --claudex, when
-# given, must name exactly the Live-state legs the manifest marks claudex (lockless
+# the claudex set comes from the manifest's per-worker lane. --claudex, when
+# given, must name exactly the Live-state workers the manifest marks claudex (lockless
 # rows are listed below, never relayed), or the relay refuses before sending anything.
 if [ -n "$claudex" ]; then
     live_labels="$(printf '%s\n' "$entries" | cut -d: -f1)"
@@ -182,7 +182,7 @@ if [ -n "$claudex" ]; then
     fi
     given="$(printf '%s\n' "${claudex//,/$'\n'}" | awk 'NF' | sort -u | tr '\n' ',')"
     if [ "$given" != "$mclaudex" ]; then
-        echo "relay-batch: --claudex (${given%,}) disagrees with the fleet manifest's claudex legs (${mclaudex%,}); nothing sent" >&2
+        echo "relay-batch: --claudex (${given%,}) disagrees with the fleet manifest's claudex workers (${mclaudex%,}); nothing sent" >&2
         exit 1
     fi
 fi
@@ -192,7 +192,7 @@ while IFS=: read -r label nonce _lock _pid; do
     [ -n "$label" ] || continue
     ldoc=""; lane=unknown
     if [ -f "$manifest" ]; then
-        # A live, locked leg is never a lockless row: the label is matched against the
+        # A live, locked worker is never a lockless row: the label is matched against the
         # locked rows only (lockless is the boolean true; anything else is locked and
         # visible). Two locked rows under one label are ambiguous, so nothing is sent.
         mrows="$(jq -r --arg l "$label" '.legs[] | select(.label == $l and (.lockless == true | not)) | [.doc, ((.lane // "") | if . == "" then "unknown" else . end)] | @tsv' "$manifest" 2>/dev/null)"
@@ -221,7 +221,7 @@ EOR
             continue ;;
     esac
     if [ "$lane" = claudex ]; then
-        # A claudex leg is not a `claude -n` process, so the census cannot resolve it:
+        # A claudex worker is not a `claude -n` process, so the census cannot resolve it:
         # its inbox is named for its doc stem.
         lstem="$(basename "$ldoc" .md)"; hits=1; lsession="$lstem"
     else
@@ -248,8 +248,8 @@ EOR
 done <<EOF
 $entries
 EOF
-# A manifest leg the Live state does not list is bus-relayed when it is a live native
-# leg and the console has a bus identity, else reported, never silently dropped.
+# A manifest worker the Live state does not list is bus-relayed when it is a live native
+# worker and the chief has a bus identity, else reported, never silently dropped.
 total="$(printf '%s\n' "$entries" | awk 'NF' | wc -l | tr -d ' ')"
 if [ -f "$manifest" ]; then
     total=0

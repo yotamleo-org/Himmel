@@ -6,12 +6,12 @@
 # without a recurring pass the savings erode within weeks. This runs
 # the vendored /writing-for-agents skill over himmel CLAUDE.md,
 # ~/.claude/CLAUDE.md, ~/.claude/RTK.md and the auto-memory MEMORY.md index,
-# writes a dated PROPOSAL doc, and tells the supervisor session (console) where
+# writes a dated PROPOSAL doc, and tells the chief (chief) where
 # it is. It PROPOSES; it never edits a live file (claude runs with
 # --permission-mode plan and only the Read tool).
 #
-#   steering-cull-cadence.sh run  --proposal-dir <dir> [--console <session>] [--repo <path>]
-#   steering-cull-cadence.sh arm  --proposal-dir <dir> [--console <session>]
+#   steering-cull-cadence.sh run  --proposal-dir <dir> [--chief <session>] [--repo <path>]
+#   steering-cull-cadence.sh arm  --proposal-dir <dir> [--chief <session>]
 #                                 [--day 0-6] [--time HH:MM] [--backend claude-api|claude-cli]
 #                                 [--api-account A|B|auto] [--force] [--dry-run]
 #   steering-cull-cadence.sh status
@@ -20,13 +20,13 @@
 # The model emits one line per cut: `- [LOW|MEDIUM] <path>:<lines> — <why>`.
 # THIS script classifies, not the model: a cut counts as LOW only when the model
 # said LOW and <path> is repo-relative (not a live ~/.claude or memory file);
-# every other cut is ESCALATED. The console inbox line
-# (`<bridge root>/consoles/<session>.md`, append-only, never created) carries
-# the proposal path and the two counts. --console is an OVERRIDE; without it
-# the run resolves the live console at RUN time: the newest held
-# `*-console` queue lock from `queue-lock.sh status --sweep`, since console
+# every other cut is ESCALATED. The chief inbox line
+# (`<bridge root>/chiefs/<session>.md`, append-only, never created) carries
+# the proposal path and the two counts. --chief is an OVERRIDE; without it
+# the run resolves the live chief at RUN time: the newest held
+# `*-chief` queue lock from `queue-lock.sh status --sweep`, since chief
 # sessions are renamed on every succession and a general user has none. No live
-# console, or no inbox for it, alerts via cadence-alert.sh instead.
+# chief, or no inbox for it, alerts via cadence-alert.sh instead.
 #
 # ponytail: LOW repo cuts are listed in the proposal doc but not auto-opened as a PR, upgrade path: follow-up ticket for an apply pass in a worktree.
 # ponytail: a cut whose path the model mis-spells is escalated rather than counted low (fails safe), upgrade path: none needed unless the escalation volume grows.
@@ -57,6 +57,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ALERT="$SCRIPT_DIR/../luna/cadence-alert.sh"
 # shellcheck source=../lib/llm-backend.sh
 . "$SCRIPT_DIR/../lib/llm-backend.sh"
+# shellcheck source=../lib/legacy-names.sh
+. "$SCRIPT_DIR/../lib/legacy-names.sh"
 STATE_DIR="${STEERING_CULL_STATE_DIR:-${HOME:-}/.himmel/state/steering-cull}"
 CRONTAB_BIN="${STEERING_CULL_CRONTAB:-crontab}"
 RUNNER_DIR="${STEERING_CULL_RUNNER_DIR:-${HOME:-}/.claude/steering-cull-cadence}"
@@ -68,10 +70,10 @@ resolve_primary() {
     (cd "$(dirname "$common")" 2>/dev/null && pwd)
 }
 
-# live_console <repo>: print the session name of the newest held *-chief / *-console queue
+# live_chief <repo>: print the session name of the newest held *-chief / *-console queue
 # lock ("" if none). Lines look like `slug=<user>__<repo>__<session> ... age=<n>s
 # status=<TOKEN>`; a lock the sweep cannot vouch for is not live.
-live_console() {
+live_chief() {
     local line slug age st best="" best_age=-1
     while IFS= read -r line; do
         case "$line" in slug=*) ;; *) continue ;; esac
@@ -99,13 +101,14 @@ json_field() {
 }
 
 cmd_run() {
-    local repo="" pdir="" console="" claude pf out rc result err iserr date doc
+    local repo="" pdir="" chief="" claude pf out rc result err iserr date doc
     local files="" f mem low=0 esc=0 cut path risk line inbox root backend prompt
     while [ $# -gt 0 ]; do
         case "$1" in
-            --repo|--proposal-dir|--console)
+            --repo|--proposal-dir|--chief|--console)
+                [ "$1" != --console ] || legacy_flag --console --chief || { echo "ERR steering-cull: unknown arg: $1" >&2; return 64; }
                 [ $# -ge 2 ] || { echo "ERR steering-cull: $1 needs a value" >&2; return 64; }
-                case "$1" in --repo) repo="$2" ;; --proposal-dir) pdir="$2" ;; --console) console="$2" ;; esac
+                case "$1" in --repo) repo="$2" ;; --proposal-dir) pdir="$2" ;; --chief|--console) chief="$2" ;; esac
                 shift 2 ;;
             *) echo "ERR steering-cull: unknown arg: $1" >&2; return 64 ;;
         esac
@@ -190,13 +193,13 @@ Output ONLY a proposal. One line per cut, exactly: - [LOW|MEDIUM] <path>:<lines>
         printf '%s\n' "$result"
     } > "$doc" || return 2
 
-    [ -n "$console" ] || console="$(live_console "$repo")"
-    if [ -z "$console" ]; then
-        bash "$ALERT" fail steering-cull no-console "$doc"
+    [ -n "$chief" ] || chief="$(live_chief "$repo")"
+    if [ -z "$chief" ]; then
+        bash "$ALERT" fail steering-cull no-chief "$doc"
         return 1
     fi
     root="${BRIDGE_ROOT:-${HOME:-}/.claude/handover/bridge}"
-    inbox="$root/consoles/$console.md"
+    inbox="$root/chiefs/$chief.md"
     if [ -f "$inbox" ] && printf -- '- %s [steering-cull] proposal %s: %s low, %s escalated\n' "$(date +%H:%M)" "$doc" "$low" "$esc" >> "$inbox"; then
         bash "$ALERT" clear steering-cull
         return 0
@@ -221,13 +224,14 @@ cron_read() {
 cron_entry() { printf '%s\n' "$CRON_TAB" | grep -F "# $TASK_NAME" || true; }
 
 cmd_arm() {
-    local pdir="" console="" day=1 time="07:00" force=0 dry=0 root runner bash_bin entry backend="" acct=""
+    local pdir="" chief="" day=1 time="07:00" force=0 dry=0 root runner bash_bin entry backend="" acct=""
     while [ $# -gt 0 ]; do
         case "$1" in
-            --proposal-dir|--console|--day|--time|--backend|--api-account)
+            --proposal-dir|--chief|--console|--day|--time|--backend|--api-account)
+                [ "$1" != --console ] || legacy_flag --console --chief || { echo "ERR steering-cull: unknown arg: $1" >&2; return 1; }
                 [ $# -ge 2 ] || { echo "ERR steering-cull: $1 needs a value" >&2; return 1; }
                 case "$1" in
-                    --proposal-dir) pdir="$2" ;; --console) console="$2" ;;
+                    --proposal-dir) pdir="$2" ;; --chief|--console) chief="$2" ;;
                     --backend) backend="$2" ;; --api-account) acct="$2" ;;
                     --day) day="$2" ;; --time) time="$2" ;;
                 esac
@@ -284,7 +288,7 @@ cmd_arm() {
         printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
         printf '%q %q run --repo %q --proposal-dir %q' \
             "$bash_bin" "$root/scripts/cleanup/steering-cull-cadence.sh" "$root" "$pdir"
-        [ -z "$console" ] || printf ' --console %q' "$console"
+        [ -z "$chief" ] || printf ' --chief %q' "$chief"
         printf ' >> "$log" 2>&1\n'
     } > "$runner" || { echo "ERR steering-cull: cannot write the runner $runner" >&2; return 4; }
     chmod +x "$runner" || { echo "ERR steering-cull: cannot chmod the runner $runner" >&2; return 4; }

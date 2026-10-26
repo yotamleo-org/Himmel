@@ -37,7 +37,7 @@ the page.
 | Is himmel healthy? | the doctor feed's fail/warn rows plus firing Prometheus alerts | feed still running → `No data`; no Prometheus → `alerts not checked` and `monitoring tier not running` (it never raises the verdict) |
 | What is broken | feed rows with health `fail` or `warn`, worst first, plus firing alerts | feed still running |
 | Scheduled jobs | feed rows with `source: cadence` | no cadence rows declared |
-| Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `legs.sh` (newest `*.fleet.json` under the handover root, status from `leg_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
+| Workers and usage | usage: the newest row with usage numbers in the last 64 KiB of `$CADENCE_USAGE_LEDGER` (default `~/.himmel/cadence-ledger.jsonl`), never a fresh `bank-preflight`; workers: `workers.sh` (newest `*.fleet.json` under the handover root, status from `worker_tail_status`) | no ledger row with usage numbers; no handover root or fleet manifest |
 | Search and graph freshness | feed rows with `bundle: search` (doctor owns qmd freshness) | doctor reports no search rows |
 
 The **Trends** section (HIMMEL-6969) is fed by `GET /api/rollup` (token-gated, GET
@@ -61,7 +61,7 @@ probe: the Claude usage cache (`$CADENCE_USAGE_CACHE`, else `$CLAUDE_USAGE_CACHE
 default `/tmp/claude/statusline-usage-cache.json`, stale after
 `$CADENCE_USAGE_MAX_AGE`, default 600 s) and the Codex usage cache
 (`$CODEX_USAGE_CACHE`, default `~/.himmel/cache/codex-bank.json`, stale after
-`$CODEX_USAGE_CACHE_TTL_SECONDS`, default 6 h). The old `CADENCE_BANK_*` and
+`$CODEX_USAGE_CACHE_TTL_SECONDS`, default 6 h). The old `CADENCE_USAGE_*` and
 `CODEX_BANK_*` names are still read. Per usage source and window it returns
 `{used_pct|null, resets_at|null, captured_at, age_s, state: ok|stale|unknown,
 possibly_reset, reason}`. A missing or unreadable cache, or a window the plan
@@ -77,7 +77,7 @@ Monitoring URLs are loopback-only (`HIMMEL_PROMETHEUS_URL`, default
 ## Tool health page (`#/toolhealth`)
 
 `GET /api/tool-health` is token-gated and GET-only. It reads the registered
-`eval-runs` and `leg-failures` ledgers: the server, not the browser, rolls up
+`eval-runs` and `worker-failures` ledgers: the server, not the browser, rolls up
 calls, failures, error rates and count-weighted known recovery outcomes.
 Filter by model, launch lane, worker-vs-chief role and 7/30 UTC calendar days.
 The tool table includes daily trends, top failure classes and links to the
@@ -120,7 +120,7 @@ route, `#/workflow&w=<id>&s=<n>`.
   plus its `<mirror>.versions.tsv` snapshot; the plan dir (`HIMMEL_ROADMAP_PLAN_DIR`: `stage1/C??.tsv`,
   `stage1/themes-overlay.tsv`, `stage3/placement.tsv`; without it the board still renders and drift is 0); the drift
   log (`HIMMEL_ROADMAP_DRIFT_LOG`, else `$TRACKER_HANDOVERS_DIR/roadmap-drift.tsv`; read only, `tracker.py` is its
-  writer); the workers from `legs.sh`. No mirror: the page says so and names `node scripts/jira/dist/index.js mirror`.
+  writer); the workers from `workers.sh`. No mirror: the page says so and names `node scripts/jira/dist/index.js mirror`.
 - **tracker.py** stays the CLI/offline renderer until the page reaches parity; the semantics here are a port of it.
 - **Sync plan.** `legSync` lists the Jira CLI commands that mirror each worker marker onto its ticket (flag and comment
   a stuck worker, clear the flag on resume, note READY/WRAPPED once). The chief kit is the one writer; workers never
@@ -148,7 +148,7 @@ recorded fixture `agui-web/src/fixture.json`, so it previews without a server.
 
 **Who did what, and where it failed**. Every text and call
 belongs to an agent: the session's own (named by its `agent-name` record: a
-`-console`, a worker's `-N<digits>-`, a judge) or a subagent (named by the Agent
+`-chief`, a worker's `-N<digits>-`, a judge) or a subagent (named by the Agent
 call that spawned it: its description, `subagent_type` and model). Each agent
 has a colour, a band in the run strip, and a row in the **Agents** list that
 shows its role, model, call count and failure count; click a row to show only
@@ -218,7 +218,7 @@ subagent counts and failure count. Wrapped workers sit in a closed section, neve
 in the live list. Clicking a row's name opens that session's run page. The page polls
 `GET /api/agui/fleet` (token-gated, GET only, read-only, `agui/fleet.ts`),
 whose census is `fleet.sh`: `claude_sessions` plus each worker doc's last marker
-(`leg_tail_status`). A session whose journal has been quiet for an hour is left
+(`worker_tail_status`). A session whose journal has been quiet for an hour is left
 out.
 
 **Cloud sessions.** A `claude --cloud` session has no local
@@ -278,7 +278,7 @@ fleet row also links to the Health page (its workers and usage cards).
 systemd) takes its token from `~/.himmel/state/ui-token` (`token-file.ts`: created once,
 a symlink or a file that is not mode 600 is refused), never idles out, and rebuilds
 `agui-web/dist` at start when it is missing or older than its sources. The board route serves
-`<console doc>.board.json` (re-read when its mtime moves) before falling back to running
+`<chief doc>.board.json` (re-read when its mtime moves) before falling back to running
 `board.mjs`. Tests: `tests/service-mode.test.ts` (real server), `tests/service-verb.test.ts`
 (the verb against a stub `systemctl`).
 

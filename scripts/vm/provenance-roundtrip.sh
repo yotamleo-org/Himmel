@@ -22,7 +22,7 @@
 #                  stages the two assets, then installs on the guest via the
 #                  README recipe (sha256 verify, extract into the versioned
 #                  dir + `current`), before running the same install/uninstall/
-#                  assert chain. `aur` (console
+#                  assert chain. `aur` (chief
 #                  ruling 2026-09-24) builds the same release tarball, then packages
 #                  and installs it via the REAL PKGBUILD in an archlinux:base-devel
 #                  container (docker or podman — no VM, pacman is Arch-only and
@@ -480,7 +480,7 @@ elif [ "$KEEP_BACKUPS" = 1 ]; then
 else
     UNINSTALL_INVOKE="$ENV_CMD $RUN_BIN uninstall $UNINSTALL_FLAGS"
 fi
-# A non-zero uninstall is itself a result (console ruling): record its rc and
+# A non-zero uninstall is itself a result (chief ruling): record its rc and
 # the step it halted at, then take inventory C anyway.
 echo "[step] uninstall"
 UN_OUT=$(guest_ssh "$UNINSTALL_CD && $UNINSTALL_INVOKE >$WORKDIR/uninstall.log 2>&1; rc=\$?; sed 's/^/[uninstall-log] /' $WORKDIR/uninstall.log; exit \$rc")
@@ -618,7 +618,7 @@ printf '%s\n' "$ASSERT_OUT"
 # uninstall/ bundle are the purge's own last statement) and nothing beyond
 # what baseline A seeded there — ~/.himmel/config.json (seed-provenance.sh),
 # never the whole directory: config.json is the user's own file and
-# uninstall.sh deliberately never removes it (console ruling,
+# uninstall.sh deliberately never removes it (chief ruling,
 # 2026-09-23). Runs AFTER invdiff/assert so a legitimate failure here still
 # preserves their diagnostic output in the captured run log.
 if [ "$CLONE_GONE" = 1 ] && [ "$PURGE" = 1 ]; then
@@ -642,7 +642,7 @@ owner() {
         *) echo 0 ;;
     esac
 }
-# phase <check-id> — post-halt when the owning step never ran (console ruling:
+# phase <check-id> — post-halt when the owning step never ran (chief ruling:
 # a witness left only because steps after the halt did not run).
 phase() {
     if [ -n "$HALT_N" ] && [ "$(owner "$1")" -gt "$HALT_N" ]; then echo post-halt; else echo pre-halt; fi

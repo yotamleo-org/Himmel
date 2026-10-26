@@ -75,7 +75,7 @@ handovers/.locks/
 # handovers/ stub. Archived copies live in <state-repo> handovers/yotamleo/himmel/.
 handovers/overnight-report-*.md
 handovers/overnight-recovery-*.md
-# Leg inbox + cursors (HIMMEL-5308): the one untracked subtree left in the
+# Worker inbox + cursors (HIMMEL-5308): the one untracked subtree left in the
 # primary's handovers/ stub that showed in every `git status`.
 /handovers/inbox/
 # Cross-project handover content moved to <state-repo> in HIMMEL-13 —

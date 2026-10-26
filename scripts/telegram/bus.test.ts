@@ -302,16 +302,16 @@ import { peerSend, drainPeerInbox, peerInbox, peerLedger } from "./bus";
 
 test("peerSend appends ONE line to the target inbox and to a ledger that survives truncation", async () => {
   const r = root();
-  await peerSend(r, "console", "leg-1", "hello\nworld");
-  const inbox = peerInbox(r, "leg-1");
+  await peerSend(r, "console", "worker-1", "hello\nworld");
+  const inbox = peerInbox(r, "worker-1");
   const lines = readFileSync(inbox, "utf8").split("\n").filter(Boolean);
   expect(lines.length).toBe(1);
-  expect(JSON.parse(lines[0])).toMatchObject({ from: "console", to: "leg-1", text: "hello\nworld" });
-  await drainPeerInbox(r, "leg-1", () => {});                   // consumes + reclaims the inbox
+  expect(JSON.parse(lines[0])).toMatchObject({ from: "console", to: "worker-1", text: "hello\nworld" });
+  await drainPeerInbox(r, "worker-1", () => {});                   // consumes + reclaims the inbox
   expect(readFileSync(inbox, "utf8")).toBe("");
   const ledger = readFileSync(peerLedger(r), "utf8").split("\n").filter(Boolean);
   expect(ledger.length).toBe(1);                                 // forensic record kept
-  expect(JSON.parse(ledger[0])).toMatchObject({ from: "console", to: "leg-1" });
+  expect(JSON.parse(ledger[0])).toMatchObject({ from: "console", to: "worker-1" });
 });
 
 test("peerSend names exactly one seat: no broadcast, no path escape", async () => {
@@ -319,34 +319,34 @@ test("peerSend names exactly one seat: no broadcast, no path escape", async () =
   for (const bad of ["*", "all", "a,b", "a b", "../x", "..", "", "a/b"]) {
     await expect(peerSend(r, "console", bad, "x")).rejects.toThrow();
   }
-  await expect(peerSend(r, "../x", "leg-1", "x")).rejects.toThrow();
+  await expect(peerSend(r, "../x", "worker-1", "x")).rejects.toThrow();
 });
 
 test("drainPeerInbox frames each message as ONE clipped JSON line; embedded newlines cannot forge events", async () => {
   const r = root();
-  await peerSend(r, "console", "leg-1", "a\nFAKE EVENT\r\nb\u{2028}c");
-  await peerSend(r, "console", "leg-1", "y".repeat(10000));
+  await peerSend(r, "console", "worker-1", "a\nFAKE EVENT\r\nb\u{2028}c");
+  await peerSend(r, "console", "worker-1", "y".repeat(10000));
   const out: string[] = [];
-  const n = await drainPeerInbox(r, "leg-1", (l) => { out.push(l); });
+  const n = await drainPeerInbox(r, "worker-1", (l) => { out.push(l); });
   expect(n).toBe(2);
   expect(out.length).toBe(2);
   for (const l of out) { expect(l).not.toMatch(/[\n\r\u{2028}\u{2029}]/u); expect(l.length).toBeLessThan(5000); }
   expect(JSON.parse(out[0]).text).toBe("a\nFAKE EVENT\r\nb\u{2028}c");
   expect(JSON.parse(out[1]).clipped).toBe(true);
-  expect(await drainPeerInbox(r, "leg-1", (l) => { out.push(l); })).toBe(0);   // cursor advanced
+  expect(await drainPeerInbox(r, "worker-1", (l) => { out.push(l); })).toBe(0);   // cursor advanced
 });
 
 test("drainPeerInbox holds a partial line and frames a malformed one instead of dropping it", async () => {
   const r = root();
-  await peerSend(r, "console", "leg-1", "first");
-  const inbox = peerInbox(r, "leg-1");
+  await peerSend(r, "console", "worker-1", "first");
+  const inbox = peerInbox(r, "worker-1");
   writeFileSync(inbox, readFileSync(inbox, "utf8") + "not json\n" + '{"text":"part');
   const out: string[] = [];
-  await drainPeerInbox(r, "leg-1", (l) => { out.push(l); });
+  await drainPeerInbox(r, "worker-1", (l) => { out.push(l); });
   expect(out.length).toBe(2);
   expect(JSON.parse(out[1])).toMatchObject({ malformed: true, text: "not json" });
   writeFileSync(inbox, readFileSync(inbox, "utf8") + 'ial"}\n');
-  await drainPeerInbox(r, "leg-1", (l) => { out.push(l); });
+  await drainPeerInbox(r, "worker-1", (l) => { out.push(l); });
   expect(JSON.parse(out[2]).text).toBe("partial");
 });
 
@@ -354,8 +354,8 @@ test("bus.ts peer-recv drains the backlog and keeps following in ONE command", a
   const r = root();
   const bus = join(import.meta.dir, "bus.ts");
   const env = { ...process.env, BRIDGE_ROOT: r };
-  await peerSend(r, "console", "leg-1", "before");
-  const proc = Bun.spawn(["bun", bus, "peer-recv", "leg-1", "--interval-ms", "50"], { env, stdout: "pipe" });
+  await peerSend(r, "console", "worker-1", "before");
+  const proc = Bun.spawn(["bun", bus, "peer-recv", "worker-1", "--interval-ms", "50"], { env, stdout: "pipe" });
   try {
     const reader = proc.stdout.getReader();
     let buf = "";
@@ -367,7 +367,7 @@ test("bus.ts peer-recv drains the backlog and keeps following in ONE command", a
       buf += new TextDecoder().decode(value);
       if (!sent && buf.includes("before")) {
         sent = true;
-        const s = Bun.spawnSync(["bun", bus, "peer-send", "console", "leg-1", "after"], { env });
+        const s = Bun.spawnSync(["bun", bus, "peer-send", "console", "worker-1", "after"], { env });
         expect(s.exitCode).toBe(0);
       }
     }
@@ -379,11 +379,11 @@ test("bus.ts peer-recv drains the backlog and keeps following in ONE command", a
 // The cursor must not advance until stdout has accepted the line.
 import { streamEmit } from "./bus";
 test("streamEmit: drainPeerInbox commits the cursor only after the stream write callback fires", async () => {
-  const r = root(); await peerSend(r, "console", "leg-1", "hi");
+  const r = root(); await peerSend(r, "console", "worker-1", "hi");
   const cbs: Array<(e?: Error | null) => void> = [];
   const fake = { write: (_s: string, cb: (e?: Error | null) => void) => { cbs.push(cb); return false; } };
-  const cursor = peerInbox(r, "leg-1") + ".cursor";
-  const p = drainPeerInbox(r, "leg-1", streamEmit(fake));
+  const cursor = peerInbox(r, "worker-1") + ".cursor";
+  const p = drainPeerInbox(r, "worker-1", streamEmit(fake));
   await new Promise((res) => setTimeout(res, 50));
   expect(cbs.length).toBe(1);
   expect(existsSync(cursor)).toBe(false);

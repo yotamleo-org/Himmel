@@ -2,8 +2,8 @@
 # guard-judge-writes.sh — PreToolUse hook (matcher
 # "Bash|Edit|Write|MultiEdit|NotebookEdit|mcp__.*"): [HIMMEL-4564].
 #
-# A console judge only advises: it reads, writes its verdict, appends Results
-# bullets to its own doc, and reports by SendMessage. headed-arm-leg.sh --judge
+# A chief judge only advises: it reads, writes its verdict, appends Results
+# bullets to its own doc, and reports by SendMessage. headed-arm-worker.sh --judge
 # exports HIMMEL_CONSOLE_JUDGE=1 into the judge session; this guard denies that
 # session every outward or mutating transition a judge has no business making.
 #
@@ -14,14 +14,14 @@
 # nothing, for the same reason.
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Not ported to native PowerShell — the judge lane (headed-arm-leg.sh --judge)
+# Not ported to native PowerShell — the judge lane (headed-arm-worker.sh --judge)
 # is Linux-only.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_JUDGE=1 in this process's environment AND one
 # of:
 #   Bash (a command word matches bare or as a path's last component, so
 #     /usr/bin/git is git) — the command text names HIMMEL_CONSOLE_JUDGE (an
-#     override or unset of the marker); or names leg-pr-open, merge-on-green, chief-kit/go.sh,
+#     override or unset of the marker); or names worker-pr-open, merge-on-green, chief-kit/go.sh,
 #     inbox-send, leg-jira-status or worker-jira-status; or has the word "git" and a mutating git
 #     verb (push, commit, merge, rebase, reset, cherry-pick, revert); or the
 #     word "gh" and a write verb (create, comment, review, merge, edit, close,
@@ -38,7 +38,7 @@
 #       - /tmp/claude-<uid>/ (judge-dir.sh's j<PR> scratch, the session scratchpad),
 #       - under $HANDOVER_DIR but not inside any inbox/ there: only
 #         verdicts/$HIMMEL_CONSOLE_JUDGE_QID/ and the one file
-#         $HIMMEL_CONSOLE_JUDGE_DOC (HIMMEL-4608; headed-arm-leg.sh --judge exports
+#         $HIMMEL_CONSOLE_JUDGE_DOC (headed-arm-worker.sh --judge exports
 #         both). An unset or malformed binding allows nothing under the root.
 #     With HANDOVER_DIR unset only the cache and /tmp scratch are allowed.
 #     A symlink that does not resolve is denied, never judged by its own path.
@@ -129,11 +129,11 @@ case "$tool" in
 
         case "$cmd" in
             *HIMMEL_CONSOLE_JUDGE*) deny "marker-override" "command names HIMMEL_CONSOLE_JUDGE" ;;
-            *leg-pr-open*) deny "pr-open" "leg-pr-open" ;;
+            *worker-pr-open*) deny "pr-open" "worker-pr-open" ;;
             *merge-on-green*) deny "merge" "merge-on-green" ;;
-            *console-kit/go.sh* | *chief-kit/go.sh*) deny "go" "console-kit/go.sh" ;;
+            *console-kit/go.sh* | *chief-kit/go.sh*) deny "go" "chief-kit/go.sh" ;;
             *inbox-send*) deny "inbox-send" "inbox-send" ;;
-            *leg-jira-status*) deny "jira-write" "leg-jira-status" ;;
+            *leg-jira-status*) deny "jira-write" "worker-jira-status" ;;
             *worker-jira-status*) deny "jira-write" "worker-jira-status" ;;
         esac
 
@@ -204,7 +204,7 @@ case "$tool" in
         fi
         if [ -n "${HANDOVER_DIR:-}" ]; then
             root=$(resolve "$HANDOVER_DIR") || deny "write-outside" "handover root does not resolve"
-            # The launched judge's own doc and qid (HIMMEL-4608): headed-arm-leg.sh
+            # The launched judge's own doc and qid: headed-arm-worker.sh
             # --judge exports both. A missing or malformed binding allows nothing
             # under the handover root.
             own_doc=""

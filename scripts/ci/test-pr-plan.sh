@@ -187,7 +187,7 @@ else fail "P9 ci.yml reads undefined gates: ${missing:-<none read>}"; fi
 # touched none of its listed paths is only safe if every file its entry suites
 # EXECUTE (the file plus the files it names, one hop, comments stripped) falls in
 # its own gate group or is a trust path (trust paths force every gate true).
-# Regression: claude-startup ran headed-arm-leg.sh and
+# Regression: claude-startup ran headed-arm-worker.sh and
 # plugin-profiles.mjs, which the group did not name, so it skipped and passed.
 TRACKED="$SB/tracked.txt"
 git -C "$SRC_ROOT" ls-files > "$TRACKED"

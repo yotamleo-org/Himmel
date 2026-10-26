@@ -44,8 +44,8 @@ fi
 
 # Closed op allow-list (defense-in-depth vs the bridge parse layer).
 case "$OP" in
-    arm-resume|merge-public|launch-bypass-leg|cr-grant-delta) ;;
-    station-status|revert-main|repin-hooks|launch-leg|cr-reset|close-wrapped|relaunch-console|restart-bridge|allow-rule)
+    arm-resume|merge-public|launch-bypass-worker|cr-grant-delta) ;;
+    station-status|revert-main|repin-hooks|launch-worker|cr-reset|close-wrapped|relaunch-chief|restart-bridge|allow-rule)
         # Break-glass ops: one executor owns them and their rc space.
         # The bot token and own-poller flag stay out of every child it starts.
         TELEGRAM_BOT_TOKEN="" TELEGRAM_OWN_POLLER="" bash "$SCRIPT_DIR/break-glass.sh" "$OP" "$ARG" "$TIME"
@@ -99,8 +99,8 @@ fi
 
 # A Telegram line never authorizes a hook-bypass launch, even when explicitly
 # enabled and invoked without an agent marker.
-if [ "$OP" = "launch-bypass-leg" ]; then
-    echo "ERR auto-action: Telegram hook-bypass launch refused; start hook legs at the station" >&2
+if [ "$OP" = "launch-bypass-worker" ]; then
+    echo "ERR auto-action: Telegram hook-bypass launch refused; start hook workers at the station" >&2
     exit 19
 fi
 

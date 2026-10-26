@@ -205,7 +205,7 @@ assert_eq "T7f plain text preserved" plain "$_HP_UNESC"
 # T7g: _hp_ascii_lower must fold ASCII only, under ANY locale.
 # macOS bash 3.2 (and bash >= 4.3 with globasciiranges off) expands [A-Z] by
 # locale collation in en_US, matching lowercase too, which deleted lowercase
-# letters from registry keys on the nightly macOS leg. Runs in a subshell so
+# letters from registry keys on the nightly macOS worker. Runs in a subshell so
 # the locale/shopt change cannot leak.
 loc7g=""
 locales7g=$(locale -a 2>/dev/null)

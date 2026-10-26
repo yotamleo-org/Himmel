@@ -142,7 +142,7 @@ class Sweep:
         t0 = time.time()
         try:
             # eval answerer: bank-preflighted above, explicit permission mode, no tools, empty cwd
-            # launch-profile-ok: the A/B pins its own --tools and --system-prompt; a leg profile would change the measured condition
+            # launch-profile-ok: the A/B pins its own --tools and --system-prompt; a worker profile would change the measured condition
             r = subprocess.run(argv, input=build_prompt(q["q"], arm, text), capture_output=True, text=True,
                                cwd=self.scratch, timeout=self.a.timeout)
             d = json.loads(r.stdout)

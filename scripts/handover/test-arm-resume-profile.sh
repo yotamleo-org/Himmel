@@ -3,7 +3,7 @@
 # runs under a role-matched plugin profile (--settings <file>), never the
 # operator's full plugin set. Dry-run only: no real scheduler, no network.
 # Covers: role inferred from the handover doc, the explicit --profile override,
-# the console doc -> console rule, the fail-closed refusal (rc 2) on an unknown
+# the chief doc -> chief rule, the fail-closed refusal (rc 2) on an unknown
 # profile, and the --settings arg in the at / crontab launch body.
 # Usage: bash scripts/handover/test-arm-resume-profile.sh   (bash 3.2-safe)
 set -uo pipefail
@@ -58,27 +58,27 @@ chmod +x "$STUB"/*
 
 arm() { PATH="$STUB:$PATH" bash "$ARM" --time "$(future_time)" --dry-run "$@" 2>&1; }
 
-# T1: a leg doc (carries a RETASK token) resumes under leg-impl.
+# T1: a worker doc (carries a RETASK token) resumes under worker-impl.
 # shellcheck disable=SC2016  # backticks are literal doc text
-LEG=$(make_doc handover-leg.md '# leg doc' 'Your RETASK token is `M-X-1`.')
-out=$(arm --handover "$LEG"); rc=$?
-assert_rc "T1 leg doc dry-run" 0 "$rc"
+WORKER=$(make_doc handover-worker.md '# worker doc' 'Your RETASK token is `M-X-1`.')
+out=$(arm --handover "$WORKER"); rc=$?
+assert_rc "T1 worker doc dry-run" 0 "$rc"
 assert_contains "T1 relaunch carries --settings" "--settings " "$out"
-assert_contains "T1 leg doc -> leg-impl profile file" "/leg-impl.json" "$out"
+assert_contains "T1 worker doc -> worker-impl profile file" "/leg-impl.json" "$out"
 
-# T2: a console doc resumes under console.
-CON=$(make_doc handover-console.md '# CONSOLE handover' 'body')
+# T2: a chief doc resumes under chief.
+CON=$(make_doc handover-chief.md '# CHIEF handover' 'body')
 out=$(arm --handover "$CON"); rc=$?
-assert_rc "T2 console doc dry-run" 0 "$rc"
-assert_contains "T2 console doc -> console profile file" "/console.json" "$out"
+assert_rc "T2 chief doc dry-run" 0 "$rc"
+assert_contains "T2 chief doc -> chief profile file" "/console.json" "$out"
 
 # T3: an explicit `profile:` line in the doc wins over the inferred role.
 # shellcheck disable=SC2016  # backticks are literal doc text
-EXP=$(make_doc handover-explicit.md '# leg doc' 'profile: design' 'Your RETASK token is `M-X-2`.')
+EXP=$(make_doc handover-explicit.md '# worker doc' 'profile: design' 'Your RETASK token is `M-X-2`.')
 out=$(arm --handover "$EXP"); rc=$?
 assert_rc "T3 explicit-profile doc dry-run" 0 "$rc"
 assert_contains "T3 doc profile line selects design" "/design.json" "$out"
-assert_not_contains "T3 not the inferred leg-impl" "/leg-impl.json" "$out"
+assert_not_contains "T3 not the inferred worker-impl" "/leg-impl.json" "$out"
 
 # T4: --profile on the command line wins over the doc.
 out=$(arm --handover "$EXP" --profile bare); rc=$?
@@ -87,11 +87,11 @@ assert_contains "T4 --profile selects bare" "/bare.json" "$out"
 assert_not_contains "T4 doc profile line overridden" "/design.json" "$out"
 
 # T5: an unknown profile fails closed -- the arm is refused, nothing is emitted.
-out=$(arm --handover "$LEG" --profile no-such-profile); rc=$?
+out=$(arm --handover "$WORKER" --profile no-such-profile); rc=$?
 assert_rc "T5 unknown profile refuses the arm" 2 "$rc"
 assert_contains "T5 refusal names the profile" "no-such-profile" "$out"
 
-# T6: a doc that is neither console nor leg falls back to the user profile.
+# T6: a doc that is neither chief nor worker falls back to the user profile.
 PLAIN=$(make_doc handover-plain.md '# plain notes')
 out=$(arm --handover "$PLAIN"); rc=$?
 assert_rc "T6 plain doc dry-run" 0 "$rc"

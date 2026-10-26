@@ -519,7 +519,7 @@ echo "$outO" | jq -e '.[0].cmd == "bash" and .[1].cmd == "bash"' >/dev/null \
 echo "ok: case o — no HIMMELCTL_SUDO_PASSWORD + 2 linux dep items: the diagnostic prints exactly once; both entries use sudo -n"
 
 # ── case p (addendum): password SET -> the diagnostic never prints, and
-# NOTHING is written to real stdout/stderr (the console output streams a
+# NOTHING is written to real stdout/stderr (the chief output streams a
 # real `ensure` run would surface to the operator/logs) — the resulting
 # plan is written to a FILE for structural inspection instead of
 # console.log'd, so this test never confuses its own data transport with a

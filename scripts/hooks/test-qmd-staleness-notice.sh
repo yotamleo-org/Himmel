@@ -16,11 +16,11 @@
 # Exit codes: 0 all pass; 1 at least one fail.
 set -uo pipefail
 
-# The suite owns every case's env; an ambient leg shell (HIMMEL_LEAN_LEG=1
-# under --profile leg-impl) must not silently turn every
-# unmarked case into a lean-leg case. Only the two explicit lean cases below
+# The suite owns every case's env; an ambient worker shell (HIMMEL_LEAN_WORKER_SESSION=1
+# under --profile worker-impl) must not silently turn every
+# unmarked case into a lean-worker case. Only the two explicit lean cases below
 # set it themselves.
-unset WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG 2>/dev/null || true
+unset WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG 2>/dev/null || true
 
 HOOK="$(cd "$(dirname "$0")" && pwd)/qmd-staleness-notice.sh"
 
@@ -128,16 +128,16 @@ if [ "${1:-}" = "--selftest-hermetic" ]; then
 fi
 
 echo "== suite hermeticity (HIMMEL-2940) =="
-# A leg's ambient HIMMEL_LEAN_LEG=1 must not reach run()'s env call before the
+# A worker's ambient HIMMEL_LEAN_WORKER_SESSION=1 must not reach run()'s env call before the
 # preamble unset above has a chance to clear it — so this recurses with that
-# var set exactly the way a lean-leg caller sets it (before this file's own
+# var set exactly the way a lean-worker caller sets it (before this file's own
 # preamble runs), not via a case override.
-leaked="$(HIMMEL_LEAN_LEG=1 bash "$0" --selftest-hermetic)"; leaked_rc=$?
+leaked="$(HIMMEL_LEAN_WORKER_SESSION=1 bash "$0" --selftest-hermetic)"; leaked_rc=$?
 clean="$(bash "$0" --selftest-hermetic)"; clean_rc=$?
 if [ "$leaked_rc" -eq 0 ] && [ "$clean_rc" -eq 0 ] && [ "$leaked" = "$clean" ] && [ -n "$leaked" ]; then
-    pass "suite is hermetic to a lean-leg caller"
+    pass "suite is hermetic to a lean-worker caller"
 else
-    fail "suite is hermetic to a lean-leg caller (leaked_rc=$leaked_rc clean_rc=$clean_rc leaked='$leaked' clean='$clean')"
+    fail "suite is hermetic to a lean-worker caller (leaked_rc=$leaked_rc clean_rc=$clean_rc leaked='$leaked' clean='$clean')"
 fi
 
 echo "== silent paths (only these two) =="
@@ -170,14 +170,14 @@ has "rc 6 is labelled UNVERIFIED" "$out" "UNVERIFIED this session"
 has "rc 6 relays the guard's diagnostic" "$out" "could not read the Documents block"
 hasnt "rc 6 does not assert staleness" "$out" "may be STALE"
 
-echo "== HIMMEL-2830: a lean leg hears no advisory at all =="
-# A leg launched by headed-arm-leg.sh --profile carries HIMMEL_LEAN_LEG=1. This
-# banner is the largest SessionStart block a leg pays for (~5.4k chars of a
-# ~75k first-turn floor, re-read on every API call) and a leg never acts on it.
-empty "HIMMEL_LEAN_LEG=1 silences a real staleness verdict" "$(run 3 'GUARD-BANNER-LEAN' HIMMEL_LEAN_LEG=1)"
+echo "== HIMMEL-2830: a lean worker hears no advisory at all =="
+# A worker launched by headed-arm-worker.sh --profile carries HIMMEL_LEAN_WORKER_SESSION=1. This
+# banner is the largest SessionStart block a worker pays for (~5.4k chars of a
+# ~75k first-turn floor, re-read on every API call) and a worker never acts on it.
+empty "HIMMEL_LEAN_WORKER_SESSION=1 silences a real staleness verdict" "$(run 3 'GUARD-BANNER-LEAN' HIMMEL_LEAN_WORKER_SESSION=1)"
 # Fail-open: ONLY the exact value 1 leans, so an unset/typo'd variable can never
 # silently delete the warning from an ordinary session.
-has "HIMMEL_LEAN_LEG=0 keeps today's verdict (fail-open)" "$(run 3 'GUARD-BANNER-LEAN' HIMMEL_LEAN_LEG=0)" "GUARD-BANNER-LEAN"
+has "HIMMEL_LEAN_WORKER_SESSION=0 keeps today's verdict (fail-open)" "$(run 3 'GUARD-BANNER-LEAN' HIMMEL_LEAN_WORKER_SESSION=0)" "GUARD-BANNER-LEAN"
 
 echo "== verdicts speak up =="
 for rc in 3 4 5 8; do
@@ -430,7 +430,7 @@ runc() {
         bash "$SANDBOX/hooks/qmd-staleness-notice.sh" </dev/null 2>/dev/null
 }
 # wait_for_cache PATTERN [CEILING] — bounded poll for the detached refresh to
-# publish. The ONE place this suite waits on the out-of-band leg. It returns
+# publish. The ONE place this suite waits on the out-of-band worker. It returns
 # the instant the file matches, so a passing case pays nothing extra; only a
 # real failure now costs the full ceiling. CEILING defaults to 60s
 # (a loaded CI shard needed more than a 20s fixed wait for the detached

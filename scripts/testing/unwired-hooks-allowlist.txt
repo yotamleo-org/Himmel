@@ -28,4 +28,4 @@ guard-worker-wakeup.sh|sourced by the old path guard-leg-wakeup.sh, which settin
 block-pr-check-args.sh|HIMMEL-2306: UserPromptExpansion fence shipped unwired, see docs/internals/enforcement.md
 check-single-writer-push-floor.sh|pre-push floor run by the shim install-single-writer-floor.sh writes into .single-writer repos, not a registered hook
 install-single-writer-floor.sh|operator-run installer for .single-writer repos (HIMMEL-5284), not a hook
-guard-leg-cache-ttl.sh|Stop hook wired by headed-arm-leg.sh into the native leg profile, not a project hook
+guard-worker-cache-ttl.sh|Stop hook wired by headed-arm-worker.sh into the native worker profile, not a project hook

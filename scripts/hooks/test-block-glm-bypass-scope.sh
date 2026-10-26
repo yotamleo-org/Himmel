@@ -17,7 +17,7 @@ set -uo pipefail
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
 HOOK_SRC="$HOOKS_DIR/block-glm-external-writes.sh"
 
-# A console leg's shell exports guard overrides; clear them so a case that means
+# A chief worker's shell exports guard overrides; clear them so a case that means
 # "override UNSET" is not flipped. Cases set what they need.
 # shellcheck source=../lib/override-env.sh
 # shellcheck disable=SC1091
@@ -132,7 +132,7 @@ fi
 expect_rc "cwd in a subdirectory of the worktree is still inside it" 0 \
   "$(mkdir -p "$WT/sub" && run "$WT/sub" "$WH" "$WT" sess-ok "$PIN_CMD" HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1)"
 
-# ---- each predicate leg, varied on its own (same env otherwise)
+# ---- each predicate worker, varied on its own (same env otherwise)
 expect_refused "legacy record (no git_dir): refused even in a linked worktree" "$PIN_CMD" "$WT" "$WH" "$WT" sess-legacy
 expect_refused "no record for the session: refused" "$PIN_CMD" "$WT" "$WH" "$WT" sess-missing
 expect_refused "empty session id: refused" "$PIN_CMD" "$WT" "$WH" "$WT" ""

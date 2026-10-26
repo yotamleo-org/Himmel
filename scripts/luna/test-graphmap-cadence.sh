@@ -482,15 +482,15 @@ assert_registry "cron arm registers both weekly graphmap flows" '[.flows[] | sel
 assert_registry "cron arm registers both expected task names" '[.expected_tasks[] | select(. == "HIMMEL-GraphMap-Luna" or . == "HIMMEL-GraphMap-Himmel")] | length == 2'
 assert_registry "cron arm registers both ast graphmap flows" '[.flows[] | select(.name == "graphmap-ast-luna" or .name == "graphmap-ast-himmel")] | length == 2'
 assert_registry "cron arm registers both ast expected task names" '[.expected_tasks[] | select(. == "HIMMEL-GraphMapAst-Luna" or . == "HIMMEL-GraphMapAst-Himmel")] | length == 2'
-# The publish leg (HIMMEL-GraphPublish-Himmel) is opt-in via --with-publish
+# The publish worker (HIMMEL-GraphPublish-Himmel) is opt-in via --with-publish
 # and is NOT part of this default arm -- its registration
 # (under its slug-DERIVED name) is covered in the
-# dedicated publish-leg fixture below, both with and without the flag.
+# dedicated publish-worker fixture below, both with and without the flag.
 # Structural (AST) pair: marker-tagged, own runner files. luna is DAILY and
 # himmel HOURLY. The luna assertion is made against THAT
 # ENTRY'S OWN LINE, not the whole crontab: himmel's hourly `15 * * * *`
 # contains the substring `5 * * * *`, so a whole-file assert_not_contains for
-# the hourly form can never distinguish the two legs (it fails even when luna
+# the hourly form can never distinguish the two workers (it fails even when luna
 # is correctly daily).
 ast_luna_line=$(grep -F '# HIMMEL-GraphMapAst-Luna' "$CSTATE/crontab" 2>/dev/null || true)
 assert_contains "daily ast-luna entry (hour field pinned)" "05 00 * * *" "$ast_luna_line"
@@ -581,7 +581,7 @@ done
 # for the wrapper's own lock/skip/--force coverage).
 # Every graphmap runner kind goes through the shared emitter.
 # Fire each generated runner against a stub payload + stub cadence-alert.sh:
-# a failed leg pages (`fail`), a good one `clear`s, and the leg's own benign
+# a failed worker pages (`fail`), a good one `clear`s, and the worker's own benign
 # skip code (semantic rc 3 = bank skip, structural rc 4 = promote-lock busy)
 # does neither. The publish runner is NOT wired: graph-cadence.sh alerts itself.
 echo "TEST: graphmap runners alert on failure and clear on success (shared emitter)"
@@ -621,14 +621,14 @@ assert_not_contains "ast-himmel runner has no bare --force on the cadence line (
 # semantic pair) -- both $VAULT/$HIMMEL_ROOT_EXP are already absolute here.
 assert_contains "ast-luna runner corpus is the absolute vault path"     "$AST_UPDATE_SCRIPT_EXP $VAULT" "$ast_luna_sh_plain"
 assert_contains "ast-himmel runner corpus is the absolute himmel path"  "$AST_UPDATE_SCRIPT_EXP $HIMMEL_ROOT_EXP" "$ast_himmel_sh_plain"
-# Luna leg declares the fence's required backend (ollama -> local-ollama,
-# luna-personal x local-ollama = allow); himmel leg does not need it
+# Luna worker declares the fence's required backend (ollama -> local-ollama,
+# luna-personal x local-ollama = allow); himmel worker does not need it
 # (himmel-code default = ollama already, no declaration required).
 assert_contains "ast-luna runner declares GRAPHIFY_DECLARED_BACKEND=ollama" "export GRAPHIFY_DECLARED_BACKEND=ollama" "$ast_luna_sh"
 assert_not_contains "ast-himmel runner does not declare a backend" "GRAPHIFY_DECLARED_BACKEND" "$ast_himmel_sh"
 for what in ast_luna ast_himmel; do
     body=$(eval "printf '%s' \"\$${what}_sh\"")
-    # The property that keeps the hourly leg free -- assert the ABSENCE
+    # The property that keeps the hourly worker free -- assert the ABSENCE
     # explicitly (brief item 6). HIMMEL_ROOT_EXP is stripped before the
     # "claude" check because the fixture's own worktree path legitimately
     # contains the substring (.claude/worktrees/...) via the `cd` target --
@@ -1191,7 +1191,7 @@ run_cron3() {
         "$REAL_BASH" "$SCRIPT" "$@"
 }
 
-echo "TEST: cron arm --ast-only omits the publish leg by default (HIMMEL-3075)"
+echo "TEST: cron arm --ast-only omits the publish worker by default (HIMMEL-3075)"
 out=$(run_cron3 arm --vault "$VAULT" --ast-only 2>&1)
 assert_not_contains "arm banner without --with-publish does not name the publish task" "HIMMEL-GraphPublish-Himmel" "$out"
 tab3=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
@@ -1203,14 +1203,14 @@ else
 fi
 run_cron3 disarm >/dev/null 2>&1
 
-echo "TEST: cron arm --ast-only --with-publish registers the publish leg (crontab entry + runner)"
+echo "TEST: cron arm --ast-only --with-publish registers the publish worker (crontab entry + runner)"
 out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish 2>&1)
 assert_contains "arm banner names the publish task" "HIMMEL-GraphPublish-Himmel" "$out"
 tab3=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
 assert_contains "publish crontab entry present" "# HIMMEL-GraphPublish-Himmel" "$tab3"
 # Every-6-hours cron shape: fixed minute, hour field "*/6" (vixie-cron step
-# syntax) -- NOT a bare "*" (that would be hourly, the AST_HIMMEL leg's own
-# cadence, not this leg's documented 6h interval).
+# syntax) -- NOT a bare "*" (that would be hourly, the AST_HIMMEL worker's own
+# cadence, not this worker's documented 6h interval).
 assert_contains "publish crontab entry fires every 6h (*/6 hour field)" "35 */6 * * *" "$tab3"
 # Here-string, not a pipeline, and a || fallback: this file runs under
 # `set -euo pipefail` and defines grepq at line 30 for exactly this reason.
@@ -1254,12 +1254,12 @@ assert_registry "cron arm --with-publish registers the publish flow under its DE
     ".flows[] | select(.name == \"graph-publish-${EXPECTED_PUBLISH_SLUG}\" and .cadence_seconds == 21600)"
 assert_registry "cron arm --with-publish registers the publish task name" '.expected_tasks[] | select(. == "HIMMEL-GraphPublish-Himmel")'
 
-echo "TEST: cron status reports the publish leg's own schedule + summary"
+echo "TEST: cron status reports the publish worker's own schedule + summary"
 out=$(run_cron3 status)
 assert_contains "status shows publish task armed" "ARMED      HIMMEL-GraphPublish-Himmel (cron: 35 */6 * * *)" "$out"
 assert_contains "status summary names graph-cadence" "graph-cadence publish himmel" "$out"
 
-echo "TEST: cron disarm removes the publish leg's entry + runner"
+echo "TEST: cron disarm removes the publish worker's entry + runner"
 out=$(run_cron3 disarm)
 tab3=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
 assert_not_contains "publish crontab entry removed by disarm" "HIMMEL-GraphPublish-Himmel" "$tab3"
@@ -1269,7 +1269,7 @@ else
     fail "publish runner survived disarm"
 fi
 
-echo "TEST: cron arm --ast-only twice without --force dedup-blocks on the publish leg too"
+echo "TEST: cron arm --ast-only twice without --force dedup-blocks on the publish worker too"
 run_cron3 arm --vault "$VAULT" --ast-only --with-publish >/dev/null 2>&1
 rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-publish 2>&1) || rc=$?
 assert_rc "second --ast-only arm without --force blocked" 3 "$rc"
@@ -1292,7 +1292,7 @@ assert_contains "publish runner logs the paused fire" "[semantic paused: marker 
 assert_contains "publish runner logs the active fire" "[semantic active]" "$publish_sh"
 # Marker present: the branch that runs must carry neither --semantic nor the api-lane env.
 paused_branch=$(printf '%s\n' "$publish_sh" | sed -n 's/.*semantic paused: marker present\]"; \(.*\); else echo.*/\1/p')
-assert_contains "paused branch still runs the publish leg" "graph-cadence.sh" "$paused_branch"
+assert_contains "paused branch still runs the publish worker" "graph-cadence.sh" "$paused_branch"
 assert_not_contains "paused branch passes no --semantic" "--semantic" "$paused_branch"
 assert_not_contains "paused branch sets no api lane" "HIMMEL_API_LANE" "$paused_branch"
 if [ -e "$CRON_DIR3/semantic.paused" ]; then
@@ -1310,7 +1310,7 @@ sed "s#[^ ]* [^ ]*scripts/graphify/graph-cadence.sh#sh $stub_gc#g" "$CRON_DIR3/g
 rm -f "$stub_out"
 sh "$TMP_ROOT/publish-stubbed.sh" >/dev/null 2>&1 || true
 stub_paused=$(cat "$stub_out" 2>/dev/null || echo MISSING)
-assert_contains "paused fire still runs the publish leg" "ARGV: --corpus-root" "$stub_paused"
+assert_contains "paused fire still runs the publish worker" "ARGV: --corpus-root" "$stub_paused"
 assert_not_contains "paused fire passes no --semantic" "--semantic" "$stub_paused"
 assert_contains "paused fire sets no api lane" "LANE: unset" "$stub_paused"
 rm -f "$CRON_DIR3/semantic.paused" "$stub_out"
@@ -1432,9 +1432,9 @@ assert_contains "cron_payload unsets GRAPHIFY_OUT_ROOT when --out-root is omitte
 assert_not_contains "cron_payload leaves GRAPHIFY_OUT_ROOT alone when --out-root is set" "unset GRAPHIFY_OUT_ROOT" "$cp_with_root"
 
 # Test C-outroot-3: symmetric gap on
-# the structural (AST) leg -- ast-update.sh reads GRAPHIFY_OUT from its
+# the structural (AST) worker -- ast-update.sh reads GRAPHIFY_OUT from its
 # environment the same way; an ambient value (e.g. from a manual luna AST
-# test run in the same shell) could redirect himmel's AST leg the same way.
+# test run in the same shell) could redirect himmel's AST worker the same way.
 assert_contains "ast_cron_payload unsets GRAPHIFY_OUT when GRAPHIFY_OUT= is omitted" "unset GRAPHIFY_OUT" "$acp_no_dir"
 assert_not_contains "ast_cron_payload leaves GRAPHIFY_OUT alone when it is set" "unset GRAPHIFY_OUT" "$acp_with_dir"
 
@@ -1461,13 +1461,13 @@ assert_contains "no-dir payload hands the updater no ambient GRAPHIFY_OUT" "OUT:
 run_cron3 disarm >/dev/null 2>&1
 rm -f "$CRON_DIR3/semantic-luna.paused"
 
-echo "TEST: cron arm --ast-only without --with-luna-semantic arms no luna semantic leg"
+echo "TEST: cron arm --ast-only without --with-luna-semantic arms no luna semantic worker"
 run_cron3 arm --vault "$VAULT" --ast-only >/dev/null 2>&1
 tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
 assert_not_contains "no luna semantic entry by default" "HIMMEL-GraphSemantic-Luna" "$tab4"
 run_cron3 disarm >/dev/null 2>&1
 
-echo "TEST: cron arm --ast-only --with-luna-semantic registers the luna semantic leg PAUSED"
+echo "TEST: cron arm --ast-only --with-luna-semantic registers the luna semantic worker PAUSED"
 rc=0; out=$(run_cron3 arm --vault "$VAULT" --ast-only --with-luna-semantic 2>&1) || rc=$?
 assert_rc "arm --with-luna-semantic succeeds" 0 "$rc"
 tab4=$(cat "$CSTATE3/crontab" 2>/dev/null || echo MISSING)
@@ -1483,7 +1483,7 @@ assert_contains "luna semantic runner caps the run spend" "--max-run-usd 2.00" "
 assert_contains "luna semantic runner sets the api lane" "HIMMEL_API_LANE=on" "$sem_sh"
 assert_contains "luna semantic runner sets the api account" "HIMMEL_API_ACCOUNT=auto" "$sem_sh"
 assert_contains "luna semantic runner targets the live luna graph, not the vault copy" "GRAPHIFY_OUT=" "$sem_sh"
-assert_contains "luna semantic runner uses the AST leg's out dir" "graphify/luna/graphify-out" "$sem_sh"
+assert_contains "luna semantic runner uses the AST worker's out dir" "graphify/luna/graphify-out" "$sem_sh"
 assert_contains "luna semantic runner reads its own pause marker" "semantic-luna.paused" "$sem_sh"
 assert_contains "luna semantic runner format stamp present" "# himmel-cadence-runner-format: $FMT" "$sem_sh"
 if [ -e "$CRON_DIR3/semantic-luna.paused" ]; then
@@ -1491,7 +1491,7 @@ if [ -e "$CRON_DIR3/semantic-luna.paused" ]; then
 else
     fail "arm --with-luna-semantic left no semantic-luna.paused marker" "$(ls "$CRON_DIR3" 2>/dev/null)"
 fi
-assert_contains "arm banner says the luna semantic leg is armed paused" "semantic armed PAUSED" "$out"
+assert_contains "arm banner says the luna semantic worker is armed paused" "semantic armed PAUSED" "$out"
 assert_registry "luna semantic flow registers a 2h cadence" \
     '.flows[] | select(.name == "graphmap-semantic-luna" and .cadence_seconds == 7200)'
 assert_registry "luna semantic task name registered" '.expected_tasks[] | select(. == "HIMMEL-GraphSemantic-Luna")'
@@ -1514,7 +1514,7 @@ assert_contains "active fire passes the batch cap" "--max-files 20" "$stub_activ
 assert_contains "active fire sets the api lane" "LANE: on" "$stub_active"
 assert_contains "active fire exports the live luna out dir" "graphify/luna/graphify-out" "$stub_active"
 
-echo "TEST: cron status and disarm cover the luna semantic leg"
+echo "TEST: cron status and disarm cover the luna semantic worker"
 out=$(run_cron3 status 2>&1)
 assert_contains "status shows the luna semantic task armed" "ARMED      HIMMEL-GraphSemantic-Luna (cron: 50 */2 * * *)" "$out"
 run_cron3 disarm >/dev/null 2>&1

@@ -10,20 +10,20 @@
 #      CI — no failing/pending check-run, no failing/pending combined status.
 #      This repo has NO branch protection, so GitHub will not otherwise block a
 #      merge over red/pending CI (operator rule: "ready to merge" requires green).
-#   3. Console-GO gate: when this is a console-spawned
-#      leg (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-leg.sh), the PR's
+#   3. Chief-GO gate: when this is a chief-spawned
+#      worker (HIMMEL_CONSOLE_LEG truthy, exported by headed-arm-worker.sh), the PR's
 #      head SHA must have a matching GO file under the handover root's
 #      `.locks/go/` (chief-kit/go.sh writes it — "the file IS the GO"). Before
-#      this gate existed, a leg merging via `gh pr merge` directly (instead of
+#      this gate existed, a worker merging via `gh pr merge` directly (instead of
 #      merge-on-green.sh) never consulted `.locks/go/` at all, so the GO was
 #      advisory rather than binding on that path (PR #798). No bypass env var —
-#      same as merge-on-green.sh's own console-GO gate, which this one shares
+#      same as merge-on-green.sh's own chief-GO gate, which this one shares
 #      its predicate with (scripts/lib/go-gate.sh) so the two cannot drift.
-#      Untouched for a non-leg session (HIMMEL_CONSOLE_LEG unset/falsy skips it
+#      Untouched for a non-worker (HIMMEL_CONSOLE_LEG unset/falsy skips it
 #      whole).
 #   4. CI trust-path gate: for EVERY session, a PR touching a CI
 #      trust path (scripts/ci/ci-trust-paths.txt on the default branch) needs a
-#      trust-reviewed console GO (go.sh --trust-reviewed) and a merge pinned
+#      trust-reviewed chief GO (go.sh --trust-reviewed) and a merge pinned
 #      to its head — merge-on-green.sh's rule, asked through the
 #      same trust_path_check in scripts/lib/go-gate.sh. Fails closed.
 # Gates 3 and 4 anchor at the harness repo: HIMMEL_REPO when this copy runs
@@ -37,7 +37,7 @@
 # real merge; the CR/CI gates' own API errors stay fail-open.
 # Bypass: CR_MERGE_GATE_OK=1 and/or CI_MERGE_GATE_OK=1 in the LAUNCHING shell
 # (each gates its own check independently). CR_PROFILE=none skips the CR gate.
-# The console-GO and trust-path gates have no bypass (see gates 3 and 4 above).
+# The chief-GO and trust-path gates have no bypass (see gates 3 and 4 above).
 set -uo pipefail
 # NOT set -e: fail-open hook, must never abort on a sub-call's rc 1.
 
@@ -191,7 +191,7 @@ while [ "$#" -gt 0 ]; do
         --repo=*) repo="${1#--repo=}" ;;
         --repo|-R) if [ "$#" -ge 2 ]; then repo="$2"; shift; fi ;;
         # --match-head-commit is captured (not just consumed) so gate 3 can
-        # verify a leg's merge pins the head its GO was bound to (
+        # verify a worker's merge pins the head its GO was bound to (
         # CR round). Both spellings: the space form below, and =-form here.
         --match-head-commit=*) match_head="${1#--match-head-commit=}" ;;
         --match-head-commit)
@@ -372,7 +372,7 @@ if { [ -z "$go_num" ] || [ -z "$go_sha" ]; } && [ -n "$cwd_branch" ] && { [ "$cw
     go_sha=$(printf '%s' "$go_meta" | jq -r '.headRefOid // empty' 2>/dev/null || true)
 fi
 if [ -z "$go_num" ] || [ -z "$go_sha" ]; then
-    echo "block-unresolved-cr-merge: cannot resolve the PR for '$sel' (gh pr view failed or timed out) — refusing (GATE INTEGRITY: the CR, CI, leg-GO and trust-path gates need the PR number and head). Retry the merge, or use scripts/handover/merge-on-green.sh. (For help run: gh help pr merge)" >&2
+    echo "block-unresolved-cr-merge: cannot resolve the PR for '$sel' (gh pr view failed or timed out) — refusing (GATE INTEGRITY: the CR, CI, worker-GO and trust-path gates need the PR number and head). Retry the merge, or use scripts/handover/merge-on-green.sh. (For help run: gh help pr merge)" >&2
     exit 2
 fi
 
@@ -437,39 +437,39 @@ if [ "$ci_rc" = "2" ]; then
     exit 2
 fi
 
-# ── Console-GO merge gate — runs THIRD, after CR
-# and CI — see the header comment for gate 3. Only binds a console-spawned leg
-# (console_leg truthy, scripts/lib/go-gate.sh —); a non-leg
+# ── Chief-GO merge gate — runs THIRD, after CR
+# and CI — see the header comment for gate 3. Only binds a chief-spawned worker
+# (chief_worker truthy, scripts/lib/go-gate.sh —); a non-worker
 # session (HIMMEL_CONSOLE_LEG unset/empty, by far the common case) never
 # reaches the `. go-gate.sh` below, so gate 3 never turns a broken library
 # into a blocker for sessions it was never meant to bind. (Gate 4, the
 # trust-path gate at the end, does load go-gate.sh for EVERY session — see
 # there.)
 #
-# console_leg lives in scripts/lib/go-gate.sh beside go_gate() itself, shared
-# with merge-on-green.sh's own console-GO gate and go.sh's own refusal, so
-# none of the three can drift on "is this a leg". The five-spelling
+# chief_worker lives in scripts/lib/go-gate.sh beside go_gate() itself, shared
+# with merge-on-green.sh's own chief-GO gate and go.sh's own refusal, so
+# none of the three can drift on "is this a worker". The five-spelling
 # interpretation (empty/0/false/off/no, case-insensitive, whitespace-stripped)
-# is console_leg's alone — this outer check is only "is the var non-empty at
+# is chief_worker's alone — this outer check is only "is the var non-empty at
 # all", cheap enough not to duplicate that logic, so an explicitly-set falsy
 # value (e.g. HIMMEL_CONSOLE_LEG=0) still sources go-gate.sh and gets the
 # real, shared interpretation.
-is_leg=1
+is_worker=1
 if [ -n "${HIMMEL_CONSOLE_LEG:-}" ]; then
-    # Drop any go_gate/console_leg already in scope first (a PATH executable
+    # Drop any go_gate/chief_worker already in scope first (a PATH executable
     # or an inherited `export -f` would otherwise survive the source below
     # undetected) so only the file's own definitions can satisfy the
     # declare -F checks below.
-    unset -f go_gate console_leg go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
+    unset -f go_gate chief_worker go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
     # shellcheck source=scripts/lib/go-gate.sh
     # shellcheck disable=SC1091
-    if ! . "$SCRIPT_DIR/../lib/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1; then
-        echo "block-unresolved-cr-merge: cannot load scripts/lib/go-gate.sh — refusing (the console-leg marker check must fail closed, not silently no-op)" >&2
+    if ! . "$SCRIPT_DIR/../lib/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1; then
+        echo "block-unresolved-cr-merge: cannot load scripts/lib/go-gate.sh — refusing (the chief-worker marker check must fail closed, not silently no-op)" >&2
         exit 2
     fi
-    console_leg || is_leg=0
+    chief_worker || is_worker=0
 else
-    is_leg=0
+    is_worker=0
 fi
 
 # PR number + head-sha (shared by gates 3 and 4) were resolved up front
@@ -537,25 +537,25 @@ if [ "$(printf '%s' "$go_typed" | tr '[:upper:]' '[:lower:]')" != "$(printf '%s'
 fi
 go_nwo=$go_canon
 
-if [ "$is_leg" -eq 1 ]; then
+if [ "$is_worker" -eq 1 ]; then
     go_root=""
     # shellcheck source=scripts/lib/handover-path.sh
     # shellcheck disable=SC1091
     # row 1: go_resolve_root is the same resolver go.sh writes
-    # through, so a leg running `gh pr merge` directly with no HANDOVER_DIR in
+    # through, so a worker running `gh pr merge` directly with no HANDOVER_DIR in
     # its own env still lands on the anchor's .env-configured root, the one a
-    # valid console GO was actually written under — a plain handover_root()
+    # valid chief GO was actually written under — a plain handover_root()
     # here fell back to the harness repo's inline stub instead and falsely
     # refused a valid GO.
     if . "$SCRIPT_DIR/../lib/handover-path.sh" 2>/dev/null && declare -F go_resolve_root >/dev/null 2>&1 \
             && declare -F _go_in_harness >/dev/null 2>&1; then
         go_root=$(go_resolve_root "$(gate_anchor)" 2>/dev/null) || go_root=""
     fi
-    # go-gate.sh is already sourced above (console_leg check) — only confirm
+    # go-gate.sh is already sourced above (chief_worker check) — only confirm
     # go_gate and go_mac are defined (a truncated file could define
-    # console_leg but not the rest).
+    # chief_worker but not the rest).
     if ! declare -F go_gate >/dev/null 2>&1 || ! declare -F go_mac >/dev/null 2>&1; then
-        echo "block-unresolved-cr-merge: scripts/lib/go-gate.sh sourced but go_gate is not defined (truncated file?) — refusing (a console-spawned leg's GO gate must fail closed, not silently no-op)" >&2
+        echo "block-unresolved-cr-merge: scripts/lib/go-gate.sh sourced but go_gate is not defined (truncated file?) — refusing (a chief-spawned worker's GO gate must fail closed, not silently no-op)" >&2
         exit 2
     fi
     go_reason=""
@@ -563,7 +563,7 @@ if [ "$is_leg" -eq 1 ]; then
     go_reason=$(go_gate "$go_num" "$go_sha" "$go_root" "$go_nwo") || go_rc=$?
     if [ "$go_rc" -ne 0 ]; then
         if [ -z "$go_reason" ]; then
-            go_reason="go_gate for PR #$go_num at $go_sha returned an unexpected exit code ($go_rc) — this is a console-spawned leg; send READY to your console and wait for GO"
+            go_reason="go_gate for PR #$go_num at $go_sha returned an unexpected exit code ($go_rc) — this is a chief-spawned worker; send READY to your chief and wait for GO"
         fi
         echo "block-unresolved-cr-merge: $go_reason" >&2
         exit 2
@@ -579,7 +579,7 @@ if [ "$is_leg" -eq 1 ]; then
     # confirmed valid, an unpinned or mismatched merge command must
     # never pass.
     if [ -z "$match_head" ]; then
-        echo "block-unresolved-cr-merge: a console-spawned leg's merge must pin --match-head-commit $go_sha (the head the GO for PR #$go_num was bound to) — none was given" >&2
+        echo "block-unresolved-cr-merge: a chief-spawned worker's merge must pin --match-head-commit $go_sha (the head the GO for PR #$go_num was bound to) — none was given" >&2
         exit 2
     fi
     if [ "$match_head" != "$go_sha" ]; then
@@ -590,9 +590,9 @@ fi
 
 # ── Trust-path gate — runs FOURTH, for EVERY session. A PR
 # touching a CI trust path (scripts/ci/ci-trust-paths.txt) needs a
-# trust-reviewed console GO, pinned to its head. merge-on-green.sh has asked
+# trust-reviewed chief GO, pinned to its head. merge-on-green.sh has asked
 # this; a direct `gh pr merge` used to pass the same PR on an
-# ordinary GO (a leg) or on none (the operator). The question itself is
+# ordinary GO (a worker) or on none (the operator). The question itself is
 # trust_path_check in scripts/lib/go-gate.sh, shared with merge-on-green.sh so
 # the two entry points cannot drift. Unlike gate 3 this binds the operator too,
 # exactly as merge-on-green.sh does for every caller: go.sh --trust-reviewed is
@@ -602,10 +602,10 @@ gate4_refuse() {
     echo "block-unresolved-cr-merge: $1" >&2
     exit 2
 }
-# Drop every go-gate name already in scope (a leg sourced the file for gate 3;
+# Drop every go-gate name already in scope (a worker sourced the file for gate 3;
 # an inherited `export -f` would otherwise survive) so only the anchor file's
 # own definitions can satisfy the declare -F checks.
-unset -f trust_path_check go_trust_gate go_trust_id_ok go_gate _go_gate_verify console_leg go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
+unset -f trust_path_check go_trust_gate go_trust_id_ok go_gate _go_gate_verify chief_worker go_mac go_key_file go_resolve_root _go_in_harness 2>/dev/null || true
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$SCRIPT_DIR/../lib/go-gate.sh" ] && . "$SCRIPT_DIR/../lib/go-gate.sh"; } 2>/dev/null \
@@ -650,7 +650,7 @@ case "$trust_out" in
         trust_id=$(go_trust_gate "$go_num" "$go_sha" "$trust_root" "$go_nwo") \
             || gate4_refuse "PR #$go_num touches CI trust path $trust_hit and needs a trust-reviewed GO: ${trust_id:-go_trust_gate refused with no reason}"
         # The trust GO is bound to $go_sha — the merge command must pin it, for
-        # the operator as for a leg (same reason as gate 3's pin).
+        # the operator as for a worker (same reason as gate 3's pin).
         if [ "$match_head" != "$go_sha" ]; then
             gate4_refuse "PR #$go_num touches CI trust path $trust_hit — the merge must pin --match-head-commit $go_sha (the head its trust-reviewed GO $trust_id is bound to); got '${match_head:-none}'"
         fi

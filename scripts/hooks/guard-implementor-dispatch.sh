@@ -5,7 +5,7 @@
 # The policies answer independent questions:
 #   1. If an external implementation lane is registry-available, runnable,
 #      READY, AND bank-funded, refuse an implementation-shaped
-#      in-process Agent dispatch and name that lane. A lane failing any leg
+#      in-process Agent dispatch and name that lane. A lane failing any worker
 #      falls through to the other lane (or the bank guard) rather
 #      than refusing toward it. Readiness is MEASURED, not asserted: a lane
 #      under a readiness gate (lanes.json readiness.passesRequired) must show
@@ -45,8 +45,8 @@
 # documented default rather than reaching the awk ratio math below as a
 # divide-by-zero.
 #   IMPL_GUARD_USAGE_STATUS_CMD    override the funded-bank probe command (tests stub it; default `bun scripts/lanes/usage-status.ts`);
-#                                  the old IMPL_GUARD_BANK_STATUS_CMD is still read
-#   IMPL_GUARD_USAGE_BUDGET_SECS   funded-bank probe wall-clock budget (default 4); old IMPL_GUARD_BANK_BUDGET_SECS still read
+#                                  the old IMPL_GUARD_BANK_STATUS_CMD is read while HIMMEL_LEGACY_NAMES is on
+#   IMPL_GUARD_USAGE_BUDGET_SECS   funded-bank probe wall-clock budget (default 4); old IMPL_GUARD_BANK_BUDGET_SECS read while HIMMEL_LEGACY_NAMES is on
 #   IMPL_GUARD_READINESS_CMD       override the lane-readiness probe command (tests stub it; default `node scripts/lanes/lane-readiness.mjs`)
 #   IMPL_GUARD_READINESS_BUDGET_SECS  lane-readiness probe wall-clock budget (default 4)
 #   IMPL_GUARD_ROUND_BUDGET_SECS   round-guard probe wall-clock budget (default 4)
@@ -569,7 +569,7 @@ lane_ready() {
 
 # --- the reviewed-round guard runs at THIS
 # chokepoint too, not only in scripts/telegram/spawn-glm.ts / spawn-claudex.ts.
-# Those two lanes are dispatched by an operator/console over a separate
+# Those two lanes are dispatched by an operator/chief over a separate
 # subprocess; a real implementor round is just as often an in-process Agent
 # tool call, which reaches neither script. Control has already
 # reached here past every read-only/research/Haiku/lane-exempt-Explore

@@ -1153,7 +1153,7 @@ describe('create — cap gate (HIMMEL-6485)', () => {
 });
 
 // A Bug is placed at filing: backlog, or the active version for a Highest or
-// gated one; the console can overrule with a reason that lands in the ledger.
+// gated one; the chief can overrule with a reason that lands in the ledger.
 describe('create — Bug placement (HIMMEL-6776)', () => {
   let dir: string;
   const saved: Record<string, string | undefined> = {};
@@ -1256,7 +1256,7 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
 
   it('lets the console put a Medium Bug into a version, and records the reason in the ledger', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
-    await file('--priority', 'Medium', '--fix-version', 'v1.1.3', '--console-override', 'blocks the v1 gate');
+    await file('--priority', 'Medium', '--fix-version', 'v1.1.3', '--chief-override', 'blocks the v1 gate');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
     const [row] = ledger();
     expect(row).toMatchObject({ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' });
@@ -1266,12 +1266,12 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
 
   it('refuses the override without a reason', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
-    await expect(file('--fix-version', 'v1.1.3', '--console-override', '  ')).rejects.toThrow(/reason/);
+    await expect(file('--fix-version', 'v1.1.3', '--chief-override', '  ')).rejects.toThrow(/reason/);
     expect(created()).toBeUndefined();
   });
 
   it('refuses the override without the console marker', async () => {
-    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/console/);
+    await expect(file('--fix-version', 'v1.1.3', '--chief-override', 'because')).rejects.toThrow(/chief/);
     expect(created()).toBeUndefined();
     expect(ledger()).toEqual([]);
   });
@@ -1279,13 +1279,13 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
   it('refuses the override when there is no ledger location, rather than writing elsewhere', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
     process.env['HANDOVER_DIR'] = join(dir, 'missing');
-    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/HANDOVER_DIR/);
+    await expect(file('--fix-version', 'v1.1.3', '--chief-override', 'because')).rejects.toThrow(/HANDOVER_DIR/);
     expect(created()).toBeUndefined();
   });
 
   it('refuses the override without a --fix-version to admit into', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
-    await expect(file('--console-override', 'because')).rejects.toThrow(/--fix-version/);
+    await expect(file('--chief-override', 'because')).rejects.toThrow(/--fix-version/);
     expect(created()).toBeUndefined();
   });
 
@@ -1296,7 +1296,7 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
     chmodSync(path, 0o444);
     try {
       if (process.getuid?.() === 0) return;
-      await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
+      await expect(file('--fix-version', 'v1.1.3', '--chief-override', 'because')).rejects.toThrow();
       expect(created()).toBeUndefined();
     } finally {
       chmodSync(path, 0o644);
@@ -1306,7 +1306,7 @@ describe('create — Bug placement (HIMMEL-6776)', () => {
   it('refuses the override when the ledger location cannot be opened for append, before any ticket is created', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
     process.env['HIMMEL_ADMISSIONS_LEDGER'] = dir;
-    await expect(file('--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow();
+    await expect(file('--fix-version', 'v1.1.3', '--chief-override', 'because')).rejects.toThrow();
     expect(created()).toBeUndefined();
   });
 });
@@ -1423,15 +1423,15 @@ describe('create — intake gate for a frozen version (HIMMEL-6775)', () => {
 
   it('lets the console past the gate with a reason, and writes an override row carrying it', async () => {
     process.env['HIMMEL_CONSOLE'] = '1';
-    await file('Bug', '--fix-version', 'v1.1.3', '--console-override', 'blocks the v1 gate');
+    await file('Bug', '--fix-version', 'v1.1.3', '--chief-override', 'blocks the v1 gate');
     expect(created()!['fixVersions']).toEqual([{ name: 'v1.1.3' }]);
     expect(ledger()).toMatchObject([{ key: 'HIMMEL-77', version: 'v1.1.3', kind: 'override', reason: 'blocks the v1 gate' }]);
   });
 
   it('refuses the override on a frozen version without a reason or without the console marker', async () => {
-    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', 'because')).rejects.toThrow(/console/);
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--chief-override', 'because')).rejects.toThrow(/chief/);
     process.env['HIMMEL_CONSOLE'] = '1';
-    await expect(file('Task', '--fix-version', 'v1.1.3', '--console-override', ' ')).rejects.toThrow(/reason/);
+    await expect(file('Task', '--fix-version', 'v1.1.3', '--chief-override', ' ')).rejects.toThrow(/reason/);
     expect(created()).toBeUndefined();
     expect(ledger()).toEqual([]);
   });
@@ -1641,7 +1641,7 @@ describe('create — Task/Story placement and backlog INTAKE (HIMMEL-7152)', () 
     const p = new Command();
     p.exitOverride();
     registerCreate(p);
-    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 'the console loses a leg', '--desc', PLAIN, ...HOME, ...args]);
+    await p.parseAsync(['node', 'jira', 'create', '--type', type, '--title', 'the console loses a worker', '--desc', PLAIN, ...HOME, ...args]);
   };
   const posted = () => mockRequest.mock.calls.some((x) => x[0] === 'POST' && x[1] === '/issue');
   const declare = async () => {

@@ -5,10 +5,10 @@
 # row fields, legend, ledger wording, plan-sourced caps, Done off-plan
 # work counting in its version, and distinct load / layer palettes.
 # the redesign — rows lead with user impact, numbers drill down, a
-# remaining-only switch, live legs; tracker-model-check.js runs the page's model.
+# remaining-only switch, live workers; tracker-model-check.js runs the page's model.
 # Synthetic plan dir + mirror under a mktemp dir; no real plan data, no network.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only
 # (see test-tick.sh); this suite renders one static page with python3.
 set -uo pipefail
 
@@ -52,7 +52,7 @@ write_caps() {  # write_caps <bugs cap>
 }
 write_meta 20 0.6
 write_caps 0.30
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
     HIMMEL-1 v1.0.1 bugs 1 committed '' 'P1; pinned to v1.0.1 (ruling)' > "$plan/stage3/placement.tsv"
@@ -149,7 +149,7 @@ contains 'readiness reads in words (HIMMEL-3990)' "$html" '"fix named, not yet c
 contains 'impact is a secondary 5-dot tag (HIMMEL-3990)' "$html" '"impact "+n+" of 5"'
 contains 'the notes list is labelled vault notes (HIMMEL-3990)' "$html" 'Vault notes that mention it:'
 # Ask 2: the terms name every scale.
-for s in 'Status' 'Leg chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
+for s in 'Status' 'Worker chip' 'Size' 'Impact' 'Ready to build' 'Budget' 'No cap' 'Hide done work'; do
     contains "the terms name $s (HIMMEL-3990)" "$html" "[\"$s\","
 done
 contains 'the size scale comes from the plan (HIMMEL-3957)' "$html" 'XS 0.44 · S 1 · M 2.2 · L 5 · XL 11.1'
@@ -247,47 +247,47 @@ contains 'a multi-line override literal still sets the ticket cap (HIMMEL-3990)'
 write_caps 0.30
 printf '%s\n' "VERSION_CAP_OVERRIDES = {'v1.0.1': {'tickets': 30, 'bugs': 0.45}}" > "$plan/tools/stage3/common.py"
 
-# --- ask 5: a live leg marks its ticket in progress, with its label and phase.
+# --- ask 5: a live worker marks its ticket in progress, with its label and phase.
 hb="$W/luna/handovers"
 bk="$hb/tester/himmel"
 mkdir -p "$bk" "$hb/.locks/queue/live.lock" "$hb/.locks/queue/gone.lock" "$hb/.locks/queue/brief.lock"
 now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-printf '%s\n' '# leg' '- brief: follows PR 1999' '## Results' '- 10:00 LIVE — started' '- 10:20 LIVE — PR 1525 open, watching CI' '- a later note naming PR 1998' >"$bk/HIMMEL-1-N55-synthetic-leg-2026-10-01.md"
-printf '%s\n' '# leg' '## Results' '- 09:00 READY 1600 abc GREEN' '- 09:30 WRAPPED — merged' > "$bk/HIMMEL-6-N56-wrapped-leg-2026-10-01.md"
-printf '%s\n' '# leg' '## Results' '- 08:00 LIVE — started' > "$bk/HIMMEL-7-N57-released-leg-2026-10-01.md"
-printf '%s\n' '# leg' '## Results' '- 08:00 LIVE — started' '- 12:00 LIVE — back after a night' '- 12:10 WRAPPED — merged' > "$bk/HIMMEL-6-N60-second-leg-2026-10-01.md"
-printf '%s\n' '# leg' '- 08:00 brief note, not a Results bullet' '## Results' '- 09:00 LIVE — started' '- 09:10 WRAPPED — merged' > "$bk/HIMMEL-8-N61-brief-stamp-leg-2026-10-01.md"
-printf '%s\n' '# leg' '- READY 1997 abc GREEN is the shape to send' '## Results' '- a note, no marker' > "$bk/HIMMEL-9-N59-brief-leg-2026-10-01.md"
-printf '{"session":"s3","handover":"%s","heartbeat":"%s"}\n' "$bk/HIMMEL-9-N59-brief-leg-2026-10-01.md" "$now" > "$hb/.locks/queue/brief.lock/owner.json"
-printf '{"session":"s1","handover":"%s","heartbeat":"%s"}\n' "$bk/HIMMEL-1-N55-synthetic-leg-2026-10-01.md" "$now" > "$hb/.locks/queue/live.lock/owner.json"
-printf '{"session":"s2","handover":"%s","heartbeat":"%s"}\n' "$bk/HIMMEL-6-N56-wrapped-leg-2026-10-01.md" "$now" > "$hb/.locks/queue/gone.lock/owner.json"
-fp_ok 'legs added' fp5
+printf '%s\n' '# worker' '- brief: follows PR 1999' '## Results' '- 10:00 LIVE — started' '- 10:20 LIVE — PR 1525 open, watching CI' '- a later note naming PR 1998' >"$bk/HIMMEL-1-N55-synthetic-worker-2026-10-01.md"
+printf '%s\n' '# worker' '## Results' '- 09:00 READY 1600 abc GREEN' '- 09:30 WRAPPED — merged' > "$bk/HIMMEL-6-N56-wrapped-worker-2026-10-01.md"
+printf '%s\n' '# worker' '## Results' '- 08:00 LIVE — started' > "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md"
+printf '%s\n' '# worker' '## Results' '- 08:00 LIVE — started' '- 12:00 LIVE — back after a night' '- 12:10 WRAPPED — merged' > "$bk/HIMMEL-6-N60-second-worker-2026-10-01.md"
+printf '%s\n' '# worker' '- 08:00 brief note, not a Results bullet' '## Results' '- 09:00 LIVE — started' '- 09:10 WRAPPED — merged' > "$bk/HIMMEL-8-N61-brief-stamp-worker-2026-10-01.md"
+printf '%s\n' '# worker' '- READY 1997 abc GREEN is the shape to send' '## Results' '- a note, no marker' > "$bk/HIMMEL-9-N59-brief-worker-2026-10-01.md"
+printf '{"session":"s3","handover":"%s","heartbeat":"%s"}\n' "$bk/HIMMEL-9-N59-brief-worker-2026-10-01.md" "$now" > "$hb/.locks/queue/brief.lock/owner.json"
+printf '{"session":"s1","handover":"%s","heartbeat":"%s"}\n' "$bk/HIMMEL-1-N55-synthetic-worker-2026-10-01.md" "$now" > "$hb/.locks/queue/live.lock/owner.json"
+printf '{"session":"s2","handover":"%s","heartbeat":"%s"}\n' "$bk/HIMMEL-6-N56-wrapped-worker-2026-10-01.md" "$now" > "$hb/.locks/queue/gone.lock/owner.json"
+fp_ok 'workers added' fp5
 stdout6="$(render)"
 html6="$(cat "$out" 2>/dev/null)"
-cp "$out" "$W/legs.html"
-contains 'a held-lock leg doc marks its ticket live with label, phase and PR (HIMMEL-3990)' "$html6" '"LEG":{"1":["N55","LIVE",1525]'
-not_contains 'a WRAPPED leg is not live even while its lock lingers (HIMMEL-3990)' "$html6" '"6":["N56"'
-not_contains 'a leg doc with no held lock is not live (HIMMEL-3990)' "$html6" '"7":["N57"'
+cp "$out" "$W/workers.html"
+contains 'a held-lock worker doc marks its ticket live with label, phase and PR (HIMMEL-3990)' "$html6" '"WORKER":{"1":["N55","LIVE",1525]'
+not_contains 'a WRAPPED worker is not live even while its lock lingers (HIMMEL-3990)' "$html6" '"6":["N56"'
+not_contains 'a worker doc with no held lock is not live (HIMMEL-3990)' "$html6" '"7":["N57"'
 contains 'a marker-shaped brief bullet above Results sets neither phase nor PR (HIMMEL-3990)' "$html6" '"9":["N59","LIVE",null]'
-printf '%s\n' '# leg' '## Results' '- 08:00 LIVE — started' '- 08:30 PARKED-USAGE — committed, waiting for RESUME' > "$W/parked-usage-leg.md"
-contains 'a PARKED-USAGE tail is the leg phase, not the earlier LIVE' "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import tracker; print(tracker.leg_marker(sys.argv[2])[0])' "$HERE" "$W/parked-usage-leg.md")" 'PARKED-USAGE'
-contains 'a wrapped leg counts toward what its ticket took: [legs, wall, active, dated]; a gap over 3 h is idle, not active (HIMMEL-5453)' "$html6" '"ACT":{"6":[2,280,40,2]'
+printf '%s\n' '# worker' '## Results' '- 08:00 LIVE — started' '- 08:30 PARKED-USAGE — committed, waiting for RESUME' > "$W/parked-usage-worker.md"
+contains 'a PARKED-USAGE tail is the worker phase, not the earlier LIVE' "$(python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import tracker; print(tracker.leg_marker(sys.argv[2])[0])' "$HERE" "$W/parked-usage-worker.md")" 'PARKED-USAGE'
+contains 'a wrapped worker counts toward what its ticket took: [workers, wall, active, dated]; a gap over 3 h is idle, not active (HIMMEL-5453)' "$html6" '"ACT":{"6":[2,280,40,2]'
 contains 'a timestamped line above ## Results is not counted as work (HIMMEL-4441)' "$html6" '"8":[1,10,10,1]'
-contains 'the actuals carry the newest wrapped-leg doc stamp (HIMMEL-4930)' "$html6" '"ATS":"20'
-contains 'the live leg counts its ticket in progress in the ledger (HIMMEL-3990)' "$stdout6" '1 of 4 done (25 %), 2 in progress, 1 to do.'
-if [ "$fp4" != "$fp5" ]; then pass 'a leg starting moves the fingerprint (HIMMEL-3990)'; else fail 'a leg starting left the fingerprint'; fi
-printf '%s\n' '- 10:40 READY 1525 abc GREEN' >> "$bk/HIMMEL-1-N55-synthetic-leg-2026-10-01.md"
-fp_ok 'leg phase moved' fp6
-if [ "$fp5" != "$fp6" ]; then pass 'a leg phase change moves the fingerprint (HIMMEL-3990)'; else fail 'a leg phase change left the fingerprint'; fi
-fp_ok 'leg phase unchanged' fp7
+contains 'the actuals carry the newest wrapped-worker doc stamp (HIMMEL-4930)' "$html6" '"ATS":"20'
+contains 'the live worker counts its ticket in progress in the ledger (HIMMEL-3990)' "$stdout6" '1 of 4 done (25 %), 2 in progress, 1 to do.'
+if [ "$fp4" != "$fp5" ]; then pass 'a worker starting moves the fingerprint (HIMMEL-3990)'; else fail 'a worker starting left the fingerprint'; fi
+printf '%s\n' '- 10:40 READY 1525 abc GREEN' >> "$bk/HIMMEL-1-N55-synthetic-worker-2026-10-01.md"
+fp_ok 'worker phase moved' fp6
+if [ "$fp5" != "$fp6" ]; then pass 'a worker phase change moves the fingerprint (HIMMEL-3990)'; else fail 'a worker phase change left the fingerprint'; fi
+fp_ok 'worker phase unchanged' fp7
 if [ "$fp6" = "$fp7" ]; then pass 'the fingerprint is stable when nothing moved (HIMMEL-3990)'; else fail 'the fingerprint moved with no input change'; fi
 rm -rf "$hb/.locks/queue/live.lock"
 render >/dev/null
-not_contains 'a released lock clears the live leg (HIMMEL-3990)' "$(cat "$out")" '"1":["N55"'
+not_contains 'a released lock clears the live worker (HIMMEL-3990)' "$(cat "$out")" '"1":["N55"'
 
 # --- expansion: trail versions (<version>b, c, ...) and the effort model's P90 (cautious load).
 # versions.tsv lists them out of order on purpose; the plan's order is v1.0.1 < v1.0.1b < v1.0.2 < v1.0.10.
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.0.2 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.10 0 0 0 0 0 0 0 v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 \
     > "$plan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort HIMMEL-1 v1.0.1 bugs 1 committed '' \
@@ -326,14 +326,14 @@ write_meta 20 0.6
 
 # --- the page's model — drill-downs, budget by kind and ticket, summaries, remaining-only.
 if command -v node >/dev/null 2>&1; then
-    mo="$(node "$HERE/tracker-model-check.js" "$W/legs.html" 2>&1)"
+    mo="$(node "$HERE/tracker-model-check.js" "$W/workers.html" 2>&1)"
     printf '%s\n' "$mo" | grep -v 'failure(s)$'
     if grep -qx '0 failure(s)' <<< "$mo"; then pass 'the model checks pass (HIMMEL-3990)'; else fail 'the model checks pass (HIMMEL-3990)'; fi
 else
     printf 'skip - node not available: model checks\n'
 fi
 # --- trail versions (v1.0.1a, v1.0.2b) stay in the train, in train order.
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2 0 0 0 0 0 0 0 v1.0.2b 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 12 'To Do' '["v1.0.1a"]' 'trail a ticket'
 mk 13 'To Do' '["v1.0.2b"]' 'trail b ticket'
@@ -347,7 +347,7 @@ contains 'the JS train test accepts a trail suffix (HIMMEL-4026)' "$thtml" '\d+[
 
 # --- the v1.1.x line (ex v1.0.2b..h) is train, sorted right after v1.0.2 and before v1.0.3.
 cp "$plan/stage3/versions.tsv" "$W/versions.tsv.keep"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2 0 0 0 0 0 0 0 v1.0.3 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 14 'To Do' '["v1.1.0"]' 'minor line ticket'
 tstdout="$(render)"
@@ -358,7 +358,7 @@ contains 'the whole-train ledger counts v1.1.x (HIMMEL-4872)' "$tstdout" 'Plan r
 cp "$W/versions.tsv.keep" "$plan/stage3/versions.tsv"; rm -f "$mdir/HIMMEL-14.md"
 
 # --- the milestone minors v1.2.0..v1.7.0 are train too, in numeric order after the v1.1.x line.
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.1a 0 0 0 0 0 0 0 v1.0.1b 0.01 0 0 0 0 0.01 1 v1.0.2b 0 0 0 0 0 0 0 v1.1.0 0 0 0 0 0 0 0 v1.7.0 0 0 0 0 0 0 0 v1.2.0 0 0 0 0 0 0 0 v1.2.0a 0 0 0 0 0 0 0 v1.2.1000000 0 0 0 0 0 0 0 v1.2.999999 0 0 0 0 0 0 0 v1.10.0 0 0 0 0 0 0 0 v2/v3 0 0 0 0 0 0 0 > "$plan/stage3/versions.tsv"
 mk 15 'To Do' '["v1.2.0"]' 'milestone minor ticket'
 tstdout="$(render)"
@@ -538,12 +538,12 @@ if [[ "$kfp1" =~ ^[0-9a-f]{16}$ ]] && [ "$kfp1" = "$kfp2" ]; then pass 'the kanb
 
 # --- re-measured actuals, spawned bundles under their planned origin, the operator bundle, zone labels.
 # Own plan, mirror and handover tree. HIMMEL-100 is planned; 101 says it was deferred from 100, 102 is a follow-up of 101
-# (A to B to C), a leg of 101 filed 103, 108 relates to 100 by a Jira link. 104 carries the operator-directed label,
-# a console OPERATOR bullet filed 105, 106 follows up 105. 107 and 109 reach no anchor (109 is named only by a RULING).
+# (A to B to C), a worker of 101 filed 103, 108 relates to 100 by a Jira link. 104 carries the operator-directed label,
+# a chief OPERATOR bullet filed 105, 106 follows up 105. 107 and 109 reach no anchor (109 is named only by a RULING).
 bplan="$W/bplan" bmir="$W/bmirror" bh="$W/bluna/handovers/tester/himmel"
 cp -r "$plan" "$bplan"
 mkdir -p "$bmir" "$bh"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.0.1 0.1 0 0 0 0 0.1 1 v2/v3 0 0 0 0 0 0 0 > "$bplan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason HIMMEL-100 v1.0.1 features 2.2 committed '' '' \
     > "$bplan/stage3/placement.tsv"
@@ -559,7 +559,7 @@ bmk() {
 bmk 100 'Done' '["v1.0.1"]' 'planned origin' '[]' '[]'
 bmk 101 'Done' '[]' 'lint gap' '[]' '[]' 'Deferred from the /pr-check of HIMMEL-100.'
 bmk 102 'To Do' '[]' '[HIMMEL-101 follow-up] tighten the lint' '[]' '[]'
-bmk 103 'Done' '[]' 'filed by a leg' '[]' '[]'
+bmk 103 'Done' '[]' 'filed by a worker' '[]' '[]'
 bmk 104 'To Do' '[]' 'operator label' '["operator-directed"]' '[]'
 bmk 105 'Done' '[]' 'operator ask' '[]' '[]'
 bmk 106 'To Do' '[]' 'operator follow-up' '[]' '[]' 'A follow-up from HIMMEL-105.'
@@ -567,15 +567,15 @@ bmk 107 'To Do' '["v1.0.1"]' 'nobody claims me' '[]' '[]'
 bmk 108 'To Do' '[]' 'linked follow-up' '[]' '["HIMMEL-100"]'
 bmk 109 'To Do' '["v1.0.1"]' 'named by a ruling' '[]' '[]' 'Mentions HIMMEL-200 which is newer, never an origin.'
 # A multi-day leg: 22:00 on 2026-10-01 to 23:00 on 2026-10-02 is 25 h of wall time; only 180 min of it is active.
-printf '%s\n' '# leg' '## Results' '- 22:00 LIVE — started' '- 23:30 LIVE — PR 1 open' '- 01:00 READY 1 abc GREEN' \
+printf '%s\n' '# worker' '## Results' '- 22:00 LIVE — started' '- 23:30 LIVE — PR 1 open' '- 01:00 READY 1 abc GREEN' \
     '- 23:00 WRAPPED — merged' > "$bh/HIMMEL-100-N90-planned-origin-2026-10-01.md"
-# A note after WRAPPED and a later section's bullet are past the measured span; a later section's filing is not the leg's.
-printf '%s\n' '# leg' '## Results' '- 10:00 LIVE — filed HIMMEL-103 for the second gap' '- 10:45 WRAPPED — merged' \
+# A note after WRAPPED and a later section's bullet are past the measured span; a later section's filing is not the worker's.
+printf '%s\n' '# worker' '## Results' '- 10:00 LIVE — filed HIMMEL-103 for the second gap' '- 10:45 WRAPPED — merged' \
     '- 11:30 note after the wrap' '## Notes' '- 12:00 a later note: filed HIMMEL-107 elsewhere' > "$bh/HIMMEL-101-N91-lint-gap-2026-10-02.md"
-printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:30 WRAPPED — merged' > "$bh/HIMMEL-102-N94-no-date.md"
-printf '%s\n' '# leg' '## Results' '- 09:00 LIVE — started' '- 09:20 WRAPPED — merged' > "$bh/HIMMEL-105-N93-operator-ask-2026-10-03.md"
-printf '%s\n' '# console' '## Results' '- 22:57 OPERATOR: do the thing. Filed HIMMEL-105; DISPATCH N93' \
-    '- 23:10 OPERATOR RULING: Filed HIMMEL-109 is not an ask' '- 23:15 **OPERATOR** RULING: Filed HIMMEL-109 again' > "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-console.md"
+printf '%s\n' '# worker' '## Results' '- 09:00 LIVE — started' '- 09:30 WRAPPED — merged' > "$bh/HIMMEL-102-N94-no-date.md"
+printf '%s\n' '# worker' '## Results' '- 09:00 LIVE — started' '- 09:20 WRAPPED — merged' > "$bh/HIMMEL-105-N93-operator-ask-2026-10-03.md"
+printf '%s\n' '# chief' '## Results' '- 22:57 OPERATOR: do the thing. Filed HIMMEL-105; DISPATCH N93' \
+    '- 23:10 OPERATOR RULING: Filed HIMMEL-109 is not an ask' '- 23:15 **OPERATOR** RULING: Filed HIMMEL-109 again' > "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-chief.md"
 bout="$W/bench.html"
 brender() {
     TZ=Europe/Berlin python3 "$HERE/tracker.py" --plan-dir "$bplan" --out "$bout" --luna-map "$W/luna-map-b.json" \
@@ -585,18 +585,18 @@ bstdout="$(brender)"
 bhtml="$(cat "$bout" 2>/dev/null)"
 btsv="$bout.bench.tsv"
 contains 'the Jira stamp is converted to UTC and labelled (HIMMEL-5453)' "$bhtml" '"mir":"2026-09-30 08:00 UTC"'
-contains 'a multi-day leg counts its dated wall span and its active minutes apart (HIMMEL-5453)' "$bhtml" '"100":[1,1500,180,1]'
-contains 'a leg doc with no date in its name counts active minutes but no dated wall (HIMMEL-5453)' "$bhtml" '"102":[1,0,30,0]'
+contains 'a multi-day worker counts its dated wall span and its active minutes apart (HIMMEL-5453)' "$bhtml" '"100":[1,1500,180,1]'
+contains 'a worker doc with no date in its name counts active minutes but no dated wall (HIMMEL-5453)' "$bhtml" '"102":[1,0,30,0]'
 contains 'the page names the source of each number (HIMMEL-5453)' "$bhtml" 'wall = first Results bullet to WRAPPED'
 contains 'the cost column is a named ponytail (HIMMEL-5453)' "$bhtml" 'cost: not measured'
 if [ -f "$btsv" ]; then pass 'the benchmark TSV is written beside the page (HIMMEL-5453)'; else fail 'no benchmark TSV beside the page'; fi
 bcol() { awk -F'\t' -v k="$1" -v c="$2" 'NR==1{for(i=1;i<=NF;i++)h[$i]=i;next}$1==k{print $(h[c])}' "$btsv" 2>/dev/null; }
-contains 'A to B to C rolls up to the first planned ancestor; a leg-filed and a linked ticket join it (HIMMEL-5453)' \
+contains 'A to B to C rolls up to the first planned ancestor; a worker-filed and a linked ticket join it (HIMMEL-5453)' \
     "$(bcol HIMMEL-100 members)" 'HIMMEL-101,HIMMEL-102,HIMMEL-103,HIMMEL-108'
 contains 'the bundle counts open and done (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_n) $(bcol HIMMEL-100 bundle_open) $(bcol HIMMEL-100 bundle_done)" '4 2 2'
 contains 'the bundle folds into the item total (HIMMEL-5453)' "$(bcol HIMMEL-100 own_wall_min) $(bcol HIMMEL-100 bundle_wall_min) $(bcol HIMMEL-100 total_wall_min)" '1500 45 1545'
-contains 'the bundle coverage counts its dated legs (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated)" '2 1'
-contains 'a ratio over partly undated legs is left blank (HIMMEL-5453)' "$(bcol HIMMEL-100 est_seq) [$(bcol HIMMEL-100 min_per_seq)] [$(bcol HIMMEL-100 ratio)]" '2.2 [] []'
+contains 'the bundle coverage counts its dated workers (HIMMEL-5453)' "$(bcol HIMMEL-100 bundle_workers) $(bcol HIMMEL-100 bundle_dated)" '2 1'
+contains 'a ratio over partly undated workers is left blank (HIMMEL-5453)' "$(bcol HIMMEL-100 est_seq) [$(bcol HIMMEL-100 min_per_seq)] [$(bcol HIMMEL-100 ratio)]" '2.2 [] []'
 contains 'the dated span is printed in UTC (HIMMEL-5453)' "$(bcol HIMMEL-100 first_utc) $(bcol HIMMEL-100 end_utc)" '2026-10-01T20:00Z 2026-10-02T21:00Z'
 contains 'the operator bundle holds labelled, backfilled and their spawned tickets (HIMMEL-5453)' \
     "$(bcol operator-directed members)" 'HIMMEL-104,HIMMEL-105,HIMMEL-106'
@@ -606,13 +606,13 @@ contains 'unattributed unplanned train tickets are their own visible bundle; a R
 contains 'the page carries the bundles (HIMMEL-5453)' "$bhtml" '"BN":['
 contains 'stdout names the TSV (HIMMEL-5453)' "$bstdout" 'bench.tsv'
 bfp1="$(brender --emit-fp)"
-printf '%s\n' '- 23:20 OPERATOR: one more. Filed HIMMEL-107' >> "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-console.md"
+printf '%s\n' '- 23:20 OPERATOR: one more. Filed HIMMEL-107' >> "$bh/HIMMEL-nextleg-2026-10-03A-roadmap-chief.md"
 bfp2="$(brender --emit-fp)"
 if [ -n "$bfp1" ] && [ "$bfp1" != "$bfp2" ]; then pass 'a new OPERATOR filing moves the fingerprint (HIMMEL-5453)'; else fail 'a new OPERATOR filing left the fingerprint'; fi
 mv "$bh/HIMMEL-102-N94-no-date.md" "$bh/HIMMEL-102-N94-now-dated-2026-10-02.md"
 brender >/dev/null
-contains 'the ratio sits beside its raw inputs once every leg is dated (HIMMEL-5453)' \
-    "$(bcol HIMMEL-100 bundle_legs) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
+contains 'the ratio sits beside its raw inputs once every worker is dated (HIMMEL-5453)' \
+    "$(bcol HIMMEL-100 bundle_workers) $(bcol HIMMEL-100 bundle_dated) $(bcol HIMMEL-100 est_seq) $(bcol HIMMEL-100 min_per_seq) $(bcol HIMMEL-100 ratio)" '2 2 2.2 715.9 1.00'
 
 # a Jira `theme-<slug>` label is no longer a theme: the page groups by the Jira Sector field.
 printf '%s\t%s\t%s\n' key theme impact HIMMEL-10 legacy 2 HIMMEL-11 'Build Tools' 2 > "$plan/stage1/C02.tsv"
@@ -735,7 +735,7 @@ printf 'v1.1.3\tfalse\t2026-10-20\nv2.0.0\tfalse\t\n' > "$dfm.versions.tsv"
 dfout="$(render --mirror-dir "$dfm")"
 contains 'a Done ticket in a later major version counts as done-in-future (HIMMEL-5826)' "$dfout" ', 1 done-in-future;'
 
-# --- per-version page defects: multi-version tickets, in-flight lane, current version, fleet-manifest legs.
+# --- per-version page defects: multi-version tickets, in-flight lane, current version, fleet-manifest workers.
 # Item 2: a ticket with two fixVersions is counted in each (ticket 32 holds v1.0.3 and v1.0.2).
 contains 'a ticket with two fixVersions is counted in its second version too (HIMMEL-5217)' "$jhtml" \
     '"k":32,"t":"review one","s":"In Review","b":"rev","v":2,'
@@ -747,7 +747,7 @@ not_contains 'the lane leaves out an unversioned To Do ticket (HIMMEL-5217)' "$j
 cu="$W/cu"
 mkdir -p "$cu"
 cp -r "$plan" "$W/plan4"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.0.1 0.1 0 0 0 0 0.1 1 v1.0.2 0.1 0 0 0 0 0.1 1 > "$W/plan4/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
     HIMMEL-1 v1.0.1 bugs 1 committed '' 'P1; pinned to v1.0.1 (ruling)' \
@@ -760,12 +760,12 @@ printf 'v1.0.1\ttrue\t2026-10-04\nv1.0.2\tfalse\t\n' > "$cu.versions.tsv"
 render --plan-dir "$W/plan4" --mirror-dir "$cu" >/dev/null
 cuhtml="$(cat "$out" 2>/dev/null)"
 contains 'a released version is not the plan blocks current version (HIMMEL-5217)' "$cuhtml" '"CUR":1,'
-# Item 1: a leg listed in a console's fleet manifest is live without a held queue lock.
-printf '{"schema":1,"legs":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-leg-2026-10-01.md" > "$bk/test-console.fleet.json"
+# Item 1: a worker listed in a chief's fleet manifest is live without a held queue lock.
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N57"}]}\n' "$bk/HIMMEL-7-N57-released-worker-2026-10-01.md" > "$bk/test-console.fleet.json"
 render >/dev/null
 fmhtml="$(cat "$out" 2>/dev/null)"
 rm -f "$bk/test-console.fleet.json"
-contains 'a leg in the fleet manifest is live with its label and phase (HIMMEL-5217)' "$fmhtml" '"7":["N57","LIVE"'
+contains 'a worker in the fleet manifest is live with its label and phase (HIMMEL-5217)' "$fmhtml" '"7":["N57","LIVE"'
 
 # --- parity: the hero's per-bucket counts for the version worked on equal a live JQL count.
 # The fixture is copied from the real environment on 2026-10-18: four mirror frontmatters, the `jira list` rows for
@@ -824,10 +824,10 @@ pstdout="$(render --mirror-dir "$pf/mirror" --versions-file "$pf/mirror.versions
 prc=$?
 if [ "$prc" -eq 0 ]; then pass 'a failing Jira CLI does not fail the render (HIMMEL-6401)'; else fail "a failing Jira CLI failed the render: rc $prc"; fi
 contains 'a failing Jira CLI reads parity unavailable (HIMMEL-6401)' "$pstdout" 'parity: v1.1.3 unavailable'
-# the hero counts the Jira status (t.b), not the live-leg display; the boards keep the display (jb).
-contains 'the hero tallies by Jira status, not the live-leg display (HIMMEL-6401)' "$phtml" 't=jtally(jin(JCUR),1)'
+# the hero counts the Jira status (t.b), not the live-worker display; the boards keep the display (jb).
+contains 'the hero tallies by Jira status, not the live-worker display (HIMMEL-6401)' "$phtml" 't=jtally(jin(JCUR),1)'
 contains 'the up-next line tallies by Jira status (HIMMEL-6401)' "$phtml" 'var u=jtally(jin(JNXT),1)'
-contains 'a board tally keeps the live-leg display (HIMMEL-6401)' "$phtml" 'r[raw?t.b:jb(t)].push(t)'
+contains 'a board tally keeps the live-worker display (HIMMEL-6401)' "$phtml" 'r[raw?t.b:jb(t)].push(t)'
 
 # --- the render splits into a focus page (open tickets of the target version), a Done page and a future page.
 # v1.1.1 is released, v1.1.3 is the earliest unreleased version, v1.1.4 is later. Tickets 801..805 carry one title each.
@@ -835,7 +835,7 @@ splan="$W/splan"
 smir="$W/smirror"
 cp -R "$plan" "$splan"
 mkdir -p "$smir"
-printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
     v1.1.1 0.1 0 0 0 0 0.1 1 v1.1.3 0.1 0 0 0 0 0.1 1 v1.1.4 0.1 0 0 0 0 0.1 1 > "$splan/stage3/versions.tsv"
 printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' key version layer effort_mid commit slice_effort reason \
     HIMMEL-801 v1.1.3 bugs 1 committed '' 'P1' HIMMEL-802 v1.1.3 bugs 1 committed '' 'P1' \
@@ -932,7 +932,7 @@ awk '$0 == "  blocked_by: " { print "  blocked_by:"; print "    - \"HIMMEL-312\"
 # 6535 and 6538: the link says 6538 blocks 6535, 6538's own text says it starts after 6535.
 bsfile 6535 'To Do' 'To Do' 'real 6535 link' '["HIMMEL-6538"]' 'Make stuck work structural.'
 bsfile 6538 'To Do' 'To Do' 'real 6538 text' '[]' \
-    '- Depends on (merge order, plan §10(b)): for console-wait.sh the order is PR 3219 (HIMMEL-6478) → HIMMEL-6535 phase B → this → HIMMEL-6461 → slice 3. For waiter.md it is this → HIMMEL-6499 → slice 3. Start after HIMMEL-6478 and HIMMEL-6535 merge.'
+    '- Depends on (merge order, plan §10(b)): for chief-wait.sh the order is PR 3219 (HIMMEL-6478) → HIMMEL-6535 phase B → this → HIMMEL-6461 → slice 3. For waiter.md it is this → HIMMEL-6499 → slice 3. Start after HIMMEL-6478 and HIMMEL-6535 merge.'
 bsout="$(python3 "$HERE/tracker.py" --remaining v1.1.3 --mirror-dir "$bs" 2>&1)"$'\n'
 contains 'prose about another ticket is no blocker (HIMMEL-6749, 1481)' "$bsout" 'HIMMEL-1481 [To Do] real 1481 prose'$'\n'
 contains 'a quoted command is no blocker (HIMMEL-6749, 6577)' "$bsout" 'HIMMEL-6577 [To Do] real 6577 quoted command'$'\n'
@@ -1090,7 +1090,7 @@ contains 'a To Do keyed step reads next, not its hand-written work (HIMMEL-6829)
 contains 'a keyed step missing from the mirror reads unknown (HIMMEL-6829)' "$(step 'not in the Jira mirror')" '<li class="st-unknown"><b>unknown</b>'
 not_contains 'a Done keyed step is not listed (HIMMEL-6829, 7353)' "$(cat "$v2out")" 'HIMMEL-405'
 contains 'a keyless step keeps its hand-written state (HIMMEL-6829)' "$(step 'keyless step')" '<li class="st-work"><b>work</b>'
-contains 'a worker line shows the leg, state, open PR, head, CI and age (HIMMEL-6829)' "$(wcard 401)" 'worker N3096 · live · #500 @abc1234 · CI red · 5 min'
+contains 'a worker line shows the worker, state, open PR, head, CI and age (HIMMEL-6829)' "$(wcard 401)" 'worker N3096 · live · #500 @abc1234 · CI red · 5 min'
 not_contains 'a closed PR of the record is not on the worker line (HIMMEL-6829)' "$(wcard 401)" '#499'
 contains 'a wrapped worker with no PR shows its state only (HIMMEL-6829)' "$(wcard 400)" 'worker N2 · wrapped'
 not_contains 'a card with no record has no worker line (HIMMEL-6829)' "$(wcard 407)" 'worker'

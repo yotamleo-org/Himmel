@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/upstreams/test-drift-fix-cadence.sh — hermetic suite for the nightly
-# upstream-drift repair cadence: two legs, HIMMEL-DriftFix
+# upstream-drift repair cadence: two workers, HIMMEL-DriftFix
 # (/drift-fix) and HIMMEL-ForkResync (/fork-resync).
 #
 # Never touches the real scheduler: schtasks/crontab are replaced by fakes via
@@ -68,8 +68,8 @@ make_root() {
 }
 
 # Fake schtasks. Per-task-name aware (armed_<name> sentinel files instead of a
-# single global one) so the two legs can be independently armed/not-armed —
-# required to exercise "only one leg armed" dedup and rollback scenarios.
+# single global one) so the two workers can be independently armed/not-armed —
+# required to exercise "only one worker armed" dedup and rollback scenarios.
 # Behaviour driven by files in $FAKE_STATE:
 #   armed_<name>       -> /query /tn <name> succeeds and reports a Next Run Time
 #   no_next_run_<name> -> /query /tn <name> succeeds but omits Next Run Time
@@ -184,7 +184,7 @@ assert_rc 2 "absent payload blocks arming" \
   env DRIFTFIX_PLATFORM=posix DRIFTFIX_HIMMEL_ROOT="$state" \
       DRIFTFIX_CRONTAB="$fake_cron" DRIFTFIX_BAT_DIR="$state/bat" \
       DRIFTFIX_CLAUDE="$fake_claude" bash "$CADENCE" arm
-# Each payload EITHER leg depends on is checked individually — a cadence armed
+# Each payload EITHER worker depends on is checked individually — a cadence armed
 # against a half-present payload set fails at fire time, not at arm time.
 root=$(make_root)
 rm -f "$root/scripts/upstreams/apply-tool-upgrade.sh"
@@ -230,7 +230,7 @@ assert_rc 2 "a DRIFTFIX_CLAUDE pointing at nothing blocks arming" \
 rm -rf "$root" "$state"
 
 # --------------------------------------------------------------------------
-echo "[test-drift-fix-cadence] POSIX (crontab) arm — both legs"
+echo "[test-drift-fix-cadence] POSIX (crontab) arm — both workers"
 root=$(make_root); state=$(mktemp -d); fake_cron=$(make_fake_crontab "$state"); fake_claude=$(make_stub_claude "$state")
 cron_env() {
   env DRIFTFIX_PLATFORM=posix DRIFTFIX_HIMMEL_ROOT="$root" \
@@ -268,16 +268,16 @@ if [ "$rc" -eq 0 ]; then pass "posix arm exits 0"; else fail "posix arm rc=$rc: 
 assert_has "$out" "drift-fix-cadence ARMED" "arm prints the summary banner"
 if [ -f "$state/tab" ]; then
   tab=$(cat "$state/tab")
-  assert_has "$tab" "30 06 * * *" "--time landed in the drift leg's cron schedule"
-  assert_has "$tab" "15 07 * * *" "--resync-time landed in the resync leg's cron schedule"
-  assert_lacks "$tab" "30 07 * * *" "--resync-time did not change the drift leg's schedule"
+  assert_has "$tab" "30 06 * * *" "--time landed in the drift worker's cron schedule"
+  assert_has "$tab" "15 07 * * *" "--resync-time landed in the resync worker's cron schedule"
+  assert_lacks "$tab" "30 07 * * *" "--resync-time did not change the drift worker's schedule"
   assert_has "$tab" "# HIMMEL-DriftFix" "drift entry is marker-tagged"
   assert_has "$tab" "# HIMMEL-ForkResync" "resync entry is marker-tagged"
   pass "crontab installed with both entries"
-  # Both legs are recorded as `job register` rows.
+  # Both workers are recorded as `job register` rows.
   jobs=$(HIMMEL_PROVENANCE_DIR="$state/provenance" bash -c '. "$1/lib/provenance.sh" && . "$1/lib/provenance-read.sh" && prov_read_load >/dev/null && prov_read_units --kind job | jq -r ".unit + \" ours=\" + (.ours|tostring) + \" scheduler=\" + .fields.scheduler" | LC_ALL=C sort' _ "$SCRIPT_DIR/..")
-  assert_has "$jobs" "HIMMEL-DriftFix ours=true scheduler=cron" "drift leg recorded as a job row"
-  assert_has "$jobs" "HIMMEL-ForkResync ours=true scheduler=cron" "resync leg recorded as a job row"
+  assert_has "$jobs" "HIMMEL-DriftFix ours=true scheduler=cron" "drift worker recorded as a job row"
+  assert_has "$jobs" "HIMMEL-ForkResync ours=true scheduler=cron" "resync worker recorded as a job row"
 else
   fail "crontab was not installed"
 fi
@@ -305,32 +305,32 @@ else
   fail "fork-resync.sh runner was not written"
 fi
 
-echo "[test-drift-fix-cadence] POSIX dedup: rc=3 when only ONE leg is armed"
+echo "[test-drift-fix-cadence] POSIX dedup: rc=3 when only ONE worker is armed"
 # Simulate an externally-disarmed resync leg: strip its crontab entry so only
-# the drift leg looks armed, then confirm arm still refuses and names only
-# the leg it found (never the leg that is actually free).
+# the drift worker looks armed, then confirm arm still refuses and names only
+# the worker it found (never the worker that is actually free).
 cp "$state/tab" "$state/tab.full"
 grep -v '# HIMMEL-ForkResync' "$state/tab.full" > "$state/tab"
 out=$(cron_env bash "$CADENCE" arm 2>&1); rc=$?
-if [ "$rc" -eq 3 ]; then pass "dedup refuses when only the drift leg is armed (rc=3)"; else fail "expected rc=3, got rc=$rc: $out"; fi
-assert_has "$out" "already armed: HIMMEL-DriftFix." "dedup message names the armed leg"
-assert_lacks "$out" "HIMMEL-ForkResync" "dedup message does not mention the unarmed leg"
+if [ "$rc" -eq 3 ]; then pass "dedup refuses when only the drift worker is armed (rc=3)"; else fail "expected rc=3, got rc=$rc: $out"; fi
+assert_has "$out" "already armed: HIMMEL-DriftFix." "dedup message names the armed worker"
+assert_lacks "$out" "HIMMEL-ForkResync" "dedup message does not mention the unarmed worker"
 mv "$state/tab.full" "$state/tab"
 
-echo "[test-drift-fix-cadence] POSIX dedup + force (both legs armed)"
-assert_rc 3 "second arm is refused (dedup, both legs armed)" cron_env bash "$CADENCE" arm
+echo "[test-drift-fix-cadence] POSIX dedup + force (both workers armed)"
+assert_rc 3 "second arm is refused (dedup, both workers armed)" cron_env bash "$CADENCE" arm
 out=$(cron_env bash "$CADENCE" arm --force --time 08:00 --resync-time 08:30 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "--force replaces"; else fail "--force rc=$rc: $out"; fi
 tab=$(cat "$state/tab")
-assert_has "$tab" "00 08 * * *" "--force re-armed the drift leg at the new time"
-assert_has "$tab" "30 08 * * *" "--force re-armed the resync leg at the new time"
+assert_has "$tab" "00 08 * * *" "--force re-armed the drift worker at the new time"
+assert_has "$tab" "30 08 * * *" "--force re-armed the resync worker at the new time"
 drift_entries=$(printf '%s\n' "$tab" | grep -cF "# HIMMEL-DriftFix")
 resync_entries=$(printf '%s\n' "$tab" | grep -cF "# HIMMEL-ForkResync")
 if [ "$drift_entries" -eq 1 ]; then pass "--force left exactly one drift entry (no duplicate)"; else fail "--force left $drift_entries drift entries"; fi
 if [ "$resync_entries" -eq 1 ]; then pass "--force left exactly one resync entry (no duplicate)"; else fail "--force left $resync_entries resync entries"; fi
 
 echo "[test-drift-fix-cadence] POSIX --force re-arm with a failing install keeps old runners + entries"
-# Both legs are already armed (08:00/08:30, from the --force case above).
+# Both workers are already armed (08:00/08:30, from the --force case above).
 # Snapshot the live state, then re-arm with --force AND a crontab install
 # that fails (install_fail — read still succeeds, only `crontab -` fails).
 # emit_runner writes the new runner bodies INSIDE the loop, before
@@ -366,12 +366,12 @@ fi
 rm -f "$state/install_fail"
 
 echo "[test-drift-fix-cadence] POSIX: mid-loop runner-write failure restores ALL pre-existing runners (CR round 5)"
-# Both legs are still armed (08:00/08:30, model=sonnet, from the --force case
+# Both workers are still armed (08:00/08:30, model=sonnet, from the --force case
 # two blocks up — the failed-install case just above restored back to it).
-# Shadow the SECOND leg's runner path with a DIRECTORY so
-# `emit_runner ... > "$runner"` fails on leg 2 -- AFTER leg 1's runner has
+# Shadow the SECOND worker's runner path with a DIRECTORY so
+# `emit_runner ... > "$runner"` fails on worker 2 -- AFTER worker 1's runner has
 # already been overwritten by the same loop. Under set -e (line 59) this used
-# to exit WITHOUT restoring leg 1: a pre-existing armed runner silently
+# to exit WITHOUT restoring worker 1: a pre-existing armed runner silently
 # mutated while the crontab still pointed at it (the same class the win_arm
 # emit_bat guards against on Windows).
 before_drift=$(cat "$state/bat/drift-fix.sh")
@@ -384,9 +384,9 @@ if [ "$rc" -eq 4 ]; then pass "mid-loop write failure is rc=4"; else fail "expec
 assert_has "$out" "could not write" "failure message names the write failure"
 after_drift=$(cat "$state/bat/drift-fix.sh")
 if [ "$before_drift" = "$after_drift" ]; then
-  pass "leg processed BEFORE the mid-loop failure was restored to its pre-existing content"
+  pass "worker processed BEFORE the mid-loop failure was restored to its pre-existing content"
 else
-  fail "leg processed before the mid-loop failure was left mutated (half-armed cadence)"
+  fail "worker processed before the mid-loop failure was left mutated (half-armed cadence)"
 fi
 assert_lacks "$after_drift" "--model haiku" "restored drift runner does not carry the never-installed --model haiku"
 after_tab=$(cat "$state/tab")
@@ -395,7 +395,7 @@ if [ "$before_tab" = "$after_tab" ]; then
 else
   fail "crontab changed despite the mid-loop write failure"
 fi
-# Leave the world as found: the shadow directory stands in for "leg 2 could
+# Leave the world as found: the shadow directory stands in for "worker 2 could
 # not be written at all", not a real runner -- put the real one back so the
 # next tests below see the same state this one started with.
 rm -rf "$state/bat/fork-resync.sh"
@@ -405,13 +405,13 @@ chmod +x "$state/bat/fork-resync.sh"
 echo "[test-drift-fix-cadence] POSIX status + disarm"
 out=$(cron_env bash "$CADENCE" status 2>&1)
 assert_has "$out" "ARMED" "status reports ARMED"
-assert_has "$out" "HIMMEL-DriftFix" "status names the drift leg"
-assert_has "$out" "HIMMEL-ForkResync" "status names the resync leg"
+assert_has "$out" "HIMMEL-DriftFix" "status names the drift worker"
+assert_has "$out" "HIMMEL-ForkResync" "status names the resync worker"
 case "$out" in *DUPLICATE*) fail "status flags a single entry as duplicate" ;; *) pass "status does not flag single entries" ;; esac
 cp "$state/tab" "$state/tab.single"
 grep -F "# HIMMEL-DriftFix" "$state/tab.single" | head -1 >>"$state/tab"
 out=$(cron_env bash "$CADENCE" status 2>&1)
-assert_has "$out" "[DUPLICATE: 2 cron entries]" "status flags a doubled drift leg with its count"
+assert_has "$out" "[DUPLICATE: 2 cron entries]" "status flags a doubled drift worker with its count"
 cp "$state/tab.single" "$state/tab"
 out=$(cron_env bash "$CADENCE" disarm --dry-run 2>&1)
 assert_has "$out" "DRY" "disarm --dry-run is a preview"
@@ -472,7 +472,7 @@ if command -v cygpath >/dev/null 2>&1; then
   export CADENCE_WSCRIPT_BIN="$fake_wscript"
   export CADENCE_WSH_POWERSHELL="$fake_wsh_powershell"
 
-  echo "[test-drift-fix-cadence] Windows (schtasks) arm — both legs"
+  echo "[test-drift-fix-cadence] Windows (schtasks) arm — both workers"
   root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
   win_env() {
     env DRIFTFIX_PLATFORM=windows DRIFTFIX_HIMMEL_ROOT="$root" \
@@ -491,7 +491,7 @@ if command -v cygpath >/dev/null 2>&1; then
   assert_has "$out" "/drift-fix" "drift runner fires the /drift-fix runbook"
   assert_has "$out" "/fork-resync" "resync runner fires the /fork-resync runbook"
   # Exec is a `wscript //B <shim>.vbs` wrapper around the .bat.
-  # The hidden-powershell shape still allocated consoles; wscript allocates zero.
+  # The hidden-powershell shape still allocated chiefs; wscript allocates zero.
   assert_has "$out" "<Command>wscript.exe</Command>" "task XML Exec Command is wscript.exe, not the bare .bat"
   assert_has "$out" "//B" "task XML Exec Arguments carries //B batch mode"
   assert_has "$out" "drift-fix.vbs" "drift task XML Exec Arguments references the runner shim"
@@ -530,28 +530,28 @@ if command -v cygpath >/dev/null 2>&1; then
     fail "resync .bat runner was not written"
   fi
   if grep -q '/create /tn HIMMEL-DriftFix' "$state/calls"; then
-    pass "schtasks /create was invoked for the drift leg"
+    pass "schtasks /create was invoked for the drift worker"
   else
-    fail "schtasks /create was never invoked for the drift leg"
+    fail "schtasks /create was never invoked for the drift worker"
   fi
   if grep -q '/create /tn HIMMEL-ForkResync' "$state/calls"; then
-    pass "schtasks /create was invoked for the resync leg"
+    pass "schtasks /create was invoked for the resync worker"
   else
-    fail "schtasks /create was never invoked for the resync leg"
+    fail "schtasks /create was never invoked for the resync worker"
   fi
 
-  echo "[test-drift-fix-cadence] Windows dedup: rc=3 when only ONE leg is armed"
-  # Simulate an externally-disarmed resync leg (delete just its armed sentinel)
-  # and confirm arm still refuses, naming only the leg it actually found.
+  echo "[test-drift-fix-cadence] Windows dedup: rc=3 when only ONE worker is armed"
+  # Simulate an externally-disarmed resync worker (delete just its armed sentinel)
+  # and confirm arm still refuses, naming only the worker it actually found.
   rm -f "$state/armed_HIMMEL-ForkResync"
   out=$(win_env bash "$CADENCE" arm 2>&1); rc=$?
-  if [ "$rc" -eq 3 ]; then pass "dedup refuses when only the drift leg is armed (rc=3)"; else fail "expected rc=3, got rc=$rc: $out"; fi
-  assert_has "$out" "already armed: HIMMEL-DriftFix." "dedup message names the armed leg"
-  assert_lacks "$out" "HIMMEL-ForkResync" "dedup message does not mention the unarmed leg"
+  if [ "$rc" -eq 3 ]; then pass "dedup refuses when only the drift worker is armed (rc=3)"; else fail "expected rc=3, got rc=$rc: $out"; fi
+  assert_has "$out" "already armed: HIMMEL-DriftFix." "dedup message names the armed worker"
+  assert_lacks "$out" "HIMMEL-ForkResync" "dedup message does not mention the unarmed worker"
   touch "$state/armed_HIMMEL-ForkResync"
 
-  echo "[test-drift-fix-cadence] Windows dedup + force (both legs armed)"
-  assert_rc 3 "second arm is refused (dedup, both legs armed)" win_env bash "$CADENCE" arm
+  echo "[test-drift-fix-cadence] Windows dedup + force (both workers armed)"
+  assert_rc 3 "second arm is refused (dedup, both workers armed)" win_env bash "$CADENCE" arm
   out=$(win_env bash "$CADENCE" arm --force 2>&1); rc=$?
   if [ "$rc" -eq 0 ]; then pass "--force replaces"; else fail "--force rc=$rc: $out"; fi
   # /create /f overwrites in place — a pre-emptive /delete would leave no
@@ -560,8 +560,8 @@ if command -v cygpath >/dev/null 2>&1; then
 
   out=$(win_env bash "$CADENCE" status 2>&1)
   assert_has "$out" "ARMED" "status reports ARMED"
-  assert_has "$out" "HIMMEL-DriftFix" "status names the drift leg"
-  assert_has "$out" "HIMMEL-ForkResync" "status names the resync leg"
+  assert_has "$out" "HIMMEL-DriftFix" "status names the drift worker"
+  assert_has "$out" "HIMMEL-ForkResync" "status names the resync worker"
   assert_has "$out" "next run:" "status surfaces the next run time"
   out=$(win_env bash "$CADENCE" disarm 2>&1); rc=$?
   if [ "$rc" -eq 0 ]; then pass "disarm exits 0"; else fail "disarm rc=$rc: $out"; fi
@@ -584,21 +584,21 @@ if command -v cygpath >/dev/null 2>&1; then
   assert_rc 2 "unrecognized /query stderr is rc=2 on disarm" win_env bash "$CADENCE" disarm
   rm -rf "$root" "$state"
 
-  echo "[test-drift-fix-cadence] Windows: post-arm verify failure rolls back BOTH legs (all-or-nothing)"
+  echo "[test-drift-fix-cadence] Windows: post-arm verify failure rolls back BOTH workers (all-or-nothing)"
   root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
-  # The resync leg's /query will report success but with no Next Run Time —
+  # The resync worker's /query will report success but with no Next Run Time —
   # the fake's way of simulating a task that "created" but never really armed.
   touch "$state/no_next_run_HIMMEL-ForkResync"
   out=$(win_env bash "$CADENCE" arm 2>&1); rc=$?
   if [ "$rc" -eq 4 ]; then pass "post-arm verify failure is rc=4"; else fail "expected rc=4, got rc=$rc: $out"; fi
-  assert_has "$out" "rolling back both legs" "verify failure message says it rolls back both legs"
+  assert_has "$out" "rolling back both workers" "verify failure message says it rolls back both workers"
   if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "post-arm verify failure leaves NEITHER leg armed (all-or-nothing)"
+    pass "post-arm verify failure leaves NEITHER worker armed (all-or-nothing)"
   else
-    fail "post-arm verify failure left a leg armed"
+    fail "post-arm verify failure left a worker armed"
   fi
-  # The drift leg's shim WAS published before the
-  # resync leg failed the verify — rollback must remove it too, not orphan it.
+  # The drift worker's shim WAS published before the
+  # resync worker failed the verify — rollback must remove it too, not orphan it.
   if [ ! -f "$state/bat/drift-fix.vbs" ] && [ ! -f "$state/bat/fork-resync.vbs" ]; then
     pass "failed arm leaves no orphan .vbs shim (rollback removed both)"
   else
@@ -606,10 +606,10 @@ if command -v cygpath >/dev/null 2>&1; then
   fi
   rm -rf "$root" "$state"
 
-  echo "[test-drift-fix-cadence] Windows: mid-loop cygpath failure rolls back BOTH legs (CR)"
+  echo "[test-drift-fix-cadence] Windows: mid-loop cygpath failure rolls back BOTH workers (CR)"
   root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
   # A fake cygpath that delegates to the real one for every path except the
-  # resync leg's — simulating the exact failure the drift leg's task has
+  # resync worker's — simulating the exact failure the drift worker's task has
   # ALREADY been created by the time it hits (arm is all-or-nothing).
   real_cygpath="$(command -v cygpath)"
   fake_cyg="$state/cygpath"
@@ -626,35 +626,35 @@ FAKE
       DRIFTFIX_CLAUDE="$fake_claude" PATH="$state:$PATH" bash "$CADENCE" arm 2>&1); rc=$?
   if [ "$rc" -eq 4 ]; then pass "mid-loop cygpath failure is rc=4"; else fail "expected rc=4, got rc=$rc: $out"; fi
   if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "mid-loop cygpath failure leaves NEITHER leg armed (all-or-nothing)"
+    pass "mid-loop cygpath failure leaves NEITHER worker armed (all-or-nothing)"
   else
-    fail "mid-loop cygpath failure left a leg armed (half-armed cadence)"
+    fail "mid-loop cygpath failure left a worker armed (half-armed cadence)"
   fi
-  # Leg 1 published its shim before leg 2's cygpath
+  # Worker 1 published its shim before worker 2's cygpath
   # failed — rollback removes it instead of orphaning it.
   if [ ! -f "$state/bat/drift-fix.vbs" ]; then
     pass "mid-loop cygpath rollback removed the published shim too"
   else
-    fail "mid-loop cygpath rollback orphaned the drift leg's .vbs shim"
+    fail "mid-loop cygpath rollback orphaned the drift worker's .vbs shim"
   fi
   rm -rf "$root" "$state"
 
-  echo "[test-drift-fix-cadence] Windows: publication onto a non-regular final path rolls back BOTH legs (CR + HIMMEL-1753 r2)"
+  echo "[test-drift-fix-cadence] Windows: publication onto a non-regular final path rolls back BOTH workers (CR + HIMMEL-1753 r2)"
   root=$(make_root); state=$(mktemp -d); fake_st=$(make_fake_schtasks "$state"); fake_claude=$(make_stub_claude "$state" .exe)
-  # A directory sitting where the drift leg's .bat should be a file. Staging
+  # A directory sitting where the drift worker's .bat should be a file. Staging
   # means the emitter's redirect no longer fails — the staged
   # temp path is free — so this sabotage must be caught by the pre-promotion
   # guard: `mv` onto a directory would "succeed" by moving the staged file
   # INSIDE it, arming a task at a path that is not a file. The refusal must
-  # roll back both legs and leave no shim or staged temp behind.
+  # roll back both workers and leave no shim or staged temp behind.
   mkdir -p "$state/bat/drift-fix.bat"
   out=$(win_env bash "$CADENCE" arm 2>&1); rc=$?
   if [ "$rc" -eq 4 ]; then pass "non-regular final path refusal is rc=4"; else fail "expected rc=4, got rc=$rc: $out"; fi
   assert_has "$out" "not a regular file" "refusal message names the squatting path"
   if [ ! -f "$state/armed_HIMMEL-DriftFix" ] && [ ! -f "$state/armed_HIMMEL-ForkResync" ]; then
-    pass "publication refusal leaves NEITHER leg armed (all-or-nothing)"
+    pass "publication refusal leaves NEITHER worker armed (all-or-nothing)"
   else
-    fail "publication refusal left a leg armed (half-armed cadence)"
+    fail "publication refusal left a worker armed (half-armed cadence)"
   fi
   if [ ! -f "$state/bat/drift-fix.vbs" ] && [ ! -f "$state/bat/fork-resync.vbs" ]; then
     pass "publication refusal leaves no orphan .vbs shim"

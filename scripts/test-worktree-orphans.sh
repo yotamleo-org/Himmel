@@ -268,8 +268,8 @@ WT_PARK_MOD=$(mk_wt parkmod fix/park-mod 1) || exit 1
 printf 'changed\n' >> "$WT_PARK_MOD/README"
 WT_PARK_DOC=$(mk_wt parkdoc fix/park-doc 1) || exit 1
 WT_PARK_DOC2=$(mk_wt parkdoc2 fix/park-doc-2 1) || exit 1
-printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/park-doc\n' "$TMP_ROOT" > "$HANDOVER_ROOT/leg-live.md"
-HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-live.md" "orphans-test-$$" >/dev/null 2>&1 \
+printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/park-doc\n' "$TMP_ROOT" > "$HANDOVER_ROOT/worker-live.md"
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/worker-live.md" "orphans-test-$$" >/dev/null 2>&1 \
     || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
 { mkdir -p "$REPO/.git/info" && printf '.env.local\nnode_modules/\n' >> "$REPO/.git/info/exclude"; } \
     || { echo "setup: write info/exclude failed" >&2; exit 1; }
@@ -303,22 +303,22 @@ expect "7: the locked tree is kept" "$out" is_dir "$WT_LOCKED"
 expect "7: the RESUME-held tree is kept" "$out" is_dir "$WT_RESUME"
 expect "7: the reclaim names the kept branch and its unpushed commits" "$out" grepq "$out" -F "branch fix/park kept (1 unpushed commit(s))"
 expect "7: a no-commit branch reports 0 unpushed" "$out" grepq "$out" -F "branch fix/park-main kept (0 unpushed commit(s))"
-expect "7: a tree whose branch a live leg doc names is kept" "$out" is_dir "$WT_PARK_DOC"
+expect "7: a tree whose branch a live worker doc names is kept" "$out" is_dir "$WT_PARK_DOC"
 expect "7: a branch that only shares the doc's branch prefix is reclaimed" "$out" is_gone "$WT_PARK_DOC2"
-HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/leg-live.md" >/dev/null 2>&1 || true
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/worker-live.md" >/dev/null 2>&1 || true
 
-# a lock doc that cannot be read leaves "no live leg names this branch" unproven
+# a lock doc that cannot be read leaves "no live worker names this branch" unproven
 WT_PARK_UNREAD=$(mk_wt parkunread fix/park-unread 1) || exit 1
-printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/other\n' "$TMP_ROOT" > "$HANDOVER_ROOT/leg-unread.md"
-HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/leg-unread.md" "orphans-test-unread-$$" >/dev/null 2>&1 \
+printf -- '---\nresume_cwd: %s/elsewhere\n---\n\nbranch fix/other\n' "$TMP_ROOT" > "$HANDOVER_ROOT/worker-unread.md"
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" acquire "$HANDOVER_ROOT/worker-unread.md" "orphans-test-unread-$$" >/dev/null 2>&1 \
     || { echo "setup: queue-lock acquire failed" >&2; exit 1; }
-chmod 000 "$HANDOVER_ROOT/leg-unread.md"
-if [ -r "$HANDOVER_ROOT/leg-unread.md" ]; then
+chmod 000 "$HANDOVER_ROOT/worker-unread.md"
+if [ -r "$HANDOVER_ROOT/worker-unread.md" ]; then
     echo "    SKIP: 7: permission bits do not bind this user (root), unreadable-lock rows not run"
-    chmod 600 "$HANDOVER_ROOT/leg-unread.md"
+    chmod 600 "$HANDOVER_ROOT/worker-unread.md"
 else
     out=$(run_wt prune)
-    chmod 600 "$HANDOVER_ROOT/leg-unread.md"
+    chmod 600 "$HANDOVER_ROOT/worker-unread.md"
     expect "7: a parked tree is kept when a live lock doc cannot be read" "$out" is_dir "$WT_PARK_UNREAD"
     WT_PARK_UNREAD2=$(mk_wt parkunread2 fix/park-unread-2 1) || exit 1
     chmod 000 "$HANDOVER_ROOT"/.locks/queue/*.lock/owner.json
@@ -331,7 +331,7 @@ else
     chmod 700 "$HANDOVER_ROOT"/.locks/queue/*.lock
     expect "7: a parked tree is kept when a lock directory cannot be searched" "$out" is_dir "$WT_PARK_UNREAD3"
 fi
-HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/leg-unread.md" >/dev/null 2>&1 || true
+HANDOVER_DIR="$HANDOVER_ROOT" bash "$SCRIPT_DIR/handover/queue-lock.sh" release "$HANDOVER_ROOT/worker-unread.md" >/dev/null 2>&1 || true
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

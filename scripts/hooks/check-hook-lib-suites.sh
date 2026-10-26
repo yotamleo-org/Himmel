@@ -4,7 +4,7 @@
 # Both suites are the spec for a SECURITY gate (the settings.json hook wirers
 # and the shared settings lock) and, until this hook existed, no runner on any
 # machine or in any pipeline invoked them. wire-hook-bash.test.mjs was 6-of-7
-# RED on committed main for a full day and five consecutive chain legs read,
+# RED on committed main for a full day and five consecutive chain workers read,
 # discussed and deferred that file while it was broken.
 #
 # WHY PRE-COMMIT ONLY, HISTORICALLY:

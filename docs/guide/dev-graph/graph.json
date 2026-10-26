@@ -9,7 +9,7 @@
     },
     {
       "id": "console",
-      "label": "Console",
+      "label": "Chief",
       "token": "--alpha"
     },
     {
@@ -19,7 +19,7 @@
     },
     {
       "id": "leg",
-      "label": "Leg",
+      "label": "Worker",
       "token": "--accent"
     },
     {
@@ -59,12 +59,12 @@
       "id": "c.start",
       "lane": "console",
       "phase": "dispatch",
-      "label": "Console start",
-      "summary": "chief.sh new writes the console doc, takes its queue lock and prints the launch line",
+      "label": "Chief start",
+      "summary": "chief.sh new writes the chief doc, takes its queue lock and prints the launch line",
       "sources": [
         {
           "file": "scripts/handover/chief/chief.sh",
-          "anchor": "chief.sh new  — write the console doc + acquire its queue lock"
+          "anchor": "chief.sh new  — write the chief doc + acquire its queue lock"
         }
       ],
       "pos": {
@@ -82,10 +82,10 @@
       "lane": "console",
       "phase": "dispatch",
       "label": "Waiter",
-      "summary": "console-wait.sh stays silent until the first real event, then prints one WAKE block",
+      "summary": "chief-wait.sh stays silent until the first real event, then prints one WAKE block",
       "sources": [
         {
-          "file": "scripts/handover/chief-kit/console-wait.sh",
+          "file": "scripts/handover/chief-kit/chief-wait.sh",
           "anchor": "printing one WAKE block, on the first real event"
         }
       ],
@@ -104,11 +104,11 @@
       "lane": "console",
       "phase": "dispatch",
       "label": "Tick",
-      "summary": "One snapshot line of the fleet: capacity, leg labels FRESH/STALE/NOLIVE/FORKED, nonces",
+      "summary": "One snapshot line of the fleet: capacity, worker labels FRESH/STALE/NOLIVE/FORKED, nonces",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/tick.sh",
-          "anchor": "one wake-up-budgeted console snapshot"
+          "anchor": "one wake-up-budgeted chief snapshot"
         }
       ],
       "pos": {
@@ -148,11 +148,11 @@
       "lane": "console",
       "phase": "dispatch",
       "label": "Brief + worktree",
-      "summary": "gen-briefs.py writes the leg doc, launcher and worktree. An opus or fable leg needs a Tier line.",
+      "summary": "gen-briefs.py writes the worker doc, launcher and worktree. An opus or fable worker needs a Tier line.",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/gen-briefs.py",
-          "anchor": "Write leg briefs + launchers"
+          "anchor": "Write worker briefs + launchers"
         }
       ],
       "pos": {
@@ -192,10 +192,10 @@
       "lane": "operator",
       "phase": "dispatch",
       "label": "Operator ruling",
-      "summary": "Operator decisions, bank lift, trust-path policy. The console never asks a blocking question.",
+      "summary": "Operator decisions, bank lift, trust-path policy. The chief never asks a blocking question.",
       "sources": [
         {
-          "file": "docs/handover/running-a-console.md",
+          "file": "docs/handover/running-a-chief.md",
           "anchor": "A worker that hits something it cannot decide reports to the chief"
         }
       ],
@@ -402,7 +402,7 @@
       "lane": "console",
       "phase": "review",
       "label": "Grant round",
-      "summary": "grant-round.sh lowers .round on a signed judge record. A leg is refused.",
+      "summary": "grant-round.sh lowers .round on a signed judge record. A worker is refused.",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/grant-round.sh",
@@ -534,7 +534,7 @@
       "lane": "leg",
       "phase": "verify",
       "label": "CI-red triage",
-      "summary": "A red job is the leg's to fix. If it is not the PR's fault: MAIN-RED once.",
+      "summary": "A red job is the worker's to fix. If it is not the PR's fault: MAIN-RED once.",
       "sources": [
         {
           "file": "docs/handover/worker-preface.md",
@@ -582,7 +582,7 @@
       "sources": [
         {
           "file": "scripts/handover/chief-kit/ready-check.sh",
-          "anchor": "mechanize the console's READY"
+          "anchor": "mechanize the chief's READY"
         }
       ],
       "pos": {
@@ -710,7 +710,7 @@
       "lane": "leg",
       "phase": "merge",
       "label": "Close ticket (if done)",
-      "summary": "Conditional: only when the brief says completes-ticket: yes does merge-on-green.sh --jira-transition close the PR title's first ticket. Otherwise the flag stays off and the ticket keeps its status. Either way the leg re-reads the ticket and posts the PR and merge sha on it",
+      "summary": "Conditional: only when the brief says completes-ticket: yes does merge-on-green.sh --jira-transition close the PR title's first ticket. Otherwise the flag stays off and the ticket keeps its status. Either way the worker re-reads the ticket and posts the PR and merge sha on it",
       "sources": [
         {
           "file": "scripts/handover/merge-on-green.sh",
@@ -732,7 +732,7 @@
       "lane": "gates",
       "phase": "merge",
       "label": "Merge hook",
-      "summary": "Any bare gh pr merge faces CR threads, CI green, console GO (legs) and trust path",
+      "summary": "Any bare gh pr merge faces CR threads, CI green, chief GO (workers) and trust path",
       "sources": [
         {
           "file": "scripts/hooks/block-unresolved-cr-merge.sh",
@@ -780,7 +780,7 @@
       "sources": [
         {
           "file": "scripts/handover/chief-kit/worker-event.sh",
-          "anchor": "route one leg message to the"
+          "anchor": "route one worker message to the"
         }
       ],
       "pos": {
@@ -824,11 +824,11 @@
       "sources": [
         {
           "file": "scripts/handover/chief-kit/wrap-merged.sh",
-          "anchor": "a leg's MERGED and"
+          "anchor": "a worker's MERGED and"
         },
         {
           "file": "scripts/handover/chief-kit/close-wrapped-worker.sh",
-          "anchor": "console-run wrapped-leg"
+          "anchor": "chief-run wrapped-worker"
         }
       ],
       "pos": {
@@ -846,7 +846,7 @@
       "lane": "console",
       "phase": "succession",
       "label": "Succession",
-      "summary": "chief.sh next at 45 percent fill; the successor goes LIVE, legs quote back SUCCESSION accepted",
+      "summary": "chief.sh next at 45 percent fill; the successor goes LIVE, workers quote back SUCCESSION accepted",
       "sources": [
         {
           "file": "scripts/handover/chief/chief.sh",
@@ -854,7 +854,7 @@
         },
         {
           "file": "scripts/handover/chief-kit/succession-tracker.sh",
-          "anchor": "The successor console's tally of its inherited legs'"
+          "anchor": "The successor chief's tally of its inherited workers'"
         }
       ],
       "pos": {
@@ -874,10 +874,10 @@
       "from": "c.wait",
       "to": "c.pick",
       "kind": "decision",
-      "condition": "tick capacity=UNDERFILLED:<n>: live below cap and no leg launched recently",
+      "condition": "tick capacity=UNDERFILLED:<n>: live below cap and no worker launched recently",
       "sources": [
         {
-          "file": "scripts/handover/chief-kit/console-wait.sh",
+          "file": "scripts/handover/chief-kit/chief-wait.sh",
           "anchor": "WAKE underfilled capacity=UNDERFILLED:<n> the tick's capacity"
         }
       ],
@@ -945,7 +945,7 @@
       "sources": [
         {
           "file": "scripts/handover/chief-kit/headed-arm-worker.sh",
-          "anchor": "launch a leg even though it has an un-acked"
+          "anchor": "launch a worker even though it has an un-acked"
         }
       ],
       "path": {
@@ -958,7 +958,7 @@
       "to": "c.brief",
       "kind": "refusal",
       "exit": 2,
-      "condition": "an opus or fable leg without a Tier line",
+      "condition": "an opus or fable worker without a Tier line",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/headed-arm-worker.sh",
@@ -1104,7 +1104,7 @@
       "to": "c.grant",
       "kind": "decision",
       "exit": 16,
-      "condition": "leg FINDING; the console grants on a signed judge NO-GO, a standing finding or an operator record; a judge GO on a clean head is refused (exit 16)",
+      "condition": "worker FINDING; the chief grants on a signed judge NO-GO, a standing finding or an operator record; a judge GO on a clean head is refused (exit 16)",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/grant-round.sh",
@@ -1223,7 +1223,7 @@
       "condition": "the PR's fault; every push needs its own review round",
       "sources": [
         {
-          "file": "docs/handover/running-a-console.md",
+          "file": "docs/handover/running-a-chief.md",
           "anchor": "The automated review ledger is keyed by head sha, so **every push needs its own review"
         }
       ],
@@ -1269,7 +1269,7 @@
       "from": "j.verdict",
       "to": "l.commit",
       "kind": "loop",
-      "condition": "NO-GO: verdict-go runs steps 1 and 3 only; the console relays it with the token",
+      "condition": "NO-GO: verdict-go runs steps 1 and 3 only; the chief relays it with the token",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/verdict-go.sh",
@@ -1319,7 +1319,7 @@
       "to": "j.judge",
       "kind": "refusal",
       "exit": 9,
-      "condition": "a Critical or Important finding has no valid disposition; a judge or the console records one with cr-disposition.sh record",
+      "condition": "a Critical or Important finding has no valid disposition; a judge or the chief records one with cr-disposition.sh record",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/go.sh",
@@ -1353,11 +1353,11 @@
       "to": "c.go",
       "kind": "refusal",
       "exit": 3,
-      "condition": "run from a leg or relay; a leg never writes its own GO",
+      "condition": "run from a worker or relay; a worker never writes its own GO",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/go.sh",
-          "anchor": "a leg never writes its own GO"
+          "anchor": "a worker never writes its own GO"
         }
       ],
       "path": {
@@ -1370,7 +1370,7 @@
       "to": "l.merge",
       "kind": "decision",
       "exit": 0,
-      "condition": "GO file written; the leg gets GO <pr> <sha> quoting its token",
+      "condition": "GO file written; the worker gets GO <pr> <sha> quoting its token",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/go.sh",
@@ -1387,11 +1387,11 @@
       "to": "l.ready",
       "kind": "refusal",
       "exit": 17,
-      "condition": "a console leg with no GO file for this head",
+      "condition": "a chief worker with no GO file for this head",
       "sources": [
         {
           "file": "scripts/handover/merge-on-green.sh",
-          "anchor": "policy-refused by the console-GO gate"
+          "anchor": "policy-refused by the chief-GO gate"
         }
       ],
       "path": {
@@ -1503,7 +1503,7 @@
       "from": "c.legevent",
       "to": "j.judge",
       "kind": "decision",
-      "condition": "READY or FINDING: needs a judge or the console",
+      "condition": "READY or FINDING: needs a judge or the chief",
       "sources": [
         {
           "file": "scripts/handover/chief-kit/worker-event.sh",
@@ -1552,10 +1552,10 @@
       "from": "c.next",
       "to": "c.wait",
       "kind": "decision",
-      "condition": "WAKE succession complete <k/n>: every leg quoted back",
+      "condition": "WAKE succession complete <k/n>: every worker quoted back",
       "sources": [
         {
-          "file": "scripts/handover/chief-kit/console-wait.sh",
+          "file": "scripts/handover/chief-kit/chief-wait.sh",
           "anchor": "WAKE succession complete <k/n>   with --succession <successor>"
         }
       ],
@@ -1877,7 +1877,7 @@
         },
         {
           "at": "l.commit",
-          "caption": "The leg fixes and pushes; every push needs its own round"
+          "caption": "The worker fixes and pushes; every push needs its own round"
         },
         {
           "at": "g.prepush",
@@ -1954,7 +1954,7 @@
         },
         {
           "at": "c.residual",
-          "caption": "The leg files a HIMMEL ticket"
+          "caption": "The worker files a HIMMEL ticket"
         }
       ]
     },
@@ -1973,7 +1973,7 @@
         },
         {
           "at": "c.grant",
-          "caption": "FINDING to the console; a signed judge NO-GO buys the round"
+          "caption": "FINDING to the chief; a signed judge NO-GO buys the round"
         },
         {
           "at": "l.prcheck",
@@ -2154,7 +2154,7 @@
       },
       "unmapped": {}
     },
-    "scripts/handover/chief-kit/console-wait.sh": {
+    "scripts/handover/chief-kit/chief-wait.sh": {
       "table": "wake",
       "floor": 9,
       "mapped": {
@@ -2175,7 +2175,7 @@
         "unowned-prs": "PR ownership housekeeping: operational",
         "focus": "FOCUS page refresh failure or stale dirty state: operational",
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
-        "resolve": "a leg's BLOCKED resolve marker: the console resolves the thread itself, not a workflow decision"
+        "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision"
       }
     },
     "docs/handover/worker-preface.md": {
@@ -2189,10 +2189,10 @@
       },
       "unmapped": {
         "RESOLVED": "retires a FINDING: bookkeeping",
-        "BLOCKED": "leg status: escalation to the console, no graph decision",
-        "HALTED": "leg status: stop, no graph decision",
-        "PARKED-BANK": "leg status: bank park, no graph decision",
-        "RESUMED": "leg status: resume, no graph decision"
+        "BLOCKED": "worker status: escalation to the chief, no graph decision",
+        "HALTED": "worker status: stop, no graph decision",
+        "PARKED-BANK": "worker status: bank park, no graph decision",
+        "RESUMED": "worker status: resume, no graph decision"
       }
     },
     "scripts/lib/cr-first-release.sh": {

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # the luna template's shellcheck pre-commit hook must exclude
-# handovers/**/verdicts/ (a console judge's probe/cases scripts, evidence its
+# handovers/**/verdicts/ (a chief judge's probe/cases scripts, evidence its
 # verdict rests on — not shipped code) the same way it already excludes
-# handovers/**/specs/(console-kit-*|reports/*-artifacts)/, while a normal
+# handovers/**/specs/(chief-kit-*|reports/*-artifacts)/, while a normal
 # scripts/*.sh path is still linted. An earlier change adds handovers/**/logs/.
 #
 # Extracts the shellcheck hook's `exclude` regex FROM the template's own
@@ -69,7 +69,7 @@ else:
     print(f"FAIL - {VERDICT_PATH} is NOT excluded from shellcheck (kept={kept})")
     fails += 1
 
-# legs and consoles write scratch sheets and launch artefacts under
+# workers and chiefs write scratch sheets and launch artefacts under
 # handovers/**/logs/; one failing scratch .sh there stalled every vault commit.
 LOGS_PATH = "handovers/x/logs/scratch.sh"
 # widened the exclude to all of handovers/; the boundary is now the

@@ -462,7 +462,7 @@ this lane never replaces it, it adds free capacity alongside. The free tier
 is a PAYG 90-day trial with **per-model** free quotas (not every model gets
 1M tokens), so enable **stop-on-exhaust** when you activate.
 
-### Activation (console-side, one-time)
+### Activation (chief-side, one-time)
 
 A `403 AccessDenied.Unpurchased` from the API means **the Model Studio
 service has not been activated**. It is not an identity, key, URL, or region

@@ -16,4 +16,4 @@
 */scripts/hooks/test-block-bare-qmd-query.sh              times hook scans against 1 s budgets
 */scripts/hooks/test-block-destructive-commands-c.sh      times hook scans against 4 s budgets
 */scripts/hooks/test-block-edit-live-settings.sh          times hook scans against 2-3 s budgets
-*/scripts/handover/chief-kit/test-close-wrapped-leg.sh  checks the repo root for a handovers/ dir another suite may create
+*/scripts/handover/chief-kit/test-close-wrapped-worker.sh  checks the repo root for a handovers/ dir another suite may create

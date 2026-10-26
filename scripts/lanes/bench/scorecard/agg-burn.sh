@@ -6,10 +6,10 @@
 # under git bash unchanged.
 #
 # Copied from the baseline Appendix B (burn-sweep.sh + agg-burn.sh,
-# leg N207, 2026-09-12) and folded into one self-contained script: walks
-# Claude Code transcripts, tags each session by role (console/leg/relay/other,
+# worker N207, 2026-09-12) and folded into one self-contained script: walks
+# Claude Code transcripts, tags each session by role (chief/worker/relay/other,
 # or `unattributed` for an untitled session: its own row, never folded into
-# other) + parent role for subagents + dominant model, runs leg-burn.sh over it, and
+# other) + parent role for subagents + dominant model, runs worker-burn.sh over it, and
 # aggregates by role x model. The baseline hardcoded a 7-day mtime window over
 # one project's transcripts; this reads --since/--until against each
 # session's own timestamp span instead (a session with any activity inside
@@ -20,7 +20,7 @@
 # SCORECARD_PROJECTS_DIR is an explicit scope: exactly that one transcript root
 # (tests point it at a fixture tree). The default is the primary himmel project
 # dir UNION its `--claude-worktrees-*` siblings - see lib/scorecard-lib.sh
-# (a primary-only default would drop the worktree legs).
+# (a primary-only default would drop the worktree workers).
 #
 # The last stdout line is `coverage: roots=R discovered=D parsed=P skipped=K
 # (reason=n ...)` - how much of the discovered input the numbers above cover.
@@ -40,7 +40,7 @@ done
 [ -n "$SINCE" ] || { usage; exit 2; }
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WORKER_SESSION_BURN="$HERE/../../leg-burn.sh"
+WORKER_SESSION_BURN="$HERE/../../worker-burn.sh"
 # shellcheck source=../../lib/burn-weights.sh
 . "$HERE/../../lib/burn-weights.sh"
 # shellcheck source=lib/scorecard-lib.sh
@@ -48,7 +48,7 @@ WORKER_SESSION_BURN="$HERE/../../leg-burn.sh"
 sc_roots_check agg-burn || exit 2
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as
-# leg-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
+# worker-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
 to_epoch() {
     date -d "$1" +%s 2>/dev/null && return 0
     date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$(printf '%s' "$1" | sed 's/\.[0-9]*Z$/Z/')" +%s 2>/dev/null
@@ -95,7 +95,7 @@ while IFS= read -r f; do
     [ "$last_epoch" -ge "$SINCE_EPOCH" ] || { sc_cov out-of-window; continue; }
     if [ -n "$UNTIL_EPOCH" ] && [ "$first_epoch" -ge "$UNTIL_EPOCH" ]; then sc_cov out-of-window; continue; fi
 
-    line=$(bash "$WORKER_SESSION_BURN" --raw "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
+    line=$(bash "$WORKER_SESSION_BURN" --raw "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov worker-burn-failed; continue; }
     sc_cov parsed
     calls=$(printf '%s' "$line" | grep -o 'calls=[0-9]*' | cut -d= -f2)
     avg=$(printf '%s' "$line" | grep -o 'avg-ctx=[^ ]*' | cut -d= -f2)
@@ -136,7 +136,7 @@ END{
 }' "$ROWS" | sort
 
 # Price-weighted TOTAL, over every row regardless of role/model.
-# Columns 9-12 are the exact integer counters leg-burn.sh
+# Columns 9-12 are the exact integer counters worker-burn.sh
 # --raw prints (no per-session 0.1k rounding to compound); this awk sums the
 # raw counts and divides by 1000 ONCE for display, rather than summing
 # per-session kn() roundings.
@@ -151,5 +151,5 @@ sc_cov_line "$(wc -l < "$FILES" | tr -d ' ')" "$SC_ROOT_COUNT"
 
 n_fail=$(wc -l < "$FAILS" | tr -d ' ')
 if [ "$n_fail" -gt 0 ]; then
-    echo "agg-burn: WARNING: $n_fail transcript(s) skipped due to leg-burn.sh failure" >&2
+    echo "agg-burn: WARNING: $n_fail transcript(s) skipped due to worker-burn.sh failure" >&2
 fi

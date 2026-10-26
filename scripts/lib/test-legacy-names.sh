@@ -88,16 +88,46 @@ check "js restrict ignores OFF" "0" \
 check "python restrict ignores OFF" "0" \
   "$(env -i PATH="$PATH" HIMMEL_LEGACY_NAMES=0 T_OLD=1 python3 -I "$HERE/env_alias.py" restrict T_NEW T_OLD >/dev/null 2>&1; echo $?)"
 
+# legacy_flag and its twins: on = rc 0 and one deprecation line for two calls;
+# off = rc 1 and the renamed line
+sh_flag() {
+  env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" bash -c \
+    'set -euo pipefail; . "$1"; rc=0; legacy_flag --legs --workers || rc=$?; legacy_flag --legs --workers || rc=$?; echo "rc=$rc"' \
+    _ "$LIB" 2>&1 | tr '\n' '|'
+}
+js_flag() {
+  env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" node --input-type=module -e \
+    'const m = await import(process.argv[2]); const a = m.legacyFlag("--legs", "--workers"); const b = m.legacyFlag("--legs", "--workers"); console.log("rc=" + (a && b ? 0 : 1));' \
+    _ "$HERE/env-alias.mjs" 2>&1 | tr '\n' '|'
+}
+py_flag() {
+  env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" python3 -I -c \
+    'import sys; sys.path.insert(0, sys.argv[1]); import env_alias; a = env_alias.legacy_flag("--legs", "--workers"); b = env_alias.legacy_flag("--legs", "--workers"); print("rc=%d" % (0 if a and b else 1))' \
+    "$HERE" 2>&1 | tr '\n' '|'
+}
+for impl in sh js py; do
+  check "$impl legacy_flag on: one deprecation line, rc 0" "--legs is deprecated: use --workers|rc=0|" "$("${impl}_flag" 1)"
+  check "$impl legacy_flag off: renamed line, rc 1" "--legs was renamed to --workers; legacy names are off|--legs was renamed to --workers; legacy names are off|rc=1|" "$("${impl}_flag" 0)"
+done
+
 # every forwarder that obeys the switch spells the predicate as legacy-names.sh does
 PAT=$(grep -o '^ *0|\[Ff\]\[Aa\]\[Ll\]\[Ss\]\[Ee\]|\[Nn\]\[Oo\]|\[Oo\]\[Ff\]\[Ff\])' "$LIB" | tr -d ' ' || true)
 check "legacy-names.sh carries the falsy pattern" "yes" "$([ -n "$PAT" ] && echo yes || echo no)"
+# (a JS or Python file spells its own language's form of it, or calls the shared predicate)
+JS_PAT='(0|false|no|off)$/i'
+PY_PAT='"0", "false", "no", "off")'
 n=0
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case "$f" in */test-*) continue ;; esac
+  case "$f" in */test-*|*.test.*) continue ;; esac
+  case "$f" in
+    *.ts|*.mjs|*.js) pat=$JS_PAT ;;
+    *.py) pat=$PY_PAT ;;
+    *) pat=$PAT ;;
+  esac
   n=$((n + 1))
   check "$f spells the legacy-names pattern" "yes" \
-    "$(grep -qF "$PAT" "$ROOT/$f" && grep -qF 'HIMMEL_LEGACY_NAMES' "$ROOT/$f" && echo yes || echo no)"
+    "$({ grep -qF "$pat" "$ROOT/$f" && grep -qF 'HIMMEL_LEGACY_NAMES' "$ROOT/$f"; } || grep -qE "import .*legacyNamesOn.* from ['\"][./]*lib/env-alias.mjs['\"]" "$ROOT/$f" && echo yes || echo no)"
 done < <(git -C "$ROOT" grep -l 'legacy names are off' -- 'scripts/' 'marketplace/' 2>/dev/null || true)
 check "the forwarder template obeys the switch" "yes" \
   "$(grep -q 'legacy names are off' "$HERE/deprecated-forwarder.sh" && echo yes || echo no)"

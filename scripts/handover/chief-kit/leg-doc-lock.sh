@@ -10,3 +10,5 @@ case "${BASH_SOURCE[0]}" in */*) _leg_doc_lock_alias_dir="${BASH_SOURCE[0]%/*}" 
 # shellcheck source=scripts/handover/chief-kit/worker-doc-lock.sh
 # shellcheck disable=SC1091
 . "$_leg_doc_lock_alias_dir/worker-doc-lock.sh"
+# Old function names, for a caller that still sources this path.
+leg_doc_add_session_id() { worker_doc_add_session_id "$@"; }

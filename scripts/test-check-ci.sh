@@ -973,7 +973,7 @@ run() {
         MERGE_BLOCK_ALERT_CMD="$STUBDIR/alert-sender" \
         TELEGRAM_ACCESS_PATH="$ACCESS_OVERRIDE" \
         HIMMEL_TEST_FIXTURE=1 \
-        MERGE_WATCH_ALERT_BRIDGE_ROOT="$STUBDIR/console-bridge" \
+        MERGE_WATCH_ALERT_BRIDGE_ROOT="$STUBDIR/chief-bridge" \
         GH_STUB_ALERT_FAIL="$ALERT_FAIL_OVERRIDE" \
         CHECK_CI_POLL_INTERVAL="$POLL_OVERRIDE" \
         CHECK_CI_SETTLE="$SETTLE_OVERRIDE" \
@@ -2394,7 +2394,7 @@ assert_rc 3 "2278-k CHANGES_REQUESTED still blocks a machine-generated PR"
 
 
 # ── the honest line, and the silence it must not break ──────────
-# Console ruling 88. An earlier change asked for an unconditional "CodeRabbit: not
+# Chief ruling 88. An earlier change asked for an unconditional "CodeRabbit: not
 # configured" line on every disarmed run; case 57 above forbids the word
 # "CodeRabbit" anywhere in a clean adopter run, and coderabbit-available.sh's header
 # calls that silence the point ("an adopter must not notice it exists"). The
@@ -2586,7 +2586,7 @@ assert_err_has "codeowner-review-gate" "3381-f the refusal names the failed requ
 if [ "$(wc -l < "$STUBDIR/sleepcount" | tr -d ' ')" = 0 ]; then pass "3381-f a failed required check is never slept on"; else fail "3381-f a failed required check is never slept on" "sleeps=$(wc -l < "$STUBDIR/sleepcount")"; fi
 if [ "$(alert_count)" = 1 ]; then pass "3381-f one alert for a failed required check"; else fail "3381-f one alert for a failed required check" "count=$(alert_count)"; fi
 
-# 4071 — the leg owns a pre-READY red, so a failed REQUIRED check names the
+# 4071 — the worker owns a pre-READY red, so a failed REQUIRED check names the
 # failed job's log command (job id from the check's link) at once; a failed check
 # whose link is not an Actions job (an external status) names no log command.
 export GH_STUB_FAILLINKS='codeowner-review-gate\thttps://github.com/octo/demo/actions/runs/777/job/4242\nunit-tests\thttps://ci.example/build/9\n'
@@ -2905,7 +2905,7 @@ run cr-completed --grace 30
 assert_rc 0 "3473-d UNKNOWN that settles to CLEAN within --grace -> exit 0"
 if [ "$(cat "$STUBDIR/msc")" = 3 ]; then pass "3473-d UNKNOWN is polled (3 reads), not read once"; else fail "3473-d UNKNOWN is polled (3 reads), not read once" "reads=$(cat "$STUBDIR/msc")"; fi
 
-# 3473-e — BLOCKED while GitHub is still settling (console ruling: #1125 read
+# 3473-e — BLOCKED while GitHub is still settling (chief ruling: #1125 read
 # BLOCKED only while its checks were pending) polls, never exits 6 at once.
 MERGE_STATE_OVERRIDE="BLOCKED,BLOCKED,CLEAN"
 run cr-completed --grace 30

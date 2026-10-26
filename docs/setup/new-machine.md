@@ -554,7 +554,7 @@ Context mode is an **arming-time** choice instead: `--context 1m|standard` on
 `scripts/handover/arm-resume.sh` (7th positional on `headed-arm.sh`), defaulting
 to `standard` for every arm, chief or not; a chief (armed
 through `chief.sh`, which has no `--context` flag of its own) can still
-opt into `1m` via `CONSOLE_CONTEXT=1m` in the launching shell. The measured
+opt into `1m` via `CHIEF_CONTEXT=1m` in the launching shell. The measured
 behaviour of both levers (which model ids accept the suffix, what a plain launch
 actually reports, and why `--autocompact` is the half that does the work) is in
 [`docs/internals/lane-calibration.md`](../internals/lane-calibration.md#context-mode--an-arming-time-choice-not-a-station-default).
@@ -1712,7 +1712,7 @@ an existing foreign graphify install is adopted as-is, never reinstalled;
 see `scripts/lib/graphify-bin.sh`.)
 
 The install exposes two binaries: `graphify` (the CLI) and `graphify-mcp`
-(the MCP server). The CLI (`graphify query|explain|path`, `leg-graph.sh`) is the
+(the MCP server). The CLI (`graphify query|explain|path`, `worker-graph.sh`) is the
 supported path and what agents use. **The MCP server is on demand, not
 default** (HIMMEL-7177): `setup.sh --with-graphify` (and `adopt.sh
 --with-graphify` at `user`/`local` scope) write the absolute `graphify-mcp` path

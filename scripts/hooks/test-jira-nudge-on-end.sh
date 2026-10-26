@@ -160,16 +160,16 @@ OUT="$(run_hook 0 "")"
 assert_no_nudge "gate-off suppresses" "$OUT"
 if [ ! -f "$RELAY_LOG" ] || [ "$(grep -c . "$RELAY_LOG" 2>/dev/null || echo 0)" = "0" ]; then pass "relay not invoked (gate off)"; else fail "relay not invoked (gate off)"; fi
 
-# 3. ticket leg active → suppress.
+# 3. ticket worker active → suppress.
 build_case "$PAST" "feat/HIMMEL-123" "did work" 1 0 || exit 1
 OUT="$(run_hook 1 "ticket")"
-assert_no_nudge "ticket-leg suppresses" "$OUT"
+assert_no_nudge "ticket-worker suppresses" "$OUT"
 
 # 3b. afk profile by its new names from .env, ticket in its step list → suppress.
 build_case "$PAST" "feat/HIMMEL-123" "did work" 1 0 || exit 1
 printf 'HIMMEL_AFK=1\nHIMMEL_INITIATIVE_AFK=ticket\n' >> "$CASE_REPO/.env"
 OUT="$(run_hook 1 "")"
-assert_no_nudge "afk ticket leg from .env suppresses" "$OUT"
+assert_no_nudge "afk ticket worker from .env suppresses" "$OUT"
 
 # 4. No commit in window (the only commit predates session start) → no nudge.
 # Use real past dates (commit 2010, session start 2015) rather than a far-future

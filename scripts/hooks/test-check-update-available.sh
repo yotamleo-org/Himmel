@@ -253,7 +253,7 @@ assert_contains "expired throttle (interval=0): nudge emitted" "system-reminder"
 # so a clone that has never fetched has nothing to report and says nothing —
 # it does not stall session start finding out. The fetch it kicks is detached,
 # and the NEXT check reads the refs it left behind. This is the one case that
-# waits on the out-of-band leg; the poll returns the moment the refs move.
+# waits on the out-of-band worker; the poll returns the moment the refs move.
 echo "Test 9: cold refs → silent this run, next check nudges"
 make_repo_behind 1 0
 SD="$TMP/s9"; mkdir -p "$SD"

@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015,SC2016  # SC2016: the case-12 stubs are written with literal $ for the stub to expand; SC2015: A && B || C is intentional in check()/the final line, as in test-append-results.sh
 # scripts/handover/chief-kit/test-wrap-merged.sh - suite for wrap-merged.sh
-# the one-call MERGED + WRAPPED for a leg. Hermetic: gh, git,
-# close-wrapped-leg.sh, board.mjs and the Jira CLI are stubs (the WM_* seams);
+# the one-call MERGED + WRAPPED for a worker. Hermetic: gh, git,
+# close-wrapped-worker.sh, board.mjs and the Jira CLI are stubs (the WM_* seams);
 # fleet-manifest.sh and append-results.sh are real, against temp files.
 #
 # Cases:
-#   1. usage: missing --doc / --fleet / leg doc            -> rc 2
-#   2. happy path: PR read from the leg doc, bullet carries mergeCommit.oid's
-#      first 8 chars (NOT the head oid the leg reported), close + pull + board
+#   1. usage: missing --doc / --fleet / worker doc            -> rc 2
+#   2. happy path: PR read from the worker doc, bullet carries mergeCommit.oid's
+#      first 8 chars (NOT the head oid the worker reported), close + pull + board
 #      each called once, ticket status read, Jira never transitioned -> rc 0
 #   3. --pr overrides the doc's PR
 #   4. PR not MERGED                                       -> rc 3, nothing else ran
@@ -17,7 +17,7 @@
 #   7. pull failure                                        -> rc 5, no bullet
 #   8. no PR in the doc and no --pr                        -> rc 2
 #   9. manifest failure (inside close, or retiring an entry) -> rc 1, no pull, no bullet
-#  10. relative / symlinked-dir leg path resolves to the manifest's absolute form
+#  10. relative / symlinked-dir worker path resolves to the manifest's absolute form
 #  11. WRAPPED, absent from the manifest, window alive     -> close still asked; its
 #      refusal (rc 6, or 2 sessions rc 5) propagates, no pull, no bullet
 #  12. checkout path with a space: default close/board commands still run
@@ -81,37 +81,37 @@ export WM_GH="$W/bin/gh" WM_CLOSE="$W/bin/close" WM_GIT="$W/bin/git" WM_BOARD="$
 export WM_PRIMARY="$W/primary" WM_CALLS="$W/calls" WM_HEAD_OID="$HEAD_OID" WM_MERGE_OID="$MERGE_OID"
 mkdir -p "$W/primary"
 
-# fresh fixture: console doc, manifest with the leg, leg doc naming PR 777
+# fresh fixture: chief doc, manifest with the worker, worker doc naming PR 777
 fixture() {
     : > "$WM_CALLS"
-    CONSOLE="$W/2026-roadmap-console.md"
+    CHIEF="$W/2026-roadmap-chief.md"
     MANIFEST="$W/2026-roadmap-console.fleet.json"
-    LEG="$W/HIMMEL-5594-N2034-wrap-merged-2026-10-14.md"
+    WORKER="$W/HIMMEL-5594-N2034-wrap-merged-2026-10-14.md"
     rm -f "$MANIFEST" "$MANIFEST.lock"
-    printf '# console\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE console\n' > "$CONSOLE"
-    printf '# leg\nRETASK token x\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE x\n- 10:30 READY 777 %s GREEN\n- 10:40 WRAPPED\n' "$HEAD_OID" > "$LEG"
-    bash "$HERE/fleet-manifest.sh" add "$MANIFEST" "$LEG" >/dev/null || { echo "FAIL: fixture manifest add" >&2; exit 1; }
+    printf '# chief\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE chief\n' > "$CHIEF"
+    printf '# worker\nRETASK token x\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE x\n- 10:30 READY 777 %s GREEN\n- 10:40 WRAPPED\n' "$HEAD_OID" > "$WORKER"
+    bash "$HERE/fleet-manifest.sh" add "$MANIFEST" "$WORKER" >/dev/null || { echo "FAIL: fixture manifest add" >&2; exit 1; }
     export WM_PR_STATE=MERGED WM_CLOSE_RC=0 WM_PULL_RC=0 WM_BOARD_RC=0 WM_CLOSE_ERR=""
 }
-NO_SESSION='close-wrapped-leg: refusing - 0 live session(s) matched leg names [x] (need exactly 1)'
+NO_SESSION='close-wrapped-worker: refusing - 0 live session(s) matched worker names [x] (need exactly 1)'
 run() { rc=0; out="$(bash "$SCRIPT" "$@" 2>&1)" || rc=$?; calls="$(cat "$WM_CALLS")"; }
 
 # --- 1. usage -------------------------------------------------------------
 fixture
-run --fleet "$MANIFEST" "$LEG";                     check "1: no --doc -> rc 2" "$rc" 2
-run --doc "$CONSOLE" "$LEG";                        check "1: no --fleet -> rc 2" "$rc" 2
-run --doc "$CONSOLE" --fleet "$MANIFEST";           check "1: no leg doc -> rc 2" "$rc" 2
+run --fleet "$MANIFEST" "$WORKER";                     check "1: no --doc -> rc 2" "$rc" 2
+run --doc "$CHIEF" "$WORKER";                        check "1: no --fleet -> rc 2" "$rc" 2
+run --doc "$CHIEF" --fleet "$MANIFEST";           check "1: no worker doc -> rc 2" "$rc" 2
 
 # --- 2. happy path --------------------------------------------------------
 fixture
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "2: rc 0" "$rc" 0
 contains "2: gh asked about PR 777" "$calls" "pr view 777"
-contains "2: close called with --fleet and the leg doc" "$calls" "close --fleet $MANIFEST $LEG"
+contains "2: close called with --fleet and the worker doc" "$calls" "close --fleet $MANIFEST $WORKER"
 contains "2: primary fast-forwarded" "$calls" "git -C $WM_PRIMARY pull --ff-only"
-contains "2: board re-rendered with --changed" "$calls" "board --doc $CONSOLE --changed"
+contains "2: board re-rendered with --changed" "$calls" "board --doc $CHIEF --changed"
 check "2: close, pull and board each ran exactly once" "$(grep -c -e '^close ' -e '^git ' -e '^board ' "$WM_CALLS")" 3
-bullet="$(tail -n 1 "$CONSOLE")"
+bullet="$(tail -n 1 "$CHIEF")"
 contains "2: bullet records mergeCommit.oid[0:8]" "$bullet" "MERGED #777 → abcdef01"
 lacks "2: bullet never carries the head oid" "$bullet" "11111111"
 contains "2: bullet names label + ticket status" "$bullet" "N2034"
@@ -122,101 +122,101 @@ lacks "2: Jira never transitioned" "$calls" "jira transition"
 
 # --- 3. --pr overrides ----------------------------------------------------
 fixture
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG" --pr 888
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER" --pr 888
 contains "3: gh asked about PR 888" "$calls" "pr view 888"
-contains "3: bullet names #888" "$(tail -n 1 "$CONSOLE")" "MERGED #888"
+contains "3: bullet names #888" "$(tail -n 1 "$CHIEF")" "MERGED #888"
 
 # --- 4. not merged --------------------------------------------------------
 fixture
-WM_PR_STATE=OPEN run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_PR_STATE=OPEN run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "4: rc 3" "$rc" 3
 contains "4: names the step" "$out" "pr-state"
 lacks "4: close not called" "$calls" "close "
 lacks "4: an unmerged PR re-renders no board" "$calls" "board "
-check "4: console doc unchanged" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+check "4: chief doc unchanged" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
 
 # --- 5. close refusal propagates -----------------------------------------
 fixture
-WM_CLOSE_RC=4 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_CLOSE_RC=4 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "5: close rc 4 propagates" "$rc" 4
-contains "5: names the step" "$out" "close-wrapped-leg"
+contains "5: names the step" "$out" "close-wrapped-worker"
 lacks "5: no pull" "$calls" "pull"
-check "5: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
-contains "5: a failed step after a merged PR still re-renders the board" "$calls" "board --doc $CONSOLE --changed"
+check "5: no bullet" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
+contains "5: a failed step after a merged PR still re-renders the board" "$calls" "board --doc $CHIEF --changed"
 
 # --- 6. re-run is idempotent ---------------------------------------------
 fixture
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 : > "$WM_CALLS"
 # second run: the window is gone, so close reports 0 sessions (the stub left the entry in the manifest)
-WM_CLOSE_RC=5 WM_CLOSE_ERR="$NO_SESSION" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_CLOSE_RC=5 WM_CLOSE_ERR="$NO_SESSION" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "6: re-run rc 0" "$rc" 0
-check "6: exactly one MERGED bullet" "$(grep -c 'MERGED #777' "$CONSOLE")" 1
-contains "6: close asked again, never skipped" "$calls" "close --fleet $MANIFEST $LEG"
+check "6: exactly one MERGED bullet" "$(grep -c 'MERGED #777' "$CHIEF")" 1
+contains "6: close asked again, never skipped" "$calls" "close --fleet $MANIFEST $WORKER"
 check "6: the stale manifest entry is retired" "$(bash "$HERE/fleet-manifest.sh" list "$MANIFEST")" ""
 
 # --- 7. pull failure ------------------------------------------------------
 fixture
-WM_PULL_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_PULL_RC=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "7: rc 5" "$rc" 5
 contains "7: names the step" "$out" "pull"
-check "7: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
-contains "7: the board is still re-rendered" "$calls" "board --doc $CONSOLE --changed"
-WM_PULL_RC=1 WM_BOARD_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+check "7: no bullet" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
+contains "7: the board is still re-rendered" "$calls" "board --doc $CHIEF --changed"
+WM_PULL_RC=1 WM_BOARD_RC=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "7: a failing board after a failed pull keeps the pull's rc" "$rc" 5
 
 # --- 9. a manifest failure inside close is a failure ----------------------
 fixture
-WM_CLOSE_RC=1 WM_CLOSE_ERR='close-wrapped-leg: session closed but fleet manifest update failed' run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_CLOSE_RC=1 WM_CLOSE_ERR='close-wrapped-worker: session closed but fleet manifest update failed' run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "9: rc 1" "$rc" 1
-contains "9: names the step" "$out" "close-wrapped-leg"
+contains "9: names the step" "$out" "close-wrapped-worker"
 lacks "9: no pull" "$calls" "pull"
-check "9: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+check "9: no bullet" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
 # 0 sessions but the manifest entry cannot be retired: rc 1, no pull, no bullet
 fixture
 printf 'not json' > "$MANIFEST"
-WM_CLOSE_RC=5 WM_CLOSE_ERR="$NO_SESSION" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_CLOSE_RC=5 WM_CLOSE_ERR="$NO_SESSION" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "9: manifest remove failure rc 1" "$rc" 1
 contains "9: names the manual step" "$out" "fleet-manifest.sh remove"
 lacks "9: no pull" "$calls" "pull"
-check "9: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+check "9: no bullet" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
 
 # --- 8. no PR anywhere ----------------------------------------------------
 fixture
-printf '# leg\n\n## Results\n\n- 10:00 LIVE x\n' > "$LEG"
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+printf '# worker\n\n## Results\n\n- 10:00 LIVE x\n' > "$WORKER"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "8: rc 2" "$rc" 2
 contains "8: says no PR" "$out" "no PR"
 
-# --- 10. relative / symlinked-dir leg path still matches the manifest -----
+# --- 10. relative / symlinked-dir worker path still matches the manifest -----
 fixture
 cd "$W" || exit 1
-run --doc "$CONSOLE" --fleet "$MANIFEST" "${LEG##*/}"
+run --doc "$CHIEF" --fleet "$MANIFEST" "${WORKER##*/}"
 cd "$HERE" || exit 1
-check "10: relative leg path rc 0" "$rc" 0
-contains "10: close ran for the absolute path" "$calls" "close --fleet $MANIFEST $LEG"
+check "10: relative worker path rc 0" "$rc" 0
+contains "10: close ran for the absolute path" "$calls" "close --fleet $MANIFEST $WORKER"
 fixture
 ln -s "$W" "$W/dirlink"
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$W/dirlink/${LEG##*/}"
-contains "10: symlinked dir resolves, close ran" "$calls" "close --fleet $MANIFEST $LEG"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$W/dirlink/${WORKER##*/}"
+contains "10: symlinked dir resolves, close ran" "$calls" "close --fleet $MANIFEST $WORKER"
 rm -f "$W/dirlink"
 
 # --- 11. WRAPPED but absent from the manifest with the window alive ---------
-# (a symlinked root, a // path or a leg added without --fleet): the manifest is
+# (a symlinked root, a // path or a worker added without --fleet): the manifest is
 # no proof, so close still runs, and its refusal stops the run.
 fixture
-bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$LEG" >/dev/null 2>&1 || { echo "FAIL: fixture manifest remove" >&2; exit 1; }
-WM_CLOSE_RC=6 WM_CLOSE_ERR='close-wrapped-leg: refusing - subtree alive' run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+bash "$HERE/fleet-manifest.sh" remove "$MANIFEST" "$WORKER" >/dev/null 2>&1 || { echo "FAIL: fixture manifest remove" >&2; exit 1; }
+WM_CLOSE_RC=6 WM_CLOSE_ERR='close-wrapped-worker: refusing - subtree alive' run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "11: rc 6 propagates" "$rc" 6
-contains "11: close was asked" "$calls" "close --fleet $MANIFEST $LEG"
+contains "11: close was asked" "$calls" "close --fleet $MANIFEST $WORKER"
 lacks "11: no pull" "$calls" "pull"
-check "11: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+check "11: no bullet" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
 lacks "11: never says window closed" "$out" "window already closed"
 # more than one session matched: also a refusal, not an already-closed
-WM_CLOSE_RC=5 WM_CLOSE_ERR='close-wrapped-leg: refusing - 2 live session(s) matched' run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_CLOSE_RC=5 WM_CLOSE_ERR='close-wrapped-worker: refusing - 2 live session(s) matched' run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "11: 2 sessions rc 5" "$rc" 5
 lacks "11: 2 sessions: no pull" "$calls" "pull"
-check "11: 2 sessions: no bullet" "$(tail -n 1 "$CONSOLE")" "- 10:00 LIVE console"
+check "11: 2 sessions: no bullet" "$(tail -n 1 "$CHIEF")" "- 10:00 LIVE chief"
 
 # --- 12. a checkout path with a space keeps the default commands intact ----
 fixture
@@ -226,38 +226,38 @@ cp -R "$HERE" "$SP/scripts/handover/chief-kit"
 cp -R "$HERE/../../lib/." "$SP/scripts/lib/"
 printf '#!/usr/bin/env bash\necho "close $*" >> "$WM_CALLS"\n' > "$SP/scripts/handover/chief-kit/close-wrapped-worker.sh"
 printf 'import { appendFileSync } from "node:fs"\nappendFileSync(process.env.WM_CALLS, "board " + process.argv.slice(2).join(" ") + "\\n")\n' > "$SP/scripts/handover/chief-kit/board.mjs"
-rc=0; out="$(env -u WM_CLOSE -u WM_BOARD -u WM_JIRA bash "$SP/scripts/handover/chief-kit/wrap-merged.sh" --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG" 2>&1)" || rc=$?
+rc=0; out="$(env -u WM_CLOSE -u WM_BOARD -u WM_JIRA bash "$SP/scripts/handover/chief-kit/wrap-merged.sh" --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER" 2>&1)" || rc=$?
 calls="$(cat "$WM_CALLS")"
 check "12: space-path default commands rc 0" "$rc" 0
-contains "12: default close ran" "$calls" "close --fleet $MANIFEST $LEG"
-contains "12: default board ran" "$calls" "board --doc $CONSOLE --changed"
+contains "12: default close ran" "$calls" "close --fleet $MANIFEST $WORKER"
+contains "12: default board ran" "$calls" "board --doc $CHIEF --changed"
 
 # --- 13. board failure -> rc 7, the bullet is already written ---------------
 fixture
-WM_BOARD_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_BOARD_RC=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "13: rc 7" "$rc" 7
 contains "13: names the step" "$out" "board"
-contains "13: bullet was written first" "$(tail -n 1 "$CONSOLE")" "MERGED #777"
+contains "13: bullet was written first" "$(tail -n 1 "$CHIEF")" "MERGED #777"
 
 # --- 14. append failure -> rc 6, the board still re-rendered ----------------
 fixture
-chmod 444 "$CONSOLE"
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-chmod 644 "$CONSOLE"
+chmod 444 "$CHIEF"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+chmod 644 "$CHIEF"
 check "14: rc 6" "$rc" 6
 contains "14: names the step" "$out" "append-results"
-contains "14: the board is still re-rendered" "$calls" "board --doc $CONSOLE --changed"
+contains "14: the board is still re-rendered" "$calls" "board --doc $CHIEF --changed"
 
 # --- 15-18. tracker refresh ------------------------------------
 # On MERGED the wrap re-mirrors Jira, snapshots the versions and re-renders the
-# roadmap tracker the console doc names, prints tracker=CHANGED|UNCHANGED|failed:<why>
+# roadmap tracker the chief doc names, prints tracker=CHANGED|UNCHANGED|failed:<why>
 # and never fails the wrap. RED on main: no tracker step, so the page stays stale.
 if command -v python3 >/dev/null 2>&1; then
     printf '#!/usr/bin/env bash\nexit 3\n' > "$W/bin/boom"; chmod +x "$W/bin/boom"
     TR="$W/tracker"; TPLAN="$TR/plan"; TMIR="$TR/mirror"
     mkdir -p "$TPLAN/stage1" "$TPLAN/stage3" "$TMIR"
     printf '%s\n' '{"main_sha_at_build":"abcdef123456"}' > "$TPLAN/stage3/meta.json"
-    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_legs \
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n' version load_bugs load_enhancements load_features load_misc load_audit load_total est_workers \
         v1.0.1 0.1 0 0 0 0 0.1 1 > "$TPLAN/stage3/versions.tsv"
     printf '%s\t%s\t%s\t%s\n' key version layer effort_mid HIMMEL-1 v1.0.1 bugs 1 > "$TPLAN/stage3/placement.tsv"
     printf '%s\t%s\t%s\n' key close_flag close_evidence > "$TPLAN/stage3/closures.tsv"
@@ -267,14 +267,14 @@ if command -v python3 >/dev/null 2>&1; then
     export TICK_TRACKER_MIRROR_DIR="$TMIR" TRACKER_HANDOVERS_DIR="$TR/luna/handovers/tester/himmel"
     tracker_fixture() {  # tracker_fixture [tracker: value]
         fixture
-        printf '# console\n\n## Live state\n\n%s\ntracker-plan: %s\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE console\n' \
-            "${1:+tracker: $1}" "$TPLAN" > "$CONSOLE"
+        printf '# chief\n\n## Live state\n\n%s\ntracker-plan: %s\n\n## Results (newest at the bottom)\n\n- 10:00 LIVE chief\n' \
+            "${1:+tracker: $1}" "$TPLAN" > "$CHIEF"
     }
     fp_now() { python3 "$HERE/tracker.py" --emit-fp --plan-dir "$TPLAN" --out "$W/roadmap-tracker.html" --luna-map "$W/roadmap-luna-map.json" --mirror-dir "$TMIR"; }
     rm -f "$W/roadmap-tracker.html" "$W/roadmap-tracker.html.fp"
 
     tracker_fixture 'https://claude.ai/artifact/x'
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     check "15: rc 0" "$rc" 0
     contains "15: a stale tracker is re-rendered, tracker=CHANGED" "$out" "tracker=CHANGED"
     check "15: the page's fp now matches what tick derives (tick reads tracker=ok)" "$(fp_now)" "$(cat "$W/roadmap-tracker.html.fp" 2>/dev/null)"
@@ -283,49 +283,49 @@ if command -v python3 >/dev/null 2>&1; then
     check "15: versions snapshot written next to the mirror" "v1.0.1	false	2026-12-01" "$(cat "$TMIR.versions.tsv" 2>/dev/null)"
 
     tracker_fixture 'https://claude.ai/artifact/x'
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "16: a second wrap over an unchanged tracker is tracker=UNCHANGED" "$out" "tracker=UNCHANGED"
 
     tracker_fixture 'https://claude.ai/artifact/x'
-    printf 'tracker-done: https://claude.ai/artifact/d\ntracker-future: https://claude.ai/artifact/f\n' >> "$CONSOLE"
+    printf 'tracker-done: https://claude.ai/artifact/d\ntracker-future: https://claude.ai/artifact/f\n' >> "$CHIEF"
     rm -f "$W/roadmap-tracker-done.html" "$W/roadmap-tracker-future.html"
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "16b: a split tracker with fresh focus fp but no Done and future pages is re-rendered" "$out" "tracker=CHANGED"
     check "16b: the Done page is written beside the focus page" "yes" "$([ -f "$W/roadmap-tracker-done.html" ] && echo yes || echo no)"
     check "16b: the future page is written beside the focus page" "yes" "$([ -f "$W/roadmap-tracker-future.html" ] && echo yes || echo no)"
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "16b: with all three pages current the next wrap is tracker=UNCHANGED" "$out" "tracker=UNCHANGED"
 
     tracker_fixture 'https://claude.ai/artifact/x'
-    WM_TRACKER_PY="$W/bin/boom" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    WM_TRACKER_PY="$W/bin/boom" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     check "17: a failing render never fails the wrap (rc 0)" "$rc" 0
     contains "17: and says why" "$out" "tracker=failed:"
     contains "17: the bullet and board still ran" "$calls" "board --doc"
 
     printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$W/bin/sleeper"; chmod +x "$W/bin/sleeper"
     tracker_fixture 'https://claude.ai/artifact/x'
-    WM_TRACKER_PY="$W/bin/sleeper" WM_TRACKER_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    WM_TRACKER_PY="$W/bin/sleeper" WM_TRACKER_TIMEOUT=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     check "17b: a hung render never fails the wrap (rc 0)" "$rc" 0
     contains "17b: the render is cut at the timeout" "$out" "tracker=failed:render-rc124"
     contains "17b: the board still ran" "$calls" "board --doc"
 
     printf '#!/usr/bin/env bash\necho "jira $*" >> "$WM_CALLS"\nexec sleep 30\n' > "$W/bin/jira-hang"; chmod +x "$W/bin/jira-hang"
     tracker_fixture 'https://claude.ai/artifact/x'
-    WM_JIRA="$W/bin/jira-hang" WM_TRACKER_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    WM_JIRA="$W/bin/jira-hang" WM_TRACKER_TIMEOUT=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     check "17d: a hung mirror never fails the wrap (rc 0)" "$rc" 0
     contains "17d: the mirror is cut at the timeout" "$out" "tracker=failed:mirror-rc124"
     contains "17d: the board still ran" "$calls" "board --doc"
 
     tracker_fixture 'https://claude.ai/artifact/x'
-    WM_MIRROR_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    WM_MIRROR_RC=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     check "17c: a failing mirror never fails the wrap (rc 0)" "$rc" 0
     contains "17c: and says why" "$out" "tracker=failed:mirror-rc1"
     contains "17c: the board still ran" "$calls" "board --doc"
 
     tracker_fixture
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-    contains "18: a console with no tracker: line prints tracker=skip" "$out" "tracker=skip"
-    # 19-23. remaining-only board: the wrap re-renders the open tickets of the console doc's version from the fresh mirror.
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    contains "18: a chief with no tracker: line prints tracker=skip" "$out" "tracker=skip"
+    # 19-23. remaining-only board: the wrap re-renders the open tickets of the chief doc's version from the fresh mirror.
     printf '%s\n' '---' 'key: "HIMMEL-2"' 'updated: "2026-09-30T11:30:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Bug"' '---' '# HIMMEL-2: an open ticket' > "$TMIR/HIMMEL-2.md"
     printf '%s\n' '---' 'key: "HIMMEL-3"' 'updated: "2026-09-30T11:30:00.000+0000"' 'statusCategory: "Done"' 'status: "Done"' 'fixVersions: ["v1.1.3"]' 'type: "Bug"' '---' '# HIMMEL-3: a finished ticket' > "$TMIR/HIMMEL-3.md"
     printf '%s\n' '---' 'key: "HIMMEL-40"' 'updated: "2026-09-30T11:30:00.000+0000"' 'statusCategory: "To Do"' 'status: "To Do"' 'fixVersions: ["v1.1.3"]' 'type: "Bug"' '---' '# HIMMEL-40: a grouped ticket' > "$TMIR/HIMMEL-40.md"
@@ -335,11 +335,11 @@ if command -v python3 >/dev/null 2>&1; then
     printf '%s\n' '`priority:` line for the console:' '' '41 | 2 | rest of v1.1.3' > "$W/specs/plans/v1.1.3-approved-plan-2026-10-01.md"
     remaining_fixture() {  # remaining_fixture [tracker: value]
         tracker_fixture "$@"
-        printf 'remaining-board: v1.1.3\n' >> "$CONSOLE"
+        printf 'remaining-board: v1.1.3\n' >> "$CHIEF"
     }
     rm -f "$W/roadmap-remaining-v1.1.3.md"
     remaining_fixture 'https://claude.ai/artifact/x'
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "19: a wrap renders the remaining board, remaining=CHANGED" "$out" "remaining=CHANGED"
     contains "19: the plan is the one named for the version, not the newest of another" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" "## rest of version (2)"
     contains "19: the dated plan wins over the undated one" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" $'## rest of version (2)\n- HIMMEL-2 [To Do] an open ticket\n- HIMMEL-40 '
@@ -347,42 +347,42 @@ if command -v python3 >/dev/null 2>&1; then
     lacks "19: the board has no Done ticket" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" "HIMMEL-3"
 
     remaining_fixture 'https://claude.ai/artifact/x'
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "20: a second wrap over unchanged tickets is remaining=UNCHANGED" "$out" "remaining=UNCHANGED"
 
     printf '%s\n' '---' 'key: "HIMMEL-2"' 'updated: "2026-09-30T12:30:00.000+0000"' 'statusCategory: "Done"' 'status: "Done"' 'fixVersions: ["v1.1.3"]' 'type: "Bug"' '---' '# HIMMEL-2: an open ticket' > "$TMIR/HIMMEL-2.md"
     remaining_fixture 'https://claude.ai/artifact/x'
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "21: a ticket that went Done drops off the board, remaining=CHANGED" "$out" "remaining=CHANGED"
     lacks "21: the finished ticket is gone from the file" "$(cat "$W/roadmap-remaining-v1.1.3.md" 2>/dev/null)" "HIMMEL-2"
 
     remaining_fixture
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "22: no tracker: line means no fresh mirror, remaining=skip:no-fresh-mirror" "$out" "remaining=skip:no-fresh-mirror"
 
     tracker_fixture 'https://claude.ai/artifact/x'
-    run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+    run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     contains "23: no remaining-board: line prints remaining=skip" "$out" "remaining=skip"
     check "23: and the wrap still succeeds (rc 0)" "$rc" 0
 
     # 23b. one writer per page: with focus-version: the FOCUS page is focus-refresh's alone
     printf '#!/usr/bin/env bash\necho "focus $*" >> "$WM_CALLS"\necho focus=ok\n' > "$W/bin/focus-ok"; chmod +x "$W/bin/focus-ok"
     tracker_fixture 'https://claude.ai/artifact/x'
-    printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+    printf 'focus-version: v1.1.3\n' >> "$CHIEF"
     printf '<title>v1.1.3 Tracker</title>\n' > "$W/roadmap-tracker.html"
-    WM_FOCUS="$W/bin/focus-ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-    contains "23b: a focus-version console never renders the all-versions page" "$out" "tracker=skip:focus"
+    WM_FOCUS="$W/bin/focus-ok" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    contains "23b: a focus-version chief never renders the all-versions page" "$out" "tracker=skip:focus"
     check "23b: the FOCUS page is left as focus-refresh wrote it" "<title>v1.1.3 Tracker</title>" "$(cat "$W/roadmap-tracker.html")"
     contains "23b: the mirror is still refreshed" "$calls" "jira mirror --root $TMIR"
-    contains "23b: and handed to the focus refresh" "$calls" "focus --doc $CONSOLE --mirror-fresh $TMIR"
+    contains "23b: and handed to the focus refresh" "$calls" "focus --doc $CHIEF --mirror-fresh $TMIR"
     unset TICK_TRACKER_MIRROR_DIR TRACKER_HANDOVERS_DIR
 
     # 23c. the mirror dir and the Jira project key follow JIRA_PROJECT_KEY, HIMMEL only as the default
-    wm_pk() { # <key or empty> - one wrap on a focus-owned console, HOME under the sandbox
+    wm_pk() { # <key or empty> - one wrap on a focus-owned chief, HOME under the sandbox
         tracker_fixture 'https://claude.ai/artifact/x'
-        printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+        printf 'focus-version: v1.1.3\n' >> "$CHIEF"
         rm -f "$WM_CALLS.pk"
-        HOME="$W/pkhome" JIRA_PROJECT_KEY="$1" WM_FOCUS="$W/bin/focus-ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+        HOME="$W/pkhome" JIRA_PROJECT_KEY="$1" WM_FOCUS="$W/bin/focus-ok" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
     }
     wm_pk ACME
     contains "23c: an adopted project mirrors into its own dir" "$calls" "jira mirror --root $W/pkhome/.himmel/state/jira-mirror/ACME"
@@ -396,54 +396,54 @@ else
 fi
 
 # --- 24-26. focus refresh ---------------------------------------------------
-# The console doc's focus-version: line opts in; the refresh never fails the wrap.
+# The chief doc's focus-version: line opts in; the refresh never fails the wrap.
 printf '#!/usr/bin/env bash\necho "focus $*" >> "$WM_CALLS"\n[ -z "${WM_FOCUS_OUT:-}" ] || echo "$WM_FOCUS_OUT"\nexit "${WM_FOCUS_RC:-0}"\n' > "$W/bin/focus"; chmod +x "$W/bin/focus"
 export WM_FOCUS="$W/bin/focus"
 fixture
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 contains "24: no focus-version: line prints focus=skip" "$out" "focus=skip"
 lacks "24: and runs nothing" "$calls" "focus --doc"
 fixture
-printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
-WM_FOCUS_OUT="focus=ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+printf 'focus-version: v1.1.3\n' >> "$CHIEF"
+WM_FOCUS_OUT="focus=ok" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 contains "25: the happy path prints focus=ok" "$out" "focus=ok"
-contains "25: the refresh is asked with the console doc" "$calls" "focus --doc $CONSOLE"
+contains "25: the refresh is asked with the chief doc" "$calls" "focus --doc $CHIEF"
 check "25: rc 0" "$rc" 0
 fixture
-printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
+printf 'focus-version: v1.1.3\n' >> "$CHIEF"
 printf 'UNOWNED HIMMEL-1 x | writer=- | fix=y\nsdrift=1:0a1b2c3d\n' > "$W/focus-drift.txt"
-WM_FOCUS_OUT="focus=ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_FOCUS_OUT="focus=ok" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 contains "25b: a good refresh prints its drift rows" "$out" "drift: UNOWNED HIMMEL-1 x | writer=- | fix=y"
 contains "25b: and its drift line" "$out" "drift: sdrift=1:0a1b2c3d"
-WM_FOCUS_OUT="focus=FAILED:drift:budget" WM_FOCUS_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+WM_FOCUS_OUT="focus=FAILED:drift:budget" WM_FOCUS_RC=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 contains "25b: a failed drift stage is printed with its reason" "$out" "focus=FAILED:drift:budget"
 lacks "25b: and no stale drift list" "$out" "drift: UNOWNED"
 rm -f "$W/focus-drift.txt"
 fixture
-printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
-WM_FOCUS_OUT="focus=FAILED:render" WM_FOCUS_RC=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+printf 'focus-version: v1.1.3\n' >> "$CHIEF"
+WM_FOCUS_OUT="focus=FAILED:render" WM_FOCUS_RC=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "26: a failed focus refresh still exits the wrap 0" "$rc" 0
 contains "26: and the line names the stage" "$out" "focus=FAILED:render"
 contains "26: the board still ran" "$calls" "board --doc"
 printf '#!/usr/bin/env bash\nexec sleep 30\n' > "$W/bin/focus-hang"; chmod +x "$W/bin/focus-hang"
 fixture
-printf 'focus-version: v1.1.3\n' >> "$CONSOLE"
-WM_FOCUS="$W/bin/focus-hang" WM_FOCUS_TIMEOUT=1 run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+printf 'focus-version: v1.1.3\n' >> "$CHIEF"
+WM_FOCUS="$W/bin/focus-hang" WM_FOCUS_TIMEOUT=1 run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 check "26b: a hung focus refresh never fails the wrap" "$rc" 0
 contains "26b: it is cut at the timeout" "$out" "focus=FAILED:timeout"
 # 26c. focus-version: auto, or no line beside a release: line, hands the page to focus-refresh
 for opt in 'focus-version: auto' ''; do
     fixture
-    printf 'tracker: https://example.invalid/t\nrelease: R1\n' >> "$CONSOLE"
-    [ -z "$opt" ] || printf '%s\n' "$opt" >> "$CONSOLE"
-    WM_FOCUS_OUT="focus=ok" run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
-    contains "26c: [$opt] focus refresh runs" "$calls" "focus --doc $CONSOLE"
+    printf 'tracker: https://example.invalid/t\nrelease: R1\n' >> "$CHIEF"
+    [ -z "$opt" ] || printf '%s\n' "$opt" >> "$CHIEF"
+    WM_FOCUS_OUT="focus=ok" run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
+    contains "26c: [$opt] focus refresh runs" "$calls" "focus --doc $CHIEF"
     contains "26c: [$opt] prints focus=ok" "$out" "focus=ok"
     contains "26c: [$opt] the all-versions page is not rendered" "$out" "tracker=skip:focus"
 done
 fixture
-printf 'tracker: https://example.invalid/t\nrelease: R1\nfocus-version: none\n' >> "$CONSOLE"
-run --doc "$CONSOLE" --fleet "$MANIFEST" "$LEG"
+printf 'tracker: https://example.invalid/t\nrelease: R1\nfocus-version: none\n' >> "$CHIEF"
+run --doc "$CHIEF" --fleet "$MANIFEST" "$WORKER"
 contains "26c: none beside a release: line still prints focus=skip" "$out" "focus=skip"
 lacks "26c: and runs nothing" "$calls" "focus --doc"
 unset WM_FOCUS

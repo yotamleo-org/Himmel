@@ -8,7 +8,7 @@
 # Env: CHECK_CI_CACHE_TTL (60), CHECK_CI_DECIDE_TTL (5),
 # CHECK_CI_WATCH_INTERVAL (30), CHECK_CI_WATCH_INTERVAL_MAX (120),
 # CHECK_CI_WATCH_SLEEP_CMD (test seam), CHECK_CI_RUN_HEARTBEAT (optional path),
-# plus gh-ci-cache.sh knobs. Run heartbeat uses console-wait.sh's shape.
+# plus gh-ci-cache.sh knobs. Run heartbeat uses chief-wait.sh's shape.
 # PR cancel remains neither red nor pending (the required-check gate handles
 # cancellation); run cancellation cannot certify success and is red.
 set -uo pipefail

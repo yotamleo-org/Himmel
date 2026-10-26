@@ -19,7 +19,7 @@
 # status-events.jsonl (moved | noop | skip | deferred | miss | disabled).
 #
 # Best-effort by design: every failure prints a WARN on stderr and exits 0, so
-# a Jira or GitHub problem never blocks a leg; the whole run is bounded by
+# a Jira or GitHub problem never blocks a worker; the whole run is bounded by
 # TICKET_STATUS_BUDGET seconds (default 20), and a run cut off logs
 # miss stage=timeout.
 #
@@ -69,7 +69,7 @@ git_env_scrub
 # old names, read only while HIMMEL_LEGACY_NAMES is on
 alias_env WORKER_SESSION_JIRA_STATUS LEG_JIRA_STATUS
 
-warn() { echo "WARN leg-jira-status: $* (continuing; the leg is not blocked)" >&2; exit 0; }
+warn() { echo "WARN worker-jira-status: $* (continuing; the worker is not blocked)" >&2; exit 0; }
 
 [[ "$KEY" =~ ^[A-Za-z][A-Za-z0-9]*-[0-9]+$ ]] || warn "'$KEY' is not a ticket key"
 if [ -n "$REPO" ]; then
@@ -159,20 +159,20 @@ fi
 # An event that names the owner's doc or resume brief records it first, so the
 # derive sees the key as owned.
 if [ -n "$DOC$RESUME" ] && ts_record_read "$KEY"; then
-    leg=""
-    [[ "${DOC##*/}" =~ ^$KEY-(N[0-9]+)- ]] && leg="${BASH_REMATCH[1]}"
-    rec=$(jq -c --arg k "$KEY" --arg d "$DOC" --arg l "$leg" --arg rb "$RESUME" '
+    worker=""
+    [[ "${DOC##*/}" =~ ^$KEY-(N[0-9]+)- ]] && worker="${BASH_REMATCH[1]}"
+    rec=$(jq -c --arg k "$KEY" --arg d "$DOC" --arg l "$worker" --arg rb "$RESUME" '
         .key = $k
         | if $d != "" then .docs = ((.docs // []) + [.doc // empty, $d] | unique) | .doc = $d else . end
         | if $l != "" then .leg = $l else . end
         | if $rb != "" then .resume_brief = $rb else . end' <<<"$TS_REC") \
-        && ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot record the $KEY owner" >&2
+        && ts_record_write "$KEY" "$rec" || echo "WARN worker-jira-status: cannot record the $KEY owner" >&2
 fi
 
 update_record() { # <Jira status now> [the move, "<from> -> <to>"]
     local rec cid chash ol=""
     ts_record_read "$KEY" || return 0
-    # The record and the WORKER comment follow the leg that still holds the key.
+    # The record and the WORKER comment follow the worker that still holds the key.
     if [ -n "$TS_OWNER_DOC" ]; then
         [[ "${TS_OWNER_DOC##*/}" =~ ^$KEY-(N[0-9]+)- ]] && ol="${BASH_REMATCH[1]}"
         TS_REC=$(jq -c --arg d "$TS_OWNER_DOC" --arg l "$ol" '.doc = $d | if $l != "" then .leg = $l else del(.leg) end' <<<"$TS_REC") || return 0
@@ -195,11 +195,11 @@ update_record() { # <Jira status now> [the move, "<from> -> <to>"]
             + ($prs | split("\n") | map(select(length > 0) | split("\t")
                 | {key: .[0], value: {head: .[1], ci: .[2], red_latch: (.[3] == "true"), open: true}})
                 | from_entries))' <<<"$TS_REC") || return 0
-    ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot write the $KEY worker record" >&2
+    ts_record_write "$KEY" "$rec" || echo "WARN worker-jira-status: cannot write the $KEY worker record" >&2
 }
 
 # A Done ticket is never moved, but its worker record still follows the doc/lock,
-# so a leg that wrapped after the merge does not read live forever.
+# so a worker that wrapped after the merge does not read live forever.
 refresh_done_record() {
     local doc rec
     ts_record_read "$KEY" || return 0
@@ -209,11 +209,11 @@ refresh_done_record() {
     [ "$(jq -r '.state // ""' <<<"$TS_REC")" != "$TS_WORKER_STATE" ] || return 0
     rec=$(jq -c --arg ev "$EVENT" --arg ts "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg ws "$TS_WORKER_STATE" \
         '.last_event = $ev | .last_event_ts = $ts | .state = $ws' <<<"$TS_REC") || return 0
-    ts_record_write "$KEY" "$rec" || echo "WARN leg-jira-status: cannot write the $KEY worker record" >&2
+    ts_record_write "$KEY" "$rec" || echo "WARN worker-jira-status: cannot write the $KEY worker record" >&2
 }
 
-# A moved status leaves the console's FOCUS page behind: mark it dirty so the
-# waiter's next tick rebuilds it. HIMMEL_CONSOLE_DOC names the console doc (unset:
+# A moved status leaves the chief's FOCUS page behind: mark it dirty so the
+# waiter's next tick rebuilds it. HIMMEL_CONSOLE_DOC names the chief doc (unset:
 # nothing to mark). The mark is written here as focus-refresh.sh --mark-dirty
 # writes it (dirty=<epoch> in focus-state, plus focus-state.again), so this
 # script runs no unguarded code. A failed mark never fails the move.
@@ -224,7 +224,7 @@ mark_focus_dirty() {
         && { grep -q '^dirty=.' "$st" \
             || { { grep -v '^dirty=' "$st"; echo "dirty=$(date +%s)"; } > "$st.tmp.$$" && mv -f "$st.tmp.$$" "$st"; }; } \
         && date +%s > "$st.again"; } 2>/dev/null \
-        || echo "WARN leg-jira-status: cannot mark the FOCUS page dirty (continuing; the move stands)" >&2
+        || echo "WARN worker-jira-status: cannot mark the FOCUS page dirty (continuing; the move stands)" >&2
 }
 
 # A worked ticket that sits in a later version than the current one (the earliest unreleased,
@@ -251,7 +251,7 @@ intake_to_current() {
         : > "$stamp" 2>/dev/null
         row result=intake rule=INTAKE from="$from" to="$cur"
     else
-        echo "WARN leg-jira-status: $KEY sits in $from, later than the current $cur; the INTAKE request was NOT filed: $(printf '%s' "$out" | tr '\n' ' ')" >&2
+        echo "WARN worker-jira-status: $KEY sits in $from, later than the current $cur; the INTAKE request was NOT filed: $(printf '%s' "$out" | tr '\n' ' ')" >&2
     fi
 }
 finish() { [ "$EVENT" != live ] || intake_to_current; exit 0; }
@@ -300,5 +300,5 @@ fi
 update_record "$to" "$from -> $to"
 row result=moved rule="$TS_RULE" from="$from" to="$to" dir="$dir"
 mark_focus_dirty
-echo "leg-jira-status: $KEY $from -> $to ($TS_RULE)"
+echo "worker-jira-status: $KEY $from -> $to ($TS_RULE)"
 finish

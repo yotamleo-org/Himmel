@@ -464,7 +464,7 @@ test("ingest passes chat_id to the gate so an allowed group accepts a non-allowl
   expect(await loadOffset(r)).toBe(3);
 });
 
-test("makeAllow: the REAL composed gate — DM leg scoped to positive chat_ids", async () => {
+test("makeAllow: the REAL composed gate — DM worker scoped to positive chat_ids", async () => {
   const access = { allowFrom: ["1"], groups: { "-50": {} } };
   const allow = makeAllow(access);
   expect(allow(1, 1)).toBe(true);       // allowFrom sender DM (chat_id == sender id)
@@ -2741,7 +2741,7 @@ test("makeRestart rung 2 refuses on non-Windows rather than pretending", async (
 test("makeRestart rung 2: a spawn that THROWS is reported, not left as a silent no-op (HIMMEL-1272 CR)", async () => {
   // Bun.spawnSync throws (rather than returning a non-zero exitCode) when the
   // binary cannot be launched at all — no schtasks on PATH, EACCES. Unhandled it
-  // escapes into autoFire's .catch(), which only console.errors, leaving the
+  // escapes into autoFire's .catch(), which only chief.errors, leaving the
   // operator with an ack and a bridge that never went away.
   let exited = false;
   const restart = makeRestart({
@@ -3516,9 +3516,9 @@ test("loadPluginProfilesModule serves the SAME cached import when the file's mti
 // --- repeated identical dispatch failure alerts the operator once ----------
 
 // The 10-05 incident, replayed under a running poller: a merge changes BOTH
-// plugin-profiles.json (a new leg-shaped profile with gateAllow) and the
+// plugin-profiles.json (a new worker-shaped profile with gateAllow) and the
 // validator (WORKER_SESSION_PROFILES learns its name). A poller still holding the OLD
-// validator fails every dispatch with "gateAllow is restricted to leg-shaped
+// validator fails every dispatch with "gateAllow is restricted to worker-shaped
 // profiles"; a fresh import validates and picks up the new registry.
 test("cold runFn: a registry + validator change under a running poller still validates, with no restart", async () => {
   const lanes = mkdtempSync(join(tmpdir(), "lanes-fixture-"));
@@ -3545,8 +3545,8 @@ test("cold runFn: a registry + validator change under a running poller still val
   reg.profiles.telegram.enable = reg.profiles.telegram.enable.filter((id: string) => id !== "obsidian-second-brain@himmel");
   await writeFile(join(lanes, "plugin-profiles.json"), JSON.stringify(reg, null, 2));
   const mjs = await readFile(join(lanes, "plugin-profiles.mjs"), "utf8");
-  expect(mjs).toContain("'console-relay']);");
-  await writeFile(join(lanes, "plugin-profiles.mjs"), mjs.replace("'console-relay']);", "'console-relay', 'leg-x4687']);"));
+  expect(mjs).toContain("'chief-relay']);");
+  await writeFile(join(lanes, "plugin-profiles.mjs"), mjs.replace("'chief-relay']);", "'chief-relay', 'worker-x4687']);"));
 
   await appendLine(join(sd, "inbox.jsonl"), JSON.stringify({ operator:true, text:"after" }));
   await runFn("HIMMEL-4687");
@@ -3767,9 +3767,9 @@ test("require-mention drop log redacts the group_<chat_id> session name (HIMMEL-
 test("poller.ts logs no raw chat id or session name (HIMMEL-1308)", () => {
   const src = readFileSync(join(import.meta.dir, "poller.ts"), "utf8").split("\n");
   const offenders = src.map((l, i) => ({ l, n: i + 1 }))
-    .filter(({ l }) => /console\.error\(|logRedacted\(/.test(l))
+    .filter(({ l }) => /chief\.error\(|logRedacted\(/.test(l))
     .filter(({ l }) => /\$\{(?:rec|msg|i)\.chat_id\}|\$\{chatId\}/.test(l)
-      || (/console\.error\(/.test(l) && /\$\{session\}|"\s*\+\s*session\b|"\s*\+\s*s\b/.test(l)))
+      || (/chief\.error\(/.test(l) && /\$\{session\}|"\s*\+\s*session\b|"\s*\+\s*s\b/.test(l)))
     .filter(({ l }) => !l.includes("gated out chat"))
     .map(({ n, l }) => `${n}: ${l.trim().slice(0, 100)}`);
   expect(offenders).toEqual([]);

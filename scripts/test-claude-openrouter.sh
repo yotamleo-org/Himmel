@@ -464,17 +464,17 @@ t "unrounded key 2.999 below floor refuses" 5
 OPENROUTER_MIN_CREDIT_USD=NaN t "non-finite floor falls back to 3" 5
 OPENROUTER_MIN_CREDIT_USD=Infinity t "infinite floor falls back to 3" 5
 
-# --- T9d: non-leg Haiku overrides retain their own identity in the label.
+# --- T9d: non-worker Haiku overrides retain their own identity in the label.
 setup; KEY="or-test-123"
 write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
-OPENROUTER_HAIKU=anthropic/claude-haiku-4.5 t "non-leg Haiku override launches" 0
+OPENROUTER_HAIKU=anthropic/claude-haiku-4.5 t "non-worker Haiku override launches" 0
 if grep -qx 'ANTHROPIC_DEFAULT_HAIKU_MODEL_NAME=anthropic/claude-haiku-4.5' "$WORK/child-env.txt"; then
-  echo 'ok: non-leg Haiku label identifies its actual override'
+  echo 'ok: non-worker Haiku label identifies its actual override'
 else
-  echo 'FAIL: non-leg Haiku label names the wrong model'; FAILS=$((FAILS+1))
+  echo 'FAIL: non-worker Haiku label names the wrong model'; FAILS=$((FAILS+1))
 fi
 
-# --- tiers stay independent, including in a managed leg.
+# --- tiers stay independent, including in a managed worker.
 setup; KEY="or-test-123"
 write_allow_matrix "$WORK/matrix.json"; MATRIX="$WORK/matrix.json"
 for lane in standalone openrouter; do

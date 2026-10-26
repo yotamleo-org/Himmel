@@ -9,16 +9,16 @@
 #   SCORECARD_PROJECTS_DIR missing -> exit 2
 #   since-window: last_epoch >= SINCE_EPOCH is the inclusive lower edge
 #   until-window: first_epoch >= UNTIL_EPOCH is the exclusive upper edge
-#   role_of(): console / relay / leg / other, with relay taking precedence
+#   role_of(): chief / relay / worker / other, with relay taking precedence
 #     over a title that also matches *legN* (role-relay fixture)
-#   role_of() derives a leg from leg-identity.sh (a leg named ...-console-...
-#     is a leg) and an untitled session is `unattributed`
+#   role_of() derives a worker from worker-identity.sh (a worker named ...-chief-...
+#     is a worker) and an untitled session is `unattributed`
 #   subagent parent-role lookup via ${f%/subagents/*}.jsonl
-#   leg-burn.sh failure -> FAILS + WARNING on stderr, run still exits 0
+#   worker-burn.sh failure -> FAILS + WARNING on stderr, run still exits 0
 #   unreadable transcript subtree/file -> exit 1 + stderr, no partial TOTAL
 #     (find errors must not be swallowed by `2>/dev/null | while`)
 #   TOTAL cost-eq line: price-weighted sum across every row/session
-#   TOTAL cost-eq line: mixed sub-1000 (exact) and >=1000 (leg-burn.sh
+#   TOTAL cost-eq line: mixed sub-1000 (exact) and >=1000 (worker-burn.sh
 #     0.1k-rounded) per-session magnitudes
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+; it runs under
@@ -80,45 +80,45 @@ export SCORECARD_PROJECTS_DIR="$HERE/fixtures/agg-burn/since-edge"
 SINCE_OUT=$("$AGG_BURN" --since 2026-09-05T00:00:00Z 2>/dev/null)
 check_exit "since-edge: exits 0" "$?" "0"
 check "since-edge: only the session whose last activity is exactly at --since is included" \
-    "$(session_count "$SINCE_OUT" leg)" "1"
+    "$(session_count "$SINCE_OUT" worker)" "1"
 
 # --- (e) until-edge: first_epoch >= UNTIL_EPOCH is exclusive
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/agg-burn/until-edge"
 UNTIL_OUT=$("$AGG_BURN" --since 2026-01-01T00:00:00Z --until 2026-09-06T00:00:00Z 2>/dev/null)
 check_exit "until-edge: exits 0" "$?" "0"
 check "until-edge: a session whose first activity is exactly at --until is excluded" \
-    "$(session_count "$UNTIL_OUT" leg)" "1"
+    "$(session_count "$UNTIL_OUT" worker)" "1"
 
 # --- (f) role classification, incl. subagent parent-role lookup
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/agg-burn/roles"
 ROLES_OUT=$("$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "roles: exits 0" "$?" "0"
-check "roles: a -console- title is classified console" \
-    "$(session_count "$ROLES_OUT" console)" "1"
-check "roles: a title matching none of console/relay/legN is classified other" \
+check "roles: a -chief- title is classified chief" \
+    "$(session_count "$ROLES_OUT" chief)" "1"
+check "roles: a title matching none of chief/relay/legN is classified other" \
     "$(session_count "$ROLES_OUT" other)" "1"
-check "roles: a legN title (non-subagent) is classified leg" \
-    "$(session_count "$ROLES_OUT" leg)" "1"
-check "roles: a subagent transcript is tagged with its parent's leg role" \
-    "$(session_count "$ROLES_OUT" 'subagent(leg)')" "1"
+check "roles: a legN title (non-subagent) is classified worker" \
+    "$(session_count "$ROLES_OUT" worker)" "1"
+check "roles: a subagent transcript is tagged with its parent's worker role" \
+    "$(session_count "$ROLES_OUT" 'subagent(worker)')" "1"
 
 # --- (g) relay precedence: a title matching both *legN* and *-relay* is
-# classified relay, never leg (reuses test-scorecard.sh's role-relay fixture)
+# classified relay, never worker (reuses test-scorecard.sh's role-relay fixture)
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-relay"
 RELAY_OUT=$("$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "role-relay: exits 0" "$?" "0"
 check "role-relay: a legN+relay title is classified relay" \
     "$(session_count "$RELAY_OUT" relay)" "1"
-check "role-relay: a legN+relay title is not also counted into leg" \
-    "$(session_count "$RELAY_OUT" leg)" "0"
+check "role-relay: a legN+relay title is not also counted into worker" \
+    "$(session_count "$RELAY_OUT" worker)" "0"
 
-# --- (h) leg-burn.sh failure -> FAILS + WARNING, run still exits 0
+# --- (h) worker-burn.sh failure -> FAILS + WARNING, run still exits 0
 export SCORECARD_PROJECTS_DIR="$HERE/fixtures/agg-burn/malformed"
 MALFORMED_ERR=$("$AGG_BURN" --since 2026-01-01T00:00:00Z 2>&1 >/dev/null)
 MALFORMED_OUT=$("$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null)
 MALFORMED_EXIT=$?
-check_contains "malformed: a leg-burn.sh failure prints a skip WARNING" \
-    "$MALFORMED_ERR" "WARNING: 1 transcript(s) skipped due to leg-burn.sh failure"
+check_contains "malformed: a worker-burn.sh failure prints a skip WARNING" \
+    "$MALFORMED_ERR" "WARNING: 1 transcript(s) skipped due to worker-burn.sh failure"
 check_exit "malformed: a skipped transcript still exits 0" "$MALFORMED_EXIT" "0"
 check "malformed: TOTAL line is all-zero with no surviving rows" \
     "$(printf '%s\n' "$MALFORMED_OUT" | grep '^TOTAL cache-read=')" \
@@ -137,14 +137,14 @@ check "totals: cross-session TOTAL cost-eq line" \
     "TOTAL cache-read=9.0k cache-create=1.0k input=3.5k output=0.7k cost-eq=9.2k"
 
 # --- (j) TOTAL sums mix sub-1000 (exact) and >=1000 per-session
-# magnitudes and must sum the EXACT raw counts (leg-burn.sh --raw), not
+# magnitudes and must sum the EXACT raw counts (worker-burn.sh --raw), not
 # per-session 0.1k-rounded values - this fixture is a targeted counter-example
 # (a brute force over rounding boundaries found 0 mismatches).
 # session-small (1 call, all <1000, exact):        input=234  cache_read=567  cache_creation=89   output=345
 # session-large-exact (2 calls x 800/900/700/600):  input=1600 cache_read=1800 cache_creation=1400 output=1200
 # session-large-rounded (1 call, all >=1000):        input=2345 cache_read=3456 cache_creation=1234 output=4567
 #
-# OLD (wrong) path - leg-burn.sh's kf() rounds a >=1000 session to 0.1k before
+# OLD (wrong) path - worker-burn.sh's kf() rounds a >=1000 session to 0.1k before
 # agg-burn.sh ever sees it (input 2.345->2.3k, cache_read 3.456->3.5k,
 # cache_creation 1.234->1.2k, output 4.567->4.6k), then sums the k-units:
 #   input        = 0.234 + 1.600 + 2.3 = 4.134 -> 4.1k  (true: 4.179 -> 4.2k)
@@ -213,18 +213,18 @@ unr_case "unreadable-subtree" "$UNR_ROOT/other" "other"
 unr_case "unreadable-file" "$UNR_ROOT/other/session-b.jsonl" "session-b.jsonl"
 
 # --- (l) the DEFAULT scope must union the worktree project dirs.
-# Legs run in worktrees, each with its own `<primary>--claude-worktrees-<slug>`
+# Workers run in worktrees, each with its own `<primary>--claude-worktrees-<slug>`
 # project dir, so a primary-only default silently drops the very session class
 # the program measures (253 dirs / 21-29 % of ctx x calls on 2026-09-20).
-# Fixture: one leg in the primary dir, one in a worktree dir, and one in a
+# Fixture: one worker in the primary dir, one in a worktree dir, and one in a
 # sibling `...himmelfoo` dir that only shares a name PREFIX (a decoy: the union
 # is `<primary>` + `<primary>--claude-worktrees-*`, never `<primary>*`).
 # SCORECARD_PROJECTS_DIR is unset so the default-root path is what runs.
 WT_CFG="$HERE/fixtures/agg-burn/worktree-union/config"
 WT_OUT=$(env -u SCORECARD_PROJECTS_DIR CLAUDE_CONFIG_DIR="$WT_CFG" "$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null)
 check_exit "worktree-union: exits 0" "$?" "0"
-check "worktree-union: default scope counts the primary leg AND the worktree leg (decoy excluded)" \
-    "$(session_count "$WT_OUT" leg)" "2"
+check "worktree-union: default scope counts the primary worker AND the worktree worker (decoy excluded)" \
+    "$(session_count "$WT_OUT" worker)" "2"
 check "worktree-union: coverage triple states the two roots and both sessions parsed" \
     "$(printf '%s\n' "$WT_OUT" | grep '^coverage:')" \
     "coverage: roots=2 discovered=2 parsed=2 skipped=0"
@@ -242,19 +242,19 @@ SKIP_OUT=$("$AGG_BURN" --since 2026-09-05T00:00:00Z 2>/dev/null)
 check_contains "coverage: an out-of-window transcript is counted as skipped with its reason" \
     "$(printf '%s\n' "$SKIP_OUT" | grep '^coverage:')" "out-of-window="
 
-# --- (h) role_of derives a leg from leg-identity.sh, and an untitled
+# --- (h) role_of derives a worker from worker-identity.sh, and an untitled
 # session is its own `unattributed` row, not folded into `other`. Reuses
-# test-scorecard.sh's role-console-slug fixture (a real leg name whose slug
-# contains `console`, a genuine console, an untitled and a titled non-participant).
-export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-console-slug"
+# test-scorecard.sh's role-chief-slug fixture (a real worker name whose slug
+# contains `console`, a genuine chief, an untitled and a titled non-participant).
+export SCORECARD_PROJECTS_DIR="$HERE/fixtures/role-chief-slug"
 RCS_OUT=$("$AGG_BURN" --since 2026-01-01T00:00:00Z 2>/dev/null)
-check "role-console-slug: the leg with 'console' in its slug is a leg row, not console" \
-    "$(session_count "$RCS_OUT" leg)" "1"
-check "role-console-slug: only the genuine console is a console row" \
-    "$(session_count "$RCS_OUT" console)" "1"
-check "role-console-slug: the untitled session is an unattributed row" \
+check "role-chief-slug: the worker with 'console' in its slug is a worker row, not chief" \
+    "$(session_count "$RCS_OUT" worker)" "1"
+check "role-chief-slug: only the genuine chief is a chief row" \
+    "$(session_count "$RCS_OUT" chief)" "1"
+check "role-chief-slug: the untitled session is an unattributed row" \
     "$(session_count "$RCS_OUT" unattributed)" "1"
-check "role-console-slug: the titled non-participant is the only other row" \
+check "role-chief-slug: the titled non-participant is the only other row" \
     "$(session_count "$RCS_OUT" other)" "1"
 
 echo "---"

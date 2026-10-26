@@ -12,7 +12,7 @@
 #
 # ADVISORY ONLY - NEVER BLOCKS: scripts/hooks/check-doc-guard.sh
 # already enforces `block` rows at pre-push. This script always exits 0 - a
-# missing lib, an inactive leg, or a df_detect failure all degrade to
+# missing lib, an inactive worker, or a df_detect failure all degrade to
 # silence-plus-exit-0 rather than breaking /pr-check.
 #
 # Usage:
@@ -22,9 +22,9 @@
 #   Doc-freshness (advisory) - mapped sources changed without their docs:
 #     - <src> -> update <doc>
 #   (Advisory only - does not block this PR.)
-# or, when the advise leg found no drift:
+# or, when the advise worker found no drift:
 #   Doc-freshness: no mapped-source-vs-doc drift in range.
-# or nothing at all, when the advise leg is inactive.
+# or nothing at all, when the advise worker is inactive.
 #
 # Exit: always 0.
 set -uo pipefail
@@ -46,7 +46,7 @@ if . "$HIMMEL_ROOT/scripts/guardrails/lib.sh" 2>/dev/null; then
 fi
 [ -n "$db" ] || db=main
 
-# Pick up HIMMEL_DOC_FRESHNESS from .env for leg parity with the session/
+# Pick up HIMMEL_DOC_FRESHNESS from .env for worker parity with the session/
 # morning surfaces - process env still wins. --root pins the lookup to
 # himmel's primary checkout; load_dotenv is a no-op on a
 # missing .env either way.
@@ -61,7 +61,7 @@ DF_LIB="$HIMMEL_ROOT/scripts/lib/doc-freshness.sh"
 # shellcheck disable=SC1091
 . "$DF_LIB" 2>/dev/null || exit 0
 
-if df_leg_active advise; then
+if df_worker_active advise; then
     drift="$(df_detect "$db...HEAD" 2>/dev/null || true)"
     if [ -n "$drift" ]; then
         echo "Doc-freshness (advisory) - mapped sources changed without their docs:"

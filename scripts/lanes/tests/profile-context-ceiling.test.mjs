@@ -44,13 +44,13 @@ test('context resolver keeps legacy defaults without widening settings JSON', ()
   delete r.profiles['leg-impl'].autocompact;
   delete r.profiles['leg-impl'].contextMode;
   assert.equal(typeof PP.contextForProfile, 'function');
-  assert.deepEqual(PP.contextForProfile(r, 'leg-impl'), { contextMode: 'standard', autocompact: 200000 });
+  assert.deepEqual(PP.contextForProfile(r, 'worker-impl'), { contextMode: 'standard', autocompact: 200000 });
   assert.deepEqual(PP.contextForProfile(r, 'operator'), { contextMode: 'standard', autocompact: 200000 });
-  assert.deepEqual(PP.resolveProfile(r, 'leg-impl'), { enabledPlugins: { 'qmd@himmel': true } });
+  assert.deepEqual(PP.resolveProfile(r, 'worker-impl'), { enabledPlugins: { 'qmd@himmel': true } });
 });
 test('composed profile ceiling takes the explicitly declared 1m member', () => {
   assert.equal(typeof PP.contextForProfile, 'function');
-  assert.deepEqual(PP.contextForProfile(registry(), 'leg-impl,design'), { contextMode: '1m', autocompact: 400000 });
+  assert.deepEqual(PP.contextForProfile(registry(), 'worker-impl,design'), { contextMode: '1m', autocompact: 400000 });
   assert.throws(() => PP.contextForProfile(registry(), 'missing'));
   assert.throws(() => PP.contextForProfile(registry(), 'constructor'));
 });
@@ -61,12 +61,12 @@ for (const [field, value] of [['autocompact', '400000'], ['autocompact', 200001]
     assert.ok(PP.validateRegistry(r).some((e) => e.includes(field)), 'invalid context field was accepted');
   });
 }
-test('leg launcher reads standard ceiling from the profile', (t) => {
-  const result = launch(fixture(t), 'leg-impl');
+test('worker launcher reads standard ceiling from the profile', (t) => {
+  const result = launch(fixture(t), 'worker-impl');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=200000/);
 });
-test('leg launcher reads a numeric design ceiling rather than hard-coding auto', (t) => {
+test('worker launcher reads a numeric design ceiling rather than hard-coding auto', (t) => {
   const result = launch(fixture(t), 'design');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=400000/);
@@ -76,14 +76,14 @@ test('leg launcher reads a numeric design ceiling rather than hard-coding auto',
 test('brief explanation alone does not elevate a standard profile', (t) => {
   const f = fixture(t);
   writeFileSync(join(f.dir, 'brief.md'), BRIEF_HEAD + '> **Context:** 1m — operator-ruling: fixture authorization\n');
-  const result = launch(f, 'leg-impl');
+  const result = launch(f, 'worker-impl');
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=200000/);
 });
 test('WORKER_SESSION_CONTEXT plus a brief explanation permits the sanctioned override', (t) => {
   const f = fixture(t);
   writeFileSync(join(f.dir, 'brief.md'), BRIEF_HEAD + '> **Context:** 1m — operator-ruling: fixture authorization\n');
-  const result = launch(f, 'leg-impl', { WORKER_SESSION_CONTEXT: '1m' });
+  const result = launch(f, 'worker-impl', { WORKER_SESSION_CONTEXT: '1m' });
   assert.equal(result.status, 0, result.stderr);
   assert.match(result.stdout, /autocompact=auto/);
 });
@@ -92,10 +92,10 @@ test('a design profile still refuses WORKER_SESSION_CONTEXT without a brief expl
   assert.equal(result.status, 2, result.stdout + result.stderr);
 });
 test('bare WORKER_SESSION_CONTEXT=1m on a standard profile remains refused', (t) => {
-  const result = launch(fixture(t), 'leg-impl', { WORKER_SESSION_CONTEXT: '1m' });
+  const result = launch(fixture(t), 'worker-impl', { WORKER_SESSION_CONTEXT: '1m' });
   assert.equal(result.status, 2, result.stdout + result.stderr);
 });
-test('leg launcher refuses malformed autocompact even on dry-run', (t) => {
+test('worker launcher refuses malformed autocompact even on dry-run', (t) => {
   const r = registry(); r.profiles.design.autocompact = '400000';
   const result = launch(fixture(t, r), 'design');
   assert.equal(result.status, 2, result.stdout + result.stderr);
@@ -112,7 +112,7 @@ for (const extra of [
     f.env.PGREP_CMD = BASH_BIN;
     const launchConsole = (env) => spawnSync(BASH_BIN,
       [join(ROOT, 'scripts/handover/headed-arm.sh'), '--dry-run',
-        'HIMMEL-4094-console-fixture', join(f.dir, 'brief.md'), join(f.dir, 'signal'),
+        'HIMMEL-4094-chief-fixture', join(f.dir, 'brief.md'), join(f.dir, 'signal'),
         '99999999999', join(f.dir, 'launch.log'), 'claude-sonnet-5-5'],
       { cwd: f.dir, env, encoding: 'utf8', timeout: 20000 });
     const baseline = launchConsole(f.env);
@@ -130,7 +130,7 @@ test('headed console launcher validates the profile before rendering argv', (t) 
   const r = registry(); r.profiles.console.autocompact = '200000';
   const f = fixture(t, r);
   const result = spawnSync(BASH_BIN, [join(ROOT, 'scripts/handover/headed-arm.sh'), '--dry-run',
-    'HIMMEL-4021-console-fixture', join(f.dir, 'brief.md'), join(f.dir, 'signal'),
+    'HIMMEL-4021-chief-fixture', join(f.dir, 'brief.md'), join(f.dir, 'signal'),
     '99999999999', join(f.dir, 'launch.log')], { cwd: f.dir, env: f.env, encoding: 'utf8' });
   assert.equal(result.status, 2, result.stdout + result.stderr);
   assert.match(result.stderr, /autocompact/);

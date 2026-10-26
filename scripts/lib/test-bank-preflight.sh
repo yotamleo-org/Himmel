@@ -9,7 +9,7 @@ W="$(mktemp -d -t bank-preflight.XXXXXX)"; trap 'rm -rf "$W"' EXIT
 export HIMMEL_FLEET_SLOTS="$W/fleet-slots" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=native
 # a launching shell that exports the 95 workaround must not move the ceiling under test.
 export CADENCE_BANK_MAX_PCT=85 CADENCE_BANK_MAX_AGE=600
-# the rows below set the old CADENCE_BANK_* names inline; an exported new name would win over them.
+# the rows below set the old CADENCE_USAGE_* names inline; an exported new name would win over them.
 for _v in $(compgen -v CADENCE_USAGE_); do unset "$_v"; done
 
 # NO_FLEET: an empty-output ps stub, isolating every bank-only case below
@@ -52,7 +52,7 @@ fx() {
 verdict() {
   printf '%s' "$(stamp_account "$1")" > "$W/c.json"
   CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
   FLEET_PS_CMD="$NO_FLEET" \
     bash "$SUT" </dev/null 2>"$W/err.log"
 }
@@ -187,17 +187,17 @@ check "malformed five_hour, healthy seven_day -> BANK-UNKNOWN" BANK-UNKNOWN \
 WRAP_STAMP=$(python3 -c "print(2**64 + $NOW)")
 check "oversized stamp (wraps to now) -> BANK-STALE" BANK-STALE \
  "$(verdict "$(fx 10 20 "$WRAP_STAMP" "")")"
-# A non-UTF-8 byte in LEG must not give a strict-invalid ledger row.
+# A non-UTF-8 byte in WORKER must not give a strict-invalid ledger row.
 rm -f "$W/ledger.jsonl"
 printf '%s' "$(stamp_account "$(fx 10 20 "$NOW")")" > "$W/c.json"
 CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" \
-  CADENCE_BANK_LEG="$(printf 'leg\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
+  CADENCE_USAGE_WORKER="$(printf 'worker\377x')" FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null >/dev/null 2>&1
 # jq silently repairs invalid UTF-8, so decode strictly. Positive control: the
 # same decoder must reject a raw invalid byte.
 strict_utf8() { python3 -I -c 'import sys; sys.stdin.buffer.read().decode("utf-8")' < "$1" >/dev/null 2>&1 && echo true || echo false; }
-printf 'leg\377x\n' > "$W/badbyte.txt"
+printf 'worker\377x\n' > "$W/badbyte.txt"
 check "strict decoder rejects a raw invalid byte (control)" false "$(strict_utf8 "$W/badbyte.txt")"
-check "non-UTF-8 LEG -> ledger row is strict-valid UTF-8" true "$(strict_utf8 "$W/ledger.jsonl")"
+check "non-UTF-8 WORKER -> ledger row is strict-valid UTF-8" true "$(strict_utf8 "$W/ledger.jsonl")"
 
 future=$(( $(date +%s) + 86400 ))
 printf '%s' "{\"five_hour\":{\"utilization\":10},\"seven_day\":{\"utilization\":20},\"primaries_refreshed_at\":$future,\"account\":\"$ACCT\"}" > "$W/c.json"
@@ -310,7 +310,7 @@ fleet_verdict() {
   local dir="$1"; shift
   printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
   # a FRESH slot dir per call - these cases share the fixed
-  # CADENCE_BANK_LEG=testleg name and run under cap (creating a reservation)
+  # CADENCE_USAGE_WORKER=testleg name and run under cap (creating a reservation)
   # repeatedly; a shared/real slot dir would carry a reservation from one
   # call into the next call's "duplicate" refusal, and would pollute this
   # machine's real fleet slots besides.
@@ -324,64 +324,64 @@ fleet_verdict() {
   _slots="$(mktemp -d "$W/slots.XXXXXX")" || { echo "fleet_verdict: mktemp -d failed" >&2; return 1; }
   env -u FLEET_CAP_OK "$@" CADENCE_BANK_LAUNCH="${FLEET_VERDICT_LAUNCH-1}" \
     CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
+    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
     FLEET_PS_CMD="$dir/ps" FLEET_PROC="$dir/proc" \
     HIMMEL_FLEET_SLOTS="$_slots" \
     bash -o pipefail "$SUT" </dev/null 2>"$W/err.log"
 }
 
-# 4 fake legs, cap 4 (n >= CAP) -> SKIPPED-FLEET.
+# 4 fake workers, cap 4 (n >= CAP) -> SKIPPED-FLEET.
 p4="$W/ps4"; mk_ps_stub "$p4" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-leg load doc' \
-  '9004:claude:--model claude-opus-5 -n HIMMEL-1003-leg load doc'
-check "4 legs, cap=4 -> SKIPPED-FLEET" SKIPPED-FLEET \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc' \
+  '9004:claude:--model claude-opus-5 -n HIMMEL-1003-worker load doc'
+check "4 workers, cap=4 -> SKIPPED-FLEET" SKIPPED-FLEET \
   "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=4)"
 
-# 3 fake legs, cap 4 (n < CAP) -> falls through to the (healthy) bank check.
+# 3 fake workers, cap 4 (n < CAP) -> falls through to the (healthy) bank check.
 p3="$W/ps3"; mk_ps_stub "$p3" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
-  '9003:claude:--model claude-opus-5 -n LUNA-2000-leg load doc'
-check "3 legs (HIMMEL+LUNA), cap=4 -> PROCEED" PROCEED \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n LUNA-2000-worker load doc'
+check "3 workers (HIMMEL+LUNA), cap=4 -> PROCEED" PROCEED \
   "$(fleet_verdict "$p3" HIMMEL_FLEET_CAP=4)"
 
-# Same 4-leg fixture as the first case, but FLEET_CAP_OK=1 bypasses the cap.
-check "4 legs, cap=4, FLEET_CAP_OK=1 -> PROCEED (bypass)" PROCEED \
+# Same 4-worker fixture as the first case, but FLEET_CAP_OK=1 bypasses the cap.
+check "4 workers, cap=4, FLEET_CAP_OK=1 -> PROCEED (bypass)" PROCEED \
   "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=4 FLEET_CAP_OK=1)"
 
-# Consoles are not legs: 3 real legs + 1 console (named to collide on prefix
+# Chiefs are not legs: 3 real workers + 1 chief (named to collide on prefix
 # if the exclusion were substring-only) still counts as 3, under cap 4.
 pconsole="$W/psconsole"; mk_ps_stub "$pconsole" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-leg load doc' \
-  '9004:claude:--model claude-opus-5 -n HIMMEL-nextleg-2026-09-05V-console load doc'
-check "3 legs + 1 console, cap=4 -> PROCEED (console excluded)" PROCEED \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc' \
+  '9004:claude:--model claude-opus-5 -n HIMMEL-nextleg-2026-09-05V-chief load doc'
+check "3 workers + 1 chief, cap=4 -> PROCEED (chief excluded)" PROCEED \
   "$(fleet_verdict "$pconsole" HIMMEL_FLEET_CAP=4)"
 
 # A chief (-n name ends -chief) is excluded the same way.
 pchief="$W/pschief"; mk_ps_stub "$pchief" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-leg load doc' \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc' \
   '9004:claude:--model claude-opus-5 -n HIMMEL-nextleg-2026-10-25A-roadmap-chief load doc'
-check "3 legs + 1 chief, cap=4 -> PROCEED (chief excluded)" PROCEED \
+check "3 workers + 1 chief, cap=4 -> PROCEED (chief excluded)" PROCEED \
   "$(fleet_verdict "$pchief" HIMMEL_FLEET_CAP=4)"
 
-# Only a name ENDING -console or -chief is excluded: a leg whose slug merely
+# Only a name ENDING -console or -chief is excluded: a worker whose slug merely
 # contains -chief- or -console- still counts toward the cap.
 pslug="$W/psslug"; mk_ps_stub "$pslug" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
   '9003:claude:--model claude-opus-5 -n HIMMEL-7600-N3001-chief-handoff-2026-10-26 load doc' \
-  '9004:claude:--model claude-opus-5 -n HIMMEL-7601-N3002-console-wait-fix-2026-10-26 load doc'
-check "2 legs + 2 legs with chief/console in the slug, cap=4 -> SKIPPED-FLEET" SKIPPED-FLEET \
+  '9004:claude:--model claude-opus-5 -n HIMMEL-7601-N3002-chief-wait-fix-2026-10-26 load doc'
+check "2 workers + 2 workers with chief/chief in the slug, cap=4 -> SKIPPED-FLEET" SKIPPED-FLEET \
   "$(fleet_verdict "$pslug" HIMMEL_FLEET_CAP=4)"
 
-# HIMMEL_FLEET_CAP is configurable: the same 3-leg fixture trips a cap of 2.
-check "3 legs, cap=2 (HIMMEL_FLEET_CAP override) -> SKIPPED-FLEET" SKIPPED-FLEET \
+# HIMMEL_FLEET_CAP is configurable: the same 3-worker fixture trips a cap of 2.
+check "3 workers, cap=2 (HIMMEL_FLEET_CAP override) -> SKIPPED-FLEET" SKIPPED-FLEET \
   "$(fleet_verdict "$p3" HIMMEL_FLEET_CAP=2)"
 
 # FLEET n/CAP is printed on EVERY call, including a PROCEED (below cap).
@@ -417,8 +417,8 @@ mk_ps_stub_environ() {
   chmod +x "$dir/ps"
 }
 pclaudex="$W/psclaudex"; mk_ps_stub_environ "$pclaudex" \
-  '9001:claude:HOME=/home/x,CLAUDEX_LANE_OK=1:--model gpt-6.1-sol -n HIMMEL-1000-leg load doc' \
-  '9002:claude:HOME=/home/x:--model claude-opus-5 -n HIMMEL-1001-leg load doc'
+  '9001:claude:HOME=/home/x,CLAUDEX_LANE_OK=1:--model gpt-6.1-sol -n HIMMEL-1000-worker load doc' \
+  '9002:claude:HOME=/home/x:--model claude-opus-5 -n HIMMEL-1001-worker load doc'
 fleet_verdict "$pclaudex" HIMMEL_FLEET_CAP=4 >/dev/null
 if grep -q 'FLEET native=1 claudex=1 openrouter=0 reserved=0 total=2/4' "$W/err.log" 2>/dev/null; then
   PASS=$((PASS+1)); echo "ok - claudex candidate named separately in the FLEET line"
@@ -430,8 +430,8 @@ fi
 # grep exit closing tr's pipe before the producer has drained the input.
 # Production defaults to set -u only; fleet_verdict deliberately opts in.
 plarge="$W/pslarge"; mk_ps_stub_environ "$plarge" \
-  '9001:claude:CLAUDEX_LANE_OK=1:--model gpt-6.1-sol -n HIMMEL-1000-leg load doc' \
-  '9002:claude:WORKER_SESSION_LANE=openrouter:--model sonnet -n HIMMEL-1001-leg load doc'
+  '9001:claude:CLAUDEX_LANE_OK=1:--model gpt-6.1-sol -n HIMMEL-1000-worker load doc' \
+  '9002:claude:WORKER_SESSION_LANE=openrouter:--model sonnet -n HIMMEL-1001-worker load doc'
 for pid in 9001 9002; do
   awk 'BEGIN { for (i=0;i<32768;i++) printf "%cFILLER_%d=padding-padding-padding", 0, i }' >> "$plarge/proc/$pid/environ"
 done
@@ -443,32 +443,32 @@ else
 fi
 
 # codex-1 (CR review): a session with NO argument between "claude" and "-n"
-# (e.g. `claude -n some-leg ...`) must still be counted - the old
+# (e.g. `claude -n some-worker ...`) must still be counted - the old
 # `claude .* -n ...` pattern required TWO separate whitespace runs and
 # silently missed this shape, undercounting the fleet.
 pminimal="$W/psminimal"; mk_ps_stub "$pminimal" \
-  '9001:claude:-n HIMMEL-1000-leg load doc' \
-  '9002:claude:-n HIMMEL-1001-leg load doc' \
-  '9003:claude:-n HIMMEL-1002-leg load doc' \
-  '9004:claude:-n HIMMEL-1003-leg load doc'
-check "4 legs with NO args before -n, cap=4 -> SKIPPED-FLEET (codex-1)" SKIPPED-FLEET \
+  '9001:claude:-n HIMMEL-1000-worker load doc' \
+  '9002:claude:-n HIMMEL-1001-worker load doc' \
+  '9003:claude:-n HIMMEL-1002-worker load doc' \
+  '9004:claude:-n HIMMEL-1003-worker load doc'
+check "4 workers with NO args before -n, cap=4 -> SKIPPED-FLEET (codex-1)" SKIPPED-FLEET \
   "$(fleet_verdict "$pminimal" HIMMEL_FLEET_CAP=4)"
 
 # codex-3 (CR review): a WRAPPER process (e.g. konsole, comm != claude)
 # whose own argv EMBEDS the claude invocation it launched as literal text
 # must not be counted ALONGSIDE the real claude child it wraps - that would
-# double-count ONE leg (some-leg here) as two. pid 9001 is konsole
-# wrapping some-leg (its argv embeds the full claude command as
+# double-count ONE worker (some-worker here) as two. pid 9001 is konsole
+# wrapping some-worker (its argv embeds the full claude command as
 # text, same shape headed-arm.sh launches with); pid 9002 is the REAL
-# claude child for that SAME leg; pid 9003 is a second, distinct real leg.
-# Two genuine legs total. cap=3 differentiates: the FIXED (comm-filtered)
+# claude child for that SAME worker; pid 9003 is a second, distinct real worker.
+# Two genuine workers total. cap=3 differentiates: the FIXED (comm-filtered)
 # count is 2 -> PROCEED; the OLD buggy (argv-text-only) count would have
-# been 3 (double-counting 9001+9002 as separate legs) -> SKIPPED-FLEET.
+# been 3 (double-counting 9001+9002 as separate workers) -> SKIPPED-FLEET.
 pwrapper="$W/pswrapper"; mk_ps_stub "$pwrapper" \
-  '9001:konsole:--workdir /repo -e env -u X claude --model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc'
-check "wrapper + its real child count as ONE leg, cap=3 -> PROCEED (comm-filtered, codex-3)" PROCEED \
+  '9001:konsole:--workdir /repo -e env -u X claude --model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc'
+check "wrapper + its real child count as ONE worker, cap=3 -> PROCEED (comm-filtered, codex-3)" PROCEED \
   "$(fleet_verdict "$pwrapper" HIMMEL_FLEET_CAP=3)"
 
 # codex-2 (CR review, 2nd panel round): a host with NO usable procfs at
@@ -491,7 +491,7 @@ fleet_verdict_no_procfs() {
   _slots="$(mktemp -d "$W/slots.XXXXXX")" || { echo "fleet_verdict_no_procfs: mktemp -d failed" >&2; return 1; }
   env -u FLEET_CAP_OK "$@" CADENCE_BANK_LAUNCH="${FLEET_VERDICT_LAUNCH-1}" \
     CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
+    CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
     FLEET_PS_CMD="$dir/ps" FLEET_PROC="$dir/no-such-proc-dir" \
     HIMMEL_FLEET_SLOTS="$_slots" \
     bash "$SUT" </dev/null 2>"$W/err.log"
@@ -510,13 +510,13 @@ fi
 # candidate, not once for the whole host. pid 9003's comm file is
 # deliberately absent even though $dir/proc itself exists (unlike the
 # no-procfs case above, which points FLEET_PROC at a directory that does
-# not exist at all); the fallback must still count it. 2 legs with a
+# not exist at all); the fallback must still count it. 2 workers with a
 # readable comm (9001, 9002) + 1 with an unreadable one (9003, counted via
 # the argv fallback) = 3 -> cap=3 trips SKIPPED-FLEET.
 ppartial="$W/pspartial"; mk_ps_stub "$ppartial" \
-  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-leg load doc' \
-  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-leg load doc' \
-  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-leg load doc'
+  '9001:claude:--model claude-opus-5 -n HIMMEL-1000-worker load doc' \
+  '9002:claude:--model claude-opus-5 -n HIMMEL-1001-worker load doc' \
+  '9003:claude:--model claude-opus-5 -n HIMMEL-1002-worker load doc'
 rm -f "$ppartial/proc/9003/comm"
 check "readable procfs root, one unreadable comm file, cap=3 -> SKIPPED-FLEET (per-candidate fallback, codex-2 round 3)" SKIPPED-FLEET \
   "$(fleet_verdict "$ppartial" HIMMEL_FLEET_CAP=3)"
@@ -545,17 +545,17 @@ check "census command fails, FLEET_CAP_OK=1 -> PROCEED (bypass reaches the censu
 
 # codex-3 (CR review, 2nd panel round, Suggestion): FLEET_CAP_OK=0 must
 # NOT bypass the cap - only the exact value "1" does.
-check "4 legs, cap=4, FLEET_CAP_OK=0 -> SKIPPED-FLEET (exact-match bypass)" SKIPPED-FLEET \
+check "4 workers, cap=4, FLEET_CAP_OK=0 -> SKIPPED-FLEET (exact-match bypass)" SKIPPED-FLEET \
   "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=4 FLEET_CAP_OK=0)"
 
 # --- the fleet cap's REFUSAL requires declared launch intent --
-# Same over-cap fixture as "4 legs, cap=4 -> SKIPPED-FLEET" above, but with
+# Same over-cap fixture as "4 workers, cap=4 -> SKIPPED-FLEET" above, but with
 # CADENCE_BANK_LAUNCH explicitly unset (FLEET_VERDICT_LAUNCH= overrides
 # fleet_verdict()'s own default-on) - a plain bank READ, e.g. hermes-
 # critic.sh's /pr-check pass or a statusline probe, must never be refused
 # by a cap meant to gate NEW arms, not reads.
 # shellcheck disable=SC1007  # deliberate empty-string prefix assignment, not a typo'd `VAR =`
-check "4 legs, cap=4, no CADENCE_BANK_LAUNCH -> PROCEED (read-only, not refused)" PROCEED \
+check "4 workers, cap=4, no CADENCE_BANK_LAUNCH -> PROCEED (read-only, not refused)" PROCEED \
   "$(FLEET_VERDICT_LAUNCH= fleet_verdict "$p4" HIMMEL_FLEET_CAP=4)"
 
 # The informational FLEET line still prints on a plain read - only the
@@ -581,7 +581,7 @@ claudex_verdict() {
   chmod +x "$stub"
   printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
   CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
   FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_LANE=claudex CADENCE_BANK_STATUS_CMD="$stub" \
     bash "$SUT" </dev/null 2>"$W/err.log"
 }
@@ -623,7 +623,7 @@ chmod +x "$SPACE_STUB"
 printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
 check "claudex lane, CADENCE_BANK_STATUS_CMD path contains a space -> SKIPPED-BANK (not word-split into a bogus command)" SKIPPED-BANK \
   "$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-     CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
+     CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
      FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_LANE=claudex CADENCE_BANK_STATUS_CMD="$SPACE_STUB" \
        bash "$SUT" </dev/null 2>"$W/err.log")"
 
@@ -631,18 +631,18 @@ check "claudex lane, CADENCE_BANK_STATUS_CMD path contains a space -> SKIPPED-BA
 # native_codex_run <status-cmd> [cache-json] - the DEFAULT (native) lane with
 # CADENCE_BANK_STATUS_CMD pointed at a stub; the stdout verdict is returned and
 # stderr lands in $W/err.log. The codex figure rides the existing
-# `leg=... five_hour=... seven_day=... extra_usage=... age=...` line as
+# `worker=... five_hour=... seven_day=... extra_usage=... age=...` line as
 # `codex=5h<n>/wk<n>` (tick.sh's own spelling) or `codex=?`.
 # shellcheck source=scripts/lib/timeout-bin.sh
 . "$REPO/scripts/lib/timeout-bin.sh"
 native_codex_run() {
   if [ -n "${2:-}" ]; then printf '%s' "$(stamp_account "$2")" > "$W/c.json"; else printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; fi
   CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg \
   FLEET_PS_CMD="$NO_FLEET" CADENCE_BANK_STATUS_CMD="$1" \
     ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 20} bash "$SUT" </dev/null 2>"$W/err.log"
 }
-bank_line() { grep -E '^bank-preflight: leg=' "$W/err.log" | head -1; }
+bank_line() { grep -E '^bank-preflight: worker=' "$W/err.log" | head -1; }
 stub_status() { # stub_status <name> <body-line...> -> path of an executable stub
   local p="$W/$1.sh"; shift
   printf '%s\n' '#!/usr/bin/env bash' "$@" > "$p"; chmod +x "$p"; printf '%s' "$p"
@@ -654,7 +654,7 @@ S_BOTH="$(stub_status codex-both "printf '%s\n' 'haiku funded measured 5h used=2
 if [ -n "$_TIMEOUT_BIN" ]; then
   check "native lane, codex funded -> PROCEED (verdict untouched)" PROCEED "$(native_codex_run "$S_BOTH")"
   check "bank line prints BOTH banks: Claude five_hour/seven_day AND codex=5h12/wk34" \
-    "bank-preflight: leg=testleg five_hour=10 seven_day=20 extra_usage=n/a age=0s codex=5h12/wk34" "$(bank_line | sed 's/age=[0-9]*s/age=0s/')"
+    "bank-preflight: worker=testleg five_hour=10 seven_day=20 extra_usage=n/a age=0s codex=5h12/wk34" "$(bank_line | sed 's/age=[0-9]*s/age=0s/')"
 
   S_WK="$(stub_status codex-wk "printf '%s\n' 'claudex funded measured weekly used=6% free=94% resets=2026-10-20T05:00:09.000Z'")"
   native_codex_run "$S_WK" >/dev/null
@@ -707,13 +707,13 @@ for _t in bash env cat grep head sed awk date jq mkdir dirname tr rm ps printf s
 done
 printf '%s' "$HEALTHY_CACHE" > "$W/c.json"
 _noto_verdict="$(PATH="$NOTO_BIN" CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 \
-  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg FLEET_PS_CMD="$NO_FLEET" \
+  CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg FLEET_PS_CMD="$NO_FLEET" \
   CADENCE_BANK_STATUS_CMD="$S_BOTH" "$NOTO_BIN/bash" "$SUT" </dev/null 2>"$W/err.log")"
 check "no timeout binary -> PROCEED, codex read skipped (never unbounded)" PROCEED "$_noto_verdict"
 case "$(bank_line)" in *' codex=?') PASS=$((PASS+1)); echo "ok - no timeout binary -> codex=?" ;;
   *) FAIL=$((FAIL+1)); echo "FAIL - no timeout binary: '$(bank_line)'" ;; esac
 
-# metered legs use the backend credit floor, never either bank.
+# metered workers use the backend credit floor, never either bank.
 # Removing the lane branch must refuse this 99% fixture; removing fleet
 # admission must incorrectly admit the full-fleet fixture below.
 printf '%s' "$(stamp_account "$(fx 99 99 "$NOW" "")")" > "$W/c.json"
@@ -738,9 +738,9 @@ check "native lane without lane env, native bank 99 -> SKIPPED-BANK" SKIPPED-BAN
 check "OpenRouter launch still refuses fleet at cap" SKIPPED-FLEET \
   "$(fleet_verdict "$p4" HIMMEL_FLEET_CAP=4 CADENCE_BANK_LANE=openrouter WORKER_SESSION_LANE=openrouter)"
 por="$W/psopenrouter"; mk_ps_stub_environ "$por" \
-  '9001:claude:WORKER_SESSION_LANE=openrouter:--model sonnet -n HIMMEL-1000-leg load doc' \
-  '9002:claude:CLAUDEX_LANE_OK=1:--model gpt-6.1-sol -n HIMMEL-1001-leg load doc' \
-  '9003:claude:HOME=/home/x:--model claude-opus-5 -n HIMMEL-1002-leg load doc'
+  '9001:claude:WORKER_SESSION_LANE=openrouter:--model sonnet -n HIMMEL-1000-worker load doc' \
+  '9002:claude:CLAUDEX_LANE_OK=1:--model gpt-6.1-sol -n HIMMEL-1001-worker load doc' \
+  '9003:claude:HOME=/home/x:--model claude-opus-5 -n HIMMEL-1002-worker load doc'
 fleet_verdict "$por" HIMMEL_FLEET_CAP=4 >/dev/null
 check "fleet reports all three lanes and total" \
   'bank-preflight: FLEET native=1 claudex=1 openrouter=1 reserved=0 total=3/4' \
@@ -749,7 +749,7 @@ check "OpenRouter processes count toward fleet refusal" SKIPPED-FLEET \
   "$(fleet_verdict "$por" HIMMEL_FLEET_CAP=3 CADENCE_BANK_LANE=openrouter)"
 
 pnew="$W/psnewwins"; mk_ps_stub_environ "$pnew" \
-  '9001:claude:WORKER_SESSION_LANE=native,LEG_LANE=openrouter:--model claude-opus-5 -n HIMMEL-1000-leg load doc'
+  '9001:claude:WORKER_SESSION_LANE=native,LEG_LANE=openrouter:--model claude-opus-5 -n HIMMEL-1000-worker load doc'
 fleet_verdict "$pnew" HIMMEL_FLEET_CAP=4 >/dev/null
 check "fleet census: the new lane name wins over the old one" \
   'bank-preflight: FLEET native=1 claudex=0 openrouter=0 reserved=0 total=1/4' \
@@ -812,7 +812,7 @@ check "valid lift, cache without resets_at -> SKIPPED-BANK" SKIPPED-BANK \
 printf '%s' "$(stamp_account "$(lfx 10 98 "$NOW" "")")" > "$W/c.json"
 sed -i.bak 's/"resets_at":[0-9]*/"resets_at":"not-a-date"/' "$W/c.json"
 check "valid lift, unparseable resets_at -> SKIPPED-BANK" SKIPPED-BANK \
- "$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_BANK_LEG=testleg FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null 2>/dev/null)"
+ "$(CADENCE_BANK_CACHE="$W/c.json" CADENCE_BANK_SKIP_REFRESH=1 CADENCE_BANK_LEDGER="$W/ledger.jsonl" CADENCE_USAGE_WORKER=testleg FLEET_PS_CMD="$NO_FLEET" bash "$SUT" </dev/null 2>/dev/null)"
 # The preflight's own identity gate refuses a mismatched cache earlier (BANK-UNKNOWN),
 # so the lift's own account/identity branches are exercised through usage_lift_valid.
 lift_rc() { ( . "$REPO/scripts/lib/usage-lift.sh"; usage_lift_valid "$1" >/dev/null 2>&1; echo $? ); }
@@ -1058,13 +1058,13 @@ verdict_new() {
   printf '%s' "$(stamp_account "$1")" > "$W/c.json"
   env -u CADENCE_BANK_LANE CADENCE_BANK_CACHE="$W/missing.json" \
   CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
-  CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg CADENCE_USAGE_LANE=native \
+  CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_WORKER=newleg CADENCE_USAGE_LANE=native \
   FLEET_PS_CMD="$NO_FLEET" \
     bash "$SUT" </dev/null 2>"$W/err.log"
 }
 check "new names alone: CADENCE_USAGE_CACHE is read, over the old name" PROCEED \
   "$(unset CADENCE_BANK_MAX_PCT; verdict_new "$(fx 10 20 "$NOW" "")")"
-check "new names alone: ledger row goes to CADENCE_USAGE_LEDGER with CADENCE_USAGE_LEG" newleg \
+check "new names alone: ledger row goes to CADENCE_USAGE_LEDGER with CADENCE_USAGE_WORKER" newleg \
   "$(tail -1 "$W/ledger-new.jsonl" 2>/dev/null | jq -r '.leg' 2>/dev/null)"
 check "CADENCE_USAGE_MAX_PCT alone is the ceiling" SKIPPED-BANK \
   "$(unset CADENCE_BANK_MAX_PCT; CADENCE_USAGE_MAX_PCT=50 verdict_new "$(fx 60 20 "$NOW" "")")"
@@ -1082,18 +1082,18 @@ check "CADENCE_USAGE_MAX_AGE is read" BANK-STALE \
   "$(CADENCE_USAGE_MAX_AGE=5 verdict_new "$(fx 10 20 "$((NOW-60))" "")")"
 check "CADENCE_USAGE_LAUNCH=1 with the fleet at cap -> SKIPPED-FLEET" SKIPPED-FLEET \
   "$(printf '%s' "$(stamp_account "$(fx 10 20 "$NOW" "")")" > "$W/c.json"; CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
-     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg CADENCE_USAGE_LAUNCH=1 HIMMEL_FLEET_CAP=4 \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_WORKER=newleg CADENCE_USAGE_LAUNCH=1 HIMMEL_FLEET_CAP=4 \
      FLEET_PS_CMD="$p4/ps" FLEET_PROC="$p4/proc" HIMMEL_FLEET_SLOTS="$(mktemp -d "$W/slots.XXXXXX")" \
      env -u FLEET_CAP_OK -u CADENCE_BANK_LAUNCH bash -o pipefail "$SUT" </dev/null 2>"$W/err.log")"
 _new_stub="$W/claudex-status-new.sh"
 printf '%s\n' '#!/usr/bin/env bash' "printf '%s\n' 'claudex spent measured weekly used=99% free=1%'" > "$_new_stub"; chmod +x "$_new_stub"
 check "CADENCE_USAGE_LANE=claudex with CADENCE_USAGE_STATUS_CMD parks on the codex bank" SKIPPED-BANK \
   "$(printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; env -u CADENCE_BANK_LANE CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
-     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg FLEET_PS_CMD="$NO_FLEET" \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_WORKER=newleg FLEET_PS_CMD="$NO_FLEET" \
      CADENCE_USAGE_LANE=claudex CADENCE_USAGE_STATUS_CMD="$_new_stub" bash "$SUT" </dev/null 2>"$W/err.log")"
 check "CADENCE_USAGE_LANE=native wins over an inherited CADENCE_BANK_LANE=claudex" PROCEED \
   "$(printf '%s' "$HEALTHY_CACHE" > "$W/c.json"; CADENCE_USAGE_CACHE="$W/c.json" CADENCE_USAGE_SKIP_REFRESH=1 \
-     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_LEG=newleg FLEET_PS_CMD="$NO_FLEET" \
+     CADENCE_USAGE_LEDGER="$W/ledger-new.jsonl" CADENCE_USAGE_WORKER=newleg FLEET_PS_CMD="$NO_FLEET" \
      CADENCE_BANK_LANE=claudex CADENCE_USAGE_LANE=native CADENCE_BANK_STATUS_CMD="$_new_stub" bash "$SUT" </dev/null 2>"$W/err.log")"
 
 echo "passed=$PASS failed=$FAIL"; [ "$FAIL" -eq 0 ]

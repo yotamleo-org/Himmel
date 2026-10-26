@@ -34,7 +34,7 @@ mk_state() {
     printf '{"schema":1,"generated_at":%s,"overall":{"hit_pct":96.0},"roles":{}}\n' "$2" > "$1/metrics.json"
     : > "$1/history.jsonl"
 }
-# add_day DIR DAYS_AGO OVERALL CONSOLE LEG SUBAGENT — one history row for that day.
+# add_day DIR DAYS_AGO OVERALL CHIEF WORKER SUBAGENT — one history row for that day.
 add_day() {
     printf '{"ts":%s,"overall":%s,"roles":{"console":%s,"leg":%s,"subagent":%s,"bridge":null,"other":null}}\n' \
         "$((NOW - $2 * DAY - 3600))" "$3" "$4" "$5" "$6" >> "$1/history.jsonl"
@@ -72,8 +72,8 @@ mk_state "$TMP_ROOT/fresh" $((NOW - 3600))
 for d in 0 1 2; do add_day "$TMP_ROOT/fresh" "$d" 98.0 99.0 97.0 90.0; done
 OUT=$(run_line "$TMP_ROOT/fresh")
 assert_contains "fresh: 7d ratio" "cache: 7d read ratio 98.0%" "$OUT"
-assert_contains "fresh: per kind console" "console 99.0%" "$OUT"
-assert_contains "fresh: per kind leg" "leg 97.0%" "$OUT"
+assert_contains "fresh: per kind chief" "chief 99.0%" "$OUT"
+assert_contains "fresh: per kind worker" "worker 97.0%" "$OUT"
 assert_contains "fresh: per kind subagent" "subagent 90.0%" "$OUT"
 assert_contains "fresh: no baseline" "no baseline yet" "$OUT"
 assert_not_contains "fresh: null kinds omitted" "bridge" "$OUT"

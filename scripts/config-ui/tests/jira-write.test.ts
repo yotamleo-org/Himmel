@@ -44,11 +44,11 @@ test("a drop transitions the ticket with the mapped Jira status name", async () 
 });
 
 test("a theme select replaces the previous theme- label and keeps the others", async () => {
-  const b = boot({ STUB_JIRA_LABELS: "product, theme-old-theme, leg-blocked" });
+  const b = boot({ STUB_JIRA_LABELS: "product, theme-old-theme, worker-blocked" });
   const r = await b.post({ key: "HIMMEL-12", theme: "tracker" });
   expect(r.status).toBe(200);
   const edit = b.calls().find((c) => c[0] === "edit")!;
-  expect(edit).toEqual(["edit", "HIMMEL-12", "--labels", "product,leg-blocked,theme-tracker"]);
+  expect(edit).toEqual(["edit", "HIMMEL-12", "--labels", "product,worker-blocked,theme-tracker"]);
   expect(b.audit()[0]).toMatchObject({ action: "jira-theme", target: "HIMMEL-12", value: "tracker", rc: 0 });
 });
 
@@ -77,11 +77,11 @@ test("refused with no CLI call: missing token, bad key, unknown status, bad them
 });
 
 test("a description line that starts with Labels: is not read as the ticket's labels", async () => {
-  const b = boot({ STUB_JIRA_LABELS: "product, theme-old, leg-blocked", STUB_JIRA_DESC: "intro\nLabels: decoy\nmore" });
+  const b = boot({ STUB_JIRA_LABELS: "product, theme-old, worker-blocked", STUB_JIRA_DESC: "intro\nLabels: decoy\nmore" });
   const r = await b.post({ key: "HIMMEL-12", theme: "tracker" });
   expect(r.status).toBe(200);
   expect(b.calls().find((c) => c[0] === "get")).toEqual(["get", "HIMMEL-12", "--json"]);
-  expect(b.calls().find((c) => c[0] === "edit")).toEqual(["edit", "HIMMEL-12", "--labels", "product,leg-blocked,theme-tracker"]);
+  expect(b.calls().find((c) => c[0] === "edit")).toEqual(["edit", "HIMMEL-12", "--labels", "product,worker-blocked,theme-tracker"]);
 });
 
 test("clearing the theme of a ticket whose only label is the theme is refused, with no edit call", async () => {

@@ -235,8 +235,8 @@ accurate finding against the critic that raised it.
 
 Independent judge J1407A (verdict:
 `handovers/yotamleo/himmel/verdicts/J1407A/verdict.md`) found exactly this on
-PR #1407: codex-1 (`headed-arm-leg.sh:468/469`) and codex-2
-(`headed-arm-leg.sh:618`, same PR) were both ledger-recorded as `disproved`,
+PR #1407: codex-1 (`headed-arm-worker.sh:468/469`) and codex-2
+(`headed-arm-worker.sh:618`, same PR) were both ledger-recorded as `disproved`,
 but both claims are factually true — the round adjudicated "keep the
 behavior" as if it meant "the claim is wrong". The ledger rows are left
 unrewritten (out of scope for a doc-only follow-up); the relabel is recorded

@@ -2,7 +2,7 @@
 # Tests for guard-rm-writes.sh. Mode 1 (every session): a raw Edit/Write or a
 # Bash redirect/tee/cp/mv/sed -i onto a release authority file is denied, and
 # the Jira CLI's `release` op is the sanctioned writer. Mode 2
-# (HIMMEL_RELEASE_MANAGER=1, exported by headed-arm-leg.sh --profile
+# (HIMMEL_RELEASE_MANAGER=1, exported by headed-arm-worker.sh --profile
 # release-manager): the release manager's Jira, git/gh, file and MCP fence,
 # failing closed.
 #
@@ -10,7 +10,7 @@
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Pure bash + jq over a temp sandbox; not ported to native PowerShell — the
-# release-manager lane (headed-arm-leg.sh) is Linux-only.
+# release-manager lane (headed-arm-worker.sh) is Linux-only.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -95,16 +95,16 @@ rm_row "git commit" 2 "$(bash_payload 'git commit -m x')"
 rm_row "git push" 2 "$(bash_payload 'git push origin HEAD')"
 rm_row "gh pr create" 2 "$(bash_payload 'gh pr create --title x')"
 rm_row "gh api -X POST" 2 "$(bash_payload 'gh api -X POST repos/o/r/issues')"
-rm_row "leg-pr-open" 2 "$(bash_payload 'bash scripts/lanes/leg-pr-open.sh t b')"
+rm_row "worker-pr-open" 2 "$(bash_payload 'bash scripts/lanes/worker-pr-open.sh t b')"
 rm_row "merge-on-green" 2 "$(bash_payload 'bash scripts/handover/merge-on-green.sh')"
 rm_row "go.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/go.sh 1 abc')" # old-term-ok: the old path must still be denied
 rm_row "go.sh through chief-kit" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 1 abc')"
 rm_row "inbox-send" 2 "$(bash_payload 'bash scripts/handover/inbox-send.sh x')"
 rm_row "quote-spliced merge-on-green" 2 "$(bash_payload 'bash scripts/handover/merge-on-gr""een.sh')"
-rm_row "quote-spliced leg-jira-status" 2 "$(bash_payload "bash scripts/handover/chief-kit/leg-jira-''status.sh HIMMEL-1 Done")"
+rm_row "quote-spliced worker-jira-status" 2 "$(bash_payload "bash scripts/handover/chief-kit/worker-jira-''status.sh HIMMEL-1 Done")"
 rm_row "unsetting the marker" 2 "$(bash_payload 'unset HIMMEL_RELEASE_MANAGER; true')"
 rm_row "an Edit of rulings.jsonl" 2 "$(file_payload Edit "$REL/rulings.jsonl")"
-rm_row "an Edit of another leg's doc" 2 "$(file_payload Edit "$ROOT/u/himmel/HIMMEL-2-other-2026-10-21.md")"
+rm_row "an Edit of another worker's doc" 2 "$(file_payload Edit "$ROOT/u/himmel/HIMMEL-2-other-2026-10-21.md")"
 rm_row "a status file of another release" 2 "$(file_payload Write "$ROOT/u/himmel/release/R200/status-1.md")"
 rm_row "a repo file" 2 "$(file_payload Write "$TMP/repo/x.sh")"
 rm_row "a relative path" 2 "$(file_payload Write "x.md")"

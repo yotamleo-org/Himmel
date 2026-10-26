@@ -190,7 +190,7 @@ enabled = true
 org_role = Viewer
 
 [log]
-mode = console
+mode = chief
 EOF
 
     if [ ! -s "$DATA/admin-password" ]; then

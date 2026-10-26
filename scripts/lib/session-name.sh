@@ -46,10 +46,10 @@ current_session_name() {
     [ -n "$name" ] || return 1
     case "$name" in
         # */*|*..*: path traversal. *[[:space:]]*: whitespace. *[*?[]*:
-        # glob metacharacters — resolve_console_doc's `find -name
+        # glob metacharacters — resolve_chief_doc's `find -name
         # "${name}.md"` treats these as wildcards, not literal characters,
         # so an unsanitized name can cross-match a DIFFERENT session's
-        # console doc.
+        # chief doc.
         */*|*..*|*[[:space:]]*|*[*?[]*) return 1 ;;
     esac
 

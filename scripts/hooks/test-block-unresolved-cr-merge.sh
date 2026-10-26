@@ -11,16 +11,16 @@ set -uo pipefail
 # still block — the CI gate is independent of CR_MERGE_GATE_OK).
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
 
-# a console-spawned leg's own launching shell carries
-# HIMMEL_CONSOLE_LEG=1, which arms the new gate-3 console-GO check below. An
-# ambient value here (this suite is itself frequently run FROM such a leg)
-# would refuse every allow-case below with "no console GO" before gate 3 is
+# a chief-spawned worker's own launching shell carries
+# HIMMEL_CONSOLE_LEG=1, which arms the new gate-3 chief-GO check below. An
+# ambient value here (this suite is itself frequently run FROM such a worker)
+# would refuse every allow-case below with "no chief GO" before gate 3 is
 # even under test (same precedent as test-merge-on-green.sh). Gate 3 gets its
 # own dedicated cases further down, each setting HIMMEL_CONSOLE_LEG itself.
 unset HIMMEL_CONSOLE_LEG
 
 # HIMMEL_REPO names the harness checkout the GO gates anchor on when the hook
-# copy sits in another repo (an adopter). An ambient value (a leg's own env)
+# copy sits in another repo (an adopter). An ambient value (a worker's own env)
 # would re-anchor every scratch-anchor row below on the real checkout; the R8
 # rows set it themselves.
 unset HIMMEL_REPO
@@ -610,7 +610,7 @@ unset CR_MERGE_GATE_OK
 GH_STUB_MODE=unresolved CR_PROFILE=none t profile-none-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 unset CR_PROFILE
 
-# ── gate 3: console-GO merge gate — runs only when
+# ── gate 3: chief-GO merge gate — runs only when
 # HIMMEL_CONSOLE_LEG is truthy, after the CR/CI gates above already pass
 # (GH_STUB_MODE=clean). Shares scripts/lib/go-gate.sh with
 # merge-on-green.sh's own gate, so the fixture shape (pr=42,
@@ -627,75 +627,75 @@ mkdir -p "$HOME/.config/himmel"
 GO_MAC_42="$(bash -c '. "$1"; go_mac 42 abc123 o/r' _ "$SCRIPT_DIR/../lib/go-gate.sh")"
 [ "${#GO_MAC_42}" -eq 64 ] || { fail=$((fail+1)); echo "FAIL setup: could not compute the scratch GO mac"; }
 
-# leg + no GO file at all -> refused (the PR #798 shape this ticket exists to close)
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-no-go-blocks 2 Bash "gh pr merge 42 --squash"
+# worker + no GO file at all -> refused (the PR #798 shape this ticket exists to close)
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-no-go-blocks 2 Bash "gh pr merge 42 --squash"
 
-# leg + a GO file for the exact certified head, and the merge command pins
+# worker + a GO file for the exact certified head, and the merge command pins
 # that exact head -> bound, merge allowed
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.locks/go/42.abc123"
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-valid-go-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-valid-go-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 
 # CR round: a confirmed GO is bound to $go_sha, but that's only
 # THIS hook's own `gh pr view` read -- the merge command that follows is a
 # separate invocation and can land a different commit unless it pins one
 # itself. Three more cases against the SAME valid-GO fixture above:
 # (a) no pin at all -> refused (the gap CodeRabbit found)
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-valid-go-no-pin-blocks 2 Bash "gh pr merge 42 --squash"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-valid-go-no-pin-blocks 2 Bash "gh pr merge 42 --squash"
 # (b) pin naming a DIFFERENT sha than the GO was bound to -> refused
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-valid-go-wrong-pin-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit WRONGSHA"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-valid-go-wrong-pin-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit WRONGSHA"
 # (c) --match-head-commit=<sha> (the = form; the old parser silently
 # discarded it via the --*|-* catch-all instead of capturing it) naming the
 # exact certified head -> allowed
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-valid-go-pin-eq-form-allows 0 Bash "gh pr merge 42 --squash --match-head-commit=abc123"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-valid-go-pin-eq-form-allows 0 Bash "gh pr merge 42 --squash --match-head-commit=abc123"
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# RED control: leg + a GO for the exact head, pinned, but with NO
-# mac (a leg-planted file, or one written before) -> refused
-printf 'pr=42\nhead=abc123\nby=leg\nat=now\n' > "$GOROOT/.locks/go/42.abc123"
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-go-without-mac-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+# RED control: worker + a GO for the exact head, pinned, but with NO
+# mac (a worker-planted file, or one written before) -> refused
+printf 'pr=42\nhead=abc123\nby=worker\nat=now\n' > "$GOROOT/.locks/go/42.abc123"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-go-without-mac-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# leg + a GO file present but for a DIFFERENT (stale) head -> still refused
+# worker + a GO file present but for a DIFFERENT (stale) head -> still refused
 printf 'pr=42\nhead=OLDSHA\nby=test\nat=now\n' > "$GOROOT/.locks/go/42.abc123"
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-stale-go-blocks 2 Bash "gh pr merge 42 --squash"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-stale-go-blocks 2 Bash "gh pr merge 42 --squash"
 rm -f "$GOROOT/.locks/go/42.abc123"
 
 # HIMMEL_CONSOLE_LEG=0 is the falsy convention (go.sh/merge-on-green.sh share
 # it) -> gate 3 never activates, no GO file needed
-HIMMEL_CONSOLE_LEG=0 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-marker-falsy-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+HIMMEL_CONSOLE_LEG=0 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-marker-falsy-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 
 # inversion control: a VALID matching GO file present, marker flipped OFF ->
 # still allowed. Discriminates the marker from the go_root/file as the thing
-# that gates -- leg-marker-falsy-allows above proves the marker gates when no
+# that gates -- worker-marker-falsy-allows above proves the marker gates when no
 # GO file exists at all, but that alone cannot rule out an implementation
 # that is really keying off go_root/file presence rather than the marker; a
 # GO file genuinely present here removes that ambiguity.
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.locks/go/42.abc123"
-HIMMEL_CONSOLE_LEG=0 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-marker-falsy-with-go-present-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+HIMMEL_CONSOLE_LEG=0 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-marker-falsy-with-go-present-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 rm -f "$GOROOT/.locks/go/42.abc123"
 
-# a non-leg session (HIMMEL_CONSOLE_LEG unset, the suite default) is
+# a non-worker (HIMMEL_CONSOLE_LEG unset, the suite default) is
 # completely untouched by gate 3 even with an unresolvable go_root
 # (HANDOVER_DIR left unset here) -- "a gate that blocks everything is not a
 # gate".
-GH_STUB_MODE=clean t non-leg-untouched-by-go-gate 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+GH_STUB_MODE=clean t non-worker-untouched-by-go-gate 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 
-grep -qi "no console GO" "$TMP/err-leg-no-go-blocks" || { echo "FAIL leg-no-go reason missing"; fail=$((fail+1)); }
-grep -q "42.abc123" "$TMP/err-leg-no-go-blocks" || { echo "FAIL leg-no-go reason missing GO path"; fail=$((fail+1)); }
-grep -qi "no console GO" "$TMP/err-leg-stale-go-blocks" || { echo "FAIL leg-stale-go reason missing"; fail=$((fail+1)); }
-grep -qi "must pin" "$TMP/err-leg-valid-go-no-pin-blocks" || { echo "FAIL leg-valid-go-no-pin reason missing"; fail=$((fail+1)); }
-grep -qi "does not match" "$TMP/err-leg-valid-go-wrong-pin-blocks" || { echo "FAIL leg-valid-go-wrong-pin reason missing"; fail=$((fail+1)); }
+grep -qi "no chief GO" "$TMP/err-worker-no-go-blocks" || { echo "FAIL worker-no-go reason missing"; fail=$((fail+1)); }
+grep -q "42.abc123" "$TMP/err-worker-no-go-blocks" || { echo "FAIL worker-no-go reason missing GO path"; fail=$((fail+1)); }
+grep -qi "no chief GO" "$TMP/err-worker-stale-go-blocks" || { echo "FAIL worker-stale-go reason missing"; fail=$((fail+1)); }
+grep -qi "must pin" "$TMP/err-worker-valid-go-no-pin-blocks" || { echo "FAIL worker-valid-go-no-pin reason missing"; fail=$((fail+1)); }
+grep -qi "does not match" "$TMP/err-worker-valid-go-wrong-pin-blocks" || { echo "FAIL worker-valid-go-wrong-pin reason missing"; fail=$((fail+1)); }
 
 # ── the mac now binds the repo. A GO minted for THIS repo
 # (o/r, the fixture's mac) must be refused when the merge command itself
-# names a DIFFERENT repo via --repo/-R — the console's own redirect on this
+# names a DIFFERENT repo via --repo/-R — the chief's own redirect on this
 # ticket named this exact shape (GO(repo A) meets `gh pr merge -R B`) as a
-# required case, since a leg could otherwise point --repo at a repo it
-# controls and reuse a GO minted for the console's real repo.
+# required case, since a worker could otherwise point --repo at a repo it
+# controls and reuse a GO minted for the chief's real repo.
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.locks/go/42.abc123"
 # a cross-repo merge is refused up front unless CR_MERGE_GATE_OK=1; this row is about the GO mac.
-CR_MERGE_GATE_OK=1 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_PR_NWO=other/repo t leg-cross-repo-go-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123 --repo other/repo"
-grep -qi "mac" "$TMP/err-leg-cross-repo-go-blocks" || { echo "FAIL leg-cross-repo-go-blocks reason missing"; fail=$((fail+1)); }
+CR_MERGE_GATE_OK=1 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_PR_NWO=other/repo t worker-cross-repo-go-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123 --repo other/repo"
+grep -qi "mac" "$TMP/err-worker-cross-repo-go-blocks" || { echo "FAIL worker-cross-repo-go-blocks reason missing"; fail=$((fail+1)); }
 
 # ── a v1-tagged mac (himmel-go-v1|<pr>|<sha>, no nwo bound
 # — how go.sh signed a GO before nwo binding) must be refused now that
@@ -704,23 +704,23 @@ grep -qi "mac" "$TMP/err-leg-cross-repo-go-blocks" || { echo "FAIL leg-cross-rep
 # auto-invalidated, never silently accepted as still valid.
 V1_MAC="$(printf 'himmel-go-v1|42|abc123' | openssl dgst -sha256 -mac HMAC -macopt "hexkey:$(cat "$HOME/.config/himmel/go-hmac.key")" | awk '{print $NF}')"
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$V1_MAC" > "$GOROOT/.locks/go/42.abc123"
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t leg-v1-mac-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
-grep -qi "mac" "$TMP/err-leg-v1-mac-blocks" || { echo "FAIL leg-v1-mac-blocks reason missing"; fail=$((fail+1)); }
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean t worker-v1-mac-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+grep -qi "mac" "$TMP/err-worker-v1-mac-blocks" || { echo "FAIL worker-v1-mac-blocks reason missing"; fail=$((fail+1)); }
 rm -f "$GOROOT/.locks/go/42.abc123"
 
 # ── this hook's `gh repo view` call (when no --repo is on the
-# merge command) must be time-bounded — the console's redirect requires a
+# merge command) must be time-bounded — the chief's redirect requires a
 # hang to read as a refusal, never as an allow, since this hook runs on a
 # budget. GH_STUB_MODE=repo-view-timeout sleeps 30s in the stub; the hook's
 # own `timeout 5` must kill it well before that and refuse.
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.locks/go/42.abc123"
 GO_TIMEOUT_START=$(date +%s)
-HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=repo-view-timeout t leg-nwo-timeout-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=repo-view-timeout t worker-nwo-timeout-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 GO_TIMEOUT_ELAPSED=$(( $(date +%s) - GO_TIMEOUT_START ))
 if [ "$GO_TIMEOUT_ELAPSED" -ge 15 ]; then
-    fail=$((fail+1)); echo "FAIL leg-nwo-timeout-blocks took ${GO_TIMEOUT_ELAPSED}s — the hook's own gh-repo-view timeout did not bound the stub's 30s sleep"
+    fail=$((fail+1)); echo "FAIL worker-nwo-timeout-blocks took ${GO_TIMEOUT_ELAPSED}s — the hook's own gh-repo-view timeout did not bound the stub's 30s sleep"
 fi
-grep -qi "cannot resolve this repo" "$TMP/err-leg-nwo-timeout-blocks" || { echo "FAIL leg-nwo-timeout-blocks reason missing"; fail=$((fail+1)); }
+grep -qi "cannot resolve this repo" "$TMP/err-worker-nwo-timeout-blocks" || { echo "FAIL worker-nwo-timeout-blocks reason missing"; fail=$((fail+1)); }
 rm -f "$GOROOT/.locks/go/42.abc123"
 
 # ── the case above ran with the portable shim (or a real `timeout`) on
@@ -855,12 +855,12 @@ fi
 # poll-and-kill bound is 5s).
 GREEN_NOTB_START=$(date +%s)
 PATH="$NOTB_PATH" HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=repo-view-timeout \
-    t leg-no-timeout-bin-hang-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+    t worker-no-timeout-bin-hang-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 GREEN_NOTB_ELAPSED=$(( $(date +%s) - GREEN_NOTB_START ))
 if [ "$GREEN_NOTB_ELAPSED" -ge 15 ]; then
-    fail=$((fail+1)); echo "FAIL leg-no-timeout-bin-hang-blocks took ${GREEN_NOTB_ELAPSED}s — the bash-native bound did not cap the hang without a timeout binary"
+    fail=$((fail+1)); echo "FAIL worker-no-timeout-bin-hang-blocks took ${GREEN_NOTB_ELAPSED}s — the bash-native bound did not cap the hang without a timeout binary"
 fi
-grep -qi "cannot resolve this repo" "$TMP/err-leg-no-timeout-bin-hang-blocks" || { echo "FAIL leg-no-timeout-bin-hang-blocks reason missing"; fail=$((fail+1)); }
+grep -qi "cannot resolve this repo" "$TMP/err-worker-no-timeout-bin-hang-blocks" || { echo "FAIL worker-no-timeout-bin-hang-blocks reason missing"; fail=$((fail+1)); }
 rm -f "$GOROOT/.locks/go/42.abc123"
 
 # Positive control: same no-timeout PATH, but gh answers immediately (no
@@ -869,17 +869,17 @@ rm -f "$GOROOT/.locks/go/42.abc123"
 # case when no timeout/gtimeout is installed.
 printf 'pr=42\nhead=abc123\nby=test\nat=now\nmac=%s\n' "$GO_MAC_42" > "$GOROOT/.locks/go/42.abc123"
 PATH="$NOTB_PATH" HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean \
-    t leg-no-timeout-bin-clean-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
+    t worker-no-timeout-bin-clean-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 rm -f "$GOROOT/.locks/go/42.abc123"
 
 # ── declare -F go_mac must be required directly, not only
-# go_gate — a go-gate.sh that defines console_leg + a STUB go_gate (always
+# go_gate — a go-gate.sh that defines chief_worker + a STUB go_gate (always
 # allows) but never defines go_mac would otherwise pass the old
 # `declare -F go_gate` check and let the stub's rc=0 through untouched.
 NOGOMAC_GOGATE="$TMP/go-gate-no-go-mac.sh"
 cat > "$NOGOMAC_GOGATE" <<'EOF'
 #!/usr/bin/env bash
-console_leg() { return 0; }
+chief_worker() { return 0; }
 go_gate() { echo "stub allow — go_mac never defined"; return 0; }
 EOF
 NOGOMAC_ROOT="$TMP/no-go-mac-hook"
@@ -905,9 +905,9 @@ fi
 # ── RED control — the pre-fix hook (before
 # the fix) resolved go_root with a plain `handover_root` call, which
 # reads only the live HANDOVER_DIR shell var — never the anchor's own .env.
-# A leg whose launching shell carries no HANDOVER_DIR (the common shape:
-# the console configured it via .env, not export) falls back to the Mode A
-# inline stub root and never finds the console's real GO, even though one
+# A worker whose launching shell carries no HANDOVER_DIR (the common shape:
+# the chief configured it via .env, not export) falls back to the Mode A
+# inline stub root and never finds the chief's real GO, even though one
 # genuinely exists. Prove it: build a scratch "anchor" (a directory with its
 # own .env naming the real root) and run the SAME valid-GO fixture against
 # the pre-fix hook (false refusal, rc=2) and the shipped hook (finds it via
@@ -957,11 +957,11 @@ rm -f "$TRUE_ROOT/.locks/go/42.abc123"
 
 # ── RED control — the pre-fix hook (base
 # 6ac483e4, before the fix) never consulted .locks/go/ at all, so a
-# console-spawned leg with no GO file could run `gh pr merge` straight
+# chief-spawned worker with no GO file could run `gh pr merge` straight
 # through (the shape this gate exists to close). Prove it: extract
-# that exact script into a scratch mutant, run the SAME leg-no-go fixture
-# leg-no-go-blocks used above against it, and confirm it was allowed (rc=0)
-# where the shipped hook (proven by leg-no-go-blocks, above) refuses (rc=2).
+# that exact script into a scratch mutant, run the SAME worker-no-go fixture
+# worker-no-go-blocks used above against it, and confirm it was allowed (rc=0)
+# where the shipped hook (proven by worker-no-go-blocks, above) refuses (rc=2).
 export RED_CONTROL_TMPDIR="$TMP"
 # shellcheck source=scripts/lib/red-control.sh
 # shellcheck disable=SC1091
@@ -1010,7 +1010,7 @@ else
         --observed     "$RED_CONTROL_OUT" \
         --expect-wrong "rc=0" \
         --correct      "rc=2" \
-        --note "pre-fix block-unresolved-cr-merge.sh (base $PRE_FIX_SHA) had no console-GO gate at all, so it let a console-spawned leg with NO GO file merge straight through; the shipped hook's leg-no-go-blocks case (above, same fixture) refuses it"
+        --note "pre-fix block-unresolved-cr-merge.sh (base $PRE_FIX_SHA) had no chief-GO gate at all, so it let a chief-spawned worker with NO GO file merge straight through; the shipped hook's worker-no-go-blocks case (above, same fixture) refuses it"
     then
         pass=$((pass+1)); echo "ok   red-control-pre-fix-allowed-post-fix-refuses"
     else
@@ -1021,11 +1021,11 @@ fi
 # ── SECOND RED control — the previously-shipped hook
 # (head ef6f995a, before the --match-head-commit pin check existed) resolved
 # go_num/go_sha and confirmed a GO was bound to that head, but never checked
-# the merge command's OWN --match-head-commit value, so a leg with a valid
+# the merge command's OWN --match-head-commit value, so a worker with a valid
 # GO and no pin at all merged straight through. Prove it: extract that exact
-# blob, run the SAME leg-valid-go-no-pin fixture against it, and confirm it
+# blob, run the SAME worker-valid-go-no-pin fixture against it, and confirm it
 # was allowed (rc=0) where the shipped hook (proven by
-# leg-valid-go-no-pin-blocks, above) refuses (rc=2). Deliberately NOT run
+# worker-valid-go-no-pin-blocks, above) refuses (rc=2). Deliberately NOT run
 # against PRE_FIX_SHA above: that blob predates go-gate.sh entirely, so it
 # would fail this fixture for the unrelated reason of having no GO concept
 # at all, proving nothing about the pin specifically.
@@ -1066,7 +1066,7 @@ else
         --observed     "$RED_CONTROL_OUT" \
         --expect-wrong "rc=0" \
         --correct      "rc=2" \
-        --note "pre-pin block-unresolved-cr-merge.sh (head $PRE_PIN_SHA) confirmed a GO was bound to \$go_sha but never checked the merge command's own --match-head-commit, so a leg with a valid GO and no pin at all merged straight through; the shipped hook's leg-valid-go-no-pin-blocks case (above, same fixture) refuses it"
+        --note "pre-pin block-unresolved-cr-merge.sh (head $PRE_PIN_SHA) confirmed a GO was bound to \$go_sha but never checked the merge command's own --match-head-commit, so a worker with a valid GO and no pin at all merged straight through; the shipped hook's worker-valid-go-no-pin-blocks case (above, same fixture) refuses it"
     then
         pass=$((pass+1)); echo "ok   red-control-pin-pre-fix-allowed-post-fix-refuses"
     else
@@ -1081,7 +1081,7 @@ rm -f "$GOROOT/.locks/go/42.abc123"
 # (rc=0) but never DEFINES go_gate (truncated) makes the later call fail with
 # "command not found" (go_rc=127), which is != "2" — so the pre-fix hook fell
 # through the guard entirely and reached the pin check using go_sha from its
-# OWN gh pr view read, not from go_gate. A leg that pins
+# OWN gh pr view read, not from go_gate. A worker that pins
 # --match-head-commit <that same head> then merges with NO go_gate call
 # ever having succeeded and NO GO file anywhere. Prove it two ways: the
 # pre-fix blob (head 6749462a, before this round's fix) is allowed (rc=0)
@@ -1092,8 +1092,8 @@ TRUNC_GOGATE="$TMP/go-gate-truncated.sh"
 head -n 29 "$SCRIPT_DIR/../lib/go-gate.sh" > "$TRUNC_GOGATE"
 if grep -q '^go_gate()' "$TRUNC_GOGATE"; then
     fail=$((fail+1)); echo "FAIL red-control setup: go-gate.sh header grew past line 29 — the truncated copy still defines go_gate, so this control no longer exercises a missing-symbol source"
-elif ! grep -q '^console_leg()' "$TRUNC_GOGATE"; then
-    fail=$((fail+1)); echo "FAIL red-control setup: go-gate.sh's console_leg() no longer fits in the first 29 lines — the truncated copy would fail the new console_leg lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
+elif ! grep -q '^chief_worker()' "$TRUNC_GOGATE"; then
+    fail=$((fail+1)); echo "FAIL red-control setup: go-gate.sh's chief_worker() no longer fits in the first 29 lines — the truncated copy would fail the new chief_worker lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
 else
     RC127_PAYLOAD="$TMP/red-control-rc127-payload.json"
     payload Bash "gh pr merge 42 --squash --match-head-commit abc123" > "$RC127_PAYLOAD"
@@ -1162,20 +1162,20 @@ RUNEOF
     fi
 fi
 
-# ── a non-leg session must stay untouched by a
+# ── a non-worker must stay untouched by a
 # COMPLETELY BROKEN go-gate.sh, not just a missing symbol. Centralizing
-# console_leg had widened gate 3's blast
+# chief_worker had widened gate 3's blast
 # radius: sourcing go-gate.sh and failing closed on load failure used to live
-# INSIDE the HIMMEL_CONSOLE_LEG-truthy branch (a non-leg session never
+# INSIDE the HIMMEL_CONSOLE_LEG-truthy branch (a non-worker never
 # attempted it), but the first cut of this commit moved that unconditionally
-# before the leg check -- a broken go-gate.sh would then refuse EVERY merge,
-# leg or not, contradicting this file's own header ("untouched for a non-leg
+# before the worker check -- a broken go-gate.sh would then refuse EVERY merge,
+# worker or not, contradicting this file's own header ("untouched for a non-worker
 # session"). Fixed by gating the source on a cheap non-empty check on the raw
 # var first. Prove both halves against the SAME unparseable go-gate.sh: a
-# non-leg session must proceed (rc=0, no "cannot load" on stderr); a leg
+# non-worker must proceed (rc=0, no "cannot load" on stderr); a worker
 # session must still fail closed (rc=2, "cannot load" on stderr) -- the fix
 # narrows the blast radius, it does not remove the fail-closed guarantee for
-# actual legs.
+# actual workers.
 BROKEN_GOGATE="$TMP/go-gate-unparseable.sh"
 printf '#!/usr/bin/env bash\nif this is not valid bash (((\n' > "$BROKEN_GOGATE"
 BROKEN_GOGATE_ROOT="$TMP/broken-gogate-hook"
@@ -1196,27 +1196,27 @@ GH_STUB_MODE=clean GH_STUB_LOG="$TMP/calls-broken-gogate-nonleg.log" \
     bash "$BROKEN_GOGATE_ROOT/scripts/hooks/block-unresolved-cr-merge.sh" \
     < "$BROKEN_GOGATE_PAYLOAD" > "$BROKEN_GOGATE_NONLEG_OUT" 2>"$BROKEN_GOGATE_NONLEG_ERR"
 broken_gogate_nonleg_rc=$?
-# supersedes the non-leg half: gate 3 still never touches a non-leg
-# session (no console-leg marker refusal), but gate 4 — the CI trust-path gate —
+# supersedes the non-worker half: gate 3 still never touches a non-worker
+# session (no chief-worker marker refusal), but gate 4 — the CI trust-path gate —
 # binds every session, as merge-on-green.sh does, and cannot ask its question
 # without go-gate.sh, so it refuses.
 if [ "$broken_gogate_nonleg_rc" -eq 2 ] && grep -q "cannot load trust_path_check" "$BROKEN_GOGATE_NONLEG_ERR" \
-        && ! grep -q "console-leg marker" "$BROKEN_GOGATE_NONLEG_ERR"; then
+        && ! grep -q "chief-worker marker" "$BROKEN_GOGATE_NONLEG_ERR"; then
     pass=$((pass+1)); echo "ok   broken-go-gate-nonleg-refused-by-trust-gate-only"
 else
     fail=$((fail+1)); echo "FAIL broken-go-gate-nonleg-refused-by-trust-gate-only rc=$broken_gogate_nonleg_rc (want 2, gate 4's 'cannot load trust_path_check', not gate 3's marker refusal) err=$(cat "$BROKEN_GOGATE_NONLEG_ERR")"
 fi
 
-BROKEN_GOGATE_LEG_OUT="$TMP/broken-gogate-leg-out"
-BROKEN_GOGATE_LEG_ERR="$TMP/broken-gogate-leg-err"
-HIMMEL_CONSOLE_LEG=1 GH_STUB_MODE=clean GH_STUB_LOG="$TMP/calls-broken-gogate-leg.log" \
+BROKEN_GOGATE_WORKER_OUT="$TMP/broken-gogate-worker-out"
+BROKEN_GOGATE_WORKER_ERR="$TMP/broken-gogate-worker-err"
+HIMMEL_CONSOLE_LEG=1 GH_STUB_MODE=clean GH_STUB_LOG="$TMP/calls-broken-gogate-worker.log" \
     bash "$BROKEN_GOGATE_ROOT/scripts/hooks/block-unresolved-cr-merge.sh" \
-    < "$BROKEN_GOGATE_PAYLOAD" > "$BROKEN_GOGATE_LEG_OUT" 2>"$BROKEN_GOGATE_LEG_ERR"
-broken_gogate_leg_rc=$?
-if [ "$broken_gogate_leg_rc" -eq 2 ] && grep -qi "cannot load" "$BROKEN_GOGATE_LEG_ERR"; then
-    pass=$((pass+1)); echo "ok   broken-go-gate-leg-still-fails-closed"
+    < "$BROKEN_GOGATE_PAYLOAD" > "$BROKEN_GOGATE_WORKER_OUT" 2>"$BROKEN_GOGATE_WORKER_ERR"
+broken_gogate_worker_rc=$?
+if [ "$broken_gogate_worker_rc" -eq 2 ] && grep -qi "cannot load" "$BROKEN_GOGATE_WORKER_ERR"; then
+    pass=$((pass+1)); echo "ok   broken-go-gate-worker-still-fails-closed"
 else
-    fail=$((fail+1)); echo "FAIL broken-go-gate-leg-still-fails-closed rc=$broken_gogate_leg_rc (want 2, 'cannot load' on stderr) err=$(cat "$BROKEN_GOGATE_LEG_ERR")"
+    fail=$((fail+1)); echo "FAIL broken-go-gate-worker-still-fails-closed rc=$broken_gogate_worker_rc (want 2, 'cannot load' on stderr) err=$(cat "$BROKEN_GOGATE_WORKER_ERR")"
 fi
 
 # ── FOURTH and FIFTH RED controls — `command -v
@@ -1378,7 +1378,7 @@ RUNEOF
 fi
 
 # ── the CI trust-path gate (gate 4). A PR touching a CI trust
-# path needs a trust-reviewed GO pinned to its head — for a leg and the
+# path needs a trust-reviewed GO pinned to its head — for a worker and the
 # operator alike, merge-on-green.sh's rule, asked through the
 # same trust_path_check. A hit consults the anchor's origin, so the hit rows
 # run a copy of the hook in a scratch anchor that is a git repo containing its
@@ -1411,25 +1411,25 @@ HOOK="$TRUST_ANCHOR/scripts/hooks/block-unresolved-cr-merge.sh"
 cp "$SCRIPT_DIR/fixtures/red-control/block-unresolved-cr-merge.pre-himmel-3910.sh" "$HOOK"
 write_ordinary_go
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
-    t red-control-3910-pre-fix-leg-ordinary-go-allowed 0 Bash "$PIN"
+    t red-control-3910-pre-fix-worker-ordinary-go-allowed 0 Bash "$PIN"
 rm -f "$TRUST_GO"
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t red-control-3910-pre-fix-operator-no-go-allowed 0 Bash "$PIN"
 cp "$MAIN_HOOK" "$HOOK"
 
-# Trust path + an ordinary GO → refused, for a leg (the #1479 gap).
+# Trust path + an ordinary GO → refused, for a worker (the #1479 gap).
 write_ordinary_go
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
-    t trust-path-leg-ordinary-go-blocks 2 Bash "$PIN"
-grep -q "not trust-reviewed" "$TMP/err-trust-path-leg-ordinary-go-blocks" \
-    || { fail=$((fail+1)); echo "FAIL trust-path-leg-ordinary-go-blocks: reason does not name the missing trust review"; }
+    t trust-path-worker-ordinary-go-blocks 2 Bash "$PIN"
+grep -q "not trust-reviewed" "$TMP/err-trust-path-worker-ordinary-go-blocks" \
+    || { fail=$((fail+1)); echo "FAIL trust-path-worker-ordinary-go-blocks: reason does not name the missing trust review"; }
 # The operator gets the same rule: an ordinary GO or none is refused.
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-path-operator-ordinary-go-blocks 2 Bash "$PIN"
 rm -f "$TRUST_GO"
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-path-operator-no-go-blocks 2 Bash "$PIN"
-grep -q "no console GO" "$TMP/err-trust-path-operator-no-go-blocks" \
+grep -q "no chief GO" "$TMP/err-trust-path-operator-no-go-blocks" \
     || { fail=$((fail+1)); echo "FAIL trust-path-operator-no-go-blocks: reason does not name the missing GO"; }
 # A renamed-away trust path counts too (previous_filename).
 write_ordinary_go
@@ -1438,10 +1438,10 @@ HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=docs/run.sh GH_STUB
 grep -q "trust path scripts/ci/run.sh" "$TMP/err-trust-path-renamed-away-blocks" \
     || { fail=$((fail+1)); echo "FAIL trust-path-renamed-away-blocks: reason does not name the matched old path"; }
 
-# Trust path + a trust-reviewed GO, pinned → allowed, leg and operator.
+# Trust path + a trust-reviewed GO, pinned → allowed, worker and operator.
 write_trust_go
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
-    t trust-path-leg-trust-go-allows 0 Bash "$PIN"
+    t trust-path-worker-trust-go-allows 0 Bash "$PIN"
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-path-operator-trust-go-allows 0 Bash "$PIN"
 # ...but an operator merge must still pin the GO-bound head.
@@ -1450,28 +1450,28 @@ HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-path-operator-wrong-pin-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit def456"
 
-# A non-trust PR with an ordinary GO still passes (leg), and the operator
+# A non-trust PR with an ordinary GO still passes (worker), and the operator
 # still needs no GO at all.
 write_ordinary_go
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean \
-    t non-trust-leg-ordinary-go-allows 0 Bash "$PIN"
+    t non-trust-worker-ordinary-go-allows 0 Bash "$PIN"
 rm -f "$TRUST_GO"
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean \
     t non-trust-operator-no-go-allows 0 Bash "gh pr merge 42 --squash --match-head-commit abc123"
 
-# Every unreadable input fails closed, leg and operator alike — even with a
+# Every unreadable input fails closed, worker and operator alike — even with a
 # valid GO in place: a trust check that cannot run is never "no trust path".
 write_ordinary_go
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST=list-fail \
-    t trust-list-unreadable-leg-blocks 2 Bash "$PIN"
-grep -q "cannot read scripts/ci/ci-trust-paths.txt" "$TMP/err-trust-list-unreadable-leg-blocks" \
-    || { fail=$((fail+1)); echo "FAIL trust-list-unreadable-leg-blocks: reason missing"; }
+    t trust-list-unreadable-worker-blocks 2 Bash "$PIN"
+grep -q "cannot read scripts/ci/ci-trust-paths.txt" "$TMP/err-trust-list-unreadable-worker-blocks" \
+    || { fail=$((fail+1)); echo "FAIL trust-list-unreadable-worker-blocks: reason missing"; }
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST=list-fail \
     t trust-list-unreadable-operator-blocks 2 Bash "gh pr merge 42 --squash"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST=files-fail \
-    t trust-files-unreadable-leg-blocks 2 Bash "$PIN"
-grep -q "cannot list PR #42's changed files" "$TMP/err-trust-files-unreadable-leg-blocks" \
-    || { fail=$((fail+1)); echo "FAIL trust-files-unreadable-leg-blocks: reason missing"; }
+    t trust-files-unreadable-worker-blocks 2 Bash "$PIN"
+grep -q "cannot list PR #42's changed files" "$TMP/err-trust-files-unreadable-worker-blocks" \
+    || { fail=$((fail+1)); echo "FAIL trust-files-unreadable-worker-blocks: reason missing"; }
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST=files-fail \
     t trust-files-unreadable-operator-blocks 2 Bash "gh pr merge 42 --squash"
 # A 404 list on a repo the anchor's origin cannot prove is another one.
@@ -1489,7 +1489,7 @@ HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_DEFAULT_BRANCH='' \
 rm -f "$TRUST_GO"
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-path-host-prefixed-repo-blocks 2 Bash "gh pr merge 42 --squash --match-head-commit abc123 -R github.com/o/r"
-grep -q "no console GO" "$TMP/err-trust-path-host-prefixed-repo-blocks" \
+grep -q "no chief GO" "$TMP/err-trust-path-host-prefixed-repo-blocks" \
     || { fail=$((fail+1)); echo "FAIL trust-path-host-prefixed-repo-blocks: not refused by the trust gate"; }
 HANDOVER_DIR="$GOROOT" GH_STUB_MODE=clean GH_STUB_TRUST_FILE=scripts/ci/run.sh \
     t trust-path-quoted-host-repo-blocks 2 Bash "gh pr merge --repo \\\"github.com/o/r\\\" 42 --squash --match-head-commit abc123"

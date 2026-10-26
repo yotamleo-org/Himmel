@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """HIMMEL-4912: reject recognizable unwrapped launches in owned corpus harnesses.
 
-Other fixture/replay harnesses warn until migrated (console-scoped first slice).
+Other fixture/replay harnesses warn until migrated (chief-scoped first slice).
 This is an architecture lint, not a shell interpreter or a malicious-code audit:
 dynamic launch forms in the owned Python harness fail closed when unprovable.
 """

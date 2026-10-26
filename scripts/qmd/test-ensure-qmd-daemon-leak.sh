@@ -5,7 +5,7 @@
 # leak that stub process.
 #
 # Matches on THIS run's own unique $work path (via QMD_TEST_WORK_MARKER),
-# never a bare `pgrep fake-daemon`: other legs/stations may run the same
+# never a bare `pgrep fake-daemon`: other workers/stations may run the same
 # suite concurrently.
 set -u
 

@@ -67,10 +67,10 @@ check_not_contains "basic: a bracketed test-output tag without the classifier wr
     "$OUT" "classifier=[FAIL]"
 check_contains "basic: transcript coverage triple beside the scan" \
     "$OUT" "coverage: roots=1 discovered=2 parsed=2 skipped=0"
-check_contains "basic: per-role split shows leg for the leg session" \
-    "$OUT" "role=leg skill=himmel-ops:stuck-playbook count=1"
-check_contains "basic: per-role split shows console for the console session" \
-    "$OUT" "role=console skill=himmel-ops:stuck-playbook count=1"
+check_contains "basic: per-role split shows worker for the worker session" \
+    "$OUT" "role=worker skill=himmel-ops:stuck-playbook count=1"
+check_contains "basic: per-role split shows chief for the chief session" \
+    "$OUT" "role=chief skill=himmel-ops:stuck-playbook count=1"
 check_not_contains "basic: the used skill is excluded from never-used" \
     "$OUT" "never-used: scope=project-skills name=stuck-playbook"
 check_contains "basic: a guardrail-friction eval-candidate asks whether the denial is correct enforcement, not that it should go away" \
@@ -147,7 +147,7 @@ check_contains "memory-join: an unmatched trap is DORMANT" \
 check_contains "memory-join: an empty-pattern trap is UNMATCHABLE" \
     "$OUT" "trap=trap-bad status=UNMATCHABLE"
 check_contains "memory-join: a Read under SCORECARD_MEMORY_DIR is counted by basename" \
-    "$OUT" "memory-file-read: leg-lifecycle.md reads=1 sessions=1"
+    "$OUT" "memory-file-read: worker-lifecycle.md reads=1 sessions=1"
 check_contains "memory-join: eval-candidates table carries the recurring trap" \
     "$OUT" "trap-hit"
 check_contains "memory-join: eval-candidates table names a proposed eval" \

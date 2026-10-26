@@ -1288,7 +1288,7 @@ mkdir -p "$REAL_WT/.codex"
 git -C "$REAL_WT" init -q -b main
 cat > "$REAL_WT/.codex/hooks.json" <<'EOF'
 {"hooks":{
-"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":".codex/run-hook.sh --sandbox guard-leg-context-handoff.sh","commandWindows":".codex/run-hook.cmd --sandbox guard-leg-context-handoff.sh","timeout":15}]}],
+"PreToolUse":[{"matcher":".*","hooks":[{"type":"command","command":".codex/run-hook.sh --sandbox guard-worker-context-handoff.sh","commandWindows":".codex/run-hook.cmd --sandbox guard-worker-context-handoff.sh","timeout":15}]}],
 "PostToolUse":[{"matcher":"Bash","hooks":[
 {"type":"command","command":".codex/run-hook.sh --sandbox detect-dirty-primary.sh","commandWindows":".codex/run-hook.cmd --sandbox detect-dirty-primary.sh","timeout":15},
 {"type":"command","command":".codex/run-hook.sh --sandbox memory-bash-line-check.sh","commandWindows":".codex/run-hook.cmd --sandbox memory-bash-line-check.sh","timeout":15}]}],
@@ -1335,14 +1335,14 @@ run_trust "$PRIM_WT"
 assert_rc 0 "18c linked worktree equal to the trusted primary dispatches" "rc=$RC out=$OUT"
 # worktree edited, primary untouched and still trusted -> codex would run the
 # primary's hooks, not what this worktree carries: refused.
-sed 's/guard-leg-context-handoff.sh/guard-leg-context-handoff-v2.sh/' "$PRIM/.codex/hooks.json" > "$PRIM_WT/.codex/hooks.json"
+sed 's/guard-worker-context-handoff.sh/guard-worker-context-handoff-v2.sh/' "$PRIM/.codex/hooks.json" > "$PRIM_WT/.codex/hooks.json"
 : > "$LOG"
 run_trust "$PRIM_WT"
 assert_rc 2 "18d a worktree hooks.json edited away from the primary refuses" "rc=$RC out=$OUT"
 case "$OUT" in *"differs"*"primary"*) pass "18d refusal says the primary's hooks are the ones in effect";; *) fail "18d out: $OUT";; esac
 # primary edited after trust, worktree still the old copy -> refused (differs).
 cp "$REAL_HOOKS" "$PRIM_WT/.codex/hooks.json"
-sed 's/guard-leg-context-handoff.sh/guard-leg-context-handoff-v2.sh/' "$REAL_HOOKS" > "$PRIM/.codex/hooks.json"
+sed 's/guard-worker-context-handoff.sh/guard-worker-context-handoff-v2.sh/' "$REAL_HOOKS" > "$PRIM/.codex/hooks.json"
 : > "$LOG"
 run_trust "$PRIM_WT"
 assert_rc 2 "18e a primary edited under a stale worktree copy refuses" "rc=$RC out=$OUT"

@@ -99,7 +99,7 @@ eq "R8: --now 01800000000 --since 01799999000" "$(SUITE_FLAKE_LEDGER="$L" SUITE_
 
 echo "== R9: tick top-suite text is a printable-ASCII whitelist =="
 { row $((NOW - 10)) repo-a $'test-n\xc2\xa0legs=9\xe2\x80\xa8fleet=9@x*2.sh' 'c'; } > "$SB/uni.jsonl"
-eq "R9: NBSP, U+2028, @ and * in a suite name become _" "$(SUITE_FLAKE_LEDGER="$SB/uni.jsonl" SUITE_FLAKE_REPO_ID=repo-a bash "$SUT" --now "$NOW" --days 1 --format tick 2>/dev/null)" "1/1@test-n_legs_9_fleet_9_x_2.sh*1"
+eq "R9: NBSP, U+2028, @ and * in a suite name become _" "$(SUITE_FLAKE_LEDGER="$SB/uni.jsonl" SUITE_FLAKE_REPO_ID=repo-a bash "$SUT" --now "$NOW" --days 1 --format tick 2>/dev/null)" "1/1@test-n_workers_9_fleet_9_x_2.sh*1"
 
 echo "== R10: top-suite text is capped at 80 chars =="
 long=$(printf 'test-%0100d.sh' 0)

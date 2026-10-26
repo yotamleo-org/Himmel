@@ -56,13 +56,13 @@ ce73ac80f4c0	codex:gpt-6.1-sol	intent-blind	ruled design; the forged value chang
 3026afb371bb	codex:gpt-6.1-sol	no-rationale	boilerplate reason only
 bf4db8c52e09	codex:gpt-6.1-sol	intent-blind	deny-leaning by design
 fd80176cfdc0	codex:gpt-6.1-sol	no-rationale	boilerplate reason only
-e0c18ff801cf	codex:gpt-6.1-sol	intent-blind	default class follows a console ruling
+e0c18ff801cf	codex:gpt-6.1-sol	intent-blind	default class follows a chief ruling
 85a189f6bf6f	codex:gpt-6.1-sol	wrong-claim	script runs under errexit, so the failure aborts first
 0e4f3712b570	codex:gpt-6.1-sol	intent-blind	exact anchor is the brief's requirement; failure is retryable
 e1c52a44c93c	codex:gpt-6.1-sol	intent-blind	deliberate one-second floor with a stated reason
 c48a28a1c518	codex:gpt-6.1-sol	re-raise	unchanged re-raise of round 1
 9bc511bd1eac	codex:gpt-6.1-sol	wrong-claim	continuations are joined first; probe denies
-cb6540d2695d	codex:gpt-6.1-sol	unreachable	only one closer ever runs per leg
+cb6540d2695d	codex:gpt-6.1-sol	unreachable	only one closer ever runs per worker
 7a8e5e1bf588	codex:gpt-6.1-sol	intent-blind	the exported variable is the launcher contract
 033a3fc664dd	codex:gpt-6.1-sol	intent-blind	body scan rejected as a false-positive tradeoff
 05f37716de4f	codex:gpt-6.1-sol	wrong-claim	docs are append-only, so the last match is the newest

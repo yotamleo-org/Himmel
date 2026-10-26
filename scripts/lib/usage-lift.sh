@@ -16,7 +16,7 @@
 #
 # State file: ${USAGE_LIFT_FILE:-$HOME/.himmel/state/usage-lift.json}
 #   {"window":"seven_day","until":<epoch>,"account":"<hash>","set_by":..,"set_at":..}
-# The old names stay read: BANK_LIFT_FILE names the file when USAGE_LIFT_FILE is
+# The old names stay read: BANK_LIFT_FILE (while HIMMEL_LEGACY_NAMES is on) names the file when USAGE_LIFT_FILE is
 # unset, and with neither set the old bank-lift.json beside it is read too. When
 # both files exist each must be valid and the stricter one wins; `set` retires
 # the old file and `clear` removes both. bank-lift.sh forwards here.

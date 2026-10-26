@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-new-worktree-branch-tracking.sh: a leg's first `git push`
+# test-new-worktree-branch-tracking.sh: a worker's first `git push`
 # (no -u, no branch arg) must succeed on a brand-new worktree branch. Builds a
 # real origin (second bare repo, not the throwaway no-remote fixture the
 # uniqueness suite uses) and a scratch HOME, so `git worktree add -b <branch>

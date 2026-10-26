@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# the console event waiter launch (ACTION ZERO step 10 in console-template.md)
+# the chief event waiter launch (ACTION ZERO step 10 in chief-template.md)
 # spells the kit by its RELATIVE path, run from the primary checkout root; the
 # tracked allow list must carry a valid Bash(...) rule that matches it, widens
 # to no other script, and every allow entry must load (no bare-wildcard tool
@@ -17,7 +17,7 @@ set -uo pipefail
 
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 SETTINGS="$ROOT/.claude/settings.json"
-TEMPLATE="$ROOT/docs/handover/console-template.md"
+TEMPLATE="$ROOT/docs/handover/chief-template.md"
 fail=0
 
 command -v jq >/dev/null 2>&1 || { echo "FAIL: jq not installed, cannot assert the allow list"; exit 1; }
@@ -60,20 +60,20 @@ else
   bad "allow entries that would not load: $bad_entries"
 fi
 
-# 2. The exact step-10 command, rendered from the template line a console prints.
+# 2. The exact step-10 command, rendered from the template line a chief prints.
 # shellcheck disable=SC2016 # literal backticks in the doc line
-line=$(grep -m1 'bash scripts/handover/chief-kit/console-wait.sh' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
+line=$(grep -m1 'bash scripts/handover/chief-kit/chief-wait.sh' "$TEMPLATE" | sed -e 's/^[^`]*`//' -e 's/`[^`]*$//')
 if [ -z "$line" ]; then
-  bad "console-template.md has no step-10 console-wait.sh command"
+  bad "chief-template.md has no step-10 chief-wait.sh command"
   exit 1
 fi
 kit="/srv/tester/himmel/scripts/handover/chief-kit"
-cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
-  -e 's#{{SESSION_NAME}}#x-console#g' -e 's# \[--succession [^]]*\]##')
-cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/consoles/x-console.md#g' \
-  -e 's#{{SESSION_NAME}}#x-console#g' -e 's#\[--succession \([^]]*\)\]#--succession \1#')
+cmd=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/chiefs/x-chief.md#g' \
+  -e 's#{{SESSION_NAME}}#x-chief#g' -e 's# \[--succession [^]]*\]##')
+cmd_succ=$(printf '%s' "$line" | sed -e 's#{{INBOX}}#/tmp/chiefs/x-chief.md#g' \
+  -e 's#{{SESSION_NAME}}#x-chief#g' -e 's#\[--succession \([^]]*\)\]#--succession \1#')
 
-waiter_rule='Bash(bash scripts/handover/chief-kit/console-wait.sh:*)'
+waiter_rule='Bash(bash scripts/handover/chief-kit/chief-wait.sh:*)'
 if [ "$(jq --arg r "$waiter_rule" '[.permissions.allow[] | select(. == $r)] | length' "$SETTINGS")" = 1 ]; then
   ok "the specific waiter rule is in the allow list exactly once"
 else
@@ -97,16 +97,16 @@ esac
 # against ALL Bash allow rules.
 # shellcheck disable=SC2016 # $HIMMEL_REPO is the literal spelling under test
 for c in \
-  "bash scripts/handover/chief-kit/leg-event.sh --fleet" \
-  "bash scripts/handover/chief-kit/console-wait.sh.evil /tmp/x" \
-  "bash scripts/other/console-wait.sh /tmp/x" \
-  "sh scripts/handover/chief-kit/console-wait.sh /tmp/x" \
-  "bash -x scripts/handover/chief-kit/console-wait.sh /tmp/x" \
-  "bash \"$kit/console-wait.sh\" /tmp/x" \
-  "bash -c \"id\" \"scripts/handover/chief-kit/console-wait.sh\" /tmp/x" \
-  "bash \"-c\" \"id\" \"scripts/handover/chief-kit/console-wait.sh\" /tmp/x" \
-  "bash \"-c\" \"id\" \"$kit/console-wait.sh\" /tmp/x" \
-  "bash \"\$HIMMEL_REPO/scripts/handover/chief-kit/console-wait.sh\" /tmp/x"; do
+  "bash scripts/handover/chief-kit/worker-event.sh --fleet" \
+  "bash scripts/handover/chief-kit/chief-wait.sh.evil /tmp/x" \
+  "bash scripts/other/chief-wait.sh /tmp/x" \
+  "sh scripts/handover/chief-kit/chief-wait.sh /tmp/x" \
+  "bash -x scripts/handover/chief-kit/chief-wait.sh /tmp/x" \
+  "bash \"$kit/chief-wait.sh\" /tmp/x" \
+  "bash -c \"id\" \"scripts/handover/chief-kit/chief-wait.sh\" /tmp/x" \
+  "bash \"-c\" \"id\" \"scripts/handover/chief-kit/chief-wait.sh\" /tmp/x" \
+  "bash \"-c\" \"id\" \"$kit/chief-wait.sh\" /tmp/x" \
+  "bash \"\$HIMMEL_REPO/scripts/handover/chief-kit/chief-wait.sh\" /tmp/x"; do
   m=$(matching_rules "$c")
   if [ -z "$m" ]; then
     ok "no allow rule matches: $c"
@@ -117,17 +117,17 @@ done
 
 # The waiter has one tracked rule and it carries no $ expansion (a dead rule
 # would look allowed but never match).
-n=$(jq '[.permissions.allow[] | select(test("console-wait\\.sh"))] | length' "$SETTINGS")
+n=$(jq '[.permissions.allow[] | select(test("chief-wait\\.sh"))] | length' "$SETTINGS")
 if [ "$n" = 1 ]; then
-  ok "allow list carries exactly one console-wait rule"
+  ok "allow list carries exactly one chief-wait rule"
 else
-  bad "allow list carries $n console-wait rules, expected exactly 1"
+  bad "allow list carries $n chief-wait rules, expected exactly 1"
 fi
-dollar=$(jq -r '.permissions.allow[] | select(test("console-wait\\.sh")) | select(test("\\$"))' "$SETTINGS")
+dollar=$(jq -r '.permissions.allow[] | select(test("chief-wait\\.sh")) | select(test("\\$"))' "$SETTINGS")
 if [ -z "$dollar" ]; then
-  ok "no console-wait rule carries a \$ expansion"
+  ok "no chief-wait rule carries a \$ expansion"
 else
-  bad "console-wait rule with a \$ expansion the harness would refuse: $dollar"
+  bad "chief-wait rule with a \$ expansion the harness would refuse: $dollar"
 fi
 
 exit "$fail"

@@ -100,7 +100,7 @@ gets exit 96 by design. Point it at a scratch copy instead.
 
 `bash scripts/ci/run-shell-tests.sh` runs the full shell-test corpus. It is
 the same entrypoint CI's `shell-unit` job runs, matrixed over
-`ubuntu-latest` (the required, gating leg on every push/PR). Windows is
+`ubuntu-latest` (the required, gating worker on every push/PR). Windows is
 dropped (HIMMEL-5729) and macOS runs on its own cadence workflow, so no PR, no
 nightly and no manual dispatch of `ci.yml` runs a Windows or macOS shard. Running the
 full corpus is slow and noisy — run it in a subagent rather than foregrounding
@@ -125,7 +125,7 @@ whose diff is docs-only reports `0 impacted shell suites` and passes.
 
 macOS shell-unit is `.github/workflows/macos-cadence.yml` (`CI (os:macos
 cadence)`): Tuesday + Friday 05:43 UTC, the same 8-shard partition and
-`SUITE_TIER_MODE=all` corpus the nightly's macOS legs had. `ci.yml` contains no
+`SUITE_TIER_MODE=all` corpus the nightly's macOS workers had. `ci.yml` contains no
 macOS job and no macOS health step, so a macOS red is a red of *that* workflow
 and never of `CI` or main. It is never on `push` and never on an unlabelled PR,
 and a red shard is not `continue-on-error`: it reddens the cadence run, which is
@@ -146,7 +146,7 @@ gh workflow run macos-cadence.yml --ref main     # dispatch (the file must be on
 gh run list --workflow macos-cadence.yml         # its runs, apart from the nightly `CI` runs
 ```
 
-**A macOS fix leg proves only its own suites (HIMMEL-7309).** A full run is 8
+**A macOS fix worker proves only its own suites (HIMMEL-7309).** A full run is 8
 shards and 70-110 min, and it is red from suites unrelated to the PR. Dispatch
 the PR branch with `suites` set instead: one runner runs just those suites
 (`run-shell-tests.sh --only-list`) in minutes.

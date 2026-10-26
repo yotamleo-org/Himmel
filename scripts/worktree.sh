@@ -53,7 +53,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/worktree-inuse.sh
 # shellcheck disable=SC1091
 . "$SCRIPT_DIR/lib/worktree-inuse.sh"
-# worktree_fresh_locked: is this worktree's leg
+# worktree_fresh_locked: is this worktree's worker
 # still holding a FRESH queue-lock.sh lock on its own handover doc? Checked
 # alongside worktree_in_use below, right before the remove.
 # shellcheck source=lib/worktree-fresh-lock.sh
@@ -473,7 +473,7 @@ EOF
 # rows still show pr-state=unknown there, but that is a display-only gap, not
 # a stuck-worktree regression.
 NON_GITHUB_PRUNE_DEGRADED_WARNED=0
-# 1 = the leg-scratch arms of is_ignorable_stray apply (the
+# 1 = the worker-scratch arms of is_ignorable_stray apply (the
 # branch's work is merged); 0 only while is_branch_mergeable_for_prune has
 # accepted a never-merged branch under --only-allow-unmerged.
 WORKER_SESSION_SCRATCH_OK=1
@@ -500,7 +500,7 @@ is_branch_mergeable_for_prune() {
     fi
     # --only-allow-unmerged widens the merged-only gate above for
     # a SINGLE --only target. Only "closed" (a real PR that never merged) or
-    # "none" (no PR at all) are eligible here -- "open" (a parked leg keeps
+    # "none" (no PR at all) are eligible here -- "open" (a parked worker keeps
     # its worktree) and "unknown" (resolve_pr_state's own gh/cache failure,
     # fail-closed) are both explicitly excluded, and a "merged" PR whose head
     # does not match (fell through above) stays kept for manual review, same
@@ -554,7 +554,7 @@ is_ignorable_stray() {
         __pycache__/*|*/__pycache__/*)         return 0 ;;
         *.pyc)                                 return 0 ;;
         .vitest/*|*/.vitest/*)                 return 0 ;;
-        # leg ship scratch at the worktree ROOT only (no */ forms:
+        # worker ship scratch at the worktree ROOT only (no */ forms:
         # the same name nested below the root is real work). Directory shapes
         # match as "<dir>/*" because --untracked-files=all lists their files.
         # git lists an untracked NESTED REPO as one collapsed entry ending in
@@ -562,7 +562,7 @@ is_ignorable_stray() {
         # stray, its unpushed commits would be force-removed uncheckpointed.
         */) return 1 ;;
         # WORKER_SESSION_SCRATCH_OK=0 on the --only-allow-unmerged path (the branch never
-        # merged): a no-commit leg's scratch may be its only copy, so only
+        # merged): a no-commit worker's scratch may be its only copy, so only
         # the tool churn above stays discardable there.
         .scratch/*|.himmel-scratch/*|.os-verify-logs-*/*) [ "$WORKER_SESSION_SCRATCH_OK" -eq 1 ] && return 0; return 1 ;;
         # A case `*` matches "/", so the filename shapes below need an
@@ -1192,7 +1192,7 @@ report_remote_orphans() {
 # Leftover-worktree invariant: every registered worktree is, within
 # WORKTREE_ORPHAN_HOURS of its last git activity, either backing an open PR,
 # held (worktree_held), reclaimed by this prune, or reported by
-# `prune --orphans`, which the console tick surfaces; and the live count under
+# `prune --orphans`, which the chief tick surfaces; and the live count under
 # .claude/worktrees alarms from HIMMEL_WORKTREE_ALARM, well below the
 # HIMMEL_WORKTREE_CEILING that _new-worktree.sh refuses at.
 num_or() {
@@ -1349,7 +1349,7 @@ reclaim_detached() {
 }
 
 # load_fresh_lock_docs — every handover doc whose queue lock is FRESH, one path
-# a line. A branch such a doc names belongs to a live leg.
+# a line. A branch such a doc names belongs to a live worker.
 load_fresh_lock_docs() (
     # shellcheck source=handover/queue-lock.sh
     # shellcheck disable=SC1091
@@ -1374,7 +1374,7 @@ load_fresh_lock_docs() (
 FRESH_LOCK_DOCS=""
 FRESH_LOCK_DOCS_LOADED=0
 FRESH_LOCK_DOCS_FAILED=0
-# branch_in_fresh_lock_doc <branch> — 0 when a FRESH-locked leg doc names it,
+# branch_in_fresh_lock_doc <branch> — 0 when a FRESH-locked worker doc names it,
 # and also when the docs cannot be listed or read: a delete path fails closed.
 branch_in_fresh_lock_doc() {
     local pat doc rc
@@ -1410,7 +1410,7 @@ reclaim_parked() {
         return 0
     fi
     if branch_in_fresh_lock_doc "$br"; then
-        log "  keep parked $br (named by a live leg doc): $wt"
+        log "  keep parked $br (named by a live worker doc): $wt"
         return 0
     fi
     br_tip=$(git -C "$PRIMARY_WORKTREE" rev-parse -q --verify "refs/heads/$br^{commit}" 2>/dev/null) || return 0
@@ -1615,15 +1615,15 @@ if [ "$NO_PRUNE" -eq 0 ]; then
             fi
         fi
 
-        # a live leg's cwd can fall back to the
+        # a live worker's cwd can fall back to the
         # primary while it is still mid-wrap, so worktree_in_use's /proc scan
-        # below can miss it; the leg's own queue-lock.sh lock on its handover
+        # below can miss it; the worker's own queue-lock.sh lock on its handover
         # doc is the real "done with it" signal and is checked BEFORE the
         # in-use probe for the same reason: never touch the tree if either
         # says no.
         if worktree_fresh_locked "$wt"; then
             echo "WARN clean-garden: $br could not be safely removed ($WORKTREE_FRESH_LOCK_DETAIL) — skipped ($wt)" >&2
-            note_stuck "$wt" "merged, but its leg still holds a FRESH queue lock"
+            note_stuck "$wt" "merged, but its worker still holds a FRESH queue lock"
             SKIPPED=$((SKIPPED+1))
             continue
         fi
@@ -2153,7 +2153,7 @@ fi
 # ref PINS ITS WHOLE OBJECT GRAPH AGAINST gc. A checkpoint is a safety net with
 # a short useful life: once the work is harvested (or the run is long dead) it
 # is pure ballast, and shared-branch mode reuses the slug, so the pile grows
-# with dispatch volume — the direction wave 1 is pushing.
+# with dispatch volume — the direction parallel wave 1 is pushing.
 #
 # Age is the right predicate, and the only honest one available. "Was it
 # harvested?" cannot be answered from here: a harvest is `git restore --source`

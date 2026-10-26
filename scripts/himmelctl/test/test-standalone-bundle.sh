@@ -106,7 +106,7 @@ run_fallback() {
   # cwd must be neutral: uninstall.sh's "current project" step resolves off
   # the invoking directory, and this test's own worktree is a real himmel
   # checkout unrelated to the scratch fixture -- run from $td/home instead so
-  # dry-run reports on the fixture's identity, not the leg's own repo.
+  # dry-run reports on the fixture's identity, not the worker's own repo.
   (cd "$td/home" && HOME="$td/home" USERPROFILE="$td/home" HIMMEL_PROVENANCE_DIR="$td/prov" \
     PATH="$stubbin:$PATH" node "$td/bin/himmelctl.js" "$@" 2>&1)
 }

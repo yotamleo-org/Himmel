@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/ops-run.sh - run ONE mechanical chief-kit script
-# for the console and hand back ONE verdict line. The ops lane (the relay role,
-# docs/internals/console-ops-lane.md) runs this instead of the console running
-# the script in the foreground (blocks every leg message) or the background
+# for the chief and hand back ONE verdict line. The ops lane (the relay role,
+# docs/internals/chief-ops-lane.md) runs this instead of the chief running
+# the script in the foreground (blocks every worker message) or the background
 # (three full-context turns per launch).
 #
 # Usage: ops-run.sh <script> [args...]
@@ -13,14 +13,14 @@
 # <fact> is ONLY a fixed verdict phrase the script's last line starts with
 # (READY-CHECK PASS|FAIL, COVERAGE-LINT PASS|FAIL, HANDLED, ESCALATE, CLOSABLE,
 # WITHHELD); everything after the phrase is dropped. Any other last line may
-# carry PR or leg text, which must never ride a relay line, so the fact is
+# carry PR or worker text, which must never ride a relay line, so the fact is
 # `see out file`. The full output is in <file>. rc: the script's own; 124 on
 # timeout; 2 refused/usage.
 #
 # What it never runs: go.sh, verdict-go.sh, write-verdict.sh, inbox-send.sh,
 # relay-batch.sh, anything that mints, rotates, quotes or adopts a token, writes
 # a GO or rules. `action-zero.sh --acquire` is refused: a lock the ops session
-# took would belong to the ops session, not the console. The script name is a
+# took would belong to the ops session, not the chief. The script name is a
 # basename on the allowlist below; a path, `..` or an unlisted name is REFUSED
 # before anything runs.
 #

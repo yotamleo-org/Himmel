@@ -95,7 +95,7 @@ warn_negative_existence_claims "${COMMIT_MSG}" || true
 # attestation trailer is present but will not satisfy its pre-push gate —
 # `Security reviewed:` with a token that is not one of the four accepted
 # (check-security-reviewed.sh TOKEN_RE, HIMMEL-1681), or `Platforms tested:`
-# with an empty value (check-platforms-tested.sh). Two legs burned a
+# with an empty value (check-platforms-tested.sh). Two workers burned a
 # follow-up commit each on 2026-09-12 discovering this at push time instead.
 # Never blocks (exit code untouched) and fails open on any error, same
 # contract as warn_negative_existence_claims above.

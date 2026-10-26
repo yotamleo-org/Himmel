@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-leg-jira-status.sh
+# shellcheck disable=SC2015  # A && B || C is intentional in check(), as in test-worker-jira-status.sh
 # scripts/handover/chief-kit/test-status-drift.sh - Hermetic tests for the
 # WORKER comment (2a) and the status sweep (2b). A stubbed Jira
 # CLI (WORKER_SESSION_JIRA_CLI), a stubbed gh on PATH and a stubbed queue lock
@@ -25,7 +25,7 @@ DRIFT="$HERE/status-drift.sh"
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/status-drift-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$tmp"' EXIT
-# a leg shell carries the live console doc; a move would mark its FOCUS page dirty
+# a worker shell carries the live chief doc; a move would mark its FOCUS page dirty
 unset GH_REPO HIMMEL_CONSOLE_DOC
 fails=0
 check()    { [ "$2" = "$3" ] && echo "ok - $1" || { echo "FAIL - $1: [$2]!=[$3]"; fails=$((fails+1)); }; }
@@ -154,7 +154,7 @@ reset() { # fresh fixtures, no record, empty log; Jira status $1 for every key
     printf '11\n' > "$FX/lock.rc"
 }
 mkdoc() { # <path> [marker]
-    printf '# leg\n\n## Results (newest at the bottom)\n' > "$1"
+    printf '# worker\n\n## Results (newest at the bottom)\n' > "$1"
     [ -z "${2:-}" ] || printf -- '- 10:00 %s — x\n' "$2" >> "$1"
 }
 owned() { # <KEY> [marker] [record extras as a jq object] - a record owned by that key's doc
@@ -194,7 +194,7 @@ check "2a: LIVE posts exactly one WORKER comment" "$(ncomment)" 1
 contains "2a: the post asks for the comment id" "$(grep '^comment' "$STUB_LOG")" "--print-id"
 check "2a: comment id captured in the record" "$(rjq "$K" '.comment_id')" 5001
 contains "2a: the body names the worker, its state and the status" "$(cat "$FX/comment-body.last")" "WORKER"
-contains "2a: the body names the leg" "$(cat "$FX/comment-body.last")" "N1"
+contains "2a: the body names the worker" "$(cat "$FX/comment-body.last")" "N1"
 contains "2a: the body carries the last move" "$(cat "$FX/comment-body.last")" "To Do -> In Progress"
 
 pr 7 "[$K] feat" aaa111; checks 7 pass
@@ -370,7 +370,7 @@ sweep
 check "2b: a non-numeric count does not reach D6" "$(ntrans)" 0
 check "2b: and is rewritten as a count of 1" "$(rjq "$K" '.lock_gone_sweeps')" 1
 
-# A leg with no local lock seen (cloud or another station) never reaches D6.
+# A worker with no local lock seen (cloud or another station) never reaches D6.
 reset "In Progress"; owned "$K" LIVE '{"state":"unknown","lock_seen":false,"lock_gone_sweeps":0}'
 printf '0\n' > "$FX/lock.rc"
 jl "$K" "In Progress"
@@ -383,7 +383,7 @@ jl "$K" "In Progress"
 status_row="$TICKET_STATUS_STATE_DIR"; mkdir -p "$status_row"
 printf '{"ts":"2026-10-21T10:00:00Z","event":"pr-open","key":"%s","result":"moved"}\n' "$K" > "$LOG"
 sweep; sweep; sweep
-check "2b: a cloud leg with no record never reaches D6" "$(ntrans)" 0
+check "2b: a cloud worker with no record never reaches D6" "$(ntrans)" 0
 
 # Overrun: the 60 s budget runs out, the cursor is saved, the next sweep starts at the first unserved key.
 reset "To Do"
@@ -645,7 +645,7 @@ check "3b: and the pass is not unknown" "$(dlast | grep -c unknown)" 0
 reset "To Do"; mkdir -p "$LOG"
 drift
 contains "3b: an unwritable outcome log is a HEALTH row" "$(drows HEALTH)" "unwritable"
-reset "To Do"; logrow leg-jira-status "$K" disabled ""
+reset "To Do"; logrow worker-jira-status "$K" disabled ""
 drift
 contains "3b: a disabled row is a HEALTH row, never clean" "$(drows HEALTH)" "disabled"
 
@@ -740,19 +740,19 @@ EOS
 chmod +x "$tmp/frbin/jira" "$tmp/frbin/sweep" "$tmp/frbin/tracker" "$tmp/frbin/drift"
 export FR_JIRA="$tmp/frbin/jira" FR_SWEEP="$tmp/frbin/sweep" FR_TRACKER="$tmp/frbin/tracker" FR_DRIFT="$tmp/frbin/drift"
 export TICK_TRACKER_MIRROR_DIR="$FR/mir/HIMMEL"
-fr_reset() { # fresh fixtures plus a console doc with a focus-version line
+fr_reset() { # fresh fixtures plus a chief doc with a focus-version line
     reset "To Do"
     rm -rf "$FR"; mkdir -p "$FR/doc" "$FR/mir"
-    printf '# console\n\n## Live state\ntracker: https://example.invalid/t\nfocus-version: v1.1.3\n' > "$FR/doc/console.md"
+    printf '# chief\n\n## Live state\ntracker: https://example.invalid/t\nfocus-version: v1.1.3\n' > "$FR/doc/chief.md"
 }
-fr() { bash "$FOCUS" --doc "$FR/doc/console.md" "$@" >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc"; }
+fr() { bash "$FOCUS" --doc "$FR/doc/chief.md" "$@" >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc"; }
 frrc() { cat "$tmp/frrc"; }
 frout() { cat "$tmp/frout"; }
 fst() { sed -n "s/^$1=//p" "$FR/doc/focus-state" | head -n 1; }
 frseq() { awk '{ print $1 }' "$FX/fr.log" 2>/dev/null | paste -sd, -; }
 PAGE="$FR/doc/roadmap-tracker.html"
 
-fr_reset; sed -i '/^focus-version:/d' "$FR/doc/console.md"  # gnu-ok: Linux-only kit
+fr_reset; sed -i '/^focus-version:/d' "$FR/doc/chief.md"  # gnu-ok: Linux-only kit
 fr
 check "3c: no focus-version line prints skip" "$(frout)" "focus=skip"
 check "3c: and exits 0" "$(frrc)" 0
@@ -798,9 +798,9 @@ contains "3c: the drift pass reads that snapshot" "$(grep '^drift ' "$FX/fr.log"
 # focus-version: auto (or no line beside a release: line) follows the declared release's current version.
 fr_auto() { # <focus-version line or ''> <release line or ''> [versions json]
     fr_reset
-    sed -i '/^focus-version:/d' "$FR/doc/console.md"  # gnu-ok: Linux-only kit
-    [ -z "$1" ] || printf '%s\n' "$1" >> "$FR/doc/console.md"
-    [ -z "$2" ] || printf '%s\n' "$2" >> "$FR/doc/console.md"
+    sed -i '/^focus-version:/d' "$FR/doc/chief.md"  # gnu-ok: Linux-only kit
+    [ -z "$1" ] || printf '%s\n' "$1" >> "$FR/doc/chief.md"
+    [ -z "$2" ] || printf '%s\n' "$2" >> "$FR/doc/chief.md"
     printf '{"release":"R","status":"OK","versions":%s}\n' "${3:-[\"v1.1.4\",\"v1.1.5\"]}" > "$FX/fr.release"
     rm -f "$FX/fr.rel.log" "$FX/fr.release.rc"
     fr
@@ -822,7 +822,7 @@ fr_auto "focus-version: auto" "release: R" '["v1.1.4"]'
 printf '{"release":"R","status":"UNKNOWN","versions":[]}\n' > "$FX/fr.release"; echo 3 > "$FX/fr.release.rc"
 fr
 check "3d: a not-OK release state (exit 3) with no version is loud, FAILED:release" "$(frout)" "focus=FAILED:release"
-fr_reset; sed -i '/^focus-version:/d' "$FR/doc/console.md"; printf 'focus-version: auto\nrelease: ACME-R\n' >> "$FR/doc/console.md"  # gnu-ok: Linux-only kit
+fr_reset; sed -i '/^focus-version:/d' "$FR/doc/chief.md"; printf 'focus-version: auto\nrelease: ACME-R\n' >> "$FR/doc/chief.md"  # gnu-ok: Linux-only kit
 printf '{"release":"ACME-R","versions":["a1.0"]}\n' > "$FX/fr.release"; rm -f "$FX/fr.rel.log"
 JIRA_PROJECT_KEY=ACME fr
 contains "3d: an adopted project renders its own current version" "$(grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--version a1.0 "
@@ -830,12 +830,12 @@ check "3d: and reads its own release under its own project key" "$(cat "$FX/fr.r
 # the mirror dir follows the project key; TICK_TRACKER_MIRROR_DIR still wins
 fr_mir() { # <project key or empty> - one refresh with no mirror override, HOME under the sandbox
     fr_reset; rm -f "$FX/fr.log"
-    HOME="$tmp/frhome" JIRA_PROJECT_KEY="$1" env -u TICK_TRACKER_MIRROR_DIR bash "$FOCUS" --doc "$FR/doc/console.md" >"$tmp/frout" 2>"$tmp/frerr"
+    HOME="$tmp/frhome" JIRA_PROJECT_KEY="$1" env -u TICK_TRACKER_MIRROR_DIR bash "$FOCUS" --doc "$FR/doc/chief.md" >"$tmp/frout" 2>"$tmp/frerr"
     grep '^tracker ' "$FX/fr.log" | tail -n 1
 }
 contains "3d: an adopted project mirrors into its own dir" "$(fr_mir ACME)" "--mirror-dir $tmp/frhome/.himmel/state/jira-mirror/ACME "
 contains "3d: an unset project key keeps the HIMMEL mirror dir" "$(fr_mir "")" "--mirror-dir $tmp/frhome/.himmel/state/jira-mirror/HIMMEL "
-contains "3d: TICK_TRACKER_MIRROR_DIR still wins over the project key" "$(fr_reset; rm -f "$FX/fr.log"; JIRA_PROJECT_KEY=ACME bash "$FOCUS" --doc "$FR/doc/console.md" >/dev/null 2>&1; grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--mirror-dir $FR/mir/HIMMEL "
+contains "3d: TICK_TRACKER_MIRROR_DIR still wins over the project key" "$(fr_reset; rm -f "$FX/fr.log"; JIRA_PROJECT_KEY=ACME bash "$FOCUS" --doc "$FR/doc/chief.md" >/dev/null 2>&1; grep '^tracker ' "$FX/fr.log" | tail -n 1)" "--mirror-dir $FR/mir/HIMMEL "
 fr_auto "focus-version: auto" "release: R"
 rm -f "$FR/doc/focus-state"
 fr --status
@@ -847,7 +847,7 @@ for bad in read-fail empty null-version semi-version no-release; do
         empty) printf '{"release":"R","versions":[]}\n' > "$FX/fr.release" ;;
         null-version) printf '{"release":"R","versions":[null]}\n' > "$FX/fr.release" ;;
         semi-version) printf '{"release":"R","versions":["v1;x"]}\n' > "$FX/fr.release" ;;
-        no-release) sed -i '/^release:/d' "$FR/doc/console.md" ;;  # gnu-ok: Linux-only kit
+        no-release) sed -i '/^release:/d' "$FR/doc/chief.md" ;;  # gnu-ok: Linux-only kit
     esac
     echo "page-before" > "$PAGE"; : > "$FX/fr.log"
     fr
@@ -913,7 +913,7 @@ fr_reset; echo 2 > "$FX/sweep.moved"; echo mirror > "$FX/fr.fail"
 fr
 check "3c: a failed re-read after a move is FAILED:mirror" "$(frout)" "focus=FAILED:mirror"
 fr_reset
-( cd "$FR/doc" && bash "$FOCUS" --doc console.md >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc" )
+( cd "$FR/doc" && bash "$FOCUS" --doc chief.md >"$tmp/frout" 2>"$tmp/frerr"; echo $? >"$tmp/frrc" )
 check "3c: a bare doc filename resolves beside the doc" "$(frout)" "focus=ok"
 check "3c: and the page lands beside the doc" "$(head -n 1 "$PAGE")" "render 1"
 fr_reset; touch "$FX/pr-list.fail"

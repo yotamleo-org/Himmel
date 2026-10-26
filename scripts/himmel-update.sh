@@ -520,7 +520,7 @@ update_codex() {
 # said anything about claude. codex is upgraded through the method that owns it
 # (user-owned npm global or an advertised standalone self-updater; package
 # managers print a needs-you remedy and are never executed),
-# behind the VM-first gate. claude is held to the console-launch floor
+# behind the VM-first gate. claude is held to the chief-launch floor
 #  and brought current the same way. Both land in the chain-status
 # table via _probe_tool_row.
 #   sync_agent_clis check | apply
@@ -673,7 +673,7 @@ _sync_codex_cli() {
 }
 
 # _sync_claude_cli <check|apply>. claude is held to the floor the
-# console launch needs (scripts/lib/claude-version.sh) and brought current with
+# chief launch needs (scripts/lib/claude-version.sh) and brought current with
 # npm latest. The updater is picked by owner: npm global -> npm install -g
 # @anthropic-ai/claude-code@latest; anything else the operator owns (the native
 # installer) -> `claude update`; brew/pacman print the needs-you command and are
@@ -716,7 +716,7 @@ _sync_claude_cli() {
         *)      cmd="claude update" ;;
     esac
     if [ "$below" -eq 1 ]; then
-        echo "    claude $inst is BELOW the console-launch floor $CLAUDE_MIN_VERSION (latest ${latest:-?}; installed via ${owner:-native}: $path)."
+        echo "    claude $inst is BELOW the chief-launch floor $CLAUDE_MIN_VERSION (latest ${latest:-?}; installed via ${owner:-native}: $path)."
     else
         echo "    claude $inst -> $latest available (installed via ${owner:-native}: $path)."
     fi
@@ -729,7 +729,7 @@ _sync_claude_cli() {
         echo "    needs you: $cmd (not auto-upgrading $path)."
         _probe_tool_row claude skipped "$inst -> ${latest:-?} — needs you: $cmd"
         _ver_row claude "$inst" "${latest:--}" behind "needs you: $cmd" # launch-profile-ok: version-table label, not a launch
-        [ "$below" -eq 0 ] || echo "    FAIL: claude $inst stays below the floor $CLAUDE_MIN_VERSION — console launches refuse until: $cmd" >&2
+        [ "$below" -eq 0 ] || echo "    FAIL: claude $inst stays below the floor $CLAUDE_MIN_VERSION — chief launches refuse until: $cmd" >&2
         [ "$below" -eq 0 ]
         return
     fi
@@ -784,9 +784,9 @@ _sync_claude_cli() {
         return 0
     fi
     echo "    FAIL: claude is still below the floor $CLAUDE_MIN_VERSION after the update (now ${after:-unreadable}) — $(_last_line_trimmed "$out")" >&2
-    echo "    console launches will refuse until fixed; retry by hand: $cmd" >&2
+    echo "    chief launches will refuse until fixed; retry by hand: $cmd" >&2
     _probe_tool_row claude failed "still below floor $CLAUDE_MIN_VERSION (${after:-?}); retry: $cmd"
-    _ver_row claude "${after:-$inst}" "${latest:--}" behind "BELOW the console-launch floor $CLAUDE_MIN_VERSION" # launch-profile-ok: version-table label, not a launch
+    _ver_row claude "${after:-$inst}" "${latest:--}" behind "BELOW the chief-launch floor $CLAUDE_MIN_VERSION" # launch-profile-ok: version-table label, not a launch
     return 1
 }
 
@@ -1206,8 +1206,8 @@ report_pending_migrations() {
             done
         ' _ "$ROOT" 2>/dev/null || true
 
-        # Handover docs that still name a directory slice M moved.
-        # ponytail: one full scan under a 10 s bound, so a tree too big to scan in time stays silent; upgrade path is a first-hit --check.
+        # Handover docs that still name a directory or path slice M or W moved.
+        # ponytail: one full scan per slice under a 10 s bound, so a tree too big to scan in time stays silent; upgrade path is a first-hit --check.
         # shellcheck disable=SC2016 # Expansion belongs to the bounded child shell.
         "$_TIMEOUT_BIN" -k 1 10 bash -c '
             helper="$1/scripts/lib/handover-path.sh"
@@ -1216,11 +1216,27 @@ report_pending_migrations() {
             . "$helper" # read-sink-ok: path is built from the checkout ROOT, not operator input
             state=$(handover_root) || exit 0
             [ -d "$state" ] || exit 0
-            rc=0
-            bash "$script" --slice M --handover-root "$state" --check >/dev/null || rc=$?
-            [ "$rc" = 1 ] || exit 0
-            printf "handover directory-rename migration needed: %s; preview: bash %q --slice M --handover-root %q --dry-run\n" \
-                "$state" "$script" "$state"
+            for slice in M W; do
+                rc=0
+                bash "$script" --slice "$slice" --handover-root "$state" --check >/dev/null || rc=$?
+                [ "$rc" = 1 ] || continue
+                printf "handover directory-rename migration needed: %s; preview: bash %q --slice %s --handover-root %q --dry-run\n" \
+                    "$state" "$script" "$slice" "$state"
+            done
+        ' _ "$ROOT" 2>/dev/null || true
+
+        # Env and settings files that still name a slice W env name or script path.
+        # shellcheck disable=SC2016 # Expansion belongs to the bounded child shell.
+        "$_TIMEOUT_BIN" -k 1 5 bash -c '
+            script="$1/scripts/setup/migrate-renamed-names.py"
+            [ -r "$script" ] && command -v python3 >/dev/null 2>&1 || exit 0
+            for f in "$1/.env" "$HOME/.claude/settings.json" "$HOME/.claude/settings.local.json" "$1/.claude/settings.local.json"; do
+                [ -f "$f" ] || continue
+                rc=0
+                python3 -I "$script" --check "$f" >/dev/null || rc=$?
+                [ "$rc" = 1 ] || continue
+                printf "renamed-names migration needed: %s; preview: python3 %q --dry-run %q\n" "$f" "$script" "$f"
+            done
         ' _ "$ROOT" 2>/dev/null || true
 
         local vault="${LUNA_VAULT_PATH:-}"
@@ -2452,7 +2468,7 @@ sync_cli_proxy() {
 # Chain item 2 re-syncs exactly ONE marketplace (himmel), where a failure must
 # abort the update. This is the rest of them — the `mkt-manual` rows that
 # check-plugin-drift.sh reports BEHIND and that /drift-fix step 2 deliberately
-# ignores (a marketplace re-sync is not a version bump, so the drift leg's PR
+# ignores (a marketplace re-sync is not a version bump, so the drift worker's PR
 # flow has nothing to carry). Advisory + failure-isolated: the helper attempts
 # every row regardless of what the previous row did, and a non-zero rc here
 # never aborts the himmel update.

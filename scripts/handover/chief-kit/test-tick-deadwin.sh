@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
-# test-tick-deadwin.sh — tick.sh reports a leg konsole whose session died (its
-# tabtitle names a fleet leg and the konsole has no child process) as
-# `deadwin=<label>:closed|held`, TERMs it only when the leg's lock is free or a
-# newer -r<n> relaunch is live, and console-wait.sh wakes on a new deadwin.
+# test-tick-deadwin.sh — tick.sh reports a worker konsole whose session died (its
+# tabtitle names a fleet worker and the konsole has no child process) as
+# `deadwin=<label>:closed|held`, TERMs it only when the worker's lock is free or a
+# newer -r<n> relaunch is live, and chief-wait.sh wakes on a new deadwin.
 # Hermetic: stubs for every external probe, scratch HOME / handover / projects.
 #
-# PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.
 # shellcheck disable=SC2015,SC2016  # `[ cond ] && pass || fail`: pass() cannot fail; single-quoted stub bodies expand at run time
 set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 SUT="$HERE/tick.sh"
-WAIT="$HERE/console-wait.sh"
+WAIT="$HERE/chief-wait.sh"
 W="$(mktemp -d "${TMPDIR:-/tmp}/tick-deadwin-test.XXXXXX")" || exit 1
 trap 'kill $(jobs -p) 2>/dev/null; rm -rf "$W"' EXIT
 fails=0
@@ -21,7 +21,7 @@ check() { # <name> <want> <got>
     if [ "$2" = "$3" ]; then pass "$1"; else fail "$1 (want '$2' got '$3')"; fi
 }
 
-mkdir -p "$W/repo/scripts/handover" "$W/repo/scripts/lib" "$W/repo/scripts/lanes/lib" "$W/handover/inbox/.cursor" "$W/bin" "$W/proc" "$W/home" "$W/projects/p" "$W/console-work/chain"
+mkdir -p "$W/repo/scripts/handover" "$W/repo/scripts/lib" "$W/repo/scripts/lanes/lib" "$W/handover/inbox/.cursor" "$W/bin" "$W/proc" "$W/home" "$W/projects/p" "$W/chief-work/chain"
 
 cat > "$W/repo/scripts/handover/queue-lock.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -65,13 +65,13 @@ export PATH="$W/bin:$PATH"
 export HOME="$W/home"
 export HANDOVER_DIR="$W/handover" REPO="$W/repo" TICK_TMPDIR="$W" PS_FIXTURE="$W/ps-none.txt"
 export TICK_BANK_CACHE_FILE="$W/bank.json" TICK_STATE_DIR="$W/state" CLAUDE_SESSIONS_PROC="$W/proc"
-export TICK_LAUNCH_DIR="$W/console-work" TICK_PROJECTS_DIR="$W/projects"
-export DOC="$W/handover/console.md" TOKEN=t LEGS=''
+export TICK_LAUNCH_DIR="$W/chief-work" TICK_PROJECTS_DIR="$W/projects"
+export DOC="$W/handover/chief.md" TOKEN=t WORKERS=''
 export TICK_KILL_BIN="$W/bin/killstub"
 
 mkleg() { # <id-slug> [bullet...]
     local f="$W/handover/HIMMEL-9$1.md"; shift
-    printf '# leg\n' > "$f"
+    printf '# worker\n' > "$f"
     local b
     for b in "$@"; do printf '%s\n' "$b" >> "$f"; done
     printf '%s' "$f"
@@ -82,7 +82,7 @@ field() { # <field> <tick output>
 # konsole <pid> <tabtitle> [etimes]: a ps fixture row (pid ppid etimes args).
 konsole() { printf '%s 1 %s konsole --separate --workdir /x -p tabtitle=%s -e env X=1 /launcher --model m -n %s load doc\n' "$1" "${3:-3600}" "$2" "$2"; }
 child() { printf '%s %s 3600 claude --model m -n %s\n' "$1" "$2" "$3"; }
-run() { bash "$SUT" --legs "$1" 2>/dev/null; }
+run() { bash "$SUT" --workers "$1" 2>/dev/null; }
 
 dead="HIMMEL-9801-N801-dead"
 d_free="$(mkleg 801-N801-dead '- 10:00 LIVE — x')"
@@ -93,14 +93,14 @@ d_rel="$(mkleg 811-N811-relaunched)"
 konsole 5001 "$dead" > "$W/ps1.txt"
 export PS_FIXTURE="$W/ps1.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 out="$(run "$d_free")"
-check 'a leg konsole with no child reads deadwin=<label>:closed when its lock is free' 'N801:closed' "$(field deadwin "$out")"
+check 'a worker konsole with no child reads deadwin=<label>:closed when its lock is free' 'N801:closed' "$(field deadwin "$out")"
 check 'the dead window pid is TERMed' '5001' "$(tr -d '\n' < "$KILLLOG")"
 
 # live child: no deadwin
 { konsole 5002 "$dead"; child 5003 5002 "$dead"; } > "$W/ps2.txt"
 export PS_FIXTURE="$W/ps2.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 out="$(run "$d_free")"
-check 'a leg konsole with a live child has no deadwin field' '' "$(field deadwin "$out")"
+check 'a worker konsole with a live child has no deadwin field' '' "$(field deadwin "$out")"
 check 'a live window is never signalled' '' "$(cat "$KILLLOG")"
 
 # dead window, lock held, no relaunch: reported, not closed
@@ -123,10 +123,10 @@ export PS_FIXTURE="$W/ps9.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-dead
 out="$(COLUMNS=40 run "$d_free")"
 check 'a narrow COLUMNS still reads the dead window' 'N801:closed' "$(field deadwin "$out")"
 
-# a console tab with no child is not a leg window
-konsole 5008 "HIMMEL-nextleg-2026-10-17D-roadmap-console" > "$W/ps5.txt"
+# a chief tab with no child is not a worker window
+konsole 5008 "HIMMEL-nextleg-2026-10-17D-roadmap-chief" > "$W/ps5.txt"
 export PS_FIXTURE="$W/ps5.txt"; : > "$KILLLOG"; rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
-check 'a non-leg tabtitle (a console) is never deadwin' '' "$(field deadwin "$(run "$d_free")")"
+check 'a non-worker tabtitle (a chief) is never deadwin' '' "$(field deadwin "$(run "$d_free")")"
 
 # a just-launched konsole has not spawned its child yet
 konsole 5009 "$dead" 3 > "$W/ps6.txt"
@@ -156,15 +156,15 @@ rm -f "$TICK_STATE_DIR/tick-deadwin-closed"
 STUB="$W/stub"; mkdir -p "$STUB"
 printf '#!/usr/bin/env bash\ncat "$STUB/tick.line"\n' > "$STUB/tick.sh"
 printf '#!/usr/bin/env bash\ncat "$STUB/bank"\n' > "$STUB/bank.sh"
-export STUB CONSOLE_WAIT_TICK="$STUB/tick.sh" CONSOLE_WAIT_BANK="$STUB/bank.sh"
-export CONSOLE_WAIT_INTERVAL=1 CONSOLE_WAIT_POLL_SEC=0.2 CONSOLE_WAIT_FAIL_WAKE=1000
+export STUB CHIEF_WAIT_TICK="$STUB/tick.sh" CHIEF_WAIT_USAGE="$STUB/bank.sh"
+export CHIEF_WAIT_INTERVAL=1 CHIEF_WAIT_POLL_SEC=0.2 CHIEF_WAIT_FAIL_WAKE=1000
 printf 'PROCEED\n' > "$STUB/bank"
 tick_line() {
-    printf 'TICK 03:00 hb=1m legs=N1:FREE livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:? inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip%s\n' "$1" > "$STUB/tick.line"
+    printf 'TICK 03:00 hb=1m workers=N1:FREE livestate=ok procs=2 models=x ceiling=ok atq=0 suites=0alive/0dead prs=#10 bank=5h8/wk15/codex=? fill=40 tails=N1:? inbox=none tick=UNKNOWN fleet=3/15 capacity=ok gql=4000/04:00 orphans=none nonces=ok legset=ok board=ok denials=none or=skip%s\n' "$1" > "$STUB/tick.line"
 }
-inbox="$W/in/consoles/c.md"; mkdir -p "$(dirname "$inbox")"; : > "$inbox"
+inbox="$W/in/chiefs/c.md"; mkdir -p "$(dirname "$inbox")"; : > "$inbox"
 tick_line ''
-bash "$WAIT" "$inbox" --legs "N1.md" > "$W/w.out" 2>/dev/null &
+bash "$WAIT" "$inbox" --workers "N1.md" > "$W/w.out" 2>/dev/null &
 wpid=$!
 n=0; while [ "$n" -lt 50 ] && ! grep -q 'key=[0-9a-f]' "$inbox.wait" 2>/dev/null; do sleep 0.1; n=$((n+1)); done
 tick_line ' deadwin=N2315:held'

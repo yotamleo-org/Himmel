@@ -12,7 +12,7 @@ import { KNOWN_OPS, CONFIRM_OPS, parseEnabledOps, type AuditFields } from "./aut
 import { classify, type Route } from "./router";
 import { handleInbound, handleAutoCommand } from "./poller";
 
-const BREAK_GLASS = ["station-status", "revert-main", "repin-hooks", "launch-leg", "cr-reset", "close-wrapped", "relaunch-console", "restart-bridge", "allow-rule"];
+const BREAK_GLASS = ["station-status", "revert-main", "repin-hooks", "launch-worker", "cr-reset", "close-wrapped", "relaunch-chief", "restart-bridge", "allow-rule"];
 const now = () => Math.floor(Date.now() / 1000);
 const sha256 = (t: string) => createHash("sha256").update(t, "utf8").digest("hex");
 const auto = (text: string): Extract<Route, { kind: "auto" }> => {
@@ -27,13 +27,13 @@ test("router: each break-glass command classifies to its op, arg and time", () =
     ["/revert-main 2202", "revert-main", "2202", "-"],
     ["/revert-main #2202", "revert-main", "2202", "-"],
     ["/repin-hooks", "repin-hooks", "-", "-"],
-    ["/launch-leg N1612", "launch-leg", "N1612", "-"],
-    ["/launch-leg N1497d --hook-bypass", "launch-leg", "N1497d", "bypass"],
+    ["/launch-worker N1612", "launch-worker", "N1612", "-"],
+    ["/launch-worker N1497d --hook-bypass", "launch-worker", "N1497d", "bypass"],
     ["/cr-reset #2210", "cr-reset", "2210", "-"],
     ["/close-wrapped", "close-wrapped", "-", "-"],
     ["/close-wrapped N1600", "close-wrapped", "N1600", "-"],
-    ["/relaunch-console", "relaunch-console", "-", "-"],
-    ["/relaunch-console roadmap-console", "relaunch-console", "roadmap-console", "-"],
+    ["/relaunch-chief", "relaunch-chief", "-", "-"],
+    ["/relaunch-chief roadmap-chief", "relaunch-chief", "roadmap-chief", "-"],
     ["/restart-bridge", "restart-bridge", "-", "-"],
     ["/allow-rule merge-forward-check", "allow-rule", "merge-forward-check", "-"],
     ["/confirm 0a1b2c3d", "confirm", "0a1b2c3d", "-"],
@@ -44,9 +44,9 @@ test("router: each break-glass command classifies to its op, arg and time", () =
 
 test("router: malformed or embedded break-glass text stays chat", () => {
   for (const text of [
-    "/revert-main", "/revert-main abc", "/revert-main 2202 now", "/launch-leg", "/launch-leg x/../y",
-    "/launch-leg N1 --no-verify", "/launch-leg N1 --hook-bypass extra", "/cr-reset", "/close-wrapped N1 N2",
-    "/relaunch-console Bad_Name", "/relaunch-console --hook-bypass", "/station-status now",
+    "/revert-main", "/revert-main abc", "/revert-main 2202 now", "/launch-worker", "/launch-worker x/../y",
+    "/launch-worker N1 --no-verify", "/launch-worker N1 --hook-bypass extra", "/cr-reset", "/close-wrapped N1 N2",
+    "/relaunch-chief Bad_Name", "/relaunch-chief --hook-bypass", "/station-status now",
     "/allow-rule", "/allow-rule Bad_Id", "/allow-rule a b", "/allow-rule --x", "/allow-rule Bash(ls:*)", "please /allow-rule x",
     "/confirm", "/confirm 0a1b2c3", "/confirm 0a1b2c3d9", "/confirm zzzzzzzz", "please /repin-hooks",
   ]) expect(classify(text).kind).toBe("chat");
@@ -262,8 +262,8 @@ test("an allow-rule issues no confirm code for a rule containing U+2028 or U+202
 
 test("a mutating op issues a code and runs nothing; the matching /confirm runs it once", async () => {
   for (const text of BREAK_GLASS.filter((op) => op !== "station-status").map((op) => ({
-    "revert-main": "/revert-main 2202", "repin-hooks": "/repin-hooks", "launch-leg": "/launch-leg N7 --hook-bypass",
-    "cr-reset": "/cr-reset 9", "close-wrapped": "/close-wrapped", "relaunch-console": "/relaunch-console", "restart-bridge": "/restart-bridge", "allow-rule": "/allow-rule merge-forward-check",
+    "revert-main": "/revert-main 2202", "repin-hooks": "/repin-hooks", "launch-leg": "/launch-worker N7 --hook-bypass",
+    "cr-reset": "/cr-reset 9", "close-wrapped": "/close-wrapped", "relaunch-console": "/relaunch-chief", "restart-bridge": "/restart-bridge", "allow-rule": "/allow-rule merge-forward-check",
   } as Record<string, string>)[op])) {
     const root = await mkdtemp(join(tmpdir(), "bg-ok-"));
     const h = harness(0, "done=1\n");
@@ -318,7 +318,7 @@ test("a wrong, missing, expired, other-user, group-chat or forwarded confirm ref
 });
 
 test("break-glass ops are DM-only: in a group every op refuses and issues no code", async () => {
-  for (const text of ["/station-status", "/revert-main 2202", "/repin-hooks", "/launch-leg N7", "/cr-reset 9", "/close-wrapped", "/relaunch-console", "/restart-bridge", "/allow-rule merge-forward-check"]) {
+  for (const text of ["/station-status", "/revert-main 2202", "/repin-hooks", "/launch-worker N7", "/cr-reset 9", "/close-wrapped", "/relaunch-chief", "/restart-bridge", "/allow-rule merge-forward-check"]) {
     const root = await mkdtemp(join(tmpdir(), "bg-group-"));
     const h = harness();
     await handleAutoCommand(root, msg(text, { chat_id: -100 }), auto(text), h.deps);

@@ -20,3 +20,19 @@ legacy_names_on() {
   esac
   return 0
 }
+
+# legacy_flag OLD NEW: a parser's arm for a renamed CLI flag calls this when it
+# matched OLD. On: one stderr deprecation line per process, then status 0 (parse
+# OLD as NEW). Off: one stderr line and status 1, so the caller treats OLD as
+# the unknown option it now is.
+legacy_flag() {
+  if ! legacy_names_on; then
+    echo "$1 was renamed to $2; legacy names are off" >&2
+    return 1
+  fi
+  case " ${_LEGACY_FLAG_WARNED:-} " in *" $1 "*) ;; *)
+    echo "$1 is deprecated: use $2" >&2
+    _LEGACY_FLAG_WARNED="${_LEGACY_FLAG_WARNED:-} $1" ;;
+  esac
+  return 0
+}

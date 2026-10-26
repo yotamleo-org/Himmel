@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# run.sh -- graphify leg A/B sweep.
+# run.sh -- graphify worker A/B sweep.
 #
 #   run.sh run [--reps N] [--out DIR] [--max-usd USD] [--tasks id,id] [--model M]
 #   run.sh plan [--reps N] [--tasks id,id]     print the run matrix, call nothing
 #
-# Arm A: graphify allowed and prompted (scripts/graphify/leg-graph.sh).
+# Arm A: graphify allowed and prompted (scripts/graphify/worker-graph.sh).
 # Arm B: no graphify (grep/read only), graphify tools denied and the prompt says so.
 # Same model, same task prompt, same tool set (Bash,Read), no MCP servers in either
 # arm so qmd is not a confound. Each run happens in a detached checkout of the
@@ -133,7 +133,7 @@ for rep in $(seq 1 "$REPS"); do
       prompt="$(task_prompt "$t")"
       start="$(date +%s)"
       # graphify A/B agent run, bank-preflighted per run, explicit permission mode, budget-capped
-      # launch-profile-ok: eval arm pins its own --tools/--allowedTools and --strict-mcp-config; a leg profile would change the measured condition
+      # launch-profile-ok: eval arm pins its own --tools/--allowedTools and --strict-mcp-config; a worker profile would change the measured condition
       ( cd "$CHECKOUT" && "$TIMEOUT_BIN" "$TIMEOUT" "$CLAUDE_BIN" -p "$prompt" --model "$MODEL" \
           --permission-mode dontAsk --output-format json --max-budget-usd "$run_cap" \
           --tools Bash,Read --allowedTools Bash,Read ${deny:+--disallowedTools "$deny"} \

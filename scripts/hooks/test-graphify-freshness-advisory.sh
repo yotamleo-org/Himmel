@@ -2,11 +2,11 @@
 # test-graphify-freshness-advisory.sh — three-state contract
 # shellcheck disable=SC2015,SC2164 # compact status assertions; fixture cd's are into mktemp -d dirs this script just created
 set -uo pipefail
-# The suite owns every case's env; an ambient leg shell (HIMMEL_LEAN_LEG=1
-# under --profile leg-impl) must not silently turn every
-# unmarked case into a lean-leg case. Only the two explicit T9/T9b lean
+# The suite owns every case's env; an ambient worker shell (HIMMEL_LEAN_WORKER_SESSION=1
+# under --profile worker-impl) must not silently turn every
+# unmarked case into a lean-worker case. Only the two explicit T9/T9b lean
 # cases below set it themselves.
-unset WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG 2>/dev/null || true
+unset WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG 2>/dev/null || true
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK="$HERE/graphify-freshness-advisory.sh"
 PASS=0; FAIL=0
@@ -35,20 +35,20 @@ if [ "${1:-}" = "--selftest-hermetic" ]; then
 fi
 
 echo "== suite hermeticity (HIMMEL-2940) =="
-# A leg's ambient HIMMEL_LEAN_LEG=1 must not reach the hook invocation before
+# A worker's ambient HIMMEL_LEAN_WORKER_SESSION=1 must not reach the hook invocation before
 # the preamble unset above has a chance to clear it — so this recurses with
-# that var set exactly the way a lean-leg caller sets it (before this file's
+# that var set exactly the way a lean-worker caller sets it (before this file's
 # own preamble runs), not via a T9-style case override.
 # Each recursion gets its own `mktemp -d` fixture dir, so the raw outputs
 # differ by that random path alone even with no leak — normalize it out
 # before comparing. `pipefail` (set above) makes $? after the sed pipe
 # reflect the bash recursion's own exit status, not sed's.
-leaked="$(HIMMEL_LEAN_LEG=1 bash "$0" --selftest-hermetic | sed -E 's#[^ ]*/selftest#SELFTEST_DIR#g')"; leaked_rc=$?
+leaked="$(HIMMEL_LEAN_WORKER_SESSION=1 bash "$0" --selftest-hermetic | sed -E 's#[^ ]*/selftest#SELFTEST_DIR#g')"; leaked_rc=$?
 clean="$(bash "$0" --selftest-hermetic | sed -E 's#[^ ]*/selftest#SELFTEST_DIR#g')"; clean_rc=$?
 if [ "$leaked_rc" -eq 0 ] && [ "$clean_rc" -eq 0 ] && [ "$leaked" = "$clean" ] && [ -n "$leaked" ]; then
-    pass "suite is hermetic to a lean-leg caller"
+    pass "suite is hermetic to a lean-worker caller"
 else
-    fail "suite is hermetic to a lean-leg caller (leaked_rc=$leaked_rc clean_rc=$clean_rc leaked='$leaked' clean='$clean')"
+    fail "suite is hermetic to a lean-worker caller (leaked_rc=$leaked_rc clean_rc=$clean_rc leaked='$leaked' clean='$clean')"
 fi
 
 # T1 fresh -> silent, rc 0
@@ -143,16 +143,16 @@ case "$out" in *"INJECTED"*) pass "T8 checker text still visible (just neutraliz
 # harness-authored instruction.
 case "$out" in *"untrusted data"*) pass "T8 banner frames checker output as untrusted data";; *) fail "T8 missing untrusted-data framing: $out";; esac
 
-# T9 a lean leg hears nothing, even when the graph IS stale.
-# The banner is ~3.9k chars of a leg's ~75k fixed context floor, re-read on
-# every API call of that session, for an advisory a leg never acts on.
-out=$(HIMMEL_LEAN_LEG=1 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
-[ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T9 HIMMEL_LEAN_LEG=1 silences the stale banner" || fail "T9: rc=$rc out='$out'"
+# T9 a lean worker hears nothing, even when the graph IS stale.
+# The banner is ~3.9k chars of a worker's ~75k fixed context floor, re-read on
+# every API call of that session, for an advisory a worker never acts on.
+out=$(HIMMEL_LEAN_WORKER_SESSION=1 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
+[ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T9 HIMMEL_LEAN_WORKER_SESSION=1 silences the stale banner" || fail "T9: rc=$rc out='$out'"
 # T9b fail-open: ONLY the exact value 1 leans. Any other value keeps today's
 # output, so an unset/typo'd variable can never silently delete a real warning
 # from an ordinary session.
-out=$(HIMMEL_LEAN_LEG=0 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
-case "$out" in *"graphify graph is STALE"*) pass "T9b HIMMEL_LEAN_LEG=0 keeps today's banner (fail-open)";; *) fail "T9b lean guard is not fail-open: $out";; esac
+out=$(HIMMEL_LEAN_WORKER_SESSION=0 GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
+case "$out" in *"graphify graph is STALE"*) pass "T9b HIMMEL_LEAN_WORKER_SESSION=0 keeps today's banner (fail-open)";; *) fail "T9b lean guard is not fail-open: $out";; esac
 
 # T10 core.bare on the shared git config -> loud warning, both
 # directions. Fixture: a scratch repo plus a linked worktree of it, so the
@@ -179,11 +179,11 @@ case "$out" in *"git config --local --unset core.bare"*) pass "T10c names the on
 case "$out" in *"plain git reset"*"NEVER"*) pass "T10c names the bogus-index trap (plain reset, never the hard form)";; *) fail "T10c bogus-index trap missing: $out";; esac
 case "$out" in *"extensions.worktreeConfig"*) pass "T10c warns to leave extensions.worktreeConfig set";; *) fail "T10c worktreeConfig note missing: $out";; esac
 [ "$sum_before" = "$(cksum < "$cb/.git/config")" ] && pass "T10c never touches the config" || fail "T10c config was modified"
-# A lean leg is exactly who burns a leg on this, so it hears the warning too,
+# A lean worker is exactly who burns a worker on this, so it hears the warning too,
 # and ONLY that: the graphify half stays silent for it.
-out=$(HIMMEL_LEAN_LEG=1 CLAUDE_PROJECT_DIR="$cb-wt" GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
-case "$out" in *"core.bare"*) pass "T10d lean leg still hears core.bare";; *) fail "T10d lean leg silenced: $out";; esac
-case "$out" in *"graphify graph is"*) fail "T10d lean leg heard graphify too: $out";; *) pass "T10d lean leg hears no graphify banner";; esac
+out=$(HIMMEL_LEAN_WORKER_SESSION=1 CLAUDE_PROJECT_DIR="$cb-wt" GRAPHIFY_ADVISORY_OUT="$tmp/stale/graphify-out" bash "$HOOK"); rc=$?
+case "$out" in *"core.bare"*) pass "T10d lean worker still hears core.bare";; *) fail "T10d lean worker silenced: $out";; esac
+case "$out" in *"graphify graph is"*) fail "T10d lean worker heard graphify too: $out";; *) pass "T10d lean worker hears no graphify banner";; esac
 # Outside any repo: silent, rc0.
 out=$(CLAUDE_PROJECT_DIR="$tmp/not-a-repo" GRAPHIFY_ADVISORY_OUT="$tmp/fresh/graphify-out" bash "$HOOK"); rc=$?
 [ "$rc" -eq 0 ] && [ -z "$out" ] && pass "T10e non-repo project dir is silent rc0" || fail "T10e: rc=$rc out='$out'"

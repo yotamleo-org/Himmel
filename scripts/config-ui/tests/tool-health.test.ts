@@ -27,7 +27,7 @@ function seed() {
       tool_health: [{ agent, lane: s.lane, tool: "Bash", calls: s.bash, failures: s.errors + s.denied, errors: s.errors, denials: s.denied }, { agent, lane: s.lane, tool: "Read", calls: s.read, failures: 0, errors: 0, denials: 0 }],
       failures: [row("denied/read-clamp", s.denied, s.recovered), ...(s.errors ? [row("error/Bash", s.errors, null)] : [])] };
     const file = join(dir, `digest${i}.json`); writeFileSync(file, JSON.stringify(digest));
-    const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/worker-digest/leg_ledger.py"), "record", "--digest", file, "--lane", s.lane, "--leg", `N${i + 1}`, "--failures-ledger", failures, "--eval-ledger", evals, "--state-dir", join(dir, "state")]);
+    const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/worker-digest/worker_ledger.py"), "record", "--digest", file, "--lane", s.lane, "--worker", `N${i + 1}`, "--failures-ledger", failures, "--eval-ledger", evals, "--state-dir", join(dir, "state")]);
     expect(r.exitCode).toBe(0);
   }
   const config = join(dir, "claude-config"); mkdirSync(config);
@@ -67,11 +67,11 @@ test("legacy digests keep failures visible without inventing a zero rate", () =>
   expect(data.hooks[0].rate).toBeNull();
 });
 
-test("recorded leg-doc lane overrides extractor provenance and stamps every persisted tool row", () => {
+test("recorded worker-doc lane overrides extractor provenance and stamps every persisted tool row", () => {
   const env = seed(), dir = dirs[dirs.length - 1];
-  const doc = join(dir, "leg.md"), file = join(dir, "digest0.json"), evals = join(dir, "doc-eval.jsonl"), state = join(dir, "doc-state");
+  const doc = join(dir, "worker.md"), file = join(dir, "digest0.json"), evals = join(dir, "doc-eval.jsonl"), state = join(dir, "doc-state");
   writeFileSync(doc, "> Sibling N2 uses native lane.\n# N1 (gpt-6.1-sol, cloud lane, headed)\n");
-  const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/worker-digest/leg_ledger.py"), "record", "--digest", file, "--doc", doc, "--leg", "N1", "--failures-ledger", join(dir, "doc-fail.jsonl"), "--eval-ledger", evals, "--state-dir", state]);
+  const r = Bun.spawnSync(["python3", resolve(import.meta.dir, "../../eval/worker-digest/worker_ledger.py"), "record", "--digest", file, "--doc", doc, "--worker", "N1", "--failures-ledger", join(dir, "doc-fail.jsonl"), "--eval-ledger", evals, "--state-dir", state]);
   expect(r.exitCode).toBe(0);
   const row = JSON.parse(readFileSync(evals, "utf8"));
   expect(row.lane).toBe("cloud");
@@ -221,15 +221,15 @@ function seedProfiles() {
 
 test("the payload carries a per-profile table, listing cost and drop candidates; unlabelled sessions stay unknown", () => {
   const data = read(seedProfiles());
-  expect(data.profiles.map((p: any) => p.profile)).toEqual(["judge", "leg-impl", "unknown"]);
-  expect(data.profiles.find((p: any) => p.profile === "leg-impl").tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, listing_tokens: 0, verdict: "keep" });
-  expect(data.drop_candidates).toEqual([expect.objectContaining({ profile: "leg-impl", tool: "mcp__qmd__query", listing_tokens: 900, calls: 0, window_days: 7 })]);
+  expect(data.profiles.map((p: any) => p.profile)).toEqual(["judge", "worker-impl", "unknown"]);
+  expect(data.profiles.find((p: any) => p.profile === "worker-impl").tools.find((t: any) => t.tool === "Bash")).toMatchObject({ calls: 10, listing_tokens: 0, verdict: "keep" });
+  expect(data.drop_candidates).toEqual([expect.objectContaining({ profile: "worker-impl", tool: "mcp__qmd__query", listing_tokens: 900, calls: 0, window_days: 7 })]);
   expect(read(seed()).drop_candidates).toEqual([]);
 });
 
-test("the default path prices the Skill listing of the real leg-impl, console-judge and console profiles without a file or a claude run", async () => {
+test("the default path prices the Skill listing of the real worker-impl, console-judge and console profiles without a file or a claude run", async () => {
   const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
-  const registry = loadRegistry(), profiles = ["leg-impl", "console-judge", "console"];
+  const registry = loadRegistry(), profiles = ["worker-impl", "console-judge", "console"];
   const env: any = seed();
   const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
   rows.forEach((r: any, i: number) => { for (const h of r.meta.tool_health) h.profile = profiles[i]; });
@@ -251,11 +251,11 @@ test("the default path prices the Skill listing of the real leg-impl, console-ju
 
 test("a same-named plugin from another marketplace does not inflate the profile's Skill listing", async () => {
   const { loadRegistry, resolveProfile } = await import("../../lanes/plugin-profiles.mjs");
-  const enabled = Object.entries(resolveProfile(loadRegistry(), "leg-impl").enabledPlugins).filter(([, on]) => on).map(([id]) => id);
+  const enabled = Object.entries(resolveProfile(loadRegistry(), "worker-impl").enabledPlugins).filter(([, on]) => on).map(([id]) => id);
   const skillTokens = (decoy: boolean) => {
     const env: any = seed();
     const rows = readFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, "utf8").trim().split("\n").map((l: string) => JSON.parse(l));
-    rows.forEach((r: any) => { for (const h of r.meta.tool_health) h.profile = "leg-impl"; });
+    rows.forEach((r: any) => { for (const h of r.meta.tool_health) h.profile = "worker-impl"; });
     writeFileSync(env.HIMMEL_EVAL_RUNS_LEDGER, rows.map(JSON.stringify).join("\n") + "\n");
     const put = (marketplace: string, plugin: string, chars: number) => {
       const dir = join(env.CLAUDE_CONFIG_DIR, "plugins", "cache", marketplace, plugin, "1.0.0", "skills", "one");
@@ -264,7 +264,7 @@ test("a same-named plugin from another marketplace does not inflate the profile'
     };
     for (const id of enabled) put(id.split("@")[1], id.split("@")[0], 400);
     if (decoy) put("not-enabled-marketplace", enabled[0].split("@")[0], 4000);
-    return read(env).profiles.find((p: any) => p.profile === "leg-impl").tools.find((t: any) => t.tool === "Skill").listing_tokens;
+    return read(env).profiles.find((p: any) => p.profile === "worker-impl").tools.find((t: any) => t.tool === "Skill").listing_tokens;
   };
   expect(skillTokens(true)).toBe(skillTokens(false));
 });
@@ -273,7 +273,7 @@ test("the page shows the per-profile table in plain words and labels the unknown
   const { renderToolHealth } = await import("../public/tool-health.js");
   const html = renderToolHealth(read(seedProfiles()), "t");
   expect(html).toContain("Tools by launch profile");
-  expect(html).toContain("leg-impl");
+  expect(html).toContain("worker-impl");
   expect(html).toContain("judge");
   expect(html).toContain("unknown (launch profile not recorded)");
   expect(html).toContain("mcp__qmd__query");

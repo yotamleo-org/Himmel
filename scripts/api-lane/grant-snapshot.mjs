@@ -1,7 +1,7 @@
-// operator snapshot refresh for one account from a Console reading.
+// operator snapshot refresh for one account from a Chief reading.
 // Usage: node grant-snapshot.mjs <A|B> <remaining-usd> [<grant-usd> <starts YYYY-MM-DD> <expires YYYY-MM-DD>]
 // The short form refreshes an existing row; the long form (re)writes the grant itself,
-// dates read as 00:00 UTC (the earlier side of the Console's local date). Secret-free.
+// dates read as 00:00 UTC (the earlier side of the Chief's local date). Secret-free.
 // `grant-snapshot.mjs --pull <A|B>` derives the remaining credit from the
 // Admin API cost report instead (key ANTHROPIC_ORG_<A|B>_KEY, read inside the library only).
 import { dirname } from 'node:path';

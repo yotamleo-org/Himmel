@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Smoke suite for scripts/hooks/block-worker-askuserquestion.sh:
-# a console-spawned leg (HIMMEL_CONSOLE_LEG=1, set by the launcher)
+# a chief-spawned worker (HIMMEL_CONSOLE_LEG=1, set by the launcher)
 # calling AskUserQuestion is denied — nobody answers in that window. Covers:
 # marker+tool -> deny, marker unset -> allow, marker+other tool -> allow,
 # malformed/empty stdin -> allow (fail-open; a hook crash must never lock an
-# operator out). The old path block-leg-askuserquestion.sh forwards here and
-# denies the same; HIMMEL_WORKER=1 alone is not the leg marker.
+# operator out). The old path block-worker-askuserquestion.sh forwards here and
+# denies the same; HIMMEL_WORKER=1 alone is not the worker marker.
 #
 # bash 3.2-safe. Platform guard (gitbash-only): plain env var + jq checks, no
 # git/path work; runs unchanged under Git Bash on Windows. No .ps1 twin needed.
@@ -14,7 +14,7 @@ set -uo pipefail
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/block-worker-askuserquestion.sh"
 
-# a console leg's shell exports guard overrides (INLINE_IMPL_OK,
+# a chief worker's shell exports guard overrides (INLINE_IMPL_OK,
 # HIMMEL_CONSOLE_LEG, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, ...) that reach the hook
 # under test and flip every "override UNSET" case. Clear them before any case
 # runs; a case that needs one still sets it explicitly on its own invocation.
@@ -71,13 +71,13 @@ check "marker + empty stdin -> allow" allow \
     '' \
     HIMMEL_CONSOLE_LEG=1
 
-echo "== HIMMEL_WORKER=1 is not the leg marker =="
+echo "== HIMMEL_WORKER=1 is not the worker marker =="
 check "HIMMEL_WORKER=1 alone + AskUserQuestion -> allow" allow \
     '{"tool_name":"AskUserQuestion","tool_input":{"questions":[]}}' \
     HIMMEL_WORKER=1
 
 echo "== the old path forwards to this hook =="
-HOOK="$HOOKS/block-leg-askuserquestion.sh"
+HOOK="$HOOKS/block-worker-askuserquestion.sh"
 check "old path: marker + AskUserQuestion -> deny" block \
     '{"tool_name":"AskUserQuestion","tool_input":{"questions":[]}}' \
     HIMMEL_CONSOLE_LEG=1

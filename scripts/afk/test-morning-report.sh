@@ -647,16 +647,16 @@ mkdir -p "$RMB/verdicts/j104" "$RMB/verdicts/j103" "$RMS/ready-files"
 printf '#!/bin/sh\nexit 1\n' > "$TMP_ROOT/rm-gh"
 chmod +x "$TMP_ROOT/rm-gh"
 rm_head() { printf '%040d' "$1"; }
-rm_leg() { printf '# T - leg N%s (claude-sonnet-5-5, native)\n\n- 10:00 READY %s %s GREEN %s\n' "$1" "$2" "$(rm_head "$2")" "$3" > "$RMB/leg$1.md"; }
-rm_leg 1 101 '- trust path: none'
+rm_worker() { printf '# T - worker N%s (claude-sonnet-5-5, native)\n\n- 10:00 READY %s %s GREEN %s\n' "$1" "$2" "$(rm_head "$2")" "$3" > "$RMB/worker$1.md"; }
+rm_worker 1 101 '- trust path: none'
 printf 'scripts/ci/x.sh\n' > "$RMS/ready-files/101-$(rm_head 101)"
-rm_leg 2 102 '- CI green'
+rm_worker 2 102 '- CI green'
 printf 'scripts/lib/y.sh\n' > "$RMS/ready-files/102-$(rm_head 102)"
-rm_leg 3 103 '- no trust path touched'
+rm_worker 3 103 '- no trust path touched'
 printf 'docs/a.md\n' > "$RMS/ready-files/103-$(rm_head 103)"
 # shellcheck disable=SC2016  # the backticks are literal verdict text
 printf '## Verdict\n\n**GO** for head `%s`.\n\npr: 103\n' "$(rm_head 103)" > "$RMB/verdicts/j103/judge.md"
-rm_leg 4 104 '- trust path: none'
+rm_worker 4 104 '- trust path: none'
 printf 'docs/b.md\n' > "$RMS/ready-files/104-$(rm_head 104)"
 # shellcheck disable=SC2016  # the backticks are literal verdict text
 printf '## Verdict\n\n**NO-GO** for head `%s`.\n\npr: 104\n' "$(rm_head 104)" > "$RMB/verdicts/j104/judge.md"
@@ -679,7 +679,7 @@ report=$(MORNING_REPORT_READY_DIR="$RMB" MORNING_REPORT_READY_REPO="$TMP_ROOT/rm
 assert_contains "a window with no READY renders no READYs found" "no READYs found" "$report"
 if grepq "$report" -F "every READY in the window matches"; then fail "zero READYs rendered the vacuous clean line" "$report"; else pass "zero READYs is not the clean line"; fi
 mkdir -p "$TMP_ROOT/rm-root/slug/himmel"
-rm_leg 3 103 '- no trust path touched'
+rm_worker 3 103 '- no trust path touched'
 mv "$RMB/leg3.md" "$TMP_ROOT/rm-root/slug/himmel/leg3.md"
 report=$(HANDOVER_DIR="$TMP_ROOT/rm-root" USER_SLUG=slug MORNING_REPORT_READY_REPO="$TMP_ROOT/rm-repo" TICK_STATE_DIR="$RMS" TICK_GH_CMD="$TMP_ROOT/rm-gh" bash "$SCRIPT" --rows "$ROWS" --dry-run)
 assert_contains "the default bucket is the handover root's user/himmel folder" "NO-GO at head: 0 of 0 judged (1 READY" "$report"

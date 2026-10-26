@@ -34,7 +34,7 @@ GUARD = os.path.join(HERE, "assets", "parity_guard.py")
 
 # Chain members that are session plumbing, not a deny decision: they write
 # state (arming, context hand-off) and never exist to refuse a payload class.
-SIDE_EFFECT_MEMBERS = {"auto-arm-on-cap.sh", "guard-leg-context-handoff.sh"}
+SIDE_EFFECT_MEMBERS = {"auto-arm-on-cap.sh", "guard-worker-context-handoff.sh"}
 # Wired PreToolUse commands that are not `bash <hook>.sh` members: a shadow
 # ledger, a run-event recorder and a graph nudge, none a verdict source for the
 # corpus. Any other unparsed command aborts the run.

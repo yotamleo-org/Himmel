@@ -5,7 +5,7 @@
 # Prints one JSON object per ticket key (JSON lines, sorted by key) for the bucket-root
 # *.md docs that are FINISHED and were modified within --since-days. Finished is the
 # librarian's test: no queue lock, and the newest marker bullet is WRAPPED or HALTED
-# (scripts/lib/leg-tail-status.sh) or the ticket is Done in the Jira mirror. Console
+# (scripts/lib/worker-tail-status.sh) or the ticket is Done in the Jira mirror. Chief
 # docs and everything under specs/ are never read. A record holds only:
 #   key       the ticket key (the doc name's leading KEY-N)
 #   docs      the doc names of that key, oldest first
@@ -20,15 +20,15 @@
 # $HIMMEL_JIRA_MIRROR, else ~/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL};
 # --since-days 7 (0 = no window).
 # ponytail: PR and sha are regex reads of the bullet text, not a ledger lookup; a
-# bullet that names neither leaves them empty, upgrade path = read the leg-burn line.
+# bullet that names neither leaves them empty, upgrade path = read the worker-burn line.
 # Exit: 0 ok, 2 usage.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handover-path.sh
 . "$HERE/../lib/handover-path.sh"
-# shellcheck source=../lib/leg-tail-status.sh
-. "$HERE/../lib/leg-tail-status.sh"
+# shellcheck source=../lib/worker-tail-status.sh
+. "$HERE/../lib/worker-tail-status.sh"
 
 ROOT=""; BUCKET=""; MIRROR=""; SINCE=7
 while [ $# -gt 0 ]; do
@@ -63,7 +63,7 @@ TAILS="$(mktemp -t compound-tails.XXXXXX)" || exit 1
 trap 'rm -f "$TAILS"' EXIT
 for f in "$BUCKET"/*.md; do
   [ -f "$f" ] || continue
-  printf '%s\t%s\n' "${f##*/}" "$(leg_tail_status "$f")"
+  printf '%s\t%s\n' "${f##*/}" "$(worker_tail_status "$f")"
 done > "$TAILS"
 
 python3 -I - "$ROOT" "$BUCKET" "$MIRROR" "$SINCE" "$TAILS" <<'PY'

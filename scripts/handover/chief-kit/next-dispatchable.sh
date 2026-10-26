@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # next-dispatchable.sh — Ranked, collision-checked list of the next
-# tickets a console can dispatch. READ-ONLY: it prints, it never launches,
-# creates a worktree or writes the mirror. console-wait.sh prints it with the
-# `WAKE underfilled` block; a console can also run it by hand. It absorbs the
+# tickets a chief can dispatch. READ-ONLY: it prints, it never launches,
+# creates a worktree or writes the mirror. chief-wait.sh prints it with the
+# `WAKE underfilled` block; a chief can also run it by hand. It absorbs the
 # spare-capacity suggestion it replaced.
 #
-#   next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST]
+#   next-dispatchable.sh [--top N] [--mirror DIR] [--workers-from MANIFEST]
 #                        [--held FILE] [--no-classify] [--doc CHIEF_DOC]
 #                        [--priority-pool-only] [--workers-dir DIR] [--why] [--dispositions]
 #
@@ -13,7 +13,7 @@
 # candidate is a To Do issue that is not an Epic/Sub-task, has no contract=yes
 # merge row in status-events.jsonl (merged to Done, the mirror lags), carries none of
 # the operator-decision / blocked labels (EXCLUDE_LABELS) and has no unresolved
-# blocked_by link (focus-chains-links.sh writes the console's chain order as
+# blocked_by link (focus-chains-links.sh writes the chief's chain order as
 # those links). Rank: earliest unreleased fixVersion (HIMMEL.versions.tsv,
 # natural order; none last), then priority, then key.
 #
@@ -24,9 +24,9 @@
 # like K1, is skipped; a key marked `(CLOUD)` is dropped from the output); 2 label
 # operator-directed; 3 a Bug of High or above, or a security / data-integrity /
 # data-loss label; 4 the rest, by the rank above. --priority-pool-only prints
-# tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review / IN CI, no leg, no open PR)
+# tiers 1-3 only: per tier, the RESUME rows (In Progress / In Review / IN CI, no worker, no open PR)
 # lead that tier's To Do rows, filtered like To Do rows (dropped platform, residual depth);
-# the RESUME rows need a leg source (--owners or --legs-from, plus the cloud-sessions.tsv
+# the RESUME rows need a worker source (--owners or --workers-from, plus the cloud-sessions.tsv
 # next to --doc, 48h) and print none without one. It ends with `# pool=<rows>/<top>`,
 # `,LOW` when the pool printed fewer rows than --top (the free-slot count); an empty
 # pool prints `POOL-EMPTY` and then the tier-4 To Do rows as `NEXT-TIER` rows (rank
@@ -40,7 +40,7 @@
 # `rm-admit` or `override` row (any other kind, or none, admits nothing). No label
 # means depth 0.
 #
-# IN CI tickets: one nobody holds (no leg, no open PR) that a merged PR cites prints a
+# IN CI tickets: one nobody holds (no worker, no open PR) that a merged PR cites prints a
 # `MERGED-NOT-CLOSED` row (same columns as RESUME, nothing to dispatch: it needs closing);
 # with no PR at all it is a RESUME row. An unreadable merged-PR search prints a
 # `merged PRs unknown` header and no IN CI row.
@@ -53,13 +53,13 @@
 # (its Done write is pending) is never a RESUME row.
 #
 # Collision (one writer per file): the files a candidate names in its
-# description are checked against (a) the files in the live legs' docs (the
-# manifest's `legs[].doc`, scope lines), (b) the diff of every open PR (gh), and
+# description are checked against (a) the files in the live workers' docs (the
+# manifest's `workers[].doc`, scope lines), (b) the diff of every open PR (gh), and
 # (c) --held FILE (one path per line). A directory a ticket names is context and
 # collides with nothing. Any other path collides with an equal held path; a concrete
 # file (one the repo holds, or a new one with a dotted basename) also collides with a
-# directory a leg's write scope or --held names above it; an open PR's diff is files,
-# compared exactly. Two listed tickets collide on an equal file only. A live leg's write
+# directory a worker's write scope or --held names above it; an open PR's diff is files,
+# compared exactly. Two listed tickets collide on an equal file only. A live worker's write
 # scope is the path list after `writes confined to` up to its first sentence break (a
 # `> **Writes:**` line is all of it); past the break only a concrete file holds, so a
 # directory the brief merely mentions holds nothing. Paths compare after the rename registry
@@ -89,7 +89,7 @@
 #
 # Classification: the survivors go through scripts/lanes/cloud-route.mjs
 # --classify-only (the same gates as /cloud-route). CLOUD-OK prints CLOUD;
-# LOCAL-NATIVE prints LOCAL; HOOK-BYPASS prints LOCAL with `hook` (the leg needs
+# LOCAL-NATIVE prints LOCAL; HOOK-BYPASS prints LOCAL with `hook` (the worker needs
 # the hook-integrity bypass launch); BLOCKED is dropped. --no-classify prints
 # every survivor as LOCAL? (no Jira or gh read for the class).
 #
@@ -102,13 +102,21 @@
 # NEXT_DISPATCH_EXCLUDE_LABELS (comma list, replaces the default).
 #
 # Exit: 0 printed (possibly nothing); 2 usage.
-# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only.
+# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only.
 set -u
+# Old names, read only while HIMMEL_LEGACY_NAMES is on.
+case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+if { [ -r "$_ea_dir/../../lib/env-alias.sh" ] && . "$_ea_dir/../../lib/env-alias.sh"; } 2>/dev/null; then
+    alias_env WORKERS_FROM LEGS_FROM
+fi
+unset _ea_dir
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
 
 top=8; mirror="${NEXT_DISPATCH_MIRROR:-${HOME:-/tmp}/.himmel/state/jira-mirror/HIMMEL}"
-legs_from="${LEGS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
+workers_from="${WORKERS_FROM:-}"; held=""; classify=1; resume_only=0; owners=""; doc=""; pool_only=0; why=0; dispo=0
 workers="${TICKET_STATUS_STATE_DIR:-${HOME:-/tmp}/.himmel/state}/workers"
 while [ "$#" -gt 0 ]; do
     case "$1" in
@@ -117,14 +125,14 @@ while [ "$#" -gt 0 ]; do
         --owners) owners="${2:-}"; shift 2 || exit 2 ;;
         --top) top="${2:-}"; shift 2 || exit 2 ;;
         --mirror) mirror="${2:-}"; shift 2 || exit 2 ;;
-        --legs-from) legs_from="${2:-}"; shift 2 || exit 2 ;;
+        --workers-from|--legs-from) [ "$1" = --workers-from ] || legacy_flag --legs-from --workers-from || exit 2; workers_from="${2:-}"; shift 2 || exit 2 ;;
         --held) held="${2:-}"; shift 2 || exit 2 ;;
         --no-classify) classify=0; shift ;;
         --doc) doc="${2:-}"; shift 2 || exit 2 ;;
         --priority-pool-only) pool_only=1; shift ;;
         --why) why=1; shift ;;
         --dispositions) dispo=1; shift ;;
-        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--legs-from MANIFEST] [--held FILE] [--no-classify] [--doc CHIEF_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why] [--dispositions]" >&2; exit 2 ;;
+        *) echo "usage: next-dispatchable.sh [--top N] [--mirror DIR] [--workers-from MANIFEST] [--held FILE] [--no-classify] [--doc CHIEF_DOC] [--priority-pool-only] [--resume-only] [--owners \"KEY ...\"] [--workers-dir DIR] [--why] [--dispositions]" >&2; exit 2 ;;
     esac
 done
 case "$top" in ''|*[!0-9]*|0*) echo "next-dispatchable: --top needs a positive number" >&2; exit 2 ;; esac
@@ -136,7 +144,7 @@ if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
     root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
 fi
 
-export ND_TOP="$top" ND_MIRROR="$mirror" ND_LEGS_FROM="$legs_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
+export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
 import datetime, json, os, re, subprocess, sys, time
 
@@ -158,7 +166,7 @@ def files_in(text):
     return out
 
 MARKER_RE = re.compile(r'^- \d{1,2}:\d{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|PARKED-USAGE|RESUMED)\b')
-SCOPE_END_RE = re.compile(r'completes-ticket:|Other live legs|Touch nothing|READ ONLY|READ-ONLY|Stay off')
+SCOPE_END_RE = re.compile(r'completes-ticket:|Other live workers|Touch nothing|READ ONLY|READ-ONLY|Stay off')
 
 # read-only text an older scope line carries. Stripping fails open (a dropped path is a write nobody holds), so each
 # pattern removes only what is unmistakably read-only: a backticked command, a command with a flag, an impacted-suites
@@ -173,7 +181,7 @@ WRITING_RE = re.compile(r'\s-(?:delete|exec|execdir|ok)\b')  # a find that delet
 IMPACTED_RE = re.compile(r'Impacted suites' + SENT)
 SINGLE_WRITER_RE = re.compile(r'SINGLE-WRITER' + SENT)
 OTHER_HOLDER_RE = re.compile(r'#\d+|\bN\d{3,}\b')
-OWN_WRITER_RE = re.compile(r'\bthis leg\b|\b(?:the )?(?:one|sole|only) writer\b', re.I)
+OWN_WRITER_RE = re.compile(r'\bthis worker\b|\b(?:the )?(?:one|sole|only) writer\b', re.I)
 TRUST_RE = re.compile(r'Trust path\s*\([^)]*\)')
 WRITES_LEAD = '> **Writes:**'
 
@@ -184,7 +192,7 @@ def clean_scope(rest):
     rest = re.sub(r'Touches\s+(?:[\w.+@-]+/)+,\s+an?\s+ci-trust-paths pattern\b', ' ', rest)  # "Touches scripts/ci/, a ci-trust-paths pattern" is READY boilerplate, not a held tree
     rest = IMPACTED_RE.sub(' ', rest)
     rest = TRUST_RE.sub(' ', rest)
-    rest = SINGLE_WRITER_RE.sub(lambda g: ' ' if OTHER_HOLDER_RE.search(g.group(0)) and not OWN_WRITER_RE.search(g.group(0)) else g.group(0), rest)  # "SINGLE-WRITER: PR #n owns x" is another holder's; "this leg is the one writer of y" is ours, even when it also names a PR
+    rest = SINGLE_WRITER_RE.sub(lambda g: ' ' if OTHER_HOLDER_RE.search(g.group(0)) and not OWN_WRITER_RE.search(g.group(0)) else g.group(0), rest)  # "SINGLE-WRITER: PR #n owns x" is another holder's; "this worker is the one writer of y" is ours, even when it also names a PR
     for rx in (CMD_SPAN_RE, CMD_PAREN_RE, CMD_BARE_RE):  # a path a quoted read-only command searches is not written
         rest = rx.sub(lambda g: g.group(0) if WRITING_RE.search(g.group(0)) else ' ', rest)
     # "dir/ (a.sh, sub/b.sh)" names those files, not the whole dir; prose in the parentheses keeps the dir
@@ -198,7 +206,7 @@ def clean_scope(rest):
 SENT_BREAK_RE = re.compile(r'(?<!\d)(?<!e\.g)(?<!i\.e)\.(?=\s|$)')  # the end of a sentence, not a list number or a dot inside a path
 
 def write_scope(line):
-    # the leg's own write scope: its "> **Writes:**" line, else (older briefs) after "writes confined to" / "Scope / do not:", up to the boilerplate that follows
+    # the worker's own write scope: its "> **Writes:**" line, else (older briefs) after "writes confined to" / "Scope / do not:", up to the boilerplate that follows
     if line.startswith(WRITES_LEAD):
         return line[len(WRITES_LEAD):]  # a path list, never prose: nothing on it is cleaned away
     for lead in ('writes confined to', 'Scope / do not:'):
@@ -207,7 +215,7 @@ def write_scope(line):
     return ''
 
 def scope_paths(line):
-    # the paths a leg holds. The "writes confined to" list (up to its first sentence break) holds whatever it names, a
+    # the paths a worker holds. The "writes confined to" list (up to its first sentence break) holds whatever it names, a
     # directory included; a path named later on the line holds only when it is a concrete file, since a directory a
     # brief mentions there ("grep scripts/ci", "N3185 is the single writer in scripts/config-ui/") is context
     text = write_scope(line)
@@ -247,7 +255,7 @@ def concrete(f):
     return os.path.isfile(p) or (not os.path.exists(p) and '.' in os.path.basename(f))
 
 def blocks(f, h, tree):
-    # a candidate's concrete file is held by an equal path, or by a tree (a live leg's write scope, --held)
+    # a candidate's concrete file is held by an equal path, or by a tree (a live worker's write scope, --held)
     f = canon(f)
     h = canon(h).rstrip('/')
     if f == h:
@@ -321,7 +329,7 @@ def rank(i):
     vers = [vorder[v] for v in i['ver'] if v in vorder]
     return (min(vers) if vers else 10**6, PRIO.get(i['prio'], 5), int(i['key'].split('-')[1]))
 
-# The operator's ordered `priority:` line, from the `## Live state` section of the console doc.
+# The operator's ordered `priority:` line, from the `## Live state` section of the chief doc.
 def read_priority_line(path):
     order, cloud = {}, set()
     if not path:
@@ -429,7 +437,7 @@ def load_platform_re():
     print('next-dispatchable: cannot read the dropped-platform pattern from %s' % path, file=sys.stderr); sys.exit(2)
 
 platform_re = load_platform_re()
-# worker records: a To Do ticket whose leg wrapped with a resume brief is resumed, not redispatched
+# worker records: a To Do ticket whose worker wrapped with a resume brief is resumed, not redispatched
 workers = os.environ.get('ND_WORKERS', '')
 briefs = {}
 try:
@@ -536,31 +544,31 @@ next_tier = [i for i in cands if tier_of(i) > 3]
 if pool_only:
     cands = [i for i in cands if tier_of(i) <= 3]
 
-# held files: live legs, open PRs, --held
+# held files: live workers, open PRs, --held
 held = []
-legs_from = os.environ.get('ND_LEGS_FROM', '')
-legs_unknown = False
-leg_keys = set(os.environ.get('ND_OWNERS', '').split())
-owner = {k: 'the --owners list' for k in leg_keys}
+workers_from = os.environ.get('ND_WORKERS_FROM', '')
+workers_unknown = False
+worker_keys = set(os.environ.get('ND_OWNERS', '').split())
+owner = {k: 'the --owners list' for k in worker_keys}
 resume_only = os.environ.get('ND_RESUME_ONLY') == '1'
-if legs_from and not os.path.isfile(legs_from):
-    legs_unknown = True
-if legs_from and os.path.isfile(legs_from):
+if workers_from and not os.path.isfile(workers_from):
+    workers_unknown = True
+if workers_from and os.path.isfile(workers_from):
     try:
-        for leg in json.load(open(legs_from)).get('legs', []):
-            doc = leg.get('doc', '')
+        for worker in json.load(open(workers_from)).get('legs', []):
+            doc = worker.get('doc', '')
             try:
                 lines = open(doc, encoding='utf-8', errors='replace').read().splitlines()
             except OSError:
                 for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
-                    leg_keys.add(k); owner.setdefault(k, 'live leg %s' % leg.get('label', '?'))
-                legs_unknown = True
+                    worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
+                workers_unknown = True
                 continue
             marks = [m.group(1) for m in (MARKER_RE.match(l) for l in lines) if m]
-            if marks and marks[-1] == 'WRAPPED':  # a wrapped leg holds no files and owns no ticket
+            if marks and marks[-1] == 'WRAPPED':  # a wrapped worker holds no files and owns no ticket
                 continue
             for k in re.findall(r'[A-Z]+-\d+', os.path.basename(doc)):
-                leg_keys.add(k); owner.setdefault(k, 'live leg %s' % leg.get('label', '?'))
+                worker_keys.add(k); owner.setdefault(k, 'live worker %s' % worker.get('label', '?'))
             def block(i):  # a wrapped line continues on the "> " lines under it, up to the next "> **" field or a blank
                 text = lines[i]
                 for nxt in lines[i + 1:]:
@@ -571,15 +579,15 @@ if legs_from and os.path.isfile(legs_from):
             starts = [i for i, l in enumerate(lines) if l.startswith(WRITES_LEAD)]  # the one source; older briefs only have the scope line
             starts = starts or [i for i, l in enumerate(lines) if l.startswith('> **Scope / do not:**') or (l.startswith('>') and 'writes confined to' in l)]  # not the front-matter description, which quotes the phrase
             mine = [f for i in starts for f in scope_paths(block(i))]
-            held += [(f, 'live leg %s' % leg.get('label', '?'), True) for f in mine]
-            if not mine and not any(lines[i][len(WRITES_LEAD):].strip() == 'none named' for i in starts if lines[i].startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a leg that writes nothing
-                legs_unknown = True  # a scope that yields no paths could be hiding the leg's files
-                print('next-dispatchable: live leg %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (leg.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
+            held += [(f, 'live worker %s' % worker.get('label', '?'), True) for f in mine]
+            if not mine and not any(lines[i][len(WRITES_LEAD):].strip() == 'none named' for i in starts if lines[i].startswith(WRITES_LEAD)):  # "none named" is what gen-briefs writes for a worker that writes nothing
+                workers_unknown = True  # a scope that yields no paths could be hiding the worker's files
+                print('next-dispatchable: live worker %s yields no held paths (no Writes line or scope clause in %s): its files are unknown' % (worker.get('label', '?'), os.path.basename(doc)), file=sys.stderr)
     except (OSError, ValueError):
-        legs_unknown = True
-if pool_only and not legs_from and not leg_keys:
-    legs_unknown = True
-    print('next-dispatchable: no RESUME rows: --priority-pool-only has no leg source (--owners or --legs-from)', file=sys.stderr)
+        workers_unknown = True
+if pool_only and not workers_from and not leg_keys:
+    workers_unknown = True
+    print('next-dispatchable: no RESUME rows: --priority-pool-only has no worker source (--owners or --workers-from)', file=sys.stderr)
 # cloud sessions own their ticket too: the same file and 48h window tick reads
 cloud_tsv = os.path.join(os.path.dirname(os.environ['ND_DOC']), 'cloud-sessions.tsv') if os.environ.get('ND_DOC') else ''
 if cloud_tsv and os.path.isfile(cloud_tsv):
@@ -593,7 +601,7 @@ if cloud_tsv and os.path.isfile(cloud_tsv):
         except ValueError:
             continue
         if time.time() - at <= window_s:
-            leg_keys.add(cols[1].strip().upper()); owner.setdefault(cols[1].strip().upper(), 'a cloud session')
+            worker_keys.add(cols[1].strip().upper()); owner.setdefault(cols[1].strip().upper(), 'a cloud session')
 hf = os.environ.get('ND_HELD', '')
 if hf and os.path.isfile(hf):
     held += [(l.strip(), 'held list', True) for l in open(hf) if l.strip()]
@@ -635,8 +643,8 @@ except (OSError, subprocess.SubprocessError):
 merged_unknown = False
 merged_keys = set()
 inci_keys = [i['key'] for i in issues.values() if i['status'] == 'IN CI' and i['type'] not in ('Epic', 'Sub-task')
-             and i['key'] not in leg_keys and i['key'] not in pr_keys]
-if inci_keys and not (pr_unknown or pr_files_unknown or legs_unknown):
+             and i['key'] not in worker_keys and i['key'] not in pr_keys]
+if inci_keys and not (pr_unknown or pr_files_unknown or workers_unknown):
     def merged_cites(key):
         out = subprocess.run([gh, 'pr', 'list', '--repo', gh_repo, '--state', 'merged', '--search', key, '--limit', '30', '--json', 'title,headRefName', '--jq', '.[] | [.title, .headRefName] | @tsv'],
                              capture_output=True, text=True, timeout=60, check=True).stdout
@@ -648,7 +656,7 @@ if inci_keys and not (pr_unknown or pr_files_unknown or legs_unknown):
     except (OSError, subprocess.SubprocessError):
         merged_unknown = True
 
-# In-work tickets nobody holds (and wrapped To Do ones): no leg, no open PR, not parked or blocked.
+# In-work tickets nobody holds (and wrapped To Do ones): no worker, no open PR, not parked or blocked.
 resume = []
 for i in issues.values():
     if pool_only and (tier_of(i) > 3 or i['key'] in prio_cloud):
@@ -667,9 +675,9 @@ for i in issues.values():
         continue
     if pool_only and residual_out(i):
         continue
-    if i['key'] in leg_keys or i['key'] in pr_keys:
+    if i['key'] in worker_keys or i['key'] in pr_keys:
         continue
-    if pr_unknown or pr_files_unknown or legs_unknown:  # an unread PR, PR file set or leg set could hide the ticket's owner
+    if pr_unknown or pr_files_unknown or legs_unknown:  # an unread PR, PR file set or worker set could hide the ticket's owner
         continue
     if i['merged']:  # nothing to dispatch: the ticket only needs closing
         resume.append(i)
@@ -683,8 +691,8 @@ resume.sort(key=ranked if pool_only else rank)
 
 free = []
 for i in cands:
-    if i['key'] in leg_keys or i['key'] in pr_keys:  # a live leg or an open PR already owns the ticket
-        drop(i, 'owned by ' + owner.get(i['key'], 'a live leg'))
+    if i['key'] in worker_keys or i['key'] in pr_keys:  # a live worker or an open PR already owns the ticket
+        drop(i, 'owned by ' + owner.get(i['key'], 'a live worker'))
         continue
     hit = held_hit(i)
     if hit:
@@ -721,7 +729,7 @@ def classify(batch):
         os.unlink(hfile)
     return cls
 
-print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no leg, no open PR)' % len(resume) if resume else '') + (', live legs unknown (manifest or leg doc unreadable, or a leg names no write scope)' if legs_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
+print('# next-dispatchable: %d To Do candidate(s), %d collision-free%s' % (len(cands), len(free), ', open PRs unknown (gh failed)' if pr_unknown else '') + (', open PR files unknown for PR %s (gh failed; their collisions are unchecked)' % ' '.join(pr_files_unknown) if pr_files_unknown else '') + (', %d RESUME (in work, no worker, no open PR)' % len(resume) if resume else '') + (', live workers unknown (manifest or worker doc unreadable, or a worker names no write scope)' if workers_unknown else '') + (', merged PRs unknown (gh failed)' if merged_unknown else ''))
 if skipped_platform:
     print('# skipped %d windows/wsl ticket(s): %s' % (len(skipped_platform), ' '.join(sorted(skipped_platform))))
 n = 0
@@ -749,7 +757,7 @@ def drop_summary():
         r = why.get(i['key'])
         if r is None:
             if i['key'] in briefs:
-                r = 'resume-brief (a wrapped leg resumes it: RESUME row)'
+                r = 'resume-brief (a wrapped worker resumes it: RESUME row)'
             elif pool_only and tier_of(i) > 3:
                 r = 'tier 4 (outside the priority pool)'
             else:
@@ -773,12 +781,12 @@ def drop_summary():
                 d = dropped[k]
             elif i['type'] in ('Epic', 'Sub-task'):
                 d = 'type ' + i['type']
-            elif k in leg_keys or k in pr_keys:
-                d = 'in-flight owned by ' + owner.get(k, 'a live leg')
+            elif k in worker_keys or k in pr_keys:
+                d = 'in-flight owned by ' + owner.get(k, 'a live worker')
             elif i['status'] == 'To Do':
                 d = 'unknown (no drop reason recorded)'
             else:
-                d = 'unowned %s (no leg, no open PR; not listed: held, blocked, parked or unread)' % i['status']
+                d = 'unowned %s (no worker, no open PR; not listed: held, blocked, parked or unread)' % i['status']
             print('# disposition %s %s' % (k, d))
 
 def warn_missing():
@@ -863,7 +871,7 @@ def emit_free(rows):
             break
 
 if pool_only:
-    # tier by tier: a tier's leg-less In Progress rows lead its To Do rows
+    # tier by tier: a tier's worker-less In Progress rows lead its To Do rows
     for t in (1, 2, 3):
         emit_resume([i for i in resume if tier_of(i) == t])
         if not resume_only:
@@ -872,8 +880,8 @@ if pool_only:
         print('# pool=%d/%d%s' % (n, top, ',LOW' if n < top else ''))
     if n == 0 and not resume_only:  # nothing in the pool, or every pool ticket was classified BLOCKED or collided
         print('POOL-EMPTY')
-        # the next tier, in rank order and unclassified: for the console to read, never to dispatch
-        for i in [i for i in next_tier if i['key'] not in leg_keys and i['key'] not in pr_keys and not held_hit(i)][:top]:
+        # the next tier, in rank order and unclassified: for the chief to read, never to dispatch
+        for i in [i for i in next_tier if i['key'] not in worker_keys and i['key'] not in pr_keys and not held_hit(i)][:top]:
             print('\t'.join(['NEXT-TIER', i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')]))
     warn_missing()
     if not resume_only:

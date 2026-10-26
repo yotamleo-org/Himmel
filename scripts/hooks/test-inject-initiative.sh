@@ -22,11 +22,11 @@
 #   16. Duplicate / trailing-comma tokens collapse to a single rendered step.
 #
 # Pointer form: the hook emits a ~370 B POINTER, not the 3,150 B
-# runbook. Per-leg assertions therefore run against the `Active steps:` CSV
+# runbook. Per-worker assertions therefore run against the `Active steps:` CSV
 # (assert_step / assert_no_step) rather than step prose, and three cases guard
 # the new contract:
 #   26. The emitted runbook path resolves AND that file still carries the bodies.
-#   27. Injected output stays within the 400-byte budget (every leg set).
+#   27. Injected output stays within the 400-byte budget (every worker set).
 #   28. No runbook body has crept back inline.
 
 set -euo pipefail
@@ -183,7 +183,7 @@ else
 fi
 
 # The hook emits a POINTER, not the runbook. The step BODIES
-# live in scripts/hooks/initiative-runbook.md, so the only per-leg signal in the
+# live in scripts/hooks/initiative-runbook.md, so the only per-worker signal in the
 # output is the `Active steps:` CSV. These helpers assert membership in THAT
 # CSV, matched on comma boundaries so `pr` can never be satisfied by `prcheck`.
 steps_csv() { printf '%s\n' "$1" | sed -n 's/.*Active steps: //p' | head -1; }
@@ -262,39 +262,39 @@ done
 # ---------- 15. `all` activates all four steps ----------
 echo "Test 15: all activates the full chain"
 out=$(printf '{}' | HIMMEL_INITIATIVE=all bash "$hook")
-assert_has "all → the legacy four-leg CSV" "Active steps: prcheck,pr,ticket,handover" "$out"
+assert_has "all → the legacy four-worker CSV" "Active steps: prcheck,pr,ticket,handover" "$out"
 
 # ---------- 16. Duplicate / trailing-comma collapses to one step ----------
 echo "Test 16: 'pr,pr,' renders a single pr step"
 out=$(printf '{}' | HIMMEL_INITIATIVE=pr,pr, bash "$hook")
 assert_has "duplicate collapses in the CSV" "Active steps: pr$" "$out"
 
-# ---------- 17. execute leg is carried in the CSV ---------------
-echo "Test 17: prcheck,execute carries the execute leg"
+# ---------- 17. execute worker is carried in the CSV ---------------
+echo "Test 17: prcheck,execute carries the execute worker"
 out=$(printf '{}' | HIMMEL_INITIATIVE=prcheck,execute bash "$hook")
-assert_has "execute leg in canonical order" "Active steps: execute,prcheck" "$out"
+assert_has "execute worker in canonical order" "Active steps: execute,prcheck" "$out"
 
-# ---------- 18. merge leg drops the inline no-merge line ---------------------
-echo "Test 18: prcheck,merge carries the merge leg and drops the no-merge line"
+# ---------- 18. merge worker drops the inline no-merge line ---------------------
+echo "Test 18: prcheck,merge carries the merge worker and drops the no-merge line"
 out=$(printf '{}' | HIMMEL_INITIATIVE=prcheck,merge bash "$hook")
-assert_step  "merge leg present"                       "merge"        "$out"
+assert_step  "merge worker present"                       "merge"        "$out"
 assert_lacks "no-merge line dropped when merge active" "Do NOT merge" "$out"
 
-# ---------- 19. public leg is carried in the CSV -----------------------------
-echo "Test 19: merge,public carries both legs"
+# ---------- 19. public worker is carried in the CSV -----------------------------
+echo "Test 19: merge,public carries both workers"
 out=$(printf '{}' | HIMMEL_INITIATIVE=merge,public bash "$hook")
 assert_has "merge,public in canonical order" "Active steps: merge,public" "$out"
 
 # ---------- 20. overnight profile: selector reads the overnight var ----------
-echo "Test 20: HIMMEL_OVERNIGHT=1 + HIMMEL_INITIATIVE_OVERNIGHT=all → 6-leg set"
+echo "Test 20: HIMMEL_OVERNIGHT=1 + HIMMEL_INITIATIVE_OVERNIGHT=all → 6-worker set"
 out=$(printf '{}' | HIMMEL_OVERNIGHT=1 HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
-assert_has "overnight six-leg CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
+assert_has "overnight six-worker CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
 assert_has "old names: header names the afk var" "HIMMEL_INITIATIVE_AFK is active" "$out"
 
 # ---------- 20b. afk names: HIMMEL_AFK selects, a set falsy name never widens --
 echo "Test 20b: HIMMEL_AFK=1 selects the afk profile over the day profile"
 out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE=prcheck HIMMEL_INITIATIVE_AFK=all bash "$hook")
-assert_has "afk six-leg CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
+assert_has "afk six-worker CSV" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
 assert_has "afk header names the afk var" "HIMMEL_INITIATIVE_AFK is active" "$out"
 out=$(printf '{}' | HIMMEL_AFK=1 HIMMEL_INITIATIVE_OVERNIGHT=all bash "$hook")
 assert_has "old value var read under the afk selector" "Active steps: execute,prcheck,pr,ticket,merge,handover" "$out"
@@ -312,13 +312,13 @@ echo "Test 21: plan,prcheck → plan is echoed for typo visibility"
 out=$(printf '{}' | HIMMEL_INITIATIVE=plan,prcheck bash "$hook")
 assert_has "plan echoed in the CSV" "Active steps: plan,prcheck" "$out"
 
-# ---------- SC3: legs sourced from the himmel clone's .env --------
+# ---------- SC3: workers sourced from the himmel clone's .env --------
 # Fixture himmel root with an .env that activates a subset.
 FIX="$TMPII/himmel"; mkdir -p "$FIX"
 printf 'HIMMEL_INITIATIVE=prcheck,pr\n' > "$FIX/.env"
 
-# 22. env var UNSET → legs come from .env.
-echo "Test 22: HIMMEL_INITIATIVE unset → legs resolved from the himmel .env"
+# 22. env var UNSET → workers come from .env.
+echo "Test 22: HIMMEL_INITIATIVE unset → workers resolved from the himmel .env"
 out=$(unset HIMMEL_INITIATIVE; printf '{}' | HIMMEL_REPO="$FIX" bash "$hook")
 assert_has "active-steps echoes .env subset" "Active steps: prcheck,pr" "$out"
 
@@ -345,7 +345,7 @@ assert_has  "fail-open exits 0" "rc=0" "$out"
 body=$(unset HIMMEL_INITIATIVE; printf '{}' | HIMMEL_REPO="$TMPII/noenv" bash "$hook")
 if [ -z "$body" ]; then assert_pass "no directive when no .env + env unset"; else assert_fail "expected OFF, got: $body"; fi
 
-# 25b. legs set only in the tracked config file ~/.himmel/himmel.conf (no clone
+# 25b. workers set only in the tracked config file ~/.himmel/himmel.conf (no clone
 # .env at all) still activate: himmelctl writes HIMMEL_INITIATIVE there.
 echo "Test 25b: HIMMEL_INITIATIVE in ~/.himmel/himmel.conf, no clone .env"
 CONFHOME="$TMPII/confhome"; mkdir -p "$CONFHOME/.himmel"
@@ -357,7 +357,7 @@ assert_has "active-steps echoes the himmel.conf subset" "Active steps: prcheck,p
 # The pointer is only worth its bytes if the file it names exists and carries
 # the content that left the hook. Assert BOTH: the emitted path, and that the
 # file at that path still holds the moved bodies (including the
-# tasklist-seed preamble and every leg the resolver can emit). HIMMEL_REPO is
+# tasklist-seed preamble and every worker the resolver can emit). HIMMEL_REPO is
 # pinned to the real repo root so the pointer resolves regardless of which
 # fixture root the SC3 cases above left in the environment.
 echo "Test 26: the pointer names a runbook file that exists and carries the bodies"
@@ -374,7 +374,7 @@ if [ -n "$runbook" ] && [ -f "$runbook" ]; then
     assert_has "runbook names TaskCreate"                 "TaskCreate"                "$rb"
     assert_has "runbook is handover-conditional"          "resumed from a handover"   "$rb"
     for tok in plan execute prcheck pr ticket merge public handover; do
-        assert_has "runbook documents the $tok leg" "^- \*\*$tok\*\*" "$rb"
+        assert_has "runbook documents the $tok worker" "^- \*\*$tok\*\*" "$rb"
     done
     assert_has "runbook keeps the merge-on-green directive" "merge-on-green.sh"        "$rb"
     assert_has "runbook marks the public step retired"      "RETIRED at the HIMMEL-2705 cutover" "$rb"
@@ -386,7 +386,7 @@ fi
 # The whole point of the pointer: the inline directive was 3,150 B on
 # EVERY session start, on BOTH harnesses. Budget is asserted against the REAL
 # repo root (not a short temp fixture) so the absolute runbook path is paid for
-# honestly, and across the widest leg set the resolver can emit.
+# honestly, and across the widest worker set the resolver can emit.
 #
 # The output has exactly ONE variable term: the absolute runbook path, whose
 # length is a property of where this checkout happens to live, not of the
@@ -433,13 +433,13 @@ budget_check "overnight all" "$(printf '%s\n' "$out" | wc -c | tr -d '[:space:]'
 # runbook again. The byte budget alone would catch a big paste; this catches a
 # small one, and names which body leaked.
 echo "Test 28: the runbook bodies stay OUT of the injected pointer"
-# Cover EVERY leg, not just the long ones: the four short bodies (prcheck / pr /
+# Cover EVERY worker, not just the long ones: the four short bodies (prcheck / pr /
 # ticket / handover) are each well under the byte budget's slack, so pasting one
 # back inline would regress the contract without tripping test 27.
 #
-# The leg set is spelled out in full, NOT `all`: neither master switch resolves
-# to all eight legs (interactive `all` is 4, overnight `all` is 6 and omits
-# `public`), so a regression that re-inlined a body only under a leg the switch
+# The worker set is spelled out in full, NOT `all`: neither master switch resolves
+# to all eight workers (interactive `all` is 4, overnight `all` is 6 and omits
+# `public`), so a regression that re-inlined a body only under a worker the switch
 # does not activate would never be exercised.
 out=$(printf '{}' | HIMMEL_REPO="$repo_root" HIMMEL_INITIATIVE=plan,execute,prcheck,pr,ticket,merge,public,handover bash "$hook")
 assert_lacks "no tasklist-seed body inline"  "seed your native tasklist"   "$out"

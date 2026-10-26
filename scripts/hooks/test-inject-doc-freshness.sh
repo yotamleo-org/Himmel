@@ -9,19 +9,19 @@ HOOK="$HOOKS/inject-doc-freshness.sh"
 _fail=0
 chk() { local name="$1" cond="$2"; if eval "$cond"; then printf '  PASS  %s\n' "$name"; else printf '  FAIL  %s\n' "$name"; _fail=$((_fail+1)); fi; }
 
-# Leg OFF (use "off", NOT "" — load_dotenv overwrites an empty var, critic #3) →
+# Worker OFF (use "off", NOT "" — load_dotenv overwrites an empty var, critic #3) →
 # no output, exit 0.
 out=$(HIMMEL_DOC_FRESHNESS=off HIMMEL_REPO="$(git rev-parse --show-toplevel)" bash "$HOOK" </dev/null 2>/dev/null); rc=$?
-chk "leg off → exit 0" "[ $rc -eq 0 ]"
-chk "leg off → no output" "[ -z \"\$out\" ]"
+chk "worker off → exit 0" "[ $rc -eq 0 ]"
+chk "worker off → no output" "[ -z \"\$out\" ]"
 
-# Leg ON but invoked on main/detached or with no drift → still exit 0 (fail-open).
+# Worker ON but invoked on main/detached or with no drift → still exit 0 (fail-open).
 # shellcheck disable=SC2034  # out unused in this case (only rc is checked)
 out=$(HIMMEL_DOC_FRESHNESS=session HIMMEL_REPO="$(git rev-parse --show-toplevel)" bash "$HOOK" </dev/null 2>/dev/null); rc=$?
-chk "leg on → exit 0 (fail-open)" "[ $rc -eq 0 ]"
+chk "worker on → exit 0 (fail-open)" "[ $rc -eq 0 ]"
 
 # Emission-path test: feat commit on a mapped source (without touching the doc)
-# triggers a <system-reminder> block when the session leg is on.
+# triggers a <system-reminder> block when the session worker is on.
 # Fixture: temp repo with 4-col map + mapped doc; origin/main at the seed commit;
 # feature branch with a single feat: commit touching a mapped source.
 _em_tmp=$(fixture_mktemp_dir) || exit 1

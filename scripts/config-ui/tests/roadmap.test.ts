@@ -1,6 +1,6 @@
-// the Roadmap page. GET /api/roadmap reads the Jira mirror, the plan dir and the legs live (no static
+// the Roadmap page. GET /api/roadmap reads the Jira mirror, the plan dir and the workers live (no static
 // render, no republish); the page draws the kanban by version and theme, the release panels and the drift trend, the
-// leg -> Jira sync plan the console kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
+// worker -> Jira sync plan the chief kit writes, and the librarian's ready-to-approve lists. Read-only throughout.
 import { test, expect, afterEach } from "bun:test";
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -21,7 +21,7 @@ const issue = (n: number, status: string, cat: string, fv: string[], title: stri
     "links:", "  blocks: []", "  blocked_by: []", "  relates: []", "---", "", `# HIMMEL-${n}: ${title}`, "", "## Description", "", "x", "",
     "## Comments", "", body || "_(none)_", ""].join("\n");
 
-// A scratch station: mirror + versions snapshot, a plan dir, a drift log and two leg docs.
+// A scratch station: mirror + versions snapshot, a plan dir, a drift log and two worker docs.
 function station() {
   const d = mkdtempSync(join(tmpdir(), "roadmap-"));
   cleanups.push(() => rmSync(d, { recursive: true, force: true }));
@@ -34,7 +34,7 @@ function station() {
   put(4, issue(4, "To Do", "To Do", ["v1.1.1"], "Left behind"));
   put(5, issue(5, "To Do", "To Do", ["v1.1.2"], "Resumed work", ["product", SYNC_LABEL]));
   put(6, issue(6, "To Do", "To Do", ["v1.1.3"], "Roadmap in the UI!"));
-  put(7, issue(7, "In Review", "In Progress", ["v1.1.2"], "Ready work", [], "### bot — 2026-10-08\n\n[leg-sync] N3 READY: PR #9\n"));
+  put(7, issue(7, "In Review", "In Progress", ["v1.1.2"], "Ready work", [], "### bot — 2026-10-08\n\n[worker-sync] N3 READY: PR #9\n"));
   writeFileSync(join(d, "jira-mirror", "HIMMEL.versions.tsv"), "v1.1.1\ttrue\t2026-10-01\nv1.1.2\tfalse\t\nv1.1.3\tfalse\t\n");
   const plan = join(d, "plan");
   mkdirSync(join(plan, "stage3"), { recursive: true }); mkdirSync(join(plan, "stage1"), { recursive: true });
@@ -45,14 +45,14 @@ function station() {
   const legsDir = join(d, "handovers");
   mkdirSync(legsDir);
   const blocked = join(legsDir, "HIMMEL-1-N1466b-roadmap-RESUME.md");
-  writeFileSync(blocked, "# leg\n\n## Results\n- 03:00 LIVE — started\n- 04:32 BLOCKED — classifier permission hold\n");
+  writeFileSync(blocked, "# worker\n\n## Results\n- 03:00 LIVE — started\n- 04:32 BLOCKED — classifier permission hold\n");
   const live = join(legsDir, "HIMMEL-5-N2-resumed-RESUME.md");
   writeFileSync(live, "## Results\n- 03:00 BLOCKED — waiting\n- 05:00 RESUMED — going again\n");
   const ready = join(legsDir, "HIMMEL-7-N3-ready-RESUME.md");
   writeFileSync(ready, "## Results\n- 06:00 READY: PR #9\n");
-  const legs = { state: "ok" as const, manifest: join(legsDir, "x.fleet.json"), legs: [
+  const workers = { state: "ok" as const, manifest: join(legsDir, "x.fleet.json"), legs: [
     { doc: blocked, status: "BLOCKED" }, { doc: live, status: "RESUMED" }, { doc: ready, status: "READY" }] };
-  return { d, mirror, plan, drift, legs };
+  return { d, mirror, plan, drift, workers };
 }
 const read = (s: ReturnType<typeof station>, o: Record<string, unknown> = {}) =>
   readRoadmap({ mirrorDir: s.mirror, planDir: s.plan, driftLog: s.drift, legs: s.legs, ...o });
@@ -124,18 +124,18 @@ test("no mirror: absent, with the command that makes one", () => {
   expect(r.reason).toContain("mirror");
 });
 
-test("legs join their tickets with the marker and the reason line", () => {
+test("workers join their tickets with the marker and the reason line", () => {
   const t = byKey(read(station()));
   expect(t[1].leg).toEqual({ label: "N1466b", marker: "BLOCKED", reason: "classifier permission hold" });
   expect(t[2].leg).toBeNull();
 });
 
-test("leg -> Jira sync: flag a stuck leg with the reason, clear the flag on resume, note READY once", () => {
+test("worker -> Jira sync: flag a stuck worker with the reason, clear the flag on resume, note READY once", () => {
   const ops = legSync(read(station()).tickets);
   const of = (k: number) => ops.filter((o) => o.k === k);
   expect(of(1).map((o) => o.argv)).toEqual([
     ["edit", "HIMMEL-1", "--add-labels", SYNC_LABEL],
-    ["comment", "HIMMEL-1", "[leg-sync] N1466b BLOCKED: classifier permission hold"],
+    ["comment", "HIMMEL-1", "[worker-sync] N1466b BLOCKED: classifier permission hold"],
   ]);
   // resume: the flag goes, every other label stays (--labels is a full replace)
   expect(of(5).map((o) => o.argv)).toEqual([["edit", "HIMMEL-5", "--labels", "product"]]);
@@ -145,7 +145,7 @@ test("leg -> Jira sync: flag a stuck leg with the reason, clear the flag on resu
   expect(ops.some((o) => o.argv.includes("transition"))).toBe(false);
 });
 
-test("leg -> Jira sync: a parked leg is stuck under either marker name", () => {
+test("worker -> Jira sync: a parked worker is stuck under either marker name", () => {
   for (const marker of ["PARKED-USAGE", "PARKED-BANK"]) {
     const ops = legSync([{ k: 1, labels: [], noted: "", leg: { label: "N1", marker, reason: "" } } as any]);
     expect(ops.map((o) => o.argv)[0]).toEqual(["edit", "HIMMEL-1", "--add-labels", SYNC_LABEL]);
@@ -207,7 +207,7 @@ test("#/roadmap/<version>: one version's board, four status columns, ticket link
   expect(html).toContain('href="#/roadmap"');  // back to the overview
   expect(html).not.toContain('id="rm-sync"');  // the overview's panels do not repeat here
   expect(html).toContain("<b>HIMMEL-1</b>");
-  expect(html).toContain("classifier permission hold"); // the leg marker rides the card
+  expect(html).toContain("classifier permission hold"); // the worker marker rides the card
   // an unknown version says so instead of drawing an empty board
   const none = renderRoadmap(r, { version: null, theme: null, ver: "v9.9.9" });
   expect(none).toContain("v9.9.9");
@@ -240,7 +240,7 @@ test("GET /api/roadmap: token-gated, GET-only, served live from the mirror the e
   const s = station();
   const home = join(s.d, "home"); mkdirSync(home);
   const srv = startServer({
-    port: 0, token: TOKEN, legsScript: join(s.d, "no-legs.sh"),
+    port: 0, token: TOKEN, legsScript: join(s.d, "no-workers.sh"),
     env: { PATH: process.env.PATH, HOME: home, CONFIG_UI_HIMMELCTL: join(import.meta.dir, "stub-himmelctl.js"), CONFIG_UI_IDLE_MS: "60000",
       HIMMEL_JIRA_MIRROR: s.mirror, HIMMEL_ROADMAP_PLAN_DIR: s.plan, HIMMEL_ROADMAP_DRIFT_LOG: s.drift },
   });

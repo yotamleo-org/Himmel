@@ -5,8 +5,8 @@
 # GO, Results bullet and board. Every sub-script is a stub that logs its argv,
 # so the suite pins ORDER, ARGUMENTS and EXIT-CODE PROPAGATION:
 #   1. GO happy path: write-verdict -> go -> append-results -> board, in that
-#      order, leg message printed
-#   2. NO-GO: write-verdict + bullet only; go.sh and the leg message absent
+#      order, worker message printed
+#   2. NO-GO: write-verdict + bullet only; go.sh and the worker message absent
 #   3. go.sh refusal: its exit code passes through, the step is named, no
 #      bullet, no board
 #   4. --trust adds `--trust-reviewed <qid>` to go.sh; without it, absent
@@ -54,7 +54,7 @@ EOF
 
 HEAD40="0123456789abcdef0123456789abcdef01234567"
 EV="/tmp/claude-$(id -u)/ev.md"
-DOC="$tmp/console.md"; : > "$DOC"
+DOC="$tmp/chief.md"; : > "$DOC"
 
 run() { # run <args...> -> sets rc, out, log
     : > "$LOG"; rc=0
@@ -63,7 +63,7 @@ run() { # run <args...> -> sets rc, out, log
 }
 
 # --- 1. GO happy path ------------------------------------------------------
-run q1 GO "$HEAD40" --pr 77 --evidence-file "$EV" --leg N2033 --doc "$DOC"
+run q1 GO "$HEAD40" --pr 77 --evidence-file "$EV" --worker N2033 --doc "$DOC"
 check "1: rc 0" "$rc" 0
 order="$(cut -d' ' -f1 "$LOG" | tr '\n' ',')"
 check "1: order write-verdict,go,append-results,board" "$order" "write-verdict,go,append-results,board,"
@@ -72,13 +72,13 @@ contains "1: write-verdict gets --pr and --evidence-file" "$log" "[--pr] [77] [-
 contains "1: go gets pr and head" "$log" "go [77] [$HEAD40]"
 contains "1: bullet names qid, answer, pr and head8" "$log" "q1 answer: GO · GO 77 01234567"
 contains "1: board is --changed on the doc" "$log" "board [--doc] [$DOC] [--changed]"
-contains "1: leg message names the merge command" "$out" "merge-on-green.sh --jira-transition"
-contains "1: leg message names the leg" "$out" "N2033"
-contains "1: leg message carries GO pr head" "$out" "GO 77 $HEAD40"
+contains "1: worker message names the merge command" "$out" "merge-on-green.sh --jira-transition"
+contains "1: worker message names the worker" "$out" "N2033"
+contains "1: worker message carries GO pr head" "$out" "GO 77 $HEAD40"
 
-# --- 1b. the leg message names the GO file go.sh wrote ------------------------
+# --- 1b. the worker message names the GO file go.sh wrote ------------------------
 GO_PATH_OUT="/r/.locks/go/77.$HEAD40" run q1b GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
-contains "1b: leg message carries --go with the GO file" "$out" "merge-on-green.sh --jira-transition --go /r/.locks/go/77.$HEAD40"
+contains "1b: worker message carries --go with the GO file" "$out" "merge-on-green.sh --jira-transition --go /r/.locks/go/77.$HEAD40"
 run q1c GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 lacks "1c: no --go when go.sh named no GO file for this head" "$out" "--go "
 
@@ -108,7 +108,7 @@ lacks "4: without --trust no flag" "$log" "--trust-reviewed"
 BOARD_RC=1 run q5 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 check "5: rc 0 despite board failure" "$rc" 0
 contains "5: warning printed" "$out" "board render failed"
-contains "5: leg message still printed" "$out" "merge-on-green.sh --jira-transition"
+contains "5: worker message still printed" "$out" "merge-on-green.sh --jira-transition"
 
 # --- 6. write-verdict refusal propagates ------------------------------------
 WV_RC=3 run q6 GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
@@ -121,7 +121,7 @@ AR_RC=3 run q6b GO "$HEAD40" --pr 77 --evidence-file "$EV" --doc "$DOC"
 check "6b: append-results exit 3 passes through" "$rc" 3
 contains "6b: failing step named" "$out" "append-results.sh failed"
 lacks "6b: no board after a bullet failure" "$log" "board"
-lacks "6b: no leg message after a bullet failure" "$out" "merge-on-green.sh"
+lacks "6b: no worker message after a bullet failure" "$out" "merge-on-green.sh"
 
 # --- 6c. --prior passes through to write-verdict only when given ----------------
 run q6c NO-GO "$HEAD40" --pr 77 --evidence-file "$EV" --prior GO

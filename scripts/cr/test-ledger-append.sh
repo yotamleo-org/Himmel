@@ -1393,7 +1393,7 @@ check "batch spec.detail is capped at 200 like argv --detail" "$(crlf_bdetail cd
 check "batch spec.detail flattens an embedded newline like argv --detail" "$(crlf_bdetail cd-5)" "line one line two"
 
 # ── reason / deferred_to were the free-text fields #899 left raw ─
-# Legs write free-text dispositions into `reason` and
+# Workers write free-text dispositions into `reason` and
 # `deferred_to` routinely, and the ledger is mirrored into handover notes. Every
 # entry point that stores either field now takes the same flatten -> scrub as
 # --detail. Entry points: batch spec.reason, batch spec.deferred_to, argv

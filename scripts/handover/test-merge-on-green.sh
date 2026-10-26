@@ -17,15 +17,15 @@ set -uo pipefail
 # retained; this is the startup defense-in-depth + the CR_MERGE_GATE_OK scrub
 # for the day a sourced lib reads it.)
 unset ARMAUTOMERGE CR_MERGE_GATE_OK
-# A console-spawned leg's shell carries HIMMEL_CONSOLE_LEG=1, which
-# arms the console-GO gate — ambient, it would refuse every merge case below.
+# A chief-spawned worker's shell carries HIMMEL_CONSOLE_LEG=1, which
+# arms the chief-GO gate — ambient, it would refuse every merge case below.
 # Its own line: RC-2 below mutates the line above by exact match.
 unset HIMMEL_CONSOLE_LEG HIMMEL_WORKER_SESSION_DOC HIMMEL_LEG_DOC
-# A bare merge appends a PARTIAL bullet to $HIMMEL_CONSOLE_DOC when it is set; a leg launched
-# from a console carries it, so every bare-merge row would write the live console doc.
-# The one row that wants a console doc sets its own temp file explicitly.
+# A bare merge appends a PARTIAL bullet to $HIMMEL_CONSOLE_DOC when it is set; a worker launched
+# from a chief carries it, so every bare-merge row would write the live chief doc.
+# The one row that wants a chief doc sets its own temp file explicitly.
 unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME
-# An operator/leg launching shell carries HIMMEL_REPO (the
+# An operator/worker launching shell carries HIMMEL_REPO (the
 # harness-wide anchor) — ambient, it would point every case's gate at a real
 # checkout instead of the fixture's own stub. run_mog always passes its own
 # HIMMEL_REPO explicitly (default: the fixture tree itself), which already
@@ -65,7 +65,7 @@ if [ -z "$MOG_SUITE_TMP" ] || [ ! -d "$MOG_SUITE_TMP" ]; then echo "FAIL: mktemp
 trap 'chmod -R u+rwX "$MOG_SUITE_TMP"; rm -rf "$MOG_SUITE_TMP"' EXIT
 export TMPDIR="$MOG_SUITE_TMP"
 
-# chief-kit/go.sh mints, and the console-GO gate verifies with,
+# chief-kit/go.sh mints, and the chief-GO gate verifies with,
 # a key under $HOME/.config/himmel — a scratch HOME keeps every GO this suite
 # writes off the operator's real key.
 MOG_HOME=$(mktemp -d "${TMPDIR:-/tmp}/mog-home.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -254,7 +254,7 @@ mog_build_fixture() {
     # in merge-on-green.sh's own guard). Defaults to the real file, so every
     # existing case that never sets it is unaffected.
     cp "${WT_INUSE_SRC:-$SCRIPT_DIR/../lib/worktree-inuse.sh}" "$tmp/scripts/lib/worktree-inuse.sh"
-    # The PARTIAL report appends to the console doc through this sibling.
+    # The PARTIAL report appends to the chief doc through this sibling.
     mkdir -p "$tmp/scripts/handover/chief-kit"
     cp "$SCRIPT_DIR/chief-kit/append-results.sh" "$tmp/scripts/handover/chief-kit/append-results.sh"
     # The status lib is sourced from the anchor; the status funnel at its anchor
@@ -269,7 +269,7 @@ mog_build_fixture() {
     # below would pass while testing nothing.
     cp "$SCRIPT_DIR/../lib/coderabbit-available.sh" "$tmp/scripts/lib/coderabbit-available.sh"
     cp "$SCRIPT_DIR/../lib/cr-available.sh" "$tmp/scripts/lib/cr-available.sh"
-    # The console-GO gate resolves the GO file under handover_root.
+    # The chief-GO gate resolves the GO file under handover_root.
     cp "$SCRIPT_DIR/../lib/handover-path.sh" "$tmp/scripts/lib/handover-path.sh"
     # The GO file check itself now lives in the shared predicate
     # go_gate() (also used by block-unresolved-cr-merge.sh's own gate).
@@ -988,18 +988,18 @@ if [ "${HIMMEL_1495_SELF:-0}" = "1" ]; then
     [ "$FAIL" = "$_probe_fail_before" ] && exit 0 || exit 1
 fi
 
-# Console-doc probe — the reinvoked copy (see the guard at the end) has the
+# Chief-doc probe — the reinvoked copy (see the guard at the end) has the
 # caller's HIMMEL_CONSOLE_DOC exported; the startup unset must have scrubbed it, so
 # one bare merge leaves no PARTIAL bullet anywhere. Prints what it saw for the guard.
 if [ "${HIMMEL_6079_SELF:-0}" = "1" ]; then
     export ARMAUTOMERGE=1
     _probe_fail_before=$FAIL
     STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-        run_mog 0 "console-doc probe: bare merge"
+        run_mog 0 "chief-doc probe: bare merge"
     if [ -n "${HIMMEL_CONSOLE_DOC:-}" ]; then
-        echo "console-doc-partial=$(grep -c 'PARTIAL HIMMEL-374' "$HIMMEL_CONSOLE_DOC")"
+        echo "chief-doc-partial=$(grep -c 'PARTIAL HIMMEL-374' "$HIMMEL_CONSOLE_DOC")"
     else
-        echo "console-doc-partial=unset"
+        echo "chief-doc-partial=unset"
     fi
     [ "$FAIL" = "$_probe_fail_before" ] && exit 0 || exit 1
 fi
@@ -1605,7 +1605,7 @@ else
 fi
 
 # 9h. Pre-merge title gate (guard 3c): the squash merge below
-# makes the PR TITLE main's commit subject verbatim, but only leg-pr-open.sh
+# makes the PR TITLE main's commit subject verbatim, but only worker-pr-open.sh
 # checked it at open time — the title can still be edited in the GitHub UI any
 # time up to (and during) the check-ci.sh watch. A type-less title re-verified
 # right before merging refuses (exit 20), same staleness class as the
@@ -1632,7 +1632,7 @@ assert_merge_has "title-gate-ok merge pins the certified sha" "--match-head-comm
 
 # 9k. Pre-merge title gate: a ticketless Dependabot-authored title merges
 # (exit 0) — guard 3c once never
-# threaded the PR author, so a title that already passed leg-pr-open.sh's
+# threaded the PR author, so a title that already passed worker-pr-open.sh's
 # open-time check and the CI title-lint workflow (both exempt
 # dependabot[bot]) was refused here instead. RED-first: the mutant below
 # strips the threading and must reproduce the pre-fix exit 20.
@@ -2048,8 +2048,8 @@ esac
 # holder, so pruning around it was correct. worktree_in_use now has its OWN
 # live-process detector (scripts/lib/worktree-inuse.sh) that
 # catches ANY foreign holder, runner or not — and the 2517 guard was written for
-# a LEG-run merge, where the merge process's own ancestry naturally included
-# the leg holding the tree. Merges are now CONSOLE-run while the leg still
+# a WORKER-run merge, where the merge process's own ancestry naturally included
+# the worker holding the tree. Merges are now CHIEF-run while the worker still
 # holds its tree, and the first merge after that change (PR #2179) proved the
 # hazard for real: merge-on-green pruned that PR's own worktree out from under
 # it. Both fixtures below launch their holder as a SIBLING of the merge-on-green
@@ -2156,7 +2156,7 @@ SHEOF
         # bash` so the merge-on-green PROCESS's own cwd is <mog_cwd>), but as
         # the CHILD of a REAL, separate process that cd's to <ancestor_cwd>
         # and stays alive (blocked on `wait`) for the whole run -- the actual
-        # process shape of "a leg holds the tree, a console-run merge-on-green
+        # process shape of "a worker holds the tree, a chief-run merge-on-green
         # runs underneath it", not a simulated flag. GH_LOG/CLEAR_LOG/etc are
         # read from the environment by the caller's own var-prefix, exactly
         # like any other command -- prefixed vars on a function call are
@@ -2443,7 +2443,7 @@ SHEOF
         # ANCESTRY -> the prune PROCEEDS. This is the row that keeps
         # auto-prune alive and the whole reason ancestry, not a bare
         # self-cwd exclusion, is the predicate: merge-on-green's own armed
-        # chain leg sits in the tree it just merged, and that leg is this
+        # chain worker sits in the tree it just merged, and that worker is this
         # process's own ANCESTOR, not itself. A REAL process, not a
         # simulated flag: an outer process cd's into the merged worktree and
         # stays alive (blocked on `wait`) while merge-on-green runs as its
@@ -2873,18 +2873,18 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ]; then
     rm -f "$rc2_mutant"
 fi
 
-# Live-console-doc guard — a launching shell that carries HIMMEL_CONSOLE_DOC must not
+# Live-chief-doc guard — a launching shell that carries HIMMEL_CONSOLE_DOC must not
 # have a bare merge write it. Re-run the suite's one-merge probe (above) with a
 # sentinel doc exported; the sentinel must stay byte-identical. The sentinel lives
-# outside the run tree, as the live console doc does.
+# outside the run tree, as the live chief doc does.
 if [ "${HIMMEL_1495_SELF:-0}" != "1" ] && [ "${HIMMEL_6079_SELF:-0}" != "1" ]; then
     _cd_dir="$(mktemp -d)" || exit 1
-    printf '# console\n\n## Results\n- 00:00 LIVE — sentinel\n' > "$_cd_dir/sentinel.md"
+    printf '# chief\n\n## Results\n- 00:00 LIVE — sentinel\n' > "$_cd_dir/sentinel.md"
     cp "$_cd_dir/sentinel.md" "$_cd_dir/sentinel.orig"
-    _cd_out="$(HIMMEL_CONSOLE_DOC="$_cd_dir/sentinel.md" HIMMEL_CONSOLE_NAME="live-console" HIMMEL_6079_SELF=1 bash "$SCRIPT_DIR/test-merge-on-green.sh" 2>&1)"; _cd_rc=$?
+    _cd_out="$(HIMMEL_CONSOLE_DOC="$_cd_dir/sentinel.md" HIMMEL_CONSOLE_NAME="live-chief" HIMMEL_6079_SELF=1 bash "$SCRIPT_DIR/test-merge-on-green.sh" 2>&1)"; _cd_rc=$?
     if [ "$_cd_rc" -eq 0 ] && cmp -s "$_cd_dir/sentinel.md" "$_cd_dir/sentinel.orig" \
-        && printf '%s\n' "$_cd_out" | grep -qF 'console-doc-partial=unset'; then
-        pass; echo "  console-doc hermetic (sentinel byte-identical after a bare merge)"
+        && printf '%s\n' "$_cd_out" | grep -qF 'chief-doc-partial=unset'; then
+        pass; echo "  chief-doc hermetic (sentinel byte-identical after a bare merge)"
     else
         fail "bare merge touched the caller's HIMMEL_CONSOLE_DOC (rc=$_cd_rc): $(cat "$_cd_dir/sentinel.md")"
     fi
@@ -2899,21 +2899,21 @@ if [ "${HIMMEL_1495_SELF:-0}" != "1" ] && [ "${HIMMEL_6079_SELF:-0}" != "1" ]; t
     if [ "$cd_pre" -ge 1 ] && [ "$cd_post" -eq 0 ] && [ "$cd_diff" -eq 1 ]; then
         cp "$_cd_dir/sentinel.orig" "$_cd_dir/sentinel.md"
         # shellcheck disable=SC2016  # the inner `$1` is bash -c's own positional parameter.
-        red_control_run --env HIMMEL_CONSOLE_DOC="$_cd_dir/sentinel.md" --env HIMMEL_CONSOLE_NAME=live-console --env HIMMEL_6079_SELF=1 \
+        red_control_run --env HIMMEL_CONSOLE_DOC="$_cd_dir/sentinel.md" --env HIMMEL_CONSOLE_NAME=live-chief --env HIMMEL_6079_SELF=1 \
             -- bash -c 'exec bash "$1" 2>&1' _ "$cd_mutant"
-        cd_seen=$(printf '%s\n' "$RED_CONTROL_OUT" | grep -o 'console-doc-partial=[a-z0-9]*' | tail -n 1)
+        cd_seen=$(printf '%s\n' "$RED_CONTROL_OUT" | grep -o 'chief-doc-partial=[a-z0-9]*' | tail -n 1)
         if red_control_assert --label "RC-6079" --expect-rc 0 \
             --observed     "$cd_seen" \
-            --expect-wrong "console-doc-partial=1" \
-            --correct      "console-doc-partial=unset" \
-            --note "without the startup 'unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME' a launching console's doc leaks in and a bare merge appends PARTIAL HIMMEL-374 to it, and the suite certifies a hermeticity it does not have"
+            --expect-wrong "chief-doc-partial=1" \
+            --correct      "chief-doc-partial=unset" \
+            --note "without the startup 'unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_NAME' a launching chief's doc leaks in and a bare merge appends PARTIAL HIMMEL-374 to it, and the suite certifies a hermeticity it does not have"
         then
             pass
         else
             fail "RC-6079 mutant: RED control did not hold (see the RED-control diagnostic above)"
         fi
     else
-        fail "RC-6079 setup: mutation of the console-doc unset line was not reproduced cleanly (pre=$cd_pre post=$cd_post diff_lines=$cd_diff)"
+        fail "RC-6079 setup: mutation of the chief-doc unset line was not reproduced cleanly (pre=$cd_pre post=$cd_post diff_lines=$cd_diff)"
     fi
     rm -f "$cd_mutant"
     rm -rf "$_cd_dir"
@@ -3059,8 +3059,8 @@ else
     assert_audit_has "2380-5: a broken marker warns but does not block the merge" "MERGED repo="
 fi
 
-# --- 2919. Console-GO gate — a console-spawned leg (HIMMEL_CONSOLE_LEG=1) merges
-# only on a console-written GO file for the certified head ------------------
+# --- 2919. Chief-GO gate — a chief-spawned worker (HIMMEL_CONSOLE_LEG=1) merges
+# only on a chief-written GO file for the certified head ------------------
 GO_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mog-go.XXXXXX")
 GO_ROOT=$(cd "$GO_ROOT" && pwd)
 GO_SHA=0123456789abcdef0123456789abcdef01234567
@@ -3105,38 +3105,38 @@ no_merge_call() {
 
 # 2919-a — marker set, no GO file: refused before any merge call.
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
-    run_mog 17 "2919-a: console leg without a GO file → exit 17"
-assert_err_has "2919-a: stderr names the expected GO path" "has no console GO ($GO_ROOT/.locks/go/77.$GO_SHA)"
-assert_audit_has "2919-a: audited as a policy refusal" "REFUSED reason=policy-refused phase=console-go"
+    run_mog 17 "2919-a: chief worker without a GO file → exit 17"
+assert_err_has "2919-a: stderr names the expected GO path" "has no chief GO ($GO_ROOT/.locks/go/77.$GO_SHA)"
+assert_audit_has "2919-a: audited as a policy refusal" "REFUSED reason=policy-refused phase=chief-go"
 assert_audit_lacks "2919-a: no merge intent recorded" "MERGING"
 no_merge_call "2919-a: no merge call"
 
 # 2919-a2 — same on --dry-run: a dry run must report the refusal, not "would merge".
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
-    run_mog 17 "2919-a2: dry-run console leg without a GO file → exit 17" -- --dry-run
+    run_mog 17 "2919-a2: dry-run chief worker without a GO file → exit 17" -- --dry-run
 assert_audit_lacks "2919-a2: no DRYRUN would-merge line" "DRYRUN"
 
 # 2919-a3 — an unresolvable handover root fails CLOSED, never "no gate".
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT/absent" STUB_SHA="$GO_SHA" \
-    run_mog 17 "2919-a3: console leg with an unresolvable handover root → exit 17"
+    run_mog 17 "2919-a3: chief worker with an unresolvable handover root → exit 17"
 no_merge_call "2919-a3: no merge call"
 
-# 2919-b — marker set, GO written by the console's own writer for the certified
+# 2919-b — marker set, GO written by the chief's own writer for the certified
 # head: proceeds exactly like the unmarked happy path (2919-d's gh log).
 go_write "$GO_ROOT" 77 "$GO_SHA"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
-    run_mog 0 "2919-b: console leg with a GO for the certified head → merged" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
+    run_mog 0 "2919-b: chief worker with a GO for the certified head → merged" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
 assert_merge_has "2919-b: merge pins the certified head" "--match-head-commit $GO_SHA"
 assert_audit_has "2919-b: MERGED recorded" "MERGED repo="
 assert_err_has "2919-b: the verified GO evidence is printed" "GO evidence: file=$GO_ROOT/.locks/go/77.$GO_SHA pr=77 head=$GO_SHA"
 GO_B_GHLOG=$(cat "$LAST_GH_LOG")
 
-# 7165-a — a valid GO file exists but the leg's merge line carries no --go:
+# 7165-a — a valid GO file exists but the worker's merge line carries no --go:
 # refused before any merge call, so a merge command always shows its evidence.
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
-    run_mog 17 "7165-a: console leg without --go (valid GO on disk) → exit 17"
+    run_mog 17 "7165-a: chief worker without --go (valid GO on disk) → exit 17"
 assert_err_has "7165-a: stderr says --go is required" "needs --go $GO_ROOT/.locks/go/77.$GO_SHA"
-assert_audit_has "7165-a: audited as a policy refusal" "REFUSED reason=policy-refused phase=console-go-flag"
+assert_audit_has "7165-a: audited as a policy refusal" "REFUSED reason=policy-refused phase=chief-go-flag"
 no_merge_call "7165-a: no merge call"
 
 # 7165-b — --go names the GO of another head (written, valid, but not this head's).
@@ -3170,7 +3170,7 @@ no_merge_call "7165-e: no merge call"
 rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
 go_write "$GO_ROOT" 77 "$GO_OLD"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
-    run_mog 17 "2919-c: console leg with only a stale GO → exit 17"
+    run_mog 17 "2919-c: chief worker with only a stale GO → exit 17"
 assert_err_has "2919-c: stderr says a stale GO is never reused" "a GO for an older head is stale"
 no_merge_call "2919-c: no merge call"
 
@@ -3182,12 +3182,12 @@ HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
 no_merge_call "2919-c2: no merge call"
 rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
 
-# 3543 — a leg-planted GO (the plain lines go.sh once wrote, no
+# 3543 — a worker-planted GO (the plain lines go.sh once wrote, no
 # mac) for the certified head: refused, and the refusal names the mac.
 mkdir -p "$GO_ROOT/.locks/go"
-printf 'pr=77\nhead=%s\nby=leg\nat=2026-09-24T00:00:00Z\n' "$GO_SHA" > "$GO_ROOT/.locks/go/77.$GO_SHA"
+printf 'pr=77\nhead=%s\nby=worker\nat=2026-09-24T00:00:00Z\n' "$GO_SHA" > "$GO_ROOT/.locks/go/77.$GO_SHA"
 HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
-    run_mog 17 "3543: console leg with a planted (mac-less) GO → exit 17"
+    run_mog 17 "3543: chief worker with a planted (mac-less) GO → exit 17"
 assert_err_has "3543: stderr names the missing mac" "has no/invalid mac"
 no_merge_call "3543: no merge call"
 rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
@@ -3195,7 +3195,7 @@ rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
 # 2919-d — marker unset, no GO file: the operator path is unchanged, and the gate
 # adds no gh call of its own (2919-b's gh log is byte-identical).
 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" run_mog 0 "2919-d: marker unset, no GO → merged (operator path unchanged)"
-assert_audit_lacks "2919-d: no console-go refusal" "console-go"
+assert_audit_lacks "2919-d: no chief-go refusal" "chief-go"
 if [ "$(cat "$LAST_GH_LOG")" = "$GO_B_GHLOG" ]; then pass; else fail "2919-b/d: the gated merge's gh calls differ from the unmarked merge's"; fi
 
 # 2919-d2 — a falsy marker is the unset marker (same truthiness as ARMAUTOMERGE).
@@ -3204,7 +3204,7 @@ HIMMEL_CONSOLE_LEG=0 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
 rm -rf "$GO_ROOT"
 
 # --- 3895. Trust-path gate — a PR touching a base-sourced trust path merges only
-# on a trust-reviewed GO for the certified head, leg or not ------------------
+# on a trust-reviewed GO for the certified head, worker or not ------------------
 TP_ROOT=$(mktemp -d "${TMPDIR:-/tmp}/mog-tp.XXXXXX") || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
 TP_ROOT=$(cd "$TP_ROOT" && pwd)
 TP_GO="$TP_ROOT/.locks/go"
@@ -3243,22 +3243,22 @@ no_merge_call "3895-a: no merge call"
 tp_run 21 "3895-a2: dry-run trust-path PR with no GO → exit 21" -- --dry-run
 assert_audit_lacks "3895-a2: no DRYRUN would-merge line" "DRYRUN"
 
-# 3895-a3 — a console leg holding an ORDINARY GO for the head: the console-GO
+# 3895-a3 — a chief worker holding an ORDINARY GO for the head: the chief-GO
 # gate passes, the trust gate still refuses.
 tp_mint 77 "$GO_SHA"
 # HIMMEL_CONSOLE_LEG is a Claude Code marker: with no claude ancestor (CI) and
-# seams set, the anchor copy refuses 96. A console leg always
+# seams set, the anchor copy refuses 96. A chief worker always
 # runs under its claude session, so these rows run under a fake one.
 # shellcheck disable=SC2317,SC2329  # _as_claude is invoked indirectly, through MOG_WRAP
 _as_claude() { (exec -a claude bash -c '"$@"; exit $?' _ "$@"); }
-MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 21 "3895-a3: console leg with an ordinary GO on a trust-path PR → exit 21" -- --go "$TP_GO/77.$GO_SHA"
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 21 "3895-a3: chief worker with an ordinary GO on a trust-path PR → exit 21" -- --go "$TP_GO/77.$GO_SHA"
 assert_err_has "3895-a3: stderr asks for a trust-reviewed GO" "trust-reviewed"
 no_merge_call "3895-a3: no merge call"
 
 # 3895-b — a trust-reviewed GO minted by go.sh for this PR at this head merges,
-# for a console leg and for the operator path alike.
+# for a chief worker and for the operator path alike.
 tp_mint --trust-reviewed judge-N9 77 "$GO_SHA"
-MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 0 "3895-b: console leg with a trust-reviewed GO → merged" -- --go "$TP_GO/77.$GO_SHA"
+MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 tp_run 0 "3895-b: chief worker with a trust-reviewed GO → merged" -- --go "$TP_GO/77.$GO_SHA"
 assert_merge_has "3895-b: merge pins the certified head" "--match-head-commit $GO_SHA"
 assert_audit_has "3895-b: the trust review rides the audit" "trust=judge-N9"
 tp_run 0 "3895-b2: operator path with a trust-reviewed GO → merged"
@@ -3318,7 +3318,7 @@ STUB_TRUST_LIST_404=1 STUB_PR_FILES_JSON='[{"filename":"README.md"}]' \
     tp_run 21 "3895-f8: no trust list on the harness's own repo → exit 21"
 # 3895-f10 — a list saved with CRLF endings, or with blanks around a pattern,
 # must still match: a pattern carrying a stray \r or space matches nothing,
-# which would wave a trust-path PR through (fail open).
+# which would parallel wave a trust-path PR through (fail open).
 STUB_TRUST_LIST=$(sed 's/$/\r/' "$SCRIPT_DIR/../ci/ci-trust-paths.txt") \
     tp_run 21 "3895-f10: CRLF trust list, trust-path PR with no GO → exit 21"
 no_merge_call "3895-f10: no merge call"
@@ -3378,7 +3378,7 @@ rm -rf "$TP_ROOT"
 # "command not found" (go_rc=127), which is != "2" — so the pre-fix
 # script (head 6749462a, the earlier shipped state) fell
 # through the refusal entirely and continued straight to a real merge,
-# with no GO file anywhere. Same fixture as 2919-a (console leg, no GO
+# with no GO file anywhere. Same fixture as 2919-a (chief worker, no GO
 # file) but against a truncated go-gate.sh: prove it wrongly merges
 # pre-fix, and is refused post-fix by the new `command -v go_gate`
 # precondition.
@@ -3386,8 +3386,8 @@ RC5_TRUNC_GOGATE=$(mktemp "${TMPDIR:-/tmp}/mog-3142-rc127-gogate.XXXXXX")
 head -n 29 "$SCRIPT_DIR/../lib/go-gate.sh" > "$RC5_TRUNC_GOGATE"
 if grep -q '^go_gate()' "$RC5_TRUNC_GOGATE"; then
     fail "RC-5 setup: go-gate.sh header grew past line 29 — the truncated copy still defines go_gate, so this control no longer exercises a missing-symbol source"
-elif ! grep -q '^console_leg()' "$RC5_TRUNC_GOGATE"; then
-    fail "RC-5 setup: go-gate.sh's console_leg() no longer fits in the first 29 lines — the truncated copy would fail the new console_leg lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
+elif ! grep -q '^chief_worker()' "$RC5_TRUNC_GOGATE"; then
+    fail "RC-5 setup: go-gate.sh's chief_worker() no longer fits in the first 29 lines — the truncated copy would fail the new chief_worker lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
 else
     # This commit's PR branch was deleted on squash-merge, so
     # `git show <sha>:<path>` is unreachable from a fresh clone of origin —
@@ -3419,7 +3419,7 @@ else
             --observed     "rc=$RED_CONTROL_RC merged=$rc5_merged" \
             --expect-wrong "rc=0 merged=yes" \
             --correct      "rc=17 merged=no" \
-            --note "pre-round-3-fix merge-on-green.sh (head $RC5_PRE_SHA) tested go_rc = \"2\" only; a truncated go-gate.sh sources cleanly but never defines go_gate, so the call fails with rc=127, the test is false, and the console-GO gate never fires — same fixture as 2919-a (console leg, no GO file), which the shipped script refuses"
+            --note "pre-round-3-fix merge-on-green.sh (head $RC5_PRE_SHA) tested go_rc = \"2\" only; a truncated go-gate.sh sources cleanly but never defines go_gate, so the call fails with rc=127, the test is false, and the chief-GO gate never fires — same fixture as 2919-a (chief worker, no GO file), which the shipped script refuses"
         then
             pass
         else
@@ -3446,10 +3446,10 @@ else
         ) >/dev/null 2>"$rc5_post_err"
         rc5_post_rc=$?
         if [ "$rc5_post_rc" -eq 17 ] && grep -qi "not defined" "$rc5_post_err" \
-            && grep -q "phase=console-go-symbol-missing" "$rc5_post_audit" 2>/dev/null; then
+            && grep -q "phase=chief-go-symbol-missing" "$rc5_post_audit" 2>/dev/null; then
             pass
         else
-            fail "RC-5 post-fix: expected exit 17 naming 'not defined' + phase=console-go-symbol-missing, got rc=$rc5_post_rc stderr=$(cat "$rc5_post_err" 2>/dev/null)"
+            fail "RC-5 post-fix: expected exit 17 naming 'not defined' + phase=chief-go-symbol-missing, got rc=$rc5_post_rc stderr=$(cat "$rc5_post_err" 2>/dev/null)"
         fi
         rm -rf "$rc5_post_tmp" "$rc5_post_go_root"
     fi
@@ -3462,7 +3462,7 @@ rm -f "$RC5_TRUNC_GOGATE"
 # the function". Two distinct ways that diverges, both against a truncated
 # go-gate.sh (does not define go_gate):
 #   RC-6: a PATH executable named go_gate — command -v finds it, the script
-#         CALLS it (not a function), it exits 0, and the console-GO gate
+#         CALLS it (not a function), it exits 0, and the chief-GO gate
 #         never fires. declare -F (bash-function-only) rejects this.
 #   RC-7: an inherited `export -f go_gate` in the launching shell — a real
 #         bash function, so declare -F ALSO passes it through unless it is
@@ -3473,8 +3473,8 @@ RC67_TRUNC_GOGATE=$(mktemp "${TMPDIR:-/tmp}/mog-3142-rc67-gogate.XXXXXX")
 head -n 29 "$SCRIPT_DIR/../lib/go-gate.sh" > "$RC67_TRUNC_GOGATE"
 if grep -q '^go_gate()' "$RC67_TRUNC_GOGATE"; then
     fail "RC-6/RC-7 setup: go-gate.sh header grew past line 29 — the truncated copy still defines go_gate, so this control no longer exercises a missing-symbol source"
-elif ! grep -q '^console_leg()' "$RC67_TRUNC_GOGATE"; then
-    fail "RC-6/RC-7 setup: go-gate.sh's console_leg() no longer fits in the first 29 lines — the truncated copy would fail the new console_leg lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
+elif ! grep -q '^chief_worker()' "$RC67_TRUNC_GOGATE"; then
+    fail "RC-6/RC-7 setup: go-gate.sh's chief_worker() no longer fits in the first 29 lines — the truncated copy would fail the new chief_worker lib-missing check instead of exercising the go_gate missing-symbol source this control targets"
 else
     # This commit's PR branch was deleted on squash-merge, so
     # `git show <sha>:<path>` is unreachable from a fresh clone of origin —
@@ -3540,10 +3540,10 @@ EOF
         ) >/dev/null 2>"$rc6_post_err"
         rc6_post_rc=$?
         if [ "$rc6_post_rc" -eq 17 ] && grep -qi "not defined" "$rc6_post_err" \
-            && grep -q "phase=console-go-symbol-missing" "$rc6_post_audit" 2>/dev/null; then
+            && grep -q "phase=chief-go-symbol-missing" "$rc6_post_audit" 2>/dev/null; then
             pass
         else
-            fail "RC-6 post-fix: expected exit 17 naming 'not defined' + phase=console-go-symbol-missing, got rc=$rc6_post_rc stderr=$(cat "$rc6_post_err" 2>/dev/null)"
+            fail "RC-6 post-fix: expected exit 17 naming 'not defined' + phase=chief-go-symbol-missing, got rc=$rc6_post_rc stderr=$(cat "$rc6_post_err" 2>/dev/null)"
         fi
         rm -rf "$rc6_post_tmp" "$rc6_post_go_root"
         rm -rf "$rc6_bin"
@@ -3597,10 +3597,10 @@ EOF
         ) >/dev/null 2>"$rc7_post_err"
         rc7_post_rc=$?
         if [ "$rc7_post_rc" -eq 17 ] && grep -qi "not defined" "$rc7_post_err" \
-            && grep -q "phase=console-go-symbol-missing" "$rc7_post_audit" 2>/dev/null; then
+            && grep -q "phase=chief-go-symbol-missing" "$rc7_post_audit" 2>/dev/null; then
             pass
         else
-            fail "RC-7 post-fix: expected exit 17 naming 'not defined' + phase=console-go-symbol-missing, got rc=$rc7_post_rc stderr=$(cat "$rc7_post_err" 2>/dev/null)"
+            fail "RC-7 post-fix: expected exit 17 naming 'not defined' + phase=chief-go-symbol-missing, got rc=$rc7_post_rc stderr=$(cat "$rc7_post_err" 2>/dev/null)"
         fi
         rm -rf "$rc7_post_tmp" "$rc7_post_go_root"
         unset -f go_gate
@@ -3635,7 +3635,7 @@ assert_audit_lacks "jira: default case no longer reports would-transition" "woul
 assert_jira_log_lacks "jira: partial merge makes no transition call" "index.js transition"
 assert_jira_log_lacks "jira: partial merge never transitions to Done" "transition HIMMEL-374 Done"
 assert_jira_log_has "jira: partial merge comments a Remaining line" "comment-body: Remaining:"
-# A bare merge leaves the ticket open, so say so (stderr) and tell the console doc.
+# A bare merge leaves the ticket open, so say so (stderr) and tell the chief doc.
 assert_err_has "jira: bare merge prints the PARTIAL line" "PARTIAL HIMMEL-374: next slice not dispatched"
 # A merge of a ticket held in a later unreleased version than the current one files an INTAKE
 # request into the current version, whatever the merge's transition opt-in; a ticket already current, or one
@@ -3660,13 +3660,13 @@ assert_jira_log_lacks "7641: an archived held version is not a later one" "relea
 STUB_JIRA_BUILD=1 STUB_JIRA_FIXVERSIONS='{"name":"v1.1.4"}' STUB_JIRA_REQUEST_FAIL=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: an INTAKE request that cannot be filed still lets the merge succeed"
 assert_audit_has "7641: an unfiled INTAKE request is on the audit line" "intake=failed"
-mog_doc="$LAST_TMP/console-doc.md"
-printf '# console\n\n## Results\n' > "$mog_doc"
+mog_doc="$LAST_TMP/chief-doc.md"
+printf '# chief\n\n## Results\n' > "$mog_doc"
 HIMMEL_CONSOLE_DOC="$mog_doc" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: bare merge with HIMMEL_CONSOLE_DOC set"
-if grep -q 'PARTIAL HIMMEL-374: next slice not dispatched' "$mog_doc"; then pass; else fail "jira: bare merge appends PARTIAL to the console Results (doc: $(cat "$mog_doc"))"; fi
-mog_doc2="$LAST_TMP/console-doc2.md"
-printf '# console\n\n## Results\n' > "$mog_doc2"
+if grep -q 'PARTIAL HIMMEL-374: next slice not dispatched' "$mog_doc"; then pass; else fail "jira: bare merge appends PARTIAL to the chief Results (doc: $(cat "$mog_doc"))"; fi
+mog_doc2="$LAST_TMP/chief-doc2.md"
+printf '# chief\n\n## Results\n' > "$mog_doc2"
 HIMMEL_CONSOLE_DOC="$mog_doc2" STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "jira: opted-in merge with HIMMEL_CONSOLE_DOC set" -- --jira-transition
 assert_err_lacks "jira: an opted-in merge prints no PARTIAL line" "PARTIAL"
@@ -3681,55 +3681,55 @@ assert_audit_lacks "6094: audit never says would-transition" "would-transition"
 assert_audit_has "6094: audit says the status is unchanged" "jira-transition=skip=partial key=HIMMEL-374 status-unchanged"
 
 # The brief's dedicated `Completes ticket` line binds the merge. The
-# leg doc is supplied by the caller (--leg-doc, else HIMMEL_WORKER_SESSION_DOC).
-leg_no="$LAST_TMP/leg-no.md"; leg_yes="$LAST_TMP/leg-yes.md"
-printf '# leg\n\n> **Completes ticket:** no\n\n## Results\n' > "$leg_no"
-printf '# leg\n\n> **Completes ticket:** yes\n\n## Results\n' > "$leg_yes"
+# worker doc is supplied by the caller (--worker-doc, else HIMMEL_WORKER_SESSION_DOC).
+worker_no="$LAST_TMP/worker-no.md"; worker_yes="$LAST_TMP/worker-yes.md"
+printf '# worker\n\n> **Completes ticket:** no\n\n## Results\n' > "$worker_no"
+printf '# worker\n\n> **Completes ticket:** yes\n\n## Results\n' > "$worker_yes"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     STUB_PR_BODY=$'slice 1\nRemaining: slice 2\n' \
-    run_mog 0 "5843: brief says no, --jira-transition given" -- --jira-transition --leg-doc "$leg_no"
+    run_mog 0 "5843: brief says no, --jira-transition given" -- --jira-transition --worker-doc "$worker_no"
 assert_err_has "5843: the ignored flag is announced" "merge-on-green: brief says completes-ticket: no; --jira-transition ignored"
 assert_jira_log_lacks "5843: brief no never transitions to Done" "transition HIMMEL-374 Done"
 assert_jira_log_lacks "5843: brief no leaves the ticket status alone" "index.js transition"
 assert_jira_log_has "5843: brief no comments the Remaining line" "comment-body: Remaining: slice 2"
-STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_WORKER_SESSION_DOC="$leg_no" \
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_WORKER_SESSION_DOC="$worker_no" \
     run_mog 0 "5843: brief no via HIMMEL_WORKER_SESSION_DOC" -- --jira-transition
 assert_jira_log_lacks "5843: HIMMEL_WORKER_SESSION_DOC binds the same way" "transition HIMMEL-374 Done"
-STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_WORKER_SESSION_DOC="$leg_no" \
-    run_mog 0 "5843: --leg-doc beats HIMMEL_WORKER_SESSION_DOC" -- --jira-transition --leg-doc "$leg_yes"
+STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" HIMMEL_WORKER_SESSION_DOC="$worker_no" \
+    run_mog 0 "5843: --worker-doc beats HIMMEL_WORKER_SESSION_DOC" -- --jira-transition --worker-doc "$worker_yes"
 assert_jira_log_has "5843: the flag value wins over the env var" "transition HIMMEL-374 Done"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "5843: brief yes, flag missing" -- --leg-doc "$leg_yes"
+    run_mog 0 "5843: brief yes, flag missing" -- --worker-doc "$worker_yes"
 assert_err_has "5843: the missing flag is warned" "brief expects the ticket to close"
 assert_jira_log_lacks "5843: brief yes never transitions on its own" "transition HIMMEL-374 Done"
 assert_jira_log_lacks "5843: brief yes without the flag stays partial, status untouched" "index.js transition"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "5843: brief yes, flag given" -- --jira-transition --leg-doc "$leg_yes"
+    run_mog 0 "5843: brief yes, flag given" -- --jira-transition --worker-doc "$worker_yes"
 assert_jira_log_has "5843: brief yes with the flag transitions" "transition HIMMEL-374 Done"
 assert_err_lacks "5843: brief yes with the flag warns nothing" "brief says completes-ticket"
-printf '# leg\n\nno such line\n' > "$LAST_TMP/leg-none.md"
+printf '# worker\n\nno such line\n' > "$LAST_TMP/worker-none.md"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "5843: leg doc without the line" -- --jira-transition --leg-doc "$LAST_TMP/leg-none.md"
+    run_mog 0 "5843: worker doc without the line" -- --jira-transition --worker-doc "$LAST_TMP/worker-none.md"
 assert_jira_log_has "5843: no line leaves --jira-transition working" "transition HIMMEL-374 Done"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "5843: unreadable leg doc is a warning" -- --jira-transition --leg-doc "$LAST_TMP/absent.md"
-assert_err_has "5843: unreadable leg doc is named" "cannot read leg doc"
-assert_jira_log_has "5843: unreadable leg doc leaves --jira-transition working" "transition HIMMEL-374 Done"
-# Only the console's region (above `## Results`) binds: a leg appending its own
+    run_mog 0 "5843: unreadable worker doc is a warning" -- --jira-transition --worker-doc "$LAST_TMP/absent.md"
+assert_err_has "5843: unreadable worker doc is named" "cannot read worker doc"
+assert_jira_log_has "5843: unreadable worker doc leaves --jira-transition working" "transition HIMMEL-374 Done"
+# Only the chief's region (above `## Results`) binds: a worker appending its own
 # `yes` below Results, or smuggling one in with an embedded newline, cannot widen a `no`.
-printf '# leg\n\n> **Completes ticket:** no\n\n## Results\n- 10:00 LIVE — x\n> **Completes ticket:** yes\n' > "$LAST_TMP/leg-no-then-yes.md"
+printf '# worker\n\n> **Completes ticket:** no\n\n## Results\n- 10:00 LIVE — x\n> **Completes ticket:** yes\n' > "$LAST_TMP/worker-no-then-yes.md"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "5843: header no, yes appended below Results" -- --jira-transition --leg-doc "$LAST_TMP/leg-no-then-yes.md"
+    run_mog 0 "5843: header no, yes appended below Results" -- --jira-transition --worker-doc "$LAST_TMP/worker-no-then-yes.md"
 assert_jira_log_lacks "5843: an appended yes does not override the header no" "transition HIMMEL-374 Done"
 assert_err_has "5843: the header no still announces the ignored flag" "brief says completes-ticket: no; --jira-transition ignored"
-printf '# leg\n\n> **Completes ticket:** yes\n> **Completes ticket:** no\n\n## Results\n' > "$LAST_TMP/leg-yes-then-no.md"
+printf '# worker\n\n> **Completes ticket:** yes\n> **Completes ticket:** no\n\n## Results\n' > "$LAST_TMP/worker-yes-then-no.md"
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "5843: any no above Results wins" -- --jira-transition --leg-doc "$LAST_TMP/leg-yes-then-no.md"
-assert_jira_log_lacks "5843: a no anywhere in the console region wins" "transition HIMMEL-374 Done"
-# A --leg-doc whose value is empty or another option is a usage error, not a silent drop.
-run_mog 10 "5843: --leg-doc with an empty value" -- --leg-doc ""
-run_mog 10 "5843: --leg-doc swallowing --dry-run" -- --leg-doc --dry-run
-assert_err_has "5843: the bad --leg-doc value is named" "--leg-doc needs a path"
+    run_mog 0 "5843: any no above Results wins" -- --jira-transition --worker-doc "$LAST_TMP/worker-yes-then-no.md"
+assert_jira_log_lacks "5843: a no anywhere in the chief region wins" "transition HIMMEL-374 Done"
+# A --worker-doc whose value is empty or another option is a usage error, not a silent drop.
+run_mog 10 "5843: --worker-doc with an empty value" -- --worker-doc ""
+run_mog 10 "5843: --worker-doc swallowing --dry-run" -- --worker-doc --dry-run
+assert_err_has "5843: the bad --worker-doc value is named" "--worker-doc needs a path"
 
 
 # The Remaining text is the PR body's own `Remaining:` line(s).
@@ -3802,13 +3802,13 @@ else
     fail "jira: comment precedes transition (comment@${jira_comment_ln:-none} transition@${jira_transition_ln:-none})"
 fi
 
-# A status the merge wrote marks the console's FOCUS page dirty (focus-state
+# A status the merge wrote marks the chief's FOCUS page dirty (focus-state
 # dirty=, plus focus-state.again); a failing mark changes neither the exit nor the result.
-HIMMEL_CONSOLE_DOC=/nonexistent/console.md STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
+HIMMEL_CONSOLE_DOC=/nonexistent/chief.md STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
     run_mog 0 "focus: a failing mark-dirty never fails the merge" -- --jira-transition
 assert_audit_has "focus: the transition is still recorded ok" "jira-transition=ok key=HIMMEL-374 status=Done"
-MOG_FOCUS_DOC="$MOG_SUITE_TMP/focus-console/console.md"
-mkdir -p "${MOG_FOCUS_DOC%/*}"; printf '# console\nfocus-version: v1.1.3\n' > "$MOG_FOCUS_DOC"
+MOG_FOCUS_DOC="$MOG_SUITE_TMP/focus-chief/chief.md"
+mkdir -p "${MOG_FOCUS_DOC%/*}"; printf '# chief\nfocus-version: v1.1.3\n' > "$MOG_FOCUS_DOC"
 printf 'status=ok\ngen=1\ndirty=\n' > "${MOG_FOCUS_DOC%/*}/focus-state"
 # The mark follows the fixVersion fold, so a rebuild it starts sees the folded version:
 # the stub CLI records whether the page was already dirty when the fold ran.
@@ -3827,8 +3827,8 @@ else fail "focus: the transition marks the FOCUS page dirty ($(tr '\n' '|' < "${
 if grep -q 'index.js edit HIMMEL-374 --fix-version' "$LAST_JIRA_LOG" && ! grep -q '^fold: dirty$' "$LAST_JIRA_LOG"; then pass
 else fail "focus: the mark follows the fixVersion fold ($(grep -E 'fold: dirty|index\.js edit HIMMEL-374 ' "$LAST_JIRA_LOG" | tr '\n' '|'))"; fi
 STUB_JIRA_BUILD=1 STUB_PR_TITLE="feat(jira): [HIMMEL-374] reconciler" \
-    run_mog 0 "focus: a merge with no console doc" -- --jira-transition
-if [ -n "$(find "$LAST_TMP" -name 'focus-state*' 2>/dev/null)" ]; then fail "focus: with no console doc nothing is marked"; else pass; fi
+    run_mog 0 "focus: a merge with no chief doc" -- --jira-transition
+if [ -n "$(find "$LAST_TMP" -name 'focus-state*' 2>/dev/null)" ]; then fail "focus: with no chief doc nothing is marked"; else pass; fi
 
 # A failing Jira transition must never fail the merge itself (best-effort),
 # even when opted in.
@@ -4058,9 +4058,9 @@ STUB_ALERT_FAIL=1 STUB_CI_RC=5 run_mog 18 "3381-f: DM delivery failure keeps exi
 assert_err_has "3381-f: says the delivery failed" "DM delivery failed"
 
 # --- the merge gate must resolve check-ci.sh (and, at the
-# console-GO gate, go-gate.sh / handover-path.sh) from the anchor
+# chief-GO gate, go-gate.sh / handover-path.sh) from the anchor
 # (HIMMEL_REPO), never as a sibling of its own BASH_SOURCE. This script runs
-# from a leg's own worktree, so a sibling resolution lets the branch under
+# from a worker's own worktree, so a sibling resolution lets the branch under
 # review supply the bytes of its own merge gate (found live: PR #1115's
 # branch was merely behind main on scripts/check-ci.sh, and its own stale
 # gate wrongly refused its own green PR — the benign direction; the
@@ -4095,7 +4095,7 @@ if HIMMEL_REPO=x env -u HIMMEL_REPO bash -c '[ -z "${HIMMEL_REPO+set}" ]'; then 
 STUB_CI_RC=0 run_mog 0 "3475-a: worktree is its own anchor (byte-identical) behaves as before"
 if [ -e "$LAST_TMP/scripts/check-ci.ran" ]; then pass; else fail "3475-a: the anchor's (== worktree's) check-ci.sh never ran"; fi
 
-# merge-on-green runs only after the console's GO, so its check-ci
+# merge-on-green runs only after the chief's GO, so its check-ci
 # call is the post-GO path: the stub must see MERGE_WATCH_POST_GO=1.
 if [ "$(cat "$LAST_TMP/scripts/check-ci.postgo" 2>/dev/null)" = 1 ]; then pass; else fail "4071: merge-on-green did not mark its check-ci call post-GO (MERGE_WATCH_POST_GO=1)"; fi
 
@@ -4182,9 +4182,9 @@ else
 fi
 
 # go-gate.sh must also come from the anchor: a malicious worktree go-gate.sh
-# that unconditionally forges "yes, a console leg, with a valid GO" must not
-# be able to skip or fake the console-GO requirement — the anchor's real
-# console_leg()/go_gate() must decide instead, and correctly refuse (no real
+# that unconditionally forges "yes, a chief worker, with a valid GO" must not
+# be able to skip or fake the chief-GO requirement — the anchor's real
+# chief_worker()/go_gate() must decide instead, and correctly refuse (no real
 # GO file exists).
 mog3475b_base=$(mktemp -d "${TMPDIR:-/tmp}/mog-3475-gogate.XXXXXX")
 if [ -z "$mog3475b_base" ] || [ ! -d "$mog3475b_base" ]; then
@@ -4204,9 +4204,9 @@ else
         else
             cat > "$mog3475b_mutant_gogate" <<'EOF'
 #!/usr/bin/env bash
-# Test mutant: forges "yes, a console leg, with a valid GO" no
+# Test mutant: forges "yes, a chief worker, with a valid GO" no
 # matter what — this test proves the anchored fix never lets it run.
-console_leg() { return 0; }
+chief_worker() { return 0; }
 go_gate() { return 0; }
 EOF
             STUB_CI_RC=0 GO_GATE_SRC="$mog3475b_mutant_gogate" mog_build_fixture "$mog3475b_worktree"
@@ -4231,7 +4231,7 @@ EOF
                 fail "3475-gogate: expected exit 17 (the anchor's real go-gate.sh refuses — no real GO file) despite the worktree's malicious go-gate.sh forging approval, got rc=$mog3475b_rc stderr=$(cat "$mog3475b_err" 2>/dev/null)"
             fi
             if grep -Eq '^pr merge( |$)' "$mog3475b_gh" 2>/dev/null; then
-                fail "3475-gogate: merged despite no real console GO — the worktree's forged go-gate.sh decided instead of the anchor's"
+                fail "3475-gogate: merged despite no real chief GO — the worktree's forged go-gate.sh decided instead of the anchor's"
             else
                 pass
             fi
@@ -4244,7 +4244,7 @@ fi
 
 # handover-path.sh must also come from the anchor: a malicious worktree
 # handover-path.sh that forges handover_root() onto an attacker-writable,
-# pre-planted fake GO file must not be able to satisfy the console-GO check —
+# pre-planted fake GO file must not be able to satisfy the chief-GO check —
 # the anchor's real handover_root() must decide instead, and correctly
 # resolve to a root with no matching GO file (refuse).
 mog3475c_base=$(mktemp -d "${TMPDIR:-/tmp}/mog-3475-hpath.XXXXXX")
@@ -4297,7 +4297,7 @@ else
     fail "3475-hpath: expected exit 17 (the anchor's real handover-path.sh resolves the genuine root, which has no matching GO file) despite the worktree's malicious handover-path.sh forging a pre-planted fake GO, got rc=$mog3475c_rc stderr=$(cat "$mog3475c_err" 2>/dev/null)"
 fi
 if grep -Eq '^pr merge( |$)' "$mog3475c_gh" 2>/dev/null; then
-    fail "3475-hpath: merged despite no real console GO — the worktree's forged handover-path.sh decided instead of the anchor's"
+    fail "3475-hpath: merged despite no real chief GO — the worktree's forged handover-path.sh decided instead of the anchor's"
 else
     pass
 fi
@@ -4587,7 +4587,7 @@ assert_audit_has "5115-j: audited" "REFUSED reason=main-red"
 STUB_RUN_LIST_JSON="$MOG_RUN_RED" run_mog 22 "5115-k: dry-run on red main → exit 22" -- --dry-run
 rm -f "$MOG_RUN_LOG"
 
-# ── console-written fix-GO is the second way through the gate ───
+# ── chief-written fix-GO is the second way through the gate ───
 # go.sh --fix-main-red <run> <pr> <head> writes a signed file naming ONE red
 # run; the gate accepts it only when that run is the CURRENT red run, for this
 # PR and head, and never without the signature.
@@ -4625,7 +4625,7 @@ mog5134_run 22 "5134-d: fix-GO edited to the red run id (mac signs another) → 
 assert_audit_has "5134-d: audited as a red-main refusal" "REFUSED reason=main-red"
 
 # 5134-e — unsigned: a hand-written file with the right fields and no mac.
-printf 'pr=77\nhead=%s\nfix-main-red-run=37964772913\nby=leg\nat=2026-10-10T00:00:00Z\n' "$GO_SHA" \
+printf 'pr=77\nhead=%s\nfix-main-red-run=37964772913\nby=worker\nat=2026-10-10T00:00:00Z\n' "$GO_SHA" \
     > "$MOG_FX_ROOT/.locks/go/fix-main-red.77.$GO_SHA.37964772913"
 mog5134_run 22 "5134-e: unsigned fix-GO → exit 22"
 
@@ -4830,15 +4830,15 @@ MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001b" STUB_CI_RC
     run_mog 14 "7001-b: solo mode, check-ci not green → exit 14"
 assert_gh_lacks "7001-b: no merge attempted" "pr merge"
 
-# 7001-c — a console-spawned leg is never solo: the GO is the rule even when the
+# 7001-c — a chief-spawned worker is never solo: the GO is the rule even when the
 # project config says solo.
 MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001c" \
-    run_mog 17 "7001-c: solo config under a console leg → exit 17"
-assert_audit_has "7001-c: audited as a solo refusal" "phase=solo-console-leg"
+    run_mog 17 "7001-c: solo config under a chief worker → exit 17"
+assert_audit_has "7001-c: audited as a solo refusal" "phase=solo-chief-worker"
 no_merge_call "7001-c: no merge call"
 
 # 7001-c2 — an explicitly falsy marker is no leg: solo reads it the way the
-# console-GO gate does.
+# chief-GO gate does.
 MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=0 MOG_ANCHOR_GIT=1 MOG_ANCHOR_SETUP=solo_cfg_setup STUB_SHA="solo7001i" \
     run_mog 0 "7001-c2: solo config, HIMMEL_CONSOLE_LEG=0 → merged"
 assert_audit_has "7001-c2: audited as solo" "mode=solo"
@@ -4867,11 +4867,11 @@ MOG_ANCHOR_GIT=1 STUB_SHA="solo7001f" \
     run_mog 0 "7001-f: no solo config → merged as before"
 assert_audit_lacks "7001-f: not audited as solo" "mode=solo"
 
-# 7001-g — the himmel path still needs its GO: a leg with no solo config and no
+# 7001-g — the himmel path still needs its GO: a worker with no solo config and no
 # GO file is refused.
 MOG_WRAP=_as_claude HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" MOG_ANCHOR_GIT=1 STUB_SHA="solo7001g" \
-    run_mog 17 "7001-g: console leg, no solo config, no GO → exit 17"
-assert_audit_has "7001-g: still the console-GO refusal" "phase=console-go"
+    run_mog 17 "7001-g: chief worker, no solo config, no GO → exit 17"
+assert_audit_has "7001-g: still the chief-GO refusal" "phase=chief-go"
 
 # --- 7390. Solo mode in an adopted project: the anchor is the himmel clone
 # (it carries chief-kit/go.sh) and the merge runs from the adopted repo, which

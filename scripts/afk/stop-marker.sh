@@ -60,7 +60,7 @@ Subcommands:
   status    Print human-readable state. Always exits 0.
 
 Environment:
-  AFK_STOP_DIR          Override marker directory (old name OVERNIGHT_STOP_DIR).
+  AFK_STOP_DIR          Override marker directory (old name OVERNIGHT_STOP_DIR, read while HIMMEL_LEGACY_NAMES is on).
                         Default: $HOME/.claude in the himmel clone,
                         $HOME/.claude/afk/<project key> in an adopted project.
 EOF

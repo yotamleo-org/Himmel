@@ -1,30 +1,30 @@
 #!/usr/bin/env node
-// fleet.mjs — A local status UI for the console's legs, headed or
-// headless: one row per leg (runtime, process, lock, newest status bullet, PR + CI,
-// last session-log line) plus the fleet/bank header and a "needs the console"
-// strip. With legs moving to headless background sessions there is no window to
+// fleet.mjs — A local status UI for the chief's workers, headed or
+// headless: one row per worker (runtime, process, lock, newest status bullet, PR + CI,
+// last session-log line) plus the fleet/bank header and a "needs the chief"
+// strip. With workers moving to headless background sessions there is no window to
 // glance at; this page is the glance.
 //
-//   node fleet.mjs --doc <console doc> --serve [--port 7788]   live page, polls /api/fleet
-//   node fleet.mjs --doc <console doc> --out <file.html>       static snapshot (publishable)
-//   node fleet.mjs --doc <console doc> --json                  the snapshot as JSON
+//   node fleet.mjs --doc <chief doc> --serve [--port 7788]   live page, polls /api/fleet
+//   node fleet.mjs --doc <chief doc> --out <file.html>       static snapshot (publishable)
+//   node fleet.mjs --doc <chief doc> --json                  the snapshot as JSON
 //   common: [--logs <launch-log dir>] [--handover-root <dir>] [--repo <dir>]
 //
 // READ-ONLY. The server binds 127.0.0.1 (there is no flag to change that), answers
 // GET/HEAD only, and has no route that runs anything or writes anywhere. Sources:
-// the console doc's `## Live state` legs: block, each leg doc's `## Results`, the
+// the chief doc's `## Live state` legs: block, each worker doc's `## Results`, the
 // queue-lock sweep, /proc, usage-preflight.sh, gh, and the launch logs. Nonces, lock
 // tokens and token spans are redacted from every string BEFORE it is put in the
 // snapshot (so the JSON endpoint is as clean as the page); the page renders with
 // textContent only, and the embedded snapshot has `<` escaped.
 //
-// PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only (/proc, the
+// PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only (/proc, the
 // konsole launch logs). Node ESM, no dependencies.
 //
 // ponytail: board.mjs exports nothing and runs on import, so its parsers (the
 // legs: block, the PR-bullet grammar, the redaction patterns, ciOf) are re-stated
 // here, not imported; a change to one wants the same change in the other.
-// ponytail: uptime assumes CLK_TCK=100 (every Linux the kit runs on); a leg's
+// ponytail: uptime assumes CLK_TCK=100 (every Linux the kit runs on); a worker's
 // status age is the bullet's own HH:MM against today's clock, so a bullet from
 // yesterday reads as up to 24 h younger than it is.
 import { execFile } from 'node:child_process';
@@ -106,8 +106,8 @@ const bucket = dirname(docPath);
 const repo = resolve(opt.repo || join(HERE, '..', '..', '..'));
 const handoverRoot = resolve(opt['handover-root'] || process.env.HANDOVER_DIR || dirname(dirname(bucket)));
 const logsDir = resolve(opt.logs || (process.env.XDG_RUNTIME_DIR
-    ? join(process.env.XDG_RUNTIME_DIR, 'himmel-console')
-    : join(process.env.TMPDIR || '/tmp', `himmel-console-${process.getuid ? process.getuid() : 0}`)));
+    ? join(process.env.XDG_RUNTIME_DIR, 'himmel-chief')
+    : join(process.env.TMPDIR || '/tmp', `himmel-chief-${process.getuid ? process.getuid() : 0}`)));
 const QUEUE_LOCK = process.env.FLEET_QUEUE_LOCK || join(repo, 'scripts', 'handover', 'queue-lock.sh');
 const BANK = process.env.FLEET_BANK || join(repo, 'scripts', 'lib', 'usage-preflight.sh');
 const GH = process.env.FLEET_GH || 'gh';
@@ -177,7 +177,7 @@ const sectionOf = (lines, title, exact = false) => {
 const ticketOf = (name) => (/^([A-Z][A-Z0-9]*-\d+)/.exec(name) || [])[1] || '';
 const LABEL_RE = /^N\d+[a-z]*$/;
 
-// ---------------------------------------------------------------- console doc
+// ---------------------------------------------------------------- chief doc
 // The legs: block, read by tick.sh's grammar (mirrored in board.mjs): an entry is a
 // backtick span of exactly four non-empty colon fields <label>:<nonce>:<lock>:<pid>.
 // Only the label and the pid are kept; the nonce picks the doc, and is never rendered.
@@ -199,13 +199,13 @@ const parseLive = (text) => {
     return entries;
 };
 
-// One bash call derives every leg's identity (label + the session names it may run
-// under) from scripts/lib/leg-identity.sh, the one derivation the tick uses.
+// One bash call derives every worker's identity (label + the session names it may run
+// under) from scripts/lib/worker-identity.sh, the one derivation the tick uses.
 const identities = new Map();
 const primeIdentities = async (names) => {
     const todo = [...new Set(names)].filter((n) => !identities.has(n));
     if (!todo.length) return true;
-    const r = await sh('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do leg_identity "$s"; done', 'bash', LEGID, ...todo], { timeout: 30000 });
+    const r = await sh('bash', ['-c', 'source "$1" || exit 1; shift; for s in "$@"; do worker_identity "$s"; done', 'bash', LEGID, ...todo], { timeout: 30000 });
     const lines = r.out.split('\n');
     todo.forEach((n, i) => {
         const [label, names2] = (lines[i] || '').split('\t');
@@ -216,7 +216,7 @@ const primeIdentities = async (names) => {
 };
 const idOf = (name) => identities.get(name) || { label: '', names: [] };
 
-// ---------------------------------------------------------------- leg docs
+// ---------------------------------------------------------------- worker docs
 const STATUS_RE = /^- (?:(\d{1,2}):(\d{2})\s+)?(?:\*\*)?(WRAPPED|READY|RESOLVED|BLOCKED|HALTED|FINDING|LIVE)(?![A-Za-z0-9_])(.*)$/;
 // READY and MERGED lines go through parseReadyLine (the mirror of
 // go-gate.sh's parse_ready_line); PR_RE keeps only the LIVE "PR #n open" form.
@@ -253,7 +253,7 @@ const readLegDoc = (file, now) => {
 };
 
 // ---------------------------------------------------------------- launch logs
-// A leg's launch log: <name>.launch.log (or launch-<name>.log) under --logs, joined by
+// A worker's launch log: <name>.launch.log (or launch-<name>.log) under --logs, joined by
 // file name or by a `name=` / `session=` / `for <name>` mention. Fields are read
 // tolerantly: `headless=1`, the last `pid=`, `model=`, and a session-log path.
 const indexLogs = () => {
@@ -338,7 +338,7 @@ const slugOf = (docFile) => relative(handoverRoot, docFile).replace(/\.md$/, '')
 const readSweep = async () => {
     const r = await sh('bash', [QUEUE_LOCK, 'status', '--sweep', handoverRoot], { timeout: 30000 });
     // 0 = clean, 20 = a flagged lock — both are a complete sweep. Any other rc
-    // (crash, timeout, partial output) leaves legs unknown rather than trusting
+    // (crash, timeout, partial output) leaves workers unknown rather than trusting
     // a partial map.
     if (r.code !== 0 && r.code !== 20) return null;
     const map = new Map();
@@ -351,7 +351,7 @@ const readSweep = async () => {
     return map;
 };
 // `claude agents --json` lists the daemon's sessions, background ones included. A
-// background-mode leg runs under the daemon with comm = the version string and its own
+// background-mode worker runs under the daemon with comm = the version string and its own
 // argv/env, so neither a process-table census nor the launcher's cmdline finds it; the
 // session NAME (-n) is the join key. null = command absent, failing, or not JSON.
 const AG_DONE = /^(done|completed?|failed|error(ed)?|stopped|killed|exited|cancel(l)?ed|dead)$/i;
@@ -420,10 +420,10 @@ const buildSnapshot = async () => {
 
     const docs = readdirSync(bucket).filter((f) => f.endsWith('-RESUME.md'));
     const idsOk = await primeIdentities([...entries.map((e) => e.stem), ...docs]);
-    if (!idsOk) warnings.push('leg labels unavailable — some legs may be missing');
+    if (!idsOk) warnings.push('worker labels unavailable — some workers may be missing');
 
     const [sweep, bankInfo, openPrs, agents] = await Promise.all([cached('sweep', 4000, readSweep), cached('bank', 30000, readBank), readOpenPrs(), cached('agents', 4000, readAgents)]);
-    if (agents === null) warnings.push('agents: unavailable — headless legs are found only through launch logs and /proc');
+    if (agents === null) warnings.push('agents: unavailable — headless workers are found only through launch logs and /proc');
     if (sweep === null) warnings.push('queue-lock sweep unavailable — lock states unknown');
     if (bankInfo === null) warnings.push('bank-preflight unavailable — fleet and bank unknown');
     if (openPrs === null) warnings.push('gh unavailable — PR and CI state unknown');
@@ -442,7 +442,7 @@ const buildSnapshot = async () => {
         const file = exact ? join(bucket, exact) : (pool.length ? pool.reduce((a, b) => (statSync(a).mtimeMs >= statSync(b).mtimeMs ? a : b)) : null);
         picked.set(label, { entry: e, file, listed: true });
     }
-    // A leg that holds a lock but is not in Live state still gets a row (the console
+    // A worker that holds a lock but is not in Live state still gets a row (the chief
     // may have dispatched it and not yet edited the block).
     if (sweep) {
         for (const f of docs) {
@@ -454,7 +454,7 @@ const buildSnapshot = async () => {
 
     const logs = indexLogs();
     const openByNum = new Map((openPrs || []).map((p) => [p.number, p]));
-    const legs = [];
+    const workers = [];
     for (const [label, { entry, file, listed }] of picked) {
         const doc = file ? readLegDoc(file, now) : null;
         const stem = file ? basename(file, '.md') : (entry ? entry.stem : label);
@@ -521,7 +521,7 @@ const buildSnapshot = async () => {
 
         let lastLine = '';
         if (launch && launch.sessionLog) lastLine = safe(tailLine(launch.sessionLog), 200);
-        legs.push({
+        workers.push({
             label, ticket, model: safe(model, 60), mode, pid, alive: proc.alive, uptimeSec: proc.uptimeSec,
             lock: { state: lockState, ageSec: lockAge, idle },
             agent: ag ? { kind: ag.kind, state: safe(ag.state || ag.status || '', 30) } : null,
@@ -529,16 +529,16 @@ const buildSnapshot = async () => {
             attention: attention.map((code) => ({ code, text: ATTN[code] })),
         });
     }
-    // Attention first, then live legs, then wrapped ones; by leg number within each.
+    // Attention first, then live workers, then wrapped ones; by worker number within each.
     const rank = (l) => (l.attention.length ? 0 : l.lock.state === 'WRAPPED' ? 2 : 1);
-    legs.sort((a, b) => rank(a) - rank(b) || parseInt(a.label.slice(1), 10) - parseInt(b.label.slice(1), 10) || a.label.localeCompare(b.label));
+    workers.sort((a, b) => rank(a) - rank(b) || parseInt(a.label.slice(1), 10) - parseInt(b.label.slice(1), 10) || a.label.localeCompare(b.label));
     return deepRedact({
         generatedAt: now.getTime(),
         console: basename(docPath, '.md'),
         fleet: bankInfo ? bankInfo.fleet : null,
         bank: bankInfo ? bankInfo.bank : null,
         warnings,
-        legs,
+        workers,
     });
 };
 
@@ -603,7 +603,7 @@ ul { list-style:none; margin:0; padding:0; }
   .hdr, .row { grid-template-columns:minmax(8rem,.9fr) minmax(8rem,.9fr) minmax(6.5rem,.7fr) minmax(6.5rem,.7fr) minmax(16rem,3fr) minmax(6rem,.8fr) minmax(10rem,2fr); }
   .c[data-k]::before { display:none; }
 }
-@media (max-width: 999px) { .row { grid-template-columns:1fr 1fr; } .c-leg, .c-status, .c-log { grid-column:1 / -1; } }
+@media (max-width: 999px) { .row { grid-template-columns:1fr 1fr; } .c-worker, .c-status, .c-log { grid-column:1 / -1; } }
 </style>
 </head>
 <body>
@@ -611,7 +611,7 @@ ul { list-style:none; margin:0; padding:0; }
 <header>
 <h1>Fleet status</h1>
 <dl class="stats">
-<div><dt>Legs</dt><dd id="s-fleet">–</dd></div>
+<div><dt>Workers</dt><dd id="s-fleet">–</dd></div>
 <div><dt>Bank 5h</dt><dd id="s-5h">–</dd></div>
 <div><dt>Bank 7d</dt><dd id="s-7d">–</dd></div>
 <div><dt>Needs the console</dt><dd id="s-attn">–</dd></div>
@@ -623,9 +623,9 @@ ul { list-style:none; margin:0; padding:0; }
 <h2 id="h-attn">Needs the console</h2>
 <div id="attn" class="attn clear"></div>
 </section>
-<section aria-labelledby="h-legs">
-<h2 id="h-legs">Legs</h2>
-<div class="hdr" aria-hidden="true"><span>Leg</span><span>Runtime</span><span>Process</span><span>Lock</span><span>Latest status</span><span>PR · CI</span><span>Session log</span></div>
+<section aria-labelledby="h-workers">
+<h2 id="h-workers">Workers</h2>
+<div class="hdr" aria-hidden="true"><span>Worker</span><span>Runtime</span><span>Process</span><span>Lock</span><span>Latest status</span><span>PR · CI</span><span>Session log</span></div>
 <ul id="legs" class="rows"></ul>
 </section>
 </main>
@@ -641,10 +641,10 @@ function row(l) {
   if (l.attention.length) li.dataset.attn = '1';
   if (l.lock.state === 'WRAPPED') li.dataset.wrapped = '1';
   li.dataset.label = l.label;
-  const leg = [el('span', 'lbl', l.label), document.createTextNode(' '), el('span', 'tk', l.ticket || '')];
-  if (!l.listed) leg.push(el('div', 'sub', 'not in Live state'));
-  if (!l.hasDoc) leg.push(el('div', 'sub', 'no handover doc'));
-  for (const a of l.attention) leg.push(el('div', 'flag', a.text));
+  const worker = [el('span', 'lbl', l.label), document.createTextNode(' '), el('span', 'tk', l.ticket || '')];
+  if (!l.listed) worker.push(el('div', 'sub', 'not in Live state'));
+  if (!l.hasDoc) worker.push(el('div', 'sub', 'no handover doc'));
+  for (const a of l.attention) worker.push(el('div', 'flag', a.text));
   const rt = [el('span', null, l.mode), el('div', 'sub mono', l.model || 'model ?')];
   const proc = [el('span', 'dot ' + (l.alive ? 'alive' : 'dead'), l.alive ? 'alive' : (l.pid ? 'dead' : 'no pid')), el('div', 'sub mono', (l.pid ? 'pid ' + l.pid : 'pid ?') + (l.alive ? ' · up ' + dur(l.uptimeSec) : '') + (l.agent && l.agent.kind === 'background' && l.agent.state ? ' · ' + l.agent.state : ''))];
   const lock = [el('span', 'st-' + l.lock.state, l.lock.state), el('div', 'sub', l.lock.ageSec === null ? '' : (l.lock.idle ? 'idle ' : 'beat ') + dur(l.lock.ageSec) + ' ago')];
@@ -653,7 +653,7 @@ function row(l) {
     st = [el('span', 'tok tok-' + l.status.token, l.status.token), el('span', 'sub', ' ' + (l.status.ageSec === null ? (l.status.time || '') : dur(l.status.ageSec) + ' ago')), el('div', 'text', l.status.text)];
   } else st = [el('span', 'sub', 'no status bullet yet')];
   const pr = l.pr ? [el('span', 'mono', '#' + l.pr.number), el('div', 'sub ci-' + l.pr.ci, l.pr.ci + (l.pr.draft ? ' · draft' : ''))] : [el('span', 'sub', '–')];
-  li.append(cell('leg', 'Leg', leg), cell('rt', 'Runtime', rt), cell('proc', 'Process', proc), cell('lock', 'Lock', lock), cell('status', 'Status', st), cell('pr', 'PR · CI', pr), cell('log', 'Log', [el('span', 'log mono', l.lastLine || '–')]));
+  li.append(cell('leg', 'Worker', worker), cell('rt', 'Runtime', rt), cell('proc', 'Process', proc), cell('lock', 'Lock', lock), cell('status', 'Status', st), cell('pr', 'PR · CI', pr), cell('log', 'Log', [el('span', 'log mono', l.lastLine || '–')]));
   return li;
 }
 function render(s, note) {
@@ -673,10 +673,10 @@ function render(s, note) {
     for (const l of need) for (const a of l.attention) { const li = el('li'); li.append(el('b', null, l.label), document.createTextNode(' ' + a.text), el('div', 'sub', l.status ? l.status.text : '')); ul.append(li); }
     attn.append(ul);
   }
-  const legs = document.getElementById('legs');
-  legs.replaceChildren();
-  if (!s.legs.length) legs.append(el('li', 'none', 'No legs found in the console doc\'s Live state.'));
-  for (const l of s.legs) legs.append(row(l));
+  const workers = document.getElementById('legs');
+  workers.replaceChildren();
+  if (!s.legs.length) workers.append(el('li', 'none', 'No workers found in the console doc\'s Live state.'));
+  for (const l of s.legs) workers.append(row(l));
   const b = document.getElementById('banner');
   const msgs = [note].concat(s.warnings).filter(Boolean);
   b.hidden = !msgs.length;

@@ -43,6 +43,23 @@ export function legacyNamesOn(env = process.env) {
   return !FALSY.test(env.HIMMEL_LEGACY_NAMES ?? '');
 }
 
+const warnedFlags = new Set();
+
+// legacyFlag(OLD, NEW): a parser calls it when it matched the renamed flag OLD.
+// On: one stderr deprecation line per process, true (parse OLD as NEW). Off: one
+// stderr line, false (treat OLD as an unknown option). Twin of legacy_flag.
+export function legacyFlag(oldFlag, newFlag, env = process.env) {
+  if (!legacyNamesOn(env)) {
+    process.stderr.write(`${oldFlag} was renamed to ${newFlag}; legacy names are off\n`);
+    return false;
+  }
+  if (!warnedFlags.has(oldFlag)) {
+    warnedFlags.add(oldFlag);
+    process.stderr.write(`${oldFlag} is deprecated: use ${newFlag}\n`);
+  }
+  return true;
+}
+
 export function envAliasRestrict(newName, oldName, env = process.env) {
   return setValues(newName, oldName, env).some((v) => !FALSY.test(v));
 }

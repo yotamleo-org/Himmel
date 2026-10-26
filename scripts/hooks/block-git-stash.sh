@@ -3,7 +3,7 @@
 #
 # `git stash` is a CROSS-WORKTREE hazard. Every worktree of this
 # checkout (~50 of them) shares ONE `refs/stash`, so a stash created in one
-# session is popped/dropped by another. Measured twice in a single leg
+# session is popped/dropped by another. Measured twice in a single worker
 # (2026-08-12): a `git stash drop` from one worker
 # destroyed a different session's entry, hand-recovered only because it had been
 # tagged (`recovered-leg15-graphify-stash`).

@@ -458,7 +458,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# git pull --ff-only still succeeds (the console's own merge-then-pull path).
+# git pull --ff-only still succeeds (the chief's own merge-then-pull path).
 # ---------------------------------------------------------------------------
 work=$(mk_sandbox pull)
 install_hook "$work" || bad "installer failed for pull sandbox"

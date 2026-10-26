@@ -15,7 +15,7 @@ fixture_mktemp_dir() {
     # non-empty result closes the gap the git-repo check alone misses: a
     # broken or PATH-shadowed mktemp (this guard's own threat model, see the
     # no-rm-rf note below) could return an existing, non-empty, non-git
-    # directory, which the git-dir check would wave through as safe.
+    # directory, which the git-dir check would parallel wave through as safe.
     if [ -n "$(ls -A "$dir" 2>/dev/null)" ]; then
         echo "FAIL: fixture temp directory is not empty" >&2
         return 1

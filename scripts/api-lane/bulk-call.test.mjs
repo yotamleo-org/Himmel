@@ -1,5 +1,5 @@
 // Bulk-call bridge fixtures. Dummy key and a stub claude only: no provider call, no real
-// credential. Breaks caught: a leg or relay launching the call on its own authority, a tool grant wider than
+// credential. Breaks caught: a worker or relay launching the call on its own authority, a tool grant wider than
 // Read/Glob/Grep (or one that can spawn), a non-Haiku model or an over-ceiling budget, a site outside the asked
 // files kept, a tool denial hidden behind rc=0, a reply that is not the JSON object kept, a cancel that leaves
 // the call running, a fallback to the subscription lane.
@@ -47,7 +47,7 @@ function fixture() {
     organization_id: config.accounts[account].organization_id, cycle_id: config.accounts[account].cycle_id,
     grant_usd: '2.00', remaining_usd: '2.00', reconciled_spent_usd: '0',
     starts_at: now - 1000, expires_at: now + 3600, observed_at: now,
-    source: 'operator-console-snapshot', exclusive_org: true, discrepancy: false,
+    source: 'operator-chief-snapshot', exclusive_org: true, discrepancy: false,
   }])) };
   const p = { config: join(dir, 'config.json'), snapshot: join(dir, 'snapshot.json'), state,
     stub: join(dir, 'claude-stub'), log: join(dir, 'stub.log'), env: join(dir, 'stub.env'), ps: join(dir, 'ps'),
@@ -105,7 +105,7 @@ test('an OK call: sites kept, cost and model in the artifact, grant is Read,Glob
   assert.match(readFileSync(join(f.dir, 'launches.jsonl'), 'utf8'), /"kind":"bulk"/);
 });
 
-test('trusted dispatch: a console leg or a relay is refused before any call', () => {
+test('trusted dispatch: a console worker or a relay is refused before any call', () => {
   for (const v of ['HIMMEL_CONSOLE_LEG', 'HIMMEL_CONSOLE_RELAY']) {
     const f = fixture();
     const r = f.run(f.args, { [v]: '1' });
@@ -357,7 +357,7 @@ test('--cancel signals only the process that holds the task lock, not a pid the 
   assert.ok(alive, 'the pid named by the pid file was signalled');
 });
 
-test('trusted dispatch: a console leg or relay cannot cancel a running call either', async () => {
+test('trusted dispatch: a console worker or relay cannot cancel a running call either', async () => {
   const f = fixture();
   writeFileSync(f.p.hold, '');
   const child = spawn('bash', [BRIDGE, ...f.args, '--timeout', '60'], { env: { ...f.env, STUB_HOLD: f.p.hold }, stdio: 'ignore' });

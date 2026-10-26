@@ -5,17 +5,17 @@
 # both available under git bash unchanged; the transcripts it reads are the
 # same JSONL on every platform.
 #
-# Adapted from the baseline Appendix B (extra-metrics.sh, leg
+# Adapted from the baseline Appendix B (extra-metrics.sh, worker
 # N207, 2026-09-12):
 #  (g) fix-forward/revert within 48h: merged PR B whose title ticket-id(s)
 #      intersect an earlier merged PR A's, merged within 48h after A, or
 #      whose title starts with "Revert".
-#  (h) operator interventions: console transcripts, user entries whose
+#  (h) operator interventions: chief transcripts, user entries whose
 #      content is a plain string (not tool_result) and not a harness
 #      envelope (<task-notification>, <cross-session...>, <system...>).
 # The baseline's (g) fetched a fixed-window PR list and (h) read a
-# precomputed burn.tsv for console transcripts; this takes --since/--until
-# for the PR fetch and walks console-role transcripts directly for (h).
+# precomputed burn.tsv for chief transcripts; this takes --since/--until
+# for the PR fetch and walks chief-role transcripts directly for (h).
 #
 # Usage: extra-metrics.sh --since <ISO8601> [--until <ISO8601>] [--repo <owner/repo>]
 #
@@ -53,7 +53,7 @@ RUN=$(tmpdir) || { echo "extra-metrics: mktemp failed" >&2; exit 1; }
 sc_cov_init || exit 1
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as
-# leg-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
+# worker-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
 to_epoch() {
     date -d "$1" +%s 2>/dev/null && return 0
     date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$(printf '%s' "$1" | sed 's/\.[0-9]*Z$/Z/')" +%s 2>/dev/null
@@ -94,7 +94,7 @@ jq -r --argjson since_epoch "$SINCE_EPOCH" --argjson until_epoch "$UNTIL_EPOCH_A
 pr_truncated=no; [ "${merged_count:-0}" -ge 1000 ] && pr_truncated=yes
 echo "coverage: prs discovered=${merged_count:-0} parsed=${merged_count:-0} skipped=0 (limit=1000 truncated=$pr_truncated)"
 
-echo "--- operator interventions (console transcripts, window)"
+echo "--- operator interventions (chief transcripts, window)"
 ts_of() { grep -o '"timestamp":"[0-9TZ:.-]*"' "$1" 2>/dev/null | "$2" -1 | cut -d'"' -f4; }
 
 OP_FAILS="$RUN/op-fails.txt"
@@ -115,11 +115,11 @@ fi
 
 while IFS= read -r f; do
     # title_of silences read errors: an unreadable file would read as an empty
-    # title and be misfiled as an intentional not-console exclusion
+    # title and be misfiled as an intentional not-chief exclusion
     [ -r "$f" ] || { sc_cov unreadable; continue; }
     case "$f" in */subagents/*) sc_cov subagent; continue ;; esac
     name=$(title_of "$f")
-    case "$name" in *-console*|*-chief) ;; *) sc_cov not-console; continue ;; esac
+    case "$name" in *-console*|*-chief) ;; *) sc_cov not-chief; continue ;; esac
 
     first_ts=$(ts_of "$f" head)
     [ -n "$first_ts" ] || { sc_cov no-timestamp; continue; }
@@ -139,7 +139,7 @@ while IFS= read -r f; do
     sc_cov parsed
     printf '%s\n' "$op_out" | grep -c . >> "$OP_COUNTS"
 done < "$FILES"
-awk '{s+=$1; n++} END{printf "console_sessions=%d operator_msgs=%d per_session=%.1f\n", n, s, (n?s/n:0)}' "$OP_COUNTS"
+awk '{s+=$1; n++} END{printf "chief_sessions=%d operator_msgs=%d per_session=%.1f\n", n, s, (n?s/n:0)}' "$OP_COUNTS"
 sc_cov_line "$(wc -l < "$FILES" | tr -d ' ')" "$SC_ROOT_COUNT"
 
 n_op_fail=$(wc -l < "$OP_FAILS" | tr -d ' ')

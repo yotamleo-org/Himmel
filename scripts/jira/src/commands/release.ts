@@ -1,4 +1,4 @@
-// billed-exempt: the release manager rm-run judge; run by the console on purpose, bank-preflight gated
+// billed-exempt: the release manager rm-run judge; run by the chief on purpose, bank-preflight gated
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -275,7 +275,7 @@ export function parseDecisions(stdout: string): Decision[] {
 }
 
 // A call launched from inside a session inherits its markers, which make the child identify as that session
-// or a console leg. The auth and provider vars go too, so the child bills the native subscription bank the
+// or a chief worker. The auth and provider vars go too, so the child bills the native subscription bank the
 // preflight checked, never an API key or a cloud provider.
 export function judgeEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   return Object.fromEntries(Object.entries(env).filter(([k]) =>
@@ -380,7 +380,7 @@ export function registerRelease(program: Command): void {
     });
 
   rel.command('withdraw <release>')
-    .description('Retire an open or claimed request with a reason (the console, never a leg)')
+    .description('Retire an open or claimed request with a reason (the console, never a worker)')
     .requiredOption('--req <id>', 'Request id (Q-<R>-NNNN)')
     .requiredOption('--reason <text>', 'Why the request is withdrawn')
     .option('--by <O-id>', 'The operator decision row that settles it; it must cover the request\'s key')
@@ -480,7 +480,7 @@ export function registerRelease(program: Command): void {
     console.log(`LEASE ${release} epoch ${l.epoch} released`);
   });
 
-  const operator = rel.command('operator').description('Record an operator decision (the console, never a leg)');
+  const operator = rel.command('operator').description('Record an operator decision (the console, never a worker)');
   operator.command('declare <release>')
     .requiredOption('--versions <list>', 'Comma-separated versions; the first is current')
     .requiredOption('--decision <n>', 'Operator decision number')

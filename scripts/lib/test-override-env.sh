@@ -4,7 +4,7 @@
 # the guard-override list, the scrub, the drift gate that keeps
 # the list complete, and the runner wiring that applies it to every suite.
 #
-# Ambient guard overrides leak from a console leg's shell into hook suites and
+# Ambient guard overrides leak from a chief worker's shell into hook suites and
 # turn "override UNSET, guard must fire" cases into vacuous or red ones. This
 # suite pins the four invariants: the scrub clears the list, the list cannot
 # silently drift behind a new `FOO_OK` read, the runner scrubs every suite it
@@ -23,7 +23,7 @@ LIB_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$LIB_DIR/../.." && pwd)"
 LIB="$LIB_DIR/override-env.sh"
 
-# The five vars a console leg leaks plus the kill switch.
+# The five vars a chief worker leaks plus the kill switch.
 LEAKED="INLINE_IMPL_OK HIMMEL_CONSOLE_LEG CLAUDE_CODE_CHILD_SESSION HIMMEL_HOOK_INTEGRITY_BYPASS_OK IMPL_GUARD_OK IMPL_GUARD_DISABLE WORKER_SESSION_CONTEXT_HANDOFF_OK"
 
 echo "== Case 1: lib present, defines the API =="
@@ -68,7 +68,7 @@ for v in $LEAKED; do
   esac
 done
 if [ -z "$missing3" ]; then
-  pass "all six leg-leaked names are in the scrub list"
+  pass "all six worker-leaked names are in the scrub list"
 else
   fail "leaked names absent from the list:$missing3"
 fi
@@ -244,15 +244,15 @@ else
   fail "bypass-flags.json has no BWIMC_ENGINE entry naming block-write-into-main-checkout.sh"
 fi
 
-# Names a console-spawned leg's shell exports (compgen -e in a live leg, 10-23).
+# Names a chief-spawned worker's shell exports (compgen -e in a live worker, 10-23).
 # None is set on a CI runner, which is why a suite that reads one passes in CI
-# and behaves differently from a leg or console shell.
+# and behaves differently from a worker or chief shell.
 SESSION_LEAKED="CLAUDECODE CLAUDE_CODE_EFFORT_LEVEL CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH
 CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN CLAUDE_CODE_SESSION_ID CLAUDE_EFFORT
 CLAUDE_HUD_ALLOW_EXTRA_CMD CLAUDE_PID CODEX_GITHUB_PERSONAL_ACCESS_TOKEN GITHUB_PERSONAL_ACCESS_TOKEN
-HEADED_ARM_LAUNCHER HIMMEL_BUS_NAME HIMMEL_DEEPSEEK_INFERENCE_OK HIMMEL_INITIATIVE HIMMEL_LEAN_LEG
-HIMMEL_WORKER_SESSION_AUTOCOMPACT HIMMEL_LEG_PROFILE HIMMEL_RECONCILE_PLUGINS HIMMEL_REPO HIMMEL_STATUSLINE_ECON
-HIMMEL_WHERE_ARE_WE HIMMEL_WORKER_SESSION_PROFILE WORKER_SESSION_EFFORT WORKER_SESSION_PROFILE_PREFACE LEG_SESSION_ID
+HEADED_ARM_LAUNCHER HIMMEL_BUS_NAME HIMMEL_DEEPSEEK_INFERENCE_OK HIMMEL_INITIATIVE HIMMEL_LEAN_WORKER_SESSION
+HIMMEL_WORKER_SESSION_AUTOCOMPACT HIMMEL_WORKER_SESSION_PROFILE HIMMEL_RECONCILE_PLUGINS HIMMEL_REPO HIMMEL_STATUSLINE_ECON
+HIMMEL_WHERE_ARE_WE HIMMEL_WORKER_SESSION_PROFILE WORKER_SESSION_EFFORT WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_ID
 LUNA_VAULT_PATH USER_SLUG WORKER_SESSION_ID ANTHROPIC_API_KEY ANTHROPIC_BASE_URL OPENROUTER_API_KEY
 CADENCE_BANK_MAX_PCT CLAUDEX_LANE"
 # Set by CI workflows or by the runner itself; the scrub must leave them alone.
@@ -260,7 +260,7 @@ SESSION_KEPT="JIRA_PROJECT_KEY CLAUDE_CLI_VERSION CLAUDE_CONFIG_DIR HIMMEL_SUITE
 HIMMEL_TEST_FIXTURE HIMMEL_GIT_TEST_ENV_PERF HIMMEL_REQUIRE_SHFMT HIMMEL_VM_RUNNER
 HIMMEL_CI_RUNNER_IMAGE HIMMEL_CONSOLE_WORKDIR HIMMEL_INBOX_DIR HIMMEL_RUNTIME_PREFLIGHT SUITE_SHARD"
 
-echo "== Case 9: scrub_session_env clears a leg's session env and keeps the CI/runner names =="
+echo "== Case 9: scrub_session_env clears a worker's session env and keeps the CI/runner names =="
 out9=$(
   for v in $SESSION_LEAKED; do export "$v=1"; done
   for v in $SESSION_KEPT; do export "$v=kept-$v"; done
@@ -285,8 +285,8 @@ else
   # or the runner set (kept by the scrub, and present in whichever shell runs this).
   cat > "$sb10/test-env-view.sh" <<'SHEOF'
 #!/usr/bin/env bash
-compgen -e | grep -E '^(CLAUDE|HIMMEL|LEG|WORKER_SESSION|HEADED_ARM|LUNA|USER_SLUG|ANTHROPIC|OPENROUTER|CADENCE|CLAUDEX)|_PERSONAL_ACCESS_TOKEN$|_API_KEY$' \
-  | grep -v -E '^(CLAUDE_CLI_VERSION|CLAUDE_CONFIG_DIR|HIMMEL_(SUITE_|TEST_FIXTURE|GIT_TEST_ENV|REQUIRE_|VM_|CI_RUNNER_|CONSOLE_|INBOX|RUNTIME_PREFLIGHT))' \
+compgen -e | grep -E '^(CLAUDE|HIMMEL|WORKER|WORKER_SESSION|HEADED_ARM|LUNA|USER_SLUG|ANTHROPIC|OPENROUTER|CADENCE|CLAUDEX)|_PERSONAL_ACCESS_TOKEN$|_API_KEY$' \
+  | grep -v -E '^(CLAUDE_CLI_VERSION|CLAUDE_CONFIG_DIR|HIMMEL_(SUITE_|TEST_FIXTURE|GIT_TEST_ENV|REQUIRE_|VM_|CI_RUNNER_|CHIEF_|INBOX|RUNTIME_PREFLIGHT))' \
   | sort | tr '\n' ' '
 SHEOF
   clean10=$(env -i PATH="$PATH" HOME="$sb10" bash "$sb10/test-env-view.sh")

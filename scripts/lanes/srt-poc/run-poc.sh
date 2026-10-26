@@ -2,12 +2,12 @@
 # shellcheck disable=SC2015,SC2016
 # run-poc.sh — POC driver. Run on a throwaway test VM guest, never
 # the station. Builds a scratch repo, a VM-local bare origin outside every
-# writable root and a dummy credential file, then runs leg-battery.sh under
+# writable root and a dummy credential file, then runs worker-battery.sh under
 # `srt claude` (a stub `claude` execs the battery, no model, no gateway).
 #
 #   SRT=<path to srt> bash run-poc.sh <impl|research|failure-modes>
 #
-# Prints the ROW lines of leg-battery.sh plus the launcher-side assertions.
+# Prints the ROW lines of worker-battery.sh plus the launcher-side assertions.
 set -u
 # the full repository-redirecting set, as scripts/lib/git-clean.sh git_env_scrub
 # (inline: this script runs where the lib may not be reachable)
@@ -56,7 +56,7 @@ fresh() {
         echo "not-a-real-key" >"$HOME/.ssh/poc_dummy"
         dummy_made=1
     fi
-    printf '#!/usr/bin/env bash\nexec bash "%s/leg-battery.sh"\n' "$HERE" >"$base/bin/claude"
+    printf '#!/usr/bin/env bash\nexec bash "%s/worker-battery.sh"\n' "$HERE" >"$base/bin/claude"
     chmod +x "$base/bin/claude"
 }
 
@@ -90,7 +90,7 @@ launch() { # <profile> -> runs the battery under srt claude
     [ "$srt_rc" -eq 0 ] || run_rc=1
     if grep -q '^ROW .* FAIL' "$base/run.out"; then run_rc=1; fi
     # every profile row must be present and PASS, not just one row and no FAIL
-    want=(B0-leg-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside
+    want=(B0-worker-commit B1-benign-python B2-rm-rf-outside B3-write-outside B4-direct-force-push-outside
         B5-force-push-inside-root-passes B6-wrapper-own-branch B7-wrapper-refuses-force B8-wrapper-refuses-main
         B8b-wrapper-refuses-plus B9-credential-read B10-allowed-host B11-proxy-bypass B12-profile-domain B15-worktree-commit)
     case "$profile" in

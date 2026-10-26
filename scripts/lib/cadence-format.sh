@@ -21,7 +21,7 @@
 # carry no marker and read as version 0 (stale). New users (first arm after a
 # bump) get the current version automatically, so they never false-positive.
 #
-# v2: per-leg --model pins injected into every runner + the
+# v2: per-worker --model pins injected into every runner + the
 # synthesize/health frequency shift (weekly→daily, monthly→weekly). An armed
 # v1 cadence still fires, but on the OLD frequencies with NO model pin (so it
 # inherits the operator's saved default tier) — nudge `arm --force`.
@@ -40,14 +40,14 @@
 # keeps firing the corrupted form, so an operator whose bat dir / repo root /
 # vault path carries one of those characters must `arm --force` to pick the fix
 # up. Everyone else's regenerated runner is byte-identical bar the stamp.
-# v6: the codex-sweep runner gained a THIRD payload leg
+# v6: the codex-sweep runner gained a THIRD payload worker
 # (reap-superseded-fleets.ps1 -Kill, the duplicate-fleet-under-a-LIVE-broker
 # check) and its trigger gained an intra-day <Repetition>. An armed v5 cadence
-# still fires, but only the two old legs and only once a day — so the leak class
+# still fires, but only the two old workers and only once a day — so the leak class
 # this version exists to cover keeps accumulating unswept. Nudge `arm --force`.
 # v7: the generated cron runner takes a self-overlap lock before
 # rotating its log and firing the payload. cron has no MultipleInstancesPolicy,
-# so the POSIX leg was the unguarded one — and once `qmd-cadence.sh arm
+# so the POSIX worker was the unguarded one — and once `qmd-cadence.sh arm
 # --ship-to` can point that runner at ship-index.sh, two overlapping runs race
 # on the receiver's single `<target>.preship` rollback copy and can leave no
 # recoverable index. An armed v6 cron runner keeps firing WITHOUT the lock, so
@@ -68,15 +68,15 @@
 # (graphmap/qmd/pipeline); drift-fix (claude-direct) and codex-sweep (pwsh) bake
 # no bash.exe into their runner and are unaffected. POSIX cron runners unaffected.
 # v9: the codex-sweep .bat preserves every payload rc and exits
-# non-zero after all three legs when any leg failed. An armed v8 runner logs a
-# refusing sweep but returns the final successful leg's rc to Task Scheduler,
+# non-zero after all three workers when any worker failed. An armed v8 runner logs a
+# refusing sweep but returns the final successful worker's rc to Task Scheduler,
 # leaving LastTaskResult=0 while the primary sweep accomplished nothing. Re-arm
 # with `codex-sweep-cadence.sh arm --force` to regenerate the runner.
 # v10: every generated task's Exec is now a hidden powershell.exe
 # wrapper (`-WindowStyle Hidden -Command "& '<bat>'; exit $LASTEXITCODE"`)
 # around the .bat, not the bare .bat. A bare .bat Exec pops a visible conhost
 # window on every fire — an operator repro caught it flashing on top of a
-# fullscreen game, and an uncontrolled console flash would contaminate the
+# fullscreen game, and an uncontrolled chief flash would contaminate the
 # upcoming LUNA-131 focus soak. This is a REGISTERED-TASK-shape change, not a
 # runner-content change: the .bat emitters and their rc logic are untouched, so
 # an armed v9 task keeps firing its OLD bare-.bat Exec (still correct, still
@@ -84,44 +84,44 @@
 # the v9 exit-code fidelity — re-arming does not regress it. Re-arm with
 # `<cadence>.sh arm --force` to pick up the hidden-window Exec.
 # v11: the v10 hidden-powershell wrapper was MEASURED to still
-# allocate visible consoles despite -WindowStyle Hidden, so the Exec shape moves
+# allocate visible chiefs despite -WindowStyle Hidden, so the Exec shape moves
 # again — now a `wscript.exe //B <shim>.vbs` whose .vbs runs the .bat hidden via
 # WScript.Shell.Run(..., 0, True) and forwards its exit code through WScript.Quit
-# (zero console allocation; rc=42 re-arm passthrough proven by an execution test
+# (zero chief allocation; rc=42 re-arm passthrough proven by an execution test
 # in test-cadence-format.sh). The emitted .bat ALSO gained non-interactive-editor
 # `set` lines (GIT_EDITOR/EDITOR/VISUAL=true, GH_PROMPT_DISABLED=1) so a cadence
 # child can never block on an editor prompt — a runner-CONTENT change as well as
 # a task-shape one. An armed v10 task keeps firing its powershell-Hidden Exec
-# (still correct, still pops the measured-hidden consoles) until re-armed; the
+# (still correct, still pops the measured-hidden chiefs) until re-armed; the
 # .bat rc logic is again untouched, and WScript.Quit preserves the v9/v10
 # exit-code fidelity. Re-arm with `<cadence>.sh arm --force` to pick up the
 # wscript shim + the editor-hardened .bat.
 # v13: two runner-CONTENT changes. (a) the
-# pipeline FetchHealth leg (.bat and cron runner) now writes flow-run ledger
-# start/end rows like every other leg — an armed v12 runner keeps firing with
-# NO ledger row, so that leg stays invisible to stall / never-started
+# pipeline FetchHealth worker (.bat and cron runner) now writes flow-run ledger
+# start/end rows like every other worker — an armed v12 runner keeps firing with
+# NO ledger row, so that worker stays invisible to stall / never-started
 # detection and "stopped firing" is indistinguishable from "never armed".
 # (b) every emitter prefixes its shim-resolvable payload invocation with
 # `call` (the #1454 fix, carried to the pipeline claude line, the fetch-health
-# python line, codex-sweep's three pwsh legs and graphmap's payload): without
+# python line, codex-sweep's three pwsh workers and graphmap's payload): without
 # it, a payload that resolves to a .cmd/.bat shim makes cmd.exe transfer
 # control away for good, so the rc stamp, the ledger end row and the `exit /b`
 # after it never run. Re-arm each cadence with `arm --force` to pick both up.
-# v14: the three pipeline CLAUDE legs (.bat and cron runner) wrap
+# v14: the three pipeline CLAUDE workers (.bat and cron runner) wrap
 # their claude invocation in a bounded retry/resume loop — up to 3 attempts,
 # 60s then 180s backoff, and ONLY when the attempt's own log carries the
 # transient upstream signature (`API Error: … Server error / overloaded / 5xx /
 # mid-response`); every attempt lands its own flow-run ledger row pair tagged
-# `attempt=N/3`. An armed v13 runner keeps firing with NO retry, so a leg that
+# `attempt=N/3`. An armed v13 runner keeps firing with NO retry, so a worker that
 # dies on a transient API error (the 2026-07-17 harvest, 48 minutes in, 7 clips
 # already harvested) still just sits unfinished until a human notices. Re-arm
 # with `pipeline-cadence.sh arm --force`. The other cadences are unaffected but
 # stamp v14 too, so one version answers "is this runner current".
-# v15: the three pipeline CLAUDE legs gate before they spend.
+# v15: the three pipeline CLAUDE workers gate before they spend.
 # Every one of them now runs scripts/lib/bank-preflight.sh first (with
-# CADENCE_USAGE_LEG set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
+# CADENCE_USAGE_WORKER set, so ~/.himmel/cadence-ledger.jsonl finally attributes the
 # spend instead of logging leg:"unknown") and passes an explicit
-# --permission-mode; the synthesize leg additionally runs the free
+# --permission-mode; the synthesize worker additionally runs the free
 # scripts/luna/synth-input-check.sh and skips the session outright on a night
 # with no newly triaged clips. A v14 runner has NO bank guard at all — it is the
 # shape the 2026-08-23 cadence audit found spending the subscription bank
@@ -140,7 +140,7 @@
 # snapshot instead of prepending only the node directory
 # (`export PATH=<node_dir>:$PATH`) — the old line left every other arm-time
 # user bin dir (~/.local/bin uv tools, bun, cargo, go) off PATH under cron's
-# minimal PATH=/usr/bin:/bin, which is why the ig-media-enrich leg could not
+# minimal PATH=/usr/bin:/bin, which is why the ig-media-enrich worker could not
 # find gallery-dl. One shared helper (runner_path_snapshot in
 # pipeline-cadence.sh) now feeds both the pipeline runners and the
 # pipeline-fetch-health runner, so the two can no longer disagree. An armed
@@ -157,22 +157,22 @@
 # keeps firing the old prompt; re-arm with `pipeline-cadence.sh arm --force`. The
 # other cadences are unaffected but stamp v18 too, so one version still answers
 # "is this runner current".
-# v19: the pipeline POSIX runners log `[PIPELINE-LEG-FAILED ...]`,
+# v19: the pipeline POSIX runners log `[PIPELINE-WORKER-FAILED ...]`,
 # exit 3 on any zero-rc outcome short of complete, and call
 # scripts/luna/cadence-alert.sh on a failure; the harvest prompt adds
 # /x-media-enrich; the settings fragment allows the obsidian-triage commands.
 # Re-arm with `pipeline-cadence.sh arm --force`.
 # v20: the pipeline-harvest and pipeline-synthesize POSIX runners
-# run obsidian-triage's daily-timeline.mjs after the leg (must-not-abort: a
+# run obsidian-triage's daily-timeline.mjs after the worker (must-not-abort: a
 # failure logs and never changes the runner's exit code). Re-arm with
 # `pipeline-cadence.sh arm --force`.
-# v21: the pipeline POSIX runners alert (`[PIPELINE-LEG-FAILED
+# v21: the pipeline POSIX runners alert (`[PIPELINE-WORKER-FAILED
 # cd-vault]`) when the cd into the vault fails. Re-arm with
 # `pipeline-cadence.sh arm --force`.
 # v22: the graphmap (luna/himmel semantic + ast-luna/ast-himmel),
 # qmd-reindex and upstream-watch POSIX runners now write flow-run start/end rows
-# and call scripts/luna/cadence-alert.sh `fail` on a failed leg / `clear` on a
-# completed one, through cadence_posix_leg_start / cadence_posix_leg_end below.
+# and call scripts/luna/cadence-alert.sh `fail` on a failed worker / `clear` on a
+# completed one, through cadence_posix_worker_start / cadence_posix_worker_end below.
 # An armed v21 runner of those kinds fails silently and leaves no ledger row.
 # The graphmap-publish runner is unchanged (graph-cadence.sh alerts and writes
 # its own rows). The alert call pins the arm-time PATH so the sender finds bun
@@ -191,23 +191,23 @@ CADENCE_FORMAT_MARKER="himmel-cadence-runner-format:"
 # shellcheck disable=SC2034  # consumed by cadence_runner_stamp callers/tests
 CADENCE_RUNNER_BASENAMES="pipeline-harvest pipeline-synthesize pipeline-health graphmap-luna graphmap-himmel qmd-reindex drift-fix fork-resync graphify-update-ggs upstream-watch graphmap-ast-luna graphmap-ast-himmel graphmap-publish-himmel graphmap-semantic-luna doctor-cadence"
 
-# cadence_posix_leg_start <q_flow_lib> <flow> <task>
-# cadence_posix_leg_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]
+# cadence_posix_worker_start <q_flow_lib> <flow> <task>
+# cadence_posix_worker_end <q_flow_lib> <q_alert_lib> <flow> [ok_rcs] [skip_rcs]
 # Print the shared flow-run + alert block of a generated POSIX runner,
 # each line indented four spaces to sit inside the runner's `{ ... } >> "$log"`
 # group. _start goes BEFORE the payload line, _end AFTER it; the runner must have
 # set `log` and captured the payload's status in `_rc`. <q_*_lib> are already
 # `%q`-quoted paths. ok_rcs / skip_rcs are space-separated exit codes: ok_rcs
-# (default `0`) are a completed leg (clear the alert), skip_rcs a benign skip
+# (default `0`) are a completed worker (clear the alert), skip_rcs a benign skip
 # (record skipped, neither alert nor clear); every other rc is a failure. Check
 # the payload's own exit-code contract before passing either list, or an
 # expected non-zero exit pages the operator. Never changes the runner's own rc.
 # shellcheck disable=SC2016  # single-quoted $log/$_rc are emitted literally for the runner's own /bin/sh
-cadence_posix_leg_start() {
+cadence_posix_worker_start() {
     printf '    _flow_run_id=$(%s --append-start %s "" "" "" "" %s "$log" "$$" 2>/dev/null) || _flow_run_id=\n' "$1" "$2" "$3"
 }
 # shellcheck disable=SC2016  # as above
-cadence_posix_leg_end() {
+cadence_posix_worker_end() {
     local q_flow_lib="$1" q_alert_lib="$2" flow="$3" ok="${4:-0}" skip="${5:-}" rc pat q_path
     pat=""
     for rc in $ok; do pat="$pat${pat:+|}$rc"; done
@@ -322,9 +322,9 @@ cadence_vbs_path() {
 # cadence_vbs_wrapper <bat_win>
 # Emit the body of the .vbs shim that hosts the .bat under wscript //B.
 # This replaces the superseded pwsh -WindowStyle Hidden wrapper:
-# that shape was MEASURED to still allocate visible consoles despite Hidden,
+# that shape was MEASURED to still allocate visible chiefs despite Hidden,
 # while wscript //B hosting this shim allocates zero (wscript.exe is a
-# windowless host; the .bat's cmd.exe console is launched with SW_HIDE).
+# windowless host; the .bat's cmd.exe chief is launched with SW_HIDE).
 #
 # WScript.Shell.Run(cmd, 0, True) launches <bat_win> with a HIDDEN window
 # (intWindowStyle=0), WAITS for it, and RETURNS its exit code; WScript.Quit

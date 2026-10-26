@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for guard-relay-writes.sh (Guard D): the relay's
-# write-deny fence on console inbox writes, leg handover docs, the console
+# write-deny fence on chief inbox writes, worker handover docs, the chief
 # rundir, and the env-override / inbox-send --token Bash shapes that would
 # defeat Guards B/C. Every row runs twice — HIMMEL_CONSOLE_RELAY=1 (expect
 # the documented rc) and unset (expect a silent allow, rc=0/empty) — to pin
@@ -112,9 +112,9 @@ combined_output() {
 
 INBOX_X="$ROOT/inbox/X.md"
 WORKER_SESSION_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-a-legN9-2026-09-12-RESUME.md"
-RUNDIR_LOG="/run/user/1000/himmel-console/s/inbox-sent.log"
+RUNDIR_LOG="/run/user/1000/himmel-chief/s/inbox-sent.log"
 OWN_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-relay-2026-09-12-RESUME.md"
-EXTERNAL_LEG_DOC="/home/u/luna/handovers/a-legN3-2026-09-12-RESUME.md"
+EXTERNAL_WORKER_DOC="/home/u/luna/handovers/a-legN3-2026-09-12-RESUME.md"
 
 TRAVERSAL_INBOX="$ROOT/other/../inbox/X.md"
 DOTSLASH_INBOX="$ROOT/./inbox/X.md"
@@ -134,12 +134,12 @@ ROWS_JSON=(
     "$(write_payload Write "$RUNDIR_LOG")"
     "$(write_payload Edit "$OWN_DOC")"
     "$(bash_payload "echo x >> $ROOT/inbox/X.md")"
-    "$(bash_payload "printf x | tee -a $EXTERNAL_LEG_DOC")"
+    "$(bash_payload "printf x | tee -a $EXTERNAL_WORKER_DOC")"
     "$(bash_payload "bash scripts/handover/chief-kit/inbox-send.sh S halt")"
     "$(bash_payload "bash scripts/handover/chief-kit/inbox-send.sh S go --token t")"
     "$(bash_payload "HIMMEL_CONSOLE_RELAY= bash inbox-send.sh S x")"
     "$(bash_payload "CLAUDE_PID=1 bash x.sh")"
-    "$(bash_payload "CONSOLE_SESSION_NAME=j bash x.sh")"
+    "$(bash_payload "CHIEF_SESSION_NAME=j bash x.sh")"
     "$(bash_payload "SESSION_NAME_CMDLINE_FILE=f bash x.sh")"
     "$(bash_payload "env -u HIMMEL_CONSOLE_LEG bash x.sh")"
     "$(bash_payload "cat $ROOT/inbox/X.md")"
@@ -147,7 +147,7 @@ ROWS_JSON=(
     "$(bash_payload "cp x $ROOT/inbox/X.md")"
     "$(bash_payload "rm $RUNDIR_LOG")"
     "$(write_payload Write "$DOTSLASH_INBOX")"
-    "$(bash_payload "unset CLAUDE_PID CONSOLE_SESSION_NAME; bash inbox-send.sh S x")"
+    "$(bash_payload "unset CLAUDE_PID CHIEF_SESSION_NAME; bash inbox-send.sh S x")"
     "$(bash_payload "env -u CLAUDE_PID bash inbox-send.sh S x")"
     "$(write_payload Write "$SYMLINK_INTO_INBOX")"
     "$(bash_payload "rm -rf $ROOT/inbox")"
@@ -341,7 +341,7 @@ done
 echo ""
 echo "=== HIMMEL-3872: BSD readlink — guarded matches through the fallback, fail-closed ==="
 expect_row bsd-new-inbox-file 2 "$(run_relay_with bsd-new-inbox-file "$(write_payload Write "$ROOT/inbox/new.md")" "$BSD")" inbox-write
-expect_row bsd-new-leg-doc 2 "$(run_relay_with bsd-new-leg-doc "$(write_payload Write "$ROOT/yotamleo/himmel/HIMMEL-1-b-legN4-2026-09-29-RESUME.md")" "$BSD")" leg-doc-write
+expect_row bsd-new-worker-doc 2 "$(run_relay_with bsd-new-worker-doc "$(write_payload Write "$ROOT/yotamleo/himmel/HIMMEL-1-b-legN4-2026-09-29-RESUME.md")" "$BSD")" worker-doc-write
 expect_row bsd-alias-parent-into-inbox 2 "$(run_relay_with bsd-alias-parent-into-inbox "$(write_payload Write "$TMP/inbox-alias/new.md")" "$BSD")" inbox-write
 expect_row bsd-dangling-symlink 2 "$(run_relay_with bsd-dangling-symlink "$(write_payload Write "$TMP/dangling.md")" "$BSD")" unresolved-path
 expect_row bsd-dangling-into-inbox 2 "$(run_relay_with bsd-dangling-into-inbox "$(write_payload Write "$SYMLINK_INTO_INBOX")" "$BSD")" unresolved-path

@@ -15,7 +15,7 @@
 //     write-verdicts.sh run (its --from-file resolved by readFile) plus any
 //     ledger rows. Text that only quotes a verdict line records nothing.
 //
-// The state shape is the contract agreed with the AG-UI page (leg N1346):
+// The state shape is the contract agreed with the AG-UI page (worker N1346):
 // { review: { pr?, head?, round?, maxRounds?, findings: [{ id, severity, title,
 // file?, line?, verdict?, ticket? }] } }. An absent verdict means open.
 

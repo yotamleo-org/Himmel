@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for guard-judge-writes.sh: a judge session
-# (HIMMEL_CONSOLE_JUDGE=1, exported by headed-arm-leg.sh --judge) is denied
+# (HIMMEL_CONSOLE_JUDGE=1, exported by headed-arm-worker.sh --judge) is denied
 # every outward or mutating transition — push, PR create/comment/review/merge,
 # the merge and GO scripts, Jira writes, inbox sends, a foreign MCP tool, and an
 # Edit/Write outside its verdict and scratch dirs — while its reads and its
@@ -11,7 +11,7 @@
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Pure bash + jq over a temp sandbox; not ported to native PowerShell — the
-# judge lane (headed-arm-leg.sh --judge) is Linux-only.
+# judge lane (headed-arm-worker.sh --judge) is Linux-only.
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,7 +31,7 @@ mkdir -p "$FAKE_HOME/.cache/himmel/verdicts/J1/scratch" "$ROOT/u/himmel/verdicts
 ln -s "$REPO/scripts" "$ROOT/u/himmel/verdicts/J1/escape"
 # A dangling symlink whose target's parent does not exist.
 ln -s "$TMP/no-such-dir/x.md" "$ROOT/u/himmel/verdicts/J1/dangling"
-# The launched judge's binding (headed-arm-leg.sh --judge exports both).
+# The launched judge's binding (headed-arm-worker.sh --judge exports both).
 OWN_DOC="$ROOT/u/himmel/HIMMEL-1-judge-J1-2026-10-06.md"
 OWN_QID=J1
 # The /tmp scratch judge-dir.sh and the session scratchpad live under (T7).
@@ -99,7 +99,7 @@ row "gh pr comment" 2 "$(bash_payload 'gh pr comment 12 --body-file b.md')"
 row "gh pr review" 2 "$(bash_payload 'gh pr review 12 --approve')"
 row "gh pr merge" 2 "$(bash_payload 'gh pr merge 12 --squash')"
 row "gh api POST comment" 2 "$(bash_payload 'gh api repos/o/r/issues/12/comments -f body=x')"
-row "leg-pr-open.sh" 2 "$(bash_payload 'bash scripts/lanes/leg-pr-open.sh t.txt b.md')"
+row "worker-pr-open.sh" 2 "$(bash_payload 'bash scripts/lanes/worker-pr-open.sh t.txt b.md')"
 row "merge-on-green.sh" 2 "$(bash_payload 'bash /repo/scripts/handover/merge-on-green.sh')"
 row "go.sh" 2 "$(bash_payload 'bash scripts/handover/console-kit/go.sh 12 abc')" # old-term-ok: the old path must still be denied
 row "go.sh through chief-kit" 2 "$(bash_payload 'bash scripts/handover/chief-kit/go.sh 12 abc')"

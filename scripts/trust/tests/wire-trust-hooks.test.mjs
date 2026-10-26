@@ -648,7 +648,7 @@ describe('it refuses rather than guessing', () => {
 
 describe('the report is not confused with the wiring', () => {
   test('a successful install tells the operator to VERIFY, not to believe it', () => {
-    // Three chain legs reported "merged" while the recorder held zero rows.
+    // Three chain workers reported "merged" while the recorder held zero rows.
     // The install message must not become the fourth way to say "wired" without
     // the number.
     const f = fixture('says-verify');

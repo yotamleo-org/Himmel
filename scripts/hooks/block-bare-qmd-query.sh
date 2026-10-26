@@ -852,7 +852,7 @@ _int_reader() {
             case $id in
                 ''|[0-9]*) ;;
                 python[0-9]*|node|nodejs|perl|ruby|c|e|p|ne|pe|lne|lpe|ane|ape|nae|pae|lane|lape) ;;
-                pipe|import|sys|print|printf|say|puts|stdin|read|readlines|readline|line|lines|for|in|if|while|chomp|split|join|sort|length|len|strip|rstrip|lstrip|lower|upper|json|load|loads|dumps|str|int|range|sorted|set|list|end|flush|write|stdout|each|gets|console|log|process|_) ;;
+                pipe|import|sys|print|printf|say|puts|stdin|read|readlines|readline|line|lines|for|in|if|while|chomp|split|join|sort|length|len|strip|rstrip|lstrip|lower|upper|json|load|loads|dumps|str|int|range|sorted|set|list|end|flush|write|stdout|each|gets|chief|log|process|_) ;;
                 *) return 1 ;;
             esac
         done < <(printf '%s\n' "$lc" | LC_ALL=C tr -c 'a-z0-9_' '\n')

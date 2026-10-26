@@ -12,11 +12,11 @@
 # Exit: 0 = all cases pass, 1 = at least one failed.
 set -uo pipefail
 
-# The suite owns every case's env; an ambient leg shell (HIMMEL_LEAN_LEG=1
-# under --profile leg-impl) must not silently turn every
-# unmarked case into a lean-leg case. Only the two explicit lean cases below
+# The suite owns every case's env; an ambient worker shell (HIMMEL_LEAN_WORKER_SESSION=1
+# under --profile worker-impl) must not silently turn every
+# unmarked case into a lean-worker case. Only the two explicit lean cases below
 # set it themselves.
-unset WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_LEG WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG CLAUDE_PROJECT_DIR 2>/dev/null || true
+unset WORKER_SESSION_LANE WORKER_SESSION_CONTEXT WORKER_SESSION_REPO WORKER_SESSION_EFFORT HEADED_ARM_LAUNCHER HEADED_ARM_LAUNCHER_ENV HEADED_ARM_RECORDER IMPL_GUARD_OK INLINE_IMPL_OK HIMMEL_CONSOLE_LEG HIMMEL_LEAN_WORKER_SESSION WORKER_SESSION_PROFILE WORKER_SESSION_PROFILE_SETTINGS WORKER_SESSION_PROFILE_PREFACE WORKER_SESSION_PROFILE_MCP_CONFIG CLAUDE_PROJECT_DIR 2>/dev/null || true
 
 # grepq <text> [grep-args...] — a `grep -q` test against <text> with NO
 # pipeline. printf/echo-into-`grep -q` is a trap under this file's
@@ -95,20 +95,20 @@ if [ "${1:-}" = "--selftest-hermetic" ]; then
 fi
 
 echo "== suite hermeticity (HIMMEL-2940) =="
-# A leg's ambient HIMMEL_LEAN_LEG=1 must not reach the hook invocation before
+# A worker's ambient HIMMEL_LEAN_WORKER_SESSION=1 must not reach the hook invocation before
 # the preamble unset above has a chance to clear it — so this recurses with
-# that var set exactly the way a lean-leg caller sets it (before this file's
-# own preamble runs), not via the lean-leg case's own override further down.
+# that var set exactly the way a lean-worker caller sets it (before this file's
+# own preamble runs), not via the lean-worker case's own override further down.
 # Each recursion gets its own `mktemp -d` fixture dir, so the raw outputs
 # differ by that random path alone even with no leak — normalize it out
 # before comparing. `pipefail` (set above) makes $? after the sed pipe
 # reflect the bash recursion's own exit status, not sed's.
-leaked="$(HIMMEL_LEAN_LEG=1 bash "$0" --selftest-hermetic | sed -E 's#[^ ]*/selftest#SELFTEST_DIR#g')"; leaked_rc=$?
+leaked="$(HIMMEL_LEAN_WORKER_SESSION=1 bash "$0" --selftest-hermetic | sed -E 's#[^ ]*/selftest#SELFTEST_DIR#g')"; leaked_rc=$?
 clean="$(bash "$0" --selftest-hermetic | sed -E 's#[^ ]*/selftest#SELFTEST_DIR#g')"; clean_rc=$?
 if [ "$leaked_rc" -eq 0 ] && [ "$clean_rc" -eq 0 ] && [ "$leaked" = "$clean" ] && [ -n "$leaked" ]; then
-    pass "suite is hermetic to a lean-leg caller"
+    pass "suite is hermetic to a lean-worker caller"
 else
-    fail "suite is hermetic to a lean-leg caller (leaked_rc=$leaked_rc clean_rc=$clean_rc leaked='$leaked' clean='$clean')"
+    fail "suite is hermetic to a lean-worker caller (leaked_rc=$leaked_rc clean_rc=$clean_rc leaked='$leaked' clean='$clean')"
 fi
 
 # --- Case 1: OFF → no output, exit 0 ----------------------------------------
@@ -296,27 +296,27 @@ else
     fail "broken root -> expected exit 0, got rc=$rc4"
 fi
 
-# --- Case 5: lean leg -> nothing, not even latest.md ----------
+# --- Case 5: lean worker -> nothing, not even latest.md ----------
 # Same digest route as Case 2 (which injects a pointer), but under
-# HIMMEL_LEAN_LEG=1 the hook must produce no output AND no side effect: the
+# HIMMEL_LEAN_WORKER_SESSION=1 the hook must produce no output AND no side effect: the
 # guard runs before the render, so latest.md is never written either.
 state5="$TMP/s5"; seed_ledger "$state5"; touch "$state5/.refreshed-at"
 out5="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state5" \
-    WHERE_ARE_WE_BRANCH_OVERRIDE=main HIMMEL_LEAN_LEG=1 \
+    WHERE_ARE_WE_BRANCH_OVERRIDE=main HIMMEL_LEAN_WORKER_SESSION=1 \
     HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" </dev/null 2>/dev/null)"; rc5=$?
 if [ "$rc5" = 0 ] && [ -z "$out5" ] && [ ! -e "$state5/latest.md" ]; then
-    pass "lean leg -> no injection and no latest.md write, exit 0"
+    pass "lean worker -> no injection and no latest.md write, exit 0"
 else
-    fail "lean leg -> expected empty+no latest.md+0, got rc=$rc5 out='$out5'"
+    fail "lean worker -> expected empty+no latest.md+0, got rc=$rc5 out='$out5'"
 fi
 
 # --- Case 5b: fail-open — only the exact value 1 leans ----------------------
 state5b="$TMP/s5b"; seed_ledger "$state5b"; touch "$state5b/.refreshed-at"
 out5b="$(HIMMEL_REPO="$HERMETIC_ROOT" WHERE_ARE_WE_STATE_DIR="$state5b" \
-    WHERE_ARE_WE_BRANCH_OVERRIDE=main HIMMEL_LEAN_LEG=0 \
+    WHERE_ARE_WE_BRANCH_OVERRIDE=main HIMMEL_LEAN_WORKER_SESSION=0 \
     HIMMEL_WHERE_ARE_WE=1 bash "$HOOK" </dev/null 2>/dev/null)"; rc5b=$?
 if [ "$rc5b" = 0 ] && grepq "$out5b" -F 'digest not loaded'; then
-    pass "HIMMEL_LEAN_LEG=0 -> today's pointer still injected (fail-open)"
+    pass "HIMMEL_LEAN_WORKER_SESSION=0 -> today's pointer still injected (fail-open)"
 else
     fail "lean guard is not fail-open: rc=$rc5b out='$out5b'"
 fi

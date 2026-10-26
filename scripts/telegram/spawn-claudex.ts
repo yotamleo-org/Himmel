@@ -1181,7 +1181,7 @@ export async function executeClaudexRun(deps: {
     }
     const fm = finalClaudexMeta(res);
     // a watchdog-killed run reports failed with a reason naming
-    // the startup timeout, so a console reads it as a hang, not a crash (same
+    // the startup timeout, so a chief reads it as a hang, not a crash (same
     // failure_class the glm lane records).
     const hang = startupHang && (fm.status === "failed" || fm.status === "timeout")
       ? {

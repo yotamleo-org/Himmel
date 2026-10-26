@@ -944,7 +944,7 @@ git -C "$FX" checkout -q -b feat/urlpush main
 # the CX1/CX2/R4C1F tests exercise deliberately on this same fixture shape.
 echo 'function urlfeature(){}' > "$FX/urlfeature.sh"
 git -C "$FX" add urlfeature.sh
-git -C "$FX" -c user.email=t@t -c user.name=t commit -q -m "leg feature on top of fork base"
+git -C "$FX" -c user.email=t@t -c user.name=t commit -q -m "worker feature on top of fork base"
 fx_feat_sha=$(git -C "$FX" rev-parse --verify feat/urlpush)
 
 rc=0; out=$(cd "$FX" && bash "$HOOK" "$FORK_URL" "$FORK_URL" <<< "refs/heads/feat/urlpush $fx_feat_sha refs/heads/feat/urlpush $Z40" 2>&1) || rc=$?

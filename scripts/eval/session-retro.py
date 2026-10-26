@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""scripts/eval/session-retro.py - top recurring leg stall classes over a window (HIMMEL-5514 POC).
+"""scripts/eval/session-retro.py - top recurring worker stall classes over a window (HIMMEL-5514 POC).
 
-Read-only, deterministic, no model call. Counts the leg-failures ledger that
-scripts/handover/chief-kit/leg-digest-step.sh feeds (writer: leg_ledger.py;
+Read-only, deterministic, no model call. Counts the worker-failures ledger that
+scripts/handover/chief-kit/worker-digest-step.sh feeds (writer: worker_ledger.py;
 path: $HIMMEL_WORKER_SESSION_FAILURES_LEDGER, else the old $HIMMEL_LEG_FAILURES_LEDGER,
 else ~/.himmel/leg-failures.jsonl).
 
@@ -13,9 +13,9 @@ occurrences (the row's count), then by name. Rows are windowed on their `ts`.
 traj/* rows are trajectory metrics, not stalls, so they are left out unless
 --include-traj is given.
 
-Output: one header line, then `rank sessions count class legs`, where legs are
-up to three example legs (most occurrences first; the session prefix stands in
-for a row with no leg label).
+Output: one header line, then `rank sessions count class workers`, where workers are
+up to three example workers (most occurrences first; the session prefix stands in
+for a row with no worker label).
 
 Exit: 0 ok, 2 usage error (argparse) or unreadable ledger (the message says which).
 """
@@ -80,9 +80,9 @@ def main(argv=None):
                 r = json.loads(line)
                 ts = parse_ts(r["ts"])
                 cls, sess, n = r["class"], r["session"], int(r["count"])
-                leg = r.get("leg") or sess[:8]
-                if not isinstance(cls, str) or not isinstance(sess, str) or not isinstance(leg, str):
-                    raise ValueError("class, session and leg must be strings")
+                worker = r.get("leg") or sess[:8]
+                if not isinstance(cls, str) or not isinstance(sess, str) or not isinstance(worker, str):
+                    raise ValueError("class, session and worker must be strings")
             except (ValueError, KeyError, TypeError, AttributeError):
                 skipped += 1
                 continue
@@ -94,14 +94,14 @@ def main(argv=None):
             c = classes.setdefault(cls, {"sessions": set(), "legs": {}, "count": 0})
             c["count"] += n
             c["sessions"].add(sess)
-            c["legs"][leg] = c["legs"].get(leg, 0) + n
+            c["legs"][worker] = c["legs"].get(worker, 0) + n
 
     ranked = sorted(classes.items(), key=lambda kv: (-len(kv[1]["sessions"]), -kv[1]["count"], kv[0]))
     print("session-retro: %s .. %s  rows=%d classes=%d skipped=%d  ledger=%s"
           % (cutoff.strftime("%Y-%m-%dT%H:%MZ"), now.strftime("%Y-%m-%dT%H:%MZ"), rows, len(classes), skipped, path))
     for i, (cls, c) in enumerate(ranked[: a.top], 1):
-        legs = [w for w, _ in sorted(c["legs"].items(), key=lambda kv: (-kv[1], kv[0]))[:EXAMPLES]]
-        print("%d\t%d\t%d\t%s\t%s" % (i, len(c["sessions"]), c["count"], cls, ",".join(legs)))
+        workers = [w for w, _ in sorted(c["legs"].items(), key=lambda kv: (-kv[1], kv[0]))[:EXAMPLES]]
+        print("%d\t%d\t%d\t%s\t%s" % (i, len(c["sessions"]), c["count"], cls, ",".join(workers)))
     return 0
 
 

@@ -5,38 +5,38 @@ Read-only, deterministic, no model call. Reads every *.jsonl directly under --di
 ~/.claude/projects/-home-overlord-Documents-github-himmel). Only token counts and tool names
 are read.
 
-  handover-cost.py [--dir D] [--name-re RE] [--since ISO8601] [--legs-after ISO8601]
+  handover-cost.py [--dir D] [--name-re RE] [--since ISO8601] [--workers-after ISO8601]
 
-Consoles are the sessions whose `agent-name` matches --name-re (default -roadmap-(console|chief)$),
+Chiefs are the sessions whose `agent-name` matches --name-re (default -roadmap-(console|chief)$),
 ordered by first record; each consecutive pair is one handover P -> S. A turn is a de-duplicated
 assistant message id. Price table (input-equivalent tokens, mirrors scripts/lanes/lib/burn-weights.sh,
 same WORKER_SESSION_BURN_W_* overrides): input 1, cache_read 0.1, cache_creation 1.25, output 5.
 
 Pieces per handover (turns/cost):
-  prep   P's turns from its last `console.sh next` call up to S's first turn
+  prep   P's turns from its last `chief.sh next` call up to S's first turn
   relay  P's turns from S's first turn on (relay + wrap)
   az     S's turns up to P's last turn (successor ACTION ZERO + wait)
-  leg    per non-console session that received a SUCCESSION message naming P at or after P's last
-         `console.sh next` (no upper bound: a relay drained after P wrapped is the normal case),
+  worker    per non-chief session that received a SUCCESSION message naming P at or after P's last
+         `chief.sh next` (no upper bound: a relay drained after P wrapped is the normal case),
          as a user message, a queued_command attachment or a himmel-bus record (a hook_additional_context
          attachment): the turns after the delivery up to and
-         including the one that says `SUCCESSION accepted`, at most 4. --legs-after drops legs whose first record is
-         earlier than the cutoff (count only legs launched after the fast path merged).
+         including the one that says `SUCCESSION accepted`, at most 4. --workers-after drops workers whose first record is
+         earlier than the cutoff (count only workers launched after the fast path merged).
 
 gross = every turn in the four pieces (the HIMMEL-6491 method, an upper bound: overlap turns include work
 that would have happened anyway). net = only the turns that touch the handover machinery (their tool
-input or text names console.sh, action-zero, console-wait, live-state, HANDOFF, SUCCESSION, RELAYED,
+input or text names chief.sh, action-zero, chief-wait, live-state, HANDOFF, SUCCESSION, RELAYED,
 ListAgents or succession.md).
 Mechanical columns (not priced): p_after_s = P's turns from S's first turn on; s_to_marker = S's
 turns up to and including its first `append-results.sh` call ("-" when S made none).
 
 ponytail: net is a name-match on handover scripts, upgrade path = hand-label a sample and compare.
 
-Output: one `HANDOVER P->S prep=t/cost relay=t/cost az=t/cost leg=t/cost legs=n p_after_s=a
-s_to_marker=m gross=G net=N` row per pair, then `MEAN n=<pairs> ...` (integer means; legs is the
-mean legs per handover to one decimal; s_to_marker over the pairs that have one) and a `legs_skipped_before_cutoff=<n>` line.
+Output: one `HANDOVER P->S prep=t/cost relay=t/cost az=t/cost worker=t/cost workers=n p_after_s=a
+s_to_marker=m gross=G net=N` row per pair, then `MEAN n=<pairs> ...` (integer means; workers is the
+mean workers per handover to one decimal; s_to_marker over the pairs that have one) and a `workers_skipped_before_cutoff=<n>` line.
 
-Exit: 0 ok, 2 usage error (argparse, including an invalid --name-re), unreadable dir, fewer than two consoles
+Exit: 0 ok, 2 usage error (argparse, including an invalid --name-re), unreadable dir, fewer than two chiefs
 or no measurable handover (the message says which).
 """
 
@@ -59,7 +59,7 @@ WORKER_SESSION_TURN_CAP = 4
 NEXT_RE = re.compile(r'(?:console|chief)\.sh(?:\\"|")?\s+next\b')
 MARKER_RE = re.compile(r"\bbash\s+\S*append-results\.sh")
 MECH_RE = re.compile(
-    r"(?:console|chief)\.sh|action-zero|console-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
+    r"(?:console|chief)\.sh|action-zero|chief-wait|live-state|HANDOFF|SUCCESSION|RELAYED|ListAgents|succession\.md"
 )
 PIECES = ("prep", "relay", "az", "leg")
 
@@ -147,7 +147,7 @@ def piece(turns):
     return (len(turns), sum(t[1] for t in turns), sum(t[1] for t in turns if t[2]))
 
 
-def handover(p, s, legs, legs_after):
+def handover(p, s, workers, workers_after):
     p_next = [t[0] for t in p["turns"] if t[3]]
     p_last = p["turns"][-1][0] if p["turns"] else None
     if not p_next or not p_last or not s["turns"]:
@@ -158,12 +158,12 @@ def handover(p, s, legs, legs_after):
         "relay": piece([t for t in p["turns"] if t[0] >= s_first]),
         "az": piece([t for t in s["turns"] if t[0] <= p_last]),
     }
-    leg_turns, nlegs, skipped = [], 0, 0
-    for lg in legs:
+    worker_turns, nlegs, skipped = [], 0, 0
+    for lg in workers:
         got = [x[0] for x in lg["deliveries"] if nxt <= x[0] and p["name"] in x[1]]
         if not got:
             continue
-        if legs_after and (not lg["first"] or lg["first"] < legs_after):
+        if workers_after and (not lg["first"] or lg["first"] < workers_after):
             skipped += 1
             continue
         after = [t for t in lg["turns"] if t[0] > got[0]]
@@ -172,12 +172,12 @@ def handover(p, s, legs, legs_after):
             taken.append(t)
             if t[4]:
                 break
-        leg_turns.extend(taken)
+        worker_turns.extend(taken)
         nlegs += 1
     marked = [i for i, t in enumerate(s["turns"]) if t[5]]
     out["p_after_s"] = out["relay"][0]
     out["s_to_marker"] = marked[0] + 1 if marked else None
-    out["leg"] = piece(leg_turns)
+    out["leg"] = piece(worker_turns)
     out["legs"] = nlegs
     out["skipped"] = skipped
     return out
@@ -188,51 +188,56 @@ def main(argv=None):
     ap.add_argument("--dir", default=DEFAULT_DIR)
     ap.add_argument("--name-re", type=regex_arg, default=r"-roadmap-(console|chief)$")
     ap.add_argument("--since", type=iso_arg)
-    ap.add_argument("--legs-after", type=iso_arg)
+    ap.add_argument("--workers-after", type=iso_arg)
+    ap.add_argument("--legs-after", type=iso_arg, dest="legs_after", help=argparse.SUPPRESS)
     a = ap.parse_args(argv)
+    if a.legs_after is not None:
+        if not env_alias.legacy_flag("--legs-after", "--workers-after"):
+            ap.error("unrecognized arguments: --legs-after")
+        a.workers_after = a.workers_after or a.legs_after
 
     d = os.path.expanduser(a.dir)
     if not os.path.isdir(d):
         print("handover-cost: cannot read %s: not a directory" % d, file=sys.stderr)
         return 2
     name_re = re.compile(a.name_re)
-    consoles, legs = [], []
+    chiefs, workers = [], []
     for path in sorted(glob.glob(os.path.join(d, "*.jsonl"))):
         s = load(path)
         if not s["name"] or not s["first"]:
             continue
-        (consoles if name_re.search(s["name"]) else legs).append(s)
-    consoles = sorted([c for c in consoles if not a.since or c["first"] >= a.since], key=lambda c: c["first"])
-    if len(consoles) < 2:
-        print("handover-cost: fewer than two consoles matching %r in %s" % (a.name_re, d), file=sys.stderr)
+        (chiefs if name_re.search(s["name"]) else workers).append(s)
+    chiefs = sorted([c for c in chiefs if not a.since or c["first"] >= a.since], key=lambda c: c["first"])
+    if len(chiefs) < 2:
+        print("handover-cost: fewer than two chiefs matching %r in %s" % (a.name_re, d), file=sys.stderr)
         return 2
 
     rows = []
-    for p, s in zip(consoles, consoles[1:]):
-        h = handover(p, s, legs, a.legs_after)
+    for p, s in zip(chiefs, chiefs[1:]):
+        h = handover(p, s, workers, a.workers_after)
         if not h:
             continue
         gross = sum(h[k][1] for k in PIECES)
         net = sum(h[k][2] for k in PIECES)
         rows.append((h, gross, net))
-        print("HANDOVER %s->%s %s legs=%d p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
+        print("HANDOVER %s->%s %s workers=%d p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
             p["name"], s["name"],
             " ".join("%s=%d/%d" % (k, h[k][0], round(h[k][1])) for k in PIECES), h["legs"], h["p_after_s"],
             "-" if h["s_to_marker"] is None else h["s_to_marker"], round(gross), round(net)))
     n = len(rows)
     if not n:
-        print("handover-cost: no measurable handover among %d consoles in %s "
-              "(each pair needs a console.sh next call and assistant turns)" % (len(consoles), d), file=sys.stderr)
+        print("handover-cost: no measurable handover among %d chiefs in %s "
+              "(each pair needs a chief.sh next call and assistant turns)" % (len(chiefs), d), file=sys.stderr)
         return 2
     if n:
         mean = lambda xs: round(sum(xs) / n)
         marked = [r[0]["s_to_marker"] for r in rows if r[0]["s_to_marker"] is not None]
-        print("MEAN n=%d %s legs=%.1f p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
+        print("MEAN n=%d %s workers=%.1f p_after_s=%d s_to_marker=%s gross=%d net=%d" % (
             n, " ".join("%s=%d/%d" % (k, mean([r[0][k][0] for r in rows]), mean([r[0][k][1] for r in rows]))
                         for k in PIECES),
             sum(r[0]["legs"] for r in rows) / n, mean([r[0]["p_after_s"] for r in rows]), round(sum(marked) / len(marked)) if marked else "-",
             mean([r[1] for r in rows]), mean([r[2] for r in rows])))
-    print("legs_skipped_before_cutoff=%d" % sum(r[0]["skipped"] for r in rows))
+    print("workers_skipped_before_cutoff=%d" % sum(r[0]["skipped"] for r in rows))
     return 0
 
 

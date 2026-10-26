@@ -283,7 +283,7 @@ t8() { PATH="$TMP/t8bin:$PATH" BUN_INSTALL="$TMP/bun" bash "$LIB_DIR/qmd-bounded
 assert_eq "T8a search expands to a lex-only query" "query|-c|himmel|--no-rerank|--|lex: the chief
 lex: the console|" "$(t8 search -c himmel "the chief")"
 assert_eq "T8b query keeps its vec line" "query|--|lex: the chief
-lex: the console
+lex: the chief
 vec: the chief|" "$(t8 query "the chief")"
 assert_eq "T8c QMD_VOCAB_EXPAND=0 runs the argv as given" "search|-c|himmel|the chief|" "$(QMD_VOCAB_EXPAND=0 t8 search -c himmel "the chief")"
 assert_eq "T8d a question with no fleet word runs as given" "search|prompt cache|" "$(t8 search "prompt cache")"

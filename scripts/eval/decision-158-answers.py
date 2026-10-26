@@ -7,7 +7,7 @@ sample behind it and the same number measured at an earlier cut (before), so the
 
   q1  test-first record      share of agent sessions that ran a failing test before the implementation
                              (sessions with no test run or no code are left out, not counted as misses;
-                             only leg-trajectory rows of trajectory_v 2, so the two meanings never mix)
+                             only worker-trajectory rows of trajectory_v 2, so the two meanings never mix)
   q2  unsorted refusals      share of hook and gate refusals the classifier leaves unclear
   q3  judge model and effort share of merged PRs whose last GO came from the most used judge model
   q4  CodeRabbit sample      share of CodeRabbit's adjudicated findings that were right
@@ -47,7 +47,7 @@ def put(m, ci, key, k, n):
 
 def q1(rows, cut, m, ci, notes):
     seen = [(r["ts"], r["metrics"].get("red_before_green")) for r in rows
-            if r["eval"] == "leg-trajectory" and (r.get("config") or {}).get("trajectory_v") == 2]
+            if r["eval"] == "worker-trajectory" and (r.get("config") or {}).get("trajectory_v") == 2]
     seen = [(t, 1 if v in (1, True) else 0) for t, v in seen if v is not None]
     put(m, ci, "q1", sum(v for t, v in seen), len(seen))
     early = [v for t, v in seen if t <= cut]

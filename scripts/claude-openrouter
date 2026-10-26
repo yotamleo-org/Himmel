@@ -300,13 +300,13 @@ SEED_LOCK_TIMEOUT="${CLAUDE_LANE_SEED_LOCK_TIMEOUT:-60}"
 # shellcheck disable=SC2034 # State consumed by the sourced mirror-seed library.
 SEED_LOCK_STALE="${CLAUDE_LANE_SEED_LOCK_STALE:-120}"
 
-seed_leg_trust() {
+seed_worker_trust() {
   # The dispatch authorizes only this launcher's primary checkout, not an
   # arbitrary inherited cwd. The existing seed lock serializes this update.
   # shellcheck source=lib/git-clean.sh
   . "$HERE/lib/git-clean.sh"
   or_common="$(git_clean -C "$REPO_ROOT" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" \
-    || seed_fail "resolve the primary checkout for leg trust"
+    || seed_fail "resolve the primary checkout for worker trust"
   or_primary="$(dirname "$or_common")"
   node -e '
 const fs=require("fs"), p=process.argv[1], root=process.argv[2];
@@ -324,12 +324,12 @@ try {
   const temp=p+".tmp."+process.pid;
   fs.writeFileSync(temp,JSON.stringify(j,null,2)+"\n",{mode:0o600});
   fs.renameSync(temp,p);
-} catch(e) { console.error("claude-openrouter: leg onboarding seed failed: "+e.message); process.exit(4); }
-' "$CONFIG_DIR/.claude.json" "$or_primary" || seed_fail "seed leg onboarding and primary-root trust"
+} catch(e) { console.error("claude-openrouter: worker onboarding seed failed: "+e.message); process.exit(4); }
+' "$CONFIG_DIR/.claude.json" "$or_primary" || seed_fail "seed worker onboarding and primary-root trust"
 }
 
 seed_after_mirror() {
-  [ "${WORKER_SESSION_LANE:-}" != openrouter ] || seed_leg_trust
+  [ "${WORKER_SESSION_LANE:-}" != openrouter ] || seed_worker_trust
 }
 
 if [ "${WORKER_SESSION_LANE:-}" = openrouter ] || [ ! -f "$CONFIG_DIR/.seeded" ] || [ "$RESEED" -eq 1 ] || config_seed_stale; then

@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Hermetic test for `clean-garden.sh --only <worktree-path|branch>`:
-# prune exactly ONE worktree, so a console wrapping one leg cannot reach across
-# a fleet-wide sweep and remove another live leg's cwd. Temp git repo + real
+# prune exactly ONE worktree, so a chief wrapping one worker cannot reach across
+# a fleet-wide sweep and remove another live worker's cwd. Temp git repo + real
 # worktrees + a stub gh that reports every feat/* branch as merged at its tip.
 # Pattern follows scripts/test-clean-prune-strays.sh.
 set -uo pipefail
@@ -293,7 +293,7 @@ git -C "$REPO" push -q origin "none/pushed:refs/heads/none/pushed"
 out=$(run_clean "$CLEAN_GARDEN" prune --only "$WT_UA_PUSHED" --only-allow-unmerged)
 expect "9e: ahead-of-main but head pushed to origin pruned WITH the flag" "$out" is_gone "$WT_UA_PUSHED"
 
-# 9g: a never-merged branch's leg scratch may be its only copy,
+# 9g: a never-merged branch's worker scratch may be its only copy,
 # so the root-scratch arms do NOT apply under --only-allow-unmerged; only tool
 # churn (package-lock.json) stays discardable.
 WT_UA_SCRATCH=$(mk_wt wt-ua-scratch none/scratch)

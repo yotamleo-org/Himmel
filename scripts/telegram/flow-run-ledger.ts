@@ -115,7 +115,7 @@ function lastLines(text: string, n: number): string {
 }
 
 // requiredMarker: a zero exit whose log tail lacks the bare
-// completion marker line is a parked/blocked leg, not a complete one (mirrors
+// completion marker line is a parked/blocked worker, not a complete one (mirrors
 // flow_run_classify in scripts/lib/flow-run-ledger.sh). A missing log is no marker.
 export function classifyOutcome(exitCode: number, logPath?: string | null, extraMarkerRegex?: string, requiredMarker?: string): FlowRunOutcome {
   if (exitCode !== 0) return "error";

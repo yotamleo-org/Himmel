@@ -3,9 +3,9 @@
 # auto-arm-status notes. Dry run by default, --apply to move. Moves only
 # (git mv), never deletes, never overwrites.
 #
-# Bucket-root *.md docs (not console docs) are FINISHED, and move, when ALL hold:
+# Bucket-root *.md docs (not chief docs) are FINISHED, and move, when ALL hold:
 #   - no queue lock is held on the doc or on any member of its group;
-#   - its newest marker bullet is WRAPPED or HALTED (scripts/lib/leg-tail-status.sh,
+#   - its newest marker bullet is WRAPPED or HALTED (scripts/lib/worker-tail-status.sh,
 #     the same parser the tick uses), OR its ticket is Done in the Jira mirror;
 #   - the doc and its whole group were last modified more than --days ago (30).
 # A doc's group is itself plus <stem>-RESUME*, <stem>-HANDOFF*, <stem>-judge-* and
@@ -13,7 +13,7 @@
 # (month of the doc's mtime) and each moved file gets one line in that month's
 # _index.md. Relative markdown links in a moved doc, and in the bucket-root docs
 # that point at it, are rewritten in the same pass (a locked referrer is left).
-# Never touched: a held lock, console docs, the specs/ tree and every other
+# Never touched: a held lock, chief docs, the specs/ tree and every other
 # subtree, arms.jsonl and the other ledgers (only bucket-root *.md is read).
 # Also moved: <sessions-dir>/*.md older than --sessions-days (30) to
 # sessions/_archive/YYYY-MM/, and <root>/auto-arm-status-*.md older than
@@ -31,8 +31,8 @@
 # = <root>/../sessions; mirror = $HIMMEL_JIRA_MIRROR, else
 # ~/.himmel/state/jira-mirror/${JIRA_PROJECT_KEY:-HIMMEL}.
 # ponytail: the 30 day default is the narrower safe floor until S3's compounding
-# coverage gate ships (the plan's 14); console docs always stay, an
-# ended-console rule is a later slice; backlinks outside bucket-root *.md are
+# coverage gate ships (the plan's 14); chief docs always stay, an
+# ended-chief rule is a later slice; backlinks outside bucket-root *.md are
 # not rewritten.
 # Exit: 0 ok, 1 a move failed, 2 usage.
 set -uo pipefail
@@ -40,8 +40,8 @@ set -uo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../lib/handover-path.sh
 . "$HERE/../lib/handover-path.sh"
-# shellcheck source=../lib/leg-tail-status.sh
-. "$HERE/../lib/leg-tail-status.sh"
+# shellcheck source=../lib/worker-tail-status.sh
+. "$HERE/../lib/worker-tail-status.sh"
 
 ROOT=""; BUCKET=""; SESSIONS=""; MIRROR=""; APPLY=0; DAYS=30; SDAYS=30; ADAYS=7; CITED=""
 while [ $# -gt 0 ]; do
@@ -91,7 +91,7 @@ TAILS="$(mktemp -t librarian-tails.XXXXXX)" || exit 1
 trap 'rm -f "$TAILS"' EXIT
 for f in "$BUCKET"/*.md; do
   [ -f "$f" ] || continue
-  printf '%s\t%s\n' "${f##*/}" "$(leg_tail_status "$f")"
+  printf '%s\t%s\n' "${f##*/}" "$(worker_tail_status "$f")"
 done > "$TAILS"
 
 python3 -I - "$ROOT" "$BUCKET" "$SESSIONS" "$MIRROR" "$APPLY" "$DAYS" "$SDAYS" "$ADAYS" "$TAILS" "$CITED" <<'PY'

@@ -201,7 +201,7 @@ assert_rc "10 bash >> append into primary settings.json denies" 2 \
     "$(bash_rc_of "$PRIMARY" "echo pwned >> .claude/settings.json")"
 
 # 11: Bash redirect into a WORKTREE's own settings.json (relative, cwd=WT2)
-# -> ALLOW. This is the console NO-GO's false-positive fix: a relative
+# -> ALLOW. This is the chief NO-GO's false-positive fix: a relative
 # mention while cwd is a linked worktree names that worktree's OWN copy.
 assert_rc "11 bash redirect into worktree settings.json allows" 0 \
     "$(bash_rc_of "$WT2" "echo pwned > .claude/settings.json")"
@@ -323,7 +323,7 @@ powershell_rc_of() {
     echo "$?"
 }
 
-# 25-33 (v2, console NO-GO redesign): the unified textual arm's critical
+# 25-33 (v2, chief NO-GO redesign): the unified textual arm's critical
 # bypasses, all from cwd=PRIMARY -> DENY. None of these are per-verb
 # argument extraction any more — dir_dest is a whole-command textual match
 # on a write verb/flag plus a `.claude` path component; mentions_settings is
@@ -393,7 +393,7 @@ assert_rc "47 powershell Set-Content on worktree settings.json allows" 0 \
     "$(powershell_rc_of "$WT2" "Set-Content -Path .claude/settings.json -Value x")"
 
 # 48 (v2 CR round 2, codex-1): `git diff --output=<file>` writes the diff to
-# a file instead of stdout, so the read-only allowlist must not wave it
+# a file instead of stdout, so the read-only allowlist must not parallel wave it
 # through despite the allowlisted "diff" verb -> DENY.
 assert_rc "48 bash git diff --output into primary settings.json denies" 2 \
     "$(bash_rc_of "$PRIMARY" "git diff --output=.claude/settings.json")"
@@ -427,7 +427,7 @@ assert_rc "52 bash relative traversal from nested worktree into primary settings
 # 53 (was a v2 CR round 3 ALLOW control): an unrelated `..` next to the
 # worktree's own settings is now an accepted false deny. Any `..` in a
 # command that names settings voids the worktree exemption (HIMMEL-3468,
-# console ruling on 1146): the hook cannot tell which word the `..` climbs
+# chief ruling on 1146): the hook cannot tell which word the `..` climbs
 # from, and `../../settings.json` from a nested worktree is the primary's.
 assert_rc "53 accepted false deny: unrelated .. beside the worktree's own settings denies" 2 \
     "$(bash_rc_of "$WT2" "cp ../backup-notes.txt .claude/settings.json")"
@@ -513,7 +513,7 @@ assert_rc "69 nested worktree abs write to its own settings.json allows" 0 \
 # 70-72: accepted false denies, asserted so they are documented behaviour,
 # not surprises. A cd anywhere voids the worktree-relative exemption even
 # when the cd is harmless (70); a heredoc whose PROSE names settings.json is
-# a write (`>>`) whose target the hook does not parse (71, the console's
+# a write (`>>`) whose target the hook does not parse (71, the chief's
 # FD-2). 72, FD-1's piped form, was a third accepted false deny until the
 # per-segment allowlist (HIMMEL-3546): a read piped into another read is a
 # chain of read-only segments, and allows.
@@ -528,7 +528,7 @@ assert_rc "69 nested worktree abs write to its own settings.json allows" 0 \
 # no denylist of heredoc CONSUMERS that read the body as code can ever be
 # complete (any stdin reader can turn a body into a write). 28 shapes that
 # write, truncate or redirect into a live settings file ALLOWed at that head
-# where base correctly denies all of them. Per the console's ruling, heredoc-
+# where base correctly denies all of them. Per the chief's ruling, heredoc-
 # body parsing leaves this hook entirely rather than trying to patch the
 # tokenizer or extend the consumer list further: row 71 goes back to being an
 # accepted false deny, and mentions_settings is a plain raw-text scan again,
@@ -924,7 +924,7 @@ assert_rc "105 grep -C 3 on the worktree's own settings allows" 0 \
     "$(bash_rc_of "$WT2" "grep -C 3 x .claude/settings.json")"
 
 # 106-109: ANSI-C quoting spells any byte, so a `$'` beside a settings or
-# claude substring is live, undecoded (console round-2 NO-GO).
+# claude substring is live, undecoded (chief round-2 NO-GO).
 assert_rc "106 ANSI-C \$'\\x2e\\x2e' climb from a nested worktree denies" 2 \
     "$(bash_rc_of "$NESTED_WT" 'echo x > $'"'"'\x2e\x2e'"'"'/$'"'"'\x2e\x2e'"'"'/settings.json')"
 assert_rc "107 ANSI-C split settings\$'\\x2e'json from primary denies" 2 \
@@ -939,7 +939,7 @@ assert_rc "110 ANSI-C spelled cp into \$HOME/.claude from a worktree denies" 2 \
     "$(bash_rc_of "$WT2" '$'"'"'\x63\x70'"'"' -r /tmp/payload/. "$HOME/.claude/"')"
 
 # 111-114: a line continuation between `$` and `'` (LF and CRLF) still makes
-# ANSI-C quoting — bash joins the lines before it reads words (console E NO-GO).
+# ANSI-C quoting — bash joins the lines before it reads words (chief E NO-GO).
 for eol in LF CRLF; do
     if [ "$eol" = LF ]; then cont="\$\\"$'\n'; else cont="\$\\"$'\r\n'; fi
     assert_rc "111/113 continued ANSI-C climb from a nested worktree denies ($eol)" 2 \
@@ -981,8 +981,8 @@ assert_rc "117 ls -t on a .claude path allows (HIMMEL-3465)" 0 \
 assert_rc "118 cp -t into \$HOME/.claude/ still denies (control)" 2 \
     "$(bash_rc_of "$WT2" "cp -t \$HOME/.claude/ /tmp/payload" HOME="$FAKEHOME")"
 
-# 119: the exact command a console session hit today (2026-09-23) — a
-# read-only `jq` query of a generated leg-settings scratchpad file whose
+# 119: the exact command a chief session hit today (2026-09-23) — a
+# read-only `jq` query of a generated worker-settings scratchpad file whose
 # basename ends in "settings.json" (a bare substring match on
 # mentions_settings), from a scratchpad path nested under neither the
 # primary's nor $HOME's .claude/ -> ALLOW. Verified against a base-054df92e
@@ -1003,7 +1003,7 @@ assert_rc "119 jq read of a scratchpad .leg-settings.json file allows" 0 \
 assert_rc "120 jq read redirected into primary settings.json still denies (control)" 2 \
     "$(bash_rc_of "$PRIMARY" "jq '{add:.permissions.additionalDirectories}' /tmp/claude-1000/somesession/scratchpad/HIMMEL-3514-N424-bridge-hardening.leg-settings.json > .claude/settings.json")"
 
-# 121: the console's OWN verbatim reproduction (K ruling 2026-09-23 on
+# 121: the chief's OWN verbatim reproduction (K ruling 2026-09-23 on
 # K-N431-7980c9b9): a `VAR=path;`-prefixed, `;`-compound, TWO-statement
 # read-only `jq` command, from a PRIMARY-checkout cwd. It denied from
 # HIMMEL-3465 until HIMMEL-3546: two panel rounds each found a real bypass in
@@ -1014,7 +1014,7 @@ assert_rc "120 jq read redirected into primary settings.json still denies (contr
 # like `;`, every segment must be an assignment-only segment or one
 # allowlisted read, and an assignment to an exported or sensitive name
 # denies — so this harmless chain allows and 122-126 still deny.
-assert_rc "121 VAR=path; jq read; jq read (console repro) allows (HIMMEL-3546 per-segment allowlist)" 0 \
+assert_rc "121 VAR=path; jq read; jq read (chief repro) allows (HIMMEL-3546 per-segment allowlist)" 0 \
     "$(bash_rc_of "$PRIMARY" "SP=/tmp/claude-1000/somesession/scratchpad; jq '.permissions.additionalDirectories' \$SP/HIMMEL-3514-N424-bridge-hardening.leg-settings.json; jq '.permissions.additionalDirectories' \$SP/HIMMEL-3536-N425-step0-remainder.leg-settings.json")"
 
 # 122 control: the same VAR=path;-prefixed shape, this time with a genuine
@@ -3426,7 +3426,7 @@ if command -v node >/dev/null 2>&1; then
     # 128 KiB single-argument cap that bash_rc_of's jq --arg hits.
     # shellcheck disable=SC2088 # literal ~ is payload text the hook must see
     # HIMMEL-4628: 679/6000 ran 3.2 s alone but 13.0 s beside one other suite
-    # (CPU pressure ~29 %, leg N1182); budget = loaded figure x2 = 26 s. The rest
+    # (CPU pressure ~29 %, worker N1182); budget = loaded figure x2 = 26 s. The rest
     # of this suite's timed rows peak at 1.8 s alone (680/3000), so the same
     # ~4x load factor leaves them well inside the 12 s default.
     for nw in 1500 3000 6000; do

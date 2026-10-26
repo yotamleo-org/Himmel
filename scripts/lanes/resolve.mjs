@@ -462,7 +462,7 @@ function runBankStatus(repoRoot, env, registry) {
       env,
       windowsHide: true, // HIMMEL-2081: same fix as HIMMEL-2042 (node spawn sites) -- this
       // runs unattended off guard-implementor-dispatch.sh on every lane dispatch and
-      // popped a visible bun.exe console without this.
+      // popped a visible bun.exe chief without this.
     });
     return parseBankStatusOutput(out);
   } catch (e) {

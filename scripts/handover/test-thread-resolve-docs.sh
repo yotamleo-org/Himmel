@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # test-thread-resolve-docs.sh — Pins the review-thread resolve flow in every
-# doc a leg or a console reads: one sanctioned resolve path that carries a
-# reason, a denied resolve sent to the console as `BLOCKED resolve`, and the
-# console verifying and resolving it itself instead of handing it to the
+# doc a worker or a chief reads: one sanctioned resolve path that carries a
+# reason, a denied resolve sent to the chief as `BLOCKED resolve`, and the
+# chief verifying and resolving it itself instead of handing it to the
 # operator.
 #
 # The CLI half (refuses without a reason, replies before resolving) is pinned
 # by plugins/himmel-gh/tests/thread-mutate-cli.test.mjs; this suite pins the
-# prose that routes legs and the console to it. RED first: against the docs
+# prose that routes workers and the chief to it. RED first: against the docs
 # before the flow existed every assertion below fails, none of them vacuously.
 #
 # Docs-only reads, no network, no live state. PLATFORM GUARD: no .ps1 twin —
@@ -17,9 +17,9 @@ set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DOCS="${DOCS:-$HERE/../../docs}"
 PLUGIN="${PLUGIN:-$HERE/../../plugins/himmel-gh}"
-PREFACE="$DOCS/handover/leg-preface.md"
+PREFACE="$DOCS/handover/worker-preface.md"
 SHELL_SECTION="$DOCS/handover/worker-sections/shell-and-tests.md"
-CONSOLE="$DOCS/handover/console-template.md"
+CHIEF="$DOCS/handover/chief-template.md"
 MERGES="$DOCS/handover/chief-sections/merges.md"
 PLAYBOOK="$DOCS/internals/stuck-playbook.md"
 AFK="$DOCS/handover/afk-mode.md"
@@ -41,16 +41,16 @@ section() {
     ' "$1"
 }
 
-for f in "$PREFACE" "$SHELL_SECTION" "$CONSOLE" "$MERGES" "$PLAYBOOK" "$AFK" "$RESOLVE_CMD"; do
+for f in "$PREFACE" "$SHELL_SECTION" "$CHIEF" "$MERGES" "$PLAYBOOK" "$AFK" "$RESOLVE_CMD"; do
     [ -r "$f" ] || { printf 'FAIL - unreadable %s\n' "$f"; exit 1; }
 done
 
-# --- 1. leg-preface.md: names the path, the BLOCKED shape, the loop rule ----
+# --- 1. worker-preface.md: names the path, the BLOCKED shape, the loop rule ----
 ship="$(section "$PREFACE" '^## Shipping')"
-[ -n "$ship" ] || fail 'leg-preface.md has a "## Shipping" section'
+[ -n "$ship" ] || fail 'worker-preface.md has a "## Shipping" section'
 contains 'preface Shipping names the resolve CLI' "$ship" 'thread-resolve-action-cli.mjs'
 contains 'preface Shipping says every resolve carries a reason' "$ship" '--reason'
-contains 'preface Shipping routes a denied resolve to the console' "$ship" 'BLOCKED resolve <pr> <ids>'
+contains 'preface Shipping routes a denied resolve to the chief' "$ship" 'BLOCKED resolve <pr> <ids>'
 work="$(section "$PREFACE" '^## How you work')"
 contains 'preface: a classifier denial on a loop shape is a shape denial' "$work" 'a denied loop is a shape denial'
 
@@ -62,14 +62,14 @@ contains 'shell section lists the rejected reason' "$shell" 'rejected <why>'
 contains 'shell section: one literal call per thread' "$shell" 'one literal call per thread, never a loop'
 contains 'shell section: the chief resolves a denied thread itself' "$shell" 'the chief verifies each thread against the head and resolves it itself'
 
-# --- 3. console template + merges section: the console resolves, never the operator
-merges_tpl="$(section "$CONSOLE" '^## Merges')"
-contains 'console template Merges names BLOCKED resolve' "$merges_tpl" 'BLOCKED resolve'
-contains 'console template Merges: never the operator' "$merges_tpl" 'never the operator'
+# --- 3. chief template + merges section: the chief resolves, never the operator
+merges_tpl="$(section "$CHIEF" '^## Merges')"
+contains 'chief template Merges names BLOCKED resolve' "$merges_tpl" 'BLOCKED resolve'
+contains 'chief template Merges: never the operator' "$merges_tpl" 'never the operator'
 merges="$(cat "$MERGES")"
 contains 'merges section: a denied resolve is never an operator item' "$merges" 'never an operator item'
 contains 'merges section: verify against the PR head first' "$merges" 'against the PR head'
-contains 'merges section: the console runs the same CLI with a reason' "$merges" 'run the same CLI with the matching reason'
+contains 'merges section: the chief runs the same CLI with a reason' "$merges" 'run the same CLI with the matching reason'
 contains 'merges section names the ruling it codifies' "$merges" 'N2224'
 
 # --- 4. stuck-playbook + overnight-mode: the carve-out from "defer to the operator"

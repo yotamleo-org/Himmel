@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # A && B || C is intentional in the pass/fail reporting lines, as in test-next-dispatchable.sh
-# test-priority-prune.sh — Exercises priority-prune.sh on a fixture console doc
-# and a fixture Jira mirror: no real mirror, Jira or console doc is touched.
+# test-priority-prune.sh — Exercises priority-prune.sh on a fixture chief doc
+# and a fixture Jira mirror: no real mirror, Jira or chief doc is touched.
 # PRIORITY_PRUNE overrides the script under test (the RED control: a missing
 # script fails every row). bash 3.2-safe.
 #
@@ -35,19 +35,19 @@ mk 6078 "In Review" "In Progress"
 mk 5993 "To Do" "To Do"
 mk 5217 "To Do" "To Do"
 
-DOC="$WORK/console.md"
-printf '%s\n' '# console' '' 'priority: 6127 above Live state is not the line' '' '## Live state' \
+DOC="$WORK/chief.md"
+printf '%s\n' '# chief' '' 'priority: 6127 above Live state is not the line' '' '## Live state' \
     'legs: none' \
     'priority: 6127 | 6137(K1) 6143(K7) 6138(K2) | 6123 6125 | 6132(BOARD +5217 6057) 1481(+6057 6078 6025) (verify-close 1293) 5641d | rest of v1.1.3 | 5993 6100' \
     'versions: v1.1.3' '' '## Results' > "$DOC"
-cp "$DOC" "$WORK/console.orig"
+cp "$DOC" "$WORK/chief.orig"
 
 run() { bash "$SUT" --mirror "$M" "$@" 2>/dev/null; }
 
 same "count: closed (Done and wont do) over the keys on the Live state line" "$(run --doc "$DOC" --count)" "7/14"
 same "prune drops Done and wont-do keys and keeps the order of the rest" "$(run --doc "$DOC")" \
     'priority: 6143(K7) | 6125 | 6132(BOARD +5217) 1481(+6078) (verify-close 1293) 5641d | rest of v1.1.3 | 5993'
-same "prune without --apply writes nothing" "$(cmp -s "$DOC" "$WORK/console.orig" && echo same)" "same"
+same "prune without --apply writes nothing" "$(cmp -s "$DOC" "$WORK/chief.orig" && echo same)" "same"
 dropped="$(bash "$SUT" --mirror "$M" --doc "$DOC" 2>&1 >/dev/null)"
 case "$dropped" in *"dropped 7: 6127 6137 6138 6123 6057 6025 6100"*) pass "stderr names the dropped keys" ;; *) fail "stderr names the dropped keys (got '$dropped')" ;; esac
 
@@ -68,7 +68,7 @@ same "every key closed reads none" "$(run --doc "$WORK/all.md")" 'priority: none
 run --doc "$DOC" --apply >/dev/null
 same "--apply rewrites the Live state line" "$(grep -c '^priority: 6143(K7) | 6125 | ' "$DOC")" "1"
 same "--apply keeps the line above Live state" "$(grep -c '^priority: 6127 above Live state' "$DOC")" "1"
-same "--apply changes no other line" "$(diff "$WORK/console.orig" "$DOC" | grep -c '^[<>]')" "2"
+same "--apply changes no other line" "$(diff "$WORK/chief.orig" "$DOC" | grep -c '^[<>]')" "2"
 same "a pruned line counts no closed key" "$(run --doc "$DOC" --count)" "0/7"
 
 # --apply keeps a CRLF doc's line endings.

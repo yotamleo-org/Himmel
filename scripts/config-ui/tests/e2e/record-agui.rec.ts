@@ -1,7 +1,7 @@
 // records the README GIF's frames. Not part of the e2e suite (playwright.record.config.ts
 // matches *.rec.ts only); record-agui-gif.sh runs it and encodes the frames.
 // The run is a fixture journal APPENDED to while the page is open: a live stream over the real SSE path.
-// the scene is a leg's /pr-check round with a critic subagent (SCENE in agui-fixtures.ts), at 960 px
+// the scene is a worker's /pr-check round with a critic subagent (SCENE in agui-fixtures.ts), at 960 px
 // so the GIF needs no downscale, with a caption naming what is shown. Frames are lossless screenshots taken
 // every FRAME_MS from the first event on (no empty lead-in; video's compression noise made every GIF frame
 // differ). The page follows the newest event, then ends on the overview and holds it.

@@ -590,7 +590,7 @@ if [ -n "$detail" ]; then
   detail="$(printf '%s' "$detail" | cut -c1-200)"
 fi
 
-# --reason is free text too (legs write whole
+# --reason is free text too (workers write whole
 # dispositions into it) and is mirrored into handover notes, so it takes the
 # same flatten -> scrub as --detail. NOT capped: unlike a provider error
 # fragment a disposition is legitimately long, and the cap only ever mattered

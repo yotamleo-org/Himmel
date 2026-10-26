@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-himmel-guard-hermetic.sh — the himmel-guard suite must not write to an
-# inherited CLAUDE_CONFIG_DIR: a claudex leg exports it, and a
+# inherited CLAUDE_CONFIG_DIR: a claudex worker exports it, and a
 # plugin install would land in the live lane config instead of the test HOME.
 set -uo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"

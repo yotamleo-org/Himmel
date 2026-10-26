@@ -121,7 +121,7 @@ check "dead pid still reads PHANTOM" 5 "$(run "$d")"
 # --- 8. SIBLING CHURN IS NOT LIVENESS. worker_worktree (the
 #        minted worktree) is ancient; the legacy `worktree` key (the dispatch
 #        CWD) has a FRESH write, simulating a sibling worker's churn in the
-#        shared checkout. The mtime leg must walk worker_worktree, so this
+#        shared checkout. The mtime worker must walk worker_worktree, so this
 #        STALLS — before the fix the sibling write read as a false ALIVE.
 d=$(mk siblingchurn); wt="$TMP/wt-siblingchurn"
 mkdir -p "$TMP/dispatch-cwd"
@@ -209,7 +209,7 @@ EOF
         cat > "$bin/stat" <<'EOF'
 #!/usr/bin/env bash
 # No usable stat: every call fails, so the SUT's detection falls through to
-# MTIME_TOOL=none and the leg degrades with a notice instead of silently.
+# MTIME_TOOL=none and the worker degrades with a notice instead of silently.
 exit 1
 EOF
     fi
@@ -223,7 +223,7 @@ EOF
 #        `stat -f %m` fallback absent from the GNU-only original. The fake bin
 #        forces detection off gnu onto bsd; a fresh file (mtime-only signal)
 #        must still read LIVE. Against the original, the fake find breaks
-#        -printf, the leg returns nothing, and this reads STALLED -- the silent
+#        -printf, the worker returns nothing, and this reads STALLED -- the silent
 #        capability loss the portability fix addresses.
 FAKE_BSD="$TMP/fakebin-bsd"
 make_fake_bin "$FAKE_BSD" bsd
@@ -232,7 +232,7 @@ echo "fresh work via portable path" > "$TMP/wt-portfb/portable.txt"
 check "portable stat fallback reads LIVE" 3 "$(run_path "$FAKE_BSD" "$d")"
 
 # --- 12. UNAVAILABLE TOOLING EMITS A NOTICE, not a silent degrade.
-#        Neither -printf nor a usable stat: the leg must say so ONCE on stderr
+#        Neither -printf nor a usable stat: the worker must say so ONCE on stderr
 #        and contribute nothing, rather than the old silent drop to two
 #        signals. An idle fixture still reads STALLED (the watchdog is not
 #        weakened); the stderr notice is the regression signal, because the
@@ -243,7 +243,7 @@ d=$(mk idlefb)
 err="$TMP/idlefb.err"
 rc=$(run_err "$FAKE_NONE" "$d" "$err")
 check "unavailable tooling still STALLS" 4 "$rc"
-notice_count=$(grep -c "mtime liveness leg unavailable" "$err")
+notice_count=$(grep -c "mtime liveness worker unavailable" "$err")
 if [ "$notice_count" -eq 1 ]; then
     echo "ok   unavailable tooling emits the notice exactly once"
 else

@@ -5,29 +5,29 @@
 # sed over a Claude Code transcript (same JSONL on every platform); it runs
 # under git bash unchanged.
 #
-# Copied from the baseline Appendix B (agg-postpin.sh, leg N207,
-# 2026-09-12): the headline leg/console rollup (spec §0/§2.1's legs +
-# Fable-console rows). Folded into one self-contained script on the same
-# walk as agg-burn.sh, restricted to role in {leg, console}. The baseline
+# Copied from the baseline Appendix B (agg-postpin.sh, worker N207,
+# 2026-09-12): the headline worker/chief rollup (spec §0/§2.1's workers +
+# Fable-chief rows). Folded into one self-contained script on the same
+# walk as agg-burn.sh, restricted to role in {worker, chief}. The baseline
 # hardcoded its window; this takes --since/--until.
 #
 # Usage: agg-postpin.sh --since <ISO8601> [--until <ISO8601>] [--role <role>]
 #                        [--cohort <name>] [--context <1m|standard|unknown>]
 #                        [--exclude-straddle <ISO8601>]
 #
-# --role <leg|console>       restrict to one role (default: both)
+# --role <worker|chief>       restrict to one role (default: both)
 # --cohort <name>            restrict to sessions launched under
 #                             --profile <name> (the only
-#                             defined cohort today is "leg-impl"). Matched
+#                             defined cohort today is "worker-impl"). Matched
 #                             against SCORECARD_LAUNCH_LOG_DIR (default:
 #                             ${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs),
 #                             one file per session NAME - the transcript's
 #                             customTitle, the one key a launcher knows at
 #                             launch time (a session UUID it cannot) -
 #                             <name>.log, holding one appended
-#                             "headed-arm-leg: profile=<name> ... session=<name>"
+#                             "headed-arm-worker: profile=<name> ... session=<name>"
 #                             line per launch attempt (writer:
-#                             scripts/handover/chief-kit/headed-arm-leg.sh).
+#                             scripts/handover/chief-kit/headed-arm-worker.sh).
 #                             A session with no launch-log entry is excluded
 #                             under --cohort (no profile on record).
 #                             MULTI-LINE RULE: the log is append-only
@@ -43,7 +43,7 @@
 # --context <1m|standard|unknown>
 #                             restrict to sessions by the launch context they
 #                             RECEIVED, read from the durable
-#                             console launch record headed-arm.sh writes into
+#                             chief launch record headed-arm.sh writes into
 #                             the same launch-logs dir. `unknown` selects the
 #                             sessions with no usable record (gone, absent,
 #                             ambiguous) - they are never proxied from token
@@ -55,8 +55,8 @@
 #                             boundary is excluded from both sides' windows).
 #
 # Adds one column beyond agg-burn.sh's headline columns: counted_shifts (A27
-# - a console/relay shift counts iff it has >=100 console-role calls of any
-# model; legs are not shifts and always report counted_shifts=sessions).
+# - a chief/relay shift counts iff it has >=100 chief-role calls of any
+# model; workers are not shifts and always report counted_shifts=sessions).
 #
 # SCORECARD_PROJECTS_DIR is an explicit scope: exactly that one transcript root
 # (tests point it at a fixture tree). The default is the primary himmel project
@@ -64,7 +64,7 @@
 set -u
 
 usage() {
-    echo "usage: agg-postpin.sh --since <ISO8601> [--until <ISO8601>] [--role <leg|console>] [--cohort <name>] [--context <1m|standard|unknown>] [--exclude-straddle <ISO8601>]" >&2
+    echo "usage: agg-postpin.sh --since <ISO8601> [--until <ISO8601>] [--role <worker|chief>] [--cohort <name>] [--context <1m|standard|unknown>] [--exclude-straddle <ISO8601>]" >&2
 }
 
 SINCE=""; UNTIL=""; ROLE_FILTER=""; COHORT=""; CONTEXT_FILTER=""; STRADDLE=""
@@ -87,14 +87,14 @@ case "$CONTEXT_FILTER" in
 esac
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-WORKER_SESSION_BURN="$HERE/../../leg-burn.sh"
+WORKER_SESSION_BURN="$HERE/../../worker-burn.sh"
 # shellcheck source=lib/scorecard-lib.sh
 . "$HERE/lib/scorecard-lib.sh"
 sc_roots_check agg-postpin || exit 2
 LAUNCH_LOG_DIR="${SCORECARD_LAUNCH_LOG_DIR:-${HIMMELCTL_CACHE_DIR:-$HOME/.claude/himmel}/launch-logs}"
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as
-# leg-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
+# worker-burn.sh's backdate()/transcript_mtime GNU-first/BSD-fallback comment).
 to_epoch() {
     date -d "$1" +%s 2>/dev/null && return 0
     date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$(printf '%s' "$1" | sed 's/\.[0-9]*Z$/Z/')" +%s 2>/dev/null
@@ -122,8 +122,8 @@ cohort_ok() {
     case "$1" in ""|*/*) COHORT_WHY=no-launch-record; return 1 ;; esac
     log="$LAUNCH_LOG_DIR/$1.log"
     [ -f "$log" ] || { COHORT_WHY=no-launch-record; return 1; }
-    # whole fields only: `other-profile=leg-impl` must not read as profile=leg-impl
-    profiles=$(awk '/^headed-arm-leg:/ {for(i=1;i<=NF;i++) if($i ~ /^profile=/) print $i}' "$log" | sort -u)
+    # whole fields only: `other-profile=worker-impl` must not read as profile=worker-impl
+    profiles=$(awk '/^headed-arm-worker:/ {for(i=1;i<=NF;i++) if($i ~ /^profile=/) print $i}' "$log" | sort -u)
     [ -n "$profiles" ] || { COHORT_WHY=no-launch-record; return 1; }
     if [ "$(printf '%s\n' "$profiles" | wc -l | tr -d ' ')" -gt 1 ]; then
         COHORT_WHY=ambiguous-profile; return 1
@@ -169,7 +169,7 @@ while IFS= read -r f; do
     name=$(title_of "$f"); role=$(role_of "$name")
     # an untitled session is counted by name, never folded into other-role
     [ "$role" != unattributed ] || { sc_cov unattributed; continue; }
-    case "$role" in leg|console) ;; *) sc_cov other-role; continue ;; esac
+    case "$role" in worker|chief) ;; *) sc_cov other-role; continue ;; esac
     if [ -n "$ROLE_FILTER" ] && [ "$role" != "$ROLE_FILTER" ]; then sc_cov role-filter; continue; fi
 
     first_ts=$(ts_of "$f" head)
@@ -184,7 +184,7 @@ while IFS= read -r f; do
     cohort_ok "$name" || { sc_cov "$COHORT_WHY"; continue; }
     context_ok "$name" || { sc_cov "$CONTEXT_WHY"; continue; }
 
-    line=$(bash "$WORKER_SESSION_BURN" "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov leg-burn-failed; continue; }
+    line=$(bash "$WORKER_SESSION_BURN" "$f" 2>/dev/null) || { echo "$f" >> "$FAILS"; sc_cov worker-burn-failed; continue; }
     sc_cov parsed
     calls=$(printf '%s' "$line" | grep -o 'calls=[0-9]*' | cut -d= -f2)
     avg=$(printf '%s' "$line" | grep -o 'avg-ctx=[^ ]*' | cut -d= -f2)
@@ -210,5 +210,5 @@ sc_cov_line "$(wc -l < "$FILES" | tr -d ' ')" "$SC_ROOT_COUNT"
 
 n_fail=$(wc -l < "$FAILS")
 if [ "$n_fail" -gt 0 ]; then
-    echo "agg-postpin: WARNING: $n_fail transcript(s) skipped due to leg-burn.sh failure" >&2
+    echo "agg-postpin: WARNING: $n_fail transcript(s) skipped due to worker-burn.sh failure" >&2
 fi

@@ -168,7 +168,7 @@ check_contains "non-chronological: an in-window Bash call is not discarded becau
     "$OUT5" $'script\tqux-deadd\tscripts/qux-deadd.sh\tUSED'
 
 # --- linked worktree: --repo-root pointing at a worktree whose .git is a
-# FILE (`gitdir: ...`), not a directory - every leg runs from exactly this
+# FILE (`gitdir: ...`), not a directory - every worker runs from exactly this
 # shape, and a `[ -d "$REPO_ROOT/.git" ]` check (the pre-fix code) rejects it
 # outright even though the repo is perfectly valid ---------------------------
 git -C "$TMPREPO" worktree add -q -b test-dead-parts-wt "$WTPATH" >/dev/null 2>&1 \

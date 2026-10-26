@@ -170,7 +170,7 @@ billed, wall s, turns, cc 5m, cc 1h, read, longest gap, gaps over 300 s):
 
 ```bash
 bash scripts/eval/judge-cache-row.sh --header --ledger <ledger.tsv> \
-  <projects>/<proj>/<console-session>/subagents/agent-<id>.jsonl
+  <projects>/<proj>/<chief-session>/subagents/agent-<id>.jsonl
 ```
 
 Drop `--header` after the first row. `agent` comes from the sibling
@@ -182,7 +182,7 @@ so a late-vs-early gap is read from the transcript when a row is close;
 upgrade path: add a per-gap context column when a judge lands within 10 % of
 break-even.
 
-<a id="leg-keepalive-or-wrap"></a>
+<a id="worker-keepalive-or-wrap"></a>
 
 ## Worker keepalive or wrap
 
@@ -206,7 +206,7 @@ The cost rule:
   another PR, a hold with no end in sight). Holding the slot for an unknown
   time costs more than one successor's cold start.
 
-Enforced by `scripts/hooks/guard-leg-cache-ttl.sh`, a Stop hook in the worker
+Enforced by `scripts/hooks/guard-worker-cache-ttl.sh`, a Stop hook in the worker
 profile. It refuses, once per stop, the stop of a worker that holds its queue lock
 while no background task or Monitor is running. Bound:
 `HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS` (default 3000). Leg rule: <!-- old-term-ok: only the env name changed, prose is pre-existing -->

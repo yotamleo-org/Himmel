@@ -151,7 +151,7 @@ setrun 5 success; setrun 3 "feat/x"
 report
 hasnt "gh issue close" "$log" "green on another branch does not close main's issue"
 
-# 6. pull_request events are never tracked (legs own those), red or not.
+# 6. pull_request events are never tracked (workers own those), red or not.
 newcase pr-event
 setrun 2 pull_request
 report

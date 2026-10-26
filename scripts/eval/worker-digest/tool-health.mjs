@@ -1,5 +1,5 @@
-// Shared read-only rollup for the Tool health page and console board.
-// Denominators live in eval-runs metadata; class/recovery rows come from leg-failures.
+// Shared read-only rollup for the Tool health page and chief board.
+// Denominators live in eval-runs metadata; class/recovery rows come from worker-failures.
 import { readFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
@@ -21,7 +21,7 @@ function readListing(path) {
   catch { return {}; }
 }
 // estimateListing: price each profile's Skill listing from the installed plugins (unbilled scan, cached in memory);
-// callers that only want failure rates (the console board) leave it off and skip the scan.
+// callers that only want failure rates (the chief board) leave it off and skip the scan.
 export function readToolHealth(env = process.env, query = new URLSearchParams(), now = Date.now(), { estimateListing = false } = {}) {
   const home = env.HOME || homedir();
   const listing = env.HIMMEL_PROFILE_LISTING ? readListing(env.HIMMEL_PROFILE_LISTING)
@@ -46,7 +46,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
   const matches = (r, withLane = true) => (!selected.model || r.model === selected.model) && (!selected.role || r.role === selected.role) && (!selected.profile || r.profile === selected.profile) && (!withLane || !selected.lane || r.lane === selected.lane);
   const sessions = new Map();
   for (const r of evals) {
-    if (r.eval !== 'leg-trajectory' || typeof r.run_id !== 'string' || !['ok', 'partial', 'inconclusive'].includes(r.status)) continue;
+    if (r.eval !== 'worker-trajectory' || typeof r.run_id !== 'string' || !['ok', 'partial', 'inconclusive'].includes(r.status)) continue;
     const prev = sessions.get(r.run_id);
     if (!prev || prev.status !== 'ok' || r.status === 'ok') sessions.set(r.run_id, r);
   }
@@ -56,7 +56,7 @@ export function rollupToolHealth(evals, failures, query = new URLSearchParams(),
     const day = dayOf(ts);
     if (!day) continue;
     const lane = LANES.includes(r.lane) ? r.lane : 'unknown';
-    const role = r.meta?.leg ? 'leg' : 'console';
+    const role = r.meta?.worker ? 'leg' : 'console';
     const health = Array.isArray(r.meta?.tool_health) ? r.meta.tool_health : [];
     const addSlot = (agent, model, cohort = day, profile = profileOf(r.meta?.profile, r.config?.profile)) => {
       if (!/^\d{4}-\d{2}-\d{2}$/.test(cohort) || cohort < firstDay || cohort > lastDay) return null;

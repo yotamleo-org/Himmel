@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Mock-backed print-mode claude leg of scripts/codex/hook-smoke-demo.sh.
+# Mock-backed print-mode claude worker of scripts/codex/hook-smoke-demo.sh.
 #
 # MOCK-BACKED: the model is scripts/testing/mock-anthropic, so this proves only that a
 # REAL claude session starts in a throwaway clone of this checkout, runs the scripted

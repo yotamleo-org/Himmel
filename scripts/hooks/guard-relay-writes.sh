@@ -2,20 +2,20 @@
 # guard-relay-writes.sh — PreToolUse hook (matchers "Bash" and
 # "Edit|Write|MultiEdit|NotebookEdit"): Guard D.
 #
-# The relay design splits a console's duties: a Sonnet RELAY carries its tokenless
-# traffic, and a JUDGE only advises -- the console alone sends token-quoting
+# The relay design splits a chief's duties: a Sonnet RELAY carries its tokenless
+# traffic, and a JUDGE only advises -- the chief alone sends token-quoting
 # messages.
-# headed-arm-leg.sh --relay (Task 25, #752) exports HIMMEL_CONSOLE_RELAY=1
-# into the relay leg. Guard D denies the relay every write channel into
-# console state — the inbox dir, every leg handover doc, the console rundir
+# headed-arm-worker.sh --relay (Task 25, #752) exports HIMMEL_CONSOLE_RELAY=1
+# into the relay worker. Guard D denies the relay every write channel into
+# chief state — the inbox dir, every worker handover doc, the chief rundir
 # under /run/user or $TMPDIR — and denies the Bash shapes that would defeat
-# Guard B (env-prefix override of the identity/marker vars this leg's own
+# Guard B (env-prefix override of the identity/marker vars this worker's own
 # session-name resolution and inbox-send.sh's relay check read) and Guard C
-# (inbox-send.sh --token, reserved for the console).
+# (inbox-send.sh --token, reserved for the chief).
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
-# Not ported to native PowerShell — the console relay lane
-# (headed-arm-leg.sh --relay, scripts/handover/chief-kit/) is Linux-only,
+# Not ported to native PowerShell — the chief relay lane
+# (headed-arm-worker.sh --relay, scripts/handover/chief-kit/) is Linux-only,
 # same as inbox-send.sh's own platform guard.
 #
 # TRIP CONDITION: HIMMEL_CONSOLE_RELAY=1 in this process's environment AND
@@ -29,19 +29,19 @@
 #     skipping the guarded-path match; on a BSD readlink, detected by a
 #     one-time probe, a missing FINAL component alone is resolved through its
 #     parent, fail-closed); or the PHYSICALLY resolved path is under
-#     <handover_root>/inbox/, under a .../himmel-console/... rundir, under
-#     ${TMPDIR:-/tmp}/himmel-console-*, or its basename matches
+#     <handover_root>/inbox/, under a .../himmel-chief/... rundir, under
+#     ${TMPDIR:-/tmp}/himmel-chief-*, or its basename matches
 #     *-legN*-RESUME.md.
 #   Bash — the command text contains HIMMEL_CONSOLE_RELAY, HIMMEL_CONSOLE_LEG,
 #     SESSION_NAME_CMDLINE_FILE, CLAUDE_PID, CHIEF_SESSION_NAME or its old
-#     name CONSOLE_SESSION_NAME (an
+#     name CHIEF_SESSION_NAME (an
 #     env-prefix override, `unset`, or `env -u` of an identity/marker
 #     variable); or contains "inbox-send" AND "--token"; or contains a
 #     write-shaped verb (">", or the command WORD "tee", "cp", "cpio", "mv",
 #     "rm", "rmdir", "rsync", "dd", "ddrescue", "truncate", "sed", "install",
 #     "chmod", "chown" —
 #     a word is bounded by the string edge or any char outside [[:alnum:]_])
-#     AND text naming "/inbox/", "himmel-console", or both "-legN" and
+#     AND text naming "/inbox/", "himmel-chief", or both "-legN" and
 #     "-RESUME.md".
 #
 # DEFAULT ACTION: with the marker unset this hook is a silent no-op — the
@@ -81,7 +81,7 @@
 # names a guarded path and carries the verb as a standalone word is denied:
 # `sed -n 1,20p <inbox-path>` (sed IS the verb), or a path with a whole
 # component `/rm/` or `/dd/` (e.g. a macOS $TMPDIR `/var/folders/dd/...`).
-# Over-denying a read is the safe direction; ask the console to relay the
+# Over-denying a read is the safe direction; ask the chief to relay the
 # content instead. The opposite direction is unchanged and still open: a verb
 # glued into a longer command name (`gsed`, `gdd`, a wrapper `mycp`) is not a
 # word here — same fixed-vocabulary residual (R2) as an uncommon utility.
@@ -247,15 +247,15 @@ case "$tool" in
         esac
 
         case "$path_resolved" in
-            /run/user/*/himmel-console/*) deny "console-rundir-write" "$path" ;;
+            /run/user/*/himmel-chief/*) deny "chief-rundir-write" "$path" ;;
         esac
 
         case "$path_resolved" in
-            "${TMPDIR:-/tmp}/himmel-console-"*) deny "console-rundir-write" "$path" ;;
+            "${TMPDIR:-/tmp}/himmel-chief-"*) deny "chief-rundir-write" "$path" ;;
         esac
 
         case "$path_base" in
-            *-legN*-RESUME.md) deny "leg-doc-write" "$path" ;;
+            *-legN*-RESUME.md) deny "worker-doc-write" "$path" ;;
         esac
 
         exit 0
@@ -306,12 +306,12 @@ case "$tool" in
 
         if [ "$write_shaped" = "1" ]; then
             case "$cmd" in
-                *"/inbox"* | *himmel-console*) deny "redirect-into-console-state" "$cmd" ;;
+                *"/inbox"* | *himmel-chief*) deny "redirect-into-chief-state" "$cmd" ;;
             esac
             case "$cmd" in
                 *-legN*)
                     case "$cmd" in
-                        *-RESUME.md*) deny "redirect-into-console-state" "$cmd" ;;
+                        *-RESUME.md*) deny "redirect-into-chief-state" "$cmd" ;;
                     esac
                     ;;
             esac

@@ -26,8 +26,8 @@ const HIMMEL_2975_DESCRIPTION = `Why (operator hypothesis 2026-09-12 20:4x, quan
 Over seven days the Fable console accounted for ~24 % of Claude spend (52 session files, 9,568 turns, 2.68B cache-read tokens).
 Proposal
 Split the console into two roles:
-1. Relay — a Sonnet (or Haiku) session under a new console-relay profile in scripts/lanes/plugin-profiles.json. It owns the monitors, the leg-doc polling, inbox-send.sh delivery, tick.sh, the pushes on BLOCKED lane:, RUN-note insertion and relaunches. It never rules.
-2. Judge — a Fable session (or an on-demand Fable Agent spawned by the relay) under a console-judge profile invoked only for: verifying a leg FINDING before concurrence, CR dispositions, READY verification + GO, operator rulings. The judge owns the queue lock and issues GO (single-writer invariant); the relay holds no lock.
+1. Relay — a Sonnet (or Haiku) session under a new chief-relay profile in scripts/lanes/plugin-profiles.json. It owns the monitors, the worker-doc polling, inbox-send.sh delivery, tick.sh, the pushes on BLOCKED lane:, RUN-note insertion and relaunches. It never rules.
+2. Judge — a Fable session (or an on-demand Fable Agent spawned by the relay) under a console-judge profile invoked only for: verifying a worker FINDING before concurrence, CR dispositions, READY verification + GO, operator rulings. The judge owns the queue lock and issues GO (single-writer invariant); the relay holds no lock.
 Acceptance
 - One full shift run relay+judge; Fable turns per shift ≤ 40 % of the baseline; no missed READY→GO; no lock held by the relay.`;
 
@@ -37,16 +37,16 @@ Acceptance
 // scorecard re-baseline).
 const HIMMEL_2977_DESCRIPTION = `Why (operator 2026-09-12 20:3x)
 "We must reduce costs, but we must also have a design on measuring quality so we don't drop quality."
-Scope — one design leg, minerva-driven, escalation-only
-1. Baseline, before any change. Using only existing meters: scripts/lanes/leg-burn.sh over the last 7 days of transcripts by role and model.
-2. minerva grill → spec → plan (himmel-ops:minerva, autonomous mode): the leg answers every frontier question itself.
+Scope — one design worker, minerva-driven, escalation-only
+1. Baseline, before any change. Using only existing meters: scripts/lanes/worker-burn.sh over the last 7 days of transcripts by role and model.
+2. minerva grill → spec → plan (himmel-ops:minerva, autonomous mode): the worker answers every frontier question itself.
 3. Quality scorecard as part of the spec: metric set, data source and command per metric, baseline value, per-lever acceptance rule.
 4. Deliverables in the state repo: specs/cost-program/{baseline-…, spec-…, plan-…}.md, each critic-hardened.
 Acceptance
 - Baseline file exists with every metric sourced; the bench run's manifest is referenced.`;
 
 // Real description (fetched 2026-09-16): closed on a merged
-// commit that delivered only the leg-owned prep (content audit + Pages
+// commit that delivered only the worker-owned prep (content audit + Pages
 // config); the ticket's acceptance criterion is the live URL, and enabling
 // Pages is an operator-only repo setting the description reserves
 // explicitly. Reopened after `curl -sI` on the URL came back 404. The
@@ -56,7 +56,7 @@ What exists
 - docs/adoption-trail.html — the user-facing adoption trail page, already in the tree of the (now public) yotamleo/Himmel repo, so its SOURCE is public since the HIMMEL-2705 cutover.
 - The same page is published as a private claude.ai artifact ("Himmel Adoption Trail", b13de5c0-...), owned by the operator.
 Ask — give it a public URL
-Preferred: GitHub Pages from the public repo, source = main / docs/ (or a gh-pages deploy workflow if docs/ must stay a plain folder). Then https://yotamleo-org.github.io/Himmel/adoption-trail.html is the URL, and every merge to main updates it — no second copy to keep in sync. Enabling Pages is a repo setting = operator action (gh api -X POST repos/yotamleo/Himmel/pages -f build_type=legacy -f source[branch]=main -f source[path]=/docs, or the Settings -> Pages UI); the leg prepares and verifies, the operator flips it.
+Preferred: GitHub Pages from the public repo, source = main / docs/ (or a gh-pages deploy workflow if docs/ must stay a plain folder). Then https://yotamleo-org.github.io/Himmel/adoption-trail.html is the URL, and every merge to main updates it — no second copy to keep in sync. Enabling Pages is a repo setting = operator action (gh api -X POST repos/yotamleo/Himmel/pages -f build_type=legacy -f source[branch]=main -f source[path]=/docs, or the Settings -> Pages UI); the worker prepares and verifies, the operator flips it.
 Verification
 curl -sI https://yotamleo-org.github.io/Himmel/adoption-trail.html -> 200 after the operator enables Pages; the page renders in light/dark; no private-era string survives (git grep the audit list against docs/).`;
 
@@ -135,7 +135,7 @@ describe('hasHygieneSweepDisposition — the already-adjudicated-without-a-comme
   });
 });
 
-describe('hasOutcomeAcceptance — a commit proves leg scope, not ticket acceptance', () => {
+describe('hasOutcomeAcceptance — a commit proves worker scope, not ticket acceptance', () => {
   it('is true for HIMMEL-2875\'s real description (known-positive: operator-gated Pages URL)', () => {
     expect(hasOutcomeAcceptance(HIMMEL_2875_DESCRIPTION)).toBe(true);
   });
@@ -401,7 +401,7 @@ describe('classifyTicket — HIMMEL-3128: multi-task tickets never CLOSE on thei
       ...base,
       key: 'HIMMEL-2977',
       subjectCommits: [
-        commit('feat(bench): [HIMMEL-2977] P0 instrumentation — scorecard recipe, leg-burn line, Tier-return counter', {
+        commit('feat(bench): [HIMMEL-2977] P0 instrumentation — scorecard recipe, worker-burn line, Tier-return counter', {
           sha: '5202b4c1',
           date: '2026-09-17',
         }),

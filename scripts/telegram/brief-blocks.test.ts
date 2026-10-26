@@ -40,7 +40,7 @@ test("composeBashShapeWarning names the deny-fast behavior (HIMMEL-1378), not a 
   expect(w).toContain("/sess/glm-a-1/outbox.jsonl");
 });
 
-// --- composeWaiterBlock (the leg-14 waiter protocol) ------
+// --- composeWaiterBlock (the worker-14 waiter protocol) ------
 
 test("composeWaiterBlock names the live-clock liveness check, over a repeated log line", () => {
   const w = composeWaiterBlock();

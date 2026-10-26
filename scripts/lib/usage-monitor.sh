@@ -8,18 +8,18 @@
 # Output occurs only when the state changes or the earliest projection crosses
 # from >=24h/unknown to <24h; repeated below-threshold observations are silent.
 # This script is one-shot: collect enough points with a 300-second Bash poll,
-# distinct from the console tick's 180-second sample cadence (console-wait.sh;
-# it wakes the console only on a change, not on every sample):
+# distinct from the chief tick's 180-second sample cadence (chief-wait.sh;
+# it wakes the chief only on a change, not on every sample):
 #   while :; do bash scripts/lib/usage-monitor.sh; sleep 300; done
 #
 # Test seams:
 #   USAGE_MONITOR_CACHE_FILE  usage JSON (default /tmp/claude/statusline-usage-cache.json);
-#                    the old BANK_CACHE_FILE is still read
+#                    the old BANK_CACHE_FILE is read while HIMMEL_LEGACY_NAMES is on
 #   BANK_NOW_EPOCH   epoch seconds (default date +%s)
 #   BANK_NOW_HM      display clock (default date +%H:%M)
 #   USAGE_MONITOR_STATE_FILE  emission state; its .samples sibling is the sample ring
-#                    (old BANK_STATE_FILE still read)
-#   USAGE_MONITOR_SAMPLES_FILE  the sample ring itself (old BANK_SAMPLES_FILE still read)
+#                    (old BANK_STATE_FILE read while HIMMEL_LEGACY_NAMES is on)
+#   USAGE_MONITOR_SAMPLES_FILE  the sample ring itself (old BANK_SAMPLES_FILE read while HIMMEL_LEGACY_NAMES is on)
 #   REPO             checkout containing scripts/lanes/usage-status.ts
 #
 # the BANK line also carries seven_day_reset_in=<h>h and
@@ -29,11 +29,11 @@
 # reset is already past. `--spare` is READ-ONLY: it derives the rate from the
 # existing sample ring plus this observation in memory, writes neither the ring
 # nor the emission state, never calls usage-status.ts, and prints only those two
-# fields. The console tick can read them without a later normal run seeing a
+# fields. The chief tick can read them without a later normal run seeing a
 # repeated cache stamp (state=stale) and swallowing a state-change line.
 #
 # PLATFORM GUARD: no .ps1 twin, by design. This is Bash 3.2-compatible and is
-# consumed by the Linux console kit; its codex-bank reader is the Bun CLI.
+# consumed by the Linux chief kit; its codex-bank reader is the Bun CLI.
 set -uo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

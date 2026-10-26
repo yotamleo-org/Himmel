@@ -325,7 +325,7 @@ for (const c of ["luna-personal", "luna-clippings", "himmel-code"]) {
 for (const c of ["luna-personal", "luna-clippings", "himmel-code"])
   for (const u of purposes.filter(x => x !== "embedding" && x !== "rerank"))
     assert(evaluate(c, "jina", u).effective === "deny", `${c} x jina x ${u} must stay deny (embedding and rerank only; himmel-code needs its own jina deny ahead of the wildcard allow)`);
-for (const c of ["handover-state", "voice-audio", "leg-failure-metadata", "mcp-tool-catalog"])
+for (const c of ["handover-state", "voice-audio", "worker-failure-metadata", "mcp-tool-catalog"])
   for (const u of ["embedding", "rerank"])
     assert(evaluate(c, "jina", u).effective === "deny", `${c} x jina x ${u} must stay deny (not ruled in)`);
 for (const u of purposes) {

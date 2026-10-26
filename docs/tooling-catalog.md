@@ -614,9 +614,9 @@ touch the network, each pinned to one host. One entry function,
 decision picks one. Suite: `scripts/web/research/test-research-path.sh`, which
 runs `scripts/web/research/test_research_path.py`.
 
-## leg-pr-open (`scripts/lanes/leg-pr-open.sh`)
+## worker-pr-open (`scripts/lanes/worker-pr-open.sh`)
 
-Fixed-literal PR-publish utility: `leg-pr-open.sh <title-file> <body-file>
+Fixed-literal PR-publish utility: `worker-pr-open.sh <title-file> <body-file>
 [--base <branch>]` reads title/body from files and opens or updates a PR
 through the forge seam (`forge_pr_find_open` / `forge_pr_create` /
 `forge_pr_set_body` in `scripts/lib/forge.sh`) — idempotent (updates an
@@ -628,7 +628,7 @@ matter what the PR body says, so the body text — the thing the auto-mode
 classifier reacts to — never appears in the command a worker
 types; it only ever reaches `gh`/`bb` as an argv element of the child process
 the forge seam execs. No retry logic (that's the stuck-playbook's job). Tests:
-`scripts/lanes/test-leg-pr-open.sh` (hermetic — a `GH_CMD` stub records argv
+`scripts/lanes/test-worker-pr-open.sh` (hermetic — a `GH_CMD` stub records argv
 to a file; asserts the body reaches `gh` only via `--body`, never via the
 utility's own two-file-path invocation).
 
@@ -788,7 +788,7 @@ checklist**.
 ## Opt-in role kits (from the research)
 
 Kits are plugin profiles that stack on base and compose per task with
-`--profile a,b`, e.g. `--profile leg-impl,code`. No other
+`--profile a,b`, e.g. `--profile worker-impl,code`. No other
 profile enables a kit member. Both kit profiles drop `i-have-adhd` from base, so composing with the leg family (`leg-impl,code`) <!-- old-term-ok: rewrapped line, wording unchanged -->
 does not hand back what that family dropped. A kit used alone therefore lacks
 it; a composed list ORs its members, so `user,code` still carries it. Keyed items are tracked separately. This is the
@@ -1228,7 +1228,7 @@ default projects root `~/.claude/projects`.
 ## himmel-bus (`marketplace/plugins/himmel-bus/`)
 
 **What:** private chained local message store for session-to-session messages
-(CLI verbs, `send`/`read` MCP tools, `leg-bus` plugin profile). Early status;
+(CLI verbs, `send`/`read` MCP tools, `worker-bus` plugin profile). Early status;
 not a `himmelctl` install item. Operator view: [himmel-bus.md](himmel-bus.md).
 
 ---

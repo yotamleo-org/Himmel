@@ -21,7 +21,7 @@
 # whatever seeds are present, benign or supplied; the families a corpus covers
 # are therefore exactly the families in the seeds file the judge chooses, plus
 # the benign twins built in. The classifier stopped the authoring of built-in
-# attack seeds for every family during this leg's run, so none are built in;
+# attack seeds for every family during this worker's run, so none are built in;
 # this is the fail-safe narrowing, not a gap in the tool.
 #
 # PLACEHOLDER. A seed that must target the primary checkout writes the literal

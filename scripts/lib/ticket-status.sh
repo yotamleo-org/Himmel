@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lib/ticket-status.sh — SOURCED. A ticket's Jira status DERIVED from
 # its current ship-flow state, plus the per-ticket worker record and the outcome
-# log. The funnel (scripts/handover/chief-kit/leg-jira-status.sh) is the only
+# log. The funnel (scripts/handover/chief-kit/worker-jira-status.sh) is the only
 # writer of the status and of the record; everything here reads, except
 # ts_record_write and status_event, which the funnel calls under its per-key
 # flock.
@@ -17,7 +17,7 @@
 #     TS_J_STATUS  the Jira status the derive saw; TS_HEADS the "<pr>:<head>" list
 #     TS_PR_STATE  "<pr>\t<head>\t<class>\t<red latch>" per open PR
 #     TS_WORKER_STATE  live | idle | IDLE-HELD | wrapped | unknown | none
-#     TS_OWNER_DOC the doc of another recorded leg that holds its lock while the
+#     TS_OWNER_DOC the doc of another recorded worker that holds its lock while the
 #                  recorded owner has ended; "" otherwise
 #   status_event <k=v>...           one JSON row in status-events.jsonl
 #   ts_worker_comment <KEY> <status> <move>
@@ -44,7 +44,7 @@
 #   D5  no PR, an owner not provably ended       In Progress
 #   D5c no PR, the latest merge row contract=no  In Progress (a partial: work remains)
 #   D6  no PR, the owner WRAPPED or HALTED       To Do (the resume state)
-#       and no other recorded leg holds its lock
+#       and no other recorded worker holds its lock
 #   D7  no PR, never owned                       no-write
 #
 # Env: TICKET_STATUS_STATE_DIR (default ~/.himmel/state), WORKER_SESSION_JIRA_CLI (the Jira
@@ -265,7 +265,7 @@ ts_record_write() {
     printf '%s\n' "$2" | atomic_write "$p" 2>/dev/null
 }
 
-# ts_marker_newest <doc> — the newest Results marker in a leg doc.
+# ts_marker_newest <doc> — the newest Results marker in a worker doc.
 ts_marker_newest() {
     [ -r "$1" ] || return 0
     grep -oE '^- [0-9]{1,2}:[0-9]{2} (LIVE|FINDING|RESOLVED|READY|BLOCKED|HALTED|WRAPPED|PARKED-BANK|RESUMED|SUCCESSION)([^A-Za-z0-9-]|$)' "$1" 2>/dev/null \
@@ -279,7 +279,7 @@ _ts_epoch_of_iso() {
 # ts_worker_state <doc> — live | idle | IDLE-HELD | wrapped | unknown, from the
 # doc's newest marker and its queue lock. Only an end marker is positive end
 # evidence: a free lock with no end marker (a hand-off, a cloud or
-# other-station leg) is unknown, which still counts as an owner.
+# other-station worker) is unknown, which still counts as an owner.
 ts_worker_state() {
     _ts_worker_state "$1"
     echo "$TS_WORKER_STATE"
@@ -355,7 +355,7 @@ ts_derive() {
     if [ -n "$doc" ]; then
         _ts_worker_state "$doc"
         # A held lock is seen and resets the count; only a sweep counts a gone lock,
-        # and only for a lock this station saw held, so a cloud leg never reaches D6.
+        # and only for a lock this station saw held, so a cloud worker never reaches D6.
         if [ "$TS_LOCK_HELD" = yes ]; then
             TS_LOCK_SEEN=true; TS_GONE=0
         elif [ "$TS_LOCK_HELD" = no ] && [ "$TS_LOCK_SEEN" = true ]; then
@@ -363,8 +363,8 @@ ts_derive() {
             [ "$TS_GONE" -lt 2 ] || TS_WORKER_STATE=wrapped
         fi
     fi
-    # A second leg on the key that still holds its lock keeps the ticket owned, so
-    # one leg's wrap never demotes a ticket another leg is working.
+    # A second worker on the key that still holds its lock keeps the ticket owned, so
+    # one worker's wrap never demotes a ticket another worker is working.
     if [ "$TS_WORKER_STATE" = wrapped ]; then
         while IFS= read -r other; do
             [ -n "$other" ] && [ "$other" != "$doc" ] || continue
@@ -415,13 +415,13 @@ ts_derive() {
 # stored comment in place, and a 404 or a missing id posts one new comment.
 # rc 1 = the Jira write failed (TS_CID, TS_CHASH unchanged, so the next event retries).
 ts_worker_comment() {
-    local key=$1 status=$2 move=$3 leg heads hash cid body out rc=1
+    local key=$1 status=$2 move=$3 worker heads hash cid body out rc=1
     TS_CID=$(jq -r '.comment_id // ""' <<<"$TS_REC")
     TS_CHASH=$(jq -r '.comment_hash // ""' <<<"$TS_REC")
-    leg=$(jq -r '.leg // ""' <<<"$TS_REC")
-    [ -n "$leg$(jq -r '.doc // ""' <<<"$TS_REC")" ] || return 0
+    worker=$(jq -r '.leg // ""' <<<"$TS_REC")
+    [ -n "$worker$(jq -r '.doc // ""' <<<"$TS_REC")" ] || return 0
     heads=$(printf '%s' "$TS_PR_STATE" | awk -F'\t' 'NF { printf "%s#%s@%s", (n++ ? "," : ""), $1, substr($2, 1, 9) }')
-    hash=$(printf '%s|%s|%s|%s' "$leg" "$TS_WORKER_STATE" "$heads" "$status" | cksum | awk '{ print $1 }')
+    hash=$(printf '%s|%s|%s|%s' "$worker" "$TS_WORKER_STATE" "$heads" "$status" | cksum | awk '{ print $1 }')
     [ "$hash" != "$TS_CHASH" ] || return 0
     body=$(mktemp "${TMPDIR:-/tmp}/ts-worker-comment.XXXXXX") || return 1
     printf 'WORKER %s (%s)\n\nPRs: %s\n\nJira status: %s\n\nlast move: %s\n' \

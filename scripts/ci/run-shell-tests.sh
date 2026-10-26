@@ -259,7 +259,7 @@ REPORT_HEAD=$(git rev-parse HEAD 2>/dev/null || echo unknown)
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/git-test-env.sh"
 
-# The guard-override list + scrub_override_env / scrub_session_env. A console leg's
+# The guard-override list + scrub_override_env / scrub_session_env. A chief worker's
 # shell exports INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK
 # and friends; without the scrub below they reach every suite and turn "override
 # UNSET, guard must fire" cases red (or vacuously green). Sourced only — the
@@ -567,7 +567,7 @@ _suite_timeout_for() {
 # Deliberately generous. This is a backstop against a runaway run, not a
 # performance target: the nightly matrix runs this on a windows-latest runner
 # where MSYS forks are slow and the job has no timeout-minutes of its own, so a
-# tight default would turn a merely slow CI leg red. Lower it per-run when you
+# tight default would turn a merely slow CI worker red. Lower it per-run when you
 # want a tighter leash.
 #
 # The claim that "Two hours is
@@ -659,7 +659,7 @@ esac
 # naming this knob as the way to queue instead, so a caller asserting on the
 # exact refusal text sees them. With a
 # budget set, the runner queues instead — and says so, repeatedly, so a queued
-# leg is distinguishable from a parked one without forensics (that ambiguity,
+# worker is distinguishable from a parked one without forensics (that ambiguity,
 # not the waiting, is what cost a coordinator a near-miss on 2026-08-29).
 #
 # This knob is a BUDGET, not a guard, so it cannot go through _suite_num,
@@ -818,26 +818,26 @@ scripts/vm/test-vm-clone-lib.sh              # HIMMEL-3699: skipped off-Linux on
 scripts/vm/test-provenance-roundtrip-dry.sh  # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/upstreams/test-apply-drift-bump.sh   # HIMMEL-3699: skipped off-Linux only — same flock/Linux-only dependency as scripts/vm/test-vm-clone-lib.sh above (scripts/vm/lib/vm-clone.sh:133); precedent HIMMEL-3203
 scripts/release/test-tarball-vs-clone.sh     # HIMMEL-3699: skipped off-Linux only — converge-check.sh's hook-diff walk (scripts/release/converge-check.sh:154) uses GNU find's -printf (absent from BSD/macOS find), documented there as \`# gnu-ok: only ever runs on the Linux guest\` — the tarball converge check is Linux-guest-only by design; precedent HIMMEL-3203
-scripts/handover/chief-kit/test-console-wait.sh    # HIMMEL-3699: skipped off-Linux only — console-wait.sh's own \`# PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` (console-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the console kit is Linux-only by design; precedent HIMMEL-3203
-scripts/handover/chief-kit/test-console-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-console-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (console-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
-scripts/handover/chief-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
-scripts/handover/chief-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-console-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
-scripts/handover/chief-kit/test-console-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-console-wait-r0.sh:25) says \"Linux-only: console-wait.sh has no .ps1 twin by design\"; the kit PLATFORM GUARD is console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: no .ps1 twin, by design (the console kit is Linux-only)\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says no .ps1 twin by design (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-live-subagents.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-ops-run.sh         # HIMMEL-7101: skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-chief-wait.sh    # HIMMEL-3699: skipped off-Linux only — chief-wait.sh's own \`# PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only\` (chief-wait.sh:79), and this suite's bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\` throughout — the chief kit is Linux-only by design; precedent HIMMEL-3203
+scripts/handover/chief-kit/test-chief-wait-b.sh  # HIMMEL-3699: skipped off-Linux only — second half of test-chief-wait.sh above, same chief-kit Linux-only-by-design PLATFORM GUARD (chief-wait.sh:79); its bare \`timeout\` calls are marked \`# gnu-ok: Linux-only kit\`; precedent HIMMEL-3203
+scripts/handover/chief-kit/test-board.sh           # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (board.mjs:21: \"tick.sh reads pgrep, atq and the konsole launch logs\"); precedent HIMMEL-3203
+scripts/handover/chief-kit/test-tick.sh            # HIMMEL-3699: skipped off-Linux only — same chief-kit Linux-only-by-design PLATFORM GUARD as test-chief-wait.sh above (tick.sh:12-14: \"pgrep, atq, /tmp suite locks, and claudex/konsole\"); precedent HIMMEL-3203
+scripts/handover/chief-kit/test-chief-wait-r0.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-chief-wait-r0.sh:25) says \"Linux-only: chief-wait.sh has no .ps1 twin by design\"; the kit PLATFORM GUARD is chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-denied-launch-alert.sh  # HIMMEL-7101: skipped off-Linux only — GNU \`date -u -d\` (test-denied-launch-alert.sh:38) and \`stat -c\` (:87) are both marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-vault-status.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-vault-status.sh:6) is \`PLATFORM GUARD: no .ps1 twin, by design (the chief kit is Linux-only)\` and it drives GNU \`touch -d '50 minutes ago'\` / \`date -d\` (:43-105); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-status-drift.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-status-drift.sh:14) says no .ps1 twin by design (shell-only harness) and :679 uses an in-place GNU sed edit marked \`gnu-ok: Linux-only kit\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-live-subagents.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-live-subagents.sh:13) declares \`Platform guard: Linux bash 3.2+ (jq)\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-ops-run.sh         # HIMMEL-7101: skipped off-Linux only — its own header (test-ops-run.sh:18) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
 scripts/ci/test-ci-lint-tree-gates.sh  # HIMMEL-7101: skipped off-Linux only — it extracts and runs the real ci.yml lint-job step (ci.yml:1273), which calls GNU tar \`--verbatim-files-from\` (bsdtar: \"Option --verbatim-files-from is not supported\"); that job is \`runs-on: ubuntu-latest\` (ci.yml:1128), so the step never runs on macOS
 scripts/handover/chief-kit/test-wrap-merged.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-wrap-merged.sh:26) declares \`Platform guard: Linux bash 3.2+ (fleet-manifest.sh needs the util-linux file-lock tool + jq)\`; fleet-manifest.sh:134 takes that lock, marked \`gnu-ok: Linux-only kit\` (absent from stock macOS); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-close-wrapped-leg.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-close-wrapped-leg.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
-scripts/handover/chief-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: no .ps1 twin, by design — the console kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-close-wrapped-worker.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-close-wrapped-worker.sh:32) declares \`Platform guard: Linux bash 3.2+ (depends on /proc via claude-sessions.sh)\`, and it drives GNU \`date -d\` (:1016) and \`touch -d\` (:1030, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-tick-nolive.sh     # HIMMEL-7101: skipped off-Linux only — its own header (test-tick-nolive.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.\` and it calls GNU \`/bin/date -d\` (:74, :119, :159, marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
+scripts/handover/chief-kit/test-parked-on-prompt.sh  # HIMMEL-7101: skipped off-Linux only — its own header (test-parked-on-prompt.sh:7) says \`PLATFORM GUARD: no .ps1 twin, by design — the chief kit is Linux-only\` and :25 drives GNU \`date -u -d\` (marked \`gnu-ok: Linux-only kit\`); precedent HIMMEL-3699
 scripts/handover/test-bus-idle-waker.sh  # skipped off-Linux only — bus-idle-waker.sh types into a konsole through org.kde.konsole.Session.sendText, reads the terminal foreground group from /proc stat, and times its poll with GNU \`date +%s.%N\`; no macOS host has konsole or /proc; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The console kit is Linux-only.\` and it drives tick.sh and console-wait.sh, both on the kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
-scripts/handover/chief-kit/test-console-wait-pool.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-console-wait-pool.sh:13) says \`Linux-only: console-wait.sh has no .ps1 twin by design\`; kit PLATFORM GUARD
-scripts/hooks/test-notify-console-on-prompt.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-notify-console-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin\`
-scripts/handover/chief-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD console-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-tick-deadwin.sh    # skipped off-Linux only — its own header (test-tick-deadwin.sh:8) says \`PLATFORM GUARD: no .ps1 twin, by design. The chief kit is Linux-only.\` and it drives tick.sh and chief-wait.sh, both on the kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
+scripts/handover/chief-kit/test-chief-wait-pool.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-chief-wait-pool.sh:13) says \`Linux-only: chief-wait.sh has no .ps1 twin by design\`; kit PLATFORM GUARD
+scripts/hooks/test-notify-chief-on-prompt.sh  # HIMMEL-7525: skipped off-Linux only — its own header (test-notify-chief-on-prompt.sh:8) says \`PLATFORM GUARD: Linux-only chief-kit surface, no .ps1 twin\`
+scripts/handover/chief-kit/test-station-sync.sh    # HIMMEL-7101: skipped off-Linux only — its own header (test-station-sync.sh:17) declares \`Platform guard: Linux bash 3.2+\`; kit PLATFORM GUARD chief-wait.sh:208; precedent HIMMEL-3699
 "
 case "$(uname -s 2>/dev/null || echo unknown)" in
   Linux) ;;
@@ -956,7 +956,7 @@ scripts/hooks/test-check-cr-before-push-precommit.sh  pre-commit  # real pre-pus
 scripts/hooks/test-check-commit-msg-precommit.sh  pre-commit  # real commit-msg shim integration (HIMMEL-2475): its own guard exits 0 when pre-commit is absent, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/hooks/test-fork-precommit-core.sh  pre-commit  # real git commits through the fork pre-commit core (HIMMEL-5978): its own guard exits 0 without pre-commit, a vacuous PASS; runs wherever pre-commit exists, loud-skips where it does not
 scripts/guardrails/test-gitleaks-retired-org.sh  gitleaks  # its own guard exits 0 without the real scanner (HIMMEL-2475 sweep); runs wherever gitleaks exists, loud-skips where it does not
-scripts/handover/chief-kit/test-leg-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not
+scripts/handover/chief-kit/test-worker-doc-lock.sh  flock  # its own guard exits 0 without flock, the lock under test (HIMMEL-2475 sweep); runs wherever flock exists, loud-skips where it does not
 scripts/hooks/test-check-hook-lib-suites.sh  node  # its own guard exits 0 without node (HIMMEL-2475 sweep); runs wherever node exists, loud-skips where it does not
 scripts/hooks/test-check-hook-file-parse.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
 scripts/hooks/test-crlf-boundary.sh  jq  # its own guard exits 0 without jq (HIMMEL-2475 sweep); runs wherever jq exists, loud-skips where it does not
@@ -2734,7 +2734,7 @@ suite_lock_acquire_waiting() {
   # accuracy fix the ACQUIRED path already applies at its own return point.
   waited=$(( $(date +%s) - start ))
 
-  # GAVE UP has ONE literal prefix (console monitors grep it — that stays
+  # GAVE UP has ONE literal prefix (chief monitors grep it — that stays
   # fixed) but two DIFFERENT tails, because the two ways a genuine wait can
   # run out are not the same fact and telling the wrong one is worse than
   # useless: an operator debugging a starved runner sent to check the HOLDER
@@ -2753,7 +2753,7 @@ suite_lock_acquire_waiting() {
       "$(_suite_lock_dur "$waited")" "$scan" >&2
   fi
   # stdout, deliberately — distinct from GAVE UP above, which stays on stderr
-  # for the console monitors that already grep it. This line exists for a
+  # for the chief monitors that already grep it. This line exists for a
   # DIFFERENT consumer: a caller that wants one unambiguous, machine-parsable
   # signal that the run never executed, on the stream a script normally
   # captures for a command's actual output. Byte-identical in BOTH cases
@@ -4154,11 +4154,11 @@ fi
 # remaining suite paths — the runner then reported OK over a list it had
 # silently eaten. Suites now get /dev/null (below), which also means an
 # unattended run can never block on a prompt.
-# Live operator state. On the station a leg's shell carries HIMMEL_CONSOLE_DOC,
+# Live operator state. On the station a worker's shell carries HIMMEL_CONSOLE_DOC,
 # HANDOVER_DIR and friends, and a suite that inherits them writes the live
-# console doc, handover tree, claude/codex config or crontab; CI has none of
+# chief doc, handover tree, claude/codex config or crontab; CI has none of
 # that, so the class was invisible there. Every suite gets sentinels instead:
-# the console-doc files even where the caller had none, so CI sees that escape
+# the chief-doc files even where the caller had none, so CI sees that escape
 # too, and a dir sentinel wherever the caller has that value (an unset one
 # stays unset, as on main; CI's shards run under home-canary.sh, which covers the $HOME fallback). A
 # recording shim heads PATH for the scheduler commands. A
@@ -4181,7 +4181,7 @@ _live_is_hard() {
   done
   return 1
 }
-live_seed='# sentinel console doc
+live_seed='# sentinel chief doc
 
 ## Results
 '
@@ -4431,7 +4431,7 @@ _suite_attempts() {
   # TMPDIR defaults to a per-process dir under /private/var/folders, and
   # uninstall.sh's protected_path() hard-refuses anything under /var. A suite
   # temp root that ended up there made every suite exercising protected_path
-  # (test-uninstall*.sh, test-console.sh, ...) see its own scratch dir as
+  # (test-uninstall*.sh, test-chief.sh, ...) see its own scratch dir as
   # protected. Children still inherit TMPDIR/TMP/TEMP=$suite_tmp below.
   suite_tmp=$(mktemp -d "/tmp/himmel-suite.XXXXXX" 2>/dev/null) || suite_tmp=''
   if [ -z "$suite_tmp" ]; then
@@ -4596,7 +4596,7 @@ ${suite_key#"$tier_repo_root"/}
     # OBSERVED EXIT STATUS — it may have been merely slow, or it may have
     # failed an assertion and then hung during teardown, with the watchdog
     # killing it before that exit status was ever written. Rendering it
-    # identically to a suite that failed on its own cost a leg 10-30 minutes
+    # identically to a suite that failed on its own cost a worker 10-30 minutes
     # of adjudication (4 of 10 failures in the 2026-08-29 run were this, one
     # of them a suite that is 195/195 GREEN standalone). Key off `capped`,
     # NOT `[ "$rc" -eq 124 ]` — a suite is free to exit 124 on its own, and
@@ -4605,7 +4605,7 @@ ${suite_key#"$tier_repo_root"/}
       # A suite the watchdog kills at its cap with every OBSERVED
       # assertion passing (only "ok" lines, no "not ok") is LIKELY a
       # cap-sizing problem rather than a test problem -- today it renders
-      # identically to a genuine failure (FAIL: 1), which is what costs a leg
+      # identically to a genuine failure (FAIL: 1), which is what costs a worker
       # two extra full runs to disposition. Heuristic, not a universal
       # test-framework contract, and not proof of health: it only recognizes
       # the TAP-ish "ok"/"not ok" line convention some suites use. A suite on
@@ -5036,7 +5036,7 @@ fi
 # RUNNER PROCESS itself, opt-in via --pr/SUITE_REPORT_PR (never default-on,
 # never posted without one of these set): a closed parent session must not
 # lose the report (the incident this exists to close
-# is a leg's after-report vanishing along with the session that would have
+# is a worker's after-report vanishing along with the session that would have
 # posted it). Placed here, before every exit path below, so it runs whether
 # this turns out to be a pass, a failure, or a budget-truncated run — the
 # report is exactly as needed in each case. Best-effort: a post failure

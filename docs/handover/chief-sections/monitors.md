@@ -19,17 +19,17 @@ cannot mask rulings still pending hook delivery; empty, consumed and
 partial-line-only inboxes are omitted. Reading the snapshot never advances a
 cursor.
 
-All fields read by `console-wait.sh` or `board.mjs` retain their values and
+All fields read by `chief-wait.sh` or `board.mjs` retain their values and
 order, even at defaults: `workers`, `livestate`, `prs`, `tails`, `workerset`,
 `board`, `tracker`, `vault`, `cloud`, `orphans-wip`, `vmrun`, `denials`, `usage`,
 `fleet`, `gql`, `capacity` and `unowned-prs`, plus the existing conditional
 `parked`, `closable` and `deadwin` alerts. In particular, `capacity=ok`,
 `unowned-prs=none` and non-stale `tracker=` must stay present to clear the
-waiter's persisted streaks. From an older tick.sh, `console-wait.sh` also
+waiter's persisted streaks. From an older tick.sh, `chief-wait.sh` also
 reads the old names `legs`, `legset` and `bank`, and `board.mjs` reads `legs`
 and `bank`.
 
-`holds=<label>:<age>m[,...]` is conditional too, and `console-wait.sh` reads it: a
+`holds=<label>:<age>m[,...]` is conditional too, and `chief-wait.sh` reads it: a
 worker whose newest marker is `BLOCKED` (or a `FINDING` that awaits a ruling) and whose
 doc has sat untouched for `TICK_HOLD_MIN` minutes (default 20) is a ruling you may
 owe. A repeated `BLOCKED` bullet never moves `tails=`, so this is the one signal for
@@ -45,33 +45,33 @@ the drift line of the last good refresh, `<n>` rows of status drift
 (`focus-drift.txt` beside your doc lists them). `focus=ok` and `sdrift=0:…` are left
 off the compact line, `--verbose` shows both, and both are absent with no state
 file or when `--status` reads `focus=skip` (no `focus-version:` and no `release:`
-line, or `focus-version: none`). `console-wait.sh` does not wake on them; it wakes on
+line, or `focus-version: none`). `chief-wait.sh` does not wake on them; it wakes on
 a FAILED refresh, or one DIRTY for 10 minutes, by its own `--status` read.
 
 `busedge=MISSING:<label>[,...]` is conditional too: a held worker (lock FRESH or
 STALE) whose himmel-bus peer record is missing or names another chief (never
 adopted) has no edge to the live chief. It is
 absent when every held worker has a record naming this chief or the bus has no peers dir, and
-`console-wait.sh` does not wake on it, so read it at the next tick.
+`chief-wait.sh` does not wake on it, so read it at the next tick.
 
 `wakerstate=<label>:rc3|rc4[,...]` is conditional the same way: a held worker whose
 `bus-idle-waker` ended on rc 3 (konsole refuses sendText: the window predates
 `EnableSecuritySensitiveDBusAPI`, relaunch it) or rc 4 (the session is not the
 named claude). Its mail wakes nothing. Absent when no waker left a state file.
 
-`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <leg>` Telegram per classifier-denied `headed-arm-leg.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
+`chief-kit/denied-launch-alert.sh` sends the operator ONE `DENIED-LAUNCH <worker>` Telegram per classifier-denied `headed-arm-worker.sh` launch (worker, tool and the local log path only; the denied command and reason stay on the host). Run it by hand after a launch that stalls; the waiter call is HIMMEL-6461.
 
 Five, and no more — every event wakes a full-context turn, so each one filters
 to terminal-state changes and emits nothing otherwise. The tick and Telegram
 rows are **not** `Monitor` arms: both run inside the one event waiter,
-`console-wait.sh`, started in ACTION ZERO step 10 with Bash
+`chief-wait.sh`, started in ACTION ZERO step 10 with Bash
 `run_in_background`. Never arm them as `Monitor` loops — the
 tool caps an arm at 30 min, and every expiry costs a full-context turn only to
 re-arm.
 
 | Monitor | Cadence | What it is |
 |---|---|---|
-| tick | 180 s, wakes on change | **Runs inside the step-10 waiter, not here** — the only unconditional check of the five, so its absence is the one that goes structurally unnoticed; the waiter's heartbeat (`<inbox>.wait`) is how you see it is live. The waiter passes its args to `tick.sh`: `--doc "<this file>" --token <your token> --legs "<bucket dir>/<leg1>.md <bucket dir>/<leg2>.md"` (or comma-separated — `--legs` accepts space- **and** comma-separated docs, both spellings produce identical output; use absolute paths, because a bare worker doc name resolves against the handover ROOT, not your bucket, and reads `NOTFOUND`) — one batched line: heartbeat, worker locks, worker processes, armed jobs, suite locks, open PRs, usage. Per-worker lock status is one of **`FRESH`** (held, heartbeat current), **`STALE`** (held, heartbeat aged), **`WRAPPED`** (lock released and the worker's last status bullet says `WRAPPED` — the normal end of a worker, nothing to reclaim), **`NOLIVE`** (no lock, no marker bullet, and older than `TICK_NOLIVE_MIN` minutes (default 10) — the worker never went LIVE; `ListAgents`, then `SendMessage` it the `queue-lock.sh acquire <its doc>` command, your chief's session name and its token), **`FORKED`** (its session transcript ends in a `continued-in` record — forked or backgrounded, likely without its preface; message it the same way, or relaunch), **`FREE`** (the literal token `tick.sh` emits when the lock is gone while the worker has *not* wrapped — a lost lock, reclaim it; its own comments call this state "MISSING" as a concept, but `FREE` is what actually appears in `workers=`), **`UNVERIFIED`** (a lock *named* for the worker doc exists but records a path that does not resolve here, so `queue-lock.sh` can neither attribute it nor rule it out — **not** free: find its owner before anything else, never reclaim on it), or **`NOTFOUND`** (the worker doc did not resolve — a warning about a typo'd/nonexistent path, *not* a dead lock; never mistake it for a released lock). The line also ends `workerset=<ok\|STALE:unarmed=…;unlisted=…\|unknown\|skip>` — see ACTION ZERO step 10: `STALE` means re-start the waiter, not worker trouble. It then ends `board=<ok\|STALE:<age>\|MISSING\|skip>` — whether `console-board.html` still matches the state; anything but `ok` means re-run ACTION ZERO step 12. Next comes `tracker=<ok\|STALE:<age>\|MISSING\|skip>` — whether `roadmap-tracker.html` still matches the Jira mirror and the plan files (`skip` with no `tracker:` URL); `STALE`/`MISSING` means refresh, re-render and republish the tracker (step 12). Then `vault=<ok\|STALL:<age>,<n>\|PUSH-LAG:<age>\|skip\|unknown>` — the notes vault's commit health: `STALL` = the vault's auto-commit is stuck (the waiter wakes you; reproduce with `git -C <vault> hook run pre-commit`, usually a gitleaks false positive in a staged file), `PUSH-LAG` = commits unpushed past `TICK_VAULT_PUSHLAG_MIN`. The line also carries `orphans-wip=<0\|n:KEY,KEY\|n\|?\|skip>` — In Progress / In Review tickets with no worker and no open PR (keys named up to 5, a bare count above that, `?` when the open-PR read failed): a non-zero value wakes the waiter; run `next-dispatchable.sh --legs-from <fleet manifest>` (its RESUME rows come first and pass the file-collision check; the bare `--resume-only` read the tick uses knows no manifest and skips collisions) and dispatch each as a RESUME worker, or park it. A trailing `tmp=<pct>` (just before `spare=`) is how full `/tmp` is, from a read-only `df`; `tmp=<pct>!` at 80 % or more (`TICK_TMP_WARN`). It never wakes the waiter and the tick never reaps: when it shows `!`, run `tmp-reap.sh` or clear stale suite dirs yourself before doctor C48 flags it |
+| tick | 180 s, wakes on change | **Runs inside the step-10 waiter, not here** — the only unconditional check of the five, so its absence is the one that goes structurally unnoticed; the waiter's heartbeat (`<inbox>.wait`) is how you see it is live. The waiter passes its args to `tick.sh`: `--doc "<this file>" --token <your token> --workers "<bucket dir>/<leg1>.md <bucket dir>/<leg2>.md"` (or comma-separated — `--workers` accepts space- **and** comma-separated docs, both spellings produce identical output; use absolute paths, because a bare worker doc name resolves against the handover ROOT, not your bucket, and reads `NOTFOUND`) — one batched line: heartbeat, worker locks, worker processes, armed jobs, suite locks, open PRs, usage. Per-worker lock status is one of **`FRESH`** (held, heartbeat current), **`STALE`** (held, heartbeat aged), **`WRAPPED`** (lock released and the worker's last status bullet says `WRAPPED` — the normal end of a worker, nothing to reclaim), **`NOLIVE`** (no lock, no marker bullet, and older than `TICK_NOLIVE_MIN` minutes (default 10) — the worker never went LIVE; `ListAgents`, then `SendMessage` it the `queue-lock.sh acquire <its doc>` command, your chief's session name and its token), **`FORKED`** (its session transcript ends in a `continued-in` record — forked or backgrounded, likely without its preface; message it the same way, or relaunch), **`FREE`** (the literal token `tick.sh` emits when the lock is gone while the worker has *not* wrapped — a lost lock, reclaim it; its own comments call this state "MISSING" as a concept, but `FREE` is what actually appears in `workers=`), **`UNVERIFIED`** (a lock *named* for the worker doc exists but records a path that does not resolve here, so `queue-lock.sh` can neither attribute it nor rule it out — **not** free: find its owner before anything else, never reclaim on it), or **`NOTFOUND`** (the worker doc did not resolve — a warning about a typo'd/nonexistent path, *not* a dead lock; never mistake it for a released lock). The line also ends `workerset=<ok\|STALE:unarmed=…;unlisted=…\|unknown\|skip>` — see ACTION ZERO step 10: `STALE` means re-start the waiter, not worker trouble. It then ends `board=<ok\|STALE:<age>\|MISSING\|skip>` — whether `chief-board.html` still matches the state; anything but `ok` means re-run ACTION ZERO step 12. Next comes `tracker=<ok\|STALE:<age>\|MISSING\|skip>` — whether `roadmap-tracker.html` still matches the Jira mirror and the plan files (`skip` with no `tracker:` URL); `STALE`/`MISSING` means refresh, re-render and republish the tracker (step 12). Then `vault=<ok\|STALL:<age>,<n>\|PUSH-LAG:<age>\|skip\|unknown>` — the notes vault's commit health: `STALL` = the vault's auto-commit is stuck (the waiter wakes you; reproduce with `git -C <vault> hook run pre-commit`, usually a gitleaks false positive in a staged file), `PUSH-LAG` = commits unpushed past `TICK_VAULT_PUSHLAG_MIN`. The line also carries `orphans-wip=<0\|n:KEY,KEY\|n\|?\|skip>` — In Progress / In Review tickets with no worker and no open PR (keys named up to 5, a bare count above that, `?` when the open-PR read failed): a non-zero value wakes the waiter; run `next-dispatchable.sh --workers-from <fleet manifest>` (its RESUME rows come first and pass the file-collision check; the bare `--resume-only` read the tick uses knows no manifest and skips collisions) and dispatch each as a RESUME worker, or park it. A trailing `tmp=<pct>` (just before `spare=`) is how full `/tmp` is, from a read-only `df`; `tmp=<pct>!` at 80 % or more (`TICK_TMP_WARN`). It never wakes the waiter and the tick never reaps: when it shows `!`, run `tmp-reap.sh` or clear stale suite dirs yourself before doctor C48 flags it |
 | usage | 300 s | poll `bank-preflight.sh`, emit only when the state word changes (headroom → park → weekly-ceiling) |
 | CI | 600 s | poll `gh run list -R <owner/repo> --limit 20 --json databaseId,status`, emit only newly-completed runs; a red main run is triaged by `chief-sections/main-red.md` before any cause is named |
 | notes repo | 300 s | the notes vault is already covered by the tick's `vault=` field (no loop to arm); only a *second* repo for handover state needs this: emit only on STALL (dirty files older than the commit cadence) or PUSH-LAG |
@@ -82,7 +82,7 @@ write them in the session scratchpad, not in the repo. The context-fill probe
 (`scripts/context-fill.sh --percent`) **fails inside a Monitor** — run it in an
 ordinary Bash call.
 
-**Handover budget.** `<kit>/console-budget.sh --title <your session name>` prints
+**Handover budget.** `<kit>/chief-budget.sh --title <your session name>` prints
 `budget turns=<n> cache_read=<M>M [fill=<n>%] verdict=OK|HANDOVER` (exit 3 on HANDOVER,
 2 when the transcript is unreadable). Hand over at `HANDOVER`: 150 turns or 30M
 cumulative cache-read (`CHIEF_TURN_BUDGET`, `CHIEF_CACHE_READ_BUDGET_M`), or a context
@@ -92,14 +92,14 @@ stale, unknown or estimated fill adds no `fill=` and trips nothing; the `~NN% (e
 over an assumed window, so it can read high after a cache-heavy turn and would fire a handover
 wake on a number nobody measured, and an OK without `fill=` leaves the repeat marker alone), the same duty as the
 90k input trigger. The waiter runs it each successful sample (with `--doc`, also with
-`--legs-from`) and raises `WAKE handover-budget`; while the verdict stays `HANDOVER` it
+`--workers-from`) and raises `WAKE handover-budget`; while the verdict stays `HANDOVER` it
 repeats as `WAKE handover-budget repeat ...` every `CHIEF_WAIT_BUDGET_REPEAT_MIN` minutes
 (default 30), so a wake absorbed mid-turn is not lost. When the doc's title resolves to no
 transcript the waiter says so once on stderr. Run it by hand in an ordinary Bash call.
 
-**Worker cost budget.** `<kit>/leg-budget.sh [--title <worker session name>]` prints
-`leg-budget calls=<n> cost-eq=<k>k soft=<k>k hard=<k>k verdict=OK|SOFT|HARD` from the
-worker's own transcript, with the `cost-eq` of the PR body's `leg-burn:` line (exit 0 OK,
+**Worker cost budget.** `<kit>/worker-budget.sh [--title <worker name>]` prints
+`worker-budget calls=<n> cost-eq=<k>k soft=<k>k hard=<k>k verdict=OK|SOFT|HARD` from the
+worker's own transcript, with the `cost-eq` of the PR body's `worker-burn:` line (exit 0 OK,
 4 SOFT, 3 HARD, 2 unmeasurable, which never prints `verdict=OK`). The defaults are
 `WORKER_COST_SOFT_K=3000` (p80) and `WORKER_COST_HARD_K=7000` (about p92) of the cost-eq
 of the last 50 merged worker PRs (p50 1485k, p95 7545k). A worker at `SOFT` sends the
@@ -111,7 +111,7 @@ request: ask the worker to hand off.
 **Stuck PRs.** The tick's `prs=` field does not say why a PR is stuck. When a worker
 waits on CI that never starts (a CONFLICTING PR gets no pull_request CI) or a PR
 sits for hours, run `<kit>/pr-stall.sh --manifest <fleet manifest>` by hand: one
-`STALL <pr> <class> <leg> <detail>` line per stuck PR (conflict, no-ci, ci-slow,
+`STALL <pr> <class> <worker> <detail>` line per stuck PR (conflict, no-ci, ci-slow,
 idle). Add `--notify` to send the owning worker the action once per (pr, class,
 head). The tick also carries `stall=<pr>:<class>,...` (absent when nothing is
 stuck; the probe result, a failure included, is cached `TICK_STALL_TTL_MIN`
@@ -126,7 +126,7 @@ its age, run `<kit>/stuck-scan.sh [--version vX]` by hand: `STUCK <key> <status>
 for work no live worker or open PR holds, `BLOCKED-BY <key> <ref>` while the blocker named
 by the ticket's latest `DISPOSITION` comment is still open (it prints `STUCK` again once
 that PR merges or closes). Give each one a disposition:
-`<kit>/stuck-scan.sh dispose <KEY> RESUME <leg> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>`.
+`<kit>/stuck-scan.sh dispose <KEY> RESUME <worker> | BLOCKED-BY <ref> | OPERATOR <ask> | PARKED <reason>`.
 
 **Label what the operator asks for.** A ticket you file because the operator
 asked for it gets the Jira label `operator-directed`, and its Results bullet reads

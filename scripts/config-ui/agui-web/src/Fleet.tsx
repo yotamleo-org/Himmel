@@ -1,15 +1,15 @@
-// the live rows render as a tree under the operator (a leg under its console, a console beside the one
+// the live rows render as a tree under the operator (a worker under its chief, a chief beside the one
 // it succeeded), each with its subagents, context fill and token usage; a parent or successor name jumps to its row.
-// a cloud session (no local process) is a row of role "cloud" under its console, with its local
-// shepherd leg under it: its PR, its CLOUD-DONE phase and session link, and tokens said to be not measured.
-// the fleet landing — /agui/ with a token and no run. Every live session (consoles, legs, judges,
+// a cloud session (no local process) is a row of role "cloud" under its chief, with its local
+// shepherd worker under it: its PR, its CLOUD-DONE phase and session link, and tokens said to be not measured.
+// the fleet landing — /agui/ with a token and no run. Every live session (chiefs, workers, judges,
 // interactive sessions) from GET /api/agui/fleet, polled; a row opens that session's run stream. A
-// leg's row also links to the console's Health page, whose legs card reads the same handover docs.
-// sections from fleet-model's fleetSections — Needs attention, Orphans, Running per live console, and
+// worker's row also links to the chief's Health page, whose workers card reads the same handover docs.
+// sections from fleet-model's fleetSections — Needs attention, Orphans, Running per live chief, and
 // Finished (closed by default) — narrowed by the rail's filters. A card is one line: its name opens the session's run
 // page, its chevron expands it in place to the status (left) and lineage (right) columns.
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-// @ts-expect-error: plain ES module shared with the console (no types).
+// @ts-expect-error: plain ES module shared with the chief (no types).
 import { pageHref } from "../../public/nav.js";
 import { FLEET_URL } from "./stream";
 import { chainKey, cloudPhase, fleetSections, NO_FILTERS, rowHref, runHash, shortName, type Filters, type ProcessOrphan, type Row } from "./fleet-model";
@@ -105,7 +105,7 @@ export function useFilters(): [ViewFilters, (f: ViewFilters) => void] {
   }];
 }
 export const filtering = (f: Filters) => f.lanes.length > 0 || f.states.length > 0 || f.text.trim() !== "";
-// display name for a session role; the role value itself (console, leg) is a parsed key and stays.
+// display name for a session role; the role value itself (chief, worker) is a parsed key and stays.
 export const roleLabel = (role: string) => role === "console" ? "supervisor session" : role === "leg" ? "worker session" : role;
 
 function Section({ id, title, count, initial, force = false, className, children }: { id: string; title: string; count: number; initial: boolean; force?: boolean; className?: string; children: ReactNode }) {
@@ -134,7 +134,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   const unavailable = fleet?.census === "unavailable";
   const known = !selected || all.some((r) => r.name === selected || r.console === selected || r.parent === selected);
 
-  // the console board: the named console, else the newest live one. The page works without it (its fetch may fail).
+  // the chief board: the named chief, else the newest live one. The page works without it (its fetch may fail).
   const boardConsole = selected ?? all.filter((r) => r.role === "console" && r.live !== false && r.state !== "wrapped").sort((a, b) => (b.runtime?.startedAt ?? 0) - (a.runtime?.startedAt ?? 0))[0]?.name ?? null;
   const { board, error: boardError } = useBoard(token, boardConsole);
   const rollup = useRollup(token);
@@ -146,7 +146,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   const [panel, setPanel] = useState<Panel | null>(initial ? { kind: "leg" } : null);
   // the fragment follows the view (replaceState: no history entry per key press, and no hashchange to re-route the page).
   useEffect(() => {
-    // `selected`, not boardConsole: an auto-picked console must not turn an unscoped fleet URL into a scoped one.
+    // `selected`, not boardConsole: an auto-picked chief must not turn an unscoped fleet URL into a scoped one.
     const h = viewHash(token, selected, tab, panel?.kind === "leg" && drawer ? { leg: drawer.leg, stage: drawer.stage } : null);
     if (h !== location.hash) history.replaceState(null, "", h);
   }, [token, selected, tab, drawer, panel]);
@@ -155,7 +155,7 @@ export function FleetPage({ token, state, console: selected = null }: { token: s
   useDrawerKeys(drawer, panel, legOrder, setDrawer, closeDrawer);
   const ctx: BoardCtx = useMemo(() => ({
     board, cards: new Map(joined.flatMap((j) => (j.row ? [[j.row.name, j] as const] : []))),
-    open: (leg, stage = "live") => { setDrawer((d) => openAt(d, leg, stage as Stage)); setPanel({ kind: "leg" }); },
+    open: (worker, stage = "live") => { setDrawer((d) => openAt(d, worker, stage as Stage)); setPanel({ kind: "leg" }); },
   }), [board, joined]);
   return (
     <BoardContext.Provider value={ctx}>
@@ -227,7 +227,7 @@ function ConsoleGroup({ group, all, hops, token, now }: { group: ReturnType<type
   const cloud = group.rows.filter((r) => r.role === "cloud").length;
   const kids = forest(group.rows);
   return (
-    <details className="fleet-console" open={open} onToggle={(e) => setOpen(e.currentTarget.open)} aria-label={name}>
+    <details className="fleet-chief" open={open} onToggle={(e) => setOpen(e.currentTarget.open)} aria-label={name}>
       <summary><h2>{name}</h2><span className="fleet-count">{[plural(group.rows.length - cloud, "session"), cloud > 0 && `${cloud} cloud`].filter(Boolean).join(" · ")}</span></summary>
       <ul className="fleet-rows fleet-tree" aria-label="Live sessions">
         {group.console && group.showConsole
@@ -262,9 +262,9 @@ function NameLink({ row, token, className = "" }: { row: Row; token: string; cla
 function Attention({ items, needs, token, now }: { items: ReturnType<typeof fleetSections>["attention"]; needs: ReturnType<typeof joinBoard>; token: string; now: number }) {
   const ctx = useBoardCtx();
   return <ul className="fleet-attn-list" aria-label="Needs attention">
-    {needs.map(({ leg, need }) => ctx.board && need && <li key={`need:${leg.leg}`} className="fleet-attn bd-need-row">
+    {needs.map(({ worker, need }) => ctx.board && need && <li key={`need:${worker.leg}`} className="fleet-attn bd-need-row">
       <Swatch board={ctx.board} group="verb" k={need.verb} />
-      {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(leg.leg, leg.stage)}>{leg.leg}</button>
+      {" · "}<button type="button" className="bd-link" onClick={() => ctx.open(worker.leg, worker.stage)}>{worker.leg}</button>
       {` · ${need.action}`}
       {need.since && <span className="fleet-age">{` · ${ago(now - Date.parse(need.since))}`}</span>}
     </li>)}
@@ -282,7 +282,7 @@ function Attention({ items, needs, token, now }: { items: ReturnType<typeof flee
   </ul>;
 }
 
-// live sessions no live console watches, then tick's stale shell-tool wrappers. The page never signals a
+// live sessions no live chief watches, then tick's stale shell-tool wrappers. The page never signals a
 // process: each row says what closes it.
 function Orphans({ sessions, procs, unread, token, now }: { sessions: ReturnType<typeof fleetSections>["orphans"]; procs: ProcessOrphan[]; unread: boolean; token: string; now: number }) {
   return <>
@@ -348,7 +348,7 @@ function Rel({ name, live }: { name: string; live: Row[] }) {
   return (
     <button type="button" className="fleet-rel" title={name} onClick={() => {
       const el = document.getElementById(rowId(r.name));
-      // A row inside a collapsed section or console group is revealed first.
+      // A row inside a collapsed section or chief group is revealed first.
       for (let d = el?.parentElement?.closest("details"); d; d = d.parentElement?.closest("details")) d.open = true;
       el?.scrollIntoView({ block: "center" });
       el?.focus();
@@ -356,7 +356,7 @@ function Rel({ name, live }: { name: string; live: Row[] }) {
   );
 }
 
-// where a row hangs, root first: operator › console › … › this row. A parent loop stops at a repeat.
+// where a row hangs, root first: operator › chief › … › this row. A parent loop stops at a repeat.
 function Lineage({ row, live }: { row: Row; live: Row[] }) {
   const up: string[] = [];
   for (let p = row.parent; p && !up.includes(p) && p !== row.name && up.length < 8; p = live.find((x) => x.name === p)?.parent ?? null) up.unshift(p);
@@ -367,7 +367,7 @@ function Lineage({ row, live }: { row: Row; live: Row[] }) {
   </span>;
 }
 
-// Context fill against the session's ceiling, as a bar: warn from 75 %, fail from 90 % (the leg context guard's marks).
+// Context fill against the session's ceiling, as a bar: warn from 75 %, fail from 90 % (the worker context guard's marks).
 function Meter({ fill }: { fill: number }) {
   return <span className={`fleet-meter ${fill >= 90 ? "fail" : fill >= 75 ? "warn" : "ok"}`} aria-hidden="true"><i style={{ width: `${Math.min(100, fill)}%` }} /></span>;
 }
@@ -405,8 +405,8 @@ function FleetRow({ row, live, hops, token, now }: { row: Row; live: Row[]; hops
           {hops.length > 0 && <span className="fleet-hops-badge">{`${hops.length + 1} hops`}</span>}
         </span>
         {card && bctx.board && <span className="bd-goalcell">
-          <button type="button" className="bd-link" onClick={() => bctx.open(card.leg.leg, card.leg.stage)} title="open the leg's stages">{card.leg.goal || card.leg.ticket}</button>
-          <StageDots leg={card.leg} board={bctx.board} onPick={(s) => bctx.open(card.leg.leg, s)} />
+          <button type="button" className="bd-link" onClick={() => bctx.open(card.leg.leg, card.leg.stage)} title="open the worker's stages">{card.leg.goal || card.leg.ticket}</button>
+          <StageDots worker={card.leg} board={bctx.board} onPick={(s) => bctx.open(card.leg.leg, s)} />
           <StateChip board={bctx.board} state={card.leg.state} />
         </span>}
         <span className="fleet-act">

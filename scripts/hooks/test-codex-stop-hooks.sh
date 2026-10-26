@@ -205,7 +205,7 @@ if [ -z "$nudge_cmd" ]; then
   bad "jira-nudge positive: not wired (cannot run)"
 else
   nout="$TMP_ROOT/nudge.out"; nerr="$TMP_ROOT/nudge.err"
-  # HIMMEL_INITIATIVE stripped (else the `ticket` leg would suppress the nudge);
+  # HIMMEL_INITIATIVE stripped (else the `ticket` worker would suppress the nudge);
   # gate ON; JIRA_PROJECT_KEY injected (temp repo has no .env); relay -> a stub
   # that appends its argument to a log (the detached child's only observable).
   # HOME=$TMP_ROOT so the no-mutation breadcrumb check reads a temp store, never the
