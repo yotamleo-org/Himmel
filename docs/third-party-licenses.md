@@ -40,8 +40,8 @@ WTFPL, is called out explicitly below rather than silently folded in).
 | `typescript` | `^7.0.2` → **7.0.2**; `^6.0.3` → **6.0.3** | Apache-2.0 | marketplace/plugins/claude-hud, marketplace/plugins/luna-correlate, scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
 | `vitest` | `^4.1.11` → **4.1.11**; `^4.1.9` → **4.1.9** | MIT | plugins/himmel-gh, plugins/himmel-jira, scripts/bitbucket, scripts/ci-orchestrator, scripts/himmel-run, scripts/jira | dev | COMPATIBLE |
 | `c8` | `^11.0.0` → **11.0.0** | ISC | marketplace/plugins/claude-hud | dev | COMPATIBLE |
-| `bun-types` | `^1.3.14` → **1.3.14** | MIT | marketplace/plugins/luna-correlate | dev | COMPATIBLE |
-| `@types/bun` | `latest` → **1.3.14** | MIT | scripts/luna-vitals | dev | COMPATIBLE |
+| `bun-types` | `^1.4.4` → **1.4.4** | MIT | marketplace/plugins/luna-correlate | dev | COMPATIBLE |
+| `@types/bun` | `latest` → **1.4.4** | MIT | scripts/luna-vitals | dev | COMPATIBLE |
 | `@types/proper-lockfile` | `^4.1.4` → **4.1.4** | MIT | scripts/himmel-run | dev | COMPATIBLE |
 
 **Methodology:** every manifest here has a committed lockfile
