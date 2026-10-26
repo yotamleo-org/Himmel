@@ -100,6 +100,13 @@ printf 'himmel_flag zeta\n' > "$t/scripts/lib/test-flags.sh"
 printf 'himmel_flag zeta\n' > "$t/scripts/ci/test-check-flags.sh"
 expect_rc "the readers, the check and their tests are not reads" "$t" 0
 
+t="$(tree lookalike)"
+printf '#!/usr/bin/env bash\nhimmel_flag alpha\n' > "$t/scripts/hooks/flags.sh"
+expect_rc "a reader-named file under scripts/hooks/ is still a forbidden read" "$t" 1 "forbidden: alpha read in scripts/hooks/flags.sh"
+rm -f "$t/scripts/hooks/flags.sh"
+printf 'himmel_flag("alpha")\n' > "$t/scripts/cr/flags.py"
+expect_rc "a reader-named file under scripts/cr/ is still a forbidden read" "$t" 1 "forbidden: alpha read in scripts/cr/flags.py"
+
 t="$(tree malformed)"
 printf 'alpha\toff\tfeature\tT-1\tT-2\tsoon\ta flag\n' > "$t/scripts/lib/flags.tsv"
 expect_rc "a malformed expiry date fails" "$t" 1 "malformed: alpha"

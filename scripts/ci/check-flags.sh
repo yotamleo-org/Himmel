@@ -76,7 +76,7 @@ if git -C "$ROOT" rev-parse --git-dir >/dev/null 2>&1; then
   git -C "$ROOT" ls-files -co --exclude-standard
 else
   (cd "$ROOT" && find . -type f -not -path './.git/*' | sed 's|^\./||')
-fi | grep -Ev '(^|/)(flags\.(sh|py|mjs|tsv)|check-flags\.sh|test-check-flags\.sh|test-flags\.sh)$|\.md$|(^|/)test-[^/]*$|\.test\.[a-z]+$|(^|/)(fixtures|tests|test|node_modules)/' > "$FILES"
+fi | grep -Ev '^scripts/lib/flags\.(sh|py|mjs|tsv)$|^scripts/ci/(check-flags|test-check-flags)\.sh$|^scripts/lib/test-flags\.sh$|\.md$|(^|/)test-[^/]*$|\.test\.[a-z]+$|(^|/)(fixtures|tests|test|node_modules)/' > "$FILES"
 
 READS="$SCRATCH/reads"; : > "$READS"   # <name>\t<file>
 if [ -s "$FILES" ]; then
