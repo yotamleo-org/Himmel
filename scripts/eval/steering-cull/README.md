@@ -63,7 +63,7 @@ one series; comment and note keys do not count.
 
 ## First run (2026-10-26, sonnet, effort medium, 3 reps, $0.92)
 
-Ledger row `20261026T205218Z-steering-cull-1053ed`. 16 rows: 3 SHIP (`r2-trailers`, `r3-jira`,
+Ledger row `20261026T205437Z-steering-cull-ea2b9d`, written at the eval's first commit. 16 rows: 3 SHIP (`r2-trailers`, `r3-jira`,
 `r5-invariants`), 8 SHIP-UNMEASURED, 5 UNPROBED, no KEEP. All cuts together save 608 of 4,381
 always-on tokens, about 3,800 cost-eq per session (0.6 % of a turn's cache read); AGENTS.md
 drops from 9,540 to 7,577 bytes. Four of 13 probes were valid. Every forced-choice probe
