@@ -18,6 +18,8 @@ mkdir -p "$tmp/cuda" "$tmp/nocuda" "$tmp/broken"
 printf 'def get_cuda_device_count():\n    return 1\n' > "$tmp/cuda/ctranslate2.py"
 printf 'def get_cuda_device_count():\n    return 0\n' > "$tmp/nocuda/ctranslate2.py"
 printf 'raise ImportError("no ctranslate2")\n' > "$tmp/broken/ctranslate2.py"
+# A regular nvidia package without cublas/cudnn shadows any installed nvidia wheels.
+for d in cuda nocuda broken; do mkdir -p "$tmp/$d/nvidia"; : > "$tmp/$d/nvidia/__init__.py"; done
 
 # Runs a python expression against transcribe.py with a stub ctranslate2.
 # py <stubdir> <expr> [ENV=val ...]
@@ -59,6 +61,25 @@ assert "another language picks turbo" "large-v3-turbo" "$(route '"cuda", "ar", 0
 assert "cpu never routes" "base" "$(route '"cpu", "he", 0.99, False')"
 assert "a pinned model never routes" "large-v3-turbo" "$(route '"cuda", "he", 0.99, True')"
 assert "HIMMEL_WHISPER_ROUTE=0 turns routing off" "large-v3-turbo" "$(route '"cuda", "he", 0.99, False' HIMMEL_WHISPER_ROUTE=0)"
+
+echo "== a CUDA failure after the model loads falls back to CPU"
+mkdir -p "$tmp/failcuda/nvidia"; : > "$tmp/failcuda/nvidia/__init__.py"
+cp "$tmp/cuda/ctranslate2.py" "$tmp/failcuda/ctranslate2.py"
+cat > "$tmp/failcuda/faster_whisper.py" <<'STUB'
+def decode_audio(p):
+    return p
+class Seg:
+    text = "cpu-ok"; end = 1.0
+class WhisperModel:
+    def __init__(self, name, device, compute_type):
+        self.device = device
+    def detect_language(self, audio):
+        raise RuntimeError("cudnn failed on first inference")
+    def transcribe(self, wav, language=None):
+        assert self.device == "cpu", "must have retried on cpu"
+        return [Seg()], None
+STUB
+assert "cuda detect failure retries on cpu" "cpu-ok" "$(py "$tmp/failcuda" 'print(transcribe.run_model("x.wav", None)[0].text)' HIMMEL_WHISPER_CUDA_LOCK=1 | tail -n 1)"
 
 echo; echo "passed=$pass failed=$fail"
 [ "$fail" -eq 0 ]

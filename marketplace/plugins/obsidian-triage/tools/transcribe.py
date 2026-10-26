@@ -106,26 +106,39 @@ def load_model(device, compute, name):
     return WhisperModel(name, device="cpu", compute_type=compute), "cpu"
 
 
-def main():
-    if len(sys.argv) < 2:
-        print("usage: transcribe.py <wav> [model]", file=sys.stderr)
-        sys.exit(1)
-    wav = sys.argv[1]
-    model_arg = sys.argv[2] if len(sys.argv) > 2 else None
+def run_model(wav, model_arg):
+    """-> segments. A CUDA failure at any stage (load, detect, route load, decode) retries on CPU."""
     pinned = bool(model_arg or os.environ.get("HIMMEL_WHISPER_MODEL"))
     device, compute, name = select_runtime(model_arg)
     if needs_cuda_lock(device):
         reexec_with_cuda_lock()
     model, device = load_model(device, compute, name)
-    language = None
-    if device == "cuda" and not pinned:
-        from faster_whisper import decode_audio
-        language, prob, _ = model.detect_language(decode_audio(wav))
-        target = route_model(device, language, prob, pinned)
-        if target != name:
-            model = load_model(device, compute, target)[0]
-    segments, _info = model.transcribe(wav, language=language)
-    segments = list(segments)
+    if device == "cuda":
+        try:
+            language = None
+            if not pinned:
+                from faster_whisper import decode_audio
+                language, prob, _ = model.detect_language(decode_audio(wav))
+                target = route_model(device, language, prob, pinned)
+                if target != name:
+                    model = None  # free turbo's VRAM before the Hebrew model loads
+                    model = load_model(device, compute, target)[0]
+            segments, _info = model.transcribe(wav, language=language)
+            return list(segments)
+        except Exception as e:
+            print(f"transcribe: cuda failed ({type(e).__name__}: {e}); retrying on cpu",
+                  file=sys.stderr)
+            model = None
+            model, _ = load_model("cpu", *DEFAULTS["cpu"][:1], model_arg or DEFAULTS["cpu"][1])
+    segments, _info = model.transcribe(wav)
+    return list(segments)
+
+
+def main():
+    if len(sys.argv) < 2:
+        print("usage: transcribe.py <wav> [model]", file=sys.stderr)
+        sys.exit(1)
+    segments = run_model(sys.argv[1], sys.argv[2] if len(sys.argv) > 2 else None)
     text = " ".join(seg.text.strip() for seg in segments).strip()
     sys.stdout.write(text + "\n")
     # Optional side channel: last segment end, seconds.
