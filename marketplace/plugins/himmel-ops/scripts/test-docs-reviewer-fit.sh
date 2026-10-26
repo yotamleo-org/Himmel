@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015
-# test-docs-reviewer-fit.sh — fit_answer.py holds a docs-reviewer answer to 3,072 bytes.
+# test-docs-reviewer-fit.sh — fit_answer.py holds a docs-reviewer answer to 3,072 bytes,
+# and the skill names its generic NIT layer.
 set -u
 here="$(cd "$(dirname "$0")" && pwd)"
 tool="$here/../skills/docs-reviewer/fit_answer.py"
@@ -78,5 +79,15 @@ check "blocking: all six kept" "$(grep -c '^- \[BLOCKING\]' "$td/block.md.out")"
 has "blocking: caller told to send it back" "$td/block.md.err" 'send it back once with "cut to 3 KB"'
 
 check "usage: exit 2" "$(python3 "$tool" 2>/dev/null; echo $?)" 2
+
+skill="$here/../skills/docs-reviewer/SKILL.md"
+root="$here/../../../.."
+has "generic layer: names the vendored technical-writing skill" "$skill" '.claude/skills/technical-writing/SKILL.md'
+check "generic layer: the vendored skill exists" "$([ -f "$root/.claude/skills/technical-writing/SKILL.md" ] && echo 1)" 1
+has "generic layer: NIT only" "$skill" 'The generic layer is NIT only.'
+has "generic layer: the repo overrides it" "$skill" 'The repo overrides it'
+has "generic layer: error messages (gstack agent-ready-errors)" "$skill" 'gstack agent-ready-errors'
+has "generic layer: inline # command comments (hermes)" "$skill" 'hermes quickstart'
+has "eval: the reviewer gets the vendored skill" "$root/scripts/eval/docs-review/run.sh" 'REVIEW-INPUT/technical-writing.md'
 
 [ "$fails" = 0 ] && echo "PASS test-docs-reviewer-fit" || { echo "FAIL test-docs-reviewer-fit ($fails)"; exit 1; }

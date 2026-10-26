@@ -91,6 +91,18 @@ diff (a named page, an audit) treats every line as changed.
      second, different remark is not a repeat and stays SHOULD.
    - SHOULD: it clearly breaks one remark.
    - NIT: taste, or a finding no remark backs, marked `(no remark)`.
+   The generic layer is NIT only. Read the changed lines against the vendored
+   `technical-writing` skill (`.claude/skills/technical-writing/SKILL.md`) and
+   cite the section a finding breaks in place of `(no remark)`: `tw:top` (the
+   three rules above the layers), `tw:rhythm`, `tw:mode`, `tw:google`,
+   `tw:ste`, `tw:global` or `tw:voice`. The repo overrides it: where a remark,
+   this file or the page's own convention says otherwise, there is no
+   finding. Two more NIT rules sit in this layer:
+   - `errors`: an error message a changed line quotes says what failed, gives
+     the exact fix on its first or last line, carries a stable code, and says
+     how to recover (gstack agent-ready-errors);
+   - `cmd-comment`: a command in a code block carries an inline `#` comment
+     saying what it does (hermes quickstart).
    An honest caveat stays on the page: a sentence that truthfully says what
    does not work yet is not a breach of the remark it touches. Its gap goes to
    the code section.
@@ -103,7 +115,8 @@ A finding implies a code change in exactly three cases (decision 299):
 
 1. the page is true and the behaviour is the gap: the page honestly describes
    something the code does badly or not at all. A caveat such as "for now, run
-   it from your clone" or "delete it yourself" is this case;
+   it from your clone" or "delete it yourself" is this case, and so is a
+   troubleshooting row that quotes an error message with no fix (`errors`);
 2. the page is generated and the error is in the generator's logic or in the
    data it reads;
 3. the page is true only because of a known bug, so fixing the bug will make

@@ -58,6 +58,7 @@ prompt_for() { # case base head has-comments
     printf 'Eval setup (it replaces the procedure'"'"'s input commands):\n'
     printf -- '- The current directory is the repository at the head commit %s. There is no git and no gh: read a page at the head with Read, and search the code with Grep and Glob.\n' "$3"
     printf -- '- REVIEW-INPUT/diff.patch is the change (%s...%s). REVIEW-INPUT/remarks.tsv is the remarks table.\n' "$2" "$3"
+    printf -- '- REVIEW-INPUT/technical-writing.md is the .claude/skills/technical-writing/SKILL.md the procedure names.\n'
     if [ "$4" = 1 ]; then
         printf -- '- REVIEW-INPUT/pr-comments.md holds the PR'"'"'s review comments as they stood at the head. They are the CodeRabbit comments and judge findings of step 6.\n'
     else
@@ -114,6 +115,7 @@ for c in "${cases[@]}"; do
     rm -rf -- "$fix/scripts/eval/docs-review/key"
     git diff "$base...$head" >"$fix/REVIEW-INPUT/diff.patch" || exit 2
     python3 -I "$HERE/helper.py" remarks "$SKILL/remarks.tsv" "$filter" >"$fix/REVIEW-INPUT/remarks.tsv" || exit 2
+    cp "$REPO/.claude/skills/technical-writing/SKILL.md" "$fix/REVIEW-INPUT/technical-writing.md" || exit 2
     if [ "$with_comments" = 1 ]; then
         for kind in pulls/"$pr"/comments pulls/"$pr"/reviews issues/"$pr"/comments; do
             gh api --paginate --slurp "repos/{owner}/{repo}/$kind" >"$d/${kind//\//-}.json" || exit 2
