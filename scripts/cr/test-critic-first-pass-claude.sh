@@ -234,6 +234,12 @@ has "10c stderr names SKIPPED" "claude critic SKIPPED" "$W/err"
 broke_case 10c2 'reservation refused: {"verdict":"BANK-UNKNOWN","reason":"state-io-failure"}'
 check "10c2 a reservation that answered BANK-UNKNOWN is broke: exits 1" 1 "$RC"
 has "10c2 stderr names BROKE" "claude critic BROKE" "$W/err"
+broke_case 10c4 'reservation refused: {"verdict":"SKIPPED-BANK","reason":"insufficient-headroom"}'
+check "10c4 a reservation that said SKIPPED-BANK is a decision: exits 5" 5 "$RC"
+broke_case 10c5 'reservation refused: {"verdict":""}'
+check "10c5 a reservation with an empty verdict is broke: exits 1" 1 "$RC"
+broke_case 10c6 'reservation refused: {"verdict":"WAT"}'
+check "10c6 a reservation with an unrecognized verdict is broke: exits 1" 1 "$RC"
 broke_case 10c3 'reservation refused: {"verdict":null}'
 check "10c3 a reservation whose verdict is not a string is broke: exits 1" 1 "$RC"
 broke_case 10d "api bank gate said BANK-UNKNOWN"
@@ -268,6 +274,17 @@ rm "$TREE/scripts/lib/usage-preflight.sh"
 printf '%s\n' '#!/usr/bin/env bash' 'echo HOLD' > "$TREE/scripts/lib/usage-preflight.sh"
 run_cfp claude-subscription
 check "10h a subscription bank verdict that is not PROCEED is a decision: exits 5" 5 "$RC"
+fresh_rec 10i; mk_tree 10i
+rm "$TREE/scripts/lib/usage-preflight.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo BANK-UNKNOWN' > "$TREE/scripts/lib/usage-preflight.sh"
+run_cfp claude-subscription
+check "10i a subscription bank verdict of BANK-UNKNOWN is broke: exits 1" 1 "$RC"
+has "10i stderr names BROKE" "claude critic BROKE" "$W/err"
+fresh_rec 10j; mk_tree 10j
+rm "$TREE/scripts/lib/usage-preflight.sh"
+printf '%s\n' '#!/usr/bin/env bash' 'echo SKIPPED-BANK' > "$TREE/scripts/lib/usage-preflight.sh"
+run_cfp claude-subscription
+check "10j a subscription bank verdict of SKIPPED-BANK is a decision: exits 5" 5 "$RC"
 
 # --- 11. an rc 5 from the hermes invoke or the envelope unwrap is a failure, never a skip ---
 fresh_rec 11a; mk_tree 11a

@@ -570,8 +570,7 @@ _cfp_claude_invoke() {
                 rm -rf "$_cc_dir"
                 # a gate that crashed (no scratch file, BANK-UNKNOWN from the bank gate or the reservation, a reservation with no string verdict) is broke, not a decision
                 case "$_cc_why" in
-                    'reservation refused: '*'"verdict":"BANK-UNKNOWN"'*) _cc_decided=no ;;
-                    'reservation refused: '*'"verdict":"'*) _cc_decided=yes ;;
+                    'reservation refused: '*'"verdict":"SKIPPED-BANK"'*|'reservation refused: '*'"verdict":"HOLD"'*) _cc_decided=yes ;;
                     'no scratch file'|'api bank gate said BANK-UNKNOWN'|'reservation refused: '*) _cc_decided=no ;;
                     *) _cc_decided=yes ;;
                 esac
@@ -588,7 +587,7 @@ _cfp_claude_invoke() {
             _cc_bank="$(CADENCE_USAGE_WORKER=claude-critic bash "$SCRIPT_DIR/../lib/usage-preflight.sh" 2>/dev/null | head -1)"  # swallow-ok: no verdict token is BROKE below, fail-closed
             case "$_cc_bank" in
                 PROCEED*) ;;
-                '') echo "critic-first-pass.sh: claude critic BROKE (bank preflight gave no verdict) — not a clean no-op" >&2
+                ''|BANK-UNKNOWN*) echo "critic-first-pass.sh: claude critic BROKE (bank preflight gave ${_cc_bank:-no verdict}) — not a clean no-op" >&2
                     rm -rf "$_cc_dir"; return 1 ;;
                 *) echo "critic-first-pass.sh: claude critic SKIPPED ($_cc_bank) — clean no-op" >&2
                    rm -rf "$_cc_dir"; return 5 ;;
