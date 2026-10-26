@@ -82,6 +82,33 @@ printf '%s\n' "$victim" > "$tmp/allow-noreason.txt"
 run "an allowlist line without a reason is a run failure" 2 --times "$tmp/planted.json" --allow "$tmp/allow-noreason.txt" "$NPM_LOCK" "$BUN_LOCK"
 says "the reasonless line is named" "needs a reason"
 
+echo "== timeboxed allowlist (until=) =="
+# NOW is 2026-10-23T00:00:00Z; the planted entry is 1 day old, so only the allowlist can pass it.
+printf '%s  until=2026-10-24  operator exception\n' "$victim" > "$tmp/allow-until-ok.txt"
+run "an unexpired until= entry allowlists" 0 --times "$tmp/planted.json" --allow "$tmp/allow-until-ok.txt" "$NPM_LOCK" "$BUN_LOCK"
+says "it counts as allowlisted" "1 allowlisted"
+
+printf '%s  until=2026-10-23  operator exception\n' "$victim" > "$tmp/allow-until-today.txt"
+run "an until= date equal to today is expired" 1 --times "$tmp/planted.json" --allow "$tmp/allow-until-today.txt" "$NPM_LOCK" "$BUN_LOCK"
+says "the expiry is warned" "WARN: expired allowlist entry $victim (until 2026-10-23)"
+says "the young entry fails again" "YOUNG: scripts/luna-vitals/bun.lock: $victim"
+
+printf '%s  until=2026-10-01  operator exception\n' "$victim" > "$tmp/allow-until-past.txt"
+run "an expired until= entry is ignored" 1 --times "$tmp/planted.json" --allow "$tmp/allow-until-past.txt" "$NPM_LOCK" "$BUN_LOCK"
+says "the expiry is warned" "WARN: expired allowlist entry $victim (until 2026-10-01)"
+
+run "RED control: the same young entry with no allowlist fails" 1 --times "$tmp/planted.json" --allow "$tmp/noallow.txt" "$NPM_LOCK" "$BUN_LOCK"
+
+for bad in 2026-13-01 2026-02-30 20261024 tomorrow; do
+  printf '%s  until=%s  operator exception\n' "$victim" "$bad" > "$tmp/allow-until-bad.txt"
+  run "a malformed until=$bad is a run failure" 2 --times "$tmp/planted.json" --allow "$tmp/allow-until-bad.txt" "$NPM_LOCK" "$BUN_LOCK"
+  says "the malformed line is named" "malformed until="
+done
+
+printf '%s  until=2026-10-24\n' "$victim" > "$tmp/allow-until-noreason.txt"
+run "an until= line without a reason is a run failure" 2 --times "$tmp/planted.json" --allow "$tmp/allow-until-noreason.txt" "$NPM_LOCK" "$BUN_LOCK"
+says "the reasonless line is named" "needs a reason"
+
 echo "== young plus unknown =="
 sed 's|,"@types/node@[^"]*":"[^"]*"||; s|"@types/node@[^"]*":"[^"]*",||' "$tmp/planted.json" > "$tmp/partial.json"
 run "a young entry wins over an unknown one" 1 --times "$tmp/partial.json" --allow "$tmp/noallow.txt" "$NPM_LOCK" "$BUN_LOCK"
