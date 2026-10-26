@@ -590,10 +590,10 @@ cd "$UCM_REPO" || true
 check_bounded block-unresolved-cr-merge Bash 2 "gh pr mer""ge 42 --squash" \
     "unresolved CodeRabbit threads block a merge" \
     -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG -u CRITICS_JSON -u CR_PROFILE "$UCM_CFG" "$UCM_OVERLAY" GH_STUB_MODE=unresolved PATH="$UCM_BIN:$PATH"
-# HIMMEL_CONSOLE_LEG arms gate 3 (console-GO), which this
+# HIMMEL_CONSOLE_LEG arms gate 3 (chief-GO), which this
 # fixture never sets up a GO file for; an ambient truthy value here (the
 # suite's own launching shell may carry one) would refuse this allow-case
-# with "no console GO" before the CR gate under test even decides anything.
+# with "no chief GO" before the CR gate under test even decides anything.
 check_bounded block-unresolved-cr-merge Bash 0 "gh pr mer""ge 42 --squash --match-head-commit abc123" \
     "a clean review allows the merge" \
     -u ARMAUTOMERGE -u CR_MERGE_GATE_OK -u HIMMEL_CONSOLE_LEG -u CRITICS_JSON -u CR_PROFILE "$UCM_CFG" "$UCM_OVERLAY" GH_STUB_MODE=clean PATH="$UCM_BIN:$PATH"
@@ -823,19 +823,19 @@ check guard-rm-writes Bash 2 "gi""t push" "deny push in a release-manager sessio
 check guard-rm-writes Bash 0 "gi""t status" "allow a read in a release-manager session" \
     HIMMEL_RELEASE_MANAGER=1
 
-# ── guard-console-foreground.sh — console long-script nudge ───
+# ── guard-chief-foreground.sh — chief long-script nudge ───
 # The listed-name match ends at a tail class; a terminal CR must not glue itself
 # to the script name.
-printf 'claude\0-n\0N-console\0' > "$TMP/cmdline-console"
-check guard-console-foreground Bash 2 "bash scripts/handover/chief-kit/wrap-merged.sh --pr 12" \
-    "deny a foreground long kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md \
-    CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console"
-check guard-console-foreground Bash 0 "bash scripts/handover/chief-kit/go.sh x" \
-    "allow a short kit script in a console" HIMMEL_CONSOLE_DOC=/x/N-console.md \
-    CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-console"
+printf 'claude\0-n\0N-chief\0' > "$TMP/cmdline-chief"
+check guard-chief-foreground Bash 2 "bash scripts/handover/chief-kit/wrap-merged.sh --pr 12" \
+    "deny a foreground long kit script in a chief" HIMMEL_CONSOLE_DOC=/x/N-chief.md \
+    CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-chief"
+check guard-chief-foreground Bash 0 "bash scripts/handover/chief-kit/go.sh x" \
+    "allow a short kit script in a chief" HIMMEL_CONSOLE_DOC=/x/N-chief.md \
+    CLAUDE_PID=1 SESSION_NAME_CMDLINE_FILE="$TMP/cmdline-chief"
 
-# guard-leg-context-handoff reads the fill through the transcript, so its rows
-# run against a leg fixture at 90 % with the guard on (it is off by default,
+# guard-worker-context-handoff reads the fill through the transcript, so its rows
+# run against a worker fixture at 90 % with the guard on (it is off by default,
 # enabled here): a hand-off command must stay allowed and an ordinary one denied
 # whatever the line endings.
 LCX="$TMP/legctx"
@@ -850,11 +850,11 @@ else LCX_SHA="$(printf '%s' "$LCX_TR" | shasum -a 256 | cut -d' ' -f1)"; fi
 printf '{"used_percentage":90,"remaining_percentage":10,"context_window_size":200000,"saved_at":%s000}' \
     "$(date +%s)" > "$LCX/cfg/plugins/claude-hud/context-cache/$LCX_SHA.json"
 CRLF_TP="$LCX_TR"
-check guard-leg-context-handoff Bash 2 "ls -la" "deny ordinary work at 90 %" \
-    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact \
+check guard-worker-context-handoff Bash 2 "ls -la" "deny ordinary work at 90 %" \
+    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-chief HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact \
     "CLAUDE_CONFIG_DIR=$LCX/cfg" "HANDOVER_DIR=$LCX/handovers"
-check guard-leg-context-handoff Bash 0 "bash scripts/handover/wrap-subtree-check.sh" "allow a hand-off command at 90 %" \
-    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-console HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact \
+check guard-worker-context-handoff Bash 0 "bash scripts/handover/wrap-subtree-check.sh" "allow a hand-off command at 90 %" \
+    HIMMEL_CONSOLE_LEG=1 HIMMEL_CONSOLE_NAME=T-chief HIMMEL_WORKER_SESSION_CONTEXT_MODE=compact \
     "CLAUDE_CONFIG_DIR=$LCX/cfg" "HANDOVER_DIR=$LCX/handovers"
 CRLF_TP=""
 check retrieval-nudge Bash 0 "gi""t status" "advisory hook exits 0 on a plain command"
@@ -862,7 +862,7 @@ check retrieval-nudge Bash 0 "gi""t status" "advisory hook exits 0 on a plain co
 # permission-allow-gate-shapes only ever allows or passes through, so its
 # verdict is always rc 0; a CR in the command must not turn that into a crash.
 printf '\nPermission allow hook\n'
-check permission-allow-gate-shapes Bash 0 "$A_OK" "pass through outside a leg worktree"
+check permission-allow-gate-shapes Bash 0 "$A_OK" "pass through outside a worker worktree"
 
 # allow-thread-resolve only ever allows or stays silent, so its rc is always 0;
 # a CR in the command must not turn that into a crash (the CR itself is refused
@@ -875,7 +875,7 @@ check allow-thread-resolve Bash 0 "$A_OK" "no decision on a plain command"
 # SOURCE — this directory's listing, never a list typed from memory — and
 # require every one to be exercised above. A new hook that reads command text
 # and brings no CRLF coverage fails this suite on the commit that introduces
-# it, which is the only way an audit stays true after the leg that wrote it.
+# it, which is the only way an audit stays true after the worker that wrote it.
 #
 # There is deliberately NO exemption list. An exemption naming another suite is
 # a claim nobody re-checks; a row here is a claim this suite proves every run.

@@ -4,7 +4,7 @@
 //
 // WHY THIS EXISTS
 // The recorder shipped behind a manual paste of six JSON blocks, and three
-// consecutive chain legs measured `requests recorded 0` as a result. A
+// consecutive chain workers measured `requests recorded 0` as a result. A
 // capability that ships behind a manual paste is a capability that does not
 // ship. This makes the wiring reviewable in a PR, versioned, idempotent, and
 // reversible.
@@ -29,7 +29,7 @@
 // of those and introduces four new keys, so once this script has run,
 // wire-hook-bash.mjs REFUSES until its constants are reconciled.
 //
-// Verified across five chain legs that nothing invokes it today (only its own
+// Verified across five chain workers that nothing invokes it today (only its own
 // test references it), so this blocks nobody right now — and bumping its
 // constants is NOT the fix, because the counts differ depending on whether the
 // ledger is on or off, which a frozen constant cannot express. That is the

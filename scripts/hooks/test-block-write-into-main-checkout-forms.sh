@@ -517,7 +517,7 @@ _r4476() { # label verdict template
     local c="$3"
     c="${c//@P@/$_PR}"; c="${c//@W@/$_WR}"
     _subst_row "$1 [cwd=primary]" "$2" "$c" "$_PR"
-    _subst_row "$1 [cwd=leg]" "$2" "$c" "$_WR"
+    _subst_row "$1 [cwd=worker]" "$2" "$c" "$_WR"
 }
 # shellcheck disable=SC2016  # row templates are literal shell text
 {
@@ -591,7 +591,7 @@ fi
 # does not charge more for code-shaped text than for text.
 echo "== HIMMEL-5747: large payload still denies; archive -o to the primary; 20 KB bound =="
 _blob15="$_blob$_blob$_blob"
-_j5747() { # _j5747 <command> -> hook JSON, cwd the leg worktree
+_j5747() { # _j5747 <command> -> hook JSON, cwd the worker worktree
     printf '{"tool_name":"Bash","tool_input":{"command":%s,"cwd":"%s"}}' "$(printf '%s' "$1" | jq -Rs .)" "$_WR"
 }
 _t_row() { # _t_row <label> <want> <command> <bound-seconds>
@@ -602,7 +602,7 @@ _t_row() { # _t_row <label> <want> <command> <bound-seconds>
 }
 _t_row "5747 15 KB quoted payload then a primary write denies" block "echo '$_blob15'; echo x > $_PR/f5747" 12
 _t_row "5747 primary write inside a 15 KB double-quoted substitution denies" block "echo \"$_blob15 \$(echo x > $_PR/f5747)\"" 12
-_t_row "5747 15 KB quoted payload, write to the leg worktree allows" allow "echo '$_blob15' > $_WR/f5747" 12
+_t_row "5747 15 KB quoted payload, write to the worker worktree allows" allow "echo '$_blob15' > $_WR/f5747" 12
 _t_row "5747 15 KB quoted payload, write to /tmp allows" allow "echo '$_blob15' > /tmp/f5747-$$" 12
 _subst_row "5747 git archive -o primary/a.tar denies"            block "git archive -o $_PR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive --output=primary/a.tar denies"      block "git archive --output=$_PR/a5747.tar HEAD" "$_WR"
@@ -611,7 +611,7 @@ _subst_row "5747 CR CR between words still denies a primary write"      block "e
 _subst_row "6466 VT between words still denies a primary write"         block "echo a"$'\v'"b > $_PR/a6466v.txt" "$_WR"
 _subst_row "6466 FF between words still denies a primary write"         block "echo a"$'\f'"b > $_PR/a6466f.txt" "$_WR"
 _subst_row "6466 high byte in a word still denies a primary write"      block "echo caf"$'\xc3\xa9'" > $_PR/a6466h.txt" "$_WR"
-_subst_row "5747 git archive -o leg worktree/a.tar allows"     allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
+_subst_row "5747 git archive -o worker worktree/a.tar allows"     allow "git archive -o $_WR/a5747.tar HEAD" "$_WR"
 _subst_row "5747 git archive -o /tmp/a.tar allows"               allow "git archive -o /tmp/a5747.tar HEAD" "$_WR"
 _c20=""; _i=0; while [ ${#_c20} -lt 20000 ]; do _c20="${_c20}echo line$_i > $_WR/f$_i; "; _i=$((_i+1)); done
 _k20=""; while [ ${#_k20} -lt 20000 ]; do _k20="$_k20$_unit"; done
@@ -628,9 +628,9 @@ _growth_ok() { [ "$1" -le $(($2 * 3 + 2)) ]; }
 # growth costs ~4x it, a quadratic one ~16x
 _c5="${_c20:0:5000}"; _c5="${_c5%echo*}"
 _lin_ok() { [ "$1" -le $(($2 * 6 + 2)) ]; } # _lin_ok <20 KB secs> <5 KB secs>
-_t_row "5747 5 KB of redirect clauses (leg worktree) allows" allow "$_c5" "$_HANG_CEILING"
+_t_row "5747 5 KB of redirect clauses (worker worktree) allows" allow "$_c5" "$_HANG_CEILING"
 _el_c5=$_T_EL
-_t_row "5747 20 KB of redirect clauses (leg worktree) allows" allow "$_c20" "$_HANG_CEILING"
+_t_row "5747 20 KB of redirect clauses (worker worktree) allows" allow "$_c20" "$_HANG_CEILING"
 _el_c20=$_T_EL
 # the control is bound against a 5 KB echo timed in the same run: a linear scan
 # costs ~4x it, a quadratic one ~16x, and runner load scales both alike

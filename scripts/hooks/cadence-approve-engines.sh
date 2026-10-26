@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Cadence-scoped PreToolUse Bash ALLOW hook.
 #
-# WHY: the daily vault-lint cadence leg runs the
+# WHY: the daily vault-lint cadence worker runs the
 # obsidian-triage:vault-lint skill, whose engine is
 #   python <himmel-root>/marketplace/plugins/obsidian-triage/skills/vault-lint/vault_lint.py <vault>
 # `python` is deliberately NOT in auto-approve-safe-bash.sh's safe set (it is a
@@ -15,7 +15,7 @@
 # matcher's metacharacter bail nor the colon problem can reach it.
 #
 # This hook grants ONLY the enumerated cadence engine scripts — initially just
-# the vault-lint engine. Grow ENGINE_LIST per leg as more cadence engines are
+# the vault-lint engine. Grow ENGINE_LIST per worker as more cadence engines are
 # added (each entry: <binary>:<normalized-path-suffix>, suffix with `\`->`/`).
 #
 # CONTRACT (inverted vs the block-* hooks; mirrors auto-approve-safe-bash):
@@ -53,7 +53,7 @@
 #                                    THREE engines (harvest-clip-body-batch.py,
 #                                    ig-media-fetch.py, x-media-fetch.py) invoked as `uv run
 #                                    [--python <ver>] python <script>` — the
-#                                    shape their own leg docs use — via
+#                                    shape their own worker docs use — via
 #                                    match_uv_prefix below, optionally preceded
 #                                    by the single literal `PYTHONUTF8=1`
 #                                    assignment those same docs also use
@@ -72,7 +72,7 @@
 #      Cache root anchor: the obsidian-triage plugin
 #      itself RUNS from the Claude Code plugin cache
 #      (~/.claude/plugins/cache/himmel/obsidian-triage/<version>/...), so a
-#      leg session's engine path legitimately resolves there, not just under
+#      worker's engine path legitimately resolves there, not just under
 #      this checkout -- both are sanctioned copies of the same plugin. The
 #      grant additionally requires the cache dir basename to be
 #      version-shaped AND the specific engine file to actually exist under it
@@ -110,7 +110,7 @@
 #      none) is a separate, not-yet-fixed engine-side concern -- tracked for a
 #      follow-up ticket, out of scope for this hook.
 #   7. A `gh api repos/...` segment is ALSO granted, but ONLY
-#      when it is READ-shaped -- the harvest/luna-ingest legs only ever read
+#      when it is READ-shaped -- the harvest/luna-ingest workers only ever read
 #      github metadata through this hook, never write it. Granted iff ALL
 #      hold: the (quote-reassembled) endpoint right after `api` starts with
 #      `repos/`, carries no `$`, and carries no `..`; AND every other token is
@@ -134,15 +134,15 @@ set -uo pipefail
 # shellcheck source=../lib/prim.sh
 . "$(dirname "${BASH_SOURCE[0]}")/../lib/prim.sh" 2>/dev/null
 
-# Enumerated cadence engines. Add legs here as `<bin>:<normalized suffix>`
-# pairs. The suffix is the per-leg registry key; it is joined to the ROOT ANCHOR
+# Enumerated cadence engines. Add workers here as `<bin>:<normalized suffix>`
+# pairs. The suffix is the per-worker registry key; it is joined to the ROOT ANCHOR
 # below and matched EXACTLY (backslashes folded to `/`, case-insensitively), so
 # it stays machine-independent while still naming one specific file on disk.
-# List every interpreter binary a leg may use (python AND python3) so a
+# List every interpreter binary a worker may use (python AND python3) so a
 # paraphrased interpreter name still matches the same engine.
 VAULT_LINT_SUFFIX="marketplace/plugins/obsidian-triage/skills/vault-lint/vault_lint.py"
-# The harvest/triage/ig-media-enrich cadence legs, enumerated exactly
-# as those leg sessions specified. All live under the obsidian-triage plugin's
+# The harvest/triage/ig-media-enrich cadence workers, enumerated exactly
+# as those workers specified. All live under the obsidian-triage plugin's
 # tools/ dir (tools/lib/ for evidence-kind.mjs), same ROOT ANCHOR posture as
 # vault_lint above -- one specific file beside this hook's own checkout, never
 # a same-named file elsewhere.
@@ -208,7 +208,7 @@ if command -v cygpath >/dev/null 2>&1; then
 fi
 
 # Secondary (plugin-cache) anchor. obsidian-triage
-# leg sessions actually run the plugin from the Claude Code plugin cache, not
+# workers actually run the plugin from the Claude Code plugin cache, not
 # this checkout, so a cache-rooted engine path is an equally sanctioned copy
 # — see SAFETY MODEL point 5 addendum above. Derived from $HOME (same pattern
 # as ENGINE_ROOT_POSIX deriving from this hook's own location); no new bypass
@@ -294,7 +294,7 @@ is_engine_binary() {
 }
 
 # Optional `uv run [--python <ver>] python` prefix ahead of the script token
-# -- the one shape harvest-clip-body-batch.py's own leg docs use
+# -- the one shape harvest-clip-body-batch.py's own worker docs use
 # (ig-media-enrich.md/x-media-enrich.md). Only this segment's own caller
 # (segment_is_engine) may treat a match as an engine invocation, and it does
 # so ONLY for the harvest, ig-media-fetch and x-media-fetch suffixes -- see the
@@ -362,7 +362,7 @@ norm_path() {
 
 # Is `flag` a known-safe boolean flag for the engine matched at suffix `esuf`?
 # Safe = takes no value and cannot redirect input/output outside the vault.
-# Per-engine, keyed by suffix so a future leg's flags stay scoped to its own
+# Per-engine, keyed by suffix so a future worker's flags stay scoped to its own
 # engine. vault-lint's set is derived from its SKILL.md documented flags
 # (marketplace/plugins/obsidian-triage/skills/vault-lint/SKILL.md):
 #   --json       prints full detail to stdout only; no file I/O change.
@@ -550,7 +550,7 @@ whisper_model_is_safe() {
 }
 
 # Does `script` end with any enumerated suffix for binary `bin`? The list is
-# <bin>:<suffix> pairs; we match the bin explicitly so a future leg's suffix
+# <bin>:<suffix> pairs; we match the bin explicitly so a future worker's suffix
 # cannot be reached via the wrong interpreter.
 script_matches_engine() {
     local bin="$1" script="$2" norm entry ebin esuf
@@ -583,7 +583,7 @@ segment_is_engine() {
     local bin script_idx via_uv=0
     if [ "${w[0]}" = "uv" ]; then
         # `uv run [--python <ver>] python <script>` -- the shape
-        # harvest-clip-body-batch.py's and ig-media-fetch.py's own leg docs
+        # harvest-clip-body-batch.py's and ig-media-fetch.py's own worker docs
         # use. Restricted to those three engines below (after
         # script_matches_engine resolves MATCHED_SUFFIX), not opened up to
         # every python-based engine.
@@ -608,9 +608,9 @@ segment_is_engine() {
     script_matches_engine "$bin" "$script" || return 1
     # The uv-run prefix is granted ONLY for the three engines documented as
     # using it -- a match against any other python-bin suffix (e.g.
-    # vault_lint) via `uv run ... python <script>` is refused: that leg's own
+    # vault_lint) via `uv run ... python <script>` is refused: that worker's own
     # docs invoke it with the bare interpreter, so widening this to "any
-    # python engine, via uv" is not something any leg actually needs.
+    # python engine, via uv" is not something any worker actually needs.
     if [ "$via_uv" -eq 1 ]; then
         case "$MATCHED_SUFFIX" in
             "$HARVEST_SUFFIX"|"$IG_MEDIA_FETCH_SUFFIX"|"$X_MEDIA_FETCH_SUFFIX") ;;

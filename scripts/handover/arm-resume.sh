@@ -61,7 +61,7 @@
 #                      multi-hour/day quota-exhaustion park
 #                      (rc=19). Default REFUSES both so a long wait is an
 #                      explicit choice, not a silent default (ALWAYS-CONTINUE:
-#                      an orchestrator leg arms <=30-60 min out while work
+#                      an orchestrator worker arms <=30-60 min out while work
 #                      remains). ARM_RESUME_SAFETY_ARM=1 is exempt from BOTH
 #                      guards. The "smart/auto sentinels are exempt" wording
 #                      this replaced was stale/scoped wrong: that exemption is
@@ -188,7 +188,7 @@
 #      MERGED PR, or an OPEN+MERGEABLE one. The ERR names which check tripped.
 #      Only POSITIVE evidence refuses — a missing gh/Jira CLI, no network or a
 #      detached HEAD skip the probe. Pass --force or set ARM_SHIPPED_OK=1 for a
-#      deliberate follow-up leg on the same ticket.
+#      deliberate follow-up worker on the same ticket.
 #   10 live workers refused — one or more GLM/claudex bridge rows are running
 #      with a live or unprobeable pid. Unprobeable fails closed as
 #      possibly alive. Wait for them or explicitly set ARM_WITH_LIVE_WORKERS=1
@@ -197,7 +197,7 @@
 #      under a DIFFERENT handover file. The identity dedup (rc 3)
 #      only catches the SAME handover armed twice; this catches two handovers
 #      naming the same ticket. Pass --force or set ARM_TICKET_DUP_OK=1 for a
-#      deliberate parallel leg on the same ticket.
+#      deliberate parallel worker on the same ticket.
 #   14 vault-cwd refused — no --cwd/--worktree/resume_cwd: named a work repo,
 #      so the auto-detected cwd (the handover's own git toplevel) would be
 #      used, and that directory is a SINGLE-WRITER repo — e.g. a
@@ -223,32 +223,32 @@
 # Re-run where schtasks can read them. 16 outranks this: a
 #      sweep with BOTH a hit and an uninspectable entry exits 16 and says so in
 #      the report, because the hit is the actionable half.
-#   17 split-leg refused — the handover is `<prefix>-session-N.md` and its
-#      sibling `<prefix>-session-<N-1>.md` was written inside this leg window
+#   17 split-worker refused — the handover is `<prefix>-session-N.md` and its
+#      sibling `<prefix>-session-<N-1>.md` was written inside this worker window
 #      AND was never itself a relaunch point (no `armed-resume` ledger row
-#      names its arm identity): one leg wrote two numbered files and is arming the
+#      names its arm identity): one worker wrote two numbered files and is arming the
 #      wrong half, so the other half's state would be orphaned.
-#      Fold them into ONE file and arm that; ARM_SPLIT_LEG_OK=1 or --force opts
+#      Fold them into ONE file and arm that; ARM_SPLIT_WORKER_OK=1 or --force opts
 #      out. Safety arms (ARM_RESUME_SAFETY_ARM=1) are exempt.
 #   20 fable-tier refused — --model names a Fable-family model on a
-#      non-console arm with no --fable-ok (operator ruling 30:
+#      non-chief arm with no --fable-ok (operator ruling 30:
 #      "we shouldn't arm fable unless theres a good reason"). Pass
 #      --fable-ok "<reason>" to arm it anyway, or drop --model to get the
-#      opus default. *-console.md handovers are exempt (ruling 25 -- the
-#      console lane is ALWAYS Fable). rc 0-19 were already taken by this
+#      opus default. *-chief.md handovers are exempt (ruling 25 -- the
+#      chief lane is ALWAYS Fable). rc 0-19 were already taken by this
 #      script, so 20 is the first free code.
 #   21 base-not-verified refused — the handover's `fence:` frontmatter key
-#      (console ruling 66) names a fence scripts/chief/base-status.sh
+#      (chief ruling 66) names a fence scripts/chief/base-status.sh
 #      could not certify clean: it reported a PENDING/RED merged PR, OR it
 #      could not run at all (missing script, gh query error, a truncated
 #      merged-PR list) — a certification failure refuses exactly like a
 #      certified-dirty base, never a silent unchecked proceed (CR finding
 #      codex-1). Docs with no `fence:` key are unaffected. Pass
 #      --provisional-base-ok to arm anyway — this WARNS loudly and prints
-#      the warning text (paste it into the leg's first message per ruling
+#      the warning text (paste it into the worker's first message per ruling
 #      66) instead of refusing.
 #   22 fleet-size cap refused — scripts/lib/usage-preflight.sh
-#      reported SKIPPED-FLEET: the number of live LEG sessions is already at
+#      reported SKIPPED-FLEET: the number of live WORKER sessions is already at
 #      or above HIMMEL_FLEET_CAP (default 4; concurrency, not bank
 #      exhaustion, burned the fleet on 2026-09-07). Checked at
 #      ARM time (before the scheduler entry is created), --dry-run exempt.
@@ -321,7 +321,7 @@ _bus_rebind_line() { # _bus_rebind_line <arm-log-file>
 }
 # --context resolution (arming-time 1m/standard choice, never
 # inherited from the operator's user-level model setting). Left empty means
-# "use the console/non-console default" -- resolved right after the MODEL_REASON
+# "use the chief/non-chief default" -- resolved right after the MODEL_REASON
 # block below, where CONTEXT_MODE and AUTOCOMPACT get their real values.
 CONTEXT_MODE=""
 AUTOCOMPACT=""
@@ -343,7 +343,7 @@ _epoch_hhmm() { py_armor_capture -c 'import sys,datetime; print(datetime.datetim
 
 usage() {
     cat <<'EOF'
-Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier leg] [--provisional-base-ok]
+Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier worker] [--provisional-base-ok]
 
 Arms the OS scheduler to relaunch claude at the given time with a
 resume prompt referencing the given handover file. Dedup-guarded
@@ -398,47 +398,47 @@ Optional:
   --profile <name>   Plugin profile for the relaunched claude,
                      applied as `--settings <resolved file>`. Omitted: the
                      role is read from the handover doc (a `profile:` line,
-                     else console / leg-impl / user). Fails closed.
+                     else chief / worker-impl / user). Fails closed.
   --model <name>     Pass --model <name> to the relaunched claude (e.g.
                      opus, sonnet, haiku, or a full model id). Passed
                      through verbatim — no validation against a model
                      list. Omitted defaults to opus for an ordinary
-                     (non-console) arm (ruling 30); a
-                     *-console.md handover keeps the operator's default
-                     model instead (ruling 25 — the console lane is
+                     (non-chief) arm (ruling 30); a
+                     *-chief.md handover keeps the operator's default
+                     model instead (ruling 25 — the chief lane is
                      ALWAYS Fable). A Fable-family value (matched by
                      substring, e.g. fable, claude-fable-5) on a
-                     non-console arm is refused (rc=20) unless paired
+                     non-chief arm is refused (rc=20) unless paired
                      with --fable-ok. Not part of the dedup identity:
                      the same handover still dedupes regardless of
                      --model.
   --fable-ok <reason>
                      Justify an explicit Fable-family --model pin on a
-                     non-console arm (ruling 30). Free
+                     non-chief arm (ruling 30). Free
                      prose, but must not contain a double quote. Ignored
                      (no-op) when --model is absent or not Fable-family,
-                     and unnecessary on a *-console.md handover, which
+                     and unnecessary on a *-chief.md handover, which
                      is always exempt (ruling 25).
   --context <1m|standard>
                      Arming-time context-window choice (an
                      operator ruling that context mode must be armed
-                     explicitly per console/leg, never inherited from the
+                     explicitly per chief/worker, never inherited from the
                      user-level model setting: a stray [1m] suffix there
                      drove ~25-35% of the weekly bank). 1m appends the
                      [1m] suffix to --model (silently a no-op on a
                      Fable-family model — the CLI strips it there) and
                      passes --autocompact auto; standard strips any
                      [1m] suffix and passes --autocompact 200000.
-                     Default: 1m for consoles, standard for
-                     non-console arms. CHIEF_CONTEXT=standard opts a
-                     console down; explicit --context overrides it. The
+                     Default: 1m for chiefs, standard for
+                     non-chief arms. CHIEF_CONTEXT=standard opts a
+                     chief down; explicit --context overrides it. The
                      resolved mode, its source (explicit vs. default) and
                      the effective autocompact value are always echoed to
                      the arm log.
-  --tier leg         Mark this as a worker-leg arm. The resolved launch argv
+  --tier worker      Mark this as a worker arm. The resolved launch argv
                      must carry the exact --autocompact 200000 ceiling;
                      --context 1m is refused with exit 2. Omit for existing
-                     console/ordinary arm behavior.
+                     chief/ordinary arm behavior.
   --provisional-base-ok
                      Arm anyway when the handover's `fence:` frontmatter
                      key names a fence scripts/chief/base-status.sh
@@ -447,7 +447,7 @@ Optional:
                      query error, truncated list) — (ruling
                      66) instead of refusing (rc=21). WARNS loudly and
                      prints the warning text on stderr — paste it into
-                     the leg's first message. No-op on a handover with
+                     the worker's first message. No-op on a handover with
                      no `fence:` key, or when the fence checks out clean.
   --wsl-distro <name>
                      Windows-host only: arm through schtasks, but relaunch
@@ -569,7 +569,7 @@ EOF
 }
 
 # sourced here (ahead of SCRIPT_DIR at the bottom of the
-# file) because --context validation below needs console_context_valid
+# file) because --context validation below needs chief_context_valid
 # during arg parsing, well before SCRIPT_DIR/py-armor sourcing normally
 # happens.
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/chief-context.sh"
@@ -577,8 +577,15 @@ EOF
 # When the two context names disagree, standard wins, so a stale name never
 # widens the 1m gate.
 [ "${CONSOLE_CONTEXT:-}" = standard ] && CHIEF_CONTEXT=standard
-CHIEF_CONTEXT="${CHIEF_CONTEXT:-${CONSOLE_CONTEXT:-}}"
-CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-${CONSOLE_WORK_DIR:-}}"
+# shellcheck source=../lib/env-alias.sh
+. "$_csg_dir/../lib/env-alias.sh"
+alias_env ARM_SPLIT_WORKER_WINDOW_SEC ARM_SPLIT_LEG_WINDOW_SEC
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+alias_env CHIEF_CONTEXT CONSOLE_CONTEXT
+alias_env CHIEF_WORK_DIR CONSOLE_WORK_DIR
+alias_env CADENCE_USAGE_SKIP_REFRESH CADENCE_BANK_SKIP_REFRESH
+CHIEF_CONTEXT="${CHIEF_CONTEXT:-}"
+CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-}"
 # shellcheck source=../lib/claude-version.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/../lib/claude-version.sh"
 
@@ -586,6 +593,23 @@ CHIEF_WORK_DIR="${CHIEF_WORK_DIR:-${CONSOLE_WORK_DIR:-}}"
 # unknown flags are rejected loudly. Avoids the v1 "$3 == --force"
 # positional trap.
 ARGC_AT_START=$#
+# _arm_tier VALUE: prints worker for worker, and for the old value leg while
+# legacy names are on; anything else is an error.
+_arm_tier() {
+    case "$1" in
+        worker) printf 'worker' ;;
+        leg)
+            case "${HIMMEL_LEGACY_NAMES:-}" in
+                0|[Ff][Aa][Ll][Ss][Ee]|[Nn][Oo]|[Oo][Ff][Ff])
+                    echo "ERR arm-resume: --tier leg was renamed to --tier worker; legacy names are off" >&2
+                    return 1 ;;
+            esac
+            printf 'worker' ;;
+        *)
+            echo "ERR arm-resume: --tier must be worker, got: ${1:-<empty>}" >&2
+            return 1 ;;
+    esac
+}
 while [ $# -gt 0 ]; do
     case "$1" in
         --time)        RESUME_TIME="${2:-}"; _TIME_GIVEN=1; shift 2 ;;
@@ -654,7 +678,7 @@ while [ $# -gt 0 ]; do
                 echo "ERR arm-resume: --context requires a non-empty, non-option value" >&2
                 exit 2
             fi
-            if ! console_context_valid "$2"; then
+            if ! chief_context_valid "$2"; then
                 echo "ERR arm-resume: --context must be 1m or standard, got: $2" >&2
                 exit 2
             fi
@@ -666,7 +690,7 @@ while [ $# -gt 0 ]; do
                 echo "ERR arm-resume: --context requires a non-empty, non-option value" >&2
                 exit 2
             fi
-            if ! console_context_valid "$CONTEXT_MODE"; then
+            if ! chief_context_valid "$CONTEXT_MODE"; then
                 echo "ERR arm-resume: --context must be 1m or standard, got: $CONTEXT_MODE" >&2
                 exit 2
             fi
@@ -674,21 +698,14 @@ while [ $# -gt 0 ]; do
             ;;
         --tier)
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then
-                echo "ERR arm-resume: --tier requires leg" >&2
+                echo "ERR arm-resume: --tier requires worker" >&2
                 exit 2
             fi
-            if [ "$2" != "leg" ]; then
-                echo "ERR arm-resume: --tier must be leg, got: $2" >&2
-                exit 2
-            fi
-            TIER="$2"; shift 2
+            TIER="$(_arm_tier "$2")" || exit 2
+            shift 2
             ;;
         --tier=*)
-            TIER="${1#--tier=}"
-            if [ "$TIER" != "leg" ]; then
-                echo "ERR arm-resume: --tier must be leg, got: ${TIER:-<empty>}" >&2
-                exit 2
-            fi
+            TIER="$(_arm_tier "${1#--tier=}")" || exit 2
             shift
             ;;
         --wsl-distro)
@@ -708,7 +725,7 @@ while [ $# -gt 0 ]; do
             ;;
         --fable-ok)
             # justifies an explicit Fable-family --model pin on
-            # a non-console arm (ruling 30). Same missing/empty/option-value
+            # a non-chief arm (ruling 30). Same missing/empty/option-value
             # shape as --model above.
             if [ $# -lt 2 ] || [ -z "$2" ] || [ "${2#-}" != "$2" ]; then
                 echo "ERR arm-resume: --fable-ok requires a non-empty, non-option value" >&2
@@ -787,11 +804,11 @@ if [ "$AUTOMERGE" -eq 1 ] && [ "$NO_AUTOMERGE" -eq 1 ]; then
     exit 2
 fi
 
-# a consult is confined only by headed-arm-leg.sh --consult's
+# a consult is confined only by headed-arm-worker.sh --consult's
 # `--setting-sources ""`, which no arm-resume launch path carries (and the at body
 # clears the seam), so a re-armed consult would start unconfined.
 # Fail closed: a session carrying the consult marker never arms. A consult is a
-# short question; the console relaunches one with headed-arm-leg.sh if it must.
+# short question; the chief relaunches one with headed-arm-worker.sh if it must.
 # the read-only --list-temp-arms sweep arms nothing, so it alone passes,
 # and only as the SOLE argument (the flag beside any other mode or arm arg still refuses).
 # ponytail: the consult is identified by these env vars alone, so a consult that unsets
@@ -800,7 +817,7 @@ fi
 # token file, trigger = an exploit beyond the sandbox.
 if [ -n "${WORKER_SESSION_PROFILE_NO_SETTING_SOURCES:-}${LEG_PROFILE_NO_SETTING_SOURCES:-}" ] \
     && ! { [ "${LIST_TEMP_ARMS:-0}" -eq 1 ] && [ "$ARGC_AT_START" -eq 1 ]; }; then
-    echo "ERR arm-resume: refusing to arm from inside a consult (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES or LEG_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-leg.sh --consult" >&2
+    echo "ERR arm-resume: refusing to arm from inside a consult (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES or LEG_PROFILE_NO_SETTING_SOURCES is set): no arm-resume launch carries the consult's --setting-sources confinement; relaunch it with headed-arm-worker.sh --consult" >&2
     exit 2
 fi
 
@@ -910,7 +927,7 @@ EOF
                 # tracks as _locale_degraded). The XML element names come from
                 # the Task Scheduler schema and never translate.
                 _lta_v=$(MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /query /tn "$_lta_name" /xml ONE 2>/dev/null) || _lta_v=""
-                # `/xml` declares UTF-16 but writes the console codepage down a
+                # `/xml` declares UTF-16 but writes the chief codepage down a
                 # pipe; \r is the only thing that needs stripping here.
                 _lta_v=$(printf '%s\n' "$_lta_v" | tr -d '\r')
                 _lta_cmd=$(printf '%s\n' "$_lta_v" | sed -n 's|.*<Command>\(.*\)</Command>.*|\1|p' | head -1)
@@ -1017,7 +1034,7 @@ fi
 # fable unless theres a good reason" / "make sure this is STRUCTURAL
 # otherwise it won't work". The --model passthrough is opt-in,
 # so an arm that omits it relaunches on the operator's default model, which
-# is the Fable tier -- expensive. Two worker legs got armed unpinned on
+# is the Fable tier -- expensive. Two workers got armed unpinned on
 # 2026-08-31 and landed on Fable parents where Opus was right.
 #
 # Placed HERE, deliberately: right after the required-args check and before
@@ -1028,42 +1045,42 @@ fi
 # is ever composed, so all four --model consumption sites downstream inherit
 # the default/refusal for free without themselves changing.
 #
-# Ruling 25 exempts the CONSOLE lane, which may legitimately pin Fable: a
-# console arm (handover basename *-chief.md or *-console.md, case-insensitive) must stay
+# Ruling 25 exempts the CHIEF lane, which may legitimately pin Fable: a
+# chief arm (handover basename *-chief.md or *-console.md, case-insensitive) must stay
 # ceremony-free -- neither defaulted to opus nor required to justify a Fable
-# pin. An UNPINNED console arm passes no --model at all, so the launched
-# claude uses the operator's own default; console.sh / headed-arm.sh default
-# their console parent to Opus (#836) but arm-resume does not
+# pin. An UNPINNED chief arm passes no --model at all, so the launched
+# claude uses the operator's own default; chief.sh / headed-arm.sh default
+# their chief parent to Opus (#836) but arm-resume does not
 # choose one. Computed from the raw --handover path as typed; the file-existence
 # check happens later, so no canonicalization dependency is needed here.
-_arm_is_console=0
+_arm_is_chief=0
 case "$(basename -- "$HANDOVER_PATH" | tr '[:upper:]' '[:lower:]')" in
-    *-console.md|*-chief.md) _arm_is_console=1 ;;
+    *-console.md|*-chief.md) _arm_is_chief=1 ;;
 esac
 
 # Fable-FAMILY match, not a literal string -- fable, fable-5, claude-fable-5,
 # Claude-Fable-5 all match. A plain `case` glob on a lowercased form, same
 # idiom the rest of this script uses (no `[[ ... ]]` regex).
 _arm_model_is_fable=0
-if [ -n "$MODEL" ] && console_context_model_is_fable "$MODEL"; then
+if [ -n "$MODEL" ] && chief_context_model_is_fable "$MODEL"; then
     _arm_model_is_fable=1
 fi
 
 MODEL_REASON=""
-if [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ] && [ "$_arm_is_console" -eq 0 ] && [ -z "$FABLE_OK" ]; then
+if [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ] && [ "$_arm_is_chief" -eq 0 ] && [ -z "$FABLE_OK" ]; then
     # rc 0-19 are already taken by this script (see the Exit codes table
     # near the top of the file) -- 20 is the first free code.
-    echo "ERR arm-resume: --model $MODEL is Fable-family, and ruling 30 (\"we shouldn't arm fable unless theres a good reason\") refuses arming it unjustified. Pass --fable-ok \"<reason>\" to arm it anyway, or drop --model to get the opus default. *-console.md handovers are exempt (ruling 25 -- a console arm may pin Fable)." >&2
+    echo "ERR arm-resume: --model $MODEL is Fable-family, and ruling 30 (\"we shouldn't arm fable unless theres a good reason\") refuses arming it unjustified. Pass --fable-ok \"<reason>\" to arm it anyway, or drop --model to get the opus default. *-chief.md handovers are exempt (ruling 25 -- a chief arm may pin Fable)." >&2
     exit 20
-elif [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ] && [ "$_arm_is_console" -eq 1 ]; then
-    MODEL_REASON="model=$MODEL (fable pinned; console arm -- ruling 25, exempt)"
+elif [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ] && [ "$_arm_is_chief" -eq 1 ]; then
+    MODEL_REASON="model=$MODEL (fable pinned; chief arm -- ruling 25, exempt)"
 elif [ -n "$MODEL" ] && [ "$_arm_model_is_fable" -eq 1 ]; then
     MODEL_REASON="model=$MODEL (fable pinned; reason: $FABLE_OK)"
-elif [ -z "$MODEL" ] && [ "$_arm_is_console" -eq 0 ]; then
+elif [ -z "$MODEL" ] && [ "$_arm_is_chief" -eq 0 ]; then
     MODEL="opus"
-    MODEL_REASON="model=opus (no --model given; non-console arms default to opus -- ruling 30)"
-elif [ -z "$MODEL" ] && [ "$_arm_is_console" -eq 1 ]; then
-    MODEL_REASON="model=<operator default> (console arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable)"
+    MODEL_REASON="model=opus (no --model given; non-chief arms default to opus -- ruling 30)"
+elif [ -z "$MODEL" ] && [ "$_arm_is_chief" -eq 1 ]; then
+    MODEL_REASON="model=<operator default> (chief arm, unpinned -- no model flag passed, so the launched claude uses the operator's own default; arm-resume never forces Fable)"
 else
     # Explicit non-Fable pin (or a harmless --fable-ok on a non-Fable/absent
     # pin, which is belt-and-braces and needs no warning here).
@@ -1080,27 +1097,27 @@ echo "arm-resume: $MODEL_REASON"
 # setting drove ~25-35% of the weekly token bank, and dropping the suffix
 # from settings alone did NOT move the station off 1M (measured; see
 # docs/internals/lane-calibration.md "Context mode -- an arming-time
-# choice"). Context mode is now an ARMING-TIME choice per console/leg, never
+# choice"). Context mode is now an ARMING-TIME choice per chief/worker, never
 # inherited. Runs right here -- before SCRIPT_DIR/py-armor sourcing below --
 # so --dry-run exercises it and all four downstream --model emission sites
 # inherit CONTEXT_MODE/MODEL/AUTOCOMPACT for free without themselves
-# changing. Reuses _arm_is_console and _arm_model_is_fable, already computed
+# changing. Reuses _arm_is_chief and _arm_model_is_fable, already computed
 # above for the MODEL_REASON block -- do not recompute either.
 #
-# consoles default to 1m; non-console arms remain standard.
-# The shared resolver honors CHIEF_CONTEXT=standard as a console-only
+# chiefs default to 1m; non-chief arms remain standard.
+# The shared resolver honors CHIEF_CONTEXT=standard as a chief-only
 # opt-down. An explicit --context takes precedence over both.
 if [ -z "$CONTEXT_MODE" ]; then
-    console_context_default "$_arm_is_console" "${CHIEF_CONTEXT:-}"
+    chief_context_default "$_arm_is_chief" "${CHIEF_CONTEXT:-}"
     CONTEXT_MODE="$CHIEF_CONTEXT_RESOLVED_MODE"
     # the source word is the one headed-arm.sh emits and spec
     # 2973 sec 2.4 keys on (`context=1m (explicit)`), from the shared
-    # resolver. It used to be prose per case (console default,
-    # non-console default, the CHIEF_CONTEXT=1m opt-in) that no
+    # resolver. It used to be prose per case (chief default,
+    # non-chief default, the CHIEF_CONTEXT=1m opt-in) that no
     # reader could match; the provenance is in those tickets, not the string.
-    _arm_context_source=$(console_context_source_label 0)
+    _arm_context_source=$(chief_context_source_label 0)
 else
-    _arm_context_source=$(console_context_source_label 1)
+    _arm_context_source=$(chief_context_source_label 1)
 fi
 CONTEXT_REASON="context=$CONTEXT_MODE ($_arm_context_source)"
 
@@ -1109,15 +1126,15 @@ CONTEXT_REASON="context=$CONTEXT_MODE ($_arm_context_source)"
 # never doubled, and `standard` can guarantee its absence. `[` and `]` are
 # escaped so this is a literal-suffix match, not a `[1m]` character class.
 _arm_model_had_suffix=0
-if console_context_has_1m_suffix "$MODEL"; then
+if chief_context_has_1m_suffix "$MODEL"; then
     _arm_model_had_suffix=1
 fi
-MODEL="$(console_context_strip_1m_suffix "$MODEL")"
+MODEL="$(chief_context_strip_1m_suffix "$MODEL")"
 
 # autocompact is the lever that actually moves the cost driver (measured
 # fact 3) -- passed regardless of whether --model is even present in the
-# launch command, so a console arm with no explicit --model still gets it.
-AUTOCOMPACT="$(console_context_autocompact "$CONTEXT_MODE")"
+# launch command, so a chief arm with no explicit --model still gets it.
+AUTOCOMPACT="$(chief_context_autocompact "$CONTEXT_MODE")"
 if [ "$CONTEXT_MODE" = "1m" ]; then
     if [ -z "$MODEL" ]; then
         CONTEXT_REASON="$CONTEXT_REASON; model unset (operator default) -- no [1m] suffix to apply here, autocompact=auto still passed"
@@ -1126,7 +1143,7 @@ if [ "$CONTEXT_MODE" = "1m" ]; then
         # models (alias and full id forms alike) -- never claim to have
         # set 1m context on one. Say so instead of staying silent.
         CONTEXT_REASON="$CONTEXT_REASON; model=$MODEL is Fable-family -- the CLI silently strips a [1m] suffix there, so it is NOT applied (autocompact=auto still is)"
-    elif ! console_context_model_takes_1m_suffix "$MODEL"; then
+    elif ! chief_context_model_takes_1m_suffix "$MODEL"; then
         # native-1M and non-Anthropic ids launch bare.
         CONTEXT_REASON="$CONTEXT_REASON; model=$MODEL runs 1M without a suffix -- [1m] NOT applied (autocompact=auto still is)"
     else
@@ -1147,23 +1164,23 @@ echo "arm-resume: $CONTEXT_REASON (autocompact=$AUTOCOMPACT)"
 # says why. Refuse before any scheduler work (a dry run only warns).
 claude_floor_gate arm-resume "$DRY_RUN" "${HEADED_ARM_CLAUDE_CLI:-claude}" || exit 2
 
-# worker legs are capped by the explicit CLI argv pair, not by a
+# workers are capped by the explicit CLI argv pair, not by a
 # model suffix (Fable-family launches can silently strip [1m]). Refuse before
 # any preflight or scheduler work when context resolution chose another value.
-if [ "$TIER" = "leg" ] && [ "$AUTOCOMPACT" != "200000" ]; then
-    echo "ERR arm-resume: --tier leg requires resolved argv to include --autocompact 200000 (got --autocompact $AUTOCOMPACT). Re-arm with --context standard; use an ordinary/console arm, not --tier leg, for 1m context." >&2
+if [ "$TIER" = "worker" ] && [ "$AUTOCOMPACT" != "200000" ]; then
+    echo "ERR arm-resume: --tier worker requires resolved argv to include --autocompact 200000 (got --autocompact $AUTOCOMPACT). Re-arm with --context standard; use an ordinary/chief arm, not --tier worker, for 1m context." >&2
     exit 2
 fi
 
 # Belt-and-suspenders at the final renderer: every platform calls this on the
 # actual command text immediately before it is scheduled. The value guard above
 # catches 1m; this catches a future renderer accidentally dropping the flag.
-_arm_require_leg_autocompact_argv() {
-    [ "$TIER" = "leg" ] || return 0
+_arm_require_worker_autocompact_argv() {
+    [ "$TIER" = "worker" ] || return 0
     case "$1" in
         *'--autocompact 200000 '*|*'--autocompact 200000'|*"--autocompact '200000'"*|*'--autocompact "200000"'*) return 0 ;;
     esac
-    echo "ERR arm-resume: --tier leg resolved argv lacks --autocompact 200000. Refusing to schedule; re-run with --context standard after fixing the launch renderer." >&2
+    echo "ERR arm-resume: --tier worker resolved argv lacks --autocompact 200000. Refusing to schedule; re-run with --context standard after fixing the launch renderer." >&2
     exit 2
 }
 
@@ -1309,8 +1326,8 @@ _arm_mktemp_or_fail() {
 # scripts/chokepoints.json so a per-call prefix cannot forge it).
 #
 # refinements (disclosed in the PR body):
-#   - CADENCE_USAGE_LEG must be a bare name (usage-preflight.sh's reservation
-#     directory is `mkdir "$SLOTS/$LEG"`) — HANDOVER_PATH almost always
+#   - CADENCE_USAGE_WORKER must be a bare name (usage-preflight.sh's reservation
+#     directory is `mkdir "$SLOTS/$WORKER"`) — HANDOVER_PATH almost always
 #     contains '/', which the pre-fix caller passed straight through. Under
 #     the fixed script that would hit its defensive `*/*` guard and proceed
 #     WITHOUT creating a reservation, leaving arm-resume's own concurrent
@@ -1332,7 +1349,7 @@ if [ "$DRY_RUN" -eq 0 ]; then
     _arm_phase_t0 "fleet-preflight"
     _ARM_BANK_PREFLIGHT="$SCRIPT_DIR/../lib/usage-preflight.sh"
     if [ -f "$_ARM_BANK_PREFLIGHT" ]; then
-        # the shared leg-name -> reservation-key helper, which
+        # the shared worker-name -> reservation-key helper, which
         # _arm_fleet_release_pending (EXIT trap) releases by. Fail closed: a
         # launch whose reservation this run could not later release must not
         # be reserved at all. Sourced BEFORE the reservation exists so a
@@ -1345,11 +1362,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
         # </dev/null: usage-preflight.sh's own producer reads stdin to EOF
         # (its held-open-stdin regression test exists for exactly this) - an
         # unattended arm must never inherit an open stdin here.
-        # this call arms a new leg, so it declares launch intent
+        # this call arms a new worker, so it declares launch intent
         # — the fleet cap must be able to actually refuse it, unlike a plain
         # bank-status READ.
-        _arm_fleet_leg="${HANDOVER_PATH:-arm-resume}"
-        _arm_fleet_leg="${_arm_fleet_leg//\//-}"
+        _arm_fleet_worker="${HANDOVER_PATH:-arm-resume}"
+        _arm_fleet_worker="${_arm_fleet_worker//\//-}"
         # only SKIPPED-FLEET is read from this call, and the producer
         # refresh it runs rewrites the shared usage cache under the CALLER's
         # identity (a test suite arming for real under a fixture
@@ -1362,18 +1379,18 @@ if [ "$DRY_RUN" -eq 0 ]; then
             smart) [ -n "${RESUME_SLOT_CACHE:-}" ] || _arm_skip_refresh="" ;;
             auto) _arm_skip_refresh="" ;;
         esac
-        _arm_fleet_token="$(CADENCE_USAGE_LEG="$_arm_fleet_leg" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-${CADENCE_BANK_SKIP_REFRESH:-}}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
+        _arm_fleet_token="$(CADENCE_USAGE_WORKER="$_arm_fleet_worker" CADENCE_USAGE_LAUNCH=1 CADENCE_USAGE_CALLER_PID="$$" CADENCE_USAGE_SKIP_REFRESH="${_arm_skip_refresh:-${CADENCE_USAGE_SKIP_REFRESH:-}}" bash "$_ARM_BANK_PREFLIGHT" </dev/null)"
         if [ "$_arm_fleet_token" = SKIPPED-FLEET ]; then
-            echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another leg. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
+            echo "ERR arm-resume: fleet-size cap reached (bank-preflight: SKIPPED-FLEET) — refusing to arm another worker. Override with FLEET_CAP_OK=1 in the LAUNCHING shell." >&2
             exit 22
         fi
         # Not SKIPPED-FLEET: usage-preflight.sh either created a reservation
-        # for $_arm_fleet_leg or (rarely, an admission-lock failure under
+        # for $_arm_fleet_worker or (rarely, an admission-lock failure under
         # FLEET_CAP_OK=1) created none -- either way `rm -rf` on a name that
         # was never created is a safe no-op, so track it unconditionally
         # rather than trying to distinguish the two from the token alone.
         _ARM_FLEET_SLOTS="${HIMMEL_FLEET_SLOTS:-${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u)}"
-        _ARM_FLEET_RESERVED_LEG="$_arm_fleet_leg"
+        _ARM_FLEET_RESERVED_LEG="$_arm_fleet_worker"
     fi
     _arm_phase_done "fleet-preflight"
 fi
@@ -1573,8 +1590,8 @@ print(int(cand.timestamp()), cand.strftime("%H:%M"), cand.strftime("%m/%d/%Y"), 
         fi
         # long-gap guard. An explicit HH:MM work arm parked more
         # than 60 min out is a deliberate choice, not a default: the
-        # ALWAYS-CONTINUE directive says an orchestrator leg should arm
-        # <=30-60 min out while work remains (the original failure was a leg
+        # ALWAYS-CONTINUE directive says an orchestrator worker should arm
+        # <=30-60 min out while work remains (the original failure was a worker
         # parking the chain 4 HOURS on operator-blocked items while
         # independent work sat idle). Refuse (rc=9) unless the operator owns
         # the choice with --long-gap (mirrors the --force dedup override).
@@ -2486,7 +2503,7 @@ _infer_ticket_strict() {
     # CHAIN file (next-session-N.md) that carries no `ticket:` frontmatter --
     # it silently dropped _infer_ticket's src-4 (parent-dir name), an
     # UNAMBIGUOUS signal (the handover skill's chain layout names the epic dir
-    # <TICKET>-<slug>) that is immune to the leg-header false positive this
+    # <TICKET>-<slug>) that is immune to the worker-header false positive this
     # narrowing targeted (that false positive was H1 TITLE text, src-3, never
     # the directory name). Fall back to the parent-dir key ONLY for chain
     # files; a non-chain handover with no frontmatter ticket stays empty --
@@ -2541,8 +2558,8 @@ _infer_ticket() {
     # stray ticket *mention* in the body can't be welded into the scheduler name.
     # skip this source entirely for chain files (basename
     # next-session-<N>.md) -- their H1 is a "# Next Session -- <epic
-    # leg-header>" convention (documented at src-4 below), not a ticket
-    # reference, and a project with a Done ticket numbered like the leg
+    # worker-header>" convention (documented at src-4 below), not a ticket
+    # reference, and a project with a Done ticket numbered like the worker
     # (e.g. LUNA-64) would otherwise false-match. A chain file's ticket
     # identity comes from its PARENT DIR (src-4), never its own H1.
     _stem=$(basename "${_ho//\\//}"); _stem="${_stem%.md}"
@@ -2687,34 +2704,34 @@ _compose_arm_name() {
 # the pointer clause names § Launch preamble (docs/handover/afk-mode.md) — single line, quoting-safe charset; test section 1719 pins both.
 RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble standing instructions in docs/handover/afk-mode.md before Phase 1."
 
-# a console arm exports HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
+# a chief arm exports HIMMEL_CONSOLE_DOC / HIMMEL_CONSOLE_WORKDIR
 # into the relaunched session, which is what switches on the PreCompact
-# snapshot hook (scripts/hooks/console-precompact-snapshot.sh); any other arm
+# snapshot hook (scripts/hooks/chief-precompact-snapshot.sh); any other arm
 # exports neither (the launch bodies still always-clear an ambient pair -- `at`
-# snapshots the submitting env). The workdir is the console work dir console.sh
-# resolves (CHIEF_WORK_DIR, else $XDG_RUNTIME_DIR/himmel-console, else
-# ${TMPDIR:-/tmp}/himmel-console-<uid>) plus a per-doc precompact-<doc> subdir:
-# arm-resume cannot reproduce console.sh's chain_dir (it needs the bucket + root
+# snapshots the submitting env). The workdir is the chief work dir chief.sh
+# resolves (CHIEF_WORK_DIR, else $XDG_RUNTIME_DIR/himmel-chief, else
+# ${TMPDIR:-/tmp}/himmel-chief-<uid>) plus a per-doc precompact-<doc> subdir:
+# arm-resume cannot reproduce chief.sh's chain_dir (it needs the bucket + root
 # digest), and the hook creates the subdir 0700.
 # ponytail: only the crontab and `at` launch bodies are wired; the Windows
-# (.bat) and WSL bodies export nothing, so a console relaunched there has no
+# (.bat) and WSL bodies export nothing, so a chief relaunched there has no
 # snapshot and G11 (compacted-check.sh) reports `no snapshot` rc 2 -- unverified,
-# never a false pass. "Console" = the same basename *-chief.md / *-console.md test the model
-# default uses, so a console doc with another name is not snapshotted either.
+# never a false pass. "Chief" = the same basename *-chief.md / *-console.md test the model
+# default uses, so a chief doc with another name is not snapshotted either.
 CHIEF_PRECOMPACT_DOC=""; CHIEF_PRECOMPACT_WORKDIR=""
-if [ "$_arm_is_console" -eq 1 ]; then
+if [ "$_arm_is_chief" -eq 1 ]; then
     _cp_base="${CHIEF_WORK_DIR:-}"
     if [ -z "$_cp_base" ]; then
         if [ -n "${XDG_RUNTIME_DIR:-}" ]; then
-            _cp_base="$XDG_RUNTIME_DIR/himmel-console"
+            _cp_base="$XDG_RUNTIME_DIR/himmel-chief"
         else
-            _cp_base="${TMPDIR:-/tmp}/himmel-console-$(id -u)"
+            _cp_base="${TMPDIR:-/tmp}/himmel-chief-$(id -u)"
         fi
     fi
     CHIEF_PRECOMPACT_DOC=$(_arm_realpath "$HANDOVER_PATH")
     _cp_slug=$(printf '%s' "$(basename -- "$CHIEF_PRECOMPACT_DOC" .md)" | tr -c '[:alnum:]_-' '-')
-    # Two console docs can share a basename (every repo's handovers/ has an
-    # n<k>-console.md); the checker reads the newest snap without checking which
+    # Two chief docs can share a basename (every repo's handovers/ has an
+    # n<k>-chief.md); the checker reads the newest snap without checking which
     # document wrote it, so the workdir carries a path hash, like the lock slug.
     _cp_hash=$(_arm_path_hash "$(_arm_identity_path "$CHIEF_PRECOMPACT_DOC")")
     CHIEF_PRECOMPACT_WORKDIR="$_cp_base/precompact-$_cp_slug${_cp_hash:+-h$_cp_hash}"
@@ -2757,14 +2774,14 @@ if [ -z "$WORKTREE_BRANCH" ]; then
 fi
 
 # A himmel CODE arm defaults to worktree isolation. Applies when nothing named
-# a worktree (no --worktree/resume_worktree:), the doc is not a console doc, the
+# a worktree (no --worktree/resume_worktree:), the doc is not a chief doc, the
 # cwd (--cwd, else resume_cwd:) IS this checkout's primary tree (not a worktree,
 # not the luna vault or another repo, so vault arms stay single-tree), and a
 # HIMMEL-<n> ticket comes from the file name or the 'ticket:' frontmatter. A
 # missing resume_cwd: with a ticket also isolates. 'resume_isolation: primary'
 # opts back out; every decline that resolves to the primary prints a WARN.
-# ponytail: headed-arm-leg.sh and headed-arm.sh launches are not defaulted, extend the same rules there under HIMMEL-5845
-if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_console" -eq 0 ]; then
+# ponytail: headed-arm-worker.sh and headed-arm.sh launches are not defaulted, extend the same rules there under HIMMEL-5845
+if [ -z "$WORKTREE_BRANCH" ] && [ "$_arm_is_chief" -eq 0 ]; then
     _iso_fm=$(awk '/^---[[:space:]]*$/{c++; next} c==1' "$HANDOVER_PATH")
     _iso_mode=$(printf '%s\n' "$_iso_fm" | sed -n 's/^resume_isolation:[[:space:]]*//p' | head -1 | tr -d "\r\"' ")
     _iso_cwd="$RESUME_CWD_OVERRIDE"
@@ -2978,7 +2995,7 @@ if [ -n "$WSL_DISTRO" ]; then
 fi
 
 # ---------------------------------------------------------------------------
-# arm a leg on a
+# arm a worker on a
 # fence only once every merged PR that touched it already carries its
 # after-report SUMMARY. Opt-in via the handover's OWN `fence:` frontmatter
 # key (same convention as resume_cwd:/resume_worktree: above) -- a doc with
@@ -3050,13 +3067,13 @@ if [ -n "$_fm_fence" ]; then
             {
                 echo "WARN arm-resume: arming on a PROVISIONAL base (--provisional-base-ok) -- fence '$_fm_fence' could not be certified clean:"
                 printf '%s\n' "$_base_out"
-                echo "Paste this warning into the leg's first message (ruling 66): hold fence conclusions until the fix lands, or rebase past it if the after-report comes back red."
+                echo "Paste this warning into the worker's first message (ruling 66): hold fence conclusions until the fix lands, or rebase past it if the after-report comes back red."
             } >&2
         else
             {
                 echo "ERR arm-resume: refusing to arm -- fence '$_fm_fence' could not be certified clean (ruling 66):"
                 printf '%s\n' "$_base_out"
-                echo "Pass --provisional-base-ok to arm anyway (prints the same warning for the leg's first message), or wait for the after-report to land / the query to succeed."
+                echo "Pass --provisional-base-ok to arm anyway (prints the same warning for the worker's first message), or wait for the after-report to land / the query to succeed."
             } >&2
             exit 21
         fi
@@ -3680,7 +3697,7 @@ _minutes_from_midnight() {
     local t="$1" hh mm
     # strip a trailing CR first. py_armor_capture's python round-
     # trip writes through a Windows-native python.exe to a redirected FILE
-    # (not a console), which text-mode-translates its \n to \r\n; cat reads
+    # (not a chief), which text-mode-translates its \n to \r\n; cat reads
     # those bytes back raw (no CRLF translation under Git Bash), so a `\r`
     # rides along on the LAST field a multi-line `read` loop pulls out of
     # $PY_ARMOR_OUT -- here, every candidate HH:MM from the windows collision-
@@ -3843,7 +3860,7 @@ existing=$(list_existing "$DEDUP_SCOPE")
 # $existing, so under `--dedup-any --force` (scope = every HIMMEL-Resume-* job)
 # a single arm cancelled EVERY parallel chain's armed resume by prefix
 # wildcard — a foreign chain's task this invocation did not create, destroyed
-# as collateral (leg 44 deleted HIMMEL-Resume-trust-envelope-chain-06). This
+# as collateral (worker 44 deleted HIMMEL-Resume-trust-envelope-chain-06). This
 # box routinely runs four+ autonomous chains under the same HIMMEL-Resume-
 # prefix, so a prefix match is never safe for a delete. $existing (the broad
 # list) is still used for the rc=3 refusal below and the soft-cap count — both
@@ -3944,8 +3961,8 @@ fi
 # THIS task name is positive evidence that THIS arm fired.
 #
 # Scope is exact -- the full TASK_NAME, which folds in ticket + slug + session
-# number + a hash of the canonical handover path. The normal chain (leg N writes
-# handover N+1, arms it) produces a NEW task name every leg and never trips this.
+# number + a hash of the canonical handover path. The normal chain (worker N writes
+# handover N+1, arms it) produces a NEW task name every worker and never trips this.
 #
 # NARROW ON PURPOSE -- an UNFINISHED fire only. A start row with a matching end
 # row means that session ran and completed; re-arming the same handover then is
@@ -4019,33 +4036,35 @@ if [ "$FORCE" -eq 0 ] && [ -n "${TASK_NAME:-}" ] \
 fi
 
 # ---------------------------------------------------------------------------
-# ONE FILE PER LEG.
+# ONE FILE PER WORKER.
 #
-# A leg can write TWO numbered next-session files -- one carrying STATE, one
-# carrying ORDERS -- and arm the relaunch on the ORDERS half (2026-08-17, leg
+# A worker can write TWO numbered next-session files -- one carrying STATE, one
+# carrying ORDERS -- and arm the relaunch on the ORDERS half (2026-08-17, worker
 # 24: session-25 = state, session-26 = orders, armed on 26). Two damages: the
-# leg sequence stops counting legs, and the armed session loads ONE file, so
+# worker sequence stops counting workers, and the armed session loads ONE file, so
 # the STATE half is reachable only through a reference it may never chase.
 #
 # Detection, both conditions required:
-#   1. the sibling `<prefix>-session-<N-1>.md` was last written inside this leg
-#      window (ARM_SPLIT_LEG_WINDOW_SEC, default 3600s, measured to NOW) -- in a
-#      normal chain that file is the PREVIOUS leg's, hours old or older; and
+#   1. the sibling `<prefix>-session-<N-1>.md` was last written inside this worker
+#      window (ARM_SPLIT_WORKER_WINDOW_SEC, default 3600s, measured to NOW) -- in a
+#      normal chain that file is the PREVIOUS worker's, hours old or older; and
 #   2. the flow-run ledger holds no `armed-resume` row naming the SIBLING's own
 #      arm identity (the hash of its canonical path, which every task name this
 #      script mints ends with), i.e. nobody was ever RELAUNCHED from it. That is
-#      the difference that matters: a real leg's file is a launch point, a split
+#      the difference that matters: a real worker's file is a launch point, a split
 #      half never becomes one. Condition 1 alone would refuse a legitimately
-#      short leg (leg 28 -> leg 29 was 47 minutes apart in the audited
+#      short worker (worker 28 -> worker 29 was 47 minutes apart in the audited
 #      sequence); condition 2 clears it.
 #
-# Deliberately NOT keyed on mtime PROXIMITY between the two files: a later leg
+# Deliberately NOT keyed on mtime PROXIMITY between the two files: a later worker
 # routinely edits its predecessor (a SUPERSEDED banner), which would make an
 # innocent pair look simultaneous. Both conditions are heuristics over a naming
-# convention, so ARM_SPLIT_LEG_OK=1 (and --force) opt out in one step; the
-# canonical leg->file mapping for the audited chain lives next to the files, in
-# the <ticket>-dispatch-session-legs.md doc.
-if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
+# convention, so ARM_SPLIT_WORKER_OK=1 (and --force) opt out in one step; the
+# canonical worker->file mapping for the audited chain lives next to the files, in
+# the <ticket>-dispatch-session-workers.md doc.
+_arm_split_ok="${ARM_SPLIT_WORKER_OK:-}"
+if [ -z "$_arm_split_ok" ] && legacy_names_on; then _arm_split_ok="${ARM_SPLIT_LEG_OK:-}"; fi # old name
+if [ "$_arm_split_ok" != "1" ] && [ "$FORCE" -eq 0 ] \
    && [ "${ARM_RESUME_SAFETY_ARM:-}" != "1" ]; then
     _sl_base=$(basename "$HANDOVER_PATH")
     _sl_n=""; _sl_raw=""
@@ -4070,12 +4089,12 @@ if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
             _sl_pad=$(printf '%s/%s-session-%0*d.md' "$_sl_dir" "$_sl_prefix" "${#_sl_raw}" "$_sl_prev")
             [ -f "$_sl_pad" ] && _sl_sib="$_sl_pad"
         fi
-        # Leg 1 of a chain is conventionally the UNNUMBERED file.
+        # Worker 1 of a chain is conventionally the UNNUMBERED file.
         if [ ! -f "$_sl_sib" ] && [ "$_sl_prev" -eq 1 ]; then
             _sl_sib="$_sl_dir/$_sl_prefix-session.md"
         fi
         if [ -f "$_sl_sib" ]; then
-            _sl_window="${ARM_SPLIT_LEG_WINDOW_SEC:-3600}"
+            _sl_window="${ARM_SPLIT_WORKER_WINDOW_SEC:-3600}"
             case "$_sl_window" in ''|*[!0-9]*) _sl_window=3600 ;; esac
             # py_armor_mtime tries GNU/BSD `stat` before falling
             # back to this same python one-liner -- skips the python spawn
@@ -4088,8 +4107,8 @@ if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
                 # Was anything ever relaunched FROM the sibling? Asked by the
                 # sibling's OWN arm identity -- the hash of its canonical path,
                 # the trailing component of every task name this script mints
-                # (see $_path_suffix). Not by ticket+leg number (a second chain
-                # on the same ticket at the same leg number would clear a real
+                # (see $_path_suffix). Not by ticket+worker number (a second chain
+                # on the same ticket at the same worker number would clear a real
                 # split -- panel r1 [codex-1]) and not by the `-s<N>` segment
                 # either, which only exists for `next-session-N.md` chains and
                 # is absent from every other numbered naming style.
@@ -4119,19 +4138,19 @@ if [ "${ARM_SPLIT_LEG_OK:-}" != "1" ] && [ "$FORCE" -eq 0 ] \
                 fi
                 if [ "$_sl_launched" -eq 0 ]; then
                     {
-                        echo "ERR arm-resume: refusing to arm -- this looks like a SPLIT LEG."
+                        echo "ERR arm-resume: refusing to arm -- this looks like a SPLIT WORKER."
                         echo "    arming:  $_sl_base"
                         echo "    sibling: $(basename "$_sl_sib") (written ${_sl_age}s ago; nothing was ever relaunched from it)"
-                        echo "One leg writes ONE numbered handover file: recovery/state first, then the"
-                        echo "ordered task list. Two files for one leg inflate the leg sequence AND orphan"
+                        echo "One worker writes ONE numbered handover file: recovery/state first, then the"
+                        echo "ordered task list. Two files for one worker inflate the worker sequence AND orphan"
                         echo "the half the relaunch does not load -- the resumed session then redoes work"
                         echo "and repeats errors it was never told about."
                         echo "Fix: fold the two files into ONE (keep the sibling's state, append these"
-                        echo "orders) and arm that file. If the sibling really is a previous leg's file"
-                        echo "that simply never armed, set ARM_SPLIT_LEG_OK=1 (or pass --force)."
+                        echo "orders) and arm that file. If the sibling really is a previous worker's file"
+                        echo "that simply never armed, set ARM_SPLIT_WORKER_OK=1 (or pass --force)."
                     } >&2
                     if [ "$DRY_RUN" -eq 0 ]; then
-                        telemetry_emit handover-arm-resume split-leg-block "file=$_sl_base"
+                        telemetry_emit handover-arm-resume split-worker-block "file=$_sl_base"
                     fi
                     exit 17
                 fi
@@ -4188,7 +4207,7 @@ if [ -n "${_ho_ticket_strict:-}" ]; then
                 echo "ERR arm-resume: refusing to arm -- ticket $_ho_ticket_strict already has another armed resume slot under a DIFFERENT handover:"
                 printf '%s\n' "$_ticket_hits"
                 echo "Arming the same ticket twice from two handover files risks two concurrent"
-                echo "sessions racing the same work. If this is a deliberate second leg (e.g. a"
+                echo "sessions racing the same work. If this is a deliberate second worker (e.g. a"
                 echo "parallel sub-task on the same ticket), pass --force or set ARM_TICKET_DUP_OK=1."
             } >&2
             exit 13
@@ -4601,7 +4620,7 @@ _arm_shipped_preflight() {
     # never has dist/ built, so a test exercising this branch has no other way
     # to point it at a fixture CLI.
     # Anchored to the PRIMARY checkout via the git common dir (same
-    # idiom as chief-kit/leg-jira-status.sh): script-relative would run branch
+    # idiom as chief-kit/worker-jira-status.sh): script-relative would run branch
     # bytes, or find nothing, from a worktree. Outside git it stays script-relative.
     _jira="${ARM_JIRA_CLI:-}"
     if [ -z "$_jira" ]; then
@@ -4648,18 +4667,18 @@ EOF
 
 if [ "${FORCE:-0}" -eq 1 ] || [ "${ARM_SHIPPED_OK:-}" = "1" ]; then
     :   # explicitly sanctioned -- re-arming shipped work is sometimes right
-        # (a follow-up leg on the same ticket), so the override is first-class.
+        # (a follow-up worker on the same ticket), so the override is first-class.
 elif [ "${DRY_RUN:-0}" -eq 1 ]; then
     :   # --dry-run touches nothing and must stay side-effect-free + fast;
         # the network probes above are neither.
 else
     # use the STRICT ticket (frontmatter, plus the parent-dir
     # src-4 fallback for chain files), not the loose combined _ho_ticket --
-    # src-3 (H1 leg-header match) is documented
+    # src-3 (H1 worker-header match) is documented
     # (:1406-1413) as a cosmetic-only heuristic never meant to carry semantic
     # weight for a BLOCKING check, same rationale the ticket-mutex
     # check already applies. A chain handover's "# Next Session -- LUNA-64"
-    # leg header was matching an unrelated Done ticket and false-positiving
+    # worker header was matching an unrelated Done ticket and false-positiving
     # this refusal.
     _arm_phase_t0 "shipped-work-preflight"
     _arm_shipped_preflight "${_ho_ticket_strict:-}"
@@ -4669,7 +4688,7 @@ else
             echo "ERR arm-resume: refusing to arm -- this work looks ALREADY SHIPPED:"
             printf '%s\n' "$_ARM_SHIPPED_REASONS"
             echo "Re-arming shipped work burns a full autonomous session and produces rework."
-            echo "If this is a deliberate follow-up leg, pass --force or set ARM_SHIPPED_OK=1."
+            echo "If this is a deliberate follow-up worker, pass --force or set ARM_SHIPPED_OK=1."
         } >&2
         exit 11
     fi
@@ -4907,7 +4926,7 @@ _crontab_schedule() {
     # arm-time PATH snapshot, folded into the runner file (not the crontab
     # line -- see below) so claude's own helpers (node, git, gh, the himmel
     # hook scripts) resolve as they did in the arming shell. PATH ONLY --
-    # never a whole-env snapshot: a console-spawned leg's arming shell carries
+    # never a whole-env snapshot: a chief-spawned worker's arming shell carries
     # INLINE_IMPL_OK / HIMMEL_CONSOLE_LEG / HIMMEL_HOOK_INTEGRITY_BYPASS_OK,
     # and baking those into the relaunch would silently
     # neuter its guardrails. Fold of Goomal's fix/arm-resume-macos-cron: an
@@ -5011,7 +5030,7 @@ fi"
         q_curl=$(printf '%q' "$HEADROOM_CURL")
         tail="{ unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID; export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 HIMMEL_ARMED_RELAUNCH=1; $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1 || { $q_hb proxy --port $HEADROOM_PROXY_PORT >> $q_log 2>&1 & sleep 3; }; if $q_curl -s -m 5 http://127.0.0.1:$HEADROOM_PROXY_PORT/livez >/dev/null 2>&1; then echo \"\$(date) arm=$TASK_NAME mode=proxied\" >> $q_log; ANTHROPIC_BASE_URL=http://127.0.0.1:$HEADROOM_PROXY_PORT HEADROOM_OFFLINE=1 ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; else echo \"\$(date) arm=$TASK_NAME mode=bare-fallback\" >> $q_log; ${q_automerge}$q_claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact; fi; }"
     fi
-    _arm_require_leg_autocompact_argv "$tail"
+    _arm_require_worker_autocompact_argv "$tail"
     local q_flow_lib q_task q_note
     q_flow_lib=$(printf '%q' "$SCRIPT_DIR/../lib/flow-run-ledger.sh")
     q_task=$(printf '%q' "$TASK_NAME")
@@ -5025,7 +5044,7 @@ fi"
     # be governed by its own text, not by whatever env cron hands it.
     local q_safety_child="unset AUTO_ARM_SAFETY_CHILD && "
     [ "$SAFETY_CHILD" -eq 1 ] && q_safety_child="export AUTO_ARM_SAFETY_CHILD=1 && "
-    # same always-clear-then-grant shape for the console
+    # same always-clear-then-grant shape for the chief
     # PreCompact pair. `%` is escaped for cron like q_log_file below.
     q_safety_child="${q_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE && "
     if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then
@@ -5605,7 +5624,7 @@ schedule_arm() {
                 local q_safety_child=""
                 [ "$SAFETY_CHILD" -eq 1 ] && q_safety_child="AUTO_ARM_SAFETY_CHILD=1 "
                 wsl_command="cd $q_cwd && unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM AUTO_ARM_SAFETY_CHILD CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 && ${q_safety_child}${q_automerge}claude$q_name $q_prompt$q_channels$q_model$q_autocompact"
-                _arm_require_leg_autocompact_argv "$wsl_command"
+                _arm_require_worker_autocompact_argv "$wsl_command"
                 # The composed command sits INSIDE the .bat line's double
                 # quotes, where CMD treats ^ as a LITERAL character —
                 # caret-escaping here reaches bash verbatim and shatters the
@@ -5870,7 +5889,7 @@ schedule_arm() {
                 printf 'if not "%%FLOW_RUN_ID%%"=="" "%s" "%s" --append-end "armed-resume" "%%FLOW_RUN_ID%%" "" "%%FLOW_RUN_RC%%" "%%FLOW_RUN_OUTCOME%%" "" "%s" > NUL 2>&1\r\n' "$bw" "$fl" "$fr_note"
                 printf 'exit /b %%FLOW_RUN_RC%%\r\n'
             } > "$bat_path"
-            _arm_require_leg_autocompact_argv "$(tr -d '\r' < "$bat_path")"
+            _arm_require_worker_autocompact_argv "$(tr -d '\r' < "$bat_path")"
 
             # re-render START_DATE in the MACHINE's own
             # Windows short-date locale right before it's used as /sd —
@@ -6219,7 +6238,7 @@ else
     ${q_automerge}claude ${q_name}$q_prompt $q_channels$q_model$q_autocompact
 fi"
                 fi
-                _arm_require_leg_autocompact_argv "$launch_lines"
+                _arm_require_worker_autocompact_argv "$launch_lines"
                 local q_flow_lib q_task q_note
                 q_flow_lib=$(printf '%q' "$SCRIPT_DIR/../lib/flow-run-ledger.sh")
                 q_task=$(printf '%q' "$TASK_NAME")
@@ -6236,16 +6255,16 @@ fi"
 "
                 [ "$SAFETY_CHILD" -eq 1 ] && at_safety_child="export AUTO_ARM_SAFETY_CHILD=1
 "
-                # the console PreCompact pair, same
+                # the chief PreCompact pair, same
                 # always-clear-then-grant shape (`at` snapshots the submitting
-                # env, so a console arm's own pair must not leak into a
-                # non-console relaunch).
+                # env, so a chief arm's own pair must not leak into a
+                # non-chief relaunch).
                 at_safety_child="${at_safety_child}unset HIMMEL_CONSOLE_DOC HIMMEL_CONSOLE_WORKDIR HIMMEL_CONSOLE
 "
                 # same always-clear for the launch-seam vars a
-                # leg or consult carries (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES, the
+                # worker or consult carries (WORKER_SESSION_PROFILE_NO_SETTING_SOURCES, the
                 # shim, its binary), so the resumed session never inherits them.
-                at_safety_child="${at_safety_child}unset $(console_context_launch_seam_env_names | tr '\n' ' ')
+                at_safety_child="${at_safety_child}unset $(chief_context_launch_seam_env_names | tr '\n' ' ')
 "
                 if [ -n "$CHIEF_PRECOMPACT_DOC" ]; then
                     at_safety_child="${at_safety_child}export HIMMEL_CONSOLE_DOC=$(printf '%q' "$CHIEF_PRECOMPACT_DOC") HIMMEL_CONSOLE_WORKDIR=$(printf '%q' "$CHIEF_PRECOMPACT_WORKDIR") HIMMEL_CONSOLE=1
@@ -6483,9 +6502,9 @@ if [ "${_ARM_CONSUMED:-0}" -ne 1 ]; then
     unset _arm_verify_found _arm_verify_marker _arm_verify_lead _arm_verify_now
 fi
 
-# a console-class arm records the context it resolved DURABLY.
+# a chief-class arm records the context it resolved DURABLY.
 # headed-arm.sh does this for the Linux/KDE path; this is the
-# other arming path (the Windows schtasks backend), and without it a console
+# other arming path (the Windows schtasks backend), and without it a chief
 # armed here is unattributable  the moment the arm log is gone.
 # Here, not at the top: the arm has been verified, so no `NOT armed` exit above
 # leaves a row for a session that never launches -- and before the CONSUMED
@@ -6493,8 +6512,8 @@ fi
 # like headed-arm.sh's: a lost record is named and never fails the arm. The row
 # is written by THIS shell at arm time (the mode is resolved and fixed now),
 # not by the schtasks .bat body, so it needs no Windows-side code.
-if [ "$_arm_is_console" -eq 1 ] && ! console_context_write_record "$SESSION_NAME" "$CONTEXT_MODE" "$_arm_context_source" "$AUTOCOMPACT"; then
-    echo "WARN arm-resume: context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this console's launch context is unrecoverable after a reboot)" >&2
+if [ "$_arm_is_chief" -eq 1 ] && ! chief_context_write_record "$SESSION_NAME" "$CONTEXT_MODE" "$_arm_context_source" "$AUTOCOMPACT"; then
+    echo "WARN arm-resume: context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this chief's launch context is unrecoverable after a reboot)" >&2
 fi
 
 # A CONSUMED arm exits HERE -- before the force-replace reap and
@@ -6662,7 +6681,7 @@ cat <<EOF
   race (file races, doubled API spend, double-pushes from auto-commit).
   (Exiting does not change the relaunch's prompt cache: a new session's
   first turn is normally warm -- docs/internals/prompt-cache.md.)
-  Arming a different handover (e.g. a console arming a leg)? No exit
+  Arming a different handover (e.g. a chief arming a worker)? No exit
   is needed.
 ================================================================
 

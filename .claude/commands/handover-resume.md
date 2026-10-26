@@ -58,6 +58,6 @@ skill path incurred. The script resolves the target repo + bucket from
 
 Chain-action params — `merge-private`, `merge-public`, `propagate-only`,
 `minerva-full`, `plan-only`, `arm-successor` — will delegate to the existing
-initiative-leg (`scripts/lib/initiative-legs.sh`), `arm-resume`, minerva, and
+initiative auto-ship steps (`scripts/lib/initiative-workers.sh`), `arm-resume`, minerva, and
 propagate-public systems. This MVP ships plain chain-resume + the `overnight`
 passthrough only.

@@ -2,7 +2,7 @@
 # shellcheck disable=SC2015
 # test-minerva-scripts-resolution.sh — The minerva SKILL.md embeds a
 # scripts-dir resolver (twice: Mode + Terminal) so it can invoke autonomy-mode.sh
-# / legs.sh even when CLAUDE_PLUGIN_ROOT is empty (a Codex skill shell). This test
+# / workers.sh even when CLAUDE_PLUGIN_ROOT is empty (a Codex skill shell). This test
 # EXTRACTS that resolver from the SKILL.md (single source of truth, so the test
 # can't drift from the prose), exercises every branch, and asserts the two copies
 # are byte-identical. bash-only (the resolver is bash inside the skill). Needs git.
@@ -27,7 +27,7 @@ run_resolver(){ ( eval "$snippet"; printf '%s' "$S" ) 2>/dev/null; }
 td="$(mktemp -d)"
 trap 'rm -rf "$td"' EXIT
 mk_scripts(){ mkdir -p "$1"; : > "$1/autonomy-mode.sh"; }            # the S sentinel
-mk_repo(){ mkdir -p "$1/scripts/lib"; : > "$1/scripts/lib/initiative-legs.sh"; mk_scripts "$1/marketplace/plugins/himmel-ops/scripts"; }
+mk_repo(){ mkdir -p "$1/scripts/lib"; : > "$1/scripts/lib/initiative-workers.sh"; mk_scripts "$1/marketplace/plugins/himmel-ops/scripts"; }
 
 # (i) CLAUDE_PLUGIN_ROOT set + valid -> $CLAUDE_PLUGIN_ROOT/scripts (Claude Code).
 cpr="$td/cpr"; mk_scripts "$cpr/scripts"

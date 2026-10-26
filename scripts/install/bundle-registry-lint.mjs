@@ -7,7 +7,7 @@
 // Row ids are enumerated from the registries the feed reads, from --root:
 // manifest.json items, `emit <SEV> <Cnn-id>` literals of himmel-doctor.sh,
 // lanes.json, bypass-flags.json, secrets-manifest.json, settings-template.json
-// onDemandPlugins. The code constants (CADENCES, INITIATIVE_LEGS, DOCTOR_OWNER)
+// onDemandPlugins. The code constants (CADENCES, INITIATIVE_WORKERS, DOCTOR_OWNER)
 // come from this tree's config-feed.js, so a fixture root needs only JSON and a
 // stub doctor.
 //
@@ -19,7 +19,7 @@ import { fileURLToPath } from 'node:url';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const { CADENCES, INITIATIVE_LEGS, DOCTOR_OWNER } = require(path.join(here, '..', 'himmelctl', 'lib', 'config-feed.js'));
+const { CADENCES, INITIATIVE_WORKERS, DOCTOR_OWNER } = require(path.join(here, '..', 'himmelctl', 'lib', 'config-feed.js'));
 const { loadBundles, matches, UNSORTED } = require(path.join(here, '..', 'himmelctl', 'lib', 'feed-bundles.js'));
 
 const TABLE_REL = 'scripts/himmelctl/lib/feed-bundles.json';
@@ -45,7 +45,7 @@ export function enumerateIds(root) {
   for (const s of readJson(root, 'scripts/himmelctl/lib/secrets-manifest.json').secrets || []) ids.add(`secret:${s.name}`);
   for (const k of Object.keys(readJson(root, 'docs/setup/settings-template.json').onDemandPlugins || {})) ids.add(`plugin:${k}`);
   for (const c of CADENCES) ids.add(`${c.name}-cadence`);
-  for (const leg of INITIATIVE_LEGS) ids.add(`initiative:${leg}`);
+  for (const worker of INITIATIVE_WORKERS) ids.add(`initiative:${worker}`);
   for (const k of Object.keys(DOCTOR_OWNER)) ids.add(`probe-disagree:${k}`);
   ids.add('doctor:run');
   ids.add('plugin:run');

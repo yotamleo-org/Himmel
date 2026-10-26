@@ -204,11 +204,11 @@ out=$(MERGE_STUB_RC=19 runmp merge-public 123 abcdef123456); rc=$?
 assert_rc "T16c chokepoint rc 19 (CLAUDECODE self-refusal) relayed verbatim" 19 "$rc"
 
 # Privileged typed ops: invalid inputs must fail before any side effect.
-out=$(run launch-bypass-leg "$INSIDE" UNKNOWN_OK); rc=$?
+out=$(run launch-bypass-worker "$INSIDE" UNKNOWN_OK); rc=$?
 assert_rc "retired launch rejects unknown bypass variable" 19 "$rc"
-out=$(run launch-bypass-leg "$OUTSIDE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
+out=$(run launch-bypass-worker "$OUTSIDE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
 assert_rc "retired launch rejects outside doc" 19 "$rc"
-out=$(run launch-bypass-leg "$HANDOVER_DIR/yotam/himmel/../himmel/2026-06-20-himmel-777-resume.md" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
+out=$(run launch-bypass-worker "$HANDOVER_DIR/yotam/himmel/../himmel/2026-06-20-himmel-777-resume.md" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
 assert_rc "retired launch rejects dot-dot even within root" 19 "$rc"
 out=$(run cr-grant-delta 123 abcdef123456); rc=$?
 assert_rc "reset requires full SHA" 1 "$rc"
@@ -225,17 +225,17 @@ exit "${LAUNCH_STUB_RC:-0}"
 EOF
 export AUTO_ACTION_LAUNCH_CMD="bash $LAUNCH_STUB"
 export LAUNCH_ARGS_FILE="$TMP/launch-args" LAUNCH_ENV_FILE="$TMP/launch-env"
-launch() { (unset CLAUDECODE; run launch-bypass-leg "$1" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); }
+launch() { (unset CLAUDECODE; run launch-bypass-worker "$1" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); }
 out=$(launch "$INSIDE"); rc=$?
 assert_rc "legacy-bypass-without-claim-refused" 19 "$rc"
-assert_contains "launch gives station migration instructions" "start hook legs at the station" "$(cat "$TMP/err")"
+assert_contains "launch gives station migration instructions" "start hook workers at the station" "$(cat "$TMP/err")"
 if [ ! -f "$LAUNCH_ARGS_FILE" ] && [ ! -f "$LAUNCH_ENV_FILE" ]; then
     echo "PASS retired launch never invokes launcher or exports bypass"
 else
     echo "FAIL retired launch invoked launcher"; FAILED=$((FAILED + 1))
 fi
 rm -f "$LAUNCH_ARGS_FILE"
-out=$(CLAUDECODE=1 run launch-bypass-leg "$INSIDE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
+out=$(CLAUDECODE=1 run launch-bypass-worker "$INSIDE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
 assert_rc "launch refuses agent authority" 19 "$rc"
 [ ! -f "$LAUNCH_ARGS_FILE" ] || FAILED=$((FAILED + 1))
 
@@ -244,7 +244,7 @@ assert_rc "launch refuses agent authority" 19 "$rc"
 out=$(HANDOVER_DIR="$TMP/no-such-root" launch "$INSIDE"); rc=$?
 assert_rc "launch refusal precedes handover_root resolution" 19 "$rc"
 assert_not_contains "launch refusal never reaches the resolver" "handover_root unresolved" "$(cat "$TMP/err")"
-out=$(CLAUDECODE=1 HANDOVER_DIR="$TMP/no-such-root" run launch-bypass-leg "$INSIDE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
+out=$(CLAUDECODE=1 HANDOVER_DIR="$TMP/no-such-root" run launch-bypass-worker "$INSIDE" HIMMEL_HOOK_INTEGRITY_BYPASS_OK); rc=$?
 assert_rc "agent launch refusal precedes handover_root resolution" 19 "$rc"
 
 mkdir -p "$TMP/repo" "$TMP/bin"

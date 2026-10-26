@@ -399,7 +399,7 @@
 <span class="in">&gt; /pr-check</span>
 <span class="in">&gt; /handover</span>
 <span class="d"># later, to steer many sessions from one:</span>
-<span class="in">&gt; /console new</span></pre></div>
+<span class="in">&gt; /chief new</span></pre></div>
         <div class="means">
           <div><h3>What you see</h3><ul><li>Hooks fire on every tool call from here on: editing on main is refused, commits are checked, a review is required before a pull request.</li></ul></div>
           <div><h3>What it does</h3><ul><li>/worktree gives you an isolated branch, /pr-check reviews the diff, /handover saves where you stopped.</li></ul></div>
@@ -647,10 +647,10 @@
         return [['ok', 'himmelctl: wrote TRACKER, TICKET_ID_REQUIRED to ~/.himmel/himmel.conf'], ['d', '# the file'], ['', 'TRACKER=jira'], ['', 'TICKET_ID_REQUIRED=1']];
       },
       means: function () { return { see: ['One line naming the file and the keys written.'], does: ['Everyday settings are KEY=value lines in himmel.conf; an environment variable still wins over the file.'] }; } },
-    // source: docs/getting-started.md §3; docs/daily-loop.md; docs/handover/running-a-console.md
+    // source: docs/getting-started.md §3; docs/daily-loop.md; docs/handover/running-a-chief.md
     { id: 'first', short: 'Your first session', sub: 'the loop starts', kind: 'info',
       intro: 'The harness only acts inside a Claude Code session. Open one at the repo root and run one change through the loop.',
-      term: function () { return [['in', '$ claude'], ['in', '> /worktree my-first-change'], ['d', '  …edit, commit, push…'], ['in', '> /pr-check'], ['in', '> /handover'], ['d', '# later, to steer many sessions from one:'], ['in', '> /console new']]; },
+      term: function () { return [['in', '$ claude'], ['in', '> /worktree my-first-change'], ['d', '  …edit, commit, push…'], ['in', '> /pr-check'], ['in', '> /handover'], ['d', '# later, to steer many sessions from one:'], ['in', '> /chief new']]; },
       means: function () { return { see: ['Hooks fire on every tool call from here on: editing on main is refused, commits are checked, a review is required before a pull request.'], does: ['/worktree gives you an isolated branch, /pr-check reviews the diff, /handover saves where you stopped.' + (p.handover === 'external' ? ' Your handovers land in the external state repo.' : '')] }; } }
   ];
 

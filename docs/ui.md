@@ -11,7 +11,7 @@ they almost always mean the first one.
 | Surface | What it is | Start it | Needs |
 |---|---|---|---|
 | Config UI | One local web app: Settings, Setup, Health, Tool health, Fleet, Roadmap pages and the AG-UI run view | `node scripts/himmelctl/bin.js ui` | `bun`, a terminal outside Claude |
-| Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <console doc> --changed` | a running himmel chief |
+| Chief's board | One generated HTML page: the fleet, each worker's phase, what needs the chief | `node scripts/handover/chief-kit/board.mjs --doc <chief doc> --changed` | a running himmel chief |
 | Roadmap tracker | One generated HTML page: release panels and a kanban by version | `python3 scripts/handover/chief-kit/tracker.py --plan-dir <dir> --out <file>` | `python3`, the Jira mirror |
 
 ## The config UI (`himmelctl ui`)
@@ -120,7 +120,7 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   so the URL survives restarts: `--service url` prints the bookmark, `status` and
   `uninstall` do what they say (uninstall also deletes the token file). It needs
   `HANDOVER_DIR` in the shell that runs `install`. The board on the Fleet page is read from
-  `<console doc>.board.json`, which every `board.mjs` render rewrites beside the doc, and
+  `<chief doc>.board.json`, which every `board.mjs` render rewrites beside the doc, and
   reaches the page within about 5 s; with no such file the server builds it as before.
 - **Pages** (the left rail): `#/config` (Settings: seven groups of what you can
   change, each row with its command, when it takes effect and a Learn more link
@@ -145,18 +145,18 @@ node scripts/himmelctl/bin.js ui --agui <session-id>
   (`cd scripts/config-ui/agui-web && bun install && bun run build`); without it
   `himmelctl ui` prints the config page instead.
 - **The chief's board on the Fleet page.** Start `himmelctl ui` with `HANDOVER_DIR` set and open
-  `/agui/#t=<token>&console=<console doc name>`. The page then shows the
+  `/agui/#t=<token>&console=<chief doc name>`. The page then shows the
   chief's board (the `board.mjs --json` output, served read-only and redacted at the
   token-gated `GET /api/agui/board?console=<name>`; built from the board JSON file when present, else cached 30 s). **Fleet** tab: verb-led
   rows for what needs you, and on each running row its goal, six stage dots (dispatch,
   live, PR, ready, go, merged) and a state chip. **Trends** tab (`&tab=trends`): four cards
   (Fleet velocity, Fleet health, Tool health, Roadmap reality), each with a recommendation
   line and a colour legend; a milestone is a Jira fixVersion, chief cost sits beside
-  fleet cost, and Tool health carries the console-succession row. A card opens its table in
+  fleet cost, and Tool health carries the chief-succession row. A card opens its table in
   the side drawer. Clicking a stage dot opens that worker's drill-in in the drawer (run header,
   stage strip, transcript, the needs-you finding with its exact `go.sh` command). Keys: left
   and right move between stages, up and down between workers, Backspace goes back, Esc closes.
-  Deep link: `&k=s.<leg>.<stage>`. `GET /api/agui/brief?leg=<doc name>` returns that
+  Deep link: `&k=s.<worker>.<stage>`. `GET /api/agui/brief?leg=<doc name>` returns that
   worker's handover doc as redacted text. Both routes look a doc up by name under
   `HANDOVER_DIR`, never by a path from the request.
 - **Weekly roll-up trends.** The Health page's Trends section and the top of the Fleet page's

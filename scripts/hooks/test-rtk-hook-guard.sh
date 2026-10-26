@@ -103,7 +103,7 @@ payload=$(cat)
 cmd=$(printf '%s' "$payload" | jq -r '.tool_input.command // empty')
 case "$cmd" in
     *\|*) ;; # real rtk leaves piped/compound shell commands alone
-    cd\ *\ \&\&\ git\ *) # real rtk rewrites the git leg of an && chain in place
+    cd\ *\ \&\&\ git\ *) # real rtk rewrites the git worker of an && chain in place
         jq -nc --arg cmd "${cmd/ git / rtk git }" \
             '{hookSpecificOutput:{hookEventName:"PreToolUse",permissionDecisionReason:"RTK auto-rewrite",updatedInput:{command:$cmd},permissionDecision:"allow"}}'
         ;;

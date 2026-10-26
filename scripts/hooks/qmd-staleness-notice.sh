@@ -36,17 +36,25 @@
 # ~50x slower than the host, so the fix is a host-side push
 # (scripts/luna/ship-index.sh), never a local rebuild.
 set -uo pipefail
+# Old names, read only while HIMMEL_LEGACY_NAMES is on.
+case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+if { [ -r "$_ea_dir/../lib/env-alias.sh" ] && . "$_ea_dir/../lib/env-alias.sh"; } 2>/dev/null; then
+    alias_env HIMMEL_LEAN_WORKER_SESSION HIMMEL_LEAN_LEG
+fi
+unset _ea_dir
 
-# a leg launched by headed-arm-leg.sh --profile
-# carries HIMMEL_LEAN_LEG=1. SessionStart output is not paid once - it sits in
+# a worker launched by headed-arm-worker.sh --profile
+# carries HIMMEL_LEAN_WORKER_SESSION=1. SessionStart output is not paid once - it sits in
 # the fixed context floor that is re-read on EVERY API call of that session
-# (measured: 5.4k chars of a 74.3k first-turn floor on leg N158), and a leg never
-# acts on an advisory: it has one ticket, one contract and a console to report
-# to. So a lean leg hears nothing here. Fail-open by construction: ONLY the
+# (measured: 5.4k chars of a 74.3k first-turn floor on worker N158), and a worker never
+# acts on an advisory: it has one ticket, one contract and a chief to report
+# to. So a lean worker hears nothing here. Fail-open by construction: ONLY the
 # exact value 1 leans, so an unset, empty or typo'd variable keeps today's
 # output for every ordinary session. inject-initiative.sh deliberately does NOT
-# take this guard - a leg does need the runbook pointer.
-if [ "${HIMMEL_LEAN_LEG:-}" = 1 ]; then
+# take this guard - a worker does need the runbook pointer.
+if [ "${HIMMEL_LEAN_WORKER_SESSION:-}" = 1 ]; then
     if [ -t 0 ]; then :; else cat >/dev/null 2>&1 || true; fi
     exit 0
 fi

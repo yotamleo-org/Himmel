@@ -54,7 +54,7 @@
 #       Exit 0 when every impacted suite has a PASS or SKIP; exit 1, naming
 #       each on stderr, when any is missing; exit 3 when every suite has a
 #       verdict but one is BLOCKED — accounted for, yet the suite did not run,
-#       so the /pr-check row is NOT clean until the console/operator rules.
+#       so the /pr-check row is NOT clean until the chief/operator rules.
 #   impacted-suites.sh --runner <path>
 #       Print the ONE command CI uses to run a JS/TS suite path,
 #       e.g. `node --test scripts/hooks/foo.test.mjs` or
@@ -80,7 +80,7 @@
 #       first installing its owning package's deps when the nearest
 #       package.json ancestor has no node_modules (a fresh
 #       worktree is created with --no-install, so every package but the jira
-#       CLI starts with no node_modules — a leg running a suite raw sees a
+#       CLI starts with no node_modules — a worker running a suite raw sees a
 #       false SKIP/FAIL it mislabels "pre-existing"). The install is frozen
 #       and offline-first (npm ci / bun install --frozen-lockfile) from
 #       whichever lockfile the package dir commits. A suite with no
@@ -314,7 +314,7 @@ install_cmd_for() {
 # node_modules already exists — "no change to suites that need no npm deps".
 # Exit 2 on a missing lockfile or a failed install command: a loud, named
 # failure carrying the package dir and the install command, never a SKIP and
-# never a bare FAIL a leg could mislabel "pre-existing".
+# never a bare FAIL a worker could mislabel "pre-existing".
 ensure_deps() {
     local suite="$1" dir cmd rc
     dir=$(pkg_dir_for "$suite") || return 0
@@ -1039,7 +1039,7 @@ done < "$work/changed"
 # scan_roots — one `<glob> <suite>` row per suite that WALKS a repo tree —
 # a file added, changed or deleted under the tree changes the
 # suite's result though no suite names it (PR 1734 added
-# scripts/lanes/lib/leg-cost-row.sh; lint-fail-open scans scripts/lanes/ and
+# scripts/lanes/lib/worker-cost-row.sh; lint-fail-open scans scripts/lanes/ and
 # main went red). <glob> is a `case` pattern on the repo-relative
 # path, and its `*` crosses `/`. Add a row, not a new mechanism.
 # A `!<glob> <suite>` row vetoes a file the suite's walk skips; a
@@ -1092,7 +1092,7 @@ done < "$work/changed"
 # reaches must lie inside pr-check-context.sh's cr_guarded set (the suite fails
 # otherwise), so a change that adds or alters an edge is one of: a file inside
 # cr_guarded (the file holding the edge), or a file a cr_guarded file names (the
-# newly reached target, e.g. #1851's leg-jira-status.sh). Select the suite for
+# newly reached target, e.g. #1851's worker-jira-status.sh). Select the suite for
 # both. The runbook twins are seeds, rows in scan_roots.
 # ponytail: the second arm matches by basename text in the guarded files, so a
 # basename shared with an unrelated file over-selects (the safe direction); a

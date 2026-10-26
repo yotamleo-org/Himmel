@@ -66,7 +66,7 @@ assert_mcp_connected() {
   done
 }
 
-PROFILE=leg-impl
+PROFILE=worker-impl
 SERVERS=$(node "$REPO/scripts/lanes/plugin-profiles.mjs" "$PROFILE" --mcp-servers | node -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(0,"utf8")).join(" "))')
 [ -n "$SERVERS" ] || { echo "FAIL: no mcp servers resolved for profile $PROFILE (S1/R2 would be vacuous)"; exit 1; }
 PROFILE_CFG="$WORK/profile.json"
@@ -96,7 +96,7 @@ if [ "$rc" = 2 ] && [ ! -e "$WORK/r3e/rc" ]; then pass "R3 FAKEKEY_EXTRA_ENV rej
 (cd "$WORK" && fakekey_run rel-out --mcp-config "$WORK/mcp-good.json" --strict-mcp-config)
 if [ -s "$WORK/rel-out/rc" ] && [ -n "$(fakekey_debuglog "$WORK/rel-out")" ]; then pass "R3 relative outdir resolves to absolute (artifacts land under it)"; else fail "R3 relative outdir broke the run's artifacts"; fi
 
-echo "== startup run (leg-impl config, fixture plugin, scrubbed env) =="
+echo "== startup run (worker-impl config, fixture plugin, scrubbed env) =="
 MARK="$WORK/marker"; mkdir -p "$MARK"
 # The plugin's hooks.json is staged from a .tmpl at run time: a tracked hooks.json
 # registering a SessionStart hook trips the ws5 T13(a) always-on lint, and this one

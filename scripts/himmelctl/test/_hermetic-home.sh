@@ -27,7 +27,7 @@
 # exporting an empty string that recreates the bug in whichever of the 34
 # copies happens to be missing or broken next.
 #
-# WHY winpath ITSELF ASSERTS NON-EMPTY: the console's own read of the
+# WHY winpath ITSELF ASSERTS NON-EMPTY: the chief's own read of the
 # incident is the reason this function does not just transform
 # and trust — cacheDir()/configPath() are BOTH `process.env.X || <real
 # homedir path>`, and an EMPTY STRING IS FALSY in JS. "Set but empty" is

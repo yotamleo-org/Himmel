@@ -10,7 +10,7 @@
 # ~/.config/himmel/release/ (the signing keys) are written only by the Jira
 # CLI's `release` op, never by a raw tool write.
 #
-# Mode 2, the release-manager session: headed-arm-leg.sh --profile
+# Mode 2, the release-manager session: headed-arm-worker.sh --profile
 # release-manager exports HIMMEL_RELEASE_MANAGER=1, HIMMEL_RM_DOC and
 # HIMMEL_RM_RELEASE; this guard then holds the session to its Jira, file and
 # MCP allowlists.
@@ -21,7 +21,7 @@
 #
 # Platform guard (gitbash-only): Git Bash on Windows / any POSIX bash 3.2+.
 # Not ported to native PowerShell — the release-manager lane
-# (headed-arm-leg.sh) is Linux-only.
+# (headed-arm-worker.sh) is Linux-only.
 #
 # TRIP CONDITION, mode 1 (any session; a payload not containing "release" is
 # skipped before parsing):
@@ -36,7 +36,7 @@
 #     optional node) is the Jira CLI with `release` as its op. ~/, $HOME/ and
 #     ${HOME}/ expand to $HOME.
 # TRIP CONDITION, mode 2 (HIMMEL_RELEASE_MANAGER=1, on top of mode 1):
-#   Bash — the text names HIMMEL_RELEASE_MANAGER, leg-pr-open, merge-on-green,
+#   Bash — the text names HIMMEL_RELEASE_MANAGER, worker-pr-open, merge-on-green,
 #     chief-kit/go.sh, inbox-send, leg-jira-status or worker-jira-status; a mutating git verb; a
 #     gh write verb or a gh api method/body flag (the judge guard's set); or a
 #     Jira CLI invocation (a word that is `jira`, ends in /jira, or names
@@ -70,7 +70,7 @@
 # that is not an authority file is not screened. The authority files carry
 # signed, chained rows (design §5.2), so a raw write is detected by every
 # reader even when it passes here.
-# ponytail: those shell shapes pass, the leg OS sandbox (HIMMEL-6180) closes them.
+# ponytail: those shell shapes pass, the worker OS sandbox (HIMMEL-6180) closes them.
 # Over-matching is the safe direction: in mode 2 a read that names
 # scripts/jira/ (cat, git grep) is checked as a Jira call and denies.
 #
@@ -386,11 +386,11 @@ EOF
 
         case "$bare" in
             *HIMMEL_RELEASE_MANAGER*) deny "marker-override" "command names HIMMEL_RELEASE_MANAGER" ;;
-            *leg-pr-open*) deny "pr-open" "leg-pr-open" ;;
+            *leg-pr-open* | *worker-pr-open*) deny "pr-open" "worker-pr-open" ;;
             *merge-on-green*) deny "merge" "merge-on-green" ;;
-            *console-kit/go.sh* | *chief-kit/go.sh*) deny "go" "console-kit/go.sh" ;;
+            *console-kit/go.sh* | *chief-kit/go.sh*) deny "go" "chief-kit/go.sh" ;;
             *inbox-send*) deny "inbox-send" "inbox-send" ;;
-            *leg-jira-status*) deny "jira-write" "leg-jira-status" ;;
+            *leg-jira-status*) deny "jira-write" "worker-jira-status" ;;
             *worker-jira-status*) deny "jira-write" "worker-jira-status" ;;
         esac
 

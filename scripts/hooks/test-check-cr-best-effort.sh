@@ -4,7 +4,7 @@
 # CodeRabbit is best effort: a tracked line that names it AND schedules,
 # queues or holds work on it is a violation. Exercises the guard's direct-file
 # mode against hermetic fixtures. Case 1 is the RED control — the exact
-# sentence a console derived on 2026-09-21 that held seven finished PRs.
+# sentence a chief derived on 2026-09-21 that held seven finished PRs.
 #
 # Usage: bash scripts/hooks/test-check-cr-best-effort.sh
 set -uo pipefail
@@ -39,7 +39,7 @@ echo "== Case 2: the best-effort rule and unrelated queue/slot prose -> exit 0 =
 cat > "$tmp/c2.md" <<'EOF'
 CodeRabbit is best effort, not gating: the merge gate is CI green + zero
 unresolved review threads + the /pr-check panel. A finding that exists blocks.
-The console sequences legs into the hourly slot of the bank.
+The chief sequences workers into the hourly slot of the bank.
 A PR goes through the merge queue once CodeRabbit posts nothing new.
 Fill the value slot (coderabbit-1) from the ledger row.
 EOF

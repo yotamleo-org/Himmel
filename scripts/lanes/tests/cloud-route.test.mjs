@@ -112,7 +112,7 @@ test('BLOCKED: a held file (open PR or console list), file or directory overlap'
   const v = classifyTicket(tk(), ctx({ held: [{ file: 'scripts/lanes/example.sh', why: 'PR 1' }] }));
   assert.equal(v.class, 'BLOCKED');
   assert.match(v.reason, /PR 1/);
-  const d = classifyTicket(tk(), ctx({ held: [{ file: 'scripts/lanes/', why: 'live leg' }] }));
+  const d = classifyTicket(tk(), ctx({ held: [{ file: 'scripts/lanes/', why: 'live worker' }] }));
   assert.equal(d.class, 'BLOCKED');
 });
 
@@ -153,7 +153,7 @@ test('LOCAL-NATIVE: a path outside the known roots cannot be checked against hel
   assert.match(only.reason, /unrecognised path src\/lib\/widget\.ts/);
 });
 
-test('CLOUD-OK: URLs, slashed words and console-supplied files are not unrecognised paths', () => {
+test('CLOUD-OK: URLs, slashed words and chief-supplied files are not unrecognised paths', () => {
   for (const d of ['Edit scripts/a.sh. See https://example.com/docs/page.html for context.', 'Edit scripts/a.sh. It reads and/or writes yotamleo/Himmel and origin/main.']) {
     assert.equal(classifyTicket(tk({ description: d }), ctx()).class, 'CLOUD-OK', d);
   }
@@ -292,7 +292,7 @@ exit 1`);
 
 test('CLI: routes four tickets, writes one brief, one launch line, one JSONL record each', () => {
   const { bucket, jira, gh } = setup();
-  const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--console', 'AD', 'HIMMEL-9001', 'HIMMEL-9002', 'HIMMEL-9003', 'HIMMEL-9004'], {
+  const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001', 'HIMMEL-9002', 'HIMMEL-9003', 'HIMMEL-9004'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   assert.equal(r.status, 0, r.stderr);
@@ -311,9 +311,28 @@ test('CLI: routes four tickets, writes one brief, one launch line, one JSONL rec
   assert.match(readFileSync(brief, 'utf8'), /cloud-pilot: HIMMEL-9001 \(console AD\)/);
 });
 
+test('CLI: the old --console is the same flag as --chief, with one deprecation line; HIMMEL_LEGACY_NAMES=0 makes it an unknown option', () => {
+  const route = (flag, extra = {}) => {
+    const { bucket, jira, gh } = setup();
+    const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, flag, 'AD', 'HIMMEL-9001'], {
+      encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh, ...extra },
+    });
+    return { r, brief: join(bucket, 'cloud-brief-HIMMEL-9001.md') };
+  };
+  const fresh = route('--chief');
+  const old = route('--console');
+  assert.equal(old.r.status, 0, old.r.stderr);
+  assert.equal(readFileSync(old.brief, 'utf8').replaceAll(old.brief, ''), readFileSync(fresh.brief, 'utf8').replaceAll(fresh.brief, ''));
+  assert.equal(old.r.stderr.split('\n').filter((l) => l === '--console is deprecated: use --chief').length, 1);
+  const off = route('--console', { HIMMEL_LEGACY_NAMES: '0' });
+  assert.equal(off.r.status, 2);
+  assert.match(off.r.stderr, /usage: cloud-route\.mjs/);
+  assert.ok(!existsSync(off.brief));
+});
+
 test('CLI: a CLOUD-OK ticket holds its files, so a second ticket on them is BLOCKED', () => {
   const { bucket, jira, gh } = setup();
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9001', 'HIMMEL-9001'], {
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001', 'HIMMEL-9001'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   assert.equal(r.status, 0, r.stderr);
@@ -325,7 +344,7 @@ test('CLI: --held file blocks without gh, and --classify-only writes nothing', (
   const held = join(dir, 'held.txt');
   writeFileSync(held, 'scripts/lanes/example.sh\n');
   const noGh = stub(dir, 'gh2', 'echo "gh unavailable" >&2; exit 1');
-  const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--console', 'AD', '--held', held, '--classify-only', 'HIMMEL-9001'], {
+  const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--chief', 'AD', '--held', held, '--classify-only', 'HIMMEL-9001'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: noGh },
   });
   assert.equal(r.status, 0, r.stderr);
@@ -410,7 +429,7 @@ if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- 'in:title,body'; th
 if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; then echo '[]'; exit 0; fi
 if [ "$1 $2" = "pr list" ]; then exit 0; fi
 exit 1`);
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9001'], {
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   assert.equal(r.status, 0, r.stderr);
@@ -425,7 +444,7 @@ if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; t
 fi
 if [ "$1 $2" = "pr list" ]; then exit 0; fi
 exit 1`);
-  const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--console', 'AD', 'HIMMEL-9001'], {
+  const r = spawnSync(process.execPath, [CLI, '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   assert.equal(r.status, 0, r.stderr);
@@ -445,8 +464,8 @@ const T4517 = {
   description: 'guard-pr-check-literal.sh never re-reads these command carriers.\nEach one can carry a guarded scripts/cr gate-script invocation the guard does not see.',
 };
 const T4653 = {
-  key: 'HIMMEL-4653', type: 'Task', status: 'To Do', title: 'Controlled overnight end-to-end eval on a VM: seeded fixture ticket, console-to-merge scorecard',
-  description: 'The fleet scorecard (scripts/lanes/bench/scorecard/) measures production.\nAsk. On a VM snapshot with a scratch repo: seed one or two frozen fixture tickets, arm a console and let it run unattended.\nEst. 3 leg-days plus heavy bank per run. VM-only (standing rule).',
+  key: 'HIMMEL-4653', type: 'Task', status: 'To Do', title: 'Controlled overnight end-to-end eval on a VM: seeded fixture ticket, chief-to-merge scorecard',
+  description: 'The fleet scorecard (scripts/lanes/bench/scorecard/) measures production.\nAsk. On a VM snapshot with a scratch repo: seed one or two frozen fixture tickets, arm a console and let it run unattended.\nEst. 3 worker-days plus heavy bank per run. VM-only (standing rule).',
 };
 
 test('HIMMEL-5218: a bare hook name in the title resolves to its path and routes HOOK-BYPASS (4503, 4517 shaped)', () => {
@@ -507,7 +526,7 @@ case "$2" in
   HIMMEL-9102) printf 'HIMMEL-9102\\tTask\\tTo Do\\tsecond\\n\\nEdit scripts/lanes/example.sh.\\n';;
   *) exit 1;;
 esac`);
-  const route = (key, gh = s.gh) => spawnSync(process.execPath, [CLI, '--bucket', s.bucket, '--console', 'AD', key], {
+  const route = (key, gh = s.gh) => spawnSync(process.execPath, [CLI, '--bucket', s.bucket, '--chief', 'AD', key], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   const seed = (...recs) => writeFileSync(join(s.bucket, 'cloud-route.jsonl'), recs.map((r) => (typeof r === 'string' ? r : JSON.stringify(r))).join('\n') + '\n');
@@ -575,7 +594,7 @@ test('CLI: an unreadable reservation log blocks routing instead of being ignored
   const { dir, bucket } = reserveStubs();
   mkdirSync(join(bucket, 'cloud-route.jsonl'));
   const jira = stub(dir, 'jira5499b', `printf 'HIMMEL-9102\\tTask\\tTo Do\\tsecond\\n\\nEdit scripts/lanes/example.sh.\\n'`);
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9102'], {
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9102'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: join(dir, 'gh') },
   });
   assert.equal(r.status, 0, r.stderr);
@@ -634,8 +653,8 @@ test('HIMMEL-7574: a ticket naming a directory with a held file under it is BLOC
   // the exact file a PR touches blocks, beside a directory the ticket names
   const exact = classifyTicket(tk({ description: 'Tidy scripts/lanes/ and fix scripts/lanes/other.sh.' }), ctx({ held: [{ file: 'scripts/lanes/other.sh', why: 'open PR 77' }] }));
   assert.equal(exact.class, 'BLOCKED');
-  // a held directory (a live leg's tree) over a ticket's directory blocks too
-  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live leg' }] })).class, 'BLOCKED');
+  // a held directory (a live worker's tree) over a ticket's directory blocks too
+  assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/lanes/', why: 'live worker' }] })).class, 'BLOCKED');
   // nothing held under the directory: unchanged
   assert.equal(classifyTicket(dirTicket, ctx({ held: [{ file: 'scripts/other/x.sh', why: 'open PR 78' }] })).class, 'CLOUD-OK');
 });
@@ -678,7 +697,7 @@ test('an unavailable held list BLOCKS a trust-path or run-time-need ticket, not 
 
 test('CLI: open PR files come from the paginated API, so a PR gh pr diff refuses with 406 still holds its files', () => {
   const { bucket, jira, gh } = setup();
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9004'], {
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9004'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: gh },
   });
   assert.equal(r.status, 0, r.stderr);
@@ -693,7 +712,7 @@ if [ "$1 $2" = "pr list" ] && printf '%s ' "$@" | grep -q -- '--state merged'; t
 if [ "$1 $2" = "pr list" ]; then echo 77; exit 0; fi
 if [ "$1 $2" = "api --paginate" ]; then i=0; while [ $i -lt 3000 ]; do echo "scripts/big/f$i.sh"; i=$((i+1)); done; exit 0; fi
 exit 1`);
-  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--console', 'AD', 'HIMMEL-9001'], {
+  const r = spawnSync(process.execPath, [CLI, '--classify-only', '--bucket', bucket, '--chief', 'AD', 'HIMMEL-9001'], {
     encoding: 'utf8', env: { ...process.env, CLOUD_ROUTE_JIRA_CMD: jira, CLOUD_ROUTE_GH_CMD: big },
   });
   assert.equal(r.status, 0, r.stderr);

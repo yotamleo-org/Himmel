@@ -3,7 +3,7 @@
 # file in the handover tree ends the file with a newline. The luna vault's
 # auto-commit runs end-of-file-fixer, which refuses a commit that stages a file
 # without one, so one such file stalls every vault sync behind it.
-#   1. gen-briefs.py's <legs>.out
+#   1. gen-briefs.py's <workers>.out
 #   2. fleet-manifest.sh's *.fleet.json (add, then remove)
 # GEN_BRIEFS overrides the script under test (the RED control). Hermetic: temp
 # dir only, the worktree step is stubbed. bash 3.2-safe.
@@ -38,9 +38,9 @@ cat > "$WORK/legs.json" <<'EOF'
 ]
 EOF
 
-out="$(python3 "$GEN" "$WORK/legs.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --console HIMMEL-nextleg-2026-10-08BZ-roadmap-console --bucket "$WORK/bucket" --date 2026-10-08 --repo "$WORK/repo" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 2>&1)" \
-    && pass "gen-briefs.py generates a fixture legs file" || fail "gen-briefs.py failed: $out"
-ends_nl "gen-briefs.py <legs>.out ends with a newline" "$WORK/legs.json.out"
+out="$(python3 "$GEN" "$WORK/legs.json" --base 4ccb59dd6de2eba962c75f136096cd7b721ae312 --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/bucket" --date 2026-10-08 --repo "$WORK/repo" --handover-root "$WORK/handovers" --work-dir "$WORK/w" --deadline 1791475000 2>&1)" \
+    && pass "gen-briefs.py generates a fixture workers file" || fail "gen-briefs.py failed: $out"
+ends_nl "gen-briefs.py <workers>.out ends with a newline" "$WORK/legs.json.out"
 
 D="$WORK/HIMMEL-1-N61-a-2026-10-20-RESUME.md"
 M="$WORK/console.fleet.json"

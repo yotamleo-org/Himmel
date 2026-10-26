@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# billed-exempt: the codex lane launcher; a console or leg dispatches it as the billed act
+# billed-exempt: the codex lane launcher; a chief or worker dispatches it as the billed act
 # scripts/codex/dispatch-codex-exec.sh - the codex-exec lane's dispatch
 # chokepoint.
 #

@@ -26,7 +26,7 @@
 # Removing that provisioning without replacing the guarantee would have left
 # `minimal` resolving to zero servers — a hard FAILED from
 # build-mcp-profiles.mjs (it refuses to write an empty profile and exits
-# non-zero). The console FIRST ruled `minimal` becomes `["graphify"]`
+# non-zero). The chief FIRST ruled `minimal` becomes `["graphify"]`
 # (reasoning: "the one remaining installer-provisioned MCP server") — that
 # ruling was WRONG and was REVERSED once this suite's own panel caught it:
 # `graphify-mcp` has NO `install` descriptor, its `graphify` dep has none
@@ -240,7 +240,7 @@ redEmptyMatch=$(printf '%s' "$outRedEmpty" | grep -F "minimal: has no members" |
 echo "ok: RED control #2 — an empty profile fails the checker, naming it: $outRedEmpty"
 
 # ── RED control #3 (mandatory, ruling-A regression guard): `minimal:
-# ["graphify"]` — the FIRST, REVERSED console ruling — must fail the
+# ["graphify"]` — the FIRST, REVERSED chief ruling — must fail the
 # checker. graphify-mcp's mcp-registered probe only DETECTS a registration,
 # it does not PERFORM one (no `install` descriptor), so it is not a
 # provisioning source; this locks that fact in so a future editor who tries

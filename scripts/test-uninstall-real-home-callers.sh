@@ -330,7 +330,7 @@ pin h-declare-guard.sh 'declare -r td=$(mktemp -d /nonexistent/x.XXXXXX) || exit
 pin h-readonly-guard.sh 'readonly td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
 pin h-typeset-guard.sh 'typeset -x td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
 pin h-local-guard-second.sh 'local a=1 td=$(mktemp -d /nonexistent/x.XXXXXX) || exit 1' 'HOME="$td/home/someone" @V@=1 bash uninstall.sh --yes'
-# the eleven false passes of the enumerating matcher (the console's review of #1069).
+# the eleven false passes of the enumerating matcher (the chief's review of #1069).
 # shellcheck disable=SC1003  # the backslash is the fixture
 pin v-backslash.sh '@V@=\1 bash uninstall.sh --yes'
 pin v-ansi-c.sh "@V@=\$'1' bash uninstall.sh --yes"

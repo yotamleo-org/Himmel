@@ -34,7 +34,7 @@ cp "$REAL_HOOK_DIR/allow-thread-resolve.sh" "$PRIMARY/scripts/hooks/" || exit 1
 cp "$REAL_HOOK_DIR/../lib/git-clean.sh" "$PRIMARY/scripts/lib/" || exit 1
 HOOK="$PRIMARY/scripts/hooks/allow-thread-resolve.sh"
 g -C "$PRIMARY" add scripts && g -C "$PRIMARY" commit -q -m init || exit 1
-g -C "$PRIMARY" worktree add -q "$WT" -b leg || exit 1
+g -C "$PRIMARY" worktree add -q "$WT" -b worker || exit 1
 g init -q "$OTHER" || exit 1
 
 CLI="$PRIMARY/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs"

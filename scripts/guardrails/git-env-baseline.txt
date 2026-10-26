@@ -36,8 +36,8 @@ SHELL:scripts/handover/chief-kit/ready-check.sh
 SHELL:scripts/handover/flush.sh
 SHELL:scripts/handover/generate-morning-briefing.sh
 SHELL:scripts/handover/hop.sh
-SHELL:scripts/handover/leg-resume-brief.sh
-SHELL:scripts/handover/leg-timeline.sh
+SHELL:scripts/handover/worker-resume-brief.sh
+SHELL:scripts/handover/worker-timeline.sh
 SHELL:scripts/handover/merge-on-green.sh
 SHELL:scripts/handover/pr-merge.sh
 SHELL:scripts/handover/pr-open.sh
@@ -116,7 +116,7 @@ SHELL:scripts/hooks/telegram-session-end.sh
 SHELL:scripts/lanes/await-glm-worker.sh
 SHELL:scripts/lanes/bench/scorecard/dead-parts.sh
 SHELL:scripts/lanes/bench/scorecard/merged-count.sh
-SHELL:scripts/lanes/leg-pr-open.sh
+SHELL:scripts/lanes/worker-pr-open.sh
 SHELL:scripts/lanes/stop-worker.sh
 
 # --- HIMMEL-5393: findings that appeared when the gate was tightened. Each is a
@@ -131,8 +131,8 @@ SHELL:scripts/lanes/lane-canary.sh
 SHELL:scripts/lib/go-gate.sh
 # Shell: unsets 11 of 14 (misses GIT_IMPLICIT_WORK_TREE, GIT_GRAFT_FILE, GIT_SHALLOW_FILE).
 SHELL:scripts/cr/pr-check-context.sh
-# Shell hook: unsets only four; editing scripts/hooks/*.sh in a leg trips the hook-integrity guard.
-SHELL:scripts/hooks/guard-leg-context-handoff.sh
+# Shell hook: unsets only four; editing scripts/hooks/*.sh in a worker trips the hook-integrity guard.
+SHELL:scripts/hooks/guard-worker-context-handoff.sh
 # Shell test stub: a heredoc fake-git fixture that falls through to /usr/bin/git; not a gate call.
 SHELL:scripts/hooks/capture-baseline.sh
 # Shell test libs: sourced by the write-fence suites (HIMMEL-4391/N1894 own them); bare sourced-lib marker has no reason yet.

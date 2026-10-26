@@ -384,7 +384,7 @@ scripts/cr/test-pr-check-run.sh|real tree, selected by the scripts/*.sh scan_roo
 scripts/test-check-plugin-drift.sh|real tree, selected by the *package.json scan_roots row
 scripts/cr/test-pr-check-rounds.sh|fixture root, not the repo tree
 scripts/handover/chief-kit/test-go.sh|fixture root, not the repo tree
-scripts/handover/chief/test-console.sh|fixture root, not the repo tree
+scripts/handover/chief/test-chief.sh|fixture root, not the repo tree
 scripts/handover/test-breadcrumb.sh|fixture root, not the repo tree
 scripts/handover/test-queue-lock.sh|fixture root, not the repo tree
 scripts/handover/test-move-renamed-dirs.sh|fixture root, not the repo tree

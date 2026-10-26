@@ -32,7 +32,7 @@ FLOW_RUN_ROTATE_BYTES=10485760
 # twin. The classifier scans only the run-log tail.
 FLOW_RUN_TRUNCATION_SIGNATURE_RE='Background tasks still running.*terminating'
 
-# The ONE retryable-upstream signature list. A cadence leg that
+# The ONE retryable-upstream signature list. A cadence worker that
 # dies on a transient Anthropic API failure — the 2026-07-17 harvest run died
 # on the literal line `API Error: Server error mid-response. The response above
 # may be incomplete.` after harvesting 7 clips — is worth re-invoking: every
@@ -117,9 +117,9 @@ flow_run_row_end() {
 }
 
 # flow_run_classify <exit_code> [log_path] [extra_marker_re] [required_marker]
-# required_marker: when the leg's prompt asks the agent to print
-# a bare terminal marker ONLY on genuine completion (PIPELINE-LEG-DONE), a
-# zero exit with no such line in the log tail is a leg that parked, was
+# required_marker: when the worker's prompt asks the agent to print
+# a bare terminal marker ONLY on genuine completion (PIPELINE-WORKER-DONE), a
+# zero exit with no such line in the log tail is a worker that parked, was
 # blocked on a prompt, or bailed early -- classify it `parked`, never
 # `complete`. A missing log counts as no marker. Truncation still wins.
 flow_run_classify() {

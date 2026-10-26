@@ -11,7 +11,7 @@ export type Row = {
   cloud: { url: string | null; phase: "working" | "done" | "blocked" | "merged" | "closed" | "unknown" } | null;
   runtime?: { startedAt: number; endedAt: number | null; elapsedMs: number } | null;
   console?: string | null; live?: boolean; lock?: "held" | "released" | "unknown"; lane?: string;
-  // read when the server sends them (the leg doc's last marker, the doc's last write, the PR's URL).
+  // read when the server sends them (the worker doc's last marker, the doc's last write, the PR's URL).
   marker?: string | null; lastSeenAt?: number | null; prUrl?: string | null;
 };
 
@@ -36,8 +36,8 @@ export function orphanReason(r: Row, rows: Row[]): string | null {
   const name = consoleName(r);
   if (!name) return "no console edge";
   const c = rows.find((s) => s.role === "console" && s.name === name);
-  if (c?.state === "wrapped" || c?.lock === "released") return "console wrapped / lock released";
-  return c && isLive(c) ? null : "console process gone";
+  if (c?.state === "wrapped" || c?.lock === "released") return "chief wrapped / lock released";
+  return c && isLive(c) ? null : "chief process gone";
 }
 export function visibleRows(rows: Row[]): Row[] {
   return rows.filter((r) => !(r.cloud?.phase === "merged" && !rows.some((c) => c.role === "console" && c.name === consoleName(r) && isLive(c))));
@@ -49,17 +49,17 @@ export function consoleGroups(rows: Row[]): { console: Row; rows: Row[] }[] {
     .map((c) => ({ console: c, rows: shown.filter((r) => r.role !== "console" && consoleName(r) === c.name && !orphanReason(r, rows)) }));
 }
 
-// the page's sections. Needs attention = one line per session that wants a console action, by severity;
-// Orphans = live sessions no live console watches, plus the stale shell-tool wrappers tick also reports; Running = the
-// rest of the live sessions, grouped under their live console (siblings by state, then newest activity); Finished =
-// everything that ended, plus a cloud session whose console has, with a leg's or a console's chain folded into one entry.
+// the page's sections. Needs attention = one line per session that wants a chief action, by severity;
+// Orphans = live sessions no live chief watches, plus the stale shell-tool wrappers tick also reports; Running = the
+// rest of the live sessions, grouped under their live chief (siblings by state, then newest activity); Finished =
+// everything that ended, plus a cloud session whose chief has, with a worker's or a chief's chain folded into one entry.
 const RANK: Record<Row["state"], number> = { running: 0, "waiting for GO": 1, idle: 2, unknown: 3, wrapped: 4 };
 const recency = (r: Row) => r.activity?.at ?? r.lastEventAt ?? r.runtime?.startedAt ?? null;
 const byName = (a: Row, b: Row) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
 // Newest first, an untimed row after every timed one.
 const newest = (x: number | null, y: number | null) => (x === y ? 0 : x === null ? 1 : y === null ? -1 : y - x);
 export const siblingOrder = (a: Row, b: Row) => RANK[a.state] - RANK[b.state] || newest(recency(a), recency(b)) || byName(a, b);
-// Untimed finished rows fall back to name descending: console names carry their date and sequence letter.
+// Untimed finished rows fall back to name descending: chief names carry their date and sequence letter.
 const ended = (r: Row) => r.runtime?.endedAt ?? r.lastSeenAt ?? r.lastEventAt ?? null;
 const finishedOrder = (a: Row, b: Row) => newest(ended(a), ended(b)) || byName(b, a);
 
@@ -78,7 +78,7 @@ export type FleetSections = {
 
 // cloud is a lane like native and claudex.
 export const laneOf = (r: Row) => (r.role === "cloud" || r.lane === "cloud" ? "cloud" : r.lane === "claudex" ? "claudex" : "native");
-// A leg's hops share a ticket and a leg number: N1494, N1494b and their -RESUME docs are one chain.
+// A worker's hops share a ticket and a worker number: N1494, N1494b and their -RESUME docs are one chain.
 export function chainKey(name: string): string | null {
   const m = /^([A-Z][A-Z0-9]+-\d+)-(N\d+)[a-z]?-/.exec(name);
   return m ? `${m[1]}-${m[2]}` : null;
@@ -106,7 +106,7 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
     const pr = r.pr !== null ? ` · PR ${r.pr}` : "";
     if (r.cloud?.phase === "blocked") return [0, `CLOUD-BLOCKED · a question on the PR${pr}`];
     if (r.usage?.fill != null && r.usage.fill >= CONTEXT_ATTENTION) return [1, `context ${Math.round(r.usage.fill)}%`];
-    // A CLOUD-DONE PR with nobody shepherding it is the console's move; a cloud session still working alone is normal.
+    // A CLOUD-DONE PR with nobody shepherding it is the chief's move; a cloud session still working alone is normal.
     if (r.cloud?.phase === "done" && !shepherded(r, rows)) return [2, `CLOUD-DONE · awaiting shepherd${pr}`];
     return null;
   };
@@ -128,19 +128,19 @@ export function fleetSections(all: Row[], selected: string | null = null, filter
   const rest = running.filter((r) => r.role !== "console" && !liveConsole(consoleName(r)) && shown(r));
   if (rest.length) groups.push({ console: null, showConsole: false, rows: rest });
 
-  // Chains: a finished hop of a live leg rides on that leg's card; the rest fold into one Finished entry per chain
-  // (a leg's by chainKey, finished consoles by their predecessor links), newest hop first, its earlier hops oldest first.
+  // Chains: a finished hop of a live worker rides on that worker's card; the rest fold into one Finished entry per chain
+  // (a worker's by chainKey, finished chiefs by their predecessor links), newest hop first, its earlier hops oldest first.
   const done = rows.filter((r) => finished(r) && shown(r)).sort(finishedOrder);
   const hops: Record<string, Row[]> = {};
   // Only a live hop that is shown can carry its earlier hops; a filtered-out one leaves them in Finished.
   const liveHop = new Map(groups.flatMap((g) => g.rows).flatMap((r) => { const k = chainKey(r.name); return k ? [[k, r.name] as const] : []; }));
-  const consoles = new Set(done.filter((r) => r.role === "console").map((r) => r.name));
+  const chiefs = new Set(done.filter((r) => r.role === "console").map((r) => r.name));
   const rootOf = (r: Row) => {
     let n = r.name;
     for (const seen = new Set<string>(); !seen.has(n); ) {
       seen.add(n);
       const p = rows.find((x) => x.name === n)?.predecessor;
-      if (!p || !consoles.has(p)) break;
+      if (!p || !chiefs.has(p)) break;
       n = p;
     }
     return `console:${n}`;

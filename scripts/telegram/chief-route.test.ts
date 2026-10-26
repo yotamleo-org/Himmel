@@ -1,0 +1,657 @@
+import { expect, test, spyOn } from "bun:test";
+import { mkdtempSync, mkdirSync, writeFileSync, existsSync, readFileSync, symlinkSync, unlinkSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { classify } from "./router";
+import { BASH_BIN } from "./run";
+import { sendMessage } from "./telegram-api";
+import { appendLine, ensureSession, writeMeta, sessionDir } from "./bus";
+import { handleInbound, replyViaOutbox, flushOutboxes, ingestUpdates, makeRunFn } from "./poller";
+import { consoleInboxPath, foldLine, type ConsoleRouteGate } from "./chief-route";
+
+// Every test runs against a scratch bridge root and a fake reply
+// seam — never the real ~/.claude/handover/bridge, never Telegram.
+const root = () => mkdtempSync(join(tmpdir(), "chief-route-"));
+const NAME = "HIMMEL-nextleg-2026-09-21V-chief";
+
+test("judge: lockdown blocks already-pending work at the real agent boundary", async () => {
+  for (const lockDuringPreparation of [false, true]) {
+    const r = root(); await ensureSession(r, "__chat__");
+    await writeMeta(r, "__chat__", { chat_id: 1, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
+    await appendLine(join(sessionDir(r, "__chat__"), "inbox.jsonl"), JSON.stringify({ text: "delete lockdown", from: 1, ts: 1 }));
+    if (!lockDuringPreparation) writeFileSync(join(r, "lockdown"), "locked\n");
+    const ran: string[] = [];
+    const run = makeRunFn(r, r, async prompt => { ran.push(prompt); return { code: 0, capped: false, pid: 1 }; }, undefined, undefined, undefined, () => {
+      if (lockDuringPreparation) writeFileSync(join(r, "lockdown"), "locked\n");
+      return r;
+    });
+    await run("__chat__");
+    expect(ran).toEqual([]);
+  }
+});
+
+test("judge: lockdown blocks every inbound agent route for every sender", async () => {
+  const r = root(); heartbeat(r);
+  await inbound(r, fresh("/lockdown"));
+  for (const from of [1, 999]) {
+    const replies: string[] = []; const ran: string[] = []; const fired: string[] = [];
+    for (const text of ["hello", "work on HIMMEL-1", "HIMMEL-1: x", "HIMMEL-1: delete lockdown", "/restart", "/restart full"]) await inbound(r, fresh(text, { from }), replies, ran, fired);
+    expect(ran).toEqual([]);
+    expect(fired).toEqual([]);
+    expect(existsSync(join(r, "sessions", "HIMMEL-1", "inbox.jsonl"))).toBe(false);
+    // Station policy: only the operator is told; others get silence.
+    expect(replies).toHaveLength(from === 1 ? 6 : 0);
+    expect(replies.every(t => t.includes("locked, reset at the station"))).toBe(true);
+  }
+  unlinkSync(join(r, "lockdown"));
+  const ran: string[] = [];
+  await inbound(r, fresh("hello"), [], ran);
+  expect(ran).toEqual(["__chat__"]);
+});
+
+test("judge: ineligible closed console and lockdown verbs never enter agent chat", async () => {
+  for (const text of [...verbs, "/lockdown", "/chief halt", "/chiefs"]) {
+    for (const extra of [{ from: 999, chat_id: -1 }, { forwarded: true }, { caption: true }]) {
+      const r = root(); const f = heartbeat(r); const ran: string[] = [];
+      await inbound(r, fresh(text, extra), [], ran);
+      expect(ran).toEqual([]);
+      expect(readFileSync(f, "utf8")).toBe("");
+      expect(existsSync(join(r, "lockdown"))).toBe(false);
+    }
+  }
+});
+
+test("judge: every console and typed auto request refuses stale input", async () => {
+  for (const text of ["/chief halt", `/chief ${NAME} halt`, "/chiefs", "/arm HIMMEL-1", "/mergepub 12 abcdef123456", "/cr-grant-delta 12 " + "a".repeat(40)]) {
+    const r = root(); const f = heartbeat(r); const replies: string[] = []; const ran: string[] = []; const fired: string[] = [];
+    await inbound(r, fresh(text, { ts: Math.floor(Date.now() / 1000) - 301 }), replies, ran, fired);
+    expect(readFileSync(f, "utf8")).toBe("");
+    expect(ran).toEqual([]);
+    expect(fired).toEqual([]);
+    expect(replies.join("\n")).toContain("stale, resend");
+  }
+});
+
+test("judge: console commands tolerate five seconds of future clock skew", async () => {
+  for (const skew of [1, 5]) {
+    const r = root(); const f = heartbeat(r);
+    await inbound(r, fresh("/fleet", { ts: Math.floor(Date.now() / 1000) + skew }));
+    expect(readFileSync(f, "utf8")).toContain("] fleet status\n");
+  }
+});
+
+test("judge: dangling lockdown symlink remains fail-closed", async () => {
+  const r = root(); const f = heartbeat(r); const ran: string[] = [];
+  symlinkSync(join(r, "missing"), join(r, "lockdown"));
+  await inbound(r, fresh("hello"), [], ran);
+  await inbound(r, fresh("/fleet"), [], ran);
+  expect(ran).toEqual([]);
+  expect(readFileSync(f, "utf8")).toBe("");
+});
+
+test("judge: tagged and correctly bot-addressed operator lockdown narrows", async () => {
+  for (const text of ["model:opus /lockdown", "/lockdown@bridge_bot", "model:opus /lockdown@bridge_bot", "/Lockdown", "/LOCKDOWN@Bridge_Bot"]) {
+    const r = root(); heartbeat(r); const ran: string[] = []; const replies: string[] = [];
+    await handleInbound(r, fresh(text), async s => { ran.push(s); }, undefined, undefined, from => from === 1, undefined, undefined, "bridge_bot", gate(replies));
+    expect(existsSync(join(r, "lockdown"))).toBe(true);
+    expect(ran).toEqual([]);
+    expect(replies.join("\n")).toContain("lockdown");
+  }
+});
+
+test("judge: max-age override works and invalid values fall back to 300 seconds", async () => {
+  const saved = process.env.TELEGRAM_VERB_MAX_AGE_S;
+  try {
+    for (const [value, age, queued] of [["30", 60, false], ["600", 301, true], ["abc", 60, true], ["abc", 301, false], ["-5", 60, true], ["-5", 301, false]] as const) {
+      process.env.TELEGRAM_VERB_MAX_AGE_S = value;
+      const r = root(); const f = heartbeat(r);
+      await inbound(r, fresh("/fleet", { ts: Math.floor(Date.now() / 1000) - age }));
+      expect(readFileSync(f, "utf8").includes("fleet status")).toBe(queued);
+    }
+  } finally { if (saved === undefined) delete process.env.TELEGRAM_VERB_MAX_AGE_S; else process.env.TELEGRAM_VERB_MAX_AGE_S = saved; }
+});
+
+const verbs = ["/fleet", "/workers", "/go N1490", "/push N1490", "/halt", "/halt N1490"];
+const fresh = (text: string, extra: Record<string, unknown> = {}) => say(text, { ts: Math.floor(Date.now() / 1000), message_id: 123, ...extra });
+
+async function inbound(r: string, msg: ReturnType<typeof say>, replies: string[] = [], ran: string[] = [], fired: string[] = []) {
+  const g: ConsoleRouteGate = { authorize: (from, chat) => from === 1 && [1, -1].includes(chat), reply: (chat, text, name, replyTo) => replyViaOutbox(r, chat, text, name, replyTo) };
+  await handleInbound(r, msg, async s => { ran.push(s); }, { authorize: g.authorize, enabledOps: new Set(["arm-resume", "merge-public", "cr-grant-delta", "launch-bypass-worker"]), fire: async (_msg, route) => { fired.push(route.op); } }, async () => "spawn-high", from => from === 1, undefined, undefined, undefined, g);
+  await flushOutboxes(r, async (_chat, text) => { replies.push(text); return 777; });
+}
+
+test("short-verbs-auth-targeting", async () => {
+  const requests = ["fleet status", "legs", "go? N1490", "push N1490", "halt", "halt N1490"];
+  for (let i = 0; i < verbs.length; i++) {
+    const r = root(); const f = heartbeat(r); const replies: string[] = []; const ran: string[] = [];
+    await inbound(r, fresh(verbs[i]), replies, ran);
+    expect(readFileSync(f, "utf8")).toContain(`] ${requests[i]}\n`);
+    expect(ran).toEqual([]);
+    expect(replies.join("\n")).toContain("queued");
+    expect(replies.join("\n")).not.toContain("completed");
+    expect(existsSync(join(r, "go"))).toBe(false);
+    expect(existsSync(join(r, "grants"))).toBe(false);
+    for (const extra of [{ from: 999 }, { chat_id: -99 }, { forwarded: true }, { caption: true }, { text: `model:opus ${verbs[i]}` }]) {
+      writeFileSync(f, "");
+      await inbound(r, fresh(verbs[i], extra));
+      expect(readFileSync(f, "utf8")).toBe("");
+    }
+    writeFileSync(f, "");
+    await inbound(r, fresh(verbs[i], { chat_id: -1 }));
+    expect(readFileSync(f, "utf8")).toContain(`[telegram from=1 chat=-1] ${requests[i]}`);
+  }
+  for (const count of [0, 2]) {
+    const r = root(); const old = heartbeat(r, "old", "waiting", 4000); const ran: string[] = [];
+    if (count) { heartbeat(r); heartbeat(r, "second"); }
+    for (const text of verbs) await inbound(r, fresh(text), [], ran);
+    expect(readFileSync(old, "utf8")).toBe("");
+    if (count) expect(readFileSync(join(r, "consoles", `${NAME}.md`), "utf8")).toBe("");
+    expect(ran).toEqual([]);
+  }
+});
+
+test("slash-only-plain-words-are-chat", () => {
+  for (const text of ["fleet", "legs", "go N1490", "push N1490", "halt", "lockdown", "/gopher", "/legsx", "/halting now", "/go@bridge_bot x"]) expect(classify(text).kind).toBe("chat");
+  expect(classify("status")).toEqual({ kind: "control", verb: "status" });
+  for (const text of verbs) expect(classify(text).kind).toBe("fleet");
+});
+
+test("stale-verb-refused", async () => {
+  for (const ts of [Math.floor(Date.now() / 1000) - 301, 0, undefined, Math.floor(Date.now() / 1000) + 60]) {
+    const r = root(); const f = heartbeat(r); const replies: string[] = []; const ran: string[] = [];
+    for (const text of verbs) await inbound(r, fresh(text, { ts }), replies, ran);
+    expect(readFileSync(f, "utf8")).toBe("");
+    expect(ran).toEqual([]);
+    expect(replies.join("\n")).toContain("stale, resend");
+  }
+});
+
+test("lockdown-drops-privileged-routes", async () => {
+  const r = root(); const f = heartbeat(r); const replies: string[] = []; const ran: string[] = []; const fired: string[] = [];
+  await replyViaOutbox(r, 1, "answer", NAME);
+  await flushOutboxes(r, async () => 777);
+  await inbound(r, fresh("/lockdown"), replies, ran, fired);
+  expect(replies.join("\n")).toContain("lockdown");
+  for (const text of [...verbs, "/chief halt", "/chiefs", "/mergepub 12 abcdef123456", "/cr-grant-delta 12 " + "a".repeat(40), "/launch-bypass-worker /tmp/worker.md HIMMEL_HOOK_INTEGRITY_BYPASS_OK", "/arm HIMMEL-123", "halt"]) {
+    await inbound(r, fresh(text, { reply_to_message_id: 777 }), replies, ran, fired);
+  }
+  expect(readFileSync(f, "utf8")).toBe("");
+  expect(fired).toEqual([]);
+  expect(ran).toEqual([]);
+});
+
+test("legacy-bypass-without-claim-refused in the real inbound handler", async () => {
+  const r = root(); heartbeat(r); const replies: string[] = []; const ran: string[] = []; const fired: string[] = [];
+  await inbound(r, fresh("/launch-bypass-worker /tmp/worker.md HIMMEL_HOOK_INTEGRITY_BYPASS_OK"), replies, ran, fired);
+  expect(fired).toEqual([]);
+  expect(ran).toEqual([]);
+  expect(replies.join("\n")).toContain("station");
+  expect(existsSync(join(r, "auto-action-audit.log"))).toBe(true);
+  expect(readFileSync(join(r, "auto-action-audit.log"), "utf8")).toContain("op=launch-bypass-worker");
+  expect(readFileSync(join(r, "auto-action-audit.log"), "utf8")).toContain("rc=19 result=refused-legacy-bypass");
+});
+
+test("reply-threads-retain-receipt-owner", async () => {
+  const r = root(); const f = heartbeat(r); const second = heartbeat(r, "second");
+  await replyViaOutbox(r, 1, "answer", NAME, 123);
+  const bodies: any[] = [];
+  await flushOutboxes(r, async (chat, text, replyTo) => {
+    let id: number | undefined;
+    await sendMessage("T", chat, text, (async (_url, init) => { bodies.push(JSON.parse(String(init?.body))); return Response.json({ ok: true, result: { message_id: 777 } }); }) as typeof fetch, async () => {}, n => { id = n; }, replyTo);
+    return id;
+  });
+  expect(bodies).toEqual([{ chat_id: 1, text: "answer", reply_parameters: { message_id: 123, allow_sending_without_reply: true } }]);
+  await inbound(r, fresh("/push N1490", { reply_to_message_id: 777 }));
+  expect(readFileSync(f, "utf8")).toContain("] push N1490\n");
+  expect(readFileSync(second, "utf8")).toBe("");
+  writeFileSync(f, "");
+  await inbound(r, fresh("/halt", { chat_id: -1, reply_to_message_id: 777 }));
+  expect(readFileSync(f, "utf8")).toBe("");
+  writeFileSync(f + ".wait", "hb=1 pid=123 key=- tick=- state=waiting\n");
+  await inbound(r, fresh("/push N1490", { reply_to_message_id: 777 }));
+  expect(readFileSync(f, "utf8")).toBe("");
+  expect(readFileSync(second, "utf8")).toBe("");
+});
+
+// A chief "arms" its inbox by creating the file (ACTION ZERO); the bridge
+// only ever appends to one that exists.
+function armInbox(r: string, name = NAME): string {
+  mkdirSync(join(r, "consoles"), { recursive: true });
+  const f = join(r, "consoles", `${name}.md`);
+  writeFileSync(f, "");
+  return f;
+}
+
+function gate(replies: string[], authorize = (from: number) => from === 1): ConsoleRouteGate {
+  return { authorize: (from) => authorize(from), reply: async (_chat, text) => { replies.push(text); } };
+}
+
+const say = (text: string, extra: Record<string, unknown> = {}) => ({ from: 1, chat_id: 1, text, ts: Math.floor(Date.now() / 1000), caption: false, ...extra });
+
+function heartbeat(r: string, name = NAME, state = "waiting", age = 0) {
+  const f = armInbox(r, name);
+  writeFileSync(f + ".wait", `hb=${Math.floor(Date.now() / 1000) - age} pid=123 key=- tick=- state=${state}\n`);
+  writeFileSync(f + ".meta.json", JSON.stringify({ bucket: "himmel", project: "/repos/himmel" }));
+  return f;
+}
+
+// Missing discovery must never turn a bare chief command into a cold run.
+test("bare /chief routes the whole text to the sole fresh waiting or sampling console", async () => {
+  for (const state of ["waiting", "sampling"]) {
+    const r = root(); const f = heartbeat(r, NAME, state); const ran: string[] = [];
+    await handleInbound(r, say("/chief halt the wave"), async (s) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+    expect(readFileSync(f, "utf8")).toContain("[telegram from=1 chat=1] halt the wave");
+    expect(ran).toEqual([]);
+  }
+});
+
+test("bare /chief accepts non-ASCII and punctuation text without inventing a name", async () => {
+  for (const text of ["🙏 halt, please", "a..b hi", "../escape hi"]) {
+    const r = root(); const f = heartbeat(r);
+    await handleInbound(r, say(`/chief ${text}`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+    expect(readFileSync(f, "utf8")).toContain(text);
+  }
+});
+
+test("bare /chief with zero or two live chiefs lists the problem without queuing", async () => {
+  for (const count of [0, 2]) {
+    const r = root(); const replies: string[] = []; const ran: string[] = [];
+    const old = heartbeat(r, "old", "waiting", 4000);
+    const exited = heartbeat(r, "exited", "exited");
+    if (count) { heartbeat(r); heartbeat(r, "second"); }
+    await handleInbound(r, say("/chief halt"), async (s) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+    expect(ran).toEqual([]);
+    expect(replies.join("\n")).toContain(count ? "second" : "no live chief");
+    expect(readFileSync(old, "utf8")).toBe("");
+    expect(readFileSync(exited, "utf8")).toBe("");
+    if (count) expect(readFileSync(join(r, "consoles", `${NAME}.md`), "utf8")).toBe("");
+  }
+});
+
+test("HIMMEL-7573: the pick-a-chief prompts tell the operator to send /chief, never /console", async () => {
+  for (const text of ["/chief halt", "/chief HIMMEL halt"]) {
+    const r = root(); const replies: string[] = [];
+    heartbeat(r); heartbeat(r, "HIMMEL-second-chief");
+    await handleInbound(r, say(text), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+    expect(replies.join("\n")).toContain("choose /chief <name> <text>");
+    expect(replies.join("\n")).not.toContain("/console");
+  }
+});
+
+test("HIMMEL-7573: /console stays a quiet alias that queues exactly what /chief queues", async () => {
+  const lines: string[] = []; const acks: string[][] = [];
+  for (const verb of ["/console", "/chief"]) {
+    const r = root(); const f = armInbox(r); const replies: string[] = [];
+    await handleInbound(r, say(`${verb} ${NAME} go ahead`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+    lines.push(readFileSync(f, "utf8").replace(/^- \d\d:\d\d /, ""));
+    acks.push(replies);
+  }
+  expect(lines[0]).toBe("[telegram from=1 chat=1] go ahead\n");
+  expect(lines[1]).toBe(lines[0]);
+  expect(acks[1]).toEqual(acks[0]);
+});
+
+test("/chiefs lists only fresh chiefs with heartbeat and bucket/project", async () => {
+  const r = root(); heartbeat(r); heartbeat(r, "old", "waiting", 300); heartbeat(r, "exited", "exited");
+  const replies: string[] = []; const ran: string[] = [];
+  await handleInbound(r, say("/chiefs"), async (s) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(ran).toEqual([]);
+  expect(replies.join("\n")).toContain(NAME);
+  expect(replies.join("\n")).toContain("hb=");
+  expect(replies.join("\n")).toContain("himmel");
+  expect(replies.join("\n")).toContain("/repos/himmel");
+  expect(replies.join("\n")).not.toContain("old");
+  expect(replies.join("\n")).not.toContain("exited");
+});
+
+test("bare /chief and /chiefs retain typed, sender and allowed-chat authority gates", async () => {
+  for (const text of ["/chief halt", "/chiefs"]) {
+    for (const extra of [{ forwarded: true }, { caption: true }, { from: 999 }, { chat_id: -99 }]) {
+      const r = root(); const f = heartbeat(r); const replies: string[] = [];
+      const g: ConsoleRouteGate = { authorize: (from, chat) => from === 1 && chat === 1, reply: async (_chat, t) => { replies.push(t); } };
+      await handleInbound(r, say(text, extra), async () => {}, undefined, async () => "spawn-high", undefined, undefined, undefined, undefined, g);
+      expect(readFileSync(f, "utf8")).toBe("");
+      expect(replies).toEqual([]);
+    }
+  }
+});
+
+test("router: /chief <name> <text> classifies; prose and partial shapes stay chat", () => {
+  expect(classify(`/chief ${NAME} halt the wave`)).toEqual({ kind: "console", name: NAME, text: "halt the wave" });
+  expect(classify(`/chief ${NAME} line one\nline two`)).toEqual({ kind: "console", name: NAME, text: "line one\nline two" });
+  expect(classify("chief output: foo").kind).toBe("chat");
+  expect(classify("/chief").kind).toBe("chat");
+  expect(classify(`/chief ${NAME}`)).toEqual({ kind: "console", name: "", text: NAME });
+  expect(classify(`please /chief ${NAME} hi`).kind).toBe("chat");
+});
+
+test("allowlisted /chief message lands one line in the console inbox and spawns NO cold session", async () => {
+  const r = root(); const f = armInbox(r); const replies: string[] = []; const ran: string[] = [];
+  await handleInbound(r, say(`/chief ${NAME} go ahead with PR 12`), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  const lines = readFileSync(f, "utf8").split("\n").filter(Boolean);
+  expect(lines.length).toBe(1);
+  expect(lines[0]).toMatch(/^- \d\d:\d\d \[telegram from=1 chat=1\] go ahead with PR 12$/);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(r, "sessions"))).toBe(false);
+  expect(replies).toEqual([`→ chief ${NAME}`]);
+});
+
+test("control: a non-allowlisted sender's console verb drops without a cold spawn", async () => {
+  const r = root(); const f = armInbox(r); const replies: string[] = []; const ran: string[] = [];
+  await handleInbound(r, say(`/chief ${NAME} halt everything`, { from: 999 }), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(readFileSync(f, "utf8")).toBe("");
+  expect(ran).toEqual([]);
+  expect(replies).toEqual([]);
+});
+
+test("control: an unaddressed message keeps today's cold-spawn behaviour", async () => {
+  const r = root(); const f = armInbox(r); const replies: string[] = []; const ran: string[] = [];
+  await handleInbound(r, say("hello there"), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(readFileSync(f, "utf8")).toBe("");
+  expect(ran).toEqual(["__chat__"]);
+  expect(replies).toEqual([]);
+});
+
+test("control: with no console gate wired, /chief drops without spawning", async () => {
+  const r = root(); const f = armInbox(r); const ran: string[] = [];
+  await handleInbound(r, say(`/chief ${NAME} hi`), async (s: string) => { ran.push(s); });
+  expect(readFileSync(f, "utf8")).toBe("");
+  expect(ran).toEqual([]);
+});
+
+test("forwarded or caption /chief messages drop without spawning", async () => {
+  for (const extra of [{ forwarded: true }, { caption: true }]) {
+    const r = root(); const f = armInbox(r); const ran: string[] = [];
+    await handleInbound(r, say(`/chief ${NAME} halt`, extra), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+    expect(readFileSync(f, "utf8")).toBe("");
+    expect(ran).toEqual([]);
+  }
+});
+
+// routeToConsole never creates an inbox (appendIfExists is
+// O_CREAT-free — see bus.test.ts for the TOCTOU-race regression at the
+// primitive level).
+test("a console with no armed inbox gets an error reply, no file, and no cold session", async () => {
+  const r = root(); const replies: string[] = []; const ran: string[] = [];
+  await handleInbound(r, say(`/chief ${NAME} hi`), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(existsSync(join(r, "consoles", `${NAME}.md`))).toBe(false);
+  expect(ran).toEqual([]);
+  expect(existsSync(join(r, "sessions"))).toBe(false);
+  expect(replies.length).toBe(1);
+  expect(replies[0]).toContain("no live chief");
+  expect(replies[0]).toContain(NAME);
+});
+
+test("a traversal-shaped console name is refused: nothing written outside consoles/, no cold session", async () => {
+  const r = root(); const replies: string[] = []; const ran: string[] = [];
+  mkdirSync(join(r, "consoles"), { recursive: true });
+  writeFileSync(join(r, "escape.md"), "");
+  // Invalid first words are bare text, never paths; with no live chief
+  // they queue nothing.
+  await handleInbound(r, say("/chief ../escape hi"), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(ran).toEqual([]);
+  replies.length = 0;
+  await handleInbound(r, say("/chief a..b hi"), async (s: string) => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  expect(readFileSync(join(r, "escape.md"), "utf8")).toBe("");
+  expect(ran).toEqual([]);
+  expect(replies.length).toBe(1);
+  expect(replies[0]).toContain("no live chief");
+  expect(consoleInboxPath(r, "../escape")).toBeNull();
+  expect(consoleInboxPath(r, "a..b")).toBeNull();
+  expect(consoleInboxPath(r, "")).toBeNull();
+});
+
+test("a multi-line message is folded onto ONE line so a tail -F monitor emits one event", async () => {
+  const r = root(); const f = armInbox(r);
+  await handleInbound(r, say(`/chief ${NAME} first\nsecond\r\nthird`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  const raw = readFileSync(f, "utf8");
+  expect(raw.endsWith("\n")).toBe(true);
+  expect(raw.split("\n").filter(Boolean).length).toBe(1);
+  expect(raw).toContain("first ⏎ second ⏎ third");
+  expect(foldLine("a\nb")).toBe("a ⏎ b");
+});
+
+test("a reply-seam failure after the append does not throw (handleBatch would tell the operator to resend a duplicate)", async () => {
+  const r = root(); const f = armInbox(r);
+  const g: ConsoleRouteGate = { authorize: () => true, reply: async () => { throw new Error("outbox down"); } };
+  await handleInbound(r, say(`/chief ${NAME} hi`), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, g);
+  expect(readFileSync(f, "utf8").split("\n").filter(Boolean).length).toBe(1);
+});
+
+test("first waiter arm queues one announcement per identity, including successor, never on restart", async () => {
+  const r = root(); const f = heartbeat(r); const successor = heartbeat(r, "successor");
+  const access = join(r, "access.json");
+  writeFileSync(access, JSON.stringify({ allowFrom: ["1"] }));
+  const tick = join(r, "tick.sh"); const bank = join(r, "bank.sh");
+  writeFileSync(tick, "#!/usr/bin/env bash\nexit 1\n");
+  writeFileSync(bank, "#!/usr/bin/env bash\nprintf 'PROCEED\\n'\n");
+  for (const inbox of [f, f, successor]) {
+    // A pending inbox line makes the real waiter exit immediately, not an idle
+    // timing probe. First-arm announcement must happen before its first wake.
+    writeFileSync(inbox, "wake\n");
+    writeFileSync(inbox + ".cursor", "0");
+    const p = Bun.spawn([BASH_BIN, join(import.meta.dir, "../handover/chief-kit/chief-wait.sh"), inbox], {
+      env: { ...process.env, BRIDGE_ROOT: r, TELEGRAM_ACCESS_PATH: access, CHIEF_WAIT_TICK: tick, CHIEF_WAIT_USAGE: bank }, stdout: "pipe", stderr: "pipe",
+    });
+    await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+    expect(await p.exited).toBe(0);
+  }
+  const out = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim().split("\n").map(l => JSON.parse(l));
+  expect(out.map(m => m.console)).toEqual([NAME, "successor"]);
+  expect(out[0].text).toContain(`/chief <text>`);
+  expect(out.map(m => m.text).join("\n")).not.toContain("/console");
+  expect(out[1].text).toContain("successor");
+});
+
+test("trusted console outbox receipt routes a Telegram reply to that console, even with two live chiefs", async () => {
+  for (const text of ["thanks, halt", "HIMMEL-123: halt"]) {
+    const r = root(); const f = heartbeat(r); heartbeat(r, "second");
+    await replyViaOutbox(r, 1, "chief answer", NAME);
+    await flushOutboxes(r, async () => 777);
+    await ingestUpdates(r, [{ update_id: 1, message: { from: { id: 1 }, chat: { id: 1 }, text, reply_to_message: { message_id: 777 }, date: Math.floor(Date.now() / 1000) } }]);
+    const msg = JSON.parse(readFileSync(join(r, "inbound.jsonl"), "utf8").trim());
+    const ran: string[] = [];
+    await handleInbound(r, msg, async s => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+    expect(readFileSync(f, "utf8")).toContain(`[telegram from=1 chat=1] ${text}`);
+    expect(readFileSync(join(r, "consoles", "second.md"), "utf8")).toBe("");
+    expect(ran).toEqual([]);
+  }
+});
+
+test("explicit control, dispatch and slash commands retain their routing in a console reply thread", async () => {
+  for (const text of ["status", "work on HIMMEL-123", "/restart", "/chief", " /unknown command"]) {
+    const r = root(); const f = heartbeat(r);
+    await replyViaOutbox(r, 1, "chief answer", NAME);
+    await flushOutboxes(r, async () => 777);
+    await handleInbound(r, say(text, { reply_to_message_id: 777 }), async () => {}, undefined, async () => "spawn-high", undefined, undefined, undefined, undefined, gate([]));
+    expect(readFileSync(f, "utf8")).toBe("");
+  }
+});
+
+test("reply mapping is chat-scoped and never bypasses sender, caption, forwarded or chat gates", async () => {
+  for (const extra of [{ from: 999 }, { caption: true }, { forwarded: true }, { chat_id: -99 }]) {
+    const r = root(); const f = heartbeat(r);
+    await replyViaOutbox(r, 1, "answer", NAME);
+    await flushOutboxes(r, async () => 777);
+    const replies: string[] = [];
+    const g: ConsoleRouteGate = { authorize: (from, chat) => from === 1 && chat === 1, reply: async (_chat, text) => { replies.push(text); } };
+    await handleInbound(r, say("halt", { reply_to_message_id: 777, ...extra }), async () => {}, undefined, async () => "spawn-high", undefined, undefined, undefined, undefined, g);
+    expect(readFileSync(f, "utf8")).toBe("");
+    expect(replies).toEqual([]);
+  }
+});
+
+test("an unrelated bot message or a forged reply label stays ordinary chat", async () => {
+  const r = root(); const f = heartbeat(r); const ran: string[] = [];
+  await replyViaOutbox(r, 1, "ordinary answer");
+  await flushOutboxes(r, async () => 777);
+  await handleInbound(r, say(`Chief ${NAME} is live`, { reply_to_message_id: 777 }), async s => { ran.push(s); }, undefined, undefined, undefined, undefined, undefined, undefined, gate([]));
+  expect(readFileSync(f, "utf8")).toBe("");
+  expect(ran).toEqual(["__chat__"]);
+});
+
+test("reply CLI tags a running console's answer using the established session-name resolver", async () => {
+  const r = root(); heartbeat(r);
+  const cmdline = join(r, "cmdline");
+  writeFileSync(cmdline, `claude\0-n\0${NAME}\0`);
+  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "1", "answer"], {
+    env: { ...process.env, BRIDGE_ROOT: r, CLAUDE_PID: "123", SESSION_NAME_CMDLINE_FILE: cmdline }, stdout: "pipe", stderr: "pipe",
+  });
+  await Promise.all([new Response(p.stdout).text(), new Response(p.stderr).text()]);
+  expect(await p.exited).toBe(0);
+  const out = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").trim();
+  expect(JSON.parse(out)).toEqual({ text: "answer", console: NAME });
+});
+
+test("reply CLI appends one line to the chat's outbox under a scratch BRIDGE_ROOT", async () => {
+  const r = root();
+  const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", "1", "done", "with", "PR 12"], { env: { ...process.env, BRIDGE_ROOT: r }, stdout: "pipe", stderr: "pipe" });
+  expect(await p.exited).toBe(0);
+  const out = readFileSync(join(r, "sessions", "__chat__", "outbox.jsonl"), "utf8").split("\n").filter(Boolean);
+  expect(out.map((l) => JSON.parse(l))).toEqual([{ text: "done with PR 12" }]);
+  const meta = JSON.parse(readFileSync(join(r, "sessions", "__chat__", "meta.json"), "utf8"));
+  expect(meta.chat_id).toBe(1);
+});
+
+test("reply CLI: the old --console is the same flag as --chief, with one deprecation line; HIMMEL_LEGACY_NAMES=0 makes it an unknown option", async () => {
+  const reply = async (flag: string, env: Record<string, string> = {}) => {
+    const r = root();
+    const p = Bun.spawn(["bun", join(import.meta.dir, "chief-route.ts"), "reply", flag, NAME, "1", "answer"], {
+      env: { ...process.env, BRIDGE_ROOT: r, ...env }, stdout: "pipe", stderr: "pipe",
+    });
+    const err = await new Response(p.stderr).text();
+    const code = await p.exited;
+    const outbox = join(r, "sessions", "__chat__", "outbox.jsonl");
+    return { code, err, line: existsSync(outbox) ? readFileSync(outbox, "utf8").trim() : null };
+  };
+  const fresh = await reply("--chief");
+  const old = await reply("--console");
+  expect(fresh.code).toBe(0);
+  expect(JSON.parse(fresh.line!)).toEqual({ text: "answer", console: NAME });
+  expect(old.code).toBe(0);
+  expect(old.line).toBe(fresh.line);
+  expect(old.err.split("\n").filter((l) => l === "--console is deprecated: use --chief")).toHaveLength(1);
+  const off = await reply("--console", { HIMMEL_LEGACY_NAMES: "0" });
+  expect(off.code).toBe(1);
+  expect(off.line).toBeNull();
+  expect(off.err).toContain("usage: bun chief-route.ts reply");
+});
+
+// Every malformed reserved fleet shape is a terminal refusal.
+const malformed = ["/go foo..bar", "/go ../escape", "/push a..b", "/halt a/b", "/go a\\b", `/go ${"a".repeat(65)}`, "/push a\u0000b", "/halt a\nb", "/go", "/push", "/go a b", "/halt a b", "/fleet now", "/workers x", "/go  foo", "/push foo‮"];
+
+test("malformed-fleet-shapes-classify-terminal", () => {
+  for (const text of malformed) expect(classify(text).kind).toBe("fleet-malformed");
+  for (const text of ["/go a.b-c_1", "/push " + "a".repeat(64), "/halt", "/fleet", "/workers"]) expect(classify(text).kind).toBe("fleet");
+});
+
+test("malformed-fleet-inbound-refused-no-queue-no-spawn", async () => {
+  for (const text of malformed) {
+    const r = root(); const f = heartbeat(r); const replies: string[] = []; const ran: string[] = []; const fired: string[] = [];
+    await inbound(r, fresh(text), replies, ran, fired);
+    expect(readFileSync(f, "utf8")).toBe("");
+    expect(ran).toEqual([]);
+    expect(fired).toEqual([]);
+    expect(existsSync(join(r, "sessions", "__chat__", "inbox.jsonl"))).toBe(false);
+    expect(replies.join("\n")).toContain("malformed fleet command");
+    for (const extra of [{ from: 999 }, { chat_id: -99 }, { forwarded: true }, { caption: true }, { text: `model:opus ${text}` }]) {
+      const quiet: string[] = [];
+      await inbound(r, fresh(text, extra), quiet, ran, fired);
+      expect(quiet).toEqual([]);
+    }
+    expect(readFileSync(f, "utf8")).toBe("");
+    expect(ran).toEqual([]);
+  }
+});
+
+test("lockdown-arriving-in-settlement-gap-is-not-a-content-filter-block", async () => {
+  const r = root(); await ensureSession(r, "__chat__");
+  await writeMeta(r, "__chat__", { chat_id: 1, status: "idle", last_run_pid: null, last_run_at: null, task_name: null });
+  await appendLine(join(sessionDir(r, "__chat__"), "inbox.jsonl"), JSON.stringify({ text: "hello", from: 1, ts: 1 }));
+  const ran: string[] = []; const notices: string[] = [];
+  // runAndSettle stamps last_run_at via now() -> toISOString() AFTER makeRunFn's
+  // last lockdown check and BEFORE the spawn closure: lock exactly there.
+  const real = Date.prototype.toISOString;
+  const stderr = spyOn(console, "error").mockImplementation(() => {});
+  const spy = spyOn(Date.prototype, "toISOString").mockImplementation(function (this: Date) {
+    if (new Error().stack?.includes("runAndSettle") && !existsSync(join(r, "lockdown"))) writeFileSync(join(r, "lockdown"), "locked\n");
+    return real.call(this);
+  });
+  try {
+    const run = makeRunFn(r, r, async prompt => { ran.push(prompt); return { code: 0, capped: false, pid: 1 }; }, undefined, async (_s, _t, kind) => { notices.push(kind); }, undefined, undefined, undefined, () => r);
+    await run("__chat__");
+  } finally { spy.mockRestore(); stderr.mockRestore(); }
+  expect(existsSync(join(r, "lockdown"))).toBe(true);
+  expect(ran).toEqual([]);
+  expect(notices).toEqual([]);
+  const meta = JSON.parse(readFileSync(join(sessionDir(r, "__chat__"), "meta.json"), "utf8"));
+  expect(meta.status).toBe("idle");
+  expect(readFileSync(join(sessionDir(r, "__chat__"), "inbox.jsonl"), "utf8")).toContain("hello");
+});
+
+// A chief mid-turn has no fresh waiter heartbeat; its inbox is
+// still armed and the waiter resumes from <inbox>.cursor, so the line is queued.
+const BUSY_SAY = "chief is busy, will pick up on next wait";
+async function routeText(r: string, text: string) {
+  const replies: string[] = [];
+  await handleInbound(r, say(text), async () => {}, undefined, undefined, undefined, undefined, undefined, undefined, gate(replies));
+  return replies.join("\n");
+}
+
+test("HIMMEL-5125: bare /chief queues to the only armed console whose waiter is stale within the busy TTL", async () => {
+  const r = root(); const f = heartbeat(r, NAME, "waiting", 900);
+  const reply = await routeText(r, "/chief halt the wave");
+  expect(readFileSync(f, "utf8")).toContain("[telegram from=1 chat=1] halt the wave");
+  expect(reply).toContain("queued");
+  expect(reply).toContain(BUSY_SAY);
+});
+
+test("HIMMEL-5125: a waiter that exited on a wake reason is busy, not released", async () => {
+  const r = root(); const f = armInbox(r);
+  writeFileSync(f + ".wait", `hb=${Math.floor(Date.now() / 1000) - 60} pid=123 key=- tick=ok state=exited exit=wake-tick\n`);
+  const reply = await routeText(r, "/chief halt the wave");
+  expect(readFileSync(f, "utf8")).toContain("halt the wave");
+  expect(reply).toContain(BUSY_SAY);
+});
+
+test("HIMMEL-5125: a fleet verb queues to a busy console", async () => {
+  const r = root(); const f = heartbeat(r, NAME, "sampling", 900); const replies: string[] = [];
+  await inbound(r, fresh("/fleet"), replies);
+  expect(readFileSync(f, "utf8")).toContain("] fleet status\n");
+  expect(replies.join("\n")).toContain(BUSY_SAY);
+});
+
+test("HIMMEL-5125: a unique name fragment routes to its console and is stripped from the text", async () => {
+  const r = root(); const a = heartbeat(r, "HIMMEL-nextleg-2026-10-10CO-roadmap-chief"); const b = heartbeat(r, "HIMMEL-nextleg-2026-10-10V-other-chief", "waiting", 900);
+  for (const frag of ["CO", "roadmap-chi", "ROADMAP"]) {
+    writeFileSync(a, ""); writeFileSync(b, "");
+    const reply = await routeText(r, `/chief ${frag} do the thing`);
+    expect(readFileSync(a, "utf8")).toContain("] do the thing");
+    expect(readFileSync(a, "utf8")).not.toContain(frag + " do");
+    expect(readFileSync(b, "utf8")).toBe("");
+    expect(reply).toContain("roadmap-chief");
+  }
+});
+
+test("HIMMEL-5125: an ambiguous fragment lists the candidates and sends nothing", async () => {
+  const r = root(); const a = heartbeat(r, "x-chief-aa"); const b = heartbeat(r, "x-chief-bb");
+  const reply = await routeText(r, "/chief console do it");
+  expect(readFileSync(a, "utf8")).toBe("");
+  expect(readFileSync(b, "utf8")).toBe("");
+  expect(reply).toContain("x-chief-aa");
+  expect(reply).toContain("x-chief-bb");
+});
+
+test("HIMMEL-5125: a dead or released console still bounces", async () => {
+  const stale = (r: string) => heartbeat(r, NAME, "waiting", 4000);
+  const released = (r: string) => { const f = armInbox(r); writeFileSync(f + ".wait", `hb=${Math.floor(Date.now() / 1000) - 60} pid=123 key=- tick=- state=exited exit=signal-TERM\n`); return f; };
+  for (const mk of [stale, released]) {
+    const r = root(); const f = mk(r); const replies: string[] = [];
+    expect(await routeText(r, "/chief halt")).toContain("no live chief");
+    await inbound(r, fresh("/fleet"), replies);
+    expect(replies.join("\n")).toContain("no live chief");
+    expect(readFileSync(f, "utf8")).toBe("");
+  }
+  const r = root();
+  expect(await routeText(r, "/chief halt")).toContain("no live chief");
+});

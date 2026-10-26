@@ -1,4 +1,4 @@
-// the one page list of the config console (/) and the AG-UI pages (/agui/), so both documents draw
+// the one page list of the config chief (/) and the AG-UI pages (/agui/), so both documents draw
 // the same rail. app.js imports it as /nav.js; agui-web bundles it. The session token rides only the URL
 // fragment (#t=<token>), never a path or query, so it never reaches a request line.
 export const PAGES = [
@@ -11,7 +11,7 @@ export const PAGES = [
   { id: "kanban", label: "Kanban" },
   { id: "workflow", label: "Workflow" },
 ];
-const CONSOLE = ["config", "setup", "health", "toolhealth", "roadmap", "kanban", "workflow"];
+const CHIEF = ["config", "setup", "health", "toolhealth", "roadmap", "kanban", "workflow"];
 
 // The docs site: the UI links into it, never the reverse. DOCS_PATHS lists every site route the UI links to;
 // tests/docs-routes.test.ts checks each against a fresh site/dist build.
@@ -42,12 +42,12 @@ export function navLinks({ here, token, current, run, sources }) {
   ];
 }
 
-// The console's landing fragment, #t=<hex>[&page=<id>]: the token and the console page to open; null otherwise.
+// The chief's landing fragment, #t=<hex>[&page=<id>]: the token and the chief page to open; null otherwise.
 export function parseLanding(hash) {
   const p = new URLSearchParams(hash.replace(/^#/, ""));
   const token = p.get("t");
   if (!token || !/^[0-9a-f]+$/.test(token)) return null;
-  return { token, page: CONSOLE.includes(p.get("page")) ? p.get("page") : "config" };
+  return { token, page: CHIEF.includes(p.get("page")) ? p.get("page") : "config" };
 }
 
 // The Health entry's status dot: the Health page's verdict (health.js verdict()), cls already ok / warn / fail / off.

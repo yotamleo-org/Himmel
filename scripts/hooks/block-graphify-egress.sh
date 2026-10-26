@@ -278,7 +278,7 @@ else
     # behavior) instead of anchoring to a stale leaked value.
     unset GRAPHIFY_TOOL_CWD
 fi
-# On a denial, append the working route: a leg worktree has no graph and a cd
+# On a denial, append the working route: a worker worktree has no graph and a cd
 # or relative target is fenced, but the wrapper resolves the primary graph.
 err_file=$(mktemp "${TMPDIR:-/tmp}/graphify-egress-err.XXXXXX") || exit 2
 bash "$FENCE" "$cmd" 2>"$err_file"

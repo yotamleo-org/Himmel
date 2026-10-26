@@ -753,7 +753,7 @@ vm_lock_queue_is_our_turn() {
 # and gave up. Prints one unambiguous `VM-LOCK-WAIT EXPIRED after Ns —
 # vm-lock '<name>' NOT acquired` line on stdout in the give-up case — a
 # distinct literal prefix from the suite lock's `LOCK-WAIT EXPIRED`, so a
-# console monitor can grep either without conflating the two lock domains.
+# chief monitor can grep either without conflating the two lock domains.
 vm_lock_acquire_waiting() {
     local name="$1"
 

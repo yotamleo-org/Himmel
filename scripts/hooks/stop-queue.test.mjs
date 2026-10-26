@@ -464,7 +464,7 @@ test('the end-side hooks route their detached work through the queue', () => {
   const settings = JSON.parse(readFileSync(join(HERE, '..', '..', '.claude', 'settings.json'), 'utf8'));
   const commandsFor = (event) => (settings.hooks[event] || [])
     .flatMap((b) => (b.hooks || []).map((h) => String(h.command)));
-  // stop-console-idle-guard.sh is a NAMED exception, not a
+  // stop-chief-idle-guard.sh is a NAMED exception, not a
   // loosened invariant: every other end-side hook does deferred, detached
   // work and this queue exists to bound exactly that. This one
   // hook's whole job is the opposite — it must hand Claude Code a
@@ -472,7 +472,7 @@ test('the end-side hooks route their detached work through the queue', () => {
   // actually stops, which the queue's async enqueue-and-exit contract cannot
   // deliver (its own job always returns having already decided ALLOW). See
   // the hook's own header for the routing decision in full.
-  const SYNC_DECISION_HOOKS = ['stop-console-idle-guard.sh'];
+  const SYNC_DECISION_HOOKS = ['stop-chief-idle-guard.sh'];
   for (const event of ['Stop', 'SessionEnd']) {
     const cmds = commandsFor(event);
     assert.ok(cmds.length, `${event} has no hooks`);

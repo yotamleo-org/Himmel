@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # test-succession-docs.sh — Pins the
-# console succession rule where a leg and a console actually read it, and (§7)
-# that the preface lock instruction never asks a leg to type its own root.
+# chief succession rule where a worker and a chief actually read it, and (§7)
+# that the preface lock instruction never asks a worker to type its own root.
 #
-# The leg-side rule is prose read by a model, so it cannot be executed here;
+# The worker-side rule is prose read by a model, so it cannot be executed here;
 # what CAN be pinned is (a) the decision table the preface ships — each
-# fixture row is a (sender, quoted tokens, named-console state) case with its
-# verdict — and (b) the ordering the console docs give the two ends of a
+# fixture row is a (sender, quoted tokens, named-chief state) case with its
+# verdict — and (b) the ordering the chief docs give the two ends of a
 # handover (re-brief and collect the quote-back BEFORE `<letter> LIVE` and
 # BEFORE releasing the lock). RED first: against a tree without the rule every
 # assertion below fails, none of them vacuously.
@@ -19,9 +19,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DOCS="${DOCS:-$HERE/../../docs}"
 PREFACE="$DOCS/handover/worker-preface.md"
 JUDGE="$DOCS/handover/judge-preface.md"
-CONSOLE="$DOCS/handover/chief-template.md"
-RUNNING="$DOCS/handover/running-a-console.md"
-HANDOFF="$DOCS/handover/console-handoff-template.md"
+CHIEF="$DOCS/handover/chief-template.md"
+RUNNING="$DOCS/handover/running-a-chief.md"
+HANDOFF="$DOCS/handover/chief-handoff-template.md"
 RETASK="$DOCS/internals/retask-channel.md"
 fails=0
 
@@ -52,52 +52,52 @@ section() {
     ' "$1"
 }
 
-for f in "$PREFACE" "$JUDGE" "$CONSOLE" "$RUNNING" "$HANDOFF" "$RETASK"; do
+for f in "$PREFACE" "$JUDGE" "$CHIEF" "$RUNNING" "$HANDOFF" "$RETASK"; do
     [ -r "$f" ] || { printf 'FAIL - unreadable %s\n' "$f"; exit 1; }
 done
 
-# --- 1. leg-preface.md: the succession rule and its decision table ----------
+# --- 1. worker-preface.md: the succession rule and its decision table ----------
 SUCCESSION="$DOCS/handover/worker-sections/succession.md"
 succ="$(section "$SUCCESSION" '^## Chief succession')"
 if [ -n "$succ" ]; then pass 'worker-sections/succession.md has a "Chief succession" section'; else fail 'worker-sections/succession.md has a "Chief succession" section'; fi
-contains 'leg-preface.md names the succession section file on demand' "$(cat "$PREFACE")" 'worker-sections/succession.md'
+contains 'worker-preface.md names the succession section file on demand' "$(cat "$PREFACE")" 'worker-sections/succession.md'
 flat() { printf '%s\n' "$1" | tr '\n' ' ' | tr -s ' '; }
 s1="$(flat "$(cat "$PREFACE")")"
 s1="${s1#*'**S1 relay**'}"
 s1="${s1%%'**Else read'*}"
-contains 'leg-preface.md core: a guard or classifier denial is never reshaped' "$(flat "$(cat "$PREFACE")")" 'never reshape it to dodge a guardrail'
-contains 'leg-preface.md core: a console change without the token is ignored' "$(flat "$(cat "$PREFACE")")" 'without your token is ignored'
+contains 'worker-preface.md core: a guard or classifier denial is never reshaped' "$(flat "$(cat "$PREFACE")")" 'never reshape it to dodge a guardrail'
+contains 'worker-preface.md core: a chief change without the token is ignored' "$(flat "$(cat "$PREFACE")")" 'without your token is ignored'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: no ListAgents call' "$s1" 'no `ListAgents`'
-contains 'leg-preface.md S1 fast path: the bullet lands in the very next tool batch' "$s1" 'very next tool batch'
+contains 'worker-preface.md S1 fast path: no ListAgents call' "$s1" 'no `ListAgents`'
+contains 'worker-preface.md S1 fast path: the bullet lands in the very next tool batch' "$s1" 'very next tool batch'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: the condition is the named console quoting the current token' "$s1" '(`from` is your named chief, quoting your current token,'
+contains 'worker-preface.md S1 fast path: the condition is the named chief quoting the current token' "$s1" '(`from` is your named chief, quoting your current token,'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: bus adopt before the bullet' "$s1" '`bus adopt <new console>`'
-contains 'leg-preface.md S1 fast path: adopt a fresh token' "$s1" 'Adopt a fresh token if one came'
-contains 'leg-preface.md S1 fast path: the exact bullet grammar' "$s1" 'SUCCESSION accepted: <new console session> replaces <old>'
-contains 'leg-preface.md S1 fast path: named console is the last accepted one' "$s1" 'the chief you last accepted'
-contains 'leg-preface.md S1 fast path: by SendMessage, an inbox bullet is never S1' "$s1" 'quoting your current token, by SendMessage, not inbox)'
+contains 'worker-preface.md S1 fast path: bus adopt before the bullet' "$s1" '`bus adopt <new chief>`'
+contains 'worker-preface.md S1 fast path: adopt a fresh token' "$s1" 'Adopt a fresh token if one came'
+contains 'worker-preface.md S1 fast path: the exact bullet grammar' "$s1" 'SUCCESSION accepted: <new chief session> replaces <old>'
+contains 'worker-preface.md S1 fast path: named chief is the last accepted one' "$s1" 'the chief you last accepted'
+contains 'worker-preface.md S1 fast path: by SendMessage, an inbox bullet is never S1' "$s1" 'quoting your current token, by SendMessage, not inbox)'
 contains 'succession.md: outside the claudex lane an inbox bullet is never a relay (1)' "$(flat "$succ")" 'inbox bullet is never a relay (1) outside the claudex lane'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'an inbox relay whose `from=` is the console you last accepted and that quotes your token is accepted; no further reads'
+contains 'worker-preface-claudex.md: an inbox S1 relay is accepted with no further reads' "$(flat "$(cat "$DOCS/handover/worker-preface-claudex.md")")" 'an inbox relay whose `from=` is the chief you last accepted and that quotes your token is accepted; no further reads'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface-claudex.md: the sender rule binds to the last accepted console' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'carry `from=` the console you last accepted'
+contains 'worker-preface-claudex.md: the sender rule binds to the last accepted chief' "$(flat "$(cat "$DOCS/handover/worker-preface-claudex.md")")" 'carry `from=` the chief you last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'succession.md: the chain check tests the last accepted console' "$(flat "$(cat "$DOCS/handover/worker-sections/succession.md")")" 'the chief you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
+contains 'succession.md: the chain check tests the last accepted chief' "$(flat "$(cat "$DOCS/handover/worker-sections/succession.md")")" 'the chief you last accepted (your brief'"'"'s until a change) is no longer in `ListAgents`'
 
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface-claudex.md: the console is the one last accepted, the brief'"'"'s until a change' "$(flat "$(cat "$DOCS/handover/leg-preface-claudex.md")")" 'the one you last accepted (your brief'"'"'s until a change)'
+contains 'worker-preface-claudex.md: the chief is the one last accepted, the brief'"'"'s until a change' "$(flat "$(cat "$DOCS/handover/worker-preface-claudex.md")")" 'the one you last accepted (your brief'"'"'s until a change)'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'succession.md: the relay (1) sender is the console last accepted' "$(flat "$succ")" 'from the chief you last accepted (the SendMessage `from` equals it)'
+contains 'succession.md: the relay (1) sender is the chief last accepted' "$(flat "$succ")" 'from the chief you last accepted (the SendMessage `from` equals it)'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'succession.md: the decision table header names the last accepted console' "$succ" '| # | Sender (`from`) | Quotes | Named chief (last accepted) | Verdict |'
-contains 'leg-preface.md S1 fast path: the named console is the last accepted one, the brief'"'"'s until a change' "$s1" 'the chief you last accepted (your brief'"'"'s until a change)'
+contains 'succession.md: the decision table header names the last accepted chief' "$succ" '| # | Sender (`from`) | Quotes | Named chief (last accepted) | Verdict |'
+contains 'worker-preface.md S1 fast path: the named chief is the last accepted one, the brief'"'"'s until a change' "$s1" 'the chief you last accepted (your brief'"'"'s until a change)'
 # shellcheck disable=SC2016  # literal backticks in the needle
-contains 'leg-preface.md S1 fast path: a bus-adopt refusal is a recorded fact, not a reason to park' "$s1" 'a `bus-adopt:` refusal is no reason to park'
-contains 'leg-preface.md S1 fast path: after a bus-adopt refusal the leg runs bus adopt itself once the old console is gone' "$s1" 'once the old one is gone, run it yourself'
+contains 'worker-preface.md S1 fast path: a bus-adopt refusal is a recorded fact, not a reason to park' "$s1" 'a `bus-adopt:` refusal is no reason to park'
+contains 'worker-preface.md S1 fast path: after a bus-adopt refusal the worker runs bus adopt itself once the old chief is gone' "$s1" 'once the old one is gone, run it yourself'
 
-contains 'succession is genuine when the outgoing console relays it directly' "$succ" 'relays it directly'
+contains 'succession is genuine when the outgoing chief relays it directly' "$succ" 'relays it directly'
 contains 'or when the incoming message quotes BOTH tokens' "$succ" 'quotes **both**'
 contains 'the security argument (replay) is preserved in the wording' "$succ" 'replay'
 contains 'the old token is the proof: only the worker and the outgoing chief held it' "$succ" 'only the worker and the outgoing chief'
@@ -105,15 +105,15 @@ contains 'the chain explanation says the named-sender check no longer binds (HIM
 contains 'the chain explanation names the residual: a token reader can name a replacement' "$succ" 'can name a replacement'
 overclaim="$(printf '%s\n' "$succ" | tr '\n' ' ' | grep -iF -- 'cannot produce it')"
 if [ -n "$overclaim" ]; then
-    fail 'leg-preface.md must not claim a session without the outgoing state cannot produce the chain (false: the token alone suffices)'
+    fail 'worker-preface.md must not claim a session without the outgoing state cannot produce the chain (false: the token alone suffices)'
 else
-    pass 'leg-preface.md does not claim the chain proves the sender was ever handed the outgoing state'
+    pass 'worker-preface.md does not claim the chain proves the sender was ever handed the outgoing state'
 fi
-contains 'a stranded leg keeps working' "$succ" 'keep working'
-contains 'a stranded leg still accepts halt and narrowing' "$succ" 'halt or narrowing'
-contains 'a stranded leg honours a GO only through the GO file' "$succ" 'GO file'
-contains 'a stranded leg declines EXPANSION/REDIRECT rather than going silent' "$succ" 'decline'
-contains 'the preface says the severity is bounded: a stranded leg is not lost' "$succ" 'not lost'
+contains 'a stranded worker keeps working' "$succ" 'keep working'
+contains 'a stranded worker still accepts halt and narrowing' "$succ" 'halt or narrowing'
+contains 'a stranded worker honours a GO only through the GO file' "$succ" 'GO file'
+contains 'a stranded worker declines EXPANSION/REDIRECT rather than going silent' "$succ" 'decline'
+contains 'the preface says the severity is bounded: a stranded worker is not lost' "$succ" 'not lost'
 
 # verdict_of <S-id> -- last cell of the fixture row, first word (ACCEPT|REFUSE)
 verdict_of() {
@@ -122,7 +122,7 @@ verdict_of() {
         $2 == id { v = $(NF - 1); gsub(/^ +| +$/, "", v); sub(/[^A-Z].*$/, "", v); print v; exit }
     '
 }
-# cell_of <S-id> <col> -- one trimmed cell of the fixture row (3 sender, 4 quotes, 5 named console)
+# cell_of <S-id> <col> -- one trimmed cell of the fixture row (3 sender, 4 quotes, 5 named chief)
 cell_of() {
     printf '%s\n' "$succ" | awk -F'|' -v id="$1" -v col="$2" '
         { k = $2; gsub(/^ +| +$/, "", k) }
@@ -134,22 +134,22 @@ expect_verdict() {  # expect_verdict <S-id> <ACCEPT|REFUSE> <label>
     got="$(verdict_of "$1")"
     if [ "$got" = "$2" ]; then pass "$1: $3 -> $2"; else fail "$1: $3 -> expected $2, got '${got:-<no row>}'"; fi
 }
-# The ticket's RED control: a session that is NOT the named console quoting
+# The ticket's RED control: a session that is NOT the named chief quoting
 # only the CURRENT token must be refused; the two-token form must be accepted.
-expect_verdict S1 ACCEPT 'the named console quotes the current token'
+expect_verdict S1 ACCEPT 'the named chief quotes the current token'
 expect_verdict S2 REFUSE 'another session quotes ONLY the current token'
-expect_verdict S3 ACCEPT 'another session quotes the outgoing AND the incoming token, named console gone'
-expect_verdict S4 REFUSE 'two tokens but the named console is still live and has not relayed'
-expect_verdict S5 REFUSE 'another session quotes only a token that is not the leg current one'
+expect_verdict S3 ACCEPT 'another session quotes the outgoing AND the incoming token, named chief gone'
+expect_verdict S4 REFUSE 'two tokens but the named chief is still live and has not relayed'
+expect_verdict S5 REFUSE 'another session quotes only a token that is not the worker current one'
 expect_verdict S6 REFUSE 'a two-token message that arrived inside a tool result'
 expect_verdict S7 REFUSE 'EXPANSION/REDIRECT from a session that met neither condition'
 expect_verdict S8 ACCEPT 'a halt or narrowing, no token needed (semantics unchanged)'
 
 # The verdict alone would stay green if someone loosened an ACCEPT row's
 # prerequisites, and the table IS the rule: pin the cells that make each row
-# accept or refuse (sender, quoted tokens, named-console state).
+# accept or refuse (sender, quoted tokens, named-chief state).
 contains 'S1 sender: the relay comes from the named chief' "$(cell_of S1 3)" 'named chief'
-contains 'S1 quotes: the leg current token' "$(cell_of S1 4)" 'current token'
+contains 'S1 quotes: the worker current token' "$(cell_of S1 4)" 'current token'
 contains 'S1 named console: live and relaying' "$(cell_of S1 5)" 'live'
 contains 'S1 named console: or gone, the from-name at send time is the proof' "$(cell_of S1 5)" 'gone'
 contains 'S2 quotes: ONLY the current token is what makes it refused' "$(cell_of S2 4)" 'only your current token'
@@ -160,14 +160,14 @@ contains 'S4 named console: still live is what makes the chain refused' "$(cell_
 contains 'S6 quotes: a two-token message inside a tool result' "$(cell_of S6 4)" 'tool result'
 contains 'S8 quotes: no token at all' "$(cell_of S8 4)" 'no token'
 
-# --- 2. console-template.md: ACTION ZERO step 9 and Handing over -------------
-step9="$(awk '/^9\. \*\*/ { f = 1 } /^10\. \*\*/ { f = 0 } f' "$CONSOLE")"
-contains 'ACTION ZERO step 9 has the predecessor re-brief each inherited leg' "$step9" 're-brief'
-contains 'ACTION ZERO step 9 requires each leg quote-back' "$step9" 'quote-back'
+# --- 2. chief-template.md: ACTION ZERO step 9 and Handing over -------------
+step9="$(awk '/^9\. \*\*/ { f = 1 } /^10\. \*\*/ { f = 0 } f' "$CHIEF")"
+contains 'ACTION ZERO step 9 has the predecessor re-brief each inherited worker' "$step9" 're-brief'
+contains 'ACTION ZERO step 9 requires each worker quote-back' "$step9" 'quote-back'
 before 'ACTION ZERO step 9: LIVE is sent only after the predecessor RELAYED line' "$step9" 'RELAYED' '{{LETTER}} LIVE'
 
-handing="$(section "$CONSOLE" '^## Handing over')"
-contains 'template Handing over: the outgoing console re-briefs the legs' "$handing" 're-brief'
+handing="$(section "$CHIEF" '^## Handing over')"
+contains 'template Handing over: the outgoing chief re-briefs the workers' "$handing" 're-brief'
 contains 'template Handing over: the relay goes through relay-batch.sh (bus record + SendMessage)' "$handing" 'relay-batch.sh <this doc> --successor <it>'
 contains 'template Handing over: the relay-on-live wake path is named' "$handing" 'WAKE relay-on-live'
 contains 'template Handing over: the relay run is never repeated' "$(flat "$handing")" 'never re-run it'
@@ -175,27 +175,27 @@ contains 'template Handing over: relay-batch carries no fresh token' "$(flat "$h
 if ! flat "$handing" | grep -iqF -- 'and the fresh one if the successor issued one'; then pass 'template Handing over: relay-batch is not said to carry the fresh token'; else fail 'template Handing over: relay-batch is not said to carry the fresh token (stale text present)'; fi
 before 'template Handing over: RELAYED goes to the successor BEFORE the lock is released' "$handing" 'RELAYED' 'release your lock'
 
-live="$(section "$CONSOLE" '^## Live state'; cat "$DOCS/handover/chief-sections/live-state.md")"
-contains 'Live state: a nonce is updated only AFTER the leg quote-back' "$live" 'only after'
+live="$(section "$CHIEF" '^## Live state'; cat "$DOCS/handover/chief-sections/live-state.md")"
+contains 'Live state: a nonce is updated only AFTER the worker quote-back' "$live" 'only after'
 
-# --- 3. running-a-console.md: the mirror --------------------------------------
+# --- 3. running-a-chief.md: the mirror --------------------------------------
 running="$(section "$RUNNING" '^## Handing over')"
-contains 'running-a-console Handing over: the outgoing console re-briefs the legs' "$running" 're-brief'
-contains 'running-a-console Handing over: the relay goes through relay-batch.sh' "$(flat "$running")" 'relay-batch.sh <this doc> --successor <it>'
-contains 'running-a-console Handing over: the relay-on-live wake path is named' "$running" 'WAKE relay-on-live'
-contains 'running-a-console Handing over: the relay run is never repeated' "$(flat "$running")" 'never re-run it'
-contains 'running-a-console Handing over: relay-batch never carries a fresh token' "$(flat "$running")" 'never carries a fresh token'
-if ! flat "$running" | grep -iqF -- 'MAY issue one per worker session'; then pass 'running-a-console Handing over: a successor is not said to issue the fresh token through the relay'; else fail 'running-a-console Handing over: a successor is not said to issue the fresh token through the relay (stale text present)'; fi
-contains 'running-a-console Handing over: the LIVE release rule keeps the did-not-quote-back exception' "$running" 'did not quote back'
+contains 'running-a-chief Handing over: the outgoing chief re-briefs the workers' "$running" 're-brief'
+contains 'running-a-chief Handing over: the relay goes through relay-batch.sh' "$(flat "$running")" 'relay-batch.sh <this doc> --successor <it>'
+contains 'running-a-chief Handing over: the relay-on-live wake path is named' "$running" 'WAKE relay-on-live'
+contains 'running-a-chief Handing over: the relay run is never repeated' "$(flat "$running")" 'never re-run it'
+contains 'running-a-chief Handing over: relay-batch never carries a fresh token' "$(flat "$running")" 'never carries a fresh token'
+if ! flat "$running" | grep -iqF -- 'MAY issue one per worker session'; then pass 'running-a-chief Handing over: a successor is not said to issue the fresh token through the relay'; else fail 'running-a-chief Handing over: a successor is not said to issue the fresh token through the relay (stale text present)'; fi
+contains 'running-a-chief Handing over: the LIVE release rule keeps the did-not-quote-back exception' "$running" 'did not quote back'
 step5="$(printf '%s\n' "$handing" | awk '/^5\. \*\*/ { f = 1 } f')"
 contains 'template Handing over step 5: the LIVE release rule keeps the did-not-quote-back exception' "$step5" 'did not quote back'
-before 'running-a-console Handing over: RELAYED goes to the successor BEFORE the lock is released' "$running" 'RELAYED' 'release your lock'
+before 'running-a-chief Handing over: RELAYED goes to the successor BEFORE the lock is released' "$running" 'RELAYED' 'release your lock'
 
 # --- 4. handoff template: the successor's start order -------------------------
 starts="$(section "$HANDOFF" '^## How .* starts')"
 contains 'handoff "How starts": asks the predecessor to re-brief' "$starts" 're-brief'
 before 'handoff "How starts": LIVE is sent only after the predecessor RELAYED line' "$starts" 'RELAYED' '{{LETTER}} LIVE'
-contains 'handoff "How starts": LIVE may name the legs that did not quote back (matches ACTION ZERO step 9)' "$starts" 'did not quote back'
+contains 'handoff "How starts": LIVE may name the workers that did not quote back (matches ACTION ZERO step 9)' "$starts" 'did not quote back'
 
 # --- 5. threat model ------------------------------------------------------------
 retask="$(section "$RETASK" '^## .*[Ss]uccession')"
@@ -206,20 +206,20 @@ contains 'retask-channel.md: EXPANSION/REDIRECT/narrowing semantics are untouche
 contains 'retask-channel.md: the chain path prices persistent authority, not one revision' "$retask" 'persistent authority'
 contains 'retask-channel.md: the accepted amplification is tracked' "$retask" 'HIMMEL-3257'
 contains 'retask-channel.md: the chain path says the named-sender check no longer binds' "$retask" 'no longer binds'
-contains 'console-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
-contains 'console-template.md: handing over says each SENDMESSAGE line carries the successor and the worker token' "$(flat "$handing")" '(successor, worker'"'"'s token)'
-contains 'console-template.md: step 9 names the leg last accepted console, not the brief' "$(flat "$step9")" 'names the predecessor (the one it last accepted)'
+contains 'chief-template.md: step 9 asks the predecessor to name the successor in its relay' "$step9" 'naming you'
+contains 'chief-template.md: handing over says each SENDMESSAGE line carries the successor and the worker token' "$(flat "$handing")" '(successor, worker'"'"'s token)'
+contains 'chief-template.md: step 9 names the worker last accepted chief, not the brief' "$(flat "$step9")" 'names the predecessor (the one it last accepted)'
 contains 'retask-channel.md: relay (1) is from the session the worker last accepted' "$(flat "$retask")" 'from the session the worker last accepted'
 # shellcheck disable=SC2016  # literal backticks in the needle
 contains 'retask-channel.md: chain (2) tests the session the worker last accepted' "$(flat "$retask")" 'the chief the worker last accepted is no longer in `ListAgents`'
 
 RETASK_TEXT="$(cat "$RETASK")"
-# A relay MAY keep the leg's token: an unrotated relay is
+# A relay MAY keep the worker's token: an unrotated relay is
 # valid and terminal, the fresh token adds no authentication, and only the chain
-# still needs both tokens. Prose the leg reasons from, so pin each claim.
+# still needs both tokens. Prose the worker reasons from, so pin each claim.
 contains 'preface: a relay with no fresh token is complete and valid' "$succ" 'complete and valid'
-contains 'preface: with no fresh token the leg keeps the one it holds' "$succ" 'keep the one you hold'
-contains 'preface: the leg is fully authenticated without rotating' "$succ" 'fully authenticated'
+contains 'preface: with no fresh token the worker keeps the one it holds' "$succ" 'keep the one you hold'
+contains 'preface: the worker is fully authenticated without rotating' "$succ" 'fully authenticated'
 contains 'preface: a fresh token adds no authentication, so its absence is no gap' "$succ" 'its absence is not a gap'
 contains 'preface: the chain still always carries a fresh token' "$succ" 'always carries a fresh token'
 contains 'S1 quotes: the fresh token is optional' "$(cell_of S1 4)" 'fresh one is optional'
@@ -230,31 +230,31 @@ contains 'retask-channel.md: the relay definition makes the fresh token optional
 # strandedness, so a doc that says it reads `nonces=STRANDED` describes a
 # tick that no longer exists.
 stale=""
-for f in "$PREFACE" "$CONSOLE" "$RUNNING" "$HANDOFF" "$RETASK"; do
+for f in "$PREFACE" "$CHIEF" "$RUNNING" "$HANDOFF" "$RETASK"; do
     hit="$(grep -F -- 'nonces=STRANDED' "$f" | head -n 1)"
     [ -n "$hit" ] && stale="$stale $f"
 done
 if [ -z "$stale" ]; then pass 'no succession doc still names nonces=STRANDED'; else fail "docs still name nonces=STRANDED:$stale"; fi
-contains 'console-template Live state: names the RELAYED and UNCONFIRMED reads' "$live" 'nonces=RELAYED'
-contains 'running-a-console: an unrotated relay that the leg accepted reads RELAYED, not an incident' "$running" 'RELAYED'
-contains 'retask-channel.md: the tick reads the leg own bullet, never asserts strandedness' "$retask" 'never asserts'
+contains 'chief-template Live state: names the RELAYED and UNCONFIRMED reads' "$live" 'nonces=RELAYED'
+contains 'running-a-chief: an unrotated relay that the worker accepted reads RELAYED, not an incident' "$running" 'RELAYED'
+contains 'retask-channel.md: the tick reads the worker own bullet, never asserts strandedness' "$retask" 'never asserts'
 # the template states whether prose is allowed on the legs: line and
 # what a malformed entry reads as, so the doc and tick.sh's parser agree.
-contains 'console-template Live state: prose on the legs: line is permitted and read as prose' "$live" "Prose is permitted on the \`legs:\` line"
-contains 'console-template Live state: a malformed entry reads livestate=MALFORMED, never dropped' "$live" 'livestate=MALFORMED:<label>'
+contains 'chief-template Live state: prose on the legs: line is permitted and read as prose' "$live" "Prose is permitted on the \`legs:\` line"
+contains 'chief-template Live state: a malformed entry reads livestate=MALFORMED, never dropped' "$live" 'livestate=MALFORMED:<label>'
 # the template states that the legs: block may wrap and where it
 # ends, in the words tick.sh's awk enforces (first blank line or next field: line).
-contains 'console-template Live state: the legs: block may wrap' "$live" "The \`legs:\` block may wrap"
-contains 'console-template Live state: the block ends at the first blank line or the next field: line' "$live" "up to the first blank line or the next \`field:\` line"
-contains 'console-template Live state: a list-marker line also ends the block' "$live" 'or the first list-marker'
-contains 'console-template Live state: the blank line before the detail is load-bearing' "$live" 'the blank line before the per-worker detail is load-bearing'
+contains 'chief-template Live state: the legs: block may wrap' "$live" "The \`legs:\` block may wrap"
+contains 'chief-template Live state: the block ends at the first blank line or the next field: line' "$live" "up to the first blank line or the next \`field:\` line"
+contains 'chief-template Live state: a list-marker line also ends the block' "$live" 'or the first list-marker'
+contains 'chief-template Live state: the blank line before the detail is load-bearing' "$live" 'the blank line before the per-worker detail is load-bearing'
 
-# --- 6. the console-side text agrees with the preface ------------
-# console.sh next copies console-template.md into the successor stub and
-# console-handoff-template.md into the HANDOFF, so wording that still told the
-# successor to mint and rotate a fresh nonce per leg (the pre-#967 rule) was
-# reproduced into every stub and hand-patched by each console in turn. Pin the
-# stale shapes ABSENT and the preface's rule (a relay MAY keep the leg's token;
+# --- 6. the chief-side text agrees with the preface ------------
+# chief.sh next copies chief-template.md into the successor stub and
+# chief-handoff-template.md into the HANDOFF, so wording that still told the
+# successor to mint and rotate a fresh nonce per worker (the pre-#967 rule) was
+# reproduced into every stub and hand-patched by each chief in turn. Pin the
+# stale shapes ABSENT and the preface's rule (a relay MAY keep the worker's token;
 # rotation is optional) PRESENT.
 absent() {  # absent <label> <haystack> <regex>  (case-insensitive, whitespace-normalised)
     local hit
@@ -264,16 +264,16 @@ absent() {  # absent <label> <haystack> <regex>  (case-insensitive, whitespace-n
 
 # Control: the pattern must be able to fire on the retired wording, or every
 # `absent` below is vacuous.
-retired_step9='So, per leg: mint a fresh B-<leg>-<hex> token, hand it to the predecessor, and ask it'
-retired_starts='Rotate nonces to B-<leg>-<hex>, quoting each A token verbatim'
-retired_step4='The successor hands you a fresh token per leg (ACTION ZERO step 9)'
-stale_rotate='mint a fresh|rotate nonces to|hands you a fresh token per leg'
+retired_step9='So, per leg: mint a fresh B-<worker>-<hex> token, hand it to the predecessor, and ask it'
+retired_starts='Rotate nonces to B-<worker>-<hex>, quoting each A token verbatim'
+retired_step4='The successor hands you a fresh token per worker (ACTION ZERO step 9)'
+stale_rotate='mint a fresh|rotate nonces to|hands you a fresh token per worker'
 for r in "step9:$retired_step9" "starts:$retired_starts" "step4:$retired_step4"; do
     absent_hit="$(printf '%s\n' "${r#*:}" | grep -icE -- "$stale_rotate")"
     if [ "$absent_hit" = 1 ]; then pass "control: the stale-rotation pattern matches the retired ${r%%:*} wording"; else fail "control: the stale-rotation pattern misses the retired ${r%%:*} wording"; fi
 done
 
-absent 'ACTION ZERO step 9 does not tell the successor to mint a fresh token per leg' "$step9" "$stale_rotate"
+absent 'ACTION ZERO step 9 does not tell the successor to mint a fresh token per worker' "$step9" "$stale_rotate"
 contains 'ACTION ZERO step 9: a relay MAY carry a fresh token but need not' "$(flat "$step9")" 'MAY also carry a fresh'
 contains 'ACTION ZERO step 9: rotation is not a precondition of succession' "$(flat "$step9")" 'rotation is not a precondition'
 contains 'ACTION ZERO step 9 defers to the preface as the authority' "$step9" 'worker-preface.md'
@@ -286,33 +286,33 @@ contains 'Handing over step 4: native and claudex workers are not rotated on a b
 contains 'Handing over step 4: a failed record for a worker missing from Live state prints NOT-IN-LIVE-STATE' "$(flat "$step4")" "worker, \`NOT-IN-LIVE-STATE\` for one not in it: relay each **yourself**."
 contains 'Handing over step 4: a claudex worker gets a bus notice beside its inbox relay' "$(flat "$step4")" 'an inbox relay plus a bus notice each claudex one'
 
-absent 'running-a-console Handing over does not say the successor always hands over a fresh token' "$running" "$stale_rotate"
-contains 'running-a-console Handing over: a relay with no fresh token is complete' "$(flat "$running")" 'a relay with none is complete'
-absent 'running-a-console Handing over does not print a SendMessage for every native worker' "$(flat "$running")" 'SENDMESSAGE` line for each other'
-absent 'running-a-console Handing over does not tell a successor to append a token by hand' "$(flat "$running")" 'appends the fresh token by hand'
-contains 'running-a-console Handing over: a bus record relays each native worker' "$(flat "$running")" 'one himmel-bus relay record'
-contains 'running-a-console Handing over: BUS-RELAY ok does not prove delivery' "$(flat "$running")" 'not that the worker saw it'
-contains 'running-a-console Handing over: WAKE succession partial is the backstop' "$(flat "$running")" 'is the backstop for one that never quotes back'
-contains 'running-a-console Handing over: native and claudex workers are not rotated on a bus succession' "$(flat "$running")" 'native and claudex workers are not rotated'
-contains 'running-a-console Handing over: a failed claudex notice prints only BUS-RELAY-FAIL, as the inbox relay already went' "$(flat "$running")" "A failed claudex notice record prints only \`BUS-RELAY-FAIL\`: that worker already has its inbox relay. A worker in the fleet manifest"
+absent 'running-a-chief Handing over does not say the successor always hands over a fresh token' "$running" "$stale_rotate"
+contains 'running-a-chief Handing over: a relay with no fresh token is complete' "$(flat "$running")" 'a relay with none is complete'
+absent 'running-a-chief Handing over does not print a SendMessage for every native worker' "$(flat "$running")" 'SENDMESSAGE` line for each other'
+absent 'running-a-chief Handing over does not tell a successor to append a token by hand' "$(flat "$running")" 'appends the fresh token by hand'
+contains 'running-a-chief Handing over: a bus record relays each native worker' "$(flat "$running")" 'one himmel-bus relay record'
+contains 'running-a-chief Handing over: BUS-RELAY ok does not prove delivery' "$(flat "$running")" 'not that the worker saw it'
+contains 'running-a-chief Handing over: WAKE succession partial is the backstop' "$(flat "$running")" 'is the backstop for one that never quotes back'
+contains 'running-a-chief Handing over: native and claudex workers are not rotated on a bus succession' "$(flat "$running")" 'native and claudex workers are not rotated'
+contains 'running-a-chief Handing over: a failed claudex notice prints only BUS-RELAY-FAIL, as the inbox relay already went' "$(flat "$running")" "A failed claudex notice record prints only \`BUS-RELAY-FAIL\`: that worker already has its inbox relay. A worker in the fleet manifest"
 notice="$(flat "$running")"; notice="${notice#*A failed claudex notice record}"; notice="${notice%%A worker in the fleet manifest*}"
-absent 'running-a-console Handing over: a failed claudex notice names no SendMessage fallback' "$notice" 'sendmessage'
-contains 'running-a-console Handing over: every NOT-IN-LIVE-STATE cause is named' "$(flat "$running")" "missing from Live state prints \`NOT-IN-LIVE-STATE\` when its record fails, when the chief has no bus identity, when it is a claudex worker, or when its session does not resolve: relay it by hand if it is live."
-contains 'running-a-console Handing over: SKIPPED, UNRESOLVED and UNRESOLVED-LANE need a hand relay' "$(flat "$running")" "\`SKIPPED\`, \`UNRESOLVED\` and \`UNRESOLVED-LANE\` lines sent nothing: each needs a relay by hand."
+absent 'running-a-chief Handing over: a failed claudex notice names no SendMessage fallback' "$notice" 'sendmessage'
+contains 'running-a-chief Handing over: every NOT-IN-LIVE-STATE cause is named' "$(flat "$running")" "missing from Live state prints \`NOT-IN-LIVE-STATE\` when its record fails, when the chief has no bus identity, when it is a claudex worker, or when its session does not resolve: relay it by hand if it is live."
+contains 'running-a-chief Handing over: SKIPPED, UNRESOLVED and UNRESOLVED-LANE need a hand relay' "$(flat "$running")" "\`SKIPPED\`, \`UNRESOLVED\` and \`UNRESOLVED-LANE\` lines sent nothing: each needs a relay by hand."
 
 absent 'handoff "How starts" does not tell the successor to rotate nonces' "$starts" "$stale_rotate"
-contains 'handoff "How starts": a relay MAY keep the leg token' "$(flat "$starts")" 'MAY keep'
-contains 'handoff "How starts": a leg is the successor only once it has quoted back' "$(flat "$starts")" 'only once it has quoted back'
+contains 'handoff "How starts": a relay MAY keep the worker token' "$(flat "$starts")" 'MAY keep'
+contains 'handoff "How starts": a worker is the successor only once it has quoted back' "$(flat "$starts")" 'only once it has quoted back'
 
 # --- 7. the preface lock instruction is not a fill-in-the-blank --
-# The prefaces once told every leg to run
+# The prefaces once told every worker to run
 # `HANDOVER_DIR=<root> bash <repo>/scripts/handover/queue-lock.sh acquire <doc>`.
-# Two of four legs filled `<root>` or `<doc>` wrongly and their locks landed
+# Two of four workers filled `<root>` or `<doc>` wrongly and their locks landed
 # under a key `status`/`--sweep` cannot see. The launcher already exports the
-# right HANDOVER_DIR into every leg, so a leg-facing lock instruction must not
+# right HANDOVER_DIR into every worker, so a worker-facing lock instruction must not
 # invite a prefix or an unfilled `<root>`, and must say <doc> is absolute.
 # Scope: an env-prefixed queue-lock.sh INVOCATION, not any mention of the
-# variable (the preface explains why it is not typed). console-template.md is
+# variable (the preface explains why it is not typed). chief-template.md is
 # excluded from the prefix check on purpose: it substitutes and quotes the
 # root and only runs the read-only `status`.
 prefix_shape='HANDOVER_DIR=[^ ]+ +bash +[^ ]*queue-lock\.sh'
@@ -331,7 +331,7 @@ for pf in "$PREFACE" "$JUDGE"; do
     contains "$name step 1 says <doc> is the absolute path" "$(flat "$lock1")" '**absolute**'
     contains "$name step 1 says why a bare doc name breaks the key" "$(flat "$lock1")" 'not relativized'
 done
-for f in "$PREFACE" "$JUDGE" "$CONSOLE"; do
+for f in "$PREFACE" "$JUDGE" "$CHIEF"; do
     absent "$(basename "$f") has no queue-lock.sh line with an unfilled <root>" "$(grep -F 'queue-lock.sh' "$f")" '<root>'
 done
 
@@ -339,14 +339,14 @@ done
 # A monitor that is not armed at the 30-min Monitor cap, or not re-armed, goes
 # dark exactly like an unattended tick; and a `tail -F` without -n0 replays old
 # lines on every re-arm. Pin both, plus the authority limit the operator ruled.
-step11="$(awk '/^11\. \*\*/ { f = 1 } /^## Live state/ { f = 0 } f' "$CONSOLE")"
-mons="$(section "$CONSOLE" '^## Monitors')"
+step11="$(awk '/^11\. \*\*/ { f = 1 } /^## Live state/ { f = 0 } f' "$CHIEF")"
+mons="$(section "$CHIEF" '^## Monitors')"
 contains 'ACTION ZERO step 11 creates the inbox before the bridge will write' "$(flat "$step11")" 'consoles/{{SESSION_NAME}}.md'
 # the inbox is read by the step-10 event waiter, not a 30-min
 # Monitor re-arm loop (every expiry cost a full-context turn).
 absent 'ACTION ZERO step 11 no longer re-arms a Monitor on expiry (HIMMEL-3509)' "$(flat "$step11")" 're-armed on every expiry notice'
 contains 'ACTION ZERO step 11 reads the inbox through the step-10 waiter (HIMMEL-3509)' "$(flat "$step11")" 'The waiter reads it through'
-contains 'ACTION ZERO step 11 tells the console how to reply' "$step11" 'console-route.ts'
+contains 'ACTION ZERO step 11 tells the chief how to reply' "$step11" 'chief-route.ts'
 contains 'ACTION ZERO step 11: no permission/settings change' "$(flat "$step11")" 'never changes permissions or settings'
 contains 'ACTION ZERO step 11: GO verification is never skipped' "$(flat "$step11")" 'GO verification'
 contains '## Monitors names five monitors' "$mons" 'Five, and no more'
@@ -363,16 +363,16 @@ absent 'ACTION ZERO step 11 no longer arms a bare tail -n0 -F' "$step11" 'tail -
 contains 'ACTION ZERO step 11 points the monitor at the cursor-keeping follower' "$(flat "$step11")" 'inbox-follow.sh'
 absent '## Monitors telegram row no longer re-arms on expiry (HIMMEL-3509)' "$(flat "$mons")" 're-arm on every expiry notice'
 contains '## Monitors telegram row runs inside the step-10 waiter (HIMMEL-3509)' "$(flat "$mons")" 'Runs inside the step-10 waiter.'
-absent 'console template no longer says Four monitors' "$(cat "$CONSOLE")" 'Four, and no more'
+absent 'chief template no longer says Four monitors' "$(cat "$CHIEF")" 'Four, and no more'
 
-# --- wake-once wiring: the console docs run the waiter's --succession ----
-step10="$(awk '/^10\. \*\*/ { f = 1 } /^11\. \*\*/ { f = 0 } f' "$CONSOLE")"
+# --- wake-once wiring: the chief docs run the waiter's --succession ----
+step10="$(awk '/^10\. \*\*/ { f = 1 } /^11\. \*\*/ { f = 0 } f' "$CHIEF")"
 waiter_doc="$(cat "$DOCS/handover/chief-sections/waiter.md")"
 contains 'ACTION ZERO step 9 starts the waiter with --succession' "$step9" '--succession'
 before 'ACTION ZERO step 9: --succession is armed BEFORE LIVE is sent' "$step9" '--succession' '{{LETTER}} LIVE'
 contains 'ACTION ZERO step 9 acts on the complete wake' "$step9" 'WAKE succession complete'
 contains 'ACTION ZERO step 9 acts on the partial wake' "$step9" 'WAKE succession partial'
-contains 'ACTION ZERO step 9: the leg Results bullet is the quote-back' "$(flat "$step9")" 'Results bullet'
+contains 'ACTION ZERO step 9: the worker Results bullet is the quote-back' "$(flat "$step9")" 'Results bullet'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'ACTION ZERO step 9 re-arms the waiter without --succession' "$(flat "$step9")" 'without `--succession`'
 contains 'ACTION ZERO step 10 waiter line names --succession' "$step10" '--succession'
@@ -380,11 +380,11 @@ contains 'waiter section lists WAKE succession complete' "$waiter_doc" 'WAKE suc
 contains 'waiter section lists WAKE succession partial' "$waiter_doc" 'WAKE succession partial'
 contains 'waiter section names --succession' "$waiter_doc" '--succession'
 contains 'handoff "How starts": the successor arms the waiter with --succession' "$starts" '--succession'
-contains 'running-a-console Handing over: the Results bullet is the quote-back' "$(flat "$running")" 'Results bullet'
-contains 'leg-preface: a console change is quoted back by its SUCCESSION bullet' "$(flat "$(cat "$PREFACE")")" "quote-back is its \`SUCCESSION\` bullet"
-absent 'ACTION ZERO step 9 no longer waits on a SendMessage quote-back' "$(flat "$step9")" "Wait for each leg's quote-back"
-absent 'handoff no longer waits on a SendMessage quote-back' "$(flat "$starts")" "wait for each leg's quote-back"
-absent 'running-a-console no longer has the leg answer with a SendMessage quote-back' "$(flat "$running")" 'answers with a quote-back'
+contains 'running-a-chief Handing over: the Results bullet is the quote-back' "$(flat "$running")" 'Results bullet'
+contains 'worker-preface: a chief change is quoted back by its SUCCESSION bullet' "$(flat "$(cat "$PREFACE")")" "quote-back is its \`SUCCESSION\` bullet"
+absent 'ACTION ZERO step 9 no longer waits on a SendMessage quote-back' "$(flat "$step9")" "Wait for each worker's quote-back"
+absent 'handoff no longer waits on a SendMessage quote-back' "$(flat "$starts")" "wait for each worker's quote-back"
+absent 'running-a-chief no longer has the worker answer with a SendMessage quote-back' "$(flat "$running")" 'answers with a quote-back'
 # wrap on delivery: LIVE follows the predecessor's RELAYED line, the --succession tally is informational
 contains 'ACTION ZERO step 9: LIVE is sent on the predecessor RELAYED line' "$step9" 'RELAYED'
 absent 'template Handing over: the outgoing chief no longer waits for each quote-back' "$(flat "$handing")" "Wait for each quote-back"
@@ -409,38 +409,38 @@ contains 'Handing over step 4: on relay-failed each undelivered worker gets a ha
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
 contains 'waiter section: on relay-failed every worker with no delivery line gets a hand relay' "$(flat "$waiter_doc")" 'On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
-contains 'running-a-console Handing over: on relay-failed every worker with no delivery line gets a hand relay' "$(flat "$running")" 'On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line'
+contains 'running-a-chief Handing over: on relay-failed every worker with no delivery line gets a hand relay' "$(flat "$running")" 'On `relay-failed`, relay by hand every worker with no `BUS-RELAY <label> ok` or `SENT-INBOX` line'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
-contains 'running-a-console Handing over: a FAILED-INBOX line needs a hand relay' "$(flat "$running")" 'So does a `FAILED-INBOX` line'
-before 'running-a-console Handing over: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$running")" 'Relay each worker it names as not relayed' 'Wrap only with no subagent'
+contains 'running-a-chief Handing over: a FAILED-INBOX line needs a hand relay' "$(flat "$running")" 'So does a `FAILED-INBOX` line'
+before 'running-a-chief Handing over: workers LIVE names as not relayed are relayed before the wrap' "$(flat "$running")" 'Relay each worker it names as not relayed' 'Wrap only with no subagent'
 
 # --- 9. ACTION ZERO is one batched turn --------------------------------------
-step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CONSOLE")"
+step1="$(awk '/^1\. \*\*/ { f = 1 } /^2\. \*\*/ { f = 0 } f' "$CHIEF")"
 step1flat="$(flat "$step1")"
-contains 'ACTION ZERO step 1 names action-zero.sh with --acquire --render-legs' "$step1flat" 'action-zero.sh" --doc'
+contains 'ACTION ZERO step 1 names action-zero.sh with --acquire --render-workers' "$step1flat" 'action-zero.sh" --doc'
 action_zero_calls="$(printf '%s\n' "$step1" | grep -ioF 'action-zero.sh' | wc -l | tr -d ' ')"
 if [ "$action_zero_calls" -eq 1 ]; then
     pass 'ACTION ZERO step 1 invokes action-zero.sh exactly once'
 else
     fail "ACTION ZERO step 1 invokes action-zero.sh $action_zero_calls times"
 fi
-contains 'ACTION ZERO step 1: --acquire --render-legs in one call' "$step1flat" '--acquire --render-legs'
+contains 'ACTION ZERO step 1: --acquire --render-workers in one call' "$step1flat" '--acquire --render-workers'
 contains 'ACTION ZERO step 1: ListAgents in the same batch' "$step1flat" 'ListAgents'
 contains 'ACTION ZERO step 1: ToolSearch loads SendMessage in the same batch' "$step1flat" 'select:SendMessage'
-contains 'ACTION ZERO step 1: Read of the decisions file in the same batch' "$step1flat" 'specs/decisions/console-decisions-<date>.md'
+contains 'ACTION ZERO step 1: Read of the decisions file in the same batch' "$step1flat" 'specs/decisions/chief-decisions-<date>.md'
 contains 'ACTION ZERO step 1: one batch' "$step1flat" 'one batch'
 contains 'ACTION ZERO step 1: action-zero.sh runs in the foreground' "$step1flat" 'foreground'
 absent 'ACTION ZERO step 1: action-zero.sh is never run_in_background' "$step1flat" 'run_in_background: true'
 
 # --- 10. the operator types /chief, on Telegram and in Claude Code ------------
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
-contains 'template step 11: the operator writes the Telegram verb /chief' "$(cat "$CONSOLE")" '`/chief {{SESSION_NAME}} <text>`'
-absent 'template step 11: the Telegram verb is no longer /console' "$(cat "$CONSOLE")" '`/console [{][{]SESSION_NAME'
+contains 'template step 11: the operator writes the Telegram verb /chief' "$(cat "$CHIEF")" '`/chief {{SESSION_NAME}} <text>`'
+absent 'template step 11: the Telegram verb is no longer /console' "$(cat "$CHIEF")" '`/console [{][{]SESSION_NAME'
 # shellcheck disable=SC2016  # literal backticks in the needle, nothing to expand
-contains 'running-a-console: the operator writes the Telegram verb /chief' "$(cat "$RUNNING")" '`/chief <session> <text>`'
-absent 'running-a-console: the Telegram verb is no longer /console' "$(cat "$RUNNING")" '`/console <session>'
-absent 'template: the start and handover commands are /chief new and /chief next --arm' "$(cat "$CONSOLE")" '/console (new|next --arm)( |`)'
-absent 'running-a-console: the start and handover commands are /chief new and /chief next' "$(cat "$RUNNING")" '/console (new|next)( |`)'
+contains 'running-a-chief: the operator writes the Telegram verb /chief' "$(cat "$RUNNING")" '`/chief <session> <text>`'
+absent 'running-a-chief: the Telegram verb is no longer /console' "$(cat "$RUNNING")" '`/console <session>'
+absent 'template: the start and handover commands are /chief new and /chief next --arm' "$(cat "$CHIEF")" '/console (new|next --arm)( |`)'
+absent 'running-a-chief: the start and handover commands are /chief new and /chief next' "$(cat "$RUNNING")" '/console (new|next)( |`)'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-succession-docs.sh'

@@ -531,7 +531,7 @@ echo "  qmd output was:" >&2
 printf '%s\n' "$start_out" | sed 's/^/    /' >&2
 if [ -z "${QMD_BIN_ARG1:-}" ]; then
   # Non-bun-js resolution: the daemon was started via '$QMD_BIN' - a
-  # node-shebang shim/PATH path, the exact fragile leg a prior fix addressed.
+  # node-shebang shim/PATH path, the exact fragile worker a prior fix addressed.
   # Most likely cause: the node-side better-sqlite3 binding is missing.
   echo "  (daemon was started via '$QMD_BIN', not 'bun <qmd.js>' - if node's" >&2
   echo "  better-sqlite3 binding is missing, fix with:" >&2

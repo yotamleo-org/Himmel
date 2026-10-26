@@ -125,7 +125,7 @@ fi
 
 # SC1/SC8 (setup wires the UNIVERSAL hooks; basename dedup survives a path move).
 run_suite "SC1/SC8 setup-wire"        scripts/lib/test-setup-wire.sh
-# SC3 (inject-initiative resolves legs from the himmel .env; CWD-safety).
+# SC3 (inject-initiative resolves workers from the himmel .env; CWD-safety).
 # These two need `git` (git-toplevel resolution + decoy-repo fixtures). On a
 # bare VM without git they're GAP-skipped (a test-dep provisioning gap, not a
 # code failure); CI / a NOPASSWD VM has git via test-bootstrap, so they run.

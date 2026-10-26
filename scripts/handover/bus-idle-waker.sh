@@ -21,7 +21,7 @@
 # which Enter would submit.
 # The target must be the named session: at startup and again before every wake
 # the konsole session's process, or exactly one process up to 3 levels below it
-# (a claudex leg runs konsole, script, then claude), must run claude (argv0) with
+# (a claudex worker runs konsole, script, then claude), must run claude (argv0) with
 # `-n <name>`, or the waker refuses with rc=4; a process below the session's own
 # counts only while it and every process between it and the session hold their
 # terminal's foreground group (stat pgrp = tpgid), so a backgrounded claude, or
@@ -74,7 +74,7 @@ case "$MAX" in *.*) echo "bus-idle-waker: --max-polls takes an integer" >&2; exi
 
 STATE_DIR="${BUS_WAKER_STATE_DIR:-${XDG_STATE_HOME:-${HOME:-/nonexistent}/.local/state}/himmel/bus-waker}"
 rm -f "$STATE_DIR/$NAME" 2>/dev/null # swallow-ok: a state file that cannot be cleared only leaves a stale tick flag
-end_state() { # end_state <rc3|rc4>: leave the reason for the console tick; the waker's log is not read by it
+end_state() { # end_state <rc3|rc4>: leave the reason for the chief tick; the waker's log is not read by it
     { mkdir -p "$STATE_DIR" && printf '%s\n' "$1" > "$STATE_DIR/$NAME"; } 2>/dev/null || true # swallow-ok: the state file is advisory, the exit code still ends the waker
 }
 

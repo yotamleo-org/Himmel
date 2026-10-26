@@ -5,7 +5,7 @@
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ / BSD-or-GNU date;
 # it runs under git bash unchanged.
 #
-# Reads a console (or relay) doc for `- HH:MM READY <pr> <sha7>` and
+# Reads a chief (or relay) doc for `- HH:MM READY <pr> <sha7>` and
 # `- HH:MM HOLD <pr> ...` bullets and pairs each READY with its GO file
 # <handover_root>/.locks/go/<pr>.<sha> (real GO files carry the full 40-char
 # sha; the bullet's sha is matched as a prefix). Semantics:
@@ -22,7 +22,7 @@
 #
 # Clock inputs: TZ, and READY_GO_NOW (epoch seconds; default `date +%s`).
 #
-# Usage: ready-go-latency.sh --doc <console-or-relay-doc> --since <ISO8601> [--until <ISO8601>]
+# Usage: ready-go-latency.sh --doc <chief-or-relay-doc> --since <ISO8601> [--until <ISO8601>]
 # Prints: events=<n> median_min=<m> missed=<k>, then one
 #         `MISSED <pr> <sha7> <HH:MM>` line per miss, then a
 #         `coverage: discovered=<READY events> parsed=<paired+missed> skipped=<k>
@@ -57,7 +57,7 @@ ROOT=$(handover_root) || { echo "ready-go-latency: cannot resolve the handover r
 GO_DIR="$ROOT/.locks/go"
 
 # GNU `date -d` first; BSD/macOS `date -j -f` fallback (same convention as
-# leg-over-by-day.sh's to_epoch).
+# worker-over-by-day.sh's to_epoch).
 to_epoch() {
     date -d "$1" +%s 2>/dev/null && return 0  # gnu-ok: BSD/macOS fallback on the next line
     date -j -u -f '%Y-%m-%dT%H:%M:%SZ' "$(printf '%s' "$1" | sed 's/\.[0-9]*Z$/Z/')" +%s 2>/dev/null

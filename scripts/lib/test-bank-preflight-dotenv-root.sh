@@ -38,6 +38,7 @@ cp "$REPO/scripts/lib/load-dotenv.sh" "$own/scripts/lib/load-dotenv.sh"
 # every chokepoint fails closed without its seam-guard lib.
 cp "$REPO/scripts/lib/chokepoint-seam-guard.sh" "$own/scripts/lib/chokepoint-seam-guard.sh"
 cp "$REPO/scripts/lib/env-alias.sh" "$own/scripts/lib/env-alias.sh"
+cp "$REPO/scripts/lib/legacy-names.sh" "$own/scripts/lib/legacy-names.sh"
 printf 'HIMMEL_FLEET_CAP=15\n' > "$own/.env"
 SUT="$own/scripts/lib/usage-preflight.sh"
 

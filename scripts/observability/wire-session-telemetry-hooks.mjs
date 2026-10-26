@@ -8,7 +8,7 @@
 // session-run-hook.ts shipped with its wiring documented in README.md's
 // "Wiring the writer" section as four JSON blocks to paste by hand. The
 // trust ledger shipped the same way first and paid for it:
-// three chain legs measured zero rows because nothing ever pasted the
+// three chain workers measured zero rows because nothing ever pasted the
 // blocks in. A capability that ships behind a manual paste is a capability
 // that does not ship. This makes the wiring reviewable in a PR, versioned,
 // idempotent, and reversible — modeled directly on
@@ -21,9 +21,9 @@
 // assertions below hold, so they are unconditional.
 //
 // WHY A FIFTH ENTRY
-// scripts/handover/queue-lock.sh's `self-heartbeat` verb keeps a long leg's
+// scripts/handover/queue-lock.sh's `self-heartbeat` verb keeps a long worker's
 // queue lock alive (and records its transcript as a liveness marker) from a
-// PostToolUse hook, so a leg that acquires at step 0 and releases at wrap no
+// PostToolUse hook, so a worker that acquires at step 0 and releases at wrap no
 // longer goes silently STALE after one TTL. It rides this sanctioned writer
 // rather than a new one: same shared settings lock, same reviewable
 // assertions, same install/--off/--check reversibility. It is the one entry
@@ -92,7 +92,7 @@ const DEFAULT_SCRIPT = 'scripts/observability/session-run-hook.ts';
 // of which tool (if any) is involved, so narrowing with a matcher would open
 // a gap. The fifth is the queue lock's self-heartbeat: a
 // matcher-less PostToolUse hook, because the lock must be refreshed whatever
-// tool the leg is busy with.
+// tool the worker is busy with.
 export const ENTRIES = [
   { event: 'SessionStart', matcher: null, verb: 'session-start' },
   { event: 'SessionEnd', matcher: null, verb: 'session-end' },

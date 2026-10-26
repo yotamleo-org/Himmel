@@ -1,4 +1,4 @@
-// Journey J-DG2: the console's Workflow page draws the development graph from the same graph.json the docs page uses,
+// Journey J-DG2: the chief's Workflow page draws the development graph from the same graph.json the docs page uses,
 // served read-only by the config server under its own CSP (default-src 'self').
 import { test, expect, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";

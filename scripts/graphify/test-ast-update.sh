@@ -361,7 +361,7 @@ echo "$out11" | grep -qF "NOT a directory" && pass "T11 message names the confli
 # directory satisfies `-d` and reads as "held by a semantic refresh", while a
 # DANGLING one fails `-e` (which follows the link) and then passes the sibling
 # writability probe as "contention". Both would skip forever under the benign
-# exit 4 on an hourly leg. Skipped, loudly, where symlinks cannot be created --
+# exit 4 on an hourly worker. Skipped, loudly, where symlinks cannot be created --
 # unprivileged Windows without Developer Mode -- mirroring T35's probe/skip
 # pattern in test-refresh-graph-map.sh rather than failing for the wrong reason. ---
 echo "T12: a symlink on the lock path -> FAILED (exit 3), never the benign skip"
@@ -391,9 +391,9 @@ else
   pass "T12 SKIPPED (this environment cannot create symlinks -- unprivileged Windows without Developer Mode; the classifier is still guarded on POSIX CI)"
 fi
 
-# --- T13: the structural leg must refuse the same source
-# directories the semantic leg does. Before this, GRAPHIFY_OUT=docs made the two
-# legs disagree -- refresh-graph-map.sh refused while this one wrote graph
+# --- T13: the structural worker must refuse the same source
+# directories the semantic worker does. Before this, GRAPHIFY_OUT=docs made the two
+# workers disagree -- refresh-graph-map.sh refused while this one wrote graph
 # artifacts straight into <corpus>/docs. ---
 echo "T13: an overridden GRAPHIFY_OUT pointing at source content -> FAILED (exit 3)"
 CORPUS13="$WS/c13"; mkdir -p "$CORPUS13/docs"
@@ -410,7 +410,7 @@ out13=$( PATH="$BIN13:$PATH" GRAPHIFY_OUT="docs" bash "$SCRIPT" "$CORPUS13" 2>&1
 
 # --- T14: a RELATIVE GRAPHIFY_OUT must be a single
 # directory name, exactly as refresh-graph-map.sh requires. `foo/bar` was
-# accepted here and refused there, so the two cadence legs would sit on
+# accepted here and refused there, so the two cadence workers would sit on
 # different directories with the semantic one failing forever; `../out`
 # resolves outside the corpus root altogether. ---
 echo "T14: a multi-segment / dot-dot relative GRAPHIFY_OUT -> FAILED (exit 3)"

@@ -37,7 +37,7 @@ BODYSECRET-one: a long narrative paragraph that must never be extracted.
 
 - 10:00 LIVE — started, nothing to keep
 - 10:10 FINDING — the guard over-denies a read-only grep
-- 10:20 RESOLVED — ruling received, see console message
+- 10:20 RESOLVED — ruling received, see chief message
 - 10:30 READY — 3713 $SHA GREEN
 - 10:40 WRAPPED — PR #3713 merged, sha $SHA
 EOF
@@ -50,7 +50,7 @@ BODYSECRET-two
 
 - 09:00 LIVE — x
 - 09:05 BLOCKED — the VM queue is full
-- 09:10 HALTED — console halted the leg
+- 09:10 HALTED — chief halted the worker
 EOF
 cat > "$B/HIMMEL-3-third-2026-10-22.md" <<EOF
 # $K3 third
@@ -60,7 +60,7 @@ cat > "$B/HIMMEL-3-third-2026-10-22.md" <<EOF
 - 08:00 WRAPPED — done, PR #4001
 EOF
 cat > "$B/HIMMEL-3-third-2026-10-22-b.md" <<EOF
-# $K3 third, second leg
+# $K3 third, second worker
 
 ## Results
 
@@ -73,11 +73,11 @@ mkdir -p "$R/.locks/queue/u__himmel__HIMMEL-5-locked-2026-10-22.lock"
 printf '# t\n\n## Results\n\n- 10:00 LIVE — still going\n' > "$B/HIMMEL-7-grp-2026-10-22.md"
 printf '# t\n\n## Results\n\n- 10:00 WRAPPED — a side file of a locked group\n' > "$B/HIMMEL-7-grp-2026-10-22-RESUME.md"
 mkdir -p "$R/.locks/queue/u__himmel__HIMMEL-7-grp-2026-10-22.lock"
-printf '# t\n\n## Results\n\n- 10:00 WRAPPED — console\n' > "$B/HIMMEL-nextleg-2026-10-22-console.md"
+printf '# t\n\n## Results\n\n- 10:00 WRAPPED — chief\n' > "$B/HIMMEL-nextleg-2026-10-22-chief.md"
 printf '# t\n\n## Results\n\n- 10:00 WRAPPED — old\n' > "$B/HIMMEL-6-old-2026-10-01.md"
 age 20 "$B/HIMMEL-6-old-2026-10-01.md"
 age 2 "$B"/HIMMEL-1-*.md "$B"/HIMMEL-2-*.md "$B"/HIMMEL-3-*.md "$B"/HIMMEL-4-*.md "$B"/HIMMEL-5-*.md "$B"/HIMMEL-7-*.md
-age 1 "$B/HIMMEL-3-third-2026-10-22-b.md"   # the newer leg of the third key
+age 1 "$B/HIMMEL-3-third-2026-10-22-b.md"   # the newer worker of the third key
 mkdir -p "$B/specs/plans"; printf '# plan\n\n- 10:00 WRAPPED — a spec\n' > "$B/specs/plans/p.md"
 
 cat > "$MIR/HIMMEL-1.md" <<EOF
@@ -114,7 +114,7 @@ run() { bash "$SUT" --root "$R" --bucket "$B" --mirror "$MIR" "$@"; }
 [ -f "$SUT" ] || { check "RED: compound-extract.sh exists" yes no; echo "pass=$PASS fail=$FAIL"; exit 1; }
 
 run > "$OUT" 2> "$W/err"; check "default run exits 0" 0 "$?"
-check "one record per ticket key (HIMMEL-1, 2, 3; not 4 unfinished, 5 locked, 6 old, 7 an unlocked side file of a locked group, console)" \
+check "one record per ticket key (HIMMEL-1, 2, 3; not 4 unfinished, 5 locked, 6 old, 7 an unlocked side file of a locked group, chief)" \
   "HIMMEL-1 HIMMEL-2 HIMMEL-3" "$(python3 -I -c 'import json,sys; print(" ".join(json.loads(l)["key"] for l in open(sys.argv[1])))' "$OUT")"
 check "every line is one JSON object" 3 "$(python3 -I -c 'import json,sys; print(sum(1 for l in open(sys.argv[1]) if isinstance(json.loads(l), dict)))' "$OUT")"
 

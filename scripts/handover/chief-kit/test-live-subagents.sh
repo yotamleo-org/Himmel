@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/handover/chief-kit/test-live-subagents.sh - suite:
 # live-subagents.sh (the detector) and the wrap gate it backs,
-# `console.sh wrap`. The close gate's cases live in test-close-wrapped-leg.sh
+# `chief.sh wrap`. The close gate's cases live in test-close-wrapped-worker.sh
 # beside the rest of that script's cases.
 #
 # Hermetic: a fake ${CLAUDE_CONFIG_DIR}/projects tree holding one parent
@@ -15,7 +15,7 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 LS="$HERE/live-subagents.sh"
-CONSOLE="$HERE/../chief/chief.sh"
+CHIEF="$HERE/../chief/chief.sh"
 QL="$HERE/../queue-lock.sh"
 
 W="$(mktemp -d "${TMPDIR:-/tmp}/lsa-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
@@ -105,19 +105,19 @@ if [ "$(id -u)" -ne 0 ]; then
     check "detector: unlistable subagents/ registry -> rc 2 (cannot decide)" "$rc" "2"
 fi
 
-# --- the wrap gate: console.sh wrap ------------------------------------------
-# A predecessor console with a fake live judge child: wrap refused, nothing
+# --- the wrap gate: chief.sh wrap ------------------------------------------
+# A predecessor chief with a fake live judge child: wrap refused, nothing
 # written, lock still held; the child stops: wrap writes WRAPPED and releases.
 ROOT="$W/handover-root"
 mkdir -p "$ROOT/u/b"
-DOC="$ROOT/u/b/HIMMEL-nextleg-2026-10-09A-demo-console.md"
-printf '# A console\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - console up\n' > "$DOC"
-acq=$(HANDOVER_DIR="$ROOT" bash "$QL" acquire "$DOC" lsa-test-console 2>&1)
+DOC="$ROOT/u/b/HIMMEL-nextleg-2026-10-09A-demo-chief.md"
+printf '# A chief\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - chief up\n' > "$DOC"
+acq=$(HANDOVER_DIR="$ROOT" bash "$QL" acquire "$DOC" lsa-test-chief 2>&1)
 TOKEN=$(printf '%s\n' "$acq" | sed -n "s/^release-token: \`\(.*\)\`\$/\\1/p")
 check "wrap fixture: lock acquired" "$([ -n "$TOKEN" ] && echo yes)" "yes"
 
 # this suite covers the subagent gate only; the subtree gate has its own cases in
-# test-console.sh, and a real subtree check would see the runner's own processes
+# test-chief.sh, and a real subtree check would see the runner's own processes
 printf '#!/usr/bin/env bash\nexit 0\n' > "$W/subtree-ok.sh"
 export WRAP_SUBTREE_CHECK_BIN="$W/subtree-ok.sh"
 
@@ -125,7 +125,7 @@ reset_session
 launch j1 toolu_J1 background 2026-10-09T01:00:00.000Z
 wrap() {
     HANDOVER_DIR="$ROOT" CLAUDE_CONFIG_DIR="$W/cfg" CLAUDE_CODE_SESSION_ID="$SID" WORKER_SESSION_JIRA_STATUS=0 \
-        bash "$CONSOLE" wrap "$@"
+        bash "$CHIEF" wrap "$@"
 }
 rc=0; out=$(wrap "$DOC" "$TOKEN" "handed to B" 2>&1) || rc=$?
 check "wrap: live subagent -> refused rc 4" "$rc" "4"
@@ -134,7 +134,7 @@ check "wrap: refused -> no WRAPPED written" "$(grep -c WRAPPED "$DOC")" "0"
 rc=0; HANDOVER_DIR="$ROOT" bash "$QL" status "$DOC" >/dev/null 2>&1 || rc=$?
 check "wrap: refused -> lock still held" "$([ "$rc" -ne 0 ] && echo held)" "held"
 
-rc=0; out=$(HANDOVER_DIR="$ROOT" CLAUDE_CONFIG_DIR="$W/cfg" WORKER_SESSION_JIRA_STATUS=0 env -u CLAUDE_CODE_SESSION_ID bash "$CONSOLE" wrap "$DOC" "$TOKEN" "x" 2>&1) || rc=$?
+rc=0; out=$(HANDOVER_DIR="$ROOT" CLAUDE_CONFIG_DIR="$W/cfg" WORKER_SESSION_JIRA_STATUS=0 env -u CLAUDE_CODE_SESSION_ID bash "$CHIEF" wrap "$DOC" "$TOKEN" "x" 2>&1) || rc=$?
 check "wrap: no session id (cannot prove idle) -> refused rc 4" "$rc" "4"
 
 notify j1 toolu_J1 2026-10-09T01:00:00.010Z

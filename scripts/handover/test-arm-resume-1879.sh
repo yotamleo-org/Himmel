@@ -14,7 +14,7 @@
 #
 # So this suite is SUITE_TIER_DEFAULT `extended` in run-shell-tests.sh, not
 # SKIP_LIST: it runs nightly (SUITE_TIER_MODE=all, the schedule
-# (nightly) leg of shell-unit-shard), same mechanism already proven by the sibling
+# (nightly) worker of shell-unit-shard), same mechanism already proven by the sibling
 # extended suites test-arm-resume-identity.sh / test-arm-resume-queue-lock.sh.
 # A nightly-only red is covered by scripts/ci/shell-extended-nightly-issue.sh
 # (the non-silence requirement) -- it is not a silent gap.

@@ -81,7 +81,7 @@ rc=0
 unavailable() { echo "UNAVAILABLE: $1 -- $2"; rc=3; }
 one() { awk -v v="$1" 'BEGIN { printf "%.1f", v }'; }
 
-FOUND_BY='operator|leg|console|tick|ci-pr|ci-main|review|user'
+FOUND_BY='operator|worker|leg|chief|console|tick|ci-pr|ci-main|review|user'
 CLASSES='contract|merge-skew|platform|guard|flake'
 
 # --- 1. Escapes ---------------------------------------------------------------
@@ -283,7 +283,7 @@ fi
   fi
   echo "Escapes by class: $(if [ -s "$WORK/cls" ]; then sort "$WORK/cls" | uniq -c | awk '{ printf "%s%s %s", (NR > 1 ? ", " : ""), $2, $1 }'; else echo none labelled; fi)"
   echo
-  echo "Top uncovered classes (ticket drafts for the console, not filed):"
+  echo "Top uncovered classes (ticket drafts for the chief, not filed):"
   if [ -s "$WORK/gaps" ]; then
     awk -F'\t' '$1 != "" { n[$1]++; k[$1] = k[$1] (k[$1] == "" ? "" : ", ") $2 }
       END { for (c in n) printf "%d\t%s\t%s\n", n[c], c, k[c] }' "$WORK/gaps" | sort -t$'\t' -k1,1nr -k2,2 | head -3 \

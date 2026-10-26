@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/handover/merge-forward-check.sh.
-# Read-only decision for the leg preface's merge-forward rule. Invariant: a leg
+# Read-only decision for the worker preface's merge-forward rule. Invariant: a worker
 # never merges, or merges forward past, a red its own change introduced.
 # Merge-forward cures ONLY a red inherited from a broken base.
 #
@@ -30,7 +30,7 @@
 # failing case or with a case the base run did not fail.
 # The job files carry no commit sha, so the shas are REQUIRED and non-empty:
 # --base-sha must equal `git merge-base origin/main HEAD` (computed here, after a
-# fetch, from the leg's own repo) and --main-base-sha (the base run's headSha
+# fetch, from the worker's own repo) and --main-base-sha (the base run's headSha
 # from `gh run list --commit`); --latest-sha (the latest run's headSha) must equal
 # an ancestor-or-equal of `git rev-parse origin/main` (main CI is a
 # 7 h cron plus dispatch, so the latest completed run is usually behind the tip)
@@ -70,8 +70,8 @@
 # The file is bound to the merge-base: a required `# merge-base <40-hex>` header equal to
 # --base-sha (missing or mismatched exits 2), `# command` and `# log` headers that the ALLOW
 # line cites, and rows `<job><TAB><case><TAB><exit status>` (a zero status is no reproduction).
-# ponytail: the file is still self-reported by the leg; the script checks only that the cited log
-# exists and is non-empty, and the console reviews its content. Upgrade path is this script running
+# ponytail: the file is still self-reported by the worker; the script checks only that the cited log
+# exists and is non-empty, and the chief reviews its content. Upgrade path is this script running
 # the reproduction itself in a scratch worktree at the merge-base.
 # ponytail: the case lists are extracted from logs by the caller and taken as
 # given, so a wrong list can still mislead; upgrade path is parsing the failed
@@ -154,7 +154,7 @@ done
 lc_cmd=""; lc_log=""
 if [ -n "$lc" ]; then
   # the file is bound to THIS merge-base (a copied PR-cases file carries no such header) and
-  # names the command and log that produced it, so the ALLOW line is checkable by the console.
+  # names the command and log that produced it, so the ALLOW line is checkable by the chief.
   lc_mb="$(awk '/^# merge-base /{print $3; exit}' "$lc")"
   lc_cmd="$(awk '/^# command /{sub(/^# command +/, ""); print; exit}' "$lc")"
   lc_log="$(awk '/^# log /{sub(/^# log +/, ""); print; exit}' "$lc")"
@@ -167,7 +167,7 @@ if [ -n "$lc" ]; then
     exit 2
   fi
   if [ ! -f "$lc_log" ] || [ ! -s "$lc_log" ]; then
-    echo "usage: the '# log' file $lc_log is missing or empty: the cited reproduction log must exist so the console can review it" >&2
+    echo "usage: the '# log' file $lc_log is missing or empty: the cited reproduction log must exist so the chief can review it" >&2
     exit 2
   fi
   if awk -F'\t' '/^#/ {next} NF && (NF != 3 || $1 == "" || $2 == "" || $3 !~ /^[0-9]+$/) {exit 1}' "$lc"; then :; else
@@ -200,7 +200,7 @@ fi
 [ -n "$reds" ] || { echo "nothing red on the PR — no merge-forward needed"; exit 3; }
 
 if ! git fetch --quiet origin main 2>/dev/null || ! tip="$(git rev-parse --verify --quiet origin/main)"; then
-  echo "usage: cannot fetch origin main from $(pwd): the --latest-sha check needs the leg's own repo" >&2
+  echo "usage: cannot fetch origin main from $(pwd): the --latest-sha check needs the worker's own repo" >&2
   exit 2
 fi
 # main CI is a cron, so the latest completed run is usually behind the tip: it must be ON origin/main
@@ -330,12 +330,12 @@ done <<< "$reds"
 
 if [ -n "$blocked" ]; then
   hint=""
-  [ "$cover_used" -eq 1 ] && hint=" If the covering run already holds the fix, see docs/handover/leg-preface.md (merge-forward, --base-cases-local)."
+  [ "$cover_used" -eq 1 ] && hint=" If the covering run already holds the fix, see docs/handover/worker-preface.md (merge-forward, --base-cases-local)."
   echo "REFUSE — red not proven inherited-and-fixed: $blocked$base_note.$hint Report BLOCKED; do not merge forward."
   exit 1
 fi
 allow_basis="was red on the merge-base run with the same failing cases"
-[ -n "$local_jobs" ] && allow_basis="was proven inherited (red on the merge-base run with the same failing cases, or, for $local_jobs, every failing case reproduced failing at the merge-base locally via --base-cases-local at merge-base $bsha because the covering run already holds the fix; reproduction command: $lc_cmd; local log: $lc_log — the console reviews that log)"
+[ -n "$local_jobs" ] && allow_basis="was proven inherited (red on the merge-base run with the same failing cases, or, for $local_jobs, every failing case reproduced failing at the merge-base locally via --base-cases-local at merge-base $bsha because the covering run already holds the fix; reproduction command: $lc_cmd; local log: $lc_log — the chief reviews that log)"
 cite="both main run ids"
 [ -n "$local_jobs" ] && cite="both main run ids PLUS the local reproduction command ($lc_cmd) and log path ($lc_log)"
 echo "ALLOW — every red job $allow_basis and is green on latest main: $(paste -sd, - <<< "$reds" | sed 's/,/, /g')$base_note. One 'git merge $tip' (the origin/main tip just fetched and checked as a descendant of the latest run, not itself tested: CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), citing $cite in a Results bullet."

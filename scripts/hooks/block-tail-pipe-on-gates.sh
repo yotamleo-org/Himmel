@@ -12,9 +12,9 @@
 #
 # This is structural because prose already failed at EVERY level it was applied
 # (house doctrine: on the second drift, escalate to a hook, not to stronger
-# prose). It sat in the dispatch handover's TRAPS section for multiple legs; on
-# leg 11 the judge did it twice AND the gate orchestrator produced the CLEAR_RC
-# incident; on leg 12 the judge put it in the orchestrator's brief in bold as the
+# prose). It sat in the dispatch handover's TRAPS section for multiple workers; on
+# worker 11 the judge did it twice AND the gate orchestrator produced the CLEAR_RC
+# incident; on worker 12 the judge put it in the orchestrator's brief in bold as the
 # FIRST listed trap, with that incident quoted — and the orchestrator then ran
 # `bash scripts/ci/run-shell-tests.sh scripts/handover 2>&1 | tail -80` anyway.
 #

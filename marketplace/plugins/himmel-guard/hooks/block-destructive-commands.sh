@@ -326,7 +326,7 @@ XARGS_RM_PAT="${MASS_CMDPOS}"'xargs(\.exe)?([[:space:]]+(-[adeilnps]'"${CMDVAL}"
 # The old anchor was a bare word boundary `(^|[^[:alnum:]_.-])`, which matches
 # the literal ANYWHERE in the command string, not just where a command is
 # actually invoked - reproduced by a grep/sed PATTERN argument that happens to
-# contain the literal (03B console, 2026-09-08) and by a heredoc BODY being
+# contain the literal (03B chief, 2026-09-08) and by a heredoc BODY being
 # WRITTEN, not executed (N84, same day). Swapping to ${CMDPOS} (the same
 # command-position grammar every other atom in this file already uses) closes
 # the pattern-argument case for free: a bare pattern/string argument has no

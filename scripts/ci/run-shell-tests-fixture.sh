@@ -81,7 +81,7 @@ trap 'rm -rf "$SUITE_LOCK_SANDBOX"' EXIT
 # Neutralize the ambient suite-control environment for every
 # nested $RUNNER invocation. CI's shell-unit job (.github/workflows/ci.yml)
 # exports SUITE_TIER_MODE and SUITE_CHANGED_SINCE on every pull_request/push
-# leg so the OUTER run-shell-tests.sh call narrows its own plan --
+# worker so the OUTER run-shell-tests.sh call narrows its own plan --
 # but the family's nested calls inherited them too, silently narrowing THEIR
 # plans (SUITE_TIER_MODE=fast tier-skips, --changed-since-shaped filtering) and
 # short-circuiting the very rotation/conditional-suite code paths under test.

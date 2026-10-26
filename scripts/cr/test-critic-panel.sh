@@ -245,7 +245,7 @@ check "HIMMEL-1871: responding member still records availability" "$(printf '%s\
 
 # the guard row must be self-describing. It used to carry no
 # `text`, so the dropped findings' substance lived only in that run's stdout
-# and a later leg adjudicating from the ledger could not recover it. The row's
+# and a later worker adjudicating from the ledger could not recover it. The row's
 # text is the same drop_blocking string the id is digested from (flattened to
 # one line, secret-scrubbed + capped by ledger-append.sh like any finding row).
 # finding_id is the (head, id) dedup key and must NOT move: pinned to the id the

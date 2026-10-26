@@ -55,7 +55,7 @@ Read on demand: `worker-preface.md` names this file when a command is refused or
   condition `guard-pr-check-literal.sh` enforces); in an adopter or drifted
   checkout keep the absolute spelling.
 - First choice for opening or updating a PR is
-  `bash scripts/lanes/leg-pr-open.sh <title-file> <body-file>`:
+  `bash scripts/lanes/worker-pr-open.sh <title-file> <body-file>`:
   title and body are files, so the Bash command a worker types is always the
   same short fixed literal no matter what the PR says — the body never enters
   the command the classifier reads.

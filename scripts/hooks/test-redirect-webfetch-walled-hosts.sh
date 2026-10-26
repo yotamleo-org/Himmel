@@ -10,7 +10,7 @@ set -uo pipefail
 
 HOOKS="$(cd "$(dirname "$0")" && pwd)"
 HOOK="$HOOKS/redirect-webfetch-walled-hosts.sh"
-# A leg's launching shell may export the bypass; clear it before any case runs.
+# A worker's launching shell may export the bypass; clear it before any case runs.
 # shellcheck source=../lib/override-env.sh
 # shellcheck disable=SC1091
 . "$HOOKS/../lib/override-env.sh"

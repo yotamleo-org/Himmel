@@ -2,7 +2,7 @@
 // hook-probe.mjs — run the REAL wired PreToolUse chain against ONE planned tool
 // call and say which hook would refuse it.
 //
-// WHY: a leg learns a command is refused only by being refused, or writes an
+// WHY: a worker learns a command is refused only by being refused, or writes an
 // ad-hoc probe. Static simulation (the removed /guardrail-sim, and
 // any future successor) PLANS: it predicts from the hook source what should
 // happen. This probe PROVES: it feeds the real PreToolUse payload to each hook

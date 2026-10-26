@@ -2,11 +2,11 @@
 # shellcheck disable=SC2015  # A && B || C is intentional in check()/contains(), as in test-go.sh
 # scripts/handover/chief-kit/test-cr-disposition.sh - suite for
 # cr-disposition.sh and the go.sh refusal it drives (exit 9): a Critical or
-# Important finding the leg deferred on its own never gets a GO.
-#   1. a leg-deferred Important (shaped like a real CR ledger row) -> exit 9.
-#   2. record: refused from a leg, follow-up needs all three attests.
-#   3. a console follow-up naming a key that does not exist -> exit 9.
-#   4. a console follow-up with three attests and a real key -> GO written.
+# Important finding the worker deferred on its own never gets a GO.
+#   1. a worker-deferred Important (shaped like a real CR ledger row) -> exit 9.
+#   2. record: refused from a worker, follow-up needs all three attests.
+#   3. a chief follow-up naming a key that does not exist -> exit 9.
+#   4. a chief follow-up with three attests and a real key -> GO written.
 #   5. a disposition at another head, a tampered row, fix-here -> exit 9.
 #   6. a Critical needs a judge source whose GO verdict rules this head.
 #   7. an Important on a trust-path PR needs a judge source too.
@@ -78,13 +78,13 @@ SHA=2222222222222222222222222222222222222222
 SHA2=3333333333333333333333333333333333333333
 export READY_STUB_HEAD="$SHA" READY_STUB_BRANCH="$BR"
 ready_pass_ledger "$REPO" "$SHA"
-# defer_finding <id> <severity> <text> - a leg-deferred finding at $FHEAD, written
+# defer_finding <id> <severity> <text> - a worker-deferred finding at $FHEAD, written
 # through the ledger's single writer (test-pr-check-run invariant 7).
 defer_finding() {
   local dout
   dout=$(CR_LEDGER="$LEDGER" bash "$LA" finding --branch "$BR" --head "$FHEAD" --model gpt-6.1-sol --id "$1" \
     --severity "$2" --file scripts/config-ui/agui-web/src/main.tsx --line 23 --verdict deferred \
-    --reason "Pre-existing production lifecycle defect outside approved e2e-only repair scope; console-directed Bug follow-up verified and linked" \
+    --reason "Pre-existing production lifecycle defect outside approved e2e-only repair scope; chief-directed Bug follow-up verified and linked" \
     --deferred-to HIMMEL-6352 --fu-class hardening --fu-why no-check --text "$3" 2>&1) || {
     echo "FAIL: fixture finding $1 was not written: $dout" >&2; exit 1; }
 }
@@ -94,34 +94,34 @@ export HANDOVER_DIR="$HDIR"
 gos() { rc=0; out="$(bash "$GOSH" "$@" 2>&1)" || rc=$?; }
 nogo() { check "$1 -> nothing written" "$(find "$HDIR/.locks" -type f 2>/dev/null | wc -l | tr -d ' ')" "0"; }
 
-# --- 1. a leg-deferred Important never gets a GO --------------------------
+# --- 1. a worker-deferred Important never gets a GO --------------------------
 gos 90 "$SHA"
-check    "1: leg-deferred Important -> exit 9" "$rc" "9"
+check    "1: worker-deferred Important -> exit 9" "$rc" "9"
 contains "1: names the finding at its head" "$out" "census-reset-1@$FHEAD"
-nogo     "1: leg-deferred Important"
+nogo     "1: worker-deferred Important"
 
-# --- 2. record refuses a leg and a follow-up short of three attests -------
+# --- 2. record refuses a worker and a follow-up short of three attests -------
 rc=0; HIMMEL_CONSOLE_LEG=1 bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-6352 \
-  --source console --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1 || rc=$?
-check "2: record from a console leg -> exit 3" "$rc" "3"
+  --source chief --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1 || rc=$?
+check "2: record from a chief worker -> exit 3" "$rc" "3"
 rc=0; bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-6352 \
-  --source console --attest ci-green,no-data-loss >/dev/null 2>&1 || rc=$?
+  --source chief --attest ci-green,no-data-loss >/dev/null 2>&1 || rc=$?
 check "2: follow-up with two attests -> exit 2" "$rc" "2"
-rc=0; bash "$DISP" record 90 "$SHA" "nope-1@$FHEAD" fix-here --source console >/dev/null 2>&1 || rc=$?
+rc=0; bash "$DISP" record 90 "$SHA" "nope-1@$FHEAD" fix-here --source chief >/dev/null 2>&1 || rc=$?
 check "2: record for a finding not in the ledger -> exit 2" "$rc" "2"
 check "2: refusals append nothing" "$(grep -c '"disposition"' "$LEDGER")" "0"
 
 # --- 3. a follow-up naming a key that does not exist ----------------------
 bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-999999 \
-  --source console --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1
+  --source chief --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1
 gos 90 "$SHA"
 check    "3: follow-up to a missing key -> exit 9" "$rc" "9"
 contains "3: says the key does not exist" "$out" "HIMMEL-999999 does not exist"
 nogo     "3: missing key"
 
-# --- 4. a console follow-up with three attests passes ---------------------
+# --- 4. a chief follow-up with three attests passes ---------------------
 rc=0; CHIEF_SESSION_NAME=chief-x CONSOLE_SESSION_NAME=console-x bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-6352 \
-  --source console --attest no-weakened-guard --attest ci-green --attest no-data-loss >/dev/null 2>&1 || rc=$?
+  --source chief --attest no-weakened-guard --attest ci-green --attest no-data-loss >/dev/null 2>&1 || rc=$?
 check "4: record follow-up with repeated --attest -> exit 0" "$rc" "0"
 contains "4: the source names CHIEF_SESSION_NAME over its old name" "$(cat "$LEDGER")" "console:chief-x"
 gos 90 "$SHA"
@@ -139,7 +139,7 @@ gos 90 "$SHA"
 check    "5: an edited disposition row -> exit 9" "$rc" "9"
 contains "5: names the bad mac" "$out" "mac"
 cp "$tmp/ledger.bak" "$LEDGER"
-bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" fix-here --source console >/dev/null 2>&1
+bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" fix-here --source chief >/dev/null 2>&1
 gos 90 "$SHA"
 check    "5: a later fix-here on a still-deferred finding -> exit 9" "$rc" "9"
 contains "5: says fix-here" "$out" "fix-here"
@@ -149,11 +149,11 @@ nogo     "5: refusals"
 # --- 6. a Critical needs a judge --------------------------------------------
 defer_finding codex-9 crit "A deferred Critical"
 gos 90 "$SHA"
-check "6: leg-deferred Critical -> exit 9" "$rc" "9"
+check "6: worker-deferred Critical -> exit 9" "$rc" "9"
 bash "$DISP" record 90 "$SHA" "codex-9@$FHEAD" follow-up:HIMMEL-6352 \
-  --source console --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1
+  --source chief --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1
 gos 90 "$SHA"
-check    "6: console follow-up on a Critical -> exit 9" "$rc" "9"
+check    "6: chief follow-up on a Critical -> exit 9" "$rc" "9"
 contains "6: says a judge must rule" "$out" "judge"
 rc=0; bash "$DISP" record 90 "$SHA" "codex-9@$FHEAD" follow-up:HIMMEL-6352 \
   --source judge:JD1 --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1 || rc=$?
@@ -190,7 +190,7 @@ git -C "$TO" symbolic-ref HEAD refs/heads/main
 export READY_CHECK_ANCHOR="$TA" READY_STUB_TRUST_FILE=scripts/lib/env-alias.sh
 verdict "$HDIR" JT1 "**GO** for head \`$SHA\`." 90 "census-reset-1@$FHEAD follow-up:HIMMEL-6352"
 gos --trust-reviewed JT1 90 "$SHA"
-check    "7: console follow-up on a trust-path Important -> exit 9" "$rc" "9"
+check    "7: chief follow-up on a trust-path Important -> exit 9" "$rc" "9"
 contains "7: names the trust path" "$out" "trust path"
 bash "$DISP" record 90 "$SHA" "census-reset-1@$FHEAD" follow-up:HIMMEL-6352 \
   --source judge:JT1 --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1

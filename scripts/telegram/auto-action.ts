@@ -6,6 +6,7 @@
 // The privileged resolution + scheduler invocation live in auto-action.sh (it needs the
 // real himmel shell env: .env, handover-path.sh, py-armor, schtasks).
 import { join } from "node:path";
+import { legacyNamesOn } from "../lib/env-alias.mjs";
 import { appendLine } from "./bus";
 import type { Route } from "./router";
 
@@ -27,16 +28,16 @@ export const OPS: Record<string, { script: string | null }> = {
   "arm-resume": { script: "arm-resume" },
   "merge-public": { script: "merge-public" },
   "restart": { script: null },
-  "launch-bypass-leg": { script: "launch-bypass-leg" },
+  "launch-bypass-worker": { script: "launch-bypass-worker" },
   "cr-grant-delta": { script: "cr-grant-delta" },
   // Break-glass ops: all executed by break-glass.sh behind auto-action.sh.
   "station-status": { script: "station-status" },
   "revert-main": { script: "revert-main" },
   "repin-hooks": { script: "repin-hooks" },
-  "launch-leg": { script: "launch-leg" },
+  "launch-worker": { script: "launch-worker" },
   "cr-reset": { script: "cr-reset" },
   "close-wrapped": { script: "close-wrapped" },
-  "relaunch-console": { script: "relaunch-console" },
+  "relaunch-chief": { script: "relaunch-chief" },
   "restart-bridge": { script: "restart-bridge" },
   "allow-rule": { script: "allow-rule" },
 };
@@ -56,8 +57,8 @@ export const KNOWN_OPS = new Set(Object.keys(OPS));
 // the supervisor's POLLER_MAX_FAILS breaker as the backstop.
 // The break-glass ops are named one by one too, even the read-only
 // /station-status: an operator turns on exactly the station powers they mean to.
-export const BREAK_GLASS_OPS = new Set(["station-status", "revert-main", "repin-hooks", "launch-leg", "cr-reset", "close-wrapped", "relaunch-console", "restart-bridge", "allow-rule"]);
-export const EXPLICIT_ONLY_OPS = new Set(["merge-public", "launch-bypass-leg", "cr-grant-delta", ...BREAK_GLASS_OPS]);
+export const BREAK_GLASS_OPS = new Set(["station-status", "revert-main", "repin-hooks", "launch-worker", "cr-reset", "close-wrapped", "relaunch-chief", "restart-bridge", "allow-rule"]);
+export const EXPLICIT_ONLY_OPS = new Set(["merge-public", "launch-bypass-worker", "cr-grant-delta", ...BREAK_GLASS_OPS]);
 
 // Break-glass ops that change something. Each runs only after the operator sends
 // back the one-time code the bridge replied with (`/confirm <code>`, poller.ts).
@@ -80,10 +81,18 @@ export function parseEnabledOps(raw: string | undefined, knownOps: Set<string>):
     return new Set([...knownOps].filter((op) => !EXPLICIT_ONLY_OPS.has(op)));
   const out = new Set<string>();
   for (const tok of v.split(",")) {
-    const t = tok.trim();
+    const t = canonicalOp(tok.trim());
     if (knownOps.has(t)) out.add(t);   // explicit naming enables ANY known op, incl. explicit-only
   }
   return out;
+}
+
+// Old op names, still read as the renamed op until legacy names are off.
+export const OP_ALIASES: Record<string, string> = {
+  "launch-leg": "launch-worker", "launch-bypass-leg": "launch-bypass-worker", "relaunch-console": "relaunch-chief",
+};
+export function canonicalOp(op: string): string {
+  return Object.hasOwn(OP_ALIASES, op) && legacyNamesOn() ? OP_ALIASES[op] : op;
 }
 
 // Whole-value aliases. Both parse to a deliberate outcome and carry no op-name
@@ -102,7 +111,7 @@ export function describeEnabledOps(raw: string | undefined, knownOps: Set<string
   const ops = parseEnabledOps(raw, knownOps);
   const v = (raw ?? "").trim().toLowerCase();
   if (OFF_ALIASES.has(v) || ON_ALIASES.has(v)) return { ops };
-  const unknown = v.split(",").map((t) => t.trim()).filter((t) => t && !knownOps.has(t));
+  const unknown = v.split(",").map((t) => t.trim()).filter((t) => t && !knownOps.has(canonicalOp(t)));
   // A PARTIALLY valid list warns too: `arm-resume,mergepublic` enables /arm, so the
   // "auto-actions enabled:" line looks healthy while /mergepub stays inert with no
   // explanation — the same puzzle in a quieter costume.
@@ -178,7 +187,7 @@ export async function dispatchAutoAction(deps: { runScript: RunScriptFn }, route
   // than spawn `auto-action.sh restart …`, which would hit that script's own
   // unknown-op guard anyway — but fail here, at the layer that knows why.
   if (SELF_EXECUTED_OPS.has(route.op)) return { ok: false, rc: 2, message: `⚠️ ${route.op} is not script-dispatched` };
-  if (route.op === "launch-bypass-leg") return { ok: false, rc: 19, message: "Telegram hook-bypass launch refused — start hook legs at the station." };
+  if (route.op === "launch-bypass-worker") return { ok: false, rc: 19, message: "Telegram hook-bypass launch refused — start hook workers at the station." };
   const { code, stdout, stderr } = await deps.runScript(route.op, route.arg, route.time);
   if (route.op === "merge-public") return mapMergePublicResult(route.arg, route.time, code, stdout, stderr);
   if (route.op === "cr-grant-delta") {

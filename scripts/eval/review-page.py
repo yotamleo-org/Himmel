@@ -207,7 +207,7 @@ def judge_lines(cur, prev):
                    (count(m, "false_nogo"), "" if count(m, "false_nogo") == 1 else "s", count(m, "nogo_n"),
                     pct(count(m, "false_nogo") / count(m, "nogo_n"))))
     if count(m, "overridden"):
-        out.append("- %d NO-GO PRs were merged over by the console; they count as overruled, not as wrong." %
+        out.append("- %d NO-GO PRs were merged over by the chief; they count as overruled, not as wrong." %
                    count(m, "overridden"))
     worse = sorted((k[6:-14] for k in m if k.startswith("class.") and k.endswith(".escape_excess")
                     and eval_runs._num(m[k]) and m[k] > 0), key=lambda c: -m["class.%s.escape_excess" % c])

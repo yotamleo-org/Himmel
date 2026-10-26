@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # shellcheck disable=SC2015  # `[ test ] && [ test ] || { echo >&2; exit N; }` is the file's fail-closed guard shape
-# scripts/handover/chief-kit/grant-round.sh - the console grants
+# scripts/handover/chief-kit/grant-round.sh - the chief grants
 # ONE more /pr-check review round itself, on a persisted judge record, so the
 # operator no longer hand-pastes `printf '2\n' > .git/cr-review-rounds/<b>.round`.
 #
 # Usage: grant-round.sh <pr> <new-head> <qid>
 #
 # A PR parks at the round-3 cap (review-round.sh). The cap
-# exists so a leg cannot buy itself rounds; the console is not the author, and
+# exists so a worker cannot buy itself rounds; the chief is not the author, and
 # an independent judge's record is a second non-author check (the go.sh
 # --trust-reviewed trust model). Granted only when every condition holds:
 #   (a) verdicts/<qid>/ holds a record for <new-head> that write-verdict.sh
@@ -27,7 +27,7 @@
 # .head and .delta are left alone: the later delta scope is unchanged.
 #
 #   (e) a round past 3 needs a judge NO-GO, a standing Critical or Important
-#       ledger finding, or a record named `operator`, which the console itself
+#       ledger finding, or a record named `operator`, which the chief itself
 #       can write (same-uid ceiling). The record is a
 #       judge NO-GO, or a record named `operator` (write-verdict.sh --judge
 #       operator, the operator's ruling quoted in its evidence), or the previous
@@ -36,18 +36,18 @@
 #       from a critic model). A judge GO record on a clean, suggestions-only or
 #       unknown head refuses (16). The clean-merge-forward admission past the cap
 #       (D3c) is review-round.sh's, not this script's. The same-uid ceiling below
-#       also means the console, or any write-verdict caller, can name a record
+#       also means the chief, or any write-verdict caller, can name a record
 #       `operator`: the name is a recorded claim, not an authenticated one.
 #
-# Refused from a console leg (HIMMEL_CONSOLE_LEG) and a console relay
-# (HIMMEL_CONSOLE_RELAY), as write-verdict.sh refuses them: a leg must not buy
-# its own review rounds. The console is not a leg, so it runs this itself.
+# Refused from a chief worker (HIMMEL_CONSOLE_LEG) and a chief relay
+# (HIMMEL_CONSOLE_RELAY), as write-verdict.sh refuses them: a worker must not buy
+# its own review rounds. The chief is not a worker, so it runs this itself.
 # ponytail: same-uid ceiling - the record mac key is readable by the same uid
-# and the leg marker is an environment variable; the upgrade path
+# and the worker marker is an environment variable; the upgrade path
 # is a separate-uid verdict store. This does not cover HIMMEL-5109 (a NO-GO on a
 # test- or comment-only descendant): that needs review-round.sh itself.
 #
-# Exit: 0 granted / 1 bad input / 3 leg or relay caller, or the verdict scope is
+# Exit: 0 granted / 1 bad input / 3 worker or relay caller, or the verdict scope is
 # unresolved / 4 no qualifying signed record / 5 lock or state error / 12 not
 # grantable (fork, not OPEN, below the cap, no .head state) / 13 gh failed /
 # 14 qid already consumed / 15 NEW_HEAD is not the live PR head / 16 policy: a
@@ -75,18 +75,18 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LIB="$HERE/../../lib"
 # shellcheck source=scripts/lib/go-gate.sh
 # shellcheck disable=SC1091
-if ! . "$LIB/go-gate.sh" 2>/dev/null || ! declare -F console_leg >/dev/null 2>&1 \
+if ! . "$LIB/go-gate.sh" 2>/dev/null || ! declare -F chief_worker >/dev/null 2>&1 \
         || ! declare -F go_verdict_snapshot >/dev/null 2>&1 || ! declare -F go_verdict_mac_ok_text >/dev/null 2>&1; then
-    echo "grant-round: cannot load scripts/lib/go-gate.sh - refusing (the leg check must fail closed)" >&2
+    echo "grant-round: cannot load scripts/lib/go-gate.sh - refusing (the worker check must fail closed)" >&2
     exit 3
 fi
-if console_leg; then
-    echo "grant-round: refusing - this is a console-spawned leg (HIMMEL_CONSOLE_LEG is set); a leg never buys its own review round." >&2
+if chief_worker; then
+    echo "grant-round: refusing - this is a chief-spawned worker (HIMMEL_CONSOLE_LEG is set); a worker never buys its own review round." >&2
     exit 3
 fi
 case "$(printf '%s' "${HIMMEL_CONSOLE_RELAY:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
     ''|0|false|off|no) ;;
-    *) echo "grant-round: refusing - this is a console relay (HIMMEL_CONSOLE_RELAY is set); a relay never grants a round." >&2; exit 3 ;;
+    *) echo "grant-round: refusing - this is a chief relay (HIMMEL_CONSOLE_RELAY is set); a relay never grants a round." >&2; exit 3 ;;
 esac
 # shellcheck source=scripts/lib/git-clean.sh
 . "$LIB/git-clean.sh" 2>/dev/null && git_env_scrub

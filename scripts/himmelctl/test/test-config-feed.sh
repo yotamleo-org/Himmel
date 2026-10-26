@@ -13,7 +13,7 @@
 # Covers:
 #   a. one row per manifest item, per doctor line, per registry flag, per
 #      secrets-manifest entry, per cadence (4, each once), per optional
-#      plugin, per lane, per initiative leg; every spec §4 field present
+#      plugin, per lane, per initiative worker; every spec §4 field present
 #   c. fires: doctor cadence = yes (last.tsv mtime); pipeline on linux =
 #      unverified even though its stubbed status says ARMED; nothing but
 #      component run evidence ever yields yes

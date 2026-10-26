@@ -117,7 +117,7 @@ else
     bad "wrapper is a file run as 'srt --settings X -- bash <file>' ($(tr '\n' ' ' <"$TMP/argv"))"
 fi
 
-# 3b. the leg's own arguments survive intact
+# 3b. the worker's own arguments survive intact
 if [ -f "$TMP/child-env" ] && grep -qxF 'two words' "$TMP/argv"; then ok "an argument with a space reaches srt as one word"; else bad "an argument with a space reaches srt as one word"; fi
 
 # 3c. NO_PROXY is unset inside the box (srt put the private ranges in it), srt's proxy env survives
@@ -159,7 +159,7 @@ if printf '%s\n' "$roots" | sed '1,/^--$/d' | grep -qxF "$GW_HOST"; then ok "gat
 
 # 5. the non-loopback gateway is accepted only under srt
 if run 3 'not loopback' CODEX_PROXY_BASE_URL=http://$GW_HOST:8317 -- ; then ok "non-loopback gateway still refused without srt"; else bad "non-loopback gateway still refused without srt"; fi
-# SANDBOX_RUNTIME alone (a leg running inside someone else's srt) does not relax the refusal
+# SANDBOX_RUNTIME alone (a worker running inside someone else's srt) does not relax the refusal
 if run 3 'not loopback' SANDBOX_RUNTIME=1 CODEX_PROXY_BASE_URL=http://$GW_HOST:8317 -- ; then ok "SANDBOX_RUNTIME alone does not relax the loopback rule"; else bad "SANDBOX_RUNTIME alone does not relax the loopback rule"; fi
 
 # 6. without a profile nothing changes: no srt, the old proxy handling

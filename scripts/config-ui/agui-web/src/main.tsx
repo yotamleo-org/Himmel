@@ -7,7 +7,7 @@ import { consoleFromHash, fleetToken, sourceFromLocation } from "./stream";
 
 // a token with no run is the fleet landing; a fleet row changes the fragment to its run, so the
 // page re-routes on hashchange (keyed on the hash so a new run gets a fresh stream). Both sit in
-// the config console's rail.
+// the config chief's rail.
 function Root() {
   const [hash, setHash] = useState(location.hash);
   useEffect(() => {

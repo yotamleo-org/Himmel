@@ -4,9 +4,9 @@
 # bash startup variables to strip, so nothing the caller exported picks the
 # interpreter, the claude binary or code that runs before either.
 #
-# Sourced by headed-arm-leg.sh (before it execs headed-arm.sh under a consult),
-# by leg-claude-launcher-consult.sh (the consult's launcher entry) and by
-# leg-claude-launcher.sh (its consult branch). Each source names the file by a
+# Sourced by headed-arm-worker.sh (before it execs headed-arm.sh under a consult),
+# by worker-claude-launcher-consult.sh (the consult's launcher entry) and by
+# worker-claude-launcher.sh (its consult branch). Each source names the file by a
 # canonical in-repo path; the caller never chooses it.
 #
 # Platform: POSIX bash 3.2+ (macOS /bin/bash is 3.2).

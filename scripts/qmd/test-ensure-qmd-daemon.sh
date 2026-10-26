@@ -714,7 +714,7 @@ grep -qx held "$state/lock-at-start" 2>/dev/null || fail "(t) start: the swap lo
 echo "ok (t): the daemon start holds the swap lock and releases it"
 
 # ---- (u) two sessions start together: neither is told a swap is running -------
-# The console launches several legs within a second, so two SessionStart hooks
+# The chief launches several workers within a second, so two SessionStart hooks
 # race for the lock. The loser sees an ENSURE holder, not a swap: it exits 0
 # quietly (the other start is already on it), never "swap in progress".
 rm -f "$state/alive" "$state/qmd-argv.log"

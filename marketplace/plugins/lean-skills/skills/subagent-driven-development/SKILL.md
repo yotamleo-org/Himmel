@@ -319,7 +319,7 @@ parked-with-ruling at the cap.
 
 When every task is complete, read
 [references/final-review.md](references/final-review.md) and follow it. It
-covers the whole-branch review, its single fix wave, and how you finish. <!-- old-term-ok: verbatim upstream wording -->
+covers the whole-branch review, its single fix wave, and how you finish.
 
 ## Common Rationalizations
 

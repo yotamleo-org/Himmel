@@ -17,7 +17,7 @@
 # One batched snapshot per sweep (one `gh pr list` with the check rollup, one
 # GraphQL read of the review threads and check apps, one JQL search); the
 # per-key dry derive (scripts/lib/ticket-status.sh, TS_SNAPSHOT_DIR) then costs
-# no further call. A key goes to the funnel (leg-jira-status.sh --event sweep)
+# no further call. A key goes to the funnel (worker-jira-status.sh --event sweep)
 # only when its dry derive differs from Jira, or its liveness class or lock
 # counters changed. A failed, partial or saturated read makes the sweep
 # `unknown`: nothing moves and one `sweep miss` row is logged.
@@ -176,7 +176,7 @@ outside_repo() {
 }
 
 # done_record_stale <KEY> - rc 0 when a Done ticket's worker record reads live, idle or IDLE-HELD
-# while its doc/lock says the leg ended: the funnel skips a Done ticket's move but
+# while its doc/lock says the worker ended: the funnel skips a Done ticket's move but
 # refreshes that record.
 done_record_stale() {
     local doc rstate

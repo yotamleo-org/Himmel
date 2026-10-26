@@ -1028,7 +1028,7 @@
               "source": {
                 "file": "scripts/handover/chief-kit/go.sh",
                 "line": 246,
-                "text": "go: refusing - this is a console-spawned leg"
+                "text": "go: refusing - this is a chief-spawned worker"
               },
               "reach": {
                 "kind": "clone",

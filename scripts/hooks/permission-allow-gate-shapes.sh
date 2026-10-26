@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # permission-allow-gate-shapes.sh — PermissionRequest hook: allow a data-listed
-# set of himmel gate command shapes, inside a registered leg worktree only.
+# set of himmel gate command shapes, inside a registered worker worktree only.
 #
 # WHY: the auto-mode classifier reads ordinary himmel gate commands as CI
-# bypasses and parks a headed leg on a dialog only the operator can clear. The
+# bypasses and parks a headed worker on a dialog only the operator can clear. The
 # guardrails already fence each underlying action; this stops the classifier
 # re-litigating a shape they own. It never widens a fence.
 #
@@ -18,10 +18,10 @@
 #   {"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}
 # The shape table is read from the default branch of the hook's own repository
 # (git object store), never from the working tree and never from an env override:
-# a leg edits its worktree copy freely, and a row added there must not widen
+# a worker edits its worktree copy freely, and a row added there must not widen
 # what the hook allows. A table not yet on the default branch allows nothing.
 #
-# PLATFORM GUARD: no .ps1 twin, by design — Linux-only chief-kit leg surface.
+# PLATFORM GUARD: no .ps1 twin, by design — Linux-only chief-kit worker surface.
 # Bash 3.2-compatible.
 set -uo pipefail
 trap 'exit 0' EXIT

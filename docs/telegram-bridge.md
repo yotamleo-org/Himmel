@@ -62,7 +62,7 @@ allowlisted-operator check; see the auto-action docs in
 for what's enabled and how it's authorized. A forwarded message can never
 trigger one of these commands.
 
-<a id="messaging-a-running-console"></a>
+<a id="messaging-a-running-chief"></a>
 
 ## Messaging a running chief
 
@@ -78,7 +78,7 @@ message to an armed chief that is busy is queued rather than dropped. `/chief`, 
 case and the `/verb@botname` form; the auto ops stay
 strict. The older `/console` and `/consoles` still work as aliases of `/chief` and `/chiefs`.
 
-Each chief's first waiter arm queues a DM: “Console <name> is live — just <!-- old-term-ok: quotes the DM text the bridge sends until V5 -->
+Each chief's first waiter arm queues a DM: “Console <name> is live — just
 send /chief <text>”. A successor announces its new identity on its first arm;
 restarting the same waiter does not repeat the announcement. Replying to an
 announcement, chief acknowledgement, or chief answer routes to that
@@ -88,21 +88,21 @@ Explicit slash/control commands keep their own routing when sent as replies.
 Neither form starts a session. The bridge appends one line to that
 chief's inbox file, `<bridge root>/consoles/<session-name>.md` (default
 `~/.claude/handover/bridge/consoles/`), and the chief watches the file with
-the event waiter started in its ACTION ZERO (`chief-kit/console-wait.sh`,
+the event waiter started in its ACTION ZERO (`chief-kit/chief-wait.sh`,
 which reads it through `inbox-follow.sh --once` and a read cursor beside the
 file, so a line is never lost across a re-start).
 
 - **Who:** only the `allowFrom` operator, in an allowed chat, with a typed (not
   forwarded, not captioned) message. Anyone else's `/chief …` is ordinary
   chat, exactly as before. `access.json` remains the only sender gate.
-- **Ack:** `→ console <name>` means the line was queued, not that the chief
+- **Ack:** `→ chief <name>` means the line was queued, not that the chief
   has read it. A response with no live chief, or an ambiguous one, queues nothing;
   delivery never creates a chief inbox.
 - **Reply:** the chief answers through the same outbox as every other bridge
-  reply (`bun scripts/telegram/console-route.ts reply <chat_id> <text>`); the
+  reply (`bun scripts/telegram/chief-route.ts reply <chat_id> <text>`); the
   running poller sends it. On Linux the CLI resolves the calling session name
   automatically when its inbox exists. For an explicit identity (including
-  other platforms), use `reply --console <session-name> <chat_id> <text>`.
+  other platforms), use `reply --chief <session-name> <chat_id> <text>`.
 - **Authority:** the line carries your authority (a ruling, a halt or new
   work), as if typed in the chief's terminal. It never changes the chief's
   permissions or settings and never bypasses `merge-on-green.sh`'s own GO
@@ -117,14 +117,14 @@ These **slash forms only** carry the same authority as free `/chief` text:
 | Command | Queued chief request |
 |---|---|
 | `/fleet` | fleet status |
-| `/legs` | list workers |
-| `/go <leg>` | ask whether GO is pending; never write GO or a grant |
-| `/push <leg>` | request a push through the chief's normal gates |
-| `/halt [<leg>]` | request a halt of that worker, or the batch |
+| `/workers` | list workers |
+| `/go <worker>` | ask whether GO is pending; never write GO or a grant |
+| `/push <worker>` | request a push through the chief's normal gates |
+| `/halt [<worker>]` | request a halt of that worker, or the batch |
 
 Worker labels are 1–64 ASCII letters, digits, underscores, dots or hyphens; `..`,
 path separators and controls refuse the command shape. A reserved verb
-(`/go`, `/push`, `/halt`, `/fleet`, `/legs`) with any other shape (bad,
+(`/go`, `/push`, `/halt`, `/fleet`, `/workers`) with any other shape (bad,
 oversized or traversal label, control characters, extra arguments, a missing
 label, wrong case) is a **terminal refusal** ("malformed fleet command —
 nothing was queued"), never agent chat; a nonoperator's malformed shape is
@@ -169,7 +169,7 @@ rm -- "${BRIDGE_ROOT:-$HOME/.claude/handover/bridge}/lockdown"
 ```
 
 No remote unlock exists. End the compromised Telegram sessions from a second
-trusted device. `/launch-bypass-leg …` is retired and always refuses, even if
+trusted device. `/launch-bypass-worker …` is retired and always refuses, even if
 explicitly enabled: **start hook-bypass workers at the station**. Telegram never ratifies
 a hook-bypass launch.
 
@@ -183,8 +183,8 @@ capability or second factor.
 
 **Break-glass ops.** For an operator away from the station:
 `/station-status`, `/revert-main <pr>`, `/repin-hooks`,
-`/launch-leg <N-label> [--hook-bypass]`, `/cr-reset <pr>`,
-`/close-wrapped [<N-label>]`, `/relaunch-console [<name>]` and
+`/launch-worker <N-label> [--hook-bypass]`, `/cr-reset <pr>`,
+`/close-wrapped [<N-label>]`, `/relaunch-chief [<name>]` and
 `/restart-bridge` and `/allow-rule <id>`. Each is off until named individually in
 `TELEGRAM_AUTO_ACTIONS`. Every op except `/station-status` runs only after the
 operator sends back a one-time `/confirm <code>`, in the same chat within 5
@@ -194,7 +194,7 @@ private chat with the bot, never in a group.
 - `/revert-main` reverts only the PR that is main's current HEAD, and merges
   its revert with `--admin`: that is break-glass, and it is
   operator-initiated, confirm-coded and audited.
-- `/launch-leg --hook-bypass` narrowly reverses the worker hook-bypass lockout. It
+- `/launch-worker --hook-bypass` narrowly reverses the worker hook-bypass lockout. It
   exports only `HIMMEL_HOOK_INTEGRITY_BYPASS_OK=1`, and only for a
   sha256-recorded launcher; a manifest worker is refused with it.
 - Lockout recovery is `/revert-main <pr>` then `/repin-hooks`.

@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # wrap-subtree-check.sh — the structural wrap/halt gate.
 #
-# A leg (or judge) that declares itself closable must first prove its own
+# A worker (or judge) that declares itself closable must first prove its own
 # process subtree is empty. TaskStop on an agent does NOT reap the background
-# shell that agent spawned (fleet halt 2026-09-07: leg N35 reported WRAPPED with
-# a poll loop still alive 2h10m later), and the console cannot kill it — so the
+# shell that agent spawned (fleet halt 2026-09-07: worker N35 reported WRAPPED with
+# a poll loop still alive 2h10m later), and the chief cannot kill it — so the
 # closable-window banner is this script's output, never hand-typed:
 #   CLOSABLE: no non-harness process under claude pid <pid>     rc 0
 #     [ (<n> harness-owned children ignored) + one `ignored pid=…` row each ]
@@ -38,8 +38,8 @@
 # — plus anything beneath one. Each ignored child is listed as an
 # `ignored pid=…` row with why=, never hidden. A shell-tool wrapper
 # (`<shell> -c source …/shell-snapshots/snapshot-…`) is never harness, whatever
-# its command text says or however early it started: every command a leg runs
-# is in one, so leg-spawned work is always counted. The session pid must itself be a `claude` process: an
+# its command text says or however early it started: every command a worker runs
+# is in one, so worker-spawned work is always counted. The session pid must itself be a `claude` process: an
 # arbitrary live pid (a leaf, another tool) is refused, never called CLOSABLE.
 # ponytail: only DESCENDANTS of the session are seen. A shell reparented to
 # init/systemd (an intermediate process died first) is not attributed to the
@@ -55,7 +55,7 @@
 # cold `uv` cache makes that the COMMON case, not an exotic one: `uvx`/`uv run`
 # may download and build for well over the window before the server forks.
 # Observed delta on real sessions is 0-1s; the 10s default is chosen slack.
-# The unsafe direction needs a leg-spawned process that is a non-wrapper direct
+# The unsafe direction needs a worker-spawned process that is a non-wrapper direct
 # child forked inside the window — i.e. a Bash tool call with no shell-snapshot
 # wrapper AND a first tool call within seconds of session start; not observed.
 # The same hole opens if a shell wrapper exec()s its command inside the window:
@@ -142,7 +142,7 @@ harness_re="${WRAP_SUBTREE_HARNESS_RE:-(^|[ /])(mcp-server[^ ]*|[^ ]*qmd([.][a-z
 # exempt, and a `/..` anywhere in the argv disqualifies.
 # every DESCENDANT of a chain-shaped direct child of the session is
 # exempt too (via= names that top), so claude-hud's own `git status --porcelain`
-# child does not withhold; a leg-owned git hangs under a tool-call wrapper or the
+# child does not withhold; a worker-owned git hangs under a tool-call wrapper or the
 # session, never under a chain top, and still withholds.
 # No backslashes: the value crosses awk -v.
 chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|^([^ ]*/)?(bash|sh) /[^ ]*/scripts/statusline/hud-custom-lines[.]sh$|^(timeout [0-9]+ )?([^ ]*/)?(bash|sh) /[^ ]*/scripts/where-are-we/statusline-segment[.]sh( --cwd [^ ].*)?$|^(timeout [0-9]+ )?([^ ]*/)?node /[^ ]*/scripts/where-are-we/provision[.]mjs slice( .*)?$'
@@ -161,8 +161,8 @@ chain_re='^([^ ]*/)?node /[^ ]*/marketplace/plugins/claude-hud/dist/index[.]js$|
 # and -C are stripped before the verb is read, and the three core.* flags may sit in any order.
 # A git whose cwd cannot be read (exited between ps and the read, or not ours) withholds;
 # the next run sees a fresh table.
-# ponytail: a leg that types a hardened git with this cwd as a DIRECT child of the session
-# (not under a shell-tool wrapper) would be exempt; legs run git inside a wrapper, so not
+# ponytail: a worker that types a hardened git with this cwd as a DIRECT child of the session
+# (not under a shell-tool wrapper) would be exempt; workers run git inside a wrapper, so not
 # observed; tighten with the marketplace registry if it ever happens.
 # No backslashes: the value crosses awk -v.
 mkt_top_re='^([^ ]*/)?git (-c [A-Za-z0-9_.-]+=[^ ]* )*(clone|fetch|ls-remote|read-tree)( |$)'
@@ -300,7 +300,7 @@ END {
         if (!harness && allchain) { harness = 1; why = "statusline-chain"; via = pid }
         # a descendant of a chain node that is itself the session'"'"'s direct
         # child (claude-hud'"'"'s `git status --porcelain`) inherits the ignore by its
-        # parent chain; a leg-owned process hangs under a tool-call wrapper or the
+        # parent chain; a worker-owned process hangs under a tool-call wrapper or the
         # session, never under a chain top, so it is not reached.
         if (!harness && top != "" && ischain(top)) { harness = 1; why = "statusline-chain"; via = top }
         cmd = substr(arg[pid], 1, 100)
@@ -358,7 +358,7 @@ if [ "$count" -eq 0 ]; then
     fi
     exit 0
 fi
-printf 'WITHHELD: %s process(es) still alive under claude pid %s — TaskStop only what you started (background tasks, agents you spawned), then re-run; never stop a process you did not start, e.g. a session MCP server or the statusline refresh: report it to the console instead\n' "$count" "$found"
+printf 'WITHHELD: %s process(es) still alive under claude pid %s — TaskStop only what you started (background tasks, agents you spawned), then re-run; never stop a process you did not start, e.g. a session MCP server or the statusline refresh: report it to the chief instead\n' "$count" "$found"
 printf '%s\n' "$result" | sed -n '/^  pid=/p'
 printf '%s\n' "$result" | sed -n '/^  ignored pid=/p'
 exit 1

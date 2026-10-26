@@ -12,7 +12,7 @@ check() { if [ "$2" = "$3" ]; then PASS=$((PASS+1)); echo "ok - $1";
 
 verdict() { bash "$SUT" "$1" 2>>"$W/err.log"; }
 
-# A clip the triage leg has annotated. `triaged_at:` is the marker the gate
+# A clip the triage worker has annotated. `triaged_at:` is the marker the gate
 # keys on — a harvested-but-untriaged clip is not yet synthesis input.
 write_clip() { printf -- '---\ntriaged_at: 2026-08-23\nprocessed: true\n---\nbody\n' > "$1"; }
 
@@ -38,7 +38,7 @@ check "triaged clip, no reference -> NEW" NEW "$(verdict "$V")"
 verdict "$V" >/dev/null                      # the gate leaves the pending mark
 bash "$SUT" --stamp "$V" 2>>"$W/err.log"     # ...which --stamp promotes
 check "stamp written" 0 "$([ -f "$V/Clippings/_synthesis/.cadence-last-synth" ] && echo 0 || echo 1)"
-check "after a completed leg -> NONE" NONE "$(verdict "$V")"
+check "after a completed worker -> NONE" NONE "$(verdict "$V")"
 
 # --- a clip triaged after the stamp re-opens the gate ---------------------
 # Still $W/v-fresh, which the block above STAMPED. Reassigning V between these
@@ -79,7 +79,7 @@ sleep 1
 write_clip "$V/Clippings/_done/2026-08/graduated.md"
 check "a graduated clip under _done -> NONE" NONE "$(verdict "$V")"
 
-# --- the stamp records the GATE instant, not the leg end ------------------
+# --- the stamp records the GATE instant, not the worker end ------------------
 # A synthesis session runs 8-39 minutes. A clip triaged INSIDE that window was
 # never part of what the session read, so a completion-time stamp would leave
 # it older than the reference and the next gate would skip it. The gate writes
@@ -89,10 +89,10 @@ write_clip "$V/Clippings/a.md"
 check "gate opens" NEW "$(verdict "$V")"
 check "gate left a pending mark" 0 "$([ -f "$V/Clippings/_synthesis/.cadence-last-synth.pending" ] && echo 0 || echo 1)"
 sleep 1
-# ...the leg is running; a clip is triaged mid-session...
+# ...the worker is running; a clip is triaged mid-session...
 write_clip "$V/Clippings/mid-session.md"
 sleep 1
-bash "$SUT" --stamp "$V" 2>>"$W/err.log"        # ...and only now does the leg finish
+bash "$SUT" --stamp "$V" 2>>"$W/err.log"        # ...and only now does the worker finish
 check "pending mark consumed by --stamp" 1 "$([ -f "$V/Clippings/_synthesis/.cadence-last-synth.pending" ] && echo 0 || echo 1)"
 check "clip triaged mid-session is still NEW" NEW "$(verdict "$V")"
 
@@ -114,7 +114,7 @@ fi
 # This vault clips articles about its own pipeline, so a body that quotes
 # `triaged_at:` is a realistic false NEW — one bought session per night.
 V="$W/v-body"; mkdir -p "$V/Clippings"
-printf -- '---\nharvested_at: 2026-08-23\n---\nthe triage leg writes triaged_at: to each clip\n' > "$V/Clippings/article.md"
+printf -- '---\nharvested_at: 2026-08-23\n---\nthe triage worker writes triaged_at: to each clip\n' > "$V/Clippings/article.md"
 check "triaged_at in the body only -> NONE" NONE "$(verdict "$V")"
 
 # ...and a clip with NO frontmatter at all, whose body has a horizontal rule

@@ -621,7 +621,7 @@ esac
 # (f) spec 2.4 named exception - a DELIBERATE tightening for himmel's own
 # branches. cwd = a worktree on feat/y with a marker, CLAUDE_PROJECT_DIR = the
 # primary on main, no --head. Looking up cr-pending/main would find
-# nothing and wave the create through. The marker is real, so the block is true.
+# nothing and parallel wave the create through. The marker is real, so the block is true.
 PRIMARY2="$TMP_ROOT/primary2"
 mk_repo "$PRIMARY2" "feat/y"
 git -C "$PRIMARY2" checkout -q main
@@ -746,7 +746,7 @@ fr1a "match, no marker"   "$FOREIGN3" "https://github.com/owner/name" "gh pr cre
 # through to the real binary, and only the exact `-C <repo> rev-parse HEAD`
 # call the fixed code path guards fails, emitting nothing on stdout. The
 # operator ruled that this must DENY, not fall open: a hook
-# that cannot read HEAD must not wave a pending-CR PR through.
+# that cannot read HEAD must not parallel wave a pending-CR PR through.
 echo "TEST: unreadable HEAD (git rev-parse HEAD fails empty), marker present -> DENY (rc=2), names the cause"
 UNREADABLE="$TMP_ROOT/unreadable"
 mk_repo "$UNREADABLE" "feat/X"

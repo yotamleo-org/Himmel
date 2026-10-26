@@ -104,7 +104,7 @@ prose() {  # prose <lines> -- a python heredoc of multibyte prose
     local i out="python3 - <<'PYEOF'"$'\n'
     # read-sink-ok: $1 is a line count in an arithmetic compare, not a path
     for ((i = 0; i < $1; i++)); do
-        out+="print('line $i — the console hands the leg a brief; see the doc é')"$'\n'
+        out+="print('line $i — the chief hands the worker a brief; see the doc é')"$'\n'
     done
     printf '%sPYEOF' "$out"
 }

@@ -18,7 +18,7 @@ Proposed fields, on the same `tech-ingest` frontmatter:
   genuinely doesn't fit (e.g. `browser-automation` for an anti-detect browser agent) — record the
   addition and why in the note that first needed it, don't mint terms ad hoc per-repo.
 - `solves:` — one sentence, the problem it solves, in the repo's own terms.
-- `maps_to:` — which himmel surface it bears on, if any: `console/leg`, `lane-registry`,
+- `maps_to:` — which himmel surface it bears on, if any: `chief/worker`, `lane-registry`,
   `hooks/gates`, `cost-programme`, `installer`, `cr-panel`, `vault`, or `none`. `none` is the
   common, legitimate answer — a field that always finds a connection means nothing.
 - `value_tier:` — `integrate` / `take-parts` / `inspire` / `skip` (reuses `verdict_summary`'s

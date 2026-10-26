@@ -337,7 +337,7 @@
       },
       "gridPos": { "h": 5, "w": 6, "x": 0, "y": 38 },
       "id": 25,
-      "description": "Claude Code sessions with an unpaired start row whose transcript is still advancing (HIMMEL-1052). Interactive/foreground sessions only — pipeline legs are the Flows row, dispatched GLM/claudex workers keep their own per-session meta.json.",
+      "description": "Claude Code sessions with an unpaired start row whose transcript is still advancing (HIMMEL-1052). Interactive/foreground sessions only — pipeline workers are the Flows row, dispatched GLM/claudex workers keep their own per-session meta.json.",
       "options": { "colorMode": "background", "graphMode": "area", "justifyMode": "auto", "orientation": "auto", "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }, "textMode": "auto" },
       "targets": [
         { "expr": "sum(session_active_total)", "legendFormat": "live", "refId": "A" }

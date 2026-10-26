@@ -513,7 +513,7 @@ function detect(   k, a, cand, open, callee, m, m2, depthp, nfound, v, ok, ln, k
       open = k + 1
     } else if (TT[k + 1] == "T" && TV[k + 1] ~ /^git([ \t]|$)/) cand = 1
     if (!cand) continue
-    if (callee ~ /^(if|while|switch|for|return|typeof|catch|function|includes|has|log|info|warn|error|debug|print|echo|console|equal|strictEqual|deepEqual|notEqual|notStrictEqual|ok|assert|push|add|indexOf|lastIndexOf|startsWith|endsWith|test|match|join|resolve|basename|dirname|toBe|toEqual|eq|set|get|delete|describe|it|require|String|some|every|filter|split|replace|format|which|exists|expect|Error|TypeError|RangeError|SyntaxError)$/) continue
+    if (callee ~ /^(if|while|switch|for|return|typeof|catch|function|includes|has|log|info|warn|error|debug|print|echo|chief|equal|strictEqual|deepEqual|notEqual|notStrictEqual|ok|assert|push|add|indexOf|lastIndexOf|startsWith|endsWith|test|match|join|resolve|basename|dirname|toBe|toEqual|eq|set|get|delete|describe|it|require|String|some|every|filter|split|replace|format|which|exists|expect|Error|TypeError|RangeError|SyntaxError)$/) continue
     if (callee ~ /^(is[A-Z_]|can[A-Z]|check|find[A-Z]|has[A-Z]|command[A-Z]|assert|expect|which|exists|ensure)/) continue
     ln = TL[k]
     # scrub inside the call's own paren-balanced span

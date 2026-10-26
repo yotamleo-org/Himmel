@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
-# test-ship-jira-transition-docs.sh — Pins that the leg-facing ship
+# test-ship-jira-transition-docs.sh — Pins that the worker-facing ship
 # sequence names `--jira-transition` and states BOTH halves of the rule.
 #
 # `merge-on-green.sh` makes the Jira auto-transition opt-in, so a
-# leg whose PR completes its ticket must ask for it; a leg whose ticket spans
+# worker whose PR completes its ticket must ask for it; a worker whose ticket spans
 # further PRs must NOT (closing a sliced ticket on its first slice is the
 # regression to avoid). A doc that only says "pass the flag" recreates
 # it, so every assertion set below checks the omit branch too.
 #
 # The rule is prose read by a model, so what can be pinned is that it is there,
-# in every site a leg or a console reads the ship sequence, and that the sites
+# in every site a worker or a chief reads the ship sequence, and that the sites
 # agree on the `completes-ticket:` vocabulary. RED first: against a tree
 # without the rule every assertion below fails, none of them vacuously.
 #
@@ -19,11 +19,11 @@ set -uo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
 DOCS="${DOCS:-$HERE/../../docs}"
-PREFACE="$DOCS/handover/leg-preface.md"
-BRIEF="$DOCS/handover/leg-brief-template.md"
-CONSOLE="$DOCS/handover/console-template.md"
-RUNNING="$DOCS/handover/running-a-console.md"
-CLAUDEX="$DOCS/handover/leg-preface-claudex.md"
+PREFACE="$DOCS/handover/worker-preface.md"
+BRIEF="$DOCS/handover/worker-brief-template.md"
+CHIEF="$DOCS/handover/chief-template.md"
+RUNNING="$DOCS/handover/running-a-chief.md"
+CLAUDEX="$DOCS/handover/worker-preface-claudex.md"
 fails=0
 
 pass() { printf 'ok - %s\n' "$1"; }
@@ -44,13 +44,13 @@ section() {
     ' "$1"
 }
 
-for f in "$PREFACE" "$BRIEF" "$CONSOLE" "$RUNNING" "$CLAUDEX"; do
+for f in "$PREFACE" "$BRIEF" "$CHIEF" "$RUNNING" "$CLAUDEX"; do
     [ -r "$f" ] || { printf 'FAIL - unreadable %s\n' "$f"; exit 1; }
 done
 
-# --- 1. leg-preface.md § Shipping: the rule, both branches -------------------
+# --- 1. worker-preface.md § Shipping: the rule, both branches -------------------
 ship="$(section "$PREFACE" '^## Shipping')"
-[ -n "$ship" ] || fail 'leg-preface.md has a "## Shipping" section'
+[ -n "$ship" ] || fail 'worker-preface.md has a "## Shipping" section'
 contains 'preface Shipping names the merge script the flag belongs to' "$ship" 'merge-on-green.sh'
 contains 'preface Shipping names --jira-transition' "$ship" '--jira-transition'
 contains 'preface Shipping says the transition is opt-in, so a bare merge closes nothing' "$ship" 'opt-in'
@@ -61,41 +61,41 @@ contains 'preface Shipping says never to turn the flag on by default' "$ship" 'n
 contains 'preface Shipping names the sliced-ticket regression the default would recreate' "$ship" 'HIMMEL-3059'
 contains 'preface Shipping: the flag closes only the FIRST [KEY] of the PR title' "$ship" "\`[KEY]\` of the PR title"
 contains 'preface Shipping keeps the post-merge re-read' "$ship" 're-read the ticket after merge'
-contains 'preface Shipping tells a leg with no completes-ticket line to decide it itself' "$ship" 'decide it yourself'
+contains 'preface Shipping tells a worker with no completes-ticket line to decide it itself' "$ship" 'decide it yourself'
 
-# --- 2. leg-preface.md § Wrapping up agrees ---------------------------------
+# --- 2. worker-preface.md § Wrapping up agrees ---------------------------------
 wrap="$(section "$PREFACE" '^## Wrapping up')"
 contains 'preface Wrapping up: a ticket --jira-transition already closed is not closed twice' "$wrap" '--jira-transition'
-absent 'preface Wrapping up no longer tells every leg to close the ticket out unconditionally' "$wrap" 'close the ticket out with the PR number'
+absent 'preface Wrapping up no longer tells every worker to close the ticket out unconditionally' "$wrap" 'close the ticket out with the PR number'
 # merge-on-green.sh skips an Epic on purpose (skip=never-touch-type) and
-# when it cannot verify the type (skip=cannot-verify-type); a leg that treated
+# when it cannot verify the type (skip=cannot-verify-type); a worker that treated
 # "result was not ok" as "transition it by hand" would override the standing
 # never-touch-Epic invariant.
 contains 'preface Wrapping up: a skip=never-touch-type result is never closed by hand' "$wrap" 'skip=never-touch-type'
 contains 'preface Wrapping up: a skip=cannot-verify-type result is never closed by hand' "$wrap" 'skip=cannot-verify-type'
 contains 'preface Wrapping up: those deliberate skips go to the chief' "$wrap" 'report it to the chief'
 
-# --- 3. leg-brief-template.md: the console fills the decision in ------------
+# --- 3. worker-brief-template.md: the chief fills the decision in ------------
 brief="$(cat "$BRIEF")"
 contains 'brief template Ship contract carries a completes-ticket: yes|no line' "$brief" 'completes-ticket: yes|no'
-contains 'brief template: yes means the leg passes --jira-transition' "$brief" '--jira-transition'
+contains 'brief template: yes means the worker passes --jira-transition' "$brief" '--jira-transition'
 contains 'brief template: no means the ticket spans further PRs' "$brief" 'further PRs'
 contains 'brief template explains why the line is load-bearing (HIMMEL-3271)' "$brief" 'HIMMEL-3271'
 
-# --- 4. the console docs restate the merge: keep them in step ---------------
-for pair in "console-template.md Merges:$CONSOLE" "running-a-console.md Merges:$RUNNING"; do
+# --- 4. the chief docs restate the merge: keep them in step ---------------
+for pair in "chief-template.md Merges:$CHIEF" "running-a-chief.md Merges:$RUNNING"; do
     label="${pair%%:*}"; file="${pair#*:}"
     merges="$(section "$file" '^## Merges')"
     contains "$label names completes-ticket" "$merges" 'completes-ticket'
     contains "$label names --jira-transition" "$merges" '--jira-transition'
     contains "$label keeps the post-merge re-read of a multi-key PR" "$merges" 're-read'
-    # The MERGED hand-off sentence just above the rule must not tell the leg to
+    # The MERGED hand-off sentence just above the rule must not tell the worker to
     # close its ticket unconditionally, or it contradicts completes-ticket: no.
-    absent "$label does not tell the leg to close out its ticket unconditionally" "$merges" 'close out its ticket'
-    absent "$label does not say the leg closes out its ticket unconditionally" "$merges" 'closes out its ticket'
+    absent "$label does not tell the worker to close out its ticket unconditionally" "$merges" 'close out its ticket'
+    absent "$label does not say the worker closes out its ticket unconditionally" "$merges" 'closes out its ticket'
 done
 
-# --- 5. the initiative runbook's merge step (a fifth site, console ruling) ---
+# --- 5. the initiative runbook's merge step (a fifth site, chief ruling) ---
 # It says to run merge-on-green.sh "exactly, to match the standing allow-rule",
 # so it asserts the runbook mirrors the standing invocation; silent on the
 # conditional flag it would be a false equivalence. A .md, so hook-integrity
@@ -109,9 +109,9 @@ contains 'initiative runbook: completes-ticket: no -> omit the flag' "$runbook" 
 contains 'initiative runbook says which mechanism applies when (the ticket step stays for what the flag cannot serve)' "$runbook" 'what the flag cannot serve'
 
 # --- 6. sweep: the claudex preface must not fork the rule -------------------
-# It is concatenated after leg-preface.md (headed-arm-leg.sh), overriding only
+# It is concatenated after worker-preface.md (headed-arm-worker.sh), overriding only
 # the coordination channel, so it must neither restate nor contradict the rule.
-absent 'claudex preface does not restate the flag (leg-preface.md is the one site)' "$(cat "$CLAUDEX")" '--jira-transition'
+absent 'claudex preface does not restate the flag (worker-preface.md is the one site)' "$(cat "$CLAUDEX")" '--jira-transition'
 
 if [ "$fails" -eq 0 ]; then
     printf '%s\n' 'PASS - test-ship-jira-transition-docs.sh'

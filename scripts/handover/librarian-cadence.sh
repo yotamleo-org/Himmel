@@ -64,9 +64,9 @@ write_runner_body() {
     printf '[ -f "$log" ] && mv -f "$log" "$log.prev"\n'
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
-    cadence_posix_leg_start "$q_flow_lib" "$FLOW" "$TASK_NAME"
+    cadence_posix_worker_start "$q_flow_lib" "$FLOW" "$TASK_NAME"
     printf '    _rc=0; %q %q%s || _rc=$?\n' "$(command -v bash)" "$HIMMEL_ROOT/scripts/handover/librarian.sh" "${apply:+ --apply}"
-    cadence_posix_leg_end "$q_flow_lib" "$q_alert_lib" "$FLOW" 0 ""
+    cadence_posix_worker_end "$q_flow_lib" "$q_alert_lib" "$FLOW" 0 ""
     printf '    echo "[exit rc=$_rc]"\n'
     printf '} >> "$log" 2>&1\n'
 }

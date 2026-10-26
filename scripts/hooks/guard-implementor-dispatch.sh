@@ -5,7 +5,7 @@
 # The policies answer independent questions:
 #   1. If an external implementation lane is registry-available, runnable,
 #      READY, AND bank-funded, refuse an implementation-shaped
-#      in-process Agent dispatch and name that lane. A lane failing any leg
+#      in-process Agent dispatch and name that lane. A lane failing any worker
 #      falls through to the other lane (or the bank guard) rather
 #      than refusing toward it. Readiness is MEASURED, not asserted: a lane
 #      under a readiness gate (lanes.json readiness.passesRequired) must show
@@ -45,8 +45,8 @@
 # documented default rather than reaching the awk ratio math below as a
 # divide-by-zero.
 #   IMPL_GUARD_USAGE_STATUS_CMD    override the funded-bank probe command (tests stub it; default `bun scripts/lanes/usage-status.ts`);
-#                                  the old IMPL_GUARD_BANK_STATUS_CMD is still read
-#   IMPL_GUARD_USAGE_BUDGET_SECS   funded-bank probe wall-clock budget (default 4); old IMPL_GUARD_BANK_BUDGET_SECS still read
+#                                  the old IMPL_GUARD_BANK_STATUS_CMD is read while HIMMEL_LEGACY_NAMES is on
+#   IMPL_GUARD_USAGE_BUDGET_SECS   funded-bank probe wall-clock budget (default 4); old IMPL_GUARD_BANK_BUDGET_SECS read while HIMMEL_LEGACY_NAMES is on
 #   IMPL_GUARD_READINESS_CMD       override the lane-readiness probe command (tests stub it; default `node scripts/lanes/lane-readiness.mjs`)
 #   IMPL_GUARD_READINESS_BUDGET_SECS  lane-readiness probe wall-clock budget (default 4)
 #   IMPL_GUARD_ROUND_BUDGET_SECS   round-guard probe wall-clock budget (default 4)
@@ -373,6 +373,12 @@ fi
 hook_dir=$(cd "$(dirname "$0")" && pwd)
 repo_root="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$repo_root" ] || repo_root=$(cd "$hook_dir/../.." && pwd)
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+# shellcheck source=../lib/env-alias.sh
+# shellcheck disable=SC1091
+{ [ -r "$hook_dir/../lib/env-alias.sh" ] && . "$hook_dir/../lib/env-alias.sh" \
+    && alias_env IMPL_GUARD_USAGE_BUDGET_SECS IMPL_GUARD_BANK_BUDGET_SECS \
+    && alias_env IMPL_GUARD_USAGE_STATUS_CMD IMPL_GUARD_BANK_STATUS_CMD; } 2>/dev/null || true
 
 # --- refuse only when a concrete external lane is
 # registry-available AND actually runnable AND bank-funded. The registry marks
@@ -439,8 +445,8 @@ _run_bounded() {
 # lane or the parent-bank guard, but never routes toward unmeasured capacity.
 lane_funded() {
     local id="$1" cmd budget out rc state lid lstate _detail
-    budget="${IMPL_GUARD_USAGE_BUDGET_SECS:-${IMPL_GUARD_BANK_BUDGET_SECS:-4}}"
-    cmd="${IMPL_GUARD_USAGE_STATUS_CMD:-${IMPL_GUARD_BANK_STATUS_CMD:-}}"
+    budget="${IMPL_GUARD_USAGE_BUDGET_SECS:-4}"
+    cmd="${IMPL_GUARD_USAGE_STATUS_CMD:-}"
     if [ -z "$cmd" ]; then
         if ! command -v bun >/dev/null 2>&1; then
             warn "lane '$id' bank-status probe needs bun, which is not on PATH — bank UNKNOWN; skipping it"
@@ -563,7 +569,7 @@ lane_ready() {
 
 # --- the reviewed-round guard runs at THIS
 # chokepoint too, not only in scripts/telegram/spawn-glm.ts / spawn-claudex.ts.
-# Those two lanes are dispatched by an operator/console over a separate
+# Those two lanes are dispatched by an operator/chief over a separate
 # subprocess; a real implementor round is just as often an in-process Agent
 # tool call, which reaches neither script. Control has already
 # reached here past every read-only/research/Haiku/lane-exempt-Explore

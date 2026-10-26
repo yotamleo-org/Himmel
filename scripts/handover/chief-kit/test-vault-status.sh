@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # test-vault-status.sh — vault-status.sh classifies the luna vault's
-# commit health for the console tick (ok | STALL:<age>,<n> | PUSH-LAG:<age> |
-# skip | unknown); bucket-gitleaks.sh is the leg-side pre-check of a bucket
+# commit health for the chief tick (ok | STALL:<age>,<n> | PUSH-LAG:<age> |
+# skip | unknown); bucket-gitleaks.sh is the worker-side pre-check of a bucket
 # file. Fixture git repos under a scratch dir only: the real vault is never read.
-# PLATFORM GUARD: no .ps1 twin, by design (the console kit is Linux-only).
+# PLATFORM GUARD: no .ps1 twin, by design (the chief kit is Linux-only).
 # Run: bash scripts/handover/chief-kit/test-vault-status.sh
 set -uo pipefail
 
@@ -40,10 +40,10 @@ check 'clean vault reads ok' 'ok' "$(vs v)"
 echo staged > "$W/v/a.md"; echo staged2 > "$W/v/b.md"
 git -C "$W/v" add a.md b.md
 check 'fresh staged files are not a stall' 'ok' "$(vs v)"
-touch -d '50 minutes ago' "$W/v/a.md" "$W/v/b.md"  # gnu-ok: console kit is Linux-only
+touch -d '50 minutes ago' "$W/v/a.md" "$W/v/b.md"  # gnu-ok: chief kit is Linux-only
 check 'staged files older than the threshold read STALL:<age>,<n>' 'STALL:50m,2' "$(vs v)"
 check 'the threshold is env-configurable' 'ok' "$(TICK_VAULT_STALL_MIN=90 TICK_VAULT_DIR="$W/v" bash "$VS")"
-echo more >> "$W/v/seed.md"; touch -d '3 hours ago' "$W/v/seed.md"  # gnu-ok: console kit is Linux-only
+echo more >> "$W/v/seed.md"; touch -d '3 hours ago' "$W/v/seed.md"  # gnu-ok: chief kit is Linux-only
 check 'dirty tracked files count and the oldest sets the age' 'STALL:3h,3' "$(vs v)"
 check '--path prints the resolved vault' "$W/v" "$(TICK_VAULT_DIR="$W/v" bash "$VS" --path)"
 

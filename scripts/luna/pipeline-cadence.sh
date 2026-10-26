@@ -29,7 +29,7 @@
 # synthesis has wikilinked, so it follows synth in the SAME session);
 # health DAILY at 04:00 (the weekly cadence meant vault
 # drift was only visible once a week, and the haiku pin makes nightly
-# affordable); machine assumed awake. Every leg
+# affordable); machine assumed awake. Every worker
 # launches with an explicit --model pin (harvest/synth=claude-sonnet-5-5,
 # health=haiku) so the cadence never inherits the operator's saved
 # default (the scarcest tier) — the cheap pins are what make the higher
@@ -106,37 +106,37 @@ HIMMEL_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." 2>/dev/null && pwd)"
 AUTO_APPROVE_HOOK="$HIMMEL_ROOT/scripts/hooks/auto-approve-safe-bash.sh"
 SETTINGS_FRAGMENT="$BAT_DIR/cadence-settings.json"
 
-# The bank guard the three claude legs launch behind (CLAUDE.md's billing rule:
+# The bank guard the three claude workers launch behind (CLAUDE.md's billing rule:
 # a scheduled or unattended site preflights before spending the shared
 # 5h/weekly subscription bank). The generated runners
 # branch on the helper's VERDICT TOKEN, never its exit code: usage-preflight.sh
 # always exits 0 by design, and its BANK-STALE / BANK-UNKNOWN verdicts are
 # deliberately fail-open (a box with no usage cache must still run its cadence).
-# Only SKIPPED-BANK stops a leg.
+# Only SKIPPED-BANK stops a worker.
 BANK_PREFLIGHT="$HIMMEL_ROOT/scripts/lib/usage-preflight.sh"
 
-# The free precondition for the synthesize leg. Answers NEW/NONE
+# The free precondition for the synthesize worker. Answers NEW/NONE
 # from the filesystem so a night with no newly triaged clips costs no session.
 SYNTH_GATE="$HIMMEL_ROOT/scripts/luna/synth-input-check.sh"
 
 # The shared failure sink. Every generated runner calls it on a
-# failed leg (alert-file line + one deduped Telegram DM) and on a completed one
+# failed worker (alert-file line + one deduped Telegram DM) and on a completed one
 # (clears the dedupe). Baked by absolute path at arm time like the libs above.
 CADENCE_ALERT="$HIMMEL_ROOT/scripts/luna/cadence-alert.sh"
 
-# The marker line a runner writes to its log when a gate refused the leg. The
+# The marker line a runner writes to its log when a gate refused the worker. The
 # sibling of WORKER_SESSION_DONE_MARKER: DONE means the session ran and finished, SKIPPED
 # means no session was ever launched. Distinct words on purpose — a skipped
 # night must not read as a parked one.
-WORKER_SESSION_SKIPPED_MARKER="PIPELINE-LEG-SKIPPED"
-# The log line a runner writes when a launched leg failed: a
+WORKER_SESSION_SKIPPED_MARKER="PIPELINE-WORKER-SKIPPED"
+# The log line a runner writes when a launched worker failed: a
 # non-zero rc, or a zero rc without WORKER_SESSION_DONE_MARKER (a no-op is not green).
-WORKER_SESSION_FAILED_MARKER="PIPELINE-LEG-FAILED"
+WORKER_SESSION_FAILED_MARKER="PIPELINE-WORKER-FAILED"
 
 # CLAUDE.md § billing: every scheduled claude launch declares an
 # explicit --permission-mode instead of inheriting the operator's saved default
 # (a cadence must not change behaviour because someone toggled a mode in an
-# interactive session). `acceptEdits` is the mode these legs have effectively
+# interactive session). `acceptEdits` is the mode these workers have effectively
 # been running under: file writes proceed, and every Bash call still goes
 # through the cadence hook stack this script's --settings fragment wires.
 # NEVER bypassPermissions — that is the one mode the billing rule forbids.
@@ -182,7 +182,7 @@ HARVEST_MODEL="claude-sonnet-5-5"
 SYNTH_MODEL="claude-sonnet-5-5"
 HEALTH_MODEL="haiku"
 
-# Bounded retry/resume for a claude leg killed by a TRANSIENT upstream API
+# Bounded retry/resume for a claude worker killed by a TRANSIENT upstream API
 # error. A harvest run died 48 minutes in on
 # `API Error: Server error mid-response.` with 7 clips already recorded, and
 # nothing retried it — the day's harvest simply sat unfinished. Every stage is
@@ -200,12 +200,12 @@ FORCE=0
 DRY_RUN=0
 
 DAILY_CHAIN="/harvest-clips + /triage-clips + /ig-media-enrich + /x-media-enrich"
-# The bare completion marker the leg prompt asks for; flow_run_classify treats
+# The bare completion marker the worker prompt asks for; flow_run_classify treats
 # a zero exit WITHOUT this line in the log tail as `parked`.
-WORKER_SESSION_DONE_MARKER="PIPELINE-LEG-DONE"
-COMPLETION_INSTRUCTIONS="Run every command in the foreground. Never background a command or wait for a notification. Only if this cadence leg genuinely completed all of its work, print exactly PIPELINE-LEG-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation. If it was blocked, parked, or bailed early, do not print the marker."
+WORKER_SESSION_DONE_MARKER="PIPELINE-WORKER-DONE"
+COMPLETION_INSTRUCTIONS="Run every command in the foreground. Never background a command or wait for a notification. Only if this cadence worker genuinely completed all of its work, print exactly PIPELINE-WORKER-DONE as the final line of your output, on its own line with no prefix, suffix, or punctuation. If it was blocked, parked, or bailed early, do not print the marker."
 HARVEST_PROMPT=""
-SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means both skills ran to completion and wrote their own output. When archive-clips reports clips as (stuck) in the inbox, those are structural backlog that triage owns and re-running cannot clear: report the stuck count and still print the marker. Withhold the marker when a step itself failed or aborted (a non-zero exit, a crash, a refused write) or the leg was blocked, parked, or bailed early; do not withhold it only because stuck clips remain. $COMPLETION_INSTRUCTIONS"
+SYNTH_PROMPT="Run /synthesize-clips to completion, then run /archive-clips. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. For this worker, all of its work means both skills ran to completion and wrote their own output. When archive-clips reports clips as (stuck) in the inbox, those are structural backlog that triage owns and re-running cannot clear: report the stuck count and still print the marker. Withhold the marker when a step itself failed or aborted (a non-zero exit, a crash, a refused write) or the worker was blocked, parked, or bailed early; do not withhold it only because stuck clips remain. $COMPLETION_INSTRUCTIONS"
 HEALTH_PROMPT="Use the Skill tool to run the obsidian-triage:vault-lint skill (not /obsidian-health) against this vault to completion. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. $COMPLETION_INSTRUCTIONS"
 
 usage() {
@@ -218,7 +218,7 @@ daily /harvest-clips (+ /triage-clips and
 /ig-media-enrich chained after in the same session), daily
 /synthesize-clips (+ /archive-clips chained after) and daily
 vault-lint (obsidian-triage:vault-lint), run against the
-luna vault as interactive bounded claude sessions. Each leg launches
+luna vault as interactive bounded claude sessions. Each worker launches
 with an explicit cheap --model pin so the cadence never
 inherits the operator's saved default.
 
@@ -242,9 +242,9 @@ Flags (arm only, except --dry-run):
                          demoted from daily by the 2026-08-23 cadence
                          audit; the finding count barely moves week to
                          week and nobody reads a nightly report)
-  --harvest-model <m>    claude --model for the harvest leg (default claude-sonnet-5-5)
-  --synth-model <m>      claude --model for the synthesize leg (default claude-sonnet-5-5)
-  --health-model <m>     claude --model for the health leg (default haiku)
+  --harvest-model <m>    claude --model for the harvest worker (default claude-sonnet-5-5)
+  --synth-model <m>      claude --model for the synthesize worker (default claude-sonnet-5-5)
+  --health-model <m>     claude --model for the health worker (default haiku)
   --vault <PATH>         Luna vault root (default: $LUNA_VAULT_PATH if set,
                          else $HOME/Documents/luna)
   --force                Replace existing HIMMEL-Pipeline-* tasks
@@ -306,7 +306,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-HARVEST_PROMPT="Run /harvest-clips to completion, then run /triage-clips, then run /ig-media-enrich --limit $IG_LIMIT --include-evidence. The /ig-media-enrich step uses --limit $IG_LIMIT --include-evidence (triage moves finished clips into Clippings/_evidence/, which the default selection skips); 0 means unlimited, otherwise one night's batch is bounded and the ig_media_pending backlog drains across nights. If /ig-media-enrich fails due to missing ffmpeg/whisper, expired IG cookies, or media download errors, report the failure but it must not abort or fail the harvest+triage leg; finish the session normally. Then run /x-media-enrich --limit $IG_LIMIT --include-evidence. If /x-media-enrich fails due to missing ffmpeg/whisper, expired X cookies or credentials, or media download errors, report the failure but it must not abort or fail the harvest+triage leg; finish the session normally. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. For this leg, all of its work means every step above ran to its budget or --limit and wrote its own completion output. A backlog left for later runs is not unfinished work (X or IG media still pending, slides-pending-digest clips, deferred harvest partials): report the remaining counts and still print the marker. Withhold the marker only when a step itself failed or aborted (a non-zero exit, a crash, a refused write), not because items remain; the /ig-media-enrich and /x-media-enrich failures named above are reported and do not withhold it. $COMPLETION_INSTRUCTIONS"
+HARVEST_PROMPT="Run /harvest-clips to completion, then run /triage-clips, then run /ig-media-enrich --limit $IG_LIMIT --include-evidence. The /ig-media-enrich step uses --limit $IG_LIMIT --include-evidence (triage moves finished clips into Clippings/_evidence/, which the default selection skips); 0 means unlimited, otherwise one night's batch is bounded and the ig_media_pending backlog drains across nights. If /ig-media-enrich fails due to missing ffmpeg/whisper, expired IG cookies, or media download errors, report the failure but it must not abort or fail the harvest+triage worker; finish the session normally. Then run /x-media-enrich --limit $IG_LIMIT --include-evidence. If /x-media-enrich fails due to missing ffmpeg/whisper, expired X cookies or credentials, or media download errors, report the failure but it must not abort or fail the harvest+triage worker; finish the session normally. This is the scheduled daily pipeline cadence run - fully autonomous, no user prompts; report results and exit. For this worker, all of its work means every step above ran to its budget or --limit and wrote its own completion output. A backlog left for later runs is not unfinished work (X or IG media still pending, slides-pending-digest clips, deferred harvest partials): report the remaining counts and still print the marker. Withhold the marker only when a step itself failed or aborted (a non-zero exit, a crash, a refused write), not because items remain; the /ig-media-enrich and /x-media-enrich failures named above are reported and do not withhold it. $COMPLETION_INSTRUCTIONS"
 
 # Platform detect (same matrix as arm-resume.sh).
 case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
@@ -439,7 +439,7 @@ emit_settings_fragment() {
     # sessions are untouched.
     # A fourth control on its own matcher. Every hook above is
     # Bash-only, so the PowerShell tool is an unguarded second shell in a
-    # cadence session — the health leg emitted the vault-lint engine through it
+    # cadence session — the health worker emitted the vault-lint engine through it
     # on 2026-08-20 and parked on an approval nobody was awake to give. Deny it
     # and redirect the model to the Bash tool, where the engine grant lives.
     local hooks_dir="${hook_path%/*}"
@@ -507,7 +507,7 @@ emit_settings_fragment() {
     # every argument.
     # A headless cadence session cannot answer a permission ask,
     # so the 2026-10-03 harvest's Skill call came back user-rejected and the
-    # whole chain no-oped. Allow exactly the obsidian-triage commands the leg
+    # whole chain no-oped. Allow exactly the obsidian-triage commands the worker
     # prompts name, plus Read of the plugin's command files as the fallback.
     cat <<JSON
 {
@@ -557,7 +557,7 @@ cron_dow() {
     esac
 }
 
-# Validate a per-leg --*-model value. Defense in
+# Validate a per-worker --*-model value. Defense in
 # depth: a conservative identifier grammar rejects empty/whitespace and
 # every shell/CMD metacharacter BEFORE the value is interpolated into a
 # runner, so a model like a"&b can't break the cron re-parse (emit_runner
@@ -626,7 +626,7 @@ validate_arm_inputs() {
         echo "ERR pipeline-cadence: --health-time must be HH:MM (24h), got: $HEALTH_TIME" >&2
         exit 1
     fi
-    # Per-leg model pins: each --*-model must match a
+    # Per-worker model pins: each --*-model must match a
     # conservative identifier grammar ([A-Za-z0-9][A-Za-z0-9._:-]*) -
     # this rejects empty/whitespace AND every shell/CMD metacharacter
     # before the value reaches a runner. The cron emitter additionally
@@ -786,9 +786,9 @@ emit_runner() {
         printf '    cd %s || exit 1\n' "$q_vault"
     fi
     # The two gates. Both live INSIDE the `{ } >> $log`
-    # group, so each helper's stderr diagnostics land in the leg log while its
+    # group, so each helper's stderr diagnostics land in the worker log while its
     # single verdict token is captured. `exit` from a brace group (not a
-    # subshell) exits the runner, so a refused leg never reaches the claude
+    # subshell) exits the runner, so a refused worker never reaches the claude
     # launch below.
     # Gate 1: free filesystem precondition, asked first.
     if [ -n "$q_gate_lib" ]; then
@@ -804,11 +804,11 @@ emit_runner() {
     # helper's BANK-STALE / BANK-UNKNOWN verdicts are fail-open by design and
     # an empty capture means it could not run at all.
     if [ -n "$q_bank_lib" ]; then
-        printf '    _bank=$(CADENCE_USAGE_LEG=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
+        printf '    _bank=$(CADENCE_USAGE_WORKER=%s %s) || _bank=\n' "$q_flow" "$q_bank_lib"
         printf '    if [ "$_bank" = SKIPPED-BANK ]; then\n'
         printf '        echo "[%s bank-at-threshold]"\n' "$WORKER_SESSION_SKIPPED_MARKER"
         # One skipped night is the guard working; two running is
-        # a leg that has silently stopped. The previous night's log is $log.prev.
+        # a worker that has silently stopped. The previous night's log is $log.prev.
         if [ -n "$q_alert_lib" ]; then
             printf '        if grep -qF "[%s bank-at-threshold]" "$log.prev" 2>/dev/null; then %s fail %s bank-skip-2-nights "$log" || true; fi\n' "$WORKER_SESSION_SKIPPED_MARKER" "$q_alert_lib" "$q_flow"
         fi
@@ -849,7 +849,7 @@ emit_runner() {
     printf '        _attempt=$((_attempt + 1))\n'
     printf '    done\n'
     printf '    echo "[exit rc=$_rc]"\n'
-    # A failed leg says so in its log and in the alert sink; a
+    # A failed worker says so in its log and in the alert sink; a
     # completed one re-arms the sink's dedupe.
     printf '    if [ "$_rc" != 0 ]; then _fail="rc-$_rc"; echo "[%s rc=$_rc]"\n' "$WORKER_SESSION_FAILED_MARKER"
     printf '    elif [ "$_flow_outcome" != complete ]; then _fail=no-completion-marker; echo "[%s no-completion-marker]"\n' "$WORKER_SESSION_FAILED_MARKER"
@@ -862,15 +862,15 @@ emit_runner() {
         printf '    { [ "$_flow_outcome" = complete ] && %s --stamp .; } || true\n' "$q_gate_lib"
     fi
     # Refresh the day note's `## Clip pipeline` + `## Daily report`
-    # sections after the leg. Must-not-abort: it runs after _rc / _flow_outcome
+    # sections after the worker. Must-not-abort: it runs after _rc / _flow_outcome
     # are final and writes only its own _tl_rc, so a failing timeline logs and
-    # the runner's exit code and the LEG-FAILED logic above are untouched.
+    # the runner's exit code and the WORKER-FAILED logic above are untouched.
     if [ -n "$q_timeline" ]; then
         printf '    _tl_rc=0; node %s --vault %s --date "$(date +%%Y-%%m-%%d)" || _tl_rc=$?\n' "$q_timeline" "$q_vault"
         printf '    if [ "$_tl_rc" != 0 ]; then echo "[daily-timeline failed rc=$_tl_rc - continuing]"; fi\n'
     fi
     printf '} >> "$log" 2>&1\n'
-# A parked leg (zero rc, no marker) exits 3 so cron/the operator
+# A parked worker (zero rc, no marker) exits 3 so cron/the operator
 # sees a failure; it covers any
     # zero-rc outcome short of complete (truncated too): a no-op is not green.
     printf 'if [ "$_rc" = 0 ] && [ "$_flow_outcome" != complete ]; then exit 3; fi\n'
@@ -898,7 +898,7 @@ emit_fetch_health_runner() {
     printf 'if [ -f "$log" ]; then mv -f "$log" "$log.prev" || exit 1; fi\n'
     printf '{\n'
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
-    # Flow-run ledger rows, so the FetchHealth leg is visible to stall /
+    # Flow-run ledger rows, so the FetchHealth worker is visible to stall /
     # never-started detection. Outcome derived from the rc (no LLM, so no
     # truncation/parked state to classify).
     printf '    _flow_run_id=$(%s --append-start %s "" "" python "" %s "$log" "$$" 2>/dev/null) || _flow_run_id=\n' "$q_flow_lib" "$q_flow" "$q_task"

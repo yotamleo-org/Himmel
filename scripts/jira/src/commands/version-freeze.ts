@@ -1,16 +1,17 @@
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 import { execFileSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { request, projectKey } from '../client.js';
 import { searchAllIssues } from './list.js';
 import { fetchVersions, checkDate, setFixVersion, addFixVersionGated } from './versions.js';
 import { appendAdmission, readAdmissions, type Admission } from './admissions-ledger.js';
+import { chiefOverrideOf } from './intake-gate.js';
 import type { JiraIssue } from '../types.js';
 
 // A version's scope is frozen by two description lines, `frozen: <date>` and
 // `frozen-keys: A,B`; the open set also carries label `scope-<v>`. version-ready
 // prints the P1 tag criterion as PASS/FAIL rows and refuses nothing: the
-// console reads the rows and decides, and may overrule a FAIL row with a
+// chief reads the rows and decides, and may overrule a FAIL row with a
 // reason that lands in the admissions ledger. A key in the version that is not
 // in the frozen list was admitted after the freeze and needs a ledger row.
 
@@ -31,7 +32,7 @@ export function parseFrozen(description: string | undefined): { date: string; ke
   return { date, keys: raw.split(',').map((k) => k.trim()).filter((k) => k.length > 0) };
 }
 
-// Same marker as `create --console-override`.
+// Same marker as `create --chief-override`.
 // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
 export function hasConsoleMarker(): boolean {
   return process.env.HIMMEL_CONSOLE === '1';
@@ -160,7 +161,7 @@ interface Readiness {
 const list = (keys: string[]) => keys.join(',');
 
 // A key in the version that is not in the frozen list was admitted after the
-// freeze: a ledger row (a gate or console-override filing, or an rm-admit)
+// freeze: a ledger row (a gate or chief-override filing, or an rm-admit)
 // gives it a reason, none makes it a leak; the key's latest row decides, so a
 // removal or deferral after an admission withdraws it. A Done key without a row is a
 // Done-fold, not a leak. A row keyed by a check id (a version-ready override)
@@ -270,11 +271,11 @@ export async function versionReady(
   const lines: string[] = [];
   const overrides = opts.consoleOverride ?? [];
   if (overrides.length > 0) {
-    if (!hasConsoleMarker()) lines.push('console-override ignored: no console marker (HIMMEL_CONSOLE=1 is not set)');
+    if (!hasConsoleMarker()) lines.push('chief-override ignored: no chief marker (HIMMEL_CONSOLE=1 is not set)');
     else {
       for (const o of overrides) {
-        if (!o.reason.trim()) lines.push(`console-override ${o.id} ignored: a reason is mandatory`);
-        else if (!rows.some((r) => r.id === o.id)) lines.push(`console-override ${o.id} ignored: no such row`);
+        if (!o.reason.trim()) lines.push(`chief-override ${o.id} ignored: a reason is mandatory`);
+        else if (!rows.some((r) => r.id === o.id)) lines.push(`chief-override ${o.id} ignored: no such row`);
       }
       rows = rows.map((r) => {
         const reason = overrides.find((o) => o.id === r.id)?.reason.trim();
@@ -306,7 +307,7 @@ export async function versionReady(
 // the ticket where it was. A source that stays on takes the target off again;
 // a source that cannot be read back leaves both and says so.
 export async function deferTicket(key: string, version: string, reason: string | undefined, to?: string): Promise<string> {
-  if (!hasConsoleMarker()) throw new Error('version-defer needs the console marker: only the console defers a frozen ticket');
+  if (!hasConsoleMarker()) throw new Error('version-defer needs the chief marker: only the chief defers a frozen ticket');
   if (!reason?.trim()) throw new Error('version-defer: --reason is mandatory');
   if (to === version) throw new Error(`version-defer: --to ${to} is the version the ticket is deferred from`);
   if (to) await addFixVersionGated(key, to, {});
@@ -329,7 +330,7 @@ export async function deferTicket(key: string, version: string, reason: string |
 }
 
 export function admitTicket(key: string, version: string, reason: string | undefined, by: string | undefined): string {
-  if (!hasConsoleMarker()) throw new Error('version-admit needs the console marker: only the console records an admission');
+  if (!hasConsoleMarker()) throw new Error('version-admit needs the chief marker: only the chief records an admission');
   if (!KEY.test(key)) throw new Error(`version-admit: "${key}" is not a ticket key`);
   if (!reason?.trim()) throw new Error('version-admit: --reason is mandatory');
   if (!by?.trim()) throw new Error('version-admit: --by <rm-session> is mandatory');
@@ -354,12 +355,13 @@ export function registerVersionFreeze(program: Command): void {
     .description('Print the P1 tag criterion for a frozen version as PASS/FAIL rows (informational; refuses nothing)')
     .option('--project <key>', 'Project key (default: JIRA_PROJECT_KEY env var)')
     .option(
-      '--console-override <values...>',
-      'Console only (HIMMEL_CONSOLE=1), repeatable, as <row-id> "<reason>": turn one FAIL row into an overridden PASS, recording the reason in the admissions ledger',
+      '--chief-override <values...>',
+      'Chief only (HIMMEL_CONSOLE=1), repeatable, as <row-id> "<reason>": turn one FAIL row into an overridden PASS, recording the reason in the admissions ledger',
     )
-    .action(async (name: string, options: { project?: string; consoleOverride?: string[] }) => {
-      const flat = options.consoleOverride ?? [];
-      if (flat.length % 2 !== 0) throw new Error('--console-override takes <row-id> "<reason>" pairs');
+    .addOption(new Option('--console-override <values...>').hideHelp())
+    .action(async (name: string, options: { project?: string; chiefOverride?: string[]; consoleOverride?: string[] }) => {
+      const flat = chiefOverrideOf(options) ?? [];
+      if (flat.length % 2 !== 0) throw new Error('--chief-override takes <row-id> "<reason>" pairs');
       const consoleOverride: Override[] = [];
       for (let i = 0; i < flat.length; i += 2) consoleOverride.push({ id: flat[i], reason: flat[i + 1] });
       for (const line of await versionReady(options.project ?? projectKey(), name, { consoleOverride })) console.log(line);
@@ -367,7 +369,7 @@ export function registerVersionFreeze(program: Command): void {
 
   program
     .command('version-admit <key>')
-    .description('Console only: record that the release manager admitted a ticket into a frozen version, with a reason, in the admissions ledger')
+    .description('Chief only: record that the release manager admitted a ticket into a frozen version, with a reason, in the admissions ledger')
     .requiredOption('--version <name>', 'The frozen version the ticket was admitted into')
     .option('--reason <text>', 'Why (mandatory)')
     .option('--by <rm-session>', 'The release-manager session that ruled it (mandatory)')
@@ -377,7 +379,7 @@ export function registerVersionFreeze(program: Command): void {
 
   program
     .command('version-defer <key>')
-    .description('Console only: defer a frozen ticket (remove the fixVersion, label deferred) and record the reason in the admissions ledger')
+    .description('Chief only: defer a frozen ticket (remove the fixVersion, label deferred) and record the reason in the admissions ledger')
     .requiredOption('--version <name>', 'The frozen version the ticket is deferred from')
     .option('--to <name>', 'Also add this fixVersion (a frozen target is refused)')
     .option('--reason <text>', 'Why (mandatory)')

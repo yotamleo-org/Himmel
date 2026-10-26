@@ -4,7 +4,7 @@
 # missing data, and the claudex/codex bank input.
 #
 # PLATFORM GUARD: no .ps1 twin, by design. usage-monitor.sh is a POSIX/Git-Bash
-# Bash 3.2 monitor consumed by the Linux console kit; this suite uses its
+# Bash 3.2 monitor consumed by the Linux chief kit; this suite uses its
 # explicit cache, clock, state, and command seams.
 set -uo pipefail
 

@@ -93,7 +93,7 @@ sections: `## Summary` (Jira ticket title when available),
 `## Ticket` (HIMMEL-N link).
 
 Before publication, both `scripts/handover/pr-open.sh` and
-`scripts/lanes/leg-pr-open.sh` offer optional deterministic punctuation
+`scripts/lanes/worker-pr-open.sh` offer optional deterministic punctuation
 normalization on stderr. No model rewrite is offered or run, and no plugin is
 enabled. Skip continues unchanged. Generate a separate candidate:
 
@@ -116,7 +116,7 @@ For handover-generated bodies, first use `--dry-run` and save only the text
 between `--- body ---` and `--- /body ---`, without those delimiters. Normalize
 that body and rerun with the candidate flag. For the worker helper, keep the
 original body file as the second argument and add the candidate flag; its
-computed `leg-burn:` line is inserted after the fact check.
+computed `worker-burn:` line is inserted after the fact check.
 
 PR-create failures are best-effort: the branch is still pushed and
 an operator can open the PR manually later. `HANDOVER_PR_AUTO=0`
@@ -292,16 +292,16 @@ tells a worker to wrap at once when its only remaining dependency is an operator
 action: append a resume brief, release the queue lock, and end the turn
 instead of idle-waiting.
 
-**`## Console Rulings` clause:** the same templates also carry a
-`## Console Rulings` clause, asserted byte-identical by the same test suite,
+**`## Chief Rulings` clause:** the same templates also carry a
+`## Chief Rulings` clause, asserted byte-identical by the same test suite,
 prefacing every worker brief with how rulings actually reach it — a claudex worker
 via the file inbox hook (`scripts/hooks/claudex-inbox-hook.sh`), a native worker
-via a direct `SendMessage` — so the doc's own `## Console Rulings` section is
+via a direct `SendMessage` — so the doc's own `## Chief Rulings` section is
 what a worker checks, not something it idle-waits or gets pasted. See
 [`lane-calibration.md`](lane-calibration.md#non-claude-lane-calibration)'s
-`claudex` supervisor session reachability note for the delivery mechanism itself. <!-- old-term-ok: names the lane-calibration.md note title until V5 -->
+`claudex` supervisor session reachability note for the delivery mechanism itself.
 
-`scripts/handover/leg-resume-brief.sh <leg-doc> [--branch <name>] [--repo <path>] [--dry-run]`
+`scripts/handover/worker-resume-brief.sh <worker-doc> [--branch <name>] [--repo <path>] [--dry-run]`
 is the chief-side half of that clause: it reconstructs everything about a
 worker's state that git already knows (worktree path, `git status --short`,
 merge-base + head SHAs and their subjects, dirty paths) and appends a
@@ -318,7 +318,7 @@ The rule this encodes: **wake a cold worker only when its private context is
 the only source of a fact.** Anything git-recoverable is the chief's job to
 write from git directly; only the worker's own un-externalized reasoning (the
 ordered next steps, judgment calls made mid-session) ever justifies paying
-for a fresh cold-start. Test: `bash scripts/handover/test-leg-resume-brief.sh`.
+for a fresh cold-start. Test: `bash scripts/handover/test-worker-resume-brief.sh`.
 
 ## Periodic seat-liveness reconcile
 

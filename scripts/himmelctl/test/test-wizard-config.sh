@@ -11,9 +11,9 @@
 # `config set`/`config get` are the scripted path over the same store.
 #
 # Covers:
-#   A. initiative.<leg> — set on/off toggles HIMMEL_INITIATIVE in the fixture
-#      .env; multiple legs coexist; unknown leg -> rc=2, no write.
-#   B. initiative get (whole + single leg).
+#   A. initiative.<step> — set on/off toggles HIMMEL_INITIATIVE in the fixture
+#      .env; multiple steps coexist; unknown step -> rc=2, no write.
+#   B. initiative get (whole + single worker).
 #   C. lanes.<id> — set on/off writes ONLY lanes.local.json (probe.kind
 #      always/never); the fixture's lanes.json (repo-registry stand-in) is
 #      NEVER modified; unknown id -> rc=2.
@@ -119,7 +119,7 @@ run_cfg() {
 }
 
 # CFG_HOME pins one fake HOME across calls, so a case can read back what ~/.himmel/himmel.conf holds.
-# ── Case A: initiative.<leg> set on/off ─────────────────────────────────────
+# ── Case A: initiative.<step> set on/off ───────────────────────────────────────
 fxA="$work/fixtureA"; build_fixture "$fxA"
 CFG_HOME="$work/homeA"
 confA="$CFG_HOME/.himmel/himmel.conf"
@@ -133,17 +133,17 @@ grep -qE '^HIMMEL_INITIATIVE=execute$' "$confA" \
   && fail "caseA: a behaviour key must not be written to the fixture .env (got: $(cat "$fxA/.env" 2>&1))"
 run_cfg "$fxA" set initiative.pr on
 grep -qE '^HIMMEL_INITIATIVE=execute,pr$' "$confA" \
-  || fail "caseA: a second leg should APPEND, not replace (got: $(cat "$confA" 2>&1))"
+  || fail "caseA: a second worker should APPEND, not replace (got: $(cat "$confA" 2>&1))"
 run_cfg "$fxA" set initiative.execute off
 grep -qE '^HIMMEL_INITIATIVE=pr$' "$confA" \
   || fail "caseA: toggling execute off should remove ONLY execute (got: $(cat "$confA" 2>&1))"
 run_cfg "$fxA" set initiative.bogus on
-[ "$CFG_RC" -eq 2 ] || fail "caseA: unknown leg should exit 2 (got rc=$CFG_RC): $CFG_OUT"
-grepq "$CFG_OUT" -F 'unknown initiative leg' \
-  || fail "caseA: expected 'unknown initiative leg' message (got: $CFG_OUT)"
+[ "$CFG_RC" -eq 2 ] || fail "caseA: unknown step should exit 2 (got rc=$CFG_RC): $CFG_OUT"
+grepq "$CFG_OUT" -F 'unknown initiative step' \
+  || fail "caseA: expected 'unknown initiative step' message (got: $CFG_OUT)"
 grep -qE '^HIMMEL_INITIATIVE=pr$' "$confA" \
-  || fail "caseA: an unknown-leg rejection must not touch himmel.conf (got: $(cat "$confA" 2>&1))"
-echo "ok: caseA initiative.<leg> set on/off toggles HIMMEL_INITIATIVE in himmel.conf; unknown leg rejected without a write"
+  || fail "caseA: an unknown-worker rejection must not touch himmel.conf (got: $(cat "$confA" 2>&1))"
+echo "ok: caseA initiative.<step> set on/off toggles HIMMEL_INITIATIVE in himmel.conf; unknown step rejected without a write"
 
 # A key only in the legacy .env is still read, and the next set moves it into himmel.conf.
 fxA2="$work/fixtureA2"; build_fixture "$fxA2"
@@ -158,7 +158,7 @@ grep -qE '^HIMMEL_INITIATIVE=execute,pr$' "$confA2" \
   || fail "caseA2: set should carry the legacy tokens into himmel.conf (got: $(cat "$confA2" 2>&1))"
 echo "ok: caseA2 a legacy .env value still reads, and a set moves it into himmel.conf"
 
-# Turning off the last leg must not fall through to a lower layer still carrying it.
+# Turning off the last worker must not fall through to a lower layer still carrying it.
 fxA3="$work/fixtureA3"; build_fixture "$fxA3"
 printf 'HIMMEL_INITIATIVE=execute\n' > "$fxA3/.env"
 CFG_HOME="$work/homeA3"
@@ -166,8 +166,8 @@ run_cfg "$fxA3" set initiative.execute off
 [ "$CFG_RC" -eq 0 ] || fail "caseA3: set initiative.execute off should exit 0 (got rc=$CFG_RC): $CFG_OUT"
 run_cfg "$fxA3" get initiative.execute
 grepq "$CFG_OUT" -F 'initiative.execute: off' \
-  || fail "caseA3: the last legacy leg should read off after set off (got: $CFG_OUT)"
-echo "ok: caseA3 turning off the last leg also clears the lower layer that carried it"
+  || fail "caseA3: the last legacy worker should read off after set off (got: $CFG_OUT)"
+echo "ok: caseA3 turning off the last worker also clears the lower layer that carried it"
 
 # A himmel.conf.local override is the layer a set must change, or the set has no effect.
 fxA4="$work/fixtureA4"; build_fixture "$fxA4"
@@ -204,7 +204,7 @@ grepq "$CFG_OUT" -F 'initiative.pr: on' \
 run_cfg "$fxA" get initiative.execute
 grepq "$CFG_OUT" -F 'initiative.execute: off' \
   || fail "caseB: expected 'initiative.execute: off' (got: $CFG_OUT)"
-echo "ok: caseB initiative get (whole + single leg) reports the persisted himmel.conf state"
+echo "ok: caseB initiative get (whole + single worker) reports the persisted himmel.conf state"
 CFG_HOME=""
 
 # ── Case C: lanes.<id> set on/off — lanes.local.json only, lanes.json untouched ─

@@ -29,7 +29,7 @@ export type RoadmapKey = keyof typeof ROADMAP_FIELD_NAMES;
 export type RoadmapIds = Record<RoadmapKey, string>;
 
 export const THEMES = [
-  'Guard safety', 'Wiring gaps', 'Console hierarchy', 'Ship-loop gates', 'Sessions + locks',
+  'Guard safety', 'Wiring gaps', 'Chief hierarchy', 'Ship-loop gates', 'Sessions + locks',
   'Bank + CI cost', 'Test signal', 'Observability', 'Skill profile validation', 'Install + adopter',
   'Knowledge substrate', 'North Star a', 'North Star b', 'North Star c', 'Off-goal', 'Windows',
 ];

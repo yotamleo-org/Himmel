@@ -3728,7 +3728,7 @@ else
     himmel-update-check-last himmel-update-check-first himmel-latest-release himmel-latest-release.fail; do
     [ -f "$HIMMEL_CACHE_DIR/$_cache_file" ] && echo "  contains: $HIMMEL_CACHE_DIR/$_cache_file"
   done
-  # headed-arm-leg.sh appends one launch record per leg launch to
+  # headed-arm-worker.sh appends one launch record per worker launch to
   # launch-logs/<session>.log here (the cost cohort's source). One line naming
   # the dir + a count, not one line per leg: a long-lived machine has hundreds.
   if [ -d "$HIMMEL_CACHE_DIR/launch-logs" ]; then
@@ -3816,7 +3816,7 @@ fi
 # removed only for units this install created. The stub is the one
 # exception: reverting it restores a broken vendor stub, so it is NEVER
 # removed and its kept line prints unconditionally below, in both modes,
-# ledger or not (console ruling on , 2026-09-23).
+# ledger or not (chief ruling on , 2026-09-23).
 # git-ignored top-level paths the fork's own build creates --
 # `node_modules/` (bun install, scripts/lib/qmd-bin.sh:546) and `dist/` (bun
 # run build -> node scripts/build.mjs, scripts/lib/qmd-bin.sh:546; TS outDir
@@ -3993,7 +3993,7 @@ qmd_unwire_collection() {
   fi
 }
 
-# qmd_print_stub_kept_line <unit_json|""> — unconditional (console ruling):
+# qmd_print_stub_kept_line <unit_json|""> — unconditional (chief ruling):
 # the patched plugin-cache stub is never reverted, so this prints in BOTH
 # the default run and --purge-state, ledger or not.
 qmd_print_stub_kept_line() {
@@ -4097,7 +4097,7 @@ if [ "$LEDGER_OK" -eq 1 ]; then
         # (`class-keep`, `preexisted`, `no-backup`, `linger-preexisted`,
         # etc.) is a policy exemption the ledger recorded deliberately and
         # was never meant to hold a backup for (e.g. the qmd plugin-cache
-        # stub, an earlier change's "never gates a removal" console ruling) --
+        # stub, an earlier change's "never gates a removal" chief ruling) --
         # excluding those too would refuse --purge-state on backups nothing
         # is actually waiting to resolve. The excluded units are re-checked
         # by prov_read_unit_resolved instead, which is what accepts the new

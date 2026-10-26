@@ -78,7 +78,7 @@ describe('--list-commands introspection contract', () => {
     } catch (e) {
       out = String((e as { stderr?: string }).stderr ?? '');
     }
-    expect(out).toContain('needs the console marker');
+    expect(out).toContain('needs the chief marker');
   });
 
   it('works without JIRA_PROJECT_KEY (no network / env dependency)', () => {

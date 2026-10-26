@@ -45,7 +45,7 @@ cat > "$FIX/fixture-run-hook-with-bash.sh" <<'EOF'
 [ "${CLAUDE_END_SESSION_WIKI:-}" = "0" ] || exit 9
 [ -z "${HIMMEL_INITIATIVE-unset}" ]   || exit 9
 # Ambient credentials must be blanked, but the Claude auth token must SURVIVE -
-# blanking that family would break the lane the claude leg needs.
+# blanking that family would break the lane the claude worker needs.
 [ -z "${TELEGRAM_BOT_TOKEN:-}" ]      || exit 9
 [ -z "${JIRA_API_TOKEN:-}" ]          || exit 9
 [ "${CLAUDE_CODE_OAUTH_TOKEN:-}" = "fixture-oauth" ] || exit 9
@@ -114,7 +114,7 @@ EOF
 
 cat > "$BIN/claude" <<'EOF'
 #!/usr/bin/env bash
-# cwd is the demo dir for this leg.
+# cwd is the demo dir for this worker.
 [ -n "${SMOKE_CLAUDE_WITNESS:-}" ] && echo "launched ANTHROPIC_BASE_URL=${ANTHROPIC_BASE_URL:-<unset>}" >> "$SMOKE_CLAUDE_WITNESS"
 sha="$(git rev-parse --short HEAD 2>/dev/null)"
 tok="$(sed -n 's/^SMOKE-TOKEN: //p' DEMO-PROJECT.md 2>/dev/null)"
@@ -173,7 +173,7 @@ chmod +x "$BIN"/codex "$BIN"/claude "$BIN"/pwsh
 
 # Deterministic bank verdict via the documented knobs - no network, no producer.
 # primaries_refreshed_at is an EPOCH INT, not an ISO stamp - anything else is
-# BANK-STALE and the whole claude leg would silently SKIP.
+# BANK-STALE and the whole claude worker would silently SKIP.
 jq -n --argjson now "$(date +%s)" \
     '{five_hour:{utilization:5},seven_day:{utilization:5},primaries_refreshed_at:$now}' > "$TMP/bank.json"
 export CADENCE_BANK_SKIP_REFRESH=1
@@ -279,8 +279,8 @@ else fail "prompt points the agent at branch-controlled content"; fi
 # --- 4: all-clean run --------------------------------------------------------
 run clean --timeout 20
 assert_rc 0 "clean run exits 0" "clean-run: $OUT"
-for leg in codex-exec codex-replay claude-print claude-replay; do
-    if grep -qE "^$leg +PASS" <<<"$OUT"; then pass "$leg PASS"; else fail "$leg not PASS: $OUT"; fi
+for worker in codex-exec codex-replay claude-print claude-replay; do
+    if grep -qE "^$worker +PASS" <<<"$OUT"; then pass "$worker PASS"; else fail "$worker not PASS: $OUT"; fi
 done
 # The clean probe fixture carries a FAILING PLUGIN hook; it must not be counted.
 if grep -qE '^codex-replay +PASS +1 +0' <<<"$OUT"; then
@@ -288,14 +288,14 @@ if grep -qE '^codex-replay +PASS +1 +0' <<<"$OUT"; then
 else
     fail "plugin FAIL leaked into codex-replay: $OUT"
 fi
-# Both replay legs execute REAL guardrails. The fixture hook exits 9 and the
+# Both replay workers execute REAL guardrails. The fixture hook exits 9 and the
 # pwsh stub reports a project FAIL unless they were handed the inert
 # environment, so the two PASS rows above are also the INERT_ENV proof - drop
-# the env prefix from either leg and this run turns red.
+# the env prefix from either worker and this run turns red.
 if grep -qE '^(codex|claude)-replay +PASS' <<<"$OUT" ; then
     pass "INERT_ENV reaches the replayed hooks in both harnesses"
 else
-    fail "a replay leg ran without the inert environment: $OUT"
+    fail "a replay worker ran without the inert environment: $OUT"
 fi
 # Same row, second contract: the fixture hook also exits 9 on a leaked
 # TELEGRAM_BOT_TOKEN / JIRA_API_TOKEN, and on CLAUDE_CODE_OAUTH_TOKEN having
@@ -351,7 +351,7 @@ assert_rc 1 "a bare DONE from claude with no tool-call proof exits 1" "claude-no
 # The rollout is the durable record of hook banners in non-interactive exec; not
 # finding it means the scan silently covered stdout only.
 run codex-norollout --timeout 20
-assert_rc 1 "a codex leg with no matching rollout exits 1" "codex-norollout"
+assert_rc 1 "a codex worker with no matching rollout exits 1" "codex-norollout"
 if grep -q 'no session rollout matched' <<<"$OUT"
 then pass "the missing rollout is named in the NOTE column"; else fail "rollout miss not named: $OUT"; fi
 
@@ -432,7 +432,7 @@ then pass "unreplayed-hook count surfaced in the NOTE column"; else fail "no rep
 # --- 10: claude-replay hook exit codes ---------------------------------------
 # The canned payload is a read-only `git rev-parse`; against the live hook set
 # every hook returns 0. A 2 means a guardrail blocked something benign - the
-# same break the agent legs fail on - so only 0 passes here.
+# same break the agent workers fail on - so only 0 passes here.
 set +e
 OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean FIXTURE_HOOK_RC=2 bash "$SMOKE" --from "$FIX" --timeout 20 2>&1)"; RC=$?
 set -e
@@ -443,7 +443,7 @@ OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean FIXTURE_HOOK_RC=7 bash "$SMOKE" -
 set -e
 assert_rc 1 "a hook exiting 7 (crash) exits 1" "hook-rc7"
 
-# A hook that HANGS must produce a failed leg, not stall the runner. The bound
+# A hook that HANGS must produce a failed worker, not stall the runner. The bound
 # is shrunk here so the case costs seconds instead of the 30s default.
 # Without a GNU timeout the script degrades to unbounded (macOS ships none), and
 # a row that asserts "this terminates" would hang the suite instead of failing:
@@ -466,7 +466,7 @@ else
 fi
 
 # --- 11: vacuous-pass guard ---------------------------------------------------
-# --codex-only with neither codex nor pwsh present: every leg SKIPs, so there is
+# --codex-only with neither codex nor pwsh present: every worker SKIPs, so there is
 # nothing to have passed.
 # The minimal PATH must still find git and jq, or the script would exit 2 on a
 # failed clone and this assertion would pass for the wrong reason. /mingw64/bin
@@ -485,7 +485,7 @@ chmod +x "$EMPTY/jq"
 # hook-smoke-demo.sh's own `command -v pwsh` gate finds that real binary and
 # runs the REAL probe-codex-hooks.ps1 path against $DEMO — a clone of the
 # minimal $FIX fixture, which carries no scripts/ tree at all — so pwsh fails
-# to find that file and the leg reports "probe enumerated no project hooks"
+# to find that file and the worker reports "probe enumerated no project hooks"
 # instead of the SKIP these cases assert.
 #
 # An earlier version of this fix built the masked PATH by symlinking every
@@ -540,7 +540,7 @@ toolbox_add() {  # toolbox_add <tool...> — wrap each tool actually on PATH; sk
 # looked up under the very PATH being constructed here, same as every other
 # name below - the whitelist is not just for the SCRIPT's internal calls.
 # The rest is every external tool hook-smoke-demo.sh's setup/clone/cleanup and
-# codex-exec/codex-replay legs call on the --codex-only path (codex-print/
+# codex-exec/codex-replay workers call on the --codex-only path (codex-print/
 # -replay are RUN_CLAUDE-gated off by --codex-only, so nothing claude-side
 # needs to be listed here). cygpath is Windows/MSYS-only and simply skips
 # where absent, same as every other entry.
@@ -578,7 +578,7 @@ else
     fail "toolbox came out empty - git does not resolve under PATH=\$TOOLBOX, so the vacuous-guard case above passes on a broken PATH, not a masked pwsh"
 fi
 
-# --- 11a: the claude leg fails CLOSED when the native-auth pin is unavailable -
+# --- 11a: the claude worker fails CLOSED when the native-auth pin is unavailable -
 # An unpinned headless launch can be routed through a local proxy with no error,
 # so it must be skipped, never spent. Run a copy of the script
 # from a repo layout that has no scripts/lib.
@@ -588,8 +588,8 @@ set +e
 OUT="$(PATH="$BIN:$PATH" SMOKE_STUB_MODE=clean bash "$FAKEREPO/$(basename "$SMOKE")" --from "$FIX" --timeout 20 2>&1)"; RC=$?
 set -e
 if grep -qE '^claude-print +SKIP.*native-auth pin unavailable' <<<"$OUT"
-then pass "claude leg skips when the native-auth pin cannot be applied"
-else fail "claude leg launched unpinned: $OUT"; fi
+then pass "claude worker skips when the native-auth pin cannot be applied"
+else fail "claude worker launched unpinned: $OUT"; fi
 
 # --- 11a2: exported exit/return/unset/[ shadows must never reach the launch -----
 # the pin's rc and the PIN_OK refusal run through shadowable builtins;
@@ -613,7 +613,7 @@ else fail "shadow control: the shadowed demo never reached the claude launch (va
 if [ -z "$(shadow_smoke http://evil.invalid)" ]; then pass "shadowed builtins + ambient ANTHROPIC_BASE_URL: claude is NOT launched"
 else fail "shadowed builtins let an ambient proxy variable reach the claude launch: $(shadow_smoke http://evil.invalid)"; fi
 
-# --- 11b: an agent leg without its positive control is not a result ----------
+# --- 11b: an agent worker without its positive control is not a result ----------
 # codex present, pwsh absent: codex-exec passes on its own, but nothing has
 # proven a hook fired, so the run must not report success.
 NOPWSH="$TMP/bin-nopwsh"; mkdir -p "$NOPWSH"

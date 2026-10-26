@@ -529,7 +529,7 @@ PY
             echo
             echo "This snapshot is a SAFETY arm off a wedged usage cache, not a work"
             echo "handover: nobody chose this resume and nobody knows what the bank had"
-            echo "left. Resuming the backlog from it is how one leg became a chain of"
+            echo "left. Resuming the backlog from it is how one worker became a chain of"
             echo "self-arming +5h sessions. Your whole job is to land what"
             echo "is already in flight and stop."
             echo
@@ -932,7 +932,7 @@ case "$arm_rc" in
         # Arm failed. Surface it (exit 1 — non-blocking but visible),
         # count it, and after MAX_ARM_FAILURES consecutive failures
         # escalate to the one-shot block anyway: a watchdog that can see
-        # the cliff must still bark when its own legs are broken (C2).
+        # the cliff must still bark when its own workers are broken (C2).
         fails=$(cat "$failcount_file" 2>/dev/null || echo 0)
         case "$fails" in ''|*[!0-9]*) fails=0 ;; esac
         fails=$((fails + 1))

@@ -9,7 +9,7 @@
 #                                line carries none.
 #   status_marker_is_parked WORD true for PARKED-BANK and PARKED-USAGE.
 #
-# The vocabulary and the line shape are scripts/lib/leg-tail-status.sh's: an
+# The vocabulary and the line shape are scripts/lib/worker-tail-status.sh's: an
 # optional HH:MM stamp, optional bold, the word, then end of line or a
 # character that is not a letter, digit or underscore. fixtures/
 # status-marker-rows.tsv pins this, status-marker.mjs and status_marker.py to

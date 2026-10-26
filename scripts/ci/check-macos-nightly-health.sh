@@ -5,11 +5,11 @@
 # cadence), no longer by ci.yml's shell-unit; it certifies that a macOS job
 # actually passed, and reports any that failed. Original motivation:
 # shell-unit-shard set `continue-on-error: true` for macOS/windows so a red
-# nightly leg stayed advisory, but that also meant the matrix ROLLUP the
+# nightly worker stayed advisory, but that also meant the matrix ROLLUP the
 # shell-unit job reads never reflected a macOS failure — the nightly run can
 # read "success" while every macOS shard is red. This queries the Jobs API
 # directly (it reports each job's real `conclusion`, unaffected by
-# continue-on-error) so a red macOS job is never silently masked on the leg
+# continue-on-error) so a red macOS job is never silently masked on the worker
 # that is supposed to catch it. Extracted to a script (same convention as
 # scripts/ci/shell-extended-nightly-issue.sh) so it is unit-testable with a
 # stubbed `gh` instead of only observable on a real nightly run.

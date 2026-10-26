@@ -6,7 +6,7 @@
 #     bash scripts/cr/pr-check-context.sh
 #     bash scripts/cr/pr-check-env.sh CR_CLAUDE_AGENTS
 #
-# for every leg profile (`gateAllow` in scripts/lanes/plugin-profiles.json).
+# for every worker profile (`gateAllow` in scripts/lanes/plugin-profiles.json).
 # .claude/settings.json carries no `Bash(bash scripts/*)`
 # prefix rule; scripts/cr/, scripts/guardrails/ and scripts/hooks/ get no
 # prefix allow at all now, only the exact literals below - but an exact
@@ -21,7 +21,7 @@
 #      scripts/lib/load-dotenv.sh (every file either script runs or sources)
 #      are byte- and mode-equal to the HIMMEL_REPO anchor's.
 #
-# The allow rules match TEXT, so a leg that skipped or misread the runbook
+# The allow rules match TEXT, so a worker that skipped or misread the runbook
 # check auto-ran the branch copy - and a branch that edits the script itself
 # controls the bytes that run before the script's own hand-off to the anchor.
 # This hook classifies a command by the SCRIPT it runs, not by its text: any
@@ -54,7 +54,7 @@
 # deny-on-unreadable mode for those forms, then move the argv and cwd reads.
 #
 # The targets are EVERY gate-allowed scripts/cr script (the
-# `Bash(bash scripts/cr/...` rows of .claude/settings.json and the leg
+# `Bash(bash scripts/cr/...` rows of .claude/settings.json and the worker
 # profiles' gateAllow). The other thirteen are held to the same three
 # conditions over a narrower set: the entry file itself and
 # scripts/cr/anchor-handoff.sh. Each of them sources that hand-off as its first
@@ -81,7 +81,7 @@ GUARDED=$FULL_GUARDED
 
 # the scripts/handover/ gate-writer entries the allow rules also pre-approve
 # as RELATIVE literals (merge-on-green.sh, chief-kit/go.sh, himmel-gate.sh,
-# write-verdict.sh, console-wait.sh)
+# write-verdict.sh, chief-wait.sh)
 # - outside scripts/cr/, so TARGETS above (and the derived/declared check in
 # the test suite, which is scoped to scripts/cr/ allow rows only) does not
 # reach them. Held to the same narrower condition as every TARGETS entry but
@@ -94,7 +94,10 @@ HTARGETS='scripts/handover/merge-on-green.sh
 scripts/handover/console-kit/go.sh scripts/handover/chief-kit/go.sh
 scripts/handover/console-kit/himmel-gate.sh scripts/handover/chief-kit/himmel-gate.sh
 scripts/handover/console-kit/write-verdict.sh scripts/handover/chief-kit/write-verdict.sh
-scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/console-wait.sh'
+scripts/handover/console-kit/chief-wait.sh scripts/handover/chief-kit/chief-wait.sh'
+# Old names that forward to an HTARGETS writer. The forwarder runs its target from
+# the tree, which is never compared, so a forwarder name is refused, never resolved.
+HFORWARDERS='scripts/handover/console-kit/console-wait.sh scripts/handover/chief-kit/console-wait.sh'
 # shellcheck disable=SC2016 # printed verbatim as the remedy, never expanded
 FENCE='if himmel_repo=$(printenv HIMMEL_REPO | grep .); then
     bash "$himmel_repo/scripts/cr/pr-check-context.sh"
@@ -156,10 +159,10 @@ deny() {
                 echo
                 echo "bash \"<himmel_dir>/scripts/handover/chief-kit/write-verdict.sh\" <args>"
                 ;;
-            *console-kit/console-wait* | *chief-kit/console-wait*)
+            *console-kit/console-wait* | *chief-kit/console-wait* | *console-kit/chief-wait* | *chief-kit/chief-wait*)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
                 echo
-                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/console-wait.sh\" <args>"
+                echo "bash \"<himmel_dir>/scripts/handover/chief-kit/chief-wait.sh\" <args>"
                 ;;
             *)
                 echo "Run the anchor's copy by step 0's printed himmel_dir instead, as its own command:"
@@ -211,7 +214,7 @@ rest="${result#*$'\n'}"
 cwd_json="${rest%%$'\n'*}"
 cwd_json="${cwd_json%$'\r'}"
 cmd="${rest#*$'\n'}"
-# A CR is never part of a path a leg means to type: a CRLF payload would glue
+# A CR is never part of a path a worker means to type: a CRLF payload would glue
 # one onto the script name and hide it from the classifier.
 cmd="${cmd//$'\r'/}"
 
@@ -761,10 +764,12 @@ names_target() { # names_target <text> - mentions pr-check, a scripts/cr/
     case "$1" in *[cC]onsole-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/write-verdict*) rc=0 ;; esac
     case "$1" in *[cC]onsole-kit/console-wait*) rc=0 ;; esac
+    case "$1" in *[cC]onsole-kit/chief-wait*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/go*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/himmel-gate*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/write-verdict*) rc=0 ;; esac
     case "$1" in *[cC]hief-kit/console-wait*) rc=0 ;; esac
+    case "$1" in *[cC]hief-kit/chief-wait*) rc=0 ;; esac
     shopt -u nocasematch
     return "$rc"
 }
@@ -1605,7 +1610,7 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     # below makes before trusting it.
     local p t rc=1
     shopt -s nocasematch
-    for p in $HTARGETS; do
+    for p in $HTARGETS $HFORWARDERS; do
         t=${p##*/}
         case "$1" in "$t") rc=0 ;; esac
         # shellcheck disable=SC2254 # $1 IS the pattern: a glob operand
@@ -1617,7 +1622,7 @@ is_htarget() { # is_htarget <basename> - names, or globs onto, an HTARGETS
     return "$rc"
 }
 
-GATE_REL=scripts/handover/console-kit/himmel-gate.sh # old-term-ok: the layout before the move
+GATE_REL=scripts/handover/console-kit/himmel-gate.sh
 GATE_REL_NEW=scripts/handover/chief-kit/himmel-gate.sh
 # shellcheck disable=SC2016 # a regex matching a literal $NAME, never expanded
 CMDPOS_REF_RE='^(.*)\$(\{[A-Za-z_][A-Za-z0-9_]*\}|[A-Za-z_][A-Za-z0-9_]*)(.*)$'
@@ -2186,7 +2191,7 @@ for word in $scan_flat; do
 done
 entries=""
 hentries=""
-KIT_OLD=scripts/handover/console-kit # old-term-ok: the layout before the move
+KIT_OLD=scripts/handover/console-kit
 KIT_NEW=scripts/handover/chief-kit
 kit_new_spelled=0 kit_old_spelled=0
 _c_ops_eq_to_nl "$scan_flat"
@@ -2710,7 +2715,7 @@ prefix=$(gitq rev-parse --show-prefix 2>/dev/null) \
 # 3. every $GUARDED file in the worktree equals the anchor's, file for file,
 # in bytes and in mode. The base is the anchor's WORKING TREE, not a ref: every
 # worktree shares the anchor's git-common-dir, so refs/remotes/origin/main (or
-# any ref) is one `git update-ref` away for the leg under review, while the
+# any ref) is one `git update-ref` away for the worker under review, while the
 # anchor's files are the bytes the scripts' own hand-off execs. Raw blob ids,
 # NOT git diff: diff runs attribute-selected clean filters (repo-configured
 # commands that can also normalise an edit back to the base) and skips paths
@@ -2721,20 +2726,20 @@ prefix=$(gitq rev-parse --show-prefix 2>/dev/null) \
 # paths equal to main's committed tree - compared by ls-tree, which runs no
 # filter. Denies (the safe direction) whenever the primary has not been
 # pulled to the branch's base, or is ahead of it.
-# ponytail: refs/heads/main is trusted as the anchor's commit - a leg that
+# ponytail: refs/heads/main is trusted as the anchor's commit - a worker that
 # moves main itself (update-ref) is fenced by the git-write guards, not here.
 # ponytail: checked at match time only - a background job or another session
 # can swap the bytes between this check and the exec (TOCTOU), not closed here.
 # kit_of <root> - print the directory <root> keeps the kit writers in: a real
-# console-kit/ with nothing named chief-kit beside it (the layout before the
-# move), or a real chief-kit/ with nothing named console-kit beside it. Any
+# chief-kit/ with nothing named chief-kit beside it (the layout before the
+# move), or a real chief-kit/ with nothing named chief-kit beside it. Any
 # other shape (both, neither, or a symlink at either) fails, so neither
 # spelling can run bytes the manifest never hashed.
 kit_of() {
     local h=$1/scripts/handover
-    [ ! -L "$h/chief-kit" ] && [ ! -L "$h/console-kit" ] || return 1 # old-term-ok: the layout before the move
+    [ ! -L "$h/chief-kit" ] && [ ! -L "$h/console-kit" ] || return 1
     if [ -d "$h/console-kit" ] && [ ! -e "$h/chief-kit" ]; then
-        echo console-kit # old-term-ok: the layout before the move
+        echo console-kit
     elif [ -d "$h/chief-kit" ] && [ ! -e "$h/console-kit" ]; then
         echo chief-kit
     else
@@ -2753,7 +2758,7 @@ kit_words() {
 }
 # An awk canon(): a path under the old kit read as its chief-kit/ path, so the
 # manifests of two roots on different layouts compare path for path.
-KIT_CANON_AWK='function canon(p) { if (index(p, "scripts/handover/console-kit/") == 1) return "scripts/handover/chief-kit/" substr(p, 30); return p }' # old-term-ok: the layout before the move
+KIT_CANON_AWK='function canon(p) { if (index(p, "scripts/handover/console-kit/") == 1) return "scripts/handover/chief-kit/" substr(p, 30); return p }'
 manifest() { # manifest <root> <kit> - "<mode> <blob-id> <path>" per regular file, sorted
     local root=$1 kit=$2 odd files execs oids modes prune_dirs g
     # scripts/ and scripts/cr/ themselves must be real directories: a per-file
@@ -2828,14 +2833,14 @@ case "$have" in ODD\ *) deny "a non-regular file or a control-character name sit
 # siblings must still equal the anchor's (the hand-off compares its own bytes
 # with the anchor's at run time and refuses on a difference). pr-check-
 # context.sh / pr-check-env.sh keep the whole-tree equality. The merge-base is
-# computed with grafts and the commit-graph off (both are files a leg can
+# computed with grafts and the commit-graph off (both are files a worker can
 # write in the shared .git, and either can fake a parent), and replace refs
 # off as above.
 # ponytail: a hand-off whose own runtime check finds scripts/guardrails/lib.sh
 # or scripts/lib/load-dotenv.sh moved on main still refuses at run time -
 # merge main forward in that case.
 behind_main_entries_ok() {
-    local wt_head mb mkit=console-kit base e s mentries rest_have rest_want # old-term-ok: the layout before the move
+    local wt_head mb mkit=console-kit base e s mentries rest_have rest_want
     [ "$GUARDED" != "$FULL_GUARDED" ] || return 1
     mentries=$hentries
     for e in $entries; do mentries="$mentries scripts/cr/$e"; done
@@ -2866,7 +2871,7 @@ behind_main_entries_ok() {
             scripts/cr/*) s='.'' "$_ah_d/anchor-handoff.sh" || exit 2' ;;
             scripts/handover/merge-on-green.sh) s='.'' "$_ah_d/../cr/anchor-handoff.sh" || exit 2' ;;
             scripts/handover/chief-kit/go.sh | scripts/handover/chief-kit/write-verdict.sh \
-                | scripts/handover/chief-kit/console-wait.sh) s='.'' "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' ;;
+                | scripts/handover/chief-kit/chief-wait.sh) s='.'' "$_ah_d/../../cr/anchor-handoff.sh" || exit 2' ;;
             *) return 1 ;;
         esac
         # shellcheck disable=SC2016 # the entries' literal `_ah_d` line

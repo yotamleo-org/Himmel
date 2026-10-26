@@ -52,10 +52,10 @@ describe('admissions ledger (HIMMEL-6776)', () => {
 
   it('appends one JSON row per line and reads them back in order', () => {
     process.env['HANDOVER_DIR'] = dir;
-    process.env['HIMMEL_CONSOLE_NAME'] = 'the-console';
+    process.env['HIMMEL_CONSOLE_NAME'] = 'the-chief';
     appendAdmission({ version: 'v1.1.3', key: 'HIMMEL-1', gate: 'critical' });
     const second = appendAdmission({ version: 'v1.1.4', key: 'HIMMEL-2', kind: 'override', reason: 'why' });
-    expect(second).toMatchObject({ key: 'HIMMEL-2', kind: 'override', reason: 'why', actor: 'the-console' });
+    expect(second).toMatchObject({ key: 'HIMMEL-2', kind: 'override', reason: 'why', actor: 'the-chief' });
     expect(readFileSync(join(dir, 'admissions-ledger.jsonl'), 'utf8').trim().split('\n')).toHaveLength(2);
     expect(readAdmissions().map((r) => r.key)).toEqual(['HIMMEL-1', 'HIMMEL-2']);
     expect(readAdmissions()[0]).toMatchObject({ gate: 'critical', version: 'v1.1.3' });

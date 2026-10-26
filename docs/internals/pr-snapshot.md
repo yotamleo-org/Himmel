@@ -24,7 +24,7 @@ A settled, one-page ready-check (TTL 0, so it always reads the PR fresh) uses **
 
 `ready-check.sh --only 7` retains its body-only lint path, without requiring unrelated CI/commit/thread data. The full ready-check consumes the shared snapshot for checks 1, 2, 3, 5, 6 and 7. An unreadable snapshot fails all those checks. CR-ledger check 4 remains local.
 
-Tick and board migration is a separate follow-up slice: their open/recent-merged/epic discovery queries and historical worker PR-state lookups need a shared or REST-backed discovery strategy. `merge-on-green.sh`, `go.sh`, `console-wait.sh`, `gh-ci-cache.sh`, and `check-ci-watch.sh` are unchanged.
+Tick and board migration is a separate follow-up slice: their open/recent-merged/epic discovery queries and historical worker PR-state lookups need a shared or REST-backed discovery strategy. `merge-on-green.sh`, `go.sh`, `chief-wait.sh`, `gh-ci-cache.sh`, and `check-ci-watch.sh` are unchanged.
 
 ## Offline verification
 

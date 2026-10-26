@@ -546,7 +546,7 @@ function buildFlowMetrics(
 // Live session + subagent tracking
 // ===========================================================================
 // Sibling of the flow fold above, NOT a replacement: flows are the five
-// pipeline-cadence legs, this is the operator's interactive/foreground Claude
+// pipeline-cadence workers, this is the operator's interactive/foreground Claude
 // Code sessions and the Task-tool subagents fanned out inside them. Same
 // passive-reader charter — this half only reads `session-runs.jsonl` (written
 // by scripts/observability/session-run-hook.ts from existing hook
@@ -815,7 +815,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
         // the reconciler: a closed terminal never fires SessionEnd, so it
         // otherwise ages into a false-positive HimmelSessionDead page.
         // EXCEPT it still counts if it stranded a subagent (started, never
-        // ended) — a leg that declared closable but left fan-out running is
+        // ended) — a worker that declared closable but left fan-out running is
         // a real loss, not hygiene noise. Same minimal-blast-radius scoping
         // as the TTL gate above: only this gauge changes, never view.status.
         //
@@ -824,7 +824,7 @@ function buildSessionMetrics(path: string, config: ObservabilityConfig, nowMs: n
         // session permanently suppress alerting for it, even if it kept
         // working for hours afterward and later died unexpectedly — a false
         // negative in exactly the alert this ticket fixes (a chain can
-        // acquire/release locks across several legs within one session).
+        // acquire/release locks across several workers within one session).
         // A session legitimately writes a little more transcript after its
         // release (the wrap message, the release output itself), so
         // staleAfterSeconds — already operator-tunable, not a new constant —

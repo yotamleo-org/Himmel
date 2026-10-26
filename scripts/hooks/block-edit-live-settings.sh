@@ -11,9 +11,9 @@
 #
 # Replaces two now-removed `permissions.deny` rules
 # (`Edit(**/.claude/settings.json)`, `Edit(**/.claude/settings.local.json)`)
-# that were too broad: they also blocked a leg from editing the WORKTREE COPY
+# that were too broad: they also blocked a worker from editing the WORKTREE COPY
 # of settings.json, which is harmless — a worktree edit has no effect until
-# it rides that leg's PR through review and merge.
+# it rides that worker's PR through review and merge.
 #
 # Deny requires ALL of:
 #   1. basename is settings.json or settings.local.json
@@ -56,7 +56,7 @@
 #
 # v1 of this arm extracted a "destination argument" per verb (redirect
 # target, cp/mv's last arg, tee/sed -i's write args, a node -e/python3 -c
-# fail-closed carve-out). Console adversarial review (NO-GO on PR #1115)
+# fail-closed carve-out). Chief adversarial review (NO-GO on PR #1115)
 # found per-verb argument extraction cannot be made complete: trailing
 # `;`/`&`/`#`/`2>&1`/`| cat`/`> /dev/null`, a directory destination
 # (`cp x .claude/`, `-t .claude/`), combined short flags (`sed -Ei`),
@@ -750,11 +750,11 @@ deny_message() { # deny_message TOOL_LABEL ORIGINAL_TARGET REASON
 This is a LIVE settings file: user-scope (\$HOME/.claude/) or the PRIMARY
 checkout's .claude/ — a change there takes effect immediately, unreviewed.
 
-Edit the copy inside a worktree instead and let it ride that leg's PR
+Edit the copy inside a worktree instead and let it ride that worker's PR
 through review and merge (it only takes effect after the operator's next
 launch):
 
-    cd .claude/worktrees/<your-leg>
+    cd .claude/worktrees/<your-worker>
     # edit .claude/settings.json there
 
 If this is a heredoc that only MENTIONS a settings path in its body (the
@@ -1823,7 +1823,7 @@ EOF
 # shell-behaviour variables, and each allowlisted tool's own environment.
 # ponytail: a denylist — a variable a future allowlisted tool reads is not
 # here until someone adds it; the upgrade path is to allow only lowercase
-# names, which needs the console repros (`SP=…`) to change first.
+# names, which needs the chief repros (`SP=…`) to change first.
 _tok_sensitive_name() {
     case "$1" in
         PATH|IFS|HOME|SHELL|ENV|CDPATH|TMPDIR|TZ|LANG|LANGUAGE|POSIXLY_CORRECT) return 0 ;;

@@ -54,7 +54,7 @@ export FLEET_PS_CMD="$FLEET_PS_STUB"
 # non-dry-run arm) under ${XDG_RUNTIME_DIR:-/tmp}/himmel-fleet-$(id -u) — a
 # real, per-user, machine-shared directory this suite never pinned. Without
 # isolating it, this suite's real arms would both accumulate reservations of
-# their own across cases AND collide with any other legs/consoles actually
+# their own across cases AND collide with any other workers/chiefs actually
 # arming on this machine right now. Both hermetic (own slot dir) and bypassed
 # (this suite doesn't test the fleet cap, only the worker-census guards).
 #

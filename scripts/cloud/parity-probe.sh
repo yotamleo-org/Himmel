@@ -13,7 +13,7 @@
 # (a gap, or a bypass variable set in this shell), `ERR rc=<n>` otherwise. This
 # proves the guard SCRIPT behaves in this environment; whether the harness
 # fires it on a real tool call is the `hooks-wired` row plus a session's own
-# refused call. Leg-only guards are probed with HIMMEL_CONSOLE_LEG=1.
+# refused call. Worker-only guards are probed with HIMMEL_CONSOLE_LEG=1.
 #
 # Usage: parity-probe.sh [--no-net]   (--no-net skips the egress probes)
 # Test seam: HIMMEL_CLOUD_ROOT is the tree to probe (default: this script's repo).
@@ -122,8 +122,8 @@ probe block-read-secrets.sh "$(bash_in 'cat ~/.ssh/id_rsa')"
 probe block-rogue-claude-schedule.sh "$(bash_in 'schtasks /create /tn X /tr claude.exe /sc ONCE')"
 probe block-bare-qmd-query.sh "$(bash_in 'qmd '"query"' foo')" -u QMD_UNBOUNDED_OK
 probe block-edit-live-settings.sh "{\"tool_name\":\"Write\",\"tool_input\":{\"file_path\":\"${HOME:-/root}/.claude/settings.json\",\"content\":\"{}\"}}"
-probe block-leg-askuserquestion.sh '{"tool_name":"AskUserQuestion","tool_input":{}}' HIMMEL_CONSOLE_LEG=1
-probe guard-leg-wakeup.sh '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":60}}' HIMMEL_CONSOLE_LEG=1
+probe block-worker-askuserquestion.sh '{"tool_name":"AskUserQuestion","tool_input":{}}' HIMMEL_CONSOLE_LEG=1
+probe guard-worker-wakeup.sh '{"tool_name":"ScheduleWakeup","tool_input":{"delaySeconds":60}}' HIMMEL_CONSOLE_LEG=1
 probe redirect-webfetch-walled-hosts.sh '{"tool_name":"WebFetch","tool_input":{"url":"https://x.com/a/status/1"}}'
 
 # ----------------------------------------------- pre-commit + attestation gates

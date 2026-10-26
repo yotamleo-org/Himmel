@@ -50,9 +50,9 @@
 # ledger is treated as "not yet triggered" (post proceeds) and a failed
 # write after posting only warns.
 #
-# CR_TRIGGER_SUPPRESS: a console's opt-out from posting the
-# CodeRabbit trigger for one leg (a PR the App will never review, or one
-# the console wants left unreviewed). CodeRabbit is best effort:
+# CR_TRIGGER_SUPPRESS: a chief's opt-out from posting the
+# CodeRabbit trigger for one worker (a PR the App will never review, or one
+# the chief wants left unreviewed). CodeRabbit is best effort:
 # this knob never rations or sequences its reviews, and no
 # caller waits on one. Checked ONCE here, in cr_trigger_post_review —
 # the single function BOTH hooks (and the forge seam) route every post
@@ -61,7 +61,7 @@
 # the same slot for the same PR. Suppression is SAFE to add precisely
 # because check-ci.sh's skipped/absent arms already refuse green until a
 # genuine review lands at head (see the header above) — a suppressed
-# trigger can only DEFER the review to a moment the console chooses, never
+# trigger can only DEFER the review to a moment the chief chooses, never
 # silently ship one unreviewed. That backstop is also why suppression must
 # not record the ledger: the review is deferred, not satisfied, so a later
 # un-suppressed call for the same (repo, PR, SHA) must still be free to
@@ -72,8 +72,8 @@
 # was left to agent discretion and every open PR went unreviewed, because
 # CodeRabbit's "Review skipped: automatic reviews are disabled" status is
 # indistinguishable from a clean review to a gate reading only the status.
-# A default-off seam here would recreate that exact failure; a console must
-# deliberately set it per leg (scripts/handover/chief-kit/headed-arm-leg.sh's
+# A default-off seam here would recreate that exact failure; a chief must
+# deliberately set it per worker (scripts/handover/chief-kit/headed-arm-worker.sh's
 # WORKER_SESSION_SUPPRESS_CR_TRIGGER, folded to this var the same way WORKER_SESSION_REPO folds to
 # HEADED_ARM_REPO).
 #
@@ -306,7 +306,7 @@ cr_trigger_post_review() {
     local sha="$1" num="$2" repo_path="$3" scan_existing="$4" existing
 
     # CR_TRIGGER_SUPPRESS: see the header note above for the
-    # full rationale. Checked first — cheapest, and a suppressed leg should
+    # full rationale. Checked first — cheapest, and a suppressed worker should
     # never pay for the foreign-repo / gh round-trips below just to no-op.
     # Deliberately does NOT touch the ledger: the trigger is deferred, not
     # satisfied, so a later un-suppressed call for this exact

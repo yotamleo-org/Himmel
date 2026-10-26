@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/test-fleet-scorecard.sh - RED/GREEN suite for
-# fleet-scorecard.sh over fixtures/fleet-scorecard/ (2 claudex legs, 2 native
-# legs). House check style, per test-scorecard.sh.
+# fleet-scorecard.sh over fixtures/fleet-scorecard/ (2 claudex workers, 2 native
+# workers). House check style, per test-scorecard.sh.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ and python3; it
 # runs under git bash unchanged.
@@ -43,24 +43,24 @@ run() {
 OUT=$(run --since 2026-10-25T00:00:00Z 2>/dev/null); RC=$?
 check "runs over the fixture cohort (exit 0)" "$RC" "0"
 
-# --- (a) the DoD RED control: a planted claudex leg with one judge NO-GO and
+# --- (a) the DoD RED control: a planted claudex worker with one judge NO-GO and
 # two chief interventions (a FINDING ask and a nudge; the ruling that answers
 # the ask is not a third, and the nudge logged both in the doc and in the chief
 # doc counts once)
-check "(a) planted leg is on the claudex lane" "$(cell "$OUT" "Output quality" N9001 3)" "claudex"
-check "(a) planted leg judge cell shows NO-GO=1 with its blocker and major" \
+check "(a) planted worker is on the claudex lane" "$(cell "$OUT" "Output quality" N9001 3)" "claudex"
+check "(a) planted worker judge cell shows NO-GO=1 with its blocker and major" \
     "$(cell "$OUT" "Output quality" N9001 7)" "GO 1, NO-GO 1 (blocker 1, major 1)"
-check "(a) planted leg shows interventions=2" "$(cell "$OUT" "Fleet management" N9001 6)" "2"
-check "(a) planted leg breakdown asks/rulings/nudges/expansions" \
+check "(a) planted worker shows interventions=2" "$(cell "$OUT" "Fleet management" N9001 6)" "2"
+check "(a) planted worker breakdown asks/rulings/nudges/expansions" \
     "$(cell "$OUT" "Fleet management" N9001 7)" "1/1/1/0"
 check "(a) a nudge only in the worker doc and another only in the chief doc count twice" \
     "$(cell "$OUT" "Fleet management" N9003 7)" "1/1/2/0"
-check "(a) a console GO record is not a judge verdict" "$(cell "$OUT" "Output quality" N9003 7)" "GO 1, NO-GO 0"
+check "(a) a chief GO record is not a judge verdict" "$(cell "$OUT" "Output quality" N9003 7)" "GO 1, NO-GO 0"
 
-# --- (b) both halves print for every leg; a missing source is n/a with its
+# --- (b) both halves print for every worker; a missing source is n/a with its
 # reason, never 0
-check "(b) every leg has an output-quality row" "$(rows "$OUT" "Output quality")" "4"
-check "(b) every leg has a fleet-management row" "$(rows "$OUT" "Fleet management")" "4"
+check "(b) every worker has an output-quality row" "$(rows "$OUT" "Output quality")" "4"
+check "(b) every worker has a fleet-management row" "$(rows "$OUT" "Fleet management")" "4"
 check "(b) CR findings per reviewed head" "$(cell "$OUT" "Output quality" N9001 8)" "crit 0, imp 1, sug 1 over 3 heads"
 check "(b) rounds to clean" "$(cell "$OUT" "Output quality" N9001 9)" "2"
 check "(b) pushes after the first READY" "$(cell "$OUT" "Output quality" N9001 10)" "1"
@@ -78,10 +78,10 @@ check "(b) stalls read the BLOCKED bullets and the chief idle ticks" \
 check "(b) guard denials joined by worktree" "$(cell "$OUT" "Fleet management" N9001 11)" "2"
 check "(b) an unreadable denial row is reported, not dropped" \
     "$(printf '%s\n' "$OUT" | grep '^- denials:')" "- denials: $FX/denials.jsonl (1 unreadable row)"
-check "(b) cost-eq per merged PR from the leg-burn line" "$(cell "$OUT" "Fleet management" N9001 12)" "1200.0k"
-check "(b) an in-flight leg is marked" "$(cell "$OUT" "Output quality" N9004 6)" "in flight"
-check "(b) a leg with no PR has n/a judge, not 0" "$(cell "$OUT" "Output quality" N9004 7)" "n/a (no PR)"
-check "(b) an unmerged leg has n/a cost, not 0" "$(cell "$OUT" "Fleet management" N9004 12)" "n/a (not merged)"
+check "(b) cost-eq per merged PR from the worker-burn line" "$(cell "$OUT" "Fleet management" N9001 12)" "1200.0k"
+check "(b) an in-flight worker is marked" "$(cell "$OUT" "Output quality" N9004 6)" "in flight"
+check "(b) a worker with no PR has n/a judge, not 0" "$(cell "$OUT" "Output quality" N9004 7)" "n/a (no PR)"
+check "(b) an unmerged worker has n/a cost, not 0" "$(cell "$OUT" "Fleet management" N9004 12)" "n/a (not merged)"
 
 NOLEDGER=$(run --since 2026-10-25T00:00:00Z --cr-ledger "$FX/absent.jsonl" 2>/dev/null)
 check "(b) a missing CR ledger is n/a with its reason" \
@@ -109,7 +109,7 @@ check "(c) claudex lane row" "$(printf '%s\n' "$OUT" | grep '^| claudex |')" \
 check "(c) native lane row" "$(printf '%s\n' "$OUT" | grep '^| native |')" \
     "| native | 2 | 1 | 1 | 1 (n/a 1) | 0 (n/a 1) | 0 (n/a 1) | 0 (n/a 1) | 2 (n/a 1) | 2 | 3.5m | 90m | 3 | 1.5 | 1 | 1600.0k |"
 SINCE=$(run --since 2026-10-25T16:05:00Z 2>/dev/null)
-check "(c) --since keeps only legs launched at or after it" "$(rows "$SINCE" "Fleet management")" "1"
+check "(c) --since keeps only workers launched at or after it" "$(rows "$SINCE" "Fleet management")" "1"
 
 # --- (d) the report goes to stdout or --out <local path>, nothing else
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/fleet-scorecard.XXXXXX") || exit 1

@@ -396,7 +396,7 @@ for knob in MEMORY_LINE_CEIL MEMORY_LINE_MAX; do
     else echo "FAIL S12 $knob default drifted (guard='$g' state='$s')"; FAILED=1; fi
 done
 
-# --- FAIL-OPEN: the state check runs on EVERY session start (consoles and legs
+# --- FAIL-OPEN: the state check runs on EVERY session start (chiefs and workers
 #     included). Whatever is wrong with the memory dir, the hook exits 0 and
 #     stays silent — a memory advisory must never stop a session from starting.
 #     Each fixture below is OVER the ceiling where it can be, so silence is the

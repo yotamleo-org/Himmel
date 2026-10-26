@@ -1895,7 +1895,7 @@ cp.spawnSync = function (cmd, args, opts) {
 if (process.env.AB3_SIGNAL_AFTER_STAGE === '1') {
   const realLog = console.log;
   console.log = function (msg) {
-    const r = realLog.apply(console, arguments);
+    const r = realLog.apply(chief, arguments);
     if (String(msg).startsWith('lane profile: allowlisted')) process.kill(process.pid, 'SIGTERM');
     return r;
   };

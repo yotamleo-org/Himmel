@@ -21,7 +21,7 @@ set -uo pipefail
 HOOKS_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$HOOKS_DIR/../.." && pwd)"
 
-# A console leg's shell exports guard overrides (INLINE_IMPL_OK,
+# A chief worker's shell exports guard overrides (INLINE_IMPL_OK,
 # HIMMEL_CONSOLE_LEG, HIMMEL_HOOK_INTEGRITY_BYPASS_OK, ...) that reach the hook
 # under test and flip every "override UNSET" case. Clear them before any case
 # runs; a case that needs one still sets it explicitly on its own invocation.

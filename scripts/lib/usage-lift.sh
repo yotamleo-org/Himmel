@@ -16,7 +16,7 @@
 #
 # State file: ${USAGE_LIFT_FILE:-$HOME/.himmel/state/usage-lift.json}
 #   {"window":"seven_day","until":<epoch>,"account":"<hash>","set_by":..,"set_at":..}
-# The old names stay read: BANK_LIFT_FILE names the file when USAGE_LIFT_FILE is
+# The old names stay read: BANK_LIFT_FILE (while HIMMEL_LEGACY_NAMES is on) names the file when USAGE_LIFT_FILE is
 # unset, and with neither set the old bank-lift.json beside it is read too. When
 # both files exist each must be valid and the stricter one wins; `set` retires
 # the old file and `clear` removes both. bank-lift.sh forwards here.
@@ -25,8 +25,12 @@ _UL_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=usage-cache-identity.sh
 # shellcheck disable=SC1091
 . "$_UL_DIR/usage-cache-identity.sh"
+# shellcheck source=env-alias.sh
+# shellcheck disable=SC1091
+. "$_UL_DIR/env-alias.sh"
 
-_usage_lift_env_file() { printf '%s' "${USAGE_LIFT_FILE:-${BANK_LIFT_FILE:-}}"; }
+# old names, read only while HIMMEL_LEGACY_NAMES is on
+_usage_lift_env_file() { alias_env USAGE_LIFT_FILE BANK_LIFT_FILE; printf '%s' "${USAGE_LIFT_FILE:-}"; }
 usage_lift_file() { local f; f="$(_usage_lift_env_file)"; printf '%s' "${f:-${HOME:-/tmp}/.himmel/state/usage-lift.json}"; }
 # The old default path, read only when no file env names the lift; empty otherwise.
 _usage_lift_old_file() { [ -n "$(_usage_lift_env_file)" ] || printf '%s' "${HOME:-/tmp}/.himmel/state/bank-lift.json"; }
@@ -53,7 +57,7 @@ _usage_lift_epoch() {
   return 1
 }
 
-_usage_lift_default_cache() { printf '%s' "${CADENCE_USAGE_CACHE:-${CADENCE_BANK_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}}"; }
+_usage_lift_default_cache() { alias_env CADENCE_USAGE_CACHE CADENCE_BANK_CACHE; printf '%s' "${CADENCE_USAGE_CACHE:-${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}}"; }
 
 # _usage_lift_trusted <file>: owned by the current uid and not group/world-writable.
 _usage_lift_trusted() {

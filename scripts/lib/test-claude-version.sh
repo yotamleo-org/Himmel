@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lib/test-claude-version.sh - suite for scripts/lib/claude-version.sh and
-# console_context_model_takes_1m_suffix.
+# chief_context_model_takes_1m_suffix.
 #
 # Fixtures: `claude --version` prints `2.1.296 (Claude Code)` on the station that
 # wrote this (copied from the real binary, not hand-written); the stub claude
@@ -51,8 +51,8 @@ msg="$(claude_floor_message 2.1.200)"
 case "$msg" in *2.1.200*"$CLAUDE_MIN_VERSION"*"claude update"*) echo "ok - message names versions and the remedy" ;; *) echo "FAIL - message: [$msg]"; fails=$((fails+1)) ;; esac
 
 # --- [1m] only where a model needs it ------------------------------------------
-yes_model() { console_context_model_takes_1m_suffix "$2" && echo "ok - $1" || { echo "FAIL - $1: [$2] should take [1m]"; fails=$((fails+1)); }; }
-no_model()  { console_context_model_takes_1m_suffix "$2" && { echo "FAIL - $1: [$2] must NOT take [1m]"; fails=$((fails+1)); } || echo "ok - $1"; }
+yes_model() { chief_context_model_takes_1m_suffix "$2" && echo "ok - $1" || { echo "FAIL - $1: [$2] should take [1m]"; fails=$((fails+1)); }; }
+no_model()  { chief_context_model_takes_1m_suffix "$2" && { echo "FAIL - $1: [$2] must NOT take [1m]"; fails=$((fails+1)); } || echo "ok - $1"; }
 yes_model "opus 4.6 full id"            claude-opus-4-6
 yes_model "sonnet 4.6 full id"          claude-sonnet-4-6
 yes_model "sonnet 4.6 mixed case"       Claude-Sonnet-4-6

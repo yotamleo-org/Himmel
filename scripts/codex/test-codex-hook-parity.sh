@@ -167,10 +167,10 @@ CLAUDE_END_ONLY=(
   session-run-hook.ts       # deliberate: the session-runs census is Claude-scoped, and the
                             # Codex adapter resolves scripts/hooks/<name>.sh only - a bun .ts
                             # entrypoint has no adapter shape.
-  stop-console-idle-guard.sh # deliberate: console detection reads
+  stop-chief-idle-guard.sh # deliberate: chief detection reads
                              # queue-lock.sh's persisted token, keyed on
                              # CLAUDE_CODE_SESSION_ID -- a Claude Code-specific env
-                             # var the Codex lane never sets -- and the console
+                             # var the Codex lane never sets -- and the chief
                              # kit (tick.sh, ACTION ZERO) this guard exists to
                              # enforce is itself Claude-only (chief-kit/tick.sh's
                              # own header: "Linux-only... Bash 3.2-compatible" with

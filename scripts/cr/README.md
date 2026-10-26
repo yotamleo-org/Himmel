@@ -22,7 +22,7 @@ What it asserts, in order:
 2. A posted inline review finding plus a ledger row: FAILs on check 3 (open thread).
 3. After the thread is resolved and the repo's own status context settles:
    `ready-check.sh` PASSes.
-4. `merge-on-green.sh --dry-run` as a console leg (`HIMMEL_CONSOLE_LEG=1`) refuses
+4. `merge-on-green.sh --dry-run` as a chief worker (`HIMMEL_CONSOLE_LEG=1`) refuses
    (rc 17 or 18) and the PR stays OPEN.
 
 Each run closes its canned PR and any leftover `test/e2e-*` PRs. The repo is
@@ -42,6 +42,6 @@ Notes:
   is visible on the next read.
 - **Known ceiling.** On a free-plan private repo both required-check reads return
   HTTP 403, so `check-ci.sh` fails closed and the merge refuses at exit 18 before
-  the GO gate; the merge-with-GO leg is not reachable.
+  the GO gate; the merge-with-GO worker is not reachable.
 
 `scripts/cr/test-live-gate-e2e.sh` holds the offline rows (the refusals only).

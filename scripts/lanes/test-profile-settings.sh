@@ -44,9 +44,9 @@ bash "$PS" no-such-profile >/dev/null 2>&1; rc=$?
 
 # --mcp-config resolves the profile's mcpServers allowlist to a
 # content-addressed --mcp-config file; a profile with no allowlist prints nothing.
-M=$(bash "$PS" console --mcp-config); rc=$?
-[ "$rc" = 0 ] && ok "T6 console --mcp-config rc=0" || bad "T6 rc=$rc"
-case "$M" in */console.mcp.json) ok "T6 basename is <profile>.mcp.json" ;; *) bad "T6 basename: $M" ;; esac
+M=$(bash "$PS" chief --mcp-config); rc=$?
+[ "$rc" = 0 ] && ok "T6 chief --mcp-config rc=0" || bad "T6 rc=$rc"
+case "$M" in */chief.mcp.json) ok "T6 basename is <profile>.mcp.json" ;; *) bad "T6 basename: $M" ;; esac
 if [ -f "$M" ] && grep -q '"qmd"' "$M" && grep -q '"himmel-bus"' "$M" && ! grep -q '"graphify"' "$M"; then
     ok "T6 file holds exactly the profile's servers (qmd, himmel-bus; no graphify)"
 else bad "T6 file content wrong: $M"; fi
@@ -64,12 +64,12 @@ bash "$PS" no-such-profile --mcp-config >/dev/null 2>&1; rc=$?
 python3 - "$HERE/plugin-profiles.json" "$TMP/registry-c.json" <<'E'
 import json, sys
 d = json.load(open(sys.argv[1]))
-d["profiles"]["console"]["mcpServers"] = ["qmd", "no-such-server-5310"]
+d["profiles"]["chief"]["mcpServers"] = ["qmd", "no-such-server-5310"]
 json.dump(d, open(sys.argv[2], "w"))
 E
-PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" console >/dev/null 2>&1; rc=$?
+PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" chief >/dev/null 2>&1; rc=$?
 [ "$rc" = 0 ] && ok "T9 undefined mcp server: settings still resolve (rc=0)" || bad "T9 settings rc=$rc"
-O=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" console --mcp-config 2>/dev/null); rc=$?
+O=$(PLUGIN_PROFILES_REGISTRY="$TMP/registry-c.json" bash "$PS" chief --mcp-config 2>/dev/null); rc=$?
 [ "$rc" = 2 ] && [ -z "$O" ] && ok "T9 undefined mcp server: --mcp-config fails closed (rc=2, no path)" || bad "T9 mcp rc=$rc out=[$O]"
 
 if [ "$FAILED" -gt 0 ]; then echo "---"; echo "FAIL $FAILED case(s)"; exit 1; fi

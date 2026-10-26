@@ -68,27 +68,27 @@ printf 'v1\n' >"$repo/src/thing.txt"
 # Each fixture is its own anchor (HIMMEL_REPO), so the relative entry runs
 # the fixture's copy rather than handing off.
 
-# 1. Leg inactive (HIMMEL_DOC_FRESHNESS unset) -> no drift output at all,
-# even on a branch that WOULD show drift if the leg were on.
+# 1. Worker inactive (HIMMEL_DOC_FRESHNESS unset) -> no drift output at all,
+# even on a branch that WOULD show drift if the worker were on.
 out1="$(cd "$repo" && git checkout -q feature && env -u HIMMEL_DOC_FRESHNESS HIMMEL_REPO="$repo" bash scripts/cr/doc-freshness-advisory.sh)"
 rc1=$?
-check "$out1" "" "T1 leg inactive: no output"
-check "$rc1" "0" "T1 leg inactive: exit 0"
+check "$out1" "" "T1 worker inactive: no output"
+check "$rc1" "0" "T1 worker inactive: exit 0"
 
-# 2. Leg active with drift -> the drift lines are printed AND exit is still 0.
+# 2. Worker active with drift -> the drift lines are printed AND exit is still 0.
 want2='Doc-freshness (advisory) - mapped sources changed without their docs:
   - src/thing.txt -> update docs/thing.md
 (Advisory only - does not block this PR.)'
 out2="$(cd "$repo" && git checkout -q feature && env HIMMEL_REPO="$repo" HIMMEL_DOC_FRESHNESS=advise bash scripts/cr/doc-freshness-advisory.sh)"
 rc2=$?
-check "$out2" "$want2" "T2 leg active with drift: drift lines printed"
-check "$rc2" "0" "T2 leg active with drift: exit 0 (never blocks)"
+check "$out2" "$want2" "T2 worker active with drift: drift lines printed"
+check "$rc2" "0" "T2 worker active with drift: exit 0 (never blocks)"
 
-# 3. Leg active with no drift -> the no-drift line, exit 0.
+# 3. Worker active with no drift -> the no-drift line, exit 0.
 out3="$(cd "$repo" && git checkout -q feature-nodrift && env HIMMEL_REPO="$repo" HIMMEL_DOC_FRESHNESS=advise bash scripts/cr/doc-freshness-advisory.sh)"
 rc3=$?
-check "$out3" "Doc-freshness: no mapped-source-vs-doc drift in range." "T3 leg active, no drift: no-drift line"
-check "$rc3" "0" "T3 leg active, no drift: exit 0"
+check "$out3" "Doc-freshness: no mapped-source-vs-doc drift in range." "T3 worker active, no drift: no-drift line"
+check "$rc3" "0" "T3 worker active, no drift: exit 0"
 
 # --- fixture_nolib: same script tree, minus scripts/lib/doc-freshness.sh ---
 nolib="$tmp/fixture_nolib"

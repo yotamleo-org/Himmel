@@ -1,5 +1,5 @@
 // scripts/lanes/claudex-session-root.mjs
-// The one resolver for where claudex worker sessions live. Claude Code refuses
+// The one resolver for where claudex workers live. Claude Code refuses
 // a worker's Write under a `.claude` directory (no allow rule overrides it), so
 // the default root is under ~/.himmel, not ~/.claude/handover/bridge.
 // An explicit bridge root (BRIDGE_ROOT, or --bridge-root) wins and has no legacy.

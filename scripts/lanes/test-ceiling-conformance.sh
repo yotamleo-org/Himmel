@@ -56,48 +56,48 @@ pgrep_x_stub() {
 
 run_primary() { CLAUDE_SESSIONS_PROC="$W/proc" PATH="$W/bin:$PATH" bash "$SUT"; }
 
-# (a) two pinned legs + one console -> ceiling=ok
+# (a) two pinned workers + one chief -> ceiling=ok
 mkcmdline 101 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-111-legN61-2026-09-13 work
 mkcmdline 102 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-222-legN62-2026-09-13 work
-mkcmdline 103 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13A-console work
+mkcmdline 103 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13A-chief work
 pgrep_x_stub 101 102 103
 out_a="$(run_primary)"; rc_a=$?
-if [ "$rc_a" -eq 0 ]; then pass 'two pinned legs + one console exits 0'; else fail "exits 0 (rc=$rc_a)"; fi
-contains 'two pinned legs + one console -> ceiling=ok' "$out_a" 'ceiling=ok'
-contains 'per-session line for a pinned leg' "$out_a" 'HIMMEL-111-legN61-2026-09-13 200000'
-contains 'per-session line for the console' "$out_a" 'HIMMEL-nextleg-2026-09-13A-console auto'
+if [ "$rc_a" -eq 0 ]; then pass 'two pinned workers + one chief exits 0'; else fail "exits 0 (rc=$rc_a)"; fi
+contains 'two pinned workers + one chief -> ceiling=ok' "$out_a" 'ceiling=ok'
+contains 'per-session line for a pinned worker' "$out_a" 'HIMMEL-111-legN61-2026-09-13 200000'
+contains 'per-session line for the chief' "$out_a" 'HIMMEL-nextleg-2026-09-13A-chief auto'
 
-# (b) one leg with --autocompact auto -> DRIFT naming it
+# (b) one worker with --autocompact auto -> DRIFT naming it
 mkcmdline 104 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-333-legN63-2026-09-13 work
 pgrep_x_stub 104
 out_b="$(run_primary)"
-contains 'a leg with --autocompact auto is DRIFT' "$out_b" 'ceiling=DRIFT:HIMMEL-333-legN63-2026-09-13'
+contains 'a worker with --autocompact auto is DRIFT' "$out_b" 'ceiling=DRIFT:HIMMEL-333-legN63-2026-09-13'
 
-# (c) a leg with no --autocompact at all -> DRIFT
+# (c) a worker with no --autocompact at all -> DRIFT
 mkcmdline 105 claude --model claude-sonnet-5 -n HIMMEL-444-legN64-2026-09-13 work
 pgrep_x_stub 105
 out_c="$(run_primary)"
-contains 'a leg with no --autocompact at all is DRIFT' "$out_c" 'ceiling=DRIFT:HIMMEL-444-legN64-2026-09-13'
-contains 'a leg with no --autocompact prints unset' "$out_c" 'HIMMEL-444-legN64-2026-09-13 unset'
+contains 'a worker with no --autocompact at all is DRIFT' "$out_c" 'ceiling=DRIFT:HIMMEL-444-legN64-2026-09-13'
+contains 'a worker with no --autocompact prints unset' "$out_c" 'HIMMEL-444-legN64-2026-09-13 unset'
 
-# (d) a non-leg non-console `claude -n foo --autocompact auto` -> DRIFT
+# (d) a non-worker non-chief `claude -n foo --autocompact auto` -> DRIFT
 mkcmdline 106 claude --autocompact auto -n foo work
 pgrep_x_stub 106
 out_d="$(run_primary)"
-contains 'a non-leg non-console name with auto is DRIFT' "$out_d" 'ceiling=DRIFT:foo'
+contains 'a non-worker non-chief name with auto is DRIFT' "$out_d" 'ceiling=DRIFT:foo'
 
-# (e) the console row alone -> ok
-mkcmdline 107 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13B-console work
+# (e) the chief row alone -> ok
+mkcmdline 107 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13B-chief work
 pgrep_x_stub 107
 out_e="$(run_primary)"
-contains 'the console row alone is ok' "$out_e" 'ceiling=ok'
+contains 'the chief row alone is ok' "$out_e" 'ceiling=ok'
 
 # (e2) a chief row (-n name ends -chief) is exempt the same way
 mkcmdline 107 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-10-25A-roadmap-chief work
 pgrep_x_stub 107
 out_e2="$(run_primary)"
 contains 'the chief row alone is ok' "$out_e2" 'ceiling=ok'
-mkcmdline 107 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13B-console work
+mkcmdline 107 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13B-chief work
 
 # (f) pgrep itself fails (rc>1, a scan failure, not "no processes") -> ceiling=?
 # (a scan failure must not read as ceiling=ok).
@@ -125,7 +125,7 @@ chmod +x "$W/bin/pgrep"
 out_g="$(run_primary)"
 contains 'pgrep rc=1 (no processes matched) still reports ceiling=ok' "$out_g" 'ceiling=ok'
 
-# (h) a real --autocompact auto leg whose -p free text contains
+# (h) a real --autocompact auto worker whose -p free text contains
 # the literal substring "--autocompact 200000" must still report auto/DRIFT
 # -- the spoof text is one argv element, never the literal flag token.
 mkcmdline 108 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-555-legN70-2026-09-13 \
@@ -133,7 +133,7 @@ mkcmdline 108 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-555-le
 pgrep_x_stub 108
 out_h="$(run_primary)"
 contains 'a spoofed --autocompact in free-text argv does not override the real value' "$out_h" 'HIMMEL-555-legN70-2026-09-13 auto'
-contains 'the spoofed leg still reports its real DRIFT' "$out_h" 'ceiling=DRIFT:HIMMEL-555-legN70-2026-09-13'
+contains 'the spoofed worker still reports its real DRIFT' "$out_h" 'ceiling=DRIFT:HIMMEL-555-legN70-2026-09-13'
 
 # (i) #1335: /proc absent (CLAUDE_SESSIONS_PROC pointing nowhere) falls
 # back to `pgrep -x claude` (bare pids) + `ps -o pid=,args= -p <pids>` (full
@@ -150,7 +150,7 @@ case "$*" in
     printf '%s\n' \
       '101 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-111-legN61-2026-09-13 work' \
       '102 claude --model claude-sonnet-5 --autocompact 200000 -n HIMMEL-222-legN62-2026-09-13 work' \
-      '103 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13A-console work'
+      '103 claude --model claude-fable-5-1 --autocompact auto -n HIMMEL-nextleg-2026-09-13A-chief work'
     ;;
   *) exit 1 ;;
 esac
@@ -158,7 +158,7 @@ STUB
 chmod +x "$W/bin/ps"
 out_i="$(CLAUDE_SESSIONS_PROC="$W/no-such-proc" PATH="$W/bin:$PATH" bash "$SUT")"
 contains 'the /proc-absent fallback still reports ceiling=ok' "$out_i" 'ceiling=ok'
-contains 'the /proc-absent fallback still prints a pinned leg line' "$out_i" 'HIMMEL-111-legN61-2026-09-13 200000'
+contains 'the /proc-absent fallback still prints a pinned worker line' "$out_i" 'HIMMEL-111-legN61-2026-09-13 200000'
 
 # (j) claude_sessions() unit row -- a fake proc root with two
 # processes prints exactly two TAB lines with the right fields (cmdline
@@ -170,8 +170,8 @@ sess_out="$(CLAUDE_SESSIONS_PROC="$W/proc" PATH="$W/bin:$PATH" bash -c '
 ')"
 sess_lines="$(printf '%s\n' "$sess_out" | grep -c .)"
 if [ "$sess_lines" -eq 2 ]; then pass 'claude_sessions prints exactly two rows'; else fail "claude_sessions prints exactly two rows (got $sess_lines)"; fi
-contains 'claude_sessions row for the pinned leg' "$sess_out" $'108\tHIMMEL-555-legN70-2026-09-13\tclaude-sonnet-5\tauto'
-contains 'claude_sessions row for the console' "$sess_out" $'HIMMEL-nextleg-2026-09-13B-console\tclaude-fable-5-1\tauto'
+contains 'claude_sessions row for the pinned worker' "$sess_out" $'108\tHIMMEL-555-legN70-2026-09-13\tclaude-sonnet-5\tauto'
+contains 'claude_sessions row for the chief' "$sess_out" $'HIMMEL-nextleg-2026-09-13B-chief\tclaude-fable-5-1\tauto'
 
 # (k) a -p value containing a
 # LITERAL embedded newline byte must not split into fake argv tokens -- the
@@ -182,7 +182,7 @@ mkcmdline 109 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-666-le
 pgrep_x_stub 109
 out_k="$(run_primary)"
 contains 'an embedded newline in a -p value does not overwrite the real autocompact value' "$out_k" 'HIMMEL-666-legN80-2026-09-13 auto'
-contains 'the embedded-newline leg still reports its real DRIFT' "$out_k" 'ceiling=DRIFT:HIMMEL-666-legN80-2026-09-13'
+contains 'the embedded-newline worker still reports its real DRIFT' "$out_k" 'ceiling=DRIFT:HIMMEL-666-legN80-2026-09-13'
 
 # (l) a value-bearing flag
 # (--append-system-prompt) whose value happens to equal the literal string
@@ -193,7 +193,7 @@ mkcmdline 110 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-999-le
 pgrep_x_stub 110
 out_l="$(run_primary)"
 contains 'a flag value that looks like -n does not hijack the following token as the real name' "$out_l" 'HIMMEL-999-legN90-2026-09-13 auto'
-contains 'the hijack-attempt leg still reports its real DRIFT' "$out_l" 'ceiling=DRIFT:HIMMEL-999-legN90-2026-09-13'
+contains 'the hijack-attempt worker still reports its real DRIFT' "$out_l" 'ceiling=DRIFT:HIMMEL-999-legN90-2026-09-13'
 
 # (m) `-p`/`--print` is a bare
 # boolean flag (see scripts/probes/claude-p/*.sh -- it never itself takes a
@@ -230,7 +230,7 @@ mkcmdline 113 claude --model claude-sonnet-5 --autocompact auto -n HIMMEL-200-le
 pgrep_x_stub 113
 out_o="$(run_primary)"
 contains 'a --system-prompt value that looks like -n does not hijack the following token as the real name' "$out_o" 'HIMMEL-200-legN99-2026-09-13 auto'
-contains 'the --system-prompt hijack-attempt leg still reports its real DRIFT' "$out_o" 'ceiling=DRIFT:HIMMEL-200-legN99-2026-09-13'
+contains 'the --system-prompt hijack-attempt worker still reports its real DRIFT' "$out_o" 'ceiling=DRIFT:HIMMEL-200-legN99-2026-09-13'
 
 # (p) pgrep returns a pid that has already vanished from /proc
 # by the time we read it (a race, or a stale table) -- no /proc/<pid> dir at

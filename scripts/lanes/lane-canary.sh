@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # scripts/lanes/lane-canary.sh - lane canary.
 #
-# Launches ONE tiny no-op leg per lane through headed-arm-leg.sh (the real
+# Launches ONE tiny no-op worker per lane through headed-arm-worker.sh (the real
 # launch path: profile, proxy, permission config) and reports PASS / FAIL /
 # SKIP plus time-to-first-bullet per lane. The unit suites check the generated
-# command; this checks that a leg on the lane actually starts, registers,
+# command; this checks that a worker on the lane actually starts, registers,
 # receives its brief and writes a Results bullet.
 #
 # Usage: lane-canary.sh [--lanes native,claudex,openrouter,deepseek]
@@ -15,9 +15,9 @@
 # Per lane: render docs/handover/lane-canary-brief-template.md into
 # <root>/.canary/, launch it detached, poll the doc every CANARY_POLL_SEC for a
 # LIVE bullet (first bullet) and a WRAPPED bullet, then close the window with
-# close-wrapped-leg.sh. A leg that never wraps gets a runner-written WRAPPED
+# close-wrapped-worker.sh. A worker that never wraps gets a runner-written WRAPPED
 # bullet and a forced lock release first, so no window or lock outlives the
-# run. Lanes run one at a time: the canary never adds more than one leg.
+# run. Lanes run one at a time: the canary never adds more than one worker.
 #
 # Cheapest model per lane: native pins claude-haiku-5-5; the other lanes take
 # the launcher's own default (gpt-6.1-sol on claudex, the lane's pinned slug).
@@ -65,7 +65,7 @@ LOCK="${CANARY_LOCK:-$SELF_REPO/scripts/handover/queue-lock.sh}"
 APPEND="${CANARY_APPEND:-$KIT/append-results.sh}"
 TEMPLATE="$SELF_REPO/docs/handover/lane-canary-brief-template.md"
 
-# The leg runs from the PRIMARY checkout: close-wrapped-leg.sh prunes any
+# The worker runs from the PRIMARY checkout: close-wrapped-worker.sh prunes any
 # .claude/worktrees path the doc names, so a worktree cwd would be pruned.
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 if [ -n "${CANARY_REPO:-}" ]; then
@@ -137,7 +137,7 @@ run_lane() {
     # The window inherits the launcher's cwd, so launch from $REPO (the
     # primary checkout, whose trust the operator already granted).
     # shellcheck disable=SC2086  # $model is one word or empty by construction
-    (cd "$REPO" && exec setsid nohup bash "$LAUNCHER" --profile leg-impl --lane "$lane" "$name" "$doc" \
+    (cd "$REPO" && exec setsid nohup bash "$LAUNCHER" --profile worker-impl --lane "$lane" "$name" "$doc" \
         "$ROOT/$name.signal" "$((start + 5))" "$ROOT/$name.log" $model >/dev/null 2>&1) &
     lpid=$!
 
@@ -172,7 +172,7 @@ run_lane() {
             kill -KILL "$lpid" 2>/dev/null
         fi
         wait "$lpid" 2>/dev/null
-        bash "$APPEND" "$doc" "WRAPPED — canary runner closed a leg that did not wrap ($detail)" >/dev/null 2>&1
+        bash "$APPEND" "$doc" "WRAPPED — canary runner closed a worker that did not wrap ($detail)" >/dev/null 2>&1
         QUEUE_LOCK_FORCE_RELEASE=1 bash "$LOCK" release "$doc" >/dev/null 2>&1
     else
         if [ -z "$first" ]; then
@@ -188,7 +188,7 @@ run_lane() {
     fi
     if ! bash "$CLOSER" "$doc" >/dev/null 2>&1; then
         result=FAIL
-        detail="${detail:+$detail; }window not closed (close-wrapped-leg refused)"
+        detail="${detail:+$detail; }window not closed (close-wrapped-worker refused)"
     fi
     # a PASS leaves nothing to diagnose; a FAIL keeps its doc and launch log.
     [ "$result" = PASS ] && [ -z "$detail" ] && rm -f "$ROOT/$name".*

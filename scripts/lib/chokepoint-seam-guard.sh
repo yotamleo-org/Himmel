@@ -31,7 +31,7 @@
 # (a variable exported in the launching shell wins over an env block), the
 # effective value of a seam is: environ if set there, else the highest level
 # that sets it. The overlay reads ONLY levels block-edit-live-settings.sh
-# guards against the session's own Write/Edit and Bash writes (console ruling):
+# guards against the session's own Write/Edit and Bash writes (chief ruling):
 # <cwd>/.claude/settings.local.json and settings.json when the
 # session's cwd IS the anchor (Claude Code reads project files from its primary
 # working directory), then $HOME/.claude/settings.json. EXCLUDED: managed
@@ -42,7 +42,7 @@
 #
 # Enforced only on the ANCHOR copy (this file's tree is the realpath of the
 # baseline HIMMEL_REPO, or the primary checkout of the claude cwd's repo).
-# Worktree and fixture copies are branch bytes a leg can run anyway, so a seam
+# Worktree and fixture copies are branch bytes a worker can run anyway, so a seam
 # there adds no capability - that is what keeps every test suite working.
 #
 # Anchor: the baseline's HIMMEL_REPO, else HIMMEL_REPO from the guarded user
@@ -53,10 +53,10 @@
 # cwd step already yields.
 #
 # Headless (--bg) legs: the outermost claude ancestor is the `claude daemon
-# run` service, whose environ is the daemon spawner's, and the leg's own env
-# rides only in the excluded --settings file. So a seam a headless leg passes
+# run` service, whose environ is the daemon spawner's, and the worker's own env
+# rides only in the excluded --settings file. So a seam a headless worker passes
 # to a chokepoint always differs, and the guard refuses with a headless-specific
-# message - headless legs cannot pass seams to chokepoints (a proper headless design is tracked separately).
+# message - headless workers cannot pass seams to chokepoints (a proper headless design is tracked separately).
 #
 # No claude ancestor (CI, a detached at/setsid launch, a daemon not
 # recognised): allowed, UNLESS this is the anchor copy, this process's
@@ -321,7 +321,7 @@ _csg_orphan() {
         [ -n "${!seam+x}" ] && set="$set $seam"
     done
     [ -z "$set" ] && return 0
-    _csg_deny "$4" "no Claude Code session ancestor, yet this process carries Claude Code markers and seam(s)${set} are set - a detached or headless (--bg) launch cannot pass seams to chokepoints; use a headed leg"
+    _csg_deny "$4" "no Claude Code session ancestor, yet this process carries Claude Code markers and seam(s)${set} are set - a detached or headless (--bg) launch cannot pass seams to chokepoints; use a headed worker"
 }
 
 _csg_deny() {
@@ -407,7 +407,7 @@ EOF
     fi
     bad=${bad//$'\n'/ }
     if [ "$bgsvc" -eq 1 ]; then
-        _csg_deny "$name" "seam(s) ${bad% } differ from the claude background service's environment - headless (--bg) legs cannot pass seams to chokepoints; use a headed leg"
+        _csg_deny "$name" "seam(s) ${bad% } differ from the claude background service's environment - headless (--bg) workers cannot pass seams to chokepoints; use a headed worker"
     fi
     _csg_deny "$name" "seam(s) ${bad% } differ from this session's launch environment. A chokepoint seam must come from the launching shell, not a per-call prefix, export or unset - set it in the launching shell (e.g. SEAM=1 claude)"
 }

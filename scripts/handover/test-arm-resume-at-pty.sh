@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# test-arm-resume-at-pty.sh -- an `at`-launched claude leg has
+# test-arm-resume-at-pty.sh -- an `at`-launched claude worker has
 # stdin=/dev/null and no tty, so it exits at the first idle cross-session
-# message (five fleet legs lost 2026-09-05). The at body now runs claude under
+# message (five fleet workers lost 2026-09-05). The at body now runs claude under
 # a pty with its stdin held open (scripts/lib/pty-run.sh).
 #
 # Everything here uses a STUB claude -- a real arm launches a real paid
@@ -71,8 +71,8 @@ printf '#!/usr/bin/env bash\nexit 1\n' > "$SCHED_STUB/powershell"
 chmod +x "$SCHED_STUB/atq" "$SCHED_STUB/at" "$SCHED_STUB/powershell"
 export FLEET_PS_CMD="$SCHED_STUB/atq"
 
-# Stub claude: report what it is running under, then idle 2s on stdin. A leg
-# that sees EOF here is the death; a leg that times out is alive.
+# Stub claude: report what it is running under, then idle 2s on stdin. A worker
+# that sees EOF here is the death; a worker that times out is alive.
 STUB_BIN="$TMP/stub-bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/claude" <<'EOF'
@@ -117,7 +117,7 @@ fi
 
 BODY=$(at_body)
 assert_contains "P0 dry-run yields an at body" "cd " "$BODY"
-assert_contains "P0 body still launches claude with the leg argv" "--autocompact" "$BODY"
+assert_contains "P0 body still launches claude with the worker argv" "--autocompact" "$BODY"
 
 if [ "$HAVE_PTY" -eq 1 ]; then
     REC="$TMP/rec1"; run_body sh "$BODY" "$REC"; rc=$?
@@ -126,7 +126,7 @@ if [ "$HAVE_PTY" -eq 1 ]; then
     assert_contains "P2 claude idles instead of reading EOF (survives an idle message)" "stdin=idle" "$R"
     assert_eq "P3 claude's exit code is the job's exit code" "3" "$rc"
     assert_not_contains "P3b pty size is not 0x0" "size=0 0" "$R"
-    assert_contains "P4 the leg argv (-n <name> ...) reaches claude" "arg=-n" "$R"
+    assert_contains "P4 the worker argv (-n <name> ...) reaches claude" "arg=-n" "$R"
     assert_contains "P4 no ARMAUTOMERGE leaks into a default arm" "armauto=unset" "$R"
 
     BODY_AM=$(at_body --automerge)
@@ -208,7 +208,7 @@ EOF
     HIMMEL_PTY_SCRIPT_CMD="$TMP/no-such-script" _himmel_pty_run claude one 'two words' </dev/null 2>"$TMP/fb.err"; rc=$?
     assert_eq "Q3 no script(1): claude still launches bare, rc passes through" "0" "$rc"
     assert_eq "Q3 no script(1): argv intact" "$(printf '[one]\n[two words]')" "$(cat "$ARGS_REC")"
-    assert_contains "Q3 no script(1): says the leg is un-messageable" "WITHOUT a pty" "$(cat "$TMP/fb.err")"
+    assert_contains "Q3 no script(1): says the worker is un-messageable" "WITHOUT a pty" "$(cat "$TMP/fb.err")"
 else
     echo "FAIL Q0 scripts/lib/pty-run.sh missing"; FAILED=$((FAILED + 1))
 fi

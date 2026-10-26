@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Tests for guard-relay-writes.sh (Guard D): the relay's
-# write-deny fence on console inbox writes, leg handover docs, the console
+# write-deny fence on chief inbox writes, worker handover docs, the chief
 # rundir, and the env-override / inbox-send --token Bash shapes that would
 # defeat Guards B/C. Every row runs twice — HIMMEL_CONSOLE_RELAY=1 (expect
 # the documented rc) and unset (expect a silent allow, rc=0/empty) — to pin
@@ -39,7 +39,13 @@ if ! jq -nc --arg c "cat $FIXTURE_BASE/x/inbox/X.md" '{tool_name:"Bash", tool_in
 fi
 TMP="$FIXTURE_BASE/himmel-relay-guard-fixture.$$"
 mkdir "$TMP" || { echo "FATAL: mkdir $TMP failed" >&2; exit 1; }
-trap 'chmod 700 "$TMP/locked" 2>/dev/null; rm -rf "$TMP"' EXIT
+# Real chief rundirs under the hook's own ${TMPDIR:-/tmp}, both spellings plus a control, so a
+# Write there resolves and only the rundir rule can deny it.
+TMPRUN_CONSOLE="${TMPDIR:-/tmp}/himmel-console-relaytest.$$"
+TMPRUN_CHIEF="${TMPDIR:-/tmp}/himmel-chief-relaytest.$$"
+TMPRUN_OTHER="${TMPDIR:-/tmp}/himmel-other-relaytest.$$"
+mkdir -p "$TMPRUN_CONSOLE" "$TMPRUN_CHIEF" "$TMPRUN_OTHER" || { echo "FATAL: mkdir rundir fixtures failed" >&2; exit 1; }
+trap 'chmod 700 "$TMP/locked" 2>/dev/null; rm -rf "$TMP" "$TMPRUN_CONSOLE" "$TMPRUN_CHIEF" "$TMPRUN_OTHER"' EXIT
 
 ROOT="$TMP/root"
 mkdir -p "$ROOT/inbox" "$ROOT/yotamleo/himmel"
@@ -113,8 +119,12 @@ combined_output() {
 INBOX_X="$ROOT/inbox/X.md"
 WORKER_SESSION_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-a-legN9-2026-09-12-RESUME.md"
 RUNDIR_LOG="/run/user/1000/himmel-console/s/inbox-sent.log"
+# Rundir state files whose name does not say inbox, so only the rundir rules can deny them.
+RUNDIR_STATE_CONSOLE="/run/user/1000/himmel-console/s/state.json"
+RUNDIR_STATE_CHIEF="/run/user/1000/himmel-chief/s/state.json"
+RUNDIR_STATE_OTHER="/run/user/1000/himmel-other/s/state.json"
 OWN_DOC="$ROOT/yotamleo/himmel/HIMMEL-1-relay-2026-09-12-RESUME.md"
-EXTERNAL_LEG_DOC="/home/u/luna/handovers/a-legN3-2026-09-12-RESUME.md"
+EXTERNAL_WORKER_DOC="/home/u/luna/handovers/a-legN3-2026-09-12-RESUME.md"
 
 TRAVERSAL_INBOX="$ROOT/other/../inbox/X.md"
 DOTSLASH_INBOX="$ROOT/./inbox/X.md"
@@ -127,14 +137,16 @@ ln -s "$INBOX_X" "$SYMLINK_INTO_INBOX"
 # name|json|expect_rc_relay|expect_rc_norelay
 ROWS_NAME=(row1 row2 row3 row4 row5 row6 row7 row8 row9 row10a row10b row10c row10d row11 row12 row13 row14 row15 row16 row17 row18 row19 row20
     read-tee read-cp read-mv read-rm read-rsync read-dd read-truncate read-sed read-install read-chmod read-chown read-address read-legdoc-form
-    write-dd write-abs-rm write-sudo-rm write-rmdir write-cpio write-ddrescue write-xargs-rm write-paren-cp write-semi-mv write-sed-i write-tee write-install write-rsync write-chown write-chmod write-truncate write-newline-rm chief-session-name)
+    write-dd write-abs-rm write-sudo-rm write-rmdir write-cpio write-ddrescue write-xargs-rm write-paren-cp write-semi-mv write-sed-i write-tee write-install write-rsync write-chown write-chmod write-truncate write-newline-rm chief-session-name
+    tmp-console-rundir-write tmp-chief-rundir-write console-rundir-redirect chief-rundir-redirect chief-session-unset
+    tmp-other-rundir-write other-rundir-redirect)
 ROWS_JSON=(
     "$(write_payload Write "$INBOX_X")"
     "$(write_payload Edit "$WORKER_SESSION_DOC")"
     "$(write_payload Write "$RUNDIR_LOG")"
     "$(write_payload Edit "$OWN_DOC")"
     "$(bash_payload "echo x >> $ROOT/inbox/X.md")"
-    "$(bash_payload "printf x | tee -a $EXTERNAL_LEG_DOC")"
+    "$(bash_payload "printf x | tee -a $EXTERNAL_WORKER_DOC")"
     "$(bash_payload "bash scripts/handover/chief-kit/inbox-send.sh S halt")"
     "$(bash_payload "bash scripts/handover/chief-kit/inbox-send.sh S go --token t")"
     "$(bash_payload "HIMMEL_CONSOLE_RELAY= bash inbox-send.sh S x")"
@@ -189,10 +201,19 @@ ROWS_JSON=(
     "$(bash_payload "cat $ROOT/inbox/X.md
 rm $ROOT/inbox/Y.md")"
     "$(bash_payload "CHIEF_SESSION_NAME=j bash x.sh")"
+    "$(write_payload Write "$TMPRUN_CONSOLE/state.json")"
+    "$(write_payload Write "$TMPRUN_CHIEF/state.json")"
+    "$(bash_payload "echo x >> $RUNDIR_STATE_CONSOLE")"
+    "$(bash_payload "echo x >> $RUNDIR_STATE_CHIEF")"
+    "$(bash_payload "unset CLAUDE_PID CHIEF_SESSION_NAME; bash inbox-send.sh S x")"
+    "$(write_payload Write "$TMPRUN_OTHER/state.json")"
+    "$(bash_payload "echo x >> $RUNDIR_STATE_OTHER")"
 )
 ROWS_EXPECT=(2 2 2 0 2 2 0 2 2 2 2 2 2 0 2 2 2 2 2 2 2 2 2
     0 0 0 0 0 0 0 0 0 0 0 0 0
-    2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2)
+    2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2 2
+    2 2 2 2 2
+    0 0)
 
 echo "=== marker set (HIMMEL_CONSOLE_RELAY=1) ==="
 i=0
@@ -341,7 +362,7 @@ done
 echo ""
 echo "=== HIMMEL-3872: BSD readlink — guarded matches through the fallback, fail-closed ==="
 expect_row bsd-new-inbox-file 2 "$(run_relay_with bsd-new-inbox-file "$(write_payload Write "$ROOT/inbox/new.md")" "$BSD")" inbox-write
-expect_row bsd-new-leg-doc 2 "$(run_relay_with bsd-new-leg-doc "$(write_payload Write "$ROOT/yotamleo/himmel/HIMMEL-1-b-legN4-2026-09-29-RESUME.md")" "$BSD")" leg-doc-write
+expect_row bsd-new-worker-doc 2 "$(run_relay_with bsd-new-worker-doc "$(write_payload Write "$ROOT/yotamleo/himmel/HIMMEL-1-b-legN4-2026-09-29-RESUME.md")" "$BSD")" worker-doc-write
 expect_row bsd-alias-parent-into-inbox 2 "$(run_relay_with bsd-alias-parent-into-inbox "$(write_payload Write "$TMP/inbox-alias/new.md")" "$BSD")" inbox-write
 expect_row bsd-dangling-symlink 2 "$(run_relay_with bsd-dangling-symlink "$(write_payload Write "$TMP/dangling.md")" "$BSD")" unresolved-path
 expect_row bsd-dangling-into-inbox 2 "$(run_relay_with bsd-dangling-into-inbox "$(write_payload Write "$SYMLINK_INTO_INBOX")" "$BSD")" unresolved-path

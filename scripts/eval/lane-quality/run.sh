@@ -105,8 +105,8 @@
 # quiet fleet, or read the delta as an upper bound. Upgrade path: per-session
 # usage from the transcript once a lane exposes it.
 # ponytail: a single headless run cannot hand off, so `handoffs` is not
-# recorded; compactions are. Upgrade path: drive a lane through its leg
-# launcher when phase 2 measures leg churn.
+# recorded; compactions are. Upgrade path: drive a lane through its worker
+# launcher when phase 2 measures worker churn.
 # ponytail: the hidden tests live in the repo, so an agent on a later checkout
 # could read them; the runner flags a transcript that touches this directory
 # (`peeked`) instead of preventing it. Upgrade path: move the tasks to the
@@ -332,7 +332,7 @@ task_set() { # task_set <task>: its task set, regression for a synthetic task
 
 # materialize_real <task> <dir>: the task's base tree as the only commit of a new
 # repo in <dir>.repo (no remote, no shared objects, no later refs), checked out in
-# <dir> as a linked worktree on lq-task, the shape a leg works in, so the himmel
+# <dir> as a linked worktree on lq-task, the shape a worker works in, so the himmel
 # hooks in the tree allow edits there; origin/main names the base so they can
 # vouch its libs. Prints the base commit's sha.
 materialize_real() {
@@ -424,7 +424,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
       unset CLAUDE_CODE_OAUTH_TOKEN
       export HIMMEL_API_JOB_ID="lq-$RUN_ID-$stem"
       # lane-quality api agent run, launcher bank check and ledger reservation, explicit permission mode, budget-capped
-      # launch-profile-ok: the eval measures the lane's own default config, not a leg profile
+      # launch-profile-ok: the eval measures the lane's own default config, not a worker profile
       # the lane is tool-free unless named; the eval agent edits fixtures and runs their tests, so it opts in to the full set.
       ANTHROPIC_API_KEY="$LQ_API_KEY" HIMMEL_API_LANE="$LQ_API_LANE" HIMMEL_API_ACCOUNT="$LQ_API_ACCOUNT" HIMMEL_API_KEY_ID="$LQ_API_KEY_ID" \
         HIMMEL_API_TOOLS="Read,Edit,Write,Glob,Grep,Bash" \
@@ -436,7 +436,7 @@ run_task() { # $1 task, $2 repeat -> appends a row to runs.jsonl, prints the tas
     native_auth_pin_env
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
       # lane-quality agent run, bank-preflighted per sweep, explicit permission mode, budget-capped
-      # launch-profile-ok: the eval measures the lane's own default config (claude or the lane launcher in $AGENT_BIN), not a leg profile
+      # launch-profile-ok: the eval measures the lane's own default config (claude or the lane launcher in $AGENT_BIN), not a worker profile
       timeout "$TIMEOUT" "$AGENT_BIN" -p "$(cat "$(prompt_of "$task")")" --model "$MODEL" --permission-mode auto \
         --output-format json --max-budget-usd "$outer" ${EFFORT:+--effort "$EFFORT"}
     else

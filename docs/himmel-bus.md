@@ -42,15 +42,15 @@ Run `node marketplace/plugins/himmel-bus/bin/bus <verb>`.
 
 | Verb | Purpose |
 |---|---|
-| `register <name> --role leg\|console\|judge\|consult [--console <c>] [--pair <leg>] [--predecessor <old>]` | Reserve an identity (launcher use) |
+| `register <name> --role worker\|chief\|judge\|consult [--chief <c>] [--pair <worker>] [--predecessor <old>]` | Reserve an identity (launcher use) |
 | `bind <name> <pid>` | Bind a registered name to a live pid, once |
 | `rebind <name> <pid>` | Rebind, only when the bound pid is gone |
-| `adopt <new-console>` | Run as the worker: adopt a successor chief, only when the old one is gone or its own record names the new one |
+| `adopt <new-chief>` | Run as the worker: adopt a successor chief, only when the old one is gone or its own record names the new one |
 | `status <name>` | Print `live`, `gone` or `unbound` |
 | `peers` | Print the caller's own edges |
 | `send <to> <body-file> [--re <n>] [--summary <text>] [--doc <handover doc>]` | Send a message; the sender is never an argument |
 | `wait [--timeout <seconds>]` | Block until the caller's own inbox has a message, print it, commit the cursor |
-| `status [--unacked] [--for <console>]` | Fleet view of undelivered or unacknowledged messages |
+| `status [--unacked] [--for <chief>]` | Fleet view of undelivered or unacknowledged messages |
 | `gc` | Remove aged data |
 
 `wait` defaults to 300 seconds. Exit **0** means a message was printed, **3**
@@ -60,7 +60,7 @@ limited to 64 KiB and the summary to 300 characters.
 
 ## MCP tools
 
-Workers on the `leg-bus` plugin profile (see `scripts/lanes/plugin-profiles.json`)
+Workers on the `worker-bus` plugin profile (see `scripts/lanes/plugin-profiles.json`)
 get the MCP server through the registry's `mcpCatalog` entry. It exposes two
 tools:
 
@@ -82,4 +82,4 @@ reported without marking the chain tampered; fix the cause and retry.
 ## See also
 
 - [glossary.md](glossary.md): chief, worker, judge, relay, dependency chain.
-- [handover/running-a-console.md](handover/running-a-console.md): how chiefs and workers are launched.
+- [handover/running-a-chief.md](handover/running-a-chief.md): how chiefs and workers are launched.

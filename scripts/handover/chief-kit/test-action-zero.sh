@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # test-action-zero.sh — Exercises action-zero.sh: the incoming
-# console's mechanical probes in one command. bank-preflight and himmel-doctor
+# chief's mechanical probes in one command. bank-preflight and himmel-doctor
 # are stubbed (ACTION_ZERO_BANK / ACTION_ZERO_DOCTOR). bash 3.2-safe.
 #
 # ACTION_ZERO overrides the script under test (the RED control).
@@ -20,8 +20,8 @@ check() { # <name> <expected> <actual>
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/action-zero-test.XXXXXX")" || { echo "mktemp -d failed" >&2; exit 1; }
 trap 'rm -rf "$WORK"' EXIT
 ROOT="$WORK/root"; mkdir -p "$ROOT"
-DOC="$ROOT/DEMO-next-2026-10-08A-console.md"
-echo "# console" > "$DOC"
+DOC="$ROOT/DEMO-next-2026-10-08A-chief.md"
+echo "# chief" > "$DOC"
 printf '#!/usr/bin/env bash\necho "bank ok 12%%"\n' > "$WORK/bank.sh"
 printf '#!/usr/bin/env bash\necho "C28 fine"\necho "C29 WARN CHILD_SESSION inherited"\n' > "$WORK/doctor.sh"
 export ACTION_ZERO_BANK="$WORK/bank.sh" ACTION_ZERO_DOCTOR="$WORK/doctor.sh"
@@ -43,7 +43,7 @@ check "--acquire on a free lock prints the release token" "1" "$(printf '%s\n' "
 out3="$(bash "$AZ" --doc "$DOC" --root "$ROOT" --acquire 2>&1)"
 check "--acquire on a held lock does not take it over" "1" "$(printf '%s\n' "$out3" | grep -c 'NOT ACQUIRED')"
 # a held lock whose status text merely contains the word "free" is not free
-DOCF="$WORK/DEMO-freedom-console.md"; : > "$DOCF"
+DOCF="$WORK/DEMO-freedom-chief.md"; : > "$DOCF"
 env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$DOCF" >/dev/null 2>&1
 out5="$(bash "$AZ" --doc "$DOCF" --root "$ROOT" --acquire 2>&1)"
 check "a held lock with 'free' in its text is not treated as free" "1" "$(printf '%s\n' "$out5" | grep -c 'NOT ACQUIRED')"
@@ -78,50 +78,50 @@ else
     echo "SKIP: hang rows (no timeout binary)"
 fi
 
-# --render-legs writes the legs: line through live-state.sh (the lock tokens
+# --render-workers writes the legs: line through live-state.sh (the lock tokens
 # come from the held locks, the nonce is kept), instead of a hand edit
 LDOC="$ROOT/DEMO-1-N61-a-2026-10-16.md"; : > "$LDOC"
-LCON="$ROOT/DEMO-next-2026-10-16A-console.md"
+LCON="$ROOT/DEMO-next-2026-10-16A-chief.md"
 # shellcheck disable=SC2016  # the backticks are literal span markers
-printf '# console\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\nlast GO: none\n\n## Results\n' > "$LCON"
+printf '# chief\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\nlast GO: none\n\n## Results\n' > "$LCON"
 printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
 env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LDOC" >/dev/null 2>&1
 tok="$(env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" status "$LDOC" 2>/dev/null | head -1 | jq -r '.session // empty')"
 out8="$(bash "$AZ" --doc "$LCON" --root "$ROOT" 2>&1)"
-check "without --render-legs the legs: line is not touched" "1" "$(grep -c 'stale-token' "$LCON")"
-check "without --render-legs there is no LEGS section" "0" "$(printf '%s\n' "$out8" | grep -c '^== LEGS')"
-out9="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"
-check "--render-legs prints a LEGS section" "1" "$(printf '%s\n' "$out9" | grep -c '^== LEGS')"
+check "without --render-workers the legs: line is not touched" "1" "$(grep -c 'stale-token' "$LCON")"
+check "without --render-workers there is no WORKERS section" "0" "$(printf '%s\n' "$out8" | grep -c '^== WORKERS')"
+out9="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-workers 2>&1)"
+check "--render-workers prints a WORKERS section" "1" "$(printf '%s\n' "$out9" | grep -c '^== WORKERS')"
 check "the legs: line now carries the held lock token" "1" "$(grep -c "^legs: \`N61:Z-N61-aa:$tok:7\`" "$LCON")"
 check "the nonce was kept, not rewritten" "0" "$(grep -c 'stale-token' "$LCON")"
 check "the next field line is intact" "1" "$(grep -c '^last GO: none$' "$LCON")"
 rm -f "${LCON%.md}.fleet.json"
-out10="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"; rc10=$?
-check "no fleet manifest: LEGS says unavailable and the run carries on" "1" "$(printf '%s\n' "$out10" | sed -n '/^== LEGS/,/^== LOCK/p' | grep -c '^unavailable')"
+out10="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-workers 2>&1)"; rc10=$?
+check "no fleet manifest: WORKERS says unavailable and the run carries on" "1" "$(printf '%s\n' "$out10" | sed -n '/^== WORKERS/,/^== LOCK/p' | grep -c '^unavailable')"
 check "no fleet manifest: the run exits nonzero" "1" "$rc10"
 printf 'not json\n' > "${LCON%.md}.fleet.json"
-bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs >/dev/null 2>&1; rc11=$?
+bash "$AZ" --doc "$LCON" --root "$ROOT" --render-workers >/dev/null 2>&1; rc11=$?
 check "a render that fails exits nonzero" "1" "$rc11"
 rm -f "${LCON%.md}.fleet.json"
-# a console doc whose lock another session holds keeps its legs: line
+# a chief doc whose lock another session holds keeps its legs: line
 printf '{"schema": 1, "legs": [{"doc": "%s", "label": "N61", "lane": "native"}]}\n' "$LDOC" > "${LCON%.md}.fleet.json"
 # shellcheck disable=SC2016  # the backticks are literal span markers
-printf '# console\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\n\n## Results\n' > "$LCON"
-legs_before="$(grep '^legs: ' "$LCON")"
-check "lock held: the fixture has a legs: line" "1" "$([ -n "$legs_before" ] && echo 1 || echo 0)"
+printf '# chief\n\n## Live state\nlegs: `N61:Z-N61-aa:stale-token:7`queue: none\n\n## Results\n' > "$LCON"
+workers_before="$(grep '^legs: ' "$LCON")"
+check "lock held: the fixture has a legs: line" "1" "$([ -n "$workers_before" ] && echo 1 || echo 0)"
 env HANDOVER_DIR="$ROOT" bash "$HERE/../queue-lock.sh" acquire "$LCON" >/dev/null 2>&1; acq12=$?
 check "lock held: the fixture lock was acquired" "0" "$acq12"
-out12="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-legs 2>&1)"; rc12=$?
-check "lock held: the legs: line is left unchanged" "$legs_before" "$(grep '^legs: ' "$LCON")"
-check "lock held: LEGS says unavailable" "1" "$(printf '%s\n' "$out12" | sed -n '/^== LEGS/,/^== DOC/p' | grep -c '^unavailable')"
+out12="$(bash "$AZ" --doc "$LCON" --root "$ROOT" --render-workers 2>&1)"; rc12=$?
+check "lock held: the legs: line is left unchanged" "$workers_before" "$(grep '^legs: ' "$LCON")"
+check "lock held: WORKERS says unavailable" "1" "$(printf '%s\n' "$out12" | sed -n '/^== WORKERS/,/^== DOC/p' | grep -c '^unavailable')"
 check "lock held: the run exits nonzero" "1" "$rc12"
 check "lock held: the wording does not claim another session" "0" "$(printf '%s\n' "$out12" | grep -c 'another session holds')"
 rm -f "${LCON%.md}.fleet.json"
 
 # DOC is a digest of the supplied doc, not its instructions or result history.
-DDOC="$ROOT/digest-console.md"
+DDOC="$ROOT/digest-chief.md"
 cat > "$DDOC" <<'DOC'
-# console
+# chief
 **Status:** LIVE
 
 ## Live state
@@ -129,7 +129,7 @@ head: abc123
 legs: `N61:nonce:lock:7`
   `N62:nonce-two:lock-two:8`
 queue: held-doc.md
-lock: console-lock
+lock: chief-lock
 
 ## Open rulings
 - [ ] Approve the next slice
@@ -145,19 +145,19 @@ DOC
 before_digest="$(cat "$DDOC")"
 dout="$(bash "$AZ" --doc "$DDOC" --root "$ROOT" 2>&1)"
 digest="$(printf '%s\n' "$dout" | awk '/^== DOC$/ {s=1; next} /^== / {s=0} s')"
-# shellcheck disable=SC2016  # backticks are literal leg span markers
+# shellcheck disable=SC2016  # backticks are literal worker span markers
 expected_digest='**Status:** LIVE
 head: abc123
 legs: `N61:nonce:lock:7` `N62:nonce-two:lock-two:8`
 queue: held-doc.md
-lock: console-lock
+lock: chief-lock
 open rulings: 2
 - Approve the next slice
 - Choose a lane'
 check "DOC digest contains state and open ruling titles only" "$expected_digest" "$digest"
 check "DOC digest leaves the supplied document untouched" "$before_digest" "$(cat "$DDOC")"
-awk '/^## Results$/ {for (i=1;i<=200;i++) print "- [ ] Decision " i} {print} END {for (i=1;i<=1000;i++) print "PRIVATE history " i}' "$DDOC" > "$ROOT/long-console.md"
-long_out="$(bash "$AZ" --doc "$ROOT/long-console.md" --root "$ROOT" 2>&1)"
+awk '/^## Results$/ {for (i=1;i<=200;i++) print "- [ ] Decision " i} {print} END {for (i=1;i<=1000;i++) print "PRIVATE history " i}' "$DDOC" > "$ROOT/long-chief.md"
+long_out="$(bash "$AZ" --doc "$ROOT/long-chief.md" --root "$ROOT" 2>&1)"
 long_digest="$(printf '%s\n' "$long_out" | awk '/^== DOC$/ {s=1; next} /^== / {s=0} s')"
 long_lines="$(printf '%s\n' "$long_digest" | wc -l | tr -d ' ')"
 case "$long_digest" in *'open rulings: 202'*'additional ruling titles omitted'*) present=1 ;; *) present=0 ;; esac
@@ -165,13 +165,13 @@ check "DOC digest remains present and under 60 lines for a long document" 1 "$([
 missing_out="$(bash "$AZ" --doc "$DOC" --root "$ROOT" 2>&1)"
 check "missing Live state prints DOC unavailable and later sections still run" 2 "$(printf '%s\n' "$missing_out" | grep -cE '^DOC unavailable$|^== LOCK \(this document\)$')"
 
-# A console doc carries no status:, head: or lock: line in its Live state, so the
+# A chief doc carries no status:, head: or lock: line in its Live state, so the
 # digest leaves those out instead of printing them as unavailable.
-CDOC="$ROOT/plain-console.md"
+CDOC="$ROOT/plain-chief.md"
 # shellcheck disable=SC2016 # literal backticks
-printf '# console\n\n## Live state\nlegs: `N61:nonce:lock:7`\nqueue: none\n\n## Results\n' > "$CDOC"
+printf '# chief\n\n## Live state\nlegs: `N61:nonce:lock:7`\nqueue: none\n\n## Results\n' > "$CDOC"
 cdigest="$(bash "$AZ" --doc "$CDOC" --root "$ROOT" 2>&1 | awk '/^== DOC$/ {s=1; next} /^== / {s=0} s')"
-check "DOC digest of a console doc prints no unavailable field" "0" "$(printf '%s\n' "$cdigest" | grep -c 'unavailable')"
+check "DOC digest of a chief doc prints no unavailable field" "0" "$(printf '%s\n' "$cdigest" | grep -c 'unavailable')"
 check "DOC digest still prints the legs: and queue: lines" "2" "$(printf '%s\n' "$cdigest" | grep -cE '^(legs|queue): ')"
 
 # A flagged lock makes the sweep exit 20: its lines are the result, not a failure.
@@ -181,24 +181,24 @@ sout="$(bash "$AZ" --doc "$DOC" --root "$SROOT" 2>&1 | sed -n '/^== LOCKS/,/^== 
 check "a flagged sweep lists the lock" "1" "$(printf '%s\n' "$sout" | grep -c 'status=CORRUPT')"
 check "a flagged sweep prints no unavailable line" "0" "$(printf '%s\n' "$sout" | grep -c '^unavailable$')"
 
-# PROCS prints one short row per leg process: pid, command and session name.
-# Linux only: BSD pgrep -af prints the pid alone, so the console kit's procps
+# PROCS prints one short row per worker process: pid, command and session name.
+# Linux only: BSD pgrep -af prints the pid alone, so the chief kit's procps
 # listing has no command column to parse on macOS.
 if [ "$(uname -s)" = Linux ]; then
-exec -a "claude --settings /very/long/settings.json --append-system-prompt-file /very/long/brief.md -n DEMOAZ-N1-leg-2026-10-21 --model x" sleep 30 &
+exec -a "claude --settings /very/long/settings.json --append-system-prompt-file /very/long/brief.md -n DEMOAZ-N1-worker-2026-10-21 --model x" sleep 30 &
 fake=$!
 pout="$(bash "$AZ" --doc "$DOC" --root "$ROOT" --prefix DEMOAZ 2>&1 | sed -n '/^== PROCS/,/^== C29/p')"
 kill "$fake" 2>/dev/null; wait "$fake" 2>/dev/null
-check "PROCS prints pid, command and session name" "1" "$(printf '%s\n' "$pout" | grep -cx "$fake claude DEMOAZ-N1-leg-2026-10-21")"
+check "PROCS prints pid, command and session name" "1" "$(printf '%s\n' "$pout" | grep -cx "$fake claude DEMOAZ-N1-worker-2026-10-21")"
 check "PROCS drops the argv" "0" "$(printf '%s\n' "$pout" | grep -c 'settings.json')"
 fi
 
 # --acquire records the release token in the doc's step 8 block; --lock-only
 # runs the LOCK section alone (the successor's one call once next pre-computed
 # the rest).
-TDOC="$ROOT/token-console.md"
+TDOC="$ROOT/token-chief.md"
 # shellcheck disable=SC2016 # literal backticks
-printf '# console\n\n   ```text\n   none yet — acquire your own at ACTION ZERO and record it here\n   ```\n\n## Live state\nlegs: none\n' > "$TDOC"
+printf '# chief\n\n   ```text\n   none yet — acquire your own at ACTION ZERO and record it here\n   ```\n\n## Live state\nlegs: none\n' > "$TDOC"
 tout="$(bash "$AZ" --doc "$TDOC" --root "$ROOT" --acquire --lock-only 2>&1)"
 # shellcheck disable=SC2016 # literal backticks
 ttok="$(printf '%s\n' "$tout" | sed -n 's/^release-token: `\(.*\)`$/\1/p')"

@@ -6,6 +6,7 @@ import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { codexWindowLabel } from "../lanes/bank-status-core.mjs";
+import { legacyNamesOn } from "../lib/env-alias.mjs";
 
 type Env = Record<string, string | undefined>;
 export type QuotaWindow = {
@@ -53,8 +54,8 @@ function window(used: unknown, resets: unknown, capturedMs: number | null, now: 
 }
 
 function claude(env: Env, now: number): Quota["claude"] {
-  const file = env.CADENCE_USAGE_CACHE || env.CADENCE_BANK_CACHE || env.CLAUDE_USAGE_CACHE || "/tmp/claude/statusline-usage-cache.json";
-  const maxAgeEnv = Number(env.CADENCE_USAGE_MAX_AGE) > 0 ? env.CADENCE_USAGE_MAX_AGE : env.CADENCE_BANK_MAX_AGE;
+  const file = env.CADENCE_USAGE_CACHE || (legacyNamesOn(env) ? env.CADENCE_BANK_CACHE : undefined) || env.CLAUDE_USAGE_CACHE || "/tmp/claude/statusline-usage-cache.json";
+  const maxAgeEnv = Number(env.CADENCE_USAGE_MAX_AGE) > 0 ? env.CADENCE_USAGE_MAX_AGE : legacyNamesOn(env) ? env.CADENCE_BANK_MAX_AGE : undefined;
   const maxAge = Number(maxAgeEnv) > 0 ? Number(maxAgeEnv) : 600;
   const r = read(file, "usage");
   if ("reason" in r) return { five_hour: unknown(r.reason), seven_day: unknown(r.reason) };
@@ -68,8 +69,8 @@ function claude(env: Env, now: number): Quota["claude"] {
 }
 
 function codex(env: Env, now: number): Quota["codex"] {
-  const file = env.CODEX_USAGE_CACHE || env.CODEX_BANK_CACHE || join(env.HOME || homedir(), ".himmel", "cache", "codex-bank.json");
-  const ttlEnv = Number(env.CODEX_USAGE_CACHE_TTL_SECONDS) > 0 ? env.CODEX_USAGE_CACHE_TTL_SECONDS : env.CODEX_BANK_CACHE_TTL_SECONDS;
+  const file = env.CODEX_USAGE_CACHE || (legacyNamesOn(env) ? env.CODEX_BANK_CACHE : undefined) || join(env.HOME || homedir(), ".himmel", "cache", "codex-bank.json");
+  const ttlEnv = Number(env.CODEX_USAGE_CACHE_TTL_SECONDS) > 0 ? env.CODEX_USAGE_CACHE_TTL_SECONDS : legacyNamesOn(env) ? env.CODEX_BANK_CACHE_TTL_SECONDS : undefined;
   const ttl = Number(ttlEnv) > 0 ? Number(ttlEnv) : 6 * 3600;
   const r = read(file, "codex bank");
   if ("reason" in r) return { five_hour: unknown(r.reason), weekly: unknown(r.reason) };

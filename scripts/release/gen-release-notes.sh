@@ -87,7 +87,7 @@ render() {
     echo "## $H_INTERNAL"
     echo
     plural="s"; [ "$n_internal" -eq 1 ] && plural=""
-    echo "Internal: ${n_internal} further change${plural} (guards, console and CI tooling, tests) are not listed here; \`CHANGELOG.md\` has the per-commit record."
+    echo "Internal: ${n_internal} further change${plural} (guards, chief and CI tooling, tests) are not listed here; \`CHANGELOG.md\` has the per-commit record."
 }
 
 case "${1:-}" in

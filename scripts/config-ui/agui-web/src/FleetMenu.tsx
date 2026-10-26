@@ -1,7 +1,7 @@
-// console pages and session drill-ins use the same fleet snapshot and run links.
+// chief pages and session drill-ins use the same fleet snapshot and run links.
 // the menu is one collapsible block, closed by default at phone width so the fleet is the first screen.
 // Its filters (lane, state, text, finished inline) narrow every section of the fleet page and are kept per viewer;
-// each live console shows its running / waiting / attention / orphan counts, and finished consoles fold under them.
+// each live chief shows its running / waiting / attention / orphan counts, and finished chiefs fold under them.
 import { consoleGroups, EMPTY_FILTERS, filtering, orphanReason, roleLabel, rowHref, useFilters, useOpen, visibleRows, type FleetState, type Row, type ViewFilters } from "./Fleet";
 import { filterCount, fleetSections, isLive, NO_FILTERS, type ProcessOrphan } from "./fleet-model";
 import { consoleHash } from "./stream";
@@ -50,8 +50,8 @@ export function FleetMenu({ state, token, selected }: { state: FleetState; token
     return [`${c.running} running`, c.waiting > 0 && `${c.waiting} waiting`, c.attention > 0 && `${c.attention} attention`, c.orphaned > 0 && `${c.orphaned} orphaned`].filter(Boolean).join(" · ");
   };
   const group = (g: (typeof groups)[number]) => <details key={g.console.name} open={isLive(g.console)}>
-    <summary><a className="console-page" href={consoleHash(token, g.console.name)} aria-current={selected === g.console.name ? "page" : undefined}>{g.console.name}</a></summary>
-    {isLive(g.console) && <small className="fleet-console-counts">{counts(g.console.name)}</small>}
+    <summary><a className="chief-page" href={consoleHash(token, g.console.name)} aria-current={selected === g.console.name ? "page" : undefined}>{g.console.name}</a></summary>
+    {isLive(g.console) && <small className="fleet-chief-counts">{counts(g.console.name)}</small>}
     <SessionLink row={g.console} token={token} />
     <ul>{g.rows.filter((r) => r.state !== "wrapped").map((r) => <li key={r.name}><SessionLink row={r} token={token} /><small>{roleLabel(r.role)} · {r.lane ?? "native"}</small></li>)}</ul>
     {g.rows.some((r) => r.state === "wrapped") && <details className="fleet-menu-wrapped"><summary>Wrapped</summary>

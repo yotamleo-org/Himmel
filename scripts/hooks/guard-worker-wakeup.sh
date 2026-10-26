@@ -1,15 +1,15 @@
 #!/usr/bin/env bash
 # guard-worker-wakeup.sh — PreToolUse hook (matcher "ScheduleWakeup"): denies
-# ScheduleWakeup for a console-spawned leg. A leg launched headed
-# by a console (scripts/handover/chief-kit/headed-arm-leg.sh exports
+# ScheduleWakeup for a chief-spawned worker. A worker launched headed
+# by a chief (scripts/handover/chief-kit/headed-arm-worker.sh exports
 # HIMMEL_CONSOLE_LEG=1 in the launching shell) has no reason to self-schedule a
-# polling wakeup: every wake re-reads the leg's whole context just to find "not
-# yet" (cost program), and a leg waits with ONE foreground blocking
-# command anyway (docs/handover/leg-preface.md). Same shape as
+# polling wakeup: every wake re-reads the worker's whole context just to find "not
+# yet" (cost program), and a worker waits with ONE foreground blocking
+# command anyway (docs/handover/worker-preface.md). Same shape as
 # block-worker-askuserquestion.sh, which is the template for this file.
 #
 # Zero context cost when not a leg: the marker check is the first statement and
-# an allow prints NOTHING (no stdout, no stderr) — an operator or console session
+# an allow prints NOTHING (no stdout, no stderr) — an operator or chief session
 # never sees this hook at all.
 #
 # Workflow nudge, not a security fence (scripts/hooks/CLAUDE.md "Fail-open vs
@@ -40,10 +40,10 @@ input=$(cat)
 tool=$(printf '%s' "$input" | jq -r '.tool_name // empty' 2>/dev/null) || exit 0
 [ "$tool" = "ScheduleWakeup" ] || exit 0
 
-deny_msg="leg wakeup-deny: a console-spawned leg never self-schedules a polling wakeup — each wake re-reads your full context to find 'not yet'. Wait with ONE foreground blocking command (bash scripts/check-ci.sh <pr> --max-wait <s>, or a foreground until-loop), or report to the console by SendMessage and end your turn."
+deny_msg="worker wakeup-deny: a chief-spawned worker never self-schedules a polling wakeup — each wake re-reads your full context to find 'not yet'. Wait with ONE foreground blocking command (bash scripts/check-ci.sh <pr> --max-wait <s>, or a foreground until-loop), or report to the chief by SendMessage and end your turn."
 
 reason=$(printf '%s' "$deny_msg" | jq -Rs . 2>/dev/null) \
-    || reason='"leg wakeup-deny: console-spawned leg denied ScheduleWakeup"'
+    || reason='"worker wakeup-deny: chief-spawned worker denied ScheduleWakeup"'
 printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":%s}}\n' "$reason"
 printf '%s\n' "$deny_msg" >&2
 exit 2

@@ -2,7 +2,7 @@
 # test-check-swallowed-errors.sh — tests for scripts/lint/check-swallowed-errors.sh.
 #
 # Each case builds a throwaway --root tree. The flagged lines are copied from
-# main (arm-resume.sh, cr-scores.sh, notify-console-on-prompt.sh, flush.sh); the
+# main (arm-resume.sh, cr-scores.sh, notify-chief-on-prompt.sh, flush.sh); the
 # `|| echo []` line is a variant of the same default-zero shape (main has none).
 #   1-4.  one fixture per flagged shape                          -> exit 1, path:line named
 #   5.    the same line with a baseline row                      -> exit 0

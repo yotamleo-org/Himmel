@@ -1,7 +1,7 @@
-// the config console's rail around the fleet and run pages, so / and /agui/ read as one app. The page
-// list and its links come from public/nav.js, the same module the console draws its rail from.
+// the config chief's rail around the fleet and run pages, so / and /agui/ read as one app. The page
+// list and its links come from public/nav.js, the same module the chief draws its rail from.
 import { useEffect, useState, type ReactNode } from "react";
-// @ts-expect-error: plain ES module shared with the console (no types).
+// @ts-expect-error: plain ES module shared with the chief (no types).
 import { fleetDot, navLinks } from "../../public/nav.js";
 import type { FleetState } from "./Fleet";
 import { FleetMenu } from "./FleetMenu";

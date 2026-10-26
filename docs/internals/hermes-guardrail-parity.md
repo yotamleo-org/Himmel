@@ -137,7 +137,7 @@ installer; not exercised by the corpus.
 - Chain members run directly, not through `run-hook-with-bash.js`, so integrity
   pins, the whole-chain time budget and `auto-approve-safe-bash.sh`'s
   allow-decisions are not modelled; `auto-arm-on-cap.sh` and
-  `guard-leg-context-handoff.sh` are skipped as side-effecting plumbing.
+  `guard-worker-context-handoff.sh` are skipped as side-effecting plumbing.
 - Only PreToolUse is compared. PostToolUse, Stop and SessionStart hooks have no
   hermes counterpart in this profile beyond `on_session_finalize`.
 - Hermes-side env is the default (untrusted/unknown engine); the

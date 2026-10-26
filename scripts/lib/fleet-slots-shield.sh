@@ -7,7 +7,7 @@
 # — the SAME per-user tmpfs dir the live fleet counts. A suite that does not
 # redirect it makes a test fixture (a mktemp handover path) hold a real slot
 # for the life of the arm, and a killed or --force run for the full TTL
-# (observed 2026-09-16: a live leg launch refused by a test fixture).
+# (observed 2026-09-16: a live worker launch refused by a test fixture).
 #
 #   fleet_slots_shield <tmp>            export HIMMEL_FLEET_SLOTS=<tmp>/fleet-slots
 #                                       and assert it; rc 1 = not isolated

@@ -1,9 +1,9 @@
-// every opt-in / opt-out toggle the console offers, end to end through the REAL himmelctl and the
+// every opt-in / opt-out toggle the chief offers, end to end through the REAL himmelctl and the
 // real server routes: preview -> run -> (1) the setting is written, (2) its owner reads it back, (3) a reload
 // (the run's `after` re-probe AND a fresh GET /api/feed) shows the new state; then the opposite flip, checked
 // the same way. The toggles are the feed's `control.class: "toggle"` rows: cadence.arm/disarm, plugin.enable/
 // disable, config.lanes on/off, config.initiative on/off. profile.set is in the action table, but no feed row
-// offers it, so it is not a console toggle and is not tested here.
+// offers it, so it is not a chief toggle and is not tested here.
 // Hermetic: a temp HOME, a fake crontab/claude/qmd/graphify first on PATH (plus each cadence's *_CRONTAB seam),
 // HIMMELCTL_REPO_ROOT = a temp tree of symlinks (so `config set` writes its .env and lanes.local.json there,
 // never in the checkout), and a stub doctor (the full feed must not run the real one).
@@ -30,7 +30,7 @@ const { plugins: PLUGINS, lanes: LANES } = loadRegistries(CHECKOUT);
 const ALL = process.env.CONFIG_UI_TOGGLES_ALL === "1";
 const PLUGIN_CASES = ALL ? PLUGINS : PLUGINS.slice(0, 1);
 const LANE_CASES = ALL ? LANES : LANES.slice(0, 1);
-const LEGS = ["execute", "prcheck", "pr", "ticket", "handover"]; // merge and public are guard-class, display-only
+const WORKERS = ["execute", "prcheck", "pr", "ticket", "handover"]; // merge and public are guard-class, display-only
 // The checkout's own settings files: the suite must never write them.
 const GUARDED = [".env", "scripts/lanes/lanes.local.json"];
 
@@ -43,7 +43,7 @@ const guardState = () => GUARDED.map((p) => {
 
 function exe(path: string, body: string) { writeFileSync(path, body); chmodSync(path, 0o755); }
 
-describe.skipIf(process.platform === "win32")("console toggles, end to end", () => {
+describe.skipIf(process.platform === "win32")("chief toggles, end to end", () => {
   beforeAll(() => {
     guardBefore = guardState();
     dir = mkdtempSync(join(tmpdir(), "cfgui-toggles-"));
@@ -104,7 +104,7 @@ else if (a[0] === "plugin" && (a[1] === "enable" || a[1] === "disable")) {
   const api = (path: string, body?: unknown) => fetch(`http://127.0.0.1:${port}${path}`, body === undefined ? { headers: { "X-Himmel-Token": TOKEN } } : {
     method: "POST", body: JSON.stringify(body), headers: { "X-Himmel-Token": TOKEN, Origin: `http://127.0.0.1:${port}`, "Content-Type": "application/json" },
   });
-  // A toggle exactly as the console drives it: the dry-run binds a preview id; confirm runs that.
+  // A toggle exactly as the chief drives it: the dry-run binds a preview id; confirm runs that.
   async function toggle(action: string, target: string, value?: string) {
     const req = { action, target, ...(value ? { value } : {}) };
     const pv = await api("/api/preview", req);
@@ -156,27 +156,27 @@ else if (a[0] === "plugin" && (a[1] === "enable" || a[1] === "disable")) {
     expect(await feedRow(id)).toMatchObject({ installed: { state: "absent" }, health: "off", control: { action: "cadence.arm" } });
   }, 120_000);
 
-  test.each(LEGS)("initiative %s: on, then off", async (leg) => {
-    const id = `initiative:${leg}`;
-    const get = () => run(["node", BIN, "config", "get", `initiative.${leg}`]).out.trim();
+  test.each(WORKERS)("initiative %s: on, then off", async (worker) => {
+    const id = `initiative:${worker}`;
+    const get = () => run(["node", BIN, "config", "get", `initiative.${worker}`]).out.trim();
     // The consumer: the SessionStart hook reads HIMMEL_INITIATIVE from ~/.himmel/himmel.conf (the temp HOME here).
     // HIMMEL_REPO names the clone; unset, the hook takes the git toplevel of its own path (the real checkout).
-    const hook = () => run(["bash", join(CHECKOUT, "scripts/hooks/inject-initiative.sh")], JSON.stringify({ session_id: `t-${leg}-${Math.random()}` }), { HIMMEL_REPO: repo });
+    const hook = () => run(["bash", join(CHECKOUT, "scripts/hooks/inject-initiative.sh")], JSON.stringify({ session_id: `t-${worker}-${Math.random()}` }), { HIMMEL_REPO: repo });
     const envFile = () => readFileSync(join(home, ".himmel", "himmel.conf"), "utf8");
     expect((await feedRow(id)).installed.state).toBe("absent");
 
-    const on = await toggle("config.initiative", leg, "on");
-    expect(envFile()).toMatch(new RegExp(`^HIMMEL_INITIATIVE=.*\\b${leg}\\b`, "m"));
-    expect(get()).toBe(`initiative.${leg}: on`);
+    const on = await toggle("config.initiative", worker, "on");
+    expect(envFile()).toMatch(new RegExp(`^HIMMEL_INITIATIVE=.*\\b${worker}\\b`, "m"));
+    expect(get()).toBe(`initiative.${worker}: on`);
     const h = hook();
     expect(h.rc).toBe(0);
-    expect(h.out).toMatch(new RegExp(`Active steps:.*\\b${leg}\\b`));
+    expect(h.out).toMatch(new RegExp(`Active steps:.*\\b${worker}\\b`));
     expect(on.after[id]).toEqual({ installed: "present", health: "ok" });
     expect(await feedRow(id)).toMatchObject({ installed: { state: "present", detail: "on" }, health: "ok" });
 
-    const off = await toggle("config.initiative", leg, "off");
-    expect(envFile()).not.toMatch(new RegExp(`^HIMMEL_INITIATIVE=.*\\b${leg}\\b`, "m"));
-    expect(get()).toBe(`initiative.${leg}: off`);
+    const off = await toggle("config.initiative", worker, "off");
+    expect(envFile()).not.toMatch(new RegExp(`^HIMMEL_INITIATIVE=.*\\b${worker}\\b`, "m"));
+    expect(get()).toBe(`initiative.${worker}: off`);
     expect(hook().out).not.toMatch(/Active steps/);
     expect(off.after[id]).toEqual({ installed: "absent", health: "off" });
     expect(await feedRow(id)).toMatchObject({ installed: { state: "absent", detail: "off" }, health: "off" });
@@ -206,7 +206,7 @@ else if (a[0] === "plugin" && (a[1] === "enable" || a[1] === "disable")) {
   // The registered lanes.
   // KNOWN GAP: on writes probe.kind=always and off writes
   // probe.kind=never, but the row reads installed "present", health "info", detail "local override in
-  // lanes.local.json" for BOTH, so after a reload the console cannot tell on from off (render.js offers both
+  // lanes.local.json" for BOTH, so after a reload the chief cannot tell on from off (render.js offers both
   // buttons for that reason). The write and its read-back work; the row only shows that an override exists.
   test.each(LANE_CASES)("lane %s: on, then off (the row cannot show which)", async (lane) => {
     const id = `lane:${lane}`;

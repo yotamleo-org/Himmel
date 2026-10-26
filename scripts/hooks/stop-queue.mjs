@@ -969,7 +969,7 @@ function runJob(entry, jobTimeoutMs) {
         // group for kill-tree.mjs to signal. Empty on Windows, where taskkill
         // /T already walks the tree — see that file for the measured matrix.
         ...SPAWN_OWN_GROUP,
-        // The worker runs detached with no console of its own, so a job spawned
+        // The worker runs detached with no chief of its own, so a job spawned
         // without this flashes a conhost window on every drain.
         windowsHide: true,
       });

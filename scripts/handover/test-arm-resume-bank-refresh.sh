@@ -51,7 +51,7 @@ fleet_slots_shield "$TMP" || exit 1
 export SKILL_TELEMETRY_DIR="$TMP/telemetry"
 export WORKSPACE_TRUST_CONFIG="$TMP/claude-trust.json"
 unset QUEUE_LOCK_TAKEOVER QUEUE_LOCK_TTL_SECONDS ARM_DUP_OK 2>/dev/null || true
-export ARM_TEMP_CWD_OK=1 ARM_SPLIT_LEG_OK=1 ARM_SHIPPED_OK=1 ARM_TICKET_DUP_OK=1
+export ARM_TEMP_CWD_OK=1 ARM_SPLIT_WORKER_OK=1 ARM_SHIPPED_OK=1 ARM_TICKET_DUP_OK=1
 export WORKER_BRIDGE_ROOT="$TMP/worker-bridge-shield"
 export ARM_RESUME_LOG_DIR="$TMP/arm-logs" ARM_RUNNER_DIR="$TMP/arm-runners"
 

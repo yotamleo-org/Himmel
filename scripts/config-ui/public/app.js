@@ -20,12 +20,12 @@ const landing = parseLanding(location.hash);
 const token = landing ? landing.token : "";
 if (landing) history.replaceState(null, "", location.pathname + location.search + "#/" + landing.page);
 // the Fleet link's status dot, read on load and on each page change (never polled: an open
-// console must still let the server idle out).
+// chief must still let the server idle out).
 let fleet = { data: null, error: null };
 
 // Pages: one entry each (id = the `#/<id>` route). `regions` keeps the Config
 // region nav and its 1/2/3 keys on that page only.
-// Health renders without a feed (D2): its bank and legs cards do not wait for the doctor report.
+// Health renders without a feed (D2): its bank and workers cards do not wait for the doctor report.
 let health = null; // GET /api/health, null while loading
 let vmLoadGen = 0; // declared before route() runs: a reload at #/config calls loadVm() from it; only the newest read may land
 let healthGen = 0; // declared before route() runs: a reload at #/health calls loadHealth() from it
@@ -166,7 +166,7 @@ async function loadFeed(force) {
 
 // one quiet look for a newer report (the server refreshes it in the background). Only a 200 with a
 // new generatedAt repaints, and never over a loadFeed started since; a 202 or an error says nothing. Called on
-// arriving at Config and when the tab becomes visible, never on a timer: an open console must still idle out.
+// arriving at Config and when the tab becomes visible, never on a timer: an open chief must still idle out.
 async function refreshFeed() {
   if (!feed) return;
   const gen = feedGen;

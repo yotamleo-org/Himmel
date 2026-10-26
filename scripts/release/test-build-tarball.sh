@@ -31,7 +31,7 @@ check_not() { # check_not <label> <command...> -- passes when the command exits 
   if "$@" >/dev/null 2>&1; then bad "$label (expected failure, got success)"; else ok "$label"; fi
 }
 
-# Fixture must not inherit an outer git context (a leg runs inside a worktree).
+# Fixture must not inherit an outer git context (a worker runs inside a worktree).
 unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/himmel-buildtb-test.XXXXXX")" || { echo "cannot create a scratch dir" >&2; exit 1; }
 trap 'rm -rf "$tmp"; [ -z "${srv:-}" ] || kill "$srv" 2>/dev/null' EXIT

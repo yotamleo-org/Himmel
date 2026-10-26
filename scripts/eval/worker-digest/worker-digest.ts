@@ -1,0 +1,511 @@
+// worker-digest.ts — one worker's failures as class keys. Read-only, zero model calls.
+//
+//   bun scripts/eval/worker-digest/worker-digest.ts (--transcript <journal.jsonl> | --session <uuid>)
+//       [--denials-ledger <classifier-denials.jsonl>] [--max-bytes N] [--profile <launch profile>]
+//
+// The journal and its subagent transcripts are merged in the order the AG-UI page uses (journal-merge.ts),
+// mapped by the same mapper (journal-mapper.ts), and each failure event gets a class key <failure>/<sub>
+// whose <sub> comes only from closed vocabularies (spec section 2.2), never from journal text. Denied
+// events of the main agent are joined by tool_call_id to `trajectory.py score --denials`, which owns the
+// recovered / identical-retry rule. One digest JSON on stdout; nothing is written. Exit 2 on a usage error.
+// --max-bytes is the size cap (default 200 MB); over it the digest is inconclusive. --profile names the launch
+// profile the session ran under and is stamped on the digest and on every tool_health row; without it the profile
+// is "unknown", since the recorder's own environment says nothing about the session's.
+
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import { homedir } from "node:os";
+import { basename, join, resolve } from "node:path";
+import { createJournalMapper, MAPPER_SCHEMA, SUITE } from "../../config-ui/agui/journal-mapper.ts";
+import { mergeJournalFiles, sessionFiles } from "../../config-ui/agui/journal-merge.ts";
+import { resolveJournal } from "../../config-ui/agui/sse.ts";
+import { legacyNamesOn } from "../../lib/env-alias.mjs";
+import type { AgentInfo, AguiEvent } from "../../config-ui/agui/events.ts";
+
+const { spawnSync } = Bun;
+const DIGEST_SCHEMA = 2;
+const LANES = new Set(["native", "claudex", "openrouter", "cloud", "unknown"]);
+const laneEnv = process.env.WORKER_SESSION_LANE || (legacyNamesOn() ? process.env.LEG_LANE : undefined) || "";
+const lane = LANES.has(laneEnv) ? laneEnv : "unknown";
+// Only conventional lowercase MCP identifiers, never result/argument text.
+const toolKey = (s: string) => TOOLS.has(s) ? s : /^mcp__[a-z0-9_]{1,160}$/.test(s) ? s : s.startsWith("mcp__") ? "mcp" : "other";
+const REPO = resolve(import.meta.dir, "../../..");
+const TRAJECTORY = join(REPO, "scripts/eval/lane-quality/trajectory.py");
+const MAX_BYTES = 200 * 1024 * 1024;
+const PROFILE = /^[a-z0-9][a-z0-9-]{0,40}$/;
+const MAX_IDS = 5;
+const EXIT_CODES = join(REPO, "scripts/observability/exit-codes.json");
+const LEDGER_SLACK_MS = 10_000; // a ledger row joins a classifier refusal logged within this of its result
+
+// Closed vocabularies. Anything outside them is "other".
+const TOOLS = new Set(["Bash", "Edit", "Write", "Read", "Grep", "Glob", "NotebookEdit", "WebFetch", "WebSearch",
+  "Agent", "Task", "TaskStop", "SendMessage", "Skill", "ToolSearch", "ListAgents", "Artifact"]);
+const RUN_ERRORS = new Set(["overloaded", "rate_limit", "max_tokens", "server_error", "authentication_failed",
+  "billing_error", "invalid_request"]);
+const KINDS = new Set(["general-purpose", "Explore", "Plan", "claude", "judge", "console-judge", "statusline-setup",
+  "claude-code-guide", "gemini-subagent"]);
+const slug = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+const CLASSIFIER_CATEGORIES = new Set(["Out-of-Place Publication", "Merge Without Review",
+  "Session Transcript Tampering", "Security Weaken"].map(slug));
+const MODEL = /^(claude|gpt|gemini|glm|codex|o\d)[a-z0-9.\-[\]]{0,60}$/i;
+
+const HOOK_PREFIX = /^(?:PreToolUse|PermissionRequest):\w+ hook error: /;
+const CLASSIFIER = /denied by the Claude Code auto mode classifier/;
+const BRACKET = /Reason: \[([^\]\n]{1,80})\]/;
+const TEST_NAME = /[\w./-]*?((?:test-[\w.-]+\.sh)|(?:[\w.-]+\.test\.ts))\b/g;
+const SCRIPT_NAME = /[\w./-]*?([\w.+-]+\.sh)\b/g;
+const GREP_CMD = /(?:^|[\s;&|(])(?:grep|egrep|fgrep|rg|ugrep)\s/;
+// The last stage of a pipeline whose exit status can be a grep's: the grep itself or a filter that passes it through.
+const PASS_THROUGH = /^\s*(?:(?:grep|egrep|fgrep|rg|ugrep|head|tail|sort|uniq|cat)\b)/;
+
+// The pipeline stages of the last command in `cmd`. Commands split on `;`, `&&`, `||` and newline,
+// stages on `|`, never inside single quotes, double quotes or after a backslash, so a grep pattern like 'a|b' stays
+// whole. ponytail: no `$(...)`, backticks or heredocs, a split inside one still reads as a stage boundary; revisit
+// if the board shows a misclassified row.
+const lastStages = (cmd: string): string[] => {
+  let stages: string[] = [], last: string[] = [""], cur = "", quote = "", ws = true; // ws: the last char was unescaped whitespace or a boundary
+  const endStage = () => { stages.push(cur); cur = ""; ws = true; };
+  const endCommand = () => { endStage(); if (stages.some((s) => s.trim())) last = stages; stages = []; };
+  for (let i = 0; i < cmd.length; i++) {
+    const c = cmd[i];
+    const wordStart = ws;
+    ws = false;
+    if (quote) {
+      if (c === "\\" && quote === '"') { cur += c + (cmd[++i] ?? ""); continue; }
+      if (c === quote) quote = "";
+      cur += c;
+    } else if (c === "\\" && cmd[i + 1] === "\n") { i++; ws = wordStart; } // a line continuation joins the lines and is not a word boundary
+    else if (c === "\\") cur += c + (cmd[++i] ?? "");
+    else if (c === "#" && wordStart) { while (i + 1 < cmd.length && cmd[i + 1] !== "\n") i++; }
+    else if (c === "'" || c === '"') { quote = c; cur += c; }
+    else if (c === ";" || c === "\n") endCommand();
+    else if (c === "&" && cmd[i + 1] === "&") { endCommand(); i++; }
+    else if (c === "|" && cmd[i + 1] === "|") { endCommand(); i++; }
+    else if (c === "|") endStage();
+    else { cur += c; ws = /\s/.test(c); }
+  }
+  endCommand();
+  return last;
+};
+
+// A Bash error is sub-classed by this table, first match wins. `out` tests the result text, `cmd` the
+// command; `sub` is a fixed name, so no journal text reaches a class key. "usage" takes its script from SCRIPT_NAME
+// and only when the basename is a tracked scripts file; an unmatched error stays error/Bash.
+const BASH_ERRORS: { sub: string; out: RegExp; cmd?: RegExp }[] = [
+  { sub: "zsh-nomatch", out: /\bzsh:\d+: no matches found\b/ },
+  { sub: "cr-gate-exit-14", out: /^Exit code 14\b/, cmd: /clear-(?:cr|review)-marker\.sh/ },
+  { sub: "usage", out: /\busage:|expected <base>\.\.<head>|\bunknown (?:option|argument)\b|\bcannot set\b|\bunsupported\b/i },
+  { sub: "no-such-file", out: /no such file or directory/i },
+];
+// A grep that matched nothing exits 1 with no output: the compound's answer, not a failure (the audit's
+// largest error/Bash bucket).
+const NO_MATCH = /^Exit code 1\s*$/;
+// The exit-code registry maps basename -> rc -> class. A result or retry rc is a by-design answer
+// (quiet-run 75 busy, check-ci 3 review state), counted apart from failures and never routed. Any other rc, an
+// rc a script does not list, or a script not in the registry stays a failure.
+type Registry = Map<string, Map<string, string>>;
+function exitCodes(): Registry | null {
+  try {
+    const reg: Registry = new Map();
+    for (const [path, v] of Object.entries(JSON.parse(readFileSync(EXIT_CODES, "utf8")).scripts as Record<string, { codes: Record<string, { class: string }> }>))
+      reg.set(basename(path), new Map(Object.entries(v.codes).map(([rc, c]) => [rc, c.class])));
+    return reg;
+  } catch { return null; }
+}
+// "result" | "retry" when every registered script named in `cmd` that lists this rc agrees on one of those classes.
+// A compound command (; && || |, newline) must resolve in EVERY segment: the rc belongs to one of them and which is
+// unknowable from the journal, so an unresolved segment stays an error. ponytail: splits on separators even inside
+// quotes (an over-split only keeps a failure), upgrade path is a shell-aware tokenizer if by-design counts undershoot.
+const byDesign = (reg: Registry, cmd: string, text: string): { script: string; rc: string; cls: string } | null => {
+  const rc = /^Exit code (\d+)\b/.exec(text)?.[1];
+  if (!rc) return null;
+  const segs = cmd.split(/[;&|\n]+/).filter((s) => s.trim() !== "");
+  const hits = segs.map((seg) => [...new Set([...seg.matchAll(SCRIPT_NAME)].map((h) => h[1]))]
+    .flatMap((s) => { const c = reg.get(s)?.get(rc); return c ? [{ script: s, rc, cls: c }] : []; }));
+  const all = hits.flat();
+  return hits.length > 0 && hits.every((h) => h.length > 0) && all.every((h) => h.cls === all[0].cls && (h.cls === "result" || h.cls === "retry")) ? all[0] : null;
+};
+// guard-worker-context-handoff words its refusal "worker context checkpoint|hand-off (mode ...)" or "refusing
+// auto-compaction", never "<hook>:", so the hook-name lookup in deniedSub cannot find it.
+const CONTEXT_GUARD = /\bleg context (?:checkpoint|hand-off) \(mode |\brefusing auto-compaction: no CHECKPOINT/;
+
+type Agent = { id: string; role: string; kind: string | null; model: string | null };
+type Row = {
+  session: string; agent: Agent; class: string; failure: string; count: number;
+  identical_retry: number | null; recovered: boolean | null;
+  first_ts: number | null; last_ts: number | null; tool_call_ids: string[]; final_red?: boolean;
+};
+const allIds = new WeakMap<Row, string[]>(); // every tool_call_id of a row, for the trajectory join; output keeps MAX_IDS
+type Denial = { tool_call_id: string; recovered: boolean; identical: number };
+type LedgerRow = { ts: number; tag: string; tool: string; used: boolean };
+
+function usage(msg: string): never {
+  console.error(`worker-digest: ${msg}`);
+  process.exit(2);
+}
+
+function args(argv: string[]) {
+  const o: { transcript?: string; session?: string; ledger: string; maxBytes: number; profile: string } = {
+    ledger: join(homedir(), ".himmel/state/classifier-denials.jsonl"), maxBytes: MAX_BYTES, profile: "unknown",
+  };
+  for (let i = 0; i < argv.length; i++) {
+    const v = argv[i + 1];
+    if (v === undefined) usage(`${argv[i]} needs a value`);
+    if (argv[i] === "--transcript") o.transcript = v;
+    else if (argv[i] === "--session") o.session = v;
+    else if (argv[i] === "--denials-ledger") o.ledger = v;
+    else if (argv[i] === "--max-bytes" && /^\d+$/.test(v)) o.maxBytes = Number(v);
+    else if (argv[i] === "--profile" && PROFILE.test(v)) o.profile = v;
+    else usage(`unknown argument ${argv[i]}`);
+    i++;
+  }
+  if (!o.transcript && !o.session) usage("--transcript or --session is required");
+  return o;
+}
+
+const lines = (path: string) => { try { return readFileSync(path, "utf8").split("\n"); } catch { return []; } };
+
+// The two vocabulary lookups return null when they fail, so the digest is partial rather than all "other".
+function hookNames(): Set<string> | null {
+  try { return new Set(readdirSync(join(REPO, "scripts/hooks")).filter((n) => n.endsWith(".sh")).map((n) => n.slice(0, -3))); }
+  catch { return null; }
+}
+
+// spawnSync throws when the binary is not on PATH, so each spawn sits inside the try.
+function trackedNames(): { tests: Set<string>; scripts: Set<string> } | null {
+  try {
+    const r = spawnSync(["git", "-C", REPO, "ls-files", "-z"]);
+    if (!r.success) return null;
+    const names = r.stdout.toString().split("\0").map((p) => basename(p));
+    return {
+      tests: new Set(names.filter((n) => /^test-[\w.-]+\.sh$|\.test\.ts$/.test(n))),
+      scripts: new Set(names.filter((n) => /^[\w.+-]+\.sh$/.test(n))),
+    };
+  } catch { return null; }
+}
+
+// null when trajectory.py did not run or did not print JSON.
+function trajectory(journal: string): Record<string, unknown> | null {
+  try {
+    const r = spawnSync(["python3", TRAJECTORY, "score", journal, "--denials"]);
+    return r.success ? JSON.parse(r.stdout.toString()) : null;
+  } catch { return null; }
+}
+
+function ledgerRows(path: string, session: string): LedgerRow[] {
+  const out: LedgerRow[] = [];
+  for (const l of lines(path)) {
+    let r: Record<string, unknown>;
+    try { r = JSON.parse(l); } catch { continue; }
+    const ts = Date.parse(String(r?.ts ?? ""));
+    if (r?.session_id === session && Number.isFinite(ts)) out.push({ ts, tag: String(r.reason_tag ?? ""), tool: String(r.tool ?? ""), used: false });
+  }
+  return out;
+}
+
+const agentOf = (a: AgentInfo | undefined): Agent => ({
+  id: a?.id ?? "main",
+  role: a?.role ?? "agent",
+  kind: a?.kind === undefined ? null : KINDS.has(a.kind) ? a.kind : "other",
+  model: a?.model && MODEL.test(a.model) ? a.model : null,
+});
+
+// What the session spent before its first edit. Usage rows are weighted input + cache_creation + output
+// at 1 and cache_read at 0.1 (the cost-reduction method), one row per message id (a streamed message repeats its
+// usage on every content-block line, the last one wins). The window ends at the main agent's first Edit, Write,
+// NotebookEdit or `git commit` tool call and includes the message that issued it. Subagent turns before the cut are
+// summed apart (sub_tokens), never into tokens. A compacted session is read whole: sessionFiles merges every segment
+// in order, so the window is the first edit of the session, not of the last segment. cut "none": no edit, no commit.
+const EDIT_TOOLS = new Set(["Edit", "Write", "NotebookEdit"]);
+const GIT_COMMIT = /(?:^|[;&|(\n])\s*(?:(?:if|then|do|else|elif|while|until|sudo|env|command)\s+(?:-\S+\s+)*|\w+=\S*\s+)*git\s+(?:-\S+\s+(?:\S+\s+)?)*commit(?![\w-])/;
+const isSearch = (n: string) => n === "Grep" || n === "Glob" || n === "WebSearch" || n === "WebFetch" || n.startsWith("mcp__qmd__");
+// A worker has no Grep/Glob tool and reads through Bash, so a Bash call whose first word is one of these counts too.
+// ponytail: first word only, `cd x && grep y` reads as neither; revisit if the baseline undershoots.
+const BASH_READ = /^(?:cat|head|tail|sed|less|bat)\b/;
+const BASH_SEARCH = /^(?:grep|egrep|rg|ugrep|find|ls|tree)\b|^git\s+(?:grep|ls-files)\b|^bash\s+scripts\/graphify\/(?:leg|worker)-graph\.sh\b/;
+function exploration(lines: string[]) {
+  const w = (u: Record<string, unknown>) => ["input_tokens", "cache_creation_input_tokens", "output_tokens"]
+    .reduce((s, k) => s + (typeof u[k] === "number" ? u[k] as number : 0), 0)
+    + 0.1 * (typeof u.cache_read_input_tokens === "number" ? u.cache_read_input_tokens : 0);
+  const main = new Map<string, number>(), sub = new Map<string, number>(), calls = new Set<string>();
+  let cut: string | null = null, cutId = "", reads = 0, searches = 0;
+  for (const l of lines) {
+    let r: any;
+    try { r = JSON.parse(l); } catch { continue; }
+    if (r?.type !== "assistant" || !r.message || typeof r.message !== "object") continue;
+    const side = r.isSidechain === true, id = String(r.message.id ?? r.uuid ?? "");
+    if (cut !== null && (side || id !== cutId)) continue;
+    const u = r.message.usage;
+    if (u && typeof u === "object") (side ? sub : main).set(id, w(u));
+    if (side || cut !== null || !Array.isArray(r.message.content)) continue;
+    for (const c of r.message.content) {
+      if (c?.type !== "tool_use" || typeof c.name !== "string") continue;
+      const cmd = typeof c.input?.command === "string" ? c.input.command : "";
+      if (EDIT_TOOLS.has(c.name)) cut = "edit";
+      else if (c.name === "Bash" && GIT_COMMIT.test(cmd)) cut = "commit";
+      else if (!calls.has(c.id)) {
+        calls.add(c.id);
+        const bash = c.name === "Bash" ? cmd.trim() : "";
+        if (c.name === "Read" || BASH_READ.test(bash)) reads++;
+        else if (isSearch(c.name) || BASH_SEARCH.test(bash)) searches++;
+      }
+      if (cut !== null) { cutId = id; break; }
+    }
+  }
+  const sum = (m: Map<string, number>) => Math.round([...m.values()].reduce((s, n) => s + n, 0));
+  return { tokens: sum(main), sub_tokens: sum(sub), reads, searches, cut: cut ?? "none" };
+}
+
+function inconclusive(session: string, reason: string) {
+  return { digest_v: DIGEST_SCHEMA, mapper_v: MAPPER_SCHEMA, trajectory_v: null, session, status: "inconclusive",
+    reason, model: null, metrics: {}, agents: [], failures: [], stats: {} };
+}
+
+async function main() {
+  const o = args(process.argv.slice(2));
+  let journal = o.transcript && resolve(o.transcript);
+  if (!journal) {
+    const r = await resolveJournal(homedir(), o.session!);
+    if (!("path" in r)) return inconclusive(o.session!, `journal ${r.status}`);
+    journal = r.path;
+  }
+  const session = basename(journal, ".jsonl");
+  if (o.session && o.session !== session) usage("--session does not name the --transcript");
+  let size: number;
+  try { size = statSync(journal).size; } catch { return inconclusive(session, "no-journal"); }
+  const { paths, capped } = await sessionFiles(journal);
+  for (const p of paths.slice(1)) { try { size += statSync(p).size; } catch { /* gone: the merge skips it */ } }
+  if (size > o.maxBytes) return inconclusive(session, "too-big");
+
+  const mapper = createJournalMapper({ threadId: session });
+  const events: AguiEvent[] = [];
+  const merged = await mergeJournalFiles(paths);
+  for (const l of merged.lines) events.push(...mapper.pushLine(l));
+  events.push(...mapper.flush());
+
+  const trajOut = trajectory(journal);
+  const traj = trajOut ?? {};
+  const denials = new Map<string, Denial>(((traj.denials as Denial[]) ?? []).map((d) => [d.tool_call_id, d]));
+  const hookList = hookNames();
+  const names = trackedNames();
+  const lookupsFailed = [...(hookList ? [] : ["hooks"]), ...(names ? [] : ["tracked-tests"])];
+  const hooks = hookList ?? new Set<string>();
+  const tests = names?.tests ?? new Set<string>();
+  const scripts = names?.scripts ?? new Set<string>();
+  const ledger = ledgerRows(o.ledger, session);
+  const registry = exitCodes();
+  if (!registry) lookupsFailed.push("exit-codes");
+  const designed = new Map<string, { script: string; rc: string; class: string; count: number }>();
+
+  const agents = new Map<string, Agent>();
+  const callAgent = new Map<string, Agent>();
+  const callName = new Map<string, string>();
+  const callArgs = new Map<string, string>();
+  const rows = new Map<string, Row>();
+  const suiteLast = new Map<string, { row: Row; red: boolean }>();
+  const mapperDenied = new Set<string>();
+  const m = { tool_calls: 0, subagents: 0, turns: 0, fail_denied: 0, fail_suite: 0, fail_blocked: 0, fail_error: 0,
+    run_errors: 0, interrupts: 0, ok_no_match: 0, ok_result: 0, ok_retry: 0 };
+  let mainModel: string | null = null;
+  const callsByTool: Record<string, number> = Object.create(null);
+  const failuresByTool: Record<string, number> = Object.create(null);
+  const callDay = new Map<string, string | null>();
+  const health = new Map<string, { agent: Agent; lane: string; profile: string; day: string | null; tool: string; calls: number; failures: number; errors: number; denials: number; classes: Record<string, number> }>();
+  const toolRow = (agent: Agent, tool: string, day: string | null) => {
+    const key = `${agent.id}\0${day}\0${tool}`;
+    let r = health.get(key);
+    if (!r) { r = { agent, lane, profile: o.profile, day, tool, calls: 0, failures: 0, errors: 0, denials: 0, classes: Object.create(null) }; health.set(key, r); }
+    return r;
+  };
+
+  const seen = (a: Agent) => {
+    const prev = agents.get(a.id);
+    agents.set(a.id, { ...a, kind: a.kind ?? prev?.kind ?? null, model: a.model ?? prev?.model ?? null });
+    if (a.id === "main" && a.model) mainModel = a.model;
+    return agents.get(a.id)!;
+  };
+  const add = (agent: Agent, cls: string, failure: string, id: string | undefined, ts: number | undefined): Row => {
+    const key = `${agent.id}\0${cls}`;
+    let r = rows.get(key);
+    if (!r) {
+      r = { session, agent, class: cls, failure, count: 0, identical_retry: null, recovered: null,
+        first_ts: ts ?? null, last_ts: ts ?? null, tool_call_ids: [] };
+      rows.set(key, r);
+    }
+    r.agent = agents.get(agent.id) ?? agent;
+    r.count++;
+    if (id && callName.has(id)) {
+      const tool = toolKey(callName.get(id)!);
+      failuresByTool[tool] = (failuresByTool[tool] ?? 0) + 1;
+      const h = toolRow(agent, tool, callDay.get(id) ?? null);
+      h.failures++;
+      h.classes[cls] = (h.classes[cls] ?? 0) + 1;
+      if (failure === "error" || failure === "suite") h.errors++;
+      if (failure === "denied") h.denials++;
+    }
+    if (ts !== undefined) { r.first_ts ??= ts; r.last_ts = ts; }
+    if (id && r.tool_call_ids.length < MAX_IDS) r.tool_call_ids.push(id);
+    if (id) { const all = allIds.get(r) ?? []; all.push(id); allIds.set(r, all); }
+    return r;
+  };
+  const command = (id: string): string => {
+    try { const v = JSON.parse(callArgs.get(id) ?? "").command; return typeof v === "string" ? v : ""; } catch { return ""; }
+  };
+  const suiteSub = (cmd: string): string => {
+    for (const hit of cmd.matchAll(TEST_NAME)) if (tests.has(basename(hit[1]))) return basename(hit[1]);
+    return "other";
+  };
+  // The suite a command runs, for final_red only (never output): its first test name, else the command itself, so
+  // two untracked suites that share the suite/other row are still told apart.
+  const suiteKey = (agent: Agent, cmd: string): string => {
+    const hit = cmd.matchAll(TEST_NAME).next().value;
+    return `${agent.id}\0${hit ? basename(hit[1]) : cmd}`;
+  };
+  // null: not a failure (a grep that matched nothing). Else "" or ":<sub>", appended to error/Bash.
+  const bashErrorSub = (cmd: string, text: string): string | null => {
+    // Only the last stage of the last command can be the grep whose exit 1 this is: in `grep x f; false` or
+    // `grep x f | false` the failure is `false`'s. ponytail: `false && grep x f` still reads as a no-match (the
+    // grep never ran), a sequence cannot be told from `ls && grep x f` without running it; revisit if the board shows it.
+    const stages = lastStages(cmd);
+    if (NO_MATCH.test(text) && GREP_CMD.test(stages.join(" ")) && PASS_THROUGH.test(stages[stages.length - 1])) return null;
+    for (const e of BASH_ERRORS) {
+      if (!e.out.test(text) || (e.cmd && !e.cmd.test(cmd))) continue;
+      if (e.sub !== "usage") return `:${e.sub}`;
+      // The script the usage error is about: the only tracked one in the command, else the one its output names.
+      const named = [...new Set([...cmd.matchAll(SCRIPT_NAME)].map((h) => h[1]).filter((s) => scripts.has(s)))];
+      const hit = named.length === 1 ? named : named.filter((s) => text.includes(s));
+      if (hit.length === 1) return `:usage:${hit[0].replace(/\.sh$/, "")}`;
+    }
+    return "";
+  };
+  const deniedSub = (text: string, ts: number | undefined, tool: string): string => {
+    if (CLASSIFIER.test(text)) {
+      let cat: string | undefined;
+      if (ts !== undefined) {
+        const row = ledger.filter((r) => !r.used && r.tool === tool && Math.abs(r.ts - ts) <= LEDGER_SLACK_MS)
+          .sort((a, b) => Math.abs(a.ts - ts) - Math.abs(b.ts - ts))[0];
+        if (row) { row.used = true; if (CLASSIFIER_CATEGORIES.has(slug(row.tag))) cat = slug(row.tag); }
+      }
+      // spec deviation (chief ruling): the ledger's reason_tag is mostly "unknown", so fall back to the
+      // journal's bracketed category, kept only when it is on the same fixed list.
+      if (!cat) { const b = BRACKET.exec(text)?.[1]; if (b && CLASSIFIER_CATEGORIES.has(slug(b))) cat = slug(b); }
+      return `classifier:${cat ?? "other"}`;
+    }
+    if (CONTEXT_GUARD.test(text.slice(0, 2000))) return "guard-leg-context-handoff";
+    const pre = HOOK_PREFIX.exec(text);
+    if (!pre) return "permission-prompt";
+    let rest = text.slice(pre[0].length);
+    if (rest.startsWith("[")) { const i = rest.indexOf("]: "); rest = i >= 0 ? rest.slice(i + 3) : ""; }
+    const name = /^[^\w]*([a-z0-9][a-z0-9-]*):/.exec(rest)?.[1];
+    return name && hooks.has(name) ? name : "other";
+  };
+
+  for (const e of events) {
+    switch (e.type) {
+      case "RUN_STARTED": m.turns++; break;
+      case "RUN_FINISHED": if (e.outcome?.type === "cancelled") m.interrupts++; break;
+      case "RUN_ERROR": {
+        m.run_errors++;
+        add(seen(agentOf(undefined)), `run_error/${e.code && RUN_ERRORS.has(e.code) ? e.code : "other"}`, "run_error", undefined, e.timestamp);
+        break;
+      }
+      case "TEXT_MESSAGE_START": {
+        const a = seen(agentOf(e.agent));
+        if (e.failure === "blocked") { m.fail_blocked++; add(a, "blocked/-", "blocked", undefined, e.timestamp); }
+        else if (e.failure === "error") { m.run_errors++; add(a, "run_error/other", "run_error", undefined, e.timestamp); }
+        break;
+      }
+      case "TOOL_CALL_START": {
+        m.tool_calls++;
+        const a = seen(agentOf(e.agent));
+        callAgent.set(e.toolCallId, a);
+        callName.set(e.toolCallId, e.toolCallName);
+        const tool = toolKey(e.toolCallName);
+        callsByTool[tool] = (callsByTool[tool] ?? 0) + 1;
+        const day = typeof e.timestamp === "number" && Number.isFinite(e.timestamp) ? new Date(e.timestamp).toISOString().slice(0, 10) : null;
+        callDay.set(e.toolCallId, day);
+        toolRow(a, tool, day).calls++;
+        break;
+      }
+      case "TOOL_CALL_ARGS": callArgs.set(e.toolCallId, (callArgs.get(e.toolCallId) ?? "") + e.delta); break;
+      case "TOOL_CALL_RESULT": {
+        if (e.subagent) seen(agentOf(e.subagent));
+        const a = callAgent.get(e.toolCallId) ?? seen(agentOf(undefined));
+        const cmd = command(e.toolCallId);
+        if (!e.failure) {
+          if (SUITE.test(cmd)) { const s = suiteLast.get(suiteKey(a, cmd)); if (s) s.red = false; }
+          break;
+        }
+        const by = (e.failure === "suite" || e.failure === "error") && callName.get(e.toolCallId) === "Bash" && registry
+          ? byDesign(registry, cmd, e.content) : null;
+        if (by) {
+          if (by.cls === "result") m.ok_result++; else m.ok_retry++;
+          const d = designed.get(`${by.script}\0${by.rc}`) ?? { script: by.script, rc: by.rc, class: by.cls, count: 0 };
+          d.count++;
+          designed.set(`${by.script}\0${by.rc}`, d);
+          break;
+        }
+        if (e.failure === "denied") {
+          m.fail_denied++;
+          if (a.id === "main") mapperDenied.add(e.toolCallId);
+          add(a, `denied/${deniedSub(e.content, e.timestamp, callName.get(e.toolCallId) ?? "")}`, "denied", e.toolCallId, e.timestamp);
+        } else if (e.failure === "suite") {
+          m.fail_suite++;
+          const sub = suiteSub(cmd);
+          suiteLast.set(suiteKey(a, cmd), { row: add(a, `suite/${sub}`, "suite", e.toolCallId, e.timestamp), red: true });
+        } else if (e.failure === "blocked") {
+          m.fail_blocked++;
+          add(a, "blocked/-", "blocked", e.toolCallId, e.timestamp);
+        } else {
+          const tool = callName.get(e.toolCallId) ?? "";
+          const sub = tool === "Bash" ? bashErrorSub(cmd, e.content) : "";
+          if (sub === null) { m.ok_no_match++; break; }
+          m.fail_error++;
+          add(a, `error/${tool.startsWith("mcp__") ? "mcp" : TOOLS.has(tool) ? tool : "other"}${sub}`, "error", e.toolCallId, e.timestamp);
+        }
+        break;
+      }
+    }
+  }
+  m.subagents = [...agents.keys()].filter((id) => id !== "main").length;
+  for (const { row } of suiteLast.values()) row.final_red = false;
+  for (const { row, red } of suiteLast.values()) if (red) row.final_red = true;
+
+  // The trajectory join: main-agent denied rows take recovered / identical from trajectory.py by tool_call_id.
+  for (const r of rows.values()) {
+    if (r.failure !== "denied" || r.agent.id !== "main") continue;
+    const ds = (allIds.get(r) ?? []).map((id) => denials.get(id)).filter((d): d is Denial => !!d);
+    if (ds.length === 0) continue;
+    r.identical_retry = ds.reduce((n, d) => n + d.identical, 0);
+    r.recovered = ds.every((d) => d.recovered);
+  }
+  const main = agents.get("main") ?? seen(agentOf(undefined));
+  const bool = (v: unknown) => (v === true ? 1 : v === false ? 0 : null);
+  const failures = [...rows.values()];
+  const trajRow = (cls: string, count: number) => failures.push({ session, agent: main, class: cls, failure: "traj", count,
+    identical_retry: null, recovered: null, first_ts: null, last_ts: null, tool_call_ids: [] });
+  if (traj.red_before_green === false) trajRow("traj/red-before-green", 1);
+  if (traj.verify_before_claim === false) trajRow("traj/claim-unverified", 1);
+  const idr = typeof traj.identical_denied_retries === "number" ? traj.identical_denied_retries : 0;
+  if (idr >= 1) trajRow("traj/identical-retry", idr);
+
+  const divergence = [
+    ...[...mapperDenied].filter((id) => !denials.has(id)).map((id) => ({ tool_call_id: id, only: "mapper" })),
+    ...[...denials.keys()].filter((id) => !mapperDenied.has(id)).map((id) => ({ tool_call_id: id, only: "trajectory" })),
+  ];
+  const stats = { ...mapper.stats, files: paths.length, files_skipped: merged.skipped, subagent_cap_hit: capped,
+    trajectory_failed: trajOut === null, lookups_failed: lookupsFailed, denial_divergence: divergence };
+  return {
+    digest_v: DIGEST_SCHEMA, mapper_v: MAPPER_SCHEMA, trajectory_v: traj.trajectory_v ?? null, session,
+    status: mapper.stats.malformed > 0 || capped || merged.skipped > 0 || trajOut === null || lookupsFailed.length > 0
+      ? "partial" : "ok",
+    model: mainModel, lane, profile: o.profile,
+    started_ts: events.find((e) => typeof e.timestamp === "number")?.timestamp ?? null,
+    tool_health: [...health.values()].map((r) => ({ ...r, agent: agents.get(r.agent.id) ?? r.agent })),
+    metrics: { ...m, tool_calls_by_tool: callsByTool, tool_failures_by_tool: failuresByTool, red_before_green: bool(traj.red_before_green), denial_recovery: traj.denial_recovery ?? null,
+      identical_denied_retries: traj.identical_denied_retries ?? null, verify_before_claim: bool(traj.verify_before_claim) },
+    agents: [...agents.values()], failures, by_design: [...designed.values()], stats,
+    exploration: exploration(merged.lines),
+  };
+}
+
+console.log(JSON.stringify(await main()));

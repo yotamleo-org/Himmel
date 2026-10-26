@@ -16,7 +16,7 @@ set -uo pipefail
 # below pins today's insensitivity.
 unset ARMAUTOMERGE CR_MERGE_GATE_OK CR_REQUIRE_CROSS_MODEL
 
-# A leg shell carries FORCE_COLOR=3, which makes node's
+# A worker shell carries FORCE_COLOR=3, which makes node's
 # console.log colour a bare number/boolean (\e[33m0\e[39m) in the values the
 # gate parses. Pin it on so the suite catches a regression in any environment.
 export FORCE_COLOR=3
@@ -98,6 +98,9 @@ build_repo_template() {
     # Every chokepoint fails closed without its seam-guard lib.
     cp "$(dirname "$CLEAR")/../lib/chokepoint-seam-guard.sh" "$REPO_TEMPLATE/scripts/lib/chokepoint-seam-guard.sh" \
         || { echo "FAIL: cp chokepoint-seam-guard.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
+    # The old-name cases read through env-alias.sh and its switch.
+    cp "$(dirname "$CLEAR")/../lib/env-alias.sh" "$(dirname "$CLEAR")/../lib/legacy-names.sh" "$REPO_TEMPLATE/scripts/lib/" \
+        || { echo "FAIL: cp env-alias.sh and legacy-names.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$LEDGER_APPEND" "$REPO_TEMPLATE/scripts/cr/ledger-append.sh" \
         || { echo "FAIL: cp ledger-append.sh into template failed" >&2; rm -rf "$REPO_TEMPLATE"; return 1; }
     cp "$(dirname "$CLEAR")/anchor-handoff.sh" "$REPO_TEMPLATE/scripts/cr/anchor-handoff.sh" \

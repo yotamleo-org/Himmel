@@ -15,8 +15,8 @@ const ID = 'humanizer@himmel';
 const PIN = '225a6f39ac85f76ee48dbad772ea4abe4ed6c9d8';
 
 test('humanizer@himmel is enabled in no base, floor or profile list', () => {
-  assert.ok(!REG.base.includes(ID), 'base would put it in every leg');
-  assert.ok(!REG.floor.includes(ID), 'floor would put it in every leg');
+  assert.ok(!REG.base.includes(ID), 'base would put it in every worker');
+  assert.ok(!REG.floor.includes(ID), 'floor would put it in every worker');
   for (const [name, p] of Object.entries(REG.profiles)) {
     assert.ok(!(p?.enable ?? []).includes(ID), `${name} must not enable ${ID}`);
   }

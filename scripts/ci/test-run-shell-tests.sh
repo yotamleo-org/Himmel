@@ -804,7 +804,7 @@ fi
 # runner dependency except that tool, so the verdict cannot depend on this host.
 sweep13g_rows="
 gitleaks scripts/guardrails/test-gitleaks-retired-org.sh
-flock scripts/handover/chief-kit/test-leg-doc-lock.sh
+flock scripts/handover/chief-kit/test-worker-doc-lock.sh
 node scripts/hooks/test-check-hook-lib-suites.sh
 node scripts/observability/test-agent-runtime-census.sh
 jq scripts/hooks/test-check-hook-file-parse.sh
@@ -2488,19 +2488,19 @@ scripts/guardrails/test-check-git-env-scrub.sh	10
 scripts/guardrails/test-graphify-fence.sh	35
 scripts/guardrails/test-lesson-write-fence.sh	98
 scripts/handover/chief-kit/test-board.sh	16
-scripts/handover/chief-kit/test-close-wrapped-leg.sh	20
-scripts/handover/chief-kit/test-console-kit-e2e.sh	16
-scripts/handover/chief-kit/test-console-wait-b.sh	238
-scripts/handover/chief-kit/test-console-wait.sh	254
+scripts/handover/chief-kit/test-close-wrapped-worker.sh	20
+scripts/handover/chief-kit/test-chief-kit-e2e.sh	16
+scripts/handover/chief-kit/test-chief-wait-b.sh	238
+scripts/handover/chief-kit/test-chief-wait.sh	254
 scripts/handover/chief-kit/test-go.sh	13
-scripts/handover/chief-kit/test-headed-arm-leg.sh	126
+scripts/handover/chief-kit/test-headed-arm-worker.sh	126
 scripts/handover/chief-kit/test-judge-ladder.sh	10
-scripts/handover/chief-kit/test-leg-pretrust.sh	53
+scripts/handover/chief-kit/test-worker-pretrust.sh	53
 scripts/handover/chief-kit/test-ready-check.sh	34
 scripts/handover/chief-kit/test-tick.sh	142
 scripts/handover/chief-kit/test-wrap-merged.sh	36
 scripts/handover/chief-kit/test-write-verdict.sh	22
-scripts/handover/chief/test-console.sh	66
+scripts/handover/chief/test-chief.sh	66
 scripts/handover/test-arm-resume-bus-rebind.sh	13
 scripts/handover/test-arm-resume-context.sh	17
 scripts/handover/test-arm-resume-cron.sh	12
@@ -2550,7 +2550,7 @@ scripts/hooks/test-end-session-wiki.sh	35
 scripts/hooks/test-escape-class-corpus.sh	170
 scripts/hooks/test-fork-precommit-core.sh	33
 scripts/hooks/test-guard-implementor-dispatch.sh	237
-scripts/hooks/test-guard-leg-context-handoff.sh	18
+scripts/hooks/test-guard-worker-context-handoff.sh	18
 scripts/hooks/test-guard-pr-check-literal.sh	37
 scripts/hooks/test-hook-chain-latency.sh	156
 scripts/hooks/test-hook-rewrite-integrity.sh	14
@@ -2920,7 +2920,7 @@ if [ -n "$sb28" ]; then
 mkdir -p "$sb28/scripts"
 cat > "$sb28/scripts/test-envleak.sh" <<'SHEOF'
 #!/usr/bin/env bash
-printf 'leg=%s profile=%s fixture=%s\n' "${WORKER_SESSION_ID-unset}" \
+printf 'worker=%s profile=%s fixture=%s\n' "${WORKER_SESSION_ID-unset}" \
   "${HIMMEL_WORKER_SESSION_PROFILE-unset}" "${HIMMEL_TEST_FIXTURE-unset}" > "$ENVLEAK_LOG"
 exit 0
 SHEOF
@@ -2934,8 +2934,8 @@ WORKER_SESSION_ID=leaked-28 HIMMEL_WORKER_SESSION_PROFILE=leaked-28 ENVLEAK_LOG=
 rc28=$?
 direct28=$(cat "$sb28/direct.log" 2>/dev/null)
 runner28=$(cat "$sb28/runner.log" 2>/dev/null)
-if [ "$direct28" = "leg=leaked-28 profile=leaked-28 fixture=unset" ] \
-   && [ "$rc28" -eq 0 ] && [ "$runner28" = "leg=unset profile=unset fixture=1" ]; then
+if [ "$direct28" = "worker=leaked-28 profile=leaked-28 fixture=unset" ] \
+   && [ "$rc28" -eq 0 ] && [ "$runner28" = "worker=unset profile=unset fixture=1" ]; then
   pass "28: the runner scrubs the leaked session env and keeps HIMMEL_TEST_FIXTURE"
 else
   fail "28: rc=$rc28 direct=[$direct28] runner=[$runner28] (want 0, the leak in direct only, fixture=1 via the runner)"

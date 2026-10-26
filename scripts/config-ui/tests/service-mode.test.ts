@@ -1,5 +1,5 @@
 // Service mode (`server.ts --service`): a token that survives restarts, no idle exit, and the board read from the
-// JSON file the console writes beside its doc. Real server processes; the feed is the stub himmelctl.
+// JSON file the chief writes beside its doc. Real server processes; the feed is the stub himmelctl.
 import { test, expect, afterEach } from "bun:test";
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -100,21 +100,21 @@ test("service: the idle window never shuts the server down", async () => {
   expect(await Promise.race([p.exited, sleep(1200).then(() => "alive")])).toBe("alive");
 });
 
-const CONSOLE = "HIMMEL-nextleg-2026-10-16BF-roadmap-console";
+const CHIEF = "HIMMEL-nextleg-2026-10-16BF-roadmap-chief";
 test("board: the JSON beside the console doc is served, and a rewrite reaches the next GET without a board.mjs run", async () => {
   const dir = tmp();
   const handovers = join(dir, "handovers");
   const bucket = join(handovers, "op", "himmel");
   mkdirSync(bucket, { recursive: true });
-  writeFileSync(join(bucket, `${CONSOLE}.md`), "# console\n");
+  writeFileSync(join(bucket, `${CHIEF}.md`), "# console\n");
   const runs = join(dir, "runs");
   const script = join(dir, "board.mjs");
   writeFileSync(script, `import { appendFileSync } from "node:fs"; appendFileSync(${JSON.stringify(runs)}, "x"); process.exit(1);\n`);
   const token = "t".repeat(64);
   const s = startServer({ port: 0, token, boardScript: script, env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HANDOVER_DIR: handovers, HOME: dir } });
   cleanups.push(() => s.stop());
-  const get = () => fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${CONSOLE}`, { headers: { "X-Himmel-Token": token } });
-  const file = join(bucket, `${CONSOLE}.board.json`);
+  const get = () => fetch(`http://127.0.0.1:${s.port}/api/agui/board?console=${CHIEF}`, { headers: { "X-Himmel-Token": token } });
+  const file = join(bucket, `${CHIEF}.board.json`);
   writeFileSync(file, JSON.stringify({ schema: "himmel.board/1", console: { name: "one" }, note: "RETASK BF-N2392-ff831841" }));
   const first = await get();
   expect(first.status).toBe(200);

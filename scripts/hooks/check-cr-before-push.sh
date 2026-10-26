@@ -855,8 +855,12 @@ write_marker_for_branch() {
     # Tuning knob for the WAIT only (both directions fail closed: a shorter
     # wait refuses sooner, a longer one waits longer). The 300s TTL is a
     # constant — see the lock lib's TTL RECLAMATION header.
-    # read-both: REVIEW_MARKER_* wins, CR_MARKER_* still read (rename-aliases.tsv).
-    _lock_wait_env="${REVIEW_MARKER_LOCK_WAIT_SECONDS:-${CR_MARKER_LOCK_WAIT_SECONDS:-}}"
+    # old names, read only while HIMMEL_LEGACY_NAMES is on
+    # shellcheck source=../lib/env-alias.sh
+    # shellcheck disable=SC1091
+    { [ -r "$SCRIPT_DIR/../lib/env-alias.sh" ] && . "$SCRIPT_DIR/../lib/env-alias.sh" \
+        && alias_env REVIEW_MARKER_LOCK_WAIT_SECONDS CR_MARKER_LOCK_WAIT_SECONDS; } 2>/dev/null || true
+    _lock_wait_env="${REVIEW_MARKER_LOCK_WAIT_SECONDS:-}"
     case "$_lock_wait_env" in
         ''|*[!0-9]*) lock_wait=30 ;;
         *) lock_wait="$_lock_wait_env" ;;
@@ -1097,7 +1101,7 @@ if [ -n "${PRE_COMMIT_REMOTE_BRANCH:-}" ]; then
     pc_remote_ref="$PRE_COMMIT_REMOTE_BRANCH"
     # In this shape the remote identity arrives via env, not argv: pre-commit
     # sets PRE_COMMIT_REMOTE_NAME and PRE_COMMIT_REMOTE_BRANCH together under
-    # one conjunction (run.py), so it is always present on this branch. Leg-44
+    # one conjunction (run.py), so it is always present on this branch. Worker-44
     # regression: reading only argv here refused EVERY framework-shaped push
     # with a false "no remote identity". argv still wins when a caller set it.
     if [ -z "$push_remote_name" ]; then

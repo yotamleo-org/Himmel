@@ -31,10 +31,24 @@
 # Give it a literal name pair, read its status, or gate with env_alias_restrict.
 # The JS and Python twins (env-alias.mjs, env_alias.py) answer the same rows,
 # fixtures/env-alias-rows.tsv.
+# Legacy names off (HIMMEL_LEGACY_NAMES=0, legacy-names.sh): alias_env copies
+# nothing and env_alias_any reads NEW only; env_alias_permit is granted by NEW
+# only while a falsy OLD still vetoes; env_alias_restrict and alias_env_cap read
+# both as before. Off never widens what a caller allows.
 # Sibling rename helpers: status-marker.sh (+ status-marker.mjs, status_marker.py)
 # parses PARKED-BANK / PARKED-USAGE; deprecated-forwarder.sh is the template for an
 # old script path that forwards to its renamed script.
 # Bash 3.2-safe (indirect expansion, no namerefs).
+
+case "${BASH_SOURCE[0]}" in */*) _env_alias_dir="${BASH_SOURCE[0]%/*}" ;; *) _env_alias_dir=. ;; esac
+# shellcheck source=scripts/lib/legacy-names.sh
+# shellcheck disable=SC1091
+if ! { [ -r "$_env_alias_dir/legacy-names.sh" ] && . "$_env_alias_dir/legacy-names.sh"; }; then
+  echo "env-alias.sh: cannot load $_env_alias_dir/legacy-names.sh" >&2
+  unset _env_alias_dir
+  return 2
+fi
+unset _env_alias_dir
 
 # _env_alias_valid NAME: [A-Z_][A-Z0-9_]*, letters and digits spelled out so no
 # locale widens a range.
@@ -55,8 +69,14 @@ _env_alias_falsy() {
 alias_env() {
   local new="${1-}" old="${2-}"
   _env_alias_valid "$new" && _env_alias_valid "$old" || return 2
-  if [ -z "${!new:-}" ] && [ -n "${!old:-}" ]; then
-    export "$new=${!old}"
+  legacy_names_on || return 0
+  _env_alias_copy "$new" "$old"
+}
+
+# _env_alias_copy NEW OLD: copy OLD into an empty NEW, whatever the switch says.
+_env_alias_copy() {
+  if [ -z "${!1:-}" ] && [ -n "${!2:-}" ]; then
+    export "$1=${!2}"
   fi
   return 0
 }
@@ -80,13 +100,15 @@ alias_env_cap() {
     fi
     return 0
   fi
-  alias_env "$new" "$old"
+  _env_alias_copy "$new" "$old"
 }
 
 env_alias_any() {
   local new="${1-}" old="${2-}"
   _env_alias_valid "$new" && _env_alias_valid "$old" || return 2
-  [ -n "${!new:-}" ] || [ -n "${!old:-}" ]
+  [ -n "${!new:-}" ] && return 0
+  legacy_names_on || return 1
+  [ -n "${!old:-}" ]
 }
 
 env_alias_restrict() {
@@ -110,5 +132,8 @@ env_alias_permit() {
     fi
     any=0
   done
+  if [ "$any" -eq 0 ] && [ -z "${!new:-}" ] && ! legacy_names_on; then
+    return 1
+  fi
   return "$any"
 }

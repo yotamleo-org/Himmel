@@ -4,16 +4,16 @@ The file a judge (see [`../glossary.md`](../glossary.md)) writes to answer one q
 the only output a judge produces — a judge session does not open a PR, does
 not merge, and does not send its answer as a message. **Transport is the
 disk, never a peer message**: a peer message is not authority, and a verdict
-that lives only in a message dies with the console's window. Path:
+that lives only in a message dies with the chief's window. Path:
 
 ```text
 <handover_root>/<bucket>/verdicts/<qid>/<judge-name>.md
 ```
 
-`<qid>` matches the question id the console's judge brief named; `<judge-name>`
+`<qid>` matches the question id the chief's judge brief named; `<judge-name>`
 is the judge's session name (`HIMMEL-<ticket>-judge-<qid>` for a session,
-or the dispatching console's own session name for an in-process judge call).
-The console reads this path — never a message — to learn the verdict.
+or the dispatching chief's own session name for an in-process judge subagent).
+The chief reads this path — never a message — to learn the verdict.
 
 A judge writes a merge-question verdict with
 `bash <primary checkout>/scripts/handover/chief-kit/write-verdict.sh <qid> <GO|NO-GO> <head> --pr <n> --evidence-file <path> --model <id> --effort <level> [--judge <name>] [--branch <name>]`.
@@ -58,7 +58,7 @@ the writer is its only path.
 
 <the answer itself, in the shape the brief's completion condition asked for
 — e.g. CONFIRM/REJECT plus one paragraph of reason, or a chosen disposition
-among named options. This is the field the console acts on.
+among named options. This is the field the chief acts on.
 For a merge question, the first line is exactly **GO** for head `<40-hex sha>`.
 or **NO-GO** for head `<40-hex sha>`. with the reason on the following lines.
 `go.sh --trust-reviewed <qid>` parses only that line and refuses on anything
@@ -90,8 +90,8 @@ heading.>
 
 | Field | What it is for |
 |---|---|
-| `# VERDICT <qid> — <judge session name>` | Identifies which question this answers and who answered it, so a console juggling several open questions can tell verdicts apart at a glance. |
+| `# VERDICT <qid> — <judge session name>` | Identifies which question this answers and who answered it, so a chief juggling several open questions can tell verdicts apart at a glance. |
 | `## Reason (scope asked)` | Restates the question verbatim, so a verdict read later — after the brief itself is gone from context — is still self-contained. |
-| `## Verdict` | The one field the console acts on. Everything else is provenance for that answer. |
+| `## Verdict` | The one field the chief acts on. Everything else is provenance for that answer. |
 | `## Evidence checked` | Makes the verdict auditable: which evidence actually drove the answer, not just which evidence was offered. A verdict that cites nothing is not distinguishable from a guess. |
 | `## Out of scope, noted` | Keeps a judge from silently overreaching past what it was asked, and gives it a place to flag "not enough evidence" instead of forcing a confident-sounding answer. |

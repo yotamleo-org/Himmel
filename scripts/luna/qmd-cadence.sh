@@ -31,7 +31,7 @@
 #
 # WHY 05:00 LOCAL: it lands AFTER the whole pipeline-cadence chain has finished
 # writing to the vault (HIMMEL-Pipeline-Harvest 02:00, -Synthesize 03:00,
-# -Health 04:00), so the reindex actually picks up what those legs just wrote
+# -Health 04:00), so the reindex actually picks up what those workers just wrote
 # instead of racing them — a reindex scheduled before them would index the
 # previous day's vault. It is also clear of the graphmap slots (13:00 / 13:20)
 # and the 17:00 codex orphan sweep. Cost basis for daily: a full refresh
@@ -186,7 +186,7 @@ Flags (arm only, except --dry-run):
   --dry-run       Print what would happen, touch nothing
                   (honored by arm AND disarm)
 
-WHY 05:00 local: it runs AFTER the pipeline-cadence legs that WRITE to the
+WHY 05:00 local: it runs AFTER the pipeline-cadence workers that WRITE to the
 vault (Harvest 02:00, Synthesize 03:00, Health 04:00), so the reindex picks
 up what they wrote rather than racing them; and it is clear of the graphmap
 slots (13:00/13:20). A full refresh measured 16s + 24s, so daily is cheap.
@@ -319,7 +319,7 @@ status_log() {
     fi
     if [ -f "$log.prev" ]; then
         # Same macOS-compatible fallback chain as the primary log above: BSD
-        # `date` has no -r, so without the `stat -f` leg this would always
+        # `date` has no -r, so without the `stat -f` worker this would always
         # print '?' on macOS while the primary log resolved fine.
         mtime=$(date -r "$log.prev" '+%Y-%m-%d %H:%M' 2>/dev/null \
             || stat -f '%Sm' -t '%Y-%m-%d %H:%M' "$log.prev" 2>/dev/null \
@@ -612,12 +612,12 @@ emit_runner() {
     printf '    echo "[fired $(date '\''+%%Y-%%m-%%d %%H:%%M:%%S'\'')]"\n'
     printf '    cd %s || exit 1\n' "$q_himmel"
     # Shared emitter: a flow-run row for the
-    # leg and a cadence-alert fail/clear on its outcome. Every non-zero rc of
+    # worker and a cadence-alert fail/clear on its outcome. Every non-zero rc of
     # qmd-reindex.sh is a failure (its rc 0 is the only success), so no skip
     # list is passed.
-    cadence_posix_leg_start "$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")" qmd-reindex HIMMEL-Qmd-Reindex
+    cadence_posix_worker_start "$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")" qmd-reindex HIMMEL-Qmd-Reindex
     printf '    _rc=0; %s || _rc=$?\n' "$payload"
-    cadence_posix_leg_end "$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")" \
+    cadence_posix_worker_end "$(printf '%q' "$HIMMEL_ROOT/scripts/lib/flow-run-ledger.sh")" \
         "$(printf '%q' "$HIMMEL_ROOT/scripts/luna/cadence-alert.sh")" qmd-reindex
     printf '    echo "[exit rc=$_rc]"\n'
     printf '} >> "$log" 2>&1\n'

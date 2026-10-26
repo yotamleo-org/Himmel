@@ -16,7 +16,7 @@ import { mintRetaskNonce, composeRetaskBlock, composeWaiterBlock, composeWriteSe
 // argv carries ONLY enums, ids and paths — never free text. A
 // model-authored string containing `$`/backticks/`&&` bails Claude Code's
 // native permission matcher to an interactive prompt an unattended judge
-// cannot answer (the same reasoning as the leg manifest's --evidence-file /
+// cannot answer (the same reasoning as the worker manifest's --evidence-file /
 // --title-file convention, design §4.2). The task body therefore arrives
 // exclusively via --task-file, never as a positional or flag value.
 export type ComposeBriefArgs = {

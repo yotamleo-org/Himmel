@@ -235,7 +235,7 @@ fi
 
 # ── Scenario 4: missing legacy hook — refuse ONCE for the TRUE reason, bind ──
 # the first-ref marker via PRE_COMMIT_REMOTE_NAME, self-heal, retry passes.
-# Leg-44 regression guard: the configured-hook shape carries the remote name in
+# Worker-44 regression guard: the configured-hook shape carries the remote name in
 # env, not argv; reading only argv produced a false "no remote identity"
 # refusal on every framework-shaped push. rc alone is NOT enough — the old
 # assertion passed on the wrong refusal.
@@ -251,7 +251,7 @@ else
 fi
 case "$out" in
     *"no remote identity"*)
-        fail "scenario-4-no-legacy: false 'no remote identity' refusal — PRE_COMMIT_REMOTE_NAME transport regressed (leg-44)" ;;
+        fail "scenario-4-no-legacy: false 'no remote identity' refusal — PRE_COMMIT_REMOTE_NAME transport regressed (worker-44)" ;;
     *)
         pass "scenario-4-no-legacy: refusal is not the false 'no remote identity' premise" ;;
 esac

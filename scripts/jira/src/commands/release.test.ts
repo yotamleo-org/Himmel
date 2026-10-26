@@ -100,10 +100,10 @@ describe('jira release (HIMMEL-6796)', () => {
     await expect(run('fold', 'R1', '--to', 'v1', '--key', 'K-1', '--pr', '0x10', '--mirror-root', mir)).rejects.toThrow(/decimal PR number/);
   });
 
-  it('refuses an operator act from a console-spawned leg', async () => {
+  it('refuses an operator act from a chief-spawned worker', async () => {
     vi.stubEnv('HIMMEL_CONSOLE_LEG', '1');
     await expect(run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt')))
-      .rejects.toThrow(/console-spawned leg/);
+      .rejects.toThrow(/chief-spawned worker/);
   });
 });
 
@@ -218,7 +218,7 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
   it('the judge call does not inherit the calling session markers', () => {
     expect(judgeEnv({
       PATH: '/bin', CLAUDECODE: '1', CLAUDE_CODE_ENTRYPOINT: 'cli', AI_AGENT: 'x', HOME: '/h', CLAUDE_PROJECT_DIR: '/repo',
-      HIMMEL_CONSOLE_LEG: '1', HIMMEL_CONSOLE_DOC: '/d.md', HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: '/r.md', HIMMEL_LEG_ID: 'N1', // old-term-ok: a sample of the env prefix judgeEnv drops
+      HIMMEL_CONSOLE_LEG: '1', HIMMEL_CONSOLE_DOC: '/d.md', HIMMEL_RELEASE_MANAGER: '1', HIMMEL_RM_DOC: '/r.md', HIMMEL_LEG_ID: 'N1',
       ANTHROPIC_API_KEY: 'k', anthropic_base_url: 'u', CLAUDE_CODE_USE_BEDROCK: '1', HIMMEL_RELEASE_STATE_DIR: '/s',
     })).toEqual({ PATH: '/bin', HOME: '/h', HIMMEL_RELEASE_STATE_DIR: '/s' });
   });
@@ -356,7 +356,7 @@ describe('jira release request refuses junk (HIMMEL-7434)', () => {
     for (const why of ['w', 'tbd', 'filed to the backlog: x', 'filed to the backlog: test']) {
       await expect(ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', why)).rejects.toThrow(/placeholder/);
     }
-    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: the console loses a leg');
+    await ask(mir, '--verb', 'INTAKE', '--key', 'K-2', '--to', 'v1', '--why', 'filed to the backlog: the console loses a worker');
     expect(out.at(-1)).toBe('REQ Q-R1-0001');
   });
 

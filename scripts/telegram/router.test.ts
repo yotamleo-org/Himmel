@@ -94,30 +94,30 @@ test("/restart is anchored on the WHOLE message — anything else is chat", () =
   }
 });
 
-// the console verbs are case-insensitive and accept Telegram's
-// `/cmd@<bot>` addressing; a mid-text or trailing /console stays chat.
-test("HIMMEL-5148: /console is case-insensitive and accepts /console@<bot>", () => {
-  expect(classify("/Console foo bar baz")).toEqual({ kind: "console", name: "foo", text: "bar baz" });
-  expect(classify("/CONSOLE@MyBot foo bar")).toEqual({ kind: "console", name: "foo", text: "bar" });
-  expect(classify("/console@mybot hello there", "MyBot")).toEqual({ kind: "console", name: "hello", text: "there" });
-  expect(classify("/console@mybot\nfoo bar")).toEqual({ kind: "console", name: "foo", text: "bar" });
-  expect(classify("/console@mybot just text")).toEqual({ kind: "console", name: "just", text: "text" });
-  expect(classify("/Consoles")).toEqual({ kind: "consoles" });
-  expect(classify("/consoles@mybot", "mybot")).toEqual({ kind: "consoles" });
+// the chief verbs are case-insensitive and accept Telegram's
+// `/cmd@<bot>` addressing; a mid-text or trailing /chief stays chat.
+test("HIMMEL-5148: /chief is case-insensitive and accepts /chief@<bot>", () => {
+  expect(classify("/Chief foo bar baz")).toEqual({ kind: "console", name: "foo", text: "bar baz" });
+  expect(classify("/CHIEF@MyBot foo bar")).toEqual({ kind: "console", name: "foo", text: "bar" });
+  expect(classify("/chief@mybot hello there", "MyBot")).toEqual({ kind: "console", name: "hello", text: "there" });
+  expect(classify("/chief@mybot\nfoo bar")).toEqual({ kind: "console", name: "foo", text: "bar" });
+  expect(classify("/chief@mybot just text")).toEqual({ kind: "console", name: "just", text: "text" });
+  expect(classify("/Chiefs")).toEqual({ kind: "consoles" });
+  expect(classify("/chiefs@mybot", "mybot")).toEqual({ kind: "consoles" });
 });
 
-test("HIMMEL-5148: a mid-text, trailing, or other-bot /console stays chat", () => {
+test("HIMMEL-5148: a mid-text, trailing, or other-bot /chief stays chat", () => {
   for (const t of [
-    "Note that we had the issue when console is in queue again /console. Let's also use the cloud",
-    "please /console foo bar",
-    "again /console",
+    "Note that we had the issue when console is in queue again /chief. Let's also use the cloud",
+    "please /chief foo bar",
+    "again /chief",
     "/consolex foo bar",
-    "/consoles foo",
-    "/console@",
-    "/console@bad-bot foo bar",
+    "/chiefs foo",
+    "/chief@",
+    "/chief@bad-bot foo bar",
   ]) expect(classify(t).kind).toBe("chat");
-  expect(classify("/console@otherbot foo bar", "mybot").kind).toBe("chat");
-  expect(classify("/consoles@otherbot", "mybot").kind).toBe("chat");
+  expect(classify("/chief@otherbot foo bar", "mybot").kind).toBe("chat");
+  expect(classify("/chiefs@otherbot", "mybot").kind).toBe("chat");
 });
 
 test("HIMMEL-7505: /chief and /chiefs route like /console and /consoles", () => {
@@ -138,7 +138,7 @@ test("HIMMEL-7573: /console and /consoles classify exactly as /chief and /chiefs
 });
 
 // fleet verbs and /lockdown take the same case-insensitive verb and
-// `/cmd@<bot>` addressing as /console; the leg label stays exact.
+// `/cmd@<bot>` addressing as /chief; the worker label stays exact.
 test("HIMMEL-5150: fleet verbs are case-insensitive and accept /cmd@<bot>", () => {
   expect(classify("/Fleet")).toEqual({ kind: "fleet", verb: "status" });
   expect(classify("/fleet@MyBot", "mybot")).toEqual({ kind: "fleet", verb: "status" });
@@ -146,12 +146,12 @@ test("HIMMEL-5150: fleet verbs are case-insensitive and accept /cmd@<bot>", () =
   expect(classify("/fleet@anybot").kind).toBe("chat");
   expect(classify("/go@anybot N1").kind).toBe("chat");
   expect(classify("/halt@anybot")).toEqual({ kind: "fleet", verb: "halt" });
-  expect(classify("/LEGS")).toEqual({ kind: "fleet", verb: "legs" });
+  expect(classify("/WORKERS")).toEqual({ kind: "fleet", verb: "legs" });
   expect(classify("/HALT")).toEqual({ kind: "fleet", verb: "halt" });
   expect(classify("/halt@mybot", "mybot")).toEqual({ kind: "fleet", verb: "halt" });
   expect(classify("/Go N1490")).toEqual({ kind: "fleet", verb: "go?", leg: "N1490" });
   expect(classify("/GO@mybot N1490", "mybot")).toEqual({ kind: "fleet", verb: "go?", leg: "N1490" });
-  expect(classify("/Push@mybot Leg_A", "mybot")).toEqual({ kind: "fleet", verb: "push", leg: "Leg_A" });
+  expect(classify("/Push@mybot Worker_A", "mybot")).toEqual({ kind: "fleet", verb: "push", leg: "Worker_A" });
   expect(classify("/halt@mybot N1490", "mybot")).toEqual({ kind: "fleet", verb: "halt", leg: "N1490" });
 });
 

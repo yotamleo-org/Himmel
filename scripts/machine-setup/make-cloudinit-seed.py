@@ -24,7 +24,7 @@ exists only so the .env loader can feed it in-process. Never prints or logs
 the plaintext password or the derived hash — `--dry-run` redacts the passwd
 line in its printed user-data.
 
-The generated user's password is for the VirtualBox console (and cloud-init
+The generated user's password is for the VirtualBox chief (and cloud-init
 bring-up) only: `ssh_pwauth` stays off, so SSH accepts key auth alone unless
 `--allow-password-ssh` is passed.
 
@@ -303,7 +303,7 @@ def parse_args(argv=None):
     p.add_argument("--instance-id", default=DEFAULT_INSTANCE_ID)
     p.add_argument("--allow-password-ssh", action="store_true",
                     help="also enable SSH password auth (ssh_pwauth). Off by "
-                         "default — the password is for the VirtualBox console "
+                         "default — the password is for the VirtualBox chief "
                          "only; SSH stays key-only via --pubkey")
     p.add_argument("--dry-run", action="store_true",
                     help="print the user-data (passwd line redacted) instead of "

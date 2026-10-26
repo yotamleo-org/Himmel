@@ -5,7 +5,7 @@ import { pathToFileURL } from "node:url";
 import { homedir, tmpdir } from "node:os";
 import { appendLine, atomicWrite, bridgeRoot, ensureSession, readMeta, writeMeta, sessionDir, readNewLines, peekNewLines, commitCursorPos, repairCursorBeyondEof, truncateFullyConsumed, rotateConsumedLedger, type Meta, type OnCursorReset } from "./bus";
 import { classify, isTicketKey, type Route } from "./router";
-import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./console-route";
+import { routeToConsole, routeFleetCommand, staleConsoleCommand, consoleReplyTarget, rememberConsoleReply, type ConsoleRouteGate, type ConsoleReplyFn } from "./chief-route";
 import { dispatchAutoAction, describeEnabledOps, KNOWN_OPS, CONFIRM_OPS, BREAK_GLASS_OPS, appendAuditLine, type RunScriptFn, type AuditFields } from "./auto-action";
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { getUpdates, getMe, sendMessage, sendChatAction, getFile, downloadFile, redactChatId } from "./telegram-api";
@@ -14,7 +14,7 @@ import { cwdForChat, isAllowed, isGroupAllowed, isOperatorIdentity, loadAccess, 
 import { runSession, buildPrompt, BASH_BIN, REPO_ROOT, type BusPaths, type PermissionMode } from "./run";
 import { classifyForSpawn, type TriageVerdict, type TriageModelOverride, type ModelOverride } from "./triage";
 import { transcribe } from "./transcribe";
-import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./console-heartbeat-watch";
+import { checkStaleHeartbeats, censusSessionAlive, DEFAULT_STALE_MS, type AlertedState, type AlertFn } from "./chief-heartbeat-watch";
 // resolve the bridge's own plugin profile per dispatch (lever-b)
 // instead of a hardcoded `undefined` (no --settings
 // => full operator ~/.claude injected into every cold bridge run, unlean).
@@ -124,7 +124,7 @@ export function safeExt(file_path: string, fallback = ".jpg"): string {
   return /^\.[A-Za-z0-9]+$/.test(ext) ? ext : fallback;
 }
 
-// The composed ingest gate. The DM leg is scoped to positive chat_ids: an
+// The composed ingest gate. The DM worker is scoped to positive chat_ids: an
 // allowFrom sender posting in a NON-allowed group must NOT open it (the reply
 // would land in that group). Telegram DM chat_id == sender user id, so DMs
 // from an allowFrom sender still pass. Group/channel chats pass only via the
@@ -491,7 +491,7 @@ function lockdownEnabled(root: string): boolean {
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return false; throw e; }
 }
 
-// Closed console verbs never fall through to an agent; lockdown also closes
+// Closed chief verbs never fall through to an agent; lockdown also closes
 // ordinary chat and the auto path. Keep the policy together before dispatch.
 async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route, tagged: boolean, fromOperator: boolean, consoleRoute?: ConsoleRouteGate, auto?: AutoGate, notifyChat?: NotifyChatFn): Promise<boolean> {
   const eligible = !tagged && consoleRoute && consoleRoute.authorize(msg.from, msg.chat_id) && msg.caption === false && !msg.forwarded;
@@ -528,9 +528,9 @@ async function handleConsolePolicy(root: string, msg: DeliveredMsg, route: Route
     await routeFleetCommand(root, msg, route, consoleRoute);
     return true;
   }
-  if (route.kind === "auto" && route.op === "launch-bypass-leg") {
+  if (route.kind === "auto" && route.op === "launch-bypass-worker") {
     await appendAuditLine(root)({ chat_id: msg.chat_id, user: msg.from, forwarded: false, op: route.op, arg: route.arg, time: route.time, rc: 19, result: "refused-legacy-bypass" });
-    await reply(msg.chat_id, "Telegram hook-bypass launch refused — start hook legs at the station.");
+    await reply(msg.chat_id, "Telegram hook-bypass launch refused — start hook workers at the station.");
     return true;
   }
   if (route.kind === "console" || route.kind === "consoles") {
@@ -771,7 +771,7 @@ function auditResult(op: string, rc: number): string {
       default: return "error";
     }
   }
-  if (op === "launch-bypass-leg") return "error";
+  if (op === "launch-bypass-worker") return "error";
   if (BREAK_GLASS_OPS.has(op)) return rc === 0 ? "break-glass-ok" : rc === 19 ? "refused-agent" : "error";
   if (op === "cr-grant-delta") {
     if (rc === 15) return "head-moved";
@@ -1435,12 +1435,13 @@ const TELEGRAM_PROFILE = "telegram";
 // cache only grows on a real on-disk change, never per-request — and every
 // function (loadRegistry/validateRegistry/mcpServersForProfile/
 // collectMcpServerDefs) comes from the SAME fresh import, so they can never
-// drift out of sync with each other. plugin-profiles.mjs's only STATIC imports are
-// node:* builtins; its LAZY local graph (loadListingLib() ->
+// drift out of sync with each other. plugin-profiles.mjs's STATIC local import is
+// ../lib/env-alias.mjs (-> is-main.mjs); its LAZY local graph (loadListingLib() ->
 // skill-listing.mjs -> role-requires.mjs + skill-cost.mjs) is needed because
 // the dispatch's --settings resolution (opts.skillEntries) is
-// routed through here too, so those siblings are copied beside it under their own
-// names (the relative imports must resolve) and their mtimes join the cache key.
+// routed through here too, so the copy sits in a lanes/ dir and every file of that
+// graph is copied to its own relative path beside it (the relative imports must
+// resolve), and their mtimes join the cache key.
 //
 // A `?v=<mtime>` query-string on the specifier does NOT bust Bun's dynamic
 // import() cache (measured: two imports of the same path differing only by
@@ -1454,9 +1455,9 @@ const pluginProfilesModuleCache = new Map<string, Promise<PluginProfilesModule>>
 // cacheKey -> its cachebust tmp dir, so a later successful import for the SAME
 // modulePath can clean up the now-unreachable prior one (otherwise every distinct mtime leaks its tmp dir for the bridge's lifetime).
 const pluginProfilesTempDirs = new Map<string, string>();
-// plugin-profiles.mjs's lazy local import graph, copied beside it when present
-// (a single-file fixture has none) — see the lazy-graph note above.
-const PLUGIN_PROFILES_LAZY_GRAPH = ["skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs"];
+// plugin-profiles.mjs's local import graph, relative to its dir, copied beside it
+// when present (a single-file fixture has none) — see the lazy-graph note above.
+const PLUGIN_PROFILES_LAZY_GRAPH = ["skill-listing.mjs", "role-requires.mjs", "skill-cost.mjs", "../lib/env-alias.mjs", "../lib/is-main.mjs"];
 export async function loadPluginProfilesModule(modulePath: string = join(REPO_ROOT, "scripts", "lanes", "plugin-profiles.mjs")): Promise<PluginProfilesModule> {
   const mtimeMs = (await stat(modulePath)).mtimeMs;
   const siblings: [string, number][] = [];
@@ -1470,9 +1471,15 @@ export async function loadPluginProfilesModule(modulePath: string = join(REPO_RO
     cached = (async () => {
       const dir = await mkdtemp(join(tmpdir(), "plugin-profiles-cachebust-"));
       pluginProfilesTempDirs.set(cacheKey, dir);
-      const dest = join(dir, `plugin-profiles.${mtimeMs}.mjs`);
+      const lanes = join(dir, "lanes");
+      const dest = join(lanes, `plugin-profiles.${mtimeMs}.mjs`);
+      await mkdir(lanes);
       await copyFile(modulePath, dest);
-      for (const [name] of siblings) await copyFile(join(dirname(modulePath), name), join(dir, name));
+      for (const [name] of siblings) {
+        const to = join(lanes, name);
+        await mkdir(dirname(to), { recursive: true });
+        await copyFile(join(dirname(modulePath), name), to);
+      }
       return import(pathToFileURL(dest).href) as Promise<PluginProfilesModule>;
     })().catch((err) => {
       // A failed copy/import must NOT stick — evict the
@@ -1524,7 +1531,7 @@ async function resolveTelegramMcpConfig(cwd: string, lanesDir: string): Promise<
 // the bridge's --settings payload, resolved through the SAME
 // fresh-import loader as resolveTelegramMcpConfig. It used to go through
 // spawn-glm's resolveProfileSettings, whose plugin-profiles.mjs is a STATIC
-// import: after leg-e2e was added to both files, the running
+// import: after worker-e2e was added to both files, the running
 // bridge validated the new json with its startup-time validator and failed
 // every AI TODO dispatch until a restart. Same output as resolveProfileSettings
 // (no overlay, the live plugin universe as the deny-by-default baseline, the
@@ -2446,7 +2453,7 @@ export async function main(): Promise<void> {
   // the operator in a DM or an allowlisted group arms; a non-operator group member or a
   // non-allowlisted chat is refused. Self-sufficient — re-asserts the chat gate (CR S1).
   const autoGate: AutoGate = { enabledOps, authorize: (from, chat_id) => isAllowed(access, from) && allow(from, chat_id), fire: autoFire };
-  // Operator -> console routing. Same authorize as /arm — global
+  // Operator -> chief routing. Same authorize as /arm — global
   // allowFrom sender AND an allowed chat — so the gate is unchanged; the ack rides
   // the per-chat outbox like every other bridge reply.
   const consoleGate: ConsoleRouteGate = { authorize: autoGate.authorize, reply: (chat, text, name, replyTo) => replyViaOutbox(root, chat, text, name, replyTo) };
@@ -2476,11 +2483,11 @@ export async function main(): Promise<void> {
   const FLUSH_MS = intervalEnvMs(process.env.TELEGRAM_FLUSH_MS, 1000);
   const flushTimer = setInterval(guarded(() => flushOutboxes(root, send)), FLUSH_MS);
   if (typeof flushTimer.unref === "function") flushTimer.unref();
-  // Stale console-waiter heartbeat alert. console-wait.sh
+  // Stale chief-waiter heartbeat alert. chief-wait.sh
   // rewrites consoles/<name>.md.wait on every poll; a gap past
-  // HEARTBEAT_STALE_MS while the console's own session is still alive means
+  // HEARTBEAT_STALE_MS while the chief's own session is still alive means
   // its background waiter may have died silently (an unreproduced
-  // harness low-memory kill) — a SIGKILL alone re-invokes the console, so
+  // harness low-memory kill) — a SIGKILL alone re-invokes the chief, so
   // this alert only fires for the silent case. heartbeatAlerted persists
   // across ticks so a stale episode alerts exactly once until re-armed.
   const HEARTBEAT_STALE_MS = intervalEnvMs(process.env.TELEGRAM_HEARTBEAT_STALE_MS, DEFAULT_STALE_MS);
@@ -2488,7 +2495,7 @@ export async function main(): Promise<void> {
   const heartbeatAlerted: AlertedState = new Map();
   const heartbeatAlert: AlertFn = async (name, ageSec) => {
     if (operatorChat === null) { console.error(`[poller] console ${name}'s wait heartbeat is stale (${ageSec}s) but there is no operator chat to alert`); return; }
-    await replyViaOutbox(root, operatorChat, `⚠️ console "${name}"'s wait heartbeat has been stale for ${ageSec}s while its session is still running — the background waiter may have been silently killed (HIMMEL-3097). Check it.`);
+    await replyViaOutbox(root, operatorChat, `⚠️ chief "${name}"'s wait heartbeat has been stale for ${ageSec}s while its session is still running — the background waiter may have been silently killed (HIMMEL-3097). Check it.`);
   };
   const heartbeatTimer = setInterval(guarded(() => checkStaleHeartbeats(root, Date.now(), HEARTBEAT_STALE_MS, heartbeatAlerted, censusSessionAlive, heartbeatAlert)), HEARTBEAT_CHECK_MS); // t13b-ok: unref'd periodic check in the existing poller process, no new service
   if (typeof heartbeatTimer.unref === "function") heartbeatTimer.unref();

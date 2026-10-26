@@ -30,7 +30,7 @@ commands-catalog.md
 cadences.md
 hermes-runbook.md
 handover/afk-mode.md
-handover/running-a-console.md
+handover/running-a-chief.md
 glossary.md
 internals/enforcement.md
 internals/stuck-playbook.md

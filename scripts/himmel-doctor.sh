@@ -19,9 +19,9 @@
 set -uo pipefail
 
 # the doctor judges the STATION (primary) checkout, resolved via
-# git-common-dir like doctor-cadence, so a run from a leg worktree reports what
+# git-common-dir like doctor-cadence, so a run from a worker worktree reports what
 # the primary reports. `--root <path>` / HIMMEL_DOCTOR_ROOT judges another
-# checkout (a leg testing its own branch); a run whose root is not the station
+# checkout (a worker testing its own branch); a run whose root is not the station
 # publishes no state.
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 common="$(git -C "$SELF_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null || true)"
@@ -53,7 +53,10 @@ REPO_ROOT="$STATION_ROOT"
 # shellcheck source=lib/handover-path.sh
 # shellcheck disable=SC1091
 . "$REPO_ROOT/scripts/lib/handover-path.sh"
-# The station/--root checkout may predate this lib (a leg testing its own
+# shellcheck source=lib/env-alias.sh
+# shellcheck disable=SC1091
+. "$SELF_DIR/lib/env-alias.sh"
+# The station/--root checkout may predate this lib (a worker testing its own
 # branch, an older primary): fall back to the lib beside this script.
 # shellcheck source=lib/claude-version.sh
 # shellcheck disable=SC1091
@@ -222,7 +225,7 @@ check_c3() {
     done
     [ -n "$v" ] || { emit OK C3-luna "no local luna vault found (skipped)"; return; }
     if [ ! -f "$v/.single-writer" ]; then emit OK C3-luna "luna vault present, not single-writer (skipped)"; return; fi
-    # the vault holds the handover root, which legs write to
+    # the vault holds the handover root, which workers write to
     # continuously between github-sync ticks (the plugin owns the commits), so
     # handovers/ churn is ignored. Any other dirty path is a finding only once it
     # is older than the sync cadence (HIMMEL_DOCTOR_C3_DIRTY_MIN, default 30 min).
@@ -2385,13 +2388,13 @@ check_c31() {
 # before they hit it mid-run.
 #
 # NUMBERED C35, NOT C32 (2026-09-06 allocation): main independently landed
-# its own check_c32()/C32-main-ref-guard (#2195). A later leg hit the
+# its own check_c32()/C32-main-ref-guard (#2195). A later worker hit the
 # collision this avoids first-hand — himmel-doctor.sh merges TEXTUALLY CLEAN
 # with two check_c32() definitions and one call site, bash silently keeps
 # the LATER definition, and the doctor still reports a clean row while one
 # guard never runs again. Nothing in the merge, the diff, or a normal test
 # run says a word about it. That night's allocation: C32 main-ref-guard
-# (main), C33 graph-stale, C34 cost-guards (other legs, unmerged at the
+# (main), C33 graph-stale, C34 cost-guards (other workers, unmerged at the
 # time), C35 vm-ar (this one) — never reuse C32-C34 for this check.
 check_c35() {
     local vbm="${VBOXMANAGE_PATH:-/usr/bin/VBoxManage}"
@@ -2675,12 +2678,12 @@ _c33_age_human() {
 }
 
 # A cadence alert whose Telegram send failed leaves a marker (cadence-alert.sh);
-# a failed leg nobody was told about is its own WARN, not a silent log line.
+# a failed worker nobody was told about is its own WARN, not a silent log line.
 _c33_alert_delivery() {
     local mark="${HOME:-}/.himmel/state/cadence-alert-send-failed" what
     [ -s "$mark" ] || return 0
     what="$(tail -n 1 "$mark" 2>/dev/null | tr -d '\r')"
-    emit WARN C33-alert-delivery "a cadence failure alert could not be delivered to Telegram (last: $what) -- a failed leg may have gone unannounced" "check the Telegram sender (scripts/luna/vault-stall-alert.sh), then rm $mark"
+    emit WARN C33-alert-delivery "a cadence failure alert could not be delivered to Telegram (last: $what) -- a failed worker may have gone unannounced" "check the Telegram sender (scripts/luna/vault-stall-alert.sh), then rm $mark"
 }
 
 check_c33_graph_stale() {
@@ -2857,7 +2860,7 @@ check_c34() {
     if [ -r "$ctx_fill" ] && grep -q -- '--warn-at' "$ctx_fill" 2>/dev/null; then
         emit OK C34-cost-guards "context-fill.sh supports --warn-at (handover-fill nudge)"
     else
-        emit INFO C34-cost-guards "context-fill.sh does not support --warn-at yet — legs get no handover-fill nudge" \
+        emit INFO C34-cost-guards "context-fill.sh does not support --warn-at yet — workers get no handover-fill nudge" \
             "see HIMMEL-2653: context-fill.sh --warn-at N (default 50)"
     fi
 }
@@ -3333,7 +3336,7 @@ check_c56_qmd_orphans() {
 
 # --- C72-design-mcp-auth: design profile MCP logins ---
 # The design profile needs context7 and builder-visual's agent-native-dispatch
-# logged in once per machine; a worker session cannot answer the OAuth prompt, so
+# logged in once per machine; a worker cannot answer the OAuth prompt, so
 # a missing login looks like a hang. Claude Code keeps the grants under
 # mcpOAuth in $CLAUDE_DIR/.credentials.json. A plugin's server is stored as
 # plugin:<plugin>:<server>, so match the last segment of serverName; read server
@@ -4197,8 +4200,11 @@ check_c57_dotenv_allowlists() {
 # WARN here means the refresh did not run or failed (codex missing, logged out,
 # probe timing out). Read-only: it never runs the probe.
 check_c59_codex_bank_cache() {
-    local cache="${CODEX_USAGE_CACHE:-${CODEX_BANK_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}}"
-    local ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}" cmd="bun $REPO_ROOT/scripts/lanes/codex-usage-probe.ts"
+    # old names, read only while HIMMEL_LEGACY_NAMES is on
+    alias_env CODEX_USAGE_CACHE CODEX_BANK_CACHE
+    local cache="${CODEX_USAGE_CACHE:-${HOME:-}/.himmel/cache/codex-bank.json}"
+    local ttl=21600 cmd="bun $REPO_ROOT/scripts/lanes/codex-usage-probe.ts"
+    legacy_names_on && ttl="${CODEX_BANK_CACHE_TTL_SECONDS:-21600}"
     local at captured now age
     # the new name counts only when it is a positive number, as bank-status reads it.
     case "${CODEX_USAGE_CACHE_TTL_SECONDS:-}" in
@@ -4354,7 +4360,7 @@ check_c67_hermes_fail_open() {
 
 # --- C68-konsole-dbus: konsolerc lacks EnableSecuritySensitiveDBusAPI=true ---
 # Without it konsole refuses the D-Bus sendText call, so bus-idle-waker.sh cannot
-# wake an idle console (rc 3). Read-only; the doctor does not edit konsolerc.
+# wake an idle chief (rc 3). Read-only; the doctor does not edit konsolerc.
 check_c68_konsole_dbus() {
     local rc="${XDG_CONFIG_HOME:-${HOME:-}/.config}/konsolerc"
     if is_windows || ! command -v "${DOCTOR_KONSOLE:-konsole}" >/dev/null 2>&1; then
@@ -4365,12 +4371,12 @@ check_c68_konsole_dbus() {
         emit OK C68-konsole-dbus "konsolerc sets EnableSecuritySensitiveDBusAPI=true ($rc)"
         return
     fi
-    emit WARN C68-konsole-dbus "$rc lacks EnableSecuritySensitiveDBusAPI=true under [KonsoleWindow] — konsole refuses sendText, so bus-idle-waker cannot wake an idle console (rc 3)" \
+    emit WARN C68-konsole-dbus "$rc lacks EnableSecuritySensitiveDBusAPI=true under [KonsoleWindow] — konsole refuses sendText, so bus-idle-waker cannot wake an idle chief (rc 3)" \
         "add 'EnableSecuritySensitiveDBusAPI=true' under [KonsoleWindow] in $rc, then restart konsole"
 }
 
 # --- C71-verdict-scratch: judge scratch under ~/.cache/himmel/verdicts grows unpruned ---
-# Console judges write their scratch (repo extracts, tarballs) to
+# Chief judges write their scratch (repo extracts, tarballs) to
 # ~/.cache/himmel/verdicts/<qid>/, and nothing removes it on its own. WARN above
 # 5 GB (HIMMEL_DOCTOR_VERDICT_CACHE_KB) and name the pruner, which is a dry run
 # until --apply. Report only. Seam: HIMMEL_DOCTOR_VERDICT_CACHE (the cache dir).
@@ -4417,7 +4423,7 @@ check_c70_graph_semantic() {
     station_last="$(bash "$check" --out "$out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
     cadence_last="$(bash "$check" --out "$cadence_out" 2>&1 | sed -n 's/^graph-freshness: semantic last=\([^ ]*\).*/\1/p' | head -1)" || true
     if [ -n "$station_last" ] && [ -n "$cadence_last" ] && [ "$station_last" != "?" ] && [ "$cadence_last" != "?" ] && [[ "$cadence_last" > "$station_last" ]]; then
-        emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so legs read a frozen semantic layer (HIMMEL-7357)" \
+        emit WARN C70-graph-semantic "the cadence graph at $cadence_out last merged semantic at last=$cadence_last, but the station graph $out stops at last=$station_last: the cadence never promotes its graph to the station graph, so workers read a frozen semantic layer (HIMMEL-7357)" \
             "nothing to run here: the promote step is tracked in HIMMEL-7357; until it lands the station graph only gets structural (AST) refreshes"
     fi
 }
@@ -4571,15 +4577,15 @@ check_c62_oxlint_runner() {
     fi
 }
 
-# --- C63-claude-cli: claude below the console-launch floor ------
+# --- C63-claude-cli: claude below the chief-launch floor ------
 # The floor is the one constant in scripts/lib/claude-version.sh, shared with the
 # launch preflight and himmel update. Read-only; /himmel-update does the upgrade.
 check_c63_claude_cli() {
     local bin="${DOCTOR_CLAUDE_BIN:-claude}" rc=0
     claude_floor_check "$bin" || rc=$?
     case "$rc" in
-        0) emit OK C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED meets the console-launch minimum $CLAUDE_MIN_VERSION" ;;
-        1) emit WARN C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED is below the minimum $CLAUDE_MIN_VERSION that console and leg launches need" "claude update  (or /himmel-update)" ;;
+        0) emit OK C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED meets the chief-launch minimum $CLAUDE_MIN_VERSION" ;;
+        1) emit WARN C63-claude-cli "Claude Code $CLAUDE_FLOOR_INSTALLED is below the minimum $CLAUDE_MIN_VERSION that chief and worker launches need" "claude update  (or /himmel-update)" ;;
         *) emit INFO C63-claude-cli "claude CLI not found or its version unreadable — floor not checked" ;;
     esac
 }

@@ -843,7 +843,7 @@ run_hook Bash "node \"/c/Users/John Smith/himmel/scripts/jira/dist/index.js\" cr
 #          the same writes as N literal commands auto-approved. The bounce names
 #          the expansion recipe (one literal command per write) instead.
 loop_text() { tr '\n' ' ' < "$ERR"; }
-# The incident itself (BP console, 2026-10-07): `$J` binary inside a for loop.
+# The incident itself (BP chief, 2026-10-07): `$J` binary inside a for loop.
 run_hook Bash "J=$JIRA; for k in 4801 4802; do node \$J fix-version HIMMEL-\$k --add v1.0.2c; done"
 [ "$RC" -eq 2 ] && pass "incident loop over \$J fix-version bounced" || fail "incident loop shape not bounced (rc=$RC)"
 case "$(loop_text)" in *"a loop"*) pass "deny names the loop" ;; *) fail "deny does not name the loop" ;; esac

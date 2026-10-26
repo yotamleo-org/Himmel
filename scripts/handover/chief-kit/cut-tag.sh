@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
-# scripts/handover/chief-kit/cut-tag.sh - console-run pre-release tag cut
-# A console's `git -C <primary> tag` is refused by
+# scripts/handover/chief-kit/cut-tag.sh - chief-run pre-release tag cut
+# A chief's `git -C <primary> tag` is refused by
 # block-write-into-main-checkout's arm (g) - this script never
 # calls `git tag` at all: the tag is created through the GitHub API
 # (`gh api .../git/refs`), which the ref-write fence does not intercept
-# because it never touches the primary checkout's own refs, so the console
+# because it never touches the primary checkout's own refs, so the chief
 # can run this literal without a `!` operator step.
 #
 # Usage:

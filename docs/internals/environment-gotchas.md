@@ -71,7 +71,7 @@ fail from its own directory) and **wrong** for the `scripts/telegram` suites.
 Those pin their fixtures repo-root-relative through `_rf(...)`, so running them
 from their own directory fails every wired case:
 
-```console
+```chief
 $ cd scripts/telegram && bun test spawn-glm.test.ts
 error: ENOENT: no such file or directory, open 'scripts/telegram/spawn-glm.ts'   (x8)
 ```

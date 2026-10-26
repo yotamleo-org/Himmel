@@ -21,6 +21,8 @@
 # Exit codes (run mode): 0 ok, 1 adopted project (legacy), 2 usage or unresolvable.
 
 _AFK_STATE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/env-alias.sh
+. "$_AFK_STATE_DIR/../lib/env-alias.sh"
 
 # afk_git_common_dir — the repository's common git dir, shared by every worktree.
 afk_git_common_dir() {
@@ -55,8 +57,10 @@ afk_project_key() {
 # afk_stop_dir — the stop marker's directory (AFK_STOP_DIR / OVERNIGHT_STOP_DIR win).
 afk_stop_dir() {
     local key
-    if [ -n "${AFK_STOP_DIR:-${OVERNIGHT_STOP_DIR:-}}" ]; then
-        printf '%s\n' "${AFK_STOP_DIR:-$OVERNIGHT_STOP_DIR}"
+    # old names, read only while HIMMEL_LEGACY_NAMES is on
+    alias_env AFK_STOP_DIR OVERNIGHT_STOP_DIR
+    if [ -n "${AFK_STOP_DIR:-}" ]; then
+        printf '%s\n' "$AFK_STOP_DIR"
     elif afk_legacy_paths; then
         printf '%s\n' "$HOME/.claude"
     else

@@ -3,17 +3,17 @@
 #
 # PLATFORM GUARD: no .ps1 twin, by design, not oversight. The claudex lane
 # this hook serves (scripts/claude-codex, /proc/$CLAUDE_PID/cmdline session-
-# name recovery) is Linux-only — there is no Windows-side claudex leg to fire
+# name recovery) is Linux-only — there is no Windows-side claudex worker to fire
 # for.
 #
-# WHY: claudex legs (GPT-6 Astra via scripts/claude-codex,
+# WHY: claudex workers (GPT-6 Astra via scripts/claude-codex,
 # CLAUDE_CONFIG_DIR=~/.claude-codex) cannot ListAgents/SendMessage a native
-# session, so a console ruling reached them only via a handover-doc bullet
+# session, so a chief ruling reached them only via a handover-doc bullet
 # (never re-read by a running session) plus an operator paste. This hook
 # delivers a per-session file inbox (<handover root>/inbox/<name>.md,
 # scripts/handover/chief-kit/inbox-send.sh appends to it) as
 # hookSpecificOutput.additionalContext, so the next tool result already
-# carries any ruling the console wrote — no paste, no lost rulings.
+# carries any ruling the chief wrote — no paste, no lost rulings.
 #
 # Cost model: fires on EVERY tool call in EVERY session,
 # native ones included. The real work is scripts/lib/claudex-inbox.sh's
@@ -46,7 +46,7 @@ deliver_inbox() {
     inbox_peek "$1" || return 1
     if [ -n "$inbox_bullets" ]; then
         jq -nc --arg ctx "$inbox_bullets" \
-            '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Claudex inbox — console ruling(s) delivered, no operator paste needed:\n" + $ctx)}}' \
+            '{hookSpecificOutput:{hookEventName:"PostToolUse",additionalContext:("Claudex inbox — chief ruling(s) delivered, no operator paste needed:\n" + $ctx)}}' \
             2>/dev/null || return 1
     fi
     inbox_commit

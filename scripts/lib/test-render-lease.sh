@@ -55,22 +55,22 @@ check "dot branch has no lease dir" "$rc" "1"
 
 # --- claim / probe / bind / release lifecycle ---------------------------------
 export RENDER_LEASE_DIR="$tmp/reg-lifecycle"
-rc=0; render_lease_claim 'feat/leg' "$tmp/wt" 2>/dev/null || rc=$?
+rc=0; render_lease_claim 'feat/worker' "$tmp/wt" 2>/dev/null || rc=$?
 check "fresh claim acquires" "$rc" "0"
-lease_dir="$RENDER_LEASE_DIR/feat+2Fleg"
-check "claim writes branch field" "$(render_lease_field "$lease_dir" branch)" "feat/leg"
+lease_dir="$RENDER_LEASE_DIR/feat+2Fworker"
+check "claim writes branch field" "$(render_lease_field "$lease_dir" branch)" "feat/worker"
 check "claim writes worktree field" "$(render_lease_field "$lease_dir" worktree)" "$tmp/wt"
 check "claim records launching status" "$(render_lease_field "$lease_dir" status)" "launching"
 check "claim releases the registry lock" "$(test -e "$RENDER_LEASE_DIR/.registry.lock" && echo held || echo released)" "released"
 
-rc=0; render_lease_probe 'feat/leg' || rc=$?
+rc=0; render_lease_probe 'feat/worker' || rc=$?
 check "probe sees the fresh lease as held" "$rc" "1"
-rc=0; render_lease_claim 'feat/leg' "$tmp/wt" 2>/dev/null || rc=$?
+rc=0; render_lease_claim 'feat/worker' "$tmp/wt" 2>/dev/null || rc=$?
 check "second claim on a fresh lease refuses" "$rc" "1"
 check "refused claim leaves the record intact" "$(render_lease_field "$lease_dir" status)" "launching"
 
 started_before=$(render_lease_field "$lease_dir" started_at)
-rc=0; render_lease_bind 'feat/leg' 4242 5252 'win:5252:637000000000000000' || rc=$?
+rc=0; render_lease_bind 'feat/worker' 4242 5252 'win:5252:637000000000000000' || rc=$?
 check "bind succeeds on a held lease" "$rc" "0"
 check "bind records running status" "$(render_lease_field "$lease_dir" status)" "running"
 check "bind records leader pid" "$(render_lease_field "$lease_dir" leader_pid)" "4242"
@@ -78,11 +78,11 @@ check "bind records leader winpid" "$(render_lease_field "$lease_dir" leader_win
 check "bind records leader identity" "$(render_lease_field "$lease_dir" leader_identity)" "win:5252:637000000000000000"
 check "bind preserves started_at" "$(render_lease_field "$lease_dir" started_at)" "$started_before"
 
-render_lease_release 'feat/leg'
+render_lease_release 'feat/worker'
 check "release removes the lease dir" "$(test -e "$lease_dir" && echo present || echo gone)" "gone"
-rc=0; render_lease_probe 'feat/leg' || rc=$?
+rc=0; render_lease_probe 'feat/worker' || rc=$?
 check "probe after release reports free" "$rc" "0"
-rc=0; render_lease_bind 'feat/leg' 1 2 x 2>/dev/null || rc=$?
+rc=0; render_lease_bind 'feat/worker' 1 2 x 2>/dev/null || rc=$?
 check "bind without a held lease fails" "$rc" "1"
 
 # --- staleness adjudication (fail-closed: only CONFIRMED dead is reclaimed) ---

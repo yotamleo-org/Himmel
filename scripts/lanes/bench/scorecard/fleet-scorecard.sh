@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # scripts/lanes/bench/scorecard/fleet-scorecard.sh - one per-worker scorecard for
-# real fleet legs, claudex and native side by side.
+# real fleet workers, claudex and native side by side.
 #
 # Platform guard: no .ps1 twin, by design. POSIX bash 3.2+ and python3 (stdlib
 # only); it runs under git bash unchanged.
@@ -16,10 +16,10 @@
 # An --out that names a URL is refused; the report is never published.
 #
 # Sources and defaults:
-#   legs        each manifest's legs[] (doc, label, added, lane), a relative doc path read
+#   workers        each manifest's workers[] (doc, label, added, lane), a relative doc path read
 #               against the manifest's dir; a bare --doc has no launch time and no lane, and
-#               its label is scorecard-lib.sh's leg_label of the file name. --since keeps a
-#               manifest leg added at or after it, a bare doc dated on or after its day.
+#               its label is scorecard-lib.sh's worker_label of the file name. --since keeps a
+#               manifest worker added at or after it, a bare doc dated on or after its day.
 #   chief docs  --chief-doc, else each manifest's sibling <stem>.md
 #   verdicts    --verdicts, else verdicts/ beside the first worker doc (judge_accuracy's reader)
 #   CR ledger   --cr-ledger, else cr_ledger_eval's default (findings folded by its fold)
@@ -29,8 +29,8 @@
 #   clock       a bullet's HH:MM is read in --tz (default the local zone) on the launch day,
 #               rolling to the next day when the clock goes backwards
 #
-# Per leg, output quality: judge GO / NO-GO records on the leg's PRs (console GOs left out)
-# with Blocker and Major lines; CR findings by severity over the reviewed heads of the leg's
+# Per worker, output quality: judge GO / NO-GO records on the worker's PRs (chief GOs left out)
+# with Blocker and Major lines; CR findings by severity over the reviewed heads of the worker's
 # branch; /pr-check rounds to the first head every critic scored with no critical and no
 # important; pushes after the first READY (distinct heads named in later bullets); main reds
 # a chief doc's MAIN-RED line pins on the PR; escapes within 7 days of the merge, from
@@ -42,11 +42,11 @@
 # misses (LIVE shape, READY shape, unmarked or coined bullets, a relay with no SUCCESSION
 # quote-back, a merge with no WRAPPED); delivery (a chief entry in the doc = inbox, a bus
 # record = bus, else message); stalls (BLOCKED / HALTED / PARKED-BANK bullets, chief-doc idle
-# ticks, prompt parks); guard denials; cost-eq per merged PR from its leg-burn line.
+# ticks, prompt parks); guard denials; cost-eq per merged PR from its worker-burn line.
 # A source that is absent prints `n/a (<reason>)`, never 0. Per lane: totals and medians.
 #
 # ponytail: interventions read only what lands in a doc; a SendMessage ruling to a native
-# leg shows only through its RESOLVED bullet, and a nudge only when the chief doc logs it.
+# worker shows only through its RESOLVED bullet, and a nudge only when the chief doc logs it.
 # Blocker and Major are counted by a line prefix in the verdict text; a severity header from
 # write-verdict.sh is the upgrade path.
 #
@@ -62,7 +62,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --doc)
             [ $# -ge 2 ] || { echo "fleet-scorecard: --doc needs a value" >&2; exit 2; }
-            args+=(--doc "$2" --label "$(leg_label "$(basename "$2" .md)")"); shift 2 ;;
+            args+=(--doc "$2" --label "$(worker_label "$(basename "$2" .md)")"); shift 2 ;;
         --label) echo "fleet-scorecard: --label is derived from --doc" >&2; exit 2 ;;
         *) args+=("$1"); shift ;;
     esac
@@ -89,7 +89,7 @@ BULLET = re.compile(r"^- (\d{1,2}):(\d{2}) (.*)$")
 CHIEF = re.compile(r"^\[[^\]]+\] from=\S+ (.*)$")
 SHA = re.compile(r"\b[0-9a-f]{40}\b")
 READY_OK = re.compile(r"^READY \d+ [0-9a-f]{40} GREEN\b")
-COST = re.compile(r"^leg-burn:.*\bcost-eq=([0-9.]+)k\b", re.M)
+COST = re.compile(r"^(?:worker|leg)-burn:.*\bcost-eq=([0-9.]+)k\b", re.M)
 BLOCKER = re.compile(r"^\s*[-*]\s*(?:\*\*)?(?:BLOCKING|Blocker)\b", re.I | re.M)
 MAJOR = re.compile(r"^\s*[-*]\s*(?:\*\*)?Major\b", re.I | re.M)
 NUDGE = re.compile(r"\bnudge", re.I)
@@ -469,7 +469,7 @@ def score(leg, ctx):
     else:
         costs = [COST.search(p.get("body") or "") for p in merged]
         if not all(costs):
-            f["cost"] = na("no leg-burn line")
+            f["cost"] = na("no worker-burn line")
         else:
             v["costs"] = [float(c.group(1)) for c in costs]
             v["cost"] = sum(v["costs"]) / len(merged)

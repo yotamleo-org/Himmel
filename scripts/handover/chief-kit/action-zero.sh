@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# action-zero.sh — The incoming console's mechanical ACTION ZERO
-# probes (console-template.md steps 2-6 and 8) in ONE command that prints one
+# action-zero.sh — The incoming chief's mechanical ACTION ZERO
+# probes (chief-template.md steps 2-6 and 8) in ONE command that prints one
 # summary, instead of six or seven Bash turns that each re-read the context.
 #
-#   action-zero.sh --doc <this console doc> --root <handover root> [--repo <path>]
-#                  [--prefix <P>] [--acquire] [--render-legs] [--lock-only]
+#   action-zero.sh --doc <this chief doc> --root <handover root> [--repo <path>]
+#                  [--prefix <P>] [--acquire] [--render-workers] [--lock-only]
 #
 #   LOCKS   queue-lock.sh status --sweep at the ROOT (never the bucket); a
 #           flagged lock (sweep exit 20) is listed, not read as a failure
 #   HEAD    primary head sha + remote
 #   BANK    usage-preflight.sh output
-#   PROCS   the leg processes (pgrep -af 'claude .*-n <prefix>-'), one
+#   PROCS   the worker processes (pgrep -af 'claude .*-n <prefix>-'), one
 #           `<pid> <command> <session name>` row each, never the full argv
 #   C29     himmel-doctor.sh --only C29 (a session that inherited CHILD_SESSION=1)
 #   LOAD    uptime
@@ -19,20 +19,20 @@
 #   LOCK    this document's lock state; with --acquire and state `free`, acquires
 #           it, prints the release token and writes it over the doc's
 #           `none yet — acquire your own` line. `held` is never taken over.
-#   LEGS    only with --render-legs: rewrites the doc's `## Live state` legs: line
+#   WORKERS    only with --render-workers: rewrites the doc's `## Live state` legs: line
 #           from the fleet manifest through live-state.sh (lock tokens from the
 #           held locks, nonces kept) instead of a hand edit, bounded by
-#           ACTION_ZERO_LEGS_TIMEOUT (default 60s); `unavailable` and exit 1 when
+#           ACTION_ZERO_WORKERS_TIMEOUT (default 60s); `unavailable` and exit 1 when
 #           it cannot render (no manifest next to the doc, a failure or a timeout) and
 #           when this document's lock is held (by this or another session): the legs: line is not
-#           rewritten. A console already holding its lock re-renders with live-state.sh.
+#           rewritten. A chief already holding its lock re-renders with live-state.sh.
 #
 # --lock-only runs the LOCK section alone: the successor's one call once
-# `console.sh next` has pre-computed the other sections into its doc.
+# `chief.sh next` has pre-computed the other sections into its doc.
 #
-# Everything is read-only except --acquire and --render-legs. What it leaves to the console, on
+# Everything is read-only except --acquire and --render-workers. What it leaves to the chief, on
 # purpose (they need its own turn and its own authority): ListAgents (step 1),
-# the relays and each leg's quote-back (step 9), sending LIVE, and starting the
+# the relays and each worker's quote-back (step 9), sending LIVE, and starting the
 # waiter (step 10). A section that fails prints `unavailable` and the rest run.
 #
 # Seams (tests): ACTION_ZERO_BANK, ACTION_ZERO_DOCTOR replace those commands.
@@ -40,14 +40,22 @@
 # default 60s; ACTION_ZERO_DOCTOR_TIMEOUT, default 120s). A hung probe prints
 # `TIMEOUT <bank|doctor> after <n>s` in its section and the summary carries on.
 # No timeout binary: the probes run unbounded, with a WARN line.
-# Exit: 0; 1 if --render-legs could not render; 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe.
+# Exit: 0; 1 if --render-workers could not render; 2 usage. PLATFORM GUARD: Linux-only kit, bash 3.2-safe.
 set -uo pipefail
+# Old names, read only while HIMMEL_LEGACY_NAMES is on.
+case "${BASH_SOURCE[0]}" in */*) _ea_dir="${BASH_SOURCE[0]%/*}" ;; *) _ea_dir=. ;; esac
+# shellcheck source=scripts/lib/env-alias.sh
+# shellcheck disable=SC1091
+if { [ -r "$_ea_dir/../../lib/env-alias.sh" ] && . "$_ea_dir/../../lib/env-alias.sh"; } 2>/dev/null; then
+    alias_env ACTION_ZERO_WORKERS_TIMEOUT ACTION_ZERO_LEGS_TIMEOUT
+fi
+unset _ea_dir
 unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 repo="$(cd "$HERE/../../.." && pwd)"
 doc=""; root=""; prefix=""; acquire=0; render=0; render_rc=0; lockonly=0
-usage() { echo "usage: action-zero.sh --doc <console doc> --root <handover root> [--repo <path>] [--prefix <P>] [--acquire] [--render-legs] [--lock-only]" >&2; exit 2; }
+usage() { echo "usage: action-zero.sh --doc <chief doc> --root <handover root> [--repo <path>] [--prefix <P>] [--acquire] [--render-workers] [--lock-only]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --doc) [ "$#" -ge 2 ] || usage; doc="$2"; shift 2 ;;
@@ -55,7 +63,7 @@ while [ "$#" -gt 0 ]; do
         --repo) [ "$#" -ge 2 ] || usage; repo="$2"; shift 2 ;;
         --prefix) [ "$#" -ge 2 ] || usage; prefix="$2"; shift 2 ;;
         --acquire) acquire=1; shift ;;
-        --render-legs) render=1; shift ;;
+        --render-workers|--render-legs) [ "$1" = --render-workers ] || legacy_flag --render-legs --render-workers || usage; render=1; shift ;;
         --lock-only) lockonly=1; shift ;;
         *) usage ;;
     esac
@@ -67,7 +75,7 @@ ql="$repo/scripts/handover/queue-lock.sh"
 # timeout-bin.sh's consumers (check-ci-watch.sh) without their own sources.
 tb_lib="$repo/scripts/lib/timeout-bin.sh"
 _TIMEOUT_BIN="$(bash -c '. "$1" >/dev/null 2>&1; printf %s "$_TIMEOUT_BIN"' _ "$tb_lib" 2>/dev/null)"
-bank_t="${ACTION_ZERO_BANK_TIMEOUT:-60}"; doctor_t="${ACTION_ZERO_DOCTOR_TIMEOUT:-120}"; legs_t="${ACTION_ZERO_LEGS_TIMEOUT:-60}"
+bank_t="${ACTION_ZERO_BANK_TIMEOUT:-60}"; doctor_t="${ACTION_ZERO_DOCTOR_TIMEOUT:-120}"; workers_t="${ACTION_ZERO_WORKERS_TIMEOUT:-60}"
 # bounded <name> <secs> <cmd...>: output on stdout; a timeout prints the TIMEOUT line.
 bounded() {
     local name="$1" secs="$2" brc; shift 2
@@ -122,12 +130,12 @@ if [ "$lockonly" -eq 0 ]; then
     uptime 2>&1 || echo "unavailable"
 
     if [ "$render" -eq 1 ]; then
-        echo "== LEGS"
+        echo "== WORKERS"
         pre_state="$(env HANDOVER_DIR="$root" bash "$ql" status "$doc" 2>&1)"; pre_rc=$?
         if [ "$pre_rc" -ne 0 ] || [ "$pre_state" != free ]; then
             render_rc=1; echo "unavailable (this document's lock is not free: held by this or another session, legs: left unchanged)"
         elif [ -f "${doc%.md}.fleet.json" ]; then
-            if bounded legs "$legs_t" env HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc"; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
+            if bounded workers "$workers_t" env HANDOVER_DIR="$root" bash "$HERE/live-state.sh" "$doc"; then echo "legs: line rendered"; else render_rc=1; echo "unavailable"; fi
         else
             render_rc=1; echo "unavailable (no fleet manifest next to the doc)"
         fi

@@ -17,14 +17,14 @@
 # silently drop later rows (critic #1).
 #
 # Library API:
-#   df_leg_active <advise|session|morning>   rc 0 if that leg is on
+#   df_worker_active <advise|session|morning>   rc 0 if that worker is on
 #   df_detect <range> [<map>] [<root>]       prints findings, returns 0
 # CLI:
 #   bash scripts/lib/doc-freshness.sh <range>   prints findings, exits 0
 
-# --- leg gate (HIMMEL_DOC_FRESHNESS; grammar mirrors HIMMEL_INITIATIVE) ------
+# --- worker gate (HIMMEL_DOC_FRESHNESS; grammar mirrors HIMMEL_INITIATIVE) ------
 _df_norm() { printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]'; }
-df_leg_active() {
+df_worker_active() {
     local want="$1" norm
     norm="$(_df_norm "${HIMMEL_DOC_FRESHNESS:-}")"
     case "$norm" in

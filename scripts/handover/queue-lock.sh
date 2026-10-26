@@ -37,7 +37,7 @@
 # token to a per-user file (see PER-SESSION TOKEN PERSISTENCE
 # below), which a token-less heartbeat/release reads back and names on
 # stderr -- the token contract is unchanged, that file just stops a
-# mid-session autocompact from being the only thing standing between a leg
+# mid-session autocompact from being the only thing standing between a worker
 # and a clean wrap. Emergency override when the token is lost from BOTH:
 # QUEUE_LOCK_FORCE_RELEASE=1 releases regardless, loudly, and logs the
 # forced release to the queue-level .locks/queue/takeovers.log.
@@ -88,10 +88,10 @@
 # `heartbeat` and `release` warn when a lock's heartbeat age exceeds half the
 # TTL (aging).
 #
-# SELF-HEARTBEAT + LIVENESS PROBE: a long leg acquires at step 0
+# SELF-HEARTBEAT + LIVENESS PROBE: a long worker acquires at step 0
 # and releases at wrap and never heartbeats in between, so after one TTL its
 # lock was silently STALE and takeable under a LIVE holder. Two closures, both
-# driven by the harness rather than by the leg remembering anything:
+# driven by the harness rather than by the worker remembering anything:
 #   - `self-heartbeat` runs as a PostToolUse hook (wired by
 #     scripts/observability/wire-session-telemetry-hooks.mjs). It finds the
 #     locks THIS session acquired (the .doc sidecars next to the
@@ -274,7 +274,7 @@ QUEUE_LOCK_IDLE_WARN_SECONDS (default 2700s) as IDLE-HELD?.
 Exit 20 if anything is flagged, 0 otherwise (including "no held locks").
 A lock past the TTL whose owner is provably dead (this host, a
 <host>-pid<N> token with no live pid N, no live claude process naming the doc)
-reads status=STALE-DEAD -- not a held lock for the console stop guard or the
+reads status=STALE-DEAD -- not a held lock for the chief stop guard or the
 tick. `status --sweep --reap-dead [<root>]` releases ONLY those, logging each to
 <root>/.locks/queue/takeovers.log; a lock whose owner cannot be proven dead is
 never reaped, whatever its age.
@@ -338,7 +338,7 @@ _ql_token_host() {
 _ql_default_session() { printf '%s-pid%s' "$(_ql_token_host "$(_ql_hostname)")" "$$"; }
 
 # _ql_strip_backticks <token> -- acquire prints the token
-# backticked ("release-token: `<token>`") so a leg copy-pasting the line
+# backticked ("release-token: `<token>`") so a worker copy-pasting the line
 # into a markdown handover doc can't have gitleaks capture trailing
 # punctuation into the "secret". Strips ONLY when BOTH a leading and
 # trailing backtick are present (never a single stray one), so a token
@@ -489,11 +489,11 @@ _ql_write_owner() {
 #
 # WHY: `acquire` runs with the queue's handover root in scope (in Mode B,
 # HANDOVER_DIR exported on the command line), but the matching `release` at
-# wrap is routinely issued from a leg's WORKTREE cwd with that env gone.
+# wrap is routinely issued from a worker's WORKTREE cwd with that env gone.
 # handover_root then resolves a DIFFERENT root -- the repo's inline
 # handovers/ -- the lookup misses a root it never looked in, and the caller
 # is told nothing was held (silently, rc=0) while the real lock stays HELD.
-# Six legs orphaned their locks that way on 2026-09-09; the console had to
+# Six workers orphaned their locks that way on 2026-09-09; the chief had to
 # force-release all six. Per the enforcement-strength convention
 # the second drift escalates to STRUCTURAL: the script itself
 # now looks in the other roots this machine knows about instead of relying
@@ -555,7 +555,7 @@ _ql_candidate_roots() {
 # _ql_search_roots <handover-path> <token> -- print the lock dir for this
 # queue found under a root OTHER than the cwd-resolved one and owned by
 # <token>, or nothing (rc 1). Emits exactly ONE WARN naming both roots when
-# it finds one, so the mismatch is visible in the leg's wrap output instead
+# it finds one, so the mismatch is visible in the worker's wrap output instead
 # of being silently papered over. The recorded root comes from the lock's
 # own `root` marker when present; a lock dir written by the pre-root-marker
 # script has no marker, so the candidate root itself is named instead --
@@ -588,11 +588,11 @@ EOF
 # ONE DOC, ONE KEY --------------------------------------------
 #
 # WHY: the key used to be a function of how the CALLER spelled things. Two live
-# legs held locks under the wrong key on 2026-09-20 and `status` answered
-# `free` for both -- which the console reads as "reclaim it": N211b ran with
+# workers held locks under the wrong key on 2026-09-20 and `status` answered
+# `free` for both -- which the chief reads as "reclaim it": N211b ran with
 # HANDOVER_DIR naming the vault's PARENT (recorded root = the vault, `handovers__`
 # absorbed into the slug), N212 passed a bare filename from the primary's cwd
-# (right root, unprefixed slug). Neither leg reasoned badly; the script honoured
+# (right root, unprefixed slug). Neither worker reasoned badly; the script honoured
 # both spellings literally.
 #
 # THE PRINCIPLE: a doc belongs to exactly one handover root -- the MOST SPECIFIC
@@ -836,9 +836,9 @@ EOF
 
 # _ql_warn_aging <age> <ttl> [suffix] -- the AGING warning
 # (heartbeat age >= half the TTL), hoisted out of `status` so `heartbeat` and
-# `release` -- the two verbs a long leg DOES call -- say it too. A leg that
+# `release` -- the two verbs a long worker DOES call -- say it too. A worker that
 # acquires at step 0 and releases at wrap never calls `status`, so the warning
-# used to be unreachable for exactly the legs it exists for. stderr only,
+# used to be unreachable for exactly the workers it exists for. stderr only,
 # never changes an exit code; a non-numeric <age> (unparsable heartbeat) is
 # silent. The status wording is load-bearing (tests grep AGING).
 _ql_warn_aging() {
@@ -996,8 +996,8 @@ EOF
 # PER-SESSION TOKEN PERSISTENCE -------------------------------
 #
 # WHY: the release token exists in exactly one place -- the line `acquire`
-# printed into the session transcript -- and a mid-leg autocompact
-# SUMMARISES THAT AWAY. Two certifier legs lost theirs that way on
+# printed into the session transcript -- and a mid-worker autocompact
+# SUMMARISES THAT AWAY. Two certifier workers lost theirs that way on
 # 2026-09-07/08 and had to QUEUE_LOCK_FORCE_RELEASE their own locks, which
 # writes a FORCED entry to takeovers.log: that file is meant to be the audit
 # trail for genuine takeovers, so routine wraps landing in it destroy the
@@ -1035,10 +1035,10 @@ EOF
 #
 # SCOPED TO THE SESSION, NOT JUST THE USER. Keying the
 # file on the handover path alone made it readable by ANY process running as
-# this user: a sibling leg that never acquired could run a token-less release
+# this user: a sibling worker that never acquired could run a token-less release
 # and be handed the holder's token -- reopening the precise hole C1 exists to
 # close ("a token-less release could rm another session's LIVE lock"), and
-# himmel runs many concurrent legs as one user. The digest therefore covers a
+# himmel runs many concurrent workers as one user. The digest therefore covers a
 # SESSION SCOPE as well as the path, so a different session resolves a
 # different filename and simply finds nothing. When no scope can be
 # established the feature turns ITSELF OFF -- nothing is persisted and
@@ -1468,7 +1468,7 @@ _ql_arms_mutex_release() {
 # (flow-exporter.ts) false-pages when a terminal is closed: claude is
 # killed with no SessionEnd hook, so the session ages into "dead" with no
 # evidence it ever wrapped up cleanly. This is the reconciler -- release is
-# the operator-preferred call site because every mission leg releases its
+# the operator-preferred call site because every mission worker releases its
 # queue lock at wrap, so coverage is automatic rather than convention-
 # dependent. Writer path resolved relative to THIS script's own location
 # (not cwd); runtime/invocation form matches
@@ -1486,7 +1486,7 @@ _ql_arms_mutex_release() {
 # bounded with `timeout` when available -- a hung bun
 # runtime would otherwise block the release caller despite the `|| true`
 # below (rc is only checked after the call returns), stranding an unattended
-# overnight leg on its wrap path. Same graceful-degrade convention as
+# overnight worker on its wrap path. Same graceful-degrade convention as
 # scripts/cr/critic-panel.sh's per-member hang protection: run unbounded
 # when `timeout` is absent. 15s is ample for a one-line append.
 _ql_emit_close_evidence() {
@@ -1716,7 +1716,7 @@ queue_lock_acquire() {
         echo "WARN queue-lock: could not parse heartbeat '$o_heartbeat' -- treating as FRESH (fail-closed on unparsable timestamps)" >&2
     fi
     # a heartbeat past the TTL is only STALE if the holder is not
-    # provably still working -- a leg that never heartbeated but whose
+    # provably still working -- a worker that never heartbeated but whose
     # transcript on this host is still being written is LIVE. The existing
     # "held (FRESH)" refusal below then applies; QUEUE_LOCK_TAKEOVER=1 forces.
     local holder_live=0
@@ -1940,7 +1940,7 @@ queue_lock_heartbeat() {
         return 2
     fi
     # the cwd may resolve a different root than the acquire did
-    # (a leg heartbeating from its worktree). Search the other roots this
+    # (a worker heartbeating from its worktree). Search the other roots this
     # machine knows about whenever the lock HERE is not ours -- absent, yes,
     # but also present-and-held-by-someone-else: two roots can carry the same
     # slug, and refusing on the local stranger's lock would leave OUR lock in
@@ -2002,7 +2002,7 @@ queue_lock_heartbeat() {
         echo "queue-lock: heartbeat FAILED -- owner.json could not be rewritten atomically (the previous heartbeat stays in effect)" >&2
         return 1
     fi
-    _ql_warn_aging "$hb_prev_age" "$hb_ttl" "it was AGING until this refresh; heartbeat more often on long sessions (the PostToolUse self-heartbeat hook does this; operator: wire the self-heartbeat hook VM-first (wire-session-telemetry-hooks.mjs rewrites settings.json); never from a leg)"
+    _ql_warn_aging "$hb_prev_age" "$hb_ttl" "it was AGING until this refresh; heartbeat more often on long sessions (the PostToolUse self-heartbeat hook does this; operator: wire the self-heartbeat hook VM-first (wire-session-telemetry-hooks.mjs rewrites settings.json); never from a worker)"
     return 0
 }
 
@@ -2047,7 +2047,7 @@ _ql_acquire_liveness() {
 
 # queue_lock_self_heartbeat -- the PostToolUse hook verb. Reads
 # the hook payload from stdin and keeps THIS session's own queue locks alive
-# without the leg having to remember to `heartbeat`. CONTRACT: always rc 0 and
+# without the worker having to remember to `heartbeat`. CONTRACT: always rc 0 and
 # no output on stdout or stderr -- it runs on every tool call, so it must be
 # silent and fail-open; every failure path is a plain `return 0`.
 #
@@ -2191,8 +2191,8 @@ queue_lock_release() {
     # "the lock here is not ours" trigger. When nothing of ours is found
     # ANYWHERE this now exits 3 instead of the old silent 0 -- a lock the
     # caller believes it released but did not is exactly the failure that
-    # went unnoticed six times on 2026-09-09, and rc=0 is what every leg and
-    # the console read as "released cleanly".
+    # went unnoticed six times on 2026-09-09, and rc=0 is what every worker and
+    # the chief read as "released cleanly".
     if ! _ql_owner_matches "$lockdir" "$session"; then
         local rel_found rel_rc
         if rel_found=$(_ql_search_roots "$ho" "$session"); then
@@ -2258,7 +2258,7 @@ queue_lock_release() {
         session="$rel_holder"
     fi
     # the age at release time, read before the dir goes away. A
-    # leg that held its lock past half the TTL without a single heartbeat
+    # worker that held its lock past half the TTL without a single heartbeat
     # outran its own safety margin unseen -- say so now, while it still can.
     # Read before the re-check: it forks, and any gap between the re-check
     # and the rm below is a window for a takeover to land in.
@@ -2275,7 +2275,7 @@ queue_lock_release() {
         echo "queue-lock: failed to remove lock dir '$lockdir' -- it still exists (open handle on Windows? permission?); NOT released" >&2
         return 1
     fi
-    _ql_warn_aging "$rel_age" "$rel_ttl" "the lock was AGING when released: the leg outran half its TTL without a heartbeat and was takeable meanwhile (operator: wire the self-heartbeat hook VM-first (wire-session-telemetry-hooks.mjs rewrites settings.json); never from a leg)"
+    _ql_warn_aging "$rel_age" "$rel_ttl" "the lock was AGING when released: the worker outran half its TTL without a heartbeat and was takeable meanwhile (operator: wire the self-heartbeat hook VM-first (wire-session-telemetry-hooks.mjs rewrites settings.json); never from a worker)"
     _ql_token_forget "$ho" "$session"
     [ "$ho_raw" = "$ho" ] || _ql_token_forget "$ho_raw" "$session"
     _ql_emit_close_evidence
@@ -2330,7 +2330,7 @@ queue_lock_status() {
     if [ ! -d "$lockdir" ]; then
         # `free` only when NO lock anywhere records this doc. A
         # lock under a legacy (mis-keyed) key is HELD -- answering `free` for
-        # it is what let a console read a live leg's lock as reclaimable.
+        # it is what let a chief read a live worker's lock as reclaimable.
         local legacy_lk
         legacy_lk=$(_ql_scan_pick "$ho")
         if [ -z "$legacy_lk" ]; then
@@ -2350,7 +2350,7 @@ queue_lock_status() {
         lockdir="$legacy_lk"
     elif ! _ql_lock_is_fresh "$lockdir"; then
         # A STALE canonical lock must not hide a FRESH legacy-keyed holder: the
-        # answer would be `STALE` (reclaimable) while a live leg holds the doc.
+        # answer would be `STALE` (reclaimable) while a live worker holds the doc.
         local legacy_fresh
         legacy_fresh=$(_ql_scan_pick "$ho" "$lockdir")
         if [ -n "$legacy_fresh" ] && _ql_lock_is_fresh "$legacy_fresh"; then
@@ -2406,12 +2406,12 @@ queue_lock_status() {
     # heartbeat and release carry the same warning (_ql_warn_aging).
     _ql_warn_aging "$age" "$ttl"
     # the TTL/aging thresholds above are sized for the overnight
-    # BUDGET (hours) -- too coarse to catch a leg hung on an interactive
+    # BUDGET (hours) -- too coarse to catch a worker hung on an interactive
     # permission prompt (nobody unattended to answer it), which stalls its
     # heartbeat within minutes. A tighter idle-warn threshold (default 45m)
     # flags that narrower class; "possibly" because queue-lock.sh alone can't
     # tell a stuck prompt from any other reason a session stopped ticking --
-    # the console cross-checks ListAgents (session still listed = likely a
+    # the chief cross-checks ListAgents (session still listed = likely a
     # live prompt, not a crash) before acting. See
     # docs/internals/environment-gotchas.md for the operator recovery.
     local idle_warn
@@ -2424,9 +2424,9 @@ queue_lock_status() {
 }
 
 # queue_lock_status_sweep [<handover-root>] -- `status` inspects
-# ONE queue at a time, but the console's periodic tick needs a cheap way to
-# ask "is ANY leg on this machine stuck?" without already knowing every
-# handover path in advance (a leg hung on an interactive prompt, or idle-
+# ONE queue at a time, but the chief's periodic tick needs a cheap way to
+# ask "is ANY worker on this machine stuck?" without already knowing every
+# handover path in advance (a worker hung on an interactive prompt, or idle-
 # waiting on an operator action, stops heartbeating within minutes but holds
 # its lock for the full multi-hour TTL -- the single-queue
 # idle-warn line can't help unless something already knows to ask about that
@@ -2472,8 +2472,8 @@ queue_lock_status() {
 #                    unlink owner.json before the directory entry itself is
 #                    gone) -- a sweep landing in that narrow, routine window
 #                    would otherwise call a perfectly healthy in-flight
-#                    acquire/release CORRUPT. The console runs this sweep on
-#                    a periodic tick while legs acquire/release constantly,
+#                    acquire/release CORRUPT. The chief runs this sweep on
+#                    a periodic tick while workers acquire/release constantly,
 #                    so that race is not rare, it is scheduled -- and a
 #                    sweep that cries wolf gets ignored, which defeats the
 #                    whole point of the rc=20 signal. NOT flagged (does not
