@@ -568,13 +568,17 @@ _cfp_claude_invoke() {
             if [ "$_cc_rc" -eq 2 ] && grep -q '^claude-api: refused:' "$_cc_err" 2>/dev/null; then
                 _cc_why="$(grep -m1 '^claude-api: refused:' "$_cc_err" | sed 's/^claude-api: refused: //')"
                 rm -rf "$_cc_dir"
-                # a gate that crashed (no scratch file, bank preflight BANK-UNKNOWN, a reservation with no verdict) is broke, not a decision
+                # a gate that crashed (no scratch file, BANK-UNKNOWN from the bank gate or the reservation, a reservation with no string verdict) is broke, not a decision
                 case "$_cc_why" in
-                    'reservation refused: '*'"verdict":'*) ;;
-                    'no scratch file'|'api bank gate said BANK-UNKNOWN'|'reservation refused: '*)
-                        echo "critic-first-pass.sh: claude critic BROKE ($_cc_why) — not a clean no-op" >&2
-                        return 1 ;;
+                    'reservation refused: '*'"verdict":"BANK-UNKNOWN"'*) _cc_decided=no ;;
+                    'reservation refused: '*'"verdict":"'*) _cc_decided=yes ;;
+                    'no scratch file'|'api bank gate said BANK-UNKNOWN'|'reservation refused: '*) _cc_decided=no ;;
+                    *) _cc_decided=yes ;;
                 esac
+                if [ "$_cc_decided" = no ]; then
+                    echo "critic-first-pass.sh: claude critic BROKE ($_cc_why) — not a clean no-op" >&2
+                    return 1
+                fi
                 echo "critic-first-pass.sh: claude critic SKIPPED ($_cc_why) — clean no-op" >&2
                 return 5
             fi

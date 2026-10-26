@@ -231,6 +231,11 @@ has "10b stderr names BROKE" "claude critic BROKE" "$W/err"
 broke_case 10c 'reservation refused: {"verdict":"HOLD","reason":"cap"}'
 check "10c a reservation that said HOLD is a decision: exits 5" 5 "$RC"
 has "10c stderr names SKIPPED" "claude critic SKIPPED" "$W/err"
+broke_case 10c2 'reservation refused: {"verdict":"BANK-UNKNOWN","reason":"state-io-failure"}'
+check "10c2 a reservation that answered BANK-UNKNOWN is broke: exits 1" 1 "$RC"
+has "10c2 stderr names BROKE" "claude critic BROKE" "$W/err"
+broke_case 10c3 'reservation refused: {"verdict":null}'
+check "10c3 a reservation whose verdict is not a string is broke: exits 1" 1 "$RC"
 broke_case 10d "api bank gate said BANK-UNKNOWN"
 check "10d a bank preflight that crashed (BANK-UNKNOWN) is broke: exits 1" 1 "$RC"
 has "10d stderr names BROKE" "claude critic BROKE" "$W/err"
