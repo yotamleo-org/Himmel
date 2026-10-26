@@ -33,7 +33,7 @@ sh_on() {
   local args=()
   [ "$1" = "-" ] || args=("HIMMEL_LEGACY_NAMES=$1")
   env -i PATH="$PATH" ${args[@]+"${args[@]}"} bash -c \
-    'set -euo pipefail; . "$1"; if legacy_names_on; then echo on; else echo off; fi' _ "$LIB" 2>&1
+    'set -euo pipefail; . "$1"; if legacy_names_on; then echo on; else echo off; fi' _ "$LIB" 2>&1 # read-sink-ok: sources the lib under test, a repo path
 }
 js_on() {
   local args=()
@@ -78,11 +78,11 @@ check "python knob ''" "on" "$(py_on '')"
 check "legacy-names.sh sourced under strict mode prints nothing" "" \
   "$(bash -c 'set -euo pipefail; . "$1"' _ "$LIB" 2>&1)"
 check "env-alias.sh loads legacy_names_on" "off" \
-  "$(env -i PATH="$PATH" HIMMEL_LEGACY_NAMES=0 bash -c 'set -euo pipefail; . "$1"; if legacy_names_on; then echo on; else echo off; fi' _ "$HERE/env-alias.sh" 2>&1)"
+  "$(env -i PATH="$PATH" HIMMEL_LEGACY_NAMES=0 bash -c 'set -euo pipefail; . "$1"; if legacy_names_on; then echo on; else echo off; fi' _ "$HERE/env-alias.sh" 2>&1)" # read-sink-ok: sources the lib under test, a repo path
 
 # restrict ignores OFF in all three runtimes: an old-name guard marker stays on
 check "shell restrict ignores OFF" "0" \
-  "$(env -i PATH="$PATH" HIMMEL_LEGACY_NAMES=0 T_OLD=1 bash -c 'set -euo pipefail; . "$1"; rc=0; env_alias_restrict T_NEW T_OLD || rc=$?; echo $rc' _ "$HERE/env-alias.sh" 2>&1)"
+  "$(env -i PATH="$PATH" HIMMEL_LEGACY_NAMES=0 T_OLD=1 bash -c 'set -euo pipefail; . "$1"; rc=0; env_alias_restrict T_NEW T_OLD || rc=$?; echo $rc' _ "$HERE/env-alias.sh" 2>&1)" # read-sink-ok: sources the lib under test, a repo path
 check "js restrict ignores OFF" "0" \
   "$(env -i PATH="$PATH" HIMMEL_LEGACY_NAMES=0 T_OLD=1 node "$HERE/env-alias.mjs" restrict T_NEW T_OLD >/dev/null 2>&1; echo $?)"
 check "python restrict ignores OFF" "0" \
@@ -91,8 +91,8 @@ check "python restrict ignores OFF" "0" \
 # legacy_flag and its twins: on = rc 0 and one deprecation line for two calls;
 # off = rc 1 and the renamed line
 sh_flag() {
-  env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" bash -c \
-    'set -euo pipefail; . "$1"; rc=0; legacy_flag --legs --workers || rc=$?; legacy_flag --legs --workers || rc=$?; echo "rc=$rc"' \
+  # read-sink-ok: sources the lib under test, a repo path
+  env -i PATH="$PATH" HIMMEL_LEGACY_NAMES="$1" bash -c 'set -euo pipefail; . "$1"; rc=0; legacy_flag --legs --workers || rc=$?; legacy_flag --legs --workers || rc=$?; echo "rc=$rc"' \
     _ "$LIB" 2>&1 | tr '\n' '|'
 }
 js_flag() {

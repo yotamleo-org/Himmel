@@ -180,7 +180,7 @@ test("health: reloading at #/health starts loadHealth without a page error", asy
   await page.reload();
   await page.locator("#verdict .word").waitFor();
   expect(errors).toEqual([]);
-  await expect(page.locator("#bank, #workers").first()).not.toContainText("loading");
+  await expect(page.locator("#bank, #legs").first()).not.toContainText("loading");
 });
 
 test("health: the seven sections appear in spec order", async ({ page }) => {
@@ -229,7 +229,7 @@ test("health: bank card shows the newest row with bank numbers; I2 the ledger is
 
 test("health: workers card shows the worker doc and its marker from the real parsers (BLOCKED flips it)", async ({ page }) => {
   await openHealth(page, {}, { handover: { bullet: "- 03:00 LIVE — x" } });
-  const workers = page.locator("#workers");
+  const workers = page.locator("#legs");
   await expect(workers).toContainText("HIMMEL-9999-N1-e2e-worker-RESUME.md");
   await expect(workers.locator(".leg .mk")).toHaveText("LIVE");
   h.setBullet("- 03:05 BLOCKED — y");
@@ -251,7 +251,7 @@ test("health: with the feed pending the verdict is No data and bank and workers 
   await page.evaluate(() => { location.hash = "#/health"; });
   await expect(verdictWord(page)).toHaveText("No data");
   await expect(page.locator("#bank")).toContainText("86.0");
-  await expect(page.locator("#workers")).toContainText("LIVE");
+  await expect(page.locator("#legs")).toContainText("LIVE");
   await expect(verdictWord(page)).toHaveText("Act now", { timeout: 20_000 }); // the feed lands, the verdict follows
 });
 
@@ -319,7 +319,7 @@ test("health: every source absent leaves No data cards that name the source; ver
   await expect(verdictWord(page)).toHaveText("All clear");
   await expect(page.locator("#verdict")).toContainText("alerts not checked");
   await expect(page.locator("#bank .nodata")).toContainText("bank-preflight ledger");
-  await expect(page.locator("#workers .nodata")).toContainText("fleet manifest");
+  await expect(page.locator("#legs .nodata")).toContainText("fleet manifest");
   await expect(page.locator("#verdict .nodata")).toContainText("monitoring tier not running");
   expect(await page.locator("main h2").allTextContents()).toEqual(SECTIONS);
 });

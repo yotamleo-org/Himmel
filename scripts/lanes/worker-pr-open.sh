@@ -77,8 +77,8 @@ if [ ! -f "$BODY_FILE" ] || [ ! -r "$BODY_FILE" ]; then
     exit 1
 fi
 
-title=$(cat "$TITLE_FILE")
-body=$(cat "$BODY_FILE")
+title=$(cat "$TITLE_FILE") # read-sink-ok: the caller's own title file, passed to gh verbatim
+body=$(cat "$BODY_FILE") # read-sink-ok: the caller's own body file, passed to gh verbatim
 
 if [ -z "$body" ]; then
     echo "ERR worker-pr-open: body file is empty: $BODY_FILE" >&2

@@ -293,7 +293,7 @@ test("9. the fleet landing lists 3 live sessions and 1 wrapped one, and a row op
   await expect(live).toHaveCount(3);
   await expect(live.nth(0).locator(".fleet-name")).toHaveText(shortName(FLEET.console.name));
   await expect(live.nth(0).locator(".fleet-name")).toHaveAttribute("title", FLEET.console.name);
-  await expect(live.nth(0)).toContainText("console");
+  await expect(live.nth(0)).toContainText("chief");
   const leg = card(page, FLEET.leg.name);
   await expect(leg.locator(".fleet-chip")).toHaveText("HIMMEL-901");
   // a card is one line; its chevron, not its name, opens the detail, and the detail names the run page.
@@ -414,7 +414,7 @@ test("orphans section, and a lane filter that narrows the page and is kept", asy
   await page.goto(h.url);
   const orphans = page.locator("#fleet-sec-orphans");
   await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText(`${shortName(FLEET.leg.name)}`);
-  await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText("console process gone");
+  await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText("chief process gone");
   await expect(orphans.getByRole("list", { name: "Orphan sessions" })).toContainText("adopt via relay / close");
   await expect(orphans.getByRole("table", { name: "Orphan processes" })).toContainText("close: kill 4242");
   await expect(page.locator(".top .meta")).toContainText("2 orphaned");
