@@ -68,7 +68,8 @@ failed an assertion), `cap-overlap` (a cap-timed-out suite is one the PR
 reaches), `cap-unverified` (the gate could not read the PR's reach) or
 `unclassified` (a red job that is not a shell-unit job, a shard that failed
 for more than its suite rows such as a honeytoken leak or a shard with no
-rows, or a log the gate could not parse). After a merge on the declared-fix or fix-GO path the script
+rows, a job that never ran or was cancelled so its log is empty, or a log or
+job list the gate could not parse). After a merge on the declared-fix or fix-GO path the script
 dispatches one `ci.yml` run on main and prints `MAIN-RECHECK dispatched
 run=<id>` (`run=unknown` when the new run is not listed yet; a failed dispatch
 is a WARN, the merge stands): read that run's `headSha` and `conclusion` before

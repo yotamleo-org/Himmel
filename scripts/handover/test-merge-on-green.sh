@@ -578,6 +578,17 @@ case "$verb" in
             printf '{"conclusion":"%s"}' "${STUB_RUN_ATTEMPT_CONCLUSION-failure}" | jq -r "$jqexpr"
             exit 0
         fi
+        # `run view <id> --json jobs --jq ...`: the run's job list, which the cap-only
+        # classifier cross-checks against the jobs the failed log shows. Unset
+        # STUB_RUN_JOBS_JSON is a run whose every job passed.
+        if [ "$json" = jobs ]; then
+            [ "${STUB_RUN_JOBS_FAIL:-0}" = "1" ] && { echo "gh: run view --json jobs failed" >&2; exit 1; }
+            [ -n "$jqexpr" ] || { echo "gh stub: 'run view --json jobs' missing --jq" >&2; exit 93; }
+            stub_jobs_json="${STUB_RUN_JOBS_JSON:-}"
+            [ -n "$stub_jobs_json" ] || stub_jobs_json='{"jobs":[]}'
+            printf '%s' "$stub_jobs_json" | jq -r "$jqexpr"
+            exit 0
+        fi
         cat "${STUB_RUN_LOG_FILE:-/dev/null}" ;;
     "api repos/"*)
         # public_origin_merge_allowed's branch-protection read.
@@ -4786,6 +4797,16 @@ MOG7658_LOG_ROLL="$(mktemp "${TMPDIR:-/tmp}/mog-7658-roll.XXXXXX")" || { echo "F
 # The cap shard failed a second step of its own job after the runner step.
 MOG7658_LOG_STEP2="$(mktemp "${TMPDIR:-/tmp}/mog-7658-step2.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
 { cat "$MOG7658_LOG_CAP"; printf '%s\t%s\t%s\n' 'shell-unit-shard (ubuntu-latest, 2)' 'Upload shard manifest' '2026-10-25T20:19:40.1234567Z ##[error]Unable to upload the shard manifest'; } > "$MOG7658_LOG_STEP2"
+# The runner stopped before every suite ran (its run budget, or SUITE_STOP_ON_FAIL).
+MOG7658_LOG_BUDGET="$(mktemp "${TMPDIR:-/tmp}/mog-7658-budget.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+MOG7658_LOG_STOPPED="$(mktemp "${TMPDIR:-/tmp}/mog-7658-stopped.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+{ cat "$MOG7658_LOG_CAP"; mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'ERROR: run budget of 3000s expired — these suites never ran:'; } > "$MOG7658_LOG_BUDGET"
+{ cat "$MOG7658_LOG_CAP"; mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'STOPPED: SUITE_STOP_ON_FAIL=1 — a suite failed, so these suites never ran:'; } > "$MOG7658_LOG_STOPPED"
+# The run's job list (gh run view --json jobs). The failed log only shows jobs that wrote
+# a failure, so a shard that never ran has no lines there.
+MOG7658_JOBS_OK='{"jobs":[{"name":"plan","conclusion":"success"},{"name":"lint (ubuntu-latest)","conclusion":"success"},{"name":"macos-extras","conclusion":"skipped"},{"name":"shell-unit-shard (ubuntu-latest, 2)","conclusion":"failure"},{"name":"shell-unit (dispatch verify) (ubuntu-latest)","conclusion":"failure"}]}'
+MOG7658_JOBS_QUEUED='{"jobs":[{"name":"shell-unit-shard (ubuntu-latest, 2)","conclusion":"failure"},{"name":"shell-unit-shard (ubuntu-latest, 5)","conclusion":null},{"name":"shell-unit (dispatch verify) (ubuntu-latest)","conclusion":"failure"}]}'
+MOG7658_JOBS_CANCELLED='{"jobs":[{"name":"shell-unit-shard (ubuntu-latest, 2)","conclusion":"failure"},{"name":"shell-unit-shard (ubuntu-latest, 5)","conclusion":"cancelled"},{"name":"shell-unit (dispatch verify) (ubuntu-latest)","conclusion":"failure"}]}'
 { cat "$MOG7658_LOG_CAP"; mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'home-canary: FAIL honeytoken reached the runner output (a suite printed the sandbox .env); lines:'; } > "$MOG7658_LOG_HC"
 { cat "$MOG7658_LOG_CAP"; printf '%s\t%s\t%s\n' 'lint (ubuntu-latest)' 'Run shellcheck' '2026-10-25T20:19:12.9906759Z ##[error]Process completed with exit code 1.'; } > "$MOG7658_LOG_LINT"
 # A shard whose runner stopped on its budget: it exits 1 with no Failed-suites block.
@@ -4887,12 +4908,33 @@ no_merge_call "7658-n: no merge call"
 STUB_RUN_LOG_FILE="$MOG7658_LOG_STEP2" cap_run 22 "7658-p: cap rows plus a second failed step in the same shard job → exit 22"
 assert_err_has "7658-p: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
 no_merge_call "7658-p: no merge call"
+# A shard that never ran writes no failed log, so the log alone cannot show it.
+STUB_RUN_JOBS_JSON="$MOG7658_JOBS_QUEUED" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-q: cap rows plus a shard that stayed queued, no log lines → exit 22"
+assert_err_has "7658-q: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
+no_merge_call "7658-q: no merge call"
+STUB_RUN_JOBS_JSON="$MOG7658_JOBS_CANCELLED" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-r: cap rows plus a cancelled shard, no log lines → exit 22"
+assert_err_has "7658-r: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
+no_merge_call "7658-r: no merge call"
+STUB_RUN_JOBS_FAIL=1 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 22 "7658-s: cap rows but the run's job list cannot be read → exit 22"
+assert_err_has "7658-s: prints the class" "main-red: unclassified ()"
+no_merge_call "7658-s: no merge call"
+# Control: the real shape of run 40226871918, every non-success job has failed-log lines.
+STUB_RUN_JOBS_JSON="$MOG7658_JOBS_OK" STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7658-t: cap rows, every failed job shows in the log, the rest passed or skipped → merged"
+assert_err_has "7658-t: prints the pass reason" "main-red: cap-only ($MOG7658_S1, $MOG7658_S2)"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_BUDGET" cap_run 22 "7658-u: cap rows plus the runner's run-budget stop → exit 22"
+assert_err_has "7658-u: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
+no_merge_call "7658-u: no merge call"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_STOPPED" cap_run 22 "7658-v: cap rows plus the runner's SUITE_STOP_ON_FAIL stop → exit 22"
+assert_err_has "7658-v: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
+no_merge_call "7658-v: no merge call"
 # 7658-o — the classifier matches text other files own: the rollup step name in ci.yml,
-# the runner's exit line in home-canary.sh and the cap row in run-shell-tests.sh.
+# the runner's exit line in home-canary.sh and the cap and stop rows in run-shell-tests.sh.
 # shellcheck disable=SC2016
 if grep -qF 'name: Every gating shell-unit shard must have passed' "$MOG_CAP_ROOT/.github/workflows/ci.yml" \
     && grep -qF 'FAIL runner exited rc=$rc' "$MOG_CAP_ROOT/scripts/ci/home-canary.sh" \
-    && grep -qF 'no exit status observed, assertions passing)' "$MOG_CAP_ROOT/scripts/ci/run-shell-tests.sh"; then
+    && grep -qF 'no exit status observed, assertions passing)' "$MOG_CAP_ROOT/scripts/ci/run-shell-tests.sh" \
+    && grep -qF "printf 'ERROR: run budget of " "$MOG_CAP_ROOT/scripts/ci/run-shell-tests.sh" \
+    && grep -qF "printf 'STOPPED: SUITE_STOP_ON_FAIL=1" "$MOG_CAP_ROOT/scripts/ci/run-shell-tests.sh"; then
     pass
 else
     fail "7658-o: ci.yml, home-canary.sh and run-shell-tests.sh still print the text main_red_classify reads"
@@ -4956,7 +4998,7 @@ if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-g: no dispatch (got $(
 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7323-h: cap-only pass → merged"
 if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-h: no dispatch (got $(mog7323_calls))"; fi
 assert_audit_lacks "7323-h: no recheck audited" "MAIN-RECHECK"
-rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT" "$MOG7658_LOG_HC" "$MOG7658_LOG_LINT" "$MOG7658_LOG_DEAD" "$MOG7658_LOG_NOEXIT" "$MOG7658_LOG_ODD" "$MOG7658_LOG_ROLL" "$MOG7658_LOG_STEP2"
+rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT" "$MOG7658_LOG_HC" "$MOG7658_LOG_LINT" "$MOG7658_LOG_DEAD" "$MOG7658_LOG_NOEXIT" "$MOG7658_LOG_ODD" "$MOG7658_LOG_ROLL" "$MOG7658_LOG_STEP2" "$MOG7658_LOG_BUDGET" "$MOG7658_LOG_STOPPED"
 
 # ── merge-time plugin version-bump recheck ──────────────────────
 # Plugin versions change only in a release cut (a change to the root VERSION

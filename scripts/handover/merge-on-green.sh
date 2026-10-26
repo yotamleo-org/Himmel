@@ -1230,17 +1230,21 @@ main_red_refuse() {
 #                 assertions passing, every failed job is a shell-unit job, every
 #                 shard failed only through the runner (its Failed-suites rows, then
 #                 scripts/ci/home-canary.sh's `home-canary: FAIL runner exited rc=1`),
-#                 no job failed in more than one step, and the rollup job failed only
-#                 in its shard-result step
-#   assertion     a failed suite exited non-zero, or hit its cap without its
+#                 no job failed in more than one step, the rollup job failed only
+#                 in its shard-result step, and every job of the run that did not
+#                 succeed or skip has lines in the failed log (`gh run view --json
+#                 jobs` is the cross-check)
+#   assertion    a failed suite exited non-zero, or hit its cap without its
 #                 assertions passing
 #   unclassified  the log is unreadable, names no failed suite, a failed job is not a
 #                 shell-unit job or a shard that has no rows or no runner exit line
 #                 (died before any suite ran, stopped on its budget), a Failed-suites
 #                 line the row pattern cannot parse, or any other `home-canary: FAIL`
 #                 (a honeytoken leak or read, a timeout, atime not tracked), a job that
-#                 failed in more than one step, or a rollup job that failed in another
-#                 step
+#                 failed in more than one step, a rollup job that failed in another
+#                 step, the runner's `ERROR: run budget` or `STOPPED:` line, or a job
+#                 that was queued, cancelled or timed out with no failed-log lines
+#                 (or a jobs list that cannot be read)
 # A cap-only red passes (mr_ok=cap-only) only when none of the capped suites is
 # reached by the PR's diff, per scripts/cr/impacted-suites.sh over the fetched base
 # tip and PR head (private refs, deleted again); a reached suite is cap-overlap and
@@ -1255,14 +1259,18 @@ main_red_classify() {
         mr_log=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed) || mr_log_rc=$?
     fi
     if [ "$mr_log_rc" -ne 0 ]; then mr_cls=unclassified; return 0; fi
-    local mr_res
-    mr_res=$(printf '%s\n' "$mr_log" | awk -F'\t' '
+    local mr_res mr_bad
+    mr_bad=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --json jobs \
+        --jq '.jobs[] | select((.conclusion == "success" or .conclusion == "skipped") | not) | .name') || { mr_cls=unclassified; return 0; }
+    mr_res=$(printf '%s\n' "$mr_log" | MR_BAD="$mr_bad" awk -F'\t' '
+        BEGIN { nrj = split(ENVIRON["MR_BAD"], rjob, "\n") }
         { job = $1; msg = $0
           sub(/^[^\t]*\t[^\t]*\t/, "", msg); sub(/\r$/, "", msg); sub(/^[0-9][0-9T:.Z-]* /, "", msg)
           if (!(job in seen)) { seen[job] = 1; jobs[++nj] = job }
           if (job ~ /^shell-unit \(/ && $2 != "Every gating shell-unit shard must have passed") odd[job] = 1
           if (!(job in step1)) step1[job] = $2
           else if ($2 != step1[job]) odd[job] = 1
+          if (msg ~ /^ERROR: run budget/ || msg ~ /^STOPPED:/) odd[job] = 1
           if (msg == "Failed suites:") { open[job] = 1; next }
           if (open[job]) {
               if (msg ~ /^  [^ ]+\.sh \(.*\)$/) {
@@ -1289,6 +1297,7 @@ main_red_classify() {
               list = list (i > 1 ? "," : "") order[i]
               if (kind[order[i]] == "cap") cap++; else bad = 1
           }
+          for (b = 1; b <= nrj; b++) if (rjob[b] != "" && !(rjob[b] in seen)) other = 1
           for (j = 1; j <= nj; j++) {
               if (jobs[j] !~ /^shell-unit(-shard)? \(/ || odd[jobs[j]]) other = 1
               else if (jobs[j] ~ /^shell-unit-shard \(/ && (n[jobs[j]] == 0 || !ran[jobs[j]])) other = 1
