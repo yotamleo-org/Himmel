@@ -46,7 +46,7 @@ err() { printf 'ERROR: %s\n' "$*"; failures=$((failures + 1)); }
 unlabeled=$(sed 's/^[[:space:]]*#.*$//' "$DEP" | awk '
   function flush() { if (n && !ok) print n "\t" eco }
   /^  - package-ecosystem:/ { flush(); n++; ok = 0; eco = $0; sub(/.*package-ecosystem:[ \t]*/, "", eco); gsub(/["\047 \t]/, "", eco); next }
-  /^    labels:[ \t]*\[\][ \t]*$/ { ok = 1 }
+  /^    labels:[ \t]*\[\][ \t]*(#.*)?$/ { ok = 1 }
   END { flush() }
 ')
 while IFS=$'\t' read -r n eco; do

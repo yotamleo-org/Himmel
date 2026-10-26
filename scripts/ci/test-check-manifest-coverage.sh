@@ -127,6 +127,11 @@ subst '0,/^    labels: \[\]$/s//    labels: ["python"]/' "$m/.github/dependabot.
 expect "a non-empty labels list is refused" 1 "$m"
 says "the non-empty list is named" "updates entry 1 (npm) must set labels: []"
 
+live labelscomment || { echo "live copy failed"; exit 1; }
+m=$LIVE
+subst 's/^    labels: \[\]$/    labels: [] # no default labels/' "$m/.github/dependabot.yml"
+expect "a trailing comment after labels: [] is accepted" 0 "$m"
+
 echo "== no dependabot.yml =="
 mkdir -p "$tmp/empty"
 expect "a root without dependabot.yml is a scan failure" 2 "$tmp/empty"
