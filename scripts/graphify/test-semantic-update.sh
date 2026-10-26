@@ -926,5 +926,19 @@ got=$(ids "$C79")
 python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "a.md" in m["files"] and "a.md" not in m.get("stuck", {}) else 1)' "$C79/graphify-out/semantic-manifest.json" \
   && pass "T79 a.md is stamped and no longer stuck" || fail "T79 manifest: $(cat "$C79/graphify-out/semantic-manifest.json")"
 
+echo "T81: two omitted extractions are not shrink refusals, so a thin extraction after them is still refused"
+C81="$WS/c81"; new_corpus "$C81"
+python3 - "$C81/graphify-out/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+for i in (2, 3, 4):
+    g["nodes"].append({"id": "stale_a%d" % i, "label": "old", "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+for i in 1 2; do GRAPHIFY_STUB_SKIP=a.md run --name t81 --corpus-root "$C81" --corpus-class himmel-code >/dev/null; done
+out=$(run --name t81 --corpus-root "$C81" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && [[ "$(ids "$C81")" == *stale_a4* ]] && ! [[ "$(ids "$C81")" == *sem_a.md_alpha* ]] \
+  && pass "T81 the thin extraction is refused: no shrink refusal came before it" || fail "T81 (rc=$rc): $(ids "$C81") :: $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

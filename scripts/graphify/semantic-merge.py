@@ -454,7 +454,8 @@ def cmd_merge(a):
 
     def last_attempt(f):
         rec = stuck.get(f)
-        return bool(rec) and rec.get("hash") == sha256(os.path.join(a.scratch, f)) and rec.get("attempts", 0) >= MAX_ATTEMPTS - 1
+        return (bool(rec) and rec.get("hash") == sha256(os.path.join(a.scratch, f))
+                and rec.get("reason", "").startswith("shrink guard") and rec.get("attempts", 0) >= MAX_ATTEMPTS - 1)
 
     produced = {n.get("source_file") for n in new_nodes}
     refused = sorted(f for f in batch & produced if shrinks(g["nodes"], new_nodes, f) and not last_attempt(f))
