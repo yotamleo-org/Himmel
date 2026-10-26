@@ -24,7 +24,7 @@ WTFPL, is called out explicitly below rather than silently folded in).
 
 | Dep | Version declared → **locked** | License | Manifest(s) | Runtime/Dev | Verdict |
 |---|---|---|---|---|---|
-| `@modelcontextprotocol/server` | `2.3.1` (exact) → **2.3.1** | Apache-2.0 | marketplace/plugins/luna-correlate, marketplace/plugins/telegram-himmel, scripts/jira | runtime | COMPATIBLE |
+| `@modelcontextprotocol/server` | `2.3.1` (exact) → **2.4.0** | Apache-2.0 | marketplace/plugins/luna-correlate, marketplace/plugins/telegram-himmel, scripts/jira | runtime | COMPATIBLE |
 | `commander` | `^15.0.0` → **15.0.0**; `9.4.1` (T6 fixture, exact, no lockfile) | MIT | scripts/bitbucket, scripts/himmel-run, scripts/jira, scripts/lanes/bench/fixtures/T6/.../tools/codegen/scripts | runtime | COMPATIBLE |
 | `@coderabbitai/bitbucket` | `^1.1.4` → **1.1.4** | Apache-2.0 | scripts/bitbucket | runtime | COMPATIBLE |
 | `env-paths` | `^4.0.0` → **4.0.0** | MIT | scripts/himmel-run | runtime | COMPATIBLE |

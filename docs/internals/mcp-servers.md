@@ -3,8 +3,8 @@
 Repository snapshot: 2026-10-07, slice 1 of the v2 migration; the tasks and
 elicitation section was added 2026-10-24. The migration target is
 protocol revision **2025-11-25** and the split TypeScript SDK at exact stable
-**2.3.1**. The parent ticket's alpha warning is stale: the npm registry lists
-stable 2.0.0 through 2.3.1. Protocol revision and SDK major are independent;
+**2.4.0**. The parent ticket's alpha warning is stale: the npm registry lists
+stable 2.0.0 through 2.4.0. Protocol revision and SDK major are independent;
 v1 can already negotiate 2025-11-25.
 
 The inventory covers tracked manifests, npm and Bun lockfiles, SDK imports,
@@ -16,9 +16,9 @@ production implementations have source-derived counts instead.
 
 | Server / client | Owner and repository evidence | SDK version | Transport | Tool count | Migration risk / disposition |
 |---|---|---|---|---|---|
-| `luna-correlate` server | `marketplace/plugins/luna-correlate/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; pilot target: split server **2.3.1** | stdio, Bun | **5** | Low: low-level handlers retain JSON schemas, custom validation and text/error output. Exact pin; regression initializes, lists tools, calls offline `series.load`, rejects bad arguments/unknown tools and checks EOF. |
-| `jira` server | `scripts/jira/{package.json,package-lock.json,src/mcp.ts}`; CLI `mcp` verb | Before: monolith 1.32.1; now split server **2.3.1** (spec 2025-11-25) | stdio, Node | **14** | Migrated, low-level `Server` kept: Jira writes, attachments, transition and roadmap dispatch and typed errors unchanged. |
-| `telegram` server | `marketplace/plugins/telegram-himmel/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; now split server **2.3.1** | stdio, Bun; Telegram network I/O is not MCP transport | **4** | Migrated, low-level `Server` kept: tools, schemas, notifications, poller gate and EOF shutdown unchanged. `tests/stdio.test.ts` drives a non-owner session with a dummy token and a dead proxy, no live bot. |
+| `luna-correlate` server | `marketplace/plugins/luna-correlate/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; pilot target: split server **2.4.0** | stdio, Bun | **5** | Low: low-level handlers retain JSON schemas, custom validation and text/error output. Exact pin; regression initializes, lists tools, calls offline `series.load`, rejects bad arguments/unknown tools and checks EOF. |
+| `jira` server | `scripts/jira/{package.json,package-lock.json,src/mcp.ts}`; CLI `mcp` verb | Before: monolith 1.32.1; now split server **2.4.0** (spec 2025-11-25) | stdio, Node | **14** | Migrated, low-level `Server` kept: Jira writes, attachments, transition and roadmap dispatch and typed errors unchanged. |
+| `telegram` server | `marketplace/plugins/telegram-himmel/{package.json,bun.lock,server.ts,.mcp.json}` | Before: monolith 1.32.1; now split server **2.4.0** | stdio, Bun; Telegram network I/O is not MCP transport | **4** | Migrated, low-level `Server` kept: tools, schemas, notifications, poller gate and EOF shutdown unchanged. `tests/stdio.test.ts` drives a non-owner session with a dummy token and a dead proxy, no live bot. |
 | Obsidian Local REST API embedded server | `templates/luna-second-brain/.obsidian/plugins/obsidian-local-rest-api/{main.js,manifest.json}`; plugin **5.4.0** | Already split `@modelcontextprotocol/server`, `core`, `node` bundle; exact SDK release **not recorded** | Streamable HTTP (`NodeStreamableHTTPServerTransport`), sessionful/sessionless | **17** base + **2** signed-URL tools + **1** event-listener tool when enabled; extensions can add more | Medium: already v2 API (`McpServer.registerTool`, Standard Schema adapter). Re-vendor upstream, do not codemod compiled bundle; unknown exact pin needs upstream evidence. |
 | `fake-mcp` test server | `scripts/testing/fixtures/fake-mcp-server.mjs` | **None**, handwritten JSON-RPC | newline-delimited stdio, Node | **1** (`fake_echo`) | No dependency migration. Credential-free fixture echoes requested protocol; default 2025-06-18 is not a supported-version negotiation implementation. |
 | stdio regression test client | `marketplace/plugins/luna-correlate/tests/stdio.test.ts` | **None**, handwritten JSON-RPC test client | stdio subprocess | Calls the pilot's 5-tool list | No SDK object crossing. Uses literal 2025-11-25 initialize and offline fixtures. |
@@ -41,7 +41,7 @@ production implementations have source-derived counts instead.
 | `claude_ai_Google_Drive` | Policy registry | Hosted SDK **unknown** | Connector transport not recorded | **11** policy entries | Provider-owned; sharing/deleting policy unchanged. |
 | `claude-in-chrome` | Policy registry | External SDK **unknown** | Browser integration; transport not pinned here | **11** policy entries | Operator browser and arbitrary-JS surface; no local source migration. |
 | `plugin_builder-visual_agent-native-dispatch` | Policy registry | Hosted Builder.io SDK **unknown** | Hosted transport not recorded | **Unknown**, unenumerated | Provider-owned; egress guard remains authoritative. |
-| `himmel-bus` server | Implemented: `marketplace/plugins/himmel-bus/server/index.mjs` | Split server/client **2.3.1** (exact pin) | stdio, Node | **2** (`send`, `read`) | New-on-v2, not a remaining v1 migration. |
+| `himmel-bus` server | Implemented: `marketplace/plugins/himmel-bus/server/index.mjs` | Split server/client **2.4.0** (exact pin) | stdio, Node | **2** (`send`, `read`) | New-on-v2, not a remaining v1 migration. |
 
 ## Tasks and elicitation (protocol 2026-07-28)
 
@@ -57,9 +57,9 @@ input-required elicitation flow; external and hosted servers stay unverified.
 | Server | Tasks | Elicitation | Evidence |
 |---|---|---|---|
 | `qmd` (fork) | Possible: SDK 2.3.1 bundles 2026-07-28 code; not yet returned from a query | Unverified | A query returning a task is not yet verified |
-| `himmel-bus` | No: `send` and `read` are plain calls | No | `marketplace/plugins/himmel-bus/server/index.mjs`, SDK 2.3.1 |
-| `jira` MCP | No: 14 plain tool calls | No | `scripts/jira/src/mcp.ts`, SDK 2.3.1; not registered on this station |
-| `luna-correlate` | No: 5 plain tool calls | No | `marketplace/plugins/luna-correlate/server.ts`, SDK 2.3.1 |
+| `himmel-bus` | No: `send` and `read` are plain calls | No | `marketplace/plugins/himmel-bus/server/index.mjs`, SDK 2.4.0 |
+| `jira` MCP | No: 14 plain tool calls | No | `scripts/jira/src/mcp.ts`, SDK 2.4.0; not registered on this station |
+| `luna-correlate` | No: 5 plain tool calls | No | `marketplace/plugins/luna-correlate/server.ts`, SDK 2.4.0 |
 | `graphify` MCP | Unverified | Unverified | External Python server, SDK unknown |
 | `obsidian-vault` | Unverified; pins mcp 1.28.1 (v1), so unlikely | Unverified | External `mcp-obsidian` |
 | `context7` | Unverified | Unverified | Hosted service |
@@ -81,7 +81,7 @@ high-level `McpServer.registerTool` would also change schema validation and
 unknown-tool error dispatch, contrary to this pilot's behavior-preservation
 contract. The five JSON schemas and business logic remain unchanged.
 
-The codemod emits a caret dependency; tighten it to exact **2.3.1**, regenerate
+The codemod emits a caret dependency; tighten it to exact **2.4.0**, regenerate
 `bun.lock`, and remove the v1 monolith only after no imports remain. The plugin
 manifest advances from **0.2.6** through **0.2.7** and **0.2.8** to **0.2.9**
 (schema-baseline and warm-upgrade review fixes); the existing wire server identity
