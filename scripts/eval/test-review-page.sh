@@ -93,6 +93,7 @@ has "critics: the range level comes from the run" "$out" "Ranges are 95 % ranges
 has "judges: the range level comes from the run" "$out" "Ranges are 90 % ranges."
 case "$out" in *"is the 95 % range"*) fail "no fixed range level in the header";; *) pass "no fixed range level in the header";; esac
 has "header: says a trend compares with the run before" "$out" "a trend compares it with the run before"
+has "header: points at the glossary of what each number means" "$out" "What each number means, with its ledger key: scripts/eval/README.md."
 has "critic: planted bugs caught, as a count and a percentage" "$out" "The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %)"
 has "critic: trend since the last run" "$out" "up 20 points since the last run (40 %)"
 has "critic: right N times in M" "$out" "The codex critic was right 7 times in 10"
@@ -119,7 +120,10 @@ has "answers: the judge question counts merged PRs, not verdicts" "$out" "matter
 
 has "proof first: says what counts as proof-first" "$out" "A merged PR counts as proof-first when"
 has "proof first: says why the number matters" "$out" "It matters because"
-has "proof first: the share as a count, a percentage and a range" "$out" "Proof first: 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %)"
+has "proof first: says the RED and GREEN half is self-reported" "$out" "Self-reported: RED and GREEN are words the PR author wrote, not a test run this eval checked."
+eq "proof first: the section reads proof-first share (self-reported)" "$(printf '%s\n' "$out" | grep -c '^## Proof-first share (self-reported)$')" "1"
+has "proof first: the share as a count, a percentage and a range" "$out" "- Proof-first share (self-reported): 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %)"
+case "$out" in *"Proof first"*) fail "proof first: the old display name is gone";; *) pass "proof first: the old display name is gone";; esac
 has "proof first: the ticket half on its own" "$out" "The ticket was written first: 23 of 120: 19 % (likely between 13 % and 27 %)"
 has "proof first: the RED-then-GREEN half on its own" "$out" "RED then GREEN named in the PR body: 71 of 120: 59 % (likely between 50 % and 68 %)"
 
@@ -128,7 +132,7 @@ bottom="$(printf '%s\n' "$out" | awk '/^## /{n++} n==1')"
 eq "bottom line: the first section" "$(printf '%s\n' "$out" | grep -m1 '^## ')" "## Bottom line"
 has "bottom line: the planted-bug catch with its run day" "$bottom" "- The codex critic caught 3 of 5 planted bugs: 60 % (likely between 30 % and 90 %), up 20 points since the last run (40 %). Run of 24 Oct 2026."
 eq "bottom line: bugs past a GO with its run day" "$(printf '%s\n' "$bottom" | grep -c '^- A bug got past a GO on 3 of 150 merged PRs: 2 % .*\. Run of 24 Oct 2026\.$')" "1"
-has "bottom line: proof first with its run day" "$bottom" "- Proof first: 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %). Run of 24 Oct 2026."
+has "bottom line: proof first with its run day" "$bottom" "- Proof-first share (self-reported): 13 of 120 merged PRs: 11 % (likely between 6 % and 18 %). Run of 24 Oct 2026."
 has "proof first: the sample counts PRs whose ticket and commits could be read" "$out" "the last 120 merged PRs whose ticket and commits could be read."
 eq "bottom line: one line per eval" "$(printf '%s\n' "$bottom" | grep -c '^- ')" "3"
 
@@ -163,7 +167,7 @@ open(sys.argv[2], "w").write("".join(json.dumps(r) + "\n" for r in rows))
 PY
 bottom3="$(python3 -I "$PAGE" --ledger "$TMP/unscored.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1 | awk '/^## /{n++} n==1')"
 has "bottom line: an unscored planted-bug run is not dropped" "$bottom3" "- Planted bugs: no score in this run. Run of 23 Oct 2026."
-has "bottom line: an unscored proof-first run is not dropped" "$bottom3" "- Proof first: no score in this run. Run of 25 Oct 2026."
+has "bottom line: an unscored proof-first run is not dropped" "$bottom3" "- Proof-first share (self-reported): no score in this run. Run of 25 Oct 2026."
 
 # The answers script: five questions from fixture ledgers, before and after a cut.
 python3 -I - "$HERE/lib" "$TMP/ans-runs.jsonl" "$TMP/cr.jsonl" <<'PY' || { echo "test-review-page: writing the answers fixtures failed" >&2; exit 1; }
@@ -249,7 +253,7 @@ case "$out" in *'`'*) fail "no code spans on the page";; *) pass "no code spans 
 
 out="$(python3 -I "$PAGE" --ledger "$TMP/absent.jsonl" --changes "$TMP/absent-changes.jsonl" 2>&1)"; rc=$?
 eq "no ledger: exit 0" "$rc" "0"
-for sec in "Bottom line" "The critics on planted bugs" "The judges" "The five open questions" "Proof first"; do
+for sec in "Bottom line" "The critics on planted bugs" "The judges" "The five open questions" "Proof-first share (self-reported)"; do
     eq "no ledger: '$sec' says there is no run yet" "$(printf '%s\n' "$out" | awk -v h="## $sec" '/^## /{on=($0==h)} on' | grep -c '^No run yet\.$')" "1"
 done
 
