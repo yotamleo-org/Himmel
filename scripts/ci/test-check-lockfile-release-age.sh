@@ -105,6 +105,16 @@ for bad in 2026-13-01 2026-02-30 20261024 tomorrow; do
   says "the malformed line is named" "malformed until="
 done
 
+printf '%s  until=2026-10-26  operator exception\n' "$victim" > "$tmp/allow-until-max.txt"
+run "an until= exactly 3 days ahead is accepted" 0 --times "$tmp/planted.json" --allow "$tmp/allow-until-max.txt" "$NPM_LOCK" "$BUN_LOCK"
+
+printf '%s  until=2026-10-27  operator exception\n' "$victim" > "$tmp/allow-until-far.txt"
+run "an until= more than 3 days ahead is a run failure" 2 --times "$tmp/planted.json" --allow "$tmp/allow-until-far.txt" "$NPM_LOCK" "$BUN_LOCK"
+says "the overlong date is named" "more than 3 days ahead"
+
+printf '%s  until=2099-01-01  operator exception\n' "$victim" > "$tmp/allow-until-2099.txt"
+run "an until=2099-01-01 is a run failure" 2 --times "$tmp/planted.json" --allow "$tmp/allow-until-2099.txt" "$NPM_LOCK" "$BUN_LOCK"
+
 printf '%s  until=2026-10-24\n' "$victim" > "$tmp/allow-until-noreason.txt"
 run "an until= line without a reason is a run failure" 2 --times "$tmp/planted.json" --allow "$tmp/allow-until-noreason.txt" "$NPM_LOCK" "$BUN_LOCK"
 says "the reasonless line is named" "needs a reason"

@@ -86,6 +86,7 @@ function parse(file, text) {
 
 // An entry may carry `until=YYYY-MM-DD` as its second field: it allowlists strictly before that
 // UTC date and is ignored (with a WARN) on or after it, so a timeboxed exception fails closed.
+// A date more than --days ahead of now is a run failure: an exception cannot outlive the window it waives.
 function readAllow(file) {
   if (!existsSync(file)) return new Set();
   const entries = [];
@@ -101,6 +102,10 @@ function readAllow(file) {
       const at = /^\d{4}-\d{2}-\d{2}$/.test(until) ? Date.parse(`${until}T00:00:00Z`) : NaN;
       if (Number.isNaN(at) || new Date(at).toISOString().slice(0, 10) !== until) {
         console.error(`ERROR: ${file}: malformed until= (want YYYY-MM-DD) on ${fields[0]}: ${until}`);
+        process.exit(2);
+      }
+      if (at > now + opts.days * 86400000) {
+        console.error(`ERROR: ${file}: until= is more than ${opts.days} days ahead on ${fields[0]}: ${until}`);
         process.exit(2);
       }
       if (now >= at) {
