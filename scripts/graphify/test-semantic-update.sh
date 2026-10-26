@@ -898,7 +898,9 @@ out=$(GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t77 --co
 echo "T78: a .graphifyignore naming a planned file strands nothing: the planner is the only selector"
 C78="$WS/c78"; new_corpus "$C78"; printf 'b.md\n' > "$C78/.graphifyignore"
 out=$(run --name t78 --corpus-root "$C78" --corpus-class himmel-code); rc=$?
-[ "$rc" -eq 0 ] && [ "$(lastrun "$C78" failed)" = 0 ] && pass "T78 failed=0, b.md extracted despite .graphifyignore" || fail "T78 (rc=$rc) failed=$(lastrun "$C78" failed): $out"
+python3 -c 'import json,sys;sys.exit("b.md" not in json.load(open(sys.argv[1]))["files"])' "$C78/graphify-out/semantic-manifest.json"; stamped=$?
+[ "$rc" -eq 0 ] && [ "$(lastrun "$C78" failed)" = 0 ] && [ "$stamped" -eq 0 ] && [[ "$(ids "$C78")" == *sem_b.md_beta* ]] \
+  && pass "T78 failed=0, b.md has nodes and is stamped despite .graphifyignore" || fail "T78 (rc=$rc) failed=$(lastrun "$C78" failed) stamped_rc=$stamped: $out"
 
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }
