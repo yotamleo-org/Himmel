@@ -1399,7 +1399,80 @@ if [ "$PR_TOKENIZED" = 1 ]; then
         mk=$mek
     done
 fi
+# python/node run their text as code, so a gate path is only a mention to one
+# when the whole command is that one interpreter run (`python3 -c CODE`,
+# `node -e CODE`, `python3 - <<'PY'`) and the code spawns nothing and names no
+# shell word: print('scripts/cr/x.sh') names a path, os.system('bash
+# scripts/cr/x.sh') runs one. The command word is the only position that runs a
+# file, so everything else in the line is text.
+# ponytail: the code is read by a text deny-list of spawn and shell words, so a
+# spawn spelled by concatenation is not seen (no allow rule matches an
+# interpreter command, the classifier still decides); upgrade path: parse the
+# interpreter's own AST.
+INTERP_SPAWN_RE='system|popen|exec|eval|spawn|fork|subprocess|child_process|import|require|__|getattr|open|compile|function|constructor|process|globals|builtins|os\.'
+INTERP_SHELL_RE='(^|[^[:alnum:]_.-])(bash|sh|zsh|dash|ksh|source)[[:space:]]'
+interp_code_inert() { # interp_code_inert <code> - no spawn word and no shell word
+    st_lower "$1"
+    [[ $ST_LOWER =~ $INTERP_SPAWN_RE ]] && return 1
+    [[ $ST_LOWER =~ $INTERP_SHELL_RE ]] && return 1
+    return 0
+}
+interp_data_only() { # true when the whole command is one interpreter run whose code is inert
+    local k w mode='' code='' hd=0 delim='' argi=0 body='' line rest
+    st_tokenize "$cmd" || return 1
+    [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        [ "${ST_S[k]}" = 0 ] || return 1
+        w=${ST_W[k]}
+        if [ -n "${ST_RO[k]}" ]; then
+            case "${ST_RO[k]}" in
+                '<<')
+                    [ "$hd" = 0 ] && [ "${ST_Q[k]}${ST_X[k]}" = 10 ] || return 1
+                    hd=1 delim=$w
+                    ;;
+                *'>&') case "$w" in *[!0-9-]* | '') return 1 ;; esac ;;
+                *'>' | *'>|') [ "$w" = /dev/null ] || return 1 ;;
+                *) return 1 ;;
+            esac
+        else
+            [ "${ST_X[k]}${ST_G[k]}" = 00 ] || return 1
+            case "$argi" in
+                0)
+                    [ "${ST_A[k]}${ST_Q[k]}" = 00 ] || return 1
+                    case "$w" in python | python3 | node | nodejs) ;; *) return 1 ;; esac
+                    ;;
+                1) case "$w" in -c | -e) mode=code ;; -) mode=stdin ;; *) return 1 ;; esac ;;
+                2) [ "$mode" = code ] || return 1; code=$w ;;
+                *) return 1 ;;
+            esac
+            argi=$((argi + 1))
+        fi
+        k=$((k + 1))
+    done
+    case "$mode:$argi:$hd" in
+        code:3:0) interp_code_inert "$code" ;;
+        stdin:2:1 | :1:1)
+            rest=${cmd#*$'\n'}
+            [ "$rest" != "$cmd" ] || return 1
+            while :; do
+                line=${rest%%$'\n'*}
+                if [ "$line" = "$delim" ]; then
+                    if [ "$rest" = "$line" ]; then rest=''; else rest=${rest#*$'\n'}; fi
+                    case "$rest" in *[![:space:]]*) return 1 ;; esac
+                    interp_code_inert "$body"
+                    return
+                fi
+                body=$body$line$'\n'
+                [ "$rest" != "$line" ] || return 1
+                rest=${rest#*$'\n'}
+            done
+            ;;
+        *) return 1 ;;
+    esac
+}
 readers_only && exit 0
+interp_data_only && exit 0
 # readers_only returns at the first non-reader, comment, $'…'
 # word, substitution or unknown git global option, before it reaches a later
 # git segment. The option check must not depend on that walk, so scan every
