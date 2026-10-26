@@ -390,6 +390,14 @@ assert_rc "set refuses a Jina index that holds salus" 2 "$rc"
 if [ "$(cat "$(CFG)")" = "$before" ]; then pass "the refused write leaves the config untouched"; else fail "the refused write leaves the config untouched"; fi
 if ls "$H"/.config/qmd/index.yml.tmp.* >/dev/null 2>&1; then fail "no temp file is left behind"; else pass "no temp file is left behind"; fi
 
+# the remote-model spelling is not case-sensitive: OpenAI: reaches the gate too
+new_home 53
+printf 'collections:\n  luna:\n    path: /x\n  salus:\n    path: /s\nmodels:\n  embed: %s\n  rerank: OpenAI:jina-reranker-v2-base-multilingual\n  openai_base_url: https://api.jina.ai/v1\n' "$GEMMA" >"$(CFG)"
+before=$(cat "$(CFG)")
+rc=0; out=$(run env FAKE_VRAM=24564 bash "$SCRIPT" set qwen --force 2>&1) || rc=$?
+assert_rc "set refuses an OpenAI: (mixed case) Jina index that holds salus" 2 "$rc"
+if [ "$(cat "$(CFG)")" = "$before" ]; then pass "the refused mixed-case write leaves the config untouched"; else fail "the refused mixed-case write leaves the config untouched"; fi
+
 new_home 7
 printf 'collections:\n  luna:\n    path: /x\nmodels:\n  embed: %s\n  rerank: openai:jina-reranker-v2-base-multilingual\n  openai_base_url: https://api.jina.ai/v1\n' "$GEMMA" >"$(CFG)"
 rc=0; out=$(run env FAKE_VRAM=24564 bash "$SCRIPT" set qwen --force 2>&1) || rc=$?

@@ -502,7 +502,7 @@ while :; do
     for walk_name in index.yaml index.yml; do
         if [ -f "$walk_dir/.qmd/$walk_name" ]; then walk_cfg="$walk_dir/.qmd/$walk_name"; break 2; fi
     done
-    [ "$walk_dir" = / ] && break
+    case "$walk_dir" in / | .) break ;; esac
     walk_dir="$(dirname -- "$walk_dir")"
 done
 if [ "$remote_model" -eq 0 ] && grep -Eqis '^[^#]*(openai:|\\)' "$QMD_CFG_FILE" ${walk_cfg:+"$walk_cfg"}; then remote_model=1; fi

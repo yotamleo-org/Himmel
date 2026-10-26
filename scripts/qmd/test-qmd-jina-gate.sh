@@ -479,7 +479,7 @@ chmod +x "$work/curl"
 launch() { # launch <index name|-> ; runs the script named by the caller's ENSURE_UNDER_TEST, else the real one
   rm -f "$work/started" "$work/qmd-calls"
   local idx="${1:-index}" script="${ENSURE_UNDER_TEST:-$ensure}"
-  env -i PATH="$PATH" HOME="$work/home" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
+  ${LAUNCH_TIMEOUT:+timeout "$LAUNCH_TIMEOUT"} env -i PATH="$PATH" HOME="${LAUNCH_HOME:-$work/home}" BUN_INSTALL="$work/bun" QMD_CONFIG_DIR="$work/cfg" \
     XDG_CACHE_HOME="$work/cache" QMD_CURL="$work/curl" QMD_MCP_URL=http://localhost:1/mcp \
     QMD_DAEMON_ENV_FILE="$work/daemon0.env" QMD_INDEX_NAME="$idx" ${QMD_JINA_GATE:+QMD_JINA_GATE="$QMD_JINA_GATE"} \
     bash "$script" >"$work/out" 2>"$work/err"
@@ -753,5 +753,10 @@ printf 'collections:\n  himmel:\n    path: /nonexistent/h\nmodels:\n  embed: %s\
 launch index; rc=$?
 [ "$rc" -eq 0 ] || fail "(50b) a clean remote ~/.qmd config: expected rc 0, got $rc: $(cat "$work/err")"
 rm -rf "$work/home/.qmd"
+
+# (51) a relative HOME must not make the ~/.qmd walk-up loop forever (dirname of '.' is '.').
+cp "$work/d.yml" "$work/cfg/index.yml"
+LAUNCH_HOME=relhome LAUNCH_TIMEOUT=20 launch index; rc=$?
+[ "$rc" -ne 124 ] || fail "(51) a relative HOME hung the launcher's ~/.qmd walk-up"
 
 echo "PASS: test-qmd-jina-gate.sh"

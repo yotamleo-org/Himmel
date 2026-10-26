@@ -332,7 +332,7 @@ if [ "$QMD_INDEX_NAME" = index ]; then
     for walk_name in index.yaml index.yml; do
       if [ -f "$walk_dir/.qmd/$walk_name" ]; then walk_cfg="$walk_dir/.qmd/$walk_name"; break 2; fi
     done
-    [ "$walk_dir" = / ] && break
+    case "$walk_dir" in / | .) break ;; esac
     walk_dir="$(dirname -- "$walk_dir")"
   done
 fi
