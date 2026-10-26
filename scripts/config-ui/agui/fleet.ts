@@ -156,10 +156,10 @@ const SELF_PGREP = /(?:until\s+!\s+|while\s+)pgrep\s+((?:-\w+\s+)*?-\w*f\w*(?:\s
 async function selfMatches(pid: number, env: Record<string, string | undefined>): Promise<boolean> {
   try {
     const argv = (await readFile(join(env.CLAUDE_SESSIONS_PROC || "/proc", String(pid), "cmdline"), "utf8")).split("\0").join(" ");
-    // -x matches the whole command line, which is longer than the pattern, and -v inverts the match: neither waits on its own wrapper
+    // -x matches the whole command line, which is longer than the pattern, so such a wait never matches its own wrapper; -v selects the wrapper when the pattern does not match it
     return [...argv.matchAll(SELF_PGREP)].some((m) => {
-      if (/-\w*[xv]/.test(m[1])) return false;
-      try { return new RegExp((m[2] ?? m[3]).replace(/\\+$/, "")).test(argv); } catch { return false; }
+      if (/-\w*x/.test(m[1])) return false;
+      try { return new RegExp((m[2] ?? m[3]).replace(/\\+$/, "")).test(argv) !== /-\w*v/.test(m[1]); } catch { return false; }
     });
   } catch { return false; }
 }
