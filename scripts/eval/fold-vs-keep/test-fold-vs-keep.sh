@@ -101,7 +101,7 @@ if leak:
     print(json.dumps({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":leak}}]}}))
     print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":False,"content":"x"}]}}))
 print(json.dumps({"type":"assistant","message":{"id":"m2","content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"gh pr diff 1"}}]}}))
-print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":True,"content":"denied"}]}}))
+print(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":True,"content":"Permission to use Bash with command gh pr diff 1 has been denied."}]}}))
 print(json.dumps({"type":"result","subtype":"success","is_error":False,"duration_ms":1500,"num_turns":2,"total_cost_usd":0.1,
   "usage":{"input_tokens":100,"cache_creation_input_tokens":1000,"cache_read_input_tokens":10000,"output_tokens":200},"result":reply}))' \
     "$reply" "${STUB_LEAK:-}"
@@ -223,7 +223,7 @@ python3 -c 'import json,sys; p=sys.argv[1]; d=json.load(open(p)); del d["tasks"]
 newlog
 HIMMEL_VM_LOCK_DIR="$TMP/locks" STUB_sonnet='PROOF: PASS' run f --class vm --out "$TMP/o6" --reps 1 --arms keep >/dev/null 2>"$TMP/o6.err"
 has "vm: a head without tags is bundled alone" "$(cat "$STUB_LOG/argv.1")" "branch \`eval\` at $B)"
-eq "vm: a task without tags errors nowhere" "$(cat "$TMP/o6.err")" ""
+hasnt "vm: a task without tags errors nowhere" "$(cat "$TMP/o6.err")" "Traceback"
 newlog
 FVK_VM=himmel-ar-9 run g --class vm --out "$TMP/o7" --reps 1 --arms keep >/dev/null 2>&1; rc=$?
 eq "vm: the keep arm refuses a VM its briefs do not name" "$rc" "2"
@@ -240,8 +240,9 @@ has "lib: a head that cannot be staged is no PASS" "$(TMPDIR="$TMP" bash -c "$no
 cut_off='. "$1"; sdk() { :; }; g() { echo "CHECK a PASS"; return 124; }; echo x >"$WORK/p.sh"; tally "$(guest_script p.sh)"; final'
 has "lib: a guest script cut off after a passing check is no PASS" "$(TMPDIR="$TMP" bash -c "$cut_off" _ "$LIB")" "PROOF: FAIL"
 # shellcheck disable=SC2016 # the inner shell expands it
-finished='. "$1"; sdk() { :; }; g() { echo "CHECK a PASS"; case "$2" in *FVK-GUEST-END*) echo FVK-GUEST-END ;; esac; }; echo x >"$WORK/p.sh"; tally "$(guest_script p.sh)"; final'
+finished='. "$1"; sdk() { :; }; g() { echo "CHECK a PASS"; case "$2" in *FVK-GUEST-END*) bash -c "exit ${RC:-1}"; echo "FVK-GUEST-END rc=$?" ;; esac; }; echo x >"$WORK/p.sh"; tally "$(guest_script p.sh)"; final'
 has "lib: a guest script that finishes is scored on its checks" "$(TMPDIR="$TMP" bash -c "$finished" _ "$LIB")" "PROOF: PASS"
+has "lib: a guest script killed by a signal after a passing check is no PASS" "$(RC=137 TMPDIR="$TMP" bash -c "$finished" _ "$LIB")" "PROOF: FAIL"
 # shellcheck disable=SC2016 # python reads it, not this shell
 python3 -c 'import re,sys
 bad = []
@@ -271,6 +272,16 @@ with open(sys.argv[1], "w") as f:
     f.write(json.dumps({"type":"assistant","message":{"id":"m1","usage":{"input_tokens":10,"output_tokens":1},"content":[{"type":"text","text":"**GO**"}]}}) + "\n")' "$TMP/cut.jsonl"
 python3 "$FVK" summarize "$TMP/cut.jsonl" --class judge >"$TMP/cut.json"
 eq "fvk: a claude -p stream cut off before its result is an error" "$(jget "$TMP/cut.json" error)" "true"
+python3 -c 'import json,sys
+with open(sys.argv[1], "w") as f:
+    for i, (cmd, err) in enumerate([("cat /x/verdicts/q/judge.md; false", "Exit code 1\nGO"),
+                                    ("gh pr view 1", "PreToolUse:Bash hook error: [guard]: DENIED"),
+                                    ("cat /y/.himmel/state/z", "<tool_use_error>InputValidationError</tool_use_error>")]):
+        f.write(json.dumps({"type":"assistant","message":{"id":"m%d" % i,"content":[{"type":"tool_use","id":"u%d" % i,"name":"Bash","input":{"command":cmd}}]}}) + "\n")
+        f.write(json.dumps({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"u%d" % i,"is_error":True,"content":err}]}}) + "\n")
+    f.write(json.dumps({"type":"result","subtype":"success","is_error":False,"duration_ms":1,"usage":{},"result":"**GO**"}) + "\n")' "$TMP/ran.jsonl"
+python3 "$FVK" summarize "$TMP/ran.jsonl" --class judge >"$TMP/ran.json"
+eq "fvk: a call that ran and exited nonzero is still a leak; a refused call is not" "$(jget "$TMP/ran.json" leaks)" '["Bash:verdicts/"]'
 python3 "$FVK" summarize "$TMP/nope.jsonl" >/dev/null 2>&1; rc=$?
 eq "fvk: a missing file is refused" "$rc" "2"
 

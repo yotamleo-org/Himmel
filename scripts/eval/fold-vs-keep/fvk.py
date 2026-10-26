@@ -52,6 +52,7 @@ NOT_A_LEAK = {"vm": {r"/Documents/github/himmel"}}
 VERDICT_RE = re.compile(r"\b(NO-GO|GO)\b")
 PROOF_RE = re.compile(r"^\W*PROOF:\s*(PASS|FAIL)\b", re.M)
 REFUSAL_RE = re.compile(r"refused|denied|deleted", re.I)
+REFUSED_RE = re.compile(r"^(PreToolUse:\S+ hook error|Permission to use \S+|Claude requested permissions|<tool_use_error>)")
 
 
 def die(msg):
@@ -93,17 +94,18 @@ def brief_of(events):
 
 
 def tool_inputs(events):
-    """(name, input json) of every tool call that ran: a call whose result is an error
-    (a denied gh, a missing path) read nothing."""
-    failed = set()
+    """(name, input json) of every tool call that ran. Only a refused call (a hook or
+    permission denial, an invalid input) read nothing; one that ran and exited nonzero may have."""
+    refused = set()
     for d in events:
         if d.get("type") == "user" and isinstance(d["message"].get("content"), list):
-            failed |= {b.get("tool_use_id") for b in d["message"]["content"]
-                       if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("is_error")}
+            refused |= {b.get("tool_use_id") for b in d["message"]["content"]
+                        if isinstance(b, dict) and b.get("type") == "tool_result" and b.get("is_error")
+                        and REFUSED_RE.search(_text(b.get("content")))}
     for d in events:
         if d.get("type") == "assistant":
             for b in d["message"].get("content", []):
-                if b.get("type") == "tool_use" and b.get("id") not in failed:
+                if b.get("type") == "tool_use" and b.get("id") not in refused:
                     yield b.get("name", ""), json.dumps(b.get("input"))
 
 

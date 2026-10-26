@@ -45,13 +45,15 @@ stage() {
 }
 
 # guest_script <name> - push $WORK/<name> to the guest and run it under bash; a run cut
-# off before its end (a timeout, a dropped session) adds a failing CHECK line
+# off before its end (a timeout, a dropped session, a signal) adds a failing CHECK line
 guest_script() {
-    local name="$1" t="${2:-600}" out
+    local name="$1" t="${2:-600}" out rc
     sdk push "$WORK/$name" "/tmp/$name" >/dev/null || { echo "CHECK push-$name FAIL"; return 1; }
-    out="$(g "$t" "bash /tmp/$name; echo FVK-GUEST-END")"
+    out="$(g "$t" "bash /tmp/$name; echo FVK-GUEST-END rc=\$?")"
     printf '%s\n' "$out"
-    case "$out" in *FVK-GUEST-END*) ;; *) echo "CHECK guest-$name FAIL the guest script did not finish" ;; esac
+    rc="$(sed -n 's/^FVK-GUEST-END rc=\([0-9][0-9]*\)$/\1/p' <<<"$out")"
+    if [ -z "$rc" ]; then echo "CHECK guest-$name FAIL the guest script did not finish"
+    elif [ "$rc" -ge 128 ]; then echo "CHECK guest-$name FAIL the guest script was killed (rc=$rc)"; fi
 }
 
 # check <name> <0|nonzero> [detail] - one expectation, as a CHECK line
