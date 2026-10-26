@@ -890,6 +890,16 @@ if command -v sqlite3 >/dev/null 2>&1 && command -v node >/dev/null 2>&1; then
     rc=0; out=$(cd "$HOME/proj" && bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
     assert_rc "an OpenAI: spelling in the shadowing config rc 10" 10 "$rc"
     assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
+
+    echo "TEST: a cwd reached through a symlink walks its physical parents"
+    reset_state
+    printf 'collections:\n  salus:\n    path: /x\nmodels:\n  embed: openai:jina-embeddings-v3\n  openai_base_url: https://api.jina.ai/v1\n' > "$HOME/proj/.qmd/index.yml"
+    mkdir -p "$HOME/proj/sub"
+    ln -s "$HOME/proj/sub" "$HOME/linkdir"
+    rc=0; out=$(cd "$HOME/linkdir" && bash "$SCRIPT" --qmd-bin "$FAKE_QMD" 2>&1) || rc=$?
+    assert_rc "a symlinked cwd still finds the physical parent's salus config rc 10" 10 "$rc"
+    assert_not_contains "never runs qmd update or embed" "update" "$(calls)"
+    rm -f "$HOME/linkdir"
     rm -rf "$HOME/proj" "$HOME/.config/qmd" "$HOME/.cache/qmd" 2>/dev/null || true
 else
     pass "egress gate check skipped: sqlite3 or node not installed"

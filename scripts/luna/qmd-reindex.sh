@@ -497,7 +497,7 @@ remote_model=0
 case "${QMD_EMBED_MODEL:-}${QMD_RERANK_MODEL:-}${QMD_GENERATE_MODEL:-}" in *[Oo][Pp][Ee][Nn][Aa][Ii]:*) remote_model=1 ;; esac
 # With no --index qmd prefers a .qmd/index.{yaml,yml} walked up from the cwd over the global config, so that file is gated too (--resolve below).
 walk_cfg=""
-walk_dir="$PWD"
+walk_dir="$(pwd -P)"
 while :; do
     for walk_name in index.yaml index.yml; do
         if [ -f "$walk_dir/.qmd/$walk_name" ]; then walk_cfg="$walk_dir/.qmd/$walk_name"; break 2; fi

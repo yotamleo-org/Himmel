@@ -327,7 +327,8 @@ case "$env_models" in *openai:*) remote_models=1 ;; esac
 # over the global config: that file is the one in force, so it is gated too (--resolve below).
 walk_cfg=""
 if [ "$QMD_INDEX_NAME" = index ]; then
-  walk_dir="${HOME:-/}"
+  # physical path: the daemon's cwd is physical, so a symlinked HOME must walk its real parents
+  walk_dir="$(cd -- "${HOME:-/}" 2>/dev/null && pwd -P || printf '%s\n' /)"
   while :; do
     for walk_name in index.yaml index.yml; do
       if [ -f "$walk_dir/.qmd/$walk_name" ]; then walk_cfg="$walk_dir/.qmd/$walk_name"; break 2; fi

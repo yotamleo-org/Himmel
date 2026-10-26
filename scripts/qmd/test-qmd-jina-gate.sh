@@ -759,4 +759,13 @@ cp "$work/d.yml" "$work/cfg/index.yml"
 LAUNCH_HOME=relhome LAUNCH_TIMEOUT=20 launch index; rc=$?
 [ "$rc" -ne 124 ] || fail "(51) a relative HOME hung the launcher's ~/.qmd walk-up"
 
+# (52) qmd walks up from the PHYSICAL cwd: a symlinked HOME must not hide a config in a physical parent.
+mkdir -p "$work/real/sub" "$work/real/.qmd"
+ln -s "$work/real/sub" "$work/linkhome"
+printf 'collections:\n  salus:\n    path: /nonexistent/salus\nmodels:\n  embed: %s\n  rerank: %s\n  openai_base_url: %s\n' "$OR_PIN_E" "$OR_PIN_R" "$OR_URL" > "$work/real/.qmd/index.yml"
+cp "$work/d.yml" "$work/cfg/index.yml"
+LAUNCH_HOME="$work/linkhome" launch index; rc=$?
+[ "$rc" -eq 1 ] || fail "(52) a symlinked HOME hid a physical-parent salus config: expected rc 1, got $rc: $(cat "$work/err")"
+[ ! -e "$work/started" ] || fail "(52) launcher STARTED qmd past a physical-parent salus config"
+
 echo "PASS: test-qmd-jina-gate.sh"
