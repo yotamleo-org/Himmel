@@ -4751,7 +4751,8 @@ mog7658_log() {
         mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' '  3. passes on main    -> re-run it ALONE before blaming your diff.'
         mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'home-canary: FAIL runner exited rc=1'
         mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' '##[error]Process completed with exit code 1.'
-        mog7658_row 'shell-unit (dispatch verify) (ubuntu-latest)' '##[error]shell-unit shards did not all pass (matrix rollup: failure)'
+        printf '%s\t%s\t%s\n' 'shell-unit (dispatch verify) (ubuntu-latest)' 'Every gating shell-unit shard must have passed' \
+            '2026-10-25T20:19:29.2847420Z ##[error]shell-unit shards did not all pass (matrix rollup: failure) — see the shell-unit-shard jobs on this run.'
     } > "$f"
 }
 MOG7658_S1=scripts/cr/test-pr-check-rounds.sh
@@ -4779,6 +4780,9 @@ MOG7658_LOG_LINT="$(mktemp "${TMPDIR:-/tmp}/mog-7658-lint.XXXXXX")" || { echo "F
 MOG7658_LOG_DEAD="$(mktemp "${TMPDIR:-/tmp}/mog-7658-dead.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
 MOG7658_LOG_NOEXIT="$(mktemp "${TMPDIR:-/tmp}/mog-7658-noexit.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
 MOG7658_LOG_ODD="$(mktemp "${TMPDIR:-/tmp}/mog-7658-odd.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+MOG7658_LOG_ROLL="$(mktemp "${TMPDIR:-/tmp}/mog-7658-roll.XXXXXX")" || { echo "FAIL: 7658 setup: mktemp" >&2; exit 1; }
+# The rollup job failed in a step other than the shard-result check.
+{ cat "$MOG7658_LOG_CAP"; printf '%s\t%s\t%s\n' 'shell-unit (dispatch verify) (ubuntu-latest)' 'Every shard ran exactly the selection' '2026-10-25T20:19:31.2858837Z ##[error]Process completed with exit code 1.'; } > "$MOG7658_LOG_ROLL"
 { cat "$MOG7658_LOG_CAP"; mog7658_row 'shell-unit-shard (ubuntu-latest, 2)' 'home-canary: FAIL honeytoken reached the runner output (a suite printed the sandbox .env); lines:'; } > "$MOG7658_LOG_HC"
 { cat "$MOG7658_LOG_CAP"; printf '%s\t%s\t%s\n' 'lint (ubuntu-latest)' 'Run shellcheck' '2026-10-25T20:19:12.9906759Z ##[error]Process completed with exit code 1.'; } > "$MOG7658_LOG_LINT"
 # A shard whose runner stopped on its budget: it exits 1 with no Failed-suites block.
@@ -4874,6 +4878,19 @@ no_merge_call "7658-l: no merge call"
 STUB_RUN_LOG_FILE="$MOG7658_LOG_ODD" cap_run 22 "7658-m: a Failed-suites row the classifier cannot parse → exit 22"
 assert_err_has "7658-m: prints the class" "main-red: unclassified ($MOG7658_S1)"
 no_merge_call "7658-m: no merge call"
+STUB_RUN_LOG_FILE="$MOG7658_LOG_ROLL" cap_run 22 "7658-n: cap rows plus a rollup job that failed in another step → exit 22"
+assert_err_has "7658-n: prints the class" "main-red: unclassified ($MOG7658_S1, $MOG7658_S2)"
+no_merge_call "7658-n: no merge call"
+# 7658-o — the classifier matches text other files own: the rollup step name in ci.yml,
+# the runner's exit line in home-canary.sh and the cap row in run-shell-tests.sh.
+# shellcheck disable=SC2016
+if grep -qF 'name: Every gating shell-unit shard must have passed' "$MOG_CAP_ROOT/.github/workflows/ci.yml" \
+    && grep -qF 'FAIL runner exited rc=$rc' "$MOG_CAP_ROOT/scripts/ci/home-canary.sh" \
+    && grep -qF 'no exit status observed, assertions passing)' "$MOG_CAP_ROOT/scripts/ci/run-shell-tests.sh"; then
+    pass
+else
+    fail "7658-o: ci.yml, home-canary.sh and run-shell-tests.sh still print the text main_red_classify reads"
+fi
 
 # ── a merge that fixes a red main queues one CI run on main ────
 # ci.yml has no push trigger, so without this the fix is first judged by the next
@@ -4933,7 +4950,7 @@ if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-g: no dispatch (got $(
 STUB_RUN_LOG_FILE="$MOG7658_LOG_CAP" cap_run 0 "7323-h: cap-only pass → merged"
 if [ "$(mog7323_calls)" = 0 ]; then pass; else fail "7323-h: no dispatch (got $(mog7323_calls))"; fi
 assert_audit_lacks "7323-h: no recheck audited" "MAIN-RECHECK"
-rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT" "$MOG7658_LOG_HC" "$MOG7658_LOG_LINT" "$MOG7658_LOG_DEAD" "$MOG7658_LOG_NOEXIT" "$MOG7658_LOG_ODD"
+rm -f "$MOG7658_LOG_CAP" "$MOG7658_LOG_ASSERT" "$MOG7658_LOG_CAPFAIL" "$MOG7658_LOG_APT" "$MOG7658_LOG_HC" "$MOG7658_LOG_LINT" "$MOG7658_LOG_DEAD" "$MOG7658_LOG_NOEXIT" "$MOG7658_LOG_ODD" "$MOG7658_LOG_ROLL"
 
 # ── merge-time plugin version-bump recheck ──────────────────────
 # Plugin versions change only in a release cut (a change to the root VERSION
