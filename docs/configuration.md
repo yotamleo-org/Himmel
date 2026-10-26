@@ -545,7 +545,8 @@ Each loader names its keys explicitly. The shared shell
 `load_dotenv [--root DIR] KEY...` exports **nothing without a key list**;
 existing non-empty shell values still win. For a behaviour key it reads
 `himmel.conf.local` and `himmel.conf` before `.env`; gate-policy keys come
-through `load_policy`, from `config.json` `"policy"` first. Jira/Bitbucket keep their existing
+through `load_policy`, from `config.json` `"policy"` first. Jira takes the
+first non-empty value (an exported empty string does not win); Bitbucket keeps
 nullish precedence (an exported empty string wins). Python credential readers
 keep live values and disable dotenv interpolation. These boundaries govern
 what a file adds, not credentials the launching shell already exported.
