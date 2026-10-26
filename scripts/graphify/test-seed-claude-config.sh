@@ -345,8 +345,9 @@ else
 fi
 
 printf '{"claudeAiOauth":{"accessToken":"kc-v2"}}\n' > "$KC_FIXTURE"
-run_kc_seed > /dev/null 2>&1
-if cmp -s "$KC_FIXTURE" "$KC_HOME/.claude-graphify/.credentials.json"; then
+kc_rotate_rc=0
+run_kc_seed > /dev/null 2>&1 || kc_rotate_rc=$?
+if [ "$kc_rotate_rc" -eq 0 ] && cmp -s "$KC_FIXTURE" "$KC_HOME/.claude-graphify/.credentials.json"; then
   pass "rotated Keychain credentials trigger a reseed"
 else
   fail "rotated Keychain credentials were not re-seeded"
