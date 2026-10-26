@@ -166,6 +166,8 @@ python3 -I "$CD" --projects "$tmp/rs" --since-days 0 --simulate 100000 --json > 
 check "compaction-defects: resumed transcript, one compaction counted once" 1 "$(jq '.compactions | length' "$tmp/rs.json")"
 check "compaction-defects: parent hands off at its boundary, resume does not re-hand-off" "1 0" "$(jq -r '[.simulate[0].legs[].b.events] | join(" ")' "$tmp/rs.json")"
 check "compaction-defects: resume charges only its own turns" "3 5" "$(jq -r '[.simulate[0].legs[].turns] | join(" ")' "$tmp/rs.json")"
+check "compaction-defects: the boundary is scored on the copy that runs furthest past it" "6 s-resume.jsonl" "$(jq -r '.compactions[0] | "\(.post_turns) \(.transcript)"' "$tmp/rs.json")"
+check "compaction-defects: the model is read from the JSON, spaced or not" claude-fx-1 "$(jq -r '.compactions[0].model' "$tmp/rs.json")"
 python3 -I "$CD" --projects "$CFX" --since-days 0 > "$tmp/cd.txt" 2>/dev/null
 check "compaction-defects: text report" 1 "$(grep -c '^legs 1, transcripts 1, compactions 1' "$tmp/cd.txt")"
 

@@ -201,7 +201,8 @@ def load(path):
         mid = msg.get("id") or "row-%d" % len(turns)
         t = by_id.get(mid)
         if t is None:
-            t = {"id": mid, "cwd": row.get("cwd"), "calls": [], "wrote": [], "seen": pending_seen}
+            t = {"id": mid, "cwd": row.get("cwd"), "model": msg.get("model"), "calls": [], "wrote": [],
+                 "seen": pending_seen}
             pending_seen = []
             by_id[mid] = t
             turns.append(t)
@@ -337,12 +338,8 @@ def profile_of(title):
     return "impl"
 
 
-def model_of(path):
-    for line in open(path, errors="replace"):
-        m = re.search(r'"model":"(claude-[^"]+)"', line)
-        if m and '"type":"assistant"' in line:
-            return m.group(1)
-    return None
+def model_of(turns):
+    return next((t["model"] for t in turns if t.get("model")), None)
 
 
 def simulate(turns, bounds, ceiling, resume_tokens, post_median, priced=None):
@@ -410,13 +407,13 @@ def main():
     paths = sorted((p for p in glob.glob(os.path.join(a.projects, "**", "*.jsonl"), recursive=True)
                     if os.path.getmtime(p) >= cut), key=os.path.getmtime)
     N = a.window
-    comps, legs, seen_b, seen_turn, sims = [], {}, set(), set(), []
+    comps, legs, seen_b, seen_turn, sims = {}, {}, set(), set(), []
     for path in paths:
         title, turns, bounds = load(path)
         if not title or not WORKER_TITLE.match(title):
             continue
         prof = profile_of(title)
-        model = model_of(path)
+        model = model_of(turns)
         legs.setdefault(title, {"profile": prof, "model": model, "transcripts": 0})
         legs[title]["transcripts"] += 1
         # a resumed transcript repeats its parent's turns: price each turn once
@@ -431,12 +428,12 @@ def main():
                          "actual": round(actual), "actual_compactions": len(new_b)})
         starts = [b["turn"] for b in bounds]
         for k, b in enumerate(bounds):
-            if b["uuid"] in seen_b:
-                continue
-            seen_b.add(b["uuid"])
             lo = b["turn"]
             hi = min(lo + N, starts[k + 1] if k + 1 < len(starts) else len(turns))
-            if hi <= lo:
+            # a resumed transcript repeats a boundary its parent holds and may
+            # run further past it: score the copy with the longest post window
+            prev = comps.get(b["uuid"])
+            if hi <= lo or (prev is not None and prev["post_turns"] >= hi - lo):
                 continue
             d, ev = score(turns, lo, hi, a.evidence)
             clo = lo - N
@@ -454,8 +451,10 @@ def main():
                             "compaction_est_uncached": round(b["pre"] * ab.W_IN + b["summary_chars"] / 4.0 * ab.W_OUT)}}
             if a.evidence:
                 rec["evidence"] = ev
-            comps.append(rec)
+            comps[b["uuid"]] = rec
+        seen_b.update(b["uuid"] for b in bounds)
 
+    comps = list(comps.values())
     summary = summarize(comps, legs, N)
     out = {"window": N, "legs": len(legs), "transcripts": sum(l["transcripts"] for l in legs.values()),
            "compactions": comps, "summary": summary}
