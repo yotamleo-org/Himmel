@@ -2756,9 +2756,17 @@ g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-ki
 # Interpreter code or a heredoc body that merely NAMES a gate path is not an
 # invocation; every shape that runs one stays denied. Both on a clean tree and
 # on a tree whose copy differs from the anchor's.
+edit_gate_5763() { # edit_gate_5763 <label> - make the gate copy differ, fail the suite if it does not
+    echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh" ||
+        { echo "FAIL 5763 setup: cannot edit the gate copy for $1"; FAILED=$((FAILED + 1)); }
+    if g -C "$WT" diff --quiet -- scripts/cr/write-verdicts.sh; then
+        echo "FAIL 5763 setup: the gate copy still equals the anchor's for $1"
+        FAILED=$((FAILED + 1))
+    fi
+}
 run_5763() { # run_5763 <label> <expected-rc> <command>
     run "5763 clean tree: $1" "$2" "$(payload "$3" "$WT")" "$HR"
-    echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh"
+    edit_gate_5763 "$1"
     run "5763 differing tree: $1" "$2" "$(payload "$3" "$WT")" "$HR"
     g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
 }
@@ -2798,7 +2806,11 @@ run_5763 "env-prefixed python3 -c -> deny" 2 \
 run_5763 "gate behind an env prefix -> deny" 2 "FOO=1 bash scripts/cr/write-verdicts.sh"
 run_5763 "gate behind env -> deny" 2 "env FOO=1 bash scripts/cr/write-verdicts.sh"
 run_5763 "gate behind timeout -> deny" 2 "timeout 9 bash scripts/cr/write-verdicts.sh" # gnu-ok: payload text fed to the hook, never executed
-echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh"
+run "5763 inherited PYTHONPATH: python3 -c printing a gate path -> deny" 2 \
+    "$(payload "python3 -c \"print('scripts/cr/write-verdicts.sh')\"" "$WT")" "$HR" PYTHONPATH=.
+run "5763 inherited NODE_OPTIONS: node -e printing a gate path -> deny" 2 \
+    "$(payload "node -e \"console.log('scripts/cr/write-verdicts.sh')\"" "$WT")" "$HR" NODE_OPTIONS=--no-warnings
+edit_gate_5763 "relative spelling of the gate"
 run "5763 differing tree: relative spelling of the gate -> deny" 2 \
     "$(payload "bash scripts/cr/write-verdicts.sh" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh

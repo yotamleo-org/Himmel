@@ -1423,6 +1423,9 @@ interp_code_inert() { # interp_code_inert <code> - only print(LIT) lines, no she
 }
 interp_data_only() { # true when the whole command is one interpreter run whose code is inert
     local k w mode='' code='' hd=0 delim='' argi=0 body='' line rest
+    # an interpreter that reads startup code from an inherited variable runs
+    # files this guard's byte-hash fence has not checked
+    [ -z "${PYTHONPATH:-}${PYTHONHOME:-}${NODE_OPTIONS:-}${NODE_PATH:-}" ] || return 1
     st_tokenize "$cmd" || return 1
     [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
     k=0
