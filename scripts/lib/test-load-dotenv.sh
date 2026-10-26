@@ -610,7 +610,7 @@ printf 'HANDOVER_DIR=%s\n' "$TMP/c3-live" >"$TMP/c3-home/.himmel/himmel.conf"
 rm -f "$REPO/.env"
 got=$( cd "$REPO" && unset HANDOVER_DIR HIMMEL_CONFIG_DIR && HOME="$TMP/c3-home" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
 assert_eq "C3 control: the station conf supplies HANDOVER_DIR" "$TMP/c3-live" "$got"
-got=$( cd "$REPO" && unset HANDOVER_DIR HIMMEL_CONFIG_DIR && HOME="$TMP/c3-home" && . "$(dirname "$LIB")/testlib-config-isolation.sh" && isolate_himmel_config "$TMP/c3-suite" && printf 'isolated ' && load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+got=$( cd "$REPO" && unset HANDOVER_DIR HIMMEL_CONFIG_DIR && HOME="$TMP/c3-home" && . "$(dirname "$LIB")/testlib-config-isolation.sh" && isolate_himmel_config "$TMP/c3-suite" && printf 'isolated ' && load_dotenv HANDOVER_DIR 2>/dev/null && printf '%s' "${HANDOVER_DIR:-<unset>}" )
 assert_eq "C3 isolate_himmel_config keeps the station conf out" "isolated <unset>" "$got"
 
 echo
