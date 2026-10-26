@@ -3648,6 +3648,8 @@ ROWS
 rows_both 9710 2 "write shapes beside the relaxed forms stay denied" <<'ROWS'
 H=1; echo "${H:-$'\x41'}" > /tmp/claude-1000/x/claude.txt
 H=1; echo "${H:-${G}$'\x41'}" > /tmp/claude-1000/x/claude.txt
+H=; G=; echo "${H:-${G:+\}}$'\x41'}" > /tmp/claude-1000/x/claude.txt
+H=; G=; echo "${H:-${G:+"}"}$'\x41'}" > /tmp/claude-1000/x/claude.txt
 H=69351d3aa4d2; git show "${H}:x" | grep -v '^$' > @P@/.claude/settings.json
 gh api repos/o/r/contents/x --jq .content > @P@/.claude/settings.json
 gh api repos/o/r/contents/x | grep -v 'a$' | tee @P@/.claude/settings.json

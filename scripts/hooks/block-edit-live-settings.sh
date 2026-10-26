@@ -2192,8 +2192,10 @@ _tok_ns_segment() {
 
 # _ansi_in_param_brace TEXT — 0 when a `$'` sits inside a brace group that is
 # still open and TEXT has a `${` (bash extquote decodes the `$'…'` of a
-# double-quoted `${x:-$'\x41'}`). Every `{` opens and every `}` closes, quoted
-# or not: a stray count only leans toward 0, the deny.
+# double-quoted `${x:-$'\x41'}`). Every `{` opens and every plain `}` closes;
+# inside an open group a quote or backslash (`${G:+\}}`, `${G:+"}"}`) could
+# hide a `}` from the count, so it reads as 0 too — the scan only ever leans
+# toward the deny.
 _ansi_in_param_brace() {
     local t=$1 i=0 n=${#1} depth=0 sdb=0 c
     while [ "$i" -lt "$n" ]; do
@@ -2207,6 +2209,7 @@ _ansi_in_param_brace() {
                 ;;
             '{') depth=$((depth + 1)) ;;
             '}') if [ "$depth" -gt 0 ]; then depth=$((depth - 1)); fi ;;
+            \\|'"'|"'"|'`') if [ "$depth" -gt 0 ] && [ "$sdb" = 1 ]; then return 0; fi ;;
         esac
         i=$((i + 1))
     done
