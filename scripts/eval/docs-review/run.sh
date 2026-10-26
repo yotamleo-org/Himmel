@@ -13,6 +13,7 @@
 #   cases from cases.json; C is refused (its learn step needs Edit).
 #   --cap-usd   per-run --max-budget-usd (default 6); the batch refuses past $24.
 #   --canary-only  build the fixtures and run the canaries, never the billed call.
+#   Without --canary-only the run needs HIMMEL_BILLED_OK=1.
 # Exit: 0 every case ran; 2 usage or setup; 3 a canary, the bank gate, an api call or an answer over 3 KB
 # stopped the batch.
 set -uo pipefail
@@ -34,6 +35,9 @@ while [ $# -gt 0 ]; do
     esac
 done
 [ -n "$out" ] && [ "${#cases[@]}" -gt 0 ] || { echo "usage: run.sh --out <dir> [--model m] [--cap-usd n] [--canary-only] <case>..." >&2; exit 2; }
+# billed-opt-in: HIMMEL_BILLED_OK
+[ "$canary_only" = 1 ] || [ "${HIMMEL_BILLED_OK:-}" = 1 ] ||
+    { echo "run.sh: one billed api-lane call per case; set HIMMEL_BILLED_OK=1 (on-demand only), or pass --canary-only" >&2; exit 2; }
 for c in "${cases[@]}"; do
     [ "$c" != C ] || { echo "run.sh: case C needs Edit for its learn step; this runner grants Read/Glob/Grep only" >&2; exit 2; }
     jq -e --arg c "$c" '.cases[$c]' "$HERE/cases.json" >/dev/null || { echo "run.sh: no case $c in cases.json" >&2; exit 2; }
