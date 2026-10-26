@@ -69,7 +69,9 @@ and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
   later PR merges `origin/main` forward once, re-runs `impacted-suites.sh` over the
   merged diff, regenerates generated files and pushes once. A trust-path PR still
   needs a fresh judge and GO at the new head.
-- **The worker's proof:** send it the `MERGE-FORWARD` line and the plan file. It runs
+- **The worker's proof:** send it the `MERGE-FORWARD` line and the plan file, and only
+  once every S2 predecessor of that PR has merged (the line names the last one in
+  `ORDER`, and the check proves that one's merge only). It runs
   `bash scripts/handover/merge-forward-check.sh --chain-s2 <pr> --chain-plan <plan file> --chain-after-sha <the predecessor's squash-merge sha> --pr <job file> --pr-sha <HEAD>`
   and merges forward only on `ALLOW chain-s2` (exit 0; exit 3 = the predecessor is
   already in HEAD, nothing to merge forward). The reason needs a green PR run (a

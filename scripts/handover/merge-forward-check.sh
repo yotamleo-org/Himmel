@@ -140,6 +140,10 @@ chain_s2() {
     echo "REFUSE — the PR run is not all green (${reds:-no job rows}): a red job goes through the inherited-red rules, never the chain-s2 reason. Do not merge forward."
     exit 1
   fi
+  if [ -z "$(awk -F'\t' '$2 == "success" {print "x"; exit}' "$jobs")" ]; then
+    echo "REFUSE — the PR run has no success row (only skipped or neutral jobs): that is no evidence the PR is green. Do not merge forward."
+    exit 1
+  fi
   if ! git fetch --quiet origin main 2>/dev/null || ! tip="$(git rev-parse --verify --quiet origin/main)"; then
     echo "usage: cannot fetch origin main from $(pwd): the chain-s2 check needs the worker's own repo" >&2
     exit 2
@@ -165,7 +169,7 @@ chain_s2() {
     echo "nothing to merge forward — $rafter (PR #$pred's merge) is already in HEAD"
     exit 3
   fi
-  echo "ALLOW chain-s2 $cpr — chain-plan.sh orders PR $cpr after #$pred (merged as $rafter, on origin/main and not yet in HEAD) and the PR run is all green. One 'git merge $tip' (the origin/main tip just fetched; CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), then re-run impacted-suites.sh over the merged diff, regenerate generated files, ONE push, citing the plan line ($line) in a Results bullet."
+  echo "ALLOW chain-s2 $cpr — chain-plan.sh orders PR $cpr after #$pred (merged as $rafter, on origin/main and not yet in HEAD) and the PR run is all green. This proves only #$pred's merge: confirm every other S2 predecessor of PR $cpr in the plan has merged before you merge forward. One 'git merge $tip' (the origin/main tip just fetched; CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), then re-run impacted-suites.sh over the merged diff, regenerate generated files, ONE push, citing the plan line ($line) in a Results bullet."
   exit 0
 }
 [ "${1:-}" = "--chain-s2" ] && chain_s2 "$@"

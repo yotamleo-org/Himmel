@@ -508,7 +508,9 @@ cs() {
   out=$(cd "$tmp/cs" && bash "$MF" --chain-s2 11 --chain-plan "$tmp/plan-on" --chain-after-sha "$PRED" --pr "$tmp/cs-pr" --pr-sha "$CSHEAD" "$@" 2>&1); rc=$?
   if [ "$rc" -eq "$want" ] && grep -Eq -- "$re" <<< "$out"; then ok "$d"; else bad "$d (rc=$rc, want $want)" "$out"; fi
 }
-cs "chain-s2: a plan naming 11 after 10, 10's merge on origin/main and not in HEAD, a green PR: ALLOW" 0 'ALLOW chain-s2 11.*after #?10'
+cs "chain-s2: a plan naming 11 after 10, 10's merge on origin/main and not in HEAD, a green PR: ALLOW, and says it proves only that predecessor" 0 'ALLOW chain-s2 11.*after #?10.*proves only #?10'
+printf 'a\tskipped\nb\tneutral\n' > "$tmp/cs-skipped"
+cs "chain-s2: a run with no success row (only skipped or neutral): REFUSE" 1 'REFUSE.*no (passing|success)' --pr "$tmp/cs-skipped"
 cs "chain-s2: the flag-off plan carries no MERGE-FORWARD line: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-plan "$tmp/plan-off"
 : > "$tmp/plan-empty"
 cs "chain-s2: an empty plan file: REFUSE" 1 'REFUSE.*no MERGE-FORWARD' --chain-plan "$tmp/plan-empty"
