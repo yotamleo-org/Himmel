@@ -65,6 +65,10 @@ ASK = re.compile(r"\b(remind me (of|what)|what (is|was) my (token|nonce|ruling)|
 READ_CMD = {"cat", "head", "sed", "nl", "less", "bat"}
 # a background task's output or a log grows on its own: reading it again is polling
 GROWING = re.compile(r"\.(output|log)$|/tasks/|/quiet-run-")
+# a Bash call that writes a file: a redirect to a path (not an fd dup or
+# /dev/null), sed -i, tee, mv/cp, or an interpreter fed a heredoc
+BASH_WRITE = re.compile(r"(?<![0-9&])>>?\s*(?!&|/dev/null)[^\s|;&]|\bsed\s+(-[a-zA-Z]*\s+)*-i|\btee\b|"
+                        r"(?:^|[;&|]\s*)(?:mv|cp)\s|\b(?:python3?|perl|node)\b[^|;&]*<<")
 GIT_RESET = re.compile(r"\bgit\s+(pull|merge|rebase|checkout|reset|switch|am|cherry-pick|restore)\b")
 # invoked at a command position, never a name inside a grep or pgrep pattern
 MUTATE = re.compile(
@@ -197,13 +201,15 @@ def load(path):
         mid = msg.get("id") or "row-%d" % len(turns)
         t = by_id.get(mid)
         if t is None:
-            u = msg.get("usage") or {}
-            t = {"id": mid, "cwd": row.get("cwd"), "calls": [], "wrote": [], "seen": pending_seen,
-                 "in": u.get("input_tokens") or 0, "cr": u.get("cache_read_input_tokens") or 0,
-                 "cc": u.get("cache_creation_input_tokens") or 0, "out": u.get("output_tokens") or 0}
+            t = {"id": mid, "cwd": row.get("cwd"), "calls": [], "wrote": [], "seen": pending_seen}
             pending_seen = []
             by_id[mid] = t
             turns.append(t)
+        # one row per content block: the last row's usage is the message's
+        u = msg.get("usage")
+        if isinstance(u, dict):
+            t.update({"in": u.get("input_tokens") or 0, "cr": u.get("cache_read_input_tokens") or 0,
+                      "cc": u.get("cache_creation_input_tokens") or 0, "out": u.get("output_tokens") or 0})
         for b in content if isinstance(content, list) else []:
             if not isinstance(b, dict):
                 continue
@@ -219,6 +225,8 @@ def load(path):
                     t["wrote"].append(json.dumps(c["input"], ensure_ascii=False))
                 by_tool[b.get("id")] = c
     for t in turns:
+        for k in ("in", "cr", "cc", "out"):
+            t.setdefault(k, 0)
         t["ctx"] = t["in"] + t["cr"] + t["cc"]
         t["cost"] = t["in"] * ab.W_IN + t["cr"] * ab.W_CR + t["cc"] * ab.W_CC + t["out"] * ab.W_OUT
     return title, turns, bounds
@@ -295,7 +303,7 @@ def score(turns, lo, hi, evidence):
                     hit("redo", i, key.replace("\x00", " "))
                 if not c["error"] and not BACKGROUNDED.search(c.get("result", "")):
                     done[key] = since_write
-            if name == "Bash" and MUTATE.search(cmd) and re.search(r"\bgit\s+commit\b", cmd):
+            if name == "Bash" and (BASH_WRITE.search(cmd) or (MUTATE.search(cmd) and re.search(r"\bgit\s+commit\b", cmd))):
                 since_write += 1
             # asks for a token or ruling again
             if name == "SendMessage" and live and ASK.search(str(inp.get("message") or "")):
@@ -337,10 +345,14 @@ def model_of(path):
     return None
 
 
-def simulate(turns, bounds, ceiling, resume_tokens, post_median):
-    """cost-eq of one transcript replayed at `ceiling`, arms b and c."""
+def simulate(turns, bounds, ceiling, resume_tokens, post_median, priced=None):
+    """cost-eq of one transcript replayed at `ceiling`, arms b and c. Every turn
+    drives the replayed context (boundary indices are into `turns`); only the
+    turns whose id is in `priced` (default all) are charged, so a resumed
+    transcript does not charge its parent's turns twice."""
     if not turns:
         return None
+    priced = priced if priced is not None else {t["id"] for t in turns}
     first = {b["turn"] for b in bounds}
     dropped, drop_at = 0, {}
     for b in bounds:
@@ -349,6 +361,9 @@ def simulate(turns, bounds, ceiling, resume_tokens, post_median):
     growth = [max(0, turns[i]["ctx"] - turns[i - 1]["ctx"]) for i in range(1, len(turns)) if i not in first]
     g_med = statistics.median(growth) if growth else 0
     s0 = turns[0]["ctx"] + resume_tokens
+    # a simulated compaction writes a summary the size of this transcript's own
+    summaries = [b["summary_chars"] / 4.0 for b in bounds if b["summary_chars"]]
+    summary_tokens = statistics.median(summaries) if summaries else 2500
     res = {}
     for arm in ("b", "c"):
         off, events, cost, peak = 0, 0, 0.0, 0
@@ -358,15 +373,19 @@ def simulate(turns, bounds, ceiling, resume_tokens, post_median):
         for i, t in enumerate(turns):
             dropped += drop_at.get(i, 0)
             x = t["ctx"] + dropped - off
+            charge = t["id"] in priced
             if x >= trigger:
                 off += x - restart
                 x = restart
-                events += 1
-                if arm == "b":
-                    cost += resume_tokens * ab.W_OUT + restart * ab.W_CC
-                else:
-                    cost += trigger * ab.W_CR + 2500 * ab.W_OUT + restart * ab.W_CC
+                if charge:
+                    events += 1
+                    if arm == "b":
+                        cost += resume_tokens * ab.W_OUT + restart * ab.W_CC
+                    else:
+                        cost += trigger * ab.W_CR + summary_tokens * ab.W_OUT + restart * ab.W_CC
             peak = max(peak, x)
+            if not charge:
+                continue
             miss = t["cc"] > 0.5 * t["ctx"] and i not in first
             cc = x if miss else (g_med if i in first else min(t["cc"], x))
             cost += t["in"] * ab.W_IN + t["out"] * ab.W_OUT + cc * ab.W_CC + max(0, x - cc - t["in"]) * ab.W_CR
@@ -404,11 +423,12 @@ def main():
         fresh = [t for t in turns if t["id"] not in seen_turn]
         seen_turn.update(t["id"] for t in turns)
         if a.simulate and fresh:
+            new_b = [b for b in bounds if b["uuid"] not in seen_b]
             actual = sum(t["cost"] for t in fresh) + sum(
-                b["pre"] * ab.W_CR + b["summary_chars"] / 4.0 * ab.W_OUT for b in bounds if b["uuid"] not in seen_b)
+                b["pre"] * ab.W_CR + b["summary_chars"] / 4.0 * ab.W_OUT for b in new_b)
             sims.append({"leg": title, "profile": prof, "model": model, "turns": len(fresh),
-                         "bounds": bounds, "turns_list": fresh, "actual": round(actual),
-                         "peak": max(t["ctx"] for t in fresh)})
+                         "bounds": bounds, "turns_list": turns, "priced": {t["id"] for t in fresh},
+                         "actual": round(actual), "actual_compactions": len(new_b)})
         starts = [b["turn"] for b in bounds]
         for k, b in enumerate(bounds):
             if b["uuid"] in seen_b:
@@ -447,10 +467,11 @@ def main():
         for C in a.simulate:
             per = []
             for s in sims:
-                r = simulate(s["turns_list"], s["bounds"], C, a.resume_tokens, post_med)
+                r = simulate(s["turns_list"], s["bounds"], C, a.resume_tokens, post_med, s["priced"])
                 if r:
                     per.append({"leg": s["leg"], "profile": s["profile"], "model": s["model"], "turns": s["turns"],
-                                "actual": s["actual"], "actual_compactions": len(s["bounds"]), "b": r["b"], "c": r["c"]})
+                                "actual": s["actual"], "actual_compactions": s["actual_compactions"],
+                                "b": r["b"], "c": r["c"]})
             out["simulate"].append({"ceiling": C, "post_ctx_median": post_med, "legs": per,
                                     "by_profile": sim_rollup(per)})
     if a.json:
@@ -473,6 +494,13 @@ def summarize(comps, legs, N):
                "with_any_defect": sum(1 for c in cs if any(c["defects"].values())),
                "paired_post": {k: sum(c["defects"][k] for c in paired) for k in CLASSES},
                "paired_control": {k: sum(c["control"][k] for c in paired) for k in CLASSES}}
+        # a post window can be clipped short of N: compare rates, not counts
+        pt = sum(c["post_turns"] for c in paired)
+        ct = sum(c["control_turns"] for c in paired)
+        row["paired_post_turns"], row["paired_control_turns"] = pt, ct
+        row["paired_post_per100"] = {k: round(100.0 * row["paired_post"][k] / pt, 3) if pt else None for k in CLASSES}
+        row["paired_control_per100"] = {k: round(100.0 * row["paired_control"][k] / ct, 3) if ct else None
+                                        for k in CLASSES}
         costs = [c["cost"] for c in cs if c["cost"]["pre_turn"] is not None and c["cost"]["post_turn"] is not None]
         if costs:
             row["cost"] = {k: round(statistics.mean(x[k] for x in costs)) for k in
@@ -503,11 +531,16 @@ def print_text(out):
     N = out["window"]
     print("legs %d, transcripts %d, compactions %d, window %d turns" % (
         out["legs"], out["transcripts"], len(out["compactions"]), N))
-    print("\n%-22s %5s %6s %7s  %s" % ("group", "comp", "paired", "any-def", "  ".join(
+    print("\nper 100 turns, post window / control window, over the paired compactions")
+    print("%-22s %5s %6s %7s  %s" % ("group", "comp", "paired", "any-def", "  ".join(
         "%s post/ctl" % k for k in CLASSES)))
+
+    def rate(v):
+        return "-" if v is None else "%.2f" % v
     for g, r in out["summary"].items():
         print("%-22s %5d %6d %7d  %s" % (g, r["compactions"], r["paired"], r["with_any_defect"], "  ".join(
-            "%*s" % (len(k) + 9, "%d/%d" % (r["paired_post"][k], r["paired_control"][k])) for k in CLASSES)))
+            "%*s" % (len(k) + 9, "%s/%s" % (rate(r["paired_post_per100"][k]), rate(r["paired_control_per100"][k])))
+            for k in CLASSES)))
     print("\n%-22s %10s %10s %9s %9s %9s %10s" % ("group", "turn-pre", "turn-post", "ctx-pre", "ctx-post",
                                                  "reprime", "compact-est"))
     for g, r in out["summary"].items():

@@ -145,9 +145,9 @@ check "compaction-defects: planted post-compaction re-read counted once" 1 "$(jq
 check "compaction-defects: one leg, one compaction" "1 1" "$(jq -r '"\(.legs) \(.compactions | length)"' "$tmp/cd.json")"
 check "compaction-defects: the repeated denied call" 1 "$(jq '.compactions[0].defects.denied_repeat' "$tmp/cd.json")"
 check "compaction-defects: the misquoted token, not the cut-off summary quote" 1 "$(jq '.compactions[0].defects.nonce' "$tmp/cd.json")"
-check "compaction-defects: the repeated Results bullet, not the marker clear after an edit" 1 "$(jq '.compactions[0].defects.redo' "$tmp/cd.json")"
+check "compaction-defects: the repeated Results bullet, not the marker clear after an edit nor the push after a sed -i" 1 "$(jq '.compactions[0].defects.redo' "$tmp/cd.json")"
 check "compaction-defects: no judge re-asked" 0 "$(jq '.compactions[0].defects.verdict' "$tmp/cd.json")"
-check "compaction-defects: post window runs to the end of the transcript" 8 "$(jq '.compactions[0].post_turns' "$tmp/cd.json")"
+check "compaction-defects: post window runs to the end of the transcript" 11 "$(jq '.compactions[0].post_turns' "$tmp/cd.json")"
 check "compaction-defects: re-prime is the first post turn's cache_create" 30000 "$(jq '.compactions[0].cost.reprime_cache_create' "$tmp/cd.json")"
 check "compaction-defects: compaction call priced from preTokens and the summary (170000 x 0.1 + 104 / 4 x 5)" 17130 "$(jq '.compactions[0].cost.compaction_est' "$tmp/cd.json")"
 python3 -I "$CD" --projects "$CFX" --since-days 0 --window 2 --json > "$tmp/cd2.json" 2>/dev/null
@@ -155,6 +155,17 @@ check "compaction-defects: a control window of N turns with N turns of history" 
 check "compaction-defects: the post window is clipped to N" 2 "$(jq '.compactions[0].post_turns' "$tmp/cd2.json")"
 python3 -I "$CD" --projects "$CFX" --since-days 0 --simulate 100000 --json > "$tmp/cd3.json" 2>/dev/null
 check "compaction-defects: replay at 100k hands off once" 1 "$(jq '.simulate[0].legs[0].b.events' "$tmp/cd3.json")"
+check "compaction-defects: the split row's last usage is the message's (out 900, not 1)" 8546 "$(jq '.compactions[0].cost.post_turn' "$tmp/cd.json")"
+check "compaction-defects: paired rates are per 100 turns" "50.0 0.0 2 2" "$(jq -r '.summary.all | "\(.paired_post_per100.reread) \(.paired_control_per100.reread) \(.paired_post_turns) \(.paired_control_turns)"' "$tmp/cd2.json")"
+# a resumed transcript repeats its parent's turns and boundary: the replay walks
+# the whole transcript, so the boundary lands on the turn it follows, and charges
+# only the new turns
+mkdir -p "$tmp/rs/p"; cp "$HERE/compaction-handoff/fixtures/projects-resume/p/"*.jsonl "$tmp/rs/p/"
+touch -d '2026-10-20 11:05' "$tmp/rs/p/s-parent.jsonl"; touch -d '2026-10-20 12:06' "$tmp/rs/p/s-resume.jsonl"
+python3 -I "$CD" --projects "$tmp/rs" --since-days 0 --simulate 100000 --json > "$tmp/rs.json" 2>/dev/null
+check "compaction-defects: resumed transcript, one compaction counted once" 1 "$(jq '.compactions | length' "$tmp/rs.json")"
+check "compaction-defects: parent hands off at its boundary, resume does not re-hand-off" "1 0" "$(jq -r '[.simulate[0].legs[].b.events] | join(" ")' "$tmp/rs.json")"
+check "compaction-defects: resume charges only its own turns" "3 5" "$(jq -r '[.simulate[0].legs[].turns] | join(" ")' "$tmp/rs.json")"
 python3 -I "$CD" --projects "$CFX" --since-days 0 > "$tmp/cd.txt" 2>/dev/null
 check "compaction-defects: text report" 1 "$(grep -c '^legs 1, transcripts 1, compactions 1' "$tmp/cd.txt")"
 
