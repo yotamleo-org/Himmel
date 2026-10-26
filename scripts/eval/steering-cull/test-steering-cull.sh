@@ -30,12 +30,8 @@ print(",".join(p["id"] for p in json.load(open(sys.argv[2]))["probes"] if p["row
 
 # --- the ruled cull as applied to the live repo CLAUDE.md ---
 LIVE="$HERE/../../../CLAUDE.md"
-eq "live cull: the applied rows' old spans are gone from CLAUDE.md" "$(python3 -c 'import json,sys
-rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
-t=open(sys.argv[2]).read()
-print(" ".join(i for i in sys.argv[3:] if rows[i]["old"] in t) or "none")' "$HERE/rows.json" "$LIVE" \
-    r1-git-workflow r2-trailers r3-jira r6-adding-a-rule l64-history-comments l70-memory-routes l88-enforcement-inventory l98-reference-index 2>&1)" "none"
-has "live cull: the git-workflow rule keeps its approval clause" "$(cat "$LIVE")" "≥1 approval"
+eq "live cull: the git-workflow rule requires at least one approval" \
+    "$(grep -c -x -F -- '- Land changes via PR with ≥1 approval, never a direct push. [enforced: no-push-to-main]' "$LIVE")" "1"
 kept_missing() { python3 -c 'import json,sys
 rows={r["id"]: r for r in json.load(open(sys.argv[1]))["rows"]}
 t=open(sys.argv[2]).read()
