@@ -183,5 +183,19 @@ g checkout -q main
 printf 'other.txt\tmodified\t\n' > "$F/files-2.tsv"
 same 'a moved base re-reads the PR files, not the cached list' "$(edge 1 2 --base cache-probe)" 'independent  #1 #2'
 
+# a pinned head reads git, an unpinned one the files API: the two never share a cached list
+rm -rf "$W/cache"; mkdir "$W/cache"
+printf 'shared.txt\tmodified\t\n' > "$F/files-2.tsv"
+printf 'other.txt\tmodified\t\n' > "$F/files-1.tsv"
+same 'cache: the API list for PR 1 says independent' "$(edge 1 2)" 'independent  #1 #2'
+same 'a pinned head does not reuse the cached API list' "$(edge 1 2 --head "1=$(g rev-parse s1a)")" 'S1 D4 #1 #2'
+
+# both directions of a Jira Blocks link are reported, not just the first
+printf '1\tBlocks\tinward=HIMMEL-901\toutward=HIMMEL-902\tHIMMEL-901 blocks HIMMEL-902\n' > "$F/links-HIMMEL-901.txt"
+printf '1\tBlocks\tinward=HIMMEL-902\toutward=HIMMEL-901\tHIMMEL-902 blocks HIMMEL-901\n' > "$F/links-HIMMEL-902.txt"
+out="$(python3 "$SUT" --prs 1,2 --base main --repo-dir "$R" --cache-dir "$W/cache" 2>&1)"
+contains 'a mutual Jira Blocks link is named a cycle' "$out" 'cycle'
+rm -f "$F/links-HIMMEL-901.txt" "$F/links-HIMMEL-902.txt"
+
 [ "$fails" -eq 0 ] && printf 'PASS - test-chain-graph.sh\n' || printf 'FAIL - test-chain-graph.sh (%d)\n' "$fails"
 [ "$fails" -eq 0 ]

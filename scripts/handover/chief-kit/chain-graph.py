@@ -40,7 +40,7 @@ GATE_REGISTRIES = ('scripts/ci/suite-tiers.tsv', 'scripts/ci/suite-durations.tsv
 ROW_REGISTRIES = ('scripts/ci/suite-tiers.tsv', 'scripts/ci/suite-durations.tsv')
 VOCAB_REGISTRY = 'scripts/lib/rename-aliases.tsv'
 SYM_RE = re.compile(r'^\s*(?:async\s+function|function|def|class)\s+([A-Za-z_]\w{7,})|^([A-Za-z_]\w{7,})\(\)\s*\{')
-CACHE_VERSION = 'v5'
+CACHE_VERSION = 'v6'
 CODE_EXT = ('.py', '.sh', '.bash', '.js', '.mjs', '.ts', '.tsx')
 
 
@@ -326,7 +326,8 @@ def build(a):
             n.update(files=[], added={}, new=[])
             continue
         ensure_head(a.repo_dir, n)
-        n['files'] = cached(a, 'files|%s|%s|%s|%s|%s' % (n['pr'], n['head'], n.get('base_ref', ''), base_sha, CACHE_VERSION),
+        n['files'] = cached(a, 'files|%s|%s|%s|%s|%s|%s' % (n['pr'], n['head'], 'git' if n.get('pinned') else 'api',
+                                              n.get('base_ref', ''), base_sha, CACHE_VERSION),
                             lambda n=n: pr_files(a, n))
         n['added'] = cached(a, 'added|%s|%s|%s' % (n['head'], base_sha, CACHE_VERSION), lambda n=n: added_lines(a, n))
         n['new'] = cached(a, 'new|%s|%s|%s' % (n['head'], base_sha, CACHE_VERSION), lambda n=n: new_files(a, n))
@@ -339,15 +340,17 @@ def build(a):
         for y in nodes[i + 1:]:
             declared = [(p, q) for p, q in ((x['key'], y['key']), (y['key'], x['key'])) if (p, q) in blocks]
             if x['pr'] is not None and y['pr'] is not None:
+                fsig = hashlib.sha1(repr((sorted(x['files']), sorted(y['files']))).encode()).hexdigest()[:12]
                 kind, det, ev, files, fwd = cached(
-                    a, 'pair|%s|%s|%s|%s|%s' % (x['head'], y['head'], base_sha, trust_sig, CACHE_VERSION),
+                    a, 'pair|%s|%s|%s|%s|%s|%s' % (x['head'], y['head'], base_sha, trust_sig, fsig, CACHE_VERSION),
                     lambda x=x, y=y: git_pair(a, x, y, trust, declared))
             else:
                 kind, det, ev, files, fwd = 'independent', '', 'no shared file', [], True
             src = 'derived'
             if declared:
                 p, q = declared[0]
-                kind, det, ev, files, src = 'H1', 'D1', 'Jira Blocks %s -> %s' % (p, q), [], 'declared'
+                ev = 'Jira Blocks %s -> %s' % (p, q) + (' and back (cycle)' if len(declared) > 1 else '')
+                kind, det, files, src = 'H1', 'D1', [], 'declared'
                 fwd = (p == x['key'])
             frm, to = (x, y) if fwd else (y, x)
             edges.append({'from': frm['id'], 'to': to['id'], 'kind': kind, 'det': det, 'evidence': ev,
