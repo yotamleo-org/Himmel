@@ -5523,6 +5523,71 @@ rc=$?
 assert_rc "1879d a different handover still arms freely (rc=0)" 0 "$rc"
 assert_not_contains "1879d no cross-handover fired-block" "ALREADY FIRED" "$out"
 
+# --- 7757: usage-limit arm/resume keys + restart cap ------------------------
+# --limit-reset <tag> keys a usage-limit arm on (handover, reset time). Replaying
+# the same arm (same reset) is a no-op even after the first one fired and ended
+# -- the scheduler reads clean and rc 15 lets an ended run re-arm, so only the
+# key stops the second session. A fourth restart of one handover inside 5
+# minutes is refused (rc=23); a different reset tag is a different key.
+LEDGER_7757="$TMP/7757.jsonl"
+: > "$DB_1879"; : > "$LEDGER_7757"
+HO_7757="$(make_handover "$WORK_REPO")"
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --limit-reset R1 2>&1)
+rc=$?
+assert_rc "7757 first limit arm (reset R1) succeeds (rc=0)" 0 "$rc"
+TASK_7757=$(printf '%s\n' "$out" | sed -n 's/^ *Task name: //p' | head -1 | tr -d '\r')
+# Fire it and let the session end: scheduler clean, ledger start+end row.
+: > "$DB_1879"
+RUN_7757=$(HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" bash "$FR_LIB" \
+    --append-start "armed-resume" "" "testhost" "claude" "" "$TASK_7757" "" 7757)
+HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" bash "$FR_LIB" \
+    --append-end "armed-resume" "$RUN_7757" "" 0 "complete" "" "limit hit again" >/dev/null
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --limit-reset R1 2>&1)
+rc=$?
+assert_rc "7757 replaying the same limit arm is a no-op (rc=0)" 0 "$rc"
+assert_contains "7757 the replay names the limit-resume key" "limit-resume key" "$out"
+if [ "$(OSTYPE=msys count_slots "$DB_1879" "$DBD_1879")" = "0" ]; then
+    echo "PASS 7757 the replay armed no second session (0 slots)"
+else
+    echo "FAIL 7757 the replay armed a second session ($(OSTYPE=msys count_slots "$DB_1879" "$DBD_1879") slots)"
+    FAILED=$((FAILED + 1))
+fi
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --limit-reset R2 2>&1)
+rc=$?
+assert_rc "7757 a different reset time is a different key and arms (rc=0)" 0 "$rc"
+: > "$DB_1879"
+# The R1 fire is restart one; seed two more fired rows inside the window, then
+# the next arm is the fourth restart.
+for _n in 2 3; do
+    HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" bash "$FR_LIB" \
+        --append-start "armed-resume" "" "testhost" "claude" "" "$TASK_7757" "" 775$_n >/dev/null
+done
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --limit-reset R3 2>&1)
+rc=$?
+assert_rc "7757 a fourth restart inside 5 minutes is refused (rc=23)" 23 "$rc"
+assert_contains "7757 the refusal says why" "restarted 3 times in 5 minutes" "$out"
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --limit-reset R5 --force 2>&1)
+rc=$?
+assert_rc "7757 --force overrides the restart cap (rc=0)" 0 "$rc"
+# A plain (non-limit) arm of the same handover never meets either key.
+: > "$DB_1879"
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --force 2>&1)
+rc=$?
+assert_rc "7757 a non-limit arm is untouched by the limit keys (rc=0)" 0 "$rc"
+assert_not_contains "7757 no limit-key message on a non-limit arm" "limit-resume key" "$out"
+
 # --- 1879e: the post-arm existence verify on the POSIX at backend -----------
 # The verify asks list_existing, which is per-platform. Windows is covered by
 # every case above (win_env); force the `at` backend once so a POSIX host is not

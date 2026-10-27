@@ -73,6 +73,10 @@
 #                      handover's.
 #   --source-key <tag> Stable dedup identity for one SOURCE; see
 #                      the --help text.
+#   --limit-reset <tag> Mark a usage-limit arm and key it on this handover plus
+#                      the limit's reset time: replaying the same pair is a
+#                      no-op (rc 0), and a fourth restart of the handover inside
+#                      5 minutes is refused (rc=23). --force bypasses both.
 #   --dry-run          Print what would be scheduled, touch nothing.
 #
 # Env:
@@ -328,6 +332,7 @@ AUTOCOMPACT=""
 TIER=""
 DEDUP_ANY=0
 SOURCE_KEY=""
+LIMIT_RESET=""
 WORKTREE_BRANCH=""
 WSL_DISTRO=""
 AUTOMERGE=0
@@ -343,7 +348,7 @@ _epoch_hhmm() { py_armor_capture -c 'import sys,datetime; print(datetime.datetim
 
 usage() {
     cat <<'EOF'
-Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier worker] [--provisional-base-ok]
+Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--limit-reset <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier worker] [--provisional-base-ok]
 
 Arms the OS scheduler to relaunch claude at the given time with a
 resume prompt referencing the given handover file. Dedup-guarded
@@ -473,6 +478,11 @@ Optional:
                      re-arm with the same tag matches the queued job (rc 3,
                      or --force replaces it) even if the handover path
                      differs. [A-Za-z0-9_-], 1-64 chars.
+  --limit-reset <tag> Mark a usage-limit arm; keyed on this handover plus the
+                     limit's reset time, so replaying the same pair is a
+                     no-op (rc 0) and a fourth restart of the handover inside
+                     5 minutes is refused (rc=23). --force bypasses both.
+                     [A-Za-z0-9_.:-], 1-64 chars.
   --dry-run          Print what would be scheduled, touch nothing
   --list-temp-arms   Read-only sweep: report every armed
                      HIMMEL-Resume-* entry whose runner targets a temp/scratch
@@ -779,6 +789,13 @@ while [ $# -gt 0 ]; do
                 exit 2
             fi
             SOURCE_KEY="$2"; shift 2
+            ;;
+        --limit-reset)
+            if [ $# -lt 2 ] || ! [[ "$2" =~ ^[A-Za-z0-9_.:-]{1,64}$ ]]; then
+                echo "ERR arm-resume: --limit-reset requires a 1-64 char value of [A-Za-z0-9_.:-]" >&2
+                exit 2
+            fi
+            LIMIT_RESET="$2"; shift 2
             ;;
         --dry-run)     DRY_RUN=1; shift ;;
         --automerge)   AUTOMERGE=1; shift ;;
@@ -3175,6 +3192,51 @@ if [ -n "$SOURCE_KEY" ]; then
     fi
     TASK_NAME_LEGACY=""
 fi
+# Usage-limit keys (--limit-reset): the scheduler and the rc 15 ledger probe both
+# read clean once a fired session has ended, so a replayed limit resume would
+# fire a second session. The limit-resume key (task name + reset time, recorded
+# beside the flow-run ledger when the arm succeeds) makes the replay a no-op.
+# The restart cap counts this task's `armed-resume` start rows in the last 5
+# minutes and refuses the fourth. Non-limit arms never reach either check.
+if [ -n "$LIMIT_RESET" ] && [ -f "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh" ]; then
+    # shellcheck source=../lib/flow-run-ledger-path.sh
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh"
+    _lim_ledger=$(flow_run_ledger_path 2>/dev/null) || _lim_ledger=""  # swallow-ok: no ledger path means no limit keys; the arm proceeds as before
+    if [ -n "$_lim_ledger" ]; then
+        _lim_keys="$(dirname "$_lim_ledger")/limit-keys.txt"
+        if [ "$FORCE" -eq 0 ] && grep -qxF -- "$TASK_NAME:$LIMIT_RESET" "$_lim_keys" 2>/dev/null; then
+            echo "arm-resume: limit-resume key $TASK_NAME:$LIMIT_RESET already armed -- replay is a no-op (--force re-arms)"
+            exit 0
+        fi
+        if [ "$FORCE" -eq 0 ] && [ -f "$_lim_ledger" ]; then
+            _lim_cutoff=$(date -u -d "@$(( $(date +%s) - 300 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+                || date -u -r "$(( $(date +%s) - 300 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _lim_cutoff=""  # swallow-ok: no date form works, so the cap is skipped (fail open)
+            _lim_n=0
+            if [ -n "$_lim_cutoff" ]; then
+                _lim_rows=$(grep -F '"flow":"armed-resume"' "$_lim_ledger" 2>/dev/null | grep -F '"ev":"start"' \
+                    | grep -F "\"task_name\":\"$TASK_NAME\"" | sed -n 's/.*"fired_at":"\([^"]*\)".*/\1/p') || _lim_rows=""
+                while read -r _lim_at; do
+                    [ -n "$_lim_at" ] || continue
+                    [[ "$_lim_at" < "$_lim_cutoff" ]] || _lim_n=$((_lim_n + 1))
+                done <<< "$_lim_rows"
+            fi
+            if [ "$_lim_n" -ge 3 ]; then
+                {
+                    echo "ERR arm-resume: this handover was restarted $_lim_n times in 5 minutes -- refusing a fourth (crash loop)."
+                    echo "    task:   $TASK_NAME"
+                    echo "Find out why the resumed session keeps exiting. --force overrides."
+                } >&2
+                if [ "$DRY_RUN" -eq 0 ]; then
+                    telemetry_emit handover-arm-resume restart-cap "time=$RESUME_TIME"
+                fi
+                exit 23
+            fi
+            unset _lim_cutoff _lim_n _lim_at _lim_rows
+        fi
+    fi
+fi
+
 # The armed relaunch's `claude -n` session title - the same
 # composer renders both surfaces from one identity, so the scheduler row name
 # and the session/tab title can never disagree.
@@ -6597,6 +6659,13 @@ fi
 # the audit; gap_sec records how far out it actually is. Default 0 for the
 # smart/auto sentinel arms, which never derive _GAP_SEC (no measured park).
 telemetry_emit handover-arm-resume armed "time=$RESUME_TIME" "force=$FORCE" "long_gap=$LONG_GAP" "gap_sec=${_GAP_SEC:-0}"
+
+# Record the limit-resume key (best-effort: a write failure must not fail an arm
+# that already succeeded; the worst case is the pre-key behavior).
+if [ -n "$LIMIT_RESET" ] && [ -n "${_lim_keys:-}" ]; then
+    mkdir -p "$(dirname "$_lim_keys")" 2>/dev/null || true  # swallow-ok: best-effort key record, the arm already succeeded
+    printf '%s\n' "$TASK_NAME:$LIMIT_RESET" >> "$_lim_keys" 2>/dev/null || true
+fi
 
 # record this arm in the cross-machine arms registry, same
 # dry-run gate as telemetry above. Best-effort -- a registry write failure
