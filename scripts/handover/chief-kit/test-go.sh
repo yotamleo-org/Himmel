@@ -672,7 +672,7 @@ check "22: the reserved qid writes no GO" "$(test -e "$ROOT22F/.locks/go/78.$SHA
 ROOT23="$tmp/root23"; mkdir -p "$ROOT23"
 A23_BIN="$tmp/a23-bin"; mkdir -p "$A23_BIN"
 A23_ORIGIN=$(git -C "$HERE" remote get-url origin | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##')
-export A23_ORIGIN A23_ADOPTED="$tmp/a23-adopted.json" A23_HEAD="$SHA"
+export A23_ORIGIN A23_ADOPTED="$tmp/a23-adopted.json" A23_ADAPTERS="$tmp/a23-adapters.json" A23_HEAD="$SHA"
 cat > "$A23_BIN/gh" <<'STUB'
 #!/usr/bin/env bash
 case "$1 $2" in
@@ -684,6 +684,7 @@ case "$1 $2" in
     "api repos/"*)
         case "$2" in
             "repos/$A23_ORIGIN/contents/scripts/guardrails/himmel-adopted.json?ref=main") cat "$A23_ADOPTED" 2>/dev/null || exit 1 ;;
+            "repos/$A23_ORIGIN/contents/scripts/guardrails/himmel-adapters.json?ref=main") cat "$A23_ADAPTERS" 2>/dev/null || exit 1 ;;
             *) exit 1 ;;
         esac ;;
     "pr view")
@@ -763,6 +764,21 @@ t23 "a record in a bucket another owner's widget shares" 5 --repo acme/widget --
 averdict "$VSCOPE" W5 "repo: acme/$VBUCKET"
 rc=0; go_trust_verdict "$ROOT23" W5 "$SHA" "$HERE/../../.." 88 >/dev/null || rc=$?
 check    "7392: the harness lookup refuses an adopted repo's record" "$rc" "2"
+
+# --- 23b. an adapter repo's trust GO reads the adapter's own bucket ---
+# write-verdict.sh --repo writes an adapter's verdict under u/<owner>--<name> with a
+# repo: header; go.sh must read that bucket for an adapter too, and a verdict in
+# the harness bucket must not count.
+printf '[{"nwo":"acme/gadget","merge_allowed":true,"himmel_branch":"main"}]\n' > "$A23_ADAPTERS"
+averdict u/acme--gadget G1 "repo: acme/gadget"
+rc=0; out="$(a23 --repo acme/gadget --trust-reviewed G1 88 "$SHA" 2>&1)" || rc=$?
+check    "7885: adapter trust GO from the adapter's bucket -> exit 0" "$rc" "0"
+contains "7885: the adapter GO carries the judge's qid" "$(cat "$ROOT23/.locks/go/88.$SHA" 2>/dev/null)" "trust-reviewed=G1"
+rm -f "$GO23"
+averdict "$VSCOPE" G2 "repo: acme/gadget"
+t23 "an adapter verdict in the harness bucket" 5 --repo acme/gadget --trust-reviewed G2 88 "$SHA"
+averdict u/acme--gadget G3 ""
+t23 "an adapter record naming no repo" 5 --repo acme/gadget --trust-reviewed G3 88 "$SHA"
 
 # --- 27. a trust GO never rests on a no-op verdict for a delta that needs a judge ---
 # write-verdict.sh --delta-noop signs `delta: no-op` / `delta-judged: <sha>` into a

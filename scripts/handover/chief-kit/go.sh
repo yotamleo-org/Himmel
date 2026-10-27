@@ -288,7 +288,9 @@ fi
 # (an adopted repo's default branch).
 VREPO=""
 if [ "$FORK_SET" -eq 1 ]; then
-    if ! HBRANCH=$(go_adapter_entry "$ANCHOR" "$FORK"); then
+    if HBRANCH=$(go_adapter_entry "$ANCHOR" "$FORK"); then
+        VREPO=$FORK
+    else
         if ! ABRANCH=$(go_adopted_entry "$ANCHOR" "$FORK"); then
             echo "go: refusing the fork GO for $FORK PR #$PR - $HBRANCH $ABRANCH No GO written." >&2
             exit 6
