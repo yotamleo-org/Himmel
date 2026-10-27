@@ -1,7 +1,7 @@
 # Cadences reference
 
 A **cadence** is a recurring job himmel can arm on your machine: a crontab entry
-(Linux, macOS) or a scheduled task (Windows) that fires a runner on a schedule.
+(Linux, macOS) that fires a runner on a schedule.
 Every cadence is **off until you arm it**: the install wizard only offers the
 ones whose precondition holds, and nothing arms itself.
 

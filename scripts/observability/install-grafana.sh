@@ -12,7 +12,7 @@
 #
 # Layout (everything under $DATA, so uninstall is one directory):
 #   $DATA/prometheus-<ver>/   $DATA/grafana-<ver>/    the pinned upstream trees
-#   $DATA/prometheus.yml      the repo copy minus the Windows-only exporter job
+#   $DATA/prometheus.yml      the repo copy
 #   $DATA/alerts.rules.yml    the repo copy
 #   $DATA/grafana.ini         telemetry/analytics/update checks OFF, loopback only
 #   $DATA/grafana-provisioning/  the repo provisioning, with the contact point
@@ -23,7 +23,7 @@
 #
 # Alerts: Grafana's one contact point is a webhook to grafana-cadence-hook.ts,
 # which calls scripts/luna/cadence-alert.sh — one dedupe path, one log. The
-# Windows Telegram contact point (GRAFANA_TELEGRAM_*) is not used here.
+# Telegram contact point (GRAFANA_TELEGRAM_*) is not used here.
 #
 # macOS is not supported yet (launchd packaging).
 #
@@ -59,7 +59,7 @@ die() { echo "install-grafana: $*" >&2; exit "${2:-1}"; }
 case "$(uname -s 2>/dev/null)" in
     Linux) ;;
     Darwin) die "macOS is not supported yet (launchd packaging)" 2 ;;
-    MINGW*|MSYS*|CYGWIN*) die "Windows shells use install-stack.ps1" 2 ;;
+    MINGW*|MSYS*|CYGWIN*) die "Windows is not supported" 2 ;;
     *) die "unsupported platform: $(uname -s 2>/dev/null)" 2 ;;
 esac
 
@@ -115,10 +115,7 @@ render_config() {
     mkdir -p "$DATA/data/prometheus" "$DATA/data/grafana" "$DATA/plugins" "$DATA/dashboards" "$prov/alerting" "$prov/datasources" "$prov/dashboards" "$prov/plugins" \
         || die "cannot create $DATA subdirectories"
 
-    # The Windows-only exporter job is the last stanza; on Linux its target never
-    # exists, so `up == 0` would alert forever.
-    sed -e '/^  - job_name: windows_exporter/,$d' "$src/prometheus.yml" > "$DATA/prometheus.yml" || die "cannot write prometheus.yml"
-    grep -q windows_exporter "$DATA/prometheus.yml" && die "prometheus.yml still names windows_exporter; its job is no longer the last stanza"
+    cp "$src/prometheus.yml" "$DATA/prometheus.yml" || die "cannot copy prometheus.yml"
     cp "$src/alerts.rules.yml" "$DATA/alerts.rules.yml" || die "cannot copy alerts.rules.yml"
 
     rm -f "$DATA/dashboards/"*.json # doctor diffs the whole dir, so a dashboard the repo dropped must not linger

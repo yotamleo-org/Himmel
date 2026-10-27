@@ -22,37 +22,38 @@ below.
 
 | Source | Skills vendored | Count |
 |--------|-----------------|-------|
-| [`obra/superpowers`](https://github.com/obra/superpowers) @ 7.0.1 | `brainstorming`, `writing-plans`, `systematic-debugging`, `verification-before-completion` (the 4 himmel invokes) plus `executing-plans`, `finishing-a-development-branch`, `requesting-code-review`, `subagent-driven-development`, `test-driven-development`, `using-git-worktrees`, `writing-skills` (the 7 they hand off to) | 11 of 14 |
+| [`obra/superpowers`](https://github.com/obra/superpowers) @ 7.0.1 | `brainstorming`, `writing-plans`, `systematic-debugging`, `verification-before-completion` (the 4 himmel invokes) plus `executing-plans`, `finishing-a-development-branch`, `requesting-code-review`, `subagent-driven-development`, `test-driven-development`, `using-git-worktrees`, `writing-skills` (the 7 they hand off to), plus `receiving-code-review` (cited by the worker preface's review-finding step, HIMMEL-7756) | 12 of 14 |
 | [`mattpocock/skills`](https://github.com/mattpocock/skills) @ 1.3.1 | `grilling` | 1 of 11 |
 | himmel-authored, no upstream | `context7-mcp` (moved here from `~/.claude/skills` — always-on before per-skill toggling existed, so a plugin profile can scope it) | — |
 
-13 skill directories total, replacing 25 (14 + 11) across the two upstream
+14 skill directories total, replacing 25 (14 + 11) across the two upstream
 plugins. Full per-source detail (including the upstream license each skill
 inherits) lives in [`VENDORED.md`](VENDORED.md) — read that file before
 touching anything under `skills/`.
 
-## Why 11 of superpowers' 14, not the 4 himmel actually invokes
+## Why 12 of superpowers' 14, not the 4 himmel actually invokes
 
 Vendoring only the 4 invoked skills would leave dangling
 `superpowers:<name>` cross-references: `brainstorming` hands off to
 `writing-plans`, which hands off to `subagent-driven-development` or
 `executing-plans`, which hand off to `requesting-code-review` and
-`finishing-a-development-branch`, and so on. The 11 vendored skills are the
-**reference closure** of the 4 himmel invokes — every skill one of those 4
-can hand off to, transitively. Vendoring fewer breaks the handoff chain
+`finishing-a-development-branch`, and so on. 11 of the 12 vendored skills are
+the **reference closure** of the 4 himmel invokes — every skill one of those 4
+can hand off to, transitively. The twelfth, `receiving-code-review`, is not
+reached through that chain; the worker preface cites it for review findings.
+Vendoring fewer breaks the handoff chain
 mid-flow; vendoring more (all 14) would re-import the cost this ticket exists
 to cut.
 
-**Deliberately NOT vendored (3 of 14):**
+**Deliberately NOT vendored (2 of 14):**
 
 - `using-superpowers` — its SessionStart injection is the majority of the
   ~700 tok/session this change reclaims. It exists to bootstrap discovery of
   the other 13 skills at the start of every conversation; lean-skills doesn't
   need a bootstrap injection because its skills are discovered the normal
   Claude Code way (skill-name matching against the request).
-- `receiving-code-review`, `dispatching-parallel-agents` — nothing vendored
-  here references either one; neither is in the reference closure of the 4
-  invoked skills.
+- `dispatching-parallel-agents` — nothing vendored here references it; it
+  is not in the reference closure of the 4 invoked skills.
 
 ### Not vendored: plannotator-effective-html
 
@@ -156,7 +157,7 @@ vendored script is not locally edited to fix this — tracked in HIMMEL-3106.
 **Release-level, not per-file.** This is a deliberate departure from the
 class-2 `UPSTREAM_PIN` format `telegram-himmel` uses — that
 format parses exactly one `upstream_repo`/`upstream_path`/`upstream_sha256`
-triple per plugin, and this plugin vendors 13 whole skill *directories*
+triple per plugin, and this plugin vendors 14 whole skill *directories*
 (`SKILL.md` plus companion prompts/scripts), not one file. A per-file sha256
 pin would need ~36 `gh api` calls per drift check and would still silently
 miss a companion file nobody had enumerated. Instead, `scripts/upstreams.json`
@@ -201,10 +202,10 @@ check runs it advisory-only (WARN on overlap, never FAIL) as part of a normal
 ## Files
 
 - `.claude-plugin/plugin.json` — plugin manifest (name: `lean-skills`).
-- `skills/` — the 13 vendored skill directories, copied verbatim (see table
+- `skills/` — the 14 vendored skill directories, copied verbatim (see table
   above). Never edit these by hand.
 - `VENDORED.md` — the machine-readable-ish inventory: which skill came from
-  which upstream release, and why the 3 superpowers skills and the 10
+  which upstream release, and why the 2 superpowers skills and the 10
   mattpocock/skills skills were left out.
 - `LICENSE.superpowers`, `LICENSE.mattpocock-skills` — upstream licenses,
   carried forward per source.

@@ -262,14 +262,14 @@ with [`docs/daily-loop.md`](docs/daily-loop.md) open beside you.
 ## Support matrix
 
 himmel is developed on Linux and macOS. **Windows (Git Bash, WSL) is not
-supported.** The Windows code paths are still in the tree and Windows issues
-are welcome, but nothing about Windows is claimed as working.
+supported.** Windows support was dropped; nothing about Windows is claimed as
+working.
 
 | Tier | Platforms | What it promises |
 |---|---|---|
 | **Supported** | Linux | Checked on every PR as a required check ([CI runs on `main`](https://github.com/yotamleo-org/Himmel/actions/workflows/ci.yml?query=branch%3Amain)). The adopter round trip is verified. |
 | **Supported** | macOS | Checked on a scheduled run twice a week, not on every PR ([scheduled macOS runs](https://github.com/yotamleo-org/Himmel/actions/workflows/macos-cadence.yml?query=event%3Aschedule)). A macOS-only failure is fixed as its own change ([`docs/internals/testing.md`](docs/internals/testing.md)). |
-| **Not supported** | Windows (Git Bash), WSL | Code paths exist but are unverified: no CI gate, no guarantee. |
+| **Dropped** | Windows (Git Bash), WSL | Support was dropped: no CI gate, no guarantee. |
 
 **Install channels:**
 

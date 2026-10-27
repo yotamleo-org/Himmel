@@ -69,7 +69,6 @@ Defined in `scripts/lib/vms.json`. Known VMs:
 |---|---|---|
 | `ubuntu_new` | Ubuntu | 2222 |
 | `win11_base_himmel` | Windows 11 | 2223 |
-| `win11` | Windows 11 | none: driven by `scripts/vm/win-vm.sh` (VBoxManage guestcontrol), not `vmsdk.py`; see docs/setup/vms.md "Windows VM: `win11`" |
 
 ## CLI — `vmsdk.py`
 

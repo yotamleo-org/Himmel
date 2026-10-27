@@ -4,10 +4,18 @@ Every himmel setting has one home and one rule for who wins. This page lists
 the homes, who owns each one, whether it is tracked in git, and the order in
 which they are read.
 
+Settings come in two scopes. **User scope** is every file under `~/.himmel`
+(and the keyring): it applies to every repo you run himmel in. **Project
+scope** is one file, `.himmel/project.conf`, committed in a repo you adopted:
+it applies only to sessions that run in that repo. A project file can change
+the project-scope behaviour keys for its repo, and can make a gate stricter than your user
+setting, but never looser.
+
 ## The layers
 
 | Layer | File | Owner | Tracked? | Holds |
 |---|---|---|---|---|
+| Project override | `<repo>/.himmel/project.conf` | the repo's maintainers (a hook refuses agent writes) | yes, in the adopted repo | project-scope behaviour keys (never station paths or identity), and gate-policy keys that may only tighten |
 | Secrets | the OS keyring through `scripts/lib/himmel-secrets`, then legacy `<primary checkout>/.env` | operator | never (gitignored, unreadable to agents) | API tokens, passwords, credentials, and the keys not yet classified (below) |
 | Behaviour config | `~/.himmel/himmel.conf` | operator, reviewable | yes on a luna install (a link to `<vault>/.himmel/himmel.conf`); a plain file otherwise | non-secret knobs: `HANDOVER_DIR`, `CR_PROFILE`, `HIMMEL_INITIATIVE`, … |
 | Local override | `~/.himmel/himmel.conf.local` | operator, this machine | never | the same keys, for one machine only |
@@ -27,16 +35,20 @@ every session (fleet manifest, queue locks, ledgers) is state, not config.
 Behaviour keys, read by `load_dotenv` in `scripts/lib/load-dotenv.sh`:
 
 1. the process environment (a non-empty value)
-2. `~/.himmel/himmel.conf.local`
-3. `~/.himmel/himmel.conf`
-4. legacy `.env`, with a `DEPRECATED` notice on stderr
-5. the consumer's own default
+2. `<repo>/.himmel/project.conf`, project-scope keys only
+3. `~/.himmel/himmel.conf.local`
+4. `~/.himmel/himmel.conf`
+5. legacy `.env`, with a `DEPRECATED` notice on stderr
+6. the consumer's own default
 
 Gate-policy keys, read by `load_policy` in `scripts/lib/load-dotenv.sh`:
 
 1. `~/.himmel/config.json` `.policy`
 2. legacy `.env`, with a `DEPRECATED` notice
 3. unset, which every gate treats as its safe default
+
+Then the project file is checked: a policy key it sets replaces the value
+above only when it is stricter (next section).
 
 The process environment is **not** in the policy list. A gate-policy key can
 only change by editing a file the operator owns, so
@@ -57,6 +69,59 @@ still wins, as the list above says.
 The directory is always `$HOME/.himmel`. No environment variable moves it
 (`HIMMEL_LUNA_CONFIG_PATH`, which `himmelctl` honours for its own fields, is
 not consulted for policy).
+
+### The project override
+
+The file is `.himmel/project.conf` at the root of the repo's primary
+checkout, in the same `KEY=value` form as `himmel.conf`, parsed and never
+executed. The repo is the one the command runs in, found through
+`git rev-parse --git-common-dir`, so a session in a worktree reads its
+primary checkout's file, not the worktree's copy. The gate scripts pass
+`--root` pointing at the himmel checkout; that root still picks `.env`, but
+never the project file. Outside a git repo there is no project file.
+
+- **Behaviour keys**: the project file serves project-scope keys only:
+  `CR_PROFILE`, `CR_CLAUDE_AGENTS`, `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`,
+  `TICKET_ID_EXEMPT_AUTHORS`, `TRACKER`, `JIRA_PROJECT_KEY`, `JIRA_PROJECTS`
+  and `HIMMEL_DOC_FRESHNESS`. They beat `himmel.conf.local` and
+  `himmel.conf`; the process environment still beats the project file.
+  Station-scope keys (`HANDOVER_DIR`, `LUNA_VAULT_PATH`, `USER_SLUG`,
+  `JIRA_EMAIL`, the org and account ids, `HIMMEL_UPDATE_AUTOSTASH`, the
+  initiative and AFK keys) are never read from it, even when `himmel.conf`
+  does not set them, so a committed file cannot move where a station keeps
+  its state.
+- **Gate-policy keys** from the project file can only tighten. Each key has a
+  strict side, read as the gates read it (trimmed, any case):
+
+  | Key | Strict | Loose |
+  |---|---|---|
+  | `CR_REQUIRE_CROSS_MODEL` | `1`, `true`, `on`, `yes` | anything else, or unset |
+  | `CR_FLOOR_FALLBACK` | anything but `claude-only`, or unset | `claude-only` |
+  | `ARMAUTOMERGE` | anything but `1`, `true`, `on`, `yes`, or unset | `1`, `true`, `on`, `yes` |
+
+  A project value on the strict side replaces a user value on the loose side,
+  so `CR_REQUIRE_CROSS_MODEL=1` in the project file turns the cross-model
+  requirement on for that repo when your user value is `0`. A project value
+  on the loose side, while your user value is strict, is ignored with one
+  line on stderr:
+  `himmel: ignoring CR_FLOOR_FALLBACK from <file>: a project file may only tighten gate policy, never loosen it`.
+  `load_dotenv` applies the same rule to the policy keys it serves, even
+  one the process environment set, so `pr-check-env.sh` shows the project
+  file's tightening the gate enforces.
+  A project `ARMAUTOMERGE=0` governs only the default `arm-resume.sh` reads
+  through `load_policy`. It does not stop `headed-arm.sh`, which launches
+  with `ARMAUTOMERGE=1`, or an `ARMAUTOMERGE=1` passed to `merge-on-green.sh`
+  in its environment.
+- **Secret keys** are never read from the project file. A token written there
+  is skipped and the resolver order below applies.
+- **Writes**: `block-himmel-config-writes.sh` refuses an agent's Edit, Write
+  and `apply_patch` on any `.himmel/project.conf`, in any repo or worktree, and
+  a Bash command that names one, except a plain read. A session therefore
+  cannot change its own repo's settings; the maintainers change the file by
+  hand, and through review like any other tracked file.
+- A project file that exists but cannot be read or parsed, including a
+  symlink whose target is gone or a directory, makes `load_policy` return
+  non-zero, so the gate refuses instead of guessing.
 
 ### Failure behaviour
 
@@ -146,7 +211,9 @@ or legacy `.env`, never from `himmel.conf` or its local override.
 
 Every reader of these keys follows the same order as `load_dotenv`: the
 process env, `himmel.conf.local`, `himmel.conf`, the legacy `.env`, the
-default. A reader that opens only `.env`, or only the process env, misses a
+default. Only the shell loader reads the project file so far; the Jira CLI,
+the lane resolver, the profile capture and the config UI (HIMMEL-7134) do
+not yet. A reader that opens only `.env`, or only the process env, misses a
 key the operator has moved; the shell, the Jira CLI
 (`scripts/jira/src/handover-root.ts`), the lane resolver, the profile capture
 and the config UI all resolve it that way.

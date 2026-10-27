@@ -22,7 +22,7 @@ The reviewers `scripts/cr/critics.json` runs on every PR today. To change the se
 | `codex:gpt-6.1-sol` | required: must pass before every merge | **79.5%** | 78.3 to 80.6 | 77.8 to 81.2 | as of 2026-10-25, n = 4,968 ruled findings over 1,482 PRs |
 | `claude:claude-opus-5-5` | must pass where it runs; skipped on a machine without it | **48.2%** | 41.2 to 55.2 | 36.5 to 59.2 | as of 2026-10-25, n = 193 ruled findings over 36 PRs |
 | `coderabbit` | best effort: holds a merge only on a posted finding | **91.8%** | 82.2 to 96.4 | 82.6 to 100.0 | as of 2026-10-25, n = 61 ruled findings over 51 PRs |
-| `coderabbit-outside` | part of `coderabbit`: findings on lines outside the diff | **55.0%** | 46.1 to 63.6 | 43.5 to 65.0 | as of 2026-10-25, n = 120 ruled findings over 118 PRs |
+| `coderabbit-outside` | part of `coderabbit`: findings on lines outside the diff | **55.6%** | 46.5 to 64.2 | 43.9 to 65.3 | as of 2026-10-25, n = 117 ruled findings over 118 PRs |
 
 Precision is the share of a reviewer's ruled findings that were right; when the two ranges disagree, trust the wider one. Method: [review panel](review-panel.md).
 
@@ -34,9 +34,9 @@ Every reviewer the ledger holds that the panel no longer runs, oldest first. A r
 |---|---|---|---|---|---|
 | `codex:gpt-5.6-sol` | 2026-09-04 to 2026-09-05 | **84.1%** | 76.2 to 89.7 | 74.2 to 91.7 | as of 2026-10-25, n = 113 ruled findings over 27 PRs |
 | `codex:gpt-6-astra` | 2026-09-05 to 2026-09-23 | **89.3%** | 87.4 to 90.9 | 86.1 to 92.0 | as of 2026-10-25, n = 1,231 ruled findings over 362 PRs |
-| `codex` (model not recorded) | 2026-09-08 to 2026-10-21 | **97.1%** | 91.7 to 99.0 | 90.0 to 100.0 | as of 2026-10-25, n = 102 ruled findings over 8 PRs |
+| `codex` (model not recorded) | 2026-09-08 to 2026-10-21 | **98.0%** | 93.1 to 99.5 | 95.8 to 100.0 | as of 2026-10-25, n = 102 ruled findings over 8 PRs |
 | `codex:gpt-6-sol` | 2026-09-23 to 2026-09-29 | **70.7%** | 67.0 to 74.1 | 64.8 to 76.2 | as of 2026-10-25, n = 627 ruled findings over 169 PRs |
-| All reviewers pooled | 2026-09-04 to 2026-10-24 | **79.7%** | 78.7 to 80.6 | 78.2 to 81.1 | as of 2026-10-25, n = 7,485 ruled findings over 2,128 PRs |
+| All reviewers pooled | 2026-09-04 to 2026-10-24 | **79.7%** | 78.8 to 80.6 | 78.2 to 81.1 | as of 2026-10-25, n = 7,481 ruled findings over 2,128 PRs |
 
 A row marked (model not recorded) holds the findings whose ledger record names no answering model for that review; they are kept apart, never folded into a named model, because which model raised them is unknown. 30 reviewers with fewer than 30 ruled findings are left out: too few to rank. What the history taught, with the analysis behind it: [review panel](review-panel.md).
 
@@ -44,11 +44,11 @@ A row marked (model not recorded) holds the findings whose ledger record names n
 
 | Outcome | Findings | Share | Sample |
 |---|---|---|---|
-| Raised | 11,637 | | as of 2026-10-25, n = 11,637 findings |
-| Agreed | 5,963 of 11,637 | 51.2% `██████████░░░░░░░░░░` | as of 2026-10-25, n = 11,637 findings |
-| Disproved | 1,522 of 11,637 | 13.1% `███░░░░░░░░░░░░░░░░░` | as of 2026-10-25, n = 11,637 findings |
-| Deferred | 3,493 of 11,637 | 30.0% `██████░░░░░░░░░░░░░░` | as of 2026-10-25, n = 11,637 findings |
-| No verdict | 659 of 11,637 | 5.7% `█░░░░░░░░░░░░░░░░░░░` | as of 2026-10-25, n = 11,637 findings |
+| Raised | 11,570 | | as of 2026-10-25, n = 11,570 findings |
+| Agreed | 5,962 of 11,570 | 51.5% `██████████░░░░░░░░░░` | as of 2026-10-25, n = 11,570 findings |
+| Disproved | 1,519 of 11,570 | 13.1% `███░░░░░░░░░░░░░░░░░` | as of 2026-10-25, n = 11,570 findings |
+| Deferred | 3,430 of 11,570 | 29.6% `██████░░░░░░░░░░░░░░` | as of 2026-10-25, n = 11,570 findings |
+| No verdict | 659 of 11,570 | 5.7% `█░░░░░░░░░░░░░░░░░░░` | as of 2026-10-25, n = 11,570 findings |
 
 Every reviewer, current and past. Only agreed and disproved count toward precision; deferred and no-verdict findings sit outside it. Method: [review panel](review-panel.md).
 

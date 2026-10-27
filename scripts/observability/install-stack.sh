@@ -11,7 +11,6 @@
 #
 # Scope: the EXPORTER ONLY. Prometheus + Grafana are a separate opt-in tier
 # and are not installed here.
-# Windows uses install-stack.ps1.
 #
 # The unit/plist points at the PRIMARY checkout (via git-common-dir, as
 # doctor-cadence.sh does), never a worktree: a worktree is prunable and would
@@ -40,7 +39,7 @@ die() { echo "install-stack: $*" >&2; exit "${2:-1}"; }
 case "$(uname -s 2>/dev/null)" in
     Linux) PLATFORM=linux ;;
     Darwin) PLATFORM=macos ;;
-    MINGW*|MSYS*|CYGWIN*) die "Windows shells use install-stack.ps1 (scripts/observability/install-stack.ps1)" 2 ;;
+    MINGW*|MSYS*|CYGWIN*) die "Windows is not supported" 2 ;;
     *) die "unsupported platform: $(uname -s 2>/dev/null)" 2 ;;
 esac
 

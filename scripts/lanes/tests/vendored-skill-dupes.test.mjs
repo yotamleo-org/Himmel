@@ -60,6 +60,7 @@ test('both overlaps reported when lean-skills and both upstream plugins are on',
     'brainstorming',
     'executing-plans',
     'finishing-a-development-branch',
+    'receiving-code-review',
     'requesting-code-review',
     'subagent-driven-development',
     'systematic-debugging',
@@ -68,7 +69,7 @@ test('both overlaps reported when lean-skills and both upstream plugins are on',
     'verification-before-completion',
     'writing-plans',
     'writing-skills',
-  ], 'expected exactly the 11 vendored superpowers skills, in sorted order');
+  ], 'expected exactly the 12 vendored superpowers skills, in sorted order');
 
   const mattpocock = out.find((o) => o.plugin === 'mattpocock-skills@claude-plugins-official');
   assert.ok(mattpocock, 'mattpocock-skills overlap missing (HIMMEL-3064 Defect B regression)');

@@ -47,6 +47,10 @@ still reads as live in `ListAgents`. If you cannot end your own session,
 say exactly that in your final message so the chief can list you for the
 operator instead of assuming you are gone.
 
+## Lessons
+
+For each lesson ask: **which check or guardrail would have caught this, and does it exist?** Write the answer on the lesson as `check: <name>` or `check: none`.
+
 ## Overnight Mode Trigger
 
 If the user prompt includes the phrase **"overnight mode"** alongside this file path, run the full autonomous pipeline end-to-end without pausing for confirmation between phases.

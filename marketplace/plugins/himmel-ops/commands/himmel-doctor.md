@@ -17,7 +17,7 @@ interpreter (`uvx mcp-obsidian`, `bun …`) that a PATH-less macOS GUI launch ca
 find, so the server and all its tools silently fail to start (same root cause as
 the node hook) — and **PATH-fragile hooks** (C6-hooks) — a hook command leading
 with a bare interpreter that is *not installed on this host* (e.g. a
-`pwsh -NoProfile -File …` SessionEnd twin copied onto a host without PowerShell),
+`deno run …` hook copied onto a host without deno),
 which prints `<interp>: command not found` every session.
 
 It also runs a **merged-PR worktree scan** (C7, read-only) — detects non-primary,

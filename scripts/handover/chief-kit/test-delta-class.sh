@@ -194,6 +194,88 @@ done < "$repo_trust"
 check "1: delta-class.sh is itself under a ci-trust-paths pattern" "$hit" yes
 mkv GO 'finding: src/a.txt:3-4'
 
+# 8: a merge-forward of origin/main: paths only main changed are not the PR's delta
+base_branch=$(git rev-parse --abbrev-ref HEAD)
+J8=$J
+git checkout -q -b main8a "$J8"; echo "m1" > scripts/ci/y.sh; M=$(step main-trust)
+git checkout -q -b pr8a "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-own)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8a >/dev/null; N=$(git rev-parse HEAD)
+J=$Jp; mkv GO
+check "8a: a pure merge-forward whose main side touches a trust path -> none" "$(cls "$N")" none
+echo "pr2" > scripts/ci/z.sh; N2=$(step pr-trust-after-merge)
+check "8c: a PR commit to a trust path after the merge-forward -> trust" "$(cls "$N2")" trust
+check "8j: a PR commit to a trust path is still trust when read from a subdirectory" "$(cd src && cls "$N2")" trust
+check "8j: a pure merge-forward read from a subdirectory -> none" "$(cd src && cls "$N")" none
+git update-ref -d refs/remotes/origin/main
+check "8d: a merge-forward with no origin/main to compare against -> trust" "$(cls "$N")" trust
+J=$J8
+git checkout -q "$base_branch"
+
+git checkout -q -b main8b "$J8"; echo "mainx" > scripts/ci/x.sh; M=$(step main-conflict)
+git checkout -q -b pr8b "$J8"; echo "prx" > scripts/ci/x.sh; Jp=$(step pr-conflict)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8b >/dev/null 2>&1
+echo "resolved" > scripts/ci/x.sh; N=$(step resolved)
+J=$Jp; mkv GO
+check "8b: a merge-forward with a conflict resolved in a trust path -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+
+# 8e: the PR's own edit to a trust path (after the judged head) is dropped by resolving to main's exact side
+git checkout -q -b main8e "$J8"; echo "mainx" > scripts/ci/x.sh; M=$(step main-x)
+git checkout -q -b pr8e "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-judged)
+echo "prx" > scripts/ci/x.sh; step pr-x >/dev/null
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8e >/dev/null 2>&1
+echo "mainx" > scripts/ci/x.sh; N=$(step resolved-to-main)
+J=$Jp; mkv GO
+check "8e: a conflict resolved to main's exact side -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+
+# 8f: the PR changed a trust path by the judged head, then reverts it to main's content after the merge-forward
+git checkout -q -b main8f "$J8"; echo "m" > scripts/ci/y.sh; M=$(step main-y)
+git checkout -q -b pr8f "$J8"; echo "prx" > scripts/ci/x.sh; Jp=$(step pr-x)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8f >/dev/null 2>&1
+echo "x" > scripts/ci/x.sh; N=$(step revert-to-main)
+J=$Jp; mkv GO
+check "8f: a trust-path edit reverted to main's content after the merge-forward -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+
+# 8g/8h: the PR deletes, then adds, a trust path after a pure merge-forward
+git checkout -q -b main8g "$J8"; echo "m" > scripts/ci/y.sh; M=$(step main-y2)
+git checkout -q -b pr8g "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-judged2)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8g >/dev/null 2>&1
+rm scripts/ci/x.sh; N=$(step delete-trust)
+J=$Jp; mkv GO
+check "8g: a trust path the PR deletes after the merge-forward -> trust" "$(cls "$N")" trust
+git reset -q --hard "${N}~1"
+echo "n" > scripts/ci/new.sh; N=$(step add-trust)
+check "8h: a trust path the PR adds after the merge-forward -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+
+# 8i: an octopus merge in the range fails closed (remerge-diff skips it without failing)
+git checkout -q -b main8i "$J8"; echo "m" > scripts/ci/y.sh; M=$(step main-y3)
+git checkout -q -b side8i "$J8"; echo "d" > docs/d.md; step side >/dev/null
+git checkout -q -b pr8i "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-judged3)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8i side8i >/dev/null 2>&1; N=$(git rev-parse HEAD)
+J=$Jp; mkv GO
+check "8i: an octopus merge-forward -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+mkv GO 'finding: src/a.txt:3-4'
+
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
 out=$(cls "$J"); check "7: an empty delta -> none, one word" "$out" none
 

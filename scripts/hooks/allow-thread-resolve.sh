@@ -10,21 +10,35 @@
 # The auto-mode classifier sometimes denied that call as an external write, at
 # random, and the denied resolve stalled the PR. This hook allows exactly that
 # shape as ONE literal command so the classifier never sees it: no chaining, no
-# redirect, no substitution, no extra flag, our owner and repo only, a PRRT_ thread id, and a CLI path that is the
-# PRIMARY checkout's copy of the repo THIS HOOK lives in (git's answer about the
-# hook's own directory, never the payload's cwd, which any repo can be), not a
-# branch copy whose bytes a branch controls. Any other command gets no decision (silent exit 0),
-# so the permission layer decides as before. The CLI posts its reason on GitHub
-# before it resolves, so every resolve stays auditable.
+# redirect, no substitution, no extra flag, our owner and repo only, a PRRT_
+# thread id, a reason in double or single quotes, and a CLI path that is the
+# PRIMARY checkout named by $HIMMEL_REPO (operator-set, resolved with cd -P,
+# its own .git directory, on refs/heads/main), whose CLI is a regular file
+# holding refs/heads/main's bytes. Nothing a branch controls - the payload's
+# cwd, the hook's own directory, a worktree's .git pointer file - is the
+# anchor. The CLI posts its reason on GitHub before it resolves, so every
+# resolve stays auditable.
+#
+# Two near misses get a DENY that names the fix, so the worker retries once
+# instead of reaching the classifier, and only when the anchor
+# holds, so the corrected call is one this hook allows:
+#   - the right call with the CLI spelled relative, by $CLAUDE_PROJECT_DIR, or
+#     by a linked worktree root of $HIMMEL_REPO: the deny carries the exact
+#     corrected one-line command;
+#   - the right shape with a quoted reason outside the grammar (e.g.
+#     "disproved: ..."), which the CLI refuses anyway: the deny names the
+#     accepted forms.
+# Any other command gets no decision (silent exit 0), so the permission layer
+# decides as before.
 #
 # It sits in the Bash chain, where a deny from any other member still wins
 # (the chain only merges allow decisions after every member has run).
 #
 # FAILURE DIRECTION: FAIL OPEN to "no decision" - this hook can only ADD an
-# allow for the one shape, so a missing jq or git, an unreadable payload or a
-# hook dir outside a git checkout leaves the call to the permission layer. The shape check is
-# this file's text scan; the test table in test-allow-thread-resolve.sh holds
-# the same rows.
+# allow for the one shape (or a deny naming it), so a missing jq or git, an
+# unreadable payload or an unanchored $HIMMEL_REPO leaves the call to the
+# permission layer. The shape check is this file's text scan; the test table in
+# test-allow-thread-resolve.sh holds the same rows.
 set -uo pipefail
 set -f
 
@@ -52,16 +66,64 @@ case "$cmd" in *$'\n'*|*$'\r'*|*..*) exit 0 ;; esac
 SHA='[0-9a-f]{7,40}'
 KEY='[A-Z][A-Z0-9]*-[0-9]+'
 WHY='[A-Za-z0-9.,:_/#-][A-Za-z0-9 .,:_/#-]{0,199}'
-RE='^node (/[A-Za-z0-9._/+@-]+)/plugins/himmel-gh/lib/thread-resolve-action-cli\.mjs'
-RE="$RE --owner yotamleo-org --repo Himmel --number [0-9]+ --thread-id PRRT_[A-Za-z0-9_-]+"
-RE="$RE --reason \"(fixed $SHA|followup $KEY|rejected $WHY)\"\$"
+GRAMMAR="^(fixed $SHA|followup $KEY|rejected $WHY)\$"
+REL='plugins/himmel-gh/lib/thread-resolve-action-cli.mjs'
+TAIL='--owner yotamleo-org --repo Himmel --number [0-9]+ --thread-id PRRT_[A-Za-z0-9_-]+'
+# CLI spelling: absolute | $CLAUDE_PROJECT_DIR | ${CLAUDE_PROJECT_DIR} | ./ | bare relative.
+# Reason: one double-quoted literal (no " \ $ `) or one single-quoted literal (no ').
+# shellcheck disable=SC2016  # literal $ and backtick are regex text
+RE='^node (/[A-Za-z0-9._/+@-]+/|[$]CLAUDE_PROJECT_DIR/|[$][{]CLAUDE_PROJECT_DIR[}]/|[.]/)?plugins/himmel-gh/lib/thread-resolve-action-cli\.mjs ('"$TAIL"') --reason ("[^"\$`]+"|'"'[^']+'"')$'
 [[ "$cmd" =~ $RE ]] || exit 0
-root="${BASH_REMATCH[1]}"
+spelled="${BASH_REMATCH[1]}"
+tail="${BASH_REMATCH[2]}"
+quoted="${BASH_REMATCH[3]}"
+reason="${quoted#?}"; reason="${reason%?}"
 
-common=$(git -C "$SCRIPT_DIR" rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
-case "$common" in /*/.git) ;; *) exit 0 ;; esac
-[ "$root" = "${common%/.git}" ] || exit 0
+g() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false "$@" 2>/dev/null; }
+resolved() { (cd -P "$1" 2>/dev/null && pwd -P); }
 
-reason=$(jq -n --arg r "allow-thread-resolve: the audited thread-resolve call (one literal command, primary checkout CLI)" '$r' 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
-printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow","permissionDecisionReason":%s}}\n' "$reason"
-exit 0
+# the anchor, as impacted_suites_is_anchored in auto-approve-safe-bash.sh
+repo="${HIMMEL_REPO:-}"; repo="${repo%/}"
+case "$repo" in /*) ;; *) exit 0 ;; esac
+repo=$(resolved "$repo") || exit 0
+anchor_git=$(resolved "$repo/.git") || exit 0
+common=$(g -C "$repo" rev-parse --path-format=absolute --git-common-dir) || exit 0
+[ "$(resolved "$common")" = "$anchor_git" ] || exit 0
+[ "$(g -C "$repo" symbolic-ref -q HEAD)" = refs/heads/main ] || exit 0
+[ -f "$repo/$REL" ] && [ ! -L "$repo/$REL" ] || exit 0
+want=$(g -C "$repo" rev-parse --verify -q "refs/heads/main:$REL") || exit 0
+[ -n "$want" ] && [ "$(g -C "$repo" hash-object --no-filters -- "$REL")" = "$want" ] || exit 0
+
+# shellcheck disable=SC2016  # the variable names are the spelling matched, never expanded
+case "$spelled" in
+    ''|./|'$CLAUDE_PROJECT_DIR/'|'${CLAUDE_PROJECT_DIR}/') where=near ;;
+    /*)
+        root=$(resolved "${spelled%/}") || exit 0
+        if [ "$root" = "$repo" ]; then
+            where=primary
+        else
+            # a linked worktree's root of the same repo; a forged pointer here only earns a deny
+            top=$(g -C "$root" rev-parse --show-toplevel) || exit 0
+            [ "$(resolved "$top")" = "$root" ] || exit 0
+            wcommon=$(g -C "$root" rev-parse --path-format=absolute --git-common-dir) || exit 0
+            [ "$(resolved "$wcommon")" = "$anchor_git" ] || exit 0
+            where=near
+        fi ;;
+    *) exit 0 ;;
+esac
+
+decide() {  # decide <allow|deny> <reason text>
+    local why
+    why=$(jq -n --arg r "$2" '$r' 2>/dev/null) || exit 0  # swallow-ok: fail-open allow hook, no decision on error
+    printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"%s","permissionDecisionReason":%s}}\n' "$1" "$why"
+    exit 0
+}
+
+blocked='If that is denied too, send the chief BLOCKED resolve <pr> <thread ids> and do not retry.'
+if [[ "$reason" =~ $GRAMMAR ]]; then
+    [ "$where" = primary ] && decide allow "allow-thread-resolve: the audited thread-resolve call (one literal command, primary checkout CLI)"
+    decide deny "allow-thread-resolve: name the resolve CLI by the primary checkout's absolute path (the value of \$HIMMEL_REPO written out), never a relative, worktree or \$CLAUDE_PROJECT_DIR path. Retry once with exactly: node $repo/$REL $tail --reason $quoted
+$blocked"
+fi
+decide deny "allow-thread-resolve: the resolve CLI refuses this reason. --reason must be \"fixed <7-40 hex sha>\", \"followup <KEY-n>\" or \"rejected <why>\", <why> written in letters, digits, spaces and . , : _ / # - only; a disproved finding is rejected <why>. Retry once with: node $repo/$REL $tail --reason \"<one of those>\"
+$blocked"

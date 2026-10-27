@@ -44,7 +44,7 @@ bare_pct() { grep -E '[0-9]%' "$1" | grep -Ev 'as of [0-9]{4}-[0-9]{2}-[0-9]{2},
 L="$TMP/ledger.jsonl"
 : > "$L"
 finding() { # model branch id
-  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"%s","head":"h1","model":"%s","finding_id":"%s","severity":"imp","verdict":"","artifact":"diff","perspective":"off","text":"t"}\n' "$2" "$1" "$3" >> "$L"
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"%s","head":"h1","model":"%s","finding_id":"%s","severity":"imp","verdict":"","artifact":"diff","perspective":"off","text":"claim %s"}\n' "$2" "$1" "$3" "$3" >> "$L"
 }
 amend() { # branch id verdict
   printf '{"kind":"amend","ts":"2026-10-02T10:00:00Z","branch":"%s","target_head":"h1","finding_id":"%s","artifact":"diff","perspective":"off","set":{"verdict":"%s"},"reason":"r"}\n' "$1" "$2" "$3" >> "$L"
@@ -242,15 +242,15 @@ L2="$TMP/ledger-bare.jsonl"
 cp "$L" "$L2"
 i=0
 while [ "$i" -lt 30 ]; do
-  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"g%s","head":"h1","model":"gamma","finding_id":"g-%s","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off","text":"t"}\n' "$((i % 3))" "$i" >> "$L2"
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"g%s","head":"h1","model":"gamma","finding_id":"g-%s","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off","text":"claim g-%s"}\n' "$((i % 3))" "$i" "$i" >> "$L2"
   i=$((i + 1))
 done
 printf '{"kind":"avail","ts":"2026-10-01T10:00:00Z","branch":"gm","head":"h1","model":"gamma","artifact":"diff","responding_model":"m1"}\n' >> "$L2"
-printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"gm","head":"h1","model":"gamma","finding_id":"gm-0","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off","text":"t"}\n' >> "$L2"
+printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"gm","head":"h1","model":"gamma","finding_id":"gm-0","severity":"imp","verdict":"agreed","artifact":"diff","perspective":"off","text":"claim gm-0"}\n' >> "$L2"
 # A ledger tag of a panel reviewer that pins no model (CodeRabbit's findings outside the diff) is current, beside it.
 i=0
 while [ "$i" -lt 30 ]; do
-  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"o%s","head":"h1","model":"coderabbit-outside","finding_id":"o-%s","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off","text":"t"}\n' "$((i % 3))" "$i" >> "$L2"
+  printf '{"kind":"finding","ts":"2026-10-01T10:00:00Z","branch":"o%s","head":"h1","model":"coderabbit-outside","finding_id":"o-%s","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off","text":"claim o-%s"}\n' "$((i % 3))" "$i" "$i" >> "$L2"
   i=$((i + 1))
 done
 python3 -I "$GEN" data --ledger "$L2" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/bare.json" > /dev/null 2>&1
@@ -261,6 +261,28 @@ has "label: one sentence says why those rows exist" "$(cat "$TMP/bare.md")" "nam
 has "label: a slug that never names a model stays bare" "$(cat "$TMP/bare.md")" "| \`beta\` | required"
 has "panel: a tag of a reviewer that pins no model sits beside it" "$(cat "$TMP/bare.md")" "| \`coderabbit-outside\` | part of \`coderabbit\`: findings on lines outside the diff | **100.0%** |"
 has "panel: two retired reviewers under the floor are counted out" "$(cat "$TMP/bare.md")" "2 reviewers with fewer than 30 ruled findings are left out"
+
+# One finding counts once, the way review-page.py --panel counts it: the same claim on the same file and
+# line of the same PR, raised again in a later round or by another critic. dup raises claim A in two rounds (the later
+# round unruled) and claim B once; echo raises claim A again; claim A on another PR is a second finding.
+L3="$TMP/ledger-dup.jsonl"
+: > "$L3"
+dupf() { # ts model branch head id line text verdict
+  printf '{"kind":"finding","ts":"%s","branch":"%s","head":"%s","model":"%s","finding_id":"%s","severity":"imp","verdict":"%s","artifact":"diff","perspective":"off","file":"a.py","line":"%s","text":"%s"}\n' "$1" "$3" "$4" "$2" "$5" "$8" "$6" "$7" >> "$L3"
+}
+dupf 2026-10-01T10:00:00Z dup d0 h1 dup-1 10 "- [important]: Off by one in the loop [a.py:10]" agreed
+dupf 2026-10-01T11:00:00Z dup d0 h2 dup-2 10 "- [important]: Off by one in the loop [a.py:10]" ""
+dupf 2026-10-01T11:00:00Z echo d0 h2 echo-1 10 "- [important]: Off by one in the loop [a.py:10]" agreed
+dupf 2026-10-01T10:00:00Z dup d0 h1 dup-3 20 "- [important]: Unquoted path [a.py:20]" disproved
+dupf 2026-10-01T10:00:00Z dup d1 h1 dup-4 10 "- [important]: Off by one in the loop [a.py:10]" agreed
+python3 -I "$GEN" data --ledger "$L3" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/dup.json" > /dev/null 2>&1; rc=$?
+eq "dedup: data exits 0" "$rc" "0"
+eq "dedup: a finding raised in two rounds and by two critics counts once in the pool" "$(jget "$TMP/dup.json" review/pooled/findings)" "3"
+eq "dedup: the pool's ruled n is the distinct findings" "$(jget "$TMP/dup.json" review/pooled/n)" "3"
+eq "dedup: a critic's repeat raise counts once in its row" "$(jget "$TMP/dup.json" review/critics/dup/findings)" "3"
+eq "dedup: the later critic's row holds the finding too" "$(jget "$TMP/dup.json" review/critics/echo/findings)" "1"
+eq "dedup: the merged finding takes the earliest ruled verdict" "$(jget "$TMP/dup.json" review/pooled/agreed)" "2"
+eq "dedup: the same claim on another PR stays a separate finding" "$(jget "$TMP/dup.json" review/pooled/prs)" "2"
 
 # write() replaces the output path, never writes through a symlink.
 printf 'keep\n' > "$TMP/target.md"

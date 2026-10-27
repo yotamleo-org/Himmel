@@ -20,13 +20,18 @@ Read on demand: `worker-preface.md` names this file when a command is refused or
   `JIRA_BASE_URL=` / `JIRA_BOARD_ID=` target) is not a retry — ask the chief.
 - **Resolving a review thread** (fixed, deferred or rejected) goes through the
   one sanctioned path, one literal call per thread, never a loop:
-  `node <anchor>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "fixed <sha>"`
+  `node <primary>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "fixed <sha>"`
   (or `--reason "followup HIMMEL-<n>"` / `--reason "rejected <why>"`).
-  `<anchor>` is the primary checkout's absolute path; that exact spelling is
-  auto-allowed for `yotamleo-org/Himmel`, a branch copy of the CLI is not. It
-  refuses without a valid reason, posts the reason as a thread reply, and
-  resolves only after the reply lands. If a single call is denied, send the
-  chief `BLOCKED resolve <pr> <thread ids>` and do not retry: the chief
+  `<primary>` is the primary checkout, the value of `$HIMMEL_REPO`, typed
+  out as an absolute path: never a relative path, your worktree's path,
+  `$CLAUDE_PROJECT_DIR` or the variable itself. That spelling, with the
+  reason in double or single quotes, is auto-allowed for `yotamleo-org/Himmel`.
+  A relative or worktree spelling, or a reason outside the three forms (a
+  disproved finding is `rejected <why>`), is denied with the corrected
+  command: retry that once. The CLI refuses without a valid reason, posts
+  the reason as a thread reply, and resolves only after the reply lands. If
+  the corrected call is denied too, send the chief
+  `BLOCKED resolve <pr> <thread ids>` and do not retry: the chief
   verifies each thread against the head and resolves it itself.
 - **Never pipe into a gate script.** Write the input to a file with `Write`,
   then pass it as an argument if the script takes one; otherwise pipe into

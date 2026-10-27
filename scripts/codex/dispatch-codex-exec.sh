@@ -6,16 +6,13 @@
 # WHY: the lane's safety requirements must be structural, not prose (the
 # lanes.json row alone cannot enforce them). This wrapper encodes the
 # invariants at the single entry point (arg checks run first,
-# then the preflight, then codex - nothing reaches codex unchecked):
-#   1. ACL preflight: normalize-worktree-acl.sh <worktree> runs before the
-#      codex CLI is invoked and aborts the dispatch on failure (Windows
-#      aged-worktree SID gap; the preflight is a no-op on other platforms).
+# then the hook-trust preflight, then codex - nothing reaches codex unchecked):
 #   2. Model defaults to the codex critic in scripts/cr/critics.json unless
 #      caller-named (codex-variant model names 400 under ChatGPT-plan auth).
 #   3. --background refused (upstream: background jobs die silently; use the
 #      default --wait behavior + scripts/codex/companion-liveness.sh).
 #   4. Workspace-redirect (-C/--cd/--add-dir) and sandbox-widening flags
-#      refused - the preflight covers only the dispatched worktree.
+#      refused - only the dispatched worktree is in scope.
 #   5. Shared-branch mode, opt-in: the caller
 #      names an EXISTING branch the worktree must already be checked out on
 #      (the caller states intent, the wrapper verifies reality - branch
@@ -95,7 +92,6 @@
 #   CODEX_BIN            Override the codex CLI (tests inject a stub).
 #   CODEX_CRITICS_FILE   Override the model registry path (tests). Default-model
 #                        resolution requires node; explicit overrides do not.
-#   CODEX_ACL_NORMALIZE  Override the preflight script path (tests).
 #   CODEX_HOOK_TRUST_CHECK  Override the hook-trust check (tests): a script
 #                        taking <worktree>, rc 0 = trusted. Default: the
 #                        built-in check against $CODEX_HOME/config.toml.
@@ -125,7 +121,6 @@ fi
 chokepoint_seam_guard scripts/codex/dispatch-codex-exec.sh || exit 96
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-NORMALIZE="${CODEX_ACL_NORMALIZE:-$SCRIPT_DIR/normalize-worktree-acl.sh}"
 CODEX="${CODEX_BIN:-codex}"
 LOCK_HELPER="${SBL_HELPER:-$SCRIPT_DIR/../lib/shared-branch-lock.sh}"
 JOBS_DIR="${CODEX_JOBS_DIR:-$HOME/.himmel/state/codex-exec-jobs}"
@@ -216,7 +211,7 @@ _preserve_job_file() {
 
 # Single composed EXIT trap.
 # Registered once, up front, so every early-exit path (usage errors, deny-
-# listed flags, preflight failure) also runs it - each branch below is a
+# listed flags, hook-trust refusal) also runs it - each branch below is a
 # no-op until its guard var is actually set, so nothing fires for a dispatch
 # that never reached codex.
 # shellcheck disable=SC2329,SC2317 # invoked indirectly via `trap ... EXIT`
@@ -288,9 +283,8 @@ if [ "${1:-}" = "--stdin-brief" ]; then
 fi
 
 # codex-adv r5: an arbitrary existing directory must not become a
-# workspace-write codex workspace (the ACL preflight no-ops off-Windows, so it
-# is not the path constraint). Canonicalize and require a .claude/worktrees
-# path - the same containment rule normalize-worktree-acl.ps1 enforces.
+# workspace-write codex workspace. Canonicalize and require a .claude/worktrees
+# path.
 # pwd -P (codex-adv final round): logical pwd would let a symlink/junction
 # placed under .claude/worktrees satisfy the string check while the physical
 # target lives outside it. Dispatch uses the PHYSICAL path too.
@@ -351,12 +345,6 @@ else
     set --
 fi
 
-# Invariant 1: ACL preflight, fail-closed.
-if ! bash "$NORMALIZE" "$WORKTREE"; then
-    echo "dispatch-codex-exec.sh: ACL preflight failed for $WORKTREE - dispatch aborted (manual recovery: bash scripts/codex/normalize-worktree-acl.sh <worktree>)" >&2
-    exit 1
-fi
-
 # Invariant 9: hook-trust preflight, fail-closed. codex keys hook
 # trust to the ABSOLUTE .codex/hooks.json path of the PRIMARY checkout (a linked
 # worktree's hook discovery resolves there), so an untrusted tree would run the
@@ -367,8 +355,8 @@ fi
 # $CODEX_HOME/config.toml, and refuse a worktree whose own hooks.json differs
 # from the primary's (the hooks in effect would not be the ones it carries). Runs before
 # the lock, the ledger start row and the job registry, so a refusal leaves
-# nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests; same idiom as
-# CODEX_ACL_NORMALIZE): <script> <worktree>, rc 0 trusted, nonzero refuses.
+# nothing behind. CODEX_HOOK_TRUST_CHECK swaps the check (tests):
+# <script> <worktree>, rc 0 trusted, nonzero refuses.
 # every hook of EVERY event is checked, and each trusted_hash must
 # equal the hash codex recomputes from the hook definition (openai/codex
 # rust-v0.161.0: hooks/src/engine/discovery.rs hook_hash() +
@@ -782,7 +770,7 @@ if [ "$TRUST_RC" -ne 0 ]; then
 fi
 
 # Invariant 5: acquire the single-writer lock now that the gate
-# and the ACL preflight both passed. The composed EXIT trap (registered up
+# and the hook-trust preflight both passed. The composed EXIT trap (registered up
 # front) releases on every CATCHABLE exit from here on (codex CLI missing,
 # worktree vanishing, codex nonzero exit) once LOCK_ACQUIRED is set - a
 # leaked lock is worse than a redundant release call. A SIGKILL/hard-kill is
@@ -833,8 +821,8 @@ if [ -n "$CODEX_RESOLVED" ] && [ -f "$CODEX_RESOLVED" ] && [ "$(head -c 2 "$CODE
     fi
 fi
 
-# The worktree can vanish between the -d check and here (the preflight takes
-# real wall-clock) - name that failure distinctly from a preflight abort.
+# The worktree can vanish between the -d check and here - name that failure
+# distinctly.
 if ! cd "$WORKTREE"; then
     echo "dispatch-codex-exec.sh: worktree vanished before dispatch: $WORKTREE" >&2
     exit 1

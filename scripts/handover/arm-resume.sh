@@ -73,6 +73,10 @@
 #                      handover's.
 #   --source-key <tag> Stable dedup identity for one SOURCE; see
 #                      the --help text.
+#   --limit-reset <tag> Mark a usage-limit arm and key it on this handover plus
+#                      the limit's reset time: replaying a pair whose arm already
+#                      fired is a no-op (rc 0), and a fourth restart inside
+#                      5 minutes is refused (rc=23). --force bypasses both.
 #   --dry-run          Print what would be scheduled, touch nothing.
 #
 # Env:
@@ -253,6 +257,12 @@
 #      exhaustion, burned the fleet on 2026-09-07). Checked at
 #      ARM time (before the scheduler entry is created), --dry-run exempt.
 #      Set FLEET_CAP_OK=1 in the LAUNCHING shell to arm anyway.
+#   23 restart cap refused — a --limit-reset arm found three `armed-resume`
+#      start rows for this handover's task in the flow-run ledger inside the
+#      last 5 minutes (a crash loop). --force overrides. A --limit-reset
+#      replay of a (handover, reset) pair whose arm already FIRED is NOT an
+#      error: it exits 0 without arming (the limit-resume key). A pair whose
+#      arm never fired (cancelled, reaped) re-arms.
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
@@ -328,6 +338,7 @@ AUTOCOMPACT=""
 TIER=""
 DEDUP_ANY=0
 SOURCE_KEY=""
+LIMIT_RESET=""
 WORKTREE_BRANCH=""
 WSL_DISTRO=""
 AUTOMERGE=0
@@ -343,7 +354,7 @@ _epoch_hhmm() { py_armor_capture -c 'import sys,datetime; print(datetime.datetim
 
 usage() {
     cat <<'EOF'
-Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier worker] [--provisional-base-ok]
+Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--limit-reset <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier worker] [--provisional-base-ok]
 
 Arms the OS scheduler to relaunch claude at the given time with a
 resume prompt referencing the given handover file. Dedup-guarded
@@ -473,6 +484,12 @@ Optional:
                      re-arm with the same tag matches the queued job (rc 3,
                      or --force replaces it) even if the handover path
                      differs. [A-Za-z0-9_-], 1-64 chars.
+  --limit-reset <tag> Mark a usage-limit arm; keyed on this handover plus the
+                     limit's reset time, so replaying a pair whose arm already
+                     fired is a no-op (rc 0) and a fourth restart of the
+                     handover inside 5 minutes is refused (rc=23). --force
+                     bypasses both.
+                     [A-Za-z0-9_.:-], 1-64 chars.
   --dry-run          Print what would be scheduled, touch nothing
   --list-temp-arms   Read-only sweep: report every armed
                      HIMMEL-Resume-* entry whose runner targets a temp/scratch
@@ -779,6 +796,13 @@ while [ $# -gt 0 ]; do
                 exit 2
             fi
             SOURCE_KEY="$2"; shift 2
+            ;;
+        --limit-reset)
+            if [ $# -lt 2 ] || ! [[ "$2" =~ ^[A-Za-z0-9_.:-]{1,64}$ ]]; then
+                echo "ERR arm-resume: --limit-reset requires a 1-64 char value of [A-Za-z0-9_.:-]" >&2
+                exit 2
+            fi
+            LIMIT_RESET="$2"; shift 2
             ;;
         --dry-run)     DRY_RUN=1; shift ;;
         --automerge)   AUTOMERGE=1; shift ;;
@@ -3177,6 +3201,64 @@ if [ -n "$SOURCE_KEY" ]; then
     fi
     TASK_NAME_LEGACY=""
 fi
+# Usage-limit keys (--limit-reset): the scheduler and the rc 15 ledger probe both
+# read clean once a fired session has ended, so a replayed limit resume would
+# fire a second session. The limit-resume key (task name + reset time + the time
+# it was recorded, beside the flow-run ledger when the arm succeeds) makes the
+# replay a no-op ONLY once the ledger shows this task started at or after that
+# time: a key whose arm was cancelled or reaped never fired, so it is stale and
+# the re-arm goes ahead (a job the scheduler still holds meets the rc 3 dedup).
+# The restart cap counts this task's `armed-resume` start rows in the last 5
+# minutes and refuses the fourth. Non-limit arms never reach either check.
+if [ -n "$LIMIT_RESET" ] && [ -f "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh" ]; then
+    # shellcheck source=../lib/flow-run-ledger-path.sh
+    # shellcheck disable=SC1091
+    . "$SCRIPT_DIR/../lib/flow-run-ledger-path.sh"
+    _lim_ledger=$(flow_run_ledger_path 2>/dev/null) || _lim_ledger=""  # swallow-ok: no ledger path means no limit keys; the arm proceeds as before
+    if [ -n "$_lim_ledger" ]; then
+        _lim_keys="$(dirname "$_lim_ledger")/limit-keys.txt"
+        _lim_rows=""
+        if [ -f "$_lim_ledger" ]; then
+            _lim_rows=$(grep -F '"flow":"armed-resume"' "$_lim_ledger" 2>/dev/null | grep -F '"ev":"start"' \
+                | grep -F "\"task_name\":\"$TASK_NAME\"" | sed -n 's/.*"fired_at":"\([^"]*\)".*/\1/p') || _lim_rows=""  # swallow-ok: no readable ledger means no fire evidence; the key then reads stale and the cap is skipped (fail open)
+        fi
+        if [ "$FORCE" -eq 0 ]; then
+            _lim_rec=$(awk -v k="$TASK_NAME:$LIMIT_RESET" '$1 == k { t = $2 } END { print t }' "$_lim_keys" 2>/dev/null) || _lim_rec=""  # swallow-ok: no key file means nothing was recorded; the arm proceeds
+            if [ -n "$_lim_rec" ]; then
+                while read -r _lim_at; do
+                    [ -n "$_lim_at" ] || continue
+                    if ! [[ "$_lim_at" < "$_lim_rec" ]]; then  # read-sink-ok: string comparison of two timestamps, no file is read
+                        echo "arm-resume: limit-resume key $TASK_NAME:$LIMIT_RESET already fired ($_lim_at) -- replay is a no-op (--force re-arms)"
+                        exit 0
+                    fi
+                done <<< "$_lim_rows"
+            fi
+            _lim_cutoff=$(date -u -d "@$(( $(date +%s) - 300 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+                || date -u -r "$(( $(date +%s) - 300 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _lim_cutoff=""  # swallow-ok: no date form works, so the cap is skipped (fail open)
+            _lim_n=0
+            if [ -n "$_lim_cutoff" ]; then
+                while read -r _lim_at; do
+                    [ -n "$_lim_at" ] || continue
+                    [[ "$_lim_at" < "$_lim_cutoff" ]] || _lim_n=$((_lim_n + 1))
+                done <<< "$_lim_rows"
+            fi
+            if [ "$_lim_n" -ge 3 ]; then
+                {
+                    echo "ERR arm-resume: this handover was restarted $_lim_n times in 5 minutes -- refusing a fourth (crash loop)."
+                    echo "    task:   $TASK_NAME"
+                    echo "Find out why the resumed session keeps exiting. --force overrides."
+                } >&2
+                if [ "$DRY_RUN" -eq 0 ]; then
+                    telemetry_emit handover-arm-resume restart-cap "time=$RESUME_TIME"
+                fi
+                exit 23
+            fi
+            unset _lim_rec _lim_cutoff _lim_n _lim_at
+        fi
+        unset _lim_rows
+    fi
+fi
+
 # The armed relaunch's `claude -n` session title - the same
 # composer renders both surfaces from one identity, so the scheduler row name
 # and the session/tab title can never disagree.
@@ -6411,6 +6493,34 @@ fi
 # refuses to read it as this arm's fire even when the two share a start second.
 _ARM_PRIOR_FIRED_ROW=$(_arm_fired_row) || _ARM_PRIOR_FIRED_ROW=""
 
+# The limit-resume key's time is taken here, before schedule_arm: a near-term
+# target can fire inside the create->verify window, and that fire must read as
+# this key's fire (fired_at >= key time). The recorder appends one line (atomic
+# for a line this short; readers take the last line per key) and prunes lines
+# older than a week once the file passes 200 lines.
+# ponytail: a prune racing an append can drop that one key (the pre-key behavior
+# for it), upgrade path a lock if it ever shows.
+_lim_key_time=""
+if [ -n "$LIMIT_RESET" ] && [ -n "${_lim_keys:-}" ]; then
+    _lim_key_time=$(date -u +%Y-%m-%dT%H:%M:%SZ) || _lim_key_time=""  # swallow-ok: no clock means no key is recorded; the arm proceeds as before
+fi
+_lim_record_key() {
+    [ -n "$_lim_key_time" ] || return 0
+    local _p
+    if ! { mkdir -p "$(dirname "$_lim_keys")" && printf '%s %s\n' "$TASK_NAME:$LIMIT_RESET" "$_lim_key_time" >> "$_lim_keys"; } 2>/dev/null; then
+        echo "WARN arm-resume: limit-resume key NOT recorded in $_lim_keys (a replay after this session ends would arm again)" >&2
+        return 0
+    fi
+    if [ "$(awk 'END { print NR }' "$_lim_keys")" -gt 200 ]; then
+        _p=$(date -u -d "@$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+            || date -u -r "$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _p=""  # swallow-ok: no date form works, so nothing is pruned
+        if [ -n "$_p" ]; then
+            awk -v p="$_p" '$2 >= p' "$_lim_keys" > "$_lim_keys.tmp.$$" 2>/dev/null \
+                && mv "$_lim_keys.tmp.$$" "$_lim_keys" 2>/dev/null || true  # swallow-ok: best-effort prune, the key is already recorded
+        fi
+    fi
+}
+
 schedule_arm
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -6546,6 +6656,7 @@ if [ "${_ARM_CONSUMED:-0}" -eq 1 ]; then
 ================================================================
 
 EOF
+    _lim_record_key
     exit 0
 fi
 
@@ -6599,6 +6710,10 @@ fi
 # the audit; gap_sec records how far out it actually is. Default 0 for the
 # smart/auto sentinel arms, which never derive _GAP_SEC (no measured park).
 telemetry_emit handover-arm-resume armed "time=$RESUME_TIME" "force=$FORCE" "long_gap=$LONG_GAP" "gap_sec=${_GAP_SEC:-0}"
+
+# Record the limit-resume key (best-effort: a write failure warns and must not
+# fail an arm that already succeeded; the worst case is the pre-key behavior).
+_lim_record_key
 
 # record this arm in the cross-machine arms registry, same
 # dry-run gate as telemetry above. Best-effort -- a registry write failure

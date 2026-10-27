@@ -4,7 +4,7 @@ Vendored-skill inventory for lean-skills@himmel (HIMMEL-3064).
 
 NOT the check-plugin-drift.sh class-2 format (that parses ONE
 upstream_repo/upstream_path/upstream_sha256 triple per plugin and would only
-ever check one of the 13 files below). Upstream advance for this plugin is
+ever check one of the 14 files below). Upstream advance for this plugin is
 detected at the RELEASE level instead, by two scripts/upstreams.json rows:
 
     superpowers-skills   obra/superpowers      synced_base 7.0.1
@@ -31,10 +31,11 @@ off to, pulled in to close the `superpowers:<name>` reference closure
 (vendoring only the 4 leaves dangling cross-references): executing-plans,
 finishing-a-development-branch, requesting-code-review,
 subagent-driven-development, test-driven-development, using-git-worktrees,
-writing-skills. DELIBERATELY NOT vendored (3 of 14): using-superpowers (its
-SessionStart injection is the ~700 tok this change reclaims),
-receiving-code-review, dispatching-parallel-agents — nothing vendored
-references them.
+writing-skills. Plus receiving-code-review (HIMMEL-7756), cited by the
+review-finding step of docs/handover/worker-preface.md. DELIBERATELY NOT
+vendored (2 of 14): using-superpowers (its SessionStart injection is the
+~700 tok this change reclaims), dispatching-parallel-agents — nothing
+vendored references it.
 
 vendored_from=mattpocock/skills@49dd158d1076134a641b33efb035946536778336 path=skills/productivity/grilling
 

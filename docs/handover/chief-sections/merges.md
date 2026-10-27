@@ -4,12 +4,16 @@ Read on demand from `chief-template.md` `## Merges`. Moved verbatim from the tem
 
 **Review threads a worker could not resolve.** A worker resolves each answered
 thread itself with
-`node <anchor>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "<reason>"`
-(`fixed <sha>` | `followup HIMMEL-<n>` | `rejected <why>`), `<anchor>` the
-primary checkout. `allow-thread-resolve.sh` auto-allows exactly that shape for
-`yotamleo-org/Himmel` as one literal command, so the classifier never sees it;
-any variation (chained, redirected, another repo, an extra flag, a branch copy of
-the CLI) gets no allow. When the call is denied anyway the worker sends
+`node <primary>/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner <o> --repo <r> --number <pr> --thread-id <PRRT_…> --reason "<reason>"`
+(`fixed <sha>` | `followup HIMMEL-<n>` | `rejected <why>`), `<primary>` the
+primary checkout, the value of `$HIMMEL_REPO` typed out as an absolute path
+(never relative, a worktree, `$CLAUDE_PROJECT_DIR` or the variable).
+`allow-thread-resolve.sh` auto-allows exactly that shape for
+`yotamleo-org/Himmel` as one literal command, reason in double or single
+quotes, so the classifier never sees it. A relative or worktree CLI path, or a
+reason outside the three forms, is denied with the corrected command for one
+retry; any other variation (chained, redirected, another repo, an extra flag)
+gets no allow. When the call is denied anyway the worker sends
 `BLOCKED resolve <pr> <thread ids>`, and the waiter wakes you with
 `WAKE resolve <worker> pr=<n> threads=<ids>`. **The operator is never asked to
 resolve a thread:** it is yours, never an operator item. For each thread, check the fix, ticket or

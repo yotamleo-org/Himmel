@@ -30,8 +30,3 @@ scrape_configs:
     static_configs:
       - targets:
           - 127.0.0.1:9877
-
-  - job_name: windows_exporter
-    static_configs:
-      - targets:
-          - 127.0.0.1:9182

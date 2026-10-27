@@ -40,7 +40,13 @@
 #     `Delete File:` / `Move to:` header path (relative ones joined with the
 #     payload `.cwd`) that resolves to the config via `readlink -m` denies
 #     (a symlinked directory that never names `.himmel`).
-# ALLOWS everything else, silently. Reads of the file stay allowed.
+# ALSO GUARDS <repo>/.himmel/project.conf, the per-project override that
+# can tighten a repo's gate policy (scripts/lib/load-dotenv.sh):
+# a leg must not change its own repo's settings. The same Bash, file-tool and
+# apply_patch rules apply with `project.conf` (or `project.c*`, `project.*`,
+# `proj*`) as the name; a file-tool or patch path is refused when it is named,
+# or resolves to, any `.himmel/project.conf`, in any repo or worktree.
+# ALLOWS everything else, silently. Reads of either file stay allowed.
 #
 # FAIL MODE: fail-closed only for its one subject. A payload it cannot parse is
 # scanned as raw text and denied when it names the file; otherwise allowed
@@ -72,8 +78,9 @@ deny() {
         echo "block-himmel-config-writes: refusing - $1."
         echo
         echo "    ~/.himmel/config.json carries graphify.salus_ollama_cloud_ok, the persisted"
-        echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud, so"
-        echo "    changing it is operator-only. Remedy: the operator edits the"
+        echo "    opt-in that lets salus (PHI) corpora reach ollama-cloud, and a repo's"
+        echo "    .himmel/project.conf sets that repo's settings and gate policy, so"
+        echo "    changing either is operator-only. Remedy: the operator edits the"
         echo "    file by hand at their own prompt (or uses the config UI flow once it"
         echo "    lands). Reading the file stays allowed. There is no env bypass."
     } >&2
@@ -84,13 +91,13 @@ input=$(cat)
 if ! command -v jq >/dev/null 2>&1; then
     # No parser: raw-text scan, deny only a mention of the subject.
     case "$input" in
-        *.himmel*config.json*) deny "jq not found and the payload names ~/.himmel/config.json (fail-closed)" ;;
+        *.himmel*config.json*|*.himmel*project.conf*) deny "jq not found and the payload names a guarded .himmel config file (fail-closed)" ;;
     esac
     exit 0
 fi
 if ! printf '%s' "$input" | jq -e 'type == "object"' >/dev/null 2>&1; then
     case "$input" in
-        *.himmel*config.json*) deny "unparseable payload names ~/.himmel/config.json (fail-closed)" ;;
+        *.himmel*config.json*|*.himmel*project.conf*) deny "unparseable payload names a guarded .himmel config file (fail-closed)" ;;
     esac
     exit 0
 fi
@@ -102,17 +109,19 @@ MAX_PATCH_BYTES=524288
 MAX_PATCH_HEADERS=1000
 MAX_HEADER_LINE_BYTES=4096
 
-# check_path TOOL PATH: deny when PATH is, or resolves to, the config.
+# check_path TOOL PATH: deny when PATH is, or resolves to, the config or a
+# project file.
 check_path() {
     local t="$1" p="$2" r
     [ -n "$p" ] || return 0
     case "$p" in
-        */.himmel/config.json|.himmel/config.json) deny "$t targets $p" ;;
+        */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "$t targets $p" ;;
     esac
     r=$(readlink -m -- "$p" 2>/dev/null) || r=""
     if [ -n "$r" ] && [ "$r" = "$(readlink -m -- "$CFG_REAL" 2>/dev/null)" ]; then
         deny "$t target $p resolves to ~/.himmel/config.json"
     fi
+    case "$r" in */.himmel/project.conf) deny "$t target $p resolves to a project file ($r)" ;; esac
     return 0
 }
 
@@ -136,7 +145,7 @@ case "$tool" in
         case "$lp" in
             *.himmel*)
                 case "$lp" in
-                    *config.json*|*config.j\**|*config.\**|*conf\**) deny "apply_patch payload names .himmel and a config file (whole-patch rule; a patch that only mentions the path in its content is refused too)" ;;
+                    *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**) deny "apply_patch payload names .himmel and a config file (whole-patch rule; a patch that only mentions the path in its content is refused too)" ;;
                 esac
                 ;;
         esac
@@ -221,7 +230,7 @@ case "$tool" in
                     *) [ -n "$pcwd" ] && p="$pcwd/$p" ;;
                 esac
                 case "$p" in
-                    */.himmel/config.json|.himmel/config.json) deny "apply_patch targets $p" ;;
+                    */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "apply_patch targets $p" ;;
                 esac
                 [ -n "$p" ] && cand[${#cand[@]}]="$p"
             done
@@ -230,12 +239,14 @@ $patch
 EOF
         if [ "${#cand[@]}" -gt 0 ]; then
             cfg_res=$(readlink -m -- "$CFG_REAL" 2>/dev/null) || cfg_res=""
+            # No readlink -m (BSD/macOS): only the literal headers above are checked.
             if [ -n "$cfg_res" ]; then
                 # A failed batch (e.g. one path over the OS argument limit) must
                 # DENY: an empty result would read as "nothing resolves to it".
                 resolved=$(readlink -m -- "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
                 while IFS= read -r r; do
                     [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
+                    case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
                 done <<EOF
 $resolved
 EOF
@@ -254,7 +265,7 @@ cmd=$(printf '%s' "$input" | jq -r '.tool_input.command // ""' 2>/dev/null) || c
 # allowlist sees the raw text, so a program named `cat<CR>` is not `cat`.
 lc=$(printf '%s' "${cmd//$'\r'/}" | tr '[:upper:]' '[:lower:]')
 case "$lc" in *.himmel*) ;; *) exit 0 ;; esac
-case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**) ;; *) exit 0 ;; esac
+case "$lc" in *config.json*|*config.j\**|*config.\**|*conf\**|*project.conf*|*project.c\**|*project.\**|*proj\**) ;; *) exit 0 ;; esac
 
 # The command names the file. Structural allow-list (no shell splitter): ALLOW only when
 #   1. every character is in [A-Za-z0-9 _./~:=,@+-] - no quote, $, backtick,
@@ -270,7 +281,7 @@ LC_ALL=C
 export LC_ALL
 case "$cmd" in
     *[!a-zA-Z0-9\ _./~:=,@+-]*)
-        deny "the command names ~/.himmel/config.json and uses a character outside [A-Za-z0-9 _./~:=,@+-] (quotes, redirects, chaining, substitution, globs and braces are all refused). Quote-free reads stay allowed: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
+        deny "the command names a guarded .himmel config file and uses a character outside [A-Za-z0-9 _./~:=,@+-] (quotes, redirects, chaining, substitution, globs and braces are all refused). Quote-free reads stay allowed: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
 esac
 set -f
 # shellcheck disable=SC2086 # intentional word split, globbing off via set -f
@@ -280,7 +291,7 @@ set +f
 w="$1"
 case "$w" in
     cat|jq|grep|head|tail|wc|stat|ls|diff|sha256sum) ;;
-    *) deny "the command names ~/.himmel/config.json under '$w', not a listed plain reader (cat jq grep head tail wc stat ls diff sha256sum; less is out: +v opens an editor, -O logs to a file). Reads: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
+    *) deny "the command names a guarded .himmel config file under '$w', not a listed plain reader (cat jq grep head tail wc stat ls diff sha256sum; less is out: +v opens an editor, -O logs to a file). Reads: \`jq .graphify ~/.himmel/config.json\`, \`cat ~/.himmel/config.json\`, or the Read tool" ;;
 esac
 shift
 for a in "$@"; do

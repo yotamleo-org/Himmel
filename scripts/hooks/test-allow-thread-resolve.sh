@@ -29,17 +29,21 @@ PRIMARY="$TMP/himmel"
 WT="$TMP/wt"
 OTHER="$TMP/other"
 g init -q "$PRIMARY" || exit 1
-mkdir -p "$PRIMARY/scripts/hooks" "$PRIMARY/scripts/lib" || exit 1
+mkdir -p "$PRIMARY/scripts/hooks" "$PRIMARY/scripts/lib" "$PRIMARY/plugins/himmel-gh/lib" || exit 1
 cp "$REAL_HOOK_DIR/allow-thread-resolve.sh" "$PRIMARY/scripts/hooks/" || exit 1
 cp "$REAL_HOOK_DIR/../lib/git-clean.sh" "$PRIMARY/scripts/lib/" || exit 1
+echo '// cli' >"$PRIMARY/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs" || exit 1
 HOOK="$PRIMARY/scripts/hooks/allow-thread-resolve.sh"
-g -C "$PRIMARY" add scripts && g -C "$PRIMARY" commit -q -m init || exit 1
+g -C "$PRIMARY" add scripts plugins && g -C "$PRIMARY" commit -q -m init || exit 1
 g -C "$PRIMARY" worktree add -q "$WT" -b worker || exit 1
 g init -q "$OTHER" || exit 1
+export HIMMEL_REPO="$PRIMARY"
 
-CLI="$PRIMARY/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs"
+REL='plugins/himmel-gh/lib/thread-resolve-action-cli.mjs'
+CLI="$PRIMARY/$REL"
 TID='PRRT_kwDOAbCdEf4A-b_Z9'
-GOOD="node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+TAIL="--owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+GOOD="node $CLI $TAIL"
 
 # run_hook <cwd> <command> -> stdout of the hook; sets RC
 run_hook() {
@@ -69,12 +73,28 @@ expect_none() {
     fi
 }
 
+# expect_deny <name> <cwd> <command> <text the deny reason must carry>
+expect_deny() {
+    local name="$1" cwd="$2" cmd="$3" want="$4"
+    run_hook "$cwd" "$cmd"
+    local why
+    why="$(jq -r '.hookSpecificOutput.permissionDecisionReason // empty' <<<"$OUT" 2>/dev/null)"
+    if [ "$RC" -eq 0 ] && [ "$(jq -r '.hookSpecificOutput.permissionDecision // empty' <<<"$OUT" 2>/dev/null)" = deny ] \
+        && grep -qF -- "$want" <<<"$why"; then
+        echo "PASS deny:  $name"
+    else
+        echo "FAIL deny:  $name (rc=$RC out=$OUT)"; FAILED=1
+    fi
+}
+
 # ---- the audited shape -------------------------------------------------------
 expect_allow 'fixed <sha> from a worktree' "$WT" "$GOOD"
 expect_allow 'fixed <sha> from the primary' "$PRIMARY" "$GOOD"
 expect_allow 'full 40-hex sha' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 1 --thread-id $TID --reason \"fixed 0123456789abcdef0123456789abcdef01234567\""
 expect_allow 'followup HIMMEL-n' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"followup HIMMEL-7196\""
 expect_allow 'rejected <text>' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"rejected not a defect, the guard is intended\""
+expect_allow 'single-quoted reason (PR 4011)' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 4011 --thread-id $TID --reason 'followup HIMMEL-7766'"
+expect_allow 'single-quoted rejected <text>' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason 'rejected not a defect'"
 
 # ---- every variation falls through ------------------------------------------
 expect_none 'chained with ;' "$WT" "$GOOD; echo hi"
@@ -101,23 +121,61 @@ expect_none 'non-PRRT thread id' "$WT" "node $CLI --owner yotamleo-org --repo Hi
 expect_none 'thread id with metachar' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id PRRT_a\$b --reason \"fixed abc1234\""
 expect_none '--prefix instead of --thread-id' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --prefix abc123 --reason \"fixed abc1234\""
 expect_none 'non-digit number' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 36x --thread-id $TID --reason \"fixed abc1234\""
-expect_none 'reason outside vocabulary' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"merge it\""
-expect_none 'short sha' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc12\""
-expect_none 'empty rejected text' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"rejected \""
+expect_deny 'reason outside vocabulary' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"merge it\"" 'rejected <why>'
+expect_deny 'short sha' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc12\"" 'fixed <7-40 hex sha>'
+expect_deny 'empty rejected text' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"rejected \"" 'rejected <why>'
+expect_deny 'disproved: reason (PR 4014)' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 4014 --thread-id $TID --reason \"disproved: the guard already covers it\"" 'a disproved finding is rejected <why>'
+expect_deny 'single-quoted reason outside vocabulary' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 4014 --thread-id $TID --reason 'disproved: x'" 'rejected <why>'
+expect_none 'mismatched reason quotes' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234'"
+expect_none 'single-quoted reason carrying a quote' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason 'fixed abc1234' --x 'b'"
 expect_none 'unquoted reason' "$WT" "node $CLI --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason fixed"
-expect_none 'branch-relative cli path' "$WT" "node plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+expect_deny 'branch-relative cli path (PR 4010)' "$WT" "node $REL $TAIL" "Retry once with exactly: $GOOD"
+expect_deny 'dot-slash relative cli path' "$WT" "node ./$REL $TAIL" "Retry once with exactly: $GOOD"
+expect_deny 'CLAUDE_PROJECT_DIR cli path' "$WT" "node \$CLAUDE_PROJECT_DIR/$REL $TAIL" "Retry once with exactly: $GOOD"
+expect_deny 'braced CLAUDE_PROJECT_DIR cli path' "$WT" "node \${CLAUDE_PROJECT_DIR}/$REL $TAIL" "Retry once with exactly: $GOOD"
+expect_deny 'relative path keeps a single-quoted reason' "$WT" "node $REL --owner yotamleo-org --repo Himmel --number 4011 --thread-id $TID --reason 'followup HIMMEL-7766'" "Retry once with exactly: node $CLI --owner yotamleo-org --repo Himmel --number 4011 --thread-id $TID --reason 'followup HIMMEL-7766'"
+expect_none 'relative cli path, chained' "$WT" "node $REL $TAIL; echo hi"
+expect_none 'relative cli path, other repo' "$WT" "node $REL --owner yotamleo-org --repo Other --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+expect_none 'other variable in cli path' "$WT" "node \$HOME/$REL $TAIL"
 expect_none 'cli path outside the primary' "$WT" "node $TMP/evil/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
-expect_none 'the worktree copy of the cli' "$WT" "node $WT/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+expect_deny 'the worktree copy of the cli' "$WT" "node $WT/$REL $TAIL" "Retry once with exactly: $GOOD"
+expect_none 'a subdirectory of the worktree' "$WT" "node $WT/scripts/$REL $TAIL"
 expect_none 'dot-dot in cli path' "$WT" "node $PRIMARY/x/../plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
 expect_none 'unrelated repo carrying its own cli, cwd there' "$OTHER" "node $OTHER/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
 expect_allow 'cwd not a repo (the cwd is not the trust anchor)' "$TMP_ROOT" "$GOOD"
 HOOK_SAVED="$HOOK"; HOOK="$WT/scripts/hooks/allow-thread-resolve.sh"
 expect_allow 'the worktree copy of the hook, same primary cli' "$WT" "$GOOD"
-expect_none 'the worktree copy of the hook, worktree cli' "$WT" "node $WT/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
+expect_deny 'the worktree copy of the hook, worktree cli' "$WT" "node $WT/$REL $TAIL" "Retry once with exactly: $GOOD"
 HOOK="$HOOK_SAVED"
 expect_none 'other node script' "$WT" "node $PRIMARY/plugins/himmel-gh/lib/thread-reply-cli.mjs --owner yotamleo-org --repo Himmel --number 3628 --thread-id $TID --reason \"fixed abc1234\""
 expect_none 'other mutation' "$WT" "gh pr merge 3628"
 expect_none 'empty command' "$WT" ""
+
+# ---- the anchor: $HIMMEL_REPO on refs/heads/main, the CLI main's own bytes --
+HIMMEL_REPO='' expect_none 'HIMMEL_REPO unset' "$WT" "$GOOD"
+HIMMEL_REPO='' expect_none 'HIMMEL_REPO unset, relative cli path' "$WT" "node $REL $TAIL"
+HIMMEL_REPO="$WT" expect_none 'HIMMEL_REPO names a worktree' "$WT" "node $WT/$REL $TAIL"
+g -C "$PRIMARY" checkout -q -b side || exit 1
+expect_none 'primary not on main' "$WT" "$GOOD"
+g -C "$PRIMARY" checkout -q main || exit 1
+echo '// planted' >>"$CLI" || exit 1
+expect_none 'cli blob differs from main' "$WT" "$GOOD"
+expect_none 'cli blob differs from main, relative cli path' "$WT" "node $REL $TAIL"
+g -C "$PRIMARY" checkout -q -- "$REL" || exit 1
+mv "$CLI" "$CLI.real" && ln -s "$CLI.real" "$CLI" || exit 1
+expect_none 'symlinked cli' "$WT" "$GOOD"
+rm "$CLI" && mv "$CLI.real" "$CLI" || exit 1
+expect_allow 'the cli restored' "$WT" "$GOOD"
+# forged gitfile: a worktree's .git rewritten to a planted repo that carries its own cli
+WT2="$TMP/wt2"; EVIL="$TMP/evil"
+g -C "$PRIMARY" worktree add -q "$WT2" -b forged || exit 1
+g init -q "$EVIL" && mkdir -p "$EVIL/plugins/himmel-gh/lib" && echo '// planted' >"$EVIL/$REL" || exit 1
+g -C "$EVIL" add plugins && g -C "$EVIL" commit -q -m planted || exit 1
+printf 'gitdir: %s/.git\n' "$EVIL" >"$WT2/.git" || exit 1
+HOOK_SAVED="$HOOK"; HOOK="$WT2/scripts/hooks/allow-thread-resolve.sh"
+expect_none 'forged worktree gitfile, planted cli' "$WT2" "node $EVIL/$REL $TAIL"
+expect_none 'forged worktree gitfile, its own cli' "$WT2" "node $WT2/$REL $TAIL"
+HOOK="$HOOK_SAVED"
 
 # non-Bash tool, empty and unparseable stdin: no decision, exit 0
 jq -n --arg c "$GOOD" --arg d "$WT" '{tool_name:"PowerShell",tool_input:{command:$c},cwd:$d}' >"$TMP/p2.json"

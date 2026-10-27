@@ -89,8 +89,7 @@ function resolvePowershell(env) {
   if (e.HIMMELCTL_POWERSHELL) return e.HIMMELCTL_POWERSHELL;
   // Probe pwsh.exe explicitly too: which's
   // executable-extension walk is win32-only, so a pwsh.exe-only PATH entry
-  // (WSL interop, POSIX test fixtures) needs the explicit second name —
-  // mirrors scripts/lib/resolve-powershell.sh.
+  // (WSL interop, POSIX test fixtures) needs the explicit second name.
   const pwsh = which('pwsh', e) || which('pwsh.exe', e);
   if (pwsh) return pwsh;
   const ps51 = which('powershell', e) || 'powershell';
