@@ -750,7 +750,8 @@ ui_mcp() { # the mcp= field a dry-run launch with <profile> reports for the gene
 ui_gen "Writes scripts/config-ui/page.ts." -
 [ "$ui_rc" = 0 ] && pass "a config-ui leg generates (rc 0)" || fail "config-ui leg rc=$ui_rc: $(cat "$WORK/ui.err")"
 has "a config-ui leg's launcher arms worker-e2e" "$ui_launch" "--profile worker-e2e --chief BZ"
-has "a config-ui leg's brief tells the worker to ask the chief for a running UI URL" "$ui_brief" "Ask the chief for a running UI URL"
+has "a config-ui leg's brief says the chief starts himmelctl ui from the worker's own worktree" "$ui_brief" "from YOUR worktree"
+has "a config-ui leg's brief tells the worker to ask for the URL and never start the UI itself" "$ui_brief" "ask for it, never start it yourself"
 lacks "a config-ui leg's brief hands out no standing agent-session bypass" "$ui_brief" "allow-agent-session"
 has "a config-ui leg's brief says to open the URL with the browser MCP headless" "$ui_brief" "browser MCP headless"
 has "a config-ui leg's brief says to save screenshots to the scratch dir" "$ui_brief" "save screenshots to your scratch dir"
@@ -758,10 +759,12 @@ ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*
 has "the dry-run launch of a config-ui leg lists playwright among its MCP servers" "$(ui_mcp "${ui_launch_profile#--profile }")" "playwright"
 ui_gen "Writes scripts/config-ui/page.ts." worker-bus
 has "an explicit leg profile key wins over the config-ui choice" "$ui_launch" "--profile worker-bus --chief BZ"
+has "the explicit-profile leg's brief was written" "$ui_brief" "> **Writes:**"
 lacks "and a leg off the browser profile gets no browser line" "$ui_brief" "UI work:"
 ui_gen - -
 [ "$ui_rc" = 0 ] && pass "a non-UI leg generates (rc 0)" || fail "non-UI leg rc=$ui_rc: $(cat "$WORK/ui.err")"
 has "a non-UI leg's launcher stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
+has "the non-UI leg's brief was written" "$ui_brief" "> **Writes:**"
 lacks "a non-UI leg's brief has no browser line" "$ui_brief" "UI work:"
 ui_launch_profile="$(printf '%s' "$ui_launch" | grep -o -e '--profile [a-z0-9-]*')"
 ui_mcp_impl="$(ui_mcp "${ui_launch_profile#--profile }")"
