@@ -1035,6 +1035,21 @@ printf '{"kind":"amend","ts":"2026-01-01T00:00:04Z","branch":"%s","target_head":
 seed_clean
 rc=0; out="$(run)" || rc=$?
 check "carry: a deferral later amended to fixed does not carry: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+MIDHEAD=1234567812345678123456781234567812345678
+seed_deferral HIMMEL-50 "$REVHEAD"
+printf '{"kind":"finding","ts":"2026-01-01T00:00:04Z","branch":"%s","head":"%s","model":"codex","finding_id":"codex-HIMMEL-50","severity":"sug","verdict":"agreed","artifact":"diff","perspective":"off"}\n' "$SEED_BRANCH" "$MIDHEAD" >> "$LEDGER"
+seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: a finding re-raised at an intermediate head blocks the earlier deferral: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_deferral HIMMEL-50 "$MIDHEAD"; seed_clean
+rc=0; out="$(run)" || rc=$?
+check "carry: a deferral recorded again at a later head carries from that row: exit 0" "$rc" "0"
 unset SEED_BRANCH
 
 reset_stubs
