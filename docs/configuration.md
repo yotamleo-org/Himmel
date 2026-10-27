@@ -493,7 +493,8 @@ the other non-secret keys the tables below mark `himmel.conf`) belong in
 machine. Gate policy (`CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`,
 `ARMAUTOMERGE`) belongs in `~/.himmel/config.json` under `"policy"`. A
 behaviour or policy key still set in `.env` keeps working, with a `DEPRECATED`
-notice; `bash scripts/setup/migrate-env.sh --dry-run` previews the move.
+notice; `bash scripts/setup/migrate-env.sh --dry-run` previews the move
+([what moves, what stays](#the-env-split-what-moves-what-stays-and-a-mismatch)).
 Templates: [`himmel.conf.example`](setup/himmel.conf.example) and
 [`himmel-config.example.json`](setup/himmel-config.example.json); the full
 layer table and who wins:
@@ -538,6 +539,29 @@ before reading — so a value sitting only in `.env` IS picked up, while a
 live-env value (shell export or `settings.json` `"env"`) still wins. The
 bridged set is inventoried in [`.env.example`](../.env.example)'s header, and
 each bridged var's own comment there names its bridging reader.
+
+#### The .env split: what moves, what stays, and a mismatch
+
+- **Moves to `~/.himmel/himmel.conf`:** every key the tables below mark
+  `himmel.conf`, the non-secret Jira identifiers (`JIRA_EMAIL`,
+  `JIRA_PROJECT_KEY`, `JIRA_PROJECTS`, `JIRA_CLOUD_ID`) included.
+- **Moves to `~/.himmel/config.json` `.policy`:** `CR_REQUIRE_CROSS_MODEL`,
+  `CR_FLOOR_FALLBACK`, `ARMAUTOMERGE`.
+- **Stays in `.env`:** the secrets, until the keyring work (HIMMEL-7147,
+  HIMMEL-7576) is complete: API tokens, `JIRA_BASE_URL`, the Telegram keys and
+  every key not yet classified as config, plus other tools' keys. Only a
+  himmel secret nothing in the checkout reads moves, to
+  `~/.config/secrets/himmel.env`. Never empty `.env`: Jira, Telegram and the
+  lanes still read it.
+- **On a mismatch:** when `.env` and `~/.himmel` hold different values for a
+  key, `scripts/setup/migrate-env.sh` names the key and both files (never the
+  values) and asks which to keep, `e` (`.env`) or `h` (`~/.himmel`), then
+  checks again. No answer removes nothing from `.env`.
+
+The full key list is in
+[config-layers.md](internals/config-layers.md#the-env-split-what-moves-what-stays-and-a-mismatch),
+and the migration's steps and prompts are in
+[updating.md](setup/updating.md#the-env-split-what-moves-what-stays-and-a-mismatch).
 
 #### `.env` consumer boundaries
 

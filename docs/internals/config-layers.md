@@ -188,15 +188,20 @@ checkout>/.env`, then check `himmel-secrets status`. Leave `.env` in place
 as the fallback; import-env skips a secret the manifest does not list, so add
 a new one to `stationSecrets` first.
 
-## Which keys go where
+## The .env split: what moves, what stays, and a mismatch
 
 Behaviour config (`himmel.conf`): `HANDOVER_DIR`, `USER_SLUG`,
 `LUNA_VAULT_PATH`, `HIMMEL_DOC_FRESHNESS`, `HIMMEL_INITIATIVE`,
+`HIMMEL_AFK`, `HIMMEL_INITIATIVE_AFK`,
 `HIMMEL_INITIATIVE_OVERNIGHT`, `HIMMEL_OVERNIGHT`, `HIMMEL_WHERE_ARE_WE`,
 `HIMMEL_WHERE_ARE_WE_STALE_HOURS`, `HIMMEL_WORKTREE_NUDGE`,
 `HIMMEL_UPDATE_AUTOSTASH`, `CR_PROFILE`, `CR_CLAUDE_AGENTS`,
 `TICKET_ID_REQUIRED`, `TICKET_ID_PATTERN`, `TICKET_ID_EXEMPT_AUTHORS`,
-`TRACKER`.
+`TRACKER`, and the plain settings `HIMMEL_REPO`,
+`CLAUDE_HUD_ALLOW_EXTRA_CMD`, `HIMMEL_WHERE_ARE_WE_ROLLUP_TTL`,
+`HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT`, `HIMMEL_JIRA_NUDGE`, `CR_APP`,
+`CR_PUBLIC_REPO`, `CLAUDE_END_SESSION_WIKI`, `SKILL_INDEX_DIR` and the four
+`ALIBABA_*_BASE_URL` endpoints.
 
 Non-secret Jira and service identifiers also belong in `himmel.conf`:
 `JIRA_EMAIL`, `JIRA_PROJECTS`, `JIRA_PROJECT_KEY`, `JIRA_CLOUD_ID`,
@@ -233,6 +238,30 @@ moves from secret to config only by editing that list in a reviewed PR.
 gate when set, so they are candidates for the policy list. They stay
 behaviour config until the commit-message hook reads them through
 `load_policy`.
+
+**What stays in `.env`.** Secrets that something reads stay in `.env` until
+the keyring work (HIMMEL-7147, HIMMEL-7576) is complete.
+`scripts/setup/migrate-env.sh` leaves in `.env` every secret a tracked himmel
+file other than docs still reads, every secret
+named in `~/.himmel/env-keep.txt` and every key `.env.example` and the registry
+do not name (another tool's key). Only a himmel secret nothing in this checkout
+reads moves, to `~/.config/secrets/himmel.env` (mode 600). The migration
+report lists the secrets that stay; `.env` is never emptied, and
+`himmel-secrets import-env` copies secrets into the keyring without removing
+them from `.env`.
+
+**On a mismatch.** When a key's `~/.himmel` side (`himmel.conf`, or
+`config.json` `.policy` for a gate-policy key) already holds a different value
+from `.env`, the migration names the key and both files, never the values, and
+asks `[e/h]`: `e` writes the `.env` value to `~/.himmel`, `h` keeps the
+`~/.himmel` value. The readers then run again, and the moved lines leave
+`.env` only when they agree. Any other answer, or none, stops with every
+`.env` line in place. A `MISMATCH` the prompt cannot settle (a reader that
+disagrees on a key `~/.himmel` did not hold, or a `verify:` line) also removes
+nothing: fix the reader or make the two files agree, then run the migration
+again. Never empty `.env` by hand to settle one; to go back, run the
+`restore:` command it printed
+([updating.md](../setup/updating.md#the-env-split-what-moves-what-stays-and-a-mismatch)).
 
 ## Example files
 
@@ -354,7 +383,8 @@ move without writing.
    prompt: it reads the value from `.env` and writes it into
    `~/.himmel/config.json`, so the value is never shown.
 4. Start a session. When no `DEPRECATED` notice appears, delete the moved
-   lines from `.env`. Rebuild the Jira CLI first (`scripts/jira/dist` is not
+   lines from `.env`, and only those: the secrets in it are still read.
+   Rebuild the Jira CLI first (`scripts/jira/dist` is not
    tracked): an older build reads `HANDOVER_DIR` from the process env or
    `.env` only, not from `himmel.conf`.
 
