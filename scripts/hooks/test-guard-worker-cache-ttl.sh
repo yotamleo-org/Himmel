@@ -59,7 +59,7 @@ cleanup() {
     rmdir "$HANDOVER_DIR" 2>/dev/null
     for f in "$XDG_RUNTIME_DIR/himmel-queue-lock"/*; do rm -f "$f" 2>/dev/null; done
     rmdir "$XDG_RUNTIME_DIR/himmel-queue-lock" "$XDG_RUNTIME_DIR" 2>/dev/null
-    rmdir "$TMP/dir.jsonl" 2>/dev/null
+    rmdir "$TMP/dir.jsonl" "$TMP/adopter" "$TMP/fake-anchor/scripts" "$TMP/fake-anchor" 2>/dev/null
     for f in "$TMP"/*.jsonl; do rm -f "$f" 2>/dev/null; done
     rmdir "$TMP" 2>/dev/null
 }
@@ -87,9 +87,14 @@ T_STOP="$TMP/stopped.jsonl";     { row_monitor b4; echo; row_stopped b4; echo; p
 T_JUNK="$TMP/junk.jsonl";        { printf 'not json {\n'; row_bg b5; echo; } > "$T_JUNK"
 T_MIXED="$TMP/mixed.jsonl";      { row_bg b6; echo; row_done b6; echo; row_bg b7; echo; } > "$T_MIXED"
 
-payload() {   # payload <transcript> [stop_hook_active] [session]
-    printf '{"session_id":"%s","stop_hook_active":%s,"hook_event_name":"Stop","transcript_path":"%s"}' \
-        "${3:-$SESSION_ID}" "${2:-false}" "$1"
+payload() {   # payload <transcript> [stop_hook_active] [session] [cwd]
+    if [ -n "${4:-}" ]; then
+        printf '{"session_id":"%s","stop_hook_active":%s,"hook_event_name":"Stop","transcript_path":"%s","cwd":"%s"}' \
+            "${3:-$SESSION_ID}" "${2:-false}" "$1" "$4"
+    else
+        printf '{"session_id":"%s","stop_hook_active":%s,"hook_event_name":"Stop","transcript_path":"%s"}' \
+            "${3:-$SESSION_ID}" "${2:-false}" "$1"
+    fi
 }
 OUT=""; RC=0
 run_guard() {   # run_guard <payload> [ENV=val ...] — sets OUT and RC
@@ -152,6 +157,31 @@ run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=7200
 case "$out" in *'--max-wait 3000'*) ok "bound past the TTL margin (7200) falls back to 3000" ;; *) bad "bound 7200 did not fall back — got: $out" ;; esac
 run_guard "$(payload "$T_IDLE")" HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS=junk; out="$OUT"
 case "$out" in *'--max-wait 3000'*) ok "junk bound falls back to 3000" ;; *) bad "junk bound did not fall back — got: $out" ;; esac
+
+# --- the printed check-ci command runs from any cwd ----------------------------
+# Outside a himmel checkout the relative `bash scripts/check-ci.sh` does not
+# resolve, so the reason names the himmel anchor's absolute copy; inside one it
+# keeps the relative form (the gate guards demand it).
+ADOPTER="$TMP/adopter"; mkdir -p "$ADOPTER"
+ANCHOR_COMMON="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
+ANCHOR="$(dirname "$ANCHOR_COMMON")"
+run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$ADOPTER")"; out="$OUT"
+case "$out" in
+    *"bash $ANCHOR/scripts/check-ci.sh <pr> --max-wait 3000"*) ok "adopter cwd: reason names the anchor's absolute check-ci.sh" ;;
+    *) bad "adopter cwd: reason lacks the absolute check-ci.sh ($ANCHOR) — got: $out" ;;
+esac
+if [ -f "$ANCHOR/scripts/check-ci.sh" ]; then ok "adopter cwd: the named check-ci.sh exists"; else bad "adopter cwd: $ANCHOR/scripts/check-ci.sh does not exist"; fi
+run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$REPO")"; out="$OUT"
+case "$out" in
+    *'bash scripts/check-ci.sh <pr> --max-wait 3000'*) ok "himmel cwd: the relative check-ci.sh form is unchanged" ;;
+    *) bad "himmel cwd: relative check-ci.sh form changed — got: $out" ;;
+esac
+FAKE_ANCHOR="$TMP/fake-anchor"; mkdir -p "$FAKE_ANCHOR/scripts"
+run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$ADOPTER")" HIMMEL_REPO="$FAKE_ANCHOR"; out="$OUT"
+case "$out" in
+    *"bash $FAKE_ANCHOR/scripts/check-ci.sh <pr>"*) ok "adopter cwd: HIMMEL_REPO is the anchor when set" ;;
+    *) bad "adopter cwd: HIMMEL_REPO anchor not used — got: $out" ;;
+esac
 
 # --- allowed ------------------------------------------------------------------
 run_guard "$(payload "$T_BG")"

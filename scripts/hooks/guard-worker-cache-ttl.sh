@@ -59,8 +59,8 @@ payload=""
 IFS= read -r -t 5 -d '' payload
 [ -n "$payload" ] || exit 0
 
-fields="$(printf '%s' "$payload" | jq -r '[(.stop_hook_active == true | tostring), (.session_id // ""), (.transcript_path // "")] | @tsv' 2>/dev/null)" || exit 0  # swallow-ok: junk payload fails open (allow)
-IFS='	' read -r stop_active session_id transcript <<EOF
+fields="$(printf '%s' "$payload" | jq -r '[(.stop_hook_active == true | tostring), (.session_id // ""), (.transcript_path // ""), (.cwd // "")] | @tsv' 2>/dev/null)" || exit 0  # swallow-ok: junk payload fails open (allow)
+IFS='	' read -r stop_active session_id transcript session_cwd <<EOF
 $fields
 EOF
 [ "$stop_active" = "false" ] || exit 0
@@ -131,7 +131,28 @@ bound="${HIMMEL_WORKER_SESSION_CACHE_KEEPALIVE_SECS:-3000}"
 case "$bound" in ''|*[!0-9]*) bound=3000 ;; esac
 if [ "${#bound}" -gt 5 ] || [ "$bound" -lt 60 ] || [ "$bound" -gt 3300 ]; then bound=3000; fi
 
-reason="Worker cache guard: you hold the queue lock on ${worker_doc##*/} and no background task or Monitor is running, so nothing wakes you before the 1 h prompt-cache TTL. A wake past it re-pays the whole prefix as a cold write, about 20x a warm turn. Before ending the turn do ONE of: (a) a wait that returns within ${bound}s, armed with Bash run_in_background — \`bash scripts/check-ci.sh <pr> --max-wait ${bound}\` for CI, \`timeout ${bound} bash -c 'until <condition>; do sleep 60; done'\` for a condition, or \`sleep ${bound}\` while holding for GO or a chief ruling (a SendMessage still wakes you sooner); re-arm it on each wake; or (b) when the wait is open-ended (the operator, another PR, a hold with no end in sight), WRAP with a resume brief so the chief relaunches you when it clears. Rule: docs/handover/worker-sections/cache-keepalive.md."
+# The printed check-ci command must run from the session's cwd. In a himmel
+# checkout the relative form stays (the gate guards demand it); anywhere else
+# (an adopted repo) it names the himmel anchor's absolute copy: $HIMMEL_REPO,
+# else the primary checkout this hook lives in. No cwd in the payload or no
+# resolvable anchor keeps the relative form.
+check_ci="scripts/check-ci.sh"
+# shellcheck source=../lib/git-clean.sh
+if [ -n "$session_cwd" ] && [ -d "$session_cwd" ] && { [ -r "$HERE/../lib/git-clean.sh" ] && . "$HERE/../lib/git-clean.sh"; } 2>/dev/null; then
+    anchor="${HIMMEL_REPO:-}"
+    case "$anchor" in /*) ;; *)
+        anchor="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" && anchor="$(dirname "$anchor")" || anchor="" ;; # swallow-ok: no anchor keeps the relative form
+    esac
+    if [ -n "$anchor" ] && [ -d "$anchor" ]; then
+        cwd_common="$(git_clean -C "$session_cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || cwd_common="" # swallow-ok: not a git repo is not a himmel checkout
+        anchor_common="$(git_clean -C "$anchor" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor_common="" # swallow-ok: an unresolvable anchor compares unequal
+        if [ -z "$cwd_common" ] || [ "$cwd_common" != "$anchor_common" ]; then
+            check_ci="$anchor/scripts/check-ci.sh"
+        fi
+    fi
+fi
+
+reason="Worker cache guard: you hold the queue lock on ${worker_doc##*/} and no background task or Monitor is running, so nothing wakes you before the 1 h prompt-cache TTL. A wake past it re-pays the whole prefix as a cold write, about 20x a warm turn. Before ending the turn do ONE of: (a) a wait that returns within ${bound}s, armed with Bash run_in_background — \`bash ${check_ci} <pr> --max-wait ${bound}\` for CI, \`timeout ${bound} bash -c 'until <condition>; do sleep 60; done'\` for a condition, or \`sleep ${bound}\` while holding for GO or a chief ruling (a SendMessage still wakes you sooner); re-arm it on each wake; or (b) when the wait is open-ended (the operator, another PR, a hold with no end in sight), WRAP with a resume brief so the chief relaunches you when it clears. Rule: docs/handover/worker-sections/cache-keepalive.md."
 
 _hp_json_escape "$reason"
 printf '{"decision":"block","reason":"%s"}\n' "$_HP_ESC"
