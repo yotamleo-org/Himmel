@@ -2994,6 +2994,58 @@ _dc_join_heredoc() {
     _DCJ=${out%$'\n'}
 }
 
+# _dc_quoted_data_only TEXT — 0 when every `;|&()`-separated piece of TEXT
+# that holds a quote (a heredoc opener's delimiter quotes aside) starts with a
+# program that reads its quoted words as data: a quoted `bash -c` / `eval` /
+# `python3 -c` body is shell text the quote-aware fold never reads, so it
+# keeps the full fold. A `;` inside a span splits it wrongly, which only ever
+# fails closed.
+_dc_quoted_data_only() {
+    local line piece first w i out op='^(.*<<-?[[:space:]]*)\\?['"'"'"]?([A-Za-z0-9_]+)['"'"'"]?(.*)$'
+    local -a ws
+    while IFS= read -r line || [ -n "$line" ]; do
+        if [[ $line =~ $op ]]; then
+            line=${BASH_REMATCH[1]}${BASH_REMATCH[2]}${BASH_REMATCH[3]}
+        fi
+        case "$line" in *\'*|*\"*) ;; *) continue ;; esac
+        # a line with only single quotes and no backslash pairs them safely,
+        # so a `;` or backtick inside a literal span is no separator
+        case "$line" in
+            *\"*|*\\*) ;;
+            *)
+                out=''
+                while [[ $line =~ ^([^\']*)\'[^\']*\'(.*)$ ]]; do
+                    out+=${BASH_REMATCH[1]}"''"
+                    line=${BASH_REMATCH[2]}
+                done
+                line=$out$line
+                ;;
+        esac
+        line=${line//[;|&()\`]/$'\n'}
+        while IFS= read -r piece || [ -n "$piece" ]; do
+            case "$piece" in *\'*|*\"*) ;; *) continue ;; esac
+            ws=()
+            read -r -a ws <<< "$piece"
+            i=0
+            while [ "$i" -lt "${#ws[@]}" ] && [[ ${ws[i]} =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; do
+                i=$((i + 1))
+            done
+            [ "$i" -lt "${#ws[@]}" ] || return 1
+            first=${ws[i]##*/}
+            case "$first" in
+                grep|egrep|fgrep|rg|echo|printf|head|tail|wc|sort|uniq|cut|tr|cat|ls|diff|cmp|comm|basename|dirname|true|false) ;;
+                bash|sh|zsh|dash|ksh)
+                    for w in ${ws[@]+"${ws[@]}"}; do
+                        case "$w" in -*c*) return 1 ;; esac
+                    done
+                    ;;
+                *) return 1 ;;
+            esac
+        done <<< "$line"
+    done <<< "$1"
+    return 0
+}
+
 # _dc_skeleton_clean RAWLOWER STRIPPED RAW — 0 when the lines of STRIPPED
 # (the quote-stripped command text) outside every heredoc body fold to
 # nothing new once their quotes are read from RAWLOWER (_dc_unquoted's text,
@@ -3001,13 +3053,19 @@ _dc_join_heredoc() {
 # no `.claude` glob. Sets _DCSK/_DCHB from STRIPPED. A `\`-newline in RAW
 # or a line count that differs between the two readings fails closed.
 _dc_skeleton_clean() {
-    local sk n1 n2
+    local sk n1 n2 k1
     case "$3" in *\\$'\n'*) return 1 ;; esac
     _dc_split_heredoc "$1" || return 1
-    sk=$_DCSK
+    sk=$_DCSK k1=$_DCKIND
+    # the terminator is case-sensitive: the original-case text must split
+    # the same lines into body and skeleton as the lowercased one
+    _dc_split_heredoc "$3" || return 1
+    [ "$_DCKIND" = "$k1" ] || return 1
     _dc_split_heredoc "$2" || return 1
+    [ "$_DCKIND" = "$k1" ] || return 1
     n1=${sk//[!$'\n']/} n2=${_DCSK//[!$'\n']/}
     [ "${#n1}" = "${#n2}" ] || return 1
+    _dc_quoted_data_only "$sk" || return 1
     _dc_unquoted "$sk"
     # an unquoted group, glob-with-group or `$(…)` name still goes to the
     # full fold (dc_zre, set by the caller)

@@ -3657,6 +3657,10 @@ python3 - <<'EOF'\nprint(1)\nEOF\ncp /tmp/x @P@/.cl*ude/
 python3 - <<'EOF'\nimport os\nos.system("cp /tmp/x @P@/.cl*ude/")\nEOF\ngrep -o 'a:[^x]*' /tmp/f
 python3 - <<'EOF'\nopen('@P@/.claude/settings.json','w')\nEOF\ngrep -o 'a:[^x]*' /tmp/f
 gh repo clone o/r /tmp/x -- --config=core.sshCommand=$'cp /tmp/x @P@/\x2eclaude/settings.json'
+python3 - <<'EOF'\nprint(1)\nEOF\nbash -c "cp /tmp/x @P@/.cl*ude/"
+python3 - <<'EOF'\nprint(1)\nEOF\nsh -c 'cp /tmp/x @P@/.cl*ude/'
+python3 - <<'EOF'\nprint(1)\nEOF\neval "cp /tmp/x @P@/.cl*ude/"
+python3 - <<'EOF'\neof\nimport os; os.system("cp /tmp/x @P@/.cl*ude/")\nEOF
 ROWS
 
 # Clean up worktree registrations before removing the sandbox (avoids
