@@ -17,6 +17,8 @@
 #        [HIMMEL_API_BRANCH=<branch> HIMMEL_API_HEAD=<sha> HIMMEL_API_PR=<number>] the work the call belongs to; written to
 #        the launch record so a cost can be joined to a PR by key (absent = empty / null)
 # OFF by default. No subscription fallback: a refusal is final.
+# Exit: the call's own code; 2 a refusal before any request; 6 the provider answered "Credit balance is too low" or
+#       "Invalid API key" (the account is marked, and a looping caller stops instead of retrying it).
 set -u
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -294,12 +296,21 @@ else
   state unknown --id "$JOB_ID" >/dev/null; OUTCOME=unknown
 fi
 
-# --- a credit-exhausted answer marks the account; later auto picks rotate to the other one ---
-if [ "$RC" -ne 0 ] && grep -qi 'credit balance is too low' "$OUT" 2>/dev/null; then
+# --- a credit-exhausted or key-rejected answer marks the account; later auto picks rotate to the other one ---
+# Either answer exits 6 (EXIT_REJECTED), the code a looping caller treats as non-retryable: the same account would answer the same.
+EXIT_RC="$RC"
+REJECTED=""
+if [ "$RC" -ne 0 ]; then
+  if grep -qi 'credit balance is too low' "$OUT" 2>/dev/null; then REJECTED=exhausted
+  elif grep -qi 'invalid api key' "$OUT" 2>/dev/null; then REJECTED=key_invalid; fi
+fi
+if [ -n "$REJECTED" ]; then
+  OUTCOME="$REJECTED"; EXIT_RC=6
+  case "$REJECTED" in exhausted) WHAT="credit exhausted" ;; *) WHAT="API key rejected" ;; esac
   if state exhausted >/dev/null 2>&1; then
-    echo "claude-api: account $HIMMEL_API_ACCOUNT credit exhausted; auto routing rotates to the other account" >&2
+    echo "claude-api: account $HIMMEL_API_ACCOUNT $WHAT; auto routing rotates to the other account" >&2
   else
-    echo "claude-api: account $HIMMEL_API_ACCOUNT credit exhausted, but the marker was not saved; the next auto call may pick it again" >&2
+    echo "claude-api: account $HIMMEL_API_ACCOUNT $WHAT, but the marker was not saved; the next auto call may pick it again" >&2
   fi
 fi
 
@@ -322,4 +333,4 @@ SOURCE="$(printf '%s' "$RESERVED" | sed -n 's/.*"source":"\([^"]*\)".*/\1/p')"
 } >>"$STATE_DIR/launches.jsonl" 2>/dev/null || echo "claude-api: warning: launch record not written" >&2
 
 cat "$OUT"
-exit "$RC"
+exit "$EXIT_RC"
