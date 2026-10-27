@@ -338,4 +338,31 @@ run Task "$td/m9.md" "$q" --sector X; check "upper-case METRIC: is accepted" "$r
 mkdraft "$td/m10.md"; printf 'Labels: ci\n- **metric:** TBD\n' >>"$td/m10.md"
 run Task "$td/m10.md" "$q" --sector X; check "bulleted bold placeholder Metric exits 1" "$rc" 1
 
+# --- edges rule: a Plan naming two or more ticket keys needs an Edges: line ---
+q="$td/q-edges"
+edraft(){ mkdraft "$1" Plan; printf '## Plan\n%s\n' "$2" >>"$1"; }
+edraft "$td/e1.md" '1. Land HIMMEL-100 first.
+2. Then HIMMEL-101.'
+run Task "$td/e1.md" "$q" --sector X
+check "multi-ticket Plan with no Edges line exits 1" "$rc" 1
+has "refusal names the Edges line" "$out" "Edges:"
+check "edge-less multi-ticket draft is parked" "$(qcount "$q")" 1
+cp "$td/e1.md" "$td/e2.md"; printf 'Edges: HIMMEL-100 blocks HIMMEL-101 (hard)\n' >>"$td/e2.md"
+run Task "$td/e2.md" "$q" --sector X; check "multi-ticket Plan with an Edges line exits 0" "$rc" 0
+cp "$td/e1.md" "$td/e3.md"; printf 'Edges: none\n' >>"$td/e3.md"
+run Task "$td/e3.md" "$q" --sector X; check "multi-ticket Plan with Edges: none exits 0" "$rc" 0
+cp "$td/e1.md" "$td/e4.md"; printf '%s\n' '- **Edges:** HIMMEL-101 soft-blocked by HIMMEL-100' >>"$td/e4.md"
+run Task "$td/e4.md" "$q" --sector X; check "bulleted bold Edges line exits 0" "$rc" 0
+cp "$td/e1.md" "$td/e5.md"; printf 'Edges: TBD\n' >>"$td/e5.md"
+run Task "$td/e5.md" "$q" --sector X; check "placeholder Edges line exits 1" "$rc" 1
+edraft "$td/e6.md" '1. Fix HIMMEL-100 and add a row for it.
+2. Re-run HIMMEL-100 afterwards.'
+run Task "$td/e6.md" "$q" --sector X; check "single-ticket Plan needs no Edges line" "$rc" 0
+edraft "$td/e7.md" '1. Read the UTF-8 notes, then run it.'
+run Task "$td/e7.md" "$q" --sector X; check "Plan with no ticket key needs no Edges line" "$rc" 0
+mkdraft "$td/e8.md"; printf 'HIMMEL-100 and HIMMEL-101 are named outside the Plan.\n' >>"$td/e8.md"
+run Task "$td/e8.md" "$q" --sector X; check "keys outside the Plan need no Edges line" "$rc" 0
+run Epic "$td/e1.md" "$q" --sector X; check "Epic without Edges only warns" "$rc" 0
+has "Epic warns about Edges" "$out" "Edges:"
+
 [ "$fails" -eq 0 ] && { echo "PASS"; exit 0; } || { echo "FAILED: $fails"; exit 1; }
