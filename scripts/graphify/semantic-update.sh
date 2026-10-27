@@ -83,7 +83,9 @@
 # first run treats every file as changed.
 #
 # Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
-# 3 bank at/over threshold (nothing touched); 4 promote lock held.
+# 3 bank at/over threshold (nothing touched); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
+# files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection, which also stops
+# dispatching the remaining chunks (one rejection on a pinned account, two on auto routing). Do not rerun until fixed.
 # graph-cadence.sh --semantic treats 3 and 4 as benign skips (the next fire
 # retries, nothing was touched) and alerts on every other non-zero rc.
 set -euo pipefail
