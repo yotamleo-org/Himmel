@@ -50,3 +50,18 @@
 # VERCEL_USER_ID=dummy-user
 # ANTHROPIC_API_ORG_ID_A=dummy-org-a
 # ANTHROPIC_API_ORG_ID_B=dummy-org-b
+
+# Plain behaviour settings (HIMMEL-7427)
+# HIMMEL_REPO=/path/to/your/himmel
+# CLAUDE_HUD_ALLOW_EXTRA_CMD=1
+# HIMMEL_WHERE_ARE_WE_ROLLUP_TTL=900
+# HIMMEL_WHERE_ARE_WE_SEG_TIMEOUT=5
+# HIMMEL_JIRA_NUDGE=1
+# CR_APP=1
+# CR_PUBLIC_REPO=owner/name
+# CLAUDE_END_SESSION_WIKI=0
+# SKILL_INDEX_DIR=~/.claude/skill-index
+# ALIBABA_ANTHROPIC_BASE_URL=https://dummy.example.invalid/anthropic
+# ALIBABA_CODING_PLAN_BASE_URL=https://dummy.example.invalid/coding-plan
+# ALIBABA_DASHSCOPE_BASE_URL=https://dummy.example.invalid/api/v1
+# ALIBABA_OPENAI_BASE_URL=https://dummy.example.invalid/compatible-mode/v1

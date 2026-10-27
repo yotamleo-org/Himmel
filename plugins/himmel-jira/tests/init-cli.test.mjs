@@ -19,7 +19,7 @@ beforeEach(() => {
 
 function discover(extraArgs, envOverrides) {
   // Clear inherited JIRA_PROJECT* so the test machine's real env can't leak in.
-  const env = { ...process.env, JIRA_PROJECT_KEY: '', JIRA_PROJECTS: '', ...envOverrides };
+  const env = { ...process.env, JIRA_PROJECT_KEY: '', JIRA_PROJECTS: '', HIMMEL_CONFIG_DIR: join(emptyEnv, '..'), ...envOverrides };
   return spawnSync(process.execPath, [initCli, '--discover', '--env-path', emptyEnv, ...extraArgs], {
     encoding: 'utf8',
     env,
