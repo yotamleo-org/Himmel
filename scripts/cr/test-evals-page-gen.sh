@@ -91,6 +91,15 @@ pdd_row() { # ts k pct lo hi
 traj_row() { # ts trajectory_v red_before_green
   mkrow "$1" leg-trajectory "{\"trajectory_v\":$2}" "{\"red_before_green\":$3}" '{}'
 }
+# lane-quality-calibration: a row with no second grader (never shown), and per arm set the newest
+# model-graded row only: m-a's 2026-10-26 row (kappa 0.50, 14 of 17 agree) replaces its 2026-10-24 one.
+cal_row() { # ts config-json verdict_kappa n_verdict verdict_agree
+  mkrow "$1" lane-quality-calibration "$2" \
+    "{\"verdict_kappa\":$3,\"n_verdict\":$4,\"verdict_agree\":$5,\"n_twice\":$4,\"verdict_flips\":2,\"tiebreak_sent\":3,\"tiebreak_grader1\":2,\"tiebreak_grader2\":1,\"tiebreak_missing\":0}" '{}'
+}
+grader() { printf '{"role":"%s","model":"%s","effort":"high","lane":"%s","vendor":"%s"}' "$@"; }
+CAL_A="[$(grader grader1 gpt-x claudex openai),$(grader grader2 google/gemini-x openrouter google),$(grader tiebreak deepseek/deepseek-x openrouter deepseek)]"
+CAL_B="[$(grader grader1 opus native anthropic),$(grader grader2 google/gemini-x openrouter google),$(grader tiebreak deepseek/deepseek-x openrouter deepseek)]"
 {
   pdd_row 2026-10-23T10:00:00Z 3 0.025 0.0085 0.0711
   pdd_row 2026-10-24T23:52:30Z 13 0.1083 0.0644 0.1766
@@ -99,6 +108,10 @@ traj_row() { # ts trajectory_v red_before_green
   traj_row 2026-10-25T02:00:00Z 2 null
   mkrow 2026-10-24T19:25:56Z review-panel '{"critics":["beta"]}' \
     '{"panel.recall":0.75,"defects":12,"cases":24}' '{"panel.recall":{"lo":0.4677,"hi":0.9111}}'
+  cal_row 2026-10-23T10:00:00Z '{"judge_models":["opus"],"judge2":null,"model_graded":false}' 0.9 10 9
+  cal_row 2026-10-24T10:00:00Z "{\"models\":[\"m-a\"],\"model_graded\":true,\"graders\":$CAL_A}" 0.25 6 4
+  cal_row 2026-10-26T10:00:00Z "{\"models\":[\"m-a\"],\"model_graded\":true,\"graders\":$CAL_A}" 0.5 17 14
+  cal_row 2026-10-26T11:00:00Z "{\"models\":[\"m-b\"],\"model_graded\":true,\"graders\":$CAL_B}" 0.3333 7 5
 } > "$E"
 
 # ── Fixture panel ───────────────────────────────────────────────────────────
@@ -164,6 +177,10 @@ eq "planted: the panel's catch rate" "$(jget "$OUT" planted/pct)" "75.0"
 eq "planted: bugs caught" "$(jget "$OUT" planted/k)" "9"
 eq "planted: bugs planted" "$(jget "$OUT" planted/n)" "12"
 eq "planted: dated by its row" "$(jget "$OUT" planted/as_of)" "2026-10-24"
+# Judge calibration: the newest model-graded row per arm set, never a row without a second grader.
+eq "calibration: one entry per arm set, newest row each" "$(python3 -I -c 'import json,sys
+c=json.load(open(sys.argv[1]))["calibration"]
+print(" ".join("%s:%s:%s/%s" % (",".join(e["models"]), e["kappa"], e["agree"], e["n"]) for e in c))' "$OUT")" "m-a:0.5:14/17 m-b:0.3333:5/7"
 # The current panel comes from the critics file; a ledger reviewer outside it is history.
 eq "panel: a panel reviewer is current" "$(jget "$OUT" review/critics/beta/panel)" "beta"
 eq "panel: a ledger reviewer outside the panel is history" "$(jget "$OUT" review/critics/alpha/panel)" "null"
@@ -189,6 +206,14 @@ has "render: a How to read these numbers block" "$(cat "$R")" "## How to read th
 has "render: the block says who rules" "$(cat "$R")" "The PR author rules"
 has "render: the block explains the bootstrap by PR" "$(cat "$R")" "resamples whole PRs"
 has "render: the block explains as of" "$(cat "$R")" "**As of**"
+CAL_LINE="$(grep -F '| How far can the lane-quality judge be trusted?' "$R" | grep -F 'm-a')"
+has "render: the judge calibration line says model-graded" "$CAL_LINE" "model-graded"
+has "render: the calibration line names the grader vendors" "$CAL_LINE" "OpenAI and Google, tie-breaker DeepSeek"
+has "render: the calibration line gives kappa and agreement" "$CAL_LINE" "**kappa 0.50**: graders agreed on 14 of 17 runs"
+has "render: the calibration line is dated with its n" "$CAL_LINE" "as of 2026-10-26, n = 17 runs"
+has "render: the stored judge as grader 1 is named by vendor" "$(grep -F '| How far can the lane-quality judge be trusted?' "$R" | grep -F 'm-b')" "Anthropic and Google"
+lacks "render: a superseded calibration row is not shown" "$(cat "$R")" "kappa 0.25"
+has "render: the block defines model-graded kappa" "$(cat "$R")" "| **Model-graded kappa** |"
 has "render: pdd figure" "$(cat "$R")" "**10.8%** of merged PRs were proof-first"
 has "render: pdd interval and n" "$(cat "$R")" "| 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |"
 has "render: test-first not measured yet" "$(grep -F '| Test first:' "$R")" "| not measured yet; it needs 30 |"

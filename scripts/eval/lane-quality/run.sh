@@ -17,6 +17,9 @@
 #   run.sh table <run-dir>...
 #   run.sh pair <run-dir-a> <run-dir-b>   (one task set on two base commits: one paired row per task)
 #   run.sh calibration <run-dir>... [--judge2-model <model>] [--judge2-effort <level>]
+#              [--judge2-lane <lane>] [--judge1-model <model>] [--judge1-effort <level>]
+#              [--judge1-lane <lane>] [--tiebreak-model <model>] [--tiebreak-effort <level>]
+#              [--tiebreak-lane <lane>] [--sample <file>]
 #              [--max-usd <usd>] [--timeout <sec>] [--json] [--no-ledger]
 #   run.sh materialize <task> <dir> [--reference]   (used by the suite)
 #   run.sh verdict <baseline-run-dir> <variant-run-dir>...
@@ -32,9 +35,16 @@
 # and counts the rows with no judge score instead of dropping them.
 # `calibration` (lq_stats.py) scores the judge against the hidden acceptance
 # (AUC and point-biserial of each criterion against accept_ok) and, with
-# --judge2-model, re-judges every stored judge packet once with a second
-# model or effort and reports quadratic weighted kappa per criterion. Stored
-# second-judge results are reused, so a rerun makes no call.
+# --judge2-model, grades every stored judge packet once with a second grader
+# and reports quadratic weighted kappa per criterion, Cohen's kappa on the
+# per-run verdict (pass = every correctness claim holds) and the stored
+# --judge-twice flip rate. Grader 1 is the stored judge, or --judge1-model.
+# Graders are model-graded calibration, no human label, so a grader may share
+# no vendor (opus, sonnet and haiku are one) with a model under test or with
+# another grader: exit 64 before any call. --tiebreak-model grades only the
+# runs the two graders disagree on. A lane (native, claudex, openrouter) picks
+# the launcher; --sample keeps only the listed judge-packet paths. Stored
+# grader results are reused, so a rerun makes no call.
 #
 # Task sets: the synthetic tasks are the regression set (the default). A real
 # task (a tasks/<id>/task.json, written by mine-tasks.py) is a merged himmel
@@ -98,7 +108,8 @@
 # ~/.himmel/eval/lane-quality/<run-id>/ by default.
 #
 # Test seams (env): LQ_CLAUDE_BIN, LQ_PREFLIGHT, LQ_REPO, LQ_BASE_SHA,
-# LQ_WORK_ROOT, LQ_TRANSCRIPTS, LQ_LANE_BIN, LQ_METERED_PROBE.
+# LQ_WORK_ROOT, LQ_TRANSCRIPTS, LQ_LANE_BIN, LQ_METERED_PROBE, LQ_CLAUDEX_BIN,
+# LQ_OPENROUTER_BIN.
 #
 # ponytail: the bank reading is the account-wide five-hour percent, so any
 # other session running during a task lands in its delta; run a sweep on a
@@ -116,7 +127,7 @@ set -u
 HERE="$(cd "$(dirname "$0")" && pwd)"
 TASKS="$HERE/tasks"
 die() { echo "lane-quality: $*" >&2; exit 64; }
-usage() { sed -n '2,86p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
+usage() { sed -n '2,96p' "$0" | sed 's/^# \{0,1\}//' >&2; exit 64; }
 # billed-opt-in: HIMMEL_BILLED_OK
 need_billed() { [ "${HIMMEL_BILLED_OK:-}" = 1 ] || die "$1 makes real, billed model calls; set HIMMEL_BILLED_OK=1 (on-demand only)"; }
 has_arg() { local w=$1 a; shift; for a in "$@"; do if [ "$a" = "$w" ]; then return 0; fi; done; return 1; }
@@ -244,12 +255,24 @@ transcript_metrics() {
                  or ($tu | any(.name | test("qmd|graphify"; "i")))) } + $traj' "$1"
 }
 
-# judge_call <packet> <out json> <err file> <model> <budget> [effort] [single|pair]:
-# one blind judge call on a stored packet; the result lands in <out json>.
+# judge_call <packet> <out json> <err file> <model> <budget> [effort] [single|pair] [native|claudex|openrouter]:
+# one blind judge call on a stored packet; the result lands in <out json>. A
+# claudex or openrouter grader goes through that lane's launcher, which sets
+# its own gateway once the pin below has cleared the ambient one.
 judge_call() {
-  local packet="$1" out="$2" err="$3" model="$4" budget="$5" effort="${6:-}" kind="${7:-single}" jdir rc schema
+  local packet="$1" out="$2" err="$3" model="$4" budget="$5" effort="${6:-}" kind="${7:-single}" lane="${8:-native}" jdir rc schema
+  local bin="$CLAUDE_BIN" pre=() bare=() scratch="${TMPDIR:-/tmp}"
+  case "$lane" in
+    claudex) bin="${LQ_CLAUDEX_BIN:-$REPO/scripts/claude-codex}" ;;
+    openrouter)
+      # the launcher's egress gate classifies the corpus by cwd, and a packet is
+      # himmel code: the grader runs from a scratch dir inside this checkout, with
+      # --bare so no CLAUDE.md, hook or plugin there reaches the blind grader.
+      bin="${LQ_OPENROUTER_BIN:-$REPO/scripts/claude-openrouter}"; pre=(env "OPENROUTER_MODEL=$model"); bare=(--bare)
+      scratch="$(git -C "$HERE" rev-parse --show-toplevel)" || return 1 ;;
+  esac
   schema="$(jq -c ".$kind" "$HERE/judge-claims-schema.json")" || return 1
-  jdir="$(mktemp -d "${TMPDIR:-/tmp}/lq-judge.XXXXXX")" || return 1
+  jdir="$(mktemp -d "$scratch/.lq-judge.XXXXXX")" || return 1
   (
     cd "$jdir" || exit 1
     # the pin's rc is advisory; the keyword-only LAUNCH GATE re-checks.
@@ -257,7 +280,7 @@ judge_call() {
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
       # blind judge call, bank-preflighted by its caller, no tools, explicit permission mode, budget-capped
       # launch-profile-ok: the judge runs with --tools "", so no tool profile applies
-      timeout "$TIMEOUT" "$CLAUDE_BIN" -p --model "$model" ${effort:+--effort "$effort"} --permission-mode dontAsk --output-format json \
+      timeout "$TIMEOUT" "${pre[@]}" "$bin" "${bare[@]}" -p --model "$model" ${effort:+--effort "$effort"} --permission-mode dontAsk --output-format json \
         --max-budget-usd "$budget" --no-session-persistence --json-schema "$schema" --tools ""
     else
       exit 1
@@ -906,19 +929,94 @@ arm_dir() { # arm_dir baseline|candidate <baseline dir> <candidate dir>
   if [ "$1" = baseline ]; then echo "$2"; else echo "$3"; fi
 }
 
-# calibration <run-dir>... [--judge2-model M] [--judge2-effort E] [--max-usd U]
-# [--timeout S] [--json] [--no-ledger]: the second-judge calls happen here
-# (bank-preflighted and budget-capped like the sweep); the maths is lq_stats.py.
+# grader_label <model> <effort> <lane>: the stored-result label, injective in
+# (model, effort, lane), or one configuration reuses another's scores. Each
+# byte outside [A-Za-z0-9.-] becomes _<hex> (so a lone "_" is always an
+# escape), and "__", which no escaped part contains, joins the parts. A native
+# grader keeps the old one- or two-part label; any other lane always has three.
+grader_label() {
+  python3 -c 'import os, re, sys
+enc = lambda s: re.sub(rb"[^A-Za-z0-9.-]", lambda m: b"_%02x" % m.group()[0], os.fsencode(s)).decode()
+model, effort, lane = sys.argv[1:]
+parts = [p for p in (model, effort) if p] if lane == "native" else [model, effort, lane]
+print("__".join(enc(p) for p in parts))' "$1" "$2" "$3"
+}
+
+# refuse_vendor <role> <grader> <what> <model>...: exit 64 when the grader's
+# vendor (lq_stats.py vendor) is any model's; opus, sonnet and haiku are one vendor.
+refuse_vendor() {
+  local role="$1" g="$2" what="$3" gv m; shift 3
+  gv="$(python3 "$HERE/lq_stats.py" vendor "$g")" || die "cannot map '$g' to a vendor"
+  for m in "$@"; do
+    [ -n "$m" ] || continue
+    [ "$gv" != "$(python3 "$HERE/lq_stats.py" vendor "$m")" ] \
+      || die "$role '$g' is the same vendor ($gv) as the $what '$m'; pick a grader from another vendor"
+  done
+}
+
+# grade_pass <model> <effort> <lane> <label> <list>: grade every "<dir>\t<stem>"
+# line of <list> whose result is not stored yet, into <stem>.judge2.<label>.json.
+# A native call is bank-preflighted; every call is capped at what is left of
+# --max-usd. An openrouter call counts the larger of its reported cost and the
+# metered balance it took. Returns 1 when the budget or an unknown cost stops it.
+grade_pass() {
+  local model="$1" effort="$2" lane="$3" label="$4" list="$5" d stem packet out remaining cost tok b0 b1
+  while IFS=$'\t' read -r d stem; do
+    packet="$d/$stem.judge-packet.md"; out="$d/$stem.judge2.$label.json"
+    [ -s "$packet" ] || continue
+    [ "$(judge_scores "$out")" = null ] || continue
+    remaining="$(awk -v m="$MAX_USD" -v s="$SPENT" 'BEGIN{printf "%.2f", m - s}')"
+    if ! awk -v r="$remaining" 'BEGIN{exit !(r >= 0.01)}'; then
+      echo "lane-quality: grader budget spent ($SPENT of $MAX_USD USD); stopping, the rest stay ungraded" >&2
+      return 1
+    fi
+    if [ "$lane" = native ]; then
+      read -r tok _ <<<"$(bank_read)"
+      if [ "$tok" != PROCEED ]; then
+        echo "lane-quality: bank preflight said $tok; grader stopped before $stem" >&2
+        exit 75
+      fi
+    fi
+    [ "$lane" != openrouter ] || b0="$(metered_read)"
+    judge_call "$packet" "$out" "$d/$stem.judge2.$label.err" "$model" "$remaining" "$effort" single "$lane" \
+      || die "cannot run the grader $model on $packet"
+    if [ "$lane" = claudex ]; then
+      # Claude Code cannot price the gpt slug: its figure when present, else 0, as the sweep counts it
+      cost="$(jq -r '.total_cost_usd // 0' "$out" 2>/dev/null)"
+    else
+      cost="$(jq -r '.total_cost_usd // empty' "$out" 2>/dev/null)"
+    fi
+    if [ "$lane" = openrouter ] && [ -n "$cost" ]; then
+      b1="$(metered_read)"
+      cost="$(awk -v c="$cost" -v a="$b0" -v b="$b1" 'BEGIN{d = (a ~ /^[0-9.]+$/ && b ~ /^[0-9.]+$/) ? a - b : 0; printf "%.4f", (d > c ? d : c)}')"
+    fi
+    if [ -z "$cost" ]; then
+      echo "lane-quality: grader $model on $stem left its cost unknown; stopping, spend so far is a lower bound" >&2
+      return 1
+    fi
+    SPENT="$(awk -v s="$SPENT" -v c="$cost" 'BEGIN{printf "%.4f", s + c}')"
+  done <"$list"
+}
+
+# calibration <run-dir>... [--judge1-model M [--judge1-effort E] [--judge1-lane L]]
+# [--judge2-model M [--judge2-effort E] [--judge2-lane L]]
+# [--tiebreak-model M [--tiebreak-effort E] [--tiebreak-lane L]] [--sample FILE]
+# [--max-usd U] [--timeout S] [--json] [--no-ledger]: the grader calls happen
+# here (budget-capped like the sweep); the maths is lq_stats.py.
 cmd_calibration() {
-  local dirs=() j2model="" j2effort="" json="" noledger="" label="" d stem packet out spent=0 remaining cost tok
-  MAX_USD=1; TIMEOUT=600
+  local dirs=() json="" noledger="" sample="" d l stem list stop=0 l1="" l2="" lt="" m g1=() under=() stored=()
+  local j1model="" j1effort="" j1lane=native j2model="" j2effort="" j2lane=native tbmodel="" tbeffort="" tblane=native
+  MAX_USD=1; TIMEOUT=600; SPENT=0
   while [ $# -gt 0 ]; do
     case "$1" in
-      --judge2-model|--judge2-effort|--max-usd|--timeout)
+      --judge1-model|--judge1-effort|--judge1-lane|--judge2-model|--judge2-effort|--judge2-lane|\
+      --tiebreak-model|--tiebreak-effort|--tiebreak-lane|--sample|--max-usd|--timeout)
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in
-          --judge2-model) j2model="$2" ;; --judge2-effort) j2effort="$2" ;;
-          --max-usd) MAX_USD="$2" ;; --timeout) TIMEOUT="$2" ;;
+          --judge1-model) j1model="$2" ;; --judge1-effort) j1effort="$2" ;; --judge1-lane) j1lane="$2" ;;
+          --judge2-model) j2model="$2" ;; --judge2-effort) j2effort="$2" ;; --judge2-lane) j2lane="$2" ;;
+          --tiebreak-model) tbmodel="$2" ;; --tiebreak-effort) tbeffort="$2" ;; --tiebreak-lane) tblane="$2" ;;
+          --sample) sample="$2" ;; --max-usd) MAX_USD="$2" ;; --timeout) TIMEOUT="$2" ;;
         esac; shift 2 ;;
       --json) json=--json; shift ;;
       --no-ledger) noledger=--no-ledger; shift ;;
@@ -929,46 +1027,68 @@ cmd_calibration() {
   [ "${#dirs[@]}" -ge 1 ] || die "calibration needs at least one run directory"
   for d in "${dirs[@]}"; do [ -r "$d/runs.jsonl" ] || die "no runs.jsonl in $d"; done
   [ -z "$j2effort" ] || [ -n "$j2model" ] || die "--judge2-effort needs --judge2-model"
+  [ "$j2lane" = native ] || [ -n "$j2model" ] || die "--judge2-lane needs --judge2-model"
+  [ -z "$j1effort" ] || [ -n "$j1model" ] || die "--judge1-effort needs --judge1-model"
+  [ "$j1lane" = native ] || [ -n "$j1model" ] || die "--judge1-lane needs --judge1-model"
+  [ -z "$tbeffort" ] || [ -n "$tbmodel" ] || die "--tiebreak-effort needs --tiebreak-model"
+  [ "$tblane" = native ] || [ -n "$tbmodel" ] || die "--tiebreak-lane needs --tiebreak-model"
+  [ -z "$tbmodel" ] || [ -n "$j2model" ] || die "--tiebreak-model needs --judge2-model"
+  [ -z "$j1model" ] || [ -n "$j2model" ] || die "--judge1-model needs --judge2-model"
+  for l in "$j1lane" "$j2lane" "$tblane"; do
+    case "$l" in native|claudex|openrouter) ;; *) die "a grader lane must be native, claudex or openrouter; got '$l'" ;; esac
+  done
+  [ -z "$sample" ] || [ -r "$sample" ] || die "--sample: cannot read '$sample'"
   awk -v m="$MAX_USD" 'BEGIN{exit !(m+0 > 0)}' || die "--max-usd must be a positive number"
   case "$TIMEOUT" in ''|*[!0-9]*) die "--timeout must be positive whole seconds" ;; esac
   [ "$((10#$TIMEOUT))" -gt 0 ] || die "--timeout must be positive whole seconds"
   if [ -n "$j2model" ]; then
-    # the stored-result label must be injective in (model, effort),
-    # or one configuration reuses another's scores. Each byte outside
-    # [A-Za-z0-9.-] becomes _<hex> (so a lone "_" is always an escape), and
-    # "__", which no escaped part contains, joins model and effort.
-    label="$(python3 -c 'import os, re, sys
-enc = lambda s: re.sub(rb"[^A-Za-z0-9.-]", lambda m: b"_%02x" % m.group()[0], os.fsencode(s)).decode()
-print("__".join(enc(a) for a in sys.argv[1:] if a))' "$j2model" "$j2effort")" || die "cannot build the second-judge label"
-    init_env
+    # the graders are refused by vendor before any call: never a vendor under
+    # test, and every grader from a vendor of its own.
     for d in "${dirs[@]}"; do
-      while IFS= read -r stem; do
-        packet="$d/$stem.judge-packet.md"; out="$d/$stem.judge2.$label.json"
-        [ -s "$packet" ] || continue
-        [ "$(judge_scores "$out")" = null ] || continue
-        remaining="$(awk -v m="$MAX_USD" -v s="$spent" 'BEGIN{printf "%.2f", m - s}')"
-        if ! awk -v r="$remaining" 'BEGIN{exit !(r >= 0.01)}'; then
-          echo "lane-quality: second-judge budget spent ($spent of $MAX_USD USD); stopping, the rest stay unjudged" >&2
-          break 2
-        fi
-        read -r tok _ <<<"$(bank_read)"
-        if [ "$tok" != PROCEED ]; then
-          echo "lane-quality: bank preflight said $tok; second judge stopped before $stem" >&2
-          exit 75
-        fi
-        judge_call "$packet" "$out" "$d/$stem.judge2.$label.err" "$j2model" "$remaining" "$j2effort" \
-          || die "cannot run the second judge on $packet"
-        cost="$(jq -r '.total_cost_usd // empty' "$out" 2>/dev/null)"
-        if [ -z "$cost" ]; then
-          echo "lane-quality: second judge on $stem left its cost unknown; stopping, spend so far is a lower bound" >&2
-          break 2
-        fi
-        spent="$(awk -v s="$spent" -v c="$cost" 'BEGIN{printf "%.4f", s + c}')"
-      done < <(jq -r 'if (.rep // 1) > 1 then "\(.task).r\(.rep)" else .task end' "$d/runs.jsonl")
+      while IFS= read -r m; do under+=("$m"); done < <(jq -r '.model // empty' "$d/runs.jsonl" | sort -u)
+      while IFS= read -r m; do stored+=("$m"); done < <(jq -r '.judge_model // empty' "$d/runs.jsonl" | sort -u)
     done
-    echo "lane-quality: second judge $label spent $spent USD" >&2
+    if [ -n "$j1model" ]; then
+      refuse_vendor "first grader" "$j1model" "model under test" "${under[@]}"
+      g1=("$j1model")
+    else
+      [ "${#stored[@]}" -ge 1 ] || die "no stored judge to be the first grader; pass --judge1-model"
+      for m in "${stored[@]}"; do refuse_vendor "first grader" "$m" "model under test" "${under[@]}"; done
+      g1=("${stored[@]}")
+    fi
+    refuse_vendor "second grader" "$j2model" "model under test" "${under[@]}"
+    refuse_vendor "second grader" "$j2model" "first grader" "${g1[@]}"
+    if [ -n "$tbmodel" ]; then
+      refuse_vendor "tie-breaker" "$tbmodel" "model under test" "${under[@]}"
+      refuse_vendor "tie-breaker" "$tbmodel" "first grader" "${g1[@]}"
+      refuse_vendor "tie-breaker" "$tbmodel" "second grader" "$j2model"
+    fi
+    l2="$(grader_label "$j2model" "$j2effort" "$j2lane")" || die "cannot build the second grader's label"
+    [ -z "$j1model" ] || l1="$(grader_label "$j1model" "$j1effort" "$j1lane")" || die "cannot build the first grader's label"
+    [ -z "$tbmodel" ] || lt="$(grader_label "$tbmodel" "$tbeffort" "$tblane")" || die "cannot build the tie-breaker's label"
+    init_env
+    METERED_PROBE="${LQ_METERED_PROBE:-$REPO/scripts/lanes/openrouter-cost.sh}"
+    list="$(mktemp "${TMPDIR:-/tmp}/lq-calibration.XXXXXX")" || die "mktemp failed"
+    for d in "${dirs[@]}"; do
+      d="$(cd "$d" && pwd)" || die "cannot resolve $d"
+      while IFS= read -r stem; do
+        [ -z "$sample" ] || grep -qxF "$d/$stem.judge-packet.md" "$sample" || continue
+        printf '%s\t%s\n' "$d" "$stem"
+      done < <(jq -r 'if (.rep // 1) > 1 then "\(.task).r\(.rep)" else .task end' "$d/runs.jsonl")
+    done >"$list"
+    [ -z "$j1model" ] || grade_pass "$j1model" "$j1effort" "$j1lane" "$l1" "$list" || stop=1
+    [ "$stop" = 1 ] || grade_pass "$j2model" "$j2effort" "$j2lane" "$l2" "$list" || stop=1
+    if [ -n "$tbmodel" ] && [ "$stop" = 0 ]; then
+      # only the runs the two graders give different verdicts go to the tie-breaker
+      python3 "$HERE/lq_stats.py" disagreements --judge2-label "$l2" ${l1:+--judge1-label "$l1"} \
+        ${sample:+--sample "$sample"} "${dirs[@]}" >"$list" || die "cannot list the graders' disagreements"
+      grade_pass "$tbmodel" "$tbeffort" "$tblane" "$lt" "$list" || stop=1
+    fi
+    rm -f "$list"
+    echo "lane-quality: graders spent $SPENT USD (cap $MAX_USD)" >&2
   fi
-  python3 "$HERE/lq_stats.py" calibration ${label:+--judge2-label "$label"} $json $noledger "${dirs[@]}"
+  python3 "$HERE/lq_stats.py" calibration ${l2:+--judge2-label "$l2"} ${l1:+--judge1-label "$l1"} \
+    ${lt:+--tiebreak-label "$lt"} ${sample:+--sample "$sample"} $json $noledger "${dirs[@]}"
 }
 
 # verdict <baseline-run-dir> <variant-run-dir>...: one TSV row per variant run

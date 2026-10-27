@@ -535,20 +535,20 @@ check "weighted kappa: independent raters = 0" '[ "$(kap "[1,1,2,2]" "[1,2,1,2]"
 check "weighted kappa: reversed extremes = -1" '[ "$(kap "[1,5]" "[5,1]")" = -1.0 ]'
 
 : >"$TMP/fake.log"; : >"$TMP/fake.log.judge"
-bash "$RUN" calibration "$FX" --judge2-model sonnet --judge2-effort low --json --max-usd 1 >"$TMP/cal2.json" 2>"$TMP/cal2.err"
+bash "$RUN" calibration "$FX" --judge2-model gpt-x --judge2-effort low --json --max-usd 1 >"$TMP/cal2.json" 2>"$TMP/cal2.err"
 rc=$?
 check "second-judge pass judges every stored packet once" '[ "$rc" -eq 0 ] && [ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 4 ]'
-check "second judge uses the given model and effort, budget-capped, no tools" 'grep -- "--json-schema" "$TMP/fake.log" | grep -- "--model sonnet" | grep -- "--effort low" | grep -q -- "--max-budget-usd"'
+check "second judge uses the given model and effort, budget-capped, no tools" 'grep -- "--json-schema" "$TMP/fake.log" | grep -- "--model gpt-x" | grep -- "--effort low" | grep -q -- "--max-budget-usd"'
 check "second judge rescores the stored packet" 'grep -q "packet a.r2" "$TMP/fake.log.judge"'
-check "second judge result stored per row" '[ -s "$FX/a.r2.judge2.sonnet__low.json" ]'
+check "second judge result stored per row" '[ -s "$FX/a.r2.judge2.gpt-x__low.json" ]'
 check "weighted kappa against a constant second judge is 0" 'jq -e ".metrics.kappa_correctness == 0 and .metrics.n_kappa == 4" "$TMP/cal2.json" >/dev/null'
 check "calibration writes a valid eval-runs row" '[ "$(jq -s -r "map(select(.eval == \"lane-quality-calibration\")) | length" "$EL")" = 1 ] && python3 "$HERE/../lib/eval_runs.py" validate "$EL" >/dev/null'
 : >"$TMP/fake.log"
-bash "$RUN" calibration "$FX" --judge2-model sonnet --judge2-effort low --json --no-ledger >"$TMP/cal3.json" 2>/dev/null
+bash "$RUN" calibration "$FX" --judge2-model gpt-x --judge2-effort low --json --no-ledger >"$TMP/cal3.json" 2>/dev/null
 check "a stored second-judge result is reused, never re-judged" 'nogrep -q -- "--json-schema" "$TMP/fake.log" && jq -e ".metrics.n_kappa == 4" "$TMP/cal3.json" >/dev/null'
-: >"$FX/a.r2.judge2.sonnet__low.json"; : >"$TMP/fake.log"
-bash "$RUN" calibration "$FX" --judge2-model sonnet --judge2-effort low --json --no-ledger >/dev/null 2>&1
-check "an empty second-judge result is judged again" '[ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 1 ] && [ -s "$FX/a.r2.judge2.sonnet__low.json" ]'
+: >"$FX/a.r2.judge2.gpt-x__low.json"; : >"$TMP/fake.log"
+bash "$RUN" calibration "$FX" --judge2-model gpt-x --judge2-effort low --json --no-ledger >/dev/null 2>&1
+check "an empty second-judge result is judged again" '[ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 1 ] && [ -s "$FX/a.r2.judge2.gpt-x__low.json" ]'
 # model "a-b" with no effort and model "a" at effort "b" once
 # shared one label, so the second silently reused the first's scores.
 : >"$TMP/fake.log"
@@ -559,20 +559,20 @@ check "colliding second-judge configurations each make their own calls" '[ "$(gr
 bash "$RUN" calibration "$FX" --judge2-model a --judge2-effort b --json --no-ledger >"$TMP/cal-ab.json" 2>/dev/null
 check "an exact rerun of either configuration reuses its stored result" 'nogrep -q -- "--json-schema" "$TMP/fake.log" && jq -e ".metrics.n_kappa == 4" "$TMP/cal-ab.json" >/dev/null'
 : >"$TMP/fake.log"
-LQ_FAKE_TOKEN=SKIPPED-BANK bash "$RUN" calibration "$FX" --judge2-model haiku --json --no-ledger >/dev/null 2>&1
+LQ_FAKE_TOKEN=SKIPPED-BANK bash "$RUN" calibration "$FX" --judge2-model deepseek-x --json --no-ledger >/dev/null 2>&1
 rc=$?
 check "a bank refusal stops the second-judge pass before any call" '[ "$rc" -eq 75 ] && [ ! -s "$TMP/fake.log" ]'
 mkdir -p "$TMP/rel/fxr" && cp "$FX/runs.jsonl" "$FX"/*.judge-packet.md "$TMP/rel/fxr/"
 : >"$TMP/fake.log.judge"
-(cd "$TMP/rel" && bash "$RUN" calibration fxr --judge2-model haiku --json --no-ledger >/dev/null 2>&1)
+(cd "$TMP/rel" && bash "$RUN" calibration fxr --judge2-model deepseek-x --json --no-ledger >/dev/null 2>&1)
 rc=$?
 check "a relative run dir still feeds the second judge its packet" '[ "$rc" -eq 0 ] && grep -q "packet b.r2" "$TMP/fake.log.judge"'
 # a failed judge launch fails judge_call (not the cleanup's rc 0),
 # and --timeout 00 is refused (GNU timeout 00 would disable the cap).
 printf '#!/usr/bin/env bash\necho "judge launch failed" >&2\nexit 3\n' >"$TMP/bin/claude-fail"; chmod +x "$TMP/bin/claude-fail"
-LQ_CLAUDE_BIN="$TMP/bin/claude-fail" bash "$RUN" calibration "$FX" --judge2-model opus --json --no-ledger >/dev/null 2>"$TMP/cal-fail.err"
+LQ_CLAUDE_BIN="$TMP/bin/claude-fail" bash "$RUN" calibration "$FX" --judge2-model deepseek-y --json --no-ledger >/dev/null 2>"$TMP/cal-fail.err"
 rc=$?
-check "a failing second judge makes calibration die with its message" '[ "$rc" -eq 64 ] && grep -q "cannot run the second judge" "$TMP/cal-fail.err"'
+check "a failing second judge makes calibration die with its message" '[ "$rc" -eq 64 ] && grep -q "cannot run the grader" "$TMP/cal-fail.err"'
 bash "$RUN" calibration "$FX" --timeout 00 --json --no-ledger >/dev/null 2>"$TMP/cal-t00.err"
 rc=$?
 check "calibration refuses --timeout 00" '[ "$rc" -eq 64 ] && grep -q -- "--timeout must be positive" "$TMP/cal-t00.err"'

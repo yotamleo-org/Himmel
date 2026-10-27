@@ -8,8 +8,9 @@ Two steps, so the page holds no figure of its own:
           per-critic and pooled precision with a Wilson 95% interval, the bootstrap-by-PR interval beside
           it, each critic marked with the panel reviewer it belongs to (none: history), the findings-in /
           findings-out split, the planted-bug catch from the newest review-panel row, the proof-first share
-          from the newest pdd-share row, the test-first share from trajectory version 2 rows, and the
-          prompt-cache read ratio.
+          from the newest pdd-share row, the test-first share from trajectory version 2 rows, the
+          lane-quality judge's model-graded calibration (the newest lane-quality-calibration row per arm set
+          with a second grader), and the prompt-cache read ratio.
   render  writes the page from that data file: the bottom line, the current setup, the history, then the
           reading guide. Every figure line carries "as of <date>, n = <n>".
 
@@ -60,6 +61,10 @@ PLANTED_METHOD = "[planted-bug eval](../../scripts/eval/review-panel/README.md)"
 REVIEW_METHOD = "[review panel](review-panel.md)"
 OPTIONS = "[Review by a second model](../configuration.md#review-by-a-second-model)"
 TAG_NOTE = {"outside": "findings on lines outside the diff"}
+LQ_METHOD = "[lane-quality eval](../../scripts/eval/lane-quality/run.sh)"
+VENDOR_NAME = {"anthropic": "Anthropic", "openai": "OpenAI", "google": "Google", "deepseek": "DeepSeek",
+               "alibaba": "Alibaba", "zhipu": "Zhipu", "moonshot": "Moonshot", "meta": "Meta",
+               "mistral": "Mistral", "xai": "xAI"}
 
 
 def die(msg):
@@ -163,6 +168,25 @@ def planted(rows):
     }
 
 
+def calibration(rows):
+    """Per arm set, the newest model-graded lane-quality-calibration row: two cross-vendor graders' verdict kappa."""
+    newest = {}
+    for r in rows:
+        cfg = r.get("config") or {}
+        if r.get("eval") == "lane-quality-calibration" and r.get("status") == "ok" and cfg.get("model_graded"):
+            newest[tuple(cfg.get("models") or [])] = r
+    out = []
+    for models, r in sorted(newest.items()):
+        m, cfg = r.get("metrics") or {}, r["config"]
+        out.append({
+            "as_of": r["ts"][:10], "models": list(models), "graders": cfg.get("graders") or [],
+            "kappa": m.get("verdict_kappa"), "n": int(m.get("n_verdict") or 0), "agree": int(m.get("verdict_agree") or 0),
+            "n_twice": int(m.get("n_twice") or 0), "flips": int(m.get("verdict_flips") or 0),
+            "tiebreak": {k: int(m.get("tiebreak_" + k) or 0) for k in ("sent", "grader1", "grader2", "missing")},
+        })
+    return out
+
+
 def read_panel(path):
     """The reviewers critics.json runs today: name (slug, or slug:model when it pins one), mode, required."""
     try:
@@ -251,6 +275,7 @@ def build(args):
         "planted": planted(runs),
         "proof_first": proof_first(runs),
         "test_first": test_first(runs, as_of),
+        "calibration": calibration(runs),
         "cache": cache,
     }
 
@@ -292,6 +317,21 @@ def role(p):
     return "must pass where it runs; skipped on a machine without it"
 
 
+def judge_trust(e):
+    """One calibration entry in words: verdict kappa, agreement, the grader vendors, the tie-breaker, the flips."""
+    g = {x["role"]: x for x in e["graders"]}
+    who = " and ".join(VENDOR_NAME.get(g[k]["vendor"], g[k]["vendor"]) for k in ("grader1", "grader2") if k in g)
+    k = "%.2f" % e["kappa"] if e["kappa"] is not None else "undefined"
+    text = "**kappa %s**: graders agreed on %d of %d runs, model-graded (no human label) by %s" % (k, e["agree"], e["n"], who)
+    tb = e["tiebreak"]
+    if "tiebreak" in g:
+        text += ", tie-breaker %s sided with grader 1 in %d and grader 2 in %d of %d disagreements" % (
+            VENDOR_NAME.get(g["tiebreak"]["vendor"], g["tiebreak"]["vendor"]), tb["grader1"], tb["grader2"], tb["sent"])
+    if e["n_twice"]:
+        text += "; the stored judge flipped its verdict on %d of %d runs judged twice" % (e["flips"], e["n_twice"])
+    return text
+
+
 def render(d):
     r, c = d["review"], d["cache"]
     pl, pf, tf = d.get("planted"), d.get("proof_first"), d["test_first"]
@@ -330,6 +370,12 @@ def render(d):
     if pf:
         out.append("| Is work proven before it is built? | **%s%%** of merged PRs were proof-first | %s | %s |" % (
             pf["pdd"]["pct"], rng(pf["pdd"]["wilson"]), stamp(pf["as_of"], pf["pdd"]["n"], "merged PRs")))
+    for e in d.get("calibration") or []:
+        out.append("| How far can the lane-quality judge be trusted? (arms %s) | %s | no interval | %s |" % (
+            ", ".join("`%s`" % m for m in e["models"]), judge_trust(e), stamp(e["as_of"], e["n"], "runs")))
+    if not d.get("calibration"):
+        out.append("| How far can the lane-quality judge be trusted? | not measured yet: no model-graded calibration "
+                   "row | | as of %s |" % r["as_of"])
     sess = " over %s sessions" % num(c["sessions"]) if c.get("sessions") else ""
     scope = " (%s)" % c["scope"] if c.get("scope") else ""
     out += [
@@ -442,11 +488,17 @@ def render(d):
         "implementation write and passed after it; a session that wrote no code is left out. Only sessions scored "
         "under trajectory version 2 count: version 1 scored a session that wrote no code as a miss, so the two are "
         "never mixed. It reads not measured yet until %d such sessions exist. |" % MIN_RULED,
+        "| **Model-graded kappa** | Cohen's kappa between two model graders on each run's pass/fail verdict (pass "
+        "when every correctness claim holds): 1 is full agreement, 0 is what chance alone gives, below 0 is worse "
+        "than chance. Model-graded, not human-graded: no person labelled these runs. The graders come from "
+        "different vendors, never a vendor under test, and a third-vendor tie-breaker grades only the runs they "
+        "disagree on. A flip is the stored judge changing its verdict between two passes on one output. %s |" % LQ_METHOD,
         "| **Cache reads** | One probe run's share of input tokens read from the cache. No interval: tokens within "
         "one session are not independent. [prompt cache](prompt-cache.md) |", "",
         "## Regenerate", "",
         "A new planted-bug row comes from the %s; a new proof-first row from "
-        "`python3 scripts/eval/worker-digest/pdd_share.py --limit 120 --record`; test-first sessions are written as "
+        "`python3 scripts/eval/worker-digest/pdd_share.py --limit 120 --record`; a new judge-calibration row from "
+        "`scripts/eval/lane-quality/run.sh calibration` with a second grader; test-first sessions are written as "
         "agent sessions end. Then run steps 2 and 3 with --until and --as-of moved past the new row." % PLANTED_METHOD, "",
         "1. `%s` (the transcripts modified from the sample's first day to its last)" % c["command"],
         "2. `%s`" % r["command"], "3. `%s`" % RENDER_CMD, "",
