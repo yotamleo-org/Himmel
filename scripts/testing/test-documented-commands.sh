@@ -51,6 +51,11 @@ SETTINGS="$SRC/.claude/settings.json"
 LAUNCHER="$SRC/scripts/hooks/run-hook-with-bash.js"
 # One row costs one node launch plus the chain; a hung member must fail the row.
 ROW_TIMEOUT="${DOCCMD_ROW_TIMEOUT:-120}"
+# The one place this suite scales a budget for macOS: run 40441833569 (macos-latest)
+# took 16392 ms for a hook member against the launcher's 15000 ms Linux window (F08).
+# Darwin pins the window to twice that; Linux keeps the launcher default untouched.
+MEMBER_WINDOW_ENV=
+[ "$(uname -s)" = Darwin ] && MEMBER_WINDOW_ENV=RUN_HOOK_CHAIN_MEMBER_TIMEOUT_MS=30000
 
 # A suite run from inside a git hook inherits GIT_DIR/GIT_INDEX_FILE, which
 # would point every fixture git call at the outer repo.
@@ -162,6 +167,7 @@ chain_verdict() { # chain_verdict <cwd> <command>
         '{hook_event_name: "PreToolUse", tool_name: "Bash", tool_input: {command: $c}, cwd: $cwd, session_id: "documented-commands"}' > "$SB/payload.json"
     ( cd "$cwd" && env -i PATH="$PATH" HOME="$SB/home" TMPDIR="$SB" XDG_RUNTIME_DIR="$SB/run" \
         LANG=C.UTF-8 LC_ALL=C.UTF-8 CLAUDE_PROJECT_DIR="$WT" HIMMEL_REPO="$ANCHOR" HIMMEL_CONSOLE_LEG=1 \
+        ${MEMBER_WINDOW_ENV:+"$MEMBER_WINDOW_ENV"} \
         ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" "$ROW_TIMEOUT"} node "$LAUNCHER" --chain "${args[@]}" \
         < "$SB/payload.json" > "$SB/out" 2> "$SB/err" )
     rc=$?
