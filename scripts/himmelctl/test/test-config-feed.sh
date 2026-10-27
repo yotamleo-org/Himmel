@@ -25,6 +25,9 @@
 
 set -uo pipefail
 
+# The runners export HIMMEL_SECRETS_KEYRING=off; the redactor would treat that value as a secret.
+unset HIMMEL_SECRETS_KEYRING
+
 repo_root=$(git rev-parse --show-toplevel)
 # shellcheck disable=SC1091
 . "$repo_root/scripts/himmelctl/test/_hermetic-home.sh"
