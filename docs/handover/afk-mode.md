@@ -171,8 +171,8 @@ text; the next-session templates deliberately do not inline it (the
 previous 4-copy duplication silently drifted: the seeded `_templates/` hop
 dropped the preamble from essentially every autonomously emitted session
 for ~2 months). It is model-neutral by design: overnight
-impl runs on Sonnet (§ Budget), the parent session may be Fable-5 or
-Opus-class, and no reliable model-identity seam exists at
+impl runs on Sonnet (§ Budget), the parent session may be Fable 5.1 or
+Opus 5.5, and no reliable model-identity seam exists at
 launch time. Snippets are selected, not pasted, from the official
 [Fable-5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-fable-5)
 and

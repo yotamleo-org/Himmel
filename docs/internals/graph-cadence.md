@@ -95,8 +95,7 @@ The publish step is grouped with the free structural (AST) pair for
 `--ast-only` purposes (HIMMEL-2071): it needs no backend credential, so
 `--ast-only` arms/replaces it too, alongside the AST pair, while leaving the
 weekly semantic pair untouched. Default schedule: **every 6 hours**,
-anchored at `:35` past (Windows: `<Repetition><Interval>PT6H</Interval>`;
-POSIX: `35 */6 * * *`) — 20 minutes clear of `HIMMEL-GraphMapAst-Himmel`'s
+anchored at `:35` past (`35 */6 * * *`) — 20 minutes clear of `HIMMEL-GraphMapAst-Himmel`'s
 own `:15`-past hourly fire, wider than the AST pair's own 10-minute mutual
 stagger, because this step is not free-and-instant like the AST pair: it can
 run `ast-update.sh`, open/refresh a PR, and drive `merge-on-green.sh`'s own

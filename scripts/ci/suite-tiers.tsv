@@ -262,6 +262,7 @@ scripts/docs/test-check-doc-terms.sh	pr	static-gate
 scripts/docs/test-check-llms-links.sh	pr	static-gate
 scripts/docs/test-dev-graph.sh	local	new since the audit, behaviour suite
 scripts/docs/test-docs-current-version.sh	pr	static-gate
+scripts/docs/test-docs-dropped-terms.sh	pr	static-gate
 scripts/docs/test-footprint-page.sh	pr	static-gate
 scripts/docs/test-generate-credits.sh	pr	static-gate
 scripts/docs/test-how-a-change-ships.sh	pr	static-gate

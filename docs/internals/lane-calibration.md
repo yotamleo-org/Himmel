@@ -179,7 +179,7 @@ can inherit into the child.
 | Haiku 5.5 | bulk mechanical; scoped read-only verification/extraction; mechanical edits that end in a real check (never delegates further) | low for bulk; `medium` (the model default; override the lane's `low`) once a brief has more than a couple of steps — see [Haiku 5.5](#haiku-55) |
 | Sonnet 5.5 | scoped research; default implementor for well-specified impl briefs | medium default (a native worker runs at `lanes.json`'s `sonnet` lane effort, `medium`; an explicit `CLAUDE_CODE_EFFORT_LEVEL` in the launching shell overrides it — e.g. `CLAUDE_CODE_EFFORT_LEVEL=high` for a multi-step or guard-grade worker); high for multi-file/long briefs — raise effort before reaching for Opus. Effort is recalibrated vs Sonnet 5: `low` can skip verifying a change, and at `low`/`medium` on long tasks it is likelier to stop and check in (Anthropic migration guide) |
 | Opus 5.5 | multi-step reasoning; default parent | medium default (≈ Opus 5 `high`); `low` for scoped impl; `high` for heavy parenting; `xhigh`/`max` only where a gain was measured — see [Effort calibration](#effort-calibration) |
-| Fable 5 | judgment, taste — hardest calls; escalation target | scale to the item (operator 2026-07-08, un-capped): medium default; high for substantial judgment work — not just the hardest; xhigh for the hardest |
+| Fable 5.1 | judgment, taste — hardest calls; escalation target | scale to the item (operator 2026-07-08, un-capped): medium default; high for substantial judgment work — not just the hardest; xhigh for the hardest |
 
 Beyond the Claude tiers the fleet includes machine-specific impl/critic/bulk
 lanes (paid/optional — they exist only where the operator configured them). See
@@ -356,7 +356,7 @@ rows below use. `claudex` is the exception: a live implementation lane with no
 | `hermes-critics` — hermes free critics (scripts/cr/hermes-critic.sh) | critic | — (critic pass, not effort-tiered) | unverified/varies | none (dashboard-omitted) | calibrated — model is PINNED to gpt-6.1-sol via `critics.json` (re-pinned 2026-09-29, operator moved codex lanes to GPT-6.1 Sol; gpt-6-sol before it, re-pinned 2026-09-23, operator adopted GPT-6 Sol for codex lanes; gpt-6-astra before it, re-pinned 2026-09-05, operator switched the codex CLI default; the pin-via-critics.json mechanism itself dates to operator ruling 2026-08-23, which pinned gpt-5.6-sol), not the himmel_agent profile default (ox-alpha stays reserved for `hermes-oneshot`/dispatch-trusted); not yet wired into the `/pr-check` gate |
 | `codex` (paid, via hermes) | critic | — (critic pass) | 900000 — raised by operator ruling (2026-08-17); pins gpt-6.1-sol via `critics.json` (2026-09-29; gpt-6-sol before it, 2026-09-23; gpt-6-astra before it, 2026-09-05) — the window figure predates and is independent of the model pin; least-verified of the four raised lanes | none (dashboard-omitted); opt-in `CR_PROFILE=paid` | calibrated — automated review escalation / second opinions only |
 | `copilot-cli` — GitHub Copilot CLI (free tier) | bulk | small tasks; model tier is mini-class unless the caller overrides the auto pin | unverified/varies | none (dashboard-omitted); 2,000 completions/mo | **not calibrated yet** — worker-spawn-matrix row UNVERIFIED (live smoke pending eval); route only for free chores / second opinions, and only through the `dispatch-copilot.sh` sanctioned script |
-| `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) — free while ox-alpha lasts | calibrated — live-proven spawn path; see [ox-alpha](#ox-alpha--the-current-hermes-himmel_agent-default) |
+| `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) | calibrated — live-proven spawn path; see [the hermes default](#the-hermes-himmel_agent-default-and-the-ox-alpha-record) |
 | `codex-exec` — codex CLI sandbox | impl | well-scoped chunks; job registry is per-workspace | 900000 — raised by operator ruling (2026-08-17) despite the 360K rejection hermes measured on the gpt-5.5 pin it carried then (codex-exec now follows the `codex` critic's model, `gpt-6.1-sol` (`gpt-6-sol` before it; `gpt-6-astra` before that); that probe was not repeated there); least-verified of the four raised lanes | codex | calibrated |
 | `antigravity-cli` — Antigravity CLI (Google AI Plus) | bulk | simple tasks; `--output-format` drift seen on Windows builds | unverified/varies | none (dashboard-omitted); free AI-Plus quota | **not calibrated yet** — roster + quota shape TO VERIFY at eval; parity/guards UNVERIFIED (permission flags only, no hook surface); egress-DENIED for vault corpora, himmel-code only; route only for free-bank chores / second opinions |
 | `ollama-local` — ollama (local models) | bulk | slow, small tasks | unverified/varies | none (dashboard-omitted); free, local wall-clock | calibrated — zero-egress guarantee is structural; the only salus-eligible backend |
@@ -374,19 +374,21 @@ undelivered bullets as `additionalContext`, no operator paste required. See
 
 **Chief wake-up budget:** the tick no longer runs as a `Monitor` arm capped at 30 min — it runs inside `chief-wait.sh`, started once with Bash `run_in_background`, which samples `tick.sh` every **180 seconds** and wakes the chief only on a change (or a failure streak); a message or a Telegram line wakes it too, but a full-context turn fires only on an actual event, never on the sample itself, so the idle chief costs zero turns. The one-shot `bank-monitor.sh` instead runs from a Bash polling loop every **300 seconds** so its 30-minute ring accumulates samples; that sampling interval is distinct from the chief tick's sample cadence and adds no scheduler. An unchanged cache emits `state=stale` once, preserving the last measured projections until sampling resumes; each usage window resets its own history independently. The chief batches rulings into one message per decision point, never one per thought. `ar-watch`, `pubci`, and vault monitors stay in Bash; their cost is the **EMIT**, so filters emit terminal-state changes only. Report at MILESTONES only (LIVE, FINDING, READY, BLOCKED, HALTED, WRAPPED); no progress chatter; acks to a rotation are one line.
 
-## ox-alpha — the current hermes `himmel_agent` default
+## The hermes `himmel_agent` default and the ox-alpha record
 
 The `hermes-oneshot` lane takes its model from the `himmel_agent` hermes
-profile's default rather than from a pin in this repo. Hermes-routed critics do
-NOT ask for that profile by name — `hermes-critic.sh` passes no `-p`, so it
-gets whichever profile hermes has ACTIVE. The two land on the same model today
-only because `~/.hermes/active_profile` reads `himmel_agent`; that
-coupling is a real gap, not a guarantee (last two notes below). The
-`himmel_agent` default is **`stealth/ox-alpha`** (provider `nous`,
-`https://inference-api.nousresearch.com/v1`) as of 2026-08-22 — **free,
-front-tier, and TEMPORARY**. It was `gpt-5.6-sol`. Per the lane-adoption rule
-(profile + tailor per lane; a codex-tuned 240s budget once starved the GLM
-lane), it is measured here rather than assumed.
+profile's default rather than from a pin in this repo. That default is
+`gpt-6.1-sol` (provider `openai-codex`) again since 2026-10-04 (HIMMEL-4287),
+when the temporary ox-alpha trial ended. Hermes-routed critics do not ride the
+profile default: `hermes-critic.sh` pins the `scripts/cr/critics.json` codex
+model (`gpt-6.1-sol`; `--model` or `HERMES_CRITIC_MODEL` overrides it).
+
+From 2026-08-22 the default was `stealth/ox-alpha` (provider `nous`,
+`https://inference-api.nousresearch.com/v1`), free and front-tier; before that
+it was `gpt-5.6-sol`. Per the lane-adoption rule (profile + tailor per lane; a
+codex-tuned 240s budget once starved the GLM lane), it was measured rather than
+assumed. The record below is that measurement, kept as history: its numbers
+describe ox-alpha, not `gpt-6.1-sol`.
 
 Measured 2026-08-22 on this machine, `scripts/hermes/invoke.sh --profile
 himmel_agent`:
@@ -427,22 +429,21 @@ Notes a future reader needs:
   its own explicit sign-off, not a side effect of a lanes.json/docs pass.
   Tracked as a planned follow-up (agreed-rate data for the eventual promotion
   call needs this wired in first; until then `/cr-scores` has nothing to
-  report for hermes/ox-alpha — `hermes-critic.sh` is not invoked by any live
+  report for hermes — `hermes-critic.sh` is not invoked by any live
   `/pr-check` path today).
-- **The profile is what routes.** `hermes-critic.sh` does not pass `-p`; the
-  no-`-p` path lands on ox-alpha only because
-  `~/.hermes/active_profile` reads `himmel_agent`. The hermes root
-  config still defaults to `gpt-5.5`/`openai-codex`, so if the operator switches
-  the active profile, hermes-routed critics silently change model. **Doctor
+- **The critic pin is what routes a critic.** `hermes-critic.sh` passes no
+  `-p`, so it runs under whichever profile hermes has active, but it pins the
+  model from `critics.json`; switching the active profile no longer changes
+  the critic's model. **Doctor
   advisory: `himmel-doctor.sh` check C21** WARNs when the active
   hermes profile's `config.yaml` `model.default` no longer matches the
   `profileDefaultModel` this file's `lanes.json` records for the
   `hermes-oneshot`/`hermes-critics` rows — warn-only, it never edits the
   profile or lanes.json, and never runs the hermes CLI (a plain offline file
   read).
-- **Temporary.** ox-alpha's availability is time-limited; when it goes, the
-  profile default moves and these numbers expire with it. Nothing in this repo
-  pins ox-alpha by name, which is deliberate.
+- **Expired.** ox-alpha's trial ended on 2026-10-04 and the profile default
+  moved back to `gpt-6.1-sol`; the numbers above expired with it. Nothing in
+  this repo pins ox-alpha by name, which is deliberate.
 
 ## Effort calibration
 
@@ -512,7 +513,7 @@ point a reader would check it
 (`handovers/yotamleo/himmel/specs/eval/HIMMEL-fable51-prompting-audit-2026-09-05.md`). Same audit's safeguard-false-positive mitigations:
 [`safeguard-false-positives.md`](safeguard-false-positives.md).
 
-### GPT-6 Astra — the claudex launcher defaults to `medium`, `low` first
+### claudex effort — the launcher defaults to `medium`, `low` first
 
 The `claudex` launcher (`scripts/claude-codex`, documented in
 `scripts/lanes/lanes.json`) defaulted `CLAUDE_CODE_EFFORT_LEVEL` to `high`. It
@@ -1007,10 +1008,6 @@ carries the design tools, and a fanout parent that will spawn reviewers arms wit
 a profile that includes the review plugins. Pick it when arming (`--profile`
 on the worker, `profile:` in the brief, `--profile` on `arm-resume.sh`); it cannot
 be fixed from inside a running session.
-
-Known gap: the Windows `.bat`/WSL branch of `arm-resume.sh` still relaunches
-without `--settings` (the profile file lives in the WSL home); tracked as a
-follow-up.
 
 ## Fold or delegate — the main-loop test
 

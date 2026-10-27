@@ -69,7 +69,7 @@ decide:
 Fill in `"verdict"` (one of `confirmed|refuted|stale`) and optionally
 `"notes"` on each worksheet line directly — hand-edit the JSONL, or script
 it. Auditor identity is either a model name (`claude-sonnet-5-5`,
-`claude-opus-4.8`) or `"operator"` for a human pass — set it per-line via a
+`claude-opus-5-5`) or `"operator"` for a human pass — set it per-line via a
 `"auditor"` field, or once for the whole run via `--auditor`.
 
 ### 4. Apply
