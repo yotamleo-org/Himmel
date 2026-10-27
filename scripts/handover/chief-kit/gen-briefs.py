@@ -98,8 +98,8 @@ VM_LINE = ("> **VM work:** drive the guest only through guest-exec.sh: `bash scr
 # worker-e2e is worker-impl plus the Playwright MCP server; a leg that writes the config UI gets it.
 UI_PROFILE = 'worker-e2e'
 UI_PATH_RE = re.compile(r'(?:^|\s)scripts/config-ui(?:/|\s|$)')
-UI_LINE = ("> **UI work:** run `node scripts/himmelctl/bin.js ui --port 0`, open the printed URL with the browser MCP headless, "
-           "and save screenshots to your scratch dir.\n")
+UI_LINE = ("> **UI work:** `himmelctl ui` is operator-only and refuses to start inside a worker session. Ask the chief for a running UI URL "
+           "(or use one this brief names), open it with the browser MCP headless, and save screenshots to your scratch dir.\n")
 TIER_CATEGORIES = ('design', 'unverified-finding', 'tier-return', 'operator-ruling')
 DEFAULT_MODEL = 'claude-sonnet-5-5'
 # Mirrors headed-arm-worker.sh's claudex default (`[ -z "$MODEL" ] && MODEL="gpt-6.1-sol"`).
