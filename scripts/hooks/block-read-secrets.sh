@@ -1725,6 +1725,10 @@ case "$tool" in
     Bash|PowerShell)
         cmd="$_rd_cmd"
         [ -z "$cmd" ] && exit 0
+        # The first pass's clause list, taken off the environment before any
+        # child hook (guard_unwrap's) can inherit it.
+        rs_in=${RS_SKIP_CLAUSES:-}
+        unset RS_SKIP_CLAUSES
 
         # re-read the command with its variable expansions
         # removed, so a `${V:-}cat .env` is judged as the `cat .env` the shell
@@ -1764,22 +1768,6 @@ case "$tool" in
             fi
         fi
 
-        # The clause split (see below) is computed here, ahead of the recheck,
-        # so each re-run of this hook on a stripped or defaulted form
-        # (up to 2^5 of them) can skip the clauses this pass scans anyway
-        # instead of rescanning a long heredoc body every time.
-        # The list leads with this pass's GU_TOKENIZED so a re-run knows
-        # whether this pass also ran g4_clause on every clause.
-        normalized=$(sed -e 's/[;|&()`]/\
-/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
-        # ponytail: a command over 30000 characters hands its re-runs no skip list (a
-        # multibyte character is up to 4 bytes and one exec argument is capped at
-        # 128 KB), so they rescan in full;
-        # upgrade path: a temp file for the list.
-        _rs_skip=
-        if [ "${#normalized}" -le 30000 ]; then _rs_skip=${GU_TOKENIZED:-0}$'\n'$normalized; fi
-        RS_SKIP_CLAUSES=$_rs_skip guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
-
         # Split the command into CLAUSES at shell separators so a reader and a
         # secret in UNRELATED parts of the command don't cross-trip (the old
         # global-OR did — it blocked any reader-named token anywhere plus any
@@ -1790,8 +1778,9 @@ case "$tool" in
         # and GNU sed; do NOT use GNU-only `\n` in the replacement). `<`/`>`
         # are spaced into their own tokens so a `< secretfile` redirect stays
         # detectable. Shell quoting is intentionally NOT parsed (see header).
-        # sed reads via `<<<` (no `printf` fork feeding it). `normalized` is
-        # built above, before the expansion recheck.
+        # sed reads via `<<<` (no `printf` fork feeding it).
+        normalized=$(sed -e 's/[;|&()`]/\
+/g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
         block=0
         # the glued token that tripped glued_opt_secret, named in
         # the denial via glued_hint. Declared once (not per-clause) so it
@@ -1818,11 +1807,15 @@ case "$tool" in
         # every clause after a line the expansion merged (the indexes shift).
         # Not skipped at all: a re-run that did not tokenize while the first
         # pass did, since it adds g4_clause, which that pass did not run.
+        # scan_clause also sets g4_interp, which the whole-command check after
+        # the loop reads, so a skipping re-run starts from the first pass's.
+        # The list's first line is "<first GU_TOKENIZED> <first g4_interp>".
         rs_base=() rs_skip_on=0 rs_ci=0
-        if [ -n "${RS_SKIP_CLAUSES:-}" ] && [ "${GUARD_EXPANSION_DEPTH:-0}" != 0 ] \
-            && { [ "${RS_SKIP_CLAUSES%%$'\n'*}" != 1 ] || [ "${GU_TOKENIZED:-0}" = 1 ]; }; then
+        if [ -n "$rs_in" ] && [ "${GUARD_EXPANSION_DEPTH:-0}" != 0 ] \
+            && { [ "${rs_in:0:1}" != 1 ] || [ "${GU_TOKENIZED:-0}" = 1 ]; }; then
             rs_skip_on=1
-            while IFS= read -r clause; do rs_base[${#rs_base[@]}]=$clause; done <<<"${RS_SKIP_CLAUSES#*$'\n'}"
+            if [ "${rs_in:2:1}" = 1 ]; then g4_interp=1; fi
+            while IFS= read -r clause; do rs_base[${#rs_base[@]}]=$clause; done <<<"${rs_in#*$'\n'}"
         fi
         while IFS= read -r clause; do
             rs_ci=$((rs_ci + 1))
@@ -1834,6 +1827,18 @@ $normalized
 EOF
         if [ "$g4_interp" = 1 ] && rs_interp_text "$cmd" && interp_env_dump "$REPLY"; then
             block=1; g4_note="an interpreter prints the whole environment or reads /proc/*/environ"
+        fi
+
+        # Run last, once this pass's own verdict is in: a denial here is final,
+        # and the list carries what a re-run needs from this pass.
+        # ponytail: a command over 30000 characters hands its re-runs no skip list (a
+        # multibyte character is up to 4 bytes and one exec argument is capped at
+        # 128 KB), so they rescan in full;
+        # upgrade path: a temp file for the list.
+        if [ "$block" != 1 ]; then
+            _rs_skip=
+            if [ "${#normalized}" -le 30000 ]; then _rs_skip="${GU_TOKENIZED:-0} $g4_interp"$'\n'$normalized; fi
+            RS_SKIP_CLAUSES=$_rs_skip guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
         fi
 
         if [ "$block" = "1" ]; then

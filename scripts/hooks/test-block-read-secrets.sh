@@ -823,6 +823,17 @@ assert_rc "7892 long heredoc: \${A:-cat} .env still blocks"   2 "$(run_case "$(j
 LONGCMD_DENY3="cd /tmp/x && $LONGDFLT && cat .env && cat > notes.md <<'EOF'
 ${LONGBODY}EOF"
 assert_rc "7892 long heredoc: plain cat .env still blocks"    2 "$(run_case "$(j_bash "$LONGCMD_DENY3")")"
+# An interpreter clause the expansion leaves unchanged is skipped by a re-run,
+# but the whole-command environment-dump check still has to run on the
+# stripped form: the re-run starts from the first pass's interpreter flag. A
+# `;;` and a command over 8 KiB are the two shapes the tokenizer does not read.
+# shellcheck disable=SC2016 # the `${X:-}` default is the test input, not an expansion
+ENVCMD1='case 1 in 1) python3 -c "import os; print(os.envi${X:-}ron)";; esac'
+assert_rc "7892 interpreter env dump through a default, untokenized (;;) blocks" 2 "$(run_case "$(j_bash "$ENVCMD1")")"
+PAD=x
+while [ "${#PAD}" -lt 9000 ]; do PAD="$PAD$PAD"; done
+ENVCMD2="python3 -c \"import os; print(os.envi\${X:-}ron)\"; echo $PAD"
+assert_rc "7892 interpreter env dump through a default, untokenized (>8 KiB) blocks" 2 "$(run_case "$(j_bash "$ENVCMD2")")"
 
 
 # --- the forms the shell runs, not the text it was given ---
