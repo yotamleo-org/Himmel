@@ -609,6 +609,7 @@ shadow_smoke() { # <proxy-url|-> -> prints the witness file's content (empty = n
     if kill -0 "$sp" 2>/dev/null; then
         echo "  [progress] 11a2: shadow_smoke HUNG proxy=$1; tail of its output:" >&2
         tail -n 15 "$TMP/shadow-out" >&2
+        : > "$TMP/shadow-hung"
         pkill -KILL -P "$sp" 2>/dev/null; kill -KILL "$sp" 2>/dev/null
     fi
     wait "$sp" 2>/dev/null || true
@@ -623,6 +624,8 @@ if [ -n "$(shadow_smoke -)" ]; then pass "shadowed builtins, no proxy: the demo 
 else fail "shadow control: the shadowed demo never reached the claude launch (vacuous row below)"; fi
 if [ -z "$(shadow_smoke http://evil.invalid)" ]; then pass "shadowed builtins + ambient ANTHROPIC_BASE_URL: claude is NOT launched"
 else fail "shadowed builtins let an ambient proxy variable reach the claude launch: $(shadow_smoke http://evil.invalid)"; fi
+# a killed run leaves an empty witness, which the negative row above reads as "not launched"
+if [ -e "$TMP/shadow-hung" ]; then fail "a shadow_smoke run hung and was killed; its row result is not evidence"; fi
 fi
 
 # --- 11b: an agent worker without its positive control is not a result ----------
