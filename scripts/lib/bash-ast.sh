@@ -50,7 +50,9 @@
 # shell). A loop, an if or a case whose body moves the cwd, a function, a
 # `source`, an `eval`, `set`/`shopt`/`alias`, a declare/export, or an
 # assignment to CDPATH, HOME, PWD, OLDPWD, GLOBIGNORE, BASHOPTS or SHELLOPTS
-# adds an unknown candidate from there on. `env -C D` moves only its own
+# adds an unknown candidate from there on; a CDPATH prefix assignment (or
+# `env CDPATH=…`) on a `bash -c`/`eval` command gives its body that candidate
+# from the start. `env -C D` moves only its own
 # command. A cd target that is not one literal non-glob word, `cd -`, `popd`
 # and a bare `pushd` are unknown. Past 16 candidates the set is unknown.
 #
@@ -674,7 +676,7 @@ bash_ast_positions() {
     acc=$pos
     while IFS= read -r line; do
         inner=$(bash_ast_positions "$(printf '%s' "$line" | jq -r .body)" \
-            "$(printf '%s' "$line" | jq -c .cwd)" \
+            "$(printf '%s' "$line" | jq -c '.cwd + (if (.assigns | index("CDPATH")) != null then [null] else [] end) | unique | if length > 16 then [null] else . end')" \
             "$(printf '%s' "$line" | jq -c '.in + [if .prog == "eval" then "eval" else "shell-c" end]')" \
             $((depth + 1)) "$scope.$k" "$(printf '%s' "$line" | jq -c .pipe)")
         rc=$?
