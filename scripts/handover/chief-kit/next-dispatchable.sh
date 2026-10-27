@@ -160,7 +160,7 @@ if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag chain_soft_edges 2>
 export ND_SOFT="$soft" ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
-import datetime, json, os, re, subprocess, sys, time
+import datetime, json, os, re, subprocess, sys, tempfile, time
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
@@ -472,6 +472,47 @@ why = {}
 
 def drop(i, reason):
     why.setdefault(i['key'], reason)
+
+# A ticket whose body lacks a DoD or a Proof section is not dispatched. The verdict is the
+# ticket-standard checker's (no second parser); it runs on the mirror's Description with its intake queue pointed
+# at a scratch dir, because this script parks nothing. gen-briefs.py asks the same question.
+proof_checker = os.path.join(repo, 'marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh')
+proof_cache = {}
+proof_told = set()
+
+def proof_missing(i):
+    # '' when DoD and Proof are both present, else the missing names ("DoD, Proof"); an unrunnable checker refuses
+    k = i['key']
+    if k not in proof_cache:
+        try:
+            txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
+            m = re.search(r'^## Description\n(.*?)(?=^## |\Z)', txt, re.M | re.S)
+            with tempfile.TemporaryDirectory() as d:
+                draft = os.path.join(d, 'draft.md')
+                with open(draft, 'w', encoding='utf-8') as f:
+                    f.write(m.group(1) if m else '')
+                r = subprocess.run(['bash', proof_checker, '--type', 'Task', '--draft', draft], capture_output=True, text=True, timeout=30,
+                                   env=dict(os.environ, TICKET_STANDARD_QUEUE_DIR=os.path.join(d, 'queue')))
+            if r.returncode not in (0, 1):
+                proof_cache[k] = 'DoD, Proof (the ticket-standard checker could not read the body: rc %d)' % r.returncode
+            else:
+                got = re.search(r'missing or empty: (.*)$', r.stdout, re.M)
+                names = [n.strip() for n in got.group(1).split(',')] if got else []
+                proof_cache[k] = ', '.join(n for n in ('DoD', 'Proof') if n in names)
+        except (OSError, subprocess.SubprocessError):
+            proof_cache[k] = 'DoD, Proof (the ticket-standard checker did not run)'
+    return proof_cache[k]
+
+def proof_refuse(i):
+    # True when the ticket cannot be dispatched yet: dropped, and named once for the chief to fix first
+    miss = proof_missing(i)
+    if not miss:
+        return False
+    drop(i, 'proof missing: ' + miss)
+    if i['key'] not in proof_told:
+        proof_told.add(i['key'])
+        print('# NO-PROOF %s missing %s: %s (fix the ticket, then it dispatches)' % (i['key'], miss, i['title']))
+    return True
 
 def tier_of(i):
     # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest.
@@ -895,7 +936,13 @@ def classify_new(batch):
 # of --top rows each, so a refused or colliding row in the first call does not cost a serial round.
 if classified and top > len(resume):
     from concurrent.futures import ThreadPoolExecutor
-    halves = [free[:top], free[top:top * 2]]
+    ok_rows = []
+    for i in free:
+        if len(ok_rows) >= top * 2:
+            break
+        if not proof_refuse(i):
+            ok_rows.append(i)
+    halves = [ok_rows[:top], ok_rows[top:]]
     halves = [h for h in halves if h]
     for h in halves:
         asked.update(i['key'] for i in h)
@@ -911,6 +958,7 @@ def emit_free(rows):
     while n < top and start < len(rows):
         batch = rows[start:start + top - n]
         start += len(batch)
+        batch = [i for i in batch if not proof_refuse(i)]
         if classified:
             classify_new(batch)
         for i in batch:

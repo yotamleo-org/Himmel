@@ -195,7 +195,12 @@ template_version: 3
 >    (`gh workflow run <wf> --ref <branch>`; `ready-check.sh` item 10 FAILs
 >    without one, and prints the command; a deleted, added or renamed
 >    workflow and the `WF_DISPATCH_EXEMPT` workflows need no run, so do not
->    try to dispatch them). <Anything else unusual: a PR body that must carry other
+>    try to dispatch them). **A PR that changes a docs page** (`README.md`,
+>    `site/`, a reader-facing `.md` or `.html` under `docs/`) names those pages
+>    in its READY message. Do not run the `docs-reviewer` skill yourself: the
+>    judge runs it once at your `JUDGE-REQUEST` head, and a BLOCKING finding comes back
+>    as a NO-GO line to fix.
+>    <Anything else unusual: a PR body that must carry other
 >    specific numbers, a public-CI wait, a second ticket to comment on but
 >    leave open.>
 

@@ -2,21 +2,35 @@
 // rules and setup paths change only after a dry-run is confirmed.
 import { test, expect, type Page } from "@playwright/test";
 import { randomBytes, randomInt } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { boot, type Harness } from "./fixtures";
+import { stubKeyring } from "../keyring-stub";
 
 // a trace records fill() arguments and a screenshot or video records the field: none of them for this page.
 test.use({ screenshot: "off", trace: "off", video: "off" });
 
+// The UI login lives in the OS keyring. boot() hands this worker's env to the real server, so a stub secret-tool goes on this
+// env first: the page creates its login in the stub, never in the operator's keyring.
 let h: Harness;
-test.afterEach(async () => { await h?.stop(); });
+let k: ReturnType<typeof stubKeyring>;
+let kdir = "";
+const savedEnv: Record<string, string | undefined> = {};
+test.afterEach(async () => {
+  await h?.stop();
+  for (const [n, v] of Object.entries(savedEnv)) { if (v === undefined) delete process.env[n]; else process.env[n] = v; }
+  if (kdir) rmSync(kdir, { recursive: true, force: true });
+});
 
 // shaped like the telegram rule asks, built at run time so no token-shaped literal is in the repo.
 const canary = () => `${randomInt(100_000_000, 999_999_999)}:${randomBytes(27).toString("base64url").slice(0, 35)}`;
 const NAME = "TELEGRAM_BOT_TOKEN";
 
 async function open(page: Page, conf?: string) {
+  kdir = mkdtempSync(join(tmpdir(), "setup-e2e-keyring-"));
+  k = stubKeyring(kdir);
+  for (const [n, v] of Object.entries(k.env)) { savedEnv[n] = process.env[n]; process.env[n] = v; }
   h = await boot();
   if (conf !== undefined) { mkdirSync(join(h.home, ".himmel"), { recursive: true }); writeFileSync(join(h.home, ".himmel", "himmel.conf"), conf); }
   await page.goto(h.url);
@@ -167,8 +181,9 @@ test("J5. a created login empties the password fields and leaves the password no
   release();
   await expect(page.locator("#main")).toContainText("The UI login is set for op");
   await expect(page.locator("form[data-account-form]")).toHaveCount(0);
-  expect(statSync(loginFile()).mode & 0o777).toBe(0o600);
-  expect(readFileSync(loginFile(), "utf8")).not.toContain(pw);
+  expect(existsSync(loginFile())).toBe(false);
+  expect(k.get("HIMMEL_UI_LOGIN")).not.toBeNull();
+  expect(k.get("HIMMEL_UI_LOGIN")).not.toContain(pw);
   expect(await leaks(page, pw)).toEqual([]);
 });
 
@@ -187,6 +202,7 @@ test("J5. two different passwords send nothing and leave neither in the page", a
   await expect(page.locator('[data-account="confirm"]')).toHaveValue("");
   expect(sent).toBe(0);
   expect(existsSync(loginFile())).toBe(false);
+  expect(k.get("HIMMEL_UI_LOGIN")).toBeNull();
   expect(await leaks(page, a)).toEqual([]);
   expect(await leaks(page, b)).toEqual([]);
 });

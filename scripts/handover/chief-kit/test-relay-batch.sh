@@ -340,4 +340,49 @@ check "a relay with an empty Live state exits 0" "0" "$rc21"
 check "an empty Live state still bus-relays a manifest worker" "1" "$(grep -cx 'send DEMO-16-N61-off-2026-10-24' "$WORK/bus.log")"
 check "an empty Live state tallies the manifest worker" "1" "$(printf '%s\n' "$out21" | grep -c '^RELAYED 1 of 1$')"
 
+# --- --fresh <label>=<token> puts the successor's fresh token next to the
+# held one, in the native SendMessage line and the claudex inbox relay (never in a bus record).
+printf '#!/usr/bin/env bash\nprintf "%%s\\n" "$*" >> "%s/send.log"\n' "$WORK" > "$SEND"
+printf '%s\n' "$LOGBUS" > "$BUS"
+census DEMO-1-N7-alpha DEMO-2-N8-beta
+: > "$WORK/send.log"; : > "$WORK/bus.log"; : > "$WORK/bus.body"
+outf="$(HIMMEL_BUS_NAME='' bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-seven --fresh N8=fresh-eight 2>&1)"; rcf=$?
+check "--fresh: the run succeeds" "0" "$rcf"
+check "--fresh: a native SENDMESSAGE line quotes the held and the fresh token" "1" "$(printf '%s\n' "$outf" | grep '^SENDMESSAGE to=DEMO-1-N7-alpha ::' | grep 'tok-seven' | grep -c 'fresh-seven')"
+check "--fresh: the claudex inbox relay quotes the held and the fresh token" "1" "$(grep -- '--token tok-eight' "$WORK/send.log" | grep -c 'fresh-eight')"
+check "--fresh: a worker given no fresh token is relayed as before" "0" "$(printf '%s\n' "$outf" | grep '^SENDMESSAGE to=DEMO-1-N7-alpha ::' | grep -c 'fresh-eight')"
+# a bus record carries no token, so a native worker owed a fresh token is sent the SendMessage instead
+outfb="$(HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-08A-chief bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-seven --fresh N8=fresh-eight 2>&1)"
+check "--fresh: a native worker owed a fresh token gets the SendMessage, not a bus record" "1" "$(printf '%s\n' "$outfb" | grep '^SENDMESSAGE to=DEMO-1-N7-alpha ::' | grep -c 'fresh-seven')"
+check "--fresh: that worker is sent no bus record" "0" "$(grep -cx 'send DEMO-1-N7-alpha' "$WORK/bus.log")"
+check "--fresh: the claudex bus record is still sent" "1" "$(grep -cx 'send DEMO-2-N8-beta' "$WORK/bus.log")"
+check "--fresh: no bus record carries a token" "0" "$(grep -c 'tok-\|fresh-' "$WORK/bus.body")"
+check "--fresh: a fresh token naming no relayed worker is reported" "1" "$(HIMMEL_BUS_NAME='' bash "$RB" "$DOC" --successor S9 --fresh N99=fresh-x 2>&1 | grep -c '^FRESH-UNUSED N99 ')"
+check "--fresh: a value with no label=token shape is a usage error" "2" "$(bash "$RB" "$DOC" --successor S9 --fresh nonsense >/dev/null 2>&1; echo $?)"
+# the claudex bus record follows its own inbox relay at once, not after the whole loop
+ORDER="$WORK/order.log"; : > "$ORDER"
+OSEND="$WORK/osend.sh"; OBUS="$WORK/obus.sh"
+# shellcheck disable=SC2016  # $1 expands in the stub, not here
+printf '#!/usr/bin/env bash\nprintf "inbox %%s\\n" "$1" >> "%s"\n' "$ORDER" > "$OSEND"
+# shellcheck disable=SC2016  # $2 expands in the stub, not here
+printf '#!/usr/bin/env bash\nprintf "bus %%s\\n" "$2" >> "%s"\n' "$ORDER" > "$OBUS"
+chmod +x "$OBUS"
+LEGQ1="$WORK/DEMO-20-N70-cdxa-2026-10-27.md"; LEGQ2="$WORK/DEMO-21-N71-cdxb-2026-10-27.md"; : > "$LEGQ1"; : > "$LEGQ2"
+DOC12="$WORK/DEMO-nextleg-2026-10-27A-chief.md"
+# shellcheck disable=SC2016  # the backticks are literal Live state markers
+printf '# chief\n\n## Live state\n\nlegs: `N70:tok-a:l:1` `N71:tok-b:l:2`\nqueue: none\n\n## Results\n' > "$DOC12"
+printf '{"schema":1,"legs":[{"doc":"%s","label":"N70","lane":"claudex"},{"doc":"%s","label":"N71","lane":"claudex"}]}\n' "$LEGQ1" "$LEGQ2" > "${DOC12%.md}.fleet.json"
+INBOX_SEND="$OSEND" RELAY_BATCH_BUS="$OBUS" HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-27A-chief bash "$RB" "$DOC12" --successor S9 >/dev/null 2>&1
+check "a claudex bus record is sent right after its inbox relay, before the next worker" "inbox DEMO-20-N70-cdxa-2026-10-27 bus DEMO-20-N70-cdxa-2026-10-27 inbox DEMO-21-N71-cdxb-2026-10-27 bus DEMO-21-N71-cdxb-2026-10-27" "$(tr '\n' ' ' < "$ORDER" | sed 's/ $//')"
+# a stalled bus store spends the shared deadline once: later notices are skipped, not each given a second
+: > "$ORDER"
+OSLOW="$WORK/oslow.sh"
+# shellcheck disable=SC2016  # $2 expands in the stub, not here
+printf '#!/usr/bin/env bash\nprintf "bus %%s\\n" "$2" >> "%s"\nsleep 5\n' "$ORDER" > "$OSLOW"
+chmod +x "$OSLOW"
+outslow="$(INBOX_SEND="$OSEND" RELAY_BATCH_BUS="$OSLOW" RELAY_BATCH_BUS_TIMEOUT=1 HIMMEL_BUS_NAME=DEMO-nextleg-2026-10-27A-chief bash "$RB" "$DOC12" --successor S9 2>&1)"
+check "a spent bus deadline skips the later notices" "1" "$(grep -c '^bus ' "$ORDER")"
+check "a skipped notice is reported" "1" "$(printf '%s\n' "$outslow" | grep -c '^BUS-RELAY-FAIL N71 (bus deadline spent)')"
+check "--fresh: a repeated label is a usage error" "2" "$(bash "$RB" "$DOC" --successor S9 --fresh N7=fresh-a --fresh N7=fresh-b >/dev/null 2>&1; echo $?)"
+
 if [ "$fails" -eq 0 ]; then echo "ALL PASS"; else echo "$fails FAILED"; exit 1; fi

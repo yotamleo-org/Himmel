@@ -93,13 +93,13 @@ async function coderabbit(o: SetupOpts) {
   };
 }
 
-type AccountOpts = { loginPath: string; serviceMode: boolean };
+type AccountOpts = { loginPath: string; serviceMode: boolean; env?: Env };
 const SET_LOGIN = `bun ${join(import.meta.dir, "server.ts")} --set-login <user>`;
 
 // The first-run Account step: create: "ui" only when no login exists and this is not a service-mode server.
 function account(o: AccountOpts) {
   try {
-    const l = readLogin(o.loginPath);
+    const l = readLogin(o.loginPath, o.env);
     return { status: l ? "set" : "not-set", user: l?.user ?? null, create: !l && !o.serviceMode ? "ui" : "terminal", setLogin: SET_LOGIN };
   } catch { return { status: "unreadable", user: null, create: "terminal", setLogin: SET_LOGIN }; }
 }
@@ -157,9 +157,9 @@ export function accountCreate(b: Record<string, unknown>, o: AccountOpts): Secre
   if (typeof b.user !== "string" || typeof b.password !== "string") return fail(400, "user and password required");
   const a = account(o);
   const exists = fail(409, `${LOGIN_EXISTS}; change it with \`${SET_LOGIN}\``);
-  if (a.status === "unreadable") return fail(409, `the login file cannot be read; set the login again with \`${SET_LOGIN}\``);
+  if (a.status === "unreadable") return fail(409, `the login file cannot be read, or the keyring is locked; set the login again with \`${SET_LOGIN}\``);
   if (a.status !== "not-set") return exists;
-  try { writeLogin(o.loginPath, b.user, b.password, { createOnly: true }); }
+  try { writeLogin(o.loginPath, b.user, b.password, { createOnly: true, env: o.env }); }
   catch (err) {
     const msg = (err as Error).message;
     if (/^the (user name|password) must/.test(msg)) return fail(400, msg);

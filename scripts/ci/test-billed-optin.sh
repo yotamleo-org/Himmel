@@ -230,6 +230,7 @@ refuse scripts/eval/lane-quality/run.sh bash 64 "HIMMEL_BILLED_OK" run --lane na
 refuse scripts/eval/graphify-ab/run.sh bash 2 "HIMMEL_BILLED_OK" run
 refuse scripts/eval/retrieval-eval/answer-ab.py python3 64 "HIMMEL_BILLED_OK" run --questions q.jsonl --out o
 refuse scripts/eval/review-panel/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/rp"
+refuse scripts/eval/docs-review/run.sh bash 2 "HIMMEL_BILLED_OK" --out "$tmp/dr" A
 refuse scripts/codex/hook-smoke-demo.sh bash 2 "HIMMEL_BILLED_OK"
 refuse scripts/handover/chief-kit/smoke-consult-sandbox.sh bash 0 "HIMMEL_BILLED_OK"
 
