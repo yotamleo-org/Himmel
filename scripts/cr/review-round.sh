@@ -1401,7 +1401,7 @@ fi
 # pending delta round, which restarts at the same head on the count it took.
 # Exit 0 = given back (prints "<round> <head .head names, or none>");
 # 1 = --head is not on .head; 8 = refused (rows at --head, or the start's
-# caller is still running); 5 = state or lock error.
+# caller is still running or unrecorded); 5 = state or lock error.
 if [ "$verb" = "abort" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! ab_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ab_head" ]; then
@@ -1424,7 +1424,10 @@ if [ "$verb" = "abort" ]; then
     elif [ "$(ledger_query seen "$ab_head")" = "seen" ]; then
         echo "review-round: the round on $ab_head has panel rows, so it reviewed something - it is not given back" >&2
         ab_rc=8
-    elif [ -n "$run_pid" ] && [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
+    elif [ -z "$run_pid" ]; then
+        echo "review-round: no start caller is recorded for the round on $ab_head, so it cannot be shown to have ended - it is not given back" >&2
+        ab_rc=8
+    elif [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
         echo "review-round: the round on $ab_head is still running (start by pid $run_pid) - it is not given back" >&2
         ab_rc=8
     else

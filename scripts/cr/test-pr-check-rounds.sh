@@ -3154,6 +3154,45 @@ assert_eq "$ab_rc" "8" "7753 (c) abort refuses a round a critic reviewed ($ab_ou
 assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.round")" "2" "7753 (c) a refused abort keeps the count"
 ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_w" 2>&1)"; ab_rc=$?
 assert_eq "$ab_rc" "1" "7753 (c) abort at a head that is not .head gives nothing back ($ab_out)"
+# abort never gives back a round whose start caller is still running, nor one
+# with no caller on record.
+printf 'more\n' >> "$repo/ab77.txt"; git -C "$repo" commit -q -am "ab77 live"
+ab_y="$(git -C "$repo" rev-parse ab77)"
+(cd "$repo" && bash "$RR" start --branch ab77 --head "$ab_y" >/dev/null 2>&1) || fail "ab77 fixture start at the live head"
+sleep 60 &
+ab_live=$!
+printf '%s\n' "$ab_live" > "$git_dir/cr-review-rounds/ab77.delta.run"
+ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_y" 2>&1)"; ab_rc=$?
+kill "$ab_live" 2>/dev/null; wait "$ab_live" 2>/dev/null
+assert_eq "$ab_rc" "8" "7753 (f) abort refuses while the round's start caller is running ($ab_out)"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.round")" "3" "7753 (f) a refused abort keeps the running round's count"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.head")" "$ab_y" "7753 (f) a refused abort leaves .head on the running round"
+for ab_run in missing '' x12; do
+    if [ "$ab_run" = missing ]; then
+        rm -f "$git_dir/cr-review-rounds/ab77.delta.run"
+    else
+        printf '%s\n' "$ab_run" > "$git_dir/cr-review-rounds/ab77.delta.run"
+    fi
+    ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_y" 2>&1)"; ab_rc=$?
+    assert_eq "$ab_rc" "8" "7753 (g) abort refuses with no start caller on record (delta.run ${ab_run:-empty}: $ab_out)"
+    assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.round")" "3" "7753 (g) the unrecorded round keeps its count (delta.run ${ab_run:-empty})"
+done
+# Any panel row at the head means the round reviewed something, whichever model
+# wrote it and whatever its status.
+for ab_row in unavailable claude; do
+    git -C "$repo" checkout -q -b "ab77$ab_row" main
+    printf '%s\n' "$ab_row" > "$repo/ab77$ab_row.txt"; git -C "$repo" add "ab77$ab_row.txt"; git -C "$repo" commit -q -m "ab77$ab_row"
+    ab_h="$(git -C "$repo" rev-parse "ab77$ab_row")"
+    (cd "$repo" && bash "$RR" start --branch "ab77$ab_row" --head "$ab_h" >/dev/null 2>&1) || fail "ab77$ab_row fixture start"
+    if [ "$ab_row" = unavailable ]; then
+        printf '{"kind":"avail","branch":"%s","head":"%s","model":"codex","status":"unavailable","reason":"timeout"}\n' "ab77$ab_row" "$ab_h" >> "$git_dir/cr-critic-scores.jsonl"
+    else
+        printf '{"kind":"avail","branch":"%s","head":"%s","model":"claude","status":"ok"}\n' "ab77$ab_row" "$ab_h" >> "$git_dir/cr-critic-scores.jsonl"
+    fi
+    ab_out="$(cd "$repo" && bash "$RR" abort --branch "ab77$ab_row" --head "$ab_h" 2>&1)"; ab_rc=$?
+    assert_eq "$ab_rc" "8" "7753 (h) abort refuses a head with only a $ab_row row ($ab_out)"
+    assert_eq "$(cat "$git_dir/cr-review-rounds/ab77$ab_row.round")" "1" "7753 (h) the $ab_row-row round keeps its count"
+done
 
 # PR 4004's state: the delta round's start ran but its panel never reviewed
 # (an abort whose give-back did not run), so .head names an unreviewed head.
