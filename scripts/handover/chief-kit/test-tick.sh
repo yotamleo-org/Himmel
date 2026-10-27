@@ -2868,11 +2868,13 @@ dr7849="$W/doctor7849"
 mkdir -p "$dr7849"
 # shellcheck disable=SC2016  # the stub's own $vars expand when it runs, not here
 printf '%s\n' '#!/bin/sh' 'echo run >> "$DR_COUNT"' 'if [ -n "$DR_FAIL" ]; then echo "doctor crashed" >&2; exit 3; fi' \
-    'if [ -n "$DR_CLEAN" ]; then echo "{\"sev\":\"OK\",\"id\":\"C1\",\"msg\":\"fine\",\"remedy\":\"\"}"; exit 0; fi' \
+    'echo "himmel-doctor — Linux — checkout: /x"; echo' \
+    'if [ -n "$DR_CLEAN" ]; then echo "{\"sev\":\"OK\",\"id\":\"C1\",\"msg\":\"fine\",\"remedy\":\"\"}"; echo; echo "Summary: 0 FAIL  0 WARN  0 INFO"; exit 0; fi' \
     'echo "{\"sev\":\"OK\",\"id\":\"C1-guardrail\",\"msg\":\"fine\",\"remedy\":\"\"}"' \
     'echo "{\"sev\":\"WARN\",\"id\":\"C76-bridge-stale\",\"msg\":\"stale\",\"remedy\":\"restart\"}"' \
     'echo "{\"sev\":\"INFO\",\"id\":\"C45-qmd-daemon\",\"msg\":\"note\",\"remedy\":\"\"}"' \
-    'echo "{\"sev\":\"FAIL\",\"id\":\"C16-hooks\",\"msg\":\"missing\",\"remedy\":\"setup\"}"' > "$dr7849/doctor"
+    'echo "{\"sev\":\"FAIL\",\"id\":\"C16-hooks\",\"msg\":\"missing\",\"remedy\":\"setup\"}"' \
+    'echo; echo "Summary: 1 FAIL  1 WARN  1 INFO"; exit 1' > "$dr7849/doctor"
 chmod +x "$dr7849/doctor"
 t7849() { rm -f "$dr7849/cache"; DR_COUNT="$dr7849/count" TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/cache" TICK_DOCTOR_TTL_MIN="${TTL7849:-30}" bash "$SUT" "$@" 2>/dev/null; }
 doctor_of() { sed -nE 's/.* doctor=([^ ]*).*/\1/p'; }

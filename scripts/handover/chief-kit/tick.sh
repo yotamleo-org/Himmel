@@ -2205,7 +2205,9 @@ if [ "$doctor_ttl" -gt 0 ] && [ -f "$doctor_cmd" ] && command -v jq >/dev/null 2
     [ -f "$doctor_cache" ] && [ -n "$(find "$doctor_cache" -mmin "-$doctor_ttl" 2>/dev/null)" ] && doctor_fresh=1
     if [ -z "$doctor_fresh" ]; then
         # The doctor exits 1 when a FAIL row exists; that run still answered. Any other code, or no rows, did not.
-        doctor_rows="$(timeout -k 2 120 bash "$doctor_cmd" --json --no-color 2>/dev/null </dev/null)"; doctor_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: a failed run keeps the last cached value
+        # --json still prints a banner and a Summary line around the one-object-per-line rows: keep the object lines only.
+        doctor_raw="$(timeout -k 2 120 bash "$doctor_cmd" --json --no-color 2>/dev/null </dev/null)"; doctor_rc=$?  # gnu-ok: console kit is Linux-only; swallow-ok: a failed run keeps the last cached value
+        doctor_rows="$(printf '%s\n' "$doctor_raw" | sed -n '/^{/p')"
         if [ "$doctor_rc" -le 1 ] && [ -n "$doctor_rows" ] && doctor_ids="$(printf '%s\n' "$doctor_rows" | jq -r 'select(type == "object" and (.sev == "WARN" or .sev == "FAIL")) | .id' 2>/dev/null)"; then  # swallow-ok: unparsable rows keep the last cached value
             doctor_val="$(printf '%s\n' "$doctor_ids" | sed '/^$/d' | LC_ALL=C sort -u | paste -sd, -)"
         fi
