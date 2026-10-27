@@ -464,7 +464,8 @@ _himmel_policy_strict() {
 
 # _himmel_project_tighten KEY... — for each policy key the project file sets,
 # export its value when it is stricter than the one already resolved; a looser
-# or unordered value is ignored with one notice. Returns non-zero when the
+# or unordered value, or a key line with no "=", is ignored with one notice.
+# Returns non-zero when the
 # file exists but is not a readable file or cannot be parsed, so a gate fails
 # closed.
 _himmel_project_tighten() {
@@ -479,6 +480,16 @@ _himmel_project_tighten() {
         printf 'himmel: %s cannot be parsed; gate policy fails closed\n' "$_pt_file" >&2
         return 1
     fi
+    # A policy key written without "=" sets nothing; say so instead of
+    # dropping it silently.
+    for _pt_key in "$@"; do
+        case "
+$_pt_out" in *"
+$_pt_key="*) continue ;; esac
+        if grep -Eq "^[[:space:]]*$_pt_key([[:space:]][^=]*)?$" "$_pt_file"; then
+            printf 'himmel: ignoring %s from %s: the line has no =, so it sets nothing\n' "$_pt_key" "$_pt_file" >&2
+        fi
+    done
     while IFS= read -r _pt_line; do
         [ -n "$_pt_line" ] || continue
         _pt_key="${_pt_line%%=*}"

@@ -695,6 +695,12 @@ got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" PATH="$
 assert_eq "P8 a failing project-file extractor fails closed" "1" "$got"
 rm -f "$PCONF"
 
+# P9: a policy key written without "=" is not served, and says so once.
+printf 'CR_REQUIRE_CROSS_MODEL 1\n' >"$PCONF"
+got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" load_policy --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>"$TMP/p9.err"; printf '%s|%s' "$?" "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
+assert_eq "P9 a policy key without = is reported, not silently dropped" "0|0|1" "$got|$(grep -c 'CR_REQUIRE_CROSS_MODEL.*no =' "$TMP/p9.err")"
+rm -f "$PCONF"
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "All load-dotenv tests passed."
