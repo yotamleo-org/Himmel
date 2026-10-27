@@ -4089,9 +4089,23 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # tokenizer could not vouch for (heredoc, ANSI-C word) fall back to the
     # whitespace split, same documented ceiling every other TOK=0 fallback
     # in this file already accepts.
+    _COO_SEEN=$'\n'
     _check_one_operand() {
         local w="$1" resolved wabs wparent wleaf result
         [ -n "$w" ] || return 0
+        # A word judged once is judged the same every time (the
+        # verdict reads only the word, $cwd and $nested_wt_primary, all fixed
+        # for the run, and the flags it sets only ever go to 1), so a long
+        # body that repeats `settings.json` forks the checks below once, not
+        # once per line. A word holding a newline would match across two
+        # entries of the list, so it is always judged.
+        case "$w" in
+            *$'\n'*) ;;
+            *)
+                case "$_COO_SEEN" in *$'\n'"$w"$'\n'*) return 0 ;; esac
+                _COO_SEEN=$_COO_SEEN$w$'\n'
+                ;;
+        esac
         if [ -n "$nested_wt_primary" ]; then
             case "$w" in
                 *..*)
