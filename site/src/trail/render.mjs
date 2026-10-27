@@ -163,8 +163,8 @@ const PAGES = [
     script: [
       '<script>',
       "var h = location.hash;",
-      "if (/^#(trial|trail|lvl-[0-9]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);",
-      "else if (h === '#control') location.replace('adoption-trail-questions.html#q-control');",
+      "if (/^#(trial|trial-h|trail|trail-h|resume|lvl-[0-9]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);",
+      "else if (h === '#control' || h === '#control-h') location.replace('adoption-trail-questions.html#q-control');",
       '</script>',
     ].join('\n'),
   },
