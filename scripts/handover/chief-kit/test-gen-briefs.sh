@@ -668,7 +668,8 @@ rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK
 
 # --- an optional inherited key renders the Inherited PR block; a bad value is refused ---
 inh_gen() { # <python expr for the inherited value, or -: writes N901 alone into $WORK/inh; sets inh_rc
-    rm -rf "$WORK/inh" "$WORK/inh.json"
+    rm -rf "$WORK/inh" "$WORK/inh.json" "$WORK/inh.err"
+    inh_rc=1
     python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1]))[:1]
 if sys.argv[3] != "-": l[0]["inherited"]=eval(sys.argv[3])
 json.dump(l,open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/inh.json" "$1" || return 1
@@ -684,7 +685,7 @@ has "the Inherited PR block carries the mode" "$inh_brief" "Mode: \`takeover\`"
 has "the Inherited PR block keeps the disposition rule" "$inh_brief" "**Before the first push, decide a disposition**"
 inh_gen -
 plain_brief="$(cat "$WORK/inh"/HIMMEL-9001-N901-plain-fix-*.md 2>/dev/null)"
-[ "$inh_rc" = 0 ] && lacks "a leg without inherited renders no Inherited PR block" "$plain_brief" "Inherited PR" || fail "plain leg rc=$inh_rc"
+[ "$inh_rc" = 0 ] && [ -n "$plain_brief" ] && lacks "a leg without inherited renders no Inherited PR block" "$plain_brief" "Inherited PR" || fail "plain leg rc=$inh_rc or no brief written"
 inhbad() { # <name> <python expr for the inherited value>: refused, rc 1, nothing written
     inh_gen "$2"
     if [ "$inh_rc" = 1 ] && grep -q "inherited" "$WORK/inh.err" && ! ls "$WORK/inh"/*.md >/dev/null 2>&1; then pass "$1"; else fail "$1 (rc=$inh_rc, err: $(cat "$WORK/inh.err"))"; fi
