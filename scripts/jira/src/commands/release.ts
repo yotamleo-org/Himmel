@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import type { Command } from 'commander';
+import { Option, type Command } from 'commander';
 import { projectKey, request } from '../client.js';
 import { writeJiraBreadcrumb } from '../breadcrumb.js';
 import { markdownToAdf } from '../adf.js';
@@ -12,6 +12,7 @@ import { readBodyFile } from './body-file.js';
 import { defaultRoot } from './mirror.js';
 import { sectorField, sectorOf } from './sector.js';
 import { fetchVersions, setFixVersion } from './versions.js';
+import { chiefOverrideOf } from './intake-gate.js';
 import { readAdmissions, underTmp } from './admissions-ledger.js';
 import { parseFrozen } from './version-freeze.js';
 import {
@@ -393,8 +394,13 @@ export function registerRelease(program: Command): void {
     .description('Rule every pending request in one on-demand batch: lease, claim, one judge call, rule, apply, release (the chief)')
     .option('--doc <path>', 'Absolute run doc to take the lease as (after an operator takeover of a crashed run)')
     .option('--mirror-root <dir>', 'Jira mirror directory (default: the JIRA_PROJECT_KEY mirror)')
-    .action(async (release: string, o: { doc?: string; mirrorRoot?: string }) => {
-      const lines = await rmRun(ctxFor(release, o.mirrorRoot), liveJudge, { doc: o.doc, session: `rm-run-${process.pid}` });
+    .option('--ruling <ref>', 'Decision ref that covers a run moving more than 20 open tickets in the current version')
+    .option('--chief-override <reason>', 'Same, console session only (HIMMEL_CONSOLE=1); the reason and the count go to the admissions ledger')
+    .addOption(new Option('--console-override <reason>').hideHelp())
+    .action(async (release: string, o: { doc?: string; mirrorRoot?: string; ruling?: string; chiefOverride?: string; consoleOverride?: string }) => {
+      const lines = await rmRun(ctxFor(release, o.mirrorRoot), liveJudge, {
+        doc: o.doc, session: `rm-run-${process.pid}`, ruling: o.ruling, chiefOverride: chiefOverrideOf(o),
+      });
       for (const l of lines) console.log(l);
       if (lines.some((l) => /^(REFUSED|PENDING) /.test(l))) process.exitCode = 2;
     });

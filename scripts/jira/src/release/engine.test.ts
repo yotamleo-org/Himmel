@@ -852,3 +852,73 @@ describe('release withdraw (HIMMEL-7434)', () => {
     expect(() => withdraw(ctx(), { req: same.req, reason: 'again' })).toThrow(new RegExp(`withdrawn:${o.id}`));
   });
 });
+
+describe('rm-run bulk guard (HIMMEL-6778)', () => {
+  const overrideRows = () => {
+    const p = process.env.HIMMEL_ADMISSIONS_LEDGER as string;
+    return existsSync(p) ? readFileSync(p, 'utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Record<string, string>).filter((r) => r.kind === 'override') : [];
+  };
+  const askMany = (n: number) => {
+    declare(ctx(), { project: 'HIMMEL', versions: ['v1', 'v2'], decision: '106', verbatim: 'R = v1 + v2', mode: 'observe' });
+    for (let i = 1; i <= n; i++) request(ctx(), { verb: 'INTAKE', key: `K-${100 + i}`, from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
+  };
+  const admitAll: Judge = async (input) => input.requests.map((q) => ({
+    req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
+  }));
+  const rulings = (lines: string[]) => lines.filter((l) => l.startsWith('RULING '));
+  const marked = { HIMMEL_CONSOLE: '1' };
+
+  it('refuses the 21st open move into the current version, unclaimed and pending for the next run', async () => {
+    askMany(21);
+    const lines = await rmRun(ctx(), admitAll);
+    expect(rulings(lines)).toHaveLength(20);
+    expect(lines).toContainEqual(expect.stringMatching(/^PENDING Q-R1-0021: bulk guard/));
+    expect(jira.fv.get('K-121')).toBeUndefined();
+    expect(state(ctx()).requests).toMatchObject({ open: ['Q-R1-0021'], claimed: [] });
+    expect(overrideRows()).toEqual([]);
+  });
+
+  it('a run of exactly 20 passes unchanged', async () => {
+    askMany(20);
+    const lines = await rmRun(ctx(), admitAll);
+    expect(rulings(lines)).toHaveLength(20);
+    expect(lines.some((l) => /bulk guard/.test(l))).toBe(false);
+    expect(state(ctx()).requests).toMatchObject({ open: [], claimed: [] });
+  });
+
+  it('closed tickets do not count toward the 20', async () => {
+    askMany(21);
+    mirror([{ key: 'K-121', fixVersions: [], status: 'Done', category: 'Done', resolution: 'Done' }]);
+    expect(rulings(await rmRun(ctx(), admitAll))).toHaveLength(21);
+  });
+
+  it('--ruling passes the 21st', async () => {
+    askMany(21);
+    const lines = await rmRun(ctx(), admitAll, { ruling: '98' });
+    expect(rulings(lines)).toHaveLength(21);
+    expect(overrideRows()).toEqual([]);
+  });
+
+  it('a chief override with the marker and a reason passes and writes one override row with the count', async () => {
+    askMany(21);
+    const lines = await rmRun(ctx(marked), admitAll, { chiefOverride: 'operator ordered the reshuffle' });
+    expect(rulings(lines)).toHaveLength(21);
+    expect(overrideRows()).toEqual([expect.objectContaining({ version: 'v1', kind: 'override', reason: expect.stringMatching(/21 .*operator ordered the reshuffle/) })]);
+  });
+
+  it('a chief override without a reason or without the marker refuses before anything is claimed', async () => {
+    askMany(21);
+    await expect(rmRun(ctx(marked), admitAll, { chiefOverride: '  ' })).rejects.toThrow(/needs a reason/);
+    await expect(rmRun(ctx(), admitAll, { chiefOverride: 'because' })).rejects.toThrow(/HIMMEL_CONSOLE=1/);
+    expect(state(ctx()).requests).toMatchObject({ claimed: [] });
+    expect(overrideRows()).toEqual([]);
+  });
+
+  it('operator-authority rulings with a ref are covered and do not count', async () => {
+    askMany(21);
+    const keys = Array.from({ length: 21 }, (_, i) => `K-${101 + i}`);
+    const o = operatorDecision(ctx(), { decision: '243', keys, op: 'add', from_v: null, to_v: 'v1', verbatim: 'x' });
+    const viaOperator: Judge = async (input) => (await admitAll(input)).map((d) => ({ ...d, authority: 'operator' as const, ref: o.id }));
+    expect(rulings(await rmRun(ctx(), viaOperator))).toHaveLength(21);
+  });
+});

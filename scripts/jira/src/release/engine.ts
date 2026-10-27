@@ -764,7 +764,39 @@ async function issueFor(ctx: Ctx, key: string, mirrored: IssueSnap | undefined):
 // Takes the lease, finishes older unreceipted rulings, claims, asks the judge once, rules and
 // applies through the engine, and releases the lease. Decisions come only from
 // the judge, never from the caller.
-export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?: string } = {}): Promise<string[]> {
+export const BULK_MOVE_LIMIT = 20;
+
+// Puts a claimed request back to open so the next run claims it again.
+function unclaim(ctx: Ctx, req: string): void {
+  locked(ctx, (l) => {
+    const lease = rmFence(ctx, l);
+    const r = latestRequests(readChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k)).get(req);
+    if (!r || r.state !== `claimed:${lease.epoch}`) return;
+    const { prev: _p, mac: _m, ...rest } = r;
+    appendChain<RequestRow>(f(ctx, 'requests.jsonl'), l.k, { ...rest, ts: ts(ctx), state: 'open' });
+  });
+}
+
+export interface RmRunOptions {
+  doc?: string;
+  session?: string;
+  /** A decision ref that covers a run moving more than BULK_MOVE_LIMIT open tickets in the current version. */
+  ruling?: string;
+  /** The chief's reason for the same, console marker only; one ledger row records it with the count. */
+  chiefOverride?: string;
+}
+
+export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promise<string[]> {
+  const ruling = o.ruling?.trim();
+  if (o.ruling !== undefined && !ruling) throw new Error('rm-run: --ruling needs a decision ref');
+  const override = o.chiefOverride?.trim();
+  if (o.chiefOverride !== undefined) {
+    if (!override) throw new Error('rm-run: --chief-override needs a reason');
+    if (ruling) throw new Error('rm-run: pass --ruling or --chief-override, not both');
+    // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
+    if (ctx.env.HIMMEL_CONSOLE !== '1') throw new Error('rm-run: --chief-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
+    assertAdmissionsWritable();
+  }
   const l = loadOrThrow(ctx);
   const pending = [...latestRequests(l.requests).values()].filter((r) => r.state === 'open' || r.state.startsWith('claimed:'));
   if (!pending.length && !unfinishedRulings(l.rulings).length) return [`RM-RUN ${ctx.release}: nothing pending`];
@@ -774,9 +806,26 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
   const lease = leaseAcquire(rctx, { expectEpoch: readLease(ctx, l.k).epoch, doc, session: o.session ?? 'rm-run' });
   const lines: string[] = [];
   let refused: JudgeReplyError | undefined;
+  // Open tickets this run moves into or out of the current version; an operator ruling with a ref is already covered.
+  const current = l.decl.current;
+  const mirrorIssues = readMirror(ctx.mirrorRoot).issues;
+  let moved = 0;
+  const bulkHeld = (key: string, op: Op, operatorRef: boolean): boolean => {
+    if (!['add', 'remove', 'move'].includes(op.kind) || (op.from_v !== current && op.to_v !== current)) return false;
+    if (operatorRef || terminalOf(mirrorIssues?.get(key)) !== null) return false;
+    if (moved >= BULK_MOVE_LIMIT && !ruling && override === undefined) return true;
+    moved++;
+    return false;
+  };
+  const heldNote = `bulk guard: ${current} already takes ${BULK_MOVE_LIMIT} open moves in one run; rerun with --ruling <decision-ref> or --chief-override "<reason>"`;
   try {
     for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
       try {
+        const row = loadOrThrow(ctx).rulings.verified.filter((r) => r.id === id).pop();
+        if (row?.phase === 'intent' && bulkHeld(row.key, row.op, row.authority.kind === 'operator' && !!row.authority.ref)) {
+          lines.push(`PENDING ${id}: ${heldNote}`);
+          continue;
+        }
         lines.push((await apply(rctx, id)).line);
       } catch (e) {
         lines.push(`PENDING ${id}: ${(e as Error).message}`);
@@ -813,6 +862,11 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
             lines.push(`HELD ${q.req}: ${d.reason}`);
             continue;
           }
+          if (bulkHeld(q.key, { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, d.authority === 'operator' && !!d.ref)) {
+            unclaim(rctx, q.req);
+            lines.push(`PENDING ${q.req}: ${heldNote}`);
+            continue;
+          }
           id = rule(rctx, {
             req: q.req, outcome: d.outcome, op: { kind: d.op, from_v: d.from ?? null, to_v: d.to ?? null }, sector: d.sector ?? '',
             ground: d.ground ?? '', reason: d.reason ?? '', supersedes: d.supersedes ?? [],
@@ -828,6 +882,9 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: { doc?: string; session?:
           lines.push(`PENDING ${id}: ${(e as Error).message}`);
         }
       }
+    }
+    if (override !== undefined && moved > BULK_MOVE_LIMIT) {
+      appendAdmission({ version: current, key: `rm-run:${ctx.release}`, kind: 'override', reason: `bulk ${moved} open moves in ${current}: ${override}` });
     }
   } finally {
     // Cleanup never hides the rulings already made or the error that ended the run.
