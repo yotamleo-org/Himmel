@@ -1307,6 +1307,45 @@ rc=0; out=$(run --fleet "$W/closed-already.fleet.json" "$RDOC" 2>&1) || rc=$?
 check "closed-already: --fleet rc 0" "$rc" "0"
 check "closed-already: the manifest keeps only the other worker" "$W/HIMMEL-9-N2-other.md" "$(jq -r '.legs[].doc' "$W/closed-already.fleet.json")"
 
+# A plain N7b doc is its own worker: with its session gone it never claims the live N7 window.
+BDOC="$W/HIMMEL-9-N7b-demo-2026-01-01.md"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$BDOC"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 290 claude -n HIMMEL-9-N7-demo work
+pgrep_x_stub 290
+reset_calls
+rc=0; out=$(run "$BDOC" 2>&1) || rc=$?
+check "plain N7b doc, own session gone, N7 alive: rc 0" "$rc" "0"
+contains "plain N7b doc: says CLOSED-ALREADY" "$out" "CLOSED-ALREADY"
+check "plain N7b doc: the live N7 session is never signaled" "$(cat "$CALLS")" ""
+# the legacy -legN7c worker token drops its suffix too
+LDOC="$W/HIMMEL-9-demo-legN7c-2026-01-01-RESUME.md"
+printf '# worker\n\n## Results (newest at the bottom)\n\n- 09:00 LIVE - go\n- 10:00 WRAPPED - done\n' > "$LDOC"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 290 claude -n HIMMEL-9-demo-legN7-2026-01-01 work
+pgrep_x_stub 290
+reset_calls
+rc=0; out=$(run "$LDOC" 2>&1) || rc=$?
+check "legacy legN7c resume doc: the original legN7 session is matched -> rc 0" "$rc" "0"
+exact_count "legacy legN7c resume doc: TERM sent to the original session" "$(cat "$CALLS")" "kill -TERM 290" "1"
+# the capture finds the transcript of the session that actually matched (the original N7 name)
+ESW_SBR="$W/esw-sbR"; mkdir -p "$ESW_SBR/vault" "$ESW_SBR/proj" "$ESW_SBR/home" "$W/esw-projectsR"
+{
+    printf '%s\n' "{\"customTitle\":\"HIMMEL-9-N7-demo\",\"cwd\":\"$ESW_SBR/proj\",\"timestamp\":\"2026-06-17T00:00:00Z\"}"
+    printf '%s\n' "{\"timestamp\":\"2026-06-17T00:00:00Z\",\"cwd\":\"$ESW_SBR/proj\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\"line one\\nline two\"}]}}"
+} > "$W/esw-projectsR/sess-nR.jsonl"
+rm -rf "$W/proc"; mkdir -p "$W/proc"
+mkcmdline 290 claude -n HIMMEL-9-N7-demo work
+pgrep_x_stub 290
+reset_calls
+rc=0
+out=$(HOME="$ESW_SBR/home" LUNA_VAULT_PATH="$ESW_SBR/vault" OBSIDIAN_API_KEY="" \
+    CLAUDE_PROJECT_DIR="$ESW_SBR/proj" OSTYPE="linux-gnu" OS="" \
+    CWL_ESW_BIN="$REAL_ESW" CWL_PROJECTS_DIR="$W/esw-projectsR" \
+    run "$RDOC" 2>&1) || rc=$?
+check "resume N7c: a session-note capture still closes -> rc 0" "$rc" "0"
+check "resume N7c: the original session's transcript is found and its note written" "$(find "$ESW_SBR/vault/sessions" -type f -name '*.md' 2>/dev/null | wc -l | tr -d ' ')" "1"
+
 # --- cause 2: a judge session's doc stem is not an N<k> worker stem ---------------
 rm -rf "$W/proc"; mkdir -p "$W/proc"
 JDOC="$W/HIMMEL-9-judge-j7y-2026-01-01-RESUME.md"

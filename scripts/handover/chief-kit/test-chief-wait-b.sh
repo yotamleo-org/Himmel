@@ -474,6 +474,20 @@ while [ "$n" -lt 50 ] && [ -e "$I.wait.unwatched" ]; do sleep 0.1; n=$((n + 1));
 check "(7811-5) a tick line that drops unwatched= clears the marker" "" "$([ -e "$I.wait.unwatched" ] && echo present)"
 kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
 
+# a failed census (procs=unknown) carries no unwatched= and must not clear the marker
+unwatched_line "1,unwatched=N302+N303"
+I="$(new_inbox w7811g)"
+start "$I" "$WORK/w7811g.out" --workers "N1.md"
+wait_exit "$WPID"
+unwatched_line "unknown"
+start "$I" "$WORK/w7811h.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-6) no baseline heartbeat"
+n=0
+while [ "$n" -lt 30 ] && [ ! -e "$I.wait.unwatched" ]; do sleep 0.1; n=$((n + 1)); done
+sleep 3
+check "(7811-6) procs=unknown keeps the unwatched marker" "present" "$([ -e "$I.wait.unwatched" ] && echo present)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 reset_stub
 I="$(new_inbox w7811c)"
 start "$I" "$WORK/w7811c.out" --workers "N1.md"

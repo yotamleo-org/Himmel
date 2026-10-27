@@ -1225,7 +1225,8 @@ while :; do
             esac
             unwatched_val="$(printf '%s\n' "$tick_line" | sed -n 's/.* procs=[^ ]*unwatched=\([^ ,]*\).*/\1/p')"
             if [ -z "$unwatched_val" ]; then
-                rm -f "$unwatched_file"
+                # procs=unknown is a failed census, not "nothing unwatched": keep the marker
+                case "$tick_line" in *" procs=unknown"*) ;; *) rm -f "$unwatched_file" ;; esac
             elif unwatched_wake "$unwatched_val"; then
                 printf 'WAKE unwatched %s\n%s\n' "$unwatched_val" "$tick_line"
                 exit_reason='wake-unwatched'; exit 0

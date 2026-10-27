@@ -158,7 +158,8 @@ printf '#!/usr/bin/env bash\nexit 0\n' > "$WORK/bin7811/sleep"; chmod +x "$WORK/
 python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811" --repo "$R7811" --handover-root /h --no-worktree --manifest "$WORK/f7811.fleet.json" >/dev/null 2>&1
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811/launch-N901.sh" >/dev/null 2>&1; rc7811=$?
 [ "$rc7811" -eq 0 ] && pass "the generated launcher exits 0 (HIMMEL-7811)" || fail "the generated launcher exited $rc7811"
-has "the generated launcher leaves its worker doc in the fleet manifest (HIMMEL-7811)" "$(bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1)" "$WORK/b7811/HIMMEL-9001-N901-plain-fix-"
+d7811="$(find "$WORK/b7811" -maxdepth 1 -name 'HIMMEL-9001-N901-plain-fix-*.md' 2>/dev/null | head -n1)"
+[ -n "$d7811" ] && bash "$HERE/fleet-manifest.sh" list "$WORK/f7811.fleet.json" 2>&1 | grep -Fxq -- "$d7811" && pass "the generated launcher leaves its exact worker doc in the fleet manifest (HIMMEL-7811)" || fail "the fleet manifest does not list the exact worker doc [$d7811]"
 l7811="$(cat "$WORK/b7811/launch-N901.sh" 2>/dev/null)"
 add_pos="${l7811%%fleet-manifest.sh add*}"; arm_pos="${l7811%%headed-arm-worker.sh*}"
 [ "${#add_pos}" -lt "${#arm_pos}" ] && pass "the launcher adds the worker to the manifest before it arms (HIMMEL-7811)" || fail "manifest add does not precede the arm in the launcher"
@@ -175,7 +176,9 @@ has "the launcher for the failed-add check carries the manifest add (HIMMEL-7811
 PATH="$WORK/bin7811:$PATH" bash "$WORK/b7811f/launch-N901.sh" >/dev/null 2>&1; rc7811f=$?
 [ "$rc7811f" -ne 0 ] && pass "a failed manifest add makes the launcher exit non-zero (HIMMEL-7811)" || fail "launcher exited 0 after a failed manifest add"
 [ ! -s "$WORK/arm7811f.log" ] && pass "a failed manifest add stops the launch before the arm (HIMMEL-7811)" || fail "the arm ran after a failed manifest add"
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811n" --repo "$R7811" --handover-root /h --no-worktree >/dev/null 2>&1
+python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b7811n" --repo "$R7811" --handover-root /h --no-worktree >/dev/null 2>&1; rc7811n=$?
+[ "$rc7811n" -eq 0 ] && pass "generation without --manifest succeeds (HIMMEL-7811)" || fail "generation without --manifest exited $rc7811n"
+has "the launcher generated without --manifest still arms (HIMMEL-7811)" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
 lacks "a launcher generated without --manifest adds nothing (HIMMEL-7811)" "$(cat "$WORK/b7811n/launch-N901.sh" 2>/dev/null)" "fleet-manifest.sh"
 else
   echo "SKIP launcher manifest rows (no flock on this host)"
@@ -231,7 +234,9 @@ has "a worker's lane key is printed as --lane" "$lout" "--lane claudex"
 # The launcher itself carries the lane, so a claudex worker needs no hand edit that breaks the sidecar sha.
 has "a claudex worker's launcher passes --lane claudex" "$(cat "$WORK/b5/launch-N901.sh")" "--lane claudex "
 has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5/launch-N901.sh")  $WORK/b5/launch-N901.sh"
-python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5n.json" >/dev/null 2>&1
+python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/b5n" --repo "$REPO" --handover-root /h --no-worktree --manifest "$WORK/f5n.json" >/dev/null 2>&1; rc5n=$?
+[ "$rc5n" -eq 0 ] && pass "a native worker's generation succeeds (HIMMEL-7811)" || fail "native worker generation exited $rc5n"
+has "a native worker's launcher has an arm line to check" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh" 2>/dev/null)" "headed-arm-worker.sh"
 lacks "a native worker's arm line has no --lane (its manifest add line carries --lane native, HIMMEL-7811)" "$(grep 'headed-arm-worker.sh' "$WORK/b5n/launch-N901.sh")" "--lane"
 has "and its sidecar sha matches the launcher bytes" "$(cat "$WORK/f5n.launchers.sha256" 2>/dev/null)" "$(sha_of "$WORK/b5n/launch-N901.sh")  $WORK/b5n/launch-N901.sh"
 python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["lane"]="Bad Lane"; json.dump(l[:1],open(sys.argv[2],"w"))' "$WORK/legs.json" "$WORK/lane-bad.json"
@@ -540,6 +545,10 @@ cat > "$WORK/rm.json" <<EOF
 ]
 EOF
 : > "$WT_LOG"
+# an rm worker with an ab_arm is refused: its launcher applies no A/B arm
+python3 -I -c 'import json,sys; l=json.load(open(sys.argv[1])); l[0]["ab_arm"]="400k"; json.dump(l,open(sys.argv[2],"w"))' "$WORK/rm.json" "$WORK/rm-ab.json"
+rc=0; python3 "$SUT" "$WORK/rm-ab.json" --base 4ccb59d --chief BZ --bucket "$WORK/rmb-ab" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 >/dev/null 2>"$WORK/rm-ab.err" || rc=$?
+[ "$rc" = 1 ] && grep -q 'ab_arm' "$WORK/rm-ab.err" && [ ! -e "$WORK/rmb-ab/launch-N910.sh" ] && pass "an rm worker with an ab_arm is refused before anything is written (HIMMEL-7811)" || fail "rm ab_arm rc=$rc"
 rmout="$(python3 "$SUT" "$WORK/rm.json" --base 4ccb59d --chief HIMMEL-nextleg-2026-10-08BZ-roadmap-chief --bucket "$WORK/rmb" --date 2026-10-08 --repo "$REPO" --handover-root "$WORK/hr" --work-dir "$WORK/w" --deadline 1791475000 --manifest "$WORK/rmf.json" 2>&1)"; rc=$?
 [ "$rc" = 0 ] && pass "an rm worker generates (rc 0)" || fail "rm rc=$rc: $rmout"
 RMD="$WORK/rmb/HIMMEL-9010-N910-rm-R1-2026-10-08.md"

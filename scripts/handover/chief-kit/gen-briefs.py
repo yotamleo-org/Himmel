@@ -197,6 +197,8 @@ def validate_rm(worker, i):
         die('rm worker %s: mode %r must be observe or live' % (label, worker['mode']))
     if worker.get('lane', 'native') != 'native':
         die('rm worker %s: lane %r is refused; the release manager is native-lane only' % (label, worker['lane']))
+    if worker.get('ab_arm') is not None:
+        die('rm worker %s: ab_arm is refused; the release manager launcher does not apply an A/B arm' % label)
     if worker.get('model') is not None and (not isinstance(worker['model'], str) or tier_gate(worker['model']) != 'opus'):
         die('rm worker %s: model %r must be an opus model (the release manager runs at opus; the brief carries an opus Tier line)' % (label, worker['model']))
     if worker.get('effort') not in (None,) + EFFORTS:
@@ -719,7 +721,7 @@ def main():
         for l in workers:
             # a missing --lane is stored `unknown` and relay-batch refuses it; the
             # launchers written above are native headed-arm-worker launches unless the worker says otherwise.
-            arm = (' --arm ' + l['ab_arm']) if l.get('ab_arm') else ''
+            arm = (' --arm ' + shlex.quote(l['ab_arm'])) if l.get('ab_arm') else ''
             print('bash scripts/handover/chief-kit/fleet-manifest.sh add %s %s --lane %s%s' % (shlex.quote(a.manifest), shlex.quote(os.path.join(a.bucket, l['stem'] + '.md')), shlex.quote(l.get('lane', 'native')), arm))
         print('launch with: ' + '; '.join('bash %s/launch-%s.sh' % (a.bucket, l['label']) for l in workers))
 

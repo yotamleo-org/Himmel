@@ -232,13 +232,13 @@ doc_stem="$(basename "$DOC" .md)"
 names=",${ident#*$'\t'},${doc_stem},"
 # A RESUME doc's label carries a successor suffix (N3731c) but the window
 # still runs under the ORIGINAL worker's session name (...-N3731-...). Add each name with
-# the suffix dropped from its worker token; a live N3731b session keeps its own name and
-# never matches.
+# the suffix dropped from its worker token (the -legN3731c form too); a live N3731b session
+# keeps its own name and never matches, and only a RESUME doc claims its predecessor's window.
 orig_names=""
-if [[ ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
+if [[ $DOC == *-RESUME.md && ${ident%%$'\t'*} =~ ^(N[0-9]+)[a-z]+$ ]]; then
     orig_label="${BASH_REMATCH[1]}"
     for resume_name in ${names//,/ }; do
-        orig_names="$orig_names,$(printf '%s' "$resume_name" | sed -E "s/-${ident%%$'\t'*}(-|\$)/-${orig_label}\\1/")"
+        orig_names="$orig_names,$(printf '%s' "$resume_name" | sed -E "s/-(leg)?${ident%%$'\t'*}(-|\$)/-\\1${orig_label}\\2/")"
     done
     names="$names${orig_names#,},"
 fi
@@ -251,6 +251,7 @@ if [ "$census_rc" -gt 1 ]; then
 fi
 
 matched=""
+matched_name=""
 match_count=0
 while IFS=$'\t' read -r pid name _model _ac; do
     [ -n "$pid" ] || continue
@@ -263,6 +264,7 @@ while IFS=$'\t' read -r pid name _model _ac; do
     case "$names" in
         *",${name},"*|*",${base_name},"*)
             matched="$pid"
+            matched_name="$name"
             match_count=$((match_count + 1)) ;;
     esac
 done <<EOF
@@ -317,7 +319,7 @@ PROJECTS_DIR="${CLOSE_WRAPPED_WORKER_PROJECTS_DIR:-$WORKER_SESSION_CONFIG_DIR/pr
 if [ "$CHECK_MODE" -eq 0 ] && [ -r "$END_SESSION_WIKI" ] && [ -d "$PROJECTS_DIR" ]; then
     # The two-pass customTitle search lives in worker-transcripts.sh,
     # shared with worker-digest-step.sh --doc: same "exactly one" semantics.
-    candidates=$(printf '%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" | tr ',' '\n' | sed '/^$/d')
+    candidates=$(printf '%s\n%s\n%s\n' "${ident#*$'\t'}" "$doc_stem" "$matched_name" | tr ',' '\n' | sed '/^$/d')
     transcript_matches=$(resolve_worker_transcripts "$PROJECTS_DIR" "$candidates" \
         "${CLOSE_WRAPPED_WORKER_MTIME_DAYS:-1}" "${CLOSE_WRAPPED_WORKER_CUSTOMTITLE_HEAD:-40}")
     tcount=$(printf '%s\n' "$transcript_matches" | grep -c . || true)
