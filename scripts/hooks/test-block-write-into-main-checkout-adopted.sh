@@ -120,6 +120,7 @@ _row "1b same, no commit-ish (ALLOW)"                                         al
 _row "1c same, -q (ALLOW)"                                                    allow "git -C $AD worktree add -q -b feat/x-3 $W/feat+x-3 HEAD"
 _row "1d same, chief cwd is another primary (ALLOW)"                          allow "git -C $AD worktree add -b feat/x-4 $W/feat+x-4 HEAD" "$FIX/primary"
 _row "1e same, cwd /tmp (ALLOW)"                                              allow "git -C $AD worktree add -b feat/x-5 $W/feat+x-5 HEAD" /tmp
+_row "1f same, cd <adopted primary> instead of -C (ALLOW)"                    allow "cd $AD && git worktree add -b feat/x-6 $W/feat+x-6 HEAD"
 
 echo "== refusals: the repo is not a registered adapter =="
 _row "2a adapter origin but not in the registry"                              block "git -C $UN worktree add -b feat/x $UN/.claude/worktrees/feat+x HEAD"
@@ -152,6 +153,10 @@ _row "4g --lock"                                                              bl
 _row "4h two -b"                                                              block "git -C $AD worktree add -b feat/x -b feat/y $W/feat+x HEAD"
 _row "4i -b with a dotdot name"                                               block "git -C $AD worktree add -b feat/../x $W/feat+x HEAD"
 _row "4j extra positional"                                                    block "git -C $AD worktree add -b feat/x $W/feat+x HEAD extra"
+_row "4k --lock after the target"                                             block "git -C $AD worktree add $W/x HEAD --lock"
+_row "4l --detach after the target"                                           block "git -C $AD worktree add $W/x HEAD --detach"
+_row "4m --lock after the target, with -b"                                    block "git -C $AD worktree add -b feat/x $W/feat+x --lock HEAD"
+_row "4n --detach after the commit-ish, with -b"                              block "git -C $AD worktree add -b feat/x $W/feat+x HEAD --detach"
 
 echo "== refusals: every other write into the adopted primary =="
 _row "5a commit"                                                              block "git -C $AD commit -m x"
