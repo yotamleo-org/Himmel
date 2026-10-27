@@ -300,13 +300,16 @@ grep -q 'STUB shard' "$T/sweep.out" && ok "sweep_ok: shard output is preserved" 
 grep -E 'gh-ci-cache.sh' "$T/stub.log" | grep -q 'check-ci-watch.sh' \
   && ok "sweep_ok: a lib and its consumer share one shard" || bad "sweep_ok: lib and consumer split: $(tr '\n' '|' < "$T/stub.log")"
 # sweep_nonproc: macOS has no nproc; the sweep takes the CPU count from sysctl and still shards
-mkdir -p "$T/nonproc"
-printf '#!/bin/sh\nexit 127\n' > "$T/nonproc/nproc"
-printf '#!/bin/sh\n[ "$*" = "-n hw.ncpu" ] && echo 4\n' > "$T/nonproc/sysctl"
-chmod +x "$T/nonproc/nproc" "$T/nonproc/sysctl"
-: > "$T/stub.log"; PATH="$T/nonproc:$PATH" sweep; rc=$?
-[ "$rc" -eq 0 ] && grep -q 'STUB shard' "$T/sweep.out" \
-  && ok "sweep_nonproc: no nproc still shards through sysctl" || bad "sweep_nonproc: no nproc fell back to the serial sweep (rc $rc): $(head -3 "$T/sweep.out" | tr '\n' '|')"
+if mkdir -p "$T/nonproc" \
+  && printf '#!/bin/sh\nexit 127\n' > "$T/nonproc/nproc" \
+  && printf '#!/bin/sh\n[ "$*" = "-n hw.ncpu" ] && echo 4\n' > "$T/nonproc/sysctl" \
+  && chmod +x "$T/nonproc/nproc" "$T/nonproc/sysctl"; then
+  : > "$T/stub.log"; PATH="$T/nonproc:$PATH" sweep; rc=$?
+  [ "$rc" -eq 0 ] && grep -q 'STUB shard' "$T/sweep.out" \
+    && ok "sweep_nonproc: no nproc still shards through sysctl" || bad "sweep_nonproc: no nproc fell back to the serial sweep (rc $rc): $(head -3 "$T/sweep.out" | tr '\n' '|')"
+else
+  bad "sweep_nonproc: the nproc and sysctl shims could not be set up"
+fi
 reset; w .shellcheckrc 'external-sources=true
 # touched
 '; w scripts/zzbad.sh '#!/usr/bin/env bash
