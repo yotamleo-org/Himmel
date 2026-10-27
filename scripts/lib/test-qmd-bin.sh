@@ -952,6 +952,14 @@ STUB_LIST="skills-v2 (qmd://skills-v2/)"; : > "$add_log"
 assert "register collection name is literal, not a regex" test "$(reg_rc /skills skills.v2)" -eq 0
 assert "register literal skills.v2 despite skills-v2 in list" \
   grep -qxF 'collection collection add /skills --name skills.v2' "$add_log"
+STUB_LIST="001 (qmd://001/)"; : > "$add_log"
+assert "register numeric-looking name despite zero-padded name returns 0" test "$(reg_rc /numeric 1)" -eq 0
+assert "register numeric-looking name despite zero-padded name adds exactly once" test "$(wc -l < "$add_log")" -eq 1
+assert "register numeric-looking name uses requested path and name" \
+  grep -qxF 'collection collection add /numeric --name 1' "$add_log"
+STUB_LIST="1 (qmd://1/)"; : > "$add_log"
+assert "register exact numeric-looking name returns 0" test "$(reg_rc /numeric 1)" -eq 0
+assert "register exact numeric-looking name does NOT call add" test ! -s "$add_log"
 # add-FAILURE: list ok, add exits nonzero -> WARN + honest rc passthrough.
 STUB_LIST=""; STUB_LIST_FAIL=""; STUB_ADD_RC=3; : > "$add_log"
 assert "register add-failure returns the add rc" test "$(reg_rc /repo himmel)" -eq 3
