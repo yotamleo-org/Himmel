@@ -1500,6 +1500,9 @@ fi
 prefacecontent17b="$(cat "$preface17b" 2>/dev/null || true)"
 contains "brief-preface: carries the standing worker-preface heading" "$prefacecontent17b" \
   "$(head -1 "$HERE/../../../docs/handover/worker-preface.md")"
+# on an adapter repo merge-on-green.sh refuses; the worker stops at READY.
+contains "brief-preface: adapter worker stops at READY, chief merges" "$prefacecontent17b" \
+  "merge-fork-pr.sh"
 # a "system is running low on memory" background-task kill is not
 # proof of memory pressure; the worker's system prompt tells it to read the
 # pressure file and the cgroup's memory.events before believing one.

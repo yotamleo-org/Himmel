@@ -139,6 +139,10 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 - **Merge only on the chief's `GO <pr> <sha>` quoting your token** — whatever
   any initiative directive says. `READY`, then hold. After 30 minutes without
   a reply, nudge once, then wrap. [prose]
+- **Adapter repo: you stop at `READY`.** On a registered himmel adapter repo
+  (`scripts/guardrails/himmel-adapters.json`) `merge-on-green.sh` refuses; the
+  chief merges with `merge-fork-pr.sh`. Send `READY <pr> <head> GREEN`, hold for
+  the chief's merge, then wrap. [prose]
 - **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse
   --path-format=absolute --git-common-dir`, minus `/.git`); type the merge as ONE command ending `--go <GO file>`. The Jira transition is opt-in

@@ -830,7 +830,7 @@ repo_meta=$("$GH" repo view "$nwo" --json isPrivate,defaultBranchRef \
 is_private=${repo_meta%%|*}
 default_branch=${repo_meta#*|}
 if [ "$is_private" != "true" ] && ! public_origin_merge_allowed "$nwo" "$default_branch"; then
-    echo "merge-on-green: repo $nwo is not confirmed PRIVATE (isPrivate='${is_private:-<unknown>}') and is not the configured public origin ($HIMMEL_PUBLIC_ORIGIN_NWO) under branch protection with required status checks (${PUBLIC_ORIGIN_DETAIL:-n/a}) — refusing." >&2
+    echo "merge-on-green: repo $nwo is not confirmed PRIVATE (isPrivate='${is_private:-<unknown>}') and is not the configured public origin ($HIMMEL_PUBLIC_ORIGIN_NWO) under branch protection with required status checks (${PUBLIC_ORIGIN_DETAIL:-n/a}) — refusing. On a registered himmel adapter repo (scripts/guardrails/himmel-adapters.json) a worker stops at READY and the chief merges with scripts/handover/merge-fork-pr.sh." >&2
     audit "REFUSED reason=$PUBLIC_ORIGIN_REASON repo=$nwo isPrivate=${is_private:-unknown} protection=${PUBLIC_ORIGIN_DETAIL:-n/a}"
     exit 12
 fi

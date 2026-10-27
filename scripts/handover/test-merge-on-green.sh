@@ -1064,6 +1064,8 @@ assert_gh_lacks "no-PR: no merge attempted" "pr merge"
 # 4. PR OPEN but repo is public → fail-closed refuse (exit 12), no merge.
 STUB_PRIVATE=false run_mog 12 "public repo → exit 12"
 assert_gh_lacks "public repo: no merge attempted" "pr merge"
+# the refusal names the chief's adapter merge path.
+assert_err_has "adapter hint: not-private refusal names merge-fork-pr.sh" "merge-fork-pr.sh"
 
 # RC-3 — the comment on assert_state_requery above claims a
 # LITERAL (unanchored) 'pr view .*--json state' matcher would ALSO match the
