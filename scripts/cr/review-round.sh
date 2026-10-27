@@ -1400,8 +1400,9 @@ fi
 # is removed when there is none, and the round is uncounted - unless it is the
 # pending delta round, which restarts at the same head on the count it took.
 # Exit 0 = given back (prints "<round> <head .head names, or none>");
-# 1 = --head is not on .head; 8 = refused (rows at --head, or the start's
-# caller is still running or unrecorded); 5 = state or lock error.
+# 1 = --head is not on .head; 8 = refused (rows at --head or an unreadable
+# ledger, or the start's caller is still running or unrecorded); 5 = state or
+# lock error.
 if [ "$verb" = "abort" ]; then
     # swallow-ok: an unresolvable head is refused on the next line (exit 2)
     if ! ab_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ab_head" ]; then
@@ -1421,7 +1422,10 @@ if [ "$verb" = "abort" ]; then
     elif [ "$ab_cur" != "$ab_head" ]; then
         echo "review-round: $ab_head is not the head the last counted round on $branch ran on (${ab_cur:-none}) - nothing to give back" >&2
         ab_rc=1
-    elif [ "$(ledger_query seen "$ab_head")" = "seen" ]; then
+    elif ! ab_seen="$(ledger_query seen "$ab_head")"; then
+        echo "review-round: cannot read the panel ledger for $ab_head, so the round cannot be shown to have reviewed nothing - it is not given back" >&2
+        ab_rc=8
+    elif [ "$ab_seen" = "seen" ]; then
         echo "review-round: the round on $ab_head has panel rows, so it reviewed something - it is not given back" >&2
         ab_rc=8
     elif [ -z "$run_pid" ]; then

@@ -3193,6 +3193,16 @@ for ab_row in unavailable claude; do
     assert_eq "$ab_rc" "8" "7753 (h) abort refuses a head with only a $ab_row row ($ab_out)"
     assert_eq "$(cat "$git_dir/cr-review-rounds/ab77$ab_row.round")" "1" "7753 (h) the $ab_row-row round keeps its count"
 done
+# A ledger abort cannot read is not proof the round reviewed nothing.
+git -C "$repo" checkout -q -b ab77node main
+printf 'ab77node\n' > "$repo/ab77node.txt"; git -C "$repo" add ab77node.txt; git -C "$repo" commit -q -m ab77node
+ab_h="$(git -C "$repo" rev-parse ab77node)"
+(cd "$repo" && bash "$RR" start --branch ab77node --head "$ab_h" >/dev/null 2>&1) || fail "ab77node fixture start"
+mkdir -p "$tmp/nonode"
+printf '#!/bin/sh\nexit 3\n' > "$tmp/nonode/node"; chmod +x "$tmp/nonode/node"
+ab_out="$(cd "$repo" && PATH="$tmp/nonode:$PATH" bash "$RR" abort --branch ab77node --head "$ab_h" 2>&1)"; ab_rc=$?
+assert_eq "$ab_rc" "8" "7753 (i) abort refuses when the panel ledger cannot be read ($ab_out)"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ab77node.round")" "1" "7753 (i) the unreadable-ledger round keeps its count"
 
 # PR 4004's state: the delta round's start ran but its panel never reviewed
 # (an abort whose give-back did not run), so .head names an unreviewed head.
