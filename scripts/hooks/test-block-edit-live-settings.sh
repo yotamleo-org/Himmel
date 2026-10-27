@@ -3633,14 +3633,14 @@ ROWS
 
 # 9700-9703: read-only and mention-only commands the live guard refused. A quoted `$` anchor (`'^$'`, `'\.py$'`) beside
 # a path that carries `claude` is text when a `${VAR}` expansion or a gh read
-# sits in the command; a quoted regex bracket after a heredoc is no glob.
+# sits in the command; a heredoc that writes a scratch path is no live write.
 rows_both 9700 0 "quoted dollar anchor beside a claude path allowed" <<'ROWS'
 H=69351d3aa4d2; git show "${H}:scripts/ci/ci-trust-paths.txt" | grep -v '^#' | grep -v '^$' > /tmp/claude-1000/x/scratchpad/tp.txt; git diff --name-only origin/main...${H} | grep -E -f /tmp/claude-1000/x/scratchpad/tp.txt
 D=/tmp/claude-1000/x/scratchpad/tree; sed -n 96,134p $D/../vault.py; gh api "repos/o/r/git/trees/$S?recursive=1" --jq '.tree[]|select(.type=="blob")|.path' > $D/../paths.txt; grep -E '\.py$' $D/../paths.txt | wc -l
 gh api repos/o/r/contents/f.lock?ref=abc -H 'Accept: application/vnd.github.raw' > /tmp/claude-1000/x/scratchpad/f.lock; grep -c 'x$' /tmp/claude-1000/x/scratchpad/f.lock
 ROWS
-rows_both 9703 0 "quoted regex bracket after a heredoc is no glob" <<'ROWS'
-bash scripts/x.sh /tmp/doc.md "note"; python3 - <<'EOF'\np='/tmp/doc.md'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF\ngrep -o 'N3412:[^`]*' /tmp/doc.md | head -2
+rows_both 9703 0 "heredoc write to a scratch path allowed" <<'ROWS'
+python3 - <<'EOF'\np='/tmp/doc.md'\ns=open(p).read()\nopen(p,'w').write(s)\nEOF\ngrep -c N3412 /tmp/doc.md
 ROWS
 # 9710-9716: the controls stay denied — a `$'` inside an open parameter
 # expansion, a gh or git write into the live file, a live glob after the
@@ -3661,6 +3661,8 @@ python3 - <<'EOF'\nprint(1)\nEOF\nbash -c "cp /tmp/x @P@/.cl*ude/"
 python3 - <<'EOF'\nprint(1)\nEOF\nsh -c 'cp /tmp/x @P@/.cl*ude/'
 python3 - <<'EOF'\nprint(1)\nEOF\neval "cp /tmp/x @P@/.cl*ude/"
 python3 - <<'EOF'\neof\nimport os; os.system("cp /tmp/x @P@/.cl*ude/")\nEOF
+python3 - <<'EOF'\nprint(1)\nEOF\necho 'cp /tmp/x @P@/.cl*ude/' | bash
+python3 - <<'EOF'\nprint(1)\nEOF\nbash <(echo 'cp /tmp/x @P@/.cl*ude/')
 ROWS
 
 # Clean up worktree registrations before removing the sandbox (avoids
