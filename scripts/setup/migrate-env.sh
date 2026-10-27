@@ -374,7 +374,7 @@ replace_file() {  # <new content file> <dest>
     done
     tmp="$dest.migrate.$$"
     # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
-    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then return 0; fi
+    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then return 0; fi  # read-sink-ok: $1 is always a scratch file this script built
     rm -f "$tmp"
     return 1
 }
