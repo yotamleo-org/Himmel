@@ -31,15 +31,17 @@ plugins. Full per-source detail (including the upstream license each skill
 inherits) lives in [`VENDORED.md`](VENDORED.md) — read that file before
 touching anything under `skills/`.
 
-## Why 11 of superpowers' 14, not the 4 himmel actually invokes
+## Why 12 of superpowers' 14, not the 4 himmel actually invokes
 
 Vendoring only the 4 invoked skills would leave dangling
 `superpowers:<name>` cross-references: `brainstorming` hands off to
 `writing-plans`, which hands off to `subagent-driven-development` or
 `executing-plans`, which hand off to `requesting-code-review` and
-`finishing-a-development-branch`, and so on. The 11 vendored skills are the
-**reference closure** of the 4 himmel invokes — every skill one of those 4
-can hand off to, transitively. Vendoring fewer breaks the handoff chain
+`finishing-a-development-branch`, and so on. 11 of the 12 vendored skills are
+the **reference closure** of the 4 himmel invokes — every skill one of those 4
+can hand off to, transitively. The twelfth, `receiving-code-review`, is not
+reached through that chain; the worker preface cites it for review findings.
+Vendoring fewer breaks the handoff chain
 mid-flow; vendoring more (all 14) would re-import the cost this ticket exists
 to cut.
 
