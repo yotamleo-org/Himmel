@@ -2174,6 +2174,7 @@
         "succession partial": "succession progress report: operational",
         "relay-on-live": "succession relay housekeeping: operational",
         "unowned-prs": "PR ownership housekeeping: operational",
+        "unwatched": "a live worker missing from the fleet manifest: watch housekeeping, not a workflow decision",
         "focus": "FOCUS page refresh failure or stale dirty state: operational",
         "status-sweep": "Jira status sweep moved or missed tickets: operational",
         "resolve": "a worker's BLOCKED resolve marker: the chief resolves the thread itself, not a workflow decision"

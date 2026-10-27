@@ -1273,19 +1273,32 @@ leg_names_wrapped=",${leg_names},"
 # candidate names is named here by label. orphans= cannot cover this: it lists
 # shell-tool wrappers older than TICK_ORPHAN_MIN minutes per owning session, so a
 # session with no aged wrapper never appears in it at all.
-# ponytail: with several chiefs on one box another chief's workers read here too;
-# the census carries no owner, so a label in neither this chief's Live state nor
-# its arm is another chief's or a worker this chief lost track of -- the tick
-# cannot say which.
+# Another chief's workers are dropped: a worker's process environ carries
+# HIMMEL_CONSOLE_NAME (its launching chief), and the chief's name is its doc stem, so with
+# --doc a worker whose environ names a different, still-LIVE chief is not this chief's to
+# watch. A named chief that is no longer a live session (a succession) leaves the worker
+# listed: its owner is gone, so it is inherited.
+# ponytail: a worker whose environ is unreadable, or that names no chief, stays listed
+# (fail open: an unwatched worker must not be hidden); while a predecessor chief is still
+# alive its workers read as foreign here.
 unwatched_csv=""
 re_unwatched_label='^N[0-9]+[a-z]*$'
-while IFS= read -r u_name; do
+this_chief=""
+[ -z "$console_doc" ] || this_chief="$(basename "$console_doc" .md)"
+census_pairs="$(printf '%s\n' "$sessions_out" | awk -F'\t' '$1 !~ /^#/ && NF >= 4 && $2 != "" { print $2 "\t" $1; b = $2; if (sub(/-r[0-9]+$/, "", b)) print b "\t" $1 }')"
+while IFS=$'\t' read -r u_name u_pid; do
     [ -n "$u_name" ] || continue
     case "$leg_names_wrapped" in *",$u_name,"*) continue ;; esac
     u_label="$(worker_label "$u_name")"
     [[ $u_label =~ $re_unwatched_label ]] || continue
+    if [ -n "$this_chief" ] && [ -n "$u_pid" ]; then
+        u_owner="$(tr '\0' '\n' < "${CLAUDE_SESSIONS_PROC:-/proc}/$u_pid/environ" 2>/dev/null | sed -n 's/^HIMMEL_CONSOLE_NAME=//p' | head -n 1)" || u_owner=""  # swallow-ok: an unreadable environ keeps the worker listed
+        if [ -n "$u_owner" ] && [ "$u_owner" != "$this_chief" ] && grep -Fxq -- "$u_owner" <<< "$census_names"; then
+            continue
+        fi
+    fi
     unwatched_csv="$(csv_add "$unwatched_csv" "$u_label")"
-done <<< "$census_names"
+done <<< "$census_pairs"
 unwatched_plus="$(uniq_join + "$unwatched_csv")"
 filter_unusable=0
 if [ "$census_failed" -eq 1 ] || [ -z "$leg_names" ]; then

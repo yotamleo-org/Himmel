@@ -85,8 +85,8 @@ for m in "$@"; do
     n=$((n + 1))
     # shellcheck disable=SC2086
     out=$(bash "$HERE/close-wrapped-worker.sh" $check --sweep --fleet "$m" 2>&1); rc=$?
-    # a WRAPPED, lock-free worker with no live session has no window left to close:
-    # count it, print every other line as the sweep wrote it
+    # a WRAPPED, lock-free worker with no live session now exits 0 (CLOSED-ALREADY), so gone= stays 0 for it.
+    # The rc-5 text is still counted and hidden for a sweep that meets a refusing close script; every other line prints as written
     g=$(printf '%s\n' "$out" | grep -c -E '^sweep: refused .* \(rc=5\): .* - 0 live session\(s\) matched')
     gone=$((gone + g))
     printf '%s\n' "$out" | grep -v -E '^sweep: refused .* \(rc=5\): .* - 0 live session\(s\) matched'
