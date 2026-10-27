@@ -322,6 +322,65 @@ has "a yes at the prompt applies and reports" "rc=0 status=updated" "$out"
 lacks "the confirmed apply moved HANDOVER_DIR out of .env" "HANDOVER_DIR=" "$(cat "$FX/.env")"
 no_canary "the update step prints no value" "$out"
 
+# --- 8. A .env vs ~/.himmel mismatch is resolved with the operator ---
+env_val() { sed -n "s/^$1=//p" "$TMP/st.orig"; }   # the fixture .env's value of a key
+conf_fixture() {  # a himmel.conf that disagrees with .env on USER_SLUG
+    fixture_env
+    hconf=$(canary hconf)
+    printf 'USER_SLUG=%s\n' "$hconf" > "$HOME/.himmel/himmel.conf"
+}
+slug_read() {  # the value the shell reader returns for USER_SLUG with .env no longer holding it
+    ( unset USER_SLUG; cd "$FX" && . "$FX/scripts/lib/load-dotenv.sh" && load_dotenv --root "$TMP/st" USER_SLUG; printf '%s' "${USER_SLUG-}" ) 2>/dev/null
+}
+conf_fixture
+apply_tty $'y\ne'
+if [ "$rc" = 0 ]; then pass "keeping .env on a mismatch applies (exit 0)"; else fail "keeping .env on a mismatch exited $rc: $out"; fi
+has "a mismatch names the key" "USER_SLUG" "$out"
+has "a mismatch names the .env side" "$TMP/st/.env" "$out"
+# shellcheck disable=SC2088 # the report prints the tilde as written
+has "a mismatch names the ~/.himmel side" "~/.himmel/himmel.conf" "$out"
+no_canary "a mismatch prints no value" "$out"
+if [ "$(slug_read)" = "$(env_val USER_SLUG)" ]; then pass "keep .env: the reader returns the .env value"; else fail "keep .env: the reader returned another value"; fi
+lacks "keep .env: the line left .env" "USER_SLUG=" "$(cat "$TMP/st/.env")"
+has "keep .env: the re-verify ran and passed" "verified: load_dotenv" "$out"
+conf_fixture
+apply_tty $'y\nh'
+if [ "$rc" = 0 ]; then pass "keeping ~/.himmel on a mismatch applies (exit 0)"; else fail "keeping ~/.himmel on a mismatch exited $rc: $out"; fi
+if [ "$(slug_read)" = "$hconf" ]; then pass "keep ~/.himmel: the reader returns the ~/.himmel value"; else fail "keep ~/.himmel: the reader returned another value"; fi
+lacks "keep ~/.himmel: the line left .env" "USER_SLUG=" "$(cat "$TMP/st/.env")"
+has "keep ~/.himmel: the re-verify ran and passed" "verified: load_dotenv" "$out"
+no_canary "a kept choice prints no value" "$out"
+for answer in $'y' $'y\nx'; do
+    conf_fixture
+    apply_tty "$answer"
+    if [ "$rc" != 0 ]; then pass "no choice on a mismatch does not apply"; else fail "no choice on a mismatch exited 0"; fi
+    if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "no choice on a mismatch leaves every .env line"; else fail "no choice on a mismatch changed .env"; fi
+    has "no choice on a mismatch names the key" "USER_SLUG" "$out"
+done
+# A gate-policy key resolves the same way, in config.json.
+policy_val() { node -e 'const p = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")).policy || {}; process.stdout.write(String(p.CR_REQUIRE_CROSS_MODEL))' "$HOME/.himmel/config.json" 2>/dev/null; }
+fixture_env
+printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
+apply_tty $'y\ne'
+if [ "$rc" = 0 ] && [ "$(policy_val)" = 1 ]; then pass "keep .env: the policy value becomes the .env value"; else fail "keep .env on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
+# shellcheck disable=SC2088 # the report prints the tilde as written
+has "a policy mismatch names the config.json side" "~/.himmel/config.json" "$out"
+fixture_env
+printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himmel/config.json"
+apply_tty $'y\nh'
+if [ "$rc" = 0 ] && [ "$(policy_val)" = 0 ]; then pass "keep ~/.himmel: the policy value stays"; else fail "keep ~/.himmel on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
+lacks "keep ~/.himmel: the policy line left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
+
+# --- 9. The report says the secrets stay in .env and never advises emptying it ---
+fixture_env
+apply_tty y
+has "the report says the secrets stay in .env" "secrets stay in .env: READ_SECRET KEEP_ME" "$out"
+lacks "the report never advises emptying .env" "empty" "$out"
+lacks "the report never advises deleting .env lines" "Delete" "$out"
+fixture_env
+out=$(bash "$SCRIPT" --dry-run --env "$TMP/st/.env" 2>&1)
+has "the dry run says the secrets stay in .env" "secrets stay in .env: READ_SECRET KEEP_ME" "$out"
+
 if [ "$FAILED" -gt 0 ]; then
     echo "test-migrate-env: $FAILED FAILED"
     exit 1
