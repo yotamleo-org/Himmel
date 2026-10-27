@@ -265,11 +265,14 @@ REPO_ROOT="$(cd "$SELF_DIR/../.." && pwd)"
 for f in scripts/check-ci.sh scripts/ci/run-shell-tests.sh scripts/lib/go-gate.sh \
          scripts/handover/merge-on-green.sh scripts/handover/chief-kit/go.sh \
          scripts/handover/chief-kit/write-verdict.sh; do
+    if [ ! -s "$REPO_ROOT/$f" ]; then fail "$f: unreadable or empty"; continue; fi
     OUT="$(grep -n -E "(echo|printf|die|warn).*${H}-[0-9]+" "$REPO_ROOT/$f" | grep -v 'ponytail:')"
     if [ -z "$OUT" ]; then pass "$f: no output line carries a ticket id"; else fail "$f: $(printf '%s' "$OUT" | cut -c1-120 | head -3)"; fi
 done
-OUT="$(bash "$REPO_ROOT/scripts/check-ci.sh" --help 2>&1 | grep -n -E "${H}-[0-9]+" | cut -c1-100)"
-if [ -z "$OUT" ]; then pass "check-ci.sh --help prints no ticket id"; else fail "check-ci.sh --help: $(printf '%s' "$OUT" | head -3)"; fi
+HELP="$(bash "$REPO_ROOT/scripts/check-ci.sh" --help 2>&1)"; HRC=$?
+OUT="$(printf '%s\n' "$HELP" | grep -n -E "${H}-[0-9]+" | cut -c1-100)"
+if [ "$HRC" -ne 0 ] || ! printf '%s' "$HELP" | grep -q 'exit codes'; then fail "check-ci.sh --help: rc=$HRC, usage text not printed"
+elif [ -z "$OUT" ]; then pass "check-ci.sh --help prints no ticket id"; else fail "check-ci.sh --help: $(printf '%s' "$OUT" | head -3)"; fi
 
 echo "== $PASS passed, $FAIL failed =="
 [ "$FAIL" -eq 0 ]
