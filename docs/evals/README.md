@@ -59,7 +59,7 @@ Every reviewer, current and past. Only agreed and disproved count toward precisi
 | Measure | Share | Likely range | Sample |
 |---|---|---|---|
 | Proof-first share (self-reported): both halves below | **10.8%** | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
-| The ticket's DoD and Proof written before the first commit | **19.2%** | 13.1 to 27.1 | as of 2026-10-24, n = 120 merged PRs |
+| The ticket had a DoD and a Proof and was created before the first commit | **19.2%** | 13.1 to 27.1 | as of 2026-10-24, n = 120 merged PRs |
 | RED and then GREEN named in the PR body | **57.5%** | 48.6 to 66.0 | as of 2026-10-24, n = 120 merged PRs |
 | Test-first adherence: a test failed before the implementation and passed after | **39.1%** | 33.1 to 45.5 | as of 2026-10-27, n = 235 sessions scored under trajectory version 2 |
 
@@ -78,7 +78,7 @@ Each number's display name beside its unchanged ledger key: [What each number me
 | **n** | The sample behind a figure: for precision, the ruled findings and the PRs they came from. A small n is noise: one PR more or less can move the figure by many points, which is why a reviewer with fewer than 30 ruled findings is not ranked. |
 | **As of** | The day the figures were read off their ledgers; anything recorded later is not in them. |
 | **Left out of precision** | Deferred findings (real or plausible, filed as a follow-up instead of fixed in that PR) and findings nobody ruled on. They show only under Findings in, findings out. |
-| **Proof-first share (self-reported)** | The share of the last merged PRs whose ticket had its DoD and Proof written before the first commit, and whose PR body names RED and then GREEN. Self-reported: RED and GREEN are words the PR author wrote, not a test run the eval checked. Only the newest measurement counts, because older ones came from an earlier matcher. |
+| **Proof-first share (self-reported)** | The share of the last merged PRs whose ticket had a DoD and a Proof and was created before the first commit, and whose PR body names RED and then GREEN. The ticket's created time stands in for when its sections were written, so a section added later still counts. Self-reported: RED and GREEN are words the PR author wrote, not a test run the eval checked. Only the newest measurement counts, because older ones came from an earlier matcher. |
 | **Test-first adherence** | The share of agent sessions that wrote code in which a test failed before the first implementation write and passed after it; a session that wrote no code is left out. Only sessions scored under trajectory version 2 count: version 1 scored a session that wrote no code as a miss, so the two are never mixed. It reads not measured yet until 30 such sessions exist. |
 | **Model-graded kappa** | Cohen's kappa between two model graders on each run's pass/fail verdict (pass when every correctness claim holds): 1 is full agreement, 0 is what chance alone gives, below 0 is worse than chance. Model-graded, not human-graded: no person labelled these runs. The graders come from different vendors, never a vendor under test, and a third-vendor tie-breaker grades only the runs they disagree on. A flip is the stored judge changing its verdict between two passes on one output. [lane-quality eval](../../scripts/eval/lane-quality/run.sh) |
 | **Cache reads** | One probe run's share of input tokens read from the cache. No interval: tokens within one session are not independent. [prompt cache](prompt-cache.md) |

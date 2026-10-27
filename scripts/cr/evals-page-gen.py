@@ -446,7 +446,7 @@ def render(d):
     ]
     if pf:
         for key, what in (("pdd", "Proof-first share (self-reported): both halves below"),
-                          ("ticket_first", "The ticket's DoD and Proof written before the first commit"),
+                          ("ticket_first", "The ticket had a DoD and a Proof and was created before the first commit"),
                           ("red_green", "RED and then GREEN named in the PR body")):
             g = pf[key]
             out.append("| %s | **%s%%** | %s | %s |" % (what, g["pct"], rng(g["wilson"]), stamp(pf["as_of"], g["n"], "merged PRs")))
@@ -485,10 +485,11 @@ def render(d):
         "| **As of** | The day the figures were read off their ledgers; anything recorded later is not in them. |",
         "| **Left out of precision** | Deferred findings (real or plausible, filed as a follow-up instead of fixed in "
         "that PR) and findings nobody ruled on. They show only under Findings in, findings out. |",
-        "| **Proof-first share (self-reported)** | The share of the last merged PRs whose ticket had its DoD and Proof "
-        "written before the first commit, and whose PR body names RED and then GREEN. Self-reported: RED and GREEN are "
-        "words the PR author wrote, not a test run the eval checked. Only the newest measurement counts, because older "
-        "ones came from an earlier matcher. |",
+        "| **Proof-first share (self-reported)** | The share of the last merged PRs whose ticket had a DoD and a Proof "
+        "and was created before the first commit, and whose PR body names RED and then GREEN. The ticket's created "
+        "time stands in for when its sections were written, so a section added later still counts. Self-reported: RED "
+        "and GREEN are words the PR author wrote, not a test run the eval checked. Only the newest measurement counts, "
+        "because older ones came from an earlier matcher. |",
         "| **Test-first adherence** | The share of agent sessions that wrote code in which a test failed before the first "
         "implementation write and passed after it; a session that wrote no code is left out. Only sessions scored "
         "under trajectory version 2 count: version 1 scored a session that wrote no code as a miss, so the two are "
