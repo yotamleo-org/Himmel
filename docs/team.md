@@ -32,7 +32,7 @@ You work with one Claude session in your project. When you hand himmel a list of
 <summary>The reviewers</summary>
 
 - **Its job:** “Every change is reviewed twice.”
-- **Model tier:** codex: `gpt-6.1-sol` (hard); claude: `claude-opus-5-5` (hard); coderabbit: provider `github-app` (best-effort)
+- **Model tier:** codex: `gpt-6.1-sol` (hard); claude: `claude-opus-5-5` (advisory); coderabbit: provider `github-app` (best-effort)
 - **What it may do:** “Critical and Important findings block; a Suggestion is a note.” “A `hard` reviewer must pass at the pull request's head.”
 - **What it never does:** “The marker clears only when a critic actually responded at the branch tip; zero responders is a missing review, not a clean one.”
 - **Where it runs:** “The install copies in the merge gate's reviewer check and the reviewer list, so `gh pr merge` holds there on the same rules.” “The `/pr-check` command ships with the himmel checkout, not your project.”
