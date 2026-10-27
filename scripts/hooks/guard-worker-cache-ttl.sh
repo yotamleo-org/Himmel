@@ -132,8 +132,9 @@ case "$bound" in ''|*[!0-9]*) bound=3000 ;; esac
 if [ "${#bound}" -gt 5 ] || [ "$bound" -lt 60 ] || [ "$bound" -gt 3300 ]; then bound=3000; fi
 
 # The printed check-ci command must run from the session's cwd. In a himmel
-# checkout the relative form stays (the gate guards demand it); anywhere else
-# (an adopted repo) it names the himmel anchor's absolute copy: $HIMMEL_REPO,
+# checkout root the relative form stays (the gate guards demand it); anywhere else
+# (an adopted repo, or a subdirectory of the checkout) it names the himmel
+# anchor's absolute copy: $HIMMEL_REPO,
 # else the primary checkout this hook lives in. No cwd in the payload or no
 # resolvable anchor keeps the relative form.
 check_ci="scripts/check-ci.sh"
@@ -146,7 +147,8 @@ if [ -n "$session_cwd" ] && [ -d "$session_cwd" ] && { [ -r "$HERE/../lib/git-cl
     if [ -n "$anchor" ] && [ -d "$anchor" ]; then
         cwd_common="$(git_clean -C "$session_cwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || cwd_common="" # swallow-ok: not a git repo is not a himmel checkout
         anchor_common="$(git_clean -C "$anchor" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || anchor_common="" # swallow-ok: an unresolvable anchor compares unequal
-        if [ -z "$cwd_common" ] || [ "$cwd_common" != "$anchor_common" ]; then
+        cwd_prefix="$(git_clean -C "$session_cwd" rev-parse --show-prefix 2>/dev/null)" || cwd_prefix="." # swallow-ok: an unreadable prefix counts as below the root
+        if [ -z "$cwd_common" ] || [ "$cwd_common" != "$anchor_common" ] || [ -n "$cwd_prefix" ]; then
             check_ci="$anchor/scripts/check-ci.sh"
         fi
     fi

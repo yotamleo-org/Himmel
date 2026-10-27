@@ -165,16 +165,25 @@ case "$out" in *'--max-wait 3000'*) ok "junk bound falls back to 3000" ;; *) bad
 ADOPTER="$TMP/adopter"; mkdir -p "$ADOPTER"
 ANCHOR_COMMON="$(git -C "$REPO" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)"
 ANCHOR="$(dirname "$ANCHOR_COMMON")"
-run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$ADOPTER")"; out="$OUT"
+run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$ADOPTER")" HIMMEL_REPO=; out="$OUT"
 case "$out" in
     *"bash $ANCHOR/scripts/check-ci.sh <pr> --max-wait 3000"*) ok "adopter cwd: reason names the anchor's absolute check-ci.sh" ;;
     *) bad "adopter cwd: reason lacks the absolute check-ci.sh ($ANCHOR) — got: $out" ;;
 esac
+case "$out" in
+    *'bash scripts/check-ci.sh'*) bad "adopter cwd: reason still carries the relative check-ci.sh — got: $out" ;;
+    *) ok "adopter cwd: reason carries no relative check-ci.sh" ;;
+esac
 if [ -f "$ANCHOR/scripts/check-ci.sh" ]; then ok "adopter cwd: the named check-ci.sh exists"; else bad "adopter cwd: $ANCHOR/scripts/check-ci.sh does not exist"; fi
-run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$REPO")"; out="$OUT"
+run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$REPO")" HIMMEL_REPO=; out="$OUT"
 case "$out" in
     *'bash scripts/check-ci.sh <pr> --max-wait 3000'*) ok "himmel cwd: the relative check-ci.sh form is unchanged" ;;
     *) bad "himmel cwd: relative check-ci.sh form changed — got: $out" ;;
+esac
+run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$REPO/scripts")" HIMMEL_REPO=; out="$OUT"
+case "$out" in
+    *"bash $ANCHOR/scripts/check-ci.sh <pr> --max-wait 3000"*) ok "himmel subdirectory cwd: reason names the absolute check-ci.sh" ;;
+    *) bad "himmel subdirectory cwd: reason lacks the absolute check-ci.sh ($ANCHOR) — got: $out" ;;
 esac
 FAKE_ANCHOR="$TMP/fake-anchor"; mkdir -p "$FAKE_ANCHOR/scripts"
 run_guard "$(payload "$T_IDLE" false "$SESSION_ID" "$ADOPTER")" HIMMEL_REPO="$FAKE_ANCHOR"; out="$OUT"
