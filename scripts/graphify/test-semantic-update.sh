@@ -977,6 +977,9 @@ m = json.load(open(os.path.join(out, "semantic-manifest.json")))
 m["files"]["moved.md"] = "0" * 64
 json.dump(m, open(os.path.join(out, "semantic-manifest.json"), "w"))
 PY
+[[ " $(ids "$C84") " == *" stale_moved "* ]] \
+  && python3 -c 'import json,sys;sys.exit(0 if "moved.md" in json.load(open(sys.argv[1]))["files"] else 1)' "$C84/graphify-out/semantic-manifest.json" \
+  && pass "T84 setup: the stale node and the stale manifest hash were injected" || fail "T84 setup: the stale-state injection did not land: $(ids "$C84")"
 out=$(GRAPHIFY_STUB_SKIP=moved.md run --name t84 --corpus-root "$C84" --corpus-class himmel-code); rc=$?
 got=$(ids "$C84")
 [ "$rc" -eq 0 ] && [[ " $got " == *" code_a "* ]] && ! [[ " $got " == *" stale_moved "* ]] \
