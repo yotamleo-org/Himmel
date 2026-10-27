@@ -288,14 +288,21 @@ done < "$KEYS_FILE"
 # ---- the launcher's fail-closed deny still bites under the test's wider window ----
 # A slowed must-run member (here: the window squeezed to the launcher's 500 ms
 # floor, which the 5.5 KB F08 scanner cannot meet) must still DENY, so widening
-# the row window above never turns an overrun into an allow.
+# the row window above never turns an overrun into an allow. The scanner runs
+# alone so no earlier member can time out first and satisfy the assertion.
 if grep -q '^F08	' "$MANIFEST"; then
     f08_cwd=$(cwd_for wt)
     f08_cmd=$(subst "$(awk -F'\t' '$1 == "F08" { print $6 }' "$MANIFEST")")
+    all_members=("${MEMBERS[@]}")
+    MEMBERS=()
+    for m in "${all_members[@]}"; do
+        case $m in */block-write-into-main-checkout.sh) MEMBERS+=("$m") ;; esac
+    done
     MEMBER_TIMEOUT_MS=1
     got=$(chain_verdict "$f08_cwd" "$f08_cmd")
     MEMBER_TIMEOUT_MS=$ROW_MEMBER_TIMEOUT_MS
-    if [ "$got" = DENY ] && grep -q 'budget=500ms' "$SB/reason"; then
+    MEMBERS=("${all_members[@]}")
+    if [ "$got" = DENY ] && grep -qF 'block-write-into-main-checkout.sh (budget=500ms' "$SB/reason"; then
         pass "slow chain: a must-run member over its window still fails closed"
     else
         fail "slow chain: F08 under a 500 ms window returned $got, expected DENY (budget=500ms): $(tr '\n' ' ' < "$SB/reason")"
