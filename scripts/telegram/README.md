@@ -16,8 +16,9 @@ Two processes make it up:
 **Single-owner constraint:** Telegram allows exactly ONE `getUpdates` consumer
 per bot token. A second poller (stale proc, or a `claude --channels
 telegram-himmel` plugin session) causes `409 Conflict` storms and the bridge
-goes deaf. Run exactly one. `restart-bridge.sh` (Linux/macOS) enforces this,
-see below.
+goes deaf. Run exactly one per token. `restart-bridge.sh` (Linux/macOS)
+serializes start/stop and sweeps stale pollers per instance; it cannot see a
+`claude --channels` session, so keep that off the same token. See below.
 
 ---
 
@@ -144,7 +145,7 @@ script's own header comment for the full honesty note.
 One platform caveat inside that: the stale-lock recovery is what `flock` gives
 for free, and **stock macOS ships no `flock`**. The script does not fail there — it prints a named WARNING and
 proceeds without the lock, so start/stop/status still work and only the
-serialization of two CONCURRENT starts is lost. Install `flock` (Homebrew's
+serialization of CONCURRENT start/stop calls is lost. Install `flock` (Homebrew's
 `util-linux`) if you want that back.
 
 ```bash

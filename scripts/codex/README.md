@@ -199,13 +199,13 @@ If the dispatcher itself is killed before its own EXIT trap can run (e.g.
 SIGKILL), the registry entry survives as evidence of the leak.
 `reap-mcp-fleet.sh`'s default (no-args) **report mode** additionally
 scans `CODEX_JOBS_DIR` for entries whose `codex_pid` is dead and reports
-their remaining descendants (`-Kill`/`--kill` reaps them and removes the
+their remaining descendants (`--kill` reaps them and removes the
 entry); it also prints a summary line (jobs live/dead, dead-job fleet count,
 app-server orphan count, and an observability-only count of MCP-shaped
 processes with a dead direct parent that carry no lineage evidence at all -
-counted, never reaped). `-RootPid`/`--root-pid` is a general primitive (not
+counted, never reaped). `--root-pid` is a general primitive (not
 codex-exec-specific): report/reap every live descendant of one given
-(possibly dead) root pid, with a `CreationDate`/start-time pid-reuse guard.
+(possibly dead) root pid, with a start-time pid-reuse guard.
 The `.sh` walks `ps -eo pid,ppid[,etimes]` directly, since the dispatcher's own
 EXIT trap needs this primitive on every platform it runs on.
 

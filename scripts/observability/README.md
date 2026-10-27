@@ -644,9 +644,8 @@ provider `*.yaml` appears under `provisioning/dashboards/`.
 
 The flow exporter above stays a pure Prometheus reader — no alerting lives
 inside `flow-exporter.ts` or its request path. `luna-sync-alert.ts` is a
-**separate, small scheduled checker**, registered as its own task
-(`himmel-observability-luna-sync-alert`, every 10 minutes) by
-`install-stack.ps1`. It reuses the exact same git read the exporter uses
+**separate, small scheduled checker**, meant to run every 10 minutes from the
+operator's own scheduler (no installer registers it on Linux). It reuses the exact same git read the exporter uses
 (`runGitDivergence`, imported from `flow-exporter.ts`, so the two never drift
 on what "unpushed" means) and sends a Telegram message via
 `scripts/telegram/telegram-api.ts`'s `sendMessage` when the luna vault clone
@@ -715,12 +714,12 @@ one):
   format, so it can't just include the file above). **This is what actually
   evaluates and delivers to Telegram** — RATIFIED F3.
 
-`install-stack.ps1` copies `provisioning/` into
-`%LOCALAPPDATA%\himmel\observability\grafana-provisioning` and points
+`install-grafana.sh` copies `provisioning/` into
+`$DATA/grafana-provisioning` and points
 Grafana's `[paths] provisioning` at it, alongside the datasource
 (`provisioning/datasources/prometheus.yaml`, fixed `uid: prometheus`) and
 the notification policy (`provisioning/alerting/policies.yaml`) — the
-default route (12h repeat) to the Telegram contact point, plus
+default route (12h repeat) to the contact point, plus
 a nested `severity = warn` route on the SAME contact point at a 168h (7d)
 repeat, so a warn-severity alert still delivers but far less often than a
 page.
@@ -810,23 +809,15 @@ suite (`alerts.rules.test.yml`) asserts each against a healthy post-boot fixture
 level/ratio rules firing), plus a synthetic +1.5 GiB/h climb that never reaches any
 level threshold, where the slope rule is the only thing that fires.
 
-### Delivery choice — seed from himmel's own `.env`
+### Delivery choice — the cadence-alert webhook
 
-`contact-points.yaml` interpolates `$GRAFANA_TELEGRAM_BOT_TOKEN`/
-`$GRAFANA_TELEGRAM_CHAT_ID` from the Grafana process's environment.
-`install-stack.ps1` seeds both at User scope from himmel's own repo-root
-`.env` ONLY, non-fatally, and never overwriting an operator-already-set
-value. If either key is absent (or empty) in `.env`, the installer warns
-loudly and leaves that var unset — there is no fallback to any other
-source. (An earlier revision of this seeding step reused the Telegram
-bridge's `.env`/`access.json` instead, which silently misrouted ops alerts
-to the shared luna bot / the operator's personal DM; that design is
-retired.)
-
-An operator who wants a specific bot/chat sets `GRAFANA_TELEGRAM_BOT_TOKEN`
-and `GRAFANA_TELEGRAM_CHAT_ID` in himmel's `.env` (see `.env.example`)
-before running the installer; a value already set at User scope is left
-alone either way.
+`install-grafana.sh` renders Grafana's one contact point as a webhook to
+`grafana-cadence-hook.ts`, which calls `scripts/luna/cadence-alert.sh` — one
+dedupe path, one log. The shipped `contact-points.yaml` (the native Telegram
+notifier reading `$GRAFANA_TELEGRAM_BOT_TOKEN`/`$GRAFANA_TELEGRAM_CHAT_ID`) is
+not used by that installer, so no `GRAFANA_TELEGRAM_*` variable needs setting.
+The hook token lives in `$DATA/hook-token` (mode 600), generated on first
+install.
 
 ### Fixed-field content only
 
