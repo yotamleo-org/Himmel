@@ -6024,6 +6024,8 @@ _bwimc_adopted_worktree_add() {
         *) return 1 ;;
     esac
     case "$leaf" in */*|.*) return 1 ;; esac
+    # the leaf is the branch with each slash turned into a plus
+    [ "$leaf" = "${br//\//+}" ] || return 1
     # the leaf, `.claude` and `worktrees` may not be links that lead elsewhere
     [ "$(guard_canon_path "$dst" 2>/dev/null)" = "$root/.claude/worktrees/$leaf" ] || return 1 # swallow-ok: same
     hd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
@@ -6037,6 +6039,7 @@ _bwimc_git_clause() {
     local toks=() t tu i n start v r
     local dir gitdir="" wtree="" idx="" unres=0 sub="" args=()
     local e_dir="$_bwimc_genv_dir" e_wt="$_bwimc_genv_wt" e_idx="$_bwimc_genv_idx"
+    local e_oth="$_bwimc_genv_oth"
     local e_cfgglobal="$_bwimc_genv_cfgglobal" e_cfgsystem="$_bwimc_genv_cfgsystem"
     local cfg="$_bwimc_genv_cfg"
     local cwd="$_bwimc_gcwd"
@@ -6145,6 +6148,7 @@ _bwimc_git_clause() {
                         GIT_CONFIG_COUNT*|GIT_CONFIG_PARAMETERS*|GIT_CONFIG_KEY_*)
                             _bwimc_genv_cfg=1; _bwimc_g_repoint=1 ;;
                         GIT_CONFIG*) _bwimc_genv_cfg=1 ;;
+                        GIT_*=*) _bwimc_genv_oth=1 ;;
                     esac
                 fi
                 i=$((i+1))
@@ -6168,6 +6172,7 @@ _bwimc_git_clause() {
             GIT_CONFIG_SYSTEM=*) e_cfgsystem="${t#GIT_CONFIG_SYSTEM=}"; cfg=1 ;;
             GIT_CONFIG_COUNT=*|GIT_CONFIG_PARAMETERS=*|GIT_CONFIG_KEY_*=*) cfg=1; _bwimc_g_repoint=1 ;;
             GIT_CONFIG*=*) cfg=1 ;;
+            GIT_*=*) e_oth=1 ;;
             [A-Za-z_]*=*) ;;
             *)
                 _bwimc_unqv "$t"; case "$_BWIMC_UNQ" in
@@ -6213,6 +6218,7 @@ _bwimc_git_clause() {
                                 GIT_CONFIG_COUNT=*|GIT_CONFIG_PARAMETERS=*|GIT_CONFIG_KEY_*=*)
                                     cfg=1; _bwimc_g_repoint=1 ;;
                                 GIT_CONFIG*=*) cfg=1 ;;
+                                GIT_*=*) e_oth=1 ;;
                                 [A-Za-z_]*=*) ;;
                                 *) break ;;
                             esac
@@ -6256,6 +6262,7 @@ _bwimc_git_clause() {
             _bwimc_genv_cfgglobal="$e_cfgglobal"; _bwimc_genv_cfgsystem="$e_cfgsystem"
             [ "$cfg" = 0 ] || _bwimc_genv_cfg=1
             [ "$progrun" = 0 ] || _bwimc_genv_prog=1
+            _bwimc_genv_oth="$e_oth"
         fi
         return 0
     fi
@@ -6471,7 +6478,7 @@ _bwimc_git_clause() {
                     if [ "$wt_op" = add ] && [ "$wt_plain" = 1 ] && [ "$wt_n" -le 2 ] \
                         && [ "$cfg" = 0 ] && [ "$progrun" = 0 ] && [ "$unres" = 0 ] \
                         && [ "${_bwimc_g_wrap:-0}" = 0 ] && [ "${_bwimc_g_repoint:-0}" = 0 ] \
-                        && [ -z "$gitdir$wtree$idx$e_dir$e_wt$e_idx" ] \
+                        && [ -z "$gitdir$wtree$idx$e_dir$e_wt$e_idx" ] && [ "$e_oth" = 0 ] \
                         && ! _bwimc_git_args_prog "$sub" "${args[@]}" \
                         && _bwimc_adopted_worktree_add "$dir" "$wt_dst" "$wt_br"; then
                         :
@@ -6890,6 +6897,7 @@ _bwimc_genv_cfgglobal=""
 _bwimc_genv_cfgsystem=""
 _bwimc_genv_cfg=0
 _bwimc_genv_prog=0
+_bwimc_genv_oth=0
 _bwimc_g_repoint=0
 _bwimc_g_netop=0
 _bwimc_g_jail=0

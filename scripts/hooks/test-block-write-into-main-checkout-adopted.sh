@@ -157,6 +157,11 @@ _row "4k --lock after the target"                                             bl
 _row "4l --detach after the target"                                           block "git -C $AD worktree add $W/x HEAD --detach"
 _row "4m --lock after the target, with -b"                                    block "git -C $AD worktree add -b feat/x $W/feat+x --lock HEAD"
 _row "4n --detach after the commit-ish, with -b"                              block "git -C $AD worktree add -b feat/x $W/feat+x HEAD --detach"
+_row "4o leaf is not the branch with slashes as plus"                         block "git -C $AD worktree add -b feat/x $W/other+worker HEAD"
+_row "4p GIT_COMMON_DIR prefix redirects the worktree metadata"               block "GIT_COMMON_DIR=$UN/.git git -C $AD worktree add -b feat/x $W/feat+x HEAD"
+_row "4q GIT_COMMON_DIR exported first"                                       block "export GIT_COMMON_DIR=$UN/.git && git -C $AD worktree add -b feat/x $W/feat+x HEAD"
+_row "4r GIT_COMMON_DIR through env"                                          block "env GIT_COMMON_DIR=$UN/.git git -C $AD worktree add -b feat/x $W/feat+x HEAD"
+_row "4s GIT_TRACE prefix names a file git writes"                            block "GIT_TRACE=$AD/trace git -C $AD worktree add -b feat/x $W/feat+x HEAD"
 
 echo "== refusals: every other write into the adopted primary =="
 _row "5a commit"                                                              block "git -C $AD commit -m x"
