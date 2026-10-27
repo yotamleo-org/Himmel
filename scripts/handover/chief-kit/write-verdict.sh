@@ -418,8 +418,8 @@ if [ "$VREPO_SET" -eq 0 ]; then
     origin_nwo() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }  # swallow-ok: no origin reads empty, which keeps the harness bucket
     HERE_NWO=$(origin_nwo .)
     HARNESS_NWO=$(origin_nwo "$ANCHOR")
-    case "$HERE_NWO" in */*/*|*[!a-z0-9._/-]*|*/|/*) HERE_NWO="" ;; esac
-    if [ -n "$HERE_NWO" ] && [ -n "$HARNESS_NWO" ] && [ "$HERE_NWO" != "$HARNESS_NWO" ]; then
+    nwo_ok() { case "$1" in ""|*/*/*|*[!a-z0-9._/-]*|*/|/*|.*|*/.*) return 1 ;; */*) return 0 ;; *) return 1 ;; esac; }
+    if nwo_ok "$HERE_NWO" && nwo_ok "$HARNESS_NWO" && [ "$HERE_NWO" != "$HARNESS_NWO" ]; then
         echo "write-verdict: refusing - this checkout's origin is $HERE_NWO, not the harness repo; pass --repo $HERE_NWO to write into its bucket, or run it from the harness checkout" >&2
         exit 2
     fi

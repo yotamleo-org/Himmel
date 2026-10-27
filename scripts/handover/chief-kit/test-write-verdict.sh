@@ -940,7 +940,11 @@ contains "27: the refusal names the checkout's repo" "$out" "acme/widget"
 check "27: the refusal writes nothing" "$(ls -R "$root" | wc -l | tr -d ' ')" "$before27"
 rc=0; (cd "$ax" && wv q27 GO "$SHA_A" --repo acme/widget --evidence-file "$ev" >/dev/null 2>&1) || rc=$?
 check "27: the same checkout with --repo acme/widget writes" "$rc" 0
-check "27: it lands in the adopter bucket" "$(ls "$root/$(dirname "$scope")/acme--widget/verdicts/q27" 2>/dev/null | wc -l | tr -d ' ')" 1
+check "27: it lands in the adopter bucket" "$(cat "$root/$(dirname "$scope")/acme--widget/verdicts/q27/"* 2>/dev/null | grep -c '^repo: acme/widget$')" 1
+ao="$tmp/adopter-local"
+git init -q "$ao" && git -C "$ao" remote add origin ../himmel.git
+rc=0; (cd "$ao" && wv q27l GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1) || rc=$?
+check "27: a local-path origin is not a repo name and keeps the harness bucket" "$rc" 0
 rc=0; wv q27h GO "$SHA_A" --evidence-file "$ev" >/dev/null 2>&1 || rc=$?
 check "27: the harness checkout with no --repo still writes" "$rc" 0
 check "27: it lands in the harness bucket" "$(ls "$scope_dir/q27h" 2>/dev/null | wc -l | tr -d ' ')" 1

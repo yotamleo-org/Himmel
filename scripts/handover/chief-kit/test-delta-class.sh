@@ -296,6 +296,12 @@ qcls() { HANDOVER_DIR="$tmp/root" USER_SLUG=u bash "$SCRIPT" --qid Q9 --ledger "
 check "9: --qid without --repo cannot see the adopter bucket -> trust" "$(qcls)" trust
 check "9: --qid with the adopter --repo finds the verdict -> none" "$(qcls --repo o/other-repo)" none
 check "9: --qid with another --repo -> trust" "$(qcls --repo o/third-repo)" trust
+env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$tmp/root" USER_SLUG=u CLAUDE_CODE_SESSION_ID=sess-judge \
+    HOME="$tmp/home" bash "$HERE/write-verdict.sh" Q9h GO "$Jq" --pr 9 --model test-model --effort high --evidence-file "$evd/ev.md" >/dev/null 2>&1 \
+    || { echo "FAIL: cannot write the harness verdict"; fails=$((fails+1)); }
+hcls() { HANDOVER_DIR="$tmp/root" USER_SLUG=u bash "$SCRIPT" --qid Q9h --ledger "$ledger" --trust-file "$trustf" "$@" "$Jq" "$Nq"; }
+check "9: a harness-bucket verdict is found without --repo -> none" "$(hcls)" none
+check "9: an empty --repo never falls back to the harness bucket -> trust" "$(hcls --repo '')" trust
 
 if [ "$fails" -ne 0 ]; then echo "FAIL: $fails check(s) failed"; exit 1; fi
 echo "PASS: all delta-class checks"

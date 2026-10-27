@@ -43,7 +43,7 @@ QID="" LEDGER="" TRUSTF="" VREPO="" VFILES=()
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --qid) [ "$#" -ge 2 ] || trust; QID=$2; shift 2 ;;
-        --repo) [ "$#" -ge 2 ] || trust; VREPO=$2; shift 2 ;;
+        --repo) [ "$#" -ge 2 ] && [ -n "$2" ] || trust; VREPO=$2; shift 2 ;;
         --verdict-file) [ "$#" -ge 2 ] || trust; VFILES+=("$2"); shift 2 ;;
         --ledger) [ "$#" -ge 2 ] || trust; LEDGER=$2; shift 2 ;;
         --trust-file) [ "$#" -ge 2 ] || trust; TRUSTF=$2; shift 2 ;;

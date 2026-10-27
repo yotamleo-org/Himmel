@@ -230,12 +230,15 @@ bash "$DISP" record 90 "$SHA" "adopt-9@$FHEAD" follow-up:HIMMEL-6352 \
 wvout=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$HDIR" CLAUDE_CODE_SESSION_ID=sess-judge \
   bash "$HERE/write-verdict.sh" JA1 GO "$SHA" --pr 90 --repo o/other-repo --model test-model --effort high --evidence-file "$evd/adopt-ev.md" 2>&1) \
   || { echo "FAIL: cannot write the adopter verdict: $wvout" >&2; fails=$((fails+1)); }
-out="$(bash "$DISP" check 90 "$SHA" 2>&1)"
+rc=0; out="$(bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
 contains "9: without --repo the adopter bucket is not read" "$out" "[OPEN] crit adopt-9@$FHEAD"
-out="$(bash "$DISP" check 90 "$SHA" --repo o/other-repo 2>&1)"
+check "9: without --repo the check fails" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
+rc=0; out="$(bash "$DISP" check 90 "$SHA" --repo o/other-repo 2>&1)" || rc=$?
 contains "9: --repo finds the GO in the adopter bucket" "$out" "[OK] crit adopt-9@$FHEAD"
-out="$(bash "$DISP" check 90 "$SHA" --repo o/third-repo 2>&1)"
+check "9: --repo leaves the adopter finding out of the open set" "$(grep -c '\[OPEN\] crit adopt-9@' <<< "$out")" 0
+rc=0; out="$(bash "$DISP" check 90 "$SHA" --repo o/third-repo 2>&1)" || rc=$?
 contains "9: --repo of another repo does not read it" "$out" "[OPEN] crit adopt-9@$FHEAD"
+check "9: another repo's check fails" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
