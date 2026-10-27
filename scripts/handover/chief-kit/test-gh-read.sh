@@ -61,11 +61,15 @@ esac
 exit 0
 STUB
 chmod +x "$W/bin/gh"
-mkdir -p "$W/ghcfg" "$W/xdg/config" "$W/xdg/data" "$W/xdg/cache" "$W/himmelcfg"
+mkdir -p "$W/ghcfg" "$W/xdg/config" "$W/xdg/data" "$W/xdg/cache" "$W/himmelcfg" || exit 1
 export GHLOG="$W/gh.log" HOME="$W/home" PATH="$W/bin:$PATH" GH_CONFIG_DIR="$W/ghcfg" HIMMEL_SECRETS_KEYRING=off \
     XDG_CONFIG_HOME="$W/xdg/config" XDG_DATA_HOME="$W/xdg/data" XDG_CACHE_HOME="$W/xdg/cache" HIMMEL_CONFIG_DIR="$W/himmelcfg"
 # only fixture tokens may be visible: the ambient token, the keyring and a systemd credential dir are all closed
 unset GH_TOKEN GITHUB_TOKEN himmel_github_token_vm2 CREDENTIALS_DIRECTORY
+# control: a forced mismatch must print the token shortened, never whole (a passing run never reaches redact otherwise)
+redaction_probe="$( (check "redaction probe" "$READTOK" "not-the-token") 2>&1)"
+has "A0 a failing assertion prints a token shortened" "<ghp…(" "$redaction_probe"
+lacks "A0b a failing assertion never prints the token whole" "$READTOK" "$redaction_probe"
 
 run_gh_read() { # <env-root> <gh args...> — executed form, fresh process
     local root="$1"; shift
