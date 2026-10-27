@@ -199,6 +199,9 @@ printf '%s\n' '[{"nwo": "yotamleo-org/a.b"}]' >"$ADAPTERS" || exit 1
 expect_allow 'registry name with a dot, the literal name' "$WT" "node $CLI $(ATAIL yotamleo-org a.b)"
 expect_none 'registry name with a dot is not a regex' "$WT" "node $CLI $(ATAIL yotamleo-org aXb)"
 expect_allow 'himmel itself needs no registry row' "$WT" "$GOOD"
+printf '%s\n' '[{"nwo": "yotamleo-org/himmel-voice\nyotamleo-org/injected"}]' >"$ADAPTERS" || exit 1
+expect_none 'a registry row holding a newline names no repo' "$WT" "node $CLI $(ATAIL yotamleo-org injected)"
+expect_none 'a registry row holding a newline, its first line' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 printf '%s\n' '[{"nwo": "yotamleo-org/himmel-voice"}, {"nwo": ' >"$ADAPTERS" || exit 1
 expect_none 'malformed registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 expect_allow 'malformed registry: himmel still allowed' "$WT" "$GOOD"
