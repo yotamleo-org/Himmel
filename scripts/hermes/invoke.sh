@@ -333,7 +333,7 @@ fi
 
 # Profile selection: pass `-p <profile>` so the one-shot runs under
 # that profile's SOUL + config (e.g. himmel_agent = the senior main-tier reviewer
-# persona, NOT the user-default junior SOUL). FAIL-OPEN guard: hermes exits 1 on a
+# persona, NOT the user-default assistant SOUL). FAIL-OPEN guard: hermes exits 1 on a
 # missing profile, which would break a CR one-shot — so only forward -p when the
 # profile directory exists; otherwise warn and let hermes use its default profile.
 # `default` is always valid (it is the hermes root itself, no profiles/ subdir).

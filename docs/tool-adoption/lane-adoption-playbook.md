@@ -119,8 +119,8 @@ auto-compact-window knob explicitly — same pattern as `glm`/`claudex` above.
 actual capability tier, or does it inherit an identity written for a
 different provider, or default to a persona sized for a weaker role?
 
-**Tailor:** two SOUL assets already exist in `scripts/hermes/assets/`, and
-neither is a drop-in fit for a new frontier lane:
+**Tailor:** one SOUL asset already exists in `scripts/hermes/assets/`, and
+it is not a drop-in fit for a new frontier lane:
 - `himmel-agent.SOUL.md` — the **senior** identity, installed onto the
   `himmel_agent` hermes profile by `scripts/hermes/install-himmel-profile.sh`.
   Its opening line hardcodes the provider: *"running as the **main tier** on
@@ -128,14 +128,9 @@ neither is a drop-in fit for a new frontier lane:
   reads *"himmel's main-tier orchestrator (Codex/GPT-5.5)"*
   (`install-himmel-profile.sh` line 97). This SOUL is **Codex-provider-bound**
   by construction, not generic.
-- `free-tier.SOUL.md` — the **junior, read-only** identity for free critics
-  (`qwen3-coder-plus` anchor): terse, ~32K context budget, JSON-only output
-  contract, explicitly "You do not write code to disk, run git, open PRs."
 
 **GLM evidence:** a frontier lane dispatched under `himmel-agent.SOUL.md`
-verbatim inherits a false provider claim; dispatched under
-`free-tier.SOUL.md` it inherits a read-only ceiling that under-drives a
-full-capability model. Neither fits — the fix is a **per-lane senior
+verbatim inherits a false provider claim. The fix is a **per-lane senior
 profile**: clone the senior SOUL's structure (identity, working principles,
 precedence ladder, hard limits) but swap the provider-specific line for the
 new lane's actual backend.

@@ -3,9 +3,9 @@
 
 Installed by scripts/hermes/install-himmel-profile.sh onto the `himmel_agent`
 profile. The main tier does real engineering work — edit code, rewrite vault
-pages, run git, open PRs — so the WRITE allowlist and the routine git/gh/rm
-shell blocks of the junior `luna_vault_guard.py` are DROPPED. What stays is
-exactly what the senior tier (Claude / himmel) also enforces:
+pages, run git, open PRs — so it carries no WRITE allowlist and no routine
+git/gh/rm shell blocks. What it enforces is exactly what the senior tier
+(Claude / himmel) also enforces:
 
   SELF-PROTECTION — the agent may not write its own guard, any hermes
                     config.yaml / SOUL.md, or Claude Code's home (no widening

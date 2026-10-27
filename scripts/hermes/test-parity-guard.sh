@@ -1159,26 +1159,14 @@ printf 'model:\n  default: gpt-5.5\nhooks: {}\nsecurity:\n  redact_secrets: true
 if grep -q "parity_guard.py" "$cfg" && grep -q "pre_tool_call" "$cfg" && grep -q "redact_secrets" "$cfg" && grep -qxF "  - matcher: .*" "$cfg"; then
   echo "  ok: set inserted hook (matcher is .*), preserved other keys"; else
   echo "  FAIL: set did not wire correctly (matcher .*?)" >&2; fails=$((fails + 1)); fi
-# replace an existing luna_vault_guard block; the top-level key AFTER the hooks
+# replace an existing guard block; the top-level key AFTER the hooks
 # block (here `trailing:`) MUST survive — guards against truncation.
-printf 'hooks:\n  pre_tool_call:\n  - matcher: x\n    command: luna_vault_guard.py\n    timeout: 10\ntrailing: keep-me\n' > "$cfg"
+printf 'hooks:\n  pre_tool_call:\n  - matcher: x\n    command: other_guard.py\n    timeout: 10\ntrailing: keep-me\n' > "$cfg"
 "$PY" "$WIRE" set "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
 n="$(grep -c "pre_tool_call" "$cfg")"
-if grep -q "parity_guard.py" "$cfg" && ! grep -q "luna_vault_guard" "$cfg" && [ "$n" = "1" ] && grep -q "trailing: keep-me" "$cfg"; then
+if grep -q "parity_guard.py" "$cfg" && ! grep -q "other_guard" "$cfg" && [ "$n" = "1" ] && grep -q "trailing: keep-me" "$cfg"; then
   echo "  ok: set replaced existing block (no dup, no leftover, trailing key kept)"; else
   echo "  FAIL: set replace wrong (n=$n, trailing key truncated?)" >&2; fails=$((fails + 1)); fi
-
-echo "== wire_parity_guard: swap (non-destructive) =="
-printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/luna_vault_guard.py\n' > "$cfg"
-"$PY" "$WIRE" swap "$cfg" >/dev/null
-if grep -q "parity_guard.py" "$cfg" && ! grep -q "luna_vault_guard" "$cfg"; then
-  echo "  ok: swap converted luna_vault_guard -> parity_guard"; else
-  echo "  FAIL: swap did not convert" >&2; fails=$((fails + 1)); fi
-printf 'hooks: {}\n' > "$cfg"
-before="$(cat "$cfg")"; "$PY" "$WIRE" swap "$cfg" >/dev/null
-if [ "$(cat "$cfg")" = "$before" ]; then
-  echo "  ok: swap left guard-less config untouched"; else
-  echo "  FAIL: swap modified a guard-less config" >&2; fails=$((fails + 1)); fi
 
 echo "== wire_parity_guard: ensure (universal guard, HIMMEL-744) =="
 # branch 1: already on parity_guard -> idempotent no-op
@@ -1188,12 +1176,12 @@ before="$(cat "$cfg")"
 if [ "$(cat "$cfg")" = "$before" ]; then
   echo "  ok: ensure no-op on an already-parity config"; else
   echo "  FAIL: ensure modified an already-parity config" >&2; fails=$((fails + 1)); fi
-# branch 2: carries luna_vault_guard -> swapped
-printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/luna_vault_guard.py\n' > "$cfg"
+# branch 2: carries another pre_tool_call guard -> parity_guard ADDED beside it
+printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/other_guard.py\n' > "$cfg"
 "$PY" "$WIRE" ensure "$cfg" "$H/agent-hooks/parity_guard.py" "$PY" >/dev/null
-if grep -q "parity_guard.py" "$cfg" && ! grep -q "luna_vault_guard" "$cfg"; then
-  echo "  ok: ensure swapped luna_vault_guard -> parity_guard"; else
-  echo "  FAIL: ensure did not swap luna_vault_guard" >&2; fails=$((fails + 1)); fi
+if grep -q "parity_guard.py" "$cfg" && grep -q "other_guard.py" "$cfg"; then
+  echo "  ok: ensure added parity_guard beside another guard"; else
+  echo "  FAIL: ensure did not add parity_guard beside another guard" >&2; fails=$((fails + 1)); fi
 # branch 3: no guard hook, but an UNRELATED hook present -> parity_guard ADDED,
 # the unrelated hook + surrounding keys preserved (non-clobbering).
 printf 'model:\n  default: gpt-5.5\nhooks:\n  post_tool_call:\n  - command: /x/other_hook.py\n    timeout: 5\nsecurity:\n  redact_secrets: true\n' > "$cfg"
