@@ -1997,6 +1997,14 @@ MOG_CWD="$P_WT" STUB_SHA="$P_SHA" STUB_HEAD_BRANCH="feat/mog-prune" \
     run_mog 0 "11k1b: worktree HEAD == PR head → merges, exit 0"
 assert_gh_has "11k1b: merge fired" "pr merge"
 
+# 11k1c. A PR head absent from the worktree's object store cannot be compared,
+# so the guard fails closed instead of reading the failed rev-list as "nothing ahead".
+read -r P_REPO P_WT P_SHA <<< "$(mk_prune_fixture)"
+MOG_CWD="$P_WT" STUB_SHA="0123456789abcdef0123456789abcdef01234567" STUB_HEAD_BRANCH="feat/mog-prune" \
+    run_mog 25 "11k1c: PR head not in the local object store → exit 25"
+assert_gh_lacks "11k1c: no merge attempted" "pr merge"
+assert_audit_has "11k1c: refusal audited" "REFUSED reason=local-commits-unreadable"
+
 # 11k2. POSITIVE CONTROL: a worktree held open by a live native
 # process is detected BEFORE the remove and skipped WHOLE. This is the case
 # that FAILS before the fix (the old code let git's non-atomic-on-Windows
