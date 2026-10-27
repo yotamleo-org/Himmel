@@ -284,14 +284,18 @@ a symlink or a file that is not mode 600 is refused), never idles out, and rebui
 
 **Login.** `/login` takes one operator user and password. Set them from your own terminal with
 `bun scripts/config-ui/server.ts --set-login <user>`, which reads the password from stdin: echo is off
-and it asks twice on a terminal, the minimum is 8 characters. The login is stored at `~/.himmel/state/ui-login`,
-mode 600, as a scrypt hash, never the password, and a symlink or a file others can read is refused.
+and it asks twice on a terminal, the minimum is 8 characters. The login is stored in the OS keyring as the item
+`HIMMEL_UI_LOGIN` (through `scripts/lib/himmel-secrets`, so it needs an unlocked Secret Service), as a scrypt hash,
+never the password. The process env never overrides it, and a locked keyring answers 500, not 404. A login file
+from before the keyring, `~/.himmel/state/ui-login`, is read once with a deprecation notice, moved into the keyring
+and removed; a symlink or a file others can read is refused.
 `POST /api/login` (same-origin JSON) answers with an `HttpOnly; SameSite=Strict` session cookie that lasts one
 hour. Sessions live in memory, so a restart logs you out. After five failed logins in 15 minutes every login
 gets 429 with `Retry-After`, even one with the right password. The limit is global because every client
 reaches the loopback server from the same address. `POST /api/logout` ends the session. `/api/*` accepts
 either the session or the launch token. The token stays for automation and for the printed URL, but in
-service mode only a session may save a secret on the Setup page. Tests: `tests/login.test.ts`.
+service mode only a session may save a secret on the Setup page. Tests: `tests/login.test.ts`,
+`tests/setup-account.test.ts`, both against a stub `secret-tool` (`tests/keyring-stub.ts`), never the real keyring.
 
 ![The AG-UI page streaming a /pr-check round: a worker and its critic subagent in their own colours and bands, the review panel filling with three findings and their verdicts, and four failures marked by kind](docs/agui-live-run.gif)
 
