@@ -370,6 +370,40 @@ printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"0"}}\n' > "$HOME/.himme
 apply_tty $'y\nh'
 if [ "$rc" = 0 ] && [ "$(policy_val)" = 0 ]; then pass "keep ~/.himmel: the policy value stays"; else fail "keep ~/.himmel on a policy mismatch: rc $rc, policy '$(policy_val)'"; fi
 lacks "keep ~/.himmel: the policy line left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
+# A chosen side still has to pass the readers: a held key whose handover root
+# is read from .env only fails the re-verify whichever side is kept, and .env
+# stays whole. The faulty reader is the real one with only that lookup changed.
+sed "s/const resolved = behaviourKey('HANDOVER_DIR', env, dotenvPath);/const resolved = readDotenvKey(dotenvPath ?? join(primaryCheckout(), '.env'), 'HANDOVER_DIR');/" \
+    "$TMP/handover-root.good.js" > "$TMP/handover-root.envonly.js"
+if cmp -s "$TMP/handover-root.good.js" "$TMP/handover-root.envonly.js"; then fail "the .env-only handover root fixture was not built"; fi
+for answer in e h; do
+    fixture_env
+    # The release-state reader follows the handover root, so USER_SLUG is held too.
+    printf 'HANDOVER_DIR=%s\nUSER_SLUG=%s\n' "$TMP/other" "$(canary slug)" > "$HOME/.himmel/himmel.conf"
+    cp "$TMP/handover-root.envonly.js" "$FX/scripts/jira/dist/handover-root.js"
+    apply_tty "y"$'\n'"$answer"$'\n'"$answer"
+    if [ "$rc" != 0 ]; then pass "keep $answer with a faulty reader does not apply"; else fail "keep $answer with a faulty reader exited 0"; fi
+    if cmp -s "$TMP/st/.env" "$TMP/st.orig"; then pass "keep $answer with a faulty reader leaves .env untouched"; else fail "keep $answer with a faulty reader changed .env"; fi
+    has "keep $answer with a faulty reader says the verify failed" "verify failed" "$out"
+done
+cp "$TMP/handover-root.good.js" "$FX/scripts/jira/dist/handover-root.js"
+# Keeping .env rewrites himmel.conf as a whole file beside it (a new inode), and
+# a symlinked himmel.conf stays a link to its updated target.
+conf_fixture
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_before=$(ls -i "$HOME/.himmel/himmel.conf" | awk '{print $1}')
+apply_tty $'y\ne'
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_after=$(ls -i "$HOME/.himmel/himmel.conf" | awk '{print $1}')
+if [ "$rc" = 0 ] && [ "$ino_before" != "$ino_after" ]; then pass "keep .env: himmel.conf is replaced, not truncated in place"; else fail "keep .env: himmel.conf was rewritten in place (rc $rc)"; fi
+n=$(find "$HOME/.himmel" -name 'himmel.conf.migrate.*' | wc -l | tr -d ' ')
+if [ "$n" = 0 ]; then pass "keep .env: the himmel.conf rewrite leaves no temporary file"; else fail "keep .env: the himmel.conf rewrite left $n temporary files"; fi
+conf_fixture
+mv "$HOME/.himmel/himmel.conf" "$TMP/himmel.conf.target"
+ln -s "$TMP/himmel.conf.target" "$HOME/.himmel/himmel.conf"
+apply_tty $'y\ne'
+if [ -L "$HOME/.himmel/himmel.conf" ] && grep -q "^USER_SLUG=$(env_val USER_SLUG)\$" "$TMP/himmel.conf.target"; then pass "keep .env: a symlinked himmel.conf stays a link to the updated target"; else fail "keep .env: a symlinked himmel.conf was not updated through the link (rc $rc)"; fi
+rm -f "$HOME/.himmel/himmel.conf" "$TMP/himmel.conf.target"
 
 # --- 9. The report says the secrets stay in .env and never advises emptying it ---
 fixture_env

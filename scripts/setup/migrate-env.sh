@@ -363,6 +363,16 @@ verify_all() {  # sets bad and verified
     fi
 }
 has_bad() { [ -n "$(printf '%s' "$bad" | tr -d '\n')" ]; }
+# A copy beside the file (same mode) renamed over it, so a failed write leaves
+# the file whole; a symlink is rewritten in place to keep the link.
+replace_file() {  # <new content file> <dest>
+    local tmp="$2.migrate.$$"
+    if [ -L "$2" ]; then cat "$1" > "$2"; return; fi
+    # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
+    if cp -p "$2" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$2"; then return 0; fi
+    rm -f "$tmp"
+    return 1
+}
 verify_all
 if has_bad; then
     printf '%s' "$bad" | grep .
@@ -398,14 +408,19 @@ if has_bad; then
                 write_policy 1 "$key"
             else
                 set_line "$confdir/himmel.conf" "$key" "$(_load_dotenv_extract "$envfile" "$key")" "$work/conf.new" \
-                    && cat "$work/conf.new" > "$confdir/himmel.conf"
+                    && replace_file "$work/conf.new" "$confdir/himmel.conf"
             fi || { echo "migrate-env: could not apply the choice for $key; no lines were removed from .env." >&2; restore_hint; exit 1; }
         done
         for key in $keep_him; do
             if [ "$(_himmel_key_class "$key")" = policy ]; then keptline="$key=$(value_of "$policy_before" "$key")"
             else keptline=$(_load_dotenv_extract "$confdir/himmel.conf" "$key"); fi
-            set_line "$verify_env" "$key" "$keptline" "$work/env.verify.new" && mv -f "$work/env.verify.new" "$work/env.verify" \
-                && verify_env="$work/env.verify" || exit 1
+            if set_line "$verify_env" "$key" "$keptline" "$work/env.verify.new" && mv -f "$work/env.verify.new" "$work/env.verify"; then
+                verify_env="$work/env.verify"
+            else
+                echo "migrate-env: could not build the verify copy for $key; no lines were removed from .env." >&2
+                restore_hint
+                exit 1
+            fi
         done
         verify_all
         has_bad && printf '%s' "$bad" | grep .
