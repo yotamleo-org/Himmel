@@ -304,7 +304,8 @@ gathering, per the rule below.>
 > **Docs review (PR-review judges, docs PRs).** When the PR changes a docs
 > page, run the `docs-reviewer` skill at the `JUDGE-REQUEST` head (the head
 > that goes `READY`); this is the PR's only run of it. Save the answer and hold it to 3 KB with the skill's
-> `fit_answer.py` (exit 1: cut it once yourself). A BLOCKING finding, or a code
+> `fit_answer.py` (exit 1: shorten the page-verdict and BLOCKING lines, drop
+> none, and rerun fit_answer.py). A BLOCKING finding, or a code
 > change the page implies with no fix in the diff and no follow-up ticket, is a
 > NO-GO line in your verdict.
 
