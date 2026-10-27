@@ -126,9 +126,9 @@ sc_step="$(awk '
   step { print }
 ' <<< "$shard_setup")"
 if [ -n "$sc_req" ] && [ "$sc_req" = "$sc_rev" ] \
-  && grep -qx "        if: \${{ !job.container.id }}" <<< "$sc_step" \
-  && grep -qF -- "--require-hashes --only-binary=:all: --target \"\$RUNNER_TEMP/shellcheck-pinned\" -r .github/ci-image/requirements-shellcheck.txt" <<< "$sc_step" \
-  && grep -qF "echo \"\$RUNNER_TEMP/shellcheck-pinned/bin\" >> \"\$GITHUB_PATH\"" <<< "$sc_step"; then
+  && grep -qxF "        if: runner.environment == 'github-hosted' && !job.container.id" <<< "$sc_step" \
+  && grep -qxF "          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: --target \"\$RUNNER_TEMP/shellcheck-pinned\" -r .github/ci-image/requirements-shellcheck.txt" <<< "$sc_step" \
+  && grep -qxF "          echo \"\$RUNNER_TEMP/shellcheck-pinned/bin\" >> \"\$GITHUB_PATH\"" <<< "$sc_step"; then
   ok "host shell-unit shards install the image shellcheck-py $sc_req on PATH before suites"
 else bad "host shell-unit shards do not install the image shellcheck-py ${sc_req:-none} on PATH before suites"; fi
 
