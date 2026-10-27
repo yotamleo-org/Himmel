@@ -208,8 +208,9 @@ h4="$work/h4"; mkdir -p "$h4"
 out=$(run_apply "$h4" '')
 rc=$?
 [ "$rc" -eq 0 ] || fail "case4: install should succeed (rc=$rc): $out"
-[ ! -e "$h4/.himmel/himmel.conf" ] || fail "case4: declined consent must not write himmel.conf"
-echo "ok: case4 declining consent writes nothing"
+[ -f "$h4/.himmel/himmel.conf" ] || fail "case4: config step must create himmel.conf"
+[ ! -s "$h4/.himmel/himmel.conf" ] || fail "case4: declined commit-rule consent must not write any keys"
+echo "ok: case4 declining commit-rule consent leaves the new config file empty"
 
 # ── Case 5: frame-11 wording ─────────────────────────────────────────────────
 h5="$work/h5"; mkdir -p "$h5"

@@ -3253,13 +3253,15 @@ async function collectSecrets(ask, answers) {
 // for its never-asked/fail-open contract (a fail-open `null` scopes nothing
 // out here either — every secret stays in `scoped`).
 function scopeSecretsByFeature(answers) {
+  const configNames = new Set(require(path.join(__dirname, 'lib', SECRETS_MANIFEST.configKeys)).keys.filter(r => r.class === 'config').map(r => r.name));
+  const secrets = SECRETS_MANIFEST.secrets.filter(entry => !configNames.has(entry.name));
   const activeFeatures = adopterProfileLib.resolveActiveFeatures(answers);
   if (activeFeatures === null) {
-    return { scoped: SECRETS_MANIFEST.secrets, skipped: [] };
+    return { scoped: secrets, skipped: [] };
   }
   const scoped = [];
   const skipped = [];
-  for (const entry of SECRETS_MANIFEST.secrets) {
+  for (const entry of secrets) {
     (activeFeatures.has(entry.feature) ? scoped : skipped).push(entry);
   }
   return { scoped, skipped };

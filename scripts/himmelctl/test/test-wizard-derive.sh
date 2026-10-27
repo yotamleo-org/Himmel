@@ -903,10 +903,12 @@ set -e
 grepq "$out2" 'HANDOVER_DIR ->' \
   && fail "caseJ(inline): handover.mode=inline must be a no-op (got: $out2)"
 [ -f "$hJ2/.himmel/himmel.conf" ] \
-  && fail "caseJ(inline): handover.mode=inline must not write himmel.conf (got: $(cat "$hJ2/.himmel/himmel.conf"))"
+  || fail "caseJ(inline): config step must create himmel.conf"
+[ ! -s "$hJ2/.himmel/himmel.conf" ] \
+  || fail "caseJ(inline): handover.mode=inline must not write config keys (got: $(cat "$hJ2/.himmel/himmel.conf"))"
 [ -f "$fixtureJ2/.env" ] \
   && fail "caseJ(inline): handover.mode=inline must not write .env (got: $(cat "$fixtureJ2/.env"))"
-echo "ok: caseJ(inline) handover.mode=inline -> no-op, no HANDOVER_DIR line, no config write"
+echo "ok: caseJ(inline) handover.mode=inline -> no HANDOVER_DIR line, new config file stays empty"
 
 # ── Case R: a FAILED handover write aborts BEFORE the core install (FIX 3) ─
 stubR="$work/caseR"; mkdir -p "$stubR"

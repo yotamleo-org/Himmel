@@ -41,6 +41,7 @@
 // after it.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { pathToFileURL } = require('url');
 const { execFileSync } = require('child_process');
@@ -1064,8 +1065,12 @@ function applyBehaviourConfig(values, opts = {}) {
   }
   if (Object.keys(legacy).length) {
     if (fs.readFileSync(envFile, 'utf8') !== original) throw new Error('legacy .env changed during config migration; .env kept');
-    const backup = `${envFile}.wizard-backup-${Date.now()}-${process.pid}`;
+    const backupDir = path.join(os.homedir(), '.himmel/env-backups');
+    fs.mkdirSync(backupDir, { recursive: true, mode: 0o700 });
+    fs.chmodSync(backupDir, 0o700);
+    const backup = path.join(backupDir, `env.${Date.now()}.${process.pid}`);
     fs.writeFileSync(backup, original, { flag: 'wx', mode: 0o600 });
+    log(`himmelctl: backup ${backup} (mode 600); holds your secrets; remove it once you are happy`);
     const moved = new Set(Object.keys(legacy));
     const remaining = original.split(/(?<=\n)/).filter(line => {
       const eq = line.indexOf('=');

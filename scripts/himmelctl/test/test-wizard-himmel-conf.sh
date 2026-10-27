@@ -56,10 +56,14 @@ async function main() {
     assert.equal(read(envFile), '# keep\nJIRA_API_TOKEN=fixture-secret-sentinel\nUNCLASSIFIED=fixture-unknown-sentinel\nCR_REQUIRE_CROSS_MODEL=1\n');
     assert.match(notices.join('\n'), /migrat.*CR_PROFILE/i);
     for (const v of ['legacy-panel', 'fixture-secret-sentinel', 'fixture-unknown-sentinel']) assert(!notices.join('\n').includes(v));
-    const backup = fs.readdirSync(dir).find(f => f.startsWith('.env.wizard-backup-'));
-    assert(backup, 'migration must preserve an original backup');
-    assert.equal(read(path.join(dir, backup)), original);
-    assert.equal(fs.statSync(path.join(dir, backup)).mode & 0o777, 0o600);
+    const backupDir = path.join(home, '.himmel/env-backups');
+    assert(fs.existsSync(backupDir), 'migration must keep backups outside the checkout');
+    const backup = path.join(backupDir, fs.readdirSync(backupDir)[0]);
+    assert.equal(read(backup), original);
+    assert.equal(fs.statSync(backupDir).mode & 0o777, 0o700);
+    assert.equal(fs.statSync(backup).mode & 0o777, 0o600);
+    assert(notices.some(s => s.includes(backup) && s.includes('holds your secrets; remove it')));
+    assert(!fs.readdirSync(dir).some(f => f.startsWith('.env.wizard-backup-')));
   });
   await test('existing config wins, local override is respected, symlink survives', () => {
     const dir = fixture('linked');
@@ -117,13 +121,17 @@ async function main() {
     }
     assert.equal(prompts.filter(p => p.includes('> ')).length, rows.filter(r => r.class === 'config').length);
   });
-  await test('metadata covers exactly the reader config/policy keys and manifest keeps secrets separate', () => {
+  await test('metadata covers exactly reader keys and preserves existing secret-store compatibility', () => {
     const rows = require(path.join(root, 'scripts/himmelctl/lib/config-keys.json')).keys;
     const source = read(path.join(root, 'scripts/lib/load-dotenv.sh')).split('_himmel_key_class() {')[1].split('\n}')[0];
     const classified = [...source.matchAll(/\b[A-Z][A-Z0-9_]+\b/g)].map(m => m[0]);
     assert.deepEqual(rows.map(r => r.name).sort(), [...new Set(classified)].sort());
     const manifest = require(path.join(root, 'scripts/himmelctl/lib/secrets-manifest.json'));
-    for (const row of manifest.secrets) assert(!rows.some(r => r.name === row.name), row.name + ' must not be collected as a secret');
+    assert.deepEqual(manifest.secrets.filter(s => rows.some(r => r.name === s.name)).map(s => s.name).sort(),
+      ['JIRA_EMAIL', 'JIRA_PROJECT_KEY']);
+    const store = require(path.join(root, 'scripts/himmelctl/lib/secret-store.js'));
+    assert.equal(store.validate('JIRA_EMAIL', 'fixture@example.invalid').ok, true);
+    assert.equal(store.validate('JIRA_PROJECT_KEY', 'ABC').ok, true);
   });
   await test('real wizard applies config, migrates legacy and leaves policy unchanged', () => {
     const dir = fixture('wizard');
@@ -139,7 +147,7 @@ async function main() {
     const profile = path.join(dir, 'profile.json');
     fs.writeFileSync(profile, JSON.stringify({ schemaVersion: 2, profile: 'starter', devOverlay: false,
       scope: 'user', vault: { mode: 'none', path: '' }, handover: { mode: 'inline', path: '' },
-      pluginSet: 'lean', lanes: [], lanesMeaningful: true, alwaysOn: false,
+      pluginSet: 'lean', lanes: [], lanesMeaningful: true, alwaysOn: false, secretsWalk: 'run',
       behaviourConfig: { USER_SLUG: 'wizard-user' } }));
     const env = { ...process.env, HOME: dir, USERPROFILE: dir, HIMMELCTL_REPO_ROOT: repo,
       HIMMELCTL_INTERACTIVE: '0', HIMMELCTL_UI_HANDOFF: '0', HIMMELCTL_BIN_DIR: path.join(dir, 'bin'),
@@ -148,6 +156,7 @@ async function main() {
       'install', '--from-profile', profile, ...extra], { cwd: dir, env, encoding: 'utf8' });
     const dry = invoke(['--dry-run']);
     assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /instruction card \+ probe for 2 secret\(s\)/);
     assert(!fs.existsSync(path.join(dir, '.himmel/himmel.conf')));
     assert.equal(read(envFile).includes('CR_PROFILE='), true);
     const applied = invoke([]);
