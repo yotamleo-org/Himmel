@@ -19,7 +19,7 @@
 #   run.sh calibration <run-dir>... [--judge2-model <model>] [--judge2-effort <level>]
 #              [--judge2-lane <lane>] [--judge1-model <model>] [--judge1-effort <level>]
 #              [--judge1-lane <lane>] [--tiebreak-model <model>] [--tiebreak-effort <level>]
-#              [--tiebreak-lane <lane>] [--sample <file>]
+#              [--tiebreak-lane <lane>] [--sample <file>] [--cap-factor <f>]
 #              [--max-usd <usd>] [--timeout <sec>] [--json] [--no-ledger]
 #   run.sh materialize <task> <dir> [--reference]   (used by the suite)
 #   run.sh verdict <baseline-run-dir> <variant-run-dir>...
@@ -44,7 +44,9 @@
 # another grader: exit 64 before any call. --tiebreak-model grades only the
 # runs the two graders disagree on. A lane (native, claudex, openrouter) picks
 # the launcher; --sample keeps only the listed judge-packet paths. Stored
-# grader results are reused, so a rerun makes no call.
+# grader results are reused, so a rerun makes no call. A claudex grader needs
+# CLAUDEX_LANE_OK=1 (exit 3 without it); an openrouter grader without a PRICES
+# row needs --cap-factor; a grader that reports no cost stops the pass.
 #
 # Task sets: the synthetic tasks are the regression set (the default). A real
 # task (a tasks/<id>/task.json, written by mine-tasks.py) is a merged himmel
@@ -958,10 +960,11 @@ refuse_vendor() {
 # grade_pass <model> <effort> <lane> <label> <list>: grade every "<dir>\t<stem>"
 # line of <list> whose result is not stored yet, into <stem>.judge2.<label>.json.
 # A native call is bank-preflighted; every call is capped at what is left of
-# --max-usd. An openrouter call counts the larger of its reported cost and the
-# metered balance it took. Returns 1 when the budget or an unknown cost stops it.
+# --max-usd (an openrouter call at --cap-factor times it). An openrouter call
+# counts the larger of its reported cost and the metered balance it took.
+# Returns 1 when the budget or an unknown cost stops it.
 grade_pass() {
-  local model="$1" effort="$2" lane="$3" label="$4" list="$5" d stem packet out remaining cost tok b0 b1
+  local model="$1" effort="$2" lane="$3" label="$4" list="$5" d stem packet out remaining budget cost tok b0 b1
   while IFS=$'\t' read -r d stem; do
     packet="$d/$stem.judge-packet.md"; out="$d/$stem.judge2.$label.json"
     [ -s "$packet" ] || continue
@@ -978,15 +981,14 @@ grade_pass() {
         exit 75
       fi
     fi
-    [ "$lane" != openrouter ] || b0="$(metered_read)"
-    judge_call "$packet" "$out" "$d/$stem.judge2.$label.err" "$model" "$remaining" "$effort" single "$lane" \
-      || die "cannot run the grader $model on $packet"
-    if [ "$lane" = claudex ]; then
-      # Claude Code cannot price the gpt slug: its figure when present, else 0, as the sweep counts it
-      cost="$(jq -r '.total_cost_usd // 0' "$out" 2>/dev/null)"
-    else
-      cost="$(jq -r '.total_cost_usd // empty' "$out" 2>/dev/null)"
+    budget="$remaining"
+    if [ "$lane" = openrouter ]; then
+      b0="$(metered_read)"
+      budget="$(awk -v r="$remaining" -v f="${CAP_FACTOR:-4}" 'BEGIN{printf "%.2f", r * f}')"
     fi
+    judge_call "$packet" "$out" "$d/$stem.judge2.$label.err" "$model" "$budget" "$effort" single "$lane" \
+      || die "cannot run the grader $model on $packet"
+    cost="$(jq -r '.total_cost_usd // empty' "$out" 2>/dev/null)"
     if [ "$lane" = openrouter ] && [ -n "$cost" ]; then
       b1="$(metered_read)"
       cost="$(awk -v c="$cost" -v a="$b0" -v b="$b1" 'BEGIN{d = (a ~ /^[0-9.]+$/ && b ~ /^[0-9.]+$/) ? a - b : 0; printf "%.4f", (d > c ? d : c)}')"
@@ -1002,22 +1004,22 @@ grade_pass() {
 # calibration <run-dir>... [--judge1-model M [--judge1-effort E] [--judge1-lane L]]
 # [--judge2-model M [--judge2-effort E] [--judge2-lane L]]
 # [--tiebreak-model M [--tiebreak-effort E] [--tiebreak-lane L]] [--sample FILE]
-# [--max-usd U] [--timeout S] [--json] [--no-ledger]: the grader calls happen
+# [--cap-factor F] [--max-usd U] [--timeout S] [--json] [--no-ledger]: the grader calls happen
 # here (budget-capped like the sweep); the maths is lq_stats.py.
 cmd_calibration() {
   local dirs=() json="" noledger="" sample="" d l stem list stop=0 l1="" l2="" lt="" m g1=() under=() stored=()
   local j1model="" j1effort="" j1lane=native j2model="" j2effort="" j2lane=native tbmodel="" tbeffort="" tblane=native
-  MAX_USD=1; TIMEOUT=600; SPENT=0
+  MAX_USD=1; TIMEOUT=600; SPENT=0; CAP_FACTOR=""
   while [ $# -gt 0 ]; do
     case "$1" in
       --judge1-model|--judge1-effort|--judge1-lane|--judge2-model|--judge2-effort|--judge2-lane|\
-      --tiebreak-model|--tiebreak-effort|--tiebreak-lane|--sample|--max-usd|--timeout)
+      --tiebreak-model|--tiebreak-effort|--tiebreak-lane|--sample|--max-usd|--timeout|--cap-factor)
         [ $# -ge 2 ] || die "$1 needs a value"
         case "$1" in
           --judge1-model) j1model="$2" ;; --judge1-effort) j1effort="$2" ;; --judge1-lane) j1lane="$2" ;;
           --judge2-model) j2model="$2" ;; --judge2-effort) j2effort="$2" ;; --judge2-lane) j2lane="$2" ;;
           --tiebreak-model) tbmodel="$2" ;; --tiebreak-effort) tbeffort="$2" ;; --tiebreak-lane) tblane="$2" ;;
-          --sample) sample="$2" ;; --max-usd) MAX_USD="$2" ;; --timeout) TIMEOUT="$2" ;;
+          --sample) sample="$2" ;; --max-usd) MAX_USD="$2" ;; --timeout) TIMEOUT="$2" ;; --cap-factor) CAP_FACTOR="$2" ;;
         esac; shift 2 ;;
       --json) json=--json; shift ;;
       --no-ledger) noledger=--no-ledger; shift ;;
@@ -1042,6 +1044,7 @@ cmd_calibration() {
   awk -v m="$MAX_USD" 'BEGIN{exit !(m+0 > 0)}' || die "--max-usd must be a positive number"
   case "$TIMEOUT" in ''|*[!0-9]*) die "--timeout must be positive whole seconds" ;; esac
   [ "$((10#$TIMEOUT))" -gt 0 ] || die "--timeout must be positive whole seconds"
+  [ -z "$CAP_FACTOR" ] || awk -v f="$CAP_FACTOR" 'BEGIN{exit !(f ~ /^[0-9.]+$/ && f+0 > 0)}' || die "--cap-factor must be a positive number"
   if [ -n "$j2model" ]; then
     # the graders are refused by vendor before any call: never a vendor under
     # test, and every grader from a vendor of its own.
@@ -1067,6 +1070,22 @@ cmd_calibration() {
     l2="$(grader_label "$j2model" "$j2effort" "$j2lane")" || die "cannot build the second grader's label"
     [ -z "$j1model" ] || l1="$(grader_label "$j1model" "$j1effort" "$j1lane")" || die "cannot build the first grader's label"
     [ -z "$tbmodel" ] || lt="$(grader_label "$tbmodel" "$tbeffort" "$tblane")" || die "cannot build the tie-breaker's label"
+    case " $j1lane $j2lane $tblane " in
+      *" claudex "*)
+        # the per-dispatch lane opt-in the sweep reads
+        if [ "${CLAUDEX_LANE_OK:-}" != 1 ]; then
+          echo "lane-quality: a claudex grader needs CLAUDEX_LANE_OK=1 on the command" >&2
+          exit 3
+        fi ;;
+    esac
+    # Claude Code's figure for an unpriced gateway slug is no cap, so its
+    # per-call budget scale must be stated: --cap-factor F caps each openrouter
+    # call at F times what is left (a priced slug keeps the sweep's 4).
+    for m in "$j1lane=$j1model" "$j2lane=$j2model" "$tblane=$tbmodel"; do
+      [ "${m%%=*}" = openrouter ] && [ -z "$CAP_FACTOR" ] || continue
+      jq -e --arg m "${m#*=}" 'has($m)' <<<"$PRICES" >/dev/null \
+        || die "openrouter grader '${m#*=}' has no PRICES row, so its call budget is no cap; pass --cap-factor <F>"
+    done
     init_env
     METERED_PROBE="${LQ_METERED_PROBE:-$REPO/scripts/lanes/openrouter-cost.sh}"
     list="$(mktemp "${TMPDIR:-/tmp}/lq-calibration.XXXXXX")" || die "mktemp failed"

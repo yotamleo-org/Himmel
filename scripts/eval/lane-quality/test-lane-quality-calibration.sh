@@ -35,8 +35,9 @@ for a in "$@"; do [ "$prev" != --model ] || model="$a"; prev="$a"; done
 stem="$(sed -n 's/^packet //p' | head -1)"
 echo "$model $stem" >>"$LQ_FAKE_LOG"
 held="$(awk -v s="$stem" '$1 == s { print $2 }' "$LQ_FAKE_GRADES/$(printf '%s' "$model" | tr '/' '_')")"
-jq -cn --argjson h "${held:-0}" '{type: "result", is_error: false, total_cost_usd: 0.01,
-  structured_output: {claims: ([range(1; 5) | {key: "C\(.)", value: {holds: (. <= $h), evidence: "e"}}]
+jq -cn --argjson h "${held:-0}" --arg cost "${LQ_FAKE_COST:-0.01}" '{type: "result", is_error: false}
+  + (if $cost == "none" then {} else {total_cost_usd: ($cost | tonumber)} end)
+  + {structured_output: {claims: ([range(1; 5) | {key: "C\(.)", value: {holds: (. <= $h), evidence: "e"}}]
     + [("S", "T", "H") as $p | range(1; 5) | {key: "\($p)\(.)", value: {holds: true, evidence: "e"}}] | from_entries)}}'
 FAKE
 printf '#!/usr/bin/env bash\necho "claudex $*" >>"$LQ_FAKE_LOG.lane"\nexec "$LQ_CLAUDE_BIN" "$@"\n' >"$TMP/bin/claude-codex"
@@ -46,7 +47,7 @@ printf '#!/usr/bin/env bash\necho PROCEED\n' >"$TMP/bin/preflight"
 chmod +x "$TMP/bin/"*
 export LQ_CLAUDE_BIN="$TMP/bin/claude" LQ_CLAUDEX_BIN="$TMP/bin/claude-codex" LQ_OPENROUTER_BIN="$TMP/bin/claude-openrouter" \
   LQ_METERED_PROBE="$TMP/bin/orcost" LQ_PREFLIGHT="$TMP/bin/preflight" LQ_REPO="$TMP" \
-  LQ_FAKE_LOG="$TMP/fake.log" LQ_FAKE_GRADES="$TMP/grades"
+  LQ_FAKE_LOG="$TMP/fake.log" LQ_FAKE_GRADES="$TMP/grades" CLAUDEX_LANE_OK=1
 
 # Six runs of one Anthropic arm, judged by the stored (Anthropic) judge, t1-t4 judged twice.
 # Grader 1 passes t1-t4 and fails t5-t6; grader 2 passes t1-t3 and t6. They
@@ -68,7 +69,7 @@ printf 't1 4\nt2 4\nt3 4\nt4 3\nt5 3\nt6 4\n' >"$TMP/grades/google_gemini-x"
 printf 't1 3\nt2 3\nt3 3\nt4 3\nt5 4\nt6 4\n' >"$TMP/grades/google_gemini-neg"
 printf 't1 4\nt2 4\nt3 4\nt4 4\nt5 4\nt6 4\n' >"$TMP/grades/deepseek_deepseek-x"
 G1=(--judge1-model gpt-x --judge1-effort high --judge1-lane claudex)
-G2=(--judge2-model google/gemini-x --judge2-effort high --judge2-lane openrouter)
+G2=(--judge2-model google/gemini-x --judge2-effort high --judge2-lane openrouter --cap-factor 1)
 TB=(--tiebreak-model deepseek/deepseek-x --tiebreak-effort high --tiebreak-lane openrouter)
 
 echo "1. a grader from a vendor already in the comparison is refused before any call"
@@ -105,7 +106,7 @@ check "only the openrouter lane is bare" 'grep -q "^claudex " "$TMP/fake.log.lan
 check "the row names every grader with its effort, lane and vendor" 'jq -e "[.config.graders[] | \"\(.role) \(.model) \(.effort) \(.lane) \(.vendor)\"] == [\"grader1 gpt-x high claudex openai\", \"grader2 google/gemini-x high openrouter google\", \"tiebreak deepseek/deepseek-x high openrouter deepseek\"] and .config.model_graded == true and .config.models == [\"claude-haiku-5-5\"]" "$TMP/cal.json" >/dev/null'
 check "the calibration row is a valid eval-runs row" 'python3 "$HERE/../lib/eval_runs.py" validate "$HIMMEL_EVAL_RUNS_LEDGER" >/dev/null'
 : >"$TMP/fake.log"
-bash "$RUN" calibration "$FX" "${G1[@]}" --judge2-model google/gemini-neg --judge2-effort high --judge2-lane openrouter \
+bash "$RUN" calibration "$FX" "${G1[@]}" --judge2-model google/gemini-neg --judge2-effort high --judge2-lane openrouter --cap-factor 1 \
   --json --no-ledger >"$TMP/neg.json" 2>/dev/null
 check "graders that always disagree get kappa at or below 0" 'jq -e ".metrics.verdict_agree == 0 and .metrics.verdict_kappa <= 0" "$TMP/neg.json" >/dev/null'
 kap() { python3 -c 'import sys, json; sys.path.insert(0, sys.argv[1]); import lq_stats; print(lq_stats.cohen_kappa(json.loads(sys.argv[2]), json.loads(sys.argv[3])))' "$HERE" "$1" "$2"; }
@@ -128,6 +129,31 @@ echo "4. the --judge-twice flip rate"
 check "verdict flips: t3 only, 1 of the 4 runs judged twice" 'jq -e ".metrics.n_twice == 4 and .metrics.verdict_flips == 1 and .metrics.verdict_flip_rate == 0.25" "$TMP/cal.json" >/dev/null'
 check "claim flips are the recorded judge_flips: 3 of 4 x 16 claims" 'jq -e ".metrics.claim_flips == 3 and .metrics.claim_flip_rate == (3 / 64)" "$TMP/cal.json" >/dev/null'
 check "the report prints the flip rate" 'grep -qF "judge-twice flips (stored judge claude-opus-5-5): verdict 1 of 4 runs (0.250), claims 3 of 64 (0.047)" "$TMP/cal.md"'
+
+echo "5. the grader spend cap fails closed"
+fresh() { rm -rf "$TMP/fx2"; mkdir "$TMP/fx2"; cp "$FX/runs.jsonl" "$FX"/*.judge-packet.md "$TMP/fx2/"; : >"$TMP/fake.log"; : >"$TMP/fake.log.or"; }
+fresh
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" --judge2-model google/gemini-x --judge2-lane openrouter --json --no-ledger >/dev/null 2>"$TMP/cf.err"; rc=$?
+check "an unpriced openrouter grader without --cap-factor is refused before any call" '[ "$rc" -eq 64 ] && grep -qF "no PRICES row" "$TMP/cf.err" && [ ! -s "$TMP/fake.log" ]'
+fresh
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" --judge2-model google/gemini-x --judge2-lane openrouter --cap-factor 2 \
+  --max-usd 1 --json --no-ledger >/dev/null 2>/dev/null
+check "--cap-factor scales the openrouter call's budget from what is left" '[ "$(head -1 "$TMP/fake.log.or" | grep -o -- "--max-budget-usd [0-9.]*")" = "--max-budget-usd 1.88" ]'
+fresh
+env -u CLAUDEX_LANE_OK bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/cx.err"; rc=$?
+check "a claudex grader without CLAUDEX_LANE_OK=1 exits 3 before any call" '[ "$rc" -eq 3 ] && grep -qF "CLAUDEX_LANE_OK=1" "$TMP/cx.err" && [ ! -s "$TMP/fake.log" ]'
+fresh
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --max-usd 0.02 --json --no-ledger >/dev/null 2>"$TMP/cap.err"
+check "the grader budget stops the pass once --max-usd is spent" '[ "$(wc -l <"$TMP/fake.log")" -eq 2 ] && grep -qF "grader budget spent" "$TMP/cap.err"'
+fresh
+LQ_FAKE_COST=none bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/unk.err"
+check "a claudex grader with no reported cost stops the pass, never counted as 0" '[ "$(wc -l <"$TMP/fake.log")" -eq 1 ] && grep -qF "left its cost unknown" "$TMP/unk.err"'
+fresh
+printf '#!/usr/bin/env bash\nn=$(cat "$LQ_FAKE_BAL" 2>/dev/null || echo 0); echo $((n + 1)) >"$LQ_FAKE_BAL"\nawk -v n="$n" '"'"'BEGIN{printf "balance=%%.2f:credit spend=?\\n", 10 - n * 0.05}'"'"'\n' >"$TMP/bin/orcost-drop"
+chmod +x "$TMP/bin/orcost-drop"
+LQ_FAKE_BAL="$TMP/bal" LQ_METERED_PROBE="$TMP/bin/orcost-drop" bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" \
+  --max-usd 0.16 --json --no-ledger >/dev/null 2>"$TMP/delta.err"
+check "an openrouter call counts the metered drop when it exceeds the reported cost" '[ "$(grep -c "^google/gemini-x " "$TMP/fake.log")" -eq 2 ] && grep -qF "graders spent 0.1600 USD" "$TMP/delta.err"'
 
 echo "test-lane-quality-calibration: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
