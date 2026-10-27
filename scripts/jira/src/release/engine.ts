@@ -5,6 +5,7 @@ import {
 } from './ledger.js';
 import { SECTOR_OPT_OUT, sectorField } from '../commands/sector.js';
 import { appendAdmission, assertAdmissionsWritable, readAdmissions } from '../commands/admissions-ledger.js';
+import { checkConsoleOverride } from '../commands/intake-gate.js';
 import { baselineId, effectOn, reduce, recordOf, scopeOk, terminalOf, unknownState, type ReleaseState } from './reducer.js';
 import type {
   Authority, Baseline, Declaration, EventRow, IssueSnap, Lease, Op, OperatorRow, PlacementClass, RequestRow, RulingRow, Verb,
@@ -789,12 +790,11 @@ export interface RmRunOptions {
 export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promise<string[]> {
   const ruling = o.ruling?.trim();
   if (o.ruling !== undefined && !ruling) throw new Error('rm-run: --ruling needs a decision ref');
-  const override = o.chiefOverride?.trim();
+  let override: string | undefined;
   if (o.chiefOverride !== undefined) {
-    if (!override) throw new Error('rm-run: --chief-override needs a reason');
     if (ruling) throw new Error('rm-run: pass --ruling or --chief-override, not both');
-    // ponytail: any same-uid caller can set HIMMEL_CONSOLE, upgrade path: the RM signed-row design (HIMMEL-6796)
-    if (ctx.env.HIMMEL_CONSOLE !== '1') throw new Error('rm-run: --chief-override is for the console session only (HIMMEL_CONSOLE=1 is not set)');
+    override = checkConsoleOverride(o.chiefOverride);
+  } else if (ruling) {
     assertAdmissionsWritable();
   }
   const l = loadOrThrow(ctx);
@@ -820,13 +820,10 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   const heldNote = `bulk guard: ${current} already takes ${BULK_MOVE_LIMIT} open moves in one run; rerun with --ruling <decision-ref> or --chief-override "<reason>"`;
   try {
     mirrorIssues = readMirror(ctx.mirrorRoot).issues;
+    // A replayed intent is from an older epoch: apply settles it by readback or voids and reopens its request,
+    // so it writes no fixVersion here and is not a move of this run (a voided one is counted when re-ruled below).
     for (const id of unfinishedRulings(loadOrThrow(ctx).rulings)) {
       try {
-        const row = loadOrThrow(ctx).rulings.verified.filter((r) => r.id === id).pop();
-        if (row?.phase === 'intent' && bulkHeld(row.key, row.op, row.authority.kind === 'operator' && !!row.authority.ref)) {
-          lines.push(`PENDING ${id}: ${heldNote}`);
-          continue;
-        }
         lines.push((await apply(rctx, id)).line);
       } catch (e) {
         lines.push(`PENDING ${id}: ${(e as Error).message}`);
@@ -887,11 +884,15 @@ export async function rmRun(ctx: Ctx, judge: Judge, o: RmRunOptions = {}): Promi
   } finally {
     // Cleanup never hides the rulings already made or the error that ended the run.
     try {
-      if (override !== undefined && moved > BULK_MOVE_LIMIT) {
-        appendAdmission({ version: current, key: `rm-run:${ctx.release}`, kind: 'override', reason: `bulk ${moved} open moves in ${current}: ${override}` });
+      if (moved > BULK_MOVE_LIMIT && (ruling || override !== undefined)) {
+        appendAdmission({
+          version: current, key: `rm-run:${ctx.release}`, kind: 'override',
+          reason: `bulk ${moved} open moves in ${current}: ${ruling ? `lifted by ruling ${ruling}` : override}`, ...(ruling ? { ruling } : {}),
+        });
+        if (ruling) lines.push(`bulk ${moved} lifted by ruling ${ruling}`);
       }
     } catch (e) {
-      lines.push(`PENDING override row: ${(e as Error).message}`);
+      lines.push(`PENDING lift row: ${(e as Error).message}`);
     }
     try {
       leaseRelease(rctx);

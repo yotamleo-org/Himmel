@@ -866,7 +866,6 @@ describe('rm-run bulk guard (HIMMEL-6778)', () => {
     req: q.req, outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 'Ship loop', ground: 'regression', reason: 'breaks the console',
   }));
   const rulings = (lines: string[]) => lines.filter((l) => l.startsWith('RULING '));
-  const marked = { HIMMEL_CONSOLE: '1' };
 
   it('refuses the 21st open move into the current version, unclaimed and pending for the next run', async () => {
     askMany(21);
@@ -892,38 +891,51 @@ describe('rm-run bulk guard (HIMMEL-6778)', () => {
     expect(rulings(await rmRun(ctx(), admitAll))).toHaveLength(21);
   });
 
-  it('--ruling passes the 21st', async () => {
+  it('--ruling passes the 21st and records the ref in the run output and in one ledger row', async () => {
     askMany(21);
     const lines = await rmRun(ctx(), admitAll, { ruling: '98' });
     expect(rulings(lines)).toHaveLength(21);
+    expect(lines).toContain('bulk 21 lifted by ruling 98');
+    expect(overrideRows()).toEqual([expect.objectContaining({ version: 'v1', key: 'rm-run:R1', ruling: '98', reason: expect.stringMatching(/21 .*lifted by ruling 98/) })]);
+  });
+
+  it('--ruling on a run of 20 lifts nothing, so it records nothing', async () => {
+    askMany(20);
+    const lines = await rmRun(ctx(), admitAll, { ruling: '98' });
+    expect(rulings(lines)).toHaveLength(20);
+    expect(lines.some((l) => /lifted by ruling/.test(l))).toBe(false);
     expect(overrideRows()).toEqual([]);
   });
 
   it('a chief override with the marker and a reason passes and writes one override row with the count', async () => {
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
     askMany(21);
-    const lines = await rmRun(ctx(marked), admitAll, { chiefOverride: 'operator ordered the reshuffle' });
+    const lines = await rmRun(ctx(), admitAll, { chiefOverride: 'operator ordered the reshuffle' });
     expect(rulings(lines)).toHaveLength(21);
     expect(overrideRows()).toEqual([expect.objectContaining({ version: 'v1', kind: 'override', reason: expect.stringMatching(/21 .*operator ordered the reshuffle/) })]);
   });
 
   it('a chief override without a reason or without the marker refuses before anything is claimed', async () => {
     askMany(21);
-    await expect(rmRun(ctx(marked), admitAll, { chiefOverride: '  ' })).rejects.toThrow(/needs a reason/);
     await expect(rmRun(ctx(), admitAll, { chiefOverride: 'because' })).rejects.toThrow(/HIMMEL_CONSOLE=1/);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    await expect(rmRun(ctx(), admitAll, { chiefOverride: '  ' })).rejects.toThrow(/needs a reason/);
     expect(state(ctx()).requests).toMatchObject({ claimed: [] });
     expect(overrideRows()).toEqual([]);
   });
 
-  it('an override run that ends in an error still writes its override row', async () => {
+  it('a replay of older unfinished rulings is not a move: the voided requests are counted once, when re-ruled', async () => {
     askMany(21);
     const set = jira.setFixVersion;
     jira.setFixVersion = async () => { throw new Error('jira down'); };
-    expect(rulings(await rmRun(ctx(), admitAll, { ruling: '98' }))).toHaveLength(0);
+    await rmRun(ctx(), admitAll, { ruling: '98' });
     jira.setFixVersion = set;
-    request(ctx(), { verb: 'INTAKE', key: 'K-200', from_v: null, to_v: 'v1', why: 'found work', evidence: {}, from: 'console' });
-    const down: Judge = async () => { throw new Error('judge down'); };
-    await expect(rmRun(ctx(marked), down, { chiefOverride: 'operator ordered the reshuffle' })).rejects.toThrow(/judge down/);
-    expect(overrideRows()).toEqual([expect.objectContaining({ reason: expect.stringMatching(/21 .*operator ordered the reshuffle/) })]);
+    const lines = await rmRun(ctx(), admitAll);
+    expect(lines.filter((l) => l.startsWith('VOID '))).toHaveLength(21);
+    expect(rulings(lines)).toHaveLength(20);
+    expect(lines).toContainEqual(expect.stringMatching(/^PENDING Q-R1-00\d\d: bulk guard/));
+    expect(state(ctx()).requests).toMatchObject({ claimed: [] });
+    expect(overrideRows()).toHaveLength(1);
   });
 
   it('an unreadable mirror aborts the run without leaving the lease held', async () => {
