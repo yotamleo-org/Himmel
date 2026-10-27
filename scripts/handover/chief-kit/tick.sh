@@ -2208,9 +2208,13 @@ if [ "$doctor_ttl" -gt 0 ] && [ -f "$doctor_cmd" ] && command -v jq >/dev/null 2
     # The run is detached (a full cold run outlasts the 120 s the waiter gives a tick): it writes
     # $doctor_cache.out, then .rc last. A tick folds a finished run into the cache and, when the cache
     # is stale and no run is live, starts one and waits up to TICK_DOCTOR_WAIT_SEC for it.
+    # Two ticks share the cache, so a run is claimed by an atomic mkdir of $doctor_cache.run and a finished
+    # run by an atomic rename of its .rc: one tick starts it, one tick folds it in.
     doctor_harvest() {
-        [ -f "$doctor_cache.rc" ] || return 0
-        doctor_rc="$(cat "$doctor_cache.rc" 2>/dev/null)"  # swallow-ok: an unreadable rc reads as a failed run
+        local doctor_claim="$doctor_cache.rc.$$"
+        mv "$doctor_cache.rc" "$doctor_claim" 2>/dev/null || return 0  # swallow-ok: no finished run, or another tick claimed it
+        doctor_rc="$(cat "$doctor_claim" 2>/dev/null)"  # swallow-ok: an unreadable rc reads as a failed run
+        rm -f "$doctor_claim"
         # The doctor exits 1 when a FAIL row exists; that run still answered. Any other code, or no rows, did not.
         # --json still prints a banner and a Summary line around the one-object-per-line rows: keep the object lines only.
         doctor_rows="$(sed -n '/^{/p' "$doctor_cache.out" 2>/dev/null)"  # swallow-ok: a missing output reads as no rows
@@ -2221,26 +2225,25 @@ if [ "$doctor_ttl" -gt 0 ] && [ -f "$doctor_cmd" ] && command -v jq >/dev/null 2
         esac
         # swallow-ok: a cache that cannot be written only costs the next tick a doctor run
         { mkdir -p "${doctor_cache%/*}" && printf '%s' "$doctor_val" > "$doctor_cache.$$" && mv "$doctor_cache.$$" "$doctor_cache"; } 2>/dev/null || true
-        rm -f "$doctor_cache.rc" "$doctor_cache.out" "$doctor_cache.pid"
+        rm -f "$doctor_cache.out"
         doctor_fresh=1
     }
     if [ -z "$doctor_fresh" ]; then
         doctor_harvest
     fi
     if [ -z "$doctor_fresh" ]; then
-        doctor_pid="$(cat "$doctor_cache.pid" 2>/dev/null)"  # swallow-ok: no pid file means no live run
-        # A pid file older than 15 min is a lost run (the run itself is capped at 10 min), so start a new one.
-        if [ -z "$doctor_pid" ] || ! kill -0 "$doctor_pid" 2>/dev/null || [ -n "$(find "$doctor_cache.pid" -mmin +15 2>/dev/null)" ]; then  # swallow-ok: a dead pid starts a new run
-            mkdir -p "${doctor_cache%/*}" 2>/dev/null  # swallow-ok: an unwritable state dir leaves the value unknown
+        mkdir -p "${doctor_cache%/*}" 2>/dev/null  # swallow-ok: an unwritable state dir leaves the value unknown
+        # A run directory older than 15 min is a lost run (the run itself is capped at 10 min): clear it.
+        [ -z "$(find "$doctor_cache.run" -maxdepth 0 -mmin +15 2>/dev/null)" ] || rmdir "$doctor_cache.run" 2>/dev/null  # swallow-ok: a run directory that cannot be cleared only keeps the old value
+        if mkdir "$doctor_cache.run" 2>/dev/null; then  # swallow-ok: a taken run directory means a run is live
             rm -f "$doctor_cache.rc"
             # gnu-ok: console kit is Linux-only (setsid, timeout -k)
             # shellcheck disable=SC2016  # $1 and $2 expand in the inner shell, not here
-            setsid bash -c 'timeout -k 5 600 bash "$1" --json --no-color </dev/null >"$2.out" 2>/dev/null; echo $? >"$2.rc"' _ "$doctor_cmd" "$doctor_cache" </dev/null >/dev/null 2>&1 &
-            printf '%s' "$!" > "$doctor_cache.pid" 2>/dev/null  # swallow-ok: no pid file only lets a second run start
+            setsid bash -c 'timeout -k 5 600 bash "$1" --json --no-color </dev/null >"$2.out" 2>/dev/null; echo $? >"$2.rc"; rmdir "$2.run"' _ "$doctor_cmd" "$doctor_cache" </dev/null >/dev/null 2>&1 &
         fi
         case "${TICK_DOCTOR_WAIT_SEC:-45}" in ""|*[!0-9]*) doctor_wait=45 ;; *) doctor_wait=$((10#${TICK_DOCTOR_WAIT_SEC:-45})) ;; esac
         doctor_polls=0
-        while [ ! -f "$doctor_cache.rc" ] && [ "$doctor_polls" -lt $((doctor_wait * 5)) ]; do
+        while [ ! -f "$doctor_cache.rc" ] && [ -d "$doctor_cache.run" ] && [ "$doctor_polls" -lt $((doctor_wait * 5)) ]; do
             sleep 0.2  # gnu-ok: fractional sleep on the Linux-only console kit
             doctor_polls=$((doctor_polls + 1))
         done

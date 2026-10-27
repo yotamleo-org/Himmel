@@ -2898,6 +2898,16 @@ same 'a doctor slower than the wait budget reads doctor=? on that tick (HIMMEL-7
 sleep 5
 same 'the next tick folds in the finished slow run (HIMMEL-7849)' "$(DR_COUNT="$dr7849/count" TICK_DOCTOR_WAIT_SEC=1 TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/slow" bash "$SUT" 2>/dev/null | doctor_of)" 'C16-hooks,C76-bridge-stale'
 same 'the slow run was started once, not once per tick (HIMMEL-7849)' "$(wc -l < "$dr7849/count" | tr -d ' ')" '1'
+# Two ticks share one cache: a live run holds the run directory and a tick that finds it starts no
+# second run; a run directory older than 15 minutes is a lost run and the next tick starts a new one.
+rm -rf "$dr7849/count" "$dr7849/held".*
+mkdir "$dr7849/held.cache.run"
+DR_COUNT="$dr7849/count" TICK_DOCTOR_WAIT_SEC=1 TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/held.cache" bash "$SUT" > "$dr7849/held-line" 2>/dev/null
+same 'a live run directory keeps a second tick from starting a run (HIMMEL-7849)' "$(cat "$dr7849/count" 2>/dev/null | wc -l | tr -d ' ')" '0'
+same 'a tick waiting on a run another tick holds reads doctor=? (HIMMEL-7849)' "$(doctor_of < "$dr7849/held-line")" '?'
+touch -d '20 minutes ago' "$dr7849/held.cache.run"
+DR_COUNT="$dr7849/count" TICK_DOCTOR_CMD="$dr7849/doctor" TICK_DOCTOR_CACHE="$dr7849/held.cache" bash "$SUT" > "$dr7849/lost-line" 2>/dev/null
+same 'a run directory older than 15 minutes is a lost run and a new one starts (HIMMEL-7849)' "$(doctor_of < "$dr7849/lost-line")" 'C16-hooks,C76-bridge-stale'
 
 # --- parked=<worker>:<age>m: a worker on an unanswered permission prompt -----
 # Absent unless a worker's newest trust-ledger row is a permission prompt older than
