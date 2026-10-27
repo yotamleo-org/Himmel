@@ -159,7 +159,7 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 After merge: pull the primary checkout, re-read the ticket, and post the PR
 number and merge sha on it — moving it yourself only if the PR completes
 it and `--jira-transition` (the chief's `jira-transition=` line) did not (`failed`
-or `skip=` for a missing tool or config). Never close it by hand on `skip=never-touch-type` or
+or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
 `skip=cannot-verify-type`: report it to the chief. Then release the
 lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session

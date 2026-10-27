@@ -75,6 +75,7 @@ shift
 printf 'JIRA %s\n' "$*" >> "$STUB_JIRA_LOG"
 case "$1" in
     get) printf '{"fields":{"issuetype":{"name":"%s"}}}\n' "${STUB_JIRA_TYPE:-Task}" ;;
+    comment) [ "$3" = "--comment-file" ] && [ -s "$4" ] || exit 1 ;;
     transition) exit "${STUB_JIRA_TRANSITION_RC:-0}" ;;
 esac
 STUB
