@@ -309,6 +309,12 @@ GR_ARGS=(501 "$SHA_A" qadopt --repo o/other-repo)
 rc=0; out=$(run 2>&1) || rc=$?
 check "adopter record with its --repo grants" "$rc" 0
 check "adopter grant drops the round" "$(cat "$state/$BRANCH.round")" 2
+reset_state 3
+wv qadoptbr NO-GO "$SHA_A" --pr 501 --branch other/branch --repo o/other-repo --evidence-file "$evd/ev.md" >/dev/null 2>&1 || { echo "FAIL: cannot write qadoptbr"; fails=$((fails+1)); }
+GR_ARGS=(501 "$SHA_A" qadoptbr --repo o/other-repo)
+rc=0; out=$(run 2>&1) || rc=$?
+check "adopter record naming another branch refuses" "$rc" 4
+check "the branch refusal changes nothing" "$(cat "$state/$BRANCH.round")" 3
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS"; exit 0; fi
