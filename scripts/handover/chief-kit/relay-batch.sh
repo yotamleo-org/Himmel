@@ -112,7 +112,7 @@ send_notice() {
         notice_dir="$(tmpdir)" || { notice_dir=""; echo "BUS-RELAY-FAIL $label (mktemp failed)"; return 0; }
         notice_text > "$notice_dir/notice"; notice_t0=$SECONDS
     fi
-    rem=$((limit - (SECONDS - notice_t0))); [ "$rem" -ge 1 ] || rem=1
+    rem=$((10#$limit - (SECONDS - notice_t0))); [ "$rem" -ge 1 ] || rem=1
     command -v timeout >/dev/null 2>&1 && wait_for="timeout $rem"
     if err="$($wait_for "$bus" send "$session" "$notice_dir/notice" 2>&1 >/dev/null)"; then
         echo "BUS-RELAY $label ok"
