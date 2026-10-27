@@ -106,8 +106,43 @@ while IFS= read -r -d '' p; do
     printf '%s\n' "$p" >> "$work/names.txt"
 done < "$work/names.z"
 
+# Trust check list: when the delta holds a merge-forward, a path only main changed is
+# not the PR's change (its blob equals origin/main's at both heads), unless a merge's
+# remerge-diff names it (a conflict resolution is PR-authored).
+cp "$work/names.txt" "$work/trust-names.txt" || trust
+anc=0
+if git merge-base --is-ancestor "$J" "$N" 2>/dev/null; then anc=1; else [ "$?" -eq 1 ] || trust; fi
+if [ "$anc" -eq 1 ]; then
+    git rev-list --merges "$J..$N" > "$work/merges.txt" 2>/dev/null || trust
+    if [ -s "$work/merges.txt" ]; then
+        mbN=$(git merge-base origin/main "$N" 2>/dev/null) || trust # swallow-ok: no merge base fails closed to trust on this line
+        mbJ=$(git merge-base origin/main "$J" 2>/dev/null) || trust # swallow-ok: no merge base fails closed to trust on this line
+        : > "$work/authored.txt"
+        while IFS= read -r m; do
+            git show --remerge-diff --name-only -z --format= --no-ext-diff --no-relative "$m" > "$work/remerge.z" 2>/dev/null || trust
+            while IFS= read -r -d '' p; do
+                case "$p" in *$'\n'*) trust ;; esac
+                printf '%s\n' "$p" >> "$work/authored.txt"
+            done < "$work/remerge.z"
+        done < "$work/merges.txt"
+        # blob_of <commit> <path>: the tree entry (mode, type, sha), empty when absent; fails on a read error
+        blob_of() { local o; o=$(git --literal-pathspecs ls-tree "$1" -- "$2" 2>/dev/null) || return 1; printf '%s' "${o%%$'\t'*}"; } # swallow-ok: a failed read returns 1 and every caller fails closed to trust
+        : > "$work/trust-names.txt"
+        while IFS= read -r p; do
+            if ! grep -qxF -- "$p" "$work/authored.txt"; then
+                bn=$(blob_of "$N" "$p") || trust
+                bmn=$(blob_of "$mbN" "$p") || trust
+                bj=$(blob_of "$J" "$p") || trust
+                bmj=$(blob_of "$mbJ" "$p") || trust
+                if [ "$bn" = "$bmn" ] && [ "$bj" = "$bmj" ]; then continue; fi
+            fi
+            printf '%s\n' "$p" >> "$work/trust-names.txt"
+        done < "$work/names.txt"
+    fi
+fi
+
 while IFS= read -r pat; do
-    grep -Eq -e "$pat" "$work/names.txt" 2>/dev/null
+    grep -Eq -e "$pat" "$work/trust-names.txt" 2>/dev/null
     case $? in 0|2) trust ;; esac
 done < "$work/patterns.txt"
 

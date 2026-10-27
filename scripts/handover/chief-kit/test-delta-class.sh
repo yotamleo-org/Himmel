@@ -194,6 +194,34 @@ done < "$repo_trust"
 check "1: delta-class.sh is itself under a ci-trust-paths pattern" "$hit" yes
 mkv GO 'finding: src/a.txt:3-4'
 
+# 8: a merge-forward of origin/main: paths only main changed are not the PR's delta
+base_branch=$(git rev-parse --abbrev-ref HEAD)
+J8=$J
+git checkout -q -b main8a "$J8"; echo "m1" > scripts/ci/y.sh; M=$(step main-trust)
+git checkout -q -b pr8a "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-own)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8a >/dev/null; N=$(git rev-parse HEAD)
+J=$Jp; mkv GO
+check "8a: a pure merge-forward whose main side touches a trust path -> none" "$(cls "$N")" none
+echo "pr2" > scripts/ci/z.sh; N2=$(step pr-trust-after-merge)
+check "8c: a PR commit to a trust path after the merge-forward -> trust" "$(cls "$N2")" trust
+git update-ref -d refs/remotes/origin/main
+check "8d: a merge-forward with no origin/main to compare against -> trust" "$(cls "$N")" trust
+J=$J8
+git checkout -q "$base_branch"
+
+git checkout -q -b main8b "$J8"; echo "mainx" > scripts/ci/x.sh; M=$(step main-conflict)
+git checkout -q -b pr8b "$J8"; echo "prx" > scripts/ci/x.sh; Jp=$(step pr-conflict)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8b >/dev/null 2>&1
+echo "resolved" > scripts/ci/x.sh; N=$(step resolved)
+J=$Jp; mkv GO
+check "8b: a merge-forward with a conflict resolved in a trust path -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
+mkv GO 'finding: src/a.txt:3-4'
+
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
 out=$(cls "$J"); check "7: an empty delta -> none, one word" "$out" none
 
