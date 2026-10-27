@@ -42,7 +42,11 @@ describe('CLI .env resolution from an unrelated cwd', () => {
       encoding: 'utf8',
       timeout: 30000,
     });
+    expect(run.error).toBeUndefined();
     const output = `${run.stdout}${run.stderr}`;
+    // The op reached the request (the fixture host does not resolve): the CLI
+    // started and loaded the .env, rather than crashing before it read it.
+    expect(output).toContain('jira: get DUMMY-1 failed');
     expect(output).not.toContain('JIRA_BASE_URL is not set');
     expect(output).not.toContain('falling back to cwd');
   });
