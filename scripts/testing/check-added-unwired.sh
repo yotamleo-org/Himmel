@@ -115,6 +115,9 @@ workflow_runs() {
     show "$wf" | RE="(^|[ '\"(=])(\./)?$esc([^A-Za-z0-9._/-]|\$)" awk '
       function ind(s) { match(s, /^ */); return RLENGTH }
       { c = $0; sub(/[ \t]#.*/, "", c) }
+      envk && /^ *[^ #]/ && ind($0) <= envk { envk = 0 }
+      envk { next }
+      /^ *(env|with|defaults|inputs|outputs|secrets):[ \t]*$/ { envk = ind($0); inrun = 0; next }
       /^ *(- +)?run:/ {
         k = index($0, "run:") - 1
         if (substr(c, k + 5) ~ ENVIRON["RE"]) found = 1
@@ -125,7 +128,7 @@ workflow_runs() {
       inrun && ind($0) > k { if (c ~ ENVIRON["RE"]) found = 1; next }
       { inrun = 0 }
       END { exit !found }' && return 0
-  done < <(git ls-tree -r --name-only "$ref" -- .github/workflows)
+  done < <(git ls-tree --name-only "$ref" -- .github/workflows/)
   return 1
 }
 

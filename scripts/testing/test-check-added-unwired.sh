@@ -30,11 +30,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - run: echo hello'
+WF_ENV='name: ci
+on: push
+jobs:
+  wyoming:
+    runs-on: ubuntu-latest
+    steps:
+      - name: x
+        env:
+          run: bash wyoming/test-x.sh'
 
 # mkrepo <dir> <workflow-or-empty> — a base commit, then a branch adding wyoming/test-x.sh
 # (outside the scan roots, no scripts/ci/run-shell-tests.sh) and the workflow when given
 mkrepo() {
-  local R="$1" wf="$2"
+  local R="$1" wf="$2" sub="${3:-}"
   mkdir -p "$R/scripts/testing" "$R/wyoming"
   cp "$CHECK" "$R/scripts/testing/check-added-unwired.sh"
   git init -q -b main "$R" || exit 1
@@ -42,10 +51,10 @@ mkrepo() {
   git -C "$R" config user.name t || exit 1
   git -C "$R" add -A && git -C "$R" commit -q -m "chore: base" || exit 1
   git -C "$R" checkout -q -b feat/x || exit 1
-  printf '#!/usr/bin/env bash\n' > "$R/wyoming/test-x.sh"
+  printf '#!/usr/bin/env bash\n' > "$R/wyoming/test-x.sh" || exit 1
   if [ -n "$wf" ]; then
-    mkdir -p "$R/.github/workflows"
-    printf '%s\n' "$wf" > "$R/.github/workflows/ci.yml"
+    mkdir -p "$R/.github/workflows/$sub" || exit 1
+    printf '%s\n' "$wf" > "$R/.github/workflows/$sub/ci.yml" || exit 1
   fi
   git -C "$R" add -A && git -C "$R" commit -q -m "feat: add wyoming suite" || exit 1
 }
@@ -60,6 +69,16 @@ R="$T/unwired"; mkrepo "$R" "$WF_OTHER"
 rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD wyoming/test-x.sh 2>&1) || rc=$?
 { [ "$rc" -eq 1 ] && grep -q 'UNWIRED wyoming/test-x.sh (suite)' <<<"$out"; } \
   && ok "W2 a suite no workflow names is still UNWIRED" || no "W2 (rc=$rc): $out"
+
+R="$T/env-key"; mkrepo "$R" "$WF_ENV"
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD wyoming/test-x.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED wyoming/test-x.sh (suite)' <<<"$out"; } \
+  && ok "W3 a run key under env: is not a run step" || no "W3 (rc=$rc): $out"
+
+R="$T/examples"; mkrepo "$R" "$WF_RUN" examples
+rc=0; out=$(cd "$R" && bash scripts/testing/check-added-unwired.sh HEAD wyoming/test-x.sh 2>&1) || rc=$?
+{ [ "$rc" -eq 1 ] && grep -q 'UNWIRED wyoming/test-x.sh (suite)' <<<"$out"; } \
+  && ok "W4 a workflow under .github/workflows/examples/ never runs" || no "W4 (rc=$rc): $out"
 
 echo
 echo "pass=$pass fail=$fail"
