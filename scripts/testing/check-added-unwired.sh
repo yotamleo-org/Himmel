@@ -112,7 +112,7 @@ workflow_runs() {
   esc=$(printf '%s' "$1" | sed 's/[][\.*^$+?(){}|]/\\&/g')
   while IFS= read -r wf; do
     case "$wf" in *.yml|*.yaml) ;; *) continue ;; esac
-    show "$wf" | RE="(^|[ '\"(=]|\./)$esc([^A-Za-z0-9._/-]|\$)" awk '
+    show "$wf" | RE="(^|[ '\"(=])(\./)?$esc([^A-Za-z0-9._/-]|\$)" awk '
       function ind(s) { match(s, /^ */); return RLENGTH }
       /^ *(- +)?run:/ {
         k = index($0, "run:") - 1
