@@ -387,10 +387,9 @@ repo_root="${CLAUDE_PROJECT_DIR:-}"
 # lane's bank still has quota. Refusing toward an available-but-unrunnable or
 # available-but-unfunded lane would strand the caller on a command that cannot
 # answer, which is the one path this guard's fail-open invariant forbids.
-# Verify runnability AND funding before refusing; a preferred lane that fails
-# either falls through to the other lane (preference order claudex-before-glm
-# stays intact) rather than straight to a refusal. If neither lane qualifies,
-# no refusal is emitted and control falls through to the bank guard.
+# Verify runnability AND funding before refusing. claudex is the only
+# external lane (glm is dropped); if it does not qualify, no
+# refusal is emitted and control falls through to the bank guard.
 lane_runnable() {
     local id="$1" script="$2"
     if ! command -v bun >/dev/null 2>&1; then
@@ -636,7 +635,6 @@ fi
 
 lane=""
 reg_claudex=0
-reg_glm=0
 if [ "$lane_exempt" != "1" ]; then
     resolver="$repo_root/scripts/lanes/resolve.mjs"
     if ! command -v node >/dev/null 2>&1; then
@@ -649,14 +647,11 @@ if [ "$lane_exempt" != "1" ]; then
         warn "lane resolver returned invalid JSON — continuing to bank guard"
     else
         reg_claudex=$(printf '%s' "$lanes" | jq -r 'if any(.[]; .id == "claudex") then "1" else "0" end' 2>/dev/null || echo 0)
-        reg_glm=$(printf '%s' "$lanes" | jq -r 'if any(.[]; .id == "glm") then "1" else "0" end' 2>/dev/null || echo 0)
         # Readiness before funding: a down-listed lane is skipped before its
         # bank probe is paid for (both probes share the fail-open contract, so
         # the order cannot change a verdict — only the wall-clock).
         if [ "$reg_claudex" = "1" ] && lane_runnable claudex "$repo_root/scripts/telegram/spawn-claudex.ts" && lane_ready claudex && lane_funded claudex; then
             lane="claudex"
-        elif [ "$reg_glm" = "1" ] && lane_runnable glm "$repo_root/scripts/telegram/spawn-glm.ts" && lane_ready glm && lane_funded glm; then
-            lane="glm"
         fi
     fi
 fi
@@ -664,9 +659,6 @@ fi
 case "$lane" in
     claudex)
         replacement="bun scripts/telegram/spawn-claudex.ts '<prompt>' --name <slug> --timeout-mins <n> --effort high"
-        ;;
-    glm)
-        replacement="bun scripts/telegram/spawn-glm.ts '<prompt>' --name <slug> --timeout-mins <n>"
         ;;
     *)
         replacement=""

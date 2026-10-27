@@ -15,7 +15,7 @@ const LIVE = [
   { id: 'opus', label: 'Opus 4.8', class: 'claude-tier' },
   { id: 'fable', label: 'Fable 5', class: 'claude-tier' },
   { id: CLAUDEX.id, label: CLAUDEX.label, class: CLAUDEX.class, ...(CLAUDEX.dormant ? { dormant: CLAUDEX.dormant } : {}) },
-  { id: 'glm', label: 'GLM lane', class: 'impl', dormant: { reason: 'lane dropped by operator ruling 2026-08-19', optInEnv: 'GLM_LANE_OK' } },
+  { id: 'hermes-oneshot', label: 'hermes one-shot', class: 'impl', dormant: { reason: 'impl routes to native Claude subagents only (operator ruling 2026-08-19, HIMMEL-1967); opt in per-dispatch', optInEnv: 'HERMES_ONESHOT_LANE_OK' } },
   { id: 'hermes-critics', label: 'hermes critics', class: 'critic' },
   // An ACTIVE (non-dormant) impl lane: the class check must refuse this
   // independently of dormancy: an impl-class lane id is
@@ -98,7 +98,7 @@ test('an impl-class lane is refused for implementation work even when NOT dorman
 
 test('a dormant lane is refused even though it is present in the live roster (HIMMEL-1967)', () => {
   const { plan, errors } = buildFanoutPlan(
-    [{ id: 'x', type: 'implementation', lane: 'glm' }],
+    [{ id: 'x', type: 'implementation', lane: 'hermes-oneshot' }],
     LIVE,
   );
   assert.deepEqual(plan, []);

@@ -21,9 +21,8 @@ test('bare machine (no keys, no optional CLIs) → only the 4 Claude tiers', () 
   const ids = resolveLanes(REG, ctx()).map((l) => l.id);
   assert.deepEqual(ids, ['haiku', 'sonnet', 'opus', 'fable']);
 });
-test('GLM lane appears with ZAI_API_KEY set', () => {
-  assert.ok(resolveLanes(REG, ctx({ env: { ZAI_API_KEY: 'k' } })).some((l) => l.id === 'glm'));
-  assert.ok(!resolveLanes(REG, ctx()).some((l) => l.id === 'glm'));
+test('dropped glm lane never resolves, even with ZAI_API_KEY set (HIMMEL-7481)', () => {
+  assert.ok(!resolveLanes(REG, ctx({ env: { ZAI_API_KEY: 'k' } })).some((l) => l.id === 'glm'));
 });
 test('retired glm-subagent wrapper lane is absent from the registry', () => {
   assert.ok(!REG.lanes.some((l) => l.id === 'glm-subagent'));
@@ -374,7 +373,7 @@ test('every real registry dormant impl lane shows DORMANT in /lanes text', () =>
   // LANES_REGISTRY pins the child to the tracked lanes.json: without it resolve.mjs
   // layers lanes.local.json over REG and an operator override could re-break this.
   const dormantLanes = REG.lanes.filter((l) => l.class === 'impl' && l.dormant);
-  assert.deepEqual(dormantLanes.map((l) => l.id).sort(), ['codex-exec', 'glm', 'hermes-oneshot', 'openrouter-claude']);
+  assert.deepEqual(dormantLanes.map((l) => l.id).sort(), ['codex-exec', 'hermes-oneshot', 'openrouter-claude']);
   const forcedEnv = { LANES_REGISTRY: join(TEST_DIR, '..', 'lanes.json') };
   const resolvedPathDirs = new Set();
   const skippedPathProbes = [];
@@ -526,7 +525,6 @@ test('every structured context in the registry is valid and carries no legacy de
     assert.ok(['hard-limit', 'compact-continue'].includes(l.context.overflow),
       `${l.id} context.overflow must be explicit`);
   }
-  assert.equal(REG.lanes.find((l) => l.id === 'glm').context.windowTokens, 1000000);
   // Haiku 5.5 has a 1M window (Haiku 4.5 was 200k).
   assert.deepEqual(REG.lanes.find((l) => l.id === 'haiku').context, { windowTokens: 1000000, overflow: 'hard-limit' });
   for (const id of ['claudex', 'codex', 'codex-exec', 'hermes-oneshot']) {
