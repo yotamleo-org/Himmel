@@ -1772,11 +1772,12 @@ case "$tool" in
         # whether this pass also ran g4_clause on every clause.
         normalized=$(sed -e 's/[;|&()`]/\
 /g' -e 's/</ < /g' -e 's/>/ > /g' <<<"$cmd")
-        # ponytail: a command over 60 KB hands its re-runs no skip list (one
-        # exec argument is capped near 128 KB), so they rescan in full;
+        # ponytail: a command over 30000 characters hands its re-runs no skip list (a
+        # multibyte character is up to 4 bytes and one exec argument is capped at
+        # 128 KB), so they rescan in full;
         # upgrade path: a temp file for the list.
         _rs_skip=
-        if [ "${#normalized}" -le 60000 ]; then _rs_skip=${GU_TOKENIZED:-0}$'\n'$normalized; fi
+        if [ "${#normalized}" -le 30000 ]; then _rs_skip=${GU_TOKENIZED:-0}$'\n'$normalized; fi
         RS_SKIP_CLAUSES=$_rs_skip guard_expansion_recheck "${BASH_SOURCE[0]}" "$input" "$cmd" '\.env|\.pem|\.key|\.p12|\.pfx|id_rsa|id_ed25519|credentials|secrets\.ya?ml|\.netrc|\.npmrc|\.aws|\.kube|hosts\.yml|tfstate|auth token|docker/config' || exit 2
 
         # Split the command into CLAUSES at shell separators so a reader and a
