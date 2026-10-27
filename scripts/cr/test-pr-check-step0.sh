@@ -69,13 +69,19 @@ check_rc "$rc3" 0 "T3 set HIMMEL_REPO exits 0 (stub's own exit)"
 # adopter lane must still be told to review against origin/<base> rather than stop.
 REPO_ROOT="$(cd "$DIR/../.." && pwd)"
 adopter="$tmp/adopter"
-git init -q -b main "$adopter" || { echo "FAIL: adopter init"; exit 1; }
-git -C "$adopter" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "init"
-git clone -q --bare "$adopter" "$tmp/adopter-origin.git"
-git -C "$adopter" remote add origin "$tmp/adopter-origin.git"
-git -C "$adopter" fetch -q origin
-git -C "$adopter" checkout -q -b feat/x
-git -C "$adopter" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "feature"
+# shellcheck source=../lib/git-clean.sh
+. "$DIR/../lib/git-clean.sh"
+git_env_scrub
+setup_fail() { echo "FAIL: adopter fixture setup: $1"; exit 1; }
+git init -q -b main "$adopter" || setup_fail init
+git -C "$adopter" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "init" || setup_fail "initial commit"
+git clone -q --bare "$adopter" "$tmp/adopter-origin.git" || setup_fail "bare clone"
+git -C "$adopter" remote add origin "$tmp/adopter-origin.git" || setup_fail "remote add"
+git -C "$adopter" fetch -q origin || setup_fail fetch
+git -C "$adopter" checkout -q -b feat/x || setup_fail "feature checkout"
+git -C "$adopter" -c user.name=t -c user.email=t@example.invalid commit -q --allow-empty -m "feature" || setup_fail "feature commit"
+git -C "$adopter" rev-parse -q --verify refs/remotes/origin/main >/dev/null || setup_fail "origin/main ref missing"
+[ "$(git -C "$adopter" branch --show-current)" = "feat/x" ] || setup_fail "not on feat/x"
 
 out4="$(cd "$adopter" && HIMMEL_REPO="$REPO_ROOT" bash "$SCRIPT" 2>/dev/null)"
 rc4=$?
