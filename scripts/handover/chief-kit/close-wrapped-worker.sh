@@ -487,7 +487,7 @@ fi
 WT="$worktrees"
 # worktree.sh prune reads the git repo of its cwd, so run the prune from the repo that registers this worktree
 # (an adopter's worktree is not registered in the himmel checkout). Falls back to the cwd when the repo is gone.
-wt_repo="${WT%%/.claude/worktrees/*}"
+wt_repo="${WT%/.claude/worktrees/*}"
 [ -d "$wt_repo" ] || wt_repo="$PWD"
 
 # the TERM'd session may still be inside the worktree when the
@@ -498,7 +498,7 @@ wt_repo="${WT%%/.claude/worktrees/*}"
 prune_tries=${CLOSE_WRAPPED_WORKER_PRUNE_RETRIES:-3}
 prune_try=0
 while :; do
-    out=$(cd "$wt_repo" && bash "$CLEAN_SH" --only "$WT" --only-allow-unmerged 2>&1)
+    out=$(unset GIT_DIR GIT_WORK_TREE GIT_COMMON_DIR GIT_INDEX_FILE; cd "$wt_repo" && bash "$CLEAN_SH" --only "$WT" --only-allow-unmerged 2>&1)
     rc=$?
     case "$out" in *'in use'*) ;; *) break ;; esac
     [ "$rc" -ne 0 ] || break

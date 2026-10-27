@@ -515,7 +515,7 @@ def render_rm_brief(l, ctx):
 
 def render_brief(l, ctx):
     n, keys = l['label'], l['keys']
-    gets =' and '.join('`JIRA_PROJECT_KEY=%s node %s/scripts/jira/dist/index.js get %s`' % (k.split('-')[0], ctx['kit'], k) for k in keys)
+    gets =' and '.join('`JIRA_PROJECT_KEY=%s node %s get %s`' % (k.split('-')[0], shlex.quote(ctx['kit'] + '/scripts/jira/dist/index.js'), k) for k in keys)
     others = ', '.join('%s (%s)' % (x['label'], x['scope_short']) for x in ctx['workers'] if x['label'] != n and x.get('kind') != 'rm')
     also = ('; ' + ctx['also_live']) if ctx['also_live'] else ''
     return """---
@@ -666,6 +666,7 @@ def main():
         a = ap.parse_args()
     except SystemExit as e:
         sys.exit(2 if e.code else 0)
+    a.repo = os.path.abspath(a.repo)  # the launcher runs from any cwd, so its worktree paths must be absolute
     if a.console_old is not None:
         sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'lib'))
         import env_alias
