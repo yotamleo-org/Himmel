@@ -457,6 +457,23 @@ unwatched_line "1,unwatched=N302+N303+N304"
 wait_exit "$WPID"
 check "(7811-2) another unwatched worker joining wakes at once" "WAKE unwatched N302+N303+N304" "$(head -n1 "$WORK/w7811b.out")"
 
+start "$I" "$WORK/w7811d.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-4) no baseline heartbeat"
+wait_exit "$WPID"
+check "(7811-4) the same set is quiet before the re-wake window ends" "running" "$rc"
+touch -d '2 hours ago' "$I.wait.unwatched"
+wait_exit "$WPID"
+check "(7811-4) the same set wakes again after the re-wake window" "0" "$rc"
+check "(7811-4) the re-wake names the labels" "WAKE unwatched N302+N303+N304" "$(head -n1 "$WORK/w7811d.out")"
+
+unwatched_line "1"
+start "$I" "$WORK/w7811e.out" --workers "N1.md"
+wait_hb "$I" || fail "(7811-5) no baseline heartbeat"
+n=0
+while [ "$n" -lt 50 ] && [ -e "$I.wait.unwatched" ]; do sleep 0.1; n=$((n + 1)); done
+check "(7811-5) a tick line that drops unwatched= clears the marker" "" "$([ -e "$I.wait.unwatched" ] && echo present)"
+kill "$WPID" 2>/dev/null; wait "$WPID" 2>/dev/null
+
 reset_stub
 I="$(new_inbox w7811c)"
 start "$I" "$WORK/w7811c.out" --workers "N1.md"
