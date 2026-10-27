@@ -92,7 +92,7 @@ case "$out4" in *"pr-check-context: no_marker_review=yes"*) nm=yes ;; *) nm=no ;
 check "$nm" "yes" "T5 adopter lane with no marker prints no_marker_review=yes"
 
 # T6: on the default branch step 0 still refuses (exit 4), no marker or not.
-git -C "$adopter" checkout -q main
+git -C "$adopter" checkout -q main || setup_fail "main checkout"
 (cd "$adopter" && HIMMEL_REPO="$REPO_ROOT" bash "$SCRIPT" >/dev/null 2>&1)
 rc6=$?
 check_rc "$rc6" 4 "T6 adopter default branch still refused with exit 4"
