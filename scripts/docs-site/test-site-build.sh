@@ -323,9 +323,18 @@ check "criterion 4: the renderer is pele's lazy entry" grep -q '_astro/lazy\.[^"
 check "criterion 4: the lazy chunk is pele" grep -lq -- '--pele-bg' "$dist"/_astro/lazy.*.js
 check "criterion 4: pele's colours point at Starlight's tokens" grep -q -- '--pele-bg: var(--sl-color-bg)' "$page_js"
 check "criterion 4: pele's font points at Starlight's font" grep -q -- '--pele-font: var(--sl-font)' "$page_js"
-for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json; do
+for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json guide/how-a-change-ships/how-a-change-ships.js guide/how-a-change-ships/how-a-change-ships.css; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
+# every standalone docs/ page and the site routes render headless from astro preview: 200, every referenced asset 200,
+# the page's h1 from its docs/ source, no uncaught console error. A page missing from HTML_PASSTHROUGH 404s here.
+standalone=$(find "$repo/docs" -name '*.html') || standalone=''
+check "criterion 4: the docs/ standalone pages were listed" test -n "$standalone"
+pw="$repo/scripts/config-ui/tests/e2e/node_modules/.bin/playwright"
+check "criterion 4: the playwright binary is present" test -x "$pw"
+# the file filter is a regex: pass the bare name, a worktree path holds '+' (fix+himmel-…)
+render() { NODE_PATH="$repo/scripts/config-ui/tests/e2e/node_modules" "$pw" test -c "$repo/scripts/docs-site/e2e/j1.config.ts" render.e2e.ts; }
+check "criterion 4: every built page and standalone docs/ page renders headless (render.e2e.ts)" render
 
 # --- IA: sidebar groups equal the F1 list and the v5 frame 1 tree, hero Home with the F2 copy and CTA
 groups=$(node --input-type=module -e "

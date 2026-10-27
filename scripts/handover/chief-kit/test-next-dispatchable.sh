@@ -29,8 +29,10 @@ export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 export HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger-none.jsonl"
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
 
-mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>
-    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "x"\npriority: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: %s\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s\n' \
+mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>; MK_BARE=1 leaves the body without a DoD and Proof tail
+    local tail='\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n'
+    [ "${MK_BARE:-0}" = 1 ] && tail=''
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "x"\npriority: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: %s\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s'"$tail"'\n' \
         "$1" "$2" "$3" "$4" "$5" "$6" "$1" "$7" "$8" > "$M/$1.md"
 }
 retype() { # <fixture file> <type>: portable in-place edit (no sed -i: BSD and GNU differ)
@@ -719,7 +721,10 @@ if [ "\$2" = list ]; then
 else awk -F'\t' -v n="\$3" '\$1 == n {print \$2}' "$RP/pr-files.tsv"; fi
 EOF
 chmod +x "$WORK/replay-gh"
-rp="$(NEXT_DISPATCH_MIRROR="$RP/mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/replay-gh" bash "$SUT" --no-classify --top 80 --doc "$RP/chief.md" --workers-from "$WORK/replay-fleet.json" 2>/dev/null)"
+# the frozen tickets predate the proof gate: give each a DoD and Proof tail on a copy, so the replay still tests the fences
+cp -r "$RP/mirror" "$WORK/replay-mirror"
+for f in "$WORK"/replay-mirror/HIMMEL/*.md; do printf '\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' >> "$f"; done
+rp="$(NEXT_DISPATCH_MIRROR="$WORK/replay-mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/replay-gh" bash "$SUT" --no-classify --top 80 --doc "$RP/chief.md" --workers-from "$WORK/replay-fleet.json" 2>/dev/null)"
 has "replay: a ticket the 'Do not touch' fence of a live worker hid is offered (HIMMEL-6034)" "$rp" "HIMMEL-6034	"
 lacks "replay: a directory-wide scope described in parentheses still holds its directory (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
 lacks "replay: a ticket whose key is a live worker's is not offered (HIMMEL-4999)" "$rp" "HIMMEL-4999	"
@@ -1062,6 +1067,28 @@ lacks "soft ON: and prints no SOFT row" "$soft_nohead" "SOFT"
 mkdir -p "$WORK/conf-on"; printf 'HIMMEL_FLAG_CHAIN_SOFT_EDGES=1\n' > "$WORK/conf-on/himmel.conf"
 soft_conf="$( export HIMMEL_CONFIG_DIR="$WORK/conf-on"; run31 )"
 has "soft: himmel.conf turns it on" "$soft_conf" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
+
+# --- a ticket with no DoD or no Proof is refused at dispatch. The
+# checker is marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh; the
+# refusal prints the ticket for the chief to fix first and parks nothing. -----
+M="$WORK/jira-mirror-proof/HIMMEL"; mkdir -p "$M"
+MK_BARE=1 mk HIMMEL-9101 "To Do" High '[]' '["v1.0.1"]' '[]' "has a DoD but no Proof" $'Edit scripts/lib/proof-a.sh.\n\nDoD\n- the row is green\n'
+MK_BARE=1 mk HIMMEL-9102 "To Do" High '[]' '["v1.0.1"]' '[]' "has neither DoD nor Proof" "Edit scripts/lib/proof-b.sh."
+mk HIMMEL-9103 "To Do" High '[]' '["v1.0.1"]' '[]' "has both" "Edit scripts/lib/proof-c.sh."
+MK_BARE=1 mk HIMMEL-9104 "To Do" High '[]' '["v1.0.1"]' '[]' "Proof is a placeholder" $'Edit scripts/lib/proof-d.sh.\n\nDoD\n- the row is green\n\nProof\nTBD\n'
+printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-proof/HIMMEL.versions.tsv"
+proof_run() { NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" HANDOVER_DIR="$WORK/proof-handover" bash "$SUT" --no-classify --top 20 "$@" 2>/dev/null; }
+proof_out="$(proof_run)"
+has "proof: a ticket with DoD and Proof is listed" "$proof_out" "HIMMEL-9103	"
+lacks "proof: a ticket with no Proof section is not listed" "$proof_out" "HIMMEL-9101	"
+lacks "proof: a ticket with neither section is not listed" "$proof_out" "HIMMEL-9102	"
+lacks "proof: a placeholder Proof is not a Proof" "$proof_out" "HIMMEL-9104	"
+has "proof: the refusal names the missing section" "$proof_out" "# NO-PROOF HIMMEL-9101 missing Proof"
+has "proof: the refusal names both missing sections" "$proof_out" "# NO-PROOF HIMMEL-9102 missing DoD, Proof"
+has "proof: the refusal carries the title for the chief to fix" "$proof_out" "has a DoD but no Proof"
+lacks "proof: a ticket that passes gets no refusal line" "$proof_out" "NO-PROOF HIMMEL-9103"
+has "proof --why: the drop reason is the missing section" "$(proof_run --why)" "# drop HIMMEL-9101 proof missing: Proof"
+[ ! -e "$WORK/proof-handover" ] && pass "proof: the read-only listing parks nothing in the handover intake queue" || fail "proof: the listing wrote to the handover dir"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

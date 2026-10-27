@@ -30,10 +30,16 @@ has the pitch, this doc has the controls. To change one thing, go straight to
 Find the group for what you want to change, then the row. Each row says where
 the setting lives (its scope and the file or command that stores it), when it
 takes effect, how to confirm it did, how to undo it, and which file in this
-repo reads it. Paths are relative to the himmel checkout. A `.env` row means
-the `.env` at the root of the repo's primary checkout (copy
-[`.env.example`](../.env.example)); "bridged" means the reader loads that key
-from `.env` itself, while a value exported in the launching shell still wins.
+repo reads it. Paths are relative to the himmel checkout. A `himmel.conf` row
+means `~/.himmel/himmel.conf`, the home of behaviour settings (template:
+[`himmel.conf.example`](setup/himmel.conf.example)); a value exported in the
+launching shell still wins. A `config.json` row means the `"policy"` section of
+`~/.himmel/config.json`, the home of gate policy, which ignores the shell. A
+`.env` row means the `.env` at the root of the repo's primary checkout (copy
+[`.env.example`](../.env.example)), which holds secrets; "bridged" means the
+reader loads that key from `.env` itself, while a value exported in the
+launching shell still wins. Older installs keep behaviour and policy keys in
+`.env`; they still work there, with a `DEPRECATED` notice.
 Which loader reads which `.env` keys is in
 [`.env` consumer boundaries](#env-consumer-boundaries); the numbered sections
 after this one are the full map.
@@ -51,16 +57,16 @@ after this one are the full map.
 
 | Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
 |---|---|---|---|---|---|
-| Critic tier: `none` (Claude only, no external spend), `free` or `paid` | repo · `CR_PROFILE=<tier>` in `.env` (bridged) | next `/pr-check` | `bash scripts/cr/critic-panel.sh --check` probes the critics of the selected tier | remove the line (tier `free`) | `scripts/cr/critic-panel.sh` |
-| Require at least one non-Claude critic | repo · `CR_REQUIRE_CROSS_MODEL=1` in `.env` (bridged) | next clear of the review-owed marker | a Claude-only review no longer clears the marker | remove the line | `scripts/cr/clear-review-marker.sh` |
+| Critic tier: `none` (Claude only, no external spend), `free` or `paid` | machine · `CR_PROFILE=<tier>` in `~/.himmel/himmel.conf` | next `/pr-check` | `bash scripts/cr/critic-panel.sh --check` probes the critics of the selected tier | remove the line (tier `free`) | `scripts/cr/critic-panel.sh` |
+| Require at least one non-Claude critic | machine · `"CR_REQUIRE_CROSS_MODEL": "1"` under `"policy"` in `~/.himmel/config.json` (the shell cannot set it) | next clear of the review-owed marker | a Claude-only review no longer clears the marker | remove the key | `scripts/cr/clear-review-marker.sh` |
 | Per-machine reviewer overlay (add, change or drop a reviewer row) | machine · `critics.local.json` in `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/`, else the primary checkout's `scripts/cr/` (gitignored) | next `/pr-check` and next merge-gate check | `bash scripts/cr/critic-panel.sh --check`; field rules in [Reviewer modes](#reviewer-modes) | delete the file | `scripts/lib/review-merge-gate.sh` |
 
 ### Auto-ship steps
 
 | Setting | Scope · store | Takes effect | Verify | Reverse | Read by |
 |---|---|---|---|---|---|
-| Steps a session runs unasked at a completion point (for example `execute,prcheck,pr`) | repo · `HIMMEL_INITIATIVE=<steps>` in `.env` (bridged) | next session start | the session opens with `HIMMEL_INITIATIVE is active. Active steps: …` | remove the line; for one repo only, `"env": { "HIMMEL_INITIATIVE": "" }` in its `.claude/settings.json` | `scripts/hooks/inject-initiative.sh` |
-| The unattended (AFK) step set | repo · `HIMMEL_AFK=1` plus `HIMMEL_INITIATIVE_AFK=<steps>` in `.env` (bridged) | next session start | the session opens with `HIMMEL_INITIATIVE_AFK is active. Active steps: …` | set `HIMMEL_AFK=0` or remove both lines | `scripts/hooks/inject-initiative.sh` |
+| Steps a session runs unasked at a completion point (for example `execute,prcheck,pr`) | machine · `HIMMEL_INITIATIVE=<steps>` in `~/.himmel/himmel.conf` | next session start | the session opens with `HIMMEL_INITIATIVE is active. Active steps: …` | remove the line; for one repo only, `"env": { "HIMMEL_INITIATIVE": "0", "HIMMEL_INITIATIVE_AFK": "0" }` in its `.claude/settings.json` | `scripts/hooks/inject-initiative.sh` |
+| The unattended (AFK) step set | machine · `HIMMEL_AFK=1` plus `HIMMEL_INITIATIVE_AFK=<steps>` in `~/.himmel/himmel.conf` | next session start | the session opens with `HIMMEL_INITIATIVE_AFK is active. Active steps: …` | set `HIMMEL_AFK=0` or remove both lines | `scripts/hooks/inject-initiative.sh` |
 
 The step vocabulary and the AFK step set: **Initiative & autonomy** in
 [§4.1](#41-env--the-file-based-config); what can act without you:
@@ -109,7 +115,7 @@ install profile or scope: [Install profiles](setup/profiles/README.md).
 | Release channel: `stable` or `pre` | machine · `channel` in `install-profile.json` (a new install records `stable`) | next update | `bash scripts/himmel-update.sh --check` reports the channel's newest tag | delete the `channel` key (plain `git pull --ff-only`) | `scripts/himmel-update.sh` |
 | Release channel for one run | session · `HIMMEL_UPDATE_CHANNEL=stable` or `=pre` before the command | that run | `--check` reports the channel's newest tag | omit it | `scripts/himmel-update.sh` |
 | Installation scope: `project` or `user` | machine · `node scripts/himmelctl/bin.js scope set <project\|user>` (`--dry-run` previews) | when the command finishes | `node scripts/himmelctl/bin.js scope get` | `scope set` to the other value | `scripts/himmelctl/bin.js` |
-| Your handle | machine · `USER_SLUG=<kebab-case>` in `.env` (bridged) | next handover or worktree command | new handover files land under your handle | remove the line (back to a slug of `git config user.name`) | `scripts/lib/user-slug.sh` |
+| Your handle | machine · `USER_SLUG=<kebab-case>` in `~/.himmel/himmel.conf` | next handover or worktree command | new handover files land under your handle | remove the line (back to a slug of `git config user.name`) | `scripts/lib/user-slug.sh` |
 
 Release channel detail: [updating.md](setup/updating.md#release-channels).
 
@@ -480,6 +486,19 @@ loop or use `run_in_background`.
 
 ### 4.1 `.env` — the file-based config
 
+**Which file holds a key.** `.env` is for secrets. Behaviour settings
+(`HANDOVER_DIR`, `USER_SLUG`, `CR_PROFILE`, the `HIMMEL_INITIATIVE` family and
+the other non-secret keys the tables below mark `himmel.conf`) belong in
+`~/.himmel/himmel.conf`; a `himmel.conf.local` beside it overrides them for one
+machine. Gate policy (`CR_REQUIRE_CROSS_MODEL`, `CR_FLOOR_FALLBACK`,
+`ARMAUTOMERGE`) belongs in `~/.himmel/config.json` under `"policy"`. A
+behaviour or policy key still set in `.env` keeps working, with a `DEPRECATED`
+notice; `bash scripts/setup/migrate-env.sh --dry-run` previews the move.
+Templates: [`himmel.conf.example`](setup/himmel.conf.example) and
+[`himmel-config.example.json`](setup/himmel-config.example.json); the full
+layer table and who wins:
+[config-layers.md](internals/config-layers.md).
+
 [`.env.example`](../.env.example) is the complete, commented per-key map —
 copy it to `.env` (gitignored) and fill what you use. Its four
 groups describe **how each key reaches code**, which is the #1 trap:
@@ -487,24 +506,30 @@ groups describe **how each key reaches code**, which is the #1 trap:
 | Group | How it reaches code | Examples |
 |---|---|---|
 | TOOL-LOADED | a himmel CLI reads `.env` directly (via `scripts/lib/load-dotenv.sh`) — no export needed | `JIRA_*`, `BITBUCKET_*` |
-| PROCESS-ENV | scripts read the **live environment**; a value only in `.env` is invisible unless the key is one of the explicitly bridged exceptions listed in the file's header (e.g. `HANDOVER_DIR`, `USER_SLUG`, `CR_PROFILE`, the `HIMMEL_INITIATIVE` family) | `LUNA_VAULT_PATH`, `AFK_*` |
+| PROCESS-ENV | scripts read the **live environment**; a value only in `.env` is invisible unless the key is one of the explicitly bridged exceptions listed in the file's header. The bridged behaviour keys (e.g. `HANDOVER_DIR`, `USER_SLUG`, `CR_PROFILE`, the `HIMMEL_INITIATIVE` family) now belong in `himmel.conf`, which the same loader reads before `.env` | `LUNA_VAULT_PATH`, `AFK_*` |
 | SESSION-ONLY | per-launch bypasses/opt-ins, inventoried in the file. For **Claude Code hook** bypasses, set in the shell that **launches** `claude` — a per-call prefix never reaches those hooks. The **git-gate** skips listed in the same section (`SKIP_CR`, `PLATFORMS_TESTED_OK`, …) run in your own shell, so a per-command prefix (`SKIP_CR=1 git push`) works and is the preferred, one-push scope | `EDIT_ON_MAIN_OK`, `READ_SECRETS_OK` |
 | EXTERNAL-TOOLS | the key lives in the tool's *own* `.env` (hermes: `~/.hermes/.env`, or `$HERMES_HOME/.env`; Telegram bridge: `~/.claude/channels/telegram/.env`) — setting it in the repo `.env` does nothing | `TELEGRAM_BOT_TOKEN` (bridge copy), hermes provider keys |
 
 The loader (`scripts/lib/load-dotenv.sh`) resolves the **primary checkout's**
 `.env` even from a worktree, never `source`s the file, and never overrides a
-value already exported in the live environment — so a bridged `.env` value
+non-empty value already exported in the live environment — so a bridged `.env` value
 sits at the *bottom* of the precedence chain: launching shell > project
-`settings.json` `env` > user `settings.json` `env` > the `.env` line.
+`settings.json` `env` > user `settings.json` `env` > `himmel.conf.local` >
+`himmel.conf` > the `.env` line. `load_policy` skips the live environment for
+gate-policy keys: `config.json` `"policy"` > the `.env` line > unset
+(`merge-on-green.sh` is the one exception: it reads `ARMAUTOMERGE` from the
+live environment only).
 
 Minimum config: nothing is strictly required — `USER_SLUG` is recommended
 (falls back to slugified `git config user.name`), and the four `JIRA_*` keys
 only if you use Jira. Everything else in this section is opt-in.
 
 The tables below organize every operator-meaningful knob by what it controls.
-"Set in" uses: `.env` (tool-loaded), `.env` (bridged), `env` (live
-environment: export, or `settings.json` `"env"` block), `shell` (launching
-shell only), `own .env` (the external tool's file).
+"Set in" uses: `himmel.conf` (`~/.himmel/himmel.conf`; a live-env value
+wins), `config.json` `.policy` (`~/.himmel/config.json` under `"policy"`; the
+live environment is ignored), `.env` (tool-loaded), `.env` (bridged), `env`
+(live environment: export, or `settings.json` `"env"` block), `shell`
+(launching shell only), `own .env` (the external tool's file).
 
 `.env` (bridged) marks the exceptions to the PROCESS-ENV trap: the reader is
 a script that consumes the **live environment**, but it explicitly bridges
@@ -518,7 +543,10 @@ each bridged var's own comment there names its bridging reader.
 
 Each loader names its keys explicitly. The shared shell
 `load_dotenv [--root DIR] KEY...` exports **nothing without a key list**;
-existing non-empty shell values still win. Jira/Bitbucket keep their existing
+existing non-empty shell values still win. For a behaviour key it reads
+`himmel.conf.local` and `himmel.conf` before `.env`; gate-policy keys come
+through `load_policy`, from `config.json` `"policy"` first. Jira takes the
+first non-empty value (an exported empty string does not win); Bitbucket keeps
 nullish precedence (an exported empty string wins). Python credential readers
 keep live values and disable dotenv interpolation. These boundaries govern
 what a file adds, not credentials the launching shell already exported.
@@ -575,11 +603,13 @@ for the future API lane and is not exported by these loaders.
 
 | Knob | Default | Set in | Read by |
 |---|---|---|---|
-| `USER_SLUG` | slugified `git user.name` | `.env` (bridged) | handover bucket + worktree naming (`scripts/lib/user-slug.sh`) |
-| `HANDOVER_DIR` | inline `<repo>/handovers/` | `.env` (bridged) | `scripts/lib/handover-path.sh` — external handover state repo (Mode B) |
+| `USER_SLUG` | slugified `git user.name` | `himmel.conf` | handover bucket + worktree naming (`scripts/lib/user-slug.sh`) |
+| `HANDOVER_DIR` | inline `<repo>/handovers/` | `himmel.conf` | `scripts/lib/handover-path.sh` — external handover state repo (Mode B) |
 | `HANDOVER_DIRECT_MAIN` / `HANDOVER_PR_AUTO` / `HANDOVER_PR_BASE` | branched-PR flow ON | env | handover PR flow (`.claude/commands/handover-pr-open.md`) |
-| `JIRA_BASE_URL` / `JIRA_EMAIL` / `JIRA_API_TOKEN` / `JIRA_PROJECT_KEY` | — | `.env` | the Jira CLI (`scripts/jira/`); these four are all it needs — no cloud ID |
-| `JIRA_PROJECTS`, `JIRA_BOARD_ID`, `JIRA_SEVERITY_FIELD`, `JIRA_CLOUD_ID` | optional | `.env` | Jira CLI extras; `JIRA_CLOUD_ID` only for the optional Atlassian MCP |
+| `JIRA_BASE_URL` / `JIRA_API_TOKEN` | — | `.env` | the Jira CLI (`scripts/jira/`); with the two identifiers below, these four are all it needs — no cloud ID |
+| `JIRA_EMAIL` / `JIRA_PROJECT_KEY` | — | `himmel.conf` | the Jira CLI's non-secret identifiers |
+| `JIRA_PROJECTS`, `JIRA_CLOUD_ID` | optional | `himmel.conf` | Jira CLI extras; `JIRA_CLOUD_ID` only for the optional Atlassian MCP |
+| `JIRA_BOARD_ID`, `JIRA_SEVERITY_FIELD` | optional | `.env` | Jira CLI extras |
 | `BITBUCKET_EMAIL` / `BITBUCKET_API_TOKEN` | optional | `.env` | Bitbucket forge CLI (`scripts/bitbucket/`) |
 | `CONFLUENCE_EMAIL` / `CONFLUENCE_API_TOKEN` | falls back to `JIRA_*` | `.env` | Confluence ops in the Jira CLI |
 | `ORGANIZATION_ID` | legacy — **no active reader** (self-flagged in the file) | `.env` | nothing in-repo |
@@ -620,12 +650,12 @@ title.
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `CR_PROFILE` | unset (see Effect) | `.env` (bridged) | which critic tier `/pr-check` runs. `none` = claude-only, panel skipped — the guaranteed no-external-spend setting. Unset → tier `free`, which (with no free critic row in `scripts/cr/critics.json` today) falls back to the paid codex anchor *where that lane is configured*. A lane without its key/CLI can't run and fails open — open onto the **mandatory claude-only floor**, never onto "no review": when every cross-model critic is absent or produced nothing, `/pr-check` performs the full diff review itself and the gate still requires that recorded review to clear (`scripts/cr/critic-panel.sh` exit contract — all critics failed → caller falls back claude-only; the backstop + hatch invariants live in `.claude/commands/pr-check.md` step 3.5). So "no codex" = a Claude self-review, not zero CR. The fail-open is for **absent** lanes only — a lane that *ran* and errored records `unavailable`, and if that failed attempt is the sole evidence at the HEAD the gate stays closed (`scripts/cr/clear-cr-marker.sh` exit 14). To make the Claude-alone floor *insufficient*, set `CR_REQUIRE_CROSS_MODEL` (two rows down). Note: a lane key configured for *any* purpose (e.g. `CLIPROXY_API_KEY` for claudex delegation) makes the paid anchor runnable — set `CR_PROFILE=none` if you want delegation without paid review critics |
-| `CR_CLAUDE_AGENTS` | OFF | `.env` (bridged) | Claude reviewers inside `/pr-check`: `1` = the opt-in Claude-agent fan-out; `blast-radius` = the blast-radius pass on any diff; `blast-radius-off` = skip the pass on guard/gate diffs. A guard/gate diff gets the pass by default, and the review marker does not clear until a `ledger-append.sh blast` row records it, or an `--status off --reason` row records why it was skipped (`scripts/cr/clear-review-marker.sh` gate 4f) |
-| `CR_REQUIRE_CROSS_MODEL` | OFF | `.env` (bridged) | opt-in cross-model floor: require ≥1 non-Claude critic `avail … ok` at the SHA before the review-owed marker clears — makes the claude-only floor above insufficient. Bridged from `.env` by `scripts/cr/clear-cr-marker.sh` itself (gate 3b); a live-env value wins |
+| `CR_PROFILE` | unset (see Effect) | `himmel.conf` | which critic tier `/pr-check` runs. `none` = claude-only, panel skipped — the guaranteed no-external-spend setting. Unset → tier `free`, which (with no free critic row in `scripts/cr/critics.json` today) falls back to the paid codex anchor *where that lane is configured*. A lane without its key/CLI can't run and fails open — open onto the **mandatory claude-only floor**, never onto "no review": when every cross-model critic is absent or produced nothing, `/pr-check` performs the full diff review itself and the gate still requires that recorded review to clear (`scripts/cr/critic-panel.sh` exit contract — all critics failed → caller falls back claude-only; the backstop + hatch invariants live in `.claude/commands/pr-check.md` step 3.5). So "no codex" = a Claude self-review, not zero CR. The fail-open is for **absent** lanes only — a lane that *ran* and errored records `unavailable`, and if that failed attempt is the sole evidence at the HEAD the gate stays closed (`scripts/cr/clear-cr-marker.sh` exit 14). To make the Claude-alone floor *insufficient*, set `CR_REQUIRE_CROSS_MODEL` (two rows down). Note: a lane key configured for *any* purpose (e.g. `CLIPROXY_API_KEY` for claudex delegation) makes the paid anchor runnable — set `CR_PROFILE=none` if you want delegation without paid review critics |
+| `CR_CLAUDE_AGENTS` | OFF | `himmel.conf` | Claude reviewers inside `/pr-check`: `1` = the opt-in Claude-agent fan-out; `blast-radius` = the blast-radius pass on any diff; `blast-radius-off` = skip the pass on guard/gate diffs. A guard/gate diff gets the pass by default, and the review marker does not clear until a `ledger-append.sh blast` row records it, or an `--status off --reason` row records why it was skipped (`scripts/cr/clear-review-marker.sh` gate 4f) |
+| `CR_REQUIRE_CROSS_MODEL` | OFF | `config.json` `.policy` | opt-in cross-model floor: require ≥1 non-Claude critic `avail … ok` at the SHA before the review-owed marker clears — makes the claude-only floor above insufficient. Read with `load_policy` by `scripts/cr/clear-review-marker.sh` (gate 3b); a live-env value is ignored |
 | `CRITIC_TIMEOUT_SECS` / `CRITIC_PARALLEL` / `CRITIC_PANEL_TIERS` / `CR_TRIVIALITY_OVERRIDE` / `CR_USAGE_LOG` | 240s / sequential / `free` / heuristic / off | env | panel cost/scope tuning (`scripts/cr/critic-panel.sh`, `.claude/commands/pr-check.md`) |
 | `scripts/cr/critics.local.json` | — | file (gitignored) | per-machine critic overlay, merged field-wise per slug over `critics.json` (as committed on `main`); `"drop": true` removes a base row that is not `required`. Found in `${HIMMELCTL_CACHE_DIR:-~/.claude/himmel}/` first, then the primary checkout's `scripts/cr/` (a linked worktree reads the primary's). See [Reviewer modes](#reviewer-modes) |
-| `ARMAUTOMERGE` | OFF | env | arms `merge-on-green.sh` (full condition list in [§3.3](#33-merge--publish-gates)); admits a confirmed-private repo, or the configured public origin under live-verified branch protection — `enforce_admins` enabled and required status checks present. `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is the policy refusal: the chief-GO gate, or a solo-mode refusal when `himmel.mergeMode` is set); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 |
+| `ARMAUTOMERGE` | OFF | `config.json` `.policy` (the default `arm-resume.sh` arms with); env for one `merge-on-green.sh` run | arms `merge-on-green.sh` (full condition list in [§3.3](#33-merge--publish-gates)); admits a confirmed-private repo, or the configured public origin under live-verified branch protection — `enforce_admins` enabled and required status checks present. `merge-on-green.sh` exits 18 (GitHub-blocked) on a fresh pre-merge `BLOCKED` + `REVIEW_REQUIRED` policy read after green checks, an explicit GitHub base-branch policy / required-check / ruleset rejection at merge time, or `check-ci.sh` exit 5 (a required check never reported, or the required set is unreadable) — once, with one operator DM per (repo, PR, head) and no poll or retry (exit 17 is the policy refusal: the chief-GO gate, or a solo-mode refusal when `himmel.mergeMode` is set); if no automation identity can satisfy the required review, the merge is a human admin action; on this repo the operator relaxed `protect-main` on 2026-09-09 |
 | `MERGE_ON_GREEN_LOG` | `<gitdir>/merge-on-green.log` | env | auto-merge audit log path |
 
 <a id="reviewer-modes"></a>
@@ -701,7 +731,7 @@ The knobs above are general; this is the setting this repo actually runs.
 CodeRabbit is the GitHub App ONLY** — there is no local CodeRabbit pass to
 configure. The App reviews the PR after `gh pr create` and after each push, and
 `scripts/check-ci.sh` reads its verdict: a CONCLUDED commit status at the head
-plus zero unresolved review threads. In `.env`:
+plus zero unresolved review threads. In `~/.himmel/himmel.conf`:
 
 ```sh
 CR_PROFILE=paid            # select the paid panel (codex)
@@ -751,8 +781,8 @@ default subset:
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `HIMMEL_INITIATIVE` | OFF | `.env` (bridged) | interactive-profile auto-ship step set (above) |
-| `HIMMEL_AFK` + `HIMMEL_INITIATIVE_AFK` (old: `HIMMEL_OVERNIGHT` + `HIMMEL_INITIATIVE_OVERNIGHT`) | OFF | `.env` (bridged) | switches to the afk profile + its auto-ship step set; a set falsy `HIMMEL_AFK` wins over `HIMMEL_OVERNIGHT=1` |
+| `HIMMEL_INITIATIVE` | OFF | `himmel.conf` | interactive-profile auto-ship step set (above) |
+| `HIMMEL_AFK` + `HIMMEL_INITIATIVE_AFK` (old: `HIMMEL_OVERNIGHT` + `HIMMEL_INITIATIVE_OVERNIGHT`) | OFF | `himmel.conf` | switches to the afk profile + its auto-ship step set; a set falsy `HIMMEL_AFK` wins over `HIMMEL_OVERNIGHT=1` |
 | `AFK_PROJECT` / `AFK_STATUS` / `AFK_LIMIT` / `AFK_PRIORITY` (old: `OVERNIGHT_*`) | `HIMMEL` / `To Do,In Progress` / 5 / `key-desc` | env | `/afk-shift` ticket-plan defaults (`scripts/afk/build-plan.sh`) |
 | `AFK_STOP_DIR` (old: `OVERNIGHT_STOP_DIR`) | `~/.claude` | env | where the `/stop` halt marker lives (`scripts/afk/stop-marker.sh`) |
 
@@ -836,17 +866,17 @@ the statusline segment):
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `HIMMEL_WHERE_ARE_WE` | ON for the statusline segment, OFF for the SessionStart inject (split polarity — noted in `.env.example`) | `.env` (bridged) | repo-state digest surfacing |
-| `HIMMEL_WHERE_ARE_WE_STALE_HOURS` / `_ROLLUP_TTL` / `_SEG_TIMEOUT` | 6h / 900s / 5s | `.env` (bridged) / env / env | staleness + refresh tuning |
-| `HIMMEL_DOC_FRESHNESS` | OFF | `.env` (bridged) | doc-freshness advisories (`advise,session,morning` subset) |
-| `HIMMEL_WORKTREE_NUDGE` / `HIMMEL_JIRA_NUDGE` | OFF | `.env` (bridged) | worktree-before-edit nudge / "you never touched Jira" SessionEnd relay |
+| `HIMMEL_WHERE_ARE_WE` | ON for the statusline segment, OFF for the SessionStart inject (split polarity — noted in `.env.example`) | `himmel.conf` | repo-state digest surfacing |
+| `HIMMEL_WHERE_ARE_WE_STALE_HOURS` / `_ROLLUP_TTL` / `_SEG_TIMEOUT` | 6h / 900s / 5s | `himmel.conf` / env / env | staleness + refresh tuning |
+| `HIMMEL_DOC_FRESHNESS` | OFF | `himmel.conf` | doc-freshness advisories (`advise,session,morning` subset) |
+| `HIMMEL_WORKTREE_NUDGE` / `HIMMEL_JIRA_NUDGE` | OFF | `himmel.conf` / `.env` (bridged) | worktree-before-edit nudge / "you never touched Jira" SessionEnd relay |
 | `UPDATE_CHECK_INTERVAL` | 4h | env | SessionStart update-check throttle |
 
 **Vault & misc**
 
 | Knob | Default | Set in | Effect |
 |---|---|---|---|
-| `LUNA_VAULT_PATH` | `~/Documents/luna` | env (`~/.claude/settings.json` `env` block, or your shell profile) | which vault the luna tooling targets. `/end-session-wiki-setup` and `scripts/adopt.sh` persist it via `scripts/lib/wire-luna-vault.sh`. Exception: `/himmel-update`'s luna-template step (`scripts/himmel-update.sh`) bridges it from `.env` — every other reader needs a live-env value |
+| `LUNA_VAULT_PATH` | `~/Documents/luna` | env (`~/.claude/settings.json` `env` block, or your shell profile) | which vault the luna tooling targets. `/end-session-wiki-setup` and `scripts/adopt.sh` persist it via `scripts/lib/wire-luna-vault.sh`. Exception: `/himmel-update`'s luna-template step (`scripts/himmel-update.sh`) also reads it from `himmel.conf` (legacy: `.env`) — every other reader needs a live-env value |
 | `CLAUDE_END_SESSION_WIKI` | unset | env | `0` disables the SessionEnd vault capture hook |
 | `OBSIDIAN_API_KEY` | unset (on-disk fallback works) | `.env` | Obsidian REST plugin access |
 | `PERPLEXITY_API_KEY` | blank = feature off | `.env` | backs `/research`, `/research-deep` — **not adopted** (2026-07-29, no active subscription; see `docs/tooling-catalog.md`) |
@@ -857,7 +887,7 @@ the statusline segment):
 | `SKILL_INDEX_DIR`, `SKILL_TELEMETRY_DISABLE`/`_DIR` | `~/.claude/skill-index` / on | env / shell | skill index + telemetry |
 | `ubuntu_vm_user`/`ubuntu_vm_pass` | — | `.env` | test-VM credentials (deliberately lower-case names) |
 | `HIMMEL_REPO` | auto-resolved | env | pin the himmel checkout used by `/himmel-update` and the hooks' `.env` bridge |
-| `HIMMEL_UPDATE_AUTOSTASH` | OFF | `.env` (bridged) | let `/himmel-update` stash a dirty checkout |
+| `HIMMEL_UPDATE_AUTOSTASH` | OFF | `himmel.conf` | let `/himmel-update` stash a dirty checkout |
 
 ### 4.2 Claude Code settings & hooks
 
@@ -992,8 +1022,8 @@ tables; this is the layer level.)
 
 | Layer | Off switch | Scope |
 |---|---|---|
-| Initiative mode | leave/unset `HIMMEL_INITIATIVE` (default OFF); per-repo override: `"env": { "HIMMEL_INITIATIVE": "" }` in that repo's `.claude/settings.json` | session start |
-| Armed auto-merge | leave/unset `ARMAUTOMERGE` (default OFF) | per shell |
+| Initiative mode | leave/unset `HIMMEL_INITIATIVE` (default OFF); per-repo override: `"env": { "HIMMEL_INITIATIVE": "0", "HIMMEL_INITIATIVE_AFK": "0" }` in that repo's `.claude/settings.json` | session start |
+| Armed auto-merge | remove `"ARMAUTOMERGE"` from `"policy"` in `~/.himmel/config.json`, and any legacy `ARMAUTOMERGE=` line from `.env` (default OFF), so `arm-resume.sh` stops arming with it; `--no-automerge` declines it for one arm; unset the shell `ARMAUTOMERGE` to drop a one-run grant | policy: every `arm-resume.sh` arm; flag: that arm; shell: that run |
 | Cap watchdogs (auto-arm) | `AUTO_ARM_DISABLE=1` (+ `AUTO_ARM_SUBAGENT_DISABLE=1`) | launching shell |
 | A scheduled resume | find the job with `atq` then `at -c <job-id>` (look for `HIMMEL-Resume-`), or `crontab -l`; remove that one job with `atrm <job-id>`, or delete that one line with `crontab -e` | OS scheduler |
 | Recurring vault cadence | `scripts/luna/pipeline-cadence.sh disarm` | OS scheduler |
@@ -1003,12 +1033,14 @@ tables; this is the layer level.)
 | An on-demand plugin you enabled | `bash scripts/machine-setup/plugin-profile.sh lean` (all) or `disable <spec>` (one) — see [§4.7](#47-plugin-profile--two-tiers-one-toggle) | user scope |
 | An external lane | `node scripts/lanes/set-lane-override.mjs <lane> never`, or unset its API key / remove its CLI from PATH | machine |
 | Lane config auto-reseed | `CLAUDE_LANE_AUTO_RESEED=0` | launching shell |
-| External CR critics | `CR_PROFILE=none` (claude-only review, no external spend) | `.env` / shell |
+| External CR critics | `CR_PROFILE=none` (claude-only review, no external spend) | `himmel.conf` / shell |
 | A single session gate | its env bypass from the [§3.2 table](#32-session-gates-claude-code-hooks), set in the launching shell | one session |
 | Guardrails on a single-writer repo | a gitignored `.single-writer` file at that repo's root (edits on main allowed there only) | per repo |
 | All himmel hooks in a repo | remove the hook stanzas from `.claude/settings.json` / de-adopt with `node scripts/himmelctl/bin.js uninstall` | permanent |
 | Update-available nudge | `UPDATE_CHECK_DISABLE=1` | launching shell |
 | Session vault capture | `CLAUDE_END_SESSION_WIKI=0` | env |
+
+`headed-arm.sh` and `graph-cadence.sh` pass `ARMAUTOMERGE=1` on their own launch or merge command lines, so neither the policy entry nor the shell variable stops those grants.
 
 What is **not** switchable from inside a session, by design: the
 `leak-classes.sh` leak-class gate, the graphify egress hard-deny cells, and

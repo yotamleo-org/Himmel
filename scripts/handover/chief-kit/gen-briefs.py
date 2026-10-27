@@ -66,7 +66,7 @@ the manifest (sha256sum format), which Telegram /launch-worker checks (HIMMEL-50
 
 Exit: 0 ok; 1 a worker is invalid or a worktree failed (nothing written for it); 2 usage.
 """
-import argparse, hashlib, json, os, re, secrets, shlex, subprocess, sys
+import argparse, hashlib, json, os, re, secrets, shlex, subprocess, sys, tempfile
 from datetime import date as _date, datetime
 
 
@@ -203,6 +203,52 @@ def validate_rm(worker, i):
         die('rm worker %s: effort %r must be one of %s' % (label, worker.get('effort'), '|'.join(EFFORTS)))
 
 
+PROOF_CHECKER = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..', 'marketplace', 'plugins', 'himmel-ops', 'scripts', 'ticket-standard-check.sh')
+
+
+def mirror_dir(key):
+    # GEN_BRIEFS_MIRROR is a dir holding <KEY>.md (the test seam); the real mirror is one dir per project prefix.
+    return os.environ.get('GEN_BRIEFS_MIRROR') or os.path.expanduser('~/.himmel/state/jira-mirror/' + key.split('-')[0])
+
+
+def proof_missing(key):
+    # (missing names, description) from the ticket-standard checker, never a second parser; None when the mirror has no such ticket.
+    # The checker parks a refused draft in an intake queue, so its queue is a scratch dir: this script parks nothing.
+    try:
+        txt = open(os.path.join(mirror_dir(key), key + '.md'), encoding='utf-8', errors='replace').read()
+    except OSError:
+        return None
+    m = re.search(r'^## Description\n(.*?)(?=^## |\Z)', txt, re.M | re.S)
+    body = m.group(1).strip() if m else ''
+    with tempfile.TemporaryDirectory() as d:
+        draft = os.path.join(d, 'draft.md')
+        with open(draft, 'w', encoding='utf-8') as f:
+            f.write(body + '\n')
+        try:
+            r = subprocess.run(['bash', PROOF_CHECKER, '--type', 'Task', '--draft', draft], capture_output=True, text=True, timeout=30,
+                               env=dict(os.environ, TICKET_STANDARD_QUEUE_DIR=os.path.join(d, 'queue')))
+        except (OSError, subprocess.SubprocessError) as e:
+            return (['DoD', 'Proof'], 'the ticket-standard checker did not run (%s)\n%s' % (e, body))
+    if r.returncode not in (0, 1):
+        return (['DoD', 'Proof'], 'the ticket-standard checker could not read the body (rc %d)\n%s' % (r.returncode, body))
+    got = re.search(r'missing or empty: (.*)$', r.stdout, re.M)
+    names = [n.strip() for n in got.group(1).split(',')] if got else []
+    return ([n for n in ('DoD', 'Proof') if n in names], body)
+
+
+def check_proof(worker):
+    # A ticket with no DoD or no Proof is not dispatched; print it for the chief to fix first.
+    refused = []
+    for key in worker['keys']:
+        got = proof_missing(key)
+        if got is None:
+            print('gen-briefs: warn: %s is not in the Jira mirror, so its DoD and Proof were not checked' % key, file=sys.stderr)
+        elif got[0]:
+            refused.append('%s lacks %s. The ticket as it stands:\n%s' % (key, ', '.join(got[0]), got[1] or '(empty body)'))
+    if refused:
+        die('worker %s: fix the ticket first, then re-run (a worker without a named Proof cannot show RED then GREEN):\n%s' % (worker['label'], '\n\n'.join(refused)))
+
+
 def validate(worker, i, repo):
     if worker.get('kind') == 'rm':
         return validate_rm(worker, i)
@@ -258,6 +304,7 @@ def validate(worker, i, repo):
         die('worker %s: prior art must be filled (a bare none or a <placeholder> fails brief-lint)' % worker['label'])
     if 'grants' in worker:
         validate_grants(worker, repo)
+    check_proof(worker)
 
 
 def validate_grants(worker, repo):

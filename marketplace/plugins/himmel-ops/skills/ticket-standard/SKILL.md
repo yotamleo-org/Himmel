@@ -33,6 +33,14 @@ the stability-scorecard metric it moves (columns: `specs/research/stability-scor
 `Metric:` may be bare, bulleted (`- Metric:`) or bold (`**Metric:**`), in any case.
 Without one it is refused like a missing section.
 
+A **Plan** that names two or more ticket keys also needs an `Edges:` line (HIMMEL-7754):
+which ticket blocks which and whether hard or soft, e.g.
+`Edges: HIMMEL-100 blocks HIMMEL-101 (hard)`, or `Edges: none` when they are independent.
+The chain graph orders dispatch from it. It may be bare, bulleted or bold, in any case; a
+multi-ticket Plan without one is refused like a missing section (the message names the
+line). A Plan naming one key or none is unaffected. Any `ABC-123`-shaped token counts as a
+key, so answer a false hit with `Edges: none`.
+
 A **Bug** draft also asks for two labels, so the weekly escape report
 (`scripts/ci/escape-report.sh`) can group it: `found-by:<who>` (`operator`, `leg`,
 `console`, `tick`, `ci-pr`, `ci-main`, `review` or `user`) and `escape:<class>`

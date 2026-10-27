@@ -2150,7 +2150,8 @@
         "9": "e.verify.fail",
         "10": "e.verify.fail",
         "11": "e.verify.fail",
-        "12": "e.verify.trust"
+        "12": "e.verify.trust",
+        "13": "e.verify.fail"
       },
       "unmapped": {}
     },

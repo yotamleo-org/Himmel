@@ -65,6 +65,7 @@ These are the vendored skills outside marketplace plugins, recorded in
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
 | no-comments + comment-sicko | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
+| technical-writing | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
 | test-audit | https://github.com/openclaw/openclaw | OpenClaw Foundation | MIT | 1370643e394f956dfae2e42f43ee030b0072434b |
 | unslop | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
 | writing-for-agents | https://github.com/mattpocock/skills | Matt Pocock | MIT | 49dd158d1076134a641b33efb035946536778336 |

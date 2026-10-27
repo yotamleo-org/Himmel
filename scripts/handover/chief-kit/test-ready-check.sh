@@ -57,7 +57,7 @@ case "$args" in
     *"--json commits"*)
         printf '%s' "${STUB_COMMITS:-[]}" ;;
     *"--json body"*)
-        printf '%b' "${STUB_BODY:-}" ;;
+        printf '%b' "${STUB_BODY:-}${STUB_RED:-}" ;;
     *"--json title"*)
         printf '%s' "${STUB_PR_TITLE:-feat(x): [HIMMEL-100] thing}" ;;
     *"--json headRefName"*)
@@ -77,7 +77,7 @@ case "$args" in
         jq -n --arg h "$STUB_HEAD" --arg m "${STUB_MSS:-CLEAN}" \
             --argjson rollup "${STUB_ROLLUP:-[]}" --argjson commits "${STUB_COMMITS:-[]}" \
             --arg merges "${STUB_MERGE_OIDS:-}" --argjson u "${STUB_UNRESOLVED:-0}" \
-            --arg body "$(printf '%b' "${STUB_BODY:-}")" '
+            --arg body "$(printf '%b' "${STUB_BODY:-}${STUB_RED:-}")" '
             {data:{repository:{p77:{number:77,headRefOid:$h,headRefName:env.STUB_PR_BRANCH,mergeStateStatus:$m,reviewDecision:null,body:$body,
                 commits:{nodes:[$commits[] | . as $commit | {commit:(. + {oid:(.oid // $h),parents:{totalCount:(if (($merges|split("\n")) | index($commit.oid // "")) != null then 2 else 1 end)}})}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[range($u)|{isResolved:false}],pageInfo:{hasNextPage:false,endCursor:null}},
@@ -184,6 +184,8 @@ GREEN_ROLLUP='[{"name":"build","status":"COMPLETED","conclusion":"SUCCESS"},{"co
 GREEN_COMMITS='[{"messageHeadline":"feat(x): [HIMMEL-1] add thing","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"},{"messageHeadline":"fix(x): [HIMMEL-2] tweak","messageBody":""}]'
 GREEN_FILES="scripts/x/run.sh"
 GREEN_BODY='## Summary\nthing\n\n## Ticket coverage\n- ask one: done\n- ask two: done\n\n## Test plan\nx\n'
+# (check 13) every stubbed body ends with a RED-then-GREEN line unless a row sets STUB_RED to blank
+GREEN_RED='\nRED then GREEN: the new row failed before the change and passes after it\n'
 JIRA_DB="$tmp/jira.db"
 printf 'HIMMEL-50\tTo Do\nHIMMEL-51\tDone\nHIMMEL-52\tClosed\nHIMMEL-53\tWon'"'"'t Do\nHIMMEL-54\tBLANK\nHIMMEL-55\tMALFORMED\nHIMMEL-100\tTo Do\tresidual\nHIMMEL-200\tTo Do\nHIMMEL-201\tTo Do\tresidual, class-x\nHIMMEL-202\tTo Do\tresidual-depth-1\nHIMMEL-203\tTo Do\t\tLabels: residual\n' > "$JIRA_DB"
 
@@ -215,7 +217,7 @@ run() {
         STUB_RENAMES="${STUB_RENAMES:-}" STUB_RENAMES_FAIL="${STUB_RENAMES_FAIL:-}" \
         STUB_FILE_STATUS="${STUB_FILE_STATUS:-}" STUB_WF_DIR="${STUB_WF_DIR:-}" \
         STUB_RUNS_DIR="${STUB_RUNS_DIR:-}" STUB_RUNS_FAIL="${STUB_RUNS_FAIL:-}" STUB_WF_PATCH_FILE="${STUB_WF_PATCH_FILE:-}" \
-        STUB_AUTHOR="${STUB_AUTHOR:-}" STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
+        STUB_AUTHOR="${STUB_AUTHOR:-}" STUB_BODY="${STUB_BODY-$GREEN_BODY}" STUB_RED="${STUB_RED-$GREEN_RED}" STUB_PR_TITLE="${STUB_PR_TITLE:-}" STUB_PR_BRANCH="${STUB_PR_BRANCH-feat/himmel-100-thing}" \
         JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" STUB_JIRA_DOWN="${STUB_JIRA_DOWN:-}" STUB_LINKS_DB="${STUB_LINKS_DB:-}" STUB_LINKS_FAIL="${STUB_LINKS_FAIL:-}" \
         PATH="$PATH" GH_LOG="$GH_LOG" GH_PR_SNAPSHOT_CACHE_DIR="$cache" \
         STUB_SNAPSHOT_FAIL="${STUB_SNAPSHOT_FAIL:-}" \
@@ -227,7 +229,7 @@ run() {
 
 reset_stubs() {
     unset STUB_TRUST_LIST_FAIL STUB_DEFAULT_BRANCH_FAIL
-    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_WF_PATCH_FILE STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH STUB_AUTHOR
+    unset STUB_HEAD STUB_MSS STUB_ROLLUP STUB_UNRESOLVED STUB_COMMITS STUB_MERGE_OIDS STUB_FILES STUB_FILES_FAIL STUB_FILES_PARTIAL STUB_RENAMES STUB_RENAMES_FAIL STUB_BODY STUB_RED STUB_JIRA_DOWN STUB_LINKS_DB STUB_LINKS_FAIL STUB_SNAPSHOT_FAIL STUB_FILE_STATUS STUB_WF_DIR STUB_WF_PATCH_FILE STUB_RUNS_DIR STUB_RUNS_FAIL STUB_PR_TITLE STUB_PR_BRANCH STUB_AUTHOR
     seed_ledger_ok
 }
 
@@ -1103,7 +1105,7 @@ out="$(cd "$REPO" && env -u TICKET_ID_PATTERN -u JIRA_PROJECT_KEY \
     STUB_NWO="$NWO" STUB_HEAD="$SHA" STUB_MSS=CLEAN \
     STUB_ROLLUP="$GREEN_ROLLUP" STUB_UNRESOLVED=0 \
     STUB_COMMITS="$STUB_COMMITS" STUB_FILES="$GREEN_FILES" \
-    STUB_BODY="$GREEN_BODY" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
+    STUB_BODY="$GREEN_BODY" STUB_RED="$GREEN_RED" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" \
     STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" \
     PATH="$PATH" GH_LOG="$GH_LOG" \
     bash "$own/scripts/handover/chief-kit/ready-check.sh" "$PR" "$SHA")" || rc=$?
@@ -2278,9 +2280,66 @@ contains "dependabot: a subject without a key still fails row 6" "$out" "[FAIL] 
 dep_fixture; STUB_BODY='## Ticket coverage\n- bump numpy: deferred -> HIMMEL-51\n'
 rc=0; out="$(run)" || rc=$?
 contains "dependabot: an own coverage section is still validated" "$out" "[FAIL] 7."
+
+# a dependency-only Dependabot PR has no RED line to name (row 13)
+dep_fixture; STUB_RED=
+rc=0; out="$(run)" || rc=$?
+contains "red-line: a Dependabot dependency-only PR is exempt from row 13" "$out" "[PASS] 13."
+dep_fixture; STUB_RED=; STUB_FILES="$DEP_FILES
+scripts/x/run.sh"
+rc=0; out="$(run)" || rc=$?
+contains "red-line: a Dependabot PR that also changes code is not exempt" "$out" "[FAIL] 13."
 unset STUB_AUTHOR STUB_PR_BRANCH STUB_FILES STUB_COMMITS STUB_BODY
 SHA="$DEP_KEEP_SHA"; REPO="$DEP_KEEP_REPO"; LEDGER="$DEP_KEEP_LEDGER"
 reset_stubs
+
+# --- 13. a code PR names a RED-then-GREEN line -------------
+reset_stubs
+rc=0; out="$(run)" || rc=$?
+check "red-line: a code PR with a RED then GREEN line exits 0" "$rc" "0"
+contains "red-line: the RED then GREEN line passes row 13" "$out" "[PASS] 13."
+
+reset_stubs; STUB_RED=
+rc=0; out="$(run)" || rc=$?
+check "red-line: a code PR with no RED line exits 1" "$rc" "1"
+contains "red-line: a code PR with no RED line fails row 13" "$out" "[FAIL] 13."
+contains "red-line: the failure says what to write" "$out" "RED then GREEN"
+
+reset_stubs; STUB_RED='\nGREEN first, then RED\n'
+rc=0; out="$(run)" || rc=$?
+contains "red-line: GREEN before RED is not a RED-then-GREEN line" "$out" "[FAIL] 13."
+
+reset_stubs; STUB_RED='\nthe shared fixture is restored and greener\n'
+rc=0; out="$(run)" || rc=$?
+contains "red-line: RED and GREEN inside other words are not a line" "$out" "[FAIL] 13."
+
+reset_stubs; STUB_RED='\nRED \xe2\x86\x92 GREEN: test-x.sh row 4\n'
+rc=0; out="$(run)" || rc=$?
+contains "red-line: RED arrow GREEN on one line passes row 13" "$out" "[PASS] 13."
+
+reset_stubs; STUB_RED=; STUB_FILES="docs/handover/running-a-chief.md"
+STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+check "red-line: a doc-only PR with no RED line exits 0" "$rc" "0"
+contains "red-line: a doc-only PR is exempt from row 13" "$out" "[PASS] 13."
+
+reset_stubs; STUB_RED=; STUB_FILES="scripts/telegram/README.md"
+STUB_COMMITS='[{"messageHeadline":"docs: [HIMMEL-1] note","messageBody":""}]'
+rc=0; out="$(run)" || rc=$?
+contains "red-line: markdown under scripts/ is doc-only too" "$out" "[PASS] 13."
+
+reset_stubs; STUB_RED=; STUB_FILES="docs/a.md
+scripts/x/run.sh"
+rc=0; out="$(run)" || rc=$?
+contains "red-line: one code file among docs makes the PR a code PR" "$out" "[FAIL] 13."
+
+reset_stubs; STUB_RED=; STUB_FILES_FAIL=1
+rc=0; out="$(run)" || rc=$?
+contains "red-line: unreadable PR files fail row 13 closed" "$out" "[FAIL] 13."
+
+# --only 7 stays a coverage-only lint: row 13 is not part of it
+rc=0; out=$(cd "$REPO" && STUB_BODY="$GREEN_BODY" STUB_RED="" STUB_TRUST_LIST_FILE="$TRUST_LIST_FILE" JIRA_CMD="$tmp/bin/jira-stub" STUB_JIRA_DB="$JIRA_DB" JIRA_PROJECT_KEY=HIMMEL STUB_HEAD="$SHA" bash "$SCRIPT" --only 7 "$PR" 2>&1) || rc=$?
+notcontains "red-line: --only 7 does not run row 13" "$out" "13."
 
 echo "---"
 if [ "$fails" -eq 0 ]; then
