@@ -90,6 +90,11 @@ refused "a tie-breaker from either grader's vendor exits 64" "same vendor (googl
   "${G1[@]}" "${G2[@]}" --tiebreak-model google/gemini-y --tiebreak-effort high --tiebreak-lane openrouter
 refused "a tie-breaker needs a second grader" "--tiebreak-model needs --judge2-model" "${G1[@]}" "${TB[@]}"
 check "vendor is the maker, not the model: opus, sonnet and haiku are one vendor" '[ "$(python3 "$HERE/lq_stats.py" vendor claude-opus-5-5 sonnet claude-haiku-5-5 gpt-6.1-sol google/gemini-3-pro deepseek/deepseek-v4 | tr "\n" " ")" = "anthropic anthropic anthropic openai google deepseek " ]'
+check "an unmapped openrouter slug's vendor is its maker prefix" '[ "$(python3 "$HERE/lq_stats.py" vendor nvidia/nemotron-a NVIDIA/nemotron-b | tr "\n" " ")" = "nvidia nvidia " ]'
+mkdir -p "$TMP/fxnomodel"; jq -c 'del(.model)' "$FX/runs.jsonl" >"$TMP/fxnomodel/runs.jsonl"; cp "$FX"/*.judge-packet.md "$TMP/fxnomodel/"
+: >"$TMP/fake.log"
+bash "$RUN" calibration "$TMP/fxnomodel" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/nomodel.err"; rc=$?
+check "runs that name no model under test are refused before any call" '[ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/nomodel.err" && [ ! -s "$TMP/fake.log" ]'
 
 echo "2. Cohen's kappa on the per-run verdict"
 : >"$TMP/fake.log"; : >"$TMP/fake.log.lane"; : >"$TMP/fake.log.or"
@@ -148,8 +153,8 @@ check "the grader budget stops the pass once --max-usd is spent" '[ "$(wc -l <"$
 fresh
 # shellcheck disable=SC2034  # rows0 is read by check's eval
 rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
-bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --max-usd 0.02 --json >/dev/null 2>"$TMP/part.err"
-check "a stopped pass records no calibration row, so a partial result never heads the page" '[ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ] && grep -qF "not recorded" "$TMP/part.err"'
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --max-usd 0.02 --json >/dev/null 2>"$TMP/part.err"; rc=$?
+check "a stopped pass exits 75 and records no calibration row, so a partial result never heads the page" '[ "$rc" -eq 75 ] && [ "$(wc -l <"$TMP/fake.log")" -eq 2 ] && grep -qF "grader budget spent" "$TMP/part.err" && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ] && grep -qF "not recorded" "$TMP/part.err"'
 fresh
 LQ_FAKE_COST=none bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/unk.err"
 check "a claudex grader with no reported cost stops the pass, never counted as 0" '[ "$(wc -l <"$TMP/fake.log")" -eq 1 ] && grep -qF "left its cost unknown" "$TMP/unk.err"'

@@ -47,7 +47,8 @@
 # grader results are reused, so a rerun makes no call. A claudex grader needs
 # CLAUDEX_LANE_OK=1 (exit 3 without it); an openrouter grader without a PRICES
 # row needs --cap-factor and a readable balance meter around each call; a
-# grader that reports no cost stops the pass. A stopped pass records no row.
+# grader that reports no cost stops the pass. A stopped pass records no row
+# and exits 75 after its report.
 #
 # Task sets: the synthetic tasks are the regression set (the default). A real
 # task (a tasks/<id>/task.json, written by mine-tasks.py) is a merged himmel
@@ -284,7 +285,7 @@ judge_call() {
     if [[ -z "${!ANTHROPIC_*}${!anthropic_*}${!CLAUDE_CODE_USE_*}${!claude_code_use_*}" ]]; then
       # blind judge call, bank-preflighted by its caller, no tools, explicit permission mode, budget-capped
       # launch-profile-ok: the judge runs with --tools "", so no tool profile applies
-      timeout "$TIMEOUT" "${pre[@]}" "$bin" "${bare[@]}" -p --model "$model" ${effort:+--effort "$effort"} --permission-mode dontAsk --output-format json \
+      timeout "$TIMEOUT" ${pre[@]+"${pre[@]}"} "$bin" ${bare[@]+"${bare[@]}"} -p --model "$model" ${effort:+--effort "$effort"} --permission-mode dontAsk --output-format json \
         --max-budget-usd "$budget" --no-session-persistence --json-schema "$schema" --tools ""
     else
       exit 1
@@ -1063,6 +1064,7 @@ cmd_calibration() {
       while IFS= read -r m; do under+=("$m"); done < <(jq -r '.model // empty' "$d/runs.jsonl" | sort -u)
       while IFS= read -r m; do stored+=("$m"); done < <(jq -r '.judge_model // empty' "$d/runs.jsonl" | sort -u)
     done
+    [ "${#under[@]}" -ge 1 ] || die "the runs name no model under test, so no grader's vendor can be checked"
     if [ -n "$j1model" ]; then
       refuse_vendor "first grader" "$j1model" "model under test" "${under[@]}"
       g1=("$j1model")
@@ -1123,7 +1125,8 @@ cmd_calibration() {
     fi
   fi
   python3 "$HERE/lq_stats.py" calibration ${l2:+--judge2-label "$l2"} ${l1:+--judge1-label "$l1"} \
-    ${lt:+--tiebreak-label "$lt"} ${sample:+--sample "$sample"} $json $noledger "${dirs[@]}"
+    ${lt:+--tiebreak-label "$lt"} ${sample:+--sample "$sample"} $json $noledger "${dirs[@]}" || return
+  [ "$stop" = 0 ] || exit 75
 }
 
 # verdict <baseline-run-dir> <variant-run-dir>...: one TSV row per variant run

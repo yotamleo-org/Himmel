@@ -28,7 +28,8 @@ Called by run.sh; no model call, stdlib only.
       `<run-dir>\t<stem>` of each run the two graders give different verdicts.
   lq_stats.py vendor <model>...
       The vendor each model name belongs to (opus, sonnet and haiku are all
-      anthropic); a name it does not know is its own vendor.
+      anthropic); a name it does not know is its own vendor, or the maker
+      before the "/" of an OpenRouter slug.
 """
 import argparse
 import json
@@ -64,7 +65,7 @@ def vendor(model):
     for pat, v in VENDORS:
         if re.search(pat, m):
             return v
-    return m
+    return m.split("/", 1)[0]
 
 
 def read_rows(path):
