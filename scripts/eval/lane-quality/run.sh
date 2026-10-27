@@ -84,7 +84,8 @@
 # --max-budget-usd. On a subscription lane that figure is the API-price
 # equivalent, not money spent; the bank reading is the subscription cost.
 # A sweep that stops because a task's cost is unknown exits 76 (the ledger row
-# is still written, status partial); a budget-cap stop exits 0.
+# is still written, status partial); a budget-cap stop exits 0. A native
+# judge or grader call whose bank preflight does not say PROCEED exits 75.
 #
 # The api lane: the agent runs through scripts/api-lane/claude-api.sh
 # on the API credit of HIMMEL_API_ACCOUNT, never on subscription auth. It needs
