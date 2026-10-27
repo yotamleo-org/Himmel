@@ -37,6 +37,8 @@
 # or an unreadable answer therefore refuses every --base-sha round (exit 8).
 # A start at the head the last counted round ran on, below the cap, reuses that
 # round; bookkeeping-only heads get their ledger row from the `evidence` verb.
+# A round whose panel aborted after start reviewed nothing and spends nothing:
+# `abort` puts .head back on the last critic-reviewed head and uncounts it.
 # defer exits 6 when automatic residual filing cannot resolve the parent from
 # the open PR title or cannot create a ticket; supply --defer-to to recover
 # against the recorded findings without rerunning the panel. A hardening
@@ -60,6 +62,7 @@ usage() {
     echo "       review-round.sh promote --branch <name> --head <sha>" >&2
     echo "       review-round.sh judge-go --branch <name> --head <sha>   (after the cap: a signed judge GO at <sha> stands in for the review)" >&2
     echo "       review-round.sh evidence --branch <name> --head <sha>   (ledger ok row for a tests-only head after a reviewed head; spends no round)" >&2
+    echo "       review-round.sh abort --branch <name> --head <sha>   (give back the round started at <sha> when its panel reviewed nothing)" >&2
     echo "       review-round.sh trivial-descendant [--tests-only] <from-sha> <to-sha>   (exit 0 yes, 1 no)" >&2
     exit 2
 }
@@ -230,6 +233,7 @@ case "$verb" in
     promote) [ -n "$head_sha" ] || usage ;;
     judge-go) [ -n "$head_sha" ] || usage ;;
     evidence) [ -n "$head_sha" ] || usage ;;
+    abort) [ -n "$head_sha" ] || usage ;;
     *) usage ;;
 esac
 
@@ -297,11 +301,14 @@ fi
 state="$git_dir/cr-review-rounds/$branch.round"
 # "<from> <to> <trigger>" of the one delta round, once it ran.
 delta_state="$git_dir/cr-review-rounds/$branch.delta"
+# The pid of the caller of the last counted round's start.
 delta_run="$git_dir/cr-review-rounds/$branch.delta.run"
 # "<from> <to> <qid>/<name>", one line per judge-triggered round.
 verdict_state="$git_dir/cr-review-rounds/$branch.verdicts"
 # The head the last counted round ran on (start --head).
 head_state="$git_dir/cr-review-rounds/$branch.head"
+# The last critic-reviewed head start replaced in .head.
+prev_state="$git_dir/cr-review-rounds/$branch.head.prev"
 # "<from> <to> <failing check names>" once the CI-red unlock was used.
 cired_state="$git_dir/cr-review-rounds/$branch.cired"
 # Clean and version-only merge-forwards are admitted free of the delta round
@@ -334,7 +341,8 @@ read_round() {
 # reviewed the sha. "finding" prints "finding" when a critic finding there
 # still asks for a fix: its verdict after amends is agreed, fixed or unset,
 # and no row ever deferred or disproved it. "row" prints "row"
-# when any critic finding row exists there, whatever its verdict.
+# when any critic finding row exists there, whatever its verdict. "seen"
+# prints "seen" when any avail or finding row of any model exists there.
 ledger_query() {
     LEDGER="$git_dir/cr-critic-scores.jsonl" BRANCH="$branch" MODE="$1" FROM="$2" AMEND_AUTH="$SCRIPT_DIR/ledger-amend-auth.js" node -e '
 const fs = require("fs"), e = process.env;
@@ -347,7 +355,7 @@ const at = (h) => { h = String(h || "").toLowerCase(); return h.length >= 7 && e
 // name (it buys a review round, never a merge); tie critic rows to a source the
 // worker cannot write.
 const critic = (m) => m !== "claude" && m !== "claude-floor" && m !== "codex-adv";
-let reviewed = false, rowed = false;
+let reviewed = false, rowed = false, seen = false;
 const verdicts = new Map(), settled = new Set();
 // One finding is id + artifact + perspective, as the defer
 // analysis and clear-cr-marker key it; a bare id merges distinct findings.
@@ -361,6 +369,7 @@ for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
   let o;
   try { o = JSON.parse(line); } catch { continue; }
   if (!o || o.branch !== e.BRANCH) continue;
+  if ((o.kind === "avail" || o.kind === "finding") && at(o.head)) seen = true;
   if (o.kind === "avail" && o.status === "ok" && critic(o.model) && at(o.head)) reviewed = true;
   if (o.kind === "finding" && critic(o.model) && at(o.head)) { rowed = true; note(keyOf(o), String(o.verdict || "")); }
   if (o.kind === "amend" && at(o.target_head) && verdicts.has(keyOf(o))
@@ -368,9 +377,75 @@ for (const line of require(e.AMEND_AUTH).filterLines(lines)) {
 }
 if (e.MODE === "avail") { if (reviewed) process.stdout.write("ok"); }
 else if (e.MODE === "row") { if (rowed) process.stdout.write("row"); }
+else if (e.MODE === "seen") { if (seen) process.stdout.write("seen"); }
 else if (e.MODE === "allfixed") { if (rowed && [...verdicts.values()].every((v) => v === "fixed")) process.stdout.write("allfixed"); }
 else if ([...verdicts].some(([id, v]) => !settled.has(id) && (v === "" || v === "agreed" || v === "fixed"))) process.stdout.write("finding");
 '
+}
+
+# state_sha <file>: the commit a plain start-written state file names as a
+# full sha on its first line, or nothing.
+state_sha() {
+    { [ -f "$1" ] && [ ! -L "$1" ]; } || return 1
+    _ss="$(sed -n '1p' "$1")" || return 1
+    case "$_ss" in *[!0-9a-f]*|'') return 1 ;; esac
+    { [ "${#_ss}" -eq 40 ] || [ "${#_ss}" -eq 64 ]; } || return 1
+    git rev-parse --verify --quiet "$_ss^{commit}" 2>/dev/null
+}
+
+# reviewed_head prints the newest critic-reviewed head start persisted: .head
+# when a critic reviewed it; else, when the round on .head reviewed nothing
+# (aborted, or no critic answered), the reviewed head that round's delta
+# scoped from, else the last reviewed head start replaced (.head.prev). Only
+# start-written records name a candidate, never a ledger row the session could
+# append itself, and a missing .head stays fail-closed.
+reviewed_head() {
+    _rh_head="$(state_sha "$head_state")" || return 1
+    if [ "$(ledger_query avail "$_rh_head")" = "ok" ]; then
+        printf '%s\n' "$_rh_head"
+        return 0
+    fi
+    _rh_from="" _rh_to=""
+    if [ -f "$delta_state" ] && [ ! -L "$delta_state" ]; then
+        read -r _rh_from _rh_to _ < "$delta_state" 2>/dev/null || _rh_from=""
+    fi
+    if [ -n "$_rh_from" ] && [ "$_rh_to" = "$_rh_head" ] \
+        && _rh_from="$(git rev-parse --verify --quiet "$_rh_from^{commit}")" \
+        && [ "$(ledger_query avail "$_rh_from")" = "ok" ]; then
+        printf '%s\n' "$_rh_from"
+        return 0
+    fi
+    _rh_prev="$(state_sha "$prev_state")" || return 1
+    [ "$(ledger_query avail "$_rh_prev")" = "ok" ] || return 1
+    printf '%s\n' "$_rh_prev"
+}
+
+# counter_lock takes the review-counter lock start and abort write under and
+# sets lock_owner; on failure it says why and returns 5.
+counter_lock() {
+    lock_lib="$HIMMEL_ROOT/scripts/lib/shared-branch-lock.sh"
+    if [ ! -f "$lock_lib" ]; then
+        echo "review-round: counter lock library is missing at $lock_lib" >&2
+        return 5
+    fi
+    lock_out=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round SHARED_BRANCH_LOCK_HOLDER_PID=$$ \
+        bash "$lock_lib" acquire-wait "." "$branch" "review-round" 10 300 2>&1)
+    lock_rc=$?
+    [ -z "$lock_out" ] || printf '%s\n' "$lock_out" >&2
+    if [ "$lock_rc" -ne 0 ]; then
+        echo "review-round: cannot acquire the counter lock for $branch (rc=$lock_rc)" >&2
+        return 5
+    fi
+    lock_owner=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+        bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
+    # lock_owner is a single small JSON status line (well under the pipe
+    # buffer), so printf's write completes atomically before grep could
+    # exit early and SIGPIPE it.
+    if ! printf '%s' "$lock_owner" | grep -q '^{"pid":'; then  # pipefail-ok: bounded small input, see comment above
+        echo "review-round: counter lock holder state for $branch is missing or unreadable — refusing" >&2
+        return 5
+    fi
+    return 0
 }
 
 # plugin-version-bump-required makes a plugin PR bump its
@@ -1263,12 +1338,9 @@ if [ "$verb" = "judge-go" ]; then
         echo "review-round: $branch has run $round of 3 full rounds - run /pr-check, a judge GO does not replace an available round" >&2
         exit 1
     fi
-    # swallow-ok: an unreadable or unresolvable reviewed head leaves jg_from empty, which is refused (exit 8)
-    jg_from="$(cat "$head_state" 2>/dev/null)" || jg_from=""
-    # swallow-ok: same as above
-    jg_from="$(git rev-parse --verify --quiet "$jg_from^{commit}" 2>/dev/null)" || jg_from=""
-    if [ -z "$jg_from" ] || [ "$(ledger_query avail "$jg_from")" != "ok" ] \
-        || ! git merge-base --is-ancestor "$jg_from" "$jg_head" 2>/dev/null; then
+    # swallow-ok: no critic-reviewed head in the start records leaves jg_from empty, which is refused (exit 8)
+    jg_from="$(reviewed_head)" || jg_from=""
+    if [ -z "$jg_from" ] || ! git merge-base --is-ancestor "$jg_from" "$jg_head" 2>/dev/null; then
         echo "review-round: $jg_head does not descend from a critic-reviewed head of $branch - the judge GO is refused" >&2
         exit 8
     fi
@@ -1302,20 +1374,11 @@ if [ "$verb" = "evidence" ]; then
             echo "review-round: branch name $branch cannot be written into a ledger row - evidence is refused" >&2
             exit 2 ;;
     esac
-    ev_from=""
-    if [ -f "$head_state" ] && [ ! -L "$head_state" ]; then
-        # swallow-ok: an unreadable, symlinked or non-hex .head leaves ev_from empty, which is refused (exit 8)
-        ev_from="$(sed -n '1p' "$head_state" 2>/dev/null)" || ev_from=""
-        case "$ev_from" in
-            *[!0-9a-f]*|'') ev_from="" ;;
-        esac
-        { [ "${#ev_from}" -eq 40 ] || [ "${#ev_from}" -eq 64 ]; } || ev_from=""
-    fi
-    # swallow-ok: same as above
-    ev_from="$(git rev-parse --verify --quiet "$ev_from^{commit}" 2>/dev/null)" || ev_from=""
+    # swallow-ok: no critic-reviewed head in the start records leaves ev_from empty, which is refused (exit 8)
+    ev_from="$(reviewed_head)" || ev_from=""
     # tests-only: evidence clears with no critic review of from..to, so the
     # comment branch (a code line that looks like a comment) is not admitted.
-    if [ -z "$ev_from" ] || [ "$(ledger_query avail "$ev_from")" != "ok" ] \
+    if [ -z "$ev_from" ] \
         || [ "$(ledger_query finding "$ev_from")" = "finding" ] \
         || ! ( _td_tests_only=1; trivial_descendant "$ev_from" "$ev_head" ); then
         echo "review-round: $ev_head is not a tests-only descendant of a critic-reviewed head of $branch with no open finding - no evidence row (run /pr-check)" >&2
@@ -1330,29 +1393,72 @@ if [ "$verb" = "evidence" ]; then
     exit 0
 fi
 
+# abort: a round whose panel aborted after start (panel-first-pass exit 7, or
+# a delta diff it could not read) reviewed nothing, so it spends nothing. When
+# --head is the head on .head and no avail or finding row of any model sits
+# there, .head goes back to the last critic-reviewed head (reviewed_head), or
+# is removed when there is none, and the round is uncounted - unless it is the
+# pending delta round, which restarts at the same head on the count it took.
+# Exit 0 = given back (prints "<round> <head .head names, or none>");
+# 1 = --head is not on .head; 8 = refused (rows at --head, or the start's
+# caller is still running); 5 = state or lock error.
+if [ "$verb" = "abort" ]; then
+    # swallow-ok: an unresolvable head is refused on the next line (exit 2)
+    if ! ab_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || [ -z "$ab_head" ]; then
+        echo "review-round: --head $head_sha does not resolve to a commit" >&2
+        exit 2
+    fi
+    counter_lock || exit 5
+    ab_rc=0
+    read_round || ab_rc=5
+    # swallow-ok: a missing or unreadable .head is "not --head" (exit 1)
+    ab_cur="$(state_sha "$head_state")" || ab_cur=""
+    run_pid=""
+    [ ! -f "$delta_run" ] || read -r run_pid < "$delta_run" || run_pid=""
+    case "$run_pid" in ''|*[!0-9]*) run_pid="" ;; esac
+    if [ "$ab_rc" -ne 0 ]; then
+        :
+    elif [ "$ab_cur" != "$ab_head" ]; then
+        echo "review-round: $ab_head is not the head the last counted round on $branch ran on (${ab_cur:-none}) - nothing to give back" >&2
+        ab_rc=1
+    elif [ "$(ledger_query seen "$ab_head")" = "seen" ]; then
+        echo "review-round: the round on $ab_head has panel rows, so it reviewed something - it is not given back" >&2
+        ab_rc=8
+    elif [ -n "$run_pid" ] && [ "$run_pid" != "$PPID" ] && kill -0 "$run_pid" 2>/dev/null; then
+        echo "review-round: the round on $ab_head is still running (start by pid $run_pid) - it is not given back" >&2
+        ab_rc=8
+    else
+        # swallow-ok: no critic-reviewed head in the start records removes .head below
+        ab_back="$(reviewed_head)" || ab_back=""
+        ab_to=""
+        if [ -f "$delta_state" ] && [ ! -L "$delta_state" ]; then
+            read -r _ ab_to _ < "$delta_state" 2>/dev/null || ab_to=""
+        fi
+        ab_round="$round"
+        [ "$ab_to" = "$ab_head" ] || [ "$round" -eq 0 ] || ab_round=$((round - 1))
+        # .head first: a failed counter write after it leaves the round spent,
+        # never a free one.
+        tmp_head="$head_state.tmp.$$"
+        tmp_state="$state.tmp.$$"
+        if [ -n "$ab_back" ]; then
+            { printf '%s\n' "$ab_back" > "$tmp_head" && mv "$tmp_head" "$head_state"; } || ab_rc=5  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
+        else
+            rm -f "$head_state" || ab_rc=5
+        fi
+        if [ "$ab_rc" -eq 0 ] && [ "$ab_round" != "$round" ]; then
+            { printf '%s\n' "$ab_round" > "$tmp_state" && mv "$tmp_state" "$state"; } || ab_rc=5  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
+        fi
+        rm -f "$tmp_head" "$tmp_state"
+        [ "$ab_rc" -eq 0 ] || echo "review-round: cannot give back the round on $ab_head for $branch" >&2
+    fi
+    SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
+        bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
+    [ "$ab_rc" -ne 0 ] || printf '%s %s\n' "$ab_round" "${ab_back:-none}"
+    exit "$ab_rc"
+fi
+
 if [ "$verb" = "start" ]; then
-    lock_lib="$HIMMEL_ROOT/scripts/lib/shared-branch-lock.sh"
-    if [ ! -f "$lock_lib" ]; then
-        echo "review-round: counter lock library is missing at $lock_lib" >&2
-        exit 5
-    fi
-    lock_out=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round SHARED_BRANCH_LOCK_HOLDER_PID=$$ \
-        bash "$lock_lib" acquire-wait "." "$branch" "review-round" 10 300 2>&1)
-    lock_rc=$?
-    [ -z "$lock_out" ] || printf '%s\n' "$lock_out" >&2
-    if [ "$lock_rc" -ne 0 ]; then
-        echo "review-round: cannot acquire the counter lock for $branch (rc=$lock_rc)" >&2
-        exit 5
-    fi
-    lock_owner=$(SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
-        bash "$lock_lib" status "." "$branch" 2>/dev/null || true)
-    # lock_owner is a single small JSON status line (well under the pipe
-    # buffer), so printf's write completes atomically before grep could
-    # exit early and SIGPIPE it.
-    if ! printf '%s' "$lock_owner" | grep -q '^{"pid":'; then  # pipefail-ok: bounded small input, see comment above
-        echo "review-round: counter lock holder state for $branch is missing or unreadable — refusing" >&2
-        exit 5
-    fi
+    counter_lock || exit 5
     if ! read_round; then
         SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
             bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1 || true
@@ -1458,18 +1564,24 @@ if [ "$verb" = "start" ]; then
     if [ -n "$head_sha" ]; then
         round_head="$(git rev-parse --verify --quiet "$head_sha^{commit}" 2>/dev/null)" || round_head=""
     fi
+    # A reviewed head this round replaces is kept in .head.prev, so a round
+    # that reviews nothing can fall back to it; a first round has none.
+    tmp_prev="$prev_state.tmp.$$"
+    if [ "$round" -eq 1 ]; then
+        rm -f "$prev_state"
+    elif old_head="$(state_sha "$head_state")" && [ "$(ledger_query avail "$old_head")" = "ok" ]; then
+        { printf '%s\n' "$old_head" > "$tmp_prev" && mv "$tmp_prev" "$prev_state"; } || rm -f "$tmp_prev" "$prev_state"  # prim-ok: start's tmp-then-mv idiom under the counter lock; this script does not source prim.sh
+    fi
     tmp_head="$head_state.tmp.$$"
     if [ -z "$round_head" ] \
         || ! printf '%s\n' "$round_head" > "$tmp_head" \
         || ! mv "$tmp_head" "$head_state"; then
-        rm -f "$tmp_head" "$head_state"
+        rm -f "$tmp_head" "$head_state" "$prev_state"
     fi
-    if [ -n "$delta_from" ]; then
-        # Written under the counter lock, so the pid check in
-        # delta_check and this claim cannot interleave between two starts.
-        # Best effort - a failed write only loses the guard.
-        printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
-    fi
+    # Written under the counter lock, so the pid checks in delta_check and
+    # abort and this claim cannot interleave between two starts.
+    # Best effort - a failed write only loses the guard.
+    printf '%s\n' "$PPID" > "$delta_run" 2>/dev/null || rm -f "$delta_run" 2>/dev/null
     if ! SHARED_BRANCH_LOCK_NS=himmel-cr-review-round \
         bash "$lock_lib" release-if-owner "." "$branch" "$lock_owner" >/dev/null 2>&1; then
         echo "review-round: persisted round $round for $branch but could not release its counter lock" >&2

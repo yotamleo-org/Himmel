@@ -64,6 +64,8 @@ if [ -n "${PANEL_DIFF_LAST:-}" ]; then cat > "$PANEL_DIFF_LAST"; else cat >/dev/
 printf '%s\n' "$head_sha" >> "$PANEL_CALLS"
 printf '%s\n' "${CR_REVIEW_ROUND:-<absent>}" >> "$PANEL_ROUNDS"
 [ "${PANEL_MODE:-clean}" = "fail" ] && exit 1
+# pin-abort: the checkout or base moved, so nothing is reviewed or recorded.
+[ "${PANEL_MODE:-clean}" = "pin-abort" ] && exit 7
 ledger="$(git rev-parse --git-common-dir)/cr-critic-scores.jsonl"
 CR_LEDGER="$ledger" bash "$(dirname "$0")/ledger-append.sh" avail \
     --branch "$branch" --head "$head_sha" --model stub --status ok || exit $?
@@ -3128,6 +3130,80 @@ write_real_marker jg62 "$jgo_head"
 judge jg62-1 GO "$jgo_head"
 jgo_clear jg62; jgo_rc=$?
 assert_eq "$jgo_rc" "0" "6262 a post-cap test-only delta clears on a judge GO at its head ($(cat "$tmp/jg62-clear.out"))"
+
+# A round whose panel aborts after start (exit 7) reviewed nothing, so it
+# spends nothing: .head goes back to the last critic-reviewed head and the full
+# round is uncounted.
+git -C "$repo" checkout -q -b ab77 main
+printf 'ab77\n' > "$repo/ab77.txt"; git -C "$repo" add ab77.txt; git -C "$repo" commit -q -m ab77
+ab_w="$(git -C "$repo" rev-parse ab77)"
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$ab_w" --branch ab77 >/dev/null 2>"$tmp/ab77-1.err") || fail "ab77 fixture round 1"
+printf 'more\n' >> "$repo/ab77.txt"; git -C "$repo" commit -q -am "ab77 next"
+ab_x="$(git -C "$repo" rev-parse ab77)"
+ab_out="$(start_round "$ab_x" pin-abort ab77)"; ab_rc=$?
+assert_eq "$ab_rc" "7" "7753 (a) a pin mismatch after start still aborts at exit 7"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.head")" "$ab_w" "7753 (a) an aborted round leaves .head at the last critic-reviewed head ($ab_out)"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.round")" "1" "7753 (a) an aborted full round is not counted"
+ab_out="$(start_round "$ab_x" clean ab77)"; ab_rc=$?
+assert_eq "$ab_rc" "0" "7753 (a) the re-run at the aborted head runs ($ab_out)"
+assert_has "$ab_out" "round 2 of 3" "7753 (a) the re-run takes the round the abort gave back"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.head")" "$ab_x" "7753 (a) the reviewed re-run records its head"
+# abort gives back only a round that reviewed nothing, and only the one on .head.
+ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_x" 2>&1)"; ab_rc=$?
+assert_eq "$ab_rc" "8" "7753 (c) abort refuses a round a critic reviewed ($ab_out)"
+assert_eq "$(cat "$git_dir/cr-review-rounds/ab77.round")" "2" "7753 (c) a refused abort keeps the count"
+ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77 --head "$ab_w" 2>&1)"; ab_rc=$?
+assert_eq "$ab_rc" "1" "7753 (c) abort at a head that is not .head gives nothing back ($ab_out)"
+
+# PR 4004's state: the delta round's start ran but its panel never reviewed
+# (an abort whose give-back did not run), so .head names an unreviewed head.
+# judge-go scopes from the reviewed head the delta started from.
+three_rounds jg77 suggestion
+jg77_r3="$cap_r3_head"
+postcap_amend jg77 "$jg77_r3" stub-1 fixed
+printf '%s\n' "SWEEP [stub-1@$jg77_r3] class=stub :: single-site search=git grep -n stub" \
+    | (cd "$repo" && bash "$fx/scripts/cr/write-verdicts.sh" sweep --branch jg77) >/dev/null 2>"$tmp/jg77-sweep.err" \
+    || fail "jg77 fixture sweep ($(cat "$tmp/jg77-sweep.err"))"
+fix_commit jg77
+jg77_fix="$cap_fix_head"
+git -C "$repo" push -q -u origin jg77
+write_real_marker jg77 "$jg77_fix"
+jg77_out="$(cd "$repo" && bash "$RR" start --branch jg77 --head "$jg77_fix" 2>&1)" || fail "jg77 fixture delta start ($jg77_out)"
+assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.head")" "$jg77_fix" "7753 (b) fixture: .head names the unreviewed delta head"
+judge jg77-1 GO "$jg77_fix"
+jgo_out="$(jgo_verb jg77 "$jg77_fix")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "0" "7753 (b) judge-go accepts a signed GO after an aborted delta round ($jgo_out)"
+# clear-review-marker gates on .head itself, so abort is the sanctioned repair.
+jg77_out="$(cd "$repo" && bash "$RR" abort --branch jg77 --head "$jg77_fix" 2>&1)"; jg77_rc=$?
+assert_eq "$jg77_rc" "0" "7753 (b) abort repairs a stranded .head by hand ($jg77_out)"
+assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.head")" "$jg77_r3" "7753 (b) .head is back on the reviewed round-3 head"
+assert_eq "$(cat "$git_dir/cr-review-rounds/jg77.round")" "4" "7753 (b) the pending delta round keeps its count"
+jgo_clear jg77; jgo_rc=$?
+assert_eq "$jgo_rc" "0" "7753 (b) the judge GO then clears the marker ($(cat "$tmp/jg77-clear.out"))"
+
+# Never weaker: with no critic-reviewed head in any start record the same
+# state still refuses the GO.
+git -C "$repo" checkout -q -b jg77n main
+printf 'jg77n\n' > "$repo/jg77n.txt"; git -C "$repo" add jg77n.txt; git -C "$repo" commit -q -m jg77n
+for n in 1 2 3; do
+    (cd "$repo" && PANEL_MODE=fail bash "$SCRIPT" --head "$(git -C "$repo" rev-parse jg77n)" --branch jg77n >/dev/null 2>"$tmp/jg77n-$n.err") || fail "jg77n fixture round $n"
+    git -C "$repo" commit -q --allow-empty -m "jg77n round $n"
+done
+jg77n_head="$(git -C "$repo" rev-parse jg77n)"
+judge jg77n-1 GO "$jg77n_head"
+jgo_out="$(jgo_verb jg77n "$jg77n_head")"; jgo_vrc=$?
+assert_eq "$jgo_vrc" "8" "7753 (d) with no critic-reviewed ancestor the GO is still refused ($jgo_out)"
+
+# evidence falls back the same way: the second start ran at a tests-only head
+# and aborted, and the first reviewed head still scopes it.
+git -C "$repo" checkout -q -b ev77 main
+printf 'ev77\n' > "$repo/ev77.txt"; git -C "$repo" add ev77.txt; git -C "$repo" commit -q -m ev77
+(cd "$repo" && PANEL_MODE=clean bash "$SCRIPT" --head "$(git -C "$repo" rev-parse ev77)" --branch ev77 >/dev/null 2>"$tmp/ev77-1.err") || fail "ev77 fixture round 1"
+printf 'echo t\n' > "$repo/test-ev77.sh"; git -C "$repo" add test-ev77.sh; git -C "$repo" commit -q -m "ev77 tests"
+ev77_head="$(git -C "$repo" rev-parse ev77)"
+(cd "$repo" && bash "$RR" start --branch ev77 --head "$ev77_head" >/dev/null 2>&1) || fail "ev77 fixture round 2 start"
+ev77_out="$(cd "$repo" && bash "$RR" evidence --branch ev77 --head "$ev77_head" 2>&1)"; ev77_rc=$?
+assert_eq "$ev77_rc" "0" "7753 (e) evidence scopes from the reviewed head after an aborted round ($ev77_out)"
 
 if [ "$fails" -gt 0 ]; then
     printf 'FAIL test-pr-check-rounds (%s failures)\n' "$fails" >&2
