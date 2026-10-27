@@ -1,47 +1,30 @@
 #!/usr/bin/env bash
 # test-wizard-bootstrap.sh — hermetic tests for the himmelctl bootstrap
-# shims: scripts/himmelctl/bootstrap.sh (posix: darwin
-# brew / linux apt) and scripts/himmelctl/bootstrap.ps1 (win32: winget).
-# Both are independent standalone entry points (unlike uninstall.sh/.ps1,
-# which bin.js alternately invokes based on runtime platform), so this
-# suite exercises BOTH directly and unconditionally rather than branching
-# on is_win32() to pick one. A throwaway HIMMELCTL_REPO_ROOT fixture (the
+# shim: scripts/himmelctl/bootstrap.sh (darwin
+# brew / linux apt). A throwaway HIMMELCTL_REPO_ROOT fixture (the
 # same env-var seam bin.js itself honors) carries a stub bin.js so the
 # hand-off is observable without ever touching the real wizard; a stub
-# PATH carries fake `sudo`/`winget.cmd` install shell-outs so a real
+# PATH carries a fake `sudo` install shell-out so a real
 # node/bun install is never triggered against the real machine.
 #
-# Covers (per script):
+# Covers:
 #   A. node present -> short-circuits straight to the hand-off; the
 #      platform installer is never invoked (T7 done-check c).
-#   B. --dry-run/-DryRun, node absent -> prints the install plan + the
+#   B. --dry-run, node absent -> prints the install plan + the
 #      hand-off command; nothing is invoked or mutated (T7 done-check a).
 #   C. node absent, non-dry-run, install does NOT make node resolvable ->
 #      the installer IS invoked, but bootstrap prints exactly ONE re-run
 #      line instead of chaining to bin.js (the PATH-refresh trap, T7
 #      done-check b).
-#   D. (bash only, bonus) node absent, non-dry-run, install DOES make node
-#      resolvable -> chains to bin.js with "install".
+#   D. node absent, non-dry-run, install DOES make node resolvable ->
+#      chains to bin.js with "install".
 #   F. CR r1 FIX 1/2: the package-manager install plan/line no longer asks
-#      for `bun` on non-darwin apt / winget (bun is not an apt package and
-#      `winget install node bun` resolves as a single bad query) — apt gets
-#      `nodejs npm` only, winget gets `--id OpenJS.NodeJS.LTS -e`; a
-#      bun-is-optional note is printed instead.
+#      for `bun` on non-darwin apt (bun is not an apt package) — apt gets
+#      `nodejs npm` only; a bun-is-optional note is printed instead.
 #   G. CR r1 FIX 1/2: the platform installer itself EXITS
-#      NONZERO (a genuine apt/winget failure, not just a not-yet-refreshed-PATH)
+#      NONZERO (a genuine apt failure, not just a not-yet-refreshed-PATH)
 #      -> bootstrap.sh prints "node install failed" and aborts immediately (no
-#      re-run line); bootstrap.ps1 prints a Write-Warning with the exit code,
-#      then fail-closes with a Write-Error instead of the re-run line (the old
-#      warn-not-abort implied success and looped forever re-running a known-
-#      failing winget install).
-#
-# pwsh availability is optional on posix CI hosts: the .ps1 cases are
-# skipped (not failed) when pwsh isn't found, mirroring the availability
-# guard in scripts/test-luna-upgrade-vm.sh. They are ALSO skipped on
-# non-Windows hosts even when pwsh exists (ubuntu-latest CI ships pwsh):
-# the hermetic stubs are `winget.cmd`/`node.exe` shims that only Windows
-# can execute, so on posix the stubbed `winget install` line would die
-# under ErrorActionPreference=Stop and fail the cases spuriously.
+#      re-run line).
 
 set -euo pipefail
 
@@ -321,17 +304,17 @@ grepq "$out" -i 'Linux' \
   && fail "caseH(sh): the installer (sudo apt-get) must NOT be invoked when apt-get is absent (got: $out)"
 echo "ok: caseH(sh) non-Darwin host without apt-get -> fail-closed manual-install pointer, no sudo apt-get"
 
-# ── caseW: Windows is unsupported -- himmelctl install exits non-zero with ONE
-# unsupported-platform message. process.platform is forced to
-# 'win32' by a preload; the real host stays Linux/macOS.
+# ── caseW: an unsupported platform (Windows included) -- himmelctl install exits
+# non-zero with ONE unsupported-platform message. process.platform is forced to
+# 'freebsd' by a preload; the real host stays Linux/macOS.
 dirW="$(mktemp -d)" || exit 1
-preloadW="$dirW/force-win32.js"
-printf '%s\n' "Object.defineProperty(process, 'platform', { value: 'win32' });" > "$preloadW"
+preloadW="$dirW/force-platform.js"
+printf '%s\n' "Object.defineProperty(process, 'platform', { value: 'freebsd' });" > "$preloadW"
 outW=$(node -r "$preloadW" "$repo_root/scripts/himmelctl/bin.js" install --dry-run 2>&1) && rcW=0 || rcW=$?
-[ "$rcW" -ne 0 ] || fail "caseW: install on win32 must exit non-zero (got rc=$rcW: $outW)"
+[ "$rcW" -ne 0 ] || fail "caseW: install on an unsupported platform must exit non-zero (got rc=$rcW: $outW)"
 grepq "$outW" -i 'not supported' || fail "caseW: expected an unsupported-platform message (got: $outW)"
 [ "$(printf '%s\n' "$outW" | grep -c .)" -eq 1 ] || fail "caseW: expected exactly ONE message line (got: $outW)"
 rm -rf "$dirW"
-echo "ok: caseW win32 -> install exits non-zero with one unsupported-platform message"
+echo "ok: caseW unsupported platform -> install exits non-zero with one unsupported-platform message"
 
 echo "PASS"

@@ -42,7 +42,6 @@ build_fixture() {
   cp "$repo_root/scripts/machine-setup/full-plugin-enable.json" "$_d/scripts/machine-setup/"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$_d/scripts/adopt.sh"
   printf '#!/usr/bin/env bash\nexit 0\n' > "$_d/scripts/setup.sh"
-  printf 'exit 0\n' > "$_d/scripts/setup.ps1"
   cp "$repo_root/scripts/handover/set-handover-dir.sh" "$_d/scripts/handover/"
   cp "$repo_root/scripts/lib/env-append.sh" "$_d/scripts/lib/"
   cp "$repo_root/scripts/handover/register-state.sh" "$_d/scripts/handover/" 2>/dev/null || true

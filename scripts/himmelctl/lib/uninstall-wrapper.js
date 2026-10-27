@@ -56,17 +56,9 @@ function askConfirmSafe(prompt, eofValue = 'n') {
 // Same shape as bin.js's former deriveUninstallCommand, parameterized on the
 // caller's own repoRoot/bashPath instead of calling repoRoot()/resolveBash()
 // itself — repoRoot is the bundle dir for standalone.js, the clone root for
-// bin.js. The win32 branch is unchanged (resolvePowershell(), uninstall.ps1);
-// it is unused by standalone.js (POSIX-only per S13 Q2) but kept so this
-// module stays a complete, platform-symmetric replacement of the original.
+// bin.js.
 function deriveUninstallCommand(repoRoot, bashPath, args = {}) {
   const scriptsDir = path.join(repoRoot, 'scripts');
-  if (process.platform === 'win32') {
-    const argv = [helpersLib.resolvePowershell(), '-ExecutionPolicy', 'Bypass', '-File', path.join(scriptsDir, 'uninstall.ps1')];
-    argv.push(args.dryRun ? '-DryRun' : '-Yes');
-    if (args.purgeState) argv.push('-PurgeState');
-    return { argv };
-  }
   const argv = [bashPath, path.join(scriptsDir, 'uninstall.sh').replace(/\\/g, '/'), args.dryRun ? '--dry-run' : '--yes'];
   if (args.purgeState) argv.push('--purge-state');
   return { argv };
@@ -118,7 +110,7 @@ async function runUninstallWrapper(args, { bashPath, repoRoot, header, afterRun 
       return 3;
     }
   }
-  // this is the ONE spawn that runs uninstall.sh/.ps1 WET, after
+  // this is the ONE spawn that runs uninstall.sh WET, after
   // the human's own confirm above — tell it so its own live-operator-HOME
   // fence doesn't refuse the very machine the operator just confirmed
   // offboarding. The dry-run/plan path above never reaches here.

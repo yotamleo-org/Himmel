@@ -112,14 +112,10 @@ make_fixture() {
   # a checked-in profile may carry devOverlay:true (the operator
   # profile does) — bin.js's step-5.5 gate then requires the dev-overlay
   # primitive to exist, so the fixture must look like a real himmel checkout
-  # on either platform (same setup.sh/setup.ps1 stub pair as the sibling
+  # (same setup.sh stub as the sibling
   # suite's own make_fixture(), test-wizard-contributor-profile.sh).
   printf '#!/usr/bin/env bash\nexit 0\n' > "$_d/scripts/setup.sh"
   chmod +x "$_d/scripts/setup.sh"
-  cat > "$_d/scripts/setup.ps1" <<'STUB'
-& bash (Join-Path $PSScriptRoot 'setup.sh')
-exit $LASTEXITCODE
-STUB
 }
 
 fixture="$work/fixture"

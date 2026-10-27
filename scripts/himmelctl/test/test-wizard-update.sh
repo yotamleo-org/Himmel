@@ -64,11 +64,11 @@ trap cleanup EXIT
 # every `update` case reaches applyHimmelctlPathShim (dry-run
 # prints the resolved binDir; the accept cases B/C write the launcher into it).
 # Without a pin, himmelctlBinDir() resolves to the operator's REAL ~/.local/bin
-# (on win32 it ignores HOME entirely and uses os.homedir()), so caseB has been
+# (os.homedir() can ignore HOME), so caseB has been
 # writing a launcher there on every suite run since the shim landed — and now
 # refuses (rc=1) on the unmarked pre-r2 file a prior run left behind. Isolate
 # binDir for the WHOLE suite, mirroring test-wizard-uninstall.sh's convention,
-# so no case ever touches the real bin dir. winpath'd so win32 node resolves it.
+# so no case ever touches the real bin dir. winpath'd so node resolves it.
 HIMMELCTL_BIN_DIR="$(winpath "$work/isolated-bin")"
 export HIMMELCTL_BIN_DIR
 
@@ -219,26 +219,7 @@ grepq "$derived_line" -E 'bash C:/Users/test/himmel/scripts/himmel-update\.sh' \
   || fail "caseE: expected forward-slashed script path in derived command (got: $derived_line)"
 echo "ok: caseE backslash repo root -> derived command forward-slashed (toBashPath applied)"
 
-# ── Case F (REOPENED): resolveBash picks a deterministic Git Bash ─
-# The real, reopened root cause: bare `bash` on the operator's PowerShell PATH
-# resolves to C:\Windows\System32\bash.exe (WSL) because Git Bash is LAST on
-# PATH — and WSL cannot run a Windows-path script in ANY form. resolveBash()
-# must therefore pick a Windows-native Git Bash DETERMINISTICALLY from
-# %ProgramFiles%\Git\..., ignoring PATH order — NEVER a bare `bash`.
-#
-# Host-aware, because %ProgramFiles% cannot be overridden for a node child from
-# an MSYS shell (Windows re-injects the real system value regardless of an
-# inline/`env` assignment — verified), so a fake-ProgramFiles fixture is
-# impossible here; the REAL host resolution IS the assertion:
-#   - win32 (this suite runs under Git Bash, so a standard Git-for-Windows
-#     install is present): the derived launcher must be a concrete
-#     ...\Git\...\bash.exe, NOT bare 'bash'. The candidate list never contains
-#     System32\bash.exe, so resolving to Git\...\bash.exe IS proof WSL is never
-#     chosen. A revert to `argv: ['bash', script]` flips this to bare 'bash' and
-#     trips the guard. (The operator additionally validates from a real
-#     PowerShell shell, where bare `bash` would be WSL — the handover's ask.)
-#   - posix: no %ProgramFiles%/Git, so resolveBash falls through to bare 'bash'
-#     — assert exactly that (unchanged behavior off-Windows).
+# ── Case F: resolveBash falls through to bare 'bash' ─
 # No HIMMELCTL_BASH — that seam would short-circuit the resolution under test.
 stubF="$work/caseF"; mkdir -p "$stubF"
 cF=$(build_path "$stubF" bash git jq python3 npm -- )
@@ -252,21 +233,11 @@ out=$(PATH="$cF" HOME="$hF" USERPROFILE="$(winpath "$hF")" HIMMELCTL_CACHE_DIR="
 set -e
 [ "$rc" -eq 0 ] || fail "caseF: dry-run should exit 0 (got rc=$rc): $out"
 derived_lineF=$(printf '%s\n' "$out" | grep 'derived:')
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*)
-    grepq "$derived_lineF" -E '[/\\]Git[/\\](usr[/\\])?bin[/\\]bash\.exe' \
-      || fail "caseF(win32): resolveBash should resolve a concrete Git Bash (…\\Git\\…\\bash.exe), not bare 'bash' — is Git for Windows installed under %ProgramFiles%? (got: $derived_lineF)"
-    grepq "$derived_lineF" -E 'derived: bash ' \
-      && fail "caseF(win32): derived launcher is bare 'bash' — resolveBash fell back to PATH instead of Git Bash, which on a PowerShell PATH is WSL (got: $derived_lineF)"
-    ;;
-  *)
-    grepq "$derived_lineF" -E 'derived: bash .*himmel-update\.sh$' \
-      || fail "caseF(posix): resolveBash should fall through to bare 'bash' off-Windows (got: $derived_lineF)"
-    ;;
-esac
+grepq "$derived_lineF" -E 'derived: bash .*himmel-update\.sh$' \
+  || fail "caseF: resolveBash should fall through to bare 'bash' (got: $derived_lineF)"
 [ -f "$fixtureF/update-calls.log" ] \
   && fail "caseF: --dry-run must NOT execute himmel-update.sh (got: $(cat "$fixtureF/update-calls.log"))"
-echo "ok: caseF resolveBash -> deterministic Git Bash on win32 / bare 'bash' fallback on posix (never WSL)"
+echo "ok: caseF resolveBash -> bare 'bash' fallback"
 
 # ── Case G: a launcher write failure does not mask a ──
 # ── successful update — rc stays 0 with a LOUD warning. ──────────────────────

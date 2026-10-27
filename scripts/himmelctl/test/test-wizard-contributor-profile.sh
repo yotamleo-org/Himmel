@@ -4,7 +4,7 @@
 # adopter|contributor role fork is gone — devOverlay is an orthogonal layer
 # on top of a profile install, set only via --contribute, never a question;
 # see bin.js's deriveOverlayCommand()/printContributorProfile()). The overlay
-# keeps setup.sh/setup.ps1 as the idempotent mutation primitive — it now runs
+# keeps setup.sh as the idempotent mutation primitive — it now runs
 # AFTER adopt.sh, as an ADDITIONAL step, not a replacement for it — and
 # reports actual post-run state through the shared manifest/probe/dependency
 # engines plus the canonical lane resolver. Its report prints ALONGSIDE the
@@ -53,15 +53,11 @@ cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
 
 # The directory himmelctlBinDir() resolves to when HIMMELCTL_BIN_DIR is UNSET —
-# the defect-2 leak target. On win32 that is USERPROFILE (os.homedir() ignores
-# the HOME override run_contributor passes); on POSIX HOME is honored so the
-# override already redirects writes there. Used to assert an applied install
-# leaves no new/overwritten launcher in the real user bin.
+# the defect-2 leak target. HOME is honored, so the override run_contributor
+# passes already redirects writes away from it. Used to assert an applied
+# install leaves no new/overwritten launcher in the real user bin.
 real_user_bin() {
-  case "$(uname -s)" in
-    MINGW*|MSYS*|CYGWIN*) [ -n "${USERPROFILE:-}" ] && printf '%s/.local/bin' "$USERPROFILE" || printf '' ;;
-    *) printf '%s/.local/bin' "$HOME" ;;
-  esac
+  printf '%s/.local/bin' "$HOME"
 }
 
 # Snapshot the himmelctl* launchers in the real user bin by NAME + content hash,
@@ -73,7 +69,7 @@ snapshot_real_bin() {
   _dir="$(real_user_bin)"
   [ -n "$_dir" ] || { printf 'none'; return; }
   [ -d "$_dir" ] || { printf 'none'; return; }
-  for _f in "$_dir"/himmelctl "$_dir"/himmelctl.js "$_dir"/himmelctl.cmd "$_dir"/himmelctl.ps1; do
+  for _f in "$_dir"/himmelctl "$_dir"/himmelctl.js; do
     [ -e "$_f" ] || continue
     _out="${_out}$(printf '%s=' "${_f##*/}"; cksum < "$_f" 2>/dev/null);"
   done
@@ -159,7 +155,7 @@ make_fixture() {
   cp "$repo_root/scripts/lanes/profile-managed.cjs" "$_d/scripts/lanes/profile-managed.cjs"
   cp "$repo_root/scripts/guardrails/lib.sh" "$_d/scripts/guardrails/lib.sh"
   # ONE execution engine now — deriveCommand always targets
-  # adopt.sh (the dev overlay's setup.sh/setup.ps1 is an ADDITIONAL command
+  # adopt.sh (the dev overlay's setup.sh is an ADDITIONAL command
   # layered on top, never a substitute for it), so every fixture needs a
   # no-op adopt.sh even for a devOverlay-only run.
   cat > "$_d/scripts/adopt.sh" <<'STUB'
@@ -172,10 +168,6 @@ STUB
 exit 0
 STUB
   chmod +x "$_d/scripts/setup.sh"
-  cat > "$_d/scripts/setup.ps1" <<'STUB'
-& bash (Join-Path $PSScriptRoot 'setup.sh')
-exit $LASTEXITCODE
-STUB
 }
 
 # a v2 (schemaVersion:2) devOverlay=true cache — the dev overlay
@@ -208,8 +200,7 @@ run_contributor() {
   _p=$(build_path "$_stub" bash jq python3 npm -- node bun codex hermes shellcheck gitleaks pre-commit gh)
   make_git_stub "$_stub" "$_fixture"
   # HIMMELCTL_BIN_DIR must be pinned under the fixture home
-  # defect 2): himmelctlBinDir() on win32 falls back to os.homedir() = USERPROFILE,
-  # which IGNORES the HOME override below — so without this seam every applied
+  # defect 2): without this seam every applied
   # case would write its PATH launchers into the REAL ~/.local/bin (stray
   # launchers on the operator's machine, and a never-clobber refusal -> rc=1 if
   # an unmarked stray already lives there). Mirrors test-himmelctl-path-shim.sh
@@ -373,22 +364,11 @@ printf 'built\n' > "\$root/scripts/jira/dist/index.js"
 printf 'ran\n' > '$(winpath "$sentinelB")'
 STUB
 chmod +x "$fB/scripts/setup.sh"
-cat > "$fB/scripts/setup.ps1" <<STUB
-\$root = Split-Path -Parent \$PSScriptRoot
-\$hooks = Join-Path \$root '.git/hooks'
-\$jira = Join-Path \$root 'scripts/jira/dist'
-New-Item -ItemType Directory -Force -Path \$hooks, \$jira | Out-Null
-foreach (\$hook in @('pre-commit', 'commit-msg', 'pre-push')) {
-  Set-Content -Path (Join-Path \$hooks \$hook) -Value @('#!/usr/bin/env bash', 'exit 0')
-}
-Set-Content -Path (Join-Path \$jira 'index.js') -Value 'built'
-Set-Content -Path '$(winpath "$sentinelB")' -Value 'ran'
-STUB
 set +e
 out=$(run_contributor "$sB" "$hB" "$fB" "$pB"); rc=$?
 set -e
 [ "$rc" -eq 0 ] || fail "caseB: applied contributor install should succeed (got rc=$rc): $out"
-[ -f "$sentinelB" ] || fail "caseB: setup.sh/setup.ps1 was not invoked"
+[ -f "$sentinelB" ] || fail "caseB: setup.sh was not invoked"
 report=$(contributor_report "$out")
 grepq "$report" -E 'ok +pre-commit gates +ready' \
   || fail "caseB: post-install probe must attest the three installed gates: $report"
@@ -430,17 +410,13 @@ pD=$(build_path "$sA" bash jq python3 npm -- node bun codex hermes shellcheck gi
   const env = Object.assign({}, process.env, { HOME: process.argv[3], LOCALAPPDATA: process.argv[3] + "/local", HERMES_HOME: process.argv[3] + "/local/hermes", HERMES_PY: process.argv[3] + "/local/hermes/python", PATH: process.argv[4] });
   const render = async (platform) => c.reportLines(await c.buildReport({ repoRoot: root, env, platform }), { dryRun: true, derived: "setup" }).join("\n");
   const posix = await render("linux");
-  for (const re of [/\.ps1/, /winget/, /%LOCALAPPDATA%/, /powercfg/]) {
+  for (const re of [/winget/, /%LOCALAPPDATA%/, /powercfg/]) {
     if (re.test(posix)) throw new Error("linux contributor guidance leaks Windows text " + re + "\n" + posix);
   }
   for (const want of [/install-himmel-codex\.sh/, /install-himmel-profile\.sh/, /\/handover-setup/]) {
     if (!want.test(posix)) throw new Error("linux contributor guidance misses " + want + "\n" + posix);
   }
-  const win = await render("win32");
-  for (const want of [/install-himmel-codex\.ps1/, /install-himmel-profile\.ps1/, /winget install/]) {
-    if (!want.test(win)) throw new Error("win32 contributor guidance misses " + want + "\n" + win);
-  }
-  if (/CHECKLIST ONLY|powercfg/.test(win)) throw new Error("contributor profile must not execute or dump machine hardening\n" + win);
+  if (/CHECKLIST ONLY|powercfg/.test(posix)) throw new Error("contributor profile must not execute or dump machine hardening\n" + posix);
 })().catch((e) => { console.error(e && e.message ? e.message : e); process.exit(1); });
 ' "$(winpath "$contributor_lib")" "$(winpath "$fA")" "$(winpath "$hA")" "$pD" \
   || fail "caseD: contributor guidance is not platform-correct"
@@ -467,10 +443,8 @@ grepq "$out" 'manifest.json' \
 echo "ok: caseE manifest-less checkout installs rc=0 and WARNs the skipped profile"
 
 # ── Case F: applied install is hermetic — launchers land ONLY in HIMMELCTL_BIN_DIR
-# On win32 himmelctlBinDir falls back to os.homedir
-# (USERPROFILE) and ignores the HOME override, so without the HIMMELCTL_BIN_DIR
-# export run_contributor now sets, every applied install leaked PATH launchers
-# into the REAL ~/.local/bin. Assert the launchers land in the fixture bin and
+# Without the HIMMELCTL_BIN_DIR export run_contributor sets, an applied
+# install could leak PATH launchers into the REAL ~/.local/bin. Assert the launchers land in the fixture bin and
 # nothing touches the real user bin (checked across the whole suite).
 sF="$work/f-stub"; mkdir -p "$sF"
 hF="$work/f-home"; mkdir -p "$hF"
@@ -485,10 +459,7 @@ fixtureBin="$hF/.local/bin"
   || fail "caseF: himmelctl.js must be written into the fixture HIMMELCTL_BIN_DIR ($fixtureBin), not the real user bin: $out"
 grepq "$(cat "$fixtureBin/himmelctl.js")" 'generated by himmelctl (HIMMEL-1446)' \
   || fail "caseF: fixture launcher must carry the ownership marker"
-case "$(uname -s)" in
-  MINGW*|MSYS*|CYGWIN*) [ -f "$fixtureBin/himmelctl.cmd" ] || fail "caseF: win32 must write himmelctl.cmd into the fixture bin: $out" ;;
-  *) [ -x "$fixtureBin/himmelctl" ] || fail "caseF: posix must write the executable himmelctl wrapper into the fixture bin: $out" ;;
-esac
+[ -x "$fixtureBin/himmelctl" ] || fail "caseF: must write the executable himmelctl wrapper into the fixture bin: $out"
 real_bin_after="$(snapshot_real_bin)"
 [ "$real_bin_after" = "$real_bin_before" ] \
   || fail "caseF: applied install leaked/overwrote launchers in the real user bin (before=<$real_bin_before> after=<$real_bin_after>)"
@@ -500,12 +471,12 @@ echo "ok: caseF applied install writes launchers only into the fixture HIMMELCTL
 # devOverlay:true (parseArgs already refuses --contribute + --from-profile
 # together, so this is the ONLY way devOverlay reaches runPlan without that
 # flag) skipped the gate entirely, ran adopt.sh, and only then failed late on
-# the overlay's nonexistent setup.sh/setup.ps1 spawn. The stamp file adopt.sh
+# the overlay's nonexistent setup.sh spawn. The stamp file adopt.sh
 # would write proves it never ran.
 sG="$work/g-stub"; mkdir -p "$sG"
 hG="$work/g-home"; mkdir -p "$hG"
 fG="$work/g-fixture"; make_fixture "$fG"
-rm -f "$fG/scripts/setup.sh" "$fG/scripts/setup.ps1"
+rm -f "$fG/scripts/setup.sh"
 pG="$work/g-profile.json"; profile_file "$pG"
 stampG="$work/G-ADOPT-RAN"
 cat > "$fG/scripts/adopt.sh" <<STUB
@@ -535,7 +506,7 @@ echo "ok: caseG a devOverlay:true --from-profile outside a himmel checkout fails
 sH="$work/h-stub"; mkdir -p "$sH"
 hH="$work/h-home"; mkdir -p "$hH"
 fH="$work/h-fixture"; make_fixture "$fH"
-rm -f "$fH/scripts/setup.sh" "$fH/scripts/setup.ps1"
+rm -f "$fH/scripts/setup.sh"
 cacheH="$work/h-cache"; mkdir -p "$cacheH"
 pH=$(build_path "$sH" bash jq python3 npm -- node bun codex hermes shellcheck gitleaks pre-commit gh)
 make_git_stub "$sH" "$fH"

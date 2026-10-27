@@ -128,7 +128,7 @@ STUB
 # to a generic "missing" reason (unconfigured), matching a real never-
 # configured credential.
 #
-# on non-win32, probeLunaSources resolves `pythonCmd` to
+# probeLunaSources resolves `pythonCmd` to
 # `python3`, not `python` -- a `python`-only stub left `python3` pointing at
 # the REAL system interpreter. Every caller passes `python3` to build_path's
 # PRESENT list (it must stay resolvable for anything else that shells out to
@@ -469,27 +469,21 @@ const answers = {
   secretsWalk: 'skip',
   bridge: { enabled: true, envPath: '/x/.env', whisperCli: '', whisperModel: 'ggml-small.bin', installPersistence: true },
 };
-Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-const win = ap.buildSummary(answers, [], { dryRun: true });
 Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
 const lin = ap.buildSummary(answers, [], { dryRun: true });
 Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
 const mac = ap.buildSummary(answers, [], { dryRun: true });
-console.log(JSON.stringify({ win, lin, mac }));
+console.log(JSON.stringify({ lin, mac }));
 ")
-echo "$outV11e" | jq -e '.win.planned | any(.[]; contains("HimmelTelegramBridge scheduled task"))' >/dev/null \
-  || fail "V11e [codex-2]: win32 dry-run should name the HimmelTelegramBridge scheduled task (got: $outV11e)"
-echo "$outV11e" | jq -e '.win.planned | any(.[]; contains("systemd"))' >/dev/null \
-  && fail "V11e [codex-2]: win32 dry-run must NOT claim a systemd unit -- that is not what will be installed there (got: $outV11e)"
 echo "$outV11e" | jq -e '.lin.planned | any(.[]; contains("telegram-bridge.service") and contains("systemd") and contains("linger"))' >/dev/null \
   || fail "V11e [codex-2]: linux dry-run should name the telegram-bridge.service systemd unit + linger (got: $outV11e)"
 echo "$outV11e" | jq -e '.lin.planned | any(.[]; contains("scheduled task"))' >/dev/null \
-  && fail "V11e [codex-2]: linux dry-run must NOT claim a scheduled task -- that is the win32 artifact, not linux (got: $outV11e)"
+  && fail "V11e [codex-2]: linux dry-run must NOT claim a scheduled task -- that is not the linux artifact (got: $outV11e)"
 echo "$outV11e" | jq -e '.mac.manual | any(.[]; (.what | contains("not supported on this platform")) and (.what | contains("darwin")))' >/dev/null \
   || fail "V11e [codex-2]: an unsupported platform's dry-run should say so plainly rather than claim an install (got: $outV11e)"
 echo "$outV11e" | jq -e '.mac.planned | any(.[]; contains("would install (systemd") or contains("would install (HimmelTelegramBridge"))' >/dev/null \
   && fail "V11e [codex-2]: an unsupported platform must NEVER claim it would install persistence (got: $outV11e)"
-echo "ok: V11e [codex-2] the --dry-run bridge-persistence text platform-branches (win32 scheduled task / linux systemd+linger / other unsupported), never claims the wrong artifact"
+echo "ok: V11e [codex-2] the --dry-run bridge-persistence text platform-branches (linux systemd+linger / other unsupported), never claims the wrong artifact"
 
 # ── V11f — a paired credential
 # reported 'unconfigured' must name the pair and say the shared probe cannot
@@ -577,29 +571,22 @@ const ap = require('$adopter_profile_lib_w');
 function promptText(artifact) {
   return '? install bridge persistence now (' + artifact + '; consented, --dry-run shows it) [yes|no] (default: no)';
 }
-Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
-const winArtifact = ap.bridgePersistenceArtifact();
 Object.defineProperty(process, 'platform', { value: 'linux', configurable: true });
 const linArtifact = ap.bridgePersistenceArtifact();
 Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true });
 const macArtifact = ap.bridgePersistenceArtifact();
 console.log(JSON.stringify({
-  win: winArtifact === null ? null : promptText(winArtifact),
   lin: linArtifact === null ? null : promptText(linArtifact),
   mac: macArtifact,
 }));
 ")
-echo "$outV11h" | jq -e '.win | contains("scheduled task")' >/dev/null \
-  || fail "V11h: the win32 consent prompt should name the scheduled task (got: $outV11h)"
-echo "$outV11h" | jq -e '.win | contains("systemd")' >/dev/null \
-  && fail "V11h: the win32 consent prompt must NOT promise a systemd unit -- that is not what will be installed there (got: $outV11h)"
 echo "$outV11h" | jq -e '.lin | contains("systemd") and contains("telegram-bridge.service") and contains("linger")' >/dev/null \
   || fail "V11h: the linux consent prompt should name the systemd --user unit AND linger (got: $outV11h)"
 echo "$outV11h" | jq -e '.lin | contains("scheduled task")' >/dev/null \
-  && fail "V11h: the linux consent prompt must NOT claim a scheduled task -- that is the win32 artifact (got: $outV11h)"
+  && fail "V11h: the linux consent prompt must NOT claim a scheduled task -- that is not the linux artifact (got: $outV11h)"
 echo "$outV11h" | jq -e '.mac == null' >/dev/null \
   || fail "V11h: an unsupported platform must resolve to null (no artifact) -- bin.js skips the consent prompt entirely on null rather than promise an install that will never happen (got: $outV11h)"
-echo "ok: V11h the bridge-persistence consent prompt names the scheduled task on win32, the systemd unit + linger on linux, and promises no install (prompt skipped) on an unsupported platform"
+echo "ok: V11h the bridge-persistence consent prompt names the systemd unit + linger on linux, and promises no install (prompt skipped) on an unsupported platform"
 
 # ═══════════════════════════════════════════════════════════════════════════
 # V1 — two --from-profile --dry-run replays produce byte-identical output
@@ -881,7 +868,7 @@ echo "ok: caseArmRc3 cadence arm rc=3 (already armed) reads as skipped/converged
 # FIRECRAWL_API_KEY -> firecrawl) against the
 # hermetic `python` stub above — NO live network call, no real fetch-health.py
 # execution. this ONLY holds because make_python_stub is called
-# BEFORE build_path below — on non-win32 probeLunaSources resolves `pythonCmd`
+# BEFORE build_path below — probeLunaSources resolves `pythonCmd`
 # to `python3`, and build_path's link_hermetic_tool links in the REAL `python3`
 # unless a `python3` already sits in the stub dir when it runs (see
 # make_python_stub's own header comment for the full mechanics); calling it
@@ -1561,8 +1548,7 @@ echo "ok: caseBridgePersistenceSkipRc [codex-2 ruling] probes-not-ready skips ar
 # installPersistence stays FALSE here, deliberately, even though the
 # scenario is about persistence not being blocked: with it true and probes
 # healthy, bridgeProbesHealthy() opens the gate and bin.js actually calls
-# attemptBridgePersistence() FOR REAL. On win32 that spawns real
-# install-logon-task.ps1; on a real Linux box with systemctl present it
+# attemptBridgePersistence() FOR REAL. On a real Linux box with systemctl present it
 # would write a real unit file and call `systemctl --user enable --now
 # telegram-bridge.service` against the operator's REAL systemd user
 # session — if that operator already runs himmel's own bridge via systemd
@@ -1852,7 +1838,7 @@ chmod +x "$fixtureRepoSaveFail/scripts/luna/pipeline-cadence.sh"
 # refuses to convert a path through a non-directory component ("Not a
 # directory", rc=1), so winpath's `|| fallback` would silently hand node.exe
 # an UNconverted POSIX-style path that collides with nothing from node's own
-# view on win32 -- the trap that made an earlier version of this fixture
+# view -- the trap that made an earlier version of this fixture
 # report "NO THROW". Kept as a documented trap for the next person tempted
 # to winpath the whole blocked path in one call.
 blockerFileSaveFail="$work/savefail-blocker"

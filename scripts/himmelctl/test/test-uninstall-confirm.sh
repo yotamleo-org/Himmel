@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
-# Platform guard: drives cross-platform bin.js from bash, including Git Bash
-# on Windows via _hermetic-home.sh winpath; a .ps1 twin duplicates this coverage.
+# Platform guard: drives cross-platform bin.js from bash via _hermetic-home.sh winpath.
 # WHY: non-interactive input is refusal; a decline is a TTY
 # answer. --yes keeps uninstall's option whitelist narrow. Never use real HOME.
 set -uo pipefail
@@ -24,8 +23,6 @@ export USERPROFILE HIMMELCTL_CACHE_DIR HIMMELCTL_REPO_ROOT HIMMELCTL_BIN_DIR HIM
 # --dry-run now RUNS the executor's own --dry-run (the plan it
 # prints is the script's, not a second copy) — the stub answers it distinctly.
 printf '#!/usr/bin/env bash\ncase " $* " in *" --dry-run "*) echo fixture-dry-run; exit 0 ;; esac\necho fixture-teardown\nexit 7\n' > "$tmp/repo/scripts/uninstall.sh"
-# shellcheck disable=SC2016 # PowerShell $-variables must reach the file literally
-printf 'param([switch]$Yes,[switch]$DryRun,[switch]$PurgeState)\nif ($DryRun) { Write-Output "fixture-dry-run"; exit 0 }\nWrite-Output "fixture-teardown"\nexit 7\n' > "$tmp/repo/scripts/uninstall.ps1"
 
 check_rc() {
     [ "$1" -eq "$2" ] || { echo "FAIL - $3: expected rc=$1, got $2"; cat "$tmp/out" "$tmp/err"; exit 1; }

@@ -8,7 +8,7 @@
 // and the derived-command derivation + shell-out (T4) with the vault-profile
 // mapping (T5a), the existing-vault STAMPED gate (T5b), and handover/
 // pluginSet consumption (T4.5). Also provides the `uninstall` subcommand, a
-// thin wrapper that derives + confirms + shells out to uninstall.sh/.ps1.
+// thin wrapper that derives + confirms + shells out to uninstall.sh.
 //
 // ZERO npm dependencies — the question engine uses Node's built-in `readline`
 // only. No third-party prompts library, no package.json changes.
@@ -31,7 +31,7 @@ const os = require('os');
 const path = require('path');
 const readline = require('readline');
 const { spawnSync } = require('child_process');
-const { himmelIdentity, cacheDir, profileForVault, which, resolvePowershell, displayPath, shellQuote, nodeScriptCmd } = require('./lib/helpers.js');
+const { himmelIdentity, cacheDir, profileForVault, which, displayPath, shellQuote, nodeScriptCmd } = require('./lib/helpers.js');
 const launcherLib = require('./lib/launcher.js');
 const uninstallWrapperLib = require('./lib/uninstall-wrapper.js');
 const standaloneBundleLib = require('./lib/standalone-bundle.js');
@@ -291,7 +291,7 @@ options:
                           docs/setup/profiles/adopter-<s>.install-profile.json
                           (project|user); combined with --from-profile, overrides that
                           profile's own scope instead
-  --contribute           install: layer the contributor-dev setup.sh/setup.ps1
+  --contribute           install: layer the contributor-dev setup.sh
                           primitive on top of the install (pre-commit gates,
                           .himmel-dev marker, doc-guard wiring, Jira/Bitbucket CLI
                           builds, shell-test toolchain probes). Never a question —
@@ -854,7 +854,7 @@ function himmelRealRoot() {
   return path.resolve(__dirname, '..', '..');
 }
 
-// Root used to locate setup.sh/setup.ps1/adopt.sh and scripts/handover/
+// Root used to locate setup.sh/adopt.sh and scripts/handover/
 // register-state.sh (T4/T4.5/T5a). Overridable via HIMMELCTL_REPO_ROOT —
 // same seam class as HIMMELCTL_CACHE_DIR — so a hermetic test can point the
 // derivation + shell-out at STUB fixtures in a temp dir instead of the real
@@ -912,58 +912,22 @@ function isInteractive(args) {
   return Boolean(process.stdin.isTTY);
 }
 
-// win32: winget takes ONE exact package id per invocation — `winget install
-// jq python3 npm` is a single search QUERY, not multiple packages, and bare
-// tool names are not winget ids. Map each hard-gate tool to its documented
-// id (mirrors scripts/machine-setup/win11.ps1's per-tool installs). Git.Git
-// supplies both git and Git Bash, so a clean Windows machine can install bash
-// through cmd without the old bash self-install paradox.
-const WINGET_IDS = {
-  bash: 'Git.Git',
-  git: 'Git.Git',
-  jq: 'jqlang.jq',
-  python3: 'Python.Python.3.12',
-  node: 'OpenJS.NodeJS.LTS',
-  npm: 'OpenJS.NodeJS.LTS',
-};
-
 // Run one package-manager line and log a launch failure or nonzero exit
-// instead of swallowing it. Windows uses cmd directly so the clean-machine
-// winget path does not depend on Git Bash already being installed; posix keeps
-// bash -c. Every line is fixed vocabulary — never user input.
+// instead of swallowing it. Every line is fixed vocabulary — never user input.
 function runInstallerLine(line) {
   console.error(`himmelctl: running: ${line}`);
-  const r = process.platform === 'win32'
-    ? spawnSync(process.env.ComSpec || 'cmd.exe', ['/d', '/s', '/c', line], { stdio: 'inherit' })
-    : spawnSync(resolveBash(), ['-c', line], { stdio: 'inherit' });
+  const r = spawnSync(resolveBash(), ['-c', line], { stdio: 'inherit' });
   if (r.error) console.error(`himmelctl: failed to launch installer: ${r.error.message}`);
   if (typeof r.status === 'number' && r.status !== 0) console.error(`himmelctl: installer exited ${r.status}`);
 }
 
 // Install the missing hard-gate tools via the platform package manager.
-// darwin/linux: ONE brew/apt invocation for the whole list. win32: one
-// `winget install --id <ID> -e` per tool (see WINGET_IDS); a tool with no
-// mapped id gets a manual-install pointer instead of a doomed bare-name
-// query. On posix, bash cannot shell out to install itself; Windows avoids
-// that paradox by running winget through cmd and mapping bash to Git.Git.
+// darwin/linux: ONE brew/apt invocation for the whole list. bash cannot shell
+// out to install itself.
 function installMissing(missing) {
-  if (process.platform !== 'win32' && missing.indexOf('bash') !== -1) {
+  if (missing.indexOf('bash') !== -1) {
     console.error('himmelctl: bash itself is missing and cannot be self-installed via a bash shell-out.');
     console.error('  install bash via your platform package manager, then re-run himmelctl.');
-    return;
-  }
-  if (process.platform === 'win32') {
-    const installedIds = [];
-    for (const tool of missing) {
-      const id = WINGET_IDS[tool];
-      if (!id) {
-        console.error(`himmelctl: no winget id known for '${tool}' — install it manually, then re-run himmelctl.`);
-        continue;
-      }
-      if (installedIds.indexOf(id) !== -1) continue;
-      installedIds.push(id);
-      runInstallerLine(`winget install --id ${id} -e`);
-    }
     return;
   }
   // darwin: Homebrew has no npm formula — npm ships with the node formula
@@ -2588,11 +2552,10 @@ async function offerSaveProfile(answers) {
 //   bash scripts/adopt.sh --profile <core|all> --scope <project|user>
 //     [--luna-target <path>]
 // (profile from the T5a vault mapping below; adopt.sh is bash-native and
-// bash is a hard-gate tool on every platform incl. Windows via Git Bash, so
-// no win32 branch is needed). The old role fork that instead derived
-// setup.sh/setup.ps1 for a 'contributor' role is GONE — devOverlay is
+// bash is a hard-gate tool). The old role fork that instead derived
+// setup.sh for a 'contributor' role is GONE — devOverlay is
 // orthogonal now: when set (via --contribute), deriveOverlayCommand() below
-// derives setup.sh/setup.ps1 as an ADDITIONAL step layered on top of the
+// derives setup.sh as an ADDITIONAL step layered on top of the
 // adopt.sh run above, never a replacement for it. setup.sh remains the
 // idempotent contributor-dev mutation primitive; only WHEN it runs changed.
 // --dry-run prints the plan (+ T4.5 side effects) and exits 0 WITHOUT
@@ -2708,26 +2671,23 @@ function deriveCommand(answers) {
 }
 
 // Derive { argv } for the dev-overlay's own command: the same
-// setup.sh/setup.ps1 primitive the OLD contributor role exclusively derived,
+// setup.sh primitive the OLD contributor role exclusively derived,
 // now layered on TOP of deriveCommand()'s adopt.sh run instead of replacing
 // it. Only reached when answers.devOverlay is true (the --contribute flag).
 function deriveOverlayCommand() {
   const scriptsDir = path.join(repoRoot(), 'scripts');
-  if (process.platform === 'win32') {
-    return { argv: [resolvePowershell(), '-ExecutionPolicy', 'Bypass', '-File', path.join(scriptsDir, 'setup.ps1')] };
-  }
   return { argv: [resolveBash(), toBashPath(path.join(scriptsDir, 'setup.sh'))] };
 }
 
-// The dev-overlay primitive's filename for the current platform — shared by
+// The dev-overlay primitive's filename — shared by
 // contributeCheckoutOk() (the existence check) and its own error message
 // below, so the two never name different files.
 function contributeOverlayFilename() {
-  return process.platform === 'win32' ? 'setup.ps1' : 'setup.sh';
+  return 'setup.sh';
 }
 
 // is the resolved repo root an actual himmel checkout the dev
-// overlay can run setup.sh/setup.ps1 against? A pure fs read — the same
+// overlay can run setup.sh against? A pure fs read — the same
 // primitive deriveOverlayCommand() would target — rather than a second
 // heuristic (e.g. the old .himmel-dev marker sniff, which detectRole() used
 // to gate the whole role question on; --contribute is explicit consent, so
@@ -3136,12 +3096,10 @@ function runBridgeReadinessProbes(bridge) {
   return { whisperReady, pythonInterpreter, distinctTokens };
 }
 
-// win32 lowercases (default-case-insensitive filesystem), POSIX keeps case
-// — same convention probes.js's own normalizeForPhiMatch uses; kept local
-// (a private compare, not exported cross-module for one call site).
+// POSIX keeps case — same convention probes.js's own normalizeForPhiMatch uses;
+// kept local (a private compare, not exported cross-module for one call site).
 function normalizePathForCompare(p) {
-  const resolved = path.resolve(p);
-  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+  return path.resolve(p);
 }
 
 // A14/A15: dispatch ONE secrets-manifest entry's probe — cmd:telegram_getme
@@ -3492,8 +3450,8 @@ function lunaConfigMigrationLines(filled, doc, supplied) {
 // overrides (graph-refresh.sh honors it; refresh-graph-map.sh hardcodes
 // $HOME instead, a PRE-EXISTING quirk of that consumer, not something this
 // ticket touches). $HOME first, then os.homedir(), same convention as
-// expandHome() above (tests fake $HOME; os.homedir() alone reads USERPROFILE
-// on win32 and does not honor a bash-level HOME= override for a node child).
+// expandHome() above (tests fake $HOME; os.homedir() alone does not honor a
+// bash-level HOME= override for a node child).
 function phiRootsPath() {
   const dir = process.env.CLAUDE_GLM_CONFIG_DIR || path.join(process.env.HOME || os.homedir(), '.config', 'claude-glm');
   return path.join(dir, 'phi-roots');
@@ -3639,20 +3597,9 @@ function currentOsUser() {
 // A12/S6 (RETASK stage1-build-6d2e [codex-3]/[codex-6]): Linux persistence is
 // the systemd unit AND linger — a unit with no linger stops at logout and S6
 // reports it degraded, so linger is its own consented step here, never
-// implied. Windows uses the scheduled logon task bridge-persistence.js ships
-// (installWindowsLogonTask, same {ok,actions,detail} contract as the
-// systemd primitives) — this used to unconditionally call the Linux-only
-// installSystemdUnit and report rc=1 for TRYING on Windows, himmel's primary
-// platform, even though scripts/telegram/install-logon-task.ps1 already
-// implements the capability; it was simply unwired. A platform that is
-// neither: never claim success — report still-manual instead.
+// implied. Any other platform: never claim success — report still-manual
+// instead.
 function attemptBridgePersistence({ dryRun }) {
-  if (process.platform === 'win32') {
-    if (typeof bridgePersistenceLib.installWindowsLogonTask !== 'function') {
-      return { ok: false, actions: [], detail: 'bridge-persistence.js does not export installWindowsLogonTask on this checkout — install the scheduled task manually via scripts/telegram/install-logon-task.ps1' };
-    }
-    return bridgePersistenceLib.installWindowsLogonTask({ repoRoot: repoRoot(), dryRun: dryRun });
-  }
   if (process.platform === 'linux') {
     const unit = bridgePersistenceLib.installSystemdUnit({ repoRoot: repoRoot(), dryRun: dryRun });
     if (!unit.ok) return unit;
@@ -4240,9 +4187,7 @@ function gitGateHooksState() {
 // .git/hooks/commit-msg all satisfy an existence check while git runs
 // nothing — which would let this summary certify a repo as gated when it is
 // not, the exact false-clean is about. Require what git itself
-// requires: a regular file, and on POSIX the executable bit (git-for-windows
-// runs hooks through sh and ignores the mode, so demanding it there would
-// report every Windows install ungated).
+// requires: a regular file with the executable bit.
 function gitWouldRunHook(hookPath) {
   let st;
   try {
@@ -4251,7 +4196,6 @@ function gitWouldRunHook(hookPath) {
     return false;
   }
   if (!st.isFile()) return false;
-  if (process.platform === 'win32') return true;
   return (st.mode & 0o111) !== 0;
 }
 
@@ -4275,9 +4219,8 @@ function gitWouldRunHook(hookPath) {
 //
 // Gated on the overlay having run (see the call site): adopt.sh alone never
 // resolves a slug, so for a non-overlay install there is no skipped step to
-// name. On win32 the overlay is setup.ps1, which has no USER_SLUG step at all.
+// name.
 function userSlugState() {
-  if (process.platform === 'win32') return { applicable: false };
   const script = path.join(repoRoot(), 'scripts', 'setup', 'check-user-slug.sh');
   if (!fs.existsSync(script)) {
     return { applicable: true, verified: false, reason: 'scripts/setup/check-user-slug.sh not found' };
@@ -4788,7 +4731,7 @@ async function runPlan(answers, args) {
       if (applyRc !== 0) return applyRc;
       if (await interrupted()) return 130;
     }
-    // the dev overlay's setup.sh/setup.ps1 runs AFTER adopt.sh
+    // the dev overlay's setup.sh runs AFTER adopt.sh
     // succeeds, as an additional idempotent mutation step — never instead of it.
     if (overlayCmd) {
       provStep = 'overlay';
@@ -4986,11 +4929,8 @@ async function cmdInstall(args) {
     console.error('  its .claude/settings.json is the SOURCE this installer generates from, never a target.');
     // The contributor primitive is rendered from deriveOverlayCommand() — the
     // SAME derivation that actually spawns it — rather than assumed to be
-    // `bash <script>`. On Windows the primitive is
-    // setup.ps1, and `bash setup.ps1` is not a runnable command; the derived
-    // form carries pwsh + -ExecutionPolicy Bypass -File there, and bash on
-    // POSIX. Deriving it also means the printed line can never drift from the
-    // command himmelctl would really run.
+    // `bash <script>`. Deriving it means the printed line can never drift from
+    // the command himmelctl would really run.
     //
     // Both paths are shell-quoted and ABSOLUTE: a
     // checkout path containing a space breaks an unquoted path operand, and
@@ -5052,7 +4992,7 @@ async function cmdInstall(args) {
   }
 
   // 5.5: devOverlay is only valid inside a himmel checkout
-  // it layers the contributor-dev setup.sh/setup.ps1 primitive on top of the
+  // it layers the contributor-dev setup.sh primitive on top of the
   // install (see deriveOverlayCommand()), and that primitive does not exist
   // anywhere else. This is the ONE authoritative gate: it fires on the
   // resolved answers regardless of source (--contribute, a --from-profile
@@ -5091,10 +5031,9 @@ async function cmdInstall(args) {
 // ── uninstall (§5.5 locked decision, operator 2026-07-11) ───────────────────
 //
 // A THIN wrapper: summary + one confirm (default-No, only y/yes
-// consents; runPlan's `Proceed?` is default-Yes), then exec the platform uninstall script verbatim
-// (win32: uninstall.ps1 via the same interpreter selection T4 uses for
-// setup.ps1). Passes through NOTHING speculative from the cached install
-// profile — uninstall.sh/.ps1's own scope flags (--skip-plugins etc.) have
+// consents; runPlan's `Proceed?` is default-Yes), then exec uninstall.sh
+// verbatim. Passes through NOTHING speculative from the cached install
+// profile — uninstall.sh's own scope flags (--skip-plugins etc.) have
 // no analog in the Draft-A answer schema and this subcommand does not even
 // read a profile. The one flag ALWAYS added is --yes/-Yes: the wizard's own
 // confirm above IS the one confirm, so the delegate script must not ask
@@ -5114,7 +5053,7 @@ async function cmdInstall(args) {
 // repoRoot()/resolveBash() itself.
 
 // sub-ticket E (uninstall-completeness, operator LOCKED
-// 2026-07-17): uninstall.sh/.ps1 already tears down himmel's OWN wiring
+// 2026-07-17): uninstall.sh already tears down himmel's OWN wiring
 // symmetrically — that stays untouched (§ header above: "Keep uninstall.sh
 // as the executor"). What was missing is that cmdUninstall was manifest-
 // BLIND: it never told the operator what SHARED items (toolchain, global
@@ -5350,14 +5289,11 @@ function uninstallManifestClasses(ids) {
 // The pre-flight operator-state lines. Per row, mirrors uninstall.sh's step-2
 // plan: class state -> removed only by --purge-state; code -> always removed;
 // anything else (keep) -> never removed, naming the class. Both rows state (the
-// shipped manifest) keeps the original two-line wording. ponytail: win32 runs
-// uninstall.ps1, which keeps its own targets and never reads the manifest, so
-// there the shipped-default wording is what its -PurgeState gating does.
+// shipped manifest) keeps the original two-line wording.
 function operatorStateBanner(purgeState) {
   const shipped = purgeState
     ? '  --purge-state: operator state (telegram pairing, bridge state) is REMOVED too.'
     : '  operator state (telegram pairing, bridge state) is KEPT — pass --purge-state to remove it.';
-  if (process.platform === 'win32') return [shipped];
   const rows = [['telegram-channel', 'telegram pairing'], ['telegram-bridge', 'bridge state']];
   const classes = uninstallManifestClasses(rows.map((r) => r[0]));
   if (!classes) return ['  operator state (telegram pairing, bridge state): see the plan uninstall.sh prints next (uninstall manifest unreadable).'];
@@ -5408,44 +5344,22 @@ async function cmdUninstall(args) {
 // ── PATH launcher ──────────────────────────────────────────
 //
 // himmelctlBinDir lives in lib/launcher.js now.
-// HIMMELCTL_SHIM_PLATFORM is a hermetic-test seam; normal runs always use the
-// real process platform.
-function himmelctlShimPlatform() {
-  return process.env.HIMMELCTL_SHIM_PLATFORM || process.platform;
-}
-
-function pathContainsDir(dir, platform) {
-  const raw = process.env.PATH || process.env.Path || '';
-  const delimiter = platform === 'win32' ? ';' : path.delimiter;
-  const key = (p) => {
-    let resolved = path.resolve(String(p).replace(/^"|"$/g, ''));
-    if (platform === 'win32') resolved = resolved.replace(/\//g, '\\').toLowerCase();
-    return resolved;
-  };
+function pathContainsDir(dir) {
+  const raw = process.env.PATH || '';
+  const key = (p) => path.resolve(String(p).replace(/^"|"$/g, ''));
   const wanted = key(dir);
-  return raw.split(delimiter).some((entry) => entry && key(entry) === wanted);
+  return raw.split(path.delimiter).some((entry) => entry && key(entry) === wanted);
 }
 
-function printHimmelctlPathInstruction(binDir, platform) {
-  if (pathContainsDir(binDir, platform)) return;
-  if (platform === 'win32') {
-    const quoted = binDir.replace(/'/g, "''");
-    // Idempotent: the printed snippet prepends binDir
-    // only when it is not already an element of the persisted User PATH, so
-    // re-running `himmelctl update` before opening a new shell — and pasting the
-    // line a second time — cannot duplicate the entry. pathContainsDir above
-    // checks the PROCESS Path, but this mutates the PERSISTED User Path, so the
-    // guard lives in the printed snippet itself.
-    console.log(`himmelctl: ${binDir} is not on PATH; run this in PowerShell (safe to repeat — it adds the entry only once), then open a new shell: $p=[Environment]::GetEnvironmentVariable('Path','User'); if(-not(($p -split ';') -contains '${quoted}')){[Environment]::SetEnvironmentVariable('Path','${quoted};'+$p,'User')}`);
-    return;
-  }
+function printHimmelctlPathInstruction(binDir) {
+  if (pathContainsDir(binDir)) return;
   const quoted = `'${binDir.replace(/'/g, "'\\''")}'`;
   console.log(`himmelctl: ${binDir} is not on PATH; add this line to your shell profile, then open a new shell: export PATH=${quoted}:"$PATH"`);
 }
 
 // Write a tiny relative wrapper plus a JS target loader. The wrapper never
-// embeds the checkout path: Windows uses %~dp0 and POSIX uses its own
-// directory, so paths with spaces stay quoted. Re-running install/update
+// embeds the checkout path: it uses its own directory, so paths with spaces
+// stay quoted. Re-running install/update
 // rewrites only the loader's absolute target, which re-points a moved checkout.
 //
 //  • The loader target is the PRIMARY checkout, not repoRoot() — a launcher
@@ -5456,11 +5370,6 @@ function printHimmelctlPathInstruction(binDir, platform) {
 //    A third-party `himmelctl`, an operator's hand-written launcher, or a
 //    symlink is refused, never clobbered. Writes go via a sibling tmp + atomic
 //    rename so a partial write can never leave a broken launcher.
-//  • No himmelctl.ps1 is written: PowerShell command precedence resolves a .ps1
-//    before the .cmd of the same basename, and a clean Windows client defaults
-//    to ExecutionPolicy=Restricted → bare `himmelctl` throws PSSecurityException.
-//    Letting PowerShell resolve the .cmd avoids that. A stale marked .ps1 from a
-//    prior install is removed (removeMarkedLauncher).
 // SHIM_MARKER, fileCarriesMarker, writeMarkedLauncher, removeMarkedLauncher and
 // removeHimmelctlLaunchers now live in lib/launcher.js.
 
@@ -5472,11 +5381,7 @@ function printHimmelctlPathInstruction(binDir, platform) {
 // uses. When repoRoot() is already the primary, or git is absent (tarball
 // install), behavior is unchanged: returns repoRoot(). (codex-adv-2.)
 //
-// The parent resolution runs INSIDE bash (`cd "$d/.." && pwd`): on win32 node,
-// `git rev-parse --git-common-dir` via Git-Bash returns a POSIX-form (/c/...)
-// path that node's win32 path.resolve would misresolve, so resolving the parent
-// in bash (and `pwd -W` for the Windows form on MSYS, plain `pwd` elsewhere)
-// hands node a path in the form it expects.
+// The parent resolution runs INSIDE bash (`cd "$d/.." && pwd`).
 //
 // <dir> defaults to repoRoot() (all pre-existing call sites); an explicit
 // <dir> (as checkUninstallCompleteness passes) resolves a DIFFERENT
@@ -5485,7 +5390,7 @@ function printHimmelctlPathInstruction(binDir, platform) {
 function primaryCheckoutRoot(dir) {
   const root = dir || repoRoot();
   const r = spawnSync(resolveBash(),
-    ['-c', 'd=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$d/.." && { pwd -W 2>/dev/null || pwd; }'],
+    ['-c', 'd=$(git rev-parse --git-common-dir 2>/dev/null) && cd "$d/.." && pwd'],
     { cwd: root, encoding: 'utf8' });
   if (r.error || r.status !== 0 || !r.stdout) return root;
   const resolved = r.stdout.trim();
@@ -5493,11 +5398,10 @@ function primaryCheckoutRoot(dir) {
 }
 
 // True iff <a> and <b> are the SAME filesystem entry — dev+ino identity, the
-// Node equivalent of shell `test -ef`. Verified on win32/
-// Node 24 to be trailing-separator-, slash-style-, and drive-letter-casing-
-// insensitive (fs.statSync resolves the real on-disk file, unlike a bare
-// fs.realpathSync string compare, which on this platform/Node combo
-// preserves the CALLER's input casing instead of normalizing it — realpath
+// Node equivalent of shell `test -ef`. Trailing-separator- and
+// slash-style-insensitive (fs.statSync resolves the real on-disk file, unlike
+// a bare fs.realpathSync string compare, which can preserve the CALLER's input
+// casing instead of normalizing it — realpath
 // alone is not a safe discriminator here). Symlinked path segments resolve
 // correctly too, since statSync (unlike lstatSync) follows symlinks. Returns
 // false, never throws, when either path can't be stat'd.
@@ -5543,15 +5447,14 @@ function ensureBusStateDirs() {
 
 function applyHimmelctlPathShim(args) {
   const binDir = launcherLib.himmelctlBinDir();
-  const platform = himmelctlShimPlatform();
   const repoRootPath = primaryCheckoutRoot();
   const target = path.join(repoRootPath, 'scripts', 'himmelctl', 'bin.js');
   const fallback = path.join(standaloneBundleLib.bundleDir(), 'standalone.js');
   if (args.dryRun) {
     console.log(`DRY: himmelctl launcher -> ${target} (would write to ${binDir})`);
     console.log(`DRY: standalone uninstaller -> ${standaloneBundleLib.bundleDir()}`);
-    prov(['create', 'shim', path.join(binDir, platform === 'win32' ? 'himmelctl.js' : 'himmelctl'), '--scope', 'user', '--class', 'code', '--dry-run']);
-    printHimmelctlPathInstruction(binDir, platform);
+    prov(['create', 'shim', path.join(binDir, 'himmelctl'), '--scope', 'user', '--class', 'code', '--dry-run']);
+    printHimmelctlPathInstruction(binDir);
     return true;
   }
 
@@ -5575,38 +5478,21 @@ function applyHimmelctlPathShim(args) {
     // clone is present still falls back correctly once it is later deleted.
     const jsBody = `'use strict';\n// ${launcherLib.SHIM_MARKER}\nconst fs = require('fs');\nconst t = ${JSON.stringify(target)};\nconst f = ${JSON.stringify(fallback)};\nconst e = fs.existsSync(t) ? t : fs.existsSync(f) ? f : t;\nconst { status } = require('child_process').spawnSync(process.execPath, [e, ...process.argv.slice(2)], { stdio: 'inherit' });\nprocess.exit(status === null ? 1 : status);\n`;
     if (!launcherLib.writeMarkedLauncher(path.join(binDir, 'himmelctl.js'), jsBody)) return false;
-    if (platform === 'win32') {
-      const cmdBody = `@echo off\r\nREM ${launcherLib.SHIM_MARKER}\r\nnode "%~dp0himmelctl.js" %*\r\n`;
-      if (!launcherLib.writeMarkedLauncher(path.join(binDir, 'himmelctl.cmd'), cmdBody)) return false;
-      launcherLib.writeMarkedLauncher(path.join(binDir, 'himmel.cmd'), cmdBody); // HIMMEL-4380 alias, best-effort
-      // No himmelctl.ps1 (codex-adv-1): a stale marked .ps1 from a prior install
-      // is removed; an unmarked/symlinked one is left untouched. Removal is a
-      // best-effort cleanup of a LEGACY artifact, not part of writing the PATH
-      // launcher, so its I/O errors WARN here with an accurate message and never
-      // fail the shim write (otherwise caught by the
-      // surrounding try/catch and misreported as "failed to write PATH launcher").
-      try {
-        launcherLib.removeMarkedLauncher(path.join(binDir, 'himmelctl.ps1'));
-      } catch (e) {
-        console.error(`himmelctl: WARN: could not remove stale launcher ${path.join(binDir, 'himmelctl.ps1')} (${e.message}) — the PATH launcher was written; remove the stale file manually if needed`);
-      }
-    } else {
-      const launcher = path.join(binDir, 'himmelctl');
-      const shBody = `#!/usr/bin/env sh\n# ${launcherLib.SHIM_MARKER}\nexec node "$(dirname "$0")/himmelctl.js" "$@"\n`;
-      if (!launcherLib.writeMarkedLauncher(launcher, shBody, 0o755)) return false;
-      // a `himmel` alias beside himmelctl, so `himmel update` works
-      // in any shell (fish included) without shell config. Best-effort: a
-      // third-party `himmel` is refused by writeMarkedLauncher (with its own
-      // message) and must not fail the himmelctl launcher.
-      launcherLib.writeMarkedLauncher(path.join(binDir, 'himmel'), shBody, 0o755);
-    }
+    const launcher = path.join(binDir, 'himmelctl');
+    const shBody = `#!/usr/bin/env sh\n# ${launcherLib.SHIM_MARKER}\nexec node "$(dirname "$0")/himmelctl.js" "$@"\n`;
+    if (!launcherLib.writeMarkedLauncher(launcher, shBody, 0o755)) return false;
+    // a `himmel` alias beside himmelctl, so `himmel update` works
+    // in any shell (fish included) without shell config. Best-effort: a
+    // third-party `himmel` is refused by writeMarkedLauncher (with its own
+    // message) and must not fail the himmelctl launcher.
+    launcherLib.writeMarkedLauncher(path.join(binDir, 'himmel'), shBody, 0o755);
   } catch (e) {
     console.error(`himmelctl: failed to write PATH launcher in ${binDir}: ${e.message}`);
     return false;
   }
 
   console.log(`himmelctl: launcher -> ${target} (written to ${binDir})`);
-  printHimmelctlPathInstruction(binDir, platform);
+  printHimmelctlPathInstruction(binDir);
   return true;
 }
 
@@ -5626,14 +5512,6 @@ function applyHimmelctlPathShim(args) {
 // install/uninstall's own --dry-run.
 
 function deriveUpdateCommand() {
-  // (two-part Windows fix, BOTH parts required):
-  //  1. resolveBash() picks a Windows-native Git Bash — bare `bash` from a
-  //     PowerShell PATH is System32\bash.exe (WSL), which cannot run a
-  //     Windows-path script AT ALL (backslashes eaten; C:/... absent from the
-  //     WSL rootfs). This is the reopened root cause the s2 fix missed.
-  //  2. toBashPath() forward-slashes the script path so the Git Bash chosen in
-  //     (1) doesn't itself MSYS-mangle the backslashes (\U->U, \D->D ...) into
-  //     a nonexistent C:Users...himmel-update.sh -> "No such file or directory".
   const script = toBashPath(path.join(repoRoot(), 'scripts', 'himmel-update.sh'));
   return { argv: [resolveBash(), script] };
 }
@@ -5690,7 +5568,7 @@ async function cmdUpdateVersioned(args, layout) {
 // ── profile ─────────────────────────────────────────────────
 //
 // A THIN passthrough, same shell-out shape as deriveUpdateCommand/cmdUpdate
-// (resolveBash() + toBashPath() for the Windows Git-Bash path fix): forward
+// (resolveBash() + toBashPath()): forward
 // argvRest VERBATIM to plugin-profile.sh and propagate its exit code. The
 // script owns its own verb/flag grammar (list/lean/full/enable/disable,
 // --json, --dry-run, --template PATH, a bare-or-full <spec>) plus every bit
@@ -7100,7 +6978,7 @@ async function cmdEnsure(args) {
     if (args.dryRun) {
       for (const p of plan) {
         // a plan entry can be {unrunnable: "..."} (buildEntry's own
-        // failure case, e.g. an unmapped win32 dep) with no .cmd/.args at
+        // failure case, e.g. an unmapped dep) with no .cmd/.args at
         // all — printing `DRY: ${p.cmd} ${p.args.join(' ')}` against that
         // shape crashed into `DRY: undefined undefined` and (since nothing
         // threw) still returned success. Detect it first and surface it as
@@ -7420,7 +7298,7 @@ async function cmdScopeSet(args) {
 
   // Build the target-scope wire plan ONCE here — planInstall is deterministic
   // (no spawn, pure computation), so an unrunnable install descriptor (e.g.
-  // an unmapped win32 dep) is known BEFORE Step 3 unwires the old scope,
+  // an unmapped dep) is known BEFORE Step 3 unwires the old scope,
   // instead of only surfacing after. Reused as-is by the dry-run preview
   // below AND by Step 4's runInstall — planInstall is invoked exactly once
   // per switch.
@@ -7449,7 +7327,7 @@ async function cmdScopeSet(args) {
   }
 
   // Fail-closed BEFORE any mutation: an unrunnable wire-plan entry (e.g. an
-  // unmapped win32 dep) must abort the switch here, before Step 3 (the first
+  // unmapped dep) must abort the switch here, before Step 3 (the first
   // mutating step) unwires the old scope — not after, when Step 4 would
   // otherwise discover it with the old scope already torn down.
   const wirePlanErrors = wirePlan.filter((p) => p.unrunnable);
@@ -7614,9 +7492,8 @@ async function cmdScope(args) {
 // and forwards a verb — so the guarantees cannot drift between two callers.
 // The project `trust` acts on. Routed through `bash -c` (mirrors
 // installMissing's bash-wrap pattern): a hermetic test can stub `git` with a
-// plain bash script on the stub PATH, which direct spawnSync cannot exec on
-// win32. The git line is a
-// fixed string, never user input. Any git failure (absent git, not a repo)
+// plain bash script on the stub PATH, which direct spawnSync cannot exec.
+// The git line is a fixed string, never user input. Any git failure (absent git, not a repo)
 // falls through to the working directory, which is still the directory the
 // operator is standing in — never this CLI's own checkout.
 function trustTargetDir() {
@@ -7734,77 +7611,12 @@ function envFilePath() {
   return path.join(repoRoot(), '.env');
 }
 
-// The bash executable EVERY himmelctl bash spawn must use.
-// `bash` bare is resolved by the OS PATH, and on the operator's Windows
-// PowerShell PATH that resolves to C:\Windows\System32\bash.exe — the WSL
-// launcher — because Git Bash is LAST on PATH. WSL cannot run a Windows-path
-// script in ANY form: backslashes are eaten (C:\...\x.sh -> C:...x.sh, "No
-// such file or directory") and the forward-slashed C:/... form is absent from
-// the WSL rootfs (which needs /mnt/c/...). So trusting PATH order is the bug
-// (sibling of the MSYS backslash mangling toBashPath handles — that one only
-// helps once the RIGHT, Git-Bash, interpreter is chosen). Resolve a
-// Windows-native Git Bash DETERMINISTICALLY instead: it runs the mixed C:/...
-// form toBashPath produces. Candidate search over the standard
-// Git-for-Windows install locations; first hit wins (bin\bash.exe preferred —
-// it sets up the MSYS environment). There is deliberately NO process.platform
-// guard: the ProgramFiles/LOCALAPPDATA env vars being set (and a Git\bin\bash
-// actually existing under them) IS the "this is a Windows Git install" signal,
-// which keeps the helper uniformly unit-testable on a posix CI runner (point
-// ProgramFiles at a fixture) — on real posix those vars are unset, so the loop
-// finds nothing and falls through. If the standard locations miss, a win32
-// fallback scans PATH for a Git Bash installed elsewhere (scoop / portable /
-// choco-to-custom-dir) but NOT a WSL launcher.
-// Only then does it fall back to bare 'bash' (posix always; win32 only if the
-// sole bash on PATH is WSL — then HIMMELCTL_BASH is the escape hatch; himmel
-// hard-gates bash, so an adopter has one). HIMMELCTL_BASH overrides everything
-// (nonstandard install OR a hermetic test pinning a specific bash) — same
-// env-seam class as HIMMELCTL_REPO_ROOT.
+// The bash executable EVERY himmelctl bash spawn must use: HIMMELCTL_BASH when
+// set (nonstandard install OR a hermetic test pinning a specific bash — same
+// env-seam class as HIMMELCTL_REPO_ROOT), else bare 'bash' from PATH (himmel
+// hard-gates bash).
 function resolveBash() {
-  if (process.env.HIMMELCTL_BASH) return process.env.HIMMELCTL_BASH;
-  const localPrograms = process.env.LOCALAPPDATA
-    ? path.join(process.env.LOCALAPPDATA, 'Programs')
-    : null;
-  const bases = [process.env.ProgramFiles, process.env['ProgramFiles(x86)'], localPrograms];
-  const relCandidates = [['Git', 'bin', 'bash.exe'], ['Git', 'usr', 'bin', 'bash.exe']];
-  for (const base of bases) {
-    if (!base) continue;
-    for (const rel of relCandidates) {
-      const cand = path.join(base, ...rel);
-      try {
-        if (fs.existsSync(cand)) return cand;
-      } catch (_e) { /* unreadable base — try the next candidate */ }
-    }
-  }
-  // Git installed off the standard locations but ON PATH — return it rather
-  // than the WSL bare-'bash'. win32-only: on posix bare 'bash' is correct and a
-  // concrete PATH hit would needlessly break the hermetic suites' bare-'bash'
-  // contract (they pin a stub bash on PATH).
-  if (process.platform === 'win32') {
-    const onPath = firstNonWslBashOnPath();
-    if (onPath) return onPath;
-  }
-  return 'bash';
-}
-
-// Scan PATH for the first `bash`/`bash.exe` that is NOT a Windows WSL launcher
-// (System32\bash.exe, or the WindowsApps app-execution alias) — those ARE the
-// WSL bash resolveBash() exists to avoid. Returns null when the only bash on
-// PATH is a WSL launcher (or none is), leaving resolveBash's bare-'bash' last
-// resort + the HIMMELCTL_BASH override. win32-only caller, but pure/portable.
-function firstNonWslBashOnPath() {
-  const raw = process.env.PATH || process.env.Path || '';
-  for (const dir of raw.split(path.delimiter)) {
-    if (!dir) continue;
-    const low = dir.toLowerCase();
-    if (low.includes('system32') || low.includes('windowsapps')) continue;
-    for (const name of ['bash.exe', 'bash']) {
-      const cand = path.join(dir, name);
-      try {
-        if (fs.existsSync(cand)) return cand;
-      } catch (_e) { /* unreadable dir — try the next */ }
-    }
-  }
-  return null;
+  return process.env.HIMMELCTL_BASH || 'bash';
 }
 
 // Convert a native repo path to the Git-Bash/MSYS-safe form for any path
@@ -8069,7 +7881,7 @@ function cmdConfigSetHook(hookPath, onOff, args) {
     }
     // Routed through `bash -c` for the same reason every other tool-shellout
     // in this file is: hermetically stubbable with a plain script on PATH,
-    // and avoids win32 spawnSync's own PATH resolution picking an unrelated
+    // and avoids spawnSync's own PATH resolution picking an unrelated
     // same-named binary over the correct .cmd shim.
     console.log(`himmelctl: ${line}`);
     const r = spawnSync(resolveBash(), ['-c', line], { stdio: 'inherit' });
@@ -8443,11 +8255,11 @@ async function cmdDepsEnsure(args) {
   // failure this codepath never actually confirmed for that manager, so it
   // gets the honest "not present after its install recipe ran" wording
   // instead, pointing at ensure-tools.sh's own already-printed diagnostic
-  // lines. Every OTHER manager (script/brew/pip/winget) genuinely exits
+  // lines. Every OTHER manager (script/brew/pip) genuinely exits
   // nonzero on failure — reaching `ran` at all there DOES mean the recipe's
   // own process claimed success, so the PATH-specific wording stays
   // accurate for those.
-  const osKeyForCtx = ctx.platform === 'win32' ? 'win32' : ctx.platform === 'darwin' ? 'macos' : 'linux';
+  const osKeyForCtx = ctx.platform === 'darwin' ? 'macos' : 'linux';
   const origCtx = { repoRoot: ctx.repoRoot, platform: ctx.platform, env: Object.assign({}, process.env, { PATH: originalPath }) };
   const verified = [];
   for (const r of ran) {
@@ -8572,8 +8384,9 @@ async function main() {
     console.log(USAGE);
     return 0;
   }
-  // Windows is unsupported: one message, non-zero, before any subcommand runs.
-  if (process.platform === 'win32') {
+  // Anything but Linux and macOS is unsupported: one message, non-zero, before
+  // any subcommand runs.
+  if (process.platform !== 'linux' && process.platform !== 'darwin') {
     console.error('himmelctl: Windows is not supported; use Linux or macOS.');
     return 1;
   }

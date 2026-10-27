@@ -9,11 +9,11 @@
 # path, winpath for node.exe's MSYS-path blindness, a stub PATH via
 # scripts/lib/hermetic-path.sh for the e2e cases, HIMMELCTL_REPO_ROOT pointed
 # at a throwaway fixture. NEVER exercises a real package manager (apt/dnf/
-# brew/winget/pip) or the real ensure-tools.sh/qmd-bin.sh, and NEVER hits the
+# brew/pip) or the real ensure-tools.sh/qmd-bin.sh, and NEVER hits the
 # network — every plan-shape assertion runs the ENGINE directly (node -e +
 # require, mirrors test-wizard-install-engine.sh's own pattern for exactly
-# this reason: buildDepEntry accepts a ctx.platform override, so the win32/
-# macos/linux branches are all exercised deterministically regardless of
+# this reason: buildDepEntry accepts a ctx.platform override, so the macos/
+# linux branches are all exercised deterministically regardless of
 # this suite's own host OS), and every e2e execution case (`deps ensure`/
 # `deps upgrade` actually running something) uses manager:"script" against a
 # throwaway stub script that only appends to a log file — never a real
@@ -29,8 +29,6 @@
 #      already-present tool and can't upgrade one).
 #   c. buildDepEntry manager:"brew": install -> `brew install "$1"`;
 #      upgrade -> `brew upgrade "$1" ... || brew install "$1"`.
-#   d. buildDepEntry manager:"winget": install -> `winget install --id "$1"
-#      -e --silent ...`; upgrade -> the same with `upgrade`.
 #   e. buildDepEntry manager:"pip": install has no `--upgrade`; upgrade adds
 #      it.
 #   f. buildDepEntry manager:"script": the SAME entry (script path + args)
@@ -496,40 +494,6 @@ grepq "$(echo "$outC2" | jq -er '.args[1]')" -F 'brew upgrade "$1" 2>/dev/null |
   || fail "case c (upgrade): expected the full 'brew upgrade ... || brew install' fallback line (got: $outC2)"
 echo "ok: case c — manager:brew: install -> brew install, upgrade -> brew upgrade (fallback to install)"
 
-# ── case d: manager:"winget" (install vs upgrade) ───────────────────────────
-outD1=$("$node_bin" -e "
-const { buildDepEntry } = require(process.env.DEPS_ENGINE_LIB);
-const dep = { id: 'jq', cmd: 'jq', install: { win32: { manager: 'winget', id: 'jqlang.jq' } } };
-const ctx = { repoRoot: '/fake/repo', platform: 'win32' };
-console.log(JSON.stringify(buildDepEntry(dep, ctx)));
-")
-# shellcheck disable=SC2016
-# Single-quoted on purpose — grep -F matches the LITERAL "$1" positional-arg
-# placeholder text buildDepEntry emits, not an expanded shell variable.
-grepq "$(echo "$outD1" | jq -er '.args[1]')" -F 'winget install --id "$1"' \
-  || fail "case d (install): expected 'winget install --id \"\$1\"' (got: $outD1)"
-# CodeRabbit: winget's required -e --silent flags must be present on install
-# (exact-case match + non-interactive) — `--` so grep doesn't read the
-# leading -e as one of its own flags.
-grepq "$(echo "$outD1" | jq -er '.args[1]')" -F -- '-e --silent' \
-  || fail "case d (install): winget line must carry '-e --silent' (got: $outD1)"
-echo "$outD1" | jq -e '.args[-1] == "jqlang.jq"' >/dev/null \
-  || fail "case d (install): the winget id should be the last positional arg (got: $outD1)"
-outD2=$("$node_bin" -e "
-const { buildDepEntry } = require(process.env.DEPS_ENGINE_LIB);
-const dep = { id: 'jq', cmd: 'jq', install: { win32: { manager: 'winget', id: 'jqlang.jq' } } };
-const ctx = { repoRoot: '/fake/repo', platform: 'win32' };
-console.log(JSON.stringify(buildDepEntry(dep, ctx, { upgrade: true })));
-")
-# shellcheck disable=SC2016
-# Same as above — the literal "$1" placeholder text, not an expansion.
-grepq "$(echo "$outD2" | jq -er '.args[1]')" -F 'winget upgrade --id "$1"' \
-  || fail "case d (upgrade): expected 'winget upgrade --id \"\$1\"' (got: $outD2)"
-# CodeRabbit: the same -e --silent flags are required on upgrade too.
-grepq "$(echo "$outD2" | jq -er '.args[1]')" -F -- '-e --silent' \
-  || fail "case d (upgrade): winget line must carry '-e --silent' (got: $outD2)"
-echo "ok: case d — manager:winget: install -> winget install, upgrade -> winget upgrade"
-
 # ── case e: manager:"pip" (install vs upgrade) ──────────────────────────────
 outE1=$("$node_bin" -e "
 const { buildDepEntry } = require(process.env.DEPS_ENGINE_LIB);
@@ -570,8 +534,8 @@ echo "ok: case f — manager:script emits the same converging entry for both ins
 # ── case g: manager:"hint" -> unrunnable, never spawnable ──────────────────
 outG=$("$node_bin" -e "
 const { buildDepEntry } = require(process.env.DEPS_ENGINE_LIB);
-const dep = { id: 'bun', cmd: 'bun', install: { win32: { manager: 'hint', detail: 'install manually: https://bun.sh' } } };
-const ctx = { repoRoot: '/fake/repo', platform: 'win32' };
+const dep = { id: 'bun', cmd: 'bun', install: { linux: { manager: 'hint', detail: 'install manually: https://bun.sh' } } };
+const ctx = { repoRoot: '/fake/repo', platform: 'linux' };
 console.log(JSON.stringify(buildDepEntry(dep, ctx)));
 ")
 echo "$outG" | jq -e '.unrunnable == "install manually: https://bun.sh" and (has("cmd") | not)' >/dev/null \
@@ -581,11 +545,11 @@ echo "ok: case g — manager:hint returns an unrunnable entry, never a spawnable
 # ── case h: no recipe declared for the current OS -> unrunnable ────────────
 outH=$("$node_bin" -e "
 const { buildDepEntry } = require(process.env.DEPS_ENGINE_LIB);
-const dep = { id: 'onlylinux', cmd: 'onlylinux', install: { linux: { manager: 'ensure-tools' } } };
-const ctx = { repoRoot: '/fake/repo', platform: 'win32' };
+const dep = { id: 'onlymacos', cmd: 'onlymacos', install: { macos: { manager: 'ensure-tools' } } };
+const ctx = { repoRoot: '/fake/repo', platform: 'linux' };
 console.log(JSON.stringify(buildDepEntry(dep, ctx)));
 ")
-echo "$outH" | jq -e '.unrunnable | contains("win32")' >/dev/null \
+echo "$outH" | jq -e '.unrunnable | contains("linux")' >/dev/null \
   || fail "case h: expected the unrunnable reason to name the missing OS (got: $outH)"
 echo "ok: case h — no recipe declared for the current OS yields an unrunnable entry naming it"
 
@@ -683,8 +647,7 @@ cat > "$fixtureRepo/scripts/install/deps.json" <<JSON
       "bootstrap": false,
       "install": {
         "linux": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["greentool"] },
-        "macos": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["greentool"] },
-        "win32": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["greentool"] }
+        "macos": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["greentool"] }
       }
     },
     {
@@ -695,8 +658,7 @@ cat > "$fixtureRepo/scripts/install/deps.json" <<JSON
       "bootstrap": false,
       "install": {
         "linux": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["redtool"] },
-        "macos": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["redtool"] },
-        "win32": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["redtool"] }
+        "macos": { "manager": "script", "script": "scripts/lib/fake-install.sh", "args": ["redtool"] }
       }
     },
     {
@@ -708,8 +670,7 @@ cat > "$fixtureRepo/scripts/install/deps.json" <<JSON
       "bootstrap": false,
       "install": {
         "linux": { "manager": "script", "script": "scripts/lib/fake-qmd-bin.sh", "args": ["install"] },
-        "macos": { "manager": "script", "script": "scripts/lib/fake-qmd-bin.sh", "args": ["install"] },
-        "win32": { "manager": "script", "script": "scripts/lib/fake-qmd-bin.sh", "args": ["install"] }
+        "macos": { "manager": "script", "script": "scripts/lib/fake-qmd-bin.sh", "args": ["install"] }
       }
     }
   ]
@@ -954,17 +915,14 @@ echo "ok: case cc — versionless present dep is green without a minVersion, deg
 # ── case bb: deps.json — gitleaks installs via the package manager on linux
 # (it used to be manager:"hint" with no apt recipe at
 # all, despite shellcheck already using the same apt-get path), keeping its
-# macos brew / win32 winget recipes untouched. ─────────────────────────────
+# macos brew recipe untouched. ─────────────────────────────
 gitleaksLinuxManager=$(jq -r '.deps[] | select(.id=="gitleaks") | .install.linux.manager' "$repo_root/scripts/install/deps.json")
 [ "$gitleaksLinuxManager" = "ensure-tools" ] \
   || fail "case bb: gitleaks's linux install manager should be 'ensure-tools' (got: $gitleaksLinuxManager)"
 gitleaksMacManager=$(jq -r '.deps[] | select(.id=="gitleaks") | .install.macos.manager' "$repo_root/scripts/install/deps.json")
 [ "$gitleaksMacManager" = "brew" ] \
   || fail "case bb: gitleaks's macos install manager should stay 'brew' (got: $gitleaksMacManager)"
-gitleaksWinManager=$(jq -r '.deps[] | select(.id=="gitleaks") | .install.win32.manager' "$repo_root/scripts/install/deps.json")
-[ "$gitleaksWinManager" = "winget" ] \
-  || fail "case bb: gitleaks's win32 install manager should stay 'winget' (got: $gitleaksWinManager)"
-echo "ok: case bb — deps.json: gitleaks installs via ensure-tools on linux, brew on macos, winget on win32 (unchanged)"
+echo "ok: case bb — deps.json: gitleaks installs via ensure-tools on linux, brew on macos (unchanged)"
 
 # ═════════════ ensure-tools.sh cases (sourced in a fresh subshell) ═════════
 #
@@ -1184,8 +1142,7 @@ cat > "$fixtureRepoAA/scripts/install/deps.json" <<JSON
       "bootstrap": false,
       "install": {
         "linux": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] },
-        "macos": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] },
-        "win32": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] }
+        "macos": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] }
       }
     }
   ]
@@ -1248,8 +1205,7 @@ cat > "$fixtureRepoCC/scripts/install/deps.json" <<JSON
       "bootstrap": false,
       "install": {
         "linux": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] },
-        "macos": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] },
-        "win32": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] }
+        "macos": { "manager": "script", "script": "scripts/lib/fake-hometool-install.sh", "args": [] }
       }
     }
   ]
@@ -1464,7 +1420,7 @@ echo "ok: case hh — bun installer BODY failure surfaces its own stderr tail, k
 # ── case gg: bin.js honest counter — an ensure-tools-manager recipe ALWAYS
 # exits 0 (ensure_tools() is documented to "always return 0; the caller
 # re-checks `command -v`"), so its OWN exit code can never prove "claimed
-# success" the way a script/brew/pip/winget recipe's exit code does (case p,
+# success" the way a script/brew/pip recipe's exit code does (case p,
 # above, already proves the OLD wording stays correct for a script-manager
 # dep). For manager:"ensure-tools", the honest wording instead points at
 # ensure-tools.sh's own diagnostic lines. A throwaway fixture repo ships its
@@ -1485,8 +1441,7 @@ cat > "$fixtureRepoGG/scripts/install/deps.json" <<JSON
       "bootstrap": false,
       "install": {
         "linux": { "manager": "ensure-tools" },
-        "macos": { "manager": "ensure-tools" },
-        "win32": { "manager": "ensure-tools" }
+        "macos": { "manager": "ensure-tools" }
       }
     }
   ]
