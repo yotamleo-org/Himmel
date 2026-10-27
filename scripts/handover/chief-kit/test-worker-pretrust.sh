@@ -325,26 +325,31 @@ check "12b no key for the link" "$(trusted "$cfg" "$tmp/adopter-link")" "absent"
 rm -f "$cfg"
 rc=0; HANDOVER_REGISTRY="$tmp/no-such-registry.json" bash "$SCRIPT" native "$adopter" >/dev/null 2>&1 || rc=$?
 check "12c adopter checkout absent from the handover registry: exit 3" "$rc" "3"
+check "12c refusal wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
 sibling="$tmp/adopter-voice-evil"
 git init -q "$sibling"
 git -C "$sibling" remote add origin https://github.com/yotamleo-org/himmel-voice.git
 rc=0; HANDOVER_REGISTRY="$reg12" bash "$SCRIPT" native "$sibling" >/dev/null 2>&1 || rc=$?
 check "12d sibling dir named like the adopter, same origin: exit 3" "$rc" "3"
+check "12d refusal wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
 other="$tmp/adopter-other"
 git init -q "$other"
 git -C "$other" remote add origin https://github.com/yotamleo-org/not-in-the-registry.git
 reg12b="$tmp/reg12b.json"; printf '{"repos":{"other":{"path":"%s"}}}\n' "$other" > "$reg12b"
 rc=0; HANDOVER_REGISTRY="$reg12b" bash "$SCRIPT" native "$other" >/dev/null 2>&1 || rc=$?
 check "12e registered path but origin outside himmel-adapters.json: exit 3" "$rc" "3"
+check "12e refusal wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
 reg12c="$tmp/reg12c.json"; printf '{"repos":{"p":{"path":"%s"}}}\n' "$primary" > "$reg12c"
 rc=0; HANDOVER_REGISTRY="$reg12c" bash "$SCRIPT" native "$primary" >/dev/null 2>&1 || rc=$?
 check "12f a registered himmel-style primary (no adapter origin): exit 3" "$rc" "3"
+check "12f refusal wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
 evil="$tmp/adopter-evilhost"
 git init -q "$evil"
 git -C "$evil" remote add origin https://evilgithub.com/yotamleo-org/himmel-voice.git
 reg12e="$tmp/reg12e.json"; printf '{"repos":{"e":{"path":"%s"}}}\n' "$evil" > "$reg12e"
 rc=0; HANDOVER_REGISTRY="$reg12e" bash "$SCRIPT" native "$evil" >/dev/null 2>&1 || rc=$?
 check "12h a lookalike host (evilgithub.com), registered path: exit 3" "$rc" "3"
+check "12h refusal wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
 ssh12="$tmp/adopter-ssh"
 git init -q "$ssh12"
 git -C "$ssh12" remote add origin git@github.com:yotamleo-org/himmel-voice.git
@@ -356,7 +361,7 @@ git -C "$adopter" worktree add -q -b adopter-wt "$tmp/adopter-wt-outside"
 reg12d="$tmp/reg12d.json"; printf '{"repos":{"w":{"path":"%s"}}}\n' "$tmp/adopter-wt-outside" > "$reg12d"
 rc=0; HANDOVER_REGISTRY="$reg12d" bash "$SCRIPT" native "$tmp/adopter-wt-outside" >/dev/null 2>&1 || rc=$?
 check "12g a registered LINKED worktree outside .claude/worktrees: exit 3" "$rc" "3"
-check "12 refusals wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
+check "12g refusal wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
 
 echo "---"
 if [ "$fails" -eq 0 ]; then echo "PASS - test-worker-pretrust.sh"; exit 0; fi
