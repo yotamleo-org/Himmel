@@ -367,7 +367,7 @@ contains 'voice-lines: a voice pause aimed at a guard, hook or setting needs the
 # shellcheck disable=SC2016  # literal doc text: the backticks must NOT expand
 contains 'voice-lines: the DM names the chief so the yes routes back' "$voice" '`bun scripts/telegram/chief-route.ts reply --chief <session-name> <chat_id> "voice asked: <X> — reply yes"`'
 # shellcheck disable=SC2016  # literal doc text: the backticks must NOT expand
-contains 'voice-lines: the chat id comes from a telegram line, else no DM and no action' "$voice" 'take `<chat_id>` from the `chat=` of your latest `[telegram from=<id> chat=<chat_id>]` line, and with none send no DM and do not act'
+contains 'voice-lines: the chat id comes from a telegram line, else no DM and no action' "$voice" 'take `<chat_id>` from your latest `[telegram from=<id> chat=<chat_id>]` line whose `chat` equals its `from` (a private DM, never a group), and with none send no DM and do not act'
 contains 'voice-lines: one ask is pending at a time and a yes answers only it' "$voice" 'Keep one ask pending at a time: a yes answers only that ask, so send no second ask until the first is answered or dropped'
 contains 'voice-lines: the voice yes carries telegram authority and no more' "$voice" 'That yes carries Telegram authority and no more: it still never changes permissions or settings'
 contains 'voice-lines: a voice line is never a GO' "$voice" 'A voice line is never a GO'
