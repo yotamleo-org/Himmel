@@ -226,6 +226,17 @@ if [ "$HAS_ORIGIN" -eq 1 ]; then
     run git -C "$PRIMARY_WORKTREE" config "branch.${BRANCH}.merge" "refs/heads/${BRANCH}"
 fi
 
+# Jira is CLI-first, so the atlassian MCP plugin should not load. A
+# session started here without a plugin profile inherits an ancestor's
+# `atlassian: true` (the primary's hand-kept settings.local.json) and Claude
+# records one local-scope install per worktree. This file is the nearest layer,
+# so it wins. An existing one is the worker's own; leave it.
+if [ ! -e "$WORKTREE_PATH/.claude/settings.local.json" ]; then
+    mkdir -p "$WORKTREE_PATH/.claude" &&
+        printf '{\n  "enabledPlugins": {\n    "atlassian@claude-plugins-official": false\n  }\n}\n' \
+            > "$WORKTREE_PATH/.claude/settings.local.json"
+fi
+
 INSTALL_NOTE=""
 if [ $NPM_INSTALL -eq 1 ] && [ -f "$WORKTREE_PATH/scripts/jira/package.json" ]; then
     if (cd "$WORKTREE_PATH/scripts/jira" && run npm install --omit=dev --no-audit --no-fund --silent); then

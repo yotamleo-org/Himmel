@@ -1159,3 +1159,5 @@ scripts/lanes/bench/scorecard/test-review-rounds.sh	local	behaviour suite, new i
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/eval/steering-cull/test-steering-cull.sh	local	behaviour suite, new HIMMEL-7694
 scripts/handover/chief-kit/test-chain-render.sh	local	behaviour suite, hermetic renderer, no gate role
+scripts/test-new-worktree-no-atlassian.sh	local	behaviour suite, new HIMMEL-7851
+scripts/setup/test-dedupe-plugin-installs.sh	local	behaviour suite, new HIMMEL-7851
