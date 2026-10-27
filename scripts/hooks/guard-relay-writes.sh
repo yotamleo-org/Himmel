@@ -254,8 +254,8 @@ case "$tool" in
         # The destination is physical, so the temp base is compared both as
         # written (trailing slash trimmed, macOS $TMPDIR ends in one) and
         # resolved (macOS /var/folders sits under the /var symlink).
-        # prim-ok: gnu-ok: the same readlink -f as the destination above; a failure leaves only the as-written base.
-        tmp_resolved="$(readlink -f -- "${TMPDIR:-/tmp}" 2>/dev/null)" || tmp_resolved="" # swallow-ok: an unresolvable base leaves only the as-written base, which still denies
+        # prim-ok: the same readlink -f as the destination above.
+        tmp_resolved="$(readlink -f -- "${TMPDIR:-/tmp}" 2>/dev/null)" || tmp_resolved="" # gnu-ok: the same readlink -f as the destination above; swallow-ok: an unresolvable base leaves the as-written base, which still denies
         for tmp_base in "${TMPDIR:-/tmp}" "$tmp_resolved"; do
             tmp_base="${tmp_base%/}"
             [ -n "$tmp_base" ] || continue
