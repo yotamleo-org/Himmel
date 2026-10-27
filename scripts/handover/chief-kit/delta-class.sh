@@ -130,7 +130,7 @@ if [ "$anc" -eq 1 ]; then
             done < "$work/remerge.z"
         done < "$work/merges.txt"
         # blob_of <commit> <path>: the tree entry (mode, type, sha), empty when absent; fails on a read error
-        blob_of() { local o; o=$(git --literal-pathspecs ls-tree "$1" -- "$2" 2>/dev/null) || return 1; printf '%s' "${o%%$'\t'*}"; } # swallow-ok: a failed read returns 1 and every caller fails closed to trust
+        blob_of() { local o; o=$(git --literal-pathspecs ls-tree --full-tree "$1" -- "$2" 2>/dev/null) || return 1; printf '%s' "${o%%$'\t'*}"; } # swallow-ok: a failed read returns 1 and every caller fails closed to trust
         : > "$work/trust-names.txt"
         while IFS= read -r p; do
             grep -qxF -- "$p" "$work/authored.txt" 2>/dev/null

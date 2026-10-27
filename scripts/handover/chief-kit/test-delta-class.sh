@@ -205,6 +205,8 @@ J=$Jp; mkv GO
 check "8a: a pure merge-forward whose main side touches a trust path -> none" "$(cls "$N")" none
 echo "pr2" > scripts/ci/z.sh; N2=$(step pr-trust-after-merge)
 check "8c: a PR commit to a trust path after the merge-forward -> trust" "$(cls "$N2")" trust
+check "8j: a PR commit to a trust path is still trust when read from a subdirectory" "$(cd src && cls "$N2")" trust
+check "8j: a pure merge-forward read from a subdirectory -> none" "$(cd src && cls "$N")" none
 git update-ref -d refs/remotes/origin/main
 check "8d: a merge-forward with no origin/main to compare against -> trust" "$(cls "$N")" trust
 J=$J8
