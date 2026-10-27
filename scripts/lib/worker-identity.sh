@@ -144,6 +144,7 @@ worker_description() {
         fi
     fi
     if [ -z "$val" ] && [ -r "$doc" ]; then
+        # read-sink-ok: $doc is the handover doc the caller asks about, read-only
         pr="$(awk '/^## Results/ { inr = 1; next } inr && /^## / { inr = 0 } inr' < "$doc" \
             | grep -E '^- ([0-9]{1,2}:[0-9]{2} +)?(LIVE *(-|–|—|:)? *PR *#?[0-9]{2,} +open|READY +#?[0-9]{2,} +[0-9a-f]{7,}|MERGED +#[0-9]{2,})' \
             | tail -n 1 | sed -E 's/^- ([0-9]{1,2}:[0-9]{2} +)?//' | grep -oE '[0-9]{2,}' | head -n 1)" || pr=""
@@ -160,7 +161,7 @@ worker_description() {
     fi
     if [ -z "$val" ] && [ -r "$doc" ]; then
         val="$(sed -n -E '/^# /{s/^# +//;p;q;}' "$doc" \
-            | sed -E 's/[[:space:]]+$//; /^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) /{s/^[A-Za-z][A-Za-z0-9]*-[0-9]+( —|:) //; s/( —|\.)? ([Ll]eg|[Ww]orker) N[0-9]+[a-z]*( \([^)]*\))?(,? [0-9]{4}-[0-9]{2}-[0-9]{2})?$//;}; s/[[:space:]]+$//')"
+            | sed -E 's/[[:space:]]+$//; /^[A-Za-z][A-Za-z0-9]*-[0-9]+[ :]/{s/^[A-Za-z][A-Za-z0-9]*-[0-9]+( \+ [A-Za-z][A-Za-z0-9]*-[0-9]+)*( \([^)]*\))?( —| -|:) //; s/( —| -|\.)? ([Ll]eg|[Ww]orker) N[0-9]+[a-z]*( \([^)]*\))?(,? [0-9]{4}-[0-9]{2}-[0-9]{2})?$//; s/( —|\.|,| -) ([Ll]eg|[Ww]orker) N[0-9]+[a-z]*( .*)?$//;}; s/[[:space:]]+$//')"
     fi
     if [ -z "$val" ]; then
         stem="${doc##*/}"

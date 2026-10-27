@@ -198,6 +198,17 @@ check_eq 'resolve: the field still wins over the ticket title' "$(resolve_fx "$d
 check_eq 'resolve: no ticket, no PR -> the H1 scope' "$(resolve_fx "$d_body")" 'body scope'
 check_eq 'resolve: trailing spaces on the H1 do not defeat the suffix strip' "$(worker_description "$d_tsp")" 'trailing scope'
 check_eq 'resolve: an older "leg N57 (lane)" H1 suffix strips' "$(worker_description "$d_old")" 'older scope'
+# The real archived H1 shapes (luna archive/2026-09, handovers/2026-10) the shape above never was.
+d_real1="$(mkdoc HIMMEL-2786-codex-exec-stdin-legN57-claudex-2026-09-07.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-2786 \xe2\x80\x94 dispatch-codex-exec.sh: default the child\'s stdin to /dev/null \xe2\x80\x94 leg N57 on the CLAUDEX lane, 2026-09-07')"
+d_real2="$(mkdoc HIMMEL-2197-N1667-headless-stale-reap-model-2026-10-09.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-2197 + HIMMEL-2198 \xe2\x80\x94 claude-headless dispatch registry reaps SIGKILLed rows, and requires an explicit model \xe2\x80\x94 leg N1667 (claude-sonnet-5-5, native), 2026-10-09')"
+d_real3="$(mkdoc HIMMEL-2756-trust-on-refusal-text-legN77c-2026-09-08-RESUME.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-2756 \xe2\x80\x94 trust on refusal text \xe2\x80\x94 leg N77c (Sonnet, native) \xe2\x80\x94 CERTIFY + SHIP the claudex-built branch, 2026-09-08')"
+check_eq 'resolve: a real "leg N57 on the CLAUDEX lane, <date>" H1 strips' "$(worker_description "$d_real1")" "dispatch-codex-exec.sh: default the child's stdin to /dev/null"
+check_eq 'resolve: a real "KEY + KEY" H1 keeps its scope and drops the leg suffix' "$(worker_description "$d_real2")" 'claude-headless dispatch registry reaps SIGKILLed rows, and requires an explicit model'
+check_eq 'resolve: a real "leg N77c (lane) — <task>, <date>" H1 strips the whole tail' "$(worker_description "$d_real3")" 'trust on refusal text'
+d_real4="$(mkdoc HIMMEL-1033-N826-drop-atlassian-2026-09-30-RESUME.md '---' 'resume_cwd: /x' '---' '# HIMMEL-1033 - drop atlassian from every enable path - leg N826 (claude-sonnet-5-5, native), 2026-09-30')"
+d_real5="$(mkdoc HIMMEL-3059-N467-s6-aur-mode-2026-09-24-RESUME.md '---' 'resume_cwd: /x' '---' $'# HIMMEL-3059 S6 \xe2\x80\x94 provenance round trip \xe2\x80\x94 leg N467 (claude-sonnet-5, native), 2026-09-24')"
+check_eq 'resolve: a real "KEY - <scope> - leg N826 (lane), <date>" H1 strips both ends' "$(worker_description "$d_real4")" 'drop atlassian from every enable path'
+check_eq 'resolve: a real "KEY S6 — <scope> — leg N467 (lane), <date>" H1 still drops the leg suffix' "$(worker_description "$d_real5")" 'HIMMEL-3059 S6 — provenance round trip'
 
 printf '%s passed, %s failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]
