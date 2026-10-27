@@ -375,6 +375,7 @@ fixture_env
 printf '{"version":1,"policy":{"CR_REQUIRE_CROSS_MODEL":"a # b"}}\n' > "$HOME/.himmel/config.json"
 apply_tty $'y\nh'
 if [ "$rc" = 0 ] && [ "$(policy_val)" = "a # b" ]; then pass "keep ~/.himmel: a policy value with a hash is kept whole"; else fail "keep ~/.himmel on a policy value with a hash: rc $rc, policy '$(policy_val)'"; fi
+lacks "keep ~/.himmel: a policy value with a hash left .env" "CR_REQUIRE_CROSS_MODEL=" "$(cat "$TMP/st/.env")"
 # A chosen side still has to pass the readers: a held key whose handover root
 # is read from .env only fails the re-verify whichever side is kept, and .env
 # stays whole. The faulty reader is the real one with only that lookup changed.
