@@ -223,8 +223,10 @@ jq -n '{data: {search: {issueCount: 2, pageInfo: {hasNextPage: false, endCursor:
   {number: 7, mergedAt: "2026-10-20T05:00:00Z", commits: {totalCount: 4, nodes: [{commit: {parents: {totalCount: 1}}}, {commit: {parents: {totalCount: 2}}}, {commit: {parents: {totalCount: 1}}}, {commit: {parents: {totalCount: 2}}}]}},
   {number: 8, mergedAt: "2026-10-20T05:30:00Z", commits: {totalCount: 1, nodes: [{commit: {parents: {totalCount: 1}}}]}}]}}}' > "$TMP/prs-page.json"
 : > "$TMP/gh-prs.log"
+rc=0
 O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page.json" \
-  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --keep "$TMP/kept" 2>&1)
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --keep "$TMP/kept" 2>&1) || rc=$?
+eq "merged-PR fetch: the --keep run exits 0" "$rc" "0"
 has "merged-PR fetch: PR 7 shows its two rounds" "$O" "| #7 | 2 |"
 has "merged-PR fetch: two merged PRs" "$O" "| PRs merged in the window | 2 |"
 eq "merged-PR fetch: --keep saves prs.json" "$(jq -c 'map([.number, .rounds])' "$TMP/kept/prs.json")" "[[7,2],[8,0]]"
@@ -233,8 +235,10 @@ case "$O" in *"API cap"*"merge-forward"*) fail "merged-PR fetch: no cap warning 
 
 # A search that hit GitHub's 1000-result cap warns that the window is truncated.
 jq '.data.search.issueCount = 1000' "$TMP/prs-page.json" > "$TMP/prs-page-cap.json"
+rc=0
 O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-cap.json" \
-  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1)
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1) || rc=$?
+eq "merged-PR fetch: the cap-warning run exits 0" "$rc" "0"
 has "merged-PR fetch: 1000 results warns the window is truncated" "$O" "WARN merged PRs search returned 1000 results"
 
 # A failed merged-PR fetch into a reused --keep dir drops the older prs.json instead of replaying it.
@@ -250,7 +254,7 @@ eq "merged-PR fetch: --keep drops the stale prs.json after a failed fetch" "$([ 
 # A search page that hands back the cursor it was asked from is a failed fetch, not an endless loop.
 jq '.data.search.pageInfo = {hasNextPage: true, endCursor: "CUR"}' "$TMP/prs-page.json" > "$TMP/prs-page-loop.json"
 rc=0
-O=$(PATH="$TMP/nosleep:$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-loop.json" \
+O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-loop.json" \
   timeout 60 bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1) || rc=$?
 eq "merged-PR fetch: a cursor that does not advance ends the run (no timeout kill)" "$rc" "0"
 has "merged-PR fetch: a cursor that does not advance stops the fetch" "$O" "pagination did not advance"
