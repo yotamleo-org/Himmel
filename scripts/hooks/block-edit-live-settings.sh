@@ -4089,6 +4089,18 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # tokenizer could not vouch for (heredoc, ANSI-C word) fall back to the
     # whitespace split, same documented ceiling every other TOK=0 fallback
     # in this file already accepts.
+    # Whether KEY is an entry of the newline-delimited LIST, matched
+    # case-sensitively even when the launch environment imported
+    # `nocasematch` through BASHOPTS: a word that differs only in case from
+    # one already judged must still be judged (it can name another file).
+    _seen_in() {
+        local nc=0 hit=1
+        shopt -q nocasematch && nc=1
+        shopt -u nocasematch
+        case "$1" in *$'\n'"$2"$'\n'*) hit=0 ;; esac
+        if [ "$nc" = 1 ]; then shopt -s nocasematch; fi
+        return "$hit"
+    }
     _COO_SEEN=$'\n'
     _check_one_operand() {
         local w="$1" resolved wabs wparent wleaf result
@@ -4102,7 +4114,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         case "$w" in
             *$'\n'*) ;;
             *)
-                case "$_COO_SEEN" in *$'\n'"$w"$'\n'*) return 0 ;; esac
+                ! _seen_in "$_COO_SEEN" "$w" || return 0
                 _COO_SEEN=$_COO_SEEN$w$'\n'
                 ;;
         esac
@@ -4292,7 +4304,7 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
         case "$w" in
             *$'\n'*) ;;
             *)
-                case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) return 0 ;; esac
+                ! _seen_in "$_CV_SEEN" "$w|$glob|$rd" || return 0
                 _CV_SEEN="$_CV_SEEN$w|$glob|$rd"$'\n'
                 ;;
         esac

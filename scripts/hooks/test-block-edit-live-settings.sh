@@ -1333,8 +1333,10 @@ fi
 # must not lose.
 if command -v node >/dev/null 2>&1; then
     LONG_BODY=''
-    for _i in $(seq 1 400); do
+    _i=1
+    while [ "$_i" -le 400 ]; do
         LONG_BODY=$LONG_BODY"line $_i: cp settings.json /tmp/o$_i; grep settings.json a$_i | sed 's/a/b/' > /tmp/p$_i"$'\n'
+        _i=$((_i + 1))
     done
     LONG_BUDGET_MS=4000
     [ "$(uname -s)" = Darwin ] && LONG_BUDGET_MS=8000 # prim-ok: Darwin timing budget
@@ -1356,8 +1358,17 @@ ${LONG_BODY}EOF"
         "$(bash_rc_of "$WT2" "$LONG_ALLOW"$'\n'"cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
     assert_rc "7912c a live-settings word repeated before and after still denies" 2 \
         "$(bash_rc_of "$WT2" "cp /tmp/evil ~/.claude/settings.json; echo ok; cp /tmp/evil ~/.claude/settings.json" HOME="$FAKEHOME")"
+    # 7912d/e: a deny that comes from a symlink operand alone (the command
+    # never names a settings file) survives the same word repeating, and a
+    # word differing only in case is still judged when the launch
+    # environment imported nocasematch.
+    ln -s "$PRIMARY/.claude/settings.json" "$WT2/coo-link"
+    assert_rc "7912d a symlink operand repeated still denies" 2 \
+        "$(bash_rc_of "$WT2" "cp /tmp/x coo-link; echo ok; cp /tmp/x coo-link" HOME="$FAKEHOME")"
+    assert_rc "7912e a case-variant of a judged word is judged under nocasematch" 2 \
+        "$(bash_rc_of "$WT2" "cp /tmp/x COO-Link coo-link" HOME="$FAKEHOME" BASHOPTS=nocasematch)"
 else
-    echo "SKIP 7912a-c (node not installed)"
+    echo "SKIP 7912a-e (node not installed)"
 fi
 
 # 191-196 (HIMMEL-3675): a literal `..` inside a benign `<base>..<head>` git
