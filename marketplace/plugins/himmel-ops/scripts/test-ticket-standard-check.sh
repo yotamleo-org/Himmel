@@ -372,6 +372,14 @@ cp "$td/e1.md" "$td/e10.md"; printf '%s\n' '```text' 'Edges: none' '```' >>"$td/
 run Task "$td/e10.md" "$q" --sector X; check "Edges: none inside a fenced example does not count" "$rc" 1
 printf '%s\n' 'Edges: HIMMEL-100 blocks HIMMEL-101 (hard)' >>"$td/e10.md"
 run Task "$td/e10.md" "$q" --sector X; check "real Edges line after a fenced example counts" "$rc" 0
+cp "$td/e1.md" "$td/e11.md"; printf '%s\n' '````text' '```' 'Edges: none' '```' '````' >>"$td/e11.md"
+run Task "$td/e11.md" "$q" --sector X; check "Edges: none inside a longer fence holding a shorter one does not count" "$rc" 1
+edraft "$td/e12.md" '### Step one
+1. Land HIMMEL-100 first.
+### Step two
+2. Then HIMMEL-101.'
+printf '%s\n' 'Edges: HIMMEL-100 blocks HIMMEL-101 (hard)' >>"$td/e12.md"
+run Task "$td/e12.md" "$q" --sector X; check "Plan whose whole body sits under subheadings passes with Edges" "$rc" 0
 run Epic "$td/e1.md" "$q" --sector X; check "Epic without Edges only warns" "$rc" 0
 has "Epic warns about Edges" "$out" "Edges:"
 
