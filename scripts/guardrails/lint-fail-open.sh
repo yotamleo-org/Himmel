@@ -524,9 +524,6 @@ else
         case "${f##*/}" in test-*) continue ;; esac
         mjs_files+=("$f"); js_files+=("$f")
     done
-    f="$root/scripts/telegram/spawn-glm.ts"
-    [ -f "$f" ] || { echo "lint-fail-open.sh: expected guard-surface file missing: $f" >&2; exit 2; }
-    js_files+=("$f")
 fi
 
 total=$(( ${#shell_files[@]} + ${#js_files[@]} ))

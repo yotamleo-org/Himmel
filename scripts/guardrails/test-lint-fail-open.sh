@@ -197,7 +197,6 @@ else
                 scripts/lanes/funded-max-pct.mjs \
                 scripts/graphify/refresh-graph-map.sh \
                 scripts/claude-glm \
-                scripts/telegram/spawn-glm.ts \
                 .pre-commit-config.yaml
             do
                 if printf '%s' "$p" | grep -Eq "$scope_re"; then
