@@ -159,6 +159,14 @@ const PAGES = [
     title: 'Start here',
     description: 'What himmel is, what it installs on your machine and where, and how to undo it.',
     parts: { MANIFEST_N: String(manifest.length), CORE_N: String(coreN) },
+    // A link to a part of the trail that now lives on another page goes there.
+    script: [
+      '<script>',
+      "var h = location.hash;",
+      "if (/^#(trial|trail|lvl-[0-9]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);",
+      "else if (h === '#control') location.replace('adoption-trail-questions.html#q-control');",
+      '</script>',
+    ].join('\n'),
   },
   {
     out: 'docs/adoption-trail-levels.html',

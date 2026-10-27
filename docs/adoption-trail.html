@@ -374,6 +374,10 @@ p.ok b { color: var(--ship); font-weight: 600; }
     </nav>
   </div>
 </footer>
-
+<script>
+var h = location.hash;
+if (/^#(trial|trail|lvl-[0-9]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);
+else if (h === '#control') location.replace('adoption-trail-questions.html#q-control');
+</script>
 </body>
 </html>
