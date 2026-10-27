@@ -471,20 +471,9 @@ while [ "$#" -gt 0 ]; do
     esac
 done
 
-if [ "$pool_mode" -eq 1 ]; then pool_dispositions "$DOC"; exit $?; fi
-
 # queue-lock.sh is a child process and must resolve the same external root when
 # --handover-dir (rather than an already-exported env var) supplied it.
 [ -z "${HANDOVER_DIR:-}" ] || export HANDOVER_DIR
-
-# the fleet manifest is re-read on every run. An unreadable one is
-# a failed tick (before the heartbeat or any other side effect), never an empty
-# fleet that reads as every worker gone.
-from_docs=""
-if [ -n "$WORKERS_FROM" ] && ! from_docs="$(bash "$HERE/fleet-manifest.sh" list "$WORKERS_FROM")"; then
-    printf 'tick: cannot read fleet manifest: %s\n' "$WORKERS_FROM" >&2
-    exit 1
-fi
 
 if [ -n "${HANDOVER_DIR:-}" ]; then
     root="$(handover_root 2>/dev/null)" || root=""
@@ -499,6 +488,21 @@ resolve_doc() {
         *) printf '%s/%s.md\n' "$root" "$1" ;;
     esac
 }
+
+if [ "$pool_mode" -eq 1 ]; then
+    [ -z "$DOC" ] || DOC="$(resolve_doc "$DOC")"
+    pool_dispositions "$DOC"
+    exit $?
+fi
+
+# the fleet manifest is re-read on every run. An unreadable one is
+# a failed tick (before the heartbeat or any other side effect), never an empty
+# fleet that reads as every worker gone.
+from_docs=""
+if [ -n "$WORKERS_FROM" ] && ! from_docs="$(bash "$HERE/fleet-manifest.sh" list "$WORKERS_FROM")"; then
+    printf 'tick: cannot read fleet manifest: %s\n' "$WORKERS_FROM" >&2
+    exit 1
+fi
 
 # uniq_join <sep> <comma list> -- sorted, de-duplicated, re-joined with <sep>.
 uniq_join() {

@@ -3019,6 +3019,8 @@ contains 'a non-Live-state decision never dispositions a key' "$pd_out" '# pool-
 contains 'an unread blocker is not a named live blocker' "$pd_out" '# pool-unresolved blocker HIMMEL-9 '
 contains 'a listed candidate is not a live file holder' "$pd_out" '# pool-unresolved collision HIMMEL-10 '
 contains 'unknown chief decision keys stay visible until corrected' "$pd_out" '# pool-unresolved invalid HIMMEL-999 '
+same 'standalone pool mode resolves handover-relative document paths' "$(bash "$SUT" --pool-dispositions --doc pool-chief.md < "$W/pool.rows" 2>/dev/null)" "$pd_out"
+same 'standalone pool mode resolves extensionless document names' "$(bash "$SUT" --pool-dispositions --doc pool-chief < "$W/pool.rows" 2>/dev/null)" "$pd_out"
 
 PD="$W/pd-mirror/HIMMEL"; mkdir -p "$PD"
 for n in 901 902 904; do sed 's/fixVersions: \[\]/fixVersions: ["v1.1.3"]/' "$OW/HIMMEL-$n.md" > "$PD/HIMMEL-$n.md"; done
