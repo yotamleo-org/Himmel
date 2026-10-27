@@ -34,6 +34,7 @@ vendoring records name the upstream pins and carried deviations.
 | hallmark | https://github.com/Nutlope/hallmark | Nutlope | MIT | 7ec868225c6caa040558c321ee0fefa0e73f83a8 |
 | handover | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/handover | yotamleo | MIT | In-tree |
 | hermes-artifact-design | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
+| higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 9b13ee6c7410ffb9c7bedf7e29ae6f3092ff0852 |
 | himmel-bus | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-bus | yotamleo | MIT | In-tree |
 | himmel-guard | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-guard | yotamleo | MIT | In-tree |
 | himmel-ops | https://github.com/yotamleo-org/Himmel/tree/main/marketplace/plugins/himmel-ops | yotamleo | MIT | In-tree |
