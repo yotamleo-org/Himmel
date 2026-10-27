@@ -1061,10 +1061,11 @@ cmd_calibration() {
     # the graders are refused by vendor before any call: never a vendor under
     # test, and every grader from a vendor of its own.
     for d in "${dirs[@]}"; do
+      jq -se 'all(.[]; (.model // "") != "")' "$d/runs.jsonl" >/dev/null \
+        || die "a run in $d names no model under test, so no grader's vendor can be checked against it"
       while IFS= read -r m; do under+=("$m"); done < <(jq -r '.model // empty' "$d/runs.jsonl" | sort -u)
       while IFS= read -r m; do stored+=("$m"); done < <(jq -r '.judge_model // empty' "$d/runs.jsonl" | sort -u)
     done
-    [ "${#under[@]}" -ge 1 ] || die "the runs name no model under test, so no grader's vendor can be checked"
     if [ -n "$j1model" ]; then
       refuse_vendor "first grader" "$j1model" "model under test" "${under[@]}"
       g1=("$j1model")
