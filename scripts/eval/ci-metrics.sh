@@ -130,7 +130,9 @@ if [ "${1:-}" = "--prs" ]; then
              | {number, merged_at: .mergedAt, commits: .commits.totalCount,
                 rounds: ([.commits.nodes[] | select(.commit.parents.totalCount > 1)] | length), truncated: (.commits.totalCount > 100)}]}'
   while :; do
-    key="prs.$(printf '%s|%s|%s' "$repo" "$since..$upto" "$after" | md5sum | cut -c1-32)"
+    h=$(printf '%s|%s|%s' "$repo" "$since..$upto" "$after" | md5sum | cut -c1-32)
+    [ -n "$h" ] || { echo "ci-metrics: cannot compute the merged PRs cache key (md5sum missing?)" >&2; exit 1; }
+    key="prs.$h"
     if [ -n "${CI_METRICS_CACHE:-}" ] && [ -s "$CI_METRICS_CACHE/$key.json" ]; then
       cp "$CI_METRICS_CACHE/$key.json" "$out.page"
     else
@@ -154,8 +156,9 @@ if [ "${1:-}" = "--prs" ]; then
     if [ -z "$after" ] && jq -e '.issues >= 1000' "$out.page" >/dev/null; then
       echo "ci-metrics: WARN merged PRs search returned 1000 results (API cap): the merge-forward window is truncated" >&2
     fi
-    after=$(jq -r '.next // empty' "$out.page")
+    prev="$after"; after=$(jq -r '.next // empty' "$out.page")
     [ -n "$after" ] || break
+    [ "$after" != "$prev" ] || { echo "ci-metrics: merged PRs pagination did not advance past cursor $after" >&2; exit 1; }
   done
   mv "$out.all" "$out.ndjson"; exit 0
 fi
@@ -289,7 +292,10 @@ else
     mv "$WORK/jobs2.json" "$JOBS" || die 3 "could not merge step counts"
   fi
   # Merged PRs and their merge-forward rounds; a failed fetch leaves PRS at the "not measured" null.
-  if bash "$SELF" --prs "$REPO" "$(jq -rn --argjson x "$START_EPOCH" '$x|todate')" "$(jq -rn --argjson x "$NOW_EPOCH" '$x|todate')" "$WORK/prs"; then
+  # The cap check never renders them, so only a --keep run (which saves prs.json) fetches them.
+  if [ "$CAPCHECK" -eq 1 ] && [ -z "$KEEP" ]; then
+    :
+  elif bash "$SELF" --prs "$REPO" "$(jq -rn --argjson x "$START_EPOCH" '$x|todate')" "$(jq -rn --argjson x "$NOW_EPOCH" '$x|todate')" "$WORK/prs"; then
     jq -s '.' "$WORK/prs.ndjson" > "$WORK/prs.json" && PRS="$WORK/prs.json"
   else
     echo "ci-metrics: WARN merge-forward rounds not measured (merged PRs fetch failed)" >&2

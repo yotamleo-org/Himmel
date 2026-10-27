@@ -239,10 +239,24 @@ has "merged-PR fetch: 1000 results warns the window is truncated" "$O" "WARN mer
 # A failed merged-PR fetch into a reused --keep dir drops the older prs.json instead of replaying it.
 mkdir -p "$TMP/nosleep"; printf '#!/bin/sh\nexit 0\n' > "$TMP/nosleep/sleep"; chmod +x "$TMP/nosleep/sleep"
 echo 'not json' > "$TMP/prs-bad.json"
+rc=0
 O=$(PATH="$TMP/nosleep:$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-bad.json" \
-  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --keep "$TMP/kept" 2>&1)
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --keep "$TMP/kept" 2>&1) || rc=$?
+eq "merged-PR fetch: a failed fetch leaves the run successful" "$rc" "0"
 has "merged-PR fetch: a failed fetch is reported as not measured" "$O" "Not measured"
 eq "merged-PR fetch: --keep drops the stale prs.json after a failed fetch" "$([ -e "$TMP/kept/prs.json" ] && echo present || echo absent)" "absent"
+
+# A search page that hands back the cursor it was asked from is a failed fetch, not an endless loop.
+jq '.data.search.pageInfo = {hasNextPage: true, endCursor: "CUR"}' "$TMP/prs-page.json" > "$TMP/prs-page-loop.json"
+O=$(PATH="$TMP/nosleep:$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page-loop.json" \
+  timeout 60 bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z 2>&1) || true
+has "merged-PR fetch: a cursor that does not advance stops the fetch" "$O" "pagination did not advance"
+
+# The cap check never renders merged PRs, so it does not fetch them.
+: > "$TMP/gh-capcheck.log"
+PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-capcheck.log" GH_RUNS="$LIVE/runs-page.json" GH_GQL="$LIVE/graphql.json" GH_REST_JOBS="$LIVE/rest-jobs.json" GH_PRS="$TMP/prs-page.json" \
+  bash "$SCRIPT" --days 0.04 --now 2026-10-20T05:45:00Z --cap-check > /dev/null 2>&1 || true
+eq "cap check: no merged-PR search is made" "$(grep -c 'is:pr is:merged' "$TMP/gh-capcheck.log")" "0"
 
 echo "ci-metrics: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]
