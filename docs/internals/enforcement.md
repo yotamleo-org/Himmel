@@ -3569,17 +3569,6 @@ the opens"; that was the second drift, so the rule became a gate.
    limit: nothing counts, rations or sequences reviews, and `check-ci.sh`
    requests none of its own (the `--escalate` full-review path is retired).
 
-**One consequence worth stating plainly.** `scripts/cr/pr-check-external.sh`
-(the Claude-free ship lane) required, per HIMMEL-1224, a quorum of TWO
-responding cross-model reviewers before it would clear a diff that changes the
-CR/merge gate infrastructure itself. The CodeRabbit CLI was that second seat, and
-`scripts/cr/critics.json`'s panel is codex-only (the `glm` row was retired
-2026-08-18, HIMMEL-1904). With no second seat the quorum cannot be met, so that
-lane now REFUSES gate-infra diffs outright — the same disposition it already
-produced whenever the CLI was absent, which was the common case. Gate-infra
-changes go through the interactive `/pr-check` (Claude backstop). Adding a second
-non-Claude row to `critics.json` re-opens the lane.
-
 ### Codex adversarial pass — re-armed on high-risk diffs only, once per branch (HIMMEL-2707)
 
 **The one-suite-run invariant.** The after-report's `== Summary ==` PR comment
