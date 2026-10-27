@@ -77,8 +77,10 @@ expect_none() {
 expect_deny() {
     local name="$1" cwd="$2" cmd="$3" want="$4"
     run_hook "$cwd" "$cmd"
+    local why
+    why="$(jq -r '.hookSpecificOutput.permissionDecisionReason // empty' <<<"$OUT" 2>/dev/null)"
     if [ "$RC" -eq 0 ] && [ "$(jq -r '.hookSpecificOutput.permissionDecision // empty' <<<"$OUT" 2>/dev/null)" = deny ] \
-        && jq -r '.hookSpecificOutput.permissionDecisionReason' <<<"$OUT" 2>/dev/null | grep -qF -- "$want"; then
+        && grep -qF -- "$want" <<<"$why"; then
         echo "PASS deny:  $name"
     else
         echo "FAIL deny:  $name (rc=$RC out=$OUT)"; FAILED=1
