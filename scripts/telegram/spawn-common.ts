@@ -30,10 +30,9 @@ export const DEFAULT_LANE_PROFILE = "lane-impl";
 // layers for `cwd` (user + project + local) — project/local scopes override user,
 // so reading only ~/.claude would miss a project-enabled plugin. Fails closed if a
 // layer exists but cannot be parsed.
-// The USER-scope layer is read from the child's EFFECTIVE config dir (CR): the GLM
-// child env is {...process.env, ...buildGlmEnv()} and glm-env deliberately does NOT
-// set CLAUDE_CONFIG_DIR, so an AMBIENT one propagates to the worker — reading
-// ~/.claude then inspects a config the child never loads. KNOWN GAP:
+// The USER-scope layer is read from the child's EFFECTIVE config dir: an AMBIENT
+// CLAUDE_CONFIG_DIR propagates to the worker, so reading ~/.claude would inspect
+// a config the child never loads. KNOWN GAP:
 // the claudex lane's child config dir is claude-codex's own ~/.claude-codex, which
 // this seam cannot see (the launcher owns + seeds it after we resolve).
 export function resolveProfileSettings(profile: string, addPlugins: string[], cwd: string, installed?: string[]): string | undefined {
@@ -128,7 +127,7 @@ export function teardownMintedWorktree(repoDir: string, worktree: string, branch
 // Claude Code keys transcript dirs by the ESCAPED CWD — EVERY non-alphanumeric
 // char → "-" (ground truth: real project dirs escape "_" and "." too, e.g.
 // my_docs → my-docs). Not keyed by any name/slug.
-// `root` is the lane's projects dir (default: the glm/shared ~/.claude one; the
+// `root` is the lane's projects dir (default: the shared ~/.claude one; the
 // claudex lane passes ~/.claude-codex/projects). The startup
 // watchdog resolves its poll path through this same function.
 export function transcriptDirFor(cwd: string, root: string = join(homedir(), ".claude", "projects")): string {
@@ -401,7 +400,7 @@ export function preflightWindowCheck(p: { briefChars: number; overheadChars: num
   const estTokens = Math.ceil((p.briefChars + p.overheadChars) / 4);
   const budget = Math.floor(p.windowTokens * WINDOW_SAFETY);
   if (estTokens > budget) {
-    return { ok: false, reason: `spawn-glm: brief too large for the GLM window — est ${estTokens} tokens (brief ${p.briefChars} + overhead ${p.overheadChars} chars / 4) exceeds 90% of the ${p.windowTokens}-token window (budget ${budget}). Chunk the brief into smaller dispatches, or use --context big for the 1M window.` };
+    return { ok: false, reason: `spawn: brief too large for the model window — est ${estTokens} tokens (brief ${p.briefChars} + overhead ${p.overheadChars} chars / 4) exceeds 90% of the ${p.windowTokens}-token window (budget ${budget}). Chunk the brief into smaller dispatches.` };
   }
   return { ok: true };
 }
@@ -464,10 +463,10 @@ export function ensureWorkspaceTrust(worktree: string): void {
     // helper's own test seams) would silently miss the child without this.
     const r = Bun.spawnSync([BASH_BIN, script, worktree], { stdout: "pipe", stderr: "pipe", env: process.env });
     if (r.exitCode !== 0) {
-      console.error(`spawn-glm: WARNING - workspace-trust pre-seed failed for ${worktree} (rc=${r.exitCode}); spawn continues, first launch may prompt to trust the folder: ${r.stderr.toString().trim()}`);
+      console.error(`spawn: WARNING - workspace-trust pre-seed failed for ${worktree} (rc=${r.exitCode}); spawn continues, first launch may prompt to trust the folder: ${r.stderr.toString().trim()}`);
     }
   } catch (e) {
-    console.error(`spawn-glm: WARNING - workspace-trust pre-seed threw (${String((e as any)?.message ?? e)}); spawn continues, first launch may prompt to trust the folder`);
+    console.error(`spawn: WARNING - workspace-trust pre-seed threw (${String((e as any)?.message ?? e)}); spawn continues, first launch may prompt to trust the folder`);
   }
 }
 
@@ -592,9 +591,8 @@ export function composeDispatchGitState(worktree: string, branch: string, baseSh
   return [`pushed: ${pushed}`, `commits: ${commits}`, `worktree_clean: ${clean}`];
 }
 
-// The startup-hang watchdog substrate, shared by the
-// glm (executeRun) and claudex (executeClaudexRun) lanes so the
-// two-tick ordering fix lives in exactly one place.
+// The startup-hang watchdog substrate, used by the claudex lane
+// (executeClaudexRun) so the two-tick ordering fix lives in exactly one place.
 // `raw` is the lane's *_STARTUP_FAILFAST_MINS env value; 0/garbage = off.
 export function resolveFailfastWindowMs(raw: string | undefined, defaultMins = 10): number {
   const mins = Number(raw ?? defaultMins);

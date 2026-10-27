@@ -1073,7 +1073,7 @@ test("checkHugeDiff: silent happy paths — a found hazard and a clean no-diff b
 // ── shared-seam pin ───────────────────────────────────────────────────────────
 
 test("the predicate lives ONCE, in the shared module — both spawners import it, neither re-defines it (copy-paste drift: PR #1680, #1691)", () => {
-  for (const f of ["scripts/telegram/spawn-glm.ts", "scripts/telegram/spawn-claudex.ts"]) {
+  for (const f of ["scripts/telegram/spawn-claudex.ts"]) {
     const src = readFileSync(f, "utf8");
     expect(src).toContain('checkHugeDiff("spawn-');
     expect(src).toContain('from "./huge-diff-guard"');
