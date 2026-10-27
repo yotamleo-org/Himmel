@@ -761,7 +761,9 @@ ui_gen - -
 [ "$ui_rc" = 0 ] && pass "a non-UI leg generates (rc 0)" || fail "non-UI leg rc=$ui_rc: $(cat "$WORK/ui.err")"
 has "a non-UI leg's launcher stays on worker-impl" "$ui_launch" "--profile worker-impl --chief BZ"
 lacks "a non-UI leg's brief has no browser line" "$ui_brief" "ui --port 0"
-lacks "the dry-run launch of a non-UI leg lists no playwright" "$(ui_mcp worker-impl)" "playwright"
+ui_mcp_impl="$(ui_mcp worker-impl)"
+has "the dry-run launch of a non-UI leg reports its MCP servers" "$ui_mcp_impl" 'mcp=["qmd","himmel-bus"]'
+lacks "the dry-run launch of a non-UI leg lists no playwright" "$ui_mcp_impl" "playwright"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]
