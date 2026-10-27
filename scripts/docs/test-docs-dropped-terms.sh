@@ -31,20 +31,6 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 PATTERN='Windows|\b(WSL|wsl)2?\b|PowerShell|powershell|\bpwsh\b|\.ps1\b|[Gg]it[- ]?[Bb]ash|\b(MSYS|msys)|%LOCALAPPDATA%|\$LOCALAPPDATA|schtasks|winget|cygwin|\b(GLM|glm|Z\.ai|zai-glm|kimi|Kimi|moonshot)\b|gpt-5\.[0-9]|gpt-6-(sol|astra)\b|GPT-5\.[0-9]|GPT-6 (Sol|Astra)|claude-(opus|sonnet|haiku)-4|\b(Haiku|Sonnet|Opus)[- ]4\.[0-9]|\b(Fable|Opus|Sonnet)[- ]5[.-]?([^.0-9-]|$)|claude-(opus|sonnet|fable)-5[.-]?([^.0-9-]|$)|ox-alpha'
 
 PENDING='
-docs/README.md
-docs/configuration.md
-docs/hermes-runbook.md
-docs/internals/environment-gotchas.md
-docs/internals/lane-parity.md
-docs/launchers.md
-docs/setup/footprint.md
-docs/setup/install.md
-docs/setup/new-machine.md
-docs/setup/operator-profile-tbd-delta.md
-docs/tool-adoption/lane-adoption-playbook.md
-docs/tool-adoption/registry.md
-docs/tool-adoption/rubric.md
-docs/tooling-catalog.md
 '
 
 # The backticks and dollars below are literal page text.
@@ -424,6 +410,179 @@ docs/internals/lane-calibration.md	describe ox-alpha, not `gpt-6.1-sol`.
 docs/internals/lane-calibration.md	  900000 stays the declared operating window on that basis, unchanged — it was already an operator ruling/measurement before ox-alpha, and these probes establish ACCEPTANCE at that size, not a verified usable window.
 docs/internals/lane-calibration.md	- **Expired.** ox-alpha's trial ended on 2026-10-04 and the profile default
 docs/internals/lane-calibration.md	  this repo pins ox-alpha by name, which is deliberate.
+docs/README.md	- [launchers.md](launchers.md) — the `claude-codex`, `claude-openrouter` and `claude-deepseek` launchers, their gates and exit codes; the GLM lane is dormant.
+docs/README.md	- [jarvis-subsystems.md](jarvis-subsystems.md) — adopter usage map of the optional agentic-OS subsystems (the dormant GLM lane, quota-gauge, escalation channel, statusline, clipper pipeline).
+docs/configuration.md	dormant lane's opt-in). The registry also keeps a dropped GLM lane, offered
+docs/configuration.md	| GLM launcher (dropped lane), `telegram/glm-env.ts`, graph-map refresh | `ZAI_API_KEY` |
+docs/hermes-runbook.md	closed the Codex/GPT-5.5 "should be 1M" report as **not a bug**: live
+docs/hermes-runbook.md	`openai-codex` reports and enforces `gpt-5.5` at `272000` tokens, while direct
+docs/hermes-runbook.md	OpenAI API `gpt-5.5` can resolve around `1050000`. Pinning Codex to 1M would
+docs/hermes-runbook.md	- `himmel_agent` main tier: `openai-codex` + `gpt-5.5` was a **272K Codex
+docs/hermes-runbook.md	- GLM / Z.ai lanes (GLM lane dormant, HIMMEL-1967): request the explicit long-context model id
+docs/hermes-runbook.md	  `glm-5.2[1m]` on Claude Code-compatible launchers. Bare `glm-5.2` can run
+docs/hermes-runbook.md	print(get_model_context_length('glm-5.2[1m]', provider='custom',
+docs/launchers.md	| `scripts/claude-glm` | Z.ai GLM | **Removed** from the supported set (see below) |
+docs/launchers.md	## `claude-glm` (removed)
+docs/launchers.md	The Z.ai GLM lane has been dropped and is **not supported**. The launcher and
+docs/launchers.md	`claude-glm` section of [tooling-catalog.md](tooling-catalog.md) describes the
+docs/setup/footprint.md	| The personal or medical vault you declare, so local guards keep it away from cloud backends | `~/.config/claude-glm/phi-roots` | user | himmel | Not removed yet: uninstall leaves these lines in place | `phi-roots` |
+docs/setup/install.md	> **Windows is not supported** (HIMMEL-5729). himmel runs on Linux and macOS.
+docs/setup/install.md	      { "matcher": "Bash|PowerShell|Read|Grep",
+docs/setup/new-machine.md	| **Not supported** | Windows, WSL included | Dropped (HIMMEL-5729). |
+docs/setup/new-machine.md	- `cygpath` (Windows-only path translation) → `scripts/handover/arm-resume.sh` and `scripts/lib/qmd-bin.sh` (junction creation); falls back to the unconverted path when absent.
+docs/setup/new-machine.md	| `ZAI_API_KEY` | Z.ai GLM key for the `claude-glm` launcher of the GLM lane, which is dormant (HIMMEL-1967; the lane registry offers it only when `GLM_LANE_OK` is set) (see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)). The launcher takes the live process env first, else reads it from `.env`. It cannot distinguish shell env from `settings.json`-injected env — **don't put this key in `settings.json`** (that hands it to every session); use per-launch shell env or `.env`. | z.ai account → API keys. Optional — only if you use `claude-glm`. |
+docs/setup/new-machine.md	| `CLAUDE_LANE_AUTO_RESEED` | Optional opt-out for the lane launchers' config auto-refresh. By default `claude-codex` (and the dormant `claude-glm`) re-seeds its isolated config dir when your `~/.claude` settings or plugin registry changed, so lane workers pick up plugin-profile changes automatically. Set `0` to restore the once-only seed (first launch + explicit `--reseed`) if the auto-refresh ever blocks a launch in your setup. | Leave unset (default on). **Not** bridged from `.env` — set it in the launching shell. Only relevant if you use the offload lanes. |
+docs/setup/new-machine.md	### 4d. Optional — PHI vault marker for claude-glm
+docs/setup/new-machine.md	The GLM lane is dormant (HIMMEL-1967; the lane registry offers it only when
+docs/setup/new-machine.md	`GLM_LANE_OK` is set). If you still use the `claude-glm` launcher (Claude Code on the Z.ai GLM
+docs/setup/new-machine.md	flat-rate lane; see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)),
+docs/setup/new-machine.md	list the absolute PHI roots one-per-line in `~/.config/claude-glm/phi-roots`:
+docs/setup/new-machine.md	### 4f. cc-codex / cc-glm offload shims
+docs/setup/new-machine.md	`scripts/shell/himmel-offload-shims.sh` provides the `cc-codex` and `cc-glm`
+docs/setup/new-machine.md	Bash functions (`cc-glm` launches the dormant GLM lane, HIMMEL-1967). `bash scripts/setup.sh` installs the
+docs/setup/new-machine.md	   worktree-and-git-common-dir, Windows-drive-relative, and Windows
+docs/setup/operator-profile-tbd-delta.md	| 1 | Armed cadences beyond the pipeline family (graphmap, qmd, drift-fix, ggs) | `schtasks`/cron enumeration matched against 5 known cadence-id task groups (`delta.cadences.taskDetail`) | The wizard's luna-cadence question is binary off/on and only speaks to the pipeline family; it cannot select or report the other four | ticketed: HIMMEL-2302 |
+docs/setup/operator-profile-tbd-delta.md	| 10 | Lane readiness gates (`passesRequired` probation counters) and the full dormant-lane roster (opt-in env names) | Direct read of `scripts/lanes/lanes.json`'s `readiness`/`dormant` fields (`delta.lanes.readinessGates`, `dormantLanes`) | The wizard offers only the 4 wizard-askable lane ids (`ollama-local`, `copilot-cli`, `codex-exec`, `hermes-oneshot`); it never surfaces readiness-gate progress or the dormant-lane roster (`glm`, `openrouter-claude`) | ticketed: HIMMEL-2330 |
+docs/tool-adoption/lane-adoption-playbook.md	needed. The GLM onboarding (the GLM lane is now dormant, HIMMEL-1967) is the worked
+docs/tool-adoption/lane-adoption-playbook.md	example this playbook generalizes: each axis below is a knob GLM's rollout tripped over,
+docs/tool-adoption/lane-adoption-playbook.md	*config/code knob* the measurement feeds. Where the axis has GLM evidence
+docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence:** `glm-5.2[1m]` measured **~205s / 23KB** response on a real
+docs/tool-adoption/lane-adoption-playbook.md	GLM (`CHANGELOG.md`: "raise CRITIC_TIMEOUT_SECS default 150
+docs/tool-adoption/lane-adoption-playbook.md	real and grounded (`scripts/cr/critic-panel.sh`), but the GLM
+docs/tool-adoption/lane-adoption-playbook.md	- `lanes.json`'s per-lane `context.windowTokens` field (`glm`: 1000000, `claudex`:
+docs/tool-adoption/lane-adoption-playbook.md	  from its own env knob: the GLM launcher's `GLM_CONTEXT_WINDOW` and
+docs/tool-adoption/lane-adoption-playbook.md	  `spawn-glm --context big|small` preset: `big` =
+docs/tool-adoption/lane-adoption-playbook.md	  `glm-5.2[1m]` + `CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000`; `small` =
+docs/tool-adoption/lane-adoption-playbook.md	  `glm-5.2` + 200000; the codex lane's twin, `CODEX_CONTEXT_WINDOW`
+docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence:** without an explicit window, Claude Code assumes its ~200k
+docs/tool-adoption/lane-adoption-playbook.md	`CLAUDE_CODE_AUTO_COMPACT_WINDOW=1000000` for the `[1m]` GLM variant fixed it.
+docs/tool-adoption/lane-adoption-playbook.md	auto-compact-window knob explicitly — same pattern as `glm`/`claudex` above.
+docs/tool-adoption/lane-adoption-playbook.md	  Codex (GPT-5.5)"* — and the installer's own profile description literally
+docs/tool-adoption/lane-adoption-playbook.md	  reads *"himmel's main-tier orchestrator (Codex/GPT-5.5)"*
+docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence:** a frontier lane dispatched under `himmel-agent.SOUL.md`
+docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence:** `*glm*` falls into the `open` family bucket (alongside
+docs/tool-adoption/lane-adoption-playbook.md	qwen/kimi/deepseek/mistral/llama) — rigid format-obedience scaffolding, the
+docs/tool-adoption/lane-adoption-playbook.md	GLM worker, Codex worker). Its verdict: "the Hermes one-shot lane has the
+docs/tool-adoption/lane-adoption-playbook.md	clearest model/toolset selector... the GLM worker has the clearest worker
+docs/tool-adoption/lane-adoption-playbook.md	   `zai-glm`): add nothing to `providers`. Reusing it means the new lane
+docs/tool-adoption/lane-adoption-playbook.md	   note — see the `zai-glm` / `openai-codex` rows for the shape), then
+docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence — a full ratify-then-reverse cycle.** `zai-glm` was declared
+docs/tool-adoption/lane-adoption-playbook.md	`zai-glm` × `extraction` was `allow+log`, ratified 2026-07-17
+docs/tool-adoption/lane-adoption-playbook.md	the `why` field, and `handover-state` × `zai-glm` × `inference` was
+docs/tool-adoption/lane-adoption-playbook.md	**GLM evidence:** `lanes.json`'s `$readiness-note` records the live operator
+docs/tool-adoption/lane-adoption-playbook.md	ruling (2026-08-07): **glm gated at 10 consecutive passes** (down since the
+docs/tooling-catalog.md	> shellcheck/pwsh (the image owns them).
+docs/tooling-catalog.md	leftover of the dropped Windows support (HIMMEL-5729) and is never read. A cadence copied between stations leaves a dormant,
+docs/tooling-catalog.md	dropped Windows support, HIMMEL-5729, never fires on Linux or macOS) and `default_vault` (honors `LUNA_VAULT_PATH` first — the path
+docs/tooling-catalog.md	<a id="claude-glm"></a>
+docs/tooling-catalog.md	## claude-glm (`scripts/claude-glm`)
+docs/tooling-catalog.md	> **Dormant:** the GLM lane was dropped by operator ruling 2026-08-19
+docs/tooling-catalog.md	**What:** Thin launcher that runs Claude Code against the Z.ai GLM
+docs/tooling-catalog.md	capacity on a flat subscription*, **not** per-token savings: the GLM lane is not
+docs/tooling-catalog.md	| `ANTHROPIC_MODEL` | `glm-5.2[1m]` |
+docs/tooling-catalog.md	| `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `glm-4.7` |
+docs/tooling-catalog.md	| `ANTHROPIC_DEFAULT_SONNET_MODEL` | `glm-5.2[1m]` |
+docs/tooling-catalog.md	| `ANTHROPIC_DEFAULT_OPUS_MODEL` | `glm-5.2[1m]` |
+docs/tooling-catalog.md	| `CLAUDE_CONFIG_DIR` | `$HOME/.claude-glm` |
+docs/tooling-catalog.md	**Isolated config dir (`$HOME/.claude-glm`):** seeded from `~/.claude` on first
+docs/tooling-catalog.md	  line → **REFUSED, exit 3, no override.** PHI never goes to a cloud GLM backend.
+docs/tooling-catalog.md	  content WILL be sent to Z.ai.
+docs/tooling-catalog.md	- Config at `~/.config/claude-glm/{phi-roots,egress-denylist}`, one path per
+docs/tooling-catalog.md	GLM peak window (14:00–18:00 UTC+8); advisory only, changes no behavior.
+docs/tooling-catalog.md	`scripts/test-claude-glm.sh` cover the key gate, the seeder, the
+docs/tooling-catalog.md	`spawn-glm` (HIMMEL-1967) shares `~/.claude` directly (no `CLAUDE_CONFIG_DIR`, so himmel hooks load), while
+docs/tooling-catalog.md	the interactive (dormant) `claude-glm` launcher runs against a seeded `$HOME/.claude-glm`
+docs/tooling-catalog.md	**mirror** of `~/.claude` ([claude-glm](#claude-glm-scriptsclaude-glm) above) — so both would otherwise
+docs/tooling-catalog.md	    unattended worker. See the seam note at `spawn-glm.ts:36-41`.
+docs/tooling-catalog.md	**Dispatch flags (`spawn-claudex`, and the dormant `spawn-glm`):** both inject the resolved
+docs/tooling-catalog.md	worktree side-effect. spawn-glm carries a non-default profile into its
+docs/tooling-catalog.md	| `CODEX_CONTEXT_WINDOW` | `272000` by default → `CLAUDE_CODE_AUTO_COMPACT_WINDOW` (twin of `GLM_CONTEXT_WINDOW`). Without it Claude Code assumes its ~200k default for the unrecognized `gpt-6.1-sol` slug and compacts early. The window was measured on gpt-5.6, not yet re-measured for gpt-6.1: gpt-5.6's real window is **~372k** (95% effective ~353k, [openai/codex#32486](https://github.com/openai/codex/issues/32486)); **272k is the 2× pricing cliff, NOT a hard ceiling** — input past 272k bills 2× input / 1.5× output. `272000` is the cost-optimal default (compact at the cliff); raise to `353000` to use the full window at 2× cost past 272k. |
+docs/tooling-catalog.md	`claude-sonnet-5` when the proxy serves it (cli-proxy-api's claude provider, OAuth
+docs/tooling-catalog.md	classifier and substitutes `claude-sonnet-5`). The main, Haiku, Opus and subagent
+docs/tooling-catalog.md	**Seeding:** same lane-seed mechanism as the dormant `claude-glm`: an isolated
+docs/tooling-catalog.md	the dormant `claude-glm`.
+docs/tooling-catalog.md	choice, not a hard ceiling — the real backend window for gpt-5.6-sol was
+docs/tooling-catalog.md	2. **The `[1m]` model-name suffix** — the convention the dormant GLM lane
+docs/tooling-catalog.md	   attached returned `HTTP 400 unknown provider for model gpt-5.6-sol[1m]`
+docs/tooling-catalog.md	**What:** the codex-lane twin of the dormant `spawn-glm` —
+docs/tooling-catalog.md	the dormant GLM lane. `spawn-claudex.ts` dispatches THROUGH `claude-codex` itself
+docs/tooling-catalog.md	bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
+docs/tooling-catalog.md	**Model tier:** `--model` is optional and selects the GPT-5.6
+docs/tooling-catalog.md	`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
+docs/tooling-catalog.md	**Bash convenience shims:** `scripts/shell/himmel-offload-shims.sh` installs idempotent `cc-codex` / `cc-glm` functions into `~/.bashrc` (`cc-glm` launches the dormant GLM lane, HIMMEL-1967).
+docs/tooling-catalog.md	## spawn-glm (`scripts/telegram/spawn-glm.ts`)
+docs/tooling-catalog.md	**What:** Poller-free CLI that spawns an unattended GLM-lane Claude worker for
+docs/tooling-catalog.md	fresh git worktree + `glm/<slug>` branch, resolves the GLM env block
+docs/tooling-catalog.md	(`glm-env.ts` — `ZAI_API_KEY` from shell env or the himmel repo `.env`, launcher
+docs/tooling-catalog.md	the run through the `runSession(…, lane:"glm")` seam in `run.ts`. GLM runs pin
+docs/tooling-catalog.md	`--model opus` (→ `glm-5.2[1m]`) and ignore `TELEGRAM_CLAUDE_MODEL`. Sessions live
+docs/tooling-catalog.md	under `<BRIDGE_ROOT>/glm-sessions/` (default `~/.claude/handover/bridge/`) —
+docs/tooling-catalog.md	gracefully via the **escalation channel** — `spawn-glm --grant`/`--autonomous`
+docs/tooling-catalog.md	bun scripts/telegram/spawn-glm.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--timeout-mins <n>] [--permission-mode <mode>] [--arm-on-cap | --no-arm-on-cap]
+docs/tooling-catalog.md	`block-glm-external-writes.sh` and the load-bearing control is the automated review gate (no
+docs/tooling-catalog.md	GLM branch merges except by the validating session). The egress guards
+docs/tooling-catalog.md	are dormant by construction (himmel-worktree cwd scope). Uses GLM flat-rate
+docs/tooling-catalog.md	with argv shape unchanged, GLM model pin ignoring `TELEGRAM_CLAUDE_MODEL`,
+docs/tooling-catalog.md	  `--provider deepseek|codex|glm|claude` (default `deepseek`) summary + vocab-constrained tags + locally-computed Related Notes for
+docs/tooling-catalog.md	  (permitted: `claude` only, via the `anthropic → allow` rule — `deepseek` was de-listed earlier and `glm`/`zai-glm` since, and `codex` stays default-deny until an adopter ratifies a cell; the entries remain so the gate refuses them legibly), ledgered per run
+docs/tooling-catalog.md	  (`GRAPHIFY_LEDGER`); `deepseek`/`codex` use OpenAI chat/completions, `glm` (via z.ai anthropic-compat)/`claude` use the Anthropic Messages API. DeepSeek off-peak advisory. `--dry-run` first.
+docs/tooling-catalog.md	  `--backend glm` was a prior lane but zai-glm is de-listed,
+docs/tooling-catalog.md	  and `--backend kimi` (moonshot) is retired —
+docs/tooling-catalog.md	  operator ruling, there is no kimi backend — so both now fail closed on luna
+docs/tooling-catalog.md	  corpora, glm at the egress preflight and kimi as an unclassified provider).
+docs/tooling-catalog.md	  overshoots Z.ai's request limit — `--backend glm` 429s (`rate_limit_error`
+docs/tooling-catalog.md	  staggered) is now **weekly**, on the **`claude-cli`** backend (kimi/moonshot is retired, operator ruling; claude-cli is the
+docs/tooling-catalog.md	  subscription) — the original credential gate (kimi ->
+docs/tooling-catalog.md	  `MOONSHOT_API_KEY`) no longer applies now that kimi is retired, though the
+docs/tooling-catalog.md	- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (operator decision, 12%/13% ledger agreed-rate — noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (operator decision: accepted). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
+docs/tooling-catalog.md	- `scripts/cr/pr-check-external.sh` — **Claude-free automated review runner**: reviews a branch with NO Claude session so review still runs when the Claude subscription usage budget is maxed. `--branch <b> [--session-dir <dir>] [--base <ref>]`; fetches, diffs `origin/<base>...<branch>`, pipes to `critic-panel.sh` with `CR_PROFILE=free,paid` forced (so the paid codex critic reviews; `CR_PROFILE=none` refused). Fail-CLOSED gate: panel non-zero exit, unparseable Critical/Important counts, an ABSENT codex critic, or any Critical/Important finding all FAIL. A diff touching the automated review/merge **gate infrastructure** is refused outright (the original design wanted a quorum of two responding cross-model reviewers there; the CodeRabbit CLI was the second seat and it was retired, while `critics.json`'s panel is codex-only — so the quorum cannot be met on this path and gate-infra changes go through the interactive `/pr-check`). On clean it writes `external_cr_verdict: pass (sha=…; critics=…)` into the spawn-glm session `meta.json` (distinct from `d1_verdict`) and prints a PR-body snippet; does NOT touch the review-owed marker. Test: `scripts/cr/test-pr-check-external.sh` (hermetic; fake git repo + stubbed panel via `CRITIC_PANEL_CMD`).
+docs/tooling-catalog.md	## GLM ship lane (`scripts/glm/`)
+docs/tooling-catalog.md	- `scripts/glm/ship-branch.sh` — pushes a reviewed `glm/*` branch FROM the trusted main checkout (the GLM worker still never pushes for itself — the no-push prompt + the deny hook are unchanged; the pushurl poison that used to sit alongside them is gone). `ship-branch.sh <branch> [--session-dir <dir>] [--allow-any-branch]`; refuses to run from a `.claude/worktrees/` path, requires an `origin` remote, and is authorized only by `external_cr_verdict:pass` (written by `pr-check-external.sh`) whose reviewed SHA must equal the current branch tip (closes the post-panel-commit TOCTOU). Runs `git push -u origin <branch>` with the real pre-push gates (NO `--no-verify`), then clears the review-owed marker only when its SHA matches the pushed SHA. Never opens a PR, never merges — prints the exact `gh pr create` for the operator. Test: `scripts/glm/test-ship-branch.sh` (hermetic; temp bare-repo origin).
+docs/internals/environment-gotchas.md	$ cd scripts/telegram && bun test spawn-glm.test.ts
+docs/internals/environment-gotchas.md	error: ENOENT: no such file or directory, open 'scripts/telegram/spawn-glm.ts'   (x8)
+docs/internals/environment-gotchas.md	The two command-text fences in `block-glm-external-writes.sh` (the pin-dir fence
+docs/internals/lane-parity.md	> dormancy status for impl lanes (GLM, claudex, hermes-oneshot, codex-exec) lives in `scripts/lanes/lanes.json` /
+docs/internals/lane-parity.md	the `glm-spawn` fleet reads live `~/.claude`; the `claude-glm` launcher reads a
+docs/internals/lane-parity.md	seeded `~/.claude-glm` copy; Codex / Cursor / Copilot read the generated
+docs/internals/lane-parity.md	**GLM is reachable by THREE paths, with THREE different guard mechanisms -- so
+docs/internals/lane-parity.md	"GLM is guarded" is proven per-path, not asserted once:**
+docs/internals/lane-parity.md	1. `glm-spawn` -- Claude Code with the backend swapped, reads live `~/.claude`;
+docs/internals/lane-parity.md	   `block-glm-external-writes.sh` (the classifier substitute for the
+docs/internals/lane-parity.md	2. `glm-launcher` -- Claude Code with the backend swapped, reads a seeded
+docs/internals/lane-parity.md	   `~/.claude-glm` copy; same guards as (1), plus a config-seed drift dimension.
+docs/internals/lane-parity.md	3. GLM-via-hermes -- the hermes runtime drives GLM; himmel's Claude Code
+docs/internals/lane-parity.md	Same model, three runtimes, three guard mechanisms. A single "GLM is guarded"
+docs/internals/lane-parity.md	three GLM paths are dormant: no work routes to them, and their rows stay so
+docs/internals/lane-parity.md	`block-glm-external-writes.sh` is a lane-specific classifier SUBSTITUTE, not
+docs/internals/lane-parity.md	| glm-spawn (dormant) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
+docs/internals/lane-parity.md	| glm-launcher (dormant) | `tested:scripts/hooks/test-block-glm-external-writes.sh` |
+docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `parity_guard` push/PR fence -- `tested:scripts/hermes/test-parity-guard.sh` (write-fence; the CC hook does NOT fire under hermes, parity_guard is the sole fence). The other deny-guards are enforced by parity_guard too (all `present`). |
+docs/internals/lane-parity.md	| glm-spawn (dormant) | `native,no-seed` (live `~/.claude`) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+docs/internals/lane-parity.md	| glm-launcher (dormant) | `tested:scripts/hooks/test-claude-glm-seed-check.sh` (seeded `~/.claude-glm`, drift-checked) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+docs/internals/lane-parity.md	| hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant) | `AGENTS.md (loaded)` (`tested:scripts/hermes/test-agents-reach.sh`) | `tested:scripts/hermes/test-parity-guard.sh` | `asserted-only` | `asserted-only` | `gate-owned` |
+docs/internals/lane-parity.md	Notes on the guardrail-firing cells. GLM IS Claude Code, so on the two CC GLM
+docs/internals/lane-parity.md	`test-block-glm-external-writes.sh`, which covers the lane-specific write-fence
+docs/internals/lane-parity.md	as in the `claude-glm` lane, so its guard posture is the native column. It has
+docs/internals/lane-parity.md	| deny-guard | glm-spawn (dormant) | glm-launcher (dormant) | codex-direct | hermes-main (gpt-6.1-sol; GLM dormant) |
+docs/internals/lane-parity.md	| block-edit-on-main | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-edit-on-main.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+docs/internals/lane-parity.md	| block-read-secrets | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-read-secrets.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+docs/internals/lane-parity.md	| block-backend-tier | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-backend-tier.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+docs/internals/lane-parity.md	| block-docker-privesc | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-docker-privesc.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+docs/internals/lane-parity.md	| block-rogue-claude-schedule | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-rogue-claude-schedule.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+docs/internals/lane-parity.md	| block-merged-pr-commit | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-codex-run-hook.sh` `tested:scripts/hooks/test-block-merged-pr-commit.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+docs/internals/lane-parity.md	| write-authority / external-write-fence (cross-lane dimension, NOT a CC PreToolUse hook) | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-glm-external-writes.sh` | `tested:scripts/hooks/test-block-terminal-write-fence.sh` `tested:scripts/hooks/test-codex-adapter-e2e.sh` | `tested:scripts/hermes/test-parity-guard.sh` |
+docs/internals/lane-parity.md	- **glm-spawn + glm-launcher (dormant).** GLM IS Claude Code, so on these two
+docs/internals/lane-parity.md	  CC GLM lanes the native block-* deny-guard hooks fire unchanged; the single
+docs/internals/lane-parity.md	  `tested:scripts/hooks/test-block-glm-external-writes.sh` (covers push /
+docs/internals/lane-parity.md	  both lanes because the ruleset is live `~/.claude` (glm-spawn) or the seeded
+docs/internals/lane-parity.md	  `~/.claude-glm` copy (glm-launcher).
+docs/internals/lane-parity.md	- **hermes-main (DEFAULT; engine gpt-6.1-sol; GLM dormant).** himmel's CC
+docs/internals/lane-parity.md	engines (gpt-6.1-sol + the dormant GLM) the `himmel_agent` profile is pointed
+docs/internals/lane-parity.md	| `block-rogue-claude-schedule` | `TERMINAL_DESTRUCTIVE` blocks `schtasks` (and `taskkill`/`shutdown`/`reg`/`shutdown`), the scheduler-mutation class that arms a rogue `claude` schedule. The claude-CLI-specific System32-cwd anti-trap is a launch-path check with no hermes analog -- hermes does not arm the `claude` CLI. | `present` (scheduler vector fenced; the System32-cwd trap is `n/a-for-runtime`) |
+docs/internals/lane-parity.md	| write-authority / external-write-fence (cross-lane dimension) | The engine-gated write-fence landed: `terminal_external_write_reason` refuses `git push` (plain, not just `--force`), git remote-URL / `config ...url` rewrite, `gh` PR-mutations (carve-out: `gh issue *` + `gh pr view/diff/checks/status/list` + `gh run view/list/watch`), and network CLIs (`curl`/`wget`/`iwr`/`irm`). `_external_writes_allowed()` is fail-closed: refused unless `HERMES_EXTERNAL_WRITES_OK=1` AND no `api.z.ai` / `HERMES_ENGINE=glm*` untrusted signal. Proved by `test-parity-guard.sh` (push / remote-url / `gh pr create` / `curl` refused; carve-outs + trust opt-in allowed; z.ai + `HERMES_ENGINE=glm` override the opt-in). | `present` |
+docs/internals/lane-parity.md	| `block-backend-tier` | `parity_guard`'s hook matcher (`wire_parity_guard.py MATCHER`, now `.*` -- it previously included `mcp__.*`) delivers every tool to the guard, and `main()` blanket-denies every `mcp__*` tool EXCEPT the read-only `qmd` KB carve-out (`mcp__plugin_qmd_qmd__*`) -- mirroring `block-glm-external-writes.sh`. MCP tool calls now invoke the guard and are fenced. | `present` (MCP fenced, qmd carve-out) |
+docs/internals/lane-parity.md	**GLM-engine write-fence vs `scripts/hooks/block-glm-external-writes.sh`.** The
+docs/internals/lane-parity.md	`block-glm-external-writes.sh`. So an MCP tool call invokes the guard and is
 EOF
 )
 

@@ -4,7 +4,7 @@
 > decides whether to adopt a **community TOOL** (a skill, hook, MCP server).
 > This playbook is for a different object: a **model LANE** — an entry in
 > `scripts/lanes/lanes.json` an operator or the dispatch guard can route
-> implementation work to (GLM, claudex, a future frontier model). A lane is
+> implementation work to (claudex, a future frontier model). A lane is
 > not evaluated once and filed away like a tool ADR; it is **profiled and
 > tailored per axis**, then measured into readiness. Reference the rubric for
 > the general trust-posture/measurement vocabulary (§2, §4) — it isn't
@@ -186,7 +186,7 @@ per-dispatch model control — don't default to whichever is easiest to wire.
   `-z`
   auto-approval with a `todo`-only default toolset. Cheapest to dispatch,
   weakest isolation.
-- **Full-session `cc-<lane>`** (`scripts/claude-glm`, `scripts/claude-codex`)
+- **Full-session `cc-<lane>`** (`scripts/claude-codex`)
   — runs the complete Claude Code harness (skills, hooks, guardrails,
   worktrees) over the lane's backend. Dedicated worktree + branch, durable
   session artifacts, native Claude Code hook coverage.

@@ -201,8 +201,8 @@ on PATH within the same pass. Install those four from step 0 and step 2 above
 and `himmelctl status` goes green on them.
 
 **Expect reds you did not cause.** A lean adopter's first `himmelctl status`
-lists rows for opt-in capabilities that were never selected; `hermes-checkout`
-in particular reports a Windows `AppData` path on Linux. Reds for
+lists rows for opt-in capabilities that were never selected, such as
+`hermes-checkout`. Reds for
 `graphify`, `rtk`, and `telegram-bridge` simply mean those
 optional pieces are not set up; none of them blocks the core loop. A clean
 starter install's optional Jira (`jira-env-keys`) and Bitbucket
@@ -354,7 +354,7 @@ above); pass `--project` only for cross-project work.
 co-locates `node` with coreutils in `/usr/bin`; a hermetic-PATH test fixture
 that pins `PATH=/usr/bin:/bin` or scrubs the PATH must **stub** these tools
 out, not assume scrubbing `/usr/bin` removes only what the suite intends (it
-also silently drops `xargs`). Scripts tracked from Windows commits land mode
+also silently drops `xargs`). Scripts committed without the executable bit land mode
 100644 (no `+x`) and fail direct invocation with rc=126 on Linux; a
 `check-shebang-scripts-are-executable` pre-commit hook now guards new commits
 from reintroducing this. `run-shell-tests.sh`'s machine lock leaking
