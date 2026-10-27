@@ -119,6 +119,10 @@ if [ "$anc" -eq 1 ]; then
         mbJ=$(git merge-base origin/main "$J" 2>/dev/null) || trust # swallow-ok: no merge base fails closed to trust on this line
         : > "$work/authored.txt"
         while IFS= read -r m; do
+            # remerge-diff skips an octopus merge without failing, so only a two-parent merge is read
+            mline=$(git rev-list --parents -n 1 "$m" 2>/dev/null) || trust # swallow-ok: an unreadable merge fails closed to trust on this line
+            read -r -a mparts <<< "$mline"
+            [ "${#mparts[@]}" -eq 3 ] || trust
             git show --remerge-diff --name-only -z --format= --no-ext-diff --no-relative "$m" > "$work/remerge.z" 2>/dev/null || trust
             while IFS= read -r -d '' p; do
                 case "$p" in *$'\n'*) trust ;; esac

@@ -260,6 +260,18 @@ check "8h: a trust path the PR adds after the merge-forward -> trust" "$(cls "$N
 git update-ref -d refs/remotes/origin/main
 J=$J8
 git checkout -q "$base_branch"
+
+# 8i: an octopus merge in the range fails closed (remerge-diff skips it without failing)
+git checkout -q -b main8i "$J8"; echo "m" > scripts/ci/y.sh; M=$(step main-y3)
+git checkout -q -b side8i "$J8"; echo "d" > docs/d.md; step side >/dev/null
+git checkout -q -b pr8i "$J8"; printf 'pr\n' >> docs/c.md; Jp=$(step pr-judged3)
+git update-ref refs/remotes/origin/main "$M"
+git merge -q --no-edit main8i side8i >/dev/null 2>&1; N=$(git rev-parse HEAD)
+J=$Jp; mkv GO
+check "8i: an octopus merge-forward -> trust" "$(cls "$N")" trust
+git update-ref -d refs/remotes/origin/main
+J=$J8
+git checkout -q "$base_branch"
 mkv GO 'finding: src/a.txt:3-4'
 
 bash "$SCRIPT" >/dev/null 2>&1; check "7: exit 0 even on bad usage" "$?" 0
