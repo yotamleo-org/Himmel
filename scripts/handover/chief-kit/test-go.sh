@@ -814,6 +814,25 @@ rc=0; go27 "$N27t" || rc=$?
 check "7637: an unsigned GO sibling beside a no-op over a trust delta is refused (exit 5)" "$rc" "5"
 VPR=
 
+# --- 28. an adopted repo's delta no-op is classified in the adopted bucket -----
+# Same fixture repo as section 27, but the real judge GO (head J27) and the no-op
+# record (head N27d) sit in acme/widget's own bucket and name acme/widget. The
+# classifier must read that bucket too, or it finds no prior verdict and refuses.
+a28rec() {  # <name> <head> <extra header lines> - a signed acme/widget GO record for PR 88
+  local vf="$ROOT23/u/acme--widget/verdicts/W6/$1.md" vmac
+  mkdir -p "$ROOT23/u/acme--widget/verdicts/W6"
+  # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
+  printf '# VERDICT W6 - judge\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 88\nrepo: acme/widget\n%smodel: m\neffort: e\n\nreason\n' "$2" "$3" > "$vf"
+  # read-sink-ok: test fixture; $vf is a record this helper just wrote under the suite's own temp root
+  vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" u/acme--widget W6 "$1" < "$vf")" || { echo "FAIL - cannot sign $vf"; fails=$((fails+1)); return 1; }
+  printf 'mac: %s\n' "$vmac" >> "$vf"
+}
+a28rec judge "$J27" ""
+a28rec delta-noop-docs "$N27d" $'delta: no-op\ndelta-judged: '"$J27"$'\ndelta-class: none\n'
+rc=0; (cd "$fx27" && A23_HEAD="$N27d" PATH="$A23_BIN:$PATH" HANDOVER_DIR="$ROOT23" bash "$SCRIPT" --repo acme/widget --trust-reviewed W6 88 "$N27d" >/dev/null 2>&1) || rc=$?
+check "adopter delta no-op over a none delta is accepted (exit 0)" "$rc" "0"
+check "...and its GO file is written" "$([ -e "$ROOT23/.locks/go/88.$N27d" ] && echo yes || echo no)" "yes"
+
 echo "---"
 if [ "$fails" -eq 0 ]; then
   echo "PASS - test-go.sh"

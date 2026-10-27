@@ -156,17 +156,6 @@ eq "B6 crontab: registered output is the unregistered output plus the helper lin
 cron_mac=$(arm OSTYPE=darwin23 ARM_TERMINAL_APP=none ARM_RESUME_UNAME=Darwin)
 hasnt "B8 crontab on macOS: registered name carries no helper (it reads /proc)" "arm-resume-bus-rebind" "$cron_mac"
 
-# WSL branch (Windows host, in-distro relaunch) is out of scope: untouched.
-WB="$TMP/winbin"; mkdir -p "$WB"
-for t in claude schtasks wsl.exe reg; do printf '#!/usr/bin/env bash\nexit 0\n' > "$WB/$t"; chmod +x "$WB/$t"; done
-# shellcheck disable=SC2016 # the stub body is literal script text
-printf '#!/usr/bin/env bash\nfor a in "$@"; do case "$a" in -*) ;; *) printf "%%s\\n" "$a" ;; esac; done\n' > "$WB/cygpath"; chmod +x "$WB/cygpath"
-wsl_reg=$(env PATH="$WB:$PATH" SCHTASKS_CMD="$WB/schtasks" OSTYPE=msys HANDOVER_DIR="$HOD" XDG_STATE_HOME="$XDG" \
-    SKILL_TELEMETRY_DISABLE=1 ARM_COLLISION_CANDIDATES="" HIMMEL_HEADROOM_PROXY=0 ARM_BRIDGE_LIVE=0 \
-    bash "$ARM" --time "$FUT" --handover "$HOD/bn.md" --cwd /home/u/r --wsl-distro ubuntu --force --dry-run 2>&1)
-has "B7 WSL: still emits its own in-distro launch" "wsl.exe -d ubuntu -e bash -lc" "$wsl_reg"
-hasnt "B7 WSL: registered name adds no rebind helper" "arm-resume-bus-rebind" "$wsl_reg"
-
 echo "---"
 if [ "$FAILED" -eq 0 ]; then echo "test-arm-resume-bus-rebind: all passed"; exit 0; fi
 echo "test-arm-resume-bus-rebind: $FAILED failed"; exit 1

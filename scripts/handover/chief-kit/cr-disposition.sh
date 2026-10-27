@@ -12,7 +12,7 @@
 #   cr-disposition.sh record <pr> <head-sha> <finding_id>@<finding_head> \
 #       fix-here|follow-up:<KEY> --source judge:<qid>|chief \
 #       [--attest ci-green,no-data-loss,no-weakened-guard]
-#   cr-disposition.sh check <pr> <head-sha> [--trust-path yes|no]
+#   cr-disposition.sh check <pr> <head-sha> [--trust-path yes|no] [--repo <owner/repo>]
 #
 # record appends one ledger row (through ledger-append.sh disposition) to
 # <git-common-dir>/cr-critic-scores.jsonl:
@@ -29,6 +29,8 @@
 # names a KEY the jira CLI finds, and comes from a judge when the finding is a
 # Critical or the PR is a trust path. A judge source counts only when that qid's
 # signed verdict rules GO on <head-sha> for this PR (go_trust_verdict).
+# --repo <owner/repo> reads the judge verdicts from that adopted repo's bucket (where
+# write-verdict.sh --repo writes them); without it, today's harness bucket.
 # JIRA_CMD and GH_CMD replace the CLIs (tests).
 #
 # Exit codes: 0 recorded / PASS, 1 check refused, 2 usage or cannot evaluate,
@@ -39,7 +41,7 @@ set -u
 
 usage() {
     echo "usage: cr-disposition.sh record <pr> <head-sha> <finding_id>@<finding_head> fix-here|follow-up:<KEY> --source judge:<qid>|chief [--attest ci-green,no-data-loss,no-weakened-guard]" >&2
-    echo "       cr-disposition.sh check <pr> <head-sha> [--trust-path yes|no]" >&2
+    echo "       cr-disposition.sh check <pr> <head-sha> [--trust-path yes|no] [--repo <owner/repo>]" >&2
 }
 ATTEST_ALL="ci-green,no-data-loss,no-weakened-guard"
 
@@ -124,10 +126,11 @@ if [ "$VERB" = record ]; then
     exit 0
 fi
 
-TRUST=no
+TRUST=no VREPO=""
 while [ "$#" -gt 0 ]; do
     case "$1" in
         --trust-path) TRUST="${2:-}"; shift 2 2>/dev/null || shift "$#" ;;
+        --repo) VREPO="${2:-}"; [ -n "$VREPO" ] || { usage; exit 2; }; shift 2 ;;
         *) usage; exit 2 ;;
     esac
 done
@@ -149,7 +152,7 @@ jira_get() {
 # it) names $PR, and its mac checks. The ruling counts only inside ## Verdict.
 judge_ruled() {
     local scope f snap line name
-    scope=$(go_verdict_scope "$ANCHOR") || return 1
+    scope=$(go_verdict_scope "$ANCHOR" "$VREPO") || return 1
     for f in "$ROOT/$scope/verdicts/$1"/*.md; do
         [ -f "$f" ] || continue
         snap=$(tr -d '\r' < "$f") || continue
@@ -228,7 +231,7 @@ while IFS="$TAB" read -r fid fhead sev disp src attest mac; do
             judge:*)
                 if [ -z "$ROOT" ]; then
                     why="cannot resolve the handover root to read judge ${src#judge:}'s verdict"
-                elif ! r=$(go_trust_verdict "$ROOT" "${src#judge:}" "$SHA" "$ANCHOR" "$PR"); then
+                elif ! r=$(go_trust_verdict "$ROOT" "${src#judge:}" "$SHA" "$ANCHOR" "$PR" "$VREPO"); then
                     why="judge ${src#judge:} has no GO verdict for this head: $r"
                 elif ! judge_ruled "${src#judge:}" "$fid@$fhead $disp"; then
                     why="judge ${src#judge:}'s GO verdict for this head does not rule '$fid@$fhead $disp'"

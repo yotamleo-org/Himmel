@@ -1,19 +1,9 @@
 #!/usr/bin/env bash
-# reap-mcp-fleet.sh - cross-platform twin of reap-mcp-fleet.ps1.
+# reap-mcp-fleet.sh - report or reap Codex process descendants on Linux/macOS.
 #
-# The app-server-fleet FINGERPRINT (Win32_Process ancestry walk with codex
-# path markers) is a Windows-only concern - the default (no-args) mode's
-# orphan scan forwards entirely to the .ps1 on Windows; on other platforms
-# Codex reaps its own app-server children, so that scan is skipped there.
-#
-# The descendant-reap PRIMITIVE (--root-pid) is NOT Windows-only:
-# dispatch-codex-exec.sh's own EXIT trap calls it on every platform right
-# after its codex child exits. On Windows this still forwards to the .ps1
-# (Win32_Process + CreationDate is the authoritative source there); on
-# mac/Linux this file carries a REAL implementation (`ps -eo pid,ppid[,etimes]`
-# + a pure BFS walk, mirroring Get-DescendantPids in the .ps1) - not a thin
-# pwsh shim. The registry-driven maintenance scan (default mode) is likewise
-# real on every platform (it is just `ps` + the job registry).
+# dispatch-codex-exec.sh's EXIT trap calls --root-pid after its codex child
+# exits. Descendants are found with `ps -eo pid,ppid[,etimes]` and a BFS walk.
+# Default mode scans the job registry for stale maintenance processes.
 #
 # USAGE:
 #   scripts/codex/reap-mcp-fleet.sh                                    # report-only (default)

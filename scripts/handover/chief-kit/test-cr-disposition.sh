@@ -21,7 +21,10 @@ LA="$HERE/../../cr/ledger-append.sh"
 unset HIMMEL_CONSOLE_LEG HIMMEL_CONSOLE_RELAY CHIEF_SESSION_NAME CONSOLE_SESSION_NAME 2>/dev/null || true
 
 tmp="$(mktemp -d "${TMPDIR:-/tmp}/cr-disp-test.XXXXXX")" || { echo "FAIL: mktemp -d failed" >&2; exit 1; }
-trap 'rm -rf "$tmp"' EXIT
+scratch="/tmp/claude-$(id -u)"
+[ -d "$scratch" ] || mkdir -m 700 "$scratch" || { echo "FAIL: cannot create $scratch" >&2; rm -rf "$tmp"; exit 1; }
+evd="$(mktemp -d "$scratch/cr-disp-test.XXXXXX")" || { echo "FAIL: mktemp -d in $scratch failed" >&2; rm -rf "$tmp"; exit 1; }
+trap 'rm -rf "$tmp" "$evd"' EXIT
 tmp="$(cd "$tmp" && pwd)"
 export HOME="$tmp/home"; mkdir -p "$HOME/.config/himmel"
 printf '%s\n' 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef > "$HOME/.config/himmel/go-hmac.key"
@@ -218,6 +221,24 @@ CR_LEDGER="$LEDGER" bash "$LA" amend --head "$FHEAD" --id ledger-gap-1 --set ver
   --reason "the rows are signed now" >/dev/null 2>&1 || { echo "FAIL: fixture signed disproval was not written" >&2; exit 1; }
 out="$(bash "$DISP" check 90 "$SHA" 2>&1)"
 check "8: a signed disproved amend clears it" "$(grep -c 'ledger-gap-1@' <<< "$out")" "0"
+
+# --- 9. an adopter PR's judge verdict lives in the adopter's bucket ---
+defer_finding adopt-9 crit "A deferred Critical on an adopter PR"
+printf 'class: other\nclass-reason: fixture\n- adopt-9@%s follow-up:HIMMEL-6352\n\n## Evidence checked\n\n- read the diff\n' "$FHEAD" > "$evd/adopt-ev.md"
+bash "$DISP" record 90 "$SHA" "adopt-9@$FHEAD" follow-up:HIMMEL-6352 \
+  --source judge:JA1 --attest ci-green,no-data-loss,no-weakened-guard >/dev/null 2>&1
+wvout=$(env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_JUDGE -u HIMMEL_CONSOLE_RELAY HANDOVER_DIR="$HDIR" CLAUDE_CODE_SESSION_ID=sess-judge \
+  bash "$HERE/write-verdict.sh" JA1 GO "$SHA" --pr 90 --repo o/other-repo --model test-model --effort high --evidence-file "$evd/adopt-ev.md" 2>&1) \
+  || { echo "FAIL: cannot write the adopter verdict: $wvout" >&2; fails=$((fails+1)); }
+rc=0; out="$(bash "$DISP" check 90 "$SHA" 2>&1)" || rc=$?
+contains "9: without --repo the adopter bucket is not read" "$out" "[OPEN] crit adopt-9@$FHEAD"
+check "9: without --repo the check fails" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
+rc=0; out="$(bash "$DISP" check 90 "$SHA" --repo o/other-repo 2>&1)" || rc=$?
+contains "9: --repo finds the GO in the adopter bucket" "$out" "[OK] crit adopt-9@$FHEAD"
+check "9: --repo leaves the adopter finding out of the open set" "$(grep -c '\[OPEN\] crit adopt-9@' <<< "$out")" 0
+rc=0; out="$(bash "$DISP" check 90 "$SHA" --repo o/third-repo 2>&1)" || rc=$?
+contains "9: --repo of another repo does not read it" "$out" "[OPEN] crit adopt-9@$FHEAD"
+check "9: another repo's check fails" "$([ "$rc" -ne 0 ] && echo nonzero || echo zero)" nonzero
 
 echo "---"
 if [ "$fails" -eq 0 ]; then

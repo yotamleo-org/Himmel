@@ -11,7 +11,9 @@
 #
 # --repo <owner/name> rules on a PR of that adopted repo instead of this
 # checkout's: the record goes under <user>/<owner>--<name> and carries a
-# `repo: <owner/name>` header line, the line go.sh --repo checks.
+# `repo: <owner/name>` header line, the line go.sh --repo checks. Run with no
+# --repo from a checkout whose origin is another repo, it refuses (exit 2) and
+# names that repo, so a verdict never lands silently in this harness's bucket.
 #
 # --model / --effort name the judge that ruled and are recorded as `model:` and
 # `effort:` header lines (inside the signed body); a verdict without both is
@@ -407,6 +409,21 @@ fi
 . "$HERE/../../lib/handover-path.sh" || { echo "write-verdict: cannot load scripts/lib/handover-path.sh" >&2; exit 3; }
 ANCHOR="$(cd "$HERE/../../.." && pwd)"
 ROOT=$(go_resolve_root "$ANCHOR") || { echo "write-verdict: cannot resolve the handover root go.sh reads" >&2; exit 3; }
+# A run from another repo's checkout (an adopter or a fork) with no --repo must not
+# fall into this harness's bucket: refuse and name the repo the checkout belongs to.
+if [ "$VREPO_SET" -eq 0 ]; then
+    # shellcheck source=scripts/lib/git-clean.sh
+    # shellcheck disable=SC1091
+    . "$HERE/../../lib/git-clean.sh" 2>/dev/null && git_env_scrub
+    origin_nwo() { git -C "$1" remote get-url origin 2>/dev/null | sed -E 's#^(https?://[^/]+/|git@[^:]+:|ssh://git@[^/]+/)##; s#\.git$##' | LC_ALL=C tr '[:upper:]' '[:lower:]'; }  # swallow-ok: no origin reads empty, which keeps the harness bucket
+    HERE_NWO=$(origin_nwo .)
+    HARNESS_NWO=$(origin_nwo "$ANCHOR")
+    nwo_ok() { case "$1" in ""|*/*/*|*[!a-z0-9._/-]*|*/|/*|.*|*/.*) return 1 ;; */*) return 0 ;; *) return 1 ;; esac; }
+    if nwo_ok "$HERE_NWO" && nwo_ok "$HARNESS_NWO" && [ "$HERE_NWO" != "$HARNESS_NWO" ]; then
+        echo "write-verdict: refusing - this checkout's origin is $HERE_NWO, not the harness repo; pass --repo $HERE_NWO to write into its bucket, or run it from the harness checkout" >&2
+        exit 2
+    fi
+fi
 SCOPE=$(go_verdict_scope "$ANCHOR" "$VREPO") || { echo "write-verdict: cannot resolve this repo's <user>/<bucket> verdict scope" >&2; exit 3; }
 [ -d "$ROOT" ] || { echo "write-verdict: handover root '$ROOT' is not a directory" >&2; exit 3; }
 

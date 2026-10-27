@@ -84,7 +84,7 @@ test("composeClaudexWorkerPrompt embeds minted session paths + the no-push/no-PR
   // the shared-refs/stash ban rides with the no-push contract.
   expect(p).toMatch(/NEVER MUTATE THE STASH/);
   expect(p).toContain("refs/checkpoints/<slug>");
-  expect(p).toContain("gpt-5.6-sol");
+  expect(p).toContain("Your backend model is gpt-6.1-sol");
   expect(p).toContain("slug-recognition artifact");
   expect(p).toContain("NOT an Anthropic model");
   expect(p).toContain("Summarize X");
@@ -1101,15 +1101,22 @@ test("parseClaudexArgs: --effort refuses max and ultra with a docs pointer, ever
 });
 
 test("parseClaudexArgs: --model accepts every allowed codex tier and refuses everything else (HIMMEL-1464)", () => {
-  for (const v of ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] as const) {
+  for (const v of ["gpt-6.1-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] as const) {
     const ok = parseClaudexArgs(["p", "--model", v]);
     expect(ok.ok).toBe(true);
     expect((ok as any).args.model).toBe(v);
   }
 
+  const launcher = readFileSync(join(import.meta.dir, "../claude-codex"), "utf8");
+  const launcherModel = launcher.match(/^CODEX_MODEL="\$\{CODEX_MODEL:-([^}]+)\}"$/m)?.[1];
+  expect(launcherModel).toBeTruthy();
+  const current = parseClaudexArgs(["p", "--model", launcherModel!]);
+  expect(current.ok).toBe(true);
+  expect(composeClaudexWorkerPrompt("do X", "/tmp/cs/test", "claudex/test")).toContain(`Your backend model is ${launcherModel}`);
+
   const unlisted = parseClaudexArgs(["p", "--model", "gpt-4o"]);
   expect(unlisted.ok).toBe(false);
-  expect((unlisted as any).error).toMatch(/must be one of gpt-5\.6-sol\|gpt-5\.6-terra\|gpt-5\.6-luna/);
+  expect((unlisted as any).error).toContain("must be one of gpt-6.1-sol|gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna");
   expect((unlisted as any).error).toContain("docs/tooling-catalog.md#claude-codex");
 
   const trailing = parseClaudexArgs(["p", "--model"]);

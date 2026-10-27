@@ -72,7 +72,7 @@ export function claudexSessionRoot(): string {
 export function composeClaudexWorkerPrompt(task: string, sessionDir: string, branch: string, opts?: { shared?: boolean; model?: string; base?: string }): string {
   const outbox = join(sessionDir, "outbox.jsonl");
   const context = join(sessionDir, "context.md");
-  const rawModel = opts?.model ?? "gpt-5.6-sol";
+  const rawModel = opts?.model ?? CODEX_MODELS[0];
   // opts.model is exported/programmatic-caller-facing (the
   // CLI --model path is already restricted to a fixed enum at parse time —
   // see parseClaudexArgs below), so a newline-bearing value must not land
@@ -310,13 +310,14 @@ export type EffortLevel = "low" | "medium" | "high" | "xhigh";
 // local CLIProxyAPI proxy exposes for the codex subscription (verified live).
 // scripts/claude-codex's own CODEX_MODEL knob stays UNVALIDATED by design — it
 // documents "all overridable per task" against whatever the proxy's /v1/models
-// serves, and the proxy currently serves other models beyond these three, so a
+// serves, and the proxy currently serves other models beyond these tiers, so a
 // hardcoded allowlist at the launcher would be a regression, not a fix. This
 // allowlist is scoped to the NEW spawn-claudex flag only: a fresh interface can
 // be strict without breaking the launcher's existing direct-invocation contract.
 // Broader launcher-side validation (against the proxy's LIVE /v1/models) stays
 // open.
-export type CodexModelTier = "gpt-5.6-sol" | "gpt-5.6-terra" | "gpt-5.6-luna";
+const CODEX_MODELS = ["gpt-6.1-sol", "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"] as const;
+export type CodexModelTier = typeof CODEX_MODELS[number];
 // Per-dispatch context tier: maps to the launcher's CODEX_CONTEXT_WINDOW. Input
 // past 272k bills at a higher rate, so 272k is the cheapest tier and the default.
 export type CodexContextTier = "272k" | "353k" | "900k";
@@ -368,8 +369,8 @@ const CLAUDEX_FLAG_TABLE: FlagTable<ClaudexParsedArgs> = {
   "--model": {
     kind: "value",
     apply: (s, v) => {
-      if (v !== "gpt-5.6-sol" && v !== "gpt-5.6-terra" && v !== "gpt-5.6-luna") return `--model must be one of gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna (got "${v}"); see docs/tooling-catalog.md#claude-codex`;
-      s.model = v;
+      if (!CODEX_MODELS.includes(v as CodexModelTier)) return `--model must be one of ${CODEX_MODELS.join("|")} (got "${v}"); see docs/tooling-catalog.md#claude-codex`;
+      s.model = v as CodexModelTier;
       return undefined;
     },
   },
@@ -1256,7 +1257,7 @@ export async function runClaudexSharedDispatch(p: {
 // still comes from claude-codex --guard-check, D1 intact) · 4 =
 // shared-branch-lock acquire failure (parity with spawn-glm).
 async function main(): Promise<void> {
-  const usage = "usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--context-tier 272k|353k|900k] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file; default --permission-mode: dontAsk; bypassPermissions is refused)";
+  const usage = `usage: spawn-claudex [<prompt> | --brief-file <path>] [--cwd <dir>] [--name <slug>] [--branch <existing-branch>] [--timeout-mins <n>] [--permission-mode dontAsk] [--effort low|medium|high|xhigh] [--model ${CODEX_MODELS.join("|")}] [--context-tier 272k|353k|900k] [--profile <name>] [--add-plugins a@m,b@m] [--rounds-override <why>] [--force] [--skip-auth-preflight] (the prompt is the task brief, inline, or read verbatim from --brief-file; default --permission-mode: dontAsk; bypassPermissions is refused)`;
   const rawArgv = process.argv.slice(2);
   // help short-circuit — before parseClaudexArgs, before any side effect.
   if (isHelpFlag(rawArgv)) { console.log(usage); process.exit(0); }

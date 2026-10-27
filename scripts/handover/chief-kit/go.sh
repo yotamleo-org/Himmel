@@ -338,7 +338,7 @@ if [ "$TRUST_SET" -eq 1 ]; then
     done
     if [ "$REAL" -eq 0 ] && [ "${#NOOPS[@]}" -gt 0 ]; then
         for NJ in "${NOOPS[@]}"; do
-            DCLASS=$(bash "$HERE/delta-class.sh" --qid "$TRUST" "$NJ" "$SHA" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
+            DCLASS=$(bash "$HERE/delta-class.sh" --qid "$TRUST" ${VREPO:+--repo "$VREPO"} "$NJ" "$SHA" 2>/dev/null) || DCLASS=trust # swallow-ok: a failed classifier reads trust, which refuses, on this line
             if [ "$DCLASS" != none ]; then
                 echo "go: refusing the trust-reviewed GO for PR #$PR at $SHA - its only verdict is a delta no-op, but delta-class.sh classifies the delta from '$NJ' as '$DCLASS' (not none). A judge must rule on this head; a no-op never carries a trust-path or judged-finding delta. No GO written." >&2
                 exit 10

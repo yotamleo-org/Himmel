@@ -11,7 +11,7 @@
 #      Distinct handovers each get their own slot; pass
 #      --dedup-any to instead defer to ANY existing slot (the auto-arm
 #      watchdog safety-arm semantics — never queue a duplicate relaunch).
-#   2. directly invokes schtasks / at / crontab — does NOT round-trip
+#   2. directly invokes at / crontab — does NOT round-trip
 #      through schedule-resume.sh's mixed prose+command stdout (the
 #      v1 attempt at this script did, which silently failed because
 #      bash parsed the prose lines as commands and the banner lied
@@ -21,8 +21,7 @@
 #      that schedule-resume.sh never emitted)
 #   4. emits a loud post-arm banner reminding operator to /exit
 #   5. makes the relaunch self-cleaning: the spawned launcher deletes
-#      its OWN scheduler entry as its first action (schtasks .bat
-#      self-/delete; crontab entry self-removes; at auto-removes), so a
+#      its OWN scheduler entry as its first action (crontab entry self-removes; at auto-removes), so a
 #      fired slot never lingers to block a same-handover re-arm or fire
 #      twice.
 #   6. checks for time collisions with other HIMMEL-* claude-launching
@@ -102,14 +101,6 @@
 #                           malformed meta.json) from a hard refusal to a loud
 #                           warning naming the offending path;
 #                           without it, that failure exits 2 unconditionally.
-#   SCHTASKS_CMD            Windows scheduler binary. Default `schtasks`; tests
-#                           pin it to a stub path so the suite drives the stub
-#                           through this seam instead of relying on PATH
-#                           resolution order. Same shape as the
-#                           GH_CMD seam in graph-publish / the forge backends.
-#                           Left at its default, arm-resume also tries a fast
-#                           PowerShell wildcard listing first
-#                           before falling back to a full `schtasks /query`.
 #   ARM_TICKET_DUP_OK       Exact value 1 overrides the ticket-level
 #                           mutex refusal (rc 13) -- arms anyway when this
 #                           ticket already has another slot under a different
@@ -145,7 +136,7 @@
 # Exit codes:
 #   0  scheduler armed (or printed under --dry-run)
 #   1  usage / input error
-#   2  required tool missing or env unusable (no schtasks/at/crontab;
+#   2  required tool missing or env unusable (no at/crontab;
 #      no platform match; dedup-check tool itself errored — fail-closed
 #      rather than risk a duplicate)
 #   3  dedup block — a same-handover HIMMEL-Resume job exists (or, under
@@ -220,13 +211,6 @@
 #      --force when the session is known gone (crashed before its end row).
 #   16 --list-temp-arms found at least one armed entry targeting a temp/scratch
 #      path. REPORT ONLY — nothing is ever deleted. 0 = clean.
-#   18 --list-temp-arms found NO temp target but could not INSPECT one or more
-#      armed entries — the scheduler would not describe them (access denied, or
-#      the task vanished between the roster read and the query). Not a clean
-#      bill of health, and rc 0 would let a machine caller record one
-# Re-run where schtasks can read them. 16 outranks this: a
-#      sweep with BOTH a hit and an uninspectable entry exits 16 and says so in
-#      the report, because the hit is the actionable half.
 #   17 split-worker refused — the handover is `<prefix>-session-N.md` and its
 #      sibling `<prefix>-session-<N-1>.md` was written inside this worker window
 #      AND was never itself a relaunch point (no `armed-resume` ledger row
@@ -311,8 +295,7 @@ _arm_profile_settings_flag() {
 # resumed launch, so the new claude pid is rebound to its name on the
 # himmel-bus. Opt-in: prints NOTHING (the emitted command stays byte-identical)
 # unless the session name already has a bus peer file. Linux at/crontab only;
-# the schtasks and --wsl-distro bodies are deliberately untouched (Windows
-# development is parked). Output goes to /dev/null: the helper
+# Output goes to /dev/null: the helper
 # writes its own WARNs to the arm log it is handed.
 _bus_rebind_line() { # _bus_rebind_line <arm-log-file>
     local name="$SESSION_NAME" secs="${ARM_RESUME_BUS_REBIND_SECS:-15}" bus
@@ -340,7 +323,6 @@ DEDUP_ANY=0
 SOURCE_KEY=""
 LIMIT_RESET=""
 WORKTREE_BRANCH=""
-WSL_DISTRO=""
 AUTOMERGE=0
 NO_AUTOMERGE=0
 LONG_GAP=0
@@ -354,7 +336,7 @@ _epoch_hhmm() { py_armor_capture -c 'import sys,datetime; print(datetime.datetim
 
 usage() {
     cat <<'EOF'
-Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--wsl-distro <name>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--limit-reset <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier worker] [--provisional-base-ok]
+Usage: arm-resume.sh --handover <path> [--time <HH:MM|smart|auto>] [--force] [--long-gap] [--dedup-any] [--source-key <tag>] [--limit-reset <tag>] [--dry-run] [--automerge] [--no-automerge] [--safety-child] [--model <name>] [--fable-ok <reason>] [--context <1m|standard>] [--tier worker] [--provisional-base-ok]
 
 Arms the OS scheduler to relaunch claude at the given time with a
 resume prompt referencing the given handover file. Dedup-guarded
@@ -460,10 +442,6 @@ Optional:
                      prints the warning text on stderr — paste it into
                      the worker's first message. No-op on a handover with
                      no `fence:` key, or when the fence checks out clean.
-  --wsl-distro <name>
-                     Windows-host only: arm through schtasks, but relaunch
-                     claude inside this WSL distro. --cwd / resume_cwd is
-                     interpreted as an in-distro path.
   --force            Replace the existing same-handover HIMMEL-Resume job;
                      also bypasses the time-collision check.
   --long-gap         Sanction a far park: an explicit --time HH:MM more than
@@ -654,9 +632,6 @@ while [ $# -gt 0 ]; do
                 echo "ERR arm-resume: --model requires a non-empty, non-option value" >&2
                 exit 2
             fi
-            # cmd.exe treats " as a delimiter even through cadence_cmd_escape's
-            # backslash-escaping (see the WSL wsl_command guard above), so a
-            # MODEL carrying one could split the generated .bat command.
             case "$2" in
                 *'"'*)
                     echo "ERR arm-resume: --model must not contain a double quote" >&2
@@ -725,21 +700,6 @@ while [ $# -gt 0 ]; do
             TIER="$(_arm_tier "${1#--tier=}")" || exit 2
             shift
             ;;
-        --wsl-distro)
-            if [ $# -lt 2 ] || [ -z "$2" ]; then
-                echo "ERR arm-resume: --wsl-distro requires a non-empty value" >&2
-                exit 2
-            fi
-            WSL_DISTRO="$2"; shift 2
-            ;;
-        --wsl-distro=*)
-            WSL_DISTRO="${1#--wsl-distro=}"
-            if [ -z "$WSL_DISTRO" ]; then
-                echo "ERR arm-resume: --wsl-distro requires a non-empty value" >&2
-                exit 2
-            fi
-            shift
-            ;;
         --fable-ok)
             # justifies an explicit Fable-family --model pin on
             # a non-chief arm (ruling 30). Same missing/empty/option-value
@@ -748,9 +708,6 @@ while [ $# -gt 0 ]; do
                 echo "ERR arm-resume: --fable-ok requires a non-empty, non-option value" >&2
                 exit 2
             fi
-            # Same cmd.exe-delimiter reason as the --model double-quote
-            # guard above — a reason carrying " could split the generated
-            # .bat command if it is ever echoed there.
             case "$2" in
                 *'"'*)
                     echo "ERR arm-resume: --fable-ok must not contain a double quote" >&2
@@ -815,11 +772,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -n "$WSL_DISTRO" ] && ! [[ "$WSL_DISTRO" =~ ^[A-Za-z0-9._-]+$ ]]; then
-    echo "ERR arm-resume: invalid --wsl-distro name: $WSL_DISTRO" >&2
-    exit 2
-fi
-
 # --automerge and --no-automerge are opposite explicit signals;
 # accepting both silently would leave it ambiguous which one the launch body
 # honors. Refuse instead of picking a winner.
@@ -856,8 +808,6 @@ fi
 _arm_is_temp_path() { # <path> -> rc 0 when it lives under a temp/scratch root
     local _p="$1" _root
     [ -n "$_p" ] || return 1
-    # Lowercase + forward slashes so Windows drive-letter and backslash forms
-    # compare the same as the MSYS view of the same directory.
     _p="${_p//\\//}"
     _p=$(printf '%s' "$_p" | tr '[:upper:]' '[:lower:]')
     case "$_p" in
@@ -896,11 +846,6 @@ _arm_is_temp_path() { # <path> -> rc 0 when it lives under a temp/scratch root
 # Exit 0 = nothing suspect, 16 = at least one temp-targeted arm reported.
 if [ "${LIST_TEMP_ARMS:-0}" -eq 1 ]; then
     _lta_hits=0
-    _lta_degraded=0
-    # The five XML predefined entities; &amp; last so it cannot re-introduce one.
-    _lta_unxml() { # <text> -> the same text with entities decoded
-        printf '%s' "$1" | sed -e 's/&lt;/</g' -e 's/&gt;/>/g' -e 's/&quot;/"/g' -e "s/&apos;/'/g" -e 's/&amp;/\&/g'
-    }
     _lta_report() { # <entry-label> <runner-path-or-empty> <body-text>
         local _label="$1" _runner="$2" _body="$3" _p _bad=""
         # The two paths a fired arm actually enters: the cd target and the
@@ -908,10 +853,7 @@ if [ "${LIST_TEMP_ARMS:-0}" -eq 1 ]; then
         #
         # Every runner shape spells its `cd` differently, and a sweep that
         # UNDER-reports is the failure that matters (codex-1, r2 round):
-        #   - Windows .bat:  cd /d "C:\...\work"
-        #   - `at` body:     cd '/path' || exit 1     (LINE-LEADING, single-quoted
-        #                    by _bash_single_quote -- a capture that keeps the
-        #                    quotes compares "'/tmp/x'" against /tmp/* and MISSES)
+        #   - `at` body:     cd /path || exit 1 (line-leading, shell-quoted)
         #   - crontab:       ...| crontab -; cd /path && { ... }   (ONE line, the
         #                    cd is MID-line, so a `^cd` anchor never sees it)
         # So: one unanchored pattern per quoting style, plus the strip pass below.
@@ -939,59 +881,7 @@ EOF
     }
     echo "arm-resume --list-temp-arms: armed HIMMEL-Resume-* entries targeting a temp/scratch path"
     case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-        msys*|cygwin*|win32*|MINGW*)
-            while IFS= read -r _lta_name; do
-                [ -n "$_lta_name" ] || continue
-                # read the runner out of the task's XML, not out
-                # of `/fo LIST /v`. That listing's "Task To Run:" label is
-                # LOCALIZED -- on a non-English Windows the sed matches
-                # nothing, the runner path comes back EMPTY, and a
-                # temp-targeted arm sweeps CLEAN, which is the wrong direction
-                # for a safety sweep (the same locale class the /sd render
-                # tracks as _locale_degraded). The XML element names come from
-                # the Task Scheduler schema and never translate.
-                _lta_v=$(MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /query /tn "$_lta_name" /xml ONE 2>/dev/null) || _lta_v=""
-                # `/xml` declares UTF-16 but writes the chief codepage down a
-                # pipe; \r is the only thing that needs stripping here.
-                _lta_v=$(printf '%s\n' "$_lta_v" | tr -d '\r')
-                _lta_cmd=$(printf '%s\n' "$_lta_v" | sed -n 's|.*<Command>\(.*\)</Command>.*|\1|p' | head -1)
-                _lta_args=$(printf '%s\n' "$_lta_v" | sed -n 's|.*<Arguments>\(.*\)</Arguments>.*|\1|p' | head -1)
-                # Entities are decoded AFTER the elements are located (panel r2
-                # codex-2): decoding the whole document first would let an
-                # `&lt;Command&gt;…` sitting inside an <Arguments> body
-                # materialise a second tag-shaped match and steer the
-                # extraction away from the real runner.
-                _lta_cmd=$(_lta_unxml "$_lta_cmd")
-                _lta_args=$(_lta_unxml "$_lta_args")
-                _lta_run="$_lta_cmd${_lta_args:+ $_lta_args}"
-                if [ -z "$_lta_cmd" ]; then
-                    # Never skip the entry (`continue` here was a silent clean):
-                    # an unreadable task still gets its name swept below, and
-                    # the operator is told the inspection was degraded.
-                    _lta_degraded=$((_lta_degraded + 1))
-                    echo "  UNREADABLE  $_lta_name  (schtasks /query /xml returned no <Command> -- swept by task name only)"
-                fi
-                _lta_bat=$(printf '%s' "$_lta_cmd" | tr -d '"')
-                _lta_body=""
-                # cygpath the win path back to the MSYS view so we can read it.
-                if command -v cygpath >/dev/null 2>&1 && [ -n "$_lta_bat" ]; then
-                    # a cygpath that exits 0 with EMPTY output must
-                    # not blank the path -- keep the raw one unless it converted.
-                    _lta_conv=$(cygpath -u "$_lta_bat" 2>/dev/null) || _lta_conv=""
-                    [ -n "$_lta_conv" ] && _lta_bat=$_lta_conv
-                fi
-                [ -f "$_lta_bat" ] && _lta_body=$(tr -d '\r' < "$_lta_bat")
-                if [ -z "$_lta_body" ]; then
-                    # A missing .bat is itself worth reporting when the TASK NAME
-                    # carries the scratchpad stem (the 2026-07 incident shape).
-                    _lta_body="cd /d \"$(printf '%s' "$_lta_name" | tr '_' '/')\""
-                fi
-                _lta_report "$_lta_name" "$_lta_run" "$_lta_body"
-            done <<EOF
-$(MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /query /fo CSV /nh 2>/dev/null | grep -o '"\\\?HIMMEL-Resume-[^"]*"' | sed 's/["\\]//g' | sort -u)
-EOF
-            ;;
-        *)
+        linux*|Linux*|darwin*|Darwin*)
             if command -v atq >/dev/null 2>&1; then
                 while IFS= read -r _lta_line; do
                     [ -n "$_lta_line" ] || continue
@@ -1013,30 +903,19 @@ $(crontab -l 2>/dev/null)
 EOF
             fi
             ;;
+        *)
+            echo "ERR arm-resume: unsupported platform (OSTYPE=${OSTYPE:-})" >&2
+            echo "    Supported: Linux, macOS" >&2
+            exit 2
+            ;;
     esac
     if [ "$_lta_hits" -eq 0 ]; then
-        if [ "$_lta_degraded" -gt 0 ]; then
-            # "No hits" is only a clean bill of health when every entry was
-            # actually readable. Its OWN exit code, not 0: a
-            # machine caller reads the status, not the warning text, and rc 0
-            # is this sweep's documented "nothing suspect" answer.
-            echo "  no temp-targeted arm found, but $_lta_degraded entry/entries could not be inspected — NOT a clean sweep; re-run where schtasks can read them"
-            exit 18
-        else
-            echo "  none — no armed resume entry targets a temp/scratch path"
-        fi
+        echo "  none — no armed resume entry targets a temp/scratch path"
         exit 0
     fi
     echo ""
-    if [ "$_lta_degraded" -gt 0 ]; then
-        # 16 outranks 18 (panel r2 codex-1): a found hit is the actionable
-        # answer, and downgrading it to "could not inspect" would bury it. The
-        # degraded count still has to be SAID, or this report reads as complete.
-        echo "  ...and $_lta_degraded further entry/entries could not be inspected at all — this sweep is NOT exhaustive."
-    fi
     echo "  $_lta_hits temp-targeted arm(s). REPORT ONLY — nothing was changed."
     echo "  Disable (reversible, preserves the artifact) rather than delete:"
-    echo "      Disable-ScheduledTask -TaskName '<name>'      # Windows"
     echo "      at -r <job-id>   /   crontab -e               # POSIX"
     exit 16
 fi
@@ -1065,7 +944,7 @@ fi
 # SCRIPT_DIR/py-armor sourcing, so it fires before any scheduler work (cwd
 # resolution, dedup query, worker census, ...) starts, and so --dry-run
 # (which exits much later, at the DRY_RUN check right after schedule_arm)
-# still exercises it -- MODEL is set before that .bat/schtasks-args content
+# still exercises it -- MODEL is set before the scheduler payload
 # is ever composed, so all four --model consumption sites downstream inherit
 # the default/refusal for free without themselves changing.
 #
@@ -1429,7 +1308,7 @@ fi
 TARGET_EPOCH=""
 # wall-clock at the moment slot resolution starts. The
 # smart/ASAP slot is "now + 4 min" measured HERE, but everything between here
-# and schtasks /create -- the worker census, the shipped-work preflight's two
+# and scheduler registration -- the worker census, the shipped-work preflight's two
 # NETWORK probes, the queue lock, the collision scan, worktree creation -- can
 # take longer than that lead. The task then registers already-expired and the
 # verify deletes it: net zero arms. _ARM_SENTINEL marks the arms
@@ -1992,57 +1871,6 @@ command -v _hp_arms_record_matches_path >/dev/null 2>&1 || _hp_arms_record_match
     || echo "WARN arm-resume: headroom-proxy lib failed to load -- .env HIMMEL_HEADROOM_PROXY fallback disabled (process env still honored)" >&2
 command -v _headroom_proxy_env_file_active >/dev/null 2>&1 || _headroom_proxy_env_file_active() { return 1; }
 
-# cadence_cmd_escape: the shared CMD-metachar
-# escape for interpolating a value into a generated .bat INSIDE DOUBLE
-# QUOTES -- % -> %% plus best-effort " handling, and deliberately NO caret
-# escapes (cmd.exe treats ^ as a LITERAL character inside double quotes, so
-# caret-escaping corrupts the value instead of protecting it). Same lib the
-# four cadence emitters use; arm-resume.sh carried a fifth,
-# independently-buggy copy of the over-escaping mistake until this fix.
-# Sourced fail-open (matches headroom-proxy.sh above): an absent or
-# syntactically broken lib WARNs but never aborts the arm -- the inline
-# fallback below restores the single-parse escape so a missing dep cannot
-# turn a healthy arm into rc=1 (proxy-suite T7a/T7b/T7c).
-# shellcheck source=../lib/cadence-format.sh
-# shellcheck disable=SC1091
-[ -f "$SCRIPT_DIR/../lib/cadence-format.sh" ] \
-    && bash -n "$SCRIPT_DIR/../lib/cadence-format.sh" 2>/dev/null \
-    && . "$SCRIPT_DIR/../lib/cadence-format.sh" 2>/dev/null \
-    || echo "WARN arm-resume: cadence-format lib failed to load -- cadence_cmd_escape falls back inline (caret-free single-parse escape)" >&2
-# Minimal single-parse fallback mirroring the lib's contract (% -> %% plus
-# best-effort " -> \"). Used only if the source above failed; matches the
-# guard idiom on handover_root / _headroom_proxy_env_file_active above.
-command -v cadence_cmd_escape >/dev/null 2>&1 || cadence_cmd_escape() {
-    local s="$1"
-    s="${s//\"/\\\"}"
-    s="${s//%/%%}"
-    printf '%s' "$s"
-}
-
-# _arm_nested_cmd_escape <value> -- the ONE double-parse escape, for the
-# headroom-proxy detached-start site (schedule_arm's `start "" /b cmd /c
-# ""%s" ..."` ~line 3393). That line hands its argument to a NESTED cmd /c,
-# which RE-PARSES the string a SECOND time, so unlike the single-parse
-# cadence_cmd_escape (where carets corrupt the value), THIS site ALSO needs
-# caret escapes on ^ & < > | -- an unescaped & in the proxy-bin path splits
-# into a second command at task-fire time (command injection). It is the
-# cadence_cmd_escape single-parse base (% -> %%, " -> \") PLUS the caret
-# escapes for the inner cmd /c parse. cadence_cmd_escape is guaranteed
-# defined here (lib OR the inline fallback above), so this composes safely.
-# This distinction IS the bug class: 1281 over-
-# escaped the single-parse sites (cd path, prompt, --channels, the curl
-# livez checks -- those keep cadence_cmd_escape); do NOT route them here.
-_arm_nested_cmd_escape() {
-    local v
-    v=$(cadence_cmd_escape "$1")
-    v="${v//^/^^}"
-    v="${v//&/^&}"
-    v="${v//</^<}"
-    v="${v//>/^>}"
-    v="${v//|/^|}"
-    printf '%s' "$v"
-}
-
 # _arm_realpath / _arm_identity_path live in ../lib/handover-path.sh so the
 # scheduler-row identity and the cross-script arms-registry key share one
 # canonicalizer.
@@ -2053,7 +1881,7 @@ _arm_nested_cmd_escape() {
 # out-of-class byte, so `.../a+b.md` and `.../ab.md` both reduce to the same
 # suffix — a spurious rc-3 refusal, and worse, a `--force` that replaces the
 # OTHER handover's slot. Hashing the canonical path restores injectivity while
-# the readable prefix keeps `schtasks /query` / `atq` rows scannable.
+# the readable prefix keeps `atq` rows scannable.
 #
 # Prints the empty string when NO hasher is available. That degrades to the
 # pre-1304 (collision-prone) identity rather than bricking every arm on this
@@ -2104,15 +1932,8 @@ _arm_own_identity_match() {
 # _arm_marker_is_own_identity <marker> — true when a marker printed by
 # list_existing names THIS arm's own slot.
 #
-# list_existing's output shape is per-backend, so a bare `[ "$m" = "$TASK_NAME" ]`
-# own-identity exclusion is correct on ONE of the three:
-#   schtasks — the task NAME itself. Exact compare works.
-#   crontab  — the whole crontab LINE; the identity is its trailing `# <name>`.
-#   at       — an opaque `at-job-<id>`; the identity is only inside the job body.
-# On the latter two the compare can never be true, so every own slot reads as a
-# foreign one — a --force re-arm of the SAME handover then emits the
-# ticket-mutex's "DIFFERENT handover" WARN against itself. Noise, not a false
-# clear, but only because that site WARNs; the exclusion has to hold everywhere.
+# list_existing prints a whole crontab LINE or an opaque at-job id. Neither
+# can be compared directly with TASK_NAME; the identity must be extracted first.
 #
 # Dispatch is on the marker SHAPE rather than on $PLATFORM: list_existing picks
 # at vs crontab by which tool exists (not by platform alone), and re-deriving
@@ -2128,66 +1949,15 @@ _arm_marker_is_own_identity() {
             return
             ;;
         *[[:space:]]*) _name="${_m##*# }" ;;   # crontab line -> trailing marker
-        *)             _name="$_m" ;;          # schtasks task name
+        *)             _name="$_m" ;;
     esac
     [ "$_name" = "$TASK_NAME" ] && return 0
     [ -n "${TASK_NAME_LEGACY:-}" ] && [ "$_name" = "$TASK_NAME_LEGACY" ]
 }
 
-# _arm_marker_is_new_arm <marker> — true when <marker> names the job this run
-# just created, rather than a superseded sibling. See the
-# post-commit reap sweep near schedule_arm for why each arm matters.
-#
-# windows-only: `schtasks /create /f` overwrites a task of the SAME name in
-# place, so a same-identity re-arm leaves no separate old row to reap — a
-# marker equal to $TASK_NAME already IS the row schedule_arm just wrote.
-# POSIX (at-job / crontab) never gets that in-place overwrite: an at-job
-# always registers under a fresh job id (a captured marker is never the id
-# schedule_arm is about to mint), and _crontab_schedule's `_crontab_delete`
-# always APPENDS a new line rather than replacing a same-marker one already
-# queued (see the comment above the post-commit sweep). So a marker captured
-# BEFORE schedule_arm ran is, on POSIX, always the superseded entry and must
-# always be reaped — treating a same-identity crontab marker as "already
-# ours" (the pre-fix `*"# $TASK_NAME")  return 0` case) left the stale line
-# unreaped while the append created a second one: a genuine double-fire, not
-# just a test artifact.
-_arm_marker_is_new_arm() {
-    local _m="$1"
-    case "$PLATFORM" in
-        windows)
-            [ "$_m" = "$TASK_NAME" ]
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
-
-# _bash_single_quote <value> — quote one value for the in-distro bash -lc
-# command. The result is composed completely before CMD escaping is applied.
-_bash_single_quote() {
-    local v="$1" _sq="'" _rep
-    # Replacement held in a variable: bash 3.2 (macOS) keeps the backslashes of
-    # an inline `\'\\\'\'` replacement literally, yielding \'\\'\' not '\''.
-    _rep="'\\''"
-    v="${v//$_sq/$_rep}"
-    printf "'%s'" "$v"
-}
-
 # Derive the local clock fields the schedulers need from TARGET_EPOCH:
-#   RESUME_TIME  HH:MM        — schtasks /st, at, banner
-#   START_DATE   MM/DD/YYYY   — schtasks /sd. FIXES the bug where /st with no
-#                /sd defaulted to TODAY, so a time already past today gave
-#                "Next Run Time: N/A" and never fired. NOTE:
-#                schtasks /sd parses per the user's Windows short-date LOCALE,
-#                so this MM/DD/YYYY value is only a DEFAULT — the Windows
-#                branch of schedule_arm re-renders it in the machine's own
-#                locale (via _win_short_date_pattern + a registry read) right
-#                before /create, and verifies the registered NextRunTime
-#                afterward (a dd/MM/yyyy machine, e.g. win2,
-#                previously misread MM/DD/YYYY and armed months out with no
-#                error). Non-Windows platforms never read this field as a
-#                schtasks /sd — it stays MM/DD/YYYY here as a harmless default.
+#   RESUME_TIME  HH:MM        — at, banner
+#   START_DATE   MM/DD/YYYY   — banner
 #   AT_STAMP     YYYYMMDDhhmm — at -t, an exact datetime (replaces the
 #                today/tomorrow heuristic that broke for resets >24h out).
 # Capture FIRST (explicit || handler — a $(...) failure inside a heredoc
@@ -2218,20 +1988,14 @@ fi
 
 # Platform detect.
 case "${OSTYPE:-$(uname -s 2>/dev/null || echo unknown)}" in
-    msys*|cygwin*|win32*|MINGW*) PLATFORM=windows ;;
     linux*|Linux*)               PLATFORM=linux ;;
     darwin*|Darwin*)             PLATFORM=macos ;;
     *)
         echo "ERR arm-resume: unsupported platform (OSTYPE=${OSTYPE:-})" >&2
-        echo "    Supported: Windows (Git Bash / MSYS / Cygwin), Linux, macOS" >&2
+        echo "    Supported: Linux, macOS" >&2
         exit 2
         ;;
 esac
-
-if [ -n "$WSL_DISTRO" ] && [ "$PLATFORM" != windows ]; then
-    echo "ERR arm-resume: --wsl-distro is a Windows-host flag" >&2
-    exit 2
-fi
 
 # HIMMEL_HEADROOM_PROXY: route the armed relaunch through the
 # local headroom Anthropic-API proxy (127.0.0.1:8787) when the operator has
@@ -2252,10 +2016,6 @@ if [ -n "${HIMMEL_HEADROOM_PROXY+x}" ]; then
     [ "$HIMMEL_HEADROOM_PROXY" = "1" ] && HEADROOM_PROXY_ACTIVE=1
 elif _headroom_proxy_env_file_active "$(cd "$SCRIPT_DIR/../.." && pwd)"; then
     HEADROOM_PROXY_ACTIVE=1
-fi
-if [ -n "$WSL_DISTRO" ] && [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
-    echo "WARN arm-resume: headroom proxy gate skipped for a WSL-station arm (distro '$WSL_DISTRO')" >&2
-    HEADROOM_PROXY_ACTIVE=0
 fi
 # Port fixed at 8787 for this slice — no port config (minimal
 # slice; a variable only to avoid repeating the literal across 3 platform
@@ -2278,11 +2038,7 @@ if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
     fi
 fi
 if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ] && [ -z "${HEADROOM_BIN:-}" ]; then
-    if [ "$PLATFORM" = windows ]; then
-        HEADROOM_BIN="$HOME/.headroom-venv/Scripts/headroom.exe"
-    else
-        HEADROOM_BIN="$HOME/.headroom-venv/bin/headroom"
-    fi
+    HEADROOM_BIN="$HOME/.headroom-venv/bin/headroom"
 fi
 # Non-blocking existence probe (CR round): a missing/non-executable headroom
 # binary still arms — fail-open is the design — but the operator hears about
@@ -2293,16 +2049,6 @@ fi
 
 # Tool detection per platform.
 case "$PLATFORM" in
-    windows)
-        command -v "${SCHTASKS_CMD:-schtasks}" >/dev/null 2>&1 || {
-            # Name what was actually probed. Since the seam landed, this check
-            # resolves ${SCHTASKS_CMD:-schtasks}, which may be an absolute path
-            # — "not on PATH" would then point the reader at PATH when the real
-            # fault is a bad SCHTASKS_CMD.
-            echo "ERR arm-resume: scheduler binary '${SCHTASKS_CMD:-schtasks}' not found${SCHTASKS_CMD:+ (from SCHTASKS_CMD)} (required on Windows)" >&2
-            exit 2
-        }
-        ;;
     linux|macos)
         if ! command -v at >/dev/null 2>&1 && ! command -v crontab >/dev/null 2>&1; then
             echo "ERR arm-resume: neither 'at' nor 'crontab' on PATH" >&2
@@ -2313,49 +2059,11 @@ case "$PLATFORM" in
         ;;
 esac
 
-# True (rc 0) if PID names a live process. POSIX: `kill -0`. Windows (Git
-# Bash): the bun bridge is a NATIVE win32 process whose pid MSYS `kill -0`
-# can't see, so query `tasklist` by PID filter instead. (Pid reuse could
-# false-positive, but the supervisor clears its pidfile on clean exit and a
-# false "live" only ever errs toward the SAFE side here — refusing a risky
-# --channels arm.)
+# True (rc 0) if PID names a live process.
 _pid_alive() {
     local pid="$1"
     [ -n "$pid" ] || return 1
-    case "$PLATFORM" in
-        windows)
-            # Capture stdout+stderr together (NOT 2>/dev/null) so a broken/absent
-            # tasklist is distinguishable from a clean miss. A clean
-            # miss prints "No tasks are running..." (legit dead pid); a genuine
-            # tooling failure prints something else (e.g. "ERROR: ..."). If we
-            # silently swallowed a malfunctioning tasklist, every pid would read
-            # "dead" and bridge_poller_live would fail OPEN — the unsafe direction.
-            local out rc
-            out=$(MSYS_NO_PATHCONV=1 tasklist /FI "PID eq $pid" 2>&1); rc=$?
-            # A clean "No tasks" miss is an authoritative dead-pid -> return 1
-            # without warning. A pid match counts as LIVE only on a clean exit
-            # (rc 0): a nonzero rc that merely echoed the pid digits into stderr
-            # (a tasklist error variant) must NOT short-circuit to "alive" — gate
-            # the match on rc==0 so it falls through to the warn branch instead
-            # of masking the failure the rc check is meant to surface.
-            case "$out" in
-                *"No tasks"*) return 1 ;;
-                *"$pid"*)     [ "$rc" -eq 0 ] && return 0 ;;
-            esac
-            # Reached when: no "No tasks" miss AND (no pid match, OR a pid match
-            # with a nonzero rc). If tasklist exited nonzero it likely failed
-            # (broken/absent) rather than reporting a clean dead-pid. Warn so a
-            # broken toolchain is visible instead of silently disabling the guard;
-            # keep returning 1 (dead).
-            if [ "$rc" -ne 0 ]; then
-                echo "WARN arm-resume: tasklist exited $rc with no 'No tasks' miss for PID $pid — treating as dead, but tasklist may be broken/absent (output: ${out:-<empty>})" >&2
-            fi
-            return 1
-            ;;
-        *)
-            kill -0 "$pid" 2>/dev/null
-            ;;
-    esac
+    kill -0 "$pid" 2>/dev/null
 }
 
 # rc 0 if the always-on bun Telegram bridge appears to be
@@ -2650,14 +2358,13 @@ _infer_slug() {
 # BOTH derived names (subsumes _infer_session_name so
 # the `claude -n` title and the scheduler-row segment can never drift apart):
 #   title -> the `claude -n` value, canonical retitle form "<TICKET> <name>"
-#            (space-joined), sanitized to [A-Za-z0-9._ -] so the
-#            Windows .bat launch line can inject it quoted WITHOUT ^-escaping
-# and printf %q keeps it one arg for cron/at. Empty
+#            (space-joined), sanitized to [A-Za-z0-9._ -]; printf %q
+#            keeps it one arg for cron/at. Empty
 #            tells the caller to omit -n (fail-open - let claude auto-title
 #            rather than force a meaningless name).
 #   task  -> the identity segment welded into TASK_NAME (dash-joined; space
 #            and dot become dashes), sanitized to [:alnum:]_- so the crontab
-#            self-clean ERE and the CMD launch lines stay injection-proof.
+#            self-clean ERE and the launch lines stay injection-proof.
 # Identity grammar (default): <ticket> + <name-half> + <s<N> chain position>.
 # The name-half, by priority:
 #   1. the worktree slug minus its leading ticket token
@@ -2674,7 +2381,7 @@ _infer_slug() {
 # {session} ({session} renders s<N> or empty; {slug} prefers the worktree
 # half, else the keyed-stripped or raw handover slug). One template drives
 # BOTH surfaces; the per-surface sanitize still applies afterwards, so even a
-# hostile template value cannot inject into the .bat/cron launch lines.
+# hostile template value cannot inject into the cron/at launch lines.
 # errexit-safe: greps || true-guarded, case arms rc 0, and each branch of the
 # final if ends in a sed that returns rc 0.
 _compose_arm_name() {
@@ -2739,10 +2446,7 @@ RESUME_PROMPT="load $HANDOVER_PATH overnight mode. Apply the Launch preamble sta
 # ${TMPDIR:-/tmp}/himmel-chief-<uid>) plus a per-doc precompact-<doc> subdir:
 # arm-resume cannot reproduce chief.sh's chain_dir (it needs the bucket + root
 # digest), and the hook creates the subdir 0700.
-# ponytail: only the crontab and `at` launch bodies are wired; the Windows
-# (.bat) and WSL bodies export nothing, so a chief relaunched there has no
-# snapshot and G11 (compacted-check.sh) reports `no snapshot` rc 2 -- unverified,
-# never a false pass. "Chief" = the same basename *-chief.md / *-console.md test the model
+# "Chief" = the same basename *-chief.md / *-console.md test the model
 # default uses, so a chief doc with another name is not snapshotted either.
 CHIEF_PRECOMPACT_DOC=""; CHIEF_PRECOMPACT_WORKDIR=""
 if [ "$_arm_is_chief" -eq 1 ]; then
@@ -2763,12 +2467,8 @@ if [ "$_arm_is_chief" -eq 1 ]; then
     CHIEF_PRECOMPACT_WORKDIR="$_cp_base/precompact-$_cp_slug${_cp_hash:+-h$_cp_hash}"
 fi
 
-# Compute working directory for the relaunched claude process. Without
-# this, schtasks fires .bat with CWD=C:\Windows\System32 (and at/cron
-# fire with CWD=$HOME or /), so claude.exe lands outside the repo:
-# relative handover paths resolve to System32\handovers\..., the
-# block-edit-on-main hook can't find .git, and claude registers an
-# unintended "C:\Windows\System32" project in ~/.claude/projects/.
+# Compute the relaunched working directory: at/cron start in $HOME or /,
+# not necessarily the work repo containing the handover.
 #
 # Priority:
 #   1. --cwd override. hop.sh passes the ORIGIN repo here
@@ -2885,9 +2585,7 @@ if [ -n "$WORKTREE_BRANCH" ]; then
     fi
     unset _wt_root _wt_path
 elif [ -n "$RESUME_CWD_OVERRIDE" ]; then
-    if [ -n "$WSL_DISTRO" ]; then
-        RESUME_CWD="$RESUME_CWD_OVERRIDE"
-    elif [ ! -d "$RESUME_CWD_OVERRIDE" ]; then
+    if [ ! -d "$RESUME_CWD_OVERRIDE" ]; then
         echo "ERR arm-resume: --cwd path does not exist: $RESUME_CWD_OVERRIDE" >&2
         exit 1
     else
@@ -2912,9 +2610,7 @@ else
     [ -n "$_fm_cwd" ] && _fm_cwd_found=1
 
     if [ -n "$_fm_cwd" ]; then
-        if [ -n "$WSL_DISTRO" ]; then
-            RESUME_CWD="$_fm_cwd"
-        elif [ -d "$_fm_cwd" ]; then
+        if [ -d "$_fm_cwd" ]; then
             RESUME_CWD=$(_arm_realpath "$_fm_cwd")
         else
             echo "WARN arm-resume: handover resume_cwd: '$_fm_cwd' is not a directory — ignoring, falling back" >&2
@@ -3007,19 +2703,6 @@ else
     unset _fm_cwd _fm_cwd_found
 fi
 
-# WSL-station cwd values live inside the selected distro. The Windows host
-# must neither canonicalise nor probe them; use a login shell in-distro so
-# the validation sees the same environment as the fired relaunch.
-if [ -n "$WSL_DISTRO" ]; then
-    _wsl_cwd_test="test -d $(_bash_single_quote "$RESUME_CWD")"
-    if ! MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-        wsl.exe -d "$WSL_DISTRO" -e bash -lc "$_wsl_cwd_test"; then
-        echo "ERR arm-resume: in-distro cwd does not exist: '$RESUME_CWD' (distro '$WSL_DISTRO')" >&2
-        exit 4
-    fi
-    unset _wsl_cwd_test
-fi
-
 # ---------------------------------------------------------------------------
 # arm a worker on a
 # fence only once every merged PR that touched it already carries its
@@ -3110,7 +2793,7 @@ unset _fm_fence
 
 # Task name — ticket-aware, extended with the full derived
 # identity: <TICKET>-<name-half>-<sN> so scheduler rows
-# (schtasks /query, atq) are scannable AND chain-attributable, e.g.
+# (atq, crontab) are scannable AND chain-attributable, e.g.
 # HIMMEL-Resume-KEY-654-ws7-gates-s32-<path-suffix>. The HIMMEL-Resume-
 # prefix AND the per-handover-unique <path-suffix> are preserved, so every
 # dedup/collision/marker site that reads $TASK_NAME is unaffected - the value
@@ -3143,7 +2826,7 @@ _path_hash=$(_arm_path_hash "$_ho_ident")
 # shellcheck disable=SC1003  # `\\` in single quotes is two backslashes which tr collapses to one literal `\` — intentional
 _path_readable=$(printf '%s' "$_ho_ident" | tr '/\\' '__' | tr -cd '[:alnum:]_-')
 # Keep the TAIL when clipping: the filename end of the path is what
-# distinguishes sibling handovers, and a schtasks task name is length-bounded
+# distinguishes sibling handovers; keep the readable task name bounded
 # (the pre-1304 suffix was the whole path, unbounded). Uniqueness rides on the
 # hash, so clipping the readable half is safe.
 if [ "${#_path_readable}" -gt 72 ]; then
@@ -3331,139 +3014,9 @@ _crontab_list() {
     fi
 }
 
-# spawn-tax reduction: memoize the Windows scheduler listing.
-# `schtasks /query` is ~1.2s per spawn and was re-run up to 4× per arm — once
-# for the dedup read, twice for the soft-slot-cap count (list_existing all +
-# task), and once for the collision check — each also re-running its own CSV
-# parse on top of the spawn. Populate it ONCE here so the
-# $()-wrapped list_existing / list_collision_candidates readers inherit the
-# result from the parent shell (a subshell that populated it could not persist
-# it up). Sets, for the caller to read directly:
-#   _SCHTASKS_CSV    raw `/query /fo CSV /nh` stdout — the collision check needs
-#                    the Next-Run-Time column, so it reads this.
-#   _SCHTASKS_RC     the query's exit code (collision skips on rc!=0, matching
-#                    its prior behavior).
-#   _SCHTASKS_NAMES  sorted-unique HIMMEL-Resume-* task names — dedup/soft-cap.
-# Fail-CLOSED on a genuine schtasks error (same policy list_existing had: an
-# error keyword in stderr → ERR + exit 2), so a silent empty result can never
-# be mistaken for "no jobs" and produce a duplicate arm.
-# MSYS_NO_PATHCONV=1 is per-call: without it gitbash mangles each
-# /flag into a Windows-rooted path and schtasks rejects the call; scoping it to
-# this one command keeps it off the later git -C in RESUME_CWD resolution.
-# `schtasks /query` enumerates the operator's ENTIRE Task
-# Scheduler library, not just the ~9 HIMMEL-Resume-* jobs this script cares
-# about. Reported live: 219 real scheduled tasks on the machine turned a
-# single --dry-run into a 5+ minute wait -- schtasks.exe's per-task overhead
-# scales with the TOTAL task count (a well-documented Windows quirk), and
-# `/tn` does not accept a wildcard, so schtasks itself cannot filter
-# server-side. `Get-ScheduledTask -TaskName 'HIMMEL-*'` CAN: it is COM-backed
-# (not the legacy schtasks.exe path) and resolves the wildcard before
-# returning anything, so the ~9 matches come back fast regardless of how many
-# unrelated tasks share the machine. Emits lines shaped exactly like schtasks'
-# own `/fo CSV /nh` output ("\Name","NextRunTime","Ready") so every downstream
-# parser (list_existing / list_collision_candidates) needs no change at all.
-#
-# Gated on SCHTASKS_CMD being the untouched default: every existing test that
-# fabricates scheduler state pins SCHTASKS_CMD to its own stub path,
-# so this fast path never intercepts a test's simulated CSV --
-# it only activates for a real, unstubbed arm. Bounded by `timeout` and
-# fail-open on any error/timeout/absence: a slow or missing `powershell`
-# falls straight through to the pre-1337 full schtasks scan below, never
-# blocks an arm.
-_win_fast_task_csv() {
-    [ "${SCHTASKS_CMD:-schtasks}" = "schtasks" ] || return 1
-    command -v powershell >/dev/null 2>&1 || return 1
-    local _script _out _rc
-    # Backtick-escaped double-quotes inside a PS double-quoted string + -f
-    # formatting (no PS single-quotes anywhere): a bash single-quoted wrapper
-    # cannot contain a literal `'`, and char+string concatenation semantics in
-    # PowerShell are ambiguous enough to not rely on -- this sidesteps both.
-    # shellcheck disable=SC2016  # single-quoted on purpose -- this is PowerShell source, not bash; $ must NOT expand here
-    _script='
-Get-ScheduledTask -TaskName "HIMMEL-*" -ErrorAction SilentlyContinue | ForEach-Object {
-    $nrt = "N/A"
-    try {
-        $info = $_ | Get-ScheduledTaskInfo -ErrorAction Stop
-        if ($info.NextRunTime) { $nrt = $info.NextRunTime.ToString("M/d/yyyy h:mm:ss tt") }
-    } catch {}
-    Write-Output ("`"\{0}`",`"{1}`",`"Ready`"" -f $_.TaskName, $nrt)
-}
-'
-    if command -v timeout >/dev/null 2>&1; then
-        _out=$(timeout "${ARM_PREFLIGHT_TIMEOUT:-5}" powershell -NoProfile -NonInteractive -Command "$_script" 2>/dev/null)
-    else
-        _out=$(powershell -NoProfile -NonInteractive -Command "$_script" 2>/dev/null)
-    fi
-    _rc=$?
-    [ "$_rc" -eq 0 ] || return 1
-    printf '%s\n' "$_out"
-}
-
-_SCHTASKS_CACHE_DONE=""
-_SCHTASKS_CSV=""
-_SCHTASKS_RC=0
-_SCHTASKS_NAMES=""
-_ensure_schtasks_cache() {
-    [ -n "$_SCHTASKS_CACHE_DONE" ] && return 0
-    if _SCHTASKS_CSV=$(_win_fast_task_csv); then
-        _SCHTASKS_RC=0
-        # shellcheck disable=SC1003  # `"\\'` strips both quote and literal backslash from the path-prefixed task names (same construct as the schtasks-CSV branch below)
-        _SCHTASKS_NAMES=$(printf '%s\n' "$_SCHTASKS_CSV" \
-            | grep -o '"\\\?HIMMEL-Resume-[^"]*"' 2>/dev/null \
-            | tr -d '"\\' \
-            | sort -u || true)
-        _SCHTASKS_CACHE_DONE=1
-        return 0
-    fi
-    local err_file
-    err_file=$(mktemp -t arm-resume.err.XXXXXX)
-    _SCHTASKS_CSV=$(MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /query /fo CSV /nh 2>"$err_file")
-    _SCHTASKS_RC=$?
-    if [ "$_SCHTASKS_RC" -ne 0 ]; then
-        # schtasks returns rc=1 when there are NO scheduled tasks at all
-        # (empty scheduler) — treat as empty. Any error keyword in stderr = fail.
-        if grep -qiE 'access|denied|cannot|fail' "$err_file" 2>/dev/null; then
-            echo "ERR arm-resume: schtasks /query failed (rc=$_SCHTASKS_RC):" >&2
-            cat "$err_file" >&2
-            rm -f "$err_file"
-            exit 2
-        fi
-    fi
-    rm -f "$err_file"
-    # CSV TaskName column is path-prefixed (`\HIMMEL-Resume-...`); strip the
-    # leading `\` and quotes.
-    # shellcheck disable=SC1003  # `"\\'` strips both quote and literal backslash from schtasks's path-prefixed task names
-    _SCHTASKS_NAMES=$(printf '%s\n' "$_SCHTASKS_CSV" \
-        | grep -o '"\\\?HIMMEL-Resume-[^"]*"' 2>/dev/null \
-        | tr -d '"\\' \
-        | sort -u || true)
-    _SCHTASKS_CACHE_DONE=1
-}
-
 list_existing() {
     local scope="${1:-all}"
     case "$PLATFORM" in
-        windows)
-            _ensure_schtasks_cache
-            if [ "$scope" = task ]; then
-                # Matches the current identity OR the earlier one, so an
-                # already-armed slot survives the upgrade as a dedup hit.
-                printf '%s\n' "$_SCHTASKS_NAMES" | _arm_own_identity_match
-            elif [ "$scope" = ticket ]; then
-                # any OTHER handover's slot for this same ticket,
-                # keyed on the STRICT frontmatter-only ticket (see
-                # _infer_ticket_strict). _compose_arm_name always puts a
-                # present ticket FIRST in the task-name segment
-                # (HIMMEL-Resume-<TICKET>-...), so a prefix match right after
-                # the HIMMEL-Resume- marker finds it regardless of which
-                # slug/session/path-hash follows.
-                if [ -n "${_ho_ticket_strict:-}" ]; then
-                    printf '%s\n' "$_SCHTASKS_NAMES" | grep -E "^HIMMEL-Resume-${_ho_ticket_strict}(-|\$)" || true
-                fi
-            else
-                printf '%s\n' "$_SCHTASKS_NAMES"
-            fi
-            ;;
         linux)
             if command -v atq >/dev/null 2>&1; then
                 local err_file rc atq_out
@@ -3497,7 +3050,7 @@ list_existing() {
                         # Exact whole-line marker (# $TASK_NAME) so a task
                         # whose name is a prefix of another's can't match it.
                         # the POSIX at-job marker is the SAME
-                        # identity as the Windows task name, so it moves in
+                        # identity as TASK_NAME, so it moves in
                         # lockstep — including the legacy-name migration arm.
                         if at -c "$job_id" 2>/dev/null \
                             | _arm_own_identity_match '# ' | grep -q .; then
@@ -3505,7 +3058,7 @@ list_existing() {
                         fi
                     elif [ "$scope" = ticket ]; then
                         # same STRICT ticket-prefix scan as the
-                        # crontab/windows cases above, applied to the at-job body.
+                        # crontab case above, applied to the at-job body.
                         if [ -n "${_ho_ticket_strict:-}" ] && at -c "$job_id" 2>/dev/null \
                             | grep -qE "# HIMMEL-Resume-${_ho_ticket_strict}(-|\$)"; then
                             printf 'at-job-%s\n' "$job_id"
@@ -3530,7 +3083,7 @@ list_existing() {
 
 # _crontab_delete <marker> [soft] — remove exactly one crontab LINE
 # (shared by the linux crontab branch + the macOS crontab-only branch). `soft`
-# mirrors delete_existing's windows/at-job soft handling: a
+# mirrors delete_existing's at-job soft handling: a
 # failed delete WARNs and returns 1 instead of exiting 2, because soft mode is
 # only used by the post-commit replace sweep where the new arm is already
 # registered and verified -- see the `delete_existing` comment for why exiting
@@ -3615,18 +3168,6 @@ _crontab_delete() {
 delete_existing() {
     local marker="$1" mode="${2:-hard}"
     case "$PLATFORM" in
-        windows)
-            # MSYS_NO_PATHCONV=1:  note in list_existing.
-            if MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /delete /tn "$marker" /f >/dev/null 2>&1; then
-                echo "arm-resume: deleted scheduled task: $marker"
-            elif [ "$mode" = soft ]; then
-                echo "WARN arm-resume: the new arm is registered, but the superseded task '$marker' could NOT be deleted -- it is STILL SCHEDULED and will fire alongside the new one. Remove it manually: schtasks /delete /tn \"$marker\" /f" >&2
-                return 1
-            else
-                echo "ERR arm-resume: failed to delete scheduled task: $marker" >&2
-                exit 2
-            fi
-            ;;
         linux)
             if [[ "$marker" == at-job-* ]]; then
                 local job_id="${marker#at-job-}"
@@ -3665,88 +3206,6 @@ list_collision_candidates() {
         return 0
     fi
     case "$PLATFORM" in
-        windows)
-            # reuse the memoized `schtasks /query` from
-            # _ensure_schtasks_cache instead of a 2nd (identical) spawn. This
-            # tightens ONE narrow case in the safe direction: a GENUINE schtasks
-            # error now fail-closes (exit 2) at the earlier dedup read rather
-            # than only WARN-skipping the collision check here — and the dedup
-            # read already fail-closed on that same error before this branch was
-            # reachable. What still reaches here is the benign rc!=0 "no tasks"
-            # case, which WARNs and skips the collision check exactly as before.
-            _ensure_schtasks_cache
-            local out rc
-            out="$_SCHTASKS_CSV"
-            rc="$_SCHTASKS_RC"
-            if [ "$rc" -ne 0 ]; then
-                echo "WARN arm-resume: schtasks /query returned rc=$rc — skipping collision check" >&2
-                return 0
-            fi
-            # Parse all HIMMEL-* tasks from CSV, excluding our own Resume slot.
-            # CSV format (from /fo CSV /nh): "TaskName","Next Run Time","Status"
-            # TaskName is path-prefixed: "\HIMMEL-Pipeline-Harvest"
-            # Next Run Time is locale datetime: "6/20/2026 2:00:00 AM" or "N/A"
-            local raw_lines line name datetime hhmm
-            local _cc_names=() _cc_dts=() _cc_i
-            # shellcheck disable=SC1003  # `"\\\?HIMMEL-"` — BRE \? = optional backslash; matches both "\HIMMEL-" and "HIMMEL-" (same style as list_existing)
-            raw_lines=$(printf '%s\n' "$out" | grep -i '"\\\?HIMMEL-' 2>/dev/null || true)
-            while IFS= read -r line; do
-                [ -z "$line" ] && continue
-                # Extract task name (field 1, strip quotes + leading backslash)
-                # shellcheck disable=SC1003  # `'\\'` strips the literal backslash schtasks path-prefixes task names with
-                name=$(printf '%s' "$line" | cut -d'"' -f2 | tr -d '\\')
-                [ -z "$name" ] && continue
-                # Skip our own Resume task (dedup already handles it)
-                [ "$name" = "$TASK_NAME" ] && continue
-                # Only check HIMMEL-* tasks (all are toolchain-owned; any that
-                # launches claude could collide — we don't inspect the body)
-                case "$name" in HIMMEL-*) ;; *) continue ;; esac
-                # Extract Next Run Time (field 4 = 4th quoted token)
-                datetime=$(printf '%s' "$line" | cut -d'"' -f4)
-                # "N/A" or empty = never fires / already ran → skip
-                case "$datetime" in N/A|"") continue ;; esac
-                _cc_names+=("$name")
-                _cc_dts+=("$datetime")
-            done <<< "$raw_lines"
-            # parse every queued datetime in ONE armored python
-            # invocation instead of one py_armor_capture (mktemp x2 + interpreter
-            # + rm x2) per candidate task -- a machine with several HIMMEL-*
-            # cadences armed used to pay that ~4-spawn cost once per row here.
-            # Locale-safe: datetime module parses M/D/YYYY H:MM:SS AM/PM.
-            # Failure = WARN + skip (never block an arm on parse errors).
-            if [ "${#_cc_dts[@]}" -gt 0 ]; then
-                if py_armor_capture -c '
-import sys, datetime as dt
-fmts = ("%m/%d/%Y %I:%M:%S %p", "%m/%d/%Y %H:%M:%S", "%d/%m/%Y %H:%M:%S", "%Y-%m-%dT%H:%M:%S")
-for s in sys.argv[1:]:
-    out = ""
-    for fmt in fmts:
-        try:
-            out = dt.datetime.strptime(s, fmt).strftime("%H:%M")
-            break
-        except ValueError:
-            pass
-    print(out)
-' "${_cc_dts[@]}" 2>/dev/null; then
-                    # One output line per candidate, in order (same order the
-                    # loop above appended them); an unparseable-but-non-crashing
-                    # entry prints an EMPTY line here, same as the old per-item
-                    # `hhmm=""` case -- silently skipped, no WARN (only a hard
-                    # python failure below warns).
-                    _cc_i=0
-                    while IFS= read -r hhmm; do
-                        [ -n "$hhmm" ] && printf '%s\t%s\n' "${_cc_names[$_cc_i]}" "$hhmm"
-                        _cc_i=$((_cc_i + 1))
-                    done <<< "$PY_ARMOR_OUT"
-                else
-                    _cc_i=0
-                    while [ "$_cc_i" -lt "${#_cc_names[@]}" ]; do
-                        echo "WARN arm-resume: could not parse next-run time '${_cc_dts[$_cc_i]}' for task '${_cc_names[$_cc_i]}' — skipping in collision check" >&2
-                        _cc_i=$((_cc_i + 1))
-                    done
-                fi
-            fi
-            ;;
         linux|macos)
             # crontab: grep all HIMMEL-* marker lines, parse HH:MM from the
             # cron fields (minute=$1, hour=$2 in standard crontab format).
@@ -3779,16 +3238,6 @@ for s in sys.argv[1:]:
 # _minutes_from_midnight <HH:MM>: convert HH:MM to minutes since midnight (pure bash).
 _minutes_from_midnight() {
     local t="$1" hh mm
-    # strip a trailing CR first. py_armor_capture's python round-
-    # trip writes through a Windows-native python.exe to a redirected FILE
-    # (not a chief), which text-mode-translates its \n to \r\n; cat reads
-    # those bytes back raw (no CRLF translation under Git Bash), so a `\r`
-    # rides along on the LAST field a multi-line `read` loop pulls out of
-    # $PY_ARMOR_OUT -- here, every candidate HH:MM from the windows collision-
-    # candidate scan. Left in place it glues onto `mm` below (t="00:40\r" ->
-    # mm="40\r"), and `$(( hh * 60 + mm ))` chokes on the embedded CR: bash
-    # parses "40" as a legit operand, then hits it expecting another operator
-    # and finds nothing printable to name, hence the empty error token.
     t="${t%$'\r'}"
     hh="${t%:*}"; mm="${t#*:}"
     # strip leading zeros to avoid octal interpretation
@@ -3920,14 +3369,6 @@ check_collision() {
 # auto-arm watchdogs rely on — defer to whatever is already queued).
 DEDUP_SCOPE=task
 [ "$DEDUP_ANY" -eq 1 ] && DEDUP_SCOPE=all
-# warm the Windows scheduler-listing cache in THIS (parent) shell so
-# the $()-wrapped list_existing / list_collision_candidates readers below inherit
-# it — a subshell populating it could not persist the globals up. Fail-closed
-# (exit 2 on a genuine schtasks error) happens here, at the first read, exactly
-# as before. Windows-only: POSIX still lists per-call (atq/crontab, cheap).
-if [ "$PLATFORM" = windows ]; then
-    _ensure_schtasks_cache
-fi
 existing=$(list_existing "$DEDUP_SCOPE")
 # markers a --force replace must reap, deleted only AFTER the new
 # job is registered and verified. Pre-1304 the deletion happened right here,
@@ -4012,7 +3453,6 @@ if [ -n "$existing" ]; then
                 echo "untouched rather than wiping them with no replacement. Inspect:"
             fi
             case "$PLATFORM" in
-                windows) echo "    schtasks /query /tn \"<task-name>\"" ;;
                 *)       echo "    atq && at -c <job-id>   (or: crontab -l)" ;;
             esac
         } >&2
@@ -4340,7 +3780,7 @@ fi
 # that the existing same-machine dedup above cannot see: (a) a LIVE session
 # is actively working this queue right now (scripts/handover/queue-lock.sh),
 # and (b) this SAME handover already has a PENDING arm recorded on ANOTHER
-# host (schtasks/cron are per-machine, so win2 arming a handover was
+# host (at/cron are per-machine, so one host arming a handover was
 # invisible to main arming the same handover until this registry). Both
 # checks are skipped -- WARN, never fail-closed -- when the handover root
 # can't be resolved (HANDOVER_DIR unset and no inline handovers/ dir yet):
@@ -4700,7 +4140,7 @@ _arm_shipped_preflight() {
     # (a) TICKET STATUS. The Jira CLI is an untracked build artifact
     # (scripts/jira/dist/index.js), so it is routinely absent in a worktree --
     # skip quietly rather than nag on every arm. ARM_JIRA_CLI is a test seam
-    # (same shape as SCHTASKS_CMD/GH_CMD elsewhere in this file): a worktree
+    # (same shape as GH_CMD elsewhere in this file): a worktree
     # never has dist/ built, so a test exercising this branch has no other way
     # to point it at a fixture CLI.
     # Anchored to the PRIMARY checkout via the git common dir (same
@@ -4948,8 +4388,7 @@ fi
 # armed (documented in afk-mode.md).
 _crontab_schedule() {
     # crontab fallback — crontab entries are RECURRING, so the
-    # entry SELF-REMOVES as its first action (the cron analogue of
-    # the schtasks .bat self-/delete above): the RUNNER FILE (not the
+    # entry SELF-REMOVES as its first action: the RUNNER FILE (not the
     # crontab line itself, see below) rewrites the crontab without its
     # own marker line before running cd+claude, turning the recurring
     # entry into a one-shot. The running /bin/sh continues past the
@@ -4995,8 +4434,7 @@ _crontab_schedule() {
     # resolve claude ABSOLUTELY at arm time (see the function
     # header). `command -v` may return a function/alias name for a shell-level
     # `claude`; only a leading `/` is a path cron can exec, anything else
-    # refuses. rc 2 = the Windows twin's "'claude' not on PATH at arm time"
-    # code. Dry-run takes the same gate so a preview never shows an entry the
+    # refuses with rc 2. Dry-run takes the same gate so a preview never shows an entry the
     # real arm would refuse.
     local claude_abs q_claude
     claude_abs=$(command -v claude 2>/dev/null) || claude_abs=""
@@ -5076,7 +4514,7 @@ fi"
     fi
     # unset both vars unconditionally before the
     # (possibly empty) grant prefix — same always-clear contract as the
-    # `at`/Windows/WSL launch bodies, so a crontab entry never depends on
+    # `at` launch body, so a crontab entry never depends on
     # whatever env cron happened to run it under. `&&`, not `;`, so a failed
     # unset (should never happen) can't fall through to an ungated claude
     # launch outside the entry's `cd ... && $tail` gate.
@@ -5174,8 +4612,7 @@ $headed_launch_body"
 
     # Headed launch on macOS (fold of Goomal's fix/arm-resume-macos-cron):
     # cron gives no TTY, so even a complete, resolvable launch starts claude
-    # headless and invisible -- parity with the Windows branch, where schtasks
-    # opens a console window. Resolved HERE, at arm time, so a bad
+    # headless and invisible. Resolved HERE, at arm time, so a bad
     # ARM_TERMINAL_APP or a missing app is caught before the entry is even
     # installed. ARM_TERMINAL_APP=none opts out to the headless inline launch,
     # the shape the Linux crontab fallback always uses (no TTY story to fix
@@ -5341,137 +4778,6 @@ $launch_body"
     echo "    crontab -l | grep -v 'HIMMEL-Resume' | crontab -"
 }
 
-# _win_short_date_pattern: read the machine's Windows short-date
-# format from the registry so schedule_arm's Windows branch can render
-# `schtasks /sd` in the LOCALE schtasks itself will parse it with — schtasks
-# reads /sd per-locale, and a hardcoded MM/dd/yyyy silently misreads as
-# day-first on a dd/MM/yyyy machine (win2, 4 recurrences), arming the task
-# months out with no error. MSYS_NO_PATHCONV=1 is the same idiom every other
-# schtasks/reg call in this file uses — without it gitbash
-# mangles the /v flag into a Windows-rooted path. ANY failure (missing reg,
-# unreadable key, empty/unparseable value) falls back to "MM/dd/yyyy" —
-# byte-identical to the earlier hardcoded behavior. Returns 0 when
-# the pattern came from the registry, 1 when the fallback was used -- the
-# caller must know the difference: a fallback pattern on a day-first
-# machine re-opens the misarm class, so when the post-arm verify is ALSO
-# unavailable the arm must fail closed instead of standing unverified
-# (codex-adv-8). Either way a usable pattern is printed.
-_win_short_date_pattern() {
-    local _reg_out _pat
-    _reg_out=$(MSYS_NO_PATHCONV=1 reg query "HKCU\Control Panel\International" /v sShortDate 2>/dev/null) || {
-        printf '%s\n' "MM/dd/yyyy"
-        return 1
-    }
-    # Everything after the REG_SZ column, NOT $NF — some locales' sShortDate
-    # legitimately contains spaces (e.g. "yyyy. MM. dd."), and a last-field
-    # grab would truncate the pattern to its final token.
-    _pat=$(printf '%s\n' "$_reg_out" | sed -n 's/.*sShortDate[[:space:]]\{1,\}REG_SZ[[:space:]]\{1,\}//p' | head -n 1 | tr -d '\r' | sed 's/[[:space:]]*$//')
-    if [ -z "$_pat" ]; then
-        printf '%s\n' "MM/dd/yyyy"
-        return 1
-    fi
-    printf '%s\n' "$_pat"
-}
-
-# _win_delete_bad_task <task-name> (codex-adv-11): delete a task
-# the post-arm verify rejected, LOUDLY surfacing a failed delete -- a
-# known-mistimed task left scheduled would relaunch at the wrong moment
-# while the ERR above implied it was cleaned up. Callers exit 2 either way;
-# this only controls what the operator is told.
-_win_delete_bad_task() {
-    if MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /delete /tn "$1" /f >/dev/null 2>&1; then
-        return 0
-    fi
-    echo "ERR arm-resume: FAILED to delete the rejected task '$1' -- a known-mistimed task is STILL SCHEDULED. Remove it manually: schtasks /delete /tn \"$1\" /f" >&2
-    return 1
-}
-
-# _win_restore_backup_task <task-name> <backup-xml> (finding 2):
-# `schtasks /create /f` overwrites a same-named task IN PLACE, so a
-# same-identity re-arm leaves no separate old row for the post-commit reap
-# sweep to defer deleting (see _arm_marker_is_new_arm above) -- the
-# :1714-1722 "old arm only given up once a new one demonstrably exists"
-# guarantee does not hold here on its own. Call this after
-# _win_delete_bad_task removes a verify-rejected new task, so the PREVIOUS
-# registration (exported to <backup-xml> before the overwrite) comes back
-# instead of leaving nothing armed. Returns 1 when restoration fails so callers
-# retain <backup-xml>; no-op when it is empty/missing (normal first-arm case).
-_win_restore_backup_task() {
-    local _tn="$1" _xml="$2"
-    [ -n "$_xml" ] && [ -s "$_xml" ] || return 0
-    if MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /create /tn "$_tn" /xml "$_xml" /f >/dev/null 2>&1; then
-        echo "arm-resume: restored the previous arm for '$_tn' after the new registration was rejected." >&2
-        return 0
-    fi
-    echo "ERR arm-resume: FAILED to restore the previous arm for '$_tn' after the new registration was rejected -- the PREVIOUS arm is ALSO LOST. Backup XML retained at '$_xml'; restore it manually with: schtasks /create /tn \"$_tn\" /xml \"$_xml\" /f" >&2
-    return 1
-}
-
-# _win_render_short_date <epoch> <pattern>: render TARGET_EPOCH
-# as a schtasks-parseable date string in the given Windows short-date
-# pattern (e.g. "dd/MM/yyyy", "M/d/yyyy", "yyyy-MM-dd"). Scans the pattern
-# for runs of d/M/y: a `d`/`M` run always zero-pads to >=2 digits (even a
-# single-letter token like the real Windows en-US DEFAULT "M/d/yyyy" —
-# verified live on the operator's own box, which is NOT "MM/dd/yyyy" as
-# originally assumed). The fix is about the day/month ORDER a locale
-# implies, not digit width, and schtasks parses "7/2/2026" and "07/02/2026"
-# identically — so fixing width at >=2 keeps a same-order locale's /sd value
-# byte-identical to the earlier hardcoded render (only a genuinely
-# reordered pattern, e.g. dd/MM/yyyy, changes the emitted string). A `y` run
-# of length <=2 renders a 2-digit year, longer renders 4-digit; a `d` run of
-# length >=3 is a day-NAME token (e.g. "dddd" in a locale whose short-date
-# pattern embeds a weekday) — schtasks /sd takes a numeric date only, so
-# that token is DROPPED along with one adjacent separator (preferring the
-# separator right after it, else the one already emitted before it) rather
-# than emitted literally. Any other character (separators: /, -, ., space,
-# comma) passes through unchanged. On render failure (bad pattern/args)
-# prints nothing — the caller falls back to the existing MM/dd/yyyy
-# START_DATE.
-_win_render_short_date() {
-    py_armor_capture -c '
-import sys, datetime, re
-epoch = int(sys.argv[1])
-pattern = sys.argv[2]
-# Month-NAME pictures (MMM/MMMM) and era pictures (g/gg) cannot be rendered
-# numerically -- a dd-MMM-yy locale expects a month NAME in /sd, so a
-# numeric render would misparse (coderabbit-4). Print nothing = render
-# failure; the caller falls back to MM/dd/yyyy AND marks the locale path
-# degraded, which the post-arm verify / dual-failure logic covers.
-if re.search(r"M{3,}|g", pattern):
-    sys.exit(0)
-dt = datetime.datetime.fromtimestamp(epoch).astimezone()
-out = []
-i, n = 0, len(pattern)
-while i < n:
-    c = pattern[i]
-    if c in "dMy":
-        j = i
-        while j < n and pattern[j] == c:
-            j += 1
-        run_len = j - i
-        if c == "d" and run_len >= 3:
-            # Day-name token -- drop it (numeric /sd only) plus one
-            # adjacent separator so the rendered string stays parseable.
-            if j < n and not pattern[j].isalpha():
-                j += 1
-            elif out and not out[-1].isalnum():
-                out.pop()
-        else:
-            if c == "y":
-                val = dt.year % 100 if run_len <= 2 else dt.year
-                width = 2 if run_len <= 2 else 4
-            else:
-                val = dt.day if c == "d" else dt.month
-                width = max(run_len, 2)
-            out.append(str(val).zfill(width))
-        i = j
-    else:
-        out.append(c)
-        i += 1
-print("".join(out))
-' "$1" "$2"
-}
-
 # _arm_fired_evidence -- did THIS arm's task actually fire?
 #
 # "No task, and the target has passed" has TWO causes that look identical to the
@@ -5496,9 +4802,6 @@ print("".join(out))
 # operator who re-arms is caught by rc 15; one told CONSUMED waits forever for a
 # session that never started).
 #
-# Defined here, above schedule_arm, because BOTH consumed-detections need it --
-# the Windows NextRunTime branch inside schedule_arm and the generic post-arm
-# existence verify after it.
 # _arm_fired_row -- this task's NEWEST armed-resume start row, or empty. Split
 # out of _arm_fired_evidence because the pre-arm snapshot below
 # needs the same read without any of the this-arm-or-not judgement.
@@ -5559,661 +4862,10 @@ _arm_fired_evidence() {
 
 schedule_arm() {
     case "$PLATFORM" in
-        windows)
-            # schtasks ONETIME + a .bat indirection. We write the .bat
-            # to a real path (mktemp) rather than relying on %TEMP%
-            # expansion via bash, since bash leaves %TEMP% literal —
-            # the v1 bug emitted %TEMP%\himmel-resume.bat which bash
-            # wrote to a path NAMED %TEMP%\himmel-resume.bat instead
-            # of $TEMP-resolved.
-            local bat_path
-            # Portability only: BSD `mktemp -t` ignores $TMPDIR and
-            # appends its random tail AFTER a .bat suffix, so the file neither
-            # landed in the caller's dir nor matched the prune's `*.bat` glob.
-            # Mint under an explicit dir, then add the suffix.
-            # An && list is exempt from set -e, so each step aborts explicitly.
-            bat_path=$(mktemp "${TMPDIR:-/tmp}/himmel-resume.XXXXXX") || {
-                echo "ERR arm-resume: mktemp failed minting the resume .bat" >&2
-                return 1
-            }
-            mv "$bat_path" "$bat_path.bat" || {
-                echo "ERR arm-resume: could not rename $bat_path to .bat" >&2
-                rm -f "$bat_path"
-                return 1
-            }
-            bat_path="$bat_path.bat"
-            # prune our own leaked siblings. The .bat deletes its
-            # own scheduled task on its first line but never removes ITSELF, so
-            # every arm since 2026-06-28 left one behind -- 1665 files / 2.1 MB
-            # measured 2026-08-06, growing with the arming cadence, i.e. in the
-            # direction fan-out is pushing. Each also contains the full resume
-            # command line (handover path, session name, repo path), so this is
-            # a retention question as much as a disk one.
-            #
-            # Pruning HERE rather than in the .bat: a script cannot reliably
-            # delete itself while cmd is still reading it, and arm-resume is the
-            # only writer to this directory, so no new cadence or scheduled task
-            # is needed. AGE-GATED at 7 days, never "every other file" -- an arm
-            # can legitimately be parked hours ahead, and deleting a sibling a
-            # PENDING arm still points at would break that arm. 7 days is far
-            # beyond the longest legitimate park while still bounding the pile.
-            # Both the prefix AND the .bat suffix are required in the match so
-            # this can never widen into an unrelated temp file.
-            # Best-effort throughout: a prune failure must never fail an arm.
-            # skip the prune under --dry-run. This block runs
-            # before the DRY_RUN early-return below, so without the gate a
-            # dry-run arm would delete leaked .bat siblings -- a real side
-            # effect that breaks the side-effect-free contract a dry run
-            # promises (see the --dry-run note above the shipped-preflight).
-            if [ "$DRY_RUN" -ne 1 ]; then
-                find "$(dirname "$bat_path")" -maxdepth 1 -type f \
-                    -name 'himmel-resume.*.bat' -mtime +7 -delete 2>/dev/null || true
-            fi
-            # bash mktemp on gitbash returns POSIX path; schtasks wants a
-            # Windows path. cygpath converts. cygpath must exist here (Linux
-            # would already have failed the platform check above).
-            if ! command -v cygpath >/dev/null 2>&1; then
-                echo "ERR arm-resume: cygpath not on PATH; cannot convert paths for schtasks" >&2
-                echo "    Install Git for Windows (which ships cygpath)." >&2
-                rm -f "$bat_path"
-                exit 2
-            fi
-            local bat_path_win claude_cmd_win="" resume_cwd_win=""
-            local claude_cmd_posix="" _cyg_out="" _cyg_rest=""
-            local bash_posix
-            if ! bash_posix=$(command -v bash 2>/dev/null); then
-                echo "ERR arm-resume: 'bash' not on PATH at arm time" >&2
-                rm -f "$bat_path"
-                exit 2
-            fi
-            if [ -n "$WSL_DISTRO" ]; then
-                # WSL owns both the executable lookup and cwd. Only the .bat
-                # path crosses through cygpath; the in-distro values must not.
-                if ! MSYS_NO_PATHCONV=1 MSYS2_ARG_CONV_EXCL='*' \
-                    wsl.exe -d "$WSL_DISTRO" -e bash -lc 'command -v claude' >/dev/null 2>&1; then
-                    echo "ERR arm-resume: 'claude' not on PATH at arm time (distro '$WSL_DISTRO')" >&2
-                    rm -f "$bat_path"
-                    exit 2
-                fi
-                if ! bat_path_win=$(cygpath -w "$bat_path" 2>&1) || [ -z "$bat_path_win" ]; then
-                    echo "ERR arm-resume: cygpath -w failed converting bat=$bat_path: $bat_path_win" >&2
-                    rm -f "$bat_path"
-                    exit 4
-                fi
-            else
-                # Resolve claude.cmd to an absolute path so the .bat doesn't
-                # depend on PATH being set in whatever cmd shell schtasks
-                # spawns (SYSTEM context lacks npm-installed shims by default).
-                if ! claude_cmd_posix=$(command -v claude 2>/dev/null); then
-                    echo "ERR arm-resume: 'claude' not on PATH at arm time" >&2
-                    rm -f "$bat_path"
-                    exit 2
-                fi
-                # convert all three paths (.bat, claude, cwd) in ONE
-                # cygpath spawn instead of three — cygpath emits one Windows path
-                # per input line, in argument order. Windows paths contain no
-                # newlines, so split the result with pure-bash parameter expansion
-                # (no extra sed/head spawns).
-                if ! _cyg_out=$(cygpath -w "$bat_path" "$claude_cmd_posix" "$RESUME_CWD" 2>&1); then
-                    echo "ERR arm-resume: cygpath -w failed converting one of [bat=$bat_path claude=$claude_cmd_posix cwd=$RESUME_CWD]: $_cyg_out" >&2
-                    rm -f "$bat_path"
-                    exit 4
-                fi
-                bat_path_win="${_cyg_out%%$'\n'*}"
-                _cyg_rest="${_cyg_out#*$'\n'}"
-                claude_cmd_win="${_cyg_rest%%$'\n'*}"
-                resume_cwd_win="${_cyg_rest#*$'\n'}"
-                # Belt-and-suspenders: a well-behaved cygpath emits
-                # exactly three non-empty lines on rc 0, so the split above is sound.
-                # Guard anyway against a build that exits 0 with fewer lines —
-                # otherwise resume_cwd_win would silently inherit claude_cmd_win (the
-                # `#*\n` no-ops when no newline remains) and mis-target the .bat cd.
-                # Mirrors the non-empty check the python-derived schedule fields get.
-                if [ -z "$bat_path_win" ] || [ -z "$claude_cmd_win" ] || [ -z "$resume_cwd_win" ]; then
-                    echo "ERR arm-resume: cygpath -w produced incomplete output (bat/claude/cwd): $_cyg_out" >&2
-                    rm -f "$bat_path"
-                    exit 4
-                fi
-            fi
-            local wsl_launch=""
-            if [ -n "$WSL_DISTRO" ]; then
-                local q_cwd q_name="" q_prompt q_channels="" q_model="" q_autocompact="" wsl_command
-                q_cwd=$(_bash_single_quote "$RESUME_CWD")
-                q_prompt=$(_bash_single_quote "$RESUME_PROMPT")
-                [ -n "$SESSION_NAME" ] && q_name=" -n $(_bash_single_quote "$SESSION_NAME")"
-                [ -n "$CHANNELS" ] && q_channels=" --channels $(_bash_single_quote "$CHANNELS")"
-                [ -n "$MODEL" ] && q_model=" --model $(_bash_single_quote "$MODEL")"
-                # --autocompact passthrough: same
-                # _bash_single_quote shape as q_model above; always non-empty
-                # by the time this runs.
-                q_autocompact=" --autocompact $(_bash_single_quote "$AUTOCOMPACT")"
-                local q_automerge=""
-                if [ "$AUTOMERGE" -eq 1 ]; then
-                    # CR_MERGE_GATE_OK=1 is granted only
-                    # alongside an explicit --automerge, never the dotenv default.
-                    if [ "$AUTOMERGE_GRANTS_MERGE_GATE" -eq 1 ]; then
-                        q_automerge="ARMAUTOMERGE=1 CR_MERGE_GATE_OK=1 "
-                    else
-                        q_automerge="ARMAUTOMERGE=1 "
-                    fi
-                fi
-                # unset both vars first (defense against
-                # ambient carryover), THEN conditionally re-grant via the
-                # per-command prefix — same always-clear contract as the
-                # Windows/at/crontab launch bodies below. The same
-                # unset also drops ARM_RESUME_SAFETY_ARM so the resumed in-distro
-                # session does not inherit a leaked long-gap exemption.
-                # a `set` in the .bat cannot cross into the distro,
-                # so the safety-child mark rides the in-distro command instead.
-                local q_safety_child=""
-                [ "$SAFETY_CHILD" -eq 1 ] && q_safety_child="AUTO_ARM_SAFETY_CHILD=1 "
-                wsl_command="cd $q_cwd && unset ARMAUTOMERGE CR_MERGE_GATE_OK ARM_RESUME_SAFETY_ARM AUTO_ARM_SAFETY_CHILD CLAUDE_CODE_CHILD_SESSION CLAUDE_PID CLAUDE_CODE_SESSION_ID && export CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1 && ${q_safety_child}${q_automerge}claude$q_name $q_prompt$q_channels$q_model$q_autocompact"
-                _arm_require_worker_autocompact_argv "$wsl_command"
-                # The composed command sits INSIDE the .bat line's double
-                # quotes, where CMD treats ^ as a LITERAL character —
-                # caret-escaping here reaches bash verbatim and shatters the
-                # command (`cd` gets extra args, claude fires in the wrong
-                # cwd; verified against a live .bat). Inside CMD quotes only
-                # two characters stay active: % (batch expansion — double
-                # it) and " (closes the quote — no safe in-quote escape
-                # exists, CMD toggles on every unescaped quote regardless of
-                # backslashes). So: %->%% and REFUSE a payload carrying a
-                # double quote rather than emit an injectable line.
-                case "$wsl_command" in
-                    *'"'*)
-                        echo "ERR arm-resume: a WSL-station arm cannot carry a double quote in its prompt/name/channels (CMD quote nesting is not escapable)" >&2
-                        rm -f "$bat_path"
-                        exit 2
-                        ;;
-                esac
-                # A pattern-leading `%` is the end-anchor in some bash 3.2
-                # builds, so the %->%% doubling silently no-ops on macOS;
-                # keep the % out of the pattern's literal text.
-                local _pct='%'
-                wsl_launch="${wsl_command//$_pct/%%}"
-            fi
-            local bash_win flow_lib_m
-            if ! bash_win=$(cygpath -w "$bash_posix" 2>&1); then
-                echo "ERR arm-resume: cygpath -w failed for bash path: $bash_win" >&2
-                rm -f "$bat_path"
-                exit 4
-            fi
-            if ! flow_lib_m=$(cygpath -m "$SCRIPT_DIR/../lib/flow-run-ledger.sh" 2>&1); then
-                echo "ERR arm-resume: cygpath -m failed for flow-run-ledger.sh: $flow_lib_m" >&2
-                rm -f "$bat_path"
-                exit 4
-            fi
-
-            # .bat content: escape for interpolation INSIDE DOUBLE QUOTES via
-            # cadence_cmd_escape — % -> %% plus
-            # best-effort " handling, deliberately NO caret escapes (cmd.exe
-            # treats ^ as a LITERAL character inside double quotes, so
-            # caret-escaping corrupts the value instead of protecting it).
-            # Applied to the prompt, the cd path, and the bash/flow-run-ledger
-            # paths — every one lands inside a quoted "%s" below.
-            local p="$RESUME_PROMPT" c="$resume_cwd_win" bw="$bash_win" fl="$flow_lib_m" fr_note="$FLOW_RUN_NOTE"
-            p=$(cadence_cmd_escape "$p")
-            c=$(cadence_cmd_escape "$c")
-            bw=$(cadence_cmd_escape "$bw")
-            fl=$(cadence_cmd_escape "$fl")
-            fr_note=$(cadence_cmd_escape "$fr_note")
-            # Optional --channels passthrough. Same cadence_cmd_escape as the
-            # prompt — the spec is operator-supplied (could carry % & ^) and
-            # lands inside its own embedded double quotes (` --channels
-            # "$cs"`) below.
-            local ch=""
-            if [ -n "$CHANNELS" ]; then
-                local cs="$CHANNELS"
-                cs=$(cadence_cmd_escape "$cs")
-                ch=" --channels \"$cs\""
-            fi
-            # Optional --model passthrough. Same cadence_cmd_escape
-            # + inline-quote shape as --channels above — MODEL is operator-
-            # supplied and lands inside its own embedded double quotes.
-            local mo=""
-            if [ -n "$MODEL" ]; then
-                local ms="$MODEL"
-                ms=$(cadence_cmd_escape "$ms")
-                mo=" --model \"$ms\""
-            fi
-            # --autocompact passthrough. Same cadence_cmd_escape
-            # + inline-quote shape as --model above; always non-empty by the
-            # time this runs.
-            local ac=""
-            local acs="$AUTOCOMPACT"
-            acs=$(cadence_cmd_escape "$acs")
-            ac=" --autocompact \"$acs\""
-            # -n <session name>. SESSION_NAME is sanitized to
-            # [A-Za-z0-9._ -] (see _compose_arm_name) so it carries no CMD
-            # metacharacter and needs no ^-escaping here; quote it so the space
-            # in "<TICKET> <name>" stays a single argv entry. Empty -> omit.
-            local nm=""
-            [ -n "$SESSION_NAME" ] && nm=" -n \"$SESSION_NAME\""
-            # HIMMEL_HEADROOM_PROXY: a SEPARATE cygpath call
-            # (not folded into the batched bat/claude/cwd conversion above)
-            # so the existing 3-path split logic stays untouched
-            # when the flag is off — this only spawns when the flag is on.
-            # CR round: curl gets the same treatment as HEADROOM_BIN (one
-            # cygpath spawn for both) so the livez checks below carry an
-            # ABSOLUTE curl path — see the HEADROOM_CURL resolution comment.
-            local hb="" cu=""
-            if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ] && [ -z "$WSL_DISTRO" ]; then
-                local _hp_cyg_out _hp_cyg_rest headroom_bin_win curl_bin_win
-                if ! _hp_cyg_out=$(cygpath -w "$HEADROOM_BIN" "$HEADROOM_CURL" 2>&1); then
-                    echo "ERR arm-resume: cygpath -w failed converting [headroom=$HEADROOM_BIN curl=$HEADROOM_CURL]: $_hp_cyg_out" >&2
-                    rm -f "$bat_path"
-                    exit 4
-                fi
-                headroom_bin_win="${_hp_cyg_out%%$'\n'*}"
-                _hp_cyg_rest="${_hp_cyg_out#*$'\n'}"
-                curl_bin_win="${_hp_cyg_rest%%$'\n'*}"
-                # Same incomplete-output guard as the batched 3-path split
-                # above: a cygpath that exits 0 with fewer
-                # lines must not leave curl_bin_win aliasing headroom_bin_win.
-                if [ -z "$headroom_bin_win" ] || [ -z "$curl_bin_win" ] || [ "$_hp_cyg_out" = "$_hp_cyg_rest" ]; then
-                    echo "ERR arm-resume: cygpath -w produced incomplete output (headroom/curl): $_hp_cyg_out" >&2
-                    rm -f "$bat_path"
-                    exit 4
-                fi
-                # hb is interpolated into the NESTED `cmd /c` detached-start
-                # line below (a SECOND cmd parse), so it needs the double-
-                # parse escape (_arm_nested_cmd_escape: cadence base + caret
-                # escapes on ^ & < > |). cu (the curl livez checks) is a
-                # single-parse top-level .bat line, so it keeps
-                # cadence_cmd_escape. Do NOT unify them -- the two-parse
-                # distinction is the contract (proxy-suite T4b
-                # pins ^& on hb's line; T1287a/b/c pin NO carets on the
-                # single-parse sites).
-                hb=$(_arm_nested_cmd_escape "$headroom_bin_win")
-                cu=$(cadence_cmd_escape "$curl_bin_win")
-            fi
-            # Self-clean FIRST: a /sc ONCE task lingers in Task Scheduler
-            # after it fires (Ready/completed), accumulating stale jobs and
-            # blocking a future same-handover arm without --force. So the
-            # launcher deletes its OWN task as its first action. Deleting a
-            # one-shot task's registration does NOT terminate the already-
-            # spawned action process, so claude still launches below.
-            # Non-fatal (>nul 2>&1, no `|| exit`): a failed cleanup must
-            # never block the relaunch. TASK_NAME is sanitized to
-            # [:alnum:]_- so it carries no CMD metacharacters.
-            # cd /d switches drive + path in one step; quoted to survive
-            # spaces. `|| exit /b 1` ensures the .bat aborts instead of
-            # silently falling through to claude.exe in the wrong CWD
-            # (which is the bug this fix targets — see comment above
-            # RESUME_CWD computation).
-            # Prompt MUST come before --channels: --channels is variadic
-            # (consumes following args), so a trailing positional prompt
-            # gets parsed as a bogus channel entry ("must be tagged" → exit 1).
-            # HIMMEL_HEADROOM_PROXY: when active, gate the
-            # claude launch on a livez check, starting the proxy DETACHED
-            # if it's down and giving it ~3s before rechecking. Fail-open:
-            # if it's STILL down after the retry, fall through to a bare
-            # launch (a broken proxy must never block the relaunch) — the
-            # log at %USERPROFILE%\.headroom-proxy.log is the only trail.
-            # `start "" /b cmd /c "..."` (not `start "" /b <exe> ... >>log`,
-            # which does not reliably redirect the child) is the verified
-            # detached-with-redirection form. `if errorlevel 1` reads the
-            # LAST command's exit code, so the second `if errorlevel 1`
-            # below correctly reflects either the original livez check (skip
-            # branch never ran) or the retry livez check (skip branch ran) —
-            # no delayed-expansion (!VAR!) needed anywhere. %USERPROFILE% is
-            # a literal CMD env-var reference (NOT run through the %->%%
-            # escaping below, which is for literal-data percents only).
-            # CR round: each branch appends ONE mode-marker line to the
-            # proxy log before launching (proxied vs bare-fallback) — the
-            # measurement trail; without it a fired launch is
-            # indistinguishable after the fact. %DATE%/%TIME% expand when
-            # CMD parses the if-block, close enough to launch time.
-            # TASK_NAME is sanitized to [:alnum:]_- (no CMD metachars).
-            {
-                printf 'schtasks /delete /tn "%s" /f >nul 2>&1\r\n' "$TASK_NAME"
-                # Capture the run_id via a temp file, NOT `for /f` — for /f
-                # re-parses its backquoted command through cmd /c, whose
-                # quote-stripping mangles a command that STARTS with a quoted
-                # path and carries more quoted args (live-fire verified s52).
-                printf 'set "FLOW_RUN_ID="
-'
-                printf 'set "FLOW_RUN_TMP=%%TEMP%%\\flow-run-%s.tmp"
-' "$TASK_NAME"
-                printf '"%s" "%s" --append-start "armed-resume" "" "%%COMPUTERNAME%%" "claude" "" "%s" "" "" > "%%FLOW_RUN_TMP%%" 2>NUL
-' "$bw" "$fl" "$TASK_NAME"
-                printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_ID=<"%%FLOW_RUN_TMP%%"
-'
-                printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1
-'
-                if [ -n "$WSL_DISTRO" ]; then
-                    # -d value MUST be unquoted: wsl.exe splits its
-                    # pre--e command line naively and does NOT strip CMD-level
-                    # double quotes, so -d "Ubuntu" resolves the five-char name
-                    # plus quotes -> WSL_E_DISTRO_NOT_FOUND (rc -1, live win2
-                    # fire). Interactive tests never caught it because bash/
-                    # PowerShell strip the quotes before wsl.exe sees them;
-                    # only the emitted .bat passes them through. Safe unquoted:
-                    # WSL_DISTRO is validated ^[A-Za-z0-9._-]+$ at parse time.
-                    printf 'wsl.exe -d %s -e bash -lc "%s"\r\n' "$WSL_DISTRO" "$wsl_launch"
-                else
-                    printf 'cd /d "%s" || exit /b 1\r\n' "$c"
-                    # ALWAYS clear both vars first, then
-                    # conditionally re-grant when --automerge was explicit on
-                    # THIS arm. A cap-triggered auto re-arm never passes
-                    # --automerge (auto-arm-on-cap.sh), so its generated .bat
-                    # must not depend on schtasks NOT having carried an
-                    # ambient ARMAUTOMERGE/CR_MERGE_GATE_OK through from
-                    # whatever launched it -- the emitted text enforces its
-                    # own contract regardless of ambient env.
-                    # clear ARM_RESUME_SAFETY_ARM too, for the same
-                    # reason and by symmetry with the POSIX launch bodies — the
-                    # fired .bat session must not inherit a leaked long-gap
-                    # exemption from the submitting safety-arm env.
-                    printf 'set "ARMAUTOMERGE="\r\n'
-                    printf 'set "CR_MERGE_GATE_OK="\r\n'
-                    printf 'set "ARM_RESUME_SAFETY_ARM="\r\n'
-                    # claude exports CLAUDE_CODE_CHILD_SESSION=1
-                    # (and CLAUDE_PID) into every process it spawns, so a
-                    # session armed FROM a claude tool call fires as a
-                    # throwaway CHILD: transcript saving off, context-fill
-                    # blind (rc=4), nothing for /handover-resume-armed or the
-                    # luna session-capture hook. An armed resume is the
-                    # opposite of a throwaway, so clear both — then force
-                    # persistence ON, since claude's own default for a child
-                    # is off and the .bat is what the relaunch is governed by.
-                    # CLAUDE_CODE_SESSION_ID is a round-6 addition to the
-                    # same clear: claude generates its own id regardless, so
-                    # this never affected context-fill.sh, but the relaunched
-                    # claude process's OWN environ otherwise still carried
-                    # the ARMING session's stale id — the exact surface this
-                    # ticket taught people to inspect.
-                    printf 'set "CLAUDE_CODE_CHILD_SESSION="\r\n'
-                    printf 'set "CLAUDE_PID="\r\n'
-                    printf 'set "CLAUDE_CODE_SESSION_ID="\r\n'
-                    printf 'set "CLAUDE_CODE_FORCE_SESSION_PERSISTENCE=1"\r\n'
-                    if [ "$AUTOMERGE" -eq 1 ]; then
-                        printf 'set "ARMAUTOMERGE=1"\r\n'
-                        # CR_MERGE_GATE_OK=1 is granted only
-                        # alongside an explicit --automerge, never the dotenv default.
-                        if [ "$AUTOMERGE_GRANTS_MERGE_GATE" -eq 1 ]; then
-                            printf 'set "CR_MERGE_GATE_OK=1"\r\n'
-                        fi
-                    fi
-                    # the auto-arm stale escalation's own child.
-                    # auto-arm-on-cap.sh reads this out of the relaunched
-                    # session's env and warns instead of arming again, which is
-                    # what bounds the +5h safety-arm chain. Cleared first on the
-                    # same always-clear contract as the three lines above.
-                    printf 'set "AUTO_ARM_SAFETY_CHILD="\r\n'
-                    if [ "$SAFETY_CHILD" -eq 1 ]; then
-                        printf 'set "AUTO_ARM_SAFETY_CHILD=1"\r\n'
-                    fi
-                    if [ "$HEADROOM_PROXY_ACTIVE" -eq 1 ]; then
-                        printf '"%s" -s -m 5 http://127.0.0.1:%s/livez >nul 2>&1\r\n' "$cu" "$HEADROOM_PROXY_PORT"
-                        printf 'if errorlevel 1 (\r\n'
-                        printf '    start "" /b cmd /c ""%s" proxy --port %s >> "%%USERPROFILE%%\\.headroom-proxy.log" 2>&1"\r\n' "$hb" "$HEADROOM_PROXY_PORT"
-                        printf '    ping -n 4 127.0.0.1 >nul\r\n'
-                        printf '    "%s" -s -m 5 http://127.0.0.1:%s/livez >nul 2>&1\r\n' "$cu" "$HEADROOM_PROXY_PORT"
-                        printf ')\r\n'
-                        printf 'if errorlevel 1 (\r\n'
-                        printf '    echo %%DATE%% %%TIME%% arm=%s mode=bare-fallback>> "%%USERPROFILE%%\\.headroom-proxy.log"\r\n' "$TASK_NAME"
-                        printf '    "%s"%s "%s"%s%s%s\r\n' "$claude_cmd_win" "$nm" "$p" "$ch" "$mo" "$ac"
-                        printf ') else (\r\n'
-                        printf '    echo %%DATE%% %%TIME%% arm=%s mode=proxied>> "%%USERPROFILE%%\\.headroom-proxy.log"\r\n' "$TASK_NAME"
-                        printf '    set "ANTHROPIC_BASE_URL=http://127.0.0.1:%s"\r\n' "$HEADROOM_PROXY_PORT"
-                        printf '    set "HEADROOM_OFFLINE=1"\r\n'
-                        printf '    "%s"%s "%s"%s%s%s\r\n' "$claude_cmd_win" "$nm" "$p" "$ch" "$mo" "$ac"
-                        printf ')\r\n'
-                    else
-                        printf '"%s"%s "%s"%s%s%s\r\n' "$claude_cmd_win" "$nm" "$p" "$ch" "$mo" "$ac"
-                    fi
-                fi
-                printf 'set "FLOW_RUN_RC=%%ERRORLEVEL%%"\r\n'
-                printf 'set "FLOW_RUN_OUTCOME=complete"\r\n'
-                printf '"%s" "%s" --classify "%%FLOW_RUN_RC%%" "" > "%%FLOW_RUN_TMP%%" 2>NUL\r\n' "$bw" "$fl"
-                printf 'if exist "%%FLOW_RUN_TMP%%" set /p FLOW_RUN_OUTCOME=<"%%FLOW_RUN_TMP%%"\r\n'
-                printf 'del /q "%%FLOW_RUN_TMP%%" >NUL 2>&1\r\n'
-                printf 'if "%%FLOW_RUN_OUTCOME%%"=="" set "FLOW_RUN_OUTCOME=complete"\r\n'
-                printf 'if not "%%FLOW_RUN_ID%%"=="" "%s" "%s" --append-end "armed-resume" "%%FLOW_RUN_ID%%" "" "%%FLOW_RUN_RC%%" "%%FLOW_RUN_OUTCOME%%" "" "%s" > NUL 2>&1\r\n' "$bw" "$fl" "$fr_note"
-                printf 'exit /b %%FLOW_RUN_RC%%\r\n'
-            } > "$bat_path"
-            _arm_require_worker_autocompact_argv "$(tr -d '\r' < "$bat_path")"
-
-            # re-render START_DATE in the MACHINE's own
-            # Windows short-date locale right before it's used as /sd —
-            # schtasks parses /sd per-locale, so the MM/DD/YYYY default
-            # derived above is only correct on a US-format machine. Any
-            # render failure (empty PY_ARMOR_OUT) falls back to the
-            # original START_DATE, i.e. exactly the earlier behavior.
-            # _locale_degraded=1 when the /sd value did NOT come from a
-            # successful registry-read + render (fallback used). On its own
-            # that only degrades locale-correctness -- but if the post-arm
-            # verify below is ALSO unavailable, BOTH safeguards are down and
-            # a day-first machine is back in the original misarm class, so
-            # that combination fails closed (codex-adv-8).
-            local _win_pat _win_sd _locale_degraded
-            _locale_degraded=0
-            if ! _win_pat=$(_win_short_date_pattern); then
-                _locale_degraded=1
-            fi
-            _win_sd=""
-            if _win_render_short_date "$TARGET_EPOCH" "$_win_pat"; then
-                _win_sd="$PY_ARMOR_OUT"
-            fi
-            if [ -z "$_win_sd" ]; then
-                _win_sd="$START_DATE"
-                _locale_degraded=1
-            fi
-
-            if [ "$DRY_RUN" -eq 1 ]; then
-                echo "DRY arm-resume: would schtasks /create /tn $TASK_NAME /tr $bat_path_win /sc ONCE /st $RESUME_TIME /sd $_win_sd /f"
-                echo "DRY arm-resume: .bat content:"
-                sed 's/^/    /' "$bat_path"
-                rm -f "$bat_path"
-                return 0
-            fi
-
-            # finding 2: export whatever is currently registered
-            # under $TASK_NAME before the /create below overwrites it in
-            # place (see _win_restore_backup_task above for why). A query
-            # failure just means there was nothing to back up -- the normal
-            # first-arm case, not an error.
-            local _backup_xml
-            _backup_xml=$(mktemp -t arm-resume.task-backup.XXXXXX.xml)
-            if ! MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /query /tn "$TASK_NAME" /xml ONE > "$_backup_xml" 2>/dev/null; then
-                rm -f "$_backup_xml"
-                _backup_xml=""
-            fi
-
-            local err_file
-            err_file=$(mktemp -t arm-resume.err.XXXXXX)
-            # MSYS_NO_PATHCONV=1:  note in list_existing.
-            if ! MSYS_NO_PATHCONV=1 "${SCHTASKS_CMD:-schtasks}" /create /tn "$TASK_NAME" /tr "$bat_path_win" /sc ONCE /st "$RESUME_TIME" /sd "$_win_sd" /f 2>"$err_file"; then
-                echo "ERR arm-resume: schtasks /create failed:" >&2
-                cat "$err_file" >&2
-                rm -f "$err_file" "$bat_path" "$_backup_xml"
-                exit 4
-            fi
-            rm -f "$err_file"
-            # Epoch at create-completion (codex-adv-3): if /create itself
-            # finished AFTER the target (slow setup on a tight lead), the
-            # ONCE task registers already-expired and can never fire -- a
-            # later NEXTRUN-NONE must then be a refused arm, never
-            # "consumed". Captured here, read in the verify branch below.
-            local _create_done_epoch
-            _create_done_epoch=$(date +%s)
-
-            # post-arm NextRunTime verify. A successful
-            # schtasks /create rc=0 is not proof the task will fire at the
-            # intended moment -- a misregistered /sd (wrong locale, or any
-            # other silent misparse) still returns rc=0, and the task then
-            # just sits Ready and never fires (or fires months out — the
-            # exact bug). Get-ScheduledTaskInfo's .NextRunTime is
-            # a real DateTime (locale-independent), unlike `schtasks /query`
-            # output, so it's the trustworthy cross-check. Fail-OPEN on the
-            # PROBE itself (missing/broken PowerShell must never block an
-            # otherwise-good arm -- WARN and let the arm stand); fail-CLOSED
-            # on a bad ANSWER (a confirmed months-out registration is worse
-            # than no arm at all -- delete the just-created task and refuse).
-            # Skipped entirely under --dry-run (the DRY branch above already
-            # returned).
-            local _verify_err _ps_out _ps_rc
-            _verify_err=$(mktemp -t arm-resume.verify-err.XXXXXX)
-            _ps_rc=0
-            # `|| _ps_rc=$?` (not a bare trailing `_ps_rc=$?`): under this
-            # file's `set -e`, a failing command substitution assigned
-            # straight to a variable aborts the script right there — same
-            # armor idiom py_armor_capture uses to stay errexit-safe.
-            # -ErrorAction Stop + try/catch (codex-adv-10): NEXTRUN-NONE must
-            # mean a SUCCESSFUL query that definitively found no next run --
-            # task-not-found maps to it via the locale-independent
-            # ObjectNotFound category; every OTHER query error (access
-            # denied, service failure, missing cmdlet) exits nonzero and
-            # takes the probe-failure path instead of masquerading as an
-            # authoritative answer.
-            _ps_out=$(powershell -NoProfile -NonInteractive -Command "
-                try {
-                    \$t = Get-ScheduledTaskInfo -TaskPath '\' -TaskName '$TASK_NAME' -ErrorAction Stop
-                    if (\$null -eq \$t.NextRunTime) { 'NEXTRUN-NONE' }
-                    else { [int64]([DateTimeOffset]\$t.NextRunTime.ToUniversalTime()).ToUnixTimeSeconds() }
-                } catch {
-                    # CommandNotFoundException (ScheduledTasks module absent)
-                    # ALSO carries the ObjectNotFound category -- it must
-                    # stay a probe failure, not a task-not-found answer
-                    # (coderabbit-1).
-                    if (\$_.Exception -is [System.Management.Automation.CommandNotFoundException]) { Write-Error \$_; exit 1 }
-                    elseif (\$_.CategoryInfo.Category -eq 'ObjectNotFound') { 'NEXTRUN-NONE' }
-                    else { Write-Error \$_; exit 1 }
-                }
-            " 2>"$_verify_err") || _ps_rc=$?
-            if [ "$_ps_rc" -ne 0 ] || [ -z "$_ps_out" ]; then
-                if [ "$_locale_degraded" -eq 1 ]; then
-                    # BOTH safeguards down: the /sd came from the US-format
-                    # fallback AND the verify can't check what actually
-                    # registered -- on a day-first machine this is exactly
-                    # the silent months-out misarm again. Loud no-arm wins.
-                    echo "ERR arm-resume: locale detection fell back to MM/dd/yyyy AND the post-arm verify could not run (rc=$_ps_rc) -- with both safeguards unavailable a mistimed arm would be silent. Deleting the task; fix 'reg'/'powershell' availability and re-arm." >&2
-                    sed 's/^/    /' "$_verify_err" >&2
-                    rm -f "$_verify_err"
-                    _win_delete_bad_task "$TASK_NAME" || true
-                    if _win_restore_backup_task "$TASK_NAME" "$_backup_xml"; then
-                        rm -f "$_backup_xml"
-                    fi
-                    rm -f "$bat_path"
-                    exit 2
-                fi
-                # (r5): fail-OPEN stands -- an unreachable probe is
-                # not evidence of a bad arm, and refusing here would strand every
-                # host where powershell is unavailable. But the closing banner
-                # must not then claim an EARNED success: the whole point of this
-                # ticket is that RESUME ARMED means "queried back and confirmed",
-                # and this arm was never confirmed. Flag it; the banner says so.
-                _ARM_UNVERIFIED=1
-                echo "WARN arm-resume: post-arm NextRunTime verify could not run (rc=$_ps_rc) -- arm stands unverified:" >&2
-                sed 's/^/    /' "$_verify_err" >&2
-                rm -f "$_verify_err"
-            else
-                rm -f "$_verify_err"
-                _ps_out=$(printf '%s' "$_ps_out" | tr -d '\r\n ')
-                if [ "$_ps_out" = "NEXTRUN-NONE" ]; then
-                    # Create->verify race guard (codex-adv-1/-2): the emitted
-                    # .bat deletes its OWN task registration as its first
-                    # action, so a target whose time ARRIVED between /create
-                    # and this probe can legitimately be gone -- consumed,
-                    # not misarmed. A scheduler never fires EARLY, so a
-                    # missing task whose target is still in the future
-                    # cannot have fired -- that is a bad registration (e.g. a
-                    # past-date /sd misparse also registers with no
-                    # NextRunTime), and lead time alone must not excuse it.
-                    local _now_epoch _lead
-                    _now_epoch=$(date +%s)
-                    _lead=$((TARGET_EPOCH - _now_epoch))
-                    # Consumed iff created-before-target AND verified-after-
-                    # target -- a task created after its target registers
-                    # expired and never fires (codex-adv-3), and one whose
-                    # target is still future cannot have fired, even by a
-                    # second: the scheduler never fires early and every
-                    # epoch here reads the same local clock, so no skew
-                    # grace is warranted (codex-adv-2/-4). Everything else
-                    # refuses loudly.
-                    # Strict < : a create completing WITHIN the target second
-                    # is ambiguous (may have registered after the trigger
-                    # instant) -- ambiguity refuses (codex-adv-6).
-                    # ...and only with POSITIVE evidence that it fired (r4
-                    # round). Timing alone cannot tell a self-deleted fire from
-                    # a create that silently registered nothing and then had its
-                    # target lapse before this probe: both leave no task and a
-                    # passed target. Calling the second one CONSUMED reports an
-                    # already-running session that does not exist, so nobody
-                    # re-arms -- the same silent death the generic verify guards
-                    # against, and the same ledger row settles it.
-                    if [ "$_lead" -le 0 ] && [ "$_create_done_epoch" -lt "$TARGET_EPOCH" ] \
-                       && _arm_fired_evidence; then
-                        # consumed is NOT armed. The flag stops the
-                        # generic post-arm existence verify from re-refusing a
-                        # legitimately-fired task, and swaps the closing banner
-                        # from "RESUME ARMED" to a CONSUMED one -- an operator
-                        # who reads ARMED here will wait for a fire that already
-                        # happened.
-                        _ARM_CONSUMED=1
-                        echo "WARN arm-resume: post-arm verify found no task '$TASK_NAME' and the target time has passed (lead=${_lead}s, created ${_create_done_epoch} <= target ${TARGET_EPOCH}) -- it fired and self-deleted during the create->verify window; treating the arm as consumed, not failed." >&2
-                    else
-                        echo "ERR arm-resume: post-arm verify found NO NextRunTime for '$TASK_NAME' (requested $RESUME_TIME on $_win_sd, epoch=$TARGET_EPOCH, lead=${_lead}s, create-done=$_create_done_epoch -- a still-future target cannot have fired, and a task created after its target never fires). Deleting the bad task -- this is the silent-misarm class." >&2
-                        _win_delete_bad_task "$TASK_NAME" || true
-                        if _win_restore_backup_task "$TASK_NAME" "$_backup_xml"; then
-                            rm -f "$_backup_xml"
-                        fi
-                        rm -f "$bat_path"
-                        exit 2
-                    fi
-                else
-                case "$_ps_out" in
-                    *[!0-9]*|'')
-                        if [ "$_locale_degraded" -eq 1 ]; then
-                            # Same dual-failure class as the dead-probe path
-                            # above: garbage output is no usable confirmation
-                            # either (codex-adv-9).
-                            echo "ERR arm-resume: locale detection fell back to MM/dd/yyyy AND the post-arm verify returned a non-numeric NextRunTime ('$_ps_out') -- with both safeguards unavailable a mistimed arm would be silent. Deleting the task; fix 'reg'/'powershell' availability and re-arm." >&2
-                            _win_delete_bad_task "$TASK_NAME" || true
-                            if _win_restore_backup_task "$TASK_NAME" "$_backup_xml"; then
-                                rm -f "$_backup_xml"
-                            fi
-                            rm -f "$bat_path"
-                            exit 2
-                        fi
-                        echo "WARN arm-resume: post-arm verify returned a non-numeric NextRunTime ('$_ps_out') -- arm stands unverified" >&2
-                        ;;
-                    *)
-                        local _diff
-                        if [ "$_ps_out" -gt "$TARGET_EPOCH" ]; then
-                            _diff=$((_ps_out - TARGET_EPOCH))
-                        else
-                            _diff=$((TARGET_EPOCH - _ps_out))
-                        fi
-                        # A healthy arm registers NextRunTime on the exact
-                        # requested minute, so anything beyond scheduler
-                        # resolution (120s) is a real mistime -- a one-day-
-                        # late registration misses the resume window just as
-                        # surely as a months-out one (codex-adv-5; tightened
-                        # from the ticket's original 24h sketch).
-                        if [ "$_diff" -gt 120 ]; then
-                            echo "ERR arm-resume: post-arm verify mismatch for '$TASK_NAME' -- requested epoch=$TARGET_EPOCH ($RESUME_TIME on $_win_sd), registered NextRunTime epoch=$_ps_out (diff=${_diff}s > 120s tolerance). Deleting the bad task -- this is the mistimed-arm class." >&2
-                            _win_delete_bad_task "$TASK_NAME" || true
-                            if _win_restore_backup_task "$TASK_NAME" "$_backup_xml"; then
-                                rm -f "$_backup_xml"
-                            fi
-                            rm -f "$bat_path"
-                            exit 2
-                        fi
-                        ;;
-                esac
-                fi
-            fi
-            # Every path above that did NOT exit is a success (verified,
-            # unverified-but-standing, or consumed) -- the new arm stands
-            # and the pre-overwrite backup is no longer needed.
-            rm -f "$_backup_xml"
-            ;;
         linux)
             if command -v at >/dev/null 2>&1; then
                 # at jobs are one-shot and atd removes them from the queue
-                # after they run, so (unlike schtasks ONCE and crontab) the
+                # after they run, so (unlike crontab) the
                 # at body needs no self-clean line — the queue cleans itself.
                 # at heredoc body INCLUDES the HIMMEL-Resume-<name>
                 # marker as a comment line so list_existing's grep
@@ -6439,7 +5091,7 @@ CMD
 # failure, so a lapsed HH:MM stays lapsed and the post-arm verify below refuses
 # it LOUDLY (the honest answer is a failed arm, not a different one).
 #
-# ARM_MIN_LEAD_SEC: the floor, in seconds (default 120 -- schtasks ONCE has
+# ARM_MIN_LEAD_SEC: the floor, in seconds (default 120 -- schedulers have
 # minute granularity plus scheduler latency, so anything under ~2 min is a coin
 # flip). Also the suite's seam for forcing the bump deterministically.
 #
@@ -6447,9 +5099,7 @@ CMD
 # sentinel would otherwise land on another HIMMEL-* task's exact minute with the
 # refusal skipped -- two concurrent sessions, which is the one thing rc 6 exists
 # to prevent (codex-3, r2 round). It is re-run BELOW, but only inside the bump
-# branch: on Windows list_collision_candidates reads the schtasks cache warmed
-# before the dedup scan, so the re-check costs no extra scheduler query on the
-# arm's time-critical path, and on POSIX it is a cheap atq/crontab read. Nothing
+# branch: the re-check is a cheap atq/crontab read. Nothing
 # is armed yet at this point, so refusing here needs no rollback.
 _ARM_MIN_LEAD=${ARM_MIN_LEAD_SEC:-120}
 case "$_ARM_MIN_LEAD" in ''|*[!0-9]*) _ARM_MIN_LEAD=120 ;; esac
@@ -6457,7 +5107,7 @@ if [ "$_ARM_SENTINEL" -eq 1 ] && [ "$DRY_RUN" -eq 0 ]; then
     _arm_now=$(date +%s)
     if [ $((TARGET_EPOCH - _arm_now)) -lt "$_ARM_MIN_LEAD" ]; then
         _arm_old_epoch="$TARGET_EPOCH"
-        # Round UP to the next whole minute: schtasks /st and at -t both take
+        # Round UP to the next whole minute: at -t and crontab both take
         # HH:MM, so a target mid-minute would truncate BACKWARD into the past.
         TARGET_EPOCH=$(( ((_arm_now + _ARM_MIN_LEAD) / 60 + 1) * 60 ))
         if ! py_armor_capture -c '
@@ -6532,25 +5182,14 @@ fi
 # ---------------------------------------------------------------------------
 # the SUCCESS line must be EARNED.
 #
-# Everything above can print an encouraging trail and still leave nothing armed:
-# schtasks /create returns rc=0 for a task whose fire time already passed, and
-# the guard then deletes it. That guard exits 2 on the Windows paths
-# it can see -- but POSIX at/crontab had NO post-arm check at all (`at -t` rc=0
-# went straight to the banner), and no platform re-asked the cheapest question
-# of all: is the target still in the FUTURE now that we are done?
-#
-# So: query the arm BACK from the scheduler, by the same identity dedup matches
-# on (list_existing task -- one implementation, all three platforms), and refuse
-# with a named reason if it is gone or if its fire time has passed. On Windows
-# the query cache was populated by the PRE-arm dedup scan, so it must be
-# invalidated first or we would be reading a snapshot from before the create.
+# Query the arm BACK from the scheduler with list_existing task, and refuse
+# with a named reason if it is gone or if its fire time has passed.
 #
 # Fail-OPEN on a broken PROBE, fail-CLOSED on a bad ANSWER -- the same split
 # settled on. _ARM_CONSUMED marks the one legitimate no-task case
 # (the arm fired during the create->verify window); it is reported as CONSUMED,
 # never as ARMED.
 if [ "${_ARM_CONSUMED:-0}" -ne 1 ]; then
-    _SCHTASKS_CACHE_DONE=""
     _arm_verify_found=$(list_existing task 2>/dev/null) || _arm_verify_found="__PROBE_FAILED__"
     # The clock is read AFTER the query, not before it (codex-2, r2 round). The
     # scheduler query is the slowest thing on this path, and a target that was
@@ -6562,12 +5201,7 @@ if [ "${_ARM_CONSUMED:-0}" -ne 1 ]; then
     _arm_verify_now=$(date +%s)
     _arm_verify_lead=$((TARGET_EPOCH - _arm_verify_now))
     if [ "$_arm_verify_found" = "__PROBE_FAILED__" ]; then
-        # Same fail-open, same honesty tax as the NextRunTime probe above.
-        # NOTE: on every platform today list_existing cannot actually RETURN
-        # non-zero -- _ensure_schtasks_cache and the atq branch both `exit 2` on
-        # a genuine query error -- so this arm is belt-and-braces for a future
-        # where that contract loosens. It stays because the alternative (a bare
-        # fall-through to RESUME ARMED) is the exact untruth this ticket removes.
+        # A failed probe is not evidence that the scheduler entry is missing.
         _ARM_UNVERIFIED=1
         echo "WARN arm-resume: post-arm existence verify could not query the scheduler -- the arm stands unverified." >&2
     elif [ -z "$_arm_verify_found" ] && [ "$_arm_verify_lead" -le 0 ] && _arm_fired_evidence; then
@@ -6616,14 +5250,14 @@ fi
 
 # a chief-class arm records the context it resolved DURABLY.
 # headed-arm.sh does this for the Linux/KDE path; this is the
-# other arming path (the Windows schtasks backend), and without it a chief
+# other arming path, and without it a chief
 # armed here is unattributable  the moment the arm log is gone.
 # Here, not at the top: the arm has been verified, so no `NOT armed` exit above
 # leaves a row for a session that never launches -- and before the CONSUMED
 # exit below, because a consumed arm DID launch with this mode. Best-effort
 # like headed-arm.sh's: a lost record is named and never fails the arm. The row
 # is written by THIS shell at arm time (the mode is resolved and fixed now),
-# not by the schtasks .bat body, so it needs no Windows-side code.
+# not by the scheduled launch body.
 if [ "$_arm_is_chief" -eq 1 ] && ! chief_context_write_record "$SESSION_NAME" "$CONTEXT_MODE" "$_arm_context_source" "$AUTOCOMPACT"; then
     echo "WARN arm-resume: context record NOT written under ${CHIEF_CONTEXT_RECORD_DIR:-<no cache dir>} (this chief's launch context is unrecoverable after a reboot)" >&2
 fi
@@ -6668,29 +5302,13 @@ fi
 # the old one. Reached only on the --force path; ARM_REPLACE_MARKERS is empty
 # otherwise (and under --dry-run, which already printed its intent and exited).
 #
-# _arm_marker_is_new_arm skips a marker that names the job we JUST created —
-# but that in-place-overwrite assumption is only ever TRUE on windows:
-#   windows — `schtasks /create /f` FORCE-overwrites a same-named task, so a
-#     same-identity re-arm replaced the old row IN PLACE and there is no
-#     separate old row left to reap; deleting that name deletes the new arm.
-#     _arm_marker_is_new_arm's skip is scoped to this platform for exactly
-#     that reason.
-#   POSIX (crontab / at) never gets that in-place overwrite: _crontab_schedule
-#     always APPENDS rather than replacing a same-marker line, and an at-job
-#     always registers under a fresh job id — so every marker captured here,
-#     on POSIX, is genuinely superseded and _arm_marker_is_new_arm always
-#     reaps it. On crontab, _crontab_delete removes only the FIRST line
-#     exactly matching the marker (not every occurrence), so a byte-identical
-#     re-arm's freshly-appended duplicate survives even though the superseded
-#     line it was captured from gets deleted.
+# crontab appends a fresh line and at registers a fresh job id, so every
+# captured old marker is superseded. _crontab_delete removes only the first
+# matching line, preserving a freshly appended byte-identical replacement.
 if [ -n "${ARM_REPLACE_MARKERS:-}" ]; then
     _arm_reap_failed=0
     while IFS= read -r _rm; do
         [ -z "$_rm" ] && continue
-        if _arm_marker_is_new_arm "$_rm"; then
-            echo "arm-resume: superseded '$_rm' in place (same identity) — nothing to reap"
-            continue
-        fi
         delete_existing "$_rm" soft || _arm_reap_failed=$((_arm_reap_failed + 1))
     done <<< "$ARM_REPLACE_MARKERS"
     if [ "$_arm_reap_failed" -gt 0 ]; then
@@ -6765,7 +5383,7 @@ if [ -n "${HIMMEL_856_HR_ROOT:-}" ]; then
             echo "  This handover now has PENDING arms on MULTIPLE hosts:"
             echo "      this host:  $_arm_host"
             echo "      also armed: $_arm_post_hits"
-            echo "  Cancel one of them (schtasks /delete on the losing host, or"
+            echo "  Cancel one of them (on the losing host, use"
             echo "  its cron/at equivalent) -- otherwise both will fire and"
             echo "  serialize only at the queue lock, wasting a session slot."
             echo "=================================================================="

@@ -4,7 +4,9 @@
 # ONE more /pr-check review round itself, on a persisted judge record, so the
 # operator no longer hand-pastes `printf '2\n' > .git/cr-review-rounds/<b>.round`.
 #
-# Usage: grant-round.sh <pr> <new-head> <qid>
+# Usage: grant-round.sh <pr> <new-head> <qid> [--repo <owner/repo>]
+# --repo reads the signed record from that adopted repo's bucket (where
+# write-verdict.sh --repo writes it); without it, the harness bucket.
 #
 # A PR parks at the round-3 cap (review-round.sh). The cap
 # exists so a worker cannot buy itself rounds; the chief is not the author, and
@@ -61,11 +63,11 @@ case "${BASH_SOURCE[0]}" in */*) _ah_d="${BASH_SOURCE[0]%/*}" ;; *) _ah_d=. ;; e
 . "$_ah_d/../../cr/anchor-handoff.sh" || exit 2
 
 usage() {
-    echo "usage: grant-round.sh <pr> <new-head> <qid>" >&2
+    echo "usage: grant-round.sh <pr> <new-head> <qid> [--repo <owner/repo>]" >&2
     exit 1
 }
-[ "$#" -eq 3 ] || usage
-PR=$1 HEAD_SHA=$2 QID=$3
+[ "$#" -eq 3 ] || { [ "$#" -eq 5 ] && [ "$4" = --repo ] && [ -n "$5" ]; } || usage
+PR=$1 HEAD_SHA=$2 QID=$3 VREPO="${5:-}"
 case "$PR" in ''|0*|*[!0-9]*) echo "grant-round: <pr> must be a PR number without a leading zero (got '$PR')" >&2; exit 1 ;; esac
 case "$HEAD_SHA" in *[!0123456789abcdef]*) echo "grant-round: <new-head> must be the full 40-char lowercase hex sha" >&2; exit 1 ;; esac
 [ "${#HEAD_SHA}" -eq 40 ] || { echo "grant-round: <new-head> must be the full 40-char lowercase hex sha" >&2; exit 1; }
@@ -100,7 +102,7 @@ GH="${GRANT_ROUND_GH:-gh}"
 LOCK_LIB="${GRANT_ROUND_LOCK_LIB:-$LIB/shared-branch-lock.sh}"
 
 # --- the PR ----------------------------------------------------------------
-pr_json() { (cd "$PRIMARY" && "$GH" pr view "$PR" --json headRefName,headRefOid,isCrossRepository,state 2>/dev/null); }
+pr_json() { (cd "$PRIMARY" && "$GH" pr view "$PR" ${VREPO:+--repo "$VREPO"} --json headRefName,headRefOid,isCrossRepository,state 2>/dev/null); }
 view="$(pr_json)" || { echo "grant-round: gh pr view $PR failed" >&2; exit 13; }
 branch="$(printf '%s' "$view" | jq -r '.headRefName // empty')"
 live_head="$(printf '%s' "$view" | jq -r '.headRefOid // empty')"
@@ -117,7 +119,7 @@ fi
 
 # --- (a) the signed record ---------------------------------------------------
 ROOT="$(go_resolve_root "$ANCHOR")" && [ -n "$ROOT" ] || { echo "grant-round: cannot resolve the handover root" >&2; exit 3; }
-SCOPE="$(go_verdict_scope "$ANCHOR")" && [ -n "$SCOPE" ] || { echo "grant-round: cannot resolve this repo's verdict scope" >&2; exit 3; }
+SCOPE="$(go_verdict_scope "$ANCHOR" "$VREPO")" && [ -n "$SCOPE" ] || { echo "grant-round: cannot resolve this repo's verdict scope" >&2; exit 3; }
 vdir="$ROOT"
 [ -d "$vdir" ] && [ ! -L "$vdir" ] || { echo "grant-round: handover root '$vdir' is not a plain directory" >&2; exit 4; }
 for seg in "${SCOPE%%/*}" "${SCOPE#*/}" verdicts "$QID"; do
@@ -140,11 +142,11 @@ for f in "$vdir"/*.md; do
         exit 4
     fi
     snap=$GO_VERDICT_SNAP
-    l1="" l2="" l3="" l4="" l5="" l6="" l7="" l8="" l9="" l10="" l11=""
+    l1="" l2="" l3="" l4="" l5="" l6="" l7="" l8="" l9="" l10="" l11="" l12=""
     # shellcheck disable=SC2034  # l9 is the blank line the read must consume
     { IFS= read -r l1; IFS= read -r l2; IFS= read -r l3; IFS= read -r l4
       IFS= read -r l5; IFS= read -r l6; IFS= read -r l7; IFS= read -r l8
-      IFS= read -r l9; IFS= read -r l10; IFS= read -r l11; } <<EOF_SNAP 2>/dev/null
+      IFS= read -r l9; IFS= read -r l10; IFS= read -r l11; IFS= read -r l12; } <<EOF_SNAP 2>/dev/null
 $snap
 EOF_SNAP
     if [ "$l1" != "# VERDICT $QID - $name" ] || [ -n "$l2$l5$l7" ] || [ "$l6" != "## Verdict" ] \
@@ -159,7 +161,10 @@ EOF_SNAP
     [ "${word#* }" = "$HEAD_SHA" ] || continue
     go_verdict_mac_ok_text "$snap" "$SCOPE" "$QID" "$name" || continue
     [ "$l10" = "pr: $PR" ] || continue
-    case "$l11" in 'branch: '*) [ "${l11#branch: }" = "$branch" ] || continue ;; esac
+    # an adopted repo's record carries a repo: line before the branch: line
+    lbr=$l11
+    case "$l11" in 'repo: '*) lbr=$l12 ;; esac
+    case "$lbr" in 'branch: '*) [ "${lbr#branch: }" = "$branch" ] || continue ;; esac
     record="$QID/$name"
     rword="${word%% *}"
 done
