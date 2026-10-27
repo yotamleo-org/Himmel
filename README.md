@@ -1,6 +1,6 @@
 # himmel
 
-> **A control plane for Claude Code.**
+> **A control plane for coding agents.**
 
 Audience: newcomer. The page opens with the first task for someone new to
 himmel; the path for running or developing himmel itself is
@@ -31,9 +31,9 @@ turn it off.
 
 ## What himmel is
 
-himmel is a control plane for Claude Code, for a solo operator or a small team
-who works with Claude Code every day. Claude Code stays the harness that runs
-each session; himmel installs on top of it and governs those sessions without
+himmel is a control plane for coding agents, for a solo operator or a small
+team who works with one every day. The agent's own harness keeps running each
+session; himmel installs on top of it and governs those sessions without
 replacing it. It adds hooks, guardrails, slash commands, a local Jira CLI and
 a handover system, so the work follows a worktree-isolated, PR-gated,
 Jira-tracked workflow without anyone having to remember the rules. With a

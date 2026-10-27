@@ -13,9 +13,9 @@ starts to pay for its complexity once you run more than one session at a
 time, want work to continue while you sleep, or need context to survive a
 session boundary.
 
-himmel is a control plane for Claude Code: Claude Code stays the harness that
-runs each session, and himmel governs those sessions rather than replacing
-them. Each failure mode below is fixed at the lowest layer that can
+himmel is a control plane for coding agents: the agent's own harness keeps
+running each session, and himmel governs those sessions rather than replacing
+it. Each failure mode below is fixed at the lowest layer that can
 fix it. A guarded session fixes the forgotten rule, and handover fixes the
 context that dies with the session. At the top, Jarvis, the command layer
 ([jarvis-subsystems.md](jarvis-subsystems.md)), runs a fleet of guarded
