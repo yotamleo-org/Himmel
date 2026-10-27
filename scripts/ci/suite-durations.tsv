@@ -246,7 +246,6 @@ scripts/cr/test-critic-panel-instrumentation.sh	1
 scripts/cr/test-critic-panel-registry.sh	1
 scripts/cr/test-critic-panel-triviality.sh	1
 scripts/cr/test-critic-panel.sh	45
-scripts/cr/test-d1-verdict.sh	1
 scripts/cr/test-dependabot-go.sh	2
 scripts/cr/test-doc-freshness-advisory.sh	0
 scripts/cr/test-docs-audit-panel.sh	0
@@ -267,7 +266,6 @@ scripts/cr/test-orphan-check.sh	0
 scripts/cr/test-panel-first-pass.sh	2
 scripts/cr/test-pr-check-context.sh	55
 scripts/cr/test-pr-check-env.sh	0
-scripts/cr/test-pr-check-external.sh	1
 scripts/cr/test-pr-check-pair.sh	1
 scripts/cr/test-pr-check-rounds.sh	732
 scripts/cr/test-pr-check-run.sh	4
@@ -345,7 +343,6 @@ scripts/eval/test-worktree-latency-curve.sh	0
 scripts/git/test-classify-branches.sh	1
 scripts/git/test-restore-to-head.sh	1
 scripts/glm/test-append-outbox.sh	1
-scripts/glm/test-ship-branch.sh	1
 scripts/graphify/test-anchor-seeds.sh	1
 scripts/graphify/test-ast-update.sh	2
 scripts/graphify/test-check-graph-freshness.sh	1

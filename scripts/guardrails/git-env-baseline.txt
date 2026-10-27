@@ -26,7 +26,6 @@ SHELL:scripts/cr/known-findings.sh
 SHELL:scripts/cr/ledger-append.sh
 SHELL:scripts/cr/orphan-check.sh
 SHELL:scripts/cr/panel-first-pass.sh
-SHELL:scripts/cr/pr-check-external.sh
 SHELL:scripts/cr/review-round.sh
 SHELL:scripts/cr/write-verdicts.sh
 SHELL:scripts/handover/arm-resume.sh

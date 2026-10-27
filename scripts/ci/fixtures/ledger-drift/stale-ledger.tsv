@@ -151,7 +151,6 @@ scripts/cr/test-critic-panel-instrumentation.sh	1
 scripts/cr/test-critic-panel-registry.sh	1
 scripts/cr/test-critic-panel-triviality.sh	1
 scripts/cr/test-critic-panel.sh	43
-scripts/cr/test-d1-verdict.sh	1
 scripts/cr/test-doc-freshness-advisory.sh	1
 scripts/cr/test-docs-audit-panel.sh	0
 scripts/cr/test-emit-gate-fail.sh	0
@@ -168,7 +167,6 @@ scripts/cr/test-orphan-check.sh	0
 scripts/cr/test-panel-first-pass.sh	1
 scripts/cr/test-pr-check-context.sh	59
 scripts/cr/test-pr-check-env.sh	0
-scripts/cr/test-pr-check-external.sh	2
 scripts/cr/test-pr-check-pair.sh	2
 scripts/cr/test-pr-check-rounds.sh	17
 scripts/cr/test-pr-check-run.sh	3
@@ -183,7 +181,6 @@ scripts/eval/test-cache-probe.sh	1
 scripts/git/test-classify-branches.sh	1
 scripts/git/test-restore-to-head.sh	1
 scripts/glm/test-append-outbox.sh	1
-scripts/glm/test-ship-branch.sh	1
 scripts/graphify/test-ast-update.sh	2
 scripts/graphify/test-check-graph-freshness.sh	1
 scripts/graphify/test-detect-duplicate-notes.sh	0

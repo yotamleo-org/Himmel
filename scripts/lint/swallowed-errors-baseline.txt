@@ -58,8 +58,6 @@ scripts/cr/panel-first-pass.sh	cmdsub-devnull	5
 scripts/cr/panel-first-pass.sh	true-after-read	1
 scripts/cr/pr-check-context.sh	cmdsub-devnull	15
 scripts/cr/pr-check-env.sh	true-after-read	1
-scripts/cr/pr-check-external.sh	cmdsub-devnull	4
-scripts/cr/pr-check-external.sh	true-after-read	3
 scripts/cr/residue-scan.sh	cmdsub-devnull	1
 scripts/cr/residue-scan.sh	true-after-read	1
 scripts/cr/review-round.sh	cmdsub-devnull	62
