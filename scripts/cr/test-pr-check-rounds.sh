@@ -3202,15 +3202,17 @@ mkdir -p "$tmp/nonode"
 printf '#!/bin/sh\nexit 3\n' > "$tmp/nonode/node"; chmod +x "$tmp/nonode/node"
 ab_out="$(cd "$repo" && PATH="$tmp/nonode:$PATH" bash "$RR" abort --branch ab77node --head "$ab_h" 2>&1)"; ab_rc=$?
 assert_eq "$ab_rc" "8" "7753 (i) abort refuses when the panel ledger cannot be read ($ab_out)"
+assert_has "$ab_out" "cannot read the panel ledger" "7753 (i) the refusal is the ledger read, not another guard"
 assert_eq "$(cat "$git_dir/cr-review-rounds/ab77node.round")" "1" "7753 (i) the unreadable-ledger round keeps its count"
 # A ledger file node cannot open is not an empty ledger either.
 if [ "$(id -u)" -eq 0 ]; then
     echo "SKIP 7753 (j) root reads a mode-000 ledger, so the row cannot fail it"
 else
-    chmod 000 "$git_dir/cr-critic-scores.jsonl"
+    chmod 000 "$git_dir/cr-critic-scores.jsonl" || fail "7753 (j) fixture chmod 000"
     ab_out="$(cd "$repo" && bash "$RR" abort --branch ab77node --head "$ab_h" 2>&1)"; ab_rc=$?
-    chmod 644 "$git_dir/cr-critic-scores.jsonl"
+    chmod 644 "$git_dir/cr-critic-scores.jsonl" || fail "7753 (j) fixture chmod 644"
     assert_eq "$ab_rc" "8" "7753 (j) abort refuses when the panel ledger cannot be opened ($ab_out)"
+    assert_has "$ab_out" "cannot read the panel ledger" "7753 (j) the refusal is the ledger read, not another guard"
     assert_eq "$(cat "$git_dir/cr-review-rounds/ab77node.round")" "1" "7753 (j) the unopenable-ledger round keeps its count"
 fi
 
