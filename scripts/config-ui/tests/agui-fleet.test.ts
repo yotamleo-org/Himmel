@@ -1,7 +1,7 @@
 // GET /api/agui/fleet — every live session on one page. Drives the REAL fleet.sh (claude_sessions,
 // worker_tail_status) through claude-sessions.sh's own seams: a stub pgrep and a fake /proc whose cmdlines carry -n.
 import { test, expect, afterEach } from "bun:test";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -75,6 +75,88 @@ test("marker, lastSeenAt and prUrl per row; process orphans for the fleet", asyn
   expect((await (await fleet(port)).json()).processOrphans).toBeNull();
 });
 
+// a worker row carries worker_description (worker-identity.sh) beside its unchanged label: the doc's
+// description field, else the H1 (the whole stem-like title here); a session with no doc has none. TRACKER/FORGE pinned off so no row reaches Jira or GitHub.
+test("a worker row carries its description and its name is unchanged; a session with no doc has none", async () => {
+  const { port, dir } = boot({ TRACKER: "none", FORGE: "none" });
+  const doc = join(dir, "handover", "yotam", "himmel", `${FLEET.leg.name}.md`);
+  writeFileSync(doc, `---\ndescription: Show each worker's description on the fleet page\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  const by = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
+  expect(by[FLEET.leg.name].description).toBe("Show each worker's description on the fleet page");
+  expect(by[FLEET.leg.name].name).toBe(FLEET.leg.name);
+  expect(by[FLEET.wrapped.name].description).toBe(FLEET.wrapped.name); // no field: the H1
+  expect(by[FLEET.idle.name].description).toBe("");
+
+  // an edited doc re-resolves on its new mtime
+  writeFileSync(doc, `---\ndescription: Edited description\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  const later = Date.now() / 1000 + 60;
+  utimesSync(doc, later, later);
+  const again = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
+  expect(again[FLEET.leg.name].description).toBe("Edited description");
+});
+
+// a forge that never answers (a gh stub that sleeps) must not hold the page. HIMMEL_FLEET_DESC_TIMEOUT_MS shortens the
+// lookup deadline; each row below goes RED when one guard of the lookup in fleet.ts is removed (listed rows only,
+// the failure cache, the per-request batch, the process-group kill).
+function hangingForge(tag: string) {
+  const bin = mkdtempSync(join(tmpdir(), "agui-hang-"));
+  const calls = join(bin, "gh-calls");
+  writeFileSync(join(bin, "gh"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${calls}'\nsleep ${tag}\n`);
+  chmodSync(join(bin, "gh"), 0o755);
+  const s = boot({ TRACKER: "none", FORGE: "github", PATH: `${bin}:${process.env.PATH}`, HIMMEL_FLEET_DESC_TIMEOUT_MS: "1000" });
+  cleanups.push(() => { spawnSync("pkill", ["-f", `sleep ${tag}`]); rmSync(bin, { recursive: true, force: true }); });
+  const bucket = join(s.dir, "handover", "yotam", "himmel");
+  const seen = () => (existsSync(calls) ? readFileSync(calls, "utf8") : "").split("\n").filter(Boolean);
+  const leg = (pr: number) => writeFileSync(join(bucket, `${FLEET.leg.name}.md`), `# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 READY #${pr} abcdef1 GREEN\n`);
+  return { ...s, bucket, seen, leg };
+}
+
+test("descriptions resolve only for listed rows: 30 archived console docs past the window are never looked up", async () => {
+  const h = hangingForge("3011");
+  h.leg(4200);
+  const old = Date.now() / 1000 - 100 * 60 * 60;
+  for (let i = 0; i < 30; i++) {
+    const f = join(h.bucket, `OLD${i}-console.md`);
+    writeFileSync(f, `# OLD${i} console\n\n## Results\n\n- 09:00 MERGED #4100\n`);
+    utimesSync(f, old, old);
+  }
+  const first = await (await fleet(h.port)).json();
+  expect(first.sessions.some((s: any) => s.name === FLEET.leg.name)).toBe(true);
+  const seen = h.seen();
+  expect(seen.join("\n")).not.toContain("4100");
+  expect(seen.length).toBe(1);
+  expect(seen[0]).toContain("4200");
+});
+
+test("a lookup that hit its deadline is cached against the doc's mtime: later polls do not start it again", async () => {
+  const h = hangingForge("3022");
+  h.leg(4200);
+  const first = await (await fleet(h.port)).json();
+  expect(first.sessions.find((s: any) => s.name === FLEET.leg.name).description).toBe("");
+  await fleet(h.port);
+  await fleet(h.port);
+  expect(h.seen().length).toBe(1);
+});
+
+test("one request starts at most 8 lookups, however many rows are listed", async () => {
+  const h = hangingForge("3044");
+  for (let i = 0; i < 12; i++) writeFileSync(join(h.bucket, `NEW${i}-console.md`), `# NEW${i} console\n\n## Results\n\n- 09:00 MERGED #${4300 + i}\n`);
+  await fleet(h.port);
+  const n = h.seen().length;
+  expect(n).toBeGreaterThan(0);
+  expect(n).toBeLessThanOrEqual(8);
+});
+
+test("a lookup past its deadline is killed with its whole process group: no stub sleep survives", async () => {
+  const h = hangingForge("3033");
+  h.leg(4200);
+  await fleet(h.port);
+  expect(h.seen().length).toBe(1);
+  const alive = () => spawnSync("pgrep", ["-f", "sleep 3033"]).status === 0;
+  for (let i = 0; i < 30 && alive(); i++) await new Promise((r) => setTimeout(r, 100));
+  expect(alive()).toBe(false);
+});
+
 test("a session whose journal went quiet past the window is not listed; one with no journal is listed bare", async () => {
   const s = boot();
   const old = (Date.now() - 2 * 60 * 60 * 1000) / 1000;
@@ -103,6 +185,15 @@ test("secrets in the latest call's summary pass the redactor; names are kept", a
   expect(c.activity.tool).toBe("Bash");
   expect(JSON.stringify(c)).not.toContain(secret);
   expect(c.name).toBe(FLEET.console.name);
+});
+
+test("a description carrying a secret passes the redactor", async () => {
+  const { port, dir } = boot({ TRACKER: "none", FORGE: "none" });
+  const secret = "sk-ant-api03-" + "B".repeat(60);
+  writeFileSync(join(dir, "handover", "yotam", "himmel", `${FLEET.leg.name}.md`), `---\ndescription: rotate ${secret} today\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  const raw = await (await fleet(port)).text();
+  expect(raw).not.toContain(secret);
+  expect(JSON.parse(raw).sessions.find((x: any) => x.name === FLEET.leg.name).description).toContain("rotate");
 });
 
 test("a session started without a name keeps its model and takes the harness's name (empty census columns do not shift)", async () => {

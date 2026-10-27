@@ -39,10 +39,10 @@ check_contains "T2 default --profile himmel_agent injected" "--profile
 himmel_agent" "$(cat "$TMP/args.out")"
 
 # T3: explicit --profile passes through, NOT duplicated.
-HERMES_INVOKE="$STUB" bash "$WRAP" --profile free_junior "PONG" >/dev/null 2>&1
+HERMES_INVOKE="$STUB" bash "$WRAP" --profile other_profile "PONG" >/dev/null 2>&1
 profile_count=$(grep -c -- "--profile" "$TMP/args.out")
 check "T3 explicit profile not duplicated" "1" "$profile_count"
-check_contains "T3 explicit profile preserved" "free_junior" "$(cat "$TMP/args.out")"
+check_contains "T3 explicit profile preserved" "other_profile" "$(cat "$TMP/args.out")"
 
 # T4: missing invoke chokepoint -> rc 2, clean error.
 err=$(HERMES_INVOKE="$TMP/nope.sh" bash "$WRAP" "PONG" 2>&1); rc=$?

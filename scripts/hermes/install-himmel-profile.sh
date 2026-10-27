@@ -5,8 +5,8 @@
 # orchestrator (Codex / GPT-5.5) — then wire the parity_guard into EVERY hermes
 # profile (universal guard). himmel owns only himmel_agent's
 # SOUL/identity; SOUL stays per-role. The guard does NOT: it is universal.
-# Non-clobbering — an existing luna_vault_guard is swapped, a profile with no
-# guard has parity_guard ADDED (other unrelated hooks preserved). Idempotent.
+# Non-clobbering — a profile with no parity_guard has it ADDED (other
+# unrelated hooks preserved). Idempotent.
 #
 #   install-himmel-profile.sh                  # himmel_agent + universal guard (default)
 #   install-himmel-profile.sh --parity-guard=default,research   # narrow to named profiles
@@ -136,8 +136,8 @@ fi
 # 6. universal guard: ensure parity_guard on EVERY other profile.
 #    Default (no flag) = the `default` profile + all others. --parity-guard=<csv>
 #    narrows to named profiles; =all is the explicit form of the default. ensure
-#    is non-clobbering: swaps a luna_vault_guard, adds the guard where none
-#    exists, no-ops if already on parity_guard.
+#    is non-clobbering: adds the guard where none exists, no-ops if already
+#    on parity_guard.
 targets=""
 if [ -z "$PARITY_TARGETS" ] || [ "$PARITY_TARGETS" = "all" ]; then
   targets="$HOME_DIR/config.yaml"   # the `default` profile

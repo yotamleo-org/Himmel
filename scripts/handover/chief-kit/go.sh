@@ -111,7 +111,7 @@ _csg_lib="$_csg_dir/../../lib/chokepoint-seam-guard.sh"
 # shellcheck source=scripts/lib/chokepoint-seam-guard.sh
 # shellcheck disable=SC1091
 if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
-    echo "go.sh: cannot load $_csg_lib - refusing (HIMMEL-3914)" >&2
+    echo "go.sh: cannot load $_csg_lib - refusing" >&2
     exit 96
 fi
 chokepoint_seam_guard scripts/handover/chief-kit/go.sh || exit 96
@@ -390,7 +390,7 @@ NWO=$(cd "$ANCHOR" && "$GH_READ" repo view --json nameWithOwner --jq .nameWithOw
 # same number and sha.
 [ "$FORK_SET" -eq 0 ] || [ -z "$NWO" ] || NWO="$FORK"
 if [ -z "$NWO" ]; then
-    echo "go: cannot resolve this repo's owner/name (gh repo view failed) - no GO written; the mac binds the repo (HIMMEL-3578)" >&2
+    echo "go: cannot resolve this repo's owner/name (gh repo view failed) - no GO written; the mac binds the repo" >&2
     exit 1
 fi
 

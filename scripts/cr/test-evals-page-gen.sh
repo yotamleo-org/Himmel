@@ -297,7 +297,7 @@ dupf() { # ts model branch head id line text verdict
 }
 dupf 2026-10-01T10:00:00Z dup d0 h1 dup-1 10 "- [important]: Off by one in the loop [a.py:10]" agreed
 dupf 2026-10-01T11:00:00Z dup d0 h2 dup-2 10 "- [important]: Off by one in the loop [a.py:10]" ""
-dupf 2026-10-01T11:00:00Z echo d0 h2 echo-1 10 "- [important]: Off by one in the loop [a.py:10]" agreed
+dupf 2026-10-01T11:00:00Z echo d0 h2 echo-1 10 "- [important]: Off by one in the loop [a.py:10]" disproved
 dupf 2026-10-01T10:00:00Z dup d0 h1 dup-3 20 "- [important]: Unquoted path [a.py:20]" disproved
 dupf 2026-10-01T10:00:00Z dup d1 h1 dup-4 10 "- [important]: Off by one in the loop [a.py:10]" agreed
 python3 -I "$GEN" data --ledger "$L3" --eval-runs "$E" --critics "$K" --cache-probe "$C" --as-of 2026-10-25 --out "$TMP/dup.json" > /dev/null 2>&1; rc=$?

@@ -1,0 +1,80 @@
+<section class="sec-block" id="faq" aria-labelledby="faq-h">
+  <div class="wrap">
+    <h1 class="sec" id="faq-h">Questions and words</h1>
+    <p class="sec-lede">The questions people ask before they install himmel, then every word the trail uses that you may not know. What himmel is, what it installs and how to undo it are on <a href="adoption-trail.html">Start here</a>.</p>
+    <div class="faq">
+      <h2 id="q-claude-code">I have never used Claude Code. What is it?</h2>
+      <p>Claude Code is Anthropic's coding assistant. You start it with <code>claude</code> in a terminal, inside a project; it reads the code, edits files and runs commands, and asks your permission before it does. It needs a Claude account. himmel works only on top of it, so install Claude Code and sign in first: steps 1 and 2 of the <a href="adoption-trail-levels.html#trial">practice climb</a> do both.</p>
+
+      <h2 id="q-control">Who is in control?</h2>
+      <ul>
+        <li><b>You choose the starting point.</b> A starter install for one project, or more: a second brain, a second reviewer, a fleet. <a href="setup/profiles/">Install profiles</a></li>
+        <li><b>You see the plan first.</b> The installer lists everything it would add or change, and asks before it writes a thing.</li>
+        <li><b>Nothing runs on a schedule</b> until you arm it, one job at a time.</li>
+        <li><b>Every guardrail has an off switch</b> for one session, when you mean it.</li>
+        <li><b>One command takes it all back out.</b> <a href="adoption-trail.html#undo">How</a></li>
+      </ul>
+
+      <h2 id="q-other-projects">Does it change Claude Code in my other projects?</h2>
+      <p>Not with the trail's install. <code>--scope project</code> wires only the project you install into. <code>--scope user</code> wires your own Claude Code settings, so it applies in every project. Two things are machine-wide either way: the <code>himmelctl</code> command in <code>~/.local/bin</code>, and any setting in <code>~/.himmel/himmel.conf</code>, such as the switch that turns off the ticket-reference rule.</p>
+
+      <h2 id="q-unattended">Does anything run while I am not watching?</h2>
+      <p>Not until you start it. A scheduled job runs only once you arm it, and <code>disarm</code> stops it again. A shift while you are away starts only when you type <code>/afk-shift</code>, and <code>/stop</code> ends it. The guardrails apply to every session, the unattended ones too.</p>
+
+      <h2 id="q-cost">What does it cost?</h2>
+      <p>himmel is open source. The work it runs uses your Claude plan's usage, like any Claude Code session; heavy work checks how much you have left before it starts (<a href="adoption-trail-levels.html#lvl-5">Level 5</a>). A second reviewer from another model family uses that provider's subscription (<a href="adoption-trail-levels.html#lvl-4">Level 4</a>).</p>
+
+      <h2 id="q-platforms">Which systems does it run on?</h2>
+      <p>Linux and macOS. Where the steps differ, such as installing the tools, the trail shows a Linux and a macOS block.</p>
+
+      <h2 id="q-stopped">A guardrail stopped me. How do I get past it?</h2>
+      <p>The refusal names the command that fixes it. Most often that is a worktree, so the change happens off your main branch:</p>
+      <pre><code>bash scripts/worktree.sh feat/my-change</code></pre>
+      <p>When you mean it, turn one guardrail off for one session by starting Claude Code with its switch, for example:</p>
+      <pre><code>EDIT_ON_MAIN_OK=1 claude</code></pre>
+
+      <h2 id="q-fast">What keeps a long project fast?</h2>
+      <ul>
+        <li><b>Guards aimed at real damage.</b> Each guard targets a move that can hurt a project, and is replayed against real commands before it ships, so it stops what matters and lets the rest through.</li>
+        <li><b>Long tracks keep their pace.</b> Each session keeps its context small, so its answers stay sharp. When it fills, a worker hands off at a set point and the chief passes the shift to a successor, with everything written down, so a long track never starts over.</li>
+        <li><b>Every merge is earned.</b> A change merges through one gate only: CI green at its exact commit, every review point decided, and an approval signed for that commit.</li>
+        <li><b>Cleanup keeps every session fast.</b> Stale worktrees and open tickets slow down each session that has to step around them, so finished worktrees are cleared and tickets close when their change merges.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<section class="sec-block" id="glossary" aria-labelledby="glossary-h">
+  <div class="wrap">
+    <h2 class="sec" id="glossary-h">Words you will meet</h2>
+    <p class="sec-lede">In the order a newcomer usually meets them. Every other term is in the full <a href="glossary/">glossary</a>.</p>
+    <dl class="gloss">
+      <dt id="g-worktree">Worktree</dt>
+      <dd>A second working folder of the same git repository, on its own branch. himmel makes every change in one, so your main branch stays as it is until the change is merged.</dd>
+      <dt id="g-hook">Hook</dt>
+      <dd>A small script that runs by itself when something happens: before Claude Code edits a file or runs a command, or before git makes a commit or a push. A hook can refuse the action. himmel's guardrails are hooks.</dd>
+      <dt id="g-gate">Gate</dt>
+      <dd>A check that must pass before work moves on: before a commit, a push or a merge. A git hook is the most common gate.</dd>
+      <dt id="g-cr">CR (code review)</dt>
+      <dd>The review a change gets before it merges. <code>/pr-check</code> runs it: reviewer models read the change, and each point they raise is fixed or answered before the merge.</dd>
+      <dt id="g-panel">Panel</dt>
+      <dd>The reviewers that read one change together. The starter panel is Claude; adding a second model family at <a href="adoption-trail-levels.html#lvl-4">Level 4</a> widens it.</dd>
+      <dt id="g-critic">Critic</dt>
+      <dd>One reviewer model on the panel.</dd>
+      <dt id="g-attestation">Attestation</dt>
+      <dd>A line in a commit message that records what was checked, for example <code>Platforms tested: linux</code>. A project that requires one refuses a push without it.</dd>
+      <dt id="g-handover">Handover</dt>
+      <dd>A short written note a session leaves so the next one can pick up where it stopped. A Claude Code session forgets everything when it ends; the note does not.</dd>
+      <dt id="g-vault">Vault</dt>
+      <dd>A folder of markdown notes, the kind Obsidian opens. himmel can fill it, link it and search it: your second brain, <a href="adoption-trail-levels.html#lvl-2">Level 2</a>.</dd>
+      <dt id="g-cadence">Cadence</dt>
+      <dd>A job that runs on a schedule, such as re-indexing your notes every night. None runs until you arm it.</dd>
+      <dt id="g-lane">Lane</dt>
+      <dd>Where a piece of AI work runs: on Claude, or on another provider's model such as OpenAI's Codex. The installer's lanes question sets up the extra ones.</dd>
+      <dt id="g-chief">Chief</dt>
+      <dd>One long-running Claude session that keeps several tickets moving at once: it starts the workers, answers their questions and approves each merge.</dd>
+      <dt id="g-worker">Worker</dt>
+      <dd>One ticket, one worktree, one pull request: a session the chief starts, which reports back to it.</dd>
+    </dl>
+  </div>
+</section>

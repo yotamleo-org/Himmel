@@ -7,10 +7,14 @@
 #     --owner yotamleo-org --repo Himmel --number <digits> \
 #     --thread-id PRRT_<base64url> --reason "<fixed <sha> | followup <KEY-n> | rejected <text>>"
 #
+# --repo may also be any nwo in the primary checkout's
+# scripts/guardrails/himmel-adapters.json (an adopter repo's worker resolves its
+# own threads), read only for a command that already has the resolve shape.
+#
 # The auto-mode classifier sometimes denied that call as an external write, at
 # random, and the denied resolve stalled the PR. This hook allows exactly that
 # shape as ONE literal command so the classifier never sees it: no chaining, no
-# redirect, no substitution, no extra flag, our owner and repo only, a PRRT_
+# redirect, no substitution, no extra flag, our owner and a registered repo only, a PRRT_
 # thread id, a reason in double or single quotes, and a CLI path that is the
 # PRIMARY checkout named by $HIMMEL_REPO (operator-set, resolved with cd -P,
 # its own .git directory, on refs/heads/main), whose CLI is a regular file
@@ -68,7 +72,7 @@ KEY='[A-Z][A-Z0-9]*-[0-9]+'
 WHY='[A-Za-z0-9.,:_/#-][A-Za-z0-9 .,:_/#-]{0,199}'
 GRAMMAR="^(fixed $SHA|followup $KEY|rejected $WHY)\$"
 REL='plugins/himmel-gh/lib/thread-resolve-action-cli.mjs'
-TAIL='--owner yotamleo-org --repo Himmel --number [0-9]+ --thread-id PRRT_[A-Za-z0-9_-]+'
+TAIL='--owner ([A-Za-z0-9._-]+) --repo ([A-Za-z0-9._-]+) --number [0-9]+ --thread-id PRRT_[A-Za-z0-9_-]+'
 # CLI spelling: absolute | $CLAUDE_PROJECT_DIR | ${CLAUDE_PROJECT_DIR} | ./ | bare relative.
 # Reason: one double-quoted literal (no " \ $ `) or one single-quoted literal (no ').
 # shellcheck disable=SC2016  # literal $ and backtick are regex text
@@ -76,8 +80,24 @@ RE='^node (/[A-Za-z0-9._/+@-]+/|[$]CLAUDE_PROJECT_DIR/|[$][{]CLAUDE_PROJECT_DIR[
 [[ "$cmd" =~ $RE ]] || exit 0
 spelled="${BASH_REMATCH[1]}"
 tail="${BASH_REMATCH[2]}"
-quoted="${BASH_REMATCH[3]}"
+nwo="${BASH_REMATCH[3]}/${BASH_REMATCH[4]}"
+quoted="${BASH_REMATCH[5]}"
 reason="${quoted#?}"; reason="${reason%?}"
+
+# our own repo, or an nwo row of the primary's adapter registry: an exact string
+# compare (no regex built from registry text), and an unreadable or malformed
+# registry (jq must parse all of it) leaves only himmel itself.
+registered() {  # registered <owner/repo>
+    [ "$1" = yotamleo-org/Himmel ] && return 0  # env-literal-ok: the one audited repo this hook always allowed
+    local reg="${HIMMEL_REPO:-}" names line
+    reg="${reg%/}/scripts/guardrails/himmel-adapters.json"
+    case "$reg" in /*) ;; *) return 1 ;; esac
+    [ -f "$reg" ] && [ ! -L "$reg" ] || return 1
+    names=$(jq -rs 'if length == 1 and (.[0] | type) == "array" then .[0][].nwo | strings | select(contains("\n") | not) else empty end' "$reg" 2>/dev/null) || return 1  # swallow-ok: a failed read returns "not registered", no allow
+    while IFS= read -r line; do [ "$line" = "$1" ] && return 0; done <<<"$names"
+    return 1
+}
+registered "$nwo" || exit 0
 
 g() { git --no-replace-objects -c core.fsmonitor=false -c core.untrackedCache=false "$@" 2>/dev/null; }
 resolved() { (cd -P "$1" 2>/dev/null && pwd -P); }

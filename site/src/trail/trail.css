@@ -39,27 +39,23 @@ ul, ol { margin: 0; padding-left: 1.2em; }
 .proofs .pdesc { font-size: var(--fs-sm); color: var(--muted); }
 .proofs .ptag { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); }
 .shipstat { font-size: var(--fs-sm); }
-.learned { border-left: 3px solid var(--camp); padding-left: var(--s4); font-size: var(--fs-sm); }
-.learned > summary { cursor: pointer; }
-.learned ul { display: grid; gap: var(--s2); margin-top: var(--s3); }
 .ctas { display: flex; flex-wrap: wrap; gap: var(--s3) var(--s5); align-items: center; }
 .btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s5); background: var(--accent); color: var(--accent-ink); border-radius: var(--radius); font-weight: 600; text-decoration: none; border: 1px solid var(--accent); }
 .btn-primary:hover { filter: brightness(1.08); }
 .link-sec { font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
 
-/* questions */
-.qgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--s4); margin-top: var(--s5); align-items: start; }
-.qcard { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); min-width: 0; }
-.qcard > summary { cursor: pointer; padding: var(--s4); display: grid; gap: var(--s2); list-style: none; }
-.qcard > summary::-webkit-details-marker { display: none; }
-.qcard .qn { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--muted); letter-spacing: .06em; text-transform: uppercase; display: flex; justify-content: space-between; }
-.qcard .qn::after { content: "Open"; color: var(--accent); }
-.qcard[open] .qn::after { content: "Close"; }
-.qcard .qh { font-size: var(--fs-md); font-weight: 600; }
-.qcard .qa { font-size: var(--fs-sm); color: var(--muted); }
-.qbody { padding: var(--s4); display: grid; gap: var(--s3); font-size: var(--fs-sm); border-top: 1px solid var(--rule); }
-.qbody h4 { font-size: var(--fs-sm); font-weight: 600; }
-.qbody ul, .qbody ol { display: grid; gap: 4px; }
+/* main page answers, change list and questions page */
+.answers { display: grid; gap: var(--s4); }
+.ans { border: 1px solid var(--rule); border-radius: var(--radius); background: var(--surface); padding: var(--s4); display: grid; gap: var(--s2); min-width: 0; }
+.ans h2 { font-size: var(--fs-md); font-weight: 600; }
+.detail { display: grid; gap: var(--s3); margin-top: var(--s5); max-width: 760px; font-size: var(--fs-sm); }
+.detail h4 { font-size: var(--fs-sm); font-weight: 600; }
+.detail ul, .detail ol { display: grid; gap: 4px; }
+.faq { display: grid; gap: var(--s3); margin-top: var(--s5); max-width: 760px; }
+.faq h2 { font-size: var(--fs-md); font-weight: 600; margin-top: var(--s3); }
+.faq ul { display: grid; gap: 4px; }
+.gloss { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: var(--s2) var(--s4); margin-top: var(--s5); max-width: 860px; }
+.gloss dt { font-weight: 600; }
 .pinned { border: 1px solid var(--beta); background: var(--beta-soft); border-radius: var(--radius); padding: var(--s3); display: grid; gap: var(--s2); }
 .pinned h4 { color: var(--beta); font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .06em; text-transform: uppercase; }
 .pinned ol { display: grid; gap: var(--s2); }
@@ -190,7 +186,7 @@ p.ok b { color: var(--ship); font-weight: 600; }
 
 @media (max-width: 1099px) { .sidepanel { display: none; } }
 @media (max-width: 900px) {
-  .qgrid { grid-template-columns: minmax(0, 1fr); }
+  .gloss { grid-template-columns: minmax(0, 1fr); }
   .proofs { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 760px) {

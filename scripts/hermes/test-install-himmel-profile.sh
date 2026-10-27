@@ -53,7 +53,7 @@ chmod +x "$STUB"
 seed_default() {  # $1 = hooks-block style: "guard" | "empty"
   cat > "$HOME_DIR/SOUL.md" <<'EOF'
 # Hermes Agent Persona
-You are the low-risk junior reviewer. (user's own default — must stay untouched)
+You are the low-risk assistant. (user's own default — must stay untouched)
 EOF
   {
     echo "model:"
@@ -62,7 +62,7 @@ EOF
       echo "hooks:"
       echo "  pre_tool_call:"
       echo "  - matcher: write_file|patch|terminal"
-      echo "    command: '\"$PYBIN\" \"$HOME_DIR/agent-hooks/luna_vault_guard.py\"'"
+      echo "    command: '\"$PYBIN\" \"$HOME_DIR/agent-hooks/other_guard.py\"'"
       echo "    timeout: 10"
     else
       echo "hooks: {}"
@@ -82,7 +82,7 @@ assert_file    "$HOME_DIR/agent-hooks/parity_guard.py" "guard asset installed"
 assert_contains "$HOME_DIR/profiles/himmel_agent/SOUL.md" "main tier" "himmel_agent has main-tier SOUL"
 assert_contains "$HOME_DIR/profiles/himmel_agent/config.yaml" "parity_guard.py" "himmel_agent wired to parity_guard"
 assert_contains "$HOME_DIR/profiles/himmel_agent/config.yaml" "pre_tool_call" "himmel_agent hook block present"
-assert_contains "$HOME_DIR/SOUL.md" "junior reviewer" "user default SOUL untouched"
+assert_contains "$HOME_DIR/SOUL.md" "low-risk assistant" "user default SOUL untouched"
 
 echo "== scenario B: idempotent re-run =="
 run >/dev/null
@@ -91,17 +91,17 @@ assert_contains "$HOME_DIR/profiles/himmel_agent/config.yaml" "parity_guard.py" 
 n="$(grep -c "pre_tool_call" "$HOME_DIR/profiles/himmel_agent/config.yaml" || true)"
 if [ "$n" = "1" ]; then pass "no hook duplication"; else fail "hook duplicated ($n pre_tool_call)"; fi
 
-echo "== scenario C: default had luna_vault_guard -> himmel_agent still parity =="
+echo "== scenario C: default had another guard -> himmel_agent still parity =="
 rm -rf "$HOME_DIR/profiles"; mkdir -p "$HOME_DIR/profiles"
 seed_default guard
 run >/dev/null
 assert_contains "$HOME_DIR/profiles/himmel_agent/config.yaml" "parity_guard.py" "cloned-guard config replaced with parity"
-assert_absent   "$HOME_DIR/profiles/himmel_agent/config.yaml" "luna_vault_guard.py" "luna_vault_guard removed from himmel_agent"
+assert_absent   "$HOME_DIR/profiles/himmel_agent/config.yaml" "other_guard.py" "cloned guard removed from himmel_agent"
 
-echo "== scenario D: --parity-guard=default swaps default's guard (non-destructive) =="
+echo "== scenario D: --parity-guard=default adds parity_guard beside default's guard (non-destructive) =="
 run --parity-guard=default >/dev/null
-assert_contains "$HOME_DIR/config.yaml" "parity_guard.py" "default swapped to parity_guard"
-assert_absent   "$HOME_DIR/config.yaml" "luna_vault_guard.py" "default no longer references luna_vault_guard"
+assert_contains "$HOME_DIR/config.yaml" "parity_guard.py" "default now carries parity_guard"
+assert_contains "$HOME_DIR/config.yaml" "other_guard.py" "default keeps its own guard"
 
 echo "== scenario E: --parity-guard on a guard-less profile now ADDS the guard (HIMMEL-744) =="
 mkdir -p "$HOME_DIR/profiles/research"
@@ -115,9 +115,6 @@ seed_default empty
 # a guard-less profile carrying an UNRELATED hook that must survive
 mkdir -p "$HOME_DIR/profiles/research"
 printf 'model:\n  default: gpt-5.5\nhooks:\n  post_tool_call:\n  - command: /x/logger.py\n    timeout: 5\n' > "$HOME_DIR/profiles/research/config.yaml"
-# a profile still on the legacy luna_vault_guard
-mkdir -p "$HOME_DIR/profiles/legacy"
-printf 'hooks:\n  pre_tool_call:\n  - command: /x/agent-hooks/luna_vault_guard.py\n    timeout: 10\n' > "$HOME_DIR/profiles/legacy/config.yaml"
 run >/dev/null
 # himmel_agent still owns its whole hooks block (set-mode canonical, matcher .*)
 assert_contains "$HOME_DIR/profiles/himmel_agent/config.yaml" "parity_guard.py" "himmel_agent wired (set)"
@@ -128,9 +125,6 @@ assert_contains "$HOME_DIR/config.yaml" "parity_guard.py" "default profile guard
 assert_contains "$HOME_DIR/profiles/research/config.yaml" "parity_guard.py" "guard-less profile now guarded (universal)"
 assert_contains "$HOME_DIR/profiles/research/config.yaml" "post_tool_call" "unrelated hook preserved"
 assert_contains "$HOME_DIR/profiles/research/config.yaml" "logger.py" "unrelated hook command preserved"
-# legacy luna_vault_guard swapped in place
-assert_contains "$HOME_DIR/profiles/legacy/config.yaml" "parity_guard.py" "legacy profile swapped to parity"
-assert_absent   "$HOME_DIR/profiles/legacy/config.yaml" "luna_vault_guard.py" "legacy luna_vault_guard removed"
 
 echo "== scenario I: every installer-wired parity_guard entry fails closed =="
 # hermes defaults a shell hook to fail_closed=False: a guard that crashes, times
@@ -161,7 +155,7 @@ fail_closed_entries() {
     cur && /^[ \t-]*fail_closed:[ \t]*true[ \t]*$/ { match($0, /^[ \t]*(- +)?/); if (RLENGTH == ek) fc = 1 }
     END { flush(); printf "%d/%d\n", ok, tot }' "$1"
 }
-for p in himmel_agent research legacy station; do
+for p in himmel_agent research station; do
   got="$(fail_closed_entries "$HOME_DIR/profiles/$p/config.yaml" parity_guard.py)"
   if [ "$got" = "1/1" ]; then pass "(I) $p: parity_guard entry fails closed"
   else fail "(I) $p: parity_guard entries with fail_closed: true = $got, want 1/1"; fi

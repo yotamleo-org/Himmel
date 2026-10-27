@@ -11,12 +11,12 @@ LIB="$HERE/load-dotenv.sh"
 SECRETS_HOOK="$HERE/../hooks/block-read-secrets.sh"
 
 FAILED=0
-assert_eq() {
+assert_eq_fp() {
     local label="$1" expected="$2" actual="$3"
     if [ "$expected" = "$actual" ]; then
         echo "PASS $label"
     else
-        echo "FAIL $label — expected '$expected', got '$actual'"
+        echo "FAIL $label — got a value of length ${#actual}, sha256 $(printf '%s' "$actual" | { sha256sum 2>/dev/null || shasum -a 256; } | cut -c1-12)"
         FAILED=$((FAILED + 1))
     fi
 }
@@ -24,7 +24,7 @@ assert_has() {
     local label="$1" needle="$2" hay="$3"
     case "$hay" in
         *"$needle"*) echo "PASS $label" ;;
-        *) echo "FAIL $label — missing '$needle' in: $hay"; FAILED=$((FAILED + 1)) ;;
+        *) assert_eq_fp "$label (missing match)" "$needle" "$hay" ;;
     esac
 }
 
@@ -34,14 +34,43 @@ REPO="$TMP/repo"
 mkdir -p "$REPO"
 git -C "$REPO" init --quiet
 export HOME="$TMP/home"
+export HIMMEL_REPO="$REPO" HIMMEL_CONFIG_DIR="$HOME/.himmel"
 export HIMMELCTL_CACHE_DIR="$TMP/no-cache"
-mkdir -p "$HOME/.himmel"
+export HIMMEL_SECRETS_KEYRING=off CREDENTIALS_DIRECTORY="$TMP/credentials"
+mkdir -p "$HOME/.himmel" "$CREDENTIALS_DIRECTORY"
 unset CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK ARMAUTOMERGE HANDOVER_DIR CR_PROFILE
+unset JIRA_BASE_URL TELEGRAM_GROUP_CHAT_ID JIRA_API_TOKEN TELEGRAM_BOT_TOKEN
+unset GCP_SERVICE_ACCOUNT_KEY SNYK_TOKEN VERCEL_TOKEN ANTHROPIC_API_KEY CONFLUENCE_EMAIL
 
 reset() { rm -f "$HOME/.himmel/"* "$REPO/.env"; }
 
 # run <snippet> — source the loader in a subshell inside the fixture repo.
 run() { ( cd "$REPO" && . "$LIB" && eval "$1" ) 2>&1; }
+
+# Exercise a forced failure in a child so its diagnostic never reaches the log.
+if [ "${1:-}" = --failure-output-probe ]; then
+    sentinel='dummy-config-secret-sentinel-7841'
+    printf 'JIRA_API_TOKEN=%s\n' "$sentinel" > "$REPO/.env"
+    mkdir -p "$TMP/probe-bin"
+    printf '#!/bin/sh\nprintf "%%s" "%s"\n' "$sentinel" > "$TMP/probe-bin/secret-tool"
+    chmod +x "$TMP/probe-bin/secret-tool"
+    export PATH="$TMP/probe-bin:$PATH" HIMMEL_SECRETS_KEYRING=off
+    export HIMMEL_CONFIG_DIR="$HOME/.himmel"
+    out=$(run 'unset JIRA_API_TOKEN; load_dotenv --root "$REPO" JIRA_API_TOKEN; printf "[%s]" "${JIRA_API_TOKEN-}"')
+    assert_eq_fp "forced secret failure" "[]" "$out"
+    exit "$FAILED"
+fi
+probe_out=$(bash "$0" --failure-output-probe 2>&1)
+probe_rc=$?
+assert_eq_fp "forced secret failure exits non-zero" "1" "$probe_rc"
+case "$probe_out" in
+    *dummy-config-secret-sentinel-7841*)
+        echo "FAIL forced secret failure does not print the sentinel"
+        exit 1 ;;
+    *) echo "PASS forced secret failure does not print the sentinel" ;;
+esac
+assert_has "forced secret failure prints a length" "length " "$probe_out"
+assert_has "forced secret failure prints a short hash" "sha256 " "$probe_out"
 
 # Reclassifying only the named service identifiers makes the config layers usable.
 identifiers='JIRA_EMAIL JIRA_PROJECTS JIRA_PROJECT_KEY JIRA_CLOUD_ID
@@ -49,24 +78,24 @@ GCP_CI_PROJECT_ID SNYK_ORG_ID SNYK_ORG_SLUG
 VERCEL_TEAM_ID VERCEL_USER_ID ANTHROPIC_API_ORG_ID_A ANTHROPIC_API_ORG_ID_B'
 for k in $identifiers; do
     reset
-    assert_eq "$k is config" "config" "$(run '_himmel_key_class "$k"')"
+    assert_eq_fp "$k is config" "config" "$(run '_himmel_key_class "$k"')"
     printf '%s=dummy-legacy\n' "$k" > "$REPO/.env"
     printf '%s=dummy-config\n' "$k" > "$HOME/.himmel/himmel.conf"
     out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
-    assert_eq "$k loads from config before legacy .env" "[dummy-config|rc=0]" "$out"
+    assert_eq_fp "$k loads from config before legacy .env" "[dummy-config|rc=0]" "$out"
     printf '%s=dummy-local\n' "$k" > "$HOME/.himmel/himmel.conf.local"
     out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
-    assert_eq "$k loads from local override before config" "[dummy-local|rc=0]" "$out"
+    assert_eq_fp "$k loads from local override before config" "[dummy-local|rc=0]" "$out"
     out=$(run 'export "$k=dummy-process"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
-    assert_eq "$k preserves non-empty process env" "[dummy-process|rc=0]" "$out"
+    assert_eq_fp "$k preserves non-empty process env" "[dummy-process|rc=0]" "$out"
 done
 for k in JIRA_BASE_URL TELEGRAM_GROUP_CHAT_ID JIRA_API_TOKEN TELEGRAM_BOT_TOKEN GCP_SERVICE_ACCOUNT_KEY SNYK_TOKEN VERCEL_TOKEN ANTHROPIC_API_KEY CONFLUENCE_EMAIL; do
     reset
-    assert_eq "$k remains secret" "secret" "$(run '_himmel_key_class "$k"')"
+    assert_eq_fp "$k remains secret" "secret" "$(run '_himmel_key_class "$k"')"
     printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf"
     printf '%s=dummy-planted\n' "$k" > "$HOME/.himmel/himmel.conf.local"
     out=$(run 'unset "$k"; load_dotenv "$k"; rc=$?; printf "[%s|rc=%s]" "${!k-}" "$rc"')
-    assert_eq "$k is never read from config" "[|rc=0]" "$out"
+    assert_eq_fp "$k is never read from config" "[|rc=0]" "$out"
 done
 
 # (a) A gate-policy key set in config.json is NOT overridden by the env.
@@ -108,7 +137,7 @@ printf 'JIRA_API_TOKEN=dummy\n' > "$REPO/.env"
 out=$(PATH="$TMP/stub-bin:$PATH" HIMMEL_SECRETS_KEYRING=off run 'load_dotenv JIRA_API_TOKEN; printf "[%s]" "${JIRA_API_TOKEN-}"')
 want=1; [ "$(uname -s)" = Darwin ] && want=0
 assert_has "(b3) legacy .env secret key still loads" "[dummy]" "$out"
-assert_eq "(b3) legacy .env secret key prints one deprecation notice" "$want" "$(printf '%s\n' "$out" | grep -c DEPRECATED)"
+assert_eq_fp "(b3) legacy .env secret key prints one deprecation notice" "$want" "$(printf '%s\n' "$out" | grep -c DEPRECATED)"
 
 # (c) Missing config file: safe default (unset) plus a visible notice.
 reset
@@ -153,33 +182,33 @@ reset
 printf 'CR_PROFILE=from-dotenv\n' > "$REPO/.env"
 printf 'CR_PROFILE=from-conf\n' > "$HOME/.himmel/himmel.conf"
 out=$(run 'load_dotenv CR_PROFILE; printf "[%s]" "${CR_PROFILE-}"')
-assert_eq "himmel.conf beats legacy .env, no notice" "[from-conf]" "$out"
+assert_eq_fp "himmel.conf beats legacy .env, no notice" "[from-conf]" "$out"
 printf 'CR_PROFILE=from-local\n' > "$HOME/.himmel/himmel.conf.local"
 out=$(run 'load_dotenv CR_PROFILE; printf "[%s]" "${CR_PROFILE-}"')
-assert_eq ".local beats himmel.conf" "[from-local]" "$out"
+assert_eq_fp ".local beats himmel.conf" "[from-local]" "$out"
 out=$(run 'export CR_PROFILE=from-env; load_dotenv CR_PROFILE; printf "[%s]" "${CR_PROFILE-}"')
-assert_eq "process env wins for an ordinary key" "[from-env]" "$out"
+assert_eq_fp "process env wins for an ordinary key" "[from-env]" "$out"
 
 # A policy key requested through load_dotenv (advisory readers) comes from
 # config.json, and the process env still wins there (only load_policy ignores it).
 reset
 printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":true}}\n' > "$HOME/.himmel/config.json"
 out=$(run 'load_dotenv CR_REQUIRE_CROSS_MODEL; printf "[%s]" "${CR_REQUIRE_CROSS_MODEL-}"')
-assert_eq "load_dotenv reads a policy key from config.json" "[true]" "$out"
+assert_eq_fp "load_dotenv reads a policy key from config.json" "[true]" "$out"
 
 # A secret key is never read from himmel.conf (secrets stay in .env only).
 reset
 printf 'JIRA_API_TOKEN=planted\n' > "$HOME/.himmel/himmel.conf"
 out=$(run 'load_dotenv JIRA_API_TOKEN; printf "[%s]" "${JIRA_API_TOKEN-}"')
-assert_eq "secret key is not read from himmel.conf" "[]" "$out"
+assert_eq_fp "secret key is not read from himmel.conf" "[]" "$out"
 
 # (d) block-read-secrets still refuses .env and allows the new config file.
 hook() { printf '{"tool_name":"%s","tool_input":{"%s":"%s"}}' "$1" "$2" "$3" | bash "$SECRETS_HOOK" >/dev/null 2>&1; echo $?; }
-assert_eq "(d) Bash cat .env is denied" "2" "$(hook Bash command 'cat .env')"
-assert_eq "(d) Bash cat ~/.himmel/himmel.conf is allowed" "0" "$(hook Bash command 'cat ~/.himmel/himmel.conf')"
-assert_eq "(d) Bash cat himmel.conf.local is allowed" "0" "$(hook Bash command 'cat ~/.himmel/himmel.conf.local')"
-assert_eq "(d) Read of himmel.conf is allowed" "0" "$(hook Read file_path "$HOME/.himmel/himmel.conf")"
-assert_eq "(d) Read of .env is denied" "2" "$(hook Read file_path "$REPO/.env")"
+assert_eq_fp "(d) Bash cat .env is denied" "2" "$(hook Bash command 'cat .env')"
+assert_eq_fp "(d) Bash cat ~/.himmel/himmel.conf is allowed" "0" "$(hook Bash command 'cat ~/.himmel/himmel.conf')"
+assert_eq_fp "(d) Bash cat himmel.conf.local is allowed" "0" "$(hook Bash command 'cat ~/.himmel/himmel.conf.local')"
+assert_eq_fp "(d) Read of himmel.conf is allowed" "0" "$(hook Read file_path "$HOME/.himmel/himmel.conf")"
+assert_eq_fp "(d) Read of .env is denied" "2" "$(hook Read file_path "$REPO/.env")"
 
 # (f) The tracked templates only name keys of their own class, so an adopter
 # who copies them never parks a policy key in himmel.conf or a secret anywhere.
@@ -191,20 +220,20 @@ bad=""
 for k in $conf_keys; do
     [ "$(run '_himmel_key_class "$k"')" = config ] || bad="$bad $k"
 done
-assert_eq "(f) himmel.conf.example names only behaviour keys" "yes|" "$([ -n "$conf_keys" ] && echo yes)|$bad"
+assert_eq_fp "(f) himmel.conf.example names only behaviour keys" "yes|" "$([ -n "$conf_keys" ] && echo yes)|$bad"
 registry_conf_keys=$(awk '/^_himmel_key_class\(\)/{f=1} f&&/printf .config./{exit} f' "$LIB" \
     | sed -n '/HANDOVER_DIR/,$p' | tr -d ' \\)' | tr '|' '\n' | sed '/^$/d' | sort -u)
-assert_eq "(f) himmel.conf.example names every behaviour key" "$registry_conf_keys" "$conf_keys"
+assert_eq_fp "(f) himmel.conf.example names every behaviour key" "$registry_conf_keys" "$conf_keys"
 bad=""
 for k in $policy_keys; do
     [ "$(run '_himmel_key_class "$k"')" = policy ] || bad="$bad $k"
 done
-assert_eq "(f) himmel-config.example.json .policy names only policy keys" "yes|" "$([ -n "$policy_keys" ] && echo yes)|$bad"
+assert_eq_fp "(f) himmel-config.example.json .policy names only policy keys" "yes|" "$([ -n "$policy_keys" ] && echo yes)|$bad"
 
 # (g) The deprecation notice names the migration script as runnable now.
 out=$(run '_himmel_deprecation_notice HANDOVER_DIR')
 case "$out" in
-    *"once setup reads"*) assert_eq "(g) deprecation notice is current" "no stale clause" "$out" ;;
+    *"once setup reads"*) assert_eq_fp "(g) deprecation notice is current" "no stale clause" "$out" ;;
     *) assert_has "(g) deprecation notice is current" "migrate-env-config.sh" "$out" ;;
 esac
 

@@ -569,6 +569,30 @@
       ]
     },
     {
+      "name": "higgsfield-skills",
+      "source": {
+        "source": "url",
+        "url": "https://github.com/higgsfield-ai/skills.git",
+        "sha": "9b13ee6c7410ffb9c7bedf7e29ae6f3092ff0852"
+      },
+      "description": "[higgsfield-ai/skills, MIT, vendor + attribution only, no carried delta] Higgsfield image and video generation skills; they drive the `higgsfield` CLI through Bash (the operator installs the CLI and signs in: `npm i -g @higgsfield/cli`, `higgsfield auth login`); the skills' own `curl | sh` CLI bootstrap is unpinned and must never be run, install only by npm. No MCP. higgsfield-websites (public site deploy) is deliberately not listed. Every prompt and uploaded file goes to Higgsfield; block-agent-native-egress.sh denies a higgsfield Bash call for salus. strict:true with its seven skill dirs listed, exactly as upstream's own marketplace entry does: upstream keeps them at the repo root (no skills/ dir) and its plugin.json declares no components, so the list is the only thing that loads them. The install shape is unproven here until the operator station check. Explicit HTTPS git url (HIMMEL-549), pinned to a full sha 9b13ee6c7410 per himmel supply-chain policy (HIMMEL-3069). Design kit, design-imagegen add-on (HIMMEL-7826).",
+      "strict": true,
+      "skills": [
+        "./higgsfield-generate",
+        "./higgsfield-soul-id",
+        "./higgsfield-product-photoshoot",
+        "./higgsfield-brandkit",
+        "./higgsfield-marketplace-cards",
+        "./higgsfield-video-explainer",
+        "./higgsfield-youtube-thumbnail"
+      ],
+      "author": {
+        "name": "Higgsfield AI",
+        "url": "https://higgsfield.ai"
+      },
+      "homepage": "https://github.com/higgsfield-ai/skills"
+    },
+    {
       "name": "obsidian-second-brain",
       "source": {
         "source": "url",

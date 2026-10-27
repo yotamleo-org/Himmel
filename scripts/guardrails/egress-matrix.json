@@ -42,6 +42,7 @@
     "firecrawl": { "region": "US", "note": "HIMMEL-4335: web scrape/search API (api.firecrawl.dev, or a self-hosted FIRECRAWL_BASE_URL). Receives the URL (scrape) or the search query. Metered free plan; every call is ledgered in ~/.himmel/state/firecrawl-ledger.jsonl" },
     "jina-reader": { "region": "US", "note": "HIMMEL-4335: keyless Jina Reader scrape (r.jina.ai/<url>). Receives the URL being fetched; no key, no metering" },
     "jina": { "region": "EU (Berlin)", "note": "HIMMEL-5673 operator ruling 2026-10-14: Jina AI (owned by Elastic since 2025-10) as the remote qmd embedding and rerank backend. Full content leaves the machine (embedding documents, rerank query plus candidates). Jina legal 10.4: \"Jina AI does not use Customer request data, inputs, prompts, or uploaded content to train its models\". Distinct from jina-reader (US, keyless URL scrape). This matrix only permits; the live use stays off until the qmd fork backend is installed" },
+    "higgsfield": { "region": "US", "note": "HIMMEL-7826: the `higgsfield` CLI that the higgsfield-skills@himmel skills (higgsfield-ai/skills) run through Bash for the design-imagegen profile. Every prompt and every local file passed by path (the CLI auto-uploads it) goes to Higgsfield servers. Enforced at the Bash call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
     "builder-io": { "region": "US", "note": "HIMMEL-4328: the hosted OAuth MCP `agent-native-dispatch` (https://dispatch.agent-native.com/mcp) that builder-visual@himmel registers for the design profile (HIMMEL-4326). Every tool argument (prompts, file paths, pasted content) goes to Builder.io servers. Enforced at the MCP call by marketplace/plugins/himmel-ops/hooks/block-agent-native-egress.sh" },
     "jira": { "region": "US", "note": "HIMMEL-4670 P5: the Atlassian Jira Cloud project the himmel Jira CLI (scripts/jira/dist/index.js, by absolute path) writes; the failure router is its only automated caller" },
     "atlassian-mcp": { "region": "US", "note": "HIMMEL-4938: the hosted Atlassian remote MCP server (https://mcp.atlassian.com/v1/mcp). Only the initialize handshake and tools/list are permitted; every tools/call stays denied" }
@@ -78,6 +79,11 @@
       "corpus": "salus", "provider": "builder-io", "purpose": "*",
       "verdict": "deny", "hard": true,
       "why": "HIMMEL-4328: salus/PHI content never reaches the hosted agent-native MCP. Already implied by the salus wildcard below; the explicit row names the provider so the cell that block-agent-native-egress.sh enforces (salus cwd, git toplevel or origin, a .salus marker, a phi-roots/egress-denylist root, or a salus path in the tool payload) is legible here. No override exists"
+    },
+    {
+      "corpus": "salus", "provider": "higgsfield", "purpose": "*",
+      "verdict": "deny", "hard": true,
+      "why": "HIMMEL-7826: salus/PHI content never reaches the Higgsfield CLI. Already implied by the salus wildcard below; the explicit row names the provider so the cell that block-agent-native-egress.sh enforces (a Bash call naming higgsfield, beside the agent-native MCP tools) is legible here. No override exists"
     },
     {
       "corpus": "salus", "provider": "deepseek", "purpose": "*",

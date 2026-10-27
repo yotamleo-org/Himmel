@@ -438,6 +438,7 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | plugin:platform-design-skills | — | — | MIT | — |
 | plugin:diagram-design | — | — | MIT | — |
 | plugin:builder-visual | — | — | MIT | — |
+| plugin:higgsfield-skills | https://github.com/higgsfield-ai/skills | Higgsfield AI | MIT | 9b13ee6c7410ffb9c7bedf7e29ae6f3092ff0852 |
 | plugin:frontend-slides | — | — | MIT | — |
 | plugin:design-dna | — | — | MIT | — |
 | plugin:anydesign | — | — | MIT | — |

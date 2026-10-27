@@ -23,7 +23,7 @@ code is the answer as the installer shows it.
 
 Guardrails, git gates and worktrees for this project. Use it for any repo,
 and for the practice climb on the
-[adoption trail](../../adoption-trail.html#trial).
+[adoption trail](../../adoption-trail-levels.html#trial).
 
 - **Notes vault:** `none`. With no vault, the installer skips the vault
   questions and the Telegram bridge question.
@@ -37,7 +37,7 @@ and for the practice climb on the
 ### `luna`
 
 Starter plus a second brain, a notes vault. Use it for Level 2 and up on the
-[adoption trail](../../adoption-trail.html).
+[adoption trail](../../adoption-trail-levels.html#lvl-2).
 
 - **Notes vault:** `default-template`, a new vault made from the template.
   You can point at a vault you already have instead.

@@ -323,7 +323,7 @@ check "criterion 4: the renderer is pele's lazy entry" grep -q '_astro/lazy\.[^"
 check "criterion 4: the lazy chunk is pele" grep -lq -- '--pele-bg' "$dist"/_astro/lazy.*.js
 check "criterion 4: pele's colours point at Starlight's tokens" grep -q -- '--pele-bg: var(--sl-color-bg)' "$page_js"
 check "criterion 4: pele's font points at Starlight's font" grep -q -- '--pele-font: var(--sl-font)' "$page_js"
-for h in adoption-trail.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json guide/how-a-change-ships/how-a-change-ships.js guide/how-a-change-ships/how-a-change-ships.css; do
+for h in adoption-trail.html adoption-trail-levels.html adoption-trail-questions.html guide/installer-journey.html guide/loops-and-graphs.html guide/dev-graph.html guide/dev-graph/dev-graph.js guide/dev-graph/dev-graph.css guide/dev-graph/tokens.css guide/dev-graph/graph.json guide/how-a-change-ships/how-a-change-ships.js guide/how-a-change-ships/how-a-change-ships.css; do
   check "criterion 4: $h byte-identical" cmp "$repo/docs/$h" "$dist/$h"
 done
 # every standalone docs/ page and the site routes render headless from astro preview: 200, every referenced asset 200,

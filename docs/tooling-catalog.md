@@ -79,6 +79,7 @@ truth for presence; named profiles can still opt in. Full detail:
 | `motion-lexicon` | Motion vocabulary skill, tag `v6.0.0` | ON-DEMAND, `design-motion` profile; catalog id `@himmel` |
 | `threejs-skills` | Three.js skills (10 skills, sha-pinned) | ON-DEMAND, `design-3d` profile; catalog id `@himmel` |
 | `ai-image-prompts` | AI image prompt library (root-skill repo, UNPROVEN shape, add-on only) | ON-DEMAND, `design-imagegen` profile; catalog id `@himmel` |
+| `higgsfield-skills` | Higgsfield image and video skills (higgsfield-ai/skills, MIT, 8 root-dir skills listed, `strict:true` as upstream's own entry, sha-pinned); they run the `higgsfield` CLI through Bash, no MCP (HIMMEL-7826) | ON-DEMAND, `design-imagegen` profile; egress to Higgsfield (prompts and uploaded files), a `higgsfield` Bash call is denied in salus by `block-agent-native-egress.sh`. Operator, once per machine: `npm i -g @higgsfield/cli`, then `higgsfield auth login` (browser); catalog id `@himmel` |
 | `platform-design-skills` | Platform design guidelines: all 8 upstream platforms load, no skills list (sha-pinned) | ON-DEMAND, `design-a11y` profile; catalog id `@himmel` |
 | `diagram-design` | Diagram design skills (manifest-bearing upstream, sha-pinned) | ON-DEMAND, `design-diagram` profile; catalog id `@himmel` |
 | `builder-visual` | Builder.io skills: all upstream skills load, incl. visual-plan and visual-recap; `strict:true` (upstream plugin.json) (sha-pinned) | ON-DEMAND, `design` core + `design-diagram` profile; its `.mcp.json` registers the hosted OAuth MCP `agent-native-dispatch` (`https://dispatch.agent-native.com/mcp`, egress to Builder.io, one-time operator login); catalog id `@himmel` |
@@ -225,6 +226,7 @@ can also be passed to `--installed` for a hermetic observation.
 | `gsap-skills@himmel` | INSTALLED |
 | `hallmark@himmel` | INSTALLED |
 | `handover@himmel` | INSTALLED |
+| `higgsfield-skills@himmel` | NOT INSTALLED |
 | `himmel-ops@himmel` | INSTALLED |
 | `hookify@claude-plugins-official` | INSTALLED |
 | `i-have-adhd@himmel` | NOT INSTALLED |

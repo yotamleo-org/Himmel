@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Builds docs/adoption-trail.html from levels.json, page.html, trail.css,
-// trail.js and site/src/styles/tokens.css. The page is self-contained (no
-// request to another file or host) because the docs site copies it through
-// unchanged (HTML_PASSTHROUGH in site/astro.config.mjs).
+// Builds the three trail pages, each from layout.html and its own body
+// template: docs/adoption-trail.html (hero.html), docs/adoption-trail-levels.html
+// (levels.html, with the levels from levels.json and trail.js) and
+// docs/adoption-trail-questions.html (questions.html). Each page is
+// self-contained (no request to another file or host) because the docs site
+// copies it through unchanged (HTML_PASSTHROUGH in site/astro.config.mjs).
 //
-// Usage: node site/src/trail/render.mjs           write the page
-//        node site/src/trail/render.mjs --check   exit 1 when the page differs
+// Usage: node site/src/trail/render.mjs           write the pages
+//        node site/src/trail/render.mjs --check   exit 1 when a page differs
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -13,7 +15,6 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..', '..', '..');
 const read = (p) => readFileSync(join(root, p), 'utf8');
-const OUT = 'docs/adoption-trail.html';
 
 const data = JSON.parse(read('site/src/trail/levels.json'));
 const manifest = JSON.parse(read('scripts/install/manifest.json')).items;
@@ -142,27 +143,67 @@ function trail() {
   ].join('\n');
 }
 
-const parts = {
-  TOKENS: read('site/src/styles/tokens.css').trimEnd(),
-  CSS: read('site/src/trail/trail.css').trimEnd(),
-  JS: read('site/src/trail/trail.js').trimEnd(),
-  MANIFEST_N: String(manifest.length),
-  CORE_N: String(coreN),
-  TRAIL: trail(),
-};
-const html = read('site/src/trail/page.html').replace(/\{\{([A-Z_]+)\}\}/g, (_, k) => {
-  if (!(k in parts)) throw new Error(`page.html names an unknown part: ${k}`);
+const fill = (name, parts) => read(`site/src/trail/${name}`).replace(/\{\{([A-Z_]+)\}\}/g, (_, k) => {
+  if (!(k in parts)) throw new Error(`${name} names an unknown part: ${k}`);
   return parts[k];
 });
 
-if (process.argv.includes('--check')) {
-  let current = '';
-  try { current = read(OUT); } catch { /* missing page counts as stale */ }
-  if (current !== html) {
-    console.error(`${OUT} is stale: run node site/src/trail/render.mjs`);
-    process.exit(1);
+const shared = {
+  TOKENS: read('site/src/styles/tokens.css').trimEnd(),
+  CSS: read('site/src/trail/trail.css').trimEnd(),
+};
+const PAGES = [
+  {
+    out: 'docs/adoption-trail.html',
+    body: 'hero.html',
+    title: 'Start here',
+    description: 'What himmel is, what it installs on your machine and where, and how to undo it.',
+    parts: { MANIFEST_N: String(manifest.length), CORE_N: String(coreN) },
+    // A link to a part of the trail that now lives on another page goes there.
+    script: [
+      '<script>',
+      "var h = location.hash;",
+      "if (/^#(trial|trial-h|trail|trail-h|resume|lvl-[0-9]+|os-linux|os-mac|fleet-recording)$/.test(h)) location.replace('adoption-trail-levels.html' + h);",
+      "else if (h === '#control' || h === '#control-h') location.replace('adoption-trail-questions.html#q-control');",
+      '</script>',
+    ].join('\n'),
+  },
+  {
+    out: 'docs/adoption-trail-levels.html',
+    body: 'levels.html',
+    title: 'The adoption trail',
+    description: 'A practice climb on a spare project, then each level of himmel with its cost and its off switch.',
+    parts: { TRAIL: trail() },
+    script: `<script>\n${read('site/src/trail/trail.js').trimEnd()}\n</script>`,
+  },
+  {
+    out: 'docs/adoption-trail-questions.html',
+    body: 'questions.html',
+    title: 'Questions and words',
+    description: 'The questions people ask before they install himmel, and the words the trail uses.',
+    parts: {},
+  },
+];
+
+let stale = false;
+for (const p of PAGES) {
+  const html = fill('layout.html', {
+    ...shared,
+    TITLE: esc(p.title),
+    DESCRIPTION: esc(p.description),
+    BODY: fill(p.body, p.parts).trimEnd(),
+    SCRIPT: p.script || '',
+  });
+  if (process.argv.includes('--check')) {
+    let current = '';
+    try { current = read(p.out); } catch { /* missing page counts as stale */ }
+    if (current !== html) {
+      console.error(`${p.out} is stale: run node site/src/trail/render.mjs`);
+      stale = true;
+    }
+  } else {
+    writeFileSync(join(root, p.out), html);
+    console.log(`wrote ${p.out}`);
   }
-} else {
-  writeFileSync(join(root, OUT), html);
-  console.log(`wrote ${OUT}`);
 }
+if (stale) process.exit(1);

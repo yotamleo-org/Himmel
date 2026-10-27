@@ -7,7 +7,7 @@ instead, that contributor path is in
 [setup/new-machine.md](setup/new-machine.md#4-himmel-repo).
 
 The ten steps below are the same sequence as the
-[adoption trail's practice climb](adoption-trail.html#trial), and that
+[adoption trail's practice climb](adoption-trail-levels.html#trial), and that
 sequence is the canonical one. On 2026-10-23 it was run end to end on a clean
 Linux virtual machine with a sandboxed home folder: install, commit, worktree
 and undo. The editor refusal in step 7 was checked by calling the edit hook

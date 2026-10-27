@@ -31,6 +31,10 @@
 #                 and intros; loops-and-graphs: loop titles, step labels and
 #                 setting names with their descriptions); a copy with its first
 #                 static block removed fails, so the check cannot pass vacuously.
+#   9. ENTRY    — the three "Run many sessions" pages the site builds from
+#                 (afk-mode, running-a-chief, token-economy) open on a user
+#                 task: each one's first H2 is the pinned user heading, not a
+#                 phase list; a fixture opening on the phase list fails.
 #
 # Platform guard (gitbash-only): POSIX bash 3.2+ plus grep/sed/jq/python3, so
 # it runs unchanged under Git Bash on Windows. No .ps1 twin needed.
@@ -321,6 +325,29 @@ for f in "$TRAIL" "$TRAIL_DATA"; do
     ok "$rel carries no dropped-platform or dropped-plugin claim"
   else
     bad "$rel carries stale claims" "$(trail_stale "$f" | sort -u | tr '\n' ' ')"
+  fi
+done
+
+# --- ENTRY: each "Run many sessions" page opens on a user task -----------------
+# Prints the first H2 of a markdown page, fenced blocks skipped.
+first_h2() {
+  awk '/^(```|~~~)/ { f = !f; next } !f && /^## / { sub(/^## +/, ""); print; exit }' "$1"
+}
+printf '# AFK\n\n~~~text\n## not a heading\n~~~\n\n## The 11 phases (+ step 0: queue lock)\n' > "$tmp/entry.md"
+if [ -f "$tmp/entry.md" ] && [ "$(first_h2 "$tmp/entry.md")" = "The 11 phases (+ step 0: queue lock)" ]; then
+  ok "control: a page opening on the phase list reads as the phase list, fenced H2 skipped"
+else
+  bad "control: first_h2 misread the phase-list fixture" "want: The 11 phases (+ step 0: queue lock) / got: $(first_h2 "$tmp/entry.md" 2>/dev/null)"
+fi
+for want in "docs/handover/afk-mode.md|What an AFK shift does" \
+            "docs/handover/running-a-chief.md|What the chief does" \
+            "docs/token-economy.md|The 5-hour and weekly gauges"; do
+  rel="${want%%|*}"
+  got="$(first_h2 "$ROOT/$rel" 2>/dev/null)"
+  if [ "$got" = "${want#*|}" ]; then
+    ok "$rel opens on a user task ($got)"
+  else
+    bad "$rel does not open on a user task" "want: ${want#*|} / got: ${got:-no H2}"
   fi
 done
 

@@ -8,14 +8,13 @@
 #
 # The rule (runbook "Tier coupling -- capability follows the model"):
 #   * full control    = a profile wired with `parity_guard` (the write/git/PR
-#                       main-tier guard), NOT the read-only `luna_vault_guard`.
+#                       main-tier guard).
 #   * trusted engine  = codex / gpt-5.5 / glm-5.2[1m] (the affirmed write engines).
 #   * safe pairing    = full control REQUIRES every model in its chain (the
 #                       `model.default` AND every `fallback_providers` model) to
 #                       be trusted. A free / untrusted / unknown model anywhere
 #                       in a full-control chain is UNSAFE (fail-closed).
-#   * read-only tier  = any engine is safe (free-on-read-only is the intended
-#                       parallel-junior config).
+#   * no parity_guard = not full control; the engine is unconstrained.
 #
 # Config shape follows docs/hermes-runbook.md and scripts/hermes/wire_parity_guard.py
 # (a top-level `model:` with `default:`, a `fallback_providers:` list, and a
@@ -50,8 +49,8 @@ is_trusted_model() {
     grepq "$1" -E "$TRUSTED_RE"
 }
 
-# full control = the profile is wired with parity_guard (write/git/PR allowed),
-# not the read-only luna_vault_guard. Keys on the documented tier signal.
+# full control = the profile is wired with parity_guard (write/git/PR allowed).
+# Keys on the documented tier signal.
 is_full_control() {
     grep -q 'parity_guard' "$1"
 }
@@ -77,12 +76,12 @@ config_models() {
 }
 
 # tier_check <config.yaml>: 0 = safe pairing, 1 = unsafe. Prints a reason to
-# stderr (so a caller can surface it). Read-only tiers are always safe; a
-# full-control tier is safe ONLY if every model in its chain is trusted.
+# stderr (so a caller can surface it). A profile without parity_guard is always
+# safe; a full-control tier is safe ONLY if every model in its chain is trusted.
 tier_check() {
     local cfg="$1" unsafe="" m nmodels=0
     if ! is_full_control "$cfg"; then
-        echo "safe: read-only tier (no parity_guard) -- engine unconstrained" >&2
+        echo "safe: no parity_guard (not full control) -- engine unconstrained" >&2
         return 0
     fi
     while IFS= read -r m; do
@@ -111,15 +110,11 @@ tier_check() {
 # --- test harness: build a fixture, assert tier_check's verdict ----------------
 TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
 fails=0
-# FIXTURE BUILDER. Args: name, guard (parity|luna), default-model, fallback-model
-# (fallback "" = empty fallback_providers: []). Writes a runbook-shaped config.
+# FIXTURE BUILDER. Args: name, default-model, fallback-model (fallback "" =
+# empty fallback_providers: []). Writes a runbook-shaped parity_guard config.
 fixture() {
-    local f="$TMP/$1.yaml" guard="$2" default="$3" fb="$4" cmd
-    if [ "$guard" = "parity" ]; then
-        cmd='    command: ''"PY" "ASSETS/parity_guard.py"'
-    else
-        cmd='    command: ''"PY" "AGENT_HOOKS/luna_vault_guard.py"'
-    fi
+    local f="$TMP/$1.yaml" default="$2" fb="$3"
+    local cmd='    command: ''"PY" "ASSETS/parity_guard.py"'
     {
         printf 'model:\n  default: %s\n  provider: p\n' "$default"
         if [ -z "$fb" ]; then
@@ -189,49 +184,49 @@ expect_unsafe_named() {
 echo "== tier-coupling: trusted engine + full control =="
 # codex-5.5 with no free fallback -- the canonical safe main-tier pairing.
 expect_safe  "codex-5.5 + full control, no fallback" \
-    "$(fixture safe_codex parity codex-5.5 '')"
+    "$(fixture safe_codex codex-5.5 '')"
 # GLM-5.2 1M workhorse (D3b blessed for write), no fallback.
 expect_safe  "glm-5.2[1m] + full control, no fallback" \
-    "$(fixture safe_glm parity 'glm-5.2[1m]' '')"
+    "$(fixture safe_glm 'glm-5.2[1m]' '')"
 # trusted default AND a trusted fallback (codex) -- all-trusted chain is safe.
 expect_safe  "gpt-5.5 + full control, codex fallback (all trusted)" \
-    "$(fixture safe_gptfb parity gpt-5.5 codex-5.5)"
+    "$(fixture safe_gptfb gpt-5.5 codex-5.5)"
 
 echo "== tier-coupling: free tier NEVER paired with full control =="
 # nemotron (free) as the DEFAULT on a full-control profile -- must FAIL.
 expect_unsafe "nemotron (free) + full control" \
-    "$(fixture bad_nemotron parity nvidia/nemotron-3-ultra-550b-a55b '')"
+    "$(fixture bad_nemotron nvidia/nemotron-3-ultra-550b-a55b '')"
 # qwen3-coder-plus (free) as the DEFAULT on a full-control profile -- must FAIL.
 expect_unsafe "qwen3-coder-plus (free) + full control" \
-    "$(fixture bad_qwen parity qwen3-coder-plus '')"
+    "$(fixture bad_qwen qwen3-coder-plus '')"
 # deepseek-v4-flash (CN provider, GLM trust tier) on a full-control profile --
 # must FAIL, and specifically as an UNTRUSTED-MODEL verdict (reason-pinned).
 expect_unsafe_named "deepseek-v4-flash (untrusted CN tier) + full control" \
-    "$(fixture bad_deepseek parity deepseek-v4-flash '')" deepseek-v4-flash
+    "$(fixture bad_deepseek deepseek-v4-flash '')" deepseek-v4-flash
 # deepseek-v4-pro -- the lane row's second advertised model, equally untrusted.
 expect_unsafe_named "deepseek-v4-pro (untrusted CN tier) + full control" \
-    "$(fixture bad_deepseek_r parity deepseek-v4-pro '')" deepseek-v4-pro
+    "$(fixture bad_deepseek_r deepseek-v4-pro '')" deepseek-v4-pro
 # Legacy names stay guarded through the 2026-07-24 retirement overlap
 # (guard parity) -- both must still FAIL.
 expect_unsafe_named "deepseek-chat (legacy, untrusted CN tier) + full control" \
-    "$(fixture bad_deepseek_legacy parity deepseek-chat '')" deepseek-chat
+    "$(fixture bad_deepseek_legacy deepseek-chat '')" deepseek-chat
 expect_unsafe_named "deepseek-reasoner (legacy, untrusted CN tier) + full control" \
-    "$(fixture bad_deepseek_r_legacy parity deepseek-reasoner '')" deepseek-reasoner
+    "$(fixture bad_deepseek_r_legacy deepseek-reasoner '')" deepseek-reasoner
 # trusted default BUT a free model in fallback_providers -- a free tier must
 # never be a WRITE-CAPABLE fallback, so this must FAIL too (D3b).
 expect_unsafe "codex-5.5 default + nemotron free fallback (write-capable)" \
-    "$(fixture bad_fbfree parity codex-5.5 nvidia/nemotron-3-ultra-550b-a55b:free)"
+    "$(fixture bad_fbfree codex-5.5 nvidia/nemotron-3-ultra-550b-a55b:free)"
 # unknown / unrecognized engine on a full-control profile -- fail-closed.
 expect_unsafe "unknown engine + full control (fail-closed)" \
-    "$(fixture bad_unknown parity some-mystery-model '')"
+    "$(fixture bad_unknown some-mystery-model '')"
 # bare GLM-5.2 is capped below the desired Z.ai long-context lane unless the
 # explicit [1m] suffix is present -- must FAIL.
 expect_unsafe "bare glm-5.2 (missing [1m]) + full control" \
-    "$(fixture bad_bare_glm parity glm-5.2 '')"
+    "$(fixture bad_bare_glm glm-5.2 '')"
 # unaffirmed VARIANT of a trusted slug (substring trap): glm-5.2-air carries the
 # trusted "glm-5.2" token but is NOT on the affirmed allowlist -- must FAIL.
 expect_unsafe "glm-5.2-air variant (unaffirmed) + full control" \
-    "$(fixture bad_variant parity glm-5.2-air '')"
+    "$(fixture bad_variant glm-5.2-air '')"
 # full-control config whose model chain cannot be extracted (no model: block) --
 # must FAIL closed, never report safe on an empty chain.
 {
@@ -240,17 +235,6 @@ expect_unsafe "glm-5.2-air variant (unaffirmed) + full control" \
 } > "$TMP/bad_nochain.yaml"
 expect_unsafe "no extractable model chain + full control (fail-closed)" \
     "$TMP/bad_nochain.yaml"
-
-echo "== tier-coupling: free tier is fine on the READ-ONLY junior =="
-# read-only tier (luna_vault_guard) on a free model -- the intended config.
-expect_safe  "nemotron (free) + read-only junior" \
-    "$(fixture ok_ro_nemotron luna nvidia/nemotron-3-ultra-550b-a55b '')"
-expect_safe  "qwen3-coder-plus (free) + read-only junior" \
-    "$(fixture ok_ro_qwen luna qwen3-coder-plus '')"
-expect_safe  "deepseek-chat + read-only junior" \
-    "$(fixture ok_ro_deepseek luna deepseek-chat '')"
-expect_safe  "deepseek-v4-flash + read-only junior" \
-    "$(fixture ok_ro_deepseek_v4 luna deepseek-v4-flash '')"
 
 echo ""
 if [ "$fails" -eq 0 ]; then

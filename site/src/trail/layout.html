@@ -1,0 +1,48 @@
+<!doctype html>
+<!-- Built by site/src/trail/render.mjs from layout.html, hero.html, levels.html, questions.html, levels.json, trail.css, trail.js and site/src/styles/tokens.css. Edit those, then run: node site/src/trail/render.mjs -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{TITLE}} · himmel</title>
+<meta name="description" content="{{DESCRIPTION}}">
+<script>try { var t = localStorage.getItem('starlight-theme'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}</script>
+<style>
+{{TOKENS}}
+{{CSS}}
+</style>
+</head>
+<body>
+<a class="skip" href="#main">Skip to the page</a>
+<header class="top">
+  <div class="wrap">
+    <a class="home" href=".">himmel docs</a>
+    <nav aria-label="Docs">
+      <a href="adoption-trail.html">Start here</a>
+      <a href="adoption-trail-levels.html">The trail</a>
+      <a href="adoption-trail-questions.html">Questions and words</a>
+      <a href="getting-started/">Getting started</a>
+      <a href="https://github.com/yotamleo-org/Himmel">GitHub</a> <!-- env-literal-ok: the public repo link -->
+    </nav>
+  </div>
+</header>
+<main id="main">
+{{BODY}}
+</main>
+<footer class="foot">
+  <div class="wrap">
+    <p>himmel is open source. Questions and bugs: the issue tracker on GitHub.</p>
+    <nav aria-label="More">
+      <a href="why-himmel/">Why himmel</a>
+      <a href="getting-started/">Getting started</a>
+      <a href="setup/install/">Install</a>
+      <a href="daily-loop/">The daily loop</a>
+      <a href="commands-catalog/">Commands</a>
+      <a href="glossary/">Glossary</a>
+      <a href="https://github.com/yotamleo-org/Himmel/issues">Issues</a> <!-- env-literal-ok: the public issue tracker -->
+    </nav>
+  </div>
+</footer>
+{{SCRIPT}}
+</body>
+</html>
