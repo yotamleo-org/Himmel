@@ -227,7 +227,7 @@ O=$(PATH="$TMP/bin:$PATH" GH_LOG="$TMP/gh-prs.log" GH_RUNS="$LIVE/runs-page.json
 has "merged-PR fetch: PR 7 shows its two rounds" "$O" "| #7 | 2 |"
 has "merged-PR fetch: two merged PRs" "$O" "| PRs merged in the window | 2 |"
 eq "merged-PR fetch: --keep saves prs.json" "$(jq -c 'map([.number, .rounds])' "$TMP/kept/prs.json")" "[[7,2],[8,0]]"
-has "merged-PR fetch: search is limited to merged PRs of the repo" "$(cat "$TMP/gh-prs.log")" "s=is:pr is:merged repo:yotamleo-org/Himmel merged:>="
+has "merged-PR fetch: search is limited to merged PRs of the repo inside the window, both ends" "$(cat "$TMP/gh-prs.log")" "s=is:pr is:merged repo:yotamleo-org/Himmel merged:2026-10-20T04:47:24Z..2026-10-20T05:45:00Z"
 case "$O" in *"API cap"*"merge-forward"*) fail "merged-PR fetch: no cap warning under 1000 results";; *) pass "merged-PR fetch: no cap warning under 1000 results";; esac
 
 # A search that hit GitHub's 1000-result cap warns that the window is truncated.

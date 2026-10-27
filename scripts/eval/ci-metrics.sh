@@ -118,9 +118,10 @@ if [ "${1:-}" = "--runjobs" ]; then
   echo "ci-metrics: WARN run jobs fetch failed for run $rid ($(head -c 100 "$out.err")); its cancelled jobs are judged by started_at alone" >&2
   : > "$out.ndjson"; exit 0
 fi
-# --prs <repo> <since ISO> <out>: the PRs merged since <since>, one {number, merged_at, commits, rounds, truncated} per line in <out>.ndjson.
+# --prs <repo> <since ISO> <upto ISO> <out>: the PRs merged in since..upto, one {number, merged_at, commits, rounds, truncated} per line in <out>.ndjson.
+# Bounded at both ends so a historical --now is not crowded out of the 1000-result search cap by newer merges.
 if [ "${1:-}" = "--prs" ]; then
-  repo="$2"; since="$3"; out="$4"; after=""; : > "$out.all"
+  repo="$2"; since="$3"; upto="$4"; out="$5"; after=""; : > "$out.all"
   # shellcheck disable=SC2016  # GraphQL text, $ is not shell
   q='query($s:String!,$after:String){ search(query:$s,type:ISSUE,first:25,after:$after){ issueCount pageInfo{hasNextPage endCursor} nodes{ ... on PullRequest { number mergedAt commits(first:100){ totalCount nodes{ commit{ parents{ totalCount } } } } } } } }'
   # shellcheck disable=SC2016  # jq program, $ is not shell
@@ -129,13 +130,13 @@ if [ "${1:-}" = "--prs" ]; then
              | {number, merged_at: .mergedAt, commits: .commits.totalCount,
                 rounds: ([.commits.nodes[] | select(.commit.parents.totalCount > 1)] | length), truncated: (.commits.totalCount > 100)}]}'
   while :; do
-    key="prs.$(printf '%s|%s|%s' "$repo" "$since" "$after" | md5sum | cut -c1-32)"
+    key="prs.$(printf '%s|%s|%s' "$repo" "$since..$upto" "$after" | md5sum | cut -c1-32)"
     if [ -n "${CI_METRICS_CACHE:-}" ] && [ -s "$CI_METRICS_CACHE/$key.json" ]; then
       cp "$CI_METRICS_CACHE/$key.json" "$out.page"
     else
       got=0
       for _try in 1 2 3; do
-        set -- -f "query=$q" -f "s=is:pr is:merged repo:$repo merged:>=$since"
+        set -- -f "query=$q" -f "s=is:pr is:merged repo:$repo merged:$since..$upto"
         if [ -n "$after" ]; then set -- "$@" -f "after=$after"; fi
         if gh api graphql "$@" 2> "$out.err" > "$out.raw" \
           && jq -e '.errors == null and .data.search != null' "$out.raw" >/dev/null \
@@ -288,7 +289,7 @@ else
     mv "$WORK/jobs2.json" "$JOBS" || die 3 "could not merge step counts"
   fi
   # Merged PRs and their merge-forward rounds; a failed fetch leaves PRS at the "not measured" null.
-  if bash "$SELF" --prs "$REPO" "$(jq -rn --argjson x "$START_EPOCH" '$x|todate')" "$WORK/prs"; then
+  if bash "$SELF" --prs "$REPO" "$(jq -rn --argjson x "$START_EPOCH" '$x|todate')" "$(jq -rn --argjson x "$NOW_EPOCH" '$x|todate')" "$WORK/prs"; then
     jq -s '.' "$WORK/prs.ndjson" > "$WORK/prs.json" && PRS="$WORK/prs.json"
   else
     echo "ci-metrics: WARN merge-forward rounds not measured (merged PRs fetch failed)" >&2
