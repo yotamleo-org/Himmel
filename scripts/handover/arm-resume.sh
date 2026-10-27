@@ -6491,6 +6491,34 @@ fi
 # refuses to read it as this arm's fire even when the two share a start second.
 _ARM_PRIOR_FIRED_ROW=$(_arm_fired_row) || _ARM_PRIOR_FIRED_ROW=""
 
+# The limit-resume key's time is taken here, before schedule_arm: a near-term
+# target can fire inside the create->verify window, and that fire must read as
+# this key's fire (fired_at >= key time). The recorder appends one line (atomic
+# for a line this short; readers take the last line per key) and prunes lines
+# older than a week once the file passes 200 lines.
+# ponytail: a prune racing an append can drop that one key (the pre-key behavior
+# for it), upgrade path a lock if it ever shows.
+_lim_key_time=""
+if [ -n "$LIMIT_RESET" ] && [ -n "${_lim_keys:-}" ]; then
+    _lim_key_time=$(date -u +%Y-%m-%dT%H:%M:%SZ) || _lim_key_time=""  # swallow-ok: no clock means no key is recorded; the arm proceeds as before
+fi
+_lim_record_key() {
+    [ -n "$_lim_key_time" ] || return 0
+    local _p
+    if ! { mkdir -p "$(dirname "$_lim_keys")" && printf '%s %s\n' "$TASK_NAME:$LIMIT_RESET" "$_lim_key_time" >> "$_lim_keys"; } 2>/dev/null; then
+        echo "WARN arm-resume: limit-resume key NOT recorded in $_lim_keys (a replay after this session ends would arm again)" >&2
+        return 0
+    fi
+    if [ "$(awk 'END { print NR }' "$_lim_keys")" -gt 200 ]; then
+        _p=$(date -u -d "@$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
+            || date -u -r "$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _p=""  # swallow-ok: no date form works, so nothing is pruned
+        if [ -n "$_p" ]; then
+            awk -v p="$_p" '$2 >= p' "$_lim_keys" > "$_lim_keys.tmp.$$" 2>/dev/null \
+                && mv "$_lim_keys.tmp.$$" "$_lim_keys" 2>/dev/null || true  # swallow-ok: best-effort prune, the key is already recorded
+        fi
+    fi
+}
+
 schedule_arm
 
 if [ "$DRY_RUN" -eq 1 ]; then
@@ -6626,6 +6654,7 @@ if [ "${_ARM_CONSUMED:-0}" -eq 1 ]; then
 ================================================================
 
 EOF
+    _lim_record_key
     exit 0
 fi
 
@@ -6680,18 +6709,9 @@ fi
 # smart/auto sentinel arms, which never derive _GAP_SEC (no measured park).
 telemetry_emit handover-arm-resume armed "time=$RESUME_TIME" "force=$FORCE" "long_gap=$LONG_GAP" "gap_sec=${_GAP_SEC:-0}"
 
-# Record the limit-resume key with its time (best-effort: a write failure must not
+# Record the limit-resume key (best-effort: a write failure warns and must not
 # fail an arm that already succeeded; the worst case is the pre-key behavior).
-# A re-arm of the same key replaces its line, and keys older than a week go.
-if [ -n "$LIMIT_RESET" ] && [ -n "${_lim_keys:-}" ]; then
-    _lim_prune=$(date -u -d "@$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null \
-        || date -u -r "$(( $(date +%s) - 604800 ))" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null) || _lim_prune=""  # swallow-ok: no date form works, so nothing is pruned
-    mkdir -p "$(dirname "$_lim_keys")" 2>/dev/null || true  # swallow-ok: best-effort key record, the arm already succeeded
-    {
-        [ ! -f "$_lim_keys" ] || awk -v k="$TASK_NAME:$LIMIT_RESET" -v p="$_lim_prune" '$1 != k && $2 >= p' "$_lim_keys"
-        printf '%s %s\n' "$TASK_NAME:$LIMIT_RESET" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    } > "$_lim_keys.tmp.$$" 2>/dev/null && mv "$_lim_keys.tmp.$$" "$_lim_keys" 2>/dev/null || true  # swallow-ok: best-effort key record, the arm already succeeded
-fi
+_lim_record_key
 
 # record this arm in the cross-machine arms registry, same
 # dry-run gate as telemetry above. Best-effort -- a registry write failure

@@ -5561,6 +5561,12 @@ out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --limit-reset R2 2>&1)
 rc=$?
 assert_rc "7757 a different reset time is a different key and arms (rc=0)" 0 "$rc"
+if [ "$(OSTYPE=msys count_slots "$DB_1879" "$DBD_1879")" = "1" ]; then
+    echo "PASS 7757 the different reset time queued one session"
+else
+    echo "FAIL 7757 the different reset time queued $(OSTYPE=msys count_slots "$DB_1879" "$DBD_1879") sessions, want 1"
+    FAILED=$((FAILED + 1))
+fi
 : > "$DB_1879"
 # The R1 fire is restart one; seed two more fired rows inside the window, then
 # the next arm is the fourth restart.
@@ -5581,6 +5587,12 @@ out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
     bash "$ARM" --time "$(future_time)" --handover "$HO_7757" --limit-reset R5 --force 2>&1)
 rc=$?
 assert_rc "7757 --force overrides the restart cap (rc=0)" 0 "$rc"
+if [ "$(OSTYPE=msys count_slots "$DB_1879" "$DBD_1879")" = "1" ]; then
+    echo "PASS 7757 --force at the cap queued one session"
+else
+    echo "FAIL 7757 --force at the cap queued $(OSTYPE=msys count_slots "$DB_1879" "$DBD_1879") sessions, want 1"
+    FAILED=$((FAILED + 1))
+fi
 # A plain (non-limit) arm of the same handover never meets either key.
 : > "$DB_1879"
 out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$LEDGER_7757" \
@@ -5655,6 +5667,21 @@ if [ "$(slots_7757b)" = "1" ]; then
     echo "PASS 7757 force: --force queued one session"
 else
     echo "FAIL 7757 force: --force queued $(slots_7757b) sessions, want 1"
+    FAILED=$((FAILED + 1))
+fi
+# A key that cannot be written warns, and the arm that already succeeded stays armed.
+mkdir -p "$TMP/7757c/limit-keys.txt"
+: > "$DB_1879"
+out=$(TMPDIR="$TMP" HIMMEL_FLOW_RUNS_LEDGER="$TMP/7757c/flow-runs.jsonl" \
+    SCHED_DB="$DB_1879" SCHED_DB_DIR="$DBD_1879" win_env "$S1879" \
+    bash "$ARM" --time "$(future_time)" --handover "$HO_7757B" --limit-reset R9 2>&1)
+rc=$?
+assert_rc "7757 key write: an unwritable key file does not fail the arm (rc=0)" 0 "$rc"
+assert_contains "7757 key write: the failed key write is reported" "limit-resume key NOT recorded" "$out"
+if [ "$(slots_7757b)" = "1" ]; then
+    echo "PASS 7757 key write: the arm stays armed"
+else
+    echo "FAIL 7757 key write: the arm queued $(slots_7757b) sessions, want 1"
     FAILED=$((FAILED + 1))
 fi
 
