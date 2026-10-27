@@ -153,6 +153,7 @@ KEY=$(ticket_key_from_title "$TITLE") || KEY=""
 [ -n "$KEY" ] || jira_result "skip=no-ticket-tag"
 TARGET=$(jq -r --arg p "${KEY%-*}" '.[$p].targetStatus // empty' "$ANCHOR/scripts/jira/reconcile-config.json" 2>/dev/null) || TARGET=""  # swallow-ok: an unread config is skip=no-project-config, after the merge landed
 [ -n "$TARGET" ] || jira_result "skip=no-project-config key=$KEY project=${KEY%-*}"
+[ -f "$ANCHOR/scripts/jira/dist/index.js" ] || jira_result "skip=no-jira-cli-build key=$KEY"
 ITYPE=$(jira get "$KEY" --json 2>/dev/null | jq -r '.fields.issuetype.name // empty' 2>/dev/null) || ITYPE=""  # swallow-ok: an unread type is skip=cannot-verify-type, never a transition
 case "$ITYPE" in
     Epic) jira_result "skip=never-touch-type key=$KEY type=$ITYPE" ;;
