@@ -546,6 +546,7 @@ scripts/himmelctl/test/test-wizard-bootstrap.sh	local	behaviour suite, 0 catches
 scripts/himmelctl/test/test-wizard-cadence-per-unit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-wizard-cadence-registry.sh	pr	static-gate
 scripts/himmelctl/test/test-wizard-commit-rules.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/himmelctl/test/test-wizard-himmel-conf.sh	pr	flow-miss:HIMMEL-5373
 scripts/himmelctl/test/test-wizard-config.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-wizard-contributor-profile.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/himmelctl/test/test-wizard-deps-lint.sh	local	behaviour suite, 0 catches in the 400-PR audit window

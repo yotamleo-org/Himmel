@@ -1957,6 +1957,9 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   // Commit rules (all profiles, last so vault-gated sections keep their order):
   // tracker + ticket ID rules -> ~/.himmel/himmel.conf
   const commitRules = await askCommitRules(ask); // step: commit
+  const behaviourConfig = await adopterProfileLib.askBehaviourConfig(ask, { // step: config
+    handledKeys: ['TRACKER', 'TICKET_ID_REQUIRED', 'TICKET_ID_PATTERN', ...(handoverMode === 'external' ? ['HANDOVER_DIR'] : [])],
+  });
 
   const answers = buildAnswers(profile, devOverlay, scope, vaultMode, vaultPath, handoverMode, handoverPath, pluginSet, lanes, alwaysOn, luna, secretsWalk, bridge, cadences, vm);
   if (secretsWalk === 'run' && !dryRun) {
@@ -1966,6 +1969,7 @@ async function askQuestions(defaultScope, laneOpts, devOverlay, dryRun) {
   rl.close();
   if (handoverRegister) answers.handover.register = handoverRegister;
   if (commitRules) answers.commitRules = commitRules;
+  answers.behaviourConfig = behaviourConfig;
   return answers;
 }
 
@@ -2116,6 +2120,9 @@ function loadProfile(p) {
   // profile that was valid when it was written. An id that was NEVER a lane
   // still fails loud, exactly as before: this carve-out is keyed to the
   // known dormant set, not to "anything unrecognised".
+  if (obj.behaviourConfig !== undefined) {
+    try { adopterProfileLib.validateBehaviourConfig(obj.behaviourConfig); } catch (e) { profileError(p, e.message); }
+  }
   const droppedDormantLanes = [];
   for (const l of obj.lanes) {
     if (adopterProfileLib.ALL_LANE_IDS.indexOf(l) !== -1) continue;
@@ -4604,6 +4611,7 @@ async function runPlan(answers, args) {
       console.error(`himmelctl: adopt.sh --dry-run exited ${dryRunRc}; preview incomplete`);
       return dryRunRc;
     }
+    adopterProfileLib.applyBehaviourConfig(answers.behaviourConfig || {}, { envFile: envFilePath(), dryRun: true });
     previewHandoverAndPlugins(answers);
     const lunaPreview = previewLunaSections(answers);
     previewCommitRules(answers);
@@ -4639,6 +4647,8 @@ async function runPlan(answers, args) {
   // Fail-closed: a failed write must abort BEFORE the core install shell-out
   // rather than silently proceed with an unwired handover destination.
   provOpen(args); // HIMMEL-3332 S5: idempotent — cmdInstall already opened the session
+  provStep = 'behaviour-config';
+  adopterProfileLib.applyBehaviourConfig(answers.behaviourConfig || {}, { envFile: envFilePath() });
   provStep = 'handover';
   if (!applyHandoverStep(answers)) return 1;
 
