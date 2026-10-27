@@ -1,8 +1,6 @@
 #!/usr/bin/env bash
-# Hermetic tests for the cross-platform descendant-walk logic added to
-# reap-mcp-fleet.sh (_reap_descendants - the bash twin of
-# reap-mcp-fleet.ps1's Get-DescendantPids, unit-tested in
-# test-reap-mcp-fleet.ps1). No real process table is touched: this file
+# Hermetic tests for reap-mcp-fleet.sh's descendant-walk logic and platform
+# refusal. No real process table is touched: this file
 # sources reap-mcp-fleet.sh (the sourcing guard skips production code, only
 # defining functions - same seam shared-branch-lock.sh uses) and feeds
 # _reap_descendants a synthetic proc-table fixture.
@@ -123,6 +121,31 @@ case "$out" in
   *"missing value for --started-at"*) pass "missing --started-at value names the flag" ;;
   *) fail "missing --started-at value message: $out" ;;
 esac
+
+# --- Test 5: unsupported hosts refuse before dispatching or scanning --------
+for host in msys cygwin win32 MINGW MSYS; do
+  out="$(
+    OSTYPE="$host"
+    # shellcheck disable=SC2329  # dispatched indirectly by _reap_main
+    pwsh() { echo "unexpected legacy dispatch"; return 0; }
+    # shellcheck disable=SC2329  # dispatched indirectly by _reap_main
+    _reap_ps_table() { echo "unexpected process scan"; }
+    # shellcheck disable=SC2329  # dispatched indirectly by _reap_main
+    _reap_registry_scan() { echo "unexpected registry scan"; }
+    _reap_main --root-pid 500 2>&1
+  )"
+  rc=$?
+  if [ "$rc" -eq 2 ]; then
+    pass "$host is refused (rc=2)"
+  else
+    fail "$host: rc=$rc (want 2) out=$out"
+  fi
+  case "$out" in
+    *unexpected*) fail "$host dispatched or scanned: $out" ;;
+    *"Windows is not supported"*) pass "$host names the unsupported platform" ;;
+    *) fail "$host lacks an unsupported-platform diagnostic: $out" ;;
+  esac
+done
 
 echo
 if [ "$fails" -ne 0 ]; then
