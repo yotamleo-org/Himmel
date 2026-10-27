@@ -39,7 +39,7 @@
 # --pr-sha (the PR run's headSha) must equal `git rev-parse HEAD`, so an
 # older PR run cannot stand in for the current head.
 # Exit 0 = ALLOW  1 = REFUSE  2 = usage / unreadable input
-#      3 = nothing red on the PR; no merge-forward needed
+#      3 = nothing to merge forward: no red on the PR, or (--chain-s2 mode) the predecessor is already in HEAD
 # Red = failure | timed_out | startup_failure.
 # --main-base-conclusion / --base-cover-conclusion are the RUN's conclusion from
 # `gh run view <id> --json conclusion` (`none` when no run exists at the merge-base):
@@ -93,6 +93,86 @@ SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 git_env_scrub
 # a run with no job rows, or only cancelled/skipped rows and at least one cancelled, was cancelled (a superseded pending sweep has 0 jobs)
 is_cancelled() { awk -F'\t' 'NF {n++} NF && $2=="cancelled" {c++} NF && $2!="cancelled" && $2!="skipped" {o=1} END {exit !(n==0 || (!o && c))}' "$1"; }
+# The chain-s2 reason: a separate mode, entered only when the FIRST argument is --chain-s2, so every
+# invocation above it is untouched. It ALLOWs one merge of origin/main into a GREEN PR that chain-plan.sh ordered
+# after an S2 predecessor, and reads no flag: its evidence is the plan file, which chain-plan.sh writes only while
+# chain_merge_plan is on (a plan file from the flag-off run carries no MERGE-FORWARD line, so this mode REFUSEs).
+#   merge-forward-check.sh --chain-s2 <pr> --chain-plan <file> --chain-after-sha <40-hex> --pr <file> --pr-sha <sha>
+# --chain-plan: chain-plan.sh's output (its header and the `MERGE-FORWARD <pr> after <pred>` line);
+# --chain-after-sha: the predecessor's squash-merge commit; --pr/--pr-sha: the PR's own CI run, as above.
+# Exit 0 = ALLOW  1 = REFUSE  2 = usage  3 = the predecessor is already in HEAD
+# ponytail: the plan file is written by the caller's own chain-plan.sh run and taken as given, like the case lists
+# above; the sha is bound to the predecessor by its merge subject ending (#<pred>) and by being on origin/main and
+# absent from HEAD. Upgrade path is this script running chain-plan.sh against a fresh graph itself.
+chain_s2() {
+  local cpr="" plan="" after="" jobs="" psha="" bad=0 pred line rafter tip head subj reds
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --chain-s2) [ $# -ge 2 ] || { bad=1; break; }; cpr="$2"; shift 2 ;;
+      --chain-plan) [ $# -ge 2 ] || { bad=1; break; }; plan="$2"; shift 2 ;;
+      --chain-after-sha) [ $# -ge 2 ] || { bad=1; break; }; after="$2"; shift 2 ;;
+      --pr) [ $# -ge 2 ] || { bad=1; break; }; jobs="$2"; shift 2 ;;
+      --pr-sha) [ $# -ge 2 ] || { bad=1; break; }; psha="$2"; shift 2 ;;
+      *) bad=1; break ;;
+    esac
+  done
+  if [ "$bad" -eq 1 ] || ! [[ "$cpr" =~ ^[0-9]+$ ]] || [ ! -f "$plan" ] || [ ! -r "$plan" ] || [ ! -f "$jobs" ] || [ ! -r "$jobs" ] \
+     || ! [[ "$after" =~ ^[0-9a-f]{40}$ ]] || [ -z "$psha" ]; then
+    echo "usage: merge-forward-check.sh --chain-s2 <pr> --chain-plan <chain-plan.sh output> --chain-after-sha <40-hex predecessor merge sha> --pr <file> --pr-sha <sha> (no other flag)" >&2
+    exit 2
+  fi
+  if awk -F'\t' 'NF && (NF != 2 || $1 == "" || $2 !~ /^(success|failure|cancelled|skipped|neutral|timed_out|startup_failure|action_required|stale)$/) {exit 1}' "$jobs"; then :; else
+    echo "usage: $jobs has a malformed row (want <job><TAB><conclusion>): a skipped or misread row could hide a red" >&2
+    exit 2
+  fi
+  line="$(awk -v p="$cpr" '$1 == "MERGE-FORWARD" && $2 == p && $3 == "after" && $4 ~ /^[0-9]+$/ {print; exit}' "$plan")"
+  if [ -z "$line" ]; then
+    echo "REFUSE — $plan carries no MERGE-FORWARD line for PR $cpr: chain-plan.sh wrote none (chain_merge_plan off, or the PR is not the later node of an S2 pair). Do not merge forward."
+    exit 1
+  fi
+  if ! grep -qxF 'chain-plan: chain_merge_plan on' "$plan"; then
+    echo "REFUSE — $plan has no 'chain-plan: chain_merge_plan on' header: it is not chain-plan.sh's output. Do not merge forward."
+    exit 1
+  fi
+  pred="$(awk '{print $4}' <<< "$line")"
+  reds="$(awk -F'\t' 'NF && $2 != "success" && $2 != "skipped" && $2 != "neutral" {printf "%s%s: %s", s, $1, $2; s = ", "}' "$jobs")"
+  if [ -z "$(awk 'NF {print "x"; exit}' "$jobs")" ] || [ -n "$reds" ]; then
+    echo "REFUSE — the PR run is not all green (${reds:-no job rows}): a red job goes through the inherited-red rules, never the chain-s2 reason. Do not merge forward."
+    exit 1
+  fi
+  if [ -z "$(awk -F'\t' '$2 == "success" {print "x"; exit}' "$jobs")" ]; then
+    echo "REFUSE — the PR run has no success row (only skipped or neutral jobs): that is no evidence the PR is green. Do not merge forward."
+    exit 1
+  fi
+  if ! git fetch --quiet origin main 2>/dev/null || ! tip="$(git rev-parse --verify --quiet origin/main)"; then
+    echo "usage: cannot fetch origin main from $(pwd): the chain-s2 check needs the worker's own repo" >&2
+    exit 2
+  fi
+  if ! head="$(git rev-parse --verify --quiet HEAD)"; then
+    echo "usage: cannot resolve HEAD in $(pwd)" >&2
+    exit 2
+  fi
+  if [ "$psha" != "$head" ]; then
+    echo "REFUSE — the --pr run is for $psha, but HEAD is $head: an older PR run proves nothing about the current head. Wait for the run of HEAD; do not merge forward."
+    exit 1
+  fi
+  if ! rafter="$(git rev-parse --verify --quiet "$after^{commit}")" || ! git merge-base --is-ancestor "$rafter" "$tip" 2>/dev/null; then
+    echo "REFUSE — --chain-after-sha $after is not a commit on origin/main ($tip): the predecessor's merge must be there. Do not merge forward."
+    exit 1
+  fi
+  subj="$(git log -1 --format=%s "$rafter")"
+  if [[ "$subj" != *"(#$pred)" ]]; then
+    echo "REFUSE — $rafter is '$subj', not the merge of PR #$pred (the subject must end (#$pred)): the plan names #$pred as PR $cpr's predecessor. Do not merge forward."
+    exit 1
+  fi
+  if git merge-base --is-ancestor "$rafter" "$head" 2>/dev/null; then
+    echo "nothing to merge forward — $rafter (PR #$pred's merge) is already in HEAD"
+    exit 3
+  fi
+  echo "ALLOW chain-s2 $cpr — chain-plan.sh orders PR $cpr after #$pred (merged as $rafter, on origin/main and not yet in HEAD) and the PR run is all green. This proves only #$pred's merge: confirm every other S2 predecessor of PR $cpr in the plan has merged before you merge forward. One 'git merge $tip' (the origin/main tip just fetched; CI re-runs at the merged head; never 'origin/main' again, it may have moved; merge commit; never rebase or force-push), then re-run impacted-suites.sh over the merged diff, regenerate generated files, ONE push, citing the plan line ($line) in a Results bullet."
+  exit 0
+}
+[ "${1:-}" = "--chain-s2" ] && chain_s2 "$@"
 pr=""; base=""; latest=""; prc=""; bc=""; bsha=""; msha=""; lsha=""; psha=""; cover=""; csha=""; cfrom=""; bconc=""; cconc=""; lc=""; lc_set=0; cover_used=0; local_jobs=""; bad=0
 while [ $# -gt 0 ]; do
   case "$1" in

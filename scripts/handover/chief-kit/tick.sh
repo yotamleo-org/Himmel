@@ -2572,6 +2572,19 @@ if [ -f "$ciguard_probe" ]; then
     fi
 fi
 
+# cired=<n>|unknown: the open issues labelled ci-red, one bounded
+# `gh issue list` read per tick on the read token, run from the PR repo checkout. A failed
+# or timed-out read, or output that is not a count, reads unknown. Bounded by
+# TICK_CIRED_TIMEOUT (default 15 s, so the three sequential probes stay inside the
+# waiter's 120 s). chief-wait.sh's wake key does not carry cired, so a count change wakes nothing.
+cired_summary=unknown
+# shellcheck source=../../lib/timeout-bin.sh
+. "$HERE/../../lib/timeout-bin.sh" 2>/dev/null
+cired_bound="${TICK_CIRED_TIMEOUT:-15}"
+case "$cired_bound" in [1-9]|1[0-5]) ;; *) cired_bound=15 ;; esac
+cired_out="$(cd "$pr_repo" 2>/dev/null && ${_TIMEOUT_BIN:+"$_TIMEOUT_BIN" -k 2 "$cired_bound"} "$GH_READ_BIN" issue list --label ci-red --state open --limit 1000 --json number -q 'length' 2>/dev/null)" || cired_out=""  # swallow-ok: a failed read leaves cired=unknown
+case "$cired_out" in ''|*[!0-9]*) ;; 1000) cired_summary='1000+' ;; *) cired_summary="$cired_out" ;; esac
+
 # vmrun=off|ok:<up>/<want>,busy=<n>|DISAGREE:<up>/<want>,online=<n>|DEAD|STUCK|
 # FAILING: the himmel-vm self-hosted runner, one bounded `vm-runner.sh status
 # --tick` call. DEAD = the repo variable is on but no unit is up; STUCK = a job
@@ -2661,6 +2674,7 @@ if [ "$verbose" -eq 1 ]; then
     printf 'scheduled jobs: %s\n' "$at_count"
     printf 'suite locks: %s\n' "$suites"
     printf 'open PRs: %s\n' "$prs"
+    printf 'ci-red issues: %s\n' "$cired_summary"
     printf 'unowned-prs: %s\n' "$unowned_prs"
     printf 'ext-prs: %s\n' "$ext_prs"
     [ "$dispatch_summary" = none ] || printf 'dispatch: %s\n' "$dispatch_summary"
@@ -2775,6 +2789,7 @@ else
     compact_field denials "$denials_summary"
     compact_field ciq "$ciq_summary"
     compact_field ciguard "$ciguard_summary"
+    compact_field cired "$cired_summary"
     compact_field plan-index "$plan_index_summary"
     compact_field or "$openrouter"
     compact_field fails "$fails_summary"
