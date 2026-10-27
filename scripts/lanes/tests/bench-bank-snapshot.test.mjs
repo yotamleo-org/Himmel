@@ -32,10 +32,10 @@ test('extractLaneWindowPct reads the right window out of a multi-window (claude)
 
 test('extractLaneWindowPct returns null for an absent lane, flat-rate, or unmeasurable status', () => {
   const output = [
-    bankStatusLine('glm', 'funded', 'flat-rate'),
+    bankStatusLine('flat-rate-example', 'funded', 'flat-rate'),
     bankStatusLine('codex-exec', 'unknown', 'unmeasurable reason="I/O timeout"'),
   ].join('\n');
-  assert.equal(extractLaneWindowPct(output, 'glm', 'weekly'), null);
+  assert.equal(extractLaneWindowPct(output, 'flat-rate-example', 'weekly'), null);
   assert.equal(extractLaneWindowPct(output, 'codex-exec', 'weekly'), null);
   assert.equal(extractLaneWindowPct(output, 'absent-lane', 'weekly'), null);
 });

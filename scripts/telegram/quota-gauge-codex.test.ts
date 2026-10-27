@@ -42,7 +42,7 @@ test("both banks: LAST occurrence wins; buildCodexRows emits a 5h + a weekly row
     expect(r.lane).toBe("codex");
     expect(r.source).toBe("codex-sqlite");
     expect(r.tier).toBe("pro");
-    expect(r.glm_peak).toBeNull(); // peak band is GLM-only
+    expect(r.glm_peak).toBeNull(); // reserved v1 column
     expect(r.note).toBeNull();
   }
 });

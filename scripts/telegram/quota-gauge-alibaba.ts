@@ -153,8 +153,8 @@ export function parseModelUsage(json: unknown): ModelUsage[] | null {
 // (visible-not-silent), never a fabricated number. used_pct is
 // DERIVED: round(100*consumed/grant) when the grant is a finite positive
 // number, else null (the consumed figure is still recorded in `note`).
-// glm_peak is null on every alibaba row (the peak band is a GLM-only
-// concept). window/reset_at are null — Prometheus exposes a cumulative
+// glm_peak is a reserved, always-null v1 column.
+// window/reset_at are null — Prometheus exposes a cumulative
 // consumed counter, no rolling window or reset instant. tier carries the
 // model name (the closest analogue to a "tier" for a per-model quota).
 export function buildAlibabaRows(usage: ModelUsage[] | null, grants: AlibabaGrants, nowMs: number): QuotaGaugeRecord[] {
