@@ -85,6 +85,17 @@ kout="$(bash "$L" --root "$rootk")"
 check "share line counts named checks" "$(printf '%s' "$kout" | grep -c '^Check share: 2/4 lessons (50%) name a check or guardrail$')" "1"
 check "share: untagged fixture is 0/4" "$(printf '%s' "$out" |grep -c '^Check share: 0/4 lessons (0%) ')" "1"
 
+# Lessons written under "## Lessons" in a next-session file are swept and counted; other sections are not.
+rootl="$tmp/lsn"; mkdir -p "$rootl/epics/HIMMEL-1-a"
+printf '%s\n' '## Resume Point' '- not a lesson' '## Lessons' '' \
+  'For each lesson ask: which check or guardrail would have caught this?' \
+  '- stale lock (check: test-queue-lock.sh)' '- no guard existed (check: none)' \
+  '## Overnight Mode Trigger' '- also not a lesson' > "$rootl/epics/HIMMEL-1-a/next-session-1.md"
+lout="$(bash "$L" --root "$rootl")"
+check "next-session lesson share"   "$(printf '%s' "$lout" | grep -c '^Check share: 1/2 lessons (50%) name a check or guardrail$')" "1"
+check "next-session lesson in digest" "$(printf '%s' "$lout" | grep -c '^- lesson · epics/HIMMEL-1-a · stale lock')" "1"
+check "next-session other sections skipped" "$(printf '%s' "$lout" | grep -c 'not a lesson')" "0"
+
 # Empty root -> digest placeholder, rc 0.
 root3="$tmp/s3"; mkdir -p "$root3"
 out3="$(bash "$L" --root "$root3")"; rc3=$?
