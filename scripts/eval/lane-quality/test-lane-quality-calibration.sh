@@ -193,8 +193,19 @@ echo "6. a selected run left ungraded stops the pass"
 fresh; rm "$TMP/fx2/t3.judge-packet.md"
 # shellcheck disable=SC2034  # rows0 is read by check's eval
 rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
-bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json >/dev/null 2>"$TMP/nopk.err"; rc=$?
-check "a selected run with no judge packet stops the pass: exit 75, no calibration row" '[ "$rc" -eq 75 ] && grep -qF "t3 has no judge packet" "$TMP/nopk.err" && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 2 ] && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ]'
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json >/dev/null 2>"$TMP/nopk0.err"; rc=$?
+check "without --sample a run with no judge packet is left out with a warning: rc 0, one calibration row" '[ "$rc" -eq 0 ] && grep -qF "1 run(s) have no judge packet" "$TMP/nopk0.err" && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 5 ] && ! grep -q " t3$" "$TMP/fake.log" && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq $((rows0 + 1)) ]'
+fresh; rm "$TMP/fx2/t3.judge-packet.md"
+for s in t1 t2 t3 t4 t5 t6; do echo "$TMP/fx2/$s.judge-packet.md"; done >"$TMP/sample-all.txt"
+# shellcheck disable=SC2034  # rows0 is read by check's eval
+rows0="$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")"
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --sample "$TMP/sample-all.txt" --json >/dev/null 2>"$TMP/nopk.err"; rc=$?
+check "a --sample packet that is missing stops the pass: exit 75, no calibration row" '[ "$rc" -eq 75 ] && grep -qF "t3 has no judge packet" "$TMP/nopk.err" && [ "$(grep -c "^gpt-x " "$TMP/fake.log")" -eq 2 ] && [ "$(wc -l <"$HIMMEL_EVAL_RUNS_LEDGER")" -eq "$rows0" ]'
+fresh
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>&1
+rm "$TMP/fx2/t3.judge-packet.md"; : >"$TMP/fake.log"
+bash "$RUN" calibration "$TMP/fx2" "${G1[@]}" "${G2[@]}" --sample "$TMP/sample-all.txt" --json --no-ledger >"$TMP/reuse.json" 2>/dev/null; rc=$?
+check "a stored grader result is reused when its packet is missing" '[ "$rc" -eq 0 ] && [ ! -s "$TMP/fake.log" ] && jq -e ".metrics.n_verdict == 6" "$TMP/reuse.json" >/dev/null'
 fresh
 printf 't1 4\nt2 4\nt3 noscore\nt4 4\nt5 3\nt6 2\n' >"$TMP/grades/gpt-bad"
 # shellcheck disable=SC2034  # rows0 is read by check's eval

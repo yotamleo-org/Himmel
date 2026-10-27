@@ -258,6 +258,11 @@ The ledger row carries:
   `--judge2-effort`), it re-judges every stored judge packet once and reports
   quadratic weighted kappa per criterion. It reuses stored second-judge
   results, so a rerun makes no call.
+- **Runs with no packet:** a run the sweep never judged has no judge packet.
+  Without `--sample` the grading pass leaves such runs out, prints how many
+  on stderr and still records the row. `--sample` lists the packets to grade;
+  if a listed packet is missing and has no stored result, the pass stops
+  with exit 75 and records no row.
 - **Ledger:** it appends one `lane-quality-calibration` row unless you pass
   `--no-ledger`.
 

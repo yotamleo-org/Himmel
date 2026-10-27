@@ -966,7 +966,7 @@ refuse_vendor() {
 # counts the larger of its reported cost and the metered balance it took; an
 # unpriced one, whose reported cost is no real spend, needs the meter read on
 # both sides. Returns 1 when the budget or an unknown cost stops it, or when a
-# selected run has no packet or its grader returns no decodable score.
+# listed run has no packet or its grader returns no decodable score.
 grade_pass() {
   local model="$1" effort="$2" lane="$3" label="$4" list="$5" d stem packet out remaining budget cost tok b0 b1 unpriced=""
   [ "$lane" = openrouter ] && ! jq -e --arg m "$model" 'has($m)' <<<"$PRICES" >/dev/null && unpriced=1
@@ -974,7 +974,7 @@ grade_pass() {
     packet="$d/$stem.judge-packet.md"; out="$d/$stem.judge2.$label.json"
     [ "$(judge_scores "$out")" = null ] || continue
     if ! [ -s "$packet" ]; then
-      echo "lane-quality: $d/$stem has no judge packet, so it cannot be graded (name the packets to grade with --sample); stopping" >&2
+      echo "lane-quality: $d/$stem has no judge packet, so it cannot be graded; stopping" >&2
       return 1
     fi
     remaining="$(awk -v m="$MAX_USD" -v s="$SPENT" 'BEGIN{printf "%.2f", m - s}')"
@@ -1027,7 +1027,7 @@ grade_pass() {
 # [--cap-factor F] [--max-usd U] [--timeout S] [--json] [--no-ledger]: the grader calls happen
 # here (budget-capped like the sweep); the maths is lq_stats.py.
 cmd_calibration() {
-  local dirs=() json="" noledger="" sample="" d l stem list stop=0 l1="" l2="" lt="" m g1=() under=() stored=()
+  local dirs=() json="" noledger="" sample="" d l stem list stop=0 nopacket=0 l1="" l2="" lt="" m g1=() under=() stored=()
   local j1model="" j1effort="" j1lane=native j2model="" j2effort="" j2lane=native tbmodel="" tbeffort="" tblane=native
   MAX_USD=1; TIMEOUT=600; SPENT=0; CAP_FACTOR=""
   while [ $# -gt 0 ]; do
@@ -1112,13 +1112,20 @@ cmd_calibration() {
     init_env
     METERED_PROBE="${LQ_METERED_PROBE:-$REPO/scripts/lanes/openrouter-cost.sh}"
     list="$(mktemp "${TMPDIR:-/tmp}/lq-calibration.XXXXXX")" || die "mktemp failed"
+    # --sample lists the packets to grade, so a listed one that is missing stops
+    # the pass; without it, a run the sweep never judged has no packet and is left out.
     for d in "${dirs[@]}"; do
       d="$(cd "$d" && pwd)" || die "cannot resolve $d"
       while IFS= read -r stem; do
-        [ -z "$sample" ] || grep -qxF "$d/$stem.judge-packet.md" "$sample" || continue
+        if [ -n "$sample" ]; then
+          grep -qxF "$d/$stem.judge-packet.md" "$sample" || continue
+        elif ! [ -s "$d/$stem.judge-packet.md" ]; then
+          nopacket=$((nopacket + 1)); continue
+        fi
         printf '%s\t%s\n' "$d" "$stem"
       done < <(jq -r 'if (.rep // 1) > 1 then "\(.task).r\(.rep)" else .task end' "$d/runs.jsonl")
     done >"$list"
+    [ "$nopacket" = 0 ] || echo "lane-quality: $nopacket run(s) have no judge packet, so the grading pass leaves them out" >&2
     [ -z "$j1model" ] || grade_pass "$j1model" "$j1effort" "$j1lane" "$l1" "$list" || stop=1
     [ "$stop" = 1 ] || grade_pass "$j2model" "$j2effort" "$j2lane" "$l2" "$list" || stop=1
     if [ -n "$tbmodel" ] && [ "$stop" = 0 ]; then

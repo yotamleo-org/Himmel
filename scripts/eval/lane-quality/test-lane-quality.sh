@@ -491,7 +491,7 @@ fxrow() { # task rep accept_ok correctness|null
     judge:(if $c == null then null else {correctness:$c, scope_discipline:4, test_quality:3, honesty:4, notes:"n"} end)}'
 }
 { fxrow a 1 true 4; fxrow a 2 true 5; fxrow b 1 false 2; fxrow b 2 false 4; fxrow b 3 false null; } >"$FX/runs.jsonl"
-for s in a a.r2 b b.r2 b.r3; do echo "packet $s" >"$FX/$s.judge-packet.md"; done
+for s in a a.r2 b b.r2; do echo "packet $s" >"$FX/$s.judge-packet.md"; done
 
 bash "$RUN" table "$FX" >"$TMP/table-fx.md" 2>&1
 check "table reports mean and bootstrap 95% CI per task and criterion" 'grep -E "^\| native \| m \| a \| 2 \|" "$TMP/table-fx.md" | grep -q "4.50 \[4.00, 5.00\]"'
@@ -537,7 +537,8 @@ check "weighted kappa: reversed extremes = -1" '[ "$(kap "[1,5]" "[5,1]")" = -1.
 : >"$TMP/fake.log"; : >"$TMP/fake.log.judge"
 bash "$RUN" calibration "$FX" --judge2-model gpt-x --judge2-effort low --json --max-usd 1 >"$TMP/cal2.json" 2>"$TMP/cal2.err"
 rc=$?
-check "second-judge pass judges every stored packet once" '[ "$rc" -eq 0 ] && [ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 5 ]'
+check "second-judge pass judges every stored packet once" '[ "$rc" -eq 0 ] && [ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 4 ]'
+check "a run with no judge packet is left out of the second-judge pass with a warning, rc 0" '[ "$rc" -eq 0 ] && grep -qF "1 run(s) have no judge packet" "$TMP/cal2.err" && [ "$(grep -c -- "--json-schema" "$TMP/fake.log")" = 4 ]'
 check "second judge uses the given model and effort, budget-capped, no tools" 'grep -- "--json-schema" "$TMP/fake.log" | grep -- "--model gpt-x" | grep -- "--effort low" | grep -q -- "--max-budget-usd"'
 check "second judge rescores the stored packet" 'grep -q "packet a.r2" "$TMP/fake.log.judge"'
 check "second judge result stored per row" '[ -s "$FX/a.r2.judge2.gpt-x__low.json" ]'
@@ -554,7 +555,7 @@ check "an empty second-judge result is judged again" '[ "$(grep -c -- "--json-sc
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$FX" --judge2-model a-b --json --no-ledger >/dev/null 2>&1
 bash "$RUN" calibration "$FX" --judge2-model a --judge2-effort b --json --no-ledger >/dev/null 2>&1
-check "colliding second-judge configurations each make their own calls" '[ "$(grep -- "--json-schema" "$TMP/fake.log" | grep -c -- "--model a-b")" = 5 ] && [ "$(grep -- "--json-schema" "$TMP/fake.log" | grep -- "--model a " | grep -c -- "--effort b")" = 5 ]'
+check "colliding second-judge configurations each make their own calls" '[ "$(grep -- "--json-schema" "$TMP/fake.log" | grep -c -- "--model a-b")" = 4 ] && [ "$(grep -- "--json-schema" "$TMP/fake.log" | grep -- "--model a " | grep -c -- "--effort b")" = 4 ]'
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$FX" --judge2-model a --judge2-effort b --json --no-ledger >"$TMP/cal-ab.json" 2>/dev/null
 check "an exact rerun of either configuration reuses its stored result" 'nogrep -q -- "--json-schema" "$TMP/fake.log" && jq -e ".metrics.n_kappa == 4" "$TMP/cal-ab.json" >/dev/null'
