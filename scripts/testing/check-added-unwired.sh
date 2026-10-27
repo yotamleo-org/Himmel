@@ -114,14 +114,15 @@ workflow_runs() {
     case "$wf" in *.yml|*.yaml) ;; *) continue ;; esac
     show "$wf" | RE="(^|[ '\"(=])(\./)?$esc([^A-Za-z0-9._/-]|\$)" awk '
       function ind(s) { match(s, /^ */); return RLENGTH }
+      { c = $0; sub(/[ \t]#.*/, "", c) }
       /^ *(- +)?run:/ {
         k = index($0, "run:") - 1
-        if (substr($0, k + 5) ~ ENVIRON["RE"]) found = 1
+        if (substr(c, k + 5) ~ ENVIRON["RE"]) found = 1
         inrun = 1; next
       }
       inrun && /^ *$/ { next }
       inrun && /^ *#/ { next }
-      inrun && ind($0) > k { if ($0 ~ ENVIRON["RE"]) found = 1; next }
+      inrun && ind($0) > k { if (c ~ ENVIRON["RE"]) found = 1; next }
       { inrun = 0 }
       END { exit !found }' && return 0
   done < <(git ls-tree -r --name-only "$ref" -- .github/workflows)
