@@ -420,7 +420,8 @@ These tools show up in only one script, easy to drop if not on PATH (the affecte
 
 ### The .env split: what moves, what stays, and a mismatch
 
-On a new machine, behaviour and policy settings never go in `.env`:
+On a new machine, put behaviour and policy settings in `~/.himmel`, not
+`.env`:
 
 - **`~/.himmel/himmel.conf`** holds the behaviour keys: `USER_SLUG`,
   `HANDOVER_DIR`, `LUNA_VAULT_PATH`, `CR_PROFILE`, the `HIMMEL_INITIATIVE`

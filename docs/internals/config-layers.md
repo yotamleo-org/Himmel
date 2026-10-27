@@ -256,10 +256,10 @@ from `.env`, the migration names the key and both files, never the values, and
 asks `[e/h]`: `e` writes the `.env` value to `~/.himmel`, `h` keeps the
 `~/.himmel` value. The readers then run again, and the moved lines leave
 `.env` only when they agree. Any other answer, or none, stops with every
-`.env` line in place. A `MISMATCH` the prompt cannot settle (a reader that
-disagrees on a key `~/.himmel` did not hold, or a `verify:` line) also removes
-nothing: fix the reader or make the two files agree, then run the migration
-again. Never empty `.env` by hand to settle one; to go back, run the
+`.env` line in place. If any failure is of another kind (a reader that
+disagrees on a key `~/.himmel` did not hold, or a `verify:` line), there is no
+prompt and nothing is removed: fix the reader or make the two files agree,
+then run the migration again. Never empty `.env` by hand to settle one; to go back, run the
 `restore:` command it printed
 ([updating.md](../setup/updating.md#the-env-split-what-moves-what-stays-and-a-mismatch)).
 

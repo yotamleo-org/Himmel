@@ -560,11 +560,12 @@ The report ends with the restore command (`cp <backup> <your .env>`) and an
   `h` keeps the `~/.himmel` value, and the `.env` line is removed with the
   other moved lines. The check then runs again, and lines leave `.env` only
   when it passes. Any other answer, or none, prints
-  `no choice for <KEY>: nothing was removed from .env.` and stops. A
-  `MISMATCH` the prompt does not cover (a reader that disagrees on a key
-  `~/.himmel` did not hold, or a `verify:` line) ends in `verify failed` with
-  every line still in `.env`: fix the reader or make the two agree, then
-  run `bash ~/himmel/scripts/himmel-update.sh --only env_migration`.
+  `no choice for <KEY>: nothing was removed from .env.` and stops. If any
+  failure is of another kind (a reader that disagrees on a key `~/.himmel`
+  did not hold, or a `verify:` line), there is no prompt: the apply ends in
+  `verify failed` with every line still in `.env`. Fix the reader or make the
+  two agree, then run
+  `bash ~/himmel/scripts/himmel-update.sh --only env_migration`.
 
 ### Release channels
 
