@@ -190,7 +190,7 @@ In short: never pair a free model with write/git/PR control.
 
 | Route | Reviewer | Cost |
 |---|---|---|
-| `hermes` (**default**) | `scripts/hermes/invoke.sh` with **no `--model`** (the `himmel_agent` profile default) | free today (see below) |
+| `hermes` (**default**) | `scripts/hermes/invoke.sh` with the `scripts/cr/critics.json` `codex` row's model (`gpt-6.1-sol` on `openai-codex`) unless `--model` or `HERMES_CRITIC_MODEL` names another | codex subscription, no Claude usage budget (see below) |
 | `claude` (opt-in) | `claude -p` print-mode, `--permission-mode plan --output-format json --max-turns 1 --strict-mcp-config` in a scratch cwd | **spends the Claude subscription usage budget** — gated by `scripts/lib/bank-preflight.sh`: a `SKIPPED-BANK` verdict refuses the route (exit 3, fall back to another reviewer); `BANK-STALE` / `BANK-UNKNOWN` are fail-open |
 
 Route selection: an explicit `--route` / `CRITIC_ROUTE` always wins; otherwise
@@ -198,20 +198,18 @@ it is derived from `--implementer`:
 
 | `--implementer` | Route | Why |
 |---|---|---|
-| *(none)* | `hermes` | default: free front-tier profile model, no subscription usage budget spend |
+| *(none)* | `hermes` | default: no Claude usage budget spend |
 | `hermes` | `claude` | hermes wrote it, so Claude reviews it |
 | `codex` | `hermes` | cross-family **only while the hermes reviewer is not codex** |
 | `claude` | `hermes` | cross-family, but a **claude-family hermes reviewer leaves no cross-family route, so the script exits 2** instead of returning a verdict that looks cross-family and is not; pass `--route` to override deliberately |
 | `other` | `hermes` | cross-family |
 
-**The `codex → hermes` cell depends on the profile default.** The
-`himmel_agent` profile default is **ox-alpha** today: free, front-tier, and
-**temporary** (operator ruling 2026-08-22; lane profiling is a planned follow-up).
-ox-alpha is a different family from codex, so the cell holds. The script infers
-the reviewer family from the resolved model id (`gpt-*`/`o<N>*`/`codex*` →
-codex) and falls back to `claude` for a codex implementer when the hermes
-reviewer *is* codex. Pin the answer with **`HERMES_CRITIC_FAMILY`** when the
-profile default moves and that inference stops holding; pin the model itself
+**The `codex → hermes` cell is same-family by default.** With no `--model` and
+no `HERMES_CRITIC_MODEL`, the hermes reviewer runs the critics.json pin
+`gpt-6.1-sol`, which is codex, so a codex implementer falls back to `claude`.
+The script infers the reviewer family from the resolved model id
+(`gpt-*`/`o<N>*`/`codex*` → codex). Pin the answer with
+**`HERMES_CRITIC_FAMILY`** when that inference stops holding; pin the model itself
 with `HERMES_CRITIC_MODEL` (`--provider openai-codex` is then applied only for
 codex-family ids).
 

@@ -4,8 +4,8 @@
 > optimizers, memory layers, PreToolUse hooks, MCP servers, skills).
 > Part of the tool-adoption framework: this rubric decides; the registry
 > (`registry.md`) records the decision so it
-> isn't re-litigated. Onboarding a model **lane** instead of a tool (GLM,
-> claudex, a future frontier model)? See the sibling
+> isn't re-litigated. Onboarding a model **lane** instead of a tool (claudex,
+> a future frontier model)? See the sibling
 > [`lane-adoption-playbook.md`](lane-adoption-playbook.md).
 
 ## Why
