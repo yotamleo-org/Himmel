@@ -88,6 +88,9 @@ deny() {
 }
 
 input=$(cat)
+# shellcheck source=lib/resolve-path.sh
+{ [ -r "${BASH_SOURCE[0]%/*}/lib/resolve-path.sh" ] && . "${BASH_SOURCE[0]%/*}/lib/resolve-path.sh"; } 2>/dev/null \
+    || deny "the portable path resolver (lib/resolve-path.sh) is missing (fail-closed)"
 if ! command -v jq >/dev/null 2>&1; then
     # No parser: raw-text scan, deny only a mention of the subject.
     case "$input" in
@@ -117,8 +120,8 @@ check_path() {
     case "$p" in
         */.himmel/config.json|.himmel/config.json|*/.himmel/project.conf|.himmel/project.conf) deny "$t targets $p" ;;
     esac
-    r=$(readlink -m -- "$p" 2>/dev/null) || r=""
-    if [ -n "$r" ] && [ "$r" = "$(readlink -m -- "$CFG_REAL" 2>/dev/null)" ]; then
+    r=$(hook_resolve_m "$p" 2>/dev/null) || deny "$t target $p could not be resolved (fail-closed)"
+    if [ -n "$r" ] && [ "$r" = "$(hook_resolve_m "$CFG_REAL" 2>/dev/null)" ]; then
         deny "$t target $p resolves to ~/.himmel/config.json"
     fi
     case "$r" in */.himmel/project.conf) deny "$t target $p resolves to a project file ($r)" ;; esac
@@ -238,19 +241,16 @@ case "$tool" in
 $patch
 EOF
         if [ "${#cand[@]}" -gt 0 ]; then
-            cfg_res=$(readlink -m -- "$CFG_REAL" 2>/dev/null) || cfg_res=""
-            # No readlink -m (BSD/macOS): only the literal headers above are checked.
-            if [ -n "$cfg_res" ]; then
-                # A failed batch (e.g. one path over the OS argument limit) must
-                # DENY: an empty result would read as "nothing resolves to it".
-                resolved=$(readlink -m -- "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
-                while IFS= read -r r; do
-                    [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
-                    case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
-                done <<EOF
+            cfg_res=$(hook_resolve_m "$CFG_REAL" 2>/dev/null) || deny "the config path could not be resolved (fail-closed)"
+            # A failed batch (e.g. one path over the OS argument limit) must
+            # DENY: an empty result would read as "nothing resolves to it".
+            resolved=$(hook_resolve_m "${cand[@]}" 2>/dev/null) || deny "apply_patch paths could not be resolved (an oversized path?); split the patch"
+            while IFS= read -r r; do
+                [ "$r" = "$cfg_res" ] && deny "an apply_patch target resolves to ~/.himmel/config.json"
+                case "$r" in */.himmel/project.conf) deny "an apply_patch target resolves to a project file ($r)" ;; esac
+            done <<EOF
 $resolved
 EOF
-            fi
         fi
         exit 0
         ;;

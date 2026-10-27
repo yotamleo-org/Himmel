@@ -65,8 +65,9 @@
 # the DESTINATION path is fully resolved
 # (readlink -f, symlinks included), but the guarded PREFIXES it is compared
 # against are not independently re-resolved — <handover_root> is, but
-# "$root_resolved/inbox" itself, ${TMPDIR:-/tmp}, and /run are taken as
-# literal strings after that. If any of those three is ITSELF a symlink
+# "$root_resolved/inbox" itself and /run are taken as literal strings after
+# that (${TMPDIR:-/tmp} is compared as written AND resolved).
+# If either of those two is ITSELF a symlink
 # (e.g. handover_root/inbox aliased elsewhere, or /run -> /var/run on a
 # host where that isn't already canonical), a write through the symlinked
 # alias resolves to a physical path outside the literal guarded prefix and
@@ -250,9 +251,18 @@ case "$tool" in
             /run/user/*/himmel-console/* | /run/user/*/himmel-chief/*) deny "chief-rundir-write" "$path" ;;
         esac
 
-        case "$path_resolved" in
-            "${TMPDIR:-/tmp}/himmel-console-"* | "${TMPDIR:-/tmp}/himmel-chief-"*) deny "chief-rundir-write" "$path" ;;
-        esac
+        # The destination is physical, so the temp base is compared both as
+        # written (trailing slash trimmed, macOS $TMPDIR ends in one) and
+        # resolved (macOS /var/folders sits under the /var symlink).
+        # prim-ok: gnu-ok: the same readlink -f as the destination above; a failure leaves only the as-written base.
+        tmp_resolved="$(readlink -f -- "${TMPDIR:-/tmp}" 2>/dev/null)" || tmp_resolved="" # swallow-ok: an unresolvable base leaves only the as-written base, which still denies
+        for tmp_base in "${TMPDIR:-/tmp}" "$tmp_resolved"; do
+            tmp_base="${tmp_base%/}"
+            [ -n "$tmp_base" ] || continue
+            case "$path_resolved" in
+                "$tmp_base/himmel-console-"* | "$tmp_base/himmel-chief-"*) deny "chief-rundir-write" "$path" ;;
+            esac
+        done
 
         case "$path_base" in
             *-legN*-RESUME.md) deny "worker-doc-write" "$path" ;;

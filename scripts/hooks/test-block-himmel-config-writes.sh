@@ -79,21 +79,38 @@ patch_case "apply_patch U+3000-led symlink alias header (no .himmel literal) -> 
 patch_case "apply_patch trailing-space benign header -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt   ${NL}+hi${NL}*** End Patch"
 run "apply_patch relative config.json with payload cwd in .himmel -> block" block "$(jq -nc --arg d "$HOME/.himmel" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
 run "apply_patch relative config.json with payload cwd elsewhere -> allow" allow "$(jq -nc --arg d "$T" '{tool_name:"apply_patch",cwd:$d,tool_input:{command:"*** Begin Patch\n*** Add File: config.json\n+{}\n*** End Patch"}}')"
-# BSD readlink (macOS) has no -m: path resolution is skipped, the literal
-# header check still runs.
+# BSD readlink (macOS) has no -m: the shim refuses -m and runs the
+# real readlink for everything else. The guard must still resolve a symlink or
+# `..` alias of the config through the portable resolver, never skip it.
+REAL_READLINK="$(command -v readlink)"
+# shellcheck disable=SC2016 # $1 and "$@" belong to the generated shim
 { mkdir -p "$T/bsd-bin" &&
-  printf '#!/bin/sh\necho called >>"%s"\nexit 1\n' "$T/bsd-bin/calls" >"$T/bsd-bin/readlink" &&
+  printf '#!/bin/sh\ncase "$1" in -m) echo called >>"%s"; echo "readlink: illegal option -- m" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$T/bsd-bin/calls" "$REAL_READLINK" >"$T/bsd-bin/readlink" &&
   chmod +x "$T/bsd-bin/readlink"; } || { echo "FAIL: cannot create the fake readlink" >&2; exit 1; }
-bsd_patch_case() {
+bsd_case() {
     local rc got
-    jq -nc --arg c "$3" '{tool_name:"apply_patch",tool_input:{command:$c}}' | PATH="$T/bsd-bin:$PATH" bash "$HOOK" >/dev/null 2>&1
+    printf '%s' "$3" | PATH="$T/bsd-bin:$PATH" bash "$HOOK" >/dev/null 2>&1
     rc=$?
     case "$rc" in 0) got=allow ;; 2) got=block ;; *) got="?(rc=$rc)" ;; esac
     if [ "$got" = "$2" ]; then ok "$1"; else bad "$1 - expected $2 got $got"; fi
 }
+bsd_patch_case() { bsd_case "$1" "$2" "$(jq -nc --arg c "$3" '{tool_name:"apply_patch",tool_input:{command:$c}}')"; }
+bsd_file_case() { bsd_case "$1" "$2" "$(jq -nc --arg p "$3" '{tool_name:"Write",tool_input:{file_path:$p}}')"; }
 bsd_patch_case "apply_patch benign file without readlink -m -> allow" allow "*** Begin Patch${NL}*** Add File: $T/notes.txt${NL}+hi${NL}*** End Patch"
 if [ -s "$T/bsd-bin/calls" ]; then ok "the fake readlink ran"; else bad "the fake readlink ran - GNU readlink answered instead"; fi
 bsd_patch_case "apply_patch project file without readlink -m -> block" block "*** Begin Patch${NL}*** Update File: $T/r/.himmel/project.conf${NL}@@${NL}*** End Patch"
+# The portable walk answers like GNU readlink -m (symlink, dangling link, .., missing tail).
+mkdir -p "$T/w/a" && ln -s "$T/w/a" "$T/w/abs" && ln -s ../a "$T/w/a/rel" && ln -s "$T/w/none/deep" "$T/w/dangle"
+# shellcheck source=lib/resolve-path.sh
+. "$HOOKS/lib/resolve-path.sh"
+for wp in "$T/w/abs/x" "$T/w/a/rel/f/../g" "$T/w/dangle/z" "$T/w/missing/../a/q" "$T//w///a/./"; do
+    if [ "$(_hrp_walk "$wp")" = "$(readlink -m -- "$wp")" ]; then ok "7120 walk equals readlink -m: $wp"; else bad "7120 walk differs from readlink -m: $wp"; fi
+done
+bsd_file_case "7120 no readlink -m: symlink alias of the config -> block" block "$T/alias.json"
+bsd_file_case "7120 no readlink -m: .. segment to the config -> block" block "$HOME/.himmel/x/../config.json"
+bsd_file_case "7120 no readlink -m: unrelated file -> allow" allow "$T/other/config.json"
+bsd_patch_case "7120 no readlink -m: apply_patch symlink alias of the config -> block" block "*** Begin Patch${NL}*** Update File: $T/alias.json${NL}@@${NL}*** End Patch"
+bsd_patch_case "7120 no readlink -m: apply_patch .. segment to the config -> block" block "*** Begin Patch${NL}*** Add File: $HOME/.himmel/x/../config.json${NL}+{}${NL}*** End Patch"
 
 echo "== Bash writes =="
 bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salus_ollama_cloud_ok\":true}}' > $CFG"

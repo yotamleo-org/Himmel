@@ -82,6 +82,12 @@ mkdir -p "$SCR/state/himmel/bus/peers" && ln -s "$SCR/state/himmel/bus" "$SCR/al
 deny "Write through a symlink alias with no 'bus' in the path" "$(file_json Write "$SCR/alias/peers/x.json")"
 deny "Edit through a symlink alias with no 'bus' in the path" "$(file_json Edit "$SCR/alias/peers/x.json")"
 allow "Write to a real non-bus path beside the alias" "$(file_json Write "$SCR/other.txt")"
+# BSD/macOS readlink has no -m. The shim refuses it and runs the real
+# readlink otherwise; the alias must still resolve (the guard never skips it).
+mkdir -p "$SCR/bsd-bin" && printf '#!/bin/sh\ncase "$1" in -m) echo "readlink: illegal option -- m" >&2; exit 1 ;; esac\nexec %s "$@"\n' "$(command -v readlink)" > "$SCR/bsd-bin/readlink" && chmod +x "$SCR/bsd-bin/readlink" || exit 1
+deny "7120 no readlink -m: Write through a symlink alias" "$(file_json Write "$SCR/alias/peers/x.json")" PATH="$SCR/bsd-bin:$PATH"
+deny "7120 no readlink -m: Edit through a .. segment to the alias" "$(file_json Edit "$SCR/state/../alias/peers/x.json")" PATH="$SCR/bsd-bin:$PATH"
+allow "7120 no readlink -m: Write to a real non-bus path" "$(file_json Write "$SCR/other.txt")" PATH="$SCR/bsd-bin:$PATH"
 
 echo "== T5: reads under the bus root =="
 deny "cat a log" "$(bash_json "cat $ROOT/log/other.jsonl")"

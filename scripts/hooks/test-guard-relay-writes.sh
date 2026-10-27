@@ -324,6 +324,13 @@ expect_row noprobe-dangling-into-inbox 2 "$(run_relay_with noprobe-dangling-into
 expect_row noprobe-new-inbox-file 2 "$(run_relay_with noprobe-new-inbox-file "$(write_payload Write "$ROOT/inbox/new.md")" "$NO_TMP")" inbox-write
 expect_row noprobe-new-file 0 "$(run_relay_with noprobe-new-file "$(write_payload Write "$NEW_OWN_DOC")" "$NO_TMP")"
 
+echo ""
+echo "=== TMPDIR is a symlink with a trailing slash (macOS /var/folders is under the /var symlink) ==="
+mkdir "$TMP/tmpreal" && ln -s "$TMP/tmpreal" "$TMP/tmplink" && mkdir "$TMP/tmpreal/himmel-chief-7120" "$TMP/tmpreal/himmel-other-7120"
+LINK_TMP="TMPDIR=$TMP/tmplink/"
+expect_row symlinked-tmpdir-chief-rundir 2 "$(run_relay_with symlinked-tmpdir-chief-rundir "$(write_payload Write "$TMP/tmplink/himmel-chief-7120/state.json")" "$LINK_TMP")" chief-rundir-write
+expect_row symlinked-tmpdir-other-dir 0 "$(run_relay_with symlinked-tmpdir-other-dir "$(write_payload Write "$TMP/tmplink/himmel-other-7120/state.json")" "$LINK_TMP")"
+
 # ponytail: on a GNU host the BSD readlink is modelled as `readlink -e` (every
 # component must exist, as realpath(3) requires), not BSD's exact errno set;
 # upgrade path: the macOS os-verify shard runs these same rows on the real BSD
