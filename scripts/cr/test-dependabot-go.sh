@@ -312,7 +312,7 @@ STUB_LIST="$PR $SHA false
 $PR $SHA true"
 sweep
 contains "5: a judge reading stdin leaves the next PR to the sweep" "$out" "merged=1 skipped=1"
-check    "5: the judge reads no PR list on its stdin" "$(cat "$STUB_STDIN")" ""
+check    "5: the judge reads no PR list on its stdin" "$(cat "$tmp/stdin")" ""
 export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call"
 
 # a directory where the ledger file goes: the row write fails, as root too
