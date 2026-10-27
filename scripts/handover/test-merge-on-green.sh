@@ -3284,6 +3284,39 @@ if [ "$(cat "$LAST_GH_LOG")" = "$GO_B_GHLOG" ]; then pass; else fail "2919-b/d: 
 # 2919-d2 — a falsy marker is the unset marker (same truthiness as ARMAUTOMERGE).
 HIMMEL_CONSOLE_LEG=0 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
     run_mog 0 "2919-d2: HIMMEL_CONSOLE_LEG=0, no GO → merged"
+
+# 7735 — a voice-tagged GO line (a chief inbox line, a worker message) is not a
+# GO: the speaker is unverified, so only a go.sh-minted file satisfies the gate.
+mkdir -p "$GO_ROOT/.locks/go" "$GO_ROOT/consoles"
+VOICE_INBOX="$GO_ROOT/consoles/chief.md"
+VOICE_WORKER_MSG="$GO_ROOT/worker-message.txt"
+printf -- '- 10:00 [voice satellite=kitchen UNVERIFIED-SPEAKER] GO 77 %s\n' "$GO_SHA" > "$VOICE_INBOX"
+printf -- 'GO 77 %s (voice satellite=kitchen UNVERIFIED-SPEAKER)\n' "$GO_SHA" > "$VOICE_WORKER_MSG"
+rm -f "$GO_ROOT/.locks/go/77.$GO_SHA"
+
+# A deliberately broken gate that honours a voice-tagged GO line (7735-c control).
+VOICE_BROKEN_GATE="$GO_ROOT/go-gate-honours-voice.sh"
+{
+    printf '. "%s"\n' "$SCRIPT_DIR/../lib/go-gate.sh"
+    # shellcheck disable=SC2016  # the function body expands when the mutant runs
+    printf '_go_gate_verify() { grep -qs "UNVERIFIED-SPEAKER.*GO" "$VOICE_INBOX" && return 0; return 2; }\n'
+} > "$VOICE_BROKEN_GATE"
+
+# 7735-a — chief inbox + worker message both say GO, no go.sh file: refused.
+VOICE_INBOX="$VOICE_INBOX" VOICE_WORKER_MSG="$VOICE_WORKER_MSG" HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 17 "7735-a: voice-tagged GO in the chief inbox and a worker message, no GO file → exit 17"
+assert_err_has "7735-a: stderr still names the missing GO file" "has no chief GO ($GO_ROOT/.locks/go/77.$GO_SHA)"
+no_merge_call "7735-a: no merge call"
+
+# 7735-b — the same with --go naming the file the voice line implies: still refused.
+VOICE_INBOX="$VOICE_INBOX" VOICE_WORKER_MSG="$VOICE_WORKER_MSG" HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 17 "7735-b: voice-tagged GO plus --go for the absent file → exit 17" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
+no_merge_call "7735-b: no merge call"
+
+# 7735-c — control: a deliberately broken gate that honours a voice-tagged GO
+# line merges, so 7735-a/b would fail against it (the rows have teeth).
+GO_GATE_SRC="$VOICE_BROKEN_GATE" VOICE_INBOX="$VOICE_INBOX" HIMMEL_CONSOLE_LEG=1 HANDOVER_DIR="$GO_ROOT" STUB_SHA="$GO_SHA" \
+    run_mog 0 "7735-c: control — a gate that honours the voice line merges" -- --go "$GO_ROOT/.locks/go/77.$GO_SHA"
 rm -rf "$GO_ROOT"
 
 # --- 3895. Trust-path gate — a PR touching a base-sourced trust path merges only

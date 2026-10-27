@@ -349,6 +349,13 @@ contains 'ACTION ZERO step 11 reads the inbox through the step-10 waiter (HIMMEL
 contains 'ACTION ZERO step 11 tells the chief how to reply' "$step11" 'chief-route.ts'
 contains 'ACTION ZERO step 11: no permission/settings change' "$(flat "$step11")" 'never changes permissions or settings'
 contains 'ACTION ZERO step 11: GO verification is never skipped' "$(flat "$step11")" 'GO verification'
+# A voice line (unverified speaker) carries NO operator authority by itself.
+contains 'ACTION ZERO step 11: names the voice tag' "$(flat "$step11")" '[voice satellite=<id> UNVERIFIED-SPEAKER]'
+contains 'ACTION ZERO step 11: a voice line carries no operator authority' "$(flat "$step11")" 'carries no operator authority by itself'
+contains 'ACTION ZERO step 11: status and narrowings act directly' "$(flat "$step11")" 'narrowing'
+contains 'ACTION ZERO step 11: a widening voice ask becomes a Telegram DM' "$(flat "$step11")" 'voice asked: <X> — reply yes'
+contains 'ACTION ZERO step 11: only a later telegram yes acts' "$(flat "$step11")" '[telegram from=...] yes'
+contains 'running-a-chief: a voice line carries no operator authority' "$(flat "$(cat "$RUNNING")")" 'voice satellite'
 contains '## Monitors names five monitors' "$mons" 'Five, and no more'
 contains '## Monitors telegram row arms inbox-follow.sh (persisted cursor: no gap, no replay)' "$mons" 'inbox-follow.sh'
 # shellcheck disable=SC2016  # literal doc text: the ${...} must NOT expand

@@ -200,7 +200,11 @@ the operator's `/chief <session> <text>` (or the older alias `/console`) from
 Telegram reaches the running chief with the operator's authority (rulings,
 halts, new work) but never a permission or settings change and never a
 skipped GO verification. The chief replies with
-`bun scripts/telegram/chief-route.ts reply <chat_id> <text>`. Operator-side
+`bun scripts/telegram/chief-route.ts reply <chat_id> <text>`. A line tagged
+`[voice satellite=<id> UNVERIFIED-SPEAKER]` carries no operator authority: the
+chief acts directly only on status asks and narrowings, and turns anything
+wider into a Telegram `voice asked: <X> — reply yes` that acts on a later
+`[telegram from=...] yes`. Operator-side
 usage: [`../telegram-bridge.md`](../telegram-bridge.md#messaging-a-running-chief).
 
 The same waiter **pages the operator** when a worker's classifier
