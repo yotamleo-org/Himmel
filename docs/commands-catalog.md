@@ -71,10 +71,11 @@ and their rows are paraphrased one-liners rather than verbatim frontmatter
 > [marketplace/plugins/claude-hud/VENDORED.md](../marketplace/plugins/claude-hud/VENDORED.md).
 
 > **Not itemized: `marketplace/plugins/lean-skills/skills/`**.
-> 13 vendored workflow skills (11 from `obra/superpowers`, `grilling` from
-> `mattpocock/skills`, plus himmel's own `context7-mcp`) invoked the normal
+> 14 vendored workflow skills (12 from `obra/superpowers`, including
+> `receiving-code-review`, `grilling` from `mattpocock/skills`, plus himmel's
+> own `context7-mcp`) invoked the normal
 > Claude Code way — skill-name matching against the request — not via slash
-> commands, and it ships no `commands/` directory at all. Itemizing all 13
+> commands, and it ships no `commands/` directory at all. Itemizing all 14
 > here would duplicate the inventory the plugin's own docs already own; see
 > [marketplace/plugins/lean-skills/README.md](../marketplace/plugins/lean-skills/README.md)
 > and its `VENDORED.md` instead. This carve-out covers every companion file
