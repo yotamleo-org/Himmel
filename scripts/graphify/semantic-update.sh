@@ -83,7 +83,9 @@
 # first run treats every file as changed.
 #
 # Exit: 0 ok / no-op (a batch submitted or still pending is 0: the graph is untouched, the next run resumes it); 1 usage or IO; 2 fence deny, batch submit failure (nothing submitted), graphify or merge failure;
-# 3 bank at/over threshold (nothing touched); 4 promote lock held.
+# 3 bank at/over threshold (nothing touched); 4 promote lock held; 5 some chunks failed (the good ones merged, the failed
+# files stay unstamped): either a plain chunk failure or the lane's exit 6, a credit or key rejection, which also stops
+# dispatching the remaining chunks (one rejection on a pinned account, two on auto routing). Do not rerun until fixed.
 # graph-cadence.sh --semantic treats 3 and 4 as benign skips (the next fire
 # retries, nothing was touched) and alerts on every other non-zero rc.
 set -euo pipefail
@@ -417,6 +419,13 @@ IFS=: read -ra parts <<< "$PATH"
 for d in "${parts[@]}"; do [ "$d" = "$here" ] || newpath="${newpath:+$newpath:}$d"; done
 export PATH="$newpath"
 cd "$here" || exit 2
+# The lane exits 6 when the provider rejects the account's credit or key. That account would answer every
+# remaining chunk the same way, so dispatch stops: one rejection on a pinned account, two on auto (one per account).
+limit=1; [ "${HIMMEL_API_ACCOUNT:-}" != auto ] || limit=2
+if [ "$(cat "$here/rejected" 2>/dev/null | wc -l)" -ge "$limit" ]; then
+  echo "claude-api shim: the lane has rejected the account's credit or key $limit time(s) this run; not dispatching this chunk" >&2
+  exit 6
+fi
 # Corpus text is untrusted prompt input, so the extraction runs tool-free (the lane's narrow-only override).
 export HIMMEL_API_TOOLS=""
 # The lane's result goes to stdout, where graphify never shows it on a failed call; echo its tail to stderr
@@ -434,9 +443,11 @@ rc=${PIPESTATUS[1]}
 cat "$err" >&2
 # A call without a verified cost (a failure) may still have been billed: reserve its per-call budget against the
 # cap, but keep it out of the spend file so the run row reports only verified cost. A call the lane refused
-# before any API request (exit 2, nothing on stdout, its own refusal line) was never billed: it counts for nothing.
+# before any API request (exit 2, nothing on stdout, its own refusal line) was never billed: it counts for nothing,
+# and neither does a credit or key rejection (exit 6), which is also what stops the next dispatch.
 cost="$(node "$GRAPHIFY_SEMANTIC_OUTCOME_BIN" "$out" 2>/dev/null)"
-if [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
+if [ "$rc" -eq 6 ]; then echo rejected >> "$here/rejected"
+elif [ "$rc" -eq 2 ] && [ ! -s "$out" ] && grep -q '^claude-api: refused: ' "$err"; then :
 elif [ -n "$cost" ]; then echo "$cost" >> "$GRAPHIFY_SEMANTIC_SPEND_FILE"; else echo "$GRAPHIFY_SEMANTIC_LANE_BUDGET" >> "$GRAPHIFY_SEMANTIC_RESERVE_FILE"; fi
 [ "$rc" -eq 0 ] || echo "claude-api shim: lane exited $rc; result: $(tail -c 400 "$out" | tr '\n' ' ')" >&2
 cat "$out"; rm -f "$out" "$err"

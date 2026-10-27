@@ -114,6 +114,18 @@ describe('jira release rm-run (HIMMEL-7201)', () => {
     expect(out.at(-1)).toBe('RM-RUN R1: nothing pending');
   });
 
+  it('rm-run takes --ruling and --chief-override (alias --console-override); the override needs a reason and the console marker (HIMMEL-6778)', async () => {
+    vi.stubEnv('HIMMEL_ADMISSIONS_LEDGER', join(root, 'admissions-ledger.jsonl'));
+    await run('operator', 'declare', 'R1', '--versions', 'v1', '--decision', '1', '--verbatim-file', join(root, 'verbatim.txt'));
+    const mirror = join(root, 'no-mirror');
+    await run('rm-run', 'R1', '--mirror-root', mirror, '--ruling', '98');
+    expect(out.at(-1)).toBe('RM-RUN R1: nothing pending');
+    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', 'big pass')).rejects.toThrow(/HIMMEL_CONSOLE=1/);
+    vi.stubEnv('HIMMEL_CONSOLE', '1');
+    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--chief-override', ' ')).rejects.toThrow(/needs a reason/);
+    await expect(run('rm-run', 'R1', '--mirror-root', mirror, '--console-override', 'big pass', '--ruling', '98')).rejects.toThrow(/not both/);
+  });
+
   it('reads the decisions out of the claude JSON envelope and refuses a failed call', () => {
     const d = { req: 'Q-R1-0001', outcome: 'ADMIT', op: 'add', from: null, to: 'v1', sector: 's', ground: 'g', reason: 'r' };
     expect(parseDecisions(JSON.stringify({ is_error: false, result: '```json\n' + JSON.stringify([d]) + '\n```' }))).toEqual([d]);

@@ -50,9 +50,6 @@ HOST = "127.0.0.1"
 OWNER_REPO = "yotamleo-org/Himmel"  # leak-allow: hostname the actual private repo this SDK clones from  # env-literal-ok: the VM SDK clones this one repo, a fixed identity
 # First present wins; either key is a valid clone credential.
 PAT_ENVS = ("himmel_github_token_vm", "himmel_github_token_vm2")
-# Standard Git-for-Windows bash, used both to drive the host e2e (avoiding WSL's
-# bash, whose ssh can't read a Windows key path) and as the guest's git launcher.
-GIT_BASH = r"C:\Program Files\Git\bin\bash.exe"
 _REGISTRY = Path(__file__).resolve().parent / "vms.json"
 
 # basename globs that must never cross host->guest (the
@@ -733,14 +730,13 @@ class VM:
     # --- per-OS handlers (delegation) ---
     def provision(self):
         self._require_vm("provision")
+        if self.os != "ubuntu":
+            raise VMError(f"provision on {self.os} guest {self.name} is unsupported: "
+                          "provisioning supports only ubuntu guests")
         root = _repo_root()
         env = {**os.environ, "PYTHONUTF8": "1"}
-        if self.os == "ubuntu":
-            argv = [sys.executable, str(root / "scripts/machine-setup/ubuntu-vm-setup.py"),
-                    "--vm-name", self.name]
-        else:
-            argv = [sys.executable, str(root / "scripts/machine-setup/windows-vm-setup.py"),
-                    "--vm-name", self.name, "--port", str(self.port)]
+        argv = [sys.executable, str(root / "scripts/machine-setup/ubuntu-vm-setup.py"),
+                "--vm-name", self.name]
         r = subprocess.run(argv, cwd=str(root), env=env)
         if r.returncode != 0:
             raise VMError(f"provision {self.name} failed (rc {r.returncode})")
@@ -750,10 +746,9 @@ class VM:
         """Stage a local checkout onto the guest via a tar-over-ssh pipe.
 
         Uses a KEY-BASED ssh subprocess (not paramiko) so the tar stream
-        flows through a real OS pipe.  On Windows the whole pipe runs
-        under Git Bash to avoid WSL bash and Windows-path mangling.
+        flows through a real OS pipe.
         """
-        bash = GIT_BASH if sys.platform == "win32" else "bash"
+        bash = "bash"
         local_fwd = str(local_root).replace("\\", "/")
         # shlex.quote: an unquoted --exclude=*.local.json can be glob-expanded by
         # the pipe's own bash before tar sees it, silently dropping the exclusion.
@@ -1100,15 +1095,9 @@ class VM:
         # checkout because its provisioner needs the gitignored .env, which lives
         # only there; the e2e script uses key auth and needs no .env.)
         root = Path(__file__).resolve().parents[2]
-        # On Windows a bare "bash" resolves to WSL bash (System32\bash.exe), whose
-        # ssh cannot read the Windows key path C:/Users/... → publickey rejected.
-        # Use Git Bash explicitly (its HOME/ssh read the Windows key fine).
-        bash = GIT_BASH if sys.platform == "win32" else "bash"
-        # bash mangles backslash path arguments (\ is an escape) — pass the script
-        # as a RELATIVE posix path via cwd=root and the identity as forward slashes
-        # (ssh -i accepts C:/... fine under Git Bash).
+        # Pass the script as a RELATIVE posix path via cwd=root.
         ident = os.path.expanduser("~/.ssh/id_ed25519").replace("\\", "/")
-        argv = [bash, "scripts/test-install-symmetry-vm.sh",
+        argv = ["bash", "scripts/test-install-symmetry-vm.sh",
                 f"{self.user}@localhost", str(self.port), ident]
         r = subprocess.run(argv, cwd=str(root))
         return r.returncode

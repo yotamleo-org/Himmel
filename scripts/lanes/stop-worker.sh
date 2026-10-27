@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # scripts/lanes/stop-worker.sh -- the sanctioned STOP chokepoint for in-flight
 # lane workers. Symmetric with the spawn chokepoints
-# (scripts/telegram/spawn-glm.ts, spawn-claudex.ts): those mint a worker and
+# (scripts/telegram/spawn-common.ts, spawn-claudex.ts): those mint a worker and
 # publish its liveness metadata; this one resolves that metadata back to a
 # process and stops it.
 #
@@ -88,7 +88,7 @@ usage: stop-worker.sh [--list] [--dry-run] <session-id|branch>
   --dry-run   resolve + checkpoint, report what WOULD be signalled, signal nothing
 
 Resolves <session-id|branch> through the lane session registry under the
-CANONICAL root ~/.claude/handover/bridge: glm-sessions/ and claudex-sessions/.
+canonical and legacy claudex session roots (lanes/claudex-session-root.mjs).
 A raw pid is NOT accepted -- that is the point. Unlike the other BRIDGE_ROOT
 readers in this repo, a plain BRIDGE_ROOT env is IGNORED here:
 this is the sanctioned kill chokepoint, so its registry root must not be
@@ -121,7 +121,7 @@ done
 
 # This is the sanctioned KILL chokepoint, so
 # its registry root must not be caller-controlled the way BRIDGE_ROOT is
-# elsewhere in this repo (bus.ts / spawn-glm.ts / await-glm-worker.sh all
+# elsewhere in this repo (bus.ts / spawn-common.ts / await-glm-worker.sh all
 # honor a plain BRIDGE_ROOT env -- fine for them, since none of them signal a
 # process). The destructive-command hook only ever sees the outer
 # `bash stop-worker.sh <id>` invocation; it cannot see that BRIDGE_ROOT
@@ -169,10 +169,10 @@ try {
 }
 
 # each_session_meta -- print every "<session-dir>\t<meta.json>" pair the
-# registry knows about, across both lanes.
+# claudex registry knows about, across current and legacy roots.
 each_session_meta() {
     local root d
-    for root in "$BRIDGE_ROOT_DIR/glm-sessions" "${CLAUDEX_ROOTS[@]}"; do
+    for root in "${CLAUDEX_ROOTS[@]}"; do
         [ -d "$root" ] || continue
         for d in "$root"/*/; do
             [ -d "$d" ] || continue
@@ -250,7 +250,7 @@ if [ "$STATUS" != "running" ]; then
     exit 3
 fi
 
-# writeLiveWorkerMeta (spawn-glm.ts) DELETES the pid key and writes
+# writeLiveWorkerMeta (spawn-common.ts) DELETES the pid key and writes
 # pid_probe=unprobeable when its atomic replace fails, precisely so a reader
 # cannot mistake an unknown worker for a dead one. Honour that contract: an
 # unprobeable worker is POSSIBLY ALIVE and must not be signalled blind.
@@ -504,7 +504,7 @@ identity_started_epoch() {
 
 # SPAWN-TIME CORRELATION: the registry does not (yet)
 # store an immutable spawn-time identity -- that needs a spawner-side change
-# (spawn-glm.ts / spawn-claudex.ts write meta.json's `pid` but never an
+# (spawn-common.ts / spawn-claudex.ts write meta.json's `pid` but never an
 # identity snapshot), which is out of scope for this chokepoint alone and is
 # tracked as a residual, not silently skipped. Without it, comparing the
 # freshly-sampled IDENTITY above against itself (the pre-fix shape) is a

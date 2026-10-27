@@ -7,18 +7,11 @@
 // cases below spawn a real grandchild that outlives its parent and assert the
 // GRANDCHILD is gone.
 //
-// PLATFORM: the defect is POSIX-only (Windows taskkill /T already walks the
-// tree), so the grandchild cases are POSIX-only too and SKIP on win32 -- the
-// operator's primary station. They are exercised on Linux: verified in WSL2
-// during development, and CI on the public mirror runs on ubuntu. The last
-// case runs everywhere.
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { setTimeout as sleep } from "node:timers/promises";
 import { killTree, SPAWN_OWN_GROUP } from "../../lib/kill-tree.mjs";
-
-const POSIX = process.platform !== "win32";
 
 // alive(pid) -- signal 0 probes existence without delivering anything. A
 // not-yet-reaped zombie would answer 0 here, which is why the fixtures below
@@ -72,7 +65,7 @@ function hardCleanup({ child, grandchild }) {
   if (child?.pid) { try { process.kill(-child.pid, "SIGKILL"); } catch { /* no group */ } }
 }
 
-test("POSIX: the whole group dies, grandchild included (the defect this ticket exists for)", { skip: !POSIX }, async () => {
+test("POSIX: the whole group dies, grandchild included (the defect this ticket exists for)", async () => {
   const fx = await spawnFixture();
   try {
     assert.equal(alive(fx.grandchild), true, "fixture grandchild should be alive before the stop");
@@ -86,7 +79,7 @@ test("POSIX: the whole group dies, grandchild included (the defect this ticket e
   }
 });
 
-test("POSIX: a child spawned WITHOUT its own group still gets the direct signal (legacy callers keep working)", { skip: !POSIX }, async () => {
+test("POSIX: a child spawned WITHOUT its own group still gets the direct signal (legacy callers keep working)", async () => {
   const fx = await spawnFixture({ ownGroup: false });
   try {
     // No group to signal -> the kernel answers ESRCH, which the helper treats
@@ -101,7 +94,7 @@ test("POSIX: a child spawned WITHOUT its own group still gets the direct signal 
   }
 });
 
-test("POSIX: descendants are reaped even after the direct child has already exited (HIMMEL-1835 hole 2)", { skip: !POSIX }, async () => {
+test("POSIX: descendants are reaped even after the direct child has already exited (HIMMEL-1835 hole 2)", async () => {
   // The child exits immediately; its background grandchild does not. The old
   // shape returned early on `exitCode !== null` and cleaned up nothing --
   // exactly the case where the MCP fleet is left running. A pgid stays
@@ -122,46 +115,15 @@ test("POSIX: descendants are reaped even after the direct child has already exit
 });
 
 test("a pid that does not exist is a no-op, not a thrown error", () => {
-  // 2^31-ish: never a live pid on either platform. Windows takes the taskkill
-  // branch (rc 128, "not found", accepted); POSIX takes the group branch
-  // (ESRCH, accepted). Neither may throw or report failure.
+  // 2^31-ish: never a live pid. The group branch answers ESRCH, which is
+  // accepted; it may neither throw nor report failure.
   const r = killTree(2147483646, () => { throw new Error("no such handle"); });
   assert.equal(r.ok, true, `a missing target must not be reported as a failure: ${r.detail}`);
 });
 
-test("win32: declining to tree-stop an already-exited child is reported as a SKIP, not a failure", { skip: POSIX }, () => {
-  // Aiming taskkill at a pid that is no longer ours is the one thing this
-  // branch must not do, so the skip is correct behaviour. Reporting it as
-  // ok:false made every clean codex-bank-probe run log a WARNING about a
-  // failure that had not happened (PR #1751).
-  const r = killTree(4242, () => {}, { exited: true });
-  assert.equal(r.ok, true, "a deliberate skip must not be reported as a failed stop");
-  assert.match(r.detail ?? "", /skipped taskkill/, "the skip should still be stated, just not as a failure");
-});
-
-test("win32: a taskkill that cannot be STARTED is reported with its cause", { skip: POSIX }, () => {
-  // spawnSync does not throw on ENOENT -- it returns { error, status: null }.
-  // Reading only the status reported a bare `rc=null`, naming neither the
-  // cause nor the fix (PR #1751). Emptying PATH is what makes the lookup fail.
-  const savedPath = process.env.PATH;
-  const savedWinPath = process.env.Path;
-  try {
-    process.env.PATH = "";
-    delete process.env.Path;
-    const r = killTree(4242, () => {});
-    assert.equal(r.ok, false, "an unstartable taskkill is a real failure");
-    assert.doesNotMatch(r.detail, /rc=null/, "a spawn failure must not be reported as a null return code");
-    assert.match(r.detail, /could not be spawned/);
-  } finally {
-    if (savedPath === undefined) delete process.env.PATH; else process.env.PATH = savedPath;
-    if (savedWinPath !== undefined) process.env.Path = savedWinPath;
-  }
-});
-
-test("SPAWN_OWN_GROUP asks for a dedicated group on POSIX and stays out of the way on Windows", () => {
+test("SPAWN_OWN_GROUP asks for a dedicated process group", () => {
   // The two halves of the fix live on opposite sides of the spawn, so the
-  // spawn-side half is worth pinning: an empty object here on POSIX would make
-  // every group signal above a silent ESRCH no-op.
-  if (POSIX) assert.deepEqual(SPAWN_OWN_GROUP, { detached: true });
-  else assert.deepEqual(SPAWN_OWN_GROUP, {}, "detached on Windows means a new console and an outliving child, for no gain");
+  // spawn-side half is worth pinning: an empty object here would make every
+  // group signal above a silent ESRCH no-op.
+  assert.deepEqual(SPAWN_OWN_GROUP, { detached: true });
 });

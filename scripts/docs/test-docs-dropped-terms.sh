@@ -186,7 +186,6 @@ docs/internals/enforcement.md	  (`.ssh .aws .gnupg .kube .docker .config`), and 
 docs/internals/enforcement.md	project-local/allowed; Windows `\`→`/` with drive-colon-aware `-v` splitting;
 docs/internals/enforcement.md	Fires on Bash/PowerShell. Blocks a `git commit` whose target branch has an
 docs/internals/enforcement.md	Fires on Bash/PowerShell. Blocks a `gh pr merge` while the target PR has
-docs/internals/enforcement.md	`scripts/cr/critics.json`'s panel is codex-only (the `glm` row was retired
 docs/internals/enforcement.md	Fires on `Edit|Write|MultiEdit|NotebookEdit|Bash|PowerShell`, but only when
 docs/internals/enforcement.md	exhaustive — the exact path is always in hand) plus the Bash/PowerShell
 docs/internals/enforcement.md	(glued redirects, attached `-t`, PowerShell aliases) with no sign of
@@ -357,20 +356,7 @@ docs/internals/testing.md	confinement fails the run instead of green-skipping co
 docs/internals/testing.md	`ubuntu-latest` (the required, gating worker on every push/PR). Windows is
 docs/internals/testing.md	nightly and no manual dispatch of `ci.yml` runs a Windows or macOS shard. Running the
 docs/internals/testing.md	macOS is verified by the cadence above (Windows is dropped); nothing else
-docs/internals/validation-gates.md	implementation lane (a Codex worker, or the dormant GLM lane) earns the right
-docs/internals/validation-gates.md	(the automated review stack and the `spawn-glm` worker); this page places
-docs/internals/validation-gates.md	## 1. The lane gate (merge review for Codex and GLM branches)
-docs/internals/validation-gates.md	branch diff. This is the same seam the spawn-glm worker prompt already names
-docs/internals/validation-gates.md	- `glm/*` → `cheap-glm` (spawn-glm PR #843 names `glm/<slug>`; the session meta
-docs/internals/validation-gates.md	  under `<BRIDGE_ROOT>/glm-sessions/` corroborates);
-docs/internals/validation-gates.md	fails SAFE: a `glm/*` branch with no session meta has no verdict ⇒ no advance.
-docs/internals/validation-gates.md	spawn-glm session meta AND the PR body. The trust-tier count (§5) reads that record
-docs/internals/validation-gates.md	| Code diff (GLM/Codex lane) | lane gate = full lane + lane rubric, validating session adjudicates | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | merge (operator) |
 docs/internals/validation-gates.md	   critics made more trouble than they were worth — gptoss+kimi were
-docs/internals/validation-gates.md	Rationale: for GLM/Codex-origin artifacts the adjudicator is already a DIFFERENT
-docs/internals/validation-gates.md	blocked (locked) — no GLM critic in any panel until the operator enables
-docs/internals/validation-gates.md	- lane fails → the spawn-glm session dir (shipped);
-docs/internals/validation-gates.md	not the GLM `d1_verdict` field.
 docs/internals/worker-spawn-matrix.md	> **Status (2026-08-19):** the GLM worker, Hermes one-shot, and
 docs/internals/worker-spawn-matrix.md	> `scripts/lanes/lanes.json` (`glm`, `hermes-oneshot`, `codex-exec`); `/lanes` and [`lane-calibration.md`](lane-calibration.md) are
 docs/internals/worker-spawn-matrix.md	- `scripts/telegram/spawn-glm.ts`
@@ -437,9 +423,6 @@ docs/setup/new-machine.md	The GLM lane is dormant (HIMMEL-1967; the lane registr
 docs/setup/new-machine.md	`GLM_LANE_OK` is set). If you still use the `claude-glm` launcher (Claude Code on the Z.ai GLM
 docs/setup/new-machine.md	flat-rate lane; see [tooling-catalog](../tooling-catalog.md#claude-glm-scriptsclaude-glm)),
 docs/setup/new-machine.md	list the absolute PHI roots one-per-line in `~/.config/claude-glm/phi-roots`:
-docs/setup/new-machine.md	### 4f. cc-codex / cc-glm offload shims
-docs/setup/new-machine.md	`scripts/shell/himmel-offload-shims.sh` provides the `cc-codex` and `cc-glm`
-docs/setup/new-machine.md	Bash functions (`cc-glm` launches the dormant GLM lane, HIMMEL-1967). `bash scripts/setup.sh` installs the
 docs/setup/new-machine.md	   worktree-and-git-common-dir, Windows-drive-relative, and Windows
 docs/setup/operator-profile-tbd-delta.md	| 1 | Armed cadences beyond the pipeline family (graphmap, qmd, drift-fix, ggs) | `schtasks`/cron enumeration matched against 5 known cadence-id task groups (`delta.cadences.taskDetail`) | The wizard's luna-cadence question is binary off/on and only speaks to the pipeline family; it cannot select or report the other four | ticketed: HIMMEL-2302 |
 docs/setup/operator-profile-tbd-delta.md	| 10 | Lane readiness gates (`passesRequired` probation counters) and the full dormant-lane roster (opt-in env names) | Direct read of `scripts/lanes/lanes.json`'s `readiness`/`dormant` fields (`delta.lanes.readinessGates`, `dormantLanes`) | The wizard offers only the 4 wizard-askable lane ids (`ollama-local`, `copilot-cli`, `codex-exec`, `hermes-oneshot`); it never surfaces readiness-gate progress or the dormant-lane roster (`glm`, `openrouter-claude`) | ticketed: HIMMEL-2330 |
@@ -509,7 +492,6 @@ docs/tooling-catalog.md	the dormant GLM lane. `spawn-claudex.ts` dispatches THRO
 docs/tooling-catalog.md	bun scripts/telegram/spawn-claudex.ts "<prompt>" [--cwd <dir>] [--name <slug>] [--branch <existing>] [--timeout-mins <n>] [--permission-mode <mode>] [--effort low|medium|high|xhigh] [--model gpt-5.6-sol|gpt-5.6-terra|gpt-5.6-luna] [--force]
 docs/tooling-catalog.md	**Model tier:** `--model` is optional and selects the GPT-5.6
 docs/tooling-catalog.md	`gpt-5.6-sol`, `gpt-5.6-terra`, `gpt-5.6-luna`; anything else is a parse-time
-docs/tooling-catalog.md	**Bash convenience shims:** `scripts/shell/himmel-offload-shims.sh` installs idempotent `cc-codex` / `cc-glm` functions into `~/.bashrc` (`cc-glm` launches the dormant GLM lane, HIMMEL-1967).
 docs/tooling-catalog.md	## spawn-glm (`scripts/telegram/spawn-glm.ts`)
 docs/tooling-catalog.md	**What:** Poller-free CLI that spawns an unattended GLM-lane Claude worker for
 docs/tooling-catalog.md	fresh git worktree + `glm/<slug>` branch, resolves the GLM env block
@@ -523,9 +505,6 @@ docs/tooling-catalog.md	`block-glm-external-writes.sh` and the load-bearing cont
 docs/tooling-catalog.md	GLM branch merges except by the validating session). The egress guards
 docs/tooling-catalog.md	are dormant by construction (himmel-worktree cwd scope). Uses GLM flat-rate
 docs/tooling-catalog.md	with argv shape unchanged, GLM model pin ignoring `TELEGRAM_CLAUDE_MODEL`,
-docs/tooling-catalog.md	  `--provider deepseek|codex|glm|claude` (default `deepseek`) summary + vocab-constrained tags + locally-computed Related Notes for
-docs/tooling-catalog.md	  (permitted: `claude` only, via the `anthropic → allow` rule — `deepseek` was de-listed earlier and `glm`/`zai-glm` since, and `codex` stays default-deny until an adopter ratifies a cell; the entries remain so the gate refuses them legibly), ledgered per run
-docs/tooling-catalog.md	  (`GRAPHIFY_LEDGER`); `deepseek`/`codex` use OpenAI chat/completions, `glm` (via z.ai anthropic-compat)/`claude` use the Anthropic Messages API. DeepSeek off-peak advisory. `--dry-run` first.
 docs/tooling-catalog.md	  `--backend glm` was a prior lane but zai-glm is de-listed,
 docs/tooling-catalog.md	  and `--backend kimi` (moonshot) is retired —
 docs/tooling-catalog.md	  operator ruling, there is no kimi backend — so both now fail closed on luna
@@ -535,9 +514,6 @@ docs/tooling-catalog.md	  staggered) is now **weekly**, on the **`claude-cli`** 
 docs/tooling-catalog.md	  subscription) — the original credential gate (kimi ->
 docs/tooling-catalog.md	  `MOONSHOT_API_KEY`) no longer applies now that kimi is retired, though the
 docs/tooling-catalog.md	- `scripts/cr/critic-panel.sh` + `scripts/cr/critics.json` — NIM critic panel (roster defined in `critics.json`). **`critics.json` currently holds ONE row — `codex`/`gpt-6.1-sol`, tier `paid` — and NO free critics.** The free lane was **removed deliberately** — it made more trouble than it was worth: gptoss + kimi dropped 2026-07-03 (operator decision, 12%/13% ledger agreed-rate — noise), and the surviving qwen3coder anchor kept erroring rc=1. Paid-by-default is the intended posture, not drift. So `/pr-check` **auto-runs the PAID codex anchor by default** (~2min, bounded by the 240 s per-member timeout): an unset `CR_PROFILE` **AND** unset `CRITIC_PANEL_TIERS` resolve to tier filter `free` (`CRITIC_PANEL_TIERS` is the low-level override, honored ONLY when `CR_PROFILE` is unset), which matches zero rows, so the panel falls back to the paid anchor — **spending the OpenAI subscription usage budget on any default run that actually runs the panel** — skipped, and therefore free, on an empty diff or `CR_PROFILE=none` (operator decision: accepted). Note this fallback also bypasses the triviality gate, which only fires when `paid` is already IN the tier filter. `CR_PROFILE=none` = instant claude-only (skip panel). `CR_PROFILE=thorough` = adds the `thorough` tier (currently EMPTY — kept for future heavier critics). `CR_PROFILE=paid` / `free,paid` = the paid codex critic. Any other value is the tier filter verbatim. **`CR_PROFILE` is authoritative:** `/pr-check` loads it from `.env` and the panel derives its tiers from it directly — it wins over the low-level `CRITIC_PANEL_TIERS` override (honored only when `CR_PROFILE` is unset). This closed a drift where a run hand-scoped the panel to free-only and silently dropped the paid critic. Retired the gemini-only CR lane. Per-member hang protection via `CRITIC_TIMEOUT_SECS` — default **240 s**, which is ALSO the fallback when the supplied value is non-numeric or ≤0 (the panel warns and uses 240 rather than failing). It was raised from 150 s after codex + qwen3coder were seen clipping at 150 s. It needs the `timeout` binary, but does not *require* it: when `timeout` is absent the panel prints "per-member hang protection disabled" and runs each member **unbounded**.
-docs/tooling-catalog.md	- `scripts/cr/pr-check-external.sh` — **Claude-free automated review runner**: reviews a branch with NO Claude session so review still runs when the Claude subscription usage budget is maxed. `--branch <b> [--session-dir <dir>] [--base <ref>]`; fetches, diffs `origin/<base>...<branch>`, pipes to `critic-panel.sh` with `CR_PROFILE=free,paid` forced (so the paid codex critic reviews; `CR_PROFILE=none` refused). Fail-CLOSED gate: panel non-zero exit, unparseable Critical/Important counts, an ABSENT codex critic, or any Critical/Important finding all FAIL. A diff touching the automated review/merge **gate infrastructure** is refused outright (the original design wanted a quorum of two responding cross-model reviewers there; the CodeRabbit CLI was the second seat and it was retired, while `critics.json`'s panel is codex-only — so the quorum cannot be met on this path and gate-infra changes go through the interactive `/pr-check`). On clean it writes `external_cr_verdict: pass (sha=…; critics=…)` into the spawn-glm session `meta.json` (distinct from `d1_verdict`) and prints a PR-body snippet; does NOT touch the review-owed marker. Test: `scripts/cr/test-pr-check-external.sh` (hermetic; fake git repo + stubbed panel via `CRITIC_PANEL_CMD`).
-docs/tooling-catalog.md	## GLM ship lane (`scripts/glm/`)
-docs/tooling-catalog.md	- `scripts/glm/ship-branch.sh` — pushes a reviewed `glm/*` branch FROM the trusted main checkout (the GLM worker still never pushes for itself — the no-push prompt + the deny hook are unchanged; the pushurl poison that used to sit alongside them is gone). `ship-branch.sh <branch> [--session-dir <dir>] [--allow-any-branch]`; refuses to run from a `.claude/worktrees/` path, requires an `origin` remote, and is authorized only by `external_cr_verdict:pass` (written by `pr-check-external.sh`) whose reviewed SHA must equal the current branch tip (closes the post-panel-commit TOCTOU). Runs `git push -u origin <branch>` with the real pre-push gates (NO `--no-verify`), then clears the review-owed marker only when its SHA matches the pushed SHA. Never opens a PR, never merges — prints the exact `gh pr create` for the operator. Test: `scripts/glm/test-ship-branch.sh` (hermetic; temp bare-repo origin).
 docs/internals/environment-gotchas.md	$ cd scripts/telegram && bun test spawn-glm.test.ts
 docs/internals/environment-gotchas.md	error: ENOENT: no such file or directory, open 'scripts/telegram/spawn-glm.ts'   (x8)
 docs/internals/environment-gotchas.md	The two command-text fences in `block-glm-external-writes.sh` (the pin-dir fence

@@ -1282,10 +1282,10 @@ Notes:
 - Stop the shared daemon: `qmd mcp stop`. The index is sqlite+WAL read per query, so
   docs added by `qmd update` are live immediately; no daemon restart needed.
 
-### 4f. cc-codex / cc-glm offload shims
+### 4f. cc-codex offload shim
 
-`scripts/shell/himmel-offload-shims.sh` provides the `cc-codex` and `cc-glm`
-Bash functions (`cc-glm` launches the dormant GLM lane, HIMMEL-1967). `bash scripts/setup.sh` installs the
+`scripts/shell/himmel-offload-shims.sh` provides the `cc-codex` Bash
+function. `bash scripts/setup.sh` installs the
 guarded source line in `~/.bashrc` best-effort; install it directly with:
 
 ```bash

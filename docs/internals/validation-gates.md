@@ -3,10 +3,9 @@
 This page says WHERE himmel checks work before it advances or merges: which
 review runs on which kind of change, what counts as PASS or FAIL, what a gate
 report must name, where a human must sign off, and how a cheaper
-implementation lane (a Codex worker, or the dormant GLM lane) earns the right
-to have its branches reviewed for merge. Every check it places already exists
-(the automated review stack and the `spawn-glm` worker); this page places
-them, it does not redefine them.
+implementation lane (a Codex worker) earns the right to have its branches
+reviewed for merge. Every check it places already exists (the automated
+review stack); this page places them, it does not redefine them.
 
 Spec: `<state-repo>/handovers/<user>/himmel/specs/design/ws7-validation-gates.md`.
 Where this doc and the spec disagree, the spec wins.
@@ -24,19 +23,16 @@ Nothing here redefines the adoption bar.
 
 `pre-commit run --all-files` must exit 0 on main; a red there is a regression, not a baseline (HIMMEL-2716).
 
-## 1. The lane gate (merge review for Codex and GLM branches)
+## 1. The lane gate (merge review for Codex branches)
 
 **Placement:** between a cheap-lane worker branch and PR creation — a
 **validating-session review** run by a Claude-family session on the worker's
-branch diff. This is the same seam the spawn-glm worker prompt already names
-("a validating session reviews your branch and owns all external writes").
+branch diff.
 
 **Provenance precondition — positive markers, not inferred absence.** A branch
 is cheap-lane IFF it carries a POSITIVE marker, classified by
 `scripts/cr/lane-classify.sh`:
 
-- `glm/*` → `cheap-glm` (spawn-glm PR #843 names `glm/<slug>`; the session meta
-  under `<BRIDGE_ROOT>/glm-sessions/` corroborates);
 - `codex/*` → `cheap-codex` (the hermes-Codex convention, adopted in
   [`harness-compat.md`](harness-compat.md) §10);
 - everything else → `claude`.
@@ -49,9 +45,7 @@ operator/validating session (recorded in the lane-gate verdict PR-body snippet);
 work predating the convention does not ride this gate mechanically.
 
 **Stated deviation:** `lane-classify.sh` is branch-string-only by design (pure,
-no I/O). The spec's session-meta corroboration happens at the verdict/hook layer
-— `scripts/cr/d1-verdict.sh` and the §9 hook read the meta directly — which
-fails SAFE: a `glm/*` branch with no session meta has no verdict ⇒ no advance.
+no I/O). No session record corroborates a `codex/*` branch yet (§9).
 
 **Chain:** the standard `/pr-check` full lane (panel + reviewer matrix + VERDICT
 adjudication + marker clear) PLUS the lane rubric (R1-R4, §2) reviewed by the
@@ -69,8 +63,7 @@ never a PASS input (a worker never grades its own work;
 [orchestration patterns](../orchestration-patterns.md)).
 
 **Verdict persistence:** the validating session writes a one-line verdict record
-— `d1_verdict: pass|fail (R1-R4)` — via `scripts/cr/d1-verdict.sh`, into the
-spawn-glm session meta AND the PR body. The trust-tier count (§5) reads that record
+— `pass|fail (R1-R4)` — into the PR body. The trust-tier count (§5) reads that record
 + git history (NOT the CR ledger, which carries critic findings, not lane
 verdicts).
 
@@ -89,7 +82,7 @@ mechanic invoked is a shipped instrument.
 | Artifact class | Chain (shipped instruments only) | Posture (panel avail. / verdict presence) | Human checkpoint |
 |---|---|---|---|
 | Code diff (Claude lane) | pre-push deterministic gates → `/pr-check` full lane → operator merge | panel fail-open; verdict/marker fail-closed | merge (operator) |
-| Code diff (GLM/Codex lane) | lane gate = full lane + lane rubric, validating session adjudicates | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | merge (operator) |
+| Code diff (Codex lane) | lane gate = full lane + lane rubric, validating session adjudicates | panel fail-open; verdict/marker fail-closed (verdict-presence axis — §3) | merge (operator) |
 | Docs-only diff | docs-audit lane (never-zero-CR) | verdict/marker fail-closed | merge (operator) |
 | Spec/plan artifacts (minerva) | Stage-2/4 adversarial critics (same-family today — known blind spot; a cross-model artifact critic is not built yet) | critics advisory; orchestrator gates advance (fail-closed on a missing critic round) | operator ratifies open design choices |
 | Handover state | exempt — no gate | exempt — no gate | none |
@@ -182,7 +175,7 @@ unavailable" as "nothing was billed" — only 3 and 4 reach zero panel members.
 
 So the rationale below holds for cases 3-4; cases 1-2 reach a paid critic
 rather than zero panel members.
-Rationale: for GLM/Codex-origin artifacts the adjudicator is already a DIFFERENT
+Rationale: for Codex-origin artifacts the adjudicator is already a DIFFERENT
 family than the implementer — the "evaluator = different family, never self-grading"
 invariant holds even with zero panel members. The known residual
 blind spot is Claude-reviewing-Claude (same-family) on Claude-lane diffs — that
@@ -190,9 +183,8 @@ is today's shipped posture, not worsened by this default.
 
 Alternative rejected by default: hard-block on anchor death (turns a free
 third-party outage into a repo-wide merge freeze — disproportionate).
-`CR_PROFILE=paid` (codex) remains the operator escalation. Per-token lanes stay
-blocked (locked) — no GLM critic in any panel until the operator enables
-per-token billing.
+`CR_PROFILE=paid` (codex) remains the operator escalation. No per-token critic
+joins any panel until the operator enables per-token billing.
 
 ## 4. Human checkpoints (first-class, bounded)
 
@@ -223,12 +215,10 @@ Unquarantine is not binary-forever; it is a per-lane trust ledger.
 
 ## 6. Trace→regression loop (placement only)
 
-Every lane-gate or lane-rubric FAIL emits a machine-findable record stored with the run
-artifacts. **Emission points:**
-
-- lane fails → the spawn-glm session dir (shipped);
-- blocking automated review fails on a cheap-lane branch → `scripts/cr/emit-gate-fail.sh`
-  writes them to the SAME `<session-dir>/gate-report.jsonl` as lane fails.
+The record for a blocking automated review FAIL on a cheap-lane branch is a
+machine-findable line stored with the run artifacts. The emit-gate-fail script can write it to
+`<session-dir>/gate-report.jsonl`, but no review step calls it yet. A lane-rubric FAIL is recorded only in the
+PR-body verdict (§1).
 
 This is the ONE added emission this page places: today `file-deferred-issues.sh`
 captures ONLY deferred low-severity findings; blocking Critical/High/Important
@@ -273,8 +263,7 @@ The live claudex implementation lane runs through the Claude Code harness
 ([lane calibration](lane-calibration.md#claudex-worker--implementor-default-operating-model)),
 with publication subject to its permission classifier. The chief's
 `scripts/handover/chief-kit/ready-check.sh` separately refuses a head without
-an `ok` CR-ledger row. These cover publication authorization and automated review readiness,
-not the GLM `d1_verdict` field.
+an `ok` CR-ledger row. These cover publication authorization and automated review readiness.
 
 Lane-rubric verdict persistence remains behavioral (validating-session
 discipline); structural `cheap-codex` provenance enforcement waits on a hermes
@@ -286,7 +275,7 @@ Each default above is one knob; changing it touches only the named sentence.
 
 - **Verdict owner (§1):** the Claude-family validating session owns the
   merge-trust verdict (the operator owns the merge action). Changing it edits
-  §1's owner sentence and the `d1-verdict.sh` header; the record format stays.
+  §1's owner sentence; the record format stays.
 - **Panel-outage posture (§3):** fail-open to Claude-only adjudication; the
   alternative is a hard block.
 - **Tier-1 threshold (§5):** N=10 gated merges (Tier 1 is not executable yet).

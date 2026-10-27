@@ -123,11 +123,10 @@ export async function runProbe(opts: {
   return "appended";
 }
 
-// ── .env cascade (parity with glm-env.ts:readZaiKey + mainCheckoutRoot) ───────
+// ── .env cascade (parity with scripts/lib/load-dotenv.sh) ───────────────────
 // process.env wins; then the worktree/repo .env; then the main-checkout .env
 // (a worktree's .env is gitignored/absent — the real one lives in the main
-// checkout, resolved via `git rev-parse --git-common-dir`). NOT imported from
-// glm-env.ts to keep this runner self-contained and avoid its spawn-glm deps.
+// checkout, resolved via `git rev-parse --git-common-dir`).
 const DOTENV_KEYS = new Set(['ALIBABA_QUOTA_AK', 'ALIBABA_QUOTA_SK', 'ALIBABA_QUOTA_PROM_URL', 'ALIBABA_QUOTA_GRANTS']);
 
 export function parseDotenv(envFile: string): Record<string, string> {

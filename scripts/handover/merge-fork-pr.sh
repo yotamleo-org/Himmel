@@ -2,7 +2,11 @@
 # scripts/handover/merge-fork-pr.sh - the chief's one way to merge a PR on a
 # himmel adapter (a fork we own, scripts/guardrails/himmel-adapters.json).
 #
-# Usage: merge-fork-pr.sh <owner/repo> <pr-number> <full-40-hex-head-sha>
+# Usage: merge-fork-pr.sh [--jira-transition] <owner/repo> <pr-number> <full-40-hex-head-sha>
+#
+# --jira-transition (the brief's completes-ticket: yes) moves the first [KEY] of the PR
+# title to Done after the merge lands, as merge-on-green.sh --jira-transition does, and
+# prints one `jira-transition=<result>` line; without it the ticket is left alone.
 #
 # Chief only: refuses (exit 3) from a chief-spawned worker or a chief relay,
 # like go.sh. Merges only on the trust-reviewed GO that go.sh --repo wrote for
@@ -40,8 +44,10 @@ if ! { [ -r "$_csg_lib" ] && . "$_csg_lib"; }; then
 fi
 chokepoint_seam_guard scripts/handover/merge-fork-pr.sh || exit 96
 
-usage() { echo "usage: merge-fork-pr.sh <owner/repo> <pr-number> <full-40-hex-head-sha>" >&2; }
+usage() { echo "usage: merge-fork-pr.sh [--jira-transition] <owner/repo> <pr-number> <full-40-hex-head-sha>" >&2; }
 
+JIRA_TRANSITION=0
+if [ "${1:-}" = "--jira-transition" ]; then JIRA_TRANSITION=1; shift; fi
 if [ "$#" -ne 3 ]; then usage; exit 2; fi
 NWO="$1"; PR="$2"; SHA="$3"
 case "$NWO" in
@@ -126,3 +132,43 @@ if [ "$DONE" != "MERGED|$HBRANCH" ]; then
     exit 7
 fi
 echo "merge-fork-pr: merged $NWO PR #$PR at $SHA into $HBRANCH"
+
+# --jira-transition: the chief's per-merge opt-in (the brief's completes-ticket: yes), as
+# merge-on-green.sh's flag. Best-effort and last: the merge has landed, so no outcome here
+# changes the exit code. Same steps and CLI as merge-on-green.sh's _jira_close_on_merge:
+# an Epic is never touched, the comment goes first, the target status is reconcile-config's.
+# ponytail: skips that function's per-key status flock and fixVersion fold, upgrade path =
+# lift _jira_close_on_merge into scripts/lib/ so both merge paths call one copy.
+[ "$JIRA_TRANSITION" -eq 1 ] || exit 0
+jira_result() { echo "merge-fork-pr: jira-transition=$*"; exit 0; }
+jira() { ( cd "$ANCHOR" && node scripts/jira/dist/index.js "$@" ); }
+# shellcheck source=scripts/lib/ticket-status.sh
+# shellcheck disable=SC1091
+if ! . "$HERE/../lib/ticket-status.sh" 2>/dev/null || ! declare -F ticket_key_from_title >/dev/null 2>&1; then
+    jira_result "skip=no-ticket-lib"
+fi
+TITLE=$(gh pr view "$PR" --repo "$NWO" --json title 2>/dev/null | jq -r '.title // empty' 2>/dev/null) || TITLE=""  # swallow-ok: an unread title is skip=no-title, after the merge landed
+[ -n "$TITLE" ] || jira_result "skip=no-title"
+KEY=$(ticket_key_from_title "$TITLE") || KEY=""
+[ -n "$KEY" ] || jira_result "skip=no-ticket-tag"
+TARGET=$(jq -r --arg p "${KEY%-*}" '.[$p].targetStatus // empty' "$ANCHOR/scripts/jira/reconcile-config.json" 2>/dev/null) || TARGET=""  # swallow-ok: an unread config is skip=no-project-config, after the merge landed
+[ -n "$TARGET" ] || jira_result "skip=no-project-config key=$KEY project=${KEY%-*}"
+[ -f "$ANCHOR/scripts/jira/dist/index.js" ] || jira_result "skip=no-jira-cli-build key=$KEY"
+ITYPE=$(jira get "$KEY" --json 2>/dev/null | jq -r '.fields.issuetype.name // empty' 2>/dev/null) || ITYPE=""  # swallow-ok: an unread type is skip=cannot-verify-type, never a transition
+case "$ITYPE" in
+    Epic) jira_result "skip=never-touch-type key=$KEY type=$ITYPE" ;;
+    "") jira_result "skip=cannot-verify-type key=$KEY" ;;
+esac
+CFILE=$(mktemp "${TMPDIR:-/tmp}/merge-fork-pr-jira-comment.XXXXXX") || jira_result "skip=no-tmpfile key=$KEY"
+printf 'PR #%s (%s) merged @ %s. scripts/handover/merge-fork-pr.sh is attempting to auto-transition this ticket to '"'"'%s'"'"'.\n' \
+    "$PR" "$NWO" "$SHA" "$TARGET" > "$CFILE"
+CRC=0; jira comment "$KEY" --comment-file "$CFILE" >/dev/null 2>&1 || CRC=$?
+rm -f "$CFILE"
+# No breadcrumb on the ticket, no silent close.
+[ "$CRC" -eq 0 ] || jira_result "skip=comment-failed key=$KEY rc=$CRC"
+TRC=0; TOUT=$(jira transition "$KEY" "$TARGET" 2>&1) || TRC=$?
+# Exit 3: the ticket closed, but the transition would not stamp a frozen version it was deferred out of.
+if [ "$TRC" -eq 0 ] || [ "$TRC" -eq 3 ]; then
+    jira_result "ok key=$KEY status=$TARGET"
+fi
+jira_result "failed key=$KEY status=$TARGET rc=$TRC out=${TOUT//$'\n'/ }"

@@ -37,8 +37,8 @@ ordered()      { case "$2" in *"$3"*"$4"*) echo "ok - $1" ;; *) echo "FAIL - $1:
 # which the script cannot normalize and Node fs rejects — hence node mkdtemp.
 ROOT=$(node -e 'const os=require("os"),fs=require("fs"),p=require("path"); process.stdout.write(fs.mkdtempSync(p.join(os.tmpdir(),"legtl-")).replace(/\\/g,"/"))')
 trap 'rm -rf "$ROOT"' EXIT
-mkdir -p "$ROOT/glm-sessions/glm-fix-1" "$ROOT/glm-sessions/glm-fix-2" \
-         "$ROOT/glm-sessions/glm-fix-4" "$ROOT/glm-sessions/glm-fix-0" \
+mkdir -p "$ROOT/claudex-sessions/claudex-fix-1" "$ROOT/claudex-sessions/claudex-fix-2" \
+         "$ROOT/claudex-sessions/claudex-fix-4" "$ROOT/claudex-sessions/claudex-fix-0" \
          "$ROOT/claudex-sessions/claudex-fix-3" \
          "$ROOT/state/tester/himmel/specs/plan"
 
@@ -54,22 +54,22 @@ set_mtime() {
 # Fixtures.
 # ---------------------------------------------------------------------------
 
-# worker glm-fix-1: done, dispatch 01:00:00Z, land 01:05:00Z -> 5m
-cat > "$ROOT/glm-sessions/glm-fix-1/meta.json" <<'EOF'
-{"status":"done","pid":111,"started_at":"2026-08-03T01:00:00Z","lane":"glm","task_name":"fix-1","exit_code":0,"timed_out":false}
+# worker claudex-fix-1: done, dispatch 01:00:00Z, land 01:05:00Z -> 5m
+cat > "$ROOT/claudex-sessions/claudex-fix-1/meta.json" <<'EOF'
+{"status":"done","pid":111,"started_at":"2026-08-03T01:00:00Z","lane":"codex","task_name":"fix-1","exit_code":0,"timed_out":false}
 EOF
-set_mtime "$ROOT/glm-sessions/glm-fix-1/meta.json" "2026-08-03T01:05:00Z"
+set_mtime "$ROOT/claudex-sessions/claudex-fix-1/meta.json" "2026-08-03T01:05:00Z"
 
-# worker glm-fix-2: running, dispatch 01:10:00Z (never lands -> "still running")
-cat > "$ROOT/glm-sessions/glm-fix-2/meta.json" <<'EOF'
-{"status":"running","pid":222,"started_at":"2026-08-03T01:10:00Z","lane":"glm","task_name":"fix-2","last_output_at":"2026-08-03T01:11:00Z"}
+# worker claudex-fix-2: running, dispatch 01:10:00Z (never lands -> "still running")
+cat > "$ROOT/claudex-sessions/claudex-fix-2/meta.json" <<'EOF'
+{"status":"running","pid":222,"started_at":"2026-08-03T01:10:00Z","lane":"codex","task_name":"fix-2","last_output_at":"2026-08-03T01:11:00Z"}
 EOF
 
-# worker glm-fix-0: done but started BEFORE the since-ts window -> must be filtered out
-cat > "$ROOT/glm-sessions/glm-fix-0/meta.json" <<'EOF'
-{"status":"done","pid":444,"started_at":"2026-08-02T23:00:00Z","lane":"glm","task_name":"fix-0-prewindow","exit_code":0,"timed_out":false}
+# worker claudex-fix-0: done but started BEFORE the since-ts window -> must be filtered out
+cat > "$ROOT/claudex-sessions/claudex-fix-0/meta.json" <<'EOF'
+{"status":"done","pid":444,"started_at":"2026-08-02T23:00:00Z","lane":"codex","task_name":"fix-0-prewindow","exit_code":0,"timed_out":false}
 EOF
-set_mtime "$ROOT/glm-sessions/glm-fix-0/meta.json" "2026-08-02T23:02:00Z"
+set_mtime "$ROOT/claudex-sessions/claudex-fix-0/meta.json" "2026-08-02T23:02:00Z"
 
 # worker claudex-fix-3: done, dispatch 02:00:00Z, land 02:08:00Z -> 8m, shared_branch
 cat > "$ROOT/claudex-sessions/claudex-fix-3/meta.json" <<'EOF'
@@ -77,12 +77,12 @@ cat > "$ROOT/claudex-sessions/claudex-fix-3/meta.json" <<'EOF'
 EOF
 set_mtime "$ROOT/claudex-sessions/claudex-fix-3/meta.json" "2026-08-03T02:08:00Z"
 
-# worker glm-fix-4: blocked (content-filter), dispatch 02:05:00Z, land 02:06:00Z.
+# worker claudex-fix-4: blocked (content-filter), dispatch 02:05:00Z, land 02:06:00Z.
 # "blocked" is terminal in spawn-glm.ts finalMeta -> must produce a land row.
-cat > "$ROOT/glm-sessions/glm-fix-4/meta.json" <<'EOF'
-{"status":"blocked","pid":555,"started_at":"2026-08-03T02:05:00Z","lane":"glm","task_name":"fix-4","exit_code":0}
+cat > "$ROOT/claudex-sessions/claudex-fix-4/meta.json" <<'EOF'
+{"status":"blocked","pid":555,"started_at":"2026-08-03T02:05:00Z","lane":"codex","task_name":"fix-4","exit_code":0}
 EOF
-set_mtime "$ROOT/glm-sessions/glm-fix-4/meta.json" "2026-08-03T02:06:00Z"
+set_mtime "$ROOT/claudex-sessions/claudex-fix-4/meta.json" "2026-08-03T02:06:00Z"
 
 # CR ledger: two rounds of avail+finding on branch claudex/fix-3 @ head ABC1234
 cat > "$ROOT/cr-critic-scores.jsonl" <<'EOF'
@@ -122,7 +122,7 @@ run_lt() { env "${ENVOFF[@]}" bash "$LT" "$@"; }
 echo "--- 1. happy path ---"
 out=$(run_lt 2026-08-03T00:00 2>&1); rc=$?
 check "happy path exit 0" "$rc" "0"
-contains "worker dispatch row"            "$out" "dispatch glm done"
+contains "worker dispatch row"            "$out" "dispatch codex done"
 contains "worker dispatch claudex(codex)" "$out" "dispatch codex done"
 contains "worker land row"                "$out" "land done rc=0"
 contains "blocked session gets a land row" "$out" "land blocked"
@@ -151,6 +151,16 @@ contains "non-UTF8 ledger line produced an event (01:45)" "$out" "08-03 01:45"
 not_contains "pre-window worker filtered out" "$out" "fix-0"
 # the no-timestamp ledger line did not become an event:
 not_contains "no-ts ledger line not emitted"  "$out" "must be skipped"
+
+echo "--- retired GLM workers are ignored ---"
+mkdir -p "$ROOT/glm-sessions/retired"
+cat > "$ROOT/glm-sessions/retired/meta.json" <<'EOF'
+{"status":"running","pid":777,"started_at":"2026-08-03T01:00:00Z","lane":"glm","task_name":"retired-glm-worker"}
+EOF
+out=$(run_lt 2026-08-03T00:00 2>&1); rc=$?
+check "retired GLM root does not break the timeline" "$rc" "0"
+not_contains "retired GLM sessions emit no dispatches" "$out" "dispatch glm"
+not_contains "retired GLM worker absent from summaries" "$out" "retired-glm-worker"
 
 # Resolve the default chain-ledger path through handover_root + USER_SLUG.
 echo "--- 1b. handover-root chain ledger resolution ---"
@@ -225,7 +235,7 @@ out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/glm-sessions" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "missing source still exit 0" "$rc" "0"
 contains "reports missing CR ledger"   "$out" "CR ledger missing:"
-contains "worker source still works"   "$out" "dispatch glm done"
+contains "worker source still works"   "$out" "dispatch codex done"
 contains "ledger source still works"   "$out" "BASELINE"
 not_contains "gate source absent"      "$out" "avail codex"
 
@@ -237,7 +247,7 @@ out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/no-glm" \
           WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
 check "all-missing still exit 0" "$rc" "0"
-contains "all-missing reports glm dir"    "$out" "worker(glm) dir missing"
+not_contains "retired glm root is not a missing source" "$out" "worker(glm) dir missing"
 contains "all-missing reports claudex dir" "$out" "worker(claudex) dir missing"
 contains "all-missing reports CR ledger"  "$out" "CR ledger missing"
 contains "all-missing reports chain ledger" "$out" "chain ledger missing"
@@ -250,13 +260,12 @@ contains "all-missing graceful empty msg" "$out" "no events in window"
 echo "--- 3. non-UTF8 ledger line tolerated ---"
 mkdir -p "$ROOT/utf8-glm/u1"
 cat > "$ROOT/utf8-glm/u1/meta.json" <<'EOF'
-{"status":"done","pid":9,"started_at":"2026-08-03T01:40:00Z","lane":"glm","task_name":"u1","exit_code":0,"timed_out":false}
+{"status":"done","pid":9,"started_at":"2026-08-03T01:40:00Z","lane":"codex","task_name":"u1","exit_code":0,"timed_out":false}
 EOF
 set_mtime "$ROOT/utf8-glm/u1/meta.json" "2026-08-03T01:41:00Z"
 printf '# utf8 ledger fixture\n' > "$ROOT/utf8-ledger.md"
 node -e 'const fs=require("fs"); const b=Buffer.concat([Buffer.from("ONLY "),Buffer.from([255,254]),Buffer.from(" line 2026-08-03T01:50:00Z survives\n")]); fs.appendFileSync(process.argv[1], b);' "$ROOT/utf8-ledger.md"
-out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/utf8-glm" \
-          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/utf8-glm" \
           WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
           WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/utf8-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
@@ -301,16 +310,15 @@ echo "--- 5. pre-window dispatch pairing ---"
 mkdir -p "$ROOT/prewin-sessions/handed-over" "$ROOT/prewin-sessions/fresh"
 # handed-over: dispatched 2026-08-02T23:00:00Z (pre-window), lands 00:20:00Z.
 cat > "$ROOT/prewin-sessions/handed-over/meta.json" <<'EOF'
-{"status":"done","started_at":"2026-08-02T23:00:00Z","lane":"glm","task_name":"handed","exit_code":0}
+{"status":"done","started_at":"2026-08-02T23:00:00Z","lane":"codex","task_name":"handed","exit_code":0}
 EOF
 set_mtime "$ROOT/prewin-sessions/handed-over/meta.json" "2026-08-03T00:20:00Z"
 # fresh: dispatched + landed fully in-window (bounds the window + baseline union).
 cat > "$ROOT/prewin-sessions/fresh/meta.json" <<'EOF'
-{"status":"done","started_at":"2026-08-03T01:00:00Z","lane":"glm","task_name":"fresh","exit_code":0}
+{"status":"done","started_at":"2026-08-03T01:00:00Z","lane":"codex","task_name":"fresh","exit_code":0}
 EOF
 set_mtime "$ROOT/prewin-sessions/fresh/meta.json" "2026-08-03T01:05:00Z"
-out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/prewin-sessions" \
-          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/prewin-sessions" \
           WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
           WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?
@@ -333,11 +341,10 @@ echo "--- 6. lowercase-z normalization ---"
 mkdir -p "$ROOT/lowz-sessions/lowz-1"
 # started_at ends in lowercase "z"; its dispatch row must survive normalization.
 cat > "$ROOT/lowz-sessions/lowz-1/meta.json" <<'EOF'
-{"status":"done","started_at":"2026-08-03T01:00:00z","lane":"glm","task_name":"lowz","exit_code":0}
+{"status":"done","started_at":"2026-08-03T01:00:00z","lane":"codex","task_name":"lowz","exit_code":0}
 EOF
 set_mtime "$ROOT/lowz-sessions/lowz-1/meta.json" "2026-08-03T01:05:00Z"
-out=$(env WORKER_SESSION_TIMELINE_WORKER_GLM="$ROOT/lowz-sessions" \
-          WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/no-claudex" \
+out=$(env WORKER_SESSION_TIMELINE_WORKER_CLAUDEX="$ROOT/lowz-sessions" \
           WORKER_SESSION_TIMELINE_CR_LEDGER="$ROOT/no-cr.jsonl" \
           WORKER_SESSION_TIMELINE_CHAIN_LEDGER="$ROOT/no-ledger.md" \
       bash "$LT" 2026-08-03T00:00 2>&1); rc=$?

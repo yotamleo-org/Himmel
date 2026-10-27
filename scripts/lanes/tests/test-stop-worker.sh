@@ -28,7 +28,7 @@ trap cleanup EXIT
 # visible to a child stop-worker.sh invocation to prove it is ignored there).
 export BRIDGE_ROOT="$TMP_ROOT/bridge"
 export STOP_WORKER_BRIDGE_ROOT_OVERRIDE="$BRIDGE_ROOT"
-mkdir -p "$BRIDGE_ROOT/glm-sessions" "$BRIDGE_ROOT/claudex-sessions"
+mkdir -p "$BRIDGE_ROOT/claudex-sessions"
 
 # mk_repo <dir> -- a real git repo with one commit, usable as a worker worktree.
 mk_repo() {
@@ -84,11 +84,11 @@ pushurl_of() { git -C "$1" config --worktree --get remote.origin.pushurl 2>/dev/
 
 echo "RUN A: registry resolution + refusals"
 
-mk_session glm glm-done-1 "done" 0 glm/done >/dev/null
+mk_session claudex claudex-done-1 "done" 0 claudex/done >/dev/null
 out=$(run_stop nonexistent-session); rc=$?
 if [ "$rc" -eq 2 ]; then pass "A1: unknown target -> exit 2 (refused, not found)"; else fail "A1: expected rc=2, got $rc" "$out"; fi
 
-out=$(run_stop glm-done-1); rc=$?
+out=$(run_stop claudex-done-1); rc=$?
 if [ "$rc" -eq 3 ]; then pass "A2: non-running session -> exit 3"; else fail "A2: expected rc=3, got $rc" "$out"; fi
 
 # A raw pid must NOT be an accepted target -- that is the whole point of
@@ -96,8 +96,8 @@ if [ "$rc" -eq 3 ]; then pass "A2: non-running session -> exit 3"; else fail "A2
 out=$(run_stop 4242); rc=$?
 if [ "$rc" -eq 2 ]; then pass "A3: a raw pid is not a valid target (exit 2)"; else fail "A3: expected rc=2 for a raw pid, got $rc" "$out"; fi
 
-mk_session glm glm-unprobeable-1 running 0 glm/unprobeable "" '{"pid_probe":"unprobeable"}' >/dev/null
-out=$(run_stop glm-unprobeable-1); rc=$?
+mk_session claudex claudex-unprobeable-1 running 0 claudex/unprobeable "" '{"pid_probe":"unprobeable"}' >/dev/null
+out=$(run_stop claudex-unprobeable-1); rc=$?
 if [ "$rc" -eq 4 ]; then
     case "$out" in
         *"possibly alive"*) pass "A4: unprobeable liveness marker -> exit 4, treated as possibly alive, nothing signalled" ;;
@@ -112,14 +112,18 @@ out=$(run_stop claudex-nopid-1); rc=$?
 if [ "$rc" -eq 4 ]; then pass "A5: running session with pid 0 -> exit 4, nothing signalled"; else fail "A5: expected rc=4, got $rc" "$out"; fi
 
 # Two RUNNING sessions on one branch must not be stopped by branch name.
-mk_session glm glm-dup-a running 999001 glm/dup >/dev/null
-mk_session glm glm-dup-b running 999002 glm/dup >/dev/null
-out=$(run_stop glm/dup); rc=$?
+mk_session claudex claudex-dup-a running 999001 claudex/dup >/dev/null
+mk_session claudex claudex-dup-b running 999002 claudex/dup >/dev/null
+out=$(run_stop claudex/dup); rc=$?
 if [ "$rc" -eq 1 ]; then pass "A6: ambiguous branch match -> exit 1 (refuses to guess)"; else fail "A6: expected rc=1, got $rc" "$out"; fi
 
+mk_session glm retired-glm running 999004 glm/retired >/dev/null
+out=$(run_stop retired-glm); rc=$?
+if [ "$rc" -eq 2 ]; then pass "A8: retired GLM session is not a stop target"; else fail "A8: expected rc=2, got $rc" "$out"; fi
 out=$(run_stop --list)
-if grep -q "glm-done-1" <<<"$out" && grep -q "claudex-nopid-1" <<<"$out"; then
-    pass "A7: --list enumerates sessions from BOTH lanes"
+if grep -q "retired-glm" <<<"$out"; then fail "A9: --list included retired GLM session" "$out"; else pass "A9: --list ignores retired GLM sessions"; fi
+if grep -q "claudex-done-1" <<<"$out" && grep -q "claudex-nopid-1" <<<"$out"; then
+    pass "A7: --list enumerates claudex sessions"
 else
     fail "A7: --list missed a lane" "$out"
 fi
@@ -132,21 +136,21 @@ mk_repo "$WT_B"
 printf 'uncommitted work\n' > "$WT_B/file.txt"
 printf 'brand new\n' > "$WT_B/newfile.txt"
 set_pushurl "$WT_B" "$POISON"
-mk_session glm glm-dirty-1 running 999003 glm/dirty "$WT_B" >/dev/null
-out=$(run_stop --dry-run glm-dirty-1); rc=$?
+mk_session claudex claudex-dirty-1 running 999003 claudex/dirty "$WT_B" >/dev/null
+out=$(run_stop --dry-run claudex-dirty-1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "B1: --dry-run on a dirty worker exits 0"; else fail "B1: expected rc=0, got $rc" "$out"; fi
-ckpt=$(git -C "$WT_B" rev-parse --verify --quiet refs/checkpoints/glm-dirty-1-halt)
+ckpt=$(git -C "$WT_B" rev-parse --verify --quiet refs/checkpoints/claudex-dirty-1-halt)
 if [ -n "$ckpt" ]; then
     pass "B2: the worker's dirty worktree was checkpointed BEFORE any signal"
 else
-    fail "B2: no refs/checkpoints/glm-dirty-1-halt was created" "$out"
+    fail "B2: no refs/checkpoints/claudex-dirty-1-halt was created" "$out"
 fi
-if [ "$(git -C "$WT_B" show "refs/checkpoints/glm-dirty-1-halt:newfile.txt" 2>/dev/null)" = "brand new" ]; then
+if [ "$(git -C "$WT_B" show "refs/checkpoints/claudex-dirty-1-halt:newfile.txt" 2>/dev/null)" = "brand new" ]; then
     pass "B3a: the checkpoint captured an UNTRACKED file (git stash create cannot)"
 else
     fail "B3a: untracked file missing from the checkpoint" "$out"
 fi
-if [ "$(git -C "$WT_B" show "refs/checkpoints/glm-dirty-1-halt:file.txt" 2>/dev/null)" = "uncommitted work" ]; then
+if [ "$(git -C "$WT_B" show "refs/checkpoints/claudex-dirty-1-halt:file.txt" 2>/dev/null)" = "uncommitted work" ]; then
     pass "B3b: the checkpoint captured the modified tracked file"
 else
     fail "B3b: modified tracked file missing from the checkpoint" "$out"
@@ -174,8 +178,8 @@ fi
 # fail-safe. The pid is a real running process so the refusal is the live case.
 sleep 300 &
 B6_PID=$!
-mk_session glm glm-badwt-1 running "$B6_PID" glm/badwt "$TMP_ROOT/not-a-repo" >/dev/null
-out=$(run_stop glm-badwt-1); rc=$?
+mk_session claudex claudex-badwt-1 running "$B6_PID" claudex/badwt "$TMP_ROOT/not-a-repo" >/dev/null
+out=$(run_stop claudex-badwt-1); rc=$?
 kill -0 "$B6_PID" 2>/dev/null; b6_alive=$?
 kill "$B6_PID" 2>/dev/null; wait "$B6_PID" 2>/dev/null
 if [ "$rc" -eq 5 ]; then
@@ -183,7 +187,7 @@ if [ "$rc" -eq 5 ]; then
 else
     fail "B6: expected rc=5, got $rc" "$out"
 fi
-if [ "$(meta_status "$BRIDGE_ROOT/glm-sessions/glm-badwt-1/meta.json")" = "running" ]; then
+if [ "$(meta_status "$BRIDGE_ROOT/claudex-sessions/claudex-badwt-1/meta.json")" = "running" ]; then
     pass "B6b: the refused live worker's session stays running"
 else
     fail "B6b: a refused live worker was annotated" "$out"
@@ -201,9 +205,9 @@ fi
 sleep 300 &
 B7_PID=$!
 kill "$B7_PID" 2>/dev/null; wait "$B7_PID" 2>/dev/null
-mk_session glm glm-baddead-1 running "$B7_PID" glm/baddead "$TMP_ROOT/not-a-repo" >/dev/null
-out=$(run_stop glm-baddead-1); rc=$?
-B7_META="$BRIDGE_ROOT/glm-sessions/glm-baddead-1/meta.json"
+mk_session claudex claudex-baddead-1 running "$B7_PID" claudex/baddead "$TMP_ROOT/not-a-repo" >/dev/null
+out=$(run_stop claudex-baddead-1); rc=$?
+B7_META="$BRIDGE_ROOT/claudex-sessions/claudex-baddead-1/meta.json"
 if [ "$rc" -eq 7 ]; then
     pass "B7: dead pid + uncheckpointable worktree exits 7 (distinct from the live refusal)"
 else
@@ -219,9 +223,9 @@ case "$(node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFi
     *) fail "B7c: stop_checkpoint does not record the checkpoint failure" "$out" ;;
 esac
 # B7d: --dry-run changes nothing, so it must not annotate.
-mk_session glm glm-baddead-2 running "$B7_PID" glm/baddead2 "$TMP_ROOT/not-a-repo" >/dev/null
-out=$(run_stop --dry-run glm-baddead-2); rc=$?
-if [ "$(meta_status "$BRIDGE_ROOT/glm-sessions/glm-baddead-2/meta.json")" = "running" ]; then
+mk_session claudex claudex-baddead-2 running "$B7_PID" claudex/baddead2 "$TMP_ROOT/not-a-repo" >/dev/null
+out=$(run_stop --dry-run claudex-baddead-2); rc=$?
+if [ "$(meta_status "$BRIDGE_ROOT/claudex-sessions/claudex-baddead-2/meta.json")" = "running" ]; then
     pass "B7d: --dry-run on a dead worker with a failing checkpoint does not annotate"
 else
     fail "B7d: --dry-run annotated the session" "$out"
@@ -247,7 +251,7 @@ set +m
 # now cross-checks the two (spawn-time identity correlation)
 # and refuses to signal a pid whose start time doesn't line up.
 LIVE_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session glm glm-live-1 running "$LIVE_PID" glm/live "$WT_C" "$(printf '{"started_at":"%s"}' "$LIVE_STARTED_AT")" >/dev/null
+mk_session claudex claudex-live-1 running "$LIVE_PID" claudex/live "$WT_C" "$(printf '{"started_at":"%s"}' "$LIVE_STARTED_AT")" >/dev/null
 
 if kill -0 "$LIVE_PID" 2>/dev/null; then
     pass "C0: fixture child $LIVE_PID is alive before the stop"
@@ -255,7 +259,7 @@ else
     fail "C0: fixture child never started"
 fi
 
-out=$(run_stop glm-live-1); rc=$?
+out=$(run_stop claudex-live-1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "C1: stop-worker exits 0 on a live worker"; else fail "C1: expected rc=0, got $rc" "$out"; fi
 
 gone=0
@@ -274,13 +278,13 @@ fi
 kill -9 "$LIVE_PID" 2>/dev/null
 wait "$LIVE_PID" 2>/dev/null
 
-if [ -n "$(git -C "$WT_C" rev-parse --verify --quiet refs/checkpoints/glm-live-1-halt)" ]; then
+if [ -n "$(git -C "$WT_C" rev-parse --verify --quiet refs/checkpoints/claudex-live-1-halt)" ]; then
     pass "C3: the halted worker's uncommitted work was checkpointed"
 else
     fail "C3: no checkpoint for the halted worker" "$out"
 fi
 
-st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/glm-sessions/glm-live-1/meta.json" 2>/dev/null)
+st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/claudex-sessions/claudex-live-1/meta.json" 2>/dev/null)
 if [ "$st" = "stopped-by-parent" ]; then
     pass "C4: meta.json records status=stopped-by-parent (a later reader cannot read it as running)"
 else
@@ -316,9 +320,9 @@ sleep 300 &
 LIVE_TZ_PID=$!
 set +m
 LIVE_TZ_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session glm glm-live-tz-1 running "$LIVE_TZ_PID" glm/live-tz "$WT_CTZ" "$(printf '{"started_at":"%s"}' "$LIVE_TZ_STARTED_AT")" >/dev/null
+mk_session claudex claudex-live-tz-1 running "$LIVE_TZ_PID" claudex/live-tz "$WT_CTZ" "$(printf '{"started_at":"%s"}' "$LIVE_TZ_STARTED_AT")" >/dev/null
 
-out=$(TZ=Europe/Berlin run_stop glm-live-tz-1); rc=$?
+out=$(TZ=Europe/Berlin run_stop claudex-live-tz-1); rc=$?
 if [ "$rc" -eq 0 ]; then
     pass "C-TZ1: stop-worker exits 0 on a live worker when run under TZ=Europe/Berlin"
 else
@@ -352,9 +356,9 @@ sleep 300 &
 MISMATCH_PID=$!
 set +m
 STALE_STARTED_AT="2020-01-01T00:00:00.000Z"
-mk_session glm glm-mismatch-1 running "$MISMATCH_PID" glm/mismatch "$WT_D" "$(printf '{"started_at":"%s"}' "$STALE_STARTED_AT")" >/dev/null
+mk_session claudex claudex-mismatch-1 running "$MISMATCH_PID" claudex/mismatch "$WT_D" "$(printf '{"started_at":"%s"}' "$STALE_STARTED_AT")" >/dev/null
 
-out=$(run_stop glm-mismatch-1); rc=$?
+out=$(run_stop claudex-mismatch-1); rc=$?
 if [ "$rc" -eq 4 ]; then
     pass "D1: a pid whose own start time does not correlate with the registered started_at is refused (exit 4)"
 else
@@ -404,11 +408,11 @@ if [ -r "/proc/$$/winpid" ]; then
     GONE_PID=$!
     set +m
     GONE_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-    mk_session glm glm-alreadygone-1 running "$GONE_PID" glm/alreadygone "$WT_E" "$(printf '{"started_at":"%s"}' "$GONE_STARTED_AT")" >/dev/null
+    mk_session claudex claudex-alreadygone-1 running "$GONE_PID" claudex/alreadygone "$WT_E" "$(printf '{"started_at":"%s"}' "$GONE_STARTED_AT")" >/dev/null
 
     FAKE_PROC_ROOT="$TMP_ROOT/fake-proc-root"
     mkdir -p "$FAKE_PROC_ROOT"
-    out=$(_PROC_TREE_PROC_ROOT="$FAKE_PROC_ROOT" bash "$STOP" glm-alreadygone-1 2>&1); rc=$?
+    out=$(_PROC_TREE_PROC_ROOT="$FAKE_PROC_ROOT" bash "$STOP" claudex-alreadygone-1 2>&1); rc=$?
     if [ "$rc" -eq 0 ]; then pass "E1: a leader confirmed-gone-before-signal still exits 0"; else fail "E1: expected rc=0, got $rc" "$out"; fi
     case "$out" in
         *"already exited"*) pass "E2: output reports the worker had already exited" ;;
@@ -419,7 +423,7 @@ if [ -r "/proc/$$/winpid" ]; then
     else
         fail "E3: the process was killed despite the confirmed-gone guard refusing to signal"
     fi
-    st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/glm-sessions/glm-alreadygone-1/meta.json" 2>/dev/null)
+    st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/claudex-sessions/claudex-alreadygone-1/meta.json" 2>/dev/null)
     if [ "$st" = "already-exited" ]; then
         pass "E4: meta.json records status=already-exited, NOT stopped-by-parent (a later reader must not think this chokepoint acted)"
     else
@@ -446,15 +450,15 @@ mk_repo "$WT_F"
 set_pushurl "$WT_F" "$POISON"
 NEVER_EXISTED_PID=987654321
 FBI_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session glm glm-gonebeforeid-1 running "$NEVER_EXISTED_PID" glm/gonebeforeid "$WT_F" "$(printf '{"started_at":"%s"}' "$FBI_STARTED_AT")" >/dev/null
+mk_session claudex claudex-gonebeforeid-1 running "$NEVER_EXISTED_PID" claudex/gonebeforeid "$WT_F" "$(printf '{"started_at":"%s"}' "$FBI_STARTED_AT")" >/dev/null
 
-out=$(run_stop glm-gonebeforeid-1); rc=$?
+out=$(run_stop claudex-gonebeforeid-1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "F1: pid already gone before identity sampling still exits 0"; else fail "F1: expected rc=0, got $rc" "$out"; fi
 case "$out" in
     *"already gone"*) pass "F2: output reports the pid was already gone" ;;
     *) fail "F2: output did not report the pid as already gone" "$out" ;;
 esac
-st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/glm-sessions/glm-gonebeforeid-1/meta.json" 2>/dev/null)
+st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/claudex-sessions/claudex-gonebeforeid-1/meta.json" 2>/dev/null)
 if [ "$st" = "already-exited" ]; then
     pass "F3: meta.json records status=already-exited (a later reader must not see this session as still running)"
 else
@@ -477,8 +481,8 @@ mk_repo "$WT_F2"
 REAL_PUSHURL="git@example.invalid:operator/keepme.git"
 set_pushurl "$WT_F2" "$REAL_PUSHURL"
 F2_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session glm glm-realpushurl-1 running "$NEVER_EXISTED_PID" glm/realpushurl "$WT_F2" "$(printf '{"started_at":"%s"}' "$F2_STARTED_AT")" >/dev/null
-out=$(run_stop glm-realpushurl-1); rc=$?
+mk_session claudex claudex-realpushurl-1 running "$NEVER_EXISTED_PID" claudex/realpushurl "$WT_F2" "$(printf '{"started_at":"%s"}' "$F2_STARTED_AT")" >/dev/null
+out=$(run_stop claudex-realpushurl-1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "F5: a halt on a worktree carrying a real pushurl still exits 0"; else fail "F5: expected rc=0, got $rc" "$out"; fi
 if [ "$(pushurl_of "$WT_F2")" = "$REAL_PUSHURL" ]; then
     pass "F6: a non-sentinel remote.origin.pushurl is left exactly as it was"
@@ -500,14 +504,14 @@ if [ -r "/proc/$$/winpid" ]; then
     mk_repo "$WT_F3"
     set_pushurl "$WT_F3" "$POISON"
     F3_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-    mk_session glm glm-probefailed-1 running "$NEVER_EXISTED_PID" glm/probefailed "$WT_F3" "$(printf '{"started_at":"%s"}' "$F3_STARTED_AT")" >/dev/null
-    out=$(_PROC_TREE_PROC_ROOT="$TMP_ROOT/no-such-proc-root" bash "$STOP" glm-probefailed-1 2>&1); rc=$?
+    mk_session claudex claudex-probefailed-1 running "$NEVER_EXISTED_PID" claudex/probefailed "$WT_F3" "$(printf '{"started_at":"%s"}' "$F3_STARTED_AT")" >/dev/null
+    out=$(_PROC_TREE_PROC_ROOT="$TMP_ROOT/no-such-proc-root" bash "$STOP" claudex-probefailed-1 2>&1); rc=$?
     if [ "$rc" -eq 4 ]; then
         pass "F7: an unanswerable liveness probe is refused (exit 4), not read as confirmed absence"
     else
         fail "F7: expected rc=4 for an unanswerable liveness probe, got $rc" "$out"
     fi
-    st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/glm-sessions/glm-probefailed-1/meta.json" 2>/dev/null)
+    st=$(node -e 'const fs=require("fs");process.stdout.write(String(JSON.parse(fs.readFileSync(process.argv[1],"utf8")).status))' "$BRIDGE_ROOT/claudex-sessions/claudex-probefailed-1/meta.json" 2>/dev/null)
     if [ "$st" = "running" ]; then
         pass "F8: meta.json still reads running -- an unconfirmed absence must not be annotated as already-exited"
     else
@@ -532,8 +536,8 @@ echo "RUN G: registry-root override gating (HIMMEL-1693 CR, codex-1)"
 # process-kill primitive through the sanctioned STOP chokepoint. Run in a
 # subshell so `unset` does not affect the rest of this suite (every other RUN
 # needs the seam exported).
-mk_session glm glm-envonly-1 running 999005 glm/envonly >/dev/null
-out=$(unset STOP_WORKER_BRIDGE_ROOT_OVERRIDE; bash "$STOP" glm-envonly-1 2>&1); rc=$?
+mk_session claudex claudex-envonly-1 running 999005 claudex/envonly >/dev/null
+out=$(unset STOP_WORKER_BRIDGE_ROOT_OVERRIDE; bash "$STOP" claudex-envonly-1 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then
     pass "G1: plain BRIDGE_ROOT without the test flag is ignored -- canonical root used, fixture session not found (refused)"
 else
@@ -546,8 +550,8 @@ esac
 
 # G3: with the explicit seam set (as every other RUN in this suite has it),
 # the fixture registry still resolves normally.
-mk_session glm glm-seamworks-1 "done" 0 glm/seamworks >/dev/null
-out=$(run_stop glm-seamworks-1); rc=$?
+mk_session claudex claudex-seamworks-1 "done" 0 claudex/seamworks >/dev/null
+out=$(run_stop claudex-seamworks-1); rc=$?
 if [ "$rc" -eq 3 ]; then
     pass "G3: with STOP_WORKER_BRIDGE_ROOT_OVERRIDE set, the fixture registry resolves normally (session found, not running)"
 else
@@ -567,8 +571,8 @@ echo "RUN H: STOP_WORKER_GRACE_SECS validation (HIMMEL-1693 CR round 2)"
 # proc_tree_terminate's `sleep "$grace"` -- a bad value there fails sleep at
 # once and silently collapses the TERM grace window. Refused with usage rc=1,
 # same as any other bad-input refusal.
-mk_session glm glm-badgrace-1 "done" 0 glm/badgrace >/dev/null
-out=$(STOP_WORKER_GRACE_SECS="notanumber" run_stop glm-badgrace-1); rc=$?
+mk_session claudex claudex-badgrace-1 "done" 0 claudex/badgrace >/dev/null
+out=$(STOP_WORKER_GRACE_SECS="notanumber" run_stop claudex-badgrace-1); rc=$?
 if [ "$rc" -eq 1 ]; then
     pass "H1: non-numeric STOP_WORKER_GRACE_SECS refused (exit 1)"
 else
@@ -581,7 +585,7 @@ esac
 
 # H3: a negative GRACE must also be refused -- the digit-class guard rejects
 # the leading '-' the same way it rejects letters.
-out=$(STOP_WORKER_GRACE_SECS="-5" run_stop glm-badgrace-1); rc=$?
+out=$(STOP_WORKER_GRACE_SECS="-5" run_stop claudex-badgrace-1); rc=$?
 if [ "$rc" -eq 1 ]; then
     pass "H3: negative STOP_WORKER_GRACE_SECS refused (exit 1)"
 else
@@ -590,7 +594,7 @@ fi
 
 # H4: unset GRACE still falls back to the documented default of 5s and the
 # rest of the run proceeds normally (not a refusal).
-out=$(unset STOP_WORKER_GRACE_SECS; run_stop glm-badgrace-1); rc=$?
+out=$(unset STOP_WORKER_GRACE_SECS; run_stop claudex-badgrace-1); rc=$?
 if [ "$rc" -eq 3 ]; then
     pass "H4: unset STOP_WORKER_GRACE_SECS falls back to the default, run proceeds (rc=3, session not running)"
 else

@@ -1,18 +1,22 @@
-import { test, expect } from "bun:test";
-import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
+import { afterEach, test, expect } from "bun:test";
+import { mkdtempSync, mkdirSync, writeFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { capabilityShape, escalationId, findByResumeToken, readEscalations, resumeToken } from "../aggregator/escalations";
 import { startServer } from "../server";
 
+const roots: string[] = [];
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "fleet-esc-"));
+  roots.push(root);
   const s = join(root, "glm-sessions", "demo");
   mkdirSync(s, { recursive: true });
   const granted = { type: "escalation", capability: "net.fetch", step: 3, ts: "2026-07-07T00:00:00Z" };
   const open = { type: "escalation", capability: "fs.write", step: "ship", ts: "2026-07-07T00:01:00Z" };
   const id = escalationId({ sessionDir: s, step: granted.step, capability: granted.capability, ts: granted.ts });
-  writeFileSync(join(s, "outbox.jsonl"), `${JSON.stringify(granted)}\n${JSON.stringify(open)}\n`);
+  writeFileSync(join(s, "outbox.jsonl"), `${JSON.stringify(granted)}\n${JSON.stringify(open)}\n{not json\n`);
   writeFileSync(join(s, "grants.jsonl"), `${JSON.stringify({ escalation_id: id, capability: "net.fetch" })}\n`);
   return { root, id };
 }
@@ -24,23 +28,9 @@ test("escalationId is deterministic first-12-hex of sha256 over the tuple", () =
   expect(a).toMatch(/^[0-9a-f]{12}$/);
 });
 
-test("adjudicated escalations drop out and open escalations remain", () => {
-  const { root, id } = fixture();
-  const { escalations: open } = readEscalations(root);
-  expect(open.find((e) => e.escalation_id === id)).toBeUndefined();
-  expect(open.some((e) => e.capability === "fs.write" && e.shape === "write")).toBe(true);
-});
-
-test("malformed escalation lines are skipped but counted as parseErrors (finding 13)", () => {
-  const root = mkdtempSync(join(tmpdir(), "fleet-esc-bad-"));
-  const s = join(root, "glm-sessions", "demo");
-  mkdirSync(s, { recursive: true });
-  const good = { type: "escalation", capability: "fs.write", step: 1, ts: "2026-07-07T00:00:00Z" };
-  writeFileSync(join(s, "outbox.jsonl"), `${JSON.stringify(good)}\n{not json\n`);
-
-  const { escalations, parseErrors } = readEscalations(root);
-  expect(escalations.some((e) => e.capability === "fs.write")).toBe(true);
-  expect(parseErrors).toBe(1);
+test("retired GLM outboxes and grants no longer produce escalations or parse errors", () => {
+  const { root } = fixture();
+  expect(readEscalations(root)).toEqual({ escalations: [], parseErrors: 0 });
 });
 
 test("capabilityShape maps per the charter taxonomy", () => {
@@ -52,33 +42,17 @@ test("capabilityShape maps per the charter taxonomy", () => {
   expect(capabilityShape("mystery.cap")).toBe("write");
 });
 
-test("GET /escalations returns open escalations", async () => {
+test("GET /escalations keeps its empty compatibility response", async () => {
   const { root } = fixture();
-  const { server, port } = startServer({ port: 0, stateRoot: root, bridgeRoot: root });
+  const { server, port } = startServer({ port: 0, stateRoot: root, bridgeRoot: root, env: {} });
   try {
     const body = await (await fetch(`http://127.0.0.1:${port}/escalations`)).json();
-    expect(body.escalations.some((e: any) => e.capability === "fs.write")).toBe(true);
-    expect(typeof body.parseErrors).toBe("number");
+    expect(body).toEqual({ escalations: [], parseErrors: 0 });
   } finally { server.stop(); }
 });
 
-test("open escalations carry a deterministic resume_token distinct from escalation_id", () => {
-  const { root } = fixture();
-  const [open] = readEscalations(root).escalations;
-  expect(open.resume_token).toMatch(/^[0-9a-f]{16}$/);
-  expect(open.resume_token).toBe(resumeToken(open.escalation_id));
-  expect(open.resume_token).not.toContain(open.escalation_id);
-  expect(readEscalations(root).escalations[0].resume_token).toBe(open.resume_token);
-});
-
-test("findByResumeToken resolves an open escalation and its adjudicated twin to the same step", () => {
+test("retired GLM grants cannot resolve a resume token", () => {
   const { root, id } = fixture();
-  const open = readEscalations(root).escalations[0];
-  const hit = findByResumeToken(root, open.resume_token);
-  expect(hit?.state).toBe("open");
-  expect(hit?.escalation.step).toBe("ship");
-  const granted = findByResumeToken(root, resumeToken(id));
-  expect(granted?.state).toBe("closed");
-  expect(granted?.escalation.step).toBe(3);
+  expect(findByResumeToken(root, resumeToken(id))).toBeUndefined();
   expect(findByResumeToken(root, "0000000000000000")).toBeUndefined();
 });

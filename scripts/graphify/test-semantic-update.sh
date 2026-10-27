@@ -43,6 +43,11 @@ if [ -n "\${LANE_STUB_REFUSE:-}" ]; then
   echo 'claude-api: refused: auto routing: no account has room for the budget ({"verdict":"SKIPPED-BANK","reason":"stale-snapshot"})' >&2
   exit 2
 fi
+if [ -n "\${LANE_STUB_REJECT:-}" ]; then
+  echo '{"type":"result","is_error":true,"result":"API Error: 400 Your credit balance is too low to access the Anthropic API."}'
+  echo "claude-api: account A credit exhausted; auto routing rotates to the other account" >&2
+  exit 6
+fi
 if [ -n "\${LANE_STUB_FAIL:-}" ]; then
   echo '{"type":"result","subtype":"error_max_budget_usd","is_error":true}'
   echo "lane-stub-stderr-banner" >&2
@@ -593,6 +598,21 @@ out=$(LANE_STUB_REFUSE=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_
 [ "$(grep -c '^lane ' "$WS/calls.log")" -eq 5 ] && pass "T65 all five refused calls reached the lane" || fail "T65 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
 grep -q 'run spend cap' "$WS/claude.out" && fail "T65 refused calls tripped the run cap: $(cat "$WS/claude.out")" || pass "T65 no run-cap message"
 grep -q 'claude-api: refused: auto routing' "$WS/claude.out" && pass "T65 the refusal text still reaches stderr" || fail "T65 refusal text lost: $(cat "$WS/claude.out")"
+
+echo "T68: a credit or key rejection (lane exit 6) stops dispatch: a pinned account gets no call after the first"
+C68="$WS/c68"; new_corpus "$C68"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(GRAPHIFY_STUB_CHUNKFAIL=1 LANE_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 run_api --name t68 --corpus-root "$C68" --corpus-class himmel-code --backend claude-api); rc=$?
+[ "$rc" -eq 5 ] && pass "T68 the run exits 5, never success, after rejected chunks" || fail "T68 exit (got $rc): $out"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 1 ] && pass "T68 one lane call, the other four chunks never dispatched" || fail "T68 lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
+grep -q 'not dispatching' "$WS/claude.out" && pass "T68 the shim says why it stopped" || fail "T68 no stop line: $(cat "$WS/claude.out")"
+[ "$(grep -c '^claude-shim-rc=6$' "$WS/calls.log")" -eq 5 ] && pass "T68 every chunk call reports the non-retryable rc 6" || fail "T68 shim rcs: $(grep claude-shim-rc "$WS/calls.log" | tr '\n' ' ')"
+[ "$(lastrun "$C68" cost_usd)" = "0.0" ] && pass "T68 rejected calls add no cost" || fail "T68 row: $(tail -1 "$C68/graphify-out/semantic-runs.jsonl" 2>&1)"
+
+echo "T68b: on auto routing the second account gets one call, then dispatch stops"
+C68B="$WS/c68b"; new_corpus "$C68B"; : > "$WS/calls.log"; : > "$WS/claude.out"
+out=$(env HIMMEL_API_LANE=on HIMMEL_API_ACCOUNT=auto GRAPHIFY_API_BATCH=0 GRAPHIFY_STUB_CHUNKFAIL=1 LANE_STUB_REJECT=1 GRAPHIFY_STUB_CALL_N=5 GRAPHIFY_STUB_CALL_CLAUDE=1 PATH="$WS/bin:$PATH" bash "$SCRIPT" --name t68b --corpus-root "$C68B" --corpus-class himmel-code --backend claude-api 2>&1); rc=$?
+[ "$rc" -eq 5 ] && pass "T68b the run exits 5 too" || fail "T68b exit (got $rc): $out"
+[ "$(grep -c '^lane ' "$WS/calls.log")" -eq 2 ] && pass "T68b two lane calls: the first rejection plus one rotated call" || fail "T68b lane calls: $(grep -c '^lane ' "$WS/calls.log") (rc=$rc)"
 
 echo "T66: a failed extract names the first lane refusal in its closing line"
 C66="$WS/c66"; new_corpus "$C66"; : > "$WS/calls.log"

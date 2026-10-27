@@ -55,7 +55,6 @@ test("defaultClaudeCachePath honors CLAUDE_USAGE_CACHE, then the platform defaul
   expect(defaultClaudeCachePath({ CLAUDE_USAGE_CACHE: "/x/cache.json" }, "linux")).toBe("/x/cache.json");
   expect(defaultClaudeCachePath({}, "linux")).toBe("/tmp/claude/statusline-usage-cache.json");
   expect(defaultClaudeCachePath({}, "darwin")).toBe("/tmp/claude/statusline-usage-cache.json");
-  expect(defaultClaudeCachePath({}, "win32")).toBe(join(tmpdir(), "claude", "statusline-usage-cache.json"));
 });
 
 test("readClaudeBank omits on missing file, bad JSON, out-of-range or unparseable resets_at", () => {

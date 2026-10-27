@@ -15,7 +15,7 @@ export interface Admission {
   reason?: string;
   /** The release-manager session that ruled an `rm-admit` row. */
   by?: string;
-  /** The release ruling an `rm-admit` or `rm-remove` row records, so a replay of that ruling finds its row. */
+  /** The release ruling an `rm-admit` or `rm-remove` row records, so a replay of that ruling finds its row; on an `rm-run` override row, the decision ref that lifted the bulk cap. */
   ruling?: string;
 }
 

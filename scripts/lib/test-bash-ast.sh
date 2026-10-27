@@ -122,6 +122,21 @@ row "a function definition makes the cwd unknown" \
 row "a CDPATH assignment makes the cwd unknown" \
     'CDPATH=/x; cd a && cat x' \
     '(.[] | select(.prog == "cat") | .cwd | index(null) != null)'
+row "a CDPATH prefix assignment makes a nested bash -c body's cwd unknown" \
+    "CDPATH=/tmp bash -c 'cd x && cat f'" \
+    '(.[] | select(.prog == "cat") | .cwd | index(null) != null)'
+row "env CDPATH= makes a nested bash -c body's cwd unknown" \
+    "env CDPATH=/tmp bash -c 'cd x && cat f'" \
+    '(.[] | select(.prog == "cat") | .cwd | index(null) != null)'
+row "a CDPATH prefix assignment makes a nested eval body's cwd unknown" \
+    "CDPATH=/tmp eval 'cd x && cat f'" \
+    '(.[] | select(.prog == "cat") | .cwd | index(null) != null)'
+row "an exported CDPATH makes a later bash -c body's cwd unknown" \
+    "export CDPATH=/tmp; bash -c 'cd x && cat f'" \
+    '(.[] | select(.prog == "cat") | .cwd | index(null) != null)'
+row "a non-CDPATH prefix assignment keeps a nested body's cwd known" \
+    "FOO=1 bash -c 'cd x && cat f'" \
+    '(.[] | select(.prog == "cat") | .cwd) == [["x"]]'
 row "a \$(…) cd does not leave the substitution" \
     'echo $(cd a; cat x) && cat y' \
     '(.[] | select(.prog == "cat" and .argv[1].v == "y") | .cwd) == [[]] and (.[] | select(.prog == "cat" and .argv[1].v == "x") | .in) == ["subst"]'

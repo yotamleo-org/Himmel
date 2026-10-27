@@ -80,7 +80,7 @@ export FLEET_CAP_OK=1
 reset_fleet_slots() { rm -rf "${XDG_RUNTIME_DIR:?}/himmel-fleet-$(id -u)"; }
 
 export WORKER_BRIDGE_ROOT="$TMP/bridge"
-mkdir -p "$WORKER_BRIDGE_ROOT/glm-sessions" "$WORKER_BRIDGE_ROOT/claudex-sessions"
+mkdir -p "$WORKER_BRIDGE_ROOT/claudex-sessions"
 
 PID_STUB="$TMP/pid-alive"
 cat > "$PID_STUB" <<'EOF'
@@ -305,14 +305,14 @@ _stat_mtime_ms() {
 }
 
 # T1: a running row with a stub-live pid blocks and is listed.
-LIVE_DIR="$WORKER_BRIDGE_ROOT/glm-sessions/glm-live"
+LIVE_DIR="$WORKER_BRIDGE_ROOT/claudex-sessions/claudex-live"
 mkdir -p "$LIVE_DIR"
 cat > "$LIVE_DIR/meta.json" <<'EOF'
 {
   "status": "running",
   "pid": 111,
   "started_at": "2026-08-03T00:00:00Z",
-  "lane": "glm",
+  "lane": "claudex",
   "task_name": "live-guard"
 }
 EOF
@@ -392,16 +392,16 @@ git -C "$LOCK_REPO" config user.name "Test User"
 git -C "$LOCK_REPO" add README.md
 git -C "$LOCK_REPO" commit -q -m init
 
-KEEP_DIR="$WORKER_BRIDGE_ROOT/glm-sessions/glm-keep-lock"
+KEEP_DIR="$WORKER_BRIDGE_ROOT/claudex-sessions/claudex-keep-lock"
 DROP_DIR="$WORKER_BRIDGE_ROOT/claudex-sessions/claudex-drop-lock"
 mkdir -p "$KEEP_DIR" "$DROP_DIR"
 cat > "$KEEP_DIR/meta.json" <<EOF
-{"status":"running","pid":333,"lane":"glm","task_name":"keep-lock","shared_branch":"feat/keep-lock","repo_dir":"$LOCK_REPO"}
+{"status":"running","pid":333,"lane":"claudex","task_name":"keep-lock","shared_branch":"feat/keep-lock","repo_dir":"$LOCK_REPO"}
 EOF
 cat > "$DROP_DIR/meta.json" <<EOF
 {"status":"running","pid":555,"lane":"codex","task_name":"drop-lock","shared_branch":"feat/drop-lock","repo_dir":"$LOCK_REPO"}
 EOF
-SHARED_BRANCH_LOCK_HOLDER_PID=444 bash "$LOCK" acquire "$LOCK_REPO" "feat/keep-lock" glm >/dev/null 2>&1
+SHARED_BRANCH_LOCK_HOLDER_PID=444 bash "$LOCK" acquire "$LOCK_REPO" "feat/keep-lock" claudex >/dev/null 2>&1
 SHARED_BRANCH_LOCK_HOLDER_PID=666 bash "$LOCK" acquire "$LOCK_REPO" "feat/drop-lock" codex >/dev/null 2>&1
 KEEP_LOCK=$(git -C "$LOCK_REPO" rev-parse --path-format=absolute --git-common-dir)/himmel-shared-branch/feat-keep-lock.lock
 DROP_LOCK=$(git -C "$LOCK_REPO" rev-parse --path-format=absolute --git-common-dir)/himmel-shared-branch/feat-drop-lock.lock
@@ -645,7 +645,7 @@ assert_not_contains "T8b stat failure does not authorize orphaning" "orphaned co
 # override could not reach this branch. Now ARM_WITH_LIVE_WORKERS=1
 # downgrades it to a loud warning (naming the offending meta path) and the
 # arm proceeds; without the override it still refuses (rc=2).
-MALFORMED_DIR="$WORKER_BRIDGE_ROOT/glm-sessions/glm-malformed"
+MALFORMED_DIR="$WORKER_BRIDGE_ROOT/claudex-sessions/claudex-malformed"
 mkdir -p "$MALFORMED_DIR"
 printf '{not valid json' > "$MALFORMED_DIR/meta.json"
 # NOTE: MSYS mangles a POSIX-looking argv path into its Windows spelling
@@ -655,7 +655,7 @@ reset_fleet_slots
 out=$(TMPDIR="$TMP" PATH="$SCHED_STUB:$PATH" LIVE_PIDS='' bash "$ARM" --time "$NEAR_HHMM" --handover "$HANDOVER" 2>&1)
 rc=$?
 assert_rc "T9 malformed meta refuses without override" 2 "$rc"
-assert_contains "T9 refusal names the offending meta path" "glm-malformed/meta.json" "$out"
+assert_contains "T9 refusal names the offending meta path" "claudex-malformed/meta.json" "$out"
 # T6's --force arm above left its own task registered in the stateful
 # schtasks AND at stubs' state; without --force here, this arm would
 # otherwise (and correctly) hit the real dedup-block path (rc=3) instead of
@@ -671,19 +671,19 @@ out=$(TMPDIR="$TMP" PATH="$SCHED_STUB:$PATH" LIVE_PIDS='' ARM_WITH_LIVE_WORKERS=
 rc=$?
 assert_rc "T9 override warns and proceeds" 0 "$rc"
 assert_contains "T9 override warning is loud" "WARN arm-resume: ARM_WITH_LIVE_WORKERS=1" "$out"
-assert_contains "T9 override still names the offending meta path" "glm-malformed/meta.json" "$out"
+assert_contains "T9 override still names the offending meta path" "claudex-malformed/meta.json" "$out"
 assert_contains "T9 override reaches scheduler success" "RESUME ARMED" "$out"
 rm -rf "$MALFORMED_DIR"
 
 # T10: one census batch mixing a terminal row, a live running
 # row, and a malformed row must reconcile the good rows exactly as before
 # and still surface the parse failure as rc=2 for the batch as a whole.
-T10_TERMINAL_DIR="$WORKER_BRIDGE_ROOT/glm-sessions/glm-t10-terminal"
+T10_TERMINAL_DIR="$WORKER_BRIDGE_ROOT/claudex-sessions/claudex-t10-terminal"
 T10_LIVE_DIR="$WORKER_BRIDGE_ROOT/claudex-sessions/claudex-t10-live"
-T10_MALFORMED_DIR="$WORKER_BRIDGE_ROOT/glm-sessions/glm-t10-malformed"
+T10_MALFORMED_DIR="$WORKER_BRIDGE_ROOT/claudex-sessions/claudex-t10-malformed"
 mkdir -p "$T10_TERMINAL_DIR" "$T10_LIVE_DIR" "$T10_MALFORMED_DIR"
 cat > "$T10_TERMINAL_DIR/meta.json" <<'EOF'
-{"status":"completed","pid":1009,"lane":"glm","task_name":"t10-terminal"}
+{"status":"completed","pid":1009,"lane":"claudex","task_name":"t10-terminal"}
 EOF
 cat > "$T10_LIVE_DIR/meta.json" <<'EOF'
 {"status":"running","pid":1010,"lane":"codex","task_name":"t10-live"}
@@ -692,7 +692,7 @@ printf '{not valid json' > "$T10_MALFORMED_DIR/meta.json"
 out=$(LIVE_PIDS=1010 bash "$RECONCILE" 2>&1)
 rc=$?
 assert_rc "T10 mixed batch with a malformed row exits 2" 2 "$rc"
-assert_contains "T10 malformed row is still reported" "glm-t10-malformed/meta.json" "$out"
+assert_contains "T10 malformed row is still reported" "claudex-t10-malformed/meta.json" "$out"
 assert_file_contains "T10 terminal row untouched" '"status":"completed"' "$T10_TERMINAL_DIR/meta.json"
 assert_file_contains "T10 live row untouched" '"status":"running"' "$T10_LIVE_DIR/meta.json"
 out=$(LIVE_PIDS=1010 bash "$RECONCILE" --list-live 2>&1)

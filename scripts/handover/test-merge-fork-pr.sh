@@ -60,11 +60,31 @@ case "$1 $2" in
 esac
 STUB
 chmod +x "$tmp/bin/gh"
+# A node shim answers only the jira CLI (scripts/jira/dist/index.js is untracked in a
+# worktree); every other node call reaches the real one.
+export REAL_NODE STUB_JIRA_LOG="$tmp/jira.log"
+REAL_NODE="$(command -v node 2>/dev/null || true)"
+: > "$STUB_JIRA_LOG"
+cat > "$tmp/bin/node" <<'STUB'
+#!/usr/bin/env bash
+case "$1" in
+    scripts/jira/dist/index.js) ;;
+    *) exec "$REAL_NODE" "$@" ;;
+esac
+shift
+printf 'JIRA %s\n' "$*" >> "$STUB_JIRA_LOG"
+case "$1" in
+    get) printf '{"fields":{"issuetype":{"name":"%s"}}}\n' "${STUB_JIRA_TYPE:-Task}" ;;
+    comment) [ "$3" = "--comment-file" ] && [ -s "$4" ] || exit 1 ;;
+    transition) exit "${STUB_JIRA_TRANSITION_RC:-0}" ;;
+esac
+STUB
+chmod +x "$tmp/bin/node"
 export PATH="$tmp/bin:$PATH"
 
 printf '%s\n' '[{"nwo":"yotamleo-org/qmd","upstream":"tobi/qmd","himmel_branch":"himmel/pin-http-auth","pin_site":"scripts/lib/qmd-bin.sh","role":"runtime-dependency","merge_allowed":true},{"nwo":"yotamleo-org/off","upstream":"x/off","himmel_branch":"himmel/x","pin_site":null,"role":"dormant","merge_allowed":false}]' > "$STUB_ALLOW"
 GOODCHK='[{"name":"ci","status":"COMPLETED","conclusion":"SUCCESS"}]'
-prview() { printf '{"state":"%s","headRefOid":"%s","mergeable":"%s","baseRefName":"%s","mergeStateStatus":"%s","statusCheckRollup":%s}\n' "${1:-OPEN}" "${2:-$SHA}" "${3:-MERGEABLE}" "${4:-$BASE}" "${5:-CLEAN}" "${6:-$GOODCHK}" > "$STUB_PRVIEW"; }
+prview() { printf '{"state":"%s","headRefOid":"%s","mergeable":"%s","baseRefName":"%s","mergeStateStatus":"%s","statusCheckRollup":%s,"title":"%s"}\n' "${1:-OPEN}" "${2:-$SHA}" "${3:-MERGEABLE}" "${4:-$BASE}" "${5:-CLEAN}" "${6:-$GOODCHK}" "${STUB_TITLE:-fix(qmd): [HIMMEL-5899] pin http auth}" > "$STUB_PRVIEW"; }
 prview
 
 fails=0
@@ -246,6 +266,56 @@ rc=0; out="$(merge "$FORK" 18 "$SHA" 2>&1)" || rc=$?
 check "merge valid -> exit 0" "$rc" 0
 check "merge valid ran exactly one gh pr merge" "$(merged)" 1
 contains "merge valid squashes with the head pinned" "$(cat "$STUB_LOG")" "MERGE pr merge 18 --repo $FORK --squash --match-head-commit $SHA"
+jlog() { cat "$STUB_JIRA_LOG"; }  # read-sink-ok: the node shim's own log, a fixed path under this test's mktemp dir
+check "merge without --jira-transition leaves the ticket untouched" "$(jlog)" ""
+
+# --- 2b. --jira-transition closes the PR's ticket (completes-ticket: yes) ----------------
+# The flag is the chief's per-merge opt-in, as merge-on-green.sh's; a merge without it
+# (completes-ticket: no) never reaches Jira, and no Jira outcome fails a landed merge.
+# The jira CLI build (scripts/jira/dist) is untracked, so a copy of the script runs in a tree
+# of its own: the real scripts/ symlinked in, a stub dist/index.js, the real reconcile-config.
+JT="$tmp/jira-tree"; JREAL="$(cd "$HERE/../.." && pwd)"
+mkdir -p "$JT/scripts/handover" "$JT/scripts/jira/dist"
+git init -q "$JT"
+git -C "$JT" remote add origin "$(git -C "$HERE" remote get-url origin)"
+for e in "$JREAL"/scripts/*; do
+  case "${e##*/}" in handover|jira) ;; *) ln -s "$e" "$JT/scripts/${e##*/}" ;; esac
+done
+for e in "$HERE"/*; do
+  case "${e##*/}" in merge-fork-pr.sh) ;; *) ln -s "$e" "$JT/scripts/handover/${e##*/}" ;; esac
+done
+cp "$MERGE_SH" "$JT/scripts/handover/merge-fork-pr.sh"
+cp "$JREAL/scripts/jira/reconcile-config.json" "$JT/scripts/jira/reconcile-config.json"
+: > "$JT/scripts/jira/dist/index.js"
+jira_merge() {  # a fresh OPEN PR, then the flagged merge
+  prview; : > "$STUB_LOG"; : > "$STUB_JIRA_LOG"
+  HANDOVER_DIR="$ROOT" bash "$JT/scripts/handover/merge-fork-pr.sh" --jira-transition "$FORK" 18 "$SHA" 2>&1
+}
+rc=0; out="$(jira_merge)" || rc=$?
+check "merge --jira-transition -> exit 0" "$rc" 0
+check "merge --jira-transition still ran exactly one gh pr merge" "$(merged)" 1
+contains "merge --jira-transition comments on the ticket first" "$(jlog)" "JIRA comment HIMMEL-5899 --comment-file"
+contains "merge --jira-transition moves the ticket to Done" "$(jlog)" "JIRA transition HIMMEL-5899 Done"
+check "merge --jira-transition comments before it transitions" "$(jlog | grep -v 'JIRA get' | cut -d' ' -f2 | tr '\n' ' ')" "comment transition "
+contains "merge --jira-transition reports the outcome" "$out" "jira-transition=ok key=HIMMEL-5899 status=Done"
+rc=0; out="$(STUB_JIRA_TYPE=Epic jira_merge)" || rc=$?
+check "merge --jira-transition on an Epic -> exit 0" "$rc" 0
+check "merge --jira-transition never transitions an Epic" "$(grep -c '^JIRA transition' "$STUB_JIRA_LOG")" 0
+contains "merge --jira-transition on an Epic reports the skip" "$out" "jira-transition=skip=never-touch-type key=HIMMEL-5899 type=Epic"
+rc=0; out="$(STUB_TITLE='fix(qmd): pin http auth' jira_merge)" || rc=$?
+check "merge --jira-transition with no ticket tag -> exit 0" "$rc" 0
+contains "merge --jira-transition with no ticket tag reports the skip" "$out" "jira-transition=skip=no-ticket-tag"
+rc=0; out="$(STUB_JIRA_TRANSITION_RC=1 jira_merge)" || rc=$?
+check "merge --jira-transition whose transition fails still exits 0 (the merge landed)" "$rc" 0
+contains "merge --jira-transition whose transition fails reports it" "$out" "jira-transition=failed key=HIMMEL-5899 status=Done rc=1"
+rm -f "$JT/scripts/jira/dist/index.js"
+rc=0; out="$(jira_merge)" || rc=$?
+check "merge --jira-transition with no jira CLI build -> exit 0 (the merge landed)" "$rc" 0
+contains "merge --jira-transition with no jira CLI build reports its own skip" "$out" "jira-transition=skip=no-jira-cli-build key=HIMMEL-5899"
+check "merge --jira-transition with no jira CLI build never reaches Jira" "$(jlog)" ""
+: > "$JT/scripts/jira/dist/index.js"
+rc=0; merge --jira-transition "$FORK" 18 >/dev/null 2>&1 || rc=$?
+check "merge --jira-transition with the positionals short -> exit 2" "$rc" 2
 
 # --- 3. a relative entry hands off to the anchor named by the launch env (as go.sh) ---
 # Marker copies keep everything up to the real hand-off sourcing line, then

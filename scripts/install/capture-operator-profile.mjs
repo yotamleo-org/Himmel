@@ -384,15 +384,15 @@ function crontabResult() {
   }
 }
 
-// computeCadences() -> { cadences, taskDetail, extraArmedTasks, queryFailed, scheduledTaskNames }
+// computeCadences() -> { cadences, taskDetail, extraArmedTasks, queryFailed, statusUnrecognized }
 // cadences is null (not an empty map) when the query itself failed, so the
 // caller can omit the whole optional `cadences` profile field rather than
 // fabricate an "off" map from a query that never ran.
 function computeCadences() {
-  const useSchtasks = process.platform === 'win32' || Boolean(process.env.HIMMEL_CAPTURE_SCHTASKS_CMD);
+  const useSchtasks = Boolean(process.env.HIMMEL_CAPTURE_SCHTASKS_CMD);
   if (useSchtasks) {
     const snap = listScheduledTaskNames();
-    if (!snap.ok) return { cadences: null, taskDetail: {}, extraArmedTasks: [], queryFailed: snap.reason, scheduledTaskNames: null, statusUnrecognized: [] };
+    if (!snap.ok) return { cadences: null, taskDetail: {}, extraArmedTasks: [], queryFailed: snap.reason, statusUnrecognized: [] };
     const names = snap.names;
     const cadences = {};
     const taskDetail = {};
@@ -404,18 +404,18 @@ function computeCadences() {
       taskDetail[id] = found;
     }
     const extraArmedTasks = EXTRA_KNOWN_TASKS.filter((n) => names.has(n)).sort();
-    return { cadences, taskDetail, extraArmedTasks, queryFailed: null, scheduledTaskNames: names, statusUnrecognized: snap.statusUnrecognized };
+    return { cadences, taskDetail, extraArmedTasks, queryFailed: null, statusUnrecognized: snap.statusUnrecognized };
   }
   // POSIX best-effort: crontab has no discrete task "names". Fixed-name
   // groups match by substring; prefix-based groups (graphmap/qmd) match any
   // crontab line carrying the prefix, extracting just the prefixed token
   // (up to the next whitespace) — never a full cron line — into taskDetail.
   const crontab = crontabResult();
-  if (!crontab.ok) return { cadences: null, taskDetail: {}, extraArmedTasks: [], queryFailed: crontab.reason, scheduledTaskNames: null, statusUnrecognized: [] };
+  if (!crontab.ok) return { cadences: null, taskDetail: {}, extraArmedTasks: [], queryFailed: crontab.reason, statusUnrecognized: [] };
   const { cadences, taskDetail } = matchCadenceGroups(crontab.text);
   const activeLines = filterCommentedLines(crontab.text);
   const extraArmedTasks = EXTRA_KNOWN_TASKS.filter((n) => activeLines.some((line) => line.includes(n))).sort();
-  return { cadences, taskDetail, extraArmedTasks, queryFailed: null, scheduledTaskNames: null, statusUnrecognized: [] };
+  return { cadences, taskDetail, extraArmedTasks, queryFailed: null, statusUnrecognized: [] };
 }
 
 // filterCommentedLines(text) -> string[] — splits text into lines and filters
@@ -459,15 +459,9 @@ function matchCadenceGroups(text) {
 // ── devOverlay: reuse scripts/guardrails/lib.sh's is_himmel_dev_repo() ──
 // (worktree-aware — resolves to the PRIMARY checkout's .himmel-dev marker),
 // the same probe scripts/himmelctl/lib/probes.js's cmd:is_himmel_dev uses.
-function resolveBash() {
-  if (process.platform !== 'win32') return '/bin/bash';
-  const cands = [process.env.GUARDRAIL_BASH, 'C:/Program Files/Git/bin/bash.exe', 'C:/Program Files/Git/usr/bin/bash.exe'].filter(Boolean);
-  return cands.find((b) => existsSync(b)) || 'bash';
-}
 function detectDevOverlay(repoRoot) {
   try {
-    const bash = resolveBash();
-    execFileSync(bash, ['-c', '. "$HIMMEL_PROBE_RESOLVER" || exit 3; is_himmel_dev_repo'], {
+    execFileSync('/bin/bash', ['-c', '. "$HIMMEL_PROBE_RESOLVER" || exit 3; is_himmel_dev_repo'], {
       cwd: repoRoot,
       env: { ...process.env, HIMMEL_PROBE_RESOLVER: resolve(repoRoot, 'scripts', 'guardrails', 'lib.sh') },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -714,7 +708,7 @@ function decideBridgePersistence(fileExists, unitState) {
   return { installPersistence: fileExists && enabled, bridgeUnitDisabled: fileExists && !enabled, bridgeUnitStateUnknown: false };
 }
 
-function captureBridge(configDir, scheduledTaskNames, usesCustomConfigDir) {
+function captureBridge(configDir, usesCustomConfigDir) {
   const envFile = join(configDir, 'channels', 'telegram', '.env');
   let enabled = false;
   if (existsSync(envFile)) {
@@ -731,17 +725,10 @@ function captureBridge(configDir, scheduledTaskNames, usesCustomConfigDir) {
   const whisperDir = process.env.WHISPER_DIR || join(homedir(), '.himmel', 'whisper');
   const modelFile = process.env.WHISPER_MODEL || join(whisperDir, 'ggml-small.bin');
   const modelPresent = existsSync(modelFile);
-  const cliFile = join(whisperDir, process.platform === 'win32' ? 'whisper-cli.exe' : 'whisper-cli');
+  const cliFile = join(whisperDir, 'whisper-cli');
   const cliPresent = existsSync(cliFile);
-  let installPersistence;
-  let bridgeUnitDisabled = false;
-  let bridgeUnitStateUnknown = false;
-  if (process.platform === 'win32') {
-    installPersistence = Boolean(scheduledTaskNames && scheduledTaskNames.has('HimmelTelegramBridge'));
-  } else {
-    const unitFileExists = existsSync(join(homedir(), '.config', 'systemd', 'user', 'telegram-bridge.service'));
-    ({ installPersistence, bridgeUnitDisabled, bridgeUnitStateUnknown } = decideBridgePersistence(unitFileExists, checkSystemdUnitEnabled()));
-  }
+  const unitFileExists = existsSync(join(homedir(), '.config', 'systemd', 'user', 'telegram-bridge.service'));
+  const { installPersistence, bridgeUnitDisabled, bridgeUnitStateUnknown } = decideBridgePersistence(unitFileExists, checkSystemdUnitEnabled());
   // The state above is read under CLAUDE_CONFIG_DIR (configDir) — when that
   // differs from the default ~/.claude, the emitted path must say so,
   // still as a non-personal placeholder token, never the real resolved path.
@@ -804,7 +791,7 @@ function capture(strict = true) {
   const envKeys = captureEnvKeys(REPO_ROOT, primaryEnvKeys);
   const hud = captureHud(configDir);
   const observability = captureObservability();
-  const bridge = captureBridge(configDir, cadenceInfo.scheduledTaskNames, usesCustomConfigDir);
+  const bridge = captureBridge(configDir, usesCustomConfigDir);
 
   // A failed scheduler query must not read as alwaysOn:false — unless bridge
   // persistence alone already proves it true (that proof stands on its own).

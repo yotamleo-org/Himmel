@@ -140,13 +140,13 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
   any initiative directive says. `READY`, then hold. After 30 minutes without
   a reply, nudge once, then wrap. [prose]
 - **Adapter repo: you stop at `READY`.** On a registered himmel adapter repo
-  (`scripts/guardrails/himmel-adapters.json`) that is not confirmed PRIVATE,
-  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh`. Send `READY <pr> <full head> GREEN`, hold for
+  (`scripts/guardrails/himmel-adapters.json`) not confirmed PRIVATE,
+  `merge-on-green.sh` refuses; the chief merges with `merge-fork-pr.sh` (`--jira-transition` if `completes-ticket: yes`). Send `READY <pr> <full head> GREEN`, hold for
   the chief's merge, then wrap. [prose]
 - **Closing the ticket at merge.** `<anchor>` is the primary
   checkout's absolute path (`git rev-parse
   --path-format=absolute --git-common-dir`, minus `/.git`); type the merge as ONE command ending `--go <GO file>`. The Jira transition is opt-in
-  (`--jira-transition`); a bare run leaves the ticket open. Read the
+  (`--jira-transition`); a bare run leaves it open. Read the
   brief's `completes-ticket:` line; if absent, decide it yourself.
   - **`completes-ticket: yes`** → pass the flag:
     `bash <anchor>/scripts/handover/merge-on-green.sh --jira-transition --go <GO file>`.
@@ -157,13 +157,13 @@ commands are VM-only): `worker-sections/shell-and-tests.md`.
 ## Wrapping up
 
 After merge: pull the primary checkout, re-read the ticket, and post the PR
-number and merge sha on it — transitioning it yourself only if the PR completes
-it and `--jira-transition` did not (result `failed`, or a `skip=` for a missing
-tool or config). Never close it by hand on `skip=never-touch-type` or
-`skip=cannot-verify-type`: report it to the chief instead. Then release the
+number and merge sha on it — moving it yourself only if the PR completes
+it (no Epic) and `--jira-transition` (the chief's `jira-transition=` line) did not (`failed`
+or any `skip=` but the two below). Never close it by hand on `skip=never-touch-type` or
+`skip=cannot-verify-type`: report it to the chief. Then release the
 lock (paste the line), send `WRAPPED`, print the closable-window banner and stop:
 the chief's `close-wrapped-worker.sh` ends the session
-once the lock is free. A worker never idles: gated on something
+once the lock frees. A worker never idles: gated on something
 outside your control, WRAP with a successor resume brief, and first send the
 chief `ORPHAN PR <n> <full head sha>, resume brief <absolute path>` if the PR is open.
 
