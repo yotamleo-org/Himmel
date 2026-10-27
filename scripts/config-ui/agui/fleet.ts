@@ -24,7 +24,7 @@
 // ponytail: each request re-folds every journal that grew since the last one (cached on the files' sizes), so a
 // fleet of very long journals costs a full read per poll (measured 2026-10-07 on 9 live sessions: 278 ms cold,
 // 202 ms warm); upgrade path: a per-file incremental fold (the SSE tail's offsets) once a fleet poll is slow.
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { readFile, stat } from "node:fs/promises";
 import { basename, dirname, join } from "node:path";
 import { agentState, initialView, reduce, type View } from "../agui-web/src/reducer.ts";
@@ -231,16 +231,24 @@ const descs = new Map<string, { mtime: number; text: string }>();
 const inflight = new Map<string, Promise<void>>();
 function lookup(doc: string, mtime: number, lib: string, env: Record<string, string | undefined>): Promise<void> {
   return new Promise((done) => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const child = execFile("bash", ["-c", 'source "$1" || exit 1; worker_description "$2" | tr -s "\\t\\n" "  "', "bash", lib, doc],
-      { env: env as NodeJS.ProcessEnv, detached: true, maxBuffer: 64 * 1024 }, (err, stdout) => {
-        clearTimeout(timer);
-        descs.set(doc, { mtime, text: err ? "" : stdout.trim() });
-        inflight.delete(doc);
-        done();
-      });
-    timer = setTimeout(() => { try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already gone */ } }, DESC_TIMEOUT_MS);
+    // spawn, not execFile: execFile drops `detached`, so its child would share our process group and the group kill below would miss it
+    const child = spawn("bash", ["-c", 'source "$1" || exit 1; worker_description "$2" | tr -s "\\t\\n" "  "', "bash", lib, doc],
+      { env: env as NodeJS.ProcessEnv, detached: true, stdio: ["ignore", "pipe", "ignore"] });
+    let out = "";
+    child.stdout.on("data", (b) => { if (out.length < 64 * 1024) out += b; });
+    const timer = setTimeout(() => { try { process.kill(-child.pid!, "SIGKILL"); } catch { /* already gone */ } }, Number(env.HIMMEL_FLEET_DESC_TIMEOUT_MS) || DESC_TIMEOUT_MS);
     timer.unref();
+    let settled = false;
+    const finish = (text: string) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      descs.set(doc, { mtime, text });
+      inflight.delete(doc);
+      done();
+    };
+    child.on("error", () => finish(""));
+    child.on("close", (code) => finish(code === 0 ? out.trim() : ""));
   });
 }
 async function describe(docs: string[], script: string, env: Record<string, string | undefined>): Promise<(doc: string) => string> {
@@ -248,9 +256,11 @@ async function describe(docs: string[], script: string, env: Record<string, stri
   for (const f of descs.keys()) if (!wanted.has(f)) descs.delete(f);
   const lib = join(dirname(script), "../lib/worker-identity.sh");
   const waiting: Promise<void>[] = [];
+  const mtimes = new Map<string, number>();
   let started = 0;
   for (const f of wanted) {
     const m = await stat(f).then((s) => s.mtimeMs, () => 0);
+    mtimes.set(f, m);
     if (descs.get(f)?.mtime === m) continue;
     let p = inflight.get(f);
     if (!p) {
@@ -266,7 +276,10 @@ async function describe(docs: string[], script: string, env: Record<string, stri
     await Promise.race([Promise.all(waiting), new Promise((ok) => { t = setTimeout(ok, DESC_WAIT_MS); })]);
     clearTimeout(t);
   }
-  return (doc) => descs.get(doc)?.text ?? "";
+  return (doc) => {
+    const d = descs.get(doc);
+    return d && d.mtime === mtimes.get(doc) ? d.text : "";
+  };
 }
 
 const NO_BUS: BusCounts = { unacked: 0, undelivered: 0, unbound: false };
@@ -498,7 +511,11 @@ export async function readFleet(opts: { script: string; env: Record<string, stri
     } catch { /* archived console moved or unreadable */ }
   }
   const descOf = await describe(described.map(([, f]) => f), opts.script, opts.env);
-  for (const [r, f] of described) r.description = descOf(f);
+  for (const [r, f] of described) {
+    const text = descOf(f);
+    // the stem is the doc's name, already shown unredacted; the redactor would mask a long stem as a token run
+    r.description = text === basename(f, ".md") ? text : opts.redact(text);
+  }
   const cloud = await cloudRows(census.cloudRoutes ?? [], opts.env, opts.now);
   // A local worker on a cloud session's ticket is its shepherd: it hangs under the cloud node, not the chief.
   for (const r of rows) {
