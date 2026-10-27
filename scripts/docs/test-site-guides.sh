@@ -334,10 +334,10 @@ first_h2() {
   awk '/^(```|~~~)/ { f = !f; next } !f && /^## / { sub(/^## +/, ""); print; exit }' "$1"
 }
 printf '# AFK\n\n~~~text\n## not a heading\n~~~\n\n## The 11 phases (+ step 0: queue lock)\n' > "$tmp/entry.md"
-if [ "$(first_h2 "$tmp/entry.md")" != "What an AFK shift does" ]; then
-  ok "control: a page opening on the phase list is reported"
+if [ -f "$tmp/entry.md" ] && [ "$(first_h2 "$tmp/entry.md")" = "The 11 phases (+ step 0: queue lock)" ]; then
+  ok "control: a page opening on the phase list reads as the phase list, fenced H2 skipped"
 else
-  bad "control: the ENTRY check accepted a page opening on the phase list"
+  bad "control: first_h2 misread the phase-list fixture" "want: The 11 phases (+ step 0: queue lock) / got: $(first_h2 "$tmp/entry.md" 2>/dev/null)"
 fi
 for want in "docs/handover/afk-mode.md|What an AFK shift does" \
             "docs/handover/running-a-chief.md|What the chief does" \

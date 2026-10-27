@@ -48,7 +48,9 @@ directly, in its terminal or from Telegram with `/chief <session> <text>`.
 /chief next          # hands the shift to a fresh chief
 ```
 
-Paste the printed launch line, whole, into a terminal of its own.
+Without `--arm`, paste the printed launch line, whole, into a terminal of its
+own. With `--arm` the line is printed for information only: do not paste it,
+or a second chief starts on the same document.
 
 ## Where the shift board is
 
@@ -138,7 +140,10 @@ the lock at wrap requires it. The chief *adopts* this lock; it does not
 acquire a second one. (`new` takes the lock and then exits, so a chief that
 tried to acquire again would be refused by its own startup lock.)
 
-Paste the printed `launch:` line **verbatim, including its `env -u …` prefix**.
+Without `--arm`, paste the printed `launch:` line **verbatim, including its
+`env -u …` prefix**. With `--arm`, `headed-arm.sh` launches the chief and the
+printed line is informational: pasting it as well starts a second chief on the
+same document.
 That prefix is load-bearing, not decoration: you are almost always pasting into
 a terminal that was itself spawned from a claude session, and it clears the
 `CLAUDE_CODE_CHILD_SESSION` / `CLAUDE_PID` / `CLAUDE_CODE_SESSION_ID` variables
@@ -147,7 +152,8 @@ that shell inherited. A chief that keeps them writes no transcript and gets
 own handover contract runs on. Trimming the line to just
 `claude …` silently recreates that failure.
 
-Finally it prints the launch line. Run it in a terminal of its own:
+Finally it prints the launch line. Without `--arm`, run it in a terminal of its
+own:
 
 ```text
 env -u CLAUDE_CODE_CHILD_SESSION -u CLAUDE_PID -u CLAUDE_CODE_SESSION_ID \
@@ -728,7 +734,7 @@ It records `standing:true` in the same operator-only, account-bound override fil
 (no new state path or hook bypass). The policy applies to every fresh window
 for that account and defaults `CADENCE_USAGE_MAX_PCT` to 100 for launch checks.
 An explicit ceiling still controls `five_hour`; either usage budget at 100 refuses,
-so extra usage is never spent. Plain `set` replaces it with a one-window weekly budget override;
+so no launch starts on extra usage. Plain `set` replaces it with a one-window weekly budget override;
 `clear` disables it. Agents must never run either form of `set`.
 
 The Done-when for this change needs the operator to walk this once at a real

@@ -17,8 +17,10 @@ reset.
 Every Claude session counts against both: the one you type in, a chief, its
 workers, their subagents, and headless `claude -p` runs. A long AFK shift or a
 wide parallel wave can fill the 5-hour window in a few hours. Extra usage, the
-paid overflow some plans carry once a window is full, is shown separately and
-is never spent by an automated run.
+paid overflow some plans carry once a window is full, is shown separately. The
+checks below keep runs from starting on a full window, but they cannot stop all
+of it: a run that started on stale figures, or fills a window while it works,
+can still draw on extra usage if your plan has it turned on.
 
 ## What a run checks before heavy work
 
@@ -33,11 +35,12 @@ is never spent by an automated run.
   haiku are exempt. When it cannot see when the window resets, it only warns.
 - **A usage lift you set** lets runs spend the weekly window up to 100 %; a
   standing lift does the same for the 5-hour window unless you set
-  `CADENCE_USAGE_MAX_PCT`. Even then a full window refuses, and no run spends
-  extra usage.
+  `CADENCE_USAGE_MAX_PCT`. Even then a run does not start on a full window.
 
 Run `bash scripts/lib/usage-preflight.sh` yourself to see both figures and the
-verdict a run would get now.
+usage verdict a run would get now. A manual run reports how many sessions are
+running but is never refused at `HIMMEL_FLEET_CAP`; only a real launch is, so
+compare that count with the cap yourself.
 
 ## For maintainers
 
