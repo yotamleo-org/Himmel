@@ -120,7 +120,6 @@ _row "1b same, no commit-ish (ALLOW)"                                         al
 _row "1c same, -q (ALLOW)"                                                    allow "git -C $AD worktree add -q -b feat/x-3 $W/feat+x-3 HEAD"
 _row "1d same, chief cwd is another primary (ALLOW)"                          allow "git -C $AD worktree add -b feat/x-4 $W/feat+x-4 HEAD" "$FIX/primary"
 _row "1e same, cwd /tmp (ALLOW)"                                              allow "git -C $AD worktree add -b feat/x-5 $W/feat+x-5 HEAD" /tmp
-_row "1f same, cd <adopted primary> instead of -C (ALLOW)"                    allow "cd $AD && git worktree add -b feat/x-6 $W/feat+x-6 HEAD"
 
 echo "== refusals: the repo is not a registered adapter =="
 _row "2a adapter origin but not in the registry"                              block "git -C $UN worktree add -b feat/x $UN/.claude/worktrees/feat+x HEAD"
@@ -161,7 +160,10 @@ _row "4o leaf is not the branch with slashes as plus"                         bl
 _row "4p GIT_COMMON_DIR prefix redirects the worktree metadata"               block "GIT_COMMON_DIR=$UN/.git git -C $AD worktree add -b feat/x $W/feat+x HEAD"
 _row "4q GIT_COMMON_DIR exported first"                                       block "export GIT_COMMON_DIR=$UN/.git && git -C $AD worktree add -b feat/x $W/feat+x HEAD"
 _row "4r GIT_COMMON_DIR through env"                                          block "env GIT_COMMON_DIR=$UN/.git git -C $AD worktree add -b feat/x $W/feat+x HEAD"
-_row "4s GIT_TRACE prefix names a file git writes"                            block "GIT_TRACE=$AD/trace git -C $AD worktree add -b feat/x $W/feat+x HEAD"
+_row "4t cd that may not have run leaves another cwd behind"                  block "false && cd $AD; git worktree add -b feat/x $W/feat+x HEAD"
+_row "4v cd <adopted primary> instead of -C stays refused"                    block "cd $AD && git worktree add -b feat/x-6 $W/feat+x-6 HEAD"
+_row "4u destination before -b"                                              block "git -C $AD worktree add $W/feat+x -b feat/x HEAD"
+_row "4s GIT_TRACE prefix names a file git writes"                           block "GIT_TRACE=$AD/trace git -C $AD worktree add -b feat/x $W/feat+x HEAD"
 
 echo "== refusals: every other write into the adopted primary =="
 _row "5a commit"                                                              block "git -C $AD commit -m x"

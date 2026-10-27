@@ -6461,6 +6461,7 @@ _bwimc_git_clause() {
             if [ -z "$wt_op" ]; then wt_op="$v"; continue; fi
             wt_n=$((wt_n+1))
             case "$wt_op:$wt_n" in add:1|move:2) wt_dst="$v" ;; esac
+            [ "$wt_op:$wt_n" != add:1 ] || [ -n "$wt_br" ] || wt_plain=0
         done
         if [ -n "$wt_dst" ]; then
             case "$wt_op" in
@@ -6474,8 +6475,10 @@ _bwimc_git_clause() {
                     # A chief's `git -C <adopted primary> worktree add -b
                     # <new> <primary>/.claude/worktrees/<leaf>` skips the destination
                     # verdict; the clause stays a read below, so nothing else relaxes.
-                    # Needs no -c/GIT_* env, no program run, no wrapper, no unresolved path.
+                    # Needs no -c/GIT_* env, no program run, no wrapper, no unresolved path,
+                    # and no earlier cd (git may then run in the cwd the cd left).
                     if [ "$wt_op" = add ] && [ "$wt_plain" = 1 ] && [ "$wt_n" -le 2 ] \
+                        && [ -z "$_bwimc_gcwd_alts" ] \
                         && [ "$cfg" = 0 ] && [ "$progrun" = 0 ] && [ "$unres" = 0 ] \
                         && [ "${_bwimc_g_wrap:-0}" = 0 ] && [ "${_bwimc_g_repoint:-0}" = 0 ] \
                         && [ -z "$gitdir$wtree$idx$e_dir$e_wt$e_idx" ] && [ "$e_oth" = 0 ] \
