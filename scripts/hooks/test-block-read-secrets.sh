@@ -813,8 +813,9 @@ BASECMD="cd /tmp/x && echo x && cat > notes.md <<'EOF'
 ${LONGBODY}EOF
 wc -l notes.md"
 base_start=$(now_ms)
-run_case "$(j_bash "$BASECMD")" >/dev/null
+base_rc=$(run_case "$(j_bash "$BASECMD")")
 base_ms=$(( $(now_ms) - base_start ))
+assert_rc "7892 long heredoc without defaults (timing baseline): verdict" 0 "$base_rc"
 long_start=$(now_ms)
 long_rc=$(run_case "$(j_bash "$LONGCMD")")
 long_ms=$(( $(now_ms) - long_start ))
