@@ -6690,7 +6690,7 @@ if [ -n "$LIMIT_RESET" ] && [ -n "${_lim_keys:-}" ]; then
     {
         [ ! -f "$_lim_keys" ] || awk -v k="$TASK_NAME:$LIMIT_RESET" -v p="$_lim_prune" '$1 != k && $2 >= p' "$_lim_keys"
         printf '%s %s\n' "$TASK_NAME:$LIMIT_RESET" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-    } > "$_lim_keys.tmp" 2>/dev/null && mv "$_lim_keys.tmp" "$_lim_keys" 2>/dev/null || true  # swallow-ok: best-effort key record, the arm already succeeded
+    } > "$_lim_keys.tmp.$$" 2>/dev/null && mv "$_lim_keys.tmp.$$" "$_lim_keys" 2>/dev/null || true  # swallow-ok: best-effort key record, the arm already succeeded
 fi
 
 # record this arm in the cross-machine arms registry, same
