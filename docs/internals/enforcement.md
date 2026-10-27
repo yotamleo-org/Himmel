@@ -5,9 +5,10 @@
 > Source of truth for what actually runs: `.pre-commit-config.yaml` and
 > `.claude/settings.json`.
 >
-> **Platform tier:** Windows is dropped (HIMMEL-5729). A Windows, PowerShell
-> or Git Bash note below is either a spelling a guard still parses or a past
-> measurement, kept as history.
+> **Platform tier:** Windows is dropped (HIMMEL-5729): no Windows host is
+> supported or tested. A Windows, PowerShell or Git Bash note below describes
+> handling the code still carries, a spelling a guard still parses, or a past
+> measurement.
 
 ## Pre-commit Enforcement
 

@@ -16,8 +16,10 @@
 #            dated measurement, a guard that still parses the spelling, a
 #            sentence saying the platform or lane is dropped). An entry no
 #            line carries any more fails, so an edited kept line is reviewed
-#            again. A third field `prefix` matches the line's start instead,
-#            for a line whose full text the shell lint would misread as code.
+#            again.
+#
+# Lowercase wsl, powershell and git-bash are matched; lowercase "windows" is
+# not, since pages use it for time and terminal windows.
 #
 # Platform guard: bash 3.2+, git, grep, awk.
 # Usage: bash scripts/docs/test-docs-dropped-terms.sh
@@ -26,7 +28,7 @@ set -u
 ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 # $LOCALAPPDATA in the pattern is literal page text.
 # shellcheck disable=SC2016
-PATTERN='Windows|\bWSL2?\b|PowerShell|\bpwsh\b|\.ps1\b|Git[- ]Bash|\bMSYS|%LOCALAPPDATA%|\$LOCALAPPDATA|schtasks|winget|cygwin|\b(GLM|glm|Z\.ai|zai-glm|kimi|Kimi|moonshot)\b|gpt-5\.[0-9]|gpt-6-(sol|astra)\b|GPT-5\.[0-9]|GPT-6 (Sol|Astra)|claude-(opus|sonnet|haiku)-4|\b(Haiku|Sonnet|Opus)[- ]4\.[0-9]|\b(Fable|Opus|Sonnet)[- ]5[.-]?([^.0-9-]|$)|claude-(opus|sonnet|fable)-5[.-]?([^.0-9-]|$)|ox-alpha'
+PATTERN='Windows|\b(WSL|wsl)2?\b|PowerShell|powershell|\bpwsh\b|\.ps1\b|[Gg]it[- ]?[Bb]ash|\b(MSYS|msys)|%LOCALAPPDATA%|\$LOCALAPPDATA|schtasks|winget|cygwin|\b(GLM|glm|Z\.ai|zai-glm|kimi|Kimi|moonshot)\b|gpt-5\.[0-9]|gpt-6-(sol|astra)\b|GPT-5\.[0-9]|GPT-6 (Sol|Astra)|claude-(opus|sonnet|haiku)-4|\b(Haiku|Sonnet|Opus)[- ]4\.[0-9]|\b(Fable|Opus|Sonnet)[- ]5[.-]?([^.0-9-]|$)|claude-(opus|sonnet|fable)-5[.-]?([^.0-9-]|$)|ox-alpha'
 
 PENDING='
 docs/README.md
@@ -92,7 +94,8 @@ docs/handover/running-a-chief.md	`[1m]` is appended to the model only for the 4.
 docs/handover/running-a-chief.md	`claude-sonnet-4-6`); Opus 4.7+, Sonnet 5+, Haiku 5.5 and Fable run 1M natively
 docs/handover/running-a-chief.md	and non-Anthropic ids (`gpt-*`, `glm-*`, anything with a `/`) never take it
 docs/handover/running-a-chief.md	  `/Windows/1 newSession`), titled with the worker's session name.
-docs/operator-conventions.md	- **Linux + macOS are Supported (Linux CI-gated per-PR, macOS on its own twice-weekly `os:macos` cadence workflow); Windows is not supported.	prefix
+docs/operator-conventions.md	- **Linux + macOS are Supported (Linux CI-gated per-PR, macOS on its own twice-weekly `os:macos` cadence workflow); Windows is not supported.**
+docs/operator-conventions.md	  No `.ps1` twin is needed or wanted: Windows is dropped and the old twins are removed.
 docs/operator-conventions.md	- **Chain ASAP: never park an arm hours out, never pause idle at a decision the model could make.** At a natural completion / context-saturation point, arm + chain the next session (ticket-named, cold-start-complete handover) instead of stopping: idle quota that isn't spent before its window resets simply evaporates. "The handover is written" is not the finish line: exhaust the planned queue in-session while budget remains, then re-arm for the SOONEST slot after true wrap (minutes out, not hours). If an arm exists and work continues past its slot, move/replace it BEFORE the fire time (double-fire risk). Only truly pause when the next step needs an operator decision that can't be pre-teed. Where the fleet spans multiple surfaces (machines, WSL distros), the same discipline applies **per-surface**: after wrapping on any box, verify an armed continuation exists on every configured surface, because an idle surface is wasted pipeline capacity.
 docs/operator-conventions.md	  prompting guide flags that Fable 5.1 can write denser than Fable 5
 docs/operator-conventions.md	qmd bun-install Windows hotfix (already a structural fix in
@@ -407,9 +410,10 @@ docs/internals/worker-spawn-matrix.md	- `GAP` - Startup context parity: Codex ha
 docs/internals/worker-spawn-matrix.md	2. **hermes-spawned Claude Code / GLM workers:** the worker inherits the
 docs/internals/worker-spawn-matrix.md	write (`pwsh Set-Content`) went through — the fix for such gaps is structural
 docs/jarvis-subsystems.md	The only such lane, GLM (see [tooling-catalog](tooling-catalog.md#claude-glm-scriptsclaude-glm)),
-docs/internals/enforcement.md	> **Platform tier:** Windows is dropped (HIMMEL-5729). A Windows, PowerShell
-docs/internals/enforcement.md	> or Git Bash note below is either a spelling a guard still parses or a past
+docs/internals/enforcement.md	> **Platform tier:** Windows is dropped (HIMMEL-5729): no Windows host is
+docs/internals/enforcement.md	> supported or tested. A Windows, PowerShell or Git Bash note below describes
 docs/internals/enforcement.md	preferred; `glm` stays the guard's fallback whenever `ZAI_API_KEY` is set and
+docs/internals/enforcement.md	`fedora`, `arch`, `wsl`, `posix`, `gitbash`, `git-bash`, `powershell`,
 docs/internals/lane-calibration.md	| `hermes-oneshot` — hermes one-shot dispatch | impl | invoke.sh wall-clock timebox (default 1800s) + Nth-identical-deny abort | 900000 — re-confirmed on ox-alpha (2026-08-22: 300K/600K/900K probes all accepted); previously operator-verified inside hermes v0.20.2 (2026.8.16), upstream commit `bab7be3c` (2026-08-17), superseding 350000 (hermes-agent commit 522997543, 2026-08-16) | none (dashboard-omitted) | calibrated — live-proven spawn path; see [the hermes default](#the-hermes-himmel_agent-default-and-the-ox-alpha-record) |
 docs/internals/lane-calibration.md	## The hermes `himmel_agent` default and the ox-alpha record
 docs/internals/lane-calibration.md	when the temporary ox-alpha trial ended. Hermes-routed critics do not ride the
@@ -428,10 +432,10 @@ fail=0
 ok() { pass=$((pass + 1)); echo "ok - $*"; }
 bad() { fail=$((fail + 1)); echo "not ok - $*"; }
 
-for sample in 'runs on Windows' 'under WSL2' 'pinned gpt-5.5' 'gpt-6-sol' 'claude-haiku-4-5' 'Opus 4.8' 'the GLM lane' 'a Fable 5 parent' 'stealth/ox-alpha'; do
+for sample in 'runs on Windows' 'under WSL2' 'pinned gpt-5.5' 'gpt-6-sol' 'claude-haiku-4-5' 'Opus 4.8' 'the GLM lane' 'a Fable 5 parent' 'stealth/ox-alpha' 'under wsl' 'use powershell' 'in git-bash'; do
   grep -q -E "$PATTERN" <<< "$sample" || bad "pattern misses its own sample '$sample'"
 done
-for sample in 'Fable 5.1' 'Opus 5.5.' 'claude-opus-5-5' 'gpt-6.1-sol' 'a Linux host'; do
+for sample in 'Fable 5.1' 'Opus 5.5.' 'claude-opus-5-5' 'gpt-6.1-sol' 'a Linux host' 'two usage windows'; do
   if grep -q -E "$PATTERN" <<< "$sample"; then
     bad "pattern flags the current term '$sample'"
   fi
@@ -459,11 +463,11 @@ done < "$tmp/scope"
 # A hit no ALLOW entry of its page covers goes to found; an entry that covers
 # no hit goes to stale.
 awk -F '\t' -v found="$tmp/found" -v stale="$tmp/stale" '
-  NR == FNR { file[NR] = $1; text[NR] = $2; prefix[NR] = ($3 == "prefix"); n = NR; next }
+  NR == FNR { file[NR] = $1; text[NR] = substr($0, length($1) + 2); n = NR; next }
   {
     line = substr($0, length($1) + 2); covered = 0
     for (i = 1; i <= n; i++)
-      if (file[i] == $1 && (prefix[i] ? index(line, text[i]) == 1 : line == text[i])) { covered = 1; used[i] = 1 }
+      if (file[i] == $1 && line == text[i]) { covered = 1; used[i] = 1 }
     if (!covered) print > found
   }
   END { for (i = 1; i <= n; i++) if (!(i in used)) print file[i] "\t" text[i] > stale }

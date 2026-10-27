@@ -85,13 +85,15 @@ Same three verbs as every sibling cadence, via the shared
 this step:
 
 ```bash
-bash scripts/luna/graphmap-cadence.sh arm        # registers all five tasks
+bash scripts/luna/graphmap-cadence.sh arm        # registers the default tasks
+bash scripts/luna/graphmap-cadence.sh arm --with-publish  # also registers the publish task (opt-in)
 bash scripts/luna/graphmap-cadence.sh arm --force  # replace an existing arm
 bash scripts/luna/graphmap-cadence.sh status     # per-task ARMED/not-armed + run log
 bash scripts/luna/graphmap-cadence.sh disarm     # removes all five
 ```
 
-The publish step is grouped with the free structural (AST) pair for
+The publish task is opt-in: `arm` registers `HIMMEL-GraphPublish-Himmel`
+only with `--with-publish`. It is grouped with the free structural (AST) pair for
 `--ast-only` purposes (HIMMEL-2071): it needs no backend credential, so
 `--ast-only` arms/replaces it too, alongside the AST pair, while leaving the
 weekly semantic pair untouched. Default schedule: **every 6 hours**,
