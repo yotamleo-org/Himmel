@@ -86,6 +86,13 @@ test("a worker row carries its description and its name is unchanged; a session 
   expect(by[FLEET.leg.name].name).toBe(FLEET.leg.name);
   expect(by[FLEET.wrapped.name].description).toBe(FLEET.wrapped.name); // no field: the H1
   expect(by[FLEET.idle.name].description).toBe("");
+
+  // an edited doc re-resolves on its new mtime
+  writeFileSync(doc, `---\ndescription: Edited description\n---\n# ${FLEET.leg.name}\n\n## Results\n\n- 09:00 LIVE — started\n`);
+  const later = Date.now() / 1000 + 60;
+  utimesSync(doc, later, later);
+  const again = Object.fromEntries((await (await fleet(port)).json()).sessions.map((s: any) => [s.name, s]));
+  expect(again[FLEET.leg.name].description).toBe("Edited description");
 });
 
 test("a session whose journal went quiet past the window is not listed; one with no journal is listed bare", async () => {

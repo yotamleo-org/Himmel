@@ -225,8 +225,14 @@ async function cloudRows(logs: string[], env: Record<string, string | undefined>
 const descs = new Map<string, { mtime: number; text: string }>();
 async function describe(docs: string[], script: string, env: Record<string, string | undefined>): Promise<(doc: string) => string> {
   const mtimeOf = async (f: string) => stat(f).then((s) => s.mtimeMs, () => 0);
-  const todo = [];
-  for (const f of new Set(docs)) if (f && descs.get(f)?.mtime !== (await mtimeOf(f))) todo.push(f);
+  const todo: string[] = [];
+  const before = new Map<string, number>();
+  for (const f of new Set(docs)) {
+    if (!f) continue;
+    const m = await mtimeOf(f);
+    before.set(f, m);
+    if (descs.get(f)?.mtime !== m) { descs.delete(f); todo.push(f); }
+  }
   if (todo.length) {
     const lib = join(dirname(script), "../lib/worker-identity.sh");
     const out = await new Promise<string | null>((ok) => {
@@ -234,7 +240,7 @@ async function describe(docs: string[], script: string, env: Record<string, stri
         { env: env as NodeJS.ProcessEnv, timeout: SCRIPT_TIMEOUT_MS, maxBuffer: 1024 * 1024 }, (err, stdout) => ok(err ? null : stdout));
     });
     const lines = out?.split("\n") ?? [];
-    for (const [i, f] of todo.entries()) if (lines[i]) descs.set(f, { mtime: await mtimeOf(f), text: lines[i].trim() });
+    for (const [i, f] of todo.entries()) if (lines[i]) descs.set(f, { mtime: before.get(f)!, text: lines[i].trim() });
   }
   return (doc) => descs.get(doc)?.text ?? "";
 }
