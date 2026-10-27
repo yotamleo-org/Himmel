@@ -3795,6 +3795,38 @@ check_c46_plugin_enabled_missing() {
     fi
 }
 
+# --- C76: one plugin installed many times ---
+# `claude plugin list --json` listed atlassian@claude-plugins-official 132 times: a
+# local-scope install per worktree. Each copy loads, so startup time and context
+# pay for it. WARN on any plugin id with more than HIMMEL_DOCTOR_DUP_PLUGIN_MAX
+# (default 3) entries across all scopes. Read-only. Shares C46's claude seam.
+check_c76_duplicate_plugin_installs() {
+    local max="${HIMMEL_DOCTOR_DUP_PLUGIN_MAX:-3}"
+    local bin="${HIMMEL_DOCTOR_CLAUDE_BIN:-claude}"
+    if [ "$bin" = claude ]; then bin="$(command -v claude 2>/dev/null || true)"; fi
+    if [ -z "$bin" ] || [ ! -x "$bin" ]; then
+        emit INFO C76-duplicate-plugin-installs "claude not resolvable -- duplicate plugin install scan skipped"
+        return
+    fi
+    command -v jq >/dev/null 2>&1 || { emit INFO C76-duplicate-plugin-installs "jq not found -- duplicate plugin install scan skipped"; return; }
+    local list_json dups
+    if ! list_json="$("$bin" plugin list --json 2>/dev/null)" || [ -z "$list_json" ] || ! dups="$(printf '%s' "$list_json" | jq -r --argjson max "$max" 'if type == "array" then group_by(.id)[] | select(length > $max) | "\(.[0].id) x\(length)" else error("not an array") end' 2>/dev/null)"; then
+        emit INFO C76-duplicate-plugin-installs "'claude plugin list --json' failed or was not a JSON array -- scan skipped"
+        return
+    fi
+    if [ -z "$dups" ]; then
+        emit OK C76-duplicate-plugin-installs "no plugin is installed more than $max times"
+        return
+    fi
+    local line id fix=""
+    while IFS= read -r line; do
+        id="${line% x*}"
+        fix="$fix bash \"$REPO_ROOT/scripts/setup/dedupe-plugin-installs.sh\" --plugin $id (dry-run; add --apply);"
+    done <<< "$dups"
+    emit WARN C76-duplicate-plugin-installs "plugin(s) installed more than $max times: $(printf '%s' "$dups" | tr '\n' ',' | sed 's/,$//; s/,/, /g')" \
+        "each copy loads and costs startup time and context; run:$fix"
+}
+
 # --- C47-runaway-procs: long-lived himmel-shaped process pegging a core ---
 # Runaway qmd queries and orphaned hook.sh fixtures ran ~99 % CPU for hours unnoticed.
 # WARN on a current-user process older than HIMMEL_DOCTOR_RUNAWAY_MIN_AGE_MIN (30) at
@@ -4768,6 +4800,7 @@ run_check C72 check_c72_design_mcp_auth
 run_check C73 check_c73_bun_compiled
 run_check C74 check_c74_config_split
 run_check C75 check_c75_keyring
+run_check C76 check_c76_duplicate_plugin_installs
 heavy_join
 echo
 printf 'Summary: %s%d FAIL%s  %s%d WARN%s  %s%d INFO%s\n' "$C_RED" "$n_fail" "$C_0" "$C_YEL" "$n_warn" "$C_0" "$C_DIM" "$n_info" "$C_0"

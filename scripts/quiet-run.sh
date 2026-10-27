@@ -132,6 +132,8 @@ if [ "$LABEL" = "suite" ]; then
     suite_sem_acquire suite "bash scripts/quiet-run.sh suite -- $*" || SEM_RC=$?
     [ "$SEM_RC" -eq 0 ] || exit "$SEM_RC"
     trap suite_sem_release EXIT
+    # No suite reads the operator's OS keyring.
+    export HIMMEL_SECRETS_KEYRING=off
 fi
 
 LOG="${TMPDIR:-/tmp}/quiet-run-${LABEL}-$(date +%Y%m%d-%H%M%S)-$$.log"

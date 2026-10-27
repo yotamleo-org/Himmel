@@ -130,7 +130,7 @@ clears the escalation.
 
 **Enable.** It needs a sandboxed worker lane that appends to `outbox.jsonl`.
 The only such lane, GLM (see [tooling-catalog](tooling-catalog.md#claude-glm-scriptsclaude-glm)),
-is dormant, so the channel stays off until that lane is enabled again.
+was dropped, so the channel stays off.
 
 ## Statusline
 

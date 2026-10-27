@@ -77,7 +77,6 @@ From `gh repo list yotamleo-org --fork`; the HIMMEL-5900 registry
 | core (home-assistant) | dev | Python | `.pre-commit-config.yaml` | prettier | yes |
 | claude-hud | main | JavaScript | none | `.editorconfig` | yes |
 | graphify | v8 | Python | `.pre-commit-config.yaml` | `pyproject.toml` | yes |
-| twitter-cli | main | Python | none | `pyproject.toml` | yes |
 | home-assistant.io | current | HTML | none | `.editorconfig` | yes |
 | hermes-agent | main | Python | none | eslint, prettier | yes |
 | codex-plugin-cc, claude-obsidian, claude-video | main | JS / Python | none | none | yes |

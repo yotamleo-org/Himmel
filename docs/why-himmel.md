@@ -113,7 +113,7 @@ prose does not lock.
 
 **What himmel does:** one writer per queue, enforced.
 `scripts/handover/queue-lock.sh` takes a lock that is a *directory* (`mkdir` is
-atomic, with no check-then-create window, and it works on NTFS under Git Bash).
+atomic, with no check-then-create window).
 `acquire` prints a release token; `release` and `heartbeat` refuse without it,
 so a stale or wrong session cannot delete a live lock.
 

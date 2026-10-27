@@ -1804,8 +1804,8 @@ private repo has Actions off by design.
   (qmd is the standing case: its pin is a fork SHA, not a version), `4` bump
   failed (both files restored). Hermetic test: `test-apply-drift-bump.sh`.
 - `scripts/upstreams/apply-tool-upgrade.sh <name> [target-version] [--dry-run] [--unattended]` —
-  the `mode: probe` counterpart: upgrades an INSTALLED vendor CLI (rtk,
-  twitter-cli) whose version lives on the machine, not in the repo, so there is
+  the `mode: probe` counterpart: upgrades an INSTALLED vendor CLI (rtk)
+  whose version lives on the machine, not in the repo, so there is
   no pin to move and no PR to open. Runs the entry's `upgrade.command` (an argv
   ARRAY, executed as argv — never through a shell), then RE-PROBES and requires
   the version to have strictly advanced: a command that exits 0 without moving
@@ -1817,8 +1817,8 @@ private repo has Actions off by design.
   reaching the target is a hard rc `4`. `--unattended` — which the cadence always
   passes — refuses any entry not marked `upgrade.unattended: true`. That is the
   structural gate for the per-entry policy; read the registry for who is gated
-  rather than trusting this line. As of 2026-07-28 BOTH probe entries are
-  `unattended: true`: twitter-cli (Tier A) and rtk, which the operator approved
+  rather than trusting this line. As of 2026-07-28 rtk is
+  `unattended: true`: the operator approved it
   that day, overriding its Tier B default (the entry's note records the
   reservation and the revert path). Exit codes: `0` upgraded,
   `1` already current, `2` usage/registry/**tool not installed** (it upgrades,

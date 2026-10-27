@@ -23,7 +23,7 @@ The **enrich** stage runs `fxtwitter-enrich.mjs` (X) and `ig-embed-enrich.mjs` (
 
 The Instagram, X, YouTube and Reddit cookie paths are gone, along with the
 `HIMMEL_MEDIA_COOKIES` switch (HIMMEL-4708) that gated them: `gallery-dl --cookies`,
-`twitter-cli-enrich.mjs`, `reddit-enrich.mjs`, `playwright-auth-save.mjs`,
+the cookie-backed X thread enricher, `reddit-enrich.mjs`, `playwright-auth-save.mjs`,
 `playwright-crawl-x.mjs`, the logged-in YouTube Playwright fallback,
 `youtube-state-from-chrome.py` and `lib/cookie-jar.mjs`. Every media fetch is
 Scrapling (plus yt-dlp subtitles) and no cookie is sent anywhere. A Scrapling miss is

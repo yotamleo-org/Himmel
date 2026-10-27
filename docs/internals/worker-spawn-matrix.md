@@ -35,7 +35,7 @@ Repository files read for this draft:
 
 Live local Hermes surface checked:
 
-- Config path verified: `$LOCALAPPDATA/hermes/profiles/himmel_agent/config.yaml` (Windows; `$HERMES_HOME/profiles/himmel_agent/config.yaml` in general).
+- Config path verified: `$HERMES_HOME/profiles/himmel_agent/config.yaml`.
 - `delegation.model`, `delegation.provider`, `delegation.base_url`,
   `delegation.reasoning_effort`, and `delegation.api_mode` are blank in this
   profile.
@@ -106,7 +106,7 @@ with separate filesystem/process/session artifacts and separate guard wiring.
 - The Hermes one-shot lane has the clearest model/toolset selector: `--model`,
   `--profile`, `--toolsets`, and optional `--log`.
 - Codex supervision is mostly observability around an external harness: startup
-  health, companion-job liveness, and Windows MCP-fleet reaping.
+  health, companion-job liveness, and MCP-fleet reaping.
 
 ## Smoke-proof record (2026-07-07, session 11 — the acceptance criteria, each proven or named-gap)
 

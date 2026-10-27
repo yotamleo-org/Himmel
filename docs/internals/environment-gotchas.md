@@ -797,7 +797,7 @@ documented place — was invisible to it. That is why `fetch-health.py` reads
 `.env` itself, once, in `build_probe_registry()`: the single boundary where the
 process environment and the resolved repo root meet, so no probe can be left
 behind again (previously only `probe_bitbucket` called the loader, and
-`firecrawl` + `x-twitter-cli` were red on every scheduled run).
+`firecrawl` and the since-removed X cookie probe were red on every scheduled run).
 
 ## Two Bash-tool calls in one message race the persisted cwd
 

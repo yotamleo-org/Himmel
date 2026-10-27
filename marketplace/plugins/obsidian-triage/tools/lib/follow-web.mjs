@@ -851,24 +851,3 @@ export function makeWebFn(env = process.env, { vaultRoot } = {}) {
   if (chain.length === 0) return null;
   return chainWebFns(chain);
 }
-
-// ---------------------------------------------------------------------------
-// STUB adapter — Agent Reach.
-//
-// Survey: does not expose a callable, structured
-// web-search interface today, so it is not wired. Left as a documented stub
-// (return null = "unavailable") so the parent can drop in a real adapter
-// if/when the interface materializes, without touching the seam.
-//
-// AGENT REACH — NOT a general web-search backend. In this repo "Agent Reach"
-//   is the X reply-thread capture backend (public-clis/twitter-cli, registry
-//   entry `docs/tool-adoption/registry.md` line ~80: "twitter tweet <id>
-//   --json"). It is X-specific (auth = burner TWITTER_AUTH_TOKEN/TWITTER_CT0
-//   cookies), owned by the fxtwitter/X path — not an open-web search/fetch
-//   API. There is no `channels/` registry in the repo (the LUNA-92 routing
-//   layer is a proposal, unbuilt). So there is nothing to call for generic
-//   web verification. If a general Agent-Reach web channel ships, wire it
-//   here to return {found,url,title,snippet}.
-export function makeAgentReachWebFn() {
-  return null; // unavailable — see comment above
-}

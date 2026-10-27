@@ -3,7 +3,7 @@
   {"nwo": "yotamleo-org/graphify", "upstream": "Graphify-Labs/graphify", "himmel_branch": "himmel-main", "pin_site": "scripts/lib/graphify-bin.sh", "role": "runtime-dependency", "merge_allowed": true},
   {"nwo": "yotamleo-org/claude-video", "upstream": "bradautomates/claude-video", "himmel_branch": "himmel-main", "pin_site": null, "role": "runtime-dependency", "merge_allowed": true},
   {"nwo": "yotamleo-org/obsidian-skills", "upstream": "kepano/obsidian-skills", "himmel_branch": "himmel-main", "pin_site": null, "role": "runtime-dependency", "merge_allowed": true},
-  {"nwo": "yotamleo-org/twitter-cli", "upstream": "public-clis/twitter-cli", "himmel_branch": "himmel-main", "pin_site": "scripts/upstreams.json", "role": "runtime-dependency", "merge_allowed": true},
+  {"nwo": "yotamleo-org/twitter-cli", "upstream": "public-clis/twitter-cli", "himmel_branch": "himmel-main", "pin_site": null, "role": "dormant", "merge_allowed": false},
   {"nwo": "yotamleo-org/claude-obsidian", "upstream": "AgriciDaniel/claude-obsidian", "himmel_branch": "main", "pin_site": null, "role": "dormant", "merge_allowed": false},
   {"nwo": "yotamleo-org/codex-plugin-cc", "upstream": "openai/codex-plugin-cc", "himmel_branch": "main", "pin_site": null, "role": "upstream-contribution", "merge_allowed": false},
   {"nwo": "yotamleo-org/obsidian-second-brain", "upstream": "eugeniughelbur/obsidian-second-brain", "himmel_branch": "main", "pin_site": "marketplace/.claude-plugin/marketplace.json", "role": "runtime-dependency", "merge_allowed": true},

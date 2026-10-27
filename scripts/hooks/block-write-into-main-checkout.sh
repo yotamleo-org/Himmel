@@ -5998,6 +5998,40 @@ _bwimc_git_wrapped() {
     _bwimc_gcwd="$saved_cwd"; _bwimc_gcwd_unres="$saved_unres"
 }
 
+# _bwimc_adopted_worktree_add DIR DST BRANCH — true when `git -C DIR worktree add
+# -b BRANCH DST` creates a worker worktree in a registered himmel adopter's primary
+# checkout: DIR is that primary (chief-kit/adopted-primary.sh: origin
+# nwo in himmel-adapters.json AND realpath in the handover registry, never himmel's
+# own primary), DST is its absolute <primary>/.claude/worktrees/<leaf> with no
+# symlink or dot segment, and BRANCH is a new-looking name other than main/master.
+# Deny-by-default: any doubt returns 1 and the destination verdict applies as before.
+# The registry comes from this process's environment, never from the command text.
+_bwimc_adopted_worktree_add() {
+    local dir="$1" dst="$2" br="$3" canon root leaf hd
+    case "$br" in ''|main|master|-*|*..*|*//*|*/|*[!A-Za-z0-9._/+-]*) return 1 ;; esac
+    case "$dst" in
+        /*) ;;
+        *) return 1 ;;
+    esac
+    case "$dst" in
+        *[!A-Za-z0-9._/+-]*|*//*|*/./*|*/../*|*/.|*/..|*/) return 1 ;;
+    esac
+    canon=$(guard_canon_path "$dir" 2>/dev/null) || return 1 # swallow-ok: no exemption, the destination verdict still applies
+    root=$(repo_root_for_path "$canon" 2>/dev/null) || return 1 # swallow-ok: same
+    [ -n "$root" ] && [ "$root" = "$canon" ] || return 1
+    case "$dst" in
+        "$root/.claude/worktrees/"?*) leaf="${dst#"$root"/.claude/worktrees/}" ;;
+        *) return 1 ;;
+    esac
+    case "$leaf" in */*|.*) return 1 ;; esac
+    # the leaf is the branch with each slash turned into a plus
+    [ "$leaf" = "${br//\//+}" ] || return 1
+    # the leaf, `.claude` and `worktrees` may not be links that lead elsewhere
+    [ "$(guard_canon_path "$dst" 2>/dev/null)" = "$root/.claude/worktrees/$leaf" ] || return 1 # swallow-ok: same
+    hd="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)" || return 1
+    bash "$hd/../handover/chief-kit/adopted-primary.sh" "$root" >/dev/null 2>&1 # swallow-ok: the helper's exit status is the answer
+}
+
 # _bwimc_git_clause CLAUSE_SP — per-clause state machine for arm (g). Reads
 # and updates the command-wide _bwimc_gcwd / _bwimc_gcwd_unres /
 # _bwimc_genv_* globals; must be called as a plain statement (never `$(…)`).
@@ -6005,6 +6039,7 @@ _bwimc_git_clause() {
     local toks=() t tu i n start v r
     local dir gitdir="" wtree="" idx="" unres=0 sub="" args=()
     local e_dir="$_bwimc_genv_dir" e_wt="$_bwimc_genv_wt" e_idx="$_bwimc_genv_idx"
+    local e_oth="$_bwimc_genv_oth"
     local e_cfgglobal="$_bwimc_genv_cfgglobal" e_cfgsystem="$_bwimc_genv_cfgsystem"
     local cfg="$_bwimc_genv_cfg"
     local cwd="$_bwimc_gcwd"
@@ -6113,6 +6148,7 @@ _bwimc_git_clause() {
                         GIT_CONFIG_COUNT*|GIT_CONFIG_PARAMETERS*|GIT_CONFIG_KEY_*)
                             _bwimc_genv_cfg=1; _bwimc_g_repoint=1 ;;
                         GIT_CONFIG*) _bwimc_genv_cfg=1 ;;
+                        GIT_*=*) _bwimc_genv_oth=1 ;;
                     esac
                 fi
                 i=$((i+1))
@@ -6136,6 +6172,7 @@ _bwimc_git_clause() {
             GIT_CONFIG_SYSTEM=*) e_cfgsystem="${t#GIT_CONFIG_SYSTEM=}"; cfg=1 ;;
             GIT_CONFIG_COUNT=*|GIT_CONFIG_PARAMETERS=*|GIT_CONFIG_KEY_*=*) cfg=1; _bwimc_g_repoint=1 ;;
             GIT_CONFIG*=*) cfg=1 ;;
+            GIT_*=*) e_oth=1 ;;
             [A-Za-z_]*=*) ;;
             *)
                 _bwimc_unqv "$t"; case "$_BWIMC_UNQ" in
@@ -6181,6 +6218,7 @@ _bwimc_git_clause() {
                                 GIT_CONFIG_COUNT=*|GIT_CONFIG_PARAMETERS=*|GIT_CONFIG_KEY_*=*)
                                     cfg=1; _bwimc_g_repoint=1 ;;
                                 GIT_CONFIG*=*) cfg=1 ;;
+                                GIT_*=*) e_oth=1 ;;
                                 [A-Za-z_]*=*) ;;
                                 *) break ;;
                             esac
@@ -6224,6 +6262,7 @@ _bwimc_git_clause() {
             _bwimc_genv_cfgglobal="$e_cfgglobal"; _bwimc_genv_cfgsystem="$e_cfgsystem"
             [ "$cfg" = 0 ] || _bwimc_genv_cfg=1
             [ "$progrun" = 0 ] || _bwimc_genv_prog=1
+            _bwimc_genv_oth="$e_oth"
         fi
         return 0
     fi
@@ -6391,19 +6430,28 @@ _bwimc_git_clause() {
     # for every file-operand arm). A sub-option that runs a program (see
     # _bwimc_git_args_prog) voids the read relief below.
     if [ "$sub" = worktree ]; then
-        local wt_op="" wt_dst="" wt_n=0 wt_skip=0 wt_eoo=0
+        # wt_plain/wt_br feed the adopted-primary exemption below:
+        # only `add [-q|--quiet] -b <branch> <dst> [<commit-ish>]` stays plain.
+        local wt_op="" wt_dst="" wt_n=0 wt_skip=0 wt_eoo=0 wt_plain=1 wt_br="" wt_bskip=0
         for v in ${args[@]+"${args[@]}"}; do
-            if [ "$wt_skip" = 1 ]; then wt_skip=0; continue; fi
+            if [ "$wt_skip" = 1 ]; then
+                [ "$wt_bskip" = 0 ] || wt_br="$v"
+                wt_skip=0; wt_bskip=0; continue
+            fi
             # J1950 (B3): after `--` every word is positional (`add -d --
             # -evil` creates <dir>/-evil).
             if [ "$wt_eoo" = 0 ]; then
                 case "$v" in
-                    --) [ -z "$wt_op" ] || wt_eoo=1; continue ;;
-                    --reason) wt_skip=1; continue ;;
+                    --) wt_plain=0; [ -z "$wt_op" ] || wt_eoo=1; continue ;;
+                    --reason) wt_plain=0; wt_skip=1; continue ;;
+                    -q|--quiet) continue ;;
+                    -b) [ -z "$wt_br" ] || wt_plain=0
+                        wt_skip=1; wt_bskip=1; continue ;;
                     # -b/-B take the NEXT word when they end a cluster (`-fb y`);
                     # after flag letters they carry a value attached (`-btopicb`).
-                    --*) continue ;;
+                    --*) wt_plain=0; continue ;;
                     -*)
+                        wt_plain=0
                         if [[ ! "$v" =~ ^-[fdq]*[bB]. ]]; then
                             case "$v" in *[bB]) wt_skip=1 ;; esac
                         fi
@@ -6413,6 +6461,7 @@ _bwimc_git_clause() {
             if [ -z "$wt_op" ]; then wt_op="$v"; continue; fi
             wt_n=$((wt_n+1))
             case "$wt_op:$wt_n" in add:1|move:2) wt_dst="$v" ;; esac
+            [ "$wt_op:$wt_n" != add:1 ] || [ -n "$wt_br" ] || wt_plain=0
         done
         if [ -n "$wt_dst" ]; then
             case "$wt_op" in
@@ -6423,7 +6472,22 @@ _bwimc_git_clause() {
                         /*|'~'*|'$'*) ;;
                         *) [ "$unres" = 0 ] || _bwimc_deny "unresolved-git-target" "$1" "$dir" "" ;;
                     esac
-                    _bwimc_check_target "$wt_dst" "$dir"
+                    # A chief's `git -C <adopted primary> worktree add -b
+                    # <new> <primary>/.claude/worktrees/<leaf>` skips the destination
+                    # verdict; the clause stays a read below, so nothing else relaxes.
+                    # Needs no -c/GIT_* env, no program run, no wrapper, no unresolved path,
+                    # and no earlier cd (git may then run in the cwd the cd left).
+                    if [ "$wt_op" = add ] && [ "$wt_plain" = 1 ] && [ "$wt_n" -le 2 ] \
+                        && [ -z "$_bwimc_gcwd_alts" ] \
+                        && [ "$cfg" = 0 ] && [ "$progrun" = 0 ] && [ "$unres" = 0 ] \
+                        && [ "${_bwimc_g_wrap:-0}" = 0 ] && [ "${_bwimc_g_repoint:-0}" = 0 ] \
+                        && [ -z "$gitdir$wtree$idx$e_dir$e_wt$e_idx" ] && [ "$e_oth" = 0 ] \
+                        && ! _bwimc_git_args_prog "$sub" "${args[@]}" \
+                        && _bwimc_adopted_worktree_add "$dir" "$wt_dst" "$wt_br"; then
+                        :
+                    else
+                        _bwimc_check_target "$wt_dst" "$dir"
+                    fi
                     _BWIMC_GIT_SUB="" ;;
             esac
         fi
@@ -6836,6 +6900,7 @@ _bwimc_genv_cfgglobal=""
 _bwimc_genv_cfgsystem=""
 _bwimc_genv_cfg=0
 _bwimc_genv_prog=0
+_bwimc_genv_oth=0
 _bwimc_g_repoint=0
 _bwimc_g_netop=0
 _bwimc_g_jail=0

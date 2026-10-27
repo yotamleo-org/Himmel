@@ -35,6 +35,9 @@ assert_eq_fp() {
     fi
 }
 
+# The runners export HIMMEL_SECRETS_KEYRING=off; the K rows need the stub keyring.
+unset HIMMEL_SECRETS_KEYRING
+
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 

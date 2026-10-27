@@ -7079,4 +7079,25 @@ out="$(C75_KEYRING=off c75_run)"
 if grepq "$out" -F 'INFO C75-keyring' && grepq "$out" -F 'INFO C75-secrets' && [ ! -s "$c75_t/log" ] && ! grepq "$out" -F 'planted'; then pass "C75 keyring off -> INFO rows, no secret-tool call"; else fail "C75 off -> $(printf '%s' "$out" | head -4)"; fi
 rm -rf "$c75_t"
 
+# --- C76-duplicate-plugin-installs: one plugin installed more than 3 times ---
+c76_t="$(mktemp -d "${TMPDIR:-/tmp}/c76.XXXXXX")" || { echo "FATAL: C76 setup mktemp failed" >&2; exit 1; }; mkdir -p "$c76_t/claude" "$c76_t/home"
+cat > "$c76_t/claude-stub" <<'EOF'
+#!/usr/bin/env bash
+if [ "${C76_DUP:-0}" = 1 ]; then
+    echo '[{"id":"atlassian@claude-plugins-official","scope":"user"},{"id":"atlassian@claude-plugins-official","scope":"local","projectPath":"/a"},{"id":"atlassian@claude-plugins-official","scope":"local","projectPath":"/b"},{"id":"atlassian@claude-plugins-official","scope":"local","projectPath":"/c"},{"id":"kept@himmel","scope":"user"}]'
+else
+    echo '[{"id":"atlassian@claude-plugins-official","scope":"user"},{"id":"kept@himmel","scope":"user"},{"id":"kept@himmel","scope":"local","projectPath":"/a"}]'
+fi
+EOF
+chmod +x "$c76_t/claude-stub"
+c76_run() { HIMMEL_DOCTOR_CLAUDE_BIN="$c76_t/claude-stub" DOCTOR_MCP_PLUGINS_GLOB="$c76_t/none/*.mcp.json" CLAUDE_DIR="$c76_t/claude" HOME="$c76_t/home" bash "$DOC" --no-color 2>&1; }
+echo "== C76: a plugin installed more than 3 times -> WARN naming it, its count and the cleanup =="
+out="$(C76_DUP=1 c76_run)"
+c76_line="$(printf '%s' "$out" | grep -F 'C76-duplicate-plugin-installs')"
+if grepq "$out" 'WARN C76-duplicate-plugin-installs' && grepq "$out" -F 'atlassian@claude-plugins-official x4' && grepq "$out" -F 'dedupe-plugin-installs.sh" --plugin atlassian@claude-plugins-official' && [[ "$c76_line" != *kept@himmel* ]]; then pass "C76 duplicate installs -> WARN"; else fail "C76 duplicate -> $(printf '%s' "$out" | grep -A1 C76)"; fi
+echo "== C76: no plugin over the limit -> OK =="
+out="$(C76_DUP=0 c76_run)"
+if grepq "$out" 'OK   C76-duplicate-plugin-installs'; then pass "C76 within the limit -> OK"; else fail "C76 within limit -> $(printf '%s' "$out" | grep -A1 C76)"; fi
+rm -rf "$c76_t"
+
 if [ "$failures" -eq 0 ]; then echo "ALL PASS"; exit 0; else echo "$failures FAILURE(S)"; exit 1; fi
