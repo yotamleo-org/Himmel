@@ -33,6 +33,7 @@ echo "created worktree $1"
 EOF
 chmod +x "$WORK/wt.sh"
 export WT_LOG="$WORK/wt.log" GEN_BRIEFS_WORKTREE_CMD="$WORK/wt.sh"
+export GEN_BRIEFS_MIRROR="$WORK/mirror"; mkdir -p "$GEN_BRIEFS_MIRROR"  # the proof check reads this fixture mirror, never the real one
 export GEN_BRIEFS_NO_WT_CHECK=1  # the older rows use a fixture --repo with no real worktrees; the bucket and worktree-guard rows unset it
 
 cat > "$WORK/legs.json" <<'EOF'
@@ -596,6 +597,30 @@ grbad "a grant with an extra key is refused" 'g["why"]="x"' "exactly {text, path
 
 python3 "$SUT" >/dev/null 2>&1; rc=$?
 [ "$rc" = 2 ] && pass "no arguments is a usage error (rc 2)" || fail "usage rc=$rc"
+
+# --- a ticket whose body lacks a DoD or a Proof is refused, the ticket printed for the chief to fix ---
+pm() { # <KEY> <body>: a mirror ticket with that Description
+    printf -- '---\nkey: %s\n---\n# %s: t\n\n## Description\n\n%s\n\n## Comments\n\nnone\n' "$1" "$1" "$2" > "$GEN_BRIEFS_MIRROR/$1.md"
+}
+PROOF_TAIL=$'\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n'
+pm HIMMEL-9001 $'Edit scripts/x.\n\nDoD\n- the row is green\n'
+pm HIMMEL-9002 "Edit scripts/hooks/h.sh.$PROOF_TAIL"
+pm HIMMEL-9003 "Edit the hook.$PROOF_TAIL"
+rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb.err" || rc=$?
+[ "$rc" = 1 ] && pass "proof: a ticket with a DoD but no Proof is refused (rc 1)" || fail "proof: no-Proof rc=$rc"
+has "proof: the refusal names the ticket and the missing section" "$(cat "$WORK/pb.err")" "HIMMEL-9001 lacks Proof"
+has "proof: the refusal prints the ticket body for the chief to fix" "$(cat "$WORK/pb.err")" "Edit scripts/x."
+lacks "proof: a ticket that has both is not named" "$(cat "$WORK/pb.err")" "HIMMEL-9002 lacks"
+[ ! -e "$WORK/pb/launch-N901.sh" ] && pass "proof: nothing is written for a refused ticket" || fail "proof: wrote files for a refused ticket"
+pm HIMMEL-9001 "Edit scripts/x.$PROOF_TAIL"
+rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb.err" || rc=$?
+[ "$rc" = 0 ] && pass "proof: tickets that all have DoD and Proof generate" || fail "proof: complete tickets rc=$rc: $(cat "$WORK/pb.err")"
+pm HIMMEL-9003 $'Edit the hook.\n\nDoD\n- the row is green\n\nProof\nTBD\n'
+rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb2" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb2.err" || rc=$?
+[ "$rc" = 1 ] && has "proof: a placeholder Proof on the second key of a worker is refused" "$(cat "$WORK/pb2.err")" "HIMMEL-9003 lacks Proof" || fail "proof: placeholder rc=$rc"
+rm -f "$GEN_BRIEFS_MIRROR/HIMMEL-9003.md"
+rc=0; python3 "$SUT" "$WORK/legs.json" --base 4ccb59d --chief BZ --bucket "$WORK/pb3" --repo "$REPO" --handover-root /h --no-worktree >/dev/null 2>"$WORK/pb3.err" || rc=$?
+[ "$rc" = 0 ] && has "proof: a ticket missing from the mirror warns and does not refuse (mirror lag)" "$(cat "$WORK/pb3.err")" "HIMMEL-9003" || fail "proof: absent mirror rc=$rc"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

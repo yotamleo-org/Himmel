@@ -35,7 +35,24 @@ occasionally and is handled by the next section, not by tightening the gate.
 Main-red must stay rare and be fixed fast. The merge gate backs this up:
 `merge-on-green.sh` refuses (exit 22) while the newest completed `CI` run on main is red,
 unless the PR is the declared fix (`Fixes-main-red:` line or a fix-GO; see the
-[stuck-playbook](stuck-playbook.md)).
+[stuck-playbook](stuck-playbook.md)). A run that is being re-run counts by its previous
+attempt, so a red under re-run still blocks. The gate reads the failed log and prints
+`main-red: <class> (<suites>)`; a red made only of runner cap timeouts with assertions
+passing (`cap-only`), in suites the PR does not reach per `scripts/cr/impacted-suites.sh`,
+passes. Every failed job must be a shell-unit job, and no job may fail in more than one
+step. A shard must fail only through the runner: its `Failed suites:` rows, then
+`home-canary: FAIL runner exited rc=1`. The rollup job may fail only in its shard-result
+step. Every job of the run that did not succeed or skip (`gh run view --json jobs`) must also show in the
+failed log, so a shard that stayed queued, was cancelled or timed out is not missed. A
+honeytoken leak or read, a timeout, a shard with no rows, a failed lint job, a job that
+failed in a second step, a rollup that failed in another step, the runner's
+`ERROR: run budget` or `STOPPED:` line, a job missing from the failed log and a job list
+that cannot be read are `unclassified`. An
+`assertion`, `cap-overlap`, `cap-unverified` or `unclassified` red still blocks.
+After a merge on the declared-fix or fix-GO path the script dispatches one `ci.yml` run on
+main (`gh workflow run ci.yml --ref main`) and prints `MAIN-RECHECK dispatched run=<id>`,
+because there is no push trigger to re-check main at the fix; a failed dispatch is a WARN
+and never fails the merge. An ordinary merge, and a cap-only pass, dispatch nothing.
 
 First classify the red, then act:
 

@@ -32,13 +32,13 @@ case "$*" in
     *"--json commits"*)
         printf '%s' '[{"messageHeadline":"fix(x): [HIMMEL-1] t (#1)","messageBody":"Platforms tested: linux\nSecurity reviewed: manual"}]'
         exit 0 ;;
-    *"--json body"*) printf '## Ticket coverage\n- ask: done\n'; exit 0 ;;
+    *"--json body"*) printf '## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n'; exit 0 ;;
     'api repos/'*'/pulls/'*) printf '%s\n' "${READY_STUB_HEAD:-}"; exit 0 ;;
     *':pullRequest(number:'*)
         jq -n --arg h "${READY_STUB_HEAD:-}" --arg args "$*" '
             ($args | capture("p(?<n>[0-9]+):pullRequest").n) as $n |
             {data:{repository:{("p"+$n):{number:($n|tonumber),headRefOid:$h,mergeStateStatus:"CLEAN",reviewDecision:null,
-                body:"## Ticket coverage\n- ask: done\n",
+                body:"## Ticket coverage\n- ask: done\n\nRED then GREEN: the new row failed before the change\n",
                 commits:{nodes:[{commit:{oid:$h,messageHeadline:"fix(x): [HIMMEL-1] t (#1)",messageBody:"Platforms tested: linux\nSecurity reviewed: manual",parents:{totalCount:1}}}],pageInfo:{hasNextPage:false,endCursor:null}},
                 reviewThreads:{nodes:[],pageInfo:{hasNextPage:false,endCursor:null}},
                 statusCheckRollup:{contexts:{nodes:[{__typename:"CheckRun",name:"build",status:"COMPLETED",conclusion:"SUCCESS"}],pageInfo:{hasNextPage:false,endCursor:null}}}

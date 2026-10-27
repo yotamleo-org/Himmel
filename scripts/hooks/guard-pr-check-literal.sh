@@ -1399,7 +1399,87 @@ if [ "$PR_TOKENIZED" = 1 ]; then
         mk=$mek
     done
 fi
+# python/node run their text as code, so a gate path is only a mention to one
+# when the whole command is that one interpreter run (`python3 -c CODE`,
+# `node -e CODE`, `python3 - <<'PY'`) and every line of the code only prints one
+# plain string literal that spells no shell word: print('scripts/cr/x.sh')
+# names a path, os.system('bash scripts/cr/x.sh') runs one. The command word is
+# the only position that runs a file, so everything else in the line is text.
+# ponytail: the allow-list is print(LIT) / console.log(LIT) lines, one escape-free
+# string literal each, so any other code reaches the classifier and is denied
+# when it names a gate; upgrade path: parse the interpreter's own AST to admit
+# more than printing.
+INTERP_PRINT_RE='^[[:space:]]*(print|console\.log)\(('"'"'[^'"'"'\]*'"'"'|"[^"\]*")\);?[[:space:]]*$'
+INTERP_SHELL_RE='(^|[^[:alnum:]_.-])(bash|sh|zsh|dash|ksh|source)[[:space:]]'
+interp_code_inert() { # interp_code_inert <code> - only print(LIT) lines, no shell word in them
+    local line
+    st_lower "$1"
+    [[ $ST_LOWER =~ $INTERP_SHELL_RE ]] && return 1
+    while IFS= read -r line; do
+        case "$line" in *[![:space:]]*) ;; *) continue ;; esac
+        [[ $line =~ $INTERP_PRINT_RE ]] || return 1
+    done <<<"$1"
+    return 0
+}
+interp_data_only() { # true when the whole command is one interpreter run whose code is inert
+    local k w mode='' code='' hd=0 delim='' argi=0 body='' line rest
+    # an interpreter that reads startup code from an inherited variable runs
+    # files this guard's byte-hash fence has not checked
+    [ -z "${PYTHONPATH:-}${PYTHONHOME:-}${NODE_OPTIONS:-}${NODE_PATH:-}" ] || return 1
+    st_tokenize "$cmd" || return 1
+    [ "$ST_SUBST$ST_ANSIC$ST_COMMENT" = 000 ] || return 1
+    k=0
+    while [ "$k" -lt "$ST_N" ]; do
+        [ "${ST_S[k]}" = 0 ] || return 1
+        w=${ST_W[k]}
+        if [ -n "${ST_RO[k]}" ]; then
+            case "${ST_RO[k]}" in
+                '<<')
+                    [ "$hd" = 0 ] && [ "${ST_Q[k]}${ST_X[k]}" = 10 ] || return 1
+                    hd=1 delim=$w
+                    ;;
+                *'>&') case "$w" in *[!0-9-]* | '') return 1 ;; esac ;;
+                *'>' | *'>|') [ "$w" = /dev/null ] || return 1 ;;
+                *) return 1 ;;
+            esac
+        else
+            [ "${ST_X[k]}${ST_G[k]}" = 00 ] || return 1
+            case "$argi" in
+                0)
+                    [ "${ST_A[k]}${ST_Q[k]}" = 00 ] || return 1
+                    case "$w" in python | python3 | node | nodejs) ;; *) return 1 ;; esac
+                    ;;
+                1) case "$w" in -c | -e) mode=code ;; -) mode=stdin ;; *) return 1 ;; esac ;;
+                2) [ "$mode" = code ] || return 1; code=$w ;;
+                *) return 1 ;;
+            esac
+            argi=$((argi + 1))
+        fi
+        k=$((k + 1))
+    done
+    case "$mode:$argi:$hd" in
+        code:3:0) interp_code_inert "$code" ;;
+        stdin:2:1 | :1:1)
+            rest=${cmd#*$'\n'}
+            [ "$rest" != "$cmd" ] || return 1
+            while :; do
+                line=${rest%%$'\n'*}
+                if [ "$line" = "$delim" ]; then
+                    if [ "$rest" = "$line" ]; then rest=''; else rest=${rest#*$'\n'}; fi
+                    case "$rest" in *[![:space:]]*) return 1 ;; esac
+                    interp_code_inert "$body"
+                    return
+                fi
+                body=$body$line$'\n'
+                [ "$rest" != "$line" ] || return 1
+                rest=${rest#*$'\n'}
+            done
+            ;;
+        *) return 1 ;;
+    esac
+}
 readers_only && exit 0
+interp_data_only && exit 0
 # readers_only returns at the first non-reader, comment, $'…'
 # word, substitution or unknown git global option, before it reaches a later
 # git segment. The option check must not depend on that walk, so scan every

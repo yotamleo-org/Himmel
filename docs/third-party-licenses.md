@@ -204,6 +204,17 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ```
 
+## Vendored skill: `technical-writing` (MIT, Lauren Tan)
+
+Added 2026-10-27 (HIMMEL-7622, decision 345). Lives at
+`.claude/skills/technical-writing/SKILL.md`, sourced from `cursor/plugins`
+(pstack) at pinned commit `99743e9c151c8537cbbf1f98bb38f34ef3368453`, path
+`pstack/skills/technical-writing/SKILL.md`. A single vendored markdown file:
+the upstream body verbatim under one header naming the source and pin, with
+the frontmatter `description` shortened to the skill cap. The
+docs reviewer cites it as its NIT-only generic layer. Its licence is the same
+`pstack/LICENSE` at the same commit, reproduced in full under `unslop` above.
+
 ## Vendored plugin: `pstack` (MIT, Lauren Tan)
 
 Added 2026-10-15 (HIMMEL-5803). `marketplace/plugins/pstack/`, seven skills
@@ -438,6 +449,7 @@ Regenerate and check with `node scripts/docs/generate-credits.mjs` and
 | plugin:shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | — | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |
 | plugin:graphify | https://github.com/Graphify-Labs/graphify | Graphify-Labs / yotamleo (wrapper) | — | [Package pin](../scripts/lib/graphify-bin.sh) |
 | skill:unslop | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
+| skill:technical-writing | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
 | skill:no-comments + comment-sicko | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
 | skill:test-audit | https://github.com/openclaw/openclaw | OpenClaw Foundation | MIT | 1370643e394f956dfae2e42f43ee030b0072434b |
 | skill:writing-for-agents | https://github.com/mattpocock/skills | Matt Pocock | MIT | 49dd158d1076134a641b33efb035946536778336 |

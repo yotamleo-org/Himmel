@@ -17,6 +17,7 @@ marketplace/plugins/himmel-ops/hooks/test-block-agent-native-egress.sh	pr	guard
 marketplace/plugins/himmel-ops/hooks/test-inject-minerva-critic.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-autonomy-mode.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-chief-cmd-resolution.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+marketplace/plugins/himmel-ops/scripts/test-docs-reviewer-fit.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-effort-assess.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-himmel-update-cmd-resolution.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 marketplace/plugins/himmel-ops/scripts/test-workers.sh	local	behaviour suite, 0 catches in the 400-PR audit window
@@ -364,6 +365,7 @@ scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catch
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-graph.sh	local	behaviour suite, hermetic report script, no gate role
+scripts/handover/chief-kit/test-chain-plan.sh	local	behaviour suite, hermetic planner, no gate role
 scripts/handover/chief-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ci-guardrail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
