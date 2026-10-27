@@ -8,6 +8,7 @@
 # missing name is printed, the draft is copied into the intake queue and the exit is
 # 1. Epic and Subtask only warn. A missing Sector (flag or a "Sector:" line in the
 # draft) warns for every type. The draft file is never modified or deleted.
+# A Plan naming two or more ticket keys also needs an "Edges:" line (or "Edges: none").
 #
 # Queue: $TICKET_STANDARD_QUEUE_DIR, else <handover root>/<USER_SLUG>/himmel/intake
 # (the root must come from HANDOVER_DIR: the inline default sits inside the checkout).
@@ -43,8 +44,11 @@ else
   echo 'humanizer: optional deterministic humanizer-facts.py --normalize ORIGINAL CANDIDATE; skip keeps original, --rewrite FILE checks a candidate; no model rewrite' >&2
 fi
 
-# Sections whose heading is present but whose body has no real line; or whose heading is absent.
-missing="$(awk '
+# One awk program, three modes: default lists the sections whose heading is absent or whose body has no
+# real line; -v mode=keys prints how many distinct ticket keys the Plan section names; -v mode=edges
+# prints the value of the first "Edges:" line outside any code (the same fence rules as the sections).
+# shellcheck disable=SC2016 # the awk program is literal text, nothing here should expand
+prog='
   function norm(s) { sub(/^[ \t]*(#+|\*\*|__)?[ \t]*/, "", s); sub(/[ \t]+#+[ \t]*$/, "", s); sub(/[ \t]*(\*\*|__)?[ \t]*:?[ \t]*(\*\*|__)?[ \t]*$/, "", s); return tolower(s) }
   function real(s) {
     s = tolower(s); gsub(/\*\*|__/, "", s); sub(/^[ \t]*([-*]|[0-9]+[.)])?[ \t]*/, "", s); sub(/[ \t.]*$/, "", s)
@@ -56,16 +60,42 @@ missing="$(awk '
     if (!fence) { fence = 1; fch = substr(run, 1, 1); flen = length(run); next }
     if (substr(run, 1, 1) == fch && length(run) >= flen && substr($0, RSTART + RLENGTH) ~ /^[ \t]*$/) { fence = 0; next }
   }
-  fence || /^(    |\t)/ { if (cur != "" && real($0)) have[cur] = 1; next }
-  { k = norm($0); if (k in want) { cur = k; seen[k] = 1; next } if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { cur = ""; next } if (cur != "" && real($0)) have[cur] = 1 }
-  END { for (i = 1; i <= n; i++) if (!(w[i] in have)) { d = disp[i]; sub(/_/, " ", d); printf "%s%s", (c++ ? ", " : ""), d } }
-' "$draft")" || { echo "ticket-standard-check: could not parse '$draft' (awk failed); draft not checked" >&2; exit 2; }
+  function addkeys(s) { while (match(s, /[A-Z][A-Z0-9]+-[0-9]+/)) { key[substr(s, RSTART, RLENGTH)] = 1; s = substr(s, RSTART + RLENGTH) } }
+  function lvl(s) { sub(/^[ \t]*/, "", s); return match(s, /^#+/) ? RLENGTH : 0 }
+  fence || /^(    |\t)/ { if (cur != "" && real($0)) have[cur] = 1; if (cur == "plan") addkeys($0); next }
+  {
+    if (!edgeset && match($0, /^[ \t]*([-*+][ \t]+)?(\*\*|__)?[Ee][Dd][Gg][Ee][Ss](\*\*|__)?:(\*\*|__)?[ \t]*/)) { edgeset = 1; ev = tolower(substr($0, RLENGTH + 1)); sub(/[ \t.]*$/, "", ev) }
+    k = norm($0)
+    if (k in want) { cur = k; seen[k] = 1; plvl = lvl($0); next }
+    if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { if (cur == "plan" && plvl > 0 && lvl($0) > plvl) { addkeys($0); next } cur = ""; next }
+    if (cur != "" && real($0)) have[cur] = 1
+    if (cur == "plan") addkeys($0)
+  }
+  END {
+    if (mode == "keys") { for (x in key) nk++; print nk + 0; exit }
+    if (mode == "edges") { print ev; exit }
+    for (i = 1; i <= n; i++) if (!(w[i] in have)) { d = disp[i]; sub(/_/, " ", d); printf "%s%s", (c++ ? ", " : ""), d }
+  }
+'
+parsefail(){ echo "ticket-standard-check: could not parse '$draft' (awk failed); draft not checked" >&2; exit 2; }
+# Sections whose heading is present but whose body has no real line; or whose heading is absent.
+missing="$(awk "$prog" "$draft")" || parsefail
 
 # A CI/guard/guardrail/stability ticket (by label) must name the scorecard metric it moves: a real "Metric:" line (bare, bulleted, bold, any case).
 if grep -Eiq '^[[:space:]]*Labels:.*(^|[:,[:space:]])(ci|guard|guardrail|stability|flake)(-[a-z0-9-]+)?([,[:space:]]|$)' "$draft"; then
   metric="$(sed -nE 's/^[[:space:]]*([-*+][[:space:]]+)?(\*\*|__)?[Mm][Ee][Tt][Rr][Ii][Cc](\*\*|__)?:(\*\*|__)?[[:space:]]*//p' "$draft" | head -n 1 | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:].]*$//')"
   case "$metric" in
     ''|tbd|tbc|todo|n/a|na|none|...|'?'*|-*|'<'*'>') missing="${missing:+$missing, }Metric (name the stability-scorecard metric this ticket moves)" ;;
+  esac
+fi
+
+# A Plan that names two or more ticket keys needs an "Edges:" line (which ticket blocks which, hard or soft), or "Edges: none".
+# ponytail: any [A-Z][A-Z0-9]+-[0-9]+ counts as a key (UTF-8 and SHA-256 together would too), answer with "Edges: none"
+plankeys="$(awk -v mode=keys "$prog" "$draft")" || parsefail
+if [ "$plankeys" -ge 2 ] 2>/dev/null; then
+  edges="$(awk -v mode=edges "$prog" "$draft")" || parsefail
+  case "$edges" in
+    ''|tbd|tbc|todo|n/a|na|...|'?'*|-*|'<'*'>') missing="${missing:+$missing, }Edges: (the Plan names $plankeys ticket keys: add an 'Edges: <A> blocks <B> (hard|soft)' line, or 'Edges: none')" ;;
   esac
 fi
 

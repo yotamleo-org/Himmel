@@ -175,15 +175,15 @@ refuses (exit 4) unless `ready-check.sh` passes; a head with no ok CR-ledger row
 gets no GO. The worker merges, reports `MERGED #<n> → <sha>`; pull the
 primary.
 
-The worker closes Jira per the brief's `completes-ticket: yes|no` line
-(`--jira-transition` for `yes`, omitted for `no`): set it in the
-brief. After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
+The worker closes Jira per the brief's completes-ticket line (`> **Completes ticket:** yes|no`)
+(`--jira-transition` only for `yes`). After `MERGED`, re-read the ticket — the flag closes only the first `[KEY]`
 of the PR title; check a second key by hand. Never merge with open review
 threads or on a handoff calling a PR clean: query it yourself. A worker's
 `BLOCKED resolve`: verify, resolve, never the operator. **A PR whose diff
 matches a pattern in `scripts/ci/ci-trust-paths.txt`** needs adversarial review and
 `go.sh --trust-reviewed <qid> <pr> <head>` (an ordinary GO exits 21); a pre-release
-tag is `cut-tag.sh <version> <sha>` (`--dry-run` first): `chief-sections/merges.md`.
+tag is `cut-tag.sh <version> <sha>` (`--dry-run` first). These and the
+merged-docs list: `chief-sections/merges.md`.
 
 ## Wrapping a worker
 
@@ -242,14 +242,14 @@ At **{{FILL_PERCENT}} % fill, 90 k input in one turn, or `WAKE handover-budget`*
    worker, `NOT-IN-LIVE-STATE` for one not in it: relay each **yourself**.
    `FAILED-INBOX` and `UNRESOLVED` too; on `relay-failed`, any undelivered.
    Never re-run it (it resends). It carries no fresh token: native and claudex
-   workers are not rotated on a bus succession. Then send the successor
+   workers are not rotated on bus succession; `--fresh` hands one. Then send the successor
    `RELAYED <n> of <m>` naming any still unrelayed.
 5. **Wait for the successor's `LIVE` before you release your lock and stop**: it is
    the only confirmation that ACTION ZERO completed, and it names any workers that
    did not quote back, and why. Relay any worker it names as not relayed, then
    wrap with **one** command, which writes `WRAPPED` and releases the lock:
    `bash scripts/handover/chief/chief.sh wrap "{{STATE_DIR}}/{{SESSION_NAME}}.md" <release-token> '<one line>'`.
-   It refuses (exit 4) while any subagent of yours, a judge subagent above all, is
+   It refuses (exit 4) while any subagent of yours is
    running: wait, persist the verdict with `write-verdict.sh`, re-run.
 
 Write every bullet below with

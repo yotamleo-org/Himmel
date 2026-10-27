@@ -301,6 +301,14 @@ gathering, per the rule below.>
 > missing or already Done is a NO-GO line in your verdict. The chief puts the
 > ticket body and the PR body in `## Evidence`.
 
+> **Docs review (PR-review judges, docs PRs).** When the PR changes a docs
+> page, run the `docs-reviewer` skill at the `JUDGE-REQUEST` head (the head
+> that goes `READY`); this is the PR's only run of it. Save the answer and hold it to 3 KB with the skill's
+> `fit_answer.py` (exit 1: shorten the page-verdict and BLOCKING lines, drop
+> none, and rerun fit_answer.py). A BLOCKING finding, or a code
+> change the page implies with no fix in the diff and no follow-up ticket, is a
+> NO-GO line in your verdict.
+
 > **Critical/Important disposition (PR-review judges).** A CR finding of
 > severity Critical or Important deferred on the PR's branch blocks the GO until
 > it has a disposition at this head. Rule one per finding: (a) **fix-here** — the

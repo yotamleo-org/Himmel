@@ -45,24 +45,25 @@ jobs:
         run: |
           npm ci --ignore-scripts
           npm run build
-      # The tests below read the built site/dist; any failing step stops the run before the upload.
-      - name: Run the docs-site build test
-        run: bash scripts/docs-site/test-site-build.sh
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version-file: .bun-version
-      - name: Check the UI's docs links against the built routes
-        run: bun test scripts/config-ui/tests/docs-routes.test.ts
+      # The build test's render check runs through this pinned Playwright, so it installs before that test.
       - name: Install the pinned Playwright and Chromium
         working-directory: scripts/config-ui/tests/e2e
         run: |
           bun install --frozen-lockfile --ignore-scripts
           ./node_modules/.bin/playwright install chromium
-      # The J1 spec lives beside the docs site and borrows config-ui's pinned @playwright/test through NODE_PATH.
-      - name: Run the J1 journey against astro preview
+      # The tests below read the built site/dist; any failing step stops the run before the upload.
+      - name: Run the docs-site build test
+        run: bash scripts/docs-site/test-site-build.sh
+      - name: Check the UI's docs links against the built routes
+        run: bun test scripts/config-ui/tests/docs-routes.test.ts
+      # The J1 spec and the render spec live beside the docs site and borrow config-ui's pinned @playwright/test through NODE_PATH.
+      - name: Run the J1 journey and the render check against astro preview
         env:
           NODE_PATH: ${{ github.workspace }}/scripts/config-ui/tests/e2e/node_modules
-        run: scripts/config-ui/tests/e2e/node_modules/.bin/playwright test -c scripts/docs-site/e2e/j1.config.ts scripts/docs-site/e2e/j1.e2e.ts
+        run: scripts/config-ui/tests/e2e/node_modules/.bin/playwright test -c scripts/docs-site/e2e/j1.config.ts scripts/docs-site/e2e/j1.e2e.ts scripts/docs-site/e2e/render.e2e.ts
       - name: Serve llms.txt at the site root
         run: |
           cp llms.txt site/dist/llms.txt

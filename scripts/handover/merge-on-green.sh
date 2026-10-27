@@ -193,7 +193,10 @@
 #       spaces needs run=<id>), or a chief fix-GO for that run
 #       (go.sh --fix-main-red). Also when the run list, the PR's
 #       commits or the red run's failed log cannot be read. No completed run at all is allowed (audited). The message
-#       names the run and the commit range it covered. After the trust-path
+#       names the run and the commit range it covered. A red whose every failed
+#       suite hit the runner's cap with its assertions passing, in suites the
+#       PR's diff does not reach, passes with `main-red: cap-only (<suites>)`;
+#       any other class is refused with `main-red: <class> (<suites>)`. After the trust-path
 #       gate, before any mutation, on --dry-run too.
 #   23  plugin-bump recheck: the PR changes a file under
 #       marketplace/plugins/ and `check-plugin-drift.sh --bump-required`, run
@@ -1177,6 +1180,10 @@ esac
 # state, so this reads main's CI directly: the newest run of the CI workflow
 # on the default branch that has COMPLETED, skipping cancelled/skipped ones (a
 # superseded run says nothing about main) and falling back to the next older.
+# A run that is not completed but is on attempt 2+ is a RE-RUN (it keeps its
+# run id): its previous attempt is read with `gh run view --attempt`, so a red
+# run being re-run still counts as red; an unreadable attempt refuses with
+# `main-pending`. A fresh first-attempt run in progress is skipped, as before.
 # Since main CI is a cron/dispatch sweep, not a per-push run, so
 # that run covers a RANGE of commits: the refusal names it (the run behind it
 # in the list is the previous sweep's head).
@@ -1191,7 +1198,14 @@ esac
 #     fragment — or, when it ends in .sh, appear on a `##[error]` line). The
 #     line is read from the commit subject or body.
 #     Verified against the run, never trusted: an unrelated name is refused.
-#   - red and undeclared, or the run list / commits / log unreadable → exit 22.
+#     After the merge, main_recheck_dispatch queues one `ci.yml` run on the
+#     default branch (also after a fix-GO) and prints `MAIN-RECHECK dispatched
+#     run=<id>`; a failed dispatch is a WARN, never a failed merge.
+#   - red and undeclared: the failed log is classified (main_red_classify). A cap-only
+#     red (every failed suite hit the runner's cap with assertions passing, in
+#     suites the PR does not reach) proceeds, audited `via=cap-only`; an assertion
+#     failure, a reached suite or an unclassifiable log → exit 22.
+#   - the run list / commits / log unreadable → exit 22.
 #   - no completed non-cancelled run in the window at all → DECIDED: nothing
 #     red was observed, so proceed and audit `main-red=no-completed-run` —
 #     unless the list hit its --limit 50 cap, which proves nothing → exit 22.
@@ -1209,22 +1223,142 @@ main_red_refuse() {
     audit "REFUSED reason=main-red repo=$nwo pr=#$pr_num sha=$sha $2"
     exit 22
 }
+# main_red_classify — sorts an undeclared red run by its failed log (`gh run view
+# --log-failed`): the `Failed suites:` block each shell-unit shard job prints, one
+# `  <suite> (...)` line per suite. Sets mr_cls and mr_list (comma-joined suites):
+#   cap-only      every failed suite hit the runner's watchdog at its cap with its
+#                 assertions passing, every failed job is a shell-unit job, every
+#                 shard failed only through the runner (its Failed-suites rows, then
+#                 scripts/ci/home-canary.sh's `home-canary: FAIL runner exited rc=1`),
+#                 no job failed in more than one step, the rollup job failed only
+#                 in its shard-result step, and every job of the run that did not
+#                 succeed or skip has lines in the failed log (`gh run view --json
+#                 jobs` is the cross-check)
+#   assertion    a failed suite exited non-zero, or hit its cap without its
+#                 assertions passing
+#   unclassified  the log is unreadable, names no failed suite, a failed job is not a
+#                 shell-unit job or a shard that has no rows or no runner exit line
+#                 (died before any suite ran, stopped on its budget), a Failed-suites
+#                 line the row pattern cannot parse, or any other `home-canary: FAIL`
+#                 (a honeytoken leak or read, a timeout, atime not tracked), a job that
+#                 failed in more than one step, a rollup job that failed in another
+#                 step, the runner's `ERROR: run budget` or `STOPPED:` line, or a job
+#                 that was queued, cancelled or timed out with no failed-log lines
+#                 (or a jobs list that cannot be read)
+# A cap-only red passes (mr_ok=cap-only) only when none of the capped suites is
+# reached by the PR's diff, per scripts/cr/impacted-suites.sh over the fetched base
+# tip and PR head (private refs, deleted again); a reached suite is cap-overlap and
+# a diff that cannot be computed is cap-unverified, both refused.
+# ponytail: the selector is text references and source/import closures, so a suite
+# that reaches a changed file another way is not seen; upgrade path is the
+# selector's own miss ledger (--selector-miss).
+main_red_classify() {
+    mr_cls="" mr_list=""
+    if [ "$mr_log_rc" -lt 0 ]; then
+        mr_log_rc=0
+        mr_log=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed) || mr_log_rc=$?
+    fi
+    if [ "$mr_log_rc" -ne 0 ]; then mr_cls=unclassified; return 0; fi
+    local mr_res mr_bad
+    mr_bad=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --json jobs \
+        --jq '.jobs[] | select((.conclusion == "success" or .conclusion == "skipped") | not) | .name') || { mr_cls=unclassified; return 0; }
+    mr_res=$(printf '%s\n' "$mr_log" | MR_BAD="$mr_bad" awk -F'\t' '
+        BEGIN { nrj = split(ENVIRON["MR_BAD"], rjob, "\n") }
+        { job = $1; msg = $0
+          sub(/^[^\t]*\t[^\t]*\t/, "", msg); sub(/\r$/, "", msg); sub(/^[0-9][0-9T:.Z-]* /, "", msg)
+          if (!(job in seen)) { seen[job] = 1; jobs[++nj] = job }
+          if (job ~ /^shell-unit \(/ && $2 != "Every gating shell-unit shard must have passed") odd[job] = 1
+          if (!(job in step1)) step1[job] = $2
+          else if ($2 != step1[job]) odd[job] = 1
+          if (msg ~ /^ERROR: run budget/ || msg ~ /^STOPPED:/) odd[job] = 1
+          if (msg == "Failed suites:") { open[job] = 1; next }
+          if (open[job]) {
+              if (msg ~ /^  [^ ]+\.sh \(.*\)$/) {
+                  s = msg; sub(/^  /, "", s); sub(/ \(.*$/, "", s)
+                  n[job]++
+                  if (index(msg, "(CAP EXCEEDED after ") == 0) k = "fail"
+                  else if (msg ~ /assertions passing\)$/) k = "cap"
+                  else k = "capfail"
+                  if (!(s in kind)) { order[++ns] = s; kind[s] = k } else if (k != "cap") kind[s] = k
+                  next
+              }
+              if (msg != "Disposition order for a red suite:") odd[job] = 1
+              open[job] = 0
+              next
+          }
+          if (msg ~ /^home-canary: FAIL/) {
+              if (msg == "home-canary: FAIL runner exited rc=1") ran[job] = 1
+              else odd[job] = 1
+          } }
+        END {
+          if (nj == 0) { print "unclassified|"; exit }
+          bad = 0; cap = 0; other = 0; list = ""
+          for (i = 1; i <= ns; i++) {
+              list = list (i > 1 ? "," : "") order[i]
+              if (kind[order[i]] == "cap") cap++; else bad = 1
+          }
+          for (b = 1; b <= nrj; b++) if (rjob[b] != "" && !(rjob[b] in seen)) other = 1
+          for (j = 1; j <= nj; j++) {
+              if (jobs[j] !~ /^shell-unit(-shard)? \(/ || odd[jobs[j]]) other = 1
+              else if (jobs[j] ~ /^shell-unit-shard \(/ && (n[jobs[j]] == 0 || !ran[jobs[j]])) other = 1
+          }
+          print (bad ? "assertion" : (other || !cap) ? "unclassified" : "cap-only") "|" list
+        }') || { mr_cls=unclassified; return 0; }
+    mr_cls=${mr_res%%|*} mr_list=${mr_res#*|}
+    [ "$mr_cls" = cap-only ] || return 0
+    local mr_ns="refs/himmel-mog-mr/$pr_num" mr_b="" mr_h="" mr_imp="" mr_fetch_rc=0 mr_unsure="" mr_to="" mr_over="" mr_one
+    git -C "$himmel_repo" fetch --no-tags --quiet origin \
+        "+refs/heads/$default_branch:$mr_ns/base" "+refs/pull/$pr_num/head:$mr_ns/head" >/dev/null || mr_fetch_rc=$?
+    if [ "$mr_fetch_rc" -ne 0 ]; then
+        mr_unsure=1
+    else
+        mr_b=$(git -C "$himmel_repo" rev-parse --verify --quiet "$mr_ns/base^{commit}") || mr_b=""
+        mr_h=$(git -C "$himmel_repo" rev-parse --verify --quiet "$mr_ns/head^{commit}") || mr_h=""
+        if [ -z "$mr_b" ] || [ "$mr_h" != "$sha" ] || [ ! -f "$himmel_repo/scripts/cr/impacted-suites.sh" ]; then
+            mr_unsure=1
+        else
+            if command -v timeout >/dev/null 2>&1; then mr_to="timeout -k 10 120"
+            elif command -v gtimeout >/dev/null 2>&1; then mr_to="gtimeout -k 10 120"; fi
+            mr_imp=$(cd "$himmel_repo" && env -u GIT_DIR -u GIT_WORK_TREE -u GIT_INDEX_FILE \
+                ${mr_to:+$mr_to} bash "$himmel_repo/scripts/cr/impacted-suites.sh" "$mr_b..$mr_h" --shell) || mr_unsure=1
+        fi
+    fi
+    git -C "$himmel_repo" update-ref -d "$mr_ns/base" >/dev/null 2>&1 || true
+    git -C "$himmel_repo" update-ref -d "$mr_ns/head" >/dev/null 2>&1 || true
+    if [ -n "$mr_unsure" ]; then mr_cls=cap-unverified; return 0; fi
+    while IFS= read -r mr_one; do
+        [ -n "$mr_one" ] || continue
+        case $'\n'"$mr_imp"$'\n' in *$'\n'"$mr_one"$'\n'*) mr_over="${mr_over:+$mr_over,}$mr_one" ;; esac
+    done <<< "${mr_list//,/$'\n'}"
+    if [ -n "$mr_over" ]; then mr_cls=cap-overlap mr_list=$mr_over; return 0; fi
+    mr_ok=cap-only
+}
 mr_rc=0
 mr_rows=$("$GH" run list --repo "$nwo" --branch "$default_branch" --workflow CI --limit 50 \
-    --json databaseId,conclusion,status,event,headSha,createdAt \
-    --jq '.[] | "\(.databaseId)|\(.status)|\(.conclusion)|\(.event)|\(.headSha)"' 2>/dev/null) || mr_rc=$?
+    --json databaseId,conclusion,status,event,headSha,createdAt,attempt \
+    --jq '.[] | "\(.databaseId)|\(.status)|\(.conclusion)|\(.event)|\(.headSha)|\(.attempt // 1)"' 2>/dev/null) || mr_rc=$?
 [ "$mr_rc" -eq 0 ] || main_red_refuse "cannot read $nwo's $default_branch CI runs (gh run list exit $mr_rc), so main's state is unverified" "phase=run-list rc=$mr_rc"
-mr_run="" mr_conc="" mr_head="" mr_base="" mr_seen=0 mr_limit=50
-while IFS='|' read -r mr_id mr_status mr_c mr_ev mr_sha; do
+mr_run="" mr_conc="" mr_head="" mr_base="" mr_att="" mr_seen=0 mr_limit=50 mr_fix=0
+while IFS='|' read -r mr_id mr_status mr_c mr_ev mr_sha mr_attn; do
     [ -n "$mr_id" ] || continue
     mr_seen=$((mr_seen + 1))
     # `--branch main` also matches pull_request runs from a fork whose branch
     # is named main; only runs OF the default branch (push, cron, dispatch) count.
     case "$mr_ev" in schedule | workflow_dispatch | push) ;; *) continue ;; esac
-    [ "$mr_status" = completed ] || continue
+    mr_prev=""
+    if [ "$mr_status" != completed ]; then
+        # A re-run keeps the run id and bumps the attempt, so a run still in
+        # progress on attempt 2+ is a re-run of an attempt that already ended:
+        # that attempt, not an older green run, is what main looked like.
+        [ -z "$mr_run" ] || continue
+        case "$mr_attn" in "" | *[!0-9]* | 0 | 1) continue ;; esac
+        mr_prev=$((mr_attn - 1)) mr_prc=0
+        mr_c=$("$GH" run view "$mr_id" --repo "$nwo" --attempt "$mr_prev" --json conclusion --jq .conclusion) || mr_prc=$?
+        [ "$mr_prc" -eq 0 ] || main_red_refuse "main-pending: CI run $mr_id is being re-run and its previous attempt $mr_prev cannot be read (gh run view exit $mr_prc), so main's state is unverified" "run=$mr_id attempt=$mr_prev phase=attempt rc=$mr_prc"
+    fi
     case "$mr_c" in cancelled | skipped | null | "") continue ;; esac
     if [ -n "$mr_run" ]; then mr_base=$mr_sha; break; fi
-    mr_run=$mr_id mr_conc=$mr_c mr_head=$mr_sha
+    mr_run=$mr_id mr_conc=$mr_c mr_head=$mr_sha mr_att=$mr_prev
 done <<< "$mr_rows"
 if [ -z "$mr_run" ] && [ "$mr_seen" -ge "$mr_limit" ]; then
     main_red_refuse "the last $mr_seen $default_branch CI runs hold no completed non-cancelled run, so main's state is unverified" "phase=run-list seen=$mr_seen"
@@ -1234,6 +1368,8 @@ if [ -z "$mr_run" ]; then
 elif [ "$mr_conc" != success ]; then
     mr_range="${mr_base:0:12}..${mr_head:0:12}"
     [ -n "$mr_base" ] || mr_range="(previous run outside the listed window)..${mr_head:0:12}"
+    mr_what="main's latest completed CI run $mr_run is $mr_conc"
+    [ -z "$mr_att" ] || mr_what="main's CI run $mr_run is being re-run and its previous attempt $mr_att ended $mr_conc"
     mr_how="declare the fix with a commit-message line 'Fixes-main-red: run=$mr_run' (or 'suite=<a failed job name without spaces, or any .sh script named on an ##[error] line of its log>'; a job name with spaces needs run=<id>), or have the chief write a fix-GO: go.sh --fix-main-red $mr_run $pr_num $sha"
     mr_ok="" mr_log="" mr_log_rc=-1 mr_msgs="" mr_rc=0
     # The chief's fix-GO, for the current red run only.
@@ -1247,7 +1383,7 @@ elif [ "$mr_conc" != success ]; then
     else
         mr_msgs=$("$GH" pr view "$pr_num" --repo "$nwo" --json commits --jq '.commits[] | .messageHeadline, .messageBody' 2>/dev/null) || mr_rc=$?
     fi
-    [ "$mr_rc" -eq 0 ] || main_red_refuse "main's latest completed CI run $mr_run is $mr_conc (covers $mr_range) and the PR's commits are unreadable, so no fix declaration can be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range phase=commits"
+    [ "$mr_rc" -eq 0 ] || main_red_refuse "$mr_what (covers $mr_range) and the PR's commits are unreadable, so no fix declaration can be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att} phase=commits"
     while IFS= read -r mr_line; do
         mr_line=${mr_line%$'\r'}
         case "$mr_line" in "Fixes-main-red:"*) ;; *) continue ;; esac
@@ -1263,9 +1399,9 @@ elif [ "$mr_conc" != success ]; then
                 [ "${#mr_tok}" -ge 4 ] || continue
                 if [ "$mr_log_rc" -lt 0 ]; then
                     mr_log_rc=0
-                    mr_log=$("$GH" run view "$mr_run" --repo "$nwo" --log-failed 2>/dev/null) || mr_log_rc=$?
+                    mr_log=$("$GH" run view "$mr_run" --repo "$nwo" ${mr_att:+--attempt "$mr_att"} --log-failed 2>/dev/null) || mr_log_rc=$?
                 fi
-                [ "$mr_log_rc" -eq 0 ] || main_red_refuse "main's latest completed CI run $mr_run is $mr_conc (covers $mr_range) and its failed log is unreadable, so the declared suite $mr_tok cannot be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range phase=run-log"
+                [ "$mr_log_rc" -eq 0 ] || main_red_refuse "$mr_what (covers $mr_range) and its failed log is unreadable, so the declared suite $mr_tok cannot be verified" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att} phase=run-log"
                 if printf '%s\n' "$mr_log" | awk -F'\t' -v t="$mr_tok" '
                         $1 == t || (index($1, t) == 1 && substr($1, length(t) + 1, 2) == " (") { f = 1 }
                         t ~ /\.sh$/ && index($0, "##[error]") && (p = index($0, t)) > 0 &&
@@ -1276,8 +1412,17 @@ elif [ "$mr_conc" != success ]; then
                 fi ;;
         esac
     done <<< "$mr_msgs"
-    [ -n "$mr_ok" ] || main_red_refuse "main's latest completed CI run $mr_run is $mr_conc, covering commits $mr_range, and PR #$pr_num does not declare itself the fix — $mr_how; merge the fix first, or wait for the next green sweep" "run=$mr_run conclusion=$mr_conc range=$mr_range"
-    audit "MAIN-RED main-red-declared repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=$mr_ok"
+    mr_cls="" mr_list=""
+    [ -n "$mr_ok" ] || main_red_classify
+    if [ "$mr_ok" = cap-only ]; then
+        echo "main-red: cap-only (${mr_list//,/, }) — passes: the red is runner-watchdog cap timeouts with assertions passing, in suites PR #$pr_num does not reach" >&2
+        audit "MAIN-RED main-red-cap-only repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=cap-only suites=$mr_list${mr_att:+ attempt=$mr_att}"
+    else
+        [ -z "$mr_cls" ] || echo "main-red: $mr_cls (${mr_list//,/, })" >&2
+        [ -n "$mr_ok" ] || main_red_refuse "$mr_what, covering commits $mr_range, and PR #$pr_num does not declare itself the fix — $mr_how; merge the fix first, or wait for the next green sweep" "run=$mr_run conclusion=$mr_conc range=$mr_range${mr_att:+ attempt=$mr_att}${mr_cls:+ class=$mr_cls}"
+        audit "MAIN-RED main-red-declared repo=$nwo pr=#$pr_num sha=$sha run=$mr_run conclusion=$mr_conc range=$mr_range via=$mr_ok${mr_att:+ attempt=$mr_att}"
+        mr_fix=1
+    fi
 fi
 
 # PLUGIN-BUMP RECHECK GATE — CI's plugin-version-bump job went
@@ -2486,6 +2631,36 @@ jira_auto_transition_on_merge() {
     return 0
 }
 
+# main_recheck_dispatch <nwo> <base> — after a merge that passed the main-red
+# gate as the declared fix, queue one CI run on the base. ci.yml has no push
+# trigger, so without this the fix is first judged by the next scheduled sweep.
+# The new run is the first workflow_dispatch run above the newest one listed
+# before the dispatch (no clock comparison); its id is `unknown` when that list
+# cannot be read or shows no new run within the poll. A failed dispatch is a
+# WARN and an audit line, never a failed merge: this always returns 0.
+main_recheck_dispatch() {
+    local mc_nwo="$1" mc_base="$2" mc_before="" mc_new="" mc_out mc_rc=0 mc_try=0 mc_max=5
+    mc_before=$("$GH" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
+        --json databaseId --jq '[.[].databaseId] | max // 0') || mc_before=""
+    case "$mc_before" in "" | *[!0-9]*) mc_before="" ;; esac
+    mc_out=$("$GH" workflow run ci.yml --repo "$mc_nwo" --ref "$mc_base" 2>&1) || mc_rc=$?
+    if [ "$mc_rc" -ne 0 ]; then
+        echo "merge-on-green: WARN: MAIN-RECHECK dispatch failed (gh exit $mc_rc): ${mc_out:-<no output>} — the next scheduled CI run re-checks $mc_base" >&2
+        audit "MAIN-RECHECK dispatch-failed repo=$mc_nwo base=$mc_base rc=$mc_rc"
+        return 0
+    fi
+    while [ -n "$mc_before" ] && [ -z "$mc_new" ] && [ "$mc_try" -lt "$mc_max" ]; do
+        mc_new=$("$GH" run list --repo "$mc_nwo" --branch "$mc_base" --workflow CI --event workflow_dispatch --limit 5 \
+            --json databaseId --jq "[.[].databaseId | select(. > $mc_before)] | max // empty") || mc_new=""
+        case "$mc_new" in *[!0-9]*) mc_new="" ;; esac
+        mc_try=$((mc_try + 1))
+        [ -n "$mc_new" ] || [ "$mc_try" -ge "$mc_max" ] || "$MERGE_ON_GREEN_SLEEP_CMD" 2
+    done
+    audit "MAIN-RECHECK dispatched run=${mc_new:-unknown} repo=$mc_nwo base=$mc_base"
+    echo "merge-on-green: MAIN-RECHECK dispatched run=${mc_new:-unknown} (ci.yml on $mc_base, to re-judge main at the fix)"
+    return 0
+}
+
 # The merge is pinned to the same resolved identity. No --delete-branch:
 # every branch here is worktree-held, so gh's local-branch
 # delete failed on every real merge and turned a landed merge into a
@@ -2557,6 +2732,7 @@ if [ "$merge_rc" -ne 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 gh-exit=$merge_rc prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash); MERGED at the certified sha/base although gh exited $merge_rc: ${merge_out:-<no output>}"
+        [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         exit 0
     fi
     if [ "$post_state" = "OPEN" ]; then
@@ -2631,6 +2807,7 @@ if [ "$merge_rc" -eq 0 ]; then
         jira_auto_transition_on_merge "$nwo" "$pr_num" "$sha"
         audit "MERGED repo=$nwo pr=#$pr_num sha=$sha gate=check-ci:0 prune=$PRUNE_RESULT branch=$PRUNE_BRANCH marker=$MARKER_RESULT after-report=$AFTER_REPORT_RESULT cr=$CR_STATE jira-transition=$JIRA_AUTO_TRANSITION_RESULT$SOLO_TAG"
         echo "merge-on-green: merged PR #$pr_num @ $sha (repo $nwo, squash). ${merge_out:-}"
+        [ "$mr_fix" -eq 0 ] || main_recheck_dispatch "$nwo" "$default_branch"
         exit 0
     fi
     echo "merge-on-green: gh accepted the merge but PR #$pr_num is '${final_state:-<unreadable>}' (not MERGED) after polling — refusing to report an unconfirmed merge. Check the PR; do NOT retry via a different command path." >&2

@@ -222,6 +222,16 @@ It is lean-invoke, not a hook, and changes nothing but that file. Tests:
   `change1.sh:15` (`(.agent_id | type) == "string"`), where flipping the one
   token under test changes the verdict.
 
+## Docs remarks — the docs-side counterpart
+
+Docs pages have their own learned bar: the operator's verbatim docs remarks, in
+`marketplace/plugins/himmel-ops/skills/docs-reviewer/remarks.tsv` (`id`, `state`
+candidate / active / retired, `rule`, `date`, `source`, `quote`). The
+`docs-reviewer` skill applies every active or candidate row by judgement, with
+no detector, and names the code change a finding implies. A new remark lands as
+a `candidate` row and becomes `active` once confirmed. Its frozen cases and held-out bars are
+in `scripts/eval/docs-review/`.
+
 ## Verdict labels: by-design vs disproved
 
 `disproved` (the ledger's grammar — `scripts/cr/write-verdicts.sh`) means the
