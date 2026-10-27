@@ -48,6 +48,9 @@ python3 "$tool" harvest --rules "$td/mal.tsv" --remarks-file "$td/mal-in.tsv" --
 check "harvest: a malformed remarks line exits 1" "$?" 1
 has "harvest: it names the file and line" "$td/mal.out" 'mal-in.tsv:2'
 check "harvest: a malformed file writes nothing" "$(grep -c . "$td/mal.tsv")" 3
+printf '\t\ta remark with no date or source\n' >"$td/mal-in.tsv"
+python3 "$tool" harvest --rules "$td/mal.tsv" --remarks-file "$td/mal-in.tsv" --write >"$td/mal.out" 2>&1
+check "harvest: a remark with no date or source exits 1" "$?" 1
 
 rules "$td/dry.tsv"
 python3 "$tool" harvest --rules "$td/dry.tsv" --remarks-file "$td/chief.tsv" >"$td/dry.out" 2>&1

@@ -95,7 +95,7 @@ def from_file(path):
             if not l.strip() or l.startswith("#"):
                 continue
             parts = l.rstrip("\n").split("\t", 2)
-            if len(parts) != 3 or not parts[2].strip():
+            if len(parts) != 3 or not all(p.strip() for p in parts):
                 raise ValueError(f"{path}:{n}: not date<TAB>source<TAB>quote")
             yield parts[0], parts[1], parts[2]
 
