@@ -95,14 +95,17 @@ mkdir -p "$TMP/fxempty"; : >"$TMP/fxempty/runs.jsonl"; cp "$FX"/*.judge-packet.m
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$TMP/fxempty" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/empty.err"; rc=$?
 check "an empty runs.jsonl is refused before any call" '[ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/empty.err" && [ ! -s "$TMP/fake.log" ]'
-mkdir -p "$TMP/fxnomodel"; cp "$FX"/*.judge-packet.md "$TMP/fxnomodel/"
-# one run with no model and one with an empty model, beside four named runs
-jq -c 'if .task == "t1" then del(.model) elif .task == "t2" then .model = "" else . end' "$FX/runs.jsonl" >"$TMP/fxnomodel/runs.jsonl"
-# shellcheck disable=SC2034  # jqrc is read by check's eval
-jqrc=$?
-: >"$TMP/fake.log"
-bash "$RUN" calibration "$TMP/fxnomodel" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/nomodel.err"; rc=$?
-check "a run that names no model under test is refused before any call" '[ "$jqrc" -eq 0 ] && [ "$(jq -s "[.[] | select((.model // \"\") == \"\")] | length" "$TMP/fxnomodel/runs.jsonl")" -eq 2 ] && [ "$(wc -l <"$TMP/fxnomodel/runs.jsonl")" -eq 6 ] && [ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/nomodel.err" && [ ! -s "$TMP/fake.log" ]'
+# each fixture has one bad run beside five named ones: a missing model, then an empty one
+for kind in missing empty; do
+  if [ "$kind" = missing ]; then f='if .task == "t1" then del(.model) else . end'; else f='if .task == "t1" then .model = "" else . end'; fi
+  mkdir -p "$TMP/fx$kind-model"; cp "$FX"/*.judge-packet.md "$TMP/fx$kind-model/"
+  jq -c "$f" "$FX/runs.jsonl" >"$TMP/fx$kind-model/runs.jsonl"
+  # shellcheck disable=SC2034  # jqrc is read by check's eval
+  jqrc=$?
+  : >"$TMP/fake.log"
+  bash "$RUN" calibration "$TMP/fx$kind-model" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/$kind-model.err"; rc=$?
+  check "a run whose model under test is $kind is refused before any call" '[ "$jqrc" -eq 0 ] && [ "$(jq -s "[.[] | select((.model // \"\") == \"\")] | length" "$TMP/fx$kind-model/runs.jsonl")" -eq 1 ] && [ "$(wc -l <"$TMP/fx$kind-model/runs.jsonl")" -eq 6 ] && [ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/$kind-model.err" && [ ! -s "$TMP/fake.log" ]'
+done
 
 echo "2. Cohen's kappa on the per-run verdict"
 : >"$TMP/fake.log"; : >"$TMP/fake.log.lane"; : >"$TMP/fake.log.or"
