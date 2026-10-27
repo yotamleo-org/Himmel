@@ -94,7 +94,7 @@ check "an unmapped openrouter slug's vendor is its maker prefix" '[ "$(python3 "
 mkdir -p "$TMP/fxempty"; : >"$TMP/fxempty/runs.jsonl"; cp "$FX"/*.judge-packet.md "$TMP/fxempty/"
 : >"$TMP/fake.log"
 bash "$RUN" calibration "$TMP/fxempty" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/empty.err"; rc=$?
-check "an empty runs.jsonl is refused before any call" '[ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/empty.err" && [ ! -s "$TMP/fake.log" ]'
+check "an empty runs.jsonl is refused before any call" '[ "$(find "$TMP/fxempty" -name "*.judge-packet.md" | wc -l)" -eq 6 ] && [ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/empty.err" && [ ! -s "$TMP/fake.log" ]'
 # each fixture has one bad run beside five named ones: a missing model, then an empty one
 for kind in missing empty; do
   if [ "$kind" = missing ]; then f='if .task == "t1" then del(.model) else . end'; else f='if .task == "t1" then .model = "" else . end'; fi
@@ -104,7 +104,7 @@ for kind in missing empty; do
   jqrc=$?
   : >"$TMP/fake.log"
   bash "$RUN" calibration "$TMP/fx$kind-model" "${G1[@]}" "${G2[@]}" --json --no-ledger >/dev/null 2>"$TMP/$kind-model.err"; rc=$?
-  check "a run whose model under test is $kind is refused before any call" '[ "$jqrc" -eq 0 ] && [ "$(jq -s "[.[] | select((.model // \"\") == \"\")] | length" "$TMP/fx$kind-model/runs.jsonl")" -eq 1 ] && [ "$(wc -l <"$TMP/fx$kind-model/runs.jsonl")" -eq 6 ] && [ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/$kind-model.err" && [ ! -s "$TMP/fake.log" ]'
+  check "a run whose model under test is $kind is refused before any call" '[ "$jqrc" -eq 0 ] && [ "$(find "$TMP/fx$kind-model" -name "*.judge-packet.md" | wc -l)" -eq 6 ] && [ "$(jq -s "[.[] | select((.model // \"\") == \"\")] | length" "$TMP/fx$kind-model/runs.jsonl")" -eq 1 ] && [ "$(wc -l <"$TMP/fx$kind-model/runs.jsonl")" -eq 6 ] && [ "$rc" -eq 64 ] && grep -qF "no model under test" "$TMP/$kind-model.err" && [ ! -s "$TMP/fake.log" ]'
 done
 
 echo "2. Cohen's kappa on the per-run verdict"
