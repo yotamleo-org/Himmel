@@ -731,8 +731,8 @@ class VM:
     def provision(self):
         self._require_vm("provision")
         if self.os != "ubuntu":
-            raise VMError(f"provision on windows guest {self.name} is unsupported: "
-                          "no windows provisioner exists")
+            raise VMError(f"provision on {self.os} guest {self.name} is unsupported: "
+                          "provisioning supports only ubuntu guests")
         root = _repo_root()
         env = {**os.environ, "PYTHONUTF8": "1"}
         argv = [sys.executable, str(root / "scripts/machine-setup/ubuntu-vm-setup.py"),

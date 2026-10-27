@@ -675,7 +675,8 @@ class TestProvisionE2E(unittest.TestCase):
         with mock.patch.object(vmsdk.subprocess, "run") as sr:
             with self.assertRaises(vmsdk.VMError) as cm:
                 vm.provision()
-        self.assertIn("windows", str(cm.exception).lower())
+        self.assertIn(f"on {vm.os} guest", str(cm.exception))
+        self.assertIn("only ubuntu", str(cm.exception))
         sr.assert_not_called()
 
     def test_run_e2e_ubuntu_passes_user_at_localhost(self):
