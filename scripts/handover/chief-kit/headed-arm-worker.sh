@@ -1099,10 +1099,14 @@ case "$_worker_rcwd" in
     if [ -z "${WORKER_SESSION_REPO:-}" ] && [ -z "${HEADED_ARM_REPO:-}" ] && [ "$CONSULT" -ne 1 ]; then
         _worker_rc_common="$(git_clean -C "$_worker_rcwd" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_rc_common="" # swallow-ok: empty means no registry match, the launch keeps the harness cwd
         _worker_self_common="$(git_clean -C "$HERE" rev-parse --path-format=absolute --git-common-dir 2>/dev/null)" || _worker_self_common="" # swallow-ok: empty leaves the harness cwd rule to the registry match alone
+        # ponytail: a repo with a separate git dir (git init --separate-git-dir) has no <checkout>/.git, so
+        # it is not matched and launches as before, upgrade path: match the registry paths by git common dir.
         if [ -n "$_worker_rc_common" ] && [ "$_worker_rc_common" != "$_worker_self_common" ] \
             && bash "$HERE/../register-state.sh" --check --repo-path "${_worker_rc_common%/.git}" >/dev/null 2>&1; then
             HEADED_ARM_REPO="$_worker_wt_phys"
             export HEADED_ARM_REPO
+            # headed-arm.sh passes DOC to the session as written and starts it in the new cwd
+            case "$DOC" in /*) ;; *) DOC="$PWD/$DOC" ;; esac
         fi
         unset -v _worker_rc_common _worker_self_common
     fi

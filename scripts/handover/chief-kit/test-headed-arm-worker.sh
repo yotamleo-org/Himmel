@@ -4834,11 +4834,13 @@ rc=0
 HANDOVER_REGISTRY="$reg47_none" RUN_WORKER_ARGS=--no-profile run_worker "$d47b" "" "HIMMEL-47-unreg" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d47b" || true
 check "47b an unregistered repo's worktree launch: exit 0" "$rc" "0"
+contains "47b an unregistered repo's launch still recorded a session cwd" "$(cat "$d47b/record" 2>/dev/null || true)" "--workdir "
 not_contains "47b an unregistered repo's worktree is not taken as the cwd" "$(cat "$d47b/record" 2>/dev/null || true)" "--workdir $wt47"
 d47c="$tmp/c47c"; mk_launch_stubs "$d47c" "HIMMEL-47-explicit"; mkdir -p "$tmp/repo47c"
 rc=0
 HANDOVER_REGISTRY="$reg47" RUN_WORKER_ARGS=--no-profile run_worker "$d47c" "$tmp/repo47c" "HIMMEL-47-explicit" "claude-sonnet-5" >/dev/null 2>&1 || rc=$?
 wait_record "$d47c" || true
+check "47c an explicit WORKER_SESSION_REPO launch: exit 0" "$rc" "0"
 contains "47c an explicit WORKER_SESSION_REPO still wins" "$(cat "$d47c/record" 2>/dev/null || true)" "--workdir $tmp/repo47c"
 some_doc="$some_doc_47"
 
