@@ -547,6 +547,7 @@ scripts/himmelctl/test/test-wizard-bootstrap.sh	0
 scripts/himmelctl/test/test-wizard-cadence-per-unit.sh	2
 scripts/himmelctl/test/test-wizard-cadence-registry.sh	0
 scripts/himmelctl/test/test-wizard-commit-rules.sh	2
+scripts/himmelctl/test/test-wizard-himmel-conf.sh	1
 scripts/himmelctl/test/test-wizard-config.sh	3
 scripts/himmelctl/test/test-wizard-contributor-profile.sh	2
 scripts/himmelctl/test/test-wizard-deps-lint.sh	1

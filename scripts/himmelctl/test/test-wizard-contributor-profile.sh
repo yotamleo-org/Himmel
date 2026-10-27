@@ -90,7 +90,7 @@ snapshot_real_bin() {
 # the list spans platforms, and `command -v` reports a SHELL BUILTIN for names
 # like printf (bare "printf", not a path) — linking that would plant a dangling
 # symlink that any non-bash execve of printf would then trip over.
-HERMETIC_COREUTILS=(uname dirname basename mkdir chmod cat cp rm ls sed grep
+HERMETIC_COREUTILS=(uname dirname basename mkdir chmod cat cp rm ls sed grep awk
                     mktemp env sort head tail tr wc find date printf sha256sum)
 
 # True when <stub>/<tool> was already planted, so linking is a no-op.
