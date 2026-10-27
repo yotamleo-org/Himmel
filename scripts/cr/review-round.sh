@@ -633,12 +633,13 @@ record_binds() {
     [ "${2#pr: }" = "$pr_want" ]
 }
 
-# pr_repo_nwo prints the owner/name of the repo the branch's PR lives in - the
-# origin remote of the current directory, the way gh resolves the PR - when that
-# is not the harness's own repo (HIMMEL_ROOT's origin), so go_verdict_scope reads
-# an adopter's bucket (write-verdict.sh --repo writes it). Prints nothing for the
-# harness's own repo or an origin it cannot read as owner/name: that is today's
-# one-argument scope.
+# pr_repo_nwo prints the owner/name of the origin remote of the current
+# directory, taken as the repo the branch's PR lives in, when that is not the
+# harness's own repo (HIMMEL_ROOT's origin), so go_verdict_scope reads an
+# adopter's bucket (write-verdict.sh --repo writes it). gh does not always
+# resolve the PR against origin (a gh default repo, an upstream remote); this
+# does not follow it. Prints nothing for the harness's own repo or an origin it
+# cannot read as owner/name: that is today's one-argument scope.
 pr_repo_nwo() {
     local LC_ALL=C pr_nwo own_nwo
     pr_nwo="$(_origin_nwo .)" && [ -n "$pr_nwo" ] || return 0

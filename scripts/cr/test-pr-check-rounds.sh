@@ -3074,6 +3074,61 @@ assert_eq "$jgo_vrc" "1" "7828 (d) a harness PR does not take a GO from an adopt
 git -C "$repo" remote set-url origin "$jga_origin"
 git -C "$repo" checkout -q jg63c
 if [ -n "$jga_fx_origin" ]; then git -C "$fx" remote set-url origin "$jga_fx_origin"; else git -C "$fx" remote remove origin; fi
+# The delta-round NO-GO record and the scope-round record read the same bucket:
+# an adopter PR takes its round from a record written with --repo, and does not
+# take one from the harness bucket.
+jga_url=https://github.com/yotamleo-org/himmel-voice.git
+# An earlier row left a failing check-run exported, which would buy a CI-red
+# round by itself; these rows must be bought by the record alone.
+cired_rows 'completed\tsuccess\tlint\n'
+jna_rec() {  # <qid> <word> <head> [--repo <owner/name>]
+    env -u HIMMEL_CONSOLE_LEG -u HIMMEL_CONSOLE_RELAY CLAUDE_CODE_SESSION_ID=judge-sess-7828 \
+        bash "$fx/scripts/handover/chief-kit/write-verdict.sh" "$1" "$2" "$3" \
+        --pr 1 ${4:+"$4" "$5"} --evidence-file "$jev/judge-evidence.md" \
+        >/dev/null 2>"$tmp/judge-$1.err" || fail "judge writes $1"
+}
+three_rounds jn7828a clean
+jna_ra="$cap_r3_head"
+fix_commit jn7828a
+jna_fa="$cap_fix_head"
+jna_rec jna-1 NO-GO "$jna_ra" --repo yotamleo-org/himmel-voice
+three_rounds jn7828b clean
+jna_rb="$cap_r3_head"
+fix_commit jn7828b
+jna_fb="$cap_fix_head"
+jna_rec jna-2 NO-GO "$jna_rb"
+git -C "$repo" remote set-url origin "$jga_url"
+git -C "$repo" checkout -q jn7828a
+jna_out="$(cd "$repo" && bash "$RR" start --branch jn7828a --head "$jna_fa" 2>&1)"; jna_rc=$?
+assert_eq "$jna_rc" "0" "7828 (e) a NO-GO written with --repo enables the delta round of a PR on that adopter repo ($jna_out)"
+assert_has "$jna_out" "4 delta $jna_ra" "7828 (e) the delta round is granted from the adopter record"
+git -C "$repo" checkout -q jn7828b
+jna_out="$(cd "$repo" && bash "$RR" start --branch jn7828b --head "$jna_fb" 2>&1)"; jna_rc=$?
+assert_eq "$jna_rc" "8" "7828 (f) an adopter PR gets no delta round from a harness-bucket NO-GO ($jna_out)"
+git -C "$repo" remote set-url origin "$jga_origin"
+three_rounds sc7828a clean
+jna_sra="$cap_r3_head"
+scope_commit sc7828a tests/test-sc7828a.sh
+jna_sa="$scope_head"
+three_rounds sc7828b clean
+jna_srb="$cap_r3_head"
+scope_commit sc7828b tests/test-sc7828b.sh
+jna_sb="$scope_head"
+printf 'delta-scope: test-only\ndelta-from: %s\n\nthe delta changes no production path\n' "$jna_sra" > "$jev/judge-evidence.md"
+jna_rec jna-3 GO "$jna_sa" --repo yotamleo-org/himmel-voice
+printf 'delta-scope: test-only\ndelta-from: %s\n\nthe delta changes no production path\n' "$jna_srb" > "$jev/judge-evidence.md"
+jna_rec jna-4 GO "$jna_sb"
+printf 'class: other\nclass-reason: judge-go fixture\n\nreviewed the delta\n' > "$jev/judge-evidence.md"
+git -C "$repo" remote set-url origin "$jga_url"
+git -C "$repo" checkout -q sc7828a
+jna_out="$(cd "$repo" && bash "$RR" start --branch sc7828a --head "$jna_sa" 2>&1)"; jna_rc=$?
+assert_eq "$jna_rc" "0" "7828 (g) a scope record written with --repo admits the scope round of a PR on that adopter repo ($jna_out)"
+assert_has "$jna_out" "4 delta $jna_sra" "7828 (g) the scope round is granted from the adopter record"
+git -C "$repo" checkout -q sc7828b
+jna_out="$(cd "$repo" && bash "$RR" start --branch sc7828b --head "$jna_sb" 2>&1)"; jna_rc=$?
+assert_eq "$jna_rc" "8" "7828 (h) an adopter PR gets no scope round from a harness-bucket record ($jna_out)"
+git -C "$repo" remote set-url origin "$jga_origin"
+git -C "$repo" checkout -q jg63c
 # A GO that only the record checks can refuse: each case has a reviewed head
 # below the delta and a GO at the delta, so a deleted check accepts it.
 jgo_rec() {
