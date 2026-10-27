@@ -135,6 +135,23 @@ _load_dotenv_envfile() {
 }
 
 load_dotenv() {
+    # A policy key absent on entry is checked against the project file once
+    # every layer has run, so this reader agrees with load_policy.
+    local _ldp_key _ldp_pol=() _ldp_first=1
+    [ "${1:-}" = "--root" ] && _ldp_first=3
+    for _ldp_key in "${@:$_ldp_first}"; do
+        if [ "$(_himmel_key_class "$_ldp_key")" = policy ] && [ -z "${!_ldp_key:-}" ]; then
+            _ldp_pol[${#_ldp_pol[@]}]="$_ldp_key"
+        fi
+    done
+    _load_dotenv_layers "$@"
+    if [ "${#_ldp_pol[@]}" -gt 0 ]; then
+        _himmel_project_tighten "${_ldp_pol[@]}" || true
+    fi
+    return 0
+}
+
+_load_dotenv_layers() {
     local _ld_root=""
     if [ "${1:-}" = "--root" ]; then
         _ld_root="$2"; shift 2
@@ -349,12 +366,14 @@ _load_dotenv_extract() {
 # .env (layer table: docs/internals/config-layers.md). They live in this file,
 # not a sibling, so every copy of the loader carries load_policy.
 #
-#   behaviour keys  ~/.himmel/himmel.conf.local > ~/.himmel/himmel.conf
-#                   (KEY=value, parsed, never sourced). load_dotenv reads them
-#                   with the process env still winning.
+#   behaviour keys  <repo>/.himmel/project.conf > ~/.himmel/himmel.conf.local
+#                   > ~/.himmel/himmel.conf (KEY=value, parsed, never
+#                   sourced). load_dotenv reads them with the process env
+#                   still winning.
 #   policy keys     ~/.himmel/config.json .policy, the operator-owned file a
 #                   guard keeps agents from writing. load_policy, the gate
-#                   reader, IGNORES the process env for them.
+#                   reader, IGNORES the process env for them. The project
+#                   file can only make one stricter (_himmel_project_tighten).
 #   secret keys     scripts/lib/himmel-secrets ($CREDENTIALS_DIRECTORY, then
 #                   the OS keyring), then .env with a DEPRECATED notice. Never
 #                   read from either file above.
@@ -398,6 +417,60 @@ _himmel_config_dir() {
 # redirect what load_policy and the policy layer read.
 _himmel_policy_dir() {
     printf '%s' "$HOME/.himmel"
+}
+
+# The per-project override: .himmel/project.conf in the primary checkout of
+# the repo the caller runs in, so a worktree reads its primary's file. It is
+# resolved from the working directory even under --root, which callers pin to
+# the himmel checkout. Prints nothing outside a git repo.
+_himmel_project_conf() {
+    local _pc_common _pc_root
+    _pc_common=$(git rev-parse --git-common-dir 2>/dev/null) || return 0
+    [ -n "$_pc_common" ] || return 0
+    _pc_root=$(cd "$_pc_common/.." 2>/dev/null && pwd) || return 0
+    printf '%s/.himmel/project.conf' "$_pc_root"
+}
+
+# _himmel_policy_strict KEY VALUE — 1 when VALUE is the strict side of the
+# gate KEY controls, 0 when it is the loose side, nothing for a key with no
+# known order. Normalised as the gates read it: trimmed, case-insensitive.
+_himmel_policy_strict() {
+    local _ps_v
+    _ps_v=$(_load_dotenv_trim "$(printf '%s' "$2" | tr '[:upper:]' '[:lower:]')")
+    case "$1" in
+        CR_REQUIRE_CROSS_MODEL)
+            case "$_ps_v" in 1|true|on|yes) printf 1 ;; *) printf 0 ;; esac ;;
+        CR_FLOOR_FALLBACK)
+            case "$_ps_v" in claude-only) printf 0 ;; *) printf 1 ;; esac ;;
+        ARMAUTOMERGE)
+            case "$_ps_v" in 1|true|on|yes) printf 0 ;; *) printf 1 ;; esac ;;
+    esac
+}
+
+# _himmel_project_tighten KEY... — for each policy key the project file sets,
+# export its value when it is stricter than the one already resolved; a looser
+# or unordered value is ignored with one notice. Returns non-zero when the
+# file exists but cannot be read, so a gate fails closed.
+_himmel_project_tighten() {
+    local _pt_file _pt_line _pt_key _pt_val _pt_new _pt_cur
+    _pt_file=$(_himmel_project_conf)
+    [ -n "$_pt_file" ] && [ -e "$_pt_file" ] || return 0
+    if [ ! -r "$_pt_file" ]; then
+        printf 'himmel: %s exists but is unreadable; gate policy fails closed\n' "$_pt_file" >&2
+        return 1
+    fi
+    while IFS= read -r _pt_line || [ -n "$_pt_line" ]; do
+        _pt_key="${_pt_line%%=*}"
+        _pt_val=$(_load_dotenv_trim "${_pt_line#*=}")
+        _pt_new=$(_himmel_policy_strict "$_pt_key" "$_pt_val")
+        _pt_cur=$(_himmel_policy_strict "$_pt_key" "${!_pt_key-}")
+        if [ -n "$_pt_new" ] && [ "$_pt_new" -gt "$_pt_cur" ]; then
+            export "$_pt_key=$_pt_val"
+        elif [ -z "$_pt_new" ] || [ "$_pt_new" -lt "$_pt_cur" ]; then
+            printf 'himmel: ignoring %s from %s: a project file may only tighten gate policy, never loosen it\n' "$_pt_key" "$_pt_file" >&2
+        fi
+    done < <(_load_dotenv_extract "$_pt_file" "$@")
+    return 0
 }
 
 # One stderr line naming the keys (never their values) still read from .env.
@@ -461,8 +534,8 @@ _himmel_config_layers() {
         esac
     done
     if [ "${#_hc_cfg[@]}" -gt 0 ]; then
-        for _hc_file in "$_hc_dir/himmel.conf.local" "$_hc_dir/himmel.conf"; do
-            [ -f "$_hc_file" ] || continue
+        for _hc_file in "$(_himmel_project_conf)" "$_hc_dir/himmel.conf.local" "$_hc_dir/himmel.conf"; do
+            [ -n "$_hc_file" ] && [ -f "$_hc_file" ] || continue
             while IFS= read -r _hc_line || [ -n "$_hc_line" ]; do
                 _hc_key="${_hc_line%%=*}"
                 case "$_hc_found" in *" $_hc_key "*) continue ;; esac
@@ -481,7 +554,8 @@ _himmel_config_layers() {
 
 # load_policy [--root <dir>] KEY... — the gate reader for policy keys.
 # Order: ~/.himmel/config.json .policy, then legacy .env (deprecation
-# notice), then unset, which every gate treats as its safe default. The
+# notice), then unset, which every gate treats as its safe default; the
+# project file then replaces a value only with a stricter one. The
 # process env is never used: a value there is dropped, with a notice when it
 # differs from the resolved one. Returns non-zero when a file that exists
 # cannot be read, so the caller fails closed instead of using a default.
@@ -544,6 +618,8 @@ EOF
             fi
         fi
     fi
+
+    _himmel_project_tighten "${_lp_keys[@]}" || return 1
 
     _lp_i=0
     for _lp_key in "${_lp_keys[@]}"; do

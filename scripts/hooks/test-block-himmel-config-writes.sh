@@ -85,7 +85,7 @@ bash_case "redirect into the config -> block" block "echo '{\"graphify\":{\"salu
 # shellcheck disable=SC2016 # the literal $HOME spelling is the point
 bash_case "\$HOME spelling redirect -> block" block 'echo x > $HOME/.himmel/config.json'
 bash_case "tilde spelling append -> block" block 'echo x >> ~/.himmel/config.json'
-bash_case "sed -i -> block" block "sed -i 's/false/true/' $CFG"
+bash_case "sed -i -> block" block "sed -i 's/false/true/' $CFG"  # gnu-ok: a payload string fed to the hook, never run
 bash_case "jq redirect over the config -> block" block "jq '.graphify.salus_ollama_cloud_ok=true' $CFG > $T/x"
 bash_case "cp onto the config -> block" block "cp $T/x $CFG"
 bash_case "ln -s onto the config -> block" block "ln -s $T/x $CFG"
@@ -278,6 +278,23 @@ big_case "7.5 KB alternating space/NBSP padded header -> block inside the time b
 big_case "short alternating-padded header (80 chars, base allows) -> block" block "$T/ppad-small.txt"
 { printf '*** Begin Patch\n*** Add File: \302\240 src/x.txt \302\240\n*** End Patch\n'; } > "$T/ppad-ok.txt"
 big_case "ordinary NBSP-padded benign header -> allow" allow "$T/ppad-ok.txt"
+
+echo "== the per-project override, <repo>/.himmel/project.conf (HIMMEL-7424) =="
+PROJ="$T/repo/.himmel/project.conf"
+mkdir -p "$T/repo/.himmel"
+printf 'CR_REQUIRE_CROSS_MODEL=1\n' > "$PROJ"
+ln -s "$T/repo/.himmel" "$T/projlink"
+file_case "Write to a project file -> block" block Write "$PROJ"
+file_case "Edit of a project file -> block" block Edit "$PROJ"
+file_case "relative .himmel/project.conf -> block" block Edit ".himmel/project.conf"
+file_case "symlinked dir resolving to a project file -> block" block Write "$T/projlink/project.conf"
+file_case "a project.conf outside .himmel -> allow" allow Write "$T/repo/project.conf"
+patch_case "apply_patch Update File on a project file -> block" block "*** Begin Patch${NL}*** Update File: $PROJ${NL}@@${NL}-a${NL}+b${NL}*** End Patch"
+patch_case "apply_patch symlinked dir to a project file -> block" block "*** Begin Patch${NL}*** Update File: $T/projlink/project.conf${NL}@@${NL}*** End Patch"
+bash_case "redirect into a project file -> block" block "echo CR_FLOOR_FALLBACK=claude-only >> $PROJ"
+bash_case "sed -i on a relative project file -> block" block "sed -i s/1/0/ .himmel/project.conf"  # gnu-ok: a payload string fed to the hook, never run
+bash_case "cat a project file -> allow" allow "cat $PROJ"
+bash_case "grep a project file -> allow" allow "grep -n CR_ .himmel/project.conf"
 
 echo "== malformed payloads =="
 run "malformed JSON naming the config -> block" block "{not json $CFG"

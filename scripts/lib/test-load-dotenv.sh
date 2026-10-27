@@ -613,6 +613,56 @@ assert_eq "C3 control: the station conf supplies HANDOVER_DIR" "$TMP/c3-live" "$
 got=$( cd "$REPO" && unset HANDOVER_DIR HIMMEL_CONFIG_DIR && HOME="$TMP/c3-home" && . "$(dirname "$LIB")/testlib-config-isolation.sh" && isolate_himmel_config "$TMP/c3-suite" && printf 'isolated ' && load_dotenv HANDOVER_DIR 2>/dev/null && printf '%s' "${HANDOVER_DIR:-<unset>}" )
 assert_eq "C3 isolate_himmel_config keeps the station conf out" "isolated <unset>" "$got"
 
+# P1-P5: the per-project override, <primary checkout>/.himmel/project.conf.
+PREPO="$TMP/p-repo"
+mkdir -p "$PREPO/.himmel" "$TMP/p-config" "$TMP/p-home/.himmel"
+git -C "$PREPO" init --quiet
+git -C "$PREPO" config user.email t@example.com
+git -C "$PREPO" config user.name tester
+git -C "$PREPO" commit --allow-empty -q -m init
+PCONF="$PREPO/.himmel/project.conf"
+printf 'HANDOVER_DIR=/p1/from-user\n' >"$TMP/p-config/himmel.conf"
+
+# P1: a behaviour key in the project file beats himmel.conf; the process env
+# still beats the project file.
+printf 'HANDOVER_DIR=/p1/from-project\n' >"$PCONF"
+got=$( cd "$PREPO" && unset HANDOVER_DIR && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "P1 the project file beats himmel.conf for a behaviour key" "/p1/from-project" "$got"
+got=$( cd "$PREPO" && export HANDOVER_DIR=/p1/live && HIMMEL_CONFIG_DIR="$TMP/p-config" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "P1 the process env beats the project file" "/p1/live" "$got"
+
+# P2: a project value looser than the user's is ignored, with one notice.
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"1","ARMAUTOMERGE":"0"}}\n' >"$TMP/p-home/.himmel/config.json"
+printf 'CR_REQUIRE_CROSS_MODEL=0\nCR_FLOOR_FALLBACK=claude-only\nARMAUTOMERGE=1\n' >"$PCONF"
+got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK ARMAUTOMERGE && HOME="$TMP/p-home" load_policy --root "$PREPO" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK ARMAUTOMERGE 2>"$TMP/p2.err"; printf '%s|%s|%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" "${CR_FLOOR_FALLBACK:-<unset>}" "${ARMAUTOMERGE:-<unset>}" )
+assert_eq "P2 the project file cannot loosen a policy key" "1|<unset>|0|3" "$got|$(grep -c 'may only tighten' "$TMP/p2.err")"
+
+# P3: a project value stricter than the user's wins, in the gate reader and in
+# load_dotenv (pr-check-env.sh reads the policy keys through it).
+printf '{"policy":{"CR_REQUIRE_CROSS_MODEL":"0","CR_FLOOR_FALLBACK":"claude-only","ARMAUTOMERGE":"1"}}\n' >"$TMP/p-home/.himmel/config.json"
+printf 'CR_REQUIRE_CROSS_MODEL=1\nCR_FLOOR_FALLBACK=off\nARMAUTOMERGE=0\n' >"$PCONF"
+got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK ARMAUTOMERGE && HOME="$TMP/p-home" load_policy --root "$PREPO" CR_REQUIRE_CROSS_MODEL CR_FLOOR_FALLBACK ARMAUTOMERGE 2>/dev/null; printf '%s|%s|%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" "${CR_FLOOR_FALLBACK:-<unset>}" "${ARMAUTOMERGE:-<unset>}" )
+assert_eq "P3 the project file tightens a policy key (load_policy)" "1|off|0" "$got"
+got=$( cd "$PREPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/p-home" load_dotenv --root "$PREPO" CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
+assert_eq "P3 the project file tightens a policy key (load_dotenv)" "1" "$got"
+
+# P4: a secret key in the project file is never loaded, while a behaviour key
+# beside it is.
+kreset
+printf 'HANDOVER_DIR=/p4/from-project\nTEST_KR_TOKEN=planted-in-project\n' >"$PCONF"
+got=$( cd "$PREPO" && unset HANDOVER_DIR TEST_KR_TOKEN && load_dotenv HANDOVER_DIR TEST_KR_TOKEN 2>/dev/null; printf '%s|%s' "${HANDOVER_DIR:-<unset>}" "${TEST_KR_TOKEN:-<unset>}" )
+assert_eq "P4 a secret in the project file is not loaded" "/p4/from-project|<unset>" "$got"
+
+# P5: a worktree reads its primary checkout's project file, not its own copy.
+printf 'HANDOVER_DIR=/p5/from-primary\n' >"$PCONF"
+PWT="$TMP/p-wt"
+git -C "$PREPO" worktree add -q "$PWT" -b p5-branch
+mkdir -p "$PWT/.himmel"
+printf 'HANDOVER_DIR=/p5/from-worktree\n' >"$PWT/.himmel/project.conf"
+got=$( cd "$PWT" && unset HANDOVER_DIR && load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "P5 a worktree reads the primary checkout's project file" "/p5/from-primary" "$got"
+git -C "$PREPO" worktree remove --force "$PWT" 2>/dev/null || true
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "All load-dotenv tests passed."
