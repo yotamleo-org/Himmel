@@ -254,7 +254,25 @@ async function currentConsoleName(root: string): Promise<string | undefined> {
   return undefined;
 }
 
-// CLI: `bun chief-route.ts reply [--chief <name>] <chat_id> <text...>` — the chief's reply
+// A voice line's tag names the asking satellite (`[voice satellite=<entity_id> ...]`).
+// `reply --satellite <entity_id>` also speaks the answer there through Home Assistant's
+// assist_satellite.announce; HA_URL and HA_TOKEN come from the caller's environment
+// (himmel-secrets exec --keys HA_URL,HA_TOKEN), never from a file.
+export const SATELLITE_ID = /^assist_satellite\.[a-z0-9_]+$/;
+
+export async function speakOnSatellite(satellite: string, text: string, env: Record<string, string | undefined> = process.env, fetchFn: typeof fetch = fetch): Promise<void> {
+  if (!SATELLITE_ID.test(satellite)) throw new Error(`not an assist_satellite entity id: ${satellite}`);
+  const base = env.HA_URL?.replace(/\/+$/, "");
+  if (!base || !env.HA_TOKEN) throw new Error("HA_URL and HA_TOKEN are required to speak on a satellite");
+  const res = await fetchFn(`${base}/api/services/assist_satellite/announce`, {
+    method: "POST",
+    headers: { authorization: `Bearer ${env.HA_TOKEN}`, "content-type": "application/json" },
+    body: JSON.stringify({ entity_id: satellite, message: foldLine(text) }),
+  });
+  if (!res.ok) throw new Error(`Home Assistant announce failed: HTTP ${res.status}`);
+}
+
+// CLI: `bun chief-route.ts reply [--chief <name>] [--satellite <entity_id>] <chat_id> <text...>` — the chief's reply
 // path. Appends to the same per-chat outbox every other bridge reply uses; the
 // running poller flushes it. Dynamic import: poller.ts imports this module, so a
 // static import back would be a cycle.
@@ -266,13 +284,18 @@ if (import.meta.main) {
     await announceConsole(args[0]);
   } else {
     const name = args[0] === "--chief" || (args[0] === "--console" && legacyFlag("--console", "--chief")) ? args.splice(0, 2)[1] : verb === "reply" ? await currentConsoleName(defaultRoot()) : undefined;
+    const satellite = verb === "reply" && args[0] === "--satellite" ? args.splice(0, 2)[1] : undefined;
     const [chat, ...rest] = args;
     const chatId = Number(chat);
-    if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && (!name || consoleInboxPath(defaultRoot(), name))) {
+    if (verb === "reply" && Number.isSafeInteger(chatId) && chatId !== 0 && rest.length && (!name || consoleInboxPath(defaultRoot(), name)) && (satellite === undefined || SATELLITE_ID.test(satellite))) {
       const { replyViaOutbox } = await import("./poller");
       await replyViaOutbox(defaultRoot(), chatId, rest.join(" "), name);
+      if (satellite !== undefined) {
+        try { await speakOnSatellite(satellite, rest.join(" ")); }
+        catch (e) { console.error(`[chief-route] queued the Telegram reply but could not speak on ${satellite}: ${e instanceof Error ? e.message : e}`); process.exit(1); }
+      }
     } else {
-      console.error("usage: bun chief-route.ts reply [--chief <name>] <chat_id> <text> | register <inbox> <bucket> <project> | announce <inbox>");
+      console.error("usage: bun chief-route.ts reply [--chief <name>] [--satellite <assist_satellite.id>] <chat_id> <text> | register <inbox> <bucket> <project> | announce <inbox>");
       process.exit(1);
     }
   }
