@@ -264,10 +264,14 @@ check    "5: a PR the CR merge gate holds is never merged" "$(merged)" ""
 contains "5: the gate's hold is logged" "$out" "the CR merge gate did not allow the merge (rc=2): cr-reviewer-gate: config error"
 
 # a gate that cannot read the PR (rc 3) has checked nothing, so it holds an unattended merge too
-mkdir -p "$tmp/gatebin"; printf '#!/bin/sh\nexit 1\n' > "$tmp/gatebin/gh"; chmod +x "$tmp/gatebin/gh"
-sreset; export CR_PROFILE="" CRITICS_JSON="$HERE/critics.json"
+mkdir -p "$tmp/gatebin"
+# shellcheck disable=SC2016  # the stub's own text, expanded when the stub runs
+printf '#!/bin/sh\nprintf "%%s\\n" "$*" >> "$STUB_GATE_ARGS"\nexit 1\n' > "$tmp/gatebin/gh"
+chmod +x "$tmp/gatebin/gh"
+sreset; rm -f "$tmp/gate-args"; export CR_PROFILE="" CRITICS_JSON="$HERE/critics.json" STUB_GATE_ARGS="$tmp/gate-args"
 PATH="$tmp/gatebin:$PATH" sweep
 export CR_PROFILE=none; unset CRITICS_JSON
+contains "5: the gate reads this PR through the stub" "$(cat "$tmp/gate-args" 2>&1)" "pr view $PR --json"
 check    "5: a PR the CR merge gate cannot read is never merged" "$(merged)" ""
 contains "5: the unread gate is logged" "$out" "the CR merge gate did not allow the merge (rc=3)"
 
