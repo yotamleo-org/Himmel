@@ -219,6 +219,8 @@ printf 'mac: %s\n' "$(bash -c '. "$1"; go_verdict_mac "$2" "$3" api-judge' _ "$G
 STUB
 chmod +x "$tmp/bin/judge-call"
 export DEPENDABOT_JUDGE_CALL="$tmp/bin/judge-call" GO_GATE="$HERE/../lib/go-gate.sh" VSCOPE
+# the CR merge gate stands down (no_code_review) outside its own row, so no row reaches the real repo
+export CR_PROFILE=none
 export STUB_JUDGED="$tmp/judged" STUB_MERGED="$tmp/merged"
 # STUB_LIST lines take the shape the sweep's `pr list --jq` printed on the real repo
 # (`3960 5d509ca9090a644424d7d0245538175a2c93ec10 true`); GREEN is `pr checks --required
@@ -252,6 +254,14 @@ sweep
 check    "5: a non-manifest file is never merged" "$(merged)" ""
 check    "5: a non-manifest file spends no judge" "$(judged)" "0"
 contains "5: the summary counts the skip" "$out" "merged=0 skipped=1"
+
+# the CR merge gate every other merge passes holds here too: a critics config that does not parse blocks it
+printf '{\n' > "$tmp/critics-bad.json"
+sreset; export CR_PROFILE="" CRITICS_JSON="$tmp/critics-bad.json"
+sweep
+export CR_PROFILE=none; unset CRITICS_JSON
+check    "5: a PR the CR merge gate holds is never merged" "$(merged)" ""
+contains "5: the gate's hold is logged" "$out" "the CR merge gate holds: cr-reviewer-gate: config error"
 
 sreset; STUB_CHECKS='pass
 pending'

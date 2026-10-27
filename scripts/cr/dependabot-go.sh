@@ -81,7 +81,7 @@ common=$(git rev-parse --path-format=absolute --git-common-dir 2>/dev/null) || c
 
 # sweep_one <pr> <head> <auto-merge on: true|false> - merge when every guard holds; 0 = merged
 sweep_one() {
-    local pr="$1" sha="$2" qid q jout state buckets now row judged="$common/dependabot-judged"
+    local pr="$1" sha="$2" qid q jout state buckets now row gate grc=0 judged="$common/dependabot-judged"
     skip() { echo "dependabot-go sweep: #$pr skipped - $*"; }
     case "$pr" in ''|0*|*[!0123456789]*) skip "not a PR number"; return 1 ;; esac
     [ "$3" = false ] || { skip "auto-merge is already on"; return 1; }
@@ -126,11 +126,21 @@ sweep_one() {
     bash "$0" "$pr" "$sha" --judge "$qid" || { skip "no dependabot-go row (judge $qid)"; return 1; }
     row=$(jq -cR --arg h "$sha" --argjson p "$pr" 'fromjson? | select(.kind == "dependabot-go" and .head == $h and .pr == $p and .status == "ok")' "$common/cr-critic-scores.jsonl" 2>/dev/null) || row=""  # swallow-ok: an unreadable ledger reads as no row and refuses below
     [ -n "$row" ] || { skip "the dependabot-go row is not in the ledger"; return 1; }
+    # the CR merge gate every other merge passes: it reads the row above for the hard reviewers,
+    # and holds on an open CodeRabbit thread or outside-diff finding
+    gate=$(cr_merge_gate "$pr") || grc=$?
+    [ "$grc" -ne 2 ] || { skip "the CR merge gate holds: ${gate%%$'\n'*}"; return 1; }
     "$GH" pr merge "$pr" --squash --match-head-commit "$sha" >/dev/null 2>&1 || { skip "GitHub refused the merge"; return 1; }
     echo "dependabot-go sweep: #$pr merged at $sha (judge:$qid)"
 }
 
 if [ "$MODE" = sweep ]; then
+    # shellcheck source=scripts/lib/review-merge-gate.sh
+    # shellcheck disable=SC1091
+    if ! . "$ANCHOR/scripts/lib/review-merge-gate.sh" 2>/dev/null || ! declare -F cr_merge_gate >/dev/null 2>&1; then
+        echo "dependabot-go sweep: cannot load scripts/lib/review-merge-gate.sh" >&2
+        exit 2
+    fi
     list=$("$GH" pr list --author app/dependabot --state open --limit 100 --json number,headRefOid,autoMergeRequest \
         --jq '.[] | "\(.number) \(.headRefOid) \(.autoMergeRequest != null)"' 2>/dev/null) || { echo "dependabot-go sweep: cannot list the open Dependabot PRs" >&2; exit 2; }
     merged=0 skipped=0
