@@ -133,7 +133,7 @@ elapsed=$((SECONDS - t0))
 # macOS (bash 3.2) took 336s here against the 12s budget: a likely super-linear scan, far past
 # runner slowness. The rc asserts above still run; only the time assertion is skipped there.
 if [ "$(uname -s)" = Darwin ]; then # prim-ok: time assertion skipped on Darwin, see the note above
-    echo "SKIP long input time budget on Darwin (${elapsed}s): tracked in the follow-up ticket"
+    echo "SKIP long input time budget on Darwin (${elapsed}s): tracked in HIMMEL-7893"
 elif [ "$elapsed" -le 12 ]; then
     assert_rc "long input within budget (${elapsed}s)" 0 0
 else
