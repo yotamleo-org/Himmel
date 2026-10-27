@@ -311,9 +311,13 @@ judge_scores() {
   echo "${s:-null}"
 }
 
-# judge_graded <result file>: true when the result carries a numeric correctness score.
+# judge_graded <result file>: true when a claims result scores all 16 claims (C, S, T, H 1-4)
+# with a boolean holds (judge_scores would score a missing claim as one that fails), or a
+# direct-score result carries a numeric correctness.
 judge_graded() {
-  judge_scores "$1" | jq -e '.correctness | type == "number"' >/dev/null 2>&1
+  judge_scores "$1" | jq -e 'if (.claims | type) == "object"
+    then [("C", "S", "T", "H") as $p | range(1; 5) as $i | .claims["\($p)\($i)"].holds | type == "boolean"] | all
+    else .correctness | type == "number" end' >/dev/null 2>&1
 }
 
 rubric() { # rubric single|pair: that section of judge-claims-rubric.md
