@@ -823,6 +823,7 @@ a28rec() {  # <name> <head> <extra header lines> - a signed acme/widget GO recor
   mkdir -p "$ROOT23/u/acme--widget/verdicts/W6"
   # shellcheck disable=SC2016  # the backticks are the verdict line's literal text
   printf '# VERDICT W6 - judge\n\n## Verdict\n\n**GO** for head `%s`.\n\npr: 88\nrepo: acme/widget\n%smodel: m\neffort: e\n\nreason\n' "$2" "$3" > "$vf"
+  # read-sink-ok: test fixture; $vf is a record this helper just wrote under the suite's own temp root
   vmac="$(bash -c '. "$1"; go_verdict_mac "$2" "$3" "$4"' _ "$HERE/../../lib/go-gate.sh" u/acme--widget W6 "$1" < "$vf")" || { echo "FAIL - cannot sign $vf"; fails=$((fails+1)); return 1; }
   printf 'mac: %s\n' "$vmac" >> "$vf"
 }
