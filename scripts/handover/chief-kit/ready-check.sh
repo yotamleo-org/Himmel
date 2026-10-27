@@ -109,6 +109,11 @@
 #      (unreadable list, unresolvable default branch, moved head) FAILs and prints
 #      no TRUST-PATH line. READY_CHECK_ANCHOR (tests) replaces the harness anchor.
 #
+# 13. RED then GREEN: a PR that changes code carries one body line naming RED, then
+#      GREEN (case-sensitive, whole words). Exempt: a doc-only PR (check 5's filter:
+#      *.md/*.txt, docs/**, handovers/**) and a Dependabot dependency-only PR. An
+#      unreadable file list FAILs. Not part of `--only 7`.
+#
 # Owner/repo are derived from `gh repo view --json owner,name`, never hard-
 # coded (so this runs the same in any clone/fork). It writes nothing — no
 # ledger rows, no GO files, no PR comments.
@@ -1114,6 +1119,27 @@ else
     esac
 fi
 fi  # ONLY7 == 0: check 12
+
+if [ "$ONLY7" -eq 0 ]; then
+# ── 13. a code PR names a RED-then-GREEN line ──
+# A PR that changes code shows the proof it was built test-first: one line of its body
+# with RED, then GREEN (e.g. `RED → GREEN: test-x.sh row 4`). Exempt: a doc-only PR
+# (the filter check 5 uses, so the two never disagree about what is code) and a
+# Dependabot dependency-only PR (dep_pr_generated, as check 7).
+if [ -z "$files_json" ]; then
+    echo "[FAIL] 13. cannot read PR files — RED-then-GREEN line not checked"
+    mark_fail
+elif [ -z "$(printf '%s\n' "$files_json" | grep -Ev '\.(md|txt)$|^docs/|^handovers/' || true)" ]; then  # swallow-ok: no non-doc line is grep rc 1, which is the doc-only answer
+    echo "[PASS] 13. RED-then-GREEN line: not needed (a doc-only PR)"
+elif printf '%s\n' "$cov_body" | grep -Eq '(^|[^A-Za-z0-9])RED([^A-Za-z0-9].*[^A-Za-z0-9]|[^A-Za-z0-9])GREEN([^A-Za-z0-9]|$)'; then
+    echo "[PASS] 13. the PR body names a RED-then-GREEN line"
+elif dep_pr_generated; then
+    echo "[PASS] 13. RED-then-GREEN line: not needed (a Dependabot dependency-only PR)"
+else
+    echo "[FAIL] 13. the PR body names no RED-then-GREEN line — add one line with RED then GREEN, e.g. 'RED → GREEN: test-x.sh row 4 failed before the change, passes after it'"
+    mark_fail
+fi
+fi  # ONLY7 == 0: check 13
 
 if [ "$ONLY7" -eq 1 ]; then
     if [ "$RESULT" -eq 0 ]; then echo "COVERAGE-LINT PASS"; exit 0; fi
