@@ -29,8 +29,9 @@ PRIMARY="$TMP/himmel"
 WT="$TMP/wt"
 OTHER="$TMP/other"
 g init -q "$PRIMARY" || exit 1
-mkdir -p "$PRIMARY/scripts/hooks" "$PRIMARY/scripts/lib" "$PRIMARY/plugins/himmel-gh/lib" || exit 1
+mkdir -p "$PRIMARY/scripts/hooks" "$PRIMARY/scripts/lib" "$PRIMARY/scripts/guardrails" "$PRIMARY/plugins/himmel-gh/lib" || exit 1
 cp "$REAL_HOOK_DIR/allow-thread-resolve.sh" "$PRIMARY/scripts/hooks/" || exit 1
+cp "$REAL_HOOK_DIR/../guardrails/himmel-adapters.json" "$PRIMARY/scripts/guardrails/" || exit 1
 cp "$REAL_HOOK_DIR/../lib/git-clean.sh" "$PRIMARY/scripts/lib/" || exit 1
 echo '// cli' >"$PRIMARY/plugins/himmel-gh/lib/thread-resolve-action-cli.mjs" || exit 1
 HOOK="$PRIMARY/scripts/hooks/allow-thread-resolve.sh"
@@ -176,6 +177,42 @@ HOOK_SAVED="$HOOK"; HOOK="$WT2/scripts/hooks/allow-thread-resolve.sh"
 expect_none 'forged worktree gitfile, planted cli' "$WT2" "node $EVIL/$REL $TAIL"
 expect_none 'forged worktree gitfile, its own cli' "$WT2" "node $WT2/$REL $TAIL"
 HOOK="$HOOK_SAVED"
+
+# ---- registered adapter repos (scripts/guardrails/himmel-adapters.json) ---
+ADAPTERS="$PRIMARY/scripts/guardrails/himmel-adapters.json"
+cp "$ADAPTERS" "$TMP/adapters.keep" || exit 1
+ATAIL() { printf '%s' "--owner $1 --repo $2 --number 1 --thread-id $TID --reason \"fixed abc1234\""; }
+expect_allow 'registered adapter repo (himmel-voice)' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+expect_allow 'registered adapter repo from the primary' "$PRIMARY" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+expect_allow 'another registered repo (qmd)' "$WT" "node $CLI $(ATAIL yotamleo-org qmd)"
+expect_allow 'registered repo, single-quoted rejected reason' "$WT" "node $CLI --owner yotamleo-org --repo himmel-voice --number 1 --thread-id $TID --reason 'rejected not a defect'"
+expect_none 'unregistered repo' "$WT" "node $CLI $(ATAIL yotamleo-org not-registered)"
+expect_none 'registered name with a suffix' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice-2)"
+expect_none 'registered name with a prefix' "$WT" "node $CLI $(ATAIL yotamleo-org xhimmel-voice)"
+expect_none 'registered repo under another owner' "$WT" "node $CLI $(ATAIL evil-org himmel-voice)"
+expect_none 'registered repo, wrong case' "$WT" "node $CLI $(ATAIL yotamleo-org Himmel-Voice)"
+expect_none 'owner and repo swapped' "$WT" "node $CLI $(ATAIL himmel-voice yotamleo-org)"
+expect_none 'registered repo, extra flag' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice) --force"
+expect_deny 'registered repo, relative cli path' "$WT" "node $REL $(ATAIL yotamleo-org himmel-voice)" "Retry once with exactly: node $CLI $(ATAIL yotamleo-org himmel-voice)"
+expect_none 'unregistered repo, relative cli path' "$WT" "node $REL $(ATAIL yotamleo-org not-registered)"
+printf '%s\n' '[{"nwo": "yotamleo-org/a.b"}]' >"$ADAPTERS" || exit 1
+expect_allow 'registry name with a dot, the literal name' "$WT" "node $CLI $(ATAIL yotamleo-org a.b)"
+expect_none 'registry name with a dot is not a regex' "$WT" "node $CLI $(ATAIL yotamleo-org aXb)"
+expect_allow 'himmel itself needs no registry row' "$WT" "$GOOD"
+printf '%s\n' '[{"nwo": "yotamleo-org/himmel-voice"}, {"nwo": ' >"$ADAPTERS" || exit 1
+expect_none 'malformed registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+expect_allow 'malformed registry: himmel still allowed' "$WT" "$GOOD"
+printf '%s\n' '{"nwo": "yotamleo-org/himmel-voice"}' >"$ADAPTERS" || exit 1
+expect_none 'registry not an array: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+: >"$ADAPTERS" || exit 1
+expect_none 'empty registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+rm "$ADAPTERS" || exit 1
+expect_none 'missing registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+expect_allow 'missing registry: himmel still allowed' "$WT" "$GOOD"
+cp "$TMP/adapters.keep" "$ADAPTERS.real" && ln -s "$ADAPTERS.real" "$ADAPTERS" || exit 1
+expect_none 'symlinked registry: no adapter allowed' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
+rm "$ADAPTERS" "$ADAPTERS.real" && cp "$TMP/adapters.keep" "$ADAPTERS" || exit 1
+expect_allow 'the registry restored' "$WT" "node $CLI $(ATAIL yotamleo-org himmel-voice)"
 
 # non-Bash tool, empty and unparseable stdin: no decision, exit 0
 jq -n --arg c "$GOOD" --arg d "$WT" '{tool_name:"PowerShell",tool_input:{command:$c},cwd:$d}' >"$TMP/p2.json"
