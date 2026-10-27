@@ -401,8 +401,15 @@ if [ "$n" = 0 ]; then pass "keep .env: the himmel.conf rewrite leaves no tempora
 conf_fixture
 mv "$HOME/.himmel/himmel.conf" "$TMP/himmel.conf.target"
 ln -s "$TMP/himmel.conf.target" "$HOME/.himmel/himmel.conf"
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_before=$(ls -i "$TMP/himmel.conf.target" | awk '{print $1}')
 apply_tty $'y\ne'
+# shellcheck disable=SC2012 # an inode number from a fixed path
+ino_after=$(ls -i "$TMP/himmel.conf.target" | awk '{print $1}')
 if [ -L "$HOME/.himmel/himmel.conf" ] && grep -q "^USER_SLUG=$(env_val USER_SLUG)\$" "$TMP/himmel.conf.target"; then pass "keep .env: a symlinked himmel.conf stays a link to the updated target"; else fail "keep .env: a symlinked himmel.conf was not updated through the link (rc $rc)"; fi
+if [ "$ino_before" != "$ino_after" ]; then pass "keep .env: the symlink target is replaced, not truncated in place"; else fail "keep .env: the symlink target was rewritten in place"; fi
+n=$(find "$TMP" -name 'himmel.conf.target.migrate.*' | wc -l | tr -d ' ')
+if [ "$n" = 0 ]; then pass "keep .env: the symlink rewrite leaves no temporary file"; else fail "keep .env: the symlink rewrite left $n temporary files"; fi
 rm -f "$HOME/.himmel/himmel.conf" "$TMP/himmel.conf.target"
 
 # --- 9. The report says the secrets stay in .env and never advises emptying it ---

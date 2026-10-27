@@ -364,12 +364,17 @@ verify_all() {  # sets bad and verified
 }
 has_bad() { [ -n "$(printf '%s' "$bad" | tr -d '\n')" ]; }
 # A copy beside the file (same mode) renamed over it, so a failed write leaves
-# the file whole; a symlink is rewritten in place to keep the link.
+# the file whole; a symlink is followed to its target, so the link stays.
 replace_file() {  # <new content file> <dest>
-    local tmp="$2.migrate.$$"
-    if [ -L "$2" ]; then cat "$1" > "$2"; return; fi
+    local dest="$2" link hops=0 tmp
+    while [ -L "$dest" ]; do
+        hops=$((hops + 1)); [ "$hops" -le 40 ] || return 1
+        link=$(readlink "$dest")
+        case "$link" in /*) dest=$link ;; *) dest="${dest%/*}/$link" ;; esac
+    done
+    tmp="$dest.migrate.$$"
     # prim-ok: cp -p keeps the file's mode, which atomic_write would reset to 600
-    if cp -p "$2" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$2"; then return 0; fi
+    if cp -p "$dest" "$tmp" && cat "$1" > "$tmp" && mv -f "$tmp" "$dest"; then return 0; fi
     rm -f "$tmp"
     return 1
 }
