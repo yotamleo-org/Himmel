@@ -991,8 +991,8 @@ python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "moved.
 echo "T85: a batch run caps its chunk at 15000 tokens, so a batch answer fits max_tokens and graphify never splits into a prompt the batch lacks"
 C85="$WS/c85"; new_corpus "$C85"; batch_reset
 out=$(GRAPHIFY_STUB_CALL_CLAUDE=1 run_batch --name t85 --corpus-root "$C85" --corpus-class himmel-code --backend claude-api); rc=$?
-case "$(grep '^graphify extract' "$WS/calls.log")" in
-  *"--token-budget 15000"*) pass "T85 default 1.00 in batch mode -> 15000" ;;
+case "$rc:$(grep '^graphify extract' "$WS/calls.log")" in
+  0:*"--token-budget 15000"*) pass "T85 default 1.00 in batch mode -> 15000" ;;
   *) fail "T85 (rc=$rc) '$(grep '^graphify extract' "$WS/calls.log")': $out" ;;
 esac
 

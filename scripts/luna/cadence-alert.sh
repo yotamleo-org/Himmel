@@ -42,7 +42,7 @@ send_failed_mark="${CADENCE_ALERT_SEND_FAILED_MARK:-$state/cadence-alert-send-fa
 # The default sender needs bun (~/.bun/bin), which cron's minimal PATH lacks: without it
 # every cadence alert from a runner that did not pin the arm-time PATH failed to send.
 # shellcheck source=../lib/resolve-bun.sh
-. "$_here/../lib/resolve-bun.sh" 2>/dev/null && prefer_bun_on_path
+[ -n "${HOME:-}" ] && . "$_here/../lib/resolve-bun.sh" 2>/dev/null && prefer_bun_on_path
 
 # A worker or reason becomes part of a sentinel filename: keep it to safe bytes.
 # No `.` survives, so `<worker>.<reason>` splits unambiguously and `clear a`
