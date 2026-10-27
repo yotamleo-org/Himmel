@@ -154,6 +154,11 @@ test('display text options are sanitized and capped', () => {
   assert.equal(config.display.providerName, 'P'.repeat(40));
   assert.equal(config.display.modelOverride, 'Model spoof');
   assert.equal(config.display.advisorOverride, `Advisor${'x'.repeat(73)}`);
+  // The cap is 80, so the emoji straddles it and must be dropped whole.
+  assert.equal(
+    mergeConfig({ display: { advisorOverride: 'A'.repeat(79) + '😀' + 'B' } }).display.advisorOverride,
+    'A'.repeat(79),
+  );
   assert.equal(mergeConfig({ display: { modelOverride: 123 } }).display.modelOverride, '');
 });
 

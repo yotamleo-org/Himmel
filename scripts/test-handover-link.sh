@@ -29,6 +29,8 @@ assert_stdout_has() {
 FAILED=0
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
+# shellcheck disable=SC1091
+{ . "$(dirname "$0")/lib/testlib-config-isolation.sh" && isolate_himmel_config "$TMP"; } || { echo "FAIL - config isolation unavailable" >&2; exit 1; }
 
 # handover-link.sh now loads .env HANDOVER_DIR when the env lacks
 # it; pin an empty .env so the unset-HANDOVER_DIR cases ignore the operator's.

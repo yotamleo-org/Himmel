@@ -603,6 +603,16 @@ assert_eq "C2 load_policy ignores HIMMEL_CONFIG_DIR" "1" "$got"
 got=$( cd "$REPO" && unset CR_REQUIRE_CROSS_MODEL && HOME="$TMP/c2-home" HIMMEL_CONFIG_DIR="$TMP/c2-config" load_dotenv CR_REQUIRE_CROSS_MODEL 2>/dev/null; printf '%s' "${CR_REQUIRE_CROSS_MODEL:-<unset>}" )
 assert_eq "C2 load_dotenv policy layer ignores HIMMEL_CONFIG_DIR" "1" "$got"
 
+# C3: a suite that blanks HANDOVER_DIR sources testlib-config-isolation.sh; a
+# station-like $HOME/.himmel/himmel.conf naming a live root is then not read.
+mkdir -p "$TMP/c3-home/.himmel" "$TMP/c3-live"
+printf 'HANDOVER_DIR=%s\n' "$TMP/c3-live" >"$TMP/c3-home/.himmel/himmel.conf"
+rm -f "$REPO/.env"
+got=$( cd "$REPO" && unset HANDOVER_DIR HIMMEL_CONFIG_DIR && HOME="$TMP/c3-home" load_dotenv HANDOVER_DIR 2>/dev/null; printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "C3 control: the station conf supplies HANDOVER_DIR" "$TMP/c3-live" "$got"
+got=$( cd "$REPO" && unset HANDOVER_DIR HIMMEL_CONFIG_DIR && HOME="$TMP/c3-home" && . "$(dirname "$LIB")/testlib-config-isolation.sh" && isolate_himmel_config "$TMP/c3-suite" && printf 'isolated ' && load_dotenv HANDOVER_DIR 2>/dev/null && printf '%s' "${HANDOVER_DIR:-<unset>}" )
+assert_eq "C3 isolate_himmel_config keeps the station conf out" "isolated <unset>" "$got"
+
 echo
 if [ "$FAILED" -eq 0 ]; then
     echo "All load-dotenv tests passed."

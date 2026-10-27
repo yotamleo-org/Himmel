@@ -1,0 +1,10 @@
+# flags.tsv — the feature-flag registry (owner and removal name the tickets).
+# Tab-separated: name default kind owner removal expires description
+#   default  on | off     kind  feature | content
+#   owner    the ticket that adds the flag   removal  the sub-task that deletes it
+#   expires  YYYY-MM-DD; scripts/ci/check-flags.sh fails CI once it has passed (14 days from birth)
+# A flag is read only through scripts/lib/flags.sh, flags.py or flags.mjs, and never under
+# scripts/hooks/, in a gate script or on a ci-trust-paths.txt path (docs/internals/config-layers.md).
+chain_soft_edges	off	feature	HIMMEL-7708	HIMMEL-7711	2026-11-09	next-dispatchable.sh keeps a ticket whose files overlap an open PR when the trial merge is clean, 2 files or fewer, no trust path
+chain_render	off	feature	HIMMEL-7709	HIMMEL-7711	2026-11-09	chain-render.py rewrites focus-chains.json from the chain graph; off leaves the hand-kept file untouched
+chain_merge_plan	off	feature	HIMMEL-7710	HIMMEL-7711	2026-11-09	chain-plan.sh prints the S2 merge order, HOLD and MERGE-FORWARD lines the chain-s2 reason of merge-forward-check.sh reads

@@ -102,6 +102,7 @@ scripts/ci/test-check-ci-install-locks.sh	pr	static-gate
 scripts/ci/test-check-claude-md-budget.sh	pr	static-gate
 scripts/ci/test-check-commit-range.sh	pr	trust-path
 scripts/ci/test-check-docs-decision-records.sh	pr	trust-path
+scripts/ci/test-check-flags.sh	pr	trust-path
 scripts/ci/test-check-hardcoded-env-values.sh	pr	trust-path
 scripts/ci/test-check-hooks-on-pr-range.sh	pr	trust-path
 scripts/ci/test-check-host-file-read-sinks.sh	pr	trust-path
@@ -363,6 +364,7 @@ scripts/handover/chief-kit/test-append-results.sh	local	behaviour suite, 0 catch
 scripts/handover/chief-kit/test-board.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-brief-lint.sh	pr	trust-path
 scripts/handover/chief-kit/test-chain-graph.sh	local	behaviour suite, hermetic report script, no gate role
+scripts/handover/chief-kit/test-chain-plan.sh	local	behaviour suite, hermetic planner, no gate role
 scripts/handover/chief-kit/test-cancel-runs.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-ci-guardrail.sh	local	behaviour suite, 0 catches in the 400-PR audit window
 scripts/handover/chief-kit/test-close-wrapped-worker.sh	pr	trust-path
@@ -822,6 +824,7 @@ scripts/lib/test-env-append.sh	pr	trust-path
 scripts/lib/test-env-value.sh	pr	trust-path
 scripts/lib/test-fix-qmd-stub.sh	pr	trust-path
 scripts/lib/test-fixture-trap-clean.sh	pr	trust-path
+scripts/lib/test-flags.sh	pr	trust-path
 scripts/lib/test-fleet-reservation-key.sh	pr	trust-path
 scripts/lib/test-fleet-slots-shield.sh	pr	trust-path
 scripts/lib/test-flow-run-ledger-path.sh	pr	static-gate
@@ -1157,3 +1160,5 @@ scripts/ci/test-billed-optin.sh	pr	trust-path
 scripts/ci/test-ci-go-gate.sh	pr	trust-path
 scripts/lanes/bench/scorecard/test-review-rounds.sh	local	behaviour suite, new in HIMMEL-7636
 marketplace/plugins/obsidian-triage/tests/test-transcribe-device.sh	local	behaviour suite, 0 catches in the 400-PR audit window
+scripts/eval/steering-cull/test-steering-cull.sh	local	behaviour suite, new HIMMEL-7694
+scripts/handover/chief-kit/test-chain-render.sh	local	behaviour suite, hermetic renderer, no gate role

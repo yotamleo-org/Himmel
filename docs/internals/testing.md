@@ -1,6 +1,6 @@
 # Testing — the non-guessable suite invocations
 
-Load-on-need reference behind the REFERENCE INDEX pointer in CLAUDE.md. None
+Load-on-need reference behind `docs/internals/claude-md-detail.md`. None
 of the invocations below are discoverable by guessing the "obvious" command —
 each one has a wired reason (a per-suite cwd rule, a quiet reporter, a runner
 that both runs suites and reports the plan) — so this doc states them once,

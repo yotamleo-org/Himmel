@@ -832,6 +832,24 @@ CR_LEDGER="$SK2_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
     CRITICS_JSON="$SK_JSON" CRITIC_FIRST_PASS="$SK2_STUB" \
     bash "$PANEL" <<< "$DIFF" > /dev/null 2> /dev/null || true
 check "HIMMEL-6475: rc-5 with empty stderr still carries a detail" "$(grep -c '"reason":"critic-skipped".*"detail":"critic SKIPPED' "$SK2_LEDGER" || true)" "1"
+# A skipped primary still leaves its attempt row, status skipped (not error).
+check "HIMMEL-6530: a skipped primary writes one attempt row" "$(grep -c '"kind":"attempt".*"model":"skipper"' "$SK_LEDGER" || true)" "1"
+check "HIMMEL-6530: the skipped attempt row has status skipped" "$(grep -c '"kind":"attempt".*"status":"skipped"' "$SK_LEDGER" || true)" "1"
+check "HIMMEL-6530: the skipped attempt row carries the SKIPPED stderr" "$(grep -c '"status":"skipped".*api lane is OFF' "$SK_LEDGER" || true)" "1"
+check "HIMMEL-6530: a skipped primary with empty stderr still writes its attempt row" "$(grep -c '"kind":"attempt".*"status":"skipped"' "$SK2_LEDGER" || true)" "1"
+
+# A crashed gate (exit 1 + cfp's BROKE line) is reason critic-broke on the avail row, an error attempt row, never critic-skipped.
+BK_STUB="$tmp/bk-stub.sh"
+printf '%s\n' '#!/bin/bash' 'echo "critic-first-pass.sh: claude critic BROKE (api bank gate said BANK-UNKNOWN) — not a clean no-op" >&2' 'exit 1' > "$BK_STUB"; chmod +x "$BK_STUB"
+BK_JSON="$tmp/critics-broke.json"
+printf '%s' '{"panel":[{"slug":"broker","model":"fake/primary","provider":"test","tier":"free"}]}' > "$BK_JSON"
+BK_LEDGER="$tmp/bk-ledger.jsonl"; : > "$BK_LEDGER"
+CR_LEDGER="$BK_LEDGER" CRITIC_LEDGER_APPEND="$HERE/ledger-append.sh" \
+    CRITICS_JSON="$BK_JSON" CRITIC_FIRST_PASS="$BK_STUB" \
+    bash "$PANEL" <<< "$DIFF" > /dev/null 2> /dev/null || true
+check "HIMMEL-6530: a crashed bank preflight records reason critic-broke" "$(grep -c '"kind":"avail".*"reason":"critic-broke"' "$BK_LEDGER" || true)" "1"
+check "HIMMEL-6530: a crashed bank preflight never records critic-skipped" "$(grep -c 'critic-skipped' "$BK_LEDGER" || true)" "0"
+check "HIMMEL-6530: a crashed bank preflight writes an error attempt row" "$(grep -c '"kind":"attempt".*"status":"error"' "$BK_LEDGER" || true)" "1"
 
 # Test LA: the panel persists its OWN evidence through ledger-append.sh. One run
 # contains two responders + one unavailable member and four findings, so it

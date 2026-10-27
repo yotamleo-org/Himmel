@@ -467,6 +467,65 @@ else
     fail "T19 push_rc=$push_rc push_out=$push_out (no marker at $marker)"
 fi
 
+echo "T27: --impl-family installs the gate AND records the family; a re-run changes nothing"
+d="$TMP_ROOT/f24"; mk_foreign_repo "$d" || exit 1
+hook="$d/work/.git/hooks/pre-push"
+rec="$d/work/.git/cr-impl-family/feat/x"
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family Codex 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ -x "$hook" ] && [ "$(cat "$rec" 2>/dev/null)" = "codex" ] \
+    && pass || fail "T27a rc=$rc out=$out"
+before="$(cksum "$hook" "$rec")"
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
+after="$(cksum "$hook" "$rec")"
+[ "$rc" -eq 0 ] && grep -Fq "already-current" <<< "$out" && [ "$before" = "$after" ] \
+    && pass || fail "T27b rc=$rc out=$out"
+
+echo "T28: --impl-family with a bad value -> non-zero, no record written"
+d="$TMP_ROOT/f25"; mk_foreign_repo "$d" || exit 1
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family 'bad family' 2>&1); rc=$?
+[ "$rc" -ne 0 ] && [ ! -e "$d/work/.git/cr-impl-family/feat/x" ] \
+    && pass || fail "T28 rc=$rc out=$out"
+
+echo "T29: --impl-family without a value, or with --status/--remove -> exit 2"
+d="$TMP_ROOT/f26"; mk_foreign_repo "$d" || exit 1
+out1=$(bash "$INSTALLER" --target "$d/work" --impl-family 2>&1); rc1=$?
+out2=$(bash "$INSTALLER" --target "$d/work" --status --impl-family codex 2>&1); rc2=$?
+out3=$(bash "$INSTALLER" --target "$d/work" --remove --impl-family codex 2>&1); rc3=$?
+[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ "$rc3" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && pass || fail "T29 rc1=$rc1 rc2=$rc2 rc3=$rc3 out1=$out1 out2=$out2 out3=$out3"
+
+echo "T30: an EMPTY --impl-family value is refused, not read as 'no family requested'"
+out1=$(bash "$INSTALLER" --target "$d/work" --impl-family "" 2>&1); rc1=$?
+out2=$(bash "$INSTALLER" --target "$d/work" --impl-family= 2>&1); rc2=$?
+[ "$rc1" -eq 2 ] && [ "$rc2" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && grep -Fq "requires a non-empty value" <<< "$out1" && grep -Fq "requires a non-empty value" <<< "$out2" \
+    && pass || fail "T30 rc1=$rc1 rc2=$rc2 out1=$out1 out2=$out2"
+
+echo "T31: an inherited CDPATH cannot send the family record to another repo"
+dd="$TMP_ROOT/f28"; mk_foreign_repo "$dd" || exit 1
+d="$TMP_ROOT/f27"; mk_foreign_repo "$d" || exit 1
+out=$(cd "$d" && CDPATH="$dd" bash "$INSTALLER" --target work --impl-family codex 2>&1); rc=$?
+[ "$rc" -eq 0 ] && [ "$(cat "$d/work/.git/cr-impl-family/feat/x" 2>/dev/null)" = "codex" ] \
+    && [ ! -e "$dd/work/.git/cr-impl-family" ] \
+    && pass || fail "T31 rc=$rc out=$out target_rec=$(cat "$d/work/.git/cr-impl-family/feat/x" 2>&1) decoy_has_dir=$([ -e "$dd/work/.git/cr-impl-family" ] && echo yes || echo no)"
+
+echo "T32: --impl-family with a REFUSED install (foreign hook, no --force) writes no record"
+d="$TMP_ROOT/f29"; mk_foreign_repo "$d" || exit 1
+mkdir -p "$d/work/.git/hooks"
+printf '#!/bin/sh\necho foreign\n' > "$d/work/.git/hooks/pre-push"; chmod +x "$d/work/.git/hooks/pre-push"
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family codex 2>&1); rc=$?
+[ -f "$d/work/.git/hooks/pre-push" ] && [ "$rc" -eq 2 ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && grep -Fq "foreign" "$d/work/.git/hooks/pre-push" \
+    && pass || fail "T32 rc=$rc out=$out"
+
+echo "T33: --impl-family followed by an option is a missing value, not 'the family is --remove'"
+d="$TMP_ROOT/f30"; mk_foreign_repo "$d" || exit 1
+bash "$INSTALLER" --target "$d/work" >/dev/null 2>&1
+out=$(bash "$INSTALLER" --target "$d/work" --impl-family --remove 2>&1); rc=$?
+[ "$rc" -eq 2 ] && [ -x "$d/work/.git/hooks/pre-push" ] && [ ! -e "$d/work/.git/cr-impl-family" ] \
+    && grep -Fq "requires a value" <<< "$out" \
+    && pass || fail "T33 rc=$rc out=$out"
+
 echo
 if [ "$SKIP" -gt 0 ]; then
     echo "install-cr-gate tests: $PASS passed, $FAIL failed, $SKIP skipped"

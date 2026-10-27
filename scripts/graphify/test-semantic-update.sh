@@ -902,5 +902,63 @@ python3 -c 'import json,sys;sys.exit("b.md" not in json.load(open(sys.argv[1]))[
 [ "$rc" -eq 0 ] && [ "$(lastrun "$C78" failed)" = 0 ] && [ "$stamped" -eq 0 ] && [[ "$(ids "$C78")" == *sem_b.md_beta* ]] \
   && pass "T78 failed=0, b.md has nodes and is stamped despite .graphifyignore" || fail "T78 (rc=$rc) failed=$(lastrun "$C78" failed) stamped_rc=$stamped: $out"
 
+echo "T79: a directory the repo's .graphifyignore lists is not corpus (graphify never extracts it, so it would fail every run)"
+C79D="$WS/c79d"; new_corpus "$C79D"; mkdir -p "$C79D/archive/voice/docs"; printf 'voice\n' > "$C79D/archive/voice/docs/voice.md"
+printf '# Voice is archived until it returns for Linux/macOS.\narchive/voice/\n' > "$C79D/.graphifyignore"
+out=$(run --name t79d --corpus-root "$C79D" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C79D/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "a.md b.md sub/c.md" ] && pass "T79 archive/voice/docs/voice.md left out of the corpus" || fail "T79 (rc=$rc) '$n': $out"
+
+echo "T80: a .graphifyignore with a negation line keeps its directory entries in the corpus (a re-included file must not be dropped)"
+C80="$WS/c80"; new_corpus "$C80"; mkdir -p "$C80/archive"; printf 'keep\n' > "$C80/archive/keep.md"
+printf 'archive/\n!archive/keep.md\n' > "$C80/.graphifyignore"
+out=$(run --name t80 --corpus-root "$C80" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C80/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "a.md archive/keep.md b.md sub/c.md" ] && pass "T80 archive/keep.md stays in the corpus" || fail "T80 (rc=$rc) '$n': $out"
+
+echo "T81: a thin extraction of unchanged content that the shrink guard refused MAX_ATTEMPTS times is accepted, not stuck forever"
+C79="$WS/c79"; new_corpus "$C79"
+python3 - "$C79/graphify-out/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+for i in (2, 3, 4):
+    g["nodes"].append({"id": "stale_a%d" % i, "label": "old", "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+for i in 1 2; do
+  out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
+  [ "$rc" -eq 0 ] && [[ "$(ids "$C79")" == *stale_a4* ]] && ! [[ "$(ids "$C79")" == *sem_a.md_alpha* ]] \
+    && pass "T81 attempt $i: shrink guard refuses, the old nodes stay" || fail "T81 attempt $i (rc=$rc): $(ids "$C79") :: $out"
+done
+out=$(run --name t79 --corpus-root "$C79" --corpus-class himmel-code); rc=$?
+got=$(ids "$C79")
+[ "$rc" -eq 0 ] && [[ "$got" == *sem_a.md_alpha* ]] && ! [[ "$got" == *stale_a4* ]] \
+  && pass "T81 attempt 3: the thin extraction replaces the old nodes" || fail "T81 attempt 3 (rc=$rc): $got :: $out"
+python3 -c 'import json,sys;m=json.load(open(sys.argv[1]));sys.exit(0 if "a.md" in m["files"] and "a.md" not in m.get("stuck", {}) else 1)' "$C79/graphify-out/semantic-manifest.json" \
+  && pass "T81 a.md is stamped and no longer stuck" || fail "T81 manifest: $(cat "$C79/graphify-out/semantic-manifest.json")"
+
+echo "T82: two omitted extractions are not shrink refusals, so a thin extraction after them is still refused"
+C81="$WS/c81"; new_corpus "$C81"
+python3 - "$C81/graphify-out/graph.json" <<'PY'
+import json, sys
+g = json.load(open(sys.argv[1]))
+for i in (2, 3, 4):
+    g["nodes"].append({"id": "stale_a%d" % i, "label": "old", "file_type": "concept", "_origin": "semantic", "source_file": "a.md"})
+json.dump(g, open(sys.argv[1], "w"))
+PY
+for i in 1 2; do GRAPHIFY_STUB_SKIP=a.md run --name t81 --corpus-root "$C81" --corpus-class himmel-code >/dev/null; done
+python3 -c 'import json,sys;r=json.load(open(sys.argv[1]))["stuck"]["a.md"];sys.exit(0 if r["attempts"]==2 and r["reason"].startswith("not extracted") else 1)' "$C81/graphify-out/semantic-manifest.json" \
+  && pass "T82 setup: two omitted runs recorded two not-extracted attempts" || fail "T82 setup: $(cat "$C81/graphify-out/semantic-manifest.json")"
+out=$(run --name t81 --corpus-root "$C81" --corpus-class himmel-code); rc=$?
+[ "$rc" -eq 0 ] && [[ "$(ids "$C81")" == *stale_a4* ]] && ! [[ "$(ids "$C81")" == *sem_a.md_alpha* ]] \
+  && pass "T82 the thin extraction is refused: no shrink refusal came before it" || fail "T82 (rc=$rc): $(ids "$C81") :: $out"
+
+echo "T83: graphify's own export (60-Maps/graph/) is never planned or stamped; a hand-authored 60-Maps note still is"
+C83="$WS/c83"; new_corpus "$C83"; mkdir -p "$C83/60-Maps/graph"
+printf 'derived\n' > "$C83/60-Maps/graph/Skills.md"; printf 'derived\n' > "$C83/60-Maps/graph/Skills1.md"; printf 'hand\n' > "$C83/60-Maps/hand.md"
+out=$(run --name t83 --corpus-root "$C83" --corpus-class himmel-code --seed-manifest); rc=$?
+n=$(python3 -c 'import json,sys;print(" ".join(sorted(json.load(open(sys.argv[1]))["files"])))' "$C83/graphify-out/semantic-manifest.json" 2>/dev/null)
+[ "$rc" -eq 0 ] && [ "$n" = "60-Maps/hand.md a.md b.md sub/c.md" ] && pass "T83 export dir excluded, hand.md kept" || fail "T83 (rc=$rc) '$n': $out"
+
 echo
 [ "$FAILS" -eq 0 ] && { echo "ALL PASS"; exit 0; } || { echo "$FAILS FAILED"; exit 1; }

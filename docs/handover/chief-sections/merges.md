@@ -75,6 +75,33 @@ run=<id>` (`run=unknown` when the new run is not listed yet; a failed dispatch
 is a WARN, the merge stands): read that run's `headSha` and `conclusion` before
 you lift a HOLD, and do not dispatch a second one.
 
+**Merge order for a chain (flag `chain_merge_plan`, default off).** Without the
+flag the queue is first READY, first GO. With `HIMMEL_FLAG_CHAIN_MERGE_PLAN=1` in
+your launching shell, plan the open PRs on every merge event:
+`python3 scripts/handover/chief-kit/chain-graph.py --open --json > <graph>`, then
+`bash scripts/handover/chief-kit/chain-plan.sh --graph <graph> --ready <pr>,<pr>`
+(`--ready`: the PRs green and GO-able now). It prints `ORDER`, `HOLD <pr> for <pr>`
+and `MERGE-FORWARD <pr> after <pr>` lines (kinds: HIMMEL-7701 design § 2).
+- **S1 and independent:** no order; each PR merges as it goes green and gets its GO.
+- **H1 / H2 (`HOLD`):** the successor waits for its predecessor's merge.
+- **S2 (`MERGE-FORWARD`):** the first mergeable PR of the pair merges first, never
+  held for ordering; if both are mergeable, the one with more H1/H2 dependants. The
+  later PR merges `origin/main` forward once, re-runs `impacted-suites.sh` over the
+  merged diff, regenerates generated files and pushes once. A trust-path PR still
+  needs a fresh judge and GO at the new head.
+- **The worker's proof:** send it the `MERGE-FORWARD` line and the plan file, and only
+  once every S2 predecessor of that PR has merged (the line names the last one in
+  `ORDER`, and the check proves that one's merge only). It runs
+  `bash scripts/handover/merge-forward-check.sh --chain-s2 <pr> --chain-plan <plan file> --chain-after-sha <the predecessor's squash-merge sha> --pr <job file> --pr-sha <HEAD>`
+  and merges forward only on `ALLOW chain-s2` (exit 0; exit 3 = the predecessor is
+  already in HEAD, nothing to merge forward). The reason needs a green PR run (a
+  red goes through the inherited-red rules) and a sha that is on `origin/main`, not
+  in HEAD, with a subject ending `(#<predecessor>)`.
+- **Flag off:** the planner prints one notice and no `MERGE-FORWARD` line, so the
+  `--chain-s2` reason REFUSEs. `merge-forward-check.sh` reads no flag, and its
+  existing mode is unchanged.
+- A hard-edge cycle exits 1: the planner prints no order; break the cycle by hand.
+
 **Trust-path PRs.** A PR whose diff touches a pattern in
 `scripts/ci/ci-trust-paths.txt` (CI workflows, `scripts/ci/`, the suite
 selector and shared libs, the merge gate and GO writer — the list is read

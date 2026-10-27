@@ -63,7 +63,7 @@ jq --argjson since_epoch "$SINCE_EPOCH" --argjson until_epoch "$UNTIL_EPOCH_ARG"
 
 jq -r '.[].headRefName' "$RUN/merged.json" > "$RUN/merged-branches-raw.txt" || { echo "ledger-metrics: could not extract headRefName from merged.json" >&2; exit 1; }
 sort -u "$RUN/merged-branches-raw.txt" > "$RUN/merged-branches.txt"
-jq -r 'select((.artifact // "diff")=="diff") | select(.kind=="finding" or .kind=="attempt") |
+jq -r 'select((.artifact // "diff")=="diff") | select(.kind=="finding" or (.kind=="attempt" and .status!="skipped")) |
   [.kind, .branch, .head, (.severity // "-"), (.model // "-")] | @tsv' "$LEDGER" > "$RUN/ledger-rows.tsv" \
     || { echo "ledger-metrics: could not extract rows from ledger" >&2; exit 1; }
 

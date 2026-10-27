@@ -17,8 +17,10 @@
 # replaces that box, and Enter there would confirm its highlighted option, so
 # such a screen (or one that cannot be read) gets no keystroke. A running turn
 # keeps the box but shows a spinner line (`✶ Smooshing… (16s · thinking)`) above
-# it, and that screen gets no keystroke either; nor does a box holding a draft,
-# which Enter would submit.
+# it (anywhere above, however many todo lines sit under it), and that screen gets
+# no keystroke either; nor does a box holding a draft, which Enter would submit.
+# The screen is read again right before sendText, so a dialog that opens after the
+# first read gets no keystroke.
 # The target must be the named session: at startup and again before every wake
 # the konsole session's process, or exactly one process up to 3 levels below it
 # (a claudex worker runs konsole, script, then claude), must run claude (argv0) with
@@ -160,7 +162,7 @@ at_prompt() { # the screen shows the idle, empty input box (a bare ❯ line betw
             if (!(at > 1 && (line[at - 1] ~ /^─/ || line[at - 1] ~ /^[ \t]*[^ \t]+…[ \t]+─+[ \t]*$/) && line[at + 1] ~ /^─/)) exit 1
             draft = line[at]; sub(/^❯/, "", draft); gsub(/\302\240|[ \t]/, "", draft)
             if (draft != "") exit 1
-            for (i = at - 2; i > 0 && i >= at - 9; i--) if (line[i] ~ /^[^ ]+ [A-Z][a-z]+…/) exit 1
+            for (i = at - 2; i > 0; i--) if (line[i] ~ /^[^ ]+ [A-Z][a-z]+…/) exit 1
         }'
 }
 
@@ -181,8 +183,11 @@ while :; do
             && { [ "$last" = 0 ] || [ "$gap" -ge "$(awk -v g="$REWAKE" 'BEGIN{printf "%d", g*1000}')" ]; } \
             && at_prompt; then
             named_target
-            konsole sendText "You have unread himmel messages: read them now."$'\r'
-            last="$now"
+            # a dialog can open between the first read and the keystroke: read the screen again right before sending
+            if at_prompt; then
+                konsole sendText "You have unread himmel messages: read them now."$'\r'
+                last="$now"
+            fi
         fi
     else
         since=0 last=0

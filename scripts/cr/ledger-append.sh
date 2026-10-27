@@ -16,7 +16,8 @@
 # primary try AND each fallback candidate) — NEVER deduped, so a retried
 # member leaves one row per try, letting a reader correlate timeout clusters
 # with a peak-usage window (e.g. z.ai peak-hours throttling) instead of only
-# seeing the final `avail` verdict. --status is ok|timeout|error; --attempt is
+# seeing the final `avail` verdict. --status is ok|timeout|error|skipped (skipped:
+# the member declined to run, a clean no-op, not a failure); --attempt is
 # the 1-based try number; --duration-secs is the measured wall-clock elapsed.
 # --reason/--detail: OPTIONAL failure-classification capture,
 # mainly for `avail --status unavailable` records so cr-scores.sh can report
@@ -511,8 +512,8 @@ if [ "$kind" = "attempt" ]; then
   [ -n "$head" ]  || { echo "ledger-append.sh: attempt requires --head" >&2; exit 2; }
   [ -n "$model" ] || { echo "ledger-append.sh: attempt requires --model" >&2; exit 2; }
   case "$status" in
-    ok|timeout|error) ;;
-    *) echo "ledger-append.sh: attempt --status must be ok|timeout|error (got '$status')" >&2; exit 2;;
+    ok|timeout|error|skipped) ;;
+    *) echo "ledger-append.sh: attempt --status must be ok|timeout|error|skipped (got '$status')" >&2; exit 2;;
   esac
   if [ -n "$attempt_num" ] && ! expr "$attempt_num" : '^[0-9][0-9]*$' > /dev/null 2>&1; then
     echo "ledger-append.sh: attempt --attempt must be a non-negative integer (got '$attempt_num')" >&2; exit 2

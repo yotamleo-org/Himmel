@@ -4,8 +4,8 @@
 Reads the eval-runs ledger (lib/eval_runs.py) and the eval-changes ledger (lib/eval_feedback.py) and
 writes one Markdown page in plain words, its bottom line first (each eval's headline with its run day):
 how often the critics catch planted bugs and are right
-(review-panel), how often the judges let a bug past a GO (judge-accuracy), the proof-first share of
-merged PRs (pdd-share), the trend since the last
+(review-panel), how often the judges let a bug past a GO (judge-accuracy), the proof-first share
+(self-reported) of merged PRs (pdd-share), the trend since the last
 run of the same series, and each change the feedback step made with its re-measured result. The page
 carries no metric names: a number with no sentence here is not shown.
 
@@ -227,10 +227,12 @@ def proof_lines(cur, prev):
            "Proof before the PR's first commit, and the PR body names RED (the new test failing) and then GREEN "
            "(the same test passing). It matters because a check written down before the work, and seen failing "
            "before the fix, is what shows the change does what the ticket asked: a test never seen failing may "
-           "test nothing.", "",
+           "test nothing. Self-reported: RED and GREEN are words the PR author wrote, not a test run this eval "
+           "checked.", "",
            "Run of %s, the last %d merged PRs whose ticket and commits could be read.%s" % (
                day(cur["ts"]), cur["n"] or 0, level(cur)), ""]
-    for key, text, unit in (("pdd", "Proof first", " merged PRs"), ("ticket_first", "The ticket was written first", ""),
+    for key, text, unit in (("pdd", "Proof-first share (self-reported)", " merged PRs"),
+                            ("ticket_first", "The ticket was written first", ""),
                             ("red_green", "RED then GREEN named in the PR body", "")):
         s = rate(cur, prev, key + ".pct")
         if s and count(m, key + ".n"):
@@ -284,7 +286,8 @@ def bottom_lines(rows):
     out = []
     for eval_id, build, mark, name in (("review-panel", critic_lines, " planted bugs: ", "Planted bugs"),
                                        ("judge-accuracy", judge_lines, "- A bug got past a GO", "Bugs past a GO"),
-                                       ("pdd-share", proof_lines, "- Proof first: ", "Proof first")):
+                                       ("pdd-share", proof_lines, "- Proof-first share (self-reported): ",
+                                        "Proof-first share (self-reported)")):
         cur, prev = latest(rows, eval_id)
         if cur is None:
             continue
@@ -299,7 +302,8 @@ def page(rows, changes):
     out = ["# How good are our reviewers?", "",
            "Each critic and judge number comes from the newest run, and a trend compares it with the run "
            "before. Each change's result comes from the run that re-measured it. \"Likely between\" is a range: given how much "
-           "a run measured, the true rate is likely inside it.", "",
+           "a run measured, the true rate is likely inside it. What each number means, with its ledger key: "
+           "scripts/eval/README.md.", "",
            "## Bottom line", ""]
     out += bottom_lines(rows) or ["No run yet."]
     out += ["", "## The critics on planted bugs", ""]
@@ -314,7 +318,7 @@ def page(rows, changes):
     out += ["", "## The five open questions", ""]
     cur, _ = latest(rows, "decision-158")
     out += ["No run yet."] if cur is None else answer_lines(cur)
-    out += ["", "## Proof first", ""]
+    out += ["", "## Proof-first share (self-reported)", ""]
     cur, prev = latest(rows, "pdd-share")
     out += ["No run yet."] if cur is None else proof_lines(cur, prev)
     out += ["", "## What we changed, and whether it helped", ""]

@@ -215,6 +215,28 @@ it loosens a safety limit, so its home is the policy section of
 guarded process-env variable (`HIMMEL_FLEET_CAP`). Which workers are live right
 now is state, so it stays in the fleet manifest.
 
+## Feature flags
+
+A feature flag ships new behaviour dark and lets one run turn it on. The registry
+is `scripts/lib/flags.tsv`: one row per flag (`name default kind owner removal
+expires description`). A flag is read only through `scripts/lib/flags.sh`
+(`himmel_flag <name>`, rc 0 on, 1 off, 2 unknown), `flags.py` or `flags.mjs`.
+
+Resolution order, first hit wins: the process env `HIMMEL_FLAG_<NAME>` (`1` or `0`),
+then `himmel.conf.local`, then `himmel.conf` under `HIMMEL_CONFIG_DIR`, then the
+registry default. A flag is never read from `.env`.
+
+Rules, enforced by `scripts/ci/check-flags.sh` on every CI event:
+
+- **No guard behind a flag.** A flag never wraps a safety rail: not under
+  `scripts/hooks/`, not in a gate script, not on a `ci-trust-paths.txt` path.
+- **14-day expiry.** `expires` is 14 days from birth; once it passes, CI goes red on
+  main too. The removal sub-task named in the row deletes the flag and its branches.
+- **Registered and read.** A flag the code reads must be in the registry, and a
+  registered flag must have a reader.
+
+Current readers: `chain_soft_edges` in `scripts/handover/chief-kit/next-dispatchable.sh`.
+
 ## Why this route
 
 Two routes were compared.

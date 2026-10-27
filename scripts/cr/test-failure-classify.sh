@@ -131,6 +131,11 @@ check "HIMMEL-6580: no key file skip -> absent" "$( . "$HERE/../lib/critics-conf
 # shellcheck disable=SC1090
 check "HIMMEL-6580: bank not PROCEED skip -> unavailable" "$( . "$HERE/../lib/critics-config.sh"; critics_skip_class 'critic-first-pass.sh: claude critic SKIPPED (bank not PROCEED) — clean no-op')" "unavailable"
 
+# A crashed gate (exit 1 plus cfp's own BROKE line) is critic-broke, never a skip and never generic-rc-1.
+check "HIMMEL-6530: cfp BROKE line -> critic-broke" "$(classify 1 '' 'critic-first-pass.sh: claude critic BROKE (no scratch file) — not a clean no-op')" "critic-broke"
+check "HIMMEL-6530: BROKE line is not a skip: rc=5 stays critic-skipped" "$(classify 5 '' 'critic-first-pass.sh: claude critic BROKE (no scratch file) — not a clean no-op')" "critic-skipped"
+check "HIMMEL-6530: a BROKE phrase inside provider text is not cfp's own line" "$(classify 1 '' 'critic-first-pass.sh: raw tail: the provider said claude critic BROKE (x)')" "generic-rc-1"
+
 # ── generic-rc-N fallback (no signature matches anything) ──────────────────
 check "23: unrecognized text -> generic-rc-N" "$(classify 42 '' 'connection refused')" "generic-rc-42"
 check "24: rc literal embedded in class name" "$(classify 7 '' 'some totally novel error')" "generic-rc-7"
