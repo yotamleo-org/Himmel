@@ -60,8 +60,9 @@ prog='
     if (substr(run, 1, 1) == fch && length(run) >= flen && substr($0, RSTART + RLENGTH) ~ /^[ \t]*$/) { fence = 0; next }
   }
   function addkeys(s) { while (match(s, /[A-Z][A-Z0-9]+-[0-9]+/)) { key[substr(s, RSTART, RLENGTH)] = 1; s = substr(s, RSTART + RLENGTH) } }
-  fence || /^(    |\t)/ { if (cur != "" && real($0)) have[cur] = 1; if (cur == "plan") addkeys($0); next }
-  { k = norm($0); if (k in want) { cur = k; seen[k] = 1; next } if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { cur = ""; next } if (cur != "" && real($0)) have[cur] = 1; if (cur == "plan") addkeys($0) }
+  function lvl(s) { sub(/^[ \t]*/, "", s); return match(s, /^#+/) ? RLENGTH : 0 }
+  fence || /^(    |\t)/ { if (cur != "" && real($0)) have[cur] = 1; if (inplan) addkeys($0); next }
+  { k = norm($0); if (k in want) { cur = k; seen[k] = 1; inplan = (k == "plan"); plvl = lvl($0); next } if ($0 ~ /^[ \t]*#+[ \t]/ || $0 ~ /^[ \t]*(\*\*|__)[^*_]+(\*\*|__)[ \t]*:?[ \t]*$/) { cur = ""; if (!(inplan && plvl > 0 && lvl($0) > plvl)) inplan = 0; next } if (cur != "" && real($0)) have[cur] = 1; if (inplan) addkeys($0) }
   END {
     if (keys) { for (x in key) nk++; print nk + 0; exit }
     for (i = 1; i <= n; i++) if (!(w[i] in have)) { d = disp[i]; sub(/_/, " ", d); printf "%s%s", (c++ ? ", " : ""), d }
@@ -83,7 +84,9 @@ fi
 # ponytail: any [A-Z][A-Z0-9]+-[0-9]+ counts as a key (UTF-8 and SHA-256 together would too), answer with "Edges: none"
 plankeys="$(awk -v keys=1 "$prog" "$draft")" || parsefail
 if [ "$plankeys" -ge 2 ] 2>/dev/null; then
-  edges="$(sed -nE 's/^[[:space:]]*([-*+][[:space:]]+)?(\*\*|__)?[Ee][Dd][Gg][Ee][Ss](\*\*|__)?:(\*\*|__)?[[:space:]]*//p' "$draft" | head -n 1 | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:].]*$//')"
+  # an "Edges:" line inside a fenced example is not the draft's own
+  # shellcheck disable=SC2016 # the awk program is literal text, nothing here should expand
+  edges="$(awk '/^ {0,3}(```|~~~)/ { f = !f; next } !f' "$draft" | sed -nE 's/^[[:space:]]*([-*+][[:space:]]+)?(\*\*|__)?[Ee][Dd][Gg][Ee][Ss](\*\*|__)?:(\*\*|__)?[[:space:]]*//p' | head -n 1 | tr '[:upper:]' '[:lower:]' | sed 's/[[:space:].]*$//')"
   case "$edges" in
     ''|tbd|tbc|todo|n/a|na|...|'?'*|-*|'<'*'>') missing="${missing:+$missing, }Edges: (the Plan names $plankeys ticket keys: add an 'Edges: <A> blocks <B> (hard|soft)' line, or 'Edges: none')" ;;
   esac

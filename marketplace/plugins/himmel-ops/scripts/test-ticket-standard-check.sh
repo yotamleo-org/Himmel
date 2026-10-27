@@ -362,6 +362,16 @@ edraft "$td/e7.md" '1. Read the UTF-8 notes, then run it.'
 run Task "$td/e7.md" "$q" --sector X; check "Plan with no ticket key needs no Edges line" "$rc" 0
 mkdraft "$td/e8.md"; printf 'HIMMEL-100 and HIMMEL-101 are named outside the Plan.\n' >>"$td/e8.md"
 run Task "$td/e8.md" "$q" --sector X; check "keys outside the Plan need no Edges line" "$rc" 0
+edraft "$td/e9.md" '1. Land HIMMEL-100 first.
+### Follow-up
+2. Then HIMMEL-101.'
+run Task "$td/e9.md" "$q" --sector X; check "keys under Plan subheadings still need Edges" "$rc" 1
+printf '%s\n' 'Edges: HIMMEL-100 blocks HIMMEL-101 (hard)' >>"$td/e9.md"
+run Task "$td/e9.md" "$q" --sector X; check "subheaded multi-ticket Plan with Edges exits 0" "$rc" 0
+cp "$td/e1.md" "$td/e10.md"; printf '%s\n' '```text' 'Edges: none' '```' >>"$td/e10.md"
+run Task "$td/e10.md" "$q" --sector X; check "Edges: none inside a fenced example does not count" "$rc" 1
+printf '%s\n' 'Edges: HIMMEL-100 blocks HIMMEL-101 (hard)' >>"$td/e10.md"
+run Task "$td/e10.md" "$q" --sector X; check "real Edges line after a fenced example counts" "$rc" 0
 run Epic "$td/e1.md" "$q" --sector X; check "Epic without Edges only warns" "$rc" 0
 has "Epic warns about Edges" "$out" "Edges:"
 
