@@ -257,6 +257,11 @@
 #      exhaustion, burned the fleet on 2026-09-07). Checked at
 #      ARM time (before the scheduler entry is created), --dry-run exempt.
 #      Set FLEET_CAP_OK=1 in the LAUNCHING shell to arm anyway.
+#   23 restart cap refused — a --limit-reset arm found three `armed-resume`
+#      start rows for this handover's task in the flow-run ledger inside the
+#      last 5 minutes (a crash loop). --force overrides. A --limit-reset
+#      replay of an already-armed (handover, reset) pair is NOT an error: it
+#      exits 0 without arming (the limit-resume key).
 set -euo pipefail
 # refuse a chokepoint seam that differs from the session's launch env.
 # Parameter expansion, not dirname: a PATH-shadowed dirname must not pick
