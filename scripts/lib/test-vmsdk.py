@@ -670,6 +670,14 @@ class TestProvisionE2E(unittest.TestCase):
             with self.assertRaises(vmsdk.VMError):
                 vm.provision()
 
+    def test_provision_windows_guest_refused_without_shelling_out(self):
+        vm = self._windows()
+        with mock.patch.object(vmsdk.subprocess, "run") as sr:
+            with self.assertRaises(vmsdk.VMError) as cm:
+                vm.provision()
+        self.assertIn("windows", str(cm.exception).lower())
+        sr.assert_not_called()
+
     def test_run_e2e_ubuntu_passes_user_at_localhost(self):
         vm = self._ubuntu()
         with mock.patch.object(vmsdk.subprocess, "run",
@@ -2245,8 +2253,7 @@ class TestStation(unittest.TestCase):
         # Clear every env var EXCEPT the HOME var expanduser() itself relies
         # on — the point of this test is that a station needs no VM creds
         # (ubuntu_vm_user etc.), not that expanduser() stops working.
-        home_key = "USERPROFILE" if os.name == "nt" else "HOME"
-        keep = {home_key: os.environ[home_key]} if home_key in os.environ else {}
+        keep = {"HOME": os.environ["HOME"]} if "HOME" in os.environ else {}
         with mock.patch.dict(os.environ, keep, clear=True):
             vm = self._vm()
         self.assertEqual(vm.kind, "station")

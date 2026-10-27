@@ -5,7 +5,6 @@
 // bank has reset since the value was written, so emitting it would fabricate.
 import { existsSync, readFileSync, readdirSync, openSync, readSync, closeSync, fstatSync } from "node:fs";
 import { join } from "node:path";
-import { tmpdir } from "node:os";
 import { quotaGaugeRead } from "../telegram/quota-gauge";
 
 export const BANK_IDS = ["claude", "codex", "glm"] as const;
@@ -40,16 +39,13 @@ function validPct(v: unknown): v is number {
 
 // Must resolve the SAME file the statusline producer writes and the
 // statusline guard reads: ${CLAUDE_USAGE_CACHE:-/tmp/claude/statusline-usage-cache.json}.
-// POSIX keeps the literal /tmp (os.tmpdir() is /var/folders/... on macOS and
-// honors $TMPDIR on Linux - a different file than the bash producer's target);
-// Windows MSYS /tmp == os.tmpdir() (cygpath-verified), where a literal /tmp
-// would NOT resolve from a Bun process.
-export function defaultClaudeCachePath(env: Record<string, string | undefined>, platform: NodeJS.Platform): string {
+// The literal /tmp is kept (os.tmpdir() is /var/folders/... on macOS and
+// honors $TMPDIR on Linux - a different file than the bash producer's target).
+// _platform is accepted from callers and no longer read.
+export function defaultClaudeCachePath(env: Record<string, string | undefined>, _platform: NodeJS.Platform): string {
   const override = env.CLAUDE_USAGE_CACHE?.trim();
   if (override) return override;
-  return platform === "win32"
-    ? join(tmpdir(), "claude", "statusline-usage-cache.json")
-    : "/tmp/claude/statusline-usage-cache.json";
+  return "/tmp/claude/statusline-usage-cache.json";
 }
 
 export function readClaudeBank(cachePath: string, nowMs: number): BankResult {

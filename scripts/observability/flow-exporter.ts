@@ -97,8 +97,6 @@ const SESSION_DEAD_ALERT_TTL_SECONDS = 24 * 60 * 60;
 // declared deadline exceeds this TTL, make it impossible to ever count.
 const FLOW_STALLED_ALERT_TTL_SECONDS = 24 * 60 * 60;
 const CACHE_TTL_MS = 60 * 1000;
-const SCHEDULER_QUERY_TIMEOUT_MS = 10 * 1000;
-const HOST_DETECTOR_TIMEOUT_MS = 10 * 1000;
 const GIT_QUERY_TIMEOUT_MS = 10 * 1000;
 const DEFAULT_PORT = 9877;
 
@@ -193,48 +191,14 @@ export type PidLivenessRunner = (pids: number[]) => Set<number>;
 // One snapshot of every running pid, not one probe per row: the spawn cost is
 // what would push the render past the scrape budget (the render
 // is already ~6.6s against a 10s Prometheus scrape_timeout).
-export function defaultPidLiveness(pids: number[], platform: NodeJS.Platform = process.platform): Set<number> {
+export function defaultPidLiveness(pids: number[]): Set<number> {
   if (pids.length === 0) return new Set<number>();
-  if (platform === "win32") {
-    try {
-      const proc = Bun.spawnSync(["tasklist", "/NH", "/FO", "CSV"], {
-        stdout: "pipe",
-        stderr: "pipe",
-        env: { ...process.env, MSYS_NO_PATHCONV: "1" },
-      });
-      if (proc.exitCode !== 0) return new Set(pids);
-      const running = new Set<number>();
-      for (const line of proc.stdout.toString().split(/\r?\n/)) {
-        const m = /^"[^"]*","(\d+)"/.exec(line.trim());
-        if (m) running.add(Number(m[1]));
-      }
-      // A self-pid sentinel, not an empty-parse check — this
-      // process is definitionally alive, so a complete tasklist snapshot
-      // MUST contain process.pid. Its absence proves the snapshot is
-      // incomplete (truncated, filtered, or in an unexpected format), which
-      // subsumes the empty-output case (an empty set can't contain it
-      // either) while also catching a PARTIAL parse: truncated/malformed
-      // output that still yields some valid rows would pass an
-      // empty-set check yet still be missing live pids, silently
-      // downgrading real stalls to `abandoned` and muting a page-severity
-      // alert. Same fail-safe direction as the exitCode !== 0 and catch
-      // paths above/below: in any environment where our own pid legitimately
-      // does not appear, this simply never downgrades a row — costing a
-      // possible `abandoned` classification, never suppressing an alert.
-      if (!running.has(process.pid)) return new Set(pids);
-      return new Set(pids.filter((pid) => running.has(pid)));
-    } catch {
-      // A broken probe must never mute the alert — treat every candidate as alive.
-      return new Set(pids);
-    }
-  }
   const alive = new Set<number>();
   for (const pid of pids) {
     // ONLY ESRCH ("no such process") is confirmed death. EPERM means the
     // process EXISTS and is not ours. Every OTHER error is an UNPROBEABLE
-    // pid, not a dead one, so it must fail safe to alive — same direction as
-    // the win32 branch's spawn-failure path above, and the same convention
-    // scripts/lib/settings-lock.mjs documents. Testing for EPERM instead
+    // pid, not a dead one, so it must fail safe to alive — the same
+    // convention scripts/lib/settings-lock.mjs documents. Testing for EPERM instead
     // (the pre-CR shape) inverted this: an unexpected probe error read as
     // death and would silently downgrade a real stall to `abandoned`,
     // muting a page-severity alert — the exact failure this whole function
@@ -1314,62 +1278,14 @@ function normalizeTaskSamples(raw: unknown): ScheduledTaskSample[] {
   return samples;
 }
 
-function powershellArrayLiteral(values: string[]): string {
-  return JSON.stringify(values).replace(/'/g, "''");
-}
-
-async function runWindowsScheduledTasks(tasks: string[]): Promise<ScheduledTaskSample[]> {
-  if (tasks.length === 0) return [];
-  const namesJson = powershellArrayLiteral(tasks);
-  const script = `
-$ErrorActionPreference = 'SilentlyContinue'
-$names = ConvertFrom-Json '${namesJson}'
-# UTC-kind epoch anchor: [datetime]'...Z' parses as LOCAL kind, and DateTime
-# subtraction ignores Kind, which would skew next_run by the UTC offset.
-$epoch = [datetime]::new(1970, 1, 1, 0, 0, 0, [System.DateTimeKind]::Utc)
-$out = foreach ($name in $names) {
-  $task = Get-ScheduledTask -TaskName $name -ErrorAction SilentlyContinue
-  if ($null -eq $task) {
-    [pscustomobject]@{ task = $name; exists = 0; enabled = 0; next_run_timestamp = $null }
-    continue
-  }
-  $enabled = 0
-  if ($task.State -ne 'Disabled') { $enabled = 1 }
-  $nextEpoch = $null
-  $info = Get-ScheduledTaskInfo -TaskName $name -ErrorAction SilentlyContinue
-  if ($null -ne $info -and $null -ne $info.NextRunTime -and $info.NextRunTime -gt $epoch) {
-    $nextEpoch = [int64](($info.NextRunTime.ToUniversalTime() - $epoch).TotalSeconds)
-  }
-  [pscustomobject]@{ task = $name; exists = 1; enabled = $enabled; next_run_timestamp = $nextEpoch }
-}
-$out | ConvertTo-Json -Compress
-`.trim();
-  // Async spawn with a hard timeout: a hung PowerShell must fail this family
-  // closed (omitted), never freeze the scrape server the way a sync spawn
-  // on the request path would.
-  const proc = Bun.spawn(["powershell", "-NoProfile", "-Command", script], { stdout: "pipe", stderr: "pipe" });
-  const timer = setTimeout(() => {
-    try { proc.kill(); } catch { /* already gone */ }
-  }, SCHEDULER_QUERY_TIMEOUT_MS);
-  try {
-    const exitCode = await proc.exited;
-    clearTimeout(timer);
-    if (exitCode !== 0) return [];
-    const out = await new Response(proc.stdout).text();
-    return normalizeTaskSamples(JSON.parse(out));
-  } catch {
-    clearTimeout(timer);
-    return [];
-  }
-}
-
 async function scheduledTaskMetrics(
   config: ObservabilityConfig,
   opts: Required<Pick<RenderMetricsOptions, "platform" | "nowMs" | "cache">> & { schedulerRunner?: SchedulerRunner },
 ): Promise<{ lines: string[]; comments: string[] }> {
   const tasks = [...(config.expected_tasks ?? [])].filter(Boolean).sort();
   if (tasks.length === 0) return { lines: [], comments: [] };
-  if (opts.platform !== "win32") {
+  const runner = opts.schedulerRunner;
+  if (opts.platform !== "win32" || !runner) {
     return { lines: [], comments: ["# scheduled_task_* omitted: platform has no Windows Scheduled Tasks API"] };
   }
 
@@ -1389,7 +1305,6 @@ async function scheduledTaskMetrics(
     return buildScheduledTaskLines(opts.cache.scheduler.value.samples, opts.cache.scheduler.value.comments, expectedDisabledTasks);
   }
 
-  const runner = opts.schedulerRunner ?? runWindowsScheduledTasks;
   let samples: ScheduledTaskSample[] = [];
   const comments: string[] = [];
   try {
@@ -1463,31 +1378,6 @@ export function parseHostDetectorJson(raw: unknown): HostDetectorResult {
   };
 }
 
-async function runWindowsHostDetectors(): Promise<HostDetectorResult> {
-  const scriptPath = join(import.meta.dir, "host-detectors.ps1");
-  const proc = Bun.spawn(["powershell", "-NoProfile", "-File", scriptPath], { stdout: "pipe", stderr: "pipe" });
-  const timer = setTimeout(() => {
-    try { proc.kill(); } catch { /* already gone */ }
-  }, HOST_DETECTOR_TIMEOUT_MS);
-  try {
-    // Drain both pipes CONCURRENTLY with exit: awaiting exited first can
-    // deadlock if the child fills a pipe buffer before exiting (codex-5).
-    const [exitCode, out, err] = await Promise.all([
-      proc.exited,
-      new Response(proc.stdout).text(),
-      new Response(proc.stderr).text(),
-    ]);
-    clearTimeout(timer);
-    if (exitCode !== 0) {
-      throw new Error(err.trim() || `host-detectors exited ${exitCode}`);
-    }
-    return parseHostDetectorJson(out);
-  } catch (e) {
-    clearTimeout(timer);
-    throw e;
-  }
-}
-
 function hostDetectorOmitComment(reason: string): string {
   return `# agent_tree_*/orphan_* omitted: ${reason.replace(/\s+/g, " ").trim() || "host-detectors query failed"}`;
 }
@@ -1496,7 +1386,8 @@ async function hostDetectorMetrics(
   config: ObservabilityConfig,
   opts: Required<Pick<RenderMetricsOptions, "platform" | "nowMs" | "cache">> & { hostDetectorRunner?: HostDetectorRunner },
 ): Promise<{ lines: string[]; comments: string[] }> {
-  if (opts.platform !== "win32") {
+  const runner = opts.hostDetectorRunner;
+  if (opts.platform !== "win32" || !runner) {
     return { lines: [], comments: [hostDetectorOmitComment("platform has no Windows process tree API")] };
   }
 
@@ -1506,7 +1397,6 @@ async function hostDetectorMetrics(
     return buildHostDetectorLines(opts.cache.hostDetectors.value);
   }
 
-  const runner = opts.hostDetectorRunner ?? runWindowsHostDetectors;
   try {
     const result = parseHostDetectorJson(await runner());
     opts.cache.hostDetectors = { key, fetchedAtMs: opts.nowMs, value: result };

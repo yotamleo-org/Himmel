@@ -842,71 +842,13 @@ test("HIMMEL-2211: defaultPidLiveness treats ESRCH as dead and every other outco
       if (pid === 3) throw { code: "ESRCH" }; // genuinely gone
       return true; // pid 4: no throw
     }) as typeof process.kill;
-    const alive = defaultPidLiveness([1, 2, 3, 4], "linux");
+    const alive = defaultPidLiveness([1, 2, 3, 4]);
     expect(alive.has(1)).toBe(true);
     expect(alive.has(2)).toBe(true);
     expect(alive.has(3)).toBe(false);
     expect(alive.has(4)).toBe(true);
   } finally {
     process.kill = realKill;
-  }
-});
-
-test("HIMMEL-2211: defaultPidLiveness (win32) treats an empty tasklist parse as unprobeable, not dead", () => {
-  const realSpawnSync = Bun.spawnSync;
-  try {
-    // exit 0, empty stdout: the parse yields zero running pids, so it also
-    // cannot contain our own process.pid — the self-pid sentinel fires. Must
-    // fail safe to "every candidate alive" (unprobeable, not confirmed dead).
-    Bun.spawnSync = (() => ({ exitCode: 0, stdout: Buffer.from("") })) as typeof Bun.spawnSync;
-    const empty = defaultPidLiveness([10, 20, 30], "win32");
-    expect(empty.has(10)).toBe(true);
-    expect(empty.has(20)).toBe(true);
-    expect(empty.has(30)).toBe(true);
-  } finally {
-    Bun.spawnSync = realSpawnSync;
-  }
-});
-
-test("HIMMEL-2211: defaultPidLiveness (win32) self-pid sentinel — a PARTIAL parse missing our own pid must not downgrade any candidate", () => {
-  const realSpawnSync = Bun.spawnSync;
-  try {
-    // exit 0, well-formed CSV that DOES list some candidate pids (the
-    // truncated-snapshot shape) but is MISSING our own process.pid. The old
-    // `running.size === 0` guard would NOT fire here (running.size > 0), so
-    // this is exactly the bug the sentinel replaces: a partial parse
-    // silently downgrading a real stall to `abandoned`. Our own pid is
-    // definitionally alive, so its absence proves the snapshot is
-    // incomplete — every candidate must report alive.
-    Bun.spawnSync = (() => ({
-      exitCode: 0,
-      stdout: Buffer.from('"System Idle Process","0","Services","0","8 K"\r\n"node.exe","10","Console","1","12,345 K"\r\n"node.exe","30","Console","1","6,789 K"\r\n'),
-    })) as typeof Bun.spawnSync;
-    const partial = defaultPidLiveness([10, 20, 30], "win32");
-    expect(partial.has(10)).toBe(true);
-    expect(partial.has(20)).toBe(true);
-    expect(partial.has(30)).toBe(true);
-  } finally {
-    Bun.spawnSync = realSpawnSync;
-  }
-});
-
-test("HIMMEL-2211: defaultPidLiveness (win32) — a COMPLETE snapshot (contains our own pid) still filters real candidates normally", () => {
-  const realSpawnSync = Bun.spawnSync;
-  try {
-    // exit 0, CSV containing our own process.pid (proving completeness) plus
-    // only SOME candidate pids: the sentinel does not fire, so real
-    // liveness detection still downgrades the pid tasklist doesn't list.
-    Bun.spawnSync = (() => ({
-      exitCode: 0,
-      stdout: Buffer.from(`"System Idle Process","0","Services","0","8 K"\r\n"node.exe","10","Console","1","12,345 K"\r\n"node.exe","30","Console","1","6,789 K"\r\n"bun.exe","${process.pid}","Console","1","1,234 K"\r\n`),
-    })) as typeof Bun.spawnSync;
-    const complete = defaultPidLiveness([10, 20, 30], "win32");
-    expect(complete.has(10)).toBe(true);
-    expect(complete.has(20)).toBe(false);
-    expect(complete.has(30)).toBe(true);
-  } finally {
-    Bun.spawnSync = realSpawnSync;
   }
 });
 
