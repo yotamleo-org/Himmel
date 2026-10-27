@@ -43,6 +43,17 @@ assert_rc() {
     fi
 }
 
+assert_eq() {
+    local label="$1" expected="$2" actual="$3"
+    if [ "$actual" = "$expected" ]; then
+        echo "PASS $label (exact match)"
+    else
+        echo "FAIL $label - expected: $expected"
+        echo "  got: $actual"
+        FAILED=$((FAILED + 1))
+    fi
+}
+
 assert_contains() {
     local label="$1" needle="$2" haystack="$3"
     case "$haystack" in
@@ -520,21 +531,28 @@ fi
 
 # 18. Label "suite" switches the OS keyring off for the suite it runs; any
 # other label leaves the caller's env alone. The fixture lives in the worktree
-# (untracked is accepted there) and prints the variable into its log.
-KEYRING_ABS="$REPO_ROOT/scripts/test-quiet-run-keyring-$$.sh"
+# (untracked is accepted there) and prints the variable into its log. It sits at
+# the worktree root, outside the roots run-shell-tests.sh scans for suites.
+KEYRING_ABS="$REPO_ROOT/test-quiet-run-keyring-$$.sh"
 # shellcheck disable=SC2016  # the fixture expands the variable, not this printf
 printf '#!/usr/bin/env bash\necho "keyring=${HIMMEL_SECRETS_KEYRING-unset}"\n' > "$KEYRING_ABS"
 chmod +x "$KEYRING_ABS"
-KEYRING_REL="scripts/${KEYRING_ABS##*/}"
+KEYRING_REL="${KEYRING_ABS##*/}"
+KEYRING_RC=0
 run_keyring() {
     local label="$1"
-    (cd "$REPO_ROOT" && env -u HIMMEL_SECRETS_KEYRING TMPDIR="$SCRATCH" bash "$QUIET_RUN" "$label" -- bash "$KEYRING_REL" >/dev/null 2>&1)
-    grep -h '^keyring=' "$SCRATCH"/quiet-run-"$label"-*.log
+    KEYRING_RC=0
+    (cd "$REPO_ROOT" && env -u HIMMEL_SECRETS_KEYRING TMPDIR="$SCRATCH" bash "$QUIET_RUN" "$label" -- bash "$KEYRING_REL" >/dev/null 2>&1) || KEYRING_RC=$?
+    KEYRING_OUT=$(grep -h '^keyring=' "$SCRATCH"/quiet-run-"$label"-*.log)
 }
-OUT=$(run_keyring suite)
-assert_contains "suite label exports HIMMEL_SECRETS_KEYRING=off to the suite" "keyring=off" "$OUT"
-OUT=$(run_keyring other)
-assert_contains "negative control: a non-suite label leaves it unset" "keyring=unset" "$OUT"
+run_keyring suite
+OUT="$KEYRING_OUT"
+assert_rc "suite label run of the keyring fixture succeeds" 0 "$KEYRING_RC"
+assert_eq "suite label exports HIMMEL_SECRETS_KEYRING=off to the suite" "keyring=off" "$OUT"
+run_keyring other
+OUT="$KEYRING_OUT"
+assert_rc "non-suite label run of the keyring fixture succeeds" 0 "$KEYRING_RC"
+assert_eq "negative control: a non-suite label leaves it unset" "keyring=unset" "$OUT"
 
 echo ""
 if [ "$FAILED" -eq 0 ]; then
