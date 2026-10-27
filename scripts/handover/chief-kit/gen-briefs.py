@@ -60,6 +60,10 @@ Worktrees: `scripts/worktree.sh new <branch> --no-prune` from --repo
 (GEN_BRIEFS_WORKTREE_CMD replaces it, called as `$CMD <branch>`, tests;
 --no-worktree skips it, but refuses a worker whose worktree does not exist yet and prints the
 worktree.sh line to run; it never creates one, HIMMEL-5517).
+An adopted --repo (a git checkout with no scripts/handover/chief-kit/headed-arm-worker.sh of its own)
+uses himmel's copy of every script instead: the worktree is made by this checkout's `scripts/_new-worktree.sh
+<branch> --no-install` run inside the adopter, and each launcher names this checkout's headed-arm-worker.sh and
+exports the worker's worktree as WORKER_SESSION_REPO.
 --bucket: a bare name (no slash, e.g. `himmel`) resolves to <handover-root>/<user>/<name>, like
 chief.sh --bucket; a path is made absolute. A bucket inside a git checkout that is not under
 the handover root is refused (HIMMEL-5517). Output files, in the bucket: the brief
@@ -511,7 +515,7 @@ def render_rm_brief(l, ctx):
 
 def render_brief(l, ctx):
     n, keys = l['label'], l['keys']
-    gets =' and '.join('`JIRA_PROJECT_KEY=%s node %s/scripts/jira/dist/index.js get %s`' % (k.split('-')[0], ctx['repo'], k) for k in keys)
+    gets =' and '.join('`JIRA_PROJECT_KEY=%s node %s/scripts/jira/dist/index.js get %s`' % (k.split('-')[0], ctx['kit'], k) for k in keys)
     others = ', '.join('%s (%s)' % (x['label'], x['scope_short']) for x in ctx['workers'] if x['label'] != n and x.get('kind') != 'rm')
     also = ('; ' + ctx['also_live']) if ctx['also_live'] else ''
     return """---
@@ -563,6 +567,15 @@ template_version: 3
            abline=('\n> **Context:** ab-%s — operator-ruling: HIMMEL-5193\n' % l['ab_arm']) if l.get('ab_arm') else '')
 
 
+def is_adapter(repo):
+    # An adopted repo is a git checkout with no chief-kit of its own: himmel's scripts must run for it.
+    return os.path.exists(os.path.join(repo, '.git')) and not os.path.exists(os.path.join(repo, 'scripts', 'handover', 'chief-kit', 'headed-arm-worker.sh'))
+
+
+def new_worktree_argv(ctx, branch):
+    return ['bash', ctx['kit'] + '/scripts/_new-worktree.sh', branch, '--no-install']
+
+
 def manifest_add_lines(l, ctx, doc):
     # A launcher that arms a worker also lists it in the fleet manifest (idempotent),
     # so a chief that runs only the launcher never leaves the worker unwatched. A failed add stops the launch.
@@ -571,7 +584,7 @@ def manifest_add_lines(l, ctx, doc):
     q = shlex.quote
     arm = (' --arm ' + q(l['ab_arm'])) if l.get('ab_arm') else ''
     return ['bash %s add %s %s --lane %s%s || exit 1' % (
-        q(ctx['repo'] + '/scripts/handover/chief-kit/fleet-manifest.sh'), q(ctx['manifest']), q(doc), q(l.get('lane', 'native')), arm)]
+        q(ctx['kit'] + '/scripts/handover/chief-kit/fleet-manifest.sh'), q(ctx['manifest']), q(doc), q(l.get('lane', 'native')), arm)]
 
 
 def render_rm_launcher(l, ctx, doc):
@@ -588,7 +601,7 @@ def render_rm_launcher(l, ctx, doc):
         'mkdir -p "$W"',
         # The RM brief has no Prior art line, and headed-arm-worker.sh sets the RM env itself.
         'setsid nohup bash %s --profile release-manager --rm-release %s --no-prior-art-check --chief %s %s %s "$W/sig-%s" %s "$W/%s.log" %s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: prints the chief's launch line, nothing starts here
-            q(ctx['repo'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), q(l['release']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
+            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), q(l['release']), q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, q(l['model']), stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,
@@ -614,6 +627,9 @@ def render_launcher(l, ctx, doc):
         lines.append('export WORKER_SESSION_AUTOCOMPACT_AB=%s  # HIMMEL-5193 A/B arm %s' % ('400000' if l['ab_arm'] == '400k' else '200000', l['ab_arm']))
     if l.get('effort'):
         lines.append('export WORKER_SESSION_EFFORT=%s' % l['effort'])
+    if ctx['adapter']:
+        # headed-arm.sh starts the session in this dir; the worktree (not the primary) is what worker-pretrust trusts and the worker may edit.
+        lines.append('export WORKER_SESSION_REPO=%s' % q(l['wt']))
     lane_arg = '' if lane == 'native' else ' --lane ' + q(lane)
     w = ctx['work_dir']
     lines += manifest_add_lines(l, ctx, doc)
@@ -621,7 +637,7 @@ def render_launcher(l, ctx, doc):
         'W=%s' % q(w),
         'mkdir -p "$W"',
         'setsid nohup bash %s%s --profile worker-impl --chief %s %s %s "$W/sig-%s" %s "$W/%s.log"%s > "$W/%s.launch.out" 2>&1 &' % (  # t13b-ok: emitted launch line for one worker, bounded by its deadline
-            q(ctx['repo'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
+            q(ctx['kit'] + '/scripts/handover/chief-kit/headed-arm-worker.sh'), lane_arg, q(ctx['chief']), q(stem), q(doc), stem, q(ctx['deadline']), stem, model_arg, stem),
         'sleep 12',
         'tail -n 2 "$W/%s.launch.out"' % stem,
         'touch "$W/sig-%s"' % stem,
@@ -688,7 +704,9 @@ def main():
 
     work_dir = a.work_dir or os.path.join(os.environ.get('XDG_RUNTIME_DIR') or '/tmp', 'himmel-chief', 'gen-briefs')
     deadline = a.deadline or str(int(datetime.now().timestamp()) + 43200)
-    ctx = dict(repo=a.repo, base=a.base, chief=a.chief, date=a.date, hroot=a.handover_root, work_dir=work_dir,
+    adapter = is_adapter(a.repo)
+    kit = os.path.abspath(os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', '..')) if adapter else a.repo
+    ctx = dict(repo=a.repo, kit=kit, adapter=adapter, base=a.base, chief=a.chief, date=a.date, hroot=a.handover_root, work_dir=work_dir,
                deadline=deadline, workers=workers, also_live=a.also_live,
                manifest=os.path.abspath(a.manifest) if a.manifest else None)
     a.bucket = resolve_bucket(a.bucket, a.handover_root, a.repo)
@@ -719,12 +737,13 @@ def main():
             # headed-arm-worker.sh refuses a resume_cwd that is not a git worktree; never create it here.
             top = subprocess.run(['git', '-C', l['wt'], 'rev-parse', '--show-toplevel'], capture_output=True, text=True)
             if top.returncode != 0 or os.path.realpath(top.stdout.strip()) != os.path.realpath(l['wt']):
-                die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the workers after it. Create it from %s first: bash scripts/worktree.sh new %s --no-prune' % (l['wt'], l['label'], a.repo, l['branch']))
+                mk = ('bash %s %s --no-install' % (shlex.quote(kit + '/scripts/_new-worktree.sh'), l['branch'])) if adapter else ('bash scripts/worktree.sh new %s --no-prune' % l['branch'])
+                die('--no-worktree but %s is not an existing git worktree; no brief written for %s or the workers after it. Create it from %s first: %s' % (l['wt'], l['label'], a.repo, mk))
 
     wt_cmd = os.environ.get('GEN_BRIEFS_WORKTREE_CMD')
     for l in workers:
         if not a.no_worktree and l.get('kind') != 'rm':
-            argv = [wt_cmd, l['branch']] if wt_cmd else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
+            argv = [wt_cmd, l['branch']] if wt_cmd else new_worktree_argv(ctx, l['branch']) if adapter else ['bash', 'scripts/worktree.sh', 'new', l['branch'], '--no-prune']
             r = subprocess.run(argv, cwd=a.repo, capture_output=True, text=True)
             tail = (r.stdout + r.stderr).strip().splitlines()
             print('%s worktree: %s' % (l['label'], tail[-1][:90] if tail else 'rc=%d' % r.returncode))

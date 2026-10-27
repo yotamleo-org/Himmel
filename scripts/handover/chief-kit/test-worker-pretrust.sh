@@ -326,6 +326,13 @@ rm -f "$cfg"
 rc=0; HANDOVER_REGISTRY="$tmp/no-such-registry.json" bash "$SCRIPT" native "$adopter" >/dev/null 2>&1 || rc=$?
 check "12c adopter checkout absent from the handover registry: exit 3" "$rc" "3"
 check "12c refusal wrote no config" "$([ -e "$cfg" ] && echo yes || echo no)" "no"
+# 12c2: the same unregistered adopter's linked WORKTREE is trusted, which is why gen-briefs exports
+# the worker's worktree (not the adopter primary headed-arm.sh would cd into) as WORKER_SESSION_REPO.
+git -C "$adopter" worktree add -q "$adopter/.claude/worktrees/feat+demo" -b feat/demo
+rc=0; HANDOVER_REGISTRY="$tmp/no-such-registry.json" bash "$SCRIPT" native "$adopter/.claude/worktrees/feat+demo" >/dev/null 2>&1 || rc=$?
+check "12c2 worktree of an unregistered adopter: exit 0" "$rc" "0"
+check "12c2 worktree of an unregistered adopter: trusted" "$(trusted "$cfg" "$adopter/.claude/worktrees/feat+demo")" "true"
+rm -f "$cfg"
 sibling="$tmp/adopter-voice-evil"
 git init -q "$sibling"
 git -C "$sibling" remote add origin https://github.com/yotamleo-org/himmel-voice.git
