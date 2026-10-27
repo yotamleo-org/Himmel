@@ -964,7 +964,7 @@ check "descendant: an amend of another branch does not defer a finding at the re
 # clean full round (an ok critic avail row, no finding row) ran there after it ---
 # seed_clean [branch] [model]: a critic's ok avail row at the PR head, a full round that found nothing
 seed_clean() {
-    printf '{"kind":"avail","ts":"2026-01-01T00:00:03Z","branch":"%s","head":"%s","model":"%s","status":"ok","artifact":"diff","perspective":"off"}\n' "${1:-$SEED_BRANCH}" "$SHA" "${2:-codex}" >> "$LEDGER"
+    printf '{"kind":"avail","ts":"2026-01-01T00:00:03Z","branch":"%s","head":"%s","model":"%s","status":"%s","artifact":"diff","perspective":"off"}\n' "${1:-$SEED_BRANCH}" "$SHA" "${2:-codex}" "${3:-ok}" >> "$LEDGER"
 }
 
 reset_stubs
@@ -993,6 +993,24 @@ STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
 seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean "" claude
 rc=0; out="$(run)" || rc=$?
 check "carry: a claude (non-critic) row is not a clean round: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean "" codex unavailable
+rc=0; out="$(run)" || rc=$?
+check "carry: an unavailable critic row is not a clean round: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean "" claude-floor
+rc=0; out="$(run)" || rc=$?
+check "carry: a claude-floor row is not a clean round: exit 1" "$rc" "1"
+
+reset_stubs
+STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
+seed_deferral HIMMEL-50 "$REVHEAD"; seed_clean "" codex-adv
+rc=0; out="$(run)" || rc=$?
+check "carry: a codex-adv row is not a clean round: exit 1" "$rc" "1"
 
 reset_stubs
 STUB_BODY='## Ticket coverage\n- ask one: deferred -> HIMMEL-50\n'
