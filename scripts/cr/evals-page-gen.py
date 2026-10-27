@@ -57,6 +57,7 @@ CACHE_CMD = ("bash scripts/eval/cache-probe.sh first-turn $(find ~/.claude/proje
 RENDER_CMD = "python3 scripts/cr/evals-page-gen.py render"
 PDD_METHOD = "[proof-first share](../../scripts/eval/README.md)"
 TF_METHOD = "[test-first record](../../scripts/eval/README.md)"
+GLOSSARY = "[What each number means](../../scripts/eval/README.md#what-each-number-means)"
 PLANTED_METHOD = "[planted-bug eval](../../scripts/eval/review-panel/README.md)"
 REVIEW_METHOD = "[review panel](review-panel.md)"
 OPTIONS = "[Review by a second model](../configuration.md#review-by-a-second-model)"
@@ -368,7 +369,7 @@ def render(d):
         out.append("| When the required reviewer flags something, is it right? | not measured yet: fewer than %d "
                    "ruled findings | | as of %s |" % (MIN_RULED, r["as_of"]))
     if pf:
-        out.append("| Is work proven before it is built? | **%s%%** of merged PRs were proof-first | %s | %s |" % (
+        out.append("| Is work proven before it is built? | **%s%%** of merged PRs were proof-first (self-reported) | %s | %s |" % (
             pf["pdd"]["pct"], rng(pf["pdd"]["wilson"]), stamp(pf["as_of"], pf["pdd"]["n"], "merged PRs")))
     for e in d.get("calibration") or []:
         out.append("| How far can the lane-quality judge be trusted? (arms %s) | %s | no interval | %s |" % (
@@ -439,29 +440,32 @@ def render(d):
     out += [
         "", "Every reviewer, current and past. Only agreed and disproved count toward precision; deferred and "
         "no-verdict findings sit outside it. Method: %s." % REVIEW_METHOD, "",
-        "## Proof first and test first", "",
+        "## Proof-first share and test-first adherence", "",
         "| Measure | Share | Likely range | Sample |",
         "|---|---|---|---|",
     ]
     if pf:
-        for key, what in (("pdd", "Proof-first: both halves below"),
+        for key, what in (("pdd", "Proof-first share (self-reported): both halves below"),
                           ("ticket_first", "The ticket's DoD and Proof written before the first commit"),
                           ("red_green", "RED and then GREEN named in the PR body")):
             g = pf[key]
             out.append("| %s | **%s%%** | %s | %s |" % (what, g["pct"], rng(g["wilson"]), stamp(pf["as_of"], g["n"], "merged PRs")))
     else:
-        out.append("| Proof-first | not measured yet: the eval-runs ledger holds no pdd-share row | | as of %s |" % r["as_of"])
+        out.append("| Proof-first share (self-reported) | not measured yet: the eval-runs ledger holds no pdd-share row "
+                   "| | as of %s |" % r["as_of"])
     sessions = stamp(tf["as_of"], tf["n"], "session%s scored under trajectory version 2" % ("" if tf["n"] == 1 else "s"))
     if tf["pct"] is None:
-        out.append("| Test first: a test failed before the implementation and passed after | not measured yet; it needs %d "
-                   "| | %s |" % (tf["min_n"], sessions))
+        out.append("| Test-first adherence: a test failed before the implementation and passed after | not measured "
+                   "yet; it needs %d | | %s |" % (tf["min_n"], sessions))
     else:
-        out.append("| Test first: a test failed before the implementation and passed after | **%s%%** | %s | %s |" % (
+        out.append("| Test-first adherence: a test failed before the implementation and passed after | **%s%%** | %s "
+                   "| %s |" % (
             tf["pct"], rng(tf["wilson"]), sessions))
     out += [
         "", "A merged PR is proof-first only when it has both halves; each half is shown on its own. "
         "Method: %s and %s." % (PDD_METHOD, TF_METHOD), "",
         "## How to read these numbers", "",
+        "Each number's display name beside its unchanged ledger key: %s." % GLOSSARY, "",
         "| Term | Meaning |",
         "|---|---|",
         "| **Precision** | Agreed ÷ (agreed + disproved): of the findings someone ruled true or false, the share ruled "
@@ -481,10 +485,11 @@ def render(d):
         "| **As of** | The day the figures were read off their ledgers; anything recorded later is not in them. |",
         "| **Left out of precision** | Deferred findings (real or plausible, filed as a follow-up instead of fixed in "
         "that PR) and findings nobody ruled on. They show only under Findings in, findings out. |",
-        "| **Proof-first** | The share of the last merged PRs whose ticket had its DoD and Proof written before the "
-        "first commit, and whose PR body names RED and then GREEN. Only the newest measurement counts, because older "
+        "| **Proof-first share (self-reported)** | The share of the last merged PRs whose ticket had its DoD and Proof "
+        "written before the first commit, and whose PR body names RED and then GREEN. Self-reported: RED and GREEN are "
+        "words the PR author wrote, not a test run the eval checked. Only the newest measurement counts, because older "
         "ones came from an earlier matcher. |",
-        "| **Test first** | The share of agent sessions that wrote code in which a test failed before the first "
+        "| **Test-first adherence** | The share of agent sessions that wrote code in which a test failed before the first "
         "implementation write and passed after it; a session that wrote no code is left out. Only sessions scored "
         "under trajectory version 2 count: version 1 scored a session that wrote no code as a miss, so the two are "
         "never mixed. It reads not measured yet until %d such sessions exist. |" % MIN_RULED,

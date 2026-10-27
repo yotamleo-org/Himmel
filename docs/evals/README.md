@@ -8,7 +8,7 @@
 |---|---|---|---|
 | Does the review panel catch bugs? | **75.0%**: `codex` caught 9 of 12 planted bugs | 46.8 to 91.1 | as of 2026-10-24, n = 12 planted bugs in 24 test changes |
 | When the required reviewer flags something, is it right? | **79.5%** of `codex:gpt-6.1-sol` findings ruled right | Wilson 78.4 to 80.5; by PR 77.8 to 81.1 | as of 2026-10-27, n = 5,388 ruled findings over 1,621 PRs |
-| Is work proven before it is built? | **10.8%** of merged PRs were proof-first | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
+| Is work proven before it is built? | **10.8%** of merged PRs were proof-first (self-reported) | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
 | How far can the lane-quality judge be trusted? (arms `claude-haiku-5-5`, `claude-sonnet-5-5`) | **kappa 0.35**: graders agreed on 11 of 17 runs, model-graded (no human label) by OpenAI and Google, tie-breaker DeepSeek sided with grader 1 in 1 and grader 2 in 5 of 6 disagreements; the stored judge flipped its verdict on 2 of 17 runs judged twice | no interval | as of 2026-10-27, n = 17 runs |
 | How far can the lane-quality judge be trusted? (arms `gpt-6.1-sol`) | **kappa 0.00**: graders agreed on 5 of 7 runs, model-graded (no human label) by Anthropic and Google, tie-breaker DeepSeek sided with grader 1 in 0 and grader 2 in 2 of 2 disagreements; the stored judge flipped its verdict on 3 of 7 runs judged twice | no interval | as of 2026-10-27, n = 7 runs |
 | What does the prompt cache save? | **98.4%** of input tokens were cache reads, not uncached input or cache writes | no interval | as of 2026-10-27, n = 9,267,642,070 tokens over 425 sessions (the sessions of this project modified from 2026-10-25 to 2026-10-27) |
@@ -54,18 +54,20 @@ A row marked (model not recorded) holds the findings whose ledger record names n
 
 Every reviewer, current and past. Only agreed and disproved count toward precision; deferred and no-verdict findings sit outside it. Method: [review panel](review-panel.md).
 
-## Proof first and test first
+## Proof-first share and test-first adherence
 
 | Measure | Share | Likely range | Sample |
 |---|---|---|---|
-| Proof-first: both halves below | **10.8%** | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
+| Proof-first share (self-reported): both halves below | **10.8%** | 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |
 | The ticket's DoD and Proof written before the first commit | **19.2%** | 13.1 to 27.1 | as of 2026-10-24, n = 120 merged PRs |
 | RED and then GREEN named in the PR body | **57.5%** | 48.6 to 66.0 | as of 2026-10-24, n = 120 merged PRs |
-| Test first: a test failed before the implementation and passed after | **39.1%** | 33.1 to 45.5 | as of 2026-10-27, n = 235 sessions scored under trajectory version 2 |
+| Test-first adherence: a test failed before the implementation and passed after | **39.1%** | 33.1 to 45.5 | as of 2026-10-27, n = 235 sessions scored under trajectory version 2 |
 
 A merged PR is proof-first only when it has both halves; each half is shown on its own. Method: [proof-first share](../../scripts/eval/README.md) and [test-first record](../../scripts/eval/README.md).
 
 ## How to read these numbers
+
+Each number's display name beside its unchanged ledger key: [What each number means](../../scripts/eval/README.md#what-each-number-means).
 
 | Term | Meaning |
 |---|---|
@@ -76,8 +78,8 @@ A merged PR is proof-first only when it has both halves; each half is shown on i
 | **n** | The sample behind a figure: for precision, the ruled findings and the PRs they came from. A small n is noise: one PR more or less can move the figure by many points, which is why a reviewer with fewer than 30 ruled findings is not ranked. |
 | **As of** | The day the figures were read off their ledgers; anything recorded later is not in them. |
 | **Left out of precision** | Deferred findings (real or plausible, filed as a follow-up instead of fixed in that PR) and findings nobody ruled on. They show only under Findings in, findings out. |
-| **Proof-first** | The share of the last merged PRs whose ticket had its DoD and Proof written before the first commit, and whose PR body names RED and then GREEN. Only the newest measurement counts, because older ones came from an earlier matcher. |
-| **Test first** | The share of agent sessions that wrote code in which a test failed before the first implementation write and passed after it; a session that wrote no code is left out. Only sessions scored under trajectory version 2 count: version 1 scored a session that wrote no code as a miss, so the two are never mixed. It reads not measured yet until 30 such sessions exist. |
+| **Proof-first share (self-reported)** | The share of the last merged PRs whose ticket had its DoD and Proof written before the first commit, and whose PR body names RED and then GREEN. Self-reported: RED and GREEN are words the PR author wrote, not a test run the eval checked. Only the newest measurement counts, because older ones came from an earlier matcher. |
+| **Test-first adherence** | The share of agent sessions that wrote code in which a test failed before the first implementation write and passed after it; a session that wrote no code is left out. Only sessions scored under trajectory version 2 count: version 1 scored a session that wrote no code as a miss, so the two are never mixed. It reads not measured yet until 30 such sessions exist. |
 | **Model-graded kappa** | Cohen's kappa between two model graders on each run's pass/fail verdict (pass when every correctness claim holds): 1 is full agreement, 0 is what chance alone gives, below 0 is worse than chance. Model-graded, not human-graded: no person labelled these runs. The graders come from different vendors, never a vendor under test, and a third-vendor tie-breaker grades only the runs they disagree on. A flip is the stored judge changing its verdict between two passes on one output. [lane-quality eval](../../scripts/eval/lane-quality/run.sh) |
 | **Cache reads** | One probe run's share of input tokens read from the cache. No interval: tokens within one session are not independent. [prompt cache](prompt-cache.md) |
 

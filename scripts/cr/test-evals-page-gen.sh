@@ -191,7 +191,7 @@ python3 -I "$GEN" render --data "$OUT" --out "$R" > "$TMP/render.out" 2> "$TMP/r
 eq "render: exit 0" "$rc" "0"
 lacks "render: no draft marker" "$(head -5 "$R")" "draft:"
 eq "render: bottom line first, then the current setup, then history" \
-  "$(grep -E '^## ' "$R" | head -4 | tr '\n' '|')" "## Bottom line|## Current setup|## History and what we learned|## Proof first and test first|"
+  "$(grep -E '^## ' "$R" | head -4 | tr '\n' '|')" "## Bottom line|## Current setup|## History and what we learned|## Proof-first share and test-first adherence|"
 has "render: bottom line gives the planted-bug catch" "$(cat "$R")" "**75.0%**: \`beta\` caught 9 of 12 planted bugs"
 has "render: planted-bug sample" "$(cat "$R")" "as of 2026-10-24, n = 12 planted bugs in 24 test changes"
 has "render: bottom line gives the required reviewer's precision" "$(cat "$R")" "| **90.0%** of \`beta\` findings ruled right |"
@@ -216,7 +216,16 @@ lacks "render: a superseded calibration row is not shown" "$(cat "$R")" "kappa 0
 has "render: the block defines model-graded kappa" "$(cat "$R")" "| **Model-graded kappa** |"
 has "render: pdd figure" "$(cat "$R")" "**10.8%** of merged PRs were proof-first"
 has "render: pdd interval and n" "$(cat "$R")" "| 6.4 to 17.7 | as of 2026-10-24, n = 120 merged PRs |"
-has "render: test-first not measured yet" "$(grep -F '| Test first:' "$R")" "| not measured yet; it needs 30 |"
+has "render: test-first not measured yet" "$(grep -F '| Test-first adherence:' "$R")" "| not measured yet; it needs 30 |"
+# Display names from the scripts/eval/README.md glossary; the data keys (proof_first, test_first) do not change.
+has "render: the proof-first row carries its display name" "$(cat "$R")" "| Proof-first share (self-reported): both halves below | **10.8%** |"
+has "render: the bottom line says self-reported" "$(cat "$R")" "of merged PRs were proof-first (self-reported)"
+has "render: the block defines proof-first share (self-reported)" "$(cat "$R")" "| **Proof-first share (self-reported)** |"
+has "render: the block says what self-reported means" "$(cat "$R")" "RED and GREEN are words the PR author wrote, not a test run the eval checked"
+has "render: the block defines test-first adherence" "$(cat "$R")" "| **Test-first adherence** |"
+has "render: the page points at the glossary" "$(cat "$R")" "(../../scripts/eval/README.md#what-each-number-means)"
+lacks "render: the old proof-first name is gone" "$(cat "$R")" "Proof first"
+lacks "render: the old test-first name is gone" "$(cat "$R")" "Test first"
 has "render: test-first says how far from the floor" "$(cat "$R")" "n = 1 session scored under trajectory version 2"
 has "render: pdd regenerate moves the cut past the new row" "$(cat "$R")" "with --until and --as-of moved past the new row"
 has "render: interval printed" "$(cat "$R")" "77.8 to 94.2"
@@ -260,7 +269,7 @@ eq "test-first: share" "$(jget "$TMP/q1.json" test_first/pct)" "66.7"
 eq "test-first: Wilson low" "$(jget "$TMP/q1.json" test_first/wilson/lo)" "48.8"
 eq "test-first: Wilson high" "$(jget "$TMP/q1.json" test_first/wilson/hi)" "80.8"
 python3 -I "$GEN" render --data "$TMP/q1.json" --out "$TMP/q1.md" > /dev/null 2>&1
-has "test-first: rendered with its interval" "$(grep -F '| Test first:' "$TMP/q1.md")" "| **66.7%** | 48.8 to 80.8 |"
+has "test-first: rendered with its interval" "$(grep -F '| Test-first adherence:' "$TMP/q1.md")" "| **66.7%** | 48.8 to 80.8 |"
 
 # A bare slug beside the same slug with a model is labelled, never merged; a slug that never has a model stays bare.
 L2="$TMP/ledger-bare.jsonl"
