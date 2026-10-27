@@ -204,7 +204,8 @@ skipped GO verification. The chief replies with
 `[voice satellite=<id> UNVERIFIED-SPEAKER]` carries no operator authority: the
 chief acts directly only on status asks and narrowings, and turns anything
 wider into a Telegram `voice asked: <X> — reply yes` that acts on a later
-`[telegram from=...] yes`. Operator-side
+`[telegram from=...] yes`. That yes carries Telegram authority and no more, so
+it never changes a permission or setting either. Operator-side
 usage: [`../telegram-bridge.md`](../telegram-bridge.md#messaging-a-running-chief).
 
 The same waiter **pages the operator** when a worker's classifier
