@@ -84,7 +84,7 @@ pushurl_of() { git -C "$1" config --worktree --get remote.origin.pushurl 2>/dev/
 
 echo "RUN A: registry resolution + refusals"
 
-mk_session claudexclaudex-done-1 "done" 0 claudex/done >/dev/null
+mk_session claudex claudex-done-1 "done" 0 claudex/done >/dev/null
 out=$(run_stop nonexistent-session); rc=$?
 if [ "$rc" -eq 2 ]; then pass "A1: unknown target -> exit 2 (refused, not found)"; else fail "A1: expected rc=2, got $rc" "$out"; fi
 
@@ -96,7 +96,7 @@ if [ "$rc" -eq 3 ]; then pass "A2: non-running session -> exit 3"; else fail "A2
 out=$(run_stop 4242); rc=$?
 if [ "$rc" -eq 2 ]; then pass "A3: a raw pid is not a valid target (exit 2)"; else fail "A3: expected rc=2 for a raw pid, got $rc" "$out"; fi
 
-mk_session claudexclaudex-unprobeable-1 running 0 claudex/unprobeable "" '{"pid_probe":"unprobeable"}' >/dev/null
+mk_session claudex claudex-unprobeable-1 running 0 claudex/unprobeable "" '{"pid_probe":"unprobeable"}' >/dev/null
 out=$(run_stop claudex-unprobeable-1); rc=$?
 if [ "$rc" -eq 4 ]; then
     case "$out" in
@@ -112,8 +112,8 @@ out=$(run_stop claudex-nopid-1); rc=$?
 if [ "$rc" -eq 4 ]; then pass "A5: running session with pid 0 -> exit 4, nothing signalled"; else fail "A5: expected rc=4, got $rc" "$out"; fi
 
 # Two RUNNING sessions on one branch must not be stopped by branch name.
-mk_session claudexclaudex-dup-a running 999001 claudex/dup >/dev/null
-mk_session claudexclaudex-dup-b running 999002 claudex/dup >/dev/null
+mk_session claudex claudex-dup-a running 999001 claudex/dup >/dev/null
+mk_session claudex claudex-dup-b running 999002 claudex/dup >/dev/null
 out=$(run_stop claudex/dup); rc=$?
 if [ "$rc" -eq 1 ]; then pass "A6: ambiguous branch match -> exit 1 (refuses to guess)"; else fail "A6: expected rc=1, got $rc" "$out"; fi
 
@@ -136,7 +136,7 @@ mk_repo "$WT_B"
 printf 'uncommitted work\n' > "$WT_B/file.txt"
 printf 'brand new\n' > "$WT_B/newfile.txt"
 set_pushurl "$WT_B" "$POISON"
-mk_session claudexclaudex-dirty-1 running 999003 claudex/dirty "$WT_B" >/dev/null
+mk_session claudex claudex-dirty-1 running 999003 claudex/dirty "$WT_B" >/dev/null
 out=$(run_stop --dry-run claudex-dirty-1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "B1: --dry-run on a dirty worker exits 0"; else fail "B1: expected rc=0, got $rc" "$out"; fi
 ckpt=$(git -C "$WT_B" rev-parse --verify --quiet refs/checkpoints/claudex-dirty-1-halt)
@@ -178,7 +178,7 @@ fi
 # fail-safe. The pid is a real running process so the refusal is the live case.
 sleep 300 &
 B6_PID=$!
-mk_session claudexclaudex-badwt-1 running "$B6_PID" claudex/badwt "$TMP_ROOT/not-a-repo" >/dev/null
+mk_session claudex claudex-badwt-1 running "$B6_PID" claudex/badwt "$TMP_ROOT/not-a-repo" >/dev/null
 out=$(run_stop claudex-badwt-1); rc=$?
 kill -0 "$B6_PID" 2>/dev/null; b6_alive=$?
 kill "$B6_PID" 2>/dev/null; wait "$B6_PID" 2>/dev/null
@@ -205,7 +205,7 @@ fi
 sleep 300 &
 B7_PID=$!
 kill "$B7_PID" 2>/dev/null; wait "$B7_PID" 2>/dev/null
-mk_session claudexclaudex-baddead-1 running "$B7_PID" claudex/baddead "$TMP_ROOT/not-a-repo" >/dev/null
+mk_session claudex claudex-baddead-1 running "$B7_PID" claudex/baddead "$TMP_ROOT/not-a-repo" >/dev/null
 out=$(run_stop claudex-baddead-1); rc=$?
 B7_META="$BRIDGE_ROOT/claudex-sessions/claudex-baddead-1/meta.json"
 if [ "$rc" -eq 7 ]; then
@@ -223,7 +223,7 @@ case "$(node -e 'try{process.stdout.write(String(JSON.parse(require("fs").readFi
     *) fail "B7c: stop_checkpoint does not record the checkpoint failure" "$out" ;;
 esac
 # B7d: --dry-run changes nothing, so it must not annotate.
-mk_session claudexclaudex-baddead-2 running "$B7_PID" claudex/baddead2 "$TMP_ROOT/not-a-repo" >/dev/null
+mk_session claudex claudex-baddead-2 running "$B7_PID" claudex/baddead2 "$TMP_ROOT/not-a-repo" >/dev/null
 out=$(run_stop --dry-run claudex-baddead-2); rc=$?
 if [ "$(meta_status "$BRIDGE_ROOT/claudex-sessions/claudex-baddead-2/meta.json")" = "running" ]; then
     pass "B7d: --dry-run on a dead worker with a failing checkpoint does not annotate"
@@ -251,7 +251,7 @@ set +m
 # now cross-checks the two (spawn-time identity correlation)
 # and refuses to signal a pid whose start time doesn't line up.
 LIVE_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session claudexclaudex-live-1 running "$LIVE_PID" claudex/live "$WT_C" "$(printf '{"started_at":"%s"}' "$LIVE_STARTED_AT")" >/dev/null
+mk_session claudex claudex-live-1 running "$LIVE_PID" claudex/live "$WT_C" "$(printf '{"started_at":"%s"}' "$LIVE_STARTED_AT")" >/dev/null
 
 if kill -0 "$LIVE_PID" 2>/dev/null; then
     pass "C0: fixture child $LIVE_PID is alive before the stop"
@@ -320,7 +320,7 @@ sleep 300 &
 LIVE_TZ_PID=$!
 set +m
 LIVE_TZ_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session claudexclaudex-live-tz-1 running "$LIVE_TZ_PID" claudex/live-tz "$WT_CTZ" "$(printf '{"started_at":"%s"}' "$LIVE_TZ_STARTED_AT")" >/dev/null
+mk_session claudex claudex-live-tz-1 running "$LIVE_TZ_PID" claudex/live-tz "$WT_CTZ" "$(printf '{"started_at":"%s"}' "$LIVE_TZ_STARTED_AT")" >/dev/null
 
 out=$(TZ=Europe/Berlin run_stop claudex-live-tz-1); rc=$?
 if [ "$rc" -eq 0 ]; then
@@ -356,7 +356,7 @@ sleep 300 &
 MISMATCH_PID=$!
 set +m
 STALE_STARTED_AT="2020-01-01T00:00:00.000Z"
-mk_session claudexclaudex-mismatch-1 running "$MISMATCH_PID" claudex/mismatch "$WT_D" "$(printf '{"started_at":"%s"}' "$STALE_STARTED_AT")" >/dev/null
+mk_session claudex claudex-mismatch-1 running "$MISMATCH_PID" claudex/mismatch "$WT_D" "$(printf '{"started_at":"%s"}' "$STALE_STARTED_AT")" >/dev/null
 
 out=$(run_stop claudex-mismatch-1); rc=$?
 if [ "$rc" -eq 4 ]; then
@@ -408,7 +408,7 @@ if [ -r "/proc/$$/winpid" ]; then
     GONE_PID=$!
     set +m
     GONE_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-    mk_session claudexclaudex-alreadygone-1 running "$GONE_PID" claudex/alreadygone "$WT_E" "$(printf '{"started_at":"%s"}' "$GONE_STARTED_AT")" >/dev/null
+    mk_session claudex claudex-alreadygone-1 running "$GONE_PID" claudex/alreadygone "$WT_E" "$(printf '{"started_at":"%s"}' "$GONE_STARTED_AT")" >/dev/null
 
     FAKE_PROC_ROOT="$TMP_ROOT/fake-proc-root"
     mkdir -p "$FAKE_PROC_ROOT"
@@ -450,7 +450,7 @@ mk_repo "$WT_F"
 set_pushurl "$WT_F" "$POISON"
 NEVER_EXISTED_PID=987654321
 FBI_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session claudexclaudex-gonebeforeid-1 running "$NEVER_EXISTED_PID" claudex/gonebeforeid "$WT_F" "$(printf '{"started_at":"%s"}' "$FBI_STARTED_AT")" >/dev/null
+mk_session claudex claudex-gonebeforeid-1 running "$NEVER_EXISTED_PID" claudex/gonebeforeid "$WT_F" "$(printf '{"started_at":"%s"}' "$FBI_STARTED_AT")" >/dev/null
 
 out=$(run_stop claudex-gonebeforeid-1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "F1: pid already gone before identity sampling still exits 0"; else fail "F1: expected rc=0, got $rc" "$out"; fi
@@ -481,7 +481,7 @@ mk_repo "$WT_F2"
 REAL_PUSHURL="git@example.invalid:operator/keepme.git"
 set_pushurl "$WT_F2" "$REAL_PUSHURL"
 F2_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-mk_session claudexclaudex-realpushurl-1 running "$NEVER_EXISTED_PID" claudex/realpushurl "$WT_F2" "$(printf '{"started_at":"%s"}' "$F2_STARTED_AT")" >/dev/null
+mk_session claudex claudex-realpushurl-1 running "$NEVER_EXISTED_PID" claudex/realpushurl "$WT_F2" "$(printf '{"started_at":"%s"}' "$F2_STARTED_AT")" >/dev/null
 out=$(run_stop claudex-realpushurl-1); rc=$?
 if [ "$rc" -eq 0 ]; then pass "F5: a halt on a worktree carrying a real pushurl still exits 0"; else fail "F5: expected rc=0, got $rc" "$out"; fi
 if [ "$(pushurl_of "$WT_F2")" = "$REAL_PUSHURL" ]; then
@@ -504,7 +504,7 @@ if [ -r "/proc/$$/winpid" ]; then
     mk_repo "$WT_F3"
     set_pushurl "$WT_F3" "$POISON"
     F3_STARTED_AT="$(date -u +%Y-%m-%dT%H:%M:%S.000Z)"
-    mk_session claudexclaudex-probefailed-1 running "$NEVER_EXISTED_PID" claudex/probefailed "$WT_F3" "$(printf '{"started_at":"%s"}' "$F3_STARTED_AT")" >/dev/null
+    mk_session claudex claudex-probefailed-1 running "$NEVER_EXISTED_PID" claudex/probefailed "$WT_F3" "$(printf '{"started_at":"%s"}' "$F3_STARTED_AT")" >/dev/null
     out=$(_PROC_TREE_PROC_ROOT="$TMP_ROOT/no-such-proc-root" bash "$STOP" claudex-probefailed-1 2>&1); rc=$?
     if [ "$rc" -eq 4 ]; then
         pass "F7: an unanswerable liveness probe is refused (exit 4), not read as confirmed absence"
@@ -536,7 +536,7 @@ echo "RUN G: registry-root override gating (HIMMEL-1693 CR, codex-1)"
 # process-kill primitive through the sanctioned STOP chokepoint. Run in a
 # subshell so `unset` does not affect the rest of this suite (every other RUN
 # needs the seam exported).
-mk_session claudexclaudex-envonly-1 running 999005 claudex/envonly >/dev/null
+mk_session claudex claudex-envonly-1 running 999005 claudex/envonly >/dev/null
 out=$(unset STOP_WORKER_BRIDGE_ROOT_OVERRIDE; bash "$STOP" claudex-envonly-1 2>&1); rc=$?
 if [ "$rc" -eq 2 ]; then
     pass "G1: plain BRIDGE_ROOT without the test flag is ignored -- canonical root used, fixture session not found (refused)"
@@ -550,7 +550,7 @@ esac
 
 # G3: with the explicit seam set (as every other RUN in this suite has it),
 # the fixture registry still resolves normally.
-mk_session claudexclaudex-seamworks-1 "done" 0 claudex/seamworks >/dev/null
+mk_session claudex claudex-seamworks-1 "done" 0 claudex/seamworks >/dev/null
 out=$(run_stop claudex-seamworks-1); rc=$?
 if [ "$rc" -eq 3 ]; then
     pass "G3: with STOP_WORKER_BRIDGE_ROOT_OVERRIDE set, the fixture registry resolves normally (session found, not running)"
@@ -571,7 +571,7 @@ echo "RUN H: STOP_WORKER_GRACE_SECS validation (HIMMEL-1693 CR round 2)"
 # proc_tree_terminate's `sleep "$grace"` -- a bad value there fails sleep at
 # once and silently collapses the TERM grace window. Refused with usage rc=1,
 # same as any other bad-input refusal.
-mk_session claudexclaudex-badgrace-1 "done" 0 claudex/badgrace >/dev/null
+mk_session claudex claudex-badgrace-1 "done" 0 claudex/badgrace >/dev/null
 out=$(STOP_WORKER_GRACE_SECS="notanumber" run_stop claudex-badgrace-1); rc=$?
 if [ "$rc" -eq 1 ]; then
     pass "H1: non-numeric STOP_WORKER_GRACE_SECS refused (exit 1)"
