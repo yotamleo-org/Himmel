@@ -2094,6 +2094,21 @@ jobs:
         shell: bash
         run: |
           python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: -r .github/ci-image/requirements-ci.txt
+      # Fork PRs cannot use the CI image; keep their shellcheck at the same pin.
+      - name: pinned shellcheck for shell-unit
+        if: ${{ !job.container.id }}
+        run: |
+          rev="$(awk '/repo:.*shellcheck-py/ {f=1; next} f && /rev:/ {sub(/^.*rev:[ ]*v?/, ""); print; exit}' .pre-commit-config.yaml)"
+          [ -n "$rev" ] || { echo "no shellcheck-py rev in .pre-commit-config.yaml" >&2; exit 1; }
+          python -m pip install --disable-pip-version-check --require-hashes --only-binary=:all: --target "$RUNNER_TEMP/shellcheck-pinned" -r .github/ci-image/requirements-shellcheck.txt
+          echo "$RUNNER_TEMP/shellcheck-pinned/bin" >> "$GITHUB_PATH"
+          echo "SHELLCHECK_PIN=$rev" >> "$GITHUB_ENV"
+      - name: Verify host shell-unit shellcheck
+        if: ${{ !job.container.id }}
+        run: |
+          sc_ver="$(shellcheck --version)"
+          echo "$sc_ver"
+          printf '%s\n' "$sc_ver" | grep -qxF "version: ${SHELLCHECK_PIN%.*}" || { echo "shellcheck on PATH is not the pinned ${SHELLCHECK_PIN}" >&2; exit 1; }
       # FAIL_LOG_DIR: full failed-suite logs land there and upload as an
       # artifact below — the inline tail is bounded, so without this the
       # failing assertion can be unrecoverable from Actions logs (HIMMEL-963).
