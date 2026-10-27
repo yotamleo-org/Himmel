@@ -65,7 +65,7 @@ Claude remembering a paragraph of instructions.
 
 The trial above shows the first of these: the edit refused on `main`, the
 commit gate and the worktree. The rest arrive as you add them, and the
-[adoption trail](docs/adoption-trail.html) says which level brings each one.
+[adoption trail](docs/adoption-trail-levels.html) says which level brings each one.
 
 - **Work carries over between sessions.** Each session leaves a plain
   markdown handover doc behind. A fresh session reads it and resumes where the
