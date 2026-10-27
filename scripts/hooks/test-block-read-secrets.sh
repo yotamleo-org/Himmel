@@ -799,17 +799,35 @@ LONGDFLT='${A:-x} ${B:-x} ${C:-x} ${D:-x} ${E:-x}'
 LONGCMD="cd /tmp/x && echo $LONGDFLT && cat > notes.md <<'EOF'
 ${LONGBODY}EOF
 wc -l notes.md"
-long_start=$(date +%s)
+# Milliseconds; a `date` without %N (macOS) prints a literal N, so fall back to s.
+now_ms() {
+    local n
+    n=$(date +%s%N)
+    case "$n" in
+        *N) echo $(( $(date +%s) * 1000 )) ;;
+        *)  echo $(( n / 1000000 )) ;;
+    esac
+}
+# Same body, no defaults: one scan on this runner, in this load.
+BASECMD="cd /tmp/x && echo x && cat > notes.md <<'EOF'
+${LONGBODY}EOF
+wc -l notes.md"
+base_start=$(now_ms)
+run_case "$(j_bash "$BASECMD")" >/dev/null
+base_ms=$(( $(now_ms) - base_start ))
+long_start=$(now_ms)
 long_rc=$(run_case "$(j_bash "$LONGCMD")")
-long_end=$(date +%s)
-long_elapsed=$((long_end - long_start))
+long_ms=$(( $(now_ms) - long_start ))
 assert_rc "7892 long heredoc + 5 default expansions: verdict" 0 "$long_rc"
-# Generous bound: the fix takes ~1 s, the 32-scan form took ~19 s here, so 8 s
-# separates them while leaving half the 15 s chain budget as headroom.
-if [ "$long_elapsed" -le 8 ]; then
-    echo "PASS 7892 long heredoc + 5 default expansions finishes inside its budget (${long_elapsed}s)"
+# A ratio against that baseline, not a wall-clock cap: runner load scales both
+# runs alike, where a fixed 8 s cap failed on loaded CI. The
+# fix runs ~5x the baseline, the 32-scan form ~34x, so 12x separates them. The
+# baseline floor keeps a fast baseline (or a whole-second clock) from tightening it.
+[ "$base_ms" -ge 500 ] || base_ms=500
+if [ "$long_ms" -le $(( base_ms * 12 )) ]; then
+    echo "PASS 7892 long heredoc + 5 default expansions finishes inside its budget (${long_ms}ms vs ${base_ms}ms baseline)"
 else
-    echo "FAIL 7892 long heredoc + 5 default expansions took ${long_elapsed}s (expected <=8s); the expansion reruns rescan every clause again"
+    echo "FAIL 7892 long heredoc + 5 default expansions took ${long_ms}ms (expected <= 12x the ${base_ms}ms one-scan baseline); the expansion reruns rescan every clause again"
     FAILED=$((FAILED + 1))
 fi
 # The skip only drops clauses the first pass scanned: a clause the stripped or
