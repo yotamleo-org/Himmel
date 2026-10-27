@@ -691,7 +691,7 @@ qmd_register_collection() {
     return "$list_rc"
   fi
   # Idempotency check: skip when <name> is already a registered collection.
-  if echo "$list_out" | grep -q "^${name}\b"; then
+  if echo "$list_out" | awk -v name="$name" '$1 == name { found = 1 } END { exit !found }'; then
     echo "  Collection '$name' already registered - skipping."
     return 0
   fi
