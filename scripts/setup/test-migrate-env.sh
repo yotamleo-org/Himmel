@@ -378,9 +378,12 @@ if [ "$rc" = 0 ] && [ "$(policy_val)" = "a # b" ]; then pass "keep ~/.himmel: a 
 # A chosen side still has to pass the readers: a held key whose handover root
 # is read from .env only fails the re-verify whichever side is kept, and .env
 # stays whole. The faulty reader is the real one with only that lookup changed.
-sed "s/const resolved = behaviourKey('HANDOVER_DIR', env, dotenvPath);/const resolved = readDotenvKey(dotenvPath ?? join(primaryCheckout(), '.env'), 'HANDOVER_DIR');/" \
-    "$TMP/handover-root.good.js" > "$TMP/handover-root.envonly.js"
-if cmp -s "$TMP/handover-root.good.js" "$TMP/handover-root.envonly.js"; then fail "the .env-only handover root fixture was not built"; fi
+if ! sed "s/const resolved = behaviourKey('HANDOVER_DIR', env, dotenvPath);/const resolved = readDotenvKey(dotenvPath ?? join(primaryCheckout(), '.env'), 'HANDOVER_DIR');/" \
+    "$TMP/handover-root.good.js" > "$TMP/handover-root.envonly.js" \
+    || [ ! -s "$TMP/handover-root.envonly.js" ] \
+    || cmp -s "$TMP/handover-root.good.js" "$TMP/handover-root.envonly.js"; then
+    fail "the .env-only handover root fixture was not built"
+fi
 for answer in e h; do
     fixture_env
     # The release-state reader follows the handover root, so USER_SLUG is held too.
