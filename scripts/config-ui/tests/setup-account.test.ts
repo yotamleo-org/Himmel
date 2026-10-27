@@ -21,14 +21,14 @@ afterEach(() => { while (cleanups.length) cleanups.pop()!(); });
 
 const canary = () => "pw-canary-" + randomBytes(12).toString("hex");
 
-function boot(extra: { noIdle?: boolean } = {}) {
+function boot(extra: { noIdle?: boolean; kstub?: Record<string, string> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "setup-account-"));
   const home = join(dir, "home"), root = join(dir, "root"), project = join(dir, "project");
   for (const d of [home, root, project]) mkdirSync(d);
   const k = stubKeyring(dir);
   const s = startServer({
-    port: 0, token: TOKEN, root, projectRoot: project, ...extra,
-    env: { ...k.env, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home },
+    port: 0, token: TOKEN, root, projectRoot: project, noIdle: extra.noIdle,
+    env: { ...k.env, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, ...extra.kstub },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;
@@ -104,6 +104,18 @@ test("a login file that cannot be read (a symlink, mode 644, malformed) is refus
     if (before.link) expect(readFileSync(before.link, "utf8")).toBe(target!);
     expect(readdirSync(dirname(b.loginFile)).filter((f) => f.endsWith(".tmp"))).toEqual([]);
   }
+});
+
+test("a keyring lookup that errors reads as unreadable, never as not-set: the page offers no create and replaces nothing", async () => {
+  const b = boot({ kstub: { KSTUB_LOOKUP_FAIL: "1" } });
+  const line = JSON.stringify({ user: "op", salt: "ab".repeat(16), hash: "cd".repeat(64) });
+  b.k.put(KEY, line);
+  expect((await b.state()).account).toMatchObject({ status: "unreadable", create: "terminal" });
+  const pw = canary();
+  const r = await b.post("/api/setup/account", { user: "intruder", password: pw });
+  expect(r.status).toBe(409);
+  expect(await r.text()).not.toContain(pw);
+  expect(b.k.get(KEY)).toBe(line);
 });
 
 test("a create-only write never replaces a login that appeared after the check", () => {

@@ -26,20 +26,38 @@ function childEnv(env: Env, drop: string[] = []): Record<string, string> {
   return out;
 }
 
+// The resolver runs outside any git checkout, so it never sees a project and only the user-scope item serves the login
+// (every write targets that scope); a project-scoped item of the server's own checkout cannot shadow it.
+const CWD = "/";
+
+// The resolver reads a lookup error, a timeout and no match alike as "exit 1, nothing printed". `secret-tool search` tells
+// them apart: it exits 0 on no match, so a clean search that names no item is the only proof the keyring holds no login.
+function keyringHoldsItem(env: Env): boolean {
+  if (env.HIMMEL_SECRETS_KEYRING === "off") return false;
+  const r = spawnSync("secret-tool", ["search", "--all", "service", "himmel", "key", KEY, "scope", "user"], { env: childEnv(env), cwd: CWD, encoding: "utf8", timeout: 5_000 });
+  if ((r.error as NodeJS.ErrnoException | undefined)?.code === "ENOENT") return false; // no keyring tooling at all: nothing to hide a login in
+  if (r.error || r.status !== 0) throw new Error(`the keyring could not be searched, so the login cannot be read: ${r.error?.message ?? `exit ${r.status}`}`);
+  return `${r.stdout}\n${r.stderr}`.split("\n").some((l) => l.trim() === `attribute.key = ${KEY}`);
+}
+
 // The keyring item, null when none is stored. The child env loses the key and $CREDENTIALS_DIRECTORY and the read skips
 // .env, so only the keyring serves it: a process env that names the key never overrides or stands in for the vault.
 function vaultGet(env: Env): string | null {
-  const r = spawnSync("bash", [SECRETS, "get", "--no-dotenv", KEY], { env: childEnv(env, [KEY, "CREDENTIALS_DIRECTORY"]), encoding: "utf8", timeout: 15_000 });
+  const r = spawnSync("bash", [SECRETS, "get", "--no-dotenv", KEY], { env: childEnv(env, [KEY, "CREDENTIALS_DIRECTORY"]), cwd: CWD, encoding: "utf8", timeout: 15_000 });
   if (r.error) throw new Error(`the keyring could not be read: ${r.error.message}`);
   if (r.status === 0) return r.stdout.slice(KEY.length + 1).replace(/\n$/, "");
-  // a locked or silent keyring is an error, not "no login": the 404 would invite setting a login over the one it hides.
+  // a locked or silent keyring, or a lookup that failed while the item exists, is an error, not "no login": the 404 would
+  // invite setting a login over the one it hides.
   if (r.status === 1 && /keyring (locked|did not answer)/.test(r.stderr)) throw new Error(`the keyring is locked or not answering, so the login cannot be read; unlock it and retry`);
-  if (r.status === 1) return null;
+  if (r.status === 1) {
+    if (keyringHoldsItem(env)) throw new Error(`the keyring lookup failed although it holds a login, so the login cannot be read; retry`);
+    return null;
+  }
   throw new Error(`the keyring could not be read: ${r.stderr.trim() || `exit ${r.status}`}`);
 }
 
 function vaultPut(env: Env, line: string): void {
-  const r = spawnSync("bash", [SECRETS, "put", "--stdin", KEY], { env: childEnv(env), input: line, encoding: "utf8", timeout: 15_000 });
+  const r = spawnSync("bash", [SECRETS, "put", "--stdin", KEY], { env: childEnv(env), cwd: CWD, input: line, encoding: "utf8", timeout: 15_000 });
   if (r.error) throw new Error(`the keyring could not be written: ${r.error.message}`);
   if (r.status !== 0) throw new Error(`the keyring could not be written: ${r.stderr.trim().replace(/^himmel-secrets: /, "") || `exit ${r.status}`}`);
 }
@@ -62,7 +80,9 @@ export function writeLogin(path: string, user: string, password: string, o: { cr
   const salt = randomBytes(16).toString("hex");
   const hash = scryptSync(password, salt, KEYLEN).toString("hex");
   if (o.createOnly && (vaultGet(env) !== null || legacyExists(path))) throw new Error(LOGIN_EXISTS);
-  vaultPut(env, JSON.stringify({ user, salt, hash }));
+  const line = JSON.stringify({ user, salt, hash });
+  vaultPut(env, line);
+  if (vaultGet(env) !== line) throw new Error("the keyring did not return the login after writing it");
   removeLegacy(path);
 }
 
@@ -80,7 +100,13 @@ function migrate(path: string, line: string, env: Env, keyringErr: Error | null)
   let why = keyringErr?.message ?? "";
   let moved = false;
   if (!keyringErr) {
-    try { vaultPut(env, line); unlinkSync(path); moved = true; } catch (e) { why = (e as Error).message; }
+    try {
+      vaultPut(env, line);
+      // the file goes only once the keyring hands back exactly what was written: a write that reports success but stored nothing must not cost the login.
+      if (vaultGet(env) !== line) throw new Error("the keyring did not return the login after writing it");
+      unlinkSync(path);
+      moved = true;
+    } catch (e) { why = (e as Error).message; }
   }
   if (!moved && noticed.has(path)) return;
   noticed.add(path);

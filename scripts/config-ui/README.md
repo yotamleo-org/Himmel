@@ -286,7 +286,8 @@ a symlink or a file that is not mode 600 is refused), never idles out, and rebui
 `bun scripts/config-ui/server.ts --set-login <user>`, which reads the password from stdin: echo is off
 and it asks twice on a terminal, the minimum is 8 characters. The login is stored in the OS keyring as the item
 `HIMMEL_UI_LOGIN` (through `scripts/lib/himmel-secrets`, so it needs an unlocked Secret Service), as a scrypt hash,
-never the password. The process env never overrides it, and a locked keyring answers 500, not 404. A login file
+never the password. The process env never overrides it, and a locked keyring, or a keyring lookup that fails, answers
+500, not 404. macOS has no resolver keyring backend, so `--set-login` fails there and the UI is token-only on macOS. A login file
 from before the keyring, `~/.himmel/state/ui-login`, is read once with a deprecation notice, moved into the keyring
 and removed; a symlink or a file others can read is refused.
 `POST /api/login` (same-origin JSON) answers with an `HttpOnly; SameSite=Strict` session cookie that lasts one

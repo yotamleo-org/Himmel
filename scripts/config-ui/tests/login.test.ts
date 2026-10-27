@@ -5,7 +5,8 @@
 // line, the keyring item or a file.
 import { test, expect, afterEach } from "bun:test";
 import { randomBytes, scryptSync } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { startServer } from "../server";
@@ -33,8 +34,8 @@ function writeLegacy(path: string, line: string): void {
 }
 
 // legacy: the login sits in the pre-keyring file instead of the keyring; locked: the stub keyring is locked;
-// envLogin: the process env carries its own HIMMEL_UI_LOGIN.
-function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean; locked?: boolean; envLogin?: string } = {}) {
+// envLogin: the process env carries its own HIMMEL_UI_LOGIN; extra: more stub knobs (KSTUB_*) for the server's env.
+function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean; locked?: boolean; envLogin?: string; extra?: Record<string, string> } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "ui-login-"));
   const home = join(dir, "home"), root = join(dir, "root"), project = join(dir, "project");
   for (const d of [home, root, project]) mkdirSync(d);
@@ -46,7 +47,8 @@ function boot(o: { password?: string | null; noIdle?: boolean; legacy?: boolean;
   const env: Record<string, string | undefined> = { ...k.env, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home };
   if (o.locked) env.KSTUB_LOCKED = "true";
   if (o.envLogin !== undefined) env[KEY] = o.envLogin;
-  const s = startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, now: () => t, env });
+  Object.assign(env, o.extra);
+  const s =startServer({ port: 0, token: TOKEN, root, projectRoot: project, noIdle: o.noIdle, now: () => t, env });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;
   const post = (path: string, body: unknown, headers: Record<string, string> = {}) => fetch(base + path, {
@@ -241,4 +243,77 @@ test("a pre-keyring login file that is a symlink or readable by others is refuse
   expect(() => readLogin(link, k.env)).toThrow(/symlink/);
   chmodSync(real, 0o644);
   expect(() => readLogin(real, k.env)).toThrow(/mode 600/);
+});
+
+test("a keyring lookup that errors while the login exists is a 500, never a 404 that invites setting a login", async () => {
+  const b = boot({ password: null, extra: { KSTUB_LOOKUP_FAIL: "1" } });
+  b.k.put(KEY, loginLine(USER, "stored-" + secret()));
+  const r = await b.login(USER, "anything");
+  expect(r.status).toBe(500);
+  expect(await r.text()).toMatch(/keyring/i);
+});
+
+test("a keyring that cannot even be searched is an error, not an empty answer", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-search-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const k = stubKeyring(dir);
+  expect(() => readLogin(join(dir, "ui-login"), { ...k.env, KSTUB_LOOKUP_FAIL: "1", KSTUB_SEARCH_FAIL: "1" })).toThrow(/keyring/i);
+});
+
+test("a lookup error with no item stored is still just no login: a clean search is the proof of empty", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-empty-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const k = stubKeyring(dir);
+  expect(readLogin(join(dir, "ui-login"), { ...k.env, KSTUB_LOOKUP_FAIL: "1" })).toBeNull();
+});
+
+test("create-only refuses, and leaves the item, when the keyring lookup errors", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-create-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const k = stubKeyring(dir), line = loginLine(USER, secret());
+  k.put(KEY, line);
+  expect(() => writeLogin(join(dir, "ui-login"), USER, secret(), { createOnly: true, env: { ...k.env, KSTUB_LOOKUP_FAIL: "1" } })).toThrow();
+  expect(k.get(KEY)).toBe(line);
+});
+
+test("a pre-keyring file stays when the keyring does not hold the login after the move", async () => {
+  const b = boot({ legacy: true, extra: { KSTUB_STORE_NOOP: "1" } });
+  const line = readFileSync(b.loginFile, "utf8").trim();
+  expect((await b.login(USER, b.password)).status).toBe(200);
+  expect(b.k.get(KEY)).toBeNull();
+  expect(readFileSync(b.loginFile, "utf8").trim()).toBe(line);
+});
+
+test("setting the login keeps a pre-keyring file when the keyring does not hold the new login afterwards", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-set-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const k = stubKeyring(dir), f = join(dir, "ui-login"), line = loginLine(USER, secret());
+  writeLegacy(f, line);
+  expect(() => writeLogin(f, USER, secret(), { env: { ...k.env, KSTUB_STORE_NOOP: "1" } })).toThrow(/did not return/);
+  expect(readFileSync(f, "utf8").trim()).toBe(line);
+});
+
+test("a project-scoped item of the checkout the server runs in never shadows the user-scope login", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-cwd-"));
+  const cwd = process.cwd();
+  cleanups.push(() => { process.chdir(cwd); rmSync(dir, { recursive: true, force: true }); });
+  const repo = join(dir, "repo");
+  mkdirSync(repo);
+  expect(spawnSync("git", ["init", "-q", repo]).status).toBe(0);
+  const k = stubKeyring(dir);
+  k.put(KEY, loginLine(USER, secret()));
+  k.putProject(KEY, loginLine("shadow", secret()), realpathSync(repo));
+  process.chdir(repo);
+  expect(readLogin(join(dir, "ui-login"), k.env)?.user).toBe(USER);
+});
+
+test("a credentials directory never serves the login either", () => {
+  const dir = mkdtempSync(join(tmpdir(), "ui-login-creds-"));
+  cleanups.push(() => rmSync(dir, { recursive: true, force: true }));
+  const k = stubKeyring(dir), creds = join(dir, "creds");
+  mkdirSync(creds);
+  writeFileSync(join(creds, KEY), loginLine("credsuser", secret()));
+  expect(readLogin(join(dir, "ui-login"), { ...k.env, CREDENTIALS_DIRECTORY: creds })).toBeNull();
+  k.put(KEY, loginLine(USER, secret()));
+  expect(readLogin(join(dir, "ui-login"), { ...k.env, CREDENTIALS_DIRECTORY: creds })?.user).toBe(USER);
 });
