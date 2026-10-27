@@ -296,6 +296,7 @@ check "merge --jira-transition -> exit 0" "$rc" 0
 check "merge --jira-transition still ran exactly one gh pr merge" "$(merged)" 1
 contains "merge --jira-transition comments on the ticket first" "$(jlog)" "JIRA comment HIMMEL-5899 --comment-file"
 contains "merge --jira-transition moves the ticket to Done" "$(jlog)" "JIRA transition HIMMEL-5899 Done"
+check "merge --jira-transition comments before it transitions" "$(jlog | grep -v 'JIRA get' | cut -d' ' -f2 | tr '\n' ' ')" "comment transition "
 contains "merge --jira-transition reports the outcome" "$out" "jira-transition=ok key=HIMMEL-5899 status=Done"
 rc=0; out="$(STUB_JIRA_TYPE=Epic jira_merge)" || rc=$?
 check "merge --jira-transition on an Epic -> exit 0" "$rc" 0
