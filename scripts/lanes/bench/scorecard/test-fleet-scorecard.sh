@@ -139,6 +139,25 @@ BADMIRROR=$(run --mirror "$TMP/mirror" 2>/dev/null); RC=$?
 check "(b) an unreadable Jira mirror still exits 0" "$RC" "0"
 check "(b) an unreadable Jira mirror is n/a with its reason" \
     "$(printf '%s\n' "$BADMIRROR" | grep '^- Jira mirror:')" "- Jira mirror: n/a (unreadable: $TMP/mirror)"
+sed 's#^resume_cwd: .*#resume_cwd: /fixture/himmel#' "$FX/HIMMEL-9004-N9004-native-in-flight-2026-10-25.md" \
+    > "$TMP/HIMMEL-9005-N9005-primary-checkout-2026-10-25.md"
+printf '%s\n' '{"ts":"2026-10-25T16:30:00Z","session_title":"himmel","cwd":"/fixture/himmel","tool":"Bash"}' > "$TMP/shared-denials.jsonl"
+SHARED=$(run --doc "$TMP/HIMMEL-9005-N9005-primary-checkout-2026-10-25.md" --denials "$TMP/shared-denials.jsonl" 2>/dev/null); RC=$?
+check "(b) a worker in the shared primary checkout still exits 0" "$RC" "0"
+check "(b) a worker in the shared primary checkout gets no denials from that checkout" \
+    "$(cell "$SHARED" "Fleet management" N9005 11)" "n/a (no worktree: /fixture/himmel)"
+check "(b) the report says a message-delivered worker's interventions are a floor" \
+    "$(printf '%s\n' "$OUT" | grep -c '^- interventions: a ruling or nudge sent by SendMessage counts only when a doc logs it, so a worker with message delivery shows a floor$')" "1"
+
+# --- (e) option spellings: --doc=<path> is --doc <path>; an abbreviation or a --label is refused
+EQ=$("$FLEET" --doc="$FX/HIMMEL-9003-N9003-native-merged-2026-10-25.md" --tz UTC 2>/dev/null); RC=$?
+check "(e) --doc=<path> exits 0" "$RC" "0"
+check "(e) --doc=<path> scores the worker under its label" "$(rows "$EQ" "Fleet management")" "1"
+check "(e) --doc=<path> keeps the label from the file name" "$(cell "$EQ" "Output quality" N9003 4)" "HIMMEL-9003"
+"$FLEET" --do "$FX/HIMMEL-9003-N9003-native-merged-2026-10-25.md" --tz UTC >/dev/null 2>&1; RC=$?
+check "(e) an abbreviated --do is refused (exit 2)" "$RC" "2"
+"$FLEET" --doc "$FX/HIMMEL-9003-N9003-native-merged-2026-10-25.md" --label=N1 --tz UTC >/dev/null 2>&1; RC=$?
+check "(e) --label=<x> is refused (exit 2)" "$RC" "2"
 
 echo
 if [ "$fails" -eq 0 ]; then echo "PASS test-fleet-scorecard.sh"; exit 0; fi

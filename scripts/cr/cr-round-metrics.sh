@@ -277,7 +277,7 @@ if (e.SPLIT) {
     critic: stat(inWindow.filter(b => criticBranches.has(b.name)), true),
     no_critic: stat(inWindow.filter(b => !criticBranches.has(b.name)), false),
     critic_attempts_ok: okAttempts.filter(a => inWin.has(a.branch)).length,
-    critic_attempts_failed: attempts.filter(r => r.status !== "ok" && inWin.has(r.branch)).length,
+    critic_attempts_failed: attempts.filter(r => r.status !== "ok" && r.status !== "skipped" && inWin.has(r.branch)).length,
     launches_unjoined: unjoined,
   };
 }

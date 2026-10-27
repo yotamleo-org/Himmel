@@ -71,6 +71,13 @@
 # unread PR could own it). When the PR list itself fails the list is printed with an
 # `open PRs unknown` header rather than silently trusting an empty set.
 #
+# Soft edges: behind the `chain_soft_edges` flag (scripts/lib/flags.sh; off by default) a
+# candidate held only by open PRs is not dropped for the file collision when the overlap is
+# small and merges clean: every holder is an open PR, the overlap is at most 2 files, none is
+# a ci-trust path, and each holder's head merges into main with `git merge-tree` without a
+# conflict. Such a ticket is listed, preceded by a `# SOFT <holders> <files> for <KEY>` line.
+# With the flag off the output is unchanged.
+#
 # Drops: every To Do ticket of the earliest unreleased version that is not listed
 # is counted by reason on a `# dropped from <version>:` line (owned, collision,
 # blocker, type, label, platform, residual-depth, classification, below --top ...);
@@ -144,9 +151,16 @@ if [ -z "$ledger" ] && . "$REPO/scripts/lib/handover-path.sh" 2>/dev/null; then
     root="$(handover_root 2>/dev/null)" && ledger="$root/admissions-ledger.jsonl"  # swallow-ok: no handover root means no ledger, so no residual is admitted by it
 fi
 
+# chain_soft_edges (scripts/lib/flags.tsv): off keeps the collision drop below exactly; on keeps a
+# ticket whose files overlap an open PR when the trial merge is clean.
+soft=0
+# shellcheck source=scripts/lib/flags.sh
+# shellcheck disable=SC1091
+if . "$REPO/scripts/lib/flags.sh" 2>/dev/null && himmel_flag chain_soft_edges 2>/dev/null; then soft=1; fi  # swallow-ok: an unreadable registry or a bad value is flag off, today's behaviour
+export ND_SOFT="$soft" ND_GIT_DIR="${NEXT_DISPATCH_GIT_DIR:-$REPO}" ND_MAIN_REF="${NEXT_DISPATCH_MAIN_REF:-origin/main}"
 export ND_TOP="$top" ND_MIRROR="$mirror" ND_WORKERS_FROM="$workers_from" ND_HELD="$held" ND_CLASSIFY="$classify" ND_REPO="$REPO" ND_RESUME_ONLY="$resume_only" ND_OWNERS="$owners" ND_DOC="$doc" ND_POOL_ONLY="$pool_only" ND_WORKERS="$workers" ND_WHY="$why" ND_DISPO="$dispo" ND_LEDGER="$ledger"
 exec python3 -I - <<'PY'
-import datetime, json, os, re, subprocess, sys, time
+import datetime, json, os, re, subprocess, sys, tempfile, time
 
 top = int(os.environ['ND_TOP']); mirror = os.environ['ND_MIRROR']
 repo = os.environ['ND_REPO']
@@ -269,6 +283,56 @@ def held_hit(i):
             if blocks(f, h, tree):
                 return f, who
     return None
+
+def held_hits(i):
+    # every (file, holder) of held that holds one of the ticket's files
+    return [(f, who) for f in i['files'] for h, who, tree in held if blocks(f, h, tree)]
+
+soft_edges = os.environ.get('ND_SOFT') == '1'
+soft_rows = {}  # key -> the `# SOFT` text of a listed ticket whose file overlap is soft
+trust_res = []
+if soft_edges:
+    for tf in ('scripts/ci/ci-trust-paths.txt', 'scripts/ci/ci-trust-paths-core.txt'):
+        try:
+            trust_res += [re.compile(l.strip()) for l in open(os.path.join(repo, tf), encoding='utf-8') if l.strip() and not l.lstrip().startswith('#')]
+        except (OSError, re.error):
+            trust_res = None  # swallow-ok: an unreadable or invalid trust list makes every overlap hard
+            break
+head_cache = {}
+
+def trial_clean(num):
+    # the open PR's head merges into main with no conflict (git merge-tree, no worktree). The candidate has
+    # no branch yet, so this is the holder's side of the pair; a conflict found later upgrades the edge to hard.
+    if num not in head_cache:
+        ok = False
+        gitdir, mainref = os.environ['ND_GIT_DIR'], os.environ['ND_MAIN_REF']
+        try:
+            sha = subprocess.run([gh, 'api', 'repos/%s/pulls/%s' % (gh_repo, num), '--jq', '.head.sha'], capture_output=True, text=True, timeout=60, check=True).stdout.strip()
+            if re.fullmatch(r'[0-9a-f]{40,64}', sha):
+                have = lambda: subprocess.run(['git', '-C', gitdir, 'cat-file', '-e', sha + '^{commit}'], capture_output=True, timeout=60).returncode == 0
+                if not have():
+                    subprocess.run(['git', '-C', gitdir, 'fetch', '-q', 'origin', 'refs/pull/%s/head' % num], capture_output=True, timeout=120)
+                if have() and subprocess.run(['git', '-C', gitdir, 'rev-parse', '--verify', '-q', mainref + '^{commit}'], capture_output=True, timeout=60).returncode == 0:
+                    ok = subprocess.run(['git', '-C', gitdir, 'merge-tree', '--write-tree', '--no-messages', mainref, sha], capture_output=True, timeout=60).returncode == 0
+        except (OSError, subprocess.SubprocessError):
+            ok = False  # swallow-ok: a trial that cannot run is not clean, so the collision drop stands
+        head_cache[num] = ok
+    return head_cache[num]
+
+def soft_overlap(i, hits):
+    # the `# SOFT` text when every overlap is with an open PR, there are at most 2 files, none is a trust
+    # path and each holder's trial merge is clean; else None and the collision drop stands
+    if not soft_edges or trust_res is None or not trust_res or not hits:
+        return None
+    files = sorted({f for f, _ in hits})
+    holders = sorted({who for _, who in hits})
+    if len(files) > 2 or not all(w.startswith('open PR ') for w in holders):
+        return None
+    if any(r.search(canon(f)) for f in files for r in trust_res):
+        return None
+    if not all(trial_clean(w.split()[-1]) for w in holders):
+        return None
+    return '%s %s' % (','.join(holders), ','.join(files))
 
 def fm_val(fm, name):
     m = re.search(r'^%s: (.*)$' % re.escape(name), fm, re.M)
@@ -408,6 +472,47 @@ why = {}
 
 def drop(i, reason):
     why.setdefault(i['key'], reason)
+
+# A ticket whose body lacks a DoD or a Proof section is not dispatched. The verdict is the
+# ticket-standard checker's (no second parser); it runs on the mirror's Description with its intake queue pointed
+# at a scratch dir, because this script parks nothing. gen-briefs.py asks the same question.
+proof_checker = os.path.join(repo, 'marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh')
+proof_cache = {}
+proof_told = set()
+
+def proof_missing(i):
+    # '' when DoD and Proof are both present, else the missing names ("DoD, Proof"); an unrunnable checker refuses
+    k = i['key']
+    if k not in proof_cache:
+        try:
+            txt = open(os.path.join(mirror, k + '.md'), encoding='utf-8', errors='replace').read()
+            m = re.search(r'^## Description\n(.*?)(?=^## |\Z)', txt, re.M | re.S)
+            with tempfile.TemporaryDirectory() as d:
+                draft = os.path.join(d, 'draft.md')
+                with open(draft, 'w', encoding='utf-8') as f:
+                    f.write(m.group(1) if m else '')
+                r = subprocess.run(['bash', proof_checker, '--type', 'Task', '--draft', draft], capture_output=True, text=True, timeout=30,
+                                   env=dict(os.environ, TICKET_STANDARD_QUEUE_DIR=os.path.join(d, 'queue')))
+            if r.returncode not in (0, 1):
+                proof_cache[k] = 'DoD, Proof (the ticket-standard checker could not read the body: rc %d)' % r.returncode
+            else:
+                got = re.search(r'missing or empty: (.*)$', r.stdout, re.M)
+                names = [n.strip() for n in got.group(1).split(',')] if got else []
+                proof_cache[k] = ', '.join(n for n in ('DoD', 'Proof') if n in names)
+        except (OSError, subprocess.SubprocessError):
+            proof_cache[k] = 'DoD, Proof (the ticket-standard checker did not run)'
+    return proof_cache[k]
+
+def proof_refuse(i):
+    # True when the ticket cannot be dispatched yet: dropped, and named once for the chief to fix first
+    miss = proof_missing(i)
+    if not miss:
+        return False
+    drop(i, 'proof missing: ' + miss)
+    if i['key'] not in proof_told:
+        proof_told.add(i['key'])
+        print('# NO-PROOF %s missing %s: %s (fix the ticket, then it dispatches)' % (i['key'], miss, i['title']))
+    return True
 
 def tier_of(i):
     # 1 operator pool head, 2 operator-directed, 3 Bug High+ / security / data-integrity, 4 the rest.
@@ -696,8 +801,11 @@ for i in cands:
         continue
     hit = held_hit(i)
     if hit:
-        drop(i, 'collision %s held by %s' % hit)
-        continue
+        soft = soft_overlap(i, held_hits(i))
+        if soft is None:
+            drop(i, 'collision %s held by %s' % hit)
+            continue
+        soft_rows[i['key']] = soft
     if pr_unknown or pr_files_unknown:  # an unread PR list or PR file set could hold the ticket's files
         drop(i, 'open PRs unknown (gh failed): collisions cannot be checked' if pr_unknown else 'open PR files unknown (PR %s): its collisions cannot be checked' % ' '.join(pr_files_unknown))
         continue
@@ -828,7 +936,13 @@ def classify_new(batch):
 # of --top rows each, so a refused or colliding row in the first call does not cost a serial round.
 if classified and top > len(resume):
     from concurrent.futures import ThreadPoolExecutor
-    halves = [free[:top], free[top:top * 2]]
+    ok_rows = []
+    for i in free:
+        if len(ok_rows) >= top * 2:
+            break
+        if not proof_refuse(i):
+            ok_rows.append(i)
+    halves = [ok_rows[:top], ok_rows[top:]]
     halves = [h for h in halves if h]
     for h in halves:
         asked.update(i['key'] for i in h)
@@ -844,6 +958,7 @@ def emit_free(rows):
     while n < top and start < len(rows):
         batch = rows[start:start + top - n]
         start += len(batch)
+        batch = [i for i in batch if not proof_refuse(i)]
         if classified:
             classify_new(batch)
         for i in batch:
@@ -863,6 +978,8 @@ def emit_free(rows):
             picked.extend((f, i['key']) for f in i['files'])
             emitted.append(i)
             lane_of[i['key']] = lane
+            if i['key'] in soft_rows:
+                print('# SOFT %s for %s' % (soft_rows[i['key']], i['key']))
             print('\t'.join([lane, i['key'], i['prio'] or '-', ','.join(i['ver']) or '-', i['title'], 'files=' + (','.join(i['files']) or '-')] + (['hook'] if c == 'HOOK-BYPASS' else [])))
             n += 1
             if n >= top:

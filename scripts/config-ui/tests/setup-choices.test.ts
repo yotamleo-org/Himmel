@@ -28,7 +28,7 @@ function boot(conf?: string, origin?: string) {
   writeFileSync(argvFile, "");
   const s = startServer({
     port: 0, token: TOKEN, root, projectRoot: project,
-    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, STUB_ARGV: argvFile, STUB_STATE: state },
+    env: { PATH: process.env.PATH, CONFIG_UI_HIMMELCTL: STUB, CONFIG_UI_IDLE_MS: "60000", HOME: home, STUB_ARGV: argvFile, STUB_STATE: state, HIMMEL_SECRETS_KEYRING: "off" },
   });
   cleanups.push(() => { s.stop(); rmSync(dir, { recursive: true, force: true }); });
   const base = `http://127.0.0.1:${s.port}`;

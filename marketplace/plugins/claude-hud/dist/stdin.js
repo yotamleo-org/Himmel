@@ -1,5 +1,5 @@
 import { sanitizeTranscriptModel } from './model-source.js';
-import { sanitizeDisplayText } from './utils/sanitize.js';
+import { displayLabel } from './utils/sanitize.js';
 const NO_DATA_TIMEOUT_MS = 250;
 const IDLE_TIMEOUT_MS = 250;
 const MAX_STDIN_BYTES = 256 * 1024;
@@ -169,10 +169,7 @@ export function getUsageFromStdin(stdin) {
 }
 // Free text from stdin (session names, output styles, versions) is shown in the terminal.
 export function stdinText(value, maxLength = 80) {
-    if (typeof value !== 'string') {
-        return undefined;
-    }
-    return sanitizeDisplayText(value).trim().slice(0, maxLength) || undefined;
+    return displayLabel(value, maxLength) || undefined;
 }
 // Drops the "(1M context)" style suffix; the context bar already shows the window.
 export function stripContextSuffix(name) {

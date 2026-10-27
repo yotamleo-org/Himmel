@@ -740,6 +740,26 @@ function verifyPluginSet(enabledPlugins, ctx, settings) {
 
 // ── settings-key ─────────────────────────────────────────────────────────
 
+// The Jira CLI reads these two from ~/.himmel/himmel.conf.local, then
+// himmel.conf, before it reads .env (scripts/jira/src/client.ts CONFIG_KEYS),
+// so a `.env` probe must look in the same files.
+const HIMMEL_CONF_KEYS = ['JIRA_EMAIL', 'JIRA_PROJECT_KEY'];
+
+function overlayHimmelConf(data, ctx) {
+  const home = (ctx.env && ctx.env.HOME) || os.homedir();
+  for (const name of ['himmel.conf.local', 'himmel.conf']) {
+    let conf;
+    try {
+      conf = parseDotEnv(fs.readFileSync(path.join(home, '.himmel', name), 'utf8'));
+    } catch (_e) {
+      continue;
+    }
+    for (const k of HIMMEL_CONF_KEYS) {
+      if (nonEmpty(conf[k]) && !nonEmpty(data[k])) data[k] = conf[k];
+    }
+  }
+}
+
 function probeSettingsKey(item, ctx) {
   const filePath = resolveConfigFile(item.probe.file, ctx);
   let raw;
@@ -761,6 +781,7 @@ function probeSettingsKey(item, ctx) {
   } catch (_e) {
     return { actual: 'absent', detail: `cannot parse ${filePath}` };
   }
+  if (item.probe.file === '.env') overlayHimmelConf(data, ctx);
   const getVal = item.probe.file === '.env' ? (k) => data[k] : (k) => getDotPath(data, k);
   // optional 'expect' asserts the SINGLE key's value equals it
   // exactly, not merely non-empty — existence != enablement. Without this, a
@@ -4329,6 +4350,18 @@ function probeObservabilityStack(item, ctx) {
   };
 }
 
+// ── env-present ──────────────────────────────────────────────────────────
+
+// A secret whose key is read from the process environment. Reports only
+// whether the name is set in ctx.env; the value is never read into detail.
+function probeEnvPresent(item, ctx) {
+  const env = ctx.env || process.env;
+  const set = typeof env[item.name] === 'string' && env[item.name].length > 0;
+  return set
+    ? { actual: 'present', detail: `${item.name} is set` }
+    : { actual: 'absent', detail: `${item.name} is not set` };
+}
+
 // ── dispatch ─────────────────────────────────────────────────────────────
 
 const PROBES = {
@@ -4354,6 +4387,7 @@ const PROBES = {
   'cmd:python_interpreter': probePythonInterpreter,
   'distinct-tokens': probeDistinctTokens,
   'luna-sources': probeLunaSources,
+  'env-present': probeEnvPresent,
   'cadence-coherence': probeCadenceCoherence,
   'cadence-runs': probeCadenceRuns,
   'phi-coherence': probePhiCoherence,

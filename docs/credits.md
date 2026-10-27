@@ -16,7 +16,7 @@ vendoring records name the upstream pins and carried deviations.
 
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
-| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | b5f54b132f3e69d20e153d78f6f0b9378861e896 |
+| ai-image-prompts | https://github.com/youmind-openlab/ai-image-prompts-skill | youmind-openlab | MIT | b28402f1fda1adeb37babce8dcb999cfbd5df894 |
 | animejs-skills | https://github.com/BowTiedSwan/animejs-skills | BowTiedSwan | Unknown (not declared upstream) | cf2bed8d6654a6cfd02d3ff11b74ff3a7a7631e2 |
 | anthropic-design-skills | https://github.com/anthropics/skills | anthropics | Mixed: Apache-2.0 design skills; source-available docx/pdf/pptx/xlsx (per-skill LICENSE.txt) | dbd4588f9e1033efb41dad4bef2f7947c8993d44 |
 | anydesign | https://github.com/uxKero/anydesign | uxKero | MIT | v0.6.0 |
@@ -24,7 +24,7 @@ vendoring records name the upstream pins and carried deviations.
 | claude-obsidian | https://github.com/AgriciDaniel/claude-obsidian | AgriciDaniel | MIT | v3.0.1 |
 | design-dna | https://github.com/zanwei/design-dna | zanwei | MIT | 593e39bc9e3652734653bd75544a333d7d43615e |
 | design-md | https://github.com/NousResearch/hermes-agent | Nous Research | MIT | v2026.9.24 |
-| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | 0b9b10cab3dbf695642fa1a6c4b4f60df9083689 |
+| diagram-design | https://github.com/cathrynlavery/diagram-design | cathrynlavery | MIT | b8f36171da6e1bce05c3eb984969e5d4e7cb3a20 |
 | domain-modeling | https://github.com/mattpocock/skills | Matt Pocock (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/domain-modeling/VENDORED.md) |
 | emilkowalski-skills | https://github.com/emilkowalski/skills | Emil Kowalski | MIT | 2d228630ba1446365f614a108cb8252f1feda202 |
 | find-docs | https://github.com/upstash/context7 | Upstash | MIT | b5e81de845092694ba1bfc5af15400f319c89b6d |
@@ -52,7 +52,7 @@ vendoring records name the upstream pins and carried deviations.
 | pstack | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan (upstream) / yotamleo (vendor) | MIT | [Vendoring pin](../marketplace/plugins/pstack/VENDORED.md) |
 | qmd | https://github.com/tobi/qmd | tobi (upstream) / yotamleo (fork) | MIT | [Fork pin](../scripts/lib/qmd-bin.sh) |
 | shadcn-mcp | https://github.com/shadcn-ui/ui | shadcn / yotamleo (wrapper) | MIT | [Runtime pin](../marketplace/plugins/shadcn-mcp/.mcp.json) |
-| taste-skill-core | https://github.com/Leonxlnx/taste-skill | Leonxlnx | MIT | 6010f91a9935f1c167dfc500fb1a475681892e6b |
+| taste-skill-core | https://github.com/Leonxlnx/taste-skill | Leonxlnx | MIT | 12af471f627f866411b4bd785b19646d3672784c |
 | telegram-himmel | https://github.com/anthropics/claude-plugins-official/tree/main/external_plugins/telegram | Anthropic (upstream) / yotamleo (fork) | Apache-2.0 | [Fork record](../marketplace/plugins/telegram-himmel/README.md) |
 | threejs-skills | https://github.com/CloudAI-X/threejs-skills | CloudAI-X | MIT | 0e181866f095b5f06d005133876e926515390d95 |
 | ui-ux-pro-max | https://github.com/nextlevelbuilder/ui-ux-pro-max-skill | nextlevelbuilder | MIT | v2.15.0 |
@@ -65,6 +65,7 @@ These are the vendored skills outside marketplace plugins, recorded in
 | Name | Source | Author | Licence | Pin / tracking |
 |---|---|---|---|---|
 | no-comments + comment-sicko | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
+| technical-writing | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
 | test-audit | https://github.com/openclaw/openclaw | OpenClaw Foundation | MIT | 1370643e394f956dfae2e42f43ee030b0072434b |
 | unslop | https://github.com/cursor/plugins/tree/main/pstack | Lauren Tan | MIT | 99743e9c151c8537cbbf1f98bb38f34ef3368453 |
 | writing-for-agents | https://github.com/mattpocock/skills | Matt Pocock | MIT | 49dd158d1076134a641b33efb035946536778336 |

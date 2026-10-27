@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createDebug } from './debug.js';
-import { sanitizeDisplayText } from './utils/sanitize.js';
+import { displayLabel } from './utils/sanitize.js';
 import type { GitStatus } from './git.js';
 
 const debug = createDebug('jj');
@@ -75,10 +75,8 @@ const JJ_ARGS = [
   'log', '-r', '@', '--no-graph', '--color', 'never', '-T', JJ_TEMPLATE,
 ] as const;
 
-// Truncates by code point so the cut can't split a surrogate pair.
 function label(value: string): string | null {
-  const sanitized = sanitizeDisplayText(value).trim();
-  return sanitized ? Array.from(sanitized).slice(0, MAX_LABEL_LENGTH).join('') : null;
+  return displayLabel(value, MAX_LABEL_LENGTH) || null;
 }
 
 function parseJjOutput(stdout: string): GitStatus | null {

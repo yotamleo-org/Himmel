@@ -2,7 +2,7 @@ import { execFile } from 'node:child_process';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 import { createDebug } from './debug.js';
-import { sanitizeDisplayText } from './utils/sanitize.js';
+import { displayLabel } from './utils/sanitize.js';
 const debug = createDebug('jj');
 const MAX_WALK_DEPTH = 64;
 const MAX_OUTPUT_BYTES = 16 * 1024;
@@ -58,10 +58,8 @@ const JJ_ARGS = [
     '--ignore-working-copy', '--at-operation=@', '--no-pager',
     'log', '-r', '@', '--no-graph', '--color', 'never', '-T', JJ_TEMPLATE,
 ];
-// Truncates by code point so the cut can't split a surrogate pair.
 function label(value) {
-    const sanitized = sanitizeDisplayText(value).trim();
-    return sanitized ? Array.from(sanitized).slice(0, MAX_LABEL_LENGTH).join('') : null;
+    return displayLabel(value, MAX_LABEL_LENGTH) || null;
 }
 function parseJjOutput(stdout) {
     const output = stdout.replace(/\r?\n$/, '');

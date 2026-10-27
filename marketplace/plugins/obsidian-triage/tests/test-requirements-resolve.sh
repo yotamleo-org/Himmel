@@ -5,7 +5,8 @@
 # so this suite resolves them (metadata only, nothing is installed).
 # The scrapling lock pins `scrapling`, not `scrapling[fetchers]`, so a second input
 # line activates the extra whose floors (curl-cffi, patchright, ...) the lock must meet.
-# Needs uv and the package index; SKIP (exit 0) when either is unreachable.
+# Needs uv and the package index; SKIP (exit 0) when either is unreachable, FAIL
+# instead when HIMMEL_REQUIRE_UV=1 (the CI shards set it). One index miss is retried.
 set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 tools="$here/../tools"
@@ -14,8 +15,13 @@ pass=0; fail=0
 ok() { echo "  PASS  $1"; pass=$((pass + 1)); }
 no() { echo "  FAIL  $1"; fail=$((fail + 1)); }
 
-if ! command -v uv >/dev/null 2>&1; then echo "SKIP: uv not on PATH"; exit 0; fi
-if ! curl -sSf -m 10 -o /dev/null https://pypi.org/simple/pyee/; then echo "SKIP: package index unreachable"; exit 0; fi
+skip() {
+  if [ "${HIMMEL_REQUIRE_UV:-}" = "1" ]; then echo "  FAIL  $1 (HIMMEL_REQUIRE_UV=1)"; exit 1; fi
+  echo "SKIP: $1 (set HIMMEL_REQUIRE_UV=1 to require)"; exit 0
+}
+index_up() { curl -sSf -m 10 -o /dev/null https://pypi.org/simple/pyee/; }
+command -v uv >/dev/null 2>&1 || skip "uv not on PATH"
+index_up || { sleep 5; index_up; } || skip "package index unreachable"
 
 printf 'scrapling[fetchers]\n' > "$tmp/fetchers.in"
 resolve() { local py=$1; shift; uv pip compile --universal --python-version "$py" --no-header --no-annotate -o /dev/null "$@" 2>&1; }

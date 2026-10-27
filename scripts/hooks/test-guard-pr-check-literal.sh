@@ -2752,6 +2752,69 @@ run "7130 class1 control [a changed worktree bullet writer] -> deny" 2 \
     "$(payload "bash scripts/handover/chief-kit/append-results.sh scripts/cr/write-verdicts.sh" "$WT")" "$HR"
 g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh scripts/handover/chief-kit/append-results.sh
 
+# ---- 5763: a gate path is read from the executable position only ----------
+# Interpreter code or a heredoc body that merely NAMES a gate path is not an
+# invocation; every shape that runs one stays denied. Both on a clean tree and
+# on a tree whose copy differs from the anchor's.
+edit_gate_5763() { # edit_gate_5763 <label> - make the gate copy differ, fail the suite if it does not
+    echo ': edited' >>"$WT/scripts/cr/write-verdicts.sh" ||
+        { echo "FAIL 5763 setup: cannot edit the gate copy for $1"; FAILED=$((FAILED + 1)); }
+    if g -C "$WT" diff --quiet -- scripts/cr/write-verdicts.sh; then
+        echo "FAIL 5763 setup: the gate copy still equals the anchor's for $1"
+        FAILED=$((FAILED + 1))
+    fi
+}
+run_5763() { # run_5763 <label> <expected-rc> <command>
+    run "5763 clean tree: $1" "$2" "$(payload "$3" "$WT")" "$HR"
+    edit_gate_5763 "$1"
+    run "5763 differing tree: $1" "$2" "$(payload "$3" "$WT")" "$HR"
+    g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+}
+run_5763 "python3 -c printing a gate path -> allow" 0 \
+    "python3 -c \"print('scripts/cr/write-verdicts.sh')\""
+run_5763 "node -e printing a gate path -> allow" 0 \
+    "node -e \"console.log('scripts/cr/write-verdicts.sh')\""
+run_5763 "python3 - heredoc printing a gate path -> allow" 0 \
+    "python3 - <<'PY'${NL}print('scripts/cr/write-verdicts.sh')${NL}PY"
+run_5763 "echo argument naming a gate path -> allow" 0 \
+    "echo scripts/cr/write-verdicts.sh"
+run_5763 "cat heredoc body naming a gate path -> allow" 0 \
+    "cat <<'EOF'${NL}scripts/cr/write-verdicts.sh${NL}EOF"
+# Controls: a gate path in the executable position, or code that runs one.
+run_5763 "python3 -c running the gate through os.system -> deny" 2 \
+    "python3 -c \"import os; os.system('bash scripts/cr/write-verdicts.sh')\""
+run_5763 "python3 heredoc running the gate through os.system -> deny" 2 \
+    "python3 - <<'PY'${NL}import os; os.system('bash scripts/cr/write-verdicts.sh')${NL}PY"
+run_5763 "python3 -c printing a path, chained to a gate run -> deny" 2 \
+    "python3 -c \"print('scripts/cr/write-verdicts.sh')\" && bash scripts/cr/write-verdicts.sh"
+run_5763 "gate piped -> deny" 2 "echo x | bash scripts/cr/write-verdicts.sh"
+run_5763 "gate redirected -> deny" 2 "bash scripts/cr/write-verdicts.sh > /tmp/o5763"
+run_5763 "gate chained with && -> deny" 2 "true && bash scripts/cr/write-verdicts.sh"
+run_5763 "gate chained with ; -> deny" 2 "true; bash scripts/cr/write-verdicts.sh"
+# shellcheck disable=SC2016 # payload text, not for this shell
+run_5763 "gate through a quoted variable -> deny" 2 'bash "$X/scripts/cr/write-verdicts.sh"'
+run_5763 "python3 heredoc, then a gate run on the next line -> deny" 2 \
+    "python3 - <<'PY'${NL}print('scripts/cr/write-verdicts.sh')${NL}PY${NL}bash scripts/cr/write-verdicts.sh"
+run_5763 "python3 heredoc printing a shell invocation -> deny" 2 \
+    "python3 - <<'PY'${NL}print('bash scripts/cr/write-verdicts.sh')${NL}PY"
+run_5763 "python3 heredoc with an unquoted delimiter -> deny" 2 \
+    "python3 - <<PY${NL}print('scripts/cr/write-verdicts.sh')${NL}PY"
+run_5763 "python3 -c with extra argv after the code -> deny" 2 \
+    "python3 -c \"print('scripts/cr/write-verdicts.sh')\" extra"
+run_5763 "env-prefixed python3 -c -> deny" 2 \
+    "PYTHONPATH=x python3 -c \"print('scripts/cr/write-verdicts.sh')\""
+run_5763 "gate behind an env prefix -> deny" 2 "FOO=1 bash scripts/cr/write-verdicts.sh"
+run_5763 "gate behind env -> deny" 2 "env FOO=1 bash scripts/cr/write-verdicts.sh"
+run_5763 "gate behind timeout -> deny" 2 "timeout 9 bash scripts/cr/write-verdicts.sh" # gnu-ok: payload text fed to the hook, never executed
+run "5763 inherited PYTHONPATH: python3 -c printing a gate path -> deny" 2 \
+    "$(payload "python3 -c \"print('scripts/cr/write-verdicts.sh')\"" "$WT")" "$HR" PYTHONPATH=.
+run "5763 inherited NODE_OPTIONS: node -e printing a gate path -> deny" 2 \
+    "$(payload "node -e \"console.log('scripts/cr/write-verdicts.sh')\"" "$WT")" "$HR" NODE_OPTIONS=--no-warnings
+edit_gate_5763 "relative spelling of the gate"
+run "5763 differing tree: relative spelling of the gate -> deny" 2 \
+    "$(payload "bash scripts/cr/write-verdicts.sh" "$WT")" "$HR"
+g -C "$WT" checkout -q -- scripts/cr/write-verdicts.sh
+
 # ---- the shared command-position corpus, from the unrelated non-himmel repo ---
 # A run of the script is refused there (wrong lane); a mention is not a run.
 run "6548 jq program string naming the script is data -> allow" 0 \

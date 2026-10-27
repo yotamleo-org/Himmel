@@ -864,7 +864,11 @@ check "attempt requires --model" "$?" "2"
 # --status must be ok|timeout|error — NOT avail's ok|unavailable vocabulary
 # (a typo'd "unavailable" here would silently become an unrecognised outcome).
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH3 --model glm --status unavailable >/dev/null 2>&1
-check "attempt rejects avail's --status vocabulary (ok|timeout|error only)" "$?" "2"
+check "attempt rejects avail's --status vocabulary (ok|timeout|error|skipped only)" "$?" "2"
+CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH3 --model glm --status skipped --detail "rc=5: critic SKIPPED" >/dev/null 2>&1
+check "attempt accepts --status skipped (HIMMEL-6530)" "$?" "0"
+check "attempt: a skipped row carries status=skipped and no duration" \
+    "$(L="$AT" node -e 'const rs=require("fs").readFileSync(process.env.L,"utf8").trim().split(String.fromCharCode(10)).map(JSON.parse).filter(r=>r.kind==="attempt"&&r.head==="TH3"&&r.status==="skipped");console.log(rs.length+","+(rs[0]&&rs[0].duration_secs==null))')" "1,true"
 CR_LEDGER="$AT" bash "$LA" attempt --branch b --head TH3 --model glm --status error >/dev/null 2>&1
 check "attempt accepts --status error" "$?" "0"
 

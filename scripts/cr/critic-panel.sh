@@ -1440,11 +1440,13 @@ process_member() {
 
     # cfp exit 5 = SKIPPED, a clean no-op (api lane off, no key, bank not
     # PROCEED): not a failure, so no attempt error row and no fallback chain.
+    # Its attempt row is status skipped with no duration (no latency to report).
     if [ "$_pm_rc" -eq 5 ]; then
         _pm_detail="$(_pm_redact_detail "$(_pm_err_line "$_pm_err_file")")"
         [ -n "$_pm_detail" ] || _pm_detail="critic SKIPPED (rc=5, no stderr captured)"
         echo "panel-availability: $_pm_slug unavailable (rc=5) reason=critic-skipped${_pm_detail:+: $_pm_detail}" >&2
         _queue_avail "$_pm_slug" unavailable "" critic-skipped "$_pm_detail"
+        _queue_attempt "$_pm_slug" "$_pm_model" 1 skipped "" "rc=5: $_pm_detail"
         return
     fi
 

@@ -18,7 +18,7 @@ export BUS_WAKER_STATE_DIR="$tmp/wstate"
 mkdir -p "$HANDOVER_DIR/inbox/.cursor"
 
 # Fake qdbus6: processId answers $QPID (or $QPID_LATER after its first call),
-# getAllDisplayedText prints $QSCREEN (a screen copied from a real konsole), and
+# getAllDisplayedText prints $QSCREEN ($QSCREEN_LATER after its first call; screens copied from a real konsole), and
 # every other call (sendText) is recorded in $QLOG, one per line; fake bus prints
 # $BUS_N. $tmp/proc stands in for /proc.
 FIX="$HERE/fixtures/bus-waker"
@@ -28,7 +28,9 @@ case "$3" in
   org.kde.konsole.Session.processId)
     if [ -n "${QPID_LATER:-}" ] && [ -e "$QLOG.pid" ]; then printf '%s\n' "$QPID_LATER"; else printf '%s\n' "$QPID"; fi
     : > "$QLOG.pid" ;;
-  org.kde.konsole.Session.getAllDisplayedText) cat "$QSCREEN" ;;
+  org.kde.konsole.Session.getAllDisplayedText)
+    if [ -n "${QSCREEN_LATER:-}" ] && [ -e "$QLOG.screen" ]; then cat "$QSCREEN_LATER"; else cat "$QSCREEN"; fi
+    : > "$QLOG.screen" ;;
   *) printf '%s\n' "$*" >> "$QLOG" ;;
 esac
 EOF
@@ -47,7 +49,7 @@ FIXED='You have unread himmel messages: read them now.'
 
 run() { # run <polls> <grace> [extra args]; env BUS_N / inbox decide the count
   local polls="$1" grace="$2"; shift 2
-  : > "$QLOG"; rm -f "$QLOG.pid"
+  : > "$QLOG"; rm -f "$QLOG.pid" "$QLOG.screen"
   BUS_WAKER_QDBUS="$tmp/qdbus" BUS_WAKER_BUS="$tmp/bus" \
     bash "$WAKER" --name legX --service org.kde.konsole-1 --session /Sessions/3 \
     --poll 0.2 --grace "$grace" --rewake 100 --max-polls "$polls" "$@" >/dev/null 2>&1
@@ -164,6 +166,10 @@ QSCREEN="$FIX/screen-trust.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a digit-free menu (the trust dialog) gets no keystroke either" || fail "typed into the trust dialog: $(cat "$QLOG")"
 QSCREEN="$FIX/screen-busy.txt" BUS_N=2 run 8 0
 [ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a running turn (spinner above the input box) gets no keystroke" || fail "typed into a busy turn: $(cat "$QLOG")"
+QSCREEN="$FIX/screen-busy-todos.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a running turn with 10 todo lines under its spinner gets no keystroke" || fail "typed into a busy turn with todos: $(cat "$QLOG")"
+QSCREEN="$FIX/screen-idle.txt" QSCREEN_LATER="$FIX/screen-permission.txt" BUS_N=2 run 8 0
+[ "$RUN_RC" -eq 0 ] && [ ! -s "$QLOG" ] && pass "a screen that turns into a permission dialog between the two reads gets no keystroke" || fail "typed after the screen changed to a dialog: $(cat "$QLOG")"
 sed 's/^❯.*/❯ half-typed reply/' "$FIX/screen-idle.txt" > "$tmp/draft-screen"
 grep -qFx '❯ half-typed reply' "$tmp/draft-screen" || fail "draft fixture was not generated"
 QSCREEN="$tmp/draft-screen" BUS_N=2 run 8 0

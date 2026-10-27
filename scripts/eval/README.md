@@ -6,6 +6,7 @@ himmel's evals: each one measures one thing and writes its own output.
 |---|---|---|
 | `lane-quality/` | a lane or model on fixed tasks: acceptance, scope, judge scores, cost | `runs.jsonl` per sweep |
 | `qmd-quality/` | qmd retrieval: hit@1, hit@5 and MRR per mode, plus latency | `scores.tsv`, `latency.tsv` |
+| `docs-review/` | the `docs-reviewer` skill on frozen docs PRs: the operator's points found, the code fix named, BLOCKING true against false | a hand-scored result per case (no ledger row) |
 | `guard-corpus/` | a hook change, base vs head, over a command corpus | `diff` stdout plus a `JSON` line |
 | `scrape-bench/` | scrape providers on a fixed URL set | one JSONL row per URL |
 | `retrieval-eval/` | `retrieval-eval.py`: grep, qmd-lex, qmd-hybrid, graphify and combined (plus opt-in qmd-hybrid-norerank) on transcript-mined questions: recall@k, reason-carried, tokens and ms; `census` counts qmd and graphify use per session role | `results.jsonl`, `scores.tsv` |
@@ -16,6 +17,7 @@ himmel's evals: each one measures one thing and writes its own output.
 | `review-page.py` | the reviewers in plain words: how often the critics catch planted bugs and are right, how often a bug gets past a judge's GO, the trend since the last run, and each feedback change with its re-measured result | one Markdown page on stdout or `--out` (no ledger row) |
 | `deferred-outcome.py` | what became of each deferred CR-ledger finding: its follow-up ticket in the Jira mirror is done (fixed later), open, or closed Won't Do (disproved), overall and per critic | ledger row `deferred-outcome` |
 | `escapes.py` | bugs found after merge (a revert, a caused-by bug, a later fix naming the PR) per merged PR, then per critic that reviewed it and per judge that passed it; reads a `gh pr list` snapshot | ledger row `escapes` |
+| `steering-cull/` | each approved cut of the always-on steering text (repo and user `CLAUDE.md`): tokens and cost-eq saved per session, and whether a RED-first probe still passes on the cut text; a SHIP or KEEP verdict per row | `report` table on stdout; ledger row `steering-cull` |
 | `worktree-latency-curve.sh` | git list, status, add and remove latency against live worktree count, in a scratch repo | one TSV row per step on stdout (no ledger row) |
 
 ## What each number means

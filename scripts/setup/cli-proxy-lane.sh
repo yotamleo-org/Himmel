@@ -50,7 +50,7 @@ PORT=8317
 # operator-set value in config.yaml is never overwritten.
 RETRY_COUNT=3
 RETRY_INTERVAL=30
-VERSION="8.0.38"
+VERSION="8.0.43"
 # Station-target override: the VM upgrade stage rolls the proxy to a
 # target without editing this file. Default unchanged; a version never rides on the
 # pinned sha, so CLIPROXY_API_SHA256 is required alongside CLIPROXY_API_VERSION
@@ -74,11 +74,11 @@ fi
 RELEASE_BASE="https://github.com/router-for-me/CLIProxyAPI/releases/download/v${VERSION}"
 ASSET="CLIProxyAPI_${VERSION}_linux_amd64.tar.gz"
 RELEASE_URL="${RELEASE_BASE}/${ASSET}"
-# Pinned sha256 of the linux_amd64 asset at v8.0.38, verified against the
+# Pinned sha256 of the linux_amd64 asset at v8.0.43, verified against the
 # release's own checksums.txt. Upstream DOES publish per-asset
 # checksums as of this version — the .ps1's "upstream publishes no per-asset
 # checksum" comment is stale; not corrected here (out of scope, Windows file).
-ASSET_SHA256="05690c53245a149230a8b7d64085ed96036275a72414d0097f88bb6314acb39b"
+ASSET_SHA256="7825540634898e11fe9baf255b683856da5d9e75b95c66835891ebb40a79b526"
 [ -n "${CLIPROXY_API_SHA256-}" ] && ASSET_SHA256="$CLIPROXY_API_SHA256"
 
 UNIT_NAME="cli-proxy-api.service"
@@ -376,7 +376,7 @@ cmd_login() {
   assert_exe; assert_config
   echo "codex device-login: open the printed URL on any browser, enter the code,"
   echo "and sign in with your codex / ChatGPT account. Writes ~/.cli-proxy-api/codex-<email>.json."
-  "$EXE" -config "$CFG" -codex-device-login
+  ( umask 077; exec "$EXE" -config "$CFG" -codex-device-login )
   local rc=$?
   [ "$rc" -eq 0 ] || die "codex device-login failed (exit $rc)"
 }
@@ -402,6 +402,7 @@ StartLimitBurst=5
 
 [Service]
 Type=simple
+UMask=0077
 ExecStart="${exe_unit}" -config "${cfg_unit}"
 Restart=on-failure
 RestartSec=10

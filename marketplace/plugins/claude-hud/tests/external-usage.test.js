@@ -386,6 +386,23 @@ test('getUsageFromExternalSnapshot drops malformed scoped entries and sanitizes 
   }
 });
 
+test('getUsageFromExternalSnapshot cuts a scoped label on a grapheme boundary', async () => {
+  const updatedAt = Date.UTC(2026, 3, 20, 12, 0, 0);
+  const { filePath, cleanup } = await withTempFile(JSON.stringify({
+    updated_at: new Date(updatedAt).toISOString(),
+    model_scoped: [
+      { display_name: 'A'.repeat(63) + '😀' + 'B', utilization: 12, resets_at: null },
+    ],
+  }));
+
+  try {
+    const usage = getUsageFromExternalSnapshot(makeConfig(filePath), updatedAt + 60_000);
+    assert.deepEqual(usage?.scopedWindows, [{ label: 'A'.repeat(63), percent: 12, resetAt: null }]);
+  } finally {
+    await cleanup();
+  }
+});
+
 test('getUsageFromExternalSnapshot ignores a non-array model_scoped value', async () => {
   const updatedAt = Date.UTC(2026, 3, 20, 12, 0, 0);
   const { filePath, cleanup } = await withTempFile(JSON.stringify({

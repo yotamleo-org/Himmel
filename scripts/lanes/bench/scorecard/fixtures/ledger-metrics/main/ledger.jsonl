@@ -7,4 +7,5 @@
 {"kind":"finding","ts":"2026-08-03T14:00:00Z","branch":"fix/beta","head":"h2","model":"opus","finding_id":"b3","severity":"imp","file":"b.sh","line":2,"verdict":"CONFIRMED","artifact":"diff","perspective":"style"}
 {"kind":"finding","ts":"2026-08-03T15:00:00Z","branch":"fix/beta","head":"h3","model":"opus","finding_id":"b4","severity":"sug","file":"c.sh","line":3,"verdict":"CONFIRMED","artifact":"diff","perspective":"simplification"}
 {"kind":"attempt","ts":"2026-08-03T16:00:00Z","branch":"fix/beta","head":"h4","model":"opus","status":"clean","hour_utc":16,"artifact":"diff","perspective":"correctness"}
+{"kind":"attempt","ts":"2026-08-03T17:00:00Z","branch":"fix/beta","head":"h5","model":"claude","status":"skipped","hour_utc":17,"artifact":"diff","perspective":"off","detail":"rc=5: critic SKIPPED (api lane is OFF)"}
 {"kind":"finding","ts":"2026-08-02T05:00:00Z","branch":"orphan/branch","head":"z1","model":"sonnet","finding_id":"o1","severity":"crit","file":"z.sh","line":1,"verdict":"CONFIRMED","artifact":"diff","perspective":"correctness"}

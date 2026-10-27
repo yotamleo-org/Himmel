@@ -87,6 +87,8 @@ node_bin=$(command -v node)
 work=$(mktemp -d)
 cleanup() { rm -rf "$work"; }
 trap cleanup EXIT
+# shellcheck disable=SC1091
+{ . "$repo_root/scripts/lib/testlib-config-isolation.sh" && isolate_himmel_config "$work"; } || { echo "FAIL - config isolation unavailable" >&2; exit 1; }
 
 # snapshot_dir <dir> — sorted "relpath sha256" pairs, for a before/after
 # byte-identity check that doesn't depend on tar's metadata quirks. Portable

@@ -59,7 +59,8 @@ is_quota_exhaustion() {
 # one. Classify it as usage-error before any text scan runs, so
 # a member's malformed invocation never gets reported as a transport failure.
 # rc=5 is its documented SKIPPED clean no-op (no key, lane off, bank not
-# PROCEED): critic-skipped, never a failure class.
+# PROCEED): critic-skipped, never a failure class. A crashed gate is not a
+# skip: cfp exits 1 behind its BROKE line, classified critic-broke below.
 # ---------------------------------------------------------------------------
 classify_failure() {
     _cf_rc="${1:-1}"
@@ -84,6 +85,13 @@ $(cat "$_cf_err" 2>/dev/null)"
     _cf_blob="$(printf '%s' "$_cf_blob" | sed 's|Raw output: [^[:space:]]*|Raw output:|g')"
 
     _cf_has() { printf '%s' "$_cf_blob" | grep -qiE "$1"; }
+
+    # A gate that crashed (bank preflight with no verdict, scratch file, a
+    # reservation that returned nothing) exits 1 behind cfp's own BROKE line,
+    # whole-line anchored so provider text cannot spell it. A broken critic
+    # is critic-broke, never critic-skipped (a decision) or generic-rc-1.
+    _cf_broke="$(printf '%s' "$_cf_blob" | grep '^critic-first-pass.sh: claude critic BROKE (')"
+    if [ -n "$_cf_broke" ]; then echo critic-broke; return 0; fi
 
     # quota-5h: the existing exhaustion table, the Z.ai 5-hour
     # sentinel (tests/fixtures/glm-cap/cli-tail-0b.txt: "Usage limit reached

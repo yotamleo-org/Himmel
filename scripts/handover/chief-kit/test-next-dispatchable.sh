@@ -29,8 +29,10 @@ export TICKET_STATUS_STATE_DIR="$WORK/ts-none"
 export HIMMEL_ADMISSIONS_LEDGER="$WORK/ledger-none.jsonl"
 M="$WORK/jira-mirror/HIMMEL"; mkdir -p "$M"
 
-mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>
-    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "x"\npriority: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: %s\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s\n' \
+mk() { # <key> <status> <prio> <labels json> <fixVersions json> <blocked_by json> <title> <body>; MK_BARE=1 leaves the body without a DoD and Proof tail
+    local tail='\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n'
+    [ "${MK_BARE:-0}" = 1 ] && tail=''
+    printf -- '---\nkey: "%s"\ntype: "Task"\nstatus: "%s"\nstatusCategory: "x"\npriority: "%s"\nlabels: %s\nfixVersions: %s\nparent: null\nlinks:\n  blocks: []\n  blocked_by: %s\n  relates: []\n---\n\n# %s: %s\n\n## Description\n\n%s'"$tail"'\n' \
         "$1" "$2" "$3" "$4" "$5" "$6" "$1" "$7" "$8" > "$M/$1.md"
 }
 retype() { # <fixture file> <type>: portable in-place edit (no sed -i: BSD and GNU differ)
@@ -719,7 +721,10 @@ if [ "\$2" = list ]; then
 else awk -F'\t' -v n="\$3" '\$1 == n {print \$2}' "$RP/pr-files.tsv"; fi
 EOF
 chmod +x "$WORK/replay-gh"
-rp="$(NEXT_DISPATCH_MIRROR="$RP/mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/replay-gh" bash "$SUT" --no-classify --top 80 --doc "$RP/chief.md" --workers-from "$WORK/replay-fleet.json" 2>/dev/null)"
+# the frozen tickets predate the proof gate: give each a DoD and Proof tail on a copy, so the replay still tests the fences
+cp -r "$RP/mirror" "$WORK/replay-mirror"
+for f in "$WORK"/replay-mirror/HIMMEL/*.md; do printf '\n\nDoD\n- the row is green\n\nProof\n- a RED row that fails before the change\n' >> "$f"; done
+rp="$(NEXT_DISPATCH_MIRROR="$WORK/replay-mirror/HIMMEL" NEXT_DISPATCH_GH_CMD="$WORK/replay-gh" bash "$SUT" --no-classify --top 80 --doc "$RP/chief.md" --workers-from "$WORK/replay-fleet.json" 2>/dev/null)"
 has "replay: a ticket the 'Do not touch' fence of a live worker hid is offered (HIMMEL-6034)" "$rp" "HIMMEL-6034	"
 lacks "replay: a directory-wide scope described in parentheses still holds its directory (HIMMEL-6485)" "$rp" "HIMMEL-6485	"
 lacks "replay: a ticket whose key is a live worker's is not offered (HIMMEL-4999)" "$rp" "HIMMEL-4999	"
@@ -971,6 +976,119 @@ ddu_n="$(printf '%s\n' "$ddu_out" | grep -c '^# disposition ')"
 [ "$ddu_n" = 21 ] && pass "dispositions: an unreadable PR still leaves one line per ticket (21)" || fail "dispositions: $ddu_n lines with an unreadable PR, expected 21"
 dd_plain="$(rundd)"
 lacks "dispositions: a plain run prints none" "$dd_plain" "# disposition "
+
+# --- chain_soft_edges: both flag states on a local git fixture -----------------
+# OFF is today's collision drop; ON keeps a ticket whose files overlap an open PR when the
+# trial merge of that PR against main is clean, the overlap is at most 2 files and no trust
+# path is involved, and says so with a `# SOFT` row.
+export HIMMEL_CONFIG_DIR="$WORK/no-conf"   # no real ~/.himmel layer reaches the flag
+G="$WORK/soft-git"; mkdir -p "$G"
+g() { git -C "$G" -c user.name=t -c user.email=t@example.com -c commit.gpgsign=false -c core.hooksPath=/dev/null "$@"; }
+g init -q -b main
+for f in soft-a soft-b soft-c soft-d soft-conf; do seq 1 20 | sed "s/^/$f /" > "$G/$f.txt"; done
+g add -A; g commit -q -m base
+g checkout -q -b pr-clean; sed '1s/.*/changed by the PR/' "$G/soft-a.txt" > "$G/soft-a.txt.n" && mv "$G/soft-a.txt.n" "$G/soft-a.txt"; g commit -q -am pr-clean
+SHA_CLEAN="$(g rev-parse HEAD)"
+g checkout -q main; g checkout -q -b pr-conflict; sed '1s/.*/PR side/' "$G/soft-conf.txt" > "$G/soft-conf.txt.n" && mv "$G/soft-conf.txt.n" "$G/soft-conf.txt"; g commit -q -am pr-conflict
+SHA_CONFLICT="$(g rev-parse HEAD)"
+g checkout -q main; sed '1s/.*/main side/' "$G/soft-conf.txt" > "$G/soft-conf.txt.n" && mv "$G/soft-conf.txt.n" "$G/soft-conf.txt"; g commit -q -am main-moves
+
+SD="$WORK/soft-gh"; mkdir -p "$SD"
+printf '7001\tfeat(x): [HIMMEL-9901] clean\tfeat/himmel-9901-clean\n7002\tfeat(x): [HIMMEL-9902] conflicting\tfeat/himmel-9902-conf\n7003\tfeat(x): [HIMMEL-9903] trust\tfeat/himmel-9903-trust\n7004\tfeat(x): [HIMMEL-9904] wide\tfeat/himmel-9904-wide\n' > "$SD/prs.tsv"
+printf '7001\n7002\n7003\n7004\n' > "$SD/nums"
+printf 'scripts/lanes/soft-a.sh\nscripts/lanes/soft-one.sh\nscripts/lanes/soft-two.sh\n' > "$SD/files-7001"
+printf 'scripts/lanes/soft-conf.sh\n' > "$SD/files-7002"
+printf 'scripts/lib/soft-trust.sh\n' > "$SD/files-7003"
+printf 'scripts/lanes/wide-a.sh\nscripts/lanes/wide-b.sh\nscripts/lanes/wide-c.sh\n' > "$SD/files-7004"
+printf '%s' "$SHA_CLEAN" > "$SD/head-7001"; printf '%s' "$SHA_CONFLICT" > "$SD/head-7002"
+printf '%s' "$SHA_CLEAN" > "$SD/head-7003"; printf '%s' "$SHA_CLEAN" > "$SD/head-7004"
+cat > "$WORK/gh31" <<'EOF'
+#!/usr/bin/env bash
+n="$(printf '%s' "$*" | sed -n 's|.*pulls/\([0-9]*\).*|\1|p')"
+case "$*" in
+    *merged*) ;;
+    *"pr list"*headRefName*) cat "$SOFT_DIR/prs.tsv" ;;
+    *"pr list"*) cat "$SOFT_DIR/nums" ;;
+    *head.sha*) cat "$SOFT_DIR/head-$n" ;;
+    *pulls/*/files*) cat "$SOFT_DIR/files-$n" ;;
+esac
+EOF
+chmod +x "$WORK/gh31"
+export SOFT_DIR="$SD"
+M31="$WORK/m31/HIMMEL"; mkdir -p "$M31"
+M_SAVE="$M"; M="$M31"
+mk HIMMEL-3101 "To Do" Highest '[]' '["v1.0.1"]' '[]' "overlaps a clean PR" "Edit scripts/lanes/soft-one.sh only."
+mk HIMMEL-3102 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps a PR whose trial merge conflicts" "Edit scripts/lanes/soft-conf.sh only."
+mk HIMMEL-3103 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps a trust path" "Edit scripts/lib/soft-trust.sh only."
+mk HIMMEL-3104 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps three files" "Edit scripts/lanes/wide-a.sh, scripts/lanes/wide-b.sh and scripts/lanes/wide-c.sh."
+mk HIMMEL-3105 "To Do" High '[]' '["v1.0.1"]' '[]' "overlaps a PR and a live worker" "Edit scripts/lanes/soft-a.sh and scripts/handover/chief-kit/live-file.sh."
+mk HIMMEL-3106 "To Do" Medium '[]' '["v1.0.1"]' '[]' "overlaps two files of a clean PR" "Edit scripts/lanes/soft-a.sh and scripts/lanes/soft-two.sh."
+mk HIMMEL-3107 "To Do" Medium '[]' '["v1.0.1"]' '[]' "overlaps nothing" "Edit scripts/lanes/free-one.sh only."
+M="$M_SAVE"
+cp "$WORK/jira-mirror/HIMMEL.versions.tsv" "$WORK/m31/HIMMEL.versions.tsv"
+run31() { NEXT_DISPATCH_MIRROR="$M31" NEXT_DISPATCH_GH_CMD="$WORK/gh31" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify2" NEXT_DISPATCH_GIT_DIR="$G" NEXT_DISPATCH_MAIN_REF="${SOFT_MAIN_REF:-main}" bash "$SUT" --top 20 --workers-from "$WORK/fleet.json" "$@" 2>/dev/null; }
+soft_dflt="$(run31)"
+# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
+soft_off="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=0; run31 )"
+# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
+soft_on="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1; run31 )"
+# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
+soft_why="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1; run31 --why )"
+
+# OFF: today's output, exactly
+[ "$soft_off" = "$soft_dflt" ] && pass "soft OFF: the registry default is off, identical to the explicit 0" || fail "soft OFF: default and =0 differ"
+soft_off_rows="$(printf '%s\n' "$soft_off" | grep -v '^#' | cut -f1,2)"
+[ "$soft_off_rows" = "LOCAL	HIMMEL-3107" ] && pass "soft OFF: only the ticket that overlaps nothing is listed" || fail "soft OFF: rows are '$soft_off_rows'"
+lacks "soft OFF: no SOFT row" "$soft_off" "SOFT"
+has "soft OFF: the clean-PR overlap is dropped as a collision" "$soft_off" "# next-dispatchable: 7 To Do candidate(s), 1 collision-free"
+
+# ON: the clean small overlaps stay dispatchable and are named
+has "soft ON: a ticket overlapping a clean PR is listed" "$soft_on" "HIMMEL-3101	"
+has "soft ON: it says SOFT, naming the holder and the file" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
+has "soft ON: a two-file overlap of one clean PR is listed" "$soft_on" "HIMMEL-3106	"
+has "soft ON: the two-file SOFT row names both files" "$soft_on" "# SOFT open PR 7001 scripts/lanes/soft-a.sh,scripts/lanes/soft-two.sh for HIMMEL-3106"
+has "soft ON: a ticket that overlaps nothing is still listed" "$soft_on" "HIMMEL-3107	"
+lacks "soft ON: a ticket that overlaps nothing has no SOFT row" "$soft_on" "for HIMMEL-3107"
+lacks "soft ON: a PR whose trial merge conflicts still holds its file" "$soft_on" "HIMMEL-3102	"
+lacks "soft ON: a trust path is never soft" "$soft_on" "HIMMEL-3103	"
+lacks "soft ON: more than 2 overlapping files is never soft" "$soft_on" "HIMMEL-3104	"
+lacks "soft ON: a live worker's file holds even beside a soft overlap" "$soft_on" "HIMMEL-3105	"
+has "soft ON --why: a conflicting trial merge is still a collision drop" "$soft_why" "# drop HIMMEL-3102 collision scripts/lanes/soft-conf.sh held by open PR 7002"
+has "soft ON --why: a trust path is still a collision drop" "$soft_why" "# drop HIMMEL-3103 collision scripts/lib/soft-trust.sh held by open PR 7003"
+has "soft ON --why: a wide overlap is still a collision drop" "$soft_why" "# drop HIMMEL-3104 collision "
+has "soft ON --why: the live-worker overlap names the first holder it finds" "$soft_why" "# drop HIMMEL-3105 collision "
+
+# ON fails closed to today's drop when the trial cannot run
+# shellcheck disable=SC2030,SC2031  # each flag state is set in its own command-substitution subshell on purpose
+soft_nohead="$( export HIMMEL_FLAG_CHAIN_SOFT_EDGES=1 SOFT_MAIN_REF=no-such-ref; run31 )"
+lacks "soft ON: an unresolvable main ref falls back to the collision drop" "$soft_nohead" "HIMMEL-3101	"
+lacks "soft ON: and prints no SOFT row" "$soft_nohead" "SOFT"
+# a conf-file value turns the flag on the same way as the environment
+mkdir -p "$WORK/conf-on"; printf 'HIMMEL_FLAG_CHAIN_SOFT_EDGES=1\n' > "$WORK/conf-on/himmel.conf"
+soft_conf="$( export HIMMEL_CONFIG_DIR="$WORK/conf-on"; run31 )"
+has "soft: himmel.conf turns it on" "$soft_conf" "# SOFT open PR 7001 scripts/lanes/soft-one.sh for HIMMEL-3101"
+
+# --- a ticket with no DoD or no Proof is refused at dispatch. The
+# checker is marketplace/plugins/himmel-ops/scripts/ticket-standard-check.sh; the
+# refusal prints the ticket for the chief to fix first and parks nothing. -----
+M="$WORK/jira-mirror-proof/HIMMEL"; mkdir -p "$M"
+MK_BARE=1 mk HIMMEL-9101 "To Do" High '[]' '["v1.0.1"]' '[]' "has a DoD but no Proof" $'Edit scripts/lib/proof-a.sh.\n\nDoD\n- the row is green\n'
+MK_BARE=1 mk HIMMEL-9102 "To Do" High '[]' '["v1.0.1"]' '[]' "has neither DoD nor Proof" "Edit scripts/lib/proof-b.sh."
+mk HIMMEL-9103 "To Do" High '[]' '["v1.0.1"]' '[]' "has both" "Edit scripts/lib/proof-c.sh."
+MK_BARE=1 mk HIMMEL-9104 "To Do" High '[]' '["v1.0.1"]' '[]' "Proof is a placeholder" $'Edit scripts/lib/proof-d.sh.\n\nDoD\n- the row is green\n\nProof\nTBD\n'
+printf 'v1.0.1\tfalse\t\n' > "$WORK/jira-mirror-proof/HIMMEL.versions.tsv"
+proof_run() { NEXT_DISPATCH_MIRROR="$M" NEXT_DISPATCH_GH_CMD="$WORK/gh" NEXT_DISPATCH_CLASSIFY_CMD="$WORK/classify" HANDOVER_DIR="$WORK/proof-handover" bash "$SUT" --no-classify --top 20 "$@" 2>/dev/null; }
+proof_out="$(proof_run)"
+has "proof: a ticket with DoD and Proof is listed" "$proof_out" "HIMMEL-9103	"
+lacks "proof: a ticket with no Proof section is not listed" "$proof_out" "HIMMEL-9101	"
+lacks "proof: a ticket with neither section is not listed" "$proof_out" "HIMMEL-9102	"
+lacks "proof: a placeholder Proof is not a Proof" "$proof_out" "HIMMEL-9104	"
+has "proof: the refusal names the missing section" "$proof_out" "# NO-PROOF HIMMEL-9101 missing Proof"
+has "proof: the refusal names both missing sections" "$proof_out" "# NO-PROOF HIMMEL-9102 missing DoD, Proof"
+has "proof: the refusal carries the title for the chief to fix" "$proof_out" "has a DoD but no Proof"
+lacks "proof: a ticket that passes gets no refusal line" "$proof_out" "NO-PROOF HIMMEL-9103"
+has "proof --why: the drop reason is the missing section" "$(proof_run --why)" "# drop HIMMEL-9101 proof missing: Proof"
+[ ! -e "$WORK/proof-handover" ] && pass "proof: the read-only listing parks nothing in the handover intake queue" || fail "proof: the listing wrote to the handover dir"
 
 printf '\n%d failure(s)\n' "$fails"
 [ "$fails" -eq 0 ]

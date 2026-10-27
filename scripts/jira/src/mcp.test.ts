@@ -519,7 +519,7 @@ describe('MCP SDK v2 (HIMMEL-4864)', () => {
   const src = readFileSync(new URL('./mcp.ts', import.meta.url), 'utf8');
 
   it('pins the split v2 server package exactly and drops the v1 monolith', () => {
-    expect(pkg.dependencies['@modelcontextprotocol/server']).toBe('2.3.1');
+    expect(pkg.dependencies['@modelcontextprotocol/server']).toBe('2.4.0');
     expect(pkg.dependencies['@modelcontextprotocol/sdk']).toBeUndefined();
   });
 
