@@ -933,11 +933,11 @@ check "26: evidence typing a delta: line is refused without the flag too" "$rc" 
 # --- 27. no --repo from an adopter checkout never lands in the harness bucket ---
 ax="$tmp/adopter-checkout"
 git init -q "$ax" && git -C "$ax" remote add origin https://github.com/acme/widget.git
-before27=$(find "$root" -type f | wc -l | tr -d ' ')
+before27=$(ls -R "$root" | wc -l | tr -d ' ')
 rc=0; out=$(cd "$ax" && wv q27 GO "$SHA_A" --evidence-file "$ev" 2>&1) || rc=$?
 check "27: an adopter checkout with no --repo is refused" "$rc" 2
 contains "27: the refusal names the checkout's repo" "$out" "acme/widget"
-check "27: the refusal writes nothing" "$(find "$root" -type f | wc -l | tr -d ' ')" "$before27"
+check "27: the refusal writes nothing" "$(ls -R "$root" | wc -l | tr -d ' ')" "$before27"
 rc=0; (cd "$ax" && wv q27 GO "$SHA_A" --repo acme/widget --evidence-file "$ev" >/dev/null 2>&1) || rc=$?
 check "27: the same checkout with --repo acme/widget writes" "$rc" 0
 check "27: it lands in the adopter bucket" "$(ls "$root/$(dirname "$scope")/acme--widget/verdicts/q27" 2>/dev/null | wc -l | tr -d ' ')" 1
