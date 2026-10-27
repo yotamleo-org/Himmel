@@ -1361,8 +1361,11 @@ ${LONG_BODY}EOF"
     # 7912d/e: a deny that comes from a symlink operand alone (the command
     # never names a settings file) survives the same word repeating, and a
     # word differing only in case is still judged when the launch
-    # environment imported nocasematch.
+    # environment imported nocasematch. COO-Link must exist so it reaches the
+    # memoized fork (a missing non-settings leaf returns before it); on a
+    # case-insensitive disk it already is coo-link, so it is not created.
     ln -s "$PRIMARY/.claude/settings.json" "$WT2/coo-link"
+    [ -e "$WT2/COO-Link" ] || : > "$WT2/COO-Link"
     assert_rc "7912d a symlink operand repeated still denies" 2 \
         "$(bash_rc_of "$WT2" "cp /tmp/x coo-link; echo ok; cp /tmp/x coo-link" HOME="$FAKEHOME")"
     assert_rc "7912e a case-variant of a judged word is judged under nocasematch" 2 \

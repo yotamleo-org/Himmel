@@ -4089,18 +4089,13 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # tokenizer could not vouch for (heredoc, ANSI-C word) fall back to the
     # whitespace split, same documented ceiling every other TOK=0 fallback
     # in this file already accepts.
-    # Whether KEY is an entry of the newline-delimited LIST, matched
-    # case-sensitively even when the launch environment imported
-    # `nocasematch` through BASHOPTS: a word that differs only in case from
-    # one already judged must still be judged (it can name another file).
-    _seen_in() {
-        local nc=0 hit=1
-        shopt -q nocasematch && nc=1
-        shopt -u nocasematch
-        case "$1" in *$'\n'"$2"$'\n'*) hit=0 ;; esac
-        if [ "$nc" = 1 ]; then shopt -s nocasematch; fi
-        return "$hit"
-    }
+    # The seen-lists below match case-sensitively even when the launch
+    # environment imported `nocasematch` through BASHOPTS: a word that differs
+    # only in case from one already judged must still be judged (it can name
+    # another file). The lookups are written inline, not in a function, so a
+    # long list is not copied into an argument on every word.
+    _NC_ON=0
+    if shopt -q nocasematch; then _NC_ON=1; fi
     _COO_SEEN=$'\n'
     # The forking check of one operand word. A word judged once is judged the
     # same every time (the verdict reads only the word, $cwd and
@@ -4111,11 +4106,14 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # word holding a newline would match across two entries of the list, so
     # it is always judged.
     _coo_fork_check() {
-        local w="$1" result
+        local w="$1" result seen=0
         case "$w" in
             *$'\n'*) ;;
             *)
-                ! _seen_in "$_COO_SEEN" "$w" || return 0
+                if [ "$_NC_ON" = 1 ]; then shopt -u nocasematch; fi
+                case "$_COO_SEEN" in *$'\n'"$w"$'\n'*) seen=1 ;; esac
+                if [ "$_NC_ON" = 1 ]; then shopt -s nocasematch; fi
+                [ "$seen" = 0 ] || return 0
                 _COO_SEEN=$_COO_SEEN$w$'\n'
                 ;;
         esac
@@ -4303,13 +4301,16 @@ if [ "$tool_name" = "Bash" ] || [ "$tool_name" = "PowerShell" ]; then
     # again: a padded command costs one resolution per distinct word.
     _CV_SEEN=$'\n'
     _check_variant() {
-        local w="$1" glob="$2" rd="${3:-0}" dir leaf n sd
+        local w="$1" glob="$2" rd="${3:-0}" dir leaf n sd seen=0
         [ "$variant_dest" = 0 ] || return 0
         # a word with a newline is never memoized: it could forge an entry
         case "$w" in
             *$'\n'*) ;;
             *)
-                ! _seen_in "$_CV_SEEN" "$w|$glob|$rd" || return 0
+                if [ "$_NC_ON" = 1 ]; then shopt -u nocasematch; fi
+                case "$_CV_SEEN" in *$'\n'"$w|$glob|$rd"$'\n'*) seen=1 ;; esac
+                if [ "$_NC_ON" = 1 ]; then shopt -s nocasematch; fi
+                [ "$seen" = 0 ] || return 0
                 _CV_SEEN="$_CV_SEEN$w|$glob|$rd"$'\n'
                 ;;
         esac
